@@ -484,16 +484,16 @@ function contractCreateForm() {
         unitIdOld: '{{ old('unit_id', '') }}',
         units: [],
         loadingUnits: false,
-        rent: {{ old('rent', 0) }},
-        commonFee: {{ old('common_fee', 0) }},
-        garbageFee: {{ old('garbage_fee', 0) }},
-        pestControlFee: {{ old('pest_control_fee', 0) }},
-        deposit: {{ old('deposit', 0) }},
+        rent: {{ old('rent', "''") }},
+        commonFee: {{ old('common_fee', "''") }},
+        garbageFee: {{ old('garbage_fee', "''") }},
+        pestControlFee: {{ old('pest_control_fee', "''") }},
+        deposit: {{ old('deposit', "''") }},
 
         // 初月家賃
         rentStartDate: '{{ old('rent_start_date', '') }}',
         initialMonthType: '{{ old('initial_month_type', 'full') }}',
-        manualInitialAmount: {{ old('initial_month_amount', 0) }},
+        manualInitialAmount: {{ old('initial_month_amount', "''") }},
 
         inquiryId: '{{ old('inquiry_id', ($presetInquiry?->id ?? request('inquiry_id', ''))) }}',
         inquiries: [],
@@ -601,11 +601,11 @@ function contractCreateForm() {
 
         onPropertyChange: function() {
             this.unitId = '';
-            this.rent = 0;
-            this.commonFee = 0;
-            this.garbageFee = 0;
-            this.pestControlFee = 0;
-            this.deposit = 0;
+            this.rent = '';
+            this.commonFee = '';
+            this.garbageFee = '';
+            this.pestControlFee = '';
+            this.deposit = '';
             this.fetchUnits();
 
             // 問合せ起点プリセットでなければ問合せ選択をリセット

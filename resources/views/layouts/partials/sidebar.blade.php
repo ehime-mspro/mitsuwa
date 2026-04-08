@@ -57,6 +57,7 @@
             <x-sidebar-item :href="url('/tenant/contracts')" label="契約一覧" :active="request()->is('tenant/contracts*')" />
             <x-sidebar-item :href="url('/tenant/investments')" label="投資案件" :active="request()->is('tenant/investments*')" />
             <x-sidebar-item :href="url('/tenant/repairs')" label="一般修繕" :active="request()->is('tenant/repairs*')" />
+            <x-sidebar-item :href="url('/tenant/customers')" label="顧客一覧" :active="request()->is('tenant/customers*')" />
             <x-sidebar-item :href="url('/tenant/inquiries')" label="問合せ管理" :active="request()->is('tenant/inquiries*')" />
         </x-sidebar-group>
     @endif
@@ -65,11 +66,6 @@
     <x-sidebar-group label="収支管理">
         <x-sidebar-item :href="url('/tenant/transactions')" label="収支一覧" :active="request()->is('tenant/transactions') || request()->is('tenant/transactions/create') || request()->is('tenant/transactions/*/edit')" />
         <x-sidebar-item :href="url('/tenant/transactions/summary')" label="収支サマリー" :active="request()->is('tenant/transactions/summary') || request()->is('tenant/transactions/by-*')" />
-    </x-sidebar-group>
-
-    {{-- 顧客管理 --}}
-    <x-sidebar-group label="顧客管理">
-        <x-sidebar-item :href="url('/tenant/customers')" label="顧客一覧" :active="request()->is('tenant/customers*')" />
     </x-sidebar-group>
 
     {{-- 不動産管理 --}}
@@ -162,13 +158,6 @@
         </svg>
     </a>
 
-    {{-- 顧客管理 --}}
-    <a href="{{ url('/tenant/customers') }}" title="顧客管理" class="w-9 h-9 mb-1 rounded-lg flex items-center justify-center {{ request()->is('tenant/customers*') ? 'bg-emerald-50' : 'hover:bg-gray-100' }} transition-colors">
-        <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="{{ request()->is('tenant/customers*') ? '#059669' : '#6B7280' }}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
-        </svg>
-    </a>
-
     {{-- 不動産管理 --}}
     @if($hasRealEstateAccess)
         <a href="{{ url('/realestate/procurements') }}" title="不動産管理" class="w-9 h-9 mb-1 rounded-lg flex items-center justify-center {{ request()->is('realestate/*') ? 'bg-emerald-50' : 'hover:bg-gray-100' }} transition-colors">
@@ -236,6 +225,7 @@
             <x-sidebar-item :href="url('/tenant/contracts')" label="契約一覧" :active="request()->is('tenant/contracts*')" />
             <x-sidebar-item :href="url('/tenant/investments')" label="投資案件" :active="request()->is('tenant/investments*')" />
             <x-sidebar-item :href="url('/tenant/repairs')" label="一般修繕" :active="request()->is('tenant/repairs*')" />
+            <x-sidebar-item :href="url('/tenant/customers')" label="顧客一覧" :active="request()->is('tenant/customers*')" />
             <x-sidebar-item :href="url('/tenant/inquiries')" label="問合せ管理" :active="request()->is('tenant/inquiries*')" />
         </x-sidebar-group>
     @endif
@@ -243,10 +233,6 @@
     <x-sidebar-group label="収支管理">
         <x-sidebar-item :href="url('/tenant/transactions')" label="収支一覧" :active="request()->is('tenant/transactions') || request()->is('tenant/transactions/create') || request()->is('tenant/transactions/*/edit')" />
         <x-sidebar-item :href="url('/tenant/transactions/summary')" label="収支サマリー" :active="request()->is('tenant/transactions/summary') || request()->is('tenant/transactions/by-*')" />
-    </x-sidebar-group>
-
-    <x-sidebar-group label="顧客管理">
-        <x-sidebar-item :href="url('/tenant/customers')" label="顧客一覧" :active="request()->is('tenant/customers*')" />
     </x-sidebar-group>
 
     @if($hasRealEstateAccess)
