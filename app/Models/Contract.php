@@ -38,6 +38,8 @@ class Contract extends Model
         'deposit_deduction_reason',
         'deposit_refund_amount',
         'deposit_refund_date',
+        'first_month_recovery',
+        'last_month_recovery',
         'assigned_to',
         'notes',
         'guarantor1_name',
@@ -70,6 +72,8 @@ class Contract extends Model
             'pest_control_fee' => 'integer',
             'deposit_deduction' => 'integer',
             'deposit_refund_amount' => 'integer',
+            'first_month_recovery' => 'integer',
+            'last_month_recovery' => 'integer',
             'initial_month_type' => InitialMonthType::class,
             'final_month_type'   => InitialMonthType::class,
         ];
