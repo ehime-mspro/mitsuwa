@@ -94,6 +94,18 @@ Route::middleware(['auth', 'password.change'])->group(function () {
             ->name('admin.master.usage-types.update');
         Route::delete('/master/usage-types/{usageType}', [\App\Http\Controllers\Admin\UsageTypeController::class, 'destroy'])
             ->name('admin.master.usage-types.destroy');
+
+        // 構造マスター
+        Route::post('/master/structure-types/reorder', [\App\Http\Controllers\Admin\StructureTypeController::class, 'reorder'])
+            ->name('admin.master.structure-types.reorder');
+        Route::get('/master/structure-types', [\App\Http\Controllers\Admin\StructureTypeController::class, 'index'])
+            ->name('admin.master.structure-types.index');
+        Route::post('/master/structure-types', [\App\Http\Controllers\Admin\StructureTypeController::class, 'store'])
+            ->name('admin.master.structure-types.store');
+        Route::put('/master/structure-types/{structureType}', [\App\Http\Controllers\Admin\StructureTypeController::class, 'update'])
+            ->name('admin.master.structure-types.update');
+        Route::delete('/master/structure-types/{structureType}', [\App\Http\Controllers\Admin\StructureTypeController::class, 'destroy'])
+            ->name('admin.master.structure-types.destroy');
     });
 
     /*

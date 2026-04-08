@@ -47,7 +47,7 @@
                     <label class="block text-sm font-semibold text-gray-700 mb-1">物件名<span class="text-red-600 ml-0.5">*</span></label>
                     <input type="text" name="name" value="{{ old('name') }}"
                            class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none"
-                           placeholder="例: ○○ビル">
+                           placeholder="例: ミツワ○○ビル">
                 </div>
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1">物件コード<span class="text-red-600 ml-0.5">*</span></label>
@@ -79,7 +79,7 @@
                 <label class="block text-sm font-semibold text-gray-700 mb-1">住所<span class="text-red-600 ml-0.5">*</span></label>
                 <input type="text" name="address" value="{{ old('address') }}"
                        class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none"
-                       placeholder="例: 東京都港区虎ノ門1-1-1">
+                       placeholder="例: 愛媛県松山市勝山町2丁目4-7">
             </div>
         </div>
 
@@ -92,11 +92,9 @@
                     <select name="structure"
                             class="form-select w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none cursor-pointer">
                         <option value="">選択してください</option>
-                        <option value="RC造" {{ old('structure') === 'RC造' ? 'selected' : '' }}>RC造</option>
-                        <option value="S造" {{ old('structure') === 'S造' ? 'selected' : '' }}>S造</option>
-                        <option value="SRC造" {{ old('structure') === 'SRC造' ? 'selected' : '' }}>SRC造</option>
-                        <option value="木造" {{ old('structure') === '木造' ? 'selected' : '' }}>木造</option>
-                        <option value="その他" {{ old('structure') === 'その他' ? 'selected' : '' }}>その他</option>
+                        @foreach($structureTypes as $st)
+                            <option value="{{ $st->name }}" {{ old('structure') === $st->name ? 'selected' : '' }}>{{ $st->name }}</option>
+                        @endforeach
                     </select>
                 </div>
                 <div>
@@ -109,7 +107,7 @@
                     <div class="relative">
                         <input type="number" name="total_floors" value="{{ old('total_floors') }}" min="1" max="99"
                                class="form-input w-full h-[40px] px-3 pr-8 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none"
-                               placeholder="0">
+                               placeholder="">
                         <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">階</span>
                     </div>
                     <p class="text-xs text-gray-500 mt-1">※ 平屋型は空欄でOK</p>

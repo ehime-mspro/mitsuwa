@@ -12,6 +12,7 @@ use App\Models\Investment;
 use App\Models\Property;
 use App\Models\PropertyChangeLog;
 use App\Models\Repair;
+use App\Models\StructureType;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -72,8 +73,9 @@ class PropertyController extends Controller
     public function create()
     {
         $nextCode = $this->generateNextCode();
+        $structureTypes = StructureType::orderBy('sort_order')->get();
 
-        return view('tenant.properties.create', compact('nextCode'));
+        return view('tenant.properties.create', compact('nextCode', 'structureTypes'));
     }
 
     /**
@@ -232,7 +234,9 @@ class PropertyController extends Controller
      */
     public function edit(Property $property)
     {
-        return view('tenant.properties.edit', compact('property'));
+        $structureTypes = StructureType::orderBy('sort_order')->get();
+
+        return view('tenant.properties.edit', compact('property', 'structureTypes'));
     }
 
     /**

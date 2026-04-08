@@ -96,8 +96,24 @@
     @if($isExecutive)
         <x-sidebar-group label="システム管理">
             <x-sidebar-item :href="url('/admin/users')" label="ユーザー管理" :active="request()->is('admin/users*')" />
+            {{-- サブ見出し: テナント --}}
+            <div style="display: flex; align-items: center; gap: 8px; padding: 8px 20px 3px;">
+                <span style="font-size: 10px; font-weight: 600; color: #6B7280; letter-spacing: 0.05em; white-space: nowrap;">テナント</span>
+                <span style="flex: 1; height: 1px; background: #D1D5DB;"></span>
+            </div>
             <x-sidebar-item :href="url('/admin/master/usage-types')" label="希望用途マスター" :active="request()->is('admin/master/usage-types*')" />
+            <x-sidebar-item :href="url('/admin/master/structure-types')" label="構造マスター" :active="request()->is('admin/master/structure-types*')" />
+            {{-- サブ見出し: 不動産 --}}
+            <div style="display: flex; align-items: center; gap: 8px; padding: 8px 20px 3px;">
+                <span style="font-size: 10px; font-weight: 600; color: #6B7280; letter-spacing: 0.05em; white-space: nowrap;">不動産</span>
+                <span style="flex: 1; height: 1px; background: #D1D5DB;"></span>
+            </div>
             <x-sidebar-item :href="url('/admin/master/re-cost-items')" label="原価項目マスター" :active="request()->is('admin/master/re-cost-items*')" />
+            {{-- サブ見出し: 顧客管理 --}}
+            <div style="display: flex; align-items: center; gap: 8px; padding: 8px 20px 3px;">
+                <span style="font-size: 10px; font-weight: 600; color: #6B7280; letter-spacing: 0.05em; white-space: nowrap;">顧客管理</span>
+                <span style="flex: 1; height: 1px; background: #D1D5DB;"></span>
+            </div>
             <x-sidebar-item :href="url('/admin/survey-questions')" label="アンケート設問管理" :active="request()->is('admin/survey-questions*')" />
             <x-sidebar-item :href="url('/admin/customers/import')" label="顧客CSVインポート" :active="request()->is('admin/customers/import*')" />
             <x-sidebar-item :href="url('/admin/settings')" label="マスター設定" :active="request()->is('admin/settings*')" />
@@ -254,8 +270,24 @@
     @if($isExecutive)
         <x-sidebar-group label="システム管理">
             <x-sidebar-item :href="url('/admin/users')" label="ユーザー管理" :active="request()->is('admin/users*')" />
+            {{-- サブ見出し: テナント --}}
+            <div style="display: flex; align-items: center; gap: 8px; padding: 8px 20px 3px;">
+                <span style="font-size: 10px; font-weight: 600; color: #6B7280; letter-spacing: 0.05em; white-space: nowrap;">テナント</span>
+                <span style="flex: 1; height: 1px; background: #D1D5DB;"></span>
+            </div>
             <x-sidebar-item :href="url('/admin/master/usage-types')" label="希望用途マスター" :active="request()->is('admin/master/usage-types*')" />
+            <x-sidebar-item :href="url('/admin/master/structure-types')" label="構造マスター" :active="request()->is('admin/master/structure-types*')" />
+            {{-- サブ見出し: 不動産 --}}
+            <div style="display: flex; align-items: center; gap: 8px; padding: 8px 20px 3px;">
+                <span style="font-size: 10px; font-weight: 600; color: #6B7280; letter-spacing: 0.05em; white-space: nowrap;">不動産</span>
+                <span style="flex: 1; height: 1px; background: #D1D5DB;"></span>
+            </div>
             <x-sidebar-item :href="url('/admin/master/re-cost-items')" label="原価項目マスター" :active="request()->is('admin/master/re-cost-items*')" />
+            {{-- サブ見出し: 顧客管理 --}}
+            <div style="display: flex; align-items: center; gap: 8px; padding: 8px 20px 3px;">
+                <span style="font-size: 10px; font-weight: 600; color: #6B7280; letter-spacing: 0.05em; white-space: nowrap;">顧客管理</span>
+                <span style="flex: 1; height: 1px; background: #D1D5DB;"></span>
+            </div>
             <x-sidebar-item :href="url('/admin/survey-questions')" label="アンケート設問管理" :active="request()->is('admin/survey-questions*')" />
             <x-sidebar-item :href="url('/admin/customers/import')" label="顧客CSVインポート" :active="request()->is('admin/customers/import*')" />
             <x-sidebar-item :href="url('/admin/settings')" label="マスター設定" :active="request()->is('admin/settings*')" />

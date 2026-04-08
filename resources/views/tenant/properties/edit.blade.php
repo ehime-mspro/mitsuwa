@@ -95,8 +95,8 @@
                     <select name="structure"
                             class="form-select w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none cursor-pointer">
                         <option value="">選択してください</option>
-                        @foreach(['RC造', 'S造', 'SRC造', '木造', 'その他'] as $s)
-                            <option value="{{ $s }}" {{ old('structure', $property->structure) === $s ? 'selected' : '' }}>{{ $s }}</option>
+                        @foreach($structureTypes as $st)
+                            <option value="{{ $st->name }}" {{ old('structure', $property->structure) === $st->name ? 'selected' : '' }}>{{ $st->name }}</option>
                         @endforeach
                     </select>
                 </div>
