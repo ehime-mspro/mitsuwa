@@ -1,7 +1,930 @@
 <?php
 
+use App\Http\Controllers\Auth\AuthController;
+use App\Http\Controllers\Auth\PasswordController;
+use App\Http\Controllers\DashboardController;
 use Illuminate\Support\Facades\Route;
 
-Route::get('/', function () {
-    return view('welcome');
+/*
+|--------------------------------------------------------------------------
+| 認証ルート（5ルート）
+|--------------------------------------------------------------------------
+*/
+
+// ゲスト（未認証）ユーザーのみアクセス可能
+Route::middleware('guest')->group(function () {
+    Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
+    Route::post('/login', [AuthController::class, 'login']);
+});
+
+// 認証済みユーザー
+Route::middleware('auth')->group(function () {
+    Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
+});
+
+/*
+|--------------------------------------------------------------------------
+| 認証必須ルート（パスワード変更強制ミドルウェア適用）
+|--------------------------------------------------------------------------
+*/
+
+Route::middleware(['auth', 'password.change'])->group(function () {
+
+    /*
+    |----------------------------------------------------------------------
+    | パスワード変更（2ルート）
+    |----------------------------------------------------------------------
+    */
+    Route::get('/password/change', [PasswordController::class, 'showChange'])->name('password.change');
+    Route::put('/password/change', [PasswordController::class, 'change'])->name('password.update');
+
+    /*
+    |----------------------------------------------------------------------
+    | ダッシュボード（2ルート）
+    |----------------------------------------------------------------------
+    */
+
+    // ダッシュボードルートの振り分け（ロールに応じてリダイレクト）
+    Route::get('/', function () {
+        return redirect()->route('dashboard');
+    });
+
+    Route::get('/dashboard', function () {
+        if (auth()->user()->role->isExecutive()) {
+            return redirect()->route('dashboard.executive');
+        }
+        return redirect()->route('dashboard.tenant');
+    })->name('dashboard');
+
+    // 経営ダッシュボード（経営層のみ）
+    Route::get('/dashboard/executive', [DashboardController::class, 'executive'])
+        ->middleware('role:executive')
+        ->name('dashboard.executive');
+
+    // テナントダッシュボード（全ロール）
+    Route::get('/dashboard/tenant', [DashboardController::class, 'tenant'])
+        ->name('dashboard.tenant');
+
+    /*
+    |----------------------------------------------------------------------
+    | システム管理（10ルート）※経営層のみ
+    |----------------------------------------------------------------------
+    */
+    Route::middleware('role:executive')->prefix('admin')->group(function () {
+        // ユーザー管理
+        Route::get('/users', [\App\Http\Controllers\Admin\UserController::class, 'index'])
+            ->name('admin.users.index');
+        Route::post('/users', [\App\Http\Controllers\Admin\UserController::class, 'store'])
+            ->name('admin.users.store');
+        Route::put('/users/{user}', [\App\Http\Controllers\Admin\UserController::class, 'update'])
+            ->name('admin.users.update');
+        Route::put('/users/{user}/reset-password', [\App\Http\Controllers\Admin\UserController::class, 'resetPassword'])
+            ->name('admin.users.resetPassword');
+        Route::patch('/users/{user}/toggle-status', [\App\Http\Controllers\Admin\UserController::class, 'toggleStatus'])
+            ->name('admin.users.toggleStatus');
+
+        // 希望用途マスター
+        Route::post('/master/usage-types/reorder', [\App\Http\Controllers\Admin\UsageTypeController::class, 'reorder'])
+            ->name('admin.master.usage-types.reorder');
+        Route::get('/master/usage-types', [\App\Http\Controllers\Admin\UsageTypeController::class, 'index'])
+            ->name('admin.master.usage-types.index');
+        Route::post('/master/usage-types', [\App\Http\Controllers\Admin\UsageTypeController::class, 'store'])
+            ->name('admin.master.usage-types.store');
+        Route::put('/master/usage-types/{usageType}', [\App\Http\Controllers\Admin\UsageTypeController::class, 'update'])
+            ->name('admin.master.usage-types.update');
+        Route::delete('/master/usage-types/{usageType}', [\App\Http\Controllers\Admin\UsageTypeController::class, 'destroy'])
+            ->name('admin.master.usage-types.destroy');
+    });
+
+    /*
+    |----------------------------------------------------------------------
+    | テナント物件管理（7ルート）— STEP 4
+    |----------------------------------------------------------------------
+    */
+    Route::prefix('tenant')->group(function () {
+        // 物件一覧・登録（全ロール閲覧可、登録は経営層+管理者）
+        Route::get('/properties', [\App\Http\Controllers\Tenant\PropertyController::class, 'index'])
+            ->name('tenant.properties.index');
+
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/properties/create', [\App\Http\Controllers\Tenant\PropertyController::class, 'create'])
+                ->name('tenant.properties.create');
+            Route::post('/properties', [\App\Http\Controllers\Tenant\PropertyController::class, 'store'])
+                ->name('tenant.properties.store');
+        });
+
+        // 物件詳細（全ロール閲覧可）
+        Route::get('/properties/{property}', [\App\Http\Controllers\Tenant\PropertyController::class, 'show'])
+            ->name('tenant.properties.show');
+
+        // 物件編集・更新（経営層+管理者）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/properties/{property}/edit', [\App\Http\Controllers\Tenant\PropertyController::class, 'edit'])
+                ->name('tenant.properties.edit');
+            Route::put('/properties/{property}', [\App\Http\Controllers\Tenant\PropertyController::class, 'update'])
+                ->name('tenant.properties.update');
+        });
+
+        // 物件削除（経営層のみ）
+        Route::delete('/properties/{property}', [\App\Http\Controllers\Tenant\PropertyController::class, 'destroy'])
+            ->middleware('role:executive')
+            ->name('tenant.properties.destroy');
+
+        /*
+        |------------------------------------------------------------------
+        | テナント区画管理（7ルート）— STEP 5
+        |------------------------------------------------------------------
+        */
+
+        // 区画登録（経営層+管理者）— 物件配下
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/properties/{property}/units/create', [\App\Http\Controllers\Tenant\UnitController::class, 'create'])
+                ->name('tenant.units.create');
+            Route::post('/properties/{property}/units', [\App\Http\Controllers\Tenant\UnitController::class, 'store'])
+                ->name('tenant.units.store');
+        });
+
+        // 区画詳細（全ロール閲覧可）
+        Route::get('/units/{unit}', [\App\Http\Controllers\Tenant\UnitController::class, 'show'])
+            ->name('tenant.units.show');
+
+        // 区画編集・更新（経営層+管理者）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/units/{unit}/edit', [\App\Http\Controllers\Tenant\UnitController::class, 'edit'])
+                ->name('tenant.units.edit');
+            Route::put('/units/{unit}', [\App\Http\Controllers\Tenant\UnitController::class, 'update'])
+                ->name('tenant.units.update');
+        });
+
+        // 区画削除（経営層のみ）
+        Route::delete('/units/{unit}', [\App\Http\Controllers\Tenant\UnitController::class, 'destroy'])
+            ->middleware('role:executive')
+            ->name('tenant.units.destroy');
+
+        // 区画ステータス変更（経営層+管理者）— vacant↔negotiating
+        Route::patch('/units/{unit}/status', [\App\Http\Controllers\Tenant\UnitController::class, 'updateStatus'])
+            ->middleware('role:executive,manager')
+            ->name('tenant.units.updateStatus');
+
+        /*
+        |------------------------------------------------------------------
+        | テナント契約管理（10ルート）— STEP 6
+        |------------------------------------------------------------------
+        */
+
+        // 契約一覧（全ロール閲覧可）
+        Route::get('/contracts', [\App\Http\Controllers\Tenant\ContractController::class, 'index'])
+            ->name('tenant.contracts.index');
+
+        // 契約登録（経営層+管理者）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/contracts/create', [\App\Http\Controllers\Tenant\ContractController::class, 'create'])
+                ->name('tenant.contracts.create');
+            Route::post('/contracts', [\App\Http\Controllers\Tenant\ContractController::class, 'store'])
+                ->name('tenant.contracts.store');
+        });
+
+        // 契約詳細（全ロール閲覧可）
+        Route::get('/contracts/{contract}', [\App\Http\Controllers\Tenant\ContractController::class, 'show'])
+            ->name('tenant.contracts.show');
+
+        // 契約編集・更新（経営層+管理者）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/contracts/{contract}/edit', [\App\Http\Controllers\Tenant\ContractController::class, 'edit'])
+                ->name('tenant.contracts.edit');
+            Route::put('/contracts/{contract}', [\App\Http\Controllers\Tenant\ContractController::class, 'update'])
+                ->name('tenant.contracts.update');
+        });
+
+        // 解約処理（経営層+管理者）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/contracts/{contract}/terminate', [\App\Http\Controllers\Tenant\ContractController::class, 'showTerminate'])
+                ->name('tenant.contracts.terminate');
+            Route::put('/contracts/{contract}/terminate', [\App\Http\Controllers\Tenant\ContractController::class, 'terminate'])
+                ->name('tenant.contracts.terminate.execute');
+        });
+
+        // 賃料改定（経営層のみ）
+        Route::middleware('role:executive')->group(function () {
+            Route::get('/contracts/{contract}/revise', [\App\Http\Controllers\Tenant\ContractController::class, 'showRevise'])
+                ->name('tenant.contracts.revise');
+            Route::post('/contracts/{contract}/revise', [\App\Http\Controllers\Tenant\ContractController::class, 'revise'])
+                ->name('tenant.contracts.revise.execute');
+        });
+        /*
+        |------------------------------------------------------------------
+        | テナント投資案件管理（7ルート）— STEP 8
+        |------------------------------------------------------------------
+        */
+
+        // 投資案件一覧（全ロール閲覧可）
+        Route::get('/investments', [\App\Http\Controllers\Tenant\InvestmentController::class, 'index'])
+            ->name('tenant.investments.index');
+
+        // 投資案件登録（経営層+管理者）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/investments/create', [\App\Http\Controllers\Tenant\InvestmentController::class, 'create'])
+                ->name('tenant.investments.create');
+            Route::post('/investments', [\App\Http\Controllers\Tenant\InvestmentController::class, 'store'])
+                ->name('tenant.investments.store');
+        });
+
+        // 投資案件詳細（全ロール閲覧可）
+        Route::get('/investments/{investment}', [\App\Http\Controllers\Tenant\InvestmentController::class, 'show'])
+            ->name('tenant.investments.show');
+
+        // 投資案件編集・更新（経営層+管理者）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/investments/{investment}/edit', [\App\Http\Controllers\Tenant\InvestmentController::class, 'edit'])
+                ->name('tenant.investments.edit');
+            Route::put('/investments/{investment}', [\App\Http\Controllers\Tenant\InvestmentController::class, 'update'])
+                ->name('tenant.investments.update');
+        });
+
+        // 投資案件削除（経営層のみ）
+        Route::delete('/investments/{investment}', [\App\Http\Controllers\Tenant\InvestmentController::class, 'destroy'])
+            ->middleware('role:executive')
+            ->name('tenant.investments.destroy');
+
+        /*
+        |------------------------------------------------------------------
+        | テナント一般修繕管理（7ルート）— STEP 8
+        |------------------------------------------------------------------
+        */
+
+        // 修繕一覧（全ロール閲覧可）
+        Route::get('/repairs', [\App\Http\Controllers\Tenant\RepairController::class, 'index'])
+            ->name('tenant.repairs.index');
+
+        // 修繕登録（経営層+管理者）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/repairs/create', [\App\Http\Controllers\Tenant\RepairController::class, 'create'])
+                ->name('tenant.repairs.create');
+            Route::post('/repairs', [\App\Http\Controllers\Tenant\RepairController::class, 'store'])
+                ->name('tenant.repairs.store');
+        });
+
+        // 修繕詳細（全ロール閲覧可）
+        Route::get('/repairs/{repair}', [\App\Http\Controllers\Tenant\RepairController::class, 'show'])
+            ->name('tenant.repairs.show');
+
+        // 修繕編集・更新（経営層+管理者）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/repairs/{repair}/edit', [\App\Http\Controllers\Tenant\RepairController::class, 'edit'])
+                ->name('tenant.repairs.edit');
+            Route::put('/repairs/{repair}', [\App\Http\Controllers\Tenant\RepairController::class, 'update'])
+                ->name('tenant.repairs.update');
+        });
+
+        // 修繕削除（経営層のみ）
+        Route::delete('/repairs/{repair}', [\App\Http\Controllers\Tenant\RepairController::class, 'destroy'])
+            ->middleware('role:executive')
+            ->name('tenant.repairs.destroy');
+
+        /*
+        |------------------------------------------------------------------
+        | テナント顧客管理（7ルート）— STEP 10
+        |------------------------------------------------------------------
+        */
+
+        // 顧客一覧（全ロール閲覧可）
+        Route::get('/customers', [\App\Http\Controllers\Tenant\CustomerController::class, 'index'])
+            ->name('tenant.customers.index');
+
+        // 顧客登録（経営層+管理者）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/customers/create', [\App\Http\Controllers\Tenant\CustomerController::class, 'create'])
+                ->name('tenant.customers.create');
+            Route::post('/customers', [\App\Http\Controllers\Tenant\CustomerController::class, 'store'])
+                ->name('tenant.customers.store');
+        });
+
+        // 顧客詳細（全ロール閲覧可）
+        Route::get('/customers/{customer}', [\App\Http\Controllers\Tenant\CustomerController::class, 'show'])
+            ->name('tenant.customers.show');
+
+        // 顧客編集・更新（経営層+管理者）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/customers/{customer}/edit', [\App\Http\Controllers\Tenant\CustomerController::class, 'edit'])
+                ->name('tenant.customers.edit');
+            Route::put('/customers/{customer}', [\App\Http\Controllers\Tenant\CustomerController::class, 'update'])
+                ->name('tenant.customers.update');
+        });
+
+        // 顧客削除（経営層のみ）
+        Route::delete('/customers/{customer}', [\App\Http\Controllers\Tenant\CustomerController::class, 'destroy'])
+            ->middleware('role:executive')
+            ->name('tenant.customers.destroy');
+
+        /*
+        |------------------------------------------------------------------
+        | テナント問合せ管理（9ルート）— STEP 9
+        |------------------------------------------------------------------
+        */
+
+        // 問合せ一覧（全ロール閲覧可）
+        Route::get('/inquiries', [\App\Http\Controllers\Tenant\InquiryController::class, 'index'])
+            ->name('tenant.inquiries.index');
+
+        // 問合せ登録（経営層+管理者）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/inquiries/create', [\App\Http\Controllers\Tenant\InquiryController::class, 'create'])
+                ->name('tenant.inquiries.create');
+            Route::post('/inquiries', [\App\Http\Controllers\Tenant\InquiryController::class, 'store'])
+                ->name('tenant.inquiries.store');
+        });
+
+        // 問合せ詳細（全ロール閲覧可）
+        Route::get('/inquiries/{inquiry}', [\App\Http\Controllers\Tenant\InquiryController::class, 'show'])
+            ->name('tenant.inquiries.show');
+
+        // 問合せ編集・更新（経営層+管理者）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/inquiries/{inquiry}/edit', [\App\Http\Controllers\Tenant\InquiryController::class, 'edit'])
+                ->name('tenant.inquiries.edit');
+            Route::put('/inquiries/{inquiry}', [\App\Http\Controllers\Tenant\InquiryController::class, 'update'])
+                ->name('tenant.inquiries.update');
+        });
+
+        // 問合せ削除（経営層のみ）
+        Route::delete('/inquiries/{inquiry}', [\App\Http\Controllers\Tenant\InquiryController::class, 'destroy'])
+            ->middleware('role:executive')
+            ->name('tenant.inquiries.destroy');
+
+        // 対応履歴追加（経営層+管理者）
+        Route::post('/inquiries/{inquiry}/histories', [\App\Http\Controllers\Tenant\InquiryController::class, 'storeHistory'])
+            ->middleware('role:executive,manager')
+            ->name('tenant.inquiries.storeHistory');
+
+        // ステータス変更（経営層+管理者）
+        Route::patch('/inquiries/{inquiry}/status', [\App\Http\Controllers\Tenant\InquiryController::class, 'updateStatus'])
+            ->middleware('role:executive,manager')
+            ->name('tenant.inquiries.updateStatus');
+    });
+
+    /*
+    |----------------------------------------------------------------------
+    | テナント Ajax API（4ルート）— STEP 6 + STEP 8 + STEP 9補完 + STEP 10
+    |----------------------------------------------------------------------
+    */
+
+    // 空室・商談中の区画取得（物件選択→区画連動用）
+    Route::get('/api/tenant/properties/{property}/vacant-units', [\App\Http\Controllers\Tenant\ContractController::class, 'vacantUnits'])
+        ->name('api.tenant.vacant-units');
+
+    // 区画の未紐づけ投資案件取得（契約登録→投資案件連動用）
+    Route::get('/api/tenant/units/{unit}/investments', [\App\Http\Controllers\Tenant\InvestmentController::class, 'forUnit'])
+        ->name('api.tenant.unit-investments');
+
+    // 物件のフォロー・保留中の問合せ取得（契約登録→関連問合せ連動用）
+    Route::get('/api/tenant/properties/{property}/active-inquiries', [\App\Http\Controllers\Tenant\ContractController::class, 'activeInquiries'])
+        ->name('api.tenant.active-inquiries');
+
+    // 顧客検索（契約登録・問合せ登録→顧客Ajax検索用）
+    Route::get('/api/tenant/customers/search', [\App\Http\Controllers\Tenant\CustomerController::class, 'search'])
+        ->name('api.tenant.customers.search');
+        
+    // 住所→郵便番号 逆引きAjax
+    Route::get('/api/reverse-zip', [\App\Http\Controllers\CustomerController::class, 'reverseZipLookup'])
+        ->name('api.reverse-zip');
+
+    /*
+    |----------------------------------------------------------------------
+    | ファイル添付（2ルート）— STEP 11
+    |----------------------------------------------------------------------
+    */
+
+    // ファイルアップロード（Ajax — 経営層+管理者）
+    Route::post('/attachments/{type}/{id}', [\App\Http\Controllers\AttachmentController::class, 'store'])
+        ->middleware('role:executive,manager')
+        ->name('attachments.store')
+        ->where('type', 'contracts|investments|repairs|procurements');
+
+    // ファイル削除（Ajax — 経営層 or アップロード本人 ※Controller内で権限チェック）
+    Route::delete('/attachments/{attachment}', [\App\Http\Controllers\AttachmentController::class, 'destroy'])
+        ->name('attachments.destroy');
+
+    /*
+    |----------------------------------------------------------------------
+    | 不動産 仕入れ案件管理（7ルート）
+    |----------------------------------------------------------------------
+    */
+    Route::prefix('realestate')->group(function () {
+        // 仕入れ案件一覧（全ロール閲覧可）
+        Route::get('/procurements', [\App\Http\Controllers\RealEstate\ProcurementController::class, 'index'])
+            ->name('realestate.procurements.index');
+
+        // 仕入れ案件登録（経営層+管理者）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/procurements/create', [\App\Http\Controllers\RealEstate\ProcurementController::class, 'create'])
+                ->name('realestate.procurements.create');
+            Route::post('/procurements', [\App\Http\Controllers\RealEstate\ProcurementController::class, 'store'])
+                ->name('realestate.procurements.store');
+        });
+
+        // 仕入れ案件詳細（全ロール閲覧可）
+        Route::get('/procurements/{procurement}', [\App\Http\Controllers\RealEstate\ProcurementController::class, 'show'])
+            ->name('realestate.procurements.show');
+
+        // 仕入れ案件編集・更新（経営層+管理者）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/procurements/{procurement}/edit', [\App\Http\Controllers\RealEstate\ProcurementController::class, 'edit'])
+                ->name('realestate.procurements.edit');
+            Route::put('/procurements/{procurement}', [\App\Http\Controllers\RealEstate\ProcurementController::class, 'update'])
+                ->name('realestate.procurements.update');
+        });
+
+        // 仕入れ案件削除（経営層のみ）
+        Route::delete('/procurements/{procurement}', [\App\Http\Controllers\RealEstate\ProcurementController::class, 'destroy'])
+            ->middleware('role:executive')
+            ->name('realestate.procurements.destroy');
+        
+        /*
+        |------------------------------------------------------------------
+        | 不動産 契約管理（9ルート）
+        |------------------------------------------------------------------
+        */
+
+        // 契約一覧（全ロール閲覧可）
+        Route::get('/contracts', [\App\Http\Controllers\RealEstate\ReContractController::class, 'index'])
+            ->name('realestate.contracts.index');
+
+        // 契約登録（経営層+管理者）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/contracts/create', [\App\Http\Controllers\RealEstate\ReContractController::class, 'create'])
+                ->name('realestate.contracts.create');
+            Route::post('/contracts', [\App\Http\Controllers\RealEstate\ReContractController::class, 'store'])
+                ->name('realestate.contracts.store');
+        });
+
+        // 契約詳細（全ロール閲覧可）
+        Route::get('/contracts/{contract}', [\App\Http\Controllers\RealEstate\ReContractController::class, 'show'])
+            ->name('realestate.contracts.show');
+
+        // 契約編集・更新（経営層+管理者）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/contracts/{contract}/edit', [\App\Http\Controllers\RealEstate\ReContractController::class, 'edit'])
+                ->name('realestate.contracts.edit');
+            Route::put('/contracts/{contract}', [\App\Http\Controllers\RealEstate\ReContractController::class, 'update'])
+                ->name('realestate.contracts.update');
+        });
+
+        // 契約削除（経営層のみ）
+        Route::delete('/contracts/{contract}', [\App\Http\Controllers\RealEstate\ReContractController::class, 'destroy'])
+            ->middleware('role:executive')
+            ->name('realestate.contracts.destroy');
+
+        // 仲介ステータス変更（経営層+管理者）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::patch('/contracts/{contract}/close', [\App\Http\Controllers\RealEstate\ReContractController::class, 'close'])
+                ->name('realestate.contracts.close');
+            Route::patch('/contracts/{contract}/lost', [\App\Http\Controllers\RealEstate\ReContractController::class, 'lost'])
+                ->name('realestate.contracts.lost');
+        });
+
+        /*
+        |------------------------------------------------------------------
+        | 仕入れ原価管理 Ajax（3ルート）
+        |------------------------------------------------------------------
+        */
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::post('/procurements/{procurement}/costs', [\App\Http\Controllers\RealEstate\ProcurementController::class, 'storeCost'])
+                ->name('realestate.procurements.costs.store');
+            Route::put('/procurements/{procurement}/costs/{cost}', [\App\Http\Controllers\RealEstate\ProcurementController::class, 'updateCost'])
+                ->name('realestate.procurements.costs.update');
+        });
+        Route::delete('/procurements/{procurement}/costs/{cost}', [\App\Http\Controllers\RealEstate\ProcurementController::class, 'destroyCost'])
+            ->middleware('role:executive')
+            ->name('realestate.procurements.costs.destroy');
+
+        /*
+        |------------------------------------------------------------------
+        | 仕入れ先管理（7ルート）
+        |------------------------------------------------------------------
+        */
+        // 仕入れ先一覧（全ロール閲覧可）
+        Route::get('/suppliers', [\App\Http\Controllers\RealEstate\SupplierController::class, 'index'])
+            ->name('realestate.suppliers.index');
+
+        // 仕入れ先登録（経営層+管理者）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/suppliers/create', [\App\Http\Controllers\RealEstate\SupplierController::class, 'create'])
+                ->name('realestate.suppliers.create');
+            Route::post('/suppliers', [\App\Http\Controllers\RealEstate\SupplierController::class, 'store'])
+                ->name('realestate.suppliers.store');
+        });
+
+        // 仕入れ先詳細（全ロール閲覧可）
+        Route::get('/suppliers/{supplier}', [\App\Http\Controllers\RealEstate\SupplierController::class, 'show'])
+            ->name('realestate.suppliers.show');
+
+        // 仕入れ先編集・更新（経営層+管理者）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/suppliers/{supplier}/edit', [\App\Http\Controllers\RealEstate\SupplierController::class, 'edit'])
+                ->name('realestate.suppliers.edit');
+            Route::put('/suppliers/{supplier}', [\App\Http\Controllers\RealEstate\SupplierController::class, 'update'])
+                ->name('realestate.suppliers.update');
+        });
+
+        // 仕入れ先削除（経営層のみ）
+        Route::delete('/suppliers/{supplier}', [\App\Http\Controllers\RealEstate\SupplierController::class, 'destroy'])
+            ->middleware('role:executive')
+            ->name('realestate.suppliers.destroy');
+    });
+    
+    /*
+    |----------------------------------------------------------------------
+    | 不動産 契約管理 Ajax API（3ルート）
+    |----------------------------------------------------------------------
+    |
+    | web.php の認証ルート内（realestate prefix の外）に追加
+    |
+    */
+
+    Route::get('/api/realestate/procurement-cost/{procurement}', [\App\Http\Controllers\RealEstate\ReContractController::class, 'getProcurementCost'])
+        ->name('api.realestate.procurement-cost');
+    Route::get('/api/realestate/project-lots/{project}', [\App\Http\Controllers\RealEstate\ReContractController::class, 'getProjectLots'])
+        ->name('api.realestate.project-lots');
+    Route::get('/api/realestate/project-lot-cost/{project}', [\App\Http\Controllers\RealEstate\ReContractController::class, 'getProjectLotCost'])
+        ->name('api.realestate.project-lot-cost');
+    
+    
+    /*
+    |----------------------------------------------------------------------
+    | 不動産 分譲地プロジェクト管理（7 + 1 + 3 + 3 + 2 = 16ルート）
+    |----------------------------------------------------------------------
+    */
+    Route::prefix('realestate')->group(function () {
+        Route::get('/projects', [\App\Http\Controllers\RealEstate\ProjectController::class, 'index'])
+            ->name('realestate.projects.index');
+
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/projects/create', [\App\Http\Controllers\RealEstate\ProjectController::class, 'create'])
+                ->name('realestate.projects.create');
+            Route::post('/projects', [\App\Http\Controllers\RealEstate\ProjectController::class, 'store'])
+                ->name('realestate.projects.store');
+        });
+
+        Route::get('/projects/{project}', [\App\Http\Controllers\RealEstate\ProjectController::class, 'show'])
+            ->name('realestate.projects.show');
+
+        Route::get('/projects/{project}/lots', [\App\Http\Controllers\RealEstate\ProjectController::class, 'lots'])
+            ->name('realestate.projects.lots');
+
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/projects/{project}/edit', [\App\Http\Controllers\RealEstate\ProjectController::class, 'edit'])
+                ->name('realestate.projects.edit');
+            Route::put('/projects/{project}', [\App\Http\Controllers\RealEstate\ProjectController::class, 'update'])
+                ->name('realestate.projects.update');
+        });
+
+        Route::delete('/projects/{project}', [\App\Http\Controllers\RealEstate\ProjectController::class, 'destroy'])
+            ->middleware('role:executive')
+            ->name('realestate.projects.destroy');
+
+        // PJ原価管理 Ajax
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::post('/projects/{project}/costs', [\App\Http\Controllers\RealEstate\ProjectController::class, 'storeCost'])
+                ->name('realestate.projects.costs.store');
+            Route::put('/projects/{project}/costs/{cost}', [\App\Http\Controllers\RealEstate\ProjectController::class, 'updateCost'])
+                ->name('realestate.projects.costs.update');
+        });
+        Route::delete('/projects/{project}/costs/{cost}', [\App\Http\Controllers\RealEstate\ProjectController::class, 'destroyCost'])
+            ->middleware('role:executive')
+            ->name('realestate.projects.costs.destroy');
+
+        // PJ区画管理 Ajax
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::post('/projects/{project}/lots', [\App\Http\Controllers\RealEstate\ProjectController::class, 'storeLot'])
+                ->name('realestate.projects.lots.store');
+            Route::put('/projects/{project}/lots/{lot}', [\App\Http\Controllers\RealEstate\ProjectController::class, 'updateLot'])
+                ->name('realestate.projects.lots.update');
+        });
+        Route::delete('/projects/{project}/lots/{lot}', [\App\Http\Controllers\RealEstate\ProjectController::class, 'destroyLot'])
+            ->middleware('role:executive')
+            ->name('realestate.projects.lots.destroy');
+
+        // PJ図面管理 Ajax
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::post('/projects/{project}/drawings', [\App\Http\Controllers\RealEstate\ProjectController::class, 'storeDrawing'])
+                ->name('realestate.projects.drawings.store');
+        });
+        Route::delete('/projects/{project}/drawings/{drawing}', [\App\Http\Controllers\RealEstate\ProjectController::class, 'destroyDrawing'])
+            ->middleware('role:executive')
+            ->name('realestate.projects.drawings.destroy');
+    });
+
+    /*
+    |----------------------------------------------------------------------
+    | 不動産 仕入れ先 Ajax 検索（1ルート）
+    |----------------------------------------------------------------------
+    */
+    Route::get('/api/realestate/suppliers/search', [\App\Http\Controllers\RealEstate\SupplierController::class, 'search'])
+        ->name('api.realestate.suppliers.search');
+
+    /*
+    |----------------------------------------------------------------------
+    | 原価項目マスタ（5ルート）※経営層のみ — システム管理内
+    |----------------------------------------------------------------------
+    */
+    Route::middleware('role:executive')->prefix('admin')->group(function () {
+        Route::post('/master/re-cost-items/reorder', [\App\Http\Controllers\Admin\ReCostItemController::class, 'reorder'])
+            ->name('admin.master.re-cost-items.reorder');
+        Route::get('/master/re-cost-items', [\App\Http\Controllers\Admin\ReCostItemController::class, 'index'])
+            ->name('admin.master.re-cost-items.index');
+        Route::post('/master/re-cost-items', [\App\Http\Controllers\Admin\ReCostItemController::class, 'store'])
+            ->name('admin.master.re-cost-items.store');
+        Route::put('/master/re-cost-items/{costItem}', [\App\Http\Controllers\Admin\ReCostItemController::class, 'update'])
+            ->name('admin.master.re-cost-items.update');
+        Route::delete('/master/re-cost-items/{costItem}', [\App\Http\Controllers\Admin\ReCostItemController::class, 'destroy'])
+            ->name('admin.master.re-cost-items.destroy');
+    });
+    
+    /*
+    |----------------------------------------------------------------------
+    | 住宅事業 建売物件管理（7ルート）
+    |----------------------------------------------------------------------
+    */
+    Route::prefix('housing')->group(function () {
+        // 建売物件一覧（全ロール閲覧可）
+        Route::get('/properties', [\App\Http\Controllers\Housing\PropertyController::class, 'index'])
+            ->name('housing.properties.index');
+
+        // 建売物件登録（経営層+管理者）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/properties/create', [\App\Http\Controllers\Housing\PropertyController::class, 'create'])
+                ->name('housing.properties.create');
+            Route::post('/properties', [\App\Http\Controllers\Housing\PropertyController::class, 'store'])
+                ->name('housing.properties.store');
+        });
+
+        // 建売物件詳細（全ロール閲覧可）
+        Route::get('/properties/{property}', [\App\Http\Controllers\Housing\PropertyController::class, 'show'])
+            ->name('housing.properties.show');
+
+        // 建売物件編集・更新（経営層+管理者）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/properties/{property}/edit', [\App\Http\Controllers\Housing\PropertyController::class, 'edit'])
+                ->name('housing.properties.edit');
+            Route::put('/properties/{property}', [\App\Http\Controllers\Housing\PropertyController::class, 'update'])
+                ->name('housing.properties.update');
+        });
+
+        // 建売物件削除（経営層のみ）
+        Route::delete('/properties/{property}', [\App\Http\Controllers\Housing\PropertyController::class, 'destroy'])
+            ->middleware('role:executive')
+            ->name('housing.properties.destroy');
+
+        /*
+        |------------------------------------------------------------------
+        | 建売契約管理（5ルート）
+        |------------------------------------------------------------------
+        */
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/properties/{property}/contract/create', [\App\Http\Controllers\Housing\ContractController::class, 'create'])
+                ->name('housing.contracts.create');
+            Route::post('/properties/{property}/contract', [\App\Http\Controllers\Housing\ContractController::class, 'store'])
+                ->name('housing.contracts.store');
+            Route::get('/properties/{property}/contract/edit', [\App\Http\Controllers\Housing\ContractController::class, 'edit'])
+                ->name('housing.contracts.edit');
+            Route::put('/properties/{property}/contract', [\App\Http\Controllers\Housing\ContractController::class, 'update'])
+                ->name('housing.contracts.update');
+        });
+
+        // 契約削除（経営層のみ）
+        Route::delete('/properties/{property}/contract', [\App\Http\Controllers\Housing\ContractController::class, 'destroy'])
+            ->middleware('role:executive')
+            ->name('housing.contracts.destroy');
+
+        /*
+        |------------------------------------------------------------------
+        | 建売ファイル管理 Ajax（2ルート）
+        |------------------------------------------------------------------
+        */
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::post('/properties/{property}/files', [\App\Http\Controllers\Housing\PropertyController::class, 'storeFile'])
+                ->name('housing.properties.files.store');
+        });
+        Route::delete('/properties/{property}/files/{file}', [\App\Http\Controllers\Housing\PropertyController::class, 'destroyFile'])
+            ->middleware('role:executive')
+            ->name('housing.properties.files.destroy');
+    });
+
+    /*
+    |----------------------------------------------------------------------
+    | 住宅事業 Ajax API（2ルート）
+    |----------------------------------------------------------------------
+    */
+    Route::get('/api/housing/project-lots', [\App\Http\Controllers\Housing\PropertyController::class, 'projectLots'])
+        ->name('api.housing.project-lots');
+    Route::get('/api/housing/procurement-info/{procurement}', [\App\Http\Controllers\Housing\PropertyController::class, 'procurementInfo'])
+        ->name('api.housing.procurement-info');
+        
+    /*
+    |----------------------------------------------------------------------
+    | 住宅事業 注文住宅管理（7ルート）
+    |----------------------------------------------------------------------
+    */
+    Route::prefix('housing')->group(function () {
+        // 注文住宅一覧（全ロール閲覧可）
+        Route::get('/custom-orders', [\App\Http\Controllers\Housing\CustomOrderController::class, 'index'])
+            ->name('housing.custom-orders.index');
+
+        // 注文住宅登録（経営層+管理者）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/custom-orders/create', [\App\Http\Controllers\Housing\CustomOrderController::class, 'create'])
+                ->name('housing.custom-orders.create');
+            Route::post('/custom-orders', [\App\Http\Controllers\Housing\CustomOrderController::class, 'store'])
+                ->name('housing.custom-orders.store');
+        });
+
+        // 注文住宅詳細（全ロール閲覧可）
+        Route::get('/custom-orders/{customOrder}', [\App\Http\Controllers\Housing\CustomOrderController::class, 'show'])
+            ->name('housing.custom-orders.show');
+
+        // 注文住宅編集・更新（経営層+管理者）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/custom-orders/{customOrder}/edit', [\App\Http\Controllers\Housing\CustomOrderController::class, 'edit'])
+                ->name('housing.custom-orders.edit');
+            Route::put('/custom-orders/{customOrder}', [\App\Http\Controllers\Housing\CustomOrderController::class, 'update'])
+                ->name('housing.custom-orders.update');
+        });
+
+        // 注文住宅削除（経営層のみ）
+        Route::delete('/custom-orders/{customOrder}', [\App\Http\Controllers\Housing\CustomOrderController::class, 'destroy'])
+            ->middleware('role:executive')
+            ->name('housing.custom-orders.destroy');
+
+        /*
+        |------------------------------------------------------------------
+        | 注文住宅 ステータス変更 Ajax（1ルート）
+        |------------------------------------------------------------------
+        */
+        Route::patch('/custom-orders/{customOrder}/status', [\App\Http\Controllers\Housing\CustomOrderController::class, 'updateStatus'])
+            ->middleware('role:executive,manager')
+            ->name('housing.custom-orders.update-status');
+
+        /*
+        |------------------------------------------------------------------
+        | 注文住宅ファイル管理 Ajax（2ルート）
+        |------------------------------------------------------------------
+        */
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::post('/custom-orders/{customOrder}/files', [\App\Http\Controllers\Housing\CustomOrderController::class, 'storeFile'])
+                ->name('housing.custom-orders.files.store');
+        });
+        Route::delete('/custom-orders/{customOrder}/files/{file}', [\App\Http\Controllers\Housing\CustomOrderController::class, 'destroyFile'])
+            ->middleware('role:executive')
+            ->name('housing.custom-orders.files.destroy');
+    });
+    
+    /*
+    |----------------------------------------------------------------------
+    | 顧客管理 買主マスタ — 住宅事業（7ルート）
+    |----------------------------------------------------------------------
+    */
+    Route::prefix('housing')->group(function () {
+        // 顧客一覧（全ロール閲覧可）
+        Route::get('/customers', [\App\Http\Controllers\CustomerController::class, 'index'])
+            ->name('housing.customers.index');
+
+        // 顧客登録（経営層+管理者）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/customers/create', [\App\Http\Controllers\CustomerController::class, 'create'])
+                ->name('housing.customers.create');
+            Route::post('/customers', [\App\Http\Controllers\CustomerController::class, 'store'])
+                ->name('housing.customers.store');
+        });
+
+        // 顧客詳細（全ロール閲覧可）
+        Route::get('/customers/{buyer}', [\App\Http\Controllers\CustomerController::class, 'show'])
+            ->name('housing.customers.show');
+
+        // 顧客編集・更新（経営層+管理者）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/customers/{buyer}/edit', [\App\Http\Controllers\CustomerController::class, 'edit'])
+                ->name('housing.customers.edit');
+            Route::put('/customers/{buyer}', [\App\Http\Controllers\CustomerController::class, 'update'])
+                ->name('housing.customers.update');
+        });
+
+        // 顧客削除（経営層のみ）
+        Route::delete('/customers/{buyer}', [\App\Http\Controllers\CustomerController::class, 'destroy'])
+            ->middleware('role:executive')
+            ->name('housing.customers.destroy');
+
+        /*
+        |------------------------------------------------------------------
+        | アンケート管理 — 住宅事業（5ルート）
+        |------------------------------------------------------------------
+        */
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/customers/{buyer}/surveys/create', [\App\Http\Controllers\CustomerSurveyController::class, 'create'])
+                ->name('housing.customers.surveys.create');
+            Route::post('/customers/{buyer}/surveys', [\App\Http\Controllers\CustomerSurveyController::class, 'store'])
+                ->name('housing.customers.surveys.store');
+            Route::get('/customers/{buyer}/surveys/{survey}/edit', [\App\Http\Controllers\CustomerSurveyController::class, 'edit'])
+                ->name('housing.customers.surveys.edit');
+            Route::put('/customers/{buyer}/surveys/{survey}', [\App\Http\Controllers\CustomerSurveyController::class, 'update'])
+                ->name('housing.customers.surveys.update');
+        });
+        Route::delete('/customers/{buyer}/surveys/{survey}', [\App\Http\Controllers\CustomerSurveyController::class, 'destroy'])
+            ->middleware('role:executive')
+            ->name('housing.customers.surveys.destroy');
+    });
+
+    /*
+    |----------------------------------------------------------------------
+    | 顧客管理 買主マスタ — 不動産事業（7ルート）
+    |----------------------------------------------------------------------
+    */
+    Route::prefix('realestate')->group(function () {
+        // 顧客一覧（全ロール閲覧可）
+        Route::get('/customers', [\App\Http\Controllers\CustomerController::class, 'index'])
+            ->name('realestate.customers.index');
+
+        // 顧客登録（経営層+管理者）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/customers/create', [\App\Http\Controllers\CustomerController::class, 'create'])
+                ->name('realestate.customers.create');
+            Route::post('/customers', [\App\Http\Controllers\CustomerController::class, 'store'])
+                ->name('realestate.customers.store');
+        });
+
+        // 顧客詳細（全ロール閲覧可）
+        Route::get('/customers/{buyer}', [\App\Http\Controllers\CustomerController::class, 'show'])
+            ->name('realestate.customers.show');
+
+        // 顧客編集・更新（経営層+管理者）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/customers/{buyer}/edit', [\App\Http\Controllers\CustomerController::class, 'edit'])
+                ->name('realestate.customers.edit');
+            Route::put('/customers/{buyer}', [\App\Http\Controllers\CustomerController::class, 'update'])
+                ->name('realestate.customers.update');
+        });
+
+        // 顧客削除（経営層のみ）
+        Route::delete('/customers/{buyer}', [\App\Http\Controllers\CustomerController::class, 'destroy'])
+            ->middleware('role:executive')
+            ->name('realestate.customers.destroy');
+    });
+
+    /*
+    |----------------------------------------------------------------------
+    | 顧客管理 Ajax API（3ルート — 共通）
+    |----------------------------------------------------------------------
+    */
+    // ランク変更Ajax
+    Route::patch('/api/customers/{buyer}/rank', [\App\Http\Controllers\CustomerController::class, 'updateRank'])
+        ->middleware('role:executive,manager')
+        ->name('api.customers.rank.update');
+
+    // 重複チェックAjax
+    Route::post('/api/customers/check-duplicate', [\App\Http\Controllers\CustomerController::class, 'checkDuplicate'])
+        ->name('api.customers.check-duplicate');
+
+    // 他部署追加Ajax
+    Route::post('/api/customers/{buyer}/add-department', [\App\Http\Controllers\CustomerController::class, 'addToDepartment'])
+        ->middleware('role:executive,manager')
+        ->name('api.customers.add-department');
+        
+    /*
+    |----------------------------------------------------------------------
+    | アンケート設問管理（マスタ管理 — 5ルート）※経営層のみ
+    |----------------------------------------------------------------------
+    */
+    Route::middleware('role:executive')->prefix('admin')->group(function () {
+        Route::get('/survey-questions', [\App\Http\Controllers\Admin\SurveyQuestionController::class, 'index'])
+            ->name('admin.survey-questions.index');
+
+        // Ajax CRUD
+        Route::post('/survey-questions', [\App\Http\Controllers\Admin\SurveyQuestionController::class, 'store'])
+            ->name('admin.survey-questions.store');
+        Route::put('/survey-questions/{question}', [\App\Http\Controllers\Admin\SurveyQuestionController::class, 'update'])
+            ->name('admin.survey-questions.update');
+        Route::delete('/survey-questions/{question}', [\App\Http\Controllers\Admin\SurveyQuestionController::class, 'destroy'])
+            ->name('admin.survey-questions.destroy');
+        Route::post('/survey-questions/reorder', [\App\Http\Controllers\Admin\SurveyQuestionController::class, 'reorder'])
+            ->name('admin.survey-questions.reorder');
+    });
+
+    /*
+    |----------------------------------------------------------------------
+    | 顧客CSVインポート（管理画面 — 3ルート）※経営層のみ
+    |----------------------------------------------------------------------
+    */
+    Route::middleware('role:executive')->prefix('admin')->group(function () {
+        Route::get('/customers/import', [\App\Http\Controllers\Admin\CustomerImportController::class, 'showForm'])
+            ->name('admin.customers.import');
+        Route::post('/customers/import', [\App\Http\Controllers\Admin\CustomerImportController::class, 'execute'])
+            ->name('admin.customers.import.execute');
+        Route::get('/customers/import/template', [\App\Http\Controllers\Admin\CustomerImportController::class, 'downloadTemplate'])
+            ->name('admin.customers.import.template');
+    });
+
+    /*
+    |----------------------------------------------------------------------
+    | 以降のルートはSTEP 12以降で追加
+    |----------------------------------------------------------------------
+    */
 });
