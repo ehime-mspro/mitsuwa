@@ -47,7 +47,7 @@
     </svg>
     <span x-text="showOps ? '操作ボタン非表示' : '操作ボタン表示'"></span>
 </button>
-                    <button type="button" @click="showAddLot = true" x-show="!showAddLot"
+                    <button type="button" @click="showAddLot = true; setNextLotNumber()" x-show="!showAddLot"
                             class="px-3.5 py-1.5 bg-emerald-600 text-white text-sm font-semibold rounded-md hover:bg-emerald-700 transition-colors cursor-pointer"
                             style="font-size: 13px;">＋ 区画追加</button>
                 @endif
@@ -59,28 +59,27 @@
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" style="align-items: end;">
                 <div>
                     <label class="block text-xs font-semibold text-gray-700 mb-1">号地番号</label>
-                    <input type="number" x-model.number="newLot.lot_number" placeholder="1" min="1"
+                    <input type="number" id="add-lot-number" placeholder="1" min="1"
                            class="w-full h-9 px-2 border border-gray-300 rounded-md text-sm focus:border-emerald-500 focus:outline-none">
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-gray-700 mb-1">面積（㎡）</label>
-                    <input type="number" x-model="newLot.area_sqm" placeholder="0.00" step="0.01"
+                    <input type="number" id="add-area-sqm" placeholder="0.00" step="0.01"
                            class="w-full h-9 px-2 border border-gray-300 rounded-md text-sm focus:border-emerald-500 focus:outline-none">
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-gray-700 mb-1">販売坪単価（円）</label>
-                    <input type="number" x-model.number="newLot.selling_price_per_tsubo" placeholder="坪単価から自動算出"
+                    <input type="number" id="add-price-per-tsubo" placeholder="坪単価から自動算出"
                            class="w-full h-9 px-2 border border-gray-300 rounded-md text-sm focus:border-emerald-500 focus:outline-none">
-                    <p class="text-xs text-gray-500 mt-0.5">空欄で販売価格を手入力</p>
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-gray-700 mb-1">販売価格（円）</label>
-                    <input type="number" x-model.number="newLot.selling_price" placeholder=""
+                    <input type="number" id="add-selling-price" placeholder=""
                            class="w-full h-9 px-2 border border-gray-300 rounded-md text-sm focus:border-emerald-500 focus:outline-none">
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-gray-700 mb-1">ステータス</label>
-                    <select x-model="newLot.status" class="w-full h-9 px-2 border border-gray-300 rounded-md text-sm bg-white focus:border-emerald-500 focus:outline-none">
+                    <select id="add-status" class="w-full h-9 px-2 border border-gray-300 rounded-md text-sm bg-white focus:border-emerald-500 focus:outline-none">
                         <option value="unsold">未販売</option>
                         <option value="on_sale">販売中</option>
                         <option value="negotiating">商談中</option>
@@ -89,7 +88,7 @@
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-gray-700 mb-1">備考</label>
-                    <input type="text" x-model="newLot.notes" placeholder="備考"
+                    <input type="text" id="add-notes" placeholder="備考"
                            class="w-full h-9 px-2 border border-gray-300 rounded-md text-sm focus:border-emerald-500 focus:outline-none">
                 </div>
             </div>
@@ -157,33 +156,35 @@
         </div>
 
         {{-- 区画サマリー --}}
-        <div x-show="lots.length > 0" class="border border-gray-200 rounded-md overflow-hidden" style="display: grid; grid-template-columns: repeat(6, 1fr);">
-            <div style="padding: 14px 16px; text-align: center; border-right: 1px solid #e5e7eb;">
-                <div style="font-size: 11px; color: #6b7280; font-weight: 500; margin-bottom: 4px;">区画数</div>
-                <div style="font-size: 16px; font-weight: 700;" x-text="summary.lot_count"></div>
+        <div x-show="lots.length > 0">
+            <div style="display: flex; gap: 10px; margin-top: 4px;">
+                <div style="flex: 1; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px 8px; text-align: center; min-height: 78px; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                    <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">区画数</div>
+                    <div style="font-size: 20px; font-weight: 700; color: #111827;" x-text="summary.lot_count"></div>
+                </div>
+                <div style="flex: 1; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px 8px; text-align: center; min-height: 78px; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                    <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">面積合計</div>
+                    <div style="font-size: 18px; font-weight: 700; color: #111827;" x-text="summary.area_total.toFixed(2) + ' ㎡'"></div>
+                </div>
+                <div style="flex: 1; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px 8px; text-align: center; min-height: 78px; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                    <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">販売価格合計</div>
+                    <div style="font-size: 18px; font-weight: 700; color: #111827;" x-text="formatMoney(summary.selling_total) + '円'"></div>
+                </div>
+                <div style="flex: 1; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px 8px; text-align: center; min-height: 78px; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                    <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">原価合計</div>
+                    <div style="font-size: 18px; font-weight: 700; color: #111827;" x-text="formatMoney(summary.depreciation_total) + '円'"></div>
+                </div>
+                <div style="flex: 1; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px 8px; text-align: center; min-height: 78px; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                    <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">粗利合計</div>
+                    <div :style="'font-size: 18px; font-weight: 700; color: ' + (summary.profit_total >= 0 ? '#059669' : '#dc2626')" x-text="formatMoney(summary.profit_total) + '円'"></div>
+                </div>
+                <div style="flex: 1; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px 8px; text-align: center; min-height: 78px; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                    <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">粗利率</div>
+                    <div :style="'font-size: 20px; font-weight: 700; color: ' + (summary.profit_total >= 0 ? '#059669' : '#dc2626')" x-text="summary.profit_rate !== null ? summary.profit_rate + '%' : '—'"></div>
+                </div>
             </div>
-            <div style="padding: 14px 16px; text-align: center; border-right: 1px solid #e5e7eb;">
-                <div style="font-size: 11px; color: #6b7280; font-weight: 500; margin-bottom: 4px;">面積合計</div>
-                <div style="font-size: 16px; font-weight: 700;" x-text="summary.area_total.toFixed(2) + ' ㎡'"></div>
-            </div>
-            <div style="padding: 14px 16px; text-align: center; border-right: 1px solid #e5e7eb;">
-                <div style="font-size: 11px; color: #6b7280; font-weight: 500; margin-bottom: 4px;">販売価格合計</div>
-                <div style="font-size: 16px; font-weight: 700;" x-text="formatMoney(summary.selling_total) + '円'"></div>
-            </div>
-            <div style="padding: 14px 16px; text-align: center; border-right: 1px solid #e5e7eb;">
-                <div style="font-size: 11px; color: #6b7280; font-weight: 500; margin-bottom: 4px;">原価合計</div>
-                <div style="font-size: 16px; font-weight: 700;" x-text="formatMoney(summary.depreciation_total) + '円'"></div>
-            </div>
-            <div style="padding: 14px 16px; text-align: center; border-right: 1px solid #e5e7eb;">
-                <div style="font-size: 11px; color: #6b7280; font-weight: 500; margin-bottom: 4px;">粗利合計</div>
-                <div style="font-size: 16px; font-weight: 700; color: #059669;" x-text="formatMoney(summary.profit_total) + '円'"></div>
-            </div>
-            <div style="padding: 14px 16px; text-align: center;">
-                <div style="font-size: 11px; color: #6b7280; font-weight: 500; margin-bottom: 4px;">粗利率</div>
-                <div style="font-size: 16px; font-weight: 700; color: #059669;" x-text="summary.profit_rate !== null ? summary.profit_rate + '%' : '—'"></div>
-            </div>
+            <div style="margin-top: 8px; font-size: 11px; color: #9ca3af;">※ 原価按分: 全区画の販売価格が入力済みの場合、販売価格比率で原価を按分します。</div>
         </div>
-        <div x-show="lots.length > 0" style="margin-top: 10px; font-size: 12px; color: #6b7280;">※ 原価按分: 全区画の販売価格が入力済みの場合、販売価格比率で原価を按分します。</div>
     </div>
 
     {{-- ========== 区画図面 ========== --}}
@@ -246,7 +247,7 @@
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                     <label class="block text-xs font-semibold text-gray-700 mb-1">号地番号</label>
-                    <input type="number" x-model.number="editLotData.lot_number" min="1"
+                    <input type="number" x-model="editLotData.lot_number" min="1"
                            class="w-full h-9 px-2 border border-gray-300 rounded-md text-sm focus:border-emerald-500 focus:outline-none">
                 </div>
                 <div>
@@ -256,12 +257,12 @@
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-gray-700 mb-1">販売坪単価（円）</label>
-                    <input type="number" x-model.number="editLotData.selling_price_per_tsubo"
+                    <input type="number" x-model="editLotData.selling_price_per_tsubo"
                            class="w-full h-9 px-2 border border-gray-300 rounded-md text-sm focus:border-emerald-500 focus:outline-none">
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-gray-700 mb-1">販売価格（円）</label>
-                    <input type="number" x-model.number="editLotData.selling_price"
+                    <input type="number" x-model="editLotData.selling_price"
                            class="w-full h-9 px-2 border border-gray-300 rounded-md text-sm focus:border-emerald-500 focus:outline-none">
                 </div>
                 <div>
@@ -315,21 +316,47 @@ function lotManager() {
             setTimeout(function() { self.message = ''; }, 3000);
         },
 
+        // 次の号地番号を算出してフォームにセット
+        setNextLotNumber: function() {
+            var maxNum = 0;
+            this.lots.forEach(function(lot) {
+                if (lot.lot_number > maxNum) maxNum = lot.lot_number;
+            });
+            // DOMの準備を待ってからセット
+            setTimeout(function() {
+                var el = document.getElementById('add-lot-number');
+                if (el) el.value = maxNum + 1;
+            }, 50);
+        },
+
         // ====== 区画 CRUD ======
 
         addLot: function() {
             var self = this;
-            if (!self.newLot.lot_number || !self.newLot.area_sqm) return;
 
-            var isPriceManual = self.newLot.selling_price_per_tsubo ? 0 : 1;
+            // DOMから直接値を取得（x-modelバインディング問題を回避）
+            var lotNumber = document.getElementById('add-lot-number').value.trim();
+            var areaSqm = document.getElementById('add-area-sqm').value.trim();
+            var pricePT = document.getElementById('add-price-per-tsubo').value.trim();
+            var sellingPrice = document.getElementById('add-selling-price').value.trim();
+            var status = document.getElementById('add-status').value;
+            var notes = document.getElementById('add-notes').value.trim();
+
+            // 必須項目チェック
+            if (!lotNumber || !areaSqm) {
+                alert('号地番号と面積は必須です。');
+                return;
+            }
+
+            var isPriceManual = pricePT ? 0 : 1;
             var body = {
-                lot_number: Number(self.newLot.lot_number),
-                area_sqm: Number(self.newLot.area_sqm),
-                selling_price_per_tsubo: self.newLot.selling_price_per_tsubo ? Number(self.newLot.selling_price_per_tsubo) : null,
-                selling_price: self.newLot.selling_price ? Number(self.newLot.selling_price) : null,
+                lot_number: parseInt(lotNumber, 10),
+                area_sqm: parseFloat(areaSqm),
+                selling_price_per_tsubo: pricePT ? parseInt(pricePT, 10) : null,
+                selling_price: sellingPrice ? parseInt(sellingPrice, 10) : null,
                 is_price_manual: isPriceManual,
-                status: self.newLot.status,
-                notes: self.newLot.notes || null
+                status: status,
+                notes: notes || null
             };
 
             fetch(self.lotBaseUrl, {
@@ -337,17 +364,38 @@ function lotManager() {
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': self.token, 'Accept': 'application/json' },
                 body: JSON.stringify(body)
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) {
+                if (!r.ok) {
+                    return r.json().then(function(err) {
+                        var msg = err.message || 'エラーが発生しました。';
+                        if (err.errors) {
+                            var details = Object.values(err.errors).flat().join('\n');
+                            msg = msg + '\n' + details;
+                        }
+                        alert(msg);
+                        return null;
+                    }).catch(function() {
+                        alert('サーバーエラーが発生しました（' + r.status + '）');
+                        return null;
+                    });
+                }
+                return r.json();
+            })
             .then(function(data) {
+                if (!data) return;
                 if (data.success) {
-                    self.lots.push(data.lot);
-                    self.newLot = { lot_number: '', area_sqm: '', selling_price_per_tsubo: '', selling_price: '', status: 'unsold', notes: '' };
+                    // フォームをリセット（号地番号以外をクリア）
+                    document.getElementById('add-area-sqm').value = '';
+                    document.getElementById('add-price-per-tsubo').value = '';
+                    document.getElementById('add-selling-price').value = '';
+                    document.getElementById('add-status').value = 'unsold';
+                    document.getElementById('add-notes').value = '';
                     self.showAddLot = false;
                     self.showMsg('区画を追加しました。');
                     self.reloadPage();
                 }
             })
-            .catch(function() { alert('区画の追加に失敗しました。'); });
+            .catch(function(e) { alert('区画の追加に失敗しました。\n' + e); });
         },
 
         startEditLot: function(lot) {
@@ -380,8 +428,25 @@ function lotManager() {
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': self.token, 'Accept': 'application/json' },
                 body: JSON.stringify(body)
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) {
+                if (!r.ok) {
+                    return r.json().then(function(err) {
+                        var msg = err.message || 'エラーが発生しました。';
+                        if (err.errors) {
+                            var details = Object.values(err.errors).flat().join('\n');
+                            msg = msg + '\n' + details;
+                        }
+                        alert(msg);
+                        return null;
+                    }).catch(function() {
+                        alert('サーバーエラーが発生しました（' + r.status + '）');
+                        return null;
+                    });
+                }
+                return r.json();
+            })
             .then(function(data) {
+                if (!data) return;
                 if (data.success) {
                     self.editingLot = null;
                     self.showMsg('区画を更新しました。');
@@ -399,8 +464,20 @@ function lotManager() {
                 method: 'DELETE',
                 headers: { 'X-CSRF-TOKEN': self.token, 'Accept': 'application/json' }
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) {
+                if (!r.ok) {
+                    return r.json().then(function(err) {
+                        alert(err.message || 'エラーが発生しました。');
+                        return null;
+                    }).catch(function() {
+                        alert('サーバーエラーが発生しました（' + r.status + '）');
+                        return null;
+                    });
+                }
+                return r.json();
+            })
             .then(function(data) {
+                if (!data) return;
                 if (data.success) {
                     self.lots = self.lots.filter(function(l) { return l.id !== lot.id; });
                     self.showMsg('区画を削除しました。');

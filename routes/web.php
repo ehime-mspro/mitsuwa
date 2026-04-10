@@ -106,6 +106,18 @@ Route::middleware(['auth', 'password.change'])->group(function () {
             ->name('admin.master.structure-types.update');
         Route::delete('/master/structure-types/{structureType}', [\App\Http\Controllers\Admin\StructureTypeController::class, 'destroy'])
             ->name('admin.master.structure-types.destroy');
+
+        // 用途地域マスター
+        Route::post('/master/zoning-types/reorder', [\App\Http\Controllers\Admin\ZoningTypeController::class, 'reorder'])
+            ->name('admin.master.zoning-types.reorder');
+        Route::get('/master/zoning-types', [\App\Http\Controllers\Admin\ZoningTypeController::class, 'index'])
+            ->name('admin.master.zoning-types.index');
+        Route::post('/master/zoning-types', [\App\Http\Controllers\Admin\ZoningTypeController::class, 'store'])
+            ->name('admin.master.zoning-types.store');
+        Route::put('/master/zoning-types/{zoningType}', [\App\Http\Controllers\Admin\ZoningTypeController::class, 'update'])
+            ->name('admin.master.zoning-types.update');
+        Route::delete('/master/zoning-types/{zoningType}', [\App\Http\Controllers\Admin\ZoningTypeController::class, 'destroy'])
+            ->name('admin.master.zoning-types.destroy');
     });
 
     /*
@@ -658,6 +670,16 @@ Route::middleware(['auth', 'password.change'])->group(function () {
     |----------------------------------------------------------------------
     */
     Route::prefix('housing')->group(function () {
+        /*
+        |------------------------------------------------------------------
+        | 住宅事業 契約管理 統合一覧（2ルート）
+        |------------------------------------------------------------------
+        */
+        Route::get('/contracts', [\App\Http\Controllers\Housing\HsContractListController::class, 'index'])
+            ->name('housing.contract-list.index');
+        Route::get('/contracts/{hsContract}', [\App\Http\Controllers\Housing\HsContractListController::class, 'show'])
+            ->name('housing.contract-list.show');
+
         // 建売物件一覧（全ロール閲覧可）
         Route::get('/properties', [\App\Http\Controllers\Housing\PropertyController::class, 'index'])
             ->name('housing.properties.index');
@@ -932,6 +954,14 @@ Route::middleware(['auth', 'password.change'])->group(function () {
             ->name('admin.customers.import.execute');
         Route::get('/customers/import/template', [\App\Http\Controllers\Admin\CustomerImportController::class, 'downloadTemplate'])
             ->name('admin.customers.import.template');
+
+        // テナントCSVインポート
+        Route::get('/tenant-import', [\App\Http\Controllers\Admin\TenantImportController::class, 'showForm'])
+            ->name('admin.tenant-import');
+        Route::post('/tenant-import', [\App\Http\Controllers\Admin\TenantImportController::class, 'execute'])
+            ->name('admin.tenant-import.execute');
+        Route::get('/tenant-import/template', [\App\Http\Controllers\Admin\TenantImportController::class, 'downloadTemplate'])
+            ->name('admin.tenant-import.template');
     });
 
     /*

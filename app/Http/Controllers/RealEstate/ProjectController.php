@@ -10,6 +10,7 @@ use App\Models\ReProject;
 use App\Models\ReProjectCost;
 use App\Models\ReProjectDrawing;
 use App\Models\ReProjectLot;
+use App\Models\ZoningType;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
@@ -59,7 +60,9 @@ class ProjectController extends Controller
      */
     public function create()
     {
-        return view('realestate.projects.create');
+        $zoningTypes = ZoningType::orderBy('sort_order')->get();
+
+        return view('realestate.projects.create', compact('zoningTypes'));
     }
 
     /**
@@ -133,8 +136,9 @@ class ProjectController extends Controller
     public function edit(ReProject $project)
     {
         $project->load('supplier');
+        $zoningTypes = ZoningType::orderBy('sort_order')->get();
 
-        return view('realestate.projects.edit', compact('project'));
+        return view('realestate.projects.edit', compact('project', 'zoningTypes'));
     }
 
     /**

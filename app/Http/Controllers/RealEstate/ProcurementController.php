@@ -9,6 +9,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ReCostItem;
 use App\Models\ReProcurement;
 use App\Models\ReProcurementCost;
+use App\Models\ZoningType;
 use Illuminate\Http\Request;
 
 class ProcurementController extends Controller
@@ -63,7 +64,9 @@ class ProcurementController extends Controller
      */
     public function create()
     {
-        return view('realestate.procurements.create');
+        $zoningTypes = ZoningType::orderBy('sort_order')->get();
+
+        return view('realestate.procurements.create', compact('zoningTypes'));
     }
 
     /**
@@ -137,8 +140,9 @@ class ProcurementController extends Controller
     public function edit(ReProcurement $procurement)
     {
         $procurement->load('supplier');
+        $zoningTypes = ZoningType::orderBy('sort_order')->get();
 
-        return view('realestate.procurements.edit', compact('procurement'));
+        return view('realestate.procurements.edit', compact('procurement', 'zoningTypes'));
     }
 
     /**

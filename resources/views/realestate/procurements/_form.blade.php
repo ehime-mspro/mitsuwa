@@ -82,8 +82,13 @@
             </div>
             <div>
                 <label class="block text-sm font-semibold text-gray-700 mb-1">用途地域</label>
-                <input type="text" name="zoning" value="{{ old('zoning', $p?->zoning) }}" placeholder="例: 第一種住居地域"
-                       class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none">
+                <select name="zoning"
+                        class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none cursor-pointer">
+                    <option value="">選択してください</option>
+                    @foreach($zoningTypes as $zt)
+                        <option value="{{ $zt->name }}" {{ old('zoning', $p?->zoning) === $zt->name ? 'selected' : '' }}>{{ $zt->name }}</option>
+                    @endforeach
+                </select>
             </div>
             <div>
                 <label class="block text-sm font-semibold text-gray-700 mb-1">建ぺい率 / 容積率</label>

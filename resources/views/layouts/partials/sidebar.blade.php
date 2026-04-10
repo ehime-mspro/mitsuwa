@@ -84,6 +84,7 @@
     <x-sidebar-group label="住宅事業">
     <x-sidebar-item :href="url('/housing/properties')" label="建売物件" :active="request()->is('housing/properties*')" />
     <x-sidebar-item :href="url('/housing/custom-orders')" label="注文住宅" :active="request()->is('housing/custom-orders*')" />
+    <x-sidebar-item :href="url('/housing/contracts')" label="契約管理" :active="request()->is('housing/contracts*')" />
     </x-sidebar-group>
     <x-sidebar-item :href="url('/housing/customers')" label="顧客管理" :active="request()->is('housing/customers*')" />
     @endif
@@ -99,12 +100,14 @@
             </div>
             <x-sidebar-item :href="url('/admin/master/usage-types')" label="希望用途マスター" :active="request()->is('admin/master/usage-types*')" />
             <x-sidebar-item :href="url('/admin/master/structure-types')" label="構造マスター" :active="request()->is('admin/master/structure-types*')" />
+            <x-sidebar-item :href="url('/admin/tenant-import')" label="テナントCSVインポート" :active="request()->is('admin/tenant-import*')" />
             {{-- サブ見出し: 不動産 --}}
             <div style="display: flex; align-items: center; gap: 8px; padding: 8px 20px 3px;">
                 <span style="font-size: 10px; font-weight: 600; color: #6B7280; letter-spacing: 0.05em; white-space: nowrap;">不動産</span>
                 <span style="flex: 1; height: 1px; background: #D1D5DB;"></span>
             </div>
             <x-sidebar-item :href="url('/admin/master/re-cost-items')" label="原価項目マスター" :active="request()->is('admin/master/re-cost-items*')" />
+            <x-sidebar-item :href="url('/admin/master/zoning-types')" label="用途地域マスター" :active="request()->is('admin/master/zoning-types*')" />
             {{-- サブ見出し: 顧客管理 --}}
             <div style="display: flex; align-items: center; gap: 8px; padding: 8px 20px 3px;">
                 <span style="font-size: 10px; font-weight: 600; color: #6B7280; letter-spacing: 0.05em; white-space: nowrap;">顧客管理</span>
@@ -249,6 +252,7 @@
     <x-sidebar-group label="住宅事業">
     <x-sidebar-item :href="url('/housing/properties')" label="建売物件" :active="request()->is('housing/properties*')" />
     <x-sidebar-item :href="url('/housing/custom-orders')" label="注文住宅" :active="request()->is('housing/custom-orders*')" />
+    <x-sidebar-item :href="url('/housing/contracts')" label="契約管理" :active="request()->is('housing/contracts*')" />
     <x-sidebar-item :href="url('/housing/customers')" label="顧客管理" :active="request()->is('housing/customers*')" />
     </x-sidebar-group>
     @endif
@@ -263,12 +267,14 @@
             </div>
             <x-sidebar-item :href="url('/admin/master/usage-types')" label="希望用途マスター" :active="request()->is('admin/master/usage-types*')" />
             <x-sidebar-item :href="url('/admin/master/structure-types')" label="構造マスター" :active="request()->is('admin/master/structure-types*')" />
+            <x-sidebar-item :href="url('/admin/tenant-import')" label="テナントCSVインポート" :active="request()->is('admin/tenant-import*')" />
             {{-- サブ見出し: 不動産 --}}
             <div style="display: flex; align-items: center; gap: 8px; padding: 8px 20px 3px;">
                 <span style="font-size: 10px; font-weight: 600; color: #6B7280; letter-spacing: 0.05em; white-space: nowrap;">不動産</span>
                 <span style="flex: 1; height: 1px; background: #D1D5DB;"></span>
             </div>
             <x-sidebar-item :href="url('/admin/master/re-cost-items')" label="原価項目マスター" :active="request()->is('admin/master/re-cost-items*')" />
+            <x-sidebar-item :href="url('/admin/master/zoning-types')" label="用途地域マスター" :active="request()->is('admin/master/zoning-types*')" />
             {{-- サブ見出し: 顧客管理 --}}
             <div style="display: flex; align-items: center; gap: 8px; padding: 8px 20px 3px;">
                 <span style="font-size: 10px; font-weight: 600; color: #6B7280; letter-spacing: 0.05em; white-space: nowrap;">顧客管理</span>
