@@ -28,21 +28,18 @@ class PropertyController extends Controller
     {
         $query = HsProperty::with(['contract', 'projectLot.project', 'procurement']);
 
-        // フィルター: ステータス（デフォルトは販売中）
+        // フィルター: ステータス（デフォルトは販売中、'all'で全件表示）
         $statusFilter = $request->input('status', 'on_sale');
 
-        if ($statusFilter === 'sold') {
+        if ($statusFilter === 'all') {
+            // 全件表示（フィルターなし）
+        } elseif ($statusFilter === 'sold') {
             // 成約 = 契約レコードが存在する物件
             $query->whereHas('contract');
-        } elseif ($statusFilter !== '') {
-            // 成約以外 = 指定ステータスかつ契約なし（成約を除外）
+        } elseif ($statusFilter) {
+            // 指定ステータスでフィルター
             $query->where('status', $statusFilter);
-            if ($statusFilter === 'on_sale') {
-                // 販売中フィルター時は未契約のみ（成約は含めない）
-                // ただし成約も含めたい場合はここを変更
-            }
         }
-        // $statusFilter === '' の場合は全件（フィルターなし）
 
         // フィルター: キーワード
         if ($request->filled('keyword')) {
@@ -309,6 +306,17 @@ class PropertyController extends Controller
             return response()->json([]);
         }
 
+        // 建売物件に登録済みの区画IDを取得（除外用）
+        $usedLotIds = [];
+        if ($request->boolean('exclude_hs')) {
+            $query = HsProperty::whereNotNull('re_project_lot_id');
+            // 編集時は自分自身の区画を除外対象から外す
+            if ($request->filled('current_property_id')) {
+                $query->where('id', '!=', $request->input('current_property_id'));
+            }
+            $usedLotIds = $query->pluck('re_project_lot_id')->toArray();
+        }
+
         // 按分原価計算の準備
         $effectiveCostTotal = $project->getEffectiveCostTotal();
         $lotSellingTotal = $project->getLotSellingPriceTotal();
@@ -316,6 +324,10 @@ class PropertyController extends Controller
 
         $results = [];
         foreach ($project->lots as $lot) {
+            // 建売登録済みの区画はスキップ
+            if (in_array($lot->id, $usedLotIds)) {
+                continue;
+            }
             $depreciationAmount = null;
             if ($allHavePrice && $lotSellingTotal > 0) {
                 $depreciationAmount = (int) round($effectiveCostTotal * ($lot->selling_price / $lotSellingTotal));

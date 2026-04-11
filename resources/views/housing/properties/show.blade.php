@@ -26,15 +26,17 @@
                 <span class="inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold " style="{{ $property->getDisplayBadgeStyle() }}">{{ $property->getDisplayStatusLabel() }}</span>
             </div>
         </div>
-        <div class="flex gap-2">
+        <div style="display: flex; gap: 8px; align-items: center;">
+            <a href="{{ route('housing.properties.index') }}"
+               style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #6b7280; border: 1px solid #d1d5db; border-radius: 6px; text-decoration: none; background: #fff;">一覧に戻る</a>
             <a href="{{ route('housing.properties.edit', $property) }}"
-               style="display: inline-block; padding: 3px 10px; font-size: 12px; font-weight: 600; color: #059669; border: 1px solid #059669; border-radius: 4px; text-decoration: none; background: #fff;">編集</a>
+               style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #059669; border: 1px solid #059669; border-radius: 6px; text-decoration: none; background: #fff;">編集</a>
             <form method="POST" action="{{ route('housing.properties.destroy', $property) }}"
                   onsubmit="return confirm('この物件を削除しますか？関連する契約・ファイルも全て削除されます。')">
                 @csrf
                 @method('DELETE')
                 <button type="submit"
-                        style="display: inline-block; padding: 3px 10px; font-size: 12px; font-weight: 600; color: #dc2626; border: 1px solid #dc2626; border-radius: 4px; background: #fff; cursor: pointer;">削除</button>
+                        style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #dc2626; border: 1px solid #dc2626; border-radius: 6px; background: #fff; cursor: pointer;">削除</button>
             </form>
         </div>
     </div>

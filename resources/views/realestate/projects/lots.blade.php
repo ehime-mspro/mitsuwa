@@ -92,9 +92,9 @@
                            class="w-full h-9 px-2 border border-gray-300 rounded-md text-sm focus:border-emerald-500 focus:outline-none">
                 </div>
             </div>
-            <div class="flex gap-2 mt-3">
-                <button type="button" @click="addLot()" class="px-4 py-1.5 bg-emerald-600 text-white text-xs font-semibold rounded hover:bg-emerald-700 cursor-pointer">追加</button>
-                <button type="button" @click="showAddLot = false" class="px-4 py-1.5 bg-gray-100 text-gray-600 text-xs font-semibold rounded hover:bg-gray-200 cursor-pointer">取消</button>
+            <div class="flex gap-2" style="margin-top: 14px;">
+                <button type="button" @click="addLot()" class="bg-emerald-600 text-white text-sm font-semibold rounded hover:bg-emerald-700 cursor-pointer" style="padding: 7px 20px;">追加</button>
+                <button type="button" @click="showAddLot = false" class="bg-gray-100 text-gray-600 text-sm font-semibold rounded hover:bg-gray-200 cursor-pointer" style="padding: 7px 20px;">取消</button>
             </div>
         </div>
 

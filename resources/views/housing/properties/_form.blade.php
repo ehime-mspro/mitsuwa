@@ -239,7 +239,11 @@ function housingPropertyForm() {
 
         fetchLots: function(projectId) {
             var self = this;
-            fetch('{{ url("/api/housing/project-lots") }}?project_id=' + projectId, {
+            var url = '{{ url("/api/housing/project-lots") }}?project_id=' + projectId + '&exclude_hs=1';
+            @if($isEdit)
+            url += '&current_property_id={{ $p->id }}';
+            @endif
+            fetch(url, {
                 headers: { 'Accept': 'application/json' }
             })
             .then(function(res) { return res.json(); })

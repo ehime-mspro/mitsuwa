@@ -169,15 +169,27 @@ class HsProperty extends Model
     }
 
     /**
-     * 契約が存在する場合の販売価格合計（土地+建物、税抜）
+     * 販売価格合計（土地+建物、税抜）
+     * 契約あり: 契約の販売価格
+     * 契約なし: 建物予定販売価格 + 紐づけ先の土地参考販売価格
      */
     public function getSellingPriceTotal(): ?int
     {
-        if (!$this->isSold()) {
+        // 契約がある場合は契約の販売価格を使用
+        if ($this->isSold()) {
+            $c = $this->contract;
+            return $c->selling_price_land + $c->selling_price_building;
+        }
+
+        // 未契約: 建物予定販売価格 + 土地参考販売価格
+        $building = $this->target_selling_price_building;
+        $land = $this->getReferenceLandSellingPrice();
+
+        if ($building === null && $land === null) {
             return null;
         }
-        $c = $this->contract;
-        return $c->selling_price_land + $c->selling_price_building;
+
+        return ($building ?? 0) + ($land ?? 0);
     }
 
     /**
