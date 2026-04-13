@@ -3,7 +3,6 @@
 namespace App\Models;
 
 use App\Enums\UnitStatus;
-use App\Enums\UsageType;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -21,7 +20,7 @@ class Unit extends Model
         'room_number',
         'display_name',
         'area_tsubo',
-        'usage_type',
+        'usage_type_id',
         'status',
         'rent',
         'common_fee',
@@ -36,7 +35,6 @@ class Unit extends Model
         return [
             'floor' => 'integer',
             'area_tsubo' => 'decimal:2',
-            'usage_type' => UsageType::class,
             'status' => UnitStatus::class,
             'rent' => 'integer',
             'common_fee' => 'integer',
@@ -49,6 +47,14 @@ class Unit extends Model
     // ============================================================
     // リレーション
     // ============================================================
+
+    /**
+     * 用途（用途マスター）
+     */
+    public function usageType(): BelongsTo
+    {
+        return $this->belongsTo(InquiryUsageType::class, 'usage_type_id');
+    }
 
     /**
      * 所属物件
@@ -96,11 +102,14 @@ class Unit extends Model
 
     /**
      * display_nameを自動生成する（階数 + 号室名）
-     * 例: 階数3, 号室A → 「3A」 / 階数null, 号室A → 「A」
+     * 例: 階数3, 号室A → 「3A」 / 階数-1, 号室A → 「B1A」（地下1階）/ 階数null, 号室A → 「A」
      */
     public static function generateDisplayName(?int $floor, string $roomNumber): string
     {
         if ($floor !== null) {
+            if ($floor < 0) {
+                return 'B' . abs($floor) . $roomNumber;
+            }
             return $floor . $roomNumber;
         }
         return $roomNumber;

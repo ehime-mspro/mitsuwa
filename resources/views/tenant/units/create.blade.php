@@ -55,19 +55,19 @@
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1">階数</label>
                     <div class="relative">
-                        <input type="number" name="floor" value="{{ old('floor') }}" min="1" max="99"
+                        <input type="number" name="floor" value="{{ old('floor') }}" min="-3" max="99"
                                class="form-input w-full h-[40px] px-3 pr-8 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none"
-                               placeholder="例: 3">
+                               placeholder="例: 3（地下は -1）">
                         <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">階</span>
                     </div>
-                    <p class="text-xs text-gray-500 mt-1">※ 平屋型の場合は空欄</p>
+                    <p class="text-xs text-gray-500 mt-1">※ 平屋型は空欄。地下は -1〜-3 を入力（B1A形式で表示）</p>
                 </div>
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1">区画（号室）<span class="text-red-600 ml-0.5">*</span></label>
                     <input type="text" name="room_number" value="{{ old('room_number') }}"
                            class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none"
                            placeholder="例: A">
-                    <p class="text-xs text-gray-500 mt-1">→ 表示名は「階数＋号室」で自動生成（例: 3A）</p>
+                    <p class="text-xs text-gray-500 mt-1">→ 表示名は自動生成（例: 3A / 地下: B1A）</p>
                 </div>
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1">面積（坪）</label>
@@ -80,13 +80,12 @@
                 </div>
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1">用途</label>
-                    <select name="usage_type"
+                    <select name="usage_type_id"
                             class="form-select w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none cursor-pointer">
                         <option value="">選択してください</option>
-                        <option value="shop" {{ old('usage_type') === 'shop' ? 'selected' : '' }}>店舗</option>
-                        <option value="warehouse" {{ old('usage_type') === 'warehouse' ? 'selected' : '' }}>倉庫</option>
-                        <option value="office" {{ old('usage_type') === 'office' ? 'selected' : '' }}>事務所</option>
-                        <option value="other" {{ old('usage_type') === 'other' ? 'selected' : '' }}>その他</option>
+                        @foreach($usageTypes as $ut)
+                            <option value="{{ $ut->id }}" {{ (int) old('usage_type_id') === $ut->id ? 'selected' : '' }}>{{ $ut->name }}</option>
+                        @endforeach
                     </select>
                 </div>
                 <div class="sm:col-span-2">

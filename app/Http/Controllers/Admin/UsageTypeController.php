@@ -70,15 +70,19 @@ class UsageTypeController extends Controller
      */
     public function destroy(InquiryUsageType $usageType)
     {
-        // 問合せで使用中か確認
+        // 問合せまたは区画で使用中か確認
         $inUse = DB::table('inquiries')
             ->where('desired_usage_id', $usageType->id)
+            ->exists()
+            || DB::table('units')
+            ->where('usage_type_id', $usageType->id)
+            ->whereNull('deleted_at')
             ->exists();
 
         if ($inUse) {
             return redirect()
                 ->route('admin.master.usage-types.index')
-                ->with('error', '「' . $usageType->name . '」は問合せで使用されているため削除できません。');
+                ->with('error', '「' . $usageType->name . '」は問合せまたは区画で使用されているため削除できません。');
         }
 
         $name = $usageType->name;

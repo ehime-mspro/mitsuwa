@@ -19,6 +19,7 @@ class InquiryUsageTypeSeeder extends Seeder
             ['name' => '倉庫',             'sort_order' => 7],
             ['name' => 'フィットネス・ジム', 'sort_order' => 8],
             ['name' => 'その他',           'sort_order' => 9],
+            ['name' => '店舗',             'sort_order' => 10],
         ];
 
         $now = now();

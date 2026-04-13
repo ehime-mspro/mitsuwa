@@ -129,14 +129,16 @@
                                 {{-- 物件名 --}}
                                 <td class="border-b border-gray-200 whitespace-nowrap" style="padding: 14px 20px;">
                                     <a href="{{ route('tenant.properties.show', $unit->property_id) }}"
-                                       class="text-sm font-semibold text-emerald-600 hover:text-emerald-700 hover:underline transition-colors">
+                                       class="text-sm hover:underline transition-colors"
+                                       style="color: #047857; font-weight: 700;">
                                         {{ $unit->property->name }}
                                     </a>
                                 </td>
                                 {{-- 部屋名 --}}
                                 <td class="border-b border-gray-200 whitespace-nowrap" style="padding: 14px 20px; text-align: center;">
                                     <a href="{{ route('tenant.units.show', $unit) }}"
-                                       class="text-sm font-semibold text-emerald-600 hover:text-emerald-700 hover:underline transition-colors">
+                                       class="text-sm hover:underline transition-colors"
+                                       style="color: #047857; font-weight: 700;">
                                         {{ $unit->display_name }}
                                     </a>
                                 </td>

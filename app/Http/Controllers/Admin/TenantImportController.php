@@ -9,6 +9,7 @@ use App\Enums\UnitStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Contract;
 use App\Models\Customer;
+use App\Models\InquiryUsageType;
 use App\Models\Property;
 use App\Models\Unit;
 use Illuminate\Http\Request;
@@ -28,7 +29,7 @@ class TenantImportController extends Controller
 
     private array $ownerTypeMap = ['自社' => 'self_owned', 'オーナー' => 'owner'];
     private array $operationStatusMap = ['稼働中' => 'active', '停止中' => 'inactive'];
-    private array $usageTypeMap = ['店舗' => 'shop', '倉庫' => 'warehouse', '事務所' => 'office', 'その他' => 'other'];
+    // usageTypeMap は廃止 → マスターテーブルから動的取得
     private array $unitStatusMap = ['空室' => 'vacant', '入居中' => 'occupied', '商談中' => 'negotiating'];
     private array $customerTypeMap = ['法人' => 'corporation', '個人事業主' => 'sole_proprietor', '個人' => 'individual'];
 
@@ -278,6 +279,9 @@ class TenantImportController extends Controller
         $validRows = [];
         $unitTracker = [];
 
+        // 用途マスターのname→idマッピングを取得
+        $usageTypeMap = InquiryUsageType::pluck('id', 'name')->toArray();
+
         // 物件名→Propertyキャッシュ
         $propertyCache = [];
 
@@ -328,9 +332,10 @@ class TenantImportController extends Controller
                 continue;
             }
 
-            // Enum値チェック
-            if ($row['usage_type'] !== '' && !isset($this->usageTypeMap[$row['usage_type']])) {
-                $errors[] = ['row' => $rowNum, 'message' => "用途「{$row['usage_type']}」は不正な値です（店舗/倉庫/事務所/その他）"];
+            // 用途マスターチェック
+            if ($row['usage_type'] !== '' && !isset($usageTypeMap[$row['usage_type']])) {
+                $validNames = implode('/', array_keys($usageTypeMap));
+                $errors[] = ['row' => $rowNum, 'message' => "用途「{$row['usage_type']}」は不正な値です（{$validNames}）"];
                 continue;
             }
             if ($row['status'] !== '' && !isset($this->unitStatusMap[$row['status']])) {
@@ -348,13 +353,19 @@ class TenantImportController extends Controller
                 $row['area_tsubo'] = (float) $val;
             }
 
-            // 階チェック
+            // 階チェック（地下-3〜-1、地上1〜99。0は不可）
             if ($row['floor'] !== '') {
-                if (!ctype_digit($row['floor'])) {
-                    $errors[] = ['row' => $rowNum, 'message' => "階「{$row['floor']}」は不正な値です"];
+                $floorVal = $row['floor'];
+                if (!preg_match('/^-?\d+$/', $floorVal)) {
+                    $errors[] = ['row' => $rowNum, 'message' => "階「{$floorVal}」は不正な値です"];
                     continue;
                 }
-                $row['floor'] = (int) $row['floor'];
+                $floorInt = (int) $floorVal;
+                if ($floorInt === 0 || $floorInt < -3 || $floorInt > 99) {
+                    $errors[] = ['row' => $rowNum, 'message' => "階「{$floorVal}」は-3〜-1または1〜99の範囲で入力してください"];
+                    continue;
+                }
+                $row['floor'] = $floorInt;
             }
 
             // 金額フィールドチェック
@@ -413,7 +424,7 @@ class TenantImportController extends Controller
                     'room_number'      => $row['room_number'],
                     'display_name'     => $displayName,
                     'area_tsubo'       => $row['area_tsubo'] !== '' ? $row['area_tsubo'] : null,
-                    'usage_type'       => $row['usage_type'] !== '' ? $this->usageTypeMap[$row['usage_type']] : null,
+                    'usage_type_id'    => $row['usage_type'] !== '' ? $usageTypeMap[$row['usage_type']] : null,
                     'status'           => $row['status'] !== '' ? $this->unitStatusMap[$row['status']] : UnitStatus::Vacant->value,
                     'rent'             => $row['rent'] !== '' ? $row['rent'] : null,
                     'common_fee'       => $row['common_fee'] !== '' ? $row['common_fee'] : null,

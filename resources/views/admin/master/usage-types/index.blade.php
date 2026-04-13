@@ -1,12 +1,12 @@
 @extends('layouts.app')
 
-@section('title', '希望用途マスター')
+@section('title', '用途マスター')
 
 @section('breadcrumb')
     <span class="mx-1.5">›</span>
     <span>システム管理</span>
     <span class="mx-1.5">›</span>
-    <span class="text-gray-600">希望用途マスター</span>
+    <span class="text-gray-600">用途マスター</span>
 @endsection
 
 @section('content')
@@ -14,7 +14,7 @@
 
     {{-- ページタイトル --}}
     <div class="flex items-center justify-between mb-4">
-        <h1 class="text-lg max-lg:text-base font-bold text-gray-900">希望用途マスター</h1>
+        <h1 class="text-lg max-lg:text-base font-bold text-gray-900">用途マスター</h1>
         <button @click="startAdd()"
                 x-show="!adding"
                 class="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-md text-sm font-semibold hover:bg-emerald-700 transition-colors cursor-pointer">
@@ -174,12 +174,12 @@
     {{-- 削除確認メッセージ --}}
     <div x-show="deletingId !== null" class="mt-3 rounded-lg border border-red-200 bg-red-50 p-3">
         <p class="text-sm text-red-800">「<span x-text="deletingName"></span>」を削除しますか？ この操作は取り消せません。</p>
-        <p class="text-xs text-red-600 mt-1">※ この用途を使用している問合せがある場合、削除できません。</p>
+        <p class="text-xs text-red-600 mt-1">※ この用途を使用している問合せまたは区画がある場合、削除できません。</p>
     </div>
 
     {{-- フッター情報 --}}
     <div class="mt-4 text-xs text-gray-400">
-        <p>全 <span x-text="items.length"></span> 件 — 問合せ登録・編集画面のセレクトボックスに上記の順で表示されます。</p>
+        <p>全 <span x-text="items.length"></span> 件 — 問合せ・区画の登録・編集画面のセレクトボックスに上記の順で表示されます。</p>
     </div>
 
     {{-- 非表示フォーム: 新規追加 --}}

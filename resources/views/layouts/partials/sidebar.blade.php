@@ -99,7 +99,7 @@
                 <span style="font-size: 10px; font-weight: 600; color: #6B7280; letter-spacing: 0.05em; white-space: nowrap;">テナント</span>
                 <span style="flex: 1; height: 1px; background: #D1D5DB;"></span>
             </div>
-            <x-sidebar-item :href="url('/admin/master/usage-types')" label="希望用途マスター" :active="request()->is('admin/master/usage-types*')" />
+            <x-sidebar-item :href="url('/admin/master/usage-types')" label="用途マスター" :active="request()->is('admin/master/usage-types*')" />
             <x-sidebar-item :href="url('/admin/master/structure-types')" label="構造マスター" :active="request()->is('admin/master/structure-types*')" />
             <x-sidebar-item :href="url('/admin/tenant-import')" label="テナントCSVインポート" :active="request()->is('admin/tenant-import*')" />
             {{-- サブ見出し: 不動産 --}}
@@ -267,7 +267,7 @@
                 <span style="font-size: 10px; font-weight: 600; color: #6B7280; letter-spacing: 0.05em; white-space: nowrap;">テナント</span>
                 <span style="flex: 1; height: 1px; background: #D1D5DB;"></span>
             </div>
-            <x-sidebar-item :href="url('/admin/master/usage-types')" label="希望用途マスター" :active="request()->is('admin/master/usage-types*')" />
+            <x-sidebar-item :href="url('/admin/master/usage-types')" label="用途マスター" :active="request()->is('admin/master/usage-types*')" />
             <x-sidebar-item :href="url('/admin/master/structure-types')" label="構造マスター" :active="request()->is('admin/master/structure-types*')" />
             <x-sidebar-item :href="url('/admin/tenant-import')" label="テナントCSVインポート" :active="request()->is('admin/tenant-import*')" />
             {{-- サブ見出し: 不動産 --}}

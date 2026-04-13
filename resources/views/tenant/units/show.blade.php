@@ -57,7 +57,11 @@
                 <div class="text-sm font-medium text-gray-900">
                     {{ $unit->display_name }}
                     @if($unit->floor)
-                        <span class="text-gray-500">（{{ $unit->floor }}階 {{ $unit->room_number }}号室）</span>
+                        @if($unit->floor < 0)
+                            <span class="text-gray-500">（地下{{ abs($unit->floor) }}階 {{ $unit->room_number }}号室）</span>
+                        @else
+                            <span class="text-gray-500">（{{ $unit->floor }}階 {{ $unit->room_number }}号室）</span>
+                        @endif
                     @else
                         <span class="text-gray-500">（{{ $unit->room_number }}号室）</span>
                     @endif
@@ -76,8 +80,8 @@
             <div>
                 <div class="text-sm text-gray-600 mb-0.5">用途</div>
                 <div class="text-sm font-medium text-gray-900">
-                    @if($unit->usage_type)
-                        {{ $unit->usage_type->label() }}
+                    @if($unit->usageType)
+                        {{ $unit->usageType->name }}
                     @else
                         —
                     @endif

@@ -6,6 +6,7 @@ use App\Enums\ContractStatus;
 use App\Enums\DepartmentCode;
 use App\Enums\UnitStatus;
 use App\Http\Controllers\Controller;
+use App\Models\InquiryUsageType;
 use App\Models\Property;
 use App\Models\Repair;
 use App\Models\Unit;
@@ -71,7 +72,9 @@ class UnitController extends Controller
      */
     public function create(Property $property)
     {
-        return view('tenant.units.create', compact('property'));
+        $usageTypes = InquiryUsageType::orderBy('sort_order')->get(['id', 'name']);
+
+        return view('tenant.units.create', compact('property', 'usageTypes'));
     }
 
     /**
@@ -81,10 +84,10 @@ class UnitController extends Controller
     public function store(Request $request, Property $property)
     {
         $validated = $request->validate([
-            'floor'            => 'nullable|integer|min:1|max:99',
+            'floor'            => 'nullable|integer|min:-3|max:99',
             'room_number'      => 'required|string|max:20',
             'area_tsubo'       => 'nullable|numeric|min:0|max:9999.99',
-            'usage_type'       => 'nullable|in:shop,warehouse,office,other',
+            'usage_type_id'    => 'nullable|exists:inquiry_usage_types,id',
             'status'           => 'required|in:vacant,negotiating',
             'rent'             => 'nullable|integer|min:0',
             'common_fee'       => 'nullable|integer|min:0',
@@ -93,6 +96,11 @@ class UnitController extends Controller
             'pest_control_fee' => 'nullable|integer|min:0',
             'notes'            => 'nullable|string|max:5000',
         ]);
+
+        // 階数0は不許可（地下は-1〜-3、地上は1〜99）
+        if (isset($validated['floor']) && $validated['floor'] === 0) {
+            return back()->withInput()->withErrors(['floor' => '階数に0は入力できません。地下の場合は-1〜-3を入力してください。']);
+        }
 
         // display_name自動生成
         $displayName = $this->generateDisplayName($validated['floor'] ?? null, $validated['room_number']);
@@ -163,8 +171,9 @@ class UnitController extends Controller
     {
         $unit->load('property');
         $property = $unit->property;
+        $usageTypes = InquiryUsageType::orderBy('sort_order')->get(['id', 'name']);
 
-        return view('tenant.units.edit', compact('unit', 'property'));
+        return view('tenant.units.edit', compact('unit', 'property', 'usageTypes'));
     }
 
     /**
@@ -179,10 +188,10 @@ class UnitController extends Controller
         $isOccupied = $unit->status === UnitStatus::Occupied;
 
         $validated = $request->validate([
-            'floor'            => 'nullable|integer|min:1|max:99',
+            'floor'            => 'nullable|integer|min:-3|max:99',
             'room_number'      => 'required|string|max:20',
             'area_tsubo'       => 'nullable|numeric|min:0|max:9999.99',
-            'usage_type'       => 'nullable|in:shop,warehouse,office,other',
+            'usage_type_id'    => 'nullable|exists:inquiry_usage_types,id',
             'status'           => [
                 'required',
                 $isOccupied ? Rule::in([$unit->status->value]) : Rule::in(['vacant', 'negotiating']),
@@ -194,6 +203,11 @@ class UnitController extends Controller
             'pest_control_fee' => 'nullable|integer|min:0',
             'notes'            => 'nullable|string|max:5000',
         ]);
+
+        // 階数0は不許可（地下は-1〜-3、地上は1〜99）
+        if (isset($validated['floor']) && $validated['floor'] === 0) {
+            return back()->withInput()->withErrors(['floor' => '階数に0は入力できません。地下の場合は-1〜-3を入力してください。']);
+        }
 
         // display_name自動再生成
         $displayName = $this->generateDisplayName($validated['floor'] ?? null, $validated['room_number']);
@@ -281,11 +295,14 @@ class UnitController extends Controller
     // ================================================================
 
     /**
-     * display_name自動生成: floor有り→「3A」、floor無し→「A」
+     * display_name自動生成: floor正→「3A」、floor負→「B1A」（地下）、floor無し→「A」
      */
     private function generateDisplayName(?int $floor, string $roomNumber): string
     {
         if ($floor !== null) {
+            if ($floor < 0) {
+                return 'B' . abs($floor) . $roomNumber;
+            }
             return $floor . $roomNumber;
         }
 
