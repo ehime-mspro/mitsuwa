@@ -19,168 +19,149 @@
     </div>
 @endif
 
-<div class="bg-white border border-gray-200 rounded-lg p-5" x-data="tenantImport()">
+<div x-data="tenantImportTabs()">
+    {{-- タブヘッダー --}}
+    <div style="display: flex; border-bottom: 2px solid #e5e7eb; margin-bottom: 0;">
+        <button type="button" x-on:click="activeTab = 'property'"
+                :style="activeTab === 'property' ? 'padding: 10px 20px; font-size: 14px; border: none; cursor: pointer; border-radius: 6px 6px 0 0; background: #fff; color: #059669; border-bottom: 2px solid #059669; font-weight: 700; margin-bottom: -2px;' : 'padding: 10px 20px; font-size: 14px; border: none; cursor: pointer; border-radius: 6px 6px 0 0; background: #f9fafb; color: #6b7280; border-bottom: 2px solid transparent; margin-bottom: -2px;'">
+            ① 物件
+        </button>
+        <button type="button" x-on:click="activeTab = 'unit'"
+                :style="activeTab === 'unit' ? 'padding: 10px 20px; font-size: 14px; border: none; cursor: pointer; border-radius: 6px 6px 0 0; background: #fff; color: #059669; border-bottom: 2px solid #059669; font-weight: 700; margin-bottom: -2px;' : 'padding: 10px 20px; font-size: 14px; border: none; cursor: pointer; border-radius: 6px 6px 0 0; background: #f9fafb; color: #6b7280; border-bottom: 2px solid transparent; margin-bottom: -2px;'">
+            ② 区画
+        </button>
+        <button type="button" x-on:click="activeTab = 'customer'"
+                :style="activeTab === 'customer' ? 'padding: 10px 20px; font-size: 14px; border: none; cursor: pointer; border-radius: 6px 6px 0 0; background: #fff; color: #059669; border-bottom: 2px solid #059669; font-weight: 700; margin-bottom: -2px;' : 'padding: 10px 20px; font-size: 14px; border: none; cursor: pointer; border-radius: 6px 6px 0 0; background: #f9fafb; color: #6b7280; border-bottom: 2px solid transparent; margin-bottom: -2px;'">
+            ③ 顧客
+        </button>
+        <button type="button" x-on:click="activeTab = 'contract'"
+                :style="activeTab === 'contract' ? 'padding: 10px 20px; font-size: 14px; border: none; cursor: pointer; border-radius: 6px 6px 0 0; background: #fff; color: #059669; border-bottom: 2px solid #059669; font-weight: 700; margin-bottom: -2px;' : 'padding: 10px 20px; font-size: 14px; border: none; cursor: pointer; border-radius: 6px 6px 0 0; background: #f9fafb; color: #6b7280; border-bottom: 2px solid transparent; margin-bottom: -2px;'">
+            ④ 契約
+        </button>
+    </div>
 
-    @if(!isset($preview))
-        {{-- ===== 初期フォーム ===== --}}
-        <form method="POST" action="{{ route('admin.tenant-import.execute') }}" enctype="multipart/form-data" id="import-form">
-            @csrf
+    {{-- タブコンテンツ --}}
+    <div class="bg-white border border-gray-200 rounded-b-lg p-5" style="border-top: none;">
 
-            {{-- 説明 --}}
-            <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 14px 18px; margin-bottom: 24px;">
-                <div style="font-weight: 600; font-size: 14px; color: #166534; margin-bottom: 6px;">CSVファイル1つで物件・区画・顧客・契約を一括登録</div>
-                <ul style="font-size: 12px; color: #15803d; margin: 0; padding-left: 18px; line-height: 1.8;">
-                    <li>1行＝1区画（物件+区画+テナント+契約情報を横並び）</li>
-                    <li>同一物件名の行が複数 → 物件は1つだけ作成、区画を複数追加</li>
-                    <li>テナント名・家賃・契約日が空の行 → 空室として物件+区画のみ作成</li>
-                    <li>テナント名・家賃・契約日が入力済みの行 → 入居中として契約も作成</li>
-                </ul>
-            </div>
-
-            {{-- STEP 1: テンプレートDL --}}
-            <div style="display: flex; align-items: flex-start; gap: 14px; margin-bottom: 20px;">
-                <div style="width: 28px; height: 28px; border-radius: 50%; background: #059669; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0;">1</div>
-                <div style="flex: 1;">
-                    <div style="font-weight: 600; margin-bottom: 8px;">テンプレートCSV</div>
-                    <a href="{{ route('admin.tenant-import.template') }}"
-                       style="display: inline-flex; align-items: center; gap: 4px; background: #fff; color: #374151; font-size: 13px; padding: 6px 14px; border-radius: 6px; font-weight: 600; border: 1px solid #9ca3af; text-decoration: none;">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: -2px;"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                        テンプレートCSVをダウンロード
-                    </a>
-                    <div style="font-size: 12px; color: #6b7280; margin-top: 6px;">※ サンプルデータ2行（空室例・入居例）付き。Excelで編集可能です。</div>
+        {{-- ===== ① 物件タブ ===== --}}
+        <div x-show="activeTab === 'property'">
+            @if(isset($preview) && $preview === 'property')
+                @include('admin.tenant-import._preview', [
+                    'tab'         => 'property',
+                    'routeName'   => 'admin.tenant-import.property',
+                    'entityLabel' => '物件',
+                ])
+            @else
+                {{-- 説明 --}}
+                <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 14px 18px; margin-bottom: 24px;">
+                    <div style="font-weight: 600; font-size: 14px; color: #166534; margin-bottom: 6px;">物件マスタの一括登録</div>
+                    <ul style="font-size: 12px; color: #15803d; margin: 0; padding-left: 18px; line-height: 1.8;">
+                        <li>1行＝1物件として登録します</li>
+                        <li>同名の物件が既にDBに存在する場合はスキップされます</li>
+                        <li>物件コード（T-001等）は自動採番されます</li>
+                    </ul>
                 </div>
-            </div>
-
-            {{-- STEP 2: ファイル選択 --}}
-            <div style="display: flex; align-items: flex-start; gap: 14px; margin-bottom: 20px;">
-                <div style="width: 28px; height: 28px; border-radius: 50%; background: #059669; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0;">2</div>
-                <div style="flex: 1;">
-                    <div style="font-weight: 600; margin-bottom: 8px;">CSVファイルを選択</div>
-                    <div style="display: flex; align-items: center; gap: 12px;">
-                        <label style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border: 2px dashed #d1d5db; border-radius: 8px; cursor: pointer; font-size: 13px; color: #6b7280;">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                            ファイルを選択
-                            <input type="file" name="csv_file" accept=".csv,.txt" style="display: none;" x-on:change="onFileSelect($event)">
-                        </label>
-                        <span x-show="fileName" style="font-size: 13px; color: #059669; font-weight: 600;" x-text="fileName"></span>
-                    </div>
-                    <div style="font-size: 12px; color: #6b7280; margin-top: 6px;">※ UTF-8 または Shift_JIS 形式に対応</div>
-                </div>
-            </div>
-
-            {{-- STEP 3: プレビュー説�� --}}
-            <div style="display: flex; align-items: flex-start; gap: 14px; margin-bottom: 20px;">
-                <div style="width: 28px; height: 28px; border-radius: 50%; background: #059669; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0;">3</div>
-                <div style="flex: 1;">
-                    <div style="font-weight: 600; margin-bottom: 8px;">プレビュー</div>
-                    <div style="font-size: 13px; color: #9ca3af;">CSVファイルをアップロードするとプレビューが表示されま��</div>
-                </div>
-            </div>
-
-            {{-- STEP 4: 実行 --}}
-            <div style="display: flex; align-items: flex-start; gap: 14px; margin-bottom: 20px;">
-                <div style="width: 28px; height: 28px; border-radius: 50%; background: #059669; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0;">4</div>
-                <div style="flex: 1;">
-                    <div style="font-weight: 600; margin-bottom: 8px;">プレビュー確認後にインポート</div>
-                    <button type="submit"
-                            style="background: #059669; color: #fff; padding: 10px 28px; border-radius: 6px; font-size: 15px; font-weight: 600; border: none; cursor: pointer;">
-                        アップロードしてプレビュー
-                    </button>
-                </div>
-            </div>
-        </form>
-
-    @else
-        {{-- ===== プレビュー表示 ===== --}}
-        <div style="display: flex; align-items: flex-start; gap: 14px; margin-bottom: 20px;">
-            <div style="width: 28px; height: 28px; border-radius: 50%; background: #059669; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0;">3</div>
-            <div style="flex: 1;">
-                <div style="font-weight: 600; margin-bottom: 8px;">��レビュー</div>
-
-                {{-- サマリー --}}
-                <div style="border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden;">
-                    <div style="background: #ecfdf5; padding: 10px 16px; font-size: 14px; font-weight: 600; display: flex; gap: 20px; flex-wrap: wrap;">
-                        <span>全 <strong>{{ $totalRows }}</strong> 件</span>
-                        <span style="color: #059669;">正常: <strong>{{ $validCount }}</strong> 件</span>
-                        <span style="color: #dc2626;">エラー: <strong>{{ count($errors ?? []) }}</strong> ���</span>
-                    </div>
-
-                    {{-- 作成予定 --}}
-                    <div style="padding: 12px 16px; border-bottom: 1px solid #e5e7eb;">
-                        <div style="font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 8px;">作成予定:</div>
-                        <div style="display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px;">
-                            <div style="background: #f3f4f6; padding: 6px 14px; border-radius: 6px;">
-                                <span style="color: #6b7280;">物件</span>
-                                <strong style="color: #111827; margin-left: 4px;">{{ $propertyCount }}</strong> 件
-                            </div>
-                            <div style="background: #f3f4f6; padding: 6px 14px; border-radius: 6px;">
-                                <span style="color: #6b7280;">区画</span>
-                                <strong style="color: #111827; margin-left: 4px;">{{ $unitCount }}</strong> 件
-                                <span style="color: #6b7280; font-size: 12px; margin-left: 4px;">（入居 {{ $contractCount }} / 空室 {{ $vacantCount }}）</span>
-                            </div>
-                            <div style="background: #f3f4f6; padding: 6px 14px; border-radius: 6px;">
-                                <span style="color: #6b7280;">顧客</span>
-                                <strong style="color: #111827; margin-left: 4px;">{{ $customerCount }}</strong> 件
-                            </div>
-                            <div style="background: #f3f4f6; padding: 6px 14px; border-radius: 6px;">
-                                <span style="color: #6b7280;">契約</span>
-                                <strong style="color: #111827; margin-left: 4px;">{{ $contractCount }}</strong> 件
-                            </div>
-                        </div>
-                    </div>
-
-                    {{-- エラー一覧 --}}
-                    @if(count($errors ?? []) > 0)
-                        <div style="max-height: 200px; overflow-y: auto;">
-                            @foreach($errors as $err)
-                                <div style="padding: 8px 16px; font-size: 13px; border-bottom: 1px solid #f3f4f6; color: #dc2626;">
-                                    行{{ $err['row'] }}: {{ $err['message'] }}
-                                </div>
-                            @endforeach
-                        </div>
-                    @endif
-                </div>
-            </div>
+                @include('admin.tenant-import._form', [
+                    'tab'           => 'property',
+                    'routeName'     => 'admin.tenant-import.property',
+                    'templateRoute' => 'admin.tenant-import.template.property',
+                    'fileInputName' => 'fileProperty',
+                ])
+            @endif
         </div>
 
-        {{-- STEP 4: 実行確認 --}}
-        <div style="display: flex; align-items: flex-start; gap: 14px; margin-bottom: 20px;">
-            <div style="width: 28px; height: 28px; border-radius: 50%; background: #059669; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0;">4</div>
-            <div style="flex: 1;">
-                <div style="font-weight: 600; margin-bottom: 8px;">インポート実行</div>
-
-                @if($validCount > 0)
-                    <form method="POST" action="{{ route('admin.tenant-import.execute') }}">
-                        @csrf
-                        <input type="hidden" name="confirmed" value="1">
-                        <input type="hidden" name="csv_data" value="{{ $csvData }}">
-
-                        <button type="submit"
-                                style="background: #059669; color: #fff; padding: 10px 28px; border-radius: 6px; font-size: 15px; font-weight: 600; border: none; cursor: pointer;">
-                            インポート実行（{{ $validCount }}件）
-                        </button>
-                        @if(count($errors ?? []) > 0)
-                            <div style="font-size: 12px; color: #6b7280; margin-top: 6px;">※ エラー行（{{ count($errors) }}件）はスキップされます</div>
-                        @endif
-                    </form>
-                @else
-                    <div style="font-size: 13px; color: #dc2626;">インポート可能なデータがありません。CSVを修正してください。</div>
-                @endif
-
-                <a href="{{ route('admin.tenant-import') }}" style="display: inline-block; margin-top: 12px; font-size: 13px; color: #6b7280; text-decoration: underline;">← やり直す</a>
-            </div>
+        {{-- ===== ② 区画タブ ===== --}}
+        <div x-show="activeTab === 'unit'">
+            @if(isset($preview) && $preview === 'unit')
+                @include('admin.tenant-import._preview', [
+                    'tab'         => 'unit',
+                    'routeName'   => 'admin.tenant-import.unit',
+                    'entityLabel' => '区画',
+                ])
+            @else
+                <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 14px 18px; margin-bottom: 24px;">
+                    <div style="font-weight: 600; font-size: 14px; color: #1e40af; margin-bottom: 6px;">区画の一括登録</div>
+                    <ul style="font-size: 12px; color: #1d4ed8; margin: 0; padding-left: 18px; line-height: 1.8;">
+                        <li>1行＝1区画として登録します</li>
+                        <li>CSVの「物件名」で既存の物件を検索し紐づけます</li>
+                        <li style="font-weight: 600;">※ 物件が先に登録されている必要があります</li>
+                    </ul>
+                </div>
+                @include('admin.tenant-import._form', [
+                    'tab'           => 'unit',
+                    'routeName'     => 'admin.tenant-import.unit',
+                    'templateRoute' => 'admin.tenant-import.template.unit',
+                    'fileInputName' => 'fileUnit',
+                ])
+            @endif
         </div>
-    @endif
+
+        {{-- ===== ③ 顧客タブ ===== --}}
+        <div x-show="activeTab === 'customer'">
+            @if(isset($preview) && $preview === 'customer')
+                @include('admin.tenant-import._preview', [
+                    'tab'         => 'customer',
+                    'routeName'   => 'admin.tenant-import.customer',
+                    'entityLabel' => '顧客',
+                ])
+            @else
+                <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 14px 18px; margin-bottom: 24px;">
+                    <div style="font-weight: 600; font-size: 14px; color: #166534; margin-bottom: 6px;">テナント顧客の一括登録</div>
+                    <ul style="font-size: 12px; color: #15803d; margin: 0; padding-left: 18px; line-height: 1.8;">
+                        <li>1行＝1顧客として登録します</li>
+                        <li>同名の顧客が既にDBに存在する場合はスキップされます</li>
+                        <li>顧客コード（CUS-001等）は自動採番されます</li>
+                        <li>物件・区画の登録とは独立して実行できます</li>
+                    </ul>
+                </div>
+                @include('admin.tenant-import._form', [
+                    'tab'           => 'customer',
+                    'routeName'     => 'admin.tenant-import.customer',
+                    'templateRoute' => 'admin.tenant-import.template.customer',
+                    'fileInputName' => 'fileCustomer',
+                ])
+            @endif
+        </div>
+
+        {{-- ===== ④ 契約タブ ===== --}}
+        <div x-show="activeTab === 'contract'">
+            @if(isset($preview) && $preview === 'contract')
+                @include('admin.tenant-import._preview', [
+                    'tab'         => 'contract',
+                    'routeName'   => 'admin.tenant-import.contract',
+                    'entityLabel' => '契約',
+                ])
+            @else
+                <div style="background: #fefce8; border: 1px solid #fde68a; border-radius: 8px; padding: 14px 18px; margin-bottom: 24px;">
+                    <div style="font-weight: 600; font-size: 14px; color: #92400e; margin-bottom: 6px;">契約の一括登録</div>
+                    <ul style="font-size: 12px; color: #a16207; margin: 0; padding-left: 18px; line-height: 1.8;">
+                        <li>CSVの「物件名」「部屋番号」「テナント名」で既存データを検索し紐づけます</li>
+                        <li>契約番号（C-2026-001等）は自動採番されます</li>
+                        <li>契約作成時に区画のステータスが「入居中」に更新されます</li>
+                        <li style="font-weight: 600;">※ 物件・区画・顧客が先に登録されている必要があります</li>
+                    </ul>
+                </div>
+                @include('admin.tenant-import._form', [
+                    'tab'           => 'contract',
+                    'routeName'     => 'admin.tenant-import.contract',
+                    'templateRoute' => 'admin.tenant-import.template.contract',
+                    'fileInputName' => 'fileContract',
+                ])
+            @endif
+        </div>
+
+    </div>
 </div>
 
 <script>
-function tenantImport() {
+function tenantImportTabs() {
     return {
-        fileName: '',
-        onFileSelect: function(event) {
+        activeTab: '{{ $activeTab ?? "property" }}',
+        fileNames: { property: '', unit: '', customer: '', contract: '' },
+        onFileSelect: function(event, tab) {
             var file = event.target.files[0];
             if (file) {
-                this.fileName = file.name;
+                this.fileNames[tab] = file.name;
             }
         }
     };

@@ -955,13 +955,25 @@ Route::middleware(['auth', 'password.change'])->group(function () {
         Route::get('/customers/import/template', [\App\Http\Controllers\Admin\CustomerImportController::class, 'downloadTemplate'])
             ->name('admin.customers.import.template');
 
-        // テナントCSVインポート
+        // テナントCSVインポート（4種別: 物件・区画・顧客・契約）
         Route::get('/tenant-import', [\App\Http\Controllers\Admin\TenantImportController::class, 'showForm'])
             ->name('admin.tenant-import');
-        Route::post('/tenant-import', [\App\Http\Controllers\Admin\TenantImportController::class, 'execute'])
-            ->name('admin.tenant-import.execute');
-        Route::get('/tenant-import/template', [\App\Http\Controllers\Admin\TenantImportController::class, 'downloadTemplate'])
-            ->name('admin.tenant-import.template');
+        Route::post('/tenant-import/property', [\App\Http\Controllers\Admin\TenantImportController::class, 'executeProperty'])
+            ->name('admin.tenant-import.property');
+        Route::post('/tenant-import/unit', [\App\Http\Controllers\Admin\TenantImportController::class, 'executeUnit'])
+            ->name('admin.tenant-import.unit');
+        Route::post('/tenant-import/customer', [\App\Http\Controllers\Admin\TenantImportController::class, 'executeCustomer'])
+            ->name('admin.tenant-import.customer');
+        Route::post('/tenant-import/contract', [\App\Http\Controllers\Admin\TenantImportController::class, 'executeContract'])
+            ->name('admin.tenant-import.contract');
+        Route::get('/tenant-import/template/property', [\App\Http\Controllers\Admin\TenantImportController::class, 'downloadPropertyTemplate'])
+            ->name('admin.tenant-import.template.property');
+        Route::get('/tenant-import/template/unit', [\App\Http\Controllers\Admin\TenantImportController::class, 'downloadUnitTemplate'])
+            ->name('admin.tenant-import.template.unit');
+        Route::get('/tenant-import/template/customer', [\App\Http\Controllers\Admin\TenantImportController::class, 'downloadCustomerTemplate'])
+            ->name('admin.tenant-import.template.customer');
+        Route::get('/tenant-import/template/contract', [\App\Http\Controllers\Admin\TenantImportController::class, 'downloadContractTemplate'])
+            ->name('admin.tenant-import.template.contract');
     });
 
     /*
