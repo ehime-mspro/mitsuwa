@@ -54,6 +54,7 @@
     @if($hasTenantAccess)
         <x-sidebar-group label="テナント管理">
             <x-sidebar-item :href="url('/tenant/properties')" label="物件一覧" :active="request()->is('tenant/properties*')" />
+            <x-sidebar-item :href="url('/tenant/units')" label="部屋一覧" :active="request()->is('tenant/units')" />
             <x-sidebar-item :href="url('/tenant/contracts')" label="契約一覧" :active="request()->is('tenant/contracts*')" />
             <x-sidebar-item :href="url('/tenant/investments')" label="投資案件" :active="request()->is('tenant/investments*')" />
             <x-sidebar-item :href="url('/tenant/repairs')" label="一般修繕" :active="request()->is('tenant/repairs*')" />
@@ -225,6 +226,7 @@
     @if($hasTenantAccess)
         <x-sidebar-group label="テナント管理">
             <x-sidebar-item :href="url('/tenant/properties')" label="物件一覧" :active="request()->is('tenant/properties*')" />
+            <x-sidebar-item :href="url('/tenant/units')" label="部屋一覧" :active="request()->is('tenant/units')" />
             <x-sidebar-item :href="url('/tenant/contracts')" label="契約一覧" :active="request()->is('tenant/contracts*')" />
             <x-sidebar-item :href="url('/tenant/investments')" label="投資案件" :active="request()->is('tenant/investments*')" />
             <x-sidebar-item :href="url('/tenant/repairs')" label="一般修繕" :active="request()->is('tenant/repairs*')" />

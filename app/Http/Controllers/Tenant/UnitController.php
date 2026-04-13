@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Tenant;
 
 use App\Enums\ContractStatus;
+use App\Enums\DepartmentCode;
 use App\Enums\UnitStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Property;
@@ -13,6 +14,57 @@ use Illuminate\Validation\Rule;
 
 class UnitController extends Controller
 {
+    /**
+     * 部屋一覧（物件横断）
+     * Route: GET /tenant/units
+     */
+    public function index(Request $request)
+    {
+        // テナント物件に属する区画を取得
+        $query = Unit::whereHas('property', function ($q) {
+            $q->where('department', DepartmentCode::Tenant);
+        })->with(['property', 'activeContract']);
+
+        // フィルター: 物件（チェックボックス複数選択）
+        if ($request->filled('property_ids')) {
+            $query->whereIn('property_id', $request->input('property_ids'));
+        }
+
+        // フィルター: ステータス
+        if ($request->filled('status')) {
+            $query->where('status', $request->input('status'));
+        }
+
+        // フィルター: キーワード（物件名・表示名）
+        if ($request->filled('keyword')) {
+            $keyword = $request->input('keyword');
+            $query->where(function ($q) use ($keyword) {
+                $q->where('display_name', 'like', "%{$keyword}%")
+                  ->orWhereHas('property', function ($pq) use ($keyword) {
+                      $pq->where('name', 'like', "%{$keyword}%");
+                  });
+            });
+        }
+
+        $units = $query->orderBy('property_id')
+                       ->orderBy('floor')
+                       ->orderBy('room_number')
+                       ->paginate(20)
+                       ->withQueryString();
+
+        // 物件一覧（チェックボックス用）
+        $properties = Property::where('department', DepartmentCode::Tenant)
+            ->orderBy('id')
+            ->get(['id', 'name']);
+
+        // チェックボックス用の物件ID配列（@json用に事前整形）
+        $propertyIdsForJs = $properties->pluck('id')->map(function ($id) {
+            return (string) $id;
+        })->values()->toArray();
+
+        return view('tenant.units.index', compact('units', 'properties', 'propertyIdsForJs'));
+    }
+
     /**
      * 区画登録フォーム
      * Route: GET /tenant/properties/{property}/units/create

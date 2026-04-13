@@ -160,6 +160,10 @@ Route::middleware(['auth', 'password.change'])->group(function () {
         |------------------------------------------------------------------
         */
 
+        // 部屋一覧（全ロール閲覧可）
+        Route::get('/units', [\App\Http\Controllers\Tenant\UnitController::class, 'index'])
+            ->name('tenant.units.index');
+
         // 区画登録（経営層+管理者）— 物件配下
         Route::middleware('role:executive,manager')->group(function () {
             Route::get('/properties/{property}/units/create', [\App\Http\Controllers\Tenant\UnitController::class, 'create'])
