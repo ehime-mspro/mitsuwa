@@ -80,7 +80,7 @@ class InquiryController extends Controller
                            ->withQueryString();
 
         $properties = Property::where('department', DepartmentCode::Tenant)
-            ->orderBy('operation_status')->orderBy('name')
+            ->orderBy('operation_status')->orderBy('id')
             ->get(['id', 'name', 'operation_status']);
 
         return view('tenant.inquiries.index', compact('inquiries', 'properties'));
@@ -94,7 +94,7 @@ class InquiryController extends Controller
         $nextNumber = $this->generateInquiryNumber();
 
         $properties = Property::where('department', DepartmentCode::Tenant)
-            ->orderBy('operation_status')->orderBy('name')
+            ->orderBy('operation_status')->orderBy('id')
             ->get(['id', 'name', 'code', 'operation_status']);
 
         // 全区画（空室・商談中のみ）— 物件ごとにAlpine.jsでフィルタ
@@ -237,7 +237,7 @@ class InquiryController extends Controller
         $inquiry->load(['property', 'units', 'customer']);
 
         $properties = Property::where('department', DepartmentCode::Tenant)
-            ->orderBy('operation_status')->orderBy('name')
+            ->orderBy('operation_status')->orderBy('id')
             ->get(['id', 'name', 'code', 'operation_status']);
 
         $allUnits = $this->buildVacantUnitOptions($properties, $inquiry);

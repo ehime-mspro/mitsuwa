@@ -79,7 +79,7 @@ class InvestmentController extends Controller
 
         // フィルター用データ
         $properties = Property::where('department', DepartmentCode::Tenant)
-            ->orderBy('operation_status')->orderBy('name')
+            ->orderBy('operation_status')->orderBy('id')
             ->get(['id', 'name', 'operation_status']);
 
         return view('tenant.investments.index', compact('investments', 'properties'));
@@ -93,7 +93,7 @@ class InvestmentController extends Controller
         $nextNumber = $this->generateInvestmentNumber();
 
         $properties = Property::where('department', DepartmentCode::Tenant)
-            ->orderBy('operation_status')->orderBy('name')
+            ->orderBy('operation_status')->orderBy('id')
             ->get(['id', 'name', 'code', 'operation_status']);
 
         // 全区画（物件ごと）— ラベルをController側で整形
@@ -114,7 +114,7 @@ class InvestmentController extends Controller
             'unit_id'          => 'required|exists:units,id',
             'pattern'          => 'required|in:' . implode(',', array_column(InvestmentPattern::cases(), 'value')),
             'status'           => 'required|in:planning,in_progress,completed',
-            'description'      => 'required|string|max:5000',
+            'description'      => 'nullable|string|max:5000',
             'contractor_name'  => 'nullable|string|max:200',
             'start_date'       => 'nullable|date',
             'end_date'         => 'nullable|date|after_or_equal:start_date',
@@ -146,7 +146,7 @@ class InvestmentController extends Controller
                 'unit_id'          => $validated['unit_id'],
                 'pattern'          => $validated['pattern'],
                 'status'           => $validated['status'],
-                'description'      => $validated['description'],
+                'description'      => $validated['description'] ?? '',
                 'contractor_name'  => $validated['contractor_name'] ?? null,
                 'start_date'       => $validated['start_date'] ?? null,
                 'end_date'         => $validated['end_date'] ?? null,
@@ -227,7 +227,7 @@ class InvestmentController extends Controller
         $investment->load(['property', 'unit', 'details']);
 
         $properties = Property::where('department', DepartmentCode::Tenant)
-            ->orderBy('operation_status')->orderBy('name')
+            ->orderBy('operation_status')->orderBy('id')
             ->get(['id', 'name', 'code', 'operation_status']);
 
         $allUnits = $this->buildUnitOptions($properties);
@@ -256,7 +256,7 @@ class InvestmentController extends Controller
             'unit_id'          => 'required|exists:units,id',
             'pattern'          => 'required|in:' . implode(',', array_column(InvestmentPattern::cases(), 'value')),
             'status'           => 'required|in:' . implode(',', array_column(InvestmentStatus::cases(), 'value')),
-            'description'      => 'required|string|max:5000',
+            'description'      => 'nullable|string|max:5000',
             'contractor_name'  => 'nullable|string|max:200',
             'start_date'       => 'nullable|date',
             'end_date'         => 'nullable|date|after_or_equal:start_date',
@@ -286,7 +286,7 @@ class InvestmentController extends Controller
                 'unit_id'         => $validated['unit_id'],
                 'pattern'         => $validated['pattern'],
                 'status'          => $validated['status'],
-                'description'     => $validated['description'],
+                'description'     => $validated['description'] ?? '',
                 'contractor_name' => $validated['contractor_name'] ?? null,
                 'start_date'      => $validated['start_date'] ?? null,
                 'end_date'        => $validated['end_date'] ?? null,

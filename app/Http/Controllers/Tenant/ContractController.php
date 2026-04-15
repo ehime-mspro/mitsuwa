@@ -63,7 +63,7 @@ class ContractController extends Controller
         // 物件セレクトボックス用
         $properties = Property::where('department', DepartmentCode::Tenant)
             ->orderBy('operation_status')
-            ->orderBy('name')
+            ->orderBy('id')
             ->get(['id', 'name', 'operation_status']);
 
         return view('tenant.contracts.index', compact('contracts', 'properties'));
@@ -80,7 +80,7 @@ class ContractController extends Controller
         // 物件（optgroup用に稼働状態でグループ化）
         $properties = Property::where('department', DepartmentCode::Tenant)
             ->orderBy('operation_status')
-            ->orderBy('name')
+            ->orderBy('id')
             ->get(['id', 'name', 'code', 'operation_status']);
 
         // 顧客（Ajax検索に移行。バリデーションエラー時の復元用）
@@ -116,7 +116,7 @@ class ContractController extends Controller
         $validated = $request->validate([
             'property_id'      => 'required|exists:properties,id',
             'unit_id'          => 'required|exists:units,id',
-            'customer_id'      => 'required|exists:customers,id',
+            'customer_id'      => 'nullable|exists:customers,id',
             'store_name'       => 'nullable|string|max:200',
             'contract_date'    => 'required|date',
             'rent_start_date'  => 'nullable|date',

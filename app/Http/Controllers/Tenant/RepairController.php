@@ -65,7 +65,7 @@ class RepairController extends Controller
                          ->withQueryString();
 
         $properties = Property::where('department', DepartmentCode::Tenant)
-            ->orderBy('operation_status')->orderBy('name')
+            ->orderBy('operation_status')->orderBy('id')
             ->get(['id', 'name', 'operation_status']);
 
         return view('tenant.repairs.index', compact('repairs', 'properties'));
@@ -77,7 +77,7 @@ class RepairController extends Controller
     public function create()
     {
         $properties = Property::where('department', DepartmentCode::Tenant)
-            ->orderBy('operation_status')->orderBy('name')
+            ->orderBy('operation_status')->orderBy('id')
             ->get(['id', 'name', 'code', 'operation_status']);
 
         $allUnits = Unit::whereIn('property_id', $properties->pluck('id'))
@@ -159,7 +159,7 @@ class RepairController extends Controller
         $repair->load(['property', 'unit']);
 
         $properties = Property::where('department', DepartmentCode::Tenant)
-            ->orderBy('operation_status')->orderBy('name')
+            ->orderBy('operation_status')->orderBy('id')
             ->get(['id', 'name', 'code', 'operation_status']);
 
         $allUnits = Unit::whereIn('property_id', $properties->pluck('id'))

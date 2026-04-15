@@ -121,7 +121,7 @@
                            class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none">
                 </div>
                 <div class="sm:col-span-2">
-                    <label class="block text-sm font-semibold text-gray-700 mb-1">工事概要<span class="text-red-600 ml-0.5">*</span></label>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">工事概要</label>
                     <textarea name="description" rows="3"
                               class="form-textarea w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none resize-y min-h-[80px]">{{ old('description', $investment->description) }}</textarea>
                 </div>
