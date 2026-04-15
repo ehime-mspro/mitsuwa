@@ -92,20 +92,20 @@
         </div>
         <div class="scroll-hint at-start">
             <div class="scroll-hint-inner">
-                <table class="w-full border-collapse" style="table-layout: fixed; min-width: 1300px;">
+                <table class="w-full border-collapse" style="table-layout: fixed; min-width: 1500px;">
                     <colgroup>
-                        <col style="width: 13%">{{-- 物件名 --}}
-                        <col style="width: 6%"> {{-- 部屋名 --}}
-                        <col style="width: 6%"> {{-- 面積 --}}
-                        <col style="width: 7%"> {{-- ステータス --}}
-                        <col style="width: 10%">{{-- 家賃 --}}
-                        <col style="width: 10%">{{-- 共益費 --}}
-                        <col style="width: 10%">{{-- ゴミ代 --}}
-                        <col style="width: 10%">{{-- 駆除代 --}}
-                        <col style="width: 10%">{{-- 月額合計 --}}
-                        <col style="width: 10%">{{-- 敷金 --}}
-                        <col style="width: 5%"> {{-- 店舗名 --}}
-                        <col style="width: 3%"> {{-- 操作 --}}
+                        <col style="width: 200px">{{-- 物件名 --}}
+                        <col style="width: 80px"> {{-- 部屋名 --}}
+                        <col style="width: 80px"> {{-- 面積 --}}
+                        <col style="width: 100px">{{-- ステータス --}}
+                        <col style="width: 120px">{{-- 家賃 --}}
+                        <col style="width: 120px">{{-- 共益費 --}}
+                        <col style="width: 120px">{{-- ゴミ代 --}}
+                        <col style="width: 120px">{{-- 駆除代 --}}
+                        <col style="width: 120px">{{-- 月額合計 --}}
+                        <col style="width: 120px">{{-- 敷金 --}}
+                        <col style="width: 160px">{{-- 店舗名 --}}
+                        <col style="width: 80px"> {{-- 操作 --}}
                     </colgroup>
                     <thead>
                         <tr>
@@ -119,7 +119,7 @@
                             <th class="text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap" style="padding: 14px 20px; text-align: center;">駆除代</th>
                             <th class="text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap" style="padding: 14px 20px; text-align: center;">月額合計</th>
                             <th class="text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap" style="padding: 14px 20px; text-align: center;">敷金</th>
-                            <th class="text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap" style="padding: 14px 20px; text-align: left;">店舗名</th>
+                            <th class="text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap" style="padding: 14px 20px 14px 36px; text-align: left;">店舗名</th>
                             <th class="text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap" style="padding: 14px 20px; text-align: center;">操作</th>
                         </tr>
                     </thead>
@@ -179,7 +179,7 @@
                                     {{ number_format($unit->deposit) }}円
                                 </td>
                                 {{-- 店舗名 --}}
-                                <td class="border-b border-gray-200 text-sm text-gray-900 whitespace-nowrap" style="padding: 14px 20px;">
+                                <td class="border-b border-gray-200 text-sm text-gray-900 whitespace-nowrap" style="padding: 14px 20px 14px 36px;">
                                     @if($unit->activeContract)
                                         {{ $unit->activeContract->store_name ?? '—' }}
                                     @else

@@ -28,7 +28,7 @@
         </div>
         <div style="display: flex; gap: 8px; align-items: center;">
             <a href="{{ route('housing.properties.index') }}"
-               style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #6b7280; border: 1px solid #d1d5db; border-radius: 6px; text-decoration: none; background: #fff;">一覧に戻る</a>
+               style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #6b7280; border: 1px solid #d1d5db; border-radius: 6px; text-decoration: none; background: #fff;">建売物件一覧に戻る</a>
             <a href="{{ route('housing.properties.edit', $property) }}"
                style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #059669; border: 1px solid #059669; border-radius: 6px; text-decoration: none; background: #fff;">編集</a>
             <form method="POST" action="{{ route('housing.properties.destroy', $property) }}"

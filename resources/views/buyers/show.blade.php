@@ -15,13 +15,15 @@
             <span style="display: inline-block; padding: 4px 16px; border-radius: 4px; font-size: 14px; font-weight: 700; {{ $pivot->rank_badge_style }}">{{ $pivot->rank->label() }}</span>
         @endif
     </div>
-    <div style="display: flex; gap: 8px;">
+    <div style="display: flex; gap: 8px; align-items: center;">
+        <a href="{{ route("{$department}.customers.index") }}"
+           style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #6b7280; border: 1px solid #d1d5db; border-radius: 6px; text-decoration: none; background: #fff;">顧客一覧に戻る</a>
         <a href="{{ route("{$department}.customers.edit", $buyer) }}"
-           style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #059669; border: 1px solid #059669; border-radius: 4px; text-decoration: none; background: #fff;">編集</a>
+           style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #059669; border: 1px solid #059669; border-radius: 6px; text-decoration: none; background: #fff;">編集</a>
         <form method="POST" action="{{ route("{$department}.customers.destroy", $buyer) }}" onsubmit="return confirm('本当に削除しますか？');" style="display: inline;">
             @csrf
             @method('DELETE')
-            <button type="submit" style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #dc2626; border: 1px solid #dc2626; border-radius: 4px; cursor: pointer; background: #fff;">削除</button>
+            <button type="submit" style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #dc2626; border: 1px solid #dc2626; border-radius: 6px; cursor: pointer; background: #fff;">削除</button>
         </form>
     </div>
 </div>

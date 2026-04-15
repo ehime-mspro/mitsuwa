@@ -14,31 +14,22 @@
 @section('content')
 <div x-data="{ activeTab: 'contracts', showDeleteModal: false }">
 
-    {{-- 戻るリンク --}}
-    <a href="{{ route('tenant.properties.index') }}"
-       class="inline-flex items-center gap-1 text-sm text-gray-600 hover:text-emerald-600 transition-colors mb-3">
-        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-        物件一覧に戻る
-    </a>
-
     {{-- ページヘッダー --}}
     <div class="flex flex-wrap items-center gap-3 mb-4">
         <h1 class="text-lg font-bold text-gray-900">{{ $property->name }}</h1>
         <span class="badge {{ $property->operation_status->badgeClass() }}">{{ $property->operation_status->label() }}</span>
-        @if(auth()->user()->role->isManagerOrAbove())
-            <div class="flex gap-1.5 ml-auto">
+        <div style="display: flex; gap: 8px; align-items: center; margin-left: auto;">
+            <a href="{{ route('tenant.properties.index') }}"
+               style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #6b7280; border: 1px solid #d1d5db; border-radius: 6px; text-decoration: none; background: #fff;">物件一覧に戻る</a>
+            @if(auth()->user()->role->isManagerOrAbove())
                 <a href="{{ route('tenant.properties.edit', $property) }}"
-                   class="px-4 py-2 bg-white border border-gray-300 rounded-md text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-                    編集
-                </a>
+                   style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #059669; border: 1px solid #059669; border-radius: 6px; text-decoration: none; background: #fff;">編集</a>
                 @if(auth()->user()->role->isExecutive())
                     <button @click="showDeleteModal = true"
-                            class="px-4 py-2 bg-white border border-red-200 rounded-md text-sm text-red-600 hover:bg-red-50 transition-colors cursor-pointer">
-                        削除
-                    </button>
+                            style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #dc2626; border: 1px solid #dc2626; border-radius: 6px; background: #fff; cursor: pointer;">削除</button>
                 @endif
-            </div>
-        @endif
+            @endif
+        </div>
     </div>
 
     {{-- 基本情報 --}}
@@ -303,7 +294,7 @@
                                                 @endphp
                                                 {{ $unitLabel }}
                                             </td>
-                                            <td class="px-4 py-2.5 border-b border-gray-200 whitespace-nowrap text-gray-900">{{ $contract->customer->name }}</td>
+                                            <td class="px-4 py-2.5 border-b border-gray-200 whitespace-nowrap text-gray-900">{{ $contract->customer?->name ?? '—' }}</td>
                                             <td class="px-4 py-2.5 border-b border-gray-200 whitespace-nowrap text-gray-900">{{ $contract->store_name ?? '—' }}</td>
                                             <td class="px-4 py-2.5 border-b border-gray-200 whitespace-nowrap text-gray-900 font-semibold">¥{{ number_format($contract->monthly_total) }}</td>
                                         </tr>
@@ -349,7 +340,7 @@
                                                 @endphp
                                                 {{ $unitLabel }}
                                             </td>
-                                            <td class="px-4 py-2.5 border-b border-gray-200 whitespace-nowrap text-gray-900">{{ $contract->customer->name }}</td>
+                                            <td class="px-4 py-2.5 border-b border-gray-200 whitespace-nowrap text-gray-900">{{ $contract->customer?->name ?? '—' }}</td>
                                             <td class="px-4 py-2.5 border-b border-gray-200 whitespace-nowrap text-gray-900">{{ $contract->store_name ?? '—' }}</td>
                                             <td class="px-4 py-2.5 border-b border-gray-200 whitespace-nowrap text-gray-900 font-semibold">¥{{ number_format($contract->monthly_total) }}</td>
                                             <td class="px-4 py-2.5 border-b border-gray-200 whitespace-nowrap text-gray-700">{{ $contract->termination_reason ? \Illuminate\Support\Str::limit($contract->termination_reason, 30) : '—' }}</td>

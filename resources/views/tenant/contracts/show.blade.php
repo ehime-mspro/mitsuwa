@@ -14,25 +14,18 @@
 @section('content')
 <div x-data="{ activeTab: 'revisions' }">
 
-    {{-- 戻るリンク --}}
-    <a href="{{ route('tenant.contracts.index') }}"
-       class="inline-flex items-center gap-1 text-sm text-gray-600 hover:text-emerald-600 transition-colors mb-3">
-        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-        契約一覧に戻る
-    </a>
-
     {{-- ページヘッダー --}}
     <div class="flex flex-wrap items-center gap-3 mb-4">
         <h1 class="text-lg font-bold text-gray-900">契約: {{ $contract->contract_number }}</h1>
         <span class="badge {{ $contract->status->badgeClass() }}">{{ $contract->status->label() }}</span>
-        @if(auth()->user()->role->isManagerOrAbove() && $contract->isActive())
-            <div class="flex gap-1.5 ml-auto">
+        <div style="display: flex; gap: 8px; align-items: center; margin-left: auto;">
+            <a href="{{ route('tenant.contracts.index') }}"
+               style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #6b7280; border: 1px solid #d1d5db; border-radius: 6px; text-decoration: none; background: #fff;">契約一覧に戻る</a>
+            @if(auth()->user()->role->isManagerOrAbove() && $contract->isActive())
                 <a href="{{ route('tenant.contracts.edit', $contract) }}"
-                   class="px-4 py-2 bg-white border border-gray-300 rounded-md text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-                    編集
-                </a>
-            </div>
-        @endif
+                   style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #059669; border: 1px solid #059669; border-radius: 6px; text-decoration: none; background: #fff;">編集</a>
+            @endif
+        </div>
     </div>
 
     {{-- 家賃発生日未設定の警告 --}}
@@ -68,7 +61,7 @@
             </div>
             <div>
                 <div class="text-xs text-gray-500 mb-0.5">テナント</div>
-                <div class="text-sm font-medium text-gray-900">{{ $contract->customer->name }}</div>
+                <div class="text-sm font-medium text-gray-900">{{ $contract->customer->name ?? '未登録' }}</div>
             </div>
             <div>
                 <div class="text-xs text-gray-500 mb-0.5">店舗名</div>

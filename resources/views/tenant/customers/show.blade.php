@@ -14,12 +14,6 @@
 @section('content')
 <div x-data="{ showDeleteModal: false, contractTab: 'active' }">
 
-    <a href="{{ route('tenant.customers.index') }}"
-       class="inline-flex items-center gap-1 text-sm text-gray-600 hover:text-emerald-600 transition-colors mb-3">
-        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-        顧客一覧に戻る
-    </a>
-
     {{-- ヘッダー --}}
     <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-5">
         <div>
@@ -38,16 +32,18 @@
                 <div class="text-sm text-gray-400 mt-0.5">{{ $customer->name_kana }}</div>
             @endif
         </div>
-        @if(auth()->user()->role->isManagerOrAbove())
-            <div class="flex gap-2">
+        <div style="display: flex; gap: 8px; align-items: center;">
+            <a href="{{ route('tenant.customers.index') }}"
+               style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #6b7280; border: 1px solid #d1d5db; border-radius: 6px; text-decoration: none; background: #fff;">顧客一覧に戻る</a>
+            @if(auth()->user()->role->isManagerOrAbove())
                 <a href="{{ route('tenant.customers.edit', $customer) }}"
-                   class="px-4 py-2 bg-white border border-gray-300 rounded-md text-sm text-gray-700 hover:bg-gray-50 transition-colors">編集</a>
+                   style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #059669; border: 1px solid #059669; border-radius: 6px; text-decoration: none; background: #fff;">編集</a>
                 @if(auth()->user()->role->isExecutive() && ! $customer->hasContracts())
                     <button @click="showDeleteModal = true"
-                            class="px-4 py-2 bg-white border border-red-200 rounded-md text-sm text-red-600 hover:bg-red-50 transition-colors cursor-pointer">削除</button>
+                            style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #dc2626; border: 1px solid #dc2626; border-radius: 6px; background: #fff; cursor: pointer;">削除</button>
                 @endif
-            </div>
-        @endif
+            @endif
+        </div>
     </div>
 
     {{-- フラッシュメッセージ --}}

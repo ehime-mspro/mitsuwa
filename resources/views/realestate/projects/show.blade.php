@@ -20,19 +20,19 @@
             <h1 class="text-lg font-bold text-gray-900">{{ $project->project_code }}</h1>
             <span class="badge {{ $project->status->badgeClass() }}">{{ $project->status->label() }}</span>
         </div>
-        <div class="flex gap-2">
+        <div style="display: flex; gap: 8px; align-items: center;">
+            <a href="{{ route('realestate.projects.index') }}"
+               style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #6b7280; border: 1px solid #d1d5db; border-radius: 6px; text-decoration: none; background: #fff;">分譲地PJ一覧に戻る</a>
             @if(auth()->user()->role->isManagerOrAbove())
                 <a href="{{ route('realestate.projects.edit', $project) }}"
-                   class="px-3.5 py-1.5 bg-white border-2 border-gray-400 text-gray-700 text-sm font-semibold rounded-md hover:bg-gray-50 transition-colors"
-                   style="font-size: 13px;">編集</a>
+                   style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #059669; border: 1px solid #059669; border-radius: 6px; text-decoration: none; background: #fff;">編集</a>
             @endif
             @if(auth()->user()->role->isExecutive())
                 <form method="POST" action="{{ route('realestate.projects.destroy', $project) }}"
                       onsubmit="return confirm('この分譲地PJを削除しますか？ 原価・区画・図面データも全て削除されます。')">
                     @csrf @method('DELETE')
                     <button type="submit"
-                            class="px-3.5 py-1.5 bg-red-600 text-white font-semibold rounded-md hover:bg-red-700 transition-colors cursor-pointer"
-                            style="font-size: 12px;">削除</button>
+                            style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #dc2626; border: 1px solid #dc2626; border-radius: 6px; background: #fff; cursor: pointer;">削除</button>
                 </form>
             @endif
         </div>
