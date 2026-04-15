@@ -104,22 +104,16 @@
                 </div>
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1">区画<span class="text-red-600 ml-0.5">*</span></label>
-                    <select name="unit_id" x-model="unitId" @change="onUnitChange()"
+                    <select name="unit_id" x-model="unitId" @change="onUnitChange()" x-ref="unitSelect"
                             class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none cursor-pointer">
                         <option value="">— 物件を先に選択 —</option>
-                        <template x-for="unit in units" :key="unit.id">
-                            <option :value="unit.id"
-                                    :selected="unit.id == unitIdOld"
-                                    x-text="unit.display_name + '（' + unit.status_label + '）' + unit.area_tsubo + '坪'">
-                            </option>
-                        </template>
                     </select>
                     <p class="text-xs text-gray-500 mt-1" x-show="!propertyId">物件を選択すると空室・商談中の区画が表示されます</p>
                     <p class="text-xs text-gray-500 mt-1" x-show="propertyId && !loadingUnits && units.length === 0" x-cloak>空室・商談中の区画がありません</p>
                     <p class="text-xs text-gray-500 mt-1" x-show="loadingUnits" x-cloak>読み込み中...</p>
                 </div>
                 <div class="sm:col-span-2">
-                    <label class="block text-sm font-semibold text-gray-700 mb-1">テナント（顧客）<span class="text-red-600 ml-0.5">*</span></label>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">テナント（顧客）</label>
                     <input type="hidden" name="customer_id" :value="customerId">
 
                     {{-- 未選択時: 検索入力 --}}
@@ -161,7 +155,7 @@
                     </div>
 
                     <p class="text-xs text-gray-500 mt-1">
-                        顧客が未登録の場合 →
+                        未選択でも登録できます（後から編集画面で設定可能）。顧客が未登録の場合 →
                         <a href="{{ route('tenant.customers.create') }}" target="_blank" class="text-emerald-600 hover:underline font-semibold">顧客登録</a>（別タブで開きます）
                     </p>
                 </div>
@@ -170,17 +164,11 @@
                 <div class="sm:col-span-2 border-t border-dashed border-gray-300 pt-3 mt-1">
                     <label class="block text-sm font-semibold text-gray-700 mb-1">関連問合せ（任意）</label>
                     <input type="hidden" name="inquiry_id" :value="inquiryId">
-                    <select x-model="inquiryId"
+                    <select x-model="inquiryId" x-ref="inquirySelect"
                             :disabled="!propertyId"
                             class="form-input w-full h-[40px] px-3 border rounded-md text-sm focus:outline-none cursor-pointer"
                             :class="!propertyId ? 'border-gray-300 bg-gray-50 text-gray-400 cursor-not-allowed' : (isPresetInquiry && inquiryId ? 'border-emerald-500 bg-emerald-50 text-gray-800' : 'border-gray-300 bg-white text-gray-800 focus:border-emerald-500')">
                         <option value="">— なし —</option>
-                        <template x-for="inq in inquiries" :key="inq.id">
-                            <option :value="inq.id"
-                                    :selected="inq.id == inquiryId"
-                                    x-text="inq.inquiry_number + ' ' + inq.contact_name + (inq.company_name ? '（' + inq.company_name + '）' : '') + ' [' + inq.status_label + ']'">
-                            </option>
-                        </template>
                     </select>
                     <p x-show="!propertyId" class="text-xs text-gray-500 mt-1">物件を選択すると、フォロー・保留中の問合せが表示されます</p>
                     <p x-show="propertyId && !loadingInquiries && inquiries.length > 0 && !isPresetInquiry" x-cloak class="text-xs text-gray-500 mt-1">選択すると、契約保存時に問合せが自動で「成約」に変更されます</p>
@@ -484,16 +472,16 @@ function contractCreateForm() {
         unitIdOld: '{{ old('unit_id', '') }}',
         units: [],
         loadingUnits: false,
-        rent: {{ old('rent', "''") }},
-        commonFee: {{ old('common_fee', "''") }},
-        garbageFee: {{ old('garbage_fee', "''") }},
-        pestControlFee: {{ old('pest_control_fee', "''") }},
-        deposit: {{ old('deposit', "''") }},
+        rent: {!! json_encode(old('rent', '')) !!},
+        commonFee: {!! json_encode(old('common_fee', '')) !!},
+        garbageFee: {!! json_encode(old('garbage_fee', '')) !!},
+        pestControlFee: {!! json_encode(old('pest_control_fee', '')) !!},
+        deposit: {!! json_encode(old('deposit', '')) !!},
 
         // 初月家賃
         rentStartDate: '{{ old('rent_start_date', '') }}',
         initialMonthType: '{{ old('initial_month_type', 'full') }}',
-        manualInitialAmount: {{ old('initial_month_amount', "''") }},
+        manualInitialAmount: {!! json_encode(old('initial_month_amount', '')) !!},
 
         inquiryId: '{{ old('inquiry_id', ($presetInquiry?->id ?? request('inquiry_id', ''))) }}',
         inquiries: [],
@@ -547,23 +535,48 @@ function contractCreateForm() {
             this.customerQuery = '';
         },
 
+        // 区画データを取得してセレクトボックスを描画
         fetchUnits: function() {
             if (!this.propertyId) {
                 this.units = [];
+                this.renderUnits();
                 return;
             }
             var self = this;
             self.loadingUnits = true;
             fetch('{{ url("/api/tenant/properties") }}/' + self.propertyId + '/vacant-units')
                 .then(function(res) { return res.json(); })
-                .then(function(data) { self.units = data; })
-                .catch(function() { self.units = []; })
+                .then(function(data) { self.units = data; self.renderUnits(); })
+                .catch(function(e) { console.error('区画取得エラー:', e); self.units = []; self.renderUnits(); })
                 .finally(function() { self.loadingUnits = false; });
         },
 
+        // 区画セレクトのオプションをDOM操作で描画（<template x-for>はselect内で不安定なため）
+        renderUnits: function() {
+            var sel = this.$refs.unitSelect;
+            if (!sel) return;
+            // 最初のoption（プレースホルダー）だけ残して削除
+            while (sel.options.length > 1) { sel.remove(1); }
+            for (var i = 0; i < this.units.length; i++) {
+                var u = this.units[i];
+                var opt = new Option(
+                    u.display_name + '（' + u.status_label + '）' + u.area_tsubo + '坪',
+                    u.id
+                );
+                if (String(u.id) === String(this.unitIdOld)) { opt.selected = true; }
+                sel.add(opt);
+            }
+            // バリデーションエラー後の復元
+            if (this.unitIdOld && this.units.length > 0) {
+                this.unitId = this.unitIdOld;
+            }
+        },
+
+        // 問合せデータを取得してセレクトボックスを描画
         fetchInquiries: function() {
             if (!this.propertyId) {
                 this.inquiries = [];
+                this.renderInquiries();
                 return;
             }
             var self = this;
@@ -594,9 +607,27 @@ function contractCreateForm() {
                             }
                         }
                     @endif
+
+                    self.renderInquiries();
                 })
-                .catch(function() { self.inquiries = []; })
+                .catch(function(e) { console.error('問合せ取得エラー:', e); self.inquiries = []; self.renderInquiries(); })
                 .finally(function() { self.loadingInquiries = false; });
+        },
+
+        // 問合せセレクトのオプションをDOM操作で描画
+        renderInquiries: function() {
+            var sel = this.$refs.inquirySelect;
+            if (!sel) return;
+            while (sel.options.length > 1) { sel.remove(1); }
+            for (var i = 0; i < this.inquiries.length; i++) {
+                var inq = this.inquiries[i];
+                var label = inq.inquiry_number + ' ' + inq.contact_name
+                    + (inq.company_name ? '（' + inq.company_name + '）' : '')
+                    + ' [' + inq.status_label + ']';
+                var opt = new Option(label, inq.id);
+                if (String(inq.id) === String(this.inquiryId)) { opt.selected = true; }
+                sel.add(opt);
+            }
         },
 
         onPropertyChange: function() {
