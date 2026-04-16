@@ -16,15 +16,18 @@
     .card { background: white; border: 1px solid #E5E7EB; border-radius: 8px; }
     .card-body { padding: 20px; }
 
-    /* サマリーグリッド: 5カラム（Flexboxで確実に均等分割） */
+    /* サマリーグリッド: 両端配置（space-between）+ 左右に少し余白 */
     .summary-grid {
         display: flex;
-        gap: 24px;
+        justify-content: space-between;
+        gap: 16px;
         width: 100%;
         align-items: flex-start;
         margin-bottom: 12px;
+        padding: 0 16px;
+        box-sizing: border-box;
     }
-    .summary-cell { flex: 1 1 0; min-width: 0; }
+    .summary-cell { flex: 0 1 auto; min-width: 0; }
     .summary-cell .label { font-size: 12px; color: #6B7280; margin-bottom: 2px; }
     .summary-cell .value { font-size: 16px; font-weight: 700; color: #111827; }
     .summary-cell .value.profit { color: #047857; font-weight: 700; }
