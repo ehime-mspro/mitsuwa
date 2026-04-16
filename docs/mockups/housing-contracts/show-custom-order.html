@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>松前町筒井邸 新築工事 — 契約詳細</title>
+<title>筒井邸 新築工事 — 契約詳細</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
 <style>
@@ -79,7 +79,7 @@
     }
     .dl-grid .no-border-bottom { border-bottom: none; }
     .dl-grid .profit-cell { color: #047857; font-weight: 700; }
-    .dl-grid .sub-rate { font-size: 11px; color: #6B7280; font-weight: 400; margin-left: 4px; }
+    .dl-grid .sub-rate { font-size: 12px; color: #374151; font-weight: 600; margin-left: 4px; }
     .dl-grid .muted { color: #9CA3AF; font-weight: 400; }
     .dl-grid .span3 { grid-column: span 3; }
 
@@ -148,13 +148,14 @@
         ホーム <span class="sep">›</span> 住宅事業 <span class="sep">›</span>
         <a href="index.html">契約管理</a>
         <span class="sep">›</span>
-        <span style="color: #4B5563;" x-text="pattern === 'customer_land' ? '今治市大西町 長尾邸 新築工事' : '松前町筒井邸 新築工事'"></span>
+        <span style="color: #4B5563;" x-text="pattern === 'customer_land' ? '長尾邸 新築工事' : '筒井邸 新築工事'"></span>
     </div>
 
     <!-- モックパターン切替（本番では削除） -->
     <div class="mock-toggle">
         <strong>【モック用切替】</strong>
-        <label><input type="radio" name="pattern" value="normal" x-model="pattern"> 通常パターン（分譲地/仕入れ土地）</label>
+        <label><input type="radio" name="pattern" value="normal" x-model="pattern"> 仕入れ土地パターン</label>
+        <label><input type="radio" name="pattern" value="subdivision" x-model="pattern"> 分譲地パターン</label>
         <label><input type="radio" name="pattern" value="customer_land" x-model="pattern"> 顧客所有地パターン</label>
     </div>
 
@@ -162,7 +163,7 @@
     <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;">
         <div style="display: flex; align-items: center; gap: 12px;">
             <h1 style="font-size: 18px; font-weight: 700; color: #111827; margin: 0;"
-                x-text="pattern === 'customer_land' ? '今治市大西町 長尾邸 新築工事' : '松前町筒井邸 新築工事'"></h1>
+                x-text="pattern === 'customer_land' ? '長尾邸 新築工事' : '筒井邸 新築工事'"></h1>
             <span class="badge badge-custom">注文住宅</span>
         </div>
         <div style="display: flex; gap: 8px; align-items: center;">
@@ -198,24 +199,27 @@
             <div class="section-title"><span class="bar"></span><h2>基本情報</h2></div>
             <dl class="dl-grid">
                 <dt>案件名</dt>
-                <dd><a href="#" style="color: #059669; text-decoration: none;" x-text="pattern === 'customer_land' ? '今治市大西町 長尾邸 新築工事' : '松前町筒井邸 新築工事'"></a></dd>
-                <dt>注文コード</dt>
-                <dd x-text="pattern === 'customer_land' ? 'HC-2025-008' : 'HC-2025-015'"></dd>
-
+                <dd><a href="#" style="color: #059669; text-decoration: none;" x-text="pattern === 'customer_land' ? '長尾邸 新築工事' : '筒井邸 新築工事'"></a></dd>
                 <dt>顧客名</dt>
                 <dd x-text="pattern === 'customer_land' ? '長尾 美智子 様' : '筒井 和彦 様'"></dd>
                 <dt>契約日</dt>
                 <dd x-text="pattern === 'customer_land' ? '2025/08/18' : '2025/11/05'"></dd>
 
-                <dt>引渡予定日</dt>
-                <dd x-text="pattern === 'customer_land' ? '2026/03/25' : '2026/06/30'"></dd>
                 <dt>担当</dt>
                 <dd x-text="pattern === 'customer_land' ? '佐藤' : '鈴木'"></dd>
 
-                <dt class="no-border-bottom">土地源</dt>
-                <dd class="no-border-bottom" x-text="pattern === 'customer_land' ? '顧客所有地' : '仕入れ土地'"></dd>
-                <dt class="no-border-bottom">消費税率</dt>
-                <dd class="no-border-bottom">10.00%</dd>
+                <dt class="no-border-bottom">建築土地</dt>
+                <dd class="no-border-bottom">
+                    <template x-if="pattern === 'customer_land'">
+                        <span>顧客所有地</span>
+                    </template>
+                    <template x-if="pattern === 'subdivision'">
+                        <a href="#" style="color: #059669; text-decoration: none;">松山市居相町分譲地 A号地</a>
+                    </template>
+                    <template x-if="pattern === 'normal'">
+                        <a href="#" style="color: #059669; text-decoration: none;">松前町筒井 仕入れ案件</a>
+                    </template>
+                </dd>
             </dl>
         </div>
     </div>
@@ -225,7 +229,7 @@
         <div class="card-body">
             <div class="section-title"><span class="bar"></span><h2>契約金額内訳</h2></div>
             <dl class="dl-grid">
-                <dt>土地販売価格（非課税）</dt>
+                <dt>土地販売価格</dt>
                 <dd>
                     <template x-if="pattern === 'customer_land'">
                         <span class="muted">— （顧客所有地）</span>
@@ -241,9 +245,6 @@
                 <dd x-text="pattern === 'customer_land' ? '1,800,000円' : '1,550,000円'"></dd>
                 <dt class="no-border-bottom" style="font-weight: 700; color: #111827;">税込合計</dt>
                 <dd class="no-border-bottom" style="font-weight: 700;" x-text="pattern === 'customer_land' ? '19,800,000円' : '25,550,000円'"></dd>
-
-                <dt class="no-border-bottom">契約額合計（税抜）</dt>
-                <dd class="no-border-bottom span3" style="font-weight: 600;" x-text="pattern === 'customer_land' ? '18,000,000円' : '24,000,000円'"></dd>
             </dl>
         </div>
     </div>
@@ -271,12 +272,12 @@
         </div>
     </div>
 
-    <!-- 粗利分析 -->
+    <!-- 粗利内訳 -->
     <div class="card">
         <div class="card-body">
-            <div class="section-title"><span class="bar"></span><h2>粗利分析</h2></div>
+            <div class="section-title"><span class="bar"></span><h2>粗利内訳</h2></div>
             <dl class="dl-grid">
-                <dt>土地粗利</dt>
+                <dt>土地粗利額</dt>
                 <dd>
                     <template x-if="pattern === 'customer_land'">
                         <span class="muted">— （顧客所有地）</span>
@@ -285,18 +286,17 @@
                         <span class="profit-cell">5,000,000円<span class="sub-rate">（58.8%）</span></span>
                     </template>
                 </dd>
-                <dt>建物粗利</dt>
+                <dt>建物粗利額</dt>
                 <dd class="profit-cell">
                     <span x-text="pattern === 'customer_land' ? '1,700,000円' : '2,800,000円'"></span>
                     <span class="sub-rate" x-text="pattern === 'customer_land' ? '（9.4%）' : '（18.1%）'"></span>
                 </dd>
 
-                <dt class="no-border-bottom" style="font-weight: 700; color: #111827;">合計粗利</dt>
+                <dt class="no-border-bottom" style="font-weight: 700; color: #111827;">合計粗利額</dt>
                 <dd class="no-border-bottom profit-cell">
                     <span x-text="pattern === 'customer_land' ? '1,700,000円' : '7,800,000円'"></span>
-                    <span class="sub-rate" x-text="pattern === 'customer_land' ? '（9.4%）' : '（32.5%）'"></span>
                 </dd>
-                <dt class="no-border-bottom">粗利率</dt>
+                <dt class="no-border-bottom">合計粗利率</dt>
                 <dd class="no-border-bottom" x-text="pattern === 'customer_land' ? '9.4%' : '32.5%'"></dd>
             </dl>
         </div>
@@ -307,59 +307,19 @@
         <div class="card-body">
             <div class="section-title"><span class="bar"></span><h2>物件情報</h2></div>
             <dl class="dl-grid">
-                <dt>注文コード</dt>
-                <dd x-text="pattern === 'customer_land' ? 'HC-2025-008' : 'HC-2025-015'"></dd>
                 <dt>住所</dt>
-                <dd x-text="pattern === 'customer_land' ? '愛媛県今治市大西町新町456-1' : '愛媛県伊予郡松前町筒井789-2'"></dd>
+                <dd class="span3" x-text="pattern === 'customer_land' ? '愛媛県今治市大西町新町456-1' : '愛媛県伊予郡松前町筒井789-2'"></dd>
 
                 <dt>土地面積</dt>
                 <dd x-text="pattern === 'customer_land' ? '185.50㎡（顧客所有）' : '155.80㎡'"></dd>
                 <dt>建物面積</dt>
                 <dd x-text="pattern === 'customer_land' ? '115.20㎡' : '112.40㎡'"></dd>
 
-                <dt>構造</dt>
-                <dd>木造2階建</dd>
-                <dt>階数</dt>
-                <dd>2階</dd>
-
-                <dt class="no-border-bottom">完成予定</dt>
-                <dd class="no-border-bottom" x-text="pattern === 'customer_land' ? '2026/03/10' : '2026/06/15'"></dd>
-                <dt class="no-border-bottom">引渡日</dt>
-                <dd class="no-border-bottom" x-text="pattern === 'customer_land' ? '2026/03/25' : '2026/06/30'"></dd>
+                <dt class="no-border-bottom">構造</dt>
+                <dd class="no-border-bottom">木造2階建</dd>
+                <dt class="no-border-bottom">階数</dt>
+                <dd class="no-border-bottom">2階</dd>
             </dl>
-        </div>
-    </div>
-
-    <!-- 進行ステータスバー -->
-    <div class="card">
-        <div class="card-body">
-            <div class="section-title"><span class="bar"></span><h2>進行ステータス</h2></div>
-
-            <!-- 通常パターン: 着工まで完了（ステップ5=着工がcurrent） -->
-            <div class="progress-bar" x-show="pattern !== 'customer_land'">
-                <div class="progress-step done"><div class="circle">1</div><div class="label">商談</div></div>
-                <div class="progress-step done"><div class="circle">2</div><div class="label">設計</div></div>
-                <div class="progress-step done"><div class="circle">3</div><div class="label">見積</div></div>
-                <div class="progress-step done"><div class="circle">4</div><div class="label">契約</div></div>
-                <div class="progress-step current"><div class="circle">5</div><div class="label">着工</div></div>
-                <div class="progress-step"><div class="circle">6</div><div class="label">完成</div></div>
-                <div class="progress-step"><div class="circle">7</div><div class="label">引渡し</div></div>
-            </div>
-
-            <!-- 顧客所有地パターン: 契約段階（ステップ4がcurrent） -->
-            <div class="progress-bar" x-show="pattern === 'customer_land'" style="display:none;">
-                <div class="progress-step done"><div class="circle">1</div><div class="label">商談</div></div>
-                <div class="progress-step done"><div class="circle">2</div><div class="label">設計</div></div>
-                <div class="progress-step done"><div class="circle">3</div><div class="label">見積</div></div>
-                <div class="progress-step current"><div class="circle">4</div><div class="label">契約</div></div>
-                <div class="progress-step"><div class="circle">5</div><div class="label">着工</div></div>
-                <div class="progress-step"><div class="circle">6</div><div class="label">完成</div></div>
-                <div class="progress-step"><div class="circle">7</div><div class="label">引渡し</div></div>
-            </div>
-
-            <div class="link-note">
-                ステータス変更は <a href="#">注文住宅ページ</a> へ
-            </div>
         </div>
     </div>
 
@@ -369,6 +329,26 @@
             <div class="section-title"><span class="bar"></span><h2>備考</h2></div>
             <p style="font-size: 13px; color: #374151; white-space: pre-wrap; margin: 0;"
                x-text="pattern === 'customer_land' ? '顧客所有の既存地に新築。建物請負契約のみ。解体工事は別途。' : '愛媛銀行住宅ローン利用。地鎮祭は2025/12/10実施予定。'"></p>
+        </div>
+    </div>
+
+    <!-- 登録情報 -->
+    <div class="card">
+        <div class="card-body">
+            <div class="section-title">
+                <span class="bar"></span>
+                <h2>登録情報</h2>
+            </div>
+            <dl class="dl-grid">
+                <dt>登録者</dt>
+                <dd>田中</dd>
+                <dt>登録日時</dt>
+                <dd x-text="pattern === 'customer_land' ? '2025/11/05 10:12' : '2025/11/15 16:48'"></dd>
+                <dt class="no-border-bottom">更新者</dt>
+                <dd class="no-border-bottom">田中</dd>
+                <dt class="no-border-bottom">更新日時</dt>
+                <dd class="no-border-bottom" x-text="pattern === 'customer_land' ? '2025/11/07 09:30' : '2025/11/18 11:22'"></dd>
+            </dl>
         </div>
     </div>
 
