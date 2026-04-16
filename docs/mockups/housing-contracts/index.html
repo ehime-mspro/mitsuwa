@@ -108,9 +108,9 @@
     /* テーブル */
     .table-wrap { background: white; border: 1px solid #E5E7EB; border-radius: 8px; overflow: hidden; }
     .scroll-x { overflow-x: auto; }
-    table.list-table { width: 100%; border-collapse: collapse; min-width: 1200px; }
+    table.list-table { width: 100%; border-collapse: collapse; min-width: 1400px; }
     table.list-table thead th {
-        padding: 10px 12px;
+        padding: 12px 16px;
         font-size: 11px;
         font-weight: 600;
         color: #4B5563;
@@ -119,16 +119,37 @@
         white-space: nowrap;
         text-align: center;
     }
-    table.list-table thead th.left { text-align: left; padding-left: 16px; }
+    table.list-table thead th.left { text-align: left; }
     table.list-table tbody td {
-        padding: 12px;
+        padding: 14px 16px;
         font-size: 14px;
         border-bottom: 1px solid #F3F4F6;
         white-space: nowrap;
     }
     table.list-table tbody td.center { text-align: center; }
-    table.list-table tbody td.right { text-align: right; padding-right: 16px; }
-    table.list-table tbody tr:hover { background: #F9FAFB; }
+    table.list-table tbody td.right { text-align: right; }
+    table.list-table tbody tr:hover td { background: #F9FAFB; }
+
+    /* Sticky列 */
+    table.list-table thead th.sticky-col,
+    table.list-table tbody td.sticky-col {
+        position: sticky;
+        z-index: 2;
+    }
+    table.list-table thead th.sticky-col {
+        background: #F9FAFB;
+        z-index: 3;
+    }
+    table.list-table tbody td.sticky-col {
+        background: white;
+    }
+    table.list-table tbody tr:hover td.sticky-col { background: #F9FAFB; }
+
+    /* 各Sticky列のleft値 */
+    .sticky-col-1 { left: 0; min-width: 100px; }
+    .sticky-col-2 { left: 100px; min-width: 90px; }
+    .sticky-col-3 { left: 190px; min-width: 220px; }
+    .sticky-col-4 { left: 410px; min-width: 140px; border-right: 2px solid #D1D5DB; }
     .link { color: #059669; font-weight: 500; text-decoration: none; }
     .link:hover { color: #047857; text-decoration: underline; }
     .muted { color: #9CA3AF; }
@@ -218,6 +239,10 @@
                 <div class="summary-cell">
                     <div class="label">契約額合計（税抜）</div>
                     <div class="value">128,500,000円</div>
+                    <div style="margin-top: 6px; padding-top: 6px; border-top: 1px solid #F3F4F6; font-size: 11px; color: #6B7280; line-height: 1.6;">
+                        <div>土地 68,500,000円</div>
+                        <div>建物 60,000,000円</div>
+                    </div>
                 </div>
                 <div class="summary-cell">
                     <div class="label">土地粗利合計</div>
@@ -264,26 +289,26 @@
             <table class="list-table">
                 <thead>
                     <tr>
-                        <th>契約日</th>
-                        <th>種別</th>
-                        <th class="left">物件名 / 案件名</th>
-                        <th>顧客</th>
-                        <th>契約額</th>
-                        <th>土地粗利</th>
-                        <th>建物粗利</th>
-                        <th>合計粗利</th>
-                        <th>進行状況</th>
-                        <th>担当</th>
-                        <th>詳細</th>
+                        <th class="sticky-col sticky-col-1">契約日</th>
+                        <th class="sticky-col sticky-col-2">種別</th>
+                        <th class="sticky-col sticky-col-3 left">物件名 / 案件名</th>
+                        <th class="sticky-col sticky-col-4">顧客</th>
+                        <th style="min-width: 140px;">契約額</th>
+                        <th style="min-width: 130px;">土地粗利</th>
+                        <th style="min-width: 130px;">建物粗利</th>
+                        <th style="min-width: 130px;">合計粗利</th>
+                        <th style="min-width: 100px;">進行状況</th>
+                        <th style="min-width: 80px;">担当</th>
+                        <th style="min-width: 80px;">アクション</th>
                     </tr>
                 </thead>
                 <tbody>
                     <!-- 建売 1 -->
                     <tr>
-                        <td class="center">2025/11/20</td>
-                        <td class="center"><span class="badge badge-building">建売</span></td>
-                        <td style="padding-left: 16px;"><a href="show-building.html" class="link">松山市居相町モデル A号地</a></td>
-                        <td class="center">山本 浩二 様</td>
+                        <td class="sticky-col sticky-col-1 center">2025/11/20</td>
+                        <td class="sticky-col sticky-col-2 center"><span class="badge badge-building">建売</span></td>
+                        <td class="sticky-col sticky-col-3"><a href="show-building.html" class="link">松山市居相町モデル A号地</a></td>
+                        <td class="sticky-col sticky-col-4 center">山本 浩二 様</td>
                         <td class="right">28,500,000円</td>
                         <td class="right profit-text">4,200,000円</td>
                         <td class="right profit-text">2,800,000円</td>
@@ -294,10 +319,10 @@
                     </tr>
                     <!-- 建売 2 -->
                     <tr>
-                        <td class="center">2025/10/02</td>
-                        <td class="center"><span class="badge badge-building">建売</span></td>
-                        <td style="padding-left: 16px;"><a href="show-building.html" class="link">東温市志津川 B号地</a></td>
-                        <td class="center">株式会社タナベ工業</td>
+                        <td class="sticky-col sticky-col-1 center">2025/10/02</td>
+                        <td class="sticky-col sticky-col-2 center"><span class="badge badge-building">建売</span></td>
+                        <td class="sticky-col sticky-col-3"><a href="show-building.html" class="link">東温市志津川 B号地</a></td>
+                        <td class="sticky-col sticky-col-4 center">株式会社タナベ工業</td>
                         <td class="right">31,800,000円</td>
                         <td class="right profit-text">5,500,000円</td>
                         <td class="right profit-text">2,200,000円</td>
@@ -308,10 +333,10 @@
                     </tr>
                     <!-- 建売 3 -->
                     <tr>
-                        <td class="center">2025/09/15</td>
-                        <td class="center"><span class="badge badge-building">建売</span></td>
-                        <td style="padding-left: 16px;"><a href="show-building.html" class="link">伊予市下三谷 C号地</a></td>
-                        <td class="center">高橋 由美子 様</td>
+                        <td class="sticky-col sticky-col-1 center">2025/09/15</td>
+                        <td class="sticky-col sticky-col-2 center"><span class="badge badge-building">建売</span></td>
+                        <td class="sticky-col sticky-col-3"><a href="show-building.html" class="link">伊予市下三谷 C号地</a></td>
+                        <td class="sticky-col sticky-col-4 center">高橋 由美子 様</td>
                         <td class="right">26,200,000円</td>
                         <td class="right profit-text">3,800,000円</td>
                         <td class="right profit-text">2,500,000円</td>
@@ -322,10 +347,10 @@
                     </tr>
                     <!-- 注文住宅 1（通常） -->
                     <tr>
-                        <td class="center">2025/11/05</td>
-                        <td class="center"><span class="badge badge-custom">注文住宅</span></td>
-                        <td style="padding-left: 16px;"><a href="show-custom-order.html" class="link">松前町筒井邸 新築工事</a></td>
-                        <td class="center">筒井 和彦 様</td>
+                        <td class="sticky-col sticky-col-1 center">2025/11/05</td>
+                        <td class="sticky-col sticky-col-2 center"><span class="badge badge-custom">注文住宅</span></td>
+                        <td class="sticky-col sticky-col-3"><a href="show-custom-order.html" class="link">松前町筒井邸 新築工事</a></td>
+                        <td class="sticky-col sticky-col-4 center">筒井 和彦 様</td>
                         <td class="right">24,000,000円</td>
                         <td class="right profit-text">5,000,000円</td>
                         <td class="right profit-text">2,800,000円</td>
@@ -336,10 +361,10 @@
                     </tr>
                     <!-- 注文住宅 2（顧客所有地、土地粗利「—」） -->
                     <tr>
-                        <td class="center">2025/08/18</td>
-                        <td class="center"><span class="badge badge-custom">注文住宅</span></td>
-                        <td style="padding-left: 16px;"><a href="show-custom-order.html" class="link">今治市大西町 長尾邸 新築工事</a></td>
-                        <td class="center">長尾 美智子 様</td>
+                        <td class="sticky-col sticky-col-1 center">2025/08/18</td>
+                        <td class="sticky-col sticky-col-2 center"><span class="badge badge-custom">注文住宅</span></td>
+                        <td class="sticky-col sticky-col-3"><a href="show-custom-order.html" class="link">今治市大西町 長尾邸 新築工事</a></td>
+                        <td class="sticky-col sticky-col-4 center">長尾 美智子 様</td>
                         <td class="right">18,000,000円</td>
                         <td class="right"><span class="muted">—</span></td>
                         <td class="right profit-text">1,700,000円</td>
