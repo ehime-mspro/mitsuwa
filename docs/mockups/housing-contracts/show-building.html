@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>松山市居相町モデル A号地 — 契約詳細</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Helvetica Neue', Arial, sans-serif; background: #F9FAFB; color: #111827; }
+    .page-wrapper { max-width: 1280px; margin: 0 auto; padding: 24px; }
+    .breadcrumb { font-size: 12px; color: #9CA3AF; margin-bottom: 12px; }
+    .breadcrumb .sep { margin: 0 6px; }
+    .breadcrumb a { color: #9CA3AF; text-decoration: none; }
+    .breadcrumb a:hover { color: #059669; }
+
+    /* カード */
+    .card { background: white; border: 1px solid #E5E7EB; border-radius: 8px; margin-bottom: 20px; }
+    .card-body { padding: 20px; }
+    .section-title {
+        display: flex; align-items: center; gap: 8px;
+        margin-bottom: 16px;
+    }
+    .section-title .bar { width: 3px; height: 20px; background: #059669; border-radius: 2px; }
+    .section-title h2 { font-size: 15px; font-weight: 700; color: #111827; margin: 0; }
+
+    /* バッジ */
+    .badge { display: inline-block; padding: 2px 10px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+    .badge-building { background: #DBEAFE; color: #1E40AF; }
+
+    /* ボタン */
+    .btn {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 7px 16px;
+        font-size: 13px; font-weight: 600;
+        border-radius: 6px; text-decoration: none; cursor: pointer;
+    }
+    .btn-primary  { background: #059669; color: white; border: 1px solid #059669; }
+    .btn-primary:hover { background: #047857; }
+    .btn-outline  { background: white; color: #059669; border: 1px solid #059669; }
+    .btn-outline:hover { background: #ECFDF5; }
+    .btn-gray     { background: white; color: #6B7280; border: 1px solid #D1D5DB; }
+    .btn-gray:hover { background: #F9FAFB; }
+    .btn-danger   { background: white; color: #DC2626; border: 1px solid #DC2626; }
+    .btn-danger:hover { background: #FEF2F2; }
+
+    /* 金額サマリーカード（4カラム） */
+    .summary-cards {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 16px;
+        margin-bottom: 20px;
+    }
+    .mini-card { background: white; border: 1px solid #E5E7EB; border-radius: 8px; padding: 16px; }
+    .mini-card .label { font-size: 12px; color: #6B7280; margin-bottom: 4px; }
+    .mini-card .value { font-size: 18px; font-weight: 700; color: #111827; }
+    .mini-card .value.profit { color: #047857; font-weight: 700; }
+
+    /* dl表（グリッド） */
+    .dl-grid {
+        display: grid;
+        grid-template-columns: 160px 1fr 160px 1fr;
+        border: 1px solid #E5E7EB;
+        border-radius: 6px;
+        overflow: hidden;
+    }
+    .dl-grid dt {
+        background: #F9FAFB;
+        padding: 10px 14px;
+        font-size: 13px; color: #6B7280; font-weight: 500;
+        border-bottom: 1px solid #E5E7EB;
+        border-right: 1px solid #E5E7EB;
+    }
+    .dl-grid dd {
+        padding: 10px 14px;
+        font-size: 13px; color: #111827;
+        border-bottom: 1px solid #E5E7EB;
+        margin: 0;
+    }
+    .dl-grid .no-border-bottom { border-bottom: none; }
+    .dl-grid .profit-cell { color: #047857; font-weight: 700; }
+    .dl-grid .sub-rate { font-size: 11px; color: #6B7280; font-weight: 400; margin-left: 4px; }
+    .dl-grid .muted { color: #9CA3AF; font-weight: 400; }
+    .dl-grid .span3 { grid-column: span 3; }
+</style>
+</head>
+<body>
+
+<div class="page-wrapper">
+
+    <!-- パンくず -->
+    <div class="breadcrumb">
+        ホーム <span class="sep">›</span> 住宅事業 <span class="sep">›</span>
+        <a href="index.html">契約管理</a>
+        <span class="sep">›</span>
+        <span style="color: #4B5563;">松山市居相町モデル A号地</span>
+    </div>
+
+    <!-- ヘッダー -->
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <h1 style="font-size: 18px; font-weight: 700; color: #111827; margin: 0;">松山市居相町モデル A号地</h1>
+            <span class="badge badge-building">建売</span>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+            <a href="#" class="btn btn-outline">編集</a>
+            <a href="#" class="btn btn-gray">元ページへ</a>
+            <a href="index.html" class="btn btn-gray">戻る</a>
+            <a href="#" class="btn btn-danger">削除</a>
+        </div>
+    </div>
+
+    <!-- 金額サマリー4カード -->
+    <div class="summary-cards">
+        <div class="mini-card">
+            <div class="label">契約額（税抜）</div>
+            <div class="value">28,500,000円</div>
+        </div>
+        <div class="mini-card">
+            <div class="label">原価合計</div>
+            <div class="value">21,500,000円</div>
+        </div>
+        <div class="mini-card">
+            <div class="label">合計粗利</div>
+            <div class="value profit">7,000,000円</div>
+        </div>
+        <div class="mini-card">
+            <div class="label">粗利率</div>
+            <div class="value">24.6%</div>
+        </div>
+    </div>
+
+    <!-- 基本情報 -->
+    <div class="card">
+        <div class="card-body">
+            <div class="section-title">
+                <span class="bar"></span>
+                <h2>基本情報</h2>
+            </div>
+            <dl class="dl-grid">
+                <dt>物件名</dt>
+                <dd><a href="#" style="color: #059669; text-decoration: none;">松山市居相町モデル A号地</a></dd>
+                <dt>物件コード</dt>
+                <dd>HS-2025-011</dd>
+
+                <dt>買主</dt>
+                <dd>山本 浩二 様</dd>
+                <dt>契約日</dt>
+                <dd>2025/11/20</dd>
+
+                <dt>決済日</dt>
+                <dd>2026/01/30（予定）</dd>
+                <dt>担当</dt>
+                <dd>田中</dd>
+
+                <dt class="no-border-bottom">消費税率</dt>
+                <dd class="no-border-bottom">10.00%</dd>
+                <dt class="no-border-bottom">登録者</dt>
+                <dd class="no-border-bottom">田中</dd>
+            </dl>
+        </div>
+    </div>
+
+    <!-- 契約金額内訳 -->
+    <div class="card">
+        <div class="card-body">
+            <div class="section-title">
+                <span class="bar"></span>
+                <h2>契約金額内訳</h2>
+            </div>
+            <dl class="dl-grid">
+                <dt>土地販売価格（非課税）</dt>
+                <dd>12,500,000円</dd>
+                <dt>建物販売価格（税抜）</dt>
+                <dd>16,000,000円</dd>
+
+                <dt>建物消費税（10%）</dt>
+                <dd>1,600,000円</dd>
+                <dt class="no-border-bottom" style="font-weight: 700; color: #111827;">税込合計</dt>
+                <dd class="no-border-bottom" style="font-weight: 700;">30,100,000円</dd>
+
+                <dt class="no-border-bottom">契約額合計（税抜）</dt>
+                <dd class="no-border-bottom" style="font-weight: 600;">28,500,000円</dd>
+            </dl>
+        </div>
+    </div>
+
+    <!-- 原価内訳 -->
+    <div class="card">
+        <div class="card-body">
+            <div class="section-title">
+                <span class="bar"></span>
+                <h2>原価内訳</h2>
+            </div>
+            <dl class="dl-grid">
+                <dt>土地原価</dt>
+                <dd>8,300,000円</dd>
+                <dt>建物原価</dt>
+                <dd>13,200,000円</dd>
+
+                <dt class="no-border-bottom" style="font-weight: 700; color: #111827;">合計原価</dt>
+                <dd class="no-border-bottom span3" style="font-weight: 700;">21,500,000円</dd>
+            </dl>
+        </div>
+    </div>
+
+    <!-- 粗利分析 -->
+    <div class="card">
+        <div class="card-body">
+            <div class="section-title">
+                <span class="bar"></span>
+                <h2>粗利分析</h2>
+            </div>
+            <dl class="dl-grid">
+                <dt>土地粗利</dt>
+                <dd class="profit-cell">4,200,000円<span class="sub-rate">（33.6%）</span></dd>
+                <dt>建物粗利</dt>
+                <dd class="profit-cell">2,800,000円<span class="sub-rate">（17.5%）</span></dd>
+
+                <dt class="no-border-bottom" style="font-weight: 700; color: #111827;">合計粗利</dt>
+                <dd class="no-border-bottom profit-cell">7,000,000円<span class="sub-rate">（24.6%）</span></dd>
+                <dt class="no-border-bottom">粗利率</dt>
+                <dd class="no-border-bottom">24.6%</dd>
+            </dl>
+        </div>
+    </div>
+
+    <!-- 物件情報 -->
+    <div class="card">
+        <div class="card-body">
+            <div class="section-title">
+                <span class="bar"></span>
+                <h2>物件情報</h2>
+            </div>
+            <dl class="dl-grid">
+                <dt>物件コード</dt>
+                <dd>HS-2025-011</dd>
+                <dt>住所</dt>
+                <dd>愛媛県松山市居相町123-4</dd>
+
+                <dt>土地面積</dt>
+                <dd>165.32㎡</dd>
+                <dt>建物面積</dt>
+                <dd>108.45㎡</dd>
+
+                <dt>構造</dt>
+                <dd>木造2階建</dd>
+                <dt>階数</dt>
+                <dd>2階</dd>
+
+                <dt class="no-border-bottom">竣工予定</dt>
+                <dd class="no-border-bottom">2026/01/15</dd>
+                <dt class="no-border-bottom">紐付け元</dt>
+                <dd class="no-border-bottom"><a href="#" style="color: #059669; text-decoration: none;">PJ-2024-003 東温市分譲地PJ / 区画A</a></dd>
+            </dl>
+        </div>
+    </div>
+
+    <!-- 備考 -->
+    <div class="card">
+        <div class="card-body">
+            <div class="section-title">
+                <span class="bar"></span>
+                <h2>備考</h2>
+            </div>
+            <p style="font-size: 13px; color: #374151; white-space: pre-wrap; margin: 0;">住宅ローン(愛媛銀行)利用。所有権移転は決済日同時。付帯設備表・物件状況確認書は別途取り交わし済み。</p>
+        </div>
+    </div>
+
+    <!-- 登録情報 -->
+    <div class="card">
+        <div class="card-body">
+            <div class="section-title">
+                <span class="bar"></span>
+                <h2>登録情報</h2>
+            </div>
+            <dl class="dl-grid">
+                <dt>登録者</dt>
+                <dd>田中</dd>
+                <dt>登録日時</dt>
+                <dd>2025/11/20 14:23</dd>
+                <dt class="no-border-bottom">更新者</dt>
+                <dd class="no-border-bottom">田中</dd>
+                <dt class="no-border-bottom">更新日時</dt>
+                <dd class="no-border-bottom">2025/11/22 09:10</dd>
+            </dl>
+        </div>
+    </div>
+
+</div>
+
+</body>
+</html>
