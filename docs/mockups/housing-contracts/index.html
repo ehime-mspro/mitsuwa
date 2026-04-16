@@ -16,12 +16,15 @@
     .card { background: white; border: 1px solid #E5E7EB; border-radius: 8px; }
     .card-body { padding: 20px; }
 
-    /* サマリーグリッド: 5カラム */
+    /* サマリーグリッド: 4カラム×2段 (計8カード) */
     .summary-grid {
         display: grid;
-        grid-template-columns: repeat(5, 1fr);
+        grid-template-columns: repeat(4, 1fr);
         gap: 16px;
         margin-bottom: 12px;
+    }
+    @media (max-width: 900px) {
+        .summary-grid { grid-template-columns: repeat(2, 1fr); }
     }
     .summary-cell .label { font-size: 12px; color: #6B7280; margin-bottom: 2px; }
     .summary-cell .value { font-size: 16px; font-weight: 700; color: #111827; }
@@ -229,7 +232,7 @@
                 <span style="font-size: 12px; color: #9CA3AF;">住宅事業</span>
             </div>
 
-            <!-- 5カードサマリー -->
+            <!-- 8カードサマリー -->
             <div class="summary-grid">
                 <div class="summary-cell">
                     <div class="label">契約件数</div>
@@ -255,7 +258,18 @@
                 <div class="summary-cell">
                     <div class="label">合計粗利</div>
                     <div class="value profit">30,500,000円</div>
-                    <div class="sub">粗利率 23.7%</div>
+                </div>
+                <div class="summary-cell">
+                    <div class="label">土地粗利率</div>
+                    <div class="value profit">27.0<span style="font-size: 13px; font-weight: 600; margin-left: 2px;">%</span></div>
+                </div>
+                <div class="summary-cell">
+                    <div class="label">建物粗利率</div>
+                    <div class="value profit">20.0<span style="font-size: 13px; font-weight: 600; margin-left: 2px;">%</span></div>
+                </div>
+                <div class="summary-cell">
+                    <div class="label">合計粗利率</div>
+                    <div class="value profit">23.7<span style="font-size: 13px; font-weight: 600; margin-left: 2px;">%</span></div>
                 </div>
             </div>
         </div>
