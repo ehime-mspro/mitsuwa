@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>日付ピッカー 案C — 年月選択機能追加</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+    body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Helvetica Neue', Arial, sans-serif;
+        background: #F3F4F6; color: #111827;
+        padding: 40px 24px; margin: 0;
+    }
+    .wrap { max-width: 1400px; margin: 0 auto; }
+
+    h1 { font-size: 20px; font-weight: 700; margin: 0 0 6px; }
+    .subtitle { font-size: 13px; color: #6B7280; margin-bottom: 28px; line-height: 1.7; }
+
+    /* 提案カード */
+    .state-card {
+        background: white;
+        border-radius: 12px;
+        padding: 24px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        border: 1px solid #E5E7EB;
+    }
+    .state-head {
+        display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .state-num {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 26px; height: 26px;
+        background: #059669; color: white;
+        border-radius: 50%;
+        font-size: 12px; font-weight: 700;
+    }
+    .state-title { font-size: 15px; font-weight: 700; color: #111827; }
+    .state-desc { font-size: 12px; color: #6B7280; margin-bottom: 18px; line-height: 1.6; }
+
+    .picker-wrap {
+        display: flex; justify-content: center;
+        padding: 24px 0;
+        background: #FAFAFA;
+        border-radius: 8px;
+        margin-bottom: 14px;
+    }
+
+    .state-features {
+        padding-top: 14px;
+        border-top: 1px dashed #E5E7EB;
+        font-size: 12px; color: #4B5563; line-height: 1.8;
+        margin: 0;
+    }
+    .state-features li {
+        list-style: none; padding-left: 14px; position: relative;
+    }
+    .state-features li::before {
+        content: '●'; position: absolute; left: 0; color: #059669; font-size: 8px; top: 6px;
+    }
+
+    .grid-3 {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 24px;
+        align-items: stretch;
+    }
+
+    .arrow-between {
+        display: flex; justify-content: center; align-items: center;
+        gap: 12px; margin: 18px 0; color: #9CA3AF; font-size: 12px;
+    }
+
+    /* ===================================================================
+       案C ベーススタイル
+       =================================================================== */
+    .calC {
+        width: 340px;
+        background: white;
+        border-radius: 20px;
+        overflow: hidden;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.1), 0 2px 4px rgba(0,0,0,0.04);
+        padding: 20px;
+    }
+    .calC-info {
+        display: flex; align-items: center; justify-content: space-between;
+        margin-bottom: 18px;
+    }
+    .calC-info .pill {
+        background: #ECFDF5;
+        color: #047857;
+        font-size: 11px; font-weight: 700;
+        padding: 4px 12px;
+        border-radius: 99px;
+        letter-spacing: 0.3px;
+    }
+    .calC-info .sel-date {
+        font-size: 13px; color: #6B7280;
+    }
+    .calC-info .sel-date b { color: #047857; font-weight: 700; }
+
+    .calC-nav {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 0 4px 14px;
+    }
+    .calC-nav .arrow-btn {
+        width: 30px; height: 30px;
+        display: inline-flex; align-items: center; justify-content: center;
+        border: none; background: #F9FAFB; border-radius: 50%;
+        cursor: pointer; color: #6B7280; font-size: 13px;
+        transition: all 0.15s;
+    }
+    .calC-nav .arrow-btn:hover { background: #ECFDF5; color: #059669; }
+    .calC-nav .arrow-btn.hidden { visibility: hidden; }
+
+    .calC-nav .month-btns {
+        display: flex; align-items: center; gap: 4px;
+    }
+    .calC-nav .ym-btn {
+        display: inline-flex; align-items: center; gap: 4px;
+        font-size: 16px; font-weight: 700; color: #111827;
+        background: transparent; border: none; cursor: pointer;
+        padding: 6px 12px; border-radius: 8px;
+        transition: all 0.15s;
+    }
+    .calC-nav .ym-btn:hover { background: #F3F4F6; color: #059669; }
+    .calC-nav .ym-btn.active {
+        background: #ECFDF5; color: #047857;
+    }
+    .calC-nav .ym-btn .chev {
+        font-size: 10px; color: #9CA3AF;
+        transition: transform 0.15s;
+    }
+    .calC-nav .ym-btn.active .chev { transform: rotate(180deg); color: #047857; }
+
+    /* ========== カレンダーグリッド ========== */
+    .calC-grid {
+        display: grid; grid-template-columns: repeat(7, 1fr);
+        gap: 2px;
+    }
+    .calC-dow {
+        text-align: center; font-size: 11px; font-weight: 700;
+        color: #9CA3AF; padding: 6px 0 10px;
+    }
+    .calC-dow.sun { color: #DC2626; }
+    .calC-dow.sat { color: #2563EB; }
+    .calC-cell {
+        text-align: center; font-size: 13px; color: #374151;
+        cursor: pointer;
+        height: 36px;
+        border-radius: 10px;
+        display: flex; align-items: center; justify-content: center;
+        position: relative;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .calC-cell:hover { background: #F3F4F6; }
+    .calC-cell.muted { color: #E5E7EB; }
+    .calC-cell.sun { color: #DC2626; }
+    .calC-cell.sat { color: #2563EB; }
+    .calC-cell.today { color: #059669; font-weight: 700; }
+    .calC-cell.today::after {
+        content: ''; position: absolute; bottom: 5px; left: 50%;
+        transform: translateX(-50%);
+        width: 4px; height: 4px; border-radius: 50%;
+        background: #059669;
+    }
+    .calC-cell.selected {
+        background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+        color: white; font-weight: 700;
+        box-shadow: 0 6px 16px rgba(5, 150, 105, 0.4);
+        transform: scale(1.05);
+    }
+    .calC-cell.selected.sun, .calC-cell.selected.sat { color: white; }
+
+    /* ========== 年ピッカー / 月ピッカー共通 ========== */
+    .calC-ympicker {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 8px;
+        padding: 10px 2px;
+    }
+    .calC-ympicker button {
+        padding: 14px 6px;
+        font-size: 13px; font-weight: 600;
+        background: #F9FAFB;
+        color: #374151;
+        border: 1px solid transparent;
+        border-radius: 10px;
+        cursor: pointer;
+        transition: all 0.2s;
+        position: relative;
+    }
+    .calC-ympicker button:hover {
+        background: #ECFDF5;
+        color: #059669;
+    }
+    .calC-ympicker button.today {
+        color: #059669; font-weight: 700;
+        background: white;
+        border-color: #A7F3D0;
+    }
+    .calC-ympicker button.today::after {
+        content: ''; position: absolute; bottom: 5px; left: 50%;
+        transform: translateX(-50%);
+        width: 4px; height: 4px; border-radius: 50%;
+        background: #059669;
+    }
+    .calC-ympicker button.selected {
+        background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+        color: white; font-weight: 700;
+        box-shadow: 0 4px 12px rgba(5, 150, 105, 0.35);
+        border-color: transparent;
+    }
+    .calC-ympicker button.selected.today::after { background: white; }
+
+    .calC-range-hint {
+        text-align: center;
+        font-size: 11px; color: #9CA3AF;
+        padding-top: 10px; margin-top: 4px;
+        border-top: 1px dashed #F3F4F6;
+    }
+
+    /* ========== フッター ========== */
+    .calC-foot {
+        margin-top: 16px;
+        padding-top: 14px;
+        border-top: 1px solid #F3F4F6;
+        display: flex; gap: 8px;
+    }
+    .calC-foot .shortcut {
+        flex: 1;
+        padding: 7px 10px;
+        font-size: 11px; font-weight: 600;
+        background: #F9FAFB;
+        color: #374151;
+        border: 1px solid #E5E7EB;
+        border-radius: 8px;
+        cursor: pointer;
+        text-align: center;
+    }
+    .calC-foot .shortcut:hover {
+        background: #ECFDF5; color: #059669; border-color: #A7F3D0;
+    }
+
+</style>
+</head>
+<body>
+
+<div class="wrap">
+    <h1>案C 年月選択ピッカー追加</h1>
+    <div class="subtitle">
+        <b>「2025年」「11月」をクリックするとピッカーが展開</b>する方式。<br>
+        年の範囲：<b>過去10年〜未来1年</b>（2026年現在 → 2016年〜2027年の12年間、4×3グリッドで一覧表示）。<br>
+        月は12ヶ月すべてを4×3グリッドで表示。今日（2026年4月）は緑ドット、選択中（2025年11月）はグラデーション塗り。
+    </div>
+
+    <div class="grid-3">
+
+        <!-- ========= 状態1: 通常（カレンダーグリッド表示） ========= -->
+        <div class="state-card">
+            <div class="state-head">
+                <span class="state-num">1</span>
+                <span class="state-title">通常表示（初期状態）</span>
+            </div>
+            <div class="state-desc">
+                「2025年 ▾」「11月 ▾」のボタンをクリックすると、それぞれ年ピッカー／月ピッカーが展開されます。
+            </div>
+
+            <div class="picker-wrap">
+                <div class="calC">
+                    <div class="calC-info">
+                        <span class="pill">選択中</span>
+                        <span class="sel-date"><b>2025年11月20日</b>（木）</span>
+                    </div>
+                    <div class="calC-nav">
+                        <button class="arrow-btn">‹</button>
+                        <div class="month-btns">
+                            <button class="ym-btn">2025年 <span class="chev">▾</span></button>
+                            <button class="ym-btn">11月 <span class="chev">▾</span></button>
+                        </div>
+                        <button class="arrow-btn">›</button>
+                    </div>
+                    <div class="calC-grid">
+                        <div class="calC-dow sun">日</div>
+                        <div class="calC-dow">月</div>
+                        <div class="calC-dow">火</div>
+                        <div class="calC-dow">水</div>
+                        <div class="calC-dow">木</div>
+                        <div class="calC-dow">金</div>
+                        <div class="calC-dow sat">土</div>
+
+                        <div class="calC-cell muted">26</div>
+                        <div class="calC-cell muted">27</div>
+                        <div class="calC-cell muted">28</div>
+                        <div class="calC-cell muted">29</div>
+                        <div class="calC-cell muted">30</div>
+                        <div class="calC-cell muted">31</div>
+                        <div class="calC-cell sat">1</div>
+
+                        <div class="calC-cell sun">2</div>
+                        <div class="calC-cell">3</div>
+                        <div class="calC-cell">4</div>
+                        <div class="calC-cell">5</div>
+                        <div class="calC-cell">6</div>
+                        <div class="calC-cell">7</div>
+                        <div class="calC-cell sat">8</div>
+
+                        <div class="calC-cell sun">9</div>
+                        <div class="calC-cell">10</div>
+                        <div class="calC-cell">11</div>
+                        <div class="calC-cell">12</div>
+                        <div class="calC-cell">13</div>
+                        <div class="calC-cell">14</div>
+                        <div class="calC-cell sat">15</div>
+
+                        <div class="calC-cell sun">16</div>
+                        <div class="calC-cell">17</div>
+                        <div class="calC-cell">18</div>
+                        <div class="calC-cell">19</div>
+                        <div class="calC-cell selected">20</div>
+                        <div class="calC-cell">21</div>
+                        <div class="calC-cell sat">22</div>
+
+                        <div class="calC-cell sun">23</div>
+                        <div class="calC-cell">24</div>
+                        <div class="calC-cell">25</div>
+                        <div class="calC-cell">26</div>
+                        <div class="calC-cell">27</div>
+                        <div class="calC-cell">28</div>
+                        <div class="calC-cell sat">29</div>
+
+                        <div class="calC-cell sun">30</div>
+                    </div>
+                    <div class="calC-foot">
+                        <button class="shortcut">今日</button>
+                        <button class="shortcut">1週間前</button>
+                        <button class="shortcut">1ヶ月前</button>
+                    </div>
+                </div>
+            </div>
+
+            <ul class="state-features">
+                <li>年・月ボタンにホバーで薄emerald背景（クリック可能と分かる）</li>
+                <li>下向き chevron「▾」で展開可能であることを示す</li>
+                <li>‹ › 矢印で前後月へ1ヶ月ずつ移動</li>
+            </ul>
+        </div>
+
+        <!-- ========= 状態2: 年ピッカー展開 ========= -->
+        <div class="state-card">
+            <div class="state-head">
+                <span class="state-num">2</span>
+                <span class="state-title">年ピッカー展開時</span>
+            </div>
+            <div class="state-desc">
+                「2025年」をクリック → カレンダー部分が12年一覧に切り替わる。今日の年（2026）は緑枠+ドット、選択中（2025）はグラデーション塗り。
+            </div>
+
+            <div class="picker-wrap">
+                <div class="calC">
+                    <div class="calC-info">
+                        <span class="pill">選択中</span>
+                        <span class="sel-date"><b>2025年11月20日</b>（木）</span>
+                    </div>
+                    <div class="calC-nav">
+                        <button class="arrow-btn hidden">‹</button>
+                        <div class="month-btns">
+                            <button class="ym-btn active">2025年 <span class="chev">▾</span></button>
+                            <button class="ym-btn">11月 <span class="chev">▾</span></button>
+                        </div>
+                        <button class="arrow-btn hidden">›</button>
+                    </div>
+                    <div class="calC-ympicker">
+                        <button>2016</button>
+                        <button>2017</button>
+                        <button>2018</button>
+                        <button>2019</button>
+                        <button>2020</button>
+                        <button>2021</button>
+                        <button>2022</button>
+                        <button>2023</button>
+                        <button>2024</button>
+                        <button class="selected">2025</button>
+                        <button class="today">2026</button>
+                        <button>2027</button>
+                    </div>
+                    <div class="calC-range-hint">過去10年〜未来1年（2016 - 2027）</div>
+                    <div class="calC-foot">
+                        <button class="shortcut">今日</button>
+                        <button class="shortcut">1週間前</button>
+                        <button class="shortcut">1ヶ月前</button>
+                    </div>
+                </div>
+            </div>
+
+            <ul class="state-features">
+                <li>4列×3行 = 12年を一画面で俯瞰</li>
+                <li>年ボタンが active 状態（薄emerald+chevron反転）に</li>
+                <li>‹ › 矢印は非表示（12年固定なのでスクロール不要）</li>
+                <li>年をクリックすると自動で通常表示に戻り、その年の同月を表示</li>
+            </ul>
+        </div>
+
+        <!-- ========= 状態3: 月ピッカー展開 ========= -->
+        <div class="state-card">
+            <div class="state-head">
+                <span class="state-num">3</span>
+                <span class="state-title">月ピッカー展開時</span>
+            </div>
+            <div class="state-desc">
+                「11月」をクリック → 12ヶ月一覧に切り替わる。選択中（11月）はグラデーション塗り。今日（2026年4月）の「月」は表示中の年が一致しないため無印。
+            </div>
+
+            <div class="picker-wrap">
+                <div class="calC">
+                    <div class="calC-info">
+                        <span class="pill">選択中</span>
+                        <span class="sel-date"><b>2025年11月20日</b>（木）</span>
+                    </div>
+                    <div class="calC-nav">
+                        <button class="arrow-btn hidden">‹</button>
+                        <div class="month-btns">
+                            <button class="ym-btn">2025年 <span class="chev">▾</span></button>
+                            <button class="ym-btn active">11月 <span class="chev">▾</span></button>
+                        </div>
+                        <button class="arrow-btn hidden">›</button>
+                    </div>
+                    <div class="calC-ympicker">
+                        <button>1月</button>
+                        <button>2月</button>
+                        <button>3月</button>
+                        <button>4月</button>
+                        <button>5月</button>
+                        <button>6月</button>
+                        <button>7月</button>
+                        <button>8月</button>
+                        <button>9月</button>
+                        <button>10月</button>
+                        <button class="selected">11月</button>
+                        <button>12月</button>
+                    </div>
+                    <div class="calC-range-hint">2025年</div>
+                    <div class="calC-foot">
+                        <button class="shortcut">今日</button>
+                        <button class="shortcut">1週間前</button>
+                        <button class="shortcut">1ヶ月前</button>
+                    </div>
+                </div>
+            </div>
+
+            <ul class="state-features">
+                <li>4列×3行 = 12ヶ月を一画面で俯瞰</li>
+                <li>月ボタンが active 状態に</li>
+                <li>表示中の年が今年（2026）なら今日の月（4月）に緑枠</li>
+                <li>月をクリックすると自動で通常表示に戻る</li>
+            </ul>
+        </div>
+
+    </div>
+
+    <!-- 遷移フロー図 -->
+    <div style="margin-top: 40px; background: white; padding: 24px; border-radius: 12px; border: 1px solid #E5E7EB;">
+        <div style="font-size: 14px; font-weight: 700; color: #111827; margin-bottom: 14px;">遷移フロー</div>
+        <div style="font-size: 12px; color: #4B5563; line-height: 1.9;">
+            <b style="color: #059669;">状態1（通常）</b>
+            ─ 「2025年 ▾」をクリック →
+            <b style="color: #059669;">状態2（年ピッカー）</b>
+            ─ 年を選択 →
+            <b style="color: #059669;">状態1（通常）</b>
+            ※選択年の同月カレンダーを表示
+            <br>
+            <b style="color: #059669;">状態1（通常）</b>
+            ─ 「11月 ▾」をクリック →
+            <b style="color: #059669;">状態3（月ピッカー）</b>
+            ─ 月を選択 →
+            <b style="color: #059669;">状態1（通常）</b>
+            ※選択月のカレンダーを表示
+            <br>
+            <b style="color: #059669;">状態1（通常）</b>
+            ─ ‹ または › をクリック →
+            <b style="color: #059669;">状態1（通常）</b>
+            ※前後1ヶ月に移動
+        </div>
+    </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>日付ピッカー デザイン案（3案比較）</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+    body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Helvetica Neue', Arial, sans-serif;
+        background: #F3F4F6; color: #111827;
+        padding: 40px 24px; margin: 0;
+    }
+    .wrap { max-width: 1500px; margin: 0 auto; }
+
+    h1 { font-size: 20px; font-weight: 700; margin: 0 0 6px; }
+    .subtitle { font-size: 13px; color: #6B7280; margin-bottom: 28px; }
+
+    /* 入力欄サンプル */
+    .sample-field { margin-bottom: 18px; }
+    .sample-field label {
+        display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;
+    }
+    .sample-input {
+        width: 100%; height: 40px;
+        padding: 0 12px;
+        border: 1px solid #D1D5DB;
+        border-radius: 6px;
+        font-size: 14px; color: #111827; background: white;
+        box-sizing: border-box;
+        display: flex; align-items: center; justify-content: space-between;
+    }
+    .sample-input .cal-icon {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 24px; height: 24px;
+        color: #059669;
+    }
+
+    /* 提案カード共通 */
+    .proposal {
+        background: white;
+        border-radius: 12px;
+        padding: 24px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        border: 1px solid #E5E7EB;
+        display: flex; flex-direction: column;
+    }
+    .proposal-head {
+        display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .proposal-num {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 28px; height: 28px;
+        background: #059669; color: white;
+        border-radius: 50%;
+        font-size: 13px; font-weight: 700;
+    }
+    .proposal-title { font-size: 15px; font-weight: 700; color: #111827; }
+    .proposal-desc { font-size: 12px; color: #6B7280; margin-bottom: 20px; line-height: 1.6; }
+
+    .picker-wrap {
+        display: flex; justify-content: center;
+        padding: 20px 0;
+        background: #FAFAFA;
+        border-radius: 8px;
+        margin-bottom: 18px;
+    }
+
+    .proposal-features {
+        padding-top: 16px;
+        border-top: 1px dashed #E5E7EB;
+        font-size: 12px; color: #4B5563; line-height: 1.8;
+        margin: 0;
+    }
+    .proposal-features li {
+        list-style: none; padding-left: 14px; position: relative;
+    }
+    .proposal-features li::before {
+        content: '●'; position: absolute; left: 0; color: #059669; font-size: 8px; top: 6px;
+    }
+
+    .grid-3 {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 24px;
+        align-items: stretch;
+    }
+
+    /* ===================================================================
+       案A: グラデーションヘッダー型（シンプル装飾・縦型）
+       =================================================================== */
+    .calA {
+        width: 300px;
+        background: white;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 12px 32px rgba(0,0,0,0.12);
+    }
+    .calA-head {
+        background: linear-gradient(135deg, #059669 0%, #047857 100%);
+        color: white;
+        padding: 18px 20px;
+    }
+    .calA-head .yr { font-size: 12px; opacity: 0.85; font-weight: 500; letter-spacing: 0.8px; }
+    .calA-head .sel { font-size: 26px; font-weight: 700; margin-top: 2px; line-height: 1.1; }
+    .calA-head .dow { font-size: 12px; opacity: 0.9; margin-top: 4px; }
+    .calA-nav {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 12px 16px;
+        border-bottom: 1px solid #F3F4F6;
+    }
+    .calA-nav .month { font-size: 14px; font-weight: 600; color: #111827; }
+    .calA-nav button {
+        width: 28px; height: 28px;
+        display: inline-flex; align-items: center; justify-content: center;
+        border: 1px solid #E5E7EB; background: white;
+        border-radius: 6px; cursor: pointer;
+        color: #6B7280; font-size: 14px;
+    }
+    .calA-nav button:hover { background: #F9FAFB; border-color: #D1D5DB; }
+    .calA-grid {
+        display: grid; grid-template-columns: repeat(7, 1fr);
+        padding: 6px 10px 4px;
+    }
+    .calA-dow, .calA-cell {
+        text-align: center; font-size: 12px;
+        padding: 4px 0;
+    }
+    .calA-dow { font-weight: 700; color: #9CA3AF; padding: 4px 0 6px; }
+    .calA-dow.sun { color: #DC2626; }
+    .calA-dow.sat { color: #2563EB; }
+    .calA-cell {
+        font-size: 13px; color: #374151; cursor: pointer;
+        border-radius: 6px; margin: 2px; height: 32px;
+        display: flex; align-items: center; justify-content: center;
+        transition: all 0.15s;
+    }
+    .calA-cell:hover { background: #ECFDF5; color: #047857; }
+    .calA-cell.muted { color: #D1D5DB; }
+    .calA-cell.sun { color: #DC2626; }
+    .calA-cell.sat { color: #2563EB; }
+    .calA-cell.today {
+        background: #ECFDF5; color: #047857; font-weight: 700;
+        border: 1px solid #A7F3D0;
+    }
+    .calA-cell.selected {
+        background: #059669; color: white; font-weight: 700;
+        box-shadow: 0 4px 10px rgba(5, 150, 105, 0.35);
+    }
+    .calA-cell.selected.sun, .calA-cell.selected.sat { color: white; }
+    .calA-foot {
+        padding: 10px 16px;
+        border-top: 1px solid #F3F4F6;
+        display: flex; justify-content: space-between; align-items: center;
+    }
+    .calA-foot .today-link {
+        color: #059669; font-size: 12px; font-weight: 600;
+        text-decoration: none;
+    }
+    .calA-foot .btn-ok {
+        padding: 6px 16px; font-size: 12px; font-weight: 600;
+        background: #059669; color: white; border: none; border-radius: 6px;
+        cursor: pointer;
+    }
+
+    /* ===================================================================
+       案B: サイドバナー型（装飾パネル付き）
+       =================================================================== */
+    .calB {
+        display: flex;
+        background: white;
+        border-radius: 14px;
+        overflow: hidden;
+        box-shadow: 0 14px 36px rgba(0,0,0,0.14);
+    }
+    .calB-side {
+        width: 110px;
+        background: linear-gradient(180deg, #059669 0%, #065F46 100%);
+        color: white;
+        padding: 20px 16px;
+        display: flex; flex-direction: column; gap: 14px;
+    }
+    .calB-side .badge {
+        display: inline-block;
+        background: rgba(255,255,255,0.15);
+        padding: 3px 10px;
+        border-radius: 99px;
+        font-size: 10px; font-weight: 600;
+        letter-spacing: 0.5px;
+        align-self: flex-start;
+    }
+    .calB-side .year-big {
+        font-size: 13px; opacity: 0.85;
+        font-weight: 500;
+    }
+    .calB-side .day-big {
+        font-size: 46px; font-weight: 800; line-height: 0.95;
+        letter-spacing: -1px;
+    }
+    .calB-side .month-small {
+        font-size: 13px; font-weight: 600; opacity: 0.95;
+        margin-top: -4px;
+    }
+    .calB-side .dow-small {
+        font-size: 11px; opacity: 0.85;
+        padding-top: 4px;
+        border-top: 1px solid rgba(255,255,255,0.25);
+    }
+    .calB-main { width: 280px; }
+    .calB-nav {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 14px 16px 10px;
+    }
+    .calB-nav .month { font-size: 14px; font-weight: 700; color: #111827; }
+    .calB-nav button {
+        width: 26px; height: 26px;
+        display: inline-flex; align-items: center; justify-content: center;
+        border: none; background: #F3F4F6; border-radius: 50%;
+        cursor: pointer; color: #374151; font-size: 12px;
+    }
+    .calB-nav button:hover { background: #E5E7EB; }
+    .calB-grid {
+        display: grid; grid-template-columns: repeat(7, 1fr);
+        padding: 4px 10px 10px;
+    }
+    .calB-dow, .calB-cell {
+        text-align: center; font-size: 12px;
+    }
+    .calB-dow { font-weight: 700; color: #9CA3AF; padding: 4px 0 8px; }
+    .calB-dow.sun { color: #DC2626; }
+    .calB-dow.sat { color: #2563EB; }
+    .calB-cell {
+        font-size: 12px; color: #374151; cursor: pointer;
+        border-radius: 50%; margin: 1px; height: 30px;
+        display: flex; align-items: center; justify-content: center;
+        transition: all 0.15s;
+    }
+    .calB-cell:hover { background: #ECFDF5; transform: scale(1.05); }
+    .calB-cell.muted { color: #D1D5DB; }
+    .calB-cell.sun { color: #DC2626; }
+    .calB-cell.sat { color: #2563EB; }
+    .calB-cell.today {
+        color: #059669; font-weight: 700;
+        border: 1.5px dashed #A7F3D0;
+    }
+    .calB-cell.selected {
+        background: #059669; color: white; font-weight: 700;
+        box-shadow: 0 3px 8px rgba(5, 150, 105, 0.4);
+    }
+    .calB-cell.selected.sun, .calB-cell.selected.sat { color: white; }
+    .calB-foot {
+        padding: 10px 14px;
+        border-top: 1px solid #F3F4F6;
+        display: flex; gap: 6px; justify-content: flex-end;
+    }
+    .calB-foot .btn {
+        padding: 6px 14px; font-size: 12px; font-weight: 600;
+        border-radius: 6px; cursor: pointer; border: none;
+    }
+    .calB-foot .btn-link { background: transparent; color: #6B7280; }
+    .calB-foot .btn-link:hover { color: #059669; }
+    .calB-foot .btn-ok { background: #059669; color: white; }
+
+    /* ===================================================================
+       案C: ソフトカード・ピル装飾型（エレガント）
+       =================================================================== */
+    .calC {
+        width: 340px;
+        background: white;
+        border-radius: 20px;
+        overflow: hidden;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.1), 0 2px 4px rgba(0,0,0,0.04);
+        padding: 20px;
+    }
+    .calC-info {
+        display: flex; align-items: center; justify-content: space-between;
+        margin-bottom: 18px;
+    }
+    .calC-info .pill {
+        background: #ECFDF5;
+        color: #047857;
+        font-size: 11px; font-weight: 700;
+        padding: 4px 12px;
+        border-radius: 99px;
+        letter-spacing: 0.3px;
+    }
+    .calC-info .sel-date {
+        font-size: 13px; color: #6B7280;
+    }
+    .calC-info .sel-date b { color: #047857; font-weight: 700; }
+
+    .calC-nav {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 0 4px 14px;
+    }
+    .calC-nav .month {
+        font-size: 16px; font-weight: 700; color: #111827;
+        display: flex; align-items: center; gap: 4px;
+    }
+    .calC-nav button {
+        width: 30px; height: 30px;
+        display: inline-flex; align-items: center; justify-content: center;
+        border: none; background: #F9FAFB; border-radius: 50%;
+        cursor: pointer; color: #6B7280; font-size: 13px;
+        transition: all 0.15s;
+    }
+    .calC-nav button:hover { background: #ECFDF5; color: #059669; }
+
+    .calC-grid {
+        display: grid; grid-template-columns: repeat(7, 1fr);
+        gap: 2px;
+    }
+    .calC-dow {
+        text-align: center; font-size: 11px; font-weight: 700;
+        color: #9CA3AF; padding: 6px 0 10px;
+    }
+    .calC-dow.sun { color: #DC2626; }
+    .calC-dow.sat { color: #2563EB; }
+    .calC-cell {
+        text-align: center; font-size: 13px; color: #374151;
+        cursor: pointer;
+        height: 36px;
+        border-radius: 10px;
+        display: flex; align-items: center; justify-content: center;
+        position: relative;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .calC-cell:hover { background: #F3F4F6; }
+    .calC-cell.muted { color: #E5E7EB; }
+    .calC-cell.sun { color: #DC2626; }
+    .calC-cell.sat { color: #2563EB; }
+    .calC-cell.today {
+        color: #059669; font-weight: 700;
+    }
+    .calC-cell.today::after {
+        content: ''; position: absolute; bottom: 5px; left: 50%;
+        transform: translateX(-50%);
+        width: 4px; height: 4px; border-radius: 50%;
+        background: #059669;
+    }
+    .calC-cell.selected {
+        background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+        color: white; font-weight: 700;
+        box-shadow: 0 6px 16px rgba(5, 150, 105, 0.4);
+        transform: scale(1.05);
+    }
+    .calC-cell.selected.sun, .calC-cell.selected.sat { color: white; }
+
+    .calC-foot {
+        margin-top: 16px;
+        padding-top: 14px;
+        border-top: 1px solid #F3F4F6;
+        display: flex; gap: 8px;
+    }
+    .calC-foot .shortcut {
+        flex: 1;
+        padding: 7px 10px;
+        font-size: 11px; font-weight: 600;
+        background: #F9FAFB;
+        color: #374151;
+        border: 1px solid #E5E7EB;
+        border-radius: 8px;
+        cursor: pointer;
+        text-align: center;
+    }
+    .calC-foot .shortcut:hover { background: #ECFDF5; color: #059669; border-color: #A7F3D0; }
+
+</style>
+</head>
+<body>
+
+<div class="wrap">
+    <h1>日付ピッカー デザイン案（3案比較）</h1>
+    <div class="subtitle">
+        システム全体の日付入力UIを統一する想定。装飾性・視認性を重視した3案を並べて比較してください。
+        画面左は現状入力欄イメージ、下部の吹き出しがカレンダーの展開イメージです。
+    </div>
+
+    <div class="grid-3">
+
+        <!-- ========= 案A: グラデーションヘッダー型 ========= -->
+        <div class="proposal">
+            <div class="proposal-head">
+                <span class="proposal-num">A</span>
+                <span class="proposal-title">グラデーションヘッダー型</span>
+            </div>
+            <div class="proposal-desc">
+                選択中の日付を上部のemeraldグラデーションバナーで大きく表示。シンプルな縦構成で様々な場所に配置しやすい王道デザイン。
+            </div>
+
+            <div class="sample-field">
+                <label>契約日</label>
+                <div class="sample-input">
+                    <span>2025/11/20</span>
+                    <span class="cal-icon">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                    </span>
+                </div>
+            </div>
+
+            <div class="picker-wrap">
+                <div class="calA">
+                    <div class="calA-head">
+                        <div class="yr">2025</div>
+                        <div class="sel">11月20日</div>
+                        <div class="dow">木曜日</div>
+                    </div>
+                    <div class="calA-nav">
+                        <button>‹</button>
+                        <div class="month">2025年11月</div>
+                        <button>›</button>
+                    </div>
+                    <div class="calA-grid">
+                        <div class="calA-dow sun">日</div>
+                        <div class="calA-dow">月</div>
+                        <div class="calA-dow">火</div>
+                        <div class="calA-dow">水</div>
+                        <div class="calA-dow">木</div>
+                        <div class="calA-dow">金</div>
+                        <div class="calA-dow sat">土</div>
+
+                        <div class="calA-cell muted">26</div>
+                        <div class="calA-cell muted">27</div>
+                        <div class="calA-cell muted">28</div>
+                        <div class="calA-cell muted">29</div>
+                        <div class="calA-cell muted">30</div>
+                        <div class="calA-cell muted">31</div>
+                        <div class="calA-cell sat">1</div>
+
+                        <div class="calA-cell sun">2</div>
+                        <div class="calA-cell">3</div>
+                        <div class="calA-cell">4</div>
+                        <div class="calA-cell">5</div>
+                        <div class="calA-cell">6</div>
+                        <div class="calA-cell">7</div>
+                        <div class="calA-cell sat">8</div>
+
+                        <div class="calA-cell sun">9</div>
+                        <div class="calA-cell">10</div>
+                        <div class="calA-cell">11</div>
+                        <div class="calA-cell">12</div>
+                        <div class="calA-cell">13</div>
+                        <div class="calA-cell">14</div>
+                        <div class="calA-cell sat">15</div>
+
+                        <div class="calA-cell sun">16</div>
+                        <div class="calA-cell today">17</div>
+                        <div class="calA-cell">18</div>
+                        <div class="calA-cell">19</div>
+                        <div class="calA-cell selected">20</div>
+                        <div class="calA-cell">21</div>
+                        <div class="calA-cell sat">22</div>
+
+                        <div class="calA-cell sun">23</div>
+                        <div class="calA-cell">24</div>
+                        <div class="calA-cell">25</div>
+                        <div class="calA-cell">26</div>
+                        <div class="calA-cell">27</div>
+                        <div class="calA-cell">28</div>
+                        <div class="calA-cell sat">29</div>
+
+                        <div class="calA-cell sun">30</div>
+                    </div>
+                    <div class="calA-foot">
+                        <a href="#" class="today-link">今日</a>
+                        <button class="btn-ok">決定</button>
+                    </div>
+                </div>
+            </div>
+
+            <ul class="proposal-features">
+                <li>幅300px — どこに配置しても収まりやすい</li>
+                <li>選択日をヘッダーで強調表示（年・日付・曜日）</li>
+                <li>サイトのemerald色をグラデーションで装飾</li>
+                <li>「今日」リンクで即日付ジャンプ</li>
+                <li>シンプルな縦構成で理解しやすい</li>
+            </ul>
+        </div>
+
+        <!-- ========= 案B: サイドバナー型 ========= -->
+        <div class="proposal">
+            <div class="proposal-head">
+                <span class="proposal-num">B</span>
+                <span class="proposal-title">サイドバナー型</span>
+            </div>
+            <div class="proposal-desc">
+                左側に大きな日付ディスプレイパネル。雑誌・カレンダーアプリのような編集的装飾。選択日の存在感が最も強い案。
+            </div>
+
+            <div class="sample-field">
+                <label>契約日</label>
+                <div class="sample-input">
+                    <span>2025/11/20</span>
+                    <span class="cal-icon">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                    </span>
+                </div>
+            </div>
+
+            <div class="picker-wrap">
+                <div class="calB">
+                    <div class="calB-side">
+                        <span class="badge">選択中</span>
+                        <div class="year-big">2025</div>
+                        <div>
+                            <div class="day-big">20</div>
+                            <div class="month-small">November</div>
+                        </div>
+                        <div class="dow-small">Thursday / 木曜日</div>
+                    </div>
+                    <div class="calB-main">
+                        <div class="calB-nav">
+                            <button>‹</button>
+                            <div class="month">2025年11月</div>
+                            <button>›</button>
+                        </div>
+                        <div class="calB-grid">
+                            <div class="calB-dow sun">日</div>
+                            <div class="calB-dow">月</div>
+                            <div class="calB-dow">火</div>
+                            <div class="calB-dow">水</div>
+                            <div class="calB-dow">木</div>
+                            <div class="calB-dow">金</div>
+                            <div class="calB-dow sat">土</div>
+
+                            <div class="calB-cell muted">26</div>
+                            <div class="calB-cell muted">27</div>
+                            <div class="calB-cell muted">28</div>
+                            <div class="calB-cell muted">29</div>
+                            <div class="calB-cell muted">30</div>
+                            <div class="calB-cell muted">31</div>
+                            <div class="calB-cell sat">1</div>
+
+                            <div class="calB-cell sun">2</div>
+                            <div class="calB-cell">3</div>
+                            <div class="calB-cell">4</div>
+                            <div class="calB-cell">5</div>
+                            <div class="calB-cell">6</div>
+                            <div class="calB-cell">7</div>
+                            <div class="calB-cell sat">8</div>
+
+                            <div class="calB-cell sun">9</div>
+                            <div class="calB-cell">10</div>
+                            <div class="calB-cell">11</div>
+                            <div class="calB-cell">12</div>
+                            <div class="calB-cell">13</div>
+                            <div class="calB-cell">14</div>
+                            <div class="calB-cell sat">15</div>
+
+                            <div class="calB-cell sun">16</div>
+                            <div class="calB-cell today">17</div>
+                            <div class="calB-cell">18</div>
+                            <div class="calB-cell">19</div>
+                            <div class="calB-cell selected">20</div>
+                            <div class="calB-cell">21</div>
+                            <div class="calB-cell sat">22</div>
+
+                            <div class="calB-cell sun">23</div>
+                            <div class="calB-cell">24</div>
+                            <div class="calB-cell">25</div>
+                            <div class="calB-cell">26</div>
+                            <div class="calB-cell">27</div>
+                            <div class="calB-cell">28</div>
+                            <div class="calB-cell sat">29</div>
+
+                            <div class="calB-cell sun">30</div>
+                        </div>
+                        <div class="calB-foot">
+                            <button class="btn btn-link">今日</button>
+                            <button class="btn btn-ok">決定</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <ul class="proposal-features">
+                <li>幅390px — サイドパネル+カレンダーの横長構成</li>
+                <li>選択日を「20」と巨大数字で表示（編集的装飾）</li>
+                <li>日・月・年・曜日を日英併記（視認性UP）</li>
+                <li>日付セルは丸形、ホバーで拡大</li>
+                <li>印象的で記憶に残るデザイン</li>
+            </ul>
+        </div>
+
+        <!-- ========= 案C: ソフトカード・エレガント型 ========= -->
+        <div class="proposal">
+            <div class="proposal-head">
+                <span class="proposal-num">C</span>
+                <span class="proposal-title">ソフトカード・エレガント型</span>
+            </div>
+            <div class="proposal-desc">
+                柔らかい影と丸みで装飾。選択日はグラデーションで浮き上がる。iOS風の洗練された現代的UI。
+            </div>
+
+            <div class="sample-field">
+                <label>契約日</label>
+                <div class="sample-input">
+                    <span>2025/11/20</span>
+                    <span class="cal-icon">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                    </span>
+                </div>
+            </div>
+
+            <div class="picker-wrap">
+                <div class="calC">
+                    <div class="calC-info">
+                        <span class="pill">選択中</span>
+                        <span class="sel-date"><b>2025年11月20日</b>（木）</span>
+                    </div>
+                    <div class="calC-nav">
+                        <button>‹</button>
+                        <div class="month">2025年 11月</div>
+                        <button>›</button>
+                    </div>
+                    <div class="calC-grid">
+                        <div class="calC-dow sun">日</div>
+                        <div class="calC-dow">月</div>
+                        <div class="calC-dow">火</div>
+                        <div class="calC-dow">水</div>
+                        <div class="calC-dow">木</div>
+                        <div class="calC-dow">金</div>
+                        <div class="calC-dow sat">土</div>
+
+                        <div class="calC-cell muted">26</div>
+                        <div class="calC-cell muted">27</div>
+                        <div class="calC-cell muted">28</div>
+                        <div class="calC-cell muted">29</div>
+                        <div class="calC-cell muted">30</div>
+                        <div class="calC-cell muted">31</div>
+                        <div class="calC-cell sat">1</div>
+
+                        <div class="calC-cell sun">2</div>
+                        <div class="calC-cell">3</div>
+                        <div class="calC-cell">4</div>
+                        <div class="calC-cell">5</div>
+                        <div class="calC-cell">6</div>
+                        <div class="calC-cell">7</div>
+                        <div class="calC-cell sat">8</div>
+
+                        <div class="calC-cell sun">9</div>
+                        <div class="calC-cell">10</div>
+                        <div class="calC-cell">11</div>
+                        <div class="calC-cell">12</div>
+                        <div class="calC-cell">13</div>
+                        <div class="calC-cell">14</div>
+                        <div class="calC-cell sat">15</div>
+
+                        <div class="calC-cell sun">16</div>
+                        <div class="calC-cell today">17</div>
+                        <div class="calC-cell">18</div>
+                        <div class="calC-cell">19</div>
+                        <div class="calC-cell selected">20</div>
+                        <div class="calC-cell">21</div>
+                        <div class="calC-cell sat">22</div>
+
+                        <div class="calC-cell sun">23</div>
+                        <div class="calC-cell">24</div>
+                        <div class="calC-cell">25</div>
+                        <div class="calC-cell">26</div>
+                        <div class="calC-cell">27</div>
+                        <div class="calC-cell">28</div>
+                        <div class="calC-cell sat">29</div>
+
+                        <div class="calC-cell sun">30</div>
+                    </div>
+                    <div class="calC-foot">
+                        <button class="shortcut">今日</button>
+                        <button class="shortcut">1週間前</button>
+                        <button class="shortcut">1ヶ月前</button>
+                    </div>
+                </div>
+            </div>
+
+            <ul class="proposal-features">
+                <li>幅340px — 大きめの丸み（20px）で柔らかい印象</li>
+                <li>選択日はグラデーション + 影で浮き上がる装飾</li>
+                <li>今日はドット「・」印で控えめに表示</li>
+                <li>フッターに「今日／1週間前／1ヶ月前」の3プリセット</li>
+                <li>モダン・エレガント。iOS/Material感のある洗練UI</li>
+            </ul>
+        </div>
+
+    </div>
+</div>
+
+</body>
+</html>
