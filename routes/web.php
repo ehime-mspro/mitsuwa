@@ -676,13 +676,38 @@ Route::middleware(['auth', 'password.change'])->group(function () {
     Route::prefix('housing')->group(function () {
         /*
         |------------------------------------------------------------------
-        | 住宅事業 契約管理 統合一覧（2ルート）
+        | 住宅事業 契約管理 統合（8ルート）
+        |   建売・注文住宅を横断する契約管理画面。URLは /housing/contracts/{type}/{id}
+        |   type = building | custom-order
         |------------------------------------------------------------------
         */
+        // 契約一覧（全ロール閲覧可）
         Route::get('/contracts', [\App\Http\Controllers\Housing\HsContractListController::class, 'index'])
-            ->name('housing.contract-list.index');
-        Route::get('/contracts/{hsContract}', [\App\Http\Controllers\Housing\HsContractListController::class, 'show'])
-            ->name('housing.contract-list.show');
+            ->name('housing.contracts.index');
+
+        // 建売物件選択画面（建売契約新規登録の第一段階、全ロール閲覧可）
+        Route::get('/contracts/create/building/select-property', [\App\Http\Controllers\Housing\HsContractListController::class, 'selectBuildingProperty'])
+            ->name('housing.contracts.select-building-property');
+
+        // 建売契約詳細（全ロール閲覧可）
+        Route::get('/contracts/building/{hsContract}', [\App\Http\Controllers\Housing\HsContractListController::class, 'showBuilding'])
+            ->name('housing.contracts.show-building');
+
+        // 注文住宅契約詳細（全ロール閲覧可）
+        Route::get('/contracts/custom-order/{hsCustomOrder}', [\App\Http\Controllers\Housing\HsContractListController::class, 'showCustomOrder'])
+            ->name('housing.contracts.show-custom-order');
+
+        // 契約編集・更新（経営層+管理者）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/contracts/building/{hsContract}/edit', [\App\Http\Controllers\Housing\HsContractListController::class, 'editBuilding'])
+                ->name('housing.contracts.edit-building');
+            Route::put('/contracts/building/{hsContract}', [\App\Http\Controllers\Housing\HsContractListController::class, 'updateBuilding'])
+                ->name('housing.contracts.update-building');
+            Route::get('/contracts/custom-order/{hsCustomOrder}/edit', [\App\Http\Controllers\Housing\HsContractListController::class, 'editCustomOrder'])
+                ->name('housing.contracts.edit-custom-order');
+            Route::put('/contracts/custom-order/{hsCustomOrder}', [\App\Http\Controllers\Housing\HsContractListController::class, 'updateCustomOrder'])
+                ->name('housing.contracts.update-custom-order');
+        });
 
         // 建売物件一覧（全ロール閲覧可）
         Route::get('/properties', [\App\Http\Controllers\Housing\PropertyController::class, 'index'])

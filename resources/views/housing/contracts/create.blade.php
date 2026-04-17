@@ -54,7 +54,7 @@
                     <label class="block text-sm font-semibold text-gray-700 mb-1">土地販売価格（非課税）<span class="text-red-600 ml-0.5">*</span></label>
                     <input type="number" name="selling_price_land" value="{{ old('selling_price_land', $defaults['selling_price_land']) }}"
                            class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none"
-                           placeholder="0">
+                           >
                     @error('selling_price_land') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
                     <p class="text-xs text-gray-500 mt-1">変更可能</p>
                 </div>
@@ -62,7 +62,7 @@
                     <label class="block text-sm font-semibold text-gray-700 mb-1">建物販売価格（税抜）<span class="text-red-600 ml-0.5">*</span></label>
                     <input type="number" name="selling_price_building" value="{{ old('selling_price_building', $defaults['selling_price_building']) }}"
                            class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none"
-                           placeholder="0">
+                           >
                     @error('selling_price_building') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
                     <p class="text-xs text-gray-500 mt-1">変更可能</p>
                 </div>
