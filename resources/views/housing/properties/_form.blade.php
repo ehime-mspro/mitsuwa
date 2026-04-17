@@ -170,14 +170,14 @@
                 <label class="block text-sm font-semibold text-gray-700 mb-1">建築費（税抜総額）</label>
                 <input type="number" name="building_cost" value="{{ old('building_cost', $p?->building_cost) }}"
                        class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none"
-                       placeholder="0">
+                       >
                 <p class="text-xs text-gray-500 mt-1">実行予算書の総額を入力</p>
             </div>
             <div>
                 <label class="block text-sm font-semibold text-gray-700 mb-1">建物予定販売価格（税抜）</label>
                 <input type="number" name="target_selling_price_building" value="{{ old('target_selling_price_building', $p?->target_selling_price_building) }}"
                        class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none"
-                       placeholder="0">
+                       >
                 <p class="text-xs text-gray-500 mt-1">契約登録時のデフォルト値として使用</p>
             </div>
         </div>

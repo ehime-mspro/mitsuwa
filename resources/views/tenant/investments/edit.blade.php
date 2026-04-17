@@ -174,7 +174,7 @@
                                 <div class="relative">
                                     <input type="number" :name="'details['+idx+'][amount]'" x-model.number="row.amount" min="0"
                                            class="w-full h-9 px-2.5 pr-8 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none bg-white"
-                                           placeholder="0">
+                                           >
                                     <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">円</span>
                                 </div>
                             </div>
@@ -247,7 +247,7 @@ function investmentEditForm() {
         propertyId: '{{ old('property_id', $investment->property_id) }}',
         unitId: '{{ old('unit_id', $investment->unit_id) }}',
         filteredUnits: [],
-        details: existingDetails.length > 0 ? existingDetails : [{ cost_item: 'interior', contractor_name: '', amount: 0, executed_at: '', notes: '' }],
+        details: existingDetails.length > 0 ? existingDetails : [{ cost_item: 'interior', contractor_name: '', amount: '', executed_at: '', notes: '' }],
 
         init() {
             this.filterUnits();
@@ -264,7 +264,7 @@ function investmentEditForm() {
         },
 
         addDetail() {
-            this.details.push({ cost_item: 'interior', contractor_name: '', amount: 0, executed_at: '', notes: '' });
+            this.details.push({ cost_item: 'interior', contractor_name: '', amount: '', executed_at: '', notes: '' });
         },
 
         removeDetail(idx) {

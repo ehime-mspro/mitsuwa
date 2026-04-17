@@ -217,14 +217,14 @@
                 <label class="block text-sm font-semibold text-gray-700 mb-1">建物請負金額（税抜）</label>
                 <input type="number" name="building_contract_price" value="{{ old('building_contract_price', $o?->building_contract_price) }}"
                        class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none"
-                       placeholder="0">
+                       >
                 <p class="text-xs text-gray-500 mt-1">円単位で入力</p>
             </div>
             <div>
                 <label class="block text-sm font-semibold text-gray-700 mb-1">建築原価（税抜）</label>
                 <input type="number" name="building_cost" value="{{ old('building_cost', $o?->building_cost) }}"
                        class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none"
-                       placeholder="0">
+                       >
                 <p class="text-xs text-gray-500 mt-1">実行予算ベース</p>
             </div>
 
@@ -233,7 +233,7 @@
                 <label class="block text-sm font-semibold text-gray-700 mb-1">土地販売価格（非課税）</label>
                 <input type="number" name="land_selling_price" value="{{ old('land_selling_price', $o?->land_selling_price) }}"
                        class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none"
-                       placeholder="0">
+                       >
                 <p class="text-xs text-gray-500 mt-1">自社土地の場合のみ</p>
             </div>
             <div x-show="landSourceType === 'project_lot' || landSourceType === 'procurement'">

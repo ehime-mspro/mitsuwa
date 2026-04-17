@@ -114,45 +114,45 @@
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1">家賃（月額）</label>
                     <div class="relative">
-                        <input type="number" name="rent" value="{{ old('rent', 0) }}" min="0"
+                        <input type="number" name="rent" value="{{ old('rent', '') }}" min="0"
                                class="form-input w-full h-[40px] px-3 pr-8 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none"
-                               placeholder="0">
+                               >
                         <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">円</span>
                     </div>
                 </div>
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1">共益費（月額）</label>
                     <div class="relative">
-                        <input type="number" name="common_fee" value="{{ old('common_fee', 0) }}" min="0"
+                        <input type="number" name="common_fee" value="{{ old('common_fee', '') }}" min="0"
                                class="form-input w-full h-[40px] px-3 pr-8 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none"
-                               placeholder="0">
+                               >
                         <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">円</span>
                     </div>
                 </div>
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1">ゴミ代（月額）</label>
                     <div class="relative">
-                        <input type="number" name="garbage_fee" value="{{ old('garbage_fee', 0) }}" min="0"
+                        <input type="number" name="garbage_fee" value="{{ old('garbage_fee', '') }}" min="0"
                                class="form-input w-full h-[40px] px-3 pr-8 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none"
-                               placeholder="0">
+                               >
                         <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">円</span>
                     </div>
                 </div>
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1">駆除代（月額）</label>
                     <div class="relative">
-                        <input type="number" name="pest_control_fee" value="{{ old('pest_control_fee', 0) }}" min="0"
+                        <input type="number" name="pest_control_fee" value="{{ old('pest_control_fee', '') }}" min="0"
                                class="form-input w-full h-[40px] px-3 pr-8 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none"
-                               placeholder="0">
+                               >
                         <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">円</span>
                     </div>
                 </div>
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1">敷金</label>
                     <div class="relative">
-                        <input type="number" name="deposit" value="{{ old('deposit', 0) }}" min="0"
+                        <input type="number" name="deposit" value="{{ old('deposit', '') }}" min="0"
                                class="form-input w-full h-[40px] px-3 pr-8 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none"
-                               placeholder="0">
+                               >
                         <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">円</span>
                     </div>
                 </div>
