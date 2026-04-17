@@ -348,3 +348,218 @@ c428e741 モック: サマリーを両端配置（space-between）+ 左右余白
 ---
 
 以上。本ハンドオフ資料があれば新セッションでも Phase 1 と同等の粒度で Phase 2 以降を進められます。
+
+---
+
+## 10. Phase 2 実行結果（2026-04-16 実施済み）
+
+Phase 2（基盤整備）は完了。次セッションは Phase 3 から着手する。
+
+### 完了した変更
+
+#### 10-1. ルート命名規約の確定
+- 設計書初版の `housing.contract-list.*` は廃止
+- 新体系 `housing.contracts.*` に統一（本ハンドオフ資料 §2-1 の案を採用）
+- URL: `/housing/contracts/{type}/{id}` 形式（type = building | custom-order）
+
+#### 10-2. `routes/web.php` L677-711
+既存の `housing.contract-list.index` / `housing.contract-list.show` を削除し、以下 8 ルートを追加:
+
+| ルート名 | URL | 権限 |
+|---------|-----|------|
+| `housing.contracts.index` | GET `/housing/contracts` | 全ロール |
+| `housing.contracts.select-building-property` | GET `/housing/contracts/create/building/select-property` | 全ロール |
+| `housing.contracts.show-building` | GET `/housing/contracts/building/{hsContract}` | 全ロール |
+| `housing.contracts.show-custom-order` | GET `/housing/contracts/custom-order/{hsCustomOrder}` | 全ロール |
+| `housing.contracts.edit-building` | GET `/housing/contracts/building/{hsContract}/edit` | executive,manager |
+| `housing.contracts.update-building` | PUT `/housing/contracts/building/{hsContract}` | executive,manager |
+| `housing.contracts.edit-custom-order` | GET `/housing/contracts/custom-order/{hsCustomOrder}/edit` | executive,manager |
+| `housing.contracts.update-custom-order` | PUT `/housing/contracts/custom-order/{hsCustomOrder}` | executive,manager |
+
+既存の `housing.contracts.create/store/edit/update/destroy`（建売物件サブリソースの契約 `/housing/properties/{property}/contract/*`）はそのまま温存。
+
+#### 10-3. `HsContractListController`
+- 既存 `show()` を `showBuilding()` にリネーム（ロジック保持）
+- 新規 6 メソッド追加:
+  - `showCustomOrder()` — 旧URL `housing.custom-orders.show` へ 302 redirect（Phase 4 で本実装）
+  - `editBuilding()` — 既存 `housing.contracts.edit` へ redirect（Phase 5 で本実装）
+  - `editCustomOrder()` — 既存 `housing.custom-orders.edit` へ redirect（Phase 5 で本実装）
+  - `updateBuilding()` / `updateCustomOrder()` — `abort(501)`（Phase 5 で本実装）
+  - `selectBuildingProperty()` — `abort(501)`（Phase 6 で本実装）
+
+#### 10-4. DTOマッパー拡張
+`mapTateuriToDto()` / `mapCustomOrderToDto()` に以下を追加:
+
+| フィールド | 内容 |
+|-----------|------|
+| `land_selling` / `building_selling` | 土地・建物別売価（サマリー集計用） |
+| `land_profit` / `building_profit` | 土地・建物別粗利額 |
+| `land_profit_rate` / `building_profit_rate` / `total_profit_rate` | 粗利率3種 |
+| `status_label` / `status_color` | 建売は「契約済」固定、注文住宅は `CustomOrderStatus::label()/badgeStyle()` |
+| `original_url` | 元ページURL（建売→`properties.show`、注文→`custom-orders.show`） |
+
+`detail_url` / `edit_url` を新ルート名に更新。
+
+**注意**: DBカラム名は `HsContract` は `selling_price_land`/`selling_price_building`、`HsCustomOrder` は `land_selling_price`/`building_contract_price`（不統一）。DTO内で吸収済み。
+
+#### 10-5. `index()` の view 引数拡張
+Phase 3 のサマリーカード5分割向けに以下を view に渡すよう追加:
+- `landProfitTotal` / `buildingProfitTotal`
+- `landSellingTotal` / `buildingSellingTotal`
+- `landProfitRate` / `buildingProfitRate`
+
+#### 10-6. Blade のルート名参照更新
+- `resources/views/housing/contracts/index.blade.php` L65, L90
+- `resources/views/housing/contracts/show.blade.php` L9, L23
+- すべて `housing.contract-list.index` → `housing.contracts.index` に更新
+
+### URL統合方針の確定（§4 追記）
+- 注文住宅詳細は **共存方式** を採用（2026-04-16 確認）
+- 新URL `/housing/contracts/custom-order/{id}` を正式パスとし、既存 `/housing/custom-orders/{id}` は当面維持
+- Phase 4 で `showCustomOrder()` を本実装し、表示ロジックを新URL側に集約する
+
+### 次セッションでの着手順序
+1. サーバキャッシュクリア: `sudo rm -f storage/framework/views/*.php && sudo systemctl restart apache2`
+2. ブラウザで `/housing/contracts` が既存の見た目で表示されることを確認
+3. Phase 3 着手 — `resources/views/housing/contracts/index.blade.php` の全面改修（5サマリーカード + 11列テーブル + 新規登録ドロップダウン）
+4. モック `docs/mockups/housing-contracts/index.html` を実装の参照源とする
+
+---
+
+## 11. Phase 5 実行結果（2026-04-17 実施済み）
+
+Phase 5（編集ページ実装）は完了。建売・注文住宅いずれも編集フォームから更新処理まで機能する。
+
+### 完了した変更
+
+#### 11-1. `resources/views/housing/contracts/edit-building.blade.php` 新規作成
+- カード3枚構成: 基本情報 / 契約金額 / 原価情報
+- 各カード見出しに緑アクセントバー `.hc-section-title .bar`（3×20px, `#059669`）
+- 契約日フィールドに案C `datePicker()` を組み込み（年月選択ピッカー展開 UI）
+  - `x-data="datePicker('{{ $contractDateValue }}')"` で初期値を渡し、hidden input に ISO 日付をバインド
+- 土地原価の手動入力切替: フォームタグに `x-data="{ isLandCostManual: {{ ... }} }"` を付与し、`x-show` で ON/OFF 表示切替
+- チェックボックスのフォールバック: `<input type="hidden" name="is_land_cost_manual" value="0">` を先置き → チェック時に `value="1"` で上書きする二重フィールドパターン
+- 買主プルダウンは `$buyers` を `@foreach` でループし、`$buyer->trashed()` 時に「（削除済み）」表示（SoftDeletes 対応）
+- フォーム `action` は `route('housing.contracts.update-building', $hsContract)`、`@method('PUT')`
+- スタイル/スクリプトは `@section('content')` 冒頭に `<style>` / `<script>` で直接記述（`@stack('styles')` が layouts/app.blade.php に存在しないため）
+
+#### 11-2. `resources/views/housing/contracts/edit-custom-order.blade.php` 新規作成
+- 土地種別3パターン条件分岐（`land_source_type` ラジオボタン）:
+  - `project_lot`（分譲地PJ区画） / `procurement`（仕入れ案件） / `customer_land`（顧客所有地）
+- Alpine.js コンテキストはラッパー `<div>` に `x-data="customOrderEditForm({ landSourceType, isLandCostManual, reProjectLotId, reProcurementId })"` で付与（`datePicker()` をネストできる）
+- 紐付け先リンク: `projectLotUrls` / `procurementUrls` を `@json()` でオブジェクト化し、`:href="projectLotUrls[reProjectLotId]"` で動的に URL 設定
+- 建築土地カード全体: `x-show="landSourceType !== 'customer_land'"` で顧客所有地選択時に非表示
+- 登録情報セクション（登録者 / 登録日時 / 更新者 / 更新日時）を inline grid で表示
+- `settlement_date` および進行ステータスセクションは非表示（仕様通り）
+- フォーム `action` は `route('housing.contracts.update-custom-order', $hsCustomOrder)`、`@method('PUT')`
+
+#### 11-3. `HsContractListController` の4メソッド本実装
+`redirect()` / `abort(501)` スタブを実装に置き換え:
+
+| メソッド | 責務 |
+|---------|------|
+| `editBuilding()` | `property.projectLot.project` / `procurement` / `createdBy` を eager load、`staffUsers` / `buyers`（withTrashed で現行 buyer を含める）を取得 → `edit-building` view 返却 |
+| `updateBuilding()` | `HsContract`（売価・顧客・契約日・備考）と `HsProperty`（building_cost / is_land_cost_manual / land_cost）を `DB::transaction` で同時更新 |
+| `editCustomOrder()` | `projectLot.project` / `procurement` / `createdBy` を eager load、`staffUsers` / `buyers` / `procurements` / `projectLots` を渡す |
+| `updateCustomOrder()` | 土地種別に応じて関連カラムを整理。`customer_land` の場合は `re_project_lot_id` / `re_procurement_id` / `land_selling_price` / `land_cost` / `is_land_cost_manual` をすべて null/false にクリア |
+
+### 主要な設計判断
+
+1. **土地原価の手動入力 OFF 時は land_cost を更新しない** — 紐付け先参照の参考値はフォームに送信されないため、既存値を維持して整合性を保つ
+2. **土地種別切替時のクリア処理** — 注文住宅で分譲地/仕入れ → 顧客所有地に変更した場合、土地関連カラムをすべて null にクリアし `is_land_cost_manual` も false にリセット
+3. **`created_by`（担当者）は明示指定時のみ上書き** — 空の場合は既存値を維持するパターンを両 update メソッドで採用
+4. **バリデーション**: `land_cost` を `Rule::requiredIf(fn() => ...)` で条件付き必須化（PHP アロー関数は Alpine.js 制約対象外）
+
+### 更新後のリダイレクト
+
+- `updateBuilding` → `route('housing.contracts.show-building', $hsContract)` + `session('success', '契約を更新しました。')`
+- `updateCustomOrder` → `route('housing.contracts.show-custom-order', $hsCustomOrder)` + 同上
+
+---
+
+## 12. Phase 6 実行結果（2026-04-17 実施済み）
+
+Phase 6（建売物件選択画面 + 注文住宅リダイレクト）は完了。新規契約登録の導線が完結した。
+
+### 完了した変更
+
+#### 12-1. `resources/views/housing/contracts/select-building-property.blade.php` 新規作成
+- **7列テーブル**: 物件コード / 物件名 / 住所 / 土地面積 / 建物面積 / 予定販売価格 / アクション
+- 物件名 LIKE 検索フォーム（keyword パラメータ）+ 検索ボタン + クリアボタン
+- 青色の説明バナー「契約を登録する建売物件を選択してください。一覧には未契約の物件のみ表示されています。」
+- パンくず: ホーム › 住宅事業 › 契約管理（リンク） › 建売契約登録 — 物件選択
+- 物件名セル → `route('housing.properties.show', $prop)`（詳細ページ）
+- 「この物件で契約登録」ボタン → `route('housing.contracts.create', $prop)`（既存 `ContractController@create` の建売物件サブリソース契約登録フォーム）
+- **空状態UI**: 検索結果 0 件 / 全体で 0 件 で文言を出し分け（「「{keyword}」に該当する未契約の建売物件はありません」 vs 「未契約の建売物件がありません」）
+- 空状態CTA: 「建売物件を新規登録する」→ `route('housing.properties.create')`
+- ページネーション 20件/ページ（contracts/index と同UIで統一）
+
+#### 12-2. `HsContractListController::selectBuildingProperty()` 本実装
+`abort(501)` から以下に置き換え:
+
+```php
+$query = HsProperty::whereDoesntHave('contract')
+    ->with(['projectLot', 'procurement']);
+
+$keyword = trim((string) $request->input('keyword', ''));
+if ($keyword !== '') {
+    $query->where('property_name', 'LIKE', '%' . $keyword . '%');
+}
+
+$properties = $query->orderBy('property_code')->paginate(20)->withQueryString();
+```
+
+- `whereDoesntHave('contract')` で未契約物件のみ取得（`HsProperty::contract()` は HasOne リレーション）
+- `projectLot` / `procurement` を eager load（`getSellingPriceTotal()` が紐付け先の参考販売価格を参照するため）
+- `withQueryString()` で検索条件をページ遷移で維持
+- 予定販売価格は `$prop->getSellingPriceTotal()`（建物予定販売価格 + 紐付け先の土地参考販売価格）
+
+### 注文住宅新規登録の導線確認
+
+Phase 3 で既に index.blade.php のドロップダウン内に `route('housing.custom-orders.create')` へのリンクを配線済み。Phase 6 では追加変更不要。
+
+### 導線全体像（Phase 6 完了時点）
+
+```
+/housing/contracts
+   └─ ヘッダー「+ 新規契約登録」ドロップダウン
+        ├─ 「建売を登録」
+        │    → /housing/contracts/create/building/select-property（物件選択画面）
+        │         → [この物件で契約登録]
+        │              → /housing/properties/{property}/contract/create（既存の建売契約登録フォーム）
+        └─ 「注文住宅を登録」
+             → /housing/custom-orders/create（既存の注文住宅登録フォーム）
+```
+
+### コミット情報
+
+Phase 2〜6 の実装をまとめて `acf6c310` でコミット（10ファイル変更 / +3,030 / −289）。
+
+```
+acf6c310 住宅事業契約管理 Phase 2〜6: 建売・注文住宅の統合実装
+```
+
+---
+
+## 13. Phase 7 残タスク（次セッション）
+
+Phase 2〜6 の実装はすべて完了。残るは **Phase 7: 包括的手動テスト** のみ。
+
+### 実施前のキャッシュクリア
+
+```bash
+sudo rm -f storage/framework/views/*.php && sudo systemctl restart apache2
+```
+
+### 手動テストの観点
+
+- [ ] `/housing/contracts` 一覧表示（年度・種別・担当者フィルター、5サマリーカード、11列テーブル）
+- [ ] 新規契約登録ドロップダウン → 建売物件選択 → 契約登録 の導線
+- [ ] 新規契約登録ドロップダウン → 注文住宅登録 の導線
+- [ ] 建売契約詳細 `/housing/contracts/building/{id}` — 「元ページへ」ボタン、編集ボタン
+- [ ] 注文住宅契約詳細 `/housing/contracts/custom-order/{id}` — 同上
+- [ ] 建売契約編集 — 案C日付ピッカー動作、土地原価手動入力切替、更新後のリダイレクト
+- [ ] 注文住宅契約編集 — 土地種別3パターン切替、紐付け先リンク動作、更新後のリダイレクト
+- [ ] 物件選択画面 — 物件名検索、ページネーション、空状態UI
+- [ ] 権限: manager/staff が編集ボタンを見られないこと、URL直打ちで 403 が返ること
+
