@@ -302,7 +302,7 @@
                     <div class="relative">
                         <input type="number" name="rent" x-model.number="rent" min="0"
                                class="form-input w-full h-[40px] px-3 pr-8 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none"
-                               placeholder="0">
+                               >
                         <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">円</span>
                     </div>
                 </div>
@@ -311,7 +311,7 @@
                     <div class="relative">
                         <input type="number" name="common_fee" x-model.number="commonFee" min="0"
                                class="form-input w-full h-[40px] px-3 pr-8 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none"
-                               placeholder="0">
+                               >
                         <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">円</span>
                     </div>
                 </div>
@@ -320,7 +320,7 @@
                     <div class="relative">
                         <input type="number" name="garbage_fee" x-model.number="garbageFee" min="0"
                                class="form-input w-full h-[40px] px-3 pr-8 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none"
-                               placeholder="0">
+                               >
                         <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">円</span>
                     </div>
                 </div>
@@ -329,7 +329,7 @@
                     <div class="relative">
                         <input type="number" name="pest_control_fee" x-model.number="pestControlFee" min="0"
                                class="form-input w-full h-[40px] px-3 pr-8 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none"
-                               placeholder="0">
+                               >
                         <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">円</span>
                     </div>
                 </div>
@@ -338,7 +338,7 @@
                     <div class="relative">
                         <input type="number" name="deposit" x-model.number="deposit" min="0"
                                class="form-input w-full h-[40px] px-3 pr-8 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none"
-                               placeholder="0">
+                               >
                         <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">円</span>
                     </div>
                 </div>

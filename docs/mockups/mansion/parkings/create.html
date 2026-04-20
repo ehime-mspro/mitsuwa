@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>マンション駐車場登録 | ミツワ都市開発 経営管理システム</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif; background: #f3f4f6; }
+    </style>
+</head>
+<body>
+
+    <!-- トップバー -->
+    <header style="background: #1f2937; color: white; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 16px;">
+            <span style="font-weight: 700;">ミツワ都市開発 経営管理システム</span>
+        </div>
+        <div style="font-size: 13px;">山田 (経営層)</div>
+    </header>
+
+    <div style="display: flex; min-height: calc(100vh - 48px);">
+        <!-- サイドバー -->
+        <aside style="width: 220px; background: white; border-right: 1px solid #e5e7eb; padding: 16px 0;">
+            <nav style="font-size: 13px;">
+                <div style="padding: 8px 16px; color: #6b7280;">ダッシュボード</div>
+                <div style="padding: 8px 16px; color: #6b7280;">テナント管理</div>
+                <div style="padding: 8px 16px; color: #6b7280;">賃貸マンション ▾</div>
+                <div style="padding: 6px 16px 6px 32px; background: #ecfdf5; color: #047857; border-left: 3px solid #10b981; font-weight: 600;">物件一覧</div>
+                <div style="padding: 6px 16px 6px 32px; color: #6b7280;">入居者管理</div>
+                <div style="padding: 6px 16px 6px 32px; color: #6b7280;">契約一覧</div>
+                <div style="padding: 8px 16px; color: #6b7280;">不動産管理</div>
+                <div style="padding: 8px 16px; color: #6b7280;">住宅事業</div>
+                <div style="padding: 8px 16px; color: #6b7280;">システム管理</div>
+            </nav>
+        </aside>
+
+        <!-- メインコンテンツ -->
+        <main style="flex: 1; padding: 24px;">
+
+            <!-- パンくず -->
+            <div class="text-sm text-gray-500" style="margin-bottom: 12px;">
+                ダッシュボード &gt; 賃貸マンション &gt; <a href="../properties/index.html" class="text-gray-500 hover:text-emerald-600 hover:underline">物件一覧</a> &gt; <a href="../properties/show.html" class="text-gray-500 hover:text-emerald-600 hover:underline">MS-001</a> &gt; <span class="text-gray-800 font-medium">駐車場登録</span>
+            </div>
+
+            <!-- ページヘッダー -->
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <h1 style="font-size: 20px; font-weight: 700; margin: 0;">駐車場 新規登録</h1>
+                    <span style="font-size: 12px; background: #f3f4f6; color: #4b5563; padding: 3px 10px; border-radius: 4px; font-weight: 600;">ミツワハイツ松山1号館</span>
+                </div>
+                <a href="../properties/show.html" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border: 1px solid #d1d5db; border-radius: 6px; background: white; font-size: 13px; color: #374151; text-decoration: none;">
+                    <svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                    物件詳細に戻る
+                </a>
+            </div>
+
+            <!-- フォーム -->
+            <form>
+
+                <!-- ========== カード: 基本情報 ========== -->
+                <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
+                    <div style="font-size: 15px; font-weight: 700; color: #111827; margin-bottom: 14px; padding-left: 12px; border-left: 4px solid #10b981;">
+                        基本情報
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px; margin-bottom: 26px;">
+                        <!-- 駐車場番号 -->
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">駐車場番号<span class="text-red-600" style="margin-left: 2px;">*</span></label>
+                            <input type="text" name="parking_number" placeholder="例: A-1"
+                                   style="width: 100%; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
+                        </div>
+                        <!-- 屋根 -->
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">屋根</label>
+                            <select name="has_roof"
+                                    style="width: 100%; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
+                                <option value="">選択してください</option>
+                                <option value="1">屋根あり</option>
+                                <option value="0">屋根なし（屋外）</option>
+                            </select>
+                        </div>
+                        <!-- サイズ -->
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">サイズ</label>
+                            <select name="size"
+                                    style="width: 100%; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
+                                <option value="">選択してください</option>
+                                <option>軽自動車</option>
+                                <option>普通車</option>
+                                <option>大型</option>
+                            </select>
+                        </div>
+                        <!-- 区画タイプ -->
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">区画タイプ</label>
+                            <select name="lot_type"
+                                    style="width: 100%; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
+                                <option value="">選択してください</option>
+                                <option>平面</option>
+                                <option>機械式</option>
+                                <option>縦列</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- ステータス -->
+                    <div style="margin-bottom: 0;">
+                        <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">ステータス<span class="text-red-600" style="margin-left: 2px;">*</span></label>
+                        <div style="display: flex; gap: 20px; padding: 4px 0; flex-wrap: wrap;">
+                            <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: #374151; cursor: pointer;">
+                                <input type="radio" name="status" value="vacant" checked style="width: 16px; height: 16px; accent-color: #059669;">
+                                空き
+                            </label>
+                            <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: #374151; cursor: pointer;">
+                                <input type="radio" name="status" value="occupied" style="width: 16px; height: 16px; accent-color: #059669;">
+                                使用中
+                            </label>
+                            <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: #374151; cursor: pointer;">
+                                <input type="radio" name="status" value="negotiating" style="width: 16px; height: 16px; accent-color: #059669;">
+                                申込み・仮押え
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ========== カード: 募集条件 ========== -->
+                <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
+                    <div style="font-size: 15px; font-weight: 700; color: #111827; margin-bottom: 14px; padding-left: 12px; border-left: 4px solid #10b981;">
+                        募集条件
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px; margin-bottom: 0;">
+                        <!-- 月額料金 -->
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">月額料金</label>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <input type="number" name="monthly_fee" min="0" step="500"
+                                       style="flex: 1; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px; text-align: right;">
+                                <span style="font-size: 13px; color: #6b7280;">円</span>
+                            </div>
+                            <div style="font-size: 11px; color: #6b7280; margin-top: 3px;">※ 税抜</div>
+                        </div>
+                        <!-- 敷金 -->
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">敷金</label>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <input type="number" name="deposit" min="0" step="1000"
+                                       style="flex: 1; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px; text-align: right;">
+                                <span style="font-size: 13px; color: #6b7280;">円</span>
+                            </div>
+                        </div>
+                        <!-- 礼金 -->
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">礼金</label>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <input type="number" name="key_money" min="0" step="1000"
+                                       style="flex: 1; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px; text-align: right;">
+                                <span style="font-size: 13px; color: #6b7280;">円</span>
+                            </div>
+                        </div>
+                        <!-- 更新料 -->
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">更新料</label>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <input type="number" name="renewal_fee" min="0" step="1000"
+                                       style="flex: 1; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px; text-align: right;">
+                                <span style="font-size: 13px; color: #6b7280;">円</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ========== カード: 備考 ========== -->
+                <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
+                    <div style="font-size: 15px; font-weight: 700; color: #111827; margin-bottom: 14px; padding-left: 12px; border-left: 4px solid #10b981;">
+                        備考
+                    </div>
+                    <div>
+                        <textarea name="notes" placeholder="位置や注意事項（例: エントランス横、角地で出入りしやすい 等）..."
+                                  style="width: 100%; min-height: 96px; border: 1px solid #d1d5db; border-radius: 6px; padding: 8px 12px; font-size: 14px; resize: vertical;"></textarea>
+                    </div>
+                </div>
+
+                <!-- アクションボタン -->
+                <div style="display: flex; justify-content: flex-end; gap: 8px;">
+                    <a href="../properties/show.html" style="display: inline-flex; align-items: center; padding: 10px 20px; border: 1px solid #d1d5db; border-radius: 6px; background: white; font-size: 14px; color: #374151; text-decoration: none;">キャンセル</a>
+                    <button type="submit" name="continue" value="1" style="padding: 10px 20px; background: white; color: #059669; border: 1px solid #10b981; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer;" title="登録後、この駐車場と同じ条件で次の区画を続けて登録します">
+                        内容をコピーして追加
+                    </button>
+                    <button type="submit" style="padding: 10px 24px; background: #059669; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer;">
+                        登録する
+                    </button>
+                </div>
+            </form>
+
+            <!-- 補足 -->
+            <div style="margin-top: 20px; padding: 12px 16px; background: #f9fafb; border-radius: 8px; font-size: 12px; color: #6b7280;">
+                <strong style="color: #374151;">※登録後の動作</strong>：同じ物件内で駐車場番号は重複できません。登録完了後は物件詳細画面に戻ります。
+            </div>
+
+        </main>
+    </div>
+
+</body>
+</html>

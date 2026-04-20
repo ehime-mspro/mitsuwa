@@ -296,7 +296,7 @@ class ContractController extends Controller
         }
 
         $validated = $request->validate([
-            'customer_id'      => 'required|exists:customers,id',
+            'customer_id'      => 'nullable|exists:customers,id',
             'store_name'       => 'nullable|string|max:200',
             'contract_date'    => 'required|date',
             'rent_start_date'  => 'nullable|date',

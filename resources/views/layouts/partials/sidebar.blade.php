@@ -19,6 +19,7 @@
     $hasTenantAccess = $isExecutive || $user->belongsToDepartment('tenant');
     $hasRealEstateAccess = $isExecutive || $user->belongsToDepartment('realestate');
     $hasHousingAccess = $isExecutive || $user->belongsToDepartment('housing');
+    $hasMansionAccess = $isExecutive || $user->belongsToDepartment('mansion');
 @endphp
 
 {{-- ========== PC用: 展開サイドバー ========== --}}
@@ -48,6 +49,9 @@
         @if($hasTenantAccess)
             <x-sidebar-item :href="url('/dashboard/tenant')" label="テナントダッシュボード" :active="request()->is('dashboard/tenant')" />
         @endif
+        @if($hasMansionAccess)
+            <x-sidebar-item :href="url('/mansion/dashboard')" label="賃貸Mダッシュボード" :active="request()->is('mansion/dashboard')" />
+        @endif
     </div>
 
     {{-- テナント管理 --}}
@@ -60,6 +64,16 @@
             <x-sidebar-item :href="url('/tenant/repairs')" label="一般修繕" :active="request()->is('tenant/repairs*')" />
             <x-sidebar-item :href="url('/tenant/customers')" label="顧客一覧" :active="request()->is('tenant/customers*')" />
             <x-sidebar-item :href="url('/tenant/inquiries')" label="問合せ管理" :active="request()->is('tenant/inquiries*')" />
+        </x-sidebar-group>
+    @endif
+
+    {{-- 賃貸マンション --}}
+    @if($hasMansionAccess)
+        <x-sidebar-group label="賃貸マンション">
+            <x-sidebar-item :href="url('/mansion/properties')" label="物件一覧" :active="request()->is('mansion/properties*')" />
+            <x-sidebar-item :href="url('/mansion/tenants')" label="入居者管理" :active="request()->is('mansion/tenants*')" />
+            <x-sidebar-item :href="url('/mansion/contracts')" label="部屋契約一覧" :active="request()->is('mansion/contracts*')" />
+            <x-sidebar-item :href="url('/mansion/parking-contracts')" label="駐車場契約一覧" :active="request()->is('mansion/parking-contracts*')" />
         </x-sidebar-group>
     @endif
 
@@ -155,6 +169,15 @@
         </a>
     @endif
 
+    {{-- 賃貸マンション --}}
+    @if($hasMansionAccess)
+    <a href="{{ url('/mansion/dashboard') }}" title="賃貸マンション" class="w-9 h-9 mb-1 rounded-lg flex items-center justify-center {{ request()->is('mansion/*') ? 'bg-emerald-50' : 'hover:bg-gray-100' }} transition-colors">
+        <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="{{ request()->is('mansion/*') ? '#059669' : '#6B7280' }}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 2h12v20H6z" /><path d="M9 6h2M13 6h2M9 10h2M13 10h2M9 14h2M13 14h2" /><path d="M10 22v-4h4v4" />
+        </svg>
+    </a>
+    @endif
+
     {{-- 収支管理 --}}
     <a href="{{ url('/tenant/transactions') }}" title="収支管理" class="w-9 h-9 mb-1 rounded-lg flex items-center justify-center {{ request()->is('tenant/transactions*') ? 'bg-emerald-50' : 'hover:bg-gray-100' }} transition-colors">
         <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="{{ request()->is('tenant/transactions*') ? '#059669' : '#6B7280' }}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -221,6 +244,9 @@
         @if($hasTenantAccess)
             <x-sidebar-item :href="url('/dashboard/tenant')" label="テナントダッシュボード" :active="request()->is('dashboard/tenant')" />
         @endif
+        @if($hasMansionAccess)
+            <x-sidebar-item :href="url('/mansion/dashboard')" label="賃貸Mダッシュボード" :active="request()->is('mansion/dashboard')" />
+        @endif
     </x-sidebar-group>
 
     @if($hasTenantAccess)
@@ -232,6 +258,15 @@
             <x-sidebar-item :href="url('/tenant/repairs')" label="一般修繕" :active="request()->is('tenant/repairs*')" />
             <x-sidebar-item :href="url('/tenant/customers')" label="顧客一覧" :active="request()->is('tenant/customers*')" />
             <x-sidebar-item :href="url('/tenant/inquiries')" label="問合せ管理" :active="request()->is('tenant/inquiries*')" />
+        </x-sidebar-group>
+    @endif
+
+    @if($hasMansionAccess)
+        <x-sidebar-group label="賃貸マンション">
+            <x-sidebar-item :href="url('/mansion/properties')" label="物件一覧" :active="request()->is('mansion/properties*')" />
+            <x-sidebar-item :href="url('/mansion/tenants')" label="入居者管理" :active="request()->is('mansion/tenants*')" />
+            <x-sidebar-item :href="url('/mansion/contracts')" label="部屋契約一覧" :active="request()->is('mansion/contracts*')" />
+            <x-sidebar-item :href="url('/mansion/parking-contracts')" label="駐車場契約一覧" :active="request()->is('mansion/parking-contracts*')" />
         </x-sidebar-group>
     @endif
 

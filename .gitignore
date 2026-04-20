@@ -22,3 +22,10 @@
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# Claude Code / AI ツール関連
+/.claude/
+/.playwright-mcp/
+
+# ルート直下のスクリーンショット（モック確認用の一時ファイル）
+/*.png

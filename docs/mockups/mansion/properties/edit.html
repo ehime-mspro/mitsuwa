@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>マンション物件編集 | ミツワ都市開発 経営管理システム</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif; background: #f3f4f6; }
+        .badge { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 9999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+        .badge-self { background: #dcfce7; color: #166534; }
+        .badge-managed { background: #fef3c7; color: #92400e; }
+
+        /* ===== カスタム年月ピッカー ===== */
+        .date-picker-wrap { position: relative; }
+        .date-input-trigger {
+            width: 100%; height: 38px;
+            padding: 0 10px;
+            border: 1px solid #D1D5DB;
+            border-radius: 6px;
+            font-size: 14px; color: #111827; background: white;
+            box-sizing: border-box;
+            display: flex; align-items: center; justify-content: space-between; gap: 6px;
+            cursor: pointer; text-align: left;
+            font-family: inherit;
+            white-space: nowrap; overflow: hidden;
+        }
+        .date-input-trigger > span:first-child { overflow: hidden; text-overflow: ellipsis; }
+        .date-input-trigger:hover { border-color: #059669; }
+        .date-input-trigger:focus { outline: none; border-color: #059669; box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.12); }
+        .date-input-trigger .placeholder { color: #9CA3AF; }
+        .date-input-trigger .cal-icon { color: #059669; display: inline-flex; }
+
+        .picker-popup {
+            position: absolute;
+            top: calc(100% + 6px); right: 0;
+            z-index: 100; width: 300px;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.1), 0 2px 4px rgba(0,0,0,0.04);
+            padding: 20px; box-sizing: border-box;
+        }
+        .picker-popup .cal-info { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+        .picker-popup .cal-info .pill { background: #ECFDF5; color: #047857; font-size: 11px; font-weight: 700; padding: 4px 12px; border-radius: 99px; letter-spacing: 0.3px; }
+        .picker-popup .cal-info .sel-date { font-size: 13px; color: #6B7280; }
+        .picker-popup .cal-info .sel-date b { color: #047857; font-weight: 700; }
+
+        .picker-popup .cal-nav { display: flex; align-items: center; justify-content: space-between; padding: 0 4px 10px; }
+        .picker-popup .cal-nav .arrow-btn {
+            width: 30px; height: 30px;
+            display: inline-flex; align-items: center; justify-content: center;
+            border: none; background: #F9FAFB; border-radius: 50%;
+            cursor: pointer; color: #6B7280; font-size: 13px;
+            transition: all 0.15s;
+        }
+        .picker-popup .cal-nav .arrow-btn:hover { background: #ECFDF5; color: #059669; }
+        .picker-popup .cal-nav .ym-btn {
+            display: inline-flex; align-items: center; gap: 4px;
+            font-size: 16px; font-weight: 700; color: #111827;
+            background: transparent; border: none; cursor: pointer;
+            padding: 6px 12px; border-radius: 8px;
+            transition: all 0.15s; font-family: inherit;
+        }
+        .picker-popup .cal-nav .ym-btn:hover { background: #F3F4F6; color: #059669; }
+        .picker-popup .cal-nav .ym-btn.active { background: #ECFDF5; color: #047857; }
+        .picker-popup .cal-nav .ym-btn .chev { font-size: 10px; color: #9CA3AF; transition: transform 0.15s; }
+        .picker-popup .cal-nav .ym-btn.active .chev { transform: rotate(180deg); color: #047857; }
+
+        .picker-popup .ym-picker { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 6px 2px; }
+        .picker-popup .ym-picker.year-grid { max-height: 240px; overflow-y: auto; }
+        .picker-popup .ym-picker button {
+            padding: 12px 6px; font-size: 13px; font-weight: 600;
+            background: #F9FAFB; color: #374151;
+            border: 1px solid transparent; border-radius: 10px;
+            cursor: pointer; transition: all 0.2s;
+            position: relative; font-family: inherit;
+        }
+        .picker-popup .ym-picker button:hover { background: #ECFDF5; color: #059669; }
+        .picker-popup .ym-picker button.today { color: #059669; font-weight: 700; background: white; border-color: #A7F3D0; }
+        .picker-popup .ym-picker button.today::after {
+            content: ''; position: absolute; bottom: 5px; left: 50%;
+            transform: translateX(-50%);
+            width: 4px; height: 4px; border-radius: 50%;
+            background: #059669;
+        }
+        .picker-popup .ym-picker button.selected {
+            background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+            color: white; font-weight: 700;
+            box-shadow: 0 4px 12px rgba(5, 150, 105, 0.35);
+            border-color: transparent;
+        }
+        .picker-popup .ym-picker button.selected.today::after { background: white; }
+
+        .picker-popup .cal-foot {
+            margin-top: 14px; padding-top: 12px;
+            border-top: 1px solid #F3F4F6;
+            display: flex; gap: 8px;
+        }
+        .picker-popup .cal-foot .shortcut {
+            flex: 1; padding: 7px 10px;
+            font-size: 11px; font-weight: 600;
+            background: #F9FAFB; color: #374151;
+            border: 1px solid #E5E7EB; border-radius: 8px;
+            cursor: pointer; text-align: center; font-family: inherit;
+        }
+        .picker-popup .cal-foot .shortcut:hover { background: #ECFDF5; color: #059669; border-color: #A7F3D0; }
+    </style>
+</head>
+<body>
+
+    <!-- トップバー -->
+    <header style="background: #1f2937; color: white; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 16px;">
+            <span style="font-weight: 700;">ミツワ都市開発 経営管理システム</span>
+        </div>
+        <div style="font-size: 13px;">山田 (経営層)</div>
+    </header>
+
+    <div style="display: flex; min-height: calc(100vh - 48px);">
+        <!-- サイドバー -->
+        <aside style="width: 220px; background: white; border-right: 1px solid #e5e7eb; padding: 16px 0;">
+            <nav style="font-size: 13px;">
+                <div style="padding: 8px 16px; color: #6b7280;">ダッシュボード</div>
+                <div style="padding: 8px 16px; color: #6b7280;">テナント管理</div>
+                <div style="padding: 8px 16px; color: #6b7280;">賃貸マンション ▾</div>
+                <div style="padding: 6px 16px 6px 32px; background: #ecfdf5; color: #047857; border-left: 3px solid #10b981; font-weight: 600;">物件一覧</div>
+                <div style="padding: 6px 16px 6px 32px; color: #6b7280;">入居者管理</div>
+                <div style="padding: 6px 16px 6px 32px; color: #6b7280;">契約一覧</div>
+                <div style="padding: 8px 16px; color: #6b7280;">不動産管理</div>
+                <div style="padding: 8px 16px; color: #6b7280;">住宅事業</div>
+                <div style="padding: 8px 16px; color: #6b7280;">システム管理</div>
+            </nav>
+        </aside>
+
+        <!-- メインコンテンツ -->
+        <main style="flex: 1; padding: 24px;">
+
+            <!-- パンくず -->
+            <div class="text-sm text-gray-500" style="margin-bottom: 12px;">
+                ダッシュボード &gt; 賃貸マンション &gt; <a href="index.html" class="text-gray-500 hover:text-emerald-600 hover:underline">物件一覧</a> &gt; <a href="show.html" class="text-gray-500 hover:text-emerald-600 hover:underline">MS-001</a> &gt; <span class="text-gray-800 font-medium">編集</span>
+            </div>
+
+            <!-- ページヘッダー -->
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <h1 style="font-size: 20px; font-weight: 700; margin: 0;">マンション物件 編集</h1>
+                    <span style="font-size: 12px; background: #f3f4f6; color: #4b5563; padding: 3px 10px; border-radius: 4px; font-weight: 600;">MS-001</span>
+                </div>
+                <a href="show.html" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border: 1px solid #d1d5db; border-radius: 6px; background: white; font-size: 13px; color: #374151; text-decoration: none;">
+                    <svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                    詳細に戻る
+                </a>
+            </div>
+
+            <!-- フォーム -->
+            <form x-data="propertyForm()">
+
+                <!-- ========== カード: 基本情報 ========== -->
+                <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
+                    <div style="font-size: 15px; font-weight: 700; color: #111827; margin-bottom: 14px; padding-left: 12px; border-left: 4px solid #10b981;">
+                        基本情報
+                    </div>
+
+                    <!-- 物件名 -->
+                    <div style="margin-bottom: 26px;">
+                        <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">物件名<span class="text-red-600" style="margin-left: 2px;">*</span></label>
+                        <input type="text" name="property_name" value="ミツワハイツ松山1号館"
+                               style="width: 100%; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
+                    </div>
+
+                    <!-- 所有形態 -->
+                    <div style="margin-bottom: 26px;">
+                        <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">所有形態<span class="text-red-600" style="margin-left: 2px;">*</span></label>
+                        <div style="display: flex; gap: 20px; padding: 4px 0;">
+                            <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: #374151; cursor: pointer;">
+                                <input type="radio" name="ownership_type" value="self_owned" x-model="ownershipType" style="width: 16px; height: 16px; accent-color: #059669;">
+                                自社所有
+                            </label>
+                            <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: #374151; cursor: pointer;">
+                                <input type="radio" name="ownership_type" value="managed" x-model="ownershipType" style="width: 16px; height: 16px; accent-color: #059669;">
+                                管理受託
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- オーナー名（管理受託時のみ） -->
+                    <div style="margin-bottom: 26px;" x-show="ownershipType === 'managed'" x-cloak>
+                        <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">オーナー名<span class="text-red-600" style="margin-left: 2px;">*</span></label>
+                        <input type="text" name="owner_name" value="" placeholder="例: 山田 太郎 / 田中不動産㈱"
+                               style="width: 100%; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
+                        <div style="font-size: 11px; color: #6b7280; margin-top: 3px;">※ 管理受託物件の所有者（個人名または法人名）</div>
+                    </div>
+
+                    <!-- 郵便番号 + 住所検索 -->
+                    <div style="display: grid; grid-template-columns: 160px auto 1fr; gap: 10px; margin-bottom: 26px; align-items: flex-end;">
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">郵便番号</label>
+                            <input type="text" name="postal_code" value="790-0001" maxlength="8"
+                                   style="width: 100%; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
+                        </div>
+                        <div style="display: flex; gap: 6px; align-items: flex-end;">
+                            <button type="button"
+                                    style="height: 38px; display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; font-size: 11px; font-weight: 600; color: #059669; border: 1px solid #059669; border-radius: 4px; cursor: pointer; background: #fff; white-space: nowrap;">〒→住所</button>
+                            <button type="button"
+                                    style="height: 38px; display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; font-size: 11px; font-weight: 600; color: #059669; border: 1px solid #059669; border-radius: 4px; cursor: pointer; background: #fff; white-space: nowrap;">住所→〒</button>
+                        </div>
+                        <div></div>
+                    </div>
+
+                    <!-- 所在地 -->
+                    <div style="margin-bottom: 26px;">
+                        <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">所在地<span class="text-red-600" style="margin-left: 2px;">*</span></label>
+                        <input type="text" name="address" value="愛媛県松山市湊町4-1-1"
+                               style="width: 100%; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
+                    </div>
+
+                </div>
+
+                <!-- ========== カード: 建物情報 ========== -->
+                <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
+                    <div style="font-size: 15px; font-weight: 700; color: #111827; margin-bottom: 14px; padding-left: 12px; border-left: 4px solid #10b981;">
+                        建物情報
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px; margin-bottom: 26px;">
+                        <!-- 総戸数 -->
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">総戸数</label>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <input type="number" name="total_units" value="12" min="1" max="999"
+                                       style="flex: 1; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
+                                <span style="font-size: 13px; color: #6b7280;">戸</span>
+                            </div>
+                        </div>
+                        <!-- 階数 -->
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">階数</label>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <input type="number" name="total_floors" value="5" min="1" max="50"
+                                       style="flex: 1; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
+                                <span style="font-size: 13px; color: #6b7280; white-space: nowrap;">階建て</span>
+                            </div>
+                        </div>
+                        <!-- 構造 -->
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">構造</label>
+                            <select name="structure"
+                                    style="width: 100%; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
+                                <option value="">選択してください</option>
+                                <option selected>RC造</option>
+                                <option>S造</option>
+                                <option>SRC造</option>
+                                <option>木造</option>
+                                <option>その他</option>
+                            </select>
+                        </div>
+                        <!-- 築年月 -->
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">築年月</label>
+                            <div class="date-picker-wrap" x-data="monthPicker('2015-04')" @click.outside="open = false">
+                                <button type="button" class="date-input-trigger" @click="open = !open">
+                                    <span x-show="selected" x-text="selectedLabel"></span>
+                                    <span x-show="!selected" class="placeholder">年月を選択</span>
+                                    <span class="cal-icon">
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                                    </span>
+                                </button>
+                                <input type="hidden" name="built_year_month" :value="isoValue">
+
+                                <div class="picker-popup" x-show="open" x-transition style="display:none;">
+                                    <div class="cal-info">
+                                        <span class="pill">選択中</span>
+                                        <span class="sel-date" x-show="selected"><b x-text="selectedLong"></b></span>
+                                        <span class="sel-date" x-show="!selected" style="color:#9CA3AF;">未選択</span>
+                                    </div>
+
+                                    <div class="cal-nav">
+                                        <button type="button" class="arrow-btn" @click="prevYear" :style="mode === 'year' ? 'visibility: hidden' : ''">‹</button>
+                                        <button type="button" class="ym-btn" :class="{ active: mode === 'year' }" @click="toggleYearMode">
+                                            <span x-text="viewYear + '年'"></span>
+                                            <span class="chev">▾</span>
+                                        </button>
+                                        <button type="button" class="arrow-btn" @click="nextYear" :style="mode === 'year' ? 'visibility: hidden' : ''">›</button>
+                                    </div>
+
+                                    <!-- 月グリッド -->
+                                    <div class="ym-picker" x-show="mode === 'month'">
+                                        <template x-for="m in 12" :key="m">
+                                            <button type="button"
+                                                    :class="{ today: isThisMonth(m - 1), selected: isSelectedMonth(m - 1) }"
+                                                    @click="pickMonth(m - 1)"
+                                                    x-text="m + '月'"></button>
+                                        </template>
+                                    </div>
+
+                                    <!-- 年グリッド -->
+                                    <div class="ym-picker year-grid" x-show="mode === 'year'">
+                                        <template x-for="y in yearRange" :key="y">
+                                            <button type="button"
+                                                    :class="{ today: y === todayYear, selected: y === viewYear }"
+                                                    @click="pickYear(y)"
+                                                    x-text="y"></button>
+                                        </template>
+                                    </div>
+
+                                    <div class="cal-foot">
+                                        <button type="button" class="shortcut" @click="setThisMonth">今月</button>
+                                        <button type="button" class="shortcut" @click="setYearAgo(1)">1年前</button>
+                                        <button type="button" class="shortcut" @click="setYearAgo(10)">10年前</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- ========== カード: 備考 ========== -->
+                <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
+                    <div style="font-size: 15px; font-weight: 700; color: #111827; margin-bottom: 14px; padding-left: 12px; border-left: 4px solid #10b981;">
+                        備考
+                    </div>
+                    <div>
+                        <textarea name="notes" placeholder="管理上の注意事項や特記事項を入力..."
+                                  style="width: 100%; min-height: 96px; border: 1px solid #d1d5db; border-radius: 6px; padding: 8px 12px; font-size: 14px; resize: vertical;">エントランスに宅配ボックス設置済み。駐車場8台、駐輪場12台。</textarea>
+                    </div>
+                </div>
+
+                <!-- アクションボタン -->
+                <div style="display: flex; justify-content: flex-end; gap: 8px;">
+                    <a href="show.html" style="display: inline-flex; align-items: center; padding: 10px 20px; border: 1px solid #d1d5db; border-radius: 6px; background: white; font-size: 14px; color: #374151; text-decoration: none;">キャンセル</a>
+                    <button type="submit" style="padding: 10px 24px; background: #059669; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer;">
+                        更新する
+                    </button>
+                </div>
+            </form>
+
+            <!-- 削除ゾーン -->
+            <div class="bg-white border border-red-200 rounded-lg" style="margin-top: 28px; padding: 16px 20px; display: flex; align-items: center; justify-content: space-between;">
+                <div>
+                    <div style="font-size: 14px; font-weight: 700; color: #b91c1c; margin-bottom: 2px;">物件を削除</div>
+                    <div style="font-size: 12px; color: #6b7280;">契約中の部屋または駐車場がある場合は削除できません。</div>
+                </div>
+                <button type="button"
+                        style="padding: 8px 20px; border: 1px solid #dc2626; border-radius: 6px; background: white; color: #dc2626; font-size: 13px; font-weight: 600; cursor: pointer;">
+                    削除する
+                </button>
+            </div>
+
+        </main>
+    </div>
+
+    <script>
+        function propertyForm() {
+            return {
+                ownershipType: 'self_owned'
+            };
+        }
+
+        function monthPicker(initial) {
+            var initialDate = null;
+            if (initial) {
+                var parts = initial.split('-');
+                initialDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, 1);
+            }
+            var now = new Date();
+            var todayDate = new Date(now.getFullYear(), now.getMonth(), 1);
+            var viewBase = initialDate || todayDate;
+
+            return {
+                selected: initialDate,
+                viewYear: viewBase.getFullYear(),
+                open: false,
+                mode: 'month',
+
+                todayYear: todayDate.getFullYear(),
+                todayMonth: todayDate.getMonth(),
+
+                get yearRange() {
+                    var years = [];
+                    var start = this.todayYear - 50;
+                    var end = this.todayYear + 2;
+                    for (var y = end; y >= start; y--) { years.push(y); }
+                    return years;
+                },
+
+                get selectedLabel() {
+                    if (!this.selected) return '';
+                    return this.selected.getFullYear() + '年' + (this.selected.getMonth() + 1) + '月';
+                },
+                get selectedLong() {
+                    if (!this.selected) return '';
+                    return this.selected.getFullYear() + '年' + (this.selected.getMonth() + 1) + '月';
+                },
+                get isoValue() {
+                    if (!this.selected) return '';
+                    return this.selected.getFullYear() + '-' +
+                        String(this.selected.getMonth() + 1).padStart(2, '0');
+                },
+
+                isThisMonth: function (month) {
+                    return this.viewYear === this.todayYear && month === this.todayMonth;
+                },
+                isSelectedMonth: function (month) {
+                    if (!this.selected) return false;
+                    return this.viewYear === this.selected.getFullYear() && month === this.selected.getMonth();
+                },
+
+                prevYear: function () { this.viewYear--; },
+                nextYear: function () { this.viewYear++; },
+                toggleYearMode: function () {
+                    this.mode = this.mode === 'year' ? 'month' : 'year';
+                },
+
+                pickYear: function (year) {
+                    this.viewYear = year;
+                    this.mode = 'month';
+                },
+                pickMonth: function (month) {
+                    this.selected = new Date(this.viewYear, month, 1);
+                    this.open = false;
+                },
+
+                setThisMonth: function () {
+                    this.selected = new Date(this.todayYear, this.todayMonth, 1);
+                    this.viewYear = this.todayYear;
+                    this.open = false;
+                },
+                setYearAgo: function (years) {
+                    var d = new Date(this.todayYear - years, this.todayMonth, 1);
+                    this.selected = d;
+                    this.viewYear = d.getFullYear();
+                    this.open = false;
+                }
+            };
+        }
+    </script>
+    <style>[x-cloak] { display: none !important; }</style>
+
+</body>
+</html>

@@ -59,24 +59,25 @@
                 </div>
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1">物件</label>
-                    <input type="text" value="{{ $contract->property->name }}（{{ $contract->property->code }}）" readonly
+                    <input type="text" value="{{ $contract->property ? $contract->property->name . '（' . $contract->property->code . '）' : '（データなし）' }}" readonly
                            class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-500 bg-gray-50">
                     <p class="text-xs text-gray-500 mt-1">物件は変更できません</p>
                 </div>
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1">区画</label>
                     @php
-                        $dn = $contract->unit->display_name;
-                        $unitLabel = ($contract->unit->floor !== null && !preg_match('/^\d/', $dn)) ? $contract->unit->floor . $dn : $dn;
+                        $dn = $contract->unit ? $contract->unit->display_name : '—';
+                        $unitLabel = ($contract->unit && $contract->unit->floor !== null && !preg_match('/^\d/', $dn)) ? $contract->unit->floor . $dn : $dn;
+                        $areaTsubo = $contract->unit ? number_format($contract->unit->area_tsubo, 2) : '—';
                     @endphp
-                    <input type="text" value="{{ $unitLabel }}（{{ number_format($contract->unit->area_tsubo, 2) }}坪）" readonly
+                    <input type="text" value="{{ $unitLabel }}（{{ $areaTsubo }}坪）" readonly
                            class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-500 bg-gray-50">
                     <p class="text-xs text-gray-500 mt-1">区画は変更できません</p>
                 </div>
 
                 {{-- 顧客Ajax検索 --}}
                 <div class="sm:col-span-2">
-                    <label class="block text-sm font-semibold text-gray-700 mb-1">テナント（顧客）<span class="text-red-600 ml-0.5">*</span></label>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">テナント（顧客）</label>
                     <input type="hidden" name="customer_id" :value="customerId">
 
                     {{-- 未選択時: 検索入力 --}}
@@ -131,7 +132,7 @@
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1">契約日<span class="text-red-600 ml-0.5">*</span></label>
-                    <input type="date" name="contract_date" value="{{ old('contract_date', $contract->contract_date->format('Y-m-d')) }}"
+                    <input type="date" name="contract_date" value="{{ old('contract_date', $contract->contract_date?->format('Y-m-d')) }}"
                            class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none">
                 </div>
                 <div>
@@ -246,7 +247,7 @@
                     <div class="relative">
                         <input type="number" name="rent" x-model.number="rent" min="0"
                                class="form-input w-full h-[40px] px-3 pr-8 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none"
-                               placeholder="0">
+                               >
                         <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">円</span>
                     </div>
                 </div>
@@ -255,7 +256,7 @@
                     <div class="relative">
                         <input type="number" name="common_fee" x-model.number="commonFee" min="0"
                                class="form-input w-full h-[40px] px-3 pr-8 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none"
-                               placeholder="0">
+                               >
                         <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">円</span>
                     </div>
                 </div>
@@ -264,7 +265,7 @@
                     <div class="relative">
                         <input type="number" name="garbage_fee" x-model.number="garbageFee" min="0"
                                class="form-input w-full h-[40px] px-3 pr-8 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none"
-                               placeholder="0">
+                               >
                         <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">円</span>
                     </div>
                 </div>
@@ -273,7 +274,7 @@
                     <div class="relative">
                         <input type="number" name="pest_control_fee" x-model.number="pestControlFee" min="0"
                                class="form-input w-full h-[40px] px-3 pr-8 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none"
-                               placeholder="0">
+                               >
                         <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">円</span>
                     </div>
                 </div>
@@ -282,7 +283,7 @@
                     <div class="relative">
                         <input type="number" name="deposit" value="{{ old('deposit', $contract->deposit) }}" min="0"
                                class="form-input w-full h-[40px] px-3 pr-8 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none"
-                               placeholder="0">
+                               >
                         <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">円</span>
                     </div>
                 </div>
@@ -406,7 +407,7 @@ function contractEditForm() {
         // 顧客Ajax検索
         customerId: '{{ old('customer_id', $contract->customer_id) }}',
         customerQuery: '',
-        customerDisplay: '{!! addslashes($displayCustomer->code . ' ' . $displayCustomer->name . '（' . $displayCustomer->customer_type->label() . '）') !!}',
+        customerDisplay: '{!! $displayCustomer ? addslashes($displayCustomer->code . " " . $displayCustomer->name . "（" . $displayCustomer->customer_type->label() . "）") : "" !!}',
         customerResults: [],
         showCustomerDropdown: false,
         customerSearchTimer: null,

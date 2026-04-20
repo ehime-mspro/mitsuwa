@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>マンション物件詳細 | ミツワ都市開発 経営管理システム</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif; background: #f3f4f6; }
+        .badge { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 9999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+        .badge-self { background: #dcfce7; color: #166534; }
+        .badge-managed { background: #fef3c7; color: #92400e; }
+        .badge-vacant { background: #dbeafe; color: #1e40af; }
+        .badge-occupied { background: #d1fae5; color: #065f46; }
+        .badge-negotiating { background: #fed7aa; color: #9a3412; }
+        .badge-moveout { background: #fce7f3; color: #9d174d; }
+        .card-title { font-size: 15px; font-weight: 700; color: #111827; margin-bottom: 14px; padding-left: 12px; border-left: 4px solid #10b981; }
+        .info-label { font-size: 12px; color: #6b7280; margin-bottom: 4px; }
+        .info-value { font-size: 14px; color: #111827; font-weight: 500; }
+        .stat-card { background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px 20px; text-align: center; }
+        .stat-label { font-size: 12px; color: #6b7280; margin-bottom: 6px; }
+        .stat-value { font-size: 24px; font-weight: 700; color: #111827; }
+        .stat-value-sub { font-size: 13px; color: #6b7280; margin-left: 4px; font-weight: 500; }
+        .btn-detail { display: inline-flex; align-items: center; justify-content: center; padding: 4px 12px; font-size: 11px; font-weight: 600; color: #059669; border: 1px solid #059669; border-radius: 4px; background: #fff; text-decoration: none; white-space: nowrap; transition: background-color .15s, color .15s; }
+        .btn-detail:hover { background: #059669; color: #fff; }
+        .btn-copy { display: inline-flex; align-items: center; justify-content: center; gap: 3px; padding: 4px 10px; font-size: 11px; font-weight: 600; color: #6b7280; border: 1px solid #d1d5db; border-radius: 4px; background: #fff; text-decoration: none; white-space: nowrap; transition: background-color .15s, color .15s, border-color .15s; margin-left: 4px; }
+        .btn-copy:hover { background: #f3f4f6; color: #374151; border-color: #9ca3af; }
+    </style>
+</head>
+<body>
+
+    <!-- トップバー -->
+    <header style="background: #1f2937; color: white; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 16px;">
+            <span style="font-weight: 700;">ミツワ都市開発 経営管理システム</span>
+        </div>
+        <div style="font-size: 13px;">山田 (経営層)</div>
+    </header>
+
+    <div style="display: flex; min-height: calc(100vh - 48px);">
+        <!-- サイドバー -->
+        <aside style="width: 220px; background: white; border-right: 1px solid #e5e7eb; padding: 16px 0;">
+            <nav style="font-size: 13px;">
+                <div style="padding: 8px 16px; color: #6b7280;">ダッシュボード</div>
+                <div style="padding: 8px 16px; color: #6b7280;">テナント管理</div>
+                <div style="padding: 8px 16px; color: #6b7280;">賃貸マンション ▾</div>
+                <div style="padding: 6px 16px 6px 32px; background: #ecfdf5; color: #047857; border-left: 3px solid #10b981; font-weight: 600;">物件一覧</div>
+                <div style="padding: 6px 16px 6px 32px; color: #6b7280;">入居者管理</div>
+                <div style="padding: 6px 16px 6px 32px; color: #6b7280;">契約一覧</div>
+                <div style="padding: 8px 16px; color: #6b7280;">不動産管理</div>
+                <div style="padding: 8px 16px; color: #6b7280;">住宅事業</div>
+                <div style="padding: 8px 16px; color: #6b7280;">システム管理</div>
+            </nav>
+        </aside>
+
+        <!-- メインコンテンツ -->
+        <main style="flex: 1; padding: 24px;">
+
+            <!-- パンくず -->
+            <div class="text-sm text-gray-500" style="margin-bottom: 12px;">
+                ダッシュボード &gt; 賃貸マンション &gt; <a href="index.html" class="text-gray-500 hover:text-emerald-600 hover:underline">物件一覧</a> &gt; <span class="text-gray-800 font-medium">ミツワハイツ松山1号館</span>
+            </div>
+
+            <!-- ページヘッダー -->
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; gap: 12px; flex-wrap: wrap;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <h1 style="font-size: 20px; font-weight: 700; margin: 0;">ミツワハイツ松山1号館</h1>
+                    <span class="badge badge-self">自社所有</span>
+                    <span style="font-size: 13px; color: #6b7280;">MS-001</span>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <a href="index.html" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border: 1px solid #d1d5db; border-radius: 6px; background: white; font-size: 13px; color: #374151; text-decoration: none;">
+                        <svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                        一覧に戻る
+                    </a>
+                    <a href="edit.html" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border: 1px solid #10b981; border-radius: 6px; background: white; font-size: 13px; color: #059669; font-weight: 600; text-decoration: none;">
+                        物件を編集
+                    </a>
+                    <a href="#" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; background: #059669; border: 1px solid #059669; border-radius: 6px; color: white; font-size: 13px; font-weight: 600; text-decoration: none;">
+                        <svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        部屋を追加
+                    </a>
+                </div>
+            </div>
+
+            <!-- ========== カード: 基本情報 ========== -->
+            <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
+                <div class="card-title">基本情報</div>
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px 24px;">
+                    <div style="grid-column: span 4;">
+                        <div class="info-label">所在地</div>
+                        <div class="info-value">愛媛県松山市湊町4-1-1</div>
+                    </div>
+                    <div>
+                        <div class="info-label">総戸数</div>
+                        <div class="info-value">12戸</div>
+                    </div>
+                    <div>
+                        <div class="info-label">階数</div>
+                        <div class="info-value">5階建て</div>
+                    </div>
+                    <div>
+                        <div class="info-label">築年月</div>
+                        <div class="info-value">2015年4月</div>
+                    </div>
+                    <div>
+                        <div class="info-label">構造</div>
+                        <div class="info-value">RC造</div>
+                    </div>
+                    <div style="grid-column: span 4;">
+                        <div class="info-label">備考</div>
+                        <div class="info-value" style="white-space: pre-wrap;">エントランスに宅配ボックス設置済み。駐車場8台、駐輪場12台。</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ========== カード: 稼働状況 ========== -->
+            <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
+                <div class="card-title">稼働状況</div>
+
+                <!-- 部屋 -->
+                <div style="font-size: 12px; font-weight: 600; color: #6b7280; margin-bottom: 8px;">部屋（12戸）</div>
+                <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px;">
+                    <div class="stat-card">
+                        <div class="stat-label">総戸数</div>
+                        <div class="stat-value">12<span class="stat-value-sub">戸</span></div>
+                    </div>
+                    <div class="stat-card" style="background: #ecfdf5; border-color: #a7f3d0;">
+                        <div class="stat-label" style="color: #065f46;">入居中</div>
+                        <div class="stat-value" style="color: #065f46;">10<span class="stat-value-sub" style="color: #065f46;">戸</span></div>
+                    </div>
+                    <div class="stat-card" style="background: #eff6ff; border-color: #bfdbfe;">
+                        <div class="stat-label" style="color: #1e40af;">空室</div>
+                        <div class="stat-value" style="color: #1e40af;">2<span class="stat-value-sub" style="color: #1e40af;">戸</span></div>
+                    </div>
+                    <div class="stat-card" style="background: #fff7ed; border-color: #fed7aa;">
+                        <div class="stat-label" style="color: #9a3412;">申込み・仮押え</div>
+                        <div class="stat-value" style="color: #9a3412;">0<span class="stat-value-sub" style="color: #9a3412;">戸</span></div>
+                    </div>
+                    <div class="stat-card" style="background: #fdf2f8; border-color: #fbcfe8;">
+                        <div class="stat-label" style="color: #9d174d;">退去予定</div>
+                        <div class="stat-value" style="color: #9d174d;">0<span class="stat-value-sub" style="color: #9d174d;">戸</span></div>
+                    </div>
+                </div>
+                <div style="margin-top: 14px; padding: 10px 14px; background: #f9fafb; border-radius: 6px; font-size: 13px; color: #374151;">
+                    <strong>入居率</strong>：<span style="font-size: 16px; font-weight: 700; color: #059669; margin-left: 6px;">83.3%</span>
+                    <span style="color: #6b7280; margin-left: 6px;">（入居10戸 ÷ 総戸数12戸）</span>
+                </div>
+
+                <!-- 駐車場（コンパクト表示） -->
+                <div style="margin-top: 18px; padding-top: 14px; border-top: 1px dashed #e5e7eb;">
+                    <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 20px; font-size: 13px; color: #6b7280;">
+                        <span style="font-size: 12px; font-weight: 600; color: #6b7280;">駐車場（7台）</span>
+                        <span>使用中 <strong style="color: #059669; font-size: 14px;">6</strong>台</span>
+                        <span>空き <strong style="color: #1e40af; font-size: 14px;">1</strong>台</span>
+                        <span style="margin-left: auto;">稼働率 <strong style="color: #059669; font-size: 14px;">85.7%</strong></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ========== カード: 収支状況 ========== -->
+            <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
+                <div class="card-title">収支状況（契約中合計・月額）</div>
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;">
+                    <div class="stat-card">
+                        <div class="stat-label">賃料収入</div>
+                        <div class="stat-value" style="font-size: 20px;">850,000<span class="stat-value-sub">円</span></div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">共益費</div>
+                        <div class="stat-value" style="font-size: 20px;">50,000<span class="stat-value-sub">円</span></div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">駐車場料</div>
+                        <div class="stat-value" style="font-size: 20px;">84,000<span class="stat-value-sub">円</span></div>
+                    </div>
+                    <div class="stat-card" style="background: #ecfdf5; border-color: #a7f3d0;">
+                        <div class="stat-label" style="color: #065f46;">月額合計</div>
+                        <div class="stat-value" style="font-size: 20px; color: #065f46;">984,000<span class="stat-value-sub" style="color: #065f46;">円</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ========== カード: 部屋一覧 ========== -->
+            <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
+                    <div class="card-title" style="margin-bottom: 0;">部屋一覧（12戸）</div>
+                    <a href="#" style="display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; font-size: 12px; font-weight: 600; color: #059669; border: 1px solid #059669; border-radius: 4px; background: white; text-decoration: none;">
+                        <svg style="width: 12px; height: 12px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        部屋を追加
+                    </a>
+                </div>
+
+                <table class="w-full" style="border-collapse: collapse;">
+                    <colgroup>
+                        <col style="width: 10%">
+                        <col style="width: 8%">
+                        <col style="width: 12%">
+                        <col style="width: 12%">
+                        <col style="width: 14%">
+                        <col style="width: 14%">
+                        <col style="width: 16%">
+                        <col style="width: 14%">
+                    </colgroup>
+                    <thead>
+                        <tr style="background: #f9fafb;">
+                            <th style="padding: 10px 12px; text-align: left; font-size: 12px; font-weight: 700; color: #4b5563; border-bottom: 1px solid #e5e7eb;">号室</th>
+                            <th style="padding: 10px 12px; text-align: center; font-size: 12px; font-weight: 700; color: #4b5563; border-bottom: 1px solid #e5e7eb;">階</th>
+                            <th style="padding: 10px 12px; text-align: center; font-size: 12px; font-weight: 700; color: #4b5563; border-bottom: 1px solid #e5e7eb;">間取り</th>
+                            <th style="padding: 10px 12px; text-align: center; font-size: 12px; font-weight: 700; color: #4b5563; border-bottom: 1px solid #e5e7eb;">面積</th>
+                            <th style="padding: 10px 32px 10px 12px; text-align: right; font-size: 12px; font-weight: 700; color: #4b5563; border-bottom: 1px solid #e5e7eb;">賃料</th>
+                            <th style="padding: 10px 12px; text-align: center; font-size: 12px; font-weight: 700; color: #4b5563; border-bottom: 1px solid #e5e7eb;">ステータス</th>
+                            <th style="padding: 10px 12px; text-align: left; font-size: 12px; font-weight: 700; color: #4b5563; border-bottom: 1px solid #e5e7eb;">入居者</th>
+                            <th style="padding: 10px 12px; text-align: center; font-size: 12px; font-weight: 700; color: #4b5563; border-bottom: 1px solid #e5e7eb;">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- 5階 -->
+                        <tr>
+                            <td style="padding: 10px 12px; font-size: 14px; font-weight: 600; border-bottom: 1px solid #f3f4f6;"><a href="#" style="color: #059669; text-decoration: none;">501</a></td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">5F</td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">2LDK</td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">55.20㎡</td>
+                            <td style="padding: 10px 12px; text-align: right; font-size: 13px; color: #111827; font-weight: 500; border-bottom: 1px solid #f3f4f6;">85,000円</td>
+                            <td style="padding: 10px 12px; text-align: center; border-bottom: 1px solid #f3f4f6;"><span class="badge badge-occupied">入居中</span></td>
+                            <td style="padding: 10px 12px; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">佐藤 健一</td>
+                            <td style="padding: 10px 12px; text-align: center; border-bottom: 1px solid #f3f4f6;">
+                                <a href="#" class="btn-detail">詳細</a>
+                                <a href="../rooms/create.html" class="btn-copy" title="この部屋と同条件で新規登録">複製</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px 12px; font-size: 14px; font-weight: 600; border-bottom: 1px solid #f3f4f6;"><a href="#" style="color: #059669; text-decoration: none;">502</a></td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">5F</td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">2LDK</td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">55.20㎡</td>
+                            <td style="padding: 10px 12px; text-align: right; font-size: 13px; color: #111827; font-weight: 500; border-bottom: 1px solid #f3f4f6;">85,000円</td>
+                            <td style="padding: 10px 12px; text-align: center; border-bottom: 1px solid #f3f4f6;"><span class="badge badge-occupied">入居中</span></td>
+                            <td style="padding: 10px 12px; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">山本 美咲</td>
+                            <td style="padding: 10px 12px; text-align: center; border-bottom: 1px solid #f3f4f6;">
+                                <a href="#" class="btn-detail">詳細</a>
+                                <a href="../rooms/create.html" class="btn-copy" title="この部屋と同条件で新規登録">複製</a>
+                            </td>
+                        </tr>
+                        <!-- 4階 -->
+                        <tr>
+                            <td style="padding: 10px 12px; font-size: 14px; font-weight: 600; border-bottom: 1px solid #f3f4f6;"><a href="#" style="color: #059669; text-decoration: none;">401</a></td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">4F</td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">1LDK</td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">42.80㎡</td>
+                            <td style="padding: 10px 12px; text-align: right; font-size: 13px; color: #111827; font-weight: 500; border-bottom: 1px solid #f3f4f6;">72,000円</td>
+                            <td style="padding: 10px 12px; text-align: center; border-bottom: 1px solid #f3f4f6;"><span class="badge badge-occupied">入居中</span></td>
+                            <td style="padding: 10px 12px; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">鈴木 一郎</td>
+                            <td style="padding: 10px 12px; text-align: center; border-bottom: 1px solid #f3f4f6;">
+                                <a href="#" class="btn-detail">詳細</a>
+                                <a href="../rooms/create.html" class="btn-copy" title="この部屋と同条件で新規登録">複製</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px 12px; font-size: 14px; font-weight: 600; border-bottom: 1px solid #f3f4f6;"><a href="#" style="color: #059669; text-decoration: none;">402</a></td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">4F</td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">1LDK</td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">42.80㎡</td>
+                            <td style="padding: 10px 12px; text-align: right; font-size: 13px; color: #111827; font-weight: 500; border-bottom: 1px solid #f3f4f6;">72,000円</td>
+                            <td style="padding: 10px 12px; text-align: center; border-bottom: 1px solid #f3f4f6;"><span class="badge badge-vacant">空室</span></td>
+                            <td style="padding: 10px 12px; font-size: 13px; color: #9ca3af; border-bottom: 1px solid #f3f4f6;">—</td>
+                            <td style="padding: 10px 12px; text-align: center; border-bottom: 1px solid #f3f4f6;">
+                                <a href="#" class="btn-detail">詳細</a>
+                                <a href="../rooms/create.html" class="btn-copy" title="この部屋と同条件で新規登録">複製</a>
+                            </td>
+                        </tr>
+                        <!-- 3階 -->
+                        <tr>
+                            <td style="padding: 10px 12px; font-size: 14px; font-weight: 600; border-bottom: 1px solid #f3f4f6;"><a href="#" style="color: #059669; text-decoration: none;">301</a></td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">3F</td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">1K</td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">25.50㎡</td>
+                            <td style="padding: 10px 12px; text-align: right; font-size: 13px; color: #111827; font-weight: 500; border-bottom: 1px solid #f3f4f6;">58,000円</td>
+                            <td style="padding: 10px 12px; text-align: center; border-bottom: 1px solid #f3f4f6;"><span class="badge badge-occupied">入居中</span></td>
+                            <td style="padding: 10px 12px; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">高橋 裕太</td>
+                            <td style="padding: 10px 12px; text-align: center; border-bottom: 1px solid #f3f4f6;">
+                                <a href="#" class="btn-detail">詳細</a>
+                                <a href="../rooms/create.html" class="btn-copy" title="この部屋と同条件で新規登録">複製</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px 12px; font-size: 14px; font-weight: 600; border-bottom: 1px solid #f3f4f6;"><a href="#" style="color: #059669; text-decoration: none;">302</a></td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">3F</td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">1K</td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">25.50㎡</td>
+                            <td style="padding: 10px 12px; text-align: right; font-size: 13px; color: #111827; font-weight: 500; border-bottom: 1px solid #f3f4f6;">58,000円</td>
+                            <td style="padding: 10px 12px; text-align: center; border-bottom: 1px solid #f3f4f6;"><span class="badge badge-occupied">入居中</span></td>
+                            <td style="padding: 10px 12px; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">渡辺 真由</td>
+                            <td style="padding: 10px 12px; text-align: center; border-bottom: 1px solid #f3f4f6;">
+                                <a href="#" class="btn-detail">詳細</a>
+                                <a href="../rooms/create.html" class="btn-copy" title="この部屋と同条件で新規登録">複製</a>
+                            </td>
+                        </tr>
+                        <!-- 2階 -->
+                        <tr>
+                            <td style="padding: 10px 12px; font-size: 14px; font-weight: 600; border-bottom: 1px solid #f3f4f6;"><a href="#" style="color: #059669; text-decoration: none;">201</a></td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">2F</td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">1K</td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">25.50㎡</td>
+                            <td style="padding: 10px 12px; text-align: right; font-size: 13px; color: #111827; font-weight: 500; border-bottom: 1px solid #f3f4f6;">58,000円</td>
+                            <td style="padding: 10px 12px; text-align: center; border-bottom: 1px solid #f3f4f6;"><span class="badge badge-occupied">入居中</span></td>
+                            <td style="padding: 10px 12px; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">中村 翔太</td>
+                            <td style="padding: 10px 12px; text-align: center; border-bottom: 1px solid #f3f4f6;">
+                                <a href="#" class="btn-detail">詳細</a>
+                                <a href="../rooms/create.html" class="btn-copy" title="この部屋と同条件で新規登録">複製</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px 12px; font-size: 14px; font-weight: 600; border-bottom: 1px solid #f3f4f6;"><a href="#" style="color: #059669; text-decoration: none;">202</a></td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">2F</td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">1K</td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">25.50㎡</td>
+                            <td style="padding: 10px 12px; text-align: right; font-size: 13px; color: #111827; font-weight: 500; border-bottom: 1px solid #f3f4f6;">58,000円</td>
+                            <td style="padding: 10px 12px; text-align: center; border-bottom: 1px solid #f3f4f6;"><span class="badge badge-occupied">入居中</span></td>
+                            <td style="padding: 10px 12px; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">小林 愛</td>
+                            <td style="padding: 10px 12px; text-align: center; border-bottom: 1px solid #f3f4f6;">
+                                <a href="#" class="btn-detail">詳細</a>
+                                <a href="../rooms/create.html" class="btn-copy" title="この部屋と同条件で新規登録">複製</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px 12px; font-size: 14px; font-weight: 600; border-bottom: 1px solid #f3f4f6;"><a href="#" style="color: #059669; text-decoration: none;">203</a></td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">2F</td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">1K</td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">25.50㎡</td>
+                            <td style="padding: 10px 12px; text-align: right; font-size: 13px; color: #111827; font-weight: 500; border-bottom: 1px solid #f3f4f6;">58,000円</td>
+                            <td style="padding: 10px 12px; text-align: center; border-bottom: 1px solid #f3f4f6;"><span class="badge badge-vacant">空室</span></td>
+                            <td style="padding: 10px 12px; font-size: 13px; color: #9ca3af; border-bottom: 1px solid #f3f4f6;">—</td>
+                            <td style="padding: 10px 12px; text-align: center; border-bottom: 1px solid #f3f4f6;">
+                                <a href="#" class="btn-detail">詳細</a>
+                                <a href="../rooms/create.html" class="btn-copy" title="この部屋と同条件で新規登録">複製</a>
+                            </td>
+                        </tr>
+                        <!-- 1階 -->
+                        <tr>
+                            <td style="padding: 10px 12px; font-size: 14px; font-weight: 600; border-bottom: 1px solid #f3f4f6;"><a href="#" style="color: #059669; text-decoration: none;">101</a></td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">1F</td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">1K</td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">25.50㎡</td>
+                            <td style="padding: 10px 12px; text-align: right; font-size: 13px; color: #111827; font-weight: 500; border-bottom: 1px solid #f3f4f6;">55,000円</td>
+                            <td style="padding: 10px 12px; text-align: center; border-bottom: 1px solid #f3f4f6;"><span class="badge badge-occupied">入居中</span></td>
+                            <td style="padding: 10px 12px; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">加藤 直人</td>
+                            <td style="padding: 10px 12px; text-align: center; border-bottom: 1px solid #f3f4f6;">
+                                <a href="#" class="btn-detail">詳細</a>
+                                <a href="../rooms/create.html" class="btn-copy" title="この部屋と同条件で新規登録">複製</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px 12px; font-size: 14px; font-weight: 600; border-bottom: 1px solid #f3f4f6;"><a href="#" style="color: #059669; text-decoration: none;">102</a></td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">1F</td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">1K</td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">25.50㎡</td>
+                            <td style="padding: 10px 12px; text-align: right; font-size: 13px; color: #111827; font-weight: 500; border-bottom: 1px solid #f3f4f6;">55,000円</td>
+                            <td style="padding: 10px 12px; text-align: center; border-bottom: 1px solid #f3f4f6;"><span class="badge badge-occupied">入居中</span></td>
+                            <td style="padding: 10px 12px; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">伊藤 瞳</td>
+                            <td style="padding: 10px 12px; text-align: center; border-bottom: 1px solid #f3f4f6;">
+                                <a href="#" class="btn-detail">詳細</a>
+                                <a href="../rooms/create.html" class="btn-copy" title="この部屋と同条件で新規登録">複製</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px 12px; font-size: 14px; font-weight: 600;"><a href="#" style="color: #059669; text-decoration: none;">103</a></td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151;">1F</td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151;">1K</td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151;">25.50㎡</td>
+                            <td style="padding: 10px 12px; text-align: right; font-size: 13px; color: #111827; font-weight: 500;">55,000円</td>
+                            <td style="padding: 10px 12px; text-align: center;"><span class="badge badge-occupied">入居中</span></td>
+                            <td style="padding: 10px 12px; font-size: 13px; color: #374151;">松本 啓</td>
+                            <td style="padding: 10px 12px; text-align: center;">
+                                <a href="#" class="btn-detail">詳細</a>
+                                <a href="../rooms/create.html" class="btn-copy" title="この部屋と同条件で新規登録">複製</a>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- ========== カード: 駐車場一覧 ========== -->
+            <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
+                    <div class="card-title" style="margin-bottom: 0;">駐車場一覧（7台）</div>
+                    <a href="../parkings/create.html" style="display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; font-size: 12px; font-weight: 600; color: #059669; border: 1px solid #059669; border-radius: 4px; background: white; text-decoration: none;">
+                        <svg style="width: 12px; height: 12px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        駐車場を追加
+                    </a>
+                </div>
+
+                <table class="w-full" style="border-collapse: collapse;">
+                    <colgroup>
+                        <col style="width: 13%">
+                        <col style="width: 5%">
+                        <col style="width: 16%">
+                        <col style="width: 16%">
+                        <col style="width: 16%">
+                        <col style="width: 20%">
+                        <col style="width: 14%">
+                    </colgroup>
+                    <thead>
+                        <tr style="background: #f9fafb;">
+                            <th style="padding: 10px 12px; text-align: left; font-size: 12px; font-weight: 700; color: #4b5563; border-bottom: 1px solid #e5e7eb;">駐車場番号</th>
+                            <th style="padding: 10px 12px; text-align: center; font-size: 12px; font-weight: 700; color: #4b5563; border-bottom: 1px solid #e5e7eb;">屋根</th>
+                            <th style="padding: 10px 12px; text-align: right; font-size: 12px; font-weight: 700; color: #4b5563; border-bottom: 1px solid #e5e7eb;">月額料金</th>
+                            <th style="padding: 10px 12px; text-align: center; font-size: 12px; font-weight: 700; color: #4b5563; border-bottom: 1px solid #e5e7eb;">ステータス</th>
+                            <th style="padding: 10px 12px; text-align: left; font-size: 12px; font-weight: 700; color: #4b5563; border-bottom: 1px solid #e5e7eb;">利用者</th>
+                            <th style="padding: 10px 12px; text-align: left; font-size: 12px; font-weight: 700; color: #4b5563; border-bottom: 1px solid #e5e7eb;">紐付け</th>
+                            <th style="padding: 10px 12px; text-align: center; font-size: 12px; font-weight: 700; color: #4b5563; border-bottom: 1px solid #e5e7eb;">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td style="padding: 10px 12px; font-size: 14px; font-weight: 600; border-bottom: 1px solid #f3f4f6;"><a href="#" style="color: #059669; text-decoration: none;">A-1</a></td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">○</td>
+                            <td style="padding: 10px 12px; text-align: right; font-size: 13px; color: #111827; font-weight: 500; border-bottom: 1px solid #f3f4f6;">15,000円</td>
+                            <td style="padding: 10px 12px; text-align: center; border-bottom: 1px solid #f3f4f6;"><span class="badge badge-occupied">使用中</span></td>
+                            <td style="padding: 10px 12px; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">佐藤 健一</td>
+                            <td style="padding: 10px 12px; font-size: 12px; color: #6b7280; border-bottom: 1px solid #f3f4f6;">501号室契約と連動</td>
+                            <td style="padding: 10px 12px; text-align: center; border-bottom: 1px solid #f3f4f6;">
+                                <a href="#" class="btn-detail">詳細</a>
+                                <a href="../parkings/create.html" class="btn-copy" title="この駐車場と同条件で新規登録">複製</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px 12px; font-size: 14px; font-weight: 600; border-bottom: 1px solid #f3f4f6;"><a href="#" style="color: #059669; text-decoration: none;">A-2</a></td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">○</td>
+                            <td style="padding: 10px 12px; text-align: right; font-size: 13px; color: #111827; font-weight: 500; border-bottom: 1px solid #f3f4f6;">15,000円</td>
+                            <td style="padding: 10px 12px; text-align: center; border-bottom: 1px solid #f3f4f6;"><span class="badge badge-occupied">使用中</span></td>
+                            <td style="padding: 10px 12px; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">山本 美咲</td>
+                            <td style="padding: 10px 12px; font-size: 12px; color: #6b7280; border-bottom: 1px solid #f3f4f6;">502号室契約と連動</td>
+                            <td style="padding: 10px 12px; text-align: center; border-bottom: 1px solid #f3f4f6;">
+                                <a href="#" class="btn-detail">詳細</a>
+                                <a href="../parkings/create.html" class="btn-copy" title="この駐車場と同条件で新規登録">複製</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px 12px; font-size: 14px; font-weight: 600; border-bottom: 1px solid #f3f4f6;"><a href="#" style="color: #059669; text-decoration: none;">A-3</a></td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">○</td>
+                            <td style="padding: 10px 12px; text-align: right; font-size: 13px; color: #111827; font-weight: 500; border-bottom: 1px solid #f3f4f6;">15,000円</td>
+                            <td style="padding: 10px 12px; text-align: center; border-bottom: 1px solid #f3f4f6;"><span class="badge badge-occupied">使用中</span></td>
+                            <td style="padding: 10px 12px; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">鈴木 一郎</td>
+                            <td style="padding: 10px 12px; font-size: 12px; color: #6b7280; border-bottom: 1px solid #f3f4f6;">401号室契約と連動</td>
+                            <td style="padding: 10px 12px; text-align: center; border-bottom: 1px solid #f3f4f6;">
+                                <a href="#" class="btn-detail">詳細</a>
+                                <a href="../parkings/create.html" class="btn-copy" title="この駐車場と同条件で新規登録">複製</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px 12px; font-size: 14px; font-weight: 600; border-bottom: 1px solid #f3f4f6;"><a href="#" style="color: #059669; text-decoration: none;">A-4</a></td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">○</td>
+                            <td style="padding: 10px 12px; text-align: right; font-size: 13px; color: #111827; font-weight: 500; border-bottom: 1px solid #f3f4f6;">15,000円</td>
+                            <td style="padding: 10px 12px; text-align: center; border-bottom: 1px solid #f3f4f6;"><span class="badge badge-occupied">使用中</span></td>
+                            <td style="padding: 10px 12px; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">小林 愛</td>
+                            <td style="padding: 10px 12px; font-size: 12px; color: #6b7280; border-bottom: 1px solid #f3f4f6;">202号室契約と連動</td>
+                            <td style="padding: 10px 12px; text-align: center; border-bottom: 1px solid #f3f4f6;">
+                                <a href="#" class="btn-detail">詳細</a>
+                                <a href="../parkings/create.html" class="btn-copy" title="この駐車場と同条件で新規登録">複製</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px 12px; font-size: 14px; font-weight: 600; border-bottom: 1px solid #f3f4f6;"><a href="#" style="color: #059669; text-decoration: none;">A-5</a></td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">○</td>
+                            <td style="padding: 10px 12px; text-align: right; font-size: 13px; color: #111827; font-weight: 500; border-bottom: 1px solid #f3f4f6;">15,000円</td>
+                            <td style="padding: 10px 12px; text-align: center; border-bottom: 1px solid #f3f4f6;"><span class="badge badge-vacant">空き</span></td>
+                            <td style="padding: 10px 12px; font-size: 13px; color: #9ca3af; border-bottom: 1px solid #f3f4f6;">—</td>
+                            <td style="padding: 10px 12px; font-size: 12px; color: #9ca3af; border-bottom: 1px solid #f3f4f6;">—</td>
+                            <td style="padding: 10px 12px; text-align: center; border-bottom: 1px solid #f3f4f6;">
+                                <a href="#" class="btn-detail">詳細</a>
+                                <a href="../parkings/create.html" class="btn-copy" title="この駐車場と同条件で新規登録">複製</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px 12px; font-size: 14px; font-weight: 600; border-bottom: 1px solid #f3f4f6;"><a href="#" style="color: #059669; text-decoration: none;">B-1</a></td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #9ca3af; border-bottom: 1px solid #f3f4f6;">—</td>
+                            <td style="padding: 10px 12px; text-align: right; font-size: 13px; color: #111827; font-weight: 500; border-bottom: 1px solid #f3f4f6;">12,000円</td>
+                            <td style="padding: 10px 12px; text-align: center; border-bottom: 1px solid #f3f4f6;"><span class="badge badge-occupied">使用中</span></td>
+                            <td style="padding: 10px 12px; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">山田 太郎<span style="display: inline-block; margin-left: 6px; padding: 1px 6px; background: #e0e7ff; color: #3730a3; font-size: 10px; font-weight: 600; border-radius: 3px;">外部</span></td>
+                            <td style="padding: 10px 12px; font-size: 12px; color: #6b7280; border-bottom: 1px solid #f3f4f6;">単独契約</td>
+                            <td style="padding: 10px 12px; text-align: center; border-bottom: 1px solid #f3f4f6;">
+                                <a href="#" class="btn-detail">詳細</a>
+                                <a href="../parkings/create.html" class="btn-copy" title="この駐車場と同条件で新規登録">複製</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px 12px; font-size: 14px; font-weight: 600;"><a href="#" style="color: #059669; text-decoration: none;">B-2</a></td>
+                            <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #9ca3af;">—</td>
+                            <td style="padding: 10px 12px; text-align: right; font-size: 13px; color: #111827; font-weight: 500;">12,000円</td>
+                            <td style="padding: 10px 12px; text-align: center;"><span class="badge badge-occupied">使用中</span></td>
+                            <td style="padding: 10px 12px; font-size: 13px; color: #374151;">加藤 直人</td>
+                            <td style="padding: 10px 12px; font-size: 12px; color: #6b7280;">101号室契約と連動</td>
+                            <td style="padding: 10px 12px; text-align: center;">
+                                <a href="#" class="btn-detail">詳細</a>
+                                <a href="../parkings/create.html" class="btn-copy" title="この駐車場と同条件で新規登録">複製</a>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- 削除ゾーン -->
+            <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 14px 18px; display: flex; align-items: center; justify-content: space-between;">
+                <div>
+                    <div style="font-size: 13px; font-weight: 600; color: #991b1b;">物件を削除</div>
+                    <div style="font-size: 11px; color: #b91c1c; margin-top: 2px;">契約中の部屋または駐車場がある場合は削除できません。</div>
+                </div>
+                <button type="button" style="padding: 8px 16px; background: white; border: 1px solid #dc2626; border-radius: 6px; color: #dc2626; font-size: 13px; font-weight: 600; cursor: pointer;">削除する</button>
+            </div>
+
+        </main>
+    </div>
+
+</body>
+</html>

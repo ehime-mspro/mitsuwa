@@ -434,6 +434,214 @@ Route::middleware(['auth', 'password.change'])->group(function () {
 
     /*
     |----------------------------------------------------------------------
+    | 賃貸マンション管理（Phase B〜H で段階実装）
+    |----------------------------------------------------------------------
+    */
+    Route::prefix('mansion')->group(function () {
+        // ダッシュボード（Phase H で実装予定のため暫定コメントアウト）
+        Route::get('/dashboard', [\App\Http\Controllers\Mansion\DashboardController::class, 'index'])
+            ->name('mansion.dashboard');
+
+        // 物件一覧（全ロール閲覧可）
+        Route::get('/properties', [\App\Http\Controllers\Mansion\PropertyController::class, 'index'])
+            ->name('mansion.properties.index');
+
+        // 物件登録（経営層+管理者）— create/store は show より先に定義
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/properties/create', [\App\Http\Controllers\Mansion\PropertyController::class, 'create'])
+                ->name('mansion.properties.create');
+            Route::post('/properties', [\App\Http\Controllers\Mansion\PropertyController::class, 'store'])
+                ->name('mansion.properties.store');
+        });
+
+        // 物件詳細（全ロール閲覧可）
+        Route::get('/properties/{property}', [\App\Http\Controllers\Mansion\PropertyController::class, 'show'])
+            ->name('mansion.properties.show');
+
+        // 物件編集・更新（経営層+管理者）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/properties/{property}/edit', [\App\Http\Controllers\Mansion\PropertyController::class, 'edit'])
+                ->name('mansion.properties.edit');
+            Route::put('/properties/{property}', [\App\Http\Controllers\Mansion\PropertyController::class, 'update'])
+                ->name('mansion.properties.update');
+        });
+
+        // 物件削除（経営層のみ）
+        Route::delete('/properties/{property}', [\App\Http\Controllers\Mansion\PropertyController::class, 'destroy'])
+            ->middleware('role:executive')
+            ->name('mansion.properties.destroy');
+
+        /*
+        |------------------------------------------------------------------
+        | 部屋管理（Phase C）
+        |------------------------------------------------------------------
+        */
+        // 部屋登録・編集・更新・削除（経営層+管理者）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/properties/{property}/rooms/create', [\App\Http\Controllers\Mansion\RoomController::class, 'create'])
+                ->name('mansion.rooms.create');
+            Route::post('/properties/{property}/rooms', [\App\Http\Controllers\Mansion\RoomController::class, 'store'])
+                ->name('mansion.rooms.store');
+            Route::get('/rooms/{room}/edit', [\App\Http\Controllers\Mansion\RoomController::class, 'edit'])
+                ->name('mansion.rooms.edit');
+            Route::put('/rooms/{room}', [\App\Http\Controllers\Mansion\RoomController::class, 'update'])
+                ->name('mansion.rooms.update');
+            Route::delete('/rooms/{room}', [\App\Http\Controllers\Mansion\RoomController::class, 'destroy'])
+                ->middleware('role:executive')
+                ->name('mansion.rooms.destroy');
+        });
+
+        // 部屋ステータス更新（Ajax）
+        Route::patch('/rooms/{room}/status', [\App\Http\Controllers\Mansion\RoomController::class, 'updateStatus'])
+            ->name('mansion.rooms.updateStatus');
+
+        /*
+        |------------------------------------------------------------------
+        | 駐車場管理（Phase D）
+        |------------------------------------------------------------------
+        */
+        // 駐車場登録・編集・更新・削除（経営層+管理者）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/properties/{property}/parkings/create', [\App\Http\Controllers\Mansion\ParkingController::class, 'create'])
+                ->name('mansion.parkings.create');
+            Route::post('/properties/{property}/parkings', [\App\Http\Controllers\Mansion\ParkingController::class, 'store'])
+                ->name('mansion.parkings.store');
+            Route::get('/parkings/{parking}/edit', [\App\Http\Controllers\Mansion\ParkingController::class, 'edit'])
+                ->name('mansion.parkings.edit');
+            Route::put('/parkings/{parking}', [\App\Http\Controllers\Mansion\ParkingController::class, 'update'])
+                ->name('mansion.parkings.update');
+            Route::delete('/parkings/{parking}', [\App\Http\Controllers\Mansion\ParkingController::class, 'destroy'])
+                ->middleware('role:executive')
+                ->name('mansion.parkings.destroy');
+        });
+
+        /*
+        |------------------------------------------------------------------
+        | 入居者管理（Phase E）
+        |------------------------------------------------------------------
+        | 入居申込書アップロードは既存 AttachmentController（Ajax）を再利用。
+        | 申込書表示画面（showApplication）のみ本コントローラーで扱う。
+        */
+        // 入居者一覧（全ロール閲覧可）
+        Route::get('/tenants', [\App\Http\Controllers\Mansion\TenantController::class, 'index'])
+            ->name('mansion.tenants.index');
+
+        // 入居者登録（経営層+管理者）— show より先に定義して URL 競合回避
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/tenants/create', [\App\Http\Controllers\Mansion\TenantController::class, 'create'])
+                ->name('mansion.tenants.create');
+            Route::post('/tenants', [\App\Http\Controllers\Mansion\TenantController::class, 'store'])
+                ->name('mansion.tenants.store');
+        });
+
+        // 入居者詳細（全ロール閲覧可）
+        Route::get('/tenants/{tenant}', [\App\Http\Controllers\Mansion\TenantController::class, 'show'])
+            ->name('mansion.tenants.show');
+
+        // 入居者編集・更新・削除・申込書画面（経営層+管理者、削除のみ経営層）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/tenants/{tenant}/edit', [\App\Http\Controllers\Mansion\TenantController::class, 'edit'])
+                ->name('mansion.tenants.edit');
+            Route::put('/tenants/{tenant}', [\App\Http\Controllers\Mansion\TenantController::class, 'update'])
+                ->name('mansion.tenants.update');
+            Route::delete('/tenants/{tenant}', [\App\Http\Controllers\Mansion\TenantController::class, 'destroy'])
+                ->middleware('role:executive')
+                ->name('mansion.tenants.destroy');
+            // 入居申込書アップロード画面（アップロード・削除 Ajax は /attachments/ms_tenants/... を使用）
+            Route::get('/tenants/{tenant}/application', [\App\Http\Controllers\Mansion\TenantController::class, 'showApplication'])
+                ->name('mansion.tenants.application');
+        });
+
+        /*
+        |------------------------------------------------------------------
+        | 部屋契約管理（Phase F）
+        |------------------------------------------------------------------
+        */
+        // 部屋契約一覧（全ロール閲覧可）
+        Route::get('/contracts', [\App\Http\Controllers\Mansion\ContractController::class, 'index'])
+            ->name('mansion.contracts.index');
+
+        // 部屋契約登録（経営層+管理者）— show より先に定義して URL 競合回避
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/contracts/create', [\App\Http\Controllers\Mansion\ContractController::class, 'create'])
+                ->name('mansion.contracts.create');
+            Route::post('/contracts', [\App\Http\Controllers\Mansion\ContractController::class, 'store'])
+                ->name('mansion.contracts.store');
+        });
+
+        // 部屋契約詳細（全ロール閲覧可）
+        Route::get('/contracts/{contract}', [\App\Http\Controllers\Mansion\ContractController::class, 'show'])
+            ->name('mansion.contracts.show');
+
+        // 部屋契約編集・更新・賃料改定・解約（経営層+管理者）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/contracts/{contract}/edit', [\App\Http\Controllers\Mansion\ContractController::class, 'edit'])
+                ->name('mansion.contracts.edit');
+            Route::put('/contracts/{contract}', [\App\Http\Controllers\Mansion\ContractController::class, 'update'])
+                ->name('mansion.contracts.update');
+            // 賃料改定
+            Route::get('/contracts/{contract}/revise', [\App\Http\Controllers\Mansion\ContractController::class, 'showRevise'])
+                ->name('mansion.contracts.revise.show');
+            Route::post('/contracts/{contract}/revise', [\App\Http\Controllers\Mansion\ContractController::class, 'revise'])
+                ->name('mansion.contracts.revise');
+            // 解約
+            Route::get('/contracts/{contract}/terminate', [\App\Http\Controllers\Mansion\ContractController::class, 'showTerminate'])
+                ->name('mansion.contracts.terminate.show');
+            Route::put('/contracts/{contract}/terminate', [\App\Http\Controllers\Mansion\ContractController::class, 'terminate'])
+                ->name('mansion.contracts.terminate');
+        });
+
+        // === 賃貸マンション: 駐車場契約（単独契約 + 料金改定 + 解約） ===
+        // 一覧は全ロール閲覧可、CRUD/改定/解約は manager 以上
+        Route::get('/parking-contracts', [\App\Http\Controllers\Mansion\ParkingContractController::class, 'index'])
+            ->name('mansion.parking-contracts.index');
+
+        // create / store は show/edit 系より前に配置（URL衝突回避）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/parking-contracts/create', [\App\Http\Controllers\Mansion\ParkingContractController::class, 'create'])
+                ->name('mansion.parking-contracts.create');
+            Route::post('/parking-contracts', [\App\Http\Controllers\Mansion\ParkingContractController::class, 'store'])
+                ->name('mansion.parking-contracts.store');
+        });
+
+        // 駐車場契約詳細（全ロール閲覧可）
+        Route::get('/parking-contracts/{parkingContract}', [\App\Http\Controllers\Mansion\ParkingContractController::class, 'show'])
+            ->name('mansion.parking-contracts.show');
+
+        // 編集・料金改定・解約は manager 以上
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/parking-contracts/{parkingContract}/edit', [\App\Http\Controllers\Mansion\ParkingContractController::class, 'edit'])
+                ->name('mansion.parking-contracts.edit');
+            Route::put('/parking-contracts/{parkingContract}', [\App\Http\Controllers\Mansion\ParkingContractController::class, 'update'])
+                ->name('mansion.parking-contracts.update');
+            // 料金改定
+            Route::get('/parking-contracts/{parkingContract}/revise', [\App\Http\Controllers\Mansion\ParkingContractController::class, 'showRevise'])
+                ->name('mansion.parking-contracts.revise.show');
+            Route::post('/parking-contracts/{parkingContract}/revise', [\App\Http\Controllers\Mansion\ParkingContractController::class, 'revise'])
+                ->name('mansion.parking-contracts.revise');
+            // 解約
+            Route::get('/parking-contracts/{parkingContract}/terminate', [\App\Http\Controllers\Mansion\ParkingContractController::class, 'showTerminate'])
+                ->name('mansion.parking-contracts.terminate.show');
+            Route::put('/parking-contracts/{parkingContract}/terminate', [\App\Http\Controllers\Mansion\ParkingContractController::class, 'terminate'])
+                ->name('mansion.parking-contracts.terminate');
+        });
+    });
+
+    /*
+    |----------------------------------------------------------------------
+    | 賃貸マンション Ajax API（2ルート）— Phase F
+    |----------------------------------------------------------------------
+    */
+    // 空室取得（物件選択→部屋連動用）
+    Route::get('/api/mansion/properties/{property}/vacant-rooms', [\App\Http\Controllers\Mansion\ContractController::class, 'vacantRooms'])
+        ->name('api.mansion.vacant-rooms');
+
+    // 空き駐車場取得（物件選択→駐車場連動用）
+    Route::get('/api/mansion/properties/{property}/vacant-parkings', [\App\Http\Controllers\Mansion\ContractController::class, 'vacantParkings'])
+        ->name('api.mansion.vacant-parkings');
+
+    /*
+    |----------------------------------------------------------------------
     | 不動産 仕入れ案件管理（7ルート）
     |----------------------------------------------------------------------
     */
@@ -676,13 +884,38 @@ Route::middleware(['auth', 'password.change'])->group(function () {
     Route::prefix('housing')->group(function () {
         /*
         |------------------------------------------------------------------
-        | 住宅事業 契約管理 統合一覧（2ルート）
+        | 住宅事業 契約管理 統合（8ルート）
+        |   建売・注文住宅を横断する契約管理画面。URLは /housing/contracts/{type}/{id}
+        |   type = building | custom-order
         |------------------------------------------------------------------
         */
+        // 契約一覧（全ロール閲覧可）
         Route::get('/contracts', [\App\Http\Controllers\Housing\HsContractListController::class, 'index'])
-            ->name('housing.contract-list.index');
-        Route::get('/contracts/{hsContract}', [\App\Http\Controllers\Housing\HsContractListController::class, 'show'])
-            ->name('housing.contract-list.show');
+            ->name('housing.contracts.index');
+
+        // 建売物件選択画面（建売契約新規登録の第一段階、全ロール閲覧可）
+        Route::get('/contracts/create/building/select-property', [\App\Http\Controllers\Housing\HsContractListController::class, 'selectBuildingProperty'])
+            ->name('housing.contracts.select-building-property');
+
+        // 建売契約詳細（全ロール閲覧可）
+        Route::get('/contracts/building/{hsContract}', [\App\Http\Controllers\Housing\HsContractListController::class, 'showBuilding'])
+            ->name('housing.contracts.show-building');
+
+        // 注文住宅契約詳細（全ロール閲覧可）
+        Route::get('/contracts/custom-order/{hsCustomOrder}', [\App\Http\Controllers\Housing\HsContractListController::class, 'showCustomOrder'])
+            ->name('housing.contracts.show-custom-order');
+
+        // 契約編集・更新（経営層+管理者）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/contracts/building/{hsContract}/edit', [\App\Http\Controllers\Housing\HsContractListController::class, 'editBuilding'])
+                ->name('housing.contracts.edit-building');
+            Route::put('/contracts/building/{hsContract}', [\App\Http\Controllers\Housing\HsContractListController::class, 'updateBuilding'])
+                ->name('housing.contracts.update-building');
+            Route::get('/contracts/custom-order/{hsCustomOrder}/edit', [\App\Http\Controllers\Housing\HsContractListController::class, 'editCustomOrder'])
+                ->name('housing.contracts.edit-custom-order');
+            Route::put('/contracts/custom-order/{hsCustomOrder}', [\App\Http\Controllers\Housing\HsContractListController::class, 'updateCustomOrder'])
+                ->name('housing.contracts.update-custom-order');
+        });
 
         // 建売物件一覧（全ロール閲覧可）
         Route::get('/properties', [\App\Http\Controllers\Housing\PropertyController::class, 'index'])

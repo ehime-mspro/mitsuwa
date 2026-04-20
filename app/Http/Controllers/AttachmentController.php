@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Attachment;
 use App\Models\Contract;
 use App\Models\Investment;
+use App\Models\MsTenant;
 use App\Models\Repair;
 use App\Models\ReProject;
 use App\Models\ReProcurement;
@@ -16,6 +17,8 @@ class AttachmentController extends Controller
 {
     /**
      * タイプからモデルクラスへのマッピング
+     * ms_tenants は賃貸マンション管理の入居申込書（Phase E で追加）。
+     * ms_contracts は Phase F で追加予定。
      */
     private const TYPE_MAP = [
         'contracts'    => Contract::class,
@@ -23,6 +26,7 @@ class AttachmentController extends Controller
         'repairs'      => Repair::class,
         'procurements' => ReProcurement::class,
         'projects'     => ReProject::class,
+        'ms_tenants'   => MsTenant::class,
     ];
 
     /**

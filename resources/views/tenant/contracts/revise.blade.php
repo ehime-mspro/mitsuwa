@@ -108,7 +108,7 @@
                     <div class="relative">
                         <input type="number" name="new_rent" value="{{ old('new_rent', $contract->rent) }}" min="0"
                                class="form-input w-full h-[40px] px-3 pr-8 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none"
-                               placeholder="0">
+                               >
                         <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">円</span>
                     </div>
                     <p class="text-xs text-gray-500 mt-1">現在: ¥{{ number_format($contract->rent) }}</p>
@@ -118,7 +118,7 @@
                     <div class="relative">
                         <input type="number" name="new_common_fee" value="{{ old('new_common_fee', $contract->common_fee) }}" min="0"
                                class="form-input w-full h-[40px] px-3 pr-8 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none"
-                               placeholder="0">
+                               >
                         <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">円</span>
                     </div>
                     <p class="text-xs text-gray-500 mt-1">現在: ¥{{ number_format($contract->common_fee) }}</p>
@@ -128,7 +128,7 @@
                     <div class="relative">
                         <input type="number" name="new_garbage_fee" value="{{ old('new_garbage_fee', $contract->garbage_fee) }}" min="0"
                                class="form-input w-full h-[40px] px-3 pr-8 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none"
-                               placeholder="0">
+                               >
                         <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">円</span>
                     </div>
                     <p class="text-xs text-gray-500 mt-1">現在: ¥{{ number_format($contract->garbage_fee) }}</p>
@@ -138,7 +138,7 @@
                     <div class="relative">
                         <input type="number" name="new_pest_control_fee" value="{{ old('new_pest_control_fee', $contract->pest_control_fee) }}" min="0"
                                class="form-input w-full h-[40px] px-3 pr-8 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none"
-                               placeholder="0">
+                               >
                         <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">円</span>
                     </div>
                     <p class="text-xs text-gray-500 mt-1">現在: ¥{{ number_format($contract->pest_control_fee) }}</p>
