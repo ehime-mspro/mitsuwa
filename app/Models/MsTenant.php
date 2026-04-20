@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\MsTenantType;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 class MsTenant extends Model
 {
@@ -39,5 +40,26 @@ class MsTenant extends Model
     public function activeParkingContracts()
     {
         return $this->hasMany(MsParkingContract::class, 'tenant_id')->where('status', 'active');
+    }
+
+    /**
+     * 入居申込書などの添付ファイル（ポリモーフィック）。
+     * 現在有効なものと削除済み（ソフトデリート）を個別に取得できるよう、
+     * withTrashed() ではなく attachments() / deletedAttachments() を提供する。
+     */
+    public function attachments(): MorphMany
+    {
+        return $this->morphMany(Attachment::class, 'attachable')
+            ->orderByDesc('created_at');
+    }
+
+    /**
+     * 削除済み添付ファイル（削除履歴表示用）。
+     */
+    public function deletedAttachments(): MorphMany
+    {
+        return $this->morphMany(Attachment::class, 'attachable')
+            ->onlyTrashed()
+            ->orderByDesc('deleted_at');
     }
 }

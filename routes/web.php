@@ -514,6 +514,43 @@ Route::middleware(['auth', 'password.change'])->group(function () {
                 ->middleware('role:executive')
                 ->name('mansion.parkings.destroy');
         });
+
+        /*
+        |------------------------------------------------------------------
+        | 入居者管理（Phase E）
+        |------------------------------------------------------------------
+        | 入居申込書アップロードは既存 AttachmentController（Ajax）を再利用。
+        | 申込書表示画面（showApplication）のみ本コントローラーで扱う。
+        */
+        // 入居者一覧（全ロール閲覧可）
+        Route::get('/tenants', [\App\Http\Controllers\Mansion\TenantController::class, 'index'])
+            ->name('mansion.tenants.index');
+
+        // 入居者登録（経営層+管理者）— show より先に定義して URL 競合回避
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/tenants/create', [\App\Http\Controllers\Mansion\TenantController::class, 'create'])
+                ->name('mansion.tenants.create');
+            Route::post('/tenants', [\App\Http\Controllers\Mansion\TenantController::class, 'store'])
+                ->name('mansion.tenants.store');
+        });
+
+        // 入居者詳細（全ロール閲覧可）
+        Route::get('/tenants/{tenant}', [\App\Http\Controllers\Mansion\TenantController::class, 'show'])
+            ->name('mansion.tenants.show');
+
+        // 入居者編集・更新・削除・申込書画面（経営層+管理者、削除のみ経営層）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/tenants/{tenant}/edit', [\App\Http\Controllers\Mansion\TenantController::class, 'edit'])
+                ->name('mansion.tenants.edit');
+            Route::put('/tenants/{tenant}', [\App\Http\Controllers\Mansion\TenantController::class, 'update'])
+                ->name('mansion.tenants.update');
+            Route::delete('/tenants/{tenant}', [\App\Http\Controllers\Mansion\TenantController::class, 'destroy'])
+                ->middleware('role:executive')
+                ->name('mansion.tenants.destroy');
+            // 入居申込書アップロード画面（アップロード・削除 Ajax は /attachments/ms_tenants/... を使用）
+            Route::get('/tenants/{tenant}/application', [\App\Http\Controllers\Mansion\TenantController::class, 'showApplication'])
+                ->name('mansion.tenants.application');
+        });
     });
 
     /*
