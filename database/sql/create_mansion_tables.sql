@@ -139,3 +139,7 @@ CREATE TABLE IF NOT EXISTS `ms_parking_contract_revisions` (
   `updated_at` TIMESTAMP NULL DEFAULT NULL,
   CONSTRAINT `fk_ms_pcr_pc` FOREIGN KEY (`parking_contract_id`) REFERENCES `ms_parking_contracts`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='駐車場契約 料金改定履歴';
+
+-- 部署マスタに「賃貸マンション」を追加（既存レコードはスキップ）
+INSERT IGNORE INTO `departments` (`code`, `name`, `display_order`, `created_at`, `updated_at`)
+VALUES ('mansion', '賃貸マンション', 4, NOW(), NOW());
