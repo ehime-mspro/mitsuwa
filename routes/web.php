@@ -470,6 +470,30 @@ Route::middleware(['auth', 'password.change'])->group(function () {
         Route::delete('/properties/{property}', [\App\Http\Controllers\Mansion\PropertyController::class, 'destroy'])
             ->middleware('role:executive')
             ->name('mansion.properties.destroy');
+
+        /*
+        |------------------------------------------------------------------
+        | 部屋管理（Phase C）
+        |------------------------------------------------------------------
+        */
+        // 部屋登録・編集・更新・削除（経営層+管理者）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/properties/{property}/rooms/create', [\App\Http\Controllers\Mansion\RoomController::class, 'create'])
+                ->name('mansion.rooms.create');
+            Route::post('/properties/{property}/rooms', [\App\Http\Controllers\Mansion\RoomController::class, 'store'])
+                ->name('mansion.rooms.store');
+            Route::get('/rooms/{room}/edit', [\App\Http\Controllers\Mansion\RoomController::class, 'edit'])
+                ->name('mansion.rooms.edit');
+            Route::put('/rooms/{room}', [\App\Http\Controllers\Mansion\RoomController::class, 'update'])
+                ->name('mansion.rooms.update');
+            Route::delete('/rooms/{room}', [\App\Http\Controllers\Mansion\RoomController::class, 'destroy'])
+                ->middleware('role:executive')
+                ->name('mansion.rooms.destroy');
+        });
+
+        // 部屋ステータス更新（Ajax）
+        Route::patch('/rooms/{room}/status', [\App\Http\Controllers\Mansion\RoomController::class, 'updateStatus'])
+            ->name('mansion.rooms.updateStatus');
     });
 
     /*
