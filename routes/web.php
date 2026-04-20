@@ -439,8 +439,8 @@ Route::middleware(['auth', 'password.change'])->group(function () {
     */
     Route::prefix('mansion')->group(function () {
         // ダッシュボード（Phase H で実装予定のため暫定コメントアウト）
-        // Route::get('/dashboard', [\App\Http\Controllers\Mansion\DashboardController::class, 'index'])
-        //     ->name('mansion.dashboard');
+        Route::get('/dashboard', [\App\Http\Controllers\Mansion\DashboardController::class, 'index'])
+            ->name('mansion.dashboard');
 
         // 物件一覧（全ロール閲覧可）
         Route::get('/properties', [\App\Http\Controllers\Mansion\PropertyController::class, 'index'])
