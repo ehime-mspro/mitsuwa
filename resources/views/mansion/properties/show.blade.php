@@ -302,7 +302,7 @@
     <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
         <div class="ms-card-title" style="margin-bottom: 0;">駐車場一覧（{{ $totalParkings }}台）</div>
         @if(auth()->user()->role->isManagerOrAbove())
-            <a href="#"
+            <a href="{{ route('mansion.parkings.create', $property) }}"
                style="display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; font-size: 12px; font-weight: 600; color: #059669; border: 1px solid #059669; border-radius: 4px; background: white; text-decoration: none;">
                 <svg style="width: 12px; height: 12px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                 駐車場を追加
@@ -349,7 +349,11 @@
                     @endphp
                     <tr>
                         <td style="padding: 10px 12px; font-size: 14px; font-weight: 600; border-bottom: 1px solid #f3f4f6;">
-                            <a href="#" style="color: #059669; text-decoration: none;">{{ $parking->parking_number }}</a>
+                            @if(auth()->user()->role->isManagerOrAbove())
+                                <a href="{{ route('mansion.parkings.edit', $parking) }}" style="color: #059669; text-decoration: none;">{{ $parking->parking_number }}</a>
+                            @else
+                                <span style="color: #111827;">{{ $parking->parking_number }}</span>
+                            @endif
                         </td>
                         <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: {{ $parking->has_roof ? '#374151' : '#9ca3af' }}; border-bottom: 1px solid #f3f4f6;">
                             {{ $parking->has_roof ? '○' : '—' }}
@@ -367,9 +371,8 @@
                             {{ $linkLabel ?? '—' }}
                         </td>
                         <td style="padding: 10px 12px; text-align: center; border-bottom: 1px solid #f3f4f6;">
-                            <a href="#" class="ms-btn-detail">詳細</a>
                             @if(auth()->user()->role->isManagerOrAbove())
-                                <a href="#" class="ms-btn-copy" title="この駐車場と同条件で新規登録">複製</a>
+                                <a href="{{ route('mansion.parkings.edit', $parking) }}" class="ms-btn-detail">編集</a>
                             @endif
                         </td>
                     </tr>

@@ -494,6 +494,26 @@ Route::middleware(['auth', 'password.change'])->group(function () {
         // 部屋ステータス更新（Ajax）
         Route::patch('/rooms/{room}/status', [\App\Http\Controllers\Mansion\RoomController::class, 'updateStatus'])
             ->name('mansion.rooms.updateStatus');
+
+        /*
+        |------------------------------------------------------------------
+        | 駐車場管理（Phase D）
+        |------------------------------------------------------------------
+        */
+        // 駐車場登録・編集・更新・削除（経営層+管理者）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/properties/{property}/parkings/create', [\App\Http\Controllers\Mansion\ParkingController::class, 'create'])
+                ->name('mansion.parkings.create');
+            Route::post('/properties/{property}/parkings', [\App\Http\Controllers\Mansion\ParkingController::class, 'store'])
+                ->name('mansion.parkings.store');
+            Route::get('/parkings/{parking}/edit', [\App\Http\Controllers\Mansion\ParkingController::class, 'edit'])
+                ->name('mansion.parkings.edit');
+            Route::put('/parkings/{parking}', [\App\Http\Controllers\Mansion\ParkingController::class, 'update'])
+                ->name('mansion.parkings.update');
+            Route::delete('/parkings/{parking}', [\App\Http\Controllers\Mansion\ParkingController::class, 'destroy'])
+                ->middleware('role:executive')
+                ->name('mansion.parkings.destroy');
+        });
     });
 
     /*
