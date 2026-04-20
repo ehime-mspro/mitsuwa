@@ -434,6 +434,46 @@ Route::middleware(['auth', 'password.change'])->group(function () {
 
     /*
     |----------------------------------------------------------------------
+    | 賃貸マンション管理（Phase B〜H で段階実装）
+    |----------------------------------------------------------------------
+    */
+    Route::prefix('mansion')->group(function () {
+        // ダッシュボード（Phase H で実装予定のため暫定コメントアウト）
+        // Route::get('/dashboard', [\App\Http\Controllers\Mansion\DashboardController::class, 'index'])
+        //     ->name('mansion.dashboard');
+
+        // 物件一覧（全ロール閲覧可）
+        Route::get('/properties', [\App\Http\Controllers\Mansion\PropertyController::class, 'index'])
+            ->name('mansion.properties.index');
+
+        // 物件登録（経営層+管理者）— create/store は show より先に定義
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/properties/create', [\App\Http\Controllers\Mansion\PropertyController::class, 'create'])
+                ->name('mansion.properties.create');
+            Route::post('/properties', [\App\Http\Controllers\Mansion\PropertyController::class, 'store'])
+                ->name('mansion.properties.store');
+        });
+
+        // 物件詳細（全ロール閲覧可）
+        Route::get('/properties/{property}', [\App\Http\Controllers\Mansion\PropertyController::class, 'show'])
+            ->name('mansion.properties.show');
+
+        // 物件編集・更新（経営層+管理者）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/properties/{property}/edit', [\App\Http\Controllers\Mansion\PropertyController::class, 'edit'])
+                ->name('mansion.properties.edit');
+            Route::put('/properties/{property}', [\App\Http\Controllers\Mansion\PropertyController::class, 'update'])
+                ->name('mansion.properties.update');
+        });
+
+        // 物件削除（経営層のみ）
+        Route::delete('/properties/{property}', [\App\Http\Controllers\Mansion\PropertyController::class, 'destroy'])
+            ->middleware('role:executive')
+            ->name('mansion.properties.destroy');
+    });
+
+    /*
+    |----------------------------------------------------------------------
     | 不動産 仕入れ案件管理（7ルート）
     |----------------------------------------------------------------------
     */
