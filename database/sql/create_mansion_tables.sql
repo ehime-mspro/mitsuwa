@@ -87,9 +87,9 @@ CREATE TABLE IF NOT EXISTS `ms_contracts` (
   `updated_by` INT UNSIGNED NULL,
   `created_at` TIMESTAMP NULL DEFAULT NULL,
   `updated_at` TIMESTAMP NULL DEFAULT NULL,
-  CONSTRAINT `fk_ms_contracts_room` FOREIGN KEY (`room_id`) REFERENCES `ms_rooms`(`id`),
-  CONSTRAINT `fk_ms_contracts_tenant` FOREIGN KEY (`tenant_id`) REFERENCES `ms_tenants`(`id`),
-  CONSTRAINT `fk_ms_contracts_staff` FOREIGN KEY (`staff_user_id`) REFERENCES `users`(`id`)
+  CONSTRAINT `fk_ms_contracts_room` FOREIGN KEY (`room_id`) REFERENCES `ms_rooms`(`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_ms_contracts_tenant` FOREIGN KEY (`tenant_id`) REFERENCES `ms_tenants`(`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_ms_contracts_staff` FOREIGN KEY (`staff_user_id`) REFERENCES `users`(`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='マンション部屋契約';
 
 CREATE TABLE IF NOT EXISTS `ms_parking_contracts` (
@@ -97,7 +97,7 @@ CREATE TABLE IF NOT EXISTS `ms_parking_contracts` (
   `parking_id` BIGINT UNSIGNED NOT NULL,
   `tenant_id` BIGINT UNSIGNED NOT NULL,
   `contract_id` BIGINT UNSIGNED NULL COMMENT '部屋契約と連動するときのみ',
-  `status` VARCHAR(20) NOT NULL,
+  `status` VARCHAR(20) NOT NULL COMMENT 'active/terminated',
   `contract_date` DATE NULL,
   `start_date` DATE NULL,
   `end_date` DATE NULL,
@@ -109,10 +109,10 @@ CREATE TABLE IF NOT EXISTS `ms_parking_contracts` (
   `updated_by` INT UNSIGNED NULL,
   `created_at` TIMESTAMP NULL DEFAULT NULL,
   `updated_at` TIMESTAMP NULL DEFAULT NULL,
-  CONSTRAINT `fk_ms_pc_parking` FOREIGN KEY (`parking_id`) REFERENCES `ms_parkings`(`id`),
-  CONSTRAINT `fk_ms_pc_tenant` FOREIGN KEY (`tenant_id`) REFERENCES `ms_tenants`(`id`),
+  CONSTRAINT `fk_ms_pc_parking` FOREIGN KEY (`parking_id`) REFERENCES `ms_parkings`(`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_ms_pc_tenant` FOREIGN KEY (`tenant_id`) REFERENCES `ms_tenants`(`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_ms_pc_contract` FOREIGN KEY (`contract_id`) REFERENCES `ms_contracts`(`id`) ON DELETE SET NULL,
-  CONSTRAINT `fk_ms_pc_staff` FOREIGN KEY (`staff_user_id`) REFERENCES `users`(`id`)
+  CONSTRAINT `fk_ms_pc_staff` FOREIGN KEY (`staff_user_id`) REFERENCES `users`(`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='マンション駐車場契約';
 
 CREATE TABLE IF NOT EXISTS `ms_contract_revisions` (
