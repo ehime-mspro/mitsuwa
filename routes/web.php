@@ -590,6 +590,41 @@ Route::middleware(['auth', 'password.change'])->group(function () {
             Route::put('/contracts/{contract}/terminate', [\App\Http\Controllers\Mansion\ContractController::class, 'terminate'])
                 ->name('mansion.contracts.terminate');
         });
+
+        // === 賃貸マンション: 駐車場契約（単独契約 + 料金改定 + 解約） ===
+        // 一覧は全ロール閲覧可、CRUD/改定/解約は manager 以上
+        Route::get('/parking-contracts', [\App\Http\Controllers\Mansion\ParkingContractController::class, 'index'])
+            ->name('mansion.parking-contracts.index');
+
+        // create / store は show/edit 系より前に配置（URL衝突回避）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/parking-contracts/create', [\App\Http\Controllers\Mansion\ParkingContractController::class, 'create'])
+                ->name('mansion.parking-contracts.create');
+            Route::post('/parking-contracts', [\App\Http\Controllers\Mansion\ParkingContractController::class, 'store'])
+                ->name('mansion.parking-contracts.store');
+        });
+
+        // 駐車場契約詳細（全ロール閲覧可）
+        Route::get('/parking-contracts/{parkingContract}', [\App\Http\Controllers\Mansion\ParkingContractController::class, 'show'])
+            ->name('mansion.parking-contracts.show');
+
+        // 編集・料金改定・解約は manager 以上
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/parking-contracts/{parkingContract}/edit', [\App\Http\Controllers\Mansion\ParkingContractController::class, 'edit'])
+                ->name('mansion.parking-contracts.edit');
+            Route::put('/parking-contracts/{parkingContract}', [\App\Http\Controllers\Mansion\ParkingContractController::class, 'update'])
+                ->name('mansion.parking-contracts.update');
+            // 料金改定
+            Route::get('/parking-contracts/{parkingContract}/revise', [\App\Http\Controllers\Mansion\ParkingContractController::class, 'showRevise'])
+                ->name('mansion.parking-contracts.revise.show');
+            Route::post('/parking-contracts/{parkingContract}/revise', [\App\Http\Controllers\Mansion\ParkingContractController::class, 'revise'])
+                ->name('mansion.parking-contracts.revise');
+            // 解約
+            Route::get('/parking-contracts/{parkingContract}/terminate', [\App\Http\Controllers\Mansion\ParkingContractController::class, 'showTerminate'])
+                ->name('mansion.parking-contracts.terminate.show');
+            Route::put('/parking-contracts/{parkingContract}/terminate', [\App\Http\Controllers\Mansion\ParkingContractController::class, 'terminate'])
+                ->name('mansion.parking-contracts.terminate');
+        });
     });
 
     /*
