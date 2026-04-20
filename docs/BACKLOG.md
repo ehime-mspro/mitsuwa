@@ -1,10 +1,11 @@
 # 未実装バックログ — 優先順位付き
 
-## 優先度1: 賃貸マンション管理
+## ✅ 優先度1: 賃貸マンション管理（実装完了）
 
 詳細仕様: @docs/賃貸マンション管理_要件定義書_v1.md
+実装計画: @docs/superpowers/plans/2026-04-20-mansion-management.md
 
-### フェーズ1: モック作成（進行中）
+### フェーズ1: モック作成（完了）
 
 モック配置先: `docs/mockups/mansion/`
 
@@ -33,14 +34,23 @@
 
 **モックはすべて完了**。次フェーズは Phase 2 Laravel 実装（ms_* テーブル / Enum / Controller / Blade / ルート約30本）。
 
-### フェーズ2: 実装
+### フェーズ2: Laravel 実装（完了）
 
-モック確定後に着手:
-- マイグレーション（`ms_*` テーブル一式 — 要件定義書 §2 参照）
-- Enum 作成: `MsTenantType`（resident/parking_only）
-- Controller: `Mansion/PropertyController`, `Mansion/RoomController`, `Mansion/TenantController`, `Mansion/ContractController`, `Mansion/ParkingContractController`
-- Blade: モックを `_form.blade.php` 等の部分テンプレート化
-- ルート: `mansion` prefix で約30ルート想定（部屋契約7 + 駐車場契約7 + その他）
+全 9 Phase（A〜I）で実装完了:
+
+| Phase | 内容 | 主な成果物 |
+|-------|------|-----------|
+| A | 基盤（DB / Enum / Model / サイドバー） | `ms_*` テーブル 8本、Enum 5本、Model 8本、サイドバー 3 パターン追記 |
+| B | 物件管理 | `Mansion/PropertyController`、`properties/` Blade 5本 |
+| C | 部屋マスタ | `Mansion/RoomController`、`rooms/` Blade 3本 |
+| D | 駐車場マスタ | `Mansion/ParkingController`、`parkings/` Blade 3本 |
+| E | 入居者管理 | `Mansion/TenantController`、`tenants/` Blade 5本（入居申込書アップロード含む） |
+| F | 部屋契約 | `Mansion/ContractController`（賃料改定・解約・Ajax）、`contracts/` Blade 7本 |
+| G | 駐車場契約 | `Mansion/ParkingContractController`（料金改定・解約）、`parking-contracts/` Blade 7本 |
+| H | ダッシュボード | `Mansion/DashboardController`、`dashboard.blade.php` |
+| I | 30 点品質監査 + PR | CLAUDE.md 準拠確認、@json 内関数呼び出し 1 件修正 |
+
+**合計**: Controller 7本 / Blade 約 35 本 / ルート約 43 本 / Model 8本 / Enum 5本
 
 ---
 
