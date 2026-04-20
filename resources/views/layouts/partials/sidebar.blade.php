@@ -49,6 +49,9 @@
         @if($hasTenantAccess)
             <x-sidebar-item :href="url('/dashboard/tenant')" label="テナントダッシュボード" :active="request()->is('dashboard/tenant')" />
         @endif
+        @if($hasMansionAccess)
+            <x-sidebar-item :href="url('/mansion/dashboard')" label="賃貸Mダッシュボード" :active="request()->is('mansion/dashboard')" />
+        @endif
     </div>
 
     {{-- テナント管理 --}}
@@ -67,7 +70,6 @@
     {{-- 賃貸マンション --}}
     @if($hasMansionAccess)
         <x-sidebar-group label="賃貸マンション">
-            <x-sidebar-item :href="url('/mansion/dashboard')" label="ダッシュボード" :active="request()->is('mansion/dashboard')" />
             <x-sidebar-item :href="url('/mansion/properties')" label="物件一覧" :active="request()->is('mansion/properties*')" />
             <x-sidebar-item :href="url('/mansion/tenants')" label="入居者管理" :active="request()->is('mansion/tenants*')" />
             <x-sidebar-item :href="url('/mansion/contracts')" label="部屋契約一覧" :active="request()->is('mansion/contracts*')" />
@@ -242,6 +244,9 @@
         @if($hasTenantAccess)
             <x-sidebar-item :href="url('/dashboard/tenant')" label="テナントダッシュボード" :active="request()->is('dashboard/tenant')" />
         @endif
+        @if($hasMansionAccess)
+            <x-sidebar-item :href="url('/mansion/dashboard')" label="賃貸Mダッシュボード" :active="request()->is('mansion/dashboard')" />
+        @endif
     </x-sidebar-group>
 
     @if($hasTenantAccess)
@@ -258,7 +263,6 @@
 
     @if($hasMansionAccess)
         <x-sidebar-group label="賃貸マンション">
-            <x-sidebar-item :href="url('/mansion/dashboard')" label="ダッシュボード" :active="request()->is('mansion/dashboard')" />
             <x-sidebar-item :href="url('/mansion/properties')" label="物件一覧" :active="request()->is('mansion/properties*')" />
             <x-sidebar-item :href="url('/mansion/tenants')" label="入居者管理" :active="request()->is('mansion/tenants*')" />
             <x-sidebar-item :href="url('/mansion/contracts')" label="部屋契約一覧" :active="request()->is('mansion/contracts*')" />
