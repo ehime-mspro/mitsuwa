@@ -39,22 +39,17 @@
     @include('mansion.parking-contracts._form', ['parkingContract' => $parkingContract])
 
     {{-- ========== アクションボタン ========== --}}
-    <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
-        <a href="{{ route('mansion.parking-contracts.destroy', $parkingContract) }}"
-           onclick="return confirm('この駐車場契約を削除しますか？契約中の場合は削除できません。')"
-           style="display: inline-flex; align-items: center; padding: 10px 16px; background: white; color: #b91c1c; border: 1px solid #fecaca; border-radius: 6px; font-size: 13px; font-weight: 600; text-decoration: none;">
-            契約を削除
+    {{-- 本システムは契約の物理削除（destroy）エンドポイントを持たない設計。
+         不要になった契約は「解約処理（terminate）」で扱うため、削除ボタンは配置しない。 --}}
+    <div style="display: flex; justify-content: flex-end; align-items: center; gap: 8px;">
+        <a href="{{ route('mansion.parking-contracts.show', $parkingContract) }}"
+           style="display: inline-flex; align-items: center; padding: 10px 20px; border: 1px solid #d1d5db; border-radius: 6px; background: white; font-size: 14px; color: #374151; text-decoration: none;">
+            キャンセル
         </a>
-        <div style="display: flex; gap: 8px;">
-            <a href="{{ route('mansion.parking-contracts.show', $parkingContract) }}"
-               style="display: inline-flex; align-items: center; padding: 10px 20px; border: 1px solid #d1d5db; border-radius: 6px; background: white; font-size: 14px; color: #374151; text-decoration: none;">
-                キャンセル
-            </a>
-            <button type="submit"
-                    style="padding: 10px 24px; background: #059669; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer;">
-                更新する
-            </button>
-        </div>
+        <button type="submit"
+                style="padding: 10px 24px; background: #059669; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer;">
+            更新する
+        </button>
     </div>
 </form>
 
