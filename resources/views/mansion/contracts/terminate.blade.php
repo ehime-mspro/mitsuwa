@@ -28,6 +28,11 @@
     $oldCleaning = (int) old('cleaning_cost', 0);
     $oldReason = old('termination_reason', '');
     $oldTerminateParkings = old('terminate_parkings', $activeParkings->pluck('id')->all());
+    // 駐車場契約 ID → チェック状態の初期値。@json() 内での関数呼び出しを避けるため事前計算する
+    $linkParkingsInitial = [];
+    foreach ($activeParkings as $pc) {
+        $linkParkingsInitial[$pc->id] = in_array($pc->id, $oldTerminateParkings);
+    }
 @endphp
 
 {{-- 解約画面用スタイル（Vite 未ビルドにつき inline） --}}
@@ -130,9 +135,7 @@
             otherDeductions: [],
             terminationReason: @json($oldReason),
             // 駐車場契約 ID → チェック状態のオブジェクト（初期は全 Active をチェック）
-            linkParkings: @json(collect($activeParkings)->mapWithKeys(function ($pc) use ($oldTerminateParkings) {
-                return [$pc->id => in_array($pc->id, $oldTerminateParkings)];
-            })->all()),
+            linkParkings: @json($linkParkingsInitial),
             // 差引合計（原状回復 + 清掃 + その他の合算）
             get totalDeduction() {
                 var sum = (Number(this.restorationCost) || 0) + (Number(this.cleaningCost) || 0);
