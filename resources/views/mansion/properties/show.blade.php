@@ -95,8 +95,7 @@
                style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border: 1px solid #10b981; border-radius: 6px; background: white; font-size: 13px; color: #059669; font-weight: 600; text-decoration: none;">
                 物件を編集
             </a>
-            {{-- 部屋追加ボタン。ルートは後続 Phase で実装予定のため、暫定的に「部屋を追加」表記のみ --}}
-            <a href="#"
+            <a href="{{ route('mansion.rooms.create', $property) }}"
                style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; background: #059669; border: 1px solid #059669; border-radius: 6px; color: white; font-size: 13px; font-weight: 600; text-decoration: none;">
                 <svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                 部屋を追加
@@ -229,7 +228,7 @@
     <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
         <div class="ms-card-title" style="margin-bottom: 0;">部屋一覧（{{ $totalRooms }}戸）</div>
         @if(auth()->user()->role->isManagerOrAbove())
-            <a href="#"
+            <a href="{{ route('mansion.rooms.create', $property) }}"
                style="display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; font-size: 12px; font-weight: 600; color: #059669; border: 1px solid #059669; border-radius: 4px; background: white; text-decoration: none;">
                 <svg style="width: 12px; height: 12px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                 部屋を追加
@@ -270,7 +269,11 @@
                     @endphp
                     <tr>
                         <td style="padding: 10px 12px; font-size: 14px; font-weight: 600; border-bottom: 1px solid #f3f4f6;">
-                            <a href="#" style="color: #059669; text-decoration: none;">{{ $room->room_number }}</a>
+                            @if(auth()->user()->role->isManagerOrAbove())
+                                <a href="{{ route('mansion.rooms.edit', $room) }}" style="color: #059669; text-decoration: none;">{{ $room->room_number }}</a>
+                            @else
+                                <span style="color: #111827;">{{ $room->room_number }}</span>
+                            @endif
                         </td>
                         <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">{{ $room->floor ? $room->floor . 'F' : '—' }}</td>
                         <td style="padding: 10px 12px; text-align: center; font-size: 13px; color: #374151; border-bottom: 1px solid #f3f4f6;">{{ $room->room_type ?? '—' }}</td>
@@ -283,9 +286,8 @@
                             {{ $tenantName ?? '—' }}
                         </td>
                         <td style="padding: 10px 12px; text-align: center; border-bottom: 1px solid #f3f4f6;">
-                            <a href="#" class="ms-btn-detail">詳細</a>
                             @if(auth()->user()->role->isManagerOrAbove())
-                                <a href="#" class="ms-btn-copy" title="この部屋と同条件で新規登録">複製</a>
+                                <a href="{{ route('mansion.rooms.edit', $room) }}" class="ms-btn-detail">編集</a>
                             @endif
                         </td>
                     </tr>
