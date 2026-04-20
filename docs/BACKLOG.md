@@ -1,26 +1,46 @@
 # 未実装バックログ — 優先順位付き
 
-## 優先度1: 住宅事業 契約管理
+## 優先度1: 賃貸マンション管理
 
-不動産契約管理（完了済み）を住宅事業にも拡張する。`re_contracts` テーブルに `department='housing'` を使用。
+詳細仕様: @docs/賃貸マンション管理_要件定義書_v1.md
 
-### 要件
+### フェーズ1: モック作成（進行中）
 
-- 建売物件の契約を `re_contracts` で管理
-- 注文住宅の契約も同テーブルで管理
-- 既存の `hs_contracts`（建売契約テーブル）との統合方針を決定する必要あり
-- 不動産契約管理のController/Bladeをベースに住宅事業版を作成
-- サイドバー: 住宅事業グループに「契約管理」追加
+モック配置先: `docs/mockups/mansion/`
 
-### 設計方針（未確定 — 要ヒアリング）
+| モジュール | ディレクトリ | index | show | create | edit | 状態 |
+|-----------|-------------|:-----:|:----:|:------:|:----:|------|
+| 物件管理 | `properties/` | ✅ | ✅ | ✅ | ✅ | 完了 |
+| 部屋マスタ | `rooms/` | — | — | ✅ | ✅ | create/edit のみ（一覧は物件詳細に内蔵） |
+| 駐車場マスタ | `parkings/` | — | — | ✅ | — | 物件詳細に内蔵。create のみモック作成済み |
+| 入居者管理 | `tenants/` | ✅ | ✅ | ✅ | ✅ | 完了（resident / parking_only 2区分対応） |
+| 部屋契約 | `contracts/` | ✅ | ✅ | ✅ | ✅ | 完了 |
+| 駐車場契約 | `parking-contracts/` | ✅ | ✅ | ✅ | ✅ | 完了（案C datepicker 適用済み） |
 
-- `re_contracts.department = 'housing'` で不動産と同一テーブルか、別テーブルか
-- 住宅事業固有の契約種別（建売/注文住宅/リフォーム）
-- 原価参照元: 建売 → `hs_properties` の土地原価+建築費、注文住宅 → 別途
+**未着手のモック**:
+- 賃料改定フォーム（部屋契約・駐車場契約 共通パターン）
+- 解約処理フォーム（契約終了日・敷金精算・駐車場ステータス連動）
+- 入居申込書アップロード画面
+- ダッシュボード（空室・契約満了間近）
+
+### フェーズ2: 実装
+
+モック確定後に着手:
+- マイグレーション（`ms_*` テーブル一式 — 要件定義書 §2 参照）
+- Enum 作成: `MsTenantType`（resident/parking_only）
+- Controller: `Mansion/PropertyController`, `Mansion/RoomController`, `Mansion/TenantController`, `Mansion/ContractController`, `Mansion/ParkingContractController`
+- Blade: モックを `_form.blade.php` 等の部分テンプレート化
+- ルート: `mansion` prefix で約30ルート想定（部屋契約7 + 駐車場契約7 + その他）
 
 ---
 
-## 優先度2: 住宅事業 横断一覧
+## 優先度2: DAD（土木事業）管理
+
+詳細仕様: @docs/DAD_土木事業_要件定義書_v1.md
+
+---
+
+## 優先度3: 住宅事業 横断一覧
 
 ### 要件
 
@@ -29,7 +49,7 @@
 
 ---
 
-## 優先度3: STEP 12 ダッシュボード
+## 優先度4: STEP 12 ダッシュボード
 
 ### 要件
 

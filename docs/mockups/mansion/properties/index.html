@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>マンション物件一覧 | ミツワ都市開発 経営管理システム</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif; background: #f3f4f6; }
+        .badge { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 9999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+        .badge-self { background: #dcfce7; color: #166534; }
+        .badge-managed { background: #fef3c7; color: #92400e; }
+    </style>
+</head>
+<body>
+
+    <!-- トップバー -->
+    <header style="background: #1f2937; color: white; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 16px;">
+            <span style="font-weight: 700;">ミツワ都市開発 経営管理システム</span>
+        </div>
+        <div style="font-size: 13px;">山田 (経営層)</div>
+    </header>
+
+    <div style="display: flex; min-height: calc(100vh - 48px);">
+        <!-- サイドバー（簡易） -->
+        <aside style="width: 220px; background: white; border-right: 1px solid #e5e7eb; padding: 16px 0;">
+            <nav style="font-size: 13px;">
+                <div style="padding: 8px 16px; color: #6b7280;">ダッシュボード</div>
+                <div style="padding: 8px 16px; color: #6b7280;">テナント管理</div>
+                <div style="padding: 8px 16px; color: #6b7280;">賃貸マンション ▾</div>
+                <div style="padding: 6px 16px 6px 32px; background: #ecfdf5; color: #047857; border-left: 3px solid #10b981; font-weight: 600;">物件一覧</div>
+                <div style="padding: 6px 16px 6px 32px; color: #6b7280;">入居者管理</div>
+                <div style="padding: 6px 16px 6px 32px; color: #6b7280;">契約一覧</div>
+                <div style="padding: 8px 16px; color: #6b7280;">不動産管理</div>
+                <div style="padding: 8px 16px; color: #6b7280;">住宅事業</div>
+                <div style="padding: 8px 16px; color: #6b7280;">システム管理</div>
+            </nav>
+        </aside>
+
+        <!-- メインコンテンツ -->
+        <main style="flex: 1; padding: 24px;">
+
+            <!-- パンくず -->
+            <div style="font-size: 12px; color: #9ca3af; margin-bottom: 16px;">
+                <a href="#" style="color: #10b981;">ホーム</a>
+                <span style="margin: 0 6px;">›</span>
+                <a href="#" style="color: #10b981;">賃貸マンション</a>
+                <span style="margin: 0 6px;">›</span>
+                <span>物件一覧</span>
+            </div>
+
+            <!-- ページヘッダー -->
+            <div class="flex items-center justify-between gap-3" style="margin-bottom: 20px;">
+                <h1 class="text-lg font-bold text-gray-900">マンション物件一覧</h1>
+                <a href="create.html"
+                   class="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-md transition-colors">
+                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    物件を登録
+                </a>
+            </div>
+
+            <!-- フィルターバー -->
+            <form class="flex items-center gap-2 mb-4 bg-white border border-gray-200 rounded-lg" style="padding: 10px 14px;">
+                <select class="h-9 px-3 border border-gray-300 rounded-md text-sm text-gray-700 bg-white cursor-pointer">
+                    <option>所有形態: すべて</option>
+                    <option>自社所有</option>
+                    <option>管理受託</option>
+                </select>
+                <input type="text" placeholder="物件名で検索"
+                       class="h-9 px-3 border border-gray-300 rounded-md text-sm text-gray-700 bg-white flex-1">
+                <a href="#" class="h-9 px-3 border border-gray-200 rounded-md text-xs text-gray-400 bg-white hover:bg-gray-50 transition-colors whitespace-nowrap inline-flex items-center">クリア</a>
+            </form>
+
+            <!-- テーブル -->
+            <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                <table class="w-full border-collapse" style="table-layout: fixed;">
+                    <colgroup>
+                        <col style="width: 35%">
+                        <col style="width: 14%">
+                        <col style="width: 12%">
+                        <col style="width: 14%">
+                        <col style="width: 12%">
+                        <col style="width: 13%">
+                    </colgroup>
+                    <thead>
+                        <tr>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">物件名</th>
+                            <th class="px-4 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">所有形態</th>
+                            <th class="px-4 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">総戸数</th>
+                            <th class="px-4 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">入居率</th>
+                            <th class="px-4 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">空室数</th>
+                            <th class="px-4 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Row 1: 自社所有 -->
+                        <tr class="hover:bg-gray-50 transition-colors">
+                            <td class="px-4 py-3 border-b border-gray-200 whitespace-nowrap">
+                                <a href="show.html" class="text-sm font-semibold text-gray-900 hover:text-emerald-600 hover:underline">ミツワハイツ松山1号館</a>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                <span class="badge badge-self">自社所有</span>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-center text-sm text-gray-900 whitespace-nowrap">12戸</td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                <span class="text-sm font-semibold text-gray-900">83.3%</span>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                <span class="text-sm text-gray-900">2戸</span>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                <div class="flex gap-1.5 justify-center">
+                                    <a href="show.html" class="text-xs font-semibold text-blue-700 px-3 py-1 border border-blue-200 rounded bg-blue-50 hover:bg-blue-100">詳細</a>
+                                    <a href="edit.html" class="text-xs font-semibold text-emerald-700 px-3 py-1 border border-emerald-200 rounded bg-emerald-50 hover:bg-emerald-100">編集</a>
+                                </div>
+                            </td>
+                        </tr>
+                        <!-- Row 2: 自社所有 満室 -->
+                        <tr class="hover:bg-gray-50 transition-colors">
+                            <td class="px-4 py-3 border-b border-gray-200 whitespace-nowrap">
+                                <a href="#" class="text-sm font-semibold text-gray-900 hover:text-emerald-600 hover:underline">レジデンス大街道</a>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                <span class="badge badge-self">自社所有</span>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-center text-sm text-gray-900 whitespace-nowrap">8戸</td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                <span class="text-sm font-semibold text-gray-900">100.0%</span>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                <span class="text-sm text-gray-400">0戸</span>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                <div class="flex gap-1.5 justify-center">
+                                    <a href="#" class="text-xs font-semibold text-blue-700 px-3 py-1 border border-blue-200 rounded bg-blue-50 hover:bg-blue-100">詳細</a>
+                                    <a href="#" class="text-xs font-semibold text-emerald-700 px-3 py-1 border border-emerald-200 rounded bg-emerald-50 hover:bg-emerald-100">編集</a>
+                                </div>
+                            </td>
+                        </tr>
+                        <!-- Row 3: 管理受託 -->
+                        <tr class="hover:bg-gray-50 transition-colors">
+                            <td class="px-4 py-3 border-b border-gray-200 whitespace-nowrap">
+                                <a href="#" class="text-sm font-semibold text-gray-900 hover:text-emerald-600 hover:underline">グランドコート道後</a>
+                                <div class="text-xs text-gray-500" style="margin-top: 2px;">オーナー: 山田 太郎</div>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                <span class="badge badge-managed">管理受託</span>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-center text-sm text-gray-900 whitespace-nowrap">15戸</td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                <span class="text-sm font-semibold text-gray-900">73.3%</span>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                <span class="text-sm text-gray-900">4戸</span>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                <div class="flex gap-1.5 justify-center">
+                                    <a href="#" class="text-xs font-semibold text-blue-700 px-3 py-1 border border-blue-200 rounded bg-blue-50 hover:bg-blue-100">詳細</a>
+                                    <a href="#" class="text-xs font-semibold text-emerald-700 px-3 py-1 border border-emerald-200 rounded bg-emerald-50 hover:bg-emerald-100">編集</a>
+                                </div>
+                            </td>
+                        </tr>
+                        <!-- Row 4: 管理受託 法人 -->
+                        <tr class="hover:bg-gray-50 transition-colors">
+                            <td class="px-4 py-3 border-b border-gray-200 whitespace-nowrap">
+                                <a href="#" class="text-sm font-semibold text-gray-900 hover:text-emerald-600 hover:underline">リバーサイド石手</a>
+                                <div class="text-xs text-gray-500" style="margin-top: 2px;">オーナー: 田中不動産㈱</div>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                <span class="badge badge-managed">管理受託</span>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-center text-sm text-gray-900 whitespace-nowrap">6戸</td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                <span class="text-sm font-semibold text-gray-900">50.0%</span>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                <span class="text-sm text-gray-900">3戸</span>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                <div class="flex gap-1.5 justify-center">
+                                    <a href="#" class="text-xs font-semibold text-blue-700 px-3 py-1 border border-blue-200 rounded bg-blue-50 hover:bg-blue-100">詳細</a>
+                                    <a href="#" class="text-xs font-semibold text-emerald-700 px-3 py-1 border border-emerald-200 rounded bg-emerald-50 hover:bg-emerald-100">編集</a>
+                                </div>
+                            </td>
+                        </tr>
+                        <!-- Row 5: 自社所有 -->
+                        <tr class="hover:bg-gray-50 transition-colors">
+                            <td class="px-4 py-3 border-b border-gray-200 whitespace-nowrap">
+                                <a href="#" class="text-sm font-semibold text-gray-900 hover:text-emerald-600 hover:underline">パークサイド平和通り</a>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                <span class="badge badge-self">自社所有</span>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-center text-sm text-gray-900 whitespace-nowrap">10戸</td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                <span class="text-sm font-semibold text-gray-900">90.0%</span>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                <span class="text-sm text-gray-900">1戸</span>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                <div class="flex gap-1.5 justify-center">
+                                    <a href="#" class="text-xs font-semibold text-blue-700 px-3 py-1 border border-blue-200 rounded bg-blue-50 hover:bg-blue-100">詳細</a>
+                                    <a href="#" class="text-xs font-semibold text-emerald-700 px-3 py-1 border border-emerald-200 rounded bg-emerald-50 hover:bg-emerald-100">編集</a>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <!-- ページネーション -->
+                <div class="flex justify-center gap-0.5 px-4 py-3 border-t border-gray-200">
+                    <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-300 bg-white border border-gray-200">&lt;</span>
+                    <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-white bg-emerald-600 border border-emerald-600 font-semibold">1</span>
+                    <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-300 bg-white border border-gray-200">&gt;</span>
+                </div>
+            </div>
+
+            <!-- 凡例・補足 -->
+            <div style="margin-top: 16px; padding: 12px 16px; background: #f9fafb; border-radius: 8px; font-size: 12px; color: #6b7280;">
+                <strong style="color: #374151;">※表示ルール</strong>：入居率は「入居中戸数 ÷ 総戸数 × 100%」。管理受託物件は物件名下にオーナー名を表示。物件番号・所在地は詳細画面でのみ確認可能。
+            </div>
+
+        </main>
+    </div>
+
+</body>
+</html>

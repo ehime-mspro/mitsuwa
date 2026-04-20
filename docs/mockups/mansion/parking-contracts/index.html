@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>マンション駐車場契約一覧 | ミツワ都市開発 経営管理システム</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif; background: #f3f4f6; }
+        .badge { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 9999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+        .badge-active { background: #d1fae5; color: #065f46; }
+        .badge-terminated { background: #e5e7eb; color: #374151; }
+        .badge-resident { background: #d1fae5; color: #065f46; }
+        .badge-parking-only { background: #e0e7ff; color: #3730a3; }
+    </style>
+</head>
+<body>
+
+    <!-- トップバー -->
+    <header style="background: #1f2937; color: white; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 16px;">
+            <span style="font-weight: 700;">ミツワ都市開発 経営管理システム</span>
+        </div>
+        <div style="font-size: 13px;">山田 (経営層)</div>
+    </header>
+
+    <div style="display: flex; min-height: calc(100vh - 48px);">
+        <!-- サイドバー -->
+        <aside style="width: 220px; background: white; border-right: 1px solid #e5e7eb; padding: 16px 0;">
+            <nav style="font-size: 13px;">
+                <div style="padding: 8px 16px; color: #6b7280;">ダッシュボード</div>
+                <div style="padding: 8px 16px; color: #6b7280;">テナント管理</div>
+                <div style="padding: 8px 16px; color: #6b7280;">賃貸マンション ▾</div>
+                <div style="padding: 6px 16px 6px 32px; color: #6b7280;">物件一覧</div>
+                <div style="padding: 6px 16px 6px 32px; color: #6b7280;">入居者管理</div>
+                <div style="padding: 6px 16px 6px 32px; color: #6b7280;">部屋契約一覧</div>
+                <div style="padding: 6px 16px 6px 32px; background: #ecfdf5; color: #047857; border-left: 3px solid #10b981; font-weight: 600;">駐車場契約一覧</div>
+                <div style="padding: 8px 16px; color: #6b7280;">不動産管理</div>
+                <div style="padding: 8px 16px; color: #6b7280;">住宅事業</div>
+                <div style="padding: 8px 16px; color: #6b7280;">システム管理</div>
+            </nav>
+        </aside>
+
+        <!-- メインコンテンツ -->
+        <main style="flex: 1; padding: 24px;">
+
+            <!-- パンくず -->
+            <div style="font-size: 12px; color: #9ca3af; margin-bottom: 16px;">
+                <a href="#" style="color: #10b981;">ホーム</a>
+                <span style="margin: 0 6px;">›</span>
+                <a href="#" style="color: #10b981;">賃貸マンション</a>
+                <span style="margin: 0 6px;">›</span>
+                <span>駐車場契約一覧</span>
+            </div>
+
+            <!-- ページヘッダー -->
+            <div class="flex items-center justify-between gap-3" style="margin-bottom: 20px;">
+                <div class="flex items-center gap-3">
+                    <h1 class="text-lg font-bold text-gray-900">マンション駐車場契約一覧</h1>
+                    <a href="../contracts/index.html" class="text-xs text-gray-500 hover:text-emerald-600 hover:underline">← 部屋契約一覧へ</a>
+                </div>
+                <a href="create.html"
+                   class="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-md transition-colors">
+                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    駐車場契約を登録
+                </a>
+            </div>
+
+            <!-- フィルターバー -->
+            <form class="flex items-center gap-2 mb-4 bg-white border border-gray-200 rounded-lg" style="padding: 10px 14px;">
+                <select class="h-9 px-3 border border-gray-300 rounded-md text-sm text-gray-700 bg-white cursor-pointer">
+                    <option>物件: すべて</option>
+                    <option>ミツワハイツ松山1号館</option>
+                    <option>レジデンス大街道</option>
+                    <option>リバーサイド三番町</option>
+                </select>
+                <select class="h-9 px-3 border border-gray-300 rounded-md text-sm text-gray-700 bg-white cursor-pointer">
+                    <option>紐付け区分: すべて</option>
+                    <option>部屋契約と連動</option>
+                    <option>外部単独</option>
+                </select>
+                <select class="h-9 px-3 border border-gray-300 rounded-md text-sm text-gray-700 bg-white cursor-pointer">
+                    <option>ステータス: すべて</option>
+                    <option>契約中</option>
+                    <option>解約済み</option>
+                </select>
+                <select class="h-9 px-3 border border-gray-300 rounded-md text-sm text-gray-700 bg-white cursor-pointer">
+                    <option>年度: すべて</option>
+                    <option>2026年度</option>
+                    <option>2025年度</option>
+                    <option>2024年度</option>
+                    <option>2023年度</option>
+                </select>
+                <input type="text" placeholder="利用者名・駐車場番号で検索"
+                       class="h-9 px-3 border border-gray-300 rounded-md text-sm text-gray-700 bg-white flex-1">
+                <a href="#" class="h-9 px-3 border border-gray-200 rounded-md text-xs text-gray-400 bg-white hover:bg-gray-50 transition-colors whitespace-nowrap inline-flex items-center">クリア</a>
+            </form>
+
+            <!-- テーブル -->
+            <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                <table class="w-full border-collapse" style="table-layout: fixed;">
+                    <colgroup>
+                        <col style="width: 24%">  <!-- 物件 / 駐車場 -->
+                        <col style="width: 16%">  <!-- 利用者 -->
+                        <col style="width: 14%">  <!-- 紐付け -->
+                        <col style="width: 12%">  <!-- 契約日 -->
+                        <col style="width: 12%">  <!-- 月額料金 -->
+                        <col style="width: 12%">  <!-- ステータス -->
+                        <col style="width: 10%">  <!-- 詳細 -->
+                    </colgroup>
+                    <thead>
+                        <tr>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">物件 / 駐車場</th>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">利用者</th>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">契約部屋</th>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">契約日</th>
+                            <th class="px-4 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">月額料金</th>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">ステータス</th>
+                            <th class="px-4 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Row 1: A-1 佐藤 健一 501号室連動 契約中 -->
+                        <tr class="hover:bg-gray-50 transition-colors">
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 whitespace-nowrap">
+                                <a href="show.html" class="font-semibold text-gray-900 hover:text-emerald-600 hover:underline">ミツワハイツ松山1号館 / A-1</a>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 whitespace-nowrap">
+                                <span class="inline-flex items-center gap-1.5">
+                                    佐藤 健一
+                                    <span class="badge badge-resident">入居者</span>
+                                </span>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 whitespace-nowrap">501号室契約</td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 whitespace-nowrap">2023/03/20</td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-center whitespace-nowrap">8,000円</td>
+                            <td class="px-4 py-3 border-b border-gray-200 whitespace-nowrap">
+                                <span class="badge badge-active">契約中</span>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                <a href="show.html" class="text-xs font-semibold text-blue-700 px-3 py-1 border border-blue-200 rounded bg-blue-50 hover:bg-blue-100">詳細</a>
+                            </td>
+                        </tr>
+                        <!-- Row 2: A-2 田中 美和 301号室連動 -->
+                        <tr class="hover:bg-gray-50 transition-colors">
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 whitespace-nowrap">
+                                <a href="show.html" class="font-semibold text-gray-900 hover:text-emerald-600 hover:underline">ミツワハイツ松山1号館 / A-2</a>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 whitespace-nowrap">
+                                <span class="inline-flex items-center gap-1.5">
+                                    田中 美和
+                                    <span class="badge badge-resident">入居者</span>
+                                </span>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 whitespace-nowrap">301号室契約</td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 whitespace-nowrap">2023/12/20</td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-center whitespace-nowrap">8,000円</td>
+                            <td class="px-4 py-3 border-b border-gray-200 whitespace-nowrap">
+                                <span class="badge badge-active">契約中</span>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                <a href="show.html" class="text-xs font-semibold text-blue-700 px-3 py-1 border border-blue-200 rounded bg-blue-50 hover:bg-blue-100">詳細</a>
+                            </td>
+                        </tr>
+                        <!-- Row 3: A-3 高橋 真由美 102号室連動 -->
+                        <tr class="hover:bg-gray-50 transition-colors">
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 whitespace-nowrap">
+                                <a href="show.html" class="font-semibold text-gray-900 hover:text-emerald-600 hover:underline">ミツワハイツ松山1号館 / A-3</a>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 whitespace-nowrap">
+                                <span class="inline-flex items-center gap-1.5">
+                                    高橋 真由美
+                                    <span class="badge badge-resident">入居者</span>
+                                </span>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 whitespace-nowrap">102号室契約</td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 whitespace-nowrap">2024/05/05</td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-center whitespace-nowrap">8,000円</td>
+                            <td class="px-4 py-3 border-b border-gray-200 whitespace-nowrap">
+                                <span class="badge badge-active">契約中</span>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                <a href="show.html" class="text-xs font-semibold text-blue-700 px-3 py-1 border border-blue-200 rounded bg-blue-50 hover:bg-blue-100">詳細</a>
+                            </td>
+                        </tr>
+                        <!-- Row 4: B-1 石川 和夫 外部単独 -->
+                        <tr class="hover:bg-gray-50 transition-colors">
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 whitespace-nowrap">
+                                <a href="show.html" class="font-semibold text-gray-900 hover:text-emerald-600 hover:underline">ミツワハイツ松山1号館 / B-1</a>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 whitespace-nowrap">
+                                <span class="inline-flex items-center gap-1.5">
+                                    石川 和夫
+                                    <span class="badge badge-parking-only">駐車場のみ</span>
+                                </span>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-400 whitespace-nowrap">— 単独</td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 whitespace-nowrap">2024/08/10</td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-center whitespace-nowrap">8,000円</td>
+                            <td class="px-4 py-3 border-b border-gray-200 whitespace-nowrap">
+                                <span class="badge badge-active">契約中</span>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                <a href="show.html" class="text-xs font-semibold text-blue-700 px-3 py-1 border border-blue-200 rounded bg-blue-50 hover:bg-blue-100">詳細</a>
+                            </td>
+                        </tr>
+                        <!-- Row 5: B-2 森田 春香 外部単独 -->
+                        <tr class="hover:bg-gray-50 transition-colors">
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 whitespace-nowrap">
+                                <a href="show.html" class="font-semibold text-gray-900 hover:text-emerald-600 hover:underline">ミツワハイツ松山1号館 / B-2</a>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 whitespace-nowrap">
+                                <span class="inline-flex items-center gap-1.5">
+                                    森田 春香
+                                    <span class="badge badge-parking-only">駐車場のみ</span>
+                                </span>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-400 whitespace-nowrap">— 単独</td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 whitespace-nowrap">2024/11/15</td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-center whitespace-nowrap">8,000円</td>
+                            <td class="px-4 py-3 border-b border-gray-200 whitespace-nowrap">
+                                <span class="badge badge-active">契約中</span>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                <a href="show.html" class="text-xs font-semibold text-blue-700 px-3 py-1 border border-blue-200 rounded bg-blue-50 hover:bg-blue-100">詳細</a>
+                            </td>
+                        </tr>
+                        <!-- Row 6: レジデンス大街道 C-1 伊藤 隆 803号室連動 -->
+                        <tr class="hover:bg-gray-50 transition-colors">
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 whitespace-nowrap">
+                                <a href="show.html" class="font-semibold text-gray-900 hover:text-emerald-600 hover:underline">レジデンス大街道 / C-1</a>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 whitespace-nowrap">
+                                <span class="inline-flex items-center gap-1.5">
+                                    伊藤 隆
+                                    <span class="badge badge-resident">入居者</span>
+                                </span>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 whitespace-nowrap">803号室契約</td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 whitespace-nowrap">2023/06/20</td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-center whitespace-nowrap">10,000円</td>
+                            <td class="px-4 py-3 border-b border-gray-200 whitespace-nowrap">
+                                <span class="badge badge-active">契約中</span>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                <a href="show.html" class="text-xs font-semibold text-blue-700 px-3 py-1 border border-blue-200 rounded bg-blue-50 hover:bg-blue-100">詳細</a>
+                            </td>
+                        </tr>
+                        <!-- Row 7: リバーサイド三番町 D-5 岡田 茂 外部単独 -->
+                        <tr class="hover:bg-gray-50 transition-colors">
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 whitespace-nowrap">
+                                <a href="show.html" class="font-semibold text-gray-900 hover:text-emerald-600 hover:underline">リバーサイド三番町 / D-5</a>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 whitespace-nowrap">
+                                <span class="inline-flex items-center gap-1.5">
+                                    岡田 茂
+                                    <span class="badge badge-parking-only">駐車場のみ</span>
+                                </span>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-400 whitespace-nowrap">— 単独</td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 whitespace-nowrap">2025/02/01</td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-center whitespace-nowrap">9,000円</td>
+                            <td class="px-4 py-3 border-b border-gray-200 whitespace-nowrap">
+                                <span class="badge badge-active">契約中</span>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                <a href="show.html" class="text-xs font-semibold text-blue-700 px-3 py-1 border border-blue-200 rounded bg-blue-50 hover:bg-blue-100">詳細</a>
+                            </td>
+                        </tr>
+                        <!-- Row 8: A-4 吉田 直樹 401号室連動(解約済み) -->
+                        <tr class="hover:bg-gray-50 transition-colors">
+                            <td class="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
+                                <a href="show.html" class="font-semibold text-gray-900 hover:text-emerald-600 hover:underline">ミツワハイツ松山1号館 / A-4</a>
+                            </td>
+                            <td class="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">
+                                <span class="inline-flex items-center gap-1.5">
+                                    吉田 直樹
+                                    <span class="badge badge-resident">入居者</span>
+                                </span>
+                            </td>
+                            <td class="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">401号室契約</td>
+                            <td class="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">2022/06/01</td>
+                            <td class="px-4 py-3 text-sm text-gray-500 text-center whitespace-nowrap">7,500円</td>
+                            <td class="px-4 py-3 whitespace-nowrap">
+                                <span class="badge badge-terminated">解約済み</span>
+                            </td>
+                            <td class="px-4 py-3 text-center whitespace-nowrap">
+                                <a href="show.html" class="text-xs font-semibold text-blue-700 px-3 py-1 border border-blue-200 rounded bg-blue-50 hover:bg-blue-100">詳細</a>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- 件数・ページャー -->
+            <div class="flex items-center justify-between mt-4 text-xs text-gray-500">
+                <div>全 8 件中 1〜8 件を表示</div>
+                <div class="flex items-center gap-1">
+                    <span class="px-2 py-1 border border-gray-200 rounded text-gray-300 bg-white">‹</span>
+                    <span class="px-3 py-1 border border-emerald-200 rounded bg-emerald-50 text-emerald-700 font-semibold">1</span>
+                    <span class="px-2 py-1 border border-gray-200 rounded text-gray-300 bg-white">›</span>
+                </div>
+            </div>
+
+            <!-- 補足 -->
+            <div style="margin-top: 20px; padding: 12px 16px; background: #f9fafb; border-radius: 8px; font-size: 12px; color: #6b7280;">
+                <strong style="color: #374151;">※紐付け区分について</strong>：部屋契約と連動する駐車場契約は、部屋契約の解約時に一括解約対象となります。外部単独契約は駐車場のみ利用の外部者（<code style="background: #e0e7ff; color: #3730a3; padding: 1px 6px; border-radius: 3px; font-size: 11px;">parking_only</code>）向けです。
+            </div>
+
+        </main>
+    </div>
+
+</body>
+</html>
