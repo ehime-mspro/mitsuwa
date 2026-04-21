@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>工事案件詳細 | DAD（土木事業） | ミツワ都市開発 経営管理システム</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif; background: #f3f4f6; }
+        [x-cloak] { display: none !important; }
+
+        .badge { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 9999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+        .badge-public      { background: #dbeafe; color: #1e40af; }
+        .badge-private     { background: #fef3c7; color: #92400e; }
+        .badge-estimate    { background: #f3f4f6; color: #374151; }
+        .badge-ordered     { background: #dbeafe; color: #1e40af; }
+        .badge-in-progress { background: #fef3c7; color: #92400e; }
+        .badge-completed   { background: #d1fae5; color: #065f46; }
+        .badge-paid        { background: #a7f3d0; color: #064e3b; }
+
+        .card-title { font-size: 15px; font-weight: 700; color: #111827; margin-bottom: 14px; padding-left: 12px; border-left: 4px solid #10b981; }
+        .info-label { font-size: 12px; color: #6b7280; margin-bottom: 4px; }
+        .info-value { font-size: 14px; color: #111827; font-weight: 500; }
+        .stat-card  { background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px 20px; text-align: center; }
+        .stat-label { font-size: 12px; color: #6b7280; margin-bottom: 6px; }
+        .stat-value { font-size: 22px; font-weight: 700; color: #111827; }
+
+        /* タブ */
+        .tab-btn {
+            padding: 10px 20px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #374151;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            white-space: nowrap;
+            transition: all .15s;
+        }
+        .tab-btn:hover { color: #111827; background: #f9fafb; }
+        .tab-btn.active { color: #059669; border-bottom-color: #059669; font-weight: 700; }
+
+        /* Google Mapsプレースホルダー */
+        .map-placeholder {
+            width: 100%; height: 280px;
+            background:
+                repeating-linear-gradient(45deg, #f9fafb, #f9fafb 10px, #f3f4f6 10px, #f3f4f6 20px);
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            color: #9ca3af; font-size: 13px; font-weight: 500;
+        }
+        .map-placeholder .pin { font-size: 32px; color: #dc2626; margin-right: 8px; }
+
+        /* 日付入力（Phase 2 で案C datepicker に差し替え） */
+        .date-input-trigger {
+            width: 100%; height: 36px;
+            padding: 0 10px;
+            border: 1px solid #D1D5DB;
+            border-radius: 6px;
+            font-size: 13px; color: #111827; background: white;
+            box-sizing: border-box;
+            display: flex; align-items: center; justify-content: space-between;
+            cursor: pointer;
+            text-align: left;
+            font-family: inherit;
+        }
+        .date-input-trigger:hover { border-color: #059669; }
+        .date-input-trigger .placeholder { color: #9CA3AF; }
+        .date-input-trigger .cal-icon { color: #059669; display: inline-flex; }
+    </style>
+</head>
+<body>
+
+    <!-- トップバー -->
+    <header style="background: #1f2937; color: white; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 16px;">
+            <span style="font-weight: 700;">ミツワ都市開発 経営管理システム</span>
+        </div>
+        <div style="font-size: 13px;">山田 (経営層)</div>
+    </header>
+
+    <div style="display: flex; min-height: calc(100vh - 48px);">
+        <!-- サイドバー -->
+        <aside style="width: 220px; background: white; border-right: 1px solid #e5e7eb; padding: 16px 0;">
+            <nav style="font-size: 13px;">
+                <div style="padding: 8px 16px; color: #6b7280;">ダッシュボード</div>
+                <div style="padding: 8px 16px; color: #6b7280;">テナント管理</div>
+                <div style="padding: 8px 16px; color: #6b7280;">賃貸マンション</div>
+                <div style="padding: 8px 16px; color: #6b7280;">不動産管理</div>
+                <div style="padding: 8px 16px; color: #6b7280;">住宅事業</div>
+                <div style="padding: 8px 16px; color: #6b7280;">DAD（土木事業） ▾</div>
+                <div style="padding: 6px 16px 6px 32px; background: #ecfdf5; color: #047857; border-left: 3px solid #10b981; font-weight: 600;">工事案件</div>
+                <div style="padding: 6px 16px 6px 32px; color: #6b7280;">発注者管理</div>
+                <div style="padding: 6px 16px 6px 32px; color: #6b7280;">協力業者</div>
+                <div style="padding: 6px 16px 6px 32px; color: #6b7280;">従業員管理</div>
+                <div style="padding: 8px 16px; color: #6b7280;">システム管理</div>
+            </nav>
+        </aside>
+
+        <!-- メインコンテンツ -->
+        <main style="flex: 1; padding: 24px;" x-data="projectShow()">
+
+            <!-- パンくず -->
+            <div class="text-sm text-gray-500" style="margin-bottom: 12px;">
+                <a href="#" class="text-gray-500 hover:text-emerald-600 hover:underline">ホーム</a>
+                <span style="margin: 0 6px;">›</span>
+                <a href="#" class="text-gray-500 hover:text-emerald-600 hover:underline">DAD（土木事業）</a>
+                <span style="margin: 0 6px;">›</span>
+                <a href="index.html" class="text-gray-500 hover:text-emerald-600 hover:underline">工事案件一覧</a>
+                <span style="margin: 0 6px;">›</span>
+                <span class="text-gray-800 font-medium">DAD-003 道後温泉近郊 宅地造成工事</span>
+            </div>
+
+            <!-- ページヘッダー -->
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; gap: 12px; flex-wrap: wrap;">
+                <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                    <span style="font-family: monospace; font-size: 13px; color: #6b7280; background: #f3f4f6; padding: 4px 10px; border-radius: 4px;">DAD-003</span>
+                    <h1 style="font-size: 20px; font-weight: 700; margin: 0;">道後温泉近郊 宅地造成工事</h1>
+                    <span class="badge badge-private">民間工事</span>
+                    <span class="badge badge-in-progress">施工中</span>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <a href="index.html" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border: 1px solid #d1d5db; border-radius: 6px; background: white; font-size: 13px; color: #374151; text-decoration: none;">
+                        <svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                        一覧に戻る
+                    </a>
+                    <a href="edit.html" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border: 1px solid #10b981; border-radius: 6px; background: white; font-size: 13px; color: #059669; font-weight: 600; text-decoration: none;">
+                        案件を編集
+                    </a>
+                    <button type="button" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border: 1px solid #fca5a5; border-radius: 6px; background: white; font-size: 13px; color: #b91c1c; font-weight: 600; cursor: pointer;">
+                        削除
+                    </button>
+                </div>
+            </div>
+
+            <!-- タブセレクタ -->
+            <div class="bg-white border border-gray-200 rounded-lg overflow-hidden" style="margin-bottom: 20px;">
+                <div style="display: flex; border-bottom: 1px solid #e5e7eb;">
+                    <button type="button" class="tab-btn" :class="{ 'active': activeTab === 'basic' }" @click="activeTab = 'basic'">基本情報</button>
+                    <button type="button" class="tab-btn" :class="{ 'active': activeTab === 'cost' }" @click="activeTab = 'cost'">原価管理</button>
+                    <button type="button" class="tab-btn" :class="{ 'active': activeTab === 'assignment' }" @click="activeTab = 'assignment'">人員配置</button>
+                </div>
+
+                <!-- ========== Tab 1: 基本情報 ========== -->
+                <div x-show="activeTab === 'basic'" x-cloak style="padding: 20px;">
+
+                    <!-- 金額サマリー 4カード -->
+                    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px;">
+                        <div class="stat-card">
+                            <div class="stat-label">見積額</div>
+                            <div class="stat-value">28,500,000円</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">受注額</div>
+                            <div class="stat-value">32,000,000円</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">原価合計（実績）</div>
+                            <div class="stat-value">21,800,000円</div>
+                        </div>
+                        <div class="stat-card" style="background: #ecfdf5; border-color: #a7f3d0;">
+                            <div class="stat-label" style="color: #065f46;">粗利額</div>
+                            <div class="stat-value" style="color: #047857;">10,200,000円</div>
+                        </div>
+                    </div>
+
+                    <!-- 基本情報カード -->
+                    <div class="bg-white border border-gray-200 rounded-lg" style="padding: 20px; margin-bottom: 20px;">
+                        <div class="card-title">基本情報</div>
+                        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px 24px;">
+                            <div>
+                                <div class="info-label">工事種別</div>
+                                <div class="info-value"><span class="badge badge-private">民間工事</span></div>
+                            </div>
+                            <div>
+                                <div class="info-label">ステータス</div>
+                                <div class="info-value"><span class="badge badge-in-progress">施工中</span></div>
+                            </div>
+                            <div>
+                                <div class="info-label">発注者</div>
+                                <div class="info-value"><a href="#" style="color: #059669; text-decoration: underline;">田中不動産㈱</a></div>
+                            </div>
+                            <div>
+                                <div class="info-label">担当者</div>
+                                <div class="info-value">高橋</div>
+                            </div>
+                            <div style="grid-column: span 4;">
+                                <div class="info-label">工事現場住所</div>
+                                <div class="info-value">愛媛県松山市道後湯之町 2-15（地番）</div>
+                            </div>
+                            <div>
+                                <div class="info-label">見積日</div>
+                                <div class="info-value">2026/04/03</div>
+                            </div>
+                            <div>
+                                <div class="info-label">受注日</div>
+                                <div class="info-value">2026/04/15</div>
+                            </div>
+                            <div>
+                                <div class="info-label">工期開始</div>
+                                <div class="info-value">2026/05/10</div>
+                            </div>
+                            <div>
+                                <div class="info-label">工期終了（予定）</div>
+                                <div class="info-value">2026/09/30</div>
+                            </div>
+                            <div>
+                                <div class="info-label">着工日</div>
+                                <div class="info-value">2026/05/10</div>
+                            </div>
+                            <div>
+                                <div class="info-label">完工日</div>
+                                <div class="info-value" style="color: #9ca3af;">—</div>
+                            </div>
+                            <div>
+                                <div class="info-label">入金日</div>
+                                <div class="info-value" style="color: #9ca3af;">—</div>
+                            </div>
+                            <div></div>
+                            <div style="grid-column: span 4;">
+                                <div class="info-label">備考</div>
+                                <div class="info-value" style="white-space: pre-wrap;">造成面積 約 1,200㎡。地盤改良工程あり。オーナー希望の擁壁デザイン要確認。</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Google Maps -->
+                    <div class="bg-white border border-gray-200 rounded-lg" style="padding: 20px;">
+                        <div class="card-title">現場地図</div>
+                        <div class="map-placeholder">
+                            <span class="pin">📍</span>
+                            <span>愛媛県松山市道後湯之町 2-15 付近（Google Maps 埋め込み領域）</span>
+                        </div>
+                        <div style="font-size: 11px; color: #9ca3af; margin-top: 8px;">※ 実装時は Google Maps JS API でピン表示 + ドラッグによる緯度経度の微調整が可能。</div>
+                    </div>
+                </div>
+
+                <!-- ========== Tab 2: 原価管理 ========== -->
+                <div x-show="activeTab === 'cost'" x-cloak style="padding: 20px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
+                        <div class="card-title" style="margin-bottom: 0;">原価管理</div>
+                        <button type="button" @click="showAddCost = true" x-show="!showAddCost"
+                                style="padding: 7px 14px; background: #059669; border: 1px solid #059669; border-radius: 6px; color: white; font-size: 13px; font-weight: 600; cursor: pointer;">
+                            ＋ 原価追加
+                        </button>
+                    </div>
+
+                    <!-- 原価追加フォーム（インライン展開） -->
+                    <div x-show="showAddCost" x-transition x-cloak
+                         style="padding: 14px; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 8px; margin-bottom: 16px;">
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
+                            <div>
+                                <label style="display: block; font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 4px;">費用カテゴリ <span style="color: #dc2626;">*</span></label>
+                                <select style="width: 100%; height: 36px; padding: 0 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; background: white;">
+                                    <option value="">選択してください</option>
+                                    <option>材料費</option>
+                                    <option>外注費</option>
+                                    <option>人件費</option>
+                                    <option>機械経費</option>
+                                    <option>諸経費</option>
+                                    <option>その他</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="display: block; font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 4px;">協力業者（外注費の場合）</label>
+                                <select style="width: 100%; height: 36px; padding: 0 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; background: white;">
+                                    <option value="">未選択</option>
+                                    <option>㈱愛媛土建</option>
+                                    <option>松山建設㈲</option>
+                                    <option>四国電設工業㈱</option>
+                                </select>
+                            </div>
+                            <div style="grid-column: span 2;">
+                                <label style="display: block; font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 4px;">内容・摘要</label>
+                                <input type="text" placeholder="例: 生コン 30m³" style="width: 100%; height: 36px; padding: 0 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px;">
+                            </div>
+                            <div>
+                                <label style="display: block; font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 4px;">見積額（円）</label>
+                                <input type="number" placeholder="例: 500000" style="width: 100%; height: 36px; padding: 0 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px;">
+                            </div>
+                            <div>
+                                <label style="display: block; font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 4px;">実績額（円）</label>
+                                <input type="number" placeholder="未入力可" style="width: 100%; height: 36px; padding: 0 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px;">
+                            </div>
+                            <div style="grid-column: span 2;">
+                                <label style="display: block; font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 4px;">備考</label>
+                                <input type="text" style="width: 100%; height: 36px; padding: 0 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px;">
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 8px; margin-top: 12px;">
+                            <button type="button" @click.prevent style="padding: 8px 18px; background: #059669; color: white; font-size: 13px; font-weight: 600; border: none; border-radius: 6px; cursor: pointer;">追加</button>
+                            <button type="button" @click="showAddCost = false" style="padding: 8px 18px; background: #f3f4f6; color: #6b7280; font-size: 13px; font-weight: 600; border: none; border-radius: 6px; cursor: pointer;">取消</button>
+                        </div>
+                    </div>
+
+                    <!-- 原価テーブル -->
+                    <div class="border border-gray-200 rounded-lg overflow-hidden">
+                        <table class="w-full" style="border-collapse: collapse; table-layout: fixed;">
+                            <colgroup>
+                                <col style="width: 12%">
+                                <col style="width: 18%">
+                                <col style="width: 13%">
+                                <col style="width: 13%">
+                                <col style="width: 13%">
+                                <col style="width: 18%">
+                                <col style="width: 13%">
+                            </colgroup>
+                            <thead>
+                                <tr>
+                                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: left;">費用カテゴリ</th>
+                                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: left;">内容</th>
+                                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: right;">見積額</th>
+                                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: right;">実績額</th>
+                                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: right;">差額</th>
+                                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: left;">協力業者</th>
+                                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: center;">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">材料費</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">生コンクリート 30㎥</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: right;">500,000円</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: right; font-weight: 600;">520,000円</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: right; color: #dc2626; font-weight: 600;">+20,000円</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #9ca3af;">—</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; text-align: center;">
+                                        <button type="button" style="font-size: 11px; color: #059669; border: 1px solid #a7f3d0; padding: 3px 8px; border-radius: 3px; background: white; cursor: pointer; margin-right: 3px;">編集</button>
+                                        <button type="button" style="font-size: 11px; color: #b91c1c; border: 1px solid #fca5a5; padding: 3px 8px; border-radius: 3px; background: white; cursor: pointer;">削除</button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">外注費</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">土工・重機作業</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: right;">8,000,000円</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: right; font-weight: 600;">7,500,000円</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: right; color: #047857; font-weight: 600;">-500,000円</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">㈱愛媛土建</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; text-align: center;">
+                                        <button type="button" style="font-size: 11px; color: #059669; border: 1px solid #a7f3d0; padding: 3px 8px; border-radius: 3px; background: white; cursor: pointer; margin-right: 3px;">編集</button>
+                                        <button type="button" style="font-size: 11px; color: #b91c1c; border: 1px solid #fca5a5; padding: 3px 8px; border-radius: 3px; background: white; cursor: pointer;">削除</button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">外注費</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">擁壁施工</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: right;">4,500,000円</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: right; font-weight: 600;">4,500,000円</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: right; color: #047857; font-weight: 600;">±0円</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">松山建設㈲</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; text-align: center;">
+                                        <button type="button" style="font-size: 11px; color: #059669; border: 1px solid #a7f3d0; padding: 3px 8px; border-radius: 3px; background: white; cursor: pointer; margin-right: 3px;">編集</button>
+                                        <button type="button" style="font-size: 11px; color: #b91c1c; border: 1px solid #fca5a5; padding: 3px 8px; border-radius: 3px; background: white; cursor: pointer;">削除</button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">人件費</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">現場監督・作業員（5ヶ月）</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: right;">6,000,000円</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: right; font-weight: 600;">5,800,000円</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: right; color: #047857; font-weight: 600;">-200,000円</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #9ca3af;">—</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; text-align: center;">
+                                        <button type="button" style="font-size: 11px; color: #059669; border: 1px solid #a7f3d0; padding: 3px 8px; border-radius: 3px; background: white; cursor: pointer; margin-right: 3px;">編集</button>
+                                        <button type="button" style="font-size: 11px; color: #b91c1c; border: 1px solid #fca5a5; padding: 3px 8px; border-radius: 3px; background: white; cursor: pointer;">削除</button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">機械経費</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">バックホウ・重機リース</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: right;">2,800,000円</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: right; font-weight: 600;">2,900,000円</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: right; color: #dc2626; font-weight: 600;">+100,000円</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #9ca3af;">—</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; text-align: center;">
+                                        <button type="button" style="font-size: 11px; color: #059669; border: 1px solid #a7f3d0; padding: 3px 8px; border-radius: 3px; background: white; cursor: pointer; margin-right: 3px;">編集</button>
+                                        <button type="button" style="font-size: 11px; color: #b91c1c; border: 1px solid #fca5a5; padding: 3px 8px; border-radius: 3px; background: white; cursor: pointer;">削除</button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 10px; font-size: 13px;">諸経費</td>
+                                    <td style="padding: 10px; font-size: 13px;">安全対策・仮設・運搬</td>
+                                    <td style="padding: 10px; font-size: 13px; text-align: right;">700,000円</td>
+                                    <td style="padding: 10px; font-size: 13px; text-align: right; font-weight: 600;">580,000円</td>
+                                    <td style="padding: 10px; font-size: 13px; text-align: right; color: #047857; font-weight: 600;">-120,000円</td>
+                                    <td style="padding: 10px; font-size: 13px; color: #9ca3af;">—</td>
+                                    <td style="padding: 10px; text-align: center;">
+                                        <button type="button" style="font-size: 11px; color: #059669; border: 1px solid #a7f3d0; padding: 3px 8px; border-radius: 3px; background: white; cursor: pointer; margin-right: 3px;">編集</button>
+                                        <button type="button" style="font-size: 11px; color: #b91c1c; border: 1px solid #fca5a5; padding: 3px 8px; border-radius: 3px; background: white; cursor: pointer;">削除</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                            <tfoot>
+                                <tr style="background: #f9fafb;">
+                                    <td colspan="2" style="padding: 12px 10px; border-top: 2px solid #e5e7eb; font-size: 13px; font-weight: 700; color: #374151;">合計</td>
+                                    <td style="padding: 12px 10px; border-top: 2px solid #e5e7eb; font-size: 13px; font-weight: 700; text-align: right;">22,500,000円</td>
+                                    <td style="padding: 12px 10px; border-top: 2px solid #e5e7eb; font-size: 13px; font-weight: 700; text-align: right;">21,800,000円</td>
+                                    <td style="padding: 12px 10px; border-top: 2px solid #e5e7eb; font-size: 13px; font-weight: 700; text-align: right; color: #047857;">-700,000円</td>
+                                    <td colspan="2" style="padding: 12px 10px; border-top: 2px solid #e5e7eb; font-size: 13px; text-align: right; color: #047857; font-weight: 700;">予算消化率 <span style="font-size: 16px;">96.9%</span></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+
+                    <!-- 凡例 -->
+                    <div style="margin-top: 12px; padding: 10px 14px; background: #f9fafb; border-radius: 6px; font-size: 11px; color: #6b7280;">
+                        <strong style="color: #374151;">差額の見方:</strong> 実績 − 見積。<span style="color: #dc2626; font-weight: 600;">赤</span>は超過、<span style="color: #047857; font-weight: 600;">緑</span>は以内。予算消化率 = 実績合計 ÷ 見積合計 × 100%。
+                    </div>
+                </div>
+
+                <!-- ========== Tab 3: 人員配置 ========== -->
+                <div x-show="activeTab === 'assignment'" x-cloak style="padding: 20px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
+                        <div class="card-title" style="margin-bottom: 0;">人員配置</div>
+                        <button type="button" @click="showAddAssignment = true" x-show="!showAddAssignment"
+                                style="padding: 7px 14px; background: #059669; border: 1px solid #059669; border-radius: 6px; color: white; font-size: 13px; font-weight: 600; cursor: pointer;">
+                            ＋ 配置追加
+                        </button>
+                    </div>
+
+                    <!-- 配置追加フォーム（インライン展開） -->
+                    <div x-show="showAddAssignment" x-transition x-cloak
+                         style="padding: 14px; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 8px; margin-bottom: 16px;">
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
+                            <div>
+                                <label style="display: block; font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 4px;">従業員 <span style="color: #dc2626;">*</span></label>
+                                <select style="width: 100%; height: 36px; padding: 0 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; background: white;">
+                                    <option value="">選択してください</option>
+                                    <option>山田 太郎（現場監督）</option>
+                                    <option>鈴木 一郎（主任技術者）</option>
+                                    <option>佐藤 健（作業員）</option>
+                                    <option>高橋 誠（測量士）</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="display: block; font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 4px;">役割</label>
+                                <input type="text" placeholder="例: 現場代理人 / 主任技術者 / 作業員" style="width: 100%; height: 36px; padding: 0 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px;">
+                            </div>
+                            <div>
+                                <label style="display: block; font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 4px;">配置開始日</label>
+                                <button type="button" class="date-input-trigger">
+                                    <span class="placeholder">YYYY/MM/DD</span>
+                                    <span class="cal-icon">
+                                        <svg style="width: 16px; height: 16px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                                    </span>
+                                </button>
+                            </div>
+                            <div>
+                                <label style="display: block; font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 4px;">配置終了日</label>
+                                <button type="button" class="date-input-trigger">
+                                    <span class="placeholder">YYYY/MM/DD</span>
+                                    <span class="cal-icon">
+                                        <svg style="width: 16px; height: 16px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                                    </span>
+                                </button>
+                            </div>
+                            <div style="grid-column: span 2;">
+                                <label style="display: block; font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 4px;">備考</label>
+                                <input type="text" style="width: 100%; height: 36px; padding: 0 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px;">
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 8px; margin-top: 12px;">
+                            <button type="button" @click.prevent style="padding: 8px 18px; background: #059669; color: white; font-size: 13px; font-weight: 600; border: none; border-radius: 6px; cursor: pointer;">追加</button>
+                            <button type="button" @click="showAddAssignment = false" style="padding: 8px 18px; background: #f3f4f6; color: #6b7280; font-size: 13px; font-weight: 600; border: none; border-radius: 6px; cursor: pointer;">取消</button>
+                        </div>
+                    </div>
+
+                    <!-- 人員配置テーブル -->
+                    <div class="border border-gray-200 rounded-lg overflow-hidden">
+                        <table class="w-full" style="border-collapse: collapse; table-layout: fixed;">
+                            <colgroup>
+                                <col style="width: 22%">
+                                <col style="width: 20%">
+                                <col style="width: 28%">
+                                <col style="width: 18%">
+                                <col style="width: 12%">
+                            </colgroup>
+                            <thead>
+                                <tr>
+                                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: left;">従業員</th>
+                                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: left;">役割</th>
+                                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: left;">配置期間</th>
+                                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: left;">備考</th>
+                                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: center;">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">山田 太郎</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">現場代理人</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">2026/05/10 〜 2026/09/30</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">常駐</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; text-align: center;">
+                                        <button type="button" style="font-size: 11px; color: #059669; border: 1px solid #a7f3d0; padding: 3px 8px; border-radius: 3px; background: white; cursor: pointer; margin-right: 3px;">編集</button>
+                                        <button type="button" style="font-size: 11px; color: #b91c1c; border: 1px solid #fca5a5; padding: 3px 8px; border-radius: 3px; background: white; cursor: pointer;">削除</button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">鈴木 一郎</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">主任技術者</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">2026/05/10 〜 2026/07/31</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">造成工程のみ</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; text-align: center;">
+                                        <button type="button" style="font-size: 11px; color: #059669; border: 1px solid #a7f3d0; padding: 3px 8px; border-radius: 3px; background: white; cursor: pointer; margin-right: 3px;">編集</button>
+                                        <button type="button" style="font-size: 11px; color: #b91c1c; border: 1px solid #fca5a5; padding: 3px 8px; border-radius: 3px; background: white; cursor: pointer;">削除</button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">佐藤 健</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">作業員</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">2026/05/20 〜 2026/08/20</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">—</td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; text-align: center;">
+                                        <button type="button" style="font-size: 11px; color: #059669; border: 1px solid #a7f3d0; padding: 3px 8px; border-radius: 3px; background: white; cursor: pointer; margin-right: 3px;">編集</button>
+                                        <button type="button" style="font-size: 11px; color: #b91c1c; border: 1px solid #fca5a5; padding: 3px 8px; border-radius: 3px; background: white; cursor: pointer;">削除</button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 10px; font-size: 13px;">高橋 誠</td>
+                                    <td style="padding: 10px; font-size: 13px;">測量士</td>
+                                    <td style="padding: 10px; font-size: 13px;">2026/05/10 〜 2026/05/25</td>
+                                    <td style="padding: 10px; font-size: 13px;">測量のみ短期</td>
+                                    <td style="padding: 10px; text-align: center;">
+                                        <button type="button" style="font-size: 11px; color: #059669; border: 1px solid #a7f3d0; padding: 3px 8px; border-radius: 3px; background: white; cursor: pointer; margin-right: 3px;">編集</button>
+                                        <button type="button" style="font-size: 11px; color: #b91c1c; border: 1px solid #fca5a5; padding: 3px 8px; border-radius: 3px; background: white; cursor: pointer;">削除</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- 協力業者発注履歴（自動集計） -->
+                    <div style="margin-top: 24px;">
+                        <div class="card-title">協力業者 発注履歴（原価管理の外注費から自動集計）</div>
+                        <div class="border border-gray-200 rounded-lg overflow-hidden">
+                            <table class="w-full" style="border-collapse: collapse;">
+                                <thead>
+                                    <tr>
+                                        <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: left;">協力業者</th>
+                                        <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: left;">発注内容</th>
+                                        <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: right;">発注額（実績）</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px;"><a href="#" style="color: #059669; text-decoration: underline;">㈱愛媛土建</a></td>
+                                        <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">土工・重機作業</td>
+                                        <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: right; font-weight: 600;">7,500,000円</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 10px; font-size: 13px;"><a href="#" style="color: #059669; text-decoration: underline;">松山建設㈲</a></td>
+                                        <td style="padding: 10px; font-size: 13px;">擁壁施工</td>
+                                        <td style="padding: 10px; font-size: 13px; text-align: right; font-weight: 600;">4,500,000円</td>
+                                    </tr>
+                                </tbody>
+                                <tfoot>
+                                    <tr style="background: #f9fafb;">
+                                        <td colspan="2" style="padding: 12px 10px; border-top: 2px solid #e5e7eb; font-size: 13px; font-weight: 700; color: #374151;">発注合計</td>
+                                        <td style="padding: 12px 10px; border-top: 2px solid #e5e7eb; font-size: 13px; font-weight: 700; text-align: right;">12,000,000円</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                        <div style="font-size: 11px; color: #9ca3af; margin-top: 8px;">※ このテーブルは原価管理タブの「外注費」カテゴリから自動的に集計されます（手動編集不可）。</div>
+                    </div>
+                </div>
+
+            </div>
+
+        </main>
+    </div>
+
+    <script>
+        // Alpine.js データ関数（`=>` 禁止ルール遵守のため通常関数で定義）
+        function projectShow() {
+            return {
+                activeTab: 'basic',
+                showAddCost: false,
+                showAddAssignment: false
+            };
+        }
+    </script>
+
+</body>
+</html>
