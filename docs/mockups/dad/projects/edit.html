@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>工事案件編集 | DAD（土木事業） | ミツワ都市開発 経営管理システム</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif; background: #f3f4f6; }
+        [x-cloak] { display: none !important; }
+
+        .card { background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+        .card-title { font-size: 15px; font-weight: 700; color: #111827; margin-bottom: 14px; padding-left: 12px; border-left: 4px solid #10b981; }
+
+        .form-label { display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 5px; }
+        .required { color: #dc2626; margin-left: 2px; }
+
+        .form-input {
+            width: 100%; height: 38px;
+            border: 1px solid #d1d5db; border-radius: 6px;
+            padding: 7px 12px;
+            font-size: 14px;
+            box-sizing: border-box;
+            background: white;
+            font-family: inherit;
+        }
+        .form-input:focus { outline: none; border-color: #059669; box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.12); }
+        textarea.form-input { height: auto; min-height: 96px; resize: vertical; }
+
+        .amount-input-wrap {
+            display: flex; align-items: center; gap: 6px;
+        }
+        .amount-input-wrap .form-input { flex: 1; text-align: right; }
+        .amount-input-wrap .suffix { font-size: 13px; color: #6b7280; }
+
+        /* 案C datepicker（モックはトリガーのみ — Phase 2 で完全実装） */
+        .date-input-trigger {
+            width: 100%; height: 38px;
+            padding: 0 10px;
+            border: 1px solid #D1D5DB;
+            border-radius: 6px;
+            font-size: 14px; color: #111827;
+            background: white;
+            box-sizing: border-box;
+            display: flex; align-items: center; justify-content: space-between;
+            cursor: pointer;
+            text-align: left;
+            font-family: inherit;
+        }
+        .date-input-trigger:hover { border-color: #059669; }
+        .date-input-trigger .cal-icon { color: #059669; display: inline-flex; }
+
+        /* Google Mapsプレースホルダー */
+        .map-placeholder {
+            width: 100%; height: 260px;
+            background:
+                repeating-linear-gradient(45deg, #f9fafb, #f9fafb 10px, #f3f4f6 10px, #f3f4f6 20px);
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            color: #9ca3af; font-size: 13px; font-weight: 500;
+            gap: 4px;
+            position: relative;
+        }
+        .map-placeholder .pin { font-size: 36px; color: #dc2626; }
+        .map-placeholder .coord { font-size: 11px; color: #6b7280; font-family: monospace; }
+
+        .badge { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 9999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+        .badge-private     { background: #fef3c7; color: #92400e; }
+        .badge-in-progress { background: #fef3c7; color: #92400e; }
+
+        .btn-primary {
+            padding: 10px 24px;
+            background: #059669;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .btn-primary:hover { background: #047857; }
+        .btn-secondary {
+            display: inline-flex; align-items: center;
+            padding: 10px 20px;
+            border: 1px solid #d1d5db; border-radius: 6px;
+            background: white;
+            font-size: 14px; color: #374151;
+            text-decoration: none;
+        }
+        .btn-danger {
+            padding: 10px 20px;
+            background: white;
+            color: #b91c1c;
+            border: 1px solid #fca5a5;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .btn-danger:hover { background: #fef2f2; }
+        .btn-outline-sm {
+            height: 38px;
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 4px 10px;
+            font-size: 11px; font-weight: 600;
+            color: #059669;
+            border: 1px solid #059669;
+            border-radius: 4px;
+            cursor: pointer;
+            background: #fff;
+            white-space: nowrap;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- トップバー -->
+    <header style="background: #1f2937; color: white; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 16px;">
+            <span style="font-weight: 700;">ミツワ都市開発 経営管理システム</span>
+        </div>
+        <div style="font-size: 13px;">山田 (経営層)</div>
+    </header>
+
+    <div style="display: flex; min-height: calc(100vh - 48px);">
+        <!-- サイドバー -->
+        <aside style="width: 220px; background: white; border-right: 1px solid #e5e7eb; padding: 16px 0;">
+            <nav style="font-size: 13px;">
+                <div style="padding: 8px 16px; color: #6b7280;">ダッシュボード</div>
+                <div style="padding: 8px 16px; color: #6b7280;">テナント管理</div>
+                <div style="padding: 8px 16px; color: #6b7280;">賃貸マンション</div>
+                <div style="padding: 8px 16px; color: #6b7280;">不動産管理</div>
+                <div style="padding: 8px 16px; color: #6b7280;">住宅事業</div>
+                <div style="padding: 8px 16px; color: #6b7280;">DAD（土木事業） ▾</div>
+                <div style="padding: 6px 16px 6px 32px; background: #ecfdf5; color: #047857; border-left: 3px solid #10b981; font-weight: 600;">工事案件</div>
+                <div style="padding: 6px 16px 6px 32px; color: #6b7280;">発注者管理</div>
+                <div style="padding: 6px 16px 6px 32px; color: #6b7280;">協力業者</div>
+                <div style="padding: 6px 16px 6px 32px; color: #6b7280;">従業員管理</div>
+                <div style="padding: 8px 16px; color: #6b7280;">システム管理</div>
+            </nav>
+        </aside>
+
+        <!-- メインコンテンツ -->
+        <main style="flex: 1; padding: 24px;" x-data="projectEdit()">
+
+            <!-- パンくず -->
+            <div class="text-sm text-gray-500" style="margin-bottom: 12px;">
+                <a href="#" class="text-gray-500 hover:text-emerald-600 hover:underline">ホーム</a>
+                <span style="margin: 0 6px;">›</span>
+                <a href="#" class="text-gray-500 hover:text-emerald-600 hover:underline">DAD（土木事業）</a>
+                <span style="margin: 0 6px;">›</span>
+                <a href="index.html" class="text-gray-500 hover:text-emerald-600 hover:underline">工事案件一覧</a>
+                <span style="margin: 0 6px;">›</span>
+                <a href="show.html" class="text-gray-500 hover:text-emerald-600 hover:underline">DAD-003 道後温泉近郊 宅地造成工事</a>
+                <span style="margin: 0 6px;">›</span>
+                <span class="text-gray-800 font-medium">編集</span>
+            </div>
+
+            <!-- ページヘッダー -->
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; gap: 12px; flex-wrap: wrap;">
+                <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                    <span style="font-family: monospace; font-size: 13px; color: #6b7280; background: #f3f4f6; padding: 4px 10px; border-radius: 4px;">DAD-003</span>
+                    <h1 style="font-size: 20px; font-weight: 700; margin: 0;">工事案件編集</h1>
+                    <span class="badge badge-private">民間工事</span>
+                    <span class="badge badge-in-progress">施工中</span>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <a href="show.html" class="btn-secondary">詳細に戻る</a>
+                </div>
+            </div>
+
+            <form>
+
+                <!-- ========== 基本情報 ========== -->
+                <div class="card">
+                    <div class="card-title">基本情報</div>
+
+                    <!-- 案件名 -->
+                    <div style="margin-bottom: 26px;">
+                        <label class="form-label">案件名<span class="required">*</span></label>
+                        <input type="text" name="project_name" class="form-input"
+                               value="道後温泉近郊 宅地造成工事">
+                    </div>
+
+                    <!-- 工事種別 -->
+                    <div style="margin-bottom: 26px;">
+                        <label class="form-label">工事種別<span class="required">*</span></label>
+                        <div style="display: flex; gap: 20px; padding: 4px 0;">
+                            <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: #374151; cursor: pointer;">
+                                <input type="radio" name="project_type" value="public" x-model="projectType" style="width: 16px; height: 16px; accent-color: #059669;">
+                                公共工事
+                            </label>
+                            <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: #374151; cursor: pointer;">
+                                <input type="radio" name="project_type" value="private" x-model="projectType" style="width: 16px; height: 16px; accent-color: #059669;">
+                                民間工事
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- 発注者 + 担当者 + 年度 -->
+                    <div style="display: grid; grid-template-columns: 1.4fr 1fr 0.8fr; gap: 16px; margin-bottom: 26px;">
+                        <div>
+                            <label class="form-label">発注者<span class="required">*</span></label>
+                            <select name="client_id" class="form-input">
+                                <option>松山市役所 建設部</option>
+                                <option>愛媛県 土木部</option>
+                                <option selected>松山土地開発㈱</option>
+                                <option>㈱伊予造園</option>
+                                <option>今治市役所 都市整備課</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="form-label">担当者<span class="required">*</span></label>
+                            <select name="user_id" class="form-input">
+                                <option selected>山田</option>
+                                <option>佐藤</option>
+                                <option>田中</option>
+                                <option>鈴木</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="form-label">年度<span class="required">*</span></label>
+                            <select name="fiscal_year" class="form-input">
+                                <option value="2024">2024年度</option>
+                                <option value="2025">2025年度</option>
+                                <option value="2026" selected>2026年度</option>
+                                <option value="2027">2027年度</option>
+                            </select>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- ========== 工事場所 ========== -->
+                <div class="card">
+                    <div class="card-title">工事場所</div>
+
+                    <!-- 郵便番号 + 検索ボタン -->
+                    <div style="display: grid; grid-template-columns: 160px auto 1fr; gap: 10px; margin-bottom: 26px; align-items: flex-end;">
+                        <div>
+                            <label class="form-label">郵便番号</label>
+                            <input type="text" name="postal_code" class="form-input" value="790-0843" maxlength="8">
+                        </div>
+                        <div style="display: flex; gap: 6px; align-items: flex-end;">
+                            <button type="button" class="btn-outline-sm">〒→住所</button>
+                            <button type="button" class="btn-outline-sm">住所→〒</button>
+                        </div>
+                        <div></div>
+                    </div>
+
+                    <!-- 所在地 -->
+                    <div style="margin-bottom: 26px;">
+                        <label class="form-label">所在地<span class="required">*</span></label>
+                        <input type="text" name="address" class="form-input"
+                               value="愛媛県松山市道後湯之町">
+                    </div>
+
+                    <!-- Google Maps ピン -->
+                    <div style="margin-bottom: 8px;">
+                        <label class="form-label">地図（ピン配置）</label>
+                        <div class="map-placeholder">
+                            <div class="pin">📍</div>
+                            <div>松山市道後湯之町</div>
+                            <div class="coord">33.8474, 132.7856</div>
+                            <div style="font-size: 11px; color: #9ca3af;">※ Phase 2 で Google Maps API を接続</div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- ========== 工期 ========== -->
+                <div class="card">
+                    <div class="card-title">工期</div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                        <!-- 着工日 -->
+                        <div>
+                            <label class="form-label">着工日</label>
+                            <button type="button" class="date-input-trigger">
+                                <span>2026年3月10日</span>
+                                <span class="cal-icon">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                                </span>
+                            </button>
+                        </div>
+                        <!-- 完工予定日 -->
+                        <div>
+                            <label class="form-label">完工予定日</label>
+                            <button type="button" class="date-input-trigger">
+                                <span>2026年8月31日</span>
+                                <span class="cal-icon">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                                </span>
+                            </button>
+                        </div>
+                    </div>
+                    <div style="font-size: 11px; color: #9ca3af; margin-top: 8px;">※ Phase 2 で案C datepicker を接続</div>
+                </div>
+
+                <!-- ========== 金額情報 ========== -->
+                <div class="card">
+                    <div class="card-title">金額情報（税抜）</div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
+                        <!-- 見積額 -->
+                        <div>
+                            <label class="form-label">見積額<span class="required">*</span></label>
+                            <div class="amount-input-wrap">
+                                <input type="text" name="estimate_amount" class="form-input" value="29,800,000" inputmode="numeric">
+                                <span class="suffix">円</span>
+                            </div>
+                        </div>
+                        <!-- 受注額 -->
+                        <div>
+                            <label class="form-label">受注額</label>
+                            <div class="amount-input-wrap">
+                                <input type="text" name="order_amount" class="form-input" value="28,500,000" inputmode="numeric">
+                                <span class="suffix">円</span>
+                            </div>
+                        </div>
+                        <!-- 原価予算 -->
+                        <div>
+                            <label class="form-label">原価予算</label>
+                            <div class="amount-input-wrap">
+                                <input type="text" name="cost_budget" class="form-input" value="22,000,000" inputmode="numeric">
+                                <span class="suffix">円</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ========== ステータス ========== -->
+                <div class="card">
+                    <div class="card-title">ステータス</div>
+
+                    <div>
+                        <label class="form-label">ステータス<span class="required">*</span></label>
+                        <select name="status" class="form-input" style="max-width: 320px;">
+                            <option value="estimate">見積中</option>
+                            <option value="ordered">受注</option>
+                            <option value="in_progress" selected>施工中</option>
+                            <option value="completed">完工</option>
+                            <option value="paid">入金済み</option>
+                        </select>
+                        <div style="font-size: 11px; color: #9ca3af; margin-top: 3px;">※ 「完工」→「入金済み」への遷移時は入金日の入力を求めます</div>
+                    </div>
+                </div>
+
+                <!-- ========== 備考 ========== -->
+                <div class="card">
+                    <div class="card-title">備考</div>
+                    <textarea name="notes" class="form-input">温泉排水経路の確認要。近隣住民への説明会を3月初旬に実施予定。</textarea>
+                </div>
+
+                <!-- アクションボタン -->
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                    <button type="button" class="btn-danger">この案件を削除</button>
+                    <div style="display: flex; gap: 8px;">
+                        <a href="show.html" class="btn-secondary">キャンセル</a>
+                        <button type="submit" class="btn-primary">更新する</button>
+                    </div>
+                </div>
+            </form>
+
+            <!-- 補足 -->
+            <div style="margin-top: 20px; padding: 12px 16px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; font-size: 12px; color: #991b1b;">
+                <strong>※削除時の注意</strong>：原価明細・人員配置も同時に論理削除されます（データベース上は復元可能）。入金済み案件は削除できません。
+            </div>
+
+        </main>
+    </div>
+
+    <script>
+        function projectEdit() {
+            return {
+                projectType: 'private'
+            };
+        }
+    </script>
+
+</body>
+</html>
