@@ -99,6 +99,6 @@
             <div style="font-size: 13px; color: #dc2626;">インポート可能なデータがありません。CSVを修正してください。</div>
         @endif
 
-        <a href="{{ url('/admin/mansion-import') }}?selected_tab={{ $tab }}" style="display: inline-block; margin-top: 12px; font-size: 13px; color: #6b7280; text-decoration: underline;">← やり直す</a>
+        <a href="{{ route('admin.mansion-import') }}?selected_tab={{ $tab }}" style="display: inline-block; margin-top: 12px; font-size: 13px; color: #6b7280; text-decoration: underline;">← やり直す</a>
     </div>
 </div>

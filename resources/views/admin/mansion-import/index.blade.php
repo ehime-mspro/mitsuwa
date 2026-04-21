@@ -56,7 +56,7 @@
             @if(isset($preview) && $preview === 'property')
                 @include('admin.mansion-import._preview', [
                     'tab'         => 'property',
-                    'actionUrl'   => url('/admin/mansion-import/property'),
+                    'actionUrl'   => route('admin.mansion-import.execute-property'),
                     'entityLabel' => '物件',
                 ])
             @else
@@ -72,8 +72,8 @@
                 </div>
                 @include('admin.mansion-import._form', [
                     'tab'           => 'property',
-                    'actionUrl'     => url('/admin/mansion-import/property'),
-                    'templateUrl'   => url('/admin/mansion-import/template/property'),
+                    'actionUrl'     => route('admin.mansion-import.execute-property'),
+                    'templateUrl'   => route('admin.mansion-import.template-property'),
                     'fileInputName' => 'fileProperty',
                     'fileNamesKey'  => 'property',
                 ])
@@ -85,7 +85,7 @@
             @if(isset($preview) && $preview === 'room')
                 @include('admin.mansion-import._preview', [
                     'tab'         => 'room',
-                    'actionUrl'   => url('/admin/mansion-import/room'),
+                    'actionUrl'   => route('admin.mansion-import.execute-room'),
                     'entityLabel' => '部屋',
                 ])
             @else
@@ -100,8 +100,8 @@
                 </div>
                 @include('admin.mansion-import._form', [
                     'tab'           => 'room',
-                    'actionUrl'     => url('/admin/mansion-import/room'),
-                    'templateUrl'   => url('/admin/mansion-import/template/room'),
+                    'actionUrl'     => route('admin.mansion-import.execute-room'),
+                    'templateUrl'   => route('admin.mansion-import.template-room'),
                     'fileInputName' => 'fileRoom',
                     'fileNamesKey'  => 'room',
                 ])
@@ -113,7 +113,7 @@
             @if(isset($preview) && $preview === 'parking')
                 @include('admin.mansion-import._preview', [
                     'tab'         => 'parking',
-                    'actionUrl'   => url('/admin/mansion-import/parking'),
+                    'actionUrl'   => route('admin.mansion-import.execute-parking'),
                     'entityLabel' => '駐車場',
                 ])
             @else
@@ -128,8 +128,8 @@
                 </div>
                 @include('admin.mansion-import._form', [
                     'tab'           => 'parking',
-                    'actionUrl'     => url('/admin/mansion-import/parking'),
-                    'templateUrl'   => url('/admin/mansion-import/template/parking'),
+                    'actionUrl'     => route('admin.mansion-import.execute-parking'),
+                    'templateUrl'   => route('admin.mansion-import.template-parking'),
                     'fileInputName' => 'fileParking',
                     'fileNamesKey'  => 'parking',
                 ])
@@ -141,7 +141,7 @@
             @if(isset($preview) && $preview === 'tenant')
                 @include('admin.mansion-import._preview', [
                     'tab'         => 'tenant',
-                    'actionUrl'   => url('/admin/mansion-import/tenant'),
+                    'actionUrl'   => route('admin.mansion-import.execute-tenant'),
                     'entityLabel' => '入居者',
                 ])
             @else
@@ -156,8 +156,8 @@
                 </div>
                 @include('admin.mansion-import._form', [
                     'tab'           => 'tenant',
-                    'actionUrl'     => url('/admin/mansion-import/tenant'),
-                    'templateUrl'   => url('/admin/mansion-import/template/tenant'),
+                    'actionUrl'     => route('admin.mansion-import.execute-tenant'),
+                    'templateUrl'   => route('admin.mansion-import.template-tenant'),
                     'fileInputName' => 'fileTenant',
                     'fileNamesKey'  => 'tenant',
                 ])
@@ -169,7 +169,7 @@
             @if(isset($preview) && $preview === 'room_contract')
                 @include('admin.mansion-import._preview', [
                     'tab'         => 'room_contract',
-                    'actionUrl'   => url('/admin/mansion-import/room-contract'),
+                    'actionUrl'   => route('admin.mansion-import.execute-room-contract'),
                     'entityLabel' => '部屋契約',
                 ])
             @else
@@ -184,8 +184,8 @@
                 </div>
                 @include('admin.mansion-import._form', [
                     'tab'           => 'room_contract',
-                    'actionUrl'     => url('/admin/mansion-import/room-contract'),
-                    'templateUrl'   => url('/admin/mansion-import/template/room-contract'),
+                    'actionUrl'     => route('admin.mansion-import.execute-room-contract'),
+                    'templateUrl'   => route('admin.mansion-import.template-room-contract'),
                     'fileInputName' => 'fileRoomContract',
                     'fileNamesKey'  => 'roomContract',
                 ])
@@ -197,7 +197,7 @@
             @if(isset($preview) && $preview === 'parking_contract')
                 @include('admin.mansion-import._preview', [
                     'tab'         => 'parking_contract',
-                    'actionUrl'   => url('/admin/mansion-import/parking-contract'),
+                    'actionUrl'   => route('admin.mansion-import.execute-parking-contract'),
                     'entityLabel' => '駐車場契約',
                 ])
             @else
@@ -213,8 +213,8 @@
                 </div>
                 @include('admin.mansion-import._form', [
                     'tab'           => 'parking_contract',
-                    'actionUrl'     => url('/admin/mansion-import/parking-contract'),
-                    'templateUrl'   => url('/admin/mansion-import/template/parking-contract'),
+                    'actionUrl'     => route('admin.mansion-import.execute-parking-contract'),
+                    'templateUrl'   => route('admin.mansion-import.template-parking-contract'),
                     'fileInputName' => 'fileParkingContract',
                     'fileNamesKey'  => 'parkingContract',
                 ])

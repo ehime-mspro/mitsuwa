@@ -1211,6 +1211,34 @@ Route::middleware(['auth', 'password.change'])->group(function () {
             ->name('admin.tenant-import.template.customer');
         Route::get('/tenant-import/template/contract', [\App\Http\Controllers\Admin\TenantImportController::class, 'downloadContractTemplate'])
             ->name('admin.tenant-import.template.contract');
+
+        // 賃貸マンションCSVインポート（6種別: 物件・部屋・駐車場・入居者・部屋契約・駐車場契約）
+        Route::get('/mansion-import', [\App\Http\Controllers\Admin\MansionImportController::class, 'showForm'])
+            ->name('admin.mansion-import');
+        Route::post('/mansion-import/property', [\App\Http\Controllers\Admin\MansionImportController::class, 'executeProperty'])
+            ->name('admin.mansion-import.execute-property');
+        Route::post('/mansion-import/room', [\App\Http\Controllers\Admin\MansionImportController::class, 'executeRoom'])
+            ->name('admin.mansion-import.execute-room');
+        Route::post('/mansion-import/parking', [\App\Http\Controllers\Admin\MansionImportController::class, 'executeParking'])
+            ->name('admin.mansion-import.execute-parking');
+        Route::post('/mansion-import/tenant', [\App\Http\Controllers\Admin\MansionImportController::class, 'executeTenant'])
+            ->name('admin.mansion-import.execute-tenant');
+        Route::post('/mansion-import/room-contract', [\App\Http\Controllers\Admin\MansionImportController::class, 'executeRoomContract'])
+            ->name('admin.mansion-import.execute-room-contract');
+        Route::post('/mansion-import/parking-contract', [\App\Http\Controllers\Admin\MansionImportController::class, 'executeParkingContract'])
+            ->name('admin.mansion-import.execute-parking-contract');
+        Route::get('/mansion-import/template/property', [\App\Http\Controllers\Admin\MansionImportController::class, 'downloadPropertyTemplate'])
+            ->name('admin.mansion-import.template-property');
+        Route::get('/mansion-import/template/room', [\App\Http\Controllers\Admin\MansionImportController::class, 'downloadRoomTemplate'])
+            ->name('admin.mansion-import.template-room');
+        Route::get('/mansion-import/template/parking', [\App\Http\Controllers\Admin\MansionImportController::class, 'downloadParkingTemplate'])
+            ->name('admin.mansion-import.template-parking');
+        Route::get('/mansion-import/template/tenant', [\App\Http\Controllers\Admin\MansionImportController::class, 'downloadTenantTemplate'])
+            ->name('admin.mansion-import.template-tenant');
+        Route::get('/mansion-import/template/room-contract', [\App\Http\Controllers\Admin\MansionImportController::class, 'downloadRoomContractTemplate'])
+            ->name('admin.mansion-import.template-room-contract');
+        Route::get('/mansion-import/template/parking-contract', [\App\Http\Controllers\Admin\MansionImportController::class, 'downloadParkingContractTemplate'])
+            ->name('admin.mansion-import.template-parking-contract');
     });
 
     /*
