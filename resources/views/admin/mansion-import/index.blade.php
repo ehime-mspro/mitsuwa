@@ -66,7 +66,7 @@
                     <ul style="font-size: 12px; color: #15803d; margin: 0; padding-left: 18px; line-height: 1.8;">
                         <li>1行＝1物件として登録します</li>
                         <li>同名の物件が既にDBに存在する場合はスキップされます</li>
-                        <li>物件コード（MSP-001等）は自動採番されます</li>
+                        <li>物件コード（MS-001 形式）は自動採番されます</li>
                         <li style="font-weight: 600;">※ 総戸数は部屋インポート後に自動再集計で上書きされます</li>
                     </ul>
                 </div>
@@ -150,7 +150,7 @@
                     <ul style="font-size: 12px; color: #15803d; margin: 0; padding-left: 18px; line-height: 1.8;">
                         <li>1行＝1入居者として登録します</li>
                         <li>同名の入居者が既にDBに存在する場合はスキップされます</li>
-                        <li>入居者コード（TN-0001等）は自動採番されます</li>
+                        <li>入居者の識別は氏名で行われます（コード体系なし）</li>
                         <li>物件・部屋・駐車場の登録とは独立して実行できます</li>
                     </ul>
                 </div>
@@ -177,7 +177,7 @@
                     <div style="font-weight: 600; font-size: 14px; color: #92400e; margin-bottom: 6px;">部屋契約の一括登録</div>
                     <ul style="font-size: 12px; color: #a16207; margin: 0; padding-left: 18px; line-height: 1.8;">
                         <li>CSVの「物件名」「部屋番号」「入居者名」で既存データを検索し紐づけます</li>
-                        <li>契約番号（MSC-2026-0001等）は自動採番されます</li>
+                        <li>契約の識別は連番 ID で行われます（契約番号体系なし）</li>
                         <li>契約作成時に部屋のステータスが「入居中」に更新されます</li>
                         <li style="font-weight: 700; color: #b45309;">※ 先に物件 / 部屋 / 駐車場 / 入居者の登録が必要です</li>
                     </ul>
@@ -205,7 +205,7 @@
                     <div style="font-weight: 600; font-size: 14px; color: #92400e; margin-bottom: 6px;">駐車場契約の一括登録</div>
                     <ul style="font-size: 12px; color: #a16207; margin: 0; padding-left: 18px; line-height: 1.8;">
                         <li>CSVの「物件名」「区画番号」「入居者名」で既存データを検索し紐づけます</li>
-                        <li>契約番号（MPC-2026-0001等）は自動採番されます</li>
+                        <li>契約の識別は連番 ID で行われます（契約番号体系なし）</li>
                         <li>契約作成時に駐車場のステータスが「使用中」に更新されます</li>
                         <li>紐付部屋番号は任意。記入時は active な部屋契約が必要です</li>
                         <li style="font-weight: 700; color: #b45309;">※ 先に物件 / 部屋 / 駐車場 / 入居者の登録が必要です</li>
