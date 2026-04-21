@@ -96,18 +96,19 @@
     
     {{-- 住宅事業 --}}
     @if($hasHousingAccess)
-    <x-sidebar-group label="住宅事業">
-    <x-sidebar-item :href="url('/housing/properties')" label="建売物件" :active="request()->is('housing/properties*')" />
-    <x-sidebar-item :href="url('/housing/custom-orders')" label="注文住宅" :active="request()->is('housing/custom-orders*')" />
-    <x-sidebar-item :href="url('/housing/contracts')" label="契約管理" :active="request()->is('housing/contracts*')" />
-    </x-sidebar-group>
-    <x-sidebar-item :href="url('/housing/customers')" label="顧客管理" :active="request()->is('housing/customers*')" />
+        <x-sidebar-group label="住宅事業">
+            <x-sidebar-item :href="url('/housing/properties')" label="建売物件" :active="request()->is('housing/properties*')" />
+            <x-sidebar-item :href="url('/housing/custom-orders')" label="注文住宅" :active="request()->is('housing/custom-orders*')" />
+            <x-sidebar-item :href="url('/housing/contracts')" label="契約管理" :active="request()->is('housing/contracts*')" />
+            <x-sidebar-item :href="url('/housing/customers')" label="顧客管理" :active="request()->is('housing/customers*')" />
+            <x-sidebar-item :href="url('/admin/survey-questions')" label="アンケート設問管理" :active="request()->is('admin/survey-questions*')" />
+            <x-sidebar-item :href="url('/admin/customers/import')" label="顧客CSVインポート" :active="request()->is('admin/customers/import*')" />
+        </x-sidebar-group>
     @endif
 
     {{-- システム管理（経営層のみ） --}}
     @if($isExecutive)
         <x-sidebar-group label="システム管理">
-            <x-sidebar-item :href="url('/admin/users')" label="ユーザー管理" :active="request()->is('admin/users*')" />
             {{-- サブ見出し: テナント --}}
             <div style="display: flex; align-items: center; gap: 8px; padding: 8px 20px 3px;">
                 <span style="font-size: 10px; font-weight: 600; color: #6B7280; letter-spacing: 0.05em; white-space: nowrap;">テナント</span>
@@ -123,13 +124,13 @@
             </div>
             <x-sidebar-item :href="url('/admin/master/re-cost-items')" label="原価項目マスター" :active="request()->is('admin/master/re-cost-items*')" />
             <x-sidebar-item :href="url('/admin/master/zoning-types')" label="用途地域マスター" :active="request()->is('admin/master/zoning-types*')" />
-            {{-- サブ見出し: 顧客管理 --}}
-            <div style="display: flex; align-items: center; gap: 8px; padding: 8px 20px 3px;">
-                <span style="font-size: 10px; font-weight: 600; color: #6B7280; letter-spacing: 0.05em; white-space: nowrap;">顧客管理</span>
-                <span style="flex: 1; height: 1px; background: #D1D5DB;"></span>
-            </div>
-            <x-sidebar-item :href="url('/admin/survey-questions')" label="アンケート設問管理" :active="request()->is('admin/survey-questions*')" />
-            <x-sidebar-item :href="url('/admin/customers/import')" label="顧客CSVインポート" :active="request()->is('admin/customers/import*')" />
+        </x-sidebar-group>
+    @endif
+
+    {{-- マスター（経営層のみ） --}}
+    @if($isExecutive)
+        <x-sidebar-group label="マスター">
+            <x-sidebar-item :href="url('/admin/users')" label="ユーザー管理" :active="request()->is('admin/users*')" />
             <x-sidebar-item :href="url('/admin/settings')" label="マスター設定" :active="request()->is('admin/settings*')" />
         </x-sidebar-group>
     @endif
@@ -194,20 +195,44 @@
         </a>
     @endif
     
-    {{-- 住宅事業 --}}
+    {{-- 住宅事業（アンケート設問管理 / 顧客CSVインポート を内包するためアクティブ判定を拡張） --}}
     @if($hasHousingAccess)
-    <a href="{{ url('/housing/properties') }}" title="住宅事業" class="w-9 h-9 mb-1 rounded-lg flex items-center justify-center {{ request()->is('housing/*') ? 'bg-emerald-50' : 'hover:bg-gray-100' }} transition-colors">
-        <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="{{ request()->is('housing/*') ? '#059669' : '#6B7280' }}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    @php
+        $isHousingActive = request()->is('housing/*')
+            || request()->is('admin/survey-questions*')
+            || request()->is('admin/customers/import*');
+    @endphp
+    <a href="{{ url('/housing/properties') }}" title="住宅事業" class="w-9 h-9 mb-1 rounded-lg flex items-center justify-center {{ $isHousingActive ? 'bg-emerald-50' : 'hover:bg-gray-100' }} transition-colors">
+        <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="{{ $isHousingActive ? '#059669' : '#6B7280' }}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><rect x="9" y="14" width="6" height="8" />
         </svg>
     </a>
     @endif
 
-    {{-- システム管理（経営層のみ） --}}
+    {{-- システム管理（経営層のみ。ユーザー管理 / マスター設定 はマスターへ移行済みのためアクティブ判定を絞り込み） --}}
     @if($isExecutive)
-        <a href="{{ url('/admin/users') }}" title="システム管理" class="w-9 h-9 mb-1 rounded-lg flex items-center justify-center {{ request()->is('admin/*') ? 'bg-emerald-50' : 'hover:bg-gray-100' }} transition-colors">
-            <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="{{ request()->is('admin/*') ? '#059669' : '#6B7280' }}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        @php
+            $isSystemActive = request()->is('admin/master/*')
+                || request()->is('admin/tenant-import*');
+        @endphp
+        <a href="{{ url('/admin/master/usage-types') }}" title="システム管理" class="w-9 h-9 mb-1 rounded-lg flex items-center justify-center {{ $isSystemActive ? 'bg-emerald-50' : 'hover:bg-gray-100' }} transition-colors">
+            <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="{{ $isSystemActive ? '#059669' : '#6B7280' }}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="12" cy="12" r="3" /><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+            </svg>
+        </a>
+    @endif
+
+    {{-- マスター（経営層のみ。ユーザー管理 + マスター設定） --}}
+    @if($isExecutive)
+        @php
+            $isMasterActive = request()->is('admin/users*')
+                || request()->is('admin/settings*');
+        @endphp
+        <a href="{{ url('/admin/users') }}" title="マスター" class="w-9 h-9 mb-1 rounded-lg flex items-center justify-center {{ $isMasterActive ? 'bg-emerald-50' : 'hover:bg-gray-100' }} transition-colors">
+            <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="{{ $isMasterActive ? '#059669' : '#6B7280' }}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <ellipse cx="12" cy="5" rx="8" ry="3" />
+                <path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5" />
+                <path d="M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6" />
             </svg>
         </a>
     @endif
@@ -286,17 +311,18 @@
     @endif
     
     @if($hasHousingAccess)
-    <x-sidebar-group label="住宅事業">
-    <x-sidebar-item :href="url('/housing/properties')" label="建売物件" :active="request()->is('housing/properties*')" />
-    <x-sidebar-item :href="url('/housing/custom-orders')" label="注文住宅" :active="request()->is('housing/custom-orders*')" />
-    <x-sidebar-item :href="url('/housing/contracts')" label="契約管理" :active="request()->is('housing/contracts*')" />
-    <x-sidebar-item :href="url('/housing/customers')" label="顧客管理" :active="request()->is('housing/customers*')" />
-    </x-sidebar-group>
+        <x-sidebar-group label="住宅事業">
+            <x-sidebar-item :href="url('/housing/properties')" label="建売物件" :active="request()->is('housing/properties*')" />
+            <x-sidebar-item :href="url('/housing/custom-orders')" label="注文住宅" :active="request()->is('housing/custom-orders*')" />
+            <x-sidebar-item :href="url('/housing/contracts')" label="契約管理" :active="request()->is('housing/contracts*')" />
+            <x-sidebar-item :href="url('/housing/customers')" label="顧客管理" :active="request()->is('housing/customers*')" />
+            <x-sidebar-item :href="url('/admin/survey-questions')" label="アンケート設問管理" :active="request()->is('admin/survey-questions*')" />
+            <x-sidebar-item :href="url('/admin/customers/import')" label="顧客CSVインポート" :active="request()->is('admin/customers/import*')" />
+        </x-sidebar-group>
     @endif
 
     @if($isExecutive)
         <x-sidebar-group label="システム管理">
-            <x-sidebar-item :href="url('/admin/users')" label="ユーザー管理" :active="request()->is('admin/users*')" />
             {{-- サブ見出し: テナント --}}
             <div style="display: flex; align-items: center; gap: 8px; padding: 8px 20px 3px;">
                 <span style="font-size: 10px; font-weight: 600; color: #6B7280; letter-spacing: 0.05em; white-space: nowrap;">テナント</span>
@@ -312,13 +338,13 @@
             </div>
             <x-sidebar-item :href="url('/admin/master/re-cost-items')" label="原価項目マスター" :active="request()->is('admin/master/re-cost-items*')" />
             <x-sidebar-item :href="url('/admin/master/zoning-types')" label="用途地域マスター" :active="request()->is('admin/master/zoning-types*')" />
-            {{-- サブ見出し: 顧客管理 --}}
-            <div style="display: flex; align-items: center; gap: 8px; padding: 8px 20px 3px;">
-                <span style="font-size: 10px; font-weight: 600; color: #6B7280; letter-spacing: 0.05em; white-space: nowrap;">顧客管理</span>
-                <span style="flex: 1; height: 1px; background: #D1D5DB;"></span>
-            </div>
-            <x-sidebar-item :href="url('/admin/survey-questions')" label="アンケート設問管理" :active="request()->is('admin/survey-questions*')" />
-            <x-sidebar-item :href="url('/admin/customers/import')" label="顧客CSVインポート" :active="request()->is('admin/customers/import*')" />
+        </x-sidebar-group>
+    @endif
+
+    {{-- マスター（経営層のみ） --}}
+    @if($isExecutive)
+        <x-sidebar-group label="マスター">
+            <x-sidebar-item :href="url('/admin/users')" label="ユーザー管理" :active="request()->is('admin/users*')" />
             <x-sidebar-item :href="url('/admin/settings')" label="マスター設定" :active="request()->is('admin/settings*')" />
         </x-sidebar-group>
     @endif
