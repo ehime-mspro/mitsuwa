@@ -50,21 +50,6 @@
         .date-input-trigger:hover { border-color: #059669; }
         .date-input-trigger .cal-icon { color: #059669; display: inline-flex; }
 
-        /* Google Mapsプレースホルダー */
-        .map-placeholder {
-            width: 100%; height: 260px;
-            background:
-                repeating-linear-gradient(45deg, #f9fafb, #f9fafb 10px, #f3f4f6 10px, #f3f4f6 20px);
-            border: 1px solid #e5e7eb;
-            border-radius: 8px;
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            color: #9ca3af; font-size: 13px; font-weight: 500;
-            gap: 4px;
-            position: relative;
-        }
-        .map-placeholder .pin { font-size: 36px; color: #dc2626; }
-        .map-placeholder .coord { font-size: 11px; color: #6b7280; font-family: monospace; }
-
         .badge { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 9999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
         .badge-private     { background: #fef3c7; color: #92400e; }
         .badge-in-progress { background: #fef3c7; color: #92400e; }
@@ -202,21 +187,20 @@
                     <div style="display: grid; grid-template-columns: 1.4fr 1fr 0.8fr; gap: 16px; margin-bottom: 26px;">
                         <div>
                             <label class="form-label">発注者<span class="required">*</span></label>
-                            <select name="client_id" class="form-input">
-                                <option>松山市役所 建設部</option>
-                                <option>愛媛県 土木部</option>
-                                <option selected>松山土地開発㈱</option>
-                                <option>㈱伊予造園</option>
-                                <option>今治市役所 都市整備課</option>
+                            <select name="client_id" class="form-input" x-model="clientId">
+                                <option value="">選択してください</option>
+                                <template x-for="client in (projectType === 'public' ? publicClients : privateClients)" :key="client">
+                                    <option x-text="client" :value="client"></option>
+                                </template>
                             </select>
                         </div>
                         <div>
-                            <label class="form-label">担当者<span class="required">*</span></label>
-                            <select name="user_id" class="form-input">
-                                <option selected>山田</option>
-                                <option>佐藤</option>
-                                <option>田中</option>
-                                <option>鈴木</option>
+                            <label class="form-label"><span x-text="projectType === 'public' ? '工務担当' : '営業担当'"></span><span class="required">*</span></label>
+                            <select name="user_id" class="form-input" x-model="staffId">
+                                <option value="">選択してください</option>
+                                <template x-for="staff in (projectType === 'public' ? publicStaff : privateStaff)" :key="staff">
+                                    <option x-text="staff" :value="staff"></option>
+                                </template>
                             </select>
                         </div>
                         <div>
@@ -254,17 +238,6 @@
                         <label class="form-label">所在地<span class="required">*</span></label>
                         <input type="text" name="address" class="form-input"
                                value="愛媛県松山市道後湯之町">
-                    </div>
-
-                    <!-- Google Maps ピン -->
-                    <div style="margin-bottom: 8px;">
-                        <label class="form-label">地図（ピン配置）</label>
-                        <div class="map-placeholder">
-                            <div class="pin">📍</div>
-                            <div>松山市道後湯之町</div>
-                            <div class="coord">33.8474, 132.7856</div>
-                            <div style="font-size: 11px; color: #9ca3af;">※ Phase 2 で Google Maps API を接続</div>
-                        </div>
                     </div>
 
                 </div>
@@ -305,7 +278,7 @@
                     <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
                         <!-- 見積額 -->
                         <div>
-                            <label class="form-label">見積額<span class="required">*</span></label>
+                            <label class="form-label">見積額</label>
                             <div class="amount-input-wrap">
                                 <input type="text" name="estimate_amount" class="form-input" value="29,800,000" inputmode="numeric">
                                 <span class="suffix">円</span>
@@ -313,7 +286,7 @@
                         </div>
                         <!-- 受注額 -->
                         <div>
-                            <label class="form-label">受注額</label>
+                            <label class="form-label">受注額<span class="required">*</span></label>
                             <div class="amount-input-wrap">
                                 <input type="text" name="order_amount" class="form-input" value="28,500,000" inputmode="numeric">
                                 <span class="suffix">円</span>
@@ -374,7 +347,33 @@
     <script>
         function projectEdit() {
             return {
-                projectType: 'private'
+                projectType: 'private',
+                clientId: '松山土地開発㈱',
+                publicClients: [
+                    '松山市役所 建設部',
+                    '松山市役所 上下水道部',
+                    '愛媛県 土木部',
+                    '今治市役所 都市整備課',
+                    '四国地方整備局'
+                ],
+                privateClients: [
+                    '松山土地開発㈱',
+                    '㈱伊予造園',
+                    '田中不動産㈱',
+                    '伊予鉄建設㈱',
+                    '四国建設㈱'
+                ],
+                staffId: '高橋',
+                publicStaff: [
+                    '山田',
+                    '佐藤',
+                    '田中'
+                ],
+                privateStaff: [
+                    '鈴木',
+                    '高橋',
+                    '伊藤'
+                ]
             };
         }
     </script>
