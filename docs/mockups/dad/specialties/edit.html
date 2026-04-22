@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>専門分野 編集 | DAD(土木事業) | ミツワ都市開発 経営管理システム</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif; background: #f3f4f6; }
+        [x-cloak] { display: none !important; }
+
+        .card-title { font-size: 14px; font-weight: 700; color: #111827; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 1px solid #e5e7eb; }
+        .fld label { display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px; }
+        .fld input[type="text"] { width: 100%; height: 38px; padding: 0 10px; font-size: 13px; border: 1px solid #d1d5db; border-radius: 4px; background: #fff; }
+        .fld input[type="text"]:focus { outline: none; border-color: #10b981; box-shadow: 0 0 0 3px rgba(16,185,129,0.15); }
+        .required { color: #dc2626; margin-left: 4px; }
+        .hint { font-size: 11px; color: #6b7280; margin-top: 4px; }
+
+        .badge { display: inline-flex; align-items: center; padding: 3px 14px; border-radius: 9999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+
+        /* プリセットチップ */
+        .preset-chip { cursor: pointer; padding: 10px 8px; border: 2px solid #e5e7eb; border-radius: 8px; background: #fff; transition: all 0.15s; display: flex; align-items: center; justify-content: center; }
+        .preset-chip:hover { border-color: #10b981; background: #ecfdf5; }
+        .preset-chip.selected { border-color: #10b981; background: #ecfdf5; box-shadow: 0 0 0 3px rgba(16,185,129,0.15); }
+
+        /* カラーピッカー */
+        .color-row { display: flex; gap: 8px; align-items: center; }
+        .color-row input[type="color"] { width: 40px; height: 38px; padding: 2px; border: 1px solid #d1d5db; border-radius: 4px; background: #fff; cursor: pointer; }
+        .color-row input[type="text"] { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; }
+
+        /* プレビュー枠 */
+        .preview-box { background: #f9fafb; border: 1px dashed #d1d5db; border-radius: 8px; padding: 20px; display: flex; align-items: center; justify-content: center; }
+
+        /* 使用中バナー */
+        .usage-banner { background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 12px 16px; font-size: 12px; color: #92400e; display: flex; gap: 10px; align-items: flex-start; }
+
+        /* ボタン */
+        .btn-primary { background: #059669; color: white; padding: 10px 20px; border-radius: 6px; font-size: 13px; font-weight: 600; border: none; cursor: pointer; }
+        .btn-primary:hover { background: #047857; }
+        .btn-cancel { background: #fff; color: #374151; padding: 10px 20px; border-radius: 6px; font-size: 13px; font-weight: 600; border: 1px solid #d1d5db; text-decoration: none; display: inline-flex; align-items: center; }
+        .btn-cancel:hover { background: #f9fafb; }
+        .btn-delete { background: #fff; color: #b91c1c; padding: 10px 20px; border-radius: 6px; font-size: 13px; font-weight: 600; border: 1px solid #fecaca; cursor: pointer; }
+        .btn-delete:hover { background: #fef2f2; }
+        .btn-delete:disabled { color: #9ca3af; border-color: #e5e7eb; background: #f9fafb; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+
+    <!-- トップバー -->
+    <header style="background: #1f2937; color: white; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 16px;">
+            <span style="font-weight: 700;">ミツワ都市開発 経営管理システム</span>
+        </div>
+        <div style="font-size: 13px;">山田 (経営層)</div>
+    </header>
+
+    <div style="display: flex; min-height: calc(100vh - 48px);">
+        <!-- サイドバー -->
+        <aside style="width: 220px; background: white; border-right: 1px solid #e5e7eb; padding: 16px 0;">
+            <nav style="font-size: 13px;">
+                <div style="padding: 8px 16px; color: #6b7280;">ダッシュボード</div>
+                <div style="padding: 8px 16px; color: #6b7280;">テナント管理</div>
+                <div style="padding: 8px 16px; color: #6b7280;">賃貸マンション</div>
+                <div style="padding: 8px 16px; color: #6b7280;">不動産管理</div>
+                <div style="padding: 8px 16px; color: #6b7280;">住宅事業</div>
+                <div style="padding: 8px 16px; color: #6b7280;">DAD（土木事業） ▾</div>
+                <div style="padding: 6px 16px 6px 32px; color: #6b7280;">工事案件</div>
+                <div style="padding: 8px 16px; color: #6b7280;">システム管理 ▾</div>
+                <div style="padding: 6px 16px 2px 24px; color: #9ca3af; font-size: 11px;">テナント</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">用途マスター</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">構造マスター</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">テナントCSVインポート</div>
+                <div style="padding: 6px 16px 2px 24px; color: #9ca3af; font-size: 11px;">賃貸マンション</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">賃貸マンションCSVインポート</div>
+                <div style="padding: 6px 16px 2px 24px; color: #9ca3af; font-size: 11px;">不動産</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">原価項目マスター</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">用途地域マスター</div>
+                <div style="padding: 6px 16px 2px 24px; color: #9ca3af; font-size: 11px;">住宅</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">アンケート設問管理</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">顧客CSVインポート</div>
+                <div style="padding: 6px 16px 2px 24px; color: #9ca3af; font-size: 11px;">DAD</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">発注者管理</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">協力業者</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">従業員管理</div>
+                <div style="padding: 4px 16px 4px 32px; background: #ecfdf5; color: #047857; border-left: 3px solid #10b981; font-weight: 600;">専門分野マスター</div>
+                <div style="padding: 6px 16px 2px 24px; color: #9ca3af; font-size: 11px;">マスター</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">ユーザー管理</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">マスター設定</div>
+            </nav>
+        </aside>
+
+        <!-- メインコンテンツ -->
+        <main style="flex: 1; padding: 24px;">
+
+            <!-- パンくず -->
+            <div style="font-size: 12px; color: #9ca3af; margin-bottom: 16px;">
+                <a href="#" style="color: #10b981;">ホーム</a>
+                <span style="margin: 0 6px;">›</span>
+                <a href="#" style="color: #10b981;">システム管理</a>
+                <span style="margin: 0 6px;">›</span>
+                <a href="#" style="color: #10b981;">DAD</a>
+                <span style="margin: 0 6px;">›</span>
+                <a href="index.html" style="color: #10b981;">専門分野マスター</a>
+                <span style="margin: 0 6px;">›</span>
+                <span>編集</span>
+            </div>
+
+            <!-- ページヘッダー -->
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
+                <h1 style="font-size: 20px; font-weight: 700; margin: 0;">専門分野 編集</h1>
+            </div>
+
+            <!-- 使用中バナー（協力業者が紐付いている場合に表示・削除不可） -->
+            <div class="usage-banner" style="margin-bottom: 20px;">
+                <svg style="width: 18px; height: 18px; flex-shrink: 0; margin-top: 1px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                <div>
+                    <strong>この専門分野は 3 社の協力業者で使用されています。</strong><br>
+                    名称・色の変更は各社の表示に即時反映されます。削除する場合は、先に協力業者の専門分野を別のマスターに変更してください。
+                </div>
+            </div>
+
+            <form x-data="specialtyForm()" @submit.prevent="alert('モック: このデータで更新されます（実装時は PUT /dad/specialties/1）');" style="max-width: 880px;">
+
+                <!-- 基本情報 -->
+                <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
+                    <div class="card-title">基本情報</div>
+
+                    <div class="fld" style="margin-bottom: 16px;">
+                        <label>専門分野名<span class="required">*</span></label>
+                        <input type="text" name="name" x-model="name" maxlength="50" required>
+                        <div class="hint">50文字以内で入力してください。協力業者の登録画面でプルダウン選択肢として表示されます。</div>
+                    </div>
+                </div>
+
+                <!-- 色設定 -->
+                <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
+                    <div class="card-title">色設定</div>
+
+                    <!-- プレビュー -->
+                    <div class="fld" style="margin-bottom: 20px;">
+                        <label>プレビュー</label>
+                        <div class="preview-box">
+                            <span class="badge" :style="{ background: colorBg, color: colorText }" x-text="name || '専門分野名'"></span>
+                        </div>
+                        <div class="hint">協力業者一覧・詳細画面でバッジとして表示されるイメージです。</div>
+                    </div>
+
+                    <!-- プリセットから選択 -->
+                    <div class="fld" style="margin-bottom: 20px;">
+                        <label>プリセットから選択</label>
+                        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;">
+                            <template x-for="(p, idx) in presets" :key="idx">
+                                <div class="preset-chip"
+                                     :class="colorBg.toLowerCase() === p.bg.toLowerCase() && colorText.toLowerCase() === p.text.toLowerCase() ? 'selected' : ''"
+                                     @click="applyPreset(p)">
+                                    <span class="badge" :style="{ background: p.bg, color: p.text }" x-text="p.label"></span>
+                                </div>
+                            </template>
+                        </div>
+                        <div class="hint">プリセットをクリックすると背景色・文字色が自動入力されます。以降は下の入力で微調整できます。</div>
+                    </div>
+
+                    <!-- 手動入力 2列 -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                        <div class="fld">
+                            <label>背景色 <span style="color: #9ca3af; font-weight: 500;">(hex)</span></label>
+                            <div class="color-row">
+                                <input type="color" x-model="colorBg">
+                                <input type="text" x-model="colorBg" maxlength="7" style="width: 120px;">
+                            </div>
+                        </div>
+                        <div class="fld">
+                            <label>文字色 <span style="color: #9ca3af; font-weight: 500;">(hex)</span></label>
+                            <div class="color-row">
+                                <input type="color" x-model="colorText">
+                                <input type="text" x-model="colorText" maxlength="7" style="width: 120px;">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- アクション -->
+                <div style="display: flex; gap: 12px; justify-content: space-between; align-items: center;">
+                    <!-- 削除（使用中の場合は disabled） -->
+                    <button type="button"
+                            class="btn-delete"
+                            disabled
+                            title="使用中の協力業者があるため削除できません">
+                        削除
+                    </button>
+
+                    <div style="display: flex; gap: 12px;">
+                        <a href="index.html" class="btn-cancel">キャンセル</a>
+                        <button type="submit" class="btn-primary">更新する</button>
+                    </div>
+                </div>
+            </form>
+
+        </main>
+    </div>
+
+    <script>
+        function specialtyForm() {
+            return {
+                // 編集対象の既存データ（モック: id=1「土工」）
+                name: '土工',
+                colorBg: '#fef3c7',
+                colorText: '#92400e',
+                presets: [
+                    { label: '土工',   bg: '#fef3c7', text: '#92400e' },
+                    { label: '舗装',   bg: '#e5e7eb', text: '#374151' },
+                    { label: '配管',   bg: '#dbeafe', text: '#1e40af' },
+                    { label: '電気',   bg: '#fef9c3', text: '#854d0e' },
+                    { label: '解体',   bg: '#fee2e2', text: '#991b1b' },
+                    { label: '仮設',   bg: '#ede9fe', text: '#5b21b6' },
+                    { label: '緑系',   bg: '#d1fae5', text: '#065f46' },
+                    { label: 'その他', bg: '#f3f4f6', text: '#4b5563' }
+                ],
+                applyPreset: function(p) {
+                    this.colorBg = p.bg;
+                    this.colorText = p.text;
+                }
+            };
+        }
+    </script>
+
+</body>
+</html>
