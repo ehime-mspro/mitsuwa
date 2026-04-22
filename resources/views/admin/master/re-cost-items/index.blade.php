@@ -45,9 +45,20 @@
         </div>
     @endif
 
-    {{-- 並替え成功メッセージ（Ajax用） --}}
-    <div x-show="reorderMessage" x-transition class="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
-        <p class="text-sm text-emerald-800" x-text="reorderMessage"></p>
+    {{-- 並替え成功メッセージ（Ajax用・右下フローティングトースト） --}}
+    <div class="toast"
+         x-show="reorderMessage"
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0 translate-y-2"
+         x-transition:enter-end="opacity-100 translate-y-0"
+         x-transition:leave="transition ease-in duration-150"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         x-cloak>
+        <svg style="width: 16px; height: 16px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"/>
+        </svg>
+        <span x-text="reorderMessage"></span>
     </div>
 
     {{-- 説明 --}}
@@ -60,15 +71,13 @@
     <div class="bg-white border border-gray-200 rounded-lg overflow-hidden" style="max-width: 560px;">
         <table class="w-full" style="table-layout: fixed;">
             <colgroup>
-                <col style="width: 48px;">
-                <col style="width: 56px;">
+                <col style="width: 96px;">
                 <col>
                 <col style="width: 120px;">
             </colgroup>
             <thead>
                 <tr class="bg-gray-50 border-b border-gray-200">
                     <th class="py-2.5 px-1"></th>
-                    <th class="text-xs font-semibold text-gray-600 text-center py-2.5 px-1">#</th>
                     <th class="text-xs font-semibold text-gray-600 text-left py-2.5 px-3">項目名</th>
                     <th class="text-xs font-semibold text-gray-600 text-center py-2.5 px-3">操作</th>
                 </tr>
@@ -86,17 +95,14 @@
                         @dragend="handleDragEnd($event)">
 
                         <td class="text-center py-2.5 px-1">
-                            <div x-show="editingId !== item.id"
-                                 class="drag-handle flex justify-center items-center text-gray-300 hover:text-gray-500 transition-colors">
-                                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                                    <circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/>
-                                    <circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/>
-                                    <circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/>
+                            <div x-show="editingId !== item.id" class="drag-handle">
+                                <svg style="width: 18px; height: 18px;" viewBox="0 0 24 24" fill="currentColor">
+                                    <circle cx="9" cy="6" r="2"/><circle cx="15" cy="6" r="2"/>
+                                    <circle cx="9" cy="12" r="2"/><circle cx="15" cy="12" r="2"/>
+                                    <circle cx="9" cy="18" r="2"/><circle cx="15" cy="18" r="2"/>
                                 </svg>
                             </div>
                         </td>
-
-                        <td class="text-xs text-gray-400 text-center py-2.5 px-1" x-text="index + 1"></td>
 
                         <td class="text-sm text-gray-800 py-2.5 px-3">
                             <template x-if="editingId === item.id">
@@ -140,7 +146,6 @@
                 {{-- 新規追加行 --}}
                 <tr x-show="adding" class="border-b border-gray-100 bg-emerald-50/30">
                     <td class="py-2.5 px-1"></td>
-                    <td class="text-xs text-gray-400 text-center py-2.5 px-1">—</td>
                     <td class="py-2.5 px-3">
                         <input type="text" x-model="newName" placeholder="原価項目名を入力"
                                class="w-full px-3 border border-emerald-400 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none"
@@ -189,8 +194,10 @@
 </div>
 
 <style>
-.drag-handle { cursor: grab; }
-.drag-handle:active { cursor: grabbing; }
+.drag-handle { cursor: grab; color: #4b5563; display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 6px; background: #f3f4f6; border: 1px solid #d1d5db; transition: all 0.15s; }
+.drag-handle:hover { color: #047857; background: #ecfdf5; border-color: #6ee7b7; }
+.drag-handle:active { cursor: grabbing; background: #d1fae5; }
+.toast { position: fixed; bottom: 24px; right: 24px; background: #059669; color: white; padding: 12px 20px; border-radius: 8px; font-size: 13px; font-weight: 600; box-shadow: 0 10px 25px rgba(0,0,0,0.18); display: inline-flex; align-items: center; gap: 8px; z-index: 9999; }
 </style>
 
 <script>
@@ -318,8 +325,8 @@ function costItemManager() {
             .then(function(response) { return response.json(); })
             .then(function(data) {
                 if (data.success) {
-                    self.reorderMessage = '表示順を更新しました。';
-                    setTimeout(function() { self.reorderMessage = ''; }, 3000);
+                    self.reorderMessage = '並び順を更新しました';
+                    setTimeout(function() { self.reorderMessage = ''; }, 2500);
                 }
             })
             .catch(function(error) {
