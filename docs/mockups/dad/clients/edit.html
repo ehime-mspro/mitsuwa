@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>発注者 編集 | DAD(土木事業) | ミツワ都市開発 経営管理システム</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif; background: #f3f4f6; }
+        [x-cloak] { display: none !important; }
+        .required { color: #dc2626; margin-left: 2px; }
+        .card-title { font-size: 15px; font-weight: 700; color: #111827; margin-bottom: 14px; padding-left: 12px; border-left: 4px solid #10b981; }
+        .fld { margin-bottom: 0; }
+        .fld label { display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 5px; }
+        .fld input, .fld select, .fld textarea {
+            width: 100%; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px; background: white;
+        }
+        .fld input, .fld select { height: 38px; }
+        .fld textarea { min-height: 96px; resize: vertical; }
+        .fld .hint { font-size: 11px; color: #9ca3af; margin-top: 4px; }
+        .badge { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 9999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+        .badge-municipality { background: #dbeafe; color: #1e40af; }
+    </style>
+</head>
+<body>
+
+    <!-- トップバー -->
+    <header style="background: #1f2937; color: white; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 16px;">
+            <span style="font-weight: 700;">ミツワ都市開発 経営管理システム</span>
+        </div>
+        <div style="font-size: 13px;">山田 (経営層)</div>
+    </header>
+
+    <div style="display: flex; min-height: calc(100vh - 48px);">
+        <!-- サイドバー -->
+        <aside style="width: 220px; background: white; border-right: 1px solid #e5e7eb; padding: 16px 0;">
+            <nav style="font-size: 13px;">
+                <div style="padding: 8px 16px; color: #6b7280;">ダッシュボード</div>
+                <div style="padding: 8px 16px; color: #6b7280;">テナント管理</div>
+                <div style="padding: 8px 16px; color: #6b7280;">賃貸マンション</div>
+                <div style="padding: 8px 16px; color: #6b7280;">不動産管理</div>
+                <div style="padding: 8px 16px; color: #6b7280;">住宅事業</div>
+                <div style="padding: 8px 16px; color: #6b7280;">DAD（土木事業） ▾</div>
+                <div style="padding: 6px 16px 6px 32px; color: #6b7280;">工事案件</div>
+                <div style="padding: 8px 16px; color: #6b7280;">システム管理 ▾</div>
+                <div style="padding: 6px 16px 2px 24px; color: #9ca3af; font-size: 11px;">テナント</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">用途マスター</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">構造マスター</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">テナントCSVインポート</div>
+                <div style="padding: 6px 16px 2px 24px; color: #9ca3af; font-size: 11px;">賃貸マンション</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">賃貸マンションCSVインポート</div>
+                <div style="padding: 6px 16px 2px 24px; color: #9ca3af; font-size: 11px;">不動産</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">原価項目マスター</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">用途地域マスター</div>
+                <div style="padding: 6px 16px 2px 24px; color: #9ca3af; font-size: 11px;">住宅</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">アンケート設問管理</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">顧客CSVインポート</div>
+                <div style="padding: 6px 16px 2px 24px; color: #9ca3af; font-size: 11px;">DAD</div>
+                <div style="padding: 4px 16px 4px 32px; background: #ecfdf5; color: #047857; border-left: 3px solid #10b981; font-weight: 600;">発注者管理</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">協力業者</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">従業員管理</div>
+                <div style="padding: 6px 16px 2px 24px; color: #9ca3af; font-size: 11px;">マスター</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">ユーザー管理</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">マスター設定</div>
+            </nav>
+        </aside>
+
+        <!-- メインコンテンツ -->
+        <main style="flex: 1; padding: 24px;">
+
+            <!-- パンくず -->
+            <div style="font-size: 12px; color: #9ca3af; margin-bottom: 16px;">
+                <a href="#" style="color: #10b981;">ホーム</a>
+                <span style="margin: 0 6px;">›</span>
+                <a href="#" style="color: #10b981;">システム管理</a>
+                <span style="margin: 0 6px;">›</span>
+                <a href="#" style="color: #10b981;">DAD</a>
+                <span style="margin: 0 6px;">›</span>
+                <a href="index.html" style="color: #10b981;">発注者管理</a>
+                <span style="margin: 0 6px;">›</span>
+                <span>編集</span>
+            </div>
+
+            <!-- ページヘッダー -->
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <h1 style="font-size: 20px; font-weight: 700; margin: 0;">松山市役所 建設部</h1>
+                    <span class="badge badge-municipality">公共事業</span>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button type="button"
+                            style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border: 1px solid #fecaca; border-radius: 6px; background: white; font-size: 13px; color: #dc2626; cursor: pointer;">
+                        <svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/></svg>
+                        削除
+                    </button>
+                    <a href="index.html" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border: 1px solid #d1d5db; border-radius: 6px; background: white; font-size: 13px; color: #374151; text-decoration: none;">
+                        <svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                        一覧に戻る
+                    </a>
+                </div>
+            </div>
+
+            <!-- 情報バー -->
+            <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px 16px; margin-bottom: 20px; font-size: 12px; color: #6b7280; display: flex; gap: 24px; flex-wrap: wrap;">
+                <span>登録日: 2024/05/12</span>
+                <span>最終更新: 2026/03/18</span>
+                <span>関連工事件数: <strong style="color: #047857;">6件</strong></span>
+            </div>
+
+            <!-- フォーム -->
+            <form>
+
+                <!-- ========== カード: 種別 ========== -->
+                <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
+                    <div class="card-title">種別<span class="required">*</span></div>
+                    <div style="display: flex; gap: 20px; padding: 4px 0; flex-wrap: wrap;">
+                        <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: #374151; cursor: pointer;">
+                            <input type="radio" name="client_type" value="municipality" checked style="width: 16px; height: 16px; accent-color: #059669;">
+                            公共事業
+                        </label>
+                        <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: #374151; cursor: pointer;">
+                            <input type="radio" name="client_type" value="company" style="width: 16px; height: 16px; accent-color: #059669;">
+                            推進関連
+                        </label>
+                        <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: #374151; cursor: pointer;">
+                            <input type="radio" name="client_type" value="government" style="width: 16px; height: 16px; accent-color: #059669;">
+                            官公庁
+                        </label>
+                        <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: #374151; cursor: pointer;">
+                            <input type="radio" name="client_type" value="individual" style="width: 16px; height: 16px; accent-color: #059669;">
+                            個人
+                        </label>
+                    </div>
+                </div>
+
+                <!-- ========== カード: 基本情報 ========== -->
+                <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
+                    <div class="card-title">基本情報</div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px 20px;">
+                        <div class="fld">
+                            <label>発注者名<span class="required">*</span></label>
+                            <input type="text" name="name" value="松山市役所 建設部">
+                        </div>
+                        <div class="fld">
+                            <label>代表者名・担当者名</label>
+                            <input type="text" name="representative" value="田中 課長">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ========== カード: 住所・連絡先 ========== -->
+                <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
+                    <div class="card-title">住所・連絡先</div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 16px 20px; margin-bottom: 16px;">
+                        <div class="fld">
+                            <label>郵便番号</label>
+                            <input type="text" name="postal_code" value="790-8571" maxlength="8">
+                            <div class="hint">ハイフンを含めて入力してください</div>
+                        </div>
+                        <div></div>
+                    </div>
+
+                    <div class="fld" style="margin-bottom: 16px;">
+                        <label>住所</label>
+                        <input type="text" name="address" value="愛媛県松山市二番町4-7-2">
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px 20px;">
+                        <div class="fld">
+                            <label>電話番号</label>
+                            <input type="tel" name="phone" value="089-948-6400">
+                        </div>
+                        <div class="fld">
+                            <label>FAX番号</label>
+                            <input type="tel" name="fax" value="089-948-6401">
+                        </div>
+                        <div class="fld">
+                            <label>メールアドレス</label>
+                            <input type="email" name="email" value="kensetsu@city.matsuyama.lg.jp">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ========== カード: 備考 ========== -->
+                <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
+                    <div class="card-title">備考</div>
+                    <div class="fld">
+                        <textarea name="notes">毎月末締め・翌月末払い。請求書は工事完了後10日以内に提出。</textarea>
+                    </div>
+                </div>
+
+                <!-- アクションボタン -->
+                <div style="display: flex; justify-content: flex-end; gap: 8px;">
+                    <a href="index.html" style="display: inline-flex; align-items: center; padding: 10px 20px; border: 1px solid #d1d5db; border-radius: 6px; background: white; font-size: 14px; color: #374151; text-decoration: none;">キャンセル</a>
+                    <button type="submit" style="padding: 10px 24px; background: #059669; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer;">
+                        更新する
+                    </button>
+                </div>
+            </form>
+
+        </main>
+    </div>
+
+</body>
+</html>
