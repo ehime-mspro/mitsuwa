@@ -131,12 +131,21 @@
                 <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
                     <div class="card-title">住所・連絡先</div>
 
-                    <!-- 郵便番号 -->
-                    <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 16px 20px; margin-bottom: 16px;">
+                    <!-- 郵便番号 + 双方向検索ボタン -->
+                    <div style="display: grid; grid-template-columns: 200px auto 1fr; gap: 10px; margin-bottom: 16px; align-items: flex-start;">
                         <div class="fld">
                             <label>郵便番号</label>
                             <input type="text" name="postal_code" placeholder="例: 790-8571" maxlength="8">
                             <div class="hint">ハイフンを含めて入力してください</div>
+                        </div>
+                        <div>
+                            <label style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 5px; visibility: hidden;">_</label>
+                            <div style="display: flex; gap: 6px;">
+                                <button type="button"
+                                        style="height: 38px; display: inline-flex; align-items: center; padding: 0 10px; font-size: 11px; font-weight: 600; color: #059669; border: 1px solid #059669; border-radius: 4px; cursor: pointer; background: #fff; white-space: nowrap;">〒→住所</button>
+                                <button type="button"
+                                        style="height: 38px; display: inline-flex; align-items: center; padding: 0 10px; font-size: 11px; font-weight: 600; color: #059669; border: 1px solid #059669; border-radius: 4px; cursor: pointer; background: #fff; white-space: nowrap;">住所→〒</button>
+                            </div>
                         </div>
                         <div></div>
                     </div>
@@ -144,7 +153,7 @@
                     <!-- 住所 -->
                     <div class="fld" style="margin-bottom: 16px;">
                         <label>住所</label>
-                        <input type="text" name="address" placeholder="例: 愛媛県松山市二番町4-7-2" value="愛媛県">
+                        <input type="text" name="address" placeholder="例: 愛媛県松山市二番町4-7-2">
                     </div>
 
                     <!-- 連絡先 3列 -->
