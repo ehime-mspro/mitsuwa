@@ -33,6 +33,11 @@
         .amount-input-wrap .form-input { flex: 1; text-align: right; }
         .amount-input-wrap .suffix { font-size: 13px; color: #6b7280; }
 
+        /* 金額サマリー4カード */
+        .stat-card  { background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px 20px; text-align: center; }
+        .stat-label { font-size: 12px; color: #6b7280; margin-bottom: 6px; }
+        .stat-value { font-size: 22px; font-weight: 700; color: #111827; }
+
         /* 案C datepicker（モックはトリガーのみ — Phase 2 で完全実装） */
         .date-input-trigger {
             width: 100%; height: 38px;
@@ -287,6 +292,26 @@
                     <div style="font-size: 11px; color: #9ca3af; margin-top: 8px;">※ Phase 2 で案C datepicker を接続</div>
                 </div>
 
+                <!-- 金額サマリー 4カード（3モードハイブリッド） -->
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px;">
+                    <div class="stat-card">
+                        <div class="stat-label">受注額</div>
+                        <div class="stat-value" x-text="formatYen(orderAmount)"></div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label" x-text="costLabel"></div>
+                        <div class="stat-value" x-text="costDisplay"></div>
+                    </div>
+                    <div class="stat-card" style="background: #ecfdf5; border-color: #a7f3d0;">
+                        <div class="stat-label" style="color: #065f46;" x-text="grossProfitLabel"></div>
+                        <div class="stat-value" style="color: #047857;" x-text="grossProfitDisplay"></div>
+                    </div>
+                    <div class="stat-card" style="background: #ecfdf5; border-color: #a7f3d0;">
+                        <div class="stat-label" style="color: #065f46;" x-text="grossProfitRateLabel"></div>
+                        <div class="stat-value" style="color: #047857;" x-text="grossProfitRateDisplay"></div>
+                    </div>
+                </div>
+
                 <!-- ========== 金額情報 ========== -->
                 <div class="card">
                     <div class="card-title">金額情報（税抜）</div>
@@ -296,7 +321,7 @@
                         <div>
                             <label class="form-label">見積額</label>
                             <div class="amount-input-wrap">
-                                <input type="text" name="estimate_amount" class="form-input" value="29,800,000" inputmode="numeric">
+                                <input type="text" name="estimate_amount" class="form-input" inputmode="numeric" x-model="estimateAmount">
                                 <span class="suffix">円</span>
                             </div>
                         </div>
@@ -304,18 +329,126 @@
                         <div>
                             <label class="form-label">受注額<span class="required">*</span></label>
                             <div class="amount-input-wrap">
-                                <input type="text" name="order_amount" class="form-input" value="28,500,000" inputmode="numeric">
+                                <input type="text" name="order_amount" class="form-input" inputmode="numeric" x-model="orderAmount">
                                 <span class="suffix">円</span>
                             </div>
+                            <div style="font-size: 11px; color: #9ca3af; margin-top: 3px;">※ 受注確定時に入力</div>
                         </div>
                         <!-- 原価予算 -->
                         <div>
                             <label class="form-label">原価予算</label>
                             <div class="amount-input-wrap">
-                                <input type="text" name="cost_budget" class="form-input" value="22,000,000" inputmode="numeric">
+                                <input type="text" name="cost_budget" class="form-input" inputmode="numeric" x-model="costBudget">
                                 <span class="suffix">円</span>
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                <!-- ========== 原価管理 ========== -->
+                <div class="card">
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
+                        <div class="card-title" style="margin-bottom: 0;">原価管理（内訳）</div>
+                        <button type="button" @click="addCostItem()"
+                                style="padding: 7px 14px; background: #059669; color: white; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer;">
+                            ＋ 行追加
+                        </button>
+                    </div>
+
+                    <div style="overflow-x: auto;">
+                        <table style="width: 100%; border-collapse: collapse; min-width: 920px;">
+                            <colgroup>
+                                <col style="width: 11%">
+                                <col style="width: 16%">
+                                <col style="width: 12%">
+                                <col style="width: 12%">
+                                <col style="width: 11%">
+                                <col style="width: 13%">
+                                <col style="width: 17%">
+                                <col style="width: 8%">
+                            </colgroup>
+                            <thead>
+                                <tr>
+                                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: left;">費用カテゴリ</th>
+                                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: left;">内容</th>
+                                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: center;">見積額</th>
+                                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: center;">実績額</th>
+                                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: center;">差額</th>
+                                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: left;">協力業者</th>
+                                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: left;">備考</th>
+                                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: center;">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr x-show="costItems.length === 0">
+                                    <td colspan="8" style="padding: 24px; text-align: center; color: #9ca3af; font-size: 13px;">原価明細がありません。「＋ 行追加」から追加してください。</td>
+                                </tr>
+                                <template x-for="(item, i) in costItems" :key="i">
+                                    <tr>
+                                        <td style="padding: 6px 8px; border-bottom: 1px solid #f3f4f6;">
+                                            <select x-model="item.category" :name="`cost_items[${i}][category]`"
+                                                    style="width: 100%; height: 36px; padding: 0 8px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 14px; background: white;">
+                                                <option value="">選択</option>
+                                                <option value="材料費">材料費</option>
+                                                <option value="外注費">外注費</option>
+                                                <option value="人件費">人件費</option>
+                                                <option value="機械経費">機械経費</option>
+                                                <option value="諸経費">諸経費</option>
+                                                <option value="その他">その他</option>
+                                            </select>
+                                        </td>
+                                        <td style="padding: 6px 8px; border-bottom: 1px solid #f3f4f6;">
+                                            <input type="text" x-model="item.detail" :name="`cost_items[${i}][detail]`"
+                                                   style="width: 100%; height: 36px; padding: 0 8px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 14px;">
+                                        </td>
+                                        <td style="padding: 6px 8px; border-bottom: 1px solid #f3f4f6;">
+                                            <input type="text" x-model="item.estimateAmount" :name="`cost_items[${i}][estimate_amount]`" inputmode="numeric"
+                                                   style="width: 100%; height: 36px; padding: 0 8px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 14px; text-align: right;">
+                                        </td>
+                                        <td style="padding: 6px 8px; border-bottom: 1px solid #f3f4f6;">
+                                            <input type="text" x-model="item.actualAmount" :name="`cost_items[${i}][actual_amount]`" inputmode="numeric"
+                                                   style="width: 100%; height: 36px; padding: 0 8px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 14px; text-align: right;">
+                                        </td>
+                                        <td :style="`padding: 6px 8px; border-bottom: 1px solid #f3f4f6; font-size: 13px; text-align: right; font-weight: 600; color: ${rowDiffColor(item)};`"
+                                            x-text="rowDiffDisplay(item) || '—'"></td>
+                                        <td style="padding: 6px 8px; border-bottom: 1px solid #f3f4f6;">
+                                            <select x-model="item.subcontractor" :name="`cost_items[${i}][subcontractor]`"
+                                                    :disabled="item.category !== '外注費'"
+                                                    :style="item.category !== '外注費' ? 'width: 100%; height: 36px; padding: 0 8px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 14px; background: #f3f4f6; color: #9ca3af;' : 'width: 100%; height: 36px; padding: 0 8px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 14px; background: white;'">
+                                                <option value="">未選択</option>
+                                                <template x-for="s in subcontractors" :key="s">
+                                                    <option :value="s" x-text="s"></option>
+                                                </template>
+                                            </select>
+                                        </td>
+                                        <td style="padding: 6px 8px; border-bottom: 1px solid #f3f4f6;">
+                                            <input type="text" x-model="item.note" :name="`cost_items[${i}][note]`"
+                                                   style="width: 100%; height: 36px; padding: 0 8px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 14px;">
+                                        </td>
+                                        <td style="padding: 6px 8px; border-bottom: 1px solid #f3f4f6; text-align: center; white-space: nowrap;">
+                                            <button type="button" @click="removeCostItem(i)"
+                                                    style="padding: 4px 10px; background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer;">
+                                                削除
+                                            </button>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                            <tfoot x-show="costItems.length > 0">
+                                <tr style="background: #f9fafb;">
+                                    <td colspan="2" style="padding: 12px 10px; border-top: 2px solid #e5e7eb; font-size: 13px; font-weight: 700; color: #374151;">合計</td>
+                                    <td style="padding: 12px 10px; border-top: 2px solid #e5e7eb; font-size: 13px; font-weight: 700; text-align: right;" x-text="formatYen(estimateTotal)"></td>
+                                    <td style="padding: 12px 10px; border-top: 2px solid #e5e7eb; font-size: 13px; font-weight: 700; text-align: right;" x-text="formatYen(actualTotal)"></td>
+                                    <td :style="`padding: 12px 10px; border-top: 2px solid #e5e7eb; font-size: 13px; font-weight: 700; text-align: right; color: ${diffTotalColor};`" x-text="diffTotalDisplay"></td>
+                                    <td colspan="3" style="padding: 12px 10px; border-top: 2px solid #e5e7eb;"></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+
+                    <!-- 凡例 -->
+                    <div style="margin-top: 12px; padding: 10px 14px; background: #f9fafb; border-radius: 6px; font-size: 11px; color: #6b7280;">
+                        <strong style="color: #374151;">差額の見方:</strong> 実績 − 見積。<span style="color: #dc2626; font-weight: 600;">赤</span>は超過、<span style="color: #047857; font-weight: 600;">緑</span>は以内。
                     </div>
                 </div>
 
@@ -361,6 +494,7 @@
     </div>
 
     <script>
+        // Alpine.js データ関数（`=>` 禁止ルール遵守のため通常関数で定義）
         function projectEdit() {
             return {
                 projectType: 'private',
@@ -389,9 +523,188 @@
                     '鈴木',
                     '高橋',
                     '伊藤'
-                ]
+                ],
+
+                // ===== 金額情報・原価管理 state =====
+                estimateAmount: '30000000',
+                orderAmount: '32000000',
+                costBudget: '24000000',
+                subcontractors: [
+                    '㈱愛媛土建',
+                    '松山建設㈲',
+                    '四国電設工業㈱',
+                    '伊予重機㈲',
+                    'みかん運送㈱'
+                ],
+                // モック既存データ — show.html dataPrivate.costRows と同一の 6 行（実績は1行のみ入力 → hybrid モード）
+                costItems: [
+                    { category: '材料費',   detail: '砕石・路盤材',         estimateAmount: '1200000',  actualAmount: '1150000', subcontractor: '',           note: '' },
+                    { category: '外注費',   detail: '造成工事',             estimateAmount: '12000000', actualAmount: '',        subcontractor: '㈱愛媛土建', note: '' },
+                    { category: '外注費',   detail: '擁壁工事',             estimateAmount: '5500000',  actualAmount: '5400000', subcontractor: '松山建設㈲', note: '' },
+                    { category: '人件費',   detail: '現場監督・作業員',     estimateAmount: '3000000',  actualAmount: '',        subcontractor: '',           note: '' },
+                    { category: '機械経費', detail: '重機リース',           estimateAmount: '1800000',  actualAmount: '',        subcontractor: '',           note: '' },
+                    { category: '諸経費',   detail: '仮設・安全',           estimateAmount: '500000',   actualAmount: '',        subcontractor: '',           note: '' }
+                ],
+                addCostItem() {
+                    this.costItems.push({ category: '', detail: '', estimateAmount: '', actualAmount: '', subcontractor: '', note: '' });
+                },
+                removeCostItem(i) {
+                    this.costItems.splice(i, 1);
+                },
+
+                // === Hybrid Cost Display: mirror of show.html L520-665 ===
+                // edits should be coordinated with show.html / create.html Helper/Computed
+                // 文字列入力対応のため Number() を replace 経由で sanitize
+                _num(v) {
+                    return Number(String(v).replace(/[^0-9-]/g, '')) || 0;
+                },
+                formatYen(n) {
+                    if (n === null || n === undefined || n === '') return '';
+                    const num = this._num(n);
+                    return num.toLocaleString('ja-JP') + '円';
+                },
+                hasActual(row) {
+                    const a = row && row.actualAmount;
+                    return a !== null && a !== undefined && String(a).trim() !== '';
+                },
+                rowEffective(row) {
+                    if (this.hasActual(row)) return this._num(row.actualAmount);
+                    return this._num(row.estimateAmount);
+                },
+                rowDiff(row) {
+                    if (!this.hasActual(row)) return null;
+                    return this._num(row.actualAmount) - this._num(row.estimateAmount);
+                },
+                rowDiffDisplay(row) {
+                    const d = this.rowDiff(row);
+                    if (d === null) return '';
+                    if (d === 0) return '±0円';
+                    return (d > 0 ? '+' : '') + Number(d).toLocaleString('ja-JP') + '円';
+                },
+                rowDiffColor(row) {
+                    const d = this.rowDiff(row);
+                    if (d === null) return '#9ca3af';
+                    if (d > 0) return '#dc2626';
+                    return '#047857';
+                },
+                rowActualDisplay(row) {
+                    if (!this.hasActual(row)) return '';
+                    return this.formatYen(row.actualAmount);
+                },
+
+                // ===== 3 モード判定 + 集計 getter =====
+                get costMode() {
+                    const rows = this.costItems || [];
+                    if (rows.length === 0) return 'empty';
+                    const self = this;
+                    const filled = rows.filter(function (r) { return self.hasActual(r); }).length;
+                    if (filled === 0) return 'estimate';
+                    if (filled === rows.length) return 'actual';
+                    return 'hybrid';
+                },
+                get estimateTotal() {
+                    const self = this;
+                    return (this.costItems || []).reduce(function (sum, r) {
+                        return sum + self._num(r.estimateAmount);
+                    }, 0);
+                },
+                get actualTotal() {
+                    const self = this;
+                    return (this.costItems || []).reduce(function (sum, r) {
+                        if (!self.hasActual(r)) return sum;
+                        return sum + self._num(r.actualAmount);
+                    }, 0);
+                },
+                get diffTotal() {
+                    const self = this;
+                    return (this.costItems || []).reduce(function (sum, r) {
+                        if (!self.hasActual(r)) return sum;
+                        return sum + (self._num(r.actualAmount) - self._num(r.estimateAmount));
+                    }, 0);
+                },
+                get costTotal() {
+                    const m = this.costMode;
+                    if (m === 'empty') return null;
+                    if (m === 'estimate') return this.estimateTotal;
+                    if (m === 'actual') return this.actualTotal;
+                    const self = this;
+                    return (this.costItems || []).reduce(function (sum, r) {
+                        return sum + self.rowEffective(r);
+                    }, 0);
+                },
+                get costLabel() {
+                    const m = this.costMode;
+                    if (m === 'empty') return '原価合計';
+                    if (m === 'estimate') return '原価合計（見積）';
+                    if (m === 'hybrid') return '原価合計（見込）';
+                    return '原価合計（実績）';
+                },
+                get costDisplay() {
+                    if (this.costMode === 'empty') return '—';
+                    return this.formatYen(this.costTotal);
+                },
+                get grossProfit() {
+                    if (this.costMode === 'empty') return null;
+                    const contract = this._num(this.orderAmount);
+                    return contract - this.costTotal;
+                },
+                get grossProfitLabel() {
+                    const m = this.costMode;
+                    if (m === 'empty') return '粗利額';
+                    if (m === 'estimate') return '粗利額（見積）';
+                    if (m === 'hybrid') return '粗利額（見込）';
+                    return '粗利額（実績）';
+                },
+                get grossProfitDisplay() {
+                    if (this.costMode === 'empty') return '—';
+                    return this.formatYen(this.grossProfit);
+                },
+                get grossProfitRateValue() {
+                    if (this.costMode === 'empty') return null;
+                    const contract = this._num(this.orderAmount);
+                    if (contract === 0) return null;
+                    return (this.grossProfit / contract) * 100;
+                },
+                get grossProfitRateLabel() {
+                    const m = this.costMode;
+                    if (m === 'empty') return '粗利率';
+                    if (m === 'estimate') return '粗利率（見積）';
+                    if (m === 'hybrid') return '粗利率（見込）';
+                    return '粗利率（実績）';
+                },
+                get grossProfitRateDisplay() {
+                    const v = this.grossProfitRateValue;
+                    if (v === null) return '—';
+                    return v.toFixed(1) + '%';
+                },
+                get diffTotalDisplay() {
+                    const d = this.diffTotal;
+                    if (d === 0) return '±0円';
+                    return (d > 0 ? '+' : '') + Number(d).toLocaleString('ja-JP') + '円';
+                },
+                get diffTotalColor() {
+                    const d = this.diffTotal;
+                    if (d > 0) return '#dc2626';
+                    return '#047857';
+                }
             };
         }
+
+        // 金額欄（inputmode="numeric"）の全角数字を自動で半角に変換
+        document.addEventListener('input', function (e) {
+            const t = e.target;
+            if (!t || !t.matches || !t.matches('input[inputmode="numeric"], input[type="number"]')) return;
+            const v = t.value;
+            const nv = v.replace(/[０-９]/g, function (c) {
+                return String.fromCharCode(c.charCodeAt(0) - 0xFEE0);
+            });
+            if (nv !== v) {
+                const start = t.selectionStart;
+                const end = t.selectionEnd;
+                t.value = nv;
+                try { t.setSelectionRange(start, end); } catch (_) {}
+            }
+        }, true);
     </script>
 
 </body>

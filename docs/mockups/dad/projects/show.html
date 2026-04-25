@@ -160,19 +160,19 @@
                     <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px;">
                         <div class="stat-card">
                             <div class="stat-label">受注額</div>
-                            <div class="stat-value" x-text="p.contractAmount"></div>
+                            <div class="stat-value" x-text="formatYen(p.contractAmount)"></div>
                         </div>
                         <div class="stat-card">
-                            <div class="stat-label">原価合計（実績）</div>
-                            <div class="stat-value" x-text="p.costAmount"></div>
+                            <div class="stat-label" x-text="costLabel"></div>
+                            <div class="stat-value" x-text="costDisplay"></div>
                         </div>
                         <div class="stat-card" style="background: #ecfdf5; border-color: #a7f3d0;">
-                            <div class="stat-label" style="color: #065f46;">粗利額</div>
-                            <div class="stat-value" style="color: #047857;" x-text="p.grossProfit"></div>
+                            <div class="stat-label" style="color: #065f46;" x-text="grossProfitLabel"></div>
+                            <div class="stat-value" style="color: #047857;" x-text="grossProfitDisplay"></div>
                         </div>
                         <div class="stat-card" style="background: #ecfdf5; border-color: #a7f3d0;">
-                            <div class="stat-label" style="color: #065f46;">粗利率</div>
-                            <div class="stat-value" style="color: #047857;" x-text="p.grossProfitRate"></div>
+                            <div class="stat-label" style="color: #065f46;" x-text="grossProfitRateLabel"></div>
+                            <div class="stat-value" style="color: #047857;" x-text="grossProfitRateDisplay"></div>
                         </div>
                     </div>
 
@@ -307,86 +307,28 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr>
-                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">材料費</td>
-                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">生コンクリート 30㎥</td>
-                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: right;">500,000円</td>
-                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: right; font-weight: 600;">520,000円</td>
-                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: right; color: #dc2626; font-weight: 600;">+20,000円</td>
-                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #9ca3af; text-align: center;">—</td>
-                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; text-align: center;">
-                                        <button type="button" style="font-size: 11px; color: #059669; border: 1px solid #a7f3d0; padding: 3px 8px; border-radius: 3px; background: white; cursor: pointer; margin-right: 3px;">編集</button>
-                                        <button type="button" style="font-size: 11px; color: #b91c1c; border: 1px solid #fca5a5; padding: 3px 8px; border-radius: 3px; background: white; cursor: pointer;">削除</button>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">外注費</td>
-                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">土工・重機作業</td>
-                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: right;">8,000,000円</td>
-                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: right; font-weight: 600;">7,500,000円</td>
-                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: right; color: #047857; font-weight: 600;">-500,000円</td>
-                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: center;">㈱愛媛土建</td>
-                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; text-align: center;">
-                                        <button type="button" style="font-size: 11px; color: #059669; border: 1px solid #a7f3d0; padding: 3px 8px; border-radius: 3px; background: white; cursor: pointer; margin-right: 3px;">編集</button>
-                                        <button type="button" style="font-size: 11px; color: #b91c1c; border: 1px solid #fca5a5; padding: 3px 8px; border-radius: 3px; background: white; cursor: pointer;">削除</button>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">外注費</td>
-                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">擁壁施工</td>
-                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: right;">4,500,000円</td>
-                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: right; font-weight: 600;">4,500,000円</td>
-                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: right; color: #047857; font-weight: 600;">±0円</td>
-                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: center;">松山建設㈲</td>
-                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; text-align: center;">
-                                        <button type="button" style="font-size: 11px; color: #059669; border: 1px solid #a7f3d0; padding: 3px 8px; border-radius: 3px; background: white; cursor: pointer; margin-right: 3px;">編集</button>
-                                        <button type="button" style="font-size: 11px; color: #b91c1c; border: 1px solid #fca5a5; padding: 3px 8px; border-radius: 3px; background: white; cursor: pointer;">削除</button>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">人件費</td>
-                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">現場監督・作業員（5ヶ月）</td>
-                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: right;">6,000,000円</td>
-                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: right; font-weight: 600;">5,800,000円</td>
-                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: right; color: #047857; font-weight: 600;">-200,000円</td>
-                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #9ca3af; text-align: center;">—</td>
-                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; text-align: center;">
-                                        <button type="button" style="font-size: 11px; color: #059669; border: 1px solid #a7f3d0; padding: 3px 8px; border-radius: 3px; background: white; cursor: pointer; margin-right: 3px;">編集</button>
-                                        <button type="button" style="font-size: 11px; color: #b91c1c; border: 1px solid #fca5a5; padding: 3px 8px; border-radius: 3px; background: white; cursor: pointer;">削除</button>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">機械経費</td>
-                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">バックホウ・重機リース</td>
-                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: right;">2,800,000円</td>
-                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: right; font-weight: 600;">2,900,000円</td>
-                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: right; color: #dc2626; font-weight: 600;">+100,000円</td>
-                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #9ca3af; text-align: center;">—</td>
-                                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; text-align: center;">
-                                        <button type="button" style="font-size: 11px; color: #059669; border: 1px solid #a7f3d0; padding: 3px 8px; border-radius: 3px; background: white; cursor: pointer; margin-right: 3px;">編集</button>
-                                        <button type="button" style="font-size: 11px; color: #b91c1c; border: 1px solid #fca5a5; padding: 3px 8px; border-radius: 3px; background: white; cursor: pointer;">削除</button>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td style="padding: 10px; font-size: 13px;">諸経費</td>
-                                    <td style="padding: 10px; font-size: 13px;">安全対策・仮設・運搬</td>
-                                    <td style="padding: 10px; font-size: 13px; text-align: right;">700,000円</td>
-                                    <td style="padding: 10px; font-size: 13px; text-align: right; font-weight: 600;">580,000円</td>
-                                    <td style="padding: 10px; font-size: 13px; text-align: right; color: #047857; font-weight: 600;">-120,000円</td>
-                                    <td style="padding: 10px; font-size: 13px; color: #9ca3af; text-align: center;">—</td>
-                                    <td style="padding: 10px; text-align: center;">
-                                        <button type="button" style="font-size: 11px; color: #059669; border: 1px solid #a7f3d0; padding: 3px 8px; border-radius: 3px; background: white; cursor: pointer; margin-right: 3px;">編集</button>
-                                        <button type="button" style="font-size: 11px; color: #b91c1c; border: 1px solid #fca5a5; padding: 3px 8px; border-radius: 3px; background: white; cursor: pointer;">削除</button>
-                                    </td>
-                                </tr>
+                                <template x-for="(row, idx) in p.costRows" :key="idx">
+                                    <tr>
+                                        <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px;" x-text="row.category"></td>
+                                        <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px;" x-text="row.detail"></td>
+                                        <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: right;" x-text="formatYen(row.estimateAmount)"></td>
+                                        <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: right; font-weight: 600;" x-text="rowActualDisplay(row)"></td>
+                                        <td :style="`padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: right; color: ${rowDiffColor(row)}; font-weight: 600;`" x-text="rowDiffDisplay(row) || '—'"></td>
+                                        <td :style="`padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: center; color: ${row.subcontractor ? '#374151' : '#9ca3af'};`" x-text="row.subcontractor || '—'"></td>
+                                        <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; text-align: center;">
+                                            <button type="button" style="font-size: 11px; color: #059669; border: 1px solid #a7f3d0; padding: 3px 8px; border-radius: 3px; background: white; cursor: pointer; margin-right: 3px;">編集</button>
+                                            <button type="button" style="font-size: 11px; color: #b91c1c; border: 1px solid #fca5a5; padding: 3px 8px; border-radius: 3px; background: white; cursor: pointer;">削除</button>
+                                        </td>
+                                    </tr>
+                                </template>
                             </tbody>
                             <tfoot>
                                 <tr style="background: #f9fafb;">
                                     <td colspan="2" style="padding: 12px 10px; border-top: 2px solid #e5e7eb; font-size: 13px; font-weight: 700; color: #374151;">合計</td>
-                                    <td style="padding: 12px 10px; border-top: 2px solid #e5e7eb; font-size: 13px; font-weight: 700; text-align: right;">22,500,000円</td>
-                                    <td style="padding: 12px 10px; border-top: 2px solid #e5e7eb; font-size: 13px; font-weight: 700; text-align: right;">21,800,000円</td>
-                                    <td style="padding: 12px 10px; border-top: 2px solid #e5e7eb; font-size: 13px; font-weight: 700; text-align: right; color: #047857;">-700,000円</td>
-                                    <td colspan="2" style="padding: 12px 10px; border-top: 2px solid #e5e7eb; font-size: 13px; text-align: right; color: #047857; font-weight: 700;">予算消化率 <span style="font-size: 16px;">96.9%</span></td>
+                                    <td style="padding: 12px 10px; border-top: 2px solid #e5e7eb; font-size: 13px; font-weight: 700; text-align: right;" x-text="formatYen(estimateTotal)"></td>
+                                    <td style="padding: 12px 10px; border-top: 2px solid #e5e7eb; font-size: 13px; font-weight: 700; text-align: right;" x-text="formatYen(actualTotal)"></td>
+                                    <td :style="`padding: 12px 10px; border-top: 2px solid #e5e7eb; font-size: 13px; font-weight: 700; text-align: right; color: ${diffTotalColor};`" x-text="diffTotalDisplay"></td>
+                                    <td colspan="2" style="padding: 12px 10px; border-top: 2px solid #e5e7eb;"></td>
                                 </tr>
                             </tfoot>
                         </table>
@@ -394,7 +336,7 @@
 
                     <!-- 凡例 -->
                     <div style="margin-top: 12px; padding: 10px 14px; background: #f9fafb; border-radius: 6px; font-size: 11px; color: #6b7280;">
-                        <strong style="color: #374151;">差額の見方:</strong> 実績 − 見積。<span style="color: #dc2626; font-weight: 600;">赤</span>は超過、<span style="color: #047857; font-weight: 600;">緑</span>は以内。予算消化率 = 実績合計 ÷ 見積合計 × 100%。
+                        <strong style="color: #374151;">差額の見方:</strong> 実績 − 見積。<span style="color: #dc2626; font-weight: 600;">赤</span>は超過、<span style="color: #047857; font-weight: 600;">緑</span>は以内。
                     </div>
 
                     <!-- 協力業者発注履歴（自動集計） -->
@@ -572,6 +514,157 @@
                 get p() {
                     return this.projectType === 'public' ? this.dataPublic : this.dataPrivate;
                 },
+
+                // ===== 共通ヘルパー =====
+                // 数値を "1,234,567円" 形式に整形。null/undefined/'' は空文字
+                formatYen: function (n) {
+                    if (n === null || n === undefined || n === '') return '';
+                    const num = Number(n);
+                    if (isNaN(num)) return '';
+                    return num.toLocaleString('ja-JP') + '円';
+                },
+                // 行に実績が入力されているか
+                hasActual: function (row) {
+                    const a = row.actualAmount;
+                    return a !== null && a !== undefined && a !== '';
+                },
+                // 採用額（実績優先・無ければ見積で補完）— 「見込」モードの行単位ロジック
+                rowEffective: function (row) {
+                    if (this.hasActual(row)) return Number(row.actualAmount) || 0;
+                    return Number(row.estimateAmount) || 0;
+                },
+                // 行差額（実績 - 見積）。実績未入力なら null
+                rowDiff: function (row) {
+                    if (!this.hasActual(row)) return null;
+                    return Number(row.actualAmount) - (Number(row.estimateAmount) || 0);
+                },
+                // 行差額の表示文字列
+                rowDiffDisplay: function (row) {
+                    const d = this.rowDiff(row);
+                    if (d === null) return '';
+                    if (d === 0) return '±0円';
+                    return (d > 0 ? '+' : '') + Number(d).toLocaleString('ja-JP') + '円';
+                },
+                // 行差額の色（赤=超過 / 緑=以内・同額 / 灰=未入力）
+                rowDiffColor: function (row) {
+                    const d = this.rowDiff(row);
+                    if (d === null) return '#9ca3af';
+                    if (d > 0) return '#dc2626';
+                    return '#047857';
+                },
+                // 実績セル表示文字列（未入力なら空）
+                rowActualDisplay: function (row) {
+                    if (!this.hasActual(row)) return '';
+                    return this.formatYen(row.actualAmount);
+                },
+
+                // ===== 3 モード判定 + 集計 getter =====
+                // モード: 'empty' | 'estimate' | 'hybrid' | 'actual'
+                get costMode() {
+                    const rows = this.p.costRows || [];
+                    if (rows.length === 0) return 'empty';
+                    const self = this;
+                    const filled = rows.filter(function (r) { return self.hasActual(r); }).length;
+                    if (filled === 0) return 'estimate';
+                    if (filled === rows.length) return 'actual';
+                    return 'hybrid';
+                },
+                // 見積合計（数値）
+                get estimateTotal() {
+                    return (this.p.costRows || []).reduce(function (sum, r) {
+                        return sum + (Number(r.estimateAmount) || 0);
+                    }, 0);
+                },
+                // 実績合計（実績ある行のみ加算）
+                get actualTotal() {
+                    const self = this;
+                    return (this.p.costRows || []).reduce(function (sum, r) {
+                        if (!self.hasActual(r)) return sum;
+                        return sum + (Number(r.actualAmount) || 0);
+                    }, 0);
+                },
+                // 差額合計（実績ある行のみで 実績-見積 集計）
+                get diffTotal() {
+                    const self = this;
+                    return (this.p.costRows || []).reduce(function (sum, r) {
+                        if (!self.hasActual(r)) return sum;
+                        return sum + (Number(r.actualAmount) - (Number(r.estimateAmount) || 0));
+                    }, 0);
+                },
+                // モード別の表示用合計（数値、空モードは null）
+                get costTotal() {
+                    const m = this.costMode;
+                    if (m === 'empty') return null;
+                    if (m === 'estimate') return this.estimateTotal;
+                    if (m === 'actual') return this.actualTotal;
+                    // hybrid: 行単位で実績 or 見積
+                    const self = this;
+                    return (this.p.costRows || []).reduce(function (sum, r) {
+                        return sum + self.rowEffective(r);
+                    }, 0);
+                },
+                // ラベル
+                get costLabel() {
+                    const m = this.costMode;
+                    if (m === 'empty') return '原価合計';
+                    if (m === 'estimate') return '原価合計（見積）';
+                    if (m === 'hybrid') return '原価合計（見込）';
+                    return '原価合計（実績）';
+                },
+                // 表示文字列（"—" or "1,234,567円"）
+                get costDisplay() {
+                    if (this.costMode === 'empty') return '—';
+                    return this.formatYen(this.costTotal);
+                },
+                // 粗利額（数値）
+                get grossProfit() {
+                    if (this.costMode === 'empty') return null;
+                    const contract = Number(this.p.contractAmount) || 0;
+                    return contract - this.costTotal;
+                },
+                get grossProfitLabel() {
+                    const m = this.costMode;
+                    if (m === 'empty') return '粗利額';
+                    if (m === 'estimate') return '粗利額（見積）';
+                    if (m === 'hybrid') return '粗利額（見込）';
+                    return '粗利額（実績）';
+                },
+                get grossProfitDisplay() {
+                    if (this.costMode === 'empty') return '—';
+                    return this.formatYen(this.grossProfit);
+                },
+                // 粗利率（数値 %）
+                get grossProfitRateValue() {
+                    if (this.costMode === 'empty') return null;
+                    const contract = Number(this.p.contractAmount) || 0;
+                    if (contract === 0) return null;
+                    return (this.grossProfit / contract) * 100;
+                },
+                get grossProfitRateLabel() {
+                    const m = this.costMode;
+                    if (m === 'empty') return '粗利率';
+                    if (m === 'estimate') return '粗利率（見積）';
+                    if (m === 'hybrid') return '粗利率（見込）';
+                    return '粗利率（実績）';
+                },
+                get grossProfitRateDisplay() {
+                    const v = this.grossProfitRateValue;
+                    if (v === null) return '—';
+                    return v.toFixed(1) + '%';
+                },
+                // tfoot 差額合計の表示文字列
+                get diffTotalDisplay() {
+                    const d = this.diffTotal;
+                    if (d === 0) return '±0円';
+                    return (d > 0 ? '+' : '') + Number(d).toLocaleString('ja-JP') + '円';
+                },
+                get diffTotalColor() {
+                    const d = this.diffTotal;
+                    if (d > 0) return '#dc2626';
+                    return '#047857';
+                },
+
+                // ===== 案件データ =====
                 dataPublic: {
                     projectNumber: 'DAD-001',
                     projectName: '松山市道路改良工事(余戸地区)',
@@ -589,10 +682,16 @@
                     endDate: '2026/09/30',
                     completionDate: '—',
                     remarks: '舗装延長 1.2km。現場事務所は市役所借用。',
-                    contractAmount: '25,000,000円',
-                    costAmount: '19,500,000円',
-                    grossProfit: '5,500,000円',
-                    grossProfitRate: '22.0%'
+                    contractAmount: 25000000,
+                    // 全行 実績入力済 → 実績モード
+                    costRows: [
+                        { category: '材料費',   detail: '生コンクリート 30㎥',          estimateAmount: 500000,   actualAmount: 520000,   subcontractor: null },
+                        { category: '外注費',   detail: '土工・重機作業',               estimateAmount: 8000000,  actualAmount: 7500000,  subcontractor: '㈱愛媛土建' },
+                        { category: '外注費',   detail: '擁壁施工',                     estimateAmount: 4500000,  actualAmount: 4500000,  subcontractor: '松山建設㈲' },
+                        { category: '人件費',   detail: '現場監督・作業員（5ヶ月）',    estimateAmount: 6000000,  actualAmount: 5800000,  subcontractor: null },
+                        { category: '機械経費', detail: 'バックホウ・重機リース',       estimateAmount: 2800000,  actualAmount: 2900000,  subcontractor: null },
+                        { category: '諸経費',   detail: '安全対策・仮設・運搬',         estimateAmount: 700000,   actualAmount: 580000,   subcontractor: null }
+                    ]
                 },
                 dataPrivate: {
                     projectNumber: 'DAD-003',
@@ -613,13 +712,39 @@
                     completionDate: '—',
                     paymentDate: '—',
                     remarks: '造成面積 約 1,200㎡。地盤改良工程あり。オーナー希望の擁壁デザイン要確認。',
-                    contractAmount: '32,000,000円',
-                    costAmount: '21,800,000円',
-                    grossProfit: '10,200,000円',
-                    grossProfitRate: '31.9%'
+                    contractAmount: 32000000,
+                    // 実績 2 件 + 未入力 4 件 → 見込モード
+                    costRows: [
+                        { category: '材料費',   detail: '砕石・路盤材',         estimateAmount: 1200000,  actualAmount: 1150000, subcontractor: null },
+                        { category: '外注費',   detail: '造成工事',             estimateAmount: 12000000, actualAmount: null,    subcontractor: '㈱愛媛土建' },
+                        { category: '外注費',   detail: '擁壁工事',             estimateAmount: 5500000,  actualAmount: 5400000, subcontractor: '松山建設㈲' },
+                        { category: '人件費',   detail: '現場監督・作業員',     estimateAmount: 3000000,  actualAmount: null,    subcontractor: null },
+                        { category: '機械経費', detail: '重機リース',           estimateAmount: 1800000,  actualAmount: null,    subcontractor: null },
+                        { category: '諸経費',   detail: '仮設・安全',           estimateAmount: 500000,   actualAmount: null,    subcontractor: null }
+                    ]
                 }
             };
         }
+    </script>
+
+    <script>
+        <!-- fullwidth-to-halfwidth-digit-normalizer -->
+        // 数値入力欄（inputmode="numeric" / type="number"）の全角数字を自動で半角に変換
+        document.addEventListener('input', function (e) {
+            const t = e.target;
+            if (!t || !t.matches) return;
+            if (!t.matches('input[inputmode="numeric"], input[type="number"]')) return;
+            const v = t.value;
+            const nv = v.replace(/[０-９]/g, function (c) {
+                return String.fromCharCode(c.charCodeAt(0) - 0xFEE0);
+            });
+            if (nv !== v) {
+                const start = t.selectionStart;
+                const end = t.selectionEnd;
+                t.value = nv;
+                try { t.setSelectionRange(start, end); } catch (_) {}
+            }
+        }, true);
     </script>
 
 </body>

@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <title>工事案件登録 | DAD（土木事業） | ミツワ都市開発 経営管理システム</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif; background: #f3f4f6; }
@@ -27,6 +28,9 @@
         .form-input:focus { outline: none; border-color: #059669; box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.12); }
         textarea.form-input { height: auto; min-height: 96px; resize: vertical; }
 
+        .stat-card  { background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px 20px; text-align: center; }
+        .stat-label { font-size: 12px; color: #6b7280; margin-bottom: 6px; }
+        .stat-value { font-size: 22px; font-weight: 700; color: #111827; }
         .amount-input-wrap {
             display: flex; align-items: center; gap: 6px;
         }
@@ -243,7 +247,7 @@
                     <div style="margin-bottom: 26px;">
                         <label class="form-label">所在地<span class="required">*</span></label>
                         <input type="text" name="address" class="form-input"
-                               placeholder="例: 愛媛県松山市道後湯之町">
+                               placeholder="例: 愛媛県松山市道後樋又">
                     </div>
 
                 </div>
@@ -286,7 +290,7 @@
                         <div>
                             <label class="form-label">見積額</label>
                             <div class="amount-input-wrap">
-                                <input type="text" name="estimate_amount" class="form-input" placeholder="0" inputmode="numeric">
+                                <input type="text" name="estimate_amount" class="form-input" inputmode="numeric">
                                 <span class="suffix">円</span>
                             </div>
                         </div>
@@ -294,7 +298,7 @@
                         <div>
                             <label class="form-label">受注額<span class="required">*</span></label>
                             <div class="amount-input-wrap">
-                                <input type="text" name="order_amount" class="form-input" placeholder="0" inputmode="numeric">
+                                <input type="text" name="order_amount" class="form-input" inputmode="numeric" x-model="orderAmount">
                                 <span class="suffix">円</span>
                             </div>
                             <div style="font-size: 11px; color: #9ca3af; margin-top: 3px;">※ 受注確定時に入力</div>
@@ -303,10 +307,314 @@
                         <div>
                             <label class="form-label">原価予算</label>
                             <div class="amount-input-wrap">
-                                <input type="text" name="cost_budget" class="form-input" placeholder="0" inputmode="numeric">
+                                <input type="text" name="cost_budget" class="form-input" inputmode="numeric">
                                 <span class="suffix">円</span>
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                <!-- 金額サマリー 4カード（見積モード固定の簡略版） -->
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px;">
+                    <div class="stat-card">
+                        <div class="stat-label">受注額</div>
+                        <div class="stat-value" x-text="formatYen(orderAmount)"></div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">原価合計（見積）</div>
+                        <div class="stat-value" x-text="costDisplay"></div>
+                    </div>
+                    <div class="stat-card" style="background: #ecfdf5; border-color: #a7f3d0;">
+                        <div class="stat-label" style="color: #065f46;">粗利額（見積）</div>
+                        <div class="stat-value" style="color: #047857;" x-text="grossProfitDisplay"></div>
+                    </div>
+                    <div class="stat-card" style="background: #ecfdf5; border-color: #a7f3d0;">
+                        <div class="stat-label" style="color: #065f46;">粗利率（見積）</div>
+                        <div class="stat-value" style="color: #047857;" x-text="grossProfitRateDisplay"></div>
+                    </div>
+                </div>
+
+                <!-- ========== 原価管理 ========== -->
+                <div class="card">
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
+                        <div class="card-title" style="margin-bottom: 0;">原価管理（内訳）</div>
+                        <div style="display: flex; gap: 8px;">
+                            <button type="button" @click="openExcelImport()" x-show="!excelImport.open"
+                                    style="padding: 7px 14px; background: white; border: 1px solid #059669; border-radius: 6px; color: #047857; font-size: 13px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                Excel取込
+                            </button>
+                            <button type="button" @click="addCostItem()"
+                                    style="padding: 7px 14px; background: #059669; border: 1px solid #059669; border-radius: 6px; color: white; font-size: 13px; font-weight: 600; cursor: pointer;">
+                                ＋ 行追加
+                            </button>
+                        </div>
+                    </div>
+
+                    <div style="font-size: 12px; color: #6b7280; margin-bottom: 10px;">
+                        ※ 工事案件登録と同時に原価の内訳を登録できます。実績額・差額は登録後に詳細画面から管理します。Excel実行予算がある場合は「Excel取込」から一括で取り込めます。
+                    </div>
+
+                    <!-- ========== Excel取込パネル ========== -->
+                    <div x-show="excelImport.open" x-cloak x-transition
+                         style="border: 1px solid #a7f3d0; background: #ecfdf5; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+
+                        <!-- ステップインジケーター -->
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 14px; font-size: 12px;">
+                            <span :style="excelImport.step >= 1 ? 'display:inline-flex; align-items:center; gap:4px; color:#047857; font-weight:700;' : 'display:inline-flex; align-items:center; gap:4px; color:#9ca3af;'">
+                                <span :style="excelImport.step >= 1 ? 'width:20px; height:20px; border-radius:50%; background:#059669; color:white; display:inline-flex; align-items:center; justify-content:center; font-size:11px;' : 'width:20px; height:20px; border-radius:50%; background:#e5e7eb; color:#6b7280; display:inline-flex; align-items:center; justify-content:center; font-size:11px;'">1</span>
+                                ファイル選択
+                            </span>
+                            <span style="color:#d1d5db;">─</span>
+                            <span :style="excelImport.step >= 2 ? 'display:inline-flex; align-items:center; gap:4px; color:#047857; font-weight:700;' : 'display:inline-flex; align-items:center; gap:4px; color:#9ca3af;'">
+                                <span :style="excelImport.step >= 2 ? 'width:20px; height:20px; border-radius:50%; background:#059669; color:white; display:inline-flex; align-items:center; justify-content:center; font-size:11px;' : 'width:20px; height:20px; border-radius:50%; background:#e5e7eb; color:#6b7280; display:inline-flex; align-items:center; justify-content:center; font-size:11px;'">2</span>
+                                列マッピング
+                            </span>
+                            <span style="color:#d1d5db;">─</span>
+                            <span :style="excelImport.step >= 3 ? 'display:inline-flex; align-items:center; gap:4px; color:#047857; font-weight:700;' : 'display:inline-flex; align-items:center; gap:4px; color:#9ca3af;'">
+                                <span :style="excelImport.step >= 3 ? 'width:20px; height:20px; border-radius:50%; background:#059669; color:white; display:inline-flex; align-items:center; justify-content:center; font-size:11px;' : 'width:20px; height:20px; border-radius:50%; background:#e5e7eb; color:#6b7280; display:inline-flex; align-items:center; justify-content:center; font-size:11px;'">3</span>
+                                プレビュー
+                            </span>
+                            <button type="button" @click="closeExcelImport()"
+                                    style="margin-left:auto; padding: 4px 10px; background: white; color: #6b7280; font-size: 11px; font-weight: 600; border: 1px solid #d1d5db; border-radius: 6px; cursor: pointer;">取消</button>
+                        </div>
+
+                        <!-- STEP 1: ファイル選択 -->
+                        <div x-show="excelImport.step === 1">
+                            <div @dragover.prevent @drop.prevent="onExcelDrop($event)"
+                                 style="border: 2px dashed #6ee7b7; border-radius: 8px; padding: 28px; text-align: center; background: white;">
+                                <div style="font-size: 14px; color: #374151; margin-bottom: 8px;">Excel ファイル（.xlsx / .xls / .csv）をここにドロップ</div>
+                                <div style="font-size: 12px; color: #6b7280; margin-bottom: 12px;">または</div>
+                                <label style="display: inline-block; padding: 8px 18px; background: #059669; color: white; font-size: 13px; font-weight: 600; border-radius: 6px; cursor: pointer;">
+                                    ファイルを選択
+                                    <input type="file" accept=".xlsx,.xls,.csv" @change="onExcelFile($event)" style="display:none;">
+                                </label>
+                                <div style="font-size: 11px; color: #9ca3af; margin-top: 10px;">列の並びは自由。次のステップでどの列がどのフィールドに対応するか指定できます。</div>
+                            </div>
+                        </div>
+
+                        <!-- STEP 2: 列マッピング -->
+                        <div x-show="excelImport.step === 2">
+                            <div style="font-size: 12px; color: #374151; margin-bottom: 10px;">
+                                <strong x-text="excelImport.fileName"></strong> を読み込みました。各列がどのフィールドに対応するか指定してください。
+                            </div>
+
+                            <div style="display: flex; gap: 16px; margin-bottom: 12px;">
+                                <div style="flex: 1;">
+                                    <label style="display: block; font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 4px;">シート</label>
+                                    <select x-model="excelImport.selectedSheet" @change="loadSheet()"
+                                            style="width: 100%; height: 34px; padding: 0 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; background: white;">
+                                        <template x-for="s in excelImport.sheets" :key="s">
+                                            <option :value="s" x-text="s"></option>
+                                        </template>
+                                    </select>
+                                </div>
+                                <div style="flex: 1;">
+                                    <label style="display: block; font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 4px;">ヘッダー行</label>
+                                    <select x-model.number="excelImport.headerRowIndex" @change="buildColumns()"
+                                            style="width: 100%; height: 34px; padding: 0 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; background: white;">
+                                        <template x-for="n in Math.min(5, excelImport.allRows.length)" :key="n">
+                                            <option :value="n - 1" x-text="n + '行目'"></option>
+                                        </template>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div style="border: 1px solid #d1d5db; border-radius: 8px; overflow: hidden; background: white;">
+                                <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                                    <thead>
+                                        <tr>
+                                            <th style="padding: 8px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; text-align: left; font-weight: 700; color: #374151;">列</th>
+                                            <th style="padding: 8px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; text-align: left; font-weight: 700; color: #374151;">見出し</th>
+                                            <th style="padding: 8px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; text-align: left; font-weight: 700; color: #374151;">サンプル（最大3行）</th>
+                                            <th style="padding: 8px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; text-align: left; font-weight: 700; color: #374151;">対応フィールド</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <template x-for="col in excelImport.columns" :key="col.idx">
+                                            <tr>
+                                                <td style="padding: 6px 8px; border-bottom: 1px solid #f3f4f6; font-weight: 600; color: #6b7280; width: 40px;" x-text="col.letter"></td>
+                                                <td style="padding: 6px 8px; border-bottom: 1px solid #f3f4f6; color: #374151;" x-text="col.header || '(空)'"></td>
+                                                <td style="padding: 6px 8px; border-bottom: 1px solid #f3f4f6; color: #6b7280; font-size: 11px;" x-text="col.samples.filter(function(s){return s !== '';}).slice(0,3).join(' / ') || '—'"></td>
+                                                <td style="padding: 6px 8px; border-bottom: 1px solid #f3f4f6; width: 180px;">
+                                                    <select x-model="col.mapping"
+                                                            style="width: 100%; height: 30px; padding: 0 6px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 12px; background: white;">
+                                                        <option value="">無視</option>
+                                                        <option value="category">費用カテゴリ</option>
+                                                        <option value="detail">内容</option>
+                                                        <option value="amount">見積額</option>
+                                                        <option value="subcontractor">協力業者</option>
+                                                        <option value="note">備考</option>
+                                                    </select>
+                                                </td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div style="display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end;">
+                                <button type="button" @click="excelImport.step = 1"
+                                        style="padding: 8px 18px; background: white; color: #6b7280; font-size: 13px; font-weight: 600; border: 1px solid #d1d5db; border-radius: 6px; cursor: pointer;">← 戻る</button>
+                                <button type="button" @click="goToPreview()"
+                                        style="padding: 8px 18px; background: #059669; color: white; font-size: 13px; font-weight: 600; border: none; border-radius: 6px; cursor: pointer;">プレビュー →</button>
+                            </div>
+                        </div>
+
+                        <!-- STEP 3: プレビュー -->
+                        <div x-show="excelImport.step === 3">
+                            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px; font-size: 12px;">
+                                <span style="font-weight: 700; color: #374151;" x-text="excelImport.previewRows.length + ' 件を読み込み'"></span>
+                                <span x-show="warnCountCategory() > 0" style="padding: 2px 8px; background: #fef3c7; color: #92400e; border-radius: 9999px; font-weight: 600;" x-text="'⚠ カテゴリ候補不一致 ' + warnCountCategory() + ' 件'"></span>
+                                <span x-show="warnCountAmount() > 0" style="padding: 2px 8px; background: #fee2e2; color: #b91c1c; border-radius: 9999px; font-weight: 600;" x-text="'⚠ 金額NG ' + warnCountAmount() + ' 件'"></span>
+                            </div>
+
+                            <div style="max-height: 360px; overflow-y: auto; border: 1px solid #d1d5db; border-radius: 8px; background: white;">
+                                <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                                    <thead style="position: sticky; top: 0; background: #f9fafb; z-index: 1;">
+                                        <tr>
+                                            <th style="padding: 8px; border-bottom: 1px solid #e5e7eb; text-align: left; font-weight: 700; color: #374151; width: 40px;">#</th>
+                                            <th style="padding: 8px; border-bottom: 1px solid #e5e7eb; text-align: left; font-weight: 700; color: #374151;">費用カテゴリ</th>
+                                            <th style="padding: 8px; border-bottom: 1px solid #e5e7eb; text-align: left; font-weight: 700; color: #374151;">内容</th>
+                                            <th style="padding: 8px; border-bottom: 1px solid #e5e7eb; text-align: right; font-weight: 700; color: #374151;">見積額</th>
+                                            <th style="padding: 8px; border-bottom: 1px solid #e5e7eb; text-align: left; font-weight: 700; color: #374151;">協力業者</th>
+                                            <th style="padding: 8px; border-bottom: 1px solid #e5e7eb; text-align: left; font-weight: 700; color: #374151;">備考</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <template x-for="(row, i) in excelImport.previewRows" :key="i">
+                                            <tr>
+                                                <td style="padding: 4px 8px; border-bottom: 1px solid #f3f4f6; color: #9ca3af;" x-text="i + 1"></td>
+                                                <td style="padding: 4px 6px; border-bottom: 1px solid #f3f4f6;">
+                                                    <select x-model="row.category"
+                                                            :style="row.warnCategory ? 'width:100%; height:28px; padding:0 6px; border:1px solid #fbbf24; background:#fef3c7; border-radius:4px; font-size:12px;' : 'width:100%; height:28px; padding:0 6px; border:1px solid #e5e7eb; background:white; border-radius:4px; font-size:12px;'">
+                                                        <option value="">（選択）</option>
+                                                        <option value="材料費">材料費</option>
+                                                        <option value="外注費">外注費</option>
+                                                        <option value="人件費">人件費</option>
+                                                        <option value="機械経費">機械経費</option>
+                                                        <option value="諸経費">諸経費</option>
+                                                        <option value="その他">その他</option>
+                                                    </select>
+                                                    <div x-show="row.warnCategory" style="font-size: 10px; color: #92400e; margin-top: 2px;" x-text="'⚠ 元値: ' + row.rawCategory"></div>
+                                                </td>
+                                                <td style="padding: 4px 6px; border-bottom: 1px solid #f3f4f6;">
+                                                    <input type="text" x-model="row.detail"
+                                                           style="width: 100%; height: 28px; padding: 0 6px; border: 1px solid #e5e7eb; border-radius: 4px; font-size: 12px;">
+                                                </td>
+                                                <td style="padding: 4px 6px; border-bottom: 1px solid #f3f4f6;">
+                                                    <input type="text" x-model="row.amount" inputmode="numeric"
+                                                           :style="row.warnAmount ? 'width:100%; height:28px; padding:0 6px; border:1px solid #f87171; background:#fee2e2; border-radius:4px; font-size:12px; text-align:right;' : 'width:100%; height:28px; padding:0 6px; border:1px solid #e5e7eb; background:white; border-radius:4px; font-size:12px; text-align:right;'">
+                                                </td>
+                                                <td style="padding: 4px 6px; border-bottom: 1px solid #f3f4f6;">
+                                                    <select x-model="row.subcontractor"
+                                                            style="width: 100%; height: 28px; padding: 0 6px; border: 1px solid #e5e7eb; border-radius: 4px; font-size: 12px; background: white;">
+                                                        <option value="">未選択</option>
+                                                        <template x-for="s in subcontractors" :key="s">
+                                                            <option :value="s" x-text="s"></option>
+                                                        </template>
+                                                        <option x-show="row.subcontractor && subcontractors.indexOf(row.subcontractor) < 0" :value="row.subcontractor" x-text="row.subcontractor"></option>
+                                                    </select>
+                                                </td>
+                                                <td style="padding: 4px 6px; border-bottom: 1px solid #f3f4f6;">
+                                                    <input type="text" x-model="row.note"
+                                                           style="width: 100%; height: 28px; padding: 0 6px; border: 1px solid #e5e7eb; border-radius: 4px; font-size: 12px;">
+                                                </td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div style="display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end;">
+                                <button type="button" @click="excelImport.step = 2"
+                                        style="padding: 8px 18px; background: white; color: #6b7280; font-size: 13px; font-weight: 600; border: 1px solid #d1d5db; border-radius: 6px; cursor: pointer;">← 戻る</button>
+                                <button type="button" @click="commitImport()"
+                                        :disabled="excelImport.previewRows.length === 0"
+                                        :style="excelImport.previewRows.length === 0 ? 'padding: 8px 18px; background: #9ca3af; color: white; font-size: 13px; font-weight: 600; border: none; border-radius: 6px; cursor: not-allowed;' : 'padding: 8px 18px; background: #059669; color: white; font-size: 13px; font-weight: 600; border: none; border-radius: 6px; cursor: pointer;'"
+                                        x-text="'取込（' + excelImport.previewRows.length + '件を追加）'"></button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 原価テーブル -->
+                    <div class="border border-gray-200 rounded-lg" style="overflow: hidden;">
+                        <table style="width: 100%; border-collapse: collapse; table-layout: fixed;">
+                            <colgroup>
+                                <col style="width: 13%">
+                                <col style="width: 22%">
+                                <col style="width: 13%">
+                                <col style="width: 15%">
+                                <col style="width: 20%">
+                                <col style="width: 17%">
+                            </colgroup>
+                            <thead>
+                                <tr>
+                                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: left;">費用カテゴリ</th>
+                                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: left;">内容</th>
+                                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: right;">見積額</th>
+                                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: left;">協力業者</th>
+                                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: left;">備考</th>
+                                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: center;">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr x-show="costItems.length === 0">
+                                    <td colspan="6" style="padding: 24px; text-align: center; color: #9ca3af; font-size: 13px;">まだ原価が登録されていません。「＋ 行追加」から追加してください。</td>
+                                </tr>
+                                <template x-for="(item, i) in costItems" :key="i">
+                                    <tr>
+                                        <td style="padding: 6px 8px; border-bottom: 1px solid #f3f4f6;">
+                                            <select x-model="item.category" :name="`cost_items[${i}][category]`"
+                                                    style="width: 100%; height: 36px; padding: 0 8px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 14px; background: white;">
+                                                <option value="">選択</option>
+                                                <option value="材料費">材料費</option>
+                                                <option value="外注費">外注費</option>
+                                                <option value="人件費">人件費</option>
+                                                <option value="機械経費">機械経費</option>
+                                                <option value="諸経費">諸経費</option>
+                                                <option value="その他">その他</option>
+                                            </select>
+                                        </td>
+                                        <td style="padding: 6px 8px; border-bottom: 1px solid #f3f4f6;">
+                                            <input type="text" x-model="item.detail" :name="`cost_items[${i}][detail]`"
+                                                   style="width: 100%; height: 36px; padding: 0 8px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 14px;">
+                                        </td>
+                                        <td style="padding: 6px 8px; border-bottom: 1px solid #f3f4f6;">
+                                            <input type="text" x-model="item.estimateAmount" :name="`cost_items[${i}][estimate_amount]`" inputmode="numeric"
+                                                   style="width: 100%; height: 36px; padding: 0 8px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 14px; text-align: right;">
+                                        </td>
+                                        <td style="padding: 6px 8px; border-bottom: 1px solid #f3f4f6;">
+                                            <select x-model="item.subcontractor" :name="`cost_items[${i}][subcontractor]`"
+                                                    :disabled="item.category !== '外注費'"
+                                                    :style="item.category !== '外注費' ? 'width: 100%; height: 36px; padding: 0 8px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 14px; background: #f3f4f6; color: #9ca3af;' : 'width: 100%; height: 36px; padding: 0 8px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 14px; background: white;'">
+                                                <option value="">未選択</option>
+                                                <template x-for="s in subcontractors" :key="s">
+                                                    <option :value="s" x-text="s"></option>
+                                                </template>
+                                            </select>
+                                        </td>
+                                        <td style="padding: 6px 8px; border-bottom: 1px solid #f3f4f6;">
+                                            <input type="text" x-model="item.note" :name="`cost_items[${i}][note]`"
+                                                   style="width: 100%; height: 36px; padding: 0 8px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 14px;">
+                                        </td>
+                                        <td style="padding: 6px 8px; border-bottom: 1px solid #f3f4f6; text-align: center; white-space: nowrap;">
+                                            <button type="button" @click="removeCostItem(i)"
+                                                    style="padding: 4px 10px; background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer;">
+                                                削除
+                                            </button>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                            <tfoot x-show="costItems.length > 0">
+                                <tr>
+                                    <td colspan="2" style="padding: 10px; background: #f9fafb; font-size: 13px; font-weight: 700; color: #374151; text-align: right; border-top: 1px solid #e5e7eb;">合計見積額</td>
+                                    <td style="padding: 10px; background: #f9fafb; font-size: 14px; font-weight: 700; color: #047857; text-align: right; border-top: 1px solid #e5e7eb;" x-text="formatYen(estimateTotal)"></td>
+                                    <td colspan="3" style="padding: 10px; background: #f9fafb; border-top: 1px solid #e5e7eb;"></td>
+                                </tr>
+                            </tfoot>
+                        </table>
                     </div>
                 </div>
 
@@ -359,9 +667,249 @@
                     '鈴木',
                     '高橋',
                     '伊藤'
-                ]
+                ],
+                subcontractors: [
+                    '㈱愛媛土建',
+                    '松山建設㈲',
+                    '四国電設工業㈱',
+                    '伊予重機㈲',
+                    'みかん運送㈱'
+                ],
+                orderAmount: '',
+                costItems: [],
+                addCostItem() {
+                    this.costItems.push({ category: '', detail: '', estimateAmount: '', actualAmount: '', subcontractor: '', note: '' });
+                },
+                removeCostItem(i) {
+                    this.costItems.splice(i, 1);
+                },
+
+                // === Hybrid Cost Display: simplified version of show.html L520-665 (estimate-only) ===
+                // edits should be coordinated with show.html / edit.html Helper/Computed
+                formatYen(n) {
+                    const num = Number(String(n).replace(/[^0-9-]/g, '')) || 0;
+                    return num.toLocaleString('ja-JP') + '円';
+                },
+                hasActual(row) {
+                    return row && row.actualAmount !== null && row.actualAmount !== undefined && String(row.actualAmount).trim() !== '';
+                },
+                get estimateTotal() {
+                    return this.costItems.reduce(function (s, r) {
+                        return s + (Number(String(r.estimateAmount).replace(/[^0-9-]/g, '')) || 0);
+                    }, 0);
+                },
+                get costDisplay() {
+                    if (this.costItems.length === 0) return '—';
+                    return this.formatYen(this.estimateTotal);
+                },
+                get grossProfit() {
+                    if (this.costItems.length === 0) return null;
+                    const order = Number(String(this.orderAmount).replace(/[^0-9-]/g, '')) || 0;
+                    return order - this.estimateTotal;
+                },
+                get grossProfitDisplay() {
+                    if (this.grossProfit === null) return '—';
+                    return this.formatYen(this.grossProfit);
+                },
+                get grossProfitRateDisplay() {
+                    if (this.costItems.length === 0) return '—';
+                    const order = Number(String(this.orderAmount).replace(/[^0-9-]/g, '')) || 0;
+                    if (order === 0) return '—';
+                    return ((this.grossProfit / order) * 100).toFixed(1) + '%';
+                },
+
+                // ========== Excel取込 ==========
+                excelImport: {
+                    open: false,
+                    step: 1,
+                    fileName: '',
+                    sheets: [],
+                    selectedSheet: '',
+                    allRows: [],
+                    headerRowIndex: 0,
+                    columns: [],
+                    previewRows: [],
+                    categoryOptions: ['材料費', '外注費', '人件費', '機械経費', '諸経費', 'その他']
+                },
+                _workbook: null,
+                openExcelImport() {
+                    this.resetExcelImport();
+                    this.excelImport.open = true;
+                },
+                closeExcelImport() {
+                    this.excelImport.open = false;
+                    this.resetExcelImport();
+                },
+                resetExcelImport() {
+                    this.excelImport.step = 1;
+                    this.excelImport.fileName = '';
+                    this.excelImport.sheets = [];
+                    this.excelImport.selectedSheet = '';
+                    this.excelImport.allRows = [];
+                    this.excelImport.headerRowIndex = 0;
+                    this.excelImport.columns = [];
+                    this.excelImport.previewRows = [];
+                    this._workbook = null;
+                },
+                async onExcelFile(e) {
+                    const file = e.target.files && e.target.files[0];
+                    if (!file) return;
+                    await this.readExcel(file);
+                },
+                async onExcelDrop(e) {
+                    const file = e.dataTransfer.files && e.dataTransfer.files[0];
+                    if (!file) return;
+                    await this.readExcel(file);
+                },
+                async readExcel(file) {
+                    this.excelImport.fileName = file.name;
+                    try {
+                        const buf = await file.arrayBuffer();
+                        const wb = XLSX.read(buf, { type: 'array' });
+                        this._workbook = wb;
+                        this.excelImport.sheets = wb.SheetNames;
+                        this.excelImport.selectedSheet = wb.SheetNames[0];
+                        this.excelImport.headerRowIndex = 0;
+                        this.loadSheet();
+                        this.excelImport.step = 2;
+                    } catch (err) {
+                        alert('ファイルの読み込みに失敗しました: ' + err.message);
+                    }
+                },
+                loadSheet() {
+                    if (!this._workbook) return;
+                    const ws = this._workbook.Sheets[this.excelImport.selectedSheet];
+                    this.excelImport.allRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+                    // ヘッダー行を最初の非空行に自動セット
+                    const firstNonEmpty = this.excelImport.allRows.findIndex(function (r) {
+                        return r.some(function (v) { return String(v).trim() !== ''; });
+                    });
+                    this.excelImport.headerRowIndex = firstNonEmpty >= 0 ? firstNonEmpty : 0;
+                    this.buildColumns();
+                },
+                buildColumns() {
+                    const ei = this.excelImport;
+                    const header = ei.allRows[ei.headerRowIndex] || [];
+                    const body = ei.allRows.slice(ei.headerRowIndex + 1, ei.headerRowIndex + 4);
+                    const colCount = ei.allRows.length
+                        ? Math.max.apply(null, ei.allRows.map(function (r) { return r.length; }))
+                        : 0;
+                    const cols = [];
+                    const self = this;
+                    for (let i = 0; i < colCount; i++) {
+                        const headerText = String(header[i] || '');
+                        cols.push({
+                            idx: i,
+                            letter: XLSX.utils.encode_col(i),
+                            header: headerText,
+                            samples: body.map(function (r) { return String(r[i] === undefined ? '' : r[i]); }),
+                            mapping: self.autoGuess(headerText, body.map(function (r) { return String(r[i] === undefined ? '' : r[i]); }))
+                        });
+                    }
+                    ei.columns = cols;
+                },
+                autoGuess(headerText, samples) {
+                    const h = String(headerText).replace(/\s/g, '');
+                    if (/(費用|費目|項目|分類|カテゴリ|工種)/.test(h)) return 'category';
+                    if (/(内容|摘要|作業|品名|仕様)/.test(h)) return 'detail';
+                    if (/(金額|見積|予算|合計)/.test(h) && !/単価/.test(h)) return 'amount';
+                    if (/(業者|協力|下請|外注先|取引先)/.test(h)) return 'subcontractor';
+                    if (/(備考|メモ|注記|コメント)/.test(h)) return 'note';
+                    // ヘッダーで判別できない場合、サンプル値で「数値らしい列=金額」を推定
+                    if (h === '' && samples && samples.length > 0) {
+                        const numericHits = samples.filter(function (s) {
+                            const n = String(s).replace(/[,，\s円¥]/g, '');
+                            return /^-?\d+(\.\d+)?$/.test(n) && parseInt(n, 10) >= 1000;
+                        }).length;
+                        if (numericHits >= 2) return 'amount';
+                    }
+                    return '';
+                },
+                goToPreview() {
+                    const ei = this.excelImport;
+                    const map = { category: -1, detail: -1, amount: -1, subcontractor: -1, note: -1 };
+                    ei.columns.forEach(function (c) { if (c.mapping) map[c.mapping] = c.idx; });
+                    const body = ei.allRows.slice(ei.headerRowIndex + 1).filter(function (r) {
+                        return r.some(function (v) { return String(v).trim() !== ''; });
+                    });
+                    const self = this;
+                    ei.previewRows = body.map(function (r) {
+                        const rawAmount = map.amount >= 0 ? String(r[map.amount] === undefined ? '' : r[map.amount]) : '';
+                        const normalized = rawAmount.replace(/[０-９]/g, function (c) {
+                            return String.fromCharCode(c.charCodeAt(0) - 0xFEE0);
+                        }).replace(/[,，\s円¥]/g, '');
+                        const isNumeric = /^-?\d+$/.test(normalized);
+                        const nAmount = isNumeric ? normalized : '';
+                        const rawCat = map.category >= 0 ? String(r[map.category] === undefined ? '' : r[map.category]).trim() : '';
+                        const matchedCat = self.matchCategory(rawCat);
+                        return {
+                            category: matchedCat,
+                            rawCategory: rawCat,
+                            detail: map.detail >= 0 ? String(r[map.detail] === undefined ? '' : r[map.detail]) : '',
+                            amount: nAmount,
+                            subcontractor: map.subcontractor >= 0 ? String(r[map.subcontractor] === undefined ? '' : r[map.subcontractor]) : '',
+                            note: map.note >= 0 ? String(r[map.note] === undefined ? '' : r[map.note]) : '',
+                            warnCategory: rawCat !== '' && !matchedCat,
+                            warnAmount: rawAmount !== '' && !isNumeric
+                        };
+                    });
+                    ei.step = 3;
+                },
+                matchCategory(raw) {
+                    const r = String(raw).replace(/\s/g, '');
+                    if (!r) return '';
+                    const exact = this.excelImport.categoryOptions.indexOf(r);
+                    if (exact >= 0) return this.excelImport.categoryOptions[exact];
+                    const alias = {
+                        '材料': '材料費', '材料代': '材料費', '資材': '材料費',
+                        '外注': '外注費', '下請': '外注費', '下請費': '外注費',
+                        '人件': '人件費', '労務': '人件費', '労務費': '人件費',
+                        '機械': '機械経費', '重機': '機械経費', '機材': '機械経費',
+                        '諸経費': '諸経費', '経費': '諸経費'
+                    };
+                    for (const k in alias) {
+                        if (r.indexOf(k) >= 0) return alias[k];
+                    }
+                    return '';
+                },
+                warnCountCategory() {
+                    return this.excelImport.previewRows.filter(function (r) { return r.warnCategory; }).length;
+                },
+                warnCountAmount() {
+                    return this.excelImport.previewRows.filter(function (r) { return r.warnAmount; }).length;
+                },
+                commitImport() {
+                    const self = this;
+                    this.excelImport.previewRows.forEach(function (p) {
+                        self.costItems.push({
+                            category: p.category,
+                            detail: p.detail,
+                            estimateAmount: p.amount,
+                            actualAmount: '',
+                            subcontractor: p.subcontractor,
+                            note: p.note
+                        });
+                    });
+                    this.closeExcelImport();
+                }
             };
         }
+
+        // 金額欄（inputmode="numeric"）の全角数字を自動で半角に変換
+        document.addEventListener('input', function (e) {
+            const t = e.target;
+            if (!t || !t.matches || !t.matches('input[inputmode="numeric"], input[type="number"]')) return;
+            const v = t.value;
+            const nv = v.replace(/[０-９]/g, function (c) {
+                return String.fromCharCode(c.charCodeAt(0) - 0xFEE0);
+            });
+            if (nv !== v) {
+                const start = t.selectionStart;
+                const end = t.selectionEnd;
+                t.value = nv;
+                try { t.setSelectionRange(start, end); } catch (_) {}
+            }
+        }, true);
     </script>
 
 </body>
