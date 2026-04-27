@@ -200,17 +200,10 @@ function __renderSummaryChart() {
     }
 }
 
-// CDN読み込み失敗時のフォールバック
+// CDN読み込み失敗時のエラー表示（cdn.jsdelivr.net 以外は社内ネットワークでブロック対象のためフォールバック不可）
 function __chartLoadError() {
-    // フォールバック: cdnjs.cloudflare.com を試行
-    var fb = document.createElement('script');
-    fb.src = 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.7/chart.umd.min.js';
-    fb.onload = function() { __renderSummaryChart(); };
-    fb.onerror = function() {
-        var el = document.getElementById('chartStatus');
-        if (el) { el.textContent = 'Chart.jsの読み込みに失敗しました。ネットワーク設定を確認してください。'; el.style.display = 'block'; }
-    };
-    document.head.appendChild(fb);
+    var el = document.getElementById('chartStatus');
+    if (el) { el.textContent = 'Chart.jsの読み込みに失敗しました。ネットワーク設定を確認してください。'; el.style.display = 'block'; }
 }
 </script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"
