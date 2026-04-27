@@ -16,6 +16,11 @@
         {{-- 年度・期セレクターは後続タスクで実装 --}}
     </div>
 
-    <p class="text-sm text-gray-500">Phase 2 実装中です（KPI / 成約一覧 / グラフ は後続タスクで実装）。</p>
+    <div class="bg-white border border-gray-200 rounded-lg p-4">
+        <p class="text-sm text-gray-700">成約 DTO 件数: <span class="font-bold">{{ count($items ?? []) }}</span> 件</p>
+        @if(count($items ?? []) > 0)
+            <p class="text-xs text-gray-500 mt-2">先頭1件: {{ $items[0]['code'] ?? '' }} / {{ $items[0]['name'] ?? '' }} / {{ $items[0]['contracted_date']?->format('Y-m-d') ?? '' }}</p>
+        @endif
+    </div>
 
 @endsection
