@@ -294,12 +294,18 @@
                                        style="width: 100%; height: 34px; padding: 0 8px; font-size: 12px; border: 1px solid #d1d5db; border-radius: 4px;">
                             </td>
                             <td style="padding: 6px; border-bottom: 1px solid #f3f4f6;">
-                                <input type="text" :name="'assignments[' + idx + '][start_date]'" x-model="a.start_date" placeholder="YYYY-MM-DD"
-                                       style="width: 100%; height: 34px; padding: 0 8px; font-size: 12px; border: 1px solid #d1d5db; border-radius: 4px;">
+                                @include('dad.projects._date-picker-row', [
+                                    'valueExpr'  => 'a.start_date',
+                                    'nameExpr'   => "'assignments[' + idx + '][start_date]'",
+                                    'assignExpr' => 'a.start_date',
+                                ])
                             </td>
                             <td style="padding: 6px; border-bottom: 1px solid #f3f4f6;">
-                                <input type="text" :name="'assignments[' + idx + '][end_date]'" x-model="a.end_date" placeholder="YYYY-MM-DD"
-                                       style="width: 100%; height: 34px; padding: 0 8px; font-size: 12px; border: 1px solid #d1d5db; border-radius: 4px;">
+                                @include('dad.projects._date-picker-row', [
+                                    'valueExpr'  => 'a.end_date',
+                                    'nameExpr'   => "'assignments[' + idx + '][end_date]'",
+                                    'assignExpr' => 'a.end_date',
+                                ])
                             </td>
                             <td style="padding: 6px; border-bottom: 1px solid #f3f4f6;">
                                 <input type="text" :name="'assignments[' + idx + '][notes]'" x-model="a.notes" maxlength="200"
