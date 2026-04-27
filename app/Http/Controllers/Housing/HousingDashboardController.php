@@ -224,10 +224,7 @@ class HousingDashboardController extends Controller
             $items->count(),
             $perPage,
             $page,
-            [
-                'path' => $request->url(),
-                'query' => $request->query(),
-            ]
+            ['path' => $request->url()]
         );
     }
 
