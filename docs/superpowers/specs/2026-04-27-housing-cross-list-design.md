@@ -269,12 +269,13 @@ class HousingDashboardController extends Controller
 ## 9. N+1 対策
 
 ```php
-HsProperty::with(['createdBy', 'contracts', 'costs'])->get();
-HsCustomOrder::with(['createdBy', 'costs'])->get();
+HsProperty::with(['createdBy', 'contract', 'projectLot', 'procurement'])->get();
+HsCustomOrder::with(['createdBy'])->get();
 ```
 
-- `isSold()` が contracts を見るため eager load 必須
-- `getTotalCost()` `getSellingPriceTotal()` などが costs を見るため eager load 必須
+- `HsProperty::isSold()` / `getSellingPriceTotal()` が `contract`（HasOne）・`projectLot`（BelongsTo）・`procurement`（BelongsTo）を辿るため eager load 必須
+- 原価関連は両モデルとも直接カラム（`land_cost`, `building_cost` 等）のため `costs` リレーションは存在せず eager load 不要
+- `HsCustomOrder` の金額計算は Model 側のヘルパー（`getTotalSellingPrice` / `getTotalCost` / `getTotalProfit` / `getTotalProfitRate`）を利用
 
 ## 10. 段取り（フェーズ）
 
