@@ -203,5 +203,25 @@
         </main>
     </div>
 
+    <script>
+        <!-- fullwidth-to-halfwidth-digit-normalizer -->
+        // 数値入力欄（inputmode="numeric" / type="number"）の全角数字を自動で半角に変換
+        document.addEventListener('input', function (e) {
+            const t = e.target;
+            if (!t || !t.matches) return;
+            if (!t.matches('input[inputmode="numeric"], input[type="number"]')) return;
+            const v = t.value;
+            const nv = v.replace(/[０-９]/g, function (c) {
+                return String.fromCharCode(c.charCodeAt(0) - 0xFEE0);
+            });
+            if (nv !== v) {
+                const start = t.selectionStart;
+                const end = t.selectionEnd;
+                t.value = nv;
+                try { t.setSelectionRange(start, end); } catch (_) {}
+            }
+        }, true);
+    </script>
+
 </body>
 </html>
