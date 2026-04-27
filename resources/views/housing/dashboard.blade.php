@@ -33,4 +33,6 @@
 
     @include('housing._dashboard_contracted', ['paginated' => $paginated])
 
+    @include('housing._dashboard_chart', ['monthly' => $monthly])
+
 @endsection

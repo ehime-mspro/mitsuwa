@@ -32,6 +32,7 @@ class HousingDashboardController extends Controller
         $items = $this->collectContractedItems($fiscalYear, $period);
         $kpi = $this->buildKpi($items);
         $paginated = $this->paginate($items, 20, $request);
+        $monthly = $fiscalYear === 'all' ? null : $this->buildMonthly($items, (int) $fiscalYear, $period);
 
         $fiscalYearOptions = $this->buildFiscalYearOptions();
 
@@ -40,7 +41,7 @@ class HousingDashboardController extends Controller
             'period' => $period,
             'fiscalYearOptions' => $fiscalYearOptions,
             'kpi' => $kpi,
-            'monthly' => null,
+            'monthly' => $monthly,
             'paginated' => $paginated,
             'request' => $request,
         ]);
@@ -207,6 +208,44 @@ class HousingDashboardController extends Controller
             'cost_total'     => $costTotal,
             'profit_total'   => $profitTotal,
             'profit_rate'    => $profitRate,
+        ];
+    }
+
+    /**
+     * 月次集計（成約件数 - 建売成約 + 注文引渡し合算）
+     * 全期: 12ヶ月（5月〜翌4月）
+     * 上期: 6ヶ月（5月〜10月）
+     * 下期: 6ヶ月（11月〜翌4月）
+     */
+    protected function buildMonthly(Collection $items, int $fy, string $period): array
+    {
+        // 月ラベル + 範囲
+        if ($period === 'first') {
+            $labels = ['5月','6月','7月','8月','9月','10月'];
+            $start = Carbon::create($fy, 5, 1)->startOfDay();
+        } elseif ($period === 'second') {
+            $labels = ['11月','12月','1月','2月','3月','4月'];
+            $start = Carbon::create($fy, 11, 1)->startOfDay();
+        } else {
+            $labels = ['5月','6月','7月','8月','9月','10月','11月','12月','1月','2月','3月','4月'];
+            $start = Carbon::create($fy, 5, 1)->startOfDay();
+        }
+        $count = count($labels);
+        $data = array_fill(0, $count, 0);
+
+        foreach ($items as $it) {
+            $date = $it['contracted_date'];
+            if (!$date) continue;
+            // start からの月オフセット（0始まり）
+            $offset = ($date->year - $start->year) * 12 + ($date->month - $start->month);
+            if ($offset >= 0 && $offset < $count) {
+                $data[$offset]++;
+            }
+        }
+
+        return [
+            'labels' => $labels,
+            'data'   => $data,
         ];
     }
 
