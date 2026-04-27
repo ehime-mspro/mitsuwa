@@ -113,21 +113,21 @@
                             <span class="text-[13px] font-medium text-gray-900">{{ $u->name }}</span>
                         </td>
                         <td class="px-3.5 py-2.5 lg:px-5 lg:py-3.5 border-b border-gray-100 whitespace-nowrap text-center">
-                            <span class="inline-block px-2 py-0.5 rounded text-[11px] font-medium
+                            <span class="inline-block px-2 rounded text-[11px] font-medium
                                 @switch($u->role)
                                     @case(App\Enums\UserRole::Executive) bg-amber-100 text-amber-800 @break
                                     @case(App\Enums\UserRole::Manager) bg-blue-100 text-blue-800 @break
                                     @case(App\Enums\UserRole::Staff) bg-gray-100 text-gray-600 @break
                                 @endswitch
-                            ">{{ $u->role->label() }}</span>
+                            " style="padding-top:2px; padding-bottom:2px;">{{ $u->role->label() }}</span>
                         </td>
                         <td class="px-3.5 py-2.5 lg:px-5 lg:py-3.5 border-b border-gray-100 text-[11px] text-gray-700 whitespace-nowrap">
                             {{ $u->departments->pluck('name')->join('・') }}
                         </td>
                         <td class="px-3.5 py-2.5 lg:px-5 lg:py-3.5 border-b border-gray-100 whitespace-nowrap text-center">
-                            <span class="inline-block px-2 py-0.5 rounded text-[11px] font-medium
+                            <span class="inline-block px-2 rounded text-[11px] font-medium
                                 {{ $u->status === App\Enums\UserStatus::Active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800' }}
-                            ">{{ $u->status->label() }}</span>
+                            " style="padding-top:2px; padding-bottom:2px;">{{ $u->status->label() }}</span>
                         </td>
                         <td class="px-3.5 py-2.5 lg:px-5 lg:py-3.5 border-b border-gray-100 text-[12px] text-gray-400 whitespace-nowrap">
                             {{ $u->last_login_at ? $u->last_login_at->format('m/d H:i') : '—' }}

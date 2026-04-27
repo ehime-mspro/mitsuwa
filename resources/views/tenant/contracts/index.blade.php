@@ -86,7 +86,7 @@
                                         {{ $contract->contract_number }}
                                     </a>
                                     @if($contract->isTerminated())
-                                        <span class="inline-block ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold text-gray-500 bg-gray-200 align-middle">解約</span>
+                                        <span class="inline-block ml-1.5 px-1.5 rounded text-[10px] font-bold text-gray-500 bg-gray-200 align-middle" style="padding-top:2px; padding-bottom:2px;">解約</span>
                                     @endif
                                     @if(! $contract->rent_start_date)
                                         <span title="家賃発生日が未設定です" class="ml-1 text-amber-600 cursor-help">⚠</span>

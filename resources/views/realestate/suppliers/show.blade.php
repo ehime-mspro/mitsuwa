@@ -17,7 +17,7 @@
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
         <div class="flex items-center gap-3">
             <h1 class="text-lg font-bold text-gray-900">{{ $supplier->supplier_code }}</h1>
-            <span class="inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">{{ $supplier->type->label() }}</span>
+            <span class="inline-block px-2.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700" style="padding-top:2px; padding-bottom:2px;">{{ $supplier->type->label() }}</span>
         </div>
         <div style="display: flex; gap: 8px; align-items: center;">
             <a href="{{ route('realestate.suppliers.index') }}"

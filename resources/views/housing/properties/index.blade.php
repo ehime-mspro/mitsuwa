@@ -87,7 +87,7 @@
                                    class="text-sm font-semibold" style="color: #1d4ed8; text-decoration: underline;">{{ $prop->property_code }}</a>
                             </td>
                             <td class="px-3 py-3 border-b border-gray-100 text-center whitespace-nowrap">
-                                <span class="inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold" style="{{ $prop->getDisplayBadgeStyle() }}">{{ $prop->getDisplayStatusLabel() }}</span>
+                                <span class="inline-block px-2.5 rounded-full text-xs font-semibold" style="padding-top:2px; padding-bottom:2px; {{ $prop->getDisplayBadgeStyle() }}">{{ $prop->getDisplayStatusLabel() }}</span>
                             </td>
                             <td class="py-3 border-b border-gray-100" style="padding-left: 16px;">
                                 <div class="text-sm font-semibold text-gray-900">{{ $prop->property_name }}</div>

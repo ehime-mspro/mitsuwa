@@ -23,7 +23,7 @@
             <h1 class="text-lg font-bold text-gray-900">{{ $property->property_name }}</h1>
             <div class="flex items-center gap-2 mt-1">
                 <span class="text-sm text-gray-500">{{ $property->property_code }}</span>
-                <span class="inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold " style="{{ $property->getDisplayBadgeStyle() }}">{{ $property->getDisplayStatusLabel() }}</span>
+                <span class="inline-block px-2.5 rounded-full text-xs font-semibold " style="padding-top:2px; padding-bottom:2px; {{ $property->getDisplayBadgeStyle() }}">{{ $property->getDisplayStatusLabel() }}</span>
             </div>
         </div>
         <div style="display: flex; gap: 8px; align-items: center;">
@@ -61,7 +61,7 @@
             <div style="padding: 10px 14px; font-size: 14px; border-bottom: 1px solid #e5e7eb;">{{ $property->property_code }}</div>
             <div style="background: #f9fafb; padding: 10px 14px; font-size: 13px; color: #4b5563; font-weight: 500; border-bottom: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb;">ステータス</div>
             <div style="padding: 10px 14px; border-bottom: 1px solid #e5e7eb;">
-                <span class="inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold " style="{{ $property->getDisplayBadgeStyle() }}">{{ $property->getDisplayStatusLabel() }}</span>
+                <span class="inline-block px-2.5 rounded-full text-xs font-semibold " style="padding-top:2px; padding-bottom:2px; {{ $property->getDisplayBadgeStyle() }}">{{ $property->getDisplayStatusLabel() }}</span>
             </div>
 
             <div style="background: #f9fafb; padding: 10px 14px; font-size: 13px; color: #4b5563; font-weight: 500; border-bottom: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb;">物件名</div>
