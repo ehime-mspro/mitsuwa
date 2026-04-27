@@ -98,6 +98,7 @@
     {{-- 住宅事業 --}}
     @if($hasHousingAccess)
         <x-sidebar-group label="住宅事業">
+            <x-sidebar-item :href="url('/housing')" label="ダッシュボード" :active="request()->is('housing') || request()->is('housing/')" />
             <x-sidebar-item :href="url('/housing/properties')" label="建売物件" :active="request()->is('housing/properties*')" />
             <x-sidebar-item :href="url('/housing/custom-orders')" label="注文住宅" :active="request()->is('housing/custom-orders*')" />
             <x-sidebar-item :href="url('/housing/contracts')" label="契約管理" :active="request()->is('housing/contracts*')" />
@@ -324,6 +325,7 @@
     
     @if($hasHousingAccess)
         <x-sidebar-group label="住宅事業">
+            <x-sidebar-item :href="url('/housing')" label="ダッシュボード" :active="request()->is('housing') || request()->is('housing/')" />
             <x-sidebar-item :href="url('/housing/properties')" label="建売物件" :active="request()->is('housing/properties*')" />
             <x-sidebar-item :href="url('/housing/custom-orders')" label="注文住宅" :active="request()->is('housing/custom-orders*')" />
             <x-sidebar-item :href="url('/housing/contracts')" label="契約管理" :active="request()->is('housing/contracts*')" />
