@@ -16,6 +16,35 @@
   .kpi-value { font-size: 22px; font-weight: 700; color: #111827; margin-top: 4px; }
   .kpi-sub { font-size: 12px; color: #9ca3af; margin-top: 4px; }
   .kpi-profit { color: #047857; }
+  .section { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin-bottom: 20px; }
+  .section-title { font-size: 14px; font-weight: 600; color: #374151; margin: 0 0 12px; }
+
+  .matrix { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .matrix th, .matrix td { padding: 8px 12px; border-bottom: 1px solid #f3f4f6; text-align: center; }
+  .matrix th { background: #f9fafb; font-weight: 600; color: #6b7280; font-size: 12px; }
+  .matrix th:first-child, .matrix td:first-child { text-align: left; padding-left: 16px; }
+  .matrix .total-row td { font-weight: 700; background: #f9fafb; }
+  .matrix .clickable { color: #1d4ed8; cursor: pointer; text-decoration: underline; }
+  .matrix .zero { color: #d1d5db; }
+
+  .filter-bar { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; flex-wrap: wrap; }
+  .filter-bar select, .filter-bar input { height: 36px; padding: 0 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; background: #fff; }
+  .filter-bar input[type="text"] { flex: 1; min-width: 160px; }
+  .filter-clear { height: 36px; padding: 0 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 12px; color: #9ca3af; background: #fff; cursor: pointer; }
+
+  .table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .table th { padding: 10px; background: #f9fafb; border-bottom: 2px solid #e5e7eb; font-size: 12px; font-weight: 600; color: #6b7280; text-align: center; white-space: nowrap; }
+  .table td { padding: 10px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; white-space: nowrap; }
+  .table .text-right { text-align: right; }
+  .table .text-left { text-align: left; }
+  .table .name-col { white-space: normal; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 9999px; font-size: 11px; font-weight: 600; }
+  .badge-tateuri { background: #ede9fe; color: #5b21b6; }
+  .badge-custom  { background: #dbeafe; color: #1e40af; }
+  .profit-pos { color: #047857; font-weight: 700; }
+  .profit-neg { color: #dc2626; font-weight: 700; }
+  .detail-btn { display: inline-block; padding: 3px 10px; font-size: 12px; font-weight: 600; color: #b45309; border: 1px solid #b45309; border-radius: 5px; background: #fff; text-decoration: none; cursor: pointer; }
+
   @media (max-width: 768px) { .kpi-grid { grid-template-columns: 1fr 1fr; } }
 </style>
 </head>
@@ -56,7 +85,74 @@
     </div>
   </div>
 
-  <!-- 以降のセクションは Task 2 / 3 で追加 -->
+  <!-- ステータスマトリクス -->
+  <div class="section">
+    <h2 class="section-title">ステータス別件数</h2>
+    <table class="matrix">
+      <thead>
+        <tr><th>区分</th><th>建売</th><th>注文</th><th>計</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>商談・見積</td><td><a class="clickable">2</a></td><td><a class="clickable">5</a></td><td>7</td></tr>
+        <tr><td>設計中</td><td><a class="clickable">3</a></td><td><a class="clickable">4</a></td><td>7</td></tr>
+        <tr><td>建設中</td><td><a class="clickable">5</a></td><td><a class="clickable">3</a></td><td>8</td></tr>
+        <tr><td>完成・販売中</td><td><a class="clickable">8</a></td><td><a class="clickable">3</a></td><td>11</td></tr>
+        <tr><td>成約・引渡し</td><td><a class="clickable">5</a></td><td><a class="clickable">4</a></td><td>9</td></tr>
+        <tr class="total-row"><td>計</td><td>23</td><td>19</td><td>42</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 詳細テーブル + フィルター -->
+  <div class="section" id="detail-table">
+    <h2 class="section-title">案件詳細</h2>
+    <div class="filter-bar">
+      <select><option>種別: 全て</option><option>建売</option><option>注文</option></select>
+      <select><option>ステータス: 全て</option><option>商談・見積</option><option>設計中</option><option>建設中</option><option>完成・販売中</option><option>成約・引渡し</option></select>
+      <select><option>担当者: 全て</option><option>田中</option><option>佐藤</option></select>
+      <input type="text" placeholder="案件番号・案件名・住所">
+      <button class="filter-clear">クリア</button>
+    </div>
+    <div style="overflow-x: auto;">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>種別</th><th>番号</th><th class="text-left">案件名</th><th>ステータス</th>
+            <th>担当者</th><th>契約日</th><th>売上</th><th>原価</th><th>粗利</th><th>詳細</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="badge badge-tateuri">建売</span></td>
+            <td><a href="#">HSP-0123</a></td>
+            <td class="text-left name-col"><div style="font-weight:600;">松山市〇〇分譲地 1号棟</div><div style="font-size:11px;color:#9ca3af;">愛媛県松山市〇〇 1-2-3</div></td>
+            <td><span class="badge" style="background:#c7d2fe;color:#3730a3;">販売中</span></td>
+            <td>田中</td>
+            <td>—</td>
+            <td class="text-right">35,000,000円</td>
+            <td class="text-right">28,000,000円</td>
+            <td class="text-right profit-pos">7,000,000円</td>
+            <td><a class="detail-btn">詳細</a></td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-custom">注文</span></td>
+            <td><a href="#">HCO-0042</a></td>
+            <td class="text-left name-col"><div style="font-weight:600;">今治市〇〇邸新築工事</div><div style="font-size:11px;color:#9ca3af;">愛媛県今治市〇〇 4-5</div></td>
+            <td><span class="badge" style="background:#fed7aa;color:#9a3412;">着工</span></td>
+            <td>佐藤</td>
+            <td>2026-04-01</td>
+            <td class="text-right">28,000,000円</td>
+            <td class="text-right">22,000,000円</td>
+            <td class="text-right profit-pos">6,000,000円</td>
+            <td><a class="detail-btn">詳細</a></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div style="text-align: right; font-size: 12px; color: #6b7280; margin-top: 8px;">全 42 件</div>
+  </div>
+
+  <!-- 以降のセクションは Task 3 で追加 -->
 
 </div>
 </body>
