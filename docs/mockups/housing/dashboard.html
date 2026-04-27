@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>住宅事業ダッシュボード - モック</title>
+<style>
+  body { font-family: 'Hiragino Sans', sans-serif; margin: 0; padding: 24px; background: #f9fafb; color: #111827; }
+  .container { max-width: 1200px; margin: 0 auto; }
+  .h1 { font-size: 18px; font-weight: 700; color: #111827; margin: 0; }
+  .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+  .year-select { height: 36px; padding: 0 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; }
+
+  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+  .kpi-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px 18px; }
+  .kpi-label { font-size: 12px; color: #6b7280; }
+  .kpi-value { font-size: 22px; font-weight: 700; color: #111827; margin-top: 4px; }
+  .kpi-sub { font-size: 12px; color: #9ca3af; margin-top: 4px; }
+  .kpi-profit { color: #047857; }
+  @media (max-width: 768px) { .kpi-grid { grid-template-columns: 1fr 1fr; } }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header-row">
+    <h1 class="h1">住宅事業ダッシュボード</h1>
+    <select class="year-select">
+      <option>2026年度</option>
+      <option>2025年度</option>
+      <option>2024年度</option>
+      <option>全期間</option>
+    </select>
+  </div>
+
+  <!-- KPI カード -->
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-label">案件件数</div>
+      <div class="kpi-value">42件</div>
+      <div class="kpi-sub">建売 23 / 注文 19</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">売上見込合計</div>
+      <div class="kpi-value">1,250,000,000円</div>
+      <div class="kpi-sub">&nbsp;</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">原価合計</div>
+      <div class="kpi-value">980,000,000円</div>
+      <div class="kpi-sub">&nbsp;</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">粗利合計</div>
+      <div class="kpi-value kpi-profit">270,000,000円</div>
+      <div class="kpi-sub">粗利率 21.6%</div>
+    </div>
+  </div>
+
+  <!-- 以降のセクションは Task 2 / 3 で追加 -->
+
+</div>
+</body>
+</html>
