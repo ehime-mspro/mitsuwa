@@ -119,7 +119,9 @@
             <dd class="px-3.5 py-2.5 text-sm text-gray-900 border-b border-gray-200">
                 @if($project->supplier)
                     <a href="{{ route('realestate.suppliers.show', $project->supplier) }}" class="text-emerald-600 font-medium hover:underline">{{ $project->supplier->supplier_code }} {{ $project->supplier->name }}</a>
-                @else<span class="text-gray-400">—</span>@endif
+                @else
+                    <span class="text-gray-400">—</span>
+                @endif
             </dd>
             <dt class="bg-gray-50 px-3.5 py-2.5 text-sm text-gray-600 font-medium border-b border-r border-gray-200">情報入手日</dt>
             <dd class="px-3.5 py-2.5 text-sm text-gray-900 border-b border-gray-200">{{ $project->info_obtained_date?->format('Y/m/d') ?? '—' }}</dd>

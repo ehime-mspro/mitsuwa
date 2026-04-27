@@ -98,13 +98,25 @@
                             <td class="px-3 py-3 border-b border-gray-100 text-sm text-center whitespace-nowrap">{{ $p->transaction_type->label() }}</td>
                             <td class="py-3 border-b border-gray-100 text-sm font-medium whitespace-nowrap" style="padding-left: 16px;">{{ $p->property_name }}</td>
                             <td class="py-3 border-b border-gray-100 text-sm whitespace-nowrap" style="text-align: right; padding-right: 16px;">
-                                @if($p->purchase_price){{ number_format($p->purchase_price) }}円@else<span class="text-gray-400">—</span>@endif
+                                @if($p->purchase_price)
+                                    {{ number_format($p->purchase_price) }}円
+                                @else
+                                    <span class="text-gray-400">—</span>
+                                @endif
                             </td>
                             <td class="py-3 border-b border-gray-100 text-sm whitespace-nowrap" style="text-align: right; padding-right: 16px;">
-                                @if($p->target_selling_price){{ number_format($p->target_selling_price) }}円@else<span class="text-gray-400">—</span>@endif
+                                @if($p->target_selling_price)
+                                    {{ number_format($p->target_selling_price) }}円
+                                @else
+                                    <span class="text-gray-400">—</span>
+                                @endif
                             </td>
                             <td class="py-3 border-b border-gray-100 text-sm whitespace-nowrap" style="text-align: right; padding-right: 16px;">
-                                @if($profit !== null)<span class="text-emerald-600 font-semibold">{{ number_format($profit) }}円</span>@else<span class="text-gray-400">—</span>@endif
+                                @if($profit !== null)
+                                    <span class="text-emerald-600 font-semibold">{{ number_format($profit) }}円</span>
+                                @else
+                                    <span class="text-gray-400">—</span>
+                                @endif
                             </td>
                             <td class="px-3 py-3 border-b border-gray-100 text-sm text-center whitespace-nowrap">{{ $p->info_obtained_date?->format('Y/m/d') ?? '—' }}</td>
                             <td class="px-3 py-3 border-b border-gray-100 text-center whitespace-nowrap">
