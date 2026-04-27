@@ -123,9 +123,10 @@ class ProjectController extends Controller
         $costs = $this->validateCosts($request);
 
         $validated['created_by'] = $request->user()->id;
-        $validated['project_code'] = $this->generateProjectCode();
 
         $project = DB::transaction(function () use ($validated, $costs) {
+            // 採番はトランザクション内で行い、同時 INSERT による project_code 衝突を防ぐ
+            $validated['project_code'] = $this->generateProjectCode();
             $project = DadProject::create($validated);
             foreach ($costs as $costData) {
                 $project->costs()->create($costData);
@@ -283,11 +284,16 @@ class ProjectController extends Controller
 
     /**
      * 案件番号自動採番（DAD-NNN）
+     *
+     * 必ず DB::transaction() の内側から呼ぶこと。lockForUpdate() で対象行（および空テーブルの場合は
+     * gap lock）を取得し、同時実行による採番衝突を防ぐ。最後の防衛線として DB の UNIQUE 制約
+     * (uk_dad_projects_code) があるため、二重防御となる。
      */
     private function generateProjectCode(): string
     {
         $last = DadProject::where('project_code', 'like', 'DAD-%')
             ->orderByDesc('id')
+            ->lockForUpdate()
             ->first();
 
         if (!$last) return 'DAD-001';
