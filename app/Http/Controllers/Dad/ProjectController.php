@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Dad;
 
+use App\Enums\DadCostCategory;
 use App\Enums\DadProjectStatus;
 use App\Enums\DadProjectType;
 use App\Http\Controllers\Controller;
@@ -12,6 +13,8 @@ use App\Models\DadSubcontractor;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
 /**
  * DAD 工事案件コントローラー
@@ -254,28 +257,45 @@ class ProjectController extends Controller
      */
     private function validateCosts(Request $request): array
     {
-        $costs = $request->input('costs', []);
-        $result = [];
+        // 空行（カテゴリー未入力）は受領対象外として除外
+        $costs = collect($request->input('costs', []))
+            ->reject(fn ($row) => empty($row['cost_category'] ?? null))
+            ->values()
+            ->all();
 
-        foreach ($costs as $row) {
-            // カテゴリーが空 = 空行とみなしスキップ
-            if (empty($row['cost_category'])) continue;
-
-            // 数値正規化（カンマ・全角・通貨記号除去は app.blade.php のグローバルリスナーで処理済み想定）
-            $estimated = isset($row['estimated_amount']) && $row['estimated_amount'] !== '' ? (int) $row['estimated_amount'] : null;
-            $actual = isset($row['actual_amount']) && $row['actual_amount'] !== '' ? (int) $row['actual_amount'] : null;
-
-            $result[] = [
-                'cost_category' => $row['cost_category'],
-                'description' => $row['description'] ?? null,
-                'estimated_amount' => $estimated,
-                'actual_amount' => $actual,
-                'subcontractor_id' => !empty($row['subcontractor_id']) ? (int) $row['subcontractor_id'] : null,
-                'notes' => $row['notes'] ?? null,
-            ];
+        if (empty($costs)) {
+            return [];
         }
 
-        return $result;
+        // Enum・整数・FK を Laravel Validator で宣言的にチェック
+        $validated = Validator::make(
+            ['costs' => $costs],
+            [
+                'costs.*.cost_category'    => ['required', Rule::enum(DadCostCategory::class)],
+                'costs.*.description'      => ['nullable', 'string', 'max:500'],
+                'costs.*.estimated_amount' => ['nullable', 'integer', 'min:0'],
+                'costs.*.actual_amount'    => ['nullable', 'integer', 'min:0'],
+                'costs.*.subcontractor_id' => ['nullable', 'integer', 'exists:dad_subcontractors,id'],
+                'costs.*.notes'            => ['nullable', 'string'],
+            ],
+            [
+                'costs.*.cost_category.required' => '原価カテゴリーを選択してください。',
+                'costs.*.cost_category.enum'     => '原価カテゴリーが不正です。',
+                'costs.*.subcontractor_id.exists' => '指定された協力業者が存在しません。',
+            ]
+        )->validate();
+
+        // 数値正規化（カンマ・全角・通貨記号除去は app.blade.php のグローバルリスナーで処理済み想定）
+        return collect($validated['costs'])->map(fn ($row) => [
+            'cost_category'    => $row['cost_category'],
+            'description'      => $row['description'] ?? null,
+            'estimated_amount' => isset($row['estimated_amount']) && $row['estimated_amount'] !== ''
+                ? (int) $row['estimated_amount'] : null,
+            'actual_amount'    => isset($row['actual_amount']) && $row['actual_amount'] !== ''
+                ? (int) $row['actual_amount'] : null,
+            'subcontractor_id' => !empty($row['subcontractor_id']) ? (int) $row['subcontractor_id'] : null,
+            'notes'            => $row['notes'] ?? null,
+        ])->all();
     }
 
     /**
