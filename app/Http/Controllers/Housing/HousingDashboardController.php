@@ -30,6 +30,7 @@ class HousingDashboardController extends Controller
         }
 
         $items = $this->collectContractedItems($fiscalYear, $period);
+        $kpi = $this->buildKpi($items);
 
         $fiscalYearOptions = $this->buildFiscalYearOptions();
 
@@ -37,7 +38,7 @@ class HousingDashboardController extends Controller
             'fiscalYear' => $fiscalYear,
             'period' => $period,
             'fiscalYearOptions' => $fiscalYearOptions,
-            'kpi' => null,
+            'kpi' => $kpi,
             'monthly' => null,
             'paginated' => null,
             'request' => $request,
@@ -176,6 +177,39 @@ class HousingDashboardController extends Controller
     }
 
     /**
+     * フルネームから姓のみ抽出（既存規約: 姓のみ表示）
+     */
+    protected function lastNameOnly(?string $fullName): ?string
+    {
+        if ($fullName === null) return null;
+        $parts = preg_split('/\s+/u', trim($fullName));
+        return $parts[0] ?? $fullName;
+    }
+
+    /**
+     * KPI 集計（成約のみ - 件数・売上・原価・粗利・粗利率・種別内訳）
+     */
+    protected function buildKpi(Collection $items): array
+    {
+        $sellingTotal = (int) $items->whereNotNull('selling_price')->sum('selling_price');
+        $costTotal = (int) $items->whereNotNull('total_cost')->sum('total_cost');
+        $profitTotal = (int) $items->whereNotNull('gross_profit')->sum('gross_profit');
+        $profitRate = $sellingTotal > 0
+            ? round(($profitTotal / $sellingTotal) * 100, 1)
+            : null;
+
+        return [
+            'count_total'    => $items->count(),
+            'count_building' => $items->where('type', 'building')->count(),
+            'count_custom'   => $items->where('type', 'custom-order')->count(),
+            'selling_total'  => $sellingTotal,
+            'cost_total'     => $costTotal,
+            'profit_total'   => $profitTotal,
+            'profit_rate'    => $profitRate,
+        ];
+    }
+
+    /**
      * 年度オプションリスト（過去2年〜来年度 + 全期間）
      */
     protected function buildFiscalYearOptions(): array
@@ -187,16 +221,6 @@ class HousingDashboardController extends Controller
         }
         $options['all'] = '全期間';
         return $options;
-    }
-
-    /**
-     * フルネームから姓のみ抽出（既存規約: 姓のみ表示）
-     */
-    protected function lastNameOnly(?string $fullName): ?string
-    {
-        if ($fullName === null) return null;
-        $parts = preg_split('/\s+/u', trim($fullName));
-        return $parts[0] ?? $fullName;
     }
 
     /**

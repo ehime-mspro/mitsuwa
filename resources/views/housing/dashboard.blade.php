@@ -13,9 +13,22 @@
 
     <div class="flex items-center justify-between mb-5">
         <h1 class="text-lg font-bold text-gray-900">住宅事業ダッシュボード</h1>
-        {{-- 年度・期セレクターは後続タスクで実装 --}}
+        <form method="GET" action="{{ route('housing.dashboard') }}" style="display: flex; gap: 8px;">
+            <select name="fiscal_year" onchange="this.form.submit()"
+                    class="h-9 px-3 border border-gray-300 rounded-md text-sm bg-white">
+                @foreach($fiscalYearOptions as $value => $label)
+                    <option value="{{ $value }}" {{ $fiscalYear === $value ? 'selected' : '' }}>{{ $label }}</option>
+                @endforeach
+            </select>
+            <select name="period" onchange="this.form.submit()"
+                    class="h-9 px-3 border border-gray-300 rounded-md text-sm bg-white">
+                <option value="all"    {{ $period === 'all' ? 'selected' : '' }}>全期</option>
+                <option value="first"  {{ $period === 'first' ? 'selected' : '' }}>上期</option>
+                <option value="second" {{ $period === 'second' ? 'selected' : '' }}>下期</option>
+            </select>
+        </form>
     </div>
 
-    <p class="text-sm text-gray-500">Phase 3 実装中（KPI / 成約一覧 / グラフは後続タスクで実装）</p>
+    @include('housing._dashboard_kpi', ['kpi' => $kpi])
 
 @endsection
