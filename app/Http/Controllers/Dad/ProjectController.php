@@ -151,6 +151,25 @@ class ProjectController extends Controller
         $staffUsers = User::orderBy('name')->get();
         $employees = DadEmployee::where('status', 'active')->orderBy('employee_code')->get();
 
+        // 現在紐付く発注者が論理削除済みなら、編集画面で選択肢が消えないよう
+        // そのレコードのみドロップダウンに追加で含める
+        if ($project->client_id && !$clients->contains('id', $project->client_id)) {
+            $deletedClient = DadClient::withTrashed()->find($project->client_id);
+            if ($deletedClient) {
+                $clients->push($deletedClient);
+            }
+        }
+
+        // 原価明細で参照されている協力業者が論理削除済みなら、同様にドロップダウンへ追加
+        $referencedSubIds = $project->costs->pluck('subcontractor_id')->filter()->unique();
+        $missingSubIds = $referencedSubIds->diff($subcontractors->pluck('id'))->all();
+        if (!empty($missingSubIds)) {
+            $deletedSubs = DadSubcontractor::withTrashed()
+                ->whereIn('id', $missingSubIds)
+                ->get();
+            $subcontractors = $subcontractors->concat($deletedSubs);
+        }
+
         return view('dad.projects.edit', compact(
             'project', 'clients', 'subcontractors', 'staffUsers', 'employees'
         ));
