@@ -14,6 +14,11 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // MySQL以外（SQLite等）はスキップ。SHOW COLUMNS は MySQL 専用構文のため
+        if (DB::connection()->getDriverName() !== 'mysql') {
+            return;
+        }
+
         // MySQL ENUM型の場合のみ実行（VARCHAR型なら何もしない）
         $columnType = DB::selectOne("SHOW COLUMNS FROM investments WHERE Field = 'status'")->Type ?? '';
 
@@ -24,6 +29,10 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (DB::connection()->getDriverName() !== 'mysql') {
+            return;
+        }
+
         $columnType = DB::selectOne("SHOW COLUMNS FROM investments WHERE Field = 'status'")->Type ?? '';
 
         if (str_starts_with($columnType, 'enum')) {
