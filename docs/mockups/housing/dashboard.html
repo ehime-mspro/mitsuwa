@@ -88,7 +88,7 @@
 
   <!-- 月次棒グラフ -->
   <div class="section">
-    <h2 class="section-title">月次成約</h2>
+    <h2 class="section-title">月次成約件数</h2>
     <div style="height: 240px;">
       <canvas id="monthlyChart"></canvas>
     </div>
@@ -149,7 +149,7 @@
       responsive: true,
       maintainAspectRatio: false,
       scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { stepSize: 1 } } },
-      plugins: { legend: { position: 'top' } }
+      plugins: { legend: { display: false } }
     }
   });
 })();
