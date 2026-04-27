@@ -1,6 +1,7 @@
 # 住宅事業 横断ダッシュボード（BACKLOG 優先度3）設計書
 
 - 起票日: 2026-04-27
+- モック反映改訂日: 2026-04-27
 - 対応 BACKLOG: 優先度3「住宅事業 横断一覧」
 - 関連既存機能: `/housing/contracts`（契約のみの横断一覧、別画面として併存）
 
@@ -8,13 +9,15 @@
 
 住宅事業（建売物件 HsProperty + 注文住宅 HsCustomOrder）を 1 画面で経営層が俯瞰できる「**住宅事業ダッシュボード**」を新設する。
 
-- 既存の `/housing/contracts` は **契約済みのみ**を扱う。本タスクは **契約前段階を含む全件**を対象にし、経営サマリー視点で件数・金額・粗利を一望する。
+ユーザーレビューを経て、ダッシュボードは「**成約フォーカス**」（成約・引渡し済みの実績把握）に特化することが決定した。
+
+- 既存の `/housing/contracts` は契約済みのみを扱う **明細一覧**。本タスクは「ダッシュボード視点の集約画面」として、KPI と月次推移グラフ、成約一覧をセット表示する。
 - 優先度4「STEP 12 ダッシュボード」とは役割が異なる。あちらは全事業横断（テナント・不動産・住宅）の経営ダッシュボード。こちらは住宅事業限定。
 
 ## 2. 主要ユーザー・利用シーン
 
-- **経営層**（executive）: 月次レビュー時に住宅事業の全体把握
-- **住宅事業担当者**（housing department）: 自部署案件の進捗確認
+- **経営層**（executive）: 月次レビュー時に住宅事業の成約状況を俯瞰
+- **住宅事業担当者**（housing department）: 自部署の成約実績確認
 - 権限: `$isExecutive || $user->belongsToDepartment('housing')`（他コントローラーと同条件）
 
 ## 3. URL・ナビゲーション
@@ -23,37 +26,45 @@
 |------|------|
 | URL | `/housing`（housing prefix のルート） |
 | ルート名 | `housing.dashboard` |
-| サイドバー | 住宅事業グループの**先頭**に「ダッシュボード」を追加（98行目周辺・326行目周辺の2箇所） |
+| サイドバー | 住宅事業グループの**先頭**に「ダッシュボード」を追加（モバイル / デスクトップ 2 箇所） |
 | パンくず | 住宅事業 › ダッシュボード |
 
 既存の `/housing/properties` `/housing/custom-orders` `/housing/contracts` `/housing/customers` には影響を与えない。
 
 ## 4. 画面構成
 
-ページは上から下に以下のセクションで構成する。
-
 ```
 ┌─────────────────────────────────────────────┐
-│ 住宅事業ダッシュボード        [2026年度 ▼]   │  ← ヘッダー + 年度セレクター
+│ 住宅事業ダッシュボード   [2026年度 ▼] [全期 ▼] │  ← ヘッダー + 年度 + 期セレクター
 ├─────────────────────────────────────────────┤
-│ [件数][売上見込][原価][粗利+率]              │  ← KPI カード 4枚
+│ [成約件数][売上合計][原価合計][粗利合計+率]   │  ← KPI カード4枚（成約のみ集計）
 ├─────────────────────────────────────────────┤
-│ ステータスマトリクス（5×3）                  │  ← 大分類グルーピング
+│ 成約一覧（8列テーブル、20件/ページ）         │  ← 成約済みのみ表示
 ├─────────────────────────────────────────────┤
-│ 月次成約・引渡し件数 棒グラフ                │  ← Chart.js（年度選択時のみ）
-├─────────────────────────────────────────────┤
-│ [フィルターバー]                             │  ← 種別 / グループ / 担当者 / キーワード
-│ 詳細テーブル（ページング 20件/ページ）       │
+│ 月次成約件数（年度内）緑色単一系列棒グラフ    │  ← Chart.js
 └─────────────────────────────────────────────┘
 ```
 
-すべてのセクションは**選択中の年度フィルターを共有**する。年度は「2024年度」〜「現在年度+1」 + 「全期間」。
+すべてのセクションは **選択中の年度フィルターと期フィルターを共有** する。
+
+### 4.1 年度・期フィルター
+
+| フィルター | パラメータ | 値 | デフォルト |
+|-----------|-----------|---|----------|
+| 年度 | `fiscal_year` | "2024".."現在年度+1" / "all"（全期間） | 現在年度 |
+| 期 | `period` | "all"（全期）/ "first"（上期）/ "second"（下期） | "all" |
+
+期の定義:
+- 上期 (`first`): 5月1日 〜 10月31日
+- 下期 (`second`): 11月1日 〜 翌年4月30日
+
+「全期間」（`fiscal_year=all`）選択時、期セレクターはクライアント側で disabled 風に表示するが、サーバー側は値を無視する（データ範囲に意味がないため）。
 
 ## 5. データ・DTO 設計
 
 ### 5.1 統合 DTO（PHP 連想配列）
 
-両モデルを共通形に正規化して扱う。
+成約一覧テーブルには **status_group が `sold` の DTO のみ** を渡す（KPI も同じ DTO 集合で集計する）。
 
 ```php
 [
@@ -62,51 +73,70 @@
     'code'              => string,   // property_code | order_code
     'name'              => string,   // property_name | order_name
     'address'           => ?string,
-    'status_value'      => string,   // 元 Enum 値
-    'status_label'      => string,
-    'status_group'      => 'consult' | 'design' | 'construction' | 'completed' | 'sold',
-    'status_style'      => string,   // バッジ inline style
+    'status_label'      => string,   // '成約' (建売) / '引渡し済み' (注文)
+    'status_style'      => string,   // バッジ inline style（ただし成約一覧では非表示）
     'staff_name'        => ?string,  // 姓のみ（既存規約）
     'staff_id'          => ?int,
-    'key_date'          => ?Carbon,  // ソート基準
+    'contracted_date'   => ?Carbon,  // 成約日（建売: HsContract.contract_date / 注文: delivery_date）
     'selling_price'     => ?int,
     'total_cost'        => ?int,
     'gross_profit'      => ?int,
     'gross_profit_rate' => ?float,
-    'detail_url'        => string,
+    'detail_url'        => string,   // 建売: housing.properties.show / 注文: housing.custom-orders.show
 ]
 ```
 
-### 5.2 ステータス → グループ マッピング
+### 5.2 成約判定ロジック
 
-| グループ | ラベル | 建売 (HousingPropertyStatus) | 注文 (CustomOrderStatus) |
-|----------|--------|------------------------------|--------------------------|
-| `consult` | 商談・見積 | Estimation | Consultation, Estimation |
-| `design` | 設計中 | Design | Design |
-| `construction` | 建設中 | Construction | Construction |
-| `completed` | 完成・販売中 | Completed, OnSale (`isSold()=false`) | Contracted, Completed |
-| `sold` | 成約・引渡し | OnSale (`isSold()=true`) | Delivered |
+DTO 生成時点で **成約済みのみ** をフィルターする。
 
-注: 建売の "成約済み" は `HsProperty::isSold()`（既存メソッド）で判定。OnSale ステータスのうち成約済みは `sold` グループへ振り分ける。
+| 種別 | 成約条件 | 成約日 |
+|------|---------|-------|
+| 建売 (HsProperty) | `isSold() === true`（`HsContract` が紐づいている） | `HsContract.contract_date` |
+| 注文 (HsCustomOrder) | `status === Delivered`（引渡し済み） | `delivery_date` |
 
-### 5.3 並び替え基準 `key_date`
+成約日が null のレコードは集計対象外とする（理論上発生しないが防御的に除外）。
 
-- **建売**: `HsContract.contract_date`（成約済み）→ なければ `HsProperty.created_at`
-- **注文**: `HsCustomOrder.contract_date` → なければ `HsCustomOrder.created_at`
-- ソート方向: 降順（新しい順）
+### 5.3 年度・期フィルター適用
 
-### 5.4 月次集計の対象日
+`contracted_date` が以下の範囲内にあるレコードのみ採用:
 
-| 種別 | 集計対象日 |
-|------|----------|
-| 建売 | `HsContract.contract_date`（成約日） |
-| 注文 | `HsCustomOrder.delivery_date`（引渡し日） |
+```php
+// 年度範囲
+if ($fiscalYear !== 'all') {
+    $fy = (int) $fiscalYear;
+    if ($period === 'first') {
+        // 上期: 5月1日〜10月31日
+        [$start, $end] = [Carbon::create($fy, 5, 1)->startOfDay(), Carbon::create($fy, 10, 31)->endOfDay()];
+    } elseif ($period === 'second') {
+        // 下期: 11月1日〜翌年4月30日
+        [$start, $end] = [Carbon::create($fy, 11, 1)->startOfDay(), Carbon::create($fy + 1, 4, 30)->endOfDay()];
+    } else {
+        // 全期: 5月1日〜翌年4月30日
+        [$start, $end] = [Carbon::create($fy, 5, 1)->startOfDay(), Carbon::create($fy + 1, 4, 30)->endOfDay()];
+    }
+    // contracted_date が [start, end] の範囲内のみ採用
+}
+// fiscal_year === 'all' の場合は期フィルター無視、全件採用
+```
 
-該当日が null のレコードは月次集計から除外する。
+### 5.4 並び替え
 
-### 5.5 金額の null 扱い
+`contracted_date` 降順（新しい成約が上）。
 
-- 注文住宅で `building_contract_price` が未設定 → `selling_price = null`
+### 5.5 月次集計（グラフ用）
+
+選択中の年度・期フィルター適用後の DTO 集合から、`contracted_date` の月ごとに件数集計（建売 + 注文を合算した単一系列）。
+
+- 全期: 5月〜翌4月（12ヶ月）
+- 上期: 5月〜10月（6ヶ月）
+- 下期: 11月〜翌4月（6ヶ月）
+
+`fiscal_year=all` の場合、グラフは非表示。
+
+### 5.6 金額の null 扱い
+
+- 注文住宅で `getTotalSellingPrice()` が null → `selling_price = null`
 - KPI 集計時は null を除外して合計
 - テーブルは `—` 表示
 
@@ -115,89 +145,64 @@
 ### 6.1 ページヘッダー
 
 - タイトル: 「住宅事業ダッシュボード」（`text-lg font-bold`）
-- 年度セレクター: `<select onchange="form.submit()">`、過去2年〜来年度 + 「全期間」
-- 既存ヘッダー UI（`flex items-center justify-between`）を踏襲
+- 年度セレクター: 過去2年〜来年度 + 「全期間」、`<select onchange="form.submit()">`
+- 期セレクター: 全期 / 上期 / 下期、`<select onchange="form.submit()">`
+- 2 つの select を `display: flex; gap: 8px;` ラッパーで横並び
 
-### 6.2 KPI カード（4枚・横並び）
+### 6.2 KPI カード（4枚・横並び・成約のみ集計）
 
 | カード | 1段目（ラベル） | 2段目（値） | 3段目（サブ） |
 |--------|---------------|-------------|--------------|
-| 案件件数 | 案件件数 | 〇〇件 | 建売〇 注文〇 |
-| 売上見込合計 | 売上見込合計 | ○○○,○○○,○○○円 | （null除外） |
+| 成約件数 | 成約件数 | 〇件 | 建売〇 / 注文〇 |
+| 売上合計 | 売上合計 | ○○○,○○○,○○○円 | （null除外） |
 | 原価合計 | 原価合計 | ○○○,○○○,○○○円 | — |
 | 粗利合計 | 粗利合計 | ○○○,○○○,○○○円 | 粗利率 〇〇.〇% |
 
 - レイアウト: `grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3`
 - カード: `bg-white border border-gray-200 rounded-lg px-4 py-3`
-- 粗利合計の色: 黒（プラス） / 赤 `#dc2626`（マイナス）
+- 粗利合計: 黒（プラス） / 赤 `#dc2626`（マイナス）
 
-### 6.3 ステータスマトリクス
+### 6.3 成約一覧テーブル
 
-```
-              建売     注文      計
-─────────────────────────────────────
-商談・見積     2件      5件     7件
-設計中        3件      4件     7件
-建設中        5件      3件     8件
-完成・販売中   8件      3件    11件
-成約・引渡し   5件      4件     9件
-─────────────────────────────────────
-計           23件     19件    42件
-```
+8列構成（20件/ページのページング）:
 
-- 各セル: クリック可能（0件以外）。クリック時 `?status_group=construction&type=building` を付けて同ページに遷移し `#detail-table` へ anchor スクロール
-- 0件セル: グレー表示・clickable なし
-- 通常 `<table>` で表現。スタイルは既存テーブルに準拠
+| 列 | 内容 |
+|----|------|
+| 種別 | バッジ（建売: 緑系 `background:#d1fae5;color:#065f46;` / 注文: 青系 `background:#dbeafe;color:#1e40af;`）。中央揃え |
+| 案件名 | 1段目: `name`（太字）／ 2段目: `address`（小さめグレー）。左揃え |
+| 担当者 | 姓のみ。中央揃え |
+| 成約日 | YYYY-MM-DD（`contracted_date`）。中央揃え |
+| 売上 | `number_format($selling_price)円`、null は `—`。右揃え |
+| 原価 | `number_format($total_cost)円`、null は `—`。右揃え |
+| 粗利 | 値+`円`、プラス緑 `#047857` 太字 / マイナス赤 `#dc2626`。右揃え |
+| 詳細 | 詳細ボタン。中央揃え |
 
-### 6.4 月次棒グラフ
+詳細リンク:
+- 建売: `route('housing.properties.show', $id)`
+- 注文: `route('housing.custom-orders.show', $id)`
 
-- ライブラリ: Chart.js v4 CDN（`cdn.jsdelivr.net/npm/chart.js`）
-- 種類: スタック棒グラフ
-- データ: 横軸 5月〜翌4月（12ヶ月）、縦軸 件数。建売成約件数 + 注文引渡し件数 を積み上げ
-- 「全期間」選択時はグラフ全体を非表示
+ページング: 20件/ページ（既存規約）。フィルターバーは設けない（年度・期はヘッダーで一括制御）。
+0件時の空状態: `colspan="8"` で「該当する成約がありません」。
+
+### 6.4 月次成約件数 棒グラフ
+
+- ライブラリ: Chart.js v4 CDN（`cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js`）
+- 種類: 単一系列の棒グラフ（建売成約 + 注文引渡し合算）
+- 色: `#047857`（粗利と同色の濃い緑）
+- 凡例: 非表示（`legend: { display: false }`）
+- データ: 横軸 = 期に応じた月数、縦軸 = 件数
+- `fiscal_year=all` の場合グラフ全体を非表示
 
 Controller から渡すデータ形式:
 
 ```php
 $monthly = [
-    'labels'   => ['5月','6月','7月','8月','9月','10月','11月','12月','1月','2月','3月','4月'],
-    'building' => [3,5,2,...],    // 建売成約件数（12要素）
-    'custom'   => [1,2,4,...],    // 注文引渡し件数（12要素）
+    'labels' => ['5月','6月','7月','8月','9月','10月','11月','12月','1月','2月','3月','4月'],  // 全期: 12要素 / 上期: 6要素 / 下期: 6要素
+    'data'   => [4,7,6,5,6,4,3,5,4,6,5,4],  // 件数（要素数 = labels と同じ）
 ];
 ```
 
 Blade 側で `@json($monthly)` で JS に渡し、`new Chart(...)` を生成。Controller で配列を組み立てるため `@json()` 内で関数を呼ばない（CLAUDE.md 規則準拠）。
-
-### 6.5 詳細テーブル
-
-| 列 | 内容 |
-|----|------|
-| 種別 | バッジ（建売: 紫系 `background:#ede9fe;color:#5b21b6;` / 注文: 青系 `background:#dbeafe;color:#1e40af;`） |
-| 番号 | `code`（リンク= 詳細ページ） |
-| 案件名 | 1段目: `name`（太字）／ 2段目: `address`（小さめグレー） |
-| ステータス | 既存 Enum の `badgeStyle()` 流用 |
-| 担当者 | 姓のみ |
-| 契約日 | `key_date`（YYYY-MM-DD） |
-| 売上 | `number_format($selling_price)円` / null は `—` |
-| 原価 | `number_format($total_cost)円` / null は `—` |
-| 粗利 | 値+`円`、プラス緑 `#047857` 太字 / マイナス赤 |
-| 詳細 | 詳細ボタン（既存 `properties/index.blade.php` のスタイル踏襲） |
-
-- ページング: 20件/ページ（既存規約）
-- 0件時の空状態: `colspan="10"` で「該当する案件がありません」
-
-### 6.6 フィルターバー
-
-| フィルター | パラメータ名 | 値 | UI |
-|-----------|-------------|---|---|
-| 年度 | `fiscal_year` | "2024".."現+1" / "all" | ヘッダー右の `<select>` |
-| 種別 | `type` | "building" / "custom-order" / 空 | テーブル直前の `<select>` |
-| ステータスグループ | `status_group` | 5値 / 空 | `<select>` |
-| 担当者 | `staff_id` | User.id / 空 | `<select>` |
-| キーワード | `keyword` | 文字列 | `<input type="text">`（コード・名前・住所 部分一致） |
-
-- すべて `onchange` で即時送信
-- クリアボタン: `/housing` に戻る（既存規約に準拠 `h-9 px-3 border border-gray-200 rounded-md text-xs text-gray-400`）
 
 ## 7. ファイル構成
 
@@ -205,24 +210,23 @@ Blade 側で `@json($monthly)` で JS に渡し、`new Chart(...)` を生成。C
 
 | パス | 役割 | 想定行数 |
 |------|------|----------|
-| `app/Http/Controllers/Housing/HousingDashboardController.php` | 本機能コントローラ | ~250 |
-| `resources/views/housing/dashboard.blade.php` | ダッシュボード本体 | ~200 |
+| `app/Http/Controllers/Housing/HousingDashboardController.php` | 本機能コントローラ | ~200 |
+| `resources/views/housing/dashboard.blade.php` | ダッシュボード本体 | ~150 |
 | `resources/views/housing/_dashboard_kpi.blade.php` | KPI カード partial | ~50 |
-| `resources/views/housing/_dashboard_matrix.blade.php` | マトリクス partial | ~70 |
+| `resources/views/housing/_dashboard_contracted.blade.php` | 成約一覧 partial | ~120 |
 | `resources/views/housing/_dashboard_chart.blade.php` | グラフ partial | ~80 |
-| `resources/views/housing/_dashboard_table.blade.php` | フィルター + テーブル partial | ~150 |
-| `docs/mockups/housing/dashboard.html` | 先行モック（HTML 単体） | ~600 |
+| `docs/mockups/housing/dashboard.html` | 先行モック（既に作成・承認済み） | 約170行 |
 
 ### 7.2 既存ファイル変更
 
-| パス | 変更内容 |
+| パス | 修正内容 |
 |------|---------|
-| `routes/web.php` | `Route::get('/housing', [HousingDashboardController::class, 'index'])->name('housing.dashboard');` を housing 認証グループの先頭に追加 |
+| `routes/web.php` | `Route::get('/', [HousingDashboardController::class, 'index'])->name('housing.dashboard');` を housing 認証グループの先頭に追加 |
 | `resources/views/layouts/partials/sidebar.blade.php` | 住宅事業グループの先頭に「ダッシュボード」を追加（モバイル / デスクトップ 2 箇所） |
 
 ### 7.3 既存ファイルへの影響
 
-`HsContractListController` `PropertyController` `CustomOrderController` `HsContract` `HsProperty` `HsCustomOrder` のいずれも変更しない。`HsProperty::isSold()` 等の既存メソッドのみ呼び出す。
+`HsContractListController` `PropertyController` `CustomOrderController` `HsContract` `HsProperty` `HsCustomOrder` のいずれも変更しない。`HsProperty::isSold()` `getTotalCost()` 等の既存メソッドのみ呼び出す。
 
 ## 8. HousingDashboardController 構造
 
@@ -232,39 +236,47 @@ class HousingDashboardController extends Controller
     public function index(Request $request)
     {
         $fiscalYear = $request->input('fiscal_year', (string) $this->getCurrentFiscalYear());
+        $period = $request->input('period', 'all');
 
-        $items = $this->collectItems($fiscalYear);
+        // 1. 成約済み DTO のみ収集（年度・期フィルター適用済み）
+        $items = $this->collectContractedItems($fiscalYear, $period);
+
+        // 2. KPI 集計
         $kpi = $this->buildKpi($items);
-        $matrix = $this->buildMatrix($items);
-        $monthly = $fiscalYear === 'all' ? null : $this->buildMonthly($items, (int)$fiscalYear);
-        $tableItems = $this->applyTableFilters($items, $request);
-        $paginated = $this->paginate($tableItems, 20, $request);
-        $filterOptions = $this->buildFilterOptions();
+
+        // 3. 月次グラフデータ（fiscal_year=all 時は null）
+        $monthly = $fiscalYear === 'all' ? null : $this->buildMonthly($items, (int)$fiscalYear, $period);
+
+        // 4. 成約一覧（20件ページング）
+        $paginated = $this->paginate($items, 20, $request);
+
+        // 5. 年度オプションリスト
+        $fiscalYearOptions = $this->buildFiscalYearOptions();
 
         return view('housing.dashboard', compact(
-            'fiscalYear', 'kpi', 'matrix', 'monthly', 'paginated', 'filterOptions', 'request'
+            'fiscalYear', 'period', 'fiscalYearOptions', 'kpi', 'monthly', 'paginated', 'request'
         ));
     }
 
-    protected function collectItems(string $fiscalYear): \Illuminate\Support\Collection;
+    protected function collectContractedItems(string $fiscalYear, string $period): \Illuminate\Support\Collection;
     protected function mapPropertyToDto(HsProperty $p): array;
     protected function mapOrderToDto(HsCustomOrder $o): array;
-    protected function classifyStatusGroup(string $type, string $statusValue, bool $isSold): string;
     protected function buildKpi(\Illuminate\Support\Collection $items): array;
-    protected function buildMatrix(\Illuminate\Support\Collection $items): array;
-    protected function buildMonthly(\Illuminate\Support\Collection $items, int $fy): array;
-    protected function applyTableFilters(\Illuminate\Support\Collection $items, Request $request): \Illuminate\Support\Collection;
+    protected function buildMonthly(\Illuminate\Support\Collection $items, int $fy, string $period): array;
     protected function paginate(\Illuminate\Support\Collection $items, int $perPage, Request $request): \Illuminate\Pagination\LengthAwarePaginator;
-    protected function buildFilterOptions(): array;
+    protected function buildFiscalYearOptions(): array;
     protected function getCurrentFiscalYear(): int;
+    protected function periodRange(int $fy, string $period): array;  // [Carbon $start, Carbon $end]
+    protected function lastNameOnly(?string $fullName): ?string;
 }
 ```
 
 設計判断:
 
-- **HsContractListController と独立**: 役割が違う（あちらは契約のみ、こちらは全件＋ダッシュボード集計）
+- **HsContractListController と独立**: 役割が違う（あちらは契約のみの一覧、こちらは成約フォーカスのダッシュボード）
 - **DTO は配列**: 専用クラスは作らない。Blade で `$item['code']` で参照、変換コストゼロ
-- **集計ヘルパーは protected メソッド**: 単一目的のため Trait 化はしない
+- **成約フィルターは DTO 生成時点で適用**: 後段の集計・テーブル・グラフはすべて成約済みのみを扱う
+- **applyTableFilters や buildMatrix は不要**: フィルターはヘッダーの年度・期のみ、マトリクスは無し
 
 ## 9. N+1 対策
 
@@ -281,28 +293,23 @@ HsCustomOrder::with(['createdBy'])->get();
 
 | Phase | 作業 | 完了基準 |
 |-------|------|---------|
-| 1 | モック作成 `docs/mockups/housing/dashboard.html` | 全パーツ静的に見た目確認可能 |
-| 1.5 | **ユーザーモックレビュー** | 承認 |
-| 2 | Controller 骨格 + ルート + サイドバー | DTO 生成・KPI 集計まで動作（テーブル仮表示） |
-| 3 | ビュー本体 + KPI + マトリクス + テーブル | Chart.js 以外動作 |
-| 4 | Chart.js 連携 + フィルター | 全機能動作 |
+| 1 | モック作成 `docs/mockups/housing/dashboard.html` | 全パーツ静的に見た目確認可能（**完了済み**） |
+| 1.5 | **ユーザーモックレビュー** | 承認（**完了済み — 成約フォーカス確定**） |
+| 2 | Controller 骨格 + ルート + サイドバー | DTO 生成・KPI 集計まで動作 |
+| 3 | KPI + 成約一覧 ビュー | テーブル・KPI 完成 |
+| 4 | Chart.js 連携 | 月次グラフ動作 |
 | 5 | 30点品質監査 + 動作確認チェックリスト | チェックリスト消し込み |
 | 6 | コミット・PR | feature ブランチでまとめる |
-
-CLAUDE.md「実装する前はデザインモックで確認して進めること」に従い、Phase 1.5 でユーザー承認を必須とする。
 
 ## 11. テスト戦略
 
 PHPUnit 整備が限定的なため、**手動動作確認チェックリスト**で代替（Phase 5 で実施）。
 
-- [ ] 年度切り替えで KPI・マトリクス・グラフ・テーブルが連動更新
-- [ ] マトリクスのセルクリックで詳細テーブルが絞り込まれ anchor スクロール
-- [ ] 種別 / ステータスグループ / 担当者 / キーワード フィルター単独動作
-- [ ] 複数フィルター組み合わせ動作
-- [ ] クリアボタンで全フィルター解除
+- [ ] 年度切り替えで KPI・成約一覧・グラフが連動更新
+- [ ] 期切り替え（全期/上期/下期）で表示データ範囲が変わる
+- [ ] 「全期間」選択時にグラフ非表示
 - [ ] ページング動作（20件/ページ）
 - [ ] 0件時の空状態表示
-- [ ] 「全期間」選択時にグラフ非表示
 - [ ] 詳細リンク: 建売→ properties.show、注文→ custom-orders.show 遷移
 - [ ] 権限なしユーザーで 403
 - [ ] CSS: Vite ビルド未収録クラスの混入なし（`docs/RULES.md` 参照）
@@ -314,10 +321,10 @@ PHPUnit 整備が限定的なため、**手動動作確認チェックリスト*
 
 | リスク | 内容 | 対策 |
 |-------|------|-----|
-| パフォーマンス | コレクションマージ → 自前ページング方式は数千件超で遅延 | 当面 HsProperty + HsCustomOrder の合計が数百件想定。データ増加時に UNION クエリへ移行 |
-| `isSold()` 重複呼び出し | 物件ごとに contracts を走査 | `with('contracts')` で eager load 済み |
-| 注文住宅の `contract_date` null | 商談・設計段階は null | `key_date` フォールバックで `created_at` を使用 |
-| 月次グラフの「引渡し」定義 | `delivery_date` カラムを採用 | 確認済（HsCustomOrder.php 42行目で casts 済み） |
+| パフォーマンス | コレクションマージ → 自前ページング方式は数千件超で遅延 | 当面、住宅事業の成約件数は年数件〜数十件規模。データ増加時に UNION クエリへ移行 |
+| `isSold()` 重複呼び出し | 物件ごとに contract を走査 | `with('contract')` で eager load 済み |
+| 注文住宅の `delivery_date` null | 引渡し前は null | 成約フィルターで自動的に除外される |
+| 期跨ぎ集計 | 下期は年をまたぐ（11月-翌4月） | `periodRange()` で適切に Carbon 範囲を生成 |
 
 ## 13. 受け入れ条件
 
