@@ -109,46 +109,34 @@
                         {{-- 構造名 --}}
                         <td class="text-sm text-gray-800 py-2.5 px-3">
                             {{-- 編集中 --}}
-                            <template x-if="editingId === item.id">
-                                <input type="text" x-model="editingName"
-                                       class="w-full px-3 border border-emerald-400 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none"
-                                       style="height:36px;"
-                                       @keydown.enter="submitEdit()"
-                                       @keydown.escape="cancelEdit()">
-                            </template>
+                            <input x-show="editingId === item.id" type="text" x-model="editingName"
+                                   class="w-full px-3 border border-emerald-400 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none"
+                                   style="height:36px;"
+                                   @keydown.enter="submitEdit()"
+                                   @keydown.escape="cancelEdit()">
                             {{-- 削除確認中 --}}
-                            <template x-if="deletingId === item.id">
-                                <span class="text-red-600 font-semibold" x-text="item.name"></span>
-                            </template>
+                            <span x-show="deletingId === item.id" class="text-red-600 font-semibold" x-text="item.name"></span>
                             {{-- 通常表示 --}}
-                            <template x-if="editingId !== item.id && deletingId !== item.id">
-                                <span x-text="item.name"></span>
-                            </template>
+                            <span x-show="editingId !== item.id && deletingId !== item.id" x-text="item.name"></span>
                         </td>
 
                         {{-- 操作 --}}
                         <td class="text-center py-2.5 px-3">
                             {{-- 編集中 --}}
-                            <template x-if="editingId === item.id">
-                                <div class="flex justify-center gap-1.5">
-                                    <button @click="submitEdit()" class="px-2.5 py-1 bg-emerald-600 text-white text-xs font-semibold rounded hover:bg-emerald-700 transition-colors cursor-pointer">保存</button>
-                                    <button @click="cancelEdit()" class="px-2.5 py-1 bg-gray-100 text-gray-600 text-xs font-semibold rounded hover:bg-gray-200 transition-colors cursor-pointer">取消</button>
-                                </div>
-                            </template>
+                            <div x-show="editingId === item.id" class="flex justify-center gap-1.5">
+                                <button @click="submitEdit()" class="px-2.5 py-1 bg-emerald-600 text-white text-xs font-semibold rounded hover:bg-emerald-700 transition-colors cursor-pointer">保存</button>
+                                <button @click="cancelEdit()" class="px-2.5 py-1 bg-gray-100 text-gray-600 text-xs font-semibold rounded hover:bg-gray-200 transition-colors cursor-pointer">取消</button>
+                            </div>
                             {{-- 削除確認中 --}}
-                            <template x-if="deletingId === item.id">
-                                <div class="flex justify-center gap-1.5">
-                                    <button @click="submitDelete()" class="px-2.5 py-1 bg-red-600 text-white text-xs font-semibold rounded hover:bg-red-700 transition-colors cursor-pointer">削除</button>
-                                    <button @click="cancelDelete()" class="px-2.5 py-1 bg-gray-100 text-gray-600 text-xs font-semibold rounded hover:bg-gray-200 transition-colors cursor-pointer">取消</button>
-                                </div>
-                            </template>
+                            <div x-show="deletingId === item.id" class="flex justify-center gap-1.5">
+                                <button @click="submitDelete()" class="px-2.5 py-1 bg-red-600 text-white text-xs font-semibold rounded hover:bg-red-700 transition-colors cursor-pointer">削除</button>
+                                <button @click="cancelDelete()" class="px-2.5 py-1 bg-gray-100 text-gray-600 text-xs font-semibold rounded hover:bg-gray-200 transition-colors cursor-pointer">取消</button>
+                            </div>
                             {{-- 通常 --}}
-                            <template x-if="editingId !== item.id && deletingId !== item.id">
-                                <div class="flex justify-center gap-1.5">
-                                    <button @click="startEdit(item.id, item.name)" class="px-2.5 py-1 bg-gray-100 text-gray-600 text-xs font-semibold rounded hover:bg-gray-200 transition-colors cursor-pointer">編集</button>
-                                    <button @click="startDelete(item.id, item.name)" class="px-2.5 py-1 bg-gray-100 text-red-500 text-xs font-semibold rounded hover:bg-red-50 transition-colors cursor-pointer">削除</button>
-                                </div>
-                            </template>
+                            <div x-show="editingId !== item.id && deletingId !== item.id" class="flex justify-center gap-1.5">
+                                <button @click="startEdit(item.id, item.name)" class="px-2.5 py-1 bg-gray-100 text-gray-600 text-xs font-semibold rounded hover:bg-gray-200 transition-colors cursor-pointer">編集</button>
+                                <button @click="startDelete(item.id, item.name)" class="px-2.5 py-1 bg-gray-100 text-red-500 text-xs font-semibold rounded hover:bg-red-50 transition-colors cursor-pointer">削除</button>
+                            </div>
                         </td>
                     </tr>
                 </template>
