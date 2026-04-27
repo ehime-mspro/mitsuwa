@@ -95,6 +95,7 @@ class ProjectController extends Controller
                 'estimateAmount' => $c->estimated_amount,
                 'actualAmount' => $c->actual_amount,
                 'subcontractor_name' => optional($c->subcontractor)->company_name,
+                'notes' => $c->notes,
             ];
         }
 

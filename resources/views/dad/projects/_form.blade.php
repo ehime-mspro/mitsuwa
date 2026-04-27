@@ -183,11 +183,12 @@
         <table x-show="costRows.length > 0" class="w-full" style="border-collapse: collapse;">
             <thead>
                 <tr>
-                    <th style="padding: 8px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 11px; font-weight: 700; text-align: left; width: 14%;">カテゴリ<span class="required">*</span></th>
+                    <th style="padding: 8px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 11px; font-weight: 700; text-align: left; width: 12%;">カテゴリ<span class="required">*</span></th>
                     <th style="padding: 8px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 11px; font-weight: 700; text-align: left;">内容</th>
-                    <th style="padding: 8px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 11px; font-weight: 700; text-align: right; width: 14%;">見積額</th>
-                    <th style="padding: 8px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 11px; font-weight: 700; text-align: right; width: 14%;">実績額</th>
-                    <th style="padding: 8px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 11px; font-weight: 700; text-align: left; width: 18%;">協力業者</th>
+                    <th style="padding: 8px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 11px; font-weight: 700; text-align: right; width: 12%;">見積額</th>
+                    <th style="padding: 8px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 11px; font-weight: 700; text-align: right; width: 12%;">実績額</th>
+                    <th style="padding: 8px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 11px; font-weight: 700; text-align: left; width: 16%;">協力業者</th>
+                    <th style="padding: 8px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 11px; font-weight: 700; text-align: left; width: 14%;">備考</th>
                     <th style="padding: 8px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 11px; font-weight: 700; text-align: center; width: 60px;">削除</th>
                 </tr>
             </thead>
@@ -224,6 +225,10 @@
                                 @endforeach
                             </select>
                         </td>
+                        <td style="padding: 6px; border-bottom: 1px solid #f3f4f6;">
+                            <input type="text" :name="'costs[' + idx + '][notes]'" x-model="row.notes" maxlength="200"
+                                   style="width: 100%; height: 34px; padding: 0 8px; font-size: 12px; border: 1px solid #d1d5db; border-radius: 4px;">
+                        </td>
                         <td style="padding: 6px; border-bottom: 1px solid #f3f4f6; text-align: center;">
                             <button type="button" @click="removeCostRow(idx)"
                                     style="font-size: 11px; color: #b91c1c; border: 1px solid #fca5a5; padding: 3px 8px; border-radius: 3px; background: white; cursor: pointer;">削除</button>
@@ -251,9 +256,10 @@
                 <thead>
                     <tr>
                         <th style="padding: 8px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 11px; font-weight: 700; text-align: left;">従業員<span class="required">*</span></th>
-                        <th style="padding: 8px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 11px; font-weight: 700; text-align: left; width: 18%;">役割</th>
-                        <th style="padding: 8px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 11px; font-weight: 700; text-align: left; width: 14%;">配置開始</th>
-                        <th style="padding: 8px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 11px; font-weight: 700; text-align: left; width: 14%;">配置終了</th>
+                        <th style="padding: 8px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 11px; font-weight: 700; text-align: left; width: 16%;">役割</th>
+                        <th style="padding: 8px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 11px; font-weight: 700; text-align: left; width: 12%;">配置開始</th>
+                        <th style="padding: 8px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 11px; font-weight: 700; text-align: left; width: 12%;">配置終了</th>
+                        <th style="padding: 8px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 11px; font-weight: 700; text-align: left; width: 18%;">備考</th>
                         <th style="padding: 8px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 11px; font-weight: 700; text-align: center; width: 60px;">削除</th>
                     </tr>
                 </thead>
@@ -279,6 +285,10 @@
                             </td>
                             <td style="padding: 6px; border-bottom: 1px solid #f3f4f6;">
                                 <input type="text" :name="'assignments[' + idx + '][end_date]'" x-model="a.end_date" placeholder="YYYY-MM-DD"
+                                       style="width: 100%; height: 34px; padding: 0 8px; font-size: 12px; border: 1px solid #d1d5db; border-radius: 4px;">
+                            </td>
+                            <td style="padding: 6px; border-bottom: 1px solid #f3f4f6;">
+                                <input type="text" :name="'assignments[' + idx + '][notes]'" x-model="a.notes" maxlength="200"
                                        style="width: 100%; height: 34px; padding: 0 8px; font-size: 12px; border: 1px solid #d1d5db; border-radius: 4px;">
                             </td>
                             <td style="padding: 6px; border-bottom: 1px solid #f3f4f6; text-align: center;">

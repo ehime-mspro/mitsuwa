@@ -140,12 +140,13 @@
         <table class="w-full" style="border-collapse: collapse;">
             <thead>
                 <tr>
-                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: left; width: 14%;">費用カテゴリ</th>
+                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: left; width: 12%;">費用カテゴリ</th>
                     <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: left;">内容</th>
-                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: right; width: 14%;">見積額</th>
-                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: right; width: 14%;">実績額</th>
-                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: right; width: 14%;">差額</th>
-                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: left; width: 18%;">協力業者</th>
+                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: right; width: 12%;">見積額</th>
+                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: right; width: 12%;">実績額</th>
+                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: right; width: 12%;">差額</th>
+                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: left; width: 16%;">協力業者</th>
+                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: left; width: 14%;">備考</th>
                 </tr>
             </thead>
             <tbody>
@@ -157,10 +158,11 @@
                         <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums;" x-text="rowActualDisplay(row) || '—'"></td>
                         <td :style="`padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: right; color: ${rowDiffColor(row)}; font-weight: 600; font-variant-numeric: tabular-nums;`" x-text="rowDiffDisplay(row) || '—'"></td>
                         <td :style="`padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: ${row.subcontractor_name ? '#374151' : '#9ca3af'};`" x-text="row.subcontractor_name || '—'"></td>
+                        <td :style="`padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 12px; color: ${row.notes ? '#6b7280' : '#9ca3af'};`" x-text="row.notes || '—'"></td>
                     </tr>
                 </template>
                 <tr x-show="costRows.length === 0">
-                    <td colspan="6" style="padding: 24px; text-align: center; font-size: 13px; color: #9ca3af;">原価明細がまだ登録されていません。編集画面から追加してください。</td>
+                    <td colspan="7" style="padding: 24px; text-align: center; font-size: 13px; color: #9ca3af;">原価明細がまだ登録されていません。編集画面から追加してください。</td>
                 </tr>
             </tbody>
             <tfoot x-show="costRows.length > 0">
@@ -169,6 +171,7 @@
                     <td style="padding: 12px 10px; border-top: 2px solid #e5e7eb; font-size: 13px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums;" x-text="formatYen(estimateTotal)"></td>
                     <td style="padding: 12px 10px; border-top: 2px solid #e5e7eb; font-size: 13px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums;" x-text="actualTotal > 0 ? formatYen(actualTotal) : '—'"></td>
                     <td :style="`padding: 12px 10px; border-top: 2px solid #e5e7eb; font-size: 13px; font-weight: 700; text-align: right; color: ${diffTotalColor}; font-variant-numeric: tabular-nums;`" x-text="diffTotalDisplay"></td>
+                    <td style="padding: 12px 10px; border-top: 2px solid #e5e7eb;"></td>
                     <td style="padding: 12px 10px; border-top: 2px solid #e5e7eb;"></td>
                 </tr>
             </tfoot>
