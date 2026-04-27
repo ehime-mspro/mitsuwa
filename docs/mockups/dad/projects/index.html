@@ -48,6 +48,37 @@
             font-size: 11px; font-weight: 700;
         }
         .type-tab.active .tab-count { background: #10b981; color: white; }
+
+        /* 横スクロール対応テーブル */
+        .table-scroll {
+            overflow-x: auto;
+            overflow-y: hidden;
+        }
+        .table-scroll::-webkit-scrollbar {
+            height: 10px;
+        }
+        .table-scroll::-webkit-scrollbar-track {
+            background: #f3f4f6;
+            border-radius: 5px;
+        }
+        .table-scroll::-webkit-scrollbar-thumb {
+            background: #9ca3af;
+            border-radius: 5px;
+        }
+        .table-scroll::-webkit-scrollbar-thumb:hover {
+            background: #6b7280;
+        }
+        .scroll-hint {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 11px;
+            color: #6b7280;
+            background: #f9fafb;
+            padding: 4px 10px;
+            border-radius: 9999px;
+            border: 1px solid #e5e7eb;
+        }
     </style>
 </head>
 <body>
@@ -179,78 +210,73 @@
                 </div>
 
                 <!-- テーブル（公共） -->
-                <div class="bg-white border border-gray-200 overflow-hidden" style="border-top: 1px solid #e5e7eb; border-radius: 0 0 8px 8px;">
-                    <table class="w-full border-collapse" style="table-layout: fixed;">
-                        <colgroup>
-                            <col style="width: 10%">
-                            <col style="width: 28%">
-                            <col style="width: 17%">
-                            <col style="width: 12%">
-                            <col style="width: 12%">
-                            <col style="width: 12%">
-                            <col style="width: 7%">
-                            <col style="width: 6%">
-                        </colgroup>
+                <div class="bg-white border border-gray-200" style="border-top: 1px solid #e5e7eb; border-radius: 0 0 8px 8px;">
+                    <div style="display: flex; justify-content: flex-end; padding: 8px 16px 0;">
+                        <span class="scroll-hint">← 横にスクロールできます →</span>
+                    </div>
+                    <div class="table-scroll">
+                    <table class="border-collapse" style="width: 100%; min-width: 1200px;">
                         <thead>
                             <tr>
-                                <th class="px-3 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">落札日</th>
-                                <th class="px-3 py-3 text-left text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">工事名</th>
-                                <th class="px-3 py-3 text-left text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">発注者</th>
-                                <th class="px-3 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">受注額</th>
-                                <th class="px-3 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">原価合計</th>
-                                <th class="px-3 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">粗利額</th>
-                                <th class="px-3 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">工務担当</th>
-                                <th class="px-3 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">詳細</th>
+                                <th class="px-4 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">落札日</th>
+                                <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">工事名</th>
+                                <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">発注者</th>
+                                <th class="px-4 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">受注額</th>
+                                <th class="px-4 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">原価合計</th>
+                                <th class="px-4 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">粗利額</th>
+                                <th class="px-4 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">工務担当</th>
+                                <th class="px-4 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">詳細</th>
                             </tr>
                         </thead>
                         <tbody>
                             <!-- DAD-001 入金済み -->
                             <tr class="hover:bg-gray-50 transition-colors">
-                                <td class="px-3 py-3 border-b border-gray-200 text-sm text-gray-900 whitespace-nowrap font-mono text-center">2026-06-15</td>
-                                <td class="px-3 py-3 border-b border-gray-200 text-sm whitespace-nowrap overflow-hidden text-ellipsis">
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 whitespace-nowrap font-mono text-center">2026-06-15</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm whitespace-nowrap">
                                     <a href="show.html" class="font-semibold text-gray-900 hover:text-emerald-600 hover:underline">松山市道路改良工事（余戸地区）</a>
                                 </td>
-                                <td class="px-3 py-3 border-b border-gray-200 text-sm text-gray-700 whitespace-nowrap overflow-hidden text-ellipsis">松山市役所</td>
-                                <td class="px-3 py-3 border-b border-gray-200 text-sm text-gray-900 text-right whitespace-nowrap">25,000,000円</td>
-                                <td class="px-3 py-3 border-b border-gray-200 text-sm text-gray-900 text-right whitespace-nowrap">19,500,000円</td>
-                                <td class="px-3 py-3 border-b border-gray-200 text-right whitespace-nowrap" style="color: #047857; font-weight: 700;">5,500,000円</td>
-                                <td class="px-3 py-3 border-b border-gray-200 text-sm text-gray-700 text-center whitespace-nowrap">山田</td>
-                                <td class="px-3 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 whitespace-nowrap">松山市役所</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-right whitespace-nowrap">25,000,000円</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-right whitespace-nowrap">19,500,000円</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-right whitespace-nowrap" style="color: #047857; font-weight: 700;">5,500,000円</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 text-center whitespace-nowrap">山田</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
                                     <a href="show.html" class="text-xs font-semibold text-blue-700 px-2.5 py-1 border border-blue-200 rounded bg-blue-50 hover:bg-blue-100">詳細</a>
                                 </td>
                             </tr>
                             <!-- DAD-002 完工 -->
                             <tr class="hover:bg-gray-50 transition-colors">
-                                <td class="px-3 py-3 border-b border-gray-200 text-sm text-gray-900 whitespace-nowrap font-mono text-center">2026-07-20</td>
-                                <td class="px-3 py-3 border-b border-gray-200 text-sm whitespace-nowrap overflow-hidden text-ellipsis">
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 whitespace-nowrap font-mono text-center">2026-07-20</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm whitespace-nowrap">
                                     <a href="#" class="font-semibold text-gray-900 hover:text-emerald-600 hover:underline">石手川河川護岸工事</a>
                                 </td>
-                                <td class="px-3 py-3 border-b border-gray-200 text-sm text-gray-700 whitespace-nowrap overflow-hidden text-ellipsis">愛媛県 土木部</td>
-                                <td class="px-3 py-3 border-b border-gray-200 text-sm text-gray-900 text-right whitespace-nowrap">18,200,000円</td>
-                                <td class="px-3 py-3 border-b border-gray-200 text-sm text-gray-900 text-right whitespace-nowrap">14,500,000円</td>
-                                <td class="px-3 py-3 border-b border-gray-200 text-right whitespace-nowrap" style="color: #047857; font-weight: 700;">3,700,000円</td>
-                                <td class="px-3 py-3 border-b border-gray-200 text-sm text-gray-700 text-center whitespace-nowrap">鈴木</td>
-                                <td class="px-3 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 whitespace-nowrap">愛媛県 土木部</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-right whitespace-nowrap">18,200,000円</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-right whitespace-nowrap">14,500,000円</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-right whitespace-nowrap" style="color: #047857; font-weight: 700;">3,700,000円</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 text-center whitespace-nowrap">鈴木</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
                                     <a href="#" class="text-xs font-semibold text-blue-700 px-2.5 py-1 border border-blue-200 rounded bg-blue-50 hover:bg-blue-100">詳細</a>
                                 </td>
                             </tr>
                             <!-- DAD-004 施工中 -->
                             <tr class="hover:bg-gray-50 transition-colors">
-                                <td class="px-3 py-3 border-b border-gray-200 text-sm text-gray-900 whitespace-nowrap font-mono text-center">2026-10-05</td>
-                                <td class="px-3 py-3 border-b border-gray-200 text-sm whitespace-nowrap overflow-hidden text-ellipsis">
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 whitespace-nowrap font-mono text-center">2026-10-05</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm whitespace-nowrap">
                                     <a href="#" class="font-semibold text-gray-900 hover:text-emerald-600 hover:underline">松山市立味生小学校 下水道接続工事</a>
                                 </td>
-                                <td class="px-3 py-3 border-b border-gray-200 text-sm text-gray-700 whitespace-nowrap overflow-hidden text-ellipsis">松山市役所</td>
-                                <td class="px-3 py-3 border-b border-gray-200 text-sm text-gray-900 text-right whitespace-nowrap">8,500,000円</td>
-                                <td class="px-3 py-3 border-b border-gray-200 text-sm text-gray-900 text-right whitespace-nowrap">6,800,000円</td>
-                                <td class="px-3 py-3 border-b border-gray-200 text-right whitespace-nowrap" style="color: #047857; font-weight: 700;">1,700,000円</td>
-                                <td class="px-3 py-3 border-b border-gray-200 text-sm text-gray-700 text-center whitespace-nowrap">佐藤</td>
-                                <td class="px-3 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 whitespace-nowrap">松山市役所</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-right whitespace-nowrap">8,500,000円</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-right whitespace-nowrap">6,800,000円</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-right whitespace-nowrap" style="color: #047857; font-weight: 700;">1,700,000円</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 text-center whitespace-nowrap">佐藤</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
                                     <a href="#" class="text-xs font-semibold text-blue-700 px-2.5 py-1 border border-blue-200 rounded bg-blue-50 hover:bg-blue-100">詳細</a>
                                 </td>
                             </tr>
                         </tbody>
                     </table>
+                    </div>
 
                     <!-- ページネーション -->
                     <div class="flex justify-center gap-0.5 px-4 py-3 border-t border-gray-200">
@@ -296,78 +322,73 @@
                 </div>
 
                 <!-- テーブル（推進） -->
-                <div class="bg-white border border-gray-200 overflow-hidden" style="border-top: 1px solid #e5e7eb; border-radius: 0 0 8px 8px;">
-                    <table class="w-full border-collapse" style="table-layout: fixed;">
-                        <colgroup>
-                            <col style="width: 10%">
-                            <col style="width: 28%">
-                            <col style="width: 17%">
-                            <col style="width: 12%">
-                            <col style="width: 12%">
-                            <col style="width: 12%">
-                            <col style="width: 7%">
-                            <col style="width: 6%">
-                        </colgroup>
+                <div class="bg-white border border-gray-200" style="border-top: 1px solid #e5e7eb; border-radius: 0 0 8px 8px;">
+                    <div style="display: flex; justify-content: flex-end; padding: 8px 16px 0;">
+                        <span class="scroll-hint">← 横にスクロールできます →</span>
+                    </div>
+                    <div class="table-scroll">
+                    <table class="border-collapse" style="width: 100%; min-width: 1200px;">
                         <thead>
                             <tr>
-                                <th class="px-3 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">受注日</th>
-                                <th class="px-3 py-3 text-left text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">工事名</th>
-                                <th class="px-3 py-3 text-left text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">発注者</th>
-                                <th class="px-3 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">受注額</th>
-                                <th class="px-3 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">原価合計</th>
-                                <th class="px-3 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">粗利額</th>
-                                <th class="px-3 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">営業担当</th>
-                                <th class="px-3 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">詳細</th>
+                                <th class="px-4 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">受注日</th>
+                                <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">工事名</th>
+                                <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">発注者</th>
+                                <th class="px-4 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">受注額</th>
+                                <th class="px-4 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">原価合計</th>
+                                <th class="px-4 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">粗利額</th>
+                                <th class="px-4 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">営業担当</th>
+                                <th class="px-4 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">詳細</th>
                             </tr>
                         </thead>
                         <tbody>
                             <!-- DAD-003 施工中 -->
                             <tr class="hover:bg-gray-50 transition-colors">
-                                <td class="px-3 py-3 border-b border-gray-200 text-sm text-gray-900 whitespace-nowrap font-mono text-center">2026-06-10</td>
-                                <td class="px-3 py-3 border-b border-gray-200 text-sm whitespace-nowrap overflow-hidden text-ellipsis">
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 whitespace-nowrap font-mono text-center">2026-06-10</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm whitespace-nowrap">
                                     <a href="show.html" class="font-semibold text-gray-900 hover:text-emerald-600 hover:underline">道後温泉近郊 宅地造成工事</a>
                                 </td>
-                                <td class="px-3 py-3 border-b border-gray-200 text-sm text-gray-700 whitespace-nowrap overflow-hidden text-ellipsis">田中不動産㈱</td>
-                                <td class="px-3 py-3 border-b border-gray-200 text-sm text-gray-900 text-right whitespace-nowrap">32,000,000円</td>
-                                <td class="px-3 py-3 border-b border-gray-200 text-sm text-gray-900 text-right whitespace-nowrap">21,800,000円</td>
-                                <td class="px-3 py-3 border-b border-gray-200 text-right whitespace-nowrap" style="color: #047857; font-weight: 700;">10,200,000円</td>
-                                <td class="px-3 py-3 border-b border-gray-200 text-sm text-gray-700 text-center whitespace-nowrap">高橋</td>
-                                <td class="px-3 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 whitespace-nowrap">田中不動産㈱</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-right whitespace-nowrap">32,000,000円</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-right whitespace-nowrap">21,800,000円</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-right whitespace-nowrap" style="color: #047857; font-weight: 700;">10,200,000円</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 text-center whitespace-nowrap">高橋</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
                                     <a href="show.html" class="text-xs font-semibold text-blue-700 px-2.5 py-1 border border-blue-200 rounded bg-blue-50 hover:bg-blue-100">詳細</a>
                                 </td>
                             </tr>
                             <!-- DAD-005 受注 -->
                             <tr class="hover:bg-gray-50 transition-colors">
-                                <td class="px-3 py-3 border-b border-gray-200 text-sm text-gray-900 whitespace-nowrap font-mono text-center">2026-12-01</td>
-                                <td class="px-3 py-3 border-b border-gray-200 text-sm whitespace-nowrap overflow-hidden text-ellipsis">
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 whitespace-nowrap font-mono text-center">2026-12-01</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm whitespace-nowrap">
                                     <a href="#" class="font-semibold text-gray-900 hover:text-emerald-600 hover:underline">北条地区 工場外構整備工事</a>
                                 </td>
-                                <td class="px-3 py-3 border-b border-gray-200 text-sm text-gray-700 whitespace-nowrap overflow-hidden text-ellipsis">㈱エヒメ工業</td>
-                                <td class="px-3 py-3 border-b border-gray-200 text-sm text-gray-900 text-right whitespace-nowrap">14,800,000円</td>
-                                <td class="px-3 py-3 border-b border-gray-200 text-sm text-gray-400 text-right whitespace-nowrap">—</td>
-                                <td class="px-3 py-3 border-b border-gray-200 text-sm text-gray-400 text-right whitespace-nowrap">—</td>
-                                <td class="px-3 py-3 border-b border-gray-200 text-sm text-gray-700 text-center whitespace-nowrap">山田</td>
-                                <td class="px-3 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 whitespace-nowrap">㈱エヒメ工業</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-right whitespace-nowrap">14,800,000円</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-400 text-right whitespace-nowrap">—</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-400 text-right whitespace-nowrap">—</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 text-center whitespace-nowrap">山田</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
                                     <a href="#" class="text-xs font-semibold text-blue-700 px-2.5 py-1 border border-blue-200 rounded bg-blue-50 hover:bg-blue-100">詳細</a>
                                 </td>
                             </tr>
                             <!-- DAD-007 入金済み -->
                             <tr class="hover:bg-gray-50 transition-colors">
-                                <td class="px-3 py-3 border-b border-gray-200 text-sm text-gray-900 whitespace-nowrap font-mono text-center">2026-05-20</td>
-                                <td class="px-3 py-3 border-b border-gray-200 text-sm whitespace-nowrap overflow-hidden text-ellipsis">
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 whitespace-nowrap font-mono text-center">2026-05-20</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm whitespace-nowrap">
                                     <a href="#" class="font-semibold text-gray-900 hover:text-emerald-600 hover:underline">三津浜 個人住宅外構工事</a>
                                 </td>
-                                <td class="px-3 py-3 border-b border-gray-200 text-sm text-gray-700 whitespace-nowrap overflow-hidden text-ellipsis">山本 一郎 様</td>
-                                <td class="px-3 py-3 border-b border-gray-200 text-sm text-gray-900 text-right whitespace-nowrap">4,200,000円</td>
-                                <td class="px-3 py-3 border-b border-gray-200 text-sm text-gray-900 text-right whitespace-nowrap">3,200,000円</td>
-                                <td class="px-3 py-3 border-b border-gray-200 text-right whitespace-nowrap" style="color: #047857; font-weight: 700;">1,000,000円</td>
-                                <td class="px-3 py-3 border-b border-gray-200 text-sm text-gray-700 text-center whitespace-nowrap">高橋</td>
-                                <td class="px-3 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 whitespace-nowrap">山本 一郎 様</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-right whitespace-nowrap">4,200,000円</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-right whitespace-nowrap">3,200,000円</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-right whitespace-nowrap" style="color: #047857; font-weight: 700;">1,000,000円</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 text-center whitespace-nowrap">高橋</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
                                     <a href="#" class="text-xs font-semibold text-blue-700 px-2.5 py-1 border border-blue-200 rounded bg-blue-50 hover:bg-blue-100">詳細</a>
                                 </td>
                             </tr>
                         </tbody>
                     </table>
+                    </div>
 
                     <!-- ページネーション -->
                     <div class="flex justify-center gap-0.5 px-4 py-3 border-t border-gray-200">

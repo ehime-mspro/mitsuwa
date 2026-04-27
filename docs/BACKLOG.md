@@ -58,6 +58,27 @@
 
 詳細仕様: @docs/DAD_土木事業_要件定義書_v1.md
 
+### フェーズ1: モック作成（完了）
+
+モック配置先: `docs/mockups/dad/`
+
+| モジュール | ディレクトリ | index | show | create | edit | 状態 |
+|-----------|-------------|:-----:|:----:|:------:|:----:|------|
+| 工事案件 | `projects/` | ✅ | ✅ | ✅ | ✅ | 完了（原価管理カード + Excel取込 内蔵） |
+| 発注者 | `clients/` | ✅ | ✅ | ✅ | ✅ | 完了 |
+| 協力業者 | `subcontractors/` | ✅ | ✅ | ✅ | ✅ | 完了 |
+| 従業員 | `employees/` | ✅ | ✅ | ✅ | ✅ | 完了 |
+| 専門分野マスタ | `specialties/` | ✅ | — | ✅ | ✅ | create/edit + 一覧（show は無し） |
+
+**原価管理カード**（工事案件 `projects/create.html` + `projects/show.html` 共通パターン）:
+- インライン行追加（`＋ 行追加` で空行追加 → 直接入力）
+- Excel取込（3ステップ: ファイル選択 → 列マッピング → プレビュー → 末尾に追加）
+- SheetJS（`cdn.jsdelivr.net/npm/xlsx@0.18.5`）によるクライアントサイド解析
+- カテゴリエイリアス自動変換（材料→材料費、外注/下請→外注費 等）
+- プレビューで カテゴリ不一致（黄ハイライト）・金額NG（赤ハイライト）を警告
+
+**モックはすべて完了**。次フェーズは Phase 2 Laravel 実装（`dad_*` テーブル / Enum 5本 / Controller 6本 / Blade 約30本 / ルート約34本）。本番での Excel取込は PhpSpreadsheet + `ProjectImportController@preview/execute` を追加。
+
 ---
 
 ## 優先度3: 住宅事業 横断一覧

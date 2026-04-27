@@ -37,6 +37,7 @@ These classes are NOT in the compiled CSS. Always use inline styles instead:
 | 13 | Building coverage shows `80.00%` | Model cast `decimal:2` | Change to `integer` |
 | 14 | Cost item font too large after toggle | `style` + `:style` conflict on `<td>` | Merge into `:style` |
 | 15 | Lot section cost not synced with Alpine | PHP rendered static value | Use Alpine `effectiveTotal` |
+| 16 | `<option x-show>` not hiding + duplicate values in select | Browsers ignore `display:none` on `<option>` (spec-allowed inconsistency); also `<template x-for>` renders options AFTER `x-model` syncs | Use static `<option>` tags (not `x-for`) + filter data before rendering |
 
 ## Postal Code APIs
 
@@ -48,6 +49,34 @@ These classes are NOT in the compiled CSS. Always use inline styles instead:
 - Used for 仕入れ案件 and 分譲地PJ (geocoding + draggable/clickable pin)
 - DB columns: `latitude`/`longitude` as `DECIMAL(10,7)`
 - API key in `.env` as `GOOGLE_MAPS_API_KEY`
+
+## Full-width → Half-width Numeric Conversion
+
+Global listener in `resources/views/layouts/app.blade.php` automatically converts full-width digits (`０-９`) to half-width (`0-9`) on every numeric input across the entire application (all 185 routes inherit via single layout).
+
+**Target elements:** `input[inputmode="numeric"]` or `input[type="number"]`
+
+**Mechanism:**
+- `document.addEventListener('input', fn, true)` — capture phase, runs before Alpine sync
+- Preserves caret position via `selectionStart` / `selectionEnd`
+- Digit transliteration only — no other character stripping
+
+**Effect:** User types `１０００００` → immediately becomes `100000`. Alpine `x-model` values are always half-width, so downstream calculations work without per-field normalization.
+
+**Scope:** Single injection point — no per-form wiring needed. Applies automatically to any new form added to the app.
+
+## Excel Import (Client-side SheetJS → Server-side PhpSpreadsheet)
+
+Mockup pattern for Excel cost-breakdown upload (DAD 工事案件 `projects/create.html`):
+
+- Library: SheetJS (`cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js`) — `cdn.jsdelivr.net` only
+- Flow: File → Sheet/Header selection → Column mapping (auto-guess from header text) → Preview with warnings → Commit (append to target array)
+- Category alias normalization: `材料/資材 → 材料費`, `外注/下請 → 外注費`, `労務 → 人件費`, `機械/重機 → 機械経費`, `経費 → 諸経費`
+- Amount normalization: full-width digits, comma/space/円/¥ stripped; non-numeric flagged
+- UI: inline expansion inside the target card (not modal), 3-step indicator
+- Alpine caveat: `<option>` list MUST be static — `<template x-for>` renders after `x-model` syncs and causes select value mismatch (see Bug #16)
+
+Server-side swap path: replace `commitImport()` with `<form>` submit to `ProjectImportController@preview` + `@execute` using PhpSpreadsheet. UI panel HTML stays unchanged.
 
 ## Fiscal Year Calculation
 

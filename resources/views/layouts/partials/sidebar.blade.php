@@ -20,6 +20,7 @@
     $hasRealEstateAccess = $isExecutive || $user->belongsToDepartment('realestate');
     $hasHousingAccess = $isExecutive || $user->belongsToDepartment('housing');
     $hasMansionAccess = $isExecutive || $user->belongsToDepartment('mansion');
+    $hasDadAccess = $isExecutive || $user->belongsToDepartment('dad');
 @endphp
 
 {{-- ========== PC用: 展開サイドバー ========== --}}
@@ -104,6 +105,16 @@
         </x-sidebar-group>
     @endif
 
+    {{-- DAD（土木事業） --}}
+    @if($hasDadAccess)
+        <x-sidebar-group label="DAD（土木事業）">
+            <x-sidebar-item :href="url('/dad/projects')" label="工事案件" :active="request()->is('dad/projects*')" />
+            <x-sidebar-item :href="url('/dad/clients')" label="発注者管理" :active="request()->is('dad/clients*')" />
+            <x-sidebar-item :href="url('/dad/subcontractors')" label="協力業者管理" :active="request()->is('dad/subcontractors*')" />
+            <x-sidebar-item :href="url('/dad/employees')" label="従業員管理" :active="request()->is('dad/employees*')" />
+        </x-sidebar-group>
+    @endif
+
     {{-- システム管理（経営層のみ） --}}
     @if($isExecutive)
         <x-sidebar-group label="システム管理">
@@ -135,6 +146,12 @@
             </div>
             <x-sidebar-item :href="url('/admin/survey-questions')" label="アンケート設問管理" :active="request()->is('admin/survey-questions*')" />
             <x-sidebar-item :href="url('/admin/customers/import')" label="顧客CSVインポート" :active="request()->is('admin/customers/import*')" />
+            {{-- サブ見出し: DAD --}}
+            <div style="display: flex; align-items: center; gap: 8px; padding: 8px 20px 3px;">
+                <span style="font-size: 10px; font-weight: 600; color: #6B7280; letter-spacing: 0.05em; white-space: nowrap;">DAD</span>
+                <span style="flex: 1; height: 1px; background: #D1D5DB;"></span>
+            </div>
+            <x-sidebar-item :href="url('/admin/master/dad-specialties')" label="専門分野マスター" :active="request()->is('admin/master/dad-specialties*')" />
             {{-- サブ見出し: マスター --}}
             <div style="display: flex; align-items: center; gap: 8px; padding: 8px 20px 3px;">
                 <span style="font-size: 10px; font-weight: 600; color: #6B7280; letter-spacing: 0.05em; white-space: nowrap;">マスター</span>
@@ -210,6 +227,15 @@
         <a href="{{ url('/housing/properties') }}" title="住宅事業" class="w-9 h-9 mb-1 rounded-lg flex items-center justify-center {{ request()->is('housing/*') ? 'bg-emerald-50' : 'hover:bg-gray-100' }} transition-colors">
             <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="{{ request()->is('housing/*') ? '#059669' : '#6B7280' }}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><rect x="9" y="14" width="6" height="8" />
+            </svg>
+        </a>
+    @endif
+
+    {{-- DAD（土木事業） --}}
+    @if($hasDadAccess)
+        <a href="{{ url('/dad/projects') }}" title="DAD（土木事業）" class="w-9 h-9 mb-1 rounded-lg flex items-center justify-center {{ request()->is('dad/*') ? 'bg-emerald-50' : 'hover:bg-gray-100' }} transition-colors">
+            <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="{{ request()->is('dad/*') ? '#059669' : '#6B7280' }}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 21h18M5 21V10l7-5 7 5v11M9 21v-6h6v6" /><circle cx="12" cy="13" r="0.5" />
             </svg>
         </a>
     @endif
@@ -305,6 +331,15 @@
         </x-sidebar-group>
     @endif
 
+    @if($hasDadAccess)
+        <x-sidebar-group label="DAD（土木事業）">
+            <x-sidebar-item :href="url('/dad/projects')" label="工事案件" :active="request()->is('dad/projects*')" />
+            <x-sidebar-item :href="url('/dad/clients')" label="発注者管理" :active="request()->is('dad/clients*')" />
+            <x-sidebar-item :href="url('/dad/subcontractors')" label="協力業者管理" :active="request()->is('dad/subcontractors*')" />
+            <x-sidebar-item :href="url('/dad/employees')" label="従業員管理" :active="request()->is('dad/employees*')" />
+        </x-sidebar-group>
+    @endif
+
     @if($isExecutive)
         <x-sidebar-group label="システム管理">
             {{-- サブ見出し: テナント --}}
@@ -335,6 +370,12 @@
             </div>
             <x-sidebar-item :href="url('/admin/survey-questions')" label="アンケート設問管理" :active="request()->is('admin/survey-questions*')" />
             <x-sidebar-item :href="url('/admin/customers/import')" label="顧客CSVインポート" :active="request()->is('admin/customers/import*')" />
+            {{-- サブ見出し: DAD --}}
+            <div style="display: flex; align-items: center; gap: 8px; padding: 8px 20px 3px;">
+                <span style="font-size: 10px; font-weight: 600; color: #6B7280; letter-spacing: 0.05em; white-space: nowrap;">DAD</span>
+                <span style="flex: 1; height: 1px; background: #D1D5DB;"></span>
+            </div>
+            <x-sidebar-item :href="url('/admin/master/dad-specialties')" label="専門分野マスター" :active="request()->is('admin/master/dad-specialties*')" />
             {{-- サブ見出し: マスター --}}
             <div style="display: flex; align-items: center; gap: 8px; padding: 8px 20px 3px;">
                 <span style="font-size: 10px; font-weight: 600; color: #6B7280; letter-spacing: 0.05em; white-space: nowrap;">マスター</span>

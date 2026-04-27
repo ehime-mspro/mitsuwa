@@ -118,6 +118,22 @@ Route::middleware(['auth', 'password.change'])->group(function () {
             ->name('admin.master.zoning-types.update');
         Route::delete('/master/zoning-types/{zoningType}', [\App\Http\Controllers\Admin\ZoningTypeController::class, 'destroy'])
             ->name('admin.master.zoning-types.destroy');
+
+        // DAD 専門分野マスター
+        Route::post('/master/dad-specialties/reorder', [\App\Http\Controllers\Admin\DadSpecialtyController::class, 'reorder'])
+            ->name('admin.master.dad-specialties.reorder');
+        Route::get('/master/dad-specialties', [\App\Http\Controllers\Admin\DadSpecialtyController::class, 'index'])
+            ->name('admin.master.dad-specialties.index');
+        Route::get('/master/dad-specialties/create', [\App\Http\Controllers\Admin\DadSpecialtyController::class, 'create'])
+            ->name('admin.master.dad-specialties.create');
+        Route::post('/master/dad-specialties', [\App\Http\Controllers\Admin\DadSpecialtyController::class, 'store'])
+            ->name('admin.master.dad-specialties.store');
+        Route::get('/master/dad-specialties/{dadSpecialty}/edit', [\App\Http\Controllers\Admin\DadSpecialtyController::class, 'edit'])
+            ->name('admin.master.dad-specialties.edit');
+        Route::put('/master/dad-specialties/{dadSpecialty}', [\App\Http\Controllers\Admin\DadSpecialtyController::class, 'update'])
+            ->name('admin.master.dad-specialties.update');
+        Route::delete('/master/dad-specialties/{dadSpecialty}', [\App\Http\Controllers\Admin\DadSpecialtyController::class, 'destroy'])
+            ->name('admin.master.dad-specialties.destroy');
     });
 
     /*
@@ -1138,6 +1154,83 @@ Route::middleware(['auth', 'password.change'])->group(function () {
         Route::delete('/customers/{buyer}', [\App\Http\Controllers\CustomerController::class, 'destroy'])
             ->middleware('role:executive')
             ->name('realestate.customers.destroy');
+    });
+
+    /*
+    |----------------------------------------------------------------------
+    | DAD（土木事業）管理（Phase B〜G で段階実装）
+    |----------------------------------------------------------------------
+    */
+    Route::prefix('dad')->group(function () {
+        // 発注者管理（7ルート）
+        Route::get('/clients', [\App\Http\Controllers\Dad\ClientController::class, 'index'])
+            ->name('dad.clients.index');
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/clients/create', [\App\Http\Controllers\Dad\ClientController::class, 'create'])
+                ->name('dad.clients.create');
+            Route::post('/clients', [\App\Http\Controllers\Dad\ClientController::class, 'store'])
+                ->name('dad.clients.store');
+            Route::get('/clients/{client}/edit', [\App\Http\Controllers\Dad\ClientController::class, 'edit'])
+                ->name('dad.clients.edit');
+            Route::put('/clients/{client}', [\App\Http\Controllers\Dad\ClientController::class, 'update'])
+                ->name('dad.clients.update');
+        });
+        Route::delete('/clients/{client}', [\App\Http\Controllers\Dad\ClientController::class, 'destroy'])
+            ->middleware('role:executive')
+            ->name('dad.clients.destroy');
+
+        // 協力業者管理（6ルート）
+        Route::get('/subcontractors', [\App\Http\Controllers\Dad\SubcontractorController::class, 'index'])
+            ->name('dad.subcontractors.index');
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/subcontractors/create', [\App\Http\Controllers\Dad\SubcontractorController::class, 'create'])
+                ->name('dad.subcontractors.create');
+            Route::post('/subcontractors', [\App\Http\Controllers\Dad\SubcontractorController::class, 'store'])
+                ->name('dad.subcontractors.store');
+            Route::get('/subcontractors/{subcontractor}/edit', [\App\Http\Controllers\Dad\SubcontractorController::class, 'edit'])
+                ->name('dad.subcontractors.edit');
+            Route::put('/subcontractors/{subcontractor}', [\App\Http\Controllers\Dad\SubcontractorController::class, 'update'])
+                ->name('dad.subcontractors.update');
+        });
+        Route::delete('/subcontractors/{subcontractor}', [\App\Http\Controllers\Dad\SubcontractorController::class, 'destroy'])
+            ->middleware('role:executive')
+            ->name('dad.subcontractors.destroy');
+
+        // 従業員管理（6ルート）
+        Route::get('/employees', [\App\Http\Controllers\Dad\EmployeeController::class, 'index'])
+            ->name('dad.employees.index');
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/employees/create', [\App\Http\Controllers\Dad\EmployeeController::class, 'create'])
+                ->name('dad.employees.create');
+            Route::post('/employees', [\App\Http\Controllers\Dad\EmployeeController::class, 'store'])
+                ->name('dad.employees.store');
+            Route::get('/employees/{employee}/edit', [\App\Http\Controllers\Dad\EmployeeController::class, 'edit'])
+                ->name('dad.employees.edit');
+            Route::put('/employees/{employee}', [\App\Http\Controllers\Dad\EmployeeController::class, 'update'])
+                ->name('dad.employees.update');
+        });
+        Route::delete('/employees/{employee}', [\App\Http\Controllers\Dad\EmployeeController::class, 'destroy'])
+            ->middleware('role:executive')
+            ->name('dad.employees.destroy');
+
+        // 工事案件管理（7ルート）
+        Route::get('/projects', [\App\Http\Controllers\Dad\ProjectController::class, 'index'])
+            ->name('dad.projects.index');
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/projects/create', [\App\Http\Controllers\Dad\ProjectController::class, 'create'])
+                ->name('dad.projects.create');
+            Route::post('/projects', [\App\Http\Controllers\Dad\ProjectController::class, 'store'])
+                ->name('dad.projects.store');
+            Route::get('/projects/{project}/edit', [\App\Http\Controllers\Dad\ProjectController::class, 'edit'])
+                ->name('dad.projects.edit');
+            Route::put('/projects/{project}', [\App\Http\Controllers\Dad\ProjectController::class, 'update'])
+                ->name('dad.projects.update');
+        });
+        Route::get('/projects/{project}', [\App\Http\Controllers\Dad\ProjectController::class, 'show'])
+            ->name('dad.projects.show');
+        Route::delete('/projects/{project}', [\App\Http\Controllers\Dad\ProjectController::class, 'destroy'])
+            ->middleware('role:executive')
+            ->name('dad.projects.destroy');
     });
 
     /*
