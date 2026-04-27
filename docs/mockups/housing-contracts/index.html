@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>契約管理 - 住宅事業 - モック</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+<style>
+    /* 共通スタイル（Vite build に含まれないクラスを inline 代替） */
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Helvetica Neue', Arial, sans-serif; background: #F9FAFB; color: #111827; }
+    .page-wrapper { max-width: 1280px; margin: 0 auto; padding: 24px; }
+    .breadcrumb { font-size: 12px; color: #9CA3AF; margin-bottom: 12px; }
+    .breadcrumb .sep { margin: 0 6px; }
+
+    /* カード */
+    .card { background: white; border: 1px solid #E5E7EB; border-radius: 8px; }
+    .card-body { padding: 20px; }
+
+    /* サマリーグリッド: 両端配置（space-between）+ 左右に少し余白 */
+    .summary-grid {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        width: 100%;
+        align-items: flex-start;
+        margin-bottom: 12px;
+        padding: 0 16px;
+        box-sizing: border-box;
+    }
+    .summary-cell { flex: 0 1 auto; min-width: 0; }
+    .summary-cell .label { font-size: 12px; color: #6B7280; margin-bottom: 2px; }
+    .summary-cell .value { font-size: 16px; font-weight: 700; color: #111827; }
+    .summary-cell .value.profit { color: #047857; font-weight: 700; }
+    .summary-cell .sub { font-size: 13px; color: #374151; font-weight: 500; margin-top: 2px; }
+
+    /* フィルターバー */
+    .filter-bar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: white;
+        border: 1px solid #E5E7EB;
+        border-radius: 8px;
+        padding: 10px 14px;
+        margin-bottom: 16px;
+    }
+    .filter-bar select {
+        height: 36px;
+        padding: 0 12px;
+        border: 1px solid #D1D5DB;
+        border-radius: 6px;
+        font-size: 14px;
+        color: #374151;
+        background: white;
+        cursor: pointer;
+    }
+    .filter-bar .clear-btn {
+        height: 36px;
+        padding: 0 12px;
+        border: 1px solid #E5E7EB;
+        border-radius: 6px;
+        font-size: 11px;
+        color: #9CA3AF;
+        background: white;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+    }
+    .filter-bar .clear-btn:hover { background: #F9FAFB; color: #6B7280; border-color: #D1D5DB; }
+
+    /* ボタン */
+    .btn-primary {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        padding: 10px 16px;
+        background: #059669;
+        color: white;
+        font-size: 14px;
+        font-weight: 600;
+        border-radius: 6px;
+        border: none;
+        cursor: pointer;
+        text-decoration: none;
+    }
+    .btn-primary:hover { background: #047857; }
+
+    /* ドロップダウン */
+    .dropdown-menu {
+        position: absolute;
+        top: calc(100% + 4px);
+        right: 0;
+        background: white;
+        border: 1px solid #E5E7EB;
+        border-radius: 8px;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+        min-width: 200px;
+        z-index: 10;
+    }
+    .dropdown-item {
+        display: block;
+        padding: 10px 16px;
+        font-size: 14px;
+        color: #374151;
+        text-decoration: none;
+        border-bottom: 1px solid #F3F4F6;
+    }
+    .dropdown-item:last-child { border-bottom: none; }
+    .dropdown-item:hover { background: #F9FAFB; color: #059669; }
+
+    /* テーブル */
+    .table-wrap { background: white; border: 1px solid #E5E7EB; border-radius: 8px; overflow: hidden; }
+    .scroll-x { overflow-x: auto; }
+    table.list-table { width: 100%; border-collapse: collapse; min-width: 1700px; }
+    table.list-table thead th {
+        padding: 12px 16px;
+        font-size: 11px;
+        font-weight: 600;
+        color: #4B5563;
+        background: #F9FAFB;
+        border-bottom: 2px solid #E5E7EB;
+        white-space: nowrap;
+        text-align: center;
+    }
+    table.list-table thead th.left { text-align: left; }
+    table.list-table tbody td {
+        padding: 14px 16px;
+        font-size: 14px;
+        border-bottom: 1px solid #F3F4F6;
+        white-space: nowrap;
+    }
+    table.list-table tbody td.center { text-align: center; }
+    table.list-table tbody td.right { text-align: right; }
+    table.list-table tbody tr:hover td { background: #F9FAFB; }
+
+    /* Sticky列 */
+    table.list-table thead th.sticky-col,
+    table.list-table tbody td.sticky-col {
+        position: sticky;
+        z-index: 2;
+    }
+    table.list-table thead th.sticky-col {
+        background: #F9FAFB;
+        z-index: 3;
+    }
+    table.list-table tbody td.sticky-col {
+        background: white;
+    }
+    table.list-table tbody tr:hover td.sticky-col { background: #F9FAFB; }
+
+    /* 各Sticky列のleft値 */
+    .sticky-col-1 { left: 0; min-width: 100px; }
+    .sticky-col-2 { left: 100px; min-width: 90px; }
+    .sticky-col-3 { left: 190px; min-width: 220px; }
+    .sticky-col-4 { left: 410px; min-width: 140px; border-right: 2px solid #D1D5DB; }
+    .link { color: #059669; font-weight: 500; text-decoration: none; }
+    .link:hover { color: #047857; text-decoration: underline; }
+    .muted { color: #9CA3AF; }
+    .profit-text { color: #047857; font-weight: 700; }
+    .detail-btn {
+        display: inline-block;
+        padding: 4px 12px;
+        background: white;
+        color: #059669;
+        border: 1px solid #059669;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 600;
+        text-decoration: none;
+    }
+    .detail-btn:hover { background: #ECFDF5; }
+
+    /* バッジ */
+    .badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 600;
+    }
+    .badge-building { background: #DBEAFE; color: #1E40AF; }
+    .badge-custom   { background: #FEF3C7; color: #92400E; }
+    .badge-status-progress   { background: #FEF3C7; color: #92400E; }
+    .badge-status-contracted { background: #DBEAFE; color: #1E40AF; }
+    .badge-status-done       { background: #D1FAE5; color: #065F46; }
+    .badge-status-delivered  { background: #E5E7EB; color: #374151; }
+
+    /* ページネーション */
+    .pager { display: flex; justify-content: center; gap: 2px; padding: 12px 16px; border-top: 1px solid #E5E7EB; }
+    .pager a, .pager span {
+        width: 32px; height: 32px;
+        display: inline-flex; align-items: center; justify-content: center;
+        border-radius: 4px; font-size: 12px; color: #374151; background: white; border: 1px solid #D1D5DB;
+        text-decoration: none;
+    }
+    .pager .active { background: #059669; color: white; border-color: #059669; font-weight: 600; }
+    .pager a:hover { background: #F9FAFB; }
+</style>
+</head>
+<body>
+
+<div class="page-wrapper">
+
+    <!-- パンくず -->
+    <div class="breadcrumb">
+        ホーム <span class="sep">›</span> 住宅事業 <span class="sep">›</span> <span style="color: #4B5563;">契約管理</span>
+    </div>
+
+    <!-- ページヘッダー -->
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
+        <h1 style="font-size: 18px; font-weight: 700; color: #111827; margin: 0;">契約管理</h1>
+
+        <!-- 新規契約登録ドロップダウン -->
+        <div x-data="{ open: false }" style="position: relative;">
+            <button type="button" @click="open = !open" class="btn-primary">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                新規契約登録
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-left: 2px;"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div x-show="open" @click.outside="open = false" class="dropdown-menu" style="display:none;">
+                <a href="select-building-property.html" class="dropdown-item">建売を登録</a>
+                <a href="#" class="dropdown-item">注文住宅を登録</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- 集計エリア -->
+    <div class="card" style="margin-bottom: 16px;">
+        <div class="card-body">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
+                <span style="font-size: 14px; font-weight: 700; color: #374151;">2025年度（2025/05〜2026/04）</span>
+            </div>
+
+            <!-- 5カードサマリー -->
+            <div class="summary-grid">
+                <div class="summary-cell">
+                    <div class="label">契約件数</div>
+                    <div class="value">20件</div>
+                    <div class="sub">(建売 12件 / 注文住宅 8件)</div>
+                </div>
+                <div class="summary-cell">
+                    <div class="label">契約額合計（税抜）</div>
+                    <div class="value">604,300,000円</div>
+                    <div class="sub" style="white-space: nowrap;">(土地 297,705,000円 ・ 建物 306,595,000円)</div>
+                </div>
+                <div class="summary-cell">
+                    <div class="label">土地粗利合計</div>
+                    <div class="value profit">83,800,000円</div>
+                </div>
+                <div class="summary-cell">
+                    <div class="label">建物粗利合計</div>
+                    <div class="value profit">59,200,000円</div>
+                </div>
+                <div class="summary-cell">
+                    <div class="label">合計粗利</div>
+                    <div class="value profit">143,000,000円</div>
+                    <div class="sub">(合計粗利率 23.7%)</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- フィルターバー -->
+    <form class="filter-bar" onsubmit="return false;">
+        <select>
+            <option>年度: 2025年度</option>
+            <option>年度: 全期間</option>
+            <option>年度: 2024年度</option>
+            <option>年度: 2023年度</option>
+        </select>
+        <select>
+            <option>種別: 全て</option>
+            <option>建売</option>
+            <option>注文住宅</option>
+        </select>
+        <select>
+            <option>担当者: 全て</option>
+            <option>田中</option>
+            <option>佐藤</option>
+            <option>鈴木</option>
+        </select>
+        <a href="#" class="clear-btn">クリア</a>
+    </form>
+
+    <!-- テーブル -->
+    <div class="table-wrap">
+        <div class="scroll-x">
+            <table class="list-table">
+                <thead>
+                    <tr>
+                        <th class="sticky-col sticky-col-1">契約日</th>
+                        <th class="sticky-col sticky-col-2">種別</th>
+                        <th class="sticky-col sticky-col-3 left">物件名 / 案件名</th>
+                        <th class="sticky-col sticky-col-4">顧客</th>
+                        <th style="min-width: 140px;">契約額</th>
+                        <th style="min-width: 130px;">土地粗利</th>
+                        <th style="min-width: 130px;">建物粗利</th>
+                        <th style="min-width: 130px;">合計粗利</th>
+                        <th style="min-width: 110px;">土地粗利率</th>
+                        <th style="min-width: 110px;">建物粗利率</th>
+                        <th style="min-width: 110px;">合計粗利率</th>
+                        <th style="min-width: 100px;">進行状況</th>
+                        <th style="min-width: 80px;">担当</th>
+                        <th style="min-width: 80px;">アクション</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- 注文住宅 1: 2026/04/05 -->
+                    <tr>
+                        <td class="sticky-col sticky-col-1 center">2026/04/05</td>
+                        <td class="sticky-col sticky-col-2 center"><span class="badge badge-custom">注文住宅</span></td>
+                        <td class="sticky-col sticky-col-3"><a href="show-custom-order.html" class="link">大街道モデルハウス注文邸</a></td>
+                        <td class="sticky-col sticky-col-4 center">佐藤 美咲 様</td>
+                        <td class="right">42,000,000円</td>
+                        <td class="right profit-text">6,800,000円</td>
+                        <td class="right profit-text">4,500,000円</td>
+                        <td class="right profit-text">11,300,000円</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">36.0%</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">19.5%</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">26.9%</td>
+                        <td class="center"><span class="badge badge-status-contracted">契約</span></td>
+                        <td class="center">木村</td>
+                        <td class="center"><a href="show-custom-order.html" class="detail-btn">詳細</a></td>
+                    </tr>
+                    <!-- 建売 1: 2026/03/28 -->
+                    <tr>
+                        <td class="sticky-col sticky-col-1 center">2026/03/28</td>
+                        <td class="sticky-col sticky-col-2 center"><span class="badge badge-building">建売</span></td>
+                        <td class="sticky-col sticky-col-3"><a href="show-building.html" class="link">南予グリーンヒル I号棟</a></td>
+                        <td class="sticky-col sticky-col-4 center">田中 一郎 様</td>
+                        <td class="right">32,500,000円</td>
+                        <td class="right profit-text">4,800,000円</td>
+                        <td class="right profit-text">3,200,000円</td>
+                        <td class="right profit-text">8,000,000円</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">24.6%</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">24.6%</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">24.6%</td>
+                        <td class="center"><span class="badge badge-status-done">成約済</span></td>
+                        <td class="center">田中</td>
+                        <td class="center"><a href="show-building.html" class="detail-btn">詳細</a></td>
+                    </tr>
+                    <!-- 注文住宅 2: 2026/03/10 -->
+                    <tr>
+                        <td class="sticky-col sticky-col-1 center">2026/03/10</td>
+                        <td class="sticky-col sticky-col-2 center"><span class="badge badge-custom">注文住宅</span></td>
+                        <td class="sticky-col sticky-col-3"><a href="show-custom-order.html" class="link">松山市今治町の家</a></td>
+                        <td class="sticky-col sticky-col-4 center">中村 隆明 様</td>
+                        <td class="right">38,500,000円</td>
+                        <td class="right profit-text">5,400,000円</td>
+                        <td class="right profit-text">4,100,000円</td>
+                        <td class="right profit-text">9,500,000円</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">31.2%</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">19.4%</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">24.7%</td>
+                        <td class="center"><span class="badge badge-status-progress">着工</span></td>
+                        <td class="center">鈴木</td>
+                        <td class="center"><a href="show-custom-order.html" class="detail-btn">詳細</a></td>
+                    </tr>
+                    <!-- 建売 2: 2026/02/14 -->
+                    <tr>
+                        <td class="sticky-col sticky-col-1 center">2026/02/14</td>
+                        <td class="sticky-col sticky-col-2 center"><span class="badge badge-building">建売</span></td>
+                        <td class="sticky-col sticky-col-3"><a href="show-building.html" class="link">松山市勝山町 D号地</a></td>
+                        <td class="sticky-col sticky-col-4 center">株式会社マルトク不動産</td>
+                        <td class="right">35,200,000円</td>
+                        <td class="right profit-text">5,500,000円</td>
+                        <td class="right profit-text">3,000,000円</td>
+                        <td class="right profit-text">8,500,000円</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">26.0%</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">21.3%</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">24.1%</td>
+                        <td class="center"><span class="badge badge-status-done">成約済</span></td>
+                        <td class="center">佐藤</td>
+                        <td class="center"><a href="show-building.html" class="detail-btn">詳細</a></td>
+                    </tr>
+                    <!-- 注文住宅 3（顧客所有地）: 2026/02/01 -->
+                    <tr>
+                        <td class="sticky-col sticky-col-1 center">2026/02/01</td>
+                        <td class="sticky-col sticky-col-2 center"><span class="badge badge-custom">注文住宅</span></td>
+                        <td class="sticky-col sticky-col-3"><a href="show-custom-order.html" class="link">八幡浜市保内町 井上邸 新築工事</a></td>
+                        <td class="sticky-col sticky-col-4 center">井上 誠 様</td>
+                        <td class="right">22,500,000円</td>
+                        <td class="right"><span class="muted">—</span></td>
+                        <td class="right profit-text">2,600,000円</td>
+                        <td class="right profit-text">2,600,000円</td>
+                        <td class="right"><span class="muted">—</span></td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">11.6%</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">11.6%</td>
+                        <td class="center"><span class="badge badge-status-done">完成</span></td>
+                        <td class="center">山田</td>
+                        <td class="center"><a href="show-custom-order.html" class="detail-btn">詳細</a></td>
+                    </tr>
+                    <!-- 建売 3: 2026/01/20 -->
+                    <tr>
+                        <td class="sticky-col sticky-col-1 center">2026/01/20</td>
+                        <td class="sticky-col sticky-col-2 center"><span class="badge badge-building">建売</span></td>
+                        <td class="sticky-col sticky-col-3"><a href="show-building.html" class="link">伊予郡砥部町 E号地</a></td>
+                        <td class="sticky-col sticky-col-4 center">森川 健太郎 様</td>
+                        <td class="right">27,800,000円</td>
+                        <td class="right profit-text">4,100,000円</td>
+                        <td class="right profit-text">2,400,000円</td>
+                        <td class="right profit-text">6,500,000円</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">24.6%</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">21.6%</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">23.4%</td>
+                        <td class="center"><span class="badge badge-status-done">成約済</span></td>
+                        <td class="center">山田</td>
+                        <td class="center"><a href="show-building.html" class="detail-btn">詳細</a></td>
+                    </tr>
+                    <!-- 建売 4: 2025/12/18 -->
+                    <tr>
+                        <td class="sticky-col sticky-col-1 center">2025/12/18</td>
+                        <td class="sticky-col sticky-col-2 center"><span class="badge badge-building">建売</span></td>
+                        <td class="sticky-col sticky-col-3"><a href="show-building.html" class="link">東温市田窪 F号地</a></td>
+                        <td class="sticky-col sticky-col-4 center">清水 真由美 様</td>
+                        <td class="right">29,500,000円</td>
+                        <td class="right profit-text">4,400,000円</td>
+                        <td class="right profit-text">2,900,000円</td>
+                        <td class="right profit-text">7,300,000円</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">24.9%</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">24.6%</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">24.7%</td>
+                        <td class="center"><span class="badge badge-status-done">成約済</span></td>
+                        <td class="center">佐藤</td>
+                        <td class="center"><a href="show-building.html" class="detail-btn">詳細</a></td>
+                    </tr>
+                    <!-- 注文住宅 4: 2025/12/05 -->
+                    <tr>
+                        <td class="sticky-col sticky-col-1 center">2025/12/05</td>
+                        <td class="sticky-col sticky-col-2 center"><span class="badge badge-custom">注文住宅</span></td>
+                        <td class="sticky-col sticky-col-3"><a href="show-custom-order.html" class="link">西条市氷見 吉田邸 新築工事</a></td>
+                        <td class="sticky-col sticky-col-4 center">吉田 由紀 様</td>
+                        <td class="right">28,800,000円</td>
+                        <td class="right profit-text">4,200,000円</td>
+                        <td class="right profit-text">3,100,000円</td>
+                        <td class="right profit-text">7,300,000円</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">32.4%</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">19.6%</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">25.3%</td>
+                        <td class="center"><span class="badge badge-status-delivered">引渡し</span></td>
+                        <td class="center">木村</td>
+                        <td class="center"><a href="show-custom-order.html" class="detail-btn">詳細</a></td>
+                    </tr>
+                    <!-- 建売 5: 2025/11/20 -->
+                    <tr>
+                        <td class="sticky-col sticky-col-1 center">2025/11/20</td>
+                        <td class="sticky-col sticky-col-2 center"><span class="badge badge-building">建売</span></td>
+                        <td class="sticky-col sticky-col-3"><a href="show-building.html" class="link">松山市居相町モデル A号地</a></td>
+                        <td class="sticky-col sticky-col-4 center">山本 浩二 様</td>
+                        <td class="right">28,500,000円</td>
+                        <td class="right profit-text">4,200,000円</td>
+                        <td class="right profit-text">2,800,000円</td>
+                        <td class="right profit-text">7,000,000円</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">24.6%</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">24.6%</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">24.6%</td>
+                        <td class="center"><span class="badge badge-status-done">成約済</span></td>
+                        <td class="center">田中</td>
+                        <td class="center"><a href="show-building.html" class="detail-btn">詳細</a></td>
+                    </tr>
+                    <!-- 注文住宅 5: 2025/11/05 -->
+                    <tr>
+                        <td class="sticky-col sticky-col-1 center">2025/11/05</td>
+                        <td class="sticky-col sticky-col-2 center"><span class="badge badge-custom">注文住宅</span></td>
+                        <td class="sticky-col sticky-col-3"><a href="show-custom-order.html" class="link">松前町筒井邸 新築工事</a></td>
+                        <td class="sticky-col sticky-col-4 center">筒井 和彦 様</td>
+                        <td class="right">24,000,000円</td>
+                        <td class="right profit-text">5,000,000円</td>
+                        <td class="right profit-text">2,800,000円</td>
+                        <td class="right profit-text">7,800,000円</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">46.3%</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">21.2%</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">32.5%</td>
+                        <td class="center"><span class="badge badge-status-progress">着工</span></td>
+                        <td class="center">鈴木</td>
+                        <td class="center"><a href="show-custom-order.html" class="detail-btn">詳細</a></td>
+                    </tr>
+                    <!-- 建売 6: 2025/10/02 -->
+                    <tr>
+                        <td class="sticky-col sticky-col-1 center">2025/10/02</td>
+                        <td class="sticky-col sticky-col-2 center"><span class="badge badge-building">建売</span></td>
+                        <td class="sticky-col sticky-col-3"><a href="show-building.html" class="link">東温市志津川 B号地</a></td>
+                        <td class="sticky-col sticky-col-4 center">株式会社タナベ工業</td>
+                        <td class="right">31,800,000円</td>
+                        <td class="right profit-text">5,500,000円</td>
+                        <td class="right profit-text">2,200,000円</td>
+                        <td class="right profit-text">7,700,000円</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">28.8%</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">17.3%</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">24.2%</td>
+                        <td class="center"><span class="badge badge-status-done">成約済</span></td>
+                        <td class="center">佐藤</td>
+                        <td class="center"><a href="show-building.html" class="detail-btn">詳細</a></td>
+                    </tr>
+                    <!-- 注文住宅 6（顧客所有地）: 2025/09/28 -->
+                    <tr>
+                        <td class="sticky-col sticky-col-1 center">2025/09/28</td>
+                        <td class="sticky-col sticky-col-2 center"><span class="badge badge-custom">注文住宅</span></td>
+                        <td class="sticky-col sticky-col-3"><a href="show-custom-order.html" class="link">宇和島市新町 渡部邸 新築工事</a></td>
+                        <td class="sticky-col sticky-col-4 center">渡部 絵里 様</td>
+                        <td class="right">26,500,000円</td>
+                        <td class="right"><span class="muted">—</span></td>
+                        <td class="right profit-text">3,200,000円</td>
+                        <td class="right profit-text">3,200,000円</td>
+                        <td class="right"><span class="muted">—</span></td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">12.1%</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">12.1%</td>
+                        <td class="center"><span class="badge badge-status-delivered">引渡し</span></td>
+                        <td class="center">鈴木</td>
+                        <td class="center"><a href="show-custom-order.html" class="detail-btn">詳細</a></td>
+                    </tr>
+                    <!-- 建売 7: 2025/09/15 -->
+                    <tr>
+                        <td class="sticky-col sticky-col-1 center">2025/09/15</td>
+                        <td class="sticky-col sticky-col-2 center"><span class="badge badge-building">建売</span></td>
+                        <td class="sticky-col sticky-col-3"><a href="show-building.html" class="link">伊予市下三谷 C号地</a></td>
+                        <td class="sticky-col sticky-col-4 center">高橋 由美子 様</td>
+                        <td class="right">26,200,000円</td>
+                        <td class="right profit-text">3,800,000円</td>
+                        <td class="right profit-text">2,500,000円</td>
+                        <td class="right profit-text">6,300,000円</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">24.2%</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">23.9%</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">24.0%</td>
+                        <td class="center"><span class="badge badge-status-done">成約済</span></td>
+                        <td class="center">田中</td>
+                        <td class="center"><a href="show-building.html" class="detail-btn">詳細</a></td>
+                    </tr>
+                    <!-- 建売 8: 2025/08/25 -->
+                    <tr>
+                        <td class="sticky-col sticky-col-1 center">2025/08/25</td>
+                        <td class="sticky-col sticky-col-2 center"><span class="badge badge-building">建売</span></td>
+                        <td class="sticky-col sticky-col-3"><a href="show-building.html" class="link">松山市久米窪田 G号地</a></td>
+                        <td class="sticky-col sticky-col-4 center">藤田 翔 様</td>
+                        <td class="right">33,900,000円</td>
+                        <td class="right profit-text">5,200,000円</td>
+                        <td class="right profit-text">3,300,000円</td>
+                        <td class="right profit-text">8,500,000円</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">25.6%</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">24.3%</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">25.1%</td>
+                        <td class="center"><span class="badge badge-status-done">成約済</span></td>
+                        <td class="center">山田</td>
+                        <td class="center"><a href="show-building.html" class="detail-btn">詳細</a></td>
+                    </tr>
+                    <!-- 注文住宅 7（顧客所有地）: 2025/08/18 -->
+                    <tr>
+                        <td class="sticky-col sticky-col-1 center">2025/08/18</td>
+                        <td class="sticky-col sticky-col-2 center"><span class="badge badge-custom">注文住宅</span></td>
+                        <td class="sticky-col sticky-col-3"><a href="show-custom-order.html" class="link">今治市大西町 長尾邸 新築工事</a></td>
+                        <td class="sticky-col sticky-col-4 center">長尾 美智子 様</td>
+                        <td class="right">18,000,000円</td>
+                        <td class="right"><span class="muted">—</span></td>
+                        <td class="right profit-text">1,700,000円</td>
+                        <td class="right profit-text">1,700,000円</td>
+                        <td class="right"><span class="muted">—</span></td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">9.4%</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">9.4%</td>
+                        <td class="center"><span class="badge badge-status-contracted">契約</span></td>
+                        <td class="center">佐藤</td>
+                        <td class="center"><a href="show-custom-order.html" class="detail-btn">詳細</a></td>
+                    </tr>
+                    <!-- 建売 9: 2025/07/12 -->
+                    <tr>
+                        <td class="sticky-col sticky-col-1 center">2025/07/12</td>
+                        <td class="sticky-col sticky-col-2 center"><span class="badge badge-building">建売</span></td>
+                        <td class="sticky-col sticky-col-3"><a href="show-building.html" class="link">南予グリーンヒル II号棟</a></td>
+                        <td class="sticky-col sticky-col-4 center">合同会社山本商事</td>
+                        <td class="right">34,600,000円</td>
+                        <td class="right profit-text">5,800,000円</td>
+                        <td class="right profit-text">3,100,000円</td>
+                        <td class="right profit-text">8,900,000円</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">27.9%</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">22.4%</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">25.7%</td>
+                        <td class="center"><span class="badge badge-status-done">成約済</span></td>
+                        <td class="center">木村</td>
+                        <td class="center"><a href="show-building.html" class="detail-btn">詳細</a></td>
+                    </tr>
+                    <!-- 注文住宅 8: 2025/07/02 -->
+                    <tr>
+                        <td class="sticky-col sticky-col-1 center">2025/07/02</td>
+                        <td class="sticky-col sticky-col-2 center"><span class="badge badge-custom">注文住宅</span></td>
+                        <td class="sticky-col sticky-col-3"><a href="show-custom-order.html" class="link">大洲市若宮 山田邸 新築工事</a></td>
+                        <td class="sticky-col sticky-col-4 center">山田 修 様</td>
+                        <td class="right">31,200,000円</td>
+                        <td class="right profit-text">4,800,000円</td>
+                        <td class="right profit-text">3,600,000円</td>
+                        <td class="right profit-text">8,400,000円</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">34.2%</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">21.0%</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">26.9%</td>
+                        <td class="center"><span class="badge badge-status-done">完成</span></td>
+                        <td class="center">鈴木</td>
+                        <td class="center"><a href="show-custom-order.html" class="detail-btn">詳細</a></td>
+                    </tr>
+                    <!-- 建売 10: 2025/06/28 -->
+                    <tr>
+                        <td class="sticky-col sticky-col-1 center">2025/06/28</td>
+                        <td class="sticky-col sticky-col-2 center"><span class="badge badge-building">建売</span></td>
+                        <td class="sticky-col sticky-col-3"><a href="show-building.html" class="link">松前町北黒田 H号地</a></td>
+                        <td class="sticky-col sticky-col-4 center">岡田 直樹 様</td>
+                        <td class="right">30,200,000円</td>
+                        <td class="right profit-text">4,500,000円</td>
+                        <td class="right profit-text">2,600,000円</td>
+                        <td class="right profit-text">7,100,000円</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">24.8%</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">21.5%</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">23.5%</td>
+                        <td class="center"><span class="badge badge-status-done">成約済</span></td>
+                        <td class="center">田中</td>
+                        <td class="center"><a href="show-building.html" class="detail-btn">詳細</a></td>
+                    </tr>
+                    <!-- 建売 11: 2025/06/10 -->
+                    <tr>
+                        <td class="sticky-col sticky-col-1 center">2025/06/10</td>
+                        <td class="sticky-col sticky-col-2 center"><span class="badge badge-building">建売</span></td>
+                        <td class="sticky-col sticky-col-3"><a href="show-building.html" class="link">伊予郡松前町 I号地</a></td>
+                        <td class="sticky-col sticky-col-4 center">渡辺 聡 様</td>
+                        <td class="right">25,800,000円</td>
+                        <td class="right profit-text">3,600,000円</td>
+                        <td class="right profit-text">2,200,000円</td>
+                        <td class="right profit-text">5,800,000円</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">23.3%</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">21.3%</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">22.5%</td>
+                        <td class="center"><span class="badge badge-status-done">成約済</span></td>
+                        <td class="center">佐藤</td>
+                        <td class="center"><a href="show-building.html" class="detail-btn">詳細</a></td>
+                    </tr>
+                    <!-- 建売 12: 2025/05/22 -->
+                    <tr>
+                        <td class="sticky-col sticky-col-1 center">2025/05/22</td>
+                        <td class="sticky-col sticky-col-2 center"><span class="badge badge-building">建売</span></td>
+                        <td class="sticky-col sticky-col-3"><a href="show-building.html" class="link">東温市野田 J号地</a></td>
+                        <td class="sticky-col sticky-col-4 center">株式会社ヒロセ興産</td>
+                        <td class="right">36,800,000円</td>
+                        <td class="right profit-text">6,200,000円</td>
+                        <td class="right profit-text">3,400,000円</td>
+                        <td class="right profit-text">9,600,000円</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">28.1%</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">23.1%</td>
+                        <td class="right" style="color: #047857; font-weight: 600; white-space: nowrap;">26.1%</td>
+                        <td class="center"><span class="badge badge-status-done">成約済</span></td>
+                        <td class="center">山田</td>
+                        <td class="center"><a href="show-building.html" class="detail-btn">詳細</a></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div style="padding: 10px 16px; border-top: 1px solid #E5E7EB; font-size: 14px; color: #6B7280;">1-20 / 全 20 件</div>
+
+        <!-- ページネーション -->
+        <div class="pager">
+            <span style="color: #D1D5DB; border-color: #E5E7EB;">&lt;</span>
+            <span class="active">1</span>
+            <span style="color: #D1D5DB; border-color: #E5E7EB;">&gt;</span>
+        </div>
+    </div>
+
+</div>
+
+</body>
+</html>

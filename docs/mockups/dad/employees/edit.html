@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>従業員 編集 | DAD(土木事業) | ミツワ都市開発 経営管理システム</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif; background: #f3f4f6; }
+        [x-cloak] { display: none !important; }
+
+        .card-title { font-size: 14px; font-weight: 700; color: #111827; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 1px solid #e5e7eb; }
+        .fld label { display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px; }
+        .fld input[type="text"],
+        .fld input[type="tel"],
+        .fld select,
+        .fld textarea { width: 100%; padding: 0 10px; font-size: 13px; border: 1px solid #d1d5db; border-radius: 4px; background: #fff; }
+        .fld input[type="text"],
+        .fld input[type="tel"],
+        .fld select { height: 38px; }
+        .fld textarea { padding: 8px 10px; line-height: 1.5; resize: vertical; }
+        .fld input:focus,
+        .fld select:focus,
+        .fld textarea:focus { outline: none; border-color: #10b981; box-shadow: 0 0 0 3px rgba(16,185,129,0.15); }
+        .required { color: #dc2626; margin-left: 4px; }
+        .hint { font-size: 11px; color: #6b7280; margin-top: 4px; }
+
+        /* 日付入力 */
+        .date-wrap { position: relative; }
+        .date-wrap .cal-icon { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: #9ca3af; pointer-events: none; }
+        .date-wrap input { padding-right: 36px !important; }
+
+        /* 配置履歴バナー */
+        .assignment-banner { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 12px 16px; font-size: 12px; color: #1e40af; display: flex; gap: 10px; align-items: flex-start; }
+
+        /* ボタン */
+        .btn-primary { background: #059669; color: white; padding: 10px 20px; border-radius: 6px; font-size: 13px; font-weight: 600; border: none; cursor: pointer; }
+        .btn-primary:hover { background: #047857; }
+        .btn-cancel { background: #fff; color: #374151; padding: 10px 20px; border-radius: 6px; font-size: 13px; font-weight: 600; border: 1px solid #d1d5db; text-decoration: none; display: inline-flex; align-items: center; }
+        .btn-cancel:hover { background: #f9fafb; }
+        .btn-delete { background: #fff; color: #b91c1c; padding: 10px 20px; border-radius: 6px; font-size: 13px; font-weight: 600; border: 1px solid #fecaca; cursor: pointer; }
+        .btn-delete:hover { background: #fef2f2; }
+        .btn-delete:disabled { color: #9ca3af; border-color: #e5e7eb; background: #f9fafb; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+
+    <!-- トップバー -->
+    <header style="background: #1f2937; color: white; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 16px;">
+            <span style="font-weight: 700;">ミツワ都市開発 経営管理システム</span>
+        </div>
+        <div style="font-size: 13px;">山田 (経営層)</div>
+    </header>
+
+    <div style="display: flex; min-height: calc(100vh - 48px);">
+        <!-- サイドバー -->
+        <aside style="width: 220px; background: white; border-right: 1px solid #e5e7eb; padding: 16px 0;">
+            <nav style="font-size: 13px;">
+                <div style="padding: 8px 16px; color: #6b7280;">ダッシュボード</div>
+                <div style="padding: 8px 16px; color: #6b7280;">テナント管理</div>
+                <div style="padding: 8px 16px; color: #6b7280;">賃貸マンション</div>
+                <div style="padding: 8px 16px; color: #6b7280;">不動産管理</div>
+                <div style="padding: 8px 16px; color: #6b7280;">住宅事業</div>
+                <div style="padding: 8px 16px; color: #6b7280;">DAD（土木事業） ▾</div>
+                <div style="padding: 6px 16px 6px 32px; color: #6b7280;">工事案件</div>
+                <div style="padding: 8px 16px; color: #6b7280;">システム管理 ▾</div>
+                <div style="padding: 6px 16px 2px 24px; color: #9ca3af; font-size: 11px;">テナント</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">用途マスター</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">構造マスター</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">テナントCSVインポート</div>
+                <div style="padding: 6px 16px 2px 24px; color: #9ca3af; font-size: 11px;">賃貸マンション</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">賃貸マンションCSVインポート</div>
+                <div style="padding: 6px 16px 2px 24px; color: #9ca3af; font-size: 11px;">不動産</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">原価項目マスター</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">用途地域マスター</div>
+                <div style="padding: 6px 16px 2px 24px; color: #9ca3af; font-size: 11px;">住宅</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">アンケート設問管理</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">顧客CSVインポート</div>
+                <div style="padding: 6px 16px 2px 24px; color: #9ca3af; font-size: 11px;">DAD</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">発注者管理</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">協力業者</div>
+                <div style="padding: 4px 16px 4px 32px; background: #ecfdf5; color: #047857; border-left: 3px solid #10b981; font-weight: 600;">従業員管理</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">専門分野マスター</div>
+                <div style="padding: 6px 16px 2px 24px; color: #9ca3af; font-size: 11px;">マスター</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">ユーザー管理</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">マスター設定</div>
+            </nav>
+        </aside>
+
+        <!-- メインコンテンツ -->
+        <main style="flex: 1; padding: 24px;">
+
+            <!-- パンくず -->
+            <div style="font-size: 12px; color: #9ca3af; margin-bottom: 16px;">
+                <a href="#" style="color: #10b981;">ホーム</a>
+                <span style="margin: 0 6px;">›</span>
+                <a href="#" style="color: #10b981;">システム管理</a>
+                <span style="margin: 0 6px;">›</span>
+                <a href="#" style="color: #10b981;">DAD</a>
+                <span style="margin: 0 6px;">›</span>
+                <a href="index.html" style="color: #10b981;">従業員管理</a>
+                <span style="margin: 0 6px;">›</span>
+                <span>編集</span>
+            </div>
+
+            <!-- ページヘッダー -->
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
+                <h1 style="font-size: 20px; font-weight: 700; margin: 0;">従業員 編集</h1>
+            </div>
+
+            <!-- 配置中バナー（現場配置がある場合に表示・削除不可） -->
+            <div class="assignment-banner" style="margin-bottom: 20px;">
+                <svg style="width: 18px; height: 18px; flex-shrink: 0; margin-top: 1px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                <div>
+                    <strong>現在の配置:</strong> DAD-001 松山駅前道路改良工事（現場代理人 / 2026-04-01 〜 2026-06-30）<br>
+                    現場配置がある従業員は削除できません。退職された場合は在籍状況を「退職」に変更してください（既存の配置履歴は保持されます）。
+                </div>
+            </div>
+
+            <form @submit.prevent="alert('モック: このデータで更新されます（実装時は PUT /dad/employees/1）');" style="max-width: 880px;">
+
+                <!-- 基本情報 -->
+                <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
+                    <div class="card-title">基本情報</div>
+
+                    <!-- 社員番号・在籍状況 2列 -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                        <div class="fld">
+                            <label>社員番号<span class="required">*</span></label>
+                            <input type="text" name="employee_code" value="M001" maxlength="20" required>
+                            <div class="hint">半角英数字20文字以内。社内規則に従って採番してください。</div>
+                        </div>
+                        <div class="fld">
+                            <label>在籍状況<span class="required">*</span></label>
+                            <select name="status" required>
+                                <option value="active" selected>在籍</option>
+                                <option value="retired">退職</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- 氏名・フリガナ 2列 -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                        <div class="fld">
+                            <label>氏名<span class="required">*</span></label>
+                            <input type="text" name="name" value="山田 太郎" maxlength="50" required>
+                        </div>
+                        <div class="fld">
+                            <label>フリガナ</label>
+                            <input type="text" name="name_kana" value="ヤマダ タロウ" maxlength="50">
+                            <div class="hint">全角カタカナで入力してください</div>
+                        </div>
+                    </div>
+
+                    <!-- 入社日 -->
+                    <div class="fld">
+                        <label>入社日</label>
+                        <div class="date-wrap" style="max-width: 240px;">
+                            <input type="text" name="hire_date" value="2018-04-01" maxlength="10">
+                            <svg class="cal-icon" style="width: 16px; height: 16px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                                <line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/>
+                                <line x1="3" y1="10" x2="21" y2="10"/>
+                            </svg>
+                        </div>
+                        <div class="hint">YYYY-MM-DD 形式。入力欄クリックでカレンダーを表示します。</div>
+                    </div>
+                </div>
+
+                <!-- 役職・連絡先 -->
+                <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
+                    <div class="card-title">役職・連絡先</div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                        <div class="fld">
+                            <label>役職</label>
+                            <input type="text" name="position" value="現場代理人" list="position-options" maxlength="50">
+                            <datalist id="position-options">
+                                <option value="現場代理人">
+                                <option value="主任技術者">
+                                <option value="監理技術者">
+                                <option value="現場監督">
+                                <option value="技術員">
+                                <option value="作業員">
+                            </datalist>
+                            <div class="hint">リストから選択または自由入力できます</div>
+                        </div>
+                        <div class="fld">
+                            <label>電話番号</label>
+                            <input type="tel" name="phone" value="090-1234-5678" maxlength="20">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 資格・備考 -->
+                <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
+                    <div class="card-title">資格・備考</div>
+
+                    <div class="fld" style="margin-bottom: 16px;">
+                        <label>保有資格</label>
+                        <textarea name="qualifications" rows="4">1級土木施工管理技士
+1級建築士
+玉掛け技能講習修了</textarea>
+                        <div class="hint">1行につき1つの資格を記載してください。配置現場の必要資格チェックに使用されます。</div>
+                    </div>
+
+                    <div class="fld">
+                        <label>備考</label>
+                        <textarea name="notes" rows="3">入社以来、現場代理人として多数の公共工事を担当。</textarea>
+                    </div>
+                </div>
+
+                <!-- アクション -->
+                <div style="display: flex; gap: 12px; justify-content: space-between; align-items: center;">
+                    <button type="button"
+                            class="btn-delete"
+                            disabled
+                            title="現場配置があるため削除できません">
+                        削除
+                    </button>
+
+                    <div style="display: flex; gap: 12px;">
+                        <a href="index.html" class="btn-cancel">キャンセル</a>
+                        <button type="submit" class="btn-primary">更新する</button>
+                    </div>
+                </div>
+            </form>
+
+        </main>
+    </div>
+
+</body>
+</html>

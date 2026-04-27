@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>入居申込書アップロード | ミツワ都市開発 経営管理システム</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif; background: #f3f4f6; }
+
+        /* カード共通 */
+        .card {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 18px 20px;
+            margin-bottom: 20px;
+        }
+        .card-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: #111827;
+            padding-left: 12px;
+            border-left: 4px solid #10b981;
+            margin-bottom: 14px;
+        }
+
+        /* 情報行 */
+        .info-row {
+            display: grid;
+            grid-template-columns: 140px 1fr;
+            padding: 8px 0;
+            border-bottom: 1px dashed #e5e7eb;
+            font-size: 14px;
+        }
+        .info-row:last-child { border-bottom: none; }
+        .info-label { color: #6b7280; font-weight: 600; }
+        .info-value { color: #111827; }
+
+        /* バッジ */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 10px;
+            border-radius: 9999px;
+            font-size: 11px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .badge-resident { background: #d1fae5; color: #065f46; }
+        .badge-applying { background: #fed7aa; color: #9a3412; }
+
+        /* ドロップゾーン */
+        .drop-zone {
+            border: 2px dashed #d1d5db;
+            background: #f9fafb;
+            border-radius: 10px;
+            padding: 28px 20px;
+            text-align: center;
+            transition: all 0.15s ease;
+        }
+        .drop-zone.dragover {
+            border-color: #10b981;
+            background: #ecfdf5;
+        }
+
+        /* ボタン */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            text-decoration: none;
+            cursor: pointer;
+            border: 1px solid transparent;
+        }
+        .btn-primary { background: #059669; color: white; border-color: #059669; }
+        .btn-primary:hover { background: #047857; border-color: #047857; }
+        .btn-default { background: white; color: #374151; border-color: #d1d5db; }
+        .btn-default:hover { background: #f9fafb; }
+        .btn-select {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 8px 16px;
+            background: white;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #374151;
+            cursor: pointer;
+        }
+        .btn-select:hover { background: #f9fafb; }
+
+        /* ファイル一覧テーブル */
+        .file-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        .file-table thead th {
+            background: #f9fafb;
+            color: #374151;
+            font-weight: 700;
+            font-size: 12px;
+            text-align: left;
+            padding: 10px 12px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .file-table thead th.center { text-align: center; }
+        .file-table thead th.num { text-align: right; }
+        .file-table tbody td {
+            padding: 12px;
+            border-bottom: 1px solid #f3f4f6;
+            color: #374151;
+        }
+        .file-table tbody td.center { text-align: center; }
+        .file-table tbody td.num { text-align: right; font-variant-numeric: tabular-nums; }
+        .file-table tbody tr:hover { background: #fafafa; }
+        .file-table tbody tr:last-child td { border-bottom: none; }
+
+        .file-link { color: #047857; text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+        .file-link:hover { text-decoration: underline; }
+
+        /* 削除ボタン */
+        .delete-btn {
+            background: none; border: none;
+            padding: 4px;
+            color: #9ca3af;
+            cursor: pointer;
+            display: inline-flex; align-items: center;
+            border-radius: 4px;
+        }
+        .delete-btn:hover { color: #dc2626; background: #fef2f2; }
+
+        /* 削除確認バー */
+        .confirm-bar {
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            border-radius: 6px;
+            padding: 10px 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        /* 通知 */
+        .notice-success {
+            background: #ecfdf5;
+            border: 1px solid #a7f3d0;
+            color: #065f46;
+            padding: 10px 14px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 14px;
+        }
+
+        /* 削除履歴 */
+        .deleted-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: #9ca3af;
+            padding: 4px 0;
+        }
+        .deleted-item .file-name { text-decoration: line-through; }
+
+        [x-cloak] { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <!-- トップバー -->
+    <header style="background: #1f2937; color: white; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 16px;">
+            <span style="font-weight: 700;">ミツワ都市開発 経営管理システム</span>
+        </div>
+        <div style="font-size: 13px;">山田 (経営層)</div>
+    </header>
+
+    <div style="display: flex; min-height: calc(100vh - 48px);">
+        <!-- サイドバー -->
+        <aside style="width: 220px; background: white; border-right: 1px solid #e5e7eb; padding: 16px 0;">
+            <nav style="font-size: 13px;">
+                <div style="padding: 8px 16px; color: #6b7280;">ダッシュボード</div>
+                <div style="padding: 8px 16px; color: #6b7280;">テナント管理</div>
+                <div style="padding: 8px 16px; color: #6b7280;">賃貸マンション ▾</div>
+                <div style="padding: 6px 16px 6px 32px; color: #6b7280;">賃貸マンションダッシュボード</div>
+                <div style="padding: 6px 16px 6px 32px; color: #6b7280;">物件一覧</div>
+                <div style="padding: 6px 16px 6px 32px; background: #ecfdf5; color: #047857; border-left: 3px solid #10b981; font-weight: 600;">入居者管理</div>
+                <div style="padding: 6px 16px 6px 32px; color: #6b7280;">部屋契約一覧</div>
+                <div style="padding: 6px 16px 6px 32px; color: #6b7280;">駐車場契約一覧</div>
+                <div style="padding: 8px 16px; color: #6b7280;">不動産管理</div>
+                <div style="padding: 8px 16px; color: #6b7280;">住宅事業</div>
+                <div style="padding: 8px 16px; color: #6b7280;">システム管理</div>
+            </nav>
+        </aside>
+
+        <!-- メインコンテンツ -->
+        <main style="flex: 1; padding: 24px;" x-data="applicationUpload()">
+
+            <!-- パンくず -->
+            <div class="text-sm text-gray-500" style="margin-bottom: 12px;">
+                ダッシュボード &gt; 賃貸マンション &gt;
+                <a href="index.html" class="text-gray-500 hover:text-emerald-600 hover:underline">入居者管理</a> &gt;
+                <a href="show.html" class="text-gray-500 hover:text-emerald-600 hover:underline">佐藤 健一</a> &gt;
+                <span class="text-gray-800 font-medium">入居申込書</span>
+            </div>
+
+            <!-- ページヘッダー -->
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
+                <div>
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <h1 style="font-size: 22px; font-weight: 700; margin: 0;">入居申込書</h1>
+                        <span class="badge badge-applying">申込み・仮押え</span>
+                    </div>
+                    <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">入居予定者の本人確認書類・収入証明・保証人書類を管理します</div>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <a href="show.html" class="btn btn-default">
+                        <svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                        入居者詳細に戻る
+                    </a>
+                </div>
+            </div>
+
+            <!-- ========== カード: 申込者情報 ========== -->
+            <div class="card">
+                <div class="card-title">申込者情報</div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0 32px;">
+                    <div>
+                        <div class="info-row">
+                            <div class="info-label">氏名</div>
+                            <div class="info-value">佐藤 健一（さとう けんいち）</div>
+                        </div>
+                        <div class="info-row">
+                            <div class="info-label">利用者区分</div>
+                            <div class="info-value"><span class="badge badge-resident">入居者</span></div>
+                        </div>
+                        <div class="info-row">
+                            <div class="info-label">電話</div>
+                            <div class="info-value">090-1234-5678</div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="info-row">
+                            <div class="info-label">申込対象</div>
+                            <div class="info-value">
+                                <a href="../properties/show.html" style="color: #047857; font-weight: 600; text-decoration: none;">ミツワハイツ松山1号館</a>
+                                <span style="color: #6b7280;"> / </span>
+                                <span style="font-weight: 600;">302号室</span>
+                                <div style="font-size: 12px; color: #6b7280; margin-top: 2px;">2LDK / 58.4㎡ / 賃料 78,000円</div>
+                            </div>
+                        </div>
+                        <div class="info-row">
+                            <div class="info-label">申込日</div>
+                            <div class="info-value">2026/04/15</div>
+                        </div>
+                        <div class="info-row">
+                            <div class="info-label">入居予定日</div>
+                            <div class="info-value">2026/05/01</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ========== カード: 申込書類アップロード ========== -->
+            <div class="card">
+                <div class="card-title">申込書類</div>
+
+                <!-- 成功通知 -->
+                <div x-show="successMessage" x-cloak x-transition class="notice-success" x-text="successMessage"></div>
+
+                <!-- ドロップゾーン -->
+                <div class="drop-zone"
+                     :class="{ 'dragover': dragOver }"
+                     @dragover.prevent="dragOver = true"
+                     @dragleave.prevent="dragOver = false"
+                     @drop.prevent="handleDrop($event)">
+                    <svg style="width: 32px; height: 32px; color: #9ca3af; margin: 0 auto 10px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                        <polyline points="17 8 12 3 7 8"/>
+                        <line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                    <p style="font-size: 13px; color: #6b7280; margin: 0 0 10px;">ファイルをドラッグ&ドロップ、または</p>
+                    <label class="btn-select">
+                        <svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+                        ファイルを選択
+                        <input type="file" multiple style="display: none;" @change="handleFileSelect($event)">
+                    </label>
+                    <p style="font-size: 11px; color: #9ca3af; margin: 10px 0 0;">PDF / JPG / PNG 等全形式対応 ・ 1ファイル10MBまで ・ 複数選択可</p>
+                </div>
+
+                <!-- 推奨書類ヒント -->
+                <div style="margin-top: 14px; padding: 10px 14px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 12px; color: #6b7280;">
+                    <div style="font-weight: 700; color: #374151; margin-bottom: 4px;">推奨書類</div>
+                    <div style="display: flex; flex-wrap: wrap; gap: 6px 14px;">
+                        <span>・入居申込書</span>
+                        <span>・本人確認書類（免許証 / マイナンバーカード等）</span>
+                        <span>・収入証明書（源泉徴収票 / 直近3ヶ月の給与明細等）</span>
+                        <span>・連帯保証人承諾書 / 保証会社の審査結果</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ========== カード: アップロード済みファイル ========== -->
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+                    <div class="card-title" style="margin-bottom: 0;">アップロード済みファイル</div>
+                    <div style="font-size: 12px; color: #6b7280;">
+                        合計 <b style="color: #047857; font-weight: 700;" x-text="files.length"></b> ファイル
+                        <span x-show="totalSizeFormatted">（<span x-text="totalSizeFormatted"></span>）</span>
+                    </div>
+                </div>
+
+                <!-- ファイルなし -->
+                <template x-if="files.length === 0">
+                    <p style="color: #9ca3af; text-align: center; padding: 18px 0; font-size: 13px;">まだファイルがアップロードされていません。</p>
+                </template>
+
+                <!-- ファイル一覧 -->
+                <template x-if="files.length > 0">
+                    <table class="file-table">
+                        <thead>
+                            <tr>
+                                <th>ファイル名</th>
+                                <th class="num">サイズ</th>
+                                <th class="center">アップロード者</th>
+                                <th class="center">日時</th>
+                                <th style="width: 60px;"></th>
+                            </tr>
+                        </thead>
+                        <template x-for="(file, idx) in files" :key="file.id">
+                            <tbody>
+                                <tr>
+                                    <td>
+                                        <a href="#" class="file-link" @click.prevent>
+                                            <svg style="width: 14px; height: 14px; flex-shrink: 0; color: #9ca3af;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                                            <span x-text="file.name"></span>
+                                        </a>
+                                    </td>
+                                    <td class="num" x-text="file.size"></td>
+                                    <td class="center" x-text="file.uploader"></td>
+                                    <td class="center" style="color: #6b7280; font-variant-numeric: tabular-nums;" x-text="file.uploadedAt"></td>
+                                    <td class="center">
+                                        <button x-show="!file.confirming" @click="file.confirming = true" class="delete-btn" title="削除">
+                                            <svg style="width: 16px; height: 16px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                                        </button>
+                                    </td>
+                                </tr>
+                                <tr x-show="file.confirming" x-cloak>
+                                    <td colspan="5" style="padding: 8px 12px 14px;">
+                                        <div class="confirm-bar">
+                                            <div style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #991b1b;">
+                                                <svg style="width: 16px; height: 16px; flex-shrink: 0;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                                                <span><strong x-text="file.name"></strong> を削除しますか？</span>
+                                            </div>
+                                            <div style="display: flex; gap: 8px;">
+                                                <button @click="file.confirming = false" style="padding: 6px 12px; font-size: 12px; font-weight: 600; color: #374151; background: white; border: 1px solid #d1d5db; border-radius: 6px; cursor: pointer;">キャンセル</button>
+                                                <button @click="deleteFile(idx)" style="padding: 6px 12px; font-size: 12px; font-weight: 600; color: white; background: #dc2626; border: 1px solid #dc2626; border-radius: 6px; cursor: pointer;">削除する</button>
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </template>
+                    </table>
+                </template>
+
+                <!-- 削除履歴 -->
+                <div x-show="deletedFiles.length > 0" x-cloak style="margin-top: 16px; padding-top: 14px; border-top: 1px dashed #e5e7eb;">
+                    <button @click="showDeleted = !showDeleted" style="background: none; border: none; padding: 0; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #6b7280; white-space: nowrap;">
+                        <svg :style="'width: 12px; height: 12px; transition: transform 0.2s;' + (showDeleted ? ' transform: rotate(180deg);' : '')" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+                        <span>削除履歴（<span x-text="deletedFiles.length"></span>件）</span>
+                    </button>
+                    <div x-show="showDeleted" x-cloak x-transition style="margin-top: 10px;">
+                        <template x-for="del in deletedFiles" :key="del.name + del.deletedAt">
+                            <div class="deleted-item">
+                                <svg style="width: 12px; height: 12px; flex-shrink: 0;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                                <span class="file-name" x-text="del.name"></span>
+                                <span>—</span>
+                                <span x-text="del.deletedBy + ' が削除'"></span>
+                                <span x-text="del.deletedAt"></span>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <script>
+        function applicationUpload() {
+            return {
+                dragOver: false,
+                successMessage: '',
+                showDeleted: false,
+                files: [
+                    { id: 1, name: '入居申込書_佐藤健一.pdf', size: '312 KB', sizeBytes: 319488, uploader: '山田', uploadedAt: '2026/04/15 10:30', confirming: false },
+                    { id: 2, name: '本人確認書類_運転免許証.jpg', size: '1.2 MB', sizeBytes: 1258291, uploader: '山田', uploadedAt: '2026/04/15 10:31', confirming: false },
+                    { id: 3, name: '収入証明_源泉徴収票_2025.pdf', size: '524 KB', sizeBytes: 536576, uploader: '山田', uploadedAt: '2026/04/15 10:33', confirming: false },
+                    { id: 4, name: '連帯保証人承諾書.pdf', size: '198 KB', sizeBytes: 202752, uploader: '佐藤', uploadedAt: '2026/04/17 14:22', confirming: false }
+                ],
+                deletedFiles: [
+                    { name: '入居申込書_佐藤健一_v0.pdf', deletedBy: '山田', deletedAt: '2026/04/15 10:28' }
+                ],
+                get totalSizeFormatted() {
+                    var bytes = this.files.reduce(function(acc, f) { return acc + f.sizeBytes; }, 0);
+                    if (bytes === 0) return '';
+                    if (bytes < 1024) return bytes + ' B';
+                    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+                    return (bytes / 1024 / 1024).toFixed(2) + ' MB';
+                },
+                handleFileSelect: function(event) {
+                    var files = event.target.files;
+                    if (files.length > 0) this.addFiles(files);
+                    event.target.value = '';
+                },
+                handleDrop: function(event) {
+                    this.dragOver = false;
+                    var files = event.dataTransfer.files;
+                    if (files.length > 0) this.addFiles(files);
+                },
+                addFiles: function(fileList) {
+                    var self = this;
+                    var now = new Date();
+                    var pad = function(n) { return String(n).padStart(2, '0'); };
+                    var ts = now.getFullYear() + '/' + pad(now.getMonth() + 1) + '/' + pad(now.getDate()) + ' ' + pad(now.getHours()) + ':' + pad(now.getMinutes());
+                    for (var i = 0; i < fileList.length; i++) {
+                        var f = fileList[i];
+                        var sizeStr;
+                        if (f.size < 1024) sizeStr = f.size + ' B';
+                        else if (f.size < 1024 * 1024) sizeStr = (f.size / 1024).toFixed(1) + ' KB';
+                        else sizeStr = (f.size / 1024 / 1024).toFixed(2) + ' MB';
+                        self.files.push({
+                            id: Date.now() + i,
+                            name: f.name,
+                            size: sizeStr,
+                            sizeBytes: f.size,
+                            uploader: '山田',
+                            uploadedAt: ts,
+                            confirming: false
+                        });
+                    }
+                    self.successMessage = fileList.length + ' 件のファイルをアップロードしました。';
+                    setTimeout(function() { self.successMessage = ''; }, 3000);
+                },
+                deleteFile: function(idx) {
+                    var file = this.files[idx];
+                    var now = new Date();
+                    var pad = function(n) { return String(n).padStart(2, '0'); };
+                    var ts = now.getFullYear() + '/' + pad(now.getMonth() + 1) + '/' + pad(now.getDate()) + ' ' + pad(now.getHours()) + ':' + pad(now.getMinutes());
+                    this.deletedFiles.unshift({
+                        name: file.name,
+                        deletedBy: '山田',
+                        deletedAt: ts
+                    });
+                    this.files.splice(idx, 1);
+                    this.successMessage = file.name + ' を削除しました。';
+                    var self = this;
+                    setTimeout(function() { self.successMessage = ''; }, 3000);
+                }
+            };
+        }
+    </script>
+
+</body>
+</html>

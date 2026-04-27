@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>工事案件編集 | DAD（土木事業） | ミツワ都市開発 経営管理システム</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif; background: #f3f4f6; }
+        [x-cloak] { display: none !important; }
+
+        .card { background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+        .card-title { font-size: 15px; font-weight: 700; color: #111827; margin-bottom: 14px; padding-left: 12px; border-left: 4px solid #10b981; }
+
+        .form-label { display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 5px; }
+        .required { color: #dc2626; margin-left: 2px; }
+
+        .form-input {
+            width: 100%; height: 38px;
+            border: 1px solid #d1d5db; border-radius: 6px;
+            padding: 7px 12px;
+            font-size: 14px;
+            box-sizing: border-box;
+            background: white;
+            font-family: inherit;
+        }
+        .form-input:focus { outline: none; border-color: #059669; box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.12); }
+        textarea.form-input { height: auto; min-height: 96px; resize: vertical; }
+
+        .amount-input-wrap {
+            display: flex; align-items: center; gap: 6px;
+        }
+        .amount-input-wrap .form-input { flex: 1; text-align: right; }
+        .amount-input-wrap .suffix { font-size: 13px; color: #6b7280; }
+
+        /* 金額サマリー4カード */
+        .stat-card  { background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px 20px; text-align: center; }
+        .stat-label { font-size: 12px; color: #6b7280; margin-bottom: 6px; }
+        .stat-value { font-size: 22px; font-weight: 700; color: #111827; }
+
+        /* 案C datepicker（モックはトリガーのみ — Phase 2 で完全実装） */
+        .date-input-trigger {
+            width: 100%; height: 38px;
+            padding: 0 10px;
+            border: 1px solid #D1D5DB;
+            border-radius: 6px;
+            font-size: 14px; color: #111827;
+            background: white;
+            box-sizing: border-box;
+            display: flex; align-items: center; justify-content: space-between;
+            cursor: pointer;
+            text-align: left;
+            font-family: inherit;
+        }
+        .date-input-trigger:hover { border-color: #059669; }
+        .date-input-trigger .cal-icon { color: #059669; display: inline-flex; }
+
+        .badge { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 9999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+        .badge-private     { background: #fef3c7; color: #92400e; }
+        .badge-in-progress { background: #fef3c7; color: #92400e; }
+
+        .btn-primary {
+            padding: 10px 24px;
+            background: #059669;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .btn-primary:hover { background: #047857; }
+        .btn-secondary {
+            display: inline-flex; align-items: center;
+            padding: 10px 20px;
+            border: 1px solid #d1d5db; border-radius: 6px;
+            background: white;
+            font-size: 14px; color: #374151;
+            text-decoration: none;
+        }
+        .btn-danger {
+            padding: 10px 20px;
+            background: white;
+            color: #b91c1c;
+            border: 1px solid #fca5a5;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .btn-danger:hover { background: #fef2f2; }
+        .btn-outline-sm {
+            height: 38px;
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 4px 10px;
+            font-size: 11px; font-weight: 600;
+            color: #059669;
+            border: 1px solid #059669;
+            border-radius: 4px;
+            cursor: pointer;
+            background: #fff;
+            white-space: nowrap;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- トップバー -->
+    <header style="background: #1f2937; color: white; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 16px;">
+            <span style="font-weight: 700;">ミツワ都市開発 経営管理システム</span>
+        </div>
+        <div style="font-size: 13px;">山田 (経営層)</div>
+    </header>
+
+    <div style="display: flex; min-height: calc(100vh - 48px);">
+        <!-- サイドバー -->
+        <aside style="width: 220px; background: white; border-right: 1px solid #e5e7eb; padding: 16px 0;">
+            <nav style="font-size: 13px;">
+                <div style="padding: 8px 16px; color: #6b7280;">ダッシュボード</div>
+                <div style="padding: 8px 16px; color: #6b7280;">テナント管理</div>
+                <div style="padding: 8px 16px; color: #6b7280;">賃貸マンション</div>
+                <div style="padding: 8px 16px; color: #6b7280;">不動産管理</div>
+                <div style="padding: 8px 16px; color: #6b7280;">住宅事業</div>
+                <div style="padding: 8px 16px; color: #6b7280;">DAD（土木事業） ▾</div>
+                <div style="padding: 6px 16px 6px 32px; background: #ecfdf5; color: #047857; border-left: 3px solid #10b981; font-weight: 600;">工事案件</div>
+                <div style="padding: 8px 16px; color: #6b7280;">システム管理 ▾</div>
+                <div style="padding: 6px 16px 2px 24px; color: #9ca3af; font-size: 11px;">テナント</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">用途マスター</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">構造マスター</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">テナントCSVインポート</div>
+                <div style="padding: 6px 16px 2px 24px; color: #9ca3af; font-size: 11px;">賃貸マンション</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">賃貸マンションCSVインポート</div>
+                <div style="padding: 6px 16px 2px 24px; color: #9ca3af; font-size: 11px;">不動産</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">原価項目マスター</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">用途地域マスター</div>
+                <div style="padding: 6px 16px 2px 24px; color: #9ca3af; font-size: 11px;">住宅</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">アンケート設問管理</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">顧客CSVインポート</div>
+                <div style="padding: 6px 16px 2px 24px; color: #9ca3af; font-size: 11px;">DAD</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">発注者管理</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">協力業者</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">従業員管理</div>
+                <div style="padding: 6px 16px 2px 24px; color: #9ca3af; font-size: 11px;">マスター</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">ユーザー管理</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">マスター設定</div>
+            </nav>
+        </aside>
+
+        <!-- メインコンテンツ -->
+        <main style="flex: 1; padding: 24px;" x-data="projectEdit()">
+
+            <!-- パンくず -->
+            <div class="text-sm text-gray-500" style="margin-bottom: 12px;">
+                <a href="#" class="text-gray-500 hover:text-emerald-600 hover:underline">ホーム</a>
+                <span style="margin: 0 6px;">›</span>
+                <a href="#" class="text-gray-500 hover:text-emerald-600 hover:underline">DAD（土木事業）</a>
+                <span style="margin: 0 6px;">›</span>
+                <a href="index.html" class="text-gray-500 hover:text-emerald-600 hover:underline">工事案件一覧</a>
+                <span style="margin: 0 6px;">›</span>
+                <a href="show.html" class="text-gray-500 hover:text-emerald-600 hover:underline">DAD-003 道後温泉近郊 宅地造成工事</a>
+                <span style="margin: 0 6px;">›</span>
+                <span class="text-gray-800 font-medium">編集</span>
+            </div>
+
+            <!-- ページヘッダー -->
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; gap: 12px; flex-wrap: wrap;">
+                <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                    <span style="font-family: monospace; font-size: 13px; color: #6b7280; background: #f3f4f6; padding: 4px 10px; border-radius: 4px;">DAD-003</span>
+                    <h1 style="font-size: 20px; font-weight: 700; margin: 0;">工事案件編集</h1>
+                    <span class="badge badge-private">推進工事</span>
+                    <span class="badge badge-in-progress">施工中</span>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <a href="show.html" class="btn-secondary">詳細に戻る</a>
+                </div>
+            </div>
+
+            <form>
+
+                <!-- ========== 基本情報 ========== -->
+                <div class="card">
+                    <div class="card-title">基本情報</div>
+
+                    <!-- 案件名 -->
+                    <div style="margin-bottom: 26px;">
+                        <label class="form-label">案件名<span class="required">*</span></label>
+                        <input type="text" name="project_name" class="form-input"
+                               value="道後温泉近郊 宅地造成工事">
+                    </div>
+
+                    <!-- 工事種別 -->
+                    <div style="margin-bottom: 26px;">
+                        <label class="form-label">工事種別<span class="required">*</span></label>
+                        <div style="display: flex; gap: 20px; padding: 4px 0;">
+                            <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: #374151; cursor: pointer;">
+                                <input type="radio" name="project_type" value="public" x-model="projectType" style="width: 16px; height: 16px; accent-color: #059669;">
+                                公共工事
+                            </label>
+                            <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: #374151; cursor: pointer;">
+                                <input type="radio" name="project_type" value="private" x-model="projectType" style="width: 16px; height: 16px; accent-color: #059669;">
+                                推進工事
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- 発注者 + 担当者 + 年度 -->
+                    <div style="display: grid; grid-template-columns: 1.4fr 1fr 0.8fr; gap: 16px; margin-bottom: 26px;">
+                        <div>
+                            <label class="form-label">発注者<span class="required">*</span></label>
+                            <select name="client_id" class="form-input" x-model="clientId">
+                                <option value="">選択してください</option>
+                                <template x-for="client in (projectType === 'public' ? publicClients : privateClients)" :key="client">
+                                    <option x-text="client" :value="client"></option>
+                                </template>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="form-label"><span x-text="projectType === 'public' ? '工務担当' : '営業担当'"></span><span class="required">*</span></label>
+                            <select name="user_id" class="form-input" x-model="staffId">
+                                <option value="">選択してください</option>
+                                <template x-for="staff in (projectType === 'public' ? publicStaff : privateStaff)" :key="staff">
+                                    <option x-text="staff" :value="staff"></option>
+                                </template>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="form-label">年度<span class="required">*</span></label>
+                            <select name="fiscal_year" class="form-input">
+                                <option value="2024">2024年度</option>
+                                <option value="2025">2025年度</option>
+                                <option value="2026" selected>2026年度</option>
+                                <option value="2027">2027年度</option>
+                            </select>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- ========== 工事場所 ========== -->
+                <div class="card">
+                    <div class="card-title">工事場所</div>
+
+                    <!-- 郵便番号 + 検索ボタン -->
+                    <div style="display: grid; grid-template-columns: 160px auto 1fr; gap: 10px; margin-bottom: 26px; align-items: flex-end;">
+                        <div>
+                            <label class="form-label">郵便番号</label>
+                            <input type="text" name="postal_code" class="form-input" value="790-0843" maxlength="8">
+                        </div>
+                        <div style="display: flex; gap: 6px; align-items: flex-end;">
+                            <button type="button" class="btn-outline-sm">〒→住所</button>
+                            <button type="button" class="btn-outline-sm">住所→〒</button>
+                        </div>
+                        <div></div>
+                    </div>
+
+                    <!-- 所在地 -->
+                    <div style="margin-bottom: 26px;">
+                        <label class="form-label">所在地<span class="required">*</span></label>
+                        <input type="text" name="address" class="form-input"
+                               value="愛媛県松山市道後湯之町">
+                    </div>
+
+                </div>
+
+                <!-- ========== 工期 ========== -->
+                <div class="card">
+                    <div class="card-title">工期</div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                        <!-- 着工日 -->
+                        <div>
+                            <label class="form-label">着工日</label>
+                            <button type="button" class="date-input-trigger">
+                                <span>2026年3月10日</span>
+                                <span class="cal-icon">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                                </span>
+                            </button>
+                        </div>
+                        <!-- 完工予定日 -->
+                        <div>
+                            <label class="form-label">完工予定日</label>
+                            <button type="button" class="date-input-trigger">
+                                <span>2026年8月31日</span>
+                                <span class="cal-icon">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                                </span>
+                            </button>
+                        </div>
+                    </div>
+                    <div style="font-size: 11px; color: #9ca3af; margin-top: 8px;">※ Phase 2 で案C datepicker を接続</div>
+                </div>
+
+                <!-- 金額サマリー 4カード（3モードハイブリッド） -->
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px;">
+                    <div class="stat-card">
+                        <div class="stat-label">受注額</div>
+                        <div class="stat-value" x-text="formatYen(orderAmount)"></div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label" x-text="costLabel"></div>
+                        <div class="stat-value" x-text="costDisplay"></div>
+                    </div>
+                    <div class="stat-card" style="background: #ecfdf5; border-color: #a7f3d0;">
+                        <div class="stat-label" style="color: #065f46;" x-text="grossProfitLabel"></div>
+                        <div class="stat-value" style="color: #047857;" x-text="grossProfitDisplay"></div>
+                    </div>
+                    <div class="stat-card" style="background: #ecfdf5; border-color: #a7f3d0;">
+                        <div class="stat-label" style="color: #065f46;" x-text="grossProfitRateLabel"></div>
+                        <div class="stat-value" style="color: #047857;" x-text="grossProfitRateDisplay"></div>
+                    </div>
+                </div>
+
+                <!-- ========== 金額情報 ========== -->
+                <div class="card">
+                    <div class="card-title">金額情報（税抜）</div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
+                        <!-- 見積額 -->
+                        <div>
+                            <label class="form-label">見積額</label>
+                            <div class="amount-input-wrap">
+                                <input type="text" name="estimate_amount" class="form-input" inputmode="numeric" x-model="estimateAmount">
+                                <span class="suffix">円</span>
+                            </div>
+                        </div>
+                        <!-- 受注額 -->
+                        <div>
+                            <label class="form-label">受注額<span class="required">*</span></label>
+                            <div class="amount-input-wrap">
+                                <input type="text" name="order_amount" class="form-input" inputmode="numeric" x-model="orderAmount">
+                                <span class="suffix">円</span>
+                            </div>
+                            <div style="font-size: 11px; color: #9ca3af; margin-top: 3px;">※ 受注確定時に入力</div>
+                        </div>
+                        <!-- 原価予算 -->
+                        <div>
+                            <label class="form-label">原価予算</label>
+                            <div class="amount-input-wrap">
+                                <input type="text" name="cost_budget" class="form-input" inputmode="numeric" x-model="costBudget">
+                                <span class="suffix">円</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ========== 原価管理 ========== -->
+                <div class="card">
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
+                        <div class="card-title" style="margin-bottom: 0;">原価管理（内訳）</div>
+                        <button type="button" @click="addCostItem()"
+                                style="padding: 7px 14px; background: #059669; color: white; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer;">
+                            ＋ 行追加
+                        </button>
+                    </div>
+
+                    <div style="overflow-x: auto;">
+                        <table style="width: 100%; border-collapse: collapse; min-width: 920px;">
+                            <colgroup>
+                                <col style="width: 11%">
+                                <col style="width: 16%">
+                                <col style="width: 12%">
+                                <col style="width: 12%">
+                                <col style="width: 11%">
+                                <col style="width: 13%">
+                                <col style="width: 17%">
+                                <col style="width: 8%">
+                            </colgroup>
+                            <thead>
+                                <tr>
+                                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: left;">費用カテゴリ</th>
+                                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: left;">内容</th>
+                                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: center;">見積額</th>
+                                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: center;">実績額</th>
+                                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: center;">差額</th>
+                                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: left;">協力業者</th>
+                                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: left;">備考</th>
+                                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: center;">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr x-show="costItems.length === 0">
+                                    <td colspan="8" style="padding: 24px; text-align: center; color: #9ca3af; font-size: 13px;">原価明細がありません。「＋ 行追加」から追加してください。</td>
+                                </tr>
+                                <template x-for="(item, i) in costItems" :key="i">
+                                    <tr>
+                                        <td style="padding: 6px 8px; border-bottom: 1px solid #f3f4f6;">
+                                            <select x-model="item.category" :name="`cost_items[${i}][category]`"
+                                                    style="width: 100%; height: 36px; padding: 0 8px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 14px; background: white;">
+                                                <option value="">選択</option>
+                                                <option value="材料費">材料費</option>
+                                                <option value="外注費">外注費</option>
+                                                <option value="人件費">人件費</option>
+                                                <option value="機械経費">機械経費</option>
+                                                <option value="諸経費">諸経費</option>
+                                                <option value="その他">その他</option>
+                                            </select>
+                                        </td>
+                                        <td style="padding: 6px 8px; border-bottom: 1px solid #f3f4f6;">
+                                            <input type="text" x-model="item.detail" :name="`cost_items[${i}][detail]`"
+                                                   style="width: 100%; height: 36px; padding: 0 8px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 14px;">
+                                        </td>
+                                        <td style="padding: 6px 8px; border-bottom: 1px solid #f3f4f6;">
+                                            <input type="text" x-model="item.estimateAmount" :name="`cost_items[${i}][estimate_amount]`" inputmode="numeric"
+                                                   style="width: 100%; height: 36px; padding: 0 8px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 14px; text-align: right;">
+                                        </td>
+                                        <td style="padding: 6px 8px; border-bottom: 1px solid #f3f4f6;">
+                                            <input type="text" x-model="item.actualAmount" :name="`cost_items[${i}][actual_amount]`" inputmode="numeric"
+                                                   style="width: 100%; height: 36px; padding: 0 8px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 14px; text-align: right;">
+                                        </td>
+                                        <td :style="`padding: 6px 8px; border-bottom: 1px solid #f3f4f6; font-size: 13px; text-align: right; font-weight: 600; color: ${rowDiffColor(item)};`"
+                                            x-text="rowDiffDisplay(item) || '—'"></td>
+                                        <td style="padding: 6px 8px; border-bottom: 1px solid #f3f4f6;">
+                                            <select x-model="item.subcontractor" :name="`cost_items[${i}][subcontractor]`"
+                                                    :disabled="item.category !== '外注費'"
+                                                    :style="item.category !== '外注費' ? 'width: 100%; height: 36px; padding: 0 8px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 14px; background: #f3f4f6; color: #9ca3af;' : 'width: 100%; height: 36px; padding: 0 8px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 14px; background: white;'">
+                                                <option value="">未選択</option>
+                                                <template x-for="s in subcontractors" :key="s">
+                                                    <option :value="s" x-text="s"></option>
+                                                </template>
+                                            </select>
+                                        </td>
+                                        <td style="padding: 6px 8px; border-bottom: 1px solid #f3f4f6;">
+                                            <input type="text" x-model="item.note" :name="`cost_items[${i}][note]`"
+                                                   style="width: 100%; height: 36px; padding: 0 8px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 14px;">
+                                        </td>
+                                        <td style="padding: 6px 8px; border-bottom: 1px solid #f3f4f6; text-align: center; white-space: nowrap;">
+                                            <button type="button" @click="removeCostItem(i)"
+                                                    style="padding: 4px 10px; background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer;">
+                                                削除
+                                            </button>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                            <tfoot x-show="costItems.length > 0">
+                                <tr style="background: #f9fafb;">
+                                    <td colspan="2" style="padding: 12px 10px; border-top: 2px solid #e5e7eb; font-size: 13px; font-weight: 700; color: #374151;">合計</td>
+                                    <td style="padding: 12px 10px; border-top: 2px solid #e5e7eb; font-size: 13px; font-weight: 700; text-align: right;" x-text="formatYen(estimateTotal)"></td>
+                                    <td style="padding: 12px 10px; border-top: 2px solid #e5e7eb; font-size: 13px; font-weight: 700; text-align: right;" x-text="formatYen(actualTotal)"></td>
+                                    <td :style="`padding: 12px 10px; border-top: 2px solid #e5e7eb; font-size: 13px; font-weight: 700; text-align: right; color: ${diffTotalColor};`" x-text="diffTotalDisplay"></td>
+                                    <td colspan="3" style="padding: 12px 10px; border-top: 2px solid #e5e7eb;"></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+
+                    <!-- 凡例 -->
+                    <div style="margin-top: 12px; padding: 10px 14px; background: #f9fafb; border-radius: 6px; font-size: 11px; color: #6b7280;">
+                        <strong style="color: #374151;">差額の見方:</strong> 実績 − 見積。<span style="color: #dc2626; font-weight: 600;">赤</span>は超過、<span style="color: #047857; font-weight: 600;">緑</span>は以内。
+                    </div>
+                </div>
+
+                <!-- ========== ステータス ========== -->
+                <div class="card">
+                    <div class="card-title">ステータス</div>
+
+                    <div>
+                        <label class="form-label">ステータス<span class="required">*</span></label>
+                        <select name="status" class="form-input" style="max-width: 320px;">
+                            <option value="estimate">見積中</option>
+                            <option value="ordered">受注</option>
+                            <option value="in_progress" selected>施工中</option>
+                            <option value="completed">完工</option>
+                            <option value="paid">入金済み</option>
+                        </select>
+                        <div style="font-size: 11px; color: #9ca3af; margin-top: 3px;">※ 「完工」→「入金済み」への遷移時は入金日の入力を求めます</div>
+                    </div>
+                </div>
+
+                <!-- ========== 備考 ========== -->
+                <div class="card">
+                    <div class="card-title">備考</div>
+                    <textarea name="notes" class="form-input">温泉排水経路の確認要。近隣住民への説明会を3月初旬に実施予定。</textarea>
+                </div>
+
+                <!-- アクションボタン -->
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                    <button type="button" class="btn-danger">この案件を削除</button>
+                    <div style="display: flex; gap: 8px;">
+                        <a href="show.html" class="btn-secondary">キャンセル</a>
+                        <button type="submit" class="btn-primary">更新する</button>
+                    </div>
+                </div>
+            </form>
+
+            <!-- 補足 -->
+            <div style="margin-top: 20px; padding: 12px 16px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; font-size: 12px; color: #991b1b;">
+                <strong>※削除時の注意</strong>：原価明細・人員配置も同時に論理削除されます（データベース上は復元可能）。入金済み案件は削除できません。
+            </div>
+
+        </main>
+    </div>
+
+    <script>
+        // Alpine.js データ関数（`=>` 禁止ルール遵守のため通常関数で定義）
+        function projectEdit() {
+            return {
+                projectType: 'private',
+                clientId: '松山土地開発㈱',
+                publicClients: [
+                    '松山市役所 建設部',
+                    '松山市役所 上下水道部',
+                    '愛媛県 土木部',
+                    '今治市役所 都市整備課',
+                    '四国地方整備局'
+                ],
+                privateClients: [
+                    '松山土地開発㈱',
+                    '㈱伊予造園',
+                    '田中不動産㈱',
+                    '伊予鉄建設㈱',
+                    '四国建設㈱'
+                ],
+                staffId: '高橋',
+                publicStaff: [
+                    '山田',
+                    '佐藤',
+                    '田中'
+                ],
+                privateStaff: [
+                    '鈴木',
+                    '高橋',
+                    '伊藤'
+                ],
+
+                // ===== 金額情報・原価管理 state =====
+                estimateAmount: '30000000',
+                orderAmount: '32000000',
+                costBudget: '24000000',
+                subcontractors: [
+                    '㈱愛媛土建',
+                    '松山建設㈲',
+                    '四国電設工業㈱',
+                    '伊予重機㈲',
+                    'みかん運送㈱'
+                ],
+                // モック既存データ — show.html dataPrivate.costRows と同一の 6 行（実績は1行のみ入力 → hybrid モード）
+                costItems: [
+                    { category: '材料費',   detail: '砕石・路盤材',         estimateAmount: '1200000',  actualAmount: '1150000', subcontractor: '',           note: '' },
+                    { category: '外注費',   detail: '造成工事',             estimateAmount: '12000000', actualAmount: '',        subcontractor: '㈱愛媛土建', note: '' },
+                    { category: '外注費',   detail: '擁壁工事',             estimateAmount: '5500000',  actualAmount: '5400000', subcontractor: '松山建設㈲', note: '' },
+                    { category: '人件費',   detail: '現場監督・作業員',     estimateAmount: '3000000',  actualAmount: '',        subcontractor: '',           note: '' },
+                    { category: '機械経費', detail: '重機リース',           estimateAmount: '1800000',  actualAmount: '',        subcontractor: '',           note: '' },
+                    { category: '諸経費',   detail: '仮設・安全',           estimateAmount: '500000',   actualAmount: '',        subcontractor: '',           note: '' }
+                ],
+                addCostItem() {
+                    this.costItems.push({ category: '', detail: '', estimateAmount: '', actualAmount: '', subcontractor: '', note: '' });
+                },
+                removeCostItem(i) {
+                    this.costItems.splice(i, 1);
+                },
+
+                // === Hybrid Cost Display: mirror of show.html L520-665 ===
+                // edits should be coordinated with show.html / create.html Helper/Computed
+                // 文字列入力対応のため Number() を replace 経由で sanitize
+                _num(v) {
+                    return Number(String(v).replace(/[^0-9-]/g, '')) || 0;
+                },
+                formatYen(n) {
+                    if (n === null || n === undefined || n === '') return '';
+                    const num = this._num(n);
+                    return num.toLocaleString('ja-JP') + '円';
+                },
+                hasActual(row) {
+                    const a = row && row.actualAmount;
+                    return a !== null && a !== undefined && String(a).trim() !== '';
+                },
+                rowEffective(row) {
+                    if (this.hasActual(row)) return this._num(row.actualAmount);
+                    return this._num(row.estimateAmount);
+                },
+                rowDiff(row) {
+                    if (!this.hasActual(row)) return null;
+                    return this._num(row.actualAmount) - this._num(row.estimateAmount);
+                },
+                rowDiffDisplay(row) {
+                    const d = this.rowDiff(row);
+                    if (d === null) return '';
+                    if (d === 0) return '±0円';
+                    return (d > 0 ? '+' : '') + Number(d).toLocaleString('ja-JP') + '円';
+                },
+                rowDiffColor(row) {
+                    const d = this.rowDiff(row);
+                    if (d === null) return '#9ca3af';
+                    if (d > 0) return '#dc2626';
+                    return '#047857';
+                },
+                rowActualDisplay(row) {
+                    if (!this.hasActual(row)) return '';
+                    return this.formatYen(row.actualAmount);
+                },
+
+                // ===== 3 モード判定 + 集計 getter =====
+                get costMode() {
+                    const rows = this.costItems || [];
+                    if (rows.length === 0) return 'empty';
+                    const self = this;
+                    const filled = rows.filter(function (r) { return self.hasActual(r); }).length;
+                    if (filled === 0) return 'estimate';
+                    if (filled === rows.length) return 'actual';
+                    return 'hybrid';
+                },
+                get estimateTotal() {
+                    const self = this;
+                    return (this.costItems || []).reduce(function (sum, r) {
+                        return sum + self._num(r.estimateAmount);
+                    }, 0);
+                },
+                get actualTotal() {
+                    const self = this;
+                    return (this.costItems || []).reduce(function (sum, r) {
+                        if (!self.hasActual(r)) return sum;
+                        return sum + self._num(r.actualAmount);
+                    }, 0);
+                },
+                get diffTotal() {
+                    const self = this;
+                    return (this.costItems || []).reduce(function (sum, r) {
+                        if (!self.hasActual(r)) return sum;
+                        return sum + (self._num(r.actualAmount) - self._num(r.estimateAmount));
+                    }, 0);
+                },
+                get costTotal() {
+                    const m = this.costMode;
+                    if (m === 'empty') return null;
+                    if (m === 'estimate') return this.estimateTotal;
+                    if (m === 'actual') return this.actualTotal;
+                    const self = this;
+                    return (this.costItems || []).reduce(function (sum, r) {
+                        return sum + self.rowEffective(r);
+                    }, 0);
+                },
+                get costLabel() {
+                    const m = this.costMode;
+                    if (m === 'empty') return '原価合計';
+                    if (m === 'estimate') return '原価合計（見積）';
+                    if (m === 'hybrid') return '原価合計（見込）';
+                    return '原価合計（実績）';
+                },
+                get costDisplay() {
+                    if (this.costMode === 'empty') return '—';
+                    return this.formatYen(this.costTotal);
+                },
+                get grossProfit() {
+                    if (this.costMode === 'empty') return null;
+                    const contract = this._num(this.orderAmount);
+                    return contract - this.costTotal;
+                },
+                get grossProfitLabel() {
+                    const m = this.costMode;
+                    if (m === 'empty') return '粗利額';
+                    if (m === 'estimate') return '粗利額（見積）';
+                    if (m === 'hybrid') return '粗利額（見込）';
+                    return '粗利額（実績）';
+                },
+                get grossProfitDisplay() {
+                    if (this.costMode === 'empty') return '—';
+                    return this.formatYen(this.grossProfit);
+                },
+                get grossProfitRateValue() {
+                    if (this.costMode === 'empty') return null;
+                    const contract = this._num(this.orderAmount);
+                    if (contract === 0) return null;
+                    return (this.grossProfit / contract) * 100;
+                },
+                get grossProfitRateLabel() {
+                    const m = this.costMode;
+                    if (m === 'empty') return '粗利率';
+                    if (m === 'estimate') return '粗利率（見積）';
+                    if (m === 'hybrid') return '粗利率（見込）';
+                    return '粗利率（実績）';
+                },
+                get grossProfitRateDisplay() {
+                    const v = this.grossProfitRateValue;
+                    if (v === null) return '—';
+                    return v.toFixed(1) + '%';
+                },
+                get diffTotalDisplay() {
+                    const d = this.diffTotal;
+                    if (d === 0) return '±0円';
+                    return (d > 0 ? '+' : '') + Number(d).toLocaleString('ja-JP') + '円';
+                },
+                get diffTotalColor() {
+                    const d = this.diffTotal;
+                    if (d > 0) return '#dc2626';
+                    return '#047857';
+                }
+            };
+        }
+
+        // 金額欄（inputmode="numeric"）の全角数字を自動で半角に変換
+        document.addEventListener('input', function (e) {
+            const t = e.target;
+            if (!t || !t.matches || !t.matches('input[inputmode="numeric"], input[type="number"]')) return;
+            const v = t.value;
+            const nv = v.replace(/[０-９]/g, function (c) {
+                return String.fromCharCode(c.charCodeAt(0) - 0xFEE0);
+            });
+            if (nv !== v) {
+                const start = t.selectionStart;
+                const end = t.selectionEnd;
+                t.value = nv;
+                try { t.setSelectionRange(start, end); } catch (_) {}
+            }
+        }, true);
+    </script>
+
+</body>
+</html>

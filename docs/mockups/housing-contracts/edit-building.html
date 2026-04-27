@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>契約編集 — 松山市居相町モデル A号地</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+<style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Helvetica Neue', Arial, sans-serif; background: #F9FAFB; color: #111827; }
+    .page-wrapper { max-width: 1000px; margin: 0 auto; padding: 24px; }
+    .breadcrumb { font-size: 12px; color: #9CA3AF; margin-bottom: 12px; }
+    .breadcrumb .sep { margin: 0 6px; }
+    .breadcrumb a { color: #9CA3AF; text-decoration: none; }
+    .breadcrumb a:hover { color: #059669; }
+
+    h1.page-title { font-size: 18px; font-weight: 700; color: #111827; margin: 0 0 4px 0; }
+    .sub-title { font-size: 14px; color: #6B7280; margin-bottom: 20px; }
+
+    /* セクションカード */
+    .card { background: white; border: 1px solid #E5E7EB; border-radius: 8px; padding: 20px; margin-bottom: 12px; }
+    .section-title {
+        display: flex; align-items: center; gap: 8px;
+        margin-bottom: 16px;
+    }
+    .section-title .bar { width: 3px; height: 20px; background: #059669; border-radius: 2px; }
+    .section-title h2 { font-size: 15px; font-weight: 700; color: #111827; margin: 0; }
+
+    /* フィールド行 */
+    .field-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+    }
+    .field {
+        margin-bottom: 26px;
+    }
+    .field:last-child { margin-bottom: 0; }
+    .field label.field-label {
+        display: block;
+        font-size: 13px;
+        font-weight: 600;
+        color: #374151;
+        margin-bottom: 6px;
+    }
+    .field label .required { color: #DC2626; margin-left: 2px; }
+    .field .help { font-size: 12px; color: #6B7280; margin-top: 4px; }
+
+    .input, .select, .textarea {
+        width: 100%;
+        height: 40px;
+        padding: 0 12px;
+        border: 1px solid #D1D5DB;
+        border-radius: 6px;
+        font-size: 14px;
+        color: #111827;
+        background: white;
+        box-sizing: border-box;
+    }
+    .textarea { height: auto; min-height: 80px; padding: 10px 12px; resize: vertical; }
+    .input:focus, .select:focus, .textarea:focus { outline: none; border-color: #059669; box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.12); }
+
+    /* input-with-suffix (金額用) */
+    .input-group { display: flex; align-items: stretch; }
+    .input-group .input { border-top-right-radius: 0; border-bottom-right-radius: 0; border-right: none; }
+    .input-group .suffix {
+        display: inline-flex; align-items: center;
+        padding: 0 12px;
+        background: #F9FAFB;
+        border: 1px solid #D1D5DB;
+        border-top-right-radius: 6px;
+        border-bottom-right-radius: 6px;
+        font-size: 13px; color: #6B7280;
+    }
+
+    /* チェックボックス */
+    .checkbox-row {
+        display: flex; align-items: center; gap: 8px;
+        margin-bottom: 12px;
+    }
+    .checkbox-row input[type="checkbox"] {
+        width: 16px; height: 16px;
+        accent-color: #059669;
+    }
+    .checkbox-row label {
+        font-size: 13px; color: #374151; cursor: pointer;
+    }
+
+    /* ボタン */
+    .btn {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 9px 20px;
+        font-size: 14px; font-weight: 600;
+        border-radius: 6px; text-decoration: none; cursor: pointer;
+        border: 1px solid transparent;
+    }
+    .btn-primary { background: #059669; color: white; border-color: #059669; }
+    .btn-primary:hover { background: #047857; }
+    .btn-outline { background: white; color: #374151; border: 2px solid #9CA3AF; }
+    .btn-outline:hover { background: #F9FAFB; }
+    .btn-link-gray {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 9px 16px;
+        font-size: 13px; font-weight: 500;
+        color: #6B7280;
+        background: white;
+        border: 1px solid #D1D5DB;
+        border-radius: 6px;
+        text-decoration: none;
+    }
+    .btn-link-gray:hover { background: #F9FAFB; color: #374151; }
+
+    .form-actions {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        margin-top: 20px;
+    }
+    .form-actions-right { display: flex; gap: 12px; }
+
+    /* 情報バー */
+    .info-bar {
+        background: #EFF6FF;
+        border: 1px solid #BFDBFE;
+        border-radius: 6px;
+        padding: 10px 14px;
+        margin-bottom: 16px;
+        font-size: 12px;
+        color: #1E40AF;
+    }
+
+    /* 顧客検索候補 */
+    .suggest-wrap { position: relative; }
+    .suggest-dropdown {
+        position: absolute;
+        top: 100%; left: 0; right: 0;
+        background: white;
+        border: 1px solid #D1D5DB;
+        border-top: none;
+        border-radius: 0 0 6px 6px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        max-height: 200px;
+        overflow-y: auto;
+        z-index: 10;
+    }
+    .suggest-item {
+        padding: 8px 12px;
+        font-size: 13px;
+        cursor: pointer;
+        border-bottom: 1px solid #F3F4F6;
+    }
+    .suggest-item:hover { background: #F9FAFB; }
+    .suggest-item .name { font-size: 13px; font-weight: 600; color: #111827; }
+    .suggest-item .sub { font-size: 11px; color: #6B7280; margin-top: 2px; }
+
+    /* ===== カスタム日付ピッカー（案C） ===== */
+    .date-picker-wrap { position: relative; }
+    .date-input-trigger {
+        width: 100%; height: 40px;
+        padding: 0 12px;
+        border: 1px solid #D1D5DB;
+        border-radius: 6px;
+        font-size: 14px; color: #111827; background: white;
+        box-sizing: border-box;
+        display: flex; align-items: center; justify-content: space-between;
+        cursor: pointer;
+        text-align: left;
+        font-family: inherit;
+    }
+    .date-input-trigger:hover { border-color: #059669; }
+    .date-input-trigger:focus {
+        outline: none; border-color: #059669;
+        box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.12);
+    }
+    .date-input-trigger .placeholder { color: #9CA3AF; }
+    .date-input-trigger .cal-icon { color: #059669; display: inline-flex; }
+
+    /* ピッカー本体（ポップオーバー） */
+    .picker-popup {
+        position: absolute;
+        top: calc(100% + 6px); left: 0;
+        z-index: 100;
+        width: 340px;
+        background: white;
+        border-radius: 20px;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.1), 0 2px 4px rgba(0,0,0,0.04);
+        padding: 20px;
+        box-sizing: border-box;
+    }
+
+    .picker-popup .cal-info {
+        display: flex; align-items: center; justify-content: space-between;
+        margin-bottom: 18px;
+    }
+    .picker-popup .cal-info .pill {
+        background: #ECFDF5; color: #047857;
+        font-size: 11px; font-weight: 700;
+        padding: 4px 12px; border-radius: 99px;
+        letter-spacing: 0.3px;
+    }
+    .picker-popup .cal-info .sel-date { font-size: 13px; color: #6B7280; }
+    .picker-popup .cal-info .sel-date b { color: #047857; font-weight: 700; }
+
+    .picker-popup .cal-nav {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 0 4px 14px;
+    }
+    .picker-popup .cal-nav .arrow-btn {
+        width: 30px; height: 30px;
+        display: inline-flex; align-items: center; justify-content: center;
+        border: none; background: #F9FAFB; border-radius: 50%;
+        cursor: pointer; color: #6B7280; font-size: 13px;
+        transition: all 0.15s;
+    }
+    .picker-popup .cal-nav .arrow-btn:hover { background: #ECFDF5; color: #059669; }
+    .picker-popup .cal-nav .arrow-btn.hidden { visibility: hidden; }
+    .picker-popup .cal-nav .month-btns { display: flex; align-items: center; gap: 4px; }
+    .picker-popup .cal-nav .ym-btn {
+        display: inline-flex; align-items: center; gap: 4px;
+        font-size: 16px; font-weight: 700; color: #111827;
+        background: transparent; border: none; cursor: pointer;
+        padding: 6px 12px; border-radius: 8px;
+        transition: all 0.15s;
+        font-family: inherit;
+    }
+    .picker-popup .cal-nav .ym-btn:hover { background: #F3F4F6; color: #059669; }
+    .picker-popup .cal-nav .ym-btn.active { background: #ECFDF5; color: #047857; }
+    .picker-popup .cal-nav .ym-btn .chev {
+        font-size: 10px; color: #9CA3AF;
+        transition: transform 0.15s;
+    }
+    .picker-popup .cal-nav .ym-btn.active .chev { transform: rotate(180deg); color: #047857; }
+
+    /* カレンダーグリッド */
+    .picker-popup .cal-grid {
+        display: grid; grid-template-columns: repeat(7, 1fr);
+        gap: 2px;
+    }
+    .picker-popup .cal-dow {
+        text-align: center; font-size: 11px; font-weight: 700;
+        color: #9CA3AF; padding: 6px 0 10px;
+    }
+    .picker-popup .cal-dow.sun { color: #DC2626; }
+    .picker-popup .cal-dow.sat { color: #2563EB; }
+    .picker-popup .cal-cell {
+        text-align: center; font-size: 13px; color: #374151;
+        cursor: pointer; height: 36px;
+        border-radius: 10px;
+        display: flex; align-items: center; justify-content: center;
+        position: relative;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        border: none; background: transparent;
+        font-family: inherit;
+    }
+    .picker-popup .cal-cell:hover { background: #F3F4F6; }
+    .picker-popup .cal-cell.muted { color: #E5E7EB; }
+    .picker-popup .cal-cell.sun { color: #DC2626; }
+    .picker-popup .cal-cell.sat { color: #2563EB; }
+    .picker-popup .cal-cell.today { color: #059669; font-weight: 700; }
+    .picker-popup .cal-cell.today::after {
+        content: ''; position: absolute; bottom: 5px; left: 50%;
+        transform: translateX(-50%);
+        width: 4px; height: 4px; border-radius: 50%;
+        background: #059669;
+    }
+    .picker-popup .cal-cell.selected {
+        background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+        color: white; font-weight: 700;
+        box-shadow: 0 6px 16px rgba(5, 150, 105, 0.4);
+        transform: scale(1.05);
+    }
+    .picker-popup .cal-cell.selected.sun,
+    .picker-popup .cal-cell.selected.sat { color: white; }
+    .picker-popup .cal-cell.selected.today::after { background: white; }
+
+    /* 年・月ピッカー */
+    .picker-popup .ym-picker {
+        display: grid; grid-template-columns: repeat(4, 1fr);
+        gap: 8px;
+        padding: 10px 2px;
+    }
+    .picker-popup .ym-picker button {
+        padding: 14px 6px;
+        font-size: 13px; font-weight: 600;
+        background: #F9FAFB;
+        color: #374151;
+        border: 1px solid transparent;
+        border-radius: 10px;
+        cursor: pointer;
+        transition: all 0.2s;
+        position: relative;
+        font-family: inherit;
+    }
+    .picker-popup .ym-picker button:hover { background: #ECFDF5; color: #059669; }
+    .picker-popup .ym-picker button.today {
+        color: #059669; font-weight: 700;
+        background: white; border-color: #A7F3D0;
+    }
+    .picker-popup .ym-picker button.today::after {
+        content: ''; position: absolute; bottom: 5px; left: 50%;
+        transform: translateX(-50%);
+        width: 4px; height: 4px; border-radius: 50%;
+        background: #059669;
+    }
+    .picker-popup .ym-picker button.selected {
+        background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+        color: white; font-weight: 700;
+        box-shadow: 0 4px 12px rgba(5, 150, 105, 0.35);
+        border-color: transparent;
+    }
+    .picker-popup .ym-picker button.selected.today::after { background: white; }
+
+    .picker-popup .range-hint {
+        text-align: center;
+        font-size: 11px; color: #9CA3AF;
+        padding-top: 10px; margin-top: 4px;
+        border-top: 1px dashed #F3F4F6;
+    }
+
+    /* フッター（ショートカット） */
+    .picker-popup .cal-foot {
+        margin-top: 16px;
+        padding-top: 14px;
+        border-top: 1px solid #F3F4F6;
+        display: flex; gap: 8px;
+    }
+    .picker-popup .cal-foot .shortcut {
+        flex: 1;
+        padding: 7px 10px;
+        font-size: 11px; font-weight: 600;
+        background: #F9FAFB;
+        color: #374151;
+        border: 1px solid #E5E7EB;
+        border-radius: 8px;
+        cursor: pointer;
+        text-align: center;
+        font-family: inherit;
+    }
+    .picker-popup .cal-foot .shortcut:hover {
+        background: #ECFDF5; color: #059669; border-color: #A7F3D0;
+    }
+</style>
+</head>
+<body>
+
+<div class="page-wrapper">
+
+    <!-- パンくず -->
+    <div class="breadcrumb">
+        ホーム <span class="sep">›</span> 住宅事業 <span class="sep">›</span>
+        <a href="index.html">契約管理</a>
+        <span class="sep">›</span>
+        <a href="show-building.html">松山市居相町モデル A号地</a>
+        <span class="sep">›</span>
+        <span style="color: #4B5563;">契約編集</span>
+    </div>
+
+    <h1 class="page-title">契約編集</h1>
+    <div class="sub-title">松山市居相町モデル A号地（HS-2025-011）</div>
+
+    <!-- 情報バー -->
+    <div class="info-bar">
+        このフォームでは契約情報と原価の基本項目のみ編集できます。物件情報の全項目編集は「元ページで全項目編集」ボタンから行えます。
+    </div>
+
+    <form onsubmit="event.preventDefault(); alert('送信デモ');" x-data="{ isLandCostManual: false }">
+
+        <!-- 基本情報セクション -->
+        <div class="card">
+            <div class="section-title">
+                <span class="bar"></span>
+                <h2>基本情報</h2>
+            </div>
+
+            <div class="field-row">
+                <div class="field">
+                    <label class="field-label">契約日<span class="required">*</span></label>
+                    <div class="date-picker-wrap" x-data="datePicker('2025-11-20')" @click.outside="open = false">
+                        <!-- 入力欄（トリガー） -->
+                        <button type="button" class="date-input-trigger" @click="open = !open">
+                            <span x-show="selected" x-text="selectedLabel"></span>
+                            <span x-show="!selected" class="placeholder">日付を選択</span>
+                            <span class="cal-icon">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                            </span>
+                        </button>
+                        <!-- form送信用のhidden input -->
+                        <input type="hidden" name="contract_date" :value="isoValue">
+
+                        <!-- ピッカーポップアップ -->
+                        <div class="picker-popup" x-show="open" x-transition style="display:none;">
+                            <!-- 選択中表示 -->
+                            <div class="cal-info">
+                                <span class="pill">選択中</span>
+                                <span class="sel-date" x-show="selected"><b x-text="selectedLong"></b></span>
+                                <span class="sel-date" x-show="!selected" style="color:#9CA3AF;">未選択</span>
+                            </div>
+
+                            <!-- 年月ナビ -->
+                            <div class="cal-nav">
+                                <button type="button" class="arrow-btn" :class="{ hidden: mode !== 'calendar' }" @click="prevMonth">‹</button>
+                                <div class="month-btns">
+                                    <button type="button" class="ym-btn" :class="{ active: mode === 'year' }" @click="toggleYearMode">
+                                        <span x-text="viewYear + '年'"></span>
+                                        <span class="chev">▾</span>
+                                    </button>
+                                    <button type="button" class="ym-btn" :class="{ active: mode === 'month' }" @click="toggleMonthMode">
+                                        <span x-text="(viewMonth + 1) + '月'"></span>
+                                        <span class="chev">▾</span>
+                                    </button>
+                                </div>
+                                <button type="button" class="arrow-btn" :class="{ hidden: mode !== 'calendar' }" @click="nextMonth">›</button>
+                            </div>
+
+                            <!-- カレンダーモード -->
+                            <div class="cal-grid" x-show="mode === 'calendar'">
+                                <div class="cal-dow sun">日</div>
+                                <div class="cal-dow">月</div>
+                                <div class="cal-dow">火</div>
+                                <div class="cal-dow">水</div>
+                                <div class="cal-dow">木</div>
+                                <div class="cal-dow">金</div>
+                                <div class="cal-dow sat">土</div>
+                                <template x-for="(cell, idx) in calendarCells" :key="idx">
+                                    <button type="button" class="cal-cell"
+                                            :class="{ muted: cell.muted, sun: cell.dow === 0, sat: cell.dow === 6, today: isToday(cell), selected: isSelected(cell) }"
+                                            @click="pick(cell)"
+                                            x-text="cell.day"></button>
+                                </template>
+                            </div>
+
+                            <!-- 年ピッカーモード -->
+                            <div class="ym-picker" x-show="mode === 'year'">
+                                <template x-for="year in yearRange" :key="year">
+                                    <button type="button"
+                                            :class="{ today: year === todayYear, selected: year === viewYear }"
+                                            @click="pickYear(year)"
+                                            x-text="year"></button>
+                                </template>
+                            </div>
+                            <div class="range-hint" x-show="mode === 'year'" x-text="yearRangeHint"></div>
+
+                            <!-- 月ピッカーモード -->
+                            <div class="ym-picker" x-show="mode === 'month'">
+                                <template x-for="m in 12" :key="m">
+                                    <button type="button"
+                                            :class="{ today: (m - 1) === todayMonth && viewYear === todayYear, selected: (m - 1) === viewMonth }"
+                                            @click="pickMonth(m - 1)"
+                                            x-text="m + '月'"></button>
+                                </template>
+                            </div>
+                            <div class="range-hint" x-show="mode === 'month'" x-text="viewYear + '年'"></div>
+
+                            <!-- ショートカット -->
+                            <div class="cal-foot">
+                                <button type="button" class="shortcut" @click="setToday">今日</button>
+                                <button type="button" class="shortcut" @click="setWeekAgo">1週間前</button>
+                                <button type="button" class="shortcut" @click="setMonthAgo">1ヶ月前</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="field">
+                    <label class="field-label">担当者<span class="required">*</span></label>
+                    <select name="staff_user_id" class="select">
+                        <option>田中</option>
+                        <option>佐藤</option>
+                        <option>鈴木</option>
+                        <option>高田</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="field-row">
+                <div class="field">
+                    <label class="field-label">顧客名<span class="required">*</span></label>
+                    <div class="suggest-wrap" x-data="{ open: false, q: '山本 浩二' }">
+                        <input type="text" name="customer_name" class="input" x-model="q" @focus="open = true" @click.outside="open = false">
+                        <div class="suggest-dropdown" x-show="open" style="display: none;">
+                            <div class="suggest-item">
+                                <div class="name">山本 浩二 様</div>
+                                <div class="sub">愛媛県松山市朝生田町2-1-8 / ランクA</div>
+                            </div>
+                            <div class="suggest-item">
+                                <div class="name">山本 建設株式会社</div>
+                                <div class="sub">愛媛県松山市久米町5-12-3 / 法人</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="field">
+                    <label class="field-label">買主マスタ紐付け</label>
+                    <select name="customer_id" class="select">
+                        <option value="">— 新規顧客（マスタ未登録）</option>
+                        <option selected>B-0421 山本 浩二 様</option>
+                        <option>B-0388 株式会社タナベ工業</option>
+                    </select>
+                    <div class="help">既存の買主マスタと紐付ける場合に選択</div>
+                </div>
+            </div>
+
+            <div class="field">
+                <label class="field-label">備考</label>
+                <textarea name="notes" rows="3" class="textarea">住宅ローン(愛媛銀行)利用。所有権移転は決済日同時。付帯設備表・物件状況確認書は別途取り交わし済み。</textarea>
+            </div>
+        </div>
+
+        <!-- 契約金額セクション -->
+        <div class="card">
+            <div class="section-title">
+                <span class="bar"></span>
+                <h2>契約金額</h2>
+            </div>
+
+            <div class="field-row">
+                <div class="field">
+                    <label class="field-label">土地販売価格<span class="required">*</span></label>
+                    <div class="input-group">
+                        <input type="number" name="selling_price_land" value="12500000" class="input">
+                        <span class="suffix">円</span>
+                    </div>
+                </div>
+                <div class="field">
+                    <label class="field-label">建物販売価格（税抜）<span class="required">*</span></label>
+                    <div class="input-group">
+                        <input type="number" name="selling_price_building" value="16000000" class="input">
+                        <span class="suffix">円</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="field" style="max-width: 50%;">
+                <label class="field-label">消費税率<span class="required">*</span></label>
+                <div class="input-group">
+                    <input type="number" name="tax_rate" value="10" step="0.01" class="input">
+                    <span class="suffix">%</span>
+                </div>
+                <div class="help">建物販売価格にかかる税率</div>
+            </div>
+        </div>
+
+        <!-- 原価情報セクション -->
+        <div class="card">
+            <div class="section-title">
+                <span class="bar"></span>
+                <h2>原価情報</h2>
+            </div>
+
+            <div class="checkbox-row">
+                <input type="checkbox" id="is_land_cost_manual" name="is_land_cost_manual" x-model="isLandCostManual">
+                <label for="is_land_cost_manual">土地原価を手動入力する</label>
+            </div>
+
+            <div class="field-row">
+                <!-- 土地原価: 手動入力時のみ表示 / それ以外は紐付け元から自動参照 -->
+                <div class="field">
+                    <label class="field-label">
+                        土地原価
+                        <span x-show="isLandCostManual" class="required" style="display:none;">*</span>
+                    </label>
+
+                    <!-- 手動入力ON: input表示 -->
+                    <div class="input-group" x-show="isLandCostManual" style="display:none;">
+                        <input type="number" name="land_cost" value="8300000" class="input" :disabled="!isLandCostManual">
+                        <span class="suffix">円</span>
+                    </div>
+
+                    <!-- 手動入力OFF: 参照表示 -->
+                    <div x-show="!isLandCostManual" style="padding: 10px 12px; background: #F3F4F6; border: 1px solid #E5E7EB; border-radius: 6px; font-size: 13px; color: #374151;">
+                        <strong>8,300,000円</strong>
+                        <span style="color: #6B7280; margin-left: 8px; font-size: 12px;">（分譲地PJ-2024-003 区画A から自動参照）</span>
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label class="field-label">建物原価<span class="required">*</span></label>
+                    <div class="input-group">
+                        <input type="number" name="building_cost" value="13200000" class="input">
+                        <span class="suffix">円</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- フォーム末尾アクション -->
+        <div class="form-actions">
+            <a href="#" class="btn-link-gray">元ページで全項目編集</a>
+            <div class="form-actions-right">
+                <a href="show-building.html" class="btn btn-outline">キャンセル</a>
+                <button type="submit" class="btn btn-primary">更新する</button>
+            </div>
+        </div>
+    </form>
+
+</div>
+
+<script>
+    // 日付ピッカー（案C）- Alpine.js用データ関数
+    // initial: "YYYY-MM-DD"形式の初期値（省略可）
+    function datePicker(initial) {
+        // 初期値のパース
+        var initialDate = null;
+        if (initial) {
+            var parts = initial.split('-');
+            initialDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+        }
+        var now = new Date();
+        var todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        var viewBase = initialDate || todayDate;
+
+        return {
+            // 選択中の日付（Date | null）
+            selected: initialDate,
+            // カレンダー表示中の年月
+            viewYear: viewBase.getFullYear(),
+            viewMonth: viewBase.getMonth(),
+            // ピッカー開閉・モード
+            open: false,
+            mode: 'calendar', // 'calendar' | 'year' | 'month'
+
+            // 今日の情報
+            todayYear: todayDate.getFullYear(),
+            todayMonth: todayDate.getMonth(),
+            todayDate: todayDate.getDate(),
+            _today: todayDate,
+
+            // 年範囲（過去10年～未来1年）
+            get yearRange() {
+                var years = [];
+                var start = this.todayYear - 10;
+                var end = this.todayYear + 1;
+                for (var y = start; y <= end; y++) {
+                    years.push(y);
+                }
+                return years;
+            },
+            get yearRangeHint() {
+                var start = this.todayYear - 10;
+                var end = this.todayYear + 1;
+                return '過去10年～未来1年（' + start + ' - ' + end + '）';
+            },
+
+            // 選択中日付のラベル（入力欄用 "YYYY/MM/DD"）
+            get selectedLabel() {
+                if (!this.selected) return '';
+                var d = this.selected;
+                return d.getFullYear() + '/' +
+                    String(d.getMonth() + 1).padStart(2, '0') + '/' +
+                    String(d.getDate()).padStart(2, '0');
+            },
+            // 選択中日付の長い表示（ピッカーヘッダー用 "2025年11月20日（木）"）
+            get selectedLong() {
+                if (!this.selected) return '';
+                var d = this.selected;
+                var dowNames = ['日', '月', '火', '水', '木', '金', '土'];
+                return d.getFullYear() + '年' +
+                    (d.getMonth() + 1) + '月' +
+                    d.getDate() + '日（' + dowNames[d.getDay()] + '）';
+            },
+            // hidden input用 ISO形式 "YYYY-MM-DD"
+            get isoValue() {
+                if (!this.selected) return '';
+                var d = this.selected;
+                return d.getFullYear() + '-' +
+                    String(d.getMonth() + 1).padStart(2, '0') + '-' +
+                    String(d.getDate()).padStart(2, '0');
+            },
+
+            // カレンダーグリッド（6行×7列=42セル）を生成
+            get calendarCells() {
+                var cells = [];
+                var firstDow = new Date(this.viewYear, this.viewMonth, 1).getDay();
+                var daysInMonth = new Date(this.viewYear, this.viewMonth + 1, 0).getDate();
+                var prevMonthDays = new Date(this.viewYear, this.viewMonth, 0).getDate();
+
+                // 前月の日付（グレー）
+                for (var i = firstDow - 1; i >= 0; i--) {
+                    cells.push({
+                        day: prevMonthDays - i,
+                        muted: true,
+                        dow: (firstDow - 1 - i),
+                        date: null
+                    });
+                }
+                // 当月の日付
+                for (var d = 1; d <= daysInMonth; d++) {
+                    var cellDate = new Date(this.viewYear, this.viewMonth, d);
+                    cells.push({
+                        day: d,
+                        muted: false,
+                        dow: cellDate.getDay(),
+                        date: cellDate
+                    });
+                }
+                // 翌月の日付（グレー）- 42セルになるまで埋める
+                var nextDay = 1;
+                while (cells.length < 42) {
+                    cells.push({
+                        day: nextDay,
+                        muted: true,
+                        dow: cells.length % 7,
+                        date: null
+                    });
+                    nextDay++;
+                }
+                return cells;
+            },
+
+            // セル判定
+            isToday: function (cell) {
+                if (!cell.date) return false;
+                return cell.date.getFullYear() === this.todayYear &&
+                    cell.date.getMonth() === this.todayMonth &&
+                    cell.date.getDate() === this.todayDate;
+            },
+            isSelected: function (cell) {
+                if (!cell.date || !this.selected) return false;
+                return cell.date.getFullYear() === this.selected.getFullYear() &&
+                    cell.date.getMonth() === this.selected.getMonth() &&
+                    cell.date.getDate() === this.selected.getDate();
+            },
+
+            // 月ナビゲーション
+            prevMonth: function () {
+                if (this.viewMonth === 0) {
+                    this.viewMonth = 11;
+                    this.viewYear--;
+                } else {
+                    this.viewMonth--;
+                }
+            },
+            nextMonth: function () {
+                if (this.viewMonth === 11) {
+                    this.viewMonth = 0;
+                    this.viewYear++;
+                } else {
+                    this.viewMonth++;
+                }
+            },
+
+            // モード切替
+            toggleYearMode: function () {
+                this.mode = this.mode === 'year' ? 'calendar' : 'year';
+            },
+            toggleMonthMode: function () {
+                this.mode = this.mode === 'month' ? 'calendar' : 'month';
+            },
+
+            // 日付選択
+            pick: function (cell) {
+                if (!cell.date) return;
+                this.selected = cell.date;
+                this.open = false;
+            },
+            pickYear: function (year) {
+                this.viewYear = year;
+                this.mode = 'calendar';
+            },
+            pickMonth: function (month) {
+                this.viewMonth = month;
+                this.mode = 'calendar';
+            },
+
+            // ショートカット
+            setToday: function () {
+                this.selected = new Date(this.todayYear, this.todayMonth, this.todayDate);
+                this.viewYear = this.todayYear;
+                this.viewMonth = this.todayMonth;
+                this.open = false;
+            },
+            setWeekAgo: function () {
+                var d = new Date(this.todayYear, this.todayMonth, this.todayDate);
+                d.setDate(d.getDate() - 7);
+                this.selected = d;
+                this.viewYear = d.getFullYear();
+                this.viewMonth = d.getMonth();
+                this.open = false;
+            },
+            setMonthAgo: function () {
+                var d = new Date(this.todayYear, this.todayMonth, this.todayDate);
+                d.setMonth(d.getMonth() - 1);
+                this.selected = d;
+                this.viewYear = d.getFullYear();
+                this.viewMonth = d.getMonth();
+                this.open = false;
+            }
+        };
+    }
+</script>
+
+    <script>
+        <!-- fullwidth-to-halfwidth-digit-normalizer -->
+        // 数値入力欄（inputmode="numeric" / type="number"）の全角数字を自動で半角に変換
+        document.addEventListener('input', function (e) {
+            const t = e.target;
+            if (!t || !t.matches) return;
+            if (!t.matches('input[inputmode="numeric"], input[type="number"]')) return;
+            const v = t.value;
+            const nv = v.replace(/[０-９]/g, function (c) {
+                return String.fromCharCode(c.charCodeAt(0) - 0xFEE0);
+            });
+            if (nv !== v) {
+                const start = t.selectionStart;
+                const end = t.selectionEnd;
+                t.value = nv;
+                try { t.setSelectionRange(start, end); } catch (_) {}
+            }
+        }, true);
+    </script>
+
+</body>
+</html>

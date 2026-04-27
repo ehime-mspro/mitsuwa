@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>マンション部屋契約登録 | ミツワ都市開発 経営管理システム</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif; background: #f3f4f6; }
+    </style>
+</head>
+<body>
+
+    <!-- トップバー -->
+    <header style="background: #1f2937; color: white; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 16px;">
+            <span style="font-weight: 700;">ミツワ都市開発 経営管理システム</span>
+        </div>
+        <div style="font-size: 13px;">山田 (経営層)</div>
+    </header>
+
+    <div style="display: flex; min-height: calc(100vh - 48px);">
+        <!-- サイドバー -->
+        <aside style="width: 220px; background: white; border-right: 1px solid #e5e7eb; padding: 16px 0;">
+            <nav style="font-size: 13px;">
+                <div style="padding: 8px 16px; color: #6b7280;">ダッシュボード</div>
+                <div style="padding: 8px 16px; color: #6b7280;">テナント管理</div>
+                <div style="padding: 8px 16px; color: #6b7280;">賃貸マンション ▾</div>
+                <div style="padding: 6px 16px 6px 32px; color: #6b7280;">物件一覧</div>
+                <div style="padding: 6px 16px 6px 32px; color: #6b7280;">入居者管理</div>
+                <div style="padding: 6px 16px 6px 32px; background: #ecfdf5; color: #047857; border-left: 3px solid #10b981; font-weight: 600;">契約一覧</div>
+                <div style="padding: 8px 16px; color: #6b7280;">不動産管理</div>
+                <div style="padding: 8px 16px; color: #6b7280;">住宅事業</div>
+                <div style="padding: 8px 16px; color: #6b7280;">システム管理</div>
+            </nav>
+        </aside>
+
+        <!-- メインコンテンツ -->
+        <main style="flex: 1; padding: 24px;">
+
+            <!-- パンくず -->
+            <div class="text-sm text-gray-500" style="margin-bottom: 12px;">
+                ダッシュボード &gt; 賃貸マンション &gt; <a href="index.html" class="text-gray-500 hover:text-emerald-600 hover:underline">契約一覧</a> &gt; <span class="text-gray-800 font-medium">新規登録</span>
+            </div>
+
+            <!-- ページヘッダー -->
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
+                <h1 style="font-size: 20px; font-weight: 700; margin: 0;">部屋契約 新規登録</h1>
+                <a href="index.html" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border: 1px solid #d1d5db; border-radius: 6px; background: white; font-size: 13px; color: #374151; text-decoration: none;">
+                    <svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                    一覧に戻る
+                </a>
+            </div>
+
+            <!-- フォーム -->
+            <form>
+
+                <!-- ========== カード: 物件・部屋選択 ========== -->
+                <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
+                    <div style="font-size: 15px; font-weight: 700; color: #111827; margin-bottom: 14px; padding-left: 12px; border-left: 4px solid #10b981;">
+                        物件・部屋選択
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">物件<span class="text-red-600" style="margin-left: 2px;">*</span></label>
+                            <select name="property_id"
+                                    style="width: 100%; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
+                                <option value="">選択してください</option>
+                                <option>ミツワハイツ松山1号館</option>
+                                <option>レジデンス大街道</option>
+                                <option>リバーサイド三番町</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">部屋<span class="text-red-600" style="margin-left: 2px;">*</span></label>
+                            <select name="room_id"
+                                    style="width: 100%; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
+                                <option value="">物件を選択すると空き部屋が表示されます</option>
+                                <option>102号室（2LDK / 空室）</option>
+                                <option>203号室（3LDK / 申込み・仮押え）</option>
+                                <option>303号室（3LDK / 空室）</option>
+                                <option>602号室（1LDK / 空室）</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div style="font-size: 12px; color: #6b7280; margin-top: 10px;">
+                        ※ 「空室」「申込み・仮押え」ステータスの部屋のみ選択可能です。保存時に部屋ステータスは自動で「入居中」に更新されます。
+                    </div>
+                </div>
+
+                <!-- ========== カード: 入居者選択 ========== -->
+                <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
+                        <div style="font-size: 15px; font-weight: 700; color: #111827; padding-left: 12px; border-left: 4px solid #10b981;">
+                            入居者選択
+                        </div>
+                        <a href="../tenants/create.html" class="text-xs font-semibold text-emerald-700 px-3 py-1 border border-emerald-200 rounded bg-emerald-50 hover:bg-emerald-100">+ 入居者を新規登録</a>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">入居者<span class="text-red-600" style="margin-left: 2px;">*</span></label>
+                        <select name="tenant_id"
+                                style="width: 100%; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
+                            <option value="">選択してください</option>
+                            <option>佐藤 健一（090-1234-5678）</option>
+                            <option>山本 咲（090-2345-6789）</option>
+                            <option>田中 美和（090-3456-7890）</option>
+                        </select>
+                        <div style="font-size: 12px; color: #6b7280; margin-top: 5px;">※ 利用者区分「入居者」のテナントが表示されます。</div>
+                    </div>
+                </div>
+
+                <!-- ========== カード: 契約情報 ========== -->
+                <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
+                    <div style="font-size: 15px; font-weight: 700; color: #111827; margin-bottom: 14px; padding-left: 12px; border-left: 4px solid #10b981;">
+                        契約情報
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">契約日</label>
+                            <input type="date" name="contract_date"
+                                   style="width: 100%; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">入居日</label>
+                            <input type="date" name="move_in_date"
+                                   style="width: 100%; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px;">
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">賃料（月額・税抜）</label>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <input type="number" name="rent" min="0" step="1000" placeholder="85000"
+                                       style="flex: 1; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px; text-align: right;">
+                                <span style="font-size: 13px; color: #6b7280;">円</span>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">共益費（月額）</label>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <input type="number" name="common_fee" min="0" step="500" placeholder="5000"
+                                       style="flex: 1; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px; text-align: right;">
+                                <span style="font-size: 13px; color: #6b7280;">円</span>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">敷金</label>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <input type="number" name="deposit" min="0" step="10000"
+                                       style="flex: 1; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px; text-align: right;">
+                                <span style="font-size: 13px; color: #6b7280;">円</span>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">礼金</label>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <input type="number" name="key_money" min="0" step="10000"
+                                       style="flex: 1; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px; text-align: right;">
+                                <span style="font-size: 13px; color: #6b7280;">円</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ========== カード: 駐車場の紐付け ========== -->
+                <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
+                    <div style="font-size: 15px; font-weight: 700; color: #111827; margin-bottom: 14px; padding-left: 12px; border-left: 4px solid #10b981;">
+                        駐車場の紐付け（任意・複数選択可）
+                    </div>
+                    <div style="font-size: 12px; color: #6b7280; margin-bottom: 12px;">
+                        ※ 選択した物件の空き駐車場が表示されます。チェックした駐車場は保存時に同時に駐車場契約が作成され、ステータスが「使用中」になります。
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <label style="display: flex; align-items: center; gap: 10px; padding: 12px; border: 1px solid #d1d5db; border-radius: 6px; cursor: pointer; background: white;">
+                            <input type="checkbox" name="parking_ids[]" value="1" style="width: 18px; height: 18px; accent-color: #059669;">
+                            <div style="flex: 1;">
+                                <div style="font-size: 14px; font-weight: 600; color: #111827;">A-1（屋根あり・普通車）</div>
+                                <div style="font-size: 12px; color: #6b7280;">月額 7,500円 / 敷金 15,000円</div>
+                            </div>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 10px; padding: 12px; border: 1px solid #d1d5db; border-radius: 6px; cursor: pointer; background: white;">
+                            <input type="checkbox" name="parking_ids[]" value="2" style="width: 18px; height: 18px; accent-color: #059669;">
+                            <div style="flex: 1;">
+                                <div style="font-size: 14px; font-weight: 600; color: #111827;">A-3（屋根なし・軽自動車）</div>
+                                <div style="font-size: 12px; color: #6b7280;">月額 5,500円 / 敷金 11,000円</div>
+                            </div>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 10px; padding: 12px; border: 1px solid #d1d5db; border-radius: 6px; cursor: pointer; background: white;">
+                            <input type="checkbox" name="parking_ids[]" value="3" style="width: 18px; height: 18px; accent-color: #059669;">
+                            <div style="flex: 1;">
+                                <div style="font-size: 14px; font-weight: 600; color: #111827;">B-2（機械式・普通車）</div>
+                                <div style="font-size: 12px; color: #6b7280;">月額 8,000円 / 敷金 16,000円</div>
+                            </div>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 10px; padding: 12px; border: 1px solid #d1d5db; border-radius: 6px; cursor: pointer; background: white;">
+                            <input type="checkbox" name="parking_ids[]" value="4" style="width: 18px; height: 18px; accent-color: #059669;">
+                            <div style="flex: 1;">
+                                <div style="font-size: 14px; font-weight: 600; color: #111827;">B-5（平面・普通車）</div>
+                                <div style="font-size: 12px; color: #6b7280;">月額 7,500円 / 敷金 15,000円</div>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- ========== カード: 担当者・備考 ========== -->
+                <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
+                    <div style="font-size: 15px; font-weight: 700; color: #111827; margin-bottom: 14px; padding-left: 12px; border-left: 4px solid #10b981;">
+                        担当者・備考
+                    </div>
+                    <div style="margin-bottom: 16px;">
+                        <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">担当者</label>
+                        <select name="staff_user_id"
+                                style="width: 320px; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
+                            <option>山田</option>
+                            <option>佐々木</option>
+                            <option>田村</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">備考</label>
+                        <textarea name="memo" placeholder="ペット飼育の条件、振込先情報、その他注意事項など..."
+                                  style="width: 100%; min-height: 96px; border: 1px solid #d1d5db; border-radius: 6px; padding: 8px 12px; font-size: 14px; resize: vertical;"></textarea>
+                    </div>
+                </div>
+
+                <!-- アクションボタン -->
+                <div style="display: flex; justify-content: flex-end; gap: 8px;">
+                    <a href="index.html" style="display: inline-flex; align-items: center; padding: 10px 20px; border: 1px solid #d1d5db; border-radius: 6px; background: white; font-size: 14px; color: #374151; text-decoration: none;">キャンセル</a>
+                    <button type="submit" style="padding: 10px 24px; background: #059669; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer;">
+                        登録する
+                    </button>
+                </div>
+            </form>
+
+            <!-- 補足 -->
+            <div style="margin-top: 20px; padding: 12px 16px; background: #f9fafb; border-radius: 8px; font-size: 12px; color: #6b7280;">
+                <strong style="color: #374151;">※登録後の動作</strong>：部屋ステータスは自動で「入居中」に変更されます。チェックした駐車場については同時に駐車場契約が作成され、駐車場ステータスが「使用中」に変更されます。
+            </div>
+
+        </main>
+    </div>
+
+    <script>
+        <!-- fullwidth-to-halfwidth-digit-normalizer -->
+        // 数値入力欄（inputmode="numeric" / type="number"）の全角数字を自動で半角に変換
+        document.addEventListener('input', function (e) {
+            const t = e.target;
+            if (!t || !t.matches) return;
+            if (!t.matches('input[inputmode="numeric"], input[type="number"]')) return;
+            const v = t.value;
+            const nv = v.replace(/[０-９]/g, function (c) {
+                return String.fromCharCode(c.charCodeAt(0) - 0xFEE0);
+            });
+            if (nv !== v) {
+                const start = t.selectionStart;
+                const end = t.selectionEnd;
+                t.value = nv;
+                try { t.setSelectionRange(start, end); } catch (_) {}
+            }
+        }, true);
+    </script>
+
+</body>
+</html>

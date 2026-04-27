@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>建売契約登録 — 物件選択</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Helvetica Neue', Arial, sans-serif; background: #F9FAFB; color: #111827; }
+    .page-wrapper { max-width: 1280px; margin: 0 auto; padding: 24px; }
+    .breadcrumb { font-size: 12px; color: #9CA3AF; margin-bottom: 12px; }
+    .breadcrumb .sep { margin: 0 6px; }
+    .breadcrumb a { color: #9CA3AF; text-decoration: none; }
+    .breadcrumb a:hover { color: #059669; }
+
+    /* ヘッダー */
+    .page-header {
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 20px;
+    }
+    h1.page-title { font-size: 18px; font-weight: 700; color: #111827; margin: 0; }
+    .btn-gray {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 7px 16px;
+        font-size: 13px; font-weight: 600;
+        background: white; color: #6B7280; border: 1px solid #D1D5DB;
+        border-radius: 6px; text-decoration: none; cursor: pointer;
+    }
+    .btn-gray:hover { background: #F9FAFB; }
+
+    /* 説明文 */
+    .description {
+        background: #EFF6FF;
+        border: 1px solid #BFDBFE;
+        border-radius: 6px;
+        padding: 12px 16px;
+        margin-bottom: 16px;
+        font-size: 13px;
+        color: #1E40AF;
+    }
+
+    /* フィルターバー */
+    .filter-bar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: white;
+        border: 1px solid #E5E7EB;
+        border-radius: 8px;
+        padding: 10px 14px;
+        margin-bottom: 16px;
+        flex-wrap: wrap;
+    }
+    .filter-bar select {
+        height: 36px;
+        padding: 0 12px;
+        border: 1px solid #D1D5DB;
+        border-radius: 6px;
+        font-size: 14px;
+        color: #374151;
+        background: white;
+        cursor: pointer;
+    }
+    .filter-bar .search-input {
+        height: 36px;
+        padding: 0 12px;
+        border: 1px solid #D1D5DB;
+        border-radius: 6px;
+        font-size: 14px;
+        color: #374151;
+        background: white;
+        min-width: 220px;
+        flex: 1;
+    }
+    .filter-bar .clear-btn {
+        height: 36px;
+        padding: 0 12px;
+        border: 1px solid #E5E7EB;
+        border-radius: 6px;
+        font-size: 11px;
+        color: #9CA3AF;
+        background: white;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+    }
+    .filter-bar .clear-btn:hover { background: #F9FAFB; color: #6B7280; border-color: #D1D5DB; }
+
+    /* ページネーション */
+    .pager { display: flex; justify-content: center; gap: 2px; padding: 12px 16px; border-top: 1px solid #E5E7EB; }
+    .pager a, .pager span {
+        width: 32px; height: 32px;
+        display: inline-flex; align-items: center; justify-content: center;
+        border-radius: 4px; font-size: 12px; color: #374151; background: white; border: 1px solid #D1D5DB;
+        text-decoration: none;
+    }
+    .pager .active { background: #059669; color: white; border-color: #059669; font-weight: 600; }
+    .pager a:hover { background: #F9FAFB; }
+
+    /* テーブル */
+    .table-wrap { background: white; border: 1px solid #E5E7EB; border-radius: 8px; overflow: hidden; }
+    table.list-table { width: 100%; border-collapse: collapse; min-width: 900px; }
+    table.list-table thead th {
+        padding: 10px 12px;
+        font-size: 11px; font-weight: 600; color: #4B5563;
+        background: #F9FAFB;
+        border-bottom: 2px solid #E5E7EB;
+        white-space: nowrap;
+        text-align: center;
+    }
+    table.list-table thead th.left { text-align: left; padding-left: 16px; }
+    table.list-table tbody td {
+        padding: 12px;
+        font-size: 14px;
+        border-bottom: 1px solid #F3F4F6;
+    }
+    table.list-table tbody td.center { text-align: center; white-space: nowrap; }
+    table.list-table tbody tr:hover { background: #F9FAFB; }
+    .link { color: #059669; font-weight: 500; text-decoration: none; }
+    .link:hover { color: #047857; text-decoration: underline; }
+
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+    .badge-ready  { background: #D1FAE5; color: #065F46; }
+    .badge-building { background: #FEF3C7; color: #92400E; }
+    .badge-planning { background: #E5E7EB; color: #374151; }
+
+    .btn-primary {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 6px 14px;
+        background: #059669; color: white;
+        font-size: 12px; font-weight: 600;
+        border-radius: 4px; border: 1px solid #059669;
+        text-decoration: none;
+    }
+    .btn-primary:hover { background: #047857; }
+
+    .scroll-x { overflow-x: auto; }
+    .total-bar {
+        padding: 10px 16px;
+        border-top: 1px solid #E5E7EB;
+        font-size: 14px; color: #6B7280;
+    }
+
+    /* 空状態（コメントで説明用） */
+    .empty-state {
+        padding: 60px 20px;
+        text-align: center;
+        color: #9CA3AF;
+        font-size: 14px;
+    }
+</style>
+</head>
+<body>
+
+<div class="page-wrapper">
+
+    <!-- パンくず -->
+    <div class="breadcrumb">
+        ホーム <span class="sep">›</span> 住宅事業 <span class="sep">›</span>
+        <a href="index.html">契約管理</a>
+        <span class="sep">›</span>
+        <span style="color: #4B5563;">建売契約登録 — 物件選択</span>
+    </div>
+
+    <!-- ヘッダー -->
+    <div class="page-header">
+        <h1 class="page-title">建売契約登録 — 物件選択</h1>
+        <a href="index.html" class="btn-gray">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+            一覧へ戻る
+        </a>
+    </div>
+
+    <!-- 説明文 -->
+    <div class="description">
+        契約を登録する建売物件を選択してください。一覧には未契約の物件のみ表示されています。契約済みの物件は「契約管理」一覧から該当行の詳細ページを開いて編集してください。
+    </div>
+
+    <!-- フィルターバー（物件名検索のみ、ステータスは「販売中」固定） -->
+    <form class="filter-bar" id="filter-form" onsubmit="return false;">
+        <input type="text" class="search-input" placeholder="物件名で検索">
+        <a href="#" class="clear-btn">クリア</a>
+    </form>
+
+    <!-- テーブル -->
+    <div class="table-wrap">
+        <div class="scroll-x">
+            <table class="list-table">
+                <thead>
+                    <tr>
+                        <th>物件コード</th>
+                        <th class="left">物件名</th>
+                        <th class="left">住所</th>
+                        <th>土地面積</th>
+                        <th>建物面積</th>
+                        <th>予定販売価格</th>
+                        <th>アクション</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="center">HS-2026-001</td>
+                        <td style="padding-left: 16px;"><a href="#" class="link">松山市山越町 D号地モデル</a></td>
+                        <td style="padding-left: 16px;">愛媛県松山市山越町2-8-15</td>
+                        <td class="center">172.40㎡</td>
+                        <td class="center">110.25㎡</td>
+                        <td class="center">29,800,000円</td>
+                        <td class="center"><a href="#" class="btn-primary">この物件で契約登録</a></td>
+                    </tr>
+                    <tr>
+                        <td class="center">HS-2026-002</td>
+                        <td style="padding-left: 16px;"><a href="#" class="link">東温市志津川 E号地</a></td>
+                        <td style="padding-left: 16px;">愛媛県東温市志津川1188-2</td>
+                        <td class="center">168.90㎡</td>
+                        <td class="center">105.80㎡</td>
+                        <td class="center">27,500,000円</td>
+                        <td class="center"><a href="#" class="btn-primary">この物件で契約登録</a></td>
+                    </tr>
+                    <tr>
+                        <td class="center">HS-2026-003</td>
+                        <td style="padding-left: 16px;"><a href="#" class="link">伊予市米湊 F号地</a></td>
+                        <td style="padding-left: 16px;">愛媛県伊予市米湊456-8</td>
+                        <td class="center">158.20㎡</td>
+                        <td class="center">102.10㎡</td>
+                        <td class="center">25,800,000円</td>
+                        <td class="center"><a href="#" class="btn-primary">この物件で契約登録</a></td>
+                    </tr>
+                    <tr>
+                        <td class="center">HS-2026-004</td>
+                        <td style="padding-left: 16px;"><a href="#" class="link">松前町筒井 G号地</a></td>
+                        <td style="padding-left: 16px;">愛媛県伊予郡松前町筒井789-5</td>
+                        <td class="center">165.75㎡</td>
+                        <td class="center">108.00㎡</td>
+                        <td class="center">28,200,000円</td>
+                        <td class="center"><a href="#" class="btn-primary">この物件で契約登録</a></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="total-bar">全 4 件（未契約の建売物件） ／ 1 〜 4 件目を表示</div>
+
+        <!-- ページネーション（20件/ページ） -->
+        <div class="pager">
+            <span style="color: #D1D5DB; border-color: #E5E7EB;">&lt;</span>
+            <span class="active">1</span>
+            <span style="color: #D1D5DB; border-color: #E5E7EB;">&gt;</span>
+        </div>
+    </div>
+
+    <!--
+    =====================================================================
+    空状態のバリエーション (物件が0件の場合): 上のテーブルを以下に置き換える
+    =====================================================================
+    <div class="table-wrap">
+        <div class="empty-state">
+            <div style="margin-bottom: 16px;">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#D1D5DB" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;">
+                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                    <polyline points="9 22 9 12 15 12 15 22"/>
+                </svg>
+            </div>
+            <div style="color: #4B5563; font-weight: 600; font-size: 15px; margin-bottom: 8px;">未契約の建売物件がありません</div>
+            <div style="margin-bottom: 16px;">新規に建売物件を登録してから契約登録を行ってください。</div>
+            <a href="#" class="btn-primary" style="font-size: 13px; padding: 8px 16px;">建売物件を新規登録する</a>
+        </div>
+    </div>
+    =====================================================================
+    -->
+
+</div>
+
+</body>
+</html>

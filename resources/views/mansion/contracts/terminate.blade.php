@@ -1,0 +1,626 @@
+@extends('layouts.app')
+
+@section('title', '部屋契約 解約処理')
+
+@section('breadcrumb')
+    <span class="mx-1.5">›</span>
+    <a href="{{ route('mansion.properties.index') }}" class="hover:text-emerald-600 transition-colors">賃貸マンション</a>
+    <span class="mx-1.5">›</span>
+    <a href="{{ route('mansion.contracts.index') }}" class="hover:text-emerald-600 transition-colors">部屋契約一覧</a>
+    <span class="mx-1.5">›</span>
+    <a href="{{ route('mansion.contracts.show', $contract) }}" class="hover:text-emerald-600 transition-colors">契約詳細</a>
+    <span class="mx-1.5">›</span>
+    <span class="text-gray-600">解約処理</span>
+@endsection
+
+@section('content')
+
+@php
+    // Active な駐車場契約のみ一括解約候補として表示
+    $activeParkings = $contract->parkingContracts->filter(function ($pc) {
+        return $pc->status === \App\Enums\MsContractStatus::Active;
+    });
+    // 預かり敷金（金額情報カードで参照）
+    $depositAmount = (int) ($contract->deposit ?? 0);
+    // 初期値（old() 優先）
+    $oldMoveOutDate = old('move_out_date', now()->format('Y-m-d'));
+    $oldRestoration = (int) old('restoration_cost', 0);
+    $oldCleaning = (int) old('cleaning_cost', 0);
+    $oldReason = old('termination_reason', '');
+    $oldTerminateParkings = old('terminate_parkings', $activeParkings->pluck('id')->all());
+    // 駐車場契約 ID → チェック状態の初期値。@json() 内での関数呼び出しを避けるため事前計算する
+    $linkParkingsInitial = [];
+    foreach ($activeParkings as $pc) {
+        $linkParkingsInitial[$pc->id] = in_array($pc->id, $oldTerminateParkings);
+    }
+@endphp
+
+{{-- 解約画面用スタイル（Vite 未ビルドにつき inline） --}}
+<style>
+    .info-row { display: grid; grid-template-columns: 120px 1fr; padding: 8px 0; border-bottom: 1px dashed #e5e7eb; font-size: 14px; }
+    .info-row:last-child { border-bottom: none; }
+    .info-label { color: #6b7280; font-weight: 600; }
+    .info-value { color: #111827; }
+
+    .deposit-row { display: grid; grid-template-columns: 1fr 180px 24px; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px dashed #e5e7eb; }
+    .deposit-row:last-child { border-bottom: none; }
+    .deposit-row.total { border-top: 2px solid #059669; border-bottom: none; padding: 14px 0 4px; margin-top: 6px; }
+    .deposit-label { font-size: 13px; color: #374151; font-weight: 600; }
+    .deposit-row.total .deposit-label { font-size: 14px; font-weight: 700; color: #047857; }
+    .deposit-value-total { font-size: 20px; font-weight: 700; color: #047857; text-align: right; }
+    .deposit-value-total.negative { color: #b91c1c; }
+    .deposit-unit { color: #6b7280; font-size: 13px; }
+
+    .parking-link-row { display: grid; grid-template-columns: 40px 1fr 1fr 1fr 120px; gap: 12px; align-items: center; padding: 12px 14px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fafafa; margin-bottom: 8px; font-size: 13px; }
+    .parking-link-row.checked { background: #f0fdf4; border-color: #a7f3d0; }
+    .parking-link-row .parking-no { font-weight: 700; color: #111827; }
+
+    .btn-danger { padding: 10px 24px; background: #dc2626; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; }
+    .btn-danger:hover { background: #b91c1c; }
+
+    /* ===== 日付ピッカー（案C） ===== */
+    .date-picker-wrap { position: relative; }
+    .date-input-trigger {
+        width: 100%; height: 38px; padding: 0 12px;
+        border: 1px solid #d1d5db; border-radius: 6px;
+        font-size: 14px; color: #111827; background: white;
+        box-sizing: border-box;
+        display: flex; align-items: center; justify-content: space-between;
+        cursor: pointer; text-align: left; font-family: inherit;
+    }
+    .date-input-trigger:hover { border-color: #059669; }
+    .date-input-trigger:focus { outline: none; border-color: #059669; box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.12); }
+    .date-input-trigger .placeholder { color: #9ca3af; }
+    .date-input-trigger .cal-icon { color: #059669; display: inline-flex; }
+
+    .picker-popup {
+        position: absolute; top: calc(100% + 6px); left: 0; z-index: 100;
+        width: 340px; background: white; border-radius: 20px;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.1), 0 2px 4px rgba(0,0,0,0.04);
+        padding: 20px; box-sizing: border-box;
+    }
+    .picker-popup .cal-info { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+    .picker-popup .cal-info .pill { background: #ecfdf5; color: #047857; font-size: 11px; font-weight: 700; padding: 4px 12px; border-radius: 99px; letter-spacing: 0.3px; }
+    .picker-popup .cal-info .sel-date { font-size: 13px; color: #6b7280; }
+    .picker-popup .cal-info .sel-date b { color: #047857; font-weight: 700; }
+
+    .picker-popup .cal-nav { display: flex; align-items: center; justify-content: space-between; padding: 0 4px 14px; }
+    .picker-popup .cal-nav .arrow-btn { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border: none; background: #f9fafb; border-radius: 50%; cursor: pointer; color: #6b7280; font-size: 13px; transition: all 0.15s; }
+    .picker-popup .cal-nav .arrow-btn:hover { background: #ecfdf5; color: #059669; }
+    .picker-popup .cal-nav .arrow-btn.hidden { visibility: hidden; }
+    .picker-popup .cal-nav .month-btns { display: flex; align-items: center; gap: 4px; }
+    .picker-popup .cal-nav .ym-btn { display: inline-flex; align-items: center; gap: 4px; font-size: 16px; font-weight: 700; color: #111827; background: transparent; border: none; cursor: pointer; padding: 6px 12px; border-radius: 8px; transition: all 0.15s; font-family: inherit; }
+    .picker-popup .cal-nav .ym-btn:hover { background: #f3f4f6; color: #059669; }
+    .picker-popup .cal-nav .ym-btn.active { background: #ecfdf5; color: #047857; }
+    .picker-popup .cal-nav .ym-btn .chev { font-size: 10px; color: #9ca3af; transition: transform 0.15s; }
+    .picker-popup .cal-nav .ym-btn.active .chev { transform: rotate(180deg); color: #047857; }
+
+    .picker-popup .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+    .picker-popup .cal-dow { text-align: center; font-size: 11px; font-weight: 700; color: #9ca3af; padding: 6px 0 10px; }
+    .picker-popup .cal-dow.sun { color: #dc2626; }
+    .picker-popup .cal-dow.sat { color: #2563eb; }
+    .picker-popup .cal-cell { text-align: center; font-size: 13px; color: #374151; cursor: pointer; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; position: relative; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); border: none; background: transparent; font-family: inherit; }
+    .picker-popup .cal-cell:hover { background: #f3f4f6; }
+    .picker-popup .cal-cell.muted { color: #e5e7eb; }
+    .picker-popup .cal-cell.sun { color: #dc2626; }
+    .picker-popup .cal-cell.sat { color: #2563eb; }
+    .picker-popup .cal-cell.today { color: #059669; font-weight: 700; }
+    .picker-popup .cal-cell.today::after { content: ''; position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%); width: 4px; height: 4px; border-radius: 50%; background: #059669; }
+    .picker-popup .cal-cell.selected { background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; font-weight: 700; box-shadow: 0 6px 16px rgba(5, 150, 105, 0.4); transform: scale(1.05); }
+    .picker-popup .cal-cell.selected.sun, .picker-popup .cal-cell.selected.sat { color: white; }
+    .picker-popup .cal-cell.selected.today::after { background: white; }
+
+    .picker-popup .ym-picker { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 10px 2px; }
+    .picker-popup .ym-picker button { padding: 14px 6px; font-size: 13px; font-weight: 600; background: #f9fafb; color: #374151; border: 1px solid transparent; border-radius: 10px; cursor: pointer; transition: all 0.2s; position: relative; font-family: inherit; }
+    .picker-popup .ym-picker button:hover { background: #ecfdf5; color: #059669; }
+    .picker-popup .ym-picker button.today { color: #059669; font-weight: 700; background: white; border-color: #a7f3d0; }
+    .picker-popup .ym-picker button.today::after { content: ''; position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%); width: 4px; height: 4px; border-radius: 50%; background: #059669; }
+    .picker-popup .ym-picker button.selected { background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; font-weight: 700; box-shadow: 0 4px 12px rgba(5, 150, 105, 0.35); border-color: transparent; }
+    .picker-popup .ym-picker button.selected.today::after { background: white; }
+    .picker-popup .range-hint { text-align: center; font-size: 11px; color: #9ca3af; padding-top: 10px; margin-top: 4px; border-top: 1px dashed #f3f4f6; }
+    .picker-popup .cal-foot { margin-top: 16px; padding-top: 14px; border-top: 1px solid #f3f4f6; display: flex; gap: 8px; }
+    .picker-popup .cal-foot .shortcut { flex: 1; padding: 7px 10px; font-size: 11px; font-weight: 600; background: #f9fafb; color: #374151; border: 1px solid #e5e7eb; border-radius: 8px; cursor: pointer; text-align: center; font-family: inherit; }
+    .picker-popup .cal-foot .shortcut:hover { background: #ecfdf5; color: #059669; border-color: #a7f3d0; }
+</style>
+
+{{-- Alpine 状態関数（アロー関数 => 不使用、function() 宣言のみ） --}}
+<script>
+    // 解約処理フォームの状態
+    function terminateContract() {
+        return {
+            deposit: {{ $depositAmount }},
+            restorationCost: {{ $oldRestoration }},
+            cleaningCost: {{ $oldCleaning }},
+            // 差引項目の動的追加（初期空配列）
+            otherDeductions: [],
+            terminationReason: @json($oldReason),
+            // 駐車場契約 ID → チェック状態のオブジェクト（初期は全 Active をチェック）
+            linkParkings: @json($linkParkingsInitial),
+            // 差引合計（原状回復 + 清掃 + その他の合算）
+            get totalDeduction() {
+                var sum = (Number(this.restorationCost) || 0) + (Number(this.cleaningCost) || 0);
+                this.otherDeductions.forEach(function (d) { sum += (Number(d.amount) || 0); });
+                return sum;
+            },
+            // 返金額（敷金 - 差引合計）。マイナスは入居者へ請求
+            get refundAmount() {
+                return this.deposit - this.totalDeduction;
+            },
+            // 金額の整形（マイナスは「−」記号）
+            formatYen: function (v) {
+                var n = Number(v) || 0;
+                var sign = n < 0 ? '−' : '';
+                return sign + Math.abs(n).toLocaleString() + '円';
+            }
+        };
+    }
+
+    // 日付ピッカー（案C）
+    function datePicker(initial) {
+        var initialDate = null;
+        if (initial) {
+            var parts = initial.split('-');
+            initialDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+        }
+        var now = new Date();
+        var todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        var viewBase = initialDate || todayDate;
+
+        return {
+            selected: initialDate,
+            viewYear: viewBase.getFullYear(),
+            viewMonth: viewBase.getMonth(),
+            open: false,
+            mode: 'calendar',
+            todayYear: todayDate.getFullYear(),
+            todayMonth: todayDate.getMonth(),
+            todayDate: todayDate.getDate(),
+            get yearRange() {
+                var years = [];
+                var start = this.todayYear - 10;
+                var end = this.todayYear + 1;
+                for (var y = start; y <= end; y++) years.push(y);
+                return years;
+            },
+            get yearRangeHint() {
+                var start = this.todayYear - 10;
+                var end = this.todayYear + 1;
+                return '過去10年～未来1年（' + start + ' - ' + end + '）';
+            },
+            get selectedLabel() {
+                if (!this.selected) return '';
+                var d = this.selected;
+                return d.getFullYear() + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + String(d.getDate()).padStart(2, '0');
+            },
+            get selectedLong() {
+                if (!this.selected) return '';
+                var d = this.selected;
+                var dowNames = ['日', '月', '火', '水', '木', '金', '土'];
+                return d.getFullYear() + '年' + (d.getMonth() + 1) + '月' + d.getDate() + '日（' + dowNames[d.getDay()] + '）';
+            },
+            get isoValue() {
+                if (!this.selected) return '';
+                var d = this.selected;
+                return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+            },
+            get calendarCells() {
+                var cells = [];
+                var firstDow = new Date(this.viewYear, this.viewMonth, 1).getDay();
+                var daysInMonth = new Date(this.viewYear, this.viewMonth + 1, 0).getDate();
+                var prevMonthDays = new Date(this.viewYear, this.viewMonth, 0).getDate();
+                for (var i = firstDow - 1; i >= 0; i--) {
+                    cells.push({ day: prevMonthDays - i, muted: true, dow: (firstDow - 1 - i), date: null });
+                }
+                for (var d = 1; d <= daysInMonth; d++) {
+                    var cellDate = new Date(this.viewYear, this.viewMonth, d);
+                    cells.push({ day: d, muted: false, dow: cellDate.getDay(), date: cellDate });
+                }
+                var nextDay = 1;
+                while (cells.length < 42) {
+                    cells.push({ day: nextDay, muted: true, dow: cells.length % 7, date: null });
+                    nextDay++;
+                }
+                return cells;
+            },
+            isToday: function (cell) {
+                if (!cell.date) return false;
+                return cell.date.getFullYear() === this.todayYear &&
+                    cell.date.getMonth() === this.todayMonth &&
+                    cell.date.getDate() === this.todayDate;
+            },
+            isSelected: function (cell) {
+                if (!cell.date || !this.selected) return false;
+                return cell.date.getFullYear() === this.selected.getFullYear() &&
+                    cell.date.getMonth() === this.selected.getMonth() &&
+                    cell.date.getDate() === this.selected.getDate();
+            },
+            prevMonth: function () {
+                if (this.viewMonth === 0) { this.viewMonth = 11; this.viewYear--; }
+                else { this.viewMonth--; }
+            },
+            nextMonth: function () {
+                if (this.viewMonth === 11) { this.viewMonth = 0; this.viewYear++; }
+                else { this.viewMonth++; }
+            },
+            toggleYearMode: function () { this.mode = this.mode === 'year' ? 'calendar' : 'year'; },
+            toggleMonthMode: function () { this.mode = this.mode === 'month' ? 'calendar' : 'month'; },
+            pick: function (cell) {
+                if (!cell.date) return;
+                this.selected = cell.date;
+                this.open = false;
+            },
+            pickYear: function (year) { this.viewYear = year; this.mode = 'calendar'; },
+            pickMonth: function (month) { this.viewMonth = month; this.mode = 'calendar'; },
+            setToday: function () {
+                this.selected = new Date(this.todayYear, this.todayMonth, this.todayDate);
+                this.viewYear = this.todayYear;
+                this.viewMonth = this.todayMonth;
+                this.open = false;
+            },
+            setWeekAgo: function () {
+                var d = new Date(this.todayYear, this.todayMonth, this.todayDate);
+                d.setDate(d.getDate() - 7);
+                this.selected = d;
+                this.viewYear = d.getFullYear();
+                this.viewMonth = d.getMonth();
+                this.open = false;
+            },
+            setMonthAgo: function () {
+                var d = new Date(this.todayYear, this.todayMonth, this.todayDate);
+                d.setMonth(d.getMonth() - 1);
+                this.selected = d;
+                this.viewYear = d.getFullYear();
+                this.viewMonth = d.getMonth();
+                this.open = false;
+            }
+        };
+    }
+</script>
+
+<div x-data="terminateContract()">
+
+{{-- ページヘッダー --}}
+<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
+    <div style="display: flex; align-items: center; gap: 12px;">
+        <h1 style="font-size: 20px; font-weight: 700; margin: 0;">部屋契約 解約処理</h1>
+        <span style="font-size: 12px; background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; padding: 3px 10px; border-radius: 4px; font-weight: 600;">
+            {{ $contract->tenant?->name ?? '—' }} / {{ $contract->room?->room_number ?? '—' }}号室
+        </span>
+    </div>
+    <a href="{{ route('mansion.contracts.show', $contract) }}"
+       style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border: 1px solid #d1d5db; border-radius: 6px; background: white; font-size: 13px; color: #374151; text-decoration: none;">
+        <svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        詳細に戻る
+    </a>
+</div>
+
+{{-- 警告バナー --}}
+<div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 14px 16px; margin-bottom: 20px; display: flex; gap: 12px; align-items: flex-start;">
+    <div style="flex-shrink: 0; color: #b91c1c; margin-top: 1px;">
+        <svg style="width: 20px; height: 20px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    </div>
+    <div style="font-size: 13px; color: #991b1b; line-height: 1.7;">
+        <div style="font-weight: 700; margin-bottom: 4px;">解約処理は元に戻せません。</div>
+        解約を確定すると、契約ステータスが「解約済み」、部屋ステータスが「空室」に変更されます。紐付く駐車場契約を一括解約する場合は、下記カードで対象を選択してください。
+    </div>
+</div>
+
+{{-- バリデーションエラー --}}
+@if($errors->any())
+    <div class="mb-4 rounded-lg border border-red-200 bg-red-50 p-4">
+        <p class="text-sm font-semibold text-red-800 mb-1">入力内容にエラーがあります。</p>
+        <ul class="list-disc list-inside text-xs text-red-700 space-y-0.5">
+            @foreach($errors->all() as $error)
+                <li>{{ $error }}</li>
+            @endforeach
+        </ul>
+    </div>
+@endif
+
+<form method="POST" action="{{ route('mansion.contracts.terminate', $contract) }}">
+    @csrf
+    @method('PUT')
+
+    {{-- ========== カード: 対象契約 ========== --}}
+    <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
+        <div style="font-size: 15px; font-weight: 700; color: #111827; margin-bottom: 14px; padding-left: 12px; border-left: 4px solid #10b981;">
+            対象契約
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0 32px;">
+            <div>
+                <div class="info-row">
+                    <div class="info-label">物件</div>
+                    <div class="info-value">{{ $contract->room?->property?->property_name ?? '—' }}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">部屋</div>
+                    <div class="info-value">
+                        {{ $contract->room?->room_number ?? '—' }}号室
+                        @if($contract->room?->room_type)
+                            （{{ $contract->room->room_type }}）
+                        @endif
+                    </div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">入居者</div>
+                    <div class="info-value">{{ $contract->tenant?->name ?? '—' }}</div>
+                </div>
+            </div>
+            <div>
+                <div class="info-row">
+                    <div class="info-label">契約日</div>
+                    <div class="info-value">{{ $contract->contract_date?->format('Y/m/d') ?? '—' }}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">入居日</div>
+                    <div class="info-value">{{ $contract->move_in_date?->format('Y/m/d') ?? '—' }}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">現行賃料</div>
+                    <div class="info-value">
+                        {{ number_format((int) $contract->rent) }}円
+                        ／ 共益費 {{ number_format((int) $contract->common_fee) }}円
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- ========== カード: 解約情報 ========== --}}
+    <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
+        <div style="font-size: 15px; font-weight: 700; color: #111827; margin-bottom: 14px; padding-left: 12px; border-left: 4px solid #10b981;">
+            解約情報
+        </div>
+
+        {{-- 退去日（カスタム日付ピッカー） --}}
+        <div style="margin-bottom: 20px;">
+            <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">
+                退去日 <span style="color: #dc2626;">*</span>
+            </label>
+            <div style="max-width: 320px;">
+                <div class="date-picker-wrap" x-data="datePicker(@js($oldMoveOutDate))" @click.outside="open = false">
+                    <button type="button" class="date-input-trigger" @click="open = !open">
+                        <span x-show="selected" x-text="selectedLabel"></span>
+                        <span x-show="!selected" class="placeholder">日付を選択</span>
+                        <span class="cal-icon">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                        </span>
+                    </button>
+                    <input type="hidden" name="move_out_date" :value="isoValue">
+                    <div class="picker-popup" x-show="open" x-transition style="display:none;">
+                        <div class="cal-info">
+                            <span class="pill">退去日</span>
+                            <span class="sel-date" x-show="selected"><b x-text="selectedLong"></b></span>
+                            <span class="sel-date" x-show="!selected" style="color:#9ca3af;">未選択</span>
+                        </div>
+                        <div class="cal-nav">
+                            <button type="button" class="arrow-btn" :class="{ hidden: mode !== 'calendar' }" @click="prevMonth">‹</button>
+                            <div class="month-btns">
+                                <button type="button" class="ym-btn" :class="{ active: mode === 'year' }" @click="toggleYearMode">
+                                    <span x-text="viewYear + '年'"></span>
+                                    <span class="chev">▾</span>
+                                </button>
+                                <button type="button" class="ym-btn" :class="{ active: mode === 'month' }" @click="toggleMonthMode">
+                                    <span x-text="(viewMonth + 1) + '月'"></span>
+                                    <span class="chev">▾</span>
+                                </button>
+                            </div>
+                            <button type="button" class="arrow-btn" :class="{ hidden: mode !== 'calendar' }" @click="nextMonth">›</button>
+                        </div>
+                        <div class="cal-grid" x-show="mode === 'calendar'">
+                            <div class="cal-dow sun">日</div>
+                            <div class="cal-dow">月</div>
+                            <div class="cal-dow">火</div>
+                            <div class="cal-dow">水</div>
+                            <div class="cal-dow">木</div>
+                            <div class="cal-dow">金</div>
+                            <div class="cal-dow sat">土</div>
+                            <template x-for="(cell, idx) in calendarCells" :key="idx">
+                                <button type="button" class="cal-cell"
+                                        :class="{ muted: cell.muted, sun: cell.dow === 0, sat: cell.dow === 6, today: isToday(cell), selected: isSelected(cell) }"
+                                        @click="pick(cell)"
+                                        x-text="cell.day"></button>
+                            </template>
+                        </div>
+                        <div class="ym-picker" x-show="mode === 'year'">
+                            <template x-for="year in yearRange" :key="year">
+                                <button type="button"
+                                        :class="{ today: year === todayYear, selected: year === viewYear }"
+                                        @click="pickYear(year)"
+                                        x-text="year"></button>
+                            </template>
+                        </div>
+                        <div class="range-hint" x-show="mode === 'year'" x-text="yearRangeHint"></div>
+                        <div class="ym-picker" x-show="mode === 'month'">
+                            <template x-for="m in 12" :key="m">
+                                <button type="button"
+                                        :class="{ today: (m - 1) === todayMonth && viewYear === todayYear, selected: (m - 1) === viewMonth }"
+                                        @click="pickMonth(m - 1)"
+                                        x-text="m + '月'"></button>
+                            </template>
+                        </div>
+                        <div class="range-hint" x-show="mode === 'month'" x-text="viewYear + '年'"></div>
+                        <div class="cal-foot">
+                            <button type="button" class="shortcut" @click="setToday">今日</button>
+                            <button type="button" class="shortcut" @click="setWeekAgo">1週間前</button>
+                            <button type="button" class="shortcut" @click="setMonthAgo">1ヶ月前</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div style="font-size: 12px; color: #6b7280; margin-top: 5px;">
+                ※ 入居者が実際に退去した日を指定してください。
+            </div>
+        </div>
+
+        {{-- 解約理由（参考入力・コントローラーでは未使用だが UI としては残す） --}}
+        <div>
+            <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">解約理由</label>
+            <textarea name="termination_reason" maxlength="200"
+                      x-model="terminationReason"
+                      placeholder="例：転勤のため／契約満了による退去／その他"
+                      style="width: 100%; min-height: 72px; border: 1px solid #d1d5db; border-radius: 6px; padding: 8px 12px; font-size: 14px; resize: vertical;"></textarea>
+            <div style="font-size: 11px; color: #9ca3af; margin-top: 4px; text-align: right;">
+                <span x-text="terminationReason ? terminationReason.length : 0"></span> / 200文字
+            </div>
+        </div>
+    </div>
+
+    {{-- ========== カード: 敷金精算（Alpine で返金額を動的計算） ========== --}}
+    <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
+        <div style="font-size: 15px; font-weight: 700; color: #111827; margin-bottom: 14px; padding-left: 12px; border-left: 4px solid #10b981;">
+            敷金精算
+        </div>
+
+        {{-- 預かり敷金 --}}
+        <div class="deposit-row">
+            <div class="deposit-label">預かり敷金</div>
+            <div style="text-align: right; font-size: 16px; font-weight: 700; color: #111827;" x-text="formatYen(deposit)"></div>
+            <div></div>
+        </div>
+
+        {{-- 原状回復費 --}}
+        <div class="deposit-row">
+            <div class="deposit-label">原状回復費を差引</div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <input type="number" name="restoration_cost" min="0" step="1000"
+                       x-model.number="restorationCost"
+                       style="flex: 1; height: 36px; border: 1px solid #d1d5db; border-radius: 6px; padding: 6px 12px; font-size: 14px; text-align: right;">
+                <span class="deposit-unit">円</span>
+            </div>
+            <div></div>
+        </div>
+
+        {{-- 清掃費 --}}
+        <div class="deposit-row">
+            <div class="deposit-label">清掃費を差引</div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <input type="number" name="cleaning_cost" min="0" step="1000"
+                       x-model.number="cleaningCost"
+                       style="flex: 1; height: 36px; border: 1px solid #d1d5db; border-radius: 6px; padding: 6px 12px; font-size: 14px; text-align: right;">
+                <span class="deposit-unit">円</span>
+            </div>
+            <div></div>
+        </div>
+
+        {{-- その他の差引項目（動的追加） --}}
+        <template x-for="(item, idx) in otherDeductions" :key="idx">
+            <div class="deposit-row">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <input type="text" name="other_deduction_name[]" x-model="item.name"
+                           placeholder="例：短期解約違約金"
+                           style="flex: 1; height: 36px; border: 1px solid #d1d5db; border-radius: 6px; padding: 6px 12px; font-size: 13px;">
+                </div>
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <input type="number" name="other_deduction_amount[]" x-model.number="item.amount" min="0" step="1000"
+                           style="flex: 1; height: 36px; border: 1px solid #d1d5db; border-radius: 6px; padding: 6px 12px; font-size: 14px; text-align: right;">
+                    <span class="deposit-unit">円</span>
+                </div>
+                <button type="button" @click="otherDeductions.splice(idx, 1)"
+                        style="width: 24px; height: 24px; border: none; background: transparent; color: #9ca3af; cursor: pointer; display: flex; align-items: center; justify-content: center;">
+                    <svg style="width: 16px; height: 16px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                </button>
+            </div>
+        </template>
+
+        {{-- 差引項目追加ボタン --}}
+        <div style="padding: 10px 0;">
+            <button type="button"
+                    @click="otherDeductions.push({ name: '', amount: 0 })"
+                    style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; background: #f0fdf4; color: #047857; border: 1px solid #a7f3d0; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer;">
+                <svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                差引項目を追加
+            </button>
+        </div>
+
+        {{-- 返金額（自動計算） --}}
+        <div class="deposit-row total">
+            <div class="deposit-label">返金額（入居者へ）</div>
+            <div class="deposit-value-total"
+                 :class="{ negative: refundAmount < 0 }"
+                 x-text="formatYen(refundAmount)"></div>
+            <div></div>
+        </div>
+        <div x-show="refundAmount < 0" style="margin-top: 6px; font-size: 12px; color: #b91c1c;">
+            ※ 差引合計が敷金を超えています。差額は入居者へ請求が必要です。
+        </div>
+    </div>
+
+    {{-- ========== カード: 紐付く駐車場契約の一括解約 ========== --}}
+    @if($activeParkings->count() > 0)
+        <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
+            <div style="font-size: 15px; font-weight: 700; color: #111827; margin-bottom: 14px; padding-left: 12px; border-left: 4px solid #10b981;">
+                紐付く駐車場契約の一括解約
+            </div>
+            <div style="font-size: 13px; color: #374151; margin-bottom: 12px;">
+                部屋契約に紐付く駐車場契約です。一緒に解約する場合はチェックしたままにしてください（個別に残すこともできます）。
+            </div>
+
+            @foreach($activeParkings as $pc)
+                <label class="parking-link-row" :class="{ checked: linkParkings[{{ $pc->id }}] }">
+                    <input type="checkbox" name="terminate_parkings[]" value="{{ $pc->id }}"
+                           x-model="linkParkings[{{ $pc->id }}]"
+                           style="width: 18px; height: 18px; accent-color: #059669;">
+                    <div>
+                        <div style="font-size: 11px; color: #6b7280; margin-bottom: 2px;">駐車場</div>
+                        <div class="parking-no">
+                            {{ $pc->parking?->parking_number ?? '—' }}
+                            @if($pc->parking?->has_roof)
+                                （屋根あり）
+                            @else
+                                （屋根なし）
+                            @endif
+                        </div>
+                    </div>
+                    <div>
+                        <div style="font-size: 11px; color: #6b7280; margin-bottom: 2px;">月額料金</div>
+                        <div style="color: #111827; font-weight: 600;">{{ number_format((int) $pc->monthly_fee) }}円</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 11px; color: #6b7280; margin-bottom: 2px;">利用開始日</div>
+                        <div style="color: #111827;">{{ $pc->start_date?->format('Y/m/d') ?? '—' }}</div>
+                    </div>
+                    <div>
+                        <span x-show="linkParkings[{{ $pc->id }}]"
+                              style="display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 9999px; font-size: 11px; font-weight: 700; background: #fef2f2; color: #b91c1c;">
+                            一括解約する
+                        </span>
+                        <span x-show="!linkParkings[{{ $pc->id }}]"
+                              style="display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 9999px; font-size: 11px; font-weight: 700; background: #e5e7eb; color: #4b5563;">
+                            契約継続
+                        </span>
+                    </div>
+                </label>
+            @endforeach
+
+            <div style="font-size: 12px; color: #6b7280; margin-top: 10px;">
+                ※ 個別に解約する場合は駐車場契約詳細画面から解約処理を行ってください。
+            </div>
+        </div>
+    @endif
+
+    {{-- ========== アクションボタン ========== --}}
+    <div style="display: flex; justify-content: flex-end; gap: 8px;">
+        <a href="{{ route('mansion.contracts.show', $contract) }}"
+           style="display: inline-flex; align-items: center; padding: 10px 20px; border: 1px solid #d1d5db; border-radius: 6px; background: white; font-size: 14px; color: #374151; text-decoration: none;">
+            キャンセル
+        </a>
+        <button type="submit" class="btn-danger">
+            解約を確定する
+        </button>
+    </div>
+</form>
+
+{{-- 補足 --}}
+<div style="margin-top: 20px; padding: 12px 16px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 12px; color: #6b7280; line-height: 1.7;">
+    <strong style="color: #374151;">※解約処理の流れ</strong>：
+    <ol style="margin-top: 6px; padding-left: 20px; list-style: decimal;">
+        <li>契約ステータス <b style="color: #111827;">契約中 → 解約済み</b></li>
+        <li>部屋ステータス <b style="color: #111827;">入居中 → 空室</b></li>
+        <li>選択した駐車場契約も一括で「解約済み」に変更、駐車場ステータスを「空き」に変更</li>
+    </ol>
+</div>
+
+</div>
+
+@endsection

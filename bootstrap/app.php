@@ -10,9 +10,15 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
-    ->withMiddleware(function (Middleware $middleware): void {
+    ->withMiddleware(function (Middleware $middleware) {
+        // ミドルウェアエイリアスの登録
+        $middleware->alias([
+            'role' => \App\Http\Middleware\CheckRole::class,
+            'department.access' => \App\Http\Middleware\CheckDepartmentAccess::class,
+            'password.change' => \App\Http\Middleware\ForcePasswordChange::class,
+        ]);
+    })
+    ->withExceptions(function (Exceptions $exceptions) {
         //
     })
-    ->withExceptions(function (Exceptions $exceptions): void {
-        //
-    })->create();
+    ->create();

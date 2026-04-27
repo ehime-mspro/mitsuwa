@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>工事案件一覧 | DAD（土木事業） | ミツワ都市開発 経営管理システム</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif; background: #f3f4f6; }
+        [x-cloak] { display: none !important; }
+
+        .badge { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 9999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+        .badge-estimate    { background: #f3f4f6; color: #374151; }
+        .badge-ordered     { background: #dbeafe; color: #1e40af; }
+        .badge-in-progress { background: #fef3c7; color: #92400e; }
+        .badge-completed   { background: #d1fae5; color: #065f46; }
+        .badge-paid        { background: #a7f3d0; color: #064e3b; }
+        .badge-lost        { background: #e5e7eb; color: #6b7280; }
+
+        /* タブ */
+        .type-tabs {
+            display: flex;
+            border-bottom: 1px solid #e5e7eb;
+            background: white;
+            border-radius: 8px 8px 0 0;
+            overflow: hidden;
+        }
+        .type-tab {
+            padding: 12px 24px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #6b7280;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            background: white;
+            border-right: 1px solid #e5e7eb;
+            display: inline-flex; align-items: center; gap: 8px;
+            transition: all .15s;
+        }
+        .type-tab:hover { color: #111827; background: #f9fafb; }
+        .type-tab.active { color: #047857; border-bottom-color: #10b981; background: #ecfdf5; }
+        .type-tab .tab-count {
+            display: inline-flex; align-items: center; justify-content: center;
+            min-width: 24px; height: 20px;
+            padding: 0 6px;
+            background: #f3f4f6; color: #6b7280;
+            border-radius: 10px;
+            font-size: 11px; font-weight: 700;
+        }
+        .type-tab.active .tab-count { background: #10b981; color: white; }
+
+        /* 横スクロール対応テーブル */
+        .table-scroll {
+            overflow-x: auto;
+            overflow-y: hidden;
+        }
+        .table-scroll::-webkit-scrollbar {
+            height: 10px;
+        }
+        .table-scroll::-webkit-scrollbar-track {
+            background: #f3f4f6;
+            border-radius: 5px;
+        }
+        .table-scroll::-webkit-scrollbar-thumb {
+            background: #9ca3af;
+            border-radius: 5px;
+        }
+        .table-scroll::-webkit-scrollbar-thumb:hover {
+            background: #6b7280;
+        }
+        .scroll-hint {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 11px;
+            color: #6b7280;
+            background: #f9fafb;
+            padding: 4px 10px;
+            border-radius: 9999px;
+            border: 1px solid #e5e7eb;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- トップバー -->
+    <header style="background: #1f2937; color: white; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 16px;">
+            <span style="font-weight: 700;">ミツワ都市開発 経営管理システム</span>
+        </div>
+        <div style="font-size: 13px;">山田 (経営層)</div>
+    </header>
+
+    <div style="display: flex; min-height: calc(100vh - 48px);">
+        <!-- サイドバー -->
+        <aside style="width: 220px; background: white; border-right: 1px solid #e5e7eb; padding: 16px 0;">
+            <nav style="font-size: 13px;">
+                <div style="padding: 8px 16px; color: #6b7280;">ダッシュボード</div>
+                <div style="padding: 8px 16px; color: #6b7280;">テナント管理</div>
+                <div style="padding: 8px 16px; color: #6b7280;">賃貸マンション</div>
+                <div style="padding: 8px 16px; color: #6b7280;">不動産管理</div>
+                <div style="padding: 8px 16px; color: #6b7280;">住宅事業</div>
+                <div style="padding: 8px 16px; color: #6b7280;">DAD（土木事業） ▾</div>
+                <div style="padding: 6px 16px 6px 32px; background: #ecfdf5; color: #047857; border-left: 3px solid #10b981; font-weight: 600;">工事案件</div>
+                <div style="padding: 8px 16px; color: #6b7280;">システム管理 ▾</div>
+                <div style="padding: 6px 16px 2px 24px; color: #9ca3af; font-size: 11px;">テナント</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">用途マスター</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">構造マスター</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">テナントCSVインポート</div>
+                <div style="padding: 6px 16px 2px 24px; color: #9ca3af; font-size: 11px;">賃貸マンション</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">賃貸マンションCSVインポート</div>
+                <div style="padding: 6px 16px 2px 24px; color: #9ca3af; font-size: 11px;">不動産</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">原価項目マスター</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">用途地域マスター</div>
+                <div style="padding: 6px 16px 2px 24px; color: #9ca3af; font-size: 11px;">住宅</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">アンケート設問管理</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">顧客CSVインポート</div>
+                <div style="padding: 6px 16px 2px 24px; color: #9ca3af; font-size: 11px;">DAD</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">発注者管理</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">協力業者</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">従業員管理</div>
+                <div style="padding: 6px 16px 2px 24px; color: #9ca3af; font-size: 11px;">マスター</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">ユーザー管理</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">マスター設定</div>
+            </nav>
+        </aside>
+
+        <!-- メインコンテンツ -->
+        <main style="flex: 1; padding: 24px;" x-data="{ activeType: 'public' }">
+
+            <!-- パンくず -->
+            <div style="font-size: 12px; color: #9ca3af; margin-bottom: 16px;">
+                <a href="#" style="color: #10b981;">ホーム</a>
+                <span style="margin: 0 6px;">›</span>
+                <a href="#" style="color: #10b981;">DAD（土木事業）</a>
+                <span style="margin: 0 6px;">›</span>
+                <span>工事案件一覧</span>
+            </div>
+
+            <!-- ページヘッダー -->
+            <div class="flex items-center justify-between gap-3" style="margin-bottom: 20px;">
+                <h1 class="text-lg font-bold text-gray-900">工事案件一覧</h1>
+                <a href="create.html"
+                   class="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-md transition-colors">
+                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    案件を登録
+                </a>
+            </div>
+
+            <!-- 工事種別タブ -->
+            <div class="type-tabs">
+                <button type="button" class="type-tab" :class="{ active: activeType === 'public' }" @click="activeType = 'public'">
+                    公共工事 <span class="tab-count">3</span>
+                </button>
+                <button type="button" class="type-tab" :class="{ active: activeType === 'promotion' }" @click="activeType = 'promotion'">
+                    推進工事 <span class="tab-count">3</span>
+                </button>
+            </div>
+
+            <!-- フィルターバー -->
+            <form id="filter-form" class="flex items-center gap-2 bg-white border border-gray-200" style="padding: 10px 14px; flex-wrap: wrap; border-top: none; border-bottom: 1px solid #e5e7eb;">
+                <select class="h-9 px-3 border border-gray-300 rounded-md text-sm text-gray-700 bg-white cursor-pointer" onchange="this.form.submit()">
+                    <option>担当: すべて</option>
+                    <option>山田</option>
+                    <option>鈴木</option>
+                    <option>高橋</option>
+                    <option>佐藤</option>
+                </select>
+                <select class="h-9 px-3 border border-gray-300 rounded-md text-sm text-gray-700 bg-white cursor-pointer" onchange="this.form.submit()">
+                    <option>年度: 2026年度</option>
+                    <option>2025年度</option>
+                    <option>2024年度</option>
+                </select>
+                <input type="text" placeholder="工事名で検索"
+                       class="h-9 px-3 border border-gray-300 rounded-md text-sm text-gray-700 bg-white flex-1" style="min-width: 180px;">
+                <a href="#" class="h-9 px-3 border border-gray-200 rounded-md text-xs text-gray-400 bg-white hover:bg-gray-50 transition-colors whitespace-nowrap inline-flex items-center">クリア</a>
+            </form>
+
+            <!-- ================ 公共工事タブ ================ -->
+            <div x-show="activeType === 'public'" x-cloak>
+
+                <!-- 集計エリア（公共） -->
+                <div class="bg-white border border-gray-200" style="padding: 16px 20px; margin-top: 0; border-top: none;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                        <div style="font-size: 13px; color: #6b7280; font-weight: 600;">公共工事 2026年度 集計</div>
+                        <div style="font-size: 11px; color: #9ca3af;">フィルター条件に応じて自動計算</div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; text-align: center;">
+                        <div style="padding: 12px 14px; background: #f9fafb; border-radius: 6px;">
+                            <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">案件数</div>
+                            <div style="font-size: 20px; font-weight: 700; color: #111827;">3件</div>
+                        </div>
+                        <div style="padding: 12px 14px; background: #f9fafb; border-radius: 6px;">
+                            <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">受注額合計</div>
+                            <div style="font-size: 20px; font-weight: 700; color: #111827;">51,700,000円</div>
+                        </div>
+                        <div style="padding: 12px 14px; background: #f9fafb; border-radius: 6px;">
+                            <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">原価合計</div>
+                            <div style="font-size: 20px; font-weight: 700; color: #111827;">40,800,000円</div>
+                        </div>
+                        <div style="padding: 12px 14px; background: #ecfdf5; border-radius: 6px;">
+                            <div style="font-size: 11px; color: #065f46; margin-bottom: 4px;">粗利額合計</div>
+                            <div style="font-size: 20px; color: #047857; font-weight: 700;">10,900,000円</div>
+                        </div>
+                        <div style="padding: 12px 14px; background: #ecfdf5; border-radius: 6px;">
+                            <div style="font-size: 11px; color: #065f46; margin-bottom: 4px;">粗利率</div>
+                            <div style="font-size: 20px; color: #047857; font-weight: 700;">21.1%</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- テーブル（公共） -->
+                <div class="bg-white border border-gray-200" style="border-top: 1px solid #e5e7eb; border-radius: 0 0 8px 8px;">
+                    <div style="display: flex; justify-content: flex-end; padding: 8px 16px 0;">
+                        <span class="scroll-hint">← 横にスクロールできます →</span>
+                    </div>
+                    <div class="table-scroll">
+                    <table class="border-collapse" style="width: 100%; min-width: 1200px;">
+                        <thead>
+                            <tr>
+                                <th class="px-4 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">落札日</th>
+                                <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">工事名</th>
+                                <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">発注者</th>
+                                <th class="px-4 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">受注額</th>
+                                <th class="px-4 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">原価合計</th>
+                                <th class="px-4 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">粗利額</th>
+                                <th class="px-4 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">工務担当</th>
+                                <th class="px-4 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">詳細</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- DAD-001 入金済み -->
+                            <tr class="hover:bg-gray-50 transition-colors">
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 whitespace-nowrap font-mono text-center">2026-06-15</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm whitespace-nowrap">
+                                    <a href="show.html" class="font-semibold text-gray-900 hover:text-emerald-600 hover:underline">松山市道路改良工事（余戸地区）</a>
+                                </td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 whitespace-nowrap">松山市役所</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-right whitespace-nowrap">25,000,000円</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-right whitespace-nowrap">19,500,000円</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-right whitespace-nowrap" style="color: #047857; font-weight: 700;">5,500,000円</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 text-center whitespace-nowrap">山田</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                    <a href="show.html" class="text-xs font-semibold text-blue-700 px-2.5 py-1 border border-blue-200 rounded bg-blue-50 hover:bg-blue-100">詳細</a>
+                                </td>
+                            </tr>
+                            <!-- DAD-002 完工 -->
+                            <tr class="hover:bg-gray-50 transition-colors">
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 whitespace-nowrap font-mono text-center">2026-07-20</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm whitespace-nowrap">
+                                    <a href="#" class="font-semibold text-gray-900 hover:text-emerald-600 hover:underline">石手川河川護岸工事</a>
+                                </td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 whitespace-nowrap">愛媛県 土木部</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-right whitespace-nowrap">18,200,000円</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-right whitespace-nowrap">14,500,000円</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-right whitespace-nowrap" style="color: #047857; font-weight: 700;">3,700,000円</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 text-center whitespace-nowrap">鈴木</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                    <a href="#" class="text-xs font-semibold text-blue-700 px-2.5 py-1 border border-blue-200 rounded bg-blue-50 hover:bg-blue-100">詳細</a>
+                                </td>
+                            </tr>
+                            <!-- DAD-004 施工中 -->
+                            <tr class="hover:bg-gray-50 transition-colors">
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 whitespace-nowrap font-mono text-center">2026-10-05</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm whitespace-nowrap">
+                                    <a href="#" class="font-semibold text-gray-900 hover:text-emerald-600 hover:underline">松山市立味生小学校 下水道接続工事</a>
+                                </td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 whitespace-nowrap">松山市役所</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-right whitespace-nowrap">8,500,000円</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-right whitespace-nowrap">6,800,000円</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-right whitespace-nowrap" style="color: #047857; font-weight: 700;">1,700,000円</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 text-center whitespace-nowrap">佐藤</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                    <a href="#" class="text-xs font-semibold text-blue-700 px-2.5 py-1 border border-blue-200 rounded bg-blue-50 hover:bg-blue-100">詳細</a>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    </div>
+
+                    <!-- ページネーション -->
+                    <div class="flex justify-center gap-0.5 px-4 py-3 border-t border-gray-200">
+                        <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-300 bg-white border border-gray-200">&lt;</span>
+                        <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-white bg-emerald-600 border border-emerald-600 font-semibold">1</span>
+                        <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-300 bg-white border border-gray-200">&gt;</span>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- ================ 推進工事タブ ================ -->
+            <div x-show="activeType === 'promotion'" x-cloak>
+
+                <!-- 集計エリア（推進） -->
+                <div class="bg-white border border-gray-200" style="padding: 16px 20px; margin-top: 0; border-top: none;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                        <div style="font-size: 13px; color: #6b7280; font-weight: 600;">推進工事 2026年度 集計</div>
+                        <div style="font-size: 11px; color: #9ca3af;">フィルター条件に応じて自動計算</div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; text-align: center;">
+                        <div style="padding: 12px 14px; background: #f9fafb; border-radius: 6px;">
+                            <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">案件数</div>
+                            <div style="font-size: 20px; font-weight: 700; color: #111827;">3件</div>
+                        </div>
+                        <div style="padding: 12px 14px; background: #f9fafb; border-radius: 6px;">
+                            <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">受注額合計</div>
+                            <div style="font-size: 20px; font-weight: 700; color: #111827;">51,000,000円</div>
+                        </div>
+                        <div style="padding: 12px 14px; background: #f9fafb; border-radius: 6px;">
+                            <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">原価合計</div>
+                            <div style="font-size: 20px; font-weight: 700; color: #111827;">25,000,000円</div>
+                        </div>
+                        <div style="padding: 12px 14px; background: #ecfdf5; border-radius: 6px;">
+                            <div style="font-size: 11px; color: #065f46; margin-bottom: 4px;">粗利額合計</div>
+                            <div style="font-size: 20px; color: #047857; font-weight: 700;">11,200,000円</div>
+                        </div>
+                        <div style="padding: 12px 14px; background: #ecfdf5; border-radius: 6px;">
+                            <div style="font-size: 11px; color: #065f46; margin-bottom: 4px;">粗利率</div>
+                            <div style="font-size: 20px; color: #047857; font-weight: 700;">30.9%</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- テーブル（推進） -->
+                <div class="bg-white border border-gray-200" style="border-top: 1px solid #e5e7eb; border-radius: 0 0 8px 8px;">
+                    <div style="display: flex; justify-content: flex-end; padding: 8px 16px 0;">
+                        <span class="scroll-hint">← 横にスクロールできます →</span>
+                    </div>
+                    <div class="table-scroll">
+                    <table class="border-collapse" style="width: 100%; min-width: 1200px;">
+                        <thead>
+                            <tr>
+                                <th class="px-4 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">受注日</th>
+                                <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">工事名</th>
+                                <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">発注者</th>
+                                <th class="px-4 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">受注額</th>
+                                <th class="px-4 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">原価合計</th>
+                                <th class="px-4 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">粗利額</th>
+                                <th class="px-4 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">営業担当</th>
+                                <th class="px-4 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">詳細</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- DAD-003 施工中 -->
+                            <tr class="hover:bg-gray-50 transition-colors">
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 whitespace-nowrap font-mono text-center">2026-06-10</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm whitespace-nowrap">
+                                    <a href="show.html" class="font-semibold text-gray-900 hover:text-emerald-600 hover:underline">道後温泉近郊 宅地造成工事</a>
+                                </td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 whitespace-nowrap">田中不動産㈱</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-right whitespace-nowrap">32,000,000円</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-right whitespace-nowrap">21,800,000円</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-right whitespace-nowrap" style="color: #047857; font-weight: 700;">10,200,000円</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 text-center whitespace-nowrap">高橋</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                    <a href="show.html" class="text-xs font-semibold text-blue-700 px-2.5 py-1 border border-blue-200 rounded bg-blue-50 hover:bg-blue-100">詳細</a>
+                                </td>
+                            </tr>
+                            <!-- DAD-005 受注 -->
+                            <tr class="hover:bg-gray-50 transition-colors">
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 whitespace-nowrap font-mono text-center">2026-12-01</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm whitespace-nowrap">
+                                    <a href="#" class="font-semibold text-gray-900 hover:text-emerald-600 hover:underline">北条地区 工場外構整備工事</a>
+                                </td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 whitespace-nowrap">㈱エヒメ工業</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-right whitespace-nowrap">14,800,000円</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-400 text-right whitespace-nowrap">—</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-400 text-right whitespace-nowrap">—</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 text-center whitespace-nowrap">山田</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                    <a href="#" class="text-xs font-semibold text-blue-700 px-2.5 py-1 border border-blue-200 rounded bg-blue-50 hover:bg-blue-100">詳細</a>
+                                </td>
+                            </tr>
+                            <!-- DAD-007 入金済み -->
+                            <tr class="hover:bg-gray-50 transition-colors">
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 whitespace-nowrap font-mono text-center">2026-05-20</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm whitespace-nowrap">
+                                    <a href="#" class="font-semibold text-gray-900 hover:text-emerald-600 hover:underline">三津浜 個人住宅外構工事</a>
+                                </td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 whitespace-nowrap">山本 一郎 様</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-right whitespace-nowrap">4,200,000円</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-right whitespace-nowrap">3,200,000円</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-right whitespace-nowrap" style="color: #047857; font-weight: 700;">1,000,000円</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 text-center whitespace-nowrap">高橋</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                    <a href="#" class="text-xs font-semibold text-blue-700 px-2.5 py-1 border border-blue-200 rounded bg-blue-50 hover:bg-blue-100">詳細</a>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    </div>
+
+                    <!-- ページネーション -->
+                    <div class="flex justify-center gap-0.5 px-4 py-3 border-t border-gray-200">
+                        <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-300 bg-white border border-gray-200">&lt;</span>
+                        <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-white bg-emerald-600 border border-emerald-600 font-semibold">1</span>
+                        <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-300 bg-white border border-gray-200">&gt;</span>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- 凡例 -->
+            <div style="margin-top: 16px; padding: 12px 16px; background: #f9fafb; border-radius: 8px; font-size: 12px; color: #6b7280;">
+                <strong style="color: #374151;">※表示ルール</strong>：受注以降の案件のみ表示（見積・失注は将来フェーズで管理）。公共工事と推進工事は別タブで集計を完全分離。金額は税抜表示・円サフィックス。粗利額 = 受注額 − 原価合計。原価未集計の案件は原価・粗利が「—」表示。集計は選択中タブのフィルター条件に連動。年度は5月始まり（2026年度 = 2026/5/1〜2027/4/30）。
+            </div>
+
+        </main>
+    </div>
+
+</body>
+</html>

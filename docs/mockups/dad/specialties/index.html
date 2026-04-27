@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>専門分野マスター | DAD(土木事業) | ミツワ都市開発 経営管理システム</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif; background: #f3f4f6; }
+        [x-cloak] { display: none !important; }
+
+        .badge { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 9999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+
+        .swatch { display: inline-block; width: 14px; height: 14px; border-radius: 3px; border: 1px solid #e5e7eb; vertical-align: middle; margin-right: 4px; }
+        .hex { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; font-size: 11px; color: #6b7280; }
+
+        /* ドラッグハンドル */
+        .drag-handle { cursor: grab; color: #4b5563; display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 6px; background: #f3f4f6; border: 1px solid #d1d5db; }
+        .drag-handle:hover { color: #047857; background: #ecfdf5; border-color: #6ee7b7; }
+        .drag-handle:active { cursor: grabbing; background: #d1fae5; }
+        .drag-ghost { opacity: 0.4; background: #ecfdf5 !important; }
+        .drag-chosen { background: #ffffff !important; box-shadow: 0 6px 14px rgba(0,0,0,0.08); }
+
+        /* トースト通知 */
+        .toast { position: fixed; bottom: 24px; right: 24px; background: #059669; color: white; padding: 12px 20px; border-radius: 8px; font-size: 13px; font-weight: 600; box-shadow: 0 10px 25px rgba(0,0,0,0.18); display: inline-flex; align-items: center; gap: 8px; z-index: 9999; }
+    </style>
+</head>
+<body>
+
+    <!-- トップバー -->
+    <header style="background: #1f2937; color: white; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 16px;">
+            <span style="font-weight: 700;">ミツワ都市開発 経営管理システム</span>
+        </div>
+        <div style="font-size: 13px;">山田 (経営層)</div>
+    </header>
+
+    <div style="display: flex; min-height: calc(100vh - 48px);">
+        <!-- サイドバー -->
+        <aside style="width: 220px; background: white; border-right: 1px solid #e5e7eb; padding: 16px 0;">
+            <nav style="font-size: 13px;">
+                <div style="padding: 8px 16px; color: #6b7280;">ダッシュボード</div>
+                <div style="padding: 8px 16px; color: #6b7280;">テナント管理</div>
+                <div style="padding: 8px 16px; color: #6b7280;">賃貸マンション</div>
+                <div style="padding: 8px 16px; color: #6b7280;">不動産管理</div>
+                <div style="padding: 8px 16px; color: #6b7280;">住宅事業</div>
+                <div style="padding: 8px 16px; color: #6b7280;">DAD（土木事業） ▾</div>
+                <div style="padding: 6px 16px 6px 32px; color: #6b7280;">工事案件</div>
+                <div style="padding: 8px 16px; color: #6b7280;">システム管理 ▾</div>
+                <div style="padding: 6px 16px 2px 24px; color: #9ca3af; font-size: 11px;">テナント</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">用途マスター</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">構造マスター</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">テナントCSVインポート</div>
+                <div style="padding: 6px 16px 2px 24px; color: #9ca3af; font-size: 11px;">賃貸マンション</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">賃貸マンションCSVインポート</div>
+                <div style="padding: 6px 16px 2px 24px; color: #9ca3af; font-size: 11px;">不動産</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">原価項目マスター</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">用途地域マスター</div>
+                <div style="padding: 6px 16px 2px 24px; color: #9ca3af; font-size: 11px;">住宅</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">アンケート設問管理</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">顧客CSVインポート</div>
+                <div style="padding: 6px 16px 2px 24px; color: #9ca3af; font-size: 11px;">DAD</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">発注者管理</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">協力業者</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">従業員管理</div>
+                <div style="padding: 4px 16px 4px 32px; background: #ecfdf5; color: #047857; border-left: 3px solid #10b981; font-weight: 600;">専門分野マスター</div>
+                <div style="padding: 6px 16px 2px 24px; color: #9ca3af; font-size: 11px;">マスター</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">ユーザー管理</div>
+                <div style="padding: 4px 16px 4px 32px; color: #6b7280;">マスター設定</div>
+            </nav>
+        </aside>
+
+        <!-- メインコンテンツ -->
+        <main style="flex: 1; padding: 24px;">
+
+            <!-- パンくず -->
+            <div style="font-size: 12px; color: #9ca3af; margin-bottom: 16px;">
+                <a href="#" style="color: #10b981;">ホーム</a>
+                <span style="margin: 0 6px;">›</span>
+                <a href="#" style="color: #10b981;">システム管理</a>
+                <span style="margin: 0 6px;">›</span>
+                <a href="#" style="color: #10b981;">DAD</a>
+                <span style="margin: 0 6px;">›</span>
+                <span>専門分野マスター</span>
+            </div>
+
+            <!-- ページヘッダー -->
+            <div class="flex items-center justify-between gap-3" style="margin-bottom: 20px;">
+                <h1 class="text-lg font-bold text-gray-900">専門分野マスター</h1>
+                <a href="create.html" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; background: #059669; color: white; border-radius: 6px; font-size: 13px; font-weight: 600; text-decoration: none;">
+                    <svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    専門分野を登録
+                </a>
+            </div>
+
+            <!-- 説明バナー -->
+            <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; font-size: 12px; color: #166534;">
+                ※ ここで登録した専門分野は、協力業者の新規登録・編集画面でプルダウン選択肢として使用されます。色設定は協力業者一覧のバッジ表示に反映されます。<br>
+                ※ 行頭のハンドル <svg style="width: 11px; height: 11px; vertical-align: -1px;" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg> をドラッグすると並び順を変更できます（変更は自動保存されます）。
+            </div>
+
+            <!-- テーブル -->
+            <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                <table class="w-full border-collapse" style="table-layout: fixed;">
+                    <colgroup>
+                        <col style="width: 5%">   <!-- ドラッグハンドル -->
+                        <col style="width: 25%">  <!-- 専門分野名 -->
+                        <col style="width: 22%">  <!-- バッジプレビュー -->
+                        <col style="width: 19%">  <!-- 背景色 -->
+                        <col style="width: 19%">  <!-- 文字色 -->
+                        <col style="width: 10%">  <!-- 操作 -->
+                    </colgroup>
+                    <thead>
+                        <tr>
+                            <th class="px-2 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200"></th>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap" style="padding-left: 32px;">専門分野名</th>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">バッジプレビュー</th>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">背景色</th>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">文字色</th>
+                            <th class="px-4 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="specialty-list">
+                        <tr data-id="1" class="hover:bg-gray-50 transition-colors">
+                            <td class="px-2 py-3 border-b border-gray-200 text-center align-middle">
+                                <span class="drag-handle" title="ドラッグで並び替え">
+                                    <svg style="width: 18px; height: 18px;" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="2"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="9" cy="18" r="2"/><circle cx="15" cy="18" r="2"/></svg>
+                                </span>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm font-semibold text-gray-900 whitespace-nowrap" style="padding-left: 32px;">土工</td>
+                            <td class="px-4 py-3 border-b border-gray-200 whitespace-nowrap"><span class="badge" style="background: #fef3c7; color: #92400e;">土工</span></td>
+                            <td class="px-4 py-3 border-b border-gray-200 whitespace-nowrap"><span class="swatch" style="background: #fef3c7;"></span><span class="hex">#fef3c7</span></td>
+                            <td class="px-4 py-3 border-b border-gray-200 whitespace-nowrap"><span class="swatch" style="background: #92400e;"></span><span class="hex">#92400e</span></td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                <a href="edit.html" class="text-xs font-semibold text-blue-700 px-3 py-1 border border-blue-200 rounded bg-blue-50 hover:bg-blue-100">編集</a>
+                            </td>
+                        </tr>
+                        <tr data-id="2" class="hover:bg-gray-50 transition-colors">
+                            <td class="px-2 py-3 border-b border-gray-200 text-center align-middle">
+                                <span class="drag-handle" title="ドラッグで並び替え">
+                                    <svg style="width: 18px; height: 18px;" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="2"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="9" cy="18" r="2"/><circle cx="15" cy="18" r="2"/></svg>
+                                </span>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm font-semibold text-gray-900 whitespace-nowrap" style="padding-left: 32px;">舗装</td>
+                            <td class="px-4 py-3 border-b border-gray-200 whitespace-nowrap"><span class="badge" style="background: #e5e7eb; color: #374151;">舗装</span></td>
+                            <td class="px-4 py-3 border-b border-gray-200 whitespace-nowrap"><span class="swatch" style="background: #e5e7eb;"></span><span class="hex">#e5e7eb</span></td>
+                            <td class="px-4 py-3 border-b border-gray-200 whitespace-nowrap"><span class="swatch" style="background: #374151;"></span><span class="hex">#374151</span></td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                <a href="edit.html" class="text-xs font-semibold text-blue-700 px-3 py-1 border border-blue-200 rounded bg-blue-50 hover:bg-blue-100">編集</a>
+                            </td>
+                        </tr>
+                        <tr data-id="3" class="hover:bg-gray-50 transition-colors">
+                            <td class="px-2 py-3 border-b border-gray-200 text-center align-middle">
+                                <span class="drag-handle" title="ドラッグで並び替え">
+                                    <svg style="width: 18px; height: 18px;" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="2"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="9" cy="18" r="2"/><circle cx="15" cy="18" r="2"/></svg>
+                                </span>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm font-semibold text-gray-900 whitespace-nowrap" style="padding-left: 32px;">配管</td>
+                            <td class="px-4 py-3 border-b border-gray-200 whitespace-nowrap"><span class="badge" style="background: #dbeafe; color: #1e40af;">配管</span></td>
+                            <td class="px-4 py-3 border-b border-gray-200 whitespace-nowrap"><span class="swatch" style="background: #dbeafe;"></span><span class="hex">#dbeafe</span></td>
+                            <td class="px-4 py-3 border-b border-gray-200 whitespace-nowrap"><span class="swatch" style="background: #1e40af;"></span><span class="hex">#1e40af</span></td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                <a href="edit.html" class="text-xs font-semibold text-blue-700 px-3 py-1 border border-blue-200 rounded bg-blue-50 hover:bg-blue-100">編集</a>
+                            </td>
+                        </tr>
+                        <tr data-id="4" class="hover:bg-gray-50 transition-colors">
+                            <td class="px-2 py-3 border-b border-gray-200 text-center align-middle">
+                                <span class="drag-handle" title="ドラッグで並び替え">
+                                    <svg style="width: 18px; height: 18px;" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="2"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="9" cy="18" r="2"/><circle cx="15" cy="18" r="2"/></svg>
+                                </span>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm font-semibold text-gray-900 whitespace-nowrap" style="padding-left: 32px;">電気</td>
+                            <td class="px-4 py-3 border-b border-gray-200 whitespace-nowrap"><span class="badge" style="background: #fef9c3; color: #854d0e;">電気</span></td>
+                            <td class="px-4 py-3 border-b border-gray-200 whitespace-nowrap"><span class="swatch" style="background: #fef9c3;"></span><span class="hex">#fef9c3</span></td>
+                            <td class="px-4 py-3 border-b border-gray-200 whitespace-nowrap"><span class="swatch" style="background: #854d0e;"></span><span class="hex">#854d0e</span></td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                <a href="edit.html" class="text-xs font-semibold text-blue-700 px-3 py-1 border border-blue-200 rounded bg-blue-50 hover:bg-blue-100">編集</a>
+                            </td>
+                        </tr>
+                        <tr data-id="5" class="hover:bg-gray-50 transition-colors">
+                            <td class="px-2 py-3 border-b border-gray-200 text-center align-middle">
+                                <span class="drag-handle" title="ドラッグで並び替え">
+                                    <svg style="width: 18px; height: 18px;" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="2"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="9" cy="18" r="2"/><circle cx="15" cy="18" r="2"/></svg>
+                                </span>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm font-semibold text-gray-900 whitespace-nowrap" style="padding-left: 32px;">解体</td>
+                            <td class="px-4 py-3 border-b border-gray-200 whitespace-nowrap"><span class="badge" style="background: #fee2e2; color: #991b1b;">解体</span></td>
+                            <td class="px-4 py-3 border-b border-gray-200 whitespace-nowrap"><span class="swatch" style="background: #fee2e2;"></span><span class="hex">#fee2e2</span></td>
+                            <td class="px-4 py-3 border-b border-gray-200 whitespace-nowrap"><span class="swatch" style="background: #991b1b;"></span><span class="hex">#991b1b</span></td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                <a href="edit.html" class="text-xs font-semibold text-blue-700 px-3 py-1 border border-blue-200 rounded bg-blue-50 hover:bg-blue-100">編集</a>
+                            </td>
+                        </tr>
+                        <tr data-id="6" class="hover:bg-gray-50 transition-colors">
+                            <td class="px-2 py-3 border-b border-gray-200 text-center align-middle">
+                                <span class="drag-handle" title="ドラッグで並び替え">
+                                    <svg style="width: 18px; height: 18px;" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="2"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="9" cy="18" r="2"/><circle cx="15" cy="18" r="2"/></svg>
+                                </span>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm font-semibold text-gray-900 whitespace-nowrap" style="padding-left: 32px;">仮設</td>
+                            <td class="px-4 py-3 border-b border-gray-200 whitespace-nowrap"><span class="badge" style="background: #ede9fe; color: #5b21b6;">仮設</span></td>
+                            <td class="px-4 py-3 border-b border-gray-200 whitespace-nowrap"><span class="swatch" style="background: #ede9fe;"></span><span class="hex">#ede9fe</span></td>
+                            <td class="px-4 py-3 border-b border-gray-200 whitespace-nowrap"><span class="swatch" style="background: #5b21b6;"></span><span class="hex">#5b21b6</span></td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                <a href="edit.html" class="text-xs font-semibold text-blue-700 px-3 py-1 border border-blue-200 rounded bg-blue-50 hover:bg-blue-100">編集</a>
+                            </td>
+                        </tr>
+                        <tr data-id="7" class="hover:bg-gray-50 transition-colors">
+                            <td class="px-2 py-3 border-b border-gray-200 text-center align-middle">
+                                <span class="drag-handle" title="ドラッグで並び替え">
+                                    <svg style="width: 18px; height: 18px;" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="2"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="9" cy="18" r="2"/><circle cx="15" cy="18" r="2"/></svg>
+                                </span>
+                            </td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm font-semibold text-gray-900 whitespace-nowrap" style="padding-left: 32px;">その他</td>
+                            <td class="px-4 py-3 border-b border-gray-200 whitespace-nowrap"><span class="badge" style="background: #f3f4f6; color: #4b5563;">その他</span></td>
+                            <td class="px-4 py-3 border-b border-gray-200 whitespace-nowrap"><span class="swatch" style="background: #f3f4f6;"></span><span class="hex">#f3f4f6</span></td>
+                            <td class="px-4 py-3 border-b border-gray-200 whitespace-nowrap"><span class="swatch" style="background: #4b5563;"></span><span class="hex">#4b5563</span></td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                <a href="edit.html" class="text-xs font-semibold text-blue-700 px-3 py-1 border border-blue-200 rounded bg-blue-50 hover:bg-blue-100">編集</a>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <!-- ページネーション -->
+                <div class="flex justify-center gap-0.5 px-4 py-3 border-t border-gray-200">
+                    <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-300 bg-white border border-gray-200">&lt;</span>
+                    <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-white bg-emerald-600 border border-emerald-600 font-semibold">1</span>
+                    <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-300 bg-white border border-gray-200">&gt;</span>
+                </div>
+            </div>
+
+            <!-- 補足 -->
+            <div style="margin-top: 16px; padding: 12px 16px; background: #f9fafb; border-radius: 8px; font-size: 12px; color: #6b7280;">
+                <strong style="color: #374151;">※ 削除:</strong> 既に協力業者で使用されている専門分野は削除できません（編集画面で警告が表示されます）。
+            </div>
+
+        </main>
+    </div>
+
+    <!-- トースト通知 -->
+    <div x-data="toastApp()" x-cloak>
+        <div class="toast"
+             x-show="show"
+             x-transition:enter="transition ease-out duration-200"
+             x-transition:enter-start="opacity-0"
+             x-transition:enter-end="opacity-100"
+             x-transition:leave="transition ease-in duration-150"
+             x-transition:leave-start="opacity-100"
+             x-transition:leave-end="opacity-0">
+            <svg style="width: 16px; height: 16px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            <span x-text="message"></span>
+        </div>
+    </div>
+
+    <script>
+        function toastApp() {
+            return {
+                show: false,
+                message: '',
+                timer: null,
+                init() {
+                    var self = this;
+                    window.addEventListener('show-toast', function(e) {
+                        self.message = (e.detail && e.detail.message) ? e.detail.message : '更新しました';
+                        self.show = true;
+                        if (self.timer) clearTimeout(self.timer);
+                        self.timer = setTimeout(function() { self.show = false; }, 2500);
+                    });
+                }
+            };
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            var el = document.getElementById('specialty-list');
+            if (el && typeof Sortable !== 'undefined') {
+                Sortable.create(el, {
+                    handle: '.drag-handle',
+                    animation: 180,
+                    ghostClass: 'drag-ghost',
+                    chosenClass: 'drag-chosen',
+                    onEnd: function(evt) {
+                        if (evt.oldIndex === evt.newIndex) return;
+                        var rows = el.querySelectorAll('tr');
+                        var newOrder = [];
+                        rows.forEach(function(row, idx) {
+                            newOrder.push({ id: row.getAttribute('data-id'), sort_order: idx + 1 });
+                        });
+                        // 本番では fetch('/dad/specialties/reorder', { method:'POST', body: JSON.stringify(newOrder) }) を実行
+                        console.log('新しい並び順:', newOrder);
+                        window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: '並び順を更新しました' } }));
+                    }
+                });
+            }
+        });
+    </script>
+
+</body>
+</html>

@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>賃貸マンションダッシュボード | ミツワ都市開発 経営管理システム</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif; background: #f3f4f6; }
+
+        /* セクション見出し */
+        .section-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: #111827;
+            margin-bottom: 12px;
+            padding-left: 12px;
+            border-left: 4px solid #10b981;
+        }
+
+        /* KPIカード */
+        .kpi-grid {
+            display: grid;
+            gap: 14px;
+            margin-bottom: 24px;
+        }
+        .kpi-grid.cols-5 { grid-template-columns: repeat(5, 1fr); }
+        .kpi-grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+
+        .kpi-card {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 18px 18px 16px;
+            position: relative;
+            overflow: hidden;
+        }
+        .kpi-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0;
+            width: 4px; height: 100%;
+            background: #e5e7eb;
+        }
+        .kpi-card.accent-total::before { background: #6b7280; }
+        .kpi-card.accent-occupied::before { background: #10b981; }
+        .kpi-card.accent-vacant::before { background: #3b82f6; }
+        .kpi-card.accent-negotiating::before { background: #f97316; }
+        .kpi-card.accent-move-out::before { background: #ec4899; }
+
+        .kpi-label {
+            font-size: 12px;
+            color: #6b7280;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        .kpi-value {
+            font-size: 26px;
+            font-weight: 700;
+            color: #111827;
+            line-height: 1.2;
+        }
+        .kpi-value .unit {
+            font-size: 13px;
+            font-weight: 600;
+            color: #6b7280;
+            margin-left: 3px;
+        }
+        .kpi-sub {
+            font-size: 11px;
+            color: #9ca3af;
+            margin-top: 6px;
+        }
+        .kpi-sub b { color: #047857; font-weight: 700; }
+
+        /* データカード */
+        .data-card {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 18px 20px;
+            margin-bottom: 20px;
+        }
+        .data-card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 14px;
+        }
+        .data-card-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: #111827;
+            padding-left: 12px;
+            border-left: 4px solid #10b981;
+        }
+        .data-card-count {
+            font-size: 12px;
+            color: #6b7280;
+        }
+        .data-card-count b {
+            font-size: 14px;
+            color: #047857;
+            font-weight: 700;
+        }
+
+        /* テーブル */
+        .dash-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        .dash-table thead th {
+            background: #f9fafb;
+            color: #374151;
+            font-weight: 700;
+            font-size: 12px;
+            text-align: left;
+            padding: 10px 12px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .dash-table thead th.num { text-align: right; }
+        .dash-table thead th.center { text-align: center; }
+        .dash-table tbody td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #f3f4f6;
+            color: #374151;
+        }
+        .dash-table tbody td.num { text-align: right; font-variant-numeric: tabular-nums; }
+        .dash-table tbody td.center { text-align: center; }
+        .dash-table tbody tr:hover { background: #fafafa; }
+        .dash-table tbody tr:last-child td { border-bottom: none; }
+        .dash-table .muted { color: #9ca3af; }
+
+        /* バッジ */
+        .badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 99px;
+            font-size: 11px;
+            font-weight: 700;
+        }
+        .badge-vacant { background: #dbeafe; color: #1e40af; }
+        .badge-occupied { background: #d1fae5; color: #065f46; }
+        .badge-negotiating { background: #fed7aa; color: #9a3412; }
+        .badge-move-out { background: #fce7f3; color: #9d174d; }
+        .badge-parking-vacant { background: #e0e7ff; color: #3730a3; }
+
+        /* 詳細ボタン */
+        .btn-detail {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 4px 10px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            background: white;
+            font-size: 11px;
+            color: #374151;
+            text-decoration: none;
+            font-weight: 600;
+        }
+        .btn-detail:hover { background: #ecfdf5; border-color: #a7f3d0; color: #047857; }
+
+        /* 物件名の強調 */
+        .prop-name {
+            color: #047857;
+            text-decoration: none;
+            font-weight: 600;
+        }
+        .prop-name:hover { text-decoration: underline; }
+
+        /* 2カラムレイアウト（空室と空き駐車場） */
+        .two-col {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        /* 入居率ミニバー */
+        .occupancy-bar {
+            width: 100%; height: 6px;
+            background: #e5e7eb;
+            border-radius: 999px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+        .occupancy-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #10b981, #059669);
+            border-radius: 999px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- トップバー -->
+    <header style="background: #1f2937; color: white; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 16px;">
+            <span style="font-weight: 700;">ミツワ都市開発 経営管理システム</span>
+        </div>
+        <div style="font-size: 13px;">山田 (経営層)</div>
+    </header>
+
+    <div style="display: flex; min-height: calc(100vh - 48px);">
+        <!-- サイドバー -->
+        <aside style="width: 220px; background: white; border-right: 1px solid #e5e7eb; padding: 16px 0;">
+            <nav style="font-size: 13px;">
+                <div style="padding: 8px 16px; color: #6b7280;">ダッシュボード</div>
+                <div style="padding: 8px 16px; color: #6b7280;">テナント管理</div>
+                <div style="padding: 8px 16px; color: #6b7280;">賃貸マンション ▾</div>
+                <div style="padding: 6px 16px 6px 32px; background: #ecfdf5; color: #047857; border-left: 3px solid #10b981; font-weight: 600;">賃貸マンションダッシュボード</div>
+                <div style="padding: 6px 16px 6px 32px; color: #6b7280;">物件一覧</div>
+                <div style="padding: 6px 16px 6px 32px; color: #6b7280;">入居者管理</div>
+                <div style="padding: 6px 16px 6px 32px; color: #6b7280;">部屋契約一覧</div>
+                <div style="padding: 6px 16px 6px 32px; color: #6b7280;">駐車場契約一覧</div>
+                <div style="padding: 8px 16px; color: #6b7280;">不動産管理</div>
+                <div style="padding: 8px 16px; color: #6b7280;">住宅事業</div>
+                <div style="padding: 8px 16px; color: #6b7280;">システム管理</div>
+            </nav>
+        </aside>
+
+        <!-- メインコンテンツ -->
+        <main style="flex: 1; padding: 24px;">
+
+            <!-- パンくず -->
+            <div class="text-sm text-gray-500" style="margin-bottom: 12px;">
+                ダッシュボード &gt; <span class="text-gray-800 font-medium">賃貸マンション</span>
+            </div>
+
+            <!-- ページヘッダー -->
+            <div style="display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 24px;">
+                <div>
+                    <h1 style="font-size: 22px; font-weight: 700; margin: 0 0 4px;">賃貸マンションダッシュボード</h1>
+                    <div style="font-size: 12px; color: #6b7280;">2026年4月20日 時点のスナップショット</div>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <a href="properties/index.html" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border: 1px solid #d1d5db; border-radius: 6px; background: white; font-size: 13px; color: #374151; text-decoration: none;">
+                        <svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+                        物件一覧
+                    </a>
+                    <a href="contracts/create.html" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; background: #059669; border: 1px solid #059669; border-radius: 6px; color: white; font-size: 13px; font-weight: 600; text-decoration: none;">
+                        <svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        新規契約
+                    </a>
+                </div>
+            </div>
+
+            <!-- ========== 稼働サマリー: 部屋 ========== -->
+            <div class="section-title">部屋の稼働状況（全物件合計）</div>
+            <div class="kpi-grid cols-5">
+                <div class="kpi-card accent-total">
+                    <div class="kpi-label">総戸数</div>
+                    <div class="kpi-value">48<span class="unit">戸</span></div>
+                    <div class="occupancy-bar">
+                        <div class="occupancy-bar-fill" style="width: 87.5%;"></div>
+                    </div>
+                    <div class="kpi-sub">入居率 <b>87.5%</b></div>
+                </div>
+                <div class="kpi-card accent-occupied">
+                    <div class="kpi-label">入居中</div>
+                    <div class="kpi-value">42<span class="unit">戸</span></div>
+                    <div class="kpi-sub">月額賃料合計 <b>3,528,000円</b></div>
+                </div>
+                <div class="kpi-card accent-vacant">
+                    <div class="kpi-label">空室</div>
+                    <div class="kpi-value">3<span class="unit">戸</span></div>
+                    <div class="kpi-sub">最長空室期間 45日</div>
+                </div>
+                <div class="kpi-card accent-negotiating">
+                    <div class="kpi-label">申込み・仮押え</div>
+                    <div class="kpi-value">2<span class="unit">戸</span></div>
+                    <div class="kpi-sub">要対応: 書類回収待ち</div>
+                </div>
+                <div class="kpi-card accent-move-out">
+                    <div class="kpi-label">退去予定</div>
+                    <div class="kpi-value">1<span class="unit">戸</span></div>
+                    <div class="kpi-sub">最短退去日 2026/05/31</div>
+                </div>
+            </div>
+
+            <!-- ========== 物件別ミニ稼働率 ========== -->
+            <div class="data-card">
+                <div class="data-card-header">
+                    <div class="data-card-title">物件別 稼働状況</div>
+                    <div class="data-card-count">全 <b>2</b> 物件</div>
+                </div>
+                <table class="dash-table">
+                    <thead>
+                        <tr>
+                            <th>物件名</th>
+                            <th class="center">所有形態</th>
+                            <th class="num">総戸数</th>
+                            <th class="num">入居中</th>
+                            <th class="num">空室</th>
+                            <th class="num">入居率</th>
+                            <th class="num">駐車場 使用中 / 総数</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><a href="properties/show.html" class="prop-name">ミツワハイツ松山1号館</a></td>
+                            <td class="center"><span class="badge" style="background: #ecfdf5; color: #047857;">自社所有</span></td>
+                            <td class="num">30戸</td>
+                            <td class="num">27戸</td>
+                            <td class="num">2戸</td>
+                            <td class="num"><b style="color: #047857;">90.0%</b></td>
+                            <td class="num">10 / 12 台</td>
+                            <td class="center"><a href="properties/show.html" class="btn-detail">詳細</a></td>
+                        </tr>
+                        <tr>
+                            <td><a href="properties/show.html" class="prop-name">ミツワレジデンス南町</a></td>
+                            <td class="center"><span class="badge" style="background: #eff6ff; color: #1e40af;">管理受託</span></td>
+                            <td class="num">18戸</td>
+                            <td class="num">15戸</td>
+                            <td class="num">1戸</td>
+                            <td class="num"><b style="color: #047857;">83.3%</b></td>
+                            <td class="num">5 / 6 台</td>
+                            <td class="center"><a href="properties/show.html" class="btn-detail">詳細</a></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- ========== 下段: 空室 + 空き駐車場 ========== -->
+            <div class="two-col">
+
+                <!-- 空室 -->
+                <div class="data-card">
+                    <div class="data-card-header">
+                        <div class="data-card-title">空室</div>
+                        <div class="data-card-count">合計 <b>3</b> 戸</div>
+                    </div>
+                    <table class="dash-table">
+                        <thead>
+                            <tr>
+                                <th>物件</th>
+                                <th>号室</th>
+                                <th>間取り</th>
+                                <th class="num">賃料</th>
+                                <th class="center">状態</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><a href="properties/show.html" class="prop-name">ミツワハイツ松山1号館</a></td>
+                                <td>302号室</td>
+                                <td>2LDK / 58.4㎡</td>
+                                <td class="num">78,000円</td>
+                                <td class="center"><span class="badge badge-vacant">空室</span></td>
+                                <td class="center"><a href="contracts/create.html" class="btn-detail">契約登録</a></td>
+                            </tr>
+                            <tr>
+                                <td><a href="properties/show.html" class="prop-name">ミツワハイツ松山1号館</a></td>
+                                <td>405号室</td>
+                                <td>1K / 28.5㎡</td>
+                                <td class="num">55,000円</td>
+                                <td class="center"><span class="badge badge-vacant">空室</span></td>
+                                <td class="center"><a href="contracts/create.html" class="btn-detail">契約登録</a></td>
+                            </tr>
+                            <tr>
+                                <td><a href="properties/show.html" class="prop-name">ミツワレジデンス南町</a></td>
+                                <td>201号室</td>
+                                <td>2LDK / 62.0㎡</td>
+                                <td class="num">82,000円</td>
+                                <td class="center"><span class="badge badge-vacant">空室</span></td>
+                                <td class="center"><a href="contracts/create.html" class="btn-detail">契約登録</a></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- 空き駐車場 -->
+                <div class="data-card">
+                    <div class="data-card-header" style="flex-wrap: wrap; row-gap: 8px;">
+                        <div class="data-card-title">空き駐車場</div>
+                        <div style="font-size: 11px; color: #6b7280; display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center;">
+                            <span>総台数 <b style="color: #111827; font-weight: 700;">18台</b></span>
+                            <span>使用中 <b style="color: #047857; font-weight: 700;">15台</b></span>
+                            <span>空き <b style="color: #1e40af; font-weight: 700;">3台</b></span>
+                            <span>稼働率 <b style="color: #047857; font-weight: 700;">83.3%</b></span>
+                            <span>月額料金合計 <b style="color: #047857; font-weight: 700;">118,000円</b></span>
+                        </div>
+                    </div>
+                    <table class="dash-table">
+                        <thead>
+                            <tr>
+                                <th>物件</th>
+                                <th>番号</th>
+                                <th>区分</th>
+                                <th class="num">月額料金</th>
+                                <th class="center">状態</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><a href="properties/show.html" class="prop-name">ミツワハイツ松山1号館</a></td>
+                                <td>B-3</td>
+                                <td>屋根なし・普通車</td>
+                                <td class="num">7,000円</td>
+                                <td class="center"><span class="badge badge-parking-vacant">空き</span></td>
+                                <td class="center"><a href="parking-contracts/create.html" class="btn-detail">契約登録</a></td>
+                            </tr>
+                            <tr>
+                                <td><a href="properties/show.html" class="prop-name">ミツワレジデンス南町</a></td>
+                                <td>P-5</td>
+                                <td>屋根あり・普通車</td>
+                                <td class="num">9,500円</td>
+                                <td class="center"><span class="badge badge-parking-vacant">空き</span></td>
+                                <td class="center"><a href="parking-contracts/create.html" class="btn-detail">契約登録</a></td>
+                            </tr>
+                            <tr>
+                                <td><a href="properties/show.html" class="prop-name">ミツワレジデンス南町</a></td>
+                                <td>P-8</td>
+                                <td>屋根なし・軽自動車</td>
+                                <td class="num">6,000円</td>
+                                <td class="center"><span class="badge badge-parking-vacant">空き</span></td>
+                                <td class="center"><a href="parking-contracts/create.html" class="btn-detail">契約登録</a></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+            </div>
+
+        </main>
+    </div>
+
+</body>
+</html>
