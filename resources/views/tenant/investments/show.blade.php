@@ -67,7 +67,7 @@
             </div>
             <div>
                 <div class="text-xs text-gray-500 mb-0.5">投資総額</div>
-                <div class="text-xl font-bold text-gray-900">¥{{ number_format($investment->total_amount) }}</div>
+                <div class="text-xl font-bold text-gray-900">{{ number_format($investment->total_amount) }}円</div>
             </div>
             {{-- 施工業者: 入力がある場合のみ表示 --}}
             @if($investment->contractor_name)
@@ -121,7 +121,7 @@
                             <tr class="hover:bg-gray-50">
                                 <td class="px-4 py-2.5 border-b border-gray-200 whitespace-nowrap">{{ $costLabels[$detail->cost_item] ?? $detail->cost_item }}</td>
                                 <td class="px-4 py-2.5 border-b border-gray-200 text-center whitespace-nowrap">{{ $detail->contractor_name ?? '—' }}</td>
-                                <td class="px-4 py-2.5 border-b border-gray-200 text-right font-semibold whitespace-nowrap">¥{{ number_format($detail->amount) }}</td>
+                                <td class="px-4 py-2.5 border-b border-gray-200 text-right font-semibold whitespace-nowrap">{{ number_format($detail->amount) }}円</td>
                                 <td class="px-4 py-2.5 border-b border-gray-200 text-center whitespace-nowrap">{{ $detail->executed_at?->format('Y/m/d') ?? '—' }}</td>
                                 <td class="px-4 py-2.5 border-b border-gray-200 text-center whitespace-nowrap">{{ $detail->notes ?? '—' }}</td>
                             </tr>
@@ -131,7 +131,7 @@
                         <tr class="bg-emerald-50">
                             <td class="px-4 py-2.5 font-bold border-t-2 border-emerald-200">合計</td>
                             <td class="px-4 py-2.5 border-t-2 border-emerald-200"></td>
-                            <td class="px-4 py-2.5 border-t-2 border-emerald-200 text-right font-bold">¥{{ number_format($investment->details->sum('amount')) }}</td>
+                            <td class="px-4 py-2.5 border-t-2 border-emerald-200 text-right font-bold">{{ number_format($investment->details->sum('amount')) }}円</td>
                             <td class="px-4 py-2.5 border-t-2 border-emerald-200"></td>
                             <td class="px-4 py-2.5 border-t-2 border-emerald-200"></td>
                         </tr>
@@ -161,7 +161,7 @@
                 <div>
                     <div class="text-xs text-gray-500 mb-0.5">現在の月額家賃</div>
                     <div class="text-xl font-bold text-emerald-600">
-                        {{ $recovery['current_rent'] ? '¥' . number_format($recovery['current_rent']) : '—' }}
+                        {{ $recovery['current_rent'] ? number_format($recovery['current_rent']) . '円' : '—' }}
                     </div>
                 </div>
                 <div>
@@ -171,7 +171,7 @@
                 @if($investment->contract && $investment->contract->first_month_recovery !== null)
                     <div>
                         <div class="text-xs text-gray-500 mb-0.5">初月回収額</div>
-                        <div class="text-sm font-semibold text-gray-900">¥{{ number_format($investment->contract->first_month_recovery) }}（日割り）</div>
+                        <div class="text-sm font-semibold text-gray-900">{{ number_format($investment->contract->first_month_recovery) }}円（日割り）</div>
                     </div>
                 @endif
             </div>
@@ -180,7 +180,7 @@
             <div class="mt-4">
                 <div class="flex justify-between mb-1">
                     <span class="text-xs text-gray-500">累計回収額</span>
-                    <span class="text-sm font-bold text-gray-900">¥{{ number_format($recovery['total_recovered']) }} / ¥{{ number_format($investment->total_amount) }}</span>
+                    <span class="text-sm font-bold text-gray-900">{{ number_format($recovery['total_recovered']) }}円 / {{ number_format($investment->total_amount) }}円</span>
                 </div>
                 <div class="h-4 bg-gray-200 rounded-full overflow-hidden">
                     <div class="h-full rounded-full transition-all duration-500"
@@ -195,7 +195,7 @@
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 mt-3">
                 <div>
                     <div class="text-xs text-gray-500 mb-0.5">残り回収額</div>
-                    <div class="text-sm font-bold text-gray-900">¥{{ number_format(max(0, $investment->total_amount - $recovery['total_recovered'])) }}</div>
+                    <div class="text-sm font-bold text-gray-900">{{ number_format(max(0, $investment->total_amount - $recovery['total_recovered'])) }}円</div>
                 </div>
                 <div>
                     <div class="text-xs text-gray-500 mb-0.5">回収予定残月数</div>

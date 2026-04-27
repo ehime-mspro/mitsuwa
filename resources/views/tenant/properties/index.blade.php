@@ -105,7 +105,7 @@
                                 {{-- 賃料収入 --}}
                                 <td class="px-4 py-3 lg:px-5 lg:py-3.5 border-b border-gray-200 text-center whitespace-nowrap">
                                     @if($property->rental_income !== null)
-                                        <span class="text-sm font-semibold text-gray-900">¥{{ number_format($property->rental_income) }}</span>
+                                        <span class="text-sm font-semibold text-gray-900">{{ number_format($property->rental_income) }}円</span>
                                         <span class="text-xs text-gray-500">/月</span>
                                     @else
                                         <span class="text-gray-400">—</span>

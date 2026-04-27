@@ -133,34 +133,34 @@
         <div class="grid grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-2">
             <div>
                 <div class="text-xs text-gray-500 mb-0.5">募集家賃</div>
-                <div class="text-sm font-medium text-gray-800">¥{{ number_format($unit->rent) }}<span class="text-[11px] text-gray-500 font-normal">/月</span>
+                <div class="text-sm font-medium text-gray-800">{{ number_format($unit->rent) }}円<span class="text-[11px] text-gray-500 font-normal">/月</span>
                     @if($hasTsubo)<span class="text-[11px] font-medium ml-1.5 max-lg:block max-lg:ml-0 max-lg:mt-px" style="color:#4b5563">({{ '@' . number_format($recruitRentPerTsubo) }})</span>@endif
                 </div>
             </div>
             <div>
                 <div class="text-xs text-gray-500 mb-0.5">募集共益費</div>
-                <div class="text-sm font-medium text-gray-800">¥{{ number_format($unit->common_fee) }}<span class="text-[11px] text-gray-500 font-normal">/月</span>
+                <div class="text-sm font-medium text-gray-800">{{ number_format($unit->common_fee) }}円<span class="text-[11px] text-gray-500 font-normal">/月</span>
                     @if($hasTsubo)<span class="text-[11px] font-medium ml-1.5 max-lg:block max-lg:ml-0 max-lg:mt-px" style="color:#4b5563">({{ '@' . number_format($recruitCommonFeePerTsubo) }})</span>@endif
                 </div>
             </div>
             <div>
                 <div class="text-xs text-gray-500 mb-0.5">ゴミ代</div>
-                <div class="text-sm font-medium text-gray-800">¥{{ number_format($unit->garbage_fee) }}<span class="text-[11px] text-gray-500 font-normal">/月</span></div>
+                <div class="text-sm font-medium text-gray-800">{{ number_format($unit->garbage_fee) }}円<span class="text-[11px] text-gray-500 font-normal">/月</span></div>
             </div>
             <div>
                 <div class="text-xs text-gray-500 mb-0.5">駆除代</div>
-                <div class="text-sm font-medium text-gray-800">¥{{ number_format($unit->pest_control_fee) }}<span class="text-[11px] text-gray-500 font-normal">/月</span></div>
+                <div class="text-sm font-medium text-gray-800">{{ number_format($unit->pest_control_fee) }}円<span class="text-[11px] text-gray-500 font-normal">/月</span></div>
             </div>
             <div>
                 <div class="text-xs text-gray-500 mb-0.5">敷金</div>
-                <div class="text-sm font-medium text-gray-800">¥{{ number_format($unit->deposit) }}</div>
+                <div class="text-sm font-medium text-gray-800">{{ number_format($unit->deposit) }}円</div>
             </div>
         </div>
         <div class="mt-2.5 pt-2.5 border-t border-gray-200 flex items-center gap-2 flex-wrap">
             <span class="text-sm font-bold text-gray-800">月額合計:</span>
-            <span class="text-base font-bold" style="color:#065F46">¥{{ number_format($recruitTotal) }}</span>
+            <span class="text-base font-bold" style="color:#065F46">{{ number_format($recruitTotal) }}円</span>
             @if($hasTsubo)<span class="text-[11px] font-medium" style="color:#4b5563">({{ '@' . number_format($recruitTotalPerTsubo) }})</span>@endif
-            <span class="text-sm font-semibold text-gray-700 max-lg:block max-lg:w-full max-lg:mt-0.5">（税込 ¥{{ number_format($recruitTotalTax) }}）</span>
+            <span class="text-sm font-semibold text-gray-700 max-lg:block max-lg:w-full max-lg:mt-0.5">（税込 {{ number_format($recruitTotalTax) }}円）</span>
         </div>
     </div>
 
@@ -187,34 +187,34 @@
                 </div>
                 <div>
                     <div class="text-xs text-gray-500 mb-0.5">契約家賃</div>
-                    <div class="text-sm font-medium text-gray-800">¥{{ number_format($activeContract->rent) }}<span class="text-[11px] text-gray-500 font-normal">/月</span>
+                    <div class="text-sm font-medium text-gray-800">{{ number_format($activeContract->rent) }}円<span class="text-[11px] text-gray-500 font-normal">/月</span>
                         @if($hasTsubo)<span class="text-[11px] font-medium ml-1.5 max-lg:block max-lg:ml-0 max-lg:mt-px" style="color:#4b5563">({{ '@' . number_format($contractRentPerTsubo) }})</span>@endif
                     </div>
                 </div>
                 <div>
                     <div class="text-xs text-gray-500 mb-0.5">契約共益費</div>
-                    <div class="text-sm font-medium text-gray-800">¥{{ number_format($activeContract->common_fee) }}<span class="text-[11px] text-gray-500 font-normal">/月</span>
+                    <div class="text-sm font-medium text-gray-800">{{ number_format($activeContract->common_fee) }}円<span class="text-[11px] text-gray-500 font-normal">/月</span>
                         @if($hasTsubo)<span class="text-[11px] font-medium ml-1.5 max-lg:block max-lg:ml-0 max-lg:mt-px" style="color:#4b5563">({{ '@' . number_format($contractCommonFeePerTsubo) }})</span>@endif
                     </div>
                 </div>
                 <div>
                     <div class="text-xs text-gray-500 mb-0.5">ゴミ代</div>
-                    <div class="text-sm font-medium text-gray-800">¥{{ number_format($activeContract->garbage_fee) }}<span class="text-[11px] text-gray-500 font-normal">/月</span></div>
+                    <div class="text-sm font-medium text-gray-800">{{ number_format($activeContract->garbage_fee) }}円<span class="text-[11px] text-gray-500 font-normal">/月</span></div>
                 </div>
                 <div>
                     <div class="text-xs text-gray-500 mb-0.5">駆除代</div>
-                    <div class="text-sm font-medium text-gray-800">¥{{ number_format($activeContract->pest_control_fee) }}<span class="text-[11px] text-gray-500 font-normal">/月</span></div>
+                    <div class="text-sm font-medium text-gray-800">{{ number_format($activeContract->pest_control_fee) }}円<span class="text-[11px] text-gray-500 font-normal">/月</span></div>
                 </div>
                 <div>
                     <div class="text-xs text-gray-500 mb-0.5">敷金</div>
-                    <div class="text-sm font-medium text-gray-800">¥{{ number_format($activeContract->deposit) }}</div>
+                    <div class="text-sm font-medium text-gray-800">{{ number_format($activeContract->deposit) }}円</div>
                 </div>
             </div>
             <div class="mt-2.5 pt-2.5 border-t border-blue-200 flex items-center gap-2 flex-wrap">
                 <span class="text-sm font-bold text-gray-800">月額合計:</span>
-                <span class="text-base font-bold" style="color:#065F46">¥{{ number_format($contractMonthlyTotal) }}</span>
+                <span class="text-base font-bold" style="color:#065F46">{{ number_format($contractMonthlyTotal) }}円</span>
                 @if($hasTsubo)<span class="text-[11px] font-medium" style="color:#4b5563">({{ '@' . number_format($contractTotalPerTsubo) }})</span>@endif
-                <span class="text-sm font-semibold text-gray-700 max-lg:block max-lg:w-full max-lg:mt-0.5">（税込 ¥{{ number_format($contractTotalTax) }}）</span>
+                <span class="text-sm font-semibold text-gray-700 max-lg:block max-lg:w-full max-lg:mt-0.5">（税込 {{ number_format($contractTotalTax) }}円）</span>
             </div>
         </div>
     @endif
@@ -304,7 +304,7 @@
                                             <td class="px-4 py-2.5 border-b border-gray-200 text-center whitespace-nowrap">
                                                 <span class="badge {{ $repair->status->badgeClass() }}">{{ $repair->status->label() }}</span>
                                             </td>
-                                            <td class="px-4 py-2.5 border-b border-gray-200 text-right font-semibold whitespace-nowrap text-gray-900">{{ $repair->cost !== null ? '¥' . number_format($repair->cost) : '—' }}</td>
+                                            <td class="px-4 py-2.5 border-b border-gray-200 text-right font-semibold whitespace-nowrap text-gray-900">{{ $repair->cost !== null ? number_format($repair->cost) . '円' : '—' }}</td>
                                             <td class="px-4 py-2.5 border-b border-gray-200 text-center whitespace-nowrap text-gray-900">{{ $repair->started_at?->format('Y/m/d') ?? '—' }}</td>
                                         </tr>
                                     @endforeach

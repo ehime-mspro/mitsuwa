@@ -160,7 +160,7 @@
                         <div class="flex-1">
                             <div class="flex items-baseline justify-between">
                                 <span class="text-sm font-semibold text-gray-800">1ヶ月分</span>
-                                <span class="text-sm font-bold text-gray-900" x-text="'¥' + monthlyTotal().toLocaleString()"></span>
+                                <span class="text-sm font-bold text-gray-900" x-text="monthlyTotal().toLocaleString() + '円'"></span>
                             </div>
                         </div>
                     </label>
@@ -175,7 +175,7 @@
                         <div class="flex-1">
                             <div class="flex items-baseline justify-between">
                                 <span class="text-sm font-semibold text-gray-800">日割り<span class="text-xs text-gray-500 font-normal ml-1.5" x-text="proratedDaysLabel()"></span></span>
-                                <span class="text-sm font-bold" style="color:#065F46;" x-text="'¥' + proratedTotal().toLocaleString()"></span>
+                                <span class="text-sm font-bold" style="color:#065F46;" x-text="proratedTotal().toLocaleString() + '円'"></span>
                             </div>
                             <div class="text-xs text-gray-400 mt-1" x-text="proratedBreakdown()"></div>
                         </div>
@@ -191,7 +191,7 @@
                         <div class="flex-1">
                             <div class="flex items-baseline justify-between">
                                 <span class="text-sm font-semibold text-gray-800">半月分</span>
-                                <span class="text-sm font-bold text-gray-900" x-text="'¥' + halfTotal().toLocaleString()"></span>
+                                <span class="text-sm font-bold text-gray-900" x-text="halfTotal().toLocaleString() + '円'"></span>
                             </div>
                         </div>
                     </label>
@@ -206,7 +206,7 @@
                         <div class="flex-1">
                             <div class="flex items-baseline justify-between">
                                 <span class="text-sm font-semibold text-gray-800">フリーレント</span>
-                                <span class="text-sm font-bold text-gray-400">¥0</span>
+                                <span class="text-sm font-bold text-gray-400">0円</span>
                             </div>
                         </div>
                     </label>
@@ -222,13 +222,13 @@
                             <div class="flex items-center gap-2">
                                 <span class="text-sm font-semibold text-gray-800">手動入力</span>
                                 <div class="relative flex-1" style="max-width:180px;">
-                                    <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-gray-400">¥</span>
                                     <input type="number" name="initial_month_amount" x-model.number="manualInitialAmount" min="0"
                                            :disabled="initialMonthType !== 'manual'"
-                                           class="w-full pr-3 border rounded-md text-sm focus:outline-none"
+                                           class="w-full px-3 border rounded-md text-sm focus:outline-none"
                                            :class="initialMonthType === 'manual' ? 'border-gray-300 text-gray-800 bg-white focus:border-emerald-500' : 'border-gray-200 text-gray-400 bg-gray-50'"
-                                           style="height:34px; padding-left:28px;"
+                                           style="height:34px; padding-right:32px;"
                                            placeholder="金額を入力">
+                                    <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-sm text-gray-400">円</span>
                                 </div>
                             </div>
                         </div>
@@ -492,10 +492,10 @@ function contractEditForm() {
         },
 
         proratedBreakdown: function() {
-            return '家賃 ¥' + this.proratedItem(this.rent).toLocaleString()
-                + ' + 共益費 ¥' + this.proratedItem(this.commonFee).toLocaleString()
-                + ' + ゴミ代 ¥' + this.proratedItem(this.garbageFee).toLocaleString()
-                + ' + 駆除代 ¥' + this.proratedItem(this.pestControlFee).toLocaleString();
+            return '家賃 ' + this.proratedItem(this.rent).toLocaleString() + '円'
+                + ' + 共益費 ' + this.proratedItem(this.commonFee).toLocaleString() + '円'
+                + ' + ゴミ代 ' + this.proratedItem(this.garbageFee).toLocaleString() + '円'
+                + ' + 駆除代 ' + this.proratedItem(this.pestControlFee).toLocaleString() + '円';
         },
 
         halfItem: function(amount) {

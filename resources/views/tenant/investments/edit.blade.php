@@ -205,7 +205,7 @@
             <div class="mt-4 pt-3 border-t-2 border-gray-200 flex justify-end items-center gap-3">
                 <span class="text-sm font-semibold text-gray-600">投資総額</span>
                 <div class="bg-gray-50 border border-gray-200 rounded-md px-4 h-[40px] flex items-center text-base font-bold text-gray-900 min-w-[180px] justify-end">
-                    ¥<span x-text="totalAmount.toLocaleString()"></span>
+                    <span x-text="totalAmount.toLocaleString()"></span>円
                 </div>
             </div>
         </div>

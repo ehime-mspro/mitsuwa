@@ -96,7 +96,7 @@
     {{-- 費用明細（全行固定高さ） --}}
     <div class="fm-fees">
         {{-- 家賃（22px）--}}
-        <div class="fm-r"><span class="fm-l">家賃</span><span class="fm-v">¥{{ number_format($rent) }}</span></div>
+        <div class="fm-r"><span class="fm-l">家賃</span><span class="fm-v">{{ number_format($rent) }}円</span></div>
         {{-- 家賃坪単価（16px）--}}
         @if($hasTsubo)
             <div class="fm-tp"><span>({{ '@' . number_format($rentPerTsubo) }})</span></div>
@@ -105,7 +105,7 @@
         @endif
 
         {{-- 共益費（22px）--}}
-        <div class="fm-r"><span class="fm-l">共益費</span><span class="fm-v">¥{{ number_format($commonFee) }}</span></div>
+        <div class="fm-r"><span class="fm-l">共益費</span><span class="fm-v">{{ number_format($commonFee) }}円</span></div>
         {{-- 共益費坪単価（16px）--}}
         @if($hasTsubo)
             <div class="fm-tp"><span>({{ '@' . number_format($commonFeePerTsubo) }})</span></div>
@@ -114,16 +114,16 @@
         @endif
 
         {{-- ゴミ代（22px）— 0円でも表示 --}}
-        <div class="fm-r"><span class="fm-l">ゴミ代</span><span class="fm-v">¥{{ number_format($garbageFee) }}</span></div>
+        <div class="fm-r"><span class="fm-l">ゴミ代</span><span class="fm-v">{{ number_format($garbageFee) }}円</span></div>
 
         {{-- 駆除代（22px）— 0円でも表示 --}}
-        <div class="fm-r"><span class="fm-l">駆除代</span><span class="fm-v">¥{{ number_format($pestControlFee) }}</span></div>
+        <div class="fm-r"><span class="fm-l">駆除代</span><span class="fm-v">{{ number_format($pestControlFee) }}円</span></div>
 
         {{-- 賃料計（28px）--}}
-        <div class="fm-total"><span class="fm-l">賃料計</span><span class="fm-v">¥{{ number_format($rentalTotal) }}</span></div>
+        <div class="fm-total"><span class="fm-l">賃料計</span><span class="fm-v">{{ number_format($rentalTotal) }}円</span></div>
 
         {{-- 敷金（28px）--}}
-        <div class="fm-dep"><span class="fm-l">敷金</span><span class="fm-v">¥{{ number_format($deposit) }}</span></div>
+        <div class="fm-dep"><span class="fm-l">敷金</span><span class="fm-v">{{ number_format($deposit) }}円</span></div>
     </div>
 
 </a>

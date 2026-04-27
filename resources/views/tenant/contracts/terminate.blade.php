@@ -74,19 +74,19 @@
             </div>
             <div>
                 <div class="text-xs text-gray-500 mb-0.5">月額家賃</div>
-                <div class="text-sm font-medium text-gray-900">¥{{ number_format($contract->rent) }}<span class="text-[11px] text-gray-500 font-normal">/月</span></div>
+                <div class="text-sm font-medium text-gray-900">{{ number_format($contract->rent) }}円<span class="text-[11px] text-gray-500 font-normal">/月</span></div>
             </div>
             <div>
                 <div class="text-xs text-gray-500 mb-0.5">月額合計</div>
-                <div class="text-sm font-bold" style="color:#065F46;">¥{{ number_format($monthlyTotal) }}<span class="text-[11px] text-gray-500 font-normal">/月</span></div>
+                <div class="text-sm font-bold" style="color:#065F46;">{{ number_format($monthlyTotal) }}円<span class="text-[11px] text-gray-500 font-normal">/月</span></div>
             </div>
             <div>
                 <div class="text-xs text-gray-500 mb-0.5">敷金</div>
-                <div class="text-sm font-medium text-gray-900">¥{{ number_format($contract->deposit) }}</div>
+                <div class="text-sm font-medium text-gray-900">{{ number_format($contract->deposit) }}円</div>
             </div>
         </div>
         <div class="text-xs text-gray-400 mt-2 pt-2 border-t border-gray-100">
-            内訳: 家賃 ¥{{ number_format($contract->rent) }} + 共益費 ¥{{ number_format($contract->common_fee ?? 0) }} + ゴミ代 ¥{{ number_format($contract->garbage_fee ?? 0) }} + 駆除代 ¥{{ number_format($contract->pest_control_fee ?? 0) }}
+            内訳: 家賃 {{ number_format($contract->rent) }}円 + 共益費 {{ number_format($contract->common_fee ?? 0) }}円 + ゴミ代 {{ number_format($contract->garbage_fee ?? 0) }}円 + 駆除代 {{ number_format($contract->pest_control_fee ?? 0) }}円
         </div>
     </div>
 
@@ -124,7 +124,7 @@
                         <div class="flex-1">
                             <div class="flex items-baseline justify-between">
                                 <span class="text-sm font-semibold text-gray-800">1ヶ月分</span>
-                                <span class="text-sm font-bold text-gray-900" x-text="'¥' + monthlyTotal.toLocaleString()"></span>
+                                <span class="text-sm font-bold text-gray-900" x-text="monthlyTotal.toLocaleString() + '円'"></span>
                             </div>
                         </div>
                     </label>
@@ -139,7 +139,7 @@
                         <div class="flex-1">
                             <div class="flex items-baseline justify-between">
                                 <span class="text-sm font-semibold text-gray-800">日割り<span class="text-xs text-gray-500 font-normal ml-1.5" x-text="proratedDaysLabel()"></span></span>
-                                <span class="text-sm font-bold" style="color:#065F46;" x-text="'¥' + proratedTotal().toLocaleString()"></span>
+                                <span class="text-sm font-bold" style="color:#065F46;" x-text="proratedTotal().toLocaleString() + '円'"></span>
                             </div>
                             <div class="text-xs text-gray-400 mt-1" x-text="proratedBreakdown()"></div>
                         </div>
@@ -155,7 +155,7 @@
                         <div class="flex-1">
                             <div class="flex items-baseline justify-between">
                                 <span class="text-sm font-semibold text-gray-800">半月分</span>
-                                <span class="text-sm font-bold text-gray-900" x-text="'¥' + halfTotal().toLocaleString()"></span>
+                                <span class="text-sm font-bold text-gray-900" x-text="halfTotal().toLocaleString() + '円'"></span>
                             </div>
                         </div>
                     </label>
@@ -170,7 +170,7 @@
                         <div class="flex-1">
                             <div class="flex items-baseline justify-between">
                                 <span class="text-sm font-semibold text-gray-800">フリーレント</span>
-                                <span class="text-sm font-bold text-gray-400">¥0</span>
+                                <span class="text-sm font-bold text-gray-400">0円</span>
                             </div>
                         </div>
                     </label>
@@ -186,13 +186,13 @@
                             <div class="flex items-center gap-2">
                                 <span class="text-sm font-semibold text-gray-800">手動入力</span>
                                 <div class="relative flex-1" style="max-width:180px;">
-                                    <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-gray-400">¥</span>
                                     <input type="number" name="final_month_amount" x-model.number="manualFinalAmount" min="0"
                                            :disabled="finalMonthType !== 'manual'"
-                                           class="w-full pr-3 border rounded-md text-sm focus:outline-none"
+                                           class="w-full px-3 border rounded-md text-sm focus:outline-none"
                                            :class="finalMonthType === 'manual' ? 'border-gray-300 text-gray-800 bg-white focus:border-emerald-500' : 'border-gray-200 text-gray-400 bg-gray-50'"
-                                           style="height:34px; padding-left:28px;"
+                                           style="height:34px; padding-right:32px;"
                                            placeholder="金額を入力">
+                                    <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-sm text-gray-400">円</span>
                                 </div>
                             </div>
                         </div>
@@ -293,10 +293,10 @@ function contractTerminateForm() {
         },
 
         proratedBreakdown: function() {
-            return '家賃 ¥' + this.proratedItem(this.rent).toLocaleString()
-                + ' + 共益費 ¥' + this.proratedItem(this.commonFee).toLocaleString()
-                + ' + ゴミ代 ¥' + this.proratedItem(this.garbageFee).toLocaleString()
-                + ' + 駆除代 ¥' + this.proratedItem(this.pestControlFee).toLocaleString();
+            return '家賃 ' + this.proratedItem(this.rent).toLocaleString() + '円'
+                + ' + 共益費 ' + this.proratedItem(this.commonFee).toLocaleString() + '円'
+                + ' + ゴミ代 ' + this.proratedItem(this.garbageFee).toLocaleString() + '円'
+                + ' + 駆除代 ' + this.proratedItem(this.pestControlFee).toLocaleString() + '円';
         },
 
         halfItem: function(amount) {

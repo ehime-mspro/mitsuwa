@@ -106,7 +106,7 @@
                                 </td>
                                 {{-- 賃料収入 --}}
                                 <td class="px-4 py-3 lg:px-5 lg:py-3.5 border-b border-gray-200 text-center text-sm font-semibold text-gray-900 whitespace-nowrap">
-                                    ¥{{ number_format($contract->monthly_total) }}
+                                    {{ number_format($contract->monthly_total) }}円
                                 </td>
                                 {{-- 状態 --}}
                                 <td class="px-4 py-3 lg:px-5 lg:py-3.5 border-b border-gray-200 text-center whitespace-nowrap">

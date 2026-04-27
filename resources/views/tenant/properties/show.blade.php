@@ -108,7 +108,7 @@
         <div class="bg-white border border-gray-200 rounded-lg py-3.5 px-2 text-center flex flex-col items-center justify-center min-h-[80px]">
             <div class="text-sm text-gray-600 mb-1 whitespace-nowrap">賃料収入</div>
             <div class="text-xl max-lg:text-base font-bold text-gray-900 whitespace-nowrap leading-tight">
-                ¥{{ number_format($summary['rental_income']) }}<span class="text-sm text-gray-600 font-normal">/月</span>
+                {{ number_format($summary['rental_income']) }}円<span class="text-sm text-gray-600 font-normal">/月</span>
             </div>
         </div>
         <div class="bg-white border border-gray-200 rounded-lg py-3.5 px-2 text-center flex flex-col items-center justify-center min-h-[80px]">
@@ -296,7 +296,7 @@
                                             </td>
                                             <td class="px-4 py-2.5 border-b border-gray-200 whitespace-nowrap text-gray-900">{{ $contract->customer?->name ?? '—' }}</td>
                                             <td class="px-4 py-2.5 border-b border-gray-200 whitespace-nowrap text-gray-900">{{ $contract->store_name ?? '—' }}</td>
-                                            <td class="px-4 py-2.5 border-b border-gray-200 whitespace-nowrap text-gray-900 font-semibold">¥{{ number_format($contract->monthly_total) }}</td>
+                                            <td class="px-4 py-2.5 border-b border-gray-200 whitespace-nowrap text-gray-900 font-semibold">{{ number_format($contract->monthly_total) }}円</td>
                                         </tr>
                                     @endforeach
                                 </tbody>
@@ -342,7 +342,7 @@
                                             </td>
                                             <td class="px-4 py-2.5 border-b border-gray-200 whitespace-nowrap text-gray-900">{{ $contract->customer?->name ?? '—' }}</td>
                                             <td class="px-4 py-2.5 border-b border-gray-200 whitespace-nowrap text-gray-900">{{ $contract->store_name ?? '—' }}</td>
-                                            <td class="px-4 py-2.5 border-b border-gray-200 whitespace-nowrap text-gray-900 font-semibold">¥{{ number_format($contract->monthly_total) }}</td>
+                                            <td class="px-4 py-2.5 border-b border-gray-200 whitespace-nowrap text-gray-900 font-semibold">{{ number_format($contract->monthly_total) }}円</td>
                                             <td class="px-4 py-2.5 border-b border-gray-200 whitespace-nowrap text-gray-700">{{ $contract->termination_reason ? \Illuminate\Support\Str::limit($contract->termination_reason, 30) : '—' }}</td>
                                         </tr>
                                     @endforeach
@@ -441,7 +441,7 @@
                                             </td>
                                             <td class="px-4 py-2.5 border-b border-gray-200 text-center whitespace-nowrap text-gray-900">{{ $inv->unit->display_name }}</td>
                                             <td class="px-4 py-2.5 border-b border-gray-200 text-center whitespace-nowrap text-gray-900">{{ $inv->pattern->label() }}</td>
-                                            <td class="px-4 py-2.5 border-b border-gray-200 text-right font-semibold whitespace-nowrap text-gray-900">¥{{ number_format($inv->total_amount) }}</td>
+                                            <td class="px-4 py-2.5 border-b border-gray-200 text-right font-semibold whitespace-nowrap text-gray-900">{{ number_format($inv->total_amount) }}円</td>
                                             <td class="px-4 py-2.5 border-b border-gray-200 text-center whitespace-nowrap">
                                                 @if((float) $inv->recovery_rate > 0 || in_array($inv->status->value, ['recovering', 'recovered']))
                                                     <span class="text-xs font-bold {{ (float) $inv->recovery_rate >= 100 ? 'text-emerald-600' : 'text-rose-600' }}">{{ number_format((float) $inv->recovery_rate, 1) }}%</span>
@@ -491,7 +491,7 @@
                                             <td class="px-4 py-2.5 border-b border-gray-200 text-center whitespace-nowrap">
                                                 <span class="badge {{ $repair->status->badgeClass() }}">{{ $repair->status->label() }}</span>
                                             </td>
-                                            <td class="px-4 py-2.5 border-b border-gray-200 text-right font-semibold whitespace-nowrap text-gray-900">{{ $repair->cost !== null ? '¥' . number_format($repair->cost) : '—' }}</td>
+                                            <td class="px-4 py-2.5 border-b border-gray-200 text-right font-semibold whitespace-nowrap text-gray-900">{{ $repair->cost !== null ? number_format($repair->cost) . '円' : '—' }}</td>
                                         </tr>
                                     @endforeach
                                 </tbody>

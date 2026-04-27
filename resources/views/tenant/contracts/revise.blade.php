@@ -74,19 +74,19 @@
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div>
                 <div class="text-xs text-gray-500 mb-0.5">月額家賃</div>
-                <div class="text-sm font-medium text-gray-900">¥{{ number_format($contract->rent) }}</div>
+                <div class="text-sm font-medium text-gray-900">{{ number_format($contract->rent) }}円</div>
             </div>
             <div>
                 <div class="text-xs text-gray-500 mb-0.5">共益費</div>
-                <div class="text-sm font-medium text-gray-900">¥{{ number_format($contract->common_fee) }}</div>
+                <div class="text-sm font-medium text-gray-900">{{ number_format($contract->common_fee) }}円</div>
             </div>
             <div>
                 <div class="text-xs text-gray-500 mb-0.5">ゴミ代</div>
-                <div class="text-sm font-medium text-gray-900">¥{{ number_format($contract->garbage_fee) }}</div>
+                <div class="text-sm font-medium text-gray-900">{{ number_format($contract->garbage_fee) }}円</div>
             </div>
             <div>
                 <div class="text-xs text-gray-500 mb-0.5">駆除代</div>
-                <div class="text-sm font-medium text-gray-900">¥{{ number_format($contract->pest_control_fee) }}</div>
+                <div class="text-sm font-medium text-gray-900">{{ number_format($contract->pest_control_fee) }}円</div>
             </div>
         </div>
     </div>
@@ -111,7 +111,7 @@
                                >
                         <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">円</span>
                     </div>
-                    <p class="text-xs text-gray-500 mt-1">現在: ¥{{ number_format($contract->rent) }}</p>
+                    <p class="text-xs text-gray-500 mt-1">現在: {{ number_format($contract->rent) }}円</p>
                 </div>
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1">新・共益費</label>
@@ -121,7 +121,7 @@
                                >
                         <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">円</span>
                     </div>
-                    <p class="text-xs text-gray-500 mt-1">現在: ¥{{ number_format($contract->common_fee) }}</p>
+                    <p class="text-xs text-gray-500 mt-1">現在: {{ number_format($contract->common_fee) }}円</p>
                 </div>
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1">新・ゴミ代</label>
@@ -131,7 +131,7 @@
                                >
                         <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">円</span>
                     </div>
-                    <p class="text-xs text-gray-500 mt-1">現在: ¥{{ number_format($contract->garbage_fee) }}</p>
+                    <p class="text-xs text-gray-500 mt-1">現在: {{ number_format($contract->garbage_fee) }}円</p>
                 </div>
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1">新・駆除代</label>
@@ -141,7 +141,7 @@
                                >
                         <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">円</span>
                     </div>
-                    <p class="text-xs text-gray-500 mt-1">現在: ¥{{ number_format($contract->pest_control_fee) }}</p>
+                    <p class="text-xs text-gray-500 mt-1">現在: {{ number_format($contract->pest_control_fee) }}円</p>
                 </div>
                 <div class="sm:col-span-2">
                     <label class="block text-sm font-semibold text-gray-700 mb-1">改定理由</label>

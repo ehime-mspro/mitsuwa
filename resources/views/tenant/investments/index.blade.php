@@ -94,7 +94,7 @@
                                     {{ $inv->property->name }} / {{ $inv->unit->display_name }}
                                 </td>
                                 <td class="px-4 py-3 border-b border-gray-200 text-right text-sm font-semibold text-gray-900 whitespace-nowrap">
-                                    ¥{{ number_format($inv->total_amount) }}
+                                    {{ number_format($inv->total_amount) }}円
                                 </td>
                                 <td class="px-4 py-3 border-b border-gray-200">
                                     @php $rate = (float) $inv->recovery_rate; @endphp

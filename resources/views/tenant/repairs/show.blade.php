@@ -69,7 +69,7 @@
             </div>
             <div>
                 <div class="text-xs text-gray-500 mb-0.5">費用</div>
-                <div class="text-xl font-bold text-gray-900">{{ $repair->cost !== null ? '¥' . number_format($repair->cost) : '—' }}</div>
+                <div class="text-xl font-bold text-gray-900">{{ $repair->cost !== null ? number_format($repair->cost) . '円' : '—' }}</div>
             </div>
             <div>
                 <div class="text-xs text-gray-500 mb-0.5">実施日</div>

@@ -98,7 +98,7 @@
                                     <span class="badge {{ $repair->status->badgeClass() }}">{{ $repair->status->label() }}</span>
                                 </td>
                                 <td class="px-4 py-3 border-b border-gray-200 text-right text-sm font-semibold text-gray-900 whitespace-nowrap">
-                                    {{ $repair->cost !== null ? '¥' . number_format($repair->cost) : '—' }}
+                                    {{ $repair->cost !== null ? number_format($repair->cost) . '円' : '—' }}
                                 </td>
                                 <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
                                     <div class="flex gap-1.5 justify-center">
