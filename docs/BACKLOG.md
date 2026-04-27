@@ -81,12 +81,22 @@
 
 ---
 
-## 優先度3: 住宅事業 横断一覧
+## ✅ 優先度3: 住宅事業 横断ダッシュボード（実装完了）
 
-### 要件
+詳細仕様: @docs/superpowers/specs/2026-04-27-housing-cross-list-design.md
+実装計画: @docs/superpowers/plans/2026-04-27-housing-cross-list.md
 
-- 建売物件・注文住宅を横断的に閲覧できる一覧画面
-- フィルター: 種別（建売/注文）、ステータス、担当者、年度
+### 概要
+
+`/housing` ルートに住宅事業ダッシュボードを新設。建売物件 + 注文住宅の **成約フォーカス** で KPI / 成約一覧 / 月次グラフを構成。
+
+### 実装内容
+
+- Controller: `Housing/HousingDashboardController` (1本)
+- Blade: `housing/dashboard.blade.php` + 3 partial（KPI / 成約一覧 / グラフ）
+- ルート: `/housing` (housing.dashboard)
+- サイドバー: 住宅事業グループ先頭にダッシュボード項目追加
+- フィルター: 年度（過去2年〜来年度+1 + 全期間）+ 期（全期/上期/下期）
 
 ---
 

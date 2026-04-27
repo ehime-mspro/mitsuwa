@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>住宅事業ダッシュボード - モック</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  body { font-family: 'Hiragino Sans', sans-serif; margin: 0; padding: 24px; background: #f9fafb; color: #111827; }
+  .container { max-width: 1200px; margin: 0 auto; }
+  .h1 { font-size: 18px; font-weight: 700; color: #111827; margin: 0; }
+  .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+  .year-select { height: 36px; padding: 0 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; }
+
+  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+  .kpi-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px 18px; }
+  .kpi-label { font-size: 12px; color: #6b7280; }
+  .kpi-value { font-size: 22px; font-weight: 700; color: #111827; margin-top: 4px; }
+  .kpi-sub { font-size: 12px; color: #9ca3af; margin-top: 4px; }
+  .kpi-profit { color: #047857; }
+  .section { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin-bottom: 20px; }
+  .section-title { font-size: 14px; font-weight: 600; color: #374151; margin: 0 0 12px; }
+
+  .matrix { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .matrix th, .matrix td { padding: 8px 12px; border-bottom: 1px solid #f3f4f6; text-align: center; }
+  .matrix th { background: #f9fafb; font-weight: 600; color: #6b7280; font-size: 12px; }
+  .matrix th:first-child, .matrix td:first-child { text-align: left; padding-left: 16px; }
+  .matrix .total-row td { font-weight: 700; background: #f9fafb; }
+  .matrix .clickable { color: #1d4ed8; cursor: pointer; text-decoration: underline; }
+  .matrix .zero { color: #d1d5db; }
+
+  .filter-bar { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; flex-wrap: wrap; }
+  .filter-bar select, .filter-bar input { height: 36px; padding: 0 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; background: #fff; }
+  .filter-bar input[type="text"] { flex: 1; min-width: 160px; }
+  .filter-clear { height: 36px; padding: 0 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 12px; color: #9ca3af; background: #fff; cursor: pointer; }
+
+  .table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .table th { padding: 10px; background: #f9fafb; border-bottom: 2px solid #e5e7eb; font-size: 12px; font-weight: 600; color: #6b7280; text-align: center; white-space: nowrap; }
+  .table td { padding: 10px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; white-space: nowrap; text-align: center; }
+  .table .text-right { text-align: right; }
+  .table .text-left { text-align: left; }
+  .table .name-col { white-space: normal; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 9999px; font-size: 11px; font-weight: 600; }
+  .badge-tateuri { background: #d1fae5; color: #065f46; }
+  .badge-custom  { background: #dbeafe; color: #1e40af; }
+  .profit-pos { color: #047857; font-weight: 700; }
+  .profit-neg { color: #dc2626; font-weight: 700; }
+  .detail-btn { display: inline-block; padding: 3px 10px; font-size: 12px; font-weight: 600; color: #b45309; border: 1px solid #b45309; border-radius: 5px; background: #fff; text-decoration: none; cursor: pointer; }
+
+  @media (max-width: 768px) { .kpi-grid { grid-template-columns: 1fr 1fr; } }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header-row">
+    <h1 class="h1">住宅事業ダッシュボード</h1>
+    <div style="display: flex; gap: 8px;">
+      <select class="year-select">
+        <option>2026年度</option>
+        <option>2025年度</option>
+        <option>2024年度</option>
+        <option>全期間</option>
+      </select>
+      <select class="year-select">
+        <option>全期</option>
+        <option>上期</option>
+        <option>下期</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- KPI カード -->
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-label">成約件数</div>
+      <div class="kpi-value">9件</div>
+      <div class="kpi-sub">建売 5 / 注文 4</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">売上合計</div>
+      <div class="kpi-value">280,000,000円</div>
+      <div class="kpi-sub">&nbsp;</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">原価合計</div>
+      <div class="kpi-value">220,000,000円</div>
+      <div class="kpi-sub">&nbsp;</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">粗利合計</div>
+      <div class="kpi-value kpi-profit">60,000,000円</div>
+      <div class="kpi-sub">粗利率 21.4%</div>
+    </div>
+  </div>
+
+  <!-- 成約一覧 -->
+  <div class="section" id="contracted-list">
+    <h2 class="section-title">成約一覧</h2>
+    <div style="overflow-x: auto;">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>種別</th><th class="text-left">案件名</th>
+            <th>担当者</th><th>成約日</th><th>売上</th><th>原価</th><th>粗利</th><th>詳細</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="badge badge-tateuri">建売</span></td>
+            <td class="text-left name-col"><div style="font-weight:600;">松山市〇〇分譲地 3号棟</div><div style="font-size:11px;color:#9ca3af;">愛媛県松山市〇〇 3-2-1</div></td>
+            <td>田中</td>
+            <td>2026-03-15</td>
+            <td class="text-right">35,500,000円</td>
+            <td class="text-right">28,200,000円</td>
+            <td class="text-right profit-pos">7,300,000円</td>
+            <td><a class="detail-btn" href="#">詳細</a></td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-custom">注文</span></td>
+            <td class="text-left name-col"><div style="font-weight:600;">今治市〇〇邸新築工事</div><div style="font-size:11px;color:#9ca3af;">愛媛県今治市〇〇 4-5</div></td>
+            <td>佐藤</td>
+            <td>2026-02-28</td>
+            <td class="text-right">28,800,000円</td>
+            <td class="text-right">22,400,000円</td>
+            <td class="text-right profit-pos">6,400,000円</td>
+            <td><a class="detail-btn" href="#">詳細</a></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div style="text-align: right; font-size: 12px; color: #6b7280; margin-top: 8px;">全 9 件</div>
+  </div>
+
+  <!-- 月次棒グラフ -->
+  <div class="section">
+    <h2 class="section-title">月次成約件数</h2>
+    <div style="height: 240px;">
+      <canvas id="monthlyChart"></canvas>
+    </div>
+  </div>
+
+</div>
+<script>
+(function() {
+  var ctx = document.getElementById('monthlyChart');
+  if (!ctx) return;
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: ['5月','6月','7月','8月','9月','10月','11月','12月','1月','2月','3月','4月'],
+      datasets: [
+        { label: '成約件数', data: [4,7,6,5,6,4,3,5,4,6,5,4], backgroundColor: '#047857' }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { stepSize: 1 } } },
+      plugins: { legend: { display: false } }
+    }
+  });
+})();
+</script>
+</body>
+</html>

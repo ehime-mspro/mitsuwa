@@ -898,6 +898,10 @@ Route::middleware(['auth', 'password.change'])->group(function () {
     |----------------------------------------------------------------------
     */
     Route::prefix('housing')->group(function () {
+        // 住宅事業ダッシュボード（建売 + 注文住宅 成約フォーカス）
+        Route::get('/', [\App\Http\Controllers\Housing\HousingDashboardController::class, 'index'])
+            ->name('housing.dashboard');
+
         /*
         |------------------------------------------------------------------
         | 住宅事業 契約管理 統合（8ルート）
