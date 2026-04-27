@@ -29,3 +29,6 @@ Thumbs.db
 
 # ルート直下のスクリーンショット（モック確認用の一時ファイル）
 /*.png
+
+# 退避済みのビュー（auth scaffolding 等、コミット履歴に残るためローカル退避のみ）
+/storage/_disabled_views/
