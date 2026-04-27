@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Dad;
 
+use App\Enums\DadCostCategory;
 use App\Enums\DadProjectStatus;
 use App\Enums\DadProjectType;
 use App\Http\Controllers\Controller;
@@ -12,6 +13,8 @@ use App\Models\DadSubcontractor;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
 /**
  * DAD 工事案件コントローラー
@@ -123,9 +126,10 @@ class ProjectController extends Controller
         $costs = $this->validateCosts($request);
 
         $validated['created_by'] = $request->user()->id;
-        $validated['project_code'] = $this->generateProjectCode();
 
         $project = DB::transaction(function () use ($validated, $costs) {
+            // 採番はトランザクション内で行い、同時 INSERT による project_code 衝突を防ぐ
+            $validated['project_code'] = $this->generateProjectCode();
             $project = DadProject::create($validated);
             foreach ($costs as $costData) {
                 $project->costs()->create($costData);
@@ -149,6 +153,25 @@ class ProjectController extends Controller
         $subcontractors = DadSubcontractor::orderBy('company_name')->get();
         $staffUsers = User::orderBy('name')->get();
         $employees = DadEmployee::where('status', 'active')->orderBy('employee_code')->get();
+
+        // 現在紐付く発注者が論理削除済みなら、編集画面で選択肢が消えないよう
+        // そのレコードのみドロップダウンに追加で含める
+        if ($project->client_id && !$clients->contains('id', $project->client_id)) {
+            $deletedClient = DadClient::withTrashed()->find($project->client_id);
+            if ($deletedClient) {
+                $clients->push($deletedClient);
+            }
+        }
+
+        // 原価明細で参照されている協力業者が論理削除済みなら、同様にドロップダウンへ追加
+        $referencedSubIds = $project->costs->pluck('subcontractor_id')->filter()->unique();
+        $missingSubIds = $referencedSubIds->diff($subcontractors->pluck('id'))->all();
+        if (!empty($missingSubIds)) {
+            $deletedSubs = DadSubcontractor::withTrashed()
+                ->whereIn('id', $missingSubIds)
+                ->get();
+            $subcontractors = $subcontractors->concat($deletedSubs);
+        }
 
         return view('dad.projects.edit', compact(
             'project', 'clients', 'subcontractors', 'staffUsers', 'employees'
@@ -234,28 +257,45 @@ class ProjectController extends Controller
      */
     private function validateCosts(Request $request): array
     {
-        $costs = $request->input('costs', []);
-        $result = [];
+        // 空行（カテゴリー未入力）は受領対象外として除外
+        $costs = collect($request->input('costs', []))
+            ->reject(fn ($row) => empty($row['cost_category'] ?? null))
+            ->values()
+            ->all();
 
-        foreach ($costs as $row) {
-            // カテゴリーが空 = 空行とみなしスキップ
-            if (empty($row['cost_category'])) continue;
-
-            // 数値正規化（カンマ・全角・通貨記号除去は app.blade.php のグローバルリスナーで処理済み想定）
-            $estimated = isset($row['estimated_amount']) && $row['estimated_amount'] !== '' ? (int) $row['estimated_amount'] : null;
-            $actual = isset($row['actual_amount']) && $row['actual_amount'] !== '' ? (int) $row['actual_amount'] : null;
-
-            $result[] = [
-                'cost_category' => $row['cost_category'],
-                'description' => $row['description'] ?? null,
-                'estimated_amount' => $estimated,
-                'actual_amount' => $actual,
-                'subcontractor_id' => !empty($row['subcontractor_id']) ? (int) $row['subcontractor_id'] : null,
-                'notes' => $row['notes'] ?? null,
-            ];
+        if (empty($costs)) {
+            return [];
         }
 
-        return $result;
+        // Enum・整数・FK を Laravel Validator で宣言的にチェック
+        $validated = Validator::make(
+            ['costs' => $costs],
+            [
+                'costs.*.cost_category'    => ['required', Rule::enum(DadCostCategory::class)],
+                'costs.*.description'      => ['nullable', 'string', 'max:500'],
+                'costs.*.estimated_amount' => ['nullable', 'integer', 'min:0'],
+                'costs.*.actual_amount'    => ['nullable', 'integer', 'min:0'],
+                'costs.*.subcontractor_id' => ['nullable', 'integer', 'exists:dad_subcontractors,id'],
+                'costs.*.notes'            => ['nullable', 'string'],
+            ],
+            [
+                'costs.*.cost_category.required' => '原価カテゴリーを選択してください。',
+                'costs.*.cost_category.enum'     => '原価カテゴリーが不正です。',
+                'costs.*.subcontractor_id.exists' => '指定された協力業者が存在しません。',
+            ]
+        )->validate();
+
+        // 数値正規化（カンマ・全角・通貨記号除去は app.blade.php のグローバルリスナーで処理済み想定）
+        return collect($validated['costs'])->map(fn ($row) => [
+            'cost_category'    => $row['cost_category'],
+            'description'      => $row['description'] ?? null,
+            'estimated_amount' => isset($row['estimated_amount']) && $row['estimated_amount'] !== ''
+                ? (int) $row['estimated_amount'] : null,
+            'actual_amount'    => isset($row['actual_amount']) && $row['actual_amount'] !== ''
+                ? (int) $row['actual_amount'] : null,
+            'subcontractor_id' => !empty($row['subcontractor_id']) ? (int) $row['subcontractor_id'] : null,
+            'notes'            => $row['notes'] ?? null,
+        ])->all();
     }
 
     /**
@@ -283,11 +323,16 @@ class ProjectController extends Controller
 
     /**
      * 案件番号自動採番（DAD-NNN）
+     *
+     * 必ず DB::transaction() の内側から呼ぶこと。lockForUpdate() で対象行（および空テーブルの場合は
+     * gap lock）を取得し、同時実行による採番衝突を防ぐ。最後の防衛線として DB の UNIQUE 制約
+     * (uk_dad_projects_code) があるため、二重防御となる。
      */
     private function generateProjectCode(): string
     {
         $last = DadProject::where('project_code', 'like', 'DAD-%')
             ->orderByDesc('id')
+            ->lockForUpdate()
             ->first();
 
         if (!$last) return 'DAD-001';
