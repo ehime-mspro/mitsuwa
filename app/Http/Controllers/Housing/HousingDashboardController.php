@@ -31,6 +31,7 @@ class HousingDashboardController extends Controller
 
         $items = $this->collectContractedItems($fiscalYear, $period);
         $kpi = $this->buildKpi($items);
+        $paginated = $this->paginate($items, 20, $request);
 
         $fiscalYearOptions = $this->buildFiscalYearOptions();
 
@@ -40,7 +41,7 @@ class HousingDashboardController extends Controller
             'fiscalYearOptions' => $fiscalYearOptions,
             'kpi' => $kpi,
             'monthly' => null,
-            'paginated' => null,
+            'paginated' => $paginated,
             'request' => $request,
         ]);
     }
@@ -207,6 +208,27 @@ class HousingDashboardController extends Controller
             'profit_total'   => $profitTotal,
             'profit_rate'    => $profitRate,
         ];
+    }
+
+    /**
+     * Collection を LengthAwarePaginator に変換する
+     */
+    protected function paginate(Collection $items, int $perPage, Request $request): LengthAwarePaginator
+    {
+        $page = max(1, (int) $request->input('page', 1));
+        $offset = ($page - 1) * $perPage;
+        $sliced = $items->slice($offset, $perPage)->values();
+
+        return new LengthAwarePaginator(
+            $sliced,
+            $items->count(),
+            $perPage,
+            $page,
+            [
+                'path' => $request->url(),
+                'query' => $request->query(),
+            ]
+        );
     }
 
     /**

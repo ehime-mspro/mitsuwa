@@ -31,4 +31,6 @@
 
     @include('housing._dashboard_kpi', ['kpi' => $kpi])
 
+    @include('housing._dashboard_contracted', ['paginated' => $paginated])
+
 @endsection
