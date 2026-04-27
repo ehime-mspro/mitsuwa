@@ -37,7 +37,6 @@ class HousingDashboardController extends Controller
             'fiscalYear' => $fiscalYear,
             'period' => $period,
             'fiscalYearOptions' => $fiscalYearOptions,
-            'items' => $items,           // 一時的: 後続タスクで kpi / monthly / paginated に置き換える
             'kpi' => null,
             'monthly' => null,
             'paginated' => null,
@@ -75,10 +74,18 @@ class HousingDashboardController extends Controller
 
         $items = collect();
         foreach ($properties as $p) {
-            $items->push($this->mapPropertyToDto($p));
+            $dto = $this->mapPropertyToDto($p);
+            if ($dto['contracted_date'] === null) {
+                continue;  // 成約日 null は除外（仕様 §5.2 防御的除外）
+            }
+            $items->push($dto);
         }
         foreach ($orders as $o) {
-            $items->push($this->mapOrderToDto($o));
+            $dto = $this->mapOrderToDto($o);
+            if ($dto['contracted_date'] === null) {
+                continue;  // 成約日 null は除外（仕様 §5.2 防御的除外）
+            }
+            $items->push($dto);
         }
 
         // 成約日降順
