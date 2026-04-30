@@ -402,7 +402,9 @@ class ReContractController extends Controller
             'address'        => $procurement->address,
             'purchase_price' => (int) $procurement->purchase_price,
             'costs_total'    => $costsTotal,
-            'cost_amount'    => (int) $procurement->purchase_price + $costsTotal,
+            // 物件購入費は ReProcurement::syncPropertyPurchaseCost() で costs に
+            // 自動同期されるため、cost_amount は costs 合計のみ（二重計上防止）。
+            'cost_amount'    => $costsTotal,
         ]);
     }
 

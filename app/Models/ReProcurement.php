@@ -5,6 +5,8 @@ namespace App\Models;
 use App\Enums\ProcurementStatus;
 use App\Enums\RealEstatePropertyType;
 use App\Enums\RealEstateTransactionType;
+use App\Models\ReCostItem;
+use App\Models\ReProcurementCost;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -166,5 +168,52 @@ class ReProcurement extends Model
             return $this->built_year_month;
         }
         return (int) $parts[0] . '年' . (int) $parts[1] . '月';
+    }
+
+    // ============================================================
+    // ライフサイクルフック
+    // ============================================================
+
+    protected static function booted(): void
+    {
+        static::saved(function (ReProcurement $procurement): void {
+            // 査定価格・購入価格が変更されたとき、または新規作成時のみ同期
+            if ($procurement->wasChanged(['assessment_price', 'purchase_price'])
+                || $procurement->wasRecentlyCreated) {
+                $procurement->syncPropertyPurchaseCost();
+            }
+        });
+    }
+
+    /**
+     * 査定価格→見込み額、購入価格→確定額 を「物件購入費」原価行に自動反映
+     * - 物件購入費 マスタが無ければ自動作成
+     * - 既存の物件購入費 行があれば update、なければ create（重複は発生しない）
+     * - 査定・購入の両方が空の場合は何もしない
+     */
+    public function syncPropertyPurchaseCost(): void
+    {
+        $assessment = $this->assessment_price !== null ? (int) $this->assessment_price : null;
+        $purchase   = $this->purchase_price   !== null ? (int) $this->purchase_price   : null;
+
+        if ($assessment === null && $purchase === null) {
+            return;
+        }
+
+        $costItem = ReCostItem::firstOrCreate(
+            ['name' => '物件購入費'],
+            ['sort_order' => 0, 'is_active' => true],
+        );
+
+        ReProcurementCost::updateOrCreate(
+            [
+                'procurement_id' => $this->id,
+                'cost_item_id'   => $costItem->id,
+            ],
+            [
+                'estimated_amount' => $assessment ?? 0,
+                'actual_amount'    => $purchase,
+            ],
+        );
     }
 }

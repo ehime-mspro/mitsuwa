@@ -166,15 +166,16 @@ class ReContract extends Model
 
     /**
      * 仕入れ案件から原価計算
+     * 物件購入費は ReProcurement::syncPropertyPurchaseCost() で costs に
+     * 自動同期されるため、ここでは costs の合計のみを返す（二重計上防止）。
      */
     public static function calculateCostFromProcurement(ReProcurement $procurement): int
     {
-        $purchasePrice = (int) $procurement->purchase_price;
         $costsTotal = 0;
         foreach ($procurement->costs as $cost) {
             $costsTotal += $cost->actual_amount ?? $cost->estimated_amount;
         }
-        return $purchasePrice + $costsTotal;
+        return $costsTotal;
     }
 
     /**
