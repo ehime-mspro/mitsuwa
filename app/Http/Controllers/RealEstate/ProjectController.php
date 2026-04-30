@@ -101,12 +101,15 @@ class ProjectController extends Controller
         $costsForJs = [];
         foreach ($project->costs as $cost) {
             $costsForJs[] = [
-                'id'               => $cost->id,
-                'cost_item_id'     => $cost->cost_item_id,
-                'cost_item_name'   => $cost->costItem ? $cost->costItem->name : '（削除済み）',
-                'estimated_amount' => $cost->estimated_amount,
-                'actual_amount'    => $cost->actual_amount,
-                'notes'            => $cost->notes ?? '',
+                'id'                   => $cost->id,
+                'cost_item_id'         => $cost->cost_item_id,
+                'cost_item_name'       => $cost->costItem ? $cost->costItem->name : '（削除済み）',
+                'estimated_amount'     => $cost->estimated_amount,
+                'actual_amount'        => $cost->actual_amount,
+                'notes'                => $cost->notes ?? '',
+                // 「物件購入費」は ReProject::syncPropertyPurchaseCost() による自動同期行
+                // → 編集・削除UIを抑止するためのフラグ
+                'is_property_purchase' => $cost->costItem && $cost->costItem->name === '物件購入費',
             ];
         }
 
@@ -287,12 +290,13 @@ class ProjectController extends Controller
         return response()->json([
             'success' => true,
             'cost'    => [
-                'id'               => $cost->id,
-                'cost_item_id'     => $cost->cost_item_id,
-                'cost_item_name'   => $cost->costItem->name,
-                'estimated_amount' => $cost->estimated_amount,
-                'actual_amount'    => $cost->actual_amount,
-                'notes'            => $cost->notes ?? '',
+                'id'                   => $cost->id,
+                'cost_item_id'         => $cost->cost_item_id,
+                'cost_item_name'       => $cost->costItem->name,
+                'estimated_amount'     => $cost->estimated_amount,
+                'actual_amount'        => $cost->actual_amount,
+                'notes'                => $cost->notes ?? '',
+                'is_property_purchase' => $cost->costItem->name === '物件購入費',
             ],
         ]);
     }
@@ -307,6 +311,15 @@ class ProjectController extends Controller
             return response()->json(['error' => '不正なリクエストです。'], 403);
         }
 
+        // 物件購入費は仕入れ情報から自動同期されるため手動更新を禁止
+        $cost->load('costItem');
+        if ($cost->costItem && $cost->costItem->name === '物件購入費') {
+            return response()->json([
+                'success' => false,
+                'message' => '物件購入費は仕入れ情報から自動同期されるため、手動で更新できません。',
+            ], 403);
+        }
+
         $validated = $request->validate([
             'estimated_amount' => 'required|integer|min:0',
             'actual_amount'    => 'nullable|integer|min:0',
@@ -314,17 +327,17 @@ class ProjectController extends Controller
         ]);
 
         $cost->update($validated);
-        $cost->load('costItem');
 
         return response()->json([
             'success' => true,
             'cost'    => [
-                'id'               => $cost->id,
-                'cost_item_id'     => $cost->cost_item_id,
-                'cost_item_name'   => $cost->costItem->name,
-                'estimated_amount' => $cost->estimated_amount,
-                'actual_amount'    => $cost->actual_amount,
-                'notes'            => $cost->notes ?? '',
+                'id'                   => $cost->id,
+                'cost_item_id'         => $cost->cost_item_id,
+                'cost_item_name'       => $cost->costItem->name,
+                'estimated_amount'     => $cost->estimated_amount,
+                'actual_amount'        => $cost->actual_amount,
+                'notes'                => $cost->notes ?? '',
+                'is_property_purchase' => $cost->costItem->name === '物件購入費',
             ],
         ]);
     }
@@ -337,6 +350,15 @@ class ProjectController extends Controller
     {
         if ($cost->project_id !== $project->id) {
             return response()->json(['error' => '不正なリクエストです。'], 403);
+        }
+
+        // 物件購入費は仕入れ情報から自動同期されるため手動削除を禁止
+        $cost->load('costItem');
+        if ($cost->costItem && $cost->costItem->name === '物件購入費') {
+            return response()->json([
+                'success' => false,
+                'message' => '物件購入費は仕入れ情報から自動同期されるため、手動で削除できません。',
+            ], 403);
         }
 
         $cost->delete();

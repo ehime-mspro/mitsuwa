@@ -62,7 +62,6 @@
                         <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">想定総販売価格</th>
                         <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">粗利見込み</th>
                         <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">区画数</th>
-                        <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">情報入手日</th>
                         <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">マップ</th>
                         <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">区画</th>
                         <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">詳細</th>
@@ -112,7 +111,6 @@
                                     0 / 0
                                 @endif
                             </td>
-                            <td class="px-3 py-3 border-b border-gray-100 text-sm text-center whitespace-nowrap">{{ $pj->info_obtained_date?->format('Y/m/d') ?? '—' }}</td>
                             {{-- マップボタン（青） --}}
                             <td class="px-3 py-3 border-b border-gray-100 text-center whitespace-nowrap">
                                 @if($pj->latitude && $pj->longitude)
@@ -135,7 +133,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="11" class="px-5 py-10 text-center text-sm text-gray-400">分譲地プロジェクトデータがありません。</td>
+                            <td colspan="10" class="px-5 py-10 text-center text-sm text-gray-400">分譲地プロジェクトデータがありません。</td>
                         </tr>
                     @endforelse
                 </tbody>

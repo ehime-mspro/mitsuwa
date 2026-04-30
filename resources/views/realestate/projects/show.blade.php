@@ -236,8 +236,11 @@
                 <tbody>
                     <template x-for="(cost, idx) in costs" :key="cost.id">
                         <tr class="hover:bg-gray-50 border-b border-gray-100">
-                            <td x-text="cost.cost_item_name"
-    :style="editingCostId === cost.id ? 'font-size: 13px; padding: 8px 16px;' : 'font-size: 13px; padding: 11px 16px;'"></td>
+                            <td :style="editingCostId === cost.id ? 'font-size: 13px; padding: 8px 16px;' : 'font-size: 13px; padding: 11px 16px;'">
+                                <span x-text="cost.cost_item_name"></span>
+                                <span x-show="cost.is_property_purchase"
+                                      style="display: inline-block; margin-left: 8px; padding: 1px 6px; font-size: 10px; font-weight: 600; color: #92400e; background: #fef3c7; border-radius: 4px; vertical-align: middle;">自動</span>
+                            </td>
                             <td :style="editingCostId === cost.id ? 'padding: 8px 8px;' : 'padding: 11px 16px; font-size: 13px; text-align: right;'">
                                 <div x-show="editingCostId === cost.id">
                                     <input type="number" x-model.number="editCost.estimated_amount" class="w-full h-8 px-2 border border-gray-300 rounded text-sm text-right focus:border-emerald-500 focus:outline-none">
@@ -264,13 +267,16 @@
                                     <button @click="saveCost(cost)" class="bg-emerald-600 text-white text-xs font-semibold rounded hover:bg-emerald-700 cursor-pointer" style="padding: 2px 8px;">保存</button>
                                     <button @click="cancelEditCost()" class="bg-gray-100 text-gray-600 text-xs font-semibold rounded hover:bg-gray-200 cursor-pointer ml-1" style="padding: 2px 8px;">取消</button>
                                 </div>
-                                <div x-show="editingCostId !== cost.id">
+                                <div x-show="editingCostId !== cost.id && !cost.is_property_purchase">
                                     @if(auth()->user()->role->isManagerOrAbove())
                                         <button @click="startEditCost(cost)" class="inline-block text-xs font-semibold text-emerald-600 rounded bg-white hover:bg-emerald-50 cursor-pointer" style="border: 1px solid #059669; padding: 2px 10px;">編集</button>
                                     @endif
                                     @if(auth()->user()->role->isExecutive())
                                         <button @click="deleteCost(cost)" class="inline-block text-xs font-semibold text-red-600 rounded bg-white cursor-pointer ml-1" style="border: 1px solid #dc2626; padding: 2px 10px;">削除</button>
                                     @endif
+                                </div>
+                                <div x-show="editingCostId !== cost.id && cost.is_property_purchase" class="text-xs text-gray-400">
+                                    自動同期
                                 </div>
                             </td>
                         </tr>

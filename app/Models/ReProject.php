@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use App\Enums\ProjectStatus;
+use App\Models\ReCostItem;
+use App\Models\ReProjectCost;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -184,5 +186,52 @@ class ReProject extends Model
         return $this->lots->every(function ($lot) {
             return $lot->selling_price !== null && $lot->selling_price > 0;
         });
+    }
+
+    // ============================================================
+    // ライフサイクルフック
+    // ============================================================
+
+    protected static function booted(): void
+    {
+        static::saved(function (ReProject $project): void {
+            // 査定価格・購入価格が変更されたとき、または新規作成時のみ同期
+            if ($project->wasChanged(['assessment_price', 'purchase_price'])
+                || $project->wasRecentlyCreated) {
+                $project->syncPropertyPurchaseCost();
+            }
+        });
+    }
+
+    /**
+     * 査定価格→見込み額、購入価格→確定額 を「物件購入費」原価行に自動反映
+     * - 物件購入費 マスタが無ければ自動作成
+     * - 既存の物件購入費 行があれば update、なければ create（重複は発生しない）
+     * - 査定・購入の両方が空の場合は何もしない
+     */
+    public function syncPropertyPurchaseCost(): void
+    {
+        $assessment = $this->assessment_price !== null ? (int) $this->assessment_price : null;
+        $purchase   = $this->purchase_price   !== null ? (int) $this->purchase_price   : null;
+
+        if ($assessment === null && $purchase === null) {
+            return;
+        }
+
+        $costItem = ReCostItem::firstOrCreate(
+            ['name' => '物件購入費'],
+            ['sort_order' => 0, 'is_active' => true],
+        );
+
+        ReProjectCost::updateOrCreate(
+            [
+                'project_id'   => $this->id,
+                'cost_item_id' => $costItem->id,
+            ],
+            [
+                'estimated_amount' => $assessment ?? 0,
+                'actual_amount'    => $purchase,
+            ],
+        );
     }
 }
