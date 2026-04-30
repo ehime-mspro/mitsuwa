@@ -113,7 +113,7 @@
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
                 マップで確認
             </button>
-            <span class="text-xs text-gray-500">所在地を入力してからボタンを押してください</span>
+            <span class="text-xs text-gray-500">住所からピン位置を検索します。空欄でも地図上でピンを配置できます</span>
         </div>
 
         <div id="map-status" style="display: none; padding: 8px 14px; border-radius: 6px; font-size: 13px; margin-bottom: 8px;"></div>
@@ -258,6 +258,9 @@ var procMap = null;
 var procMarker = null;
 var procGeocoder = null;
 
+// 既定の中心位置（松山市役所付近）— 住所空欄/全失敗時のフォールバック
+var PROC_DEFAULT_CENTER = { lat: 33.8392, lng: 132.7657, zoom: 13 };
+
 function onGoogleMapsReady() {
     procGeocoder = new google.maps.Geocoder();
 
@@ -265,36 +268,107 @@ function onGoogleMapsReady() {
     var savedLat = document.getElementById('input-latitude').value;
     var savedLng = document.getElementById('input-longitude').value;
     if (savedLat && savedLng) {
-        showProcMap(parseFloat(savedLat), parseFloat(savedLng));
+        showProcMap(parseFloat(savedLat), parseFloat(savedLng), 17);
     }
+}
+
+// 住所を段階的に短くしてフォールバック候補を生成
+// 例: "愛媛県松山市勝山町2丁目4-7" →
+//   [フル, "愛媛県松山市勝山町2丁目"(番地除去), "愛媛県松山市勝山町"(丁目除去), "愛媛県松山市", "愛媛県"]
+function buildProcAddressFallbacks(address) {
+    var candidates = [{ address: address, level: 'full', zoom: 17 }];
+
+    // 末尾の番地（"4-7"、"5番地3号"など）を除去
+    var stripped = address
+        .replace(/[\d０-９]+(?:[-‐−ー－―][\d０-９]+)+(?:号)?$/, '')
+        .replace(/[\d０-９]+番地?(?:[\d０-９]+号?)?$/, '')
+        .trim();
+    if (stripped && stripped !== address) {
+        candidates.push({ address: stripped, level: 'block', zoom: 16 });
+    }
+
+    // 丁目以下を除去
+    stripped = address.replace(/[\d０-９]+丁目.*$/, '').trim();
+    if (stripped && !candidates.some(function(c) { return c.address === stripped; })) {
+        candidates.push({ address: stripped, level: 'town', zoom: 15 });
+    }
+
+    // 市区町村まで
+    var cityMatch = address.match(/^.*?[市区町村]/);
+    if (cityMatch) {
+        var cityLevel = cityMatch[0];
+        if (!candidates.some(function(c) { return c.address === cityLevel; })) {
+            candidates.push({ address: cityLevel, level: 'city', zoom: 13 });
+        }
+    }
+
+    // 都道府県のみ
+    var prefMatch = address.match(/^.*?[都道府県]/);
+    if (prefMatch) {
+        var prefLevel = prefMatch[0];
+        if (!candidates.some(function(c) { return c.address === prefLevel; })) {
+            candidates.push({ address: prefLevel, level: 'prefecture', zoom: 10 });
+        }
+    }
+
+    return candidates;
+}
+
+// 候補を順番にジオコードして最初にヒットしたものを返す
+function tryGeocodeProcCandidates(candidates, index, callback) {
+    if (index >= candidates.length) {
+        callback(null);
+        return;
+    }
+    var candidate = candidates[index];
+    procGeocoder.geocode({ address: candidate.address }, function(results, status) {
+        if (status === 'OK' && results[0]) {
+            callback({
+                location: results[0].geometry.location,
+                level: candidate.level,
+                zoom: candidate.zoom,
+                matchedAddress: candidate.address
+            });
+        } else {
+            tryGeocodeProcCandidates(candidates, index + 1, callback);
+        }
+    });
 }
 
 function geocodeAddress() {
     var addressInput = document.querySelector('input[name="address"]');
     var address = addressInput ? addressInput.value.trim() : '';
 
-    if (!address) {
-        showMapStatus('所在地を入力してください。', '#fee2e2', '#991b1b');
+    if (!procGeocoder) {
+        showMapStatus('Google Maps を読み込み中です。しばらくお待ちください。', '#fef3c7', '#92400e');
         return;
     }
 
-    if (!procGeocoder) {
-        showMapStatus('Google Maps を読み込み中です。しばらくお待ちください。', '#fef3c7', '#92400e');
+    // 住所が空欄 → 既定の松山市中心を表示してピン操作を促す
+    if (!address) {
+        showMapStatus('所在地が空欄です。松山市中心を表示しています。地図をクリックして位置を指定してください。', '#dbeafe', '#1e40af');
+        showProcMap(PROC_DEFAULT_CENTER.lat, PROC_DEFAULT_CENTER.lng, PROC_DEFAULT_CENTER.zoom);
         return;
     }
 
     showMapStatus('住所を検索中...', '#fef3c7', '#92400e');
     document.getElementById('btn-geocode').disabled = true;
 
-    procGeocoder.geocode({ address: address }, function(results, status) {
+    var candidates = buildProcAddressFallbacks(address);
+
+    tryGeocodeProcCandidates(candidates, 0, function(result) {
         document.getElementById('btn-geocode').disabled = false;
 
-        if (status === 'OK' && results[0]) {
-            var loc = results[0].geometry.location;
-            showMapStatus('住所が見つかりました。ピンをドラッグして正確な位置に調整できます。', '#d1fae5', '#065f46');
-            showProcMap(loc.lat(), loc.lng());
+        if (result) {
+            if (result.level === 'full') {
+                showMapStatus('住所が見つかりました。ピンをドラッグして正確な位置に調整できます。', '#d1fae5', '#065f46');
+            } else {
+                showMapStatus('「' + result.matchedAddress + '」までヒットしました。地図をクリックして正確な位置を指定してください。', '#fef3c7', '#92400e');
+            }
+            showProcMap(result.location.lat(), result.location.lng(), result.zoom);
         } else {
-            showMapStatus('住所が見つかりませんでした。住所を修正して再度お試しください。', '#fee2e2', '#991b1b');
+            showMapStatus('住所が見つかりませんでした。松山市中心を表示しています。地図をクリックして位置を指定してください。', '#fef3c7', '#92400e');
+            showProcMap(PROC_DEFAULT_CENTER.lat, PROC_DEFAULT_CENTER.lng, PROC_DEFAULT_CENTER.zoom);
         }
     });
 }
@@ -307,14 +381,16 @@ function showMapStatus(msg, bg, color) {
     el.textContent = msg;
 }
 
-function showProcMap(lat, lng) {
+function showProcMap(lat, lng, zoom) {
     var wrap = document.getElementById('map-wrap');
     wrap.style.display = 'block';
+
+    if (typeof zoom !== 'number') zoom = 17;
 
     if (!procMap) {
         procMap = new google.maps.Map(document.getElementById('procurement-map'), {
             center: { lat: lat, lng: lng },
-            zoom: 17,
+            zoom: zoom,
             mapTypeControl: true,
             streetViewControl: true,
             fullscreenControl: false
@@ -338,6 +414,7 @@ function showProcMap(lat, lng) {
         });
     } else {
         procMap.setCenter({ lat: lat, lng: lng });
+        procMap.setZoom(zoom);
         procMarker.setPosition({ lat: lat, lng: lng });
     }
 
