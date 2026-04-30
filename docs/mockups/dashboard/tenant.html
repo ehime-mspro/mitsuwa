@@ -307,6 +307,20 @@ body {
   margin-bottom: 12px;
   border-bottom: 1px solid var(--gray-100);
   padding-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ビル名左の縦アクセント（黄色系） */
+.building-card-name::before {
+  content: '';
+  display: block;
+  width: 3px;
+  height: 14px;
+  background: var(--amber-600);
+  border-radius: 2px;
+  flex-shrink: 0;
 }
 
 .building-stats {
@@ -530,12 +544,11 @@ body {
     <!-- メインカード：全体合計 -->
     <div class="summary-main">
       <div class="summary-main-header">
-        <span class="summary-main-badge">全 体</span>
-        <span class="summary-main-title">テナントビル合計</span>
+        <span class="summary-main-badge">ビル合計</span>
       </div>
       <div class="summary-main-grid">
         <div class="summary-main-cell">
-          <div class="summary-main-label">収入想定（FY2025 年間）</div>
+          <div class="summary-main-label">収入想定（2025年度）</div>
           <div>
             <span class="summary-main-value">38,950,000</span>
             <span class="summary-main-unit">円</span>
@@ -558,7 +571,7 @@ body {
     <!-- 「実績」サブタイトル（全体カードとビル別カードの間） -->
     <div class="section-heading" style="margin-top: 40px;">
       <div class="section-accent teal"></div>
-      <span class="section-label">実績</span>
+      <span class="section-label">3月実績</span>
       <div class="section-divider"></div>
     </div>
 

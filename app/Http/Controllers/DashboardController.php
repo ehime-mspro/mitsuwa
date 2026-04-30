@@ -95,11 +95,14 @@ class DashboardController extends Controller
         $projection      = $this->calculateAnnualIncomeProjection($fy);
         $overallOccupancy = $this->calculateOverallTenantOccupancy();
 
-        // ビル別カード用データ
+        // ビル別カード用データ（前月実績）
         $buildings = $this->aggregateBuildingStats();
 
         // 実績期間 / 予想期間のラベル（例: 「実績 35,700,000円（5〜3月）＋ 予想 3,250,000円（4月）」）
         $labels = $this->buildProjectionLabels($fy);
+
+        // ビル別カードのサブタイトル（例: 「3月実績」）。当月は集計未確定のため前月を表示する。
+        $previousMonthLabel = now()->subMonth()->month . '月実績';
 
         return view('dashboard.tenant', [
             'fiscalYear'         => $fy,
@@ -108,6 +111,7 @@ class DashboardController extends Controller
             'buildings'          => $buildings,
             'actualLabel'        => $labels['actual'],
             'projectedLabel'     => $labels['projected'],
+            'previousMonthLabel' => $previousMonthLabel,
         ]);
     }
 
@@ -813,32 +817,53 @@ class DashboardController extends Controller
     }
 
     /**
-     * テナントビルごとの月次収入と入居率を集計する。
+     * テナントビルごとの「前月実績」収入と入居率を集計する。
+     *
+     * - 収入: 前月内に有効だった契約（contract_date <= 前月末 かつ
+     *   contract_end_date が null または前月初以降）の monthly_total 合計。
+     * - 入居率: 前月末時点で有効な契約を持つ unit 数 ÷ 総 unit 数。
      *
      * @return Collection<int, array{id:int, name:string, monthly_income:int, occupancy_rate:float}>
      */
     private function aggregateBuildingStats(): Collection
     {
+        $prevMonth      = now()->subMonth();
+        $prevMonthStart = $prevMonth->copy()->startOfMonth();
+        $prevMonthEnd   = $prevMonth->copy()->endOfMonth();
+
         $properties = Property::where('department', DepartmentCode::Tenant->value)
             ->where('operation_status', OperationStatus::Active->value)
             ->with([
                 'units',
-                'contracts' => fn($q) => $q->where('status', ContractStatus::Active->value),
+                // 前月内に有効だった契約のみ eager load（解約済みも含む）
+                'contracts' => function ($q) use ($prevMonthStart, $prevMonthEnd) {
+                    $q->where('contract_date', '<=', $prevMonthEnd)
+                      ->where(function ($qq) use ($prevMonthStart) {
+                          $qq->whereNull('contract_end_date')
+                             ->orWhere('contract_end_date', '>=', $prevMonthStart);
+                      });
+                },
             ])
-            ->orderBy('name')
+            ->orderBy('id')  // 登録順
             ->get();
 
-        return $properties->map(function (Property $property) {
-            $totalUnits    = $property->units->count();
-            $occupiedUnits = $property->units
-                ->where('status', UnitStatus::Occupied)
+        return $properties->map(function (Property $property) use ($prevMonthEnd) {
+            $totalUnits = $property->units->count();
+
+            // 前月実績の収入: 前月内に有効だった契約の月額合計
+            $monthlyIncome = (int) $property->contracts->sum('monthly_total');
+
+            // 前月末時点で有効な契約を持つ unit 数（contract_end_date が null または前月末以降）
+            $occupiedUnitIds = $property->contracts
+                ->filter(fn($contract) => $contract->contract_end_date === null
+                    || $contract->contract_end_date->greaterThanOrEqualTo($prevMonthEnd))
+                ->pluck('unit_id')
+                ->unique()
                 ->count();
 
             $occupancy = $totalUnits > 0
-                ? round($occupiedUnits / $totalUnits * 100, 1)
+                ? round($occupiedUnitIds / $totalUnits * 100, 1)
                 : 0.0;
-
-            $monthlyIncome = (int) $property->contracts->sum('monthly_total');
 
             return [
                 'id'             => $property->id,

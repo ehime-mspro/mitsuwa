@@ -1,14 +1,13 @@
 {{-- テナントダッシュボード: 全体カード（収入想定 + 入居率） --}}
 <div class="summary-main">
     <div class="summary-main-header">
-        <span class="summary-main-badge">全 体</span>
-        <span class="summary-main-title">テナントビル合計</span>
+        <span class="summary-main-badge">ビル合計</span>
     </div>
 
     <div class="summary-main-grid">
         {{-- 左セル: 収入想定（実績 + 予想） --}}
         <div class="summary-main-cell">
-            <div class="summary-main-label">収入想定（FY{{ $fiscalYear }} 年間）</div>
+            <div class="summary-main-label">収入想定（{{ $fiscalYear }}年度）</div>
             <div>
                 <span class="summary-main-value">{{ number_format($projection['total']) }}</span>
                 <span class="summary-main-unit">円</span>

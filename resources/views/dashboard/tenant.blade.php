@@ -214,6 +214,20 @@
     margin-bottom: 12px;
     border-bottom: 1px solid var(--gray-100);
     padding-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* ビル名左の縦アクセント（黄色系） */
+.tenant-dashboard .building-card-name::before {
+    content: '';
+    display: block;
+    width: 3px;
+    height: 14px;
+    background: var(--amber-600);
+    border-radius: 2px;
+    flex-shrink: 0;
 }
 
 .tenant-dashboard .building-stats {
@@ -272,10 +286,10 @@
     <div class="section">
         @include('dashboard._tenant_summary_main')
 
-        {{-- 「実績」サブタイトル（全体カードとビル別カードの間） --}}
+        {{-- 「実績」サブタイトル（全体カードとビル別カードの間: 前月の月数） --}}
         <div class="section-heading" style="margin-top: 40px;">
             <div class="section-accent teal"></div>
-            <span class="section-label">実績</span>
+            <span class="section-label">{{ $previousMonthLabel }}</span>
             <div class="section-divider"></div>
         </div>
 
