@@ -98,7 +98,7 @@ class CustomerController extends Controller
         // 当該部署の有効設問
         $questions = SurveyQuestion::ofDepartment($department)->active()->ordered()->get();
 
-        // 住宅事業: 分譲地PJリスト、担当者リスト
+        // 住宅事業: 分譲地リスト、担当者リスト
         $projects = [];
         $staffList = [];
         if ($department === 'housing') {

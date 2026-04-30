@@ -99,7 +99,7 @@ class HsCustomOrder extends Model
     // ============================================================
 
     /**
-     * 自社土地か（分譲地PJ区画 or 仕入れ案件）
+     * 自社土地か（分譲地区画 or 仕入れ案件）
      */
     public function isCompanyLand(): bool
     {

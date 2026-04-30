@@ -74,7 +74,7 @@ class ZoningTypeController extends Controller
      */
     public function destroy(ZoningType $zoningType)
     {
-        // 不動産案件で使用中か確認（仕入れ・分譲地PJ）
+        // 不動産案件で使用中か確認（仕入れ・分譲地）
         $inUse = DB::table('re_procurements')
             ->where('zoning', $zoningType->name)
             ->exists()

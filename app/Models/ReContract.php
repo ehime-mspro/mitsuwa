@@ -179,7 +179,7 @@ class ReContract extends Model
     }
 
     /**
-     * 分譲地PJから区画あたり原価計算
+     * 分譲地から区画あたり原価計算
      */
     public static function calculateCostFromProject(ReProject $project): int
     {

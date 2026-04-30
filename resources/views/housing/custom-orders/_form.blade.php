@@ -79,7 +79,7 @@
             <div class="flex gap-3" style="flex-wrap: wrap;">
                 @php
                     $landTypes = [
-                        ['value' => 'project_lot', 'label' => '分譲地PJ区画'],
+                        ['value' => 'project_lot', 'label' => '分譲地区画'],
                         ['value' => 'procurement', 'label' => '仕入れ案件'],
                         ['value' => 'customer_land', 'label' => 'お客様所有土地'],
                     ];
@@ -97,12 +97,12 @@
             @error('land_source_type') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
         </div>
 
-        {{-- 分譲地PJ区画 選択 --}}
+        {{-- 分譲地区画 選択 --}}
         <div x-show="landSourceType === 'project_lot'" class="bg-white border border-gray-200 rounded-lg p-4 mt-3" style="border-style: dashed;">
-            <p class="text-xs font-semibold text-gray-500 mb-2">分譲地PJ区画を選択</p>
+            <p class="text-xs font-semibold text-gray-500 mb-2">分譲地区画を選択</p>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                    <label class="block text-sm font-semibold text-gray-700 mb-1">分譲地プロジェクト</label>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">分譲地</label>
                     <select x-model="selectedProjectId" @change="onProjectChange()"
                             class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none cursor-pointer">
                         <option value="">— PJを選択 —</option>

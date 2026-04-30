@@ -307,7 +307,7 @@ class HsContractListController extends Controller
             }
         }
 
-        // 仕入れ案件 / 分譲地PJ区画リスト（プルダウン選択用）
+        // 仕入れ案件 / 分譲地区画リスト（プルダウン選択用）
         $procurements = ReProcurement::orderBy('procurement_code')->get();
         $projectLots = ReProjectLot::with('project')->orderBy('id')->get();
 

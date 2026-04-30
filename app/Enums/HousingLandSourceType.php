@@ -11,7 +11,7 @@ enum HousingLandSourceType: string
     public function label(): string
     {
         return match ($this) {
-            self::ProjectLot   => '分譲地PJ区画',
+            self::ProjectLot   => '分譲地区画',
             self::Procurement  => '仕入れ案件',
             self::CustomerLand => 'お客様所有土地',
         };

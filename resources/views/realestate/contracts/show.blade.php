@@ -183,7 +183,7 @@
 
             {{-- 分譲地: PJ・区画リンク --}}
             @if($contract->contract_type->isSubdivision() && $contract->project)
-                <dt class="bg-gray-50 px-3.5 py-2.5 text-sm text-gray-600 font-medium border-t border-r border-gray-200">分譲地PJ</dt>
+                <dt class="bg-gray-50 px-3.5 py-2.5 text-sm text-gray-600 font-medium border-t border-r border-gray-200">分譲地</dt>
                 <dd class="px-3.5 py-2.5 text-sm border-t border-gray-200" style="grid-column: span 3;">
                     <a href="{{ route('realestate.projects.show', $contract->project) }}" class="text-emerald-600 hover:underline">{{ $contract->project->project_code }} — {{ $contract->project->project_name }}</a>
                     @if($contract->lot)

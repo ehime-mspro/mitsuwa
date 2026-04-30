@@ -1,19 +1,19 @@
 @extends('layouts.app')
 
-@section('title', '分譲地PJ 新規登録')
+@section('title', '分譲地 新規登録')
 
 @section('breadcrumb')
     <span class="mx-1.5">›</span>
     <span>不動産管理</span>
     <span class="mx-1.5">›</span>
-    <a href="{{ route('realestate.projects.index') }}" class="hover:text-emerald-600 transition-colors">分譲地PJ一覧</a>
+    <a href="{{ route('realestate.projects.index') }}" class="hover:text-emerald-600 transition-colors">分譲地一覧</a>
     <span class="mx-1.5">›</span>
     <span class="text-gray-600">新規登録</span>
 @endsection
 
 @section('content')
 
-    <h1 class="text-lg font-bold text-gray-900 mb-5">分譲地プロジェクト 新規登録</h1>
+    <h1 class="text-lg font-bold text-gray-900 mb-5">分譲地 新規登録</h1>
 
     @if($errors->any())
         <div class="mb-4 rounded-lg border border-red-200 bg-red-50 p-3">

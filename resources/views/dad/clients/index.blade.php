@@ -4,7 +4,7 @@
 
 @section('breadcrumb')
     <span class="mx-1.5">›</span>
-    <span>DAD（土木事業）</span>
+    <span>DAD</span>
     <span class="mx-1.5">›</span>
     <span class="text-gray-600">発注者管理</span>
 @endsection

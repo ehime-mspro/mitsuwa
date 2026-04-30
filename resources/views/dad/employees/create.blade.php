@@ -4,7 +4,7 @@
 
 @section('breadcrumb')
     <span class="mx-1.5">›</span>
-    <span>DAD（土木事業）</span>
+    <span>DAD</span>
     <span class="mx-1.5">›</span>
     <a href="{{ route('dad.employees.index') }}" class="text-emerald-600 hover:text-emerald-700">従業員管理</a>
     <span class="mx-1.5">›</span>

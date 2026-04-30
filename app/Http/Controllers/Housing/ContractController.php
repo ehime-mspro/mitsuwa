@@ -53,7 +53,7 @@ class ContractController extends Controller
 
         $contract = HsContract::create($validated);
 
-        // 分譲地PJ区画のステータスを「成約」に自動更新
+        // 分譲地区画のステータスを「成約」に自動更新
         $this->updateLotStatusOnSold($property);
 
         return redirect()
@@ -117,7 +117,7 @@ class ContractController extends Controller
 
         $contract->delete();
 
-        // 分譲地PJ区画のステータスを「販売中」に戻す
+        // 分譲地区画のステータスを「販売中」に戻す
         $this->updateLotStatusOnUnsold($property);
 
         return redirect()
@@ -195,7 +195,7 @@ class ContractController extends Controller
     }
 
     /**
-     * 契約登録時: 分譲地PJ区画を「成約」に更新
+     * 契約登録時: 分譲地区画を「成約」に更新
      */
     private function updateLotStatusOnSold(HsProperty $property): void
     {
@@ -208,7 +208,7 @@ class ContractController extends Controller
     }
 
     /**
-     * 契約削除時: 分譲地PJ区画を「販売中」に戻す
+     * 契約削除時: 分譲地区画を「販売中」に戻す
      */
     private function updateLotStatusOnUnsold(HsProperty $property): void
     {

@@ -75,7 +75,7 @@
                 <div class="section-title">案件情報</div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 26px;">
                     <div class="fg">
-                        <label>分譲地PJ <span class="req">*</span></label>
+                        <label>分譲地 <span class="req">*</span></label>
                         <select name="project_id" x-model="projectId" @change="onProjectChange()"
                                 :disabled="!isSubdivision()">
                             <option value="">— 販売中のPJから選択 —</option>
@@ -100,7 +100,7 @@
 
                 {{-- PJ原価ボックス --}}
                 <div x-show="projCost" style="display: none;" class="cost-ref-box">
-                    <div class="cost-ref-title">📋 分譲地PJ原価（按分計算・自動参照）</div>
+                    <div class="cost-ref-title">📋 分譲地原価（按分計算・自動参照）</div>
                     <div class="cost-ref-row"><span>PJ原価合計</span><span x-text="projCost ? Number(projCost.total_cost).toLocaleString() + '円' : ''"></span></div>
                     <div class="cost-ref-row"><span>全区画数</span><span x-text="projCost ? projCost.lot_count + '区画' : ''"></span></div>
                     <div class="cost-ref-total"><span>区画あたり原価（按分）</span><span x-text="projCost ? Number(projCost.per_lot_cost).toLocaleString() + '円' : ''"></span></div>

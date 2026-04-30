@@ -88,7 +88,7 @@
     @if($hasRealEstateAccess)
         <x-sidebar-group label="不動産管理">
             <x-sidebar-item :href="url('/realestate/procurements')" label="仕入れ案件" :active="request()->is('realestate/procurements*')" />
-            <x-sidebar-item :href="url('/realestate/projects')" label="分譲地プロジェクト" :active="request()->is('realestate/projects*')" />
+            <x-sidebar-item :href="url('/realestate/projects')" label="分譲地" :active="request()->is('realestate/projects*')" />
             <x-sidebar-item :href="url('/realestate/suppliers')" label="仕入れ先管理" :active="request()->is('realestate/suppliers*')" />
             <x-sidebar-item :href="url('/realestate/customers')" label="顧客管理" :active="request()->is('realestate/customers*')" />
             <x-sidebar-item :href="url('/realestate/contracts')" label="契約管理" :active="request()->is('realestate/contracts*')" />
@@ -106,9 +106,9 @@
         </x-sidebar-group>
     @endif
 
-    {{-- DAD（土木事業） --}}
+    {{-- DAD --}}
     @if($hasDadAccess)
-        <x-sidebar-group label="DAD（土木事業）">
+        <x-sidebar-group label="DAD">
             <x-sidebar-item :href="url('/dad/projects')" label="工事案件" :active="request()->is('dad/projects*')" />
             <x-sidebar-item :href="url('/dad/clients')" label="発注者管理" :active="request()->is('dad/clients*')" />
             <x-sidebar-item :href="url('/dad/subcontractors')" label="協力業者管理" :active="request()->is('dad/subcontractors*')" />
@@ -232,9 +232,9 @@
         </a>
     @endif
 
-    {{-- DAD（土木事業） --}}
+    {{-- DAD --}}
     @if($hasDadAccess)
-        <a href="{{ url('/dad/projects') }}" title="DAD（土木事業）" class="w-9 h-9 mb-1 rounded-lg flex items-center justify-center {{ request()->is('dad/*') ? 'bg-emerald-50' : 'hover:bg-gray-100' }} transition-colors">
+        <a href="{{ url('/dad/projects') }}" title="DAD" class="w-9 h-9 mb-1 rounded-lg flex items-center justify-center {{ request()->is('dad/*') ? 'bg-emerald-50' : 'hover:bg-gray-100' }} transition-colors">
             <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="{{ request()->is('dad/*') ? '#059669' : '#6B7280' }}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M3 21h18M5 21V10l7-5 7 5v11M9 21v-6h6v6" /><circle cx="12" cy="13" r="0.5" />
             </svg>
@@ -316,7 +316,7 @@
     @if($hasRealEstateAccess)
         <x-sidebar-group label="不動産管理">
             <x-sidebar-item :href="url('/realestate/procurements')" label="仕入れ案件" :active="request()->is('realestate/procurements*')" />
-            <x-sidebar-item :href="url('/realestate/projects')" label="分譲地プロジェクト" :active="request()->is('realestate/projects*')" />
+            <x-sidebar-item :href="url('/realestate/projects')" label="分譲地" :active="request()->is('realestate/projects*')" />
             <x-sidebar-item :href="url('/realestate/suppliers')" label="仕入れ先管理" :active="request()->is('realestate/suppliers*')" />
             <x-sidebar-item :href="url('/realestate/customers')" label="顧客管理" :active="request()->is('realestate/customers*')" />
             <x-sidebar-item :href="url('/realestate/contracts')" label="契約管理" :active="request()->is('realestate/contracts*')" />
@@ -334,7 +334,7 @@
     @endif
 
     @if($hasDadAccess)
-        <x-sidebar-group label="DAD（土木事業）">
+        <x-sidebar-group label="DAD">
             <x-sidebar-item :href="url('/dad/projects')" label="工事案件" :active="request()->is('dad/projects*')" />
             <x-sidebar-item :href="url('/dad/clients')" label="発注者管理" :active="request()->is('dad/clients*')" />
             <x-sidebar-item :href="url('/dad/subcontractors')" label="協力業者管理" :active="request()->is('dad/subcontractors*')" />

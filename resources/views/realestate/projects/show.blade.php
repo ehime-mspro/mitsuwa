@@ -6,7 +6,7 @@
     <span class="mx-1.5">›</span>
     <span>不動産管理</span>
     <span class="mx-1.5">›</span>
-    <a href="{{ route('realestate.projects.index') }}" class="hover:text-emerald-600 transition-colors">分譲地PJ一覧</a>
+    <a href="{{ route('realestate.projects.index') }}" class="hover:text-emerald-600 transition-colors">分譲地一覧</a>
     <span class="mx-1.5">›</span>
     <span class="text-gray-600">{{ $project->project_code }}</span>
 @endsection
@@ -22,14 +22,14 @@
         </div>
         <div style="display: flex; gap: 8px; align-items: center;">
             <a href="{{ route('realestate.projects.index') }}"
-               style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #6b7280; border: 1px solid #d1d5db; border-radius: 6px; text-decoration: none; background: #fff;">分譲地PJ一覧に戻る</a>
+               style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #6b7280; border: 1px solid #d1d5db; border-radius: 6px; text-decoration: none; background: #fff;">分譲地一覧に戻る</a>
             @if(auth()->user()->role->isManagerOrAbove())
                 <a href="{{ route('realestate.projects.edit', $project) }}"
                    style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #059669; border: 1px solid #059669; border-radius: 6px; text-decoration: none; background: #fff;">編集</a>
             @endif
             @if(auth()->user()->role->isExecutive())
                 <form method="POST" action="{{ route('realestate.projects.destroy', $project) }}"
-                      onsubmit="return confirm('この分譲地PJを削除しますか？ 原価・区画・図面データも全て削除されます。')">
+                      onsubmit="return confirm('この分譲地を削除しますか？ 原価・区画・図面データも全て削除されます。')">
                     @csrf @method('DELETE')
                     <button type="submit"
                             style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #dc2626; border: 1px solid #dc2626; border-radius: 6px; background: #fff; cursor: pointer;">削除</button>

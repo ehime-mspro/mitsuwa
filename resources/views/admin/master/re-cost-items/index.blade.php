@@ -161,7 +161,7 @@
 
     {{-- フッター情報 --}}
     <div class="mt-4 text-xs text-gray-400">
-        <p>全 <span x-text="items.length"></span> 件 — 仕入れ案件・分譲地プロジェクトの原価管理で使用されます。</p>
+        <p>全 <span x-text="items.length"></span> 件 — 仕入れ案件・分譲地の原価管理で使用されます。</p>
     </div>
 
     {{-- 非表示フォーム --}}

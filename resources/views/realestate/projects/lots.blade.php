@@ -6,7 +6,7 @@
     <span class="mx-1.5">›</span>
     <span>不動産管理</span>
     <span class="mx-1.5">›</span>
-    <a href="{{ route('realestate.projects.index') }}" class="hover:text-emerald-600 transition-colors">分譲地PJ一覧</a>
+    <a href="{{ route('realestate.projects.index') }}" class="hover:text-emerald-600 transition-colors">分譲地一覧</a>
     <span class="mx-1.5">›</span>
     <span class="text-gray-600">{{ $project->project_code }} 区画管理</span>
 @endsection

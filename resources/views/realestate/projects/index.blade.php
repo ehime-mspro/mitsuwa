@@ -1,19 +1,19 @@
 @extends('layouts.app')
 
-@section('title', '分譲地プロジェクト一覧')
+@section('title', '分譲地一覧')
 
 @section('breadcrumb')
     <span class="mx-1.5">›</span>
     <span>不動産管理</span>
     <span class="mx-1.5">›</span>
-    <span class="text-gray-600">分譲地プロジェクト一覧</span>
+    <span class="text-gray-600">分譲地一覧</span>
 @endsection
 
 @section('content')
 
     {{-- ページヘッダー --}}
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
-        <h1 class="text-lg font-bold text-gray-900">分譲地プロジェクト一覧</h1>
+        <h1 class="text-lg font-bold text-gray-900">分譲地一覧</h1>
         @if(auth()->user()->role->isManagerOrAbove())
             <a href="{{ route('realestate.projects.create') }}"
                class="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-md transition-colors w-full sm:w-auto">
@@ -133,7 +133,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="10" class="px-5 py-10 text-center text-sm text-gray-400">分譲地プロジェクトデータがありません。</td>
+                            <td colspan="10" class="px-5 py-10 text-center text-sm text-gray-400">分譲地データがありません。</td>
                         </tr>
                     @endforelse
                 </tbody>

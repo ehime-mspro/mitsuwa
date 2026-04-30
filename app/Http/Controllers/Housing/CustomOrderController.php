@@ -387,7 +387,7 @@ class CustomOrderController extends Controller
     }
 
     /**
-     * 分譲地PJ一覧（JS用）
+     * 分譲地一覧（JS用）
      */
     private function getProjectsForJs(): array
     {

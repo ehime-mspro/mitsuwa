@@ -410,7 +410,7 @@
                     </select>
                     @error('re_project_lot_id') <p class="error-msg">{{ $message }}</p> @enderror
                     <template x-if="reProjectLotId && projectLotUrls[reProjectLotId]">
-                        <a class="hc-land-link" :href="projectLotUrls[reProjectLotId]" target="_blank" rel="noopener">→ 分譲地PJを開く</a>
+                        <a class="hc-land-link" :href="projectLotUrls[reProjectLotId]" target="_blank" rel="noopener">→ 分譲地を開く</a>
                     </template>
                 </div>
             </div>
@@ -639,7 +639,7 @@
                             <span class="suffix">円</span>
                         </div>
                         <div class="hc-manual-warning">
-                            ⚠️ この値は<strong>契約のみに適用</strong>されます。元の<span x-text="landSourceType === 'project_lot' ? '分譲地PJ' : '仕入れ案件'"></span>の土地原価は変更されません。
+                            ⚠️ この値は<strong>契約のみに適用</strong>されます。元の<span x-text="landSourceType === 'project_lot' ? '分譲地' : '仕入れ案件'"></span>の土地原価は変更されません。
                         </div>
                     </div>
 
@@ -649,7 +649,7 @@
                             $landSourceLabel = $hsCustomOrder->getLandSourceDisplay();
                             $referenceLandCost = null;
                             if ($hsCustomOrder->land_source_type?->value === 'project_lot' && $hsCustomOrder->projectLot) {
-                                // 分譲地PJ区画は cost_total を持たない場合があるので land_cost のみ表示
+                                // 分譲地区画は cost_total を持たない場合があるので land_cost のみ表示
                                 $referenceLandCost = $hsCustomOrder->land_cost;
                             } elseif ($hsCustomOrder->land_source_type?->value === 'procurement' && $hsCustomOrder->procurement) {
                                 $referenceLandCost = $hsCustomOrder->land_cost;

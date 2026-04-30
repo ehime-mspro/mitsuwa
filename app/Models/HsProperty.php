@@ -61,7 +61,7 @@ class HsProperty extends Model
     // ============================================================
 
     /**
-     * 紐づく分譲地PJ区画
+     * 紐づく分譲地区画
      */
     public function projectLot(): BelongsTo
     {

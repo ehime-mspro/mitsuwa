@@ -64,7 +64,7 @@ class PropertyController extends Controller
      */
     public function create()
     {
-        // 分譲地PJ一覧（セレクト用）
+        // 分譲地一覧（セレクト用）
         $projects = ReProject::orderByDesc('id')->get(['id', 'project_code', 'project_name']);
         $projectsForJs = [];
         foreach ($projects as $pj) {
@@ -156,7 +156,7 @@ class PropertyController extends Controller
     {
         $property->load(['projectLot.project', 'procurement']);
 
-        // 分譲地PJ一覧
+        // 分譲地一覧
         $projects = ReProject::orderByDesc('id')->get(['id', 'project_code', 'project_name']);
         $projectsForJs = [];
         foreach ($projects as $pj) {
@@ -291,7 +291,7 @@ class PropertyController extends Controller
     // ================================================================
 
     /**
-     * 分譲地PJの区画一覧取得
+     * 分譲地の区画一覧取得
      * GET /api/housing/project-lots?project_id=X
      */
     public function projectLots(Request $request)

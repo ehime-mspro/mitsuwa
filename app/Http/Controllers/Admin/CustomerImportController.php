@@ -217,7 +217,7 @@ class CustomerImportController extends Controller
                             'survey_date' => $acquiredDate,
                         ];
 
-                        // 分譲地PJ
+                        // 分譲地
                         $projectName = trim($cols[$colMap['project_name'] ?? -1] ?? '');
                         if ($projectName) {
                             $project = DB::table('re_projects')

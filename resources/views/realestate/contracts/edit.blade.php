@@ -58,7 +58,7 @@
                 <div class="section-title">案件情報</div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 26px;">
                     <div class="fg">
-                        <label>分譲地PJ <span class="req">*</span></label>
+                        <label>分譲地 <span class="req">*</span></label>
                         <select name="project_id" x-model="projectId" @change="onProjectChange()">
                             <option value="">— 選択してください —</option>
                             @foreach($projects as $pj)

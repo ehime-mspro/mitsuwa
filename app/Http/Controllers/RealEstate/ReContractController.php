@@ -116,7 +116,7 @@ class ReContractController extends Controller
             ->orderBy('procurement_code')
             ->get(['id', 'procurement_code', 'property_name', 'address']);
 
-        // 販売中の分譲地PJ
+        // 販売中の分譲地
         $projects = ReProject::where('status', ProjectStatus::Selling->value)
             ->orderBy('project_code')
             ->get(['id', 'project_code', 'project_name']);

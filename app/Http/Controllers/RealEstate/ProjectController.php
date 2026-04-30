@@ -79,7 +79,7 @@ class ProjectController extends Controller
 
         return redirect()
             ->route('realestate.projects.show', $project)
-            ->with('success', "分譲地PJ「{$project->project_code}」を登録しました。");
+            ->with('success', "分譲地「{$project->project_code}」を登録しました。");
     }
 
     /**
@@ -157,7 +157,7 @@ class ProjectController extends Controller
 
         return redirect()
             ->route('realestate.projects.show', $project)
-            ->with('success', "分譲地PJ「{$project->project_code}」を更新しました。");
+            ->with('success', "分譲地「{$project->project_code}」を更新しました。");
     }
 
     /**
@@ -177,7 +177,7 @@ class ProjectController extends Controller
         $project->delete();
 
         return redirect()->route('realestate.projects.index')
-            ->with('success', "分譲地PJ「{$code}」を削除しました。");
+            ->with('success', "分譲地「{$code}」を削除しました。");
     }
 
     // ================================================================
