@@ -26,6 +26,7 @@ CSS is Vite-built (`build/assets/app-xxxx.css`), NOT CDN. Only classes already p
 - `@if/@else/@endif` MUST be multi-line. Single-line `@else<` causes Laravel 12 compile errors
 - NEVER use functions inside `@json()` — no `number_format()`, no collection methods. Pre-format in Controller
 - Attachments: use `@include('components.attachment-section', [...])`, not `<x-attachment-section>`
+- **NEVER call `env()` directly inside Blade.** `php artisan config:cache` (run by deploy.sh) makes Blade-side `env()` return empty string. Always register the value in `config/services.php` (or other config file) and read it via `config('services.xxx.yyy')`. Past incident: Google Maps API key returned empty in production after config:cache, causing "For development purposes only" watermark. See @docs/RULES.md Bug #17
 
 ## Form Conventions
 
