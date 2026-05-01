@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\DadSpecialty;
 use App\Models\DadSubcontractor;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 /**
  * DAD 協力業者管理コントローラー
@@ -72,6 +73,33 @@ class SubcontractorController extends Controller
         return redirect()
             ->route('dad.subcontractors.index')
             ->with('success', '「' . $subcontractor->company_name . '」を登録しました。');
+    }
+
+    /**
+     * 詳細表示（基本情報 + 工事案件別の発注履歴）
+     */
+    public function show(DadSubcontractor $subcontractor)
+    {
+        $subcontractor->load('specialty');
+
+        // 工事案件別に発注履歴を集約（同じ案件で複数明細がある場合は合算）
+        $projectOrders = DB::table('dad_project_costs as c')
+            ->join('dad_projects as p', 'c.project_id', '=', 'p.id')
+            ->select(
+                'c.project_id',
+                'p.project_code',
+                'p.project_name',
+                'p.status as project_status',
+                DB::raw('COUNT(*) as orders_count'),
+                DB::raw('SUM(c.estimated_amount) as estimate_total'),
+                DB::raw('SUM(c.actual_amount) as actual_total')
+            )
+            ->where('c.subcontractor_id', $subcontractor->id)
+            ->groupBy('c.project_id', 'p.project_code', 'p.project_name', 'p.status')
+            ->orderByDesc('p.id')
+            ->get();
+
+        return view('dad.subcontractors.show', compact('subcontractor', 'projectOrders'));
     }
 
     /**

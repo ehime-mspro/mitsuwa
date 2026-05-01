@@ -65,6 +65,20 @@ class ClientController extends Controller
     }
 
     /**
+     * 詳細表示（基本情報 + 関連工事案件）
+     */
+    public function show(DadClient $client)
+    {
+        // 関連工事案件を新しい順で取得（工事担当者も併せて表示）
+        $projects = $client->projects()
+            ->with('staffUser')
+            ->orderByDesc('id')
+            ->get();
+
+        return view('dad.clients.show', compact('client', 'projects'));
+    }
+
+    /**
      * 編集フォーム
      */
     public function edit(DadClient $client)

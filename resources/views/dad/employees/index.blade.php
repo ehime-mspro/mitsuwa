@@ -91,7 +91,7 @@
                 <tr class="hover:bg-gray-50 transition-colors">
                     <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 whitespace-nowrap" style="font-variant-numeric: tabular-nums;">{{ $emp->employee_code }}</td>
                     <td class="px-4 py-3 border-b border-gray-200 whitespace-nowrap">
-                        <a href="{{ route('dad.employees.edit', $emp) }}" class="text-sm font-semibold text-gray-900 hover:text-emerald-600 hover:underline">{{ $emp->name }}</a>
+                        <a href="{{ route('dad.employees.show', $emp) }}" class="text-sm font-semibold text-gray-900 hover:text-emerald-600 hover:underline">{{ $emp->name }}</a>
                         @if($emp->name_kana)
                             <div style="font-size: 10px; color: #9ca3af;">{{ $emp->name_kana }}</div>
                         @endif

@@ -1179,6 +1179,8 @@ Route::middleware(['auth', 'password.change'])->group(function () {
             Route::put('/clients/{client}', [\App\Http\Controllers\Dad\ClientController::class, 'update'])
                 ->name('dad.clients.update');
         });
+        Route::get('/clients/{client}', [\App\Http\Controllers\Dad\ClientController::class, 'show'])
+            ->name('dad.clients.show');
         Route::delete('/clients/{client}', [\App\Http\Controllers\Dad\ClientController::class, 'destroy'])
             ->middleware('role:executive')
             ->name('dad.clients.destroy');
@@ -1196,6 +1198,8 @@ Route::middleware(['auth', 'password.change'])->group(function () {
             Route::put('/subcontractors/{subcontractor}', [\App\Http\Controllers\Dad\SubcontractorController::class, 'update'])
                 ->name('dad.subcontractors.update');
         });
+        Route::get('/subcontractors/{subcontractor}', [\App\Http\Controllers\Dad\SubcontractorController::class, 'show'])
+            ->name('dad.subcontractors.show');
         Route::delete('/subcontractors/{subcontractor}', [\App\Http\Controllers\Dad\SubcontractorController::class, 'destroy'])
             ->middleware('role:executive')
             ->name('dad.subcontractors.destroy');
@@ -1213,6 +1217,8 @@ Route::middleware(['auth', 'password.change'])->group(function () {
             Route::put('/employees/{employee}', [\App\Http\Controllers\Dad\EmployeeController::class, 'update'])
                 ->name('dad.employees.update');
         });
+        Route::get('/employees/{employee}', [\App\Http\Controllers\Dad\EmployeeController::class, 'show'])
+            ->name('dad.employees.show');
         Route::delete('/employees/{employee}', [\App\Http\Controllers\Dad\EmployeeController::class, 'destroy'])
             ->middleware('role:executive')
             ->name('dad.employees.destroy');

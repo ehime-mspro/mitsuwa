@@ -89,7 +89,7 @@
                         </span>
                     </td>
                     <td class="px-4 py-3 border-b border-gray-200 whitespace-nowrap">
-                        <a href="{{ route('dad.clients.edit', $client) }}" class="text-sm font-semibold text-gray-900 hover:text-emerald-600 hover:underline">{{ $client->name }}</a>
+                        <a href="{{ route('dad.clients.show', $client) }}" class="text-sm font-semibold text-gray-900 hover:text-emerald-600 hover:underline">{{ $client->name }}</a>
                     </td>
                     <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 whitespace-nowrap">{{ $client->representative ?: '—' }}</td>
                     <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-center whitespace-nowrap" style="font-variant-numeric: tabular-nums; font-weight: 600;">

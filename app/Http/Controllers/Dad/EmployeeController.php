@@ -77,6 +77,22 @@ class EmployeeController extends Controller
     }
 
     /**
+     * 詳細表示（基本情報 + 配置履歴）
+     */
+    public function show(DadEmployee $employee)
+    {
+        // 配置履歴は新しい順（start_date の降順、未設定はラスト）
+        $assignments = $employee->assignments()
+            ->with('project')
+            ->orderByRaw('start_date IS NULL')
+            ->orderByDesc('start_date')
+            ->orderByDesc('id')
+            ->get();
+
+        return view('dad.employees.show', compact('employee', 'assignments'));
+    }
+
+    /**
      * 編集フォーム
      */
     public function edit(DadEmployee $employee)
