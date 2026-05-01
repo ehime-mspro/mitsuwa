@@ -33,6 +33,11 @@
             ];
         }
     }
+
+    // 協力業者の id × 会社名 を Excel取込で名前→ID 解決に使う（@json 用に id/company_name のみ抽出）
+    $subcontractorJsonList = $subcontractors->map(function ($s) {
+        return ['id' => $s->id, 'company_name' => $s->company_name];
+    })->values()->all();
 @endphp
 
 <div x-data="projectForm()" x-init="initForm()" style="max-width: 1100px;">
@@ -202,12 +207,19 @@
     <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
             <div class="card-title" style="margin-bottom: 0;">原価明細</div>
-            <button type="button" @click="addCostRow()"
-                    style="padding: 6px 14px; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 6px; color: #047857; font-size: 12px; font-weight: 600; cursor: pointer;">＋ 行追加</button>
+            <div style="display: flex; gap: 8px;">
+                <button type="button" @click="openExcelImport()" x-show="!excelImport.open"
+                        style="padding: 6px 14px; background: white; border: 1px solid #a7f3d0; border-radius: 6px; color: #047857; font-size: 12px; font-weight: 600; cursor: pointer;">📂 Excel取込</button>
+                <button type="button" @click="addCostRow()"
+                        style="padding: 6px 14px; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 6px; color: #047857; font-size: 12px; font-weight: 600; cursor: pointer;">＋ 行追加</button>
+            </div>
         </div>
 
-        <div x-show="costRows.length === 0" style="padding: 16px; text-align: center; font-size: 12px; color: #9ca3af;">
-            ＋ 行追加 ボタンで原価明細を追加してください。
+        {{-- Excel取込パネル（partial） --}}
+        @include('dad.projects._excel_import')
+
+        <div x-show="costRows.length === 0 && !excelImport.open" style="padding: 16px; text-align: center; font-size: 12px; color: #9ca3af;">
+            ＋ 行追加 または Excel取込 で原価明細を追加してください。
         </div>
 
         <table x-show="costRows.length > 0" class="w-full" style="border-collapse: collapse;">
@@ -539,12 +551,35 @@ function projectForm() {
         costRows: [],
         assignmentRows: [],
 
+        // ========== Excel取込 ==========
+        excelImport: {
+            open: false,
+            step: 1,
+            fileName: '',
+            sheets: [],
+            selectedSheet: '',
+            allRows: [],
+            headerRowIndex: 0,
+            columns: [],
+            previewRows: []
+        },
+        _workbook: null,
+        // 協力業者名 → id マップ（Excel取込時の自動解決用）
+        _subcontractorByName: {},
+
         initForm: function () {
             // 既存データを Alpine に投入
             const existingCosts = @json($existingCosts);
             const existingAssignments = @json($existingAssignments);
             this.costRows = existingCosts.length > 0 ? existingCosts.slice() : [];
             this.assignmentRows = existingAssignments.length > 0 ? existingAssignments.slice() : [];
+
+            // 協力業者リストから 名前→id マップを作成
+            const subList = @json($subcontractorJsonList);
+            const self = this;
+            subList.forEach(function (s) {
+                if (s.company_name) self._subcontractorByName[s.company_name] = s.id;
+            });
         },
 
         addCostRow: function () {
@@ -572,6 +607,206 @@ function projectForm() {
         },
         removeAssignmentRow: function (idx) {
             this.assignmentRows.splice(idx, 1);
+        },
+
+        // ========== Excel取込メソッド ==========
+        openExcelImport: function () {
+            this.resetExcelImport();
+            this.excelImport.open = true;
+        },
+        closeExcelImport: function () {
+            this.excelImport.open = false;
+            this.resetExcelImport();
+        },
+        resetExcelImport: function () {
+            this.excelImport.step = 1;
+            this.excelImport.fileName = '';
+            this.excelImport.sheets = [];
+            this.excelImport.selectedSheet = '';
+            this.excelImport.allRows = [];
+            this.excelImport.headerRowIndex = 0;
+            this.excelImport.columns = [];
+            this.excelImport.previewRows = [];
+            this._workbook = null;
+        },
+        onExcelFile: async function (e) {
+            const file = e.target.files && e.target.files[0];
+            if (!file) return;
+            await this.readExcel(file);
+        },
+        onExcelDrop: async function (e) {
+            const file = e.dataTransfer.files && e.dataTransfer.files[0];
+            if (!file) return;
+            await this.readExcel(file);
+        },
+        readExcel: async function (file) {
+            this.excelImport.fileName = file.name;
+            try {
+                if (typeof XLSX === 'undefined') {
+                    alert('Excel 読み込みライブラリが読み込まれていません。ページを再読み込みしてください。');
+                    return;
+                }
+                const buf = await file.arrayBuffer();
+                const wb = XLSX.read(buf, { type: 'array' });
+                this._workbook = wb;
+                this.excelImport.sheets = wb.SheetNames;
+                this.excelImport.selectedSheet = wb.SheetNames[0];
+                this.excelImport.headerRowIndex = 0;
+                this.loadSheet();
+                this.excelImport.step = 2;
+                // 複数シートがある場合は select に option を動的注入（Bug #16: x-for で <option> を生成しない）
+                if (wb.SheetNames.length > 1) {
+                    const self = this;
+                    setTimeout(function () {
+                        const sel = document.getElementById('excel-sheet-select');
+                        if (!sel) return;
+                        sel.innerHTML = '';
+                        wb.SheetNames.forEach(function (name) {
+                            const opt = document.createElement('option');
+                            opt.value = name;
+                            opt.textContent = name;
+                            if (name === self.excelImport.selectedSheet) opt.selected = true;
+                            sel.appendChild(opt);
+                        });
+                    }, 50);
+                }
+            } catch (err) {
+                alert('ファイルの読み込みに失敗しました: ' + err.message);
+            }
+        },
+        loadSheet: function () {
+            if (!this._workbook) return;
+            const ws = this._workbook.Sheets[this.excelImport.selectedSheet];
+            this.excelImport.allRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+            // 最初の非空行をヘッダー行とみなす
+            const firstNonEmpty = this.excelImport.allRows.findIndex(function (r) {
+                return r.some(function (v) { return String(v).trim() !== ''; });
+            });
+            this.excelImport.headerRowIndex = firstNonEmpty >= 0 ? firstNonEmpty : 0;
+            this.buildColumns();
+        },
+        buildColumns: function () {
+            const ei = this.excelImport;
+            const header = ei.allRows[ei.headerRowIndex] || [];
+            const body = ei.allRows.slice(ei.headerRowIndex + 1, ei.headerRowIndex + 4);
+            const colCount = ei.allRows.length
+                ? Math.max.apply(null, ei.allRows.map(function (r) { return r.length; }))
+                : 0;
+            const cols = [];
+            const self = this;
+            for (let i = 0; i < colCount; i++) {
+                const headerText = String(header[i] || '');
+                cols.push({
+                    idx: i,
+                    letter: XLSX.utils.encode_col(i),
+                    header: headerText,
+                    samples: body.map(function (r) { return String(r[i] === undefined ? '' : r[i]); }),
+                    mapping: self.autoGuess(headerText, body.map(function (r) { return String(r[i] === undefined ? '' : r[i]); }))
+                });
+            }
+            ei.columns = cols;
+        },
+        autoGuess: function (headerText, samples) {
+            const h = String(headerText).replace(/\s/g, '');
+            if (/(費用|費目|項目|分類|カテゴリ|工種)/.test(h)) return 'category';
+            if (/(内容|摘要|作業|品名|仕様)/.test(h)) return 'detail';
+            if (/(金額|見積|予算|合計)/.test(h) && !/単価/.test(h)) return 'amount';
+            if (/(業者|協力|下請|外注先|取引先)/.test(h)) return 'subcontractor';
+            if (/(備考|メモ|注記|コメント)/.test(h)) return 'note';
+            // ヘッダーが空でもサンプル値で「数値らしい列=金額」を推定
+            if (h === '' && samples && samples.length > 0) {
+                const numericHits = samples.filter(function (s) {
+                    const n = String(s).replace(/[,，\s円¥]/g, '');
+                    return /^-?\d+(\.\d+)?$/.test(n) && parseInt(n, 10) >= 1000;
+                }).length;
+                if (numericHits >= 2) return 'amount';
+            }
+            return '';
+        },
+        goToPreview: function () {
+            const ei = this.excelImport;
+            const map = { category: -1, detail: -1, amount: -1, subcontractor: -1, note: -1 };
+            ei.columns.forEach(function (c) { if (c.mapping) map[c.mapping] = c.idx; });
+            const body = ei.allRows.slice(ei.headerRowIndex + 1).filter(function (r) {
+                return r.some(function (v) { return String(v).trim() !== ''; });
+            });
+            const self = this;
+            ei.previewRows = body.map(function (r) {
+                // 金額正規化（全角→半角、カンマ・空白・「円」「¥」除去）
+                const rawAmount = map.amount >= 0 ? String(r[map.amount] === undefined ? '' : r[map.amount]) : '';
+                const normalized = rawAmount.replace(/[０-９]/g, function (c) {
+                    return String.fromCharCode(c.charCodeAt(0) - 0xFEE0);
+                }).replace(/[,，\s円¥]/g, '');
+                const isNumeric = /^-?\d+$/.test(normalized);
+                const nAmount = isNumeric ? normalized : '';
+
+                // カテゴリマッチング → DAD Enum value 形式
+                const rawCat = map.category >= 0 ? String(r[map.category] === undefined ? '' : r[map.category]).trim() : '';
+                const matchedCat = self.matchCategory(rawCat);
+
+                // 協力業者名 → id 解決
+                const rawSub = map.subcontractor >= 0 ? String(r[map.subcontractor] === undefined ? '' : r[map.subcontractor]).trim() : '';
+                const subId = rawSub ? (self._subcontractorByName[rawSub] || '') : '';
+
+                return {
+                    category: matchedCat,
+                    rawCategory: rawCat,
+                    detail: map.detail >= 0 ? String(r[map.detail] === undefined ? '' : r[map.detail]) : '',
+                    amount: nAmount,
+                    subcontractorId: subId,
+                    rawSubcontractor: rawSub,
+                    note: map.note >= 0 ? String(r[map.note] === undefined ? '' : r[map.note]) : '',
+                    warnCategory: rawCat !== '' && !matchedCat,
+                    warnAmount: rawAmount !== '' && !isNumeric
+                };
+            });
+            ei.step = 3;
+        },
+        matchCategory: function (raw) {
+            // DAD Enum value (material / subcontract / labor / equipment / overhead / other) を返す
+            const r = String(raw).replace(/\s/g, '');
+            if (!r) return '';
+            // 日本語ラベル完全一致
+            const exactMap = {
+                '材料費': 'material', '外注費': 'subcontract', '人件費': 'labor',
+                '機械経費': 'equipment', '諸経費': 'overhead', 'その他': 'other'
+            };
+            if (exactMap[r]) return exactMap[r];
+            // エイリアス（部分一致）
+            const aliases = [
+                { keys: ['材料', '材料代', '資材'], value: 'material' },
+                { keys: ['外注', '下請', '下請費'], value: 'subcontract' },
+                { keys: ['人件', '労務', '労務費'], value: 'labor' },
+                { keys: ['機械', '重機', '機材'], value: 'equipment' },
+                { keys: ['諸経費', '経費'], value: 'overhead' }
+            ];
+            for (let i = 0; i < aliases.length; i++) {
+                const a = aliases[i];
+                for (let j = 0; j < a.keys.length; j++) {
+                    if (r.indexOf(a.keys[j]) >= 0) return a.value;
+                }
+            }
+            return '';
+        },
+        warnCountCategory: function () {
+            return this.excelImport.previewRows.filter(function (r) { return r.warnCategory; }).length;
+        },
+        warnCountAmount: function () {
+            return this.excelImport.previewRows.filter(function (r) { return r.warnAmount; }).length;
+        },
+        commitImport: function () {
+            const self = this;
+            this.excelImport.previewRows.forEach(function (p) {
+                self.costRows.push({
+                    cost_category: p.category || '',
+                    description: p.detail || '',
+                    estimated_amount: p.amount || '',
+                    actual_amount: '',
+                    subcontractor_id: p.subcontractorId || '',
+                    notes: p.note || ''
+                });
+            });
+            this.closeExcelImport();
         }
     };
 }
@@ -898,3 +1133,6 @@ function updateDadCoords(lat, lng) {
 
 {{-- Google Maps API 読み込み --}}
 <script src="https://maps.googleapis.com/maps/api/js?key={{ env('GOOGLE_MAPS_API_KEY', '') }}&callback=onGoogleMapsReady&language=ja&region=JP" async defer></script>
+
+{{-- SheetJS（Excel ファイル解析）— CLAUDE.md ルール: cdn.jsdelivr.net のみ許可 --}}
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
