@@ -77,6 +77,7 @@
                         <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">購入価格</th>
                         <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">想定販売価格</th>
                         <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">粗利見込み</th>
+                        <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">マップ</th>
                         <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">詳細</th>
                     </tr>
                 </thead>
@@ -117,6 +118,15 @@
                                     <span class="text-gray-400">—</span>
                                 @endif
                             </td>
+                            {{-- マップボタン（青）--}}
+                            <td class="px-3 py-3 border-b border-gray-100 text-center whitespace-nowrap">
+                                @if($p->latitude && $p->longitude)
+                                    <button type="button" onclick="openMapModal('{{ addslashes($p->property_name) }}', '{{ addslashes($p->address) }}', {{ $p->latitude }}, {{ $p->longitude }})"
+                                            style="background: #fff; color: #2563eb; padding: 4px 12px; border-radius: 5px; font-size: 12px; font-weight: 600; border: 1px solid #2563eb; cursor: pointer; white-space: nowrap;">マップ</button>
+                                @else
+                                    <span class="text-gray-300">—</span>
+                                @endif
+                            </td>
                             <td class="px-3 py-3 border-b border-gray-100 text-center whitespace-nowrap">
                                 <a href="{{ route('realestate.procurements.show', $p) }}"
                                    class="inline-block px-3 py-1 bg-white text-emerald-600 border border-emerald-600 rounded text-xs font-semibold hover:bg-emerald-50 transition-colors">詳細</a>
@@ -124,7 +134,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="9" class="px-5 py-10 text-center text-sm text-gray-400">仕入れ案件データがありません。</td>
+                            <td colspan="10" class="px-5 py-10 text-center text-sm text-gray-400">仕入れ案件データがありません。</td>
                         </tr>
                     @endforelse
                 </tbody>
@@ -167,5 +177,58 @@
 .badge-re-selling { background: #c7d2fe; color: #3730a3; }
 .badge-re-lost { background: #e5e7eb; color: #374151; }
 </style>
+
+{{-- マップモーダル --}}
+<div id="map-modal-overlay" onclick="if(event.target===this)closeMapModal()"
+     style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 10000; align-items: center; justify-content: center;">
+    <div style="background: #fff; border-radius: 10px; width: 90%; max-width: 700px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-bottom: 1px solid #e5e7eb;">
+            <div>
+                <div id="modal-map-title" style="font-size: 15px; font-weight: 700;"></div>
+                <div id="modal-map-address" style="font-size: 12px; color: #6b7280; margin-top: 2px;"></div>
+            </div>
+            <button onclick="closeMapModal()" style="background: none; border: none; font-size: 22px; color: #6b7280; cursor: pointer; padding: 0 4px; line-height: 1;">&times;</button>
+        </div>
+        <div id="modal-map-container" style="height: 400px;"></div>
+    </div>
+</div>
+
+<script>
+var modalMap = null;
+var modalMarker = null;
+var modalInfoWindow = null;
+
+function openMapModal(name, address, lat, lng) {
+    document.getElementById('modal-map-title').textContent = name;
+    document.getElementById('modal-map-address').textContent = address;
+    var overlay = document.getElementById('map-modal-overlay');
+    overlay.style.display = 'flex';
+
+    setTimeout(function() {
+        if (!modalMap) {
+            modalMap = new google.maps.Map(document.getElementById('modal-map-container'), {
+                center: { lat: lat, lng: lng },
+                zoom: 16,
+                mapTypeControl: true,
+                streetViewControl: true,
+                fullscreenControl: false
+            });
+            modalMarker = new google.maps.Marker({ position: { lat: lat, lng: lng }, map: modalMap });
+            modalInfoWindow = new google.maps.InfoWindow();
+        } else {
+            modalMap.setCenter({ lat: lat, lng: lng });
+            modalMarker.setPosition({ lat: lat, lng: lng });
+        }
+        modalInfoWindow.setContent('<div style="font-size:13px;"><strong>' + name + '</strong><br>' + address + '</div>');
+        modalInfoWindow.open(modalMap, modalMarker);
+        google.maps.event.trigger(modalMap, 'resize');
+    }, 150);
+}
+
+function closeMapModal() {
+    document.getElementById('map-modal-overlay').style.display = 'none';
+}
+</script>
+<script src="https://maps.googleapis.com/maps/api/js?key={{ config('services.google_maps.api_key') }}&language=ja&region=JP" async defer></script>
 
 @endsection

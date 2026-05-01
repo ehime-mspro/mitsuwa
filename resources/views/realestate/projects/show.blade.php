@@ -59,7 +59,15 @@
             <dt class="bg-gray-50 px-3.5 py-2.5 text-sm text-gray-600 font-medium border-b border-r border-gray-200">プロジェクト名</dt>
             <dd class="px-3.5 py-2.5 text-sm text-gray-900 border-b border-gray-200 font-medium">{{ $project->project_name }}</dd>
             <dt class="bg-gray-50 px-3.5 py-2.5 text-sm text-gray-600 font-medium border-b border-r border-gray-200">所在地</dt>
-            <dd class="px-3.5 py-2.5 text-sm text-gray-900 border-b border-gray-200">{{ $project->address }}</dd>
+            <dd class="px-3.5 py-2.5 text-sm text-gray-900 border-b border-gray-200">
+                <span style="display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                    <span>{{ $project->address ?: '—' }}</span>
+                    @if($project->latitude && $project->longitude)
+                        <button type="button" onclick="openMapModal('{{ addslashes($project->project_name) }}', '{{ addslashes($project->address) }}', {{ $project->latitude }}, {{ $project->longitude }})"
+                                style="background: #fff; color: #2563eb; padding: 3px 10px; border-radius: 5px; font-size: 11px; font-weight: 600; border: 1px solid #2563eb; cursor: pointer; white-space: nowrap;">マップで確認</button>
+                    @endif
+                </span>
+            </dd>
 
             <dt class="bg-gray-50 px-3.5 py-2.5 text-sm text-gray-600 font-medium border-b border-r border-gray-200">土地面積</dt>
             <dd class="px-3.5 py-2.5 text-sm text-gray-900 border-b border-gray-200">
@@ -642,6 +650,58 @@ function initDetailMap() {
         content: '<div style="font-size:13px;"><strong>{{ $project->project_name }}</strong><br>{{ $project->address }}</div>'
     });
     infoWindow.open(map, marker);
+}
+</script>
+
+{{-- マップモーダル（所在地行のボタンから開く） --}}
+<div id="map-modal-overlay" onclick="if(event.target===this)closeMapModal()"
+     style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 10000; align-items: center; justify-content: center;">
+    <div style="background: #fff; border-radius: 10px; width: 90%; max-width: 700px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-bottom: 1px solid #e5e7eb;">
+            <div>
+                <div id="modal-map-title" style="font-size: 15px; font-weight: 700;"></div>
+                <div id="modal-map-address" style="font-size: 12px; color: #6b7280; margin-top: 2px;"></div>
+            </div>
+            <button onclick="closeMapModal()" style="background: none; border: none; font-size: 22px; color: #6b7280; cursor: pointer; padding: 0 4px; line-height: 1;">&times;</button>
+        </div>
+        <div id="modal-map-container" style="height: 400px;"></div>
+    </div>
+</div>
+
+<script>
+var modalMap = null;
+var modalMarker = null;
+var modalInfoWindow = null;
+
+function openMapModal(name, address, lat, lng) {
+    document.getElementById('modal-map-title').textContent = name;
+    document.getElementById('modal-map-address').textContent = address;
+    var overlay = document.getElementById('map-modal-overlay');
+    overlay.style.display = 'flex';
+
+    setTimeout(function() {
+        if (!modalMap) {
+            modalMap = new google.maps.Map(document.getElementById('modal-map-container'), {
+                center: { lat: lat, lng: lng },
+                zoom: 16,
+                mapTypeControl: true,
+                streetViewControl: true,
+                fullscreenControl: false
+            });
+            modalMarker = new google.maps.Marker({ position: { lat: lat, lng: lng }, map: modalMap });
+            modalInfoWindow = new google.maps.InfoWindow();
+        } else {
+            modalMap.setCenter({ lat: lat, lng: lng });
+            modalMarker.setPosition({ lat: lat, lng: lng });
+        }
+        modalInfoWindow.setContent('<div style="font-size:13px;"><strong>' + name + '</strong><br>' + address + '</div>');
+        modalInfoWindow.open(modalMap, modalMarker);
+        google.maps.event.trigger(modalMap, 'resize');
+    }, 150);
+}
+
+function closeMapModal() {
+    document.getElementById('map-modal-overlay').style.display = 'none';
 }
 </script>
 <script src="https://maps.googleapis.com/maps/api/js?key={{ config('services.google_maps.api_key') }}&callback=initDetailMap&language=ja&region=JP" async defer></script>
