@@ -241,6 +241,33 @@
         @endif
     </div>
 
+    {{-- 協力業者発注履歴（外注費を業者ごとに集計） --}}
+    @if($subcontractorOrders->isNotEmpty())
+    <div class="bg-white border border-gray-200 rounded-lg" style="padding: 20px; margin-top: 20px;">
+        <div class="card-title">協力業者発注履歴</div>
+        <table class="w-full" style="border-collapse: collapse;">
+            <thead>
+                <tr>
+                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; text-align: left; font-size: 12px; font-weight: 700; color: #4b5563;">協力業者</th>
+                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; text-align: center; font-size: 12px; font-weight: 700; color: #4b5563; width: 100px;">発注件数</th>
+                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; text-align: right; font-size: 12px; font-weight: 700; color: #4b5563; width: 160px;">見積額合計</th>
+                    <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; text-align: right; font-size: 12px; font-weight: 700; color: #4b5563; width: 160px;">実績額合計</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach($subcontractorOrders as $o)
+                    <tr>
+                        <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">{{ $o->company_name ?: '—' }}</td>
+                        <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: center;">{{ $o->orders_count }}件</td>
+                        <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: right; font-variant-numeric: tabular-nums;">{{ number_format((int) $o->estimate_total) }}円</td>
+                        <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: right; font-variant-numeric: tabular-nums;">{{ ((int) $o->actual_total) > 0 ? number_format((int) $o->actual_total) . '円' : '—' }}</td>
+                    </tr>
+                @endforeach
+            </tbody>
+        </table>
+    </div>
+    @endif
+
 </div>
 
 <style>

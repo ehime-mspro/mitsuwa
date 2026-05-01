@@ -102,7 +102,25 @@ class ProjectController extends Controller
             ];
         }
 
-        return view('dad.projects.show', compact('project', 'costRowsForJs'));
+        // 協力業者発注履歴：外注費を業者ごとに集計（subcontractor_id null は除外）
+        // 論理削除済み業者も会社名表示できるよう leftJoin（不在時は company_name=null → '—' 表示）
+        $subcontractorOrders = DB::table('dad_project_costs as c')
+            ->leftJoin('dad_subcontractors as s', 'c.subcontractor_id', '=', 's.id')
+            ->select(
+                'c.subcontractor_id',
+                's.company_name',
+                DB::raw('COUNT(*) as orders_count'),
+                DB::raw('SUM(c.estimated_amount) as estimate_total'),
+                DB::raw('SUM(c.actual_amount) as actual_total')
+            )
+            ->where('c.project_id', $project->id)
+            ->where('c.cost_category', 'subcontract')
+            ->whereNotNull('c.subcontractor_id')
+            ->groupBy('c.subcontractor_id', 's.company_name')
+            ->orderBy('s.company_name')
+            ->get();
+
+        return view('dad.projects.show', compact('project', 'costRowsForJs', 'subcontractorOrders'));
     }
 
     /**
