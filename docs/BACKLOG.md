@@ -100,7 +100,52 @@
 
 ---
 
-## 優先度4: STEP 12 ダッシュボード
+## 優先度4: ZEAL（フィットネス事業）
+
+詳細仕様: @docs/ZEAL_フィットネス事業_要件定義書_v2.md
+
+### フェーズ1: モック作成（未着手）
+
+モック配置先: `docs/mockups/zeal/`
+
+| ファイル | 役割 | 状態 |
+|---------|------|------|
+| `dashboard.html` | ZEAL ダッシュボード（KPI + 月会費売上 + Chart.js 月次グラフ） | 未着手 |
+| `members/index.html` | 会員一覧（ステータス / プラン / トレーナー / 性別 / 入会月 / キーワード フィルター） | 未着手 |
+| `members/show.html` | 会員詳細（4 タブ: 基本情報 / 集客・目的 / 契約履歴 / 添付ファイル + プラン変更モーダル） | 未着手 |
+| `members/_form.html` | 会員登録・編集（create / edit 共通モック） | 未着手 |
+
+**モック点数: 4 本**（体験予約一覧・プランマスタ・トレーナーマスタは既存テンプレ流用で実装段階に起こす）
+
+### フェーズ2: Laravel 実装（未着手）
+
+外部 DB 接続 + SCD Type-2 プラン契約履歴 + 税抜カノニカル + 税込併記が独自要素。8 段階（3-A〜3-H）で進める。
+
+| Phase | 内容 |
+|-------|------|
+| 3-A | 基盤: DDL SQL（zeal_stores / zeal_plans / zeal_trainers / **zeal_member_contracts** / zeal_members）、Enum 6 本、Model、サイドバー、`config/database.php` の `zeal` 接続定義、`GymInquiry` Model（外部 DB 参照） |
+| 3-B | 体験予約閲覧: `Zeal\InquiryController` index/show（read-only）|
+| 3-C | プランマスタ: `Zeal\PlanController` フル CRUD（キャンペーン期間入力含む）+ 初期 SQL シード |
+| 3-D | トレーナーマスタ: `Zeal\TrainerController` Ajax CRUD |
+| 3-E | 会員管理: `Zeal\MemberController` フル CRUD + `changePlan` / `withdraw` メソッド（`DB::transaction` で履歴更新）|
+| 3-F | 会員 CSV インポート: `Admin\ZealMemberImportController` PhpSpreadsheet + 取込時に `zeal_member_contracts` の new_join レコード生成 |
+| 3-G | ダッシュボード: `Zeal\DashboardController` + Chart.js + 月会費売上集計クエリ実装 |
+| 3-H | 30 点品質監査 + デプロイ |
+
+**合計**: Controller 7 本 / Blade 約 18 本 / ルート約 26 本 / Model 6 本 / Enum 6 本
+
+### 想定外で確認が必要な事項
+
+実装着手前に下記を確定させる:
+
+1. 外部 DB 接続情報（読み取り専用ユーザー名・パスワード、ファイアウォール疎通）
+2. `gym_inquiries.status` の正確な値リスト（DB に対し `SELECT DISTINCT` で確認）
+3. 会員 CSV インポートのカラム仕様（旧シート 31 列 → 取込 15 列の確定）
+4. プラン変更時の日割り処理方針（v2 たたき台では月初固定運用、月途中切替を許容するか）
+
+---
+
+## 優先度5: STEP 12 ダッシュボード
 
 ### 要件
 
