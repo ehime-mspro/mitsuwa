@@ -1132,7 +1132,7 @@ function updateDadCoords(lat, lng) {
 </script>
 
 {{-- Google Maps API 読み込み --}}
-<script src="https://maps.googleapis.com/maps/api/js?key={{ env('GOOGLE_MAPS_API_KEY', '') }}&callback=onGoogleMapsReady&language=ja&region=JP" async defer></script>
+<script src="https://maps.googleapis.com/maps/api/js?key={{ config('services.google_maps.api_key') }}&callback=onGoogleMapsReady&language=ja&region=JP" async defer></script>
 
 {{-- SheetJS（Excel ファイル解析）— CLAUDE.md ルール: cdn.jsdelivr.net のみ許可 --}}
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>

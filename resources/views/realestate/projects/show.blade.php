@@ -644,7 +644,7 @@ function initDetailMap() {
     infoWindow.open(map, marker);
 }
 </script>
-<script src="https://maps.googleapis.com/maps/api/js?key={{ env('GOOGLE_MAPS_API_KEY', '') }}&callback=initDetailMap&language=ja&region=JP" async defer></script>
+<script src="https://maps.googleapis.com/maps/api/js?key={{ config('services.google_maps.api_key') }}&callback=initDetailMap&language=ja&region=JP" async defer></script>
 @endif
 
 {{-- ステータスバッジCSS --}}

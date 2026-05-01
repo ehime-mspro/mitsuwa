@@ -35,4 +35,10 @@ return [
         ],
     ],
 
+    // Google Maps Platform — Blade からは config('services.google_maps.api_key') で参照。
+    // Blade で env() を直接呼ぶと config:cache 後に空文字を返すため、必ず config 経由で取得すること。
+    'google_maps' => [
+        'api_key' => env('GOOGLE_MAPS_API_KEY'),
+    ],
+
 ];
