@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Attachment;
 use App\Models\Contract;
+use App\Models\DadProject;
 use App\Models\Investment;
 use App\Models\MsTenant;
 use App\Models\Repair;
@@ -27,6 +28,7 @@ class AttachmentController extends Controller
         'procurements' => ReProcurement::class,
         'projects'     => ReProject::class,
         'ms_tenants'   => MsTenant::class,
+        'dad_projects' => DadProject::class,
     ];
 
     /**

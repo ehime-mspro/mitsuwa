@@ -120,7 +120,20 @@ class ProjectController extends Controller
             ->orderBy('s.company_name')
             ->get();
 
-        return view('dad.projects.show', compact('project', 'costRowsForJs', 'subcontractorOrders'));
+        // 添付ファイル（有効分・削除履歴）
+        $attachments = $project->attachments()
+            ->whereNull('deleted_at')
+            ->with('uploadedByUser')
+            ->orderByDesc('created_at')
+            ->get();
+
+        $deletedAttachments = $project->attachments()
+            ->onlyTrashed()
+            ->with(['uploadedByUser', 'deletedByUser'])
+            ->orderByDesc('deleted_at')
+            ->get();
+
+        return view('dad.projects.show', compact('project', 'costRowsForJs', 'subcontractorOrders', 'attachments', 'deletedAttachments'));
     }
 
     /**

@@ -7,6 +7,7 @@ use App\Enums\DadProjectType;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 class DadProject extends Model
 {
@@ -73,6 +74,14 @@ class DadProject extends Model
     public function assignments(): HasMany
     {
         return $this->hasMany(DadProjectAssignment::class, 'project_id');
+    }
+
+    /**
+     * 添付ファイル（ポリモーフィック）
+     */
+    public function attachments(): MorphMany
+    {
+        return $this->morphMany(Attachment::class, 'attachable');
     }
 
     public function totalEstimatedCost(): int

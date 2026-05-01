@@ -87,6 +87,12 @@
         <button type="button" class="tab" :class="{ active: activeTab === 'basic' }" @click="activeTab = 'basic'">基本情報</button>
         <button type="button" class="tab" :class="{ active: activeTab === 'cost' }" @click="activeTab = 'cost'">原価管理</button>
         <button type="button" class="tab" :class="{ active: activeTab === 'assignment' }" @click="activeTab = 'assignment'">人員配置</button>
+        <button type="button" class="tab" :class="{ active: activeTab === 'attachment' }" @click="activeTab = 'attachment'">
+            添付ファイル
+            @if($attachments->count() > 0)
+                <span style="display: inline-flex; align-items: center; padding: 1px 7px; margin-left: 4px; border-radius: 9999px; font-size: 10px; font-weight: 600; background: #d1fae5; color: #065f46;">{{ $attachments->count() }}</span>
+            @endif
+        </button>
     </div>
 
     {{-- タブ: 基本情報 --}}
@@ -239,6 +245,16 @@
                 </tbody>
             </table>
         @endif
+    </div>
+
+    {{-- タブ: 添付ファイル --}}
+    <div x-show="activeTab === 'attachment'" x-cloak class="bg-white border border-gray-200 rounded-b-lg" style="border-top: none; padding: 20px;">
+        @include('components.attachment-section', [
+            'attachments' => $attachments,
+            'deletedAttachments' => $deletedAttachments,
+            'attachableType' => 'dad_projects',
+            'attachableId' => $project->id,
+        ])
     </div>
 
     {{-- 協力業者発注履歴（外注費を業者ごとに集計） --}}
