@@ -87,24 +87,40 @@
         </div>
     </div>
 
-    {{-- カード: 工事現場 --}}
+    {{-- カード: 工事現場 + 所在地マップ --}}
     <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
         <div class="card-title">工事現場</div>
         <div class="fld" style="margin-bottom: 16px;">
             <label>工事現場住所</label>
-            <input type="text" name="site_address" maxlength="300" placeholder="例: 愛媛県松山市中央"
+            <input type="text" name="site_address" id="input-site-address" maxlength="300" placeholder="例: 愛媛県松山市中央"
                    value="{{ old('site_address', $project?->site_address) }}">
         </div>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px 20px;">
-            <div class="fld">
-                <label>緯度</label>
-                <input type="text" name="latitude" placeholder="例: 33.8417"
-                       value="{{ old('latitude', $project?->latitude) }}">
+
+        {{-- 緯度・経度（hidden）— マップピンの位置で自動更新 --}}
+        <input type="hidden" name="latitude" id="input-latitude" value="{{ old('latitude', $project?->latitude) }}">
+        <input type="hidden" name="longitude" id="input-longitude" value="{{ old('longitude', $project?->longitude) }}">
+
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+            <button type="button" id="btn-geocode" onclick="geocodeAddress()" style="background: #059669; color: #fff; padding: 7px 16px; border-radius: 6px; font-size: 13px; font-weight: 600; border: none; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                マップで確認
+            </button>
+            <span style="font-size: 12px; color: #6b7280;">住所からピン位置を検索します。空欄でも地図上でピンを配置できます</span>
+        </div>
+
+        <div id="map-status" style="display: none; padding: 8px 14px; border-radius: 6px; font-size: 13px; margin-bottom: 8px;"></div>
+
+        <div id="map-wrap" style="display: {{ ($project && $project->latitude) ? 'block' : 'none' }};">
+            <div style="border: 1px solid #d1d5db; border-radius: 8px; overflow: hidden;">
+                <div id="dad-project-map" style="height: 350px;"></div>
             </div>
-            <div class="fld">
-                <label>経度</label>
-                <input type="text" name="longitude" placeholder="例: 132.7665"
-                       value="{{ old('longitude', $project?->longitude) }}">
+            <div style="display: flex; gap: 8px; margin-top: 6px; align-items: flex-start;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4b5563" stroke-width="2" style="flex-shrink: 0; margin-top: 1px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                <span style="font-size: 12px; color: #6b7280;">ピンをドラッグ、またはマップ上をクリックして正確な位置に調整できます</span>
+            </div>
+            <div style="display: flex; gap: 14px; margin-top: 6px;">
+                <span style="font-size: 12px; color: #6b7280;">緯度: <strong style="color: #1f2937;" id="display-lat">—</strong></span>
+                <span style="font-size: 12px; color: #6b7280;">経度: <strong style="color: #1f2937;" id="display-lng">—</strong></span>
             </div>
         </div>
     </div>
@@ -700,3 +716,185 @@ function datePicker(initial) {
     };
 }
 </script>
+
+{{-- ============================================================ --}}
+{{-- Google Maps — 工事現場の所在地マップ --}}
+{{-- realestate/projects と同じ段階的フォールバックパターンを移植 --}}
+{{-- ============================================================ --}}
+<script>
+var dadMap = null;
+var dadMarker = null;
+var dadGeocoder = null;
+
+// 既定の中心位置（松山市役所付近）— 住所空欄/全失敗時のフォールバック
+var DAD_DEFAULT_CENTER = { lat: 33.8392, lng: 132.7657, zoom: 13 };
+
+function onGoogleMapsReady() {
+    dadGeocoder = new google.maps.Geocoder();
+
+    var savedLat = document.getElementById('input-latitude').value;
+    var savedLng = document.getElementById('input-longitude').value;
+    if (savedLat && savedLng) {
+        showDadMap(parseFloat(savedLat), parseFloat(savedLng), 17);
+    }
+}
+
+// 住所を段階的に短くしてフォールバック候補を生成
+// 例: "愛媛県松山市勝山町2丁目4-7" →
+//   [フル, "愛媛県松山市勝山町2丁目"(番地除去), "愛媛県松山市勝山町"(丁目除去), "愛媛県松山市", "愛媛県"]
+function buildDadAddressFallbacks(address) {
+    var candidates = [{ address: address, level: 'full', zoom: 17 }];
+
+    // 末尾の番地（"4-7"、"5番地3号"など）を除去
+    var stripped = address
+        .replace(/[\d０-９]+(?:[-‐−ー－―][\d０-９]+)+(?:号)?$/, '')
+        .replace(/[\d０-９]+番地?(?:[\d０-９]+号?)?$/, '')
+        .trim();
+    if (stripped && stripped !== address) {
+        candidates.push({ address: stripped, level: 'block', zoom: 16 });
+    }
+
+    // 丁目以下を除去
+    stripped = address.replace(/[\d０-９]+丁目.*$/, '').trim();
+    if (stripped && !candidates.some(function(c) { return c.address === stripped; })) {
+        candidates.push({ address: stripped, level: 'town', zoom: 15 });
+    }
+
+    // 市区町村まで
+    var cityMatch = address.match(/^.*?[市区町村]/);
+    if (cityMatch) {
+        var cityLevel = cityMatch[0];
+        if (!candidates.some(function(c) { return c.address === cityLevel; })) {
+            candidates.push({ address: cityLevel, level: 'city', zoom: 13 });
+        }
+    }
+
+    // 都道府県のみ
+    var prefMatch = address.match(/^.*?[都道府県]/);
+    if (prefMatch) {
+        var prefLevel = prefMatch[0];
+        if (!candidates.some(function(c) { return c.address === prefLevel; })) {
+            candidates.push({ address: prefLevel, level: 'prefecture', zoom: 10 });
+        }
+    }
+
+    return candidates;
+}
+
+// 候補を順番にジオコードして最初にヒットしたものを返す
+function tryGeocodeDadCandidates(candidates, index, callback) {
+    if (index >= candidates.length) {
+        callback(null);
+        return;
+    }
+    var candidate = candidates[index];
+    dadGeocoder.geocode({ address: candidate.address }, function(results, status) {
+        if (status === 'OK' && results[0]) {
+            callback({
+                location: results[0].geometry.location,
+                level: candidate.level,
+                zoom: candidate.zoom,
+                matchedAddress: candidate.address
+            });
+        } else {
+            tryGeocodeDadCandidates(candidates, index + 1, callback);
+        }
+    });
+}
+
+function geocodeAddress() {
+    var addressInput = document.getElementById('input-site-address');
+    var address = addressInput ? addressInput.value.trim() : '';
+
+    if (!dadGeocoder) {
+        showMapStatus('Google Maps を読み込み中です。しばらくお待ちください。', '#fef3c7', '#92400e');
+        return;
+    }
+
+    // 住所が空欄 → 既定の松山市中心を表示してピン操作を促す
+    if (!address) {
+        showMapStatus('所在地が空欄です。松山市中心を表示しています。地図をクリックして位置を指定してください。', '#dbeafe', '#1e40af');
+        showDadMap(DAD_DEFAULT_CENTER.lat, DAD_DEFAULT_CENTER.lng, DAD_DEFAULT_CENTER.zoom);
+        return;
+    }
+
+    showMapStatus('住所を検索中...', '#fef3c7', '#92400e');
+    document.getElementById('btn-geocode').disabled = true;
+
+    var candidates = buildDadAddressFallbacks(address);
+
+    tryGeocodeDadCandidates(candidates, 0, function(result) {
+        document.getElementById('btn-geocode').disabled = false;
+
+        if (result) {
+            if (result.level === 'full') {
+                showMapStatus('住所が見つかりました。ピンをドラッグして正確な位置に調整できます。', '#d1fae5', '#065f46');
+            } else {
+                showMapStatus('「' + result.matchedAddress + '」までヒットしました。地図をクリックして正確な位置を指定してください。', '#fef3c7', '#92400e');
+            }
+            showDadMap(result.location.lat(), result.location.lng(), result.zoom);
+        } else {
+            showMapStatus('住所が見つかりませんでした。松山市中心を表示しています。地図をクリックして位置を指定してください。', '#fef3c7', '#92400e');
+            showDadMap(DAD_DEFAULT_CENTER.lat, DAD_DEFAULT_CENTER.lng, DAD_DEFAULT_CENTER.zoom);
+        }
+    });
+}
+
+function showMapStatus(msg, bg, color) {
+    var el = document.getElementById('map-status');
+    el.style.display = 'block';
+    el.style.background = bg;
+    el.style.color = color;
+    el.textContent = msg;
+}
+
+function showDadMap(lat, lng, zoom) {
+    var wrap = document.getElementById('map-wrap');
+    wrap.style.display = 'block';
+
+    if (typeof zoom !== 'number') zoom = 17;
+
+    if (!dadMap) {
+        dadMap = new google.maps.Map(document.getElementById('dad-project-map'), {
+            center: { lat: lat, lng: lng },
+            zoom: zoom,
+            mapTypeControl: true,
+            streetViewControl: true,
+            fullscreenControl: false
+        });
+
+        dadMarker = new google.maps.Marker({
+            position: { lat: lat, lng: lng },
+            map: dadMap,
+            draggable: true,
+            title: 'ドラッグして位置を調整'
+        });
+
+        dadMarker.addListener('dragend', function() {
+            var pos = dadMarker.getPosition();
+            updateDadCoords(pos.lat(), pos.lng());
+        });
+
+        dadMap.addListener('click', function(e) {
+            dadMarker.setPosition(e.latLng);
+            updateDadCoords(e.latLng.lat(), e.latLng.lng());
+        });
+    } else {
+        dadMap.setCenter({ lat: lat, lng: lng });
+        dadMap.setZoom(zoom);
+        dadMarker.setPosition({ lat: lat, lng: lng });
+    }
+
+    updateDadCoords(lat, lng);
+}
+
+function updateDadCoords(lat, lng) {
+    document.getElementById('input-latitude').value = lat.toFixed(7);
+    document.getElementById('input-longitude').value = lng.toFixed(7);
+    document.getElementById('display-lat').textContent = lat.toFixed(7);
+    document.getElementById('display-lng').textContent = lng.toFixed(7);
+}
+</script>
+
+{{-- Google Maps API 読み込み --}}
+<script src="https://maps.googleapis.com/maps/api/js?key={{ env('GOOGLE_MAPS_API_KEY', '') }}&callback=onGoogleMapsReady&language=ja&region=JP" async defer></script>

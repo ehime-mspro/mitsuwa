@@ -65,6 +65,23 @@
         </div>
     </div>
 
+    {{-- 所在地マップ（閲覧専用） --}}
+    @if($project->latitude && $project->longitude)
+    <div class="bg-white border border-gray-200 rounded-lg" style="padding: 20px; margin-bottom: 20px;">
+        <div class="card-title">所在地マップ</div>
+        @if($project->site_address)
+            <div style="font-size: 13px; color: #4b5563; margin-bottom: 10px;">{{ $project->site_address }}</div>
+        @endif
+        <div style="border: 1px solid #d1d5db; border-radius: 8px; overflow: hidden;">
+            <div id="dad-detail-map" style="height: 350px;"></div>
+        </div>
+        <div style="display: flex; gap: 14px; margin-top: 8px;">
+            <span style="font-size: 12px; color: #6b7280;">緯度: <strong style="color: #1f2937;">{{ $project->latitude }}</strong></span>
+            <span style="font-size: 12px; color: #6b7280;">経度: <strong style="color: #1f2937;">{{ $project->longitude }}</strong></span>
+        </div>
+    </div>
+    @endif
+
     {{-- タブ --}}
     <div class="tabs">
         <button type="button" class="tab" :class="{ active: activeTab === 'basic' }" @click="activeTab = 'basic'">基本情報</button>
@@ -387,5 +404,38 @@ function projectShow() {
     };
 }
 </script>
+
+{{-- 所在地マップ（閲覧専用）— Google Maps API ロード --}}
+@if($project->latitude && $project->longitude)
+<script>
+function initDadDetailMap() {
+    var lat = {{ $project->latitude }};
+    var lng = {{ $project->longitude }};
+
+    var map = new google.maps.Map(document.getElementById('dad-detail-map'), {
+        center: { lat: lat, lng: lng },
+        zoom: 17,
+        mapTypeControl: true,
+        streetViewControl: true,
+        fullscreenControl: false
+    });
+
+    var marker = new google.maps.Marker({
+        position: { lat: lat, lng: lng },
+        map: map,
+        title: @json($project->project_name)
+    });
+
+    var infoContent = '<div style="font-size:13px;"><strong>'
+        + @json($project->project_name)
+        + '</strong>'
+        + (@json($project->site_address ?? '') ? '<br>' + @json($project->site_address ?? '') : '')
+        + '</div>';
+    var infoWindow = new google.maps.InfoWindow({ content: infoContent });
+    infoWindow.open(map, marker);
+}
+</script>
+<script src="https://maps.googleapis.com/maps/api/js?key={{ env('GOOGLE_MAPS_API_KEY', '') }}&callback=initDadDetailMap&language=ja&region=JP" async defer></script>
+@endif
 
 @endsection
