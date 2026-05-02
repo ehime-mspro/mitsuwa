@@ -20,7 +20,8 @@
     $hasRealEstateAccess = $isExecutive || $user->belongsToDepartment('realestate');
     $hasHousingAccess = $isExecutive || $user->belongsToDepartment('housing');
     $hasMansionAccess = $isExecutive || $user->belongsToDepartment('mansion');
-    $hasDadAccess = $isExecutive || $user->belongsToDepartment('dad');
+    $hasDadAccess  = $isExecutive || $user->belongsToDepartment('dad');
+    $hasZealAccess = $isExecutive || $user->belongsToDepartment('zeal');
 @endphp
 
 {{-- ========== PC用: 展開サイドバー ========== --}}
@@ -116,6 +117,17 @@
         </x-sidebar-group>
     @endif
 
+    {{-- ZEAL フィットネス事業 --}}
+    @if($hasZealAccess)
+        <x-sidebar-group label="ZEAL">
+            <x-sidebar-item :href="url('/zeal')" label="ダッシュボード" :active="request()->is('zeal') || request()->routeIs('zeal.dashboard')" />
+            <x-sidebar-item :href="url('/zeal/members')" label="会員管理" :active="request()->is('zeal/members*')" />
+            <x-sidebar-item :href="url('/zeal/inquiries')" label="体験予約" :active="request()->is('zeal/inquiries*')" />
+            <x-sidebar-item :href="url('/zeal/plans')" label="プランマスタ" :active="request()->is('zeal/plans*')" />
+            <x-sidebar-item :href="url('/zeal/trainers')" label="トレーナーマスタ" :active="request()->is('zeal/trainers*')" />
+        </x-sidebar-group>
+    @endif
+
     {{-- システム管理（経営層のみ） --}}
     @if($isExecutive)
         <x-sidebar-group label="システム管理">
@@ -153,6 +165,12 @@
                 <span style="flex: 1; height: 1px; background: #D1D5DB;"></span>
             </div>
             <x-sidebar-item :href="url('/admin/master/dad-specialties')" label="専門分野マスター" :active="request()->is('admin/master/dad-specialties*')" />
+            {{-- サブ見出し: ZEAL --}}
+            <div style="display: flex; align-items: center; gap: 8px; padding: 8px 20px 3px;">
+                <span style="font-size: 10px; font-weight: 600; color: #6B7280; letter-spacing: 0.05em; white-space: nowrap;">ZEAL</span>
+                <span style="flex: 1; height: 1px; background: #D1D5DB;"></span>
+            </div>
+            <x-sidebar-item :href="url('/admin/zeal/member-import')" label="会員CSVインポート" :active="request()->is('admin/zeal/member-import*')" />
             {{-- サブ見出し: マスター --}}
             <div style="display: flex; align-items: center; gap: 8px; padding: 8px 20px 3px;">
                 <span style="font-size: 10px; font-weight: 600; color: #6B7280; letter-spacing: 0.05em; white-space: nowrap;">マスター</span>
@@ -237,6 +255,20 @@
         <a href="{{ url('/dad/projects') }}" title="DAD" class="w-9 h-9 mb-1 rounded-lg flex items-center justify-center {{ request()->is('dad/*') ? 'bg-emerald-50' : 'hover:bg-gray-100' }} transition-colors">
             <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="{{ request()->is('dad/*') ? '#059669' : '#6B7280' }}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M3 21h18M5 21V10l7-5 7 5v11M9 21v-6h6v6" /><circle cx="12" cy="13" r="0.5" />
+            </svg>
+        </a>
+    @endif
+
+    {{-- ZEAL フィットネス事業 --}}
+    @if($hasZealAccess)
+        <a href="{{ url('/zeal') }}" title="ZEAL" class="w-9 h-9 mb-1 rounded-lg flex items-center justify-center {{ request()->is('zeal*') ? 'bg-emerald-50' : 'hover:bg-gray-100' }} transition-colors">
+            <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="{{ request()->is('zeal*') ? '#059669' : '#6B7280' }}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                {{-- ダンベルアイコン --}}
+                <line x1="8.5" y1="12" x2="15.5" y2="12"/>
+                <rect x="2" y="9" width="3" height="6" rx="1"/>
+                <rect x="5.5" y="7" width="3" height="10" rx="1"/>
+                <rect x="15.5" y="7" width="3" height="10" rx="1"/>
+                <rect x="19" y="9" width="3" height="6" rx="1"/>
             </svg>
         </a>
     @endif
@@ -342,6 +374,17 @@
         </x-sidebar-group>
     @endif
 
+    {{-- ZEAL フィットネス事業 --}}
+    @if($hasZealAccess)
+        <x-sidebar-group label="ZEAL">
+            <x-sidebar-item :href="url('/zeal')" label="ダッシュボード" :active="request()->is('zeal') || request()->routeIs('zeal.dashboard')" />
+            <x-sidebar-item :href="url('/zeal/members')" label="会員管理" :active="request()->is('zeal/members*')" />
+            <x-sidebar-item :href="url('/zeal/inquiries')" label="体験予約" :active="request()->is('zeal/inquiries*')" />
+            <x-sidebar-item :href="url('/zeal/plans')" label="プランマスタ" :active="request()->is('zeal/plans*')" />
+            <x-sidebar-item :href="url('/zeal/trainers')" label="トレーナーマスタ" :active="request()->is('zeal/trainers*')" />
+        </x-sidebar-group>
+    @endif
+
     @if($isExecutive)
         <x-sidebar-group label="システム管理">
             {{-- サブ見出し: テナント --}}
@@ -378,6 +421,12 @@
                 <span style="flex: 1; height: 1px; background: #D1D5DB;"></span>
             </div>
             <x-sidebar-item :href="url('/admin/master/dad-specialties')" label="専門分野マスター" :active="request()->is('admin/master/dad-specialties*')" />
+            {{-- サブ見出し: ZEAL --}}
+            <div style="display: flex; align-items: center; gap: 8px; padding: 8px 20px 3px;">
+                <span style="font-size: 10px; font-weight: 600; color: #6B7280; letter-spacing: 0.05em; white-space: nowrap;">ZEAL</span>
+                <span style="flex: 1; height: 1px; background: #D1D5DB;"></span>
+            </div>
+            <x-sidebar-item :href="url('/admin/zeal/member-import')" label="会員CSVインポート" :active="request()->is('admin/zeal/member-import*')" />
             {{-- サブ見出し: マスター --}}
             <div style="display: flex; align-items: center; gap: 8px; padding: 8px 20px 3px;">
                 <span style="font-size: 10px; font-weight: 600; color: #6B7280; letter-spacing: 0.05em; white-space: nowrap;">マスター</span>

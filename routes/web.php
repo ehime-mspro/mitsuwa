@@ -1245,6 +1245,76 @@ Route::middleware(['auth', 'password.change'])->group(function () {
 
     /*
     |----------------------------------------------------------------------
+    | ZEAL フィットネス事業（Phase 3-B〜3-G で段階実装）
+    |----------------------------------------------------------------------
+    */
+    Route::prefix('zeal')->group(function () {
+        // ダッシュボード（1ルート）
+        Route::get('/', [\App\Http\Controllers\Zeal\DashboardController::class, 'index'])
+            ->name('zeal.dashboard');
+
+        // 体験予約閲覧（2ルート — 外部DB参照のみ、書き込み不可）
+        Route::get('/inquiries', [\App\Http\Controllers\Zeal\InquiryController::class, 'index'])
+            ->name('zeal.inquiries.index');
+        Route::get('/inquiries/{inquiry}', [\App\Http\Controllers\Zeal\InquiryController::class, 'show'])
+            ->name('zeal.inquiries.show');
+
+        // 会員管理（9ルート）
+        Route::get('/members', [\App\Http\Controllers\Zeal\MemberController::class, 'index'])
+            ->name('zeal.members.index');
+        Route::get('/members/{member}', [\App\Http\Controllers\Zeal\MemberController::class, 'show'])
+            ->name('zeal.members.show');
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/members/create', [\App\Http\Controllers\Zeal\MemberController::class, 'create'])
+                ->name('zeal.members.create');
+            Route::post('/members', [\App\Http\Controllers\Zeal\MemberController::class, 'store'])
+                ->name('zeal.members.store');
+            Route::get('/members/{member}/edit', [\App\Http\Controllers\Zeal\MemberController::class, 'edit'])
+                ->name('zeal.members.edit');
+            Route::put('/members/{member}', [\App\Http\Controllers\Zeal\MemberController::class, 'update'])
+                ->name('zeal.members.update');
+            Route::post('/members/{member}/change-plan', [\App\Http\Controllers\Zeal\MemberController::class, 'changePlan'])
+                ->name('zeal.members.change-plan');
+            Route::post('/members/{member}/withdraw', [\App\Http\Controllers\Zeal\MemberController::class, 'withdraw'])
+                ->name('zeal.members.withdraw');
+        });
+        Route::delete('/members/{member}', [\App\Http\Controllers\Zeal\MemberController::class, 'destroy'])
+            ->middleware('role:executive')
+            ->name('zeal.members.destroy');
+
+        // プランマスタ（5ルート）
+        Route::get('/plans', [\App\Http\Controllers\Zeal\PlanController::class, 'index'])
+            ->name('zeal.plans.index');
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/plans/create', [\App\Http\Controllers\Zeal\PlanController::class, 'create'])
+                ->name('zeal.plans.create');
+            Route::post('/plans', [\App\Http\Controllers\Zeal\PlanController::class, 'store'])
+                ->name('zeal.plans.store');
+            Route::get('/plans/{plan}/edit', [\App\Http\Controllers\Zeal\PlanController::class, 'edit'])
+                ->name('zeal.plans.edit');
+            Route::put('/plans/{plan}', [\App\Http\Controllers\Zeal\PlanController::class, 'update'])
+                ->name('zeal.plans.update');
+        });
+        Route::delete('/plans/{plan}', [\App\Http\Controllers\Zeal\PlanController::class, 'destroy'])
+            ->middleware('role:executive')
+            ->name('zeal.plans.destroy');
+
+        // トレーナーマスタ（4ルート — Ajax CRUD）
+        Route::get('/trainers', [\App\Http\Controllers\Zeal\TrainerController::class, 'index'])
+            ->name('zeal.trainers.index');
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::post('/trainers', [\App\Http\Controllers\Zeal\TrainerController::class, 'store'])
+                ->name('zeal.trainers.store');
+            Route::put('/trainers/{trainer}', [\App\Http\Controllers\Zeal\TrainerController::class, 'update'])
+                ->name('zeal.trainers.update');
+        });
+        Route::delete('/trainers/{trainer}', [\App\Http\Controllers\Zeal\TrainerController::class, 'destroy'])
+            ->middleware('role:executive')
+            ->name('zeal.trainers.destroy');
+    });
+
+    /*
+    |----------------------------------------------------------------------
     | 顧客管理 Ajax API（3ルート — 共通）
     |----------------------------------------------------------------------
     */
@@ -1342,6 +1412,14 @@ Route::middleware(['auth', 'password.change'])->group(function () {
             ->name('admin.mansion-import.template-room-contract');
         Route::get('/mansion-import/template/parking-contract', [\App\Http\Controllers\Admin\MansionImportController::class, 'downloadParkingContractTemplate'])
             ->name('admin.mansion-import.template-parking-contract');
+
+        // ZEAL 会員 CSV インポート（3ルート）
+        Route::get('/zeal/member-import', [\App\Http\Controllers\Admin\ZealMemberImportController::class, 'index'])
+            ->name('admin.zeal.member-import');
+        Route::post('/zeal/member-import/preview', [\App\Http\Controllers\Admin\ZealMemberImportController::class, 'preview'])
+            ->name('admin.zeal.member-import.preview');
+        Route::post('/zeal/member-import/execute', [\App\Http\Controllers\Admin\ZealMemberImportController::class, 'execute'])
+            ->name('admin.zeal.member-import.execute');
     });
 
     /*

@@ -84,6 +84,31 @@ return [
             ]) : [],
         ],
 
+        /*
+         * ZEAL フィットネス事業 外部 DB 接続（gym_inquiries テーブル読み取り専用）
+         * 接続先: mitsuwa-ud_zeel-b データベース
+         * .env に ZEAL_DB_HOST / ZEAL_DB_PORT / ZEAL_DB_DATABASE / ZEAL_DB_USERNAME / ZEAL_DB_PASSWORD を設定すること
+         */
+        'zeal' => [
+            'driver'    => 'mysql',
+            'url'       => env('ZEAL_DB_URL'),
+            'host'      => env('ZEAL_DB_HOST', '127.0.0.1'),
+            'port'      => env('ZEAL_DB_PORT', '3306'),
+            'database'  => env('ZEAL_DB_DATABASE', 'mitsuwa-ud_zeel-b'),
+            'username'  => env('ZEAL_DB_USERNAME', ''),
+            'password'  => env('ZEAL_DB_PASSWORD', ''),
+            'unix_socket'    => env('ZEAL_DB_SOCKET', ''),
+            'charset'        => 'utf8mb4',
+            'collation'      => 'utf8mb4_unicode_ci',
+            'prefix'         => '',
+            'prefix_indexes' => true,
+            'strict'         => true,
+            'engine'         => null,
+            'options'        => extension_loaded('pdo_mysql') ? array_filter([
+                (PHP_VERSION_ID >= 80500 ? Mysql::ATTR_SSL_CA : PDO::MYSQL_ATTR_SSL_CA) => env('MYSQL_ATTR_SSL_CA'),
+            ]) : [],
+        ],
+
         'pgsql' => [
             'driver' => 'pgsql',
             'url' => env('DB_URL'),
