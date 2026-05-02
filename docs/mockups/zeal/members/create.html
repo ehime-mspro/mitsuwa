@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>会員登録 | ZEAL | ミツワ都市開発 経営管理システム</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif; background: #f3f4f6; }
+        [x-cloak] { display: none !important; }
+
+        /* カードセクション見出し */
+        .card-title {
+            font-size: 15px; font-weight: 700; color: #111827;
+            margin-bottom: 16px; padding-left: 12px;
+            border-left: 4px solid #10b981;
+        }
+
+        /* フォームフィールド共通 */
+        .field-label {
+            display: block; font-size: 13px; font-weight: 700;
+            color: #374151; margin-bottom: 5px;
+        }
+        .field-label .req { color: #dc2626; margin-left: 2px; }
+        .field-label .opt { font-size: 11px; font-weight: 400; color: #9ca3af; margin-left: 4px; }
+        .form-input {
+            width: 100%; height: 38px;
+            border: 1px solid #d1d5db; border-radius: 6px;
+            padding: 0 12px; font-size: 14px; color: #111827;
+            background: white; box-sizing: border-box;
+            font-family: inherit;
+        }
+        .form-input:focus { outline: none; border-color: #10b981; box-shadow: 0 0 0 3px rgba(16,185,129,0.1); }
+        .form-select {
+            width: 100%; height: 38px;
+            border: 1px solid #d1d5db; border-radius: 6px;
+            padding: 0 10px; font-size: 14px; color: #111827;
+            background: white; box-sizing: border-box;
+        }
+        .form-hint { font-size: 11px; color: #9ca3af; margin-top: 4px; }
+        .field-wrap { margin-bottom: 0; }
+
+        /* 2カラムグリッド */
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 20px; }
+        .form-grid .span-2 { grid-column: span 2; }
+
+        /* プライスボックス */
+        .price-box {
+            background: #f0fdf4; border: 1px solid #a7f3d0;
+            border-radius: 8px; padding: 14px 16px; margin-top: 8px;
+            display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+        }
+        .price-box .excl { font-size: 18px; font-weight: 700; color: #111827; }
+        .price-box .incl { font-size: 13px; color: #047857; font-weight: 600; }
+    </style>
+</head>
+<body>
+
+    <!-- トップバー -->
+    <header style="background: #1f2937; color: white; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between;">
+        <span style="font-weight: 700;">ミツワ都市開発 経営管理システム</span>
+        <div style="font-size: 13px;">山田 (経営層)</div>
+    </header>
+
+    <div style="display: flex; min-height: calc(100vh - 48px);">
+
+        <!-- サイドバー -->
+        <aside style="width: 220px; background: white; border-right: 1px solid #e5e7eb; padding: 16px 0; flex-shrink: 0;">
+            <nav style="font-size: 13px;">
+                <div style="padding: 8px 16px; color: #6b7280;">テナント管理</div>
+                <div style="padding: 8px 16px; color: #6b7280;">賃貸マンション</div>
+                <div style="padding: 8px 16px; color: #6b7280;">不動産管理</div>
+                <div style="padding: 8px 16px; color: #6b7280;">住宅事業</div>
+                <div style="padding: 8px 16px; color: #6b7280;">DAD</div>
+                <div style="padding: 8px 16px; color: #111827; font-weight: 700;">ZEAL ▾</div>
+                <a href="../dashboard.html" style="display: block; padding: 6px 16px 6px 32px; color: #6b7280; text-decoration: none;">ダッシュボード</a>
+                <a href="index.html" style="display: block; padding: 6px 16px 6px 32px; background: #ecfdf5; color: #047857; border-left: 3px solid #10b981; font-weight: 600; text-decoration: none;">会員管理</a>
+                <a href="#" style="display: block; padding: 6px 16px 6px 32px; color: #6b7280; text-decoration: none;">体験予約</a>
+                <a href="#" style="display: block; padding: 6px 16px 6px 32px; color: #6b7280; text-decoration: none;">プランマスタ</a>
+                <a href="#" style="display: block; padding: 6px 16px 6px 32px; color: #6b7280; text-decoration: none;">トレーナーマスタ</a>
+                <div style="padding: 8px 16px; color: #6b7280;">システム管理</div>
+            </nav>
+        </aside>
+
+        <!-- メインコンテンツ -->
+        <main style="flex: 1; padding: 24px; min-width: 0;" x-data="zealMemberForm()">
+
+            <!-- パンくず -->
+            <div style="font-size: 12px; color: #9ca3af; margin-bottom: 12px;">
+                ZEAL &gt; <a href="index.html" style="color: #9ca3af; text-decoration: none;">会員管理</a> &gt; <span style="color: #374151; font-weight: 600;">新規登録</span>
+            </div>
+
+            <!-- ページヘッダー -->
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
+                <h1 style="font-size: 20px; font-weight: 700; margin: 0;">会員 新規登録</h1>
+                <a href="index.html" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border: 1px solid #d1d5db; border-radius: 6px; background: white; font-size: 13px; color: #374151; text-decoration: none;">
+                    <svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                    一覧に戻る
+                </a>
+            </div>
+
+            <form>
+
+                <!-- ========== カード: 個人情報 ========== -->
+                <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
+                    <div class="card-title">個人情報</div>
+                    <div class="form-grid">
+
+                        <!-- 氏名 -->
+                        <div class="field-wrap">
+                            <label class="field-label">氏名<span class="req">*</span></label>
+                            <input type="text" name="name" class="form-input"
+                                   placeholder="例: 山本 健太"
+                                   @compositionend="autoKana($event)"
+                                   @input="autoKana($event)">
+                        </div>
+
+                        <!-- フリガナ -->
+                        <div class="field-wrap">
+                            <label class="field-label">フリガナ<span class="req">*</span></label>
+                            <input type="text" name="name_kana" class="form-input"
+                                   placeholder="例: ヤマモト ケンタ"
+                                   x-model="kana">
+                            <div class="form-hint">氏名入力時に自動入力されます</div>
+                        </div>
+
+                        <!-- 性別 -->
+                        <div class="field-wrap">
+                            <label class="field-label">性別<span class="req">*</span></label>
+                            <div style="display: flex; gap: 20px; margin-top: 6px;">
+                                <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer;">
+                                    <input type="radio" name="gender" value="male" style="accent-color: #059669;"> 男性
+                                </label>
+                                <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer;">
+                                    <input type="radio" name="gender" value="female" style="accent-color: #059669;"> 女性
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- 生年月日 -->
+                        <div class="field-wrap">
+                            <label class="field-label">生年月日<span class="req">*</span></label>
+                            <input type="text" name="birth_date" class="form-input" placeholder="例: 1990-01-15">
+                        </div>
+
+                        <!-- 電話 -->
+                        <div class="field-wrap">
+                            <label class="field-label">電話番号<span class="req">*</span></label>
+                            <input type="tel" name="phone" class="form-input" placeholder="例: 090-1234-5678" inputmode="numeric">
+                        </div>
+
+                        <!-- メール -->
+                        <div class="field-wrap">
+                            <label class="field-label">メールアドレス<span class="opt">任意</span></label>
+                            <input type="email" name="email" class="form-input" placeholder="例: yamamoto@example.com">
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- ========== カード: 住所 ========== -->
+                <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
+                    <div class="card-title">住所<span style="font-size: 12px; font-weight: 400; color: #9ca3af; margin-left: 8px;">任意</span></div>
+                    <div class="form-grid">
+
+                        <!-- 郵便番号 -->
+                        <div class="field-wrap">
+                            <label class="field-label">郵便番号</label>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <input type="text" name="zip" class="form-input" placeholder="例: 790-0001"
+                                       inputmode="numeric" style="width: 160px; flex-shrink: 0;">
+                                <button type="button"
+                                        style="height: 38px; padding: 0 14px; border: 1px solid #d1d5db; border-radius: 6px; background: white; font-size: 13px; color: #374151; cursor: pointer; white-space: nowrap;">
+                                    住所を検索
+                                </button>
+                            </div>
+                            <div class="form-hint">郵便番号から住所を自動入力します（zipcloud API）</div>
+                        </div>
+
+                        <!-- 都道府県 -->
+                        <div class="field-wrap">
+                            <label class="field-label">都道府県</label>
+                            <select name="prefecture" class="form-select">
+                                <option value="">選択</option>
+                                <option selected>愛媛県</option>
+                                <option>高知県</option>
+                                <option>香川県</option>
+                                <option>徳島県</option>
+                            </select>
+                        </div>
+
+                        <!-- 市区町村以降 -->
+                        <div class="field-wrap span-2">
+                            <label class="field-label">市区町村・番地</label>
+                            <input type="text" name="address" class="form-input" placeholder="例: 松山市一番町1-2-3">
+                        </div>
+
+                        <!-- 建物名 -->
+                        <div class="field-wrap span-2">
+                            <label class="field-label">建物名・部屋番号<span class="opt">任意</span></label>
+                            <input type="text" name="address2" class="form-input" placeholder="例: ○○マンション 201号室">
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- ========== カード: 入会情報 ========== -->
+                <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
+                    <div class="card-title">入会情報</div>
+                    <div class="form-grid">
+
+                        <!-- 入会日 -->
+                        <div class="field-wrap">
+                            <label class="field-label">入会日<span class="req">*</span></label>
+                            <input type="text" name="joined_on" class="form-input" placeholder="例: 2026-06-01">
+                        </div>
+
+                        <!-- プラン -->
+                        <div class="field-wrap">
+                            <label class="field-label">初回プラン<span class="req">*</span></label>
+                            <select name="plan_id" class="form-select" x-model="selectedPlan" @change="onPlanChange()">
+                                <option value="">選択してください</option>
+                                <option value="1" data-normal="30000" data-campaign="27273">1枠 通い放題（通常 33,000円税込）</option>
+                                <option value="2" data-normal="35000" data-campaign="31818">2枠 通い放題（通常 38,500円税込）</option>
+                                <option value="3" data-normal="15000" data-campaign="13636">月4回プラン（通常 16,500円税込）</option>
+                                <option value="4" data-normal="18818" data-campaign="18818">ペアプラン（通常 20,700円税込）</option>
+                            </select>
+                        </div>
+
+                        <!-- 適用価格タイプ -->
+                        <div class="field-wrap" x-show="selectedPlan">
+                            <label class="field-label">適用価格タイプ<span class="req">*</span></label>
+                            <div style="display: flex; gap: 20px; margin-top: 6px;">
+                                <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer;">
+                                    <input type="radio" name="price_type" value="normal" x-model="priceType" @change="onPlanChange()" style="accent-color: #059669;"> 通常価格
+                                </label>
+                                <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer;">
+                                    <input type="radio" name="price_type" value="campaign" x-model="priceType" @change="onPlanChange()" style="accent-color: #059669;"> キャンペーン価格
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- 適用価格（税抜） -->
+                        <div class="field-wrap" x-show="selectedPlan">
+                            <label class="field-label">適用価格（税抜）<span class="req">*</span></label>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <input type="text" name="applied_price_excl" class="form-input"
+                                       inputmode="numeric"
+                                       x-model="appliedPrice"
+                                       style="width: 160px; flex-shrink: 0;">
+                                <span style="font-size: 13px; color: #6b7280;">円</span>
+                            </div>
+                            <div class="form-hint">特例価格の場合は手動で変更できます</div>
+                        </div>
+
+                        <!-- 確認ボックス（プラン選択後に表示） -->
+                        <div class="span-2" x-show="selectedPlan && appliedPrice">
+                            <div class="price-box">
+                                <div>
+                                    <div style="font-size: 11px; color: #6b7280; margin-bottom: 2px;">月会費（税抜）</div>
+                                    <div class="excl" x-text="Number(appliedPrice).toLocaleString('ja-JP') + ' 円'"></div>
+                                </div>
+                                <div style="color: #9ca3af;">→</div>
+                                <div>
+                                    <div style="font-size: 11px; color: #6b7280; margin-bottom: 2px;">月会費（税込 10%）</div>
+                                    <div class="incl" x-text="Math.round(Number(appliedPrice) * 1.1).toLocaleString('ja-JP') + ' 円'"></div>
+                                </div>
+                                <div x-show="priceType === 'campaign'" style="margin-left: auto;">
+                                    <span style="background: #fef3c7; color: #92400e; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 99px;">キャンペーン適用</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ペアプラン主契約者（ペアプラン選択時のみ） -->
+                        <div class="field-wrap span-2" x-show="selectedPlan === '4'" x-cloak>
+                            <label class="field-label">ペアプラン主契約者<span class="req">*</span></label>
+                            <input type="text" name="pair_parent_search" class="form-input"
+                                   placeholder="氏名で検索（例: 中村 龍一）">
+                            <div class="form-hint">在籍中の会員から選択してください</div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- ========== カード: 集客・目的 ========== -->
+                <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
+                    <div class="card-title">集客・目的<span style="font-size: 12px; font-weight: 400; color: #9ca3af; margin-left: 8px;">任意</span></div>
+                    <div class="form-grid">
+
+                        <!-- 集客チャネル -->
+                        <div class="field-wrap">
+                            <label class="field-label">集客チャネル</label>
+                            <select name="acquisition_source" class="form-select">
+                                <option value="">選択してください</option>
+                                <option>Instagram</option>
+                                <option>Facebook</option>
+                                <option>Google 検索</option>
+                                <option>友人・知人紹介</option>
+                                <option>チラシ・折込</option>
+                                <option>店頭・通りがかり</option>
+                                <option>その他</option>
+                            </select>
+                        </div>
+
+                        <!-- 入会目的 -->
+                        <div class="field-wrap">
+                            <label class="field-label">入会目的</label>
+                            <select name="purpose" class="form-select">
+                                <option value="">選択してください</option>
+                                <option>ダイエット・体型改善</option>
+                                <option>筋力アップ</option>
+                                <option>健康維持</option>
+                                <option>姿勢改善・肩こり腰痛対策</option>
+                                <option>スポーツパフォーマンス向上</option>
+                                <option>その他</option>
+                            </select>
+                        </div>
+
+                        <!-- 体験予約との紐付け -->
+                        <div class="field-wrap span-2">
+                            <label class="field-label">体験予約との紐付け<span class="opt">任意</span></label>
+                            <input type="text" name="gym_inquiry_search" class="form-input"
+                                   placeholder="体験予約の氏名・日付で検索（例: 山本 健太）">
+                            <div class="form-hint">体験予約から入会した場合、紐付けると入会率の集計に使われます</div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- ========== カード: 備考 ========== -->
+                <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 24px;">
+                    <div class="card-title">備考<span style="font-size: 12px; font-weight: 400; color: #9ca3af; margin-left: 8px;">任意</span></div>
+                    <textarea name="notes" class="form-input" placeholder="トレーニングの希望・特記事項など..."
+                              style="height: 96px; padding: 8px 12px; resize: vertical;"></textarea>
+                </div>
+
+                <!-- アクションボタン -->
+                <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                    <a href="index.html" style="display: inline-flex; align-items: center; padding: 10px 20px; border: 1px solid #d1d5db; border-radius: 6px; background: white; font-size: 14px; color: #374151; text-decoration: none;">
+                        キャンセル
+                    </a>
+                    <button type="submit"
+                            style="padding: 10px 28px; background: #059669; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 700; cursor: pointer;">
+                        登録する
+                    </button>
+                </div>
+
+            </form>
+
+        </main>
+    </div>
+
+    <script>
+        // プランの価格マスタ（税抜）
+        var PLAN_PRICES = {
+            '1': { normal: 30000, campaign: 27273 },
+            '2': { normal: 35000, campaign: 31818 },
+            '3': { normal: 15000, campaign: 13636 },
+            '4': { normal: 18818, campaign: 18818 }
+        };
+
+        function zealMemberForm() {
+            return {
+                kana: '',
+                selectedPlan: '',
+                priceType: 'normal',
+                appliedPrice: '',
+
+                // フリガナ自動入力（compositionend パターン）
+                autoKana: function(e) {
+                    // IMEによるカタカナ変換は compositionend で確定後に処理
+                    // モックのためスタブ実装
+                },
+
+                // プラン変更時に価格を自動セット
+                onPlanChange: function() {
+                    if (!this.selectedPlan) {
+                        this.appliedPrice = '';
+                        return;
+                    }
+                    var prices = PLAN_PRICES[this.selectedPlan];
+                    this.appliedPrice = this.priceType === 'campaign'
+                        ? prices.campaign
+                        : prices.normal;
+                },
+
+                // 価格タイプ変更時も自動セット
+                onPriceTypeChange: function() {
+                    this.onPlanChange();
+                }
+            };
+        }
+    </script>
+
+</body>
+</html>

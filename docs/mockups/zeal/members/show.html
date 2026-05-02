@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>会員詳細 | ZEAL | ミツワ都市開発 経営管理システム</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif; background: #f3f4f6; }
+        [x-cloak] { display: none !important; }
+
+        /* 情報行 */
+        .info-row { display: grid; grid-template-columns: 150px 1fr; padding: 10px 0; border-bottom: 1px dashed #e5e7eb; font-size: 14px; }
+        .info-row:last-child { border-bottom: none; }
+        .info-label { color: #6b7280; font-weight: 600; }
+        .info-value { color: #111827; }
+
+        /* タブ */
+        .tab-btn {
+            padding: 10px 20px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #374151;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            white-space: nowrap;
+            transition: all .15s;
+            background: none;
+            border-top: none;
+            border-left: none;
+            border-right: none;
+        }
+        .tab-btn:hover { color: #111827; background: #f9fafb; }
+        .tab-btn.active { color: #059669; border-bottom-color: #059669; font-weight: 700; }
+
+        /* バッジ */
+        .badge { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 9999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+        .badge-active   { background: #d1fae5; color: #065f46; }
+        .badge-withdrew { background: #f3f4f6; color: #6b7280; }
+        .badge-pair     { background: #ede9fe; color: #5b21b6; }
+        .badge-campaign { background: #fef3c7; color: #92400e; }
+        .badge-reason   { background: #fee2e2; color: #991b1b; }
+
+        /* テーブル */
+        .dash-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .dash-table thead th {
+            background: #f9fafb; color: #374151; font-weight: 700; font-size: 12px;
+            text-align: left; padding: 10px 12px; border-bottom: 1px solid #e5e7eb;
+        }
+        .dash-table thead th.num { text-align: right; }
+        .dash-table thead th.center { text-align: center; }
+        .dash-table tbody td { padding: 10px 12px; border-bottom: 1px solid #f3f4f6; color: #374151; }
+        .dash-table tbody td.num { text-align: right; font-variant-numeric: tabular-nums; }
+        .dash-table tbody td.center { text-align: center; }
+        .dash-table tbody tr:last-child td { border-bottom: none; }
+        .dash-table .incl-tax { color: #047857; font-weight: 700; }
+
+        /* モーダルオーバーレイ */
+        .modal-overlay {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.4);
+            z-index: 50;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .modal-box {
+            background: white; border-radius: 12px;
+            padding: 28px; width: 480px; max-width: 90vw;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+        }
+        .modal-title { font-size: 16px; font-weight: 700; color: #111827; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid #e5e7eb; }
+        .form-label { font-size: 12px; font-weight: 700; color: #374151; margin-bottom: 6px; display: block; }
+        .form-input { width: 100%; height: 36px; padding: 0 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; color: #111827; background: white; box-sizing: border-box; }
+        .form-select { width: 100%; height: 36px; padding: 0 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; color: #111827; background: white; box-sizing: border-box; }
+        .form-row { margin-bottom: 16px; }
+
+        /* 添付ファイルエリア */
+        .attach-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 8px; margin-bottom: 8px; background: white; }
+        .attach-name { font-size: 13px; color: #374151; font-weight: 600; }
+        .attach-meta { font-size: 11px; color: #9ca3af; margin-top: 2px; }
+    </style>
+</head>
+<body>
+
+    <!-- トップバー -->
+    <header style="background: #1f2937; color: white; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between;">
+        <span style="font-weight: 700;">ミツワ都市開発 経営管理システム</span>
+        <div style="font-size: 13px;">山田 (経営層)</div>
+    </header>
+
+    <div style="display: flex; min-height: calc(100vh - 48px);">
+
+        <!-- サイドバー -->
+        <aside style="width: 220px; background: white; border-right: 1px solid #e5e7eb; padding: 16px 0; flex-shrink: 0;">
+            <nav style="font-size: 13px;">
+                <div style="padding: 8px 16px; color: #6b7280;">テナント管理</div>
+                <div style="padding: 8px 16px; color: #6b7280;">賃貸マンション</div>
+                <div style="padding: 8px 16px; color: #6b7280;">不動産管理</div>
+                <div style="padding: 8px 16px; color: #6b7280;">住宅事業</div>
+                <div style="padding: 8px 16px; color: #6b7280;">DAD</div>
+                <div style="padding: 8px 16px; color: #111827; font-weight: 700;">ZEAL ▾</div>
+                <a href="../dashboard.html" style="display: block; padding: 6px 16px 6px 32px; color: #6b7280; text-decoration: none;">ダッシュボード</a>
+                <a href="index.html" style="display: block; padding: 6px 16px 6px 32px; background: #ecfdf5; color: #047857; border-left: 3px solid #10b981; font-weight: 600; text-decoration: none;">会員管理</a>
+                <a href="#" style="display: block; padding: 6px 16px 6px 32px; color: #6b7280; text-decoration: none;">体験予約</a>
+                <a href="#" style="display: block; padding: 6px 16px 6px 32px; color: #6b7280; text-decoration: none;">プランマスタ</a>
+                <a href="#" style="display: block; padding: 6px 16px 6px 32px; color: #6b7280; text-decoration: none;">トレーナーマスタ</a>
+                <div style="padding: 8px 16px; color: #6b7280;">システム管理</div>
+            </nav>
+        </aside>
+
+        <!-- メインコンテンツ -->
+        <main style="flex: 1; padding: 24px; min-width: 0;" x-data="zealMemberShow()">
+
+            <!-- パンくず -->
+            <div style="font-size: 12px; color: #9ca3af; margin-bottom: 12px;">
+                ZEAL &gt; <a href="index.html" style="color: #9ca3af; text-decoration: none; hover: underline;">会員管理</a> &gt; <span style="color: #374151; font-weight: 600;">山本 健太</span>
+            </div>
+
+            <!-- ページヘッダー -->
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <h1 style="font-size: 20px; font-weight: 700; margin: 0;">山本 健太</h1>
+                    <span class="badge badge-active">在籍中</span>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <a href="index.html" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border: 1px solid #d1d5db; border-radius: 6px; background: white; font-size: 13px; color: #374151; text-decoration: none;">
+                        <svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                        一覧に戻る
+                    </a>
+                    <a href="create.html" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; background: #059669; color: white; border-radius: 6px; font-size: 13px; font-weight: 600; text-decoration: none;">
+                        <svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                        編集
+                    </a>
+                </div>
+            </div>
+
+            <!-- ========== タブ ========== -->
+            <div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                <div style="display: flex; border-bottom: 1px solid #e5e7eb; overflow-x: auto;">
+                    <button type="button" class="tab-btn" :class="{ 'active': tab === 'basic' }" @click="tab = 'basic'">基本情報</button>
+                    <button type="button" class="tab-btn" :class="{ 'active': tab === 'recruit' }" @click="tab = 'recruit'">集客・目的</button>
+                    <button type="button" class="tab-btn" :class="{ 'active': tab === 'history' }" @click="tab = 'history'">契約履歴</button>
+                </div>
+
+                <!-- ========== Tab 1: 基本情報 ========== -->
+                <div x-show="tab === 'basic'" x-cloak style="padding: 24px;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+
+                        <!-- 左列 -->
+                        <div>
+                            <div style="font-size: 13px; font-weight: 700; color: #6b7280; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em;">個人情報</div>
+                            <div class="info-row">
+                                <div class="info-label">氏名</div>
+                                <div class="info-value">山本 健太</div>
+                            </div>
+                            <div class="info-row">
+                                <div class="info-label">フリガナ</div>
+                                <div class="info-value" style="color: #6b7280;">ヤマモト ケンタ</div>
+                            </div>
+                            <div class="info-row">
+                                <div class="info-label">性別</div>
+                                <div class="info-value">男性</div>
+                            </div>
+                            <div class="info-row">
+                                <div class="info-label">生年月日</div>
+                                <div class="info-value">1992-03-14（34歳）</div>
+                            </div>
+                            <div class="info-row">
+                                <div class="info-label">電話</div>
+                                <div class="info-value">090-1234-5678</div>
+                            </div>
+                            <div class="info-row">
+                                <div class="info-label">メール</div>
+                                <div class="info-value">yamamoto.kenta@example.com</div>
+                            </div>
+                            <div class="info-row">
+                                <div class="info-label">郵便番号</div>
+                                <div class="info-value">790-0001</div>
+                            </div>
+                            <div class="info-row">
+                                <div class="info-label">住所</div>
+                                <div class="info-value">愛媛県松山市一番町1-2-3</div>
+                            </div>
+                        </div>
+
+                        <!-- 右列 -->
+                        <div>
+                            <div style="font-size: 13px; font-weight: 700; color: #6b7280; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em;">契約情報</div>
+                            <div class="info-row">
+                                <div class="info-label">入会日</div>
+                                <div class="info-value">2025-10-17</div>
+                            </div>
+                            <div class="info-row">
+                                <div class="info-label">現在のプラン</div>
+                                <div class="info-value" style="font-weight: 700; color: #047857;">1枠 通い放題</div>
+                            </div>
+                            <div class="info-row">
+                                <div class="info-label">月会費（税抜）</div>
+                                <div class="info-value">30,000円<span style="font-size: 12px; color: #6b7280; margin-left: 6px;">（税込 33,000円）</span></div>
+                            </div>
+                            <div class="info-row" x-show="withdrew">
+                                <div class="info-label">退会日</div>
+                                <div class="info-value">2026-05-31</div>
+                            </div>
+                            <div class="info-row" x-show="withdrew">
+                                <div class="info-label">退会理由</div>
+                                <div class="info-value">費用・経済的理由</div>
+                            </div>
+                            <div class="info-row">
+                                <div class="info-label">備考</div>
+                                <div class="info-value" style="color: #6b7280; font-size: 13px;">体験後すぐに入会。週3〜4回通う意欲あり。</div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- ========== Tab 2: 集客・目的 ========== -->
+                <div x-show="tab === 'recruit'" x-cloak style="padding: 24px;">
+                    <div class="info-row">
+                        <div class="info-label">集客チャネル</div>
+                        <div class="info-value">Instagram</div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">入会目的</div>
+                        <div class="info-value">ダイエット・体型改善</div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">体験予約</div>
+                        <div class="info-value">
+                            <a href="#" style="color: #047857; font-weight: 600; text-decoration: none;">体験予約 #42 の詳細へ →</a>
+                            <div style="font-size: 12px; color: #9ca3af; margin-top: 2px;">体験日: 2025-10-14 / 体験時間: 10:00〜</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ========== Tab 3: 契約履歴 ========== -->
+                <div x-show="tab === 'history'" x-cloak style="padding: 24px;">
+
+                    <!-- アクションボタン -->
+                    <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                        <button type="button"
+                                @click="showPlanModal = true"
+                                style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; background: #059669; color: white; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer;">
+                            <svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                            プラン変更
+                        </button>
+                        <button type="button"
+                                @click="showWithdrawModal = true"
+                                style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; background: white; color: #dc2626; border: 1px solid #fca5a5; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer;">
+                            <svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                            退会処理
+                        </button>
+                    </div>
+
+                    <!-- 契約履歴テーブル -->
+                    <table class="dash-table">
+                        <thead>
+                            <tr>
+                                <th>期間</th>
+                                <th>プラン名</th>
+                                <th class="num">適用価格（税抜）</th>
+                                <th class="num">税込</th>
+                                <th class="center">キャンペーン</th>
+                                <th>変更理由</th>
+                                <th>備考</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- 現在の契約（period_end IS NULL） -->
+                            <tr style="background: #f0fdf4;">
+                                <td>
+                                    <span style="font-weight: 700; color: #047857;">2026-02-01 〜 現在</span>
+                                    <span class="badge badge-active" style="margin-left: 6px; font-size: 10px;">現在</span>
+                                </td>
+                                <td style="font-weight: 600;">1枠 通い放題</td>
+                                <td class="num">30,000円</td>
+                                <td class="num incl-tax">33,000円</td>
+                                <td class="center"><span style="color: #9ca3af;">—</span></td>
+                                <td>plan_change</td>
+                                <td style="color: #6b7280; font-size: 12px;">月4回から変更希望</td>
+                            </tr>
+                            <!-- 過去の契約 -->
+                            <tr>
+                                <td style="color: #6b7280;">2025-10-17 〜 2026-01-31</td>
+                                <td style="color: #6b7280;">月4回プラン</td>
+                                <td class="num" style="color: #6b7280;">15,000円</td>
+                                <td class="num" style="color: #9ca3af;">16,500円</td>
+                                <td class="center"><span class="badge badge-campaign" style="font-size: 10px;">適用</span></td>
+                                <td style="color: #6b7280;">new_join</td>
+                                <td style="color: #9ca3af; font-size: 12px;">入会時キャンペーン適用</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                </div>
+
+
+            </div><!-- /タブコンテナ -->
+
+            <!-- ========== モーダル: プラン変更 ========== -->
+            <div class="modal-overlay" x-show="showPlanModal" x-cloak @click.self="showPlanModal = false">
+                <div class="modal-box">
+                    <div class="modal-title">プラン変更 — 山本 健太</div>
+
+                    <div class="form-row">
+                        <label class="form-label">新プラン <span style="color: #dc2626;">*</span></label>
+                        <select class="form-select">
+                            <option>1枠 通い放題（30,000円 / 33,000円税込）</option>
+                            <option>2枠 通い放題（35,000円 / 38,500円税込）</option>
+                            <option>月4回プラン（15,000円 / 16,500円税込）</option>
+                            <option>ペアプラン（18,818円 / 20,700円税込）</option>
+                        </select>
+                    </div>
+
+                    <div class="form-row">
+                        <label class="form-label">変更日 <span style="color: #dc2626;">*</span></label>
+                        <input type="text" class="form-input" value="2026-06-01" placeholder="YYYY-MM-DD">
+                        <div style="font-size: 11px; color: #9ca3af; margin-top: 4px;">月初切替が運用ルールです（翌月1日を推奨）</div>
+                    </div>
+
+                    <div class="form-row">
+                        <label class="form-label">適用価格タイプ</label>
+                        <div style="display: flex; gap: 16px; margin-top: 4px;">
+                            <label style="display: flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer;">
+                                <input type="radio" name="price_type" checked> 通常価格
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer;">
+                                <input type="radio" name="price_type"> キャンペーン価格
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <label class="form-label">適用価格（税抜） <span style="color: #dc2626;">*</span></label>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <input type="text" class="form-input" value="30,000" style="width: 140px;">
+                            <span style="font-size: 13px; color: #6b7280;">円（税込 33,000円）</span>
+                        </div>
+                        <div style="font-size: 11px; color: #9ca3af; margin-top: 4px;">特例価格の場合は手動で編集できます</div>
+                    </div>
+
+                    <div class="form-row">
+                        <label class="form-label">備考</label>
+                        <textarea class="form-input" style="height: 72px; padding: 8px 10px; resize: vertical;" placeholder="変更理由・備考など"></textarea>
+                    </div>
+
+                    <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px;">
+                        <button type="button" @click="showPlanModal = false"
+                                style="padding: 8px 16px; border: 1px solid #d1d5db; border-radius: 6px; background: white; font-size: 13px; color: #374151; cursor: pointer;">
+                            キャンセル
+                        </button>
+                        <button type="button"
+                                style="padding: 8px 20px; background: #059669; color: white; border: none; border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer;">
+                            変更を確定する
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ========== モーダル: 退会処理 ========== -->
+            <div class="modal-overlay" x-show="showWithdrawModal" x-cloak @click.self="showWithdrawModal = false">
+                <div class="modal-box">
+                    <div class="modal-title" style="color: #dc2626;">退会処理 — 山本 健太</div>
+
+                    <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px 14px; font-size: 13px; color: #991b1b; margin-bottom: 20px;">
+                        退会処理後は取り消しできません。内容をよく確認してから実行してください。
+                    </div>
+
+                    <div class="form-row">
+                        <label class="form-label">退会日 <span style="color: #dc2626;">*</span></label>
+                        <input type="text" class="form-input" placeholder="YYYY-MM-DD" value="2026-05-31">
+                    </div>
+
+                    <div class="form-row">
+                        <label class="form-label">退会理由 <span style="color: #dc2626;">*</span></label>
+                        <select class="form-select">
+                            <option value="">選択してください</option>
+                            <option>費用・経済的理由</option>
+                            <option>転居</option>
+                            <option>目標達成</option>
+                            <option>仕事・時間の都合</option>
+                            <option>体調・健康上の理由</option>
+                            <option>その他</option>
+                        </select>
+                    </div>
+
+                    <div class="form-row">
+                        <label class="form-label">備考</label>
+                        <textarea class="form-input" style="height: 72px; padding: 8px 10px; resize: vertical;" placeholder="退会理由の詳細など"></textarea>
+                    </div>
+
+                    <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px;">
+                        <button type="button" @click="showWithdrawModal = false"
+                                style="padding: 8px 16px; border: 1px solid #d1d5db; border-radius: 6px; background: white; font-size: 13px; color: #374151; cursor: pointer;">
+                            キャンセル
+                        </button>
+                        <button type="button"
+                                style="padding: 8px 20px; background: #dc2626; color: white; border: none; border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer;">
+                            退会処理を実行する
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <script>
+        function zealMemberShow() {
+            return {
+                tab: 'basic',
+                showPlanModal: false,
+                showWithdrawModal: false,
+                withdrew: false   // 退会済みの場合は true（Laravel実装時は withdrew_on IS NOT NULL で判定）
+            };
+        }
+    </script>
+
+</body>
+</html>

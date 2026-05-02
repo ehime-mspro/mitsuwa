@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>ZEALダッシュボード | ミツワ都市開発 経営管理システム</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif; background: #f3f4f6; }
+
+        /* セクション見出し */
+        .section-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: #111827;
+            margin-bottom: 12px;
+            padding-left: 12px;
+            border-left: 4px solid #10b981;
+        }
+
+        /* KPIカード */
+        .kpi-grid {
+            display: grid;
+            gap: 14px;
+            margin-bottom: 24px;
+        }
+        .kpi-grid.cols-5 { grid-template-columns: repeat(5, 1fr); }
+        .kpi-grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
+
+        .kpi-card {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 18px 18px 16px;
+            position: relative;
+            overflow: hidden;
+        }
+        .kpi-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0;
+            width: 4px; height: 100%;
+            background: #e5e7eb;
+        }
+        .kpi-card.accent-total::before  { background: #6b7280; }
+        .kpi-card.accent-join::before   { background: #10b981; }
+        .kpi-card.accent-leave::before  { background: #ef4444; }
+        .kpi-card.accent-net::before    { background: #3b82f6; }
+        .kpi-card.accent-rate::before   { background: #f97316; }
+
+        .kpi-label {
+            font-size: 12px;
+            color: #6b7280;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        .kpi-value {
+            font-size: 26px;
+            font-weight: 700;
+            color: #111827;
+            line-height: 1.2;
+        }
+        .kpi-value .unit {
+            font-size: 13px;
+            font-weight: 600;
+            color: #6b7280;
+            margin-left: 3px;
+        }
+        .kpi-sub {
+            font-size: 11px;
+            color: #9ca3af;
+            margin-top: 6px;
+        }
+        .kpi-sub b { color: #047857; font-weight: 700; }
+        .kpi-sub .neg { color: #dc2626; font-weight: 700; }
+
+        /* データカード */
+        .data-card {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 18px 20px;
+            margin-bottom: 20px;
+        }
+        .data-card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 14px;
+        }
+        .data-card-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: #111827;
+            padding-left: 12px;
+            border-left: 4px solid #10b981;
+        }
+        .data-card-sub {
+            font-size: 12px;
+            color: #6b7280;
+        }
+
+        /* テーブル */
+        .dash-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        .dash-table thead th {
+            background: #f9fafb;
+            color: #374151;
+            font-weight: 700;
+            font-size: 12px;
+            text-align: left;
+            padding: 10px 12px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .dash-table thead th.num { text-align: right; }
+        .dash-table thead th.center { text-align: center; }
+        .dash-table tbody td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #f3f4f6;
+            color: #374151;
+        }
+        .dash-table tbody td.num { text-align: right; font-variant-numeric: tabular-nums; }
+        .dash-table tbody td.center { text-align: center; }
+        .dash-table tbody tr:hover { background: #fafafa; }
+        .dash-table tbody tr:last-child td { border-bottom: none; }
+        .dash-table .total-row td { background: #f9fafb; font-weight: 700; border-top: 2px solid #e5e7eb; }
+
+        /* バッジ */
+        .badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 99px;
+            font-size: 11px;
+            font-weight: 700;
+        }
+        .badge-active    { background: #d1fae5; color: #065f46; }
+        .badge-campaign  { background: #fef3c7; color: #92400e; }
+        .badge-info      { background: #dbeafe; color: #1e40af; }
+
+        /* 詳細ボタン */
+        .btn-detail {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 4px 10px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            background: white;
+            font-size: 11px;
+            color: #374151;
+            text-decoration: none;
+            font-weight: 600;
+        }
+        .btn-detail:hover { background: #ecfdf5; border-color: #a7f3d0; color: #047857; }
+
+        /* 2カラムグリッド */
+        .two-col {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        /* チャートカード */
+        .chart-card {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 18px 20px;
+        }
+        .chart-card canvas { max-height: 220px; }
+
+        /* フィルターバー */
+        .filter-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 20px;
+        }
+        .filter-bar select {
+            height: 36px;
+            padding: 0 10px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 13px;
+            background: white;
+            color: #374151;
+        }
+        .filter-label {
+            font-size: 12px;
+            color: #6b7280;
+            font-weight: 600;
+        }
+
+        /* 横棒グラフ代替（CSSバー） */
+        .channel-bar-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 0;
+            border-bottom: 1px solid #f3f4f6;
+        }
+        .channel-bar-row:last-child { border-bottom: none; }
+        .channel-name { font-size: 13px; color: #374151; width: 130px; flex-shrink: 0; }
+        .channel-bar-wrap { flex: 1; background: #f3f4f6; border-radius: 99px; height: 10px; overflow: hidden; }
+        .channel-bar-fill { height: 100%; background: linear-gradient(90deg, #10b981, #059669); border-radius: 99px; }
+        .channel-count { font-size: 12px; color: #047857; font-weight: 700; width: 30px; text-align: right; }
+
+        /* 税込数値の強調 */
+        .incl-tax { color: #047857; font-weight: 700; }
+    </style>
+</head>
+<body>
+
+    <!-- トップバー -->
+    <header style="background: #1f2937; color: white; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 16px;">
+            <span style="font-weight: 700;">ミツワ都市開発 経営管理システム</span>
+        </div>
+        <div style="font-size: 13px;">山田 (経営層)</div>
+    </header>
+
+    <div style="display: flex; min-height: calc(100vh - 48px);">
+
+        <!-- サイドバー -->
+        <aside style="width: 220px; background: white; border-right: 1px solid #e5e7eb; padding: 16px 0; flex-shrink: 0;">
+            <nav style="font-size: 13px;">
+                <div style="padding: 8px 16px; color: #6b7280;">テナント管理</div>
+                <div style="padding: 8px 16px; color: #6b7280;">賃貸マンション</div>
+                <div style="padding: 8px 16px; color: #6b7280;">不動産管理</div>
+                <div style="padding: 8px 16px; color: #6b7280;">住宅事業</div>
+                <div style="padding: 8px 16px; color: #6b7280;">DAD</div>
+
+                <!-- ZEAL グループ（展開・アクティブ） -->
+                <div style="padding: 8px 16px; color: #111827; font-weight: 700;">ZEAL ▾</div>
+                <a href="dashboard.html" style="display: block; padding: 6px 16px 6px 32px; background: #ecfdf5; color: #047857; border-left: 3px solid #10b981; font-weight: 600; text-decoration: none;">ダッシュボード</a>
+                <a href="members/index.html" style="display: block; padding: 6px 16px 6px 32px; color: #6b7280; text-decoration: none;">会員管理</a>
+                <a href="#" style="display: block; padding: 6px 16px 6px 32px; color: #6b7280; text-decoration: none;">体験予約</a>
+                <a href="#" style="display: block; padding: 6px 16px 6px 32px; color: #6b7280; text-decoration: none;">プランマスタ</a>
+                <a href="#" style="display: block; padding: 6px 16px 6px 32px; color: #6b7280; text-decoration: none;">トレーナーマスタ</a>
+
+                <div style="padding: 8px 16px; color: #6b7280;">システム管理</div>
+            </nav>
+        </aside>
+
+        <!-- メインコンテンツ -->
+        <main style="flex: 1; padding: 24px; min-width: 0;">
+
+            <!-- パンくず -->
+            <div style="font-size: 12px; color: #9ca3af; margin-bottom: 12px;">
+                ZEAL &gt; <span style="color: #374151; font-weight: 600;">ダッシュボード</span>
+            </div>
+
+            <!-- ページヘッダー + フィルター -->
+            <div style="display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 20px;">
+                <div>
+                    <h1 style="font-size: 22px; font-weight: 700; margin: 0 0 4px;">ZEALダッシュボード</h1>
+                    <div style="font-size: 12px; color: #6b7280;">2026年5月2日 時点</div>
+                </div>
+                <div class="filter-bar" style="margin-bottom: 0;">
+                    <span class="filter-label">年度</span>
+                    <select>
+                        <option>2024年度</option>
+                        <option>2025年度</option>
+                        <option selected>2026年度</option>
+                        <option>2027年度</option>
+                        <option>全期間</option>
+                    </select>
+                    <span class="filter-label">期</span>
+                    <select>
+                        <option selected>全期</option>
+                        <option>上期（5〜10月）</option>
+                        <option>下期（11〜4月）</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- ========== KPI カード ========== -->
+            <div class="section-title">会員状況サマリー</div>
+            <div class="kpi-grid cols-5">
+
+                <!-- 在籍会員数 -->
+                <div class="kpi-card accent-total">
+                    <div class="kpi-label">在籍会員数</div>
+                    <div class="kpi-value">27<span class="unit">名</span></div>
+                    <div class="kpi-sub">
+                        男性 18名 / 女性 9名<br>
+                        20代 5名 / 30代 9名 / 40代 8名 / 50代+ 5名
+                    </div>
+                </div>
+
+                <!-- 今月入会 -->
+                <div class="kpi-card accent-join">
+                    <div class="kpi-label">今月 入会数</div>
+                    <div class="kpi-value">3<span class="unit">名</span></div>
+                    <div class="kpi-sub"><b>先月比 +1名</b></div>
+                </div>
+
+                <!-- 今月退会 -->
+                <div class="kpi-card accent-leave">
+                    <div class="kpi-label">今月 退会数</div>
+                    <div class="kpi-value">1<span class="unit">名</span></div>
+                    <div class="kpi-sub"><span class="neg">先月比 +1名</span></div>
+                </div>
+
+                <!-- 純増数 -->
+                <div class="kpi-card accent-net">
+                    <div class="kpi-label">純増数（入会 − 退会）</div>
+                    <div class="kpi-value">+2<span class="unit">名</span></div>
+                    <div class="kpi-sub">累計（開業来） <b>+27名</b></div>
+                </div>
+
+                <!-- 体験入会率 -->
+                <div class="kpi-card accent-rate">
+                    <div class="kpi-label">体験 → 入会率</div>
+                    <div class="kpi-value">58<span class="unit">%</span></div>
+                    <div class="kpi-sub">体験 48件 / 入会 28件</div>
+                </div>
+
+            </div>
+
+            <!-- ========== 月会費売上（プラン別） ========== -->
+            <div class="data-card">
+                <div class="data-card-header">
+                    <div class="data-card-title">月会費売上（プラン別）</div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span class="badge badge-campaign">キャンペーン適用中: 2名</span>
+                        <span class="data-card-sub">2026年5月 集計（税率 10%）</span>
+                    </div>
+                </div>
+                <table class="dash-table">
+                    <thead>
+                        <tr>
+                            <th>プラン名</th>
+                            <th class="num">在籍数</th>
+                            <th class="num">月会費（税抜）</th>
+                            <th class="num">消費税</th>
+                            <th class="num">月会費（税込）</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>パーソナル&amp;セミパーソナル 通い放題（1枠）</td>
+                            <td class="num">12名</td>
+                            <td class="num">360,000円</td>
+                            <td class="num">36,000円</td>
+                            <td class="num incl-tax">396,000円</td>
+                        </tr>
+                        <tr>
+                            <td>パーソナル&amp;セミパーソナル 通い放題（2枠）</td>
+                            <td class="num">5名</td>
+                            <td class="num">175,000円</td>
+                            <td class="num">17,500円</td>
+                            <td class="num incl-tax">192,500円</td>
+                        </tr>
+                        <tr>
+                            <td>月4回プラン</td>
+                            <td class="num">8名</td>
+                            <td class="num">120,000円</td>
+                            <td class="num">12,000円</td>
+                            <td class="num incl-tax">132,000円</td>
+                        </tr>
+                        <tr>
+                            <td>ペアプラン（同伴者）</td>
+                            <td class="num">2名</td>
+                            <td class="num">37,636円</td>
+                            <td class="num">3,764円</td>
+                            <td class="num incl-tax">41,400円</td>
+                        </tr>
+                        <tr class="total-row">
+                            <td>合計</td>
+                            <td class="num">27名</td>
+                            <td class="num">692,636円</td>
+                            <td class="num">69,264円</td>
+                            <td class="num incl-tax">761,900円</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- ========== 月次グラフ（2カラム） ========== -->
+            <div class="two-col">
+
+                <!-- 売上推移グラフ（棒・スタック） -->
+                <div class="chart-card">
+                    <div class="data-card-header" style="margin-bottom: 12px;">
+                        <div class="data-card-title">月会費売上推移（税抜）</div>
+                        <div class="data-card-sub">過去6か月</div>
+                    </div>
+                    <canvas id="revenueChart"></canvas>
+                </div>
+
+                <!-- 会員数推移グラフ（折れ線） -->
+                <div class="chart-card">
+                    <div class="data-card-header" style="margin-bottom: 12px;">
+                        <div class="data-card-title">在籍会員数推移</div>
+                        <div class="data-card-sub">過去6か月</div>
+                    </div>
+                    <canvas id="memberChart"></canvas>
+                </div>
+
+            </div>
+
+            <!-- ========== 集客チャネル ========== -->
+            <div>
+
+                <!-- 集客チャネル別入会数 -->
+                <div class="data-card">
+                    <div class="data-card-header">
+                        <div class="data-card-title">集客チャネル別 入会数（累計）</div>
+                        <div class="data-card-sub">総入会 <b style="color: #047857; font-weight: 700;">28名</b></div>
+                    </div>
+                    <div>
+                        <div class="channel-bar-row">
+                            <div class="channel-name">Instagram</div>
+                            <div class="channel-bar-wrap"><div class="channel-bar-fill" style="width: 100%;"></div></div>
+                            <div class="channel-count">8名</div>
+                        </div>
+                        <div class="channel-bar-row">
+                            <div class="channel-name">友人・知人紹介</div>
+                            <div class="channel-bar-wrap"><div class="channel-bar-fill" style="width: 75%;"></div></div>
+                            <div class="channel-count">6名</div>
+                        </div>
+                        <div class="channel-bar-row">
+                            <div class="channel-name">チラシ・折込</div>
+                            <div class="channel-bar-wrap"><div class="channel-bar-fill" style="width: 37.5%;"></div></div>
+                            <div class="channel-count">3名</div>
+                        </div>
+                        <div class="channel-bar-row">
+                            <div class="channel-name">Google 検索</div>
+                            <div class="channel-bar-wrap"><div class="channel-bar-fill" style="width: 25%;"></div></div>
+                            <div class="channel-count">2名</div>
+                        </div>
+                        <div class="channel-bar-row">
+                            <div class="channel-name">店頭・通りがかり</div>
+                            <div class="channel-bar-wrap"><div class="channel-bar-fill" style="width: 25%;"></div></div>
+                            <div class="channel-count">2名</div>
+                        </div>
+                        <div class="channel-bar-row">
+                            <div class="channel-name">Facebook</div>
+                            <div class="channel-bar-wrap"><div class="channel-bar-fill" style="width: 12.5%;"></div></div>
+                            <div class="channel-count">1名</div>
+                        </div>
+                        <div class="channel-bar-row">
+                            <div class="channel-name">その他</div>
+                            <div class="channel-bar-wrap"><div class="channel-bar-fill" style="width: 12.5%; background: #d1d5db;"></div></div>
+                            <div class="channel-count" style="color: #9ca3af;">1名</div>
+                        </div>
+                        <div class="channel-bar-row" style="margin-top: 4px;">
+                            <div class="channel-name" style="color: #9ca3af; font-size: 12px;">未確認・不明</div>
+                            <div class="channel-bar-wrap"><div class="channel-bar-fill" style="width: 62.5%; background: #e5e7eb;"></div></div>
+                            <div class="channel-count" style="color: #9ca3af;">5名</div>
+                        </div>
+                    </div>
+                </div>
+
+
+            </div>
+
+        </main>
+    </div>
+
+    <script>
+        // ---- 売上推移グラフ（積み上げ棒） ----
+        var revenueCtx = document.getElementById('revenueChart').getContext('2d');
+        new Chart(revenueCtx, {
+            type: 'bar',
+            data: {
+                labels: ['2025-12', '2026-01', '2026-02', '2026-03', '2026-04', '2026-05'],
+                datasets: [
+                    {
+                        label: '1枠 通い放題',
+                        data: [270000, 300000, 330000, 330000, 360000, 360000],
+                        backgroundColor: '#059669'
+                    },
+                    {
+                        label: '2枠 通い放題',
+                        data: [105000, 140000, 140000, 140000, 175000, 175000],
+                        backgroundColor: '#34d399'
+                    },
+                    {
+                        label: '月4回プラン',
+                        data: [75000, 90000, 105000, 120000, 120000, 120000],
+                        backgroundColor: '#a7f3d0'
+                    },
+                    {
+                        label: 'ペアプラン',
+                        data: [0, 18818, 18818, 18818, 37636, 37636],
+                        backgroundColor: '#d1fae5'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom', labels: { font: { size: 11 } } },
+                    tooltip: {
+                        callbacks: {
+                            label: function(ctx) {
+                                return ctx.dataset.label + ': ' + ctx.parsed.y.toLocaleString('ja-JP') + '円';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: { stacked: true, ticks: { font: { size: 11 } } },
+                    y: {
+                        stacked: true,
+                        ticks: {
+                            font: { size: 11 },
+                            callback: function(value) {
+                                return (value / 10000) + '万';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // ---- 会員数推移グラフ（折れ線） ----
+        var memberCtx = document.getElementById('memberChart').getContext('2d');
+        new Chart(memberCtx, {
+            type: 'line',
+            data: {
+                labels: ['2025-12', '2026-01', '2026-02', '2026-03', '2026-04', '2026-05'],
+                datasets: [
+                    {
+                        label: '在籍会員数',
+                        data: [15, 18, 20, 22, 25, 27],
+                        borderColor: '#059669',
+                        backgroundColor: 'rgba(5, 150, 105, 0.08)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.3,
+                        pointBackgroundColor: '#059669',
+                        pointRadius: 4
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom', labels: { font: { size: 11 } } },
+                    tooltip: {
+                        callbacks: {
+                            label: function(ctx) {
+                                return '在籍: ' + ctx.parsed.y + '名';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: { ticks: { font: { size: 11 } } },
+                    y: {
+                        beginAtZero: true,
+                        ticks: { font: { size: 11 }, stepSize: 5 }
+                    }
+                }
+            }
+        });
+    </script>
+
+</body>
+</html>
