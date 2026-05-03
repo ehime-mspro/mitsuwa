@@ -7,7 +7,8 @@ URL: `https://domain/manage/public/` — 約185ルート
 
 - macOS. No PHP CLI available
 - Migrations: `sudo mysql manage < file.sql`
-- Cache clear: `sudo rm -f storage/framework/views/*.php && sudo systemctl restart apache2`
+- Cache clear: `sudo rm -f storage/framework/views/*.php && brew services restart httpd`
+- Apache: Homebrew httpd（`brew services list` で状態確認、`brew services restart httpd` で再起動）
 - sed: `sed -i ''` (BSD syntax, not GNU)
 
 ## CRITICAL CSS Rule
