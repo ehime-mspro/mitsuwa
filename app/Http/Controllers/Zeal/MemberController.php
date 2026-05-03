@@ -9,6 +9,7 @@ use App\Models\ZealMemberContract;
 use App\Models\ZealPlan;
 use App\Models\ZealTrainer;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -107,8 +108,11 @@ class MemberController extends Controller
         // 退会理由の選択肢
         $withdrawReasons = \App\Enums\ZealWithdrawReason::cases();
 
+        // 税率（settings テーブルから取得）— 税込計算に Blade / JS で使用
+        $taxRate = (float) (DB::table('settings')->where('key', 'tax_rate')->value('value') ?? 10);
+
         return view('zeal.members.show', compact(
-            'member', 'contracts', 'activePlans', 'withdrawReasons'
+            'member', 'contracts', 'activePlans', 'withdrawReasons', 'taxRate'
         ));
     }
 
@@ -190,10 +194,10 @@ class MemberController extends Controller
         $plan = ZealPlan::findOrFail($validated['plan_id']);
 
         // 現在の税率を取得（settings テーブル）
-        $taxRate = (float) (\DB::table('settings')->where('key', 'tax_rate')->value('value') ?? 10);
+        $taxRate = (float) (DB::table('settings')->where('key', 'tax_rate')->value('value') ?? 10);
 
         DB::transaction(function () use ($member, $plan, $validated, $taxRate) {
-            $changeDate = \Carbon\Carbon::parse($validated['change_date']);
+            $changeDate = Carbon::parse($validated['change_date']);
 
             // 1. 現行契約を締結（period_end = 変更日の前日）
             ZealMemberContract::where('member_id', $member->id)
@@ -246,7 +250,7 @@ class MemberController extends Controller
         ]);
 
         DB::transaction(function () use ($member, $validated) {
-            $withdrawDate = \Carbon\Carbon::parse($validated['withdrew_on']);
+            $withdrawDate = Carbon::parse($validated['withdrew_on']);
 
             // 1. 現行契約を退会理由で締結
             ZealMemberContract::where('member_id', $member->id)

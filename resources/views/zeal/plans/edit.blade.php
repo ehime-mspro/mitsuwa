@@ -23,6 +23,6 @@
     </a>
 </div>
 
-@include('zeal.plans._form', ['plan' => $plan])
+@include('zeal.plans._form', ['plan' => $plan, 'taxRate' => $taxRate])
 
 @endsection

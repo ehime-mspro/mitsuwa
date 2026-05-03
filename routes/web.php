@@ -1265,10 +1265,8 @@ Route::middleware(['auth', 'password.change'])->group(function () {
         Route::get('/members/{member}', [\App\Http\Controllers\Zeal\MemberController::class, 'show'])
             ->name('zeal.members.show');
         Route::middleware('role:executive,manager')->group(function () {
-            Route::get('/members/create', [\App\Http\Controllers\Zeal\MemberController::class, 'create'])
-                ->name('zeal.members.create');
-            Route::post('/members', [\App\Http\Controllers\Zeal\MemberController::class, 'store'])
-                ->name('zeal.members.store');
+            // 新規登録は CSV インポート（Admin\ZealMemberImportController）経由のみ。
+            // create / store ルートは要件上不要のため定義しない。
             Route::get('/members/{member}/edit', [\App\Http\Controllers\Zeal\MemberController::class, 'edit'])
                 ->name('zeal.members.edit');
             Route::put('/members/{member}', [\App\Http\Controllers\Zeal\MemberController::class, 'update'])

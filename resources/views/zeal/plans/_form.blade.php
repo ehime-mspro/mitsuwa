@@ -4,6 +4,8 @@
 --}}
 @php
     $isEdit  = isset($plan) && $plan !== null;
+    // 税込換算係数（settings.tax_rate から算出。例: 10% → 1.10）
+    $taxMul  = 1 + ($taxRate / 100);
     $valName           = old('name',                        $isEdit ? $plan->name                        : '');
     $valRegularPrice   = old('regular_price_excl',          $isEdit ? $plan->regular_price_excl          : '');
     $valCampaignPrice  = old('campaign_price_excl',         $isEdit ? $plan->campaign_price_excl         : '');
@@ -80,7 +82,7 @@
                            class="form-input" style="flex: 1;">
                     <span style="font-size: 13px; color: #6b7280; white-space: nowrap;">円</span>
                 </div>
-                <div class="zeal-form-hint">税込: <span id="regular-incl">{{ $valRegularPrice ? number_format((int)round((int)$valRegularPrice * 1.1)) . '円' : '—' }}</span></div>
+                <div class="zeal-form-hint">税込: <span id="regular-incl">{{ $valRegularPrice ? number_format((int)round((int)$valRegularPrice * $taxMul)) . '円' : '—' }}</span></div>
             </div>
             <div>
                 <label class="zeal-form-label" for="campaign_price_excl">
@@ -92,7 +94,7 @@
                            class="form-input" style="flex: 1;">
                     <span style="font-size: 13px; color: #6b7280; white-space: nowrap;">円</span>
                 </div>
-                <div class="zeal-form-hint">税込: <span id="campaign-incl">{{ $valCampaignPrice ? number_format((int)round((int)$valCampaignPrice * 1.1)) . '円' : '—' }}</span></div>
+                <div class="zeal-form-hint">税込: <span id="campaign-incl">{{ $valCampaignPrice ? number_format((int)round((int)$valCampaignPrice * $taxMul)) . '円' : '—' }}</span></div>
             </div>
         </div>
 
@@ -219,10 +221,13 @@
  * 通常価格・キャンペーン価格の税込リアルタイム更新
  */
 (function () {
+    // 税込換算係数（settings.tax_rate から算出。例: 10% → 1.10）
+    var taxMul = @json($taxMul);
+
     function calcIncl(excl) {
         var n = parseInt(excl, 10);
         if (isNaN(n) || n < 0) return '—';
-        return Math.round(n * 1.1).toLocaleString() + '円';
+        return Math.round(n * taxMul).toLocaleString() + '円';
     }
 
     var regularEl  = document.getElementById('regular_price_excl');

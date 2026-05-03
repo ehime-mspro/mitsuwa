@@ -15,6 +15,8 @@
 
 @php
     $isActive = $member->withdrew_on === null;
+    // 税込換算係数（settings.tax_rate から算出。例: 10% → 1.10）
+    $taxMul = 1 + ($taxRate / 100);
     // プラン変更モーダル用: activePlans を Alpine.js 向けに整形（@json内で関数呼び出し不可）
     $plansForModal = $activePlans->map(function ($p) {
         return [
@@ -223,7 +225,7 @@
                                 <div class="zeal-info-value">
                                     {{ number_format($member->currentPlan->regular_price_excl) }}円
                                     <span style="font-size: 12px; color: #6b7280; margin-left: 6px;">
-                                        （税込 {{ number_format((int)round($member->currentPlan->regular_price_excl * 1.1)) }}円）
+                                        （税込 {{ number_format((int)round($member->currentPlan->regular_price_excl * $taxMul)) }}円）
                                     </span>
                                 </div>
                             </div>
@@ -398,7 +400,7 @@
                         <option value="">選択してください</option>
                         @foreach($activePlans as $plan)
                             <option value="{{ $plan->id }}">
-                                {{ $plan->name }}（{{ number_format($plan->regular_price_excl) }}円 / {{ number_format((int)round($plan->regular_price_excl * 1.1)) }}円税込）
+                                {{ $plan->name }}（{{ number_format($plan->regular_price_excl) }}円 / {{ number_format((int)round($plan->regular_price_excl * $taxMul)) }}円税込）
                             </option>
                         @endforeach
                     </select>
@@ -540,6 +542,8 @@
  */
 function zealMemberShow() {
     var plansData = @json($plansForModal);
+    // 税込換算係数（settings.tax_rate から算出。例: 10% → 1.10）
+    var taxMul = @json($taxMul);
 
     return {
         tab:              'basic',
@@ -590,13 +594,13 @@ function zealMemberShow() {
                 ? found.campaign_price_excl
                 : found.regular_price_excl;
             self.appliedPrice  = excl;
-            self.priceInclText = Math.round(excl * 1.1).toLocaleString() + '円';
+            self.priceInclText = Math.round(excl * taxMul).toLocaleString() + '円';
         },
 
         /** 価格入力時に税込を更新 */
         updatePriceIncl: function () {
             var n = parseInt(this.appliedPrice, 10);
-            this.priceInclText = (isNaN(n) || n < 0) ? '—' : Math.round(n * 1.1).toLocaleString() + '円';
+            this.priceInclText = (isNaN(n) || n < 0) ? '—' : Math.round(n * taxMul).toLocaleString() + '円';
         }
     };
 }

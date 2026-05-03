@@ -11,6 +11,11 @@
 
 @section('content')
 
+@php
+    // 税込換算係数（settings.tax_rate から算出。例: 10% → 1.10）
+    $taxMul = 1 + ($taxRate / 100);
+@endphp
+
 <style>
     .zeal-badge {
         display: inline-flex; align-items: center;
@@ -88,13 +93,13 @@
                         {{-- 通常価格 --}}
                         <td class="px-4 py-3 border-b border-gray-200 text-right whitespace-nowrap">
                             <div class="text-sm text-gray-900">{{ number_format($plan->regular_price_excl) }}円</div>
-                            <div style="font-size: 11px; color: #6b7280;">税込 {{ number_format((int) round($plan->regular_price_excl * 1.1)) }}円</div>
+                            <div style="font-size: 11px; color: #6b7280;">税込 {{ number_format((int) round($plan->regular_price_excl * $taxMul)) }}円</div>
                         </td>
                         {{-- キャンペーン価格 --}}
                         <td class="px-4 py-3 border-b border-gray-200 text-right whitespace-nowrap">
                             @if($plan->campaign_price_excl !== null)
                                 <div class="text-sm text-gray-900">{{ number_format($plan->campaign_price_excl) }}円</div>
-                                <div style="font-size: 11px; color: #6b7280;">税込 {{ number_format((int) round($plan->campaign_price_excl * 1.1)) }}円</div>
+                                <div style="font-size: 11px; color: #6b7280;">税込 {{ number_format((int) round($plan->campaign_price_excl * $taxMul)) }}円</div>
                             @else
                                 <span class="text-sm text-gray-400">—</span>
                             @endif
