@@ -8,6 +8,7 @@ use App\Models\GymInquiry;
 use App\Models\ZealMember;
 use App\Models\ZealMemberContract;
 use App\Models\ZealPlan;
+use App\Support\Settings;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -36,8 +37,8 @@ class DashboardController extends Controller
         $currentMonth = $now->month;
         $lastMonth    = $now->copy()->subMonth();
 
-        // ---- 消費税率 ----
-        $taxRate = (float) (DB::table('settings')->where('key', 'tax_rate')->value('value') ?? 10);
+        // ---- 消費税率（settings テーブル / 不在時は 10% フォールバック）----
+        $taxRate = Settings::taxRate();
 
         // ---- KPI: 在籍会員数 ----
         $activeCount = ZealMember::whereNull('withdrew_on')->count();

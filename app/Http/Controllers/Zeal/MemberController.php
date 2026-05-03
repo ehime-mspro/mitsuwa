@@ -8,6 +8,7 @@ use App\Models\ZealMember;
 use App\Models\ZealMemberContract;
 use App\Models\ZealPlan;
 use App\Models\ZealTrainer;
+use App\Support\Settings;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -108,8 +109,8 @@ class MemberController extends Controller
         // 退会理由の選択肢
         $withdrawReasons = \App\Enums\ZealWithdrawReason::cases();
 
-        // 税率（settings テーブルから取得）— 税込計算に Blade / JS で使用
-        $taxRate = (float) (DB::table('settings')->where('key', 'tax_rate')->value('value') ?? 10);
+        // 税率（settings テーブル / 不在時は 10% フォールバック）— 税込計算に Blade / JS で使用
+        $taxRate = Settings::taxRate();
 
         return view('zeal.members.show', compact(
             'member', 'contracts', 'activePlans', 'withdrawReasons', 'taxRate'
@@ -193,8 +194,8 @@ class MemberController extends Controller
 
         $plan = ZealPlan::findOrFail($validated['plan_id']);
 
-        // 現在の税率を取得（settings テーブル）
-        $taxRate = (float) (DB::table('settings')->where('key', 'tax_rate')->value('value') ?? 10);
+        // 現在の税率を取得（settings テーブル / 不在時は 10% フォールバック）
+        $taxRate = Settings::taxRate();
 
         DB::transaction(function () use ($member, $plan, $validated, $taxRate) {
             $changeDate = Carbon::parse($validated['change_date']);

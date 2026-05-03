@@ -11,6 +11,7 @@ use App\Models\ZealMember;
 use App\Models\ZealMemberContract;
 use App\Models\ZealPlan;
 use App\Models\ZealTrainer;
+use App\Support\Settings;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -152,8 +153,8 @@ class ZealMemberImportController extends Controller
         // トレーナーマスタ（名前→ID マップ）
         $trainerMap = ZealTrainer::where('active', true)->pluck('id', 'name')->toArray();
 
-        // 現在の税率
-        $taxRate = (float) (DB::table('settings')->where('key', 'tax_rate')->value('value') ?? 10);
+        // 現在の税率（settings テーブル / 不在時は 10% フォールバック）
+        $taxRate = Settings::taxRate();
 
         $validRows   = [];
         $errorRows   = [];
@@ -276,7 +277,7 @@ class ZealMemberImportController extends Controller
         // プランマスタ・トレーナーマスタを再取得
         $planMap    = ZealPlan::pluck('id', 'name')->toArray();
         $trainerMap = ZealTrainer::where('active', true)->pluck('id', 'name')->toArray();
-        $taxRate    = (float) (DB::table('settings')->where('key', 'tax_rate')->value('value') ?? 10);
+        $taxRate    = Settings::taxRate();
 
         $importedCount = 0;
         $skippedCount  = 0;

@@ -4,8 +4,8 @@ namespace App\Http\Controllers\Zeal;
 
 use App\Http\Controllers\Controller;
 use App\Models\ZealPlan;
+use App\Support\Settings;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 /**
  * ZEAL プランマスタ CRUD コントローラー
@@ -13,20 +13,12 @@ use Illuminate\Support\Facades\DB;
 class PlanController extends Controller
 {
     /**
-     * 現在の税率を settings テーブルから取得（フォールバック 10%）
-     */
-    private function currentTaxRate(): float
-    {
-        return (float) (DB::table('settings')->where('key', 'tax_rate')->value('value') ?? 10);
-    }
-
-    /**
      * プラン一覧
      */
     public function index()
     {
         $plans   = ZealPlan::orderBy('display_order')->orderBy('id')->get();
-        $taxRate = $this->currentTaxRate();
+        $taxRate = Settings::taxRate();
 
         return view('zeal.plans.index', compact('plans', 'taxRate'));
     }
@@ -36,7 +28,7 @@ class PlanController extends Controller
      */
     public function create()
     {
-        $taxRate = $this->currentTaxRate();
+        $taxRate = Settings::taxRate();
 
         return view('zeal.plans.create', compact('taxRate'));
     }
@@ -60,7 +52,7 @@ class PlanController extends Controller
      */
     public function edit(ZealPlan $plan)
     {
-        $taxRate = $this->currentTaxRate();
+        $taxRate = Settings::taxRate();
 
         return view('zeal.plans.edit', compact('plan', 'taxRate'));
     }
