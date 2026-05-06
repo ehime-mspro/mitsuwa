@@ -11,6 +11,7 @@ use App\Models\HsCustomOrder;
 use App\Models\HsCustomOrderFile;
 use App\Models\ReProcurement;
 use App\Models\ReProject;
+use App\Support\Settings;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
@@ -378,12 +379,9 @@ class CustomOrderController extends Controller
      */
     private function getDefaultTaxRate(): string
     {
-        try {
-            $setting = \DB::table('settings')->where('key', 'tax_rate')->value('value');
-            return $setting ?? '10.00';
-        } catch (\Exception $e) {
-            return '10.00';
-        }
+        // Settings ヘルパー経由で取得。テーブル不在 / 取得失敗時は内部で 10.0 を返す。
+        // view 側は '10.00' のような小数2桁文字列を想定しているため number_format で整形。
+        return number_format(Settings::taxRate(), 2, '.', '');
     }
 
     /**
