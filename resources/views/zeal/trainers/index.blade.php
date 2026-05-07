@@ -325,7 +325,7 @@ function zealTrainerManager() {
             body.append('display_order', self.editingOrder);
             body.append('active', self.editingActive ? '1' : '0');
 
-            fetch('/zeal/trainers/' + self.editingId, {
+            fetch('{{ url('/zeal/trainers') }}/' + self.editingId, {
                 method: 'POST',
                 headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                 body: body,
@@ -363,7 +363,7 @@ function zealTrainerManager() {
             body.append('_token', document.querySelector('meta[name="csrf-token"]').getAttribute('content'));
             body.append('_method', 'DELETE');
 
-            fetch('/zeal/trainers/' + trainer.id, {
+            fetch('{{ url('/zeal/trainers') }}/' + trainer.id, {
                 method: 'POST',
                 headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                 body: body,
