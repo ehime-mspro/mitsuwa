@@ -32,6 +32,15 @@
     .zeal-form-label .required { color: #dc2626; font-size: 11px; margin-left: 4px; font-weight: 700; }
     .zeal-form-label .optional { font-size: 11px; font-weight: 400; color: #9ca3af; margin-left: 4px; }
     .zeal-form-hint { font-size: 11px; color: #9ca3af; margin-top: 3px; }
+    /* form-input 標準デザイン（buyers/_form と同等の見た目に統一） */
+    .form-input {
+        height: 38px;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        padding: 7px 12px;
+        font-size: 14px;
+    }
+    textarea.form-input { height: auto; }
 </style>
 
 {{-- バリデーションエラー --}}

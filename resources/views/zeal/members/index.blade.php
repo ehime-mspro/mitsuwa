@@ -156,9 +156,7 @@
                     </td>
                     <td class="px-4 py-3 text-center whitespace-nowrap">
                         <a href="{{ route('zeal.members.show', $member) }}"
-                           style="font-size: 12px; color: #047857; font-weight: 600; text-decoration: none;">
-                            詳細 →
-                        </a>
+                           class="inline-block px-3 py-1 bg-white text-emerald-600 border border-emerald-600 rounded text-xs font-semibold hover:bg-emerald-50 transition-colors">詳細</a>
                     </td>
                 </tr>
             @empty
