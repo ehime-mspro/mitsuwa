@@ -1309,6 +1309,19 @@ Route::middleware(['auth', 'password.change'])->group(function () {
         Route::delete('/trainers/{trainer}', [\App\Http\Controllers\Zeal\TrainerController::class, 'destroy'])
             ->middleware('role:executive')
             ->name('zeal.trainers.destroy');
+
+        // 店舗マスタ（4ルート — Ajax CRUD）
+        Route::get('/stores', [\App\Http\Controllers\Zeal\StoreController::class, 'index'])
+            ->name('zeal.stores.index');
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::post('/stores', [\App\Http\Controllers\Zeal\StoreController::class, 'store'])
+                ->name('zeal.stores.store');
+            Route::put('/stores/{store}', [\App\Http\Controllers\Zeal\StoreController::class, 'update'])
+                ->name('zeal.stores.update');
+        });
+        Route::delete('/stores/{store}', [\App\Http\Controllers\Zeal\StoreController::class, 'destroy'])
+            ->middleware('role:executive')
+            ->name('zeal.stores.destroy');
     });
 
     /*
