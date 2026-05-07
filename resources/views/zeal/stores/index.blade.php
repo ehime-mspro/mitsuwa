@@ -25,6 +25,16 @@
         word-break: break-word;
         max-width: 300px;
     }
+    /* form-input 標準デザイン（buyers/_form と同等の見た目に統一） */
+    .form-input {
+        height: 38px;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        padding: 7px 12px;
+        font-size: 14px;
+    }
+    /* textarea と checkbox は固定 height を解除 */
+    textarea.form-input { height: auto; }
 </style>
 
 <div x-data="zealStoreManager()">
@@ -69,7 +79,7 @@
                         </label>
                         <input type="text" x-model="newName" placeholder="例: ZEAL BOXING FITNESS ◯◯店"
                                maxlength="100"
-                               @keydown.enter="submitAdd()"
+                               @keydown.enter="$event.isComposing || submitAdd()"
                                @keydown.escape="cancelAdd()"
                                class="form-input w-full"
                                x-ref="newNameInput">
@@ -154,7 +164,7 @@
                             <input x-show="editingId === store.id"
                                    type="text" x-model="editingName"
                                    maxlength="100"
-                                   @keydown.enter="submitEdit()"
+                                   @keydown.enter="$event.isComposing || submitEdit()"
                                    @keydown.escape="cancelEdit()"
                                    class="form-input w-full"
                                    style="margin-bottom:0;">
