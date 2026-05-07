@@ -2,6 +2,7 @@
     ZEAL 会員フォーム共通パーシャル（edit 用）
     - $member: ZealMember モデル（編集時）
     - $trainers: ZealTrainer コレクション
+    - $stores: ZealStore コレクション
 --}}
 @php
     $valStore     = old('store_id',  $member->store_id  ?? '');
