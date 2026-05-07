@@ -4,6 +4,7 @@
     - $trainers: ZealTrainer コレクション
 --}}
 @php
+    $valStore     = old('store_id',  $member->store_id  ?? '');
     $valName      = old('name',      $member->name      ?? '');
     $valKana      = old('name_kana', $member->name_kana ?? '');
     $valGender    = old('gender',    $member->gender?->value ?? '');
@@ -162,6 +163,30 @@
     {{-- ========== 担当・集客 ========== --}}
     <div class="bg-white border border-gray-200 rounded-lg p-5">
         <div class="zeal-card-title">担当・集客情報</div>
+
+        {{-- 所属店舗 --}}
+        <div style="margin-bottom: 16px;">
+            <label class="zeal-form-label" for="store_id">
+                所属店舗<span class="required">*必須</span>
+            </label>
+            @if($stores->isEmpty())
+                <select id="store_id" name="store_id" class="form-input w-full" style="margin-bottom: 0;" disabled>
+                    <option value="">店舗マスタが未登録です</option>
+                </select>
+                <div style="margin-top: 6px; padding: 8px 12px; background: #fef3c7; border: 1px solid #fcd34d; border-radius: 6px; font-size: 12px; color: #92400e;">
+                    会員を保存するには、先に <a href="{{ route('zeal.stores.index') }}" style="color: #92400e; text-decoration: underline; font-weight: 600;">店舗マスタ</a> を 1 件以上登録してください。
+                </div>
+            @else
+                <select id="store_id" name="store_id" class="form-input w-full" style="margin-bottom: 0;" required>
+                    <option value="">選択してください</option>
+                    @foreach($stores as $store)
+                        <option value="{{ $store->id }}" {{ $valStore == $store->id ? 'selected' : '' }}>
+                            {{ $store->name }}
+                        </option>
+                    @endforeach
+                </select>
+            @endif
+        </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" style="margin-bottom: 16px;">
             {{-- 担当トレーナー --}}

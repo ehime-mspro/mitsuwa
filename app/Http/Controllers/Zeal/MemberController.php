@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ZealMember;
 use App\Models\ZealMemberContract;
 use App\Models\ZealPlan;
+use App\Models\ZealStore;
 use App\Models\ZealTrainer;
 use App\Support\Settings;
 use Illuminate\Http\Request;
@@ -130,7 +131,12 @@ class MemberController extends Controller
             ->orderBy('id')
             ->get();
 
-        return view('zeal.members.edit', compact('member', 'trainers'));
+        $stores = ZealStore::where('active', true)
+            ->orderBy('display_order')
+            ->orderBy('id')
+            ->get();
+
+        return view('zeal.members.edit', compact('member', 'trainers', 'stores'));
     }
 
     /**
@@ -140,6 +146,7 @@ class MemberController extends Controller
     public function update(Request $request, ZealMember $member)
     {
         $validated = $request->validate([
+            'store_id'           => 'required|integer|exists:zeal_stores,id',
             'name'               => 'required|string|max:50',
             'name_kana'          => 'required|string|max:100',
             'gender'             => 'required|string|in:male,female,other',
