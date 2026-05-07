@@ -393,7 +393,7 @@ function zealStoreManager() {
             body.append('display_order', self.editingOrder);
             body.append('active', self.editingActive ? '1' : '0');
 
-            fetch('/zeal/stores/' + self.editingId, {
+            fetch('{{ url('/zeal/stores') }}/' + self.editingId, {
                 method: 'POST',
                 headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                 body: body,
@@ -431,7 +431,7 @@ function zealStoreManager() {
             body.append('_token', document.querySelector('meta[name="csrf-token"]').getAttribute('content'));
             body.append('_method', 'DELETE');
 
-            fetch('/zeal/stores/' + store.id, {
+            fetch('{{ url('/zeal/stores') }}/' + store.id, {
                 method: 'POST',
                 headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                 body: body,
