@@ -31,10 +31,10 @@
 
     {{-- トースト通知 --}}
     <div x-show="message" x-cloak
-         :style="messageType === 'success'
+         :style="(messageType === 'success'
              ? 'background:#d1fae5; border:1px solid #6ee7b7; color:#065f46;'
-             : 'background:#fee2e2; border:1px solid #fca5a5; color:#991b1b;'"
-         style="display:flex; align-items:center; gap:8px; padding:12px 16px; margin-bottom:16px; border-radius:8px; font-size:14px;"
+             : 'background:#fee2e2; border:1px solid #fca5a5; color:#991b1b;')
+             + 'display:flex; align-items:center; gap:8px; padding:12px 16px; margin-bottom:16px; border-radius:8px; font-size:14px;'"
          x-transition:enter="transition ease-out duration-200"
          x-transition:enter-start="opacity-0"
          x-transition:enter-end="opacity-100">
