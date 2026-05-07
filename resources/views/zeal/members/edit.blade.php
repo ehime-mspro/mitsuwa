@@ -25,6 +25,6 @@
     </a>
 </div>
 
-@include('zeal.members._form', ['member' => $member, 'trainers' => $trainers])
+@include('zeal.members._form', ['member' => $member, 'trainers' => $trainers, 'stores' => $stores])
 
 @endsection
