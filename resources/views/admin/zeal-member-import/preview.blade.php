@@ -106,6 +106,7 @@
                         <th>月会費（税抜）</th>
                         <th>税込</th>
                         <th>担当トレーナー</th>
+                        <th>所属店舗</th>
                         <th>集客</th>
                     </tr>
                 </thead>
@@ -121,6 +122,12 @@
                             <td style="text-align: right;">{{ number_format($vr['applied_price_excl']) }}円</td>
                             <td style="text-align: right; color: #047857; font-weight: 700;">{{ number_format($vr['price_incl']) }}円</td>
                             <td style="color: #6b7280;">{{ $vr['trainer_name'] ?: '—' }}</td>
+                            <td style="padding: 8px 10px;">
+                                {{ $vr['store_name'] }}
+                                @if($vr['store_is_fallback'])
+                                    <span style="display:inline-block; margin-left:4px; padding:1px 6px; font-size:10px; background:#fef3c7; color:#92400e; border-radius:9999px;">既定値</span>
+                                @endif
+                            </td>
                             <td style="color: #6b7280;">{{ $vr['acquisition_source'] ? \App\Enums\ZealAcquisitionSource::from($vr['acquisition_source'])->label() : '—' }}</td>
                         </tr>
                     @endforeach

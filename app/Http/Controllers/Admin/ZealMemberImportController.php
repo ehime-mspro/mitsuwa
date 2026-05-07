@@ -10,6 +10,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ZealMember;
 use App\Models\ZealMemberContract;
 use App\Models\ZealPlan;
+use App\Models\ZealStore;
 use App\Models\ZealTrainer;
 use App\Support\Settings;
 use Illuminate\Http\Request;
@@ -24,9 +25,9 @@ use Illuminate\Support\Facades\DB;
  *
  * 取込時に zeal_member_contracts の new_join レコードも同時生成する。
  *
- * CSV カラム仕様（15列）:
+ * CSV カラム仕様（16列）:
  *   氏名, フリガナ, 性別, 生年月日, 電話番号, メールアドレス, 郵便番号, 住所,
- *   入会日, プラン名, 月会費（税抜）, 担当トレーナー, 集客チャネル, 入会目的, メモ
+ *   入会日, プラン名, 月会費（税抜）, 担当トレーナー, 集客チャネル, 入会目的, 所属店舗, メモ
  */
 class ZealMemberImportController extends Controller
 {
@@ -49,6 +50,7 @@ class ZealMemberImportController extends Controller
         '担当トレーナー'=> 'trainer_name',
         '集客チャネル'  => 'acquisition_source',
         '入会目的'      => 'purpose',
+        '所属店舗'      => 'store_name',
         'メモ'          => 'memo',
     ];
 
@@ -116,8 +118,8 @@ class ZealMemberImportController extends Controller
         $header = array_keys($this->columnMap);
 
         $sampleRows = [
-            ['山本 健太', 'ヤマモト ケンタ', '男性', '1992-03-14', '090-1234-5678', 'yamamoto@example.com', '790-0001', '愛媛県松山市一番町1-2-3', '2025-10-17', 'パーソナル&セミパーソナル通い放題（1枠）', '18000', '田中', 'SNS', 'ダイエット', ''],
-            ['佐藤 花子', 'サトウ ハナコ', '女性', '1985-07-22', '080-9876-5432', '',               '790-0023', '愛媛県松山市本町2-3',     '2025-11-01', 'パーソナル&セミパーソナル通い放題（2枠）', '',      '',     '',      '',          '週3回希望'],
+            ['山本 健太', 'ヤマモト ケンタ', '男性', '1992-03-14', '090-1234-5678', 'yamamoto@example.com', '790-0001', '愛媛県松山市一番町1-2-3', '2025-10-17', 'パーソナル&セミパーソナル通い放題（1枠）', '18000', '田中', 'SNS', 'ダイエット', 'ZEAL BOXING FITNESS 松山市駅前店', ''],
+            ['佐藤 花子', 'サトウ ハナコ', '女性', '1985-07-22', '080-9876-5432', '',               '790-0023', '愛媛県松山市本町2-3',     '2025-11-01', 'パーソナル&セミパーソナル通い放題（2枠）', '',      '',     '',      '',          '',                                  '週3回希望'],
         ];
 
         $csv = $bom . $this->toCsvLine($header);
@@ -152,6 +154,16 @@ class ZealMemberImportController extends Controller
 
         // トレーナーマスタ（名前→ID マップ）
         $trainerMap = ZealTrainer::where('active', true)->pluck('id', 'name')->toArray();
+
+        // 店舗マスタ（名前→ID マップ）と既定店舗（フォールバック用）
+        $storeMap = ZealStore::where('active', true)->pluck('id', 'name')->toArray();
+        $defaultStore = ZealStore::where('active', true)
+            ->orderBy('display_order')
+            ->orderBy('id')
+            ->first();
+        if (!$defaultStore) {
+            return back()->with('error', '有効な店舗が登録されていません。先に店舗マスタを登録してください。');
+        }
 
         // 現在の税率（settings テーブル / 不在時は 10% フォールバック）
         $taxRate = Settings::taxRate();
@@ -203,6 +215,10 @@ class ZealMemberImportController extends Controller
             if ($row['trainer_name'] !== '' && !isset($trainerMap[$row['trainer_name']])) {
                 $rowErrors[] = "担当トレーナー「{$row['trainer_name']}」が見つかりません";
             }
+            // 店舗名チェック（未指定はフォールバック OK / 有効でも該当なしはエラー）
+            if ($row['store_name'] !== '' && !isset($storeMap[$row['store_name']])) {
+                $rowErrors[] = "所属店舗「{$row['store_name']}」が見つかりません";
+            }
 
             if (!empty($rowErrors)) {
                 $errorRows[] = ['row' => $rowNum, 'data' => $row, 'errors' => $rowErrors];
@@ -249,6 +265,9 @@ class ZealMemberImportController extends Controller
                 'trainer_name'       => $row['trainer_name'],
                 'acquisition_source' => $row['acquisition_source'] !== '' ? ($this->acquisitionMap[$row['acquisition_source']] ?? null) : null,
                 'purpose'            => $row['purpose'] !== '' ? ($this->purposeMap[$row['purpose']] ?? null) : null,
+                'store_id'           => $row['store_name'] !== '' ? $storeMap[$row['store_name']] : $defaultStore->id,
+                'store_name'         => $row['store_name'] !== '' ? $row['store_name'] : $defaultStore->name,
+                'store_is_fallback'  => $row['store_name'] === '',
                 'memo'               => $row['memo'],
             ];
         }
@@ -274,9 +293,17 @@ class ZealMemberImportController extends Controller
         }
         [$rows, $content] = $result;
 
-        // プランマスタ・トレーナーマスタを再取得
+        // プランマスタ・トレーナーマスタ・店舗マスタを再取得
         $planMap    = ZealPlan::pluck('id', 'name')->toArray();
         $trainerMap = ZealTrainer::where('active', true)->pluck('id', 'name')->toArray();
+        $storeMap   = ZealStore::where('active', true)->pluck('id', 'name')->toArray();
+        $defaultStore = ZealStore::where('active', true)
+            ->orderBy('display_order')
+            ->orderBy('id')
+            ->first();
+        if (!$defaultStore) {
+            return back()->with('error', '有効な店舗が登録されていません。先に店舗マスタを登録してください。');
+        }
         $taxRate    = Settings::taxRate();
 
         $importedCount = 0;
@@ -284,7 +311,7 @@ class ZealMemberImportController extends Controller
         $errorCount    = 0;
 
         DB::transaction(function () use (
-            $rows, $planMap, $trainerMap, $taxRate,
+            $rows, $planMap, $trainerMap, $storeMap, $defaultStore, $taxRate,
             &$importedCount, &$skippedCount, &$errorCount
         ) {
             foreach ($rows as $row) {
@@ -297,6 +324,7 @@ class ZealMemberImportController extends Controller
                     || $row['plan_name'] === ''
                     || !isset($this->genderMap[$row['gender']])
                     || !isset($planMap[$row['plan_name']])
+                    || ($row['store_name'] !== '' && !isset($storeMap[$row['store_name']]))
                 ) {
                     $errorCount++;
                     continue;
@@ -324,8 +352,14 @@ class ZealMemberImportController extends Controller
                     ? (int) $row['applied_price_excl']
                     : $plan->regular_price_excl;
 
+                // 店舗 ID 決定（CSV 値がマップにあればそれを、なければ既定店舗）
+                $storeId = $row['store_name'] !== '' && isset($storeMap[$row['store_name']])
+                    ? $storeMap[$row['store_name']]
+                    : $defaultStore->id;
+
                 // 1. ZealMember を作成
                 $member = ZealMember::create([
+                    'store_id'           => $storeId,
                     'name'               => $row['name'],
                     'name_kana'          => $row['name_kana'],
                     'gender'             => $this->genderMap[$row['gender']],

@@ -54,7 +54,7 @@
 
     {{-- CSV カラム仕様 --}}
     <div style="margin-bottom: 24px;">
-        <div style="font-size: 14px; font-weight: 700; color: #374151; margin-bottom: 10px;">CSVカラム仕様（15列）</div>
+        <div style="font-size: 14px; font-weight: 700; color: #374151; margin-bottom: 10px;">CSVカラム仕様（16列）</div>
         <div style="overflow-x: auto;">
             <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
                 <thead>
@@ -82,7 +82,8 @@
                         [12, '担当トレーナー',  '—', 'トレーナーマスタに登録済みのトレーナー名と完全一致'],
                         [13, '集客チャネル',    '—', 'SNS / 検索エンジン / 紹介 / 口コミ / ポスティングチラシ / 街頭チラシ / 地図検索 / 電話 / 不明 / その他'],
                         [14, '入会目的',        '—', 'ボディメイク / ダイエット / 運動不足解消 / 機能改善 / 下半身強化 / 体力向上 / ストレス発散 / 健康増進 / その他'],
-                        [15, 'メモ',            '—', '特記事項など'],
+                        [15, '所属店舗',        '—', '店舗マスタの店舗名と完全一致。空欄の場合は表示順が最も小さい有効店舗に自動で紐付きます'],
+                        [16, 'メモ',            '—', '特記事項など'],
                     ];
                     @endphp
                     @foreach($columns as [$num, $col, $req, $note])
