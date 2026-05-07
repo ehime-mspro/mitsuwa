@@ -124,6 +124,7 @@
             <x-sidebar-item :href="url('/zeal/members')" label="会員管理" :active="request()->is('zeal/members*')" />
             <x-sidebar-item :href="url('/zeal/inquiries')" label="体験予約" :active="request()->is('zeal/inquiries*')" />
             <x-sidebar-item :href="url('/zeal/plans')" label="プランマスタ" :active="request()->is('zeal/plans*')" />
+            <x-sidebar-item :href="url('/zeal/stores')" label="店舗マスタ" :active="request()->is('zeal/stores*')" />
             <x-sidebar-item :href="url('/zeal/trainers')" label="トレーナーマスタ" :active="request()->is('zeal/trainers*')" />
         </x-sidebar-group>
     @endif
@@ -381,6 +382,7 @@
             <x-sidebar-item :href="url('/zeal/members')" label="会員管理" :active="request()->is('zeal/members*')" />
             <x-sidebar-item :href="url('/zeal/inquiries')" label="体験予約" :active="request()->is('zeal/inquiries*')" />
             <x-sidebar-item :href="url('/zeal/plans')" label="プランマスタ" :active="request()->is('zeal/plans*')" />
+            <x-sidebar-item :href="url('/zeal/stores')" label="店舗マスタ" :active="request()->is('zeal/stores*')" />
             <x-sidebar-item :href="url('/zeal/trainers')" label="トレーナーマスタ" :active="request()->is('zeal/trainers*')" />
         </x-sidebar-group>
     @endif
