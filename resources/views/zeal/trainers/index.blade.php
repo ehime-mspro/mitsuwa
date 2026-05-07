@@ -29,21 +29,27 @@
     }
     /* textarea と checkbox は固定 height を解除 */
     textarea.form-input { height: auto; }
+    /* トースト通知レイアウト（x-show で display を上書きされないようクラス側に隔離） */
+    .zeal-toast {
+        display: flex !important; align-items: center; gap: 8px;
+        padding: 12px 16px; margin-bottom: 16px;
+        border-radius: 8px; font-size: 14px;
+    }
+    .zeal-toast[style*="display: none"] { display: none !important; }
 </style>
 
 <div x-data="zealTrainerManager()">
 
     {{-- トースト通知 --}}
-    <div x-show="message" x-cloak
+    <div x-show="message" x-cloak class="zeal-toast"
          :style="messageType === 'success'
              ? 'background:#d1fae5; border:1px solid #6ee7b7; color:#065f46;'
              : 'background:#fee2e2; border:1px solid #fca5a5; color:#991b1b;'"
-         style="display:flex; align-items:center; gap:8px; padding:12px 16px; margin-bottom:16px; border-radius:8px; font-size:14px;"
          x-transition:enter="transition ease-out duration-200"
          x-transition:enter-start="opacity-0"
          x-transition:enter-end="opacity-100">
-        <svg x-show="messageType === 'success'" style="width:16px;height:16px;flex-shrink:0;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-        <svg x-show="messageType === 'error'" style="width:16px;height:16px;flex-shrink:0;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <svg x-show="messageType === 'success'" width="16" height="16" style="flex-shrink:0;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        <svg x-show="messageType === 'error'" width="16" height="16" style="flex-shrink:0;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
         <span x-text="message"></span>
     </div>
 
