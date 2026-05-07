@@ -26,19 +26,7 @@
     .badge-inactive { background: #f3f4f6; color: #6b7280; }
 </style>
 
-{{-- フラッシュメッセージ --}}
-@if(session('success'))
-    <div style="display: flex; align-items: center; gap: 8px; padding: 12px 16px; margin-bottom: 16px; background: #d1fae5; border: 1px solid #6ee7b7; border-radius: 8px; font-size: 14px; color: #065f46;">
-        <svg style="width: 16px; height: 16px; flex-shrink: 0;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-        {{ session('success') }}
-    </div>
-@endif
-@if(session('error'))
-    <div style="display: flex; align-items: center; gap: 8px; padding: 12px 16px; margin-bottom: 16px; background: #fee2e2; border: 1px solid #fca5a5; border-radius: 8px; font-size: 14px; color: #991b1b;">
-        <svg style="width: 16px; height: 16px; flex-shrink: 0;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        {{ session('error') }}
-    </div>
-@endif
+{{-- フラッシュメッセージは layouts/app.blade.php でグローバル描画 --}}
 
 {{-- ページヘッダー --}}
 <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">

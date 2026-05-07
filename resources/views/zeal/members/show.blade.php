@@ -85,17 +85,7 @@
     .zeal-modal-row { margin-bottom: 16px; }
 </style>
 
-{{-- フラッシュメッセージ --}}
-@if(session('success'))
-    <div style="padding: 10px 14px; margin-bottom: 16px; background: #d1fae5; border: 1px solid #6ee7b7; border-radius: 8px; font-size: 13px; color: #065f46;">
-        {{ session('success') }}
-    </div>
-@endif
-@if(session('error'))
-    <div style="padding: 10px 14px; margin-bottom: 16px; background: #fee2e2; border: 1px solid #fca5a5; border-radius: 8px; font-size: 13px; color: #991b1b;">
-        {{ session('error') }}
-    </div>
-@endif
+{{-- フラッシュメッセージは layouts/app.blade.php でグローバル描画 --}}
 
 {{-- Alpine.js コンポーネントルート --}}
 <div x-data="zealMemberShow()">
