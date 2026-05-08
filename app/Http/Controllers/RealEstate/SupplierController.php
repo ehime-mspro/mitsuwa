@@ -71,7 +71,7 @@ class SupplierController extends Controller
 
         return redirect()
             ->route('realestate.suppliers.show', $supplier)
-            ->with('success', "仕入れ先「{$supplier->supplier_code} {$supplier->name}」を登録しました。");
+            ->with('success', "仕入れ先「{$supplier->name}」を登録しました。");
     }
 
     /**
@@ -117,7 +117,7 @@ class SupplierController extends Controller
 
         return redirect()
             ->route('realestate.suppliers.show', $supplier)
-            ->with('success', "仕入れ先「{$supplier->supplier_code} {$supplier->name}」を更新しました。");
+            ->with('success', "仕入れ先「{$supplier->name}」を更新しました。");
     }
 
     /**
@@ -133,44 +133,40 @@ class SupplierController extends Controller
         $supplier->delete();
 
         return redirect()->route('realestate.suppliers.index')
-            ->with('success', "仕入れ先「{$supplier->supplier_code} {$supplier->name}」を削除しました。");
+            ->with('success', "仕入れ先「{$supplier->name}」を削除しました。");
     }
 
     /**
      * 仕入れ先 簡易登録（フォーム内モーダルから Ajax 呼び出し）
      * Route: POST /api/realestate/suppliers/quick
      *
-     * 完全一致名が既存にある場合（force=false 時）は 200 + duplicates[] を返却し
-     * 呼び出し側で確認を促す。force=true なら同名でも新規作成する。
+     * 同名（完全一致）の仕入先が既に存在する場合は 200 + duplicates[] を返却し
+     * 重複登録を強制ブロックする。同名異社が必要な場合は呼び出し側で名前を
+     * 編集して再送信する運用。
      */
     public function quickStore(Request $request)
     {
         $validated = $request->validate([
-            'type'  => 'required|in:individual,corporation,realtor',
-            'name'  => 'required|string|max:100',
-            'force' => 'nullable|boolean',
+            'type' => 'required|in:individual,corporation,realtor',
+            'name' => 'required|string|max:100',
         ]);
 
-        $force = $request->boolean('force');
+        // 完全一致チェック（重複は常にブロック）
+        $duplicates = ReSupplier::where('name', $validated['name'])
+            ->orderBy('supplier_code')
+            ->get(['id', 'supplier_code', 'name', 'type']);
 
-        // force=false の場合、name の完全一致をチェック
-        if (! $force) {
-            $duplicates = ReSupplier::where('name', $validated['name'])
-                ->orderBy('supplier_code')
-                ->get(['id', 'supplier_code', 'name', 'type']);
-
-            if ($duplicates->isNotEmpty()) {
-                return response()->json([
-                    'duplicates' => $duplicates->map(function ($s) {
-                        return [
-                            'id'         => $s->id,
-                            'code'       => $s->supplier_code,
-                            'name'       => $s->name,
-                            'type_label' => $s->type->label(),
-                        ];
-                    }),
-                ], 200);
-            }
+        if ($duplicates->isNotEmpty()) {
+            return response()->json([
+                'duplicates' => $duplicates->map(function ($s) {
+                    return [
+                        'id'         => $s->id,
+                        'code'       => $s->supplier_code,
+                        'name'       => $s->name,
+                        'type_label' => $s->type->label(),
+                    ];
+                }),
+            ], 200);
         }
 
         // 新規作成

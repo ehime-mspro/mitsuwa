@@ -8,14 +8,14 @@
     <span class="mx-1.5">›</span>
     <a href="{{ route('realestate.suppliers.index') }}" class="hover:text-emerald-600 transition-colors">仕入れ先一覧</a>
     <span class="mx-1.5">›</span>
-    <a href="{{ route('realestate.suppliers.show', $supplier) }}" class="hover:text-emerald-600 transition-colors">{{ $supplier->supplier_code }}</a>
+    <a href="{{ route('realestate.suppliers.show', $supplier) }}" class="hover:text-emerald-600 transition-colors">{{ $supplier->name }}</a>
     <span class="mx-1.5">›</span>
     <span class="text-gray-600">編集</span>
 @endsection
 
 @section('content')
 
-    <h1 class="text-lg font-bold text-gray-900 mb-5">仕入れ先 編集 — {{ $supplier->supplier_code }}</h1>
+    <h1 class="text-lg font-bold text-gray-900 mb-5">仕入れ先 編集 — {{ $supplier->name }}</h1>
 
     @if($errors->any())
         <div class="mb-4 rounded-lg border border-red-200 bg-red-50 p-3">

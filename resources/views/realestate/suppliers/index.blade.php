@@ -49,7 +49,6 @@
             <table class="w-full border-collapse" style="min-width: 700px;">
                 <thead>
                     <tr>
-                        <th class="px-4 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">コード</th>
                         <th class="px-4 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">区分</th>
                         <th class="px-4 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">名前</th>
                         <th class="px-4 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">担当者名</th>
@@ -60,19 +59,18 @@
                 <tbody>
                     @forelse($suppliers as $supplier)
                         <tr class="hover:bg-gray-50 transition-colors">
+                            <td class="px-4 py-3 border-b border-gray-100 text-center text-sm whitespace-nowrap">{{ $supplier->type->label() }}</td>
                             <td class="px-4 py-3 border-b border-gray-100 text-center whitespace-nowrap">
                                 <a href="{{ route('realestate.suppliers.show', $supplier) }}"
-                                   class="text-sm font-semibold text-emerald-600 hover:text-emerald-700 hover:underline">{{ $supplier->supplier_code }}</a>
+                                   class="text-sm font-semibold text-emerald-600 hover:text-emerald-700 hover:underline">{{ $supplier->name }}</a>
                             </td>
-                            <td class="px-4 py-3 border-b border-gray-100 text-center text-sm whitespace-nowrap">{{ $supplier->type->label() }}</td>
-                            <td class="px-4 py-3 border-b border-gray-100 text-center text-sm whitespace-nowrap">{{ $supplier->name }}</td>
                             <td class="px-4 py-3 border-b border-gray-100 text-center text-sm text-gray-600 whitespace-nowrap">{{ $supplier->contact_person ?? '—' }}</td>
                             <td class="px-4 py-3 border-b border-gray-100 text-center text-sm whitespace-nowrap">{{ $supplier->phone ?? '—' }}</td>
                             <td class="px-4 py-3 border-b border-gray-100 text-center text-sm whitespace-nowrap">{{ $supplier->address ?? '—' }}</td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="6" class="px-5 py-10 text-center text-sm text-gray-400">仕入れ先データがありません。</td>
+                            <td colspan="5" class="px-5 py-10 text-center text-sm text-gray-400">仕入れ先データがありません。</td>
                         </tr>
                     @endforelse
                 </tbody>

@@ -21,8 +21,7 @@
                     <template x-for="item in supplierResults" :key="item.id">
                         <div @click="selectSupplier(item)"
                              class="px-3 py-2 text-sm cursor-pointer hover:bg-emerald-50 border-b border-gray-100">
-                            <span class="font-semibold text-emerald-600" x-text="item.code"></span>
-                            <span class="ml-1.5" x-text="item.name"></span>
+                            <span class="font-semibold text-gray-800" x-text="item.name"></span>
                             <span class="text-xs text-gray-500 ml-1" x-text="'(' + item.type_label + ')'"></span>
                         </div>
                     </template>
@@ -54,7 +53,7 @@
          style="position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; display: flex; align-items: center; justify-content: center; padding: 20px;">
         <div @click.outside="closeQuickRegister()"
              style="background: white; border-radius: 8px; padding: 24px; max-width: 480px; width: 100%; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
-            <h3 style="font-size: 16px; font-weight: 700; color: #111827; margin: 0 0 16px 0; padding-bottom: 12px; border-bottom: 1px solid #e5e7eb;">仕入先 簡易登録</h3>
+            <h3 style="font-size: 16px; font-weight: 700; color: #111827; margin: 0 0 16px 0; padding-bottom: 12px; border-bottom: 1px solid #e5e7eb;">仕入れ先登録</h3>
 
             {{-- エラー表示 --}}
             <div x-show="quickError" x-cloak x-text="quickError"
@@ -67,8 +66,7 @@
                 <template x-for="dup in quickDuplicates" :key="dup.id">
                     <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 0;">
                         <div>
-                            <span style="font-weight: 600; color: #059669;" x-text="dup.code"></span>
-                            <span style="margin-left: 6px; font-size: 13px;" x-text="dup.name"></span>
+                            <span style="font-weight: 600; color: #111827; font-size: 13px;" x-text="dup.name"></span>
                             <span style="font-size: 11px; color: #6b7280; margin-left: 4px;" x-text="'(' + dup.type_label + ')'"></span>
                         </div>
                         <button type="button" @click="selectDuplicate(dup)"
@@ -77,7 +75,7 @@
                         </button>
                     </div>
                 </template>
-                <div style="font-size: 12px; color: #6b7280; margin-top: 8px;">それでも新規登録するには下の「それでも登録」をクリック</div>
+                <div style="font-size: 12px; color: #6b7280; margin-top: 8px;">別の仕入先として登録したい場合は、上の「名前」を編集してから「登録して選択」をクリックしてください（例: 「田中工務店(松山)」）</div>
             </div>
 
             {{-- 名前 --}}
@@ -112,16 +110,10 @@
                         style="padding: 8px 16px; background: #fff; color: #6b7280; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer;">
                     キャンセル
                 </button>
-                <button x-show="quickDuplicates.length === 0" type="button" @click="submitQuickRegister(false)"
+                <button type="button" @click="submitQuickRegister()"
                         :disabled="quickSubmitting || !quickName.trim() || !quickType"
                         :style="(quickSubmitting || !quickName.trim() || !quickType) ? 'opacity: 0.5; cursor: not-allowed; padding: 8px 16px; background: #059669; color: white; border: none; border-radius: 6px; font-size: 13px; font-weight: 600;' : 'padding: 8px 16px; background: #059669; color: white; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer;'">
                     <span x-show="!quickSubmitting">登録して選択</span>
-                    <span x-show="quickSubmitting">登録中...</span>
-                </button>
-                <button x-show="quickDuplicates.length > 0" type="button" @click="submitQuickRegister(true)"
-                        :disabled="quickSubmitting || !quickName.trim() || !quickType"
-                        :style="(quickSubmitting || !quickName.trim() || !quickType) ? 'opacity: 0.5; cursor: not-allowed; padding: 8px 16px; background: #d97706; color: white; border: none; border-radius: 6px; font-size: 13px; font-weight: 600;' : 'padding: 8px 16px; background: #d97706; color: white; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer;'">
-                    <span x-show="!quickSubmitting">それでも登録</span>
                     <span x-show="quickSubmitting">登録中...</span>
                 </button>
             </div>
@@ -133,7 +125,7 @@
 function supplierPicker() {
     return {
         supplierId: {{ old('supplier_id', $p?->supplier_id) ?: 'null' }},
-        supplierDisplay: '{{ $p && $p->supplier ? $p->supplier->supplier_code . " " . $p->supplier->name : "" }}',
+        supplierDisplay: '{{ $p && $p->supplier ? $p->supplier->name : "" }}',
         supplierQuery: '',
         supplierResults: [],
         searchTimer: null,
@@ -165,7 +157,7 @@ function supplierPicker() {
 
         selectSupplier: function(item) {
             this.supplierId = item.id;
-            this.supplierDisplay = item.code + ' ' + item.name;
+            this.supplierDisplay = item.name;
             this.supplierQuery = '';
             this.supplierResults = [];
         },
@@ -198,11 +190,13 @@ function supplierPicker() {
             this.closeQuickRegister();
         },
 
-        submitQuickRegister: function(force) {
+        submitQuickRegister: function() {
             var self = this;
             if (self.quickSubmitting) return;
             self.quickSubmitting = true;
             self.quickError = '';
+            // 重複候補表示中に再送信した場合はリセット（名前を編集して再登録するケース）
+            self.quickDuplicates = [];
 
             var meta = document.querySelector('meta[name="csrf-token"]');
             var token = meta ? meta.getAttribute('content') : '';
@@ -217,8 +211,7 @@ function supplierPicker() {
                 },
                 body: JSON.stringify({
                     name: self.quickName.trim(),
-                    type: self.quickType,
-                    force: force ? 1 : 0
+                    type: self.quickType
                 })
             })
             .then(function(res) {

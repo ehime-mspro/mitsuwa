@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', $supplier->supplier_code . ' ' . $supplier->name)
+@section('title', $supplier->name)
 
 @section('breadcrumb')
     <span class="mx-1.5">›</span>
@@ -8,7 +8,7 @@
     <span class="mx-1.5">›</span>
     <a href="{{ route('realestate.suppliers.index') }}" class="hover:text-emerald-600 transition-colors">仕入れ先一覧</a>
     <span class="mx-1.5">›</span>
-    <span class="text-gray-600">{{ $supplier->supplier_code }}</span>
+    <span class="text-gray-600">{{ $supplier->name }}</span>
 @endsection
 
 @section('content')
@@ -16,7 +16,7 @@
     {{-- ヘッダー --}}
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
         <div class="flex items-center gap-3">
-            <h1 class="text-lg font-bold text-gray-900">{{ $supplier->supplier_code }}</h1>
+            <h1 class="text-lg font-bold text-gray-900">{{ $supplier->name }}</h1>
             <span class="inline-block px-2.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700" style="padding-top:2px; padding-bottom:2px;">{{ $supplier->type->label() }}</span>
         </div>
         <div style="display: flex; gap: 8px; align-items: center;">

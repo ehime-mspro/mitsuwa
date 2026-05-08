@@ -126,7 +126,7 @@
             <dd class="px-3.5 py-2.5 text-sm text-gray-900 border-b border-gray-200">
                 @if($procurement->supplier)
                     <a href="{{ route('realestate.suppliers.show', $procurement->supplier) }}" class="text-emerald-600 font-medium hover:underline">
-                        {{ $procurement->supplier->supplier_code }} {{ $procurement->supplier->name }}
+                        {{ $procurement->supplier->name }}
                     </a>
                 @else
                     <span class="text-gray-400">—</span>
