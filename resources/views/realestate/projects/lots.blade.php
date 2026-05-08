@@ -22,7 +22,7 @@
         </div>
         <a href="{{ route('realestate.projects.index') }}"
            class="px-3.5 py-1.5 bg-white border-2 border-gray-400 text-gray-700 text-sm font-semibold rounded-md hover:bg-gray-50 transition-colors"
-           style="font-size: 13px;">← PJ一覧に戻る</a>
+           style="font-size: 13px;">← 分譲地一覧に戻る</a>
     </div>
 
     {{-- Ajax メッセージ --}}
@@ -109,7 +109,7 @@
                             <th class="py-2.5 text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap" style="text-align: right; padding-right: 25px;">坪数</th>
                             <th class="py-2.5 text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap" style="text-align: right; padding-right: 25px;">販売坪単価</th>
                             <th class="py-2.5 text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap" style="text-align: right; padding-right: 25px;">販売価格</th>
-                            <th class="py-2.5 text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap" style="text-align: right; padding-right: 25px;">減価額</th>
+                            <th class="py-2.5 text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap" style="text-align: right; padding-right: 25px;">原価額</th>
                             <th class="py-2.5 text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap" style="text-align: right; padding-right: 25px;">粗利額</th>
                             <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">ステータス</th>
                             <th x-show="showOps" class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">操作</th>

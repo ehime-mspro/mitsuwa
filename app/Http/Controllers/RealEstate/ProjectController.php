@@ -199,7 +199,7 @@ class ProjectController extends Controller
         $allHavePrice = $project->allLotsHaveSellingPrice();
 
         foreach ($project->lots as $lot) {
-            // 減価額（原価按分）: 全区画に販売価格が入力済みの場合のみ計算
+            // 原価額（原価按分）: 全区画に販売価格が入力済みの場合のみ計算
             $depreciationAmount = null;
             if ($allHavePrice && $lotSellingTotal > 0) {
                 $depreciationAmount = (int) round($effectiveCostTotal * ($lot->selling_price / $lotSellingTotal));
