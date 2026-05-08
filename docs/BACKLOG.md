@@ -54,7 +54,7 @@
 
 ---
 
-## 優先度2: DAD（土木事業）管理
+## ✅ 優先度2: DAD（土木事業）管理（実装完了）
 
 詳細仕様: @docs/DAD_土木事業_要件定義書_v1.md
 
@@ -70,14 +70,18 @@
 | 従業員 | `employees/` | ✅ | ✅ | ✅ | ✅ | 完了 |
 | 専門分野マスタ | `specialties/` | ✅ | — | ✅ | ✅ | create/edit + 一覧（show は無し） |
 
-**原価管理カード**（工事案件 `projects/create.html` + `projects/show.html` 共通パターン）:
-- インライン行追加（`＋ 行追加` で空行追加 → 直接入力）
-- Excel取込（3ステップ: ファイル選択 → 列マッピング → プレビュー → 末尾に追加）
-- SheetJS（`cdn.jsdelivr.net/npm/xlsx@0.18.5`）によるクライアントサイド解析
-- カテゴリエイリアス自動変換（材料→材料費、外注/下請→外注費 等）
-- プレビューで カテゴリ不一致（黄ハイライト）・金額NG（赤ハイライト）を警告
+### フェーズ2: Laravel 実装（完了 — 本番稼働中）
 
-**モックはすべて完了**。次フェーズは Phase 2 Laravel 実装（`dad_*` テーブル / Enum 5本 / Controller 6本 / Blade 約30本 / ルート約34本）。本番での Excel取込は PhpSpreadsheet + `ProjectImportController@preview/execute` を追加。
+| 区分 | 実装内容 |
+|------|---------|
+| Controllers | `Dad/{Project,Client,Subcontractor,Employee}Controller.php` + `Admin/DadSpecialtyController.php` |
+| Models | `DadProject` / `DadProjectCost` / `DadProjectAssignment` / `DadClient` / `DadSubcontractor` / `DadEmployee` / `DadSpecialty` |
+| Enums | `DadProjectStatus` / `DadProjectType` / `DadCostCategory` / `DadClientType` / `DadEmployeeStatus` |
+| Blade | 23本（4 モジュール × index/show/create/edit/_form + projects の partial 3本: `_excel_import` / `_date-picker` / `_date-picker-row`） |
+| ルート | 28本（リソース × 4）+ 7本（admin/dad-specialties） |
+| サイドバー | 「DAD」グループに 4 項目登録済み |
+
+**原価管理カード**: クライアント側 SheetJS で Excel 取込、サーバー側は ProjectController 内に preview/execute ロジック内蔵。カテゴリエイリアス自動変換（材料→材料費、外注/下請→外注費 等）、プレビューで カテゴリ不一致・金額NG を警告。
 
 ---
 
