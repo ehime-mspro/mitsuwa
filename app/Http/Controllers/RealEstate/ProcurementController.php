@@ -165,6 +165,33 @@ class ProcurementController extends Controller
     }
 
     /**
+     * 仕入れ案件のステータスのみ Ajax 更新（一覧バッジ クリック → ポップオーバー選択用）
+     * Route: PATCH /realestate/procurements/{procurement}/status
+     */
+    public function updateStatus(Request $request, ReProcurement $procurement)
+    {
+        $statuses = implode(',', array_column(ProcurementStatus::cases(), 'value'));
+
+        $validated = $request->validate([
+            'status' => "required|in:{$statuses}",
+        ]);
+
+        $procurement->update([
+            'status'     => $validated['status'],
+            'updated_by' => auth()->id(),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'status'  => [
+                'value'       => $procurement->status->value,
+                'label'       => $procurement->status->label(),
+                'badge_class' => $procurement->status->badgeClass(),
+            ],
+        ]);
+    }
+
+    /**
      * 仕入れ案件削除
      * Route: DELETE /realestate/procurements/{procurement}
      */

@@ -688,6 +688,9 @@ Route::middleware(['auth', 'password.change'])->group(function () {
                 ->name('realestate.procurements.edit');
             Route::put('/procurements/{procurement}', [\App\Http\Controllers\RealEstate\ProcurementController::class, 'update'])
                 ->name('realestate.procurements.update');
+            // 一覧バッジクリックからのステータスのみ Ajax 更新
+            Route::patch('/procurements/{procurement}/status', [\App\Http\Controllers\RealEstate\ProcurementController::class, 'updateStatus'])
+                ->name('realestate.procurements.update-status');
         });
 
         // 仕入れ案件削除（経営層のみ）
@@ -832,6 +835,9 @@ Route::middleware(['auth', 'password.change'])->group(function () {
                 ->name('realestate.projects.edit');
             Route::put('/projects/{project}', [\App\Http\Controllers\RealEstate\ProjectController::class, 'update'])
                 ->name('realestate.projects.update');
+            // 一覧バッジクリックからのステータスのみ Ajax 更新
+            Route::patch('/projects/{project}/status', [\App\Http\Controllers\RealEstate\ProjectController::class, 'updateStatus'])
+                ->name('realestate.projects.update-status');
         });
 
         Route::delete('/projects/{project}', [\App\Http\Controllers\RealEstate\ProjectController::class, 'destroy'])

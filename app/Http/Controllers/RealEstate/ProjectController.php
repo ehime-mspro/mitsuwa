@@ -161,6 +161,33 @@ class ProjectController extends Controller
     }
 
     /**
+     * 分譲地のステータスのみ Ajax 更新（一覧バッジ クリック → ポップオーバー選択用）
+     * Route: PATCH /realestate/projects/{project}/status
+     */
+    public function updateStatus(Request $request, ReProject $project)
+    {
+        $statuses = implode(',', array_column(ProjectStatus::cases(), 'value'));
+
+        $validated = $request->validate([
+            'status' => "required|in:{$statuses}",
+        ]);
+
+        $project->update([
+            'status'     => $validated['status'],
+            'updated_by' => auth()->id(),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'status'  => [
+                'value'       => $project->status->value,
+                'label'       => $project->status->label(),
+                'badge_class' => $project->status->badgeClass(),
+            ],
+        ]);
+    }
+
+    /**
      * プロジェクト削除
      * Route: DELETE /realestate/projects/{project}
      */

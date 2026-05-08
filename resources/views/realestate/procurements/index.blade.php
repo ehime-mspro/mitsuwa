@@ -11,6 +11,18 @@
 
 @section('content')
 
+    @php
+        // ステータスポップオーバー用オプション一覧（一覧バッジクリックからの即時変更用）
+        $statusOptions = collect(\App\Enums\ProcurementStatus::cases())->map(function ($s) {
+            return [
+                'value'       => $s->value,
+                'label'       => $s->label(),
+                'badge_class' => $s->badgeClass(),
+            ];
+        })->values()->all();
+        $canEditStatus = auth()->user()->role->isManagerOrAbove();
+    @endphp
+
     {{-- ページヘッダー --}}
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
         <h1 class="text-lg font-bold text-gray-900">仕入れ案件一覧</h1>
@@ -82,9 +94,24 @@
                         @endphp
                         <tr class="hover:bg-gray-50 transition-colors">
                             <td class="py-3 border-b border-gray-100 text-sm font-medium whitespace-nowrap" style="padding-left: 16px;">{{ $p->property_name }}</td>
-                            <td class="px-3 py-3 border-b border-gray-100 text-center whitespace-nowrap">
-                                <span class="badge {{ $p->status->badgeClass() }}">{{ $p->status->label() }}</span>
-                            </td>
+                            @if($canEditStatus)
+                                <td class="px-3 py-3 border-b border-gray-100 text-center whitespace-nowrap" style="position: relative;"
+                                    x-data="procurementStatusCell({{ $p->id }}, '{{ $p->status->value }}', '{{ $p->status->label() }}', '{{ $p->status->badgeClass() }}')">
+                                    <span @click="toggle()" :class="'badge ' + badgeClass" x-text="label"
+                                          style="cursor: pointer;" title="クリックでステータス変更"></span>
+                                    <div x-show="open" x-cloak @click.outside="open = false"
+                                         style="position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 6px; z-index: 100; background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px; box-shadow: 0 6px 20px rgba(0,0,0,0.15); min-width: 130px; display: flex; flex-direction: column; gap: 4px;">
+                                        <template x-for="opt in options" :key="opt.value">
+                                            <span @click="select(opt)" :class="'badge ' + opt.badge_class" x-text="opt.label"
+                                                  :style="(opt.value === value) ? 'opacity: 0.45; cursor: default; text-align: center;' : 'cursor: pointer; text-align: center;'"></span>
+                                        </template>
+                                    </div>
+                                </td>
+                            @else
+                                <td class="px-3 py-3 border-b border-gray-100 text-center whitespace-nowrap">
+                                    <span class="badge {{ $p->status->badgeClass() }}">{{ $p->status->label() }}</span>
+                                </td>
+                            @endif
                             <td class="px-3 py-3 border-b border-gray-100 text-sm text-center whitespace-nowrap">{{ $p->property_type->label() }}</td>
                             <td class="px-3 py-3 border-b border-gray-100 text-sm text-center whitespace-nowrap">{{ $p->transaction_type->label() }}</td>
                             <td class="py-3 border-b border-gray-100 text-sm whitespace-nowrap" style="text-align: right; padding-right: 16px;">
@@ -184,6 +211,69 @@
 </div>
 
 <script>
+// ステータスポップオーバー: バッジクリックで全ステータスをバッジ風に表示し、選択で Ajax 即更新
+window.__procurementStatusOptions = @json($statusOptions);
+
+function procurementStatusCell(id, initialValue, initialLabel, initialBadgeClass) {
+    return {
+        id: id,
+        value: initialValue,
+        label: initialLabel,
+        badgeClass: initialBadgeClass,
+        open: false,
+        submitting: false,
+        options: window.__procurementStatusOptions || [],
+
+        toggle: function() {
+            if (this.submitting) return;
+            this.open = !this.open;
+        },
+
+        select: function(opt) {
+            var self = this;
+            if (opt.value === self.value) {
+                self.open = false;
+                return;
+            }
+            if (self.submitting) return;
+            self.submitting = true;
+
+            var token = document.querySelector('meta[name="csrf-token"]').content;
+
+            fetch('{{ url("/realestate/procurements") }}/' + self.id + '/status', {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': token,
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify({ status: opt.value })
+            })
+            .then(function(r) {
+                if (!r.ok) {
+                    self.submitting = false;
+                    alert('ステータスの更新に失敗しました（' + r.status + '）');
+                    return null;
+                }
+                return r.json();
+            })
+            .then(function(data) {
+                self.submitting = false;
+                if (!data || !data.success) return;
+                self.value = data.status.value;
+                self.label = data.status.label;
+                self.badgeClass = data.status.badge_class;
+                self.open = false;
+            })
+            .catch(function() {
+                self.submitting = false;
+                alert('通信エラーが発生しました。');
+            });
+        }
+    };
+}
+
 var modalMap = null;
 var modalMarker = null;
 var modalInfoWindow = null;
