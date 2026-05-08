@@ -442,7 +442,7 @@ Route::middleware(['auth', 'password.change'])->group(function () {
     Route::post('/attachments/{type}/{id}', [\App\Http\Controllers\AttachmentController::class, 'store'])
         ->middleware('role:executive,manager')
         ->name('attachments.store')
-        ->where('type', 'contracts|investments|repairs|procurements');
+        ->where('type', 'contracts|investments|repairs|procurements|projects|ms_tenants|dad_projects');
 
     // ファイル削除（Ajax — 経営層 or アップロード本人 ※Controller内で権限チェック）
     Route::delete('/attachments/{attachment}', [\App\Http\Controllers\AttachmentController::class, 'destroy'])
