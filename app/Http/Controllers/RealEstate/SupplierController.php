@@ -137,6 +137,58 @@ class SupplierController extends Controller
     }
 
     /**
+     * 仕入れ先 簡易登録（フォーム内モーダルから Ajax 呼び出し）
+     * Route: POST /api/realestate/suppliers/quick
+     *
+     * 完全一致名が既存にある場合（force=false 時）は 200 + duplicates[] を返却し
+     * 呼び出し側で確認を促す。force=true なら同名でも新規作成する。
+     */
+    public function quickStore(Request $request)
+    {
+        $validated = $request->validate([
+            'type'  => 'required|in:individual,corporation,realtor',
+            'name'  => 'required|string|max:100',
+            'force' => 'nullable|boolean',
+        ]);
+
+        $force = $request->boolean('force');
+
+        // force=false の場合、name の完全一致をチェック
+        if (! $force) {
+            $duplicates = ReSupplier::where('name', $validated['name'])
+                ->orderBy('supplier_code')
+                ->get(['id', 'supplier_code', 'name', 'type']);
+
+            if ($duplicates->isNotEmpty()) {
+                return response()->json([
+                    'duplicates' => $duplicates->map(function ($s) {
+                        return [
+                            'id'         => $s->id,
+                            'code'       => $s->supplier_code,
+                            'name'       => $s->name,
+                            'type_label' => $s->type->label(),
+                        ];
+                    }),
+                ], 200);
+            }
+        }
+
+        // 新規作成
+        $supplier = ReSupplier::create([
+            'supplier_code' => $this->generateSupplierCode(),
+            'type'          => $validated['type'],
+            'name'          => $validated['name'],
+        ]);
+
+        return response()->json([
+            'id'         => $supplier->id,
+            'code'       => $supplier->supplier_code,
+            'name'       => $supplier->name,
+            'type_label' => $supplier->type->label(),
+        ], 201);
+    }
+
+    /**
      * 仕入れ先Ajax検索
      * Route: GET /api/realestate/suppliers/search
      */

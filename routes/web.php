@@ -872,11 +872,15 @@ Route::middleware(['auth', 'password.change'])->group(function () {
 
     /*
     |----------------------------------------------------------------------
-    | 不動産 仕入れ先 Ajax 検索（1ルート）
+    | 不動産 仕入れ先 Ajax 検索 + 簡易登録（2ルート）
     |----------------------------------------------------------------------
     */
     Route::get('/api/realestate/suppliers/search', [\App\Http\Controllers\RealEstate\SupplierController::class, 'search'])
         ->name('api.realestate.suppliers.search');
+
+    Route::post('/api/realestate/suppliers/quick', [\App\Http\Controllers\RealEstate\SupplierController::class, 'quickStore'])
+        ->middleware('role:executive,manager')
+        ->name('api.realestate.suppliers.quick');
 
     /*
     |----------------------------------------------------------------------

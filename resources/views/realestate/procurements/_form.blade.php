@@ -137,37 +137,8 @@
     <div class="bg-white border border-gray-200 rounded-lg p-5 mb-3">
         <div class="text-sm font-bold text-gray-800 pb-2 mb-3.5 border-b border-gray-200">仕入れ情報</div>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {{-- 仕入れ先（Ajax検索）— 全幅 --}}
-            <div class="sm:col-span-2">
-                <label class="block text-sm font-semibold text-gray-700 mb-1">仕入れ先</label>
-                <input type="hidden" name="supplier_id" :value="supplierId">
-                <div x-show="!supplierId" class="relative" style="max-width: 460px;">
-                    <input type="text" x-model="supplierQuery" @input="searchSupplier()" @focus="searchSupplier()"
-                           placeholder="仕入れ先を検索..."
-                           class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none">
-                    <div x-show="supplierResults.length > 0"
-                         @click.outside="supplierResults = []"
-                         class="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
-                        <template x-for="item in supplierResults" :key="item.id">
-                            <div @click="selectSupplier(item)"
-                                 class="px-3 py-2 text-sm cursor-pointer hover:bg-emerald-50 border-b border-gray-100">
-                                <span class="font-semibold text-emerald-600" x-text="item.code"></span>
-                                <span class="ml-1.5" x-text="item.name"></span>
-                                <span class="text-xs text-gray-500 ml-1" x-text="'(' + item.type_label + ')'"></span>
-                            </div>
-                        </template>
-                    </div>
-                </div>
-                <div x-show="supplierId" class="flex gap-2" style="max-width: 460px;">
-                    <div style="flex: 1; height: 40px; padding: 0 12px; display: flex; align-items: center; border: 2px solid #34d399; border-radius: 6px; background: #ecfdf5; font-size: 14px;">
-                        <span class="font-semibold text-emerald-700" x-text="supplierDisplay"></span>
-                    </div>
-                    <button type="button" @click="clearSupplier()" class="text-gray-400 hover:text-red-500 transition-colors" title="クリア">
-                        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                    </button>
-                </div>
-                <p class="text-xs text-gray-500 mt-1">※ テキスト入力で候補を検索（Ajax）</p>
-            </div>
+            {{-- 仕入れ先（Ajax 検索 + 簡易登録）— 全幅 --}}
+            @include('realestate._partials.supplier-picker')
             <div>
                 <label class="block text-sm font-semibold text-gray-700 mb-1">情報入手日</label>
                 <input type="date" name="info_obtained_date" value="{{ old('info_obtained_date', $p?->info_obtained_date?->format('Y-m-d')) }}"
@@ -211,44 +182,9 @@
 
 <script>
 function procurementForm() {
-    return {
-        propertyType: '{{ old("property_type", $p?->property_type?->value ?? "") }}',
-        supplierId: {{ old('supplier_id', $p?->supplier_id) ?: 'null' }},
-        supplierDisplay: '{{ $p && $p->supplier ? $p->supplier->supplier_code . " " . $p->supplier->name : "" }}',
-        supplierQuery: '',
-        supplierResults: [],
-        searchTimer: null,
-
-        searchSupplier: function() {
-            var self = this;
-            clearTimeout(self.searchTimer);
-            if (self.supplierQuery.length < 2) {
-                self.supplierResults = [];
-                return;
-            }
-            self.searchTimer = setTimeout(function() {
-                fetch('{{ url("/api/realestate/suppliers/search") }}?q=' + encodeURIComponent(self.supplierQuery), {
-                    headers: { 'Accept': 'application/json' }
-                })
-                .then(function(res) { return res.json(); })
-                .then(function(data) { self.supplierResults = data; })
-                .catch(function() { self.supplierResults = []; });
-            }, 300);
-        },
-
-        selectSupplier: function(item) {
-            this.supplierId = item.id;
-            this.supplierDisplay = item.code + ' ' + item.name;
-            this.supplierQuery = '';
-            this.supplierResults = [];
-        },
-
-        clearSupplier: function() {
-            this.supplierId = null;
-            this.supplierDisplay = '';
-            this.supplierQuery = '';
-        }
-    };
+    return Object.assign(supplierPicker(), {
+        propertyType: '{{ old("property_type", $p?->property_type?->value ?? "") }}'
+    });
 }
 
 // ============================================================
