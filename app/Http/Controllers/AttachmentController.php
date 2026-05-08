@@ -73,7 +73,7 @@ class AttachmentController extends Controller
             $uploaded[] = [
                 'id'          => $attachment->id,
                 'file_name'   => $attachment->file_name,
-                'file_path'   => asset('storage/' . $attachment->file_path),
+                'file_path'   => route('attachments.show', $attachment->id),
                 'file_size'   => $attachment->file_size_formatted,
                 'uploaded_by' => $attachment->uploadedByUser->name ?? '—',
                 'uploaded_at' => $attachment->created_at->format('Y/m/d H:i'),
@@ -86,6 +86,23 @@ class AttachmentController extends Controller
             'attachments' => $uploaded,
             'message'     => count($uploaded) . '件のファイルをアップロードしました。',
         ]);
+    }
+
+    /**
+     * ファイル表示・ダウンロード
+     * GET /attachments/{attachment}
+     *
+     * 本番のディレクトリ構造（アプリ本体と Web 公開ディレクトリが別パス）では
+     * public/storage シンボリックリンクが壊れるため、Apache 直配信ではなく
+     * Laravel 経由で storage/app/public からストリーミング配信する。
+     */
+    public function show(Attachment $attachment)
+    {
+        if (! Storage::disk('public')->exists($attachment->file_path)) {
+            abort(404);
+        }
+
+        return Storage::disk('public')->response($attachment->file_path, $attachment->file_name);
     }
 
     /**

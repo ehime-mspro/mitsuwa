@@ -250,7 +250,7 @@
                 </div>
             </div>
             @if($settlementFile)
-                <a href="{{ asset('storage/' . $settlementFile->file_path) }}" target="_blank"
+                <a href="{{ route('attachments.show', $settlementFile->id) }}" target="_blank"
                    class="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white border border-gray-300 rounded-md text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors">
                     <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                     解約精算書を開く

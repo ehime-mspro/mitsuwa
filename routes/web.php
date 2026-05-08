@@ -448,6 +448,10 @@ Route::middleware(['auth', 'password.change'])->group(function () {
     Route::delete('/attachments/{attachment}', [\App\Http\Controllers\AttachmentController::class, 'destroy'])
         ->name('attachments.destroy');
 
+    // ファイル表示・ダウンロード（symlink に依存せず Laravel 経由でストリーミング配信）
+    Route::get('/attachments/{attachment}', [\App\Http\Controllers\AttachmentController::class, 'show'])
+        ->name('attachments.show');
+
     /*
     |----------------------------------------------------------------------
     | 賃貸マンション管理（Phase B〜H で段階実装）

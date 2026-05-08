@@ -21,7 +21,7 @@
         $attachmentsData[] = [
             'id'          => $a->id,
             'file_name'   => $a->file_name,
-            'file_path'   => asset('storage/' . $a->file_path),
+            'file_path'   => route('attachments.show', $a->id),
             'file_size'   => $a->file_size_formatted,
             'uploaded_by' => $a->uploadedByUser->name ?? '—',
             'uploaded_at' => $a->created_at->format('Y/m/d H:i'),
