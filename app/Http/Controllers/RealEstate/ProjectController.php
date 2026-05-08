@@ -250,7 +250,7 @@ class ProjectController extends Controller
             $drawingsForJs[] = [
                 'id'          => $d->id,
                 'file_name'   => $d->file_name,
-                'file_path'   => Storage::disk('public')->url($d->file_path),
+                'file_path'   => route('realestate.projects.drawings.show', [$project->id, $d->id]),
                 'file_size'   => $d->getFileSizeFormatted(),
                 'mime_type'   => $d->mime_type,
                 'is_image'    => $d->isImage(),
@@ -459,6 +459,26 @@ class ProjectController extends Controller
     // ================================================================
 
     /**
+     * 図面ファイル表示・ダウンロード
+     * Route: GET /realestate/projects/{project}/drawings/{drawing}
+     *
+     * 本番のディレクトリ構造（アプリ本体と Web 公開ディレクトリが別パス）では
+     * public/storage シンボリックリンクが壊れるため、Apache 直配信ではなく
+     * Laravel 経由で storage/app/public からストリーミング配信する。
+     */
+    public function showDrawing(ReProject $project, ReProjectDrawing $drawing)
+    {
+        if ($drawing->project_id !== $project->id) {
+            abort(403);
+        }
+        if (! Storage::disk('public')->exists($drawing->file_path)) {
+            abort(404);
+        }
+
+        return Storage::disk('public')->response($drawing->file_path, $drawing->file_name);
+    }
+
+    /**
      * 図面アップロード
      * Route: POST /realestate/projects/{project}/drawings
      */
@@ -487,7 +507,7 @@ class ProjectController extends Controller
             'drawing' => [
                 'id'            => $drawing->id,
                 'file_name'     => $drawing->file_name,
-                'file_path'     => Storage::disk('public')->url($drawing->file_path),
+                'file_path'     => route('realestate.projects.drawings.show', [$project->id, $drawing->id]),
                 'file_size'     => $drawing->getFileSizeFormatted(),
                 'mime_type'     => $drawing->mime_type,
                 'is_image'      => $drawing->isImage(),

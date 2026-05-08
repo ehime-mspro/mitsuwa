@@ -868,6 +868,9 @@ Route::middleware(['auth', 'password.change'])->group(function () {
         Route::delete('/projects/{project}/drawings/{drawing}', [\App\Http\Controllers\RealEstate\ProjectController::class, 'destroyDrawing'])
             ->middleware('role:executive')
             ->name('realestate.projects.drawings.destroy');
+        // 図面表示（symlink に依存せず Laravel 経由でストリーミング配信）
+        Route::get('/projects/{project}/drawings/{drawing}', [\App\Http\Controllers\RealEstate\ProjectController::class, 'showDrawing'])
+            ->name('realestate.projects.drawings.show');
     });
 
     /*

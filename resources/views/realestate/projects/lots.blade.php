@@ -210,22 +210,24 @@
         <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px;">
             <template x-for="drawing in drawings" :key="drawing.id">
                 <div style="border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; background: #fff;">
-                    <div x-show="drawing.is_image" style="width: 100%; height: 140px; overflow: hidden;">
-                        <img :src="drawing.file_path" style="width: 100%; height: 140px; object-fit: cover;">
-                    </div>
-                    <div x-show="!drawing.is_image" style="width: 100%; height: 140px; display: flex; align-items: center; justify-content: center; background: #f9fafb;">
-                        <div style="text-align: center;">
-                            <svg style="width: 32px; height: 32px; margin: 0 auto 6px;" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                            <div style="font-size: 12px; color: #6b7280;">PDF</div>
+                    <a :href="drawing.file_path" target="_blank" style="display: block; text-decoration: none; color: inherit; cursor: pointer;">
+                        <div x-show="drawing.is_image" style="width: 100%; height: 140px; overflow: hidden;">
+                            <img :src="drawing.file_path" style="width: 100%; height: 140px; object-fit: cover;">
                         </div>
-                    </div>
-                    <div style="padding: 10px 12px;">
-                        <div style="font-size: 13px; font-weight: 600; color: #111827; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" x-text="drawing.file_name"></div>
-                        <div style="font-size: 11px; color: #6b7280;" x-text="drawing.file_size + ' — ' + drawing.created_at + ' ' + drawing.uploaded_by"></div>
-                        <div x-show="showDrawingDel" style="margin-top: 6px;">
-                            <button type="button" @click="deleteDrawing(drawing)"
-                                    style="display: inline-block; padding: 3px 10px; font-size: 12px; font-weight: 600; color: #dc2626; border: 1px solid #dc2626; border-radius: 4px; cursor: pointer; background: #fff;">削除</button>
+                        <div x-show="!drawing.is_image" style="width: 100%; height: 140px; display: flex; align-items: center; justify-content: center; background: #f9fafb;">
+                            <div style="text-align: center;">
+                                <svg style="width: 32px; height: 32px; margin: 0 auto 6px;" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                                <div style="font-size: 12px; color: #6b7280;">PDF</div>
+                            </div>
                         </div>
+                        <div style="padding: 10px 12px 4px;">
+                            <div style="font-size: 13px; font-weight: 600; color: #111827; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" x-text="drawing.file_name"></div>
+                            <div style="font-size: 11px; color: #6b7280;" x-text="drawing.file_size + ' — ' + drawing.created_at + ' ' + drawing.uploaded_by"></div>
+                        </div>
+                    </a>
+                    <div x-show="showDrawingDel" style="padding: 0 12px 10px;">
+                        <button type="button" @click="deleteDrawing(drawing)"
+                                style="display: inline-block; padding: 3px 10px; font-size: 12px; font-weight: 600; color: #dc2626; border: 1px solid #dc2626; border-radius: 4px; cursor: pointer; background: #fff;">削除</button>
                     </div>
                 </div>
             </template>
