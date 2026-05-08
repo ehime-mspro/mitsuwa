@@ -116,7 +116,7 @@
                                 <td class="px-3 py-3 text-sm text-center font-semibold" x-text="lot.lot_number"></td>
                                 <td class="py-3 text-sm whitespace-nowrap" style="text-align: right; padding-right: 16px;" x-text="lot.area_sqm.toFixed(2) + ' ㎡'"></td>
                                 <td class="py-3 text-sm whitespace-nowrap" style="text-align: right; padding-right: 16px;" x-text="lot.area_tsubo.toFixed(2) + ' 坪'"></td>
-                                <td class="py-3 text-sm whitespace-nowrap" style="text-align: right; padding-right: 16px; color: #6b7280;">
+                                <td class="py-3 text-sm whitespace-nowrap" style="text-align: right; padding-right: 16px;">
                                     <span x-text="lot.tsubo_price_formatted ? lot.tsubo_price_formatted : '—'"></span>
                                 </td>
                                 <td class="py-3 text-sm whitespace-nowrap font-semibold" style="text-align: right; padding-right: 16px;">
