@@ -64,11 +64,10 @@
             <table class="w-full border-collapse" style="min-width: 1000px;">
                 <thead>
                     <tr>
-                        <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">案件番号</th>
+                        <th class="py-2.5 text-left text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap" style="padding-left: 16px;">物件名</th>
                         <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">ステータス</th>
                         <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">物件種別</th>
                         <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">取引種別</th>
-                        <th class="py-2.5 text-left text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap" style="padding-left: 16px;">物件名</th>
                         <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">購入価格</th>
                         <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">想定販売価格</th>
                         <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">粗利見込み</th>
@@ -82,16 +81,12 @@
                             $profit = $p->getExpectedProfit();
                         @endphp
                         <tr class="hover:bg-gray-50 transition-colors">
-                            <td class="px-3 py-3 border-b border-gray-100 text-center whitespace-nowrap">
-                                <a href="{{ route('realestate.procurements.show', $p) }}"
-                                   class="text-sm font-semibold text-emerald-600 hover:text-emerald-700 hover:underline">{{ $p->procurement_code }}</a>
-                            </td>
+                            <td class="py-3 border-b border-gray-100 text-sm font-medium whitespace-nowrap" style="padding-left: 16px;">{{ $p->property_name }}</td>
                             <td class="px-3 py-3 border-b border-gray-100 text-center whitespace-nowrap">
                                 <span class="badge {{ $p->status->badgeClass() }}">{{ $p->status->label() }}</span>
                             </td>
                             <td class="px-3 py-3 border-b border-gray-100 text-sm text-center whitespace-nowrap">{{ $p->property_type->label() }}</td>
                             <td class="px-3 py-3 border-b border-gray-100 text-sm text-center whitespace-nowrap">{{ $p->transaction_type->label() }}</td>
-                            <td class="py-3 border-b border-gray-100 text-sm font-medium whitespace-nowrap" style="padding-left: 16px;">{{ $p->property_name }}</td>
                             <td class="py-3 border-b border-gray-100 text-sm whitespace-nowrap" style="text-align: right; padding-right: 16px;">
                                 @if($p->purchase_price)
                                     {{ number_format($p->purchase_price) }}円
@@ -129,7 +124,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="10" class="px-5 py-10 text-center text-sm text-gray-400">仕入れ案件データがありません。</td>
+                            <td colspan="9" class="px-5 py-10 text-center text-sm text-gray-400">仕入れ案件データがありません。</td>
                         </tr>
                     @endforelse
                 </tbody>

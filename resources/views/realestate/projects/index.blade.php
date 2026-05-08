@@ -50,9 +50,8 @@
             <table class="w-full border-collapse">
                 <thead>
                     <tr>
-                        <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">PJ番号</th>
+                        <th class="py-2.5 text-left text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap" style="padding-left: 16px;">物件名</th>
                         <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">ステータス</th>
-                        <th class="py-2.5 text-left text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap" style="padding-left: 16px;">プロジェクト名</th>
                         <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">購入価格</th>
                         <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">想定総販売価格</th>
                         <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">粗利見込み</th>
@@ -70,14 +69,10 @@
                             $lotCount = $pj->lots->count();
                         @endphp
                         <tr class="hover:bg-gray-50 transition-colors">
-                            <td class="px-3 py-3 border-b border-gray-100 text-center whitespace-nowrap">
-                                <a href="{{ route('realestate.projects.show', $pj) }}"
-                                   class="text-sm font-semibold text-emerald-600 hover:text-emerald-700 hover:underline">{{ $pj->project_code }}</a>
-                            </td>
+                            <td class="py-3 border-b border-gray-100 text-sm font-medium whitespace-nowrap" style="padding-left: 16px;">{{ $pj->project_name }}</td>
                             <td class="px-3 py-3 border-b border-gray-100 text-center whitespace-nowrap">
                                 <span class="badge {{ $pj->status->badgeClass() }}">{{ $pj->status->label() }}</span>
                             </td>
-                            <td class="py-3 border-b border-gray-100 text-sm font-medium whitespace-nowrap" style="padding-left: 16px;">{{ $pj->project_name }}</td>
                             <td class="py-3 border-b border-gray-100 text-sm whitespace-nowrap" style="text-align: right; padding-right: 16px;">
                                 @if($pj->purchase_price)
                                     {{ number_format($pj->purchase_price) }}円
@@ -128,7 +123,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="10" class="px-5 py-10 text-center text-sm text-gray-400">分譲地データがありません。</td>
+                            <td colspan="9" class="px-5 py-10 text-center text-sm text-gray-400">分譲地データがありません。</td>
                         </tr>
                     @endforelse
                 </tbody>
