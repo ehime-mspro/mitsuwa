@@ -144,7 +144,10 @@
                                         @csrf
                                         @method('DELETE')
                                         <button type="submit"
-                                                class="text-xs font-semibold text-red-600 px-3 py-1 border border-red-200 rounded bg-red-50 hover:bg-red-100 hover:border-red-300 transition-colors">
+                                                class="text-xs font-semibold text-red-600 px-3 py-1 border border-red-200 rounded bg-red-50 transition-colors"
+                                                style="cursor: pointer;"
+                                                onmouseover="this.style.background='#fecaca'; this.style.borderColor='#fca5a5';"
+                                                onmouseout="this.style.background=''; this.style.borderColor='';">
                                             削除
                                         </button>
                                     </form>

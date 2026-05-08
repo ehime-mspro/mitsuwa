@@ -109,9 +109,8 @@
                 CSVファイルを選択 <span style="color: #dc2626;">*</span>
             </label>
             <input type="file" name="csv_file" accept=".csv,.txt" required
-                   class="form-input"
-                   style="padding: 6px 10px; cursor: pointer;">
-            <div style="font-size: 11px; color: #9ca3af; margin-top: 4px;">
+                   style="display: block; width: 100%; max-width: 520px; padding: 8px 12px; font-size: 13px; color: #374151; background: white; border: 1px solid #d1d5db; border-radius: 6px; cursor: pointer; box-sizing: border-box;">
+            <div style="font-size: 11px; color: #9ca3af; margin-top: 6px;">
                 対応形式: CSV（UTF-8 / Shift_JIS）/ 最大 10MB
             </div>
         </div>

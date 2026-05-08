@@ -63,7 +63,8 @@
     {{-- キーワード --}}
     <input type="text" name="keyword" value="{{ request('keyword') }}"
            placeholder="氏名で検索"
-           class="h-9 px-3 border border-gray-300 rounded-md text-sm text-gray-700 bg-white focus:border-emerald-500 focus:outline-none flex-1 min-w-[140px] w-full sm:w-auto">
+           class="h-9 px-3 border border-gray-300 rounded-md text-sm text-gray-700 bg-white focus:border-emerald-500 focus:outline-none flex-1 w-full sm:w-auto"
+           style="min-width: 140px;">
 
     {{-- クリアボタン --}}
     <a href="{{ route('zeal.inquiries.index') }}"
