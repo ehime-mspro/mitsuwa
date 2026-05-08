@@ -51,7 +51,8 @@ class ReProjectLot extends Model
     // ============================================================
 
     /**
-     * 販売坪単価の表示用（@XX.X万円）
+     * 販売坪単価の表示用（@XX.X — 万円単位、小数点第2位切り上げ）
+     * 例: 326,729 円/坪 → "@32.7"、101,500 円/坪 → "@10.2"
      */
     public function getSellingPricePerTsuboFormatted(): ?string
     {
@@ -59,7 +60,7 @@ class ReProjectLot extends Model
             return null;
         }
         $man = ceil($this->selling_price_per_tsubo / 1000) / 10;
-        return '@' . number_format($man, 1) . '万円';
+        return '@' . number_format($man, 1);
     }
 
     /**

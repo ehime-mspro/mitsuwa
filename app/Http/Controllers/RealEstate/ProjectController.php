@@ -379,17 +379,21 @@ class ProjectController extends Controller
         $lotStatuses = implode(',', array_column(LotStatus::cases(), 'value'));
 
         $validated = $request->validate([
-            'lot_number'              => 'required|integer|min:1',
-            'area_sqm'                => 'required|numeric|min:0.01|max:99999999.99',
-            'selling_price_per_tsubo' => 'nullable|integer|min:0',
-            'selling_price'           => 'nullable|integer|min:0',
-            'is_price_manual'         => 'required|in:0,1',
-            'status'                  => "required|in:{$lotStatuses}",
-            'notes'                   => 'nullable|string|max:200',
+            'lot_number'    => 'required|integer|min:1',
+            'area_sqm'      => 'required|numeric|min:0.01|max:99999999.99',
+            'selling_price' => 'nullable|integer|min:0',
+            'status'        => "required|in:{$lotStatuses}",
+            'notes'         => 'nullable|string|max:200',
         ]);
 
         $validated['project_id'] = $project->id;
         $validated['area_tsubo'] = ReProjectLot::sqmToTsubo((float) $validated['area_sqm']);
+
+        // 販売坪単価は販売価格と坪数から自動算出（円単位で保存）
+        $validated['selling_price_per_tsubo'] = (! empty($validated['selling_price']) && $validated['area_tsubo'] > 0)
+            ? (int) round($validated['selling_price'] / $validated['area_tsubo'])
+            : null;
+        $validated['is_price_manual'] = true;
 
         $lot = ReProjectLot::create($validated);
 
@@ -412,16 +416,20 @@ class ProjectController extends Controller
         $lotStatuses = implode(',', array_column(LotStatus::cases(), 'value'));
 
         $validated = $request->validate([
-            'lot_number'              => 'required|integer|min:1',
-            'area_sqm'                => 'required|numeric|min:0.01|max:99999999.99',
-            'selling_price_per_tsubo' => 'nullable|integer|min:0',
-            'selling_price'           => 'nullable|integer|min:0',
-            'is_price_manual'         => 'required|in:0,1',
-            'status'                  => "required|in:{$lotStatuses}",
-            'notes'                   => 'nullable|string|max:200',
+            'lot_number'    => 'required|integer|min:1',
+            'area_sqm'      => 'required|numeric|min:0.01|max:99999999.99',
+            'selling_price' => 'nullable|integer|min:0',
+            'status'        => "required|in:{$lotStatuses}",
+            'notes'         => 'nullable|string|max:200',
         ]);
 
         $validated['area_tsubo'] = ReProjectLot::sqmToTsubo((float) $validated['area_sqm']);
+
+        // 販売坪単価は販売価格と坪数から自動算出（円単位で保存）
+        $validated['selling_price_per_tsubo'] = (! empty($validated['selling_price']) && $validated['area_tsubo'] > 0)
+            ? (int) round($validated['selling_price'] / $validated['area_tsubo'])
+            : null;
+        $validated['is_price_manual'] = true;
 
         $lot->update($validated);
 

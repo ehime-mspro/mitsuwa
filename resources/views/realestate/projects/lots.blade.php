@@ -68,11 +68,6 @@
                            class="w-full h-9 px-2 border border-gray-300 rounded-md text-sm focus:border-emerald-500 focus:outline-none">
                 </div>
                 <div>
-                    <label class="block text-xs font-semibold text-gray-700 mb-1">販売坪単価（円）</label>
-                    <input type="number" id="add-price-per-tsubo" placeholder="坪単価から自動算出"
-                           class="w-full h-9 px-2 border border-gray-300 rounded-md text-sm focus:border-emerald-500 focus:outline-none">
-                </div>
-                <div>
                     <label class="block text-xs font-semibold text-gray-700 mb-1">販売価格（円）</label>
                     <input type="number" id="add-selling-price" placeholder=""
                            class="w-full h-9 px-2 border border-gray-300 rounded-md text-sm focus:border-emerald-500 focus:outline-none">
@@ -256,11 +251,6 @@
                            class="w-full h-9 px-2 border border-gray-300 rounded-md text-sm focus:border-emerald-500 focus:outline-none">
                 </div>
                 <div>
-                    <label class="block text-xs font-semibold text-gray-700 mb-1">販売坪単価（円）</label>
-                    <input type="number" x-model="editLotData.selling_price_per_tsubo"
-                           class="w-full h-9 px-2 border border-gray-300 rounded-md text-sm focus:border-emerald-500 focus:outline-none">
-                </div>
-                <div>
                     <label class="block text-xs font-semibold text-gray-700 mb-1">販売価格（円）</label>
                     <input type="number" x-model="editLotData.selling_price"
                            class="w-full h-9 px-2 border border-gray-300 rounded-md text-sm focus:border-emerald-500 focus:outline-none">
@@ -300,7 +290,7 @@ function lotManager() {
         message: '',
         editingLot: null,
         editLotData: {},
-        newLot: { lot_number: '', area_sqm: '', selling_price_per_tsubo: '', selling_price: '', status: 'unsold', notes: '' },
+        newLot: { lot_number: '', area_sqm: '', selling_price: '', status: 'unsold', notes: '' },
         token: document.querySelector('meta[name="csrf-token"]').content,
         lotBaseUrl: '{{ url("/realestate/projects/" . $project->id . "/lots") }}',
         drawingBaseUrl: '{{ url("/realestate/projects/" . $project->id . "/drawings") }}',
@@ -337,7 +327,6 @@ function lotManager() {
             // DOMから直接値を取得（x-modelバインディング問題を回避）
             var lotNumber = document.getElementById('add-lot-number').value.trim();
             var areaSqm = document.getElementById('add-area-sqm').value.trim();
-            var pricePT = document.getElementById('add-price-per-tsubo').value.trim();
             var sellingPrice = document.getElementById('add-selling-price').value.trim();
             var status = document.getElementById('add-status').value;
             var notes = document.getElementById('add-notes').value.trim();
@@ -348,13 +337,11 @@ function lotManager() {
                 return;
             }
 
-            var isPriceManual = pricePT ? 0 : 1;
+            // 販売坪単価はサーバー側で「販売価格 ÷ 坪数」で自動算出される
             var body = {
                 lot_number: parseInt(lotNumber, 10),
                 area_sqm: parseFloat(areaSqm),
-                selling_price_per_tsubo: pricePT ? parseInt(pricePT, 10) : null,
                 selling_price: sellingPrice ? parseInt(sellingPrice, 10) : null,
-                is_price_manual: isPriceManual,
                 status: status,
                 notes: notes || null
             };
@@ -386,7 +373,6 @@ function lotManager() {
                 if (data.success) {
                     // フォームをリセット（号地番号以外をクリア）
                     document.getElementById('add-area-sqm').value = '';
-                    document.getElementById('add-price-per-tsubo').value = '';
                     document.getElementById('add-selling-price').value = '';
                     document.getElementById('add-status').value = 'unsold';
                     document.getElementById('add-notes').value = '';
@@ -403,7 +389,6 @@ function lotManager() {
             this.editLotData = {
                 lot_number: lot.lot_number,
                 area_sqm: lot.area_sqm,
-                selling_price_per_tsubo: lot.selling_price_per_tsubo,
                 selling_price: lot.selling_price,
                 status: lot.status,
                 notes: lot.notes || ''
@@ -412,13 +397,11 @@ function lotManager() {
 
         saveLot: function() {
             var self = this;
-            var isPriceManual = self.editLotData.selling_price_per_tsubo ? 0 : 1;
+            // 販売坪単価はサーバー側で「販売価格 ÷ 坪数」で自動算出される
             var body = {
                 lot_number: Number(self.editLotData.lot_number),
                 area_sqm: Number(self.editLotData.area_sqm),
-                selling_price_per_tsubo: self.editLotData.selling_price_per_tsubo ? Number(self.editLotData.selling_price_per_tsubo) : null,
                 selling_price: self.editLotData.selling_price ? Number(self.editLotData.selling_price) : null,
-                is_price_manual: isPriceManual,
                 status: self.editLotData.status,
                 notes: self.editLotData.notes || null
             };
