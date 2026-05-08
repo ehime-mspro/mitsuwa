@@ -30,9 +30,6 @@
         </div>
     </div>
 
-    @if(session('success'))
-        <div class="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 font-medium">{{ session('success') }}</div>
-    @endif
 
     <div class="bg-white border border-gray-200 rounded-lg p-5 mb-3">
         <div class="text-sm font-bold text-gray-800 pb-2 mb-3.5 border-b border-gray-200">修繕情報</div>

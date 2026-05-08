@@ -16,17 +16,6 @@
     <h1 style="font-size: 20px; font-weight: 700; margin: 0;">ZEAL 会員 CSVインポート</h1>
 </div>
 
-{{-- フラッシュメッセージ --}}
-@if(session('success'))
-    <div style="padding: 12px 16px; margin-bottom: 16px; background: #d1fae5; border: 1px solid #6ee7b7; border-radius: 8px; font-size: 13px; color: #065f46;">
-        {{ session('success') }}
-    </div>
-@endif
-@if(session('error'))
-    <div style="padding: 12px 16px; margin-bottom: 16px; background: #fee2e2; border: 1px solid #fca5a5; border-radius: 8px; font-size: 13px; color: #991b1b;">
-        {{ session('error') }}
-    </div>
-@endif
 @if($errors->any())
     <div style="padding: 12px 16px; margin-bottom: 16px; background: #fee2e2; border: 1px solid #fca5a5; border-radius: 8px;">
         <div style="font-size: 13px; font-weight: 600; color: #991b1b; margin-bottom: 6px;">入力エラー</div>

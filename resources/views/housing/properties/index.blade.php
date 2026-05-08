@@ -21,17 +21,7 @@
         </a>
     </div>
 
-    @if(session('success'))
-        <div class="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
-            <p class="text-sm text-emerald-800">{{ session('success') }}</p>
-        </div>
-    @endif
 
-    @if(session('error'))
-        <div class="mb-4 rounded-lg border border-red-200 bg-red-50 p-3">
-            <p class="text-sm text-red-800">{{ session('error') }}</p>
-        </div>
-    @endif
 
     {{-- フィルターバー --}}
     <form id="filter-form" method="GET" action="{{ route('housing.properties.index') }}"

@@ -8,11 +8,6 @@
 </div>
 <h1 style="font-size: 20px; font-weight: 700; margin: 0 0 20px;">アンケート設問管理</h1>
 
-@if(session('success'))
-    <div class="bg-emerald-50 border border-emerald-300 text-emerald-800 text-sm rounded-md px-4 py-3" style="margin-bottom: 16px;">
-        {{ session('success') }}
-    </div>
-@endif
 
 <div class="bg-white border border-gray-200 rounded-lg p-5" x-data="surveyQuestionManager()">
     {{-- 部署タブ --}}

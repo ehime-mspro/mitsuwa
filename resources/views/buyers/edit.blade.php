@@ -8,11 +8,6 @@
 </div>
 <h1 style="font-size: 20px; font-weight: 700; margin: 0 0 20px;">顧客編集（{{ $deptLabel }}）</h1>
 
-@if(session('error'))
-    <div style="background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; font-size: 13px; border-radius: 6px; padding: 10px 14px; margin-bottom: 16px;">
-        {{ session('error') }}
-    </div>
-@endif
 
 @if($errors->any())
     <div style="background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; font-size: 13px; border-radius: 6px; padding: 10px 14px; margin-bottom: 16px;">

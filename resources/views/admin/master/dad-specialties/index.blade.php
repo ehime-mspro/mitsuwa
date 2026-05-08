@@ -24,19 +24,7 @@
         </a>
     </div>
 
-    {{-- 成功メッセージ --}}
-    @if(session('success'))
-        <div class="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
-            <p class="text-sm text-emerald-800">{{ session('success') }}</p>
-        </div>
-    @endif
 
-    {{-- エラーメッセージ --}}
-    @if(session('error'))
-        <div class="mb-4 rounded-lg border border-red-200 bg-red-50 p-3">
-            <p class="text-sm text-red-800">{{ session('error') }}</p>
-        </div>
-    @endif
 
     {{-- 説明バナー --}}
     <div class="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3">

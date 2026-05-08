@@ -8,16 +8,6 @@
 </div>
 <h1 style="font-size: 20px; font-weight: 700; margin: 0 0 20px;">賃貸マンションCSVインポート</h1>
 
-@if(session('success'))
-    <div class="bg-emerald-50 border border-emerald-300 text-emerald-800 text-sm rounded-md px-4 py-3" style="margin-bottom: 16px;">
-        {{ session('success') }}
-    </div>
-@endif
-@if(session('error'))
-    <div style="background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; font-size: 13px; border-radius: 6px; padding: 10px 14px; margin-bottom: 16px;">
-        {{ session('error') }}
-    </div>
-@endif
 
 <div x-data="mansionImportTabs()">
     {{-- タブヘッダー --}}

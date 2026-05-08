@@ -15,12 +15,6 @@
     </a>
 </div>
 
-{{-- フラッシュメッセージ --}}
-@if(session('success'))
-    <div class="bg-emerald-50 border border-emerald-300 text-emerald-800 text-sm rounded-md px-4 py-3" style="margin-bottom: 16px;">
-        {{ session('success') }}
-    </div>
-@endif
 
 {{-- フィルターバー --}}
 <div class="bg-white border border-gray-200 rounded-lg" style="padding: 10px 16px; margin-bottom: 16px;">

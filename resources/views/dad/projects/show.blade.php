@@ -15,10 +15,6 @@
 
 <div x-data="projectShow()">
 
-    {{-- 成功メッセージ --}}
-    @if(session('success'))
-        <div class="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3"><p class="text-sm text-emerald-800">{{ session('success') }}</p></div>
-    @endif
 
     {{-- ヘッダー --}}
     <div class="flex items-start justify-between gap-3 mb-4">
