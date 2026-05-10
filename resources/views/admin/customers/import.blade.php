@@ -19,15 +19,13 @@
             {{-- 部署選択 --}}
             <div style="margin-bottom: 20px;">
                 <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">インポート先部署<span class="text-red-600" style="margin-left: 2px;">*</span></label>
-                <div style="display: flex; gap: 12px; margin-top: 6px;">
-                    <label style="display: flex; align-items: center; gap: 5px; font-size: 13px; cursor: pointer; padding: 8px 16px; border: 1px solid #d1d5db; border-radius: 6px; background: #fff;"
-                           x-bind:style="selectedDept === 'housing' ? 'display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;padding:8px 16px;border:1px solid #059669;border-radius:6px;background:#ecfdf5;' : ''">
+                <div style="display: flex; gap: 12px; margin-top: 6px; align-items: center;">
+                    <label :style="'display: flex; align-items: center; gap: 5px; font-size: 13px; cursor: pointer; padding: 8px 16px; border-radius: 6px; ' + (selectedDept === 'housing' ? 'border: 1px solid #059669; background: #ecfdf5;' : 'border: 1px solid #d1d5db; background: #fff;')">
                         <input type="radio" name="department" value="housing" style="accent-color: #059669;"
                                x-model="selectedDept" checked>
                         住宅事業
                     </label>
-                    <label style="display: flex; align-items: center; gap: 5px; font-size: 13px; cursor: pointer; padding: 8px 16px; border: 1px solid #d1d5db; border-radius: 6px; background: #fff;"
-                           x-bind:style="selectedDept === 'realestate' ? 'display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;padding:8px 16px;border:1px solid #059669;border-radius:6px;background:#ecfdf5;' : ''">
+                    <label :style="'display: flex; align-items: center; gap: 5px; font-size: 13px; cursor: pointer; padding: 8px 16px; border-radius: 6px; ' + (selectedDept === 'realestate' ? 'border: 1px solid #059669; background: #ecfdf5;' : 'border: 1px solid #d1d5db; background: #fff;')">
                         <input type="radio" name="department" value="realestate" style="accent-color: #059669;"
                                x-model="selectedDept">
                         不動産事業
