@@ -136,7 +136,8 @@ class PropertyController extends Controller
             $filesByCategory[$file->category->value][] = [
                 'id'          => $file->id,
                 'file_name'   => $file->file_name,
-                'file_path'   => Storage::disk('public')->url($file->file_path),
+                // 本番ではシンボリックリンクが効かないため、Laravel ルート経由で配信
+                'file_path'   => route('housing.properties.files.show', ['property' => $property->id, 'file' => $file->id]),
                 'file_size'   => $file->getFileSizeFormatted(),
                 'mime_type'   => $file->mime_type,
                 'is_image'    => $file->isImage(),
@@ -291,7 +292,8 @@ class PropertyController extends Controller
             'file'    => [
                 'id'          => $record->id,
                 'file_name'   => $record->file_name,
-                'file_path'   => Storage::disk('public')->url($record->file_path),
+                // 本番ではシンボリックリンクが効かないため、Laravel ルート経由で配信
+                'file_path'   => route('housing.properties.files.show', ['property' => $property->id, 'file' => $record->id]),
                 'file_size'   => $record->getFileSizeFormatted(),
                 'mime_type'   => $record->mime_type,
                 'is_image'    => $record->isImage(),
@@ -315,6 +317,24 @@ class PropertyController extends Controller
         $file->delete();
 
         return response()->json(['success' => true]);
+    }
+
+    /**
+     * ファイル閲覧（Laravel 経由でストリーム配信）
+     * 本番サーバーでは public/storage シンボリックリンクが効かないため、
+     * /storage/... 直リンクは 403 になる。当メソッド経由で配信する。
+     * GET /housing/properties/{property}/documents/{file}
+     */
+    public function showFile(HsProperty $property, HsPropertyFile $file)
+    {
+        if ($file->property_id !== $property->id) {
+            abort(403);
+        }
+        if (! Storage::disk('public')->exists($file->file_path)) {
+            abort(404);
+        }
+
+        return Storage::disk('public')->response($file->file_path, $file->file_name);
     }
 
     // ================================================================

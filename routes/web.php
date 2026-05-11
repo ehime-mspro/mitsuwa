@@ -1020,6 +1020,9 @@ Route::middleware(['auth', 'password.change'])->group(function () {
         Route::delete('/properties/{property}/documents/{file}', [\App\Http\Controllers\Housing\PropertyController::class, 'destroyFile'])
             ->middleware('role:executive')
             ->name('housing.properties.files.destroy');
+        // ファイル閲覧（本番のシンボリックリンク経由は 403 になるため Laravel 経由で stream 配信）
+        Route::get('/properties/{property}/documents/{file}', [\App\Http\Controllers\Housing\PropertyController::class, 'showFile'])
+            ->name('housing.properties.files.show');
     });
 
     /*
@@ -1089,6 +1092,9 @@ Route::middleware(['auth', 'password.change'])->group(function () {
         Route::delete('/custom-orders/{customOrder}/documents/{file}', [\App\Http\Controllers\Housing\CustomOrderController::class, 'destroyFile'])
             ->middleware('role:executive')
             ->name('housing.custom-orders.files.destroy');
+        // ファイル閲覧（本番のシンボリックリンク経由は 403 になるため Laravel 経由で stream 配信）
+        Route::get('/custom-orders/{customOrder}/documents/{file}', [\App\Http\Controllers\Housing\CustomOrderController::class, 'showFile'])
+            ->name('housing.custom-orders.files.show');
     });
     
     /*

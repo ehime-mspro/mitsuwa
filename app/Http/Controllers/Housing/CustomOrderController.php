@@ -113,7 +113,8 @@ class CustomOrderController extends Controller
             $filesByCategory[$file->category->value][] = [
                 'id'          => $file->id,
                 'file_name'   => $file->file_name,
-                'file_path'   => Storage::disk('public')->url($file->file_path),
+                // 本番ではシンボリックリンクが効かないため、Laravel ルート経由で配信
+                'file_path'   => route('housing.custom-orders.files.show', ['customOrder' => $customOrder->id, 'file' => $file->id]),
                 'file_size'   => $file->getFileSizeFormatted(),
                 'mime_type'   => $file->mime_type,
                 'is_image'    => $file->isImage(),
@@ -257,7 +258,8 @@ class CustomOrderController extends Controller
             'file'    => [
                 'id'          => $record->id,
                 'file_name'   => $record->file_name,
-                'file_path'   => Storage::disk('public')->url($record->file_path),
+                // 本番ではシンボリックリンクが効かないため、Laravel ルート経由で配信
+                'file_path'   => route('housing.custom-orders.files.show', ['customOrder' => $customOrder->id, 'file' => $record->id]),
                 'file_size'   => $record->getFileSizeFormatted(),
                 'mime_type'   => $record->mime_type,
                 'is_image'    => $record->isImage(),
@@ -269,7 +271,7 @@ class CustomOrderController extends Controller
 
     /**
      * ファイル削除
-     * DELETE /housing/custom-orders/{customOrder}/files/{file}
+     * DELETE /housing/custom-orders/{customOrder}/documents/{file}
      */
     public function destroyFile(HsCustomOrder $customOrder, HsCustomOrderFile $file)
     {
@@ -281,6 +283,22 @@ class CustomOrderController extends Controller
         $file->delete();
 
         return response()->json(['success' => true]);
+    }
+
+    /**
+     * ファイル閲覧（Laravel 経由でストリーム配信）
+     * GET /housing/custom-orders/{customOrder}/documents/{file}
+     */
+    public function showFile(HsCustomOrder $customOrder, HsCustomOrderFile $file)
+    {
+        if ($file->custom_order_id !== $customOrder->id) {
+            abort(403);
+        }
+        if (! Storage::disk('public')->exists($file->file_path)) {
+            abort(404);
+        }
+
+        return Storage::disk('public')->response($file->file_path, $file->file_name);
     }
 
     // ================================================================
