@@ -45,7 +45,7 @@
             <option value="terminated" {{ $currentStatus === 'terminated' ? 'selected' : '' }}>解約済み</option>
         </select>
         <input type="text" name="keyword" value="{{ request('keyword') }}"
-               placeholder="契約番号・店舗名で検索"
+               placeholder="店舗名で検索"
                class="h-9 px-3 border border-gray-300 rounded-md text-sm text-gray-700 bg-white focus:border-emerald-500 focus:outline-none flex-1 min-w-[140px] w-full sm:w-auto">
         <a href="{{ route('tenant.contracts.index') }}"
            class="h-9 px-3 border border-gray-200 rounded-md text-xs text-gray-400 bg-white hover:bg-gray-50 hover:text-gray-500 hover:border-gray-300 transition-colors cursor-pointer whitespace-nowrap w-full sm:w-auto inline-flex items-center justify-center">
@@ -59,16 +59,14 @@
             <div class="scroll-hint-inner">
                 <table class="w-full border-collapse min-w-[640px]" style="table-layout:fixed">
                     <colgroup>
-                        <col style="width:15%">
+                        <col style="width:25%">
+                        <col style="width:25%">
                         <col style="width:20%">
-                        <col style="width:20%">
-                        <col style="width:15%">
                         <col style="width:10%">
                         <col style="width:20%">
                     </colgroup>
                     <thead>
                         <tr>
-                            <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-left text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">契約番号</th>
                             <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">物件 / 区画</th>
                             <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">店舗名</th>
                             <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">賃料収入</th>
@@ -79,19 +77,6 @@
                     <tbody>
                         @forelse($contracts as $contract)
                             <tr class="{{ $contract->isTerminated() ? 'contract-row-terminated' : '' }} hover:bg-gray-50 transition-colors">
-                                {{-- 契約番号 --}}
-                                <td class="px-4 py-3 lg:px-5 lg:py-3.5 border-b border-gray-200 whitespace-nowrap">
-                                    <a href="{{ route('tenant.contracts.show', $contract) }}"
-                                       class="text-sm font-semibold text-emerald-600 hover:text-emerald-700 hover:underline transition-colors">
-                                        {{ $contract->contract_number }}
-                                    </a>
-                                    @if($contract->isTerminated())
-                                        <span class="inline-block ml-1.5 px-1.5 rounded text-[10px] font-bold text-gray-500 bg-gray-200 align-middle" style="padding-top:2px; padding-bottom:2px;">解約</span>
-                                    @endif
-                                    @if(! $contract->rent_start_date)
-                                        <span title="家賃発生日が未設定です" class="ml-1 text-amber-600 cursor-help">⚠</span>
-                                    @endif
-                                </td>
                                 {{-- 物件 / 区画 --}}
                                 <td class="px-4 py-3 lg:px-5 lg:py-3.5 border-b border-gray-200 text-center text-sm font-semibold text-gray-900 whitespace-nowrap">
                                     @php
@@ -104,9 +89,12 @@
                                 <td class="px-4 py-3 lg:px-5 lg:py-3.5 border-b border-gray-200 text-center text-sm font-semibold text-gray-900 whitespace-nowrap">
                                     {{ $contract->store_name ?? '—' }}
                                 </td>
-                                {{-- 賃料収入 --}}
+                                {{-- 賃料収入（家賃発生日未設定の警告アイコンもここに表示） --}}
                                 <td class="px-4 py-3 lg:px-5 lg:py-3.5 border-b border-gray-200 text-center text-sm font-semibold text-gray-900 whitespace-nowrap">
                                     {{ number_format($contract->monthly_total) }}円
+                                    @if(! $contract->rent_start_date)
+                                        <span title="家賃発生日が未設定です" class="ml-1 text-amber-600 cursor-help">⚠</span>
+                                    @endif
                                 </td>
                                 {{-- 状態 --}}
                                 <td class="px-4 py-3 lg:px-5 lg:py-3.5 border-b border-gray-200 text-center whitespace-nowrap">
@@ -130,7 +118,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="6" class="px-5 py-10 text-center text-sm text-gray-400">
+                                <td colspan="5" class="px-5 py-10 text-center text-sm text-gray-400">
                                     契約データがありません。
                                 </td>
                             </tr>
