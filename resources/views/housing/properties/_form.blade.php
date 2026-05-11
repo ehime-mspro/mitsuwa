@@ -128,13 +128,6 @@
         {{-- 所在地・面積 --}}
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
             <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-1">郵便番号</label>
-                <input type="text" name="postal_code" x-model="postalCode"
-                       class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none"
-                       placeholder="700-0000">
-                <p x-show="autoFilled" class="text-xs mt-1" style="color: #059669;">紐づけ先から自動入力</p>
-            </div>
-            <div>
                 <label class="block text-sm font-semibold text-gray-700 mb-1">所在地<span class="text-red-600 ml-0.5">*</span></label>
                 <input type="text" name="address" x-model="address"
                        class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none"

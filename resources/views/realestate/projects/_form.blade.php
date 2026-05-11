@@ -25,11 +25,6 @@
                 @error('status') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
             </div>
             <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-1">郵便番号</label>
-                <input type="text" name="postal_code" value="{{ old('postal_code', $p?->postal_code) }}" placeholder="790-0000"
-                       class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none">
-            </div>
-            <div>
                 <label class="block text-sm font-semibold text-gray-700 mb-1">所在地<span class="text-red-600 ml-0.5">*</span></label>
                 <input type="text" name="address" value="{{ old('address', $p?->address) }}" placeholder="例: 愛媛県松山市勝山町2丁目4-7"
                        class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none">
