@@ -226,7 +226,8 @@ class PropertyController extends Controller
         return response()->json([
             'success' => true,
             'status'  => [
-                'value'       => $property->status->value,
+                // 成約済み（契約あり）の場合は仮想ステータス 'sold' を返してフロントのハイライトを「成約」に固定
+                'value'       => $property->isSold() ? 'sold' : $property->status->value,
                 'label'       => $property->getDisplayStatusLabel(),
                 'badge_style' => $property->getDisplayBadgeStyle(),
             ],

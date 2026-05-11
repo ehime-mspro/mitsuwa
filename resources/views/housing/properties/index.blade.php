@@ -21,6 +21,13 @@
                 'badge_style' => $s->badgeStyle(),
             ];
         })->values()->all();
+        // 「成約」は HousingPropertyStatus enum の値ではなく契約レコードの有無で導かれる仮想ステータス。
+        // クリックで契約登録画面へ遷移する特別オプションとして末尾に追加。
+        $statusOptions[] = [
+            'value'       => 'sold',
+            'label'       => '成約',
+            'badge_style' => 'background: #a7f3d0; color: #064e3b;',
+        ];
         $canEditStatus = auth()->user()->role->isManagerOrAbove();
     @endphp
 
@@ -88,7 +95,7 @@
                             </td>
                             @if($canEditStatus)
                                 <td class="px-3 py-3 border-b border-gray-100 text-center whitespace-nowrap"
-                                    x-data="housingPropertyStatusCell({{ $prop->id }}, '{{ $prop->status->value }}', '{{ $prop->getDisplayStatusLabel() }}', '{{ $prop->getDisplayBadgeStyle() }}')">
+                                    x-data="housingPropertyStatusCell({{ $prop->id }}, '{{ $prop->isSold() ? 'sold' : $prop->status->value }}', '{{ $prop->getDisplayStatusLabel() }}', '{{ $prop->getDisplayBadgeStyle() }}', '{{ route('housing.contracts.create', $prop) }}')">
                                     <span @click="toggle($event)" class="inline-block px-2.5 rounded-full text-xs font-semibold"
                                           :style="'padding-top:2px; padding-bottom:2px; cursor: pointer; ' + badgeStyle"
                                           x-text="label" title="クリックで進捗ステータス変更"></span>
@@ -173,12 +180,13 @@
 // 進捗ステータスポップオーバー: バッジクリックで全ステータスをバッジ色のまま表示し、選択で Ajax 即更新
 window.__housingPropertyStatusOptions = @json($statusOptions);
 
-function housingPropertyStatusCell(id, initialValue, initialLabel, initialBadgeStyle) {
+function housingPropertyStatusCell(id, initialValue, initialLabel, initialBadgeStyle, contractCreateUrl) {
     return {
         id: id,
         value: initialValue,
         label: initialLabel,
         badgeStyle: initialBadgeStyle,
+        contractCreateUrl: contractCreateUrl,
         open: false,
         submitting: false,
         // ポップオーバーは position:fixed で viewport 基準描画（親コンテナ overflow-hidden 回避）
@@ -200,6 +208,13 @@ function housingPropertyStatusCell(id, initialValue, initialLabel, initialBadgeS
             var self = this;
             if (opt.value === self.value) {
                 self.open = false;
+                return;
+            }
+            // 「成約」は enum 値ではなく契約レコードの有無で導かれる仮想ステータス。
+            // クリック時は契約登録画面に遷移する（既存契約があれば契約登録画面側でガード）。
+            if (opt.value === 'sold') {
+                self.open = false;
+                window.location.href = self.contractCreateUrl;
                 return;
             }
             if (self.submitting) return;
