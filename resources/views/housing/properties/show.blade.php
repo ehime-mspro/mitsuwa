@@ -157,7 +157,7 @@
                 <tbody>
                     {{-- 価格 --}}
                     <tr>
-                        <td class="bg-gray-50 text-sm text-gray-600 font-medium border border-gray-200" style="padding: 10px 14px;">価格{{ $isSold ? '' : '（予定）' }}</td>
+                        <td class="bg-gray-50 text-sm text-gray-600 font-medium border border-gray-200" style="padding: 10px 14px;">販売価格</td>
                         <td class="text-sm border border-gray-200" style="padding: 10px 14px; text-align: right;">{{ $landPrice !== null ? number_format($landPrice) . '円' : '—' }}</td>
                         <td class="text-sm border border-gray-200" style="padding: 10px 14px; text-align: right;">{{ $buildingPrice !== null ? number_format($buildingPrice) . '円' : '—' }}</td>
                         <td class="text-sm font-semibold border border-gray-200" style="padding: 10px 14px; text-align: right;">{{ $sellingTotal > 0 ? number_format($sellingTotal) . '円' : '—' }}</td>
