@@ -325,27 +325,47 @@ function housingFileManager() {
             self.uploadMessage = 'アップロード中...';
             self.uploadSuccess = true;
 
+            var token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
             fetch('{{ route("housing.properties.files.store", $property) }}', {
                 method: 'POST',
                 headers: {
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                    'Accept': 'application/json'
+                    'X-CSRF-TOKEN': token,
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
                 },
                 body: formData
             })
-            .then(function(res) { return res.json(); })
-            .then(function(data) {
-                if (data.success) {
-                    self.files[category].push(data.file);
+            .then(function(res) {
+                return res.json().then(function(data) {
+                    return { status: res.status, ok: res.ok, data: data };
+                }).catch(function() {
+                    return { status: res.status, ok: res.ok, data: null };
+                });
+            })
+            .then(function(result) {
+                if (result.ok && result.data && result.data.success) {
+                    self.files[category].push(result.data.file);
                     self.uploadMessage = 'アップロードしました。';
                     self.uploadSuccess = true;
+                    return;
+                }
+                self.uploadSuccess = false;
+                if (result.status === 419) {
+                    self.uploadMessage = 'セッションが切れました。ページを再読込してください。';
+                } else if (result.status === 422 && result.data && result.data.errors) {
+                    var keys = Object.keys(result.data.errors);
+                    self.uploadMessage = keys.length > 0
+                        ? result.data.errors[keys[0]][0]
+                        : (result.data.message || 'バリデーションエラー');
+                } else if (result.data && result.data.message) {
+                    self.uploadMessage = 'アップロード失敗: ' + result.data.message;
                 } else {
-                    self.uploadMessage = 'アップロードに失敗しました。';
-                    self.uploadSuccess = false;
+                    self.uploadMessage = 'アップロード失敗（HTTP ' + result.status + '）';
                 }
             })
-            .catch(function() {
-                self.uploadMessage = 'アップロードに失敗しました。';
+            .catch(function(err) {
+                self.uploadMessage = '通信エラー: ' + (err && err.message ? err.message : '不明');
                 self.uploadSuccess = false;
             });
 
