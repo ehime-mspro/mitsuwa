@@ -327,7 +327,12 @@ function housingFileManager() {
 
             var token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
 
-            fetch('{{ route("housing.properties.files.store", $property) }}', {
+            // 【一時診断】送信先URLとファイル情報
+            var uploadUrl = '{{ route("housing.properties.files.store", $property) }}';
+            console.log('[DEBUG-UP2] URL:', uploadUrl);
+            console.log('[DEBUG-UP2] File:', file.name, file.size, 'bytes', file.type);
+
+            fetch(uploadUrl, {
                 method: 'POST',
                 headers: {
                     'X-CSRF-TOKEN': token,
@@ -337,7 +342,10 @@ function housingFileManager() {
                 body: formData
             })
             .then(function(res) {
+                // 【一時診断】レスポンス詳細
+                console.log('[DEBUG-UP2] status:', res.status, 'url:', res.url);
                 return res.text().then(function(text) {
+                    console.log('[DEBUG-UP2] body (first 500 chars):', (text || '').slice(0, 500));
                     try {
                         return { status: res.status, ok: res.ok, data: JSON.parse(text) };
                     } catch (e) {
