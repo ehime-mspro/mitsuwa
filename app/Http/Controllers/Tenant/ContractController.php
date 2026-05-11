@@ -55,10 +55,16 @@ class ContractController extends Controller
             });
         }
 
-        $contracts = $query->orderByDesc('contract_date')
-                           ->orderByDesc('id')
-                           ->paginate(10)
-                           ->withQueryString();
+        // 物件名 → 階数 → 号室 の順で並べる（テナント契約一覧）
+        $contracts = $query
+            ->join('properties', 'contracts.property_id', '=', 'properties.id')
+            ->join('units', 'contracts.unit_id', '=', 'units.id')
+            ->orderBy('properties.name')
+            ->orderBy('units.floor')
+            ->orderBy('units.room_number')
+            ->select('contracts.*')
+            ->paginate(10)
+            ->withQueryString();
 
         // 物件セレクトボックス用
         $properties = Property::where('department', DepartmentCode::Tenant)
