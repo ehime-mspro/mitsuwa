@@ -32,26 +32,28 @@ class ContractController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Contract::where('department', DepartmentCode::Tenant)
+        // JOIN するためカラム名にテーブルプレフィックスを付与する
+        // （department と status が contracts/properties/units で重複しており、無指定だと SQL ambiguous エラー）
+        $query = Contract::where('contracts.department', DepartmentCode::Tenant)
             ->with(['property', 'unit', 'customer']);
 
         // --- フィルター: ステータス（デフォルト: 契約中） ---
         $status = $request->input('status', 'active');
         if ($status !== 'all') {
-            $query->where('status', $status);
+            $query->where('contracts.status', $status);
         }
 
         // --- フィルター: 物件 ---
         if ($request->filled('property_id')) {
-            $query->where('property_id', $request->property_id);
+            $query->where('contracts.property_id', $request->property_id);
         }
 
         // --- フィルター: キーワード（契約番号・店舗名） ---
         if ($request->filled('keyword')) {
             $keyword = $request->keyword;
             $query->where(function ($q) use ($keyword) {
-                $q->where('contract_number', 'like', "%{$keyword}%")
-                  ->orWhere('store_name', 'like', "%{$keyword}%");
+                $q->where('contracts.contract_number', 'like', "%{$keyword}%")
+                  ->orWhere('contracts.store_name', 'like', "%{$keyword}%");
             });
         }
 
