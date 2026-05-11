@@ -87,13 +87,13 @@
                                 <div class="text-xs text-gray-500">{{ $prop->address }}</div>
                             </td>
                             @if($canEditStatus)
-                                <td class="px-3 py-3 border-b border-gray-100 text-center whitespace-nowrap" style="position: relative;"
+                                <td class="px-3 py-3 border-b border-gray-100 text-center whitespace-nowrap"
                                     x-data="housingPropertyStatusCell({{ $prop->id }}, '{{ $prop->status->value }}', '{{ $prop->getDisplayStatusLabel() }}', '{{ $prop->getDisplayBadgeStyle() }}')">
-                                    <span @click="toggle()" class="inline-block px-2.5 rounded-full text-xs font-semibold"
+                                    <span @click="toggle($event)" class="inline-block px-2.5 rounded-full text-xs font-semibold"
                                           :style="'padding-top:2px; padding-bottom:2px; cursor: pointer; ' + badgeStyle"
                                           x-text="label" title="クリックで進捗ステータス変更"></span>
                                     <div x-show="open" x-cloak @click.outside="open = false"
-                                         style="position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 6px; z-index: 100; background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px; box-shadow: 0 6px 20px rgba(0,0,0,0.15); min-width: 130px; display: flex; flex-direction: column; gap: 4px;">
+                                         :style="'position: fixed; top: ' + popoverTop + 'px; left: ' + popoverLeft + 'px; transform: translateX(-50%); z-index: 9999; background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px; box-shadow: 0 6px 20px rgba(0,0,0,0.15); min-width: 130px; display: flex; flex-direction: column; gap: 4px;'">
                                         <template x-for="opt in options" :key="opt.value">
                                             <span @click="select(opt)" class="inline-block px-2.5 rounded-full text-xs font-semibold"
                                                   :style="'padding-top:2px; padding-bottom:2px; text-align: center; ' + opt.badge_style + ((opt.value === value) ? ' opacity: 0.45; cursor: default;' : ' cursor: pointer;')"
@@ -181,10 +181,18 @@ function housingPropertyStatusCell(id, initialValue, initialLabel, initialBadgeS
         badgeStyle: initialBadgeStyle,
         open: false,
         submitting: false,
+        // ポップオーバーは position:fixed で viewport 基準描画（親コンテナ overflow-hidden 回避）
+        popoverTop: 0,
+        popoverLeft: 0,
         options: window.__housingPropertyStatusOptions || [],
 
-        toggle: function() {
+        toggle: function($event) {
             if (this.submitting) return;
+            if (!this.open && $event && $event.currentTarget) {
+                var rect = $event.currentTarget.getBoundingClientRect();
+                this.popoverTop = rect.bottom + 6;
+                this.popoverLeft = rect.left + rect.width / 2;
+            }
             this.open = !this.open;
         },
 
