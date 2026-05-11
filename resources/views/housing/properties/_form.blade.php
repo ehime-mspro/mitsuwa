@@ -33,62 +33,97 @@
             </div>
             <div>
                 <label class="block text-sm font-semibold text-gray-700 mb-1">土地紐づけ種別<span class="text-red-600 ml-0.5">*</span></label>
-                <select name="land_source_type" x-model="landSourceType" @change="onSourceTypeChange()"
-                        class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none cursor-pointer">
-                    <option value="">— 選択 —</option>
-                    @foreach(\App\Enums\HousingLandSourceType::cases() as $ls)
-                        @if($ls !== \App\Enums\HousingLandSourceType::CustomerLand)
-                            <option value="{{ $ls->value }}" {{ old('land_source_type', $p?->land_source_type?->value) === $ls->value ? 'selected' : '' }}>{{ $ls->label() }}</option>
-                        @endif
-                    @endforeach
-                </select>
-                @error('land_source_type') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
+                @if($isEdit)
+                    {{-- 編集時はロック（一度紐付けた土地は変更不可） --}}
+                    <input type="hidden" name="land_source_type" value="{{ $p->land_source_type?->value }}">
+                    <div class="form-input w-full h-[40px] px-3 border border-gray-200 rounded-md text-sm text-gray-500 bg-gray-50 flex items-center" style="cursor: not-allowed;">
+                        {{ $p->land_source_type?->label() ?? '—' }}
+                    </div>
+                @else
+                    <select name="land_source_type" x-model="landSourceType" @change="onSourceTypeChange()"
+                            class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none cursor-pointer">
+                        <option value="">— 選択 —</option>
+                        @foreach(\App\Enums\HousingLandSourceType::cases() as $ls)
+                            @if($ls !== \App\Enums\HousingLandSourceType::CustomerLand)
+                                <option value="{{ $ls->value }}" {{ old('land_source_type', $p?->land_source_type?->value) === $ls->value ? 'selected' : '' }}>{{ $ls->label() }}</option>
+                            @endif
+                        @endforeach
+                    </select>
+                    @error('land_source_type') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
+                @endif
             </div>
         </div>
 
-        {{-- 分譲地区画 選択（条件表示） --}}
-        <div x-show="landSourceType === 'project_lot'" class="bg-white border border-gray-200 rounded-lg p-4 mt-3" style="border-style: dashed;">
-            <p class="text-xs font-semibold text-gray-500 mb-2">分譲地区画を選択</p>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                    <label class="block text-sm font-semibold text-gray-700 mb-1">分譲地</label>
-                    <select x-model="selectedProjectId" @change="onProjectChange()"
-                            class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none cursor-pointer">
-                        <option value="">— PJを選択 —</option>
-                        <template x-for="pj in projects" :key="pj.id">
-                            <option :value="pj.id" x-text="pj.code + ' ' + pj.name"></option>
-                        </template>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-sm font-semibold text-gray-700 mb-1">区画</label>
-                    <select name="re_project_lot_id" x-model="selectedLotId" @change="onLotChange()"
-                            class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none cursor-pointer">
-                        <option value="">— 区画を選択 —</option>
-                        <template x-for="lot in lots" :key="lot.id">
-                            <option :value="lot.id" x-text="lot.lot_number + '号地（' + lot.area_sqm + '㎡）— ' + lot.status_label"></option>
-                        </template>
-                    </select>
-                    @error('re_project_lot_id') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
+        @if($isEdit)
+            {{-- 編集時: 紐付け先を読み取り専用で表示。hidden input で値を保持 --}}
+            <div class="bg-gray-50 border border-gray-200 rounded-lg p-4 mt-3">
+                <p class="text-xs font-semibold text-gray-500 mb-2">紐付け先（変更不可）</p>
+                @if($p->land_source_type === \App\Enums\HousingLandSourceType::ProjectLot && $p->projectLot)
+                    <input type="hidden" name="re_project_lot_id" value="{{ $p->re_project_lot_id }}">
+                    <div class="text-sm">
+                        <a href="{{ route('realestate.projects.show', $p->projectLot->project) }}" target="_blank" class="font-semibold text-emerald-600 hover:underline">
+                            {{ $p->projectLot->project->project_code }} {{ $p->projectLot->project->project_name }}
+                        </a>
+                        <span class="text-gray-600 ml-2">&gt; {{ $p->projectLot->lot_number }}号地（{{ $p->projectLot->area_sqm }}㎡）</span>
+                    </div>
+                @elseif($p->land_source_type === \App\Enums\HousingLandSourceType::Procurement && $p->procurement)
+                    <input type="hidden" name="re_procurement_id" value="{{ $p->re_procurement_id }}">
+                    <div class="text-sm">
+                        <a href="{{ route('realestate.procurements.show', $p->procurement) }}" target="_blank" class="font-semibold text-emerald-600 hover:underline">
+                            {{ $p->procurement->procurement_code }} {{ $p->procurement->property_name }}
+                        </a>
+                        <span class="text-gray-600 ml-2">（{{ $p->procurement->address }}）</span>
+                    </div>
+                @else
+                    <div class="text-sm text-gray-500">—</div>
+                @endif
+                <p class="text-xs text-gray-500 mt-2">紐付け先を変更したい場合は、本物件を削除して新規登録してください。</p>
+            </div>
+        @else
+            {{-- 新規登録時: 分譲地区画 選択（条件表示） --}}
+            <div x-show="landSourceType === 'project_lot'" class="bg-white border border-gray-200 rounded-lg p-4 mt-3" style="border-style: dashed;">
+                <p class="text-xs font-semibold text-gray-500 mb-2">分譲地区画を選択</p>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-1">分譲地</label>
+                        <select x-model="selectedProjectId" @change="onProjectChange()"
+                                class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none cursor-pointer">
+                            <option value="">— PJを選択 —</option>
+                            <template x-for="pj in projects" :key="pj.id">
+                                <option :value="pj.id" x-text="pj.code + ' ' + pj.name"></option>
+                            </template>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-1">区画</label>
+                        <select name="re_project_lot_id" x-model="selectedLotId" @change="onLotChange()"
+                                class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none cursor-pointer">
+                            <option value="">— 区画を選択 —</option>
+                            <template x-for="lot in lots" :key="lot.id">
+                                <option :value="lot.id" x-text="lot.lot_number + '号地（' + lot.area_sqm + '㎡）— ' + lot.status_label"></option>
+                            </template>
+                        </select>
+                        @error('re_project_lot_id') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
+                    </div>
                 </div>
             </div>
-        </div>
 
-        {{-- 仕入れ案件 選択（条件表示） --}}
-        <div x-show="landSourceType === 'procurement'" class="bg-white border border-gray-200 rounded-lg p-4 mt-3" style="border-style: dashed;">
-            <p class="text-xs font-semibold text-gray-500 mb-2">仕入れ案件を選択</p>
-            <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-1">仕入れ案件</label>
-                <select name="re_procurement_id" x-model="selectedProcurementId" @change="onProcurementChange()"
-                        class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none cursor-pointer">
-                    <option value="">— 案件を選択 —</option>
-                    <template x-for="pr in procurements" :key="pr.id">
-                        <option :value="pr.id" x-text="pr.code + ' ' + pr.name + '（' + pr.address + '）'"></option>
-                    </template>
-                </select>
-                @error('re_procurement_id') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
+            {{-- 新規登録時: 仕入れ案件 選択（条件表示） --}}
+            <div x-show="landSourceType === 'procurement'" class="bg-white border border-gray-200 rounded-lg p-4 mt-3" style="border-style: dashed;">
+                <p class="text-xs font-semibold text-gray-500 mb-2">仕入れ案件を選択</p>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">仕入れ案件</label>
+                    <select name="re_procurement_id" x-model="selectedProcurementId" @change="onProcurementChange()"
+                            class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none cursor-pointer">
+                        <option value="">— 案件を選択 —</option>
+                        <template x-for="pr in procurements" :key="pr.id">
+                            <option :value="pr.id" x-text="pr.code + ' ' + pr.name + '（' + pr.address + '）'"></option>
+                        </template>
+                    </select>
+                    @error('re_procurement_id') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
+                </div>
             </div>
-        </div>
+        @endif
 
         {{-- 所在地・面積 --}}
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">

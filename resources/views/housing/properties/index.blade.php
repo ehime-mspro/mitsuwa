@@ -91,7 +91,6 @@
                         <tr class="hover:bg-gray-50 transition-colors">
                             <td class="py-3 border-b border-gray-100" style="padding-left: 16px;">
                                 <div class="text-sm font-semibold text-gray-900">{{ $prop->property_name }}</div>
-                                <div class="text-xs text-gray-500">{{ $prop->address }}</div>
                             </td>
                             @if($canEditStatus)
                                 <td class="px-3 py-3 border-b border-gray-100 text-center whitespace-nowrap"

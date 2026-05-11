@@ -305,9 +305,7 @@
             @endif
         </div>
     </div>
-@endsection
-
-@push('scripts')
+{{-- @stack('scripts') がレイアウトに存在しないため、スクリプトを @section 内にインラインで埋め込む --}}
 <script>
 function housingFileManager() {
     return {
@@ -381,4 +379,4 @@ function housingFileManager() {
     };
 }
 </script>
-@endpush
+@endsection
