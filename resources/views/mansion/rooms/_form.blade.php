@@ -199,20 +199,17 @@
         @enderror
     </div>
 
-    {{-- アクションボタン --}}
-    <div style="display: flex; justify-content: flex-end; gap: 8px;">
-        <a href="{{ route('mansion.properties.show', $property) }}"
-           style="display: inline-flex; align-items: center; padding: 10px 20px; border: 1px solid #d1d5db; border-radius: 6px; background: white; font-size: 14px; color: #374151; text-decoration: none;">キャンセル</a>
-        @if(!$isEdit)
+    {{-- 「内容をコピーして追加」は新規登録時のみ表示。本来の submit はフッター固定バーで処理 --}}
+    @if(!$isEdit)
+        <div style="display: flex; justify-content: flex-end; margin-bottom: 12px;">
             <button type="submit" name="continue" value="1"
                     title="登録後、この部屋と同じ条件で次の部屋を続けて登録します"
                     style="padding: 10px 20px; background: white; color: #059669; border: 1px solid #10b981; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer;">
                 内容をコピーして追加
             </button>
-        @endif
-        <button type="submit"
-                style="padding: 10px 24px; background: #059669; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer;">
-            {{ $isEdit ? '更新する' : '登録する' }}
-        </button>
-    </div>
+        </div>
+    @endif
+    <x-form-actions
+        :submit-label="$isEdit ? '更新する' : '登録する'"
+        :cancel-url="route('mansion.properties.show', $property)" />
 </form>

@@ -27,16 +27,7 @@
         @csrf
         @include('realestate.projects._form')
 
-        <div class="flex gap-3">
-            <button type="submit"
-                    class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-md transition-colors cursor-pointer">
-                登録する
-            </button>
-            <a href="{{ route('realestate.projects.index') }}"
-               class="px-5 py-2.5 bg-white border-2 border-gray-400 text-gray-700 text-sm font-semibold rounded-md hover:bg-gray-50 transition-colors">
-                キャンセル
-            </a>
-        </div>
+        <x-form-actions submit-label="登録する" :cancel-url="route('realestate.projects.index')" />
     </form>
 
 @endsection

@@ -89,11 +89,7 @@
         </div>
     </div>
 
-    {{-- アクション --}}
-    <div style="display: flex; gap: 12px; justify-content: flex-end;">
-        <a href="{{ route('admin.master.dad-specialties.index') }}" class="btn-cancel">キャンセル</a>
-        <button type="submit" class="btn-primary">登録する</button>
-    </div>
+    <x-form-actions submit-label="登録する" :cancel-url="route('admin.master.dad-specialties.index')" />
 </form>
 
 <style>

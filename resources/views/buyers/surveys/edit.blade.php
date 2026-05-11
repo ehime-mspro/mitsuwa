@@ -76,13 +76,7 @@
                       style="width: 100%; border: 1px solid #d1d5db; border-radius: 6px; padding: 10px 12px; font-size: 14px; resize: vertical;">{{ old('survey_memo', $survey->memo) }}</textarea>
         </div>
 
-        {{-- ボタン --}}
-        <div style="text-align: right; margin-top: 24px; display: flex; justify-content: flex-end; gap: 12px;">
-            <a href="{{ route("{$department}.customers.show", $buyer) }}"
-               style="background: #fff; color: #374151; padding: 10px 20px; border-radius: 6px; font-size: 14px; font-weight: 600; border: 2px solid #9ca3af; text-decoration: none; display: inline-block;">キャンセル</a>
-            <button type="submit"
-                    style="background: #059669; color: #fff; padding: 10px 32px; border-radius: 6px; font-size: 15px; font-weight: 600; border: none; cursor: pointer;">更新する</button>
-        </div>
+        <x-form-actions submit-label="更新する" :cancel-url="route(&quot;{$department}.customers.show&quot;, $buyer)" />
     </div>
 </form>
 @endsection

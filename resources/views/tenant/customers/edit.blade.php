@@ -40,15 +40,7 @@
 
         @include('tenant.customers._form', ['customer' => $customer, 'code' => $customer->code])
 
-        <div class="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-2">
-            <a href="{{ route('tenant.customers.show', $customer) }}"
-               class="px-4 py-2.5 bg-white text-gray-700 border border-gray-300 rounded-md text-sm text-center hover:bg-gray-50 transition-colors">キャンセル</a>
-            <button type="submit"
-                    class="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 bg-emerald-600 text-white rounded-md text-sm font-semibold hover:bg-emerald-700 transition-colors cursor-pointer">
-                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg>
-                更新する
-            </button>
-        </div>
+        <x-form-actions submit-label="更新する" :cancel-url="route('tenant.customers.show', $customer)" />
     </form>
 
 @endsection

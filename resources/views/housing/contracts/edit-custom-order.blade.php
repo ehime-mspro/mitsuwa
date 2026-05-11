@@ -696,14 +696,11 @@
             </div>
         </div>
 
-        {{-- アクション --}}
-        <div class="hc-form-actions">
+        {{-- 「元ページで全項目編集」リンクのみ残す。キャンセル/更新はフッター固定バーへ --}}
+        <div class="hc-form-actions" style="margin-bottom: 12px;">
             <a href="{{ route('housing.custom-orders.show', $hsCustomOrder) }}" class="hc-btn-link-gray">元ページで全項目編集</a>
-            <div class="hc-form-actions-right">
-                <a href="{{ route('housing.contracts.show-custom-order', $hsCustomOrder) }}" class="hc-btn hc-btn-outline">キャンセル</a>
-                <button type="submit" class="hc-btn hc-btn-primary">更新する</button>
-            </div>
         </div>
+        <x-form-actions submit-label="更新する" :cancel-url="route('housing.contracts.show-custom-order', $hsCustomOrder)" />
     </form>
 
 </div>

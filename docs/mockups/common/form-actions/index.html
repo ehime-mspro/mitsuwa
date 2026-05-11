@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>フォーム操作ボタン配置案 — 比較</title>
+<style>
+* { box-sizing: border-box; }
+body { margin: 0; font-family: "Hiragino Sans", "Yu Gothic UI", sans-serif; background: #f3f4f6; color: #1f2937; line-height: 1.6; }
+header { background: #059669; color: #fff; padding: 18px 28px; font-weight: 700; font-size: 18px; }
+.container { max-width: 980px; margin: 32px auto; padding: 0 24px; }
+h1 { font-size: 22px; margin: 0 0 8px; }
+.lead { color: #6b7280; font-size: 14px; margin-bottom: 28px; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 22px; transition: box-shadow .15s; }
+.card:hover { box-shadow: 0 6px 20px rgba(0,0,0,0.08); }
+.card h2 { font-size: 16px; margin: 0 0 6px; color: #059669; }
+.card .desc { font-size: 13px; color: #6b7280; margin: 0 0 14px; min-height: 40px; }
+.badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; margin-left: 6px; }
+.badge-rec { background: #d1fae5; color: #047857; }
+.pros, .cons { font-size: 12px; margin: 6px 0; }
+.pros strong { color: #047857; }
+.cons strong { color: #dc2626; }
+ul { margin: 4px 0; padding-left: 18px; }
+li { margin-bottom: 2px; }
+.action { display: inline-block; margin-top: 14px; padding: 8px 18px; background: #059669; color: #fff; text-decoration: none; font-size: 13px; font-weight: 600; border-radius: 6px; }
+.action:hover { background: #047857; }
+</style>
+</head>
+<body>
+<header>📋 フォーム操作ボタン配置案 — モック比較</header>
+<div class="container">
+  <h1>4 案の動作モック</h1>
+  <p class="lead">各リンクを別タブで開き、実際にスクロールしてボタンの挙動を確認してください。</p>
+
+  <div class="grid">
+    <div class="card">
+      <h2>案A: フッター固定バー<span class="badge badge-rec">推奨</span></h2>
+      <p class="desc">画面下部にツールバーを固定。長いフォームの定番パターン。</p>
+      <div class="pros"><strong>✓ メリット:</strong>
+        <ul><li>常時表示で押しやすい</li><li>業務系 SaaS で最も普及</li></ul>
+      </div>
+      <div class="cons"><strong>✗ デメリット:</strong>
+        <ul><li>画面下部の縦領域を常時消費</li></ul>
+      </div>
+      <a class="action" href="pattern-a-sticky-footer.html" target="_blank">案A を開く →</a>
+    </div>
+
+    <div class="card">
+      <h2>案B: スティッキー上部ツールバー</h2>
+      <p class="desc">ページタイトル直下にツールバー、スクロールで画面上端に張り付く。</p>
+      <div class="pros"><strong>✓ メリット:</strong>
+        <ul><li>視線が自然に上に向く</li><li>既存ヘッダーと統合可能</li></ul>
+      </div>
+      <div class="cons"><strong>✗ デメリット:</strong>
+        <ul><li>上部に常時占有領域</li><li>初期表示時は通常配置で違和感</li></ul>
+      </div>
+      <a class="action" href="pattern-b-sticky-top.html" target="_blank">案B を開く →</a>
+    </div>
+
+    <div class="card">
+      <h2>案C: 右下フローティングボタン</h2>
+      <p class="desc">画面右下に縦並びの浮動ボタン。モダン UI。</p>
+      <div class="pros"><strong>✓ メリット:</strong>
+        <ul><li>コンテンツ領域を最大限活かせる</li><li>視線誘導が強い</li></ul>
+      </div>
+      <div class="cons"><strong>✗ デメリット:</strong>
+        <ul><li>業務 UI として馴染みが薄い</li><li>3 ボタン以上だと収まらない</li></ul>
+      </div>
+      <a class="action" href="pattern-c-floating-fab.html" target="_blank">案C を開く →</a>
+    </div>
+
+    <div class="card">
+      <h2>案D: 上下両端配置</h2>
+      <p class="desc">フォームの上端と末尾の両方に同じボタンブロックを配置。</p>
+      <div class="pros"><strong>✓ メリット:</strong>
+        <ul><li>実装が最も容易</li><li>JS/CSS 特殊技不要</li></ul>
+      </div>
+      <div class="cons"><strong>✗ デメリット:</strong>
+        <ul><li>ボタンが重複してくどい</li><li>中間スクロール時は画面外</li></ul>
+      </div>
+      <a class="action" href="pattern-d-dual-placement.html" target="_blank">案D を開く →</a>
+    </div>
+  </div>
+</div>
+</body>
+</html>

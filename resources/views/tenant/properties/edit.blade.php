@@ -163,14 +163,7 @@
 
         {{-- アクションボタン --}}
         <div class="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-2">
-            <a href="{{ route('tenant.properties.show', $property) }}"
-               class="px-4 py-2.5 bg-white text-gray-700 border border-gray-300 rounded-md text-sm text-center hover:bg-gray-50 transition-colors">
-                キャンセル
-            </a>
-            <button type="submit"
-                    class="px-5 py-2.5 bg-emerald-600 text-white rounded-md text-sm font-semibold hover:bg-emerald-700 transition-colors cursor-pointer text-center">
-                更新する
-            </button>
+            <x-form-actions submit-label="更新する" :cancel-url="route('tenant.properties.show', $property)" />
         </div>
     </form>
 </div>

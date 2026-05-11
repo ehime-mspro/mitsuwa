@@ -308,15 +308,9 @@
                   style="width: 100%; border: 1px solid #d1d5db; border-radius: 6px; padding: 10px 12px; font-size: 14px; resize: vertical;">{{ old('memo', $isEdit ? $buyer->memo : '') }}</textarea>
     </div>
 
-    {{-- ボタン --}}
-    <div style="text-align: right; margin-top: 24px; display: flex; justify-content: flex-end; gap: 12px;">
-        <a href="{{ route("{$department}.customers.index") }}"
-           style="background: #fff; color: #374151; padding: 10px 20px; border-radius: 6px; font-size: 14px; font-weight: 600; border: 2px solid #9ca3af; text-decoration: none; display: inline-block;">キャンセル</a>
-        <button type="submit"
-                style="background: #059669; color: #fff; padding: 10px 32px; border-radius: 6px; font-size: 15px; font-weight: 600; border: none; cursor: pointer;">
-            {{ $isEdit ? '更新する' : '登録する' }}
-        </button>
-    </div>
+    <x-form-actions
+        :submit-label="$isEdit ? '更新する' : '登録する'"
+        :cancel-url="route(&quot;{$department}.customers.index&quot;)" />
 
     {{-- hidden: birth_date 変換 --}}
     <input type="hidden" name="birth_date" x-ref="birth_date_hidden">

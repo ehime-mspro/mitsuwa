@@ -225,11 +225,10 @@
                 </div>
             </div>
 
-            {{-- ボタン --}}
-            <div x-show="contractType !== ''" style="display: none; text-align: right; display: flex; justify-content: flex-end; gap: 12px;">
-                <a href="{{ route('realestate.contracts.index') }}" class="btn-form-cancel">キャンセル</a>
-                <button type="submit" class="btn-form-submit">登録する</button>
-            </div>
+            {{-- ボタン（フッター固定。contractType 選択前は非表示） --}}
+            <template x-if="contractType !== ''">
+                <x-form-actions submit-label="登録する" :cancel-url="route('realestate.contracts.index')" />
+            </template>
         </div>
     </form>
 

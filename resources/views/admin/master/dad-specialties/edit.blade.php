@@ -90,14 +90,11 @@
             </div>
         </div>
 
-        {{-- アクション --}}
-        <div style="display: flex; gap: 12px; justify-content: space-between; align-items: center;">
+        {{-- 削除ボタン（現状維持） --}}
+        <div style="display: flex; margin-bottom: 12px;">
             <button type="button" @click="confirmDelete = !confirmDelete" class="btn-danger-outline">削除</button>
-            <div style="display: flex; gap: 12px;">
-                <a href="{{ route('admin.master.dad-specialties.index') }}" class="btn-cancel">キャンセル</a>
-                <button type="submit" class="btn-primary">更新する</button>
-            </div>
         </div>
+        <x-form-actions submit-label="更新する" :cancel-url="route('admin.master.dad-specialties.index')" />
     </form>
 
     {{-- 削除確認 --}}

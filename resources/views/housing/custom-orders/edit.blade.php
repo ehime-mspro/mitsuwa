@@ -28,11 +28,6 @@
 
         @include('housing.custom-orders._form', ['customOrder' => $customOrder, 'projectsForJs' => $projectsForJs, 'procurementsForJs' => $procurementsForJs])
 
-        <div class="flex gap-3 justify-end mt-4">
-            <a href="{{ route('housing.custom-orders.show', $customOrder) }}"
-               class="px-5 py-2 bg-white border-2 border-gray-400 rounded-md text-sm font-semibold text-gray-700 hover:bg-gray-50">キャンセル</a>
-            <button type="submit"
-                    class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-md">更新する</button>
-        </div>
+        <x-form-actions submit-label="更新する" :cancel-url="route('housing.custom-orders.show', $customOrder)" />
     </form>
 @endsection

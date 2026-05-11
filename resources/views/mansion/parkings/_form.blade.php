@@ -122,13 +122,7 @@
         @enderror
     </div>
 
-    {{-- アクションボタン --}}
-    <div style="display: flex; justify-content: flex-end; gap: 8px;">
-        <a href="{{ route('mansion.properties.show', $property) }}"
-           style="display: inline-flex; align-items: center; padding: 10px 20px; border: 1px solid #d1d5db; border-radius: 6px; background: white; font-size: 14px; color: #374151; text-decoration: none;">キャンセル</a>
-        <button type="submit"
-                style="padding: 10px 24px; background: #059669; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer;">
-            {{ $isEdit ? '更新する' : '登録する' }}
-        </button>
-    </div>
+    <x-form-actions
+        :submit-label="$isEdit ? '更新する' : '登録する'"
+        :cancel-url="route('mansion.properties.show', $property)" />
 </form>

@@ -188,10 +188,7 @@
                 </div>
             @endif
 
-            <div style="text-align: right; display: flex; justify-content: flex-end; gap: 12px;">
-                <a href="{{ route('realestate.contracts.show', $contract) }}" class="btn-form-cancel">キャンセル</a>
-                <button type="submit" class="btn-form-submit">更新する</button>
-            </div>
+            <x-form-actions submit-label="更新する" :cancel-url="route('realestate.contracts.show', $contract)" />
         </div>
     </form>
 
