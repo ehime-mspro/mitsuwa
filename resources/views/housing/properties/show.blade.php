@@ -106,6 +106,116 @@
         </div>
     </div>
 
+    {{-- 金額内訳（土地/建物/合計 + 税抜・消費税・税込）--}}
+    <div class="bg-white border border-gray-200 rounded-lg p-5 mb-5">
+        <div class="text-sm font-bold text-gray-800 pb-2 mb-3.5 border-b border-gray-200">金額内訳</div>
+        @php
+            // 成約済みは契約値、未成約は予定/参考値
+            if ($isSold) {
+                $c                  = $contract;
+                $landPrice          = $c->selling_price_land;
+                $buildingPrice      = $c->selling_price_building;
+                $landCost           = $property->land_cost;
+                $buildingCost       = $property->building_cost;
+                $landProfit         = $c->getLandProfit();
+                $buildingProfit     = $c->getBuildingProfit();
+                $landProfitRate     = $c->getLandProfitRate();
+                $buildingProfitRate = $c->getBuildingProfitRate();
+                $sellingTotal       = $c->getSellingPriceTotal();
+                $buildingTax        = $c->getBuildingTax();
+                $sellingTotalWithTax = $c->getSellingPriceTotalWithTax();
+            } else {
+                $landPrice          = $property->getReferenceLandSellingPrice();
+                $buildingPrice      = $property->target_selling_price_building;
+                $landCost           = $property->land_cost;
+                $buildingCost       = $property->building_cost;
+                $landProfit         = ($landPrice !== null && $landCost !== null) ? $landPrice - $landCost : null;
+                $buildingProfit     = ($buildingPrice !== null && $buildingCost !== null) ? $buildingPrice - $buildingCost : null;
+                $landProfitRate     = ($landPrice && $landProfit !== null) ? round($landProfit / $landPrice * 100, 1) : null;
+                $buildingProfitRate = ($buildingPrice && $buildingProfit !== null) ? round($buildingProfit / $buildingPrice * 100, 1) : null;
+                $sellingTotal       = ($landPrice ?? 0) + ($buildingPrice ?? 0);
+                $buildingTax        = $buildingPrice !== null ? (int) round($buildingPrice * $taxRate / 100) : 0;
+                $sellingTotalWithTax = $sellingTotal + $buildingTax;
+            }
+            $totalCost       = ($landCost !== null || $buildingCost !== null) ? ($landCost ?? 0) + ($buildingCost ?? 0) : null;
+            $totalProfit     = ($landProfit !== null || $buildingProfit !== null) ? ($landProfit ?? 0) + ($buildingProfit ?? 0) : null;
+            $totalProfitRate = ($sellingTotal > 0 && $totalProfit !== null) ? round($totalProfit / $sellingTotal * 100, 1) : null;
+        @endphp
+
+        @if(! $isSold && $landPrice === null && $buildingPrice === null && $landCost === null && $buildingCost === null)
+            <div class="text-sm text-gray-400" style="padding: 10px 14px;">金額情報が未入力です。</div>
+        @else
+            <table class="w-full border-collapse">
+                <thead>
+                    <tr>
+                        <th class="bg-gray-50 text-center text-xs font-semibold text-gray-600 border border-gray-200" style="padding: 10px 14px; width: 130px;">項目</th>
+                        <th class="bg-gray-50 text-center text-xs font-semibold text-gray-600 border border-gray-200" style="padding: 10px 14px;">土地</th>
+                        <th class="bg-gray-50 text-center text-xs font-semibold text-gray-600 border border-gray-200" style="padding: 10px 14px;">建物</th>
+                        <th class="bg-gray-50 text-center text-xs font-semibold text-gray-600 border border-gray-200" style="padding: 10px 14px;">合計</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{-- 価格 --}}
+                    <tr>
+                        <td class="bg-gray-50 text-sm text-gray-600 font-medium border border-gray-200" style="padding: 10px 14px;">価格{{ $isSold ? '' : '（予定）' }}</td>
+                        <td class="text-sm border border-gray-200" style="padding: 10px 14px; text-align: right;">{{ $landPrice !== null ? number_format($landPrice) . '円' : '—' }}</td>
+                        <td class="text-sm border border-gray-200" style="padding: 10px 14px; text-align: right;">{{ $buildingPrice !== null ? number_format($buildingPrice) . '円' : '—' }}</td>
+                        <td class="text-sm font-semibold border border-gray-200" style="padding: 10px 14px; text-align: right;">{{ $sellingTotal > 0 ? number_format($sellingTotal) . '円' : '—' }}</td>
+                    </tr>
+                    {{-- 原価 --}}
+                    <tr>
+                        <td class="bg-gray-50 text-sm text-gray-600 font-medium border border-gray-200" style="padding: 10px 14px;">原価</td>
+                        <td class="text-sm border border-gray-200" style="padding: 10px 14px; text-align: right;">{{ $landCost !== null ? number_format($landCost) . '円' : '—' }}</td>
+                        <td class="text-sm border border-gray-200" style="padding: 10px 14px; text-align: right;">{{ $buildingCost !== null ? number_format($buildingCost) . '円' : '—' }}</td>
+                        <td class="text-sm font-semibold border border-gray-200" style="padding: 10px 14px; text-align: right;">{{ $totalCost !== null ? number_format($totalCost) . '円' : '—' }}</td>
+                    </tr>
+                    {{-- 粗利 --}}
+                    <tr>
+                        <td class="bg-gray-50 text-sm text-gray-600 font-medium border border-gray-200" style="padding: 10px 14px;">粗利</td>
+                        <td class="text-sm border border-gray-200" style="padding: 10px 14px; text-align: right; {{ $landProfit !== null && $landProfit >= 0 ? 'color: #047857; font-weight: 700;' : ($landProfit !== null ? 'color: #dc2626; font-weight: 700;' : '') }}">
+                            {{ $landProfit !== null ? number_format($landProfit) . '円' : '—' }}
+                        </td>
+                        <td class="text-sm border border-gray-200" style="padding: 10px 14px; text-align: right; {{ $buildingProfit !== null && $buildingProfit >= 0 ? 'color: #047857; font-weight: 700;' : ($buildingProfit !== null ? 'color: #dc2626; font-weight: 700;' : '') }}">
+                            {{ $buildingProfit !== null ? number_format($buildingProfit) . '円' : '—' }}
+                        </td>
+                        <td class="text-sm border border-gray-200" style="padding: 10px 14px; text-align: right; {{ $totalProfit !== null && $totalProfit >= 0 ? 'color: #047857; font-weight: 700;' : ($totalProfit !== null ? 'color: #dc2626; font-weight: 700;' : '') }}">
+                            {{ $totalProfit !== null ? number_format($totalProfit) . '円' : '—' }}
+                        </td>
+                    </tr>
+                    {{-- 粗利率 --}}
+                    <tr>
+                        <td class="bg-gray-50 text-sm text-gray-600 font-medium border border-gray-200" style="padding: 10px 14px;">粗利率</td>
+                        <td class="text-sm border border-gray-200" style="padding: 10px 14px; text-align: right; {{ $landProfitRate !== null && $landProfitRate >= 0 ? 'color: #047857; font-weight: 700;' : ($landProfitRate !== null ? 'color: #dc2626; font-weight: 700;' : '') }}">
+                            {{ $landProfitRate !== null ? $landProfitRate . '%' : '—' }}
+                        </td>
+                        <td class="text-sm border border-gray-200" style="padding: 10px 14px; text-align: right; {{ $buildingProfitRate !== null && $buildingProfitRate >= 0 ? 'color: #047857; font-weight: 700;' : ($buildingProfitRate !== null ? 'color: #dc2626; font-weight: 700;' : '') }}">
+                            {{ $buildingProfitRate !== null ? $buildingProfitRate . '%' : '—' }}
+                        </td>
+                        <td class="text-sm border border-gray-200" style="padding: 10px 14px; text-align: right; {{ $totalProfitRate !== null && $totalProfitRate >= 0 ? 'color: #047857; font-weight: 700;' : ($totalProfitRate !== null ? 'color: #dc2626; font-weight: 700;' : '') }}">
+                            {{ $totalProfitRate !== null ? $totalProfitRate . '%' : '—' }}
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+
+            {{-- 税抜・消費税・税込 --}}
+            <div style="margin-top: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden;">
+                <div style="background: #f9fafb; padding: 10px 14px; font-size: 13px; color: #4b5563; font-weight: 500; border-bottom: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb;">税抜き販売金額</div>
+                <div style="padding: 10px 14px; font-size: 14px; text-align: right; border-bottom: 1px solid #e5e7eb;">{{ number_format($sellingTotal) }}円</div>
+                <div style="background: #f9fafb; padding: 10px 14px; font-size: 13px; color: #4b5563; font-weight: 500; border-bottom: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb;">消費税（建物のみ {{ (int) $taxRate }}%）</div>
+                <div style="padding: 10px 14px; font-size: 14px; text-align: right; border-bottom: 1px solid #e5e7eb;">{{ number_format($buildingTax) }}円</div>
+                <div style="background: #fef3c7; padding: 12px 14px; font-size: 14px; color: #111827; font-weight: 700; border-right: 1px solid #e5e7eb;">税込販売金額</div>
+                <div style="background: #fffbeb; padding: 12px 14px; font-size: 16px; font-weight: 800; text-align: right;">{{ number_format($sellingTotalWithTax) }}円</div>
+            </div>
+
+            @if(! $isSold)
+                <div style="margin-top: 12px; padding: 10px 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 12px; color: #475569;">
+                    ※ 未成約のため、土地価格は{{ $property->getLandSourceDisplay() ?? '紐づけ元' }}の販売価格、建物価格は登録済みの「建物予定販売価格」を表示しています。
+                </div>
+            @endif
+        @endif
+    </div>
+
     {{-- 収支サマリー（契約あり）または 原価情報（契約なし） --}}
     @if($isSold)
         <div class="bg-white border border-gray-200 rounded-lg p-5 mb-5">

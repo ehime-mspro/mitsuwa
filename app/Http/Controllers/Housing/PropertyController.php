@@ -8,6 +8,7 @@ use App\Enums\HousingPropertyStatus;
 use App\Http\Controllers\Controller;
 use App\Models\HsProperty;
 use App\Models\HsPropertyFile;
+use App\Support\Settings;
 use App\Models\ReProcurement;
 use App\Models\ReProject;
 use App\Models\ReProjectLot;
@@ -146,7 +147,10 @@ class PropertyController extends Controller
             ];
         }
 
-        return view('housing.properties.show', compact('property', 'filesByCategory'));
+        // 金額内訳カードで使う消費税率（成約時は契約の税率優先、未成約時は設定値）
+        $taxRate = $property->contract?->tax_rate ?? Settings::taxRate();
+
+        return view('housing.properties.show', compact('property', 'filesByCategory', 'taxRate'));
     }
 
     /**
