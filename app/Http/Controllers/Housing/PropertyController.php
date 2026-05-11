@@ -204,6 +204,36 @@ class PropertyController extends Controller
     }
 
     /**
+     * 建売物件の進捗ステータスのみ Ajax 更新
+     * （一覧バッジクリック → ポップオーバー選択用）
+     * Route: PATCH /housing/properties/{property}/status
+     *
+     * 表示用ラベル/スタイルは成約済みの場合 "成約" 緑バッジになるため、
+     * 内部ステータスを変更してもバッジ表示は変わらないことがある。
+     * フロントは返却された label/badge_style をそのまま反映する。
+     */
+    public function updateStatus(Request $request, HsProperty $property)
+    {
+        $statuses = implode(',', array_column(HousingPropertyStatus::cases(), 'value'));
+
+        $validated = $request->validate([
+            'status' => "required|in:{$statuses}",
+        ]);
+
+        $property->update(['status' => $validated['status']]);
+        $property->refresh()->loadMissing('contract');
+
+        return response()->json([
+            'success' => true,
+            'status'  => [
+                'value'       => $property->status->value,
+                'label'       => $property->getDisplayStatusLabel(),
+                'badge_style' => $property->getDisplayBadgeStyle(),
+            ],
+        ]);
+    }
+
+    /**
      * 削除
      * DELETE /housing/properties/{property}
      */

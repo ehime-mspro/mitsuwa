@@ -976,6 +976,9 @@ Route::middleware(['auth', 'password.change'])->group(function () {
                 ->name('housing.properties.edit');
             Route::put('/properties/{property}', [\App\Http\Controllers\Housing\PropertyController::class, 'update'])
                 ->name('housing.properties.update');
+            // 一覧バッジクリックからの進捗ステータスのみ Ajax 更新
+            Route::patch('/properties/{property}/status', [\App\Http\Controllers\Housing\PropertyController::class, 'updateStatus'])
+                ->name('housing.properties.update-status');
         });
 
         // 建売物件削除（経営層のみ）
