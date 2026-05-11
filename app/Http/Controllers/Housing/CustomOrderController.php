@@ -234,7 +234,7 @@ class CustomOrderController extends Controller
 
         $request->validate([
             'category' => "required|in:{$categories}",
-            'file'     => 'required|file|max:20480|mimes:jpg,jpeg,png,gif,pdf,doc,docx,xls,xlsx',
+            'file'     => 'required|file|max:7168|mimes:jpg,jpeg,png,gif,pdf,doc,docx,xls,xlsx',
         ]);
 
         $file = $request->file('file');

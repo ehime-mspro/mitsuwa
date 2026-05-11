@@ -265,6 +265,7 @@
     {{-- ファイル管理 --}}
     <div class="bg-white border border-gray-200 rounded-lg p-5 mb-5" x-data="housingFileManager()">
         <div class="text-sm font-bold text-gray-800 pb-2 mb-3.5 border-b border-gray-200">ファイル管理</div>
+        <div class="text-xs text-gray-500" style="margin-bottom: 12px;">※ アップロード可能なファイルサイズは 7MB 以下です。</div>
 
         @foreach(\App\Enums\HousingFileCategory::cases() as $cat)
             <div style="border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; margin-bottom: 16px;">
@@ -318,6 +319,16 @@ function housingFileManager() {
             var file = event.target.files[0];
             if (!file) return;
 
+            // ファイルサイズチェック（サーバー側 POST 上限 約8MB のため 7MB を上限とする）
+            var MAX_SIZE = 7 * 1024 * 1024;
+            if (file.size > MAX_SIZE) {
+                self.uploadSuccess = false;
+                var mb = (file.size / (1024 * 1024)).toFixed(1);
+                self.uploadMessage = 'ファイルサイズが大きすぎます（' + mb + 'MB）。7MB 以下に圧縮してアップロードしてください。';
+                event.target.value = '';
+                return;
+            }
+
             var formData = new FormData();
             formData.append('file', file);
             formData.append('category', category);
@@ -327,12 +338,7 @@ function housingFileManager() {
 
             var token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
 
-            // 【一時診断】送信先URLとファイル情報
-            var uploadUrl = '{{ route("housing.properties.files.store", $property) }}';
-            console.log('[DEBUG-UP2] URL:', uploadUrl);
-            console.log('[DEBUG-UP2] File:', file.name, file.size, 'bytes', file.type);
-
-            fetch(uploadUrl, {
+            fetch('{{ route("housing.properties.files.store", $property) }}', {
                 method: 'POST',
                 headers: {
                     'X-CSRF-TOKEN': token,
@@ -342,10 +348,7 @@ function housingFileManager() {
                 body: formData
             })
             .then(function(res) {
-                // 【一時診断】レスポンス詳細
-                console.log('[DEBUG-UP2] status:', res.status, 'url:', res.url);
                 return res.text().then(function(text) {
-                    console.log('[DEBUG-UP2] body (first 500 chars):', (text || '').slice(0, 500));
                     try {
                         return { status: res.status, ok: res.ok, data: JSON.parse(text) };
                     } catch (e) {

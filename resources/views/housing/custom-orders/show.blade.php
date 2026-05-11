@@ -267,6 +267,7 @@
     {{-- ファイル管理 --}}
     <div class="bg-white border border-gray-200 rounded-lg p-5 mb-5" x-data="customOrderFileManager()">
         <div class="text-sm font-bold text-gray-800 pb-2 mb-3.5 border-b border-gray-200">ファイル管理</div>
+        <div class="text-xs text-gray-500" style="margin-bottom: 12px;">※ アップロード可能なファイルサイズは 7MB 以下です。</div>
 
         @foreach(\App\Enums\CustomOrderFileCategory::cases() as $cat)
             <div style="border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; margin-bottom: 16px;">
@@ -319,6 +320,16 @@ function customOrderFileManager() {
             var self = this;
             var file = event.target.files[0];
             if (!file) return;
+
+            // ファイルサイズチェック（サーバー側 POST 上限 約8MB のため 7MB を上限とする）
+            var MAX_SIZE = 7 * 1024 * 1024;
+            if (file.size > MAX_SIZE) {
+                self.uploadSuccess = false;
+                var mb = (file.size / (1024 * 1024)).toFixed(1);
+                self.uploadMessage = 'ファイルサイズが大きすぎます（' + mb + 'MB）。7MB 以下に圧縮してアップロードしてください。';
+                event.target.value = '';
+                return;
+            }
 
             var formData = new FormData();
             formData.append('file', file);
