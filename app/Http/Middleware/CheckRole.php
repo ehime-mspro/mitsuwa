@@ -24,7 +24,7 @@ class CheckRole
         $user = $request->user();
 
         // 【一時診断ログ】CheckRole 通過記録
-        \Log::info('CheckRole entry', [
+        \Log::error('[DEBUG] CheckRole entry', [
             'user_id'        => $user?->id,
             'user_role'      => $user?->role?->value,
             'required_roles' => $roles,
@@ -40,7 +40,7 @@ class CheckRole
         // ユーザーのロール値が許可リストに含まれるか判定
         if (!in_array($user->role->value, $roles)) {
             // 【一時診断ログ】403 abort 直前
-            \Log::warning('CheckRole 403 abort', [
+            \Log::error('[DEBUG] CheckRole 403 abort', [
                 'user_id'        => $user->id,
                 'user_role'      => $user->role->value,
                 'required_roles' => $roles,

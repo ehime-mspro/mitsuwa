@@ -265,7 +265,7 @@ class PropertyController extends Controller
     public function storeFile(Request $request, HsProperty $property)
     {
         // 【一時診断ログ】controller 到達確認
-        \Log::info('storeFile reached', [
+        \Log::error('[DEBUG] storeFile reached', [
             'user_id'      => auth()->id(),
             'property_id'  => $property->id,
             'has_file'     => $request->hasFile('file'),

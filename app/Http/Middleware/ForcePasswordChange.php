@@ -27,7 +27,7 @@ class ForcePasswordChange
 
             if (!in_array($request->route()?->getName(), $allowedRoutes)) {
                 // 【一時診断ログ】password 強制変更でリダイレクト
-                \Log::info('ForcePasswordChange redirect', [
+                \Log::error('[DEBUG] ForcePasswordChange redirect', [
                     'user_id' => $user->id,
                     'route'   => $request->route()?->getName(),
                 ]);
