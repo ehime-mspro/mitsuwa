@@ -264,6 +264,16 @@ class PropertyController extends Controller
      */
     public function storeFile(Request $request, HsProperty $property)
     {
+        // 【一時診断ログ】controller 到達確認
+        \Log::info('storeFile reached', [
+            'user_id'      => auth()->id(),
+            'property_id'  => $property->id,
+            'has_file'     => $request->hasFile('file'),
+            'category'     => $request->input('category'),
+            'content_type' => $request->header('Content-Type'),
+            'method'       => $request->method(),
+        ]);
+
         $categories = implode(',', array_column(HousingFileCategory::cases(), 'value'));
 
         $request->validate([
