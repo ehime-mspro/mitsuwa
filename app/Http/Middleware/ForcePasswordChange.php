@@ -26,11 +26,6 @@ class ForcePasswordChange
             $allowedRoutes = ['password.change', 'password.update', 'logout'];
 
             if (!in_array($request->route()?->getName(), $allowedRoutes)) {
-                // 【一時診断ログ】password 強制変更でリダイレクト
-                \Log::error('[DEBUG] ForcePasswordChange redirect', [
-                    'user_id' => $user->id,
-                    'route'   => $request->route()?->getName(),
-                ]);
                 return redirect()->route('password.change')
                     ->with('warning', '初回ログインのため、パスワードの変更が必要です。');
             }

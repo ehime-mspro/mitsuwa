@@ -1010,13 +1010,14 @@ Route::middleware(['auth', 'password.change'])->group(function () {
         /*
         |------------------------------------------------------------------
         | 建売ファイル管理 Ajax（2ルート）
+        | ※ URL に /files を含むと Sakura WAF にブロックされるため /documents を使用
         |------------------------------------------------------------------
         */
         Route::middleware('role:executive,manager')->group(function () {
-            Route::post('/properties/{property}/files', [\App\Http\Controllers\Housing\PropertyController::class, 'storeFile'])
+            Route::post('/properties/{property}/documents', [\App\Http\Controllers\Housing\PropertyController::class, 'storeFile'])
                 ->name('housing.properties.files.store');
         });
-        Route::delete('/properties/{property}/files/{file}', [\App\Http\Controllers\Housing\PropertyController::class, 'destroyFile'])
+        Route::delete('/properties/{property}/documents/{file}', [\App\Http\Controllers\Housing\PropertyController::class, 'destroyFile'])
             ->middleware('role:executive')
             ->name('housing.properties.files.destroy');
     });
@@ -1078,13 +1079,14 @@ Route::middleware(['auth', 'password.change'])->group(function () {
         /*
         |------------------------------------------------------------------
         | 注文住宅ファイル管理 Ajax（2ルート）
+        | ※ URL に /files を含むと Sakura WAF にブロックされるため /documents を使用
         |------------------------------------------------------------------
         */
         Route::middleware('role:executive,manager')->group(function () {
-            Route::post('/custom-orders/{customOrder}/files', [\App\Http\Controllers\Housing\CustomOrderController::class, 'storeFile'])
+            Route::post('/custom-orders/{customOrder}/documents', [\App\Http\Controllers\Housing\CustomOrderController::class, 'storeFile'])
                 ->name('housing.custom-orders.files.store');
         });
-        Route::delete('/custom-orders/{customOrder}/files/{file}', [\App\Http\Controllers\Housing\CustomOrderController::class, 'destroyFile'])
+        Route::delete('/custom-orders/{customOrder}/documents/{file}', [\App\Http\Controllers\Housing\CustomOrderController::class, 'destroyFile'])
             ->middleware('role:executive')
             ->name('housing.custom-orders.files.destroy');
     });

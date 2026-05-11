@@ -327,14 +327,7 @@ function housingFileManager() {
 
             var token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
 
-            // 【一時診断】コンソールに送信URLとファイル情報を出力
-            var uploadUrl = '{{ route("housing.properties.files.store", $property) }}';
-            console.log('[DEBUG-UPLOAD] URL:', uploadUrl);
-            console.log('[DEBUG-UPLOAD] File:', file.name, file.size, 'bytes', file.type);
-            console.log('[DEBUG-UPLOAD] Category:', category);
-            console.log('[DEBUG-UPLOAD] CSRF token preview:', (token || '').slice(0, 16) + '...');
-
-            fetch(uploadUrl, {
+            fetch('{{ route("housing.properties.files.store", $property) }}', {
                 method: 'POST',
                 headers: {
                     'X-CSRF-TOKEN': token,
@@ -344,13 +337,7 @@ function housingFileManager() {
                 body: formData
             })
             .then(function(res) {
-                // 【一時診断】レスポンス情報をコンソールに
-                console.log('[DEBUG-UPLOAD] Response status:', res.status, res.statusText);
-                console.log('[DEBUG-UPLOAD] Response url:', res.url);
-                console.log('[DEBUG-UPLOAD] Response headers (visible):');
-                res.headers.forEach(function(v, k) { console.log('  ', k, '=', v); });
                 return res.text().then(function(text) {
-                    console.log('[DEBUG-UPLOAD] Response body:', text);
                     try {
                         return { status: res.status, ok: res.ok, data: JSON.parse(text) };
                     } catch (e) {
@@ -391,7 +378,7 @@ function housingFileManager() {
             if (!confirm('このファイルを削除しますか？')) return;
 
             var self = this;
-            fetch('{{ url("/housing/properties/" . $property->id . "/files") }}/' + fileId, {
+            fetch('{{ url("/housing/properties/" . $property->id . "/documents") }}/' + fileId, {
                 method: 'DELETE',
                 headers: {
                     'X-CSRF-TOKEN': '{{ csrf_token() }}',

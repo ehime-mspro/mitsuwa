@@ -23,30 +23,12 @@ class CheckRole
     {
         $user = $request->user();
 
-        // 【一時診断ログ】CheckRole 通過記録
-        \Log::error('[DEBUG] CheckRole entry', [
-            'user_id'        => $user?->id,
-            'user_role'      => $user?->role?->value,
-            'required_roles' => $roles,
-            'route'          => $request->route()?->getName(),
-            'url'            => $request->fullUrl(),
-            'method'         => $request->method(),
-        ]);
-
         if (!$user) {
             return redirect()->route('login');
         }
 
         // ユーザーのロール値が許可リストに含まれるか判定
         if (!in_array($user->role->value, $roles)) {
-            // 【一時診断ログ】403 abort 直前
-            \Log::error('[DEBUG] CheckRole 403 abort', [
-                'user_id'        => $user->id,
-                'user_role'      => $user->role->value,
-                'required_roles' => $roles,
-                'route'          => $request->route()?->getName(),
-                'url'            => $request->fullUrl(),
-            ]);
             abort(403, 'このページへのアクセス権限がありません。');
         }
 

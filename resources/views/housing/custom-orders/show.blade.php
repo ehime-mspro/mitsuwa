@@ -358,7 +358,7 @@ function customOrderFileManager() {
             if (!confirm('このファイルを削除しますか？')) return;
 
             var self = this;
-            fetch('{{ url("/housing/custom-orders/" . $customOrder->id . "/files") }}/' + fileId, {
+            fetch('{{ url("/housing/custom-orders/" . $customOrder->id . "/documents") }}/' + fileId, {
                 method: 'DELETE',
                 headers: {
                     'X-CSRF-TOKEN': '{{ csrf_token() }}',
