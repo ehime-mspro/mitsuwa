@@ -28,9 +28,9 @@
           class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mb-4 bg-white border border-gray-200 rounded-lg px-3.5 py-2.5">
         <select name="status" onchange="document.getElementById('filter-form').submit()"
                 class="h-9 px-3 border border-gray-300 rounded-md text-sm text-gray-700 bg-white focus:border-emerald-500 focus:outline-none cursor-pointer w-full sm:w-auto">
-            <option value="all" {{ request('status') === 'all' ? 'selected' : '' }}>ステータス: 全て</option>
+            <option value="all" {{ request('status', 'all') === 'all' ? 'selected' : '' }}>ステータス: 全て</option>
             @foreach(\App\Enums\HousingPropertyStatus::cases() as $st)
-                <option value="{{ $st->value }}" {{ request('status', 'on_sale') === $st->value ? 'selected' : '' }}>{{ $st->label() }}</option>
+                <option value="{{ $st->value }}" {{ request('status', 'all') === $st->value ? 'selected' : '' }}>{{ $st->label() }}</option>
             @endforeach
             <option value="sold" {{ request('status') === 'sold' ? 'selected' : '' }}>成約</option>
         </select>

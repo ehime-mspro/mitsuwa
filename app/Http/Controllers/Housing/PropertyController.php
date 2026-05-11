@@ -28,8 +28,8 @@ class PropertyController extends Controller
     {
         $query = HsProperty::with(['contract', 'projectLot.project', 'procurement']);
 
-        // フィルター: ステータス（デフォルトは販売中、'all'で全件表示）
-        $statusFilter = $request->input('status', 'on_sale');
+        // フィルター: ステータス（デフォルトは全件表示）
+        $statusFilter = $request->input('status', 'all');
 
         if ($statusFilter === 'all') {
             // 全件表示（フィルターなし）
