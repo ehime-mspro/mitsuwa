@@ -81,6 +81,7 @@ class TenantImportController extends Controller
     /** 契約CSVカラム */
     private array $contractColumnMap = [
         '物件名'     => 'property_name',
+        '階'         => 'floor',           // 任意カラム。同一物件で同じ部屋番号が複数階に存在する場合に必須
         '部屋番号'   => 'room_number',
         'テナント名' => 'customer_name',
         '契約日'     => 'contract_date',
@@ -636,12 +637,24 @@ class TenantImportController extends Controller
             }
             $property = $propertyCache[$propName];
 
-            // 区画の存在チェック（物件内で部屋番号を検索）
+            // 階数バリデーション（空欄 OK、整数なら可、負数 = 地下も許可）
+            $floor = null;
+            if ($row['floor'] !== '') {
+                if (!preg_match('/^-?\d+$/', $row['floor'])) {
+                    $errors[] = ['row' => $rowNum, 'message' => "階「{$row['floor']}」は整数で入力してください"];
+                    continue;
+                }
+                $floor = (int) $row['floor'];
+            }
+
+            // 区画の存在チェック（display_name で完全一致。区画インポートと同じ規約）
+            $displayName = Unit::generateDisplayName($floor, $row['room_number']);
             $unit = Unit::where('property_id', $property->id)
-                ->where('room_number', $row['room_number'])
+                ->where('display_name', $displayName)
                 ->first();
             if (!$unit) {
-                $errors[] = ['row' => $rowNum, 'message' => "物件「{$propName}」に部屋番号「{$row['room_number']}」が見つかりません。先に区画インポートを実行してください"];
+                $floorLabel = $floor !== null ? "{$floor}階の" : '';
+                $errors[] = ['row' => $rowNum, 'message' => "物件「{$propName}」に{$floorLabel}部屋番号「{$row['room_number']}」（区画名「{$displayName}」）が見つかりません。先に区画インポートを実行してください"];
                 continue;
             }
 
@@ -827,8 +840,9 @@ class TenantImportController extends Controller
     {
         $headers = array_keys($this->contractColumnMap);
 
+        // 13 要素: 物件名, 階, 部屋番号, テナント名, 契約日, 賃料開始日, 家賃, 共益費, 敷金, ゴミ代, 駆除代, 屋号, 備考
         $sample = [
-            'サンプルビル', 'A', 'サンプル商事',
+            'サンプルビル', '2', 'A', 'サンプル商事',
             '2024-04-01', '2024-04-01',
             '95000', '8000', '190000', '1500', '500',
             'サンプル商事 松山支店', '',
