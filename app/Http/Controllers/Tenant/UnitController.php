@@ -105,17 +105,11 @@ class UnitController extends Controller
         // display_name自動生成
         $displayName = $this->generateDisplayName($validated['floor'] ?? null, $validated['room_number']);
 
-        // UNIQUE制約チェック (property_id, display_name) — ソフトデリート含む
-        $exists = Unit::withTrashed()
+        // 既存レコード検索（ソフトデリート含む）
+        $existing = Unit::withTrashed()
             ->where('property_id', $property->id)
             ->where('display_name', $displayName)
-            ->exists();
-
-        if ($exists) {
-            return back()
-                ->withInput()
-                ->withErrors(['room_number' => "表示名「{$displayName}」は既に登録されています。階数または号室を変更してください。"]);
-        }
+            ->first();
 
         $validated['property_id'] = $property->id;
         $validated['display_name'] = $displayName;
@@ -123,6 +117,24 @@ class UnitController extends Controller
         // null → 0 変換（費用フィールド）
         foreach (['rent', 'common_fee', 'deposit', 'garbage_fee', 'pest_control_fee'] as $field) {
             $validated[$field] = $validated[$field] ?? 0;
+        }
+
+        if ($existing) {
+            if ($existing->trashed()) {
+                // 削除済みレコードがある → 復元して新しい入力値で上書き
+                // （DB UNIQUE 制約と過去の契約履歴を両立させるため）
+                $existing->restore();
+                $existing->update($validated);
+
+                return redirect()
+                    ->route('tenant.properties.show', $property)
+                    ->with('success', "削除済みだった区画「{$displayName}」を復元し、新しい内容で登録しました。");
+            }
+
+            // アクティブな同名区画がある → エラー
+            return back()
+                ->withInput()
+                ->withErrors(['room_number' => "表示名「{$displayName}」は既に登録されています。階数または号室を変更してください。"]);
         }
 
         Unit::create($validated);
