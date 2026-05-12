@@ -581,7 +581,8 @@ class TenantImportController extends Controller
     public function executeContract(Request $request)
     {
         $columnMap = $this->contractColumnMap;
-        $requiredKeys = ['property_name', 'room_number', 'customer_name', 'contract_date', 'rent'];
+        // customer_name は任意（新規登録画面の customer_id が nullable のため）
+        $requiredKeys = ['property_name', 'room_number', 'contract_date', 'rent'];
         $tab = 'contract';
 
         // CSV読み込み
@@ -610,10 +611,7 @@ class TenantImportController extends Controller
                 $errors[] = ['row' => $rowNum, 'message' => '部屋番号が未入力です'];
                 continue;
             }
-            if ($row['customer_name'] === '') {
-                $errors[] = ['row' => $rowNum, 'message' => 'テナント名が未入力です'];
-                continue;
-            }
+            // テナント名は任意（新規登録画面と同じ仕様）
             if ($row['contract_date'] === '') {
                 $errors[] = ['row' => $rowNum, 'message' => '契約日が未入力です'];
                 continue;
@@ -658,17 +656,20 @@ class TenantImportController extends Controller
                 continue;
             }
 
-            // 顧客の存在チェック
-            $custName = $row['customer_name'];
-            if (!isset($customerCache[$custName])) {
-                $cust = Customer::where('name', $custName)->first();
-                $customerCache[$custName] = $cust;
+            // 顧客の存在チェック（テナント名が空欄なら customer なしで契約作成）
+            $customer = null;
+            if ($row['customer_name'] !== '') {
+                $custName = $row['customer_name'];
+                if (!isset($customerCache[$custName])) {
+                    $cust = Customer::where('name', $custName)->first();
+                    $customerCache[$custName] = $cust;
+                }
+                if (!$customerCache[$custName]) {
+                    $errors[] = ['row' => $rowNum, 'message' => "顧客「{$custName}」がシステムに登録されていません。先に顧客インポートを実行してください"];
+                    continue;
+                }
+                $customer = $customerCache[$custName];
             }
-            if (!$customerCache[$custName]) {
-                $errors[] = ['row' => $rowNum, 'message' => "顧客「{$custName}」がシステムに登録されていません。先に顧客インポートを実行してください"];
-                continue;
-            }
-            $customer = $customerCache[$custName];
 
             // 二重契約チェック（警告のみ、インポートは許可）
             $activeContract = Contract::where('unit_id', $unit->id)
@@ -718,7 +719,7 @@ class TenantImportController extends Controller
 
             $row['_property_id'] = $property->id;
             $row['_unit_id'] = $unit->id;
-            $row['_customer_id'] = $customer->id;
+            $row['_customer_id'] = $customer?->id;  // customer_name 空欄なら null
             $row['_row'] = $rowNum;
             $validRows[] = $row;
         }

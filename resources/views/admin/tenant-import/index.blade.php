@@ -125,10 +125,10 @@
                 <div style="background: #fefce8; border: 1px solid #fde68a; border-radius: 8px; padding: 14px 18px; margin-bottom: 24px;">
                     <div style="font-weight: 600; font-size: 14px; color: #92400e; margin-bottom: 6px;">契約の一括登録</div>
                     <ul style="font-size: 12px; color: #a16207; margin: 0; padding-left: 18px; line-height: 1.8;">
-                        <li>CSVの「物件名」「階」「部屋番号」「テナント名」で既存データを検索し紐づけます</li>
+                        <li>CSVの「物件名」「階」「部屋番号」で既存区画を検索し紐づけます</li>
                         <li>契約番号（C-2026-001等）は自動採番されます</li>
                         <li>契約作成時に区画のステータスが「入居中」に更新されます</li>
-                        <li style="font-weight: 600;">※ 物件・区画・顧客が先に登録されている必要があります</li>
+                        <li style="font-weight: 600;">※ 物件・区画は事前登録必須。「テナント名」は任意で、指定する場合のみ既存顧客が事前登録されている必要があります</li>
                         <li style="font-weight: 600;">※「階」の記法: <code>1</code>=1階／<code>-1</code>=地下1階／空欄=階情報なしの区画。同じ物件で同じ部屋番号が複数階に存在する場合は必ず指定してください</li>
                     </ul>
                 </div>
