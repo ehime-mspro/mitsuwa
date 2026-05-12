@@ -134,6 +134,20 @@ Route::middleware(['auth', 'password.change'])->group(function () {
             ->name('admin.master.dad-specialties.update');
         Route::delete('/master/dad-specialties/{dadSpecialty}', [\App\Http\Controllers\Admin\DadSpecialtyController::class, 'destroy'])
             ->name('admin.master.dad-specialties.destroy');
+
+        // ZEAL 試算表 項目マスター
+        Route::get('/master/zeal-simulation-categories', [\App\Http\Controllers\Admin\ZealSimulationCategoryController::class, 'index'])
+            ->name('admin.master.zeal-simulation-categories.index');
+        Route::get('/master/zeal-simulation-categories/create', [\App\Http\Controllers\Admin\ZealSimulationCategoryController::class, 'create'])
+            ->name('admin.master.zeal-simulation-categories.create');
+        Route::post('/master/zeal-simulation-categories', [\App\Http\Controllers\Admin\ZealSimulationCategoryController::class, 'store'])
+            ->name('admin.master.zeal-simulation-categories.store');
+        Route::get('/master/zeal-simulation-categories/{zealSimulationCategory}/edit', [\App\Http\Controllers\Admin\ZealSimulationCategoryController::class, 'edit'])
+            ->name('admin.master.zeal-simulation-categories.edit');
+        Route::put('/master/zeal-simulation-categories/{zealSimulationCategory}', [\App\Http\Controllers\Admin\ZealSimulationCategoryController::class, 'update'])
+            ->name('admin.master.zeal-simulation-categories.update');
+        Route::delete('/master/zeal-simulation-categories/{zealSimulationCategory}', [\App\Http\Controllers\Admin\ZealSimulationCategoryController::class, 'destroy'])
+            ->name('admin.master.zeal-simulation-categories.destroy');
     });
 
     /*
@@ -1350,6 +1364,29 @@ Route::middleware(['auth', 'password.change'])->group(function () {
         Route::delete('/stores/{store}', [\App\Http\Controllers\Zeal\StoreController::class, 'destroy'])
             ->middleware('role:executive')
             ->name('zeal.stores.destroy');
+
+        /*
+        |------------------------------------------------------------------
+        | ZEAL 経営試算表（6ルート）
+        |------------------------------------------------------------------
+        */
+        Route::get('/simulations', [\App\Http\Controllers\Zeal\SimulationController::class, 'index'])
+            ->name('zeal.simulations.index');
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/simulations/create', [\App\Http\Controllers\Zeal\SimulationController::class, 'create'])
+                ->name('zeal.simulations.create');
+            Route::post('/simulations', [\App\Http\Controllers\Zeal\SimulationController::class, 'store'])
+                ->name('zeal.simulations.store');
+            Route::get('/simulations/{simulation}/edit', [\App\Http\Controllers\Zeal\SimulationController::class, 'edit'])
+                ->name('zeal.simulations.edit');
+            Route::put('/simulations/{simulation}', [\App\Http\Controllers\Zeal\SimulationController::class, 'update'])
+                ->name('zeal.simulations.update');
+        });
+        Route::get('/simulations/{simulation}', [\App\Http\Controllers\Zeal\SimulationController::class, 'show'])
+            ->name('zeal.simulations.show');
+        Route::delete('/simulations/{simulation}', [\App\Http\Controllers\Zeal\SimulationController::class, 'destroy'])
+            ->middleware('role:executive')
+            ->name('zeal.simulations.destroy');
     });
 
     /*

@@ -123,6 +123,7 @@
             <x-sidebar-item :href="url('/zeal')" label="ダッシュボード" :active="request()->is('zeal') || request()->routeIs('zeal.dashboard')" />
             <x-sidebar-item :href="url('/zeal/members')" label="会員管理" :active="request()->is('zeal/members*')" />
             <x-sidebar-item :href="url('/zeal/inquiries')" label="体験予約" :active="request()->is('zeal/inquiries*')" />
+            <x-sidebar-item :href="url('/zeal/simulations')" label="経営試算表" :active="request()->is('zeal/simulations*')" />
         </x-sidebar-group>
     @endif
 
@@ -172,6 +173,7 @@
             <x-sidebar-item :href="url('/zeal/plans')" label="プランマスタ" :active="request()->is('zeal/plans*')" />
             <x-sidebar-item :href="url('/zeal/stores')" label="店舗マスタ" :active="request()->is('zeal/stores*')" />
             <x-sidebar-item :href="url('/zeal/trainers')" label="トレーナーマスタ" :active="request()->is('zeal/trainers*')" />
+            <x-sidebar-item :href="url('/admin/master/zeal-simulation-categories')" label="試算表 項目マスター" :active="request()->is('admin/master/zeal-simulation-categories*')" />
             {{-- サブ見出し: マスター --}}
             <div style="display: flex; align-items: center; gap: 8px; padding: 8px 20px 3px;">
                 <span style="font-size: 10px; font-weight: 600; color: #6B7280; letter-spacing: 0.05em; white-space: nowrap;">マスター</span>
@@ -381,6 +383,7 @@
             <x-sidebar-item :href="url('/zeal')" label="ダッシュボード" :active="request()->is('zeal') || request()->routeIs('zeal.dashboard')" />
             <x-sidebar-item :href="url('/zeal/members')" label="会員管理" :active="request()->is('zeal/members*')" />
             <x-sidebar-item :href="url('/zeal/inquiries')" label="体験予約" :active="request()->is('zeal/inquiries*')" />
+            <x-sidebar-item :href="url('/zeal/simulations')" label="経営試算表" :active="request()->is('zeal/simulations*')" />
         </x-sidebar-group>
     @endif
 
@@ -429,6 +432,7 @@
             <x-sidebar-item :href="url('/zeal/plans')" label="プランマスタ" :active="request()->is('zeal/plans*')" />
             <x-sidebar-item :href="url('/zeal/stores')" label="店舗マスタ" :active="request()->is('zeal/stores*')" />
             <x-sidebar-item :href="url('/zeal/trainers')" label="トレーナーマスタ" :active="request()->is('zeal/trainers*')" />
+            <x-sidebar-item :href="url('/admin/master/zeal-simulation-categories')" label="試算表 項目マスター" :active="request()->is('admin/master/zeal-simulation-categories*')" />
             {{-- サブ見出し: マスター --}}
             <div style="display: flex; align-items: center; gap: 8px; padding: 8px 20px 3px;">
                 <span style="font-size: 10px; font-weight: 600; color: #6B7280; letter-spacing: 0.05em; white-space: nowrap;">マスター</span>
