@@ -81,4 +81,81 @@ class ZealFiscalYear
     {
         return sprintf('%d年度（%d/06〜%d/05）', $fiscalYear, $fiscalYear, $fiscalYear + 1);
     }
+
+    // ========================================================================
+    // 月状態判定（Phase 7+: 予算機能 + 未確定月の予測表示）
+    //
+    // 「今日基準で、指定月が過去確定月か、現在月か、未来月か」を判定する。
+    // 試算表の予測ロジック（未確定月 → 予算 or 完了月平均で予測表示）と
+    // syncActuals の「完了月のみ書き込み」ガードに利用。
+    // ========================================================================
+
+    /**
+     * 現在の YYYY-MM を返す（今日基準）
+     */
+    public static function currentMonthYm(): string
+    {
+        return Carbon::now()->format('Y-m');
+    }
+
+    /**
+     * 指定月が「過去確定月」か（月末が今日の前日以前）
+     * 例: 今日 2026-05-13 のとき、'2026-04' → true、'2026-05' → false、'2026-06' → false
+     */
+    public static function isPastMonth(string $yearMonth): bool
+    {
+        $targetStart = Carbon::createFromFormat('Y-m-d', $yearMonth . '-01')->startOfMonth();
+        $currentStart = Carbon::now()->startOfMonth();
+        return $targetStart->lt($currentStart);
+    }
+
+    /**
+     * 指定月が「現在月」か
+     */
+    public static function isCurrentMonth(string $yearMonth): bool
+    {
+        return $yearMonth === self::currentMonthYm();
+    }
+
+    /**
+     * 指定月が「未来月」か（月初が今日の翌月以降）
+     */
+    public static function isFutureMonth(string $yearMonth): bool
+    {
+        $targetStart = Carbon::createFromFormat('Y-m-d', $yearMonth . '-01')->startOfMonth();
+        $currentStart = Carbon::now()->startOfMonth();
+        return $targetStart->gt($currentStart);
+    }
+
+    /**
+     * 指定月が「未確定月（現在月 or 未来月）」か
+     * 変動項目（売上・会員数等）の予測表示対象を判定する
+     */
+    public static function isUnsettled(string $yearMonth): bool
+    {
+        return !self::isPastMonth($yearMonth);
+    }
+
+    /**
+     * 指定会計年度の「過去確定月」配列を返す
+     * 例: 今日 2026-05-13 で fy=2025 → ['2025-06', '2025-07', ..., '2026-04']
+     */
+    public static function completedMonths(int $fiscalYear): array
+    {
+        return array_values(array_filter(
+            self::months($fiscalYear),
+            fn ($ym) => self::isPastMonth($ym)
+        ));
+    }
+
+    /**
+     * 指定会計年度の「未確定月」配列を返す（現在月 + 未来月）
+     */
+    public static function unsettledMonths(int $fiscalYear): array
+    {
+        return array_values(array_filter(
+            self::months($fiscalYear),
+            fn ($ym) => !self::isPastMonth($ym)
+        ));
+    }
 }

@@ -92,7 +92,7 @@ class SimulationController extends Controller
             $now  = now();
             foreach ($categories as $cat) {
                 foreach ($months as $ym) {
-                    // 固定額タイプは default_amount を初期セット、それ以外は null
+                    // 固定額タイプは default_amount を実績・予算の両方の初期値にセット
                     $defaultAmt = ($cat->calc_type === ZealSimulationCalcType::Fixed && $cat->default_amount !== null)
                         ? $cat->default_amount
                         : null;
@@ -101,6 +101,7 @@ class SimulationController extends Controller
                         'category_id'        => $cat->id,
                         'year_month'         => $ym,
                         'amount'             => $defaultAmt,
+                        'budget_amount'      => $defaultAmt,
                         'is_manual_override' => false,
                         'created_at'         => $now,
                         'updated_at'         => $now,
@@ -117,38 +118,77 @@ class SimulationController extends Controller
 
     /**
      * 試算表 詳細表示（PDF レイアウト再現）
+     *
+     * クエリパラメータ:
+     *   ?mode=actual (デフォルト): 実績ベース。未確定月は予測値（灰色イタリック）。着地予測列を表示
+     *   ?mode=budget: 予算ベース。budget_amount を表示
+     *   ?mode=compare: 実績モード + 通期サマリーの予実比較セクションを強調表示
      */
-    public function show(ZealSimulation $simulation)
+    public function show(ZealSimulation $simulation, Request $request)
     {
-        [$categories, $matrix, $months, $aggregates, $overrideMap] = $this->buildMatrix($simulation);
+        [$categories, $matrix, $budgetMatrix, $months, $aggregates, $overrideMap, $cellMetaMap]
+            = $this->buildMatrix($simulation);
 
-        return view('zeal.simulations.show', compact('simulation', 'categories', 'matrix', 'months', 'aggregates', 'overrideMap'));
+        $mode = $request->input('mode', 'actual');
+        if (!in_array($mode, ['actual', 'budget', 'compare'], true)) {
+            $mode = 'actual';
+        }
+
+        // 通期サマリー予実比較データ（compare/actual 両モードで表示）
+        $comparisonSummary = $this->buildComparisonSummary($categories, $matrix, $budgetMatrix, $months);
+
+        return view('zeal.simulations.show', compact(
+            'simulation', 'categories', 'matrix', 'budgetMatrix',
+            'months', 'aggregates', 'overrideMap', 'cellMetaMap',
+            'mode', 'comparisonSummary'
+        ));
     }
 
     /**
      * 試算表 編集
+     *
+     * クエリパラメータ:
+     *   ?mode=actual (デフォルト): 実績編集（amount にバインド）
+     *   ?mode=budget: 予算編集（budget_amount にバインド）
      */
-    public function edit(ZealSimulation $simulation)
+    public function edit(ZealSimulation $simulation, Request $request)
     {
-        [$categories, $matrix, $months, $aggregates, $overrideMap] = $this->buildMatrix($simulation);
+        [$categories, $matrix, $budgetMatrix, $months, $aggregates, $overrideMap, $cellMetaMap]
+            = $this->buildMatrix($simulation);
 
-        return view('zeal.simulations.edit', compact('simulation', 'categories', 'matrix', 'months', 'aggregates', 'overrideMap'));
+        $mode = $request->input('mode', 'actual');
+        if (!in_array($mode, ['actual', 'budget'], true)) {
+            $mode = 'actual';
+        }
+
+        return view('zeal.simulations.edit', compact(
+            'simulation', 'categories', 'matrix', 'budgetMatrix',
+            'months', 'aggregates', 'overrideMap', 'cellMetaMap',
+            'mode'
+        ));
     }
 
     /**
      * 試算表 更新（月別 × 項目のセル値一括保存）
+     *
+     * mode=actual: amount 列を更新。売上・会員数は手動入力時 is_manual_override=true セット
+     * mode=budget: budget_amount 列を更新。is_manual_override は触らない
      */
     public function update(Request $request, ZealSimulation $simulation)
     {
         $request->validate([
             'name'                 => 'nullable|string|max:100',
             'notes'                => 'nullable|string|max:5000',
+            'mode'                 => 'nullable|in:actual,budget',
             'values'               => 'array',
             'values.*'             => 'array',
             'values.*.*'           => 'nullable|integer',
         ]);
 
-        DB::transaction(function () use ($request, $simulation) {
+        $mode = $request->input('mode', 'actual');
+        $isBudgetMode = $mode === 'budget';
+
+        DB::transaction(function () use ($request, $simulation, $isBudgetMode) {
             $simulation->update([
                 'name'       => $request->input('name'),
                 'notes'      => $request->input('notes'),
@@ -168,8 +208,8 @@ class SimulationController extends Controller
                     continue;
                 }
 
-                // 売上・会員数（実績連動対象）は手動入力されたら is_manual_override=true をセットし、
-                // 後続の「実績を反映」操作で上書きされないようにする
+                // 実績モードで売上・会員数（実績連動対象）は手動入力されたら is_manual_override=true
+                // 予算モードでは is_manual_override は触らない（実績の挙動を変えない）
                 $isActualLinkedRow = in_array(
                     $category->group_type->value,
                     [ZealSimulationGroup::Revenue->value, ZealSimulationGroup::Member->value],
@@ -179,10 +219,14 @@ class SimulationController extends Controller
                 foreach ($monthlyValues as $yearMonth => $amount) {
                     $amount = ($amount === '' || $amount === null) ? null : (int) $amount;
 
-                    $attributes = ['amount' => $amount];
-                    if ($isActualLinkedRow) {
-                        // 手動入力 → 上書きフラグを立てる（null クリアの場合は実績反映待ちに戻す）
-                        $attributes['is_manual_override'] = ($amount !== null);
+                    if ($isBudgetMode) {
+                        $attributes = ['budget_amount' => $amount];
+                    } else {
+                        $attributes = ['amount' => $amount];
+                        if ($isActualLinkedRow) {
+                            // 手動入力 → 上書きフラグを立てる（null クリアの場合は実績反映待ちに戻す）
+                            $attributes['is_manual_override'] = ($amount !== null);
+                        }
                     }
 
                     ZealSimulationValue::updateOrCreate(
@@ -197,9 +241,10 @@ class SimulationController extends Controller
             }
         });
 
+        // 編集後は同じモードで編集画面に戻る（実績→実績、予算→予算）
         return redirect()
             ->route('zeal.simulations.show', $simulation)
-            ->with('success', '試算表を更新しました。');
+            ->with('success', $isBudgetMode ? '予算を更新しました。' : '試算表を更新しました。');
     }
 
     /**
@@ -231,9 +276,11 @@ class SimulationController extends Controller
         $diffs = $this->computeActualsDiff($simulation);
 
         return response()->json([
-            'fiscal_year' => $simulation->fiscal_year,
-            'months'      => ZealFiscalYear::months($simulation->fiscal_year),
-            'rows'        => $diffs,
+            'fiscal_year'      => $simulation->fiscal_year,
+            'months'           => ZealFiscalYear::months($simulation->fiscal_year),
+            'past_months'      => ZealFiscalYear::completedMonths($simulation->fiscal_year),
+            'current_month_ym' => ZealFiscalYear::currentMonthYm(),
+            'rows'             => $diffs,
         ]);
     }
 
@@ -241,14 +288,21 @@ class SimulationController extends Controller
      * 実績を反映（書き込み）
      *
      * 売上 (revenue) / 会員数 (member_count) の月別セルを実績で更新する。
+     * デフォルトでは過去確定月のみ書き込み（未確定月の暫定値は誤解を招くため除外）。
+     * include_current_month=1 が送られると現在月（当月）も対象に含める（暫定値）。
      * is_manual_override=true のセルはスキップ（手動編集を保持）。
      */
     public function syncActuals(Request $request, ZealSimulation $simulation)
     {
         $appliedCount = 0;
         $skippedCount = 0;
+        $excludedCount = 0;
+        $includeCurrent = $request->boolean('include_current_month');
 
-        DB::transaction(function () use ($simulation, &$appliedCount, &$skippedCount) {
+        DB::transaction(function () use (
+            $simulation, $includeCurrent,
+            &$appliedCount, &$skippedCount, &$excludedCount
+        ) {
             $revenueCat = ZealSimulationCategory::where('code', 'revenue')->first();
             $memberCat  = ZealSimulationCategory::where('code', 'member_count')->first();
 
@@ -271,11 +325,19 @@ class SimulationController extends Controller
                 $revenueCat->id => $revenueByMonth,
                 $memberCat->id  => $memberByMonth,
             ];
+            $currentYm = ZealFiscalYear::currentMonthYm();
 
             foreach ($updates as $categoryId => $monthlyValues) {
                 $existingByYm = ($existing[$categoryId] ?? collect())->keyBy('year_month');
 
                 foreach ($monthlyValues as $ym => $actualAmount) {
+                    // 未確定月（未来月）は常に除外。当月は include_current_month のみ含める
+                    if (ZealFiscalYear::isFutureMonth($ym)
+                        || (ZealFiscalYear::isCurrentMonth($ym) && !$includeCurrent)) {
+                        $excludedCount++;
+                        continue;
+                    }
+
                     $cell = $existingByYm->get($ym);
                     if ($cell && $cell->is_manual_override) {
                         $skippedCount++;
@@ -298,21 +360,30 @@ class SimulationController extends Controller
             }
         });
 
+        $msg = sprintf(
+            '実績を反映しました。%d セル更新／%d セル手動上書き保持／%d セル除外（未確定月）。',
+            $appliedCount, $skippedCount, $excludedCount
+        );
+        if ($includeCurrent) {
+            $msg .= ' ※当月の暫定値を含む。';
+        }
+
         return redirect()
             ->route('zeal.simulations.show', $simulation)
-            ->with('success', sprintf(
-                '実績を反映しました。%d セル更新／%d セル手動上書き保持。',
-                $appliedCount,
-                $skippedCount
-            ));
+            ->with('success', $msg);
     }
 
     /**
      * 試算表の売上・会員数セルと実績値の差分を計算する（プレビュー用）
      *
+     * 各月に「period 種別」を付与:
+     *   - 'past': 過去確定月 → 反映対象
+     *   - 'current': 当月 → include_current_month で対象切替
+     *   - 'future': 未来月 → 常に除外
+     *
      * @return array{
-     *   revenue: array<int, array{ym:string, current:?int, actual:int, override:bool}>,
-     *   member: array<int, array{ym:string, current:?int, actual:int, override:bool}>,
+     *   revenue: array<int, array{ym:string, current:?int, actual:int, override:bool, period:string}>,
+     *   member: array<int, array{ym:string, current:?int, actual:int, override:bool, period:string}>,
      * }
      */
     private function computeActualsDiff(ZealSimulation $simulation): array
@@ -336,11 +407,15 @@ class SimulationController extends Controller
             $rows  = [];
             foreach ($actuals as $ym => $value) {
                 $cell = $cells->get($ym);
+                $period = ZealFiscalYear::isPastMonth($ym)
+                    ? 'past'
+                    : (ZealFiscalYear::isCurrentMonth($ym) ? 'current' : 'future');
                 $rows[] = [
                     'ym'       => $ym,
                     'current'  => $cell ? ($cell->amount !== null ? (int) $cell->amount : null) : null,
                     'actual'   => (int) $value,
                     'override' => (bool) ($cell->is_manual_override ?? false),
+                    'period'   => $period,
                 ];
             }
             return $rows;
@@ -362,12 +437,22 @@ class SimulationController extends Controller
      * 試算表のセル値を [categoryId][yearMonth] = amount の 2 次元配列に展開し、
      * 売上連動・集計計算行は派生算出する。
      *
-     * @return array [$categories, $matrix, $months, $aggregates, $overrideMap]
-     *   - $categories:  Collection of ZealSimulationCategory（並び順）
-     *   - $matrix:      int[]|null[][]  [categoryId][yearMonth] => 金額
-     *   - $months:      string[] 12 ヶ月の 'YYYY-MM' 配列
-     *   - $aggregates:  array PDF レイアウト用の集計列キー（'Q1', 'Q2', 'H1', 'Q3', 'Q4', 'H2', 'YEAR'）
-     *   - $overrideMap: bool[][] [categoryId][yearMonth] => is_manual_override
+     * 未確定月（現在月・未来月）には予測値を注入する:
+     *   優先順: 1) budget_amount があれば → 'forecast-budget'
+     *           2) 過去確定月の amount 平均 → 'forecast-avg'
+     *           3) どちらもなければ null
+     *
+     * 集計列 'YEAR' は過去確定月のみで集計（YTD 実績）、
+     *      'FORECAST_YEAR' は全月（過去実績 + 未確定月予測）で集計（着地予測）。
+     *
+     * @return array [$categories, $matrix, $budgetMatrix, $months, $aggregates, $overrideMap, $cellMetaMap]
+     *   - $categories:   Collection of ZealSimulationCategory（並び順）
+     *   - $matrix:       int[]|null[][]  [categoryId][yearMonth|aggKey] => 表示値（過去=実績、未確定=予測）
+     *   - $budgetMatrix: int[]|null[][]  [categoryId][yearMonth|aggKey] => 予算値（budget_amount ベース）
+     *   - $months:       string[] 12 ヶ月の 'YYYY-MM' 配列
+     *   - $aggregates:   string[] 集計列キー（Q1/Q2/H1/Q3/Q4/H2/YEAR/FORECAST_YEAR）
+     *   - $overrideMap:  bool[][] [categoryId][yearMonth] => is_manual_override
+     *   - $cellMetaMap:  string[][] [categoryId][yearMonth] => 'actual'|'forecast-budget'|'forecast-avg'|'forecast-mixed'|null
      */
     private function buildMatrix(ZealSimulation $simulation): array
     {
@@ -375,133 +460,327 @@ class SimulationController extends Controller
             ->orderBy('sort_order')
             ->get();
 
-        $months = ZealFiscalYear::months($simulation->fiscal_year);
+        $months     = ZealFiscalYear::months($simulation->fiscal_year);
+        $pastMonths = ZealFiscalYear::completedMonths($simulation->fiscal_year);
+        $pastSet    = array_flip($pastMonths);
 
-        // 1) まず DB にあるセル値を取得
+        // 1) DB のセル値を取得（amount + budget_amount + override）
         $cells = ZealSimulationValue::where('simulation_id', $simulation->id)->get();
-        $matrix = [];
+        $rawAmount  = [];
+        $rawBudget  = [];
         $overrideMap = [];
         foreach ($categories as $cat) {
-            $matrix[$cat->id]      = array_fill_keys($months, null);
+            $rawAmount[$cat->id]   = array_fill_keys($months, null);
+            $rawBudget[$cat->id]   = array_fill_keys($months, null);
             $overrideMap[$cat->id] = array_fill_keys($months, false);
         }
         foreach ($cells as $cell) {
-            // 注意: isset() は null 値のキーに対して false を返すため、
-            // array_fill_keys($months, null) で初期化したセルを上書きできない（PHP 挙動）。
-            // 内側は array_key_exists() でキー存在を判定し、null 初期値のセルにも代入する。
-            if (isset($matrix[$cell->category_id])
-                && array_key_exists($cell->year_month, $matrix[$cell->category_id])) {
-                $matrix[$cell->category_id][$cell->year_month]      = $cell->amount;
+            // array_fill_keys(null) は isset で false になるため array_key_exists で判定
+            if (isset($rawAmount[$cell->category_id])
+                && array_key_exists($cell->year_month, $rawAmount[$cell->category_id])) {
+                $rawAmount[$cell->category_id][$cell->year_month]   = $cell->amount;
+                $rawBudget[$cell->category_id][$cell->year_month]   = $cell->budget_amount;
                 $overrideMap[$cell->category_id][$cell->year_month] = (bool) $cell->is_manual_override;
             }
         }
 
-        // 2) 売上カテゴリの月別合計を取得（売上連動計算に必要）
+        // 2) 表示用 matrix と cellMetaMap を構築（forecast 注入）
+        $matrix       = [];
+        $cellMetaMap  = [];
+        $variableTypes = [ZealSimulationCalcType::Manual, ZealSimulationCalcType::Fixed];
+
+        foreach ($categories as $cat) {
+            $matrix[$cat->id]      = array_fill_keys($months, null);
+            $cellMetaMap[$cat->id] = array_fill_keys($months, null);
+            $isVariable = in_array($cat->calc_type, $variableTypes, true);
+
+            // 過去確定月の amount 平均（未確定月 forecast のフォールバック用）
+            $pastAvg = null;
+            if ($isVariable) {
+                $sum = 0; $count = 0;
+                foreach ($pastMonths as $pym) {
+                    $v = $rawAmount[$cat->id][$pym];
+                    if ($v !== null) { $sum += $v; $count++; }
+                }
+                $pastAvg = $count > 0 ? (int) round($sum / $count) : null;
+            }
+
+            foreach ($months as $ym) {
+                $rawAmt = $rawAmount[$cat->id][$ym];
+                $isPast = isset($pastSet[$ym]);
+
+                if ($isPast) {
+                    // 過去確定月: 実績値そのまま
+                    $matrix[$cat->id][$ym]      = $rawAmt;
+                    $cellMetaMap[$cat->id][$ym] = $rawAmt !== null ? 'actual' : null;
+                } elseif (!$isVariable) {
+                    // 未確定月 × 派生計算行は後段で再計算
+                    $matrix[$cat->id][$ym]      = null;
+                    $cellMetaMap[$cat->id][$ym] = null;
+                } elseif ($rawAmt !== null) {
+                    // 未確定月だが値あり（手動入力 or includeCurrentMonth で反映済み）
+                    $matrix[$cat->id][$ym]      = $rawAmt;
+                    $cellMetaMap[$cat->id][$ym] = 'actual';
+                } elseif ($rawBudget[$cat->id][$ym] !== null) {
+                    // 予算ありなら予算を予測値に
+                    $matrix[$cat->id][$ym]      = (int) $rawBudget[$cat->id][$ym];
+                    $cellMetaMap[$cat->id][$ym] = 'forecast-budget';
+                } elseif ($pastAvg !== null) {
+                    // 完了月平均
+                    $matrix[$cat->id][$ym]      = $pastAvg;
+                    $cellMetaMap[$cat->id][$ym] = 'forecast-avg';
+                }
+                // else: null のまま
+            }
+        }
+
+        // 3) 売上連動行を再計算（matrix の売上値=実績+予測 を使用）
         $revenueCat = $categories->firstWhere('group_type', ZealSimulationGroup::Revenue);
         $revenuePerMonth = $revenueCat ? $matrix[$revenueCat->id] : array_fill_keys($months, null);
 
-        // 3) 売上連動行を計算
         foreach ($categories as $cat) {
-            if ($cat->calc_type === ZealSimulationCalcType::RevenueLinked && $cat->rate_percent !== null) {
-                $rate = (float) $cat->rate_percent;
-                foreach ($months as $ym) {
-                    $rev = $revenuePerMonth[$ym];
-                    $matrix[$cat->id][$ym] = ($rev !== null) ? (int) round($rev * $rate / 100) : null;
-                }
-            }
-        }
-
-        // 4) 集計行を計算
-        foreach ($categories as $cat) {
-            if ($cat->calc_type !== ZealSimulationCalcType::Calculated) {
+            if ($cat->calc_type !== ZealSimulationCalcType::RevenueLinked || $cat->rate_percent === null) {
                 continue;
             }
+            $rate = (float) $cat->rate_percent;
+            foreach ($months as $ym) {
+                $rev = $revenuePerMonth[$ym];
+                $matrix[$cat->id][$ym] = ($rev !== null) ? (int) round($rev * $rate / 100) : null;
+                // メタ: 売上のメタを継承（売上が forecast なら本行も forecast）
+                $revMeta = $revenueCat ? ($cellMetaMap[$revenueCat->id][$ym] ?? null) : null;
+                $cellMetaMap[$cat->id][$ym] = $rev !== null ? $revMeta : null;
+            }
+        }
 
-            if ($cat->code === 'expense_total') {
-                // 経費計 = expense グループの全項目合計
-                foreach ($months as $ym) {
-                    $sum = 0;
-                    $hasValue = false;
-                    foreach ($categories as $other) {
-                        if ($other->group_type === ZealSimulationGroup::Expense) {
-                            $v = $matrix[$other->id][$ym] ?? null;
-                            if ($v !== null) {
-                                $sum += $v;
-                                $hasValue = true;
-                            }
+        // 4) 集計行を計算（経費計・営業利益・累計利益）
+        $expenseTotalCat = $categories->firstWhere('code', 'expense_total');
+        $operatingCat    = $categories->firstWhere('code', 'operating_profit');
+        $cumulativeCat   = $categories->firstWhere('code', 'cumulative_profit');
+
+        if ($expenseTotalCat) {
+            foreach ($months as $ym) {
+                $sum = 0; $hasValue = false; $hasForecast = false;
+                foreach ($categories as $other) {
+                    if ($other->group_type === ZealSimulationGroup::Expense) {
+                        $v = $matrix[$other->id][$ym];
+                        if ($v !== null) {
+                            $sum += $v; $hasValue = true;
+                            $meta = $cellMetaMap[$other->id][$ym] ?? null;
+                            if ($meta && $meta !== 'actual') $hasForecast = true;
                         }
                     }
-                    $matrix[$cat->id][$ym] = $hasValue ? $sum : null;
                 }
-            } elseif ($cat->code === 'operating_profit') {
-                // 営業利益 = 売上 - 経費計
-                $expenseTotalCat = $categories->firstWhere('code', 'expense_total');
-                foreach ($months as $ym) {
-                    $rev = $revenuePerMonth[$ym];
-                    $exp = $expenseTotalCat ? ($matrix[$expenseTotalCat->id][$ym] ?? null) : null;
-                    $matrix[$cat->id][$ym] = ($rev !== null || $exp !== null)
-                        ? ($rev ?? 0) - ($exp ?? 0)
-                        : null;
-                }
-            } elseif ($cat->code === 'cumulative_profit') {
-                // 累計利益 = 当月までの営業利益の累積
-                $opCat = $categories->firstWhere('code', 'operating_profit');
-                if ($opCat) {
-                    $running = 0;
-                    foreach ($months as $ym) {
-                        $op = $matrix[$opCat->id][$ym] ?? null;
-                        if ($op !== null) {
-                            $running += $op;
-                        }
-                        $matrix[$cat->id][$ym] = $running;
-                    }
+                $matrix[$expenseTotalCat->id][$ym] = $hasValue ? $sum : null;
+                $cellMetaMap[$expenseTotalCat->id][$ym] = $hasValue
+                    ? ($hasForecast ? 'forecast-mixed' : 'actual')
+                    : null;
+            }
+        }
+
+        if ($operatingCat) {
+            foreach ($months as $ym) {
+                $rev = $revenuePerMonth[$ym];
+                $exp = $expenseTotalCat ? ($matrix[$expenseTotalCat->id][$ym] ?? null) : null;
+                $matrix[$operatingCat->id][$ym] = ($rev !== null || $exp !== null)
+                    ? ($rev ?? 0) - ($exp ?? 0)
+                    : null;
+                $revMeta = $revenueCat ? ($cellMetaMap[$revenueCat->id][$ym] ?? null) : null;
+                $expMeta = $expenseTotalCat ? ($cellMetaMap[$expenseTotalCat->id][$ym] ?? null) : null;
+                if ($matrix[$operatingCat->id][$ym] !== null) {
+                    $hasForecast = ($revMeta && $revMeta !== 'actual') || ($expMeta && $expMeta !== 'actual');
+                    $cellMetaMap[$operatingCat->id][$ym] = $hasForecast ? 'forecast-mixed' : 'actual';
                 }
             }
         }
 
-        // 5) 集計列の計算（Q1/Q2/H1/Q3/Q4/H2/YEAR）
-        $aggregateGroups = [
-            'Q1'   => array_slice($months, 0, 3),   // 月1-3
-            'Q2'   => array_slice($months, 3, 3),   // 月4-6
-            'H1'   => array_slice($months, 0, 6),   // 月1-6
-            'Q3'   => array_slice($months, 6, 3),   // 月7-9
-            'Q4'   => array_slice($months, 9, 3),   // 月10-12
-            'H2'   => array_slice($months, 6, 6),   // 月7-12
-            'YEAR' => $months,                       // 月1-12
-        ];
+        if ($cumulativeCat && $operatingCat) {
+            $running = 0;
+            foreach ($months as $ym) {
+                $op = $matrix[$operatingCat->id][$ym] ?? null;
+                if ($op !== null) $running += $op;
+                $matrix[$cumulativeCat->id][$ym] = $running;
+                $opMeta = $cellMetaMap[$operatingCat->id][$ym] ?? null;
+                $cellMetaMap[$cumulativeCat->id][$ym] = ($opMeta && $opMeta !== 'actual')
+                    ? 'forecast-mixed'
+                    : 'actual';
+            }
+        }
 
-        // 累計利益カテゴリ ID（特例処理用）
-        $cumulativeCatId = $categories->firstWhere('code', 'cumulative_profit')?->id;
+        // 5) 集計列の計算
+        // YEAR は過去確定月のみで集計（YTD 実績）
+        // FORECAST_YEAR は全月（実績+予測）で集計（着地予測）
+        $aggregateGroups = [
+            'Q1'            => array_slice($months, 0, 3),
+            'Q2'            => array_slice($months, 3, 3),
+            'H1'            => array_slice($months, 0, 6),
+            'Q3'            => array_slice($months, 6, 3),
+            'Q4'            => array_slice($months, 9, 3),
+            'H2'            => array_slice($months, 6, 6),
+            'YEAR'          => $pastMonths,  // 確定月のみ（YTD 実績）
+            'FORECAST_YEAR' => $months,      // 全月（着地予測）
+        ];
 
         foreach ($categories as $cat) {
             foreach ($aggregateGroups as $aggKey => $aggMonths) {
-                if ($cat->id === $cumulativeCatId) {
-                    // 累計利益は単純合計ではなく、各集計期末月の累計値を使う
-                    $lastMonth = end($aggMonths);
-                    $matrix[$cat->id][$aggKey] = $matrix[$cat->id][$lastMonth] ?? null;
+                if ($cumulativeCat && $cat->id === $cumulativeCat->id) {
+                    // 累計利益: 期末月の値（aggMonths が空なら null）
+                    $lastMonth = !empty($aggMonths) ? end($aggMonths) : null;
+                    $matrix[$cat->id][$aggKey] = $lastMonth ? ($matrix[$cat->id][$lastMonth] ?? null) : null;
                 } elseif ($cat->group_type === ZealSimulationGroup::Member) {
-                    // 会員数は期末月の値（人数なので合計ではない）
-                    $lastMonth = end($aggMonths);
-                    $matrix[$cat->id][$aggKey] = $matrix[$cat->id][$lastMonth] ?? null;
+                    // 会員数: 期末月の値（人数なので合計ではない）
+                    $lastMonth = !empty($aggMonths) ? end($aggMonths) : null;
+                    $matrix[$cat->id][$aggKey] = $lastMonth ? ($matrix[$cat->id][$lastMonth] ?? null) : null;
                 } else {
                     // 通常項目: 集計期間の合計
-                    $sum = 0;
-                    $hasValue = false;
+                    $sum = 0; $hasValue = false;
                     foreach ($aggMonths as $ym) {
                         $v = $matrix[$cat->id][$ym] ?? null;
-                        if ($v !== null) {
-                            $sum += $v;
-                            $hasValue = true;
-                        }
+                        if ($v !== null) { $sum += $v; $hasValue = true; }
                     }
                     $matrix[$cat->id][$aggKey] = $hasValue ? $sum : null;
                 }
             }
         }
 
-        // 集計列のキー定義（PDF と同じ）
         $aggregates = array_keys($aggregateGroups);
 
-        return [$categories, $matrix, $months, $aggregates, $overrideMap];
+        // 6) budgetMatrix: budget_amount を主に置き、派生行を予算ベースで再計算
+        $budgetMatrix = $this->buildBudgetMatrix($categories, $months, $rawBudget, $aggregateGroups);
+
+        return [$categories, $matrix, $budgetMatrix, $months, $aggregates, $overrideMap, $cellMetaMap];
+    }
+
+    /**
+     * 予算マトリクスを構築（budget_amount ベース、派生行は予算で再算出）
+     *
+     * @param  \Illuminate\Support\Collection $categories
+     * @param  array $months 12 ヶ月の YYYY-MM
+     * @param  array $rawBudget [catId][ym] => budget_amount
+     * @param  array $aggregateGroups 集計列定義
+     * @return array $budgetMatrix [catId][ym|aggKey] => 予算ベース値
+     */
+    private function buildBudgetMatrix($categories, array $months, array $rawBudget, array $aggregateGroups): array
+    {
+        $bm = [];
+        foreach ($categories as $cat) {
+            $bm[$cat->id] = array_fill_keys($months, null);
+        }
+
+        // manual/fixed 行は budget_amount をそのまま
+        $variableTypes = [ZealSimulationCalcType::Manual, ZealSimulationCalcType::Fixed];
+        foreach ($categories as $cat) {
+            if (in_array($cat->calc_type, $variableTypes, true)) {
+                foreach ($months as $ym) {
+                    $bm[$cat->id][$ym] = $rawBudget[$cat->id][$ym] !== null
+                        ? (int) $rawBudget[$cat->id][$ym]
+                        : null;
+                }
+            }
+        }
+
+        // 売上連動行: 売上予算 × rate
+        $revenueCat = $categories->firstWhere('group_type', ZealSimulationGroup::Revenue);
+        $revenueBudget = $revenueCat ? $bm[$revenueCat->id] : array_fill_keys($months, null);
+        foreach ($categories as $cat) {
+            if ($cat->calc_type === ZealSimulationCalcType::RevenueLinked && $cat->rate_percent !== null) {
+                $rate = (float) $cat->rate_percent;
+                foreach ($months as $ym) {
+                    $rev = $revenueBudget[$ym];
+                    $bm[$cat->id][$ym] = ($rev !== null) ? (int) round($rev * $rate / 100) : null;
+                }
+            }
+        }
+
+        // 集計行
+        $expenseTotalCat = $categories->firstWhere('code', 'expense_total');
+        $operatingCat    = $categories->firstWhere('code', 'operating_profit');
+        $cumulativeCat   = $categories->firstWhere('code', 'cumulative_profit');
+
+        if ($expenseTotalCat) {
+            foreach ($months as $ym) {
+                $sum = 0; $hasValue = false;
+                foreach ($categories as $other) {
+                    if ($other->group_type === ZealSimulationGroup::Expense) {
+                        $v = $bm[$other->id][$ym];
+                        if ($v !== null) { $sum += $v; $hasValue = true; }
+                    }
+                }
+                $bm[$expenseTotalCat->id][$ym] = $hasValue ? $sum : null;
+            }
+        }
+
+        if ($operatingCat) {
+            foreach ($months as $ym) {
+                $rev = $revenueBudget[$ym];
+                $exp = $expenseTotalCat ? $bm[$expenseTotalCat->id][$ym] : null;
+                $bm[$operatingCat->id][$ym] = ($rev !== null || $exp !== null)
+                    ? ($rev ?? 0) - ($exp ?? 0)
+                    : null;
+            }
+        }
+
+        if ($cumulativeCat && $operatingCat) {
+            $running = 0;
+            foreach ($months as $ym) {
+                $op = $bm[$operatingCat->id][$ym];
+                if ($op !== null) $running += $op;
+                $bm[$cumulativeCat->id][$ym] = $running;
+            }
+        }
+
+        // 集計列
+        foreach ($categories as $cat) {
+            foreach ($aggregateGroups as $aggKey => $aggMonths) {
+                if ($cumulativeCat && $cat->id === $cumulativeCat->id) {
+                    $lastMonth = !empty($aggMonths) ? end($aggMonths) : null;
+                    $bm[$cat->id][$aggKey] = $lastMonth ? ($bm[$cat->id][$lastMonth] ?? null) : null;
+                } elseif ($cat->group_type === ZealSimulationGroup::Member) {
+                    $lastMonth = !empty($aggMonths) ? end($aggMonths) : null;
+                    $bm[$cat->id][$aggKey] = $lastMonth ? ($bm[$cat->id][$lastMonth] ?? null) : null;
+                } else {
+                    $sum = 0; $hasValue = false;
+                    foreach ($aggMonths as $ym) {
+                        $v = $bm[$cat->id][$ym] ?? null;
+                        if ($v !== null) { $sum += $v; $hasValue = true; }
+                    }
+                    $bm[$cat->id][$aggKey] = $hasValue ? $sum : null;
+                }
+            }
+        }
+
+        return $bm;
+    }
+
+    /**
+     * 通期サマリー予実比較データを構築
+     *
+     * 各カテゴリの YEAR（過去確定月の実績計） vs YEAR 予算計（過去確定月の予算計） を比較。
+     * 差異 = 実績 − 予算、達成率 = 実績 / 予算 × 100%（売上系は実績/予算、経費系は予算/実績で良い指標になるが、ここでは一律 実績/予算 で表示）。
+     *
+     * @return array<int, array{
+     *   category: ZealSimulationCategory,
+     *   actual:?int, budget:?int, diff:?int, rate:?float, has_budget: bool
+     * }>
+     */
+    private function buildComparisonSummary($categories, array $matrix, array $budgetMatrix, array $months): array
+    {
+        $rows = [];
+        foreach ($categories as $cat) {
+            $actual = $matrix[$cat->id]['YEAR'] ?? null;
+            $budget = $budgetMatrix[$cat->id]['YEAR'] ?? null;
+            $diff   = ($actual !== null && $budget !== null) ? $actual - $budget : null;
+            $rate   = ($actual !== null && $budget !== null && $budget != 0)
+                ? round(($actual / $budget) * 100, 1)
+                : null;
+            $rows[] = [
+                'category'   => $cat,
+                'actual'     => $actual,
+                'budget'     => $budget,
+                'diff'       => $diff,
+                'rate'       => $rate,
+                'has_budget' => $budget !== null,
+            ];
+        }
+        return $rows;
     }
 }

@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>2025年度 経営試算表 編集 (実績/予算モード切替) — ZEAL モック</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif; background: #f3f4f6; }
+        [x-cloak] { display: none !important; }
+
+        .breadcrumb { font-size: 12px; color: #6b7280; margin-bottom: 12px; }
+
+        /* タブ */
+        .edit-tabs {
+            display: flex; gap: 0; margin-bottom: 14px;
+            border-bottom: 2px solid #e5e7eb;
+        }
+        .edit-tab {
+            padding: 8px 20px; font-size: 13px; font-weight: 600;
+            color: #6b7280; cursor: pointer; border: none;
+            background: white; border-bottom: 3px solid transparent;
+            margin-bottom: -2px;
+        }
+        .edit-tab:hover { color: #111827; background: #f9fafb; }
+        .edit-tab.active.actual { color: #047857; border-bottom-color: #047857; background: #ecfdf5; }
+        .edit-tab.active.budget { color: #4f46e5; border-bottom-color: #4f46e5; background: #eef2ff; }
+        .edit-tab .badge {
+            display: inline-block; padding: 1px 6px; margin-left: 6px;
+            font-size: 10px; font-weight: 600; border-radius: 3px;
+        }
+        .edit-tab .badge.actual-cnt { background: #d1fae5; color: #065f46; }
+        .edit-tab .badge.budget-cnt { background: #e0e7ff; color: #4338ca; }
+
+        /* 表 */
+        table.matrix { border-collapse: collapse; min-width: 100%; font-size: 12px; }
+        table.matrix th, table.matrix td {
+            padding: 6px 8px; white-space: nowrap;
+        }
+        table.matrix thead th { color: white; font-weight: 700; }
+        table.matrix.theme-actual thead th.col-header-month { background: #047857; min-width: 90px; }
+        table.matrix.theme-actual thead th.col-header-future { background: #6b7280; min-width: 90px; }
+        table.matrix.theme-budget thead th.col-header-month { background: #4f46e5; min-width: 90px; }
+        table.matrix.theme-budget thead th.col-header-future { background: #6b7280; min-width: 90px; }
+        table.matrix .col-header-quarter-actual { background: #065f46; min-width: 90px; }
+        table.matrix .col-header-quarter-budget { background: #3730a3; min-width: 90px; }
+        table.matrix .col-header-half-actual { background: #1e40af; min-width: 100px; }
+        table.matrix .col-header-half-budget { background: #6d28d9; min-width: 100px; }
+        table.matrix .col-header-year-actual { background: #047857; min-width: 100px; }
+        table.matrix .col-header-year-budget { background: #4f46e5; min-width: 100px; }
+
+        table.matrix tbody td {
+            text-align: right; border-right: 1px solid #f3f4f6; border-bottom: 1px solid #e5e7eb;
+        }
+        table.matrix tbody td.row-label {
+            text-align: left; font-weight: 600;
+            position: sticky; left: 0; z-index: 1; border-right: 2px solid #d1d5db;
+            background: white;
+        }
+        table.matrix tbody td.cell-readonly {
+            color: #6b7280; background: #f9fafb;
+        }
+        table.matrix tbody td.cell-aggregate {
+            background: #f3f4f6; font-weight: 700; color: #374151;
+        }
+        table.matrix tbody td.cell-half-actual { background: #dbeafe; font-weight: 700; }
+        table.matrix tbody td.cell-half-budget { background: #ede9fe; font-weight: 700; }
+        table.matrix tbody td.cell-year-actual { background: #d1fae5; font-weight: 700; }
+        table.matrix tbody td.cell-year-budget { background: #e0e7ff; font-weight: 700; }
+
+        tr.row-revenue td { background: #fef3c7; }
+        tr.row-revenue td.row-label { background: #fef3c7; }
+        tr.row-member td { background: #eff6ff; }
+        tr.row-member td.row-label { background: #eff6ff; }
+        tr.row-summary td { background: #ecfdf5; }
+        tr.row-summary td.row-label { background: #ecfdf5; color: #065f46; font-weight: 700; }
+        tr.row-summary td.cell-aggregate { background: #d1fae5; }
+
+        /* 入力欄 */
+        .cell-input {
+            width: 100%; max-width: 90px; padding: 4px 6px;
+            border: 1px solid #d1d5db; border-radius: 4px;
+            text-align: right; font-size: 12px; background: white;
+        }
+        .cell-input.actual:focus { outline: 2px solid #10b981; border-color: #10b981; }
+        .cell-input.budget {
+            background: #eef2ff; border-color: #c7d2fe;
+        }
+        .cell-input.budget:focus { outline: 2px solid #4f46e5; border-color: #4f46e5; }
+        .cell-input.override { border-color: #fb923c; }
+
+        /* 手動上書きマーカー */
+        td.cell-has-override { position: relative; }
+        td.cell-has-override::after {
+            content: ''; position: absolute; top: 2px; right: 2px;
+            width: 6px; height: 6px; background: #f97316; border-radius: 50%;
+        }
+
+        /* 名称・備考欄 */
+        .header-card {
+            background: white; border: 1px solid #e5e7eb; border-radius: 8px;
+            padding: 18px 22px; margin-bottom: 14px;
+        }
+        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .info-label { display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px; }
+        .info-input {
+            width: 100%; padding: 8px 12px;
+            border: 1px solid #d1d5db; border-radius: 6px;
+            font-size: 14px;
+        }
+
+        /* 操作ボタン */
+        .footer-actions {
+            display: flex; gap: 10px; justify-content: flex-end;
+            margin-top: 16px;
+        }
+        .btn-cancel {
+            padding: 8px 20px; font-size: 13px; font-weight: 600;
+            color: #374151; background: white;
+            border: 1px solid #d1d5db; border-radius: 6px;
+        }
+        .btn-save-actual {
+            padding: 8px 24px; font-size: 13px; font-weight: 600;
+            color: white; background: #047857;
+            border: 1px solid #047857; border-radius: 6px;
+        }
+        .btn-save-budget {
+            padding: 8px 24px; font-size: 13px; font-weight: 600;
+            color: white; background: #4f46e5;
+            border: 1px solid #4f46e5; border-radius: 6px;
+        }
+    </style>
+</head>
+<body class="p-6" x-data="{ mode: 'actual' }">
+    <div class="max-w-full">
+        <!-- パンくず -->
+        <div class="breadcrumb">
+            <a href="#">ホーム</a>
+            <span class="mx-1.5">›</span>
+            <span>ZEAL</span>
+            <span class="mx-1.5">›</span>
+            <a href="#">経営試算表</a>
+            <span class="mx-1.5">›</span>
+            <a href="#">2025年度</a>
+            <span class="mx-1.5">›</span>
+            <span class="text-gray-600">編集</span>
+        </div>
+
+        <!-- ヘッダー -->
+        <div class="flex items-center justify-between mb-5">
+            <h1 class="text-lg font-bold text-gray-900">2025年度 経営試算表 編集</h1>
+        </div>
+
+        <!-- 名称・備考 -->
+        <div class="header-card">
+            <div class="info-grid">
+                <div>
+                    <label class="info-label">名称</label>
+                    <input type="text" class="info-input" value="令和7年度">
+                </div>
+                <div>
+                    <label class="info-label">備考</label>
+                    <input type="text" class="info-input" placeholder="">
+                </div>
+            </div>
+        </div>
+
+        <!-- タブ切替 -->
+        <div class="edit-tabs">
+            <button class="edit-tab actual" :class="mode === 'actual' && 'active actual'" @click="mode = 'actual'">
+                📊 実績編集
+                <span class="badge actual-cnt" x-show="mode === 'actual'">編集中</span>
+            </button>
+            <button class="edit-tab budget" :class="mode === 'budget' && 'active budget'" @click="mode = 'budget'">
+                💰 予算編集
+                <span class="badge budget-cnt" x-show="mode === 'budget'">編集中</span>
+            </button>
+            <div class="ml-auto self-center pr-3 text-xs text-gray-500">
+                <span x-show="mode === 'actual'">
+                    実績編集: <strong>amount</strong> 列にバインド。実績反映と同じデータ。
+                </span>
+                <span x-show="mode === 'budget'" x-cloak>
+                    予算編集: <strong>budget_amount</strong> 列にバインド。実績とは独立管理。
+                </span>
+            </div>
+        </div>
+
+        <!-- =================== 実績編集モード =================== -->
+        <div x-show="mode === 'actual'" style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; overflow-x: auto;">
+            <table class="matrix theme-actual">
+                <thead>
+                    <tr>
+                        <th class="row-label col-header-month" style="position: sticky; left: 0; z-index: 2; min-width: 140px; text-align: left;">項目</th>
+                        <th class="col-header-month">2025/06</th>
+                        <th class="col-header-month">2025/07</th>
+                        <th class="col-header-month">2025/08</th>
+                        <th class="col-header-quarter-actual">1Q</th>
+                        <th class="col-header-month">2025/09</th>
+                        <th class="col-header-month">2025/10</th>
+                        <th class="col-header-month">2025/11</th>
+                        <th class="col-header-quarter-actual">2Q</th>
+                        <th class="col-header-half-actual">上半期</th>
+                        <th class="col-header-month">2025/12</th>
+                        <th class="col-header-month">2026/01</th>
+                        <th class="col-header-month">2026/02</th>
+                        <th class="col-header-quarter-actual">3Q</th>
+                        <th class="col-header-month">2026/03</th>
+                        <th class="col-header-month">2026/04</th>
+                        <th class="col-header-future">2026/05</th>
+                        <th class="col-header-quarter-actual">4Q</th>
+                        <th class="col-header-half-actual">下半期</th>
+                        <th class="col-header-year-actual">通期</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr class="row-revenue">
+                        <td class="row-label">売上</td>
+                        <td><input class="cell-input actual" type="number" value="0"></td>
+                        <td><input class="cell-input actual" type="number" value="0"></td>
+                        <td><input class="cell-input actual" type="number" value="0"></td>
+                        <td class="cell-aggregate">0円</td>
+                        <td><input class="cell-input actual" type="number" value="0"></td>
+                        <td><input class="cell-input actual" type="number" value="102792"></td>
+                        <td><input class="cell-input actual" type="number" value="150554"></td>
+                        <td class="cell-aggregate">253,346円</td>
+                        <td class="cell-half-actual">253,346円</td>
+                        <td><input class="cell-input actual" type="number" value="165300"></td>
+                        <td><input class="cell-input actual" type="number" value="181106"></td>
+                        <td><input class="cell-input actual" type="number" value="209750"></td>
+                        <td class="cell-aggregate">556,156円</td>
+                        <td><input class="cell-input actual" type="number" value="214300"></td>
+                        <td><input class="cell-input actual" type="number" value="234881"></td>
+                        <td><input class="cell-input actual" type="number" placeholder="—"></td>
+                        <td class="cell-aggregate">449,181円</td>
+                        <td class="cell-half-actual">1,005,337円</td>
+                        <td class="cell-year-actual">1,258,683円</td>
+                    </tr>
+                    <tr class="row-member">
+                        <td class="row-label">会員数</td>
+                        <td><input class="cell-input actual" type="number" value="0"></td>
+                        <td><input class="cell-input actual" type="number" value="0"></td>
+                        <td><input class="cell-input actual" type="number" value="0"></td>
+                        <td class="cell-aggregate">0人</td>
+                        <td><input class="cell-input actual" type="number" value="0"></td>
+                        <td><input class="cell-input actual" type="number" value="11"></td>
+                        <td><input class="cell-input actual" type="number" value="13"></td>
+                        <td class="cell-aggregate">13人</td>
+                        <td class="cell-half-actual">13人</td>
+                        <td><input class="cell-input actual" type="number" value="13"></td>
+                        <td><input class="cell-input actual" type="number" value="16"></td>
+                        <td><input class="cell-input actual" type="number" value="18"></td>
+                        <td class="cell-aggregate">18人</td>
+                        <td><input class="cell-input actual" type="number" value="18"></td>
+                        <td><input class="cell-input actual" type="number" value="22"></td>
+                        <td><input class="cell-input actual" type="number" placeholder="—"></td>
+                        <td class="cell-aggregate">22人</td>
+                        <td class="cell-half-actual">22人</td>
+                        <td class="cell-year-actual">22人</td>
+                    </tr>
+                    <tr>
+                        <td class="row-label">賃料</td>
+                        <td><input class="cell-input actual" type="number" value="200000"></td>
+                        <td><input class="cell-input actual" type="number" value="200000"></td>
+                        <td><input class="cell-input actual" type="number" value="200000"></td>
+                        <td class="cell-aggregate">600,000円</td>
+                        <td><input class="cell-input actual" type="number" value="200000"></td>
+                        <td><input class="cell-input actual" type="number" value="200000"></td>
+                        <td><input class="cell-input actual" type="number" value="200000"></td>
+                        <td class="cell-aggregate">600,000円</td>
+                        <td class="cell-half-actual">1,200,000円</td>
+                        <td><input class="cell-input actual" type="number" value="200000"></td>
+                        <td><input class="cell-input actual" type="number" value="200000"></td>
+                        <td><input class="cell-input actual" type="number" value="200000"></td>
+                        <td class="cell-aggregate">600,000円</td>
+                        <td><input class="cell-input actual" type="number" value="200000"></td>
+                        <td><input class="cell-input actual" type="number" value="200000"></td>
+                        <td><input class="cell-input actual" type="number" value="200000"></td>
+                        <td class="cell-aggregate">600,000円</td>
+                        <td class="cell-half-actual">1,200,000円</td>
+                        <td class="cell-year-actual">2,400,000円</td>
+                    </tr>
+                    <tr>
+                        <td class="row-label">ロイヤリティ <span class="text-xs text-gray-500 font-normal">(3%)</span></td>
+                        <td class="cell-readonly">0円</td>
+                        <td class="cell-readonly">0円</td>
+                        <td class="cell-readonly">0円</td>
+                        <td class="cell-aggregate">0円</td>
+                        <td class="cell-readonly">0円</td>
+                        <td class="cell-readonly">3,084円</td>
+                        <td class="cell-readonly">4,517円</td>
+                        <td class="cell-aggregate">7,601円</td>
+                        <td class="cell-half-actual">7,601円</td>
+                        <td class="cell-readonly">4,959円</td>
+                        <td class="cell-readonly">5,433円</td>
+                        <td class="cell-readonly">6,293円</td>
+                        <td class="cell-aggregate">16,685円</td>
+                        <td class="cell-readonly">6,429円</td>
+                        <td class="cell-readonly">7,046円</td>
+                        <td class="cell-readonly">—</td>
+                        <td class="cell-aggregate">13,475円</td>
+                        <td class="cell-half-actual">30,160円</td>
+                        <td class="cell-year-actual">37,761円</td>
+                    </tr>
+                    <tr class="row-summary">
+                        <td class="row-label">経費計</td>
+                        <td class="cell-readonly">696,000円</td>
+                        <td class="cell-readonly">696,000円</td>
+                        <td class="cell-readonly">696,000円</td>
+                        <td class="cell-aggregate">2,088,000円</td>
+                        <td class="cell-readonly">696,000円</td>
+                        <td class="cell-readonly">723,084円</td>
+                        <td class="cell-readonly">724,517円</td>
+                        <td class="cell-aggregate">2,143,601円</td>
+                        <td class="cell-half-actual">4,231,601円</td>
+                        <td class="cell-readonly">724,959円</td>
+                        <td class="cell-readonly">725,433円</td>
+                        <td class="cell-readonly">726,293円</td>
+                        <td class="cell-aggregate">2,176,685円</td>
+                        <td class="cell-readonly">726,429円</td>
+                        <td class="cell-readonly">727,046円</td>
+                        <td class="cell-readonly">—</td>
+                        <td class="cell-aggregate">1,453,475円</td>
+                        <td class="cell-half-actual">3,630,160円</td>
+                        <td class="cell-year-actual">7,861,761円</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- =================== 予算編集モード =================== -->
+        <div x-show="mode === 'budget'" x-cloak style="background: white; border: 1px solid #c7d2fe; border-radius: 8px; overflow-x: auto;">
+            <table class="matrix theme-budget">
+                <thead>
+                    <tr>
+                        <th class="row-label col-header-month" style="position: sticky; left: 0; z-index: 2; min-width: 140px; text-align: left;">項目</th>
+                        <th class="col-header-month">2025/06</th>
+                        <th class="col-header-month">2025/07</th>
+                        <th class="col-header-month">2025/08</th>
+                        <th class="col-header-quarter-budget">1Q</th>
+                        <th class="col-header-month">2025/09</th>
+                        <th class="col-header-month">2025/10</th>
+                        <th class="col-header-month">2025/11</th>
+                        <th class="col-header-quarter-budget">2Q</th>
+                        <th class="col-header-half-budget">上半期</th>
+                        <th class="col-header-month">2025/12</th>
+                        <th class="col-header-month">2026/01</th>
+                        <th class="col-header-month">2026/02</th>
+                        <th class="col-header-quarter-budget">3Q</th>
+                        <th class="col-header-month">2026/03</th>
+                        <th class="col-header-month">2026/04</th>
+                        <th class="col-header-month">2026/05</th>
+                        <th class="col-header-quarter-budget">4Q</th>
+                        <th class="col-header-half-budget">下半期</th>
+                        <th class="col-header-year-budget">通期</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr class="row-revenue">
+                        <td class="row-label">売上</td>
+                        <td><input class="cell-input budget" type="number" value="100000"></td>
+                        <td><input class="cell-input budget" type="number" value="100000"></td>
+                        <td><input class="cell-input budget" type="number" value="100000"></td>
+                        <td class="cell-aggregate">300,000円</td>
+                        <td><input class="cell-input budget" type="number" value="120000"></td>
+                        <td><input class="cell-input budget" type="number" value="130000"></td>
+                        <td><input class="cell-input budget" type="number" value="150000"></td>
+                        <td class="cell-aggregate">400,000円</td>
+                        <td class="cell-half-budget">700,000円</td>
+                        <td><input class="cell-input budget" type="number" value="170000"></td>
+                        <td><input class="cell-input budget" type="number" value="190000"></td>
+                        <td><input class="cell-input budget" type="number" value="210000"></td>
+                        <td class="cell-aggregate">570,000円</td>
+                        <td><input class="cell-input budget" type="number" value="220000"></td>
+                        <td><input class="cell-input budget" type="number" value="230000"></td>
+                        <td><input class="cell-input budget" type="number" value="240000"></td>
+                        <td class="cell-aggregate">690,000円</td>
+                        <td class="cell-half-budget">1,260,000円</td>
+                        <td class="cell-year-budget">1,960,000円</td>
+                    </tr>
+                    <tr class="row-member">
+                        <td class="row-label">会員数</td>
+                        <td><input class="cell-input budget" type="number" value="5"></td>
+                        <td><input class="cell-input budget" type="number" value="8"></td>
+                        <td><input class="cell-input budget" type="number" value="10"></td>
+                        <td class="cell-aggregate">10人</td>
+                        <td><input class="cell-input budget" type="number" value="12"></td>
+                        <td><input class="cell-input budget" type="number" value="14"></td>
+                        <td><input class="cell-input budget" type="number" value="16"></td>
+                        <td class="cell-aggregate">16人</td>
+                        <td class="cell-half-budget">16人</td>
+                        <td><input class="cell-input budget" type="number" value="18"></td>
+                        <td><input class="cell-input budget" type="number" value="20"></td>
+                        <td><input class="cell-input budget" type="number" value="22"></td>
+                        <td class="cell-aggregate">22人</td>
+                        <td><input class="cell-input budget" type="number" value="24"></td>
+                        <td><input class="cell-input budget" type="number" value="26"></td>
+                        <td><input class="cell-input budget" type="number" value="28"></td>
+                        <td class="cell-aggregate">28人</td>
+                        <td class="cell-half-budget">28人</td>
+                        <td class="cell-year-budget">28人</td>
+                    </tr>
+                    <tr>
+                        <td class="row-label">賃料</td>
+                        <td><input class="cell-input budget" type="number" value="200000"></td>
+                        <td><input class="cell-input budget" type="number" value="200000"></td>
+                        <td><input class="cell-input budget" type="number" value="200000"></td>
+                        <td class="cell-aggregate">600,000円</td>
+                        <td><input class="cell-input budget" type="number" value="200000"></td>
+                        <td><input class="cell-input budget" type="number" value="200000"></td>
+                        <td><input class="cell-input budget" type="number" value="200000"></td>
+                        <td class="cell-aggregate">600,000円</td>
+                        <td class="cell-half-budget">1,200,000円</td>
+                        <td><input class="cell-input budget" type="number" value="200000"></td>
+                        <td><input class="cell-input budget" type="number" value="200000"></td>
+                        <td><input class="cell-input budget" type="number" value="200000"></td>
+                        <td class="cell-aggregate">600,000円</td>
+                        <td><input class="cell-input budget" type="number" value="200000"></td>
+                        <td><input class="cell-input budget" type="number" value="200000"></td>
+                        <td><input class="cell-input budget" type="number" value="200000"></td>
+                        <td class="cell-aggregate">600,000円</td>
+                        <td class="cell-half-budget">1,200,000円</td>
+                        <td class="cell-year-budget">2,400,000円</td>
+                    </tr>
+                    <tr>
+                        <td class="row-label">ロイヤリティ <span class="text-xs text-gray-500 font-normal">(3%)</span></td>
+                        <td class="cell-readonly">3,000円</td>
+                        <td class="cell-readonly">3,000円</td>
+                        <td class="cell-readonly">3,000円</td>
+                        <td class="cell-aggregate">9,000円</td>
+                        <td class="cell-readonly">3,600円</td>
+                        <td class="cell-readonly">3,900円</td>
+                        <td class="cell-readonly">4,500円</td>
+                        <td class="cell-aggregate">12,000円</td>
+                        <td class="cell-half-budget">21,000円</td>
+                        <td class="cell-readonly">5,100円</td>
+                        <td class="cell-readonly">5,700円</td>
+                        <td class="cell-readonly">6,300円</td>
+                        <td class="cell-aggregate">17,100円</td>
+                        <td class="cell-readonly">6,600円</td>
+                        <td class="cell-readonly">6,900円</td>
+                        <td class="cell-readonly">7,200円</td>
+                        <td class="cell-aggregate">20,700円</td>
+                        <td class="cell-half-budget">37,800円</td>
+                        <td class="cell-year-budget">58,800円</td>
+                    </tr>
+                    <tr class="row-summary">
+                        <td class="row-label">経費計</td>
+                        <td class="cell-readonly">696,000円</td>
+                        <td class="cell-readonly">696,000円</td>
+                        <td class="cell-readonly">696,000円</td>
+                        <td class="cell-aggregate">2,088,000円</td>
+                        <td class="cell-readonly">703,470円</td>
+                        <td class="cell-readonly">705,500円</td>
+                        <td class="cell-readonly">710,750円</td>
+                        <td class="cell-aggregate">2,119,720円</td>
+                        <td class="cell-half-budget">4,207,720円</td>
+                        <td class="cell-readonly">711,950円</td>
+                        <td class="cell-readonly">718,150円</td>
+                        <td class="cell-readonly">723,650円</td>
+                        <td class="cell-aggregate">2,153,750円</td>
+                        <td class="cell-readonly">725,300円</td>
+                        <td class="cell-readonly">728,950円</td>
+                        <td class="cell-readonly">732,400円</td>
+                        <td class="cell-aggregate">2,186,650円</td>
+                        <td class="cell-half-budget">4,340,400円</td>
+                        <td class="cell-year-budget">8,548,120円</td>
+                    </tr>
+                </tbody>
+            </table>
+            <p class="text-xs text-indigo-700 mt-2 px-3 py-2 bg-indigo-50 border-t border-indigo-100">
+                💡 予算編集モード: 入力は <code class="bg-white px-1 rounded">budget_amount</code> 列に保存されます。売上連動行（ロイヤリティ・決済手数料）と集計行は予算ベースで自動算出。
+            </p>
+        </div>
+
+        <!-- 説明 -->
+        <div style="margin-top: 14px; padding: 12px 16px; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 6px; font-size: 12px; color: #075985; line-height: 1.7;">
+            <strong>編集について:</strong> 売上連動行（ロイヤリティ・決済手数料）と集計行（経費計・営業利益・累計利益）は自動算出のため入力欄なし。手入力・固定額タイプの項目のみ編集可能。<br>
+            <span x-show="mode === 'actual'"><strong>実績編集モード:</strong> 売上・会員数を手入力すると「手動上書き」状態（オレンジドット表示）になり、「実績を反映」を押してもスキップされます。</span>
+            <span x-show="mode === 'budget'" x-cloak><strong>予算編集モード:</strong> 予算は実績とは独立。タブを切替えても入力中の値は保持されます。</span>
+        </div>
+
+        <!-- 操作ボタン -->
+        <div class="footer-actions">
+            <button type="button" class="btn-cancel">キャンセル</button>
+            <button x-show="mode === 'actual'" class="btn-save-actual">実績を保存する</button>
+            <button x-show="mode === 'budget'" x-cloak class="btn-save-budget">予算を保存する</button>
+        </div>
+    </div>
+</body>
+</html>

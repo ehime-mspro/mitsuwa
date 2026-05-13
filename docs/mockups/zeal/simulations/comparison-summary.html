@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>通期サマリー: 予算実績比較セクション拡大表示 — ZEAL モック</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif; background: #f3f4f6; padding: 24px; }
+
+        .section-title {
+            font-size: 14px; font-weight: 700; color: #111827;
+            margin-bottom: 14px;
+            padding-left: 12px; border-left: 4px solid #10b981;
+        }
+
+        .card {
+            background: white; border: 1px solid #e5e7eb; border-radius: 10px;
+            padding: 24px; max-width: 1000px;
+        }
+
+        .summary-meta {
+            display: flex; gap: 18px; padding: 12px 16px;
+            background: #f9fafb; border-radius: 8px; margin-bottom: 16px;
+            font-size: 12px;
+        }
+        .summary-meta-item { color: #6b7280; }
+        .summary-meta-item strong { color: #111827; font-size: 13px; display: block; margin-top: 2px; }
+
+        .toolbar {
+            display: flex; gap: 8px; margin-bottom: 14px; align-items: center;
+            padding-bottom: 12px; border-bottom: 1px solid #e5e7eb;
+        }
+        .toolbar-label { font-size: 12px; color: #6b7280; }
+        .toolbar-btn {
+            padding: 4px 12px; font-size: 11px; font-weight: 600;
+            background: white; color: #374151;
+            border: 1px solid #d1d5db; border-radius: 4px; cursor: pointer;
+        }
+        .toolbar-btn.active { background: #047857; color: white; border-color: #047857; }
+
+        table.summary {
+            width: 100%; border-collapse: collapse; font-size: 12px;
+        }
+        table.summary thead th {
+            background: #f9fafb; padding: 10px 14px;
+            font-size: 11px; font-weight: 600; color: #374151;
+            border-bottom: 2px solid #d1d5db; text-align: right;
+            white-space: nowrap;
+        }
+        table.summary thead th:first-child { text-align: left; }
+        table.summary tbody td {
+            padding: 8px 14px; border-bottom: 1px solid #f3f4f6;
+            font-size: 12px; text-align: right;
+            white-space: nowrap;
+        }
+        table.summary tbody td:first-child { text-align: left; font-weight: 500; }
+        table.summary tbody td.empty { color: #9ca3af; text-align: center; }
+
+        /* カテゴリ別行スタイル */
+        tr.cat-revenue td { background: #fef3c7; }
+        tr.cat-revenue td:first-child { font-weight: 700; color: #92400e; }
+        tr.cat-member td { background: #eff6ff; }
+        tr.cat-member td:first-child { font-weight: 700; color: #1e40af; }
+        tr.cat-expense td:first-child { padding-left: 22px; color: #4b5563; }
+        tr.cat-expense-header td {
+            background: #f3f4f6; font-size: 11px;
+            color: #6b7280; padding: 6px 14px; font-weight: 600;
+        }
+        tr.cat-expense-header td:first-child { text-transform: uppercase; letter-spacing: 0.05em; }
+        tr.cat-summary td {
+            background: #d1fae5; font-weight: 700; color: #065f46;
+            border-top: 2px solid #6ee7b7;
+        }
+
+        /* 差異 色分け */
+        .diff-pos { color: #059669; font-weight: 600; }
+        .diff-neg { color: #dc2626; font-weight: 600; }
+        .diff-zero { color: #6b7280; }
+
+        /* 達成率バー */
+        .rate-cell {
+            display: flex; align-items: center; gap: 6px;
+            justify-content: flex-end;
+        }
+        .rate-bar {
+            width: 60px; height: 6px; background: #e5e7eb;
+            border-radius: 3px; overflow: hidden;
+        }
+        .rate-bar-fill { height: 100%; }
+        .rate-bar-fill.green { background: #10b981; }
+        .rate-bar-fill.yellow { background: #f59e0b; }
+        .rate-bar-fill.red { background: #ef4444; }
+        .rate-text { font-size: 11px; font-weight: 600; min-width: 50px; text-align: right; }
+        .rate-text.green { color: #047857; }
+        .rate-text.yellow { color: #b45309; }
+        .rate-text.red { color: #b91c1c; }
+        .rate-text.empty { color: #9ca3af; }
+
+        .badge-status {
+            display: inline-block; padding: 2px 8px; border-radius: 4px;
+            font-size: 10px; font-weight: 700;
+        }
+        .badge-status.up { background: #d1fae5; color: #065f46; }
+        .badge-status.down { background: #fee2e2; color: #991b1b; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2 class="section-title">📊 年度サマリー: 予算実績比較</h2>
+
+        <div class="summary-meta">
+            <div class="summary-meta-item">
+                対象年度
+                <strong>2025年度（2025/06 〜 2026/05）</strong>
+            </div>
+            <div class="summary-meta-item">
+                基準日
+                <strong>2026-05-13</strong>
+            </div>
+            <div class="summary-meta-item">
+                確定月
+                <strong>11 ヶ月（2025/06 〜 2026/04）</strong>
+            </div>
+            <div class="summary-meta-item">
+                未確定月
+                <strong>1 ヶ月（2026/05）</strong>
+            </div>
+        </div>
+
+        <div class="toolbar">
+            <span class="toolbar-label">比較範囲:</span>
+            <button class="toolbar-btn active">確定月のみ（11ヶ月）</button>
+            <button class="toolbar-btn">通期（実績+予測）</button>
+            <button class="toolbar-btn">上半期のみ</button>
+            <button class="toolbar-btn">下半期のみ</button>
+        </div>
+
+        <table class="summary">
+            <thead>
+                <tr>
+                    <th>項目</th>
+                    <th>実績計</th>
+                    <th>予算計</th>
+                    <th>差異</th>
+                    <th>達成率</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- 売上 / 会員 -->
+                <tr class="cat-revenue">
+                    <td>売上</td>
+                    <td>1,258,683円</td>
+                    <td>1,800,000円</td>
+                    <td class="diff-neg">-541,317円</td>
+                    <td>
+                        <div class="rate-cell">
+                            <div class="rate-bar"><div class="rate-bar-fill yellow" style="width: 70%;"></div></div>
+                            <span class="rate-text yellow">69.9%</span>
+                        </div>
+                    </td>
+                </tr>
+                <tr class="cat-member">
+                    <td>会員数（4月末）</td>
+                    <td>22人</td>
+                    <td>25人</td>
+                    <td class="diff-neg">-3人</td>
+                    <td>
+                        <div class="rate-cell">
+                            <div class="rate-bar"><div class="rate-bar-fill green" style="width: 88%;"></div></div>
+                            <span class="rate-text green">88.0%</span>
+                        </div>
+                    </td>
+                </tr>
+
+                <!-- 固定費グループ -->
+                <tr class="cat-expense-header"><td colspan="5">固定費</td></tr>
+                <tr class="cat-expense">
+                    <td>賃料</td>
+                    <td>2,200,000円</td>
+                    <td>2,200,000円</td>
+                    <td class="diff-zero">0円</td>
+                    <td>
+                        <div class="rate-cell">
+                            <div class="rate-bar"><div class="rate-bar-fill green" style="width: 100%;"></div></div>
+                            <span class="rate-text green">100.0%</span>
+                        </div>
+                    </td>
+                </tr>
+                <tr class="cat-expense">
+                    <td>委託費</td>
+                    <td>4,400,000円</td>
+                    <td>4,400,000円</td>
+                    <td class="diff-zero">0円</td>
+                    <td>
+                        <div class="rate-cell">
+                            <div class="rate-bar"><div class="rate-bar-fill green" style="width: 100%;"></div></div>
+                            <span class="rate-text green">100.0%</span>
+                        </div>
+                    </td>
+                </tr>
+                <tr class="cat-expense">
+                    <td>研修システム</td>
+                    <td>165,000円</td>
+                    <td>165,000円</td>
+                    <td class="diff-zero">0円</td>
+                    <td>
+                        <div class="rate-cell">
+                            <div class="rate-bar"><div class="rate-bar-fill green" style="width: 100%;"></div></div>
+                            <span class="rate-text green">100.0%</span>
+                        </div>
+                    </td>
+                </tr>
+                <tr class="cat-expense">
+                    <td>web運用</td>
+                    <td>165,000円</td>
+                    <td>165,000円</td>
+                    <td class="diff-zero">0円</td>
+                    <td>
+                        <div class="rate-cell">
+                            <div class="rate-bar"><div class="rate-bar-fill green" style="width: 100%;"></div></div>
+                            <span class="rate-text green">100.0%</span>
+                        </div>
+                    </td>
+                </tr>
+                <tr class="cat-expense">
+                    <td>管理システム</td>
+                    <td>396,000円</td>
+                    <td>396,000円</td>
+                    <td class="diff-zero">0円</td>
+                    <td>
+                        <div class="rate-cell">
+                            <div class="rate-bar"><div class="rate-bar-fill green" style="width: 100%;"></div></div>
+                            <span class="rate-text green">100.0%</span>
+                        </div>
+                    </td>
+                </tr>
+
+                <!-- 売上連動費 -->
+                <tr class="cat-expense-header"><td colspan="5">売上連動費</td></tr>
+                <tr class="cat-expense">
+                    <td>ロイヤリティ (3%)</td>
+                    <td>37,761円</td>
+                    <td>54,000円</td>
+                    <td class="diff-pos">+16,239円</td>
+                    <td>
+                        <div class="rate-cell">
+                            <div class="rate-bar"><div class="rate-bar-fill yellow" style="width: 70%;"></div></div>
+                            <span class="rate-text yellow">69.9%</span>
+                        </div>
+                    </td>
+                </tr>
+                <tr class="cat-expense">
+                    <td>決済手数料 (3.5%)</td>
+                    <td>44,054円</td>
+                    <td>63,000円</td>
+                    <td class="diff-pos">+18,946円</td>
+                    <td>
+                        <div class="rate-cell">
+                            <div class="rate-bar"><div class="rate-bar-fill yellow" style="width: 70%;"></div></div>
+                            <span class="rate-text yellow">69.9%</span>
+                        </div>
+                    </td>
+                </tr>
+
+                <!-- 変動費 -->
+                <tr class="cat-expense-header"><td colspan="5">変動費</td></tr>
+                <tr class="cat-expense">
+                    <td>広告費</td>
+                    <td>470,000円</td>
+                    <td>520,000円</td>
+                    <td class="diff-pos">+50,000円</td>
+                    <td>
+                        <div class="rate-cell">
+                            <div class="rate-bar"><div class="rate-bar-fill green" style="width: 90%;"></div></div>
+                            <span class="rate-text green">90.4%</span>
+                        </div>
+                    </td>
+                </tr>
+                <tr class="cat-expense">
+                    <td>委託費追加</td>
+                    <td class="empty">—</td>
+                    <td class="empty">—</td>
+                    <td class="empty">—</td>
+                    <td><span class="rate-text empty">予算未入力</span></td>
+                </tr>
+                <tr class="cat-expense">
+                    <td>減価償却</td>
+                    <td class="empty">—</td>
+                    <td class="empty">—</td>
+                    <td class="empty">—</td>
+                    <td><span class="rate-text empty">予算未入力</span></td>
+                </tr>
+                <tr class="cat-expense">
+                    <td>水道光熱費</td>
+                    <td class="empty">—</td>
+                    <td class="empty">—</td>
+                    <td class="empty">—</td>
+                    <td><span class="rate-text empty">予算未入力</span></td>
+                </tr>
+                <tr class="cat-expense">
+                    <td>雑費</td>
+                    <td class="empty">—</td>
+                    <td class="empty">—</td>
+                    <td class="empty">—</td>
+                    <td><span class="rate-text empty">予算未入力</span></td>
+                </tr>
+                <tr class="cat-expense">
+                    <td>保険</td>
+                    <td class="empty">—</td>
+                    <td class="empty">—</td>
+                    <td class="empty">—</td>
+                    <td><span class="rate-text empty">予算未入力</span></td>
+                </tr>
+                <tr class="cat-expense">
+                    <td>その他</td>
+                    <td class="empty">—</td>
+                    <td class="empty">—</td>
+                    <td class="empty">—</td>
+                    <td><span class="rate-text empty">予算未入力</span></td>
+                </tr>
+
+                <!-- 集計 -->
+                <tr class="cat-summary">
+                    <td>経費計</td>
+                    <td>7,877,815円</td>
+                    <td>7,963,000円</td>
+                    <td class="diff-pos">+85,185円</td>
+                    <td>
+                        <div class="rate-cell">
+                            <div class="rate-bar"><div class="rate-bar-fill green" style="width: 99%;"></div></div>
+                            <span class="rate-text green">98.9%</span>
+                        </div>
+                    </td>
+                </tr>
+                <tr class="cat-summary">
+                    <td>営業利益</td>
+                    <td>-6,619,132円</td>
+                    <td>-6,163,000円</td>
+                    <td class="diff-neg">-456,132円</td>
+                    <td><span class="badge-status down">未達 ↓</span></td>
+                </tr>
+                <tr class="cat-summary">
+                    <td>累計利益（年度通算）</td>
+                    <td>-6,619,132円</td>
+                    <td>-6,163,000円</td>
+                    <td class="diff-neg">-456,132円</td>
+                    <td><span class="badge-status down">未達 ↓</span></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="mt-4 p-3 bg-blue-50 border border-blue-200 rounded text-xs text-blue-800 leading-relaxed">
+            <strong>📌 解釈ガイド:</strong><br>
+            • <strong>売上・会員数</strong>の達成率が低い項目は売上目標未達。広告費・キャンペーン強化を検討<br>
+            • <strong>差異プラス（緑）</strong>は予算超過/節約成功、<strong>差異マイナス（赤）</strong>は予算未達/超過<br>
+            • <strong>「予算未入力」</strong>の項目は「予算編集」モードで予算値を入力すると比較可能になります<br>
+            • <strong>「着地予測」</strong>（月別マトリクスの最右列）で年度末の確定見込みを確認できます
+        </div>
+    </div>
+</body>
+</html>

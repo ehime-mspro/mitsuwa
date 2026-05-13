@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>2025年度 経営試算表 (予算機能 + 着地予測) — ZEAL モック</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif; background: #f3f4f6; }
+        [x-cloak] { display: none !important; }
+
+        .breadcrumb { font-size: 12px; color: #6b7280; margin-bottom: 12px; }
+        .breadcrumb a { color: #6b7280; }
+        .breadcrumb a:hover { color: #059669; }
+
+        /* セクション見出し */
+        .section-title {
+            font-size: 14px; font-weight: 700; color: #111827;
+            margin-bottom: 12px;
+            padding-left: 12px; border-left: 4px solid #10b981;
+        }
+
+        /* モード切替ボタン */
+        .mode-btn {
+            padding: 6px 14px; font-size: 12px; font-weight: 600;
+            border: 1px solid #d1d5db; border-radius: 6px;
+            background: white; color: #6b7280; cursor: pointer;
+            transition: all .15s;
+        }
+        .mode-btn:hover { background: #f9fafb; }
+        .mode-btn.active.actual  { background: #047857; color: white; border-color: #047857; }
+        .mode-btn.active.budget  { background: #4f46e5; color: white; border-color: #4f46e5; }
+        .mode-btn.active.compare { background: #c2410c; color: white; border-color: #c2410c; }
+
+        /* アクションボタン */
+        .action-btn {
+            display: inline-block; padding: 6px 16px;
+            font-size: 13px; font-weight: 600;
+            border-radius: 6px; text-decoration: none;
+            border: 1px solid; background: white; cursor: pointer;
+        }
+        .action-btn.btn-back { color: #6b7280; border-color: #d1d5db; }
+        .action-btn.btn-sync { color: #1e40af; border-color: #1e40af; }
+        .action-btn.btn-edit { color: #059669; border-color: #059669; }
+
+        /* 表 */
+        table.matrix { border-collapse: collapse; min-width: 100%; font-size: 12px; }
+        table.matrix th, table.matrix td {
+            padding: 8px 10px; white-space: nowrap;
+        }
+        table.matrix thead th { color: white; font-weight: 700; }
+        table.matrix .col-header-month { background: #047857; min-width: 90px; }
+        table.matrix .col-header-future { background: #6b7280; min-width: 90px; }
+        table.matrix .col-header-quarter { background: #065f46; min-width: 90px; }
+        table.matrix .col-header-half { background: #1e40af; min-width: 100px; }
+        table.matrix .col-header-year { background: #047857; min-width: 100px; }
+        table.matrix .col-header-forecast-year { background: #f97316; min-width: 110px; }
+
+        table.matrix tbody td { text-align: right; border-right: 1px solid #f3f4f6; border-bottom: 1px solid #e5e7eb; }
+        table.matrix tbody td.row-label {
+            text-align: left; font-weight: 600;
+            position: sticky; left: 0; z-index: 1; border-right: 2px solid #d1d5db;
+        }
+        table.matrix tbody td.cell-future {
+            color: #6b7280; font-style: italic; background: #f9fafb;
+        }
+        table.matrix tbody td.cell-forecast-year {
+            color: #c2410c; font-weight: 700; background: #fff7ed;
+        }
+        table.matrix tbody td.cell-aggregate {
+            background: #f3f4f6; font-weight: 700;
+        }
+        table.matrix tbody td.cell-half {
+            background: #dbeafe; font-weight: 700;
+        }
+        table.matrix tbody td.cell-year {
+            background: #d1fae5; font-weight: 700;
+        }
+
+        /* 行種別 */
+        tr.row-revenue td { background: #fef3c7; }
+        tr.row-revenue td.row-label { background: #fef3c7; }
+        tr.row-member td { background: #eff6ff; }
+        tr.row-member td.row-label { background: #eff6ff; }
+        tr.row-summary td { background: #ecfdf5; }
+        tr.row-summary td.row-label { background: #ecfdf5; color: #065f46; font-weight: 700; }
+        tr.row-summary td.cell-aggregate { background: #d1fae5; }
+        tr.row-revenue td.cell-future, tr.row-member td.cell-future, tr.row-summary td.cell-future {
+            background: #f9fafb;
+        }
+        tr.row-revenue td.cell-forecast-year, tr.row-member td.cell-forecast-year, tr.row-summary td.cell-forecast-year {
+            background: #ffedd5;
+        }
+
+        /* 通期サマリー */
+        .summary-card {
+            background: white; border: 1px solid #e5e7eb; border-radius: 10px;
+            padding: 20px; margin-top: 20px;
+        }
+        .summary-card h3 {
+            font-size: 14px; font-weight: 700; color: #111827;
+            margin-bottom: 14px; padding-left: 12px; border-left: 4px solid #10b981;
+        }
+        .summary-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        .summary-table th {
+            background: #f9fafb; padding: 8px 12px;
+            font-size: 11px; font-weight: 600; color: #374151;
+            border-bottom: 2px solid #e5e7eb; text-align: right;
+        }
+        .summary-table th:first-child { text-align: left; }
+        .summary-table td {
+            padding: 7px 12px; border-bottom: 1px solid #f3f4f6;
+            font-size: 12px; text-align: right;
+        }
+        .summary-table td:first-child { text-align: left; }
+        .summary-table tr.cat-revenue td { background: #fef3c7; }
+        .summary-table tr.cat-member td { background: #eff6ff; }
+        .summary-table tr.cat-summary td {
+            background: #d1fae5; font-weight: 700; color: #065f46;
+            border-top: 2px solid #6ee7b7;
+        }
+        .summary-table .diff-pos { color: #059669; }
+        .summary-table .diff-neg { color: #dc2626; }
+    </style>
+</head>
+<body class="p-6">
+    <div class="max-w-full">
+        <!-- パンくず -->
+        <div class="breadcrumb">
+            <a href="#">ホーム</a>
+            <span class="mx-1.5">›</span>
+            <span>ZEAL</span>
+            <span class="mx-1.5">›</span>
+            <a href="#">経営試算表</a>
+            <span class="mx-1.5">›</span>
+            <span class="text-gray-600">2025年度</span>
+        </div>
+
+        <!-- ヘッダー -->
+        <div x-data="{ mode: 'actual' }" class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-5">
+            <div>
+                <h1 class="text-lg font-bold text-gray-900">2025年度 経営試算表</h1>
+                <div class="flex items-center gap-2 mt-1">
+                    <span class="text-sm text-gray-500">2025/06 〜 2026/05</span>
+                    <span class="text-sm text-gray-700">— 令和7年度</span>
+                    <span class="ml-3 text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600">基準日: 2026-05-13</span>
+                </div>
+            </div>
+            <div class="flex flex-wrap gap-2 items-center">
+                <!-- 表示モード切替 -->
+                <div class="flex gap-1 mr-2 pr-2 border-r border-gray-300">
+                    <span class="text-xs text-gray-500 self-center mr-1">表示:</span>
+                    <button class="mode-btn actual" :class="mode === 'actual' && 'active actual'" @click="mode = 'actual'">実績</button>
+                    <button class="mode-btn budget" :class="mode === 'budget' && 'active budget'" @click="mode = 'budget'">予算</button>
+                    <button class="mode-btn compare" :class="mode === 'compare' && 'active compare'" @click="mode = 'compare'">比較</button>
+                </div>
+                <a href="#" class="action-btn btn-back">年度一覧</a>
+                <button type="button" class="action-btn btn-sync">実績を反映</button>
+                <a href="#" class="action-btn btn-edit">編集</a>
+            </div>
+        </div>
+
+        <!-- ヒント -->
+        <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 text-xs text-amber-800 leading-relaxed">
+            <strong>表示の見方:</strong>
+            <span class="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded mx-1 italic">2026/05</span> 灰色イタリック=未確定月の予測値（予算 → 完了月平均 → 空欄の優先順）／
+            <span class="px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded mx-1 font-semibold">着地予測</span> 確定月実績 + 未確定月予測の合算 ／
+            <span class="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded mx-1 font-semibold">通期</span> 設定通り（実績がない月は予測値含む）
+        </div>
+
+        <!-- 試算表マトリクス -->
+        <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; overflow-x: auto;">
+            <table class="matrix">
+                <thead>
+                    <tr>
+                        <th class="row-label col-header-month" style="position: sticky; left: 0; z-index: 2; min-width: 140px; text-align: left;">項目</th>
+                        <th class="col-header-month">2025/06</th>
+                        <th class="col-header-month">2025/07</th>
+                        <th class="col-header-month">2025/08</th>
+                        <th class="col-header-quarter">1Q</th>
+                        <th class="col-header-month">2025/09</th>
+                        <th class="col-header-month">2025/10</th>
+                        <th class="col-header-month">2025/11</th>
+                        <th class="col-header-quarter">2Q</th>
+                        <th class="col-header-half">上半期</th>
+                        <th class="col-header-month">2025/12</th>
+                        <th class="col-header-month">2026/01</th>
+                        <th class="col-header-month">2026/02</th>
+                        <th class="col-header-quarter">3Q</th>
+                        <th class="col-header-month">2026/03</th>
+                        <th class="col-header-month">2026/04</th>
+                        <th class="col-header-future">2026/05<br><span class="text-xs font-normal">予測</span></th>
+                        <th class="col-header-quarter">4Q</th>
+                        <th class="col-header-half">下半期</th>
+                        <th class="col-header-year">通期</th>
+                        <th class="col-header-forecast-year">着地予測</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- 売上 -->
+                    <tr class="row-revenue">
+                        <td class="row-label">売上</td>
+                        <td>0円</td><td>0円</td><td>0円</td><td class="cell-aggregate">0円</td>
+                        <td>0円</td><td>102,792円</td><td>150,554円</td><td class="cell-aggregate">253,346円</td>
+                        <td class="cell-half">253,346円</td>
+                        <td>165,300円</td><td>181,106円</td><td>209,750円</td><td class="cell-aggregate">556,156円</td>
+                        <td>214,300円</td><td>234,881円</td><td class="cell-future" title="予測: 完了月平均">263,164円</td>
+                        <td class="cell-aggregate">712,345円</td>
+                        <td class="cell-half">1,268,501円</td>
+                        <td class="cell-year">1,521,847円</td>
+                        <td class="cell-forecast-year" title="確定月実績(11ヶ月) + 5月予測">1,521,847円</td>
+                    </tr>
+                    <!-- 会員数 -->
+                    <tr class="row-member">
+                        <td class="row-label">会員数</td>
+                        <td>0人</td><td>0人</td><td>0人</td><td class="cell-aggregate">0人</td>
+                        <td>0人</td><td>11人</td><td>13人</td><td class="cell-aggregate">13人</td>
+                        <td class="cell-half">13人</td>
+                        <td>13人</td><td>16人</td><td>18人</td><td class="cell-aggregate">18人</td>
+                        <td>18人</td><td>22人</td><td class="cell-future" title="予測: 完了月平均">23人</td>
+                        <td class="cell-aggregate">23人</td>
+                        <td class="cell-half">23人</td>
+                        <td class="cell-year">23人</td>
+                        <td class="cell-forecast-year">23人</td>
+                    </tr>
+                    <!-- 賃料 -->
+                    <tr>
+                        <td class="row-label">賃料</td>
+                        <td>200,000円</td><td>200,000円</td><td>200,000円</td><td class="cell-aggregate">600,000円</td>
+                        <td>200,000円</td><td>200,000円</td><td>200,000円</td><td class="cell-aggregate">600,000円</td>
+                        <td class="cell-half">1,200,000円</td>
+                        <td>200,000円</td><td>200,000円</td><td>200,000円</td><td class="cell-aggregate">600,000円</td>
+                        <td>200,000円</td><td>200,000円</td><td class="cell-future" title="予測: 予算">200,000円</td>
+                        <td class="cell-aggregate">600,000円</td>
+                        <td class="cell-half">1,200,000円</td>
+                        <td class="cell-year">2,400,000円</td>
+                        <td class="cell-forecast-year">2,400,000円</td>
+                    </tr>
+                    <!-- ロイヤリティ (3%) -->
+                    <tr>
+                        <td class="row-label">ロイヤリティ <span class="text-xs text-gray-500 font-normal">(3%)</span></td>
+                        <td>0円</td><td>0円</td><td>0円</td><td class="cell-aggregate">0円</td>
+                        <td>0円</td><td>3,084円</td><td>4,517円</td><td class="cell-aggregate">7,601円</td>
+                        <td class="cell-half">7,601円</td>
+                        <td>4,959円</td><td>5,433円</td><td>6,293円</td><td class="cell-aggregate">16,685円</td>
+                        <td>6,429円</td><td>7,046円</td><td class="cell-future" title="売上予測 × 3%">7,895円</td>
+                        <td class="cell-aggregate">21,370円</td>
+                        <td class="cell-half">38,055円</td>
+                        <td class="cell-year">45,656円</td>
+                        <td class="cell-forecast-year">45,656円</td>
+                    </tr>
+                    <!-- 広告費 (予算あり) -->
+                    <tr>
+                        <td class="row-label">広告費</td>
+                        <td>30,000円</td><td>30,000円</td><td>30,000円</td><td class="cell-aggregate">90,000円</td>
+                        <td>30,000円</td><td>50,000円</td><td>50,000円</td><td class="cell-aggregate">130,000円</td>
+                        <td class="cell-half">220,000円</td>
+                        <td>50,000円</td><td>50,000円</td><td>50,000円</td><td class="cell-aggregate">150,000円</td>
+                        <td>50,000円</td><td>50,000円</td><td class="cell-future" title="予測: 予算">50,000円</td>
+                        <td class="cell-aggregate">150,000円</td>
+                        <td class="cell-half">300,000円</td>
+                        <td class="cell-year">520,000円</td>
+                        <td class="cell-forecast-year">520,000円</td>
+                    </tr>
+                    <!-- 経費計 -->
+                    <tr class="row-summary">
+                        <td class="row-label">経費計</td>
+                        <td>696,000円</td><td>696,000円</td><td>696,000円</td><td class="cell-aggregate">2,088,000円</td>
+                        <td>696,000円</td><td>723,084円</td><td>724,517円</td><td class="cell-aggregate">2,143,601円</td>
+                        <td class="cell-half">4,231,601円</td>
+                        <td>724,959円</td><td>725,433円</td><td>726,293円</td><td class="cell-aggregate">2,176,685円</td>
+                        <td>726,429円</td><td>727,046円</td><td class="cell-future" title="予測: 各項目の予測値合計">727,895円</td>
+                        <td class="cell-aggregate">2,181,370円</td>
+                        <td class="cell-half">4,358,055円</td>
+                        <td class="cell-year">8,589,656円</td>
+                        <td class="cell-forecast-year">8,589,656円</td>
+                    </tr>
+                    <!-- 営業利益 -->
+                    <tr class="row-summary">
+                        <td class="row-label">営業利益</td>
+                        <td>-696,000円</td><td>-696,000円</td><td>-696,000円</td><td class="cell-aggregate">-2,088,000円</td>
+                        <td>-696,000円</td><td>-620,292円</td><td>-573,963円</td><td class="cell-aggregate">-1,890,255円</td>
+                        <td class="cell-half">-3,978,255円</td>
+                        <td>-559,659円</td><td>-544,327円</td><td>-516,543円</td><td class="cell-aggregate">-1,620,529円</td>
+                        <td>-512,129円</td><td>-492,165円</td><td class="cell-future" title="予測: 売上 - 経費計">-464,731円</td>
+                        <td class="cell-aggregate">-1,469,025円</td>
+                        <td class="cell-half">-3,089,554円</td>
+                        <td class="cell-year">-7,067,809円</td>
+                        <td class="cell-forecast-year">-7,067,809円</td>
+                    </tr>
+                    <!-- 累計利益 -->
+                    <tr class="row-summary">
+                        <td class="row-label">累計利益</td>
+                        <td>-696,000円</td><td>-1,392,000円</td><td>-2,088,000円</td><td class="cell-aggregate">-2,088,000円</td>
+                        <td>-2,784,000円</td><td>-3,404,292円</td><td>-3,978,255円</td><td class="cell-aggregate">-3,978,255円</td>
+                        <td class="cell-half">-3,978,255円</td>
+                        <td>-4,537,914円</td><td>-5,082,241円</td><td>-5,598,784円</td><td class="cell-aggregate">-5,598,784円</td>
+                        <td>-6,110,913円</td><td>-6,603,078円</td><td class="cell-future">-7,067,809円</td>
+                        <td class="cell-aggregate">-7,067,809円</td>
+                        <td class="cell-half">-7,067,809円</td>
+                        <td class="cell-year">-7,067,809円</td>
+                        <td class="cell-forecast-year">-7,067,809円</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <p class="text-xs text-gray-500 mt-3 leading-relaxed">
+            ※ 黄色 = 売上、青 = 会員数、緑 = 集計（経費計・営業利益・累計利益）。背景色付き列は四半期/半期/通期の集計。<br>
+            ※ <span class="text-gray-600 italic">灰色イタリック</span>は予測値（予算 → 完了月平均 → 空欄の優先順で算出）。<span class="text-orange-700 font-semibold">「着地予測」</span>列 = 確定月実績 + 未確定月予測の合算。<br>
+            ※ 表示モード「予算」では各セルが予算値に、「比較」では下記サマリーが拡大表示されます。
+        </p>
+
+        <!-- 通期サマリー: 予実比較 -->
+        <div class="summary-card">
+            <h3>📊 年度サマリー: 予算実績比較</h3>
+            <p class="text-xs text-gray-500 mb-3">
+                確定月（11ヶ月）の実績計と予算計を比較。差異 = 実績計 − 予算計（プラスは予算超過/節約、マイナスは予算未達/超過）。達成率 = 実績計 ÷ 予算計 × 100%。
+            </p>
+            <table class="summary-table">
+                <thead>
+                    <tr>
+                        <th>項目</th>
+                        <th>実績計</th>
+                        <th>予算計</th>
+                        <th>差異</th>
+                        <th>達成率</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr class="cat-revenue"><td>売上</td><td>1,258,683円</td><td>1,800,000円</td><td class="diff-neg">-541,317円</td><td>69.9%</td></tr>
+                    <tr class="cat-member"><td>会員数（4月末）</td><td>22人</td><td>25人</td><td class="diff-neg">-3人</td><td>88.0%</td></tr>
+                    <tr><td>賃料</td><td>2,200,000円</td><td>2,200,000円</td><td>0円</td><td>100.0%</td></tr>
+                    <tr><td>委託費</td><td>4,400,000円</td><td>4,400,000円</td><td>0円</td><td>100.0%</td></tr>
+                    <tr><td>委託費追加</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+                    <tr><td>減価償却</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+                    <tr><td>ロイヤリティ</td><td>37,761円</td><td>54,000円</td><td class="diff-neg">-16,239円</td><td>69.9%</td></tr>
+                    <tr><td>研修システム</td><td>165,000円</td><td>165,000円</td><td>0円</td><td>100.0%</td></tr>
+                    <tr><td>web運用</td><td>165,000円</td><td>165,000円</td><td>0円</td><td>100.0%</td></tr>
+                    <tr><td>管理システム</td><td>396,000円</td><td>396,000円</td><td>0円</td><td>100.0%</td></tr>
+                    <tr><td>決済手数料</td><td>44,054円</td><td>63,000円</td><td class="diff-neg">-18,946円</td><td>69.9%</td></tr>
+                    <tr><td>広告費</td><td>470,000円</td><td>520,000円</td><td class="diff-pos">+50,000円</td><td>90.4%</td></tr>
+                    <tr><td>水道光熱費</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+                    <tr><td>雑費</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+                    <tr><td>保険</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+                    <tr><td>その他</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+                    <tr class="cat-summary"><td>経費計</td><td>7,877,815円</td><td>7,963,000円</td><td class="diff-pos">+85,185円</td><td>98.9%</td></tr>
+                    <tr class="cat-summary"><td>営業利益</td><td>-6,619,132円</td><td>-6,163,000円</td><td class="diff-neg">-456,132円</td><td>未達</td></tr>
+                    <tr class="cat-summary"><td>累計利益</td><td>-6,619,132円</td><td>-6,163,000円</td><td class="diff-neg">-456,132円</td><td>未達</td></tr>
+                </tbody>
+            </table>
+            <p class="text-xs text-gray-500 mt-3">
+                ※ サマリーは「確定月のみ」の実績計と、「確定月の予算」の合計値で比較。未確定月（5月）は別途「着地予測」列で参照可能。
+            </p>
+        </div>
+    </div>
+</body>
+</html>

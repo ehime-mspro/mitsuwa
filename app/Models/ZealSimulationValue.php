@@ -9,8 +9,9 @@ use Illuminate\Database\Eloquent\Model;
  * ZEAL 試算表セル値
  *
  * (simulation_id, category_id, year_month) で一意。
- * amount は null（未入力）/ 0 / 正の整数 / 負の整数 のいずれか。
- * is_manual_override は売上・会員数の実績連動値を手動上書きしているかのフラグ。
+ * - amount は実績、null（未入力）/ 0 / 正の整数 / 負の整数 のいずれか
+ * - budget_amount は予算、同上（実績とは独立管理）
+ * - is_manual_override は売上・会員数の実績連動値を手動上書きしているかのフラグ
  */
 class ZealSimulationValue extends Model
 {
@@ -21,6 +22,7 @@ class ZealSimulationValue extends Model
         'category_id',
         'year_month',
         'amount',
+        'budget_amount',
         'is_manual_override',
     ];
 
@@ -28,6 +30,7 @@ class ZealSimulationValue extends Model
     {
         return [
             'amount'             => 'integer',
+            'budget_amount'      => 'integer',
             'is_manual_override' => 'boolean',
         ];
     }
