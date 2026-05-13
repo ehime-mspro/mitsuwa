@@ -45,9 +45,42 @@
         }
         return number_format($v) . '円';
     };
+
+    // Phase 5: 編集モード用 Alpine 設定（売上連動・集計行のライブ計算）
+    // - categories: JS の buildMatrix と同等のロジック用メタ情報
+    // - initialValues: 手入力/固定額タイプのセルだけを初期セット（売上連動・集計は派生算出）
+    $alpineConfig = null;
+    if ($editable) {
+        $alpineCategoriesData = [];
+        foreach ($categories as $cat) {
+            $alpineCategoriesData[] = [
+                'id'           => (string) $cat->id,
+                'code'         => $cat->code,
+                'group_type'   => $cat->group_type->value,
+                'calc_type'    => $cat->calc_type->value,
+                'rate_percent' => $cat->rate_percent !== null ? (float) $cat->rate_percent : null,
+            ];
+        }
+        $alpineInitialValues = [];
+        foreach ($categories as $cat) {
+            if ($cat->calc_type === ZealSimulationCalcType::Manual || $cat->calc_type === ZealSimulationCalcType::Fixed) {
+                $cellValues = [];
+                foreach ($months as $ym) {
+                    $cellValues[$ym] = $matrix[$cat->id][$ym];
+                }
+                $alpineInitialValues[(string) $cat->id] = (object) $cellValues;
+            }
+        }
+        $alpineConfig = [
+            'categories'    => $alpineCategoriesData,
+            'months'        => array_values($months),
+            'initialValues' => (object) $alpineInitialValues,
+        ];
+    }
 @endphp
 
-<div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; overflow-x: auto;">
+<div @if($editable) x-data="zealSimulationMatrix({{ \Illuminate\Support\Js::from($alpineConfig) }})" @endif
+     style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; overflow-x: auto;">
     <table style="border-collapse: collapse; min-width: 100%; font-size: 12px;">
         <thead>
             <tr>
@@ -109,11 +142,16 @@
                         @endphp
                         <td style="padding: 8px 10px; text-align: right; background: {{ $cellBg }}; color: {{ $textColor }}; font-weight: {{ $isBold ? 700 : 400 }}; border-right: 1px solid #f3f4f6; white-space: nowrap; position: relative;">
                             @if($editable && !$isReadOnly)
+                                {{-- 手入力・固定額: Alpine x-model でリアルタイム反映 --}}
                                 <input type="number" name="values[{{ $cat->id }}][{{ $ym }}]"
                                        value="{{ $amount }}"
+                                       x-model.number="values['{{ $cat->id }}']['{{ $ym }}']"
                                        inputmode="numeric"
                                        title="{{ $isOverride ? '手動上書き済み（実績反映でスキップ）' : '' }}"
                                        style="width: 100%; max-width: 90px; padding: 4px 6px; border: 1px solid {{ $inputBorder }}; border-radius: 4px; text-align: right; font-size: 12px;">
+                            @elseif($editable)
+                                {{-- 売上連動・集計行: Alpine matrix からリアルタイム計算値を表示 --}}
+                                <span x-text="formatAmount(matrix['{{ $cat->id }}']['{{ $ym }}'], {{ $isMember ? 'true' : 'false' }})">{!! $fmtAmount($amount, $isMember) !!}</span>
                             @else
                                 {!! $fmtAmount($amount, $isMember) !!}
                             @endif
@@ -129,12 +167,20 @@
                                 $aggVal = $matrix[$cat->id][$aggKey] ?? null;
                             @endphp
                             <td style="padding: 8px 10px; text-align: right; background: {{ $aggBgColors[$aggKey] }}; font-weight: 700; color: {{ $textColor }}; border-right: 1px solid #d1d5db; white-space: nowrap;">
-                                {!! $fmtAmount($aggVal, $isMember) !!}
+                                @if($editable)
+                                    <span x-text="formatAmount(matrix['{{ $cat->id }}']['{{ $aggKey }}'], {{ $isMember ? 'true' : 'false' }})">{!! $fmtAmount($aggVal, $isMember) !!}</span>
+                                @else
+                                    {!! $fmtAmount($aggVal, $isMember) !!}
+                                @endif
                             </td>
                             @if($ym === $months[5])
                                 @php $h1Val = $matrix[$cat->id]['H1'] ?? null; @endphp
                                 <td style="padding: 8px 10px; text-align: right; background: {{ $aggBgColors['H1'] }}; font-weight: 700; color: {{ $textColor }}; border-right: 1px solid #d1d5db; white-space: nowrap;">
-                                    {!! $fmtAmount($h1Val, $isMember) !!}
+                                    @if($editable)
+                                        <span x-text="formatAmount(matrix['{{ $cat->id }}']['H1'], {{ $isMember ? 'true' : 'false' }})">{!! $fmtAmount($h1Val, $isMember) !!}</span>
+                                    @else
+                                        {!! $fmtAmount($h1Val, $isMember) !!}
+                                    @endif
                                 </td>
                             @elseif($ym === $months[11])
                                 @php
@@ -142,10 +188,18 @@
                                     $yearVal = $matrix[$cat->id]['YEAR'] ?? null;
                                 @endphp
                                 <td style="padding: 8px 10px; text-align: right; background: {{ $aggBgColors['H2'] }}; font-weight: 700; color: {{ $textColor }}; border-right: 1px solid #d1d5db; white-space: nowrap;">
-                                    {!! $fmtAmount($h2Val, $isMember) !!}
+                                    @if($editable)
+                                        <span x-text="formatAmount(matrix['{{ $cat->id }}']['H2'], {{ $isMember ? 'true' : 'false' }})">{!! $fmtAmount($h2Val, $isMember) !!}</span>
+                                    @else
+                                        {!! $fmtAmount($h2Val, $isMember) !!}
+                                    @endif
                                 </td>
                                 <td style="padding: 8px 10px; text-align: right; background: {{ $aggBgColors['YEAR'] }}; font-weight: 800; color: {{ $textColor }}; white-space: nowrap;">
-                                    {!! $fmtAmount($yearVal, $isMember) !!}
+                                    @if($editable)
+                                        <span x-text="formatAmount(matrix['{{ $cat->id }}']['YEAR'], {{ $isMember ? 'true' : 'false' }})">{!! $fmtAmount($yearVal, $isMember) !!}</span>
+                                    @else
+                                        {!! $fmtAmount($yearVal, $isMember) !!}
+                                    @endif
                                 </td>
                             @endif
                         @endif
