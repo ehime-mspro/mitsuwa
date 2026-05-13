@@ -1372,9 +1372,10 @@ Route::middleware(['auth', 'password.change'])->group(function () {
         | ZEAL 経営試算表（6ルート）
         |------------------------------------------------------------------
         */
-        Route::get('/simulations', [\App\Http\Controllers\Zeal\SimulationController::class, 'index'])
-            ->name('zeal.simulations.index');
+        // 経営試算表は機密財務データのため経営層・管理者のみ閲覧可
         Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/simulations', [\App\Http\Controllers\Zeal\SimulationController::class, 'index'])
+                ->name('zeal.simulations.index');
             Route::get('/simulations/create', [\App\Http\Controllers\Zeal\SimulationController::class, 'create'])
                 ->name('zeal.simulations.create');
             Route::post('/simulations', [\App\Http\Controllers\Zeal\SimulationController::class, 'store'])
@@ -1388,9 +1389,9 @@ Route::middleware(['auth', 'password.change'])->group(function () {
                 ->name('zeal.simulations.sync-actuals.preview');
             Route::post('/simulations/{simulation}/sync-actuals', [\App\Http\Controllers\Zeal\SimulationController::class, 'syncActuals'])
                 ->name('zeal.simulations.sync-actuals');
+            Route::get('/simulations/{simulation}', [\App\Http\Controllers\Zeal\SimulationController::class, 'show'])
+                ->name('zeal.simulations.show');
         });
-        Route::get('/simulations/{simulation}', [\App\Http\Controllers\Zeal\SimulationController::class, 'show'])
-            ->name('zeal.simulations.show');
         Route::delete('/simulations/{simulation}', [\App\Http\Controllers\Zeal\SimulationController::class, 'destroy'])
             ->middleware('role:executive')
             ->name('zeal.simulations.destroy');

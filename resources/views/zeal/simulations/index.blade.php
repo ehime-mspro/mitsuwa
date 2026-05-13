@@ -10,12 +10,22 @@
 @endsection
 
 @section('content')
+    @php
+        // 編集権限: executive / manager のみ。削除は executive のみ
+        // 注意: User->role は UserRole Enum。Enum===Enum か Enum::method() で比較する
+        $user      = auth()->user();
+        $canEdit   = $user && $user->role->isManagerOrAbove();
+        $canDelete = $user && $user->role->isExecutive();
+    @endphp
+
     <div class="flex items-center justify-between mb-5">
         <h1 class="text-lg font-bold text-gray-900">経営試算表（年度別）</h1>
-        <a href="{{ route('zeal.simulations.create') }}"
-           style="display: inline-flex; align-items: center; padding: 8px 16px; background: #059669; color: white; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; text-decoration: none;">
-            + 新規作成
-        </a>
+        @if($canEdit)
+            <a href="{{ route('zeal.simulations.create') }}"
+               style="display: inline-flex; align-items: center; padding: 8px 16px; background: #059669; color: white; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; text-decoration: none;">
+                + 新規作成
+            </a>
+        @endif
     </div>
 
     <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 14px 18px; margin-bottom: 24px;">
@@ -52,15 +62,19 @@
                         <td style="padding: 14px 16px; text-align: center; white-space: nowrap;">
                             <a href="{{ route('zeal.simulations.show', $sim) }}"
                                style="display: inline-block; padding: 4px 12px; font-size: 12px; font-weight: 600; color: #1d4ed8; border: 1px solid #1d4ed8; border-radius: 4px; text-decoration: none; background: #fff;">詳細</a>
-                            <a href="{{ route('zeal.simulations.edit', $sim) }}"
-                               style="display: inline-block; padding: 4px 12px; font-size: 12px; font-weight: 600; color: #059669; border: 1px solid #059669; border-radius: 4px; text-decoration: none; background: #fff; margin-left: 4px;">編集</a>
-                            <form action="{{ route('zeal.simulations.destroy', $sim) }}" method="POST" style="display: inline-block; margin-left: 4px;"
-                                  onsubmit="return confirm('{{ $sim->fiscal_year }}年度の試算表を削除しますか？月別データも全て削除されます。');">
-                                @csrf
-                                @method('DELETE')
-                                <button type="submit"
-                                        style="padding: 4px 12px; font-size: 12px; font-weight: 600; color: #dc2626; border: 1px solid #dc2626; border-radius: 4px; background: #fff; cursor: pointer;">削除</button>
-                            </form>
+                            @if($canEdit)
+                                <a href="{{ route('zeal.simulations.edit', $sim) }}"
+                                   style="display: inline-block; padding: 4px 12px; font-size: 12px; font-weight: 600; color: #059669; border: 1px solid #059669; border-radius: 4px; text-decoration: none; background: #fff; margin-left: 4px;">編集</a>
+                            @endif
+                            @if($canDelete)
+                                <form action="{{ route('zeal.simulations.destroy', $sim) }}" method="POST" style="display: inline-block; margin-left: 4px;"
+                                      onsubmit="return confirm('{{ $sim->fiscal_year }}年度の試算表を削除しますか？月別データも全て削除されます。');">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="submit"
+                                            style="padding: 4px 12px; font-size: 12px; font-weight: 600; color: #dc2626; border: 1px solid #dc2626; border-radius: 4px; background: #fff; cursor: pointer;">削除</button>
+                                </form>
+                            @endif
                         </td>
                     </tr>
                 @empty

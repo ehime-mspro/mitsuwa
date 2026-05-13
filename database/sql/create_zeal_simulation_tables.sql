@@ -70,9 +70,9 @@ CREATE TABLE IF NOT EXISTS `zeal_simulation_values` (
 INSERT INTO `zeal_simulation_categories`
   (`code`, `name`, `group_type`, `calc_type`, `default_amount`, `rate_percent`, `sort_order`, `is_system`, `is_active`, `created_at`, `updated_at`)
 VALUES
-  -- 売上・会員
-  ('revenue',        '売上',       'revenue', 'manual',         NULL,    NULL,    10, 0, 1, NOW(), NOW()),
-  ('member_count',   '会員数',     'member',  'manual',         NULL,    NULL,    20, 0, 1, NOW(), NOW()),
+  -- 売上・会員（実績連動の参照キーなので is_system=1 で削除・コード変更・グループ変更を禁止）
+  ('revenue',        '売上',       'revenue', 'manual',         NULL,    NULL,    10, 1, 1, NOW(), NOW()),
+  ('member_count',   '会員数',     'member',  'manual',         NULL,    NULL,    20, 1, 1, NOW(), NOW()),
   -- 固定費（PDF の月額デフォルト）
   ('rent',           '賃料',       'expense', 'fixed',          200000,  NULL,    30, 0, 1, NOW(), NOW()),
   ('depreciation',   '減価償却',   'expense', 'manual',         NULL,    NULL,    40, 0, 1, NOW(), NOW()),

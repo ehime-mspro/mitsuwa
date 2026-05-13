@@ -14,7 +14,8 @@
 @section('content')
     @php
         // 実績反映ボタンを表示してよい権限か（executive / manager）
-        $canSyncActuals = auth()->user() && in_array(auth()->user()->role, ['executive', 'manager'], true);
+        // 注意: User->role は UserRole Enum なので、Enum::method() か Enum===Enum で比較する
+        $canSyncActuals = auth()->user() && auth()->user()->role->isManagerOrAbove();
         $previewUrl     = route('zeal.simulations.sync-actuals.preview', $simulation);
         $applyUrl       = route('zeal.simulations.sync-actuals', $simulation);
     @endphp
@@ -93,15 +94,13 @@
                                                     <td style="padding: 5px 8px; border-bottom: 1px solid #f3f4f6; text-align: right; color: #374151;" x-text="row.current === null ? '—' : row.current.toLocaleString()"></td>
                                                     <td style="padding: 5px 8px; border-bottom: 1px solid #f3f4f6; text-align: right; font-weight: 600; color: #111827;" x-text="row.actual.toLocaleString()"></td>
                                                     <td style="padding: 5px 8px; border-bottom: 1px solid #f3f4f6; text-align: center;">
-                                                        <template x-if="row.override">
-                                                            <span style="display:inline-block; padding:1px 6px; background:#fef3c7; color:#92400e; border-radius:4px; font-weight:600; font-size:11px;">維持</span>
-                                                        </template>
-                                                        <template x-if="!row.override && row.current === row.actual">
-                                                            <span style="display:inline-block; padding:1px 6px; background:#f3f4f6; color:#6b7280; border-radius:4px; font-weight:600; font-size:11px;">同値</span>
-                                                        </template>
-                                                        <template x-if="!row.override && row.current !== row.actual">
-                                                            <span style="display:inline-block; padding:1px 6px; background:#dbeafe; color:#1e40af; border-radius:4px; font-weight:600; font-size:11px;">更新</span>
-                                                        </template>
+                                                        {{-- x-for 内では x-show 推奨（CLAUDE.md ルール: template x-if は x-for / SVG 内禁止） --}}
+                                                        <span x-show="row.override"
+                                                              style="display:inline-block; padding:1px 6px; background:#fef3c7; color:#92400e; border-radius:4px; font-weight:600; font-size:11px;">維持</span>
+                                                        <span x-show="!row.override && row.current === row.actual"
+                                                              style="display:inline-block; padding:1px 6px; background:#f3f4f6; color:#6b7280; border-radius:4px; font-weight:600; font-size:11px;">同値</span>
+                                                        <span x-show="!row.override && row.current !== row.actual"
+                                                              style="display:inline-block; padding:1px 6px; background:#dbeafe; color:#1e40af; border-radius:4px; font-weight:600; font-size:11px;">更新</span>
                                                     </td>
                                                 </tr>
                                             </template>
@@ -120,9 +119,9 @@
                     </button>
                     <form :action="applyUrl" method="POST" @submit="submitting = true">
                         @csrf
+                        {{-- :style 単一バインディング（CLAUDE.md ルール: style= と :style= の同一要素併用禁止） --}}
                         <button type="submit" :disabled="loading || submitting || !rows"
-                                :style="(loading || submitting || !rows) ? 'opacity:0.5;cursor:not-allowed;' : ''"
-                                style="padding: 6px 14px; font-size: 13px; font-weight: 600; color: #fff; border: 1px solid #1e40af; border-radius: 6px; background: #1e40af; cursor: pointer;">
+                                :style="'padding: 6px 14px; font-size: 13px; font-weight: 600; color: #fff; border: 1px solid #1e40af; border-radius: 6px; background: #1e40af; ' + ((loading || submitting || !rows) ? 'opacity:0.5;cursor:not-allowed;' : 'cursor:pointer;')">
                             <span x-show="!submitting">実績を反映する</span>
                             <span x-show="submitting" x-cloak>処理中…</span>
                         </button>

@@ -14,7 +14,9 @@ use Illuminate\Support\Facades\DB;
  * ZEAL 試算表 項目マスター管理
  *
  * 賃料・委託費・売上等の縦軸項目を管理する。
- * is_system=1 の項目（経費計・営業利益・累計利益）は削除・グループ変更不可。
+ * is_system=1 の項目は削除不可・コード/グループ/計算タイプ変更不可:
+ *   - revenue / member_count: 実績連動の参照キー（syncActuals が code で検索）
+ *   - expense_total / operating_profit / cumulative_profit: 集計行（buildMatrix が code で検索）
  */
 class ZealSimulationCategoryController extends Controller
 {
@@ -92,9 +94,10 @@ class ZealSimulationCategoryController extends Controller
         $category  = $zealSimulationCategory;
         $validated = $this->validateInput($request, $category);
 
-        // システム固定項目はグループと計算タイプを変更不可
+        // システム固定項目はコード・グループ・計算タイプを変更不可
+        // （code 改ざんで syncActuals / buildMatrix が参照を失うのを防ぐ）
         if ($category->is_system) {
-            unset($validated['group_type'], $validated['calc_type']);
+            unset($validated['code'], $validated['group_type'], $validated['calc_type']);
         }
 
         $validated['is_active'] = $request->boolean('is_active', true);
