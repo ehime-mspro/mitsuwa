@@ -132,12 +132,6 @@
         </div>
     </div>
 
-    @if(session('success'))
-        <div style="background: #ecfdf5; border: 1px solid #6ee7b7; color: #065f46; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: 13px;">
-            {{ session('success') }}
-        </div>
-    @endif
-
     @if($simulation->notes)
         <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; font-size: 13px; color: #92400e; white-space: pre-wrap;">{{ $simulation->notes }}</div>
     @endif

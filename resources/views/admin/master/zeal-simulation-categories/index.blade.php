@@ -46,17 +46,6 @@
         <span x-text="reorderMessage"></span>
     </div>
 
-    @if(session('success'))
-        <div style="background: #ecfdf5; border: 1px solid #6ee7b7; color: #065f46; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: 13px;">
-            {{ session('success') }}
-        </div>
-    @endif
-    @if(session('error'))
-        <div style="background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: 13px;">
-            {{ session('error') }}
-        </div>
-    @endif
-
     <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden;">
         <table style="width: 100%; border-collapse: collapse;">
             <thead>
