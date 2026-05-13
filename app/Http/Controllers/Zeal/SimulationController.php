@@ -386,7 +386,11 @@ class SimulationController extends Controller
             $overrideMap[$cat->id] = array_fill_keys($months, false);
         }
         foreach ($cells as $cell) {
-            if (isset($matrix[$cell->category_id][$cell->year_month])) {
+            // 注意: isset() は null 値のキーに対して false を返すため、
+            // array_fill_keys($months, null) で初期化したセルを上書きできない（PHP 挙動）。
+            // 内側は array_key_exists() でキー存在を判定し、null 初期値のセルにも代入する。
+            if (isset($matrix[$cell->category_id])
+                && array_key_exists($cell->year_month, $matrix[$cell->category_id])) {
                 $matrix[$cell->category_id][$cell->year_month]      = $cell->amount;
                 $overrideMap[$cell->category_id][$cell->year_month] = (bool) $cell->is_manual_override;
             }
