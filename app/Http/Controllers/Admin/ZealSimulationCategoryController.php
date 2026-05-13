@@ -25,7 +25,16 @@ class ZealSimulationCategoryController extends Controller
     {
         $categories = ZealSimulationCategory::orderBy('sort_order')->orderBy('id')->get();
 
-        return view('admin.master.zeal-simulation-categories.index', compact('categories'));
+        // Alpine.js の @json() で関数呼び出し禁止のため、JS 用データを事前整形
+        $categoriesForJs = [];
+        foreach ($categories as $cat) {
+            $categoriesForJs[] = [
+                'id'   => $cat->id,
+                'name' => $cat->name,
+            ];
+        }
+
+        return view('admin.master.zeal-simulation-categories.index', compact('categories', 'categoriesForJs'));
     }
 
     /**
@@ -165,6 +174,32 @@ class ZealSimulationCategoryController extends Controller
         return redirect()
             ->route('admin.master.zeal-simulation-categories.index')
             ->with('success', '「' . $name . '」を削除しました。');
+    }
+
+    /**
+     * 並び替え保存（Ajax）
+     *
+     * ドラッグ&ドロップで並べ替えた項目の ID 配列を受け取り、
+     * 配列順序に従って sort_order を 10 刻みで再採番する。
+     * Route: POST /admin/master/zeal-simulation-categories/reorder
+     */
+    public function reorder(Request $request)
+    {
+        $validated = $request->validate([
+            'ids'   => 'required|array',
+            'ids.*' => 'required|integer|exists:zeal_simulation_categories,id',
+        ]);
+
+        DB::transaction(function () use ($validated) {
+            // 10 刻みで再採番（後で間に挿入しやすくする）
+            foreach ($validated['ids'] as $index => $id) {
+                ZealSimulationCategory::where('id', $id)->update([
+                    'sort_order' => ($index + 1) * 10,
+                ]);
+            }
+        });
+
+        return response()->json(['success' => true]);
     }
 
     /**

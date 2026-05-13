@@ -136,6 +136,8 @@ Route::middleware(['auth', 'password.change'])->group(function () {
             ->name('admin.master.dad-specialties.destroy');
 
         // ZEAL 試算表 項目マスター
+        Route::post('/master/zeal-simulation-categories/reorder', [\App\Http\Controllers\Admin\ZealSimulationCategoryController::class, 'reorder'])
+            ->name('admin.master.zeal-simulation-categories.reorder');
         Route::get('/master/zeal-simulation-categories', [\App\Http\Controllers\Admin\ZealSimulationCategoryController::class, 'index'])
             ->name('admin.master.zeal-simulation-categories.index');
         Route::get('/master/zeal-simulation-categories/create', [\App\Http\Controllers\Admin\ZealSimulationCategoryController::class, 'create'])
