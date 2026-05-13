@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>ZEAL 経営試算表 — モック一覧</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif; background: #f3f4f6; padding: 32px; }
+
+        .mock-card {
+            background: white; border: 1px solid #e5e7eb; border-radius: 10px;
+            padding: 20px; transition: all .15s;
+            display: block; text-decoration: none; color: inherit;
+        }
+        .mock-card:hover {
+            box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+            transform: translateY(-1px);
+            border-color: #6ee7b7;
+        }
+        .mock-card .num {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 28px; height: 28px; border-radius: 14px;
+            background: #047857; color: white; font-weight: 700; font-size: 13px;
+            margin-right: 10px;
+        }
+        .mock-card h3 { font-size: 16px; font-weight: 700; color: #111827; margin-bottom: 6px; }
+        .mock-card .meta { font-size: 11px; color: #6b7280; margin-bottom: 10px; }
+        .mock-card .desc { font-size: 13px; color: #374151; line-height: 1.6; margin-bottom: 12px; }
+        .mock-card .feat {
+            display: inline-block; padding: 2px 8px; margin-right: 4px; margin-bottom: 4px;
+            font-size: 10px; font-weight: 600; border-radius: 3px;
+        }
+        .feat-interactive { background: #ecfdf5; color: #065f46; }
+        .feat-static      { background: #f3f4f6; color: #6b7280; }
+        .feat-modal       { background: #eff6ff; color: #1e40af; }
+    </style>
+</head>
+<body>
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-xl font-bold text-gray-900 mb-2">ZEAL 経営試算表 — モック一覧</h1>
+        <p class="text-sm text-gray-600 mb-6">予算機能 + 未確定月の予測表示の UI モック。各カードをクリックして確認してください。</p>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+            <a href="show-with-budget.html" class="mock-card">
+                <h3><span class="num">1</span>詳細画面（show）</h3>
+                <div class="meta">show-with-budget.html</div>
+                <div class="desc">
+                    月別マトリクス（未確定月=灰色イタリック、通期列=実績+予測の合算）+ 通期予実比較サマリー。
+                    ヘッダーの<strong>「実績 / 予算 / 比較」</strong>ボタンで表示が切り替わる。
+                </div>
+                <div>
+                    <span class="feat feat-interactive">✓ 3モード切替</span>
+                    <span class="feat feat-interactive">✓ 未確定月予測</span>
+                    <span class="feat feat-interactive">✓ 通期サマリー</span>
+                </div>
+            </a>
+
+            <a href="edit-with-budget.html" class="mock-card">
+                <h3><span class="num">2</span>編集画面（edit）</h3>
+                <div class="meta">edit-with-budget.html</div>
+                <div class="desc">
+                    <strong>「実績編集」/「予算編集」</strong>タブで入力対象を切替。緑(実績)/紫(予算)のテーマ色。
+                    Phase 5 のリアルタイム計算は両モードで動作。
+                </div>
+                <div>
+                    <span class="feat feat-interactive">✓ 実績/予算 タブ切替</span>
+                    <span class="feat feat-interactive">✓ テーマ色変更</span>
+                </div>
+            </a>
+
+            <a href="sync-actuals-modal.html" class="mock-card">
+                <h3><span class="num">3</span>実績反映モーダル</h3>
+                <div class="meta">sync-actuals-modal.html</div>
+                <div class="desc">
+                    完了月のみデフォルト反映。<strong>「当月（5月）も反映する」</strong>チェックで暫定値を含めるかオプション切替。
+                    プレビューも変更状況に応じて行表示が変わる。
+                </div>
+                <div>
+                    <span class="feat feat-modal">✓ モーダル</span>
+                    <span class="feat feat-interactive">✓ 当月オプション切替</span>
+                </div>
+            </a>
+
+            <a href="comparison-summary.html" class="mock-card">
+                <h3><span class="num">4</span>通期サマリー（拡大表示）</h3>
+                <div class="meta">comparison-summary.html</div>
+                <div class="desc">
+                    19 項目 × 4 列（実績計 / 予算計 / 差異 / 達成率）。カテゴリグループ化（固定費・売上連動費・変動費）+ 達成率バー（緑/黄/赤）。
+                </div>
+                <div>
+                    <span class="feat feat-static">単独表示（静的）</span>
+                    <span class="feat feat-interactive">達成率バー</span>
+                </div>
+            </a>
+
+        </div>
+
+        <div class="mt-8 p-4 bg-blue-50 border border-blue-200 rounded text-sm text-blue-800 leading-relaxed">
+            <strong>📌 確認ポイント:</strong><br>
+            • <strong>① 詳細画面</strong>: ヘッダー右の「実績/予算/比較」ボタンをクリック → 表の内容が切り替わるか、比較モードでサマリーが強調されるか<br>
+            • <strong>② 編集画面</strong>: 上部「実績編集」/「予算編集」タブをクリック → テーブルとテーマ色が切替わるか<br>
+            • <strong>③ 実績反映モーダル</strong>: 黄色枠の「当月（5月）も反映する」チェック → プレビュー行と反映対象月数が変わるか<br>
+            • <strong>④ 通期サマリー</strong>: 各項目の差異・達成率の表示、達成率バーの色分けが分かるか
+        </div>
+    </div>
+</body>
+</html>

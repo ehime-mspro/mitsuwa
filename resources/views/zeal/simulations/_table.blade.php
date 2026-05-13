@@ -4,7 +4,7 @@
    - $matrix:       [categoryId][yearMonth|aggKey] => 表示用値（過去=実績、未確定=予測）
    - $budgetMatrix: [categoryId][yearMonth|aggKey] => 予算値（budget mode で使用）
    - $months:       string[] 12 ヶ月の YYYY-MM
-   - $aggregates:   string[] ['Q1','Q2','H1','Q3','Q4','H2','YEAR','FORECAST_YEAR']
+   - $aggregates:   string[] ['Q1','Q2','H1','Q3','Q4','H2','YEAR']
    - $overrideMap:  bool[][] [catId][ym] => is_manual_override
    - $cellMetaMap:  string[][] [catId][ym] => 'actual'|'forecast-budget'|'forecast-avg'|'forecast-mixed'|null
    - $editable:     bool true=edit, false=show
@@ -23,25 +23,23 @@
 
     // 集計列のラベル
     $aggLabels = [
-        'Q1'            => '1Q',
-        'Q2'            => '2Q',
-        'H1'            => '上半期',
-        'Q3'            => '3Q',
-        'Q4'            => '4Q',
-        'H2'            => '下半期',
-        'YEAR'          => '通期',
-        'FORECAST_YEAR' => '着地予測',
+        'Q1'   => '1Q',
+        'Q2'   => '2Q',
+        'H1'   => '上半期',
+        'Q3'   => '3Q',
+        'Q4'   => '4Q',
+        'H2'   => '下半期',
+        'YEAR' => '通期',
     ];
     // 集計列の背景色
     $aggBgColors = [
-        'Q1'            => '#f3f4f6',
-        'Q2'            => '#f3f4f6',
-        'H1'            => '#dbeafe',
-        'Q3'            => '#f3f4f6',
-        'Q4'            => '#f3f4f6',
-        'H2'            => '#dbeafe',
-        'YEAR'          => '#d1fae5',
-        'FORECAST_YEAR' => '#fff7ed',
+        'Q1'   => '#f3f4f6',
+        'Q2'   => '#f3f4f6',
+        'H1'   => '#dbeafe',
+        'Q3'   => '#f3f4f6',
+        'Q4'   => '#f3f4f6',
+        'H2'   => '#dbeafe',
+        'YEAR' => '#d1fae5',
     ];
     // 月ラベル
     $monthLabel = function ($ym) {
@@ -144,18 +142,12 @@
                         <th style="background: {{ $editable ? $editTheme['quarter'] : '#065f46' }}; color: white; padding: 10px 10px; text-align: center; font-weight: 700; min-width: 90px; white-space: nowrap; border-right: 1px solid #064e3b;">
                             {{ $aggLabels[$aggKey] }}
                         </th>
-                        {{-- 上半期/下半期/通期/着地予測 --}}
+                        {{-- 上半期/下半期/通期 --}}
                         @if($ym === $months[5])
                             <th style="background: {{ $editable ? $editTheme['half'] : '#1e40af' }}; color: white; padding: 10px 10px; text-align: center; font-weight: 700; min-width: 100px; white-space: nowrap; border-right: 1px solid #1e3a8a;">上半期</th>
                         @elseif($ym === $months[11])
                             <th style="background: {{ $editable ? $editTheme['half'] : '#1e40af' }}; color: white; padding: 10px 10px; text-align: center; font-weight: 700; min-width: 100px; white-space: nowrap; border-right: 1px solid #1e3a8a;">下半期</th>
-                            <th style="background: {{ $editable ? $editTheme['year'] : '#047857' }}; color: white; padding: 10px 10px; text-align: center; font-weight: 700; min-width: 100px; white-space: nowrap; border-right: 1px solid #065f46;">通期</th>
-                            @if(!$editable && !$isBudgetMode)
-                                {{-- 着地予測列（show actual モードのみ） --}}
-                                <th style="background: #f97316; color: white; padding: 10px 10px; text-align: center; font-weight: 700; min-width: 110px; white-space: nowrap;">
-                                    着地予測<br><span style="font-size: 9px; font-weight: 500; opacity: 0.9;">実績+予測</span>
-                                </th>
-                            @endif
+                            <th style="background: {{ $editable ? $editTheme['year'] : '#047857' }}; color: white; padding: 10px 10px; text-align: center; font-weight: 700; min-width: 100px; white-space: nowrap;">通期</th>
                         @endif
                     @endif
                 @endforeach
@@ -247,7 +239,6 @@
                                 @php
                                     $h2Val = $displayMatrix[$cat->id]['H2'] ?? null;
                                     $yearVal = $displayMatrix[$cat->id]['YEAR'] ?? null;
-                                    $forecastYearVal = $displayMatrix[$cat->id]['FORECAST_YEAR'] ?? null;
                                 @endphp
                                 <td style="padding: 8px 10px; text-align: right; background: {{ $aggBgColors['H2'] }}; font-weight: 700; color: {{ $textColor }}; border-right: 1px solid #d1d5db; white-space: nowrap;">
                                     @if($editable)
@@ -256,20 +247,13 @@
                                         {!! $fmtAmount($h2Val, $isMember) !!}
                                     @endif
                                 </td>
-                                <td style="padding: 8px 10px; text-align: right; background: {{ $aggBgColors['YEAR'] }}; font-weight: 800; color: {{ $textColor }}; white-space: nowrap; border-right: 1px solid #d1d5db;">
+                                <td style="padding: 8px 10px; text-align: right; background: {{ $aggBgColors['YEAR'] }}; font-weight: 800; color: {{ $textColor }}; white-space: nowrap;">
                                     @if($editable)
                                         <span x-text="formatAmount(matrix['{{ $cat->id }}']['YEAR'], {{ $isMember ? 'true' : 'false' }})">{!! $fmtAmount($yearVal, $isMember) !!}</span>
                                     @else
                                         {!! $fmtAmount($yearVal, $isMember) !!}
                                     @endif
                                 </td>
-                                @if(!$editable && !$isBudgetMode)
-                                    {{-- 着地予測列（show actual モードのみ） --}}
-                                    <td style="padding: 8px 10px; text-align: right; background: {{ $aggBgColors['FORECAST_YEAR'] }}; font-weight: 800; color: #c2410c; white-space: nowrap;"
-                                        title="確定月実績 + 未確定月予測の合算">
-                                        {!! $fmtAmount($forecastYearVal, $isMember) !!}
-                                    </td>
-                                @endif
                             @endif
                         @endif
                     @endforeach
@@ -285,8 +269,7 @@
     @else
         ※ 黄色 = 売上、青 = 会員数、緑 = 集計（経費計・営業利益・累計利益）。背景色付き列は四半期/半期/通期の集計。<br>
         @if(!$editable)
-            ※ <span style="color: #6b7280; font-style: italic;">灰色イタリック</span>は予測値（未確定月）。優先順: 予算 → 完了月平均 → 空欄。
-            <span style="background: #f97316; color: white; padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 600;">着地予測</span>列 = 確定月実績 + 未確定月予測の合算。<br>
+            ※ <span style="color: #6b7280; font-style: italic;">灰色イタリック</span>は未確定月の予測値（優先順: 予算 → 完了月平均 → 空欄）。通期列は実績 + 予測の合算値。<br>
         @endif
         ※ 売上連動行（ロイヤリティ・決済手数料 等）と集計行は自動計算されます。<br>
         ※ <span style="display:inline-block; width:6px; height:6px; background:#f97316; border-radius:50%; margin: 0 4px; vertical-align: middle;"></span>マーカーが付いた売上・会員数セルは「手動上書き済み」で、実績反映ボタンを押してもスキップされます。

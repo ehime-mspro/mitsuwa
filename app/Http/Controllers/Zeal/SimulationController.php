@@ -120,7 +120,7 @@ class SimulationController extends Controller
      * 試算表 詳細表示（PDF レイアウト再現）
      *
      * クエリパラメータ:
-     *   ?mode=actual (デフォルト): 実績ベース。未確定月は予測値（灰色イタリック）。着地予測列を表示
+     *   ?mode=actual (デフォルト): 実績ベース。未確定月は予測値（灰色イタリック）
      *   ?mode=budget: 予算ベース。budget_amount を表示
      *   ?mode=compare: 実績モード + 通期サマリーの予実比較セクションを強調表示
      */
@@ -442,15 +442,15 @@ class SimulationController extends Controller
      *           2) 過去確定月の amount 平均 → 'forecast-avg'
      *           3) どちらもなければ null
      *
-     * 集計列 'YEAR' は過去確定月のみで集計（YTD 実績）、
-     *      'FORECAST_YEAR' は全月（過去実績 + 未確定月予測）で集計（着地予測）。
+     * 集計列 'YEAR' は全月（過去実績 + 未確定月予測）の合算。未確定月セルに forecast が注入済みのため、
+     * 通期合計は自動的に「着地見込み」を表す。
      *
      * @return array [$categories, $matrix, $budgetMatrix, $months, $aggregates, $overrideMap, $cellMetaMap]
      *   - $categories:   Collection of ZealSimulationCategory（並び順）
      *   - $matrix:       int[]|null[][]  [categoryId][yearMonth|aggKey] => 表示値（過去=実績、未確定=予測）
      *   - $budgetMatrix: int[]|null[][]  [categoryId][yearMonth|aggKey] => 予算値（budget_amount ベース）
      *   - $months:       string[] 12 ヶ月の 'YYYY-MM' 配列
-     *   - $aggregates:   string[] 集計列キー（Q1/Q2/H1/Q3/Q4/H2/YEAR/FORECAST_YEAR）
+     *   - $aggregates:   string[] 集計列キー（Q1/Q2/H1/Q3/Q4/H2/YEAR）
      *   - $overrideMap:  bool[][] [categoryId][yearMonth] => is_manual_override
      *   - $cellMetaMap:  string[][] [categoryId][yearMonth] => 'actual'|'forecast-budget'|'forecast-avg'|'forecast-mixed'|null
      */
@@ -606,18 +606,16 @@ class SimulationController extends Controller
             }
         }
 
-        // 5) 集計列の計算
-        // YEAR は過去確定月のみで集計（YTD 実績）
-        // FORECAST_YEAR は全月（実績+予測）で集計（着地予測）
+        // 5) 集計列の計算（Q1〜H2 は四半期/半期、YEAR は全月集計 = 実績+予測）
+        // 未確定月には予測値が注入済みのため、YEAR は自動的に「着地予測」と等価
         $aggregateGroups = [
-            'Q1'            => array_slice($months, 0, 3),
-            'Q2'            => array_slice($months, 3, 3),
-            'H1'            => array_slice($months, 0, 6),
-            'Q3'            => array_slice($months, 6, 3),
-            'Q4'            => array_slice($months, 9, 3),
-            'H2'            => array_slice($months, 6, 6),
-            'YEAR'          => $pastMonths,  // 確定月のみ（YTD 実績）
-            'FORECAST_YEAR' => $months,      // 全月（着地予測）
+            'Q1'   => array_slice($months, 0, 3),
+            'Q2'   => array_slice($months, 3, 3),
+            'H1'   => array_slice($months, 0, 6),
+            'Q3'   => array_slice($months, 6, 3),
+            'Q4'   => array_slice($months, 9, 3),
+            'H2'   => array_slice($months, 6, 6),
+            'YEAR' => $months,
         ];
 
         foreach ($categories as $cat) {
@@ -754,8 +752,10 @@ class SimulationController extends Controller
     /**
      * 通期サマリー予実比較データを構築
      *
-     * 各カテゴリの YEAR（過去確定月の実績計） vs YEAR 予算計（過去確定月の予算計） を比較。
-     * 差異 = 実績 − 予算、達成率 = 実績 / 予算 × 100%（売上系は実績/予算、経費系は予算/実績で良い指標になるが、ここでは一律 実績/予算 で表示）。
+     * matrix['YEAR'] は未確定月の予測値を含むため、通期サマリーでは「過去確定月のみ」を集計し直して
+     * 純粋な実績計と予算計を比較する（着地予測ではなく YTD 比較）。
+     *
+     * カテゴリ別に過去確定月の matrix・budgetMatrix を直接合算（会員数は期末月の値）。
      *
      * @return array<int, array{
      *   category: ZealSimulationCategory,
@@ -764,10 +764,44 @@ class SimulationController extends Controller
      */
     private function buildComparisonSummary($categories, array $matrix, array $budgetMatrix, array $months): array
     {
+        $pastMonths = ZealFiscalYear::completedMonths(
+            (int) date('Y', strtotime(($months[0] ?? date('Y-m')) . '-01'))
+            >= \App\Support\ZealFiscalYear::START_MONTH
+                ? (int) substr($months[0] ?? date('Y-m'), 0, 4)
+                : (int) substr($months[0] ?? date('Y-m'), 0, 4)
+        );
+        // 上記は冗長なので、$months[0] から FY を逆算するシンプル版に置き換え:
+        $startYm    = $months[0] ?? null;
+        $fy         = $startYm ? (int) substr($startYm, 0, 4) : (int) now()->year;
+        $pastMonths = ZealFiscalYear::completedMonths($fy);
+
+        $cumulativeCat = $categories->firstWhere('code', 'cumulative_profit');
+
+        $sumPast = function (array $perMonth, bool $isMember, bool $isCumulative) use ($pastMonths) {
+            if (empty($pastMonths)) return null;
+            if ($isCumulative || $isMember) {
+                // 累計利益 / 会員数 は期末月（最終確定月）の値
+                $lastPast = end($pastMonths);
+                $v = $perMonth[$lastPast] ?? null;
+                return $v;
+            }
+            // 通常項目: 過去確定月の合計（null はスキップ）
+            $sum = 0; $hasValue = false;
+            foreach ($pastMonths as $pym) {
+                $v = $perMonth[$pym] ?? null;
+                if ($v !== null) { $sum += $v; $hasValue = true; }
+            }
+            return $hasValue ? $sum : null;
+        };
+
         $rows = [];
         foreach ($categories as $cat) {
-            $actual = $matrix[$cat->id]['YEAR'] ?? null;
-            $budget = $budgetMatrix[$cat->id]['YEAR'] ?? null;
+            $isMember = $cat->group_type === \App\Enums\ZealSimulationGroup::Member;
+            $isCum    = $cumulativeCat && $cat->id === $cumulativeCat->id;
+
+            $actual = $sumPast($matrix[$cat->id] ?? [], $isMember, $isCum);
+            $budget = $sumPast($budgetMatrix[$cat->id] ?? [], $isMember, $isCum);
+
             $diff   = ($actual !== null && $budget !== null) ? $actual - $budget : null;
             $rate   = ($actual !== null && $budget !== null && $budget != 0)
                 ? round(($actual / $budget) * 100, 1)
