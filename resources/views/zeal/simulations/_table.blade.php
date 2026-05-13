@@ -101,15 +101,25 @@
                         @endif
                     </td>
                     @foreach($months as $idx => $ym)
-                        @php $amount = $matrix[$cat->id][$ym] ?? null; @endphp
-                        <td style="padding: 8px 10px; text-align: right; background: {{ $rowBg }}; color: {{ $textColor }}; font-weight: {{ $isBold ? 700 : 400 }}; border-right: 1px solid #f3f4f6; white-space: nowrap;">
+                        @php
+                            $amount       = $matrix[$cat->id][$ym] ?? null;
+                            $isOverride   = ($overrideMap[$cat->id][$ym] ?? false) && ($isRevenue || $isMember);
+                            $cellBg       = $isOverride ? '#fff7ed' : $rowBg;
+                            $inputBorder  = $isOverride ? '#fb923c' : '#d1d5db';
+                        @endphp
+                        <td style="padding: 8px 10px; text-align: right; background: {{ $cellBg }}; color: {{ $textColor }}; font-weight: {{ $isBold ? 700 : 400 }}; border-right: 1px solid #f3f4f6; white-space: nowrap; position: relative;">
                             @if($editable && !$isReadOnly)
                                 <input type="number" name="values[{{ $cat->id }}][{{ $ym }}]"
                                        value="{{ $amount }}"
                                        inputmode="numeric"
-                                       style="width: 100%; max-width: 90px; padding: 4px 6px; border: 1px solid #d1d5db; border-radius: 4px; text-align: right; font-size: 12px;">
+                                       title="{{ $isOverride ? '手動上書き済み（実績反映でスキップ）' : '' }}"
+                                       style="width: 100%; max-width: 90px; padding: 4px 6px; border: 1px solid {{ $inputBorder }}; border-radius: 4px; text-align: right; font-size: 12px;">
                             @else
                                 {!! $fmtAmount($amount, $isMember) !!}
+                            @endif
+                            @if($isOverride)
+                                <span title="手動上書き済み（実績反映でスキップ）"
+                                      style="position: absolute; top: 2px; right: 2px; width: 6px; height: 6px; background: #f97316; border-radius: 50%;"></span>
                             @endif
                         </td>
                         {{-- 月3つごとに四半期合計セル --}}
@@ -148,5 +158,6 @@
 
 <div style="margin-top: 12px; font-size: 11px; color: #6b7280;">
     ※ 黄色 = 売上、青 = 会員数、緑 = 集計（経費計・営業利益・累計利益）。背景色付き列は四半期/半期/通期の集計。<br>
-    ※ 売上連動行（ロイヤリティ・決済手数料 等）と集計行は自動計算されます。
+    ※ 売上連動行（ロイヤリティ・決済手数料 等）と集計行は自動計算されます。<br>
+    ※ <span style="display:inline-block; width:6px; height:6px; background:#f97316; border-radius:50%; margin: 0 4px; vertical-align: middle;"></span>マーカーが付いた売上・会員数セルは「手動上書き済み」で、実績反映ボタンを押してもスキップされます。
 </div>

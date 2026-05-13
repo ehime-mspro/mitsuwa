@@ -6,7 +6,7 @@
     <span class="mx-1.5">›</span>
     <span>ZEAL</span>
     <span class="mx-1.5">›</span>
-    <a href="{{ route('zeal.simulations.index') }}" class="text-gray-500 hover:text-emerald-600">経営試算表</a>
+    <a href="{{ route('zeal.simulations.index', ['list' => 1]) }}" class="text-gray-500 hover:text-emerald-600">経営試算表</a>
     <span class="mx-1.5">›</span>
     <a href="{{ route('zeal.simulations.show', $simulation) }}" class="text-gray-500 hover:text-emerald-600">{{ $simulation->fiscal_year }}年度</a>
     <span class="mx-1.5">›</span>
@@ -42,8 +42,9 @@
         {{-- 試算表マトリクス（編集モード） --}}
         @include('zeal.simulations._table', ['editable' => true])
 
-        <div style="margin-top: 14px; padding: 10px 14px; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 6px; font-size: 12px; color: #075985;">
-            <strong>編集について:</strong> 売上連動行（ロイヤリティ・決済手数料 等）と集計行（経費計・営業利益・累計利益）は表示時に自動算出されるため、入力欄は表示されません。手入力・固定額タイプの項目のみ編集可能です。
+        <div style="margin-top: 14px; padding: 10px 14px; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 6px; font-size: 12px; color: #075985; line-height: 1.7;">
+            <strong>編集について:</strong> 売上連動行（ロイヤリティ・決済手数料 等）と集計行（経費計・営業利益・累計利益）は表示時に自動算出されるため、入力欄は表示されません。手入力・固定額タイプの項目のみ編集可能です。<br>
+            <strong>売上・会員数の手動上書き:</strong> 売上・会員数のセルに値を入力して保存すると「手動上書き」状態 (<span style="display:inline-block; width:6px; height:6px; background:#f97316; border-radius:50%; vertical-align: middle;"></span>マーカー) になり、詳細画面の「実績を反映」ボタンを押してもそのセルは上書きされません。再度実績で上書きしたい場合は、該当セルを空欄にして保存してください。
         </div>
 
         <x-form-actions submit-label="保存する" :cancel-url="route('zeal.simulations.show', $simulation)" />

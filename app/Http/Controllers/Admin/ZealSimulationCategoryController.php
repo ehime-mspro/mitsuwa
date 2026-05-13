@@ -6,7 +6,9 @@ use App\Enums\ZealSimulationCalcType;
 use App\Enums\ZealSimulationGroup;
 use App\Http\Controllers\Controller;
 use App\Models\ZealSimulationCategory;
+use App\Models\ZealSimulationValue;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 /**
  * ZEAL 試算表 項目マスター管理
@@ -71,6 +73,10 @@ class ZealSimulationCategoryController extends Controller
 
     /**
      * 更新処理
+     *
+     * 固定費（calc_type=fixed）の default_amount を変更したとき、
+     * 既存試算表の「apply_from_month 以降」かつ「手動上書きされていない」セルを新金額に自動反映する。
+     * 過去月（apply_from_month より前）のセルは焼き付け済み金額をそのまま保持する。
      */
     public function update(Request $request, ZealSimulationCategory $zealSimulationCategory)
     {
@@ -84,11 +90,63 @@ class ZealSimulationCategoryController extends Controller
 
         $validated['is_active'] = $request->boolean('is_active', true);
 
-        $category->update($validated);
+        // 更新前の状態を保持（差分判定用）
+        $wasFixed         = $category->calc_type === ZealSimulationCalcType::Fixed;
+        $oldDefaultAmount = $category->default_amount;
+        $applyFromMonth   = trim((string) $request->input('apply_from_month', ''));
+
+        // 適用開始月の形式チェック（YYYY-MM）
+        if ($applyFromMonth !== '' && !preg_match('/^\d{4}-\d{2}$/', $applyFromMonth)) {
+            return back()
+                ->withInput()
+                ->withErrors(['apply_from_month' => '適用開始月は YYYY-MM 形式で入力してください。']);
+        }
+
+        $appliedCount = 0;
+        $skippedCount = 0;
+
+        DB::transaction(function () use (
+            $category, $validated, $wasFixed, $oldDefaultAmount, $applyFromMonth,
+            &$appliedCount, &$skippedCount
+        ) {
+            $category->update($validated);
+
+            // 固定費 & default_amount 変更 & 適用開始月の指定がある場合のみ反映
+            $isFixedNow = $category->calc_type === ZealSimulationCalcType::Fixed;
+            $newAmount  = $category->default_amount;
+            $changed    = $oldDefaultAmount !== $newAmount;
+
+            if ($wasFixed && $isFixedNow && $changed && $applyFromMonth !== '' && $newAmount !== null) {
+                // 該当セルを取得し、is_manual_override=false のものだけ更新
+                $cells = ZealSimulationValue::where('category_id', $category->id)
+                    ->where('year_month', '>=', $applyFromMonth)
+                    ->get();
+
+                foreach ($cells as $cell) {
+                    if ($cell->is_manual_override) {
+                        $skippedCount++;
+                        continue;
+                    }
+                    $cell->amount = (int) $newAmount;
+                    $cell->save();
+                    $appliedCount++;
+                }
+            }
+        });
+
+        // 反映状況をメッセージに含める
+        $message = '「' . $category->name . '」を更新しました。';
+        if ($appliedCount > 0 || $skippedCount > 0) {
+            $message .= sprintf(
+                '既存試算表セルへの反映: %d セル更新／%d セル手動上書き保持。',
+                $appliedCount,
+                $skippedCount
+            );
+        }
 
         return redirect()
             ->route('admin.master.zeal-simulation-categories.index')
-            ->with('success', '「' . $category->name . '」を更新しました。');
+            ->with('success', $message);
     }
 
     /**

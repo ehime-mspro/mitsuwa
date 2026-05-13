@@ -102,6 +102,27 @@
         @error('default_amount') <p style="font-size: 12px; color: #dc2626; margin-top: 4px;">{{ $message }}</p> @enderror
     </div>
 
+    {{-- 既存試算表への自動反映設定（編集時 + 固定額の場合のみ表示） --}}
+    @if($isEdit && $category->calc_type === \App\Enums\ZealSimulationCalcType::Fixed)
+        @php
+            $defaultApplyFrom = \Carbon\Carbon::now()->addMonth()->format('Y-m'); // デフォルト: 来月
+        @endphp
+        <div style="margin-bottom: 18px; padding: 14px; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 6px;">
+            <label style="display: block; font-size: 13px; font-weight: 600; color: #075985; margin-bottom: 6px;">
+                既存試算表への自動反映 — 適用開始月
+            </label>
+            <input type="month" name="apply_from_month" value="{{ old('apply_from_month', $defaultApplyFrom) }}"
+                   style="width: 100%; max-width: 200px; padding: 9px 12px; border: 1px solid #bae6fd; border-radius: 6px; font-size: 14px; background: white;">
+            <div style="font-size: 11px; color: #075985; margin-top: 6px; line-height: 1.7;">
+                デフォルト額を変更したとき、<strong>この月以降の既存試算表セル</strong>に新金額を自動反映します。<br>
+                ・<strong>過去月</strong>（指定月より前）のセルは元の金額を保持します。<br>
+                ・<strong>手動上書きされたセル</strong>は対象外（スキップ）。<br>
+                ・適用したくない場合は、空欄にして保存してください。
+            </div>
+            @error('apply_from_month') <p style="font-size: 12px; color: #dc2626; margin-top: 4px;">{{ $message }}</p> @enderror
+        </div>
+    @endif
+
     {{-- 率(%) --}}
     <div style="margin-bottom: 18px;">
         <label style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">

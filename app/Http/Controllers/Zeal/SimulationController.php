@@ -8,7 +8,9 @@ use App\Http\Controllers\Controller;
 use App\Models\ZealSimulation;
 use App\Models\ZealSimulationCategory;
 use App\Models\ZealSimulationValue;
+use App\Support\ZealActualsCalculator;
 use App\Support\ZealFiscalYear;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -22,9 +24,22 @@ class SimulationController extends Controller
 {
     /**
      * 試算表一覧
+     *
+     * デフォルト挙動: 今年度の試算表が存在すればその詳細画面へ自動リダイレクト
+     * （サイドバー「経営試算表」をクリックしたとき、すぐに今年度の表が見られるため）
+     * URL に ?list=1 を付けると一覧画面を強制表示する。
      */
-    public function index()
+    public function index(Request $request)
     {
+        // 「一覧表示」が明示指定されていない場合、今年度の試算表があれば詳細にリダイレクト
+        if (!$request->boolean('list')) {
+            $currentFy = ZealFiscalYear::current();
+            $current   = ZealSimulation::where('fiscal_year', $currentFy)->first();
+            if ($current) {
+                return redirect()->route('zeal.simulations.show', $current);
+            }
+        }
+
         $simulations = ZealSimulation::with(['createdBy', 'updatedBy'])
             ->orderByDesc('fiscal_year')
             ->get();
@@ -105,9 +120,9 @@ class SimulationController extends Controller
      */
     public function show(ZealSimulation $simulation)
     {
-        [$categories, $matrix, $months, $aggregates] = $this->buildMatrix($simulation);
+        [$categories, $matrix, $months, $aggregates, $overrideMap] = $this->buildMatrix($simulation);
 
-        return view('zeal.simulations.show', compact('simulation', 'categories', 'matrix', 'months', 'aggregates'));
+        return view('zeal.simulations.show', compact('simulation', 'categories', 'matrix', 'months', 'aggregates', 'overrideMap'));
     }
 
     /**
@@ -115,9 +130,9 @@ class SimulationController extends Controller
      */
     public function edit(ZealSimulation $simulation)
     {
-        [$categories, $matrix, $months, $aggregates] = $this->buildMatrix($simulation);
+        [$categories, $matrix, $months, $aggregates, $overrideMap] = $this->buildMatrix($simulation);
 
-        return view('zeal.simulations.edit', compact('simulation', 'categories', 'matrix', 'months', 'aggregates'));
+        return view('zeal.simulations.edit', compact('simulation', 'categories', 'matrix', 'months', 'aggregates', 'overrideMap'));
     }
 
     /**
@@ -153,15 +168,30 @@ class SimulationController extends Controller
                     continue;
                 }
 
+                // 売上・会員数（実績連動対象）は手動入力されたら is_manual_override=true をセットし、
+                // 後続の「実績を反映」操作で上書きされないようにする
+                $isActualLinkedRow = in_array(
+                    $category->group_type->value,
+                    [ZealSimulationGroup::Revenue->value, ZealSimulationGroup::Member->value],
+                    true
+                );
+
                 foreach ($monthlyValues as $yearMonth => $amount) {
                     $amount = ($amount === '' || $amount === null) ? null : (int) $amount;
+
+                    $attributes = ['amount' => $amount];
+                    if ($isActualLinkedRow) {
+                        // 手動入力 → 上書きフラグを立てる（null クリアの場合は実績反映待ちに戻す）
+                        $attributes['is_manual_override'] = ($amount !== null);
+                    }
+
                     ZealSimulationValue::updateOrCreate(
                         [
                             'simulation_id' => $simulation->id,
                             'category_id'   => $categoryId,
                             'year_month'    => $yearMonth,
                         ],
-                        ['amount' => $amount]
+                        $attributes
                     );
                 }
             }
@@ -186,6 +216,145 @@ class SimulationController extends Controller
     }
 
     // =====================================================================
+    // Phase 4: 実績連動
+    // =====================================================================
+
+    /**
+     * 実績反映のプレビュー（JSON）
+     *
+     * zeal_members / zeal_member_contracts から月別の売上・会員数を集計し、
+     * 試算表の現在値との差分を返す。
+     * is_manual_override=true のセルは上書き対象外として skipped に分類。
+     */
+    public function syncActualsPreview(ZealSimulation $simulation): JsonResponse
+    {
+        $diffs = $this->computeActualsDiff($simulation);
+
+        return response()->json([
+            'fiscal_year' => $simulation->fiscal_year,
+            'months'      => ZealFiscalYear::months($simulation->fiscal_year),
+            'rows'        => $diffs,
+        ]);
+    }
+
+    /**
+     * 実績を反映（書き込み）
+     *
+     * 売上 (revenue) / 会員数 (member_count) の月別セルを実績で更新する。
+     * is_manual_override=true のセルはスキップ（手動編集を保持）。
+     */
+    public function syncActuals(Request $request, ZealSimulation $simulation)
+    {
+        $appliedCount = 0;
+        $skippedCount = 0;
+
+        DB::transaction(function () use ($simulation, &$appliedCount, &$skippedCount) {
+            $revenueCat = ZealSimulationCategory::where('code', 'revenue')->first();
+            $memberCat  = ZealSimulationCategory::where('code', 'member_count')->first();
+
+            if (!$revenueCat || !$memberCat) {
+                return; // 初期 seed が未投入のケース
+            }
+
+            $revenueByMonth = ZealActualsCalculator::monthlyRevenue($simulation->fiscal_year);
+            $memberByMonth  = ZealActualsCalculator::monthlyMemberCount($simulation->fiscal_year);
+
+            $simulation->update(['updated_by' => auth()->id()]);
+
+            // 既存セルを取得（手動上書きセルの判定用）
+            $existing = ZealSimulationValue::where('simulation_id', $simulation->id)
+                ->whereIn('category_id', [$revenueCat->id, $memberCat->id])
+                ->get()
+                ->groupBy('category_id');
+
+            $updates = [
+                $revenueCat->id => $revenueByMonth,
+                $memberCat->id  => $memberByMonth,
+            ];
+
+            foreach ($updates as $categoryId => $monthlyValues) {
+                $existingByYm = ($existing[$categoryId] ?? collect())->keyBy('year_month');
+
+                foreach ($monthlyValues as $ym => $actualAmount) {
+                    $cell = $existingByYm->get($ym);
+                    if ($cell && $cell->is_manual_override) {
+                        $skippedCount++;
+                        continue;
+                    }
+
+                    ZealSimulationValue::updateOrCreate(
+                        [
+                            'simulation_id' => $simulation->id,
+                            'category_id'   => $categoryId,
+                            'year_month'    => $ym,
+                        ],
+                        [
+                            'amount'             => (int) $actualAmount,
+                            'is_manual_override' => false,
+                        ]
+                    );
+                    $appliedCount++;
+                }
+            }
+        });
+
+        return redirect()
+            ->route('zeal.simulations.show', $simulation)
+            ->with('success', sprintf(
+                '実績を反映しました。%d セル更新／%d セル手動上書き保持。',
+                $appliedCount,
+                $skippedCount
+            ));
+    }
+
+    /**
+     * 試算表の売上・会員数セルと実績値の差分を計算する（プレビュー用）
+     *
+     * @return array{
+     *   revenue: array<int, array{ym:string, current:?int, actual:int, override:bool}>,
+     *   member: array<int, array{ym:string, current:?int, actual:int, override:bool}>,
+     * }
+     */
+    private function computeActualsDiff(ZealSimulation $simulation): array
+    {
+        $revenueCat = ZealSimulationCategory::where('code', 'revenue')->first();
+        $memberCat  = ZealSimulationCategory::where('code', 'member_count')->first();
+
+        $revenueByMonth = ZealActualsCalculator::monthlyRevenue($simulation->fiscal_year);
+        $memberByMonth  = ZealActualsCalculator::monthlyMemberCount($simulation->fiscal_year);
+
+        $existing = ZealSimulationValue::where('simulation_id', $simulation->id)
+            ->whereIn('category_id', [
+                $revenueCat?->id ?? 0,
+                $memberCat?->id ?? 0,
+            ])
+            ->get()
+            ->groupBy('category_id');
+
+        $build = function (?int $catId, array $actuals) use ($existing) {
+            $cells = ($existing[$catId] ?? collect())->keyBy('year_month');
+            $rows  = [];
+            foreach ($actuals as $ym => $value) {
+                $cell = $cells->get($ym);
+                $rows[] = [
+                    'ym'       => $ym,
+                    'current'  => $cell ? ($cell->amount !== null ? (int) $cell->amount : null) : null,
+                    'actual'   => (int) $value,
+                    'override' => (bool) ($cell->is_manual_override ?? false),
+                ];
+            }
+            return $rows;
+        };
+
+        return [
+            'revenue' => $build($revenueCat?->id, $revenueByMonth),
+            'member'  => $build($memberCat?->id, $memberByMonth),
+            'revenue_label' => $revenueCat?->name ?? '売上',
+            'member_label'  => $memberCat?->name ?? '会員数',
+        ];
+    }
+
+    // =====================================================================
     // 内部: マトリクス構築（show/edit 共通）
     // =====================================================================
 
@@ -193,11 +362,12 @@ class SimulationController extends Controller
      * 試算表のセル値を [categoryId][yearMonth] = amount の 2 次元配列に展開し、
      * 売上連動・集計計算行は派生算出する。
      *
-     * @return array [$categories, $matrix, $months, $aggregates]
-     *   - $categories: Collection of ZealSimulationCategory（並び順）
-     *   - $matrix:     int[]|null[][]  [categoryId][yearMonth] => 金額
-     *   - $months:     string[] 12 ヶ月の 'YYYY-MM' 配列
-     *   - $aggregates: array PDF レイアウト用の集計列キー（'Q1', 'Q2', 'H1', 'Q3', 'Q4', 'H2', 'YEAR'）
+     * @return array [$categories, $matrix, $months, $aggregates, $overrideMap]
+     *   - $categories:  Collection of ZealSimulationCategory（並び順）
+     *   - $matrix:      int[]|null[][]  [categoryId][yearMonth] => 金額
+     *   - $months:      string[] 12 ヶ月の 'YYYY-MM' 配列
+     *   - $aggregates:  array PDF レイアウト用の集計列キー（'Q1', 'Q2', 'H1', 'Q3', 'Q4', 'H2', 'YEAR'）
+     *   - $overrideMap: bool[][] [categoryId][yearMonth] => is_manual_override
      */
     private function buildMatrix(ZealSimulation $simulation): array
     {
@@ -210,12 +380,15 @@ class SimulationController extends Controller
         // 1) まず DB にあるセル値を取得
         $cells = ZealSimulationValue::where('simulation_id', $simulation->id)->get();
         $matrix = [];
+        $overrideMap = [];
         foreach ($categories as $cat) {
-            $matrix[$cat->id] = array_fill_keys($months, null);
+            $matrix[$cat->id]      = array_fill_keys($months, null);
+            $overrideMap[$cat->id] = array_fill_keys($months, false);
         }
         foreach ($cells as $cell) {
             if (isset($matrix[$cell->category_id][$cell->year_month])) {
-                $matrix[$cell->category_id][$cell->year_month] = $cell->amount;
+                $matrix[$cell->category_id][$cell->year_month]      = $cell->amount;
+                $overrideMap[$cell->category_id][$cell->year_month] = (bool) $cell->is_manual_override;
             }
         }
 
@@ -325,6 +498,6 @@ class SimulationController extends Controller
         // 集計列のキー定義（PDF と同じ）
         $aggregates = array_keys($aggregateGroups);
 
-        return [$categories, $matrix, $months, $aggregates];
+        return [$categories, $matrix, $months, $aggregates, $overrideMap];
     }
 }

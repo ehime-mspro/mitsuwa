@@ -1381,6 +1381,11 @@ Route::middleware(['auth', 'password.change'])->group(function () {
                 ->name('zeal.simulations.edit');
             Route::put('/simulations/{simulation}', [\App\Http\Controllers\Zeal\SimulationController::class, 'update'])
                 ->name('zeal.simulations.update');
+            // Phase 4: 実績連動（売上・会員数を zeal_members / zeal_member_contracts から取り込む）
+            Route::get('/simulations/{simulation}/sync-actuals/preview', [\App\Http\Controllers\Zeal\SimulationController::class, 'syncActualsPreview'])
+                ->name('zeal.simulations.sync-actuals.preview');
+            Route::post('/simulations/{simulation}/sync-actuals', [\App\Http\Controllers\Zeal\SimulationController::class, 'syncActuals'])
+                ->name('zeal.simulations.sync-actuals');
         });
         Route::get('/simulations/{simulation}', [\App\Http\Controllers\Zeal\SimulationController::class, 'show'])
             ->name('zeal.simulations.show');

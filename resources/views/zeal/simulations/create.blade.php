@@ -6,7 +6,7 @@
     <span class="mx-1.5">›</span>
     <span>ZEAL</span>
     <span class="mx-1.5">›</span>
-    <a href="{{ route('zeal.simulations.index') }}" class="text-gray-500 hover:text-emerald-600">経営試算表</a>
+    <a href="{{ route('zeal.simulations.index', ['list' => 1]) }}" class="text-gray-500 hover:text-emerald-600">経営試算表</a>
     <span class="mx-1.5">›</span>
     <span class="text-gray-600">新規作成</span>
 @endsection
@@ -58,7 +58,7 @@
         </div>
 
         @if(count($candidates) > 0)
-            <x-form-actions submit-label="作成する" :cancel-url="route('zeal.simulations.index')" />
+            <x-form-actions submit-label="作成する" :cancel-url="route('zeal.simulations.index', ['list' => 1])" />
         @endif
     </form>
 @endsection
