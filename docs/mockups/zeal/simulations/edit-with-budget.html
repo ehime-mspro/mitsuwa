@@ -24,13 +24,13 @@
         }
         .edit-tab:hover { color: #111827; background: #f9fafb; }
         .edit-tab.active.actual { color: #047857; border-bottom-color: #047857; background: #ecfdf5; }
-        .edit-tab.active.budget { color: #4f46e5; border-bottom-color: #4f46e5; background: #eef2ff; }
+        .edit-tab.active.budget { color: #2563eb; border-bottom-color: #2563eb; background: #eff6ff; }
         .edit-tab .badge {
             display: inline-block; padding: 1px 6px; margin-left: 6px;
             font-size: 10px; font-weight: 600; border-radius: 3px;
         }
         .edit-tab .badge.actual-cnt { background: #d1fae5; color: #065f46; }
-        .edit-tab .badge.budget-cnt { background: #e0e7ff; color: #4338ca; }
+        .edit-tab .badge.budget-cnt { background: #dbeafe; color: #1d4ed8; }
 
         /* 表 */
         table.matrix { border-collapse: collapse; min-width: 100%; font-size: 12px; }
@@ -40,14 +40,14 @@
         table.matrix thead th { color: white; font-weight: 700; }
         table.matrix.theme-actual thead th.col-header-month { background: #047857; min-width: 90px; }
         table.matrix.theme-actual thead th.col-header-future { background: #6b7280; min-width: 90px; }
-        table.matrix.theme-budget thead th.col-header-month { background: #4f46e5; min-width: 90px; }
+        table.matrix.theme-budget thead th.col-header-month { background: #2563eb; min-width: 90px; }
         table.matrix.theme-budget thead th.col-header-future { background: #6b7280; min-width: 90px; }
         table.matrix .col-header-quarter-actual { background: #065f46; min-width: 90px; }
-        table.matrix .col-header-quarter-budget { background: #3730a3; min-width: 90px; }
+        table.matrix .col-header-quarter-budget { background: #1d4ed8; min-width: 90px; }
         table.matrix .col-header-half-actual { background: #1e40af; min-width: 100px; }
-        table.matrix .col-header-half-budget { background: #6d28d9; min-width: 100px; }
+        table.matrix .col-header-half-budget { background: #1e3a8a; min-width: 100px; }
         table.matrix .col-header-year-actual { background: #047857; min-width: 100px; }
-        table.matrix .col-header-year-budget { background: #4f46e5; min-width: 100px; }
+        table.matrix .col-header-year-budget { background: #2563eb; min-width: 100px; }
 
         table.matrix tbody td {
             text-align: right; border-right: 1px solid #f3f4f6; border-bottom: 1px solid #e5e7eb;
@@ -64,9 +64,9 @@
             background: #f3f4f6; font-weight: 700; color: #374151;
         }
         table.matrix tbody td.cell-half-actual { background: #dbeafe; font-weight: 700; }
-        table.matrix tbody td.cell-half-budget { background: #ede9fe; font-weight: 700; }
+        table.matrix tbody td.cell-half-budget { background: #dbeafe; font-weight: 700; }
         table.matrix tbody td.cell-year-actual { background: #d1fae5; font-weight: 700; }
-        table.matrix tbody td.cell-year-budget { background: #e0e7ff; font-weight: 700; }
+        table.matrix tbody td.cell-year-budget { background: #dbeafe; font-weight: 700; }
 
         tr.row-revenue td { background: #fef3c7; }
         tr.row-revenue td.row-label { background: #fef3c7; }
@@ -84,9 +84,9 @@
         }
         .cell-input.actual:focus { outline: 2px solid #10b981; border-color: #10b981; }
         .cell-input.budget {
-            background: #eef2ff; border-color: #c7d2fe;
+            background: #eff6ff; border-color: #bfdbfe;
         }
-        .cell-input.budget:focus { outline: 2px solid #4f46e5; border-color: #4f46e5; }
+        .cell-input.budget:focus { outline: 2px solid #2563eb; border-color: #2563eb; }
         .cell-input.override { border-color: #fb923c; }
 
         /* 手動上書きマーカー */
@@ -126,8 +126,8 @@
         }
         .btn-save-budget {
             padding: 8px 24px; font-size: 13px; font-weight: 600;
-            color: white; background: #4f46e5;
-            border: 1px solid #4f46e5; border-radius: 6px;
+            color: white; background: #2563eb;
+            border: 1px solid #2563eb; border-radius: 6px;
         }
     </style>
 </head>
@@ -328,7 +328,7 @@
         </div>
 
         <!-- =================== 予算編集モード =================== -->
-        <div x-show="mode === 'budget'" x-cloak style="background: white; border: 1px solid #c7d2fe; border-radius: 8px; overflow-x: auto;">
+        <div x-show="mode === 'budget'" x-cloak style="background: white; border: 1px solid #bfdbfe; border-radius: 8px; overflow-x: auto;">
             <table class="matrix theme-budget">
                 <thead>
                     <tr>

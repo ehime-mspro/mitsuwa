@@ -54,7 +54,7 @@
                           {{ $mode === 'actual' ? 'background: #047857; color: white; border-color: #047857;' : 'background: white; color: #6b7280;' }}">実績</a>
                 <a href="{{ $budgetUrl }}"
                    style="padding: 5px 12px; font-size: 12px; font-weight: 600; text-decoration: none; border-radius: 5px; border: 1px solid #d1d5db;
-                          {{ $isBudgetMode ? 'background: #4f46e5; color: white; border-color: #4f46e5;' : 'background: white; color: #6b7280;' }}">予算</a>
+                          {{ $isBudgetMode ? 'background: #2563eb; color: white; border-color: #2563eb;' : 'background: white; color: #6b7280;' }}">予算</a>
                 <a href="{{ $compareUrl }}"
                    style="padding: 5px 12px; font-size: 12px; font-weight: 600; text-decoration: none; border-radius: 5px; border: 1px solid #d1d5db;
                           {{ $isCompareMode ? 'background: #c2410c; color: white; border-color: #c2410c;' : 'background: white; color: #6b7280;' }}">比較</a>
@@ -67,7 +67,7 @@
                     実績を反映
                 </button>
                 <a href="{{ route('zeal.simulations.edit', ['simulation' => $simulation, 'mode' => $isBudgetMode ? 'budget' : 'actual']) }}"
-                   style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: {{ $isBudgetMode ? '#4f46e5' : '#059669' }}; border: 1px solid {{ $isBudgetMode ? '#4f46e5' : '#059669' }}; border-radius: 6px; text-decoration: none; background: #fff;">
+                   style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: {{ $isBudgetMode ? '#2563eb' : '#059669' }}; border: 1px solid {{ $isBudgetMode ? '#2563eb' : '#059669' }}; border-radius: 6px; text-decoration: none; background: #fff;">
                     {{ $isBudgetMode ? '予算を編集' : '実績を編集' }}
                 </a>
             @endif

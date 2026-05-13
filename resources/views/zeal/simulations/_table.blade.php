@@ -112,12 +112,12 @@
 
     // 編集モードのテーマ色
     $editTheme = $isBudgetMode
-        ? ['header' => '#4f46e5', 'quarter' => '#3730a3', 'half' => '#6d28d9', 'year' => '#4f46e5', 'inputBg' => '#eef2ff', 'inputBorder' => '#c7d2fe']
+        ? ['header' => '#2563eb', 'quarter' => '#1d4ed8', 'half' => '#1e3a8a', 'year' => '#2563eb', 'inputBg' => '#eff6ff', 'inputBorder' => '#bfdbfe']
         : ['header' => '#047857', 'quarter' => '#065f46', 'half' => '#1e40af', 'year' => '#047857', 'inputBg' => '#ffffff', 'inputBorder' => '#d1d5db'];
 @endphp
 
 <div @if($editable) x-data="zealSimulationMatrix({{ \Illuminate\Support\Js::from($alpineConfig) }})" @endif
-     style="background: white; border: 1px solid {{ $isBudgetMode && $editable ? '#c7d2fe' : '#e5e7eb' }}; border-radius: 8px; overflow-x: auto;">
+     style="background: white; border: 1px solid {{ $isBudgetMode && $editable ? '#bfdbfe' : '#e5e7eb' }}; border-radius: 8px; overflow-x: auto;">
     <table style="border-collapse: collapse; min-width: 100%; font-size: 12px;">
         <thead>
             <tr>

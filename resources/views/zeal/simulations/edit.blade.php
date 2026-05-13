@@ -37,16 +37,16 @@
         </a>
         <a href="{{ $budgetUrl }}"
            style="padding: 8px 20px; font-size: 13px; font-weight: 600; text-decoration: none;
-                  {{ $isBudgetMode ? 'color: #4f46e5; border-bottom: 3px solid #4f46e5; background: #eef2ff;' : 'color: #6b7280; background: white;' }}
+                  {{ $isBudgetMode ? 'color: #2563eb; border-bottom: 3px solid #2563eb; background: #eff6ff;' : 'color: #6b7280; background: white;' }}
                   margin-bottom: -2px; border-top-left-radius: 4px; border-top-right-radius: 4px;">
             💰 予算編集
             @if($isBudgetMode)
-                <span style="display: inline-block; padding: 1px 6px; margin-left: 6px; font-size: 10px; font-weight: 600; background: #e0e7ff; color: #4338ca; border-radius: 3px;">編集中</span>
+                <span style="display: inline-block; padding: 1px 6px; margin-left: 6px; font-size: 10px; font-weight: 600; background: #dbeafe; color: #1d4ed8; border-radius: 3px;">編集中</span>
             @endif
         </a>
         <div style="margin-left: auto; align-self: center; padding-right: 8px; font-size: 11px; color: #6b7280;">
             @if($isBudgetMode)
-                予算編集: <strong style="color: #4338ca;">budget_amount</strong> 列にバインド。実績と独立管理
+                予算編集: <strong style="color: #1d4ed8;">budget_amount</strong> 列にバインド。実績と独立管理
             @else
                 実績編集: <strong style="color: #065f46;">amount</strong> 列にバインド。実績反映と同じデータ
             @endif
@@ -84,7 +84,7 @@
         {{-- 試算表マトリクス（編集モード、mode は actual/budget） --}}
         @include('zeal.simulations._table', ['editable' => true, 'mode' => $isBudgetMode ? 'budget' : 'actual'])
 
-        <div style="margin-top: 14px; padding: 10px 14px; background: {{ $isBudgetMode ? '#eef2ff' : '#f0f9ff' }}; border: 1px solid {{ $isBudgetMode ? '#c7d2fe' : '#bae6fd' }}; border-radius: 6px; font-size: 12px; color: {{ $isBudgetMode ? '#4338ca' : '#075985' }}; line-height: 1.7;">
+        <div style="margin-top: 14px; padding: 10px 14px; background: {{ $isBudgetMode ? '#eff6ff' : '#f0f9ff' }}; border: 1px solid {{ $isBudgetMode ? '#bfdbfe' : '#bae6fd' }}; border-radius: 6px; font-size: 12px; color: {{ $isBudgetMode ? '#1d4ed8' : '#075985' }}; line-height: 1.7;">
             <strong>編集について:</strong> 売上連動行・集計行は自動算出のため入力欄なし。手入力・固定額タイプの項目のみ編集可能です。<br>
             @if($isBudgetMode)
                 <strong>予算編集:</strong> 予算は実績とは独立管理。タブを切替えても入力中の値は保持されます（保存後）。詳細画面の「予算ベース」表示モードで参照できます。
