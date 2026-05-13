@@ -10,6 +10,10 @@
         }
         return $isEdit ? (bool) $category->$key : $default;
     };
+    // <select> の selected 判定用: Enum と文字列を === で比較すると常に false になるため、
+    // 編集中の Enum 値を文字列で取り出して、old() フォールバックに使う
+    $selectedGroup = old('group_type', $isEdit ? $category->group_type->value : 'expense');
+    $selectedCalc  = old('calc_type',  $isEdit ? $category->calc_type->value  : 'manual');
 @endphp
 
 <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 24px;">
@@ -53,7 +57,7 @@
                 {{ $isEdit && $category->is_system ? 'disabled' : '' }}
                 style="width: 100%; max-width: 400px; padding: 9px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; background: white;">
             @foreach($groups as $g)
-                <option value="{{ $g->value }}" {{ $val('group_type', $isEdit ? $category->group_type->value : 'expense') === $g->value ? 'selected' : '' }}>
+                <option value="{{ $g->value }}" {{ $selectedGroup === $g->value ? 'selected' : '' }}>
                     {{ $g->label() }}
                 </option>
             @endforeach
@@ -73,7 +77,7 @@
                 {{ $isEdit && $category->is_system ? 'disabled' : '' }}
                 style="width: 100%; max-width: 400px; padding: 9px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; background: white;">
             @foreach($calcTypes as $ct)
-                <option value="{{ $ct->value }}" {{ $val('calc_type', $isEdit ? $category->calc_type->value : 'manual') === $ct->value ? 'selected' : '' }}>
+                <option value="{{ $ct->value }}" {{ $selectedCalc === $ct->value ? 'selected' : '' }}>
                     {{ $ct->label() }}
                 </option>
             @endforeach
