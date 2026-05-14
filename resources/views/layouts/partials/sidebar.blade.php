@@ -58,7 +58,7 @@
 
     {{-- テナント管理 --}}
     @if($hasTenantAccess)
-        <x-sidebar-group label="テナント管理">
+        <x-sidebar-group label="テナント管理" section="tenant">
             <x-sidebar-item :href="url('/tenant/properties')" label="物件一覧" :active="request()->is('tenant/properties*')" />
             <x-sidebar-item :href="url('/tenant/units')" label="部屋一覧" :active="request()->is('tenant/units')" />
             <x-sidebar-item :href="url('/tenant/contracts')" label="契約一覧" :active="request()->is('tenant/contracts*')" />
@@ -71,7 +71,7 @@
 
     {{-- 賃貸マンション --}}
     @if($hasMansionAccess)
-        <x-sidebar-group label="賃貸マンション">
+        <x-sidebar-group label="賃貸マンション" section="mansion">
             <x-sidebar-item :href="url('/mansion/properties')" label="物件一覧" :active="request()->is('mansion/properties*')" />
             <x-sidebar-item :href="url('/mansion/tenants')" label="入居者管理" :active="request()->is('mansion/tenants*')" />
             <x-sidebar-item :href="url('/mansion/contracts')" label="部屋契約一覧" :active="request()->is('mansion/contracts*')" />
@@ -80,14 +80,14 @@
     @endif
 
     {{-- 収支管理 --}}
-    <x-sidebar-group label="収支管理">
+    <x-sidebar-group label="収支管理" section="income">
         <x-sidebar-item :href="url('/tenant/transactions')" label="収支一覧" :active="request()->is('tenant/transactions') || request()->is('tenant/transactions/create') || request()->is('tenant/transactions/*/edit')" />
         <x-sidebar-item :href="url('/tenant/transactions/summary')" label="収支サマリー" :active="request()->is('tenant/transactions/summary') || request()->is('tenant/transactions/by-*')" />
     </x-sidebar-group>
 
     {{-- 不動産管理 --}}
     @if($hasRealEstateAccess)
-        <x-sidebar-group label="不動産管理">
+        <x-sidebar-group label="不動産管理" section="realestate">
             <x-sidebar-item :href="url('/realestate/procurements')" label="仕入れ案件" :active="request()->is('realestate/procurements*')" />
             <x-sidebar-item :href="url('/realestate/projects')" label="分譲地" :active="request()->is('realestate/projects*')" />
             <x-sidebar-item :href="url('/realestate/suppliers')" label="仕入れ先管理" :active="request()->is('realestate/suppliers*')" />
@@ -95,10 +95,10 @@
             <x-sidebar-item :href="url('/realestate/contracts')" label="契約管理" :active="request()->is('realestate/contracts*')" />
         </x-sidebar-group>
     @endif
-    
+
     {{-- 住宅事業 --}}
     @if($hasHousingAccess)
-        <x-sidebar-group label="住宅事業">
+        <x-sidebar-group label="住宅事業" section="housing">
             <x-sidebar-item :href="url('/housing')" label="ダッシュボード" :active="request()->is('housing') || request()->is('housing/')" />
             <x-sidebar-item :href="url('/housing/properties')" label="建売物件" :active="request()->is('housing/properties*')" />
             <x-sidebar-item :href="url('/housing/custom-orders')" label="注文住宅" :active="request()->is('housing/custom-orders*')" />
@@ -109,7 +109,7 @@
 
     {{-- DAD --}}
     @if($hasDadAccess)
-        <x-sidebar-group label="DAD">
+        <x-sidebar-group label="DAD" section="dad">
             <x-sidebar-item :href="url('/dad/projects')" label="工事案件" :active="request()->is('dad/projects*')" />
             <x-sidebar-item :href="url('/dad/clients')" label="発注者管理" :active="request()->is('dad/clients*')" />
             <x-sidebar-item :href="url('/dad/subcontractors')" label="協力業者管理" :active="request()->is('dad/subcontractors*')" />
@@ -119,7 +119,7 @@
 
     {{-- ZEAL フィットネス事業 --}}
     @if($hasZealAccess)
-        <x-sidebar-group label="ZEAL">
+        <x-sidebar-group label="ZEAL" section="zeal">
             <x-sidebar-item :href="url('/zeal')" label="ダッシュボード" :active="request()->is('zeal') || request()->routeIs('zeal.dashboard')" />
             <x-sidebar-item :href="url('/zeal/simulations')" label="経営試算表" :active="request()->is('zeal/simulations*')" />
             <x-sidebar-item :href="url('/zeal/members')" label="会員管理" :active="request()->is('zeal/members*')" />
@@ -129,7 +129,7 @@
 
     {{-- システム管理（経営層のみ） --}}
     @if($isExecutive)
-        <x-sidebar-group label="システム管理">
+        <x-sidebar-group label="システム管理" section="admin">
             {{-- サブ見出し: テナント --}}
             <div style="display: flex; align-items: center; gap: 8px; padding: 8px 20px 3px;">
                 <span style="font-size: 10px; font-weight: 600; color: #6B7280; letter-spacing: 0.05em; white-space: nowrap;">テナント</span>
@@ -310,7 +310,7 @@
     </div>
 
     {{-- ダッシュボード --}}
-    <x-sidebar-group label="ダッシュボード">
+    <x-sidebar-group label="ダッシュボード" section="dashboard">
         @if($isExecutive)
             <x-sidebar-item :href="url('/dashboard/executive')" label="経営ダッシュボード" :active="request()->is('dashboard/executive')" />
         @endif
@@ -323,7 +323,7 @@
     </x-sidebar-group>
 
     @if($hasTenantAccess)
-        <x-sidebar-group label="テナント管理">
+        <x-sidebar-group label="テナント管理" section="tenant">
             <x-sidebar-item :href="url('/tenant/properties')" label="物件一覧" :active="request()->is('tenant/properties*')" />
             <x-sidebar-item :href="url('/tenant/units')" label="部屋一覧" :active="request()->is('tenant/units')" />
             <x-sidebar-item :href="url('/tenant/contracts')" label="契約一覧" :active="request()->is('tenant/contracts*')" />
@@ -335,7 +335,7 @@
     @endif
 
     @if($hasMansionAccess)
-        <x-sidebar-group label="賃貸マンション">
+        <x-sidebar-group label="賃貸マンション" section="mansion">
             <x-sidebar-item :href="url('/mansion/properties')" label="物件一覧" :active="request()->is('mansion/properties*')" />
             <x-sidebar-item :href="url('/mansion/tenants')" label="入居者管理" :active="request()->is('mansion/tenants*')" />
             <x-sidebar-item :href="url('/mansion/contracts')" label="部屋契約一覧" :active="request()->is('mansion/contracts*')" />
@@ -343,13 +343,13 @@
         </x-sidebar-group>
     @endif
 
-    <x-sidebar-group label="収支管理">
+    <x-sidebar-group label="収支管理" section="income">
         <x-sidebar-item :href="url('/tenant/transactions')" label="収支一覧" :active="request()->is('tenant/transactions') || request()->is('tenant/transactions/create') || request()->is('tenant/transactions/*/edit')" />
         <x-sidebar-item :href="url('/tenant/transactions/summary')" label="収支サマリー" :active="request()->is('tenant/transactions/summary') || request()->is('tenant/transactions/by-*')" />
     </x-sidebar-group>
 
     @if($hasRealEstateAccess)
-        <x-sidebar-group label="不動産管理">
+        <x-sidebar-group label="不動産管理" section="realestate">
             <x-sidebar-item :href="url('/realestate/procurements')" label="仕入れ案件" :active="request()->is('realestate/procurements*')" />
             <x-sidebar-item :href="url('/realestate/projects')" label="分譲地" :active="request()->is('realestate/projects*')" />
             <x-sidebar-item :href="url('/realestate/suppliers')" label="仕入れ先管理" :active="request()->is('realestate/suppliers*')" />
@@ -359,7 +359,7 @@
     @endif
     
     @if($hasHousingAccess)
-        <x-sidebar-group label="住宅事業">
+        <x-sidebar-group label="住宅事業" section="housing">
             <x-sidebar-item :href="url('/housing')" label="ダッシュボード" :active="request()->is('housing') || request()->is('housing/')" />
             <x-sidebar-item :href="url('/housing/properties')" label="建売物件" :active="request()->is('housing/properties*')" />
             <x-sidebar-item :href="url('/housing/custom-orders')" label="注文住宅" :active="request()->is('housing/custom-orders*')" />
@@ -369,7 +369,7 @@
     @endif
 
     @if($hasDadAccess)
-        <x-sidebar-group label="DAD">
+        <x-sidebar-group label="DAD" section="dad">
             <x-sidebar-item :href="url('/dad/projects')" label="工事案件" :active="request()->is('dad/projects*')" />
             <x-sidebar-item :href="url('/dad/clients')" label="発注者管理" :active="request()->is('dad/clients*')" />
             <x-sidebar-item :href="url('/dad/subcontractors')" label="協力業者管理" :active="request()->is('dad/subcontractors*')" />
@@ -379,7 +379,7 @@
 
     {{-- ZEAL フィットネス事業 --}}
     @if($hasZealAccess)
-        <x-sidebar-group label="ZEAL">
+        <x-sidebar-group label="ZEAL" section="zeal">
             <x-sidebar-item :href="url('/zeal')" label="ダッシュボード" :active="request()->is('zeal') || request()->routeIs('zeal.dashboard')" />
             <x-sidebar-item :href="url('/zeal/simulations')" label="経営試算表" :active="request()->is('zeal/simulations*')" />
             <x-sidebar-item :href="url('/zeal/members')" label="会員管理" :active="request()->is('zeal/members*')" />
@@ -388,7 +388,7 @@
     @endif
 
     @if($isExecutive)
-        <x-sidebar-group label="システム管理">
+        <x-sidebar-group label="システム管理" section="admin">
             {{-- サブ見出し: テナント --}}
             <div style="display: flex; align-items: center; gap: 8px; padding: 8px 20px 3px;">
                 <span style="font-size: 10px; font-weight: 600; color: #6B7280; letter-spacing: 0.05em; white-space: nowrap;">テナント</span>

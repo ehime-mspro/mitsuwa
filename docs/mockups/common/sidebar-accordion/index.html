@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>サイドバー アコーディオン — モック一覧</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif; background: #f3f4f6; padding: 32px; }
+
+        .mock-card {
+            background: white; border: 1px solid #e5e7eb; border-radius: 10px;
+            padding: 22px; transition: all .15s;
+            display: block; text-decoration: none; color: inherit;
+        }
+        .mock-card:hover {
+            box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+            transform: translateY(-1px);
+            border-color: #6ee7b7;
+        }
+        .role-badge {
+            display: inline-block; padding: 3px 10px; border-radius: 999px;
+            font-size: 11px; font-weight: 700; margin-bottom: 8px;
+        }
+        .role-badge.executive { background: #d1fae5; color: #065f46; }
+        .role-badge.manager   { background: #dbeafe; color: #1d4ed8; }
+        .role-badge.staff     { background: #f3f4f6; color: #374151; }
+
+        .mock-card h3 { font-size: 16px; font-weight: 700; color: #111827; margin-bottom: 6px; }
+        .mock-card .meta { font-size: 11px; color: #6b7280; margin-bottom: 10px; }
+        .mock-card .desc { font-size: 13px; color: #374151; line-height: 1.6; margin-bottom: 10px; }
+        .mock-card .stats {
+            display: flex; gap: 10px; font-size: 11px; color: #6b7280;
+            border-top: 1px solid #f3f4f6; padding-top: 10px; margin-top: 10px;
+        }
+        .mock-card .stats strong { color: #111827; }
+
+        .feature-row {
+            display: flex; gap: 12px; align-items: center;
+            padding: 10px 14px; background: #f9fafb;
+            border-radius: 6px; margin-bottom: 8px;
+            font-size: 13px;
+        }
+        .feature-row .ico { font-size: 18px; flex-shrink: 0; }
+        .feature-row strong { color: #111827; font-weight: 700; }
+    </style>
+</head>
+<body>
+    <div class="max-w-5xl mx-auto">
+        <h1 class="text-xl font-bold text-gray-900 mb-2">サイドバー アコーディオン — モック一覧</h1>
+        <p class="text-sm text-gray-600 mb-6">事業グループをクリックで開閉できるアコーディオン式サイドバー。各ロールでどう見えるかを確認してください。</p>
+
+        <!-- 主要機能 -->
+        <div class="bg-white border border-gray-200 rounded-lg p-5 mb-6">
+            <h2 class="text-sm font-bold text-emerald-700 mb-3">🎯 主要機能</h2>
+            <div class="feature-row">
+                <span class="ico">📂</span>
+                <div><strong>クリックで開閉</strong>: 事業グループ名（▶ アイコン）をクリックで子項目を展開/折りたたみ。スムーズなアニメーション付き。</div>
+            </div>
+            <div class="feature-row">
+                <span class="ico">🎯</span>
+                <div><strong>現在ページを自動展開</strong>: ログイン直後やページ遷移時、URL から判定して該当グループ <em>のみ</em> をデフォルトで展開。</div>
+            </div>
+            <div class="feature-row">
+                <span class="ico">💾</span>
+                <div><strong>localStorage で状態保持</strong>: ユーザーが手動で開閉した状態は次回訪問時にも復元（現在ページのグループは強制展開）。</div>
+            </div>
+            <div class="feature-row">
+                <span class="ico">🏢</span>
+                <div><strong>ロール別の表示制御</strong>: 経営層は全 9 グループ、マネージャーは担当事業のみ、スタッフは担当事業 + ダッシュボードのみ。</div>
+            </div>
+        </div>
+
+        <!-- ロール別モック -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+
+            <a href="executive.html" class="mock-card">
+                <span class="role-badge executive">経営層 / Executive</span>
+                <h3>① 経営層</h3>
+                <div class="meta">executive.html</div>
+                <div class="desc">
+                    全 9 グループ表示。<strong>システム管理（18項目）</strong>を含む全事業にアクセス可能。
+                    最も縦長になりやすいため、アコーディオンの効果が大きい。
+                </div>
+                <div class="stats">
+                    <div><strong>9</strong> グループ</div>
+                    <div><strong>51</strong> 項目（最大）</div>
+                    <div><strong>現在</strong>: ダッシュボード</div>
+                </div>
+            </a>
+
+            <a href="manager-zeal.html" class="mock-card">
+                <span class="role-badge manager">マネージャー / Manager</span>
+                <h3>② マネージャー (ZEAL)</h3>
+                <div class="meta">manager-zeal.html</div>
+                <div class="desc">
+                    ZEAL 部門所属のマネージャー。担当事業（ZEAL）と共通の収支管理のみ表示。
+                    システム管理は経営層のみのため非表示。
+                </div>
+                <div class="stats">
+                    <div><strong>2</strong> グループ</div>
+                    <div><strong>6</strong> 項目</div>
+                    <div><strong>現在</strong>: ZEAL ダッシュボード</div>
+                </div>
+            </a>
+
+            <a href="staff-tenant.html" class="mock-card">
+                <span class="role-badge staff">スタッフ / Staff</span>
+                <h3>③ スタッフ (テナント)</h3>
+                <div class="meta">staff-tenant.html</div>
+                <div class="desc">
+                    テナント部門所属のスタッフ。テナント関連のグループのみ表示。
+                    他事業・システム管理は完全に非表示。
+                </div>
+                <div class="stats">
+                    <div><strong>3</strong> グループ</div>
+                    <div><strong>10</strong> 項目</div>
+                    <div><strong>現在</strong>: 物件一覧</div>
+                </div>
+            </a>
+
+        </div>
+
+        <!-- 確認ポイント -->
+        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+            <h2 class="text-sm font-bold text-blue-900 mb-2">📌 確認ポイント</h2>
+            <ul class="text-sm text-blue-900 space-y-1 list-disc pl-5">
+                <li><strong>グループ開閉</strong>: 各グループのヘッダー（▶ アイコン付き）をクリックして開閉が動作するか</li>
+                <li><strong>chevron 回転</strong>: 開閉時に ▶ が ▼ に滑らかに 90 度回転するか</li>
+                <li><strong>展開アニメーション</strong>: 子要素が滑らかに表示/非表示されるか</li>
+                <li><strong>現在ページ強制展開</strong>: ロードした直後、現在ページのグループのみ展開されているか</li>
+                <li><strong>localStorage</strong>: 任意のグループを開閉 → ページリロード → 状態が保持されるか</li>
+                <li><strong>「全て折りたたむ」/「全て展開」ボタン</strong>: 一括操作が動作するか</li>
+                <li><strong>「localStorage クリア」ボタン</strong>: 状態リセットで現在ページのみが残るか</li>
+                <li><strong>ロール切替リンク</strong>: 右上のロール切替で別ロールに遷移しても状態は引き継がれる</li>
+            </ul>
+        </div>
+
+        <!-- 実装メモ -->
+        <div class="bg-white border border-gray-200 rounded-lg p-5">
+            <h2 class="text-sm font-bold text-emerald-700 mb-3">⚙️ 実装メモ</h2>
+            <ul class="text-sm text-gray-700 space-y-1 list-disc pl-5">
+                <li>Alpine.js v3 + @alpinejs/collapse プラグイン（CDN: jsdelivr）</li>
+                <li>各グループのヘッダーは <code class="bg-gray-100 px-1 rounded">&lt;button&gt;</code>。<code class="bg-gray-100 px-1 rounded">@click="toggle('section')"</code></li>
+                <li>展開状態は Alpine リアクティブな <code class="bg-gray-100 px-1 rounded">openSet</code>（Set）で管理</li>
+                <li>子コンテナは <code class="bg-gray-100 px-1 rounded">x-show="isOpen(...)" x-collapse</code> でスムーズに開閉</li>
+                <li>CLAUDE.md ルール準拠: <code class="bg-gray-100 px-1 rounded">&lt;script&gt;</code> 内アロー関数禁止 → <code class="bg-gray-100 px-1 rounded">function()</code> + <code class="bg-gray-100 px-1 rounded">var self = this</code></li>
+                <li>本実装時は Alpine.store('sidebarGroups') に移行（複数 partial で共有）</li>
+            </ul>
+        </div>
+
+    </div>
+</body>
+</html>

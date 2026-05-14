@@ -7,6 +7,22 @@
     <title>@yield('title', '経営管理システム') - {{ config('app.name', '経営管理システム') }}</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
+@php
+    // サイドバー アコーディオン用: 現在ページのセクション判定
+    // 該当グループをデフォルトで展開する
+    $currentSection = match (true) {
+        request()->is('zeal*')                                                                     => 'zeal',
+        request()->is('tenant/transactions*')                                                      => 'income',
+        request()->is('tenant*')                                                                   => 'tenant',
+        request()->is('mansion*')                                                                  => 'mansion',
+        request()->is('realestate*')                                                               => 'realestate',
+        request()->is('housing*')                                                                  => 'housing',
+        request()->is('dad*')                                                                      => 'dad',
+        request()->is('admin*')                                                                    => 'admin',
+        request()->is('dashboard*') || request()->is('/') || request()->is('home')                 => 'dashboard',
+        default                                                                                    => 'dashboard',
+    };
+@endphp
 <body class="antialiased" x-data="{ sidebarOpen: false, sidebarExpanded: true }">
     <div class="flex flex-col min-h-screen">
         {{-- ヘッダー --}}
@@ -70,6 +86,51 @@
                 try { t.setSelectionRange(start, end); } catch (_) {}
             }
         }, true);
+
+        // サイドバー アコーディオン用 Alpine ストア
+        // 各事業グループ（section）の開閉状態を localStorage で永続化
+        // 現在ページの section は強制展開（init() で openSet に追加）
+        document.addEventListener('alpine:init', function () {
+            window.Alpine.store('sidebarGroups', {
+                STORAGE_KEY: 'sidebar_groups_open_v1',
+                currentSection: '{{ $currentSection ?? "" }}',
+                // Set のままだと Alpine リアクティブが効きにくいので Array で持つ
+                openList: [],
+
+                init: function () {
+                    var self = this;
+                    try {
+                        var raw = localStorage.getItem(self.STORAGE_KEY);
+                        if (raw) {
+                            var arr = JSON.parse(raw);
+                            if (Array.isArray(arr)) self.openList = arr.slice();
+                        }
+                    } catch (e) {}
+                    // 現在ページの section は強制展開
+                    if (self.currentSection && self.openList.indexOf(self.currentSection) === -1) {
+                        self.openList.push(self.currentSection);
+                    }
+                },
+
+                isOpen: function (section) {
+                    if (!section) return true;
+                    return this.openList.indexOf(section) !== -1;
+                },
+
+                setOpen: function (section, isOpen) {
+                    if (!section) return;
+                    var idx = this.openList.indexOf(section);
+                    if (isOpen && idx === -1) {
+                        this.openList.push(section);
+                    } else if (!isOpen && idx !== -1) {
+                        this.openList.splice(idx, 1);
+                    }
+                    try {
+                        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.openList));
+                    } catch (e) {}
+                }
+            });
+        });
     </script>
 </body>
 </html>
