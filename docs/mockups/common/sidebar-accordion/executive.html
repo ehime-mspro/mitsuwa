@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <title>サイドバー アコーディオン — 経営層 (Executive) モック</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.x.x/dist/cdn.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif; }
@@ -105,13 +104,13 @@
         <aside class="w-[240px] min-w-[240px] bg-white border-r border-gray-200 overflow-y-auto pt-4 pb-6"
                style="max-height: 100vh;">
 
-            {{-- 最上部 --}}
+            <!-- 最上部 -->
             <div class="flex items-center justify-between px-5 py-2 mb-1">
                 <span class="text-sm font-bold text-emerald-700">📊 経営管理</span>
                 <span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-semibold">経営層</span>
             </div>
 
-            {{-- グループ 1: ダッシュボード --}}
+            <!-- グループ 1: ダッシュボード -->
             <div class="mb-1">
                 <button class="sb-group-header"
                         :class="{ 'is-open': isOpen('dashboard'), 'is-active': currentSection === 'dashboard' }"
@@ -122,14 +121,14 @@
                     <span>ダッシュボード</span>
                     <span class="count">3</span>
                 </button>
-                <div x-show="isOpen('dashboard')" x-collapse>
+                <div x-show="isOpen('dashboard')">
                     <a class="sb-item is-active" href="#">経営ダッシュボード</a>
                     <a class="sb-item" href="#">テナントダッシュボード</a>
                     <a class="sb-item" href="#">賃貸Mダッシュボード</a>
                 </div>
             </div>
 
-            {{-- グループ 2: テナント管理 --}}
+            <!-- グループ 2: テナント管理 -->
             <div class="mb-1">
                 <button class="sb-group-header"
                         :class="{ 'is-open': isOpen('tenant'), 'is-active': currentSection === 'tenant' }"
@@ -140,7 +139,7 @@
                     <span>テナント管理</span>
                     <span class="count">7</span>
                 </button>
-                <div x-show="isOpen('tenant')" x-collapse>
+                <div x-show="isOpen('tenant')">
                     <a class="sb-item" href="#">物件一覧</a>
                     <a class="sb-item" href="#">部屋一覧</a>
                     <a class="sb-item" href="#">契約一覧</a>
@@ -151,7 +150,7 @@
                 </div>
             </div>
 
-            {{-- グループ 3: 賃貸マンション --}}
+            <!-- グループ 3: 賃貸マンション -->
             <div class="mb-1">
                 <button class="sb-group-header"
                         :class="{ 'is-open': isOpen('mansion'), 'is-active': currentSection === 'mansion' }"
@@ -162,7 +161,7 @@
                     <span>賃貸マンション</span>
                     <span class="count">4</span>
                 </button>
-                <div x-show="isOpen('mansion')" x-collapse>
+                <div x-show="isOpen('mansion')">
                     <a class="sb-item" href="#">物件一覧</a>
                     <a class="sb-item" href="#">入居者管理</a>
                     <a class="sb-item" href="#">部屋契約一覧</a>
@@ -170,7 +169,7 @@
                 </div>
             </div>
 
-            {{-- グループ 4: 収支管理 --}}
+            <!-- グループ 4: 収支管理 -->
             <div class="mb-1">
                 <button class="sb-group-header"
                         :class="{ 'is-open': isOpen('income'), 'is-active': currentSection === 'income' }"
@@ -181,13 +180,13 @@
                     <span>収支管理</span>
                     <span class="count">2</span>
                 </button>
-                <div x-show="isOpen('income')" x-collapse>
+                <div x-show="isOpen('income')">
                     <a class="sb-item" href="#">収支一覧</a>
                     <a class="sb-item" href="#">収支サマリー</a>
                 </div>
             </div>
 
-            {{-- グループ 5: 不動産管理 --}}
+            <!-- グループ 5: 不動産管理 -->
             <div class="mb-1">
                 <button class="sb-group-header"
                         :class="{ 'is-open': isOpen('realestate'), 'is-active': currentSection === 'realestate' }"
@@ -198,7 +197,7 @@
                     <span>不動産管理</span>
                     <span class="count">5</span>
                 </button>
-                <div x-show="isOpen('realestate')" x-collapse>
+                <div x-show="isOpen('realestate')">
                     <a class="sb-item" href="#">仕入れ案件</a>
                     <a class="sb-item" href="#">分譲地</a>
                     <a class="sb-item" href="#">仕入れ先管理</a>
@@ -207,7 +206,7 @@
                 </div>
             </div>
 
-            {{-- グループ 6: 住宅事業 --}}
+            <!-- グループ 6: 住宅事業 -->
             <div class="mb-1">
                 <button class="sb-group-header"
                         :class="{ 'is-open': isOpen('housing'), 'is-active': currentSection === 'housing' }"
@@ -218,7 +217,7 @@
                     <span>住宅事業</span>
                     <span class="count">5</span>
                 </button>
-                <div x-show="isOpen('housing')" x-collapse>
+                <div x-show="isOpen('housing')">
                     <a class="sb-item" href="#">ダッシュボード</a>
                     <a class="sb-item" href="#">建売物件</a>
                     <a class="sb-item" href="#">注文住宅</a>
@@ -227,7 +226,7 @@
                 </div>
             </div>
 
-            {{-- グループ 7: DAD --}}
+            <!-- グループ 7: DAD -->
             <div class="mb-1">
                 <button class="sb-group-header"
                         :class="{ 'is-open': isOpen('dad'), 'is-active': currentSection === 'dad' }"
@@ -238,7 +237,7 @@
                     <span>DAD</span>
                     <span class="count">4</span>
                 </button>
-                <div x-show="isOpen('dad')" x-collapse>
+                <div x-show="isOpen('dad')">
                     <a class="sb-item" href="#">工事案件</a>
                     <a class="sb-item" href="#">発注者管理</a>
                     <a class="sb-item" href="#">協力業者管理</a>
@@ -246,7 +245,7 @@
                 </div>
             </div>
 
-            {{-- グループ 8: ZEAL --}}
+            <!-- グループ 8: ZEAL -->
             <div class="mb-1">
                 <button class="sb-group-header"
                         :class="{ 'is-open': isOpen('zeal'), 'is-active': currentSection === 'zeal' }"
@@ -257,7 +256,7 @@
                     <span>ZEAL</span>
                     <span class="count">4</span>
                 </button>
-                <div x-show="isOpen('zeal')" x-collapse>
+                <div x-show="isOpen('zeal')">
                     <a class="sb-item" href="#">ダッシュボード</a>
                     <a class="sb-item" href="#">経営試算表</a>
                     <a class="sb-item" href="#">会員管理</a>
@@ -265,7 +264,7 @@
                 </div>
             </div>
 
-            {{-- グループ 9: システム管理（18項目）--}}
+            <!-- グループ 9: システム管理（18項目）-->
             <div class="mb-1">
                 <button class="sb-group-header"
                         :class="{ 'is-open': isOpen('admin'), 'is-active': currentSection === 'admin' }"
@@ -276,8 +275,8 @@
                     <span>システム管理</span>
                     <span class="count">18</span>
                 </button>
-                <div x-show="isOpen('admin')" x-collapse>
-                    {{-- テナント --}}
+                <div x-show="isOpen('admin')">
+                    <!-- テナント -->
                     <div class="sb-subheader">
                         <span class="sb-subheader-text">テナント</span>
                         <span class="sb-subheader-line"></span>
@@ -285,33 +284,33 @@
                     <a class="sb-item" href="#">用途マスター</a>
                     <a class="sb-item" href="#">構造マスター</a>
                     <a class="sb-item" href="#">テナントCSVインポート</a>
-                    {{-- 賃貸マンション --}}
+                    <!-- 賃貸マンション -->
                     <div class="sb-subheader">
                         <span class="sb-subheader-text">賃貸マンション</span>
                         <span class="sb-subheader-line"></span>
                     </div>
                     <a class="sb-item" href="#">賃貸マンションCSVインポート</a>
-                    {{-- 不動産 --}}
+                    <!-- 不動産 -->
                     <div class="sb-subheader">
                         <span class="sb-subheader-text">不動産</span>
                         <span class="sb-subheader-line"></span>
                     </div>
                     <a class="sb-item" href="#">原価項目マスター</a>
                     <a class="sb-item" href="#">用途地域マスター</a>
-                    {{-- 住宅 --}}
+                    <!-- 住宅 -->
                     <div class="sb-subheader">
                         <span class="sb-subheader-text">住宅</span>
                         <span class="sb-subheader-line"></span>
                     </div>
                     <a class="sb-item" href="#">アンケート設問管理</a>
                     <a class="sb-item" href="#">顧客CSVインポート</a>
-                    {{-- DAD --}}
+                    <!-- DAD -->
                     <div class="sb-subheader">
                         <span class="sb-subheader-text">DAD</span>
                         <span class="sb-subheader-line"></span>
                     </div>
                     <a class="sb-item" href="#">専門分野マスター</a>
-                    {{-- ZEAL --}}
+                    <!-- ZEAL -->
                     <div class="sb-subheader">
                         <span class="sb-subheader-text">ZEAL</span>
                         <span class="sb-subheader-line"></span>
@@ -321,7 +320,7 @@
                     <a class="sb-item" href="#">店舗マスタ</a>
                     <a class="sb-item" href="#">トレーナーマスタ</a>
                     <a class="sb-item" href="#">試算表 項目マスター</a>
-                    {{-- マスター --}}
+                    <!-- マスター -->
                     <div class="sb-subheader">
                         <span class="sb-subheader-text">マスター</span>
                         <span class="sb-subheader-line"></span>

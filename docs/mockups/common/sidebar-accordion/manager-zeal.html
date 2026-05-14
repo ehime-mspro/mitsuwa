@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <title>サイドバー アコーディオン — マネージャー (ZEAL 担当) モック</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.x.x/dist/cdn.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif; }
@@ -76,11 +75,11 @@
                 <span class="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-semibold">マネージャー</span>
             </div>
 
-            {{-- ダッシュボード（経営層用は非表示。テナント/マンションダッシュボードも担当外なので空） --}}
-            {{-- マネージャー（ZEAL 担当）は dashboard グループ自体が表示されないか、空になる --}}
-            {{-- ZEAL ダッシュボードは ZEAL グループ内にある --}}
+            <!-- ダッシュボード（経営層用は非表示。テナント/マンションダッシュボードも担当外なので空） -->
+            <!-- マネージャー（ZEAL 担当）は dashboard グループ自体が表示されないか、空になる -->
+            <!-- ZEAL ダッシュボードは ZEAL グループ内にある -->
 
-            {{-- 収支管理（全員表示） --}}
+            <!-- 収支管理（全員表示） -->
             <div class="mb-1">
                 <button class="sb-group-header"
                         :class="{ 'is-open': isOpen('income'), 'is-active': currentSection === 'income' }"
@@ -91,13 +90,13 @@
                     <span>収支管理</span>
                     <span class="count">2</span>
                 </button>
-                <div x-show="isOpen('income')" x-collapse>
+                <div x-show="isOpen('income')">
                     <a class="sb-item" href="#">収支一覧</a>
                     <a class="sb-item" href="#">収支サマリー</a>
                 </div>
             </div>
 
-            {{-- ZEAL（ZEAL マネージャーが担当する事業） --}}
+            <!-- ZEAL（ZEAL マネージャーが担当する事業） -->
             <div class="mb-1">
                 <button class="sb-group-header"
                         :class="{ 'is-open': isOpen('zeal'), 'is-active': currentSection === 'zeal' }"
@@ -108,7 +107,7 @@
                     <span>ZEAL</span>
                     <span class="count">4</span>
                 </button>
-                <div x-show="isOpen('zeal')" x-collapse>
+                <div x-show="isOpen('zeal')">
                     <a class="sb-item is-active" href="#">ダッシュボード</a>
                     <a class="sb-item" href="#">経営試算表</a>
                     <a class="sb-item" href="#">会員管理</a>
@@ -116,7 +115,7 @@
                 </div>
             </div>
 
-            {{-- システム管理は経営層のみ → マネージャーには表示しない --}}
+            <!-- システム管理は経営層のみ → マネージャーには表示しない -->
 
         </aside>
 
