@@ -957,16 +957,19 @@ class TenantImportController extends Controller
                 }
             }
 
-            // 期間重なりチェック（警告のみ、インポートは許可）
-            $hasOverlap = Contract::where('unit_id', $unit->id)
+            // 期間重なりチェック（active 契約のみ対象、警告のみで取込は実行）
+            // 過去契約同士の重なりは検出しない（データ移行時にノイズになるため）。
+            // 同じ区画に「現在も使われている契約」がある場合のみ管理者に通知する。
+            $hasActiveOverlap = Contract::where('unit_id', $unit->id)
+                ->where('status', ContractStatus::Active->value)
                 ->where('contract_date', '<=', $endDate)
                 ->where(function ($q) use ($contractDate) {
                     $q->whereNull('contract_end_date')
                       ->orWhere('contract_end_date', '>=', $contractDate);
                 })
                 ->exists();
-            if ($hasOverlap) {
-                $warnings[] = ['row' => $rowNum, 'message' => "区画「{$propName} {$unit->display_name}」に期間が重なる既存契約があります（取込は実行）"];
+            if ($hasActiveOverlap) {
+                $warnings[] = ['row' => $rowNum, 'message' => "区画「{$propName} {$unit->display_name}」に期間が重なるアクティブ契約があります（取込は実行）"];
             }
 
             // 金額フィールドチェック（過去契約は家賃も任意。データ移行で空欄ありえる）
@@ -1065,7 +1068,7 @@ class TenantImportController extends Controller
                     'customer_id'        => $customerIdByName[$custName],
                     'status'             => ContractStatus::Terminated->value,
                     'contract_date'      => $row['contract_date'],
-                    'rent_start_date'    => $row['rent_start_date'] ?: $row['contract_date'],
+                    'rent_start_date'    => $row['rent_start_date'] ?: null,
                     'contract_end_date'  => $row['contract_end_date'],
                     'rent'               => $row['rent'] !== '' ? $row['rent'] : 0,
                     'common_fee'         => $row['common_fee'] !== '' ? $row['common_fee'] : 0,
@@ -1334,37 +1337,34 @@ class TenantImportController extends Controller
      */
     private function getNextContractCodeNum(): int
     {
-        $year = now()->year;
-        $prefix = "C-{$year}-";
-
-        $lastNumber = Contract::withTrashed()
-            ->where('contract_number', 'like', $prefix . '%')
-            ->orderByDesc('contract_number')
-            ->value('contract_number');
-
-        if ($lastNumber) {
-            return (int) substr($lastNumber, -3) + 1;
-        }
-        return 1;
+        return $this->getNextContractCodeNumForYear((int) now()->year);
     }
 
     /**
-     * 指定年の契約番号の次の番号を取得（過去契約用）
+     * 指定年の契約番号の次の番号を取得
      *
-     * 過去契約は「契約日の年」で C-{年}-XXX を採番する。
-     * 例: 2020-04-01 の契約 → C-2020-001 から始まる
+     * 文字列ソート（"C-2020-1000" < "C-2020-999"）の罠を避けるため、
+     * LENGTH 優先のソート + prefix 後の全桁を数値化する。
+     *
+     * 注意: 並行取込で同じ番号を取得するレースコンディションあり。
+     * CSV 一括取込は管理者操作で並行発生は想定しないが、複数管理者が
+     * 同時に「契約タブ」と「過去契約タブ」を実行すると contract_number_unique
+     * 制約違反になる可能性がある。実運用上は注意喚起のみで対応。
      */
     private function getNextContractCodeNumForYear(int $year): int
     {
         $prefix = "C-{$year}-";
 
+        // 4桁以上の連番でも壊れないように LENGTH 優先ソート
         $lastNumber = Contract::withTrashed()
             ->where('contract_number', 'like', $prefix . '%')
-            ->orderByDesc('contract_number')
+            ->orderByRaw('LENGTH(contract_number) DESC, contract_number DESC')
             ->value('contract_number');
 
         if ($lastNumber) {
-            return (int) substr($lastNumber, -3) + 1;
+            // prefix 後の連番部分（"C-2020-999" → "999"、"C-2020-1000" → "1000"）
+            $tail = substr($lastNumber, strlen($prefix));
+            return ((int) $tail) + 1;
         }
         return 1;
     }
