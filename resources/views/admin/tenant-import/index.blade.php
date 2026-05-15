@@ -28,6 +28,10 @@
                 :style="activeTab === 'contract' ? 'padding: 10px 20px; font-size: 14px; border: none; cursor: pointer; border-radius: 6px 6px 0 0; background: #fff; color: #059669; border-bottom: 2px solid #059669; font-weight: 700; margin-bottom: -2px;' : 'padding: 10px 20px; font-size: 14px; border: none; cursor: pointer; border-radius: 6px 6px 0 0; background: #f9fafb; color: #6b7280; border-bottom: 2px solid transparent; margin-bottom: -2px;'">
             ④ 契約
         </button>
+        <button type="button" x-on:click="activeTab = 'past-contract'"
+                :style="activeTab === 'past-contract' ? 'padding: 10px 20px; font-size: 14px; border: none; cursor: pointer; border-radius: 6px 6px 0 0; background: #fff; color: #059669; border-bottom: 2px solid #059669; font-weight: 700; margin-bottom: -2px;' : 'padding: 10px 20px; font-size: 14px; border: none; cursor: pointer; border-radius: 6px 6px 0 0; background: #f9fafb; color: #6b7280; border-bottom: 2px solid transparent; margin-bottom: -2px;'">
+            ⑤ 過去契約
+        </button>
     </div>
 
     {{-- タブコンテンツ --}}
@@ -141,6 +145,36 @@
             @endif
         </div>
 
+        {{-- ===== ⑤ 過去契約タブ（解約済み契約の一括取込） ===== --}}
+        <div x-show="activeTab === 'past-contract'">
+            @if(isset($preview) && $preview === 'past-contract')
+                @include('admin.tenant-import._preview', [
+                    'tab'         => 'past-contract',
+                    'routeName'   => 'admin.tenant-import.past-contract',
+                    'entityLabel' => '過去契約',
+                ])
+            @else
+                <div style="background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 8px; padding: 14px 18px; margin-bottom: 24px;">
+                    <div style="font-weight: 600; font-size: 14px; color: #5b21b6; margin-bottom: 6px;">過去契約の一括登録（解約済み契約）</div>
+                    <ul style="font-size: 12px; color: #6d28d9; margin: 0; padding-left: 18px; line-height: 1.8;">
+                        <li>データ移行・過去実績登録のために、<strong>解約済みの契約</strong>を一括取込します</li>
+                        <li>必須項目: <strong>物件名・部屋番号・テナント名・契約日・解約日</strong>（他は任意）</li>
+                        <li>解約日があるので status=<strong>terminated（解約済）</strong>として登録</li>
+                        <li>契約番号は<strong>契約日の年</strong>で自動採番（例: 2020-04-01 契約 → <code>C-2020-001</code>）</li>
+                        <li>テナント名が顧客マスタにない場合は<strong>自動作成</strong>（同名顧客があれば再利用）</li>
+                        <li>過去契約取込では区画のステータスは<strong>変更しません</strong>（現状の入居状態に影響なし）</li>
+                        <li>同一区画に期間が重なる契約があっても警告のみで取込実行されます</li>
+                    </ul>
+                </div>
+                @include('admin.tenant-import._form', [
+                    'tab'           => 'past-contract',
+                    'routeName'     => 'admin.tenant-import.past-contract',
+                    'templateRoute' => 'admin.tenant-import.template.past-contract',
+                    'fileInputName' => 'filePastContract',
+                ])
+            @endif
+        </div>
+
     </div>
 </div>
 
@@ -148,7 +182,7 @@
 function tenantImportTabs() {
     return {
         activeTab: '{{ $activeTab ?? "property" }}',
-        fileNames: { property: '', unit: '', customer: '', contract: '' },
+        fileNames: { property: '', unit: '', customer: '', contract: '', 'past-contract': '' },
         onFileSelect: function(event, tab) {
             var file = event.target.files[0];
             if (file) {

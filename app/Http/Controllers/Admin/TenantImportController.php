@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Enums\ContractStatus;
+use App\Enums\CustomerType;
 use App\Enums\DepartmentCode;
 use App\Enums\PropertyType;
 use App\Enums\UnitStatus;
@@ -18,8 +19,9 @@ use Illuminate\Support\Facades\DB;
 /**
  * テナントCSVインポートコントローラ
  *
- * 4種類の個別CSVインポート機能を提供:
- * ① 物件インポート ② 区画インポート ③ 顧客インポート ④ 契約インポート
+ * 5種類の個別CSVインポート機能を提供:
+ * ① 物件インポート ② 区画インポート ③ 顧客インポート ④ 契約インポート（現契約）
+ * ⑤ 過去契約インポート（解約済み契約の一括取込）
  */
 class TenantImportController extends Controller
 {
@@ -86,6 +88,29 @@ class TenantImportController extends Controller
         'テナント名' => 'customer_name',
         '契約日'     => 'contract_date',
         '賃料開始日' => 'rent_start_date',
+        '家賃'       => 'rent',
+        '共益費'     => 'common_fee',
+        '敷金'       => 'deposit',
+        'ゴミ代'     => 'garbage_fee',
+        '駆除代'     => 'pest_control_fee',
+        '屋号'       => 'store_name',
+        '備考'       => 'notes',
+    ];
+
+    /**
+     * 過去契約 CSV カラムマップ（解約済み契約の一括取込用）
+     * - 解約日 が必須。これがあるので status=terminated として登録
+     * - テナント名 が必須。マスタになければ自動作成（注意: 同名顧客があれば再利用）
+     * - 既存「契約」と異なり、Unit.status は更新しない（過去契約なので現状に影響なし）
+     */
+    private array $pastContractColumnMap = [
+        '物件名'     => 'property_name',
+        '階'         => 'floor',
+        '部屋番号'   => 'room_number',
+        'テナント名' => 'customer_name',
+        '契約日'     => 'contract_date',
+        '賃料開始日' => 'rent_start_date',
+        '解約日'     => 'contract_end_date',
         '家賃'       => 'rent',
         '共益費'     => 'common_fee',
         '敷金'       => 'deposit',
@@ -787,6 +812,291 @@ class TenantImportController extends Controller
         }
     }
 
+    /**
+     * 過去契約のインポート実行（プレビュー / 確定）
+     *
+     * 既存「契約」インポートとの違い:
+     * - 解約日が必須（status=terminated として登録）
+     * - テナント名が必須。マスタになければ自動作成（同名顧客は再利用）
+     * - Unit.status は更新しない（過去契約なので現状に影響なし）
+     * - 契約番号は「契約日の年」で採番（C-{契約日年}-XXX）
+     * - 同一区画に期間が重なる契約があっても警告のみで取込実行
+     */
+    public function executePastContract(Request $request)
+    {
+        $columnMap = $this->pastContractColumnMap;
+        $requiredKeys = ['property_name', 'room_number', 'customer_name', 'contract_date', 'contract_end_date'];
+        $tab = 'past-contract';
+
+        // CSV 読み込み
+        $result = $this->loadCsv($request, $columnMap, $requiredKeys);
+        if ($result instanceof \Illuminate\Http\RedirectResponse) {
+            return $result;
+        }
+        [$rows, $content] = $result;
+
+        // 行バリデーション
+        $errors = [];
+        $warnings = [];
+        $validRows = [];
+        $propertyCache = [];
+        $customerCache = [];        // 既存顧客のキャッシュ
+        $customerCreateList = [];   // 自動作成予定の顧客名リスト
+
+        foreach ($rows as $i => $row) {
+            $rowNum = $i + 2;
+
+            // 必須チェック
+            if ($row['property_name'] === '') {
+                $errors[] = ['row' => $rowNum, 'message' => '物件名が未入力です'];
+                continue;
+            }
+            if ($row['room_number'] === '') {
+                $errors[] = ['row' => $rowNum, 'message' => '部屋番号が未入力です'];
+                continue;
+            }
+            if ($row['customer_name'] === '') {
+                $errors[] = ['row' => $rowNum, 'message' => 'テナント名が未入力です（過去契約はテナント名必須）'];
+                continue;
+            }
+            if ($row['contract_date'] === '') {
+                $errors[] = ['row' => $rowNum, 'message' => '契約日が未入力です'];
+                continue;
+            }
+            if ($row['contract_end_date'] === '') {
+                $errors[] = ['row' => $rowNum, 'message' => '解約日が未入力です（過去契約は解約日必須）'];
+                continue;
+            }
+
+            // 物件の存在チェック
+            $propName = $row['property_name'];
+            if (!isset($propertyCache[$propName])) {
+                $prop = Property::where('name', $propName)
+                    ->where('department', DepartmentCode::Tenant->value)
+                    ->first();
+                $propertyCache[$propName] = $prop;
+            }
+            if (!$propertyCache[$propName]) {
+                $errors[] = ['row' => $rowNum, 'message' => "物件「{$propName}」がシステムに登録されていません。先に物件インポートを実行してください"];
+                continue;
+            }
+            $property = $propertyCache[$propName];
+
+            // 階数バリデーション（空欄 OK、整数なら可、負数 = 地下も許可）
+            $floor = null;
+            if ($row['floor'] !== '') {
+                if (!preg_match('/^-?\d+$/', $row['floor'])) {
+                    $errors[] = ['row' => $rowNum, 'message' => "階「{$row['floor']}」は整数で入力してください"];
+                    continue;
+                }
+                $floor = (int) $row['floor'];
+            }
+
+            // 区画の存在チェック
+            $displayName = Unit::generateDisplayName($floor, $row['room_number']);
+            $unit = Unit::where('property_id', $property->id)
+                ->where('display_name', $displayName)
+                ->first();
+            if (!$unit) {
+                $floorLabel = $floor !== null ? "{$floor}階の" : '';
+                $errors[] = ['row' => $rowNum, 'message' => "物件「{$propName}」に{$floorLabel}部屋番号「{$row['room_number']}」（区画名「{$displayName}」）が見つかりません。先に区画インポートを実行してください"];
+                continue;
+            }
+
+            // 日付チェック
+            $contractDate = $this->normalizeDate($row['contract_date']);
+            if (!$contractDate) {
+                $errors[] = ['row' => $rowNum, 'message' => "契約日「{$row['contract_date']}」の形式が不正です（YYYY-MM-DD）"];
+                continue;
+            }
+            $row['contract_date'] = $contractDate;
+
+            $endDate = $this->normalizeDate($row['contract_end_date']);
+            if (!$endDate) {
+                $errors[] = ['row' => $rowNum, 'message' => "解約日「{$row['contract_end_date']}」の形式が不正です（YYYY-MM-DD）"];
+                continue;
+            }
+            $row['contract_end_date'] = $endDate;
+
+            // 解約日 >= 契約日
+            if ($endDate < $contractDate) {
+                $errors[] = ['row' => $rowNum, 'message' => "解約日（{$endDate}）が契約日（{$contractDate}）より前です"];
+                continue;
+            }
+
+            // 解約日が今日より未来 → 警告（過去契約のはず）
+            if ($endDate > now()->format('Y-m-d')) {
+                $warnings[] = ['row' => $rowNum, 'message' => "解約日（{$endDate}）が今日より未来です（過去契約として登録します）"];
+            }
+
+            // 賃料開始日チェック（契約日 〜 解約日 の範囲内）
+            if ($row['rent_start_date'] !== '') {
+                $rentStartDate = $this->normalizeDate($row['rent_start_date']);
+                if (!$rentStartDate) {
+                    $errors[] = ['row' => $rowNum, 'message' => "賃料開始日「{$row['rent_start_date']}」の形式が不正です"];
+                    continue;
+                }
+                if ($rentStartDate < $contractDate || $rentStartDate > $endDate) {
+                    $errors[] = ['row' => $rowNum, 'message' => "賃料開始日（{$rentStartDate}）は契約日〜解約日の範囲内である必要があります"];
+                    continue;
+                }
+                $row['rent_start_date'] = $rentStartDate;
+            }
+
+            // 顧客の存在チェック（なければ自動作成予定リストに追加）
+            $custName = $row['customer_name'];
+            if (!isset($customerCache[$custName])) {
+                $cust = Customer::where('name', $custName)->first();
+                $customerCache[$custName] = $cust;
+            }
+            $customerWillBeCreated = false;
+            if (!$customerCache[$custName]) {
+                $customerWillBeCreated = true;
+                if (!in_array($custName, $customerCreateList, true)) {
+                    $customerCreateList[] = $custName;
+                }
+            }
+
+            // 期間重なりチェック（警告のみ、インポートは許可）
+            $hasOverlap = Contract::where('unit_id', $unit->id)
+                ->where('contract_date', '<=', $endDate)
+                ->where(function ($q) use ($contractDate) {
+                    $q->whereNull('contract_end_date')
+                      ->orWhere('contract_end_date', '>=', $contractDate);
+                })
+                ->exists();
+            if ($hasOverlap) {
+                $warnings[] = ['row' => $rowNum, 'message' => "区画「{$propName} {$unit->display_name}」に期間が重なる既存契約があります（取込は実行）"];
+            }
+
+            // 金額フィールドチェック（過去契約は家賃も任意。データ移行で空欄ありえる）
+            $numericFields = [
+                'rent' => '家賃', 'common_fee' => '共益費', 'deposit' => '敷金',
+                'garbage_fee' => 'ゴミ代', 'pest_control_fee' => '駆除代',
+            ];
+            $numericError = false;
+            foreach ($numericFields as $field => $label) {
+                if ($row[$field] !== '') {
+                    $val = str_replace(',', '', $row[$field]);
+                    if (!is_numeric($val) || (int) $val < 0) {
+                        $errors[] = ['row' => $rowNum, 'message' => "{$label}「{$row[$field]}」は不正な値です"];
+                        $numericError = true;
+                        break;
+                    }
+                    $row[$field] = (int) $val;
+                }
+            }
+            if ($numericError) {
+                continue;
+            }
+
+            $row['_property_id'] = $property->id;
+            $row['_unit_id'] = $unit->id;
+            $row['_customer_id'] = $customerCache[$custName]?->id; // null なら実行時に作成
+            $row['_customer_will_be_created'] = $customerWillBeCreated;
+            $row['_row'] = $rowNum;
+            $validRows[] = $row;
+        }
+
+        // プレビューモード
+        if (!$request->boolean('confirmed')) {
+            return view('admin.tenant-import.index', [
+                'activeTab'    => $tab,
+                'preview'      => $tab,
+                'totalRows'    => count($rows),
+                'validCount'   => count($validRows),
+                'errors'       => $errors,
+                'warnings'     => $warnings,
+                'skippedRows'  => [],
+                'summary'      => '過去契約 ' . count($validRows) . '件を新規作成'
+                    . (count($customerCreateList) > 0 ? '（顧客 ' . count($customerCreateList) . '件を自動作成: ' . implode('、', array_slice($customerCreateList, 0, 5)) . (count($customerCreateList) > 5 ? ' ...' : '') . '）' : ''),
+                'csvData'      => base64_encode($content),
+            ]);
+        }
+
+        // ===== インポート実行 =====
+        DB::beginTransaction();
+        try {
+            $customerCodeNum = $this->getNextCustomerCodeNum();
+            $createdContracts = 0;
+            $createdCustomers = 0;
+
+            // 顧客の自動作成（行をまたいで同名は再利用するためキャッシュを使う）
+            $customerIdByName = [];
+            foreach ($customerCache as $name => $cust) {
+                if ($cust) {
+                    $customerIdByName[$name] = $cust->id;
+                }
+            }
+
+            // 年ごとの契約番号採番カウンター
+            $contractCodeNumByYear = [];
+
+            foreach ($validRows as $row) {
+                $custName = $row['customer_name'];
+
+                // 顧客が未作成なら作成
+                if (!isset($customerIdByName[$custName])) {
+                    $code = 'CUS-' . str_pad($customerCodeNum, 3, '0', STR_PAD_LEFT);
+                    $customerCodeNum++;
+                    $newCust = Customer::create([
+                        'code'           => $code,
+                        'name'           => $custName,
+                        'customer_type'  => CustomerType::Individual->value,
+                        'notes'          => 'CSV一括取込（過去契約）で自動作成',
+                    ]);
+                    $customerIdByName[$custName] = $newCust->id;
+                    $createdCustomers++;
+                }
+
+                // 契約番号（契約日の年で採番）
+                $year = substr($row['contract_date'], 0, 4);
+                if (!isset($contractCodeNumByYear[$year])) {
+                    $contractCodeNumByYear[$year] = $this->getNextContractCodeNumForYear((int) $year);
+                }
+                $contractNumber = "C-{$year}-" . str_pad($contractCodeNumByYear[$year], 3, '0', STR_PAD_LEFT);
+                $contractCodeNumByYear[$year]++;
+
+                Contract::create([
+                    'contract_number'    => $contractNumber,
+                    'department'         => DepartmentCode::Tenant->value,
+                    'property_id'        => $row['_property_id'],
+                    'unit_id'            => $row['_unit_id'],
+                    'customer_id'        => $customerIdByName[$custName],
+                    'status'             => ContractStatus::Terminated->value,
+                    'contract_date'      => $row['contract_date'],
+                    'rent_start_date'    => $row['rent_start_date'] ?: $row['contract_date'],
+                    'contract_end_date'  => $row['contract_end_date'],
+                    'rent'               => $row['rent'] !== '' ? $row['rent'] : 0,
+                    'common_fee'         => $row['common_fee'] !== '' ? $row['common_fee'] : 0,
+                    'deposit'            => $row['deposit'] !== '' ? $row['deposit'] : 0,
+                    'garbage_fee'        => $row['garbage_fee'] !== '' ? $row['garbage_fee'] : 0,
+                    'pest_control_fee'   => $row['pest_control_fee'] !== '' ? $row['pest_control_fee'] : 0,
+                    'store_name'         => $row['store_name'] ?: null,
+                    'notes'              => $row['notes'] ?: null,
+                    'initial_month_type' => 'full',
+                    'final_month_type'   => 'full',
+                ]);
+
+                // 過去契約: Unit.status は更新しない（現状の入居状態に影響させない）
+                $createdContracts++;
+            }
+
+            DB::commit();
+
+            $msg = "過去契約インポート完了: 契約 {$createdContracts}件を登録";
+            if ($createdCustomers > 0) {
+                $msg .= "、顧客 {$createdCustomers}件を自動作成";
+            }
+            return redirect()->route('admin.tenant-import', ['tab' => $tab])
+                ->with('success', $msg);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return back()->with('error', 'インポートに失敗しました: ' . $e->getMessage());
+        }
+    }
+
     // ================================================================
     // テンプレートCSVダウンロード
     // ================================================================
@@ -850,6 +1160,24 @@ class TenantImportController extends Controller
         ];
 
         return $this->buildCsvResponse($headers, [$sample], 'テナント契約インポートテンプレート.csv');
+    }
+
+    /**
+     * 過去契約テンプレートCSVダウンロード（解約済み契約の一括取込用）
+     */
+    public function downloadPastContractTemplate()
+    {
+        $headers = array_keys($this->pastContractColumnMap);
+
+        // 14 要素: 物件名, 階, 部屋番号, テナント名, 契約日, 賃料開始日, 解約日, 家賃, 共益費, 敷金, ゴミ代, 駆除代, 屋号, 備考
+        $sample = [
+            'サンプルビル', '2', 'A', '過去商事',
+            '2020-04-01', '2020-04-01', '2023-03-31',
+            '95000', '8000', '190000', '1500', '500',
+            '過去商事 松山支店', '期間満了で解約',
+        ];
+
+        return $this->buildCsvResponse($headers, [$sample], 'テナント過去契約インポートテンプレート.csv');
     }
 
     // ================================================================
@@ -1007,6 +1335,27 @@ class TenantImportController extends Controller
     private function getNextContractCodeNum(): int
     {
         $year = now()->year;
+        $prefix = "C-{$year}-";
+
+        $lastNumber = Contract::withTrashed()
+            ->where('contract_number', 'like', $prefix . '%')
+            ->orderByDesc('contract_number')
+            ->value('contract_number');
+
+        if ($lastNumber) {
+            return (int) substr($lastNumber, -3) + 1;
+        }
+        return 1;
+    }
+
+    /**
+     * 指定年の契約番号の次の番号を取得（過去契約用）
+     *
+     * 過去契約は「契約日の年」で C-{年}-XXX を採番する。
+     * 例: 2020-04-01 の契約 → C-2020-001 から始まる
+     */
+    private function getNextContractCodeNumForYear(int $year): int
+    {
         $prefix = "C-{$year}-";
 
         $lastNumber = Contract::withTrashed()

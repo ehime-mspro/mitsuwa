@@ -1460,6 +1460,8 @@ Route::middleware(['auth', 'password.change'])->group(function () {
             ->name('admin.tenant-import.customer');
         Route::post('/tenant-import/contract', [\App\Http\Controllers\Admin\TenantImportController::class, 'executeContract'])
             ->name('admin.tenant-import.contract');
+        Route::post('/tenant-import/past-contract', [\App\Http\Controllers\Admin\TenantImportController::class, 'executePastContract'])
+            ->name('admin.tenant-import.past-contract');
         Route::get('/tenant-import/template/property', [\App\Http\Controllers\Admin\TenantImportController::class, 'downloadPropertyTemplate'])
             ->name('admin.tenant-import.template.property');
         Route::get('/tenant-import/template/unit', [\App\Http\Controllers\Admin\TenantImportController::class, 'downloadUnitTemplate'])
@@ -1468,6 +1470,8 @@ Route::middleware(['auth', 'password.change'])->group(function () {
             ->name('admin.tenant-import.template.customer');
         Route::get('/tenant-import/template/contract', [\App\Http\Controllers\Admin\TenantImportController::class, 'downloadContractTemplate'])
             ->name('admin.tenant-import.template.contract');
+        Route::get('/tenant-import/template/past-contract', [\App\Http\Controllers\Admin\TenantImportController::class, 'downloadPastContractTemplate'])
+            ->name('admin.tenant-import.template.past-contract');
 
         // 賃貸マンションCSVインポート（6種別: 物件・部屋・駐車場・入居者・部屋契約・駐車場契約）
         Route::get('/mansion-import', [\App\Http\Controllers\Admin\MansionImportController::class, 'showForm'])
