@@ -51,6 +51,9 @@ function costExcelImporterFactory(opts) {
             open: false,
             step: 1,
             mode: 'append',
+            // 金額単位スケーラ ('1' = 円, '1000' = 千円, '10000' = 万円)
+            // 試算表が「万円」単位で書かれているケースに対応するための明示選択
+            unit: '1',
             fileName: '',
             sheets: [],
             selectedSheet: '',
@@ -77,6 +80,7 @@ function costExcelImporterFactory(opts) {
         resetCostExcelImport: function () {
             this.costExcelImport.step = 1;
             this.costExcelImport.mode = 'append';
+            this.costExcelImport.unit = '1';
             this.costExcelImport.fileName = '';
             this.costExcelImport.sheets = [];
             this.costExcelImport.selectedSheet = '';
@@ -186,7 +190,8 @@ function costExcelImporterFactory(opts) {
             if (/(費目|項目|科目|内容|名称)/.test(h)) return 'cost_item';
             if (/(見込|予算|見積)/.test(h) && !/単価/.test(h)) return 'estimated';
             if (/(実績|確定|決算)/.test(h)) return 'actual';
-            if (/(備考|メモ|注記|コメント)/.test(h)) return 'note';
+            // 「適用」は試算表での説明列の見出しとして頻出（用途・摘要も含める）
+            if (/(備考|メモ|注記|コメント|適用|摘要|用途)/.test(h)) return 'note';
             // ヘッダー空でもサンプル数値列なら estimated を推定（DAD と同じ思想）
             if (h === '' && samples && samples.length > 0) {
                 var hits = samples.filter(function (s) {
@@ -215,6 +220,10 @@ function costExcelImporterFactory(opts) {
                 return;
             }
 
+            // 金額単位スケーラ（円→1、千円→1000、万円→10000）
+            var unitMultiplier = parseInt(ei.unit, 10);
+            if (!unitMultiplier || unitMultiplier < 1) unitMultiplier = 1;
+
             var body = ei.allRows.slice(ei.headerRowIndex + 1).filter(function (r) {
                 return r.some(function (v) { return String(v).trim() !== ''; });
             });
@@ -228,7 +237,7 @@ function costExcelImporterFactory(opts) {
                 // 小計／合計行は自動除外
                 if (self.isCostSubtotalRow(rawName)) return;
 
-                // 金額正規化
+                // 金額正規化 + 単位スケーリング
                 var rawEst = map.estimated >= 0 ? String(r[map.estimated] === undefined ? '' : r[map.estimated]) : '';
                 var normEst = self.normalizeCostAmount(rawEst);
                 var isNumEst = /^-?\d+$/.test(normEst);
@@ -246,8 +255,8 @@ function costExcelImporterFactory(opts) {
                     rawName: rawName,
                     costItemId: matchedId || '',
                     rawEstimated: rawEst,
-                    estimated: isNumEst ? Number(normEst) : '',
-                    actual: rawAct === '' ? '' : (isNumAct ? Number(normAct) : ''),
+                    estimated: isNumEst ? Number(normEst) * unitMultiplier : '',
+                    actual: rawAct === '' ? '' : (isNumAct ? Number(normAct) * unitMultiplier : ''),
                     notes: note,
                     warnUnmapped: !matchedId && !isSkip,
                     warnAmount: rawEst !== '' && !isNumEst,
@@ -261,6 +270,14 @@ function costExcelImporterFactory(opts) {
             });
             ei.previewRows = preview;
             ei.step = 3;
+        },
+
+        // 項目名の正規化: 空白除去 + 丸囲み数字プレフィックス除去（①合計 → 合計 等）
+        normalizeCostItemName: function (raw) {
+            return String(raw)
+                .replace(/\s/g, '')
+                .replace(/^[①-⑳㉑-㉟㊱-㊿]+/, '')
+                .trim();
         },
 
         // 金額正規化（全角→半角、カンマ・空白・「円」「¥」除去、小数は四捨五入で整数化）
@@ -280,7 +297,7 @@ function costExcelImporterFactory(opts) {
 
         // 項目名 → cost_item_id 解決
         matchCostItem: function (raw) {
-            var r = String(raw).replace(/\s/g, '').trim();
+            var r = this.normalizeCostItemName(raw);
             if (!r) return null;
             // 1. 完全一致
             if (this._costItemByName[r]) return this._costItemByName[r];
@@ -305,7 +322,8 @@ function costExcelImporterFactory(opts) {
 
         // 小計／合計行判定（末尾完全一致 or 単独語）
         isCostSubtotalRow: function (name) {
-            var n = String(name).replace(/\s/g, '');
+            // 丸囲み数字プレフィックス（「①合計」→「合計」）を剥がしてから判定
+            var n = this.normalizeCostItemName(name);
             if (!n) return true;
             var kws = this._costExcelOpts.costSubtotalKws || [];
             for (var i = 0; i < kws.length; i++) {
@@ -320,7 +338,7 @@ function costExcelImporterFactory(opts) {
 
         // スキップ判定（部分一致。物件購入費など）
         isCostSkipRow: function (name) {
-            var n = String(name).replace(/\s/g, '');
+            var n = this.normalizeCostItemName(name);
             if (!n) return false;
             var kws = this._costExcelOpts.costSkipList || [];
             for (var i = 0; i < kws.length; i++) {

@@ -67,6 +67,31 @@
             </div>
         </div>
 
+        {{-- 金額単位（重要: 本部試算表は万円単位で書かれているケースがあるため明示選択） --}}
+        <div style="margin-bottom: 12px; padding: 10px 14px; background: white; border: 1px solid #e5e7eb; border-radius: 6px;">
+            <div style="display: flex; align-items: center; gap: 16px; font-size: 13px;">
+                <label style="font-weight: 600; color: #374151; flex: 0 0 80px;">金額単位</label>
+                <label style="cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+                    <input type="radio" x-model="costExcelImport.unit" value="1"> 円
+                </label>
+                <label style="cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+                    <input type="radio" x-model="costExcelImport.unit" value="1000"> 千円 (×1,000)
+                </label>
+                <label style="cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+                    <input type="radio" x-model="costExcelImport.unit" value="10000"> 万円 (×10,000)
+                </label>
+            </div>
+            <div x-show="costExcelImport.unit !== '1'"
+                 style="margin-top: 8px; padding: 6px 10px; background: #fffbeb; border: 1px solid #fbbf24; border-radius: 4px; font-size: 11px; color: #92400e;">
+                ⚠ 各セル値に <span x-text="costExcelImport.unit === '10000' ? '×10,000' : '×1,000'"></span> を乗算してプレビューします。
+                例: セル「800」 → <span x-text="costExcelImport.unit === '10000' ? '8,000,000円' : '800,000円'"></span>
+            </div>
+            <div x-show="costExcelImport.unit === '1'"
+                 style="margin-top: 6px; font-size: 11px; color: #6b7280;">
+                試算表 PDF が「合計962万円」のように万円単位で書かれている場合は「万円」を選んでください。
+            </div>
+        </div>
+
         {{-- 列マッピングテーブル：mapping select は静的 option（Bug #16 回避） --}}
         <div style="border: 1px solid #d1d5db; border-radius: 8px; overflow: hidden; background: white;">
             <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
