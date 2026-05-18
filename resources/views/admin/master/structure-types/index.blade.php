@@ -100,7 +100,7 @@
                             <input x-show="editingId === item.id" type="text" x-model="editingName"
                                    class="w-full px-3 border border-emerald-400 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none"
                                    style="height:36px;"
-                                   @keydown.enter="submitEdit()"
+                                   @keydown.enter="$event.isComposing || submitEdit()"
                                    @keydown.escape="cancelEdit()">
                             {{-- 削除確認中 --}}
                             <span x-show="deletingId === item.id" class="text-red-600 font-semibold" x-text="item.name"></span>
@@ -137,7 +137,7 @@
                                class="w-full px-3 border border-emerald-400 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none"
                                style="height:36px;"
                                x-ref="newNameInput"
-                               @keydown.enter="submitAdd()"
+                               @keydown.enter="$event.isComposing || submitAdd()"
                                @keydown.escape="cancelAdd()">
                     </td>
                     <td class="text-center py-2.5 px-3">
