@@ -1369,7 +1369,7 @@ Route::middleware(['auth', 'password.change'])->group(function () {
 
         /*
         |------------------------------------------------------------------
-        | ZEAL 経営試算表（6ルート）
+        | ZEAL 経営試算表（10 ルート — CRUD + sync-actuals + 本部 Sheet 取り込み）
         |------------------------------------------------------------------
         */
         // 経営試算表は機密財務データのため経営層・管理者のみ閲覧可
@@ -1389,6 +1389,15 @@ Route::middleware(['auth', 'password.change'])->group(function () {
                 ->name('zeal.simulations.sync-actuals.preview');
             Route::post('/simulations/{simulation}/sync-actuals', [\App\Http\Controllers\Zeal\SimulationController::class, 'syncActuals'])
                 ->name('zeal.simulations.sync-actuals');
+            // 本部 Google Sheets 連携: URL 設定 + 取り込みプレビュー/反映
+            Route::get('/simulations/{simulation}/sheet-urls/edit', [\App\Http\Controllers\Zeal\SheetImportController::class, 'editUrls'])
+                ->name('zeal.simulations.sheet-urls.edit');
+            Route::put('/simulations/{simulation}/sheet-urls', [\App\Http\Controllers\Zeal\SheetImportController::class, 'updateUrls'])
+                ->name('zeal.simulations.sheet-urls.update');
+            Route::post('/simulations/{simulation}/sheet-import/preview', [\App\Http\Controllers\Zeal\SheetImportController::class, 'preview'])
+                ->name('zeal.simulations.sheet-import.preview');
+            Route::post('/simulations/{simulation}/sheet-import/apply', [\App\Http\Controllers\Zeal\SheetImportController::class, 'apply'])
+                ->name('zeal.simulations.sheet-import.apply');
             Route::get('/simulations/{simulation}', [\App\Http\Controllers\Zeal\SimulationController::class, 'show'])
                 ->name('zeal.simulations.show');
         });

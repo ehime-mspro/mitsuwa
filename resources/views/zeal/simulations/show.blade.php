@@ -66,12 +66,66 @@
                         style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #1e40af; border: 1px solid #1e40af; border-radius: 6px; background: #fff; cursor: pointer;">
                     実績を反映
                 </button>
+                {{-- 本部 Google Sheets 取り込み --}}
+                @if($simulation->sales_sheet_url || $simulation->expense_sheet_url)
+                    <button type="button" onclick="openSheetImportModal()"
+                            style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #7c3aed; border: 1px solid #7c3aed; border-radius: 6px; background: #fff; cursor: pointer;">
+                        本部 Sheet を取り込む
+                    </button>
+                @endif
+                <a href="{{ route('zeal.simulations.sheet-urls.edit', $simulation) }}"
+                   style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #6b21a8; border: 1px solid #d8b4fe; border-radius: 6px; text-decoration: none; background: #fff;">
+                    Sheet URL 設定
+                </a>
                 <a href="{{ route('zeal.simulations.edit', ['simulation' => $simulation, 'mode' => $isBudgetMode ? 'budget' : 'actual']) }}"
                    style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: {{ $isBudgetMode ? '#2563eb' : '#059669' }}; border: 1px solid {{ $isBudgetMode ? '#2563eb' : '#059669' }}; border-radius: 6px; text-decoration: none; background: #fff;">
                     {{ $isBudgetMode ? '予算を編集' : '実績を編集' }}
                 </a>
             @endif
         </div>
+
+        {{-- 本部 Sheet 取り込み: 月選択モーダル (素のJS、Alpine とは独立) --}}
+        @if($canSyncActuals && ($simulation->sales_sheet_url || $simulation->expense_sheet_url))
+        <div id="sheetImportModal" style="display:none; position: fixed; inset: 0; z-index: 60; align-items: center; justify-content: center; background: rgba(0,0,0,0.5); padding: 16px;">
+            <div style="background:#fff; border-radius:10px; max-width:480px; width:100%; padding:20px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                    <h2 style="font-size:15px; font-weight:700; color:#111827;">本部 Sheet を取り込む</h2>
+                    <button type="button" onclick="closeSheetImportModal()" style="background:none; border:none; font-size:18px; color:#6b7280; cursor:pointer;">×</button>
+                </div>
+                <p style="font-size:12px; color:#6b7280; margin-bottom:14px; line-height:1.6;">
+                    取り込み対象の月を選択してください。整合チェックと差分プレビューが表示されます。
+                </p>
+                <form method="POST" action="{{ route('zeal.simulations.sheet-import.preview', $simulation) }}">
+                    @csrf
+                    <label style="font-size:12px; color:#374151; font-weight:600; display:block; margin-bottom:6px;">対象月</label>
+                    <select name="year_month" required
+                            style="width:100%; height:36px; padding:6px 10px; border:1px solid #d1d5db; border-radius:6px; font-size:13px; margin-bottom:16px;">
+                        @foreach(\App\Support\ZealFiscalYear::months($simulation->fiscal_year) as $ym)
+                            <option value="{{ $ym }}" {{ $ym === \App\Support\ZealFiscalYear::currentMonthYm() ? 'selected' : '' }}>
+                                {{ substr($ym, 0, 4) }}年{{ (int) substr($ym, 5, 2) }}月
+                            </option>
+                        @endforeach
+                    </select>
+                    <div style="display:flex; gap:8px; justify-content:flex-end;">
+                        <button type="button" onclick="closeSheetImportModal()"
+                                style="padding:6px 14px; font-size:12px; font-weight:600; color:#6b7280; border:1px solid #d1d5db; border-radius:6px; background:#fff; cursor:pointer;">キャンセル</button>
+                        <button type="submit"
+                                style="padding:6px 14px; font-size:12px; font-weight:600; color:#fff; border:1px solid #7c3aed; border-radius:6px; background:#7c3aed; cursor:pointer;">プレビューを表示</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        <script>
+            function openSheetImportModal() {
+                var m = document.getElementById('sheetImportModal');
+                if (m) { m.style.display = 'flex'; }
+            }
+            function closeSheetImportModal() {
+                var m = document.getElementById('sheetImportModal');
+                if (m) { m.style.display = 'none'; }
+            }
+        </script>
+        @endif
 
         {{-- 実績反映 確認モーダル --}}
         <div x-show="modalOpen" x-cloak

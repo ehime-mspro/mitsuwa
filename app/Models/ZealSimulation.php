@@ -19,6 +19,8 @@ class ZealSimulation extends Model
         'fiscal_year',
         'name',
         'notes',
+        'sales_sheet_url',
+        'expense_sheet_url',
         'created_by',
         'updated_by',
     ];
@@ -52,6 +54,14 @@ class ZealSimulation extends Model
     public function updatedBy()
     {
         return $this->belongsTo(User::class, 'updated_by');
+    }
+
+    /**
+     * 本部 Sheet 取り込み履歴
+     */
+    public function sheetImports()
+    {
+        return $this->hasMany(ZealSheetImport::class, 'simulation_id');
     }
 
     /**
