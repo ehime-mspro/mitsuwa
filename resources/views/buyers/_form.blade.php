@@ -310,7 +310,7 @@
 
     <x-form-actions
         :submit-label="$isEdit ? '更新する' : '登録する'"
-        :cancel-url="route(&quot;{$department}.customers.index&quot;)" />
+        :cancel-url="route($department.'.customers.index')" />
 
     {{-- hidden: birth_date 変換 --}}
     <input type="hidden" name="birth_date" x-ref="birth_date_hidden">

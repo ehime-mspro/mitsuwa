@@ -76,7 +76,7 @@
                       style="width: 100%; border: 1px solid #d1d5db; border-radius: 6px; padding: 10px 12px; font-size: 14px; resize: vertical;">{{ old('survey_memo', $survey->memo) }}</textarea>
         </div>
 
-        <x-form-actions submit-label="更新する" :cancel-url="route(&quot;{$department}.customers.show&quot;, $buyer)" />
+        <x-form-actions submit-label="更新する" :cancel-url="route($department.'.customers.show', $buyer)" />
     </div>
 </form>
 @endsection
