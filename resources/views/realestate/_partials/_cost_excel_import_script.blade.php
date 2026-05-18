@@ -52,8 +52,9 @@ function costExcelImporterFactory(opts) {
             step: 1,
             mode: 'append',
             // 金額単位スケーラ ('1' = 円, '1000' = 千円, '10000' = 万円)
-            // 試算表が「万円」単位で書かれているケースに対応するための明示選択
-            unit: '1',
+            // ミツワの採算表/試算表は基本的に万円単位で記入されているため既定値は '10000'。
+            // 例外的に Excel 側で円換算済みの場合のみユーザーが「円」を選び直す運用。
+            unit: '10000',
             fileName: '',
             sheets: [],
             selectedSheet: '',
@@ -80,7 +81,7 @@ function costExcelImporterFactory(opts) {
         resetCostExcelImport: function () {
             this.costExcelImport.step = 1;
             this.costExcelImport.mode = 'append';
-            this.costExcelImport.unit = '1';
+            this.costExcelImport.unit = '10000';
             this.costExcelImport.fileName = '';
             this.costExcelImport.sheets = [];
             this.costExcelImport.selectedSheet = '';

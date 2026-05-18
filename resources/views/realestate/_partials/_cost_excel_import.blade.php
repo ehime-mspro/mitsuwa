@@ -67,28 +67,31 @@
             </div>
         </div>
 
-        {{-- 金額単位（重要: 本部試算表は万円単位で書かれているケースがあるため明示選択） --}}
+        {{-- 金額単位（既定: 万円。採算表/試算表は基本的に万円単位で書かれている） --}}
         <div style="margin-bottom: 12px; padding: 10px 14px; background: white; border: 1px solid #e5e7eb; border-radius: 6px;">
-            <div style="display: flex; align-items: center; gap: 16px; font-size: 13px;">
+            <div style="display: flex; align-items: center; gap: 16px; font-size: 13px; flex-wrap: wrap;">
                 <label style="font-weight: 600; color: #374151; flex: 0 0 80px;">金額単位</label>
                 <label style="cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
-                    <input type="radio" x-model="costExcelImport.unit" value="1"> 円
+                    <input type="radio" x-model="costExcelImport.unit" value="10000"> 万円 (×10,000) <span style="color:#059669; font-size:11px;">［既定］</span>
                 </label>
                 <label style="cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
                     <input type="radio" x-model="costExcelImport.unit" value="1000"> 千円 (×1,000)
                 </label>
                 <label style="cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
-                    <input type="radio" x-model="costExcelImport.unit" value="10000"> 万円 (×10,000)
+                    <input type="radio" x-model="costExcelImport.unit" value="1"> 円
                 </label>
             </div>
-            <div x-show="costExcelImport.unit !== '1'"
-                 style="margin-top: 8px; padding: 6px 10px; background: #fffbeb; border: 1px solid #fbbf24; border-radius: 4px; font-size: 11px; color: #92400e;">
-                ⚠ 各セル値に <span x-text="costExcelImport.unit === '10000' ? '×10,000' : '×1,000'"></span> を乗算してプレビューします。
-                例: セル「800」 → <span x-text="costExcelImport.unit === '10000' ? '8,000,000円' : '800,000円'"></span>
+            <div x-show="costExcelImport.unit === '10000'"
+                 style="margin-top: 8px; padding: 6px 10px; background: #ecfdf5; border: 1px solid #6ee7b7; border-radius: 4px; font-size: 11px; color: #047857;">
+                各セル値に ×10,000 を乗算してプレビューします（例: セル「800」 → 8,000,000円 / 「33」 → 330,000円）。
+            </div>
+            <div x-show="costExcelImport.unit === '1000'"
+                 style="margin-top: 8px; padding: 6px 10px; background: #ecfdf5; border: 1px solid #6ee7b7; border-radius: 4px; font-size: 11px; color: #047857;">
+                各セル値に ×1,000 を乗算してプレビューします（例: セル「800」 → 800,000円）。
             </div>
             <div x-show="costExcelImport.unit === '1'"
-                 style="margin-top: 6px; font-size: 11px; color: #6b7280;">
-                試算表 PDF が「合計962万円」のように万円単位で書かれている場合は「万円」を選んでください。
+                 style="margin-top: 8px; padding: 6px 10px; background: #fffbeb; border: 1px solid #fbbf24; border-radius: 4px; font-size: 11px; color: #92400e;">
+                ⚠ Excel/CSV のセル値をそのまま円として取り込みます。試算表が万円単位 (「合計962万円」など) で書かれている場合は「万円」に戻してください。
             </div>
         </div>
 
