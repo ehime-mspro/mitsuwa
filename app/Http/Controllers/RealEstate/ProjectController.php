@@ -126,9 +126,15 @@ class ProjectController extends Controller
             ->orderByDesc('deleted_at')
             ->get();
 
+        // 試算表 Excel/CSV 取込のマッピング辞書（クライアント側 matchCostItem で使用）
+        $costAliasMap     = config('realestate_cost_import.aliases', []);
+        $costSkipList     = config('realestate_cost_import.skip', []);
+        $costSubtotalKws  = config('realestate_cost_import.subtotal_keywords', []);
+
         return view('realestate.projects.show', compact(
             'project', 'costItemsForJs', 'costsForJs',
-            'attachments', 'deletedAttachments'
+            'attachments', 'deletedAttachments',
+            'costAliasMap', 'costSkipList', 'costSubtotalKws'
         ));
     }
 
@@ -391,6 +397,43 @@ class ProjectController extends Controller
         $cost->delete();
 
         return response()->json(['success' => true]);
+    }
+
+    /**
+     * 試算表 Excel/CSV 取込（バルク投入）
+     * Route: POST /realestate/projects/{project}/costs/bulk-import
+     */
+    public function bulkImportCosts(Request $request, ReProject $project)
+    {
+        $validated = $request->validate([
+            'mode'                    => 'required|in:overwrite,append',
+            'rows'                    => 'required|array|min:1|max:500',
+            'rows.*.cost_item_id'     => 'required|integer|exists:re_cost_items,id',
+            'rows.*.estimated_amount' => 'required|integer|min:0',
+            'rows.*.actual_amount'    => 'nullable|integer|min:0',
+            'rows.*.notes'            => 'nullable|string|max:200',
+        ]);
+
+        // 物件購入費はサーバー側でも二重防御（クライアントで弾けていても二重登録を防ぐ）
+        $purchaseId = ReCostItem::where('name', '物件購入費')->value('id');
+        if ($purchaseId) {
+            $validated['rows'] = array_values(array_filter(
+                $validated['rows'],
+                fn ($r) => (int) $r['cost_item_id'] !== (int) $purchaseId
+            ));
+        }
+
+        if (empty($validated['rows'])) {
+            return response()->json([
+                'success' => false,
+                'message' => '取込対象の行がありません（物件購入費は自動同期されるため取込対象外）。',
+            ], 422);
+        }
+
+        $result = (new \App\Support\RealEstateCostImportService())
+            ->importToProject($project, $validated['rows'], $validated['mode']);
+
+        return response()->json(array_merge(['success' => true], $result));
     }
 
     // ================================================================

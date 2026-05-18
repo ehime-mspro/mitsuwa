@@ -172,11 +172,19 @@
                 <h2 class="text-base font-bold text-gray-900">原価管理</h2>
             </div>
             @if(auth()->user()->role->isManagerOrAbove())
-                <button @click="showAddCost = true" x-show="!showAddCost"
-                        class="px-3.5 py-1.5 bg-emerald-600 text-white text-sm font-semibold rounded-md hover:bg-emerald-700 transition-colors cursor-pointer"
-                        style="font-size: 13px;">＋ 費用追加</button>
+                <div style="display: flex; gap: 8px;">
+                    <button @click="openCostExcelImport()" x-show="!showAddCost && !costExcelImport.open"
+                            class="px-3.5 py-1.5 bg-white text-emerald-700 text-sm font-semibold rounded-md hover:bg-emerald-50 cursor-pointer"
+                            style="font-size: 13px; border: 1px solid #a7f3d0;">📂 試算表 Excel 取込</button>
+                    <button @click="showAddCost = true" x-show="!showAddCost && !costExcelImport.open"
+                            class="px-3.5 py-1.5 bg-emerald-600 text-white text-sm font-semibold rounded-md hover:bg-emerald-700 transition-colors cursor-pointer"
+                            style="font-size: 13px;">＋ 費用追加</button>
+                </div>
             @endif
         </div>
+
+        {{-- 試算表 Excel/CSV 取込パネル（仕入れ案件・分譲地PJ 共用 partial） --}}
+        @include('realestate._partials._cost_excel_import', ['costItems' => $costItemsForJs])
 
         {{-- 費用追加フォーム --}}
         <div x-show="showAddCost" x-transition class="mb-4 p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
@@ -465,9 +473,23 @@
 
 </div>
 
+{{-- SheetJS（試算表 Excel 取込用）— CLAUDE.md ルール: cdn.jsdelivr.net のみ許可 --}}
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+{{-- 試算表 Excel/CSV 取込の Alpine factory（仕入れ案件・分譲地PJ 共用） --}}
+@include('realestate._partials._cost_excel_import_script')
+
 <script>
 function projectDetail() {
-    return {
+    var costExcelEi = costExcelImporterFactory({
+        baseUrl:         '{{ url("/realestate/projects/" . $project->id . "/costs/bulk-import") }}',
+        csrf:            document.querySelector('meta[name="csrf-token"]').content,
+        costItems:       @json($costItemsForJs),
+        costAliasMap:    @json($costAliasMap),
+        costSkipList:    @json($costSkipList),
+        costSubtotalKws: @json($costSubtotalKws)
+    });
+    return Object.assign({
         costs: @json($costsForJs),
         costItems: @json($costItemsForJs),
         showAddCost: false,
@@ -617,7 +639,7 @@ function projectDetail() {
             self.costMessage = msg;
             setTimeout(function() { self.costMessage = ''; }, 3000);
         }
-    };
+    }, costExcelEi);
 }
 </script>
 

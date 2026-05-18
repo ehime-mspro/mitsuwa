@@ -767,6 +767,9 @@ Route::middleware(['auth', 'password.change'])->group(function () {
                 ->name('realestate.procurements.costs.store');
             Route::put('/procurements/{procurement}/costs/{cost}', [\App\Http\Controllers\RealEstate\ProcurementController::class, 'updateCost'])
                 ->name('realestate.procurements.costs.update');
+            // 試算表 Excel/CSV 取込（バルク投入）
+            Route::post('/procurements/{procurement}/costs/bulk-import', [\App\Http\Controllers\RealEstate\ProcurementController::class, 'bulkImportCosts'])
+                ->name('realestate.procurements.costs.bulk-import');
         });
         Route::delete('/procurements/{procurement}/costs/{cost}', [\App\Http\Controllers\RealEstate\ProcurementController::class, 'destroyCost'])
             ->middleware('role:executive')
@@ -866,6 +869,9 @@ Route::middleware(['auth', 'password.change'])->group(function () {
                 ->name('realestate.projects.costs.store');
             Route::put('/projects/{project}/costs/{cost}', [\App\Http\Controllers\RealEstate\ProjectController::class, 'updateCost'])
                 ->name('realestate.projects.costs.update');
+            // 試算表 Excel/CSV 取込（バルク投入）
+            Route::post('/projects/{project}/costs/bulk-import', [\App\Http\Controllers\RealEstate\ProjectController::class, 'bulkImportCosts'])
+                ->name('realestate.projects.costs.bulk-import');
         });
         Route::delete('/projects/{project}/costs/{cost}', [\App\Http\Controllers\RealEstate\ProjectController::class, 'destroyCost'])
             ->middleware('role:executive')
