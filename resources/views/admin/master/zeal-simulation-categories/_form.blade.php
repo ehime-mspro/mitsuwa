@@ -132,7 +132,7 @@
         <label style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">
             率（%）
         </label>
-        <input type="number" name="rate_percent" value="{{ $val('rate_percent') }}" step="0.001" min="0" max="100"
+        <input type="text" inputmode="decimal" pattern="[0-9.]*" name="rate_percent" value="{{ $val('rate_percent') }}"
                placeholder="例: 3.000"
                style="width: 100%; max-width: 200px; padding: 9px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;">
         <div style="font-size: 11px; color: #6b7280; margin-top: 4px;">計算タイプが「売上連動」の場合に使用。例: 3% → <code>3.000</code></div>

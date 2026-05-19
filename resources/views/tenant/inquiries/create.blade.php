@@ -276,11 +276,11 @@ function inquiryCreateForm() {
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1">希望面積（坪）</label>
                     <div class="flex items-center gap-2">
-                        <input type="number" name="desired_area_min" value="{{ old('desired_area_min') }}" min="0" step="0.01"
+                        <input type="text" inputmode="decimal" pattern="[0-9.]*" name="desired_area_min" value="{{ old('desired_area_min') }}"
                                class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none"
                                placeholder="下限">
                         <span class="text-gray-400 text-sm flex-shrink-0">〜</span>
-                        <input type="number" name="desired_area_max" value="{{ old('desired_area_max') }}" min="0" step="0.01"
+                        <input type="text" inputmode="decimal" pattern="[0-9.]*" name="desired_area_max" value="{{ old('desired_area_max') }}"
                                class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none"
                                placeholder="上限">
                     </div>

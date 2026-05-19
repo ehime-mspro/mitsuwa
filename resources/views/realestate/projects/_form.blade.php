@@ -32,7 +32,7 @@
             </div>
             <div>
                 <label class="block text-sm font-semibold text-gray-700 mb-1">土地面積（㎡）</label>
-                <input type="number" name="land_area_sqm" value="{{ old('land_area_sqm', $p?->land_area_sqm) }}" placeholder="0.00" step="0.01"
+                <input type="text" inputmode="decimal" pattern="[0-9.]*" name="land_area_sqm" value="{{ old('land_area_sqm', $p?->land_area_sqm) }}" placeholder="0.00"
                        class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none">
             </div>
             <div>

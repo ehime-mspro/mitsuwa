@@ -79,7 +79,7 @@
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1">面積（坪）</label>
                     <div class="relative">
-                        <input type="number" name="area_tsubo" value="{{ old('area_tsubo', $unit->area_tsubo) }}" step="0.01" min="0"
+                        <input type="text" inputmode="decimal" pattern="[0-9.]*" name="area_tsubo" value="{{ old('area_tsubo', $unit->area_tsubo) }}"
                                class="form-input w-full h-[40px] px-3 pr-8 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none"
                                placeholder="例: 15.30">
                         <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">坪</span>

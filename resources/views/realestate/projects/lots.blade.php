@@ -64,7 +64,7 @@
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-gray-700 mb-1">面積（㎡）</label>
-                    <input type="number" id="add-area-sqm" placeholder="0.00" step="0.01"
+                    <input type="text" inputmode="decimal" pattern="[0-9.]*" id="add-area-sqm" placeholder="0.00"
                            class="w-full h-9 px-2 border border-gray-300 rounded-md text-sm focus:border-emerald-500 focus:outline-none">
                 </div>
                 <div>
@@ -249,7 +249,7 @@
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-gray-700 mb-1">面積（㎡）</label>
-                    <input type="number" x-model="editLotData.area_sqm" step="0.01"
+                    <input type="text" inputmode="decimal" pattern="[0-9.]*" x-model="editLotData.area_sqm"
                            class="w-full h-9 px-2 border border-gray-300 rounded-md text-sm focus:border-emerald-500 focus:outline-none">
                 </div>
                 <div>

@@ -478,7 +478,7 @@
             <div class="hc-field" style="max-width: 50%;">
                 <label class="field-label">消費税率<span class="required">*</span></label>
                 <div class="hc-input-group">
-                    <input type="number" name="tax_rate" value="{{ old('tax_rate', $hsContract->tax_rate) }}" step="0.01" class="hc-input">
+                    <input type="text" inputmode="decimal" pattern="[0-9.]*" name="tax_rate" value="{{ old('tax_rate', $hsContract->tax_rate) }}" class="hc-input">
                     <span class="suffix">%</span>
                 </div>
                 <p class="help">建物販売価格にかかる税率</p>

@@ -94,7 +94,7 @@
             <div>
                 <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">専有面積</label>
                 <div style="display: flex; align-items: center; gap: 6px;">
-                    <input type="number" name="area_sqm" value="{{ $valAreaSqm }}" step="0.01" min="0"
+                    <input type="text" inputmode="decimal" pattern="[0-9.]*" name="area_sqm" value="{{ $valAreaSqm }}"
                            class="form-input"
                            style="flex: 1; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
                     <span style="font-size: 13px; color: #6b7280;">㎡</span>

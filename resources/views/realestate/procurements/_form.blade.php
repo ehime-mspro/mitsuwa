@@ -54,12 +54,12 @@
             </div>
             <div>
                 <label class="block text-sm font-semibold text-gray-700 mb-1">土地面積（㎡）</label>
-                <input type="number" name="land_area_sqm" value="{{ old('land_area_sqm', $p?->land_area_sqm) }}" placeholder="0.00" step="0.01"
+                <input type="text" inputmode="decimal" pattern="[0-9.]*" name="land_area_sqm" value="{{ old('land_area_sqm', $p?->land_area_sqm) }}" placeholder="0.00"
                        class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none">
             </div>
             <div>
                 <label class="block text-sm font-semibold text-gray-700 mb-1">建物面積（㎡）</label>
-                <input type="number" name="building_area_sqm" value="{{ old('building_area_sqm', $p?->building_area_sqm) }}" placeholder="0.00" step="0.01"
+                <input type="text" inputmode="decimal" pattern="[0-9.]*" name="building_area_sqm" value="{{ old('building_area_sqm', $p?->building_area_sqm) }}" placeholder="0.00"
                        class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none">
                 <p x-show="propertyType === 'brokerage_land'" class="text-xs text-gray-500 mt-1">※ 物件種別が「仲介土地」の場合は不要</p>
             </div>

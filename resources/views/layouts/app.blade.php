@@ -70,15 +70,19 @@
     </div>
 
     <script>
-        // 数値入力欄（inputmode="numeric" / type="number"）の全角数字を自動で半角に変換
+        // 数値入力欄（inputmode="numeric" / "decimal" / type="number"）の全角文字を自動で半角に変換
+        // 変換対象: 全角数字 ０-９ → 0-9 / 全角ピリオド ． → . / 全角マイナス －− → - / 全角コンマ ， → ,
+        // 注意: type="number" は仕様上、全角ピリオド入力時に value が空になるブラウザがあるため、
+        //       小数入力欄は type="text" inputmode="decimal" を使うこと（type="number" のままだと補正不能）
         document.addEventListener('input', function (e) {
             const t = e.target;
             if (!t || !t.matches) return;
-            if (!t.matches('input[inputmode="numeric"], input[type="number"]')) return;
+            if (!t.matches('input[inputmode="numeric"], input[inputmode="decimal"], input[type="number"]')) return;
             const v = t.value;
-            const nv = v.replace(/[０-９]/g, function (c) {
+            let nv = v.replace(/[０-９]/g, function (c) {
                 return String.fromCharCode(c.charCodeAt(0) - 0xFEE0);
             });
+            nv = nv.replace(/．/g, '.').replace(/[－−]/g, '-').replace(/，/g, ',');
             if (nv !== v) {
                 const start = t.selectionStart;
                 const end = t.selectionEnd;

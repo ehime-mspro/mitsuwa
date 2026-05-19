@@ -158,7 +158,7 @@
             </div>
             <div>
                 <label class="block text-sm font-semibold text-gray-700 mb-1">土地面積（㎡）</label>
-                <input type="number" name="land_area_sqm" x-model="landAreaSqm" step="0.01"
+                <input type="text" inputmode="decimal" pattern="[0-9.]*" name="land_area_sqm" x-model="landAreaSqm"
                        class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none"
                        placeholder="0.00">
                 <p x-show="autoFilled" class="text-xs mt-1" style="color: #059669;">紐づけ先から自動入力</p>
@@ -172,7 +172,7 @@
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
                 <label class="block text-sm font-semibold text-gray-700 mb-1">建物面積（㎡）</label>
-                <input type="number" name="building_area_sqm" value="{{ old('building_area_sqm', $o?->building_area_sqm) }}" step="0.01"
+                <input type="text" inputmode="decimal" pattern="[0-9.]*" name="building_area_sqm" value="{{ old('building_area_sqm', $o?->building_area_sqm) }}"
                        class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none"
                        placeholder="0.00">
             </div>
@@ -249,7 +249,7 @@
 
             <div>
                 <label class="block text-sm font-semibold text-gray-700 mb-1">消費税率（%）</label>
-                <input type="number" name="tax_rate" value="{{ old('tax_rate', $isEdit ? $o->tax_rate : ($defaultTaxRate ?? '10.00')) }}" step="0.01"
+                <input type="text" inputmode="decimal" pattern="[0-9.]*" name="tax_rate" value="{{ old('tax_rate', $isEdit ? $o->tax_rate : ($defaultTaxRate ?? '10.00')) }}"
                        class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none"
                        style="width: 140px;">
                 <p class="text-xs text-gray-500 mt-1">建物請負金額に適用。土地は非課税</p>

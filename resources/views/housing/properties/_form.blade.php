@@ -137,14 +137,14 @@
             </div>
             <div>
                 <label class="block text-sm font-semibold text-gray-700 mb-1">土地面積（㎡）</label>
-                <input type="number" name="land_area_sqm" x-model="landAreaSqm" step="0.01"
+                <input type="text" inputmode="decimal" pattern="[0-9.]*" name="land_area_sqm" x-model="landAreaSqm"
                        class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none"
                        placeholder="0.00">
                 <p x-show="autoFilled" class="text-xs mt-1" style="color: #059669;">紐づけ先から自動入力</p>
             </div>
             <div>
                 <label class="block text-sm font-semibold text-gray-700 mb-1">建物面積（㎡）</label>
-                <input type="number" name="building_area_sqm" value="{{ old('building_area_sqm', $p?->building_area_sqm) }}" step="0.01"
+                <input type="text" inputmode="decimal" pattern="[0-9.]*" name="building_area_sqm" value="{{ old('building_area_sqm', $p?->building_area_sqm) }}"
                        class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none"
                        placeholder="0.00">
             </div>

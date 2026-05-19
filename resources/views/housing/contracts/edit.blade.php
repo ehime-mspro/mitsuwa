@@ -45,7 +45,7 @@
                 </div>
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1">消費税率（%）<span class="text-red-600 ml-0.5">*</span></label>
-                    <input type="number" name="tax_rate" value="{{ old('tax_rate', $contract->tax_rate) }}" step="0.01"
+                    <input type="text" inputmode="decimal" pattern="[0-9.]*" name="tax_rate" value="{{ old('tax_rate', $contract->tax_rate) }}"
                            class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none">
                     @error('tax_rate') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
                 </div>

@@ -347,7 +347,7 @@
                 <div class="text-sm font-bold mb-3.5" style="padding-bottom: 10px; border-bottom: 1px solid #d1fae5;">パターンB: 目標粗利率から逆算</div>
                 <div class="mb-3">
                     <div class="text-xs text-gray-600 font-medium mb-1">目標粗利率（%）</div>
-                    <input type="number" x-model.number="simB.targetRate" step="0.1"
+                    <input type="text" inputmode="decimal" pattern="[0-9.]*" x-model.number="simB.targetRate"
                            class="w-full px-3 border border-gray-300 rounded-md text-right font-semibold focus:border-emerald-500 focus:outline-none"
                            style="font-size: 16px; height: 42px;">
                 </div>
