@@ -111,7 +111,7 @@
     </div>
     <div class="zeal-info-row">
         <div class="zeal-info-label">契約プラン</div>
-        <div class="zeal-info-value">{{ $inquiry->contract_plan ?: '—' }}</div>
+        <div class="zeal-info-value" style="font-weight: 700; color: #047857;">{{ $inquiry->contract_plan_display ?: '—' }}</div>
     </div>
 </div>
 

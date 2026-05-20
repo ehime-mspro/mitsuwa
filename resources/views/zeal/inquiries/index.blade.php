@@ -176,9 +176,9 @@
                                 <span class="text-sm text-gray-400">—</span>
                             @endif
                         </td>
-                        {{-- 契約プラン --}}
-                        <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700">
-                            {{ $inquiry->contract_plan ?: '—' }}
+                        {{-- 契約プラン（会員一覧と同じく display_name で「N枠」表記を除去・whitespace-nowrap で改行なし） --}}
+                        <td class="px-4 py-3 border-b border-gray-200 text-sm whitespace-nowrap" style="font-weight: 600; color: #047857;">
+                            {{ $inquiry->contract_plan_display ?: '—' }}
                         </td>
                         {{-- 性別 --}}
                         <td class="px-4 py-3 border-b border-gray-200 text-center text-sm text-gray-700 whitespace-nowrap">

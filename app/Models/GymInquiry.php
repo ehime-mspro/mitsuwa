@@ -40,6 +40,24 @@ class GymInquiry extends Model
     }
 
     /**
+     * 表示用契約プラン名（運用上 `contract_plan` に含まれる「N枠」表記を除去した形）
+     *
+     * gym_inquiries.contract_plan は外部 Spreadsheet 由来の文字列で、
+     * zeal_plans.name と同じく「1枠 通い放題」「フリープラン（1枠）」のような
+     * 同時予約枠数が混入している。会員一覧と同じく枠数を表示しない方針（案A）。
+     * ロジックは ZealPlan::getDisplayNameAttribute と完全に同一。
+     */
+    public function getContractPlanDisplayAttribute(): string
+    {
+        $value = $this->contract_plan ?? '';
+        // 括弧で囲まれた N 枠表記を除去（「（1枠）」「(2枠)」等）
+        $value = preg_replace('/[（(]\s*[0-9０-９]+\s*枠\s*[）)]/u', '', $value);
+        // 括弧なし N 枠表記を除去（「1枠 通い放題」「2枠 通い放題」等。全角スペース U+3000 も含む）
+        $value = preg_replace('/[0-9０-９]+\s*枠[\s\x{3000}]*/u', '', $value);
+        return trim($value);
+    }
+
+    /**
      * 書き込み禁止: 誤操作防止のため save() をオーバーライド
      *
      * @throws \RuntimeException
