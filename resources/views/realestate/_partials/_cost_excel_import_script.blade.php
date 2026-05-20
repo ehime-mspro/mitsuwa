@@ -163,7 +163,15 @@ function costExcelImporterFactory(opts) {
                     self.costExcelImport.selectedSheet = wb.SheetNames[0];
                     self.costExcelImport.headerRowIndex = 0;
                     self.loadCostSheet();
-                    self.costExcelImport.step = 2;
+                    // 賢い直行モード:
+                    //   単一シート + ヘッダー自動検出済み + cost_item と estimated 両方 autoGuess 成功
+                    //   の 3 条件が揃った場合のみ STEP 2 をスキップして STEP 3 (プレビュー) へ直行。
+                    //   複数シートや必須列が未マップなら従来通り STEP 2 を表示してユーザー確認を促す。
+                    if (wb.SheetNames.length === 1 && self._canAutoGoToPreview()) {
+                        self.goToCostPreview();
+                    } else {
+                        self.costExcelImport.step = 2;
+                    }
                     // 複数シート時：option を JS から動的注入（Bug #16 回避）
                     if (wb.SheetNames.length > 1) {
                         setTimeout(function () {
@@ -292,7 +300,9 @@ function costExcelImporterFactory(opts) {
         autoGuessCost: function (headerText, samples) {
             var h = String(headerText).replace(/\s/g, '');
             if (/(費目|項目|科目|内容|名称)/.test(h)) return 'cost_item';
-            if (/(見込|予算|見積)/.test(h) && !/単価/.test(h)) return 'estimated';
+            // ミツワ採算表は「金額」、仕入れ案件試算表は「見込/予算」、福角町試算表は「見積」など揺れあり。
+            // 「単価」は estimated とせず無視（明細単価行は集計対象外）。
+            if (/(見込|予算|見積|金額|価格|料金|額)/.test(h) && !/単価/.test(h)) return 'estimated';
             if (/(実績|確定|決算)/.test(h)) return 'actual';
             // 「適用」は試算表での説明列の見出しとして頻出（用途・摘要も含める）
             if (/(備考|メモ|注記|コメント|適用|摘要|用途)/.test(h)) return 'note';
@@ -307,6 +317,18 @@ function costExcelImporterFactory(opts) {
                 if (hits >= 2) return 'estimated';
             }
             return '';
+        },
+
+        // 賢い直行モードの可否判定: cost_item と estimated の両方が autoGuess で
+        // マップされている場合のみ true。alert を出さず純粋な判定のみを行う。
+        _canAutoGoToPreview: function () {
+            var hasCostItem = false, hasEstimated = false;
+            var cols = this.costExcelImport.columns || [];
+            for (var i = 0; i < cols.length; i++) {
+                if (cols[i].mapping === 'cost_item') hasCostItem = true;
+                if (cols[i].mapping === 'estimated') hasEstimated = true;
+            }
+            return hasCostItem && hasEstimated;
         },
 
         // ========== プレビュー構築 ==========
@@ -487,8 +509,11 @@ function costExcelImporterFactory(opts) {
             var kws = this._costExcelOpts.costSubtotalKws || [];
             for (var i = 0; i < kws.length; i++) {
                 if (n === kws[i]) return true;
-                // 「原価合計」「販管費合計」など、末尾完全一致 + 全体長が短いもののみ判定
-                if (n.length <= kws[i].length + 4 && n.lastIndexOf(kws[i]) === n.length - kws[i].length) {
+                // 「原価合計」「販管費合計」など、末尾完全一致 + 全体長が短いもののみ判定。
+                // ⚠ lastIndexOf による末尾判定はバグの温床（kw が name より 1 文字長いと
+                //    lastIndexOf=-1 と n.length-kw.length=-1 が偶然一致して誤マッチする）。
+                //    必ず endsWith で書くこと。
+                if (n.endsWith(kws[i]) && n.length <= kws[i].length + 4) {
                     return true;
                 }
             }

@@ -149,11 +149,13 @@
 
     {{-- STEP 3: プレビュー --}}
     <div x-show="costExcelImport.step === 3">
-        {{-- 件数サマリー --}}
+        {{-- 件数サマリー + 列マッピング編集リンク（賢い直行モードで自動遷移してきた時の救済 UI） --}}
         <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px; font-size: 12px; flex-wrap: wrap;">
             <span style="font-weight: 700; color: #374151;" x-text="costExcelImport.previewRows.length + ' 件中 ' + validCostRowCount() + ' 件を取込'"></span>
             <span x-show="warnCostUnmappedCount() > 0" style="padding: 2px 8px; background: #fef3c7; color: #92400e; border-radius: 9999px; font-weight: 600;" x-text="'⚠ 項目未解決 ' + warnCostUnmappedCount() + ' 件'"></span>
             <span x-show="warnCostAmountCount() > 0" style="padding: 2px 8px; background: #fee2e2; color: #b91c1c; border-radius: 9999px; font-weight: 600;" x-text="'⚠ 金額NG ' + warnCostAmountCount() + ' 件'"></span>
+            <a href="#" @click.prevent="costExcelImport.step = 2"
+               style="margin-left: auto; padding: 2px 10px; color: #047857; font-weight: 600; text-decoration: underline; cursor: pointer;">列マッピングを編集 →</a>
         </div>
 
         {{-- 取込モード選択 --}}
@@ -250,9 +252,9 @@
             </table>
         </div>
 
-        <div style="display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end;">
+        <div style="display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end; align-items: center;">
             <button type="button" @click="costExcelImport.step = 2"
-                    style="padding: 8px 18px; background: white; color: #6b7280; font-size: 13px; font-weight: 600; border: 1px solid #d1d5db; border-radius: 6px; cursor: pointer;">← 戻る</button>
+                    style="padding: 8px 18px; background: white; color: #374151; font-size: 13px; font-weight: 600; border: 1px solid #d1d5db; border-radius: 6px; cursor: pointer;">← 列マッピングを編集</button>
             <button type="button" @click="commitCostImport()"
                     :disabled="costExcelImport.importing || validCostRowCount() === 0"
                     :style="(costExcelImport.importing || validCostRowCount() === 0) ? 'padding: 8px 18px; background: #9ca3af; color: white; font-size: 13px; font-weight: 600; border: none; border-radius: 6px; cursor: not-allowed;' : 'padding: 8px 18px; background: #059669; color: white; font-size: 13px; font-weight: 600; border: none; border-radius: 6px; cursor: pointer;'"
