@@ -67,6 +67,17 @@
             </div>
         </div>
 
+        {{-- ヘッダー行（「項目+金額」が並ぶ行を自動検出済み。失敗時または別フォーマット用に手動上書き可。option は JS 動的注入＝Bug #16 回避） --}}
+        <div style="margin-bottom: 12px; padding: 10px 14px; background: white; border: 1px solid #e5e7eb; border-radius: 6px;">
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px;">
+                <label style="font-weight: 600; color: #374151; flex: 0 0 80px;">ヘッダー行</label>
+                <select id="cost-excel-header-row-select" @change="onCostHeaderRowChange($event)"
+                        style="min-width: 360px; height: 34px; padding: 0 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; background: white;">
+                </select>
+                <span style="font-size: 11px; color: #6b7280;">「項目／金額」が並ぶ行を自動検出済み。違う行をヘッダーにしたい場合のみ変更してください。</span>
+            </div>
+        </div>
+
         {{-- 金額単位（既定: 万円。採算表/試算表は基本的に万円単位で書かれている） --}}
         <div style="margin-bottom: 12px; padding: 10px 14px; background: white; border: 1px solid #e5e7eb; border-radius: 6px;">
             <div style="display: flex; align-items: center; gap: 16px; font-size: 13px; flex-wrap: wrap;">

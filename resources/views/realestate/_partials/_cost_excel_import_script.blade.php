@@ -46,6 +46,42 @@ function costExcelImporterFactory(opts) {
         return b.length - a.length;
     });
 
+    // ===== 多段マッチング用 matchKey インデックス =====
+    // 接尾辞（費/料/金/税/代/等/分）を剥がして、区切り記号を統一して、
+    // トークンを昇順ソートして連結したキー。 factory 初期化時に 1 回だけ構築。
+    // 「分筆・開発」⇔「開発・分筆」、「造成」⇔「造成費」のような揺れを 1 ステップで吸収する。
+    var _delimRe   = /[、，,／\/＆&\-ー−－–—]+/g;
+    var _suffixRe  = /^(.*?)(費|料|金|税|代|等|分|工事費|工事代|工事料)$/;
+    function _normDelim(s) {
+        return s.replace(_delimRe, '・').replace(/・+/g, '・').replace(/^・|・$/g, '');
+    }
+    function _stripSuffix(s) {
+        if (s.length <= 2) return s;
+        var m = s.match(_suffixRe);
+        if (!m || m[1].length < 2) return s;
+        return m[1];
+    }
+    function _matchKeyOfName(name) {
+        var s = String(name).replace(/\s/g, '').replace(/^[①-⑳㉑-㉟㊱-㊿]+/, '').trim();
+        s = _normDelim(s);
+        var toks = s.split('・').filter(function (t) { return t.length > 0; });
+        var nt = toks.map(_stripSuffix).filter(function (t) { return t.length >= 2; });
+        return nt.slice().sort().join('・');
+    }
+    var costItemByMatchKey = {};
+    for (var _k in costItemByName) {
+        if (!costItemByName.hasOwnProperty(_k)) continue;
+        var _mk = _matchKeyOfName(_k);
+        if (!_mk) continue;
+        if (costItemByMatchKey[_mk] === undefined) {
+            costItemByMatchKey[_mk] = costItemByName[_k];
+        } else if (Array.isArray(costItemByMatchKey[_mk])) {
+            costItemByMatchKey[_mk].push(costItemByName[_k]);
+        } else {
+            costItemByMatchKey[_mk] = [costItemByMatchKey[_mk], costItemByName[_k]];
+        }
+    }
+
     return {
         costExcelImport: {
             open: false,
@@ -68,6 +104,7 @@ function costExcelImporterFactory(opts) {
         _costExcelOpts: opts,
         _costItemByName: costItemByName,
         _sortedCostItemNames: sortedCostItemNames,
+        _costItemByMatchKey: costItemByMatchKey,
 
         // ========== モーダル制御 ==========
         openCostExcelImport: function () {
@@ -157,12 +194,78 @@ function costExcelImporterFactory(opts) {
             if (!this._costExcelWb) return;
             var ws = this._costExcelWb.Sheets[this.costExcelImport.selectedSheet];
             this.costExcelImport.allRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-            // 最初の非空行をヘッダー行とみなす
-            var firstNonEmpty = this.costExcelImport.allRows.findIndex(function (r) {
+            // ヘッダー行を「項目+金額が同居する最初の行」でスマート検出。
+            // ミツワ採算表のように上部 10 行以上が物件メタ情報のフォーマットでも追従できる。
+            // 検出失敗時は「最初の非空行」フォールバック。
+            this.costExcelImport.headerRowIndex = this.detectCostHeaderRow();
+            this.buildCostColumns();
+            // STEP 2 のヘッダー行 select に option を動的注入（Bug #16 回避）
+            this.populateHeaderRowSelect();
+        },
+
+        // ヘッダー行 select の option を動的注入。
+        // <template x-for> で <option> を生成すると x-model 同期前にレンダリングされ
+        // 値ズレを起こす（Bug #16）ため、既存のシート選択と同じパターンで JS 注入する。
+        populateHeaderRowSelect: function () {
+            var self = this;
+            setTimeout(function () {
+                var sel = document.getElementById('cost-excel-header-row-select');
+                if (!sel) return;
+                sel.innerHTML = '';
+                var rows = self.costExcelImport.allRows;
+                var limit = Math.min(rows.length, 50);
+                for (var i = 0; i < limit; i++) {
+                    var row = rows[i] || [];
+                    var cells = [];
+                    for (var c = 0; c < row.length; c++) {
+                        var v = String(row[c] || '').trim();
+                        if (v) cells.push(v);
+                        if (cells.length >= 5) break;
+                    }
+                    var label = cells.join(' / ');
+                    if (label.length > 60) label = label.substring(0, 60) + '…';
+                    if (!label) label = '(空)';
+                    var opt = document.createElement('option');
+                    opt.value = String(i);
+                    opt.textContent = (i + 1) + '行目: ' + label;
+                    if (i === self.costExcelImport.headerRowIndex) opt.selected = true;
+                    sel.appendChild(opt);
+                }
+            }, 50);
+        },
+
+        // ユーザーがヘッダー行を変更 → 列マッピング再構築（プレビューはユーザーが再度進むまで未更新）
+        onCostHeaderRowChange: function (e) {
+            var v = parseInt(e.target.value, 10);
+            if (isNaN(v) || v < 0) return;
+            this.costExcelImport.headerRowIndex = v;
+            this.buildCostColumns();
+        },
+
+        // 原価明細のヘッダー行を上から 50 行内でスキャン検出。
+        // 「項目/費目/科目/内容/名称」 と 「金額/見込/見積/予算/実績/決算/確定」 が
+        // 同じ行に共存していればその行を返す。
+        detectCostHeaderRow: function () {
+            var rows = this.costExcelImport.allRows;
+            var labelKw  = /(項目|費目|科目|内容|名称)/;
+            var amountKw = /(金額|見込|見積|予算|実績|決算|確定)/;
+            var limit = Math.min(rows.length, 50);
+            for (var i = 0; i < limit; i++) {
+                var r = rows[i] || [];
+                var hasLabel = false, hasAmount = false;
+                for (var j = 0; j < r.length; j++) {
+                    var v = String(r[j] || '').replace(/\s/g, '');
+                    if (!v) continue;
+                    if (!hasLabel  && labelKw.test(v))  hasLabel = true;
+                    if (!hasAmount && amountKw.test(v)) hasAmount = true;
+                }
+                if (hasLabel && hasAmount) return i;
+            }
+            // フォールバック: 最初の非空行
+            var firstNonEmpty = rows.findIndex(function (r) {
                 return r.some(function (v) { return String(v).trim() !== ''; });
             });
-            this.costExcelImport.headerRowIndex = firstNonEmpty >= 0 ? firstNonEmpty : 0;
-            this.buildCostColumns();
+            return firstNonEmpty >= 0 ? firstNonEmpty : 0;
         },
         buildCostColumns: function () {
             var ei = this.costExcelImport;
@@ -296,18 +399,45 @@ function costExcelImporterFactory(opts) {
             return s;
         },
 
-        // 項目名 → cost_item_id 解決
+        // 項目名 → cost_item_id 解決（5 層マッチング）
+        //   L1 既存正規化での完全一致
+        //   L2 既存正規化での部分一致（長いマスタ名から評価）
+        //   L3 matchKey 一致（接尾辞除去・順序非依存。「造成」⇔「造成費」「分筆・開発」⇔「開発・分筆」）
+        //   L4 matchKey 双方向部分一致（matchKey が 3 文字以上のみ。短語の誤爆を防ぐ）
+        //   L5 config alias 辞書
         matchCostItem: function (raw) {
             var r = this.normalizeCostItemName(raw);
             if (!r) return null;
-            // 1. 完全一致
+
+            // L1: 既存正規化での完全一致
             if (this._costItemByName[r]) return this._costItemByName[r];
-            // 2. cost_items のいずれかの name が raw に含まれる（長いマスタ名から評価）
+
+            // L2: 既存正規化での部分一致（長いマスタ名から評価）
             for (var i = 0; i < this._sortedCostItemNames.length; i++) {
                 var name = this._sortedCostItemNames[i];
                 if (r.indexOf(name) >= 0) return this._costItemByName[name];
             }
-            // 3. config alias 辞書
+
+            // L3: matchKey 完全一致（接尾辞除去・順序非依存）
+            var key = this.costItemMatchKey(raw);
+            if (key && this._costItemByMatchKey[key] !== undefined) {
+                var v = this._costItemByMatchKey[key];
+                return Array.isArray(v) ? v[0] : v;
+            }
+
+            // L4: matchKey 双方向部分一致（誤爆防止のため 3 文字以上のみ）
+            if (key && key.length >= 3) {
+                for (var k = 0; k < this._sortedCostItemNames.length; k++) {
+                    var nm = this._sortedCostItemNames[k];
+                    var nmKey = this.costItemMatchKey(nm);
+                    if (nmKey && nmKey.length >= 3 &&
+                        (key.indexOf(nmKey) >= 0 || nmKey.indexOf(key) >= 0)) {
+                        return this._costItemByName[nm];
+                    }
+                }
+            }
+
+            // L5: config alias 辞書
             var aliases = this._costExcelOpts.costAliasMap || {};
             for (var canonName in aliases) {
                 if (!aliases.hasOwnProperty(canonName)) continue;
@@ -319,6 +449,34 @@ function costExcelImporterFactory(opts) {
                 }
             }
             return null;
+        },
+
+        // 区切り記号統一: 中点・全半角の読点/カンマ/スラッシュ/ハイフン/アンドを「・」に
+        normalizeCostItemDelimiters: function (s) {
+            return s.replace(/[、，,／\/＆&\-ー−－–—]+/g, '・')
+                    .replace(/・+/g, '・')
+                    .replace(/^・|・$/g, '');
+        },
+
+        // 接尾辞除去（剥がした後が 2 文字未満なら剥がさず温存。「税」「費」単体を防止）
+        stripCostItemSuffix: function (s) {
+            if (s.length <= 2) return s;
+            var m = s.match(/^(.*?)(費|料|金|税|代|等|分|工事費|工事代|工事料)$/);
+            if (!m || m[1].length < 2) return s;
+            return m[1];
+        },
+
+        // 順序非依存・接尾辞除去後の正規化 matchKey
+        //   ① 既存正規化 → ② 区切り統一 → ③ トークン分割 →
+        //   ④ 各トークン接尾辞除去 → ⑤ 1 文字以下トークン除外 → ⑥ 昇順ソート → ⑦ ・連結
+        costItemMatchKey: function (raw) {
+            var s = this.normalizeCostItemName(raw);
+            s = this.normalizeCostItemDelimiters(s);
+            var tokens = s.split('・').filter(function (t) { return t.length > 0; });
+            var self = this;
+            var norm = tokens.map(function (t) { return self.stripCostItemSuffix(t); })
+                             .filter(function (t) { return t.length >= 2; });
+            return norm.slice().sort().join('・');
         },
 
         // 小計／合計行判定（末尾完全一致 or 単独語）
