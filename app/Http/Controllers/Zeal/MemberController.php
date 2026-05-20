@@ -234,7 +234,7 @@ class MemberController extends Controller
 
         return redirect()
             ->route('zeal.members.show', $member)
-            ->with('success', '「' . $member->name . '」のプランを「' . $plan->name . '」に変更しました。');
+            ->with('success', '「' . $member->name . '」のプランを「' . $plan->display_name . '」に変更しました。');
     }
 
     /**

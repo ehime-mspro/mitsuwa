@@ -24,6 +24,41 @@
     .badge-withdrew   { background: #fee2e2; color: #991b1b; }
     .badge-no-followup{ background: #f3f4f6; color: #6b7280; }
     .badge-unknown    { background: #f3f4f6; color: #6b7280; }
+
+    /* 横スクロール明示 */
+    .scroll-hint {
+        display: inline-flex; align-items: center; gap: 6px;
+        font-size: 11px; font-weight: 600;
+        color: #047857; background: #ecfdf5;
+        border: 1px solid #6ee7b7;
+        padding: 4px 12px; border-radius: 9999px;
+        margin-bottom: 8px;
+    }
+    .scroll-hint .arrow { display: inline-block; animation: scrollHintBob 1.6s ease-in-out infinite; }
+    @keyframes scrollHintBob {
+        0%, 100% { transform: translateX(0); }
+        50%      { transform: translateX(4px); }
+    }
+    .scroll-wrap { position: relative; }
+    .scroll-area { overflow-x: auto; scrollbar-width: thin; scrollbar-color: #6ee7b7 #f3f4f6; }
+    .scroll-area::-webkit-scrollbar { height: 10px; }
+    .scroll-area::-webkit-scrollbar-track { background: #f3f4f6; }
+    .scroll-area::-webkit-scrollbar-thumb { background: #6ee7b7; border-radius: 5px; border: 2px solid #f3f4f6; }
+    .scroll-area::-webkit-scrollbar-thumb:hover { background: #34d399; }
+    .scroll-fade-right {
+        position: absolute; top: 0; right: 0; bottom: 10px; width: 48px;
+        pointer-events: none;
+        background: linear-gradient(to right, rgba(255,255,255,0), rgba(255,255,255,0.95) 70%, rgba(255,255,255,1));
+        border-top-right-radius: 8px;
+        z-index: 2; opacity: 1; transition: opacity 0.2s ease;
+    }
+    .scroll-fade-right.is-end { opacity: 0; }
+    .scroll-fade-right::after {
+        content: '›';
+        position: absolute; top: 50%; right: 8px; transform: translateY(-50%);
+        font-size: 22px; font-weight: 700; color: #059669;
+        text-shadow: 0 0 8px white;
+    }
 </style>
 
 {{-- ページヘッダー --}}
@@ -73,9 +108,16 @@
     </a>
 </form>
 
+{{-- 横スクロール明示ヒント --}}
+<div class="scroll-hint" id="zeal-inquiries-scroll-hint">
+    <span>横にスクロールして全項目を表示</span>
+    <span class="arrow">→</span>
+</div>
+
 {{-- テーブル --}}
-<div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
-    <div style="overflow-x: auto;">
+<div class="scroll-wrap bg-white rounded-lg border border-gray-200 overflow-hidden">
+    <div class="scroll-fade-right" id="zeal-inquiries-scroll-fade"></div>
+    <div class="scroll-area" id="zeal-inquiries-scroll-area">
         <table class="w-full border-collapse" style="min-width: 860px;">
             <thead>
                 <tr>
@@ -203,5 +245,25 @@
 <div style="margin-top: 12px; font-size: 12px; color: #6b7280;">
     ※ 体験予約データは外部システムと連携しています。この画面からの変更はできません。
 </div>
+
+<script>
+    // 右端 fade をスクロール余地があるときだけ表示
+    (function () {
+        var area = document.getElementById('zeal-inquiries-scroll-area');
+        var fade = document.getElementById('zeal-inquiries-scroll-fade');
+        if (!area || !fade) return;
+        function update() {
+            var hasMore = area.scrollWidth - area.clientWidth > 2;
+            var atEnd   = area.scrollLeft + area.clientWidth >= area.scrollWidth - 2;
+            fade.style.display = hasMore ? '' : 'none';
+            fade.classList.toggle('is-end', atEnd);
+            var hint = document.getElementById('zeal-inquiries-scroll-hint');
+            if (hint) hint.style.display = hasMore ? '' : 'none';
+        }
+        area.addEventListener('scroll', update, { passive: true });
+        window.addEventListener('resize', update);
+        update();
+    })();
+</script>
 
 @endsection

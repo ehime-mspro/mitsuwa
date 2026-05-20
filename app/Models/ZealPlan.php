@@ -41,6 +41,23 @@ class ZealPlan extends Model
     }
 
     /**
+     * 表示用プラン名（運用上 `name` に含まれる「N枠」表記を除去した形）
+     *
+     * zeal_plans.name には「1枠 通い放題」「2枠 通い放題」「フリープラン（1枠）」
+     * のように同時予約枠数が混入している。会員一覧などで一般ユーザーに見せるときは
+     * 枠数を表示しない方針（案A）。プランマスタ管理画面では生 `name` のまま扱うこと。
+     */
+    public function getDisplayNameAttribute(): string
+    {
+        $value = $this->name ?? '';
+        // 括弧で囲まれた N 枠表記を除去（「（1枠）」「(2枠)」等）
+        $value = preg_replace('/[（(]\s*[0-9０-９]+\s*枠\s*[）)]/u', '', $value);
+        // 括弧なし N 枠表記を除去（「1枠 通い放題」「2枠 通い放題」等。全角スペース U+3000 も含む）
+        $value = preg_replace('/[0-9０-９]+\s*枠[\s\x{3000}]*/u', '', $value);
+        return trim($value);
+    }
+
+    /**
      * キャンペーン適用期間内かどうかを判定
      * period_start〜period_end が未設定の場合は常に有効とみなす
      */

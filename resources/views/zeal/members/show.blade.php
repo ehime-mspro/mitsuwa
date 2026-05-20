@@ -206,7 +206,7 @@
                         <div class="zeal-info-row">
                             <div class="zeal-info-label">現在のプラン</div>
                             <div class="zeal-info-value" style="font-weight: 700; color: #047857;">
-                                {{ $member->currentPlan?->name ?? '—' }}
+                                {{ $member->currentPlan?->display_name ?? '—' }}
                             </div>
                         </div>
                         @if($member->currentPlan)
@@ -337,7 +337,7 @@
                                         @endif
                                     </td>
                                     <td style="{{ $contract->isCurrent() ? 'font-weight: 600;' : 'color: #6b7280;' }}">
-                                        {{ $contract->plan?->name ?? '（削除済みプラン）' }}
+                                        {{ $contract->plan?->display_name ?? '（削除済みプラン）' }}
                                     </td>
                                     <td class="num" style="{{ $contract->isCurrent() ? '' : 'color: #6b7280;' }}">
                                         {{ number_format($contract->applied_price_excl) }}円
@@ -390,7 +390,7 @@
                         <option value="">選択してください</option>
                         @foreach($activePlans as $plan)
                             <option value="{{ $plan->id }}">
-                                {{ $plan->name }}（{{ number_format($plan->regular_price_excl) }}円 / {{ number_format((int)round($plan->regular_price_excl * $taxMul)) }}円税込）
+                                {{ $plan->display_name }}（{{ number_format($plan->regular_price_excl) }}円 / {{ number_format((int)round($plan->regular_price_excl * $taxMul)) }}円税込）
                             </option>
                         @endforeach
                     </select>

@@ -104,7 +104,7 @@ class DashboardController extends Controller
                     return (bool) $c->is_campaign_applied;
                 })->count();
                 return [
-                    'plan_name'      => $plan ? $plan->name : '不明',
+                    'plan_name'      => $plan ? $plan->display_name : '不明',
                     'member_count'   => $contracts->count(),
                     'total_excl'     => $totalExcl,
                     'total_tax'      => $totalTax,
