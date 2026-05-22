@@ -79,11 +79,13 @@
         </x-sidebar-group>
     @endif
 
-    {{-- 収支管理 --}}
+    {{-- 収支管理: 一時的に非表示。最後に制作するかをユーザー判断するためコメントアウト（削除ではない） --}}
+    {{--
     <x-sidebar-group label="収支管理" section="income">
         <x-sidebar-item :href="url('/tenant/transactions')" label="収支一覧" :active="request()->is('tenant/transactions') || request()->is('tenant/transactions/create') || request()->is('tenant/transactions/*/edit')" />
         <x-sidebar-item :href="url('/tenant/transactions/summary')" label="収支サマリー" :active="request()->is('tenant/transactions/summary') || request()->is('tenant/transactions/by-*')" />
     </x-sidebar-group>
+    --}}
 
     {{-- 不動産管理 --}}
     @if($hasRealEstateAccess)
@@ -228,12 +230,14 @@
     </a>
     @endif
 
-    {{-- 収支管理 --}}
+    {{-- 収支管理（折りたたみ時アイコン）: 一時的に非表示。最後に制作するかをユーザー判断するためコメントアウト --}}
+    {{--
     <a href="{{ url('/tenant/transactions') }}" title="収支管理" class="w-9 h-9 mb-1 rounded-lg flex items-center justify-center {{ request()->is('tenant/transactions*') ? 'bg-emerald-50' : 'hover:bg-gray-100' }} transition-colors">
         <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="{{ request()->is('tenant/transactions*') ? '#059669' : '#6B7280' }}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
         </svg>
     </a>
+    --}}
 
     {{-- 不動産管理 --}}
     @if($hasRealEstateAccess)
@@ -343,10 +347,13 @@
         </x-sidebar-group>
     @endif
 
+    {{-- 収支管理: 一時的に非表示。最後に制作するかをユーザー判断するためコメントアウト --}}
+    {{--
     <x-sidebar-group label="収支管理" section="income">
         <x-sidebar-item :href="url('/tenant/transactions')" label="収支一覧" :active="request()->is('tenant/transactions') || request()->is('tenant/transactions/create') || request()->is('tenant/transactions/*/edit')" />
         <x-sidebar-item :href="url('/tenant/transactions/summary')" label="収支サマリー" :active="request()->is('tenant/transactions/summary') || request()->is('tenant/transactions/by-*')" />
     </x-sidebar-group>
+    --}}
 
     @if($hasRealEstateAccess)
         <x-sidebar-group label="不動産管理" section="realestate">
