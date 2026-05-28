@@ -23,17 +23,17 @@
         default                                                                                    => 'dashboard',
     };
 @endphp
-<body class="antialiased" x-data="{ sidebarOpen: false, sidebarExpanded: true }">
-    <div class="flex flex-col min-h-screen">
+<body class="antialiased overflow-hidden" style="height: 100vh;" x-data="{ sidebarOpen: false, sidebarExpanded: true }">
+    <div class="flex flex-col h-full">
         {{-- ヘッダー --}}
         @include('layouts.partials.header')
 
-        <div class="flex flex-1 overflow-hidden">
+        <div class="flex flex-1 overflow-hidden" style="min-height: 0;">
             {{-- サイドバー --}}
             @include('layouts.partials.sidebar')
 
             {{-- メインコンテンツ --}}
-            <main class="flex-1 overflow-y-auto bg-gray-100">
+            <main class="flex-1 overflow-y-auto bg-gray-100" style="min-height: 0;">
                 <div class="p-4 lg:p-8">
                     {{-- パンくずリスト --}}
                     @hasSection('breadcrumb')
@@ -110,10 +110,8 @@
                             if (Array.isArray(arr)) self.openList = arr.slice();
                         }
                     } catch (e) {}
-                    // 現在ページの section は強制展開
-                    if (self.currentSection && self.openList.indexOf(self.currentSection) === -1) {
-                        self.openList.push(self.currentSection);
-                    }
+                    // 初期表示はサブメニュー全閉じ。
+                    // ユーザーが手動で開いたグループは localStorage で復元する。
                 },
 
                 isOpen: function (section) {

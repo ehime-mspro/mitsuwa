@@ -14,6 +14,19 @@
 {{-- バッジ用スタイル（Vite 未ビルドのため inline で定義） --}}
 <style>
     .ms-badge { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 9999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+
+    /* 横スクロール明示（ZEAL会員一覧と同じパターン） */
+    .scroll-hint { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; color: #047857; background: #ecfdf5; border: 1px solid #6ee7b7; padding: 4px 12px; border-radius: 9999px; margin-bottom: 8px; }
+    .scroll-hint .arrow { display: inline-block; animation: scrollHintBob 1.6s ease-in-out infinite; }
+    @keyframes scrollHintBob { 0%,100% { transform: translateX(0); } 50% { transform: translateX(4px); } }
+    .scroll-wrap { position: relative; }
+    .scroll-area { overflow-x: auto; scrollbar-width: thin; scrollbar-color: #6ee7b7 #f3f4f6; }
+    .scroll-area::-webkit-scrollbar { height: 10px; }
+    .scroll-area::-webkit-scrollbar-track { background: #f3f4f6; }
+    .scroll-area::-webkit-scrollbar-thumb { background: #6ee7b7; border-radius: 5px; border: 2px solid #f3f4f6; }
+    .scroll-fade-right { position: absolute; top: 0; right: 0; bottom: 10px; width: 48px; pointer-events: none; background: linear-gradient(to right, rgba(255,255,255,0), rgba(255,255,255,0.95) 70%, rgba(255,255,255,1)); border-top-right-radius: 8px; z-index: 2; opacity: 1; transition: opacity 0.2s ease; }
+    .scroll-fade-right.is-end { opacity: 0; }
+    .scroll-fade-right::after { content: '›'; position: absolute; top: 50%; right: 8px; transform: translateY(-50%); font-size: 22px; font-weight: 700; color: #059669; text-shadow: 0 0 8px white; }
 </style>
 
 @php
@@ -73,8 +86,16 @@
     </a>
 </form>
 
+{{-- 横スクロール明示ヒント --}}
+<div class="scroll-hint" id="mansion-contracts-scroll-hint">
+    <span>横にスクロールして全項目を表示</span>
+    <span class="arrow">→</span>
+</div>
+
 {{-- テーブル --}}
-<div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+<div class="scroll-wrap bg-white rounded-lg border border-gray-200 overflow-hidden">
+    <div class="scroll-fade-right" id="mansion-contracts-scroll-fade"></div>
+    <div class="scroll-area" id="mansion-contracts-scroll-area">
     <table class="w-full border-collapse" style="table-layout: fixed; min-width: 880px;">
         <colgroup>
             <col style="width: 24%">  {{-- 物件 / 号室 --}}
@@ -182,6 +203,7 @@
             @endforelse
         </tbody>
     </table>
+    </div>{{-- /.scroll-area --}}
 
     {{-- ページネーション --}}
     @if($contracts->hasPages())
@@ -214,5 +236,25 @@
 <div style="margin-top: 16px; padding: 12px 16px; background: #f9fafb; border-radius: 8px; font-size: 12px; color: #6b7280;">
     <strong style="color: #374151;">※年度について</strong>：5月始まり4月締め。契約日（contract_date）を基準に年度振り分けしています。
 </div>
+
+<script>
+    // 右端 fade をスクロール余地があるときだけ表示
+    (function () {
+        var area = document.getElementById('mansion-contracts-scroll-area');
+        var fade = document.getElementById('mansion-contracts-scroll-fade');
+        var hint = document.getElementById('mansion-contracts-scroll-hint');
+        if (!area || !fade) return;
+        function update() {
+            var hasMore = area.scrollWidth - area.clientWidth > 2;
+            var atEnd   = area.scrollLeft + area.clientWidth >= area.scrollWidth - 2;
+            fade.style.display = hasMore ? '' : 'none';
+            fade.classList.toggle('is-end', atEnd);
+            if (hint) hint.style.display = hasMore ? '' : 'none';
+        }
+        area.addEventListener('scroll', update, { passive: true });
+        window.addEventListener('resize', update);
+        update();
+    })();
+</script>
 
 @endsection
