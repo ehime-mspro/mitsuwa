@@ -92,27 +92,15 @@
         }, true);
 
         // サイドバー アコーディオン用 Alpine ストア
-        // 各事業グループ（section）の開閉状態を localStorage で永続化
-        // 現在ページの section は強制展開（init() で openSet に追加）
+        // ページロード時は常に全グループ閉じた状態で開始する（localStorage 永続化なし）。
+        // セッション中の開閉状態のみメモリに保持し、リロード or ページ遷移でリセットされる。
+        // 過去バージョンが残した localStorage キーがあれば一度だけ掃除する。
         document.addEventListener('alpine:init', function () {
+            try { localStorage.removeItem('sidebar_groups_open_v1'); } catch (e) {}
+
             window.Alpine.store('sidebarGroups', {
-                STORAGE_KEY: 'sidebar_groups_open_v1',
-                currentSection: '{{ $currentSection ?? "" }}',
                 // Set のままだと Alpine リアクティブが効きにくいので Array で持つ
                 openList: [],
-
-                init: function () {
-                    var self = this;
-                    try {
-                        var raw = localStorage.getItem(self.STORAGE_KEY);
-                        if (raw) {
-                            var arr = JSON.parse(raw);
-                            if (Array.isArray(arr)) self.openList = arr.slice();
-                        }
-                    } catch (e) {}
-                    // 初期表示はサブメニュー全閉じ。
-                    // ユーザーが手動で開いたグループは localStorage で復元する。
-                },
 
                 isOpen: function (section) {
                     if (!section) return true;
@@ -127,9 +115,6 @@
                     } else if (!isOpen && idx !== -1) {
                         this.openList.splice(idx, 1);
                     }
-                    try {
-                        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.openList));
-                    } catch (e) {}
                 }
             });
         });
