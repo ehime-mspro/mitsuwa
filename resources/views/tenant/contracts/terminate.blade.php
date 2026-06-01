@@ -62,15 +62,18 @@
                 <div class="text-xs text-gray-500 mb-0.5">物件 / 区画</div>
                 <div class="text-sm font-medium text-gray-900">
                     @php
-                        $dn = $contract->unit->display_name;
-                        $unitLabel = ($contract->unit->floor !== null && !preg_match('/^\d/', $dn)) ? $contract->unit->floor . $dn : $dn;
+                        // unit / property / customer のいずれかが force delete されているか
+                        // 外部キーが NULL の壊れた契約でも 500 にならないよう防御
+                        $unit = $contract->unit;
+                        $dn = $unit?->display_name ?? '';
+                        $unitLabel = ($unit && $unit->floor !== null && !preg_match('/^\d/', $dn)) ? $unit->floor . $dn : $dn;
                     @endphp
-                    {{ $contract->property->name }} / {{ $unitLabel }}
+                    {{ $contract->property?->name ?? '（物件データなし）' }} / {{ $unitLabel !== '' ? $unitLabel : '（区画データなし）' }}
                 </div>
             </div>
             <div>
                 <div class="text-xs text-gray-500 mb-0.5">テナント</div>
-                <div class="text-sm font-medium text-gray-900">{{ $contract->customer->name }}</div>
+                <div class="text-sm font-medium text-gray-900">{{ $contract->customer?->name ?? '（顧客データなし）' }}</div>
             </div>
             <div>
                 <div class="text-xs text-gray-500 mb-0.5">月額家賃</div>
