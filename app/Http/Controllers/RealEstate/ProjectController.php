@@ -12,6 +12,7 @@ use App\Models\ReProjectDrawing;
 use App\Models\ReProjectLot;
 use App\Models\ZoningType;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
 class ProjectController extends Controller
@@ -62,7 +63,20 @@ class ProjectController extends Controller
     {
         $zoningTypes = ZoningType::orderBy('sort_order')->get();
 
-        return view('realestate.projects.create', compact('zoningTypes'));
+        // 原価管理セクション用データ — show() と同じ構成。
+        // 新規登録フォームの「原価管理」カードが Excel 取込 + 手動行追加でこれらを使う。
+        $costItems = ReCostItem::active()->ordered()->get();
+        $costItemsForJs = [];
+        foreach ($costItems as $item) {
+            $costItemsForJs[] = ['id' => $item->id, 'name' => $item->name];
+        }
+        $costAliasMap    = config('realestate_cost_import.aliases', []);
+        $costSkipList    = config('realestate_cost_import.skip', []);
+        $costSubtotalKws = config('realestate_cost_import.subtotal_keywords', []);
+
+        return view('realestate.projects.create', compact(
+            'zoningTypes', 'costItemsForJs', 'costAliasMap', 'costSkipList', 'costSubtotalKws'
+        ));
     }
 
     /**
@@ -75,11 +89,46 @@ class ProjectController extends Controller
         $validated['project_code'] = $this->generateProjectCode();
         $validated['created_by'] = auth()->id();
 
-        $project = ReProject::create($validated);
+        // 新規登録フォームの原価管理セクションから送信された costs 配列を別途バリデーション
+        $costsData = $request->validate([
+            'costs'                    => 'nullable|array',
+            'costs.*.cost_item_id'     => 'required|integer|exists:re_cost_items,id',
+            'costs.*.estimated_amount' => 'required|integer|min:0',
+            'costs.*.actual_amount'    => 'nullable|integer|min:0',
+            'costs.*.notes'            => 'nullable|string|max:500',
+        ])['costs'] ?? [];
+
+        // 「物件購入費」は ReProject::syncPropertyPurchaseCost() で booted() hook により
+        // 自動生成されるため、フォーム経由で送られた場合は除外する（二重登録防止）
+        $propertyPurchaseId = ReCostItem::where('name', '物件購入費')->value('id');
+        if ($propertyPurchaseId !== null) {
+            $costsData = array_values(array_filter(
+                $costsData,
+                fn ($r) => (int) $r['cost_item_id'] !== (int) $propertyPurchaseId
+            ));
+        }
+
+        $project = DB::transaction(function () use ($validated, $costsData) {
+            $proj = ReProject::create($validated);
+            foreach ($costsData as $row) {
+                ReProjectCost::create([
+                    'project_id'       => $proj->id,
+                    'cost_item_id'     => $row['cost_item_id'],
+                    'estimated_amount' => $row['estimated_amount'],
+                    'actual_amount'    => $row['actual_amount'] ?? null,
+                    'notes'            => $row['notes'] ?? null,
+                ]);
+            }
+            return $proj;
+        });
+
+        $msg = count($costsData) > 0
+            ? "分譲地「{$project->project_code}」を登録しました（原価 " . count($costsData) . " 件を含む）。"
+            : "分譲地「{$project->project_code}」を登録しました。";
 
         return redirect()
             ->route('realestate.projects.show', $project)
-            ->with('success', "分譲地「{$project->project_code}」を登録しました。");
+            ->with('success', $msg);
     }
 
     /**

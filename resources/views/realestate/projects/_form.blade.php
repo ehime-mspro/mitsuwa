@@ -127,6 +127,11 @@
         </div>
     </div>
 
+    {{-- 原価管理（新規登録時のみ。編集時は詳細画面の Ajax UI を使うので _form では非表示） --}}
+    @if(!$p)
+        @include('realestate._partials._cost_section_form')
+    @endif
+
     {{-- 備考 --}}
     <div class="bg-white border border-gray-200 rounded-lg p-5 mb-3">
         <div class="text-sm font-bold text-gray-800 pb-2 mb-3.5 border-b border-gray-200">備考</div>
