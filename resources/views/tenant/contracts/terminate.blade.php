@@ -73,7 +73,8 @@
             </div>
             <div>
                 <div class="text-xs text-gray-500 mb-0.5">テナント</div>
-                <div class="text-sm font-medium text-gray-900">{{ $contract->customer?->name ?? '（顧客データなし）' }}</div>
+                {{-- customer マスタ未紐付の契約は store_name に実テナント名が入っているのでフォールバック表示 --}}
+                <div class="text-sm font-medium text-gray-900">{{ $contract->customer?->name ?? $contract->store_name ?? '（顧客データなし）' }}</div>
             </div>
             <div>
                 <div class="text-xs text-gray-500 mb-0.5">月額家賃</div>
