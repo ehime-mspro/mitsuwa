@@ -86,16 +86,16 @@ class ProjectController extends Controller
     public function store(Request $request)
     {
         $validated = $this->validateProject($request);
-        $validated['project_code'] = $this->generateProjectCode();
         $validated['created_by'] = auth()->id();
 
         // 新規登録フォームの原価管理セクションから送信された costs 配列を別途バリデーション
+        // notes の上限は storeCost / bulkImportCosts（max:200）と揃える
         $costsData = $request->validate([
             'costs'                    => 'nullable|array',
             'costs.*.cost_item_id'     => 'required|integer|exists:re_cost_items,id',
             'costs.*.estimated_amount' => 'required|integer|min:0',
             'costs.*.actual_amount'    => 'nullable|integer|min:0',
-            'costs.*.notes'            => 'nullable|string|max:500',
+            'costs.*.notes'            => 'nullable|string|max:200',
         ])['costs'] ?? [];
 
         // 「物件購入費」は ReProject::syncPropertyPurchaseCost() で booted() hook により
@@ -109,6 +109,8 @@ class ProjectController extends Controller
         }
 
         $project = DB::transaction(function () use ($validated, $costsData) {
+            // 採番はトランザクション内で行い、同時 INSERT による project_code 衝突を防ぐ（DAD と同じパターン）
+            $validated['project_code'] = $this->generateProjectCode();
             $proj = ReProject::create($validated);
             foreach ($costsData as $row) {
                 ReProjectCost::create([

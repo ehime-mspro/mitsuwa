@@ -194,7 +194,10 @@ function costSectionFormController(opts) {
                     cost_item_name:   item ? item.name : '',
                     estimated_amount: Number(r.estimated),
                     actual_amount:    act,
-                    notes:            r.notes || ''
+                    notes:            r.notes || '',
+                    // _cost_excel_import の overwrite バナーが costs.filter(c => !c.is_property_purchase) で
+                    // 件数算出するため、フォーム生成行にも明示的に false を持たせる
+                    is_property_purchase: false
                 };
             });
 
@@ -289,7 +292,8 @@ function costSectionFormController(opts) {
                 cost_item_name:   item ? item.name : '',
                 estimated_amount: Number(estRaw),
                 actual_amount:    act,
-                notes:            this.newCost.notes || ''
+                notes:            this.newCost.notes || '',
+                is_property_purchase: false
             });
             this.resetNewCost();
             this.showAddCost = false;
