@@ -17,7 +17,7 @@ class UserSeeder extends Seeder
         // =============================================
         // 1. 経営層（全部門所属）
         // =============================================
-        $admin = User::create([
+        $admin = User::forceCreate([
             'name' => '山田太郎',
             'email' => 'admin@example.com',
             'password' => Hash::make('password'),
@@ -33,7 +33,7 @@ class UserSeeder extends Seeder
         // =============================================
         // 2. 部門管理者（テナント部門）
         // =============================================
-        $manager = User::create([
+        $manager = User::forceCreate([
             'name' => '鈴木一郎',
             'email' => 'manager@example.com',
             'password' => Hash::make('password'),
@@ -48,7 +48,7 @@ class UserSeeder extends Seeder
         // =============================================
         // 3. 一般担当者（テナント部門）
         // =============================================
-        $staff = User::create([
+        $staff = User::forceCreate([
             'name' => '田中花子',
             'email' => 'staff@example.com',
             'password' => Hash::make('password'),

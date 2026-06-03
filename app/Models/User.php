@@ -17,14 +17,15 @@ class User extends Authenticatable
     /**
      * The attributes that are mass assignable.
      *
+     * role / status は権限・アカウント状態に直結するためマスアサインメントから除外し、
+     * 値は UserController で明示代入する（特権昇格の事故防止）。
+     *
      * @var list<string>
      */
     protected $fillable = [
         'name',
         'email',
         'password',
-        'role',
-        'status',
         'must_change_password',
         'last_login_at',
     ];

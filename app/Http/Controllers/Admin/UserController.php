@@ -84,14 +84,15 @@ class UserController extends Controller
             'password.min' => 'パスワードは8文字以上で入力してください。',
         ]);
 
-        $user = User::create([
-            'name' => $validated['name'],
-            'email' => $validated['email'],
-            'password' => $validated['password'],
-            'role' => $validated['role'],
-            'status' => UserStatus::Active->value,
-            'must_change_password' => true,
-        ]);
+        // role / status は $fillable 対象外のため明示代入する（マスアサインメント対策）
+        $user = new User();
+        $user->name = $validated['name'];
+        $user->email = $validated['email'];
+        $user->password = $validated['password'];
+        $user->role = $validated['role'];
+        $user->status = UserStatus::Active->value;
+        $user->must_change_password = true;
+        $user->save();
 
         $user->departments()->attach($validated['departments']);
 
@@ -155,12 +156,12 @@ class UserController extends Controller
             }
         }
 
-        $user->update([
-            'name' => $validated['name'],
-            'email' => $validated['email'],
-            'role' => $validated['role'],
-            'status' => $validated['status'],
-        ]);
+        // role / status は $fillable 対象外のため明示代入する（マスアサインメント対策）
+        $user->name = $validated['name'];
+        $user->email = $validated['email'];
+        $user->role = $validated['role'];
+        $user->status = $validated['status'];
+        $user->save();
 
         $user->departments()->sync($validated['departments']);
 
@@ -205,7 +206,9 @@ class UserController extends Controller
             }
         }
 
-        $user->update(['status' => $newStatus]);
+        // status は $fillable 対象外のため明示代入する（マスアサインメント対策）
+        $user->status = $newStatus;
+        $user->save();
 
         $action = $newStatus === UserStatus::Active->value ? '有効化' : '無効化';
 
