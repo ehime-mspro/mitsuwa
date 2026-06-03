@@ -27,6 +27,9 @@ class ZealSheetClient
     /** ロイヤリティ率 (本部規定の固定値、整合チェック専用) */
     public const ROYALTY_RATE = 0.03;
 
+    /** SSRF 対策: 取得を許可するホスト (Google Sheets の公開リンクのみ) */
+    public const ALLOWED_HOSTS = ['docs.google.com', 'sheets.googleapis.com'];
+
     /**
      * 公開リンクの CSV エクスポート URL から CSV 原文を取得する。
      * Shift_JIS で返ってくる可能性に備えて UTF-8 に正規化する。
@@ -41,6 +44,14 @@ class ZealSheetClient
         }
         if (!preg_match('/^https?:\/\//i', $url)) {
             throw new \RuntimeException('Sheet URL が不正です (http(s):// で始まる必要があります)。');
+        }
+
+        // SSRF 対策: 取得先ホストを Google Sheets ドメインに限定する。
+        // DB に保存された URL を preview/apply で毎回フェッチするため、保存時検証だけでなく
+        // フェッチ直前のここでも検証する（多層防御）。
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+        if (! in_array($host, self::ALLOWED_HOSTS, true)) {
+            throw new \RuntimeException('Sheet URL のホストが許可されていません（Google Sheets の公開リンクのみ取得できます）。');
         }
 
         try {

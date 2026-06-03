@@ -47,9 +47,17 @@ class SheetImportController extends Controller
      */
     public function updateUrls(Request $request, ZealSimulation $simulation)
     {
+        // SSRF 対策: 取得先ホストを Google Sheets ドメインに限定する（保存時の早期フィードバック。
+        // 実フェッチ時の最終防御は ZealSheetClient::fetchCsv 側でも実施）
+        $googleSheetHost = function ($attribute, $value, $fail) {
+            if ($value && ! in_array(strtolower((string) parse_url($value, PHP_URL_HOST)), \App\Support\ZealSheetClient::ALLOWED_HOSTS, true)) {
+                $fail('Google Sheets の公開リンク（docs.google.com）のみ指定できます。');
+            }
+        };
+
         $validated = $request->validate([
-            'sales_sheet_url'   => ['nullable', 'string', 'max:500', 'url'],
-            'expense_sheet_url' => ['nullable', 'string', 'max:500', 'url'],
+            'sales_sheet_url'   => ['nullable', 'string', 'max:500', 'url', $googleSheetHost],
+            'expense_sheet_url' => ['nullable', 'string', 'max:500', 'url', $googleSheetHost],
         ], [
             'sales_sheet_url.url'   => '売上 Sheet URL は http(s):// で始まる正しい URL を指定してください。',
             'expense_sheet_url.url' => '経費 Sheet URL は http(s):// で始まる正しい URL を指定してください。',
