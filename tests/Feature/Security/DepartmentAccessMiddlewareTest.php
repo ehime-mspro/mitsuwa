@@ -24,10 +24,17 @@ class DepartmentAccessMiddlewareTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // 各テストで一度だけ部署マスタ（zeal 含む7件）を投入する。
+        // ヘルパーを複数回呼ぶテストでの二重シードによる UNIQUE 制約違反を防ぐ。
+        $this->seed(DepartmentSeeder::class);
+    }
+
     /** 指定ロール・所属部署のユーザーを作成する */
     private function userInDepartments(UserRole $role, array $codes = []): User
     {
-        $this->seed(DepartmentSeeder::class);
         $user = User::factory()->create(['role' => $role->value]);
         foreach ($codes as $code) {
             $user->departments()->attach(Department::where('code', $code)->value('id'));
