@@ -22,7 +22,7 @@ function inquiryCreateForm() {
         // 顧客Ajax検索
         customerId: '{{ old('customer_id', '') }}',
         customerQuery: '',
-        customerDisplay: '{!! $presetCustomer ? addslashes($presetCustomer->code . ' ' . $presetCustomer->name . '（' . $presetCustomer->customer_type->label() . '）') : '' !!}',
+        customerDisplay: @json($presetCustomer ? ($presetCustomer->code . ' ' . $presetCustomer->name . '（' . $presetCustomer->customer_type->label() . '）') : ''),
         customerResults: [],
         showCustomerDropdown: false,
         customerSearchTimer: null,

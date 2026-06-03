@@ -135,7 +135,7 @@
                         <td class="px-3.5 py-2.5 lg:px-5 lg:py-3.5 border-b border-gray-100 text-right whitespace-nowrap">
                             {{-- 編集 --}}
                             <button
-                                @click="openEditModal({{ $u->id }}, '{{ addslashes($u->name) }}', '{{ addslashes($u->email) }}', '{{ $u->role->value }}', {{ json_encode($u->departments->pluck('id')->values()) }}, '{{ $u->status->value }}')"
+                                @click="openEditModal({{ $u->id }}, {{ \Illuminate\Support\Js::from($u->name) }}, {{ \Illuminate\Support\Js::from($u->email) }}, '{{ $u->role->value }}', {{ \Illuminate\Support\Js::from($u->departments->pluck('id')->values()) }}, '{{ $u->status->value }}')"
                                 class="text-[12px] text-blue-600 hover:underline cursor-pointer bg-transparent border-none p-0 font-normal"
                             >編集</button>
 
@@ -143,7 +143,7 @@
                             @if($u->id !== auth()->id())
                                 <span class="text-gray-200 mx-1">|</span>
                                 <button
-                                    @click="openResetModal({{ $u->id }}, '{{ addslashes($u->name) }}')"
+                                    @click="openResetModal({{ $u->id }}, {{ \Illuminate\Support\Js::from($u->name) }})"
                                     class="text-[12px] text-amber-600 hover:underline cursor-pointer bg-transparent border-none p-0 font-normal"
                                 >PW再発行</button>
                             @endif
@@ -153,12 +153,12 @@
                                 <span class="text-gray-200 mx-1">|</span>
                                 @if($u->status === App\Enums\UserStatus::Active)
                                     <button
-                                        @click="openDisableModal({{ $u->id }}, '{{ addslashes($u->name) }}')"
+                                        @click="openDisableModal({{ $u->id }}, {{ \Illuminate\Support\Js::from($u->name) }})"
                                         class="text-[12px] text-red-600 hover:underline cursor-pointer bg-transparent border-none p-0 font-normal"
                                     >無効化</button>
                                 @else
                                     <button
-                                        @click="openEnableModal({{ $u->id }}, '{{ addslashes($u->name) }}')"
+                                        @click="openEnableModal({{ $u->id }}, {{ \Illuminate\Support\Js::from($u->name) }})"
                                         class="text-[12px] text-emerald-600 hover:underline cursor-pointer bg-transparent border-none p-0 font-normal"
                                     >有効化</button>
                                 @endif

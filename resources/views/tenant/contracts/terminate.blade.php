@@ -258,7 +258,7 @@ function contractTerminateForm() {
         // 最終月家賃
         contractEndDate: '{{ old('contract_end_date', '') }}',
         finalMonthType: '{{ old('final_month_type', 'full') }}',
-        manualFinalAmount: {!! old('final_month_amount') !== null ? old('final_month_amount') : "''" !!},
+        manualFinalAmount: @json(old('final_month_amount', '')),
 
         // --- 最終月家賃計算メソッド ---
         finalMonthLabel: function() {

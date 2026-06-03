@@ -140,7 +140,7 @@
                                 @endif
                                 @if(auth()->user()->role->isExecutive())
                                     <form action="{{ route('zeal.plans.destroy', $plan) }}" method="POST"
-                                          onsubmit="return confirm('「{{ addslashes($plan->name) }}」を削除しますか？\n契約履歴で使用中のプランは削除できません。')">
+                                          onsubmit="return confirm('「' + {{ \Illuminate\Support\Js::from($plan->name) }} + '」を削除しますか？\n契約履歴で使用中のプランは削除できません。')">
                                         @csrf
                                         @method('DELETE')
                                         <button type="submit"

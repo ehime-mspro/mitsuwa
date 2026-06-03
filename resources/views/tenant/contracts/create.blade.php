@@ -464,16 +464,16 @@ function contractCreateForm() {
         unitIdOld: '{{ old('unit_id', '') }}',
         units: [],
         loadingUnits: false,
-        rent: {!! json_encode(old('rent', '')) !!},
-        commonFee: {!! json_encode(old('common_fee', '')) !!},
-        garbageFee: {!! json_encode(old('garbage_fee', '')) !!},
-        pestControlFee: {!! json_encode(old('pest_control_fee', '')) !!},
-        deposit: {!! json_encode(old('deposit', '')) !!},
+        rent: @json(old('rent', '')),
+        commonFee: @json(old('common_fee', '')),
+        garbageFee: @json(old('garbage_fee', '')),
+        pestControlFee: @json(old('pest_control_fee', '')),
+        deposit: @json(old('deposit', '')),
 
         // 初月家賃
         rentStartDate: '{{ old('rent_start_date', '') }}',
         initialMonthType: '{{ old('initial_month_type', 'full') }}',
-        manualInitialAmount: {!! json_encode(old('initial_month_amount', '')) !!},
+        manualInitialAmount: @json(old('initial_month_amount', '')),
 
         inquiryId: '{{ old('inquiry_id', ($presetInquiry?->id ?? request('inquiry_id', ''))) }}',
         inquiries: [],
@@ -483,7 +483,7 @@ function contractCreateForm() {
         // 顧客Ajax検索
         customerId: '{{ old('customer_id', '') }}',
         customerQuery: '',
-        customerDisplay: '{!! $presetCustomer ? addslashes($presetCustomer->code . ' ' . $presetCustomer->name . '（' . $presetCustomer->customer_type->label() . '）') : '' !!}',
+        customerDisplay: @json($presetCustomer ? ($presetCustomer->code . ' ' . $presetCustomer->name . '（' . $presetCustomer->customer_type->label() . '）') : ''),
         customerResults: [],
         showCustomerDropdown: false,
         customerSearchTimer: null,
@@ -590,8 +590,8 @@ function contractCreateForm() {
                                 self.inquiries.unshift({
                                     id: {{ $presetInquiry->id }},
                                     inquiry_number: '{{ $presetInquiry->inquiry_number }}',
-                                    contact_name: '{{ addslashes($presetInquiry->contact_name) }}',
-                                    company_name: '{{ addslashes($presetInquiry->company_name ?? '') }}',
+                                    contact_name: @json($presetInquiry->contact_name),
+                                    company_name: @json($presetInquiry->company_name ?? ''),
                                     status: '{{ $presetInquiry->status->value }}',
                                     status_label: '{{ $presetInquiry->status->label() }}',
                                     inquiry_date: '{{ $presetInquiry->inquiry_date->format("Y/m/d") }}'

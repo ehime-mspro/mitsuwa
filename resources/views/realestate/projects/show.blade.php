@@ -58,7 +58,7 @@
                 <span style="display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap;">
                     <span>{{ $project->address ?: '—' }}</span>
                     @if($project->latitude && $project->longitude)
-                        <button type="button" onclick="openMapModal('{{ addslashes($project->project_name) }}', '{{ addslashes($project->address) }}', {{ $project->latitude }}, {{ $project->longitude }})"
+                        <button type="button" onclick="openMapModal({{ \Illuminate\Support\Js::from($project->project_name) }}, {{ \Illuminate\Support\Js::from($project->address) }}, {{ $project->latitude }}, {{ $project->longitude }})"
                                 style="background: #fff; color: #2563eb; padding: 3px 10px; border-radius: 5px; font-size: 11px; font-weight: 600; border: 1px solid #2563eb; cursor: pointer; white-space: nowrap;">マップで確認</button>
                     @endif
                 </span>

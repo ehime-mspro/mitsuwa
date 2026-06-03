@@ -407,7 +407,7 @@ function contractEditForm() {
         // 顧客Ajax検索
         customerId: '{{ old('customer_id', $contract->customer_id) }}',
         customerQuery: '',
-        customerDisplay: '{!! $displayCustomer ? addslashes($displayCustomer->code . " " . $displayCustomer->name . "（" . $displayCustomer->customer_type->label() . "）") : "" !!}',
+        customerDisplay: @json($displayCustomer ? ($displayCustomer->code . " " . $displayCustomer->name . "（" . $displayCustomer->customer_type->label() . "）") : ""),
         customerResults: [],
         showCustomerDropdown: false,
         customerSearchTimer: null,

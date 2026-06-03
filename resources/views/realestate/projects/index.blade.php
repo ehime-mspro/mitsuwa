@@ -131,7 +131,7 @@
                             {{-- マップボタン（青） --}}
                             <td class="px-3 py-3 border-b border-gray-100 text-center whitespace-nowrap">
                                 @if($pj->latitude && $pj->longitude)
-                                    <button type="button" onclick="openMapModal('{{ addslashes($pj->project_name) }}', '{{ addslashes($pj->address) }}', {{ $pj->latitude }}, {{ $pj->longitude }})"
+                                    <button type="button" onclick="openMapModal({{ \Illuminate\Support\Js::from($pj->project_name) }}, {{ \Illuminate\Support\Js::from($pj->address) }}, {{ $pj->latitude }}, {{ $pj->longitude }})"
                                             style="background: #fff; color: #2563eb; padding: 4px 12px; border-radius: 5px; font-size: 12px; font-weight: 600; border: 1px solid #2563eb; cursor: pointer; white-space: nowrap;">マップ</button>
                                 @else
                                     <span class="text-gray-300">—</span>
