@@ -14,7 +14,9 @@ use Illuminate\Support\Facades\Route;
 // ゲスト（未認証）ユーザーのみアクセス可能
 Route::middleware('guest')->group(function () {
     Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
-    Route::post('/login', [AuthController::class, 'login']);
+    // ブルートフォース対策: ログイン試行を 1 分あたり 5 回に制限
+    Route::post('/login', [AuthController::class, 'login'])
+        ->middleware('throttle:5,1');
 });
 
 // 認証済みユーザー
@@ -527,8 +529,9 @@ Route::middleware(['auth', 'password.change'])->group(function () {
                 ->name('mansion.rooms.destroy');
         });
 
-        // 部屋ステータス更新（Ajax）
+        // 部屋ステータス更新（Ajax）— 他モジュールの updateStatus と同様に manager 以上に限定
         Route::patch('/rooms/{room}/status', [\App\Http\Controllers\Mansion\RoomController::class, 'updateStatus'])
+            ->middleware('role:executive,manager')
             ->name('mansion.rooms.updateStatus');
 
         /*

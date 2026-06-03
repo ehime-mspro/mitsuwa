@@ -400,7 +400,9 @@ class CustomerController extends Controller
             curl_setopt($ch, CURLOPT_URL, $url);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
             curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+            // TLS 証明書を検証する（MITM 対策）。HeartRails GeoAPI は正規証明書を持つため検証を有効化。
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
             curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
             $response = curl_exec($ch);
             $error    = curl_error($ch);
