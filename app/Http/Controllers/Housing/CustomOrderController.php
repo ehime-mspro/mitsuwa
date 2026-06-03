@@ -298,7 +298,10 @@ class CustomOrderController extends Controller
             abort(404);
         }
 
-        return Storage::disk('public')->response($file->file_path, $file->file_name);
+        // 保存型 XSS 対策: inline ではなく強制ダウンロードで配信し、nosniff を付与。
+        return Storage::disk('public')->download($file->file_path, $file->file_name, [
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
     }
 
     // ================================================================

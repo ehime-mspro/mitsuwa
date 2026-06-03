@@ -596,7 +596,19 @@ class ProjectController extends Controller
             abort(404);
         }
 
-        return Storage::disk('public')->response($drawing->file_path, $drawing->file_name);
+        // 画像は inline 配信（区画図面のサムネイルプレビュー用）、それ以外は強制ダウンロード。
+        // storeDrawing の mimes に svg/html は含まれないため画像 inline は安全。
+        // いずれも nosniff で MIME スニッフィングによる XSS を防ぐ。
+        if ($drawing->isImage()) {
+            return Storage::disk('public')->response($drawing->file_path, $drawing->file_name, [
+                'Content-Type'           => $drawing->mime_type,
+                'X-Content-Type-Options' => 'nosniff',
+            ]);
+        }
+
+        return Storage::disk('public')->download($drawing->file_path, $drawing->file_name, [
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
     }
 
     /**

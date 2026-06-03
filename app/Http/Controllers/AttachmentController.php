@@ -52,7 +52,7 @@ class AttachmentController extends Controller
         // ファイルの検証
         $request->validate([
             'files'   => 'required|array|min:1',
-            'files.*' => 'required|file|max:10240',
+            'files.*' => 'required|file|max:10240|mimes:jpg,jpeg,png,gif,pdf,doc,docx,xls,xlsx',
         ]);
 
         $uploaded = [];
@@ -102,7 +102,11 @@ class AttachmentController extends Controller
             abort(404);
         }
 
-        return Storage::disk('public')->response($attachment->file_path, $attachment->file_name);
+        // 保存型 XSS 対策: inline ではなく強制ダウンロードで配信し、
+        // X-Content-Type-Options: nosniff で MIME スニッフィングによる実行を防ぐ。
+        return Storage::disk('public')->download($attachment->file_path, $attachment->file_name, [
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
     }
 
     /**
