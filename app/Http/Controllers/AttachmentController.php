@@ -32,6 +32,20 @@ class AttachmentController extends Controller
     ];
 
     /**
+     * morph クラス → 部署コードのマッピング（TYPE_MAP と対になる）。
+     * 添付の親リソースが属する部署を判定し、IDOR（他部署の添付閲覧/操作）を防ぐ。
+     */
+    private const DEPARTMENT_MAP = [
+        Contract::class      => 'tenant',
+        Investment::class    => 'tenant',
+        Repair::class        => 'tenant',
+        ReProcurement::class => 'realestate',
+        ReProject::class     => 'realestate',
+        MsTenant::class      => 'mansion',
+        DadProject::class    => 'dad',
+    ];
+
+    /**
      * ファイルアップロード（Ajax）
      * POST /attachments/{type}/{id}
      */
@@ -47,6 +61,11 @@ class AttachmentController extends Controller
         $model = $modelClass::find($id);
         if (! $model) {
             return response()->json(['success' => false, 'message' => '対象が見つかりません。'], 404);
+        }
+
+        // 部署ベースの認可（IDOR 対策）: 他部署の案件に添付できないようにする
+        if (! $this->canAccessDepartmentOf($modelClass)) {
+            return response()->json(['success' => false, 'message' => 'この対象へのアクセス権限がありません。'], 403);
         }
 
         // ファイルの検証
@@ -98,6 +117,10 @@ class AttachmentController extends Controller
      */
     public function show(Attachment $attachment)
     {
+        // 部署ベースの認可（IDOR 対策）: 連番 ID 総当たりでの他部署添付の閲覧を防ぐ。
+        // ファイル存在チェックより前に評価する。
+        abort_unless($this->canAccessDepartmentOf($attachment->attachable_type), 403);
+
         if (! Storage::disk('public')->exists($attachment->file_path)) {
             abort(404);
         }
@@ -116,6 +139,11 @@ class AttachmentController extends Controller
     public function destroy(Attachment $attachment)
     {
         $user = Auth::user();
+
+        // 部署ベースの認可（IDOR 対策）: 他部署の添付を削除できないようにする
+        if (! $this->canAccessDepartmentOf($attachment->attachable_type)) {
+            return response()->json(['success' => false, 'message' => 'アクセス権限がありません。'], 403);
+        }
 
         // 権限チェック: 経営層 または アップロード本人
         if (! $user->role->isExecutive() && $attachment->uploaded_by !== $user->id) {
@@ -137,5 +165,20 @@ class AttachmentController extends Controller
                 'deleted_at' => $attachment->deleted_at->format('Y/m/d H:i'),
             ],
         ]);
+    }
+
+    /**
+     * 現在のユーザーが当該 morph クラス（親リソース）の部署にアクセスできるか。
+     * executive は全部署許可。マップに無いクラスは安全側に倒して不許可。
+     */
+    private function canAccessDepartmentOf(string $modelClass): bool
+    {
+        $user = Auth::user();
+        if ($user->isExecutive()) {
+            return true;
+        }
+        $dept = self::DEPARTMENT_MAP[$modelClass] ?? null;
+
+        return $dept !== null && $user->belongsToDepartment($dept);
     }
 }
