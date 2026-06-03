@@ -160,6 +160,8 @@ class CustomerController extends Controller
     public function show(Request $request, Buyer $buyer)
     {
         $department = $this->resolveDepartment();
+        // 部署スコープ外の買主は 404（存在秘匿）で遮断（H-3 IDOR 対策）
+        abort_unless($buyer->belongsToDepartment($department), 404);
 
         $buyer->load(['departments', 'surveys' => function ($q) use ($department) {
             $q->ofDepartment($department)->orderBy('survey_date', 'desc');
@@ -184,6 +186,9 @@ class CustomerController extends Controller
     public function edit(Request $request, Buyer $buyer)
     {
         $department = $this->resolveDepartment();
+        // 部署スコープ外の買主は 404（存在秘匿）で遮断（H-3 IDOR 対策）
+        abort_unless($buyer->belongsToDepartment($department), 404);
+
         $deptLabel  = BuyerDepartment::from($department)->label();
         $pivot      = $buyer->getDepartmentPivot($department);
         $prefectures = $this->getPrefectures();
@@ -199,6 +204,8 @@ class CustomerController extends Controller
     public function update(Request $request, Buyer $buyer)
     {
         $department = $this->resolveDepartment();
+        // 部署スコープ外の買主は 404（存在秘匿）で遮断（H-3 IDOR 対策）
+        abort_unless($buyer->belongsToDepartment($department), 404);
 
         $request->validate([
             'last_name'     => 'required|max:50',
@@ -238,7 +245,20 @@ class CustomerController extends Controller
     public function destroy(Request $request, Buyer $buyer)
     {
         $department = $this->resolveDepartment();
-        $buyer->delete();
+        // 部署スコープ外の買主は 404（存在秘匿）で遮断（H-3 IDOR 対策）
+        abort_unless($buyer->belongsToDepartment($department), 404);
+
+        // 共有買主（housing/realestate 兼）の事故消失を防ぐため、当該部署の紐付けのみ解除。
+        // 全部署で紐付けが無くなった場合のみ買主本体をソフトデリートする。
+        DB::transaction(function () use ($buyer, $department) {
+            $pivot = $buyer->getDepartmentPivot($department);
+            if ($pivot) {
+                $pivot->delete();
+            }
+            if (! $buyer->departments()->exists()) {
+                $buyer->delete();
+            }
+        });
 
         return redirect()
             ->route("{$department}.customers.index")
