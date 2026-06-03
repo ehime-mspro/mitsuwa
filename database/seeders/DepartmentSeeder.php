@@ -19,6 +19,7 @@ class DepartmentSeeder extends Seeder
             ['name' => '不動産',     'code' => 'realestate', 'display_order' => 4],
             ['name' => '福祉',       'code' => 'welfare',    'display_order' => 5],
             ['name' => 'DAD',        'code' => 'dad',        'display_order' => 6],
+            ['name' => 'ZEAL',       'code' => 'zeal',       'display_order' => 7],
         ];
 
         foreach ($departments as $dept) {

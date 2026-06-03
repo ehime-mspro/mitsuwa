@@ -159,7 +159,7 @@ Route::middleware(['auth', 'password.change'])->group(function () {
     | テナント物件管理（7ルート）— STEP 4
     |----------------------------------------------------------------------
     */
-    Route::prefix('tenant')->group(function () {
+    Route::prefix('tenant')->middleware('department.access:tenant')->group(function () {
         // 物件一覧・登録（全ロール閲覧可、登録は経営層+管理者）
         Route::get('/properties', [\App\Http\Controllers\Tenant\PropertyController::class, 'index'])
             ->name('tenant.properties.index');
@@ -432,19 +432,19 @@ Route::middleware(['auth', 'password.change'])->group(function () {
 
     // 空室・商談中の区画取得（物件選択→区画連動用）
     Route::get('/api/tenant/properties/{property}/vacant-units', [\App\Http\Controllers\Tenant\ContractController::class, 'vacantUnits'])
-        ->name('api.tenant.vacant-units');
+        ->middleware('department.access:tenant')->name('api.tenant.vacant-units');
 
     // 区画の未紐づけ投資案件取得（契約登録→投資案件連動用）
     Route::get('/api/tenant/units/{unit}/investments', [\App\Http\Controllers\Tenant\InvestmentController::class, 'forUnit'])
-        ->name('api.tenant.unit-investments');
+        ->middleware('department.access:tenant')->name('api.tenant.unit-investments');
 
     // 物件のフォロー・保留中の問合せ取得（契約登録→関連問合せ連動用）
     Route::get('/api/tenant/properties/{property}/active-inquiries', [\App\Http\Controllers\Tenant\ContractController::class, 'activeInquiries'])
-        ->name('api.tenant.active-inquiries');
+        ->middleware('department.access:tenant')->name('api.tenant.active-inquiries');
 
     // 顧客検索（契約登録・問合せ登録→顧客Ajax検索用）
     Route::get('/api/tenant/customers/search', [\App\Http\Controllers\Tenant\CustomerController::class, 'search'])
-        ->name('api.tenant.customers.search');
+        ->middleware('department.access:tenant')->name('api.tenant.customers.search');
         
     // 住所→郵便番号 逆引きAjax
     Route::get('/api/reverse-zip', [\App\Http\Controllers\CustomerController::class, 'reverseZipLookup'])
@@ -475,7 +475,7 @@ Route::middleware(['auth', 'password.change'])->group(function () {
     | 賃貸マンション管理（Phase B〜H で段階実装）
     |----------------------------------------------------------------------
     */
-    Route::prefix('mansion')->group(function () {
+    Route::prefix('mansion')->middleware('department.access:mansion')->group(function () {
         // ダッシュボード（Phase H で実装予定のため暫定コメントアウト）
         Route::get('/dashboard', [\App\Http\Controllers\Mansion\DashboardController::class, 'index'])
             ->name('mansion.dashboard');
@@ -673,18 +673,18 @@ Route::middleware(['auth', 'password.change'])->group(function () {
     */
     // 空室取得（物件選択→部屋連動用）
     Route::get('/api/mansion/properties/{property}/vacant-rooms', [\App\Http\Controllers\Mansion\ContractController::class, 'vacantRooms'])
-        ->name('api.mansion.vacant-rooms');
+        ->middleware('department.access:mansion')->name('api.mansion.vacant-rooms');
 
     // 空き駐車場取得（物件選択→駐車場連動用）
     Route::get('/api/mansion/properties/{property}/vacant-parkings', [\App\Http\Controllers\Mansion\ContractController::class, 'vacantParkings'])
-        ->name('api.mansion.vacant-parkings');
+        ->middleware('department.access:mansion')->name('api.mansion.vacant-parkings');
 
     /*
     |----------------------------------------------------------------------
     | 不動産 仕入れ案件管理（7ルート）
     |----------------------------------------------------------------------
     */
-    Route::prefix('realestate')->group(function () {
+    Route::prefix('realestate')->middleware('department.access:realestate')->group(function () {
         // 仕入れ案件一覧（全ロール閲覧可）
         Route::get('/procurements', [\App\Http\Controllers\RealEstate\ProcurementController::class, 'index'])
             ->name('realestate.procurements.index');
@@ -823,11 +823,11 @@ Route::middleware(['auth', 'password.change'])->group(function () {
     */
 
     Route::get('/api/realestate/procurement-cost/{procurement}', [\App\Http\Controllers\RealEstate\ReContractController::class, 'getProcurementCost'])
-        ->name('api.realestate.procurement-cost');
+        ->middleware('department.access:realestate')->name('api.realestate.procurement-cost');
     Route::get('/api/realestate/project-lots/{project}', [\App\Http\Controllers\RealEstate\ReContractController::class, 'getProjectLots'])
-        ->name('api.realestate.project-lots');
+        ->middleware('department.access:realestate')->name('api.realestate.project-lots');
     Route::get('/api/realestate/project-lot-cost/{project}', [\App\Http\Controllers\RealEstate\ReContractController::class, 'getProjectLotCost'])
-        ->name('api.realestate.project-lot-cost');
+        ->middleware('department.access:realestate')->name('api.realestate.project-lot-cost');
     
     
     /*
@@ -835,7 +835,7 @@ Route::middleware(['auth', 'password.change'])->group(function () {
     | 不動産 分譲地管理（7 + 1 + 3 + 3 + 2 = 16ルート）
     |----------------------------------------------------------------------
     */
-    Route::prefix('realestate')->group(function () {
+    Route::prefix('realestate')->middleware('department.access:realestate')->group(function () {
         Route::get('/projects', [\App\Http\Controllers\RealEstate\ProjectController::class, 'index'])
             ->name('realestate.projects.index');
 
@@ -910,11 +910,11 @@ Route::middleware(['auth', 'password.change'])->group(function () {
     |----------------------------------------------------------------------
     */
     Route::get('/api/realestate/suppliers/search', [\App\Http\Controllers\RealEstate\SupplierController::class, 'search'])
-        ->name('api.realestate.suppliers.search');
+        ->middleware('department.access:realestate')->name('api.realestate.suppliers.search');
 
     Route::post('/api/realestate/suppliers/quick', [\App\Http\Controllers\RealEstate\SupplierController::class, 'quickStore'])
         ->middleware('role:executive,manager')
-        ->name('api.realestate.suppliers.quick');
+        ->middleware('department.access:realestate')->name('api.realestate.suppliers.quick');
 
     /*
     |----------------------------------------------------------------------
@@ -939,7 +939,7 @@ Route::middleware(['auth', 'password.change'])->group(function () {
     | 住宅事業 建売物件管理（7ルート）
     |----------------------------------------------------------------------
     */
-    Route::prefix('housing')->group(function () {
+    Route::prefix('housing')->middleware('department.access:housing')->group(function () {
         // 住宅事業ダッシュボード（建売 + 注文住宅 成約フォーカス）
         Route::get('/', [\App\Http\Controllers\Housing\HousingDashboardController::class, 'index'])
             ->name('housing.dashboard');
@@ -1056,16 +1056,16 @@ Route::middleware(['auth', 'password.change'])->group(function () {
     |----------------------------------------------------------------------
     */
     Route::get('/api/housing/project-lots', [\App\Http\Controllers\Housing\PropertyController::class, 'projectLots'])
-        ->name('api.housing.project-lots');
+        ->middleware('department.access:housing')->name('api.housing.project-lots');
     Route::get('/api/housing/procurement-info/{procurement}', [\App\Http\Controllers\Housing\PropertyController::class, 'procurementInfo'])
-        ->name('api.housing.procurement-info');
+        ->middleware('department.access:housing')->name('api.housing.procurement-info');
         
     /*
     |----------------------------------------------------------------------
     | 住宅事業 注文住宅管理（7ルート）
     |----------------------------------------------------------------------
     */
-    Route::prefix('housing')->group(function () {
+    Route::prefix('housing')->middleware('department.access:housing')->group(function () {
         // 注文住宅一覧（全ロール閲覧可）
         Route::get('/custom-orders', [\App\Http\Controllers\Housing\CustomOrderController::class, 'index'])
             ->name('housing.custom-orders.index');
@@ -1127,7 +1127,7 @@ Route::middleware(['auth', 'password.change'])->group(function () {
     | 顧客管理 買主マスタ — 住宅事業（7ルート）
     |----------------------------------------------------------------------
     */
-    Route::prefix('housing')->group(function () {
+    Route::prefix('housing')->middleware('department.access:housing')->group(function () {
         // 顧客一覧（全ロール閲覧可）
         Route::get('/customers', [\App\Http\Controllers\CustomerController::class, 'index'])
             ->name('housing.customers.index');
@@ -1182,7 +1182,7 @@ Route::middleware(['auth', 'password.change'])->group(function () {
     | 顧客管理 買主マスタ — 不動産事業（7ルート）
     |----------------------------------------------------------------------
     */
-    Route::prefix('realestate')->group(function () {
+    Route::prefix('realestate')->middleware('department.access:realestate')->group(function () {
         // 顧客一覧（全ロール閲覧可）
         Route::get('/customers', [\App\Http\Controllers\CustomerController::class, 'index'])
             ->name('realestate.customers.index');
@@ -1218,7 +1218,7 @@ Route::middleware(['auth', 'password.change'])->group(function () {
     | DAD管理（Phase B〜G で段階実装）
     |----------------------------------------------------------------------
     */
-    Route::prefix('dad')->group(function () {
+    Route::prefix('dad')->middleware('department.access:dad')->group(function () {
         // 発注者管理（7ルート）
         Route::get('/clients', [\App\Http\Controllers\Dad\ClientController::class, 'index'])
             ->name('dad.clients.index');
@@ -1301,7 +1301,7 @@ Route::middleware(['auth', 'password.change'])->group(function () {
     | ZEAL フィットネス事業（Phase 3-B〜3-G で段階実装）
     |----------------------------------------------------------------------
     */
-    Route::prefix('zeal')->group(function () {
+    Route::prefix('zeal')->middleware('department.access:zeal')->group(function () {
         // ダッシュボード（1ルート）
         Route::get('/', [\App\Http\Controllers\Zeal\DashboardController::class, 'index'])
             ->name('zeal.dashboard');
@@ -1423,7 +1423,7 @@ Route::middleware(['auth', 'password.change'])->group(function () {
     // ランク変更Ajax
     Route::patch('/api/customers/{buyer}/rank', [\App\Http\Controllers\CustomerController::class, 'updateRank'])
         ->middleware('role:executive,manager')
-        ->name('api.customers.rank.update');
+        ->middleware('department.access')->name('api.customers.rank.update');
 
     // 重複チェックAjax
     Route::post('/api/customers/check-duplicate', [\App\Http\Controllers\CustomerController::class, 'checkDuplicate'])
@@ -1432,7 +1432,7 @@ Route::middleware(['auth', 'password.change'])->group(function () {
     // 他部署追加Ajax
     Route::post('/api/customers/{buyer}/add-department', [\App\Http\Controllers\CustomerController::class, 'addToDepartment'])
         ->middleware('role:executive,manager')
-        ->name('api.customers.add-department');
+        ->middleware('department.access')->name('api.customers.add-department');
         
     /*
     |----------------------------------------------------------------------
