@@ -58,9 +58,9 @@
             <label class="inline-flex items-center gap-1.5 px-4 py-2 bg-white border border-gray-300 rounded-md text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer transition-colors">
                 <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
                 ファイルを選択
-                <input type="file" multiple class="hidden" @change="handleFileSelect($event)">
+                <input type="file" multiple accept=".jpg,.jpeg,.png,.gif,.webp,.heic,.heif,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt" class="hidden" @change="handleFileSelect($event)">
             </label>
-            <p class="text-xs text-gray-400 mt-2">全形式対応・1ファイル10MBまで・複数選択可</p>
+            <p class="text-xs text-gray-400 mt-2">画像・PDF・Word/Excel・CSV/テキスト・1ファイル10MBまで・複数選択可</p>
         </div>
     @endif
 

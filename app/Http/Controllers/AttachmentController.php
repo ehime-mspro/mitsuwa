@@ -71,7 +71,7 @@ class AttachmentController extends Controller
         // ファイルの検証
         $request->validate([
             'files'   => 'required|array|min:1',
-            'files.*' => 'required|file|max:10240|mimes:jpg,jpeg,png,gif,pdf,doc,docx,xls,xlsx',
+            'files.*' => 'required|file|max:10240|mimes:jpg,jpeg,png,gif,webp,heic,heif,pdf,doc,docx,xls,xlsx,csv,txt',
         ]);
 
         $uploaded = [];
