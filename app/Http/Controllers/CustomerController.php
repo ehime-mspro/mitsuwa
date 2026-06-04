@@ -293,48 +293,81 @@ class CustomerController extends Controller
 
     /**
      * 重複チェック（Ajax）
+     * 自部署: 姓名一致で二重登録を警告（自部署PIIは閲覧可）。
+     * 他部署: 姓名＋都道府県＋市区町村の完全一致時のみ検知し、住所は返さない（PII最小化）。
      */
     public function checkDuplicate(Request $request)
     {
-        $lastName   = $request->input('last_name');
-        $firstName  = $request->input('first_name');
-        $prefecture = $request->input('prefecture');
-        $city       = $request->input('city');
+        $lastName    = $request->input('last_name');
+        $firstName   = $request->input('first_name');
+        $prefecture  = $request->input('prefecture');
+        $city        = $request->input('city');
         $currentDept = $request->input('department');
-        $excludeId  = $request->input('exclude_id');
+        $excludeId   = $request->input('exclude_id');
 
-        if (!$lastName || !$firstName) {
+        if (!$lastName || !$firstName || !in_array($currentDept, ['housing', 'realestate'], true)) {
             return response()->json(['duplicates' => []]);
         }
 
-        $query = Buyer::where('last_name', $lastName)
-            ->where('first_name', $firstName);
+        $results = [];
 
-        if ($prefecture) {
-            $query->where('prefecture', $prefecture);
-        }
-        if ($city) {
-            $query->where('city', $city);
-        }
+        // (1) 自部署内の同名（二重登録防止）— 姓名一致。自部署のPIIは元々閲覧可
+        $sameDeptQuery = Buyer::where('last_name', $lastName)
+            ->where('first_name', $firstName)
+            ->whereHas('departments', function ($q) use ($currentDept) {
+                $q->where('department', $currentDept);
+            });
         if ($excludeId) {
-            $query->where('id', '!=', $excludeId);
+            $sameDeptQuery->where('id', '!=', $excludeId);
         }
-
-        $duplicates = $query->with('departments')->get()->map(function ($buyer) use ($currentDept) {
-            $depts = $buyer->departments->pluck('department')->toArray();
-            $sameDept  = in_array($currentDept, $depts);
-            $otherDept = array_diff($depts, [$currentDept]);
-
-            return [
+        foreach ($sameDeptQuery->get() as $buyer) {
+            $results[] = [
                 'id'         => $buyer->id,
                 'full_name'  => $buyer->full_name,
-                'address'    => ($buyer->prefecture ?? '') . ($buyer->city ?? ''),
-                'same_dept'  => $sameDept,
-                'other_dept' => array_values($otherDept),
+                'address'    => trim(($buyer->prefecture ?? '') . ($buyer->city ?? '')),
+                'same_dept'  => true,
+                'other_dept' => [],
             ];
-        });
+        }
 
-        return response()->json(['duplicates' => $duplicates]);
+        // (2) 他部署の同名（部署共有候補）— 姓名＋都道府県＋市区町村の完全一致を必須。
+        //     住所を持つ正規利用者のみヒットさせ、姓名総当たりによる他部署PII列挙を防ぐ。
+        //     戻り値に住所は含めない（入力者が既に把握している姓名のみ提示）。
+        if ($prefecture && $city) {
+            $otherDeptQuery = Buyer::where('last_name', $lastName)
+                ->where('first_name', $firstName)
+                ->where('prefecture', $prefecture)
+                ->where('city', $city)
+                ->whereDoesntHave('departments', function ($q) use ($currentDept) {
+                    $q->where('department', $currentDept);
+                })
+                ->whereHas('departments'); // 何らかの部署に実在所属
+            if ($excludeId) {
+                $otherDeptQuery->where('id', '!=', $excludeId);
+            }
+            $otherBuyers = $otherDeptQuery->with('departments')->get();
+
+            foreach ($otherBuyers as $buyer) {
+                $results[] = [
+                    'id'         => $buyer->id,
+                    'full_name'  => $buyer->full_name,
+                    'same_dept'  => false,
+                    'other_dept' => $buyer->departments->pluck('department')->unique()->values()->toArray(),
+                ];
+            }
+
+            // 監査ログ: 他部署ヒットが発生した場合
+            if ($otherBuyers->isNotEmpty()) {
+                \Log::info('buyer cross-dept duplicate detected', [
+                    'user_id'      => $request->user()?->id,
+                    'search_name'  => $lastName . $firstName,
+                    'current_dept' => $currentDept,
+                    'hit_ids'      => $otherBuyers->pluck('id')->toArray(),
+                ]);
+            }
+        }
+
+        return response()->json(['duplicates' => $results]);
     }
 
     /**
