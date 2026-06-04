@@ -372,13 +372,29 @@ class CustomerController extends Controller
 
     /**
      * 他部署追加（Ajax）
+     * 取込対象は「checkDuplicate で姓名＋住所が一致してヒットした他部署買主」のみ。
+     * buyer ID を知るだけ・姓名だけでは取込めない（IDOR 対策）。
      */
     public function addToDepartment(Request $request, Buyer $buyer)
     {
         $request->validate([
             'department'    => 'required|in:housing,realestate',
             'acquired_date' => 'required|date',
+            'last_name'     => 'required',
+            'first_name'    => 'required',
+            'prefecture'    => 'required',
+            'city'          => 'required',
         ]);
+
+        // 取込対象の正当性検証: 姓名＋住所が完全一致し、かつ他部署に実在所属していること
+        abort_unless(
+            $buyer->last_name    === $request->input('last_name')
+            && $buyer->first_name === $request->input('first_name')
+            && $buyer->prefecture === $request->input('prefecture')
+            && $buyer->city       === $request->input('city')
+            && $buyer->departments()->exists(),
+            404
+        );
 
         $dept = $request->input('department');
 
@@ -387,6 +403,13 @@ class CustomerController extends Controller
         }
 
         $buyer->addToDepartment($dept, $request->input('acquired_date'));
+
+        // 監査ログ: 部署横断取込
+        \Log::info('buyer added to department (cross-dept share)', [
+            'user_id'  => $request->user()?->id,
+            'buyer_id' => $buyer->id,
+            'to_dept'  => $dept,
+        ]);
 
         return response()->json([
             'success'  => true,
