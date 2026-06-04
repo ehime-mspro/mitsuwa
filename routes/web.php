@@ -1425,8 +1425,10 @@ Route::middleware(['auth', 'password.change'])->group(function () {
         ->middleware('role:executive,manager')
         ->middleware('department.access')->name('api.customers.rank.update');
 
-    // 重複チェックAjax
+    // 重複チェックAjax（登録と同じ認可ライン: 経営層+管理者 ＋ 自部署所属）
     Route::post('/api/customers/check-duplicate', [\App\Http\Controllers\CustomerController::class, 'checkDuplicate'])
+        ->middleware('role:executive,manager')
+        ->middleware('department.access')
         ->name('api.customers.check-duplicate');
 
     // 他部署追加Ajax
