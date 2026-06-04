@@ -184,6 +184,7 @@
         <div>
             <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">都道府県</label>
             <select name="prefecture" x-ref="prefecture"
+                    x-on:change="checkDuplicate()"
                     style="width: 100%; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
                 <option value="">選択</option>
                 @foreach($prefectures as $pref)
@@ -196,6 +197,7 @@
             <input type="text" name="city" x-ref="city"
                    value="{{ old('city', $isEdit ? $buyer->city : '') }}"
                    placeholder="松山市"
+                   x-on:blur="checkDuplicate()"
                    style="width: 100%; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
         </div>
     </div>
@@ -276,9 +278,9 @@
                         <strong>{{ $deptLabel }}</strong>に同名の顧客が登録済みです：<a x-bind:href="'{{ url($department . '/customers') }}/' + dup.id" style="color: #1d4ed8; text-decoration: underline;" x-text="dup.full_name + '（' + dup.address + '）'"></a><br>
                         <span style="font-size: 12px; color: #6b7280;">このまま登録すると別の顧客として追加されます</span>
                     </div>
-                    {{-- 他部署にのみ既存 --}}
+                    {{-- 他部署にのみ既存（住所・他部署リンクは出さない — PII最小化） --}}
                     <div x-show="!dup.same_dept && dup.other_dept.length > 0">
-                        <strong x-text="getDeptLabel(dup.other_dept[0])"></strong>に同名の顧客が登録されています：<a x-bind:href="'/' + dup.other_dept[0] + '/customers/' + dup.id" style="color: #1d4ed8; text-decoration: underline;" x-text="dup.full_name + '（' + dup.address + '）'"></a><br>
+                        <strong x-text="getDeptLabel(dup.other_dept[0])"></strong>に同名の顧客（<span x-text="dup.full_name"></span>）が登録されています<br>
                         <button type="button" x-on:click="addToDepartment(dup.id)" style="margin-top: 8px; margin-right: 8px; padding: 4px 12px; font-size: 12px; font-weight: 600; border-radius: 4px; border: none; cursor: pointer; background: #059669; color: #fff;">この顧客を{{ $deptLabel }}にも追加</button>
                         <button type="button" x-on:click="dismissDuplicate(dup.id)" style="margin-top: 8px; padding: 4px 12px; font-size: 12px; font-weight: 600; border-radius: 4px; cursor: pointer; background: #fff; color: #374151; border: 1px solid #9ca3af;">別人として新規登録</button>
                     </div>
@@ -407,6 +409,7 @@ function buyerForm() {
         },
 
         addToDepartment: function(buyerId) {
+            var self = this;
             var acquiredDate = document.querySelector('input[name="acquired_date"]').value;
             var token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
             var xhr = new XMLHttpRequest();
@@ -424,7 +427,11 @@ function buyerForm() {
             };
             xhr.send(JSON.stringify({
                 department: '{{ $department }}',
-                acquired_date: acquiredDate
+                acquired_date: acquiredDate,
+                last_name: document.querySelector('input[name="last_name"]').value,
+                first_name: document.querySelector('input[name="first_name"]').value,
+                prefecture: self.$refs.prefecture ? self.$refs.prefecture.value : '',
+                city: self.$refs.city ? self.$refs.city.value : ''
             }));
         },
 
