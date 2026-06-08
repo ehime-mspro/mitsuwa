@@ -37,36 +37,46 @@
     {{-- 顧客情報 --}}
     <div class="bg-white border border-gray-200 rounded-lg p-5 mb-3">
         <div class="text-sm font-bold text-gray-800 pb-2 mb-3.5 border-b border-gray-200">顧客情報</div>
-        <div>
-            <label class="block text-sm font-semibold text-gray-700 mb-1">顧客名<span class="text-red-600 ml-0.5">*</span></label>
-            <div style="position: relative;">
-                <input type="text" name="customer_name" x-model="customerName"
-                       @input="searchCustomer()" @focus="searchCustomer()"
-                       class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none"
-                       placeholder="顧客名を入力して検索..." autocomplete="off">
-                <div x-show="customerResults.length > 0"
-                     @click.outside="customerResults = []"
-                     style="position: absolute; top: 100%; left: 0; right: 0; background: #fff; border: 1px solid #d1d5db; border-top: none; border-radius: 0 0 6px 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); z-index: 100; max-height: 200px; overflow-y: auto;">
-                    <template x-for="cust in customerResults" :key="cust.id">
-                        <div @click="selectCustomer(cust)"
-                             style="padding: 8px 12px; font-size: 13px; cursor: pointer; border-bottom: 1px solid #f3f4f6;"
-                             class="hover:bg-gray-50">
-                            <div class="text-sm font-semibold text-gray-900" x-text="cust.name"></div>
-                            <div class="text-xs text-gray-500" x-text="cust.address || ''"></div>
-                        </div>
-                    </template>
+        @isset($buyers)
+            {{-- フェーズ2: 買主マスタ連携（create のみ。$buyers 未指定の案件edit は従来の自由入力） --}}
+            @include('housing.contracts._buyer-select', [
+                'buyers'       => $buyers,
+                'selectedId'   => old('customer_id', $o?->customer_id),
+                'selectedName' => old('customer_name', $o?->customer_name ?? ''),
+                'department'   => 'housing',
+            ])
+        @else
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-1">顧客名<span class="text-red-600 ml-0.5">*</span></label>
+                <div style="position: relative;">
+                    <input type="text" name="customer_name" x-model="customerName"
+                           @input="searchCustomer()" @focus="searchCustomer()"
+                           class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none"
+                           placeholder="顧客名を入力して検索..." autocomplete="off">
+                    <div x-show="customerResults.length > 0"
+                         @click.outside="customerResults = []"
+                         style="position: absolute; top: 100%; left: 0; right: 0; background: #fff; border: 1px solid #d1d5db; border-top: none; border-radius: 0 0 6px 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); z-index: 100; max-height: 200px; overflow-y: auto;">
+                        <template x-for="cust in customerResults" :key="cust.id">
+                            <div @click="selectCustomer(cust)"
+                                 style="padding: 8px 12px; font-size: 13px; cursor: pointer; border-bottom: 1px solid #f3f4f6;"
+                                 class="hover:bg-gray-50">
+                                <div class="text-sm font-semibold text-gray-900" x-text="cust.name"></div>
+                                <div class="text-xs text-gray-500" x-text="cust.address || ''"></div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+                @error('customer_name') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
+                <div class="flex gap-2 mt-1" style="align-items: center;">
+                    <p class="text-xs text-gray-500">顧客マスタから検索。未登録の場合は直接入力</p>
+                    <a href="{{ route('tenant.customers.create') }}" target="_blank"
+                       style="display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: #1d4ed8; text-decoration: none; padding: 2px 8px; border: 1px solid #93c5fd; border-radius: 4px; background: #eff6ff;">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        顧客登録
+                    </a>
                 </div>
             </div>
-            @error('customer_name') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
-            <div class="flex gap-2 mt-1" style="align-items: center;">
-                <p class="text-xs text-gray-500">顧客マスタから検索。未登録の場合は直接入力</p>
-                <a href="{{ route('tenant.customers.create') }}" target="_blank"
-                   style="display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: #1d4ed8; text-decoration: none; padding: 2px 8px; border: 1px solid #93c5fd; border-radius: 4px; background: #eff6ff;">
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                    顧客登録
-                </a>
-            </div>
-        </div>
+        @endisset
     </div>
 
     {{-- 土地情報 --}}

@@ -7,6 +7,7 @@ use App\Enums\CustomOrderStatus;
 use App\Enums\HousingLandSourceType;
 use App\Enums\LotStatus;
 use App\Http\Controllers\Controller;
+use App\Models\Buyer;
 use App\Models\HsCustomOrder;
 use App\Models\HsCustomOrderFile;
 use App\Models\ReProcurement;
@@ -63,8 +64,9 @@ class CustomOrderController extends Controller
         $projectsForJs = $this->getProjectsForJs();
         $procurementsForJs = $this->getProcurementsForJs();
         $defaultTaxRate = $this->getDefaultTaxRate();
+        $buyers = Buyer::ofDepartment('housing')->orderBy('last_name_kana')->get();
 
-        return view('housing.custom-orders.create', compact('projectsForJs', 'procurementsForJs', 'defaultTaxRate'));
+        return view('housing.custom-orders.create', compact('projectsForJs', 'procurementsForJs', 'defaultTaxRate', 'buyers'));
     }
 
     /**
@@ -74,6 +76,15 @@ class CustomOrderController extends Controller
     public function store(Request $request)
     {
         $validated = $this->validateOrder($request);
+
+        // フェーズ2: 買主マスタ紐付けを必須化し、customer_name を買主名で上書き（連携漏れ防止）
+        $request->validate([
+            'customer_id' => ['required', 'integer', 'exists:buyers,id'],
+        ]);
+        $buyer = Buyer::withTrashed()->findOrFail($request->integer('customer_id'));
+        $validated['customer_id']   = $buyer->id;
+        $validated['customer_name'] = $buyer->full_name;
+
         $validated['order_code'] = $this->generateOrderCode();
         $validated['created_by'] = auth()->id();
 

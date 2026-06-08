@@ -23,7 +23,7 @@
     <form method="POST" action="{{ route('housing.custom-orders.store') }}">
         @csrf
 
-        @include('housing.custom-orders._form', ['customOrder' => null, 'projectsForJs' => $projectsForJs, 'procurementsForJs' => $procurementsForJs, 'defaultTaxRate' => $defaultTaxRate])
+        @include('housing.custom-orders._form', ['customOrder' => null, 'projectsForJs' => $projectsForJs, 'procurementsForJs' => $procurementsForJs, 'defaultTaxRate' => $defaultTaxRate, 'buyers' => $buyers])
 
         <x-form-actions submit-label="登録する" :cancel-url="route('housing.custom-orders.index')" />
     </form>
