@@ -231,7 +231,7 @@ class HsContractListController extends Controller
 
         $validated = $request->validate([
             'customer_name'          => 'required|string|max:100',
-            'customer_id'            => 'nullable|integer|exists:buyers,id',
+            'customer_id'            => 'required|integer|exists:buyers,id',
             'created_by'             => 'nullable|integer|exists:users,id',
             'contract_date'          => 'required|date',
             'notes'                  => 'nullable|string|max:5000',
@@ -248,9 +248,11 @@ class HsContractListController extends Controller
 
         DB::transaction(function () use ($validated, $request, $hsContract, $property) {
             // 契約レコードを更新（売価・顧客・契約日・備考・担当者）
+            // フェーズ2: 買主マスタを必須化し customer_name を買主名で上書き（整合性確保）
+            $buyer = Buyer::withTrashed()->findOrFail($validated['customer_id']);
             $contractData = [
-                'customer_name'          => $validated['customer_name'],
-                'customer_id'            => $validated['customer_id'] ?? null,
+                'customer_name'          => $buyer->full_name,
+                'customer_id'            => $buyer->id,
                 'contract_date'          => $validated['contract_date'],
                 'selling_price_land'     => $validated['selling_price_land'],
                 'selling_price_building' => $validated['selling_price_building'],
@@ -326,7 +328,7 @@ class HsContractListController extends Controller
     {
         $validated = $request->validate([
             'customer_name'           => 'required|string|max:100',
-            'customer_id'             => 'nullable|integer|exists:buyers,id',
+            'customer_id'             => 'required|integer|exists:buyers,id',
             'created_by'              => 'nullable|integer|exists:users,id',
             'contract_date'           => 'required|date',
             'notes'                   => 'nullable|string|max:5000',
@@ -356,9 +358,11 @@ class HsContractListController extends Controller
             $isManual = $request->boolean('is_land_cost_manual');
             $sourceType = $validated['land_source_type'];
 
+            // フェーズ2: 買主マスタを必須化し customer_name を買主名で上書き
+            $buyer = Buyer::withTrashed()->findOrFail($validated['customer_id']);
             $data = [
-                'customer_name'           => $validated['customer_name'],
-                'customer_id'             => $validated['customer_id'] ?? null,
+                'customer_name'           => $buyer->full_name,
+                'customer_id'             => $buyer->id,
                 'contract_date'           => $validated['contract_date'],
                 'notes'                   => $validated['notes'] ?? null,
                 'land_source_type'        => $sourceType,

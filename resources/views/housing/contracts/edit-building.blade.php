@@ -422,23 +422,14 @@
             </div>
 
             <div class="hc-field-row">
-                <div class="hc-field">
-                    <label class="field-label">顧客名<span class="required">*</span></label>
-                    <input type="text" name="customer_name" value="{{ old('customer_name', $hsContract->customer_name) }}" class="hc-input">
-                    @error('customer_name') <p class="error-msg">{{ $message }}</p> @enderror
-                </div>
-                <div class="hc-field">
-                    <label class="field-label">買主マスタ紐付け</label>
-                    <select name="customer_id" class="hc-select">
-                        <option value="">— 新規顧客（マスタ未登録）</option>
-                        @foreach($buyers as $buyer)
-                            <option value="{{ $buyer->id }}" @selected(old('customer_id', $hsContract->customer_id) == $buyer->id)>
-                                {{ $buyer->full_name }}@if($buyer->trashed()) （削除済み）@endif
-                            </option>
-                        @endforeach
-                    </select>
-                    <p class="help">既存の買主マスタと紐付ける場合に選択</p>
-                    @error('customer_id') <p class="error-msg">{{ $message }}</p> @enderror
+                <div class="hc-field" style="flex:1;">
+                    {{-- フェーズ2: 買主マスタ紐付け（必須・＋新規モーダル） --}}
+                    @include('housing.contracts._buyer-select', [
+                        'buyers'       => $buyers,
+                        'selectedId'   => old('customer_id', $hsContract->customer_id),
+                        'selectedName' => old('customer_name', $hsContract->customer_name),
+                        'department'   => 'housing',
+                    ])
                 </div>
             </div>
 
