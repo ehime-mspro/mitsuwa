@@ -66,12 +66,18 @@ class HousingDashboardController extends Controller
             })
             ->get();
 
-        // 注文: 引渡し済み（status=delivered, delivery_date あり）のみ
+        // 注文: 契約以降（契約一覧と同条件）。契約日基準で集計し建売と揃える
+        $contractedStatuses = [
+            CustomOrderStatus::Contracted->value,
+            CustomOrderStatus::Construction->value,
+            CustomOrderStatus::Completed->value,
+            CustomOrderStatus::Delivered->value,
+        ];
         $orders = HsCustomOrder::with(['createdBy'])
-            ->where('status', CustomOrderStatus::Delivered->value)
-            ->whereNotNull('delivery_date');
+            ->whereIn('status', $contractedStatuses)
+            ->whereNotNull('contract_date');
         if ($range) {
-            $orders = $orders->whereBetween('delivery_date', [$range[0], $range[1]]);
+            $orders = $orders->whereBetween('contract_date', [$range[0], $range[1]]);
         }
         $orders = $orders->get();
 
@@ -126,11 +132,13 @@ class HousingDashboardController extends Controller
     }
 
     /**
-     * HsCustomOrder を統合 DTO に変換する（引渡し済み前提）
+     * HsCustomOrder を統合 DTO に変換する（契約以降前提・契約日基準）
      */
     protected function mapOrderToDto(HsCustomOrder $o): array
     {
-        $deliveryDate = $o->delivery_date ? Carbon::parse($o->delivery_date) : null;
+        $contractDate = $o->contract_date ? Carbon::parse($o->contract_date) : null;
+        // status は CustomOrderStatus にキャスト済み。tryFrom は使わない（Bug #22）
+        $statusEnum = $o->status;
 
         return [
             'type'              => 'custom-order',
@@ -138,11 +146,11 @@ class HousingDashboardController extends Controller
             'code'              => $o->order_code,
             'name'              => $o->order_name,
             'address'           => $o->address,
-            'status_label'      => '引渡し済み',
-            'status_style'      => 'background: #a7f3d0; color: #064e3b;',
+            'status_label'      => $statusEnum ? $statusEnum->label() : '—',
+            'status_style'      => $statusEnum ? $statusEnum->badgeStyle() : '',
             'staff_name'        => $this->lastNameOnly($o->createdBy?->name),
             'staff_id'          => $o->created_by,
-            'contracted_date'   => $deliveryDate,
+            'contracted_date'   => $contractDate,
             'selling_price'     => $o->getTotalSellingPrice(),
             'total_cost'        => $o->getTotalCost(),
             'gross_profit'      => $o->getTotalProfit(),
