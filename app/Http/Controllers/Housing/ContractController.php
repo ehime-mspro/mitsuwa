@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Housing;
 
 use App\Enums\LotStatus;
 use App\Http\Controllers\Controller;
+use App\Models\Buyer;
 use App\Models\HsContract;
 use App\Models\HsProperty;
 use App\Support\Settings;
@@ -32,7 +33,10 @@ class ContractController extends Controller
         // デフォルト消費税率（システム設定から取得、なければ10.00）
         $defaultTaxRate = $this->getDefaultTaxRate();
 
-        return view('housing.contracts.create', compact('property', 'defaults', 'defaultTaxRate'));
+        // 買主マスタ（住宅事業所属）
+        $buyers = Buyer::ofDepartment('housing')->orderBy('last_name_kana')->get();
+
+        return view('housing.contracts.create', compact('property', 'defaults', 'defaultTaxRate', 'buyers'));
     }
 
     /**
@@ -49,6 +53,15 @@ class ContractController extends Controller
         }
 
         $validated = $this->validateContract($request);
+
+        // フェーズ2: 買主マスタ紐付けを必須化し、customer_name を買主名で上書き
+        $request->validate([
+            'customer_id' => ['required', 'integer', 'exists:buyers,id'],
+        ]);
+        $buyer = Buyer::withTrashed()->findOrFail($request->integer('customer_id'));
+        $validated['customer_id']   = $buyer->id;
+        $validated['customer_name'] = $buyer->full_name;
+
         $validated['property_id'] = $property->id;
         $validated['created_by'] = auth()->id();
 
