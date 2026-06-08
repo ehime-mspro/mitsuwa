@@ -292,6 +292,55 @@ class CustomerController extends Controller
     }
 
     /**
+     * 買主クイック登録（Ajax）
+     * 契約フォームのモーダルから最小項目で買主マスタへ登録する。
+     * 通常の顧客登録（store）と異なりアンケートは作らない。
+     * 認可は登録と同じライン（経営層+管理者 ＋ 自部署）をルート側で担保。
+     */
+    public function quickStore(Request $request)
+    {
+        $department = $this->resolveDepartment();
+
+        $validated = $request->validate([
+            'last_name'       => 'required|max:50',
+            'first_name'      => 'required|max:50',
+            'last_name_kana'  => 'nullable|max:50',
+            'first_name_kana' => 'nullable|max:50',
+            'acquired_date'   => 'required|date',
+            'postal_code'     => 'nullable|max:10',
+            'prefecture'      => 'nullable|max:20',
+            'city'            => 'nullable|max:50',
+            'address_detail'  => 'nullable|max:100',
+            'phone'           => 'nullable|max:20',
+        ]);
+
+        $buyer = DB::transaction(function () use ($validated, $department) {
+            $buyer = Buyer::create([
+                'last_name'       => $validated['last_name'],
+                'first_name'      => $validated['first_name'],
+                'last_name_kana'  => $validated['last_name_kana'] ?? null,
+                'first_name_kana' => $validated['first_name_kana'] ?? null,
+                'postal_code'     => $validated['postal_code'] ?? null,
+                'prefecture'      => $validated['prefecture'] ?? null,
+                'city'            => $validated['city'] ?? null,
+                'address_detail'  => $validated['address_detail'] ?? null,
+                'phone'           => $validated['phone'] ?? null,
+            ]);
+            // rank は addToDepartment のデフォルト 'C'
+            $buyer->addToDepartment($department, $validated['acquired_date']);
+            return $buyer;
+        });
+
+        return response()->json([
+            'id'             => $buyer->id,
+            'full_name'      => $buyer->full_name,
+            'full_name_kana' => $buyer->full_name_kana,
+            'prefecture'     => $buyer->prefecture,
+            'city'           => $buyer->city,
+        ]);
+    }
+
+    /**
      * 重複チェック（Ajax）
      * 自部署: 姓名一致で二重登録を警告（自部署PIIは閲覧可）。
      * 他部署: 姓名＋都道府県＋市区町村の完全一致時のみ検知し、住所は返さない（PII最小化）。

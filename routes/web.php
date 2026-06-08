@@ -1138,6 +1138,9 @@ Route::middleware(['auth', 'password.change'])->group(function () {
                 ->name('housing.customers.create');
             Route::post('/customers', [\App\Http\Controllers\CustomerController::class, 'store'])
                 ->name('housing.customers.store');
+            // フェーズ2: 契約フォームからの買主クイック登録（Ajax）
+            Route::post('/customers/quick-store', [\App\Http\Controllers\CustomerController::class, 'quickStore'])
+                ->name('housing.customers.quick-store');
         });
 
         // 顧客詳細（全ロール閲覧可）
