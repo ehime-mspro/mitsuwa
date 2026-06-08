@@ -512,8 +512,8 @@ class HsContractListController extends Controller
         $landProfitRate = $c->getLandProfitRate();
         $buildingProfitRate = $c->getBuildingProfitRate();
 
-        // ステータスラベル・バッジ色
-        $statusEnum = CustomOrderStatus::tryFrom($c->status);
+        // ステータスラベル・バッジ色（status は CustomOrderStatus にキャスト済みのため直接利用）
+        $statusEnum = $c->status;
         $statusLabel = $statusEnum ? $statusEnum->label() : '—';
         $statusColor = $statusEnum ? $statusEnum->badgeStyle() : '';
 
