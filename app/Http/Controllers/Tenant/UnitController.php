@@ -10,6 +10,7 @@ use App\Models\InquiryUsageType;
 use App\Models\Property;
 use App\Models\Repair;
 use App\Models\Unit;
+use App\Services\Tenant\RentalIncomeService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -172,7 +173,10 @@ class UnitController extends Controller
             ->limit(10)
             ->get();
 
-        return view('tenant.units.show', compact('unit', 'property', 'activeContract', 'contractMonthlyTotal', 'unitRepairs'));
+        // 賃料収入履歴（STEP 7）
+        $rentalIncome = app(RentalIncomeService::class)->forUnit($unit);
+
+        return view('tenant.units.show', compact('unit', 'property', 'activeContract', 'contractMonthlyTotal', 'unitRepairs', 'rentalIncome'));
     }
 
     /**

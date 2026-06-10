@@ -13,6 +13,7 @@ use App\Models\Property;
 use App\Models\PropertyChangeLog;
 use App\Models\Repair;
 use App\Models\StructureType;
+use App\Services\Tenant\RentalIncomeService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -215,6 +216,9 @@ class PropertyController extends Controller
             ->orderByDesc('id')
             ->get();
 
+        // 賃料収入履歴（STEP 7）
+        $rentalIncome = app(RentalIncomeService::class)->forProperty($property);
+
         return view('tenant.properties.show', compact(
             'property',
             'summary',
@@ -225,6 +229,7 @@ class PropertyController extends Controller
             'investments',
             'repairs',
             'inquiries',
+            'rentalIncome',
         ));
     }
 
