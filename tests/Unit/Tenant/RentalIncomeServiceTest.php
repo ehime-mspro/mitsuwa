@@ -32,6 +32,7 @@ class RentalIncomeServiceTest extends TestCase
     {
         return new Contract(array_merge([
             'status'           => 'active',
+            'store_name'       => 'テナントA',
             'rent'             => 100000,
             'common_fee'       => 0,
             'garbage_fee'      => 0,
@@ -49,11 +50,12 @@ class RentalIncomeServiceTest extends TestCase
         $this->assertSame(0, $result['current_monthly']);
     }
 
-    /** 契約中契約: rent_start_date 〜 当月まで毎月計上、累計と並び順（新しい月が先頭） */
-    public function test_active_contract_expands_to_current_month(): void
+    /** 現契約 1 件 → 1 行・累計収入・「〜現在」ラベル・現契約バッジ */
+    public function test_active_contract_produces_single_row(): void
     {
         $contract = $this->makeContract([
             'status'            => 'active',
+            'store_name'        => 'Lancelot',
             'rent'              => 100000,
             'common_fee'        => 5000,
             'rent_start_date'   => '2026-04-10',
@@ -62,22 +64,25 @@ class RentalIncomeServiceTest extends TestCase
 
         $result = $this->service->build(collect([$contract]));
 
-        // 2026-04, 05, 06 の 3 ヶ月
-        $this->assertCount(3, $result['rows']);
-        $this->assertSame('2026-06', $result['rows'][0]['ym']); // 新しい月が先頭
-        $this->assertSame('2026-04', $result['rows'][2]['ym']);
-        $this->assertSame(105000, $result['rows'][0]['income']); // 月額 = 105,000
-        $this->assertSame(315000, $result['rows'][0]['cumulative']); // 最新月 = 全期間累計
-        $this->assertSame(105000, $result['rows'][2]['cumulative']); // 最古月 = 単月
+        $this->assertCount(1, $result['rows']);
+        $row = $result['rows'][0];
+        $this->assertSame('Lancelot', $row['store_name']);
+        $this->assertSame('active', $row['status']);
+        $this->assertSame('現契約', $row['status_label']);
+        $this->assertSame('badge-occupied', $row['badge_class']);
+        $this->assertSame('2026-04〜現在', $row['period_label']);
+        // 2026-04, 05, 06 × 105,000 = 315,000
+        $this->assertSame(315000, $row['income']);
         $this->assertSame(315000, $result['total_income']);
         $this->assertSame(105000, $result['current_monthly']);
     }
 
-    /** 解約済み契約: contract_end_date の月で打ち切り（未来月を含まない） */
-    public function test_terminated_contract_stops_at_end_month(): void
+    /** 以前契約 1 件 → 解約月で打ち切り・「YYYY-MM〜YYYY-MM」ラベル・以前契約バッジ */
+    public function test_terminated_contract_row(): void
     {
         $contract = $this->makeContract([
             'status'            => 'terminated',
+            'store_name'        => 'OldShop',
             'rent'              => 80000,
             'rent_start_date'   => '2026-01-05',
             'contract_end_date' => '2026-03-20',
@@ -85,25 +90,31 @@ class RentalIncomeServiceTest extends TestCase
 
         $result = $this->service->build(collect([$contract]));
 
-        // 2026-01, 02, 03 の 3 ヶ月のみ（04 以降は無い）
-        $this->assertCount(3, $result['rows']);
-        $this->assertSame('2026-03', $result['rows'][0]['ym']);
-        $this->assertSame('2026-01', $result['rows'][2]['ym']);
+        $this->assertCount(1, $result['rows']);
+        $row = $result['rows'][0];
+        $this->assertSame('terminated', $row['status']);
+        $this->assertSame('以前契約', $row['status_label']);
+        $this->assertSame('badge-terminated', $row['badge_class']);
+        $this->assertSame('2026-01〜2026-03', $row['period_label']);
+        // 2026-01, 02, 03 × 80,000 = 240,000
+        $this->assertSame(240000, $row['income']);
         $this->assertSame(240000, $result['total_income']);
-        $this->assertSame(0, $result['current_monthly']); // 解約済みは現在月額に含めない
+        $this->assertSame(0, $result['current_monthly']);
     }
 
-    /** 複数契約（テナント交代）: 同月の収入が合算される */
-    public function test_multiple_contracts_are_summed_per_month(): void
+    /** テナント交代（現契約＋以前契約）→ 2 行・現契約が先頭・各 income は個別累計 */
+    public function test_turnover_sorts_active_first(): void
     {
         $old = $this->makeContract([
             'status'            => 'terminated',
+            'store_name'        => 'OldShop',
             'rent'              => 100000,
             'rent_start_date'   => '2026-04-01',
             'contract_end_date' => '2026-05-31',
         ]);
         $new = $this->makeContract([
             'status'            => 'active',
+            'store_name'        => 'NewShop',
             'rent'              => 120000,
             'rent_start_date'   => '2026-05-01',
             'contract_end_date' => null,
@@ -111,19 +122,48 @@ class RentalIncomeServiceTest extends TestCase
 
         $result = $this->service->build(collect([$old, $new]));
 
-        $this->assertCount(3, $result['rows']); // 2026-04, 05, 06
-        $may = collect($result['rows'])->firstWhere('ym', '2026-05');
-        $this->assertSame(220000, $may['income']); // 100,000 + 120,000
-        $jun = collect($result['rows'])->firstWhere('ym', '2026-06');
-        $this->assertSame(120000, $jun['income']); // new のみ
+        $this->assertCount(2, $result['rows']);
+        // 現契約が先頭
+        $this->assertSame('NewShop', $result['rows'][0]['store_name']);
+        $this->assertSame('active', $result['rows'][0]['status']);
+        $this->assertSame('OldShop', $result['rows'][1]['store_name']);
+        $this->assertSame('terminated', $result['rows'][1]['status']);
+        // 個別累計: new = 2026-05,06 ×120,000 = 240,000 / old = 2026-04,05 ×100,000 = 200,000
+        $this->assertSame(240000, $result['rows'][0]['income']);
+        $this->assertSame(200000, $result['rows'][1]['income']);
+        $this->assertSame(440000, $result['total_income']);
         $this->assertSame(120000, $result['current_monthly']); // active の new のみ
     }
 
-    /** フリーレント: initial_month_type=free, initial_month_amount=0 の初月が 0 計上 */
-    public function test_free_rent_first_month_is_zero(): void
+    /** 同ステータス内は家賃発生月の降順（新しい入居が先頭） */
+    public function test_same_status_sorted_by_start_month_desc(): void
+    {
+        $older = $this->makeContract([
+            'status'          => 'active',
+            'store_name'      => 'Feb-Shop',
+            'rent'            => 90000,
+            'rent_start_date' => '2026-02-01',
+        ]);
+        $newer = $this->makeContract([
+            'status'          => 'active',
+            'store_name'      => 'May-Shop',
+            'rent'            => 90000,
+            'rent_start_date' => '2026-05-01',
+        ]);
+
+        $result = $this->service->build(collect([$older, $newer]));
+
+        $this->assertCount(2, $result['rows']);
+        $this->assertSame('May-Shop', $result['rows'][0]['store_name']);
+        $this->assertSame('Feb-Shop', $result['rows'][1]['store_name']);
+    }
+
+    /** フリーレント初月 0 → その契約の income に 0 月が反映される */
+    public function test_free_rent_reduces_contract_income(): void
     {
         $contract = $this->makeContract([
             'status'               => 'active',
+            'store_name'           => 'FreeRentShop',
             'rent'                 => 100000,
             'rent_start_date'      => '2026-04-01',
             'contract_end_date'    => null,
@@ -133,18 +173,18 @@ class RentalIncomeServiceTest extends TestCase
 
         $result = $this->service->build(collect([$contract]));
 
-        $apr = collect($result['rows'])->firstWhere('ym', '2026-04');
-        $this->assertSame(0, $apr['income']); // 初月 0
-        $may = collect($result['rows'])->firstWhere('ym', '2026-05');
-        $this->assertSame(100000, $may['income']);
-        $this->assertSame(200000, $result['total_income']); // 0 + 100,000 + 100,000
+        $this->assertCount(1, $result['rows']);
+        // 2026-04=0, 05=100,000, 06=100,000 → 200,000
+        $this->assertSame(200000, $result['rows'][0]['income']);
+        $this->assertSame(200000, $result['total_income']);
     }
 
-    /** 最終月調整: final_month_type/amount 設定時は最終月にその額を採用 */
-    public function test_final_month_amount_is_applied(): void
+    /** 最終月調整 → その契約の income に最終月の調整額が反映される */
+    public function test_final_month_adjustment_reflected_in_income(): void
     {
         $contract = $this->makeContract([
             'status'             => 'terminated',
+            'store_name'         => 'ProratedShop',
             'rent'               => 90000,
             'rent_start_date'    => '2026-02-01',
             'contract_end_date'  => '2026-04-30',
@@ -154,31 +194,9 @@ class RentalIncomeServiceTest extends TestCase
 
         $result = $this->service->build(collect([$contract]));
 
-        $apr = collect($result['rows'])->firstWhere('ym', '2026-04');
-        $this->assertSame(30000, $apr['income']); // 最終月
-        $feb = collect($result['rows'])->firstWhere('ym', '2026-02');
-        $this->assertSame(90000, $feb['income']); // フル月額
-        $this->assertSame(210000, $result['total_income']); // 90,000 + 90,000 + 30,000
-    }
-
-    /** 単月契約は初月調整を優先する（最終月調整より初月が勝つ） */
-    public function test_single_month_prefers_initial_adjustment(): void
-    {
-        $contract = $this->makeContract([
-            'status'               => 'terminated',
-            'rent'                 => 100000,
-            'rent_start_date'      => '2026-03-10',
-            'contract_end_date'    => '2026-03-25',
-            'initial_month_type'   => 'prorated',
-            'initial_month_amount' => 50000,
-            'final_month_type'     => 'prorated',
-            'final_month_amount'   => 70000,
-        ]);
-
-        $result = $this->service->build(collect([$contract]));
-
         $this->assertCount(1, $result['rows']);
-        $this->assertSame('2026-03', $result['rows'][0]['ym']);
-        $this->assertSame(50000, $result['rows'][0]['income']); // 初月 50,000 を採用
+        $this->assertSame('2026-02〜2026-04', $result['rows'][0]['period_label']);
+        // 2026-02=90,000, 03=90,000, 04=30,000 → 210,000
+        $this->assertSame(210000, $result['rows'][0]['income']);
     }
 }
