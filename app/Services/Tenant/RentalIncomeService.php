@@ -31,33 +31,44 @@ class RentalIncomeService
     }
 
     /**
-     * 契約コレクションから月次収入サマリーを構築する（DB 非依存・テスト対象）。
+     * 契約コレクションから契約（テナント入居）別の収入サマリーを構築する（DB 非依存・テスト対象）。
+     *
+     * 1 契約 = 1 行。並び順は 現契約（active）→ 以前契約（terminated）、各グループ内は家賃発生月の降順。
      *
      * @param  \Illuminate\Support\Collection<int, \App\Models\Contract>  $contracts
-     * @return array{rows: array<int, array{ym: string, income: int, cumulative: int}>, total_income: int, current_monthly: int}
+     * @return array{rows: array<int, array{store_name: ?string, status: string, status_label: string, badge_class: string, period_label: string, income: int, sort_active: int, sort_ym: string}>, total_income: int, current_monthly: int}
      */
     public function build(Collection $contracts): array
     {
-        // ym => 合算収入
-        $monthly = [];
+        $rows = [];
         foreach ($contracts as $contract) {
-            foreach ($this->expandContractMonths($contract) as $ym => $amount) {
-                $monthly[$ym] = ($monthly[$ym] ?? 0) + $amount;
-            }
-        }
+            $income   = array_sum($this->expandContractMonths($contract));
+            $start    = $contract->rent_start_date ?? $contract->contract_date;
+            $isActive = $contract->status === ContractStatus::Active;
 
-        // 古い月 → 新しい月の順に累計を計算
-        ksort($monthly);
-        $cumulative = 0;
-        $rowsAsc = [];
-        foreach ($monthly as $ym => $income) {
-            $cumulative += $income;
-            $rowsAsc[] = [
-                'ym'         => $ym,
-                'income'     => $income,
-                'cumulative' => $cumulative,
+            $startYm = $start?->format('Y-m') ?? '—';
+            $endYm   = $isActive
+                ? '現在'
+                : ($contract->contract_end_date?->format('Y-m') ?? '—');
+
+            $rows[] = [
+                'store_name'   => $contract->store_name,
+                'status'       => $contract->status->value,
+                'status_label' => $isActive ? '現契約' : '以前契約',
+                'badge_class'  => $contract->status->badgeClass(),
+                'period_label' => "{$startYm}〜{$endYm}",
+                'income'       => (int) $income,
+                'sort_active'  => $isActive ? 1 : 0,
+                'sort_ym'      => $start?->format('Y-m') ?? '0000-00',
             ];
         }
+
+        // 並び順: 現契約（active）を先頭、各グループ内は家賃発生月の降順
+        usort($rows, function (array $a, array $b) {
+            return [$b['sort_active'], $b['sort_ym']] <=> [$a['sort_active'], $a['sort_ym']];
+        });
+
+        $totalIncome = array_sum(array_column($rows, 'income'));
 
         // 現在の月額（契約中のみ合算）
         $currentMonthly = $contracts
@@ -65,8 +76,8 @@ class RentalIncomeService
             ->sum(fn (Contract $c) => $c->monthly_total);
 
         return [
-            'rows'            => array_reverse($rowsAsc), // 新しい月が先頭
-            'total_income'    => $cumulative,
+            'rows'            => $rows,
+            'total_income'    => (int) $totalIncome,
             'current_monthly' => (int) $currentMonthly,
         ];
     }
