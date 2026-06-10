@@ -274,9 +274,9 @@
                 @endif
             </div>
 
-            {{-- 収支履歴タブ --}}
+            {{-- 収支履歴タブ（賃料収入履歴） --}}
             <div x-show="activeTab === 'transactions'" x-cloak>
-                <p class="text-gray-400 text-center py-6">収支履歴がここに表示されます。（STEP 7で実装）</p>
+                @include('tenant.partials._rental-income', ['rentalIncome' => $rentalIncome])
             </div>
 
             {{-- 修繕履歴タブ --}}

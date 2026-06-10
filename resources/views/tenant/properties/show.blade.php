@@ -507,7 +507,7 @@
                 @endif
             </div>
             <div x-show="activeTab === 'transactions'" x-cloak>
-                <p class="text-gray-400 text-center py-6">物件別収支がここに表示されます。（STEP 7で実装）</p>
+                @include('tenant.partials._rental-income', ['rentalIncome' => $rentalIncome])
             </div>
             <div x-show="activeTab === 'attachments'" x-cloak>
                 <p class="text-gray-400 text-center py-6">添付ファイルの一覧がここに表示されます。（STEP 11で実装）</p>
