@@ -543,15 +543,16 @@ class DashboardController extends Controller
 
     /**
      * 注文住宅（HsCustomOrder）の成約集計を返す。
-     * 仕様: status=delivered + delivery_date が範囲内。
+     * 仕様: 契約以降ステータス + contract_date が範囲内（成約時点計上）。
+     * 建売（contract_date 基準）および住宅事業ダッシュボードと集計タイミングを統一する。
      */
     private function collectHousingCustom(?array $range): array
     {
-        $query = HsCustomOrder::where('status', CustomOrderStatus::Delivered->value)
-            ->whereNotNull('delivery_date');
+        $query = HsCustomOrder::whereIn('status', $this->contractedCustomOrderStatuses())
+            ->whereNotNull('contract_date');
 
         if ($range) {
-            $query->whereBetween('delivery_date', [$range[0], $range[1]]);
+            $query->whereBetween('contract_date', [$range[0], $range[1]]);
         }
 
         $orders = $query->get();
@@ -564,6 +565,20 @@ class DashboardController extends Controller
             'count'        => $count,
             'sales_total'  => $salesTotal,
             'profit_total' => $profitTotal,
+        ];
+    }
+
+    /**
+     * 成約（契約）以降とみなす注文住宅ステータス値（成約時点計上）。
+     * 建売は契約成立で成約計上されるため、注文住宅も「契約」以降を成約として揃える。
+     */
+    private function contractedCustomOrderStatuses(): array
+    {
+        return [
+            CustomOrderStatus::Contracted->value,
+            CustomOrderStatus::Construction->value,
+            CustomOrderStatus::Completed->value,
+            CustomOrderStatus::Delivered->value,
         ];
     }
 
@@ -598,14 +613,14 @@ class DashboardController extends Controller
             $buildingCount[$offset]++;
         }
 
-        // 注文住宅（delivery_date 基準）
-        $orders = HsCustomOrder::where('status', CustomOrderStatus::Delivered->value)
-            ->whereNotNull('delivery_date')
-            ->whereBetween('delivery_date', $range)
+        // 注文住宅（contract_date 基準・契約以降ステータス。成約時点計上で建売と統一）
+        $orders = HsCustomOrder::whereIn('status', $this->contractedCustomOrderStatuses())
+            ->whereNotNull('contract_date')
+            ->whereBetween('contract_date', $range)
             ->get();
 
         foreach ($orders as $o) {
-            $date   = Carbon::parse($o->delivery_date);
+            $date   = Carbon::parse($o->contract_date);
             $offset = ($date->year - $start->year) * 12 + ($date->month - $start->month);
             if ($offset < 0 || $offset >= $monthCnt) continue;
             $customProfit[$offset] += (int) ($o->getTotalProfit() ?? 0);
