@@ -16,11 +16,29 @@
     物件購入費は ReProcurement / ReProject の booted() hook で自動生成されるため、
     select には出さず、Excel 取込時も既存の costSkipList で除外する。
 --}}
+@php
+    // バリデーションエラーで差し戻されたとき、入力／Excel取込済みの原価を失わないよう old('costs') を復元する。
+    // Bug #7 回避: @json には関数呼び出しを渡さず、ここで整形済み配列を用意する。
+    $oldCostsForJs = [];
+    foreach (old('costs', []) as $__oc) {
+        $__cid   = (int) ($__oc['cost_item_id'] ?? 0);
+        $__match = collect($costItemsForJs ?? [])->firstWhere('id', $__cid);
+        $oldCostsForJs[] = [
+            'cost_item_id'         => $__cid,
+            'cost_item_name'       => is_array($__match) ? ($__match['name'] ?? '') : '',
+            'estimated_amount'     => (int) ($__oc['estimated_amount'] ?? 0),
+            'actual_amount'        => (($__oc['actual_amount'] ?? '') === '') ? null : (int) $__oc['actual_amount'],
+            'notes'                => (string) ($__oc['notes'] ?? ''),
+            'is_property_purchase' => false,
+        ];
+    }
+@endphp
 <div x-data="costSectionFormController({
         costItems: @json($costItemsForJs ?? []),
         costAliasMap: @json((object)($costAliasMap ?? [])),
         costSkipList: @json($costSkipList ?? []),
-        costSubtotalKws: @json($costSubtotalKws ?? [])
+        costSubtotalKws: @json($costSubtotalKws ?? []),
+        oldCosts: @json($oldCostsForJs)
      })"
      x-cloak
      class="bg-white border border-gray-200 rounded-lg p-5 mb-3">
@@ -223,7 +241,8 @@ function costSectionFormController(opts) {
     //   target = リテラル（getter 含む）、source = factory（getter なし）
     //   getter を source 側に置くと evaluate されて static 値に焼き付いて Alpine reactivity が壊れる。
     return Object.assign({
-        costs:      [],
+        // old('costs')（バリデーションエラー差し戻し時）があれば復元、無ければ空配列。
+        costs:      (opts.oldCosts || []),
         costItems:  opts.costItems,
         showAddCost: false,
         costMessage: '',
