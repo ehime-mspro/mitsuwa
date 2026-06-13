@@ -93,9 +93,9 @@ class ProcurementController extends Controller
         $validated['created_by'] = auth()->id();
 
         // 新規登録フォームの原価管理セクションから送信された costs 配列を別途バリデーション
-        // notes の上限は storeCost / bulkImportCosts（max:200）と揃える
+        // 件数上限(max:500)・notes上限(max:200)は詳細の bulkImportCosts と揃える
         $costsData = $request->validate([
-            'costs'                    => 'nullable|array',
+            'costs'                    => 'nullable|array|max:500',
             'costs.*.cost_item_id'     => 'required|integer|exists:re_cost_items,id',
             'costs.*.estimated_amount' => 'required|integer|min:0',
             'costs.*.actual_amount'    => 'nullable|integer|min:0',
