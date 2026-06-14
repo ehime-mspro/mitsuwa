@@ -29,11 +29,12 @@ class PropertyController extends Controller
     {
         $query = HsProperty::with(['contract', 'projectLot.project', 'procurement']);
 
-        // フィルター: ステータス（デフォルトは全件表示）
-        $statusFilter = $request->input('status', 'all');
+        // フィルター: ステータス（デフォルトは「成約以外」= 契約レコードが無い物件）
+        $statusFilter = $request->input('status', 'non_sold');
 
-        if ($statusFilter === 'all') {
-            // 全件表示（フィルターなし）
+        if ($statusFilter === 'non_sold') {
+            // 成約以外（契約レコードが存在しない物件 = 進捗が成約でないもの）
+            $query->whereDoesntHave('contract');
         } elseif ($statusFilter === 'sold') {
             // 成約 = 契約レコードが存在する物件
             $query->whereHas('contract');
