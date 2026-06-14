@@ -64,16 +64,14 @@
             <div class="scroll-hint-inner">
                 <table class="w-full border-collapse" style="table-layout:fixed;min-width:700px">
                     <colgroup>
+                        <col style="width:30%">
+                        <col style="width:16%">
+                        <col style="width:18%">
                         <col style="width:15%">
-                        <col style="width:22%">
-                        <col style="width:14%">
-                        <col style="width:15%">
-                        <col style="width:14%">
-                        <col style="width:20%">
+                        <col style="width:21%">
                     </colgroup>
                     <thead>
                         <tr>
-                            <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">投資番号</th>
                             <th class="px-4 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">物件 / 区画</th>
                             <th class="px-4 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">投資総額</th>
                             <th class="px-4 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">回収率</th>
@@ -84,12 +82,6 @@
                     <tbody>
                         @forelse($investments as $inv)
                             <tr class="hover:bg-gray-50 transition-colors">
-                                <td class="px-4 py-3 border-b border-gray-200 whitespace-nowrap">
-                                    <a href="{{ route('tenant.investments.show', $inv) }}"
-                                       class="text-sm font-semibold text-emerald-600 hover:text-emerald-700 hover:underline transition-colors">
-                                        {{ $inv->investment_number }}
-                                    </a>
-                                </td>
                                 <td class="px-4 py-3 border-b border-gray-200 text-center text-sm font-semibold text-gray-900 whitespace-nowrap">
                                     {{ $inv->property->name }} / {{ $inv->unit->display_name }}
                                 </td>
@@ -131,7 +123,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="6" class="px-5 py-10 text-center text-sm text-gray-400">
+                                <td colspan="5" class="px-5 py-10 text-center text-sm text-gray-400">
                                     投資案件データがありません。
                                 </td>
                             </tr>
