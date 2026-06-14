@@ -40,7 +40,7 @@
             <option value="none" {{ request('contract_status') === 'none' ? 'selected' : '' }}>契約なし</option>
         </select>
         <input type="text" name="keyword" value="{{ request('keyword') }}"
-               placeholder="コード・顧客名・フリガナ・代表者"
+               placeholder="顧客名・フリガナ・代表者"
                class="h-9 px-3 border border-gray-300 rounded-md text-sm text-gray-700 bg-white focus:border-emerald-500 focus:outline-none flex-1 min-w-[140px] w-full sm:w-auto">
         <a href="{{ route('tenant.customers.index') }}"
            class="h-9 px-3 border border-gray-200 rounded-md text-xs text-gray-400 bg-white hover:bg-gray-50 hover:text-gray-500 hover:border-gray-300 transition-colors cursor-pointer whitespace-nowrap w-full sm:w-auto inline-flex items-center justify-center">
@@ -54,16 +54,14 @@
             <div class="scroll-hint-inner">
                 <table class="w-full border-collapse" style="table-layout:fixed; min-width:700px;">
                     <colgroup>
+                        <col style="width:30%">
                         <col style="width:12%">
-                        <col style="width:25%">
-                        <col style="width:12%">
-                        <col style="width:14%">
-                        <col style="width:16%">
-                        <col style="width:12%">
+                        <col style="width:19%">
+                        <col style="width:19%">
+                        <col style="width:20%">
                     </colgroup>
                     <thead>
                         <tr>
-                            <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-left text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">コード</th>
                             <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-left text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">顧客名</th>
                             <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">種別</th>
                             <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-left text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">代表者</th>
@@ -74,12 +72,6 @@
                     <tbody>
                         @forelse($customers as $customer)
                             <tr class="hover:bg-gray-50 transition-colors">
-                                <td class="px-4 py-3 lg:px-5 lg:py-3.5 border-b border-gray-200 whitespace-nowrap">
-                                    <a href="{{ route('tenant.customers.show', $customer) }}"
-                                       class="text-sm font-semibold text-emerald-600 hover:text-emerald-700 hover:underline transition-colors">
-                                        {{ $customer->code }}
-                                    </a>
-                                </td>
                                 <td class="px-4 py-3 lg:px-5 lg:py-3.5 border-b border-gray-200 text-sm font-semibold text-gray-900 whitespace-nowrap">
                                     {{ $customer->name }}
                                 </td>
@@ -100,17 +92,23 @@
                                     {{ $customer->phone ?? '—' }}
                                 </td>
                                 <td class="px-4 py-3 lg:px-5 lg:py-3.5 border-b border-gray-200 text-center whitespace-nowrap">
-                                    @if(auth()->user()->role->isManagerOrAbove())
-                                        <a href="{{ route('tenant.customers.edit', $customer) }}"
-                                           class="text-xs font-semibold text-emerald-700 px-3.5 py-1.5 border border-emerald-200 rounded bg-emerald-50 hover:bg-emerald-100 hover:border-emerald-300 transition-colors">
-                                            編集
+                                    <div style="display:flex;gap:6px;justify-content:center">
+                                        <a href="{{ route('tenant.customers.show', $customer) }}"
+                                           class="text-xs font-semibold text-blue-700 px-3.5 py-1.5 border border-blue-200 rounded bg-blue-50 hover:bg-blue-100 hover:border-blue-300 transition-colors">
+                                            詳細
                                         </a>
-                                    @endif
+                                        @if(auth()->user()->role->isManagerOrAbove())
+                                            <a href="{{ route('tenant.customers.edit', $customer) }}"
+                                               class="text-xs font-semibold text-emerald-700 px-3.5 py-1.5 border border-emerald-200 rounded bg-emerald-50 hover:bg-emerald-100 hover:border-emerald-300 transition-colors">
+                                                編集
+                                            </a>
+                                        @endif
+                                    </div>
                                 </td>
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="6" class="px-5 py-10 text-center text-sm text-gray-400">
+                                <td colspan="5" class="px-5 py-10 text-center text-sm text-gray-400">
                                     顧客データがありません。
                                 </td>
                             </tr>
