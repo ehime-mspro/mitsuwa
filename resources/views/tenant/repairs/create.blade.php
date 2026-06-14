@@ -14,7 +14,7 @@
 @section('content')
 <div x-data="{
     propertyId: '{{ old('property_id', '') }}',
-    allUnits: @json($allUnits),
+    allUnits: {{ \Illuminate\Support\Js::from($allUnits) }},
     get filteredUnits() {
         return this.propertyId ? this.allUnits.filter(u => u.property_id == this.propertyId) : [];
     }
