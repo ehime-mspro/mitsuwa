@@ -33,13 +33,7 @@
         ];
     }
 @endphp
-<div x-data="costSectionFormController({
-        costItems: @json($costItemsForJs ?? []),
-        costAliasMap: @json((object)($costAliasMap ?? [])),
-        costSkipList: @json($costSkipList ?? []),
-        costSubtotalKws: @json($costSubtotalKws ?? []),
-        oldCosts: @json($oldCostsForJs)
-     })"
+<div x-data="costSectionFormController()"
      x-cloak
      class="bg-white border border-gray-200 rounded-lg p-5 mb-3">
 
@@ -181,7 +175,17 @@
 @include('realestate._partials._cost_excel_import_script')
 
 <script>
-function costSectionFormController(opts) {
+function costSectionFormController() {
+    // データは x-data 属性ではなく <script> 内で組み立てる。
+    // json_encode の構造クォート（区切りの "）は生のまま出力されるため、二重引用符の x-data="..." 属性に
+    // 直接入れると最初の " で属性が途切れて Alpine が壊れる（本番で発覚）。詳細画面と同じく script 内で渡す。
+    var opts = {
+        costItems:       @json($costItemsForJs ?? []),
+        costAliasMap:    @json((object)($costAliasMap ?? [])),
+        costSkipList:    @json($costSkipList ?? []),
+        costSubtotalKws: @json($costSubtotalKws ?? []),
+        oldCosts:        @json($oldCostsForJs),
+    };
     // 既存の Excel importer factory を流用。サーバー Ajax は使わないので baseUrl/csrf は null。
     var ei = costExcelImporterFactory({
         baseUrl:         null,
