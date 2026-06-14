@@ -50,7 +50,7 @@
             @endforeach
         </select>
         <input type="text" name="keyword" value="{{ request('keyword') }}"
-               placeholder="投資番号・業者名で検索"
+               placeholder="業者名で検索"
                class="h-9 px-3 border border-gray-300 rounded-md text-sm text-gray-700 bg-white focus:border-emerald-500 focus:outline-none flex-1 min-w-[140px] w-full sm:w-auto">
         <a href="{{ route('tenant.investments.index') }}"
            class="h-9 px-3 border border-gray-200 rounded-md text-xs text-gray-400 bg-white hover:bg-gray-50 hover:text-gray-500 hover:border-gray-300 transition-colors cursor-pointer whitespace-nowrap w-full sm:w-auto inline-flex items-center justify-center">
