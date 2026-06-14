@@ -35,6 +35,8 @@ class PropertyController extends Controller
         if ($statusFilter === 'non_sold') {
             // 成約以外（契約レコードが存在しない物件 = 進捗が成約でないもの）
             $query->whereDoesntHave('contract');
+        } elseif ($statusFilter === 'all') {
+            // 全て（フィルターなし = 成約含む全件表示）
         } elseif ($statusFilter === 'sold') {
             // 成約 = 契約レコードが存在する物件
             $query->whereHas('contract');
