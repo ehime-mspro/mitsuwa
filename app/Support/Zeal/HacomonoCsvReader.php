@@ -39,6 +39,8 @@ class HacomonoCsvReader
             fclose($fh);
             return [];
         }
+        // ヘッダーキー前後の空白を除去（' ID ' のような列名でも $row['ID'] で引けるように）
+        $header = array_map('trim', $header);
         $colCount = count($header);
 
         $rows = [];

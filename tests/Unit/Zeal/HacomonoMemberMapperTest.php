@@ -80,6 +80,7 @@ class HacomonoMemberMapperTest extends TestCase
     {
         $m = $this->mapper();
         $this->assertSame(9702, $m->toInt('9702'));
+        $this->assertSame(9702, $m->toInt('9,702')); // 桁区切りカンマを除去
         $this->assertNull($m->toInt(''));
         $this->assertNull($m->toInt('abc'));
         $this->assertSame(0, $m->toInt('0'));
@@ -244,5 +245,17 @@ class HacomonoMemberMapperTest extends TestCase
         $this->assertSame(8820, $r->appliedPriceExcl); // 通常月会費の税抜(9702/1.1)
         $this->assertNull($r->contractAttributes['period_end']); // 在籍契約（open）
         $this->assertStringContainsString('次回休会予定', $r->memberAttributes['memo']);
+    }
+
+    public function test_map_suspended_without_withdraw_date_warns(): void
+    {
+        // 停止中だが退会日が空 → 退会済み判定だが withdrew_on/period_end が null になる点を警告
+        $r = $this->mapper()->map($this->row([
+            '状態' => '停止中', 'カスタム2' => 'セミパーソナル通い放題（松山市駅前）',
+            'コース 名前' => '', '合計金額(2回目以降)' => '0', '退会日' => '', '定期購入' => 'FALSE',
+        ]));
+        $this->assertSame(HacomonoMemberMapper::KIND_WITHDRAWN, $r->kind);
+        $this->assertNull($r->memberAttributes['withdrew_on']);
+        $this->assertStringContainsString('退会日が空', implode(' ', $r->warnings));
     }
 }

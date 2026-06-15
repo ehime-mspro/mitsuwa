@@ -87,7 +87,8 @@ class HacomonoMemberMapper
 
     public function toInt(string $value): ?int
     {
-        $value = trim($value);
+        // 桁区切りカンマを除去（hacomono の金額に "9,702" 形式が来ても解釈できるように）
+        $value = str_replace(',', '', trim($value));
         if ($value === '' || !preg_match('/^-?\d+$/', $value)) {
             return null;
         }
@@ -158,6 +159,11 @@ class HacomonoMemberMapper
             $priceExcl = $planName !== null ? ($this->planPriceMap[$planName] ?? null) : null;
             if ($priceExcl === null) {
                 $errors[] = "退会者だがプラン未解決: '{$rawPlan}'";
+            }
+            if ($withdrewOn === null) {
+                // 停止中だが退会日が空。withdrew_on も period_end も null になり
+                // UI上「在籍」と矛盾するため dry-run で気づけるよう警告する。
+                $warnings[] = '停止中だが退会日が空（withdrew_on/period_end=nullで取込）';
             }
         } elseif ($isDormant) {
             // 2. 休会 → 実際の休会費(税抜)
@@ -284,7 +290,8 @@ class HacomonoMemberMapper
             $lines[] = '区分: 休会中（移管時点）';
         }
         if ($kind === self::KIND_TICKET) {
-            $lines[] = '区分: チケット会員（残' . $get('残チケット数') . '枚・定期購入なし）';
+            $tickets = $get('残チケット数');
+            $lines[] = '区分: チケット会員（残' . ($tickets !== '' ? $tickets : '不明') . '枚・定期購入なし）';
         }
         if ($kind === self::KIND_INACTIVE_ZERO) {
             $lines[] = '区分: 定期購入なし（移管時・チケット残' . $get('残チケット数') . '）';
