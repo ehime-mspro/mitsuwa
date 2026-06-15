@@ -101,7 +101,28 @@
     </div>
 
     @if($orders->hasPages())
-        <div class="mt-4">{{ $orders->links() }}</div>
+        <div class="mt-4 flex justify-center gap-0.5">
+            @if($orders->onFirstPage())
+                <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-300 bg-white border border-gray-200">&lt;</span>
+            @else
+                <a href="{{ $orders->previousPageUrl() }}"
+                   class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors">&lt;</a>
+            @endif
+            @foreach($orders->getUrlRange(1, $orders->lastPage()) as $page => $url)
+                @if($page == $orders->currentPage())
+                    <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-white bg-emerald-600 border border-emerald-600 font-semibold">{{ $page }}</span>
+                @else
+                    <a href="{{ $url }}"
+                       class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors">{{ $page }}</a>
+                @endif
+            @endforeach
+            @if($orders->hasMorePages())
+                <a href="{{ $orders->nextPageUrl() }}"
+                   class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors">&gt;</a>
+            @else
+                <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-300 bg-white border border-gray-200">&gt;</span>
+            @endif
+        </div>
     @endif
 
     <div class="text-sm text-gray-500 text-right mt-2">全 {{ $orders->total() }} 件</div>

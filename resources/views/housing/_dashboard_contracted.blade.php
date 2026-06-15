@@ -72,7 +72,29 @@
     </div>
 
     @if($paginated->hasPages())
-        <div class="mt-4">{{ $paginated->withQueryString()->links() }}</div>
+        @php($paginated->withQueryString())
+        <div class="mt-4 flex justify-center gap-0.5">
+            @if($paginated->onFirstPage())
+                <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-300 bg-white border border-gray-200">&lt;</span>
+            @else
+                <a href="{{ $paginated->previousPageUrl() }}"
+                   class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors">&lt;</a>
+            @endif
+            @foreach($paginated->getUrlRange(1, $paginated->lastPage()) as $page => $url)
+                @if($page == $paginated->currentPage())
+                    <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-white bg-emerald-600 border border-emerald-600 font-semibold">{{ $page }}</span>
+                @else
+                    <a href="{{ $url }}"
+                       class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors">{{ $page }}</a>
+                @endif
+            @endforeach
+            @if($paginated->hasMorePages())
+                <a href="{{ $paginated->nextPageUrl() }}"
+                   class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors">&gt;</a>
+            @else
+                <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-300 bg-white border border-gray-200">&gt;</span>
+            @endif
+        </div>
     @endif
 
     <div class="text-sm text-gray-500 text-right mt-2">全 {{ $paginated->total() }} 件</div>

@@ -108,8 +108,27 @@
         </table>
     </div>
     @if($buyers->hasPages())
-        <div style="padding: 12px 16px; border-top: 1px solid #e5e7eb;">
-            {{ $buyers->links() }}
+        <div class="flex justify-center gap-0.5" style="padding: 12px 16px; border-top: 1px solid #e5e7eb;">
+            @if($buyers->onFirstPage())
+                <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-300 bg-white border border-gray-200">&lt;</span>
+            @else
+                <a href="{{ $buyers->previousPageUrl() }}"
+                   class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors">&lt;</a>
+            @endif
+            @foreach($buyers->getUrlRange(1, $buyers->lastPage()) as $page => $url)
+                @if($page == $buyers->currentPage())
+                    <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-white bg-emerald-600 border border-emerald-600 font-semibold">{{ $page }}</span>
+                @else
+                    <a href="{{ $url }}"
+                       class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors">{{ $page }}</a>
+                @endif
+            @endforeach
+            @if($buyers->hasMorePages())
+                <a href="{{ $buyers->nextPageUrl() }}"
+                   class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors">&gt;</a>
+            @else
+                <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-300 bg-white border border-gray-200">&gt;</span>
+            @endif
         </div>
     @endif
 </div>

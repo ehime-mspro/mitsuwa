@@ -116,7 +116,28 @@
 </div>
 
 @if($employees->hasPages())
-    <div class="mt-4">{{ $employees->links() }}</div>
+    <div class="mt-4 flex justify-center gap-0.5">
+        @if($employees->onFirstPage())
+            <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-300 bg-white border border-gray-200">&lt;</span>
+        @else
+            <a href="{{ $employees->previousPageUrl() }}"
+               class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors">&lt;</a>
+        @endif
+        @foreach($employees->getUrlRange(1, $employees->lastPage()) as $page => $url)
+            @if($page == $employees->currentPage())
+                <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-white bg-emerald-600 border border-emerald-600 font-semibold">{{ $page }}</span>
+            @else
+                <a href="{{ $url }}"
+                   class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors">{{ $page }}</a>
+            @endif
+        @endforeach
+        @if($employees->hasMorePages())
+            <a href="{{ $employees->nextPageUrl() }}"
+               class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors">&gt;</a>
+        @else
+            <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-300 bg-white border border-gray-200">&gt;</span>
+        @endif
+    </div>
 @endif
 
 @endsection
