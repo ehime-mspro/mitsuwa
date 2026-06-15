@@ -84,4 +84,60 @@ class HacomonoMemberMapperTest extends TestCase
         $this->assertNull($m->toInt('abc'));
         $this->assertSame(0, $m->toInt('0'));
     }
+
+    /** @return array<string,string> 使用列だけを持つ行（他は空） */
+    private function row(array $over): array
+    {
+        return array_merge([
+            'ID' => 'CL00000001', '状態' => '会員', '定期購入' => 'TRUE',
+            '名前' => '山田 太郎', '名前カナ' => 'ヤマダ タロウ', '性別' => '男性',
+            '生年月日' => '1990/1/2', '電話番号' => '', 'メールアドレス' => '',
+            '郵便番号' => '', '住所' => '', '入会日' => '2025/10/17',
+            'カスタム2' => '（新）セミパーソナル通い放題', 'コース 名前' => '（新）セミパーソナル通い放題',
+            'コース 名前（内部）' => '', '変更後コース 名前' => '',
+            '合計金額(2回目以降)' => '9702', 'コース 合計金額(2回目以降)' => '10780',
+            '退会日' => '', '退会予定日' => '', '残チケット数' => '0',
+            '紹介コード' => '', '顧客内部カルテ' => '', '店舗 名前' => 'ZEAL BOXING FITNESS 松山市駅前店',
+        ], $over);
+    }
+
+    public function test_map_normal_active_member(): void
+    {
+        $r = $this->mapper()->map($this->row([]));
+        $this->assertSame(HacomonoMemberMapper::KIND_ACTIVE, $r->kind);
+        $this->assertFalse($r->hasErrors());
+        $this->assertSame('セミパーソナル通い放題', $r->planName);
+        // 9702(税込) / 1.1 = 8820(税抜)
+        $this->assertSame(8820, $r->appliedPriceExcl);
+        $this->assertSame('male', $r->memberAttributes['gender']);
+        $this->assertSame(1, $r->memberAttributes['store_id']);
+        $this->assertSame(4, $r->memberAttributes['current_plan_id']);
+        $this->assertSame('2025-10-17', $r->memberAttributes['joined_on']);
+        // 契約: 在籍は period_end=null
+        $this->assertNotNull($r->contractAttributes);
+        $this->assertSame(4, $r->contractAttributes['plan_id']);
+        $this->assertNull($r->contractAttributes['period_end']);
+        $this->assertSame(8820, $r->contractAttributes['applied_price_excl']);
+        $this->assertSame('new_join', $r->contractAttributes['change_reason']);
+    }
+
+    public function test_map_blank_gender_is_warning_null(): void
+    {
+        $r = $this->mapper()->map($this->row(['性別' => '']));
+        $this->assertFalse($r->hasErrors());
+        $this->assertNull($r->memberAttributes['gender']);
+        $this->assertNotEmpty($r->warnings);
+    }
+
+    public function test_map_missing_joined_on_is_error(): void
+    {
+        $r = $this->mapper()->map($this->row(['入会日' => '']));
+        $this->assertTrue($r->hasErrors());
+    }
+
+    public function test_map_store_alias_and_fallback(): void
+    {
+        $r = $this->mapper()->map($this->row(['店舗 名前' => '不明な店舗']));
+        $this->assertSame(1, $r->memberAttributes['store_id']); // フォールバック=defaultStoreId
+    }
 }

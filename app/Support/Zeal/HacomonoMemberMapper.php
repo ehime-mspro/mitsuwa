@@ -93,4 +93,135 @@ class HacomonoMemberMapper
         }
         return (int) $value;
     }
+
+    /** @param array<string,string> $row */
+    public function map(array $row): MappedMember
+    {
+        $get = fn (string $k): string => trim($row[$k] ?? '');
+        $errors = [];
+        $warnings = [];
+
+        $sourceId = $get('ID');
+        $status   = $get('状態');
+        $name     = $get('名前');
+        if ($name === '') {
+            $errors[] = '氏名が空です';
+        }
+
+        $joinedRaw = $get('入会日');
+        $joinedOn  = $this->normalizeDate($joinedRaw);
+        if ($joinedOn === null) {
+            $errors[] = $joinedRaw === '' ? '入会日が空です（必須）' : "入会日'{$joinedRaw}'の形式が不正";
+        }
+
+        $genderRaw = $get('性別');
+        $gender = null;
+        if ($genderRaw === '') {
+            $warnings[] = '性別が空（null取込）';
+        } elseif (isset(self::GENDER_MAP[$genderRaw])) {
+            $gender = self::GENDER_MAP[$genderRaw];
+        } else {
+            $errors[] = "性別'{$genderRaw}'が不正";
+        }
+
+        $storeRaw  = $get('店舗 名前');
+        $storeName = self::STORE_ALIAS[$storeRaw] ?? $storeRaw;
+        $storeId   = $this->storeIdMap[$storeName] ?? $this->defaultStoreId;
+
+        [$planName, $rawPlan] = $this->resolvePlan($get('カスタム2'), $get('コース 名前'));
+        $planId = $planName !== null ? ($this->planIdMap[$planName] ?? null) : null;
+
+        $paidIncl       = $this->toInt($get('合計金額(2回目以降)'));
+        $courseListIncl = $this->toInt($get('コース 合計金額(2回目以降)'));
+        $withdrewOn     = $this->normalizeDate($get('退会日'));
+        $scheduledOn    = $get('退会予定日');
+
+        // --- 区分判定（Task 5 で分岐を追加）---
+        $kind = self::KIND_ACTIVE;
+        $priceExcl = $this->taxExcl($paidIncl);
+        if ($priceExcl === null) {
+            $errors[] = '月会費(合計金額)が空/不正です';
+        }
+
+        $isScheduled = ($scheduledOn !== '');
+        if ($isScheduled) {
+            $warnings[] = "退会予定日 {$scheduledOn}";
+        }
+
+        $memo = $this->buildMemo($sourceId, $get, $scheduledOn, $kind);
+
+        $contract = null;
+        if ($planId !== null && $kind !== self::KIND_TICKET) {
+            $contract = [
+                'plan_id'            => $planId,
+                'period_start'       => $joinedOn,
+                'period_end'         => $kind === self::KIND_WITHDRAWN ? $withdrewOn : null,
+                'applied_price_excl' => $priceExcl,
+                'change_reason'      => 'new_join',
+            ];
+        }
+
+        $member = [
+            'store_id'           => $storeId,
+            'name'               => $name,
+            'name_kana'          => $get('名前カナ'),
+            'gender'             => $gender,
+            'birthday'           => $this->normalizeDate($get('生年月日')),
+            'phone'              => $get('電話番号') ?: null,
+            'email'              => $get('メールアドレス') ?: null,
+            'postal_code'        => $get('郵便番号') ?: null,
+            'address'            => $get('住所') ?: null,
+            'joined_on'          => $joinedOn,
+            'current_plan_id'    => $kind === self::KIND_TICKET ? null : $planId,
+            'trainer_id'         => null,
+            'acquisition_source' => null,
+            'purpose'            => null,
+            'withdrew_on'        => $kind === self::KIND_WITHDRAWN ? $withdrewOn : null,
+            'withdraw_reason'    => null,
+            'withdraw_note'      => $kind === self::KIND_WITHDRAWN ? '別システムより移管（退会済み）' : null,
+            'memo'               => $memo,
+        ];
+
+        return new MappedMember(
+            sourceId: $sourceId,
+            displayName: $name,
+            status: $status,
+            kind: $kind,
+            planName: $planName,
+            rawPlan: $rawPlan,
+            sourceAmountIncl: $paidIncl,
+            courseListIncl: $courseListIncl,
+            appliedPriceExcl: $priceExcl,
+            withdrewOn: $kind === self::KIND_WITHDRAWN ? $withdrewOn : null,
+            scheduledOn: $isScheduled ? $scheduledOn : null,
+            memberAttributes: $member,
+            contractAttributes: $contract,
+            warnings: $warnings,
+            errors: $errors,
+        );
+    }
+
+    private function taxExcl(?int $incl): ?int
+    {
+        return $incl === null ? null : (int) round($incl / (1 + $this->taxRate / 100));
+    }
+
+    /** @param callable(string):string $get */
+    private function buildMemo(string $sourceId, callable $get, string $scheduledOn, string $kind): string
+    {
+        $lines = [];
+        if ($sourceId !== '') {
+            $lines[] = "移行元ID: {$sourceId}";
+        }
+        if (preg_match('/割引名:\s*(.+)/u', $get('顧客内部カルテ'), $mm)) {
+            $lines[] = '割引名: ' . trim($mm[1]);
+        }
+        if ($scheduledOn !== '') {
+            $lines[] = "退会予定日: {$scheduledOn}";
+        }
+        if ($get('紹介コード') !== '') {
+            $lines[] = '紹介コード: ' . $get('紹介コード');
+        }
+        return implode("\n", $lines);
+    }
 }
