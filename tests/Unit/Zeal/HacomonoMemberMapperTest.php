@@ -218,4 +218,17 @@ class HacomonoMemberMapperTest extends TestCase
         $this->assertSame(13000, $r->appliedPriceExcl);
         $this->assertNull($r->contractAttributes['period_end']);
     }
+
+    public function test_map_inactive_zero_missing_list_price_is_error(): void
+    {
+        // planId は解決できるが planPriceMap に定価が無い構成（定価NULL等を模す）
+        $m = new HacomonoMemberMapper(['セミパーソナル通い放題' => 4], [], ['松山市駅前店' => 1], 1, 10.0);
+        $r = $m->map($this->row([
+            '状態' => '会員', '定期購入' => 'FALSE',
+            'カスタム2' => '（新）セミパーソナル通い放題',
+            'コース 名前' => '（新）セミパーソナル通い放題', '合計金額(2回目以降)' => '0',
+        ]));
+        $this->assertSame(HacomonoMemberMapper::KIND_INACTIVE_ZERO, $r->kind);
+        $this->assertTrue($r->hasErrors()); // 定価不明はエラー（applied_price_excl は NOT NULL のため）
+    }
 }

@@ -145,6 +145,7 @@ class HacomonoMemberMapper
         $scheduledOn    = $get('退会予定日');
 
         // --- 区分判定（優先順）---
+        // CSV「定期購入」列は文字列 "TRUE"/"FALSE"。空や他値は OFF とみなさない。
         $teikiOff   = strtoupper($get('定期購入')) === 'FALSE';
         $isDormant  = $get('コース 名前') === '休会プラン' || $get('変更後コース 名前') === '休会プラン';
         $paidIsZero = ($paidIncl === null || $paidIncl === 0);
@@ -162,6 +163,9 @@ class HacomonoMemberMapper
             if ($planName === null) {
                 $errors[] = "休会だが実プラン未解決: '{$rawPlan}'";
             }
+            if ($paidIncl === null) {
+                $warnings[] = '休会：月会費フィールドが空のため0円で取込';
+            }
             $priceExcl = $this->taxExcl($paidIncl) ?? 0;
         } elseif ($planName === null) {
             // 3. チケット会員/未対応プランの在籍 → 契約なし
@@ -172,6 +176,11 @@ class HacomonoMemberMapper
             // 4. 定期購入OFF・実請求0 → プラン定価(税抜)
             $kind = self::KIND_INACTIVE_ZERO;
             $priceExcl = $this->planPriceMap[$planName] ?? null;
+            if ($priceExcl === null) {
+                // 契約の applied_price_excl は NOT NULL。定価不明のまま commit すると
+                // DB エラーになるため dry-run 時点でエラーとして検出する。
+                $errors[] = "定期購入なしだがプラン定価が不明: '{$planName}'";
+            }
             $warnings[] = '定期購入なし（実請求0）→プラン定価';
         } else {
             // 5. 通常在籍 → 実請求(税抜)
