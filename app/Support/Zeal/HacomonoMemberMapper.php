@@ -129,7 +129,15 @@ class HacomonoMemberMapper
         $storeId   = $this->storeIdMap[$storeName] ?? $this->defaultStoreId;
 
         [$planName, $rawPlan] = $this->resolvePlan($get('カスタム2'), $get('コース 名前'));
-        $planId = $planName !== null ? ($this->planIdMap[$planName] ?? null) : null;
+        $planId = null;
+        if ($planName !== null) {
+            $planId = $this->planIdMap[$planName] ?? null;
+            if ($planId === null) {
+                // プラン名は解決できたが自社マスタ(ZealPlan)に無い＝表記ゆれ/未登録。
+                // 在籍会員が契約なしで静かに取り込まれるのを防ぐためエラーで止める。
+                $errors[] = "プラン名'{$planName}'がマスタに未登録（契約を作成できません）";
+            }
+        }
 
         $paidIncl       = $this->toInt($get('合計金額(2回目以降)'));
         $courseListIncl = $this->toInt($get('コース 合計金額(2回目以降)'));
@@ -164,7 +172,7 @@ class HacomonoMemberMapper
         $member = [
             'store_id'           => $storeId,
             'name'               => $name,
-            'name_kana'          => $get('名前カナ'),
+            'name_kana'          => $get('名前カナ') ?: null,
             'gender'             => $gender,
             'birthday'           => $this->normalizeDate($get('生年月日')),
             'phone'              => $get('電話番号') ?: null,

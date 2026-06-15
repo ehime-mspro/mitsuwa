@@ -119,6 +119,7 @@ class HacomonoMemberMapperTest extends TestCase
         $this->assertNull($r->contractAttributes['period_end']);
         $this->assertSame(8820, $r->contractAttributes['applied_price_excl']);
         $this->assertSame('new_join', $r->contractAttributes['change_reason']);
+        $this->assertSame('移行元ID: CL00000001', $r->memberAttributes['memo']);
     }
 
     public function test_map_blank_gender_is_warning_null(): void
@@ -139,5 +140,20 @@ class HacomonoMemberMapperTest extends TestCase
     {
         $r = $this->mapper()->map($this->row(['店舗 名前' => '不明な店舗']));
         $this->assertSame(1, $r->memberAttributes['store_id']); // フォールバック=defaultStoreId
+    }
+
+    public function test_map_invalid_gender_is_error(): void
+    {
+        $r = $this->mapper()->map($this->row(['性別' => '男'])); // GENDER_MAP外の値
+        $this->assertTrue($r->hasErrors());
+    }
+
+    public function test_map_resolved_plan_missing_from_master_is_error(): void
+    {
+        // プラン名は解決できるが planIdMap に無い構成（マスタの表記ゆれ/未登録を模す）
+        $m = new HacomonoMemberMapper(['ペアプラン' => 5], ['ペアプラン' => 20700], ['松山市駅前店' => 1], 1, 10.0);
+        $r = $m->map($this->row([])); // カスタム2=（新）セミパーソナル通い放題 → 解決するが planIdMap に無い
+        $this->assertTrue($r->hasErrors());
+        $this->assertNull($r->contractAttributes); // 契約は作られない
     }
 }
