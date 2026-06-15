@@ -247,6 +247,24 @@ class HacomonoMemberMapperTest extends TestCase
         $this->assertStringContainsString('次回休会予定', $r->memberAttributes['memo']);
     }
 
+    public function test_map_resolves_plan_with_fullwidth_ampersand_in_master(): void
+    {
+        // 本番のZealPlan.nameが全角＆の場合でも正規化して照合できる（半角&のエイリアス値と一致）
+        $m = new HacomonoMemberMapper(
+            ['パーソナル＆セミパーソナル月4回' => 3],     // 全角＆
+            ['パーソナル＆セミパーソナル月4回' => 13000], // 全角＆
+            ['松山市駅前店' => 1], 1, 10.0
+        );
+        $r = $m->map($this->row([
+            'カスタム2' => '（新）パーソナル＆セミパーソナル月4回',
+            'コース 名前' => '（新）パーソナル＆セミパーソナル月4回',
+            '合計金額(2回目以降)' => '14300',
+        ]));
+        $this->assertFalse($r->hasErrors());
+        $this->assertSame(3, $r->memberAttributes['current_plan_id']);
+        $this->assertSame(13000, $r->appliedPriceExcl); // 14300は税込→13000
+    }
+
     public function test_map_active_keeps_tax_exclusive_amount(): void
     {
         // 合計金額9800は税抜×1.1で割り切れない＝税抜表記コース→÷1.1せずそのまま月会費

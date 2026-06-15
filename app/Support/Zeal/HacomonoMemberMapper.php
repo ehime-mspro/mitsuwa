@@ -40,7 +40,31 @@ class HacomonoMemberMapper
         private array $storeIdMap,
         private int $defaultStoreId,
         private float $taxRate = 10.0,
-    ) {}
+    ) {
+        // 本番ZealPlan.nameは全角＆/半角&が混在するため、照合キーを正規化して保持する
+        $this->planIdMap    = self::normalizePlanKeys($planIdMap);
+        $this->planPriceMap = self::normalizePlanKeys($planPriceMap);
+    }
+
+    /** プラン名の全角＆を半角&へ正規化（本番マスタの表記ゆれ対策） */
+    private static function normalizePlanName(string $name): string
+    {
+        return str_replace('＆', '&', $name);
+    }
+
+    /**
+     * プラン名をキーにした連想配列のキーを正規化する。
+     * @param array<string,int> $map
+     * @return array<string,int>
+     */
+    private static function normalizePlanKeys(array $map): array
+    {
+        $out = [];
+        foreach ($map as $name => $value) {
+            $out[self::normalizePlanName($name)] = $value;
+        }
+        return $out;
+    }
 
     /** @param array<string,string> $row */
     public static function isInScope(array $row): bool
@@ -132,7 +156,7 @@ class HacomonoMemberMapper
         [$planName, $rawPlan] = $this->resolvePlan($get('カスタム2'), $get('コース 名前'));
         $planId = null;
         if ($planName !== null) {
-            $planId = $this->planIdMap[$planName] ?? null;
+            $planId = $this->planIdMap[self::normalizePlanName($planName)] ?? null;
             if ($planId === null) {
                 // プラン名は解決できたが自社マスタ(ZealPlan)に無い＝表記ゆれ/未登録。
                 // 在籍会員が契約なしで静かに取り込まれるのを防ぐためエラーで止める。
@@ -156,7 +180,7 @@ class HacomonoMemberMapper
         if ($status === '停止中' || $withdrewOn !== null) {
             // 1. 退会済み → プラン定価(税抜)・契約クローズ
             $kind = self::KIND_WITHDRAWN;
-            $priceExcl = $planName !== null ? ($this->planPriceMap[$planName] ?? null) : null;
+            $priceExcl = $planName !== null ? ($this->planPriceMap[self::normalizePlanName($planName)] ?? null) : null;
             if ($priceExcl === null) {
                 $errors[] = "退会者だがプラン未解決: '{$rawPlan}'";
             }
@@ -183,7 +207,7 @@ class HacomonoMemberMapper
         } elseif ($teikiOff && $paidIsZero) {
             // 4. 定期購入OFF・実請求0 → プラン定価(税抜)
             $kind = self::KIND_INACTIVE_ZERO;
-            $priceExcl = $this->planPriceMap[$planName] ?? null;
+            $priceExcl = $this->planPriceMap[self::normalizePlanName($planName)] ?? null;
             if ($priceExcl === null) {
                 // 契約の applied_price_excl は NOT NULL。定価不明のまま commit すると
                 // DB エラーになるため dry-run 時点でエラーとして検出する。
