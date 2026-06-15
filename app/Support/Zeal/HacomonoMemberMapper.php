@@ -174,7 +174,7 @@ class HacomonoMemberMapper
             if ($paidIncl === null) {
                 $warnings[] = '休会：月会費フィールドが空のため0円で取込';
             }
-            $priceExcl = $this->taxExcl($paidIncl) ?? 0;
+            $priceExcl = $this->toMonthlyExcl($paidIncl) ?? 0;
         } elseif ($planName === null) {
             // 3. チケット会員/未対応プランの在籍 → 契約なし
             $kind = self::KIND_TICKET;
@@ -193,7 +193,7 @@ class HacomonoMemberMapper
         } else {
             // 5. 通常在籍 → 実請求(税抜)
             $kind = self::KIND_ACTIVE;
-            $priceExcl = $this->taxExcl($paidIncl);
+            $priceExcl = $this->toMonthlyExcl($paidIncl);
             if ($priceExcl === null) {
                 $errors[] = '月会費(合計金額)が空/不正です';
             }
@@ -262,9 +262,19 @@ class HacomonoMemberMapper
         );
     }
 
-    private function taxExcl(?int $incl): ?int
+    /**
+     * 月会費の税抜額を返す。hacomonoは会員のコース表記により金額を税込/税抜
+     * どちらでも持つ（税込表記コース: 定価10780等 / 税抜表記コース: 定価9800等）。
+     * 金額が「税抜×(1+税率)」ちょうど（整数の税込）なら税抜換算し、そうでなければ
+     * 金額自体が税抜表記とみなしそのまま返す（一律÷1.1で税抜表記の会員が過小になるのを防ぐ）。
+     */
+    private function toMonthlyExcl(?int $amount): ?int
     {
-        return $incl === null ? null : (int) round($incl / (1 + $this->taxRate / 100));
+        if ($amount === null) {
+            return null;
+        }
+        $denom = 100 + (int) $this->taxRate; // 税率10% → 110
+        return ($amount * 100) % $denom === 0 ? intdiv($amount * 100, $denom) : $amount;
     }
 
     /** @param callable(string):string $get */

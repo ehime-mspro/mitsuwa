@@ -247,6 +247,23 @@ class HacomonoMemberMapperTest extends TestCase
         $this->assertStringContainsString('次回休会予定', $r->memberAttributes['memo']);
     }
 
+    public function test_map_active_keeps_tax_exclusive_amount(): void
+    {
+        // 合計金額9800は税抜×1.1で割り切れない＝税抜表記コース→÷1.1せずそのまま月会費
+        $r = $this->mapper()->map($this->row([
+            '合計金額(2回目以降)' => '9800', 'コース 合計金額(2回目以降)' => '9800',
+        ]));
+        $this->assertSame(HacomonoMemberMapper::KIND_ACTIVE, $r->kind);
+        $this->assertSame(9800, $r->appliedPriceExcl);
+    }
+
+    public function test_map_active_divides_tax_inclusive_amount(): void
+    {
+        // 合計金額9702=8820×1.1（税抜が整数）＝税込表記コース→÷1.1
+        $r = $this->mapper()->map($this->row(['合計金額(2回目以降)' => '9702']));
+        $this->assertSame(8820, $r->appliedPriceExcl);
+    }
+
     public function test_map_suspended_without_withdraw_date_warns(): void
     {
         // 停止中だが退会日が空 → 退会済み判定だが withdrew_on/period_end が null になる点を警告
