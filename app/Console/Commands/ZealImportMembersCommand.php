@@ -63,6 +63,8 @@ class ZealImportMembersCommand extends Command
             }
             $m = $mapper->map($row);
 
+            // 冪等性: 同名・同入会日が既存ならスキップ（再実行・誤再投入に耐える）。
+            // 注: 同姓同名かつ同入会日の別人は誤スキップになるが、35件の一回移行では発生しないと確認済み。
             if (!$m->hasErrors()
                 && ZealMember::where('name', $m->displayName)
                     ->where('joined_on', $m->memberAttributes['joined_on'])
@@ -172,7 +174,7 @@ class ZealImportMembersCommand extends Command
             }
         });
 
-        $this->info(count($toImport) . ' 件を取り込みました。');
+        $this->info(count($toImport) . " 件を取り込みました（税率 {$taxRate}%）。");
         return self::SUCCESS;
     }
 }

@@ -205,7 +205,7 @@ class HacomonoMemberMapper
                 'period_start'       => $joinedOn,
                 'period_end'         => $kind === self::KIND_WITHDRAWN ? $withdrewOn : null,
                 'applied_price_excl' => $priceExcl,
-                'change_reason'      => 'new_join',
+                'change_reason'      => 'new_join', // = ZealContractChangeReason::NewJoin->value（Mapperは DB非依存のため文字列で返す）
             ];
         }
 
