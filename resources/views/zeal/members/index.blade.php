@@ -202,14 +202,33 @@
         </tbody>
     </table>
     </div>{{-- /.scroll-area --}}
-</div>{{-- /.scroll-wrap --}}
 
-{{-- ページネーション --}}
-@if($members->hasPages())
-    <div style="margin-top: 16px;">
-        {{ $members->links() }}
-    </div>
-@endif
+    {{-- ページネーション --}}
+    @if($members->hasPages())
+        <div class="flex justify-center gap-0.5 px-4 py-3 border-t border-gray-200">
+            @if($members->onFirstPage())
+                <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-300 bg-white border border-gray-200">&lt;</span>
+            @else
+                <a href="{{ $members->previousPageUrl() }}"
+                   class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors">&lt;</a>
+            @endif
+            @foreach($members->getUrlRange(1, $members->lastPage()) as $page => $url)
+                @if($page == $members->currentPage())
+                    <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-white bg-emerald-600 border border-emerald-600 font-semibold">{{ $page }}</span>
+                @else
+                    <a href="{{ $url }}"
+                       class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors">{{ $page }}</a>
+                @endif
+            @endforeach
+            @if($members->hasMorePages())
+                <a href="{{ $members->nextPageUrl() }}"
+                   class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors">&gt;</a>
+            @else
+                <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-300 bg-white border border-gray-200">&gt;</span>
+            @endif
+        </div>
+    @endif
+</div>{{-- /.scroll-wrap --}}
 
 <script>
     // 右端 fade をスクロール余地があるときだけ表示
