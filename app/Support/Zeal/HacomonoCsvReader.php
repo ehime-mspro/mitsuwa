@@ -27,10 +27,14 @@ class HacomonoCsvReader
         $content = preg_replace('/^\xEF\xBB\xBF/', '', $content);
 
         $fh = fopen('php://temp', 'r+');
+        if ($fh === false) {
+            throw new \RuntimeException('CSV解析用の一時ストリームを開けませんでした');
+        }
         fwrite($fh, $content);
         rewind($fh);
 
-        $header = fgetcsv($fh);
+        // escape='' で RFC 4180 準拠のパース（メモ内のバックスラッシュを誤エスケープしない）
+        $header = fgetcsv($fh, 0, ',', '"', '');
         if ($header === false) {
             fclose($fh);
             return [];
@@ -38,7 +42,7 @@ class HacomonoCsvReader
         $colCount = count($header);
 
         $rows = [];
-        while (($cells = fgetcsv($fh)) !== false) {
+        while (($cells = fgetcsv($fh, 0, ',', '"', '')) !== false) {
             // 完全な空行はスキップ
             if (count(array_filter($cells, static fn ($c) => $c !== null && $c !== '')) === 0) {
                 continue;
