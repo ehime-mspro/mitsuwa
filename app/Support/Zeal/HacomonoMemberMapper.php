@@ -64,4 +64,27 @@ class HacomonoMemberMapper
         $raw = trim($custom2) !== '' ? trim($custom2) : trim($course);
         return [null, $raw, 'none'];
     }
+
+    public function normalizeDate(string $value): ?string
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return null;
+        }
+        $value = str_replace('/', '-', $value);
+        if (!preg_match('/^\d{4}-\d{1,2}-\d{1,2}$/', $value)) {
+            return null;
+        }
+        $ts = strtotime($value);
+        return $ts === false ? null : date('Y-m-d', $ts);
+    }
+
+    public function toInt(string $value): ?int
+    {
+        $value = trim($value);
+        if ($value === '' || !preg_match('/^-?\d+$/', $value)) {
+            return null;
+        }
+        return (int) $value;
+    }
 }

@@ -62,4 +62,22 @@ class HacomonoMemberMapperTest extends TestCase
         $this->assertNull($name);
         $this->assertSame('チケット会員', $raw);
     }
+
+    public function test_normalize_date(): void
+    {
+        $m = $this->mapper();
+        $this->assertSame('2025-10-17', $m->normalizeDate('2025/10/17'));
+        $this->assertSame('2026-04-01', $m->normalizeDate('2026/4/1'));
+        $this->assertNull($m->normalizeDate(''));
+        $this->assertNull($m->normalizeDate('not-a-date'));
+    }
+
+    public function test_to_int(): void
+    {
+        $m = $this->mapper();
+        $this->assertSame(9702, $m->toInt('9702'));
+        $this->assertNull($m->toInt(''));
+        $this->assertNull($m->toInt('abc'));
+        $this->assertSame(0, $m->toInt('0'));
+    }
 }
