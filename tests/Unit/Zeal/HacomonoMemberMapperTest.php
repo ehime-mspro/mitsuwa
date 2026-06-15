@@ -231,4 +231,18 @@ class HacomonoMemberMapperTest extends TestCase
         $this->assertSame(HacomonoMemberMapper::KIND_INACTIVE_ZERO, $r->kind);
         $this->assertTrue($r->hasErrors()); // 定価不明はエラー（applied_price_excl は NOT NULL のため）
     }
+
+    public function test_map_planned_dormant_is_active_not_dormant(): void
+    {
+        // 変更後コース=休会プラン（次回休会予定）だが現在は通常プランで在籍中
+        $r = $this->mapper()->map($this->row([
+            '状態' => '会員', 'カスタム2' => '（新）セミパーソナル通い放題',
+            'コース 名前' => '（新）セミパーソナル通い放題', '変更後コース 名前' => '休会プラン',
+            '合計金額(2回目以降)' => '9702', '定期購入' => 'TRUE',
+        ]));
+        $this->assertSame(HacomonoMemberMapper::KIND_ACTIVE, $r->kind); // 休会ではなく在籍
+        $this->assertSame(8820, $r->appliedPriceExcl); // 通常月会費の税抜(9702/1.1)
+        $this->assertNull($r->contractAttributes['period_end']); // 在籍契約（open）
+        $this->assertStringContainsString('次回休会予定', $r->memberAttributes['memo']);
+    }
 }

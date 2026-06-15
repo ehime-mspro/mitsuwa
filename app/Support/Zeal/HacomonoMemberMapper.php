@@ -147,7 +147,9 @@ class HacomonoMemberMapper
         // --- 区分判定（優先順）---
         // CSV「定期購入」列は文字列 "TRUE"/"FALSE"。空や他値は OFF とみなさない。
         $teikiOff   = strtoupper($get('定期購入')) === 'FALSE';
-        $isDormant  = $get('コース 名前') === '休会プラン' || $get('変更後コース 名前') === '休会プラン';
+        // 休会は「現在のコース名前=休会プラン」のみ。変更後コース=休会プランは
+        // 「次回休会予定」で現在は在籍（通常月会費が発生中）なので休会にしない。
+        $isDormant  = $get('コース 名前') === '休会プラン';
         $paidIsZero = ($paidIncl === null || $paidIncl === 0);
 
         if ($status === '停止中' || $withdrewOn !== null) {
@@ -194,6 +196,11 @@ class HacomonoMemberMapper
         $isScheduled = ($scheduledOn !== '');
         if ($isScheduled) {
             $warnings[] = "退会予定日 {$scheduledOn}";
+        }
+
+        // 次回休会予定（在籍のまま取込。休会区分とは区別する）
+        if ($get('変更後コース 名前') === '休会プラン') {
+            $warnings[] = '次回休会予定（変更後コース=休会プラン）→在籍として取込';
         }
 
         $memo = $this->buildMemo($sourceId, $get, $scheduledOn, $kind);
@@ -266,6 +273,9 @@ class HacomonoMemberMapper
         }
         if ($scheduledOn !== '') {
             $lines[] = "退会予定日: {$scheduledOn}";
+        }
+        if ($get('変更後コース 名前') === '休会プラン') {
+            $lines[] = '次回休会予定（移管時点で在籍）';
         }
         if ($get('紹介コード') !== '') {
             $lines[] = '紹介コード: ' . $get('紹介コード');
