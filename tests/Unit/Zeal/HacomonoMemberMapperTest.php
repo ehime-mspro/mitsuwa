@@ -68,8 +68,12 @@ class HacomonoMemberMapperTest extends TestCase
         $m = $this->mapper();
         $this->assertSame('2025-10-17', $m->normalizeDate('2025/10/17'));
         $this->assertSame('2026-04-01', $m->normalizeDate('2026/4/1'));
+        $this->assertSame('2025-10-17', $m->normalizeDate('2025-10-17')); // 既にハイフン形式でも通る
         $this->assertNull($m->normalizeDate(''));
         $this->assertNull($m->normalizeDate('not-a-date'));
+        $this->assertNull($m->normalizeDate('2025/13/45'));          // 無効な月日は checkdate で拒否
+        $this->assertNull($m->normalizeDate('1990/2/31'));           // 2月31日は存在しない
+        $this->assertNull($m->normalizeDate('2025/10/17 00:00:00')); // 時刻付きは reject
     }
 
     public function test_to_int(): void

@@ -72,11 +72,17 @@ class HacomonoMemberMapper
             return null;
         }
         $value = str_replace('/', '-', $value);
-        if (!preg_match('/^\d{4}-\d{1,2}-\d{1,2}$/', $value)) {
+        if (!preg_match('/^(\d{4})-(\d{1,2})-(\d{1,2})$/', $value, $m)) {
             return null;
         }
-        $ts = strtotime($value);
-        return $ts === false ? null : date('Y-m-d', $ts);
+        [$year, $month, $day] = [(int) $m[1], (int) $m[2], (int) $m[3]];
+        // checkdate で論理的に無効な日付（2/31・13月等）を弾く。
+        // 移行は一回限りで入会日の丸めが period_start を静かに破損するため、
+        // strtotime の暗黙補正に頼らず明示的に拒否する。
+        if (!checkdate($month, $day, $year)) {
+            return null;
+        }
+        return sprintf('%04d-%02d-%02d', $year, $month, $day);
     }
 
     public function toInt(string $value): ?int
