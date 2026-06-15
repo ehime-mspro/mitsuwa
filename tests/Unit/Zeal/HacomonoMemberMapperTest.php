@@ -35,4 +35,31 @@ class HacomonoMemberMapperTest extends TestCase
         $this->assertFalse(HacomonoMemberMapper::isInScope(['状態' => 'ビジター']));
         $this->assertFalse(HacomonoMemberMapper::isInScope(['状態' => '']));
     }
+
+    public function test_resolve_plan_maps_all_variants(): void
+    {
+        $m = $this->mapper();
+        $this->assertSame('セミパーソナル通い放題', $m->resolvePlan('（新）セミパーソナル通い放題', '')[0]);
+        $this->assertSame('セミパーソナル通い放題', $m->resolvePlan('セミパーソナル通い放題（松山市駅前）（1年契約）', '')[0]);
+        $this->assertSame('パーソナル&セミパーソナル月4回', $m->resolvePlan('パーソナル&セミパーソナル月4回（松山市駅前）', '')[0]);
+        $this->assertSame('パーソナル&セミパーソナル通い放題（1枠）', $m->resolvePlan('【松山市駅前】パーソナル&セミパーソナル通い放題(1枠)', '')[0]);
+        $this->assertSame('ペアプラン', $m->resolvePlan('ペアプラン', '')[0]);
+    }
+
+    public function test_resolve_plan_prefers_custom2_then_course(): void
+    {
+        $m = $this->mapper();
+        // カスタム2 が空なら コース名前 を使う
+        $this->assertSame('セミパーソナル通い放題', $m->resolvePlan('', '（新）セミパーソナル通い放題')[0]);
+        // カスタム2 が NON_PLAN ラベルなら次へ（実データでは起きにくいが安全側）
+        $this->assertSame('セミパーソナル通い放題', $m->resolvePlan('休会プラン', 'セミパーソナル通い放題（松山市駅前）')[0]);
+    }
+
+    public function test_resolve_plan_returns_null_for_unmatched(): void
+    {
+        $m = $this->mapper();
+        [$name, $raw, $src] = $m->resolvePlan('チケット会員', '');
+        $this->assertNull($name);
+        $this->assertSame('チケット会員', $raw);
+    }
 }

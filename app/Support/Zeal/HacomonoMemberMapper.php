@@ -47,4 +47,21 @@ class HacomonoMemberMapper
     {
         return in_array(trim($row['状態'] ?? ''), ['会員', '停止中'], true);
     }
+
+    /**
+     * カスタム2 を主、空/NON_PLAN なら コース名前 を従として既存プラン名へ解決。
+     * @return array{0:?string,1:string,2:string} [プラン名(未解決はnull), 元表記, 取得元]
+     */
+    public function resolvePlan(string $custom2, string $course): array
+    {
+        foreach (['カスタム2' => $custom2, 'コース名前' => $course] as $src => $raw) {
+            $raw = trim($raw);
+            if ($raw === '' || in_array($raw, self::NON_PLAN_LABELS, true)) {
+                continue;
+            }
+            return [self::PLAN_ALIAS[$raw] ?? null, $raw, $src];
+        }
+        $raw = trim($custom2) !== '' ? trim($custom2) : trim($course);
+        return [null, $raw, 'none'];
+    }
 }
