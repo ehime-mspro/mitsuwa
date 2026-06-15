@@ -144,11 +144,42 @@ class HacomonoMemberMapper
         $withdrewOn     = $this->normalizeDate($get('退会日'));
         $scheduledOn    = $get('退会予定日');
 
-        // --- 区分判定（Task 5 で分岐を追加）---
-        $kind = self::KIND_ACTIVE;
-        $priceExcl = $this->taxExcl($paidIncl);
-        if ($priceExcl === null) {
-            $errors[] = '月会費(合計金額)が空/不正です';
+        // --- 区分判定（優先順）---
+        $teikiOff   = strtoupper($get('定期購入')) === 'FALSE';
+        $isDormant  = $get('コース 名前') === '休会プラン' || $get('変更後コース 名前') === '休会プラン';
+        $paidIsZero = ($paidIncl === null || $paidIncl === 0);
+
+        if ($status === '停止中' || $withdrewOn !== null) {
+            // 1. 退会済み → プラン定価(税抜)・契約クローズ
+            $kind = self::KIND_WITHDRAWN;
+            $priceExcl = $planName !== null ? ($this->planPriceMap[$planName] ?? null) : null;
+            if ($priceExcl === null) {
+                $errors[] = "退会者だがプラン未解決: '{$rawPlan}'";
+            }
+        } elseif ($isDormant) {
+            // 2. 休会 → 実際の休会費(税抜)
+            $kind = self::KIND_DORMANT;
+            if ($planName === null) {
+                $errors[] = "休会だが実プラン未解決: '{$rawPlan}'";
+            }
+            $priceExcl = $this->taxExcl($paidIncl) ?? 0;
+        } elseif ($planName === null) {
+            // 3. チケット会員/未対応プランの在籍 → 契約なし
+            $kind = self::KIND_TICKET;
+            $priceExcl = null;
+            $warnings[] = "プラン未対応（'{$rawPlan}'）→会員のみ作成・契約なし";
+        } elseif ($teikiOff && $paidIsZero) {
+            // 4. 定期購入OFF・実請求0 → プラン定価(税抜)
+            $kind = self::KIND_INACTIVE_ZERO;
+            $priceExcl = $this->planPriceMap[$planName] ?? null;
+            $warnings[] = '定期購入なし（実請求0）→プラン定価';
+        } else {
+            // 5. 通常在籍 → 実請求(税抜)
+            $kind = self::KIND_ACTIVE;
+            $priceExcl = $this->taxExcl($paidIncl);
+            if ($priceExcl === null) {
+                $errors[] = '月会費(合計金額)が空/不正です';
+            }
         }
 
         $isScheduled = ($scheduledOn !== '');
@@ -229,6 +260,15 @@ class HacomonoMemberMapper
         }
         if ($get('紹介コード') !== '') {
             $lines[] = '紹介コード: ' . $get('紹介コード');
+        }
+        if ($kind === self::KIND_DORMANT) {
+            $lines[] = '区分: 休会中（移管時点）';
+        }
+        if ($kind === self::KIND_TICKET) {
+            $lines[] = '区分: チケット会員（残' . $get('残チケット数') . '枚・定期購入なし）';
+        }
+        if ($kind === self::KIND_INACTIVE_ZERO) {
+            $lines[] = '区分: 定期購入なし（移管時・チケット残' . $get('残チケット数') . '）';
         }
         return implode("\n", $lines);
     }

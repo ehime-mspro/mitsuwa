@@ -156,4 +156,66 @@ class HacomonoMemberMapperTest extends TestCase
         $this->assertTrue($r->hasErrors());
         $this->assertNull($r->contractAttributes); // 契約は作られない
     }
+
+    public function test_map_suspended_is_withdrawn_with_plan_list_price(): void
+    {
+        // 停止中: コース名前は空、カスタム2 にプラン、退会日あり、合計金額0
+        $r = $this->mapper()->map($this->row([
+            '状態' => '停止中', 'カスタム2' => 'セミパーソナル通い放題（松山市駅前）',
+            'コース 名前' => '', '合計金額(2回目以降)' => '0', '退会日' => '2026/6/1', '定期購入' => 'FALSE',
+        ]));
+        $this->assertSame(HacomonoMemberMapper::KIND_WITHDRAWN, $r->kind);
+        $this->assertFalse($r->hasErrors());
+        $this->assertSame(9800, $r->appliedPriceExcl); // プラン定価(税抜)
+        $this->assertSame('2026-06-01', $r->memberAttributes['withdrew_on']);
+        $this->assertSame('2026-06-01', $r->contractAttributes['period_end']);
+        $this->assertSame(9800, $r->contractAttributes['applied_price_excl']);
+    }
+
+    public function test_map_member_with_past_withdraw_date_is_withdrawn(): void
+    {
+        $r = $this->mapper()->map($this->row(['状態' => '会員', '退会日' => '2026/4/1']));
+        $this->assertSame(HacomonoMemberMapper::KIND_WITHDRAWN, $r->kind);
+        $this->assertSame('2026-04-01', $r->memberAttributes['withdrew_on']);
+    }
+
+    public function test_map_dormant_uses_actual_dormancy_fee(): void
+    {
+        // 休会: コース名前=休会プラン, カスタム2 に実プラン, 合計金額=1100
+        $r = $this->mapper()->map($this->row([
+            'カスタム2' => 'セミパーソナル通い放題（松山市駅前）', 'コース 名前' => '休会プラン',
+            '合計金額(2回目以降)' => '1100',
+        ]));
+        $this->assertSame(HacomonoMemberMapper::KIND_DORMANT, $r->kind);
+        $this->assertSame('セミパーソナル通い放題', $r->planName);
+        $this->assertSame(1000, $r->appliedPriceExcl); // 1100/1.1
+        $this->assertNull($r->contractAttributes['period_end']); // 在籍
+        $this->assertStringContainsString('休会', $r->memberAttributes['memo']);
+    }
+
+    public function test_map_ticket_member_has_no_plan_and_no_contract(): void
+    {
+        $r = $this->mapper()->map($this->row([
+            '状態' => '会員', '定期購入' => 'FALSE', 'カスタム2' => '', 'コース 名前' => 'チケット会員',
+            '合計金額(2回目以降)' => '0', '残チケット数' => '4',
+        ]));
+        $this->assertSame(HacomonoMemberMapper::KIND_TICKET, $r->kind);
+        $this->assertFalse($r->hasErrors());
+        $this->assertNull($r->memberAttributes['current_plan_id']);
+        $this->assertNull($r->contractAttributes); // 契約なし
+        $this->assertStringContainsString('チケット会員', $r->memberAttributes['memo']);
+    }
+
+    public function test_map_inactive_zero_uses_plan_list_price(): void
+    {
+        // 定期購入OFF・実請求0・プラン判明 → プラン定価
+        $r = $this->mapper()->map($this->row([
+            '状態' => '会員', '定期購入' => 'FALSE',
+            'カスタム2' => 'パーソナル&セミパーソナル月4回（松山市駅前）',
+            'コース 名前' => 'パーソナル&セミパーソナル月4回（松山市駅前）', '合計金額(2回目以降)' => '0',
+        ]));
+        $this->assertSame(HacomonoMemberMapper::KIND_INACTIVE_ZERO, $r->kind);
+        $this->assertSame(13000, $r->appliedPriceExcl);
+        $this->assertNull($r->contractAttributes['period_end']);
+    }
 }
