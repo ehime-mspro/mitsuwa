@@ -1214,6 +1214,25 @@ Route::middleware(['auth', 'password.change'])->group(function () {
         Route::delete('/customers/{buyer}', [\App\Http\Controllers\CustomerController::class, 'destroy'])
             ->middleware('role:executive')
             ->name('realestate.customers.destroy');
+
+        /*
+        |------------------------------------------------------------------
+        | アンケート管理 — 不動産事業（5ルート）
+        |------------------------------------------------------------------
+        */
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/customers/{buyer}/surveys/create', [\App\Http\Controllers\CustomerSurveyController::class, 'create'])
+                ->name('realestate.customers.surveys.create');
+            Route::post('/customers/{buyer}/surveys', [\App\Http\Controllers\CustomerSurveyController::class, 'store'])
+                ->name('realestate.customers.surveys.store');
+            Route::get('/customers/{buyer}/surveys/{survey}/edit', [\App\Http\Controllers\CustomerSurveyController::class, 'edit'])
+                ->name('realestate.customers.surveys.edit');
+            Route::put('/customers/{buyer}/surveys/{survey}', [\App\Http\Controllers\CustomerSurveyController::class, 'update'])
+                ->name('realestate.customers.surveys.update');
+        });
+        Route::delete('/customers/{buyer}/surveys/{survey}', [\App\Http\Controllers\CustomerSurveyController::class, 'destroy'])
+            ->middleware('role:executive')
+            ->name('realestate.customers.surveys.destroy');
     });
 
     /*
