@@ -155,7 +155,7 @@ class UnitController extends Controller
             'property',
             'activeContract.customer',
             'investments' => function ($q) {
-                $q->whereIn('status', ['in_progress', 'recovering']);
+                $q->orderByDesc('created_at')->orderByDesc('id');
             },
         ]);
 
@@ -176,7 +176,24 @@ class UnitController extends Controller
         // 賃料収入履歴（STEP 7）
         $rentalIncome = app(RentalIncomeService::class)->forUnit($unit);
 
-        return view('tenant.units.show', compact('unit', 'property', 'activeContract', 'contractMonthlyTotal', 'unitRepairs', 'rentalIncome'));
+        // 各投資の回収情報（区画ベース・家賃のみ）を算出して表示用に整形
+        $unitInvestments = $unit->investments->map(function ($inv) {
+            $recovery = $inv->calculateRecovery();
+            $rate = (float) $recovery['recovery_rate'];
+            return [
+                'id'              => $inv->id,
+                'investment_number' => $inv->investment_number,
+                'pattern_label'   => $inv->pattern->label(),
+                'total_amount'    => $inv->total_amount,
+                'total_recovered' => $recovery['total_recovered'],
+                'rate'            => $rate,
+                'has_end_date'    => $inv->end_date !== null,
+                'label'           => $inv->recoveryLabel($rate) ?? $inv->status->label(),
+                'badge_class'     => $inv->recoveryBadgeClass($rate) ?? $inv->status->badgeClass(),
+            ];
+        })->values();
+
+        return view('tenant.units.show', compact('unit', 'property', 'activeContract', 'contractMonthlyTotal', 'unitRepairs', 'rentalIncome', 'unitInvestments'));
     }
 
     /**

@@ -219,6 +219,34 @@
         </div>
     @endif
 
+    {{-- 投資・回収 --}}
+    <div class="bg-white border border-gray-200 rounded-lg px-5 py-4 mb-3">
+        <div class="flex items-center justify-between pb-2 mb-3 border-b border-gray-200">
+            <span class="text-sm font-bold text-gray-800">投資・回収</span>
+            @if(auth()->user()->role->isManagerOrAbove())
+                <a href="{{ route('tenant.investments.create', ['unit_id' => $unit->id]) }}"
+                   style="display:inline-block; padding:6px 14px; font-size:12px; font-weight:600; color:#059669; border:1px solid #059669; border-radius:6px; text-decoration:none; background:#fff;">この区画に投資を登録</a>
+            @endif
+        </div>
+        @if($unitInvestments->isEmpty())
+            <p class="text-sm text-gray-400 text-center py-4">この区画の投資案件はありません。</p>
+        @else
+            <div class="space-y-2">
+                @foreach($unitInvestments as $inv)
+                    <a href="{{ route('tenant.investments.show', $inv['id']) }}"
+                       class="flex items-center justify-between gap-3 px-3 py-2.5 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors">
+                        <div class="min-w-0">
+                            <div class="text-sm font-semibold text-gray-900">{{ $inv['investment_number'] }}<span class="text-xs text-gray-500 font-normal ml-1.5">{{ $inv['pattern_label'] }}</span></div>
+                            <div class="text-xs text-gray-500 mt-0.5">投資 {{ number_format($inv['total_amount']) }}円 / 回収 {{ number_format($inv['total_recovered']) }}円（{{ number_format($inv['rate'], 1) }}%）</div>
+                        </div>
+                        <span class="badge {{ $inv['badge_class'] }} flex-shrink-0">{{ $inv['label'] }}</span>
+                    </a>
+                @endforeach
+            </div>
+            <p class="text-xs text-gray-400 mt-2">回収は完成日(工事完了日)以降の家賃のみで自動計上されます。</p>
+        @endif
+    </div>
+
     {{-- タブセクション --}}
     <div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
         <div class="flex border-b border-gray-200 overflow-x-auto">
