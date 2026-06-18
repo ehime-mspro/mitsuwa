@@ -154,12 +154,6 @@
                     <div class="text-xs text-gray-500 mb-0.5">回収開始日</div>
                     <div class="text-sm font-semibold text-gray-900">{{ $recovery['recovery_started_at']?->format('Y/m') ?? '—' }}</div>
                 </div>
-                @if($investment->contract && $investment->contract->first_month_recovery !== null)
-                    <div>
-                        <div class="text-xs text-gray-500 mb-0.5">初月回収額</div>
-                        <div class="text-sm font-semibold text-gray-900">{{ number_format($investment->contract->first_month_recovery) }}円（日割り）</div>
-                    </div>
-                @endif
             </div>
 
             {{-- プログレスバー --}}
