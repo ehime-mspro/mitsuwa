@@ -37,7 +37,7 @@
         </div>
     @endif
 
-<div x-data="contractEditForm()" x-init="init()">
+<div x-data="contractEditForm()">
     <form method="POST" action="{{ route('tenant.contracts.update', $contract) }}" enctype="multipart/form-data">
         @csrf
         @method('PUT')
@@ -371,22 +371,6 @@
             'description' => '申込書・特約条件等',
         ])
 
-        {{-- 関連投資案件 --}}
-        <div class="bg-white border border-gray-200 rounded-lg p-5 mb-3">
-            <div class="text-sm font-bold text-gray-800 pb-2 mb-3.5 border-b border-gray-200">関連投資案件（任意）</div>
-            <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-1">関連投資案件</label>
-                <input type="hidden" name="investment_id" :value="investmentId">
-                <select x-ref="investmentSelect" x-model="investmentId"
-                        class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 bg-white focus:border-emerald-500 focus:outline-none cursor-pointer">
-                    <option value="">— なし —</option>
-                </select>
-                <p x-show="!loadingInvestments && investments.length === 0" x-cloak class="text-xs text-gray-500 mt-1">この区画に紐付け可能な投資案件はありません</p>
-                <p x-show="loadingInvestments" x-cloak class="text-xs text-gray-500 mt-1">読み込み中...</p>
-                <p class="text-xs text-gray-500 mt-1">投資案件を選ぶと回収が開始されます。選択を外すと紐付けを解除します。</p>
-            </div>
-        </div>
-
         {{-- 備考 --}}
         <div class="bg-white border border-gray-200 rounded-lg p-5 mb-3">
             <div class="text-sm font-bold text-gray-800 pb-2 mb-3.5 border-b border-gray-200">備考</div>
@@ -432,58 +416,6 @@ function contractEditForm() {
         rentStartDate: '{{ old('rent_start_date', $contract->rent_start_date?->format('Y-m-d') ?? '') }}',
         initialMonthType: '{{ old('initial_month_type', $contract->initial_month_type?->value ?? 'full') }}',
         manualInitialAmount: {{ old('initial_month_amount', $contract->initial_month_amount ?? 0) }},
-
-        // 関連投資案件（区画は固定）
-        unitId: '{{ $contract->unit_id }}',
-        investmentId: '{{ old('investment_id', $contract->investment?->id ?? '') }}',
-        investments: [],
-        loadingInvestments: false,
-        currentInvestment: @json($currentInvestment),
-
-        init: function() {
-            this.fetchInvestments();
-        },
-
-        // 投資案件データを取得してセレクトを描画（現在紐付け中の案件をマージ）
-        fetchInvestments: function() {
-            if (!this.unitId) {
-                this.investments = [];
-                this.renderInvestments();
-                return;
-            }
-            var self = this;
-            self.loadingInvestments = true;
-            fetch('{{ url("/api/tenant/units") }}/' + self.unitId + '/investments')
-                .then(function(res) { return res.json(); })
-                .then(function(data) {
-                    self.investments = data;
-                    // forUnit は紐付け済みを除外するため、現在の紐付け先を手動で含める
-                    if (self.currentInvestment) {
-                        var found = false;
-                        for (var i = 0; i < data.length; i++) {
-                            if (String(data[i].id) === String(self.currentInvestment.id)) { found = true; break; }
-                        }
-                        if (!found) { self.investments.unshift(self.currentInvestment); }
-                    }
-                    self.renderInvestments();
-                })
-                .catch(function(e) { console.error('投資案件取得エラー:', e); self.investments = []; self.renderInvestments(); })
-                .finally(function() { self.loadingInvestments = false; });
-        },
-
-        // 投資案件セレクトのオプションを DOM 操作で描画
-        renderInvestments: function() {
-            var sel = this.$refs.investmentSelect;
-            if (!sel) return;
-            while (sel.options.length > 1) { sel.remove(1); }
-            for (var i = 0; i < this.investments.length; i++) {
-                var inv = this.investments[i];
-                var label = inv.investment_number + '（' + inv.pattern_label + '・' + Number(inv.total_amount).toLocaleString() + '円）';
-                var opt = new Option(label, inv.id);
-                if (String(inv.id) === String(this.investmentId)) { opt.selected = true; }
-                sel.add(opt);
-            }
-        },
 
         // --- 顧客Ajax検索メソッド ---
         searchCustomers: function() {

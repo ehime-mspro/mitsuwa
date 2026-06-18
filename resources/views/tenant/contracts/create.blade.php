@@ -426,24 +426,6 @@
             'description' => '申込書・特約条件等',
         ])
 
-        {{-- 関連投資案件 --}}
-        <div class="bg-white border border-gray-200 rounded-lg p-5 mb-3">
-            <div class="text-sm font-bold text-gray-800 pb-2 mb-3.5 border-b border-gray-200">関連投資案件（任意）</div>
-            <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-1">関連投資案件</label>
-                <input type="hidden" name="investment_id" :value="investmentId">
-                <select x-ref="investmentSelect" x-model="investmentId" :disabled="!unitId"
-                        class="form-input w-full h-[40px] px-3 border rounded-md text-sm focus:outline-none cursor-pointer"
-                        :class="!unitId ? 'border-gray-300 bg-gray-50 text-gray-400 cursor-not-allowed' : 'border-gray-300 bg-white text-gray-800 focus:border-emerald-500'">
-                    <option value="">— なし —</option>
-                </select>
-                <p x-show="!unitId" class="text-xs text-gray-500 mt-1">区画を選択すると、未紐付けの投資案件が表示されます</p>
-                <p x-show="unitId && !loadingInvestments && investments.length === 0" x-cloak class="text-xs text-gray-500 mt-1">この区画に紐付け可能な投資案件はありません</p>
-                <p x-show="unitId && !loadingInvestments && investments.length > 0" x-cloak class="text-xs text-gray-500 mt-1">選択すると、契約保存時に投資回収が開始されます</p>
-                <p x-show="loadingInvestments" x-cloak class="text-xs text-gray-500 mt-1">読み込み中...</p>
-            </div>
-        </div>
-
         {{-- 備考 --}}
         <div class="bg-white border border-gray-200 rounded-lg p-5 mb-3">
             <div class="text-sm font-bold text-gray-800 pb-2 mb-3.5 border-b border-gray-200">備考</div>
@@ -473,11 +455,6 @@ function contractCreateForm() {
         garbageFee: @json(old('garbage_fee', '')),
         pestControlFee: @json(old('pest_control_fee', '')),
         deposit: @json(old('deposit', '')),
-
-        // 関連投資案件
-        investmentId: '{{ old('investment_id', '') }}',
-        investments: [],
-        loadingInvestments: false,
 
         // 初月家賃
         rentStartDate: '{{ old('rent_start_date', '') }}',
@@ -570,7 +547,6 @@ function contractCreateForm() {
             // バリデーションエラー後の復元
             if (this.unitIdOld && this.units.length > 0) {
                 this.unitId = this.unitIdOld;
-                this.fetchInvestments();
             }
         },
 
@@ -632,36 +608,6 @@ function contractCreateForm() {
             }
         },
 
-        // 投資案件データを取得してセレクトを描画
-        fetchInvestments: function() {
-            if (!this.unitId) {
-                this.investments = [];
-                this.renderInvestments();
-                return;
-            }
-            var self = this;
-            self.loadingInvestments = true;
-            fetch('{{ url("/api/tenant/units") }}/' + self.unitId + '/investments')
-                .then(function(res) { return res.json(); })
-                .then(function(data) { self.investments = data; self.renderInvestments(); })
-                .catch(function(e) { console.error('投資案件取得エラー:', e); self.investments = []; self.renderInvestments(); })
-                .finally(function() { self.loadingInvestments = false; });
-        },
-
-        // 投資案件セレクトのオプションを DOM 操作で描画
-        renderInvestments: function() {
-            var sel = this.$refs.investmentSelect;
-            if (!sel) return;
-            while (sel.options.length > 1) { sel.remove(1); }
-            for (var i = 0; i < this.investments.length; i++) {
-                var inv = this.investments[i];
-                var label = inv.investment_number + '（' + inv.pattern_label + '・' + Number(inv.total_amount).toLocaleString() + '円）';
-                var opt = new Option(label, inv.id);
-                if (String(inv.id) === String(this.investmentId)) { opt.selected = true; }
-                sel.add(opt);
-            }
-        },
-
         onPropertyChange: function() {
             this.unitId = '';
             this.rent = '';
@@ -670,9 +616,6 @@ function contractCreateForm() {
             this.pestControlFee = '';
             this.deposit = '';
             this.fetchUnits();
-
-            this.investmentId = '';
-            this.fetchInvestments();
 
             // 問合せ起点プリセットでなければ問合せ選択をリセット
             if (!this.isPresetInquiry) {
@@ -697,8 +640,6 @@ function contractCreateForm() {
                 this.pestControlFee = selected.pest_control_fee;
                 this.deposit = selected.deposit;
             }
-            this.investmentId = '';
-            this.fetchInvestments();
         },
 
         // --- 初月家賃計算メソッド ---
