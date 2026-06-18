@@ -84,69 +84,6 @@ class Investment extends Model
     }
 
     // ============================================================
-    // 契約紐付け / 解除
-    // ============================================================
-
-    /**
-     * 契約に紐付け、回収情報をセットして保存する。
-     */
-    public function linkToContract(Contract $contract): void
-    {
-        $this->applyContractLinkage($contract);
-        $this->save();
-    }
-
-    /**
-     * 契約との紐付けを解除して保存する（誤紐付けの訂正用）。
-     */
-    public function unlinkFromContract(): void
-    {
-        $this->clearContractLinkage();
-        $this->save();
-    }
-
-    /**
-     * 契約紐付けに伴う回収情報を属性へ反映する（DB 保存はしない・純粋）。
-     * 回収予定月数は初月家賃相当額を考慮して算出する。
-     */
-    public function applyContractLinkage(Contract $contract): void
-    {
-        $this->contract_id = $contract->id;
-        $this->monthly_rent = $contract->rent;
-        $this->recovery_start_date = $contract->rent_start_date;
-
-        if ($contract->rent > 0 && $this->total_amount > 0) {
-            $initialRent = $contract->initialMonthRent();
-            $remaining = $this->total_amount - $initialRent;
-            $months = ($remaining <= 0) ? 1 : 1 + (int) ceil($remaining / $contract->rent);
-            $this->estimated_recovery_months = $months;
-
-            if ($contract->rent_start_date) {
-                $this->estimated_recovery_date = $contract->rent_start_date->copy()->addMonths($months);
-            }
-        }
-
-        // 計画中 / 工事中 / 工事完了 のみ「回収中」へ昇格（回収完了は維持）
-        if (in_array($this->status?->value, ['planning', 'in_progress', 'completed'], true)) {
-            $this->status = InvestmentStatus::Recovering;
-        }
-    }
-
-    /**
-     * 契約紐付け情報をクリアして属性へ反映する（DB 保存はしない・純粋）。
-     * ステータスは「工事完了」に戻す。
-     */
-    public function clearContractLinkage(): void
-    {
-        $this->contract_id = null;
-        $this->monthly_rent = null;
-        $this->recovery_start_date = null;
-        $this->estimated_recovery_months = null;
-        $this->estimated_recovery_date = null;
-        $this->status = InvestmentStatus::Completed;
-    }
-
-    // ============================================================
     // 回収計算
     // ============================================================
 
@@ -191,10 +128,9 @@ class Investment extends Model
                 continue;
             }
 
+            $rentStartMonth = $contract->rent_start_date->copy()->startOfMonth();
             // 回収対象期間の起点月 = max(賃料開始日, 完成日) の月初
-            $startMonth = $contract->rent_start_date->gt($this->end_date)
-                ? $contract->rent_start_date->copy()->startOfMonth()
-                : $pivotMonth->copy();
+            $startMonth = $rentStartMonth->gt($pivotMonth) ? $rentStartMonth : $pivotMonth->copy();
 
             $endDate = $contract->isTerminated() ? $contract->contract_end_date : $now;
             $endMonth = $endDate->copy()->startOfMonth();
@@ -203,6 +139,9 @@ class Investment extends Model
                 continue;
             }
 
+            // 契約の実初月から数えるか（完成日が家賃発生日以前 ＝ 起点が契約初月）
+            $isContractFirstMonth = $startMonth->eq($rentStartMonth);
+
             // 実際に賃料を積み始める最初の月（表示用）
             if ($recoveryStartedAt === null || $startMonth->lt($recoveryStartedAt)) {
                 $recoveryStartedAt = $startMonth->copy();
@@ -210,10 +149,10 @@ class Investment extends Model
 
             // 初月＝最終月（同月内で完結）
             if ($startMonth->eq($endMonth)) {
-                if ($contract->isTerminated() && $contract->last_month_recovery !== null) {
-                    $totalRecovered += $contract->last_month_recovery;
-                } elseif ($contract->first_month_recovery !== null) {
-                    $totalRecovered += $contract->first_month_recovery;
+                if ($contract->isTerminated()) {
+                    $totalRecovered += $contract->finalMonthRent();
+                } elseif ($isContractFirstMonth) {
+                    $totalRecovered += $contract->initialMonthRent();
                 } else {
                     $totalRecovered += $contract->rent;
                 }
@@ -221,11 +160,9 @@ class Investment extends Model
             }
 
             // ① 初月
-            $totalRecovered += ($contract->first_month_recovery !== null)
-                ? $contract->first_month_recovery
-                : $contract->rent;
+            $totalRecovered += $isContractFirstMonth ? $contract->initialMonthRent() : $contract->rent;
 
-            // ② 中間月（初月翌月〜最終月前月）
+            // ② 中間月（初月翌月〜最終月前月）満額家賃
             $middleStart = $startMonth->copy()->addMonth();
             $middleEnd = $endMonth->copy()->subMonth();
             if ($middleStart->lte($middleEnd)) {
@@ -234,8 +171,8 @@ class Investment extends Model
             }
 
             // ③ 最終月
-            if ($contract->isTerminated() && $contract->last_month_recovery !== null) {
-                $totalRecovered += $contract->last_month_recovery;
+            if ($contract->isTerminated()) {
+                $totalRecovered += $contract->finalMonthRent();
             } else {
                 $totalRecovered += $contract->rent;
             }
@@ -263,6 +200,41 @@ class Investment extends Model
             'is_active'           => $activeContract !== null,
             'recovery_started_at' => $recoveryStartedAt,
         ];
+    }
+
+    /**
+     * 回収状態ラベル。end_date 未設定なら null（呼び出し側は workflow status を表示）。
+     * $rate は calculateRecovery()['recovery_rate']（または保存済み recovery_rate）。
+     */
+    public function recoveryLabel(float $rate): ?string
+    {
+        if (! $this->end_date) {
+            return null;
+        }
+        if ($rate >= 100) {
+            return '回収完了';
+        }
+        if ($rate > 0) {
+            return '回収中';
+        }
+        return '回収待ち';
+    }
+
+    /**
+     * 回収状態バッジの CSS クラス（recoveryLabel と対）。既存バッジクラスを流用。
+     */
+    public function recoveryBadgeClass(float $rate): ?string
+    {
+        if (! $this->end_date) {
+            return null;
+        }
+        if ($rate >= 100) {
+            return 'badge-completed';
+        }
+        if ($rate > 0) {
+            return 'badge-recovering';
+        }
+        return 'badge-vacant';
     }
 
     /**

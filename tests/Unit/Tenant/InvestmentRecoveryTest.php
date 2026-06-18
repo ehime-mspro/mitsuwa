@@ -127,4 +127,71 @@ class InvestmentRecoveryTest extends TestCase
         $this->assertEquals(150000, $r['total_recovered']);
         $this->assertEquals(100, $r['recovery_rate']);
     }
+
+    /** 初月日割り → 家賃の日割り分で計上 */
+    public function test_prorated_first_month_counts_daily_rent(): void
+    {
+        // 完成日 2026-03-31。契約 2026-04-10 開始・日割り。2026-04 は30日 → 21日分
+        $r = $this->investment(['end_date' => '2026-03-31'])
+            ->computeRecovery(collect([$this->contract([
+                'rent_start_date'    => '2026-04-10',
+                'initial_month_type' => 'prorated',
+            ])]));
+
+        $aprRent = (int) round(100000 * (30 - 10 + 1) / 30); // 21日分
+        // 04(日割り) + 05,06(満額) = aprRent + 200000
+        $this->assertEquals($aprRent + 200000, $r['total_recovered']);
+    }
+
+    /** フリーレント初月 → 0 計上 */
+    public function test_free_first_month_counts_zero(): void
+    {
+        $r = $this->investment(['end_date' => '2026-03-31'])
+            ->computeRecovery(collect([$this->contract([
+                'rent_start_date'    => '2026-04-01',
+                'initial_month_type' => 'free',
+            ])]));
+
+        // 04=0, 05=100000, 06=100000 = 200000
+        $this->assertEquals(200000, $r['total_recovered']);
+    }
+
+    /** 入居途中で完成（起点が完成日月）→ その月は満額家賃（初月日割りを適用しない） */
+    public function test_midtenancy_completion_uses_full_rent(): void
+    {
+        // 契約 2026-01-10 開始・日割り、完成日 2026-04-30。起点=2026-04（契約初月でない）
+        $r = $this->investment(['end_date' => '2026-04-30'])
+            ->computeRecovery(collect([$this->contract([
+                'rent_start_date'    => '2026-01-10',
+                'initial_month_type' => 'prorated',
+            ])]));
+
+        // 04,05,06 × 100000 = 300000（04 は満額・日割りしない）
+        $this->assertEquals(300000, $r['total_recovered']);
+    }
+
+    /** 解約月日割り → 家賃の日割り分で打ち切り */
+    public function test_terminated_final_month_prorated(): void
+    {
+        // 完成日 2025-12-31、契約 2026-01-01 開始満額・2026-03-15 解約日割り
+        $r = $this->investment(['end_date' => '2025-12-31', 'total_amount' => 10000000])
+            ->computeRecovery(collect([$this->contract([
+                'status'            => 'terminated',
+                'rent_start_date'   => '2026-01-01',
+                'contract_end_date' => '2026-03-15',
+                'final_month_type'  => 'prorated',
+            ])]));
+
+        $marRent = (int) round(100000 * 15 / 31); // 2026-03 は31日
+        // 01,02 満額 + 03 日割り = 200000 + marRent
+        $this->assertEquals(200000 + $marRent, $r['total_recovered']);
+    }
+
+    /** 空室（契約なし）→ 回収0（回収待ち相当） */
+    public function test_vacant_unit_returns_zero(): void
+    {
+        $r = $this->investment(['end_date' => '2026-03-31'])->computeRecovery(collect([]));
+        $this->assertEquals(0, $r['total_recovered']);
+        $this->assertNull($r['recovery_started_at']);
+    }
 }
