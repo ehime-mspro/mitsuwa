@@ -438,12 +438,7 @@ function contractEditForm() {
         investmentId: '{{ old('investment_id', $contract->investment?->id ?? '') }}',
         investments: [],
         loadingInvestments: false,
-        currentInvestment: @json($contract->investment ? [
-            'id'                => $contract->investment->id,
-            'investment_number' => $contract->investment->investment_number,
-            'pattern_label'     => $contract->investment->pattern->label(),
-            'total_amount'      => $contract->investment->total_amount,
-        ] : null),
+        currentInvestment: @json($currentInvestment),
 
         init: function() {
             this.fetchInvestments();

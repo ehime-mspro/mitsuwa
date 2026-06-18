@@ -278,7 +278,7 @@ class ContractController extends Controller
             return back()->with('error', '解約済みの契約は編集できません。');
         }
 
-        $contract->load(['property', 'unit', 'customer']);
+        $contract->load(['property', 'unit', 'customer', 'investment']);
 
         // バリデーションエラー時: old('customer_id') が現在の契約と異なる場合、新しい顧客をロード
         $displayCustomer = $contract->customer;
@@ -289,7 +289,16 @@ class ContractController extends Controller
             }
         }
 
-        return view('tenant.contracts.edit', compact('contract', 'displayCustomer'));
+        // 現在紐付く投資案件（JS セレクトのマージ用）。
+        // ※ Blade の @json に多行配列リテラルを渡すとコンパイルが壊れるため、必ずここで配列を組み立てて渡す。
+        $currentInvestment = $contract->investment ? [
+            'id'                => $contract->investment->id,
+            'investment_number' => $contract->investment->investment_number,
+            'pattern_label'     => $contract->investment->pattern->label(),
+            'total_amount'      => $contract->investment->total_amount,
+        ] : null;
+
+        return view('tenant.contracts.edit', compact('contract', 'displayCustomer', 'currentInvestment'));
     }
 
     /**
