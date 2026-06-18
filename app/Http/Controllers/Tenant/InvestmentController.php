@@ -2,14 +2,12 @@
 
 namespace App\Http\Controllers\Tenant;
 
-use App\Enums\ContractStatus;
 use App\Enums\DepartmentCode;
 use App\Enums\InvestmentPattern;
 use App\Enums\InvestmentStatus;
 use App\Enums\OperationStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Attachment;
-use App\Models\Contract;
 use App\Models\Investment;
 use App\Models\InvestmentDetail;
 use App\Models\Property;
@@ -90,7 +88,7 @@ class InvestmentController extends Controller
     /**
      * 投資案件登録フォーム
      */
-    public function create()
+    public function create(Request $request)
     {
         $nextNumber = $this->generateInvestmentNumber();
 
@@ -101,8 +99,19 @@ class InvestmentController extends Controller
         // 全区画（物件ごと）— ラベルをController側で整形
         $allUnits = $this->buildUnitOptions($properties);
 
+        // 区画詳細からの「この区画に投資を登録」プリセット
+        $presetPropertyId = null;
+        $presetUnitId = null;
+        if ($request->filled('unit_id')) {
+            $unit = Unit::find($request->query('unit_id'));
+            if ($unit) {
+                $presetUnitId = $unit->id;
+                $presetPropertyId = $unit->property_id;
+            }
+        }
+
         return view('tenant.investments.create', compact(
-            'nextNumber', 'properties', 'allUnits'
+            'nextNumber', 'properties', 'allUnits', 'presetPropertyId', 'presetUnitId'
         ));
     }
 
@@ -186,28 +195,25 @@ class InvestmentController extends Controller
      */
     public function show(Investment $investment)
     {
-        $investment->load(['property', 'unit', 'contract.customer', 'details', 'attachments.uploadedByUser']);
+        $investment->load(['property', 'unit', 'details', 'attachments.uploadedByUser']);
 
-        // 回収情報を動的計算
+        // 回収情報を動的計算（区画ベース・家賃のみ）
         $recovery = $investment->calculateRecovery();
+        $rate = (float) $recovery['recovery_rate'];
 
-        // 回収完了チェック: 累計回収額 ≧ 投資総額 → ステータス自動変更
-        if ($recovery['recovery_rate'] >= 100
-            && $investment->status === InvestmentStatus::Recovering) {
-            $investment->update([
-                'status'          => InvestmentStatus::Recovered,
+        // 自動遷移＋遅延更新（完成日あり前提）。回収率に応じて status を前進方向に永続化。
+        if ($investment->end_date) {
+            $updates = [
                 'total_recovered' => $recovery['total_recovered'],
-                'recovery_rate'   => $recovery['recovery_rate'],
-            ]);
+                'recovery_rate'   => $rate,
+            ];
+            if ($rate >= 100) {
+                $updates['status'] = InvestmentStatus::Recovered->value;
+            } elseif ($rate > 0 && $investment->status !== InvestmentStatus::Recovered) {
+                $updates['status'] = InvestmentStatus::Recovering->value;
+            }
+            $investment->update($updates);
             $investment->refresh();
-        }
-
-        // DB値も更新（遅延更新方式）
-        if ($investment->status === InvestmentStatus::Recovering) {
-            $investment->update([
-                'total_recovered' => $recovery['total_recovered'],
-                'recovery_rate'   => $recovery['recovery_rate'],
-            ]);
         }
 
         // 削除済み添付ファイル（削除履歴表示用）
@@ -218,14 +224,7 @@ class InvestmentController extends Controller
             ->orderByDesc('deleted_at')
             ->get();
 
-        // 紐付け候補: その区画の契約中の契約（導線②）
-        $linkableContracts = Contract::where('unit_id', $investment->unit_id)
-            ->where('status', ContractStatus::Active->value)
-            ->with('customer')
-            ->orderByDesc('rent_start_date')
-            ->get();
-
-        return view('tenant.investments.show', compact('investment', 'recovery', 'deletedAttachments', 'linkableContracts'));
+        return view('tenant.investments.show', compact('investment', 'recovery', 'deletedAttachments'));
     }
 
     /**
@@ -338,67 +337,6 @@ class InvestmentController extends Controller
 
         return redirect()->route('tenant.investments.index')
             ->with('success', '投資案件を削除しました。');
-    }
-
-    /**
-     * 区画の未紐づけ投資案件取得（Ajax API）
-     */
-    public function forUnit(Unit $unit)
-    {
-        $investments = Investment::where('unit_id', $unit->id)
-            ->whereNull('contract_id')
-            ->whereIn('status', [
-                InvestmentStatus::Planning->value,
-                InvestmentStatus::InProgress->value,
-                InvestmentStatus::Completed->value,
-                InvestmentStatus::Recovering->value,
-            ])
-            ->get(['id', 'investment_number', 'pattern', 'total_amount'])
-            ->map(function ($inv) {
-                return [
-                    'id'                => $inv->id,
-                    'investment_number' => $inv->investment_number,
-                    'pattern_label'     => $inv->pattern->label(),
-                    'total_amount'      => $inv->total_amount,
-                ];
-            });
-
-        return response()->json($investments);
-    }
-
-    /**
-     * 投資案件を契約に紐付けて回収を開始する（導線②）。
-     * Route: POST /tenant/investments/{investment}/link-contract
-     */
-    public function linkContract(Request $request, Investment $investment)
-    {
-        $validated = $request->validate([
-            'contract_id' => 'required|exists:contracts,id',
-        ]);
-
-        $contract = Contract::findOrFail($validated['contract_id']);
-
-        // 区画一致を検証
-        if ($contract->unit_id !== $investment->unit_id) {
-            return back()->withErrors(['contract_id' => '選択された契約はこの投資案件の区画のものではありません。']);
-        }
-
-        $investment->linkToContract($contract);
-
-        return redirect()->route('tenant.investments.show', $investment)
-            ->with('success', '契約に紐付けて回収を開始しました。');
-    }
-
-    /**
-     * 投資案件と契約の紐付けを解除する（導線②・誤紐付けの訂正用）。
-     * Route: DELETE /tenant/investments/{investment}/unlink-contract
-     */
-    public function unlinkContract(Investment $investment)
-    {
-        $investment->unlinkFromContract();
-
-        return redirect()->route('tenant.investments.show', $investment)
-            ->with('success', '契約との紐付けを解除しました。');
     }
 
     /**
