@@ -14,7 +14,6 @@ use App\Models\Contract;
 use App\Models\Customer;
 use App\Models\Inquiry;
 use App\Models\InquiryHistory;
-use App\Models\Investment;
 use App\Models\Property;
 use App\Models\RentRevision;
 use App\Models\Unit;
@@ -133,7 +132,6 @@ class ContractController extends Controller
             'garbage_fee'      => 'nullable|integer|min:0',
             'pest_control_fee' => 'nullable|integer|min:0',
             'deposit'          => 'nullable|integer|min:0',
-            'investment_id'    => 'nullable|exists:investments,id',
             'inquiry_id'       => 'nullable|exists:inquiries,id',
             'notes'            => 'nullable|string|max:5000',
             'guarantor1_name'      => 'nullable|string|max:100',
@@ -182,22 +180,16 @@ class ContractController extends Controller
         $validated['department'] = DepartmentCode::Tenant->value;
         $validated['status'] = ContractStatus::Active->value;
 
-        $investmentId = $validated['investment_id'] ?? null;
         $inquiryId = $validated['inquiry_id'] ?? null;
-        unset($validated['investment_id'], $validated['inquiry_id'], $validated['attachments']);
+        unset($validated['inquiry_id'], $validated['attachments']);
 
         try {
-            $contract = DB::transaction(function () use ($validated, $unit, $investmentId, $inquiryId) {
+            $contract = DB::transaction(function () use ($validated, $unit, $inquiryId) {
                 // 契約保存
                 $contract = Contract::create($validated);
 
                 // 区画ステータスを「入居中」に更新
                 $unit->update(['status' => UnitStatus::Occupied->value]);
-
-                // 投資案件連携
-                if ($investmentId) {
-                    $this->linkInvestment($investmentId, $contract);
-                }
 
                 // 問合せ連携（契約起点の成約処理）
                 if ($inquiryId) {
@@ -210,12 +202,9 @@ class ContractController extends Controller
             // 契約番号の重複（同時アクセス）の場合はリトライ
             if (str_contains($e->getMessage(), 'Duplicate entry')) {
                 $validated['contract_number'] = $this->generateContractNumber();
-                $contract = DB::transaction(function () use ($validated, $unit, $investmentId, $inquiryId) {
+                $contract = DB::transaction(function () use ($validated, $unit, $inquiryId) {
                     $contract = Contract::create($validated);
                     $unit->update(['status' => UnitStatus::Occupied->value]);
-                    if ($investmentId) {
-                        $this->linkInvestment($investmentId, $contract);
-                    }
                     if ($inquiryId) {
                         $this->linkInquiry($inquiryId, $contract);
                     }
@@ -244,7 +233,6 @@ class ContractController extends Controller
             'property',
             'unit',
             'customer',
-            'investment',
             'rentRevisions' => function ($q) {
                 $q->with('revisedByUser')->orderByDesc('revision_date');
             },
@@ -278,7 +266,7 @@ class ContractController extends Controller
             return back()->with('error', '解約済みの契約は編集できません。');
         }
 
-        $contract->load(['property', 'unit', 'customer', 'investment']);
+        $contract->load(['property', 'unit', 'customer']);
 
         // バリデーションエラー時: old('customer_id') が現在の契約と異なる場合、新しい顧客をロード
         $displayCustomer = $contract->customer;
@@ -289,16 +277,7 @@ class ContractController extends Controller
             }
         }
 
-        // 現在紐付く投資案件（JS セレクトのマージ用）。
-        // ※ Blade の @json に多行配列リテラルを渡すとコンパイルが壊れるため、必ずここで配列を組み立てて渡す。
-        $currentInvestment = $contract->investment ? [
-            'id'                => $contract->investment->id,
-            'investment_number' => $contract->investment->investment_number,
-            'pattern_label'     => $contract->investment->pattern->label(),
-            'total_amount'      => $contract->investment->total_amount,
-        ] : null;
-
-        return view('tenant.contracts.edit', compact('contract', 'displayCustomer', 'currentInvestment'));
+        return view('tenant.contracts.edit', compact('contract', 'displayCustomer'));
     }
 
     /**
@@ -322,7 +301,6 @@ class ContractController extends Controller
             'garbage_fee'      => 'nullable|integer|min:0',
             'pest_control_fee' => 'nullable|integer|min:0',
             'deposit'          => 'nullable|integer|min:0',
-            'investment_id'    => 'nullable|exists:investments,id',
             'notes'            => 'nullable|string|max:5000',
             'guarantor1_name'      => 'nullable|string|max:100',
             'guarantor1_address'   => 'nullable|string|max:500',
@@ -355,14 +333,9 @@ class ContractController extends Controller
             'initial'
         );
 
-        // investment_id は契約カラムではないため $validated から除外（別途同期）
-        $investmentId = $validated['investment_id'] ?? null;
-        unset($validated['investment_id'], $validated['attachments']);
+        unset($validated['attachments']);
 
         $contract->update($validated);
-
-        // 関連投資案件の紐付けを同期（紐付け / 付け替え / 解除）
-        $this->syncContractInvestment($contract, ($investmentId !== null && $investmentId !== '') ? (int) $investmentId : null);
 
         // 添付ファイルの保存
         $this->saveAttachments($request, $contract, 'contracts');
@@ -520,13 +493,6 @@ class ContractController extends Controller
                 'garbage_fee'      => $validated['new_garbage_fee'] ?? 0,
                 'pest_control_fee' => $validated['new_pest_control_fee'] ?? 0,
             ]);
-
-            // 関連投資案件がある場合、改定後の家賃で回収予定を再計算
-            $investment = $contract->investment;
-            if ($investment) {
-                // この時点で $contract->rent は新家賃に更新済み
-                $investment->linkToContract($contract);
-            }
         });
 
         return redirect()
@@ -619,60 +585,6 @@ class ContractController extends Controller
         }
 
         return $prefix . '001';
-    }
-
-    /**
-     * 投資案件を契約に連携する（store 用の薄いラッパ）。
-     * 区画一致を検証し、回収情報のセットは Investment モデルへ委譲する。
-     */
-    private function linkInvestment(int $investmentId, Contract $contract): void
-    {
-        $investment = Investment::find($investmentId);
-        if (! $investment) {
-            return;
-        }
-
-        // 区画一致を検証（不一致なら紐付けしない）
-        if ($investment->unit_id !== $contract->unit_id) {
-            return;
-        }
-
-        $investment->linkToContract($contract);
-    }
-
-    /**
-     * 契約編集時に関連投資案件の紐付けを同期する（導線③）。
-     * 付け替え・解除に対応。不正なターゲット（区画不一致 / 他契約に紐付け済み）は無視する。
-     */
-    private function syncContractInvestment(Contract $contract, ?int $newInvestmentId): void
-    {
-        $current = $contract->investment; // 現在この契約に紐付く投資案件（HasOne）
-        $currentId = $current?->id;
-
-        if ($currentId === $newInvestmentId) {
-            return; // 変更なし
-        }
-
-        // 新ターゲットの妥当性を先に検証（無効なら既存紐付けは維持）
-        $new = $newInvestmentId ? Investment::find($newInvestmentId) : null;
-        if ($newInvestmentId) {
-            $invalid = ! $new
-                || $new->unit_id !== $contract->unit_id
-                || ($new->contract_id !== null && $new->contract_id !== $contract->id);
-            if ($invalid) {
-                return;
-            }
-        }
-
-        // 既存を解除（付け替え / 解除）
-        if ($current) {
-            $current->unlinkFromContract();
-        }
-
-        // 新規を紐付け
-        if ($new) {
-            $new->linkToContract($contract);
-        }
     }
 
     /**
