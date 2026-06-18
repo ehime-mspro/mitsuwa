@@ -99,11 +99,15 @@
                     <label class="block text-sm font-semibold text-gray-700 mb-1">ステータス<span class="text-red-600 ml-0.5">*</span></label>
                     <select name="status"
                             class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none cursor-pointer">
-                        @foreach(\App\Enums\InvestmentStatus::cases() as $s)
-                            <option value="{{ $s->value }}" {{ old('status', $investment->status->value) === $s->value ? 'selected' : '' }}>{{ $s->label() }}</option>
-                        @endforeach
+                        @php
+                            // 回収中/回収完了 は完成日＋区画の契約家賃から自動判定。フォームでは基底の工事ワークフローのみ選ばせる。
+                            $workflowStatus = old('status', in_array($investment->status->value, ['recovering', 'recovered'], true) ? 'completed' : $investment->status->value);
+                        @endphp
+                        <option value="planning" {{ $workflowStatus === 'planning' ? 'selected' : '' }}>計画中</option>
+                        <option value="in_progress" {{ $workflowStatus === 'in_progress' ? 'selected' : '' }}>工事中</option>
+                        <option value="completed" {{ $workflowStatus === 'completed' ? 'selected' : '' }}>工事完了</option>
                     </select>
-                    <p class="text-xs text-gray-500 mt-1">※編集時は全ステータス選択可（手動補正用）</p>
+                    <p class="text-xs text-gray-500 mt-1">※「回収中」「回収完了」は工事完了日の設定後、区画の契約家賃から自動判定されます（手動設定不可）。</p>
                 </div>
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1">施工業者名</label>

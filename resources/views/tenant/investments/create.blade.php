@@ -104,7 +104,7 @@
                         <option value="in_progress" {{ old('status') === 'in_progress' ? 'selected' : '' }}>工事中</option>
                         <option value="completed" {{ old('status') === 'completed' ? 'selected' : '' }}>工事完了</option>
                     </select>
-                    <p class="text-xs text-gray-500 mt-1">※「回収中」は契約紐づけ時に自動変更。「回収完了」は回収額到達時に自動変更。</p>
+                    <p class="text-xs text-gray-500 mt-1">※ 工事完了日を設定すると、区画の契約家賃から「回収中」「回収完了」を自動判定します（家賃のみで計上）。</p>
                 </div>
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1">施工業者名</label>

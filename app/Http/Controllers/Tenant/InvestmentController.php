@@ -263,7 +263,7 @@ class InvestmentController extends Controller
             'property_id'      => 'required|exists:properties,id',
             'unit_id'          => 'required|exists:units,id',
             'pattern'          => 'required|in:' . implode(',', array_column(InvestmentPattern::cases(), 'value')),
-            'status'           => 'required|in:' . implode(',', array_column(InvestmentStatus::cases(), 'value')),
+            'status'           => 'required|in:planning,in_progress,completed',
             'description'      => 'nullable|string|max:5000',
             'contractor_name'  => 'nullable|string|max:200',
             'start_date'       => 'nullable|date',
