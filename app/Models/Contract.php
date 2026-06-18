@@ -240,4 +240,40 @@ class Contract extends Model
         $initialAmount = $this->initial_month_amount ?? $monthlyTotal;
         return (int) round($initialAmount * $this->rent / $monthlyTotal);
     }
+
+    /**
+     * 解約月の家賃のうち「家賃相当額」を返す（投資回収計算用）。
+     * initialMonthRent() と対。final_month_amount は月額合計ベースのため家賃比率で按分。
+     */
+    public function finalMonthRent(): int
+    {
+        $type = $this->final_month_type?->value ?? 'full';
+
+        if ($type === 'full' || ! $this->contract_end_date) {
+            return $this->rent;
+        }
+
+        if ($type === 'free') {
+            return 0;
+        }
+
+        if ($type === 'prorated') {
+            $date = $this->contract_end_date;
+            $totalDays = $date->daysInMonth;
+            $usedDays = $date->day; // 1日〜契約終了日
+            return (int) round($this->rent * $usedDays / $totalDays);
+        }
+
+        if ($type === 'half') {
+            return (int) round($this->rent / 2);
+        }
+
+        // manual: 月額合計に対する家賃比率で按分
+        $monthlyTotal = $this->rent + ($this->common_fee ?? 0) + ($this->garbage_fee ?? 0) + ($this->pest_control_fee ?? 0);
+        if ($monthlyTotal <= 0) {
+            return 0;
+        }
+        $finalAmount = $this->final_month_amount ?? $monthlyTotal;
+        return (int) round($finalAmount * $this->rent / $monthlyTotal);
+    }
 }
