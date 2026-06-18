@@ -204,4 +204,40 @@ class Contract extends Model
     {
         return $this->hasGuarantor1() || $this->hasGuarantor2();
     }
+
+    /**
+     * 初月家賃のうち「家賃相当額」を返す（投資回収計算用）。
+     * initial_month_amount は月額合計ベースのため、家賃比率で按分する。
+     */
+    public function initialMonthRent(): int
+    {
+        $type = $this->initial_month_type?->value ?? 'full';
+
+        if ($type === 'full' || ! $this->rent_start_date) {
+            return $this->rent;
+        }
+
+        if ($type === 'free') {
+            return 0;
+        }
+
+        if ($type === 'prorated') {
+            $date = $this->rent_start_date;
+            $totalDays = $date->daysInMonth;
+            $usedDays = $totalDays - $date->day + 1;
+            return (int) round($this->rent * $usedDays / $totalDays);
+        }
+
+        if ($type === 'half') {
+            return (int) round($this->rent / 2);
+        }
+
+        // manual: 月額合計に対する家賃比率で按分
+        $monthlyTotal = $this->rent + ($this->common_fee ?? 0) + ($this->garbage_fee ?? 0) + ($this->pest_control_fee ?? 0);
+        if ($monthlyTotal <= 0) {
+            return 0;
+        }
+        $initialAmount = $this->initial_month_amount ?? $monthlyTotal;
+        return (int) round($initialAmount * $this->rent / $monthlyTotal);
+    }
 }
