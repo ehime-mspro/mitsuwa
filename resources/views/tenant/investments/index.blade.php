@@ -104,7 +104,8 @@
                                     @endif
                                 </td>
                                 <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
-                                    <span class="badge {{ $inv->status->badgeClass() }}">{{ $inv->status->label() }}</span>
+                                    @php($invRate = (float) $inv->recovery_rate)
+                                    <span class="badge {{ $inv->recoveryBadgeClass($invRate) ?? $inv->status->badgeClass() }}">{{ $inv->recoveryLabel($invRate) ?? $inv->status->label() }}</span>
                                 </td>
                                 <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
                                     <div style="display:flex;gap:6px;justify-content:center">
