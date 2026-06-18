@@ -69,7 +69,7 @@
                         @endphp
                         <optgroup label="稼働中">
                             @foreach($activeProps as $prop)
-                                <option value="{{ $prop->id }}" {{ old('property_id') == $prop->id ? 'selected' : '' }}>
+                                <option value="{{ $prop->id }}" {{ old('property_id', $presetPropertyId ?? '') == $prop->id ? 'selected' : '' }}>
                                     {{ $prop->name }}（{{ $prop->code }}）
                                 </option>
                             @endforeach
@@ -77,7 +77,7 @@
                         @if($inactiveProps->isNotEmpty())
                             <optgroup label="非稼働">
                                 @foreach($inactiveProps as $prop)
-                                    <option value="{{ $prop->id }}" {{ old('property_id') == $prop->id ? 'selected' : '' }}>
+                                    <option value="{{ $prop->id }}" {{ old('property_id', $presetPropertyId ?? '') == $prop->id ? 'selected' : '' }}>
                                         {{ $prop->name }}（{{ $prop->code }}）
                                     </option>
                                 @endforeach
@@ -91,7 +91,7 @@
                             class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none cursor-pointer">
                         <option value="">— 物件を先に選択 —</option>
                         <template x-for="u in filteredUnits" :key="u.id">
-                            <option :value="u.id" :selected="u.id == '{{ old('unit_id') }}'" x-text="u.label"></option>
+                            <option :value="u.id" :selected="u.id == '{{ old('unit_id', $presetUnitId ?? '') }}'" x-text="u.label"></option>
                         </template>
                     </select>
                     <p class="text-xs text-gray-500 mt-1" x-show="!propertyId">物件を選択すると区画が表示されます</p>
@@ -239,8 +239,8 @@ function investmentForm() {
     const allUnits = @json($allUnits);
 
     return {
-        propertyId: '{{ old('property_id', '') }}',
-        unitId: '{{ old('unit_id', '') }}',
+        propertyId: '{{ old('property_id', $presetPropertyId ?? '') }}',
+        unitId: '{{ old('unit_id', $presetUnitId ?? '') }}',
         filteredUnits: [],
         details: [
             { cost_item: 'interior', contractor_name: '', amount: '', executed_at: '', notes: '' }
