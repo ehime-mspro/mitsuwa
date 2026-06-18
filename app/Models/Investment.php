@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Collection;
 
 class Investment extends Model
 {
@@ -150,38 +151,39 @@ class Investment extends Model
     // ============================================================
 
     /**
-     * 累計回収額を動的に計算する
-     * 区画の全契約履歴から、月初基準＋初月/最終月調整で集計
+     * 累計回収額を動的に計算する（DB から区画の全契約を取得して委譲）。
+     * 集計起点は投資の完成日 end_date。
      */
     public function calculateRecovery(): array
     {
-        // 回収開始日がない（＝まだ契約未紐づけ）→ 回収ゼロ
-        if (! $this->recovery_start_date) {
-            return [
-                'total_recovered'  => 0,
-                'recovery_rate'    => 0,
-                'estimated_months' => null,
-                'current_rent'     => null,
-                'is_active'        => false,
-            ];
+        // 完成日（工事完了日）が未設定 → 回収対象外（ゼロ）
+        if (! $this->end_date) {
+            return $this->emptyRecovery();
         }
 
-        // この区画の全契約を取得（回収開始日以降に関わるもの）
+        // この区画の全契約を家賃発生日順で取得し、純粋計算へ委譲
         $contracts = Contract::where('unit_id', $this->unit_id)
-            ->where(function ($q) {
-                $q->where('rent_start_date', '>=', $this->recovery_start_date)
-                  ->orWhere(function ($q2) {
-                      $q2->where('rent_start_date', '<', $this->recovery_start_date)
-                          ->where(function ($q3) {
-                              $q3->whereNull('contract_end_date')
-                                  ->orWhere('contract_end_date', '>=', $this->recovery_start_date);
-                          });
-                  });
-            })
             ->orderBy('rent_start_date')
             ->get();
 
+        return $this->computeRecovery($contracts);
+    }
+
+    /**
+     * 区画の契約コレクションから回収状況を算出する（DB 非依存・純粋関数）。
+     * 各契約を max(賃料開始日, 完成日) の月から積み、解約月で積み止める。
+     *
+     * @param  \Illuminate\Support\Collection<int, \App\Models\Contract>  $contracts
+     */
+    public function computeRecovery(Collection $contracts): array
+    {
+        if (! $this->end_date) {
+            return $this->emptyRecovery();
+        }
+
+        $pivotMonth = $this->end_date->copy()->startOfMonth();
         $totalRecovered = 0;
+        $recoveryStartedAt = null;
         $now = now();
 
         foreach ($contracts as $contract) {
@@ -189,20 +191,25 @@ class Investment extends Model
                 continue;
             }
 
-            // 回収対象期間の年月を特定
-            $startMonth = max($contract->rent_start_date, $this->recovery_start_date)->copy()->startOfMonth();
-            $endDate = $contract->isTerminated()
-                ? $contract->contract_end_date
-                : $now;
+            // 回収対象期間の起点月 = max(賃料開始日, 完成日) の月初
+            $startMonth = $contract->rent_start_date->gt($this->end_date)
+                ? $contract->rent_start_date->copy()->startOfMonth()
+                : $pivotMonth->copy();
+
+            $endDate = $contract->isTerminated() ? $contract->contract_end_date : $now;
             $endMonth = $endDate->copy()->startOfMonth();
 
             if ($startMonth->gt($endMonth)) {
                 continue;
             }
 
-            // 初月
+            // 実際に賃料を積み始める最初の月（表示用）
+            if ($recoveryStartedAt === null || $startMonth->lt($recoveryStartedAt)) {
+                $recoveryStartedAt = $startMonth->copy();
+            }
+
+            // 初月＝最終月（同月内で完結）
             if ($startMonth->eq($endMonth)) {
-                // 初月＝最終月（同月内で完結）
                 if ($contract->isTerminated() && $contract->last_month_recovery !== null) {
                     $totalRecovered += $contract->last_month_recovery;
                 } elseif ($contract->first_month_recovery !== null) {
@@ -235,7 +242,7 @@ class Investment extends Model
         }
 
         // 投資総額が上限
-        $totalRecovered = min($totalRecovered, $this->total_amount);
+        $totalRecovered = (int) min($totalRecovered, $this->total_amount);
 
         $recoveryRate = $this->total_amount > 0
             ? round($totalRecovered / $this->total_amount * 100, 2)
@@ -249,11 +256,27 @@ class Investment extends Model
             : null;
 
         return [
-            'total_recovered'  => $totalRecovered,
-            'recovery_rate'    => $recoveryRate,
-            'estimated_months' => $estimatedMonths,
-            'current_rent'     => $activeContract?->rent,
-            'is_active'        => $activeContract !== null,
+            'total_recovered'     => $totalRecovered,
+            'recovery_rate'       => $recoveryRate,
+            'estimated_months'    => $estimatedMonths,
+            'current_rent'        => $activeContract?->rent,
+            'is_active'           => $activeContract !== null,
+            'recovery_started_at' => $recoveryStartedAt,
+        ];
+    }
+
+    /**
+     * 回収ゼロの戻り値（完成日未設定時）。
+     */
+    private function emptyRecovery(): array
+    {
+        return [
+            'total_recovered'     => 0,
+            'recovery_rate'       => 0,
+            'estimated_months'    => null,
+            'current_rent'        => null,
+            'is_active'           => false,
+            'recovery_started_at' => null,
         ];
     }
 }
