@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers\Tenant;
 
+use App\Enums\ContractStatus;
 use App\Enums\DepartmentCode;
 use App\Enums\InvestmentPattern;
 use App\Enums\InvestmentStatus;
 use App\Enums\OperationStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Attachment;
+use App\Models\Contract;
 use App\Models\Investment;
 use App\Models\InvestmentDetail;
 use App\Models\Property;
@@ -216,7 +218,14 @@ class InvestmentController extends Controller
             ->orderByDesc('deleted_at')
             ->get();
 
-        return view('tenant.investments.show', compact('investment', 'recovery', 'deletedAttachments'));
+        // 紐付け候補: その区画の契約中の契約（導線②）
+        $linkableContracts = Contract::where('unit_id', $investment->unit_id)
+            ->where('status', ContractStatus::Active->value)
+            ->with('customer')
+            ->orderByDesc('rent_start_date')
+            ->get();
+
+        return view('tenant.investments.show', compact('investment', 'recovery', 'deletedAttachments', 'linkableContracts'));
     }
 
     /**
@@ -355,6 +364,41 @@ class InvestmentController extends Controller
             });
 
         return response()->json($investments);
+    }
+
+    /**
+     * 投資案件を契約に紐付けて回収を開始する（導線②）。
+     * Route: POST /tenant/investments/{investment}/link-contract
+     */
+    public function linkContract(Request $request, Investment $investment)
+    {
+        $validated = $request->validate([
+            'contract_id' => 'required|exists:contracts,id',
+        ]);
+
+        $contract = Contract::findOrFail($validated['contract_id']);
+
+        // 区画一致を検証
+        if ($contract->unit_id !== $investment->unit_id) {
+            return back()->withErrors(['contract_id' => '選択された契約はこの投資案件の区画のものではありません。']);
+        }
+
+        $investment->linkToContract($contract);
+
+        return redirect()->route('tenant.investments.show', $investment)
+            ->with('success', '契約に紐付けて回収を開始しました。');
+    }
+
+    /**
+     * 投資案件と契約の紐付けを解除する（導線②・誤紐付けの訂正用）。
+     * Route: DELETE /tenant/investments/{investment}/unlink-contract
+     */
+    public function unlinkContract(Investment $investment)
+    {
+        $investment->unlinkFromContract();
+
+        return redirect()->route('tenant.investments.show', $investment)
+            ->with('success', '契約との紐付けを解除しました。');
     }
 
     /**
