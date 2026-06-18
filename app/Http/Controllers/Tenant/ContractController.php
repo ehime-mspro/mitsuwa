@@ -346,10 +346,14 @@ class ContractController extends Controller
             'initial'
         );
 
-        // property_id, unit_id は変更不可のため除外
+        // investment_id は契約カラムではないため $validated から除外（別途同期）
+        $investmentId = $validated['investment_id'] ?? null;
         unset($validated['investment_id'], $validated['attachments']);
 
         $contract->update($validated);
+
+        // 関連投資案件の紐付けを同期（紐付け / 付け替え / 解除）
+        $this->syncContractInvestment($contract, ($investmentId !== null && $investmentId !== '') ? (int) $investmentId : null);
 
         // 添付ファイルの保存
         $this->saveAttachments($request, $contract, 'contracts');
@@ -625,6 +629,41 @@ class ContractController extends Controller
         }
 
         $investment->linkToContract($contract);
+    }
+
+    /**
+     * 契約編集時に関連投資案件の紐付けを同期する（導線③）。
+     * 付け替え・解除に対応。不正なターゲット（区画不一致 / 他契約に紐付け済み）は無視する。
+     */
+    private function syncContractInvestment(Contract $contract, ?int $newInvestmentId): void
+    {
+        $current = $contract->investment; // 現在この契約に紐付く投資案件（HasOne）
+        $currentId = $current?->id;
+
+        if ($currentId === $newInvestmentId) {
+            return; // 変更なし
+        }
+
+        // 新ターゲットの妥当性を先に検証（無効なら既存紐付けは維持）
+        $new = $newInvestmentId ? Investment::find($newInvestmentId) : null;
+        if ($newInvestmentId) {
+            $invalid = ! $new
+                || $new->unit_id !== $contract->unit_id
+                || ($new->contract_id !== null && $new->contract_id !== $contract->id);
+            if ($invalid) {
+                return;
+            }
+        }
+
+        // 既存を解除（付け替え / 解除）
+        if ($current) {
+            $current->unlinkFromContract();
+        }
+
+        // 新規を紐付け
+        if ($new) {
+            $new->linkToContract($contract);
+        }
     }
 
     /**
