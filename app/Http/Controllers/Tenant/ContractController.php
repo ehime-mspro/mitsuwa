@@ -508,10 +508,11 @@ class ContractController extends Controller
                 'pest_control_fee' => $validated['new_pest_control_fee'] ?? 0,
             ]);
 
-            // 関連投資案件がある場合、月額家賃を更新し回収予定を再計算
+            // 関連投資案件がある場合、改定後の家賃で回収予定を再計算
             $investment = $contract->investment;
             if ($investment) {
-                $this->recalculateInvestment($investment, $validated['new_rent']);
+                // この時点で $contract->rent は新家賃に更新済み
+                $investment->linkToContract($contract);
             }
         });
 
@@ -608,9 +609,8 @@ class ContractController extends Controller
     }
 
     /**
-     * 投資案件を契約に連携する
-     * store() で使用。投資案件の回収情報を自動セット。
-     * 初月が日割り等の場合、初月の家賃相当額を考慮して回収予定を計算。
+     * 投資案件を契約に連携する（store 用の薄いラッパ）。
+     * 区画一致を検証し、回収情報のセットは Investment モデルへ委譲する。
      */
     private function linkInvestment(int $investmentId, Contract $contract): void
     {
@@ -619,63 +619,12 @@ class ContractController extends Controller
             return;
         }
 
-        $investment->contract_id = $contract->id;
-        $investment->monthly_rent = $contract->rent;
-        $investment->recovery_start_date = $contract->rent_start_date;
-
-        // 回収予定月数を自動計算（初月家賃相当額を考慮）
-        if ($contract->rent > 0 && $investment->total_amount > 0) {
-            $initialRent = $this->getInitialMonthRent($contract);
-            $remaining = $investment->total_amount - $initialRent;
-            if ($remaining <= 0) {
-                $months = 1;
-            } else {
-                $months = 1 + (int) ceil($remaining / $contract->rent);
-            }
-            $investment->recovery_months = $months;
-
-            if ($contract->rent_start_date) {
-                $investment->recovery_end_date = $contract->rent_start_date->copy()->addMonths($months);
-            }
+        // 区画一致を検証（不一致なら紐付けしない）
+        if ($investment->unit_id !== $contract->unit_id) {
+            return;
         }
 
-        // ステータスが「計画中」or「工事中」or「工事完了」なら「回収中」に変更
-        if (in_array($investment->status->value ?? $investment->status, ['planning', 'in_progress', 'completed'])) {
-            $investment->status = 'recovering';
-        }
-
-        $investment->save();
-    }
-
-    /**
-     * 投資案件の回収予定を再計算する
-     * revise() で使用。賃料改定時に月額家賃が変わった場合の再計算。
-     * 初月分は既に過去の請求のため変更せず、残額に対して新家賃で再計算。
-     */
-    private function recalculateInvestment(Investment $investment, int $newRent): void
-    {
-        $investment->monthly_rent = $newRent;
-
-        // ゼロ除算防止
-        if ($newRent > 0 && $investment->total_amount > 0) {
-            // 紐づく契約の初月家賃相当額を取得
-            $contract = $investment->contract;
-            $initialRent = $contract ? $this->getInitialMonthRent($contract) : $newRent;
-
-            $remaining = $investment->total_amount - $initialRent;
-            if ($remaining <= 0) {
-                $months = 1;
-            } else {
-                $months = 1 + (int) ceil($remaining / $newRent);
-            }
-            $investment->recovery_months = $months;
-
-            if ($investment->recovery_start_date) {
-                $investment->recovery_end_date = $investment->recovery_start_date->copy()->addMonths($months);
-            }
-        }
-
-        $investment->save();
+        $investment->linkToContract($contract);
     }
 
     /**
@@ -760,42 +709,6 @@ class ContractController extends Controller
             default:
                 return $monthlyTotal;
         }
-    }
-
-    /**
-     * 契約の初月家賃のうち「家賃相当額」を取得する
-     * 投資回収計算用。initial_month_amountが月額合計ベースなので、家賃比率で按分。
-     */
-    private function getInitialMonthRent(Contract $contract): int
-    {
-        $type = $contract->initial_month_type?->value ?? 'full';
-
-        if ($type === 'full' || ! $contract->rent_start_date) {
-            return $contract->rent;
-        }
-
-        if ($type === 'free') {
-            return 0;
-        }
-
-        if ($type === 'prorated') {
-            $date = $contract->rent_start_date;
-            $totalDays = $date->daysInMonth;
-            $usedDays = $totalDays - $date->day + 1;
-            return (int) round($contract->rent * $usedDays / $totalDays);
-        }
-
-        if ($type === 'half') {
-            return (int) round($contract->rent / 2);
-        }
-
-        // manual: 月額合計に対する家賃の比率で按分
-        $monthlyTotal = $contract->rent + ($contract->common_fee ?? 0) + ($contract->garbage_fee ?? 0) + ($contract->pest_control_fee ?? 0);
-        if ($monthlyTotal <= 0) {
-            return 0;
-        }
-        $initialAmount = $contract->initial_month_amount ?? $monthlyTotal;
-        return (int) round($initialAmount * $contract->rent / $monthlyTotal);
     }
 
     /**
