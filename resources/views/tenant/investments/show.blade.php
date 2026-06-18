@@ -136,56 +136,14 @@
         </div>
     </div>
 
-    {{-- 回収を開始する（未紐付け時・管理者以上） --}}
-    @if(!$investment->contract_id && auth()->user()->role->isManagerOrAbove())
-        <div class="bg-white border border-gray-200 rounded-lg p-5 mb-3">
-            <div class="text-sm font-bold text-gray-800 pb-2 mb-3.5 border-b border-gray-200">回収を開始する</div>
-
-            @if(!$investment->end_date)
-                <div style="margin-bottom:12px; padding:10px 12px; background:#fffbeb; border:1px solid #fde68a; border-radius:6px; font-size:12px; color:#92400e;">
-                    工事完了日が未設定です。回収計算の起点になるため、先に
-                    <a href="{{ route('tenant.investments.edit', $investment) }}" style="color:#059669; text-decoration:underline;">工事完了日を設定</a>
-                    してください。
-                </div>
-            @endif
-
-            @if($linkableContracts->isEmpty())
-                <p class="text-sm text-gray-500">この区画には紐付け可能な契約（契約中）がありません。</p>
-            @else
-                <form method="POST" action="{{ route('tenant.investments.link-contract', $investment) }}"
-                      style="display:flex; gap:8px; align-items:flex-start; flex-wrap:wrap;">
-                    @csrf
-                    <select name="contract_id" required
-                            class="form-input h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 bg-white focus:border-emerald-500 focus:outline-none cursor-pointer"
-                            style="min-width:280px; flex:1;">
-                        <option value="">— 契約を選択 —</option>
-                        @foreach($linkableContracts as $c)
-                            <option value="{{ $c->id }}">{{ $c->contract_number }}{{ $c->customer ? ' / ' . $c->customer->name : '' }}（家賃 {{ number_format($c->rent) }}円）</option>
-                        @endforeach
-                    </select>
-                    <button type="submit"
-                            style="display:inline-block; padding:9px 16px; font-size:13px; font-weight:600; color:#fff; background:#059669; border:none; border-radius:6px; cursor:pointer; white-space:nowrap;">紐付けて回収開始</button>
-                </form>
-            @endif
-        </div>
-    @endif
-
-    {{-- 回収情報（回収中 or 回収完了 の場合のみ表示） --}}
-    @if(in_array($investment->status->value, ['recovering', 'recovered']))
+    {{-- 回収情報（完成日が設定されていれば表示） --}}
+    @if($investment->end_date)
         <div class="bg-rose-50 border border-rose-200 rounded-lg p-5 mb-3">
-            <div class="text-sm font-bold text-rose-800 pb-2 mb-3.5 border-b border-rose-200">投資回収情報</div>
+            <div class="flex items-center justify-between pb-2 mb-3.5 border-b border-rose-200">
+                <span class="text-sm font-bold text-rose-800">投資回収情報</span>
+                <span class="badge {{ $investment->recoveryBadgeClass($recovery['recovery_rate']) }}">{{ $investment->recoveryLabel($recovery['recovery_rate']) }}</span>
+            </div>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
-                <div>
-                    <div class="text-xs text-gray-500 mb-0.5">関連契約</div>
-                    <div class="text-sm font-semibold">
-                        @if($investment->contract)
-                            <a href="{{ route('tenant.contracts.show', $investment->contract) }}" class="text-emerald-600 hover:underline">{{ $investment->contract->contract_number }}</a>
-                            {{ $investment->contract->customer?->name ?? '' }}
-                        @else
-                            —
-                        @endif
-                    </div>
-                </div>
                 <div>
                     <div class="text-xs text-gray-500 mb-0.5">現在の月額家賃</div>
                     <div class="text-xl font-bold text-emerald-600">
@@ -230,27 +188,6 @@
                     <div class="text-sm font-bold text-gray-900">{{ $recovery['estimated_months'] !== null ? $recovery['estimated_months'] . 'ヶ月' : '—' }}</div>
                 </div>
             </div>
-
-            @if(!$investment->end_date)
-                <div style="margin-top:12px; padding:10px 12px; background:#fffbeb; border:1px solid #fde68a; border-radius:6px; font-size:12px; color:#92400e;">
-                    工事完了日が未設定のため回収額が計上されません。
-                    <a href="{{ route('tenant.investments.edit', $investment) }}" style="color:#059669; text-decoration:underline;">工事完了日を設定</a>
-                    してください。
-                </div>
-            @endif
-
-            @if($investment->contract_id && auth()->user()->role->isManagerOrAbove())
-                <div style="margin-top:14px; padding-top:12px; border-top:1px dashed #fda4af; text-align:right;">
-                    <form method="POST" action="{{ route('tenant.investments.unlink-contract', $investment) }}"
-                          onsubmit="return confirm('この契約との紐付けを解除しますか？回収の計上が止まります。');"
-                          style="display:inline;">
-                        @csrf
-                        @method('DELETE')
-                        <button type="submit"
-                                style="display:inline-block; padding:6px 14px; font-size:12px; font-weight:600; color:#e11d48; background:#fff; border:1px solid #fda4af; border-radius:6px; cursor:pointer;">紐付けを解除</button>
-                    </form>
-                </div>
-            @endif
         </div>
     @endif
 
