@@ -303,14 +303,6 @@ Route::middleware(['auth', 'password.change'])->group(function () {
                 ->name('tenant.investments.update');
         });
 
-        // 投資案件 ↔ 契約 紐付け / 解除（経営層+管理者）
-        Route::middleware('role:executive,manager')->group(function () {
-            Route::post('/investments/{investment}/link-contract', [\App\Http\Controllers\Tenant\InvestmentController::class, 'linkContract'])
-                ->name('tenant.investments.link-contract');
-            Route::delete('/investments/{investment}/unlink-contract', [\App\Http\Controllers\Tenant\InvestmentController::class, 'unlinkContract'])
-                ->name('tenant.investments.unlink-contract');
-        });
-
         // 投資案件削除（経営層のみ）
         Route::delete('/investments/{investment}', [\App\Http\Controllers\Tenant\InvestmentController::class, 'destroy'])
             ->middleware('role:executive')
@@ -441,10 +433,6 @@ Route::middleware(['auth', 'password.change'])->group(function () {
     // 空室・商談中の区画取得（物件選択→区画連動用）
     Route::get('/api/tenant/properties/{property}/vacant-units', [\App\Http\Controllers\Tenant\ContractController::class, 'vacantUnits'])
         ->middleware('department.access:tenant')->name('api.tenant.vacant-units');
-
-    // 区画の未紐づけ投資案件取得（契約登録→投資案件連動用）
-    Route::get('/api/tenant/units/{unit}/investments', [\App\Http\Controllers\Tenant\InvestmentController::class, 'forUnit'])
-        ->middleware('department.access:tenant')->name('api.tenant.unit-investments');
 
     // 物件のフォロー・保留中の問合せ取得（契約登録→関連問合せ連動用）
     Route::get('/api/tenant/properties/{property}/active-inquiries', [\App\Http\Controllers\Tenant\ContractController::class, 'activeInquiries'])
