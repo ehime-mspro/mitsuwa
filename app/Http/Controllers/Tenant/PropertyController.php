@@ -136,9 +136,18 @@ class PropertyController extends Controller
             },
             'units.activeContract.customer',
             'units.investments' => function ($q) {
-                $q->whereIn('status', ['in_progress', 'recovering']);
+                $q->whereIn('status', ['in_progress', 'completed', 'recovering', 'recovered'])
+                  ->orderByDesc('created_at')
+                  ->orderByDesc('id');
             },
         ]);
+
+        // 各区画の投資をライブ計算（フロアマップ用・メモリ上のみ・DB 書き込みなし）
+        foreach ($property->units as $unit) {
+            foreach ($unit->investments as $inv) {
+                $inv->refreshRecovery();
+            }
+        }
 
         // --- サマリー計算 ---
         $units = $property->units;
@@ -201,6 +210,11 @@ class PropertyController extends Controller
             ->with('unit')
             ->orderByDesc('created_at')
             ->get();
+
+        // 投資タブの各投資をライブ計算（メモリ上のみ・DB 書き込みなし）
+        foreach ($investments as $inv) {
+            $inv->refreshRecovery();
+        }
 
         // 修繕タブ（この物件の直近10件）
         $repairs = Repair::where('property_id', $property->id)
