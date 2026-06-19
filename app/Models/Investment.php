@@ -203,6 +203,42 @@ class Investment extends Model
     }
 
     /**
+     * 回収配列の値をモデル属性へ反映する（純粋・DB 保存なし）。
+     * status は完成日あり前提で前進方向のみ遷移（recovered からは降格しない）。
+     *
+     * @param  array  $recovery  calculateRecovery()/computeRecovery() の戻り値
+     */
+    public function applyRecoverySnapshot(array $recovery): void
+    {
+        $this->total_recovered = $recovery['total_recovered'];
+        $this->recovery_rate   = $recovery['recovery_rate'];
+
+        // 完成日が無ければ status は変えない（回収対象外）
+        if (! $this->end_date) {
+            return;
+        }
+
+        $rate = (float) $recovery['recovery_rate'];
+        if ($rate >= 100) {
+            $this->status = InvestmentStatus::Recovered;
+        } elseif ($rate > 0 && $this->status !== InvestmentStatus::Recovered) {
+            $this->status = InvestmentStatus::Recovering;
+        }
+        // rate 0（回収待ち）等はそのまま（completed のまま）
+    }
+
+    /**
+     * 回収状況を再計算し、モデル属性をメモリ上で最新化して回収配列を返す（保存はしない）。
+     */
+    public function refreshRecovery(): array
+    {
+        $recovery = $this->calculateRecovery();
+        $this->applyRecoverySnapshot($recovery);
+
+        return $recovery;
+    }
+
+    /**
      * 回収状態ラベル。end_date 未設定なら null（呼び出し側は workflow status を表示）。
      * $rate は calculateRecovery()['recovery_rate']（または保存済み recovery_rate）。
      */
