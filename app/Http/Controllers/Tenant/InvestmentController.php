@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Tenant;
 
 use App\Enums\DepartmentCode;
 use App\Enums\InvestmentPattern;
-use App\Enums\InvestmentStatus;
 use App\Enums\OperationStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Attachment;
@@ -69,12 +68,9 @@ class InvestmentController extends Controller
                              ->paginate(10)
                              ->withQueryString();
 
-        // 一覧表示時: 回収率100%以上で recovering のままの案件を自動更新
+        // 一覧表示時: 各投資の回収率・状態をライブ計算（メモリ上のみ・DB 書き込みなし）
         foreach ($investments as $inv) {
-            if ($inv->status === InvestmentStatus::Recovering && (float) $inv->recovery_rate >= 100) {
-                $inv->update(['status' => InvestmentStatus::Recovered]);
-                $inv->refresh();
-            }
+            $inv->refreshRecovery();
         }
 
         // フィルター用データ
@@ -197,23 +193,10 @@ class InvestmentController extends Controller
     {
         $investment->load(['property', 'unit', 'details', 'attachments.uploadedByUser']);
 
-        // 回収情報を動的計算（区画ベース・家賃のみ）
-        $recovery = $investment->calculateRecovery();
-        $rate = (float) $recovery['recovery_rate'];
-
-        // 自動遷移＋遅延更新（完成日あり前提）。回収率に応じて status を前進方向に永続化。
-        if ($investment->end_date) {
-            $updates = [
-                'total_recovered' => $recovery['total_recovered'],
-                'recovery_rate'   => $rate,
-            ];
-            if ($rate >= 100) {
-                $updates['status'] = InvestmentStatus::Recovered->value;
-            } elseif ($rate > 0 && $investment->status !== InvestmentStatus::Recovered) {
-                $updates['status'] = InvestmentStatus::Recovering->value;
-            }
-            $investment->update($updates);
-            $investment->refresh();
+        // 回収情報をライブ計算しメモリに反映（詳細表示時のみ、実際に変化した場合に永続化）
+        $recovery = $investment->refreshRecovery();
+        if ($investment->isDirty()) {
+            $investment->save();
         }
 
         // 削除済み添付ファイル（削除履歴表示用）
