@@ -129,7 +129,16 @@
         $recruitTotalPerTsubo = $hasTsubo ? (int) ceil($recruitTotal / (float) $areaTsubo) : null;
     @endphp
     <div class="bg-white border border-gray-200 rounded-lg px-5 py-4 mb-3">
-        <div class="text-sm font-bold text-gray-800 pb-2 mb-3 border-b border-gray-200">募集条件</div>
+        <div class="flex items-center justify-between pb-2 mb-3 border-b border-gray-200">
+            <span class="text-sm font-bold text-gray-800">募集条件</span>
+            @if(($unit->status === \App\Enums\UnitStatus::Vacant || $unit->status === \App\Enums\UnitStatus::Negotiating) && auth()->user()->role->isExecutive())
+                <a href="{{ route('tenant.units.revise', $unit) }}"
+                   style="display:inline-flex; align-items:center; gap:6px; padding:6px 14px; font-size:12px; font-weight:600; color:#b45309; border:1px solid #fde68a; border-radius:6px; text-decoration:none; background:#fff;">
+                    <svg style="width:14px;height:14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    賃料改定
+                </a>
+            @endif
+        </div>
         <div class="grid grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-2">
             <div>
                 <div class="text-xs text-gray-500 mb-0.5">募集家賃</div>
@@ -264,6 +273,7 @@
                     'contract' => '現在の契約',
                     'transactions' => '収支履歴',
                     'repairs' => '修繕履歴',
+                    'revisions' => '賃料改定履歴',
                 ];
             @endphp
             @foreach($tabs as $key => $label)
@@ -354,6 +364,60 @@
                     </div>
                 @else
                     <p class="text-gray-400 text-center py-6">修繕履歴がありません。</p>
+                @endif
+            </div>
+
+            {{-- 賃料改定履歴タブ（募集＋契約 統合） --}}
+            <div x-show="activeTab === 'revisions'" x-cloak>
+                @if($rentHistory->isNotEmpty())
+                    <div class="scroll-hint at-start">
+                        <div class="scroll-hint-inner">
+                            <table class="w-full border-collapse text-[13px]" style="min-width:820px">
+                                <thead>
+                                    <tr>
+                                        <th class="px-3 py-2 text-left text-xs font-bold text-gray-600 border-b border-gray-200 whitespace-nowrap">区分</th>
+                                        <th class="px-3 py-2 text-left text-xs font-bold text-gray-600 border-b border-gray-200 whitespace-nowrap">改定日</th>
+                                        <th class="px-3 py-2 text-left text-xs font-bold text-gray-600 border-b border-gray-200 whitespace-nowrap">旧家賃</th>
+                                        <th class="px-3 py-2 text-left text-xs font-bold text-gray-600 border-b border-gray-200 whitespace-nowrap">新家賃</th>
+                                        <th class="px-3 py-2 text-left text-xs font-bold text-gray-600 border-b border-gray-200 whitespace-nowrap">旧共益費</th>
+                                        <th class="px-3 py-2 text-left text-xs font-bold text-gray-600 border-b border-gray-200 whitespace-nowrap">新共益費</th>
+                                        <th class="px-3 py-2 text-left text-xs font-bold text-gray-600 border-b border-gray-200 whitespace-nowrap">旧ゴミ代</th>
+                                        <th class="px-3 py-2 text-left text-xs font-bold text-gray-600 border-b border-gray-200 whitespace-nowrap">新ゴミ代</th>
+                                        <th class="px-3 py-2 text-left text-xs font-bold text-gray-600 border-b border-gray-200 whitespace-nowrap">旧駆除代</th>
+                                        <th class="px-3 py-2 text-left text-xs font-bold text-gray-600 border-b border-gray-200 whitespace-nowrap">新駆除代</th>
+                                        <th class="px-3 py-2 text-left text-xs font-bold text-gray-600 border-b border-gray-200 whitespace-nowrap">改定者</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach($rentHistory as $row)
+                                        <tr class="hover:bg-gray-50">
+                                            <td class="px-3 py-2 border-b border-gray-100 whitespace-nowrap">
+                                                @if($row['kind'] === 'asking')
+                                                    <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;background:#fef3c7;color:#92400e;">募集</span>
+                                                @else
+                                                    <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;background:#dbeafe;color:#1e40af;">契約</span>
+                                                    <span class="text-[11px] text-gray-500 ml-1">{{ $row['context_label'] }}</span>
+                                                @endif
+                                            </td>
+                                            <td class="px-3 py-2 border-b border-gray-100 whitespace-nowrap text-gray-900">{{ $row['revision_date']->format('Y/m/d') }}</td>
+                                            <td class="px-3 py-2 border-b border-gray-100 whitespace-nowrap text-gray-900">{{ number_format($row['old_rent']) }}円</td>
+                                            <td class="px-3 py-2 border-b border-gray-100 whitespace-nowrap font-bold" style="color:#047857">{{ number_format($row['new_rent']) }}円</td>
+                                            <td class="px-3 py-2 border-b border-gray-100 whitespace-nowrap text-gray-900">{{ number_format($row['old_common_fee'] ?? 0) }}円</td>
+                                            <td class="px-3 py-2 border-b border-gray-100 whitespace-nowrap font-bold" style="color:#047857">{{ number_format($row['new_common_fee'] ?? 0) }}円</td>
+                                            <td class="px-3 py-2 border-b border-gray-100 whitespace-nowrap text-gray-900">{{ number_format($row['old_garbage_fee'] ?? 0) }}円</td>
+                                            <td class="px-3 py-2 border-b border-gray-100 whitespace-nowrap font-bold" style="color:#047857">{{ number_format($row['new_garbage_fee'] ?? 0) }}円</td>
+                                            <td class="px-3 py-2 border-b border-gray-100 whitespace-nowrap text-gray-900">{{ number_format($row['old_pest_control_fee'] ?? 0) }}円</td>
+                                            <td class="px-3 py-2 border-b border-gray-100 whitespace-nowrap font-bold" style="color:#047857">{{ number_format($row['new_pest_control_fee'] ?? 0) }}円</td>
+                                            <td class="px-3 py-2 border-b border-gray-100 whitespace-nowrap text-gray-900">{{ $row['revised_by_name'] }}</td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="scroll-hint-text">← スクロールできます →</div>
+                    </div>
+                @else
+                    <p class="text-gray-400 text-center py-6">賃料改定の履歴はありません。</p>
                 @endif
             </div>
 
