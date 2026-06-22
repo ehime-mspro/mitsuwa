@@ -433,7 +433,7 @@ class ContractController extends Controller
      * 賃料改定フォーム
      * Route: GET /tenant/contracts/{contract}/revise
      */
-    public function showRevise(Contract $contract)
+    public function showRevise(Request $request, Contract $contract)
     {
         // 契約中のみアクセス可能
         if ($contract->isTerminated()) {
@@ -444,7 +444,10 @@ class ContractController extends Controller
 
         $contract->load(['property', 'unit', 'customer']);
 
-        return view('tenant.contracts.revise', compact('contract'));
+        // 改定の起点が区画詳細のときのみ 'unit'。それ以外（不在・不正値）は従来どおり 'contract'
+        $returnTo = $request->query('return_to') === 'unit' ? 'unit' : 'contract';
+
+        return view('tenant.contracts.revise', compact('contract', 'returnTo'));
     }
 
     /**
@@ -494,6 +497,14 @@ class ContractController extends Controller
                 'pest_control_fee' => $validated['new_pest_control_fee'] ?? 0,
             ]);
         });
+
+        // 起点が区画詳細なら区画詳細へ、それ以外は従来どおり契約詳細へ戻す
+        // （unit が万一取得できない異常時は契約詳細へ安全にフォールバック）
+        if ($request->input('return_to') === 'unit' && $contract->unit) {
+            return redirect()
+                ->route('tenant.units.show', $contract->unit)
+                ->with('success', "区画「{$contract->unit->display_name}」の賃料改定を実行しました。");
+        }
 
         return redirect()
             ->route('tenant.contracts.show', $contract)
