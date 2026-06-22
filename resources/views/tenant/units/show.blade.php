@@ -173,7 +173,16 @@
             $contractTotalPerTsubo = $hasTsubo ? (int) ceil($contractMonthlyTotal / (float) $areaTsubo) : null;
         @endphp
         <div class="bg-white border border-blue-200 rounded-lg px-5 py-4 mb-3">
-            <div class="text-sm font-bold pb-2 mb-3 border-b border-blue-200" style="color:#1e3a5f">現在の契約条件</div>
+            <div class="flex items-center justify-between pb-2 mb-3 border-b border-blue-200">
+                <span class="text-sm font-bold" style="color:#1e3a5f">現在の契約条件</span>
+                @if(auth()->user()->role->isExecutive())
+                    <a href="{{ route('tenant.contracts.revise', ['contract' => $activeContract, 'return_to' => 'unit']) }}"
+                       style="display:inline-flex; align-items:center; gap:6px; padding:6px 14px; font-size:12px; font-weight:600; color:#b45309; border:1px solid #fde68a; border-radius:6px; text-decoration:none; background:#fff;">
+                        <svg style="width:14px;height:14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        賃料改定
+                    </a>
+                @endif
+            </div>
             @if($activeContract->store_name)
                 <div class="mb-2.5">
                     <div class="text-xs text-gray-500 mb-0.5">店舗名</div>
@@ -292,10 +301,9 @@
                                 <div class="text-sm font-medium text-gray-900">{{ $activeContract->rent_start_date?->format('Y/m/d') ?? '—' }}</div>
                             </div>
                         </div>
-                        {{-- 契約詳細リンク（STEP 6で実装後にルートを有効化）--}}
-                        {{-- <div class="mt-3 pt-3 border-t border-gray-100">
-                            <a href="#" class="text-sm text-emerald-600 hover:text-emerald-700 font-semibold">契約詳細を見る →</a>
-                        </div> --}}
+                        <div class="mt-3 pt-3 border-t border-gray-100">
+                            <a href="{{ route('tenant.contracts.show', $activeContract) }}" class="text-sm text-emerald-600 hover:text-emerald-700 font-semibold">契約詳細を見る →</a>
+                        </div>
                     </div>
                 @else
                     <p class="text-gray-400 text-center py-6">現在の契約はありません。</p>
