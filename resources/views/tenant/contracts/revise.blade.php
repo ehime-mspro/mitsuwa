@@ -6,20 +6,31 @@
     <span class="mx-1.5">›</span>
     <a href="{{ route('tenant.properties.index') }}" class="hover:text-emerald-600 transition-colors">テナント管理</a>
     <span class="mx-1.5">›</span>
-    <a href="{{ route('tenant.contracts.index') }}" class="hover:text-emerald-600 transition-colors">契約一覧</a>
-    <span class="mx-1.5">›</span>
-    <a href="{{ route('tenant.contracts.show', $contract) }}" class="hover:text-emerald-600 transition-colors">{{ $contract->contract_number }}</a>
+    @if(($returnTo ?? 'contract') === 'unit')
+        <a href="{{ route('tenant.properties.show', $contract->property) }}" class="hover:text-emerald-600 transition-colors">{{ $contract->property->name }}</a>
+        <span class="mx-1.5">›</span>
+        <a href="{{ route('tenant.units.show', $contract->unit) }}" class="hover:text-emerald-600 transition-colors">区画: {{ $contract->unit->display_name }}</a>
+    @else
+        <a href="{{ route('tenant.contracts.index') }}" class="hover:text-emerald-600 transition-colors">契約一覧</a>
+        <span class="mx-1.5">›</span>
+        <a href="{{ route('tenant.contracts.show', $contract) }}" class="hover:text-emerald-600 transition-colors">{{ $contract->contract_number }}</a>
+    @endif
     <span class="mx-1.5">›</span>
     <span class="text-gray-600">賃料改定</span>
 @endsection
 
 @section('content')
 
+    @php
+        $isFromUnit = ($returnTo ?? 'contract') === 'unit';
+        $backUrl = $isFromUnit ? route('tenant.units.show', $contract->unit) : route('tenant.contracts.show', $contract);
+    @endphp
+
     {{-- 戻るリンク --}}
-    <a href="{{ route('tenant.contracts.show', $contract) }}"
+    <a href="{{ $backUrl }}"
        class="inline-flex items-center gap-1 text-sm text-gray-600 hover:text-emerald-600 transition-colors mb-3">
         <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-        契約詳細に戻る
+        {{ $isFromUnit ? '区画詳細に戻る' : '契約詳細に戻る' }}
     </a>
 
     {{-- ページタイトル --}}
@@ -93,6 +104,7 @@
 
     <form method="POST" action="{{ route('tenant.contracts.revise.execute', $contract) }}">
         @csrf
+        <input type="hidden" name="return_to" value="{{ old('return_to', $returnTo ?? 'contract') }}">
 
         {{-- 改定内容 --}}
         <div class="bg-white border border-gray-200 rounded-lg p-5 mb-3">
@@ -154,7 +166,7 @@
 
         {{-- アクションボタン --}}
         <div class="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-2">
-            <a href="{{ route('tenant.contracts.show', $contract) }}"
+            <a href="{{ $backUrl }}"
                class="px-4 py-2.5 bg-white text-gray-700 border border-gray-300 rounded-md text-sm text-center hover:bg-gray-50 transition-colors">
                 キャンセル
             </a>
