@@ -228,6 +228,14 @@ Route::middleware(['auth', 'password.change'])->group(function () {
             ->middleware('role:executive,manager')
             ->name('tenant.units.updateStatus');
 
+        // 募集家賃の賃料改定（経営層のみ）— 空室・商談中の区画
+        Route::middleware('role:executive')->group(function () {
+            Route::get('/units/{unit}/revise', [\App\Http\Controllers\Tenant\UnitController::class, 'showReviseRent'])
+                ->name('tenant.units.revise');
+            Route::post('/units/{unit}/revise', [\App\Http\Controllers\Tenant\UnitController::class, 'reviseRent'])
+                ->name('tenant.units.revise.execute');
+        });
+
         /*
         |------------------------------------------------------------------
         | テナント契約管理（10ルート）— STEP 6
