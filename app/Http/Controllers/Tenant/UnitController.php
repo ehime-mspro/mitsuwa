@@ -160,6 +160,9 @@ class UnitController extends Controller
             'investments' => function ($q) {
                 $q->orderByDesc('created_at')->orderByDesc('id');
             },
+            'rentRevisions.revisedByUser',
+            'contracts.rentRevisions.revisedByUser',
+            'contracts.customer',
         ]);
 
         $property = $unit->property;
@@ -196,7 +199,10 @@ class UnitController extends Controller
             ];
         })->values();
 
-        return view('tenant.units.show', compact('unit', 'property', 'activeContract', 'contractMonthlyTotal', 'unitRepairs', 'rentalIncome', 'unitInvestments'));
+        // 募集家賃改定＋この区画の全契約の契約家賃改定を統合した履歴（日付降順）
+        $rentHistory = $this->buildRentHistory($unit);
+
+        return view('tenant.units.show', compact('unit', 'property', 'activeContract', 'contractMonthlyTotal', 'unitRepairs', 'rentalIncome', 'unitInvestments', 'rentHistory'));
     }
 
     /**
@@ -396,6 +402,62 @@ class UnitController extends Controller
     // ================================================================
     // プライベートメソッド
     // ================================================================
+
+    /**
+     * 区画の家賃推移を統合した履歴を返す（募集家賃改定＋その区画の全契約の契約家賃改定）。
+     * 各行を共通形に正規化し、改定日降順（同日は登録時刻降順）で並べる。
+     *
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    private function buildRentHistory(Unit $unit): \Illuminate\Support\Collection
+    {
+        // 募集家賃改定（区分: 募集）
+        $asking = $unit->rentRevisions->map(function ($r) {
+            return [
+                'revision_date'        => $r->revision_date,
+                'created_at'           => $r->created_at,
+                'kind'                 => 'asking',
+                'context_label'        => '募集家賃',
+                'old_rent'             => $r->old_rent,
+                'new_rent'             => $r->new_rent,
+                'old_common_fee'       => $r->old_common_fee,
+                'new_common_fee'       => $r->new_common_fee,
+                'old_garbage_fee'      => $r->old_garbage_fee,
+                'new_garbage_fee'      => $r->new_garbage_fee,
+                'old_pest_control_fee' => $r->old_pest_control_fee,
+                'new_pest_control_fee' => $r->new_pest_control_fee,
+                'revised_by_name'      => $r->revisedByUser->name ?? '—',
+            ];
+        });
+
+        // この区画の全契約（解約済み含む）の契約家賃改定（区分: 契約）
+        $contractRevisions = $unit->contracts->flatMap(function ($contract) {
+            return $contract->rentRevisions->map(function ($r) use ($contract) {
+                return [
+                    'revision_date'        => $r->revision_date,
+                    'created_at'           => $r->created_at,
+                    'kind'                 => 'contract',
+                    'context_label'        => $contract->contract_number . ' / ' . ($contract->customer->name ?? '—'),
+                    'old_rent'             => $r->old_rent,
+                    'new_rent'             => $r->new_rent,
+                    'old_common_fee'       => $r->old_common_fee,
+                    'new_common_fee'       => $r->new_common_fee,
+                    'old_garbage_fee'      => $r->old_garbage_fee,
+                    'new_garbage_fee'      => $r->new_garbage_fee,
+                    'old_pest_control_fee' => $r->old_pest_control_fee,
+                    'new_pest_control_fee' => $r->new_pest_control_fee,
+                    'revised_by_name'      => $r->revisedByUser->name ?? '—',
+                ];
+            });
+        });
+
+        // 2ソースをマージし、改定日降順（同日は created_at 降順）で整列
+        return $asking->concat($contractRevisions)
+            ->sortByDesc(function ($row) {
+                return $row['revision_date']->format('Y-m-d') . ' ' . $row['created_at']->format('H:i:s');
+            })
+            ->values();
+    }
 
     /**
      * display_name自動生成: floor正→「3A」、floor負→「B1A」（地下）、floor無し→「A」

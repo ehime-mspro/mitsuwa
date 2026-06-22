@@ -191,4 +191,62 @@ class UnitRentRevisionTest extends TestCase
         // 敷金は更新
         $this->assertSame(60000, $unit->deposit);
     }
+
+    /** show が「募集家賃改定」と「その区画の契約家賃改定」を日付降順でマージして渡す */
+    public function test_show_merges_asking_and_contract_revisions_desc(): void
+    {
+        $exec = $this->executive();
+        $unit = $this->makeUnit('vacant');
+
+        // 募集家賃改定（古い日付）
+        UnitRentRevision::create([
+            'unit_id'       => $unit->id,
+            'revision_date' => '2026-05-01',
+            'old_rent'      => 90000,
+            'new_rent'      => 100000,
+            'revised_by'    => $exec->id,
+        ]);
+
+        // この区画の契約（解約済み）＋ 契約家賃改定（新しい日付）
+        $customer = Customer::create([
+            'code'          => 'CUST-UR-001',
+            'name'          => 'テスト商事',
+            'customer_type' => 'corporation',
+        ]);
+        $contract = Contract::create([
+            'contract_number'  => 'C-UR-001',
+            'department'       => 'tenant',
+            'property_id'      => $unit->property_id,
+            'unit_id'          => $unit->id,
+            'customer_id'      => $customer->id,
+            'status'           => 'terminated',
+            'contract_date'    => '2025-04-01',
+            'rent_start_date'  => '2025-04-01',
+            'rent'             => 110000,
+            'common_fee'       => 10000,
+            'garbage_fee'      => 2000,
+            'pest_control_fee' => 1000,
+        ]);
+        RentRevision::create([
+            'contract_id'   => $contract->id,
+            'revision_date' => '2026-06-01',
+            'old_rent'      => 100000,
+            'new_rent'      => 110000,
+            'revised_by'    => $exec->id,
+        ]);
+
+        $response = $this->actingAs($exec)->get(route('tenant.units.show', $unit));
+        $response->assertOk();
+
+        $history = $response->viewData('rentHistory');
+        $this->assertCount(2, $history);
+
+        // 降順: 先頭=契約改定(2026-06-01), 次=募集改定(2026-05-01)
+        $this->assertSame('contract', $history[0]['kind']);
+        $this->assertSame(110000, $history[0]['new_rent']);
+        $this->assertStringContainsString('C-UR-001', $history[0]['context_label']);
+
+        $this->assertSame('asking', $history[1]['kind']);
+        $this->assertSame(100000, $history[1]['new_rent']);
+    }
 }
