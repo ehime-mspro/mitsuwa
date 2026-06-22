@@ -125,45 +125,34 @@
             </div>
         </div>
 
-        {{-- 募集条件 --}}
+        {{-- 募集条件（金額4項目は「賃料改定」からのみ変更可） --}}
         <div class="bg-white border border-gray-200 rounded-lg p-5 mb-3">
-            <div class="text-sm font-bold text-gray-800 pb-2 mb-3.5 border-b border-gray-200">募集条件</div>
+            <div class="flex items-center justify-between pb-2 mb-3.5 border-b border-gray-200">
+                <span class="text-sm font-bold text-gray-800">募集条件</span>
+                @if(auth()->user()->role->isExecutive() && $unit->status !== \App\Enums\UnitStatus::Occupied)
+                    <a href="{{ route('tenant.units.revise', $unit) }}" class="text-xs font-semibold text-emerald-600 hover:text-emerald-700">賃料改定で変更する →</a>
+                @endif
+            </div>
+            <div class="flex items-start gap-2 mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                <svg class="w-4 h-4 mt-0.5 shrink-0" style="color:#f59e0b" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                <div class="text-xs text-amber-800">家賃・共益費・ゴミ代・駆除代は履歴管理のため<strong>「賃料改定」からのみ変更</strong>できます（ここでは変更できません）。</div>
+            </div>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1">家賃（月額）</label>
-                    <div class="relative">
-                        <input type="number" name="rent" value="{{ old('rent', $unit->rent) }}" min="0"
-                               class="form-input w-full h-[40px] px-3 pr-8 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none"
-                               >
-                        <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">円</span>
-                    </div>
+                    <div class="h-[40px] px-3 flex items-center bg-gray-50 border border-gray-200 rounded-md text-sm text-gray-700">{{ number_format($unit->rent) }}円</div>
                 </div>
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1">共益費（月額）</label>
-                    <div class="relative">
-                        <input type="number" name="common_fee" value="{{ old('common_fee', $unit->common_fee) }}" min="0"
-                               class="form-input w-full h-[40px] px-3 pr-8 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none"
-                               >
-                        <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">円</span>
-                    </div>
+                    <div class="h-[40px] px-3 flex items-center bg-gray-50 border border-gray-200 rounded-md text-sm text-gray-700">{{ number_format($unit->common_fee) }}円</div>
                 </div>
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1">ゴミ代（月額）</label>
-                    <div class="relative">
-                        <input type="number" name="garbage_fee" value="{{ old('garbage_fee', $unit->garbage_fee) }}" min="0"
-                               class="form-input w-full h-[40px] px-3 pr-8 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none"
-                               >
-                        <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">円</span>
-                    </div>
+                    <div class="h-[40px] px-3 flex items-center bg-gray-50 border border-gray-200 rounded-md text-sm text-gray-700">{{ number_format($unit->garbage_fee) }}円</div>
                 </div>
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1">駆除代（月額）</label>
-                    <div class="relative">
-                        <input type="number" name="pest_control_fee" value="{{ old('pest_control_fee', $unit->pest_control_fee) }}" min="0"
-                               class="form-input w-full h-[40px] px-3 pr-8 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none"
-                               >
-                        <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">円</span>
-                    </div>
+                    <div class="h-[40px] px-3 flex items-center bg-gray-50 border border-gray-200 rounded-md text-sm text-gray-700">{{ number_format($unit->pest_control_fee) }}円</div>
                 </div>
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1">敷金</label>
