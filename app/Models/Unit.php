@@ -96,6 +96,14 @@ class Unit extends Model
         return $this->hasMany(Repair::class);
     }
 
+    /**
+     * この区画の募集家賃改定履歴
+     */
+    public function rentRevisions(): HasMany
+    {
+        return $this->hasMany(UnitRentRevision::class);
+    }
+
     // ============================================================
     // アクセサ / ヘルパー
     // ============================================================
