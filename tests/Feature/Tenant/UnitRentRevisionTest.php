@@ -158,4 +158,37 @@ class UnitRentRevisionTest extends TestCase
         $unit->refresh();
         $this->assertSame(130000, $unit->rent);
     }
+
+    /** 編集(update)で金額4項目を送っても無視され（現値維持）、敷金だけ更新できる */
+    public function test_update_locks_amount_fields_but_allows_deposit(): void
+    {
+        $exec = $this->executive();
+        $unit = $this->makeUnit('vacant'); // rent10万/共益1万/ゴミ2千/駆除1千/敷金5万
+
+        $response = $this->actingAs($exec)->put(
+            route('tenant.units.update', $unit),
+            [
+                'room_number'      => 'A',
+                'status'           => 'vacant',
+                // 金額4項目は送っても update から除外され無視される
+                'rent'             => 999999,
+                'common_fee'       => 888888,
+                'garbage_fee'      => 777777,
+                'pest_control_fee' => 666666,
+                // 敷金は従来どおり更新可
+                'deposit'          => 60000,
+            ]
+        );
+
+        $response->assertRedirect(route('tenant.units.show', $unit));
+
+        $unit->refresh();
+        // 金額4項目は現値維持
+        $this->assertSame(100000, $unit->rent);
+        $this->assertSame(10000, $unit->common_fee);
+        $this->assertSame(2000, $unit->garbage_fee);
+        $this->assertSame(1000, $unit->pest_control_fee);
+        // 敷金は更新
+        $this->assertSame(60000, $unit->deposit);
+    }
 }

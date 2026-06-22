@@ -232,11 +232,9 @@ class UnitController extends Controller
                 'required',
                 $isOccupied ? Rule::in([$unit->status->value]) : Rule::in(['vacant', 'negotiating']),
             ],
-            'rent'             => 'nullable|integer|min:0',
-            'common_fee'       => 'nullable|integer|min:0',
+            // 募集家賃の4項目は「賃料改定」フローでのみ変更可能。編集では現値を保持するため
+            // validation から除外する（送られても $validated に入らず update で無視される）。
             'deposit'          => 'nullable|integer|min:0',
-            'garbage_fee'      => 'nullable|integer|min:0',
-            'pest_control_fee' => 'nullable|integer|min:0',
             'notes'            => 'nullable|string|max:5000',
         ]);
 
@@ -263,10 +261,8 @@ class UnitController extends Controller
 
         $validated['display_name'] = $displayName;
 
-        // null → 0 変換（費用フィールド）
-        foreach (['rent', 'common_fee', 'deposit', 'garbage_fee', 'pest_control_fee'] as $field) {
-            $validated[$field] = $validated[$field] ?? 0;
-        }
+        // null → 0 変換（敷金のみ。募集家賃4項目は除外済みで現値を保持する）
+        $validated['deposit'] = $validated['deposit'] ?? 0;
 
         $unit->update($validated);
 
