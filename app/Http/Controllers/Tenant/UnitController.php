@@ -10,8 +10,11 @@ use App\Models\InquiryUsageType;
 use App\Models\Property;
 use App\Models\Repair;
 use App\Models\Unit;
+use App\Models\UnitRentRevision;
 use App\Services\Tenant\RentalIncomeService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class UnitController extends Controller
@@ -321,6 +324,77 @@ class UnitController extends Controller
         return redirect()
             ->route('tenant.units.show', $unit)
             ->with('success', "ステータスを「{$label}」に変更しました。");
+    }
+
+    /**
+     * 募集家賃の賃料改定フォーム
+     * Route: GET /tenant/units/{unit}/revise
+     */
+    public function showReviseRent(Unit $unit)
+    {
+        // 入居中は契約改定へ誘導（募集家賃の改定対象は空室・商談中のみ）
+        if ($unit->status === UnitStatus::Occupied) {
+            return redirect()
+                ->route('tenant.units.show', $unit)
+                ->with('error', '入居中の区画は契約から賃料改定してください。');
+        }
+
+        $unit->load('property');
+
+        return view('tenant.units.revise', compact('unit'));
+    }
+
+    /**
+     * 募集家賃の賃料改定実行
+     * Route: POST /tenant/units/{unit}/revise
+     */
+    public function reviseRent(Request $request, Unit $unit)
+    {
+        // 入居中ガード（同上）
+        if ($unit->status === UnitStatus::Occupied) {
+            return redirect()
+                ->route('tenant.units.show', $unit)
+                ->with('error', '入居中の区画は契約から賃料改定してください。');
+        }
+
+        $validated = $request->validate([
+            'revision_date'        => 'required|date',
+            'new_rent'             => 'required|integer|min:0',
+            'new_common_fee'       => 'nullable|integer|min:0',
+            'new_garbage_fee'      => 'nullable|integer|min:0',
+            'new_pest_control_fee' => 'nullable|integer|min:0',
+            'reason'               => 'nullable|string|max:5000',
+        ]);
+
+        DB::transaction(function () use ($unit, $validated) {
+            // 改定履歴を記録（old=現在の募集条件、new=入力値）
+            UnitRentRevision::create([
+                'unit_id'              => $unit->id,
+                'revision_date'        => $validated['revision_date'],
+                'old_rent'             => $unit->rent,
+                'new_rent'             => $validated['new_rent'],
+                'old_common_fee'       => $unit->common_fee,
+                'new_common_fee'       => $validated['new_common_fee'] ?? 0,
+                'old_garbage_fee'      => $unit->garbage_fee,
+                'new_garbage_fee'      => $validated['new_garbage_fee'] ?? 0,
+                'old_pest_control_fee' => $unit->pest_control_fee,
+                'new_pest_control_fee' => $validated['new_pest_control_fee'] ?? 0,
+                'reason'               => $validated['reason'] ?? null,
+                'revised_by'           => Auth::id(),
+            ]);
+
+            // 区画の募集条件を更新
+            $unit->update([
+                'rent'             => $validated['new_rent'],
+                'common_fee'       => $validated['new_common_fee'] ?? 0,
+                'garbage_fee'      => $validated['new_garbage_fee'] ?? 0,
+                'pest_control_fee' => $validated['new_pest_control_fee'] ?? 0,
+            ]);
+        });
+
+        return redirect()
+            ->route('tenant.units.show', $unit)
+            ->with('success', "区画「{$unit->display_name}」の募集家賃を改定しました。");
     }
 
     // ================================================================
