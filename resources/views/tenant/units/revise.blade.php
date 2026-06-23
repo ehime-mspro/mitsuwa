@@ -15,6 +15,24 @@
 
 @section('content')
 
+    @php
+        // 坪単価計算ウィジェット用の値（数値リテラルとして Alpine へ渡すため (int)/(float) で正規化）
+        $areaTsubo = (float) $unit->area_tsubo;
+        $hasArea   = $areaTsubo > 0;
+        $initRent  = (int) old('new_rent', $unit->rent);
+        $initFee   = (int) old('new_common_fee', $unit->common_fee);
+    @endphp
+
+    {{-- 坪単価計算ウィジェット用スタイル（このページ限定。レイアウトに @stack が無いためインライン） --}}
+    <style>
+        .calc-input { width:100%; height:40px; border:1px solid #d1d5db; border-radius:6px; font-size:14px; color:#1f2937; box-sizing:border-box; background:white; }
+        .calc-input:focus { outline:none; border-color:#059669; box-shadow:0 0 0 3px rgba(5,150,105,0.12); }
+        .calc-input:disabled { background:#f3f4f6; color:#9ca3af; cursor:not-allowed; }
+        .calc-amount { font-size:15px; font-weight:600; }
+        .calc-suffix { position:absolute; top:50%; transform:translateY(-50%); color:#6b7280; pointer-events:none; }
+        .tsubo-box { background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:12px 14px; }
+    </style>
+
     {{-- 戻るリンク --}}
     <a href="{{ route('tenant.units.show', $unit) }}"
        class="inline-flex items-center gap-1 text-sm text-gray-600 hover:text-emerald-600 transition-colors mb-3">
@@ -55,6 +73,10 @@
                 <div class="text-xs text-gray-500 mb-0.5">ステータス</div>
                 <div class="text-sm font-medium text-gray-900">{{ $unit->status->label() }}</div>
             </div>
+            <div>
+                <div class="text-xs text-gray-500 mb-0.5">坪数</div>
+                <div class="text-sm font-medium text-gray-900">{{ $hasArea ? number_format($areaTsubo, 2) . '坪' : '—' }}</div>
+            </div>
         </div>
     </div>
 
@@ -81,60 +103,123 @@
         </div>
     </div>
 
-    <form method="POST" action="{{ route('tenant.units.revise.execute', $unit) }}">
+    <form method="POST" action="{{ route('tenant.units.revise.execute', $unit) }}"
+          x-data="reviseForm({{ $areaTsubo }}, {{ $initRent }}, {{ $initFee }})" x-init="init()">
         @csrf
 
         {{-- 改定内容 --}}
         <div class="bg-white border border-gray-200 rounded-lg p-5 mb-3">
-            <div class="text-sm font-bold text-gray-800 pb-2 mb-3.5 border-b border-gray-200">改定内容</div>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div class="sm:col-span-2">
-                    <label class="block text-sm font-semibold text-gray-700 mb-1">改定適用日<span class="text-red-600 ml-0.5">*</span></label>
-                    <input type="date" name="revision_date" value="{{ old('revision_date') }}"
-                           class="form-input w-full sm:max-w-[240px] h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none">
-                </div>
-                <div>
-                    <label class="block text-sm font-semibold text-gray-700 mb-1">新・募集家賃<span class="text-red-600 ml-0.5">*</span></label>
-                    <div class="relative">
-                        <input type="number" name="new_rent" value="{{ old('new_rent', $unit->rent) }}" min="0"
-                               class="form-input w-full h-[40px] px-3 pr-8 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none">
-                        <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">円</span>
+            <div class="text-sm font-bold text-gray-800 pb-2 mb-4 border-b border-gray-200">改定内容</div>
+
+            {{-- 改定適用日（初期値=本日） --}}
+            <div style="margin-bottom:26px;">
+                <label class="block text-sm font-semibold text-gray-700 mb-1">改定適用日<span class="text-red-600 ml-0.5">*</span></label>
+                <input type="date" name="revision_date" value="{{ old('revision_date', now()->format('Y-m-d')) }}"
+                       class="calc-input" style="max-width:240px; padding:0 12px;">
+                <p class="text-xs text-gray-500 mt-1">初期値は本日。カレンダーから変更できます。</p>
+            </div>
+
+            {{-- 新・募集家賃（坪単価 → 金額 / 双方向） --}}
+            <div style="margin-bottom:26px;">
+                <label class="block text-sm font-semibold text-gray-700 mb-2">新・募集家賃<span class="text-red-600 ml-0.5">*</span></label>
+                <div class="tsubo-box">
+                    <div style="display:flex; align-items:flex-end; gap:10px; flex-wrap:wrap;">
+                        {{-- 坪単価（非保存・計算補助） --}}
+                        <div style="width:160px;">
+                            <div class="text-xs text-gray-500 mb-0.5">坪単価</div>
+                            <div style="position:relative;">
+                                <input type="number" min="0" inputmode="numeric" class="calc-input" style="padding:0 42px 0 12px; text-align:right;"
+                                       x-model.number="rentUnitPrice" @input="newRent = toAmount(rentUnitPrice)" @disabled(!$hasArea)>
+                                <span class="calc-suffix" style="right:10px; font-size:11px;">円/坪</span>
+                            </div>
+                        </div>
+                        {{-- 連結記号 --}}
+                        <div style="height:40px; display:flex; align-items:center; font-size:13px; color:#6b7280; white-space:nowrap;">
+                            × <span style="margin:0 3px; font-weight:600; color:#374151;">{{ number_format($areaTsubo, 2) }}</span>坪 =
+                        </div>
+                        {{-- 金額（保存値: new_rent） --}}
+                        <div style="flex:1; min-width:170px;">
+                            <div class="text-xs text-gray-500 mb-0.5">金額</div>
+                            <div style="position:relative;">
+                                <input type="number" name="new_rent" min="0" inputmode="numeric" class="calc-input calc-amount" style="padding:0 30px 0 12px; text-align:right;"
+                                       x-model.number="newRent" @input="rentUnitPrice = toUnitPrice(newRent)">
+                                <span class="calc-suffix" style="right:10px; font-size:12px;">円</span>
+                            </div>
+                        </div>
                     </div>
-                    <p class="text-xs text-gray-500 mt-1">現在: {{ number_format($unit->rent) }}円</p>
                 </div>
-                <div>
-                    <label class="block text-sm font-semibold text-gray-700 mb-1">新・共益費</label>
-                    <div class="relative">
-                        <input type="number" name="new_common_fee" value="{{ old('new_common_fee', $unit->common_fee) }}" min="0"
-                               class="form-input w-full h-[40px] px-3 pr-8 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none">
-                        <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">円</span>
+                <p class="text-xs text-gray-500 mt-1">
+                    現在: {{ number_format($unit->rent) }}円
+                    @if($hasArea)
+                        ／ 坪単価を入れると金額へ自動反映。金額を直接入力しても可（坪単価も連動）。
+                    @else
+                        ／ <span class="text-amber-600 font-medium">坪数未設定のため坪単価計算は使えません。金額を直接入力してください。</span>
+                    @endif
+                </p>
+            </div>
+
+            {{-- 新・共益費（坪単価 → 金額 / 双方向） --}}
+            <div style="margin-bottom:26px;">
+                <label class="block text-sm font-semibold text-gray-700 mb-2">新・共益費</label>
+                <div class="tsubo-box">
+                    <div style="display:flex; align-items:flex-end; gap:10px; flex-wrap:wrap;">
+                        <div style="width:160px;">
+                            <div class="text-xs text-gray-500 mb-0.5">坪単価</div>
+                            <div style="position:relative;">
+                                <input type="number" min="0" inputmode="numeric" class="calc-input" style="padding:0 42px 0 12px; text-align:right;"
+                                       x-model.number="feeUnitPrice" @input="newFee = toAmount(feeUnitPrice)" @disabled(!$hasArea)>
+                                <span class="calc-suffix" style="right:10px; font-size:11px;">円/坪</span>
+                            </div>
+                        </div>
+                        <div style="height:40px; display:flex; align-items:center; font-size:13px; color:#6b7280; white-space:nowrap;">
+                            × <span style="margin:0 3px; font-weight:600; color:#374151;">{{ number_format($areaTsubo, 2) }}</span>坪 =
+                        </div>
+                        <div style="flex:1; min-width:170px;">
+                            <div class="text-xs text-gray-500 mb-0.5">金額</div>
+                            <div style="position:relative;">
+                                <input type="number" name="new_common_fee" min="0" inputmode="numeric" class="calc-input calc-amount" style="padding:0 30px 0 12px; text-align:right;"
+                                       x-model.number="newFee" @input="feeUnitPrice = toUnitPrice(newFee)">
+                                <span class="calc-suffix" style="right:10px; font-size:12px;">円</span>
+                            </div>
+                        </div>
                     </div>
-                    <p class="text-xs text-gray-500 mt-1">現在: {{ number_format($unit->common_fee) }}円</p>
                 </div>
+                <p class="text-xs text-gray-500 mt-1">
+                    現在: {{ number_format($unit->common_fee) }}円
+                    @if($hasArea)
+                        ／ 坪単価を入れると金額へ自動反映。金額を直接入力しても可（坪単価も連動）。
+                    @else
+                        ／ <span class="text-amber-600 font-medium">坪数未設定のため坪単価計算は使えません。金額を直接入力してください。</span>
+                    @endif
+                </p>
+            </div>
+
+            {{-- 新・ゴミ代 / 新・駆除代（金額のみ・坪単価計算なし） --}}
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" style="margin-bottom:26px;">
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1">新・ゴミ代</label>
-                    <div class="relative">
-                        <input type="number" name="new_garbage_fee" value="{{ old('new_garbage_fee', $unit->garbage_fee) }}" min="0"
-                               class="form-input w-full h-[40px] px-3 pr-8 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none">
-                        <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">円</span>
+                    <div style="position:relative;">
+                        <input type="number" name="new_garbage_fee" value="{{ old('new_garbage_fee', $unit->garbage_fee) }}" min="0" inputmode="numeric" class="calc-input" style="padding:0 30px 0 12px;">
+                        <span class="calc-suffix" style="right:10px; font-size:12px;">円</span>
                     </div>
                     <p class="text-xs text-gray-500 mt-1">現在: {{ number_format($unit->garbage_fee) }}円</p>
                 </div>
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1">新・駆除代</label>
-                    <div class="relative">
-                        <input type="number" name="new_pest_control_fee" value="{{ old('new_pest_control_fee', $unit->pest_control_fee) }}" min="0"
-                               class="form-input w-full h-[40px] px-3 pr-8 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none">
-                        <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">円</span>
+                    <div style="position:relative;">
+                        <input type="number" name="new_pest_control_fee" value="{{ old('new_pest_control_fee', $unit->pest_control_fee) }}" min="0" inputmode="numeric" class="calc-input" style="padding:0 30px 0 12px;">
+                        <span class="calc-suffix" style="right:10px; font-size:12px;">円</span>
                     </div>
                     <p class="text-xs text-gray-500 mt-1">現在: {{ number_format($unit->pest_control_fee) }}円</p>
                 </div>
-                <div class="sm:col-span-2">
-                    <label class="block text-sm font-semibold text-gray-700 mb-1">改定理由</label>
-                    <textarea name="reason" rows="3"
-                              class="form-textarea w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none resize-y min-h-[80px]"
-                              placeholder="改定の理由を入力（任意）">{{ old('reason') }}</textarea>
-                </div>
+            </div>
+
+            {{-- 改定理由 --}}
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-1">改定理由</label>
+                <textarea name="reason" rows="3"
+                          style="width:100%; min-height:80px; padding:8px 12px; border:1px solid #d1d5db; border-radius:6px; font-size:14px; color:#1f2937; resize:vertical; box-sizing:border-box;"
+                          placeholder="改定の理由を入力（任意）">{{ old('reason') }}</textarea>
             </div>
         </div>
 
@@ -151,4 +236,27 @@
             </button>
         </div>
     </form>
+
+    {{-- 坪単価 ⇄ 金額 の双方向計算（Bug #1: アロー関数を避け、別 script の named function に定義。x-data へは数値リテラルのみ渡す＝Bug #23 回避） --}}
+    <script>
+        function reviseForm(area, initRent, initFee) {
+            return {
+                areaTsubo: area || 0,
+                newRent: initRent || 0,
+                newFee: initFee || 0,
+                rentUnitPrice: '',
+                feeUnitPrice: '',
+                init() {
+                    // 金額から坪単価を逆算（初期表示）。坪数未設定なら坪単価は空のまま。
+                    if (this.hasArea()) {
+                        this.rentUnitPrice = this.toUnitPrice(this.newRent);
+                        this.feeUnitPrice = this.toUnitPrice(this.newFee);
+                    }
+                },
+                hasArea() { return this.areaTsubo > 0; },
+                toAmount(unitPrice) { return this.hasArea() ? Math.round((unitPrice || 0) * this.areaTsubo) : 0; },
+                toUnitPrice(amount) { return this.hasArea() ? Math.round((amount || 0) / this.areaTsubo) : ''; }
+            };
+        }
+    </script>
 @endsection
