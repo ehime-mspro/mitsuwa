@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>募集家賃の改定（モック） | ミツワ都市開発 経営管理システム</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif; background: #f3f4f6; }
+        /* 坪単価 → 金額 計算欄まわり */
+        .calc-input { width:100%; height:40px; border:1px solid #d1d5db; border-radius:6px; font-size:14px; box-sizing:border-box; background:white; }
+        .calc-input:focus { outline:none; border-color:#059669; box-shadow:0 0 0 3px rgba(5,150,105,0.12); }
+        .calc-amount { font-size:15px; font-weight:600; }
+        .calc-suffix { position:absolute; top:50%; transform:translateY(-50%); color:#6b7280; pointer-events:none; }
+        /* 新欄であることを示す薄い枠 */
+        .tsubo-box { background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:12px 14px; }
+    </style>
+</head>
+<body>
+
+    <!-- トップバー -->
+    <header style="background:#1f2937; color:white; padding:12px 24px; display:flex; align-items:center; justify-content:space-between;">
+        <span style="font-weight:700;">ミツワ都市開発 経営管理システム</span>
+        <span style="font-size:13px;">山田 (経営層)</span>
+    </header>
+
+    <div style="display:flex; min-height:calc(100vh - 48px);">
+        <!-- サイドバー（簡略・参考表示） -->
+        <aside style="width:210px; background:white; border-right:1px solid #e5e7eb; padding:16px 0; font-size:13px;">
+            <div style="padding:8px 16px; color:#6b7280;">ダッシュボード</div>
+            <div style="padding:8px 16px; color:#374151; font-weight:600;">テナント管理 ▾</div>
+            <div style="padding:6px 16px 6px 32px; color:#6b7280;">物件一覧</div>
+            <div style="padding:6px 16px 6px 32px; background:#ecfdf5; color:#047857; border-left:3px solid #10b981; font-weight:600;">区画一覧</div>
+            <div style="padding:6px 16px 6px 32px; color:#6b7280;">契約一覧</div>
+            <div style="padding:8px 16px; color:#6b7280;">賃貸マンション</div>
+            <div style="padding:8px 16px; color:#6b7280;">不動産管理</div>
+            <div style="padding:8px 16px; color:#6b7280;">システム管理</div>
+        </aside>
+
+        <!-- メインコンテンツ -->
+        <main style="flex:1; padding:24px; max-width:1040px;" x-data="reviseForm()" x-init="init()">
+
+            <!-- パンくず -->
+            <div class="text-sm text-gray-500" style="margin-bottom:12px;">
+                テナント管理 &rsaquo; グリーンハイツ松山 &rsaquo; 区画: 3A &rsaquo; <span class="text-gray-600">賃料改定</span>
+            </div>
+
+            <!-- 戻るリンク -->
+            <a href="#" class="inline-flex items-center gap-1 text-sm text-gray-600 hover:text-emerald-600 mb-3">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                区画詳細に戻る
+            </a>
+
+            <!-- ページタイトル -->
+            <h1 class="text-lg font-bold text-gray-900 mb-4">募集家賃の改定: 3A</h1>
+
+            <!-- 経営層のみの告知 -->
+            <div class="flex items-start gap-2 mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3.5">
+                <svg class="w-5 h-5 text-blue-500 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                <div class="text-sm text-blue-800">この操作は<strong>経営層のみ</strong>実行できます。改定内容は履歴に記録され、区画の募集条件が更新されます。</div>
+            </div>
+
+            <!-- ========== 対象区画（坪数を追加） ========== -->
+            <div class="bg-white border border-gray-200 rounded-lg px-4 py-4 lg:px-5 lg:py-4 mb-4">
+                <div class="text-sm font-bold text-gray-800 pb-2 mb-3 border-b border-gray-200">対象区画</div>
+                <div class="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                    <div>
+                        <div class="text-xs text-gray-500 mb-0.5">物件 / 区画</div>
+                        <div class="text-sm font-medium text-gray-900">グリーンハイツ松山 / 3A</div>
+                    </div>
+                    <div>
+                        <div class="text-xs text-gray-500 mb-0.5">ステータス</div>
+                        <div class="text-sm font-medium text-gray-900">空室</div>
+                    </div>
+                    <!-- ★追加: 坪数 -->
+                    <div>
+                        <div class="text-xs text-gray-500 mb-0.5">坪数</div>
+                        <div class="text-sm font-medium text-gray-900">7.50坪</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ========== 現在の募集条件 ========== -->
+            <div class="bg-white border border-gray-200 rounded-lg px-4 py-4 lg:px-5 lg:py-4 mb-4">
+                <div class="text-sm font-bold text-gray-800 pb-2 mb-3 border-b border-gray-200">現在の募集条件</div>
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div>
+                        <div class="text-xs text-gray-500 mb-0.5">募集家賃</div>
+                        <div class="text-sm font-medium text-gray-900">85,000円</div>
+                    </div>
+                    <div>
+                        <div class="text-xs text-gray-500 mb-0.5">共益費</div>
+                        <div class="text-sm font-medium text-gray-900">8,000円</div>
+                    </div>
+                    <div>
+                        <div class="text-xs text-gray-500 mb-0.5">ゴミ代</div>
+                        <div class="text-sm font-medium text-gray-900">1,500円</div>
+                    </div>
+                    <div>
+                        <div class="text-xs text-gray-500 mb-0.5">駆除代</div>
+                        <div class="text-sm font-medium text-gray-900">500円</div>
+                    </div>
+                </div>
+            </div>
+
+            <form onsubmit="return false;">
+
+                <!-- ========== 改定内容 ========== -->
+                <div class="bg-white border border-gray-200 rounded-lg p-5 mb-3">
+                    <div class="text-sm font-bold text-gray-800 pb-2 mb-4 border-b border-gray-200">改定内容</div>
+
+                    <!-- 改定適用日（初期値=本日） -->
+                    <div style="margin-bottom:26px;">
+                        <label class="block text-sm font-semibold text-gray-700 mb-1">改定適用日 <span class="text-red-600">*</span></label>
+                        <input type="date" name="revision_date" x-ref="revisionDate"
+                               style="width:100%; max-width:240px; height:40px; padding:0 12px; border:1px solid #d1d5db; border-radius:6px; font-size:14px; color:#1f2937; box-sizing:border-box;">
+                        <p class="text-xs text-gray-500 mt-1">初期値は本日。カレンダーアイコンから変更できます。</p>
+                    </div>
+
+                    <!-- 新・募集家賃（坪単価 → 金額 / 双方向） -->
+                    <div style="margin-bottom:26px;">
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">新・募集家賃 <span class="text-red-600">*</span></label>
+                        <div class="tsubo-box">
+                            <div style="display:flex; align-items:flex-end; gap:10px; flex-wrap:wrap;">
+                                <!-- 坪単価 -->
+                                <div style="width:160px;">
+                                    <div class="text-xs text-gray-500 mb-0.5">坪単価</div>
+                                    <div style="position:relative;">
+                                        <input type="number" min="0" inputmode="numeric" class="calc-input" style="padding:0 42px 0 12px; text-align:right;"
+                                               x-model.number="rentUnitPrice" @input="newRent = toAmount(rentUnitPrice)">
+                                        <span class="calc-suffix" style="right:10px; font-size:11px;">円/坪</span>
+                                    </div>
+                                </div>
+                                <!-- 連結記号 -->
+                                <div style="height:40px; display:flex; align-items:center; font-size:13px; color:#6b7280; white-space:nowrap;">
+                                    × <span x-text="areaTsubo.toFixed(2)" style="margin:0 3px; font-weight:600; color:#374151;"></span>坪 =
+                                </div>
+                                <!-- 金額 -->
+                                <div style="flex:1; min-width:170px;">
+                                    <div class="text-xs text-gray-500 mb-0.5">金額</div>
+                                    <div style="position:relative;">
+                                        <input type="number" name="new_rent" min="0" inputmode="numeric" class="calc-input calc-amount" style="padding:0 30px 0 12px; text-align:right;"
+                                               x-model.number="newRent" @input="rentUnitPrice = toUnitPrice(newRent)">
+                                        <span class="calc-suffix" style="right:10px; font-size:12px;">円</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1">現在: 85,000円 ／ 坪単価を入れると金額へ自動反映。金額の直接入力も可（坪単価も連動）。</p>
+                    </div>
+
+                    <!-- 新・共益費（坪単価 → 金額 / 双方向） -->
+                    <div style="margin-bottom:26px;">
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">新・共益費</label>
+                        <div class="tsubo-box">
+                            <div style="display:flex; align-items:flex-end; gap:10px; flex-wrap:wrap;">
+                                <div style="width:160px;">
+                                    <div class="text-xs text-gray-500 mb-0.5">坪単価</div>
+                                    <div style="position:relative;">
+                                        <input type="number" min="0" inputmode="numeric" class="calc-input" style="padding:0 42px 0 12px; text-align:right;"
+                                               x-model.number="feeUnitPrice" @input="newFee = toAmount(feeUnitPrice)">
+                                        <span class="calc-suffix" style="right:10px; font-size:11px;">円/坪</span>
+                                    </div>
+                                </div>
+                                <div style="height:40px; display:flex; align-items:center; font-size:13px; color:#6b7280; white-space:nowrap;">
+                                    × <span x-text="areaTsubo.toFixed(2)" style="margin:0 3px; font-weight:600; color:#374151;"></span>坪 =
+                                </div>
+                                <div style="flex:1; min-width:170px;">
+                                    <div class="text-xs text-gray-500 mb-0.5">金額</div>
+                                    <div style="position:relative;">
+                                        <input type="number" name="new_common_fee" min="0" inputmode="numeric" class="calc-input calc-amount" style="padding:0 30px 0 12px; text-align:right;"
+                                               x-model.number="newFee" @input="feeUnitPrice = toUnitPrice(newFee)">
+                                        <span class="calc-suffix" style="right:10px; font-size:12px;">円</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1">現在: 8,000円 ／ 坪単価を入れると金額へ自動反映。金額の直接入力も可（坪単価も連動）。</p>
+                    </div>
+
+                    <!-- 新・ゴミ代 / 新・駆除代（従来どおり金額のみ） -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" style="margin-bottom:26px;">
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-1">新・ゴミ代</label>
+                            <div style="position:relative;">
+                                <input type="number" name="new_garbage_fee" min="0" inputmode="numeric" value="1500" class="calc-input" style="padding:0 30px 0 12px;">
+                                <span class="calc-suffix" style="right:10px; font-size:12px;">円</span>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">現在: 1,500円</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-1">新・駆除代</label>
+                            <div style="position:relative;">
+                                <input type="number" name="new_pest_control_fee" min="0" inputmode="numeric" value="500" class="calc-input" style="padding:0 30px 0 12px;">
+                                <span class="calc-suffix" style="right:10px; font-size:12px;">円</span>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">現在: 500円</p>
+                        </div>
+                    </div>
+
+                    <!-- 改定理由 -->
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-1">改定理由</label>
+                        <textarea name="reason" rows="3" placeholder="改定の理由を入力（任意）"
+                                  style="width:100%; min-height:80px; padding:8px 12px; border:1px solid #d1d5db; border-radius:6px; font-size:14px; resize:vertical; box-sizing:border-box;"></textarea>
+                    </div>
+                </div>
+
+                <!-- アクションボタン -->
+                <div class="flex justify-end gap-2 pt-2">
+                    <a href="#" class="px-4 py-2.5 bg-white text-gray-700 border border-gray-300 rounded-md text-sm hover:bg-gray-50">キャンセル</a>
+                    <button type="submit" class="inline-flex items-center gap-1.5 px-5 py-2.5 bg-emerald-600 text-white rounded-md text-sm font-semibold hover:bg-emerald-700">
+                        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        賃料改定を実行する
+                    </button>
+                </div>
+            </form>
+
+            <!-- モック注記 -->
+            <div style="margin-top:18px; padding:10px 14px; background:#fffbeb; border:1px solid #fde68a; border-radius:8px; font-size:12px; color:#92400e;">
+                <strong>※モック</strong>：坪数=7.50坪 で計算。坪単価に <b>12000</b> を入れると家賃が <b>90,000円</b> になります。金額を直接書き換えると坪単価が逆算されます（端数は四捨五入）。坪単価は計算補助のみで保存されません。
+            </div>
+
+        </main>
+    </div>
+
+    <script>
+        function reviseForm() {
+            return {
+                areaTsubo: 7.50,
+                newRent: 85000,
+                rentUnitPrice: 0,
+                newFee: 8000,
+                feeUnitPrice: 0,
+                init() {
+                    // 改定適用日を本日に
+                    var d = new Date();
+                    this.$refs.revisionDate.value =
+                        d.getFullYear() + '-' +
+                        String(d.getMonth() + 1).padStart(2, '0') + '-' +
+                        String(d.getDate()).padStart(2, '0');
+                    // 金額から坪単価を逆算（初期表示）
+                    this.rentUnitPrice = this.toUnitPrice(this.newRent);
+                    this.feeUnitPrice = this.toUnitPrice(this.newFee);
+                },
+                hasArea() { return this.areaTsubo && this.areaTsubo > 0; },
+                toAmount(unitPrice) { return this.hasArea() ? Math.round((unitPrice || 0) * this.areaTsubo) : 0; },
+                toUnitPrice(amount) { return this.hasArea() ? Math.round((amount || 0) / this.areaTsubo) : 0; }
+            };
+        }
+    </script>
+
+    <script>
+        // 全角→半角 数字自動変換（本番 layouts/app.blade.php と同等）
+        document.addEventListener('input', function (e) {
+            var t = e.target;
+            if (!t || !t.matches) return;
+            if (!t.matches('input[inputmode="numeric"], input[type="number"]')) return;
+            var v = t.value;
+            var nv = v.replace(/[０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); });
+            if (nv !== v) {
+                var s = t.selectionStart, en = t.selectionEnd;
+                t.value = nv;
+                try { t.setSelectionRange(s, en); } catch (_) {}
+            }
+        }, true);
+    </script>
+
+</body>
+</html>
