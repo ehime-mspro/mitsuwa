@@ -17,41 +17,18 @@ use Illuminate\Support\Facades\DB;
 /**
  * ZEAL 会員 CSV インポートコントローラ
  *
+ * 別の会員管理システムがエクスポートする 77 列形式の会員 CSV を取り込む。
+ * 実証済みの HacomonoCsvReader + HacomonoMemberMapper に委譲し、区分判定
+ * (在籍/退会済/休会/チケット/定期OFF)・プラン名解決・税抜判別を行う。
+ *
  * 2ステップ方式:
- *   1. preview(): CSV をパース → バリデーション → プレビュー表示
- *   2. execute(): base64 エンコードされた CSV を再パース → DB 登録
+ *   1. preview(): CSV をパース → 区分判定 → プレビュー表示
+ *   2. execute(): base64 で持ち回った CSV を再パース → DB 登録（会員 + 契約）
  *
- * 取込時に zeal_member_contracts の new_join レコードも同時生成する。
- *
- * CSV カラム仕様（16列）:
- *   氏名, フリガナ, 性別, 生年月日, 電話番号, メールアドレス, 郵便番号, 住所,
- *   入会日, プラン名, 月会費（税抜）, 担当トレーナー, 集客チャネル, 入会目的, 所属店舗, メモ
+ * 取込対象外(ビジター)は除外、エラー行はスキップ、同名+同入会日は重複スキップ。
  */
 class ZealMemberImportController extends Controller
 {
-    // ================================================================
-    // カラムマッピング（CSV ヘッダー → 内部キー）
-    // ================================================================
-
-    private array $columnMap = [
-        '氏名'          => 'name',
-        'フリガナ'      => 'name_kana',
-        '性別'          => 'gender',
-        '生年月日'      => 'birthday',
-        '電話番号'      => 'phone',
-        'メールアドレス'=> 'email',
-        '郵便番号'      => 'postal_code',
-        '住所'          => 'address',
-        '入会日'        => 'joined_on',
-        'プラン名'      => 'plan_name',
-        '月会費（税抜）'=> 'applied_price_excl',
-        '担当トレーナー'=> 'trainer_name',
-        '集客チャネル'  => 'acquisition_source',
-        '入会目的'      => 'purpose',
-        '所属店舗'      => 'store_name',
-        'メモ'          => 'memo',
-    ];
-
     // ================================================================
     // 画面表示
     // ================================================================
@@ -63,45 +40,6 @@ class ZealMemberImportController extends Controller
     public function index()
     {
         return view('admin.zeal-member-import.index');
-    }
-
-    // ================================================================
-    // テンプレート CSV ダウンロード
-    // ================================================================
-
-    /**
-     * サンプル CSV テンプレートをダウンロード
-     * Route: GET /admin/zeal/member-import/template
-     *
-     * ※ ルートは routes/web.php に追加が必要な場合は別途追加してください。
-     *    現在の実装では index ビューからのフォーム POST で代替しています。
-     */
-    public function template()
-    {
-        $bom = "\xEF\xBB\xBF";
-        $header = array_keys($this->columnMap);
-
-        // 先頭店舗の名前を動的に取得（DB上の表示順1位の有効店舗）。
-        // 店舗マスタが空のときは空欄サンプルにしてフォールバック挙動を強調する。
-        $sampleStoreName = ZealStore::where('active', true)
-            ->orderBy('display_order')
-            ->orderBy('id')
-            ->value('name') ?? '';
-
-        $sampleRows = [
-            ['山本 健太', 'ヤマモト ケンタ', '男性', '1992-03-14', '090-1234-5678', 'yamamoto@example.com', '790-0001', '愛媛県松山市一番町1-2-3', '2025-10-17', 'パーソナル&セミパーソナル通い放題（1枠）', '18000', '田中', 'SNS', 'ダイエット', $sampleStoreName, ''],
-            ['佐藤 花子', 'サトウ ハナコ', '女性', '1985-07-22', '080-9876-5432', '',               '790-0023', '愛媛県松山市本町2-3',     '2025-11-01', 'パーソナル&セミパーソナル通い放題（2枠）', '',      '',     '',      '',          '',                                  '週3回希望'],
-        ];
-
-        $csv = $bom . $this->toCsvLine($header);
-        foreach ($sampleRows as $row) {
-            $csv .= $this->toCsvLine($row);
-        }
-
-        return response($csv, 200, [
-            'Content-Type'        => 'text/csv; charset=UTF-8',
-            'Content-Disposition' => 'attachment; filename="zeal_member_import_template.csv"',
-        ]);
     }
 
     // ================================================================
@@ -306,15 +244,4 @@ class ZealMemberImportController extends Controller
         return [$rows, $content];
     }
 
-    /**
-     * CSV 行文字列を生成する（ダブルクォートエスケープ）
-     */
-    private function toCsvLine(array $fields): string
-    {
-        $escaped = [];
-        foreach ($fields as $f) {
-            $escaped[] = '"' . str_replace('"', '""', (string) $f) . '"';
-        }
-        return implode(',', $escaped) . "\n";
-    }
 }

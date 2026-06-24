@@ -1547,11 +1547,9 @@ Route::middleware(['auth', 'password.change'])->group(function () {
         Route::get('/mansion-import/template/parking-contract', [\App\Http\Controllers\Admin\MansionImportController::class, 'downloadParkingContractTemplate'])
             ->name('admin.mansion-import.template-parking-contract');
 
-        // ZEAL 会員 CSV インポート（4ルート）
+        // ZEAL 会員 CSV インポート（3ルート）
         Route::get('/zeal/member-import', [\App\Http\Controllers\Admin\ZealMemberImportController::class, 'index'])
             ->name('admin.zeal.member-import');
-        Route::get('/zeal/member-import/template', [\App\Http\Controllers\Admin\ZealMemberImportController::class, 'template'])
-            ->name('admin.zeal.member-import.template');
         Route::post('/zeal/member-import/preview', [\App\Http\Controllers\Admin\ZealMemberImportController::class, 'preview'])
             ->name('admin.zeal.member-import.preview');
         Route::post('/zeal/member-import/execute', [\App\Http\Controllers\Admin\ZealMemberImportController::class, 'execute'])

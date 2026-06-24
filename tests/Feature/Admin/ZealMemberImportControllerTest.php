@@ -217,6 +217,25 @@ class ZealMemberImportControllerTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_index_shows_new_format_guidance_without_template_link(): void
+    {
+        $response = $this->actingAs($this->executive())
+            ->get(route('admin.zeal.member-import'));
+
+        $response->assertOk();
+        $response->assertSee('会員管理システム');         // 新フォーマット説明
+        $response->assertDontSee('サンプルCSVをダウンロード'); // 旧テンプレDLは撤去
+    }
+
+    public function test_template_route_is_removed(): void
+    {
+        $this->assertFalse(\Illuminate\Support\Facades\Route::has('admin.zeal.member-import.template'));
+
+        $this->actingAs($this->executive())
+            ->get('/admin/zeal/member-import/template')
+            ->assertNotFound();
+    }
+
     public function test_zeal_schema_is_usable(): void
     {
         $store = ZealStore::create(['name' => '松山市駅前店', 'display_order' => 1, 'active' => true]);
