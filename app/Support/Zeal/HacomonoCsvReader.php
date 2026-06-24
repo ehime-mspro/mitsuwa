@@ -5,11 +5,7 @@ namespace App\Support\Zeal;
 class HacomonoCsvReader
 {
     /**
-     * hacomono形式CSVを連想配列の配列に変換する。
-     * - 文字コード自動判定（UTF-8 / SJIS-win / SJIS / EUC-JP）→ UTF-8 へ変換
-     * - 先頭 BOM 除去
-     * - 引用フィールド内の改行に対応（fgetcsv 使用）
-     * - 各行はヘッダー名をキーにした配列。列数が足りない場合は空文字で補完。
+     * パスから読み込み、readContent() に委譲する。
      *
      * @return array<int,array<string,string>>
      */
@@ -20,6 +16,20 @@ class HacomonoCsvReader
             throw new \RuntimeException("CSVを読み込めません: {$path}");
         }
 
+        return self::readContent($content);
+    }
+
+    /**
+     * hacomono形式CSV（文字列）を連想配列の配列に変換する。
+     * - 文字コード自動判定（UTF-8 / SJIS-win / SJIS / EUC-JP）→ UTF-8 へ変換
+     * - 先頭 BOM 除去
+     * - 引用フィールド内の改行に対応（fgetcsv 使用）
+     * - 各行はヘッダー名をキーにした配列。列数が足りない場合は空文字で補完。
+     *
+     * @return array<int,array<string,string>>
+     */
+    public static function readContent(string $content): array
+    {
         $encoding = mb_detect_encoding($content, ['UTF-8', 'SJIS-win', 'SJIS', 'EUC-JP'], true);
         if ($encoding !== false && $encoding !== 'UTF-8') {
             $content = mb_convert_encoding($content, 'UTF-8', $encoding);
