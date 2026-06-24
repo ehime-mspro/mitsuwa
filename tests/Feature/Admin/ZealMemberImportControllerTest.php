@@ -117,7 +117,7 @@ class ZealMemberImportControllerTest extends TestCase
             ]);
 
         $response->assertRedirect(route('admin.zeal.member-import'));
-        $response->assertSessionHas('success');
+        $response->assertSessionHas('success', 'インポート完了: 登録 5件 / スキップ 0件 / エラー 1件 / 除外 1件');
 
         // 5 区分が会員化（ビジター除外・エラー行スキップ）
         $this->assertDatabaseCount('zeal_members', 5);
@@ -137,6 +137,36 @@ class ZealMemberImportControllerTest extends TestCase
         $this->assertNotNull($ticket);
         $this->assertNull($ticket->current_plan_id);
         $this->assertSame(0, ZealMemberContract::where('member_id', $ticket->id)->count());
+    }
+
+    public function test_preview_classifies_all_kinds(): void
+    {
+        $this->seedMasters();
+        $content = $this->csvContent($this->fixtureRows());
+
+        $response = $this->actingAs($this->executive())
+            ->post(route('admin.zeal.member-import.preview'), [
+                'csv_file' => $this->uploadFrom($content),
+            ]);
+
+        $response->assertOk(); // 新 Blade が描画できること（Bug #26 型の検出も兼ねる）
+
+        // 区分ごとの件数（view data で厳密検証）
+        $this->assertCount(5, $response->viewData('toImport'));
+        $this->assertCount(1, $response->viewData('errored'));
+        $this->assertCount(1, $response->viewData('excluded'));
+        $this->assertCount(0, $response->viewData('skipped'));
+
+        // 画面に区分ラベルと氏名が出ること
+        $response->assertSee('在籍');
+        $response->assertSee('退会済');
+        $response->assertSee('休会');
+        $response->assertSee('チケット');
+        $response->assertSee('定期OFF');
+        $response->assertSee('在籍 太郎');
+        $response->assertSee('券 三郎');
+        $response->assertSee('（氏名なし）');   // エラー行(氏名空)の表示
+        $response->assertSee('氏名が空です');   // エラー行のエラーメッセージ描画
     }
 
     public function test_execute_skips_existing_duplicate(): void
