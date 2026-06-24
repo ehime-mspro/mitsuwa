@@ -13,6 +13,7 @@
 
 @section('content')
 
+{{-- Mapper の区分定数は FQCN で直書き（Blade php ブロック内の use 文はメソッドスコープになり parse エラーのため） --}}
 @php
     $kindLabel = [
         \App\Support\Zeal\HacomonoMemberMapper::KIND_ACTIVE        => '在籍',

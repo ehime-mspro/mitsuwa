@@ -211,7 +211,8 @@ class ZealMemberImportController extends Controller
     private function loadCsv(Request $request)
     {
         if ($request->boolean('confirmed')) {
-            $content = base64_decode($request->input('csv_data', ''));
+            // 不正 base64 は false を返すため空文字へ明示キャスト（後続で「データなし」エラーに落ちる）
+            $content = (string) base64_decode($request->input('csv_data', ''));
         } else {
             $request->validate([
                 'csv_file' => 'required|file|mimes:csv,txt|max:10240',
