@@ -25,6 +25,9 @@ rsync -avz \
   --exclude='README*' \
   --exclude='phpunit.xml' \
   --exclude='*.log' \
+  --exclude='.playwright-mcp' \
+  --exclude='prod-login.png' \
+  --exclude='*.png' \
   --exclude='deploy.sh' \
   ./ ${SERVER}:${APP_PATH}/
 
