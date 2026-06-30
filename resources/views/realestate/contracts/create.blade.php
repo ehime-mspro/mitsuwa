@@ -225,10 +225,12 @@
                 </div>
             </div>
 
-            {{-- ボタン（フッター固定。contractType 選択前は非表示） --}}
-            <template x-if="contractType !== ''">
+            {{-- ボタン（フッター固定。contractType 選択前は非表示）
+                 x-show を使うこと。x-if は firstElementChild しか描画しないため、
+                 multi-root の x-form-actions（spacer+バー+style）だとボタンが消える --}}
+            <div x-show="contractType !== ''" style="display: none;">
                 <x-form-actions submit-label="登録する" :cancel-url="route('realestate.contracts.index')" />
-            </template>
+            </div>
         </div>
     </form>
 
