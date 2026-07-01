@@ -26,6 +26,8 @@ class RentRevision extends Model
         'new_garbage_fee',        // STEP 6 追加
         'old_pest_control_fee',   // STEP 6 追加
         'new_pest_control_fee',   // STEP 6 追加
+        'old_deposit',            // 敷金改定 追加
+        'new_deposit',            // 敷金改定 追加
         'reason',
         'revised_by',
     ];
@@ -42,6 +44,8 @@ class RentRevision extends Model
             'new_garbage_fee' => 'integer',        // STEP 6 追加
             'old_pest_control_fee' => 'integer',   // STEP 6 追加
             'new_pest_control_fee' => 'integer',   // STEP 6 追加
+            'old_deposit' => 'integer',            // 敷金改定 追加
+            'new_deposit' => 'integer',            // 敷金改定 追加
         ];
     }
 

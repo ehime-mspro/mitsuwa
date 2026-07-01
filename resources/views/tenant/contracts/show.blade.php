@@ -316,6 +316,8 @@
                                         <th class="px-3 py-2 text-left text-xs font-bold text-gray-600 border-b border-gray-200 whitespace-nowrap">新ゴミ代</th>
                                         <th class="px-3 py-2 text-left text-xs font-bold text-gray-600 border-b border-gray-200 whitespace-nowrap">旧駆除代</th>
                                         <th class="px-3 py-2 text-left text-xs font-bold text-gray-600 border-b border-gray-200 whitespace-nowrap">新駆除代</th>
+                                        <th class="px-3 py-2 text-left text-xs font-bold text-gray-600 border-b border-gray-200 whitespace-nowrap">旧敷金</th>
+                                        <th class="px-3 py-2 text-left text-xs font-bold text-gray-600 border-b border-gray-200 whitespace-nowrap">新敷金</th>
                                         <th class="px-3 py-2 text-left text-xs font-bold text-gray-600 border-b border-gray-200 whitespace-nowrap">改定者</th>
                                     </tr>
                                 </thead>
@@ -331,6 +333,8 @@
                                             <td class="px-3 py-2 border-b border-gray-100 whitespace-nowrap font-bold" style="color:#047857">{{ number_format($revision->new_garbage_fee ?? 0) }}円</td>
                                             <td class="px-3 py-2 border-b border-gray-100 whitespace-nowrap text-gray-900">{{ number_format($revision->old_pest_control_fee ?? 0) }}円</td>
                                             <td class="px-3 py-2 border-b border-gray-100 whitespace-nowrap font-bold" style="color:#047857">{{ number_format($revision->new_pest_control_fee ?? 0) }}円</td>
+                                            <td class="px-3 py-2 border-b border-gray-100 whitespace-nowrap text-gray-900">{{ number_format($revision->old_deposit ?? 0) }}円</td>
+                                            <td class="px-3 py-2 border-b border-gray-100 whitespace-nowrap font-bold" style="color:#047857">{{ number_format($revision->new_deposit ?? 0) }}円</td>
                                             <td class="px-3 py-2 border-b border-gray-100 whitespace-nowrap text-gray-900">{{ $revision->revisedByUser->name ?? '—' }}</td>
                                         </tr>
                                     @endforeach

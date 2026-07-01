@@ -365,6 +365,7 @@ class UnitController extends Controller
             'new_common_fee'       => 'nullable|integer|min:0',
             'new_garbage_fee'      => 'nullable|integer|min:0',
             'new_pest_control_fee' => 'nullable|integer|min:0',
+            'new_deposit'          => 'nullable|integer|min:0',
             'reason'               => 'nullable|string|max:5000',
         ]);
 
@@ -381,6 +382,8 @@ class UnitController extends Controller
                 'new_garbage_fee'      => $validated['new_garbage_fee'] ?? 0,
                 'old_pest_control_fee' => $unit->pest_control_fee,
                 'new_pest_control_fee' => $validated['new_pest_control_fee'] ?? 0,
+                'old_deposit'          => $unit->deposit,
+                'new_deposit'          => $validated['new_deposit'] ?? 0,
                 'reason'               => $validated['reason'] ?? null,
                 'revised_by'           => Auth::id(),
             ]);
@@ -391,6 +394,7 @@ class UnitController extends Controller
                 'common_fee'       => $validated['new_common_fee'] ?? 0,
                 'garbage_fee'      => $validated['new_garbage_fee'] ?? 0,
                 'pest_control_fee' => $validated['new_pest_control_fee'] ?? 0,
+                'deposit'          => $validated['new_deposit'] ?? 0,
             ]);
         });
 
@@ -426,6 +430,8 @@ class UnitController extends Controller
                 'new_garbage_fee'      => $r->new_garbage_fee,
                 'old_pest_control_fee' => $r->old_pest_control_fee,
                 'new_pest_control_fee' => $r->new_pest_control_fee,
+                'old_deposit'          => $r->old_deposit,
+                'new_deposit'          => $r->new_deposit,
                 'revised_by_name'      => $r->revisedByUser->name ?? '—',
             ];
         });
@@ -446,6 +452,8 @@ class UnitController extends Controller
                     'new_garbage_fee'      => $r->new_garbage_fee,
                     'old_pest_control_fee' => $r->old_pest_control_fee,
                     'new_pest_control_fee' => $r->new_pest_control_fee,
+                    'old_deposit'          => $r->old_deposit,
+                    'new_deposit'          => $r->new_deposit,
                     'revised_by_name'      => $r->revisedByUser->name ?? '—',
                 ];
             });

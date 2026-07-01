@@ -19,8 +19,9 @@
         // 坪単価計算ウィジェット用の値（数値リテラルとして Alpine へ渡すため (int)/(float) で正規化）
         $areaTsubo = (float) $unit->area_tsubo;
         $hasArea   = $areaTsubo > 0;
-        $initRent  = (int) old('new_rent', $unit->rent);
-        $initFee   = (int) old('new_common_fee', $unit->common_fee);
+        $initRent    = (int) old('new_rent', $unit->rent);
+        $initFee     = (int) old('new_common_fee', $unit->common_fee);
+        $initDeposit = (int) old('new_deposit', $unit->deposit);
     @endphp
 
     {{-- 坪単価計算ウィジェット用スタイル（このページ限定。レイアウトに @stack が無いためインライン） --}}
@@ -100,11 +101,15 @@
                 <div class="text-xs text-gray-500 mb-0.5">駆除代</div>
                 <div class="text-sm font-medium text-gray-900">{{ number_format($unit->pest_control_fee) }}円</div>
             </div>
+            <div>
+                <div class="text-xs text-gray-500 mb-0.5">敷金</div>
+                <div class="text-sm font-medium text-gray-900">{{ number_format($unit->deposit) }}円</div>
+            </div>
         </div>
     </div>
 
     <form method="POST" action="{{ route('tenant.units.revise.execute', $unit) }}"
-          x-data="reviseForm({{ $areaTsubo }}, {{ $initRent }}, {{ $initFee }})" x-init="init()">
+          x-data="reviseForm({{ $areaTsubo }}, {{ $initRent }}, {{ $initFee }}, {{ $initDeposit }})" x-init="init()">
         @csrf
 
         {{-- 改定内容 --}}
@@ -129,7 +134,7 @@
                             <div class="text-xs text-gray-500 mb-0.5">坪単価</div>
                             <div style="position:relative;">
                                 <input type="number" min="0" inputmode="numeric" class="calc-input" style="padding:0 42px 0 12px; text-align:right;"
-                                       x-model.number="rentUnitPrice" @input="newRent = toAmount(rentUnitPrice)" @disabled(!$hasArea)>
+                                       x-model.number="rentUnitPrice" @input="newRent = toAmount(rentUnitPrice); applyMonths()" @disabled(!$hasArea)>
                                 <span class="calc-suffix" style="right:10px; font-size:11px;">円/坪</span>
                             </div>
                         </div>
@@ -142,7 +147,7 @@
                             <div class="text-xs text-gray-500 mb-0.5">金額</div>
                             <div style="position:relative;">
                                 <input type="number" name="new_rent" min="0" inputmode="numeric" class="calc-input calc-amount" style="padding:0 30px 0 12px; text-align:right;"
-                                       x-model.number="newRent" @input="rentUnitPrice = toUnitPrice(newRent)">
+                                       x-model.number="newRent" @input="rentUnitPrice = toUnitPrice(newRent); applyMonths()">
                                 <span class="calc-suffix" style="right:10px; font-size:12px;">円</span>
                             </div>
                         </div>
@@ -214,6 +219,26 @@
                 </div>
             </div>
 
+            {{-- 新・敷金（募集家賃 × ヶ月数で自動計算・手動修正可） --}}
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" style="margin-bottom:26px;">
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">新・敷金</label>
+                    <div style="position:relative;">
+                        <input type="number" name="new_deposit" x-model.number="newDeposit" min="0" inputmode="numeric" class="calc-input" style="padding:0 30px 0 12px;">
+                        <span class="calc-suffix" style="right:10px; font-size:12px;">円</span>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">現在: {{ number_format($unit->deposit) }}円<span x-show="impliedMonths() !== null"> ／ 入力 ≒ <span x-text="impliedMonths()"></span>ヶ月分</span></p>
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">敷金＝募集家賃 × ヶ月数</label>
+                    <div style="position:relative;">
+                        <input type="number" x-model.number="depositMonths" @input="applyMonths()" min="0" step="0.1" inputmode="decimal" placeholder="ヶ月数を入力" class="calc-input" style="padding:0 42px 0 12px;">
+                        <span class="calc-suffix" style="right:10px; font-size:12px;">ヶ月</span>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">ヶ月数を入れると敷金を自動計算（金額の直接入力も可）</p>
+                </div>
+            </div>
+
             {{-- 改定理由 --}}
             <div>
                 <label class="block text-sm font-semibold text-gray-700 mb-1">改定理由</label>
@@ -239,11 +264,13 @@
 
     {{-- 坪単価 ⇄ 金額 の双方向計算（Bug #1: アロー関数を避け、別 script の named function に定義。x-data へは数値リテラルのみ渡す＝Bug #23 回避） --}}
     <script>
-        function reviseForm(area, initRent, initFee) {
+        function reviseForm(area, initRent, initFee, initDeposit) {
             return {
                 areaTsubo: area || 0,
                 newRent: initRent || 0,
                 newFee: initFee || 0,
+                newDeposit: initDeposit || 0,
+                depositMonths: '',
                 rentUnitPrice: '',
                 feeUnitPrice: '',
                 init() {
@@ -255,7 +282,17 @@
                 },
                 hasArea() { return this.areaTsubo > 0; },
                 toAmount(unitPrice) { return this.hasArea() ? Math.round((unitPrice || 0) * this.areaTsubo) : 0; },
-                toUnitPrice(amount) { return this.hasArea() ? Math.round((amount || 0) / this.areaTsubo) : ''; }
+                toUnitPrice(amount) { return this.hasArea() ? Math.round((amount || 0) / this.areaTsubo) : ''; },
+                // 敷金 = 募集家賃 × ヶ月数（ヶ月数が空なら敷金は保持）。募集家賃を変えたときも再計算。
+                applyMonths() {
+                    if (this.depositMonths === '' || this.depositMonths === null || isNaN(this.depositMonths)) return;
+                    this.newDeposit = Math.round((this.newRent || 0) * this.depositMonths);
+                },
+                // 現在入力中の敷金が募集家賃の何ヶ月分か（家賃0以下なら非表示）
+                impliedMonths() {
+                    if (!this.newRent || this.newRent <= 0) return null;
+                    return (this.newDeposit / this.newRent).toFixed(1);
+                }
             };
         }
     </script>

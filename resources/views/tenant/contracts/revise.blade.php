@@ -99,10 +99,15 @@
                 <div class="text-xs text-gray-500 mb-0.5">駆除代</div>
                 <div class="text-sm font-medium text-gray-900">{{ number_format($contract->pest_control_fee) }}円</div>
             </div>
+            <div>
+                <div class="text-xs text-gray-500 mb-0.5">敷金</div>
+                <div class="text-sm font-medium text-gray-900">{{ number_format($contract->deposit) }}円</div>
+            </div>
         </div>
     </div>
 
-    <form method="POST" action="{{ route('tenant.contracts.revise.execute', $contract) }}">
+    <form method="POST" action="{{ route('tenant.contracts.revise.execute', $contract) }}"
+          x-data="contractReviseForm({{ (int) old('new_rent', $contract->rent) }}, {{ (int) old('new_deposit', $contract->deposit) }})">
         @csrf
         <input type="hidden" name="return_to" value="{{ old('return_to', $returnTo ?? 'contract') }}">
 
@@ -119,6 +124,7 @@
                     <label class="block text-sm font-semibold text-gray-700 mb-1">新・月額家賃<span class="text-red-600 ml-0.5">*</span></label>
                     <div class="relative">
                         <input type="number" name="new_rent" value="{{ old('new_rent', $contract->rent) }}" min="0"
+                               x-model.number="newRent" @input="applyMonths()"
                                class="form-input w-full h-[40px] px-3 pr-8 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none"
                                >
                         <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">円</span>
@@ -155,6 +161,24 @@
                     </div>
                     <p class="text-xs text-gray-500 mt-1">現在: {{ number_format($contract->pest_control_fee) }}円</p>
                 </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">新・敷金</label>
+                    <div class="relative">
+                        <input type="number" name="new_deposit" value="{{ old('new_deposit', $contract->deposit) }}" x-model.number="deposit" min="0"
+                               class="form-input w-full h-[40px] px-3 pr-8 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none">
+                        <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">円</span>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">現在: {{ number_format($contract->deposit) }}円<span x-show="impliedMonths() !== null"> ／ 入力 ≒ <span x-text="impliedMonths()"></span>ヶ月分</span></p>
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">敷金＝月額家賃 × ヶ月数</label>
+                    <div class="relative">
+                        <input type="number" x-model.number="depositMonths" @input="applyMonths()" min="0" step="0.1" placeholder="ヶ月数を入力"
+                               class="form-input w-full h-[40px] px-3 pr-8 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none">
+                        <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">ヶ月</span>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">ヶ月数を入れると敷金を自動計算（金額の直接入力も可）</p>
+                </div>
                 <div class="sm:col-span-2">
                     <label class="block text-sm font-semibold text-gray-700 mb-1">改定理由</label>
                     <textarea name="reason" rows="3"
@@ -177,4 +201,25 @@
             </button>
         </div>
     </form>
+
+    {{-- 敷金の自動計算（Bug #1 回避: named function / Bug #23 回避: x-data には数値リテラルのみ渡す） --}}
+    <script>
+        function contractReviseForm(initRent, initDeposit) {
+            return {
+                newRent: initRent || 0,
+                deposit: initDeposit || 0,
+                depositMonths: '',
+                // ヶ月数を入力/変更、または家賃を変更したとき: 敷金 = 家賃 × ヶ月数（ヶ月数が空なら敷金は保持）
+                applyMonths() {
+                    if (this.depositMonths === '' || this.depositMonths === null || isNaN(this.depositMonths)) return;
+                    this.deposit = Math.round((this.newRent || 0) * this.depositMonths);
+                },
+                // 現在入力中の敷金が家賃の何ヶ月分か（家賃0以下なら非表示）
+                impliedMonths() {
+                    if (!this.newRent || this.newRent <= 0) return null;
+                    return (this.deposit / this.newRent).toFixed(1);
+                }
+            };
+        }
+    </script>
 @endsection

@@ -26,6 +26,8 @@ class UnitRentRevision extends Model
         'new_garbage_fee',
         'old_pest_control_fee',
         'new_pest_control_fee',
+        'old_deposit',
+        'new_deposit',
         'reason',
         'revised_by',
     ];
@@ -42,6 +44,8 @@ class UnitRentRevision extends Model
             'new_garbage_fee' => 'integer',
             'old_pest_control_fee' => 'integer',
             'new_pest_control_fee' => 'integer',
+            'old_deposit' => 'integer',
+            'new_deposit' => 'integer',
         ];
     }
 
