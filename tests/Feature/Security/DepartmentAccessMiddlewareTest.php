@@ -69,6 +69,32 @@ class DepartmentAccessMiddlewareTest extends TestCase
         }
     }
 
+    /** 引数なし（no codes）でミドルウェアを実行。body に 'department' を任意付与する */
+    private function runNoCodes(User $user, ?string $bodyDepartment = null): string
+    {
+        $params  = $bodyDepartment !== null ? ['department' => $bodyDepartment] : [];
+        $request = Request::create('/dummy', 'POST', $params);
+        $request->setUserResolver(fn () => $user);
+
+        $response = (new CheckDepartmentAccess())->handle(
+            $request,
+            fn ($req) => new Response('PASSED')
+        );
+
+        return $response->getContent();
+    }
+
+    /** 引数なし実行で 403 になることを確認するヘルパー */
+    private function assertForbiddenNoCodes(User $user, ?string $bodyDepartment = null): void
+    {
+        try {
+            $this->runNoCodes($user, $bodyDepartment);
+            $this->fail('403 (HttpException) が発生すべき');
+        } catch (HttpException $e) {
+            $this->assertSame(403, $e->getStatusCode());
+        }
+    }
+
     /** 所属部署のコードは通過する */
     public function test_member_passes(): void
     {
@@ -112,5 +138,36 @@ class DepartmentAccessMiddlewareTest extends TestCase
 
         $tenantUser = $this->userInDepartments(UserRole::Staff, ['tenant']);
         $this->assertForbidden($tenantUser, 'zeal');
+    }
+
+    /**
+     * fail-closed: 引数なし かつ department 未指定の非経営層は 403。
+     * （旧実装は素通り＝fail-open。この回帰テストが退行を防ぐ）
+     */
+    public function test_no_codes_without_department_is_forbidden(): void
+    {
+        $user = $this->userInDepartments(UserRole::Manager, ['housing']);
+        $this->assertForbiddenNoCodes($user, null);
+    }
+
+    /** 引数なし・body の department が所属部署なら通過する */
+    public function test_no_codes_with_own_department_passes(): void
+    {
+        $user = $this->userInDepartments(UserRole::Manager, ['housing']);
+        $this->assertSame('PASSED', $this->runNoCodes($user, 'housing'));
+    }
+
+    /** 引数なし・body の department が非所属部署なら 403 */
+    public function test_no_codes_with_other_department_is_forbidden(): void
+    {
+        $user = $this->userInDepartments(UserRole::Manager, ['housing']);
+        $this->assertForbiddenNoCodes($user, 'realestate');
+    }
+
+    /** 引数なし・department 未指定でも経営層は通過する（bypass は維持） */
+    public function test_no_codes_executive_without_department_passes(): void
+    {
+        $user = $this->userInDepartments(UserRole::Executive, []);
+        $this->assertSame('PASSED', $this->runNoCodes($user, null));
     }
 }
