@@ -286,6 +286,9 @@ class CustomOrderController extends Controller
      */
     public function destroyFile(HsCustomOrder $customOrder, HsCustomOrderFile $file)
     {
+        // 多重防御: ルートは role:executive 限定だが、コントローラ側でも経営層のみに限定する
+        abort_unless(auth()->user()->role->isExecutive(), 403);
+
         if ($file->custom_order_id !== $customOrder->id) {
             return response()->json(['error' => '不正なリクエストです。'], 403);
         }

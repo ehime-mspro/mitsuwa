@@ -656,6 +656,9 @@ class ProjectController extends Controller
      */
     public function destroyDrawing(ReProject $project, ReProjectDrawing $drawing)
     {
+        // 多重防御: ルートは role:executive 限定だが、コントローラ側でも経営層のみに限定する
+        abort_unless(auth()->user()->role->isExecutive(), 403);
+
         if ($drawing->project_id !== $project->id) {
             return response()->json(['error' => '不正なリクエストです。'], 403);
         }

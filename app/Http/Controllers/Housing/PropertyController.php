@@ -316,6 +316,9 @@ class PropertyController extends Controller
      */
     public function destroyFile(HsProperty $property, HsPropertyFile $file)
     {
+        // 多重防御: ルートは role:executive 限定だが、コントローラ側でも経営層のみに限定する
+        abort_unless(auth()->user()->role->isExecutive(), 403);
+
         if ($file->property_id !== $property->id) {
             return response()->json(['error' => '不正なリクエストです。'], 403);
         }
