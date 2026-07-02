@@ -25,11 +25,24 @@ class CustomerSurveyController extends Controller
     }
 
     /**
+     * アンケートが URL プレフィックスの部署・買主に属することを検証（IDOR 対策）
+     * 属さない場合は存在秘匿のため 404 で遮断する
+     */
+    private function assertSurveyScope(Buyer $buyer, BuyerSurvey $survey, string $department): void
+    {
+        abort_unless($buyer->belongsToDepartment($department), 404);
+        abort_unless((int) $survey->buyer_id === (int) $buyer->id, 404);
+        abort_unless($survey->department === $department, 404);
+    }
+
+    /**
      * アンケート登録画面
      */
     public function create(Request $request, Buyer $buyer)
     {
         $department = $this->resolveDepartment();
+        // URL の部署に属さない買主へのアンケート操作を遮断（IDOR 対策）
+        abort_unless($buyer->belongsToDepartment($department), 404);
         $deptLabel  = BuyerDepartment::from($department)->label();
         $questions  = SurveyQuestion::ofDepartment($department)->active()->ordered()->get();
 
@@ -51,6 +64,8 @@ class CustomerSurveyController extends Controller
     public function store(Request $request, Buyer $buyer)
     {
         $department = $this->resolveDepartment();
+        // URL の部署に属さない買主へのアンケート登録を遮断（IDOR 対策）
+        abort_unless($buyer->belongsToDepartment($department), 404);
 
         $request->validate([
             'survey_date' => 'required|date',
@@ -115,6 +130,8 @@ class CustomerSurveyController extends Controller
     public function edit(Request $request, Buyer $buyer, BuyerSurvey $survey)
     {
         $department = $this->resolveDepartment();
+        // アンケートが URL の部署・買主に属さない場合は遮断（IDOR 対策）
+        $this->assertSurveyScope($buyer, $survey, $department);
         $deptLabel  = BuyerDepartment::from($department)->label();
         $survey->load('answers');
 
@@ -143,6 +160,8 @@ class CustomerSurveyController extends Controller
     public function update(Request $request, Buyer $buyer, BuyerSurvey $survey)
     {
         $department = $this->resolveDepartment();
+        // アンケートが URL の部署・買主に属さない場合は遮断（IDOR 対策）
+        $this->assertSurveyScope($buyer, $survey, $department);
 
         $request->validate([
             'survey_date' => 'required|date',
@@ -202,6 +221,8 @@ class CustomerSurveyController extends Controller
     public function destroy(Request $request, Buyer $buyer, BuyerSurvey $survey)
     {
         $department = $this->resolveDepartment();
+        // アンケートが URL の部署・買主に属さない場合は遮断（IDOR 対策）
+        $this->assertSurveyScope($buyer, $survey, $department);
 
         $survey->answers()->delete();
         $survey->delete();
