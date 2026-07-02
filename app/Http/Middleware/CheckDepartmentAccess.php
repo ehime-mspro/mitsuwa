@@ -15,7 +15,9 @@ class CheckDepartmentAccess
      * 部門管理者・一般担当者はdepartment_userで紐づく部門のみ。
      *
      * 適用部門はミドルウェア引数（例: department.access:realestate）で指定する。
-     * 引数省略時は後方互換でルート/リクエストの 'department' パラメータを参照する。
+     * 引数省略時はルート/リクエストの 'department' パラメータを参照する。
+     * 非経営層で部門コードが特定できない場合は fail-closed で 403 とする
+     * （素通りさせない）。
      *
      * @param  \Illuminate\Http\Request  $request
      * @param  \Closure  $next
@@ -34,12 +36,15 @@ class CheckDepartmentAccess
             return $next($request);
         }
 
-        // 適用する部門コード: ミドルウェア引数を優先。無ければ従来どおり
-        // ルート/リクエストの 'department' パラメータを参照（後方互換）
+        // 適用する部門コード: ミドルウェア引数を優先。無ければ
+        // ルート/リクエストの 'department' パラメータを参照する。
         if (empty($codes)) {
             $param = $request->route('department') ?? $request->input('department');
             if (!$param) {
-                return $next($request);
+                // fail-closed: 部門コードが特定できない非経営層は遮断する。
+                // （旧実装は素通り＝fail-open だった。将来この経路に部門必須でない
+                //   アクションが追加されても無認可で通さないための多重防御）
+                abort(403, 'この部門のデータへのアクセス権限がありません。');
             }
             $codes = [$param];
         }
