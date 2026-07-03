@@ -129,7 +129,7 @@ class ParkingContractController extends Controller
         return view('mansion.parking-contracts.edit', [
             'parkingContract' => $parkingContract,
             'tenants'         => MsTenant::orderBy('name')->get(),
-            'staffUsers'      => User::orderBy('name')->get(),
+            'staffUsers'      => User::assignableWith($parkingContract->staff_user_id),
         ]);
     }
 

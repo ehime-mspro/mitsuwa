@@ -146,7 +146,7 @@ class CustomerSurveyController extends Controller
         $staffList = [];
         if ($department === 'housing') {
             $projects = DB::table('re_projects')->orderBy('project_name')->pluck('project_name', 'id')->toArray();
-            $staffList = $this->getStaffList();
+            $staffList = $this->getStaffList($survey->staff_user_id);
         }
 
         return view('buyers.surveys.edit', compact(
@@ -268,10 +268,9 @@ class CustomerSurveyController extends Controller
         return json_encode($rawValue, JSON_UNESCAPED_UNICODE);
     }
 
-    private function getStaffList(): array
+    private function getStaffList(?int $currentId = null): array
     {
-        $users = User::orderBy('name')
-            ->get(['id', 'name']);
+        $users = User::assignableWith($currentId);
 
         $lastNames = [];
         foreach ($users as $u) {
@@ -288,6 +287,11 @@ class CustomerSurveyController extends Controller
             $parts = preg_split('/[\s　]+/', $u->name);
             $ln = $parts[0] ?? $u->name;
             $displayName = ($lastNames[$ln] >= 2) ? $u->name : $ln;
+            if ($u->trashed()) {
+                $displayName .= '（削除済み）';
+            } elseif ($u->status === \App\Enums\UserStatus::Inactive) {
+                $displayName .= '（無効）';
+            }
             $result[$u->id] = $displayName;
         }
         return $result;

@@ -68,7 +68,7 @@
                 <select name="staff_user_id">
                     <option value="">選択してください</option>
                     @foreach($staffUsers as $u)
-                        <option value="{{ $u->id }}" {{ old('staff_user_id', $project?->staff_user_id) == $u->id ? 'selected' : '' }}>{{ $u->name }}</option>
+                        <option value="{{ $u->id }}" {{ old('staff_user_id', $project?->staff_user_id) == $u->id ? 'selected' : '' }}>{{ $u->name }}@if($u->trashed())（削除済み）@elseif($u->status === \App\Enums\UserStatus::Inactive)（無効）@endif</option>
                     @endforeach
                 </select>
             </div>

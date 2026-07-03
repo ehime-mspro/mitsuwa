@@ -182,7 +182,7 @@ class ProjectController extends Controller
 
         $clients = DadClient::orderBy('client_type')->orderBy('name')->get();
         $subcontractors = DadSubcontractor::orderBy('company_name')->get();
-        $staffUsers = User::orderBy('name')->get();
+        $staffUsers = User::assignableWith($project->staff_user_id);
         $employees = DadEmployee::where('status', 'active')->orderBy('employee_code')->get();
 
         // 現在紐付く発注者が論理削除済みなら、編集画面で選択肢が消えないよう

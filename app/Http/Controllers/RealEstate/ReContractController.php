@@ -268,7 +268,7 @@ class ReContractController extends Controller
             }
         }
 
-        $staffUsers = User::orderBy('name')->get(['id', 'name']);
+        $staffUsers = User::assignableWith($contract->staff_user_id);
 
         return view('realestate.contracts.edit', compact(
             'contract', 'procurements', 'projects', 'lots', 'buyers', 'staffUsers'

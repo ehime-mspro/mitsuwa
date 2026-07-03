@@ -204,7 +204,7 @@ function inquiryEditForm() {
                             class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none cursor-pointer">
                         <option value="">— 選択 —</option>
                         @foreach($users as $user)
-                            <option value="{{ $user->id }}" {{ old('assigned_to', $inquiry->assigned_to) == $user->id ? 'selected' : '' }}>{{ $user->name }}</option>
+                            <option value="{{ $user->id }}" {{ old('assigned_to', $inquiry->assigned_to) == $user->id ? 'selected' : '' }}>{{ $user->name }}@if($user->trashed())（削除済み）@elseif($user->status === \App\Enums\UserStatus::Inactive)（無効）@endif</option>
                         @endforeach
                     </select>
                 </div>

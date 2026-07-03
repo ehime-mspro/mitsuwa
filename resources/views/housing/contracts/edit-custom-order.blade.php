@@ -526,7 +526,7 @@
                     <select name="created_by" class="hc-select">
                         <option value="">— 選択してください</option>
                         @foreach($staffUsers as $user)
-                            <option value="{{ $user->id }}" @selected(old('created_by', $hsCustomOrder->created_by) == $user->id)>{{ $user->name }}</option>
+                            <option value="{{ $user->id }}" @selected(old('created_by', $hsCustomOrder->created_by) == $user->id)>{{ $user->name }}@if($user->trashed())（削除済み）@elseif($user->status === \App\Enums\UserStatus::Inactive)（無効）@endif</option>
                         @endforeach
                     </select>
                     @error('created_by') <p class="error-msg">{{ $message }}</p> @enderror

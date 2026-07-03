@@ -5,6 +5,7 @@ namespace Tests\Feature\Admin;
 use App\Enums\UserStatus;
 use App\Models\Contract;
 use App\Models\Customer;
+use App\Models\Inquiry;
 use App\Models\Property;
 use App\Models\Unit;
 use App\Models\User;
@@ -68,5 +69,48 @@ class UserSoftDeleteTest extends TestCase
             '削除済み担当者は withTrashed で解決され null にならないこと'
         );
         $this->assertSame('田中太郎', $contract->assignedUser->name);
+    }
+
+    private function makeInquiryAssignedTo(int $userId): Inquiry
+    {
+        $property = Property::create([
+            'code' => 'PROP-INQ-001',
+            'name' => 'テストビル問合',
+            'property_type' => 'tenant',
+            'department' => 'tenant',
+            'address' => '愛媛県松山市本町1-1',
+        ]);
+
+        return Inquiry::create([
+            'inquiry_number' => 'INQ-SD-001',
+            'property_id' => $property->id,
+            'status' => 'follow',
+            'contact_name' => '問合 太郎',
+            'inquiry_date' => '2026-04-01',
+            'assigned_to' => $userId,
+        ]);
+    }
+
+    public function test_inquiry_edit_keeps_inactive_current_assignee_in_candidates(): void
+    {
+        $exec = User::factory()->create([
+            'role' => \App\Enums\UserRole::Executive->value,
+            'must_change_password' => false,
+        ]);
+        $inactive = User::factory()->create([
+            'name'   => '退職花子',
+            'status' => UserStatus::Inactive->value,
+        ]);
+
+        $inquiry = $this->makeInquiryAssignedTo($inactive->id);
+
+        $response = $this->actingAs($exec)->get(route('tenant.inquiries.edit', $inquiry));
+
+        $response->assertOk();
+        $users = collect($response->viewData('users'));
+        $this->assertTrue(
+            $users->contains('id', $inactive->id),
+            '無効な現在担当者が編集候補に残ること（担当が飛ばない）'
+        );
     }
 }

@@ -197,7 +197,7 @@ class HsContractListController extends Controller
         $property->load(['projectLot.project', 'procurement']);
 
         // 担当者リスト
-        $staffUsers = User::orderBy('name')->get();
+        $staffUsers = User::assignableWith($hsContract->created_by);
 
         // 買主マスタ（住宅事業所属。現在紐付け中のbuyerが SoftDelete されていても選択可能にする）
         $buyers = Buyer::ofDepartment('housing')
@@ -296,7 +296,7 @@ class HsContractListController extends Controller
         $hsCustomOrder->load(['projectLot.project', 'procurement', 'createdBy']);
 
         // 担当者リスト
-        $staffUsers = User::orderBy('name')->get();
+        $staffUsers = User::assignableWith($hsCustomOrder->created_by);
 
         // 買主マスタ（住宅事業所属。現在紐付け中のbuyerが SoftDelete されていても選択可能にする）
         $buyers = Buyer::ofDepartment('housing')

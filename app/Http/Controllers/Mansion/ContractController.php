@@ -136,7 +136,7 @@ class ContractController extends Controller
         return view('mansion.contracts.edit', [
             'contract' => $contract,
             'tenants' => MsTenant::where('tenant_type', 'resident')->orderBy('name')->get(),
-            'staffUsers' => User::orderBy('name')->get(),
+            'staffUsers' => User::assignableWith($contract->staff_user_id),
         ]);
     }
 

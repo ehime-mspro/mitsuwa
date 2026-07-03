@@ -244,7 +244,7 @@ class InquiryController extends Controller
 
         $usageTypes = InquiryUsageType::orderBy('sort_order')->get(['id', 'name']);
 
-        $users = User::where('status', 'active')->orderBy('name')->get(['id', 'name']);
+        $users = User::assignableWith($inquiry->assigned_to);
 
         // 既存の選択区画ID
         $selectedUnitIds = $inquiry->units->pluck('id')->toArray();

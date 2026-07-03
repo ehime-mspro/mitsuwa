@@ -114,7 +114,7 @@
                         <select name="staff_user_id">
                             <option value="">選択してください</option>
                             @foreach($staffUsers as $su)
-                                <option value="{{ $su->id }}" {{ old('staff_user_id', $contract->staff_user_id) == $su->id ? 'selected' : '' }}>{{ $su->name }}</option>
+                                <option value="{{ $su->id }}" {{ old('staff_user_id', $contract->staff_user_id) == $su->id ? 'selected' : '' }}>{{ $su->name }}@if($su->trashed())（削除済み）@elseif($su->status === \App\Enums\UserStatus::Inactive)（無効）@endif</option>
                             @endforeach
                         </select>
                     </div>
@@ -139,7 +139,7 @@
                         <select name="staff_user_id">
                             <option value="">選択してください</option>
                             @foreach($staffUsers as $su)
-                                <option value="{{ $su->id }}" {{ old('staff_user_id', $contract->staff_user_id) == $su->id ? 'selected' : '' }}>{{ $su->name }}</option>
+                                <option value="{{ $su->id }}" {{ old('staff_user_id', $contract->staff_user_id) == $su->id ? 'selected' : '' }}>{{ $su->name }}@if($su->trashed())（削除済み）@elseif($su->status === \App\Enums\UserStatus::Inactive)（無効）@endif</option>
                             @endforeach
                         </select>
                     </div>
