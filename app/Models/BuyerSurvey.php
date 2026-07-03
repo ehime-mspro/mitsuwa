@@ -39,7 +39,7 @@ class BuyerSurvey extends Model
 
     public function staff()
     {
-        return $this->belongsTo(\App\Models\User::class, 'staff_user_id');
+        return $this->belongsTo(\App\Models\User::class, 'staff_user_id')->withTrashed();
     }
 
     /* ========== スコープ ========== */

@@ -79,7 +79,7 @@ class Inquiry extends Model
 
     public function assignedUser(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'assigned_to');
+        return $this->belongsTo(User::class, 'assigned_to')->withTrashed();
     }
 
     public function histories(): HasMany

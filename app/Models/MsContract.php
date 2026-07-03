@@ -42,7 +42,7 @@ class MsContract extends Model
 
     public function staff(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'staff_user_id');
+        return $this->belongsTo(User::class, 'staff_user_id')->withTrashed();
     }
 
     public function parkingContracts(): HasMany

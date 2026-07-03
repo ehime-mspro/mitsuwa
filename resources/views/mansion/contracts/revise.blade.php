@@ -555,7 +555,7 @@
                             </td>
                             <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700">{{ $rev->reason ?? '—' }}</td>
                             <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 whitespace-nowrap">
-                                {{ optional(\App\Models\User::find($rev->created_by))->name ?? '—' }}
+                                {{ optional(\App\Models\User::withTrashed()->find($rev->created_by))->name ?? '—' }}
                             </td>
                         </tr>
                     @endforeach

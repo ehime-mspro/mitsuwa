@@ -63,7 +63,7 @@ class DadProject extends Model
 
     public function staffUser(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'staff_user_id');
+        return $this->belongsTo(User::class, 'staff_user_id')->withTrashed();
     }
 
     public function costs(): HasMany
