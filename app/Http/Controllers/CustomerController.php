@@ -613,7 +613,7 @@ class CustomerController extends Controller
             $staffUserId = $request->input('staff_user_id');
             if ($staffUserId) {
                 $surveyData['staff_user_id'] = $staffUserId;
-                $staffUser = User::find($staffUserId);
+                $staffUser = User::withTrashed()->find($staffUserId);
                 if ($staffUser) {
                     $surveyData['staff_name'] = $staffUser->name;
                 }

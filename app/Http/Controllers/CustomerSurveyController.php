@@ -88,7 +88,7 @@ class CustomerSurveyController extends Controller
                 $staffUserId = $request->input('staff_user_id');
                 if ($staffUserId) {
                     $surveyData['staff_user_id'] = $staffUserId;
-                    $staffUser = User::find($staffUserId);
+                    $staffUser = User::withTrashed()->find($staffUserId);
                     if ($staffUser) {
                         $surveyData['staff_name'] = $staffUser->name;
                     }
@@ -179,7 +179,7 @@ class CustomerSurveyController extends Controller
                 $staffUserId = $request->input('staff_user_id');
                 $surveyData['staff_user_id'] = $staffUserId ?: null;
                 if ($staffUserId) {
-                    $staffUser = User::find($staffUserId);
+                    $staffUser = User::withTrashed()->find($staffUserId);
                     $surveyData['staff_name'] = $staffUser ? $staffUser->name : $survey->staff_name;
                 }
             }
