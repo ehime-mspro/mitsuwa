@@ -23,6 +23,7 @@ return new class extends Migration
             $table->timestamp('last_login_at')->nullable();
             $table->rememberToken();
             $table->timestamps();
+            $table->softDeletes(); // 論理削除（担当者履歴を残すため。live DB は raw SQL で別途追加）
 
             // インデックス
             $table->index(['role', 'status'], 'idx_users_role_status');
