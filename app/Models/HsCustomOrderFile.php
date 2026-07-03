@@ -42,7 +42,7 @@ class HsCustomOrderFile extends Model
 
     public function uploadedByUser(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'uploaded_by');
+        return $this->belongsTo(User::class, 'uploaded_by')->withTrashed();
     }
 
     // ============================================================

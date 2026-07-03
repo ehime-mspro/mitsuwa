@@ -48,6 +48,6 @@ class PropertyChangeLog extends Model
      */
     public function changedByUser(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'changed_by');
+        return $this->belongsTo(User::class, 'changed_by')->withTrashed();
     }
 }

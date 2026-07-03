@@ -66,6 +66,6 @@ class RentRevision extends Model
      */
     public function revisedByUser(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'revised_by');
+        return $this->belongsTo(User::class, 'revised_by')->withTrashed();
     }
 }
