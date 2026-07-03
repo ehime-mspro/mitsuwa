@@ -124,7 +124,7 @@ class HsContractListController extends Controller
         $fiscalYears = $this->getFiscalYearList();
 
         // 担当者リスト
-        $staffUsers = User::orderBy('name')->get();
+        $staffUsers = User::assignable()->orderBy('name')->get();
 
         // 担当者苗字重複チェック用
         $lastNameCounts = [];

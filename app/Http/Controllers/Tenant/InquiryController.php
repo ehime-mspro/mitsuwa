@@ -104,7 +104,7 @@ class InquiryController extends Controller
         $usageTypes = InquiryUsageType::orderBy('sort_order')->get(['id', 'name']);
 
         // 担当者
-        $users = User::where('status', 'active')->orderBy('name')->get(['id', 'name']);
+        $users = User::assignable()->orderBy('name')->get(['id', 'name']);
 
         // 契約登録からのinquiry_id引き継ぎ（成約→契約遷移の逆ルート）
         $presetPropertyId = $request->query('property_id');

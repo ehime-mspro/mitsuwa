@@ -86,7 +86,7 @@ class ParkingContractController extends Controller
         return view('mansion.parking-contracts.create', [
             'properties'           => MsProperty::orderBy('property_code')->get(),
             'tenants'              => MsTenant::orderBy('name')->get(),
-            'staffUsers'           => User::orderBy('name')->get(),
+            'staffUsers'           => User::assignable()->orderBy('name')->get(),
             'preselectedParkingId' => $request->parking_id,
         ]);
     }

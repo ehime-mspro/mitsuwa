@@ -678,7 +678,7 @@ class CustomerController extends Controller
      */
     private function getStaffList(): array
     {
-        $users = User::orderBy('name')
+        $users = User::assignable()->orderBy('name')
             ->get(['id', 'name']);
 
         $lastNames = [];

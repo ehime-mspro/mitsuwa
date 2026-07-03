@@ -76,7 +76,7 @@ class ContractController extends Controller
         return view('mansion.contracts.create', [
             'properties' => MsProperty::orderBy('property_code')->get(),
             'tenants' => MsTenant::where('tenant_type', 'resident')->orderBy('name')->get(),
-            'staffUsers' => User::orderBy('name')->get(),
+            'staffUsers' => User::assignable()->orderBy('name')->get(),
             'preselectedRoomId' => $request->room_id,
         ]);
     }

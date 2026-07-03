@@ -64,7 +64,7 @@ class ProjectController extends Controller
         $countPublic = DadProject::where('project_type', 'public')->count();
         $countPrivate = DadProject::where('project_type', 'private')->count();
 
-        $staffUsers = User::orderBy('name')->get();
+        $staffUsers = User::assignable()->orderBy('name')->get();
         $currentFiscalYear = $this->currentFiscalYear();
 
         return view('dad.projects.index', compact(
@@ -143,7 +143,7 @@ class ProjectController extends Controller
     {
         $clients = DadClient::orderBy('client_type')->orderBy('name')->get();
         $subcontractors = DadSubcontractor::orderBy('company_name')->get();
-        $staffUsers = User::orderBy('name')->get();
+        $staffUsers = User::assignable()->orderBy('name')->get();
 
         return view('dad.projects.create', compact('clients', 'subcontractors', 'staffUsers'));
     }
