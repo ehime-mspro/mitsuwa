@@ -81,6 +81,7 @@
             @foreach(App\Enums\UserStatus::cases() as $st)
                 <option value="{{ $st->value }}" {{ request('status') === $st->value ? 'selected' : '' }}>{{ $st->label() }}</option>
             @endforeach
+                <option value="deleted" {{ request('status') === 'deleted' ? 'selected' : '' }}>削除済み</option>
         </select>
         <input type="text" name="search" value="{{ request('search') }}" placeholder="氏名・メールで検索"
                class="h-8 px-2.5 border border-gray-300 rounded-md text-[12px] text-gray-700 bg-white focus:border-emerald-500 focus:outline-none w-full sm:flex-1 sm:min-w-[140px]">
@@ -125,42 +126,60 @@
                             {{ $u->departments->pluck('name')->join('・') }}
                         </td>
                         <td class="px-3.5 py-2.5 lg:px-5 lg:py-3.5 border-b border-gray-100 whitespace-nowrap text-center">
-                            <span class="inline-block px-2 rounded text-[11px] font-medium
-                                {{ $u->status === App\Enums\UserStatus::Active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800' }}
-                            " style="padding-top:2px; padding-bottom:2px;">{{ $u->status->label() }}</span>
+                            @if($u->trashed())
+                                <span class="inline-block px-2 rounded text-[11px] font-medium bg-gray-200 text-gray-600" style="padding-top:2px; padding-bottom:2px;">削除済み</span>
+                            @else
+                                <span class="inline-block px-2 rounded text-[11px] font-medium
+                                    {{ $u->status === App\Enums\UserStatus::Active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800' }}
+                                " style="padding-top:2px; padding-bottom:2px;">{{ $u->status->label() }}</span>
+                            @endif
                         </td>
                         <td class="px-3.5 py-2.5 lg:px-5 lg:py-3.5 border-b border-gray-100 text-[12px] text-gray-400 whitespace-nowrap">
                             {{ $u->last_login_at ? $u->last_login_at->format('m/d H:i') : '—' }}
                         </td>
                         <td class="px-3.5 py-2.5 lg:px-5 lg:py-3.5 border-b border-gray-100 text-right whitespace-nowrap">
-                            {{-- 編集 --}}
-                            <button
-                                @click="openEditModal({{ $u->id }}, {{ \Illuminate\Support\Js::from($u->name) }}, {{ \Illuminate\Support\Js::from($u->email) }}, '{{ $u->role->value }}', {{ \Illuminate\Support\Js::from($u->departments->pluck('id')->values()) }}, '{{ $u->status->value }}')"
-                                class="text-[12px] text-blue-600 hover:underline cursor-pointer bg-transparent border-none p-0 font-normal"
-                            >編集</button>
-
-                            {{-- PW再発行（自分自身は非表示 → パスワード変更画面を使用） --}}
-                            @if($u->id !== auth()->id())
-                                <span class="text-gray-200 mx-1">|</span>
+                            @if($u->trashed())
+                                {{-- 削除済み行: 復元のみ --}}
+                                <form action="{{ url('admin/users/'.$u->id.'/restore') }}" method="POST" class="inline">
+                                    @csrf
+                                    @method('PATCH')
+                                    <button type="submit" class="text-[12px] text-emerald-600 hover:underline cursor-pointer bg-transparent border-none p-0 font-normal">復元</button>
+                                </form>
+                            @else
+                                {{-- 編集 --}}
                                 <button
-                                    @click="openResetModal({{ $u->id }}, {{ \Illuminate\Support\Js::from($u->name) }})"
-                                    class="text-[12px] text-amber-600 hover:underline cursor-pointer bg-transparent border-none p-0 font-normal"
-                                >PW再発行</button>
-                            @endif
+                                    @click="openEditModal({{ $u->id }}, {{ \Illuminate\Support\Js::from($u->name) }}, {{ \Illuminate\Support\Js::from($u->email) }}, '{{ $u->role->value }}', {{ \Illuminate\Support\Js::from($u->departments->pluck('id')->values()) }}, '{{ $u->status->value }}')"
+                                    class="text-[12px] text-blue-600 hover:underline cursor-pointer bg-transparent border-none p-0 font-normal"
+                                >編集</button>
 
-                            {{-- 無効化/有効化（自分自身は非表示） --}}
-                            @if($u->id !== auth()->id())
-                                <span class="text-gray-200 mx-1">|</span>
-                                @if($u->status === App\Enums\UserStatus::Active)
+                                @if($u->id !== auth()->id())
+                                    {{-- PW再発行 --}}
+                                    <span class="text-gray-200 mx-1">|</span>
                                     <button
-                                        @click="openDisableModal({{ $u->id }}, {{ \Illuminate\Support\Js::from($u->name) }})"
+                                        @click="openResetModal({{ $u->id }}, {{ \Illuminate\Support\Js::from($u->name) }})"
+                                        class="text-[12px] text-amber-600 hover:underline cursor-pointer bg-transparent border-none p-0 font-normal"
+                                    >PW再発行</button>
+
+                                    {{-- 無効化/有効化 --}}
+                                    <span class="text-gray-200 mx-1">|</span>
+                                    @if($u->status === App\Enums\UserStatus::Active)
+                                        <button
+                                            @click="openDisableModal({{ $u->id }}, {{ \Illuminate\Support\Js::from($u->name) }})"
+                                            class="text-[12px] text-red-600 hover:underline cursor-pointer bg-transparent border-none p-0 font-normal"
+                                        >無効化</button>
+                                    @else
+                                        <button
+                                            @click="openEnableModal({{ $u->id }}, {{ \Illuminate\Support\Js::from($u->name) }})"
+                                            class="text-[12px] text-emerald-600 hover:underline cursor-pointer bg-transparent border-none p-0 font-normal"
+                                        >有効化</button>
+                                    @endif
+
+                                    {{-- 削除 --}}
+                                    <span class="text-gray-200 mx-1">|</span>
+                                    <button
+                                        @click="openDeleteModal({{ $u->id }}, {{ \Illuminate\Support\Js::from($u->name) }})"
                                         class="text-[12px] text-red-600 hover:underline cursor-pointer bg-transparent border-none p-0 font-normal"
-                                    >無効化</button>
-                                @else
-                                    <button
-                                        @click="openEnableModal({{ $u->id }}, {{ \Illuminate\Support\Js::from($u->name) }})"
-                                        class="text-[12px] text-emerald-600 hover:underline cursor-pointer bg-transparent border-none p-0 font-normal"
-                                    >有効化</button>
+                                    >削除</button>
                                 @endif
                             @endif
                         </td>
@@ -418,6 +437,31 @@
         </div>
     </div>
 
+    {{-- ========== 削除確認モーダル ========== --}}
+    <div x-show="deleteModal" class="fixed inset-0 bg-black/35 z-50 flex items-center justify-center" style="display:none;"
+         x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-100" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0">
+        <div @click.outside="deleteModal = false" class="bg-white rounded-xl w-full max-w-[400px] shadow-xl mx-4">
+            <form :action="'{{ url('admin/users') }}/' + deleteUserId" method="POST">
+                @csrf
+                @method('DELETE')
+                <div class="px-6 py-6 text-center">
+                    <div class="w-11 h-11 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-3">
+                        <svg class="w-[22px] h-[22px] text-red-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                    </div>
+                    <p class="text-[14px] text-gray-700 mb-1"><strong x-text="deleteUserName"></strong> さんを削除しますか？</p>
+                    <p class="text-[12px] text-gray-400 mb-4 leading-relaxed">削除するとログイン・担当者選択に表示されなくなります。過去の担当履歴は残り、「削除済み」から復元できます。</p>
+                    <div class="flex justify-center gap-2">
+                        <button type="button" @click="deleteModal = false"
+                                class="px-3.5 py-2 bg-white border border-gray-300 rounded-md text-[13px] text-gray-700 hover:bg-gray-50 cursor-pointer transition-colors">キャンセル</button>
+                        <button type="submit"
+                                class="px-5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md text-[13px] font-semibold cursor-pointer transition-colors">削除する</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
 </div>
 
 <script>
@@ -429,6 +473,7 @@ function userManagement() {
         resetModal: false,
         disableModal: false,
         enableModal: false,
+        deleteModal: false,
 
         // 新規登録
         generatedPassword: '',
@@ -448,6 +493,10 @@ function userManagement() {
         // 無効化/有効化
         toggleUserId: null,
         toggleUserName: '',
+
+        // 削除
+        deleteUserId: null,
+        deleteUserName: '',
 
         init() {
             this.regeneratePassword();
@@ -504,6 +553,13 @@ function userManagement() {
             this.toggleUserId = id;
             this.toggleUserName = name;
             this.enableModal = true;
+        },
+
+        // 削除モーダル
+        openDeleteModal(id, name) {
+            this.deleteUserId = id;
+            this.deleteUserName = name;
+            this.deleteModal = true;
         }
     };
 }

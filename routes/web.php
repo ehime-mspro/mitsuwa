@@ -69,7 +69,7 @@ Route::middleware(['auth', 'password.change'])->group(function () {
 
     /*
     |----------------------------------------------------------------------
-    | システム管理（10ルート）※経営層のみ
+    | システム管理（12ルート）※経営層のみ
     |----------------------------------------------------------------------
     */
     Route::middleware('role:executive')->prefix('admin')->group(function () {
@@ -84,6 +84,11 @@ Route::middleware(['auth', 'password.change'])->group(function () {
             ->name('admin.users.resetPassword');
         Route::patch('/users/{user}/toggle-status', [\App\Http\Controllers\Admin\UserController::class, 'toggleStatus'])
             ->name('admin.users.toggleStatus');
+        Route::delete('/users/{user}', [\App\Http\Controllers\Admin\UserController::class, 'destroy'])
+            ->name('admin.users.destroy');
+        Route::patch('/users/{user}/restore', [\App\Http\Controllers\Admin\UserController::class, 'restore'])
+            ->name('admin.users.restore')
+            ->withTrashed();
 
         // 希望用途マスター
         Route::post('/master/usage-types/reorder', [\App\Http\Controllers\Admin\UsageTypeController::class, 'reorder'])

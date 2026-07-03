@@ -18,7 +18,15 @@ class UserController extends Controller
      */
     public function index(Request $request)
     {
-        $query = User::with('departments');
+        // status フィルタ: 'deleted' は SoftDeletes の onlyTrashed、それ以外は未削除（既定スコープ）
+        if ($request->status === 'deleted') {
+            $query = User::onlyTrashed()->with('departments');
+        } else {
+            $query = User::with('departments');
+            if (in_array($request->status, [UserStatus::Active->value, UserStatus::Inactive->value], true)) {
+                $query->where('status', $request->status);
+            }
+        }
 
         // ロール絞り込み
         if ($request->filled('role')) {
@@ -32,11 +40,6 @@ class UserController extends Controller
             });
         }
 
-        // 状態絞り込み
-        if ($request->filled('status')) {
-            $query->where('status', $request->status);
-        }
-
         // 氏名・メール検索
         if ($request->filled('search')) {
             $search = $request->search;
@@ -47,7 +50,8 @@ class UserController extends Controller
         }
 
         // 有効ユーザーを先に表示し、氏名順
-        $users = $query->orderByRaw("FIELD(status, 'active', 'inactive')")
+        // MySQL専用のFIELD()はSQLite（テスト環境）で使えないため、DB非依存のCASE WHENを使う
+        $users = $query->orderByRaw("CASE WHEN status = 'active' THEN 0 ELSE 1 END")
                        ->orderBy('name')
                        ->paginate(20)
                        ->withQueryString();
@@ -233,6 +237,49 @@ class UserController extends Controller
             ->with('success', "「{$user->name}」さんのパスワードをリセットしました。")
             ->with('reset_password', $newPassword)
             ->with('reset_user_name', $user->name);
+    }
+
+    /**
+     * ユーザー削除（論理削除）
+     * Route: DELETE /admin/users/{user}
+     */
+    public function destroy(User $user)
+    {
+        // 自分自身は削除不可
+        if ($user->id === auth()->id()) {
+            return redirect()->route('admin.users.index')
+                ->with('error', '自分自身を削除することはできません。');
+        }
+
+        // 最後の有効な経営層は削除不可（無効化ガードと対称）
+        if ($user->role === UserRole::Executive && $user->status === UserStatus::Active) {
+            $otherActiveExecutives = User::where('id', '!=', $user->id)
+                ->where('role', UserRole::Executive->value)
+                ->where('status', UserStatus::Active->value)
+                ->count();
+
+            if ($otherActiveExecutives === 0) {
+                return redirect()->route('admin.users.index')
+                    ->with('error', '唯一の有効な経営層ユーザーは削除できません。');
+            }
+        }
+
+        $user->delete(); // SoftDeletes → deleted_at をセット
+
+        return redirect()->route('admin.users.index')
+            ->with('success', "ユーザー「{$user->name}」を削除しました。「削除済み」から復元できます。");
+    }
+
+    /**
+     * ユーザー復元
+     * Route: PATCH /admin/users/{user}/restore（ルートで withTrashed 解決済み）
+     */
+    public function restore(User $user)
+    {
+        $user->restore(); // deleted_at を null 化（status は削除前の値を維持）
+
+        return redirect()->route('admin.users.index')
+            ->with('success', "ユーザー「{$user->name}」を復元しました。");
     }
 
     /**
