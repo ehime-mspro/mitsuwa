@@ -25,6 +25,8 @@ return new class extends Migration
             $table->integer('new_garbage_fee')->nullable()->comment('新ゴミ代（円）');
             $table->integer('old_pest_control_fee')->nullable()->comment('旧駆除代（円）');
             $table->integer('new_pest_control_fee')->nullable()->comment('新駆除代（円）');
+            $table->integer('old_deposit')->nullable()->comment('旧敷金（円）');
+            $table->integer('new_deposit')->nullable()->comment('新敷金（円）');
             $table->text('reason')->nullable()->comment('改定理由');
             $table->foreignId('revised_by')->constrained('users')->restrictOnDelete()->comment('改定実行者（経営層）');
             $table->timestamp('created_at')->useCurrent();
