@@ -243,4 +243,48 @@ class ContractDeletionTest extends TestCase
         $this->assertSame(1, InquiryHistory::where('inquiry_id', $auto->id)->count());
         $this->assertSame(1, InquiryHistory::where('inquiry_id', $manual->id)->count());
     }
+
+    /** T4: 削除で投資の紐付けは解除されるが、投資レコードは区画に残る（D7） */
+    public function test_deleting_contract_unlinks_investment_but_keeps_it(): void
+    {
+        $contract = $this->makeContract('active', 'occupied');
+
+        $investment = Investment::create([
+            'investment_number' => 'INV-DEL-001',
+            'property_id' => $contract->property_id,
+            'unit_id' => $contract->unit_id,
+            'pattern' => 'renovation',
+            'status' => 'recovering',
+            'description' => '内装改修',
+            'end_date' => '2026-03-31',
+            'total_amount' => 1000000,
+            'contract_id' => $contract->id,
+        ]);
+
+        // 別契約に紐づく投資は影響を受けない（contract_id スコープの担保）
+        $otherContract = $this->makeContract('terminated', 'occupied');
+        $otherInvestment = Investment::create([
+            'investment_number' => 'INV-DEL-OTHER',
+            'property_id' => $contract->property_id,
+            'unit_id' => $contract->unit_id,
+            'pattern' => 'renovation',
+            'description' => '別区画の投資',
+            'total_amount' => 800000,
+            'contract_id' => $otherContract->id,
+        ]);
+
+        $this->actingAs($this->executive())
+            ->delete(route('tenant.contracts.destroy', $contract))
+            ->assertRedirect(route('tenant.contracts.index'));
+
+        $investment->refresh();
+        $this->assertNull($investment->contract_id);   // 紐付け解除
+        $this->assertFalse($investment->trashed());     // 投資レコードは残る
+        $this->assertDatabaseHas('investments', ['id' => $investment->id, 'contract_id' => null]);
+
+        // 削除対象と無関係な投資の紐付けは維持される
+        $otherInvestment->refresh();
+        $this->assertSame($otherContract->id, $otherInvestment->contract_id);
+        $this->assertFalse($otherInvestment->trashed());
+    }
 }

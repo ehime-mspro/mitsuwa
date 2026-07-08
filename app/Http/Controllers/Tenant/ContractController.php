@@ -573,12 +573,15 @@ class ContractController extends Controller
                 ]);
             }
 
-            // ② 契約中だった場合のみ区画を空室に戻す（terminated は触らない）
+            // ② 投資案件の紐付け解除（投資レコードは区画に残す・D7。nullOnDelete は物理削除専用のため明示 null 化）
+            Investment::where('contract_id', $contract->id)->update(['contract_id' => null]);
+
+            // ③ 契約中だった場合のみ区画を空室に戻す（terminated は触らない＝後続契約の区画を誤って空けないため）
             if ($wasActive) {
                 $contract->unit->update(['status' => UnitStatus::Vacant->value]);
             }
 
-            // ③ 契約を論理削除
+            // ④ 契約を論理削除
             $contract->delete();
         });
 
