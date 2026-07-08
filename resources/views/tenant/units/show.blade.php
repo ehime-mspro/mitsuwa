@@ -204,6 +204,14 @@
                     <div class="text-sm font-medium text-gray-800">{{ $activeContract->customer->name ?? '—' }}</div>
                 </div>
                 <div>
+                    <div class="text-xs text-gray-500 mb-0.5">契約日</div>
+                    <div class="text-sm font-medium text-gray-800">{{ $activeContract->contract_date->format('Y/m/d') }}</div>
+                </div>
+                <div>
+                    <div class="text-xs text-gray-500 mb-0.5">家賃発生日</div>
+                    <div class="text-sm font-medium text-gray-800">{{ $activeContract->rent_start_date?->format('Y/m/d') ?? '—' }}</div>
+                </div>
+                <div>
                     <div class="text-xs text-gray-500 mb-0.5">契約家賃</div>
                     <div class="text-sm font-medium text-gray-800">{{ number_format($activeContract->rent) }}円<span class="text-[11px] text-gray-500 font-normal">/月</span>
                         @if($hasTsubo)<span class="text-[11px] font-medium ml-1.5 max-lg:block max-lg:ml-0 max-lg:mt-px" style="color:#4b5563">({{ '@' . number_format($contractRentPerTsubo) }})</span>@endif
