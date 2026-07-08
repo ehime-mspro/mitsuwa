@@ -14,6 +14,7 @@ use App\Models\Contract;
 use App\Models\Customer;
 use App\Models\Inquiry;
 use App\Models\InquiryHistory;
+use App\Models\Investment;
 use App\Models\Property;
 use App\Models\RentRevision;
 use App\Models\Unit;
@@ -513,6 +514,52 @@ class ContractController extends Controller
         return redirect()
             ->route('tenant.contracts.show', $contract)
             ->with('success', "契約「{$contract->contract_number}」の賃料改定を実行しました。");
+    }
+
+    /**
+     * 契約削除の確認画面
+     * Route: GET /tenant/contracts/{contract}/delete
+     */
+    public function confirmDelete(Contract $contract)
+    {
+        $contract->load(['property', 'unit', 'customer']);
+
+        // 関連データ件数（多行配列を @json に渡さないためスカラーで個別に渡す・Bug #26 回避）
+        $relatedInquiryCount = Inquiry::where('contract_id', $contract->id)->count();
+        $hasInvestment       = Investment::where('contract_id', $contract->id)->exists();
+        $rentRevisionCount   = $contract->rentRevisions()->count();
+        $attachmentCount     = $contract->attachments()->count();
+
+        return view('tenant.contracts.delete', compact(
+            'contract',
+            'relatedInquiryCount',
+            'hasInvestment',
+            'rentRevisionCount',
+            'attachmentCount'
+        ));
+    }
+
+    /**
+     * 契約削除の実行（論理削除 + 副作用の巻き戻し）
+     * Route: DELETE /tenant/contracts/{contract}
+     */
+    public function destroy(Contract $contract)
+    {
+        $wasActive = $contract->isActive();
+
+        DB::transaction(function () use ($contract, $wasActive) {
+            // 契約中だった場合のみ区画を空室に戻す（terminated は触らない=後続契約の区画を誤って空けないため）
+            if ($wasActive) {
+                $contract->unit->update(['status' => UnitStatus::Vacant->value]);
+            }
+
+            // 契約を論理削除
+            $contract->delete();
+        });
+
+        return redirect()
+            ->route('tenant.contracts.index')
+            ->with('success', "契約「{$contract->contract_number}」を削除しました。");
     }
 
     /**

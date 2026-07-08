@@ -243,7 +243,7 @@ Route::middleware(['auth', 'password.change'])->group(function () {
 
         /*
         |------------------------------------------------------------------
-        | テナント契約管理（10ルート）— STEP 6
+        | テナント契約管理（12ルート）— STEP 6
         |------------------------------------------------------------------
         */
 
@@ -285,6 +285,14 @@ Route::middleware(['auth', 'password.change'])->group(function () {
                 ->name('tenant.contracts.revise');
             Route::post('/contracts/{contract}/revise', [\App\Http\Controllers\Tenant\ContractController::class, 'revise'])
                 ->name('tenant.contracts.revise.execute');
+        });
+
+        // 契約削除（経営層のみ・契約中/解約済みの両方）
+        Route::middleware('role:executive')->group(function () {
+            Route::get('/contracts/{contract}/delete', [\App\Http\Controllers\Tenant\ContractController::class, 'confirmDelete'])
+                ->name('tenant.contracts.delete');
+            Route::delete('/contracts/{contract}', [\App\Http\Controllers\Tenant\ContractController::class, 'destroy'])
+                ->name('tenant.contracts.destroy');
         });
         /*
         |------------------------------------------------------------------
