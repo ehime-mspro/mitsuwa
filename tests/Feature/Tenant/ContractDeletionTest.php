@@ -185,6 +185,9 @@ class ContractDeletionTest extends TestCase
         $response->assertSee($contract->contract_number);
         // DELETE フォームが出力されている（method spoofing の hidden input で判定＝show URL と区別）
         $response->assertSee('name="_method" value="DELETE"', false);
+        // confirmDelete が算出した関連データ件数が画面に表示されている（controller→view の契約担保）
+        $response->assertSee('あり（紐付け解除）'); // 投資案件あり
+        $response->assertSee('1件');                // 紐づく問合せ 1件
     }
 
     /** 描画: manager は確認画面を開けない（403） */
@@ -286,5 +289,34 @@ class ContractDeletionTest extends TestCase
         $otherInvestment->refresh();
         $this->assertSame($otherContract->id, $otherInvestment->contract_id);
         $this->assertFalse($otherInvestment->trashed());
+    }
+
+    /** T7: 削除された契約は投資回収の集計から除外される（unit ベース集計 + SoftDeletes グローバルスコープ） */
+    public function test_deleted_contract_is_excluded_from_investment_recovery(): void
+    {
+        $contract = $this->makeContract('active', 'occupied');
+
+        // 完成日を過去にし、active 契約の家賃が回収額に積み上がる状態を作る
+        $investment = Investment::create([
+            'investment_number' => 'INV-DEL-REC',
+            'property_id' => $contract->property_id,
+            'unit_id' => $contract->unit_id,
+            'pattern' => 'renovation',
+            'description' => '回収集計テスト',
+            'end_date' => '2026-01-31',
+            'total_amount' => 5000000,
+            'contract_id' => $contract->id,
+        ]);
+
+        // 削除前: 区画の契約家賃が積み上がり回収額 > 0
+        $before = $investment->calculateRecovery();
+        $this->assertGreaterThan(0, $before['total_recovered']);
+
+        $this->actingAs($this->executive())
+            ->delete(route('tenant.contracts.destroy', $contract));
+
+        // 削除後: 契約が SoftDeletes で集計対象から外れ、回収額が 0 に落ちる
+        $after = $investment->fresh()->calculateRecovery();
+        $this->assertSame(0, $after['total_recovered']);
     }
 }
