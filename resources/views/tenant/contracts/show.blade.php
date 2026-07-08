@@ -279,6 +279,18 @@
         </div>
     @endif
 
+    {{-- 契約削除（経営層のみ・契約中/解約済み問わず） --}}
+    @if(auth()->user()->role->isExecutive())
+        <div class="flex flex-wrap gap-2 mb-4">
+            <a href="{{ route('tenant.contracts.delete', $contract) }}"
+               class="inline-flex items-center gap-1.5 px-4 py-2 bg-white border rounded-md text-sm font-semibold hover:bg-red-50 transition-colors"
+               style="border-color:#fca5a5; color:#b91c1c;">
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                契約を削除
+            </a>
+        </div>
+    @endif
+
     {{-- タブセクション: 賃料改定履歴 / 添付ファイル --}}
     <div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
         <div class="flex border-b border-gray-200 overflow-x-auto">

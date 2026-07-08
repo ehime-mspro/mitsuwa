@@ -153,4 +153,47 @@ class ContractDeletionTest extends TestCase
         $this->actingAs($executive)->get(route('tenant.contracts.edit', $contract))->assertNotFound();
         $this->actingAs($executive)->get(route('tenant.contracts.terminate', $contract))->assertNotFound();
     }
+
+    /** 描画: executive は確認画面を表示できる（関連データ有りで Bug #26 型 500 を検出） */
+    public function test_executive_sees_delete_confirmation_screen(): void
+    {
+        $contract = $this->makeContract('active', 'occupied');
+
+        Inquiry::create([
+            'inquiry_number' => 'INQ-DEL-S',
+            'property_id' => $contract->property_id,
+            'contact_name' => '確認太郎',
+            'inquiry_date' => '2026-03-01',
+            'status' => InquiryStatus::Converted->value,
+            'contract_id' => $contract->id,
+        ]);
+        Investment::create([
+            'investment_number' => 'INV-DEL-S',
+            'property_id' => $contract->property_id,
+            'unit_id' => $contract->unit_id,
+            'pattern' => 'renovation',
+            'description' => '内装',
+            'total_amount' => 500000,
+            'contract_id' => $contract->id,
+        ]);
+
+        $response = $this->actingAs($this->executive())
+            ->get(route('tenant.contracts.delete', $contract));
+
+        $response->assertOk();
+        $response->assertSee('契約削除');
+        $response->assertSee($contract->contract_number);
+        // DELETE フォームが出力されている（method spoofing の hidden input で判定＝show URL と区別）
+        $response->assertSee('name="_method" value="DELETE"', false);
+    }
+
+    /** 描画: manager は確認画面を開けない（403） */
+    public function test_manager_cannot_open_delete_confirmation_screen(): void
+    {
+        $contract = $this->makeContract('active', 'occupied');
+
+        $this->actingAs($this->manager())
+            ->get(route('tenant.contracts.delete', $contract))
+            ->assertStatus(403);
+    }
 }
