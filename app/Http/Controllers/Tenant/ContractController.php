@@ -26,6 +26,9 @@ use Illuminate\Database\QueryException;
 
 class ContractController extends Controller
 {
+    /** 契約起点で成約させた問合せに自動設定する結果理由（link/unlink で共有） */
+    private const AUTO_CONVERT_REASON = '契約登録に伴い成約';
+
     /**
      * 契約一覧
      * Route: GET /tenant/contracts
@@ -548,12 +551,34 @@ class ContractController extends Controller
         $wasActive = $contract->isActive();
 
         DB::transaction(function () use ($contract, $wasActive) {
-            // 契約中だった場合のみ区画を空室に戻す（terminated は触らない=後続契約の区画を誤って空けないため）
+            // ① 問合せ連携の解除（未成約に差し戻し・D6）
+            $inquiries = Inquiry::where('contract_id', $contract->id)->get();
+            foreach ($inquiries as $inquiry) {
+                $inquiry->contract_id = null;
+                if ($inquiry->status === InquiryStatus::Converted) {
+                    $inquiry->status = InquiryStatus::Follow->value;
+                    // 契約登録時に自動設定した理由のみクリア（手動入力の理由は残す）
+                    if ($inquiry->result_reason === self::AUTO_CONVERT_REASON) {
+                        $inquiry->result_reason = null;
+                    }
+                }
+                $inquiry->save();
+
+                InquiryHistory::create([
+                    'inquiry_id'  => $inquiry->id,
+                    'action_type' => 'other',
+                    'action_date' => now()->toDateString(),
+                    'content'     => '契約 ' . $contract->contract_number . ' の削除に伴い連携解除（未成約に差し戻し）',
+                    'created_by'  => Auth::id(),
+                ]);
+            }
+
+            // ② 契約中だった場合のみ区画を空室に戻す（terminated は触らない）
             if ($wasActive) {
                 $contract->unit->update(['status' => UnitStatus::Vacant->value]);
             }
 
-            // 契約を論理削除
+            // ③ 契約を論理削除
             $contract->delete();
         });
 
@@ -756,7 +781,7 @@ class ContractController extends Controller
 
             // result_reason が未設定の場合のみセット
             if (empty($inquiry->result_reason)) {
-                $inquiry->result_reason = '契約登録に伴い成約';
+                $inquiry->result_reason = self::AUTO_CONVERT_REASON;
             }
         }
 

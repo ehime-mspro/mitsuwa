@@ -196,4 +196,51 @@ class ContractDeletionTest extends TestCase
             ->get(route('tenant.contracts.delete', $contract))
             ->assertStatus(403);
     }
+
+    /** T3: 削除で紐づく問合せが未成約に差し戻される（自動理由はクリア・手動理由は保持） */
+    public function test_deleting_contract_unwinds_linked_inquiries(): void
+    {
+        $contract = $this->makeContract('active', 'occupied');
+
+        $auto = Inquiry::create([
+            'inquiry_number' => 'INQ-DEL-A',
+            'property_id' => $contract->property_id,
+            'contact_name' => '問合せ太郎',
+            'inquiry_date' => '2026-03-01',
+            'status' => InquiryStatus::Converted->value,
+            'result_reason' => '契約登録に伴い成約',
+            'contract_id' => $contract->id,
+        ]);
+        $manual = Inquiry::create([
+            'inquiry_number' => 'INQ-DEL-B',
+            'property_id' => $contract->property_id,
+            'contact_name' => '問合せ花子',
+            'inquiry_date' => '2026-03-02',
+            'status' => InquiryStatus::Converted->value,
+            'result_reason' => '個別交渉により成約',
+            'contract_id' => $contract->id,
+        ]);
+
+        $this->actingAs($this->executive())
+            ->delete(route('tenant.contracts.destroy', $contract))
+            ->assertRedirect(route('tenant.contracts.index'));
+
+        $auto->refresh();
+        $this->assertNull($auto->contract_id);
+        $this->assertSame(InquiryStatus::Follow, $auto->status);
+        $this->assertNull($auto->result_reason); // 自動理由はクリア
+
+        $manual->refresh();
+        $this->assertNull($manual->contract_id);
+        $this->assertSame(InquiryStatus::Follow, $manual->status);
+        $this->assertSame('個別交渉により成約', $manual->result_reason); // 手動理由は保持
+
+        // 解除履歴が各問合せに1件ずつ記録される
+        $this->assertDatabaseHas('inquiry_histories', [
+            'inquiry_id' => $auto->id,
+            'action_type' => 'other',
+        ]);
+        $this->assertSame(1, InquiryHistory::where('inquiry_id', $auto->id)->count());
+        $this->assertSame(1, InquiryHistory::where('inquiry_id', $manual->id)->count());
+    }
 }
