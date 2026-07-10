@@ -69,7 +69,7 @@
             <div style="font-size: 13px; color: #4b5563; margin-bottom: 10px;">{{ $project->site_address }}</div>
         @endif
         <div style="border: 1px solid #d1d5db; border-radius: 8px; overflow: hidden;">
-            <div id="dad-detail-map" style="height: 350px;"></div>
+            <div id="dad-detail-map" data-map-fallback style="height: 350px;"></div>
         </div>
         <div style="display: flex; gap: 14px; margin-top: 8px;">
             <span style="font-size: 12px; color: #6b7280;">緯度: <strong style="color: #1f2937;">{{ $project->latitude }}</strong></span>

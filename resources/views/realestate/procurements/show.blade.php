@@ -106,7 +106,7 @@
             <h2 class="text-base font-bold text-gray-900">所在地マップ</h2>
         </div>
         <div style="border: 1px solid #d1d5db; border-radius: 8px; overflow: hidden;">
-            <div id="detail-map" style="height: 350px;"></div>
+            <div id="detail-map" data-map-fallback style="height: 350px;"></div>
         </div>
         <div class="flex gap-3" style="margin-top: 8px;">
             <span class="text-xs text-gray-500">緯度: <strong class="text-gray-800">{{ $procurement->latitude }}</strong></span>
@@ -603,7 +603,7 @@ function initDetailMap() {
             </div>
             <button onclick="closeMapModal()" style="background: none; border: none; font-size: 22px; color: #6b7280; cursor: pointer; padding: 0 4px; line-height: 1;">&times;</button>
         </div>
-        <div id="modal-map-container" style="height: 400px;"></div>
+        <div id="modal-map-container" data-map-fallback style="height: 400px;"></div>
     </div>
 </div>
 
@@ -617,6 +617,9 @@ function openMapModal(name, address, lat, lng) {
     document.getElementById('modal-map-address').textContent = address;
     var overlay = document.getElementById('map-modal-overlay');
     overlay.style.display = 'flex';
+
+    // 認証失敗時は地図を生成せずフォールバック表示に切り替える
+    if (window.__mapAuthFailed) { window.renderMapFallback(document.getElementById('modal-map-container')); return; }
 
     setTimeout(function() {
         if (!modalMap) {

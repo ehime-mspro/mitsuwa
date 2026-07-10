@@ -115,7 +115,7 @@
 
         <div id="map-wrap" style="display: {{ ($p && $p->latitude) ? 'block' : 'none' }};">
             <div style="border: 1px solid #d1d5db; border-radius: 8px; overflow: hidden;">
-                <div id="procurement-map" style="height: 350px;"></div>
+                <div id="procurement-map" data-map-fallback style="height: 350px;"></div>
             </div>
             <div class="flex gap-2" style="margin-top: 6px;">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4b5563" stroke-width="2" style="flex-shrink: 0; margin-top: 1px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>

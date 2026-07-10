@@ -118,6 +118,29 @@
                 }
             });
         });
+
+        // Google Maps 認証失敗（課金無効 / キー無効 / リファラー制限等）時のフォールバック表示。
+        // Google が認証失敗時に window.gm_authFailure を1度だけ呼ぶ仕様を利用する。
+        // 認証成功時は呼ばれないため、正常な地図表示には一切影響しない。
+        window.__mapAuthFailed = false;
+        window.renderMapFallback = function (el) {
+            if (!el || el.dataset.mapFallbackDone === '1') return;
+            el.dataset.mapFallbackDone = '1';
+            el.innerHTML =
+                '<div style="height:100%;min-height:180px;display:flex;flex-direction:column;'
+              + 'align-items:center;justify-content:center;gap:8px;padding:16px;box-sizing:border-box;'
+              + 'background:#f9fafb;border:1px dashed #d1d5db;border-radius:8px;color:#6b7280;text-align:center;">'
+              + '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="1.7" '
+              + 'stroke-linecap="round" stroke-linejoin="round"><path d="M1 6v15l7-3 8 3 7-3V3l-7 3-8-3-7 3"/>'
+              + '<line x1="2" y1="2" x2="22" y2="22"/></svg>'
+              + '<div style="font-size:14px;font-weight:600;color:#374151;">地図を一時的に表示できません</div>'
+              + '<div style="font-size:12px;line-height:1.5;">地図サービスに接続できません。<br>'
+              + '時間をおいて再度お試しください。</div></div>';
+        };
+        window.gm_authFailure = function () {
+            window.__mapAuthFailed = true;
+            document.querySelectorAll('[data-map-fallback]').forEach(window.renderMapFallback);
+        };
     </script>
 </body>
 </html>
