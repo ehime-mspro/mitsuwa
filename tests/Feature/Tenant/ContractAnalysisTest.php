@@ -2,10 +2,12 @@
 
 namespace Tests\Feature\Tenant;
 
+use App\Enums\UserRole;
 use App\Models\Contract;
 use App\Models\Customer;
 use App\Models\Property;
 use App\Models\Unit;
+use App\Models\User;
 use App\Services\Tenant\ContractAnalysisService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -191,5 +193,28 @@ class ContractAnalysisTest extends TestCase
 
         $this->assertSame(2, $data['contract']['max']);            // 単一セルの最大
         $this->assertSame(4, $data['contract']['monthTotals'][8]); // 月計は別値（max と混同していない担保）
+    }
+
+    /** password.change を通過する経営層ユーザー（CheckDepartmentAccess を無条件パススルー） */
+    private function executive(): User
+    {
+        return User::factory()->create([
+            'role' => UserRole::Executive->value,
+            'must_change_password' => false,
+        ]);
+    }
+
+    /** T8: GET /tenant/analysis が 200 で、契約/解約タブと年計/月計が描画される */
+    public function test_analysis_page_renders_with_both_tabs(): void
+    {
+        $this->makeContract('tenant', '2024-08-10', 'terminated', '2025-03-20');
+
+        $response = $this->actingAs($this->executive())->get('/tenant/analysis');
+
+        $response->assertOk();
+        $response->assertSee('契約分析');
+        $response->assertSee('解約分析');
+        $response->assertSee('年計');
+        $response->assertSee('月計');
     }
 }
