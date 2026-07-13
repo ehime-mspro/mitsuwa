@@ -294,6 +294,11 @@ Route::middleware(['auth', 'password.change'])->group(function () {
             Route::delete('/contracts/{contract}', [\App\Http\Controllers\Tenant\ContractController::class, 'destroy'])
                 ->name('tenant.contracts.destroy');
         });
+
+        // 分析（契約・解約の年×月集計・read-only・全ロール閲覧可）
+        Route::get('/analysis', [\App\Http\Controllers\Tenant\AnalysisController::class, 'index'])
+            ->name('tenant.analysis.index');
+
         /*
         |------------------------------------------------------------------
         | テナント投資案件管理（7ルート）— STEP 8
