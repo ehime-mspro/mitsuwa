@@ -13,12 +13,12 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * テナント契約の「契約・解約」年×月集計（ContractAnalysisService）の検証。
+ * テナント契約の「契約・解約」年別（最大10年）／月別（全年合算）集計の検証。
  *
  * 集計は DB非依存（PHP/Carbon）のため SQLite in-memory でも YEAR()/MONTH() 問題なし。
- * Contract は HasFactory だが ContractFactory 未定義 → create() 直接で組み立てる
- * （ContractDeletionTest と同方針）。
- * 設計の正: docs/superpowers/specs/2026-07-13-tenant-contract-termination-analysis-design.md
+ * Contract は HasFactory だが ContractFactory 未定義 → create() 直接で組み立てる。
+ * byMonth.values は index0=1月 … index11=12月 のリスト。
+ * 設計の正: docs/superpowers/specs/2026-07-14-tenant-analysis-year-month-split-design.md
  */
 class ContractAnalysisTest extends TestCase
 {
@@ -26,10 +26,7 @@ class ContractAnalysisTest extends TestCase
 
     private int $seq = 0;
 
-    /**
-     * 物件＋区画＋顧客＋契約を1セット作成して返す。
-     * $contractDate / $status / $contractEndDate を変えて年月・種別を作り分ける。
-     */
+    /** 物件＋区画＋顧客＋契約を1セット作成して返す。 */
     private function makeContract(
         string $department = 'tenant',
         ?string $contractDate = '2024-08-15',
@@ -75,127 +72,7 @@ class ContractAnalysisTest extends TestCase
         ]);
     }
 
-    /** T1: 契約マトリクスは contract_date の暦年×暦月で件数集計され、years は降順 */
-    public function test_contract_matrix_counts_by_calendar_year_and_month(): void
-    {
-        $this->makeContract('tenant', '2024-08-10');
-        $this->makeContract('tenant', '2024-08-25');
-        $this->makeContract('tenant', '2025-03-05');
-
-        $c = (new ContractAnalysisService)->build()['contract'];
-
-        $this->assertSame(2, $c['cells'][2024][8]);
-        $this->assertSame(1, $c['cells'][2025][3]);
-        $this->assertSame(2, $c['yearTotals'][2024]);
-        $this->assertSame(1, $c['yearTotals'][2025]);
-        $this->assertSame(2, $c['monthTotals'][8]);
-        $this->assertSame(1, $c['monthTotals'][3]);
-        $this->assertSame(3, $c['grandTotal']);
-        $this->assertSame([2025, 2024], $c['years']); // 降順（新しい年が上）
-    }
-
-    /** T1b: 契約集計は contract_date 基準（rent_start_date が別月でも contract_date のセルに立つ・D5） */
-    public function test_contract_matrix_uses_contract_date_not_rent_start_date(): void
-    {
-        // contract_date=2024/8・rent_start_date=2025/1（家賃発生日を別年月にする）
-        $this->makeContract('tenant', '2024-08-10', 'active', null, '2025-01-15');
-
-        $c = (new ContractAnalysisService)->build()['contract'];
-
-        $this->assertSame(1, $c['cells'][2024][8]);     // 契約日の月に計上
-        $this->assertArrayNotHasKey(2025, $c['cells']); // 家賃発生日(rent_start_date)の月には立たない
-    }
-
-    /** T2: 契約は contract_date 基準・解約は contract_end_date 基準（同一契約が別セルに計上） */
-    public function test_termination_uses_end_date_while_contract_uses_contract_date(): void
-    {
-        // 2024/8 契約 → 2025/3 解約
-        $this->makeContract('tenant', '2024-08-10', 'terminated', '2025-03-20');
-
-        $data = (new ContractAnalysisService)->build();
-
-        // 契約マトリクスは契約月（2024/8）
-        $this->assertSame(1, $data['contract']['cells'][2024][8]);
-        $this->assertSame(1, $data['contract']['grandTotal']);
-        // 解約マトリクスは退去月（2025/3）
-        $this->assertSame(1, $data['termination']['cells'][2025][3]);
-        $this->assertSame(1, $data['termination']['grandTotal']);
-    }
-
-    /** T3: active 契約は contract_end_date（予定終了日）を持っていても解約集計から除外 */
-    public function test_active_contract_is_excluded_from_termination_even_with_end_date(): void
-    {
-        $this->makeContract('tenant', '2024-08-10', 'active', '2025-12-31');
-
-        $data = (new ContractAnalysisService)->build();
-
-        $this->assertSame(1, $data['contract']['grandTotal']);    // 契約には出る
-        $this->assertSame(0, $data['termination']['grandTotal']); // 解約には出ない
-    }
-
-    /** T4: tenant 以外の department の契約は契約・解約どちらにも計上されない */
-    public function test_non_tenant_department_contracts_are_excluded(): void
-    {
-        $this->makeContract('mansion', '2024-08-10', 'terminated', '2025-03-20');
-
-        $data = (new ContractAnalysisService)->build();
-
-        $this->assertSame(0, $data['contract']['grandTotal']);
-        $this->assertSame(0, $data['termination']['grandTotal']);
-    }
-
-    /** T5: 論理削除された契約は両マトリクスに出ない（SoftDeletes グローバルスコープ） */
-    public function test_soft_deleted_contract_is_excluded(): void
-    {
-        $contract = $this->makeContract('tenant', '2024-08-10', 'terminated', '2025-03-20');
-        $contract->delete();
-
-        $data = (new ContractAnalysisService)->build();
-
-        $this->assertSame(0, $data['contract']['grandTotal']);
-        $this->assertSame(0, $data['termination']['grandTotal']);
-    }
-
-    /** T5b: terminated だが contract_end_date=null の異常データは解約に出ない（契約には出る） */
-    public function test_terminated_without_end_date_is_excluded_from_termination(): void
-    {
-        $this->makeContract('tenant', '2024-08-10', 'terminated', null);
-
-        $data = (new ContractAnalysisService)->build();
-
-        $this->assertSame(1, $data['contract']['grandTotal']);    // 契約日で計上される
-        $this->assertSame(0, $data['termination']['grandTotal']); // end_date が無く解約には出ない
-    }
-
-    /** T6: 空データ → grandTotal=0 / years=[] / max=0（ゼロ除算しない） */
-    public function test_empty_data_produces_zero_matrix(): void
-    {
-        $data = (new ContractAnalysisService)->build();
-
-        $this->assertSame(0, $data['contract']['grandTotal']);
-        $this->assertSame([], $data['contract']['years']);
-        $this->assertSame(0, $data['contract']['max']);
-        $this->assertSame(0, $data['termination']['grandTotal']);
-    }
-
-    /** T7: max は「単一セル」の最大に一致する（月計/年計の最大ではない）。ヒートマップ濃淡の分母 */
-    public function test_max_equals_the_largest_single_cell_not_a_total(): void
-    {
-        // 2024/8 に2件、2025/8 に2件 → 単一セル最大=2・月計[8]=4・年計=各2。
-        // max が月計(4)や年計を誤採用していれば assertSame(2, ...) が赤になる。
-        // 併せて「異なる年の同月が monthTotals で合算される」ことも担保する。
-        $this->makeContract('tenant', '2024-08-01');
-        $this->makeContract('tenant', '2024-08-02');
-        $this->makeContract('tenant', '2025-08-01');
-        $this->makeContract('tenant', '2025-08-02');
-
-        $data = (new ContractAnalysisService)->build();
-
-        $this->assertSame(2, $data['contract']['max']);            // 単一セルの最大
-        $this->assertSame(4, $data['contract']['monthTotals'][8]); // 月計は別値（max と混同していない担保）
-    }
-
-    /** password.change を通過する経営層ユーザー（CheckDepartmentAccess を無条件パススルー） */
+    /** CheckDepartmentAccess を無条件パススルーする経営層ユーザー */
     private function executive(): User
     {
         return User::factory()->create([
@@ -204,17 +81,139 @@ class ContractAnalysisTest extends TestCase
         ]);
     }
 
-    /** T8: GET /tenant/analysis が 200 で、契約/解約タブと年計/月計が描画される */
-    public function test_analysis_page_renders_with_both_tabs(): void
+    /** T1: 年別は contract_date の暦年で件数集計され、labels は昇順（古い→新しい） */
+    public function test_year_summary_counts_ascending(): void
+    {
+        $this->makeContract('tenant', '2024-08-10');
+        $this->makeContract('tenant', '2024-08-25');
+        $this->makeContract('tenant', '2025-03-05');
+
+        $c = (new ContractAnalysisService)->build()['contract'];
+
+        $this->assertSame([2024, 2025], $c['byYear']['labels']); // 昇順
+        $this->assertSame([2, 1], $c['byYear']['values']);       // 2024:2件 / 2025:1件
+        $this->assertSame(3, $c['byYear']['total']);
+    }
+
+    /** T1b: 契約集計は contract_date 基準（rent_start_date が別年月でも contract_date 側に立つ） */
+    public function test_contract_uses_contract_date_not_rent_start_date(): void
+    {
+        // contract_date=2024/8・rent_start_date=2025/1（家賃発生日を別年月にする）
+        $this->makeContract('tenant', '2024-08-10', 'active', null, '2025-01-15');
+
+        $c = (new ContractAnalysisService)->build()['contract'];
+
+        $this->assertSame([2024], $c['byYear']['labels']); // 契約日の年に計上（rent_start_date の 2025 は含まない）
+        $this->assertSame(1, $c['byYear']['total']);
+        $this->assertSame(1, $c['byMonth']['values'][7]);  // 8月（index7）= contract_date
+        $this->assertSame(0, $c['byMonth']['values'][0]);  // 1月（index0）= rent_start_date の月には立たない
+    }
+
+    /** T2: 月別は全年合算（異なる年の同月が合算される）。values は index0=1月 */
+    public function test_month_summary_aggregates_all_years(): void
+    {
+        $this->makeContract('tenant', '2024-08-10');
+        $this->makeContract('tenant', '2025-08-20'); // 別年の8月
+        $this->makeContract('tenant', '2024-03-05');
+
+        $c = (new ContractAnalysisService)->build()['contract'];
+
+        $this->assertSame(range(1, 12), $c['byMonth']['labels']);
+        $this->assertSame(2, $c['byMonth']['values'][7]); // 8月（index7）= 2024/8 + 2025/8
+        $this->assertSame(1, $c['byMonth']['values'][2]); // 3月（index2）
+        $this->assertSame(3, $c['byMonth']['total']);
+    }
+
+    /** T3: 年別は新しい方から最大10年・古い年は落ちる。年別total（10年）≠月別total（全期間） */
+    public function test_year_capped_at_10_and_totals_diverge(): void
+    {
+        // 2015〜2025 の11種類の年に各1件（全て6月）
+        foreach (range(2015, 2025) as $y) {
+            $this->makeContract('tenant', "{$y}-06-10");
+        }
+
+        $c = (new ContractAnalysisService)->build()['contract'];
+
+        $this->assertCount(10, $c['byYear']['labels']);
+        $this->assertSame(2016, $c['byYear']['labels'][0]);      // 最古の表示年（2015 は落ちる）
+        $this->assertSame(2025, $c['byYear']['labels'][9]);      // 最新
+        $this->assertNotContains(2015, $c['byYear']['labels']);
+        $this->assertSame(10, $c['byYear']['total']);            // 直近10年計
+        $this->assertSame(11, $c['byMonth']['total']);           // 全期間計（不一致）
+        $this->assertSame(11, $c['byMonth']['values'][5]);       // 6月（index5）に11件
+    }
+
+    /** T4: 契約=contract_date 基準・解約=contract_end_date 基準（同一契約が別セル） */
+    public function test_contract_uses_contract_date_termination_uses_end_date(): void
     {
         $this->makeContract('tenant', '2024-08-10', 'terminated', '2025-03-20');
 
-        $response = $this->actingAs($this->executive())->get('/tenant/analysis');
+        $data = (new ContractAnalysisService)->build();
 
-        $response->assertOk();
-        $response->assertSee('契約分析');
-        $response->assertSee('解約分析');
-        $response->assertSee('年計');
-        $response->assertSee('月計');
+        // 契約: 2024/8
+        $this->assertSame([2024], $data['contract']['byYear']['labels']);
+        $this->assertSame(1, $data['contract']['byMonth']['values'][7]); // 8月
+        // 解約: 2025/3
+        $this->assertSame([2025], $data['termination']['byYear']['labels']);
+        $this->assertSame(1, $data['termination']['byMonth']['values'][2]); // 3月
+    }
+
+    /** T5: active 契約は contract_end_date を持っていても解約集計から除外 */
+    public function test_active_excluded_from_termination(): void
+    {
+        $this->makeContract('tenant', '2024-08-10', 'active', '2025-12-31');
+
+        $data = (new ContractAnalysisService)->build();
+
+        $this->assertSame(1, $data['contract']['byYear']['total']);    // 契約には出る
+        $this->assertSame(0, $data['termination']['byYear']['total']); // 解約には出ない
+        $this->assertSame(0, $data['termination']['byMonth']['total']);
+    }
+
+    /** T6: terminated だが contract_end_date=null は解約に出ない（契約には出る） */
+    public function test_terminated_without_end_date_excluded(): void
+    {
+        $this->makeContract('tenant', '2024-08-10', 'terminated', null);
+
+        $data = (new ContractAnalysisService)->build();
+
+        $this->assertSame(1, $data['contract']['byYear']['total']);
+        $this->assertSame(0, $data['termination']['byYear']['total']);
+    }
+
+    /** T7: tenant 以外の department は契約・解約どちらにも計上されない */
+    public function test_non_tenant_department_excluded(): void
+    {
+        $this->makeContract('mansion', '2024-08-10', 'terminated', '2025-03-20');
+
+        $data = (new ContractAnalysisService)->build();
+
+        $this->assertSame(0, $data['contract']['byYear']['total']);
+        $this->assertSame(0, $data['termination']['byYear']['total']);
+    }
+
+    /** T8: 論理削除された契約は両集計に出ない（SoftDeletes グローバルスコープ） */
+    public function test_soft_deleted_excluded(): void
+    {
+        $contract = $this->makeContract('tenant', '2024-08-10', 'terminated', '2025-03-20');
+        $contract->delete();
+
+        $data = (new ContractAnalysisService)->build();
+
+        $this->assertSame(0, $data['contract']['byYear']['total']);
+        $this->assertSame(0, $data['termination']['byYear']['total']);
+    }
+
+    /** T9: 空データ → labels/values 空・total=0・月別は 0×12（ゼロ除算しない） */
+    public function test_empty_data(): void
+    {
+        $data = (new ContractAnalysisService)->build();
+
+        $this->assertSame([], $data['contract']['byYear']['labels']);
+        $this->assertSame([], $data['contract']['byYear']['values']);
+        $this->assertSame(0, $data['contract']['byYear']['total']);
+        $this->assertSame([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], $data['contract']['byMonth']['values']);
+        $this->assertSame(0, $data['contract']['byMonth']['total']);
+        $this->assertSame(0, $data['termination']['byYear']['total']);
     }
 }
