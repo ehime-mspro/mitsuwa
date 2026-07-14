@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>契約・解約分析 リデザイン案（A案モック・グラフのみ）</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Noto Sans JP", Meiryo, sans-serif;
+    background: #F9FAFB; color: #111827; margin: 0; padding: 24px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+
+  /* breadcrumb + header */
+  .crumb { font-size: 12px; color: #9CA3AF; margin-bottom: 12px; }
+  .crumb a { color: #9CA3AF; text-decoration: none; }
+  h1 { font-size: 18px; font-weight: 700; color: #111827; margin: 0; }
+  .lead { font-size: 13px; color: #6B7280; margin-top: 4px; }
+
+  /* tabs */
+  .tabs { display: flex; gap: 6px; margin: 20px 0 16px; }
+  .tab {
+    padding: 8px 16px; border-radius: 6px; font-size: 14px; font-weight: 600;
+    cursor: pointer; border: 1px solid #D1D5DB; background: #fff; color: #374151;
+    transition: all .15s;
+  }
+  .tab.active { background: #059669; color: #fff; border-color: #059669; }
+
+  /* section card */
+  .card {
+    background: #fff; border: 1px solid #E5E7EB; border-radius: 8px;
+    padding: 16px 18px; margin-bottom: 16px;
+  }
+  .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .card-title { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; color: #111827; }
+  .dot { width: 8px; height: 16px; border-radius: 3px; background: #059669; display: inline-block; }
+  .total-badge {
+    font-size: 12px; font-weight: 700; color: #047857; background: #ECFDF5;
+    border: 1px solid #A7F3D0; border-radius: 999px; padding: 3px 12px; white-space: nowrap;
+  }
+  .card-sub { font-size: 12px; color: #9CA3AF; font-weight: 500; }
+
+  /* chart only, full width */
+  .chart-box { width: 100%; height: 300px; position: relative; }
+
+  .hint { font-size: 12px; color: #9CA3AF; margin-top: 18px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="crumb"><a href="#">テナント管理</a> › 契約・解約分析</div>
+  <h1>契約・解約分析</h1>
+  <p class="lead">契約年ごとの件数（最大過去10年の推移）と、契約月ごとの件数（全年合算の季節性）を、それぞれ棒グラフで表示します。</p>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="contract" onclick="showTab('contract')">契約分析</div>
+    <div class="tab" data-tab="termination" onclick="showTab('termination')">解約分析</div>
+  </div>
+
+  <!-- ===== 契約パネル ===== -->
+  <div id="panel-contract">
+    <div class="card">
+      <div class="card-head">
+        <div class="card-title"><span class="dot"></span>年別集計<span class="card-sub">契約年ごとの合計件数（最大過去10年）</span></div>
+        <span class="total-badge">総計 89件</span>
+      </div>
+      <div class="chart-box"><canvas id="c-year"></canvas></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div class="card-title"><span class="dot"></span>月別集計<span class="card-sub">契約月ごとの合計件数（全年合算）</span></div>
+        <span class="total-badge">総計 89件</span>
+      </div>
+      <div class="chart-box"><canvas id="c-month"></canvas></div>
+    </div>
+  </div>
+
+  <!-- ===== 解約パネル ===== -->
+  <div id="panel-termination" style="display:none;">
+    <div class="card">
+      <div class="card-head">
+        <div class="card-title"><span class="dot"></span>年別集計<span class="card-sub">解約年ごとの合計件数（最大過去10年）</span></div>
+        <span class="total-badge">総計 39件</span>
+      </div>
+      <div class="chart-box"><canvas id="c-year-t"></canvas></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div class="card-title"><span class="dot"></span>月別集計<span class="card-sub">解約月ごとの合計件数（全年合算）</span></div>
+        <span class="total-badge">総計 39件</span>
+      </div>
+      <div class="chart-box"><canvas id="c-month-t"></canvas></div>
+    </div>
+  </div>
+
+  <p class="hint">※ ダミーデータのモックです。年別は最大で直近10年分を表示します。並び順・色・数値ラベルの有無は調整可能です。</p>
+
+</div>
+
+<script>
+  // ---- ダミーデータ（年別は直近10年 2017〜2026）----
+  const YEARS = ['2017','2018','2019','2020','2021','2022','2023','2024','2025','2026'];
+  const MONTHS = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+  const DATA = {
+    contract: {
+      years:  { labels: YEARS,  values: [2, 3, 5, 4, 6, 9, 14, 21, 18, 7] },   // 計89
+      months: { labels: MONTHS, values: [5, 6, 12, 11, 6, 5, 5, 6, 9, 10, 7, 7] }, // 計89
+    },
+    termination: {
+      years:  { labels: YEARS,  values: [1, 1, 2, 2, 3, 3, 5, 10, 8, 4] },     // 計39
+      months: { labels: MONTHS, values: [2, 3, 6, 5, 3, 2, 3, 3, 5, 3, 2, 2] },   // 計39
+    },
+  };
+
+  const GREEN = '#059669';
+  const GREEN_SOFT = 'rgba(5,150,105,0.82)';
+
+  function barChart(canvasId, ds) {
+    return new Chart(document.getElementById(canvasId), {
+      type: 'bar',
+      data: { labels: ds.labels, datasets: [{
+        data: ds.values, backgroundColor: GREEN_SOFT, hoverBackgroundColor: GREEN,
+        borderRadius: 4, maxBarThickness: 48,
+      }]},
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        // コンテナ幅が生成後に確定/変化すると、Chart.js が canvas をリサイズしても
+        // 棒の座標を再レイアウトし損ねることがある（棒が左に寄る）。リサイズのたびに
+        // 明示 update して棒を確実に再配置する。rAF で observer コールバックの外に
+        // 逃がし再入を防ぐ。本番では Alpine x-show（display:none→表示で幅0→確定）の
+        // タブ切替でも同種の状況が起きるため同じ保険が効く。
+        onResize: (chart) => requestAnimationFrame(() => chart.update('none')),
+        plugins: { legend: { display: false }, tooltip: { displayColors: false } },
+        scales: {
+          y: { beginAtZero: true, ticks: { precision: 0, color: '#9CA3AF', font: { size: 11 } },
+               grid: { color: '#F3F4F6' } },
+          x: { ticks: { color: '#6B7280', font: { size: 11 } }, grid: { display: false } },
+        },
+      },
+    });
+  }
+
+  const built = {};
+  function build(which) {
+    if (built[which]) return;
+    built[which] = true;
+    if (which === 'contract') {
+      barChart('c-year', DATA.contract.years);
+      barChart('c-month', DATA.contract.months);
+    } else {
+      barChart('c-year-t', DATA.termination.years);
+      barChart('c-month-t', DATA.termination.months);
+    }
+  }
+
+  function showTab(which) {
+    document.querySelectorAll('.tab').forEach(t =>
+      t.classList.toggle('active', t.dataset.tab === which));
+    document.getElementById('panel-contract').style.display = which === 'contract' ? '' : 'none';
+    document.getElementById('panel-termination').style.display = which === 'termination' ? '' : 'none';
+    build(which); // 表示された状態で初期化（canvas が正しいサイズを取得できる）
+  }
+
+  // 初期表示：レイアウト確定後に描画する
+  if (document.readyState === 'complete') build('contract');
+  else window.addEventListener('load', () => build('contract'));
+</script>
+</body>
+</html>
