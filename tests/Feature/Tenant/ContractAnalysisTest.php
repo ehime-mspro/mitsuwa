@@ -307,6 +307,9 @@ class ContractAnalysisTest extends TestCase
         $this->assertSame(['2025', '2024'], array_column($month['years'], 'year'));
         $this->assertSame('2025', $month['years'][0]['year']);
         $this->assertSame(1, $month['years'][0]['total']);
+        // years[].values（年度選択時にチャートへ入る12件）: 2025=3月(index2)・2024=8月(index7)
+        $this->assertSame([0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], $month['years'][0]['values']); // 2025年
+        $this->assertSame([0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0], $month['years'][1]['values']); // 2024年
         // labels は '◯月'
         $this->assertSame('1月', $month['labels'][0]);
         $this->assertSame('12月', $month['labels'][11]);
