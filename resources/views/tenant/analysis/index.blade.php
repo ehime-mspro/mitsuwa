@@ -50,8 +50,15 @@
             tab: 'contract',
             built: { contract: false, termination: false },
             charts: {},
+            monthYear: { contract: 'all', termination: 'all' },       // 選択中の年度（'all' or '2024'）
+            monthTotalText: { contract: '', termination: '' },         // 月別バッジ文言
 
             init() {
+                // 月別バッジ初期値（全期間計）
+                ['contract', 'termination'].forEach(w => {
+                    const all = (TENANT_ANALYSIS_CHARTS[w].month.all || []);
+                    this.monthTotalText[w] = '総計 ' + all.reduce((a, b) => a + b, 0).toLocaleString() + '件';
+                });
                 // 初期タブ（契約）はレイアウト確定後に描画（幅0回避）
                 this.$nextTick(() => this.render('contract'));
             },
@@ -71,9 +78,31 @@
                 this.built[which] = true;
                 const data = TENANT_ANALYSIS_CHARTS[which];
                 this.charts[which] = [
-                    this.bar('chart-' + which + '-year', data.year),
-                    this.bar('chart-' + which + '-month', data.month),
+                    this.bar('chart-' + which + '-year', { labels: data.year.labels, values: data.year.values }),
+                    this.bar('chart-' + which + '-month', { labels: data.month.labels, values: data.month.all }),
                 ].filter(Boolean); // 空データ（canvas 無し）は null → 除外
+            },
+
+            // 年度セレクト変更 → 月別チャートの data と総計バッジを更新
+            updateMonth(which) {
+                const md = TENANT_ANALYSIS_CHARTS[which].month;
+                const sel = this.monthYear[which];
+                let values, total;
+                if (sel === 'all') {
+                    values = md.all;
+                    total  = md.all.reduce((a, b) => a + b, 0);
+                } else {
+                    const y = (md.years || []).find(o => o.year === sel);
+                    if (!y) return;
+                    values = y.values;
+                    total  = y.total;
+                }
+                const chart = Chart.getChart('chart-' + which + '-month'); // raw インスタンス（reactive proxy 回避）
+                if (chart) {
+                    chart.data.datasets[0].data = values;
+                    chart.update();
+                }
+                this.monthTotalText[which] = '総計 ' + total.toLocaleString() + '件';
             },
 
             bar(canvasId, ds) {
