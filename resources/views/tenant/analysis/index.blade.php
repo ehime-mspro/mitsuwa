@@ -15,7 +15,7 @@
     {{-- ページヘッダー --}}
     <div class="mb-5">
         <h1 class="text-lg font-bold text-gray-900">契約・解約分析</h1>
-        <p class="text-sm text-gray-500" style="margin-top:4px;">契約年ごとの件数（最大直近10年の推移）と、契約月ごとの件数（全年合算の季節性）を、それぞれ棒グラフで表示します。</p>
+        <p class="text-sm text-gray-500" style="margin-top:4px;">契約年ごとの件数（最大直近10年の推移）と、契約月ごとの件数（全期間／年度別の季節性）を、それぞれ棒グラフで表示します。</p>
     </div>
 
     {{-- タブ --}}
