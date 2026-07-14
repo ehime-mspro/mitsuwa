@@ -216,4 +216,34 @@ class ContractAnalysisTest extends TestCase
         $this->assertSame(0, $data['contract']['byMonth']['total']);
         $this->assertSame(0, $data['termination']['byYear']['total']);
     }
+
+    /** T10: GET /tenant/analysis が 200 で、両タブ・年別/月別カードが描画される */
+    public function test_page_renders_cards(): void
+    {
+        $this->makeContract('tenant', '2024-08-10', 'terminated', '2025-03-20');
+
+        $response = $this->actingAs($this->executive())->get('/tenant/analysis');
+
+        $response->assertOk();
+        $response->assertSee('契約分析');
+        $response->assertSee('解約分析');
+        $response->assertSee('年別集計');
+        $response->assertSee('月別集計');
+
+        // canvas が実際に両タブ・両軸ぶん描画されている（half-render 検知）
+        $response->assertSee('chart-contract-year', false);
+        $response->assertSee('chart-contract-month', false);
+        $response->assertSee('chart-termination-year', false);
+        $response->assertSee('chart-termination-month', false);
+    }
+
+    /** T11: 0件のとき両タブとも「◯◯データがありません」を表示（空データ分岐のレンダリング健全性・Bug#26 型ガード） */
+    public function test_empty_data_renders_no_data_message(): void
+    {
+        $response = $this->actingAs($this->executive())->get('/tenant/analysis');
+
+        $response->assertOk();
+        $response->assertSee('契約データがありません');
+        $response->assertSee('解約データがありません');
+    }
 }
