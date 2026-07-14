@@ -41,16 +41,17 @@ class ContractAnalysisService
     }
 
     /**
-     * [year, month] ペアから年別・月別を組み立てる。
+     * [year, month] ペアから年別・月別・年度別月別を組み立てる。
      *
      * @param  Collection<int, array{0:int,1:int}>  $pairs
-     * @return array{byYear: array, byMonth: array}
+     * @return array{byYear: array, byMonth: array, byMonthByYear: array}
      */
     private function summarize(Collection $pairs): array
     {
         return [
-            'byYear'  => $this->byYear($pairs->map(fn (array $p) => $p[0])),
-            'byMonth' => $this->byMonth($pairs->map(fn (array $p) => $p[1])),
+            'byYear'        => $this->byYear($pairs->map(fn (array $p) => $p[0])),
+            'byMonth'       => $this->byMonth($pairs->map(fn (array $p) => $p[1])),
+            'byMonthByYear' => $this->byMonthByYear($pairs),
         ];
     }
 
@@ -96,5 +97,29 @@ class ContractAnalysisService
             'values' => array_values($counts), // index0=1月 … index11=12月
             'total'  => array_sum($counts),
         ];
+    }
+
+    /**
+     * 年度別の月別集計。データのある年度のみ・年降順（セレクト表示順）。
+     * values は index0=1月 … index11=12月。空データ時は空配列。
+     *
+     * @param  Collection<int, array{0:int,1:int}>  $pairs
+     * @return array<int, array{values: list<int>, total: int}>  年(int) => {values:[1月..12月], total}
+     */
+    private function byMonthByYear(Collection $pairs): array
+    {
+        $byYear = [];
+        foreach ($pairs as [$y, $m]) {
+            if (! isset($byYear[$y])) {
+                $byYear[$y] = array_fill(1, 12, 0);
+            }
+            $byYear[$y][$m]++;
+        }
+        krsort($byYear); // 年 降順（セレクトは最新が上）
+
+        return array_map(fn (array $counts) => [
+            'values' => array_values($counts), // index0=1月 … index11=12月
+            'total'  => array_sum($counts),
+        ], $byYear);
     }
 }

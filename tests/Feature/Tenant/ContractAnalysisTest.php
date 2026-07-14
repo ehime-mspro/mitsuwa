@@ -246,4 +246,34 @@ class ContractAnalysisTest extends TestCase
         $response->assertSee('契約データがありません');
         $response->assertSee('解約データがありません');
     }
+
+    /** T12: 年度別の月別集計（byMonthByYear）。年降順キー・各年 values(index0=1月)/total */
+    public function test_month_by_year_summary(): void
+    {
+        $this->makeContract('tenant', '2024-08-10');
+        $this->makeContract('tenant', '2024-08-25');
+        $this->makeContract('tenant', '2024-03-05');
+        $this->makeContract('tenant', '2025-08-20');
+
+        $byYear = (new ContractAnalysisService)->build()['contract']['byMonthByYear'];
+
+        // 年降順（最新が先頭キー・セレクト表示順）
+        $this->assertSame([2025, 2024], array_keys($byYear));
+        $this->assertSame(2025, array_key_first($byYear));
+        // 2024年: 8月×2・3月×1・計3
+        $this->assertSame(2, $byYear[2024]['values'][7]); // 8月（index7）
+        $this->assertSame(1, $byYear[2024]['values'][2]); // 3月（index2）
+        $this->assertSame(3, $byYear[2024]['total']);
+        // 2025年: 8月×1・計1
+        $this->assertSame(1, $byYear[2025]['values'][7]); // 8月（index7）
+        $this->assertSame(1, $byYear[2025]['total']);
+    }
+
+    /** T13: 空データ → byMonthByYear は空配列（年度が1つも無い） */
+    public function test_month_by_year_empty(): void
+    {
+        $byYear = (new ContractAnalysisService)->build()['contract']['byMonthByYear'];
+
+        $this->assertSame([], $byYear);
+    }
 }
