@@ -276,4 +276,41 @@ class ContractAnalysisTest extends TestCase
 
         $this->assertSame([], $byYear);
     }
+
+    /** T14: 複数年データで月別カードに年度セレクトの option（全期間・◯◯年）が描画される */
+    public function test_month_year_selector_rendered(): void
+    {
+        $this->makeContract('tenant', '2024-08-10');
+        $this->makeContract('tenant', '2025-03-05');
+
+        $response = $this->actingAs($this->executive())->get('/tenant/analysis');
+
+        $response->assertOk();
+        $response->assertSee('全期間');
+        $response->assertSee('2024年');
+        $response->assertSee('2025年');
+    }
+
+    /** T15: month payload（all リネーム・years 年降順・year は string・旧 values キー無し）を HTTP viewData で検証 */
+    public function test_chart_payload_month_shape(): void
+    {
+        $this->makeContract('tenant', '2024-08-10');
+        $this->makeContract('tenant', '2025-03-05');
+
+        $response = $this->actingAs($this->executive())->get('/tenant/analysis');
+        $response->assertOk();
+        $month = $response->viewData('charts')['contract']['month'];
+
+        // all = 全期間の12件（3月=index2・8月=index7 に各1）
+        $this->assertSame([0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0], $month['all']);
+        // years は年降順・year は string（int 退行検知）・total 一致
+        $this->assertSame(['2025', '2024'], array_column($month['years'], 'year'));
+        $this->assertSame('2025', $month['years'][0]['year']);
+        $this->assertSame(1, $month['years'][0]['total']);
+        // labels は '◯月'
+        $this->assertSame('1月', $month['labels'][0]);
+        $this->assertSame('12月', $month['labels'][11]);
+        // 旧 values キーは月 payload に存在しない
+        $this->assertArrayNotHasKey('values', $month);
+    }
 }
