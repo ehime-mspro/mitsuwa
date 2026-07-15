@@ -9,22 +9,37 @@ use App\Models\Property;
 use App\Models\Unit;
 use App\Models\User;
 use App\Services\Tenant\ContractAnalysisService;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * テナント契約の「契約・解約」年別（最大10年）／月別（全年合算）集計の検証。
+ * テナント契約の「契約・解約」年別（最大10年）／月別（全年合算・年度別・直近N年）集計の検証。
  *
  * 集計は DB非依存（PHP/Carbon）のため SQLite in-memory でも YEAR()/MONTH() 問題なし。
  * Contract は HasFactory だが ContractFactory 未定義 → create() 直接で組み立てる。
  * byMonth.values は index0=1月 … index11=12月 のリスト。
- * 設計の正: docs/superpowers/specs/2026-07-14-tenant-analysis-year-month-split-design.md
+ * 直近N年は now()->year 基準のため setUp() で「現在」を固定している（凍結しないと年跨ぎで落ちる）。
+ * 設計の正: docs/superpowers/specs/2026-07-15-tenant-analysis-period-selector-design.md
  */
 class ContractAnalysisTest extends TestCase
 {
     use RefreshDatabase;
 
     private int $seq = 0;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // 「現在」を 2026-07-15 に固定（直近N年は now()->year 基準＝実時刻だと年跨ぎでテストが落ちるため）
+        Carbon::setTestNow(Carbon::parse('2026-07-15'));
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
+    }
 
     /** 物件＋区画＋顧客＋契約を1セット作成して返す。 */
     private function makeContract(
@@ -315,5 +330,58 @@ class ContractAnalysisTest extends TestCase
         $this->assertSame('12月', $month['labels'][11]);
         // 旧 values キーは月 payload に存在しない
         $this->assertArrayNotHasKey('values', $month);
+    }
+
+    /** T16: 直近N年（今年=2026 基準）の月別集計。2/4/6/8 それぞれの窓で件数が変わる */
+    public function test_month_by_period_windows(): void
+    {
+        $this->makeContract('tenant', '2026-01-10'); // 直近 2/4/6/8年
+        $this->makeContract('tenant', '2025-02-10'); // 直近 2/4/6/8年
+        $this->makeContract('tenant', '2024-03-10'); // 直近 4/6/8年
+        $this->makeContract('tenant', '2022-04-10'); // 直近 6/8年
+        $this->makeContract('tenant', '2020-05-10'); // 直近 8年のみ
+        $this->makeContract('tenant', '2017-06-10'); // どの期間にも入らない（全期間のみ）
+
+        $c = (new ContractAnalysisService)->build()['contract'];
+        $p = $c['byMonthByPeriod'];
+
+        $this->assertSame([2, 4, 6, 8], array_keys($p)); // N 昇順（セレクト表示順）
+        $this->assertSame(2, $p[2]['total']);            // 2025..2026
+        $this->assertSame(3, $p[4]['total']);            // 2023..2026
+        $this->assertSame(4, $p[6]['total']);            // 2021..2026
+        $this->assertSame(5, $p[8]['total']);            // 2019..2026
+        $this->assertSame(6, $c['byMonth']['total']);    // 全期間は 2017 も含む
+
+        // 直近8年: 1〜5月に各1件（index0..4）・6月(2017年)は窓の外
+        $this->assertSame([1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0], $p[8]['values']);
+        // 直近2年: 1月(2026)・2月(2025) のみ
+        $this->assertSame([1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], $p[2]['values']);
+    }
+
+    /** T17: 直近2年 = 今年(2026)＋昨年(2025)。一昨年(2024)は入らない（窓の起点のオフバイワン検知） */
+    public function test_last_two_years_window_includes_current_year(): void
+    {
+        $this->makeContract('tenant', '2026-01-10');
+        $this->makeContract('tenant', '2025-01-15');
+        $this->makeContract('tenant', '2024-01-20'); // 直近2年には入らない
+
+        $p = (new ContractAnalysisService)->build()['contract']['byMonthByPeriod'];
+
+        $this->assertSame(2, $p[2]['total']);     // 2026 + 2025（2024 が入って 3 になるなら起点が1年ズレている）
+        $this->assertSame(2, $p[2]['values'][0]); // 3件とも1月・うち窓内は2件
+        $this->assertSame(3, $p[4]['total']);     // 直近4年(2023..2026)なら 2024 も入る
+    }
+
+    /** T18: 空データでも4期間は常に存在し全て0（byMonthByYear=[] と非対称＝期間は固定窓） */
+    public function test_month_by_period_empty(): void
+    {
+        $c = (new ContractAnalysisService)->build()['contract'];
+
+        $this->assertSame([], $c['byMonthByYear']);                          // 年度は「データのある年」のみ → 空
+        $this->assertSame([2, 4, 6, 8], array_keys($c['byMonthByPeriod']));  // 期間は常に4つ
+        foreach ([2, 4, 6, 8] as $n) {
+            $this->assertSame([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], $c['byMonthByPeriod'][$n]['values']);
+            $this->assertSame(0, $c['byMonthByPeriod'][$n]['total']);
+        }
     }
 }
