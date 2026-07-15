@@ -22,7 +22,7 @@ Laravel 12 / PHP 8.5.4 (local) + 8.3 (prod) / MySQL 8 / Blade + Alpine.js 3 + Ta
 | 7 | Tailwind の新規クラス追加（Vite ビルド済 CSS にしか含まれないクラスは効かない）| **main repo で** `grep -oE "\.my-class[,{: ]" public/build/assets/app-*.css`、または inline style。⚠ アンカー `[,{: ]` と main repo での実行は必須（worktree に `public/build` は無い／アンカー無しは `.w-4` が `.w-48` に誤マッチ）。詳細は @docs/RULES.md「Tailwind 監査の落とし穴」 |
 | 8 | Object.assign 引数順序を逆転（factory がリテラルの getter を評価して static 値に焼き付け、Alpine reactivity 死亡）| 必ず `return Object.assign({...existing with getters...}, factoryResult);` の順。getter は target 側に置く |
 
-全 21 件の詳細バグカタログ + 各種パターン: @docs/RULES.md
+全 26 件の詳細バグカタログ + 各種パターン: @docs/RULES.md
 
 ## 🔌 利用可能なプラグイン
 
@@ -132,5 +132,5 @@ sudo rm -f storage/framework/views/*.php && brew services restart httpd
 ## 📚 Detailed docs
 
 - @docs/ARCHITECTURE.md — ディレクトリ構成、モデル一覧、認可マトリクス
-- @docs/RULES.md — Bug #1–21 + Tailwind 不可クラス + Excel/SheetJS + 全角→半角自動変換 + 郵便番号 API
+- @docs/RULES.md — Bug #1–26 + Tailwind 不可クラス/監査の落とし穴 + Excel/SheetJS + 全角→半角自動変換 + 郵便番号 API
 - @docs/BACKLOG.md — 完了済み機能の優先度別一覧（優先度 1〜5 全て本番稼働中）
