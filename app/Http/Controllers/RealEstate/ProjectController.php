@@ -11,6 +11,7 @@ use App\Models\ReProjectCost;
 use App\Models\ReProjectDrawing;
 use App\Models\ReProjectLot;
 use App\Models\ZoningType;
+use App\Support\AttachmentDelivery;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -580,14 +581,16 @@ class ProjectController extends Controller
     // ================================================================
 
     /**
-     * 図面ファイル表示・ダウンロード
+     * 図面ファイル表示・ダウンロード（?download=1 で強制ダウンロード）
      * Route: GET /realestate/projects/{project}/drawings/{drawing}
      *
      * 本番のディレクトリ構造（アプリ本体と Web 公開ディレクトリが別パス）では
      * public/storage シンボリックリンクが壊れるため、Apache 直配信ではなく
      * Laravel 経由で storage/app/public からストリーミング配信する。
+     *
+     * 配信方法（inline / 強制DL）の判断は AttachmentDelivery に集約している。
      */
-    public function showDrawing(ReProject $project, ReProjectDrawing $drawing)
+    public function showDrawing(Request $request, ReProject $project, ReProjectDrawing $drawing)
     {
         if ($drawing->project_id !== $project->id) {
             abort(403);
@@ -596,19 +599,12 @@ class ProjectController extends Controller
             abort(404);
         }
 
-        // 画像は inline 配信（区画図面のサムネイルプレビュー用）、それ以外は強制ダウンロード。
-        // storeDrawing の mimes に svg/html は含まれないため画像 inline は安全。
-        // いずれも nosniff で MIME スニッフィングによる XSS を防ぐ。
-        if ($drawing->isImage()) {
-            return Storage::disk('public')->response($drawing->file_path, $drawing->file_name, [
-                'Content-Type'           => $drawing->mime_type,
-                'X-Content-Type-Options' => 'nosniff',
-            ]);
-        }
-
-        return Storage::disk('public')->download($drawing->file_path, $drawing->file_name, [
-            'X-Content-Type-Options' => 'nosniff',
-        ]);
+        return AttachmentDelivery::make(
+            $drawing->file_path,
+            $drawing->file_name,
+            $drawing->mime_type,
+            $request->boolean('download'),
+        );
     }
 
     /**

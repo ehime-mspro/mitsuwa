@@ -8,6 +8,7 @@ use App\Enums\HousingPropertyStatus;
 use App\Http\Controllers\Controller;
 use App\Models\HsProperty;
 use App\Models\HsPropertyFile;
+use App\Support\AttachmentDelivery;
 use App\Support\Settings;
 use App\Models\ReProcurement;
 use App\Models\ReProject;
@@ -330,12 +331,14 @@ class PropertyController extends Controller
     }
 
     /**
-     * ファイル閲覧（Laravel 経由でストリーム配信）
+     * ファイル閲覧（Laravel 経由でストリーム配信・?download=1 で強制ダウンロード）
      * 本番サーバーでは public/storage シンボリックリンクが効かないため、
      * /storage/... 直リンクは 403 になる。当メソッド経由で配信する。
      * GET /housing/properties/{property}/documents/{file}
+     *
+     * 配信方法（inline / 強制DL）の判断は AttachmentDelivery に集約している。
      */
-    public function showFile(HsProperty $property, HsPropertyFile $file)
+    public function showFile(Request $request, HsProperty $property, HsPropertyFile $file)
     {
         if ($file->property_id !== $property->id) {
             abort(403);
@@ -344,10 +347,12 @@ class PropertyController extends Controller
             abort(404);
         }
 
-        // 保存型 XSS 対策: inline ではなく強制ダウンロードで配信し、nosniff を付与。
-        return Storage::disk('public')->download($file->file_path, $file->file_name, [
-            'X-Content-Type-Options' => 'nosniff',
-        ]);
+        return AttachmentDelivery::make(
+            $file->file_path,
+            $file->file_name,
+            $file->mime_type,
+            $request->boolean('download'),
+        );
     }
 
     // ================================================================

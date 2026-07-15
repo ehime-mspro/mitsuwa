@@ -12,6 +12,7 @@ use App\Models\HsCustomOrder;
 use App\Models\HsCustomOrderFile;
 use App\Models\ReProcurement;
 use App\Models\ReProject;
+use App\Support\AttachmentDelivery;
 use App\Support\Settings;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -300,10 +301,12 @@ class CustomOrderController extends Controller
     }
 
     /**
-     * ファイル閲覧（Laravel 経由でストリーム配信）
+     * ファイル閲覧（Laravel 経由でストリーム配信・?download=1 で強制ダウンロード）
      * GET /housing/custom-orders/{customOrder}/documents/{file}
+     *
+     * 配信方法（inline / 強制DL）の判断は AttachmentDelivery に集約している。
      */
-    public function showFile(HsCustomOrder $customOrder, HsCustomOrderFile $file)
+    public function showFile(Request $request, HsCustomOrder $customOrder, HsCustomOrderFile $file)
     {
         if ($file->custom_order_id !== $customOrder->id) {
             abort(403);
@@ -312,10 +315,12 @@ class CustomOrderController extends Controller
             abort(404);
         }
 
-        // 保存型 XSS 対策: inline ではなく強制ダウンロードで配信し、nosniff を付与。
-        return Storage::disk('public')->download($file->file_path, $file->file_name, [
-            'X-Content-Type-Options' => 'nosniff',
-        ]);
+        return AttachmentDelivery::make(
+            $file->file_path,
+            $file->file_name,
+            $file->mime_type,
+            $request->boolean('download'),
+        );
     }
 
     // ================================================================
