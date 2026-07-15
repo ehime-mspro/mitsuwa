@@ -162,7 +162,7 @@ class ContractAnalysisService
 ### 4.3 ビュー `_charts.blade.php`（月別カードのセレクトのみ改修）
 
 ```blade
-                <select x-model="monthYear.{{ $prefix }}" @change="updateMonth('{{ $prefix }}')" class="analysis-select">
+                <select x-model="monthRange.{{ $prefix }}" @change="updateMonth('{{ $prefix }}')" class="analysis-select">
                     <option value="all">全期間</option>
                     <optgroup label="期間">
                         @foreach($summary['byMonthByPeriod'] as $n => $d)
@@ -219,14 +219,14 @@ class ContractAnalysisService
 #### 4.4.2 `updateMonth()`（`lastN` 分岐を追加）
 
 ```js
-            monthYear: { contract: 'all', termination: 'all' },       // 選択中の範囲（'all' / 'last2'…'last8' / '2024'）
+            monthRange: { contract: 'all', termination: 'all' },      // 選択中の範囲（'all' / 'last2'…'last8' / '2024'）
 ```
 
 ```js
             // 期間/年度セレクト変更 → 月別チャートの data と総計バッジを更新
             updateMonth(which) {
                 const md  = TENANT_ANALYSIS_CHARTS[which].month;
-                const sel = this.monthYear[which];
+                const sel = this.monthRange[which];
                 let values, total;
                 if (sel === 'all') {
                     values = md.all;
