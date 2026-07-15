@@ -301,7 +301,7 @@ class ContractAnalysisTest extends TestCase
         $response = $this->actingAs($this->executive())->get('/tenant/analysis');
 
         $response->assertOk();
-        $response->assertSee('全期間');
+        $response->assertSee('<option value="all">全期間</option>', false); // 文言だけだと導入文に一致して false-pass する
         $response->assertSee('2024年');
         $response->assertSee('2025年');
     }
@@ -404,5 +404,36 @@ class ContractAnalysisTest extends TestCase
         // 既存キーの非退行
         $this->assertSame([1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], $month['all']);
         $this->assertSame(['2026', '2024'], array_column($month['years'], 'year'));
+    }
+
+    /** T20: 月別セレクトの3ブロック（全期間 / 期間 optgroup / 年度 optgroup）＋ style が1つだけ */
+    public function test_month_period_selector_rendered(): void
+    {
+        $this->makeContract('tenant', '2026-01-10');
+        $this->makeContract('tenant', '2025-03-05');
+        // 解約タブにもデータを持たせる → 両タブでセレクトが描画される（＝_charts が2回 include される実状況）
+        $this->makeContract('tenant', '2024-05-10', 'terminated', '2026-02-20');
+
+        $response = $this->actingAs($this->executive())->get('/tenant/analysis');
+        $response->assertOk();
+
+        // optgroup 見出し（「期間」は「全期間」の部分文字列なので生 HTML で厳密に検証）
+        $response->assertSee('<optgroup label="期間">', false);
+        $response->assertSee('<optgroup label="年度">', false);
+        // option は文言だけで assertSee すると導入文（「全期間／直近N年／年度別」）にも一致してしまい
+        // option を消しても緑になる → value ごと生 HTML で見る。value は JS の
+        // startsWith('last') / o.key === sel / o.year === sel が依存する契約でもある
+        $response->assertSee('<option value="all">全期間</option>', false);
+        $response->assertSee('<option value="last2">直近2年</option>', false);
+        $response->assertSee('<option value="last4">直近4年</option>', false);
+        $response->assertSee('<option value="last6">直近6年</option>', false);
+        $response->assertSee('<option value="last8">直近8年</option>', false);
+        $response->assertSee('<option value="2026">2026年</option>', false);
+
+        $html = $response->getContent();
+        // セレクトは契約/解約の2つ（class が外れて素のセレクトに戻る退行の検知）
+        $this->assertSame(2, substr_count($html, 'class="analysis-select"'));
+        // style は index 側に1つだけ（_charts へ移すと2回 include で重複する）
+        $this->assertSame(1, substr_count($html, '.analysis-select:hover'));
     }
 }

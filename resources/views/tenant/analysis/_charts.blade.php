@@ -30,12 +30,18 @@
         </div>
         <div style="display:flex; align-items:center; gap:10px;">
             @if($monthTotal !== 0)
-                <select x-model="monthYear.{{ $prefix }}" @change="updateMonth('{{ $prefix }}')"
-                        style="font-size:12px; color:#374151; background:white; border:1px solid #d1d5db; border-radius:6px; padding:4px 8px; cursor:pointer;">
+                <select x-model="monthRange.{{ $prefix }}" @change="updateMonth('{{ $prefix }}')" class="analysis-select">
                     <option value="all">全期間</option>
-                    @foreach($summary['byMonthByYear'] as $year => $d)
-                        <option value="{{ $year }}">{{ $year }}年</option>
-                    @endforeach
+                    <optgroup label="期間">
+                        @foreach($summary['byMonthByPeriod'] as $n => $d)
+                            <option value="last{{ $n }}">直近{{ $n }}年</option>
+                        @endforeach
+                    </optgroup>
+                    <optgroup label="年度">
+                        @foreach($summary['byMonthByYear'] as $year => $d)
+                            <option value="{{ $year }}">{{ $year }}年</option>
+                        @endforeach
+                    </optgroup>
                 </select>
             @endif
             <span style="font-size:12px; font-weight:700; color:#047857; background:#ECFDF5; border:1px solid #A7F3D0; border-radius:999px; padding:3px 12px; white-space:nowrap;"

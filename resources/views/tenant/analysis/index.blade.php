@@ -15,7 +15,7 @@
     {{-- ページヘッダー --}}
     <div class="mb-5">
         <h1 class="text-lg font-bold text-gray-900">契約・解約分析</h1>
-        <p class="text-sm text-gray-500" style="margin-top:4px;">契約年ごとの件数（最大直近10年の推移）と、契約月ごとの件数（全期間／年度別の季節性）を、それぞれ棒グラフで表示します。</p>
+        <p class="text-sm text-gray-500" style="margin-top:4px;">契約年ごとの件数（最大直近10年の推移）と、契約月ごとの件数（全期間／直近N年／年度別の季節性）を、それぞれ棒グラフで表示します。</p>
     </div>
 
     {{-- タブ --}}
@@ -40,6 +40,24 @@
 
 </div>
 
+{{-- 月別集計セレクト（A案）: :hover/:focus はインライン style で書けないためクラス化。
+     _charts は契約/解約で2回 include されるため、style はこちら側に1つだけ置く --}}
+<style>
+    .analysis-select {
+        appearance: none; -webkit-appearance: none;
+        font-size: 12px; font-weight: 600; color: #374151; line-height: 1.5;
+        background-color: #fff;
+        background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%236B7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+        background-repeat: no-repeat; background-position: right 7px center; background-size: 14px;
+        border: 1px solid #D1D5DB; border-radius: 8px;
+        padding: 5px 28px 5px 11px; cursor: pointer;
+        box-shadow: 0 1px 2px rgba(16, 24, 40, .04);
+        transition: border-color .15s, box-shadow .15s, background-color .15s;
+    }
+    .analysis-select:hover { border-color: #6EE7B7; background-color: #F0FDF4; }
+    .analysis-select:focus { outline: none; border-color: #059669; box-shadow: 0 0 0 3px rgba(5, 150, 105, .15); }
+</style>
+
 {{-- Chart.js（cdn.jsdelivr.net のみ許可・cdnjs.cloudflare.com は本番ブロック） --}}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
@@ -50,7 +68,7 @@
             tab: 'contract',
             built: { contract: false, termination: false },
             charts: {},
-            monthYear: { contract: 'all', termination: 'all' },       // 選択中の年度（'all' or '2024'）
+            monthRange: { contract: 'all', termination: 'all' },      // 選択中の範囲（'all' / 'last2'…'last8' / '2024'）
             monthTotalText: { contract: '', termination: '' },         // 月別バッジ文言
 
             init() {
@@ -83,14 +101,19 @@
                 ].filter(Boolean); // 空データ（canvas 無し）は null → 除外
             },
 
-            // 年度セレクト変更 → 月別チャートの data と総計バッジを更新
+            // 期間/年度セレクト変更 → 月別チャートの data と総計バッジを更新
             updateMonth(which) {
-                const md = TENANT_ANALYSIS_CHARTS[which].month;
-                const sel = this.monthYear[which];
+                const md  = TENANT_ANALYSIS_CHARTS[which].month;
+                const sel = this.monthRange[which];
                 let values, total;
                 if (sel === 'all') {
                     values = md.all;
                     total  = md.all.reduce((a, b) => a + b, 0);
+                } else if (sel.startsWith('last')) {
+                    const p = (md.periods || []).find(o => o.key === sel); // 直近N年（PHP側で合算済み）
+                    if (!p) return;
+                    values = p.values;
+                    total  = p.total;
                 } else {
                     const y = (md.years || []).find(o => o.year === sel);
                     if (!y) return;
