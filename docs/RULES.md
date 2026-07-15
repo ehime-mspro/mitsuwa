@@ -25,6 +25,62 @@ use the inline numbered pagination markup (see Bug #24).
 `text-center`, `text-left`, `text-right`, `whitespace-nowrap`, `overflow-hidden`,
 `h-9`, `text-xs`, `text-lg`, `font-bold`, `font-medium`
 
+## Tailwind 監査の落とし穴（クラス実在チェックの正しいやり方）
+
+Bug #19 の「使う前にコンパイル済み CSS を grep して確かめる」は正しいが、**やり方を間違えると
+逆方向に誤判定する**。2026-07-15 に両方を実測で踏んだので手順を確定させる。
+
+### 正しいコマンド（main repo で実行すること）
+
+```bash
+grep -oE "\.<class>[,{: ]" public/build/assets/app-*.css
+```
+
+`hover:` 等のバリアントは CSS 側で `:` が `\:` にエスケープされているので `grep -oF` を使う:
+
+```bash
+grep -oF ".hover\:text-emerald-600" public/build/assets/app-*.css
+```
+
+**`-o` は必須。** ビルド済み CSS はミニファイされていて**ファイル全体がほぼ1行**なので、
+`-o` を省くと「マッチした行」＝ CSS 全体（約50KB）が流れてきて何も読み取れない。
+
+### 落とし穴 1: worktree では全クラスが「無い」ように見える
+
+**`public/build` は `.gitignore` 済み（`.gitignore:16`）＝ worktree にビルド済み CSS が存在しない。**
+worktree で grep すると全部 MISSING に見え、「コンパイル済みのクラスをわざわざ inline style に
+書き換える」という無駄な作業に走る。**監査は必ず main repo（`/Users/masanori/site/manage`）で行う。**
+
+### 落とし穴 2: アンカー無し = false positive（存在しないクラスを「ある」と誤判定）
+
+Tailwind のクラス名は前方一致するものが多い。実測:
+
+```
+$ grep -oE "\.w-4" app-Df177yiQ.css     # ← アンカー無し
+.w-4
+.w-4          ← 実体は .w-48{...} の前半分にマッチしている
+```
+
+`.w-4{...}` と `.w-48{...}` の両方にヒットする。つまり **`w-40` のような存在しないクラスでも
+`.w-4x` 系が1つでもあれば「ある」と誤判定**する。
+
+### 落とし穴 3: `\{` アンカー = false negative（あるクラスを「無い」と誤判定）
+
+false positive を潰そうと `\{` を付けると、今度は**セレクタリストに束ねられたルールを取りこぼす**。
+Tailwind v4 は旧名と新名を1ルールにまとめるため、実体はこうなっている:
+
+```
+.flex-shrink-0,.shrink-0{flex-shrink:0}
+```
+
+`.flex-shrink-0` の直後は `{` ではなく `,` なので、`grep -oE "\.flex-shrink-0\{"` は**空を返す**。
+コンパイル済みなのに「無い」と判断してしまう。
+
+### 結論
+
+区切り文字クラス `[,{: ]` でアンカーすれば両方を回避できる（実測で `w-4`＝検出 /
+`flex-shrink-0`＝検出 / 存在しない `w-40`＝非検出 を確認済み）。
+
 ## Past Bug Catalog
 
 | # | Symptom | Root Cause | Fix |
@@ -47,7 +103,7 @@ use the inline numbered pagination markup (see Bug #24).
 | 16 | `<option x-show>` not hiding + duplicate values in select | Browsers ignore `display:none` on `<option>` (spec-allowed inconsistency); also `<template x-for>` renders options AFTER `x-model` syncs | Use static `<option>` tags (not `x-for`) + filter data before rendering |
 | 17 | Google Maps shows "For development purposes only" watermark + auth error dialog; `key=` empty in API URL | Blade called `env('GOOGLE_MAPS_API_KEY', '')` directly. After `php artisan config:cache` (run by deploy.sh on every deploy), Laravel disables direct `.env` reads outside config files — `env()` returns empty string in Blade | Register the value in `config/services.php` (`'google_maps' => ['api_key' => env('GOOGLE_MAPS_API_KEY')]`) and read it via `config('services.google_maps.api_key')` in Blade. Never call `env()` directly outside config files. |
 | 18 | `<input type="file" class="form-input">` renders as a sharp-cornered, unstyled-looking box; the native "Choose File" button decoration disappears | The compiled `.form-input` rule contains `appearance: none; border-radius: 0`. On `<input type="file">` this strips the browser's native file-picker chrome and removes rounded corners, breaking visual consistency with surrounding rounded buttons | Do NOT apply `.form-input` to `<input type="file">`. Use an inline style instead, e.g. `style="display:block; width:100%; max-width:520px; padding:8px 12px; font-size:13px; color:#374151; background:white; border:1px solid #d1d5db; border-radius:6px; cursor:pointer; box-sizing:border-box;"`. Pages that override `.form-input` locally inside a `<style>` block (e.g. `zeal/members/_form.blade.php`) work, but only on that page — file inputs on other pages still get the bare `.form-input` definition |
-| 19 | Tailwind classes silently have no effect on a single page (e.g. `min-w-[140px]` on the search input, `hover:bg-red-100` / `hover:border-red-300` on a delete button) | Vite's JIT does NOT include arbitrary-value classes (`min-w-[140px]`, `bg-[#abc]`, etc.) and only emits the exact color/state combinations actually scanned at build time. Adding a new utility to a Blade after build does not auto-add it to `app-*.css` | Audit with `grep -oE "\\.<class>" public/build/assets/app-*.css` before assuming a class works. Replace arbitrary values with `style="min-width:140px"` and unsupported hover variants with `onmouseover/onmouseout` inline handlers. To check the gap quickly: extract all `class="..."` tokens from a Blade and grep each against the compiled CSS |
+| 19 | Tailwind classes silently have no effect on a single page (e.g. `min-w-[140px]` on the search input, `hover:bg-red-100` / `hover:border-red-300` on a delete button) | Vite's JIT does NOT include arbitrary-value classes (`min-w-[140px]`, `bg-[#abc]`, etc.) and only emits the exact color/state combinations actually scanned at build time. Adding a new utility to a Blade after build does not auto-add it to `app-*.css` | Audit with `grep -oE "\\.<class>[,{: ]" public/build/assets/app-*.css` **in the main repo** before assuming a class works（⚠ アンカー `[,{: ]` を省くと `.w-4` が `.w-48` にマッチして false positive、`\{` にすると `.flex-shrink-0,.shrink-0{...}` を取りこぼして false negative。`public/build` は gitignore 済みで worktree には存在しない。詳細は「Tailwind 監査の落とし穴」）. Replace arbitrary values with `style="min-width:140px"` and unsupported hover variants with `onmouseover/onmouseout` inline handlers. To check the gap quickly: extract all `class="..."` tokens from a Blade and grep each against the compiled CSS |
 | 20 | ファイルアップロード時に「The route attachments/{type}/{id} could not be found.」で失敗する。例: `attachments/projects/11`, `attachments/ms_tenants/3`, `attachments/dad_projects/5` | `AttachmentController::TYPE_MAP` に新しい type を追加した際、`routes/web.php` の `Route::post('/attachments/{type}/{id}', ...)->where('type', '...')` の正規表現を更新し忘れた。`where` 正規表現に存在しない type は Laravel ルーターで弾かれ 404 になる（`procurements` 等の既存 type は通る） | `routes/web.php` の `where('type', '...')` 正規表現を `AttachmentController::TYPE_MAP` のキー全部と同期させる。新しい type を `TYPE_MAP` に追加するときは必ず `where` 正規表現にも同じ文字列を `\|` 区切りで追加すること。本番反映は `git push` だけでは不十分で `./deploy.sh` を実行する必要がある（rsync + `route:cache` 再生成） |
 | 21 | `<x-form-actions :cancel-url="route(&quot;{$var}.xxx&quot;)" />` のように Blade コンポーネント属性式内に `&quot;` を含めたページが本番でだけ 500 `syntax error, unexpected token "&"` で落ちる。ローカルでは再現しない（例: `/housing/customers/create` が本番 500、`/realestate/customers/create` は同じ `_form.blade.php` でもアクセスタイミング次第で動いて見えてしまう） | Blade の Anonymous Component（`@props` のみで定義されたビュー型コンポーネント）の属性式に `&quot;` HTML エンティティを書くと、本番（PHP 8.3 + `view:cache` で全 Blade を precompile）経由ではデコードが漏れ、生のコンパイル済み PHP に literal `&quot;` が残って PHP 構文エラーになる。ローカル（lazy compile + PHP 8.5）では発火しないため気づけない | Blade コンポーネント属性で動的な route name を渡すときは `&quot;` を避け、PHP 文字列連結で組み立てる: `:cancel-url="route($department.'.customers.index')"`。route name が完全に静的ならシングルクォートで素直に書ける: `:cancel-url="route('tenant.customers.index')"`。残存検査は `grep -rn "&quot;" resources/views/` で一覧化。本番反映は `./deploy.sh`（`view:cache` 再生成）必須 |
 | 22 | 一覧/詳細画面が本番でだけ 500 `TypeError: App\Enums\XxxStatus::tryFrom(): Argument #1 ($value) must be of type string\|int, App\Enums\XxxStatus given`。該当データ（例: 注文住宅の契約済レコード）が 1 件でも存在するときだけ発火し、空データのローカルでは該当行に到達せず素通りして気づけない（ローカル CLI も実 PHP 8.3 系なのでバージョン差ではなく **データ差**） | Eloquent の `casts()` で `'status' => XxxStatus::class` と enum キャストした属性は、読み出し時点で既に enum インスタンス。`tryFrom()` は `string\|int` のみ受け付けるため enum を渡すと TypeError。`Housing\HsContractListController::mapCustomOrderToDto` の `CustomOrderStatus::tryFrom($c->status)` が原因（2026-06-08 本番 500、commit c15812a1 で修正） | キャスト済み属性はそのまま使う: `$statusEnum = $model->status;`（null 可能性があれば `$model->status ? $model->status->label() : '—'` でガード）。生文字列からの変換が必要な場面だけ `tryFrom()` を使う。`whereIn('status', [Status::Foo->value, ...])` のようにクエリで `->value` を使うのは正しい。横展開検査: `grep -rn "::tryFrom(\$" app/` でキャスト属性への誤用を洗い出す |
