@@ -10,6 +10,7 @@ use App\Models\MsTenant;
 use App\Models\Repair;
 use App\Models\ReProject;
 use App\Models\ReProcurement;
+use App\Support\AttachmentDelivery;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
@@ -109,13 +110,15 @@ class AttachmentController extends Controller
 
     /**
      * ファイル表示・ダウンロード
-     * GET /attachments/{attachment}
+     * GET /attachments/{attachment}（?download=1 で強制ダウンロード）
      *
      * 本番のディレクトリ構造（アプリ本体と Web 公開ディレクトリが別パス）では
      * public/storage シンボリックリンクが壊れるため、Apache 直配信ではなく
      * Laravel 経由で storage/app/public からストリーミング配信する。
+     *
+     * 配信方法（inline / 強制DL）の判断は AttachmentDelivery に集約している。
      */
-    public function show(Attachment $attachment)
+    public function show(Request $request, Attachment $attachment)
     {
         // 部署ベースの認可（IDOR 対策）: 連番 ID 総当たりでの他部署添付の閲覧を防ぐ。
         // ファイル存在チェックより前に評価する。
@@ -125,11 +128,12 @@ class AttachmentController extends Controller
             abort(404);
         }
 
-        // 保存型 XSS 対策: inline ではなく強制ダウンロードで配信し、
-        // X-Content-Type-Options: nosniff で MIME スニッフィングによる実行を防ぐ。
-        return Storage::disk('public')->download($attachment->file_path, $attachment->file_name, [
-            'X-Content-Type-Options' => 'nosniff',
-        ]);
+        return AttachmentDelivery::make(
+            $attachment->file_path,
+            $attachment->file_name,
+            $attachment->mime_type,
+            $request->boolean('download'),
+        );
     }
 
     /**
