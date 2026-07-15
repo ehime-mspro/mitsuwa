@@ -225,9 +225,15 @@
                             <div style="font-size: 11px; color: #6b7280;" x-text="drawing.file_size + ' — ' + drawing.created_at + ' ' + drawing.uploaded_by"></div>
                         </div>
                     </a>
-                    <div x-show="showDrawingDel" style="padding: 0 12px 10px;">
-                        <button type="button" @click="deleteDrawing(drawing)"
-                                style="display: inline-block; padding: 3px 10px; font-size: 12px; font-weight: 600; color: #dc2626; border: 1px solid #dc2626; border-radius: 4px; cursor: pointer; background: #fff;">削除</button>
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 12px 10px;">
+                        <a :href="drawing.file_path + '?download=1'" title="ダウンロード"
+                           style="display: inline-flex; align-items: center; color: #9ca3af; text-decoration: none;">
+                            <svg style="width: 16px; height: 16px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        </a>
+                        <div x-show="showDrawingDel">
+                            <button type="button" @click="deleteDrawing(drawing)"
+                                    style="display: inline-block; padding: 3px 10px; font-size: 12px; font-weight: 600; color: #dc2626; border: 1px solid #dc2626; border-radius: 4px; cursor: pointer; background: #fff;">削除</button>
+                        </div>
                     </div>
                 </div>
             </template>

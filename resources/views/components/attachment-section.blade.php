@@ -94,7 +94,7 @@
                         <th class="px-3 py-2 text-center text-xs font-bold text-gray-600 border-b border-gray-200 whitespace-nowrap">サイズ</th>
                         <th class="px-3 py-2 text-center text-xs font-bold text-gray-600 border-b border-gray-200 whitespace-nowrap">アップロード者</th>
                         <th class="px-3 py-2 text-center text-xs font-bold text-gray-600 border-b border-gray-200 whitespace-nowrap">日時</th>
-                        <th class="px-3 py-2 border-b border-gray-200" style="width:60px;"></th>
+                        <th class="px-3 py-2 border-b border-gray-200" style="width:90px;"></th>
                     </tr>
                 </thead>
                 {{-- x-for のルート要素を tbody にして、データ行+確認行を1グループにする --}}
@@ -111,11 +111,19 @@
                             <td class="px-3 py-2.5 border-b border-gray-100 text-center text-gray-700 whitespace-nowrap" x-text="file.uploaded_by"></td>
                             <td class="px-3 py-2.5 border-b border-gray-100 text-center text-gray-500 whitespace-nowrap" x-text="file.uploaded_at"></td>
                             <td class="px-3 py-2.5 border-b border-gray-100 text-center">
-                                <button x-show="file.can_delete && !file.confirming"
-                                        @click="file.confirming = true"
-                                        class="text-gray-400 hover:text-red-500 transition-colors cursor-pointer" title="削除">
-                                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
-                                </button>
+                                <div class="flex items-center justify-center gap-2">
+                                    <a :href="file.file_path + '?download=1'"
+                                       class="text-gray-400 hover:text-emerald-600 transition-colors" title="ダウンロード">
+                                        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                    </a>
+                                    <span class="w-4 flex-shrink-0">
+                                        <button x-show="file.can_delete && !file.confirming"
+                                                @click="file.confirming = true"
+                                                class="text-gray-400 hover:text-red-500 transition-colors cursor-pointer" title="削除">
+                                            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                                        </button>
+                                    </span>
+                                </div>
                             </td>
                         </tr>
                         <tr x-show="file.confirming" x-cloak>
