@@ -37,9 +37,17 @@ class AnalysisController extends Controller
                 'values' => $summary['byYear']['values'],
             ],
             'month' => [
-                'labels' => array_map(fn (int $m) => $m . '月', $summary['byMonth']['labels']), // ['1月'..'12月']
-                'all'    => $summary['byMonth']['values'],   // 全期間の12件
-                'years'  => collect($summary['byMonthByYear'])
+                'labels'  => array_map(fn (int $m) => $m . '月', $summary['byMonth']['labels']), // ['1月'..'12月']
+                'all'     => $summary['byMonth']['values'],   // 全期間の12件
+                'periods' => collect($summary['byMonthByPeriod'])
+                    ->map(fn (array $d, int $n) => [
+                        'key'    => 'last' . $n,   // セレクト value と厳密一致（'last2'…'last8'）
+                        'values' => $d['values'],
+                        'total'  => $d['total'],
+                    ])
+                    ->values()
+                    ->all(), // [{key:'last2',values:[..],total:..}, ...] N 昇順
+                'years'   => collect($summary['byMonthByYear'])
                     ->map(fn (array $d, int $y) => [
                         'year'   => (string) $y,
                         'values' => $d['values'],

@@ -384,4 +384,25 @@ class ContractAnalysisTest extends TestCase
             $this->assertSame(0, $c['byMonthByPeriod'][$n]['total']);
         }
     }
+
+    /** T19: month.periods payload（key は 'lastN' 文字列・N昇順）＋既存 all/years の非退行 */
+    public function test_chart_payload_month_periods(): void
+    {
+        $this->makeContract('tenant', '2026-01-10');
+        $this->makeContract('tenant', '2024-03-05');
+
+        $response = $this->actingAs($this->executive())->get('/tenant/analysis');
+        $response->assertOk();
+        $month = $response->viewData('charts')['contract']['month'];
+
+        // key は JS の `o.key === sel`（厳密比較）と一致する文字列・N 昇順
+        $this->assertSame(['last2', 'last4', 'last6', 'last8'], array_column($month['periods'], 'key'));
+        $this->assertSame(1, $month['periods'][0]['total']); // 直近2年: 2026年のみ
+        $this->assertSame(2, $month['periods'][1]['total']); // 直近4年: 2026年 + 2024年
+        $this->assertSame([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], $month['periods'][0]['values']); // 1月
+        $this->assertSame([1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], $month['periods'][1]['values']); // 1月 + 3月
+        // 既存キーの非退行
+        $this->assertSame([1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], $month['all']);
+        $this->assertSame(['2026', '2024'], array_column($month['years'], 'year'));
+    }
 }
