@@ -14,6 +14,19 @@
 
 ---
 
+## 実装時の変更点（本プラン作成後にレビューで確定・**出荷時の姿はこちら**）
+
+以下はプラン本文の記述と**実際に出荷したコードが異なる**点。本文は「計画時点の姿」のまま残してあるので、**最終形は `655dd67b` の実コードを見ること**。
+
+| # | プラン本文の記述 | 出荷時の姿 | 理由 |
+|---|---|---|---|
+| A | Task 1 Step 3 の `AttachmentDelivery`（`strtolower(...)` が述語と引きの 2 箇所に重複） | **`resolveInlineContentType()` に正規化を集約**し、`make()` はその戻り値そのもので分岐 | コードレビューで、片方だけ直す将来編集が「Warning + null → `??=` フォールバック → Content-Type が finfo 由来に静かに復活」という fail-open を招くと**実測で証明された**。集約後は「述語が壊れても配信は安全側に落ちる」ことを変異注入で確認済み |
+| B | テスト 8 本（T1〜T8） | **9 本**（T9 = 大文字 MIME の正規化を追加） | `strtolower()` を消しても全テストが緑のままだと変異注入で判明したため |
+| C | Task 2 のコミット種別 `refactor(attachment)` | **`feat(attachment)`** | Task 2 は挙動保存ではない。図面の PDF・住宅事業の画像/PDF が強制DL→inline に変わる**ユーザー可視の新機能**を含む（プラン側の分類ミス） |
+| D | Task 3 の `attachment-section` 最終列 | 削除ボタンを **`<span class="w-4 flex-shrink-0">` で包んでスロット予約** | `x-show` の `display:none` で削除ボタンが flex から外れ、⬇ が約 12px 再センタリングされる。`can_delete` は行ごとに異なるため一覧で列がガタつく |
+
+---
+
 ## 実測で確定した事実（推測しないこと）
 
 このプランを書く前に**実際に計測した**結果。ここに書かれた値は測定済みなので、そのまま使ってよい。
@@ -41,7 +54,7 @@
 | ファイル | 責務 | 本プランでの変更 |
 |---|---|---|
 | `app/Support/AttachmentDelivery.php` | **新規**。配信方法の判断を持つ唯一の箇所（許可リスト＋正規化） | 新規作成。`app/Support/` の既存クラス（`Settings.php` / `ZealFiscalYear.php`）に倣い素の静的メソッドクラス |
-| `tests/Feature/AttachmentDeliveryTest.php` | **新規**。ルート経由で disposition を検証 | 新規作成（8 ケース） |
+| `tests/Feature/AttachmentDeliveryTest.php` | **新規**。ルート経由で disposition を検証 | 新規作成（計画 8 ケース → **出荷 9 ケース**。上記「実装時の変更点」B 参照） |
 | `app/Http/Controllers/AttachmentController.php` | 汎用添付（テナント3 + 不動産2 + マンション + DAD） | `show()` のみ差し替え（`:118-133`） |
 | `app/Http/Controllers/RealEstate/ProjectController.php` | 分譲地PJ・区画図面 | `showDrawing()` のみ差し替え（`:590-612`） |
 | `app/Http/Controllers/Housing/PropertyController.php` | 建売物件ファイル | `showFile()` のみ差し替え（`:338-351`） |
@@ -823,6 +836,7 @@ git -C /Users/masanori/site/manage/.claude/worktrees/attachment-inline-view diff
 | `Request` 引数追加でルートモデルバインディングが壊れる | Laravel はコンテナ経由で `Request` を先に注入するため既存挙動は変わらない。**T4（`?download=1`）が実際にこれを実証する**（`$request->boolean('download')` とルートモデルバインディングが同時に効いていないと緑にならない） |
 | DB に既存の不正な `mime_type` が入っている | 許可リストに無い MIME は全て強制DLへフォールバックするため、最悪でも現状（＝全部DL）と同じ挙動にしかならない |
 | PDF の inline がオリジン上でレンダリングされる | ブラウザの PDF ビューアはサンドボックス済み。加えて入口の `mimes:` 制限と出口の許可リストで PDF 以外が PDF として配信されることはない |
-| Task 2 の 3 本にテストが無い | F3 のとおりテーブルが無く不可能。配信ロジック本体は Task 1 の 8 テストで実証済みで、3 本は同じ関数へ委譲するだけ。Task 4 Step 2 の本番同等レンダリング＋本番確認で担保 |
+| Task 2 の 3 本にテストが無い | 配信ロジック本体は Task 1 の 9 テストで実証済みで、3 本は同じ関数へ委譲するだけ。Task 4 Step 2 の本番同等レンダリング＋本番確認で担保。**「テーブルが無いので不可能」ではない**（F3-補のとおり `Schema::create` すれば書ける）。恒久テストは別タスクとして起票済み |
+| **図面のうち許可リスト外の `image/*` が inline → 強制DL に退行する**（`showDrawing` のみ。他 3 経路は元々全部DLなので退行しない） | 旧 `showDrawing` は `isImage()`＝`str_starts_with($mime, 'image/')` の**前方一致**で inline 配信していたため、`image/jpg` / `image/x-png` 等は inline だった。かつ図面は `getClientMimeType()`（**ブラウザ申告値**・内容判定ではない）を保存している（`ProjectController:628`）ため非正規値が入り得る。**デプロイ前に本番で `SELECT DISTINCT mime_type FROM re_project_drawings;` を実行して確認すること**（ローカル DB は空で再現不能）。許可リスト外の `image/*` が無ければ影響ゼロ |
 | 本番の view:cache 由来 500（Bug #21/#23/#26） | Blade 変更は属性内 `@json` も `&quot;` も使わない単純な要素追加のみ。Task 3 Step 6 と Task 4 Step 2 で検査 |
 | Tailwind 未コンパイルクラスで ⬇ が無装飾になる | F8 で実測済み（`hover:text-emerald-600` を含め全て存在）。**再確認する場合は必ず main repo で**（F9） |
