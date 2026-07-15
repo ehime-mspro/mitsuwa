@@ -94,7 +94,7 @@
                         <th class="px-3 py-2 text-center text-xs font-bold text-gray-600 border-b border-gray-200 whitespace-nowrap">サイズ</th>
                         <th class="px-3 py-2 text-center text-xs font-bold text-gray-600 border-b border-gray-200 whitespace-nowrap">アップロード者</th>
                         <th class="px-3 py-2 text-center text-xs font-bold text-gray-600 border-b border-gray-200 whitespace-nowrap">日時</th>
-                        <th class="px-3 py-2 border-b border-gray-200" style="width:90px;"></th>
+                        <th class="px-3 py-2 border-b border-gray-200" style="width:110px;"></th>
                     </tr>
                 </thead>
                 {{-- x-for のルート要素を tbody にして、データ行+確認行を1グループにする --}}
@@ -111,15 +111,17 @@
                             <td class="px-3 py-2.5 border-b border-gray-100 text-center text-gray-700 whitespace-nowrap" x-text="file.uploaded_by"></td>
                             <td class="px-3 py-2.5 border-b border-gray-100 text-center text-gray-500 whitespace-nowrap" x-text="file.uploaded_at"></td>
                             <td class="px-3 py-2.5 border-b border-gray-100 text-center">
-                                <div class="flex items-center justify-center gap-2">
+                                {{-- DL/削除の誤クリック防止: ヒットエリア 32px・間隔 12px・通常時から緑/赤で色分け --}}
+                                <div class="flex items-center justify-center gap-3">
                                     <a :href="file.file_path + '?download=1'"
-                                       class="text-gray-400 hover:text-emerald-600 transition-colors" title="ダウンロード">
+                                       class="inline-flex items-center justify-center w-8 h-8 rounded-md text-emerald-600 hover:bg-emerald-50 transition-colors" title="ダウンロード">
                                         <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                                     </a>
-                                    <span class="w-4 flex-shrink-0">
+                                    {{-- 削除不可ユーザーでも DL ボタンの位置が動かないよう、ボタンと同じ 32px 幅を確保 --}}
+                                    <span class="w-8 flex-shrink-0">
                                         <button x-show="file.can_delete && !file.confirming"
                                                 @click="file.confirming = true"
-                                                class="text-gray-400 hover:text-red-500 transition-colors cursor-pointer" title="削除">
+                                                class="inline-flex items-center justify-center w-8 h-8 rounded-md text-red-500 hover:bg-red-50 hover:text-red-600 transition-colors cursor-pointer" title="削除">
                                             <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
                                         </button>
                                     </span>
