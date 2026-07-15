@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>月別集計 期間セレクト統合 モック</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  body { margin:0; padding:32px; background:#F3F4F6; font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif; color:#111827; }
+  .wrap { max-width:1180px; margin:0 auto; }
+  h1 { font-size:18px; font-weight:700; margin:0 0 4px; }
+  .lead { font-size:13px; color:#6B7280; margin:0 0 24px; }
+  .sec { font-size:13px; font-weight:700; color:#374151; margin:0 0 10px; }
+  .card { background:#fff; border:1px solid #E5E7EB; border-radius:8px; padding:16px 18px; margin-bottom:16px; }
+  .note { font-size:12px; color:#6B7280; line-height:1.8; }
+  .note code { background:#F3F4F6; padding:1px 5px; border-radius:4px; font-size:11px; }
+
+  /* カードヘッダー（本番と同一） */
+  .card-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+  .card-title { display:flex; align-items:center; gap:8px; }
+  .tick { width:8px; height:16px; border-radius:3px; background:#059669; display:inline-block; }
+  .t1 { font-size:14px; font-weight:700; color:#111827; }
+  .t2 { font-size:12px; color:#9CA3AF; font-weight:500; }
+  .ctrls { display:flex; align-items:center; gap:10px; }
+  .badge { font-size:12px; font-weight:700; color:#047857; background:#ECFDF5; border:1px solid #A7F3D0;
+           border-radius:999px; padding:3px 12px; white-space:nowrap; }
+
+  /* ── 現行（ダサい版）: 素の native select ── */
+  .sel-now { font-size:12px; color:#374151; background:white; border:1px solid #d1d5db;
+             border-radius:6px; padding:4px 8px; cursor:pointer; }
+
+  /* ── A案: 白ベース + エメラルドのホバー/フォーカス（控えめ・現行トーン維持）── */
+  .sel-a {
+    appearance:none; -webkit-appearance:none;
+    font-size:12px; font-weight:600; color:#374151; line-height:1.5;
+    background-color:#fff;
+    background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%236B7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+    background-repeat:no-repeat; background-position:right 7px center; background-size:14px;
+    border:1px solid #D1D5DB; border-radius:8px;
+    padding:5px 28px 5px 11px; cursor:pointer;
+    box-shadow:0 1px 2px rgba(16,24,40,.04);
+    transition:border-color .15s, box-shadow .15s, background-color .15s;
+  }
+  .sel-a:hover { border-color:#6EE7B7; background-color:#F0FDF4; }
+  .sel-a:focus { outline:none; border-color:#059669; box-shadow:0 0 0 3px rgba(5,150,105,.15); }
+
+  /* ── B案: エメラルド薄地のチップ風（総計バッジと対で並ぶ）── */
+  .sel-b {
+    appearance:none; -webkit-appearance:none;
+    font-size:12px; font-weight:700; color:#047857; line-height:1.5;
+    background-color:#ECFDF5;
+    background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%23047857' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+    background-repeat:no-repeat; background-position:right 8px center; background-size:14px;
+    border:1px solid #A7F3D0; border-radius:999px;
+    padding:4px 28px 4px 13px; cursor:pointer;
+    transition:background-color .15s, border-color .15s, box-shadow .15s;
+  }
+  .sel-b:hover { background-color:#D1FAE5; border-color:#6EE7B7; }
+  .sel-b:focus { outline:none; border-color:#059669; box-shadow:0 0 0 3px rgba(5,150,105,.15); }
+
+  .row { display:flex; align-items:center; gap:28px; flex-wrap:wrap; }
+  .col { display:flex; flex-direction:column; gap:8px; }
+  .lbl { font-size:11px; font-weight:700; color:#9CA3AF; }
+  .pair { display:flex; align-items:center; gap:10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>月別集計 — 期間セレクト統合 ＋ セレクトのデザイン改善（モック）</h1>
+  <p class="lead">既存の年度セレクトを拡張し、1つのセレクトで「全期間 / 直近N年 / 単年」を選べるようにします。セレクトを増やさないので衝突が起きません。</p>
+
+  <!-- ① デザイン比較 -->
+  <div class="card">
+    <div class="sec">① セレクトのデザイン比較（どちらか選んでください）</div>
+    <div class="row">
+      <div class="col">
+        <span class="lbl">現行</span>
+        <div class="pair">
+          <select class="sel-now"><option>全期間</option></select>
+          <span class="badge">総計 124件</span>
+        </div>
+      </div>
+      <div class="col">
+        <span class="lbl">A案 — 白ベース（控えめ・現行トーン維持）</span>
+        <div class="pair">
+          <select class="sel-a"><option>全期間</option><option>直近2年</option></select>
+          <span class="badge">総計 124件</span>
+        </div>
+      </div>
+      <div class="col">
+        <span class="lbl">B案 — エメラルドのチップ風（バッジと対で並ぶ）</span>
+        <div class="pair">
+          <select class="sel-b"><option>全期間</option><option>直近2年</option></select>
+          <span class="badge">総計 124件</span>
+        </div>
+      </div>
+    </div>
+    <p class="note" style="margin:16px 0 0;">
+      共通の改善点: ネイティブの矢印を独自シェブロンに差し替え（<code>appearance:none</code>）／角丸を8px（B案は丸ピル）に／フォント太さを上げて可読性UP／
+      <b>ホバーとフォーカスをエメラルド</b>に（現行はブラウザ既定の青いリングが浮いていました）／高さを総計バッジと揃える。
+    </p>
+  </div>
+
+  <!-- ② 実物カード -->
+  <div class="card">
+    <div class="sec">② 実際の月別集計カード（下のセレクトは動きます。切り替えてみてください）</div>
+    <div class="card" style="margin:12px 0 0; border-color:#E5E7EB;">
+      <div class="card-head">
+        <div class="card-title">
+          <span class="tick"></span>
+          <span class="t1">月別集計</span>
+          <span class="t2">契約月ごとの合計件数</span>
+        </div>
+        <div class="ctrls">
+          <select id="sel" class="sel-a">
+            <option value="all">全期間</option>
+            <optgroup label="期間">
+              <option value="last2">直近2年</option>
+              <option value="last4">直近4年</option>
+              <option value="last6">直近6年</option>
+              <option value="last8">直近8年</option>
+            </optgroup>
+            <optgroup label="年度">
+              <option value="2026">2026年</option>
+              <option value="2025">2025年</option>
+              <option value="2024">2024年</option>
+              <option value="2023">2023年</option>
+              <option value="2022">2022年</option>
+              <option value="2021">2021年</option>
+              <option value="2020">2020年</option>
+              <option value="2019">2019年</option>
+              <option value="2018">2018年</option>
+            </optgroup>
+          </select>
+          <span id="badge" class="badge">総計 124件</span>
+        </div>
+      </div>
+      <div style="width:100%; height:300px; position:relative;"><canvas id="c"></canvas></div>
+    </div>
+  </div>
+
+  <!-- ③ 仕様メモ -->
+  <div class="card">
+    <div class="sec">③ 仕様メモ（確認してください）</div>
+    <p class="note" style="margin:0;">
+      ・<b>セレクトは1つのまま</b>。「全期間」→「期間」グループ（直近2/4/6/8年）→「年度」グループ（単年・降順）の3ブロック構成。<code>&lt;optgroup&gt;</code> で見出しを付けています。<br>
+      ・<b>直近N年 = 今年から暦年で遡ってN年（今年を含む）</b>。<b>今日は2026-07-15 なので直近2年 = 2026年・2025年</b>です（ご質問の選択肢で「2025と2024」と書いたのは私の誤記でした）。データが無い年も0件として含みます。<br>
+      ・このモックのデータは<b>本番の実分布（全期間124件）</b>をそのまま使い、年内訳だけ仮に置いています → 全期間124 / 直近8年121 / 直近6年97 / 直近4年65 / 直近2年29。<br>
+      ・<b>初期値は「全期間」</b>＝今の見た目のまま。総計バッジは選択に連動。<b>年別集計カードは変更しません</b>。<br>
+      ・2026年は年の途中（7月時点）なので8月以降は0件です。実データでも同様の見え方になります。
+    </p>
+  </div>
+
+</div>
+
+<script>
+// 本番の全期間分布 [1月..12月] = 124件。年内訳は合計が実分布に一致するよう構成した仮データ。
+const YEARS = {
+  2026: [1,2,1,1,2,1,1,0,0,0,0,0], // 9  (年途中)
+  2025: [1,3,2,1,2,1,1,2,3,2,1,1], // 20
+  2024: [1,2,1,2,1,1,1,2,3,2,1,1], // 18
+  2023: [1,2,2,1,2,1,1,2,2,2,1,1], // 18
+  2022: [1,2,1,1,2,1,1,2,2,2,0,1], // 16
+  2021: [1,2,2,1,1,1,1,2,2,1,1,1], // 16
+  2020: [1,1,1,2,1,1,1,2,2,2,1,1], // 16
+  2019: [0,1,1,1,1,0,0,1,2,1,0,0], // 8
+  2018: [0,1,0,0,0,0,0,1,1,0,0,0], // 3
+};
+const THIS_YEAR = 2026; // 今日 = 2026-07-15
+const LABELS = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+
+const sum12 = (arrs) => arrs.reduce((acc, a) => acc.map((v, i) => v + a[i]), new Array(12).fill(0));
+const ALL = sum12(Object.values(YEARS));
+
+// 直近N年 = 今年から遡ってN暦年（今年含む・データ無い年は0）
+function lastN(n) {
+  const picked = [];
+  for (let y = THIS_YEAR - n + 1; y <= THIS_YEAR; y++) picked.push(YEARS[y] || new Array(12).fill(0));
+  return sum12(picked);
+}
+
+const chart = new Chart(document.getElementById('c'), {
+  type: 'bar',
+  data: { labels: LABELS, datasets: [{
+    data: ALL,
+    backgroundColor: 'rgba(5,150,105,0.82)', hoverBackgroundColor: '#059669',
+    borderRadius: 4, maxBarThickness: 48,
+  }]},
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    // 本番の bar() と同じ: コンテナ幅確定後に棒を再配置（左寄り防止）
+    onResize: (chart) => requestAnimationFrame(() => chart.update('none')),
+    plugins: { legend: { display: false }, tooltip: { displayColors: false } },
+    scales: {
+      y: { beginAtZero: true, ticks: { precision: 0, color: '#9CA3AF', font: { size: 11 } }, grid: { color: '#F3F4F6' } },
+      x: { ticks: { color: '#6B7280', font: { size: 11 } }, grid: { display: false } },
+    },
+  },
+});
+
+document.getElementById('sel').addEventListener('change', (e) => {
+  const v = e.target.value;
+  let values;
+  if (v === 'all') values = ALL;
+  else if (v.startsWith('last')) values = lastN(parseInt(v.slice(4), 10));
+  else values = YEARS[v] || new Array(12).fill(0);
+
+  chart.data.datasets[0].data = values;
+  chart.update();
+  document.getElementById('badge').textContent =
+    '総計 ' + values.reduce((a, b) => a + b, 0).toLocaleString() + '件';
+});
+</script>
+</body>
+</html>
