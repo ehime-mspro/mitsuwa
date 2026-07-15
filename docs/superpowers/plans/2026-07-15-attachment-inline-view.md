@@ -22,7 +22,8 @@
 |---|---|---|
 | F1 | **ルート経由の Feature テストは成立する（200 が返る）**。`attachments` テーブルは migration 管理下（`0001_01_01_000015_create_attachments_table.php`）にあり、SQLite テスト DB に存在する。`AttachmentController::show()` は親モデルをロードせず `attachable_type` の**文字列しか読まない**ため、`contracts` テーブルの行が無くても `attachable_type = Contract::class` の Attachment 行だけでテストできる | 使い捨てプローブテストを実行し 200 を確認 |
 | F2 | **改修前の現状値は `'attachment; filename=probe.jpg'`**（jpeg でも強制DL＝これが直す対象のバグ） | 同上 |
-| F3 | **`re_*` / `hs_*` / `ms_*` は migration が存在しない**（raw SQL 管理）。よって **Task 2 の 3 本はルート経由テストが書けない**。既存テストの注記は `re_*`/`hs_*`/`ms_*` については**正しく**、`attachments` についてだけ誤り | `ls database/migrations/ \| grep -iE "re_project\|hs_propert\|ms_"` → 0 件 |
+| F3 | **`re_*` / `hs_*` / `ms_*` は migration が存在しない**（raw SQL 管理）。よって **Task 2 の 3 本は「migration 済みテーブルに依存する形の」ルート経由テストが書けない**。既存テストの注記は `re_*`/`hs_*`/`ms_*` については**正しく**、`attachments` についてだけ誤り | `ls database/migrations/ \| grep -iE "re_project\|hs_propert\|ms_"` → 0 件 |
+| F3-補 | **ただしテスト内で `Schema::create` すればルート経由テストは書ける**（Task 2 のレビュー中に実証済み。svg→強制DL / jpeg→inline / `?download=1` / 403 / 404 をすべて実ルートで検証できた）。本プランが Task 2 にテストを書かないのは「不可能だから」ではなく、**配信ロジック本体を Task 1 の 9 テストで実証済みで 3 本は委譲するだけ**だから。恒久テストの追加は別タスクとして起票済み（本プロジェクトには「テスト用 `Schema::create` が raw SQL の実スキーマと黙って drift する」既知の罠があり、トレードオフの判断が要るため） | Task 2 レビューでの使い捨てテスト実測 |
 | F4 | `Content-Disposition` は **クォート無し**: `'inline; filename=invoice.jpg'` / `'attachment; filename=invoice.jpg'`。`filename="..."` と**クォート付きで書くと不一致になる** | 実測 |
 | F5 | 日本語ファイル名は **`'inline; filename=.jpg; filename*=utf-8\'\'%E8%A6%8B...'`**。`fallbackName()` = `str_replace('%','',Str::ascii($name))` が日本語を**全部落として `.jpg` だけ**にし、実名は `filename*` が運ぶ | 実測 |
 | F6 | **`download()` は svg 実体に対し `Content-Type: image/svg+xml` を返す**（ファイル実体から判定するため）。**T5 で Content-Type をアサートしてはいけない** | 実測 |
@@ -438,7 +439,9 @@ git commit -m "feat(attachment): 画像・PDF を inline 配信する Attachment
 - Modify: `app/Http/Controllers/Housing/PropertyController.php:338-351`
 - Modify: `app/Http/Controllers/Housing/CustomOrderController.php:306-319`
 
-> **このタスクにルート経由テストは書けない。** `re_project_drawings` / `hs_property_files` / `hs_custom_order_files` は raw SQL 管理で migration が無く、SQLite テスト DB に存在しないため（F3）。配信ロジック本体は Task 1 の 8 テストで実証済みで、この 3 本は**同じ `AttachmentDelivery::make()` に委譲するだけ**なので、検証は `php -l` ＋ Task 4 の本番同等レンダリングで行う。
+> **このタスクにテストは書かない。** `re_project_drawings` / `hs_property_files` / `hs_custom_order_files` は raw SQL 管理で migration が無く、SQLite テスト DB に存在しないため（F3）、既存テスト資産の上に素直には乗らない。配信ロジック本体は Task 1 の 9 テストで実証済みで、この 3 本は**同じ `AttachmentDelivery::make()` に委譲するだけ**なので、検証は `php -l` ＋ Task 4 の本番同等レンダリングで行う。
+>
+> **なお「テスト内で `Schema::create` すれば書ける」（F3-補）。** ただし本プロジェクトには「テスト用スキーマが raw SQL の実スキーマと黙って drift して偽の安心を生む」既知の罠があるため、恒久テストの追加は別タスクに切り出した。**このタスクでテストを書こうとして時間を溶かさないこと。**
 
 - [ ] **Step 1: `RealEstate\ProjectController::showDrawing` を差し替える**
 
@@ -571,7 +574,14 @@ APP_KEY=base64:$(openssl rand -base64 32) vendor/bin/phpunit tests/Feature/Attac
 
 ```bash
 git add app/Http/Controllers/RealEstate/ProjectController.php app/Http/Controllers/Housing/PropertyController.php app/Http/Controllers/Housing/CustomOrderController.php
-git commit -m "refactor(attachment): 図面・建売・注文住宅の配信を AttachmentDelivery に統一"
+git commit -m "$(cat <<'EOF'
+feat(attachment): 図面・建売・注文住宅の配信を AttachmentDelivery に統一
+
+図面の PDF と住宅事業の画像・PDF がブラウザで表示されるようになる。
+あわせて図面の inline 判定を isImage() から許可リストへ移し、
+image/svg+xml が inline 配信され得た穴を塞ぐ。
+EOF
+)"
 ```
 
 ---
