@@ -82,7 +82,7 @@
                 <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200">工事名</th>
                 <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200">発注者</th>
                 <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200">担当</th>
-                <th class="px-4 py-3 text-right text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200">受注額</th>
+                <th class="px-4 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200">受注額</th>
                 <th class="px-4 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200">ステータス</th>
                 <th class="px-4 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200">操作</th>
             </tr>

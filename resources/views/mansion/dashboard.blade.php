@@ -355,10 +355,10 @@
             <table class="ms-dash-table">
                 <thead>
                     <tr>
-                        <th>物件</th>
+                        <th style="width: 100%;">物件</th>
                         <th>号室</th>
                         <th>間取り</th>
-                        <th class="num">賃料</th>
+                        <th class="center">賃料</th>
                         <th class="center">状態</th>
                         <th></th>
                     </tr>
@@ -428,10 +428,10 @@
             <table class="ms-dash-table">
                 <thead>
                     <tr>
-                        <th>物件</th>
+                        <th style="width: 100%;">物件</th>
                         <th>番号</th>
                         <th>区分</th>
-                        <th class="num">月額料金</th>
+                        <th class="center">月額料金</th>
                         <th class="center">状態</th>
                         <th></th>
                     </tr>

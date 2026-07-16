@@ -120,8 +120,10 @@
         text-align: left;
         padding: 10px 12px;
         border-bottom: 1px solid #e5e7eb;
+        white-space: nowrap;
     }
     .zd-table thead th.num { text-align: right; }
+    .zd-table thead th.num-center { text-align: center; }
     .zd-table tbody td {
         padding: 10px 12px;
         border-bottom: 1px solid #f3f4f6;
@@ -277,11 +279,11 @@
         <table class="zd-table">
             <thead>
                 <tr>
-                    <th>プラン名</th>
+                    <th style="width: 100%;">プラン名</th>
                     <th class="num">在籍数</th>
-                    <th class="num">月会費（税抜）</th>
-                    <th class="num">消費税</th>
-                    <th class="num">月会費（税込）</th>
+                    <th class="num-center">月会費（税抜）</th>
+                    <th class="num-center">消費税</th>
+                    <th class="num-center">月会費（税込）</th>
                 </tr>
             </thead>
             <tbody>
