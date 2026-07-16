@@ -7,12 +7,13 @@
             <thead>
                 <tr>
                     <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50" style="border-bottom: 2px solid #e5e7eb; white-space: nowrap;">種別</th>
-                    <th class="py-2.5 text-left text-xs font-semibold text-gray-600 bg-gray-50" style="padding-left: 16px; border-bottom: 2px solid #e5e7eb; white-space: nowrap;">案件名</th>
+                    {{-- 案件名列に余剰幅を全て吸わせ、金額列を数値幅に収縮させる（ヘッダー中央=数値中央） --}}
+                    <th class="py-2.5 text-left text-xs font-semibold text-gray-600 bg-gray-50" style="width: 100%; padding-left: 16px; border-bottom: 2px solid #e5e7eb; white-space: nowrap;">案件名</th>
                     <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50" style="border-bottom: 2px solid #e5e7eb; white-space: nowrap;">担当者</th>
                     <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50" style="border-bottom: 2px solid #e5e7eb; white-space: nowrap;">成約日</th>
-                    <th class="px-3 py-2.5 text-xs font-semibold text-gray-600 bg-gray-50" style="border-bottom: 2px solid #e5e7eb; text-align: right; padding-right: 16px; white-space: nowrap;">売上</th>
-                    <th class="px-3 py-2.5 text-xs font-semibold text-gray-600 bg-gray-50" style="border-bottom: 2px solid #e5e7eb; text-align: right; padding-right: 16px; white-space: nowrap;">原価</th>
-                    <th class="px-3 py-2.5 text-xs font-semibold text-gray-600 bg-gray-50" style="border-bottom: 2px solid #e5e7eb; text-align: right; padding-right: 16px; white-space: nowrap;">粗利</th>
+                    <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50" style="border-bottom: 2px solid #e5e7eb; white-space: nowrap;">売上</th>
+                    <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50" style="border-bottom: 2px solid #e5e7eb; white-space: nowrap;">原価</th>
+                    <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50" style="border-bottom: 2px solid #e5e7eb; white-space: nowrap;">粗利</th>
                     <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50" style="border-bottom: 2px solid #e5e7eb; white-space: nowrap;">詳細</th>
                 </tr>
             </thead>
