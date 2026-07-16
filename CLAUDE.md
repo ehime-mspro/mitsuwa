@@ -19,7 +19,7 @@ Laravel 12 / PHP 8.5.4 (local) + 8.3 (prod) / MySQL 8 / Blade + Alpine.js 3 + Ta
 | 4 | `x-data="() => ({})"` のアロー関数（`>` が HTML 終了タグとして解釈）| `x-data="myFunc()"` + 別 `<script>` で `function myFunc() { ... }` 定義 |
 | 5 | 同一要素で `style=` + `:style=` 併用（Alpine が静的 style を上書き）| 全部 `:style="..."` に merge |
 | 6 | `@keydown.enter="save()"` を日本語入力フィールドに置く（IME 変換確定 Enter で誤発火→未確定のまま保存）| `@keydown.enter="$event.isComposing \|\| save()"` |
-| 7 | Tailwind の新規クラス追加（ビルド済 CSS に無いクラスは無音で効かない）| **main repo で実測**。英数字とハイフンのみ → `grep -oE "\.my-class[,{:>~+ ]" public/build/assets/app-*.css` ／ `:` `.` `[` を含む → `grep -oF '.hover\:bg-red-50'` `grep -oF '.gap-1\.5'`。⚠ アンカーに `>` を入れないと `space-y-*` を、`-oE` のままだと `gap-1.5` を取りこぼす（どちらも false negative）。worktree に `public/build` は無いので必ず main repo で。**CSS は 2026-04-23 で凍結**＝本来の直し方は `npm run build`（要ユーザー確認）。詳細と実測値は @docs/RULES.md「Vite Build」+「Tailwind 監査の落とし穴」 |
+| 7 | Tailwind の新規クラス追加後に `npm run build` を忘れる（CSS はビルドしないと反映されず無音で効かない。`deploy.sh` は rsync するだけ）| **クラスを足したら `npm run build` → `./deploy.sh`**（バンドル名が変わるので要ユーザー確認）。⚠ Tailwind v4 の自動検出は **`docs/*.md` も走査**＝**ドキュメントにクラス名を書くと実在するようになる**ので、「効かないクラス一覧」は原理的に維持不能（旧一覧は 12/12 が誤りだった）。リビルド前に現状を測るなら main repo で `grep -oE "\.my-class[,{:>~+ ]" public/build/assets/app-*.css`（`:` `.` `[` を含むなら `grep -oF '.gap-1\.5'`）。詳細は @docs/RULES.md「Vite Build」+「Tailwind 監査の落とし穴」。Bug #19 |
 | 8 | Object.assign 引数順序を逆転（factory がリテラルの getter を評価して static 値に焼き付け、Alpine reactivity 死亡）| 必ず `return Object.assign({...existing with getters...}, factoryResult);` の順。getter は target 側に置く |
 
 全 26 件の詳細バグカタログ + 各種パターン: @docs/RULES.md
@@ -36,7 +36,7 @@ Laravel 12 / PHP 8.5.4 (local) + 8.3 (prod) / MySQL 8 / Blade + Alpine.js 3 + Ta
 | **playwright** | デプロイ後の動作確認 / E2E | 本番 URL に対する Playwright 検証 |
 | **code-review** | PR 提出前のセルフレビュー | `/review` で過去バグ + project conventions チェック |
 | **feature-dev** | 大型機能の architect / explore / review | 軽微修正には重い。3+ ファイルにまたがる新機能や横断調査で使う |
-| **frontend-design** | UI を新規作成する時 | ⚠ **Vite ビルド済 Tailwind の制約あり**（CSS は 2026-04-23 で凍結）。生成後は **main repo で実測** → 無いクラスだけ inline style に書き換え。⚠ 測り方を間違えると**コンパイル済みのクラスを無駄に inline style 化**する（`gap-1.5`／`space-y-*` が代表例）。任意値も一律 NG ではない（`min-w-[140px]` は実在）。手順は @docs/RULES.md「Tailwind 監査の落とし穴」、Bug #19 |
+| **frontend-design** | UI を新規作成する時 | **Tailwind は普通に使ってよい**（2026-07-15 の再ビルドで凍結解消。任意値 `min-w-[140px]` も可）。ただし**新しいクラスを使ったら `npm run build` + `./deploy.sh` が必須**（要ユーザー確認）。⚠ かつての「効かないクラス一覧」は誤りだったので信じない。手順は @docs/RULES.md「Vite Build」、Bug #19 |
 
 ## ⚙️ Workflow
 
