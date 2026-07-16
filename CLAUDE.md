@@ -19,7 +19,7 @@ Laravel 12 / PHP 8.5.4 (local) + 8.3 (prod) / MySQL 8 / Blade + Alpine.js 3 + Ta
 | 4 | `x-data="() => ({})"` のアロー関数（`>` が HTML 終了タグとして解釈）| `x-data="myFunc()"` + 別 `<script>` で `function myFunc() { ... }` 定義 |
 | 5 | 同一要素で `style=` + `:style=` 併用（Alpine が静的 style を上書き）| 全部 `:style="..."` に merge |
 | 6 | `@keydown.enter="save()"` を日本語入力フィールドに置く（IME 変換確定 Enter で誤発火→未確定のまま保存）| `@keydown.enter="$event.isComposing \|\| save()"` |
-| 7 | 「効かないクラス一覧」を信じて、コンパイル済みのクラスをわざわざ inline style に書き換える | **Tailwind クラスは普通に書いてよい**（`./deploy.sh` が `npm run build` するので本番は必ず最新。2026-07-15 に組み込み）。**ローカルで見た目を確認する時だけ手で `npm run build`**。⚠ Tailwind v4 の自動検出は **`docs/*.md` も走査**＝**ドキュメントにクラス名を書くとそのクラスが実在するようになる**ため、「効かないクラス一覧」は原理的に維持不能（旧一覧は 12/12 が誤りだった）。測るなら main repo で `grep -oE "\.my-class[,{:>~+ ]" public/build/assets/app-*.css`（`:` `.` `[` を含むなら `grep -oF '.gap-1\.5'`）。詳細は @docs/RULES.md「Vite Build」+「Tailwind 監査の落とし穴」。Bug #19 |
+| 7 | 「効かないクラス一覧」を信じて、コンパイル済みのクラスをわざわざ inline style に書き換える | **Tailwind クラスは普通に書いてよい**（`./deploy.sh` が `npm run build` するので本番は必ず最新。2026-07-15 に組み込み）。**ローカルで見た目を確認する時だけ手で `npm run build`**。旧一覧は 12/12 が誤りだった（`docs/*.md` も走査対象で、一覧に書いた事自体がそのクラスを実在させていた → 2026-07-15 に `@source not "../../docs"` で除外し解消）。測るなら main repo で `grep -oE "\.my-class[,{:>~+ ]" public/build/assets/app-*.css`（`:` `.` `[` を含むなら `grep -oF '.gap-1\.5'`）。⚠ 走査対象は `resources/` だけでない——`app/Enums/UnitStatus.php` は Tailwind クラス文字列を返すので `app/` も必要。詳細は @docs/RULES.md「Vite Build」+「Tailwind 監査の落とし穴」。Bug #19 |
 | 8 | Object.assign 引数順序を逆転（factory がリテラルの getter を評価して static 値に焼き付け、Alpine reactivity 死亡）| 必ず `return Object.assign({...existing with getters...}, factoryResult);` の順。getter は target 側に置く |
 
 全 26 件の詳細バグカタログ + 各種パターン: @docs/RULES.md

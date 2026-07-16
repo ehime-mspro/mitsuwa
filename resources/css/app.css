@@ -1,4 +1,14 @@
 @import "tailwindcss";
+
+/* docs/ を Tailwind の自動コンテンツ検出から除外する。
+   除外しないとリポジトリ全体が走査対象になり、docs/*.md に書いたクラス名が
+   —— 「このクラスは効かない」という注意書きであっても —— ビルドに取り込まれる。
+   実際 RULES.md の「効かないクラス一覧」がそのクラスを実在させ、一覧は 12/12 が
+   誤りになっていた（2026-07-15 実測）。docs/mockups/*.html も Tailwind CDN を使う
+   独立したモックでアプリの CSS とは無関係なため、同様に除外対象。
+   パスはこのスタイルシートからの相対（resources/css/ → ../../docs）。 */
+@source not "../../docs";
+
 @plugin "@tailwindcss/forms" {
     strategy: "class";
 }
