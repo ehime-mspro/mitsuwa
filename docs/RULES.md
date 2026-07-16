@@ -47,11 +47,29 @@ Tailwind v4 は `resources/css/app.css` が `@import "tailwindcss";` だけ（`@
 - inline style での回避は**もう不要**（Bug #19 は凍結時代の話）
 - 「今このクラスは効くか」を測りたい時は下記「Tailwind 監査」
 
-⚠ `deploy.sh` の rsync に `--delete` が無いため、CSS/JS を変更するとハッシュ名が変わり
-**旧バンドルが本番に孤児として残る**（`manifest.json` が新を指すので無害だが蓄積する）。
-消すなら `rsync -avz --delete ./public/build/ <server>:<web>/build/` を足すのが安全
-（`build/` はビルド成果物しか入らないため。`public/` 全体に `--delete` を付けるのは
-本番のアップロード物を消しうるので**厳禁**）。
+### 旧バンドルの掃除（2026-07-15 に deploy.sh へ追加済み）
+
+CSS/JS を変更するとハッシュ名が変わるため、旧 `app-*.css` が本番に孤児として残る
+（`manifest.json` は新を指すので無害だが、デプロイの度に蓄積する）。
+`deploy.sh` の `[4/6]` で `public/build/` だけを `--delete` 付きで再同期して掃除している:
+
+```bash
+rsync -avz --delete ./public/build/ ${SERVER}:${WEB_PATH}/build/
+rsync -avz --delete ./public/build/ ${SERVER}:${APP_PATH}/public/build/
+```
+
+転送先が 2 つあるのは、**APP_PATH = Laravel が `public_path('build/manifest.json')` を読む側**、
+**WEB_PATH = ブラウザが実ファイルを取りに行く側**の両方に配る必要があるため。
+
+**⚠ `public/` 全体に `--delete` を付けるのは厳禁。**
+`public/storage` は `storage/app/public` への symlink ＝ **本番のアップロード物を消しうる**。
+`--delete` してよいのは Vite の出力しか入らない `public/build/` のみ。
+
+⚠ 本番のファイルを消す変更を入れる時は、必ず先に `--dry-run` で消える物を確認すること:
+
+```bash
+rsync -avz --dry-run --delete ./public/build/ <server>:<web>/build/
+```
 
 ## Tailwind 監査の落とし穴（クラス実在チェックの正しいやり方）
 

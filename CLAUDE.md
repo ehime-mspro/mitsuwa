@@ -71,7 +71,8 @@ sudo rm -f storage/framework/views/*.php && brew services restart httpd
 - ssh で `php artisan config:cache && route:cache && view:cache` を実行
 - `composer install` は走らない → 新規依存は **ローカルで `composer install` → vendor 同期で本番反映**
 - `CLAUDE.md` `docs/` `.claude/` `tests/` 等は rsync 除外（開発用ファイルは本番に送らない）
-- ⚠ rsync に `--delete` が無いため、CSS/JS を変更するとハッシュ名が変わり**旧バンドルが本番に孤児として残る**（`manifest.json` が新を指すので無害）
+- 旧バンドルの掃除: `public/build/` だけ `--delete` 付きで再同期（2026-07-15 に追加）。転送先が 2 つあるのは APP_PATH = Laravel が manifest を読む側 / WEB_PATH = ブラウザが実ファイルを取る側の両方に配るため
+- ⚠ **`public/` 全体に `--delete` を付けるのは厳禁**（`public/storage` は `storage/app/public` への symlink ＝ 本番のアップロード物を消しうる）。`--delete` してよいのは Vite 出力しか入らない `public/build/` のみ
 
 ### Server environment
 - macOS Apple Silicon, zsh, Homebrew httpd（`brew services restart httpd`）
