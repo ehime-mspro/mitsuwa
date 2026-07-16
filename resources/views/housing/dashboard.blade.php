@@ -17,7 +17,8 @@
             <select name="fiscal_year" onchange="this.form.submit()"
                     class="h-9 px-3 border border-gray-300 rounded-md text-sm bg-white">
                 @foreach($fiscalYearOptions as $value => $label)
-                    <option value="{{ $value }}" {{ $fiscalYear === $value ? 'selected' : '' }}>{{ $label }}</option>
+                    {{-- キーは (string) 指定でも PHP が数値文字列を int に戻すため、比較時に string へそろえる --}}
+                    <option value="{{ $value }}" {{ $fiscalYear === (string) $value ? 'selected' : '' }}>{{ $label }}</option>
                 @endforeach
             </select>
             <select name="period" onchange="this.form.submit()"
