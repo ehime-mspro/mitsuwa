@@ -19,7 +19,7 @@ Laravel 12 / PHP 8.5.4 (local) + 8.3 (prod) / MySQL 8 / Blade + Alpine.js 3 + Ta
 | 4 | `x-data="() => ({})"` のアロー関数（`>` が HTML 終了タグとして解釈）| `x-data="myFunc()"` + 別 `<script>` で `function myFunc() { ... }` 定義 |
 | 5 | 同一要素で `style=` + `:style=` 併用（Alpine が静的 style を上書き）| 全部 `:style="..."` に merge |
 | 6 | `@keydown.enter="save()"` を日本語入力フィールドに置く（IME 変換確定 Enter で誤発火→未確定のまま保存）| `@keydown.enter="$event.isComposing \|\| save()"` |
-| 7 | Tailwind の新規クラス追加後に `npm run build` を忘れる（CSS はビルドしないと反映されず無音で効かない。`deploy.sh` は rsync するだけ）| **クラスを足したら `npm run build` → `./deploy.sh`**（バンドル名が変わるので要ユーザー確認）。⚠ Tailwind v4 の自動検出は **`docs/*.md` も走査**＝**ドキュメントにクラス名を書くと実在するようになる**ので、「効かないクラス一覧」は原理的に維持不能（旧一覧は 12/12 が誤りだった）。リビルド前に現状を測るなら main repo で `grep -oE "\.my-class[,{:>~+ ]" public/build/assets/app-*.css`（`:` `.` `[` を含むなら `grep -oF '.gap-1\.5'`）。詳細は @docs/RULES.md「Vite Build」+「Tailwind 監査の落とし穴」。Bug #19 |
+| 7 | 「効かないクラス一覧」を信じて、コンパイル済みのクラスをわざわざ inline style に書き換える | **Tailwind クラスは普通に書いてよい**（`./deploy.sh` が `npm run build` するので本番は必ず最新。2026-07-15 に組み込み）。**ローカルで見た目を確認する時だけ手で `npm run build`**。⚠ Tailwind v4 の自動検出は **`docs/*.md` も走査**＝**ドキュメントにクラス名を書くとそのクラスが実在するようになる**ため、「効かないクラス一覧」は原理的に維持不能（旧一覧は 12/12 が誤りだった）。測るなら main repo で `grep -oE "\.my-class[,{:>~+ ]" public/build/assets/app-*.css`（`:` `.` `[` を含むなら `grep -oF '.gap-1\.5'`）。詳細は @docs/RULES.md「Vite Build」+「Tailwind 監査の落とし穴」。Bug #19 |
 | 8 | Object.assign 引数順序を逆転（factory がリテラルの getter を評価して static 値に焼き付け、Alpine reactivity 死亡）| 必ず `return Object.assign({...existing with getters...}, factoryResult);` の順。getter は target 側に置く |
 
 全 26 件の詳細バグカタログ + 各種パターン: @docs/RULES.md
@@ -36,7 +36,7 @@ Laravel 12 / PHP 8.5.4 (local) + 8.3 (prod) / MySQL 8 / Blade + Alpine.js 3 + Ta
 | **playwright** | デプロイ後の動作確認 / E2E | 本番 URL に対する Playwright 検証 |
 | **code-review** | PR 提出前のセルフレビュー | `/review` で過去バグ + project conventions チェック |
 | **feature-dev** | 大型機能の architect / explore / review | 軽微修正には重い。3+ ファイルにまたがる新機能や横断調査で使う |
-| **frontend-design** | UI を新規作成する時 | **Tailwind は普通に使ってよい**（2026-07-15 の再ビルドで凍結解消。任意値 `min-w-[140px]` も可）。ただし**新しいクラスを使ったら `npm run build` + `./deploy.sh` が必須**（要ユーザー確認）。⚠ かつての「効かないクラス一覧」は誤りだったので信じない。手順は @docs/RULES.md「Vite Build」、Bug #19 |
+| **frontend-design** | UI を新規作成する時 | **Tailwind は普通に使ってよい**（2026-07-15 に凍結解消＋`deploy.sh` へビルド組み込み済み。任意値 `min-w-[140px]` も可）。ローカルで確認する時だけ手で `npm run build`。⚠ かつての「効かないクラス一覧」は誤りだったので信じない。手順は @docs/RULES.md「Vite Build」、Bug #19 |
 
 ## ⚙️ Workflow
 
@@ -53,7 +53,7 @@ sudo rm -f storage/framework/views/*.php && brew services restart httpd
 2. **main repo (`/Users/masanori/site/manage`) で** `git checkout 13.x && git merge --ff-only <worktree-branch>`
 3. **新規 PHP クラスを追加した場合のみ**: main repo の cwd で `composer dump-autoload`
    - ⚠ worktree から実行すると autoloader の `$baseDir` に worktree パスが焼き込まれ、main repo の Apache が worktree を参照する事故になる。必ず main repo の cwd で実行
-4. `./deploy.sh`（rsync → 本番で `config:cache && route:cache && view:cache`）
+4. `./deploy.sh`（`npm run build` → rsync → 本番で `config:cache && route:cache && view:cache`）
 5. push to origin/13.x はユーザー明示指示があった時のみ
 6. （オプション）Playwright で本番動作確認
 
@@ -66,10 +66,12 @@ sudo rm -f storage/framework/views/*.php && brew services restart httpd
 6. `/commit` → main へ FF-merge → `./deploy.sh`
 
 ### deploy.sh の動作
+- **`npm run build` を実行してから** rsync する（2026-07-15 に組み込み）。ビルド失敗時は本番へ何も転送せず中断
 - rsync で本番（さくらレンタル `mitsuwa-ud@www3586.sakura.ne.jp`）にアプリ + vendor + public を転送
 - ssh で `php artisan config:cache && route:cache && view:cache` を実行
 - `composer install` は走らない → 新規依存は **ローカルで `composer install` → vendor 同期で本番反映**
 - `CLAUDE.md` `docs/` `.claude/` `tests/` 等は rsync 除外（開発用ファイルは本番に送らない）
+- ⚠ rsync に `--delete` が無いため、CSS/JS を変更するとハッシュ名が変わり**旧バンドルが本番に孤児として残る**（`manifest.json` が新を指すので無害）
 
 ### Server environment
 - macOS Apple Silicon, zsh, Homebrew httpd（`brew services restart httpd`）

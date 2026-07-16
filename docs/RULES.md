@@ -1,16 +1,22 @@
 # Technical Rules & Bug Catalog
 
-## Vite Build — CSS はビルド成果物である（2026-07-15 再ビルド済み）
+## Vite Build — CSS はビルド成果物である
 
-**`public/build/assets/app-*.css` は `npm run build`（`vite build`）を手で叩いた時だけ再生成される。**
-`./deploy.sh` はできあがった `public/build` を rsync するだけ＝**ビルドしない**。
+**`public/build/assets/app-*.css` は `npm run build`（`vite build`）で生成されるビルド成果物**で、
+git 管理外（`.gitignore`）。
 
-このため 2026-04-23 のビルド以降 3 ヶ月弱、CSS は**凍結スナップショット**のままだった。
-「効くクラス／効かないクラス」は Tailwind の仕様ではなく
-**ビルド時点のリポジトリにその文字列が在ったか**で決まっていた。
-2026-07-15 に再ビルドして解消済み（`app-Df177yiQ.css` → `app-CfjY1Ajc.css`、本番反映済み）。
+**2026-07-15 に `deploy.sh` の先頭へ `npm run build` を組み込んだ**ので、
+デプロイすれば CSS は必ず最新になる（ビルド失敗時は本番へ何も転送せず中断する）。
+
+それ以前は `deploy.sh` が rsync するだけだったため、2026-04-23 のビルド以降 3 ヶ月弱
+CSS が**凍結スナップショット**のままで、「Blade に足したクラスが無音で効かない」が
+常態化していた。Bug #19 の inline style 回避も、RULES.md の「効かないクラス一覧」も、
+すべてこの凍結の副作用だった。
 
 **現状: アプリが使う Tailwind ユーティリティ 393 種は全てコンパイル済み＝無効クラスは 0。**
+
+⚠ ローカルで開発サーバを使わず Blade を直接見ている場合、**クラスを足しただけでは効かない**
+（ローカルの `public/build` も手で `npm run build` するまで古いまま）。デプロイ時は自動。
 
 ### ⚠ このドキュメントに書いたクラス名は実在するようになる
 
@@ -35,15 +41,17 @@ Tailwind v4 は `resources/css/app.css` が `@import "tailwindcss";` だけ（`@
 
 ### 新しいクラスを使いたい時
 
-**`npm run build` してから `./deploy.sh`** ——これが本来の手順。Blade に新しいクラスを足しても
-リビルドするまで CSS には入らない（＝無音で効かない）。
+**普通に Tailwind クラスを書いてよい。`./deploy.sh` がビルドまでやる。**
 
-- バンドル名のハッシュが変わり本番反映が必須になるので、**独断で実行せずユーザーに確認する**
-- リビルドできない事情がある時だけ、暫定回避として inline style（Bug #19）
-- リビルド前に「今このクラスは効くか」を知りたい時は下記「Tailwind 監査」で測る
+- ローカルで見た目を確認したい時だけ、手で `npm run build`
+- inline style での回避は**もう不要**（Bug #19 は凍結時代の話）
+- 「今このクラスは効くか」を測りたい時は下記「Tailwind 監査」
 
-⚠ `deploy.sh` の rsync に `--delete` が無いため、旧 `app-*.css` は本番に孤児として残る
-（`manifest.json` が新を指すので無害）。
+⚠ `deploy.sh` の rsync に `--delete` が無いため、CSS/JS を変更するとハッシュ名が変わり
+**旧バンドルが本番に孤児として残る**（`manifest.json` が新を指すので無害だが蓄積する）。
+消すなら `rsync -avz --delete ./public/build/ <server>:<web>/build/` を足すのが安全
+（`build/` はビルド成果物しか入らないため。`public/` 全体に `--delete` を付けるのは
+本番のアップロード物を消しうるので**厳禁**）。
 
 ## Tailwind 監査の落とし穴（クラス実在チェックの正しいやり方）
 
@@ -177,7 +185,7 @@ false positive を自分で確かめたい時は、**この文書に書かれて
 | 16 | `<option x-show>` not hiding + duplicate values in select | Browsers ignore `display:none` on `<option>` (spec-allowed inconsistency); also `<template x-for>` renders options AFTER `x-model` syncs | Use static `<option>` tags (not `x-for`) + filter data before rendering |
 | 17 | Google Maps shows "For development purposes only" watermark + auth error dialog; `key=` empty in API URL | Blade called `env('GOOGLE_MAPS_API_KEY', '')` directly. After `php artisan config:cache` (run by deploy.sh on every deploy), Laravel disables direct `.env` reads outside config files — `env()` returns empty string in Blade | Register the value in `config/services.php` (`'google_maps' => ['api_key' => env('GOOGLE_MAPS_API_KEY')]`) and read it via `config('services.google_maps.api_key')` in Blade. Never call `env()` directly outside config files. |
 | 18 | `<input type="file" class="form-input">` renders as a sharp-cornered, unstyled-looking box; the native "Choose File" button decoration disappears | The compiled `.form-input` rule contains `appearance: none; border-radius: 0`. On `<input type="file">` this strips the browser's native file-picker chrome and removes rounded corners, breaking visual consistency with surrounding rounded buttons | Do NOT apply `.form-input` to `<input type="file">`. Use an inline style instead, e.g. `style="display:block; width:100%; max-width:520px; padding:8px 12px; font-size:13px; color:#374151; background:white; border:1px solid #d1d5db; border-radius:6px; cursor:pointer; box-sizing:border-box;"`. Pages that override `.form-input` locally inside a `<style>` block (e.g. `zeal/members/_form.blade.php`) work, but only on that page — file inputs on other pages still get the bare `.form-input` definition |
-| 19 | Blade に足した Tailwind クラスが無音で効かない | `public/build/assets/app-*.css` は `npm run build` を手で叩いた時だけ再生成される成果物で、`./deploy.sh` は rsync するだけ。**リビルドするまで新しいクラスは CSS に入らない**。2026-04-23〜07-15 は 3 ヶ月弱リビルドされず凍結していたため、この症状が常態化していた（2026-07-15 に再ビルドし解消） | **クラスを足したら `npm run build` → `./deploy.sh`**（バンドル名が変わるのでユーザー確認必須）。リビルドできない時だけ暫定回避で inline style / `onmouseover` インラインハンドラ。リビルド前に現状を知りたければ **main repo で実測**（コマンドは「Tailwind 監査の落とし穴」。⚠ 誤判定が4通りある。`public/build` は gitignore 済みで worktree には無い）。⚠ **かつてここに列挙していた「効かないクラス一覧」は 2026-07-15 の実測で 12/12 が誤りだった**——一覧に書いた事自体が Tailwind の走査対象になりビルドへ含めてしまうため。**一覧は信じず測る**（詳細は冒頭「Vite Build」） |
+| 19 | **【2026-07-15 解決済み】**Blade に足した Tailwind クラスが無音で効かない | `public/build/assets/app-*.css` はビルド成果物なのに、当時の `./deploy.sh` は rsync するだけでビルドしなかった。誰も手で `npm run build` しなかったため 2026-04-23〜07-15 の 3 ヶ月弱 CSS が凍結し、この症状が常態化していた | **`deploy.sh` の先頭に `npm run build` を組み込んで根治済み**（ビルド失敗時は本番へ何も転送せず中断）。**今は Tailwind クラスを普通に書いてよく、inline style での回避は不要**。ローカルで見た目を確認する時だけ手で `npm run build`。⚠ **かつてここに列挙していた「効かないクラス一覧」は 12/12 が誤りだった**——一覧に書いた事自体が Tailwind の走査対象（`docs/*.md` も含む）になりビルドへ含めてしまうため。**一覧は原理的に維持できないので置かない**（詳細は冒頭「Vite Build」）。現状を測りたい時は「Tailwind 監査の落とし穴」の手順で（⚠ 誤判定が4通りある。`public/build` は gitignore 済みで worktree には無いので main repo で） |
 | 20 | ファイルアップロード時に「The route attachments/{type}/{id} could not be found.」で失敗する。例: `attachments/projects/11`, `attachments/ms_tenants/3`, `attachments/dad_projects/5` | `AttachmentController::TYPE_MAP` に新しい type を追加した際、`routes/web.php` の `Route::post('/attachments/{type}/{id}', ...)->where('type', '...')` の正規表現を更新し忘れた。`where` 正規表現に存在しない type は Laravel ルーターで弾かれ 404 になる（`procurements` 等の既存 type は通る） | `routes/web.php` の `where('type', '...')` 正規表現を `AttachmentController::TYPE_MAP` のキー全部と同期させる。新しい type を `TYPE_MAP` に追加するときは必ず `where` 正規表現にも同じ文字列を `\|` 区切りで追加すること。本番反映は `git push` だけでは不十分で `./deploy.sh` を実行する必要がある（rsync + `route:cache` 再生成） |
 | 21 | `<x-form-actions :cancel-url="route(&quot;{$var}.xxx&quot;)" />` のように Blade コンポーネント属性式内に `&quot;` を含めたページが本番でだけ 500 `syntax error, unexpected token "&"` で落ちる。ローカルでは再現しない（例: `/housing/customers/create` が本番 500、`/realestate/customers/create` は同じ `_form.blade.php` でもアクセスタイミング次第で動いて見えてしまう） | Blade の Anonymous Component（`@props` のみで定義されたビュー型コンポーネント）の属性式に `&quot;` HTML エンティティを書くと、本番（PHP 8.3 + `view:cache` で全 Blade を precompile）経由ではデコードが漏れ、生のコンパイル済み PHP に literal `&quot;` が残って PHP 構文エラーになる。ローカル（lazy compile + PHP 8.5）では発火しないため気づけない | Blade コンポーネント属性で動的な route name を渡すときは `&quot;` を避け、PHP 文字列連結で組み立てる: `:cancel-url="route($department.'.customers.index')"`。route name が完全に静的ならシングルクォートで素直に書ける: `:cancel-url="route('tenant.customers.index')"`。残存検査は `grep -rn "&quot;" resources/views/` で一覧化。本番反映は `./deploy.sh`（`view:cache` 再生成）必須 |
 | 22 | 一覧/詳細画面が本番でだけ 500 `TypeError: App\Enums\XxxStatus::tryFrom(): Argument #1 ($value) must be of type string\|int, App\Enums\XxxStatus given`。該当データ（例: 注文住宅の契約済レコード）が 1 件でも存在するときだけ発火し、空データのローカルでは該当行に到達せず素通りして気づけない（ローカル CLI も実 PHP 8.3 系なのでバージョン差ではなく **データ差**） | Eloquent の `casts()` で `'status' => XxxStatus::class` と enum キャストした属性は、読み出し時点で既に enum インスタンス。`tryFrom()` は `string\|int` のみ受け付けるため enum を渡すと TypeError。`Housing\HsContractListController::mapCustomOrderToDto` の `CustomOrderStatus::tryFrom($c->status)` が原因（2026-06-08 本番 500、commit c15812a1 で修正） | キャスト済み属性はそのまま使う: `$statusEnum = $model->status;`（null 可能性があれば `$model->status ? $model->status->label() : '—'` でガード）。生文字列からの変換が必要な場面だけ `tryFrom()` を使う。`whereIn('status', [Status::Foo->value, ...])` のようにクエリで `->value` を使うのは正しい。横展開検査: `grep -rn "::tryFrom(\$" app/` でキャスト属性への誤用を洗い出す |
