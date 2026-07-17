@@ -37,21 +37,21 @@
                         <td class="px-3 py-3 text-sm text-gray-800" style="border-bottom: 1px solid #f3f4f6; white-space: nowrap; text-align: center;">
                             {{ $it['contracted_date'] ? $it['contracted_date']->format('Y-m-d') : '—' }}
                         </td>
-                        <td class="px-3 py-3 text-sm" style="border-bottom: 1px solid #f3f4f6; text-align: right; padding-right: 16px; white-space: nowrap;">
+                        <td class="px-3 py-3 text-sm" style="border-bottom: 1px solid #f3f4f6; text-align: center; white-space: nowrap;">
                             @if($it['selling_price'] !== null)
                                 {{ number_format($it['selling_price']) }}円
                             @else
                                 —
                             @endif
                         </td>
-                        <td class="px-3 py-3 text-sm" style="border-bottom: 1px solid #f3f4f6; text-align: right; padding-right: 16px; white-space: nowrap;">
+                        <td class="px-3 py-3 text-sm" style="border-bottom: 1px solid #f3f4f6; text-align: center; white-space: nowrap;">
                             @if($it['total_cost'] !== null)
                                 {{ number_format($it['total_cost']) }}円
                             @else
                                 —
                             @endif
                         </td>
-                        <td class="px-3 py-3 text-sm" style="border-bottom: 1px solid #f3f4f6; text-align: right; padding-right: 16px; white-space: nowrap; {{ $it['gross_profit'] !== null && $it['gross_profit'] >= 0 ? 'color: #047857; font-weight: 700;' : ($it['gross_profit'] !== null ? 'color: #dc2626; font-weight: 700;' : '') }}">
+                        <td class="px-3 py-3 text-sm" style="border-bottom: 1px solid #f3f4f6; text-align: center; white-space: nowrap; {{ $it['gross_profit'] !== null && $it['gross_profit'] >= 0 ? 'color: #047857; font-weight: 700;' : ($it['gross_profit'] !== null ? 'color: #dc2626; font-weight: 700;' : '') }}">
                             @if($it['gross_profit'] !== null)
                                 {{ number_format($it['gross_profit']) }}円
                             @else

@@ -154,7 +154,7 @@
                         {{ $pc->start_date?->format('Y/m/d') ?? '—' }}
                     </td>
                     {{-- 月額料金 --}}
-                    <td class="px-4 py-3 border-b border-gray-200 text-sm {{ $textClass }} text-right whitespace-nowrap">
+                    <td class="px-4 py-3 border-b border-gray-200 text-sm {{ $textClass }} text-center whitespace-nowrap">
                         @if($pc->monthly_fee)
                             {{ number_format($pc->monthly_fee) }}円
                         @else

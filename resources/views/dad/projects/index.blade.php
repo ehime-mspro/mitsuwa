@@ -99,7 +99,7 @@
                     </td>
                     <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 whitespace-nowrap" style="overflow: hidden; text-overflow: ellipsis;">{{ optional($p->client)->name ?: '—' }}</td>
                     <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 whitespace-nowrap">{{ optional($p->staffUser)->name ?: '—' }}</td>
-                    <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-right whitespace-nowrap" style="font-variant-numeric: tabular-nums; font-weight: 600;">
+                    <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-center whitespace-nowrap" style="font-variant-numeric: tabular-nums; font-weight: 600;">
                         {{ $p->contract_amount !== null ? number_format($p->contract_amount) . '円' : '—' }}
                     </td>
                     <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">

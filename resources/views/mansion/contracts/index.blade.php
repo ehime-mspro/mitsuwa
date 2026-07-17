@@ -161,7 +161,7 @@
                         {{ $contract->move_in_date?->format('Y/m/d') ?? '—' }}
                     </td>
                     {{-- 賃料 --}}
-                    <td class="px-4 py-3 border-b border-gray-200 text-sm {{ $textClass }} text-right whitespace-nowrap">
+                    <td class="px-4 py-3 border-b border-gray-200 text-sm {{ $textClass }} text-center whitespace-nowrap">
                         @if($contract->rent)
                             {{ number_format($contract->rent) }}円
                         @else
@@ -169,7 +169,7 @@
                         @endif
                     </td>
                     {{-- 共益費 --}}
-                    <td class="px-4 py-3 border-b border-gray-200 text-sm {{ $textClass }} text-right whitespace-nowrap">
+                    <td class="px-4 py-3 border-b border-gray-200 text-sm {{ $textClass }} text-center whitespace-nowrap">
                         @if($contract->common_fee)
                             {{ number_format($contract->common_fee) }}円
                         @else

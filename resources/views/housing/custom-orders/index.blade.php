@@ -78,7 +78,7 @@
                                 <div class="text-xs text-gray-500">{{ $ord->address }}</div>
                             </td>
                             <td class="px-3 py-3 text-center text-sm text-gray-800 border-b border-gray-100 whitespace-nowrap">{{ $ord->customer_name }}</td>
-                            <td class="px-3 py-3 text-sm border-b border-gray-100 whitespace-nowrap" style="text-align: right; padding-right: 24px;">
+                            <td class="px-3 py-3 text-sm border-b border-gray-100 whitespace-nowrap" style="text-align: center;">
                                 @if($ord->building_contract_price !== null)
                                     {{ number_format($ord->building_contract_price) }}円
                                 @else

@@ -85,7 +85,7 @@
                     </td>
                     <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 whitespace-nowrap">{{ $sub->phone ?: '—' }}</td>
                     <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-center whitespace-nowrap" style="font-variant-numeric: tabular-nums; font-weight: 600;">{{ $sub->project_costs_count }}件</td>
-                    <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-right whitespace-nowrap" style="font-variant-numeric: tabular-nums; font-weight: 600;">{{ number_format((int) $sub->total_actual_amount) }}円</td>
+                    <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-center whitespace-nowrap" style="font-variant-numeric: tabular-nums; font-weight: 600;">{{ number_format((int) $sub->total_actual_amount) }}円</td>
                     <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
                         <a href="{{ route('dad.subcontractors.edit', $sub) }}" class="text-xs font-semibold text-blue-700 px-3 py-1 border border-blue-200 rounded bg-blue-50 hover:bg-blue-100">編集</a>
                     </td>

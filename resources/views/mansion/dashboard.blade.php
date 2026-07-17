@@ -378,7 +378,7 @@
                                     / {{ $room->area_sqm }}㎡
                                 @endif
                             </td>
-                            <td class="num whitespace-nowrap">
+                            <td class="center whitespace-nowrap">
                                 @if($room->rent)
                                     {{ number_format($room->rent) }}円
                                 @else
@@ -450,7 +450,7 @@
                             </td>
                             <td class="whitespace-nowrap">{{ $parking->parking_number }}</td>
                             <td class="whitespace-nowrap">{{ $roofLabel }}</td>
-                            <td class="num whitespace-nowrap">
+                            <td class="center whitespace-nowrap">
                                 @if($parking->monthly_fee)
                                     {{ number_format($parking->monthly_fee) }}円
                                 @else

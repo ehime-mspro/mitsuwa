@@ -123,7 +123,9 @@
         white-space: nowrap;
     }
     .zd-table thead th.num { text-align: right; }
-    .zd-table thead th.num-center { text-align: center; }
+    .zd-table thead th.num-center,
+    .zd-table tbody td.num-center { text-align: center; }
+    .zd-table tbody td.num-center { white-space: nowrap; font-variant-numeric: tabular-nums; }
     .zd-table tbody td {
         padding: 10px 12px;
         border-bottom: 1px solid #f3f4f6;
@@ -291,17 +293,17 @@
                     <tr>
                         <td>{{ $row['plan_name'] }}</td>
                         <td class="num">{{ $row['member_count'] }}名</td>
-                        <td class="num">{{ number_format($row['total_excl']) }}円</td>
-                        <td class="num">{{ number_format($row['total_tax']) }}円</td>
-                        <td class="num zd-incl-tax">{{ number_format($row['total_incl']) }}円</td>
+                        <td class="num-center">{{ number_format($row['total_excl']) }}円</td>
+                        <td class="num-center">{{ number_format($row['total_tax']) }}円</td>
+                        <td class="num-center zd-incl-tax">{{ number_format($row['total_incl']) }}円</td>
                     </tr>
                 @endforeach
                 <tr class="total-row">
                     <td>合計</td>
                     <td class="num">{{ $planRevenue->sum('member_count') }}名</td>
-                    <td class="num">{{ number_format($revenueTotalExcl) }}円</td>
-                    <td class="num">{{ number_format($revenueTotalTax) }}円</td>
-                    <td class="num zd-incl-tax">{{ number_format($revenueTotalIncl) }}円</td>
+                    <td class="num-center">{{ number_format($revenueTotalExcl) }}円</td>
+                    <td class="num-center">{{ number_format($revenueTotalTax) }}円</td>
+                    <td class="num-center zd-incl-tax">{{ number_format($revenueTotalIncl) }}円</td>
                 </tr>
             </tbody>
         </table>

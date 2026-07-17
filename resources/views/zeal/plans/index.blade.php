@@ -79,12 +79,12 @@
                             </div>
                         </td>
                         {{-- 通常価格 --}}
-                        <td class="px-4 py-3 border-b border-gray-200 text-right whitespace-nowrap">
+                        <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
                             <div class="text-sm text-gray-900">{{ number_format($plan->regular_price_excl) }}円</div>
                             <div style="font-size: 11px; color: #6b7280;">税込 {{ number_format((int) round($plan->regular_price_excl * $taxMul)) }}円</div>
                         </td>
                         {{-- キャンペーン価格 --}}
-                        <td class="px-4 py-3 border-b border-gray-200 text-right whitespace-nowrap">
+                        <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
                             @if($plan->campaign_price_excl !== null)
                                 <div class="text-sm text-gray-900">{{ number_format($plan->campaign_price_excl) }}円</div>
                                 <div style="font-size: 11px; color: #6b7280;">税込 {{ number_format((int) round($plan->campaign_price_excl * $taxMul)) }}円</div>
