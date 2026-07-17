@@ -46,7 +46,7 @@
         <table class="w-full border-collapse" style="min-width: 880px;">
             <thead>
                 <tr>
-                    <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap" style="width: 100%;">プラン名</th>
+                    <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap" style="width: 30%;">プラン名</th>
                     <th class="px-4 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">通常価格（税抜）</th>
                     <th class="px-4 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">キャンペーン価格（税抜）</th>
                     <th class="px-4 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">キャンペーン期間</th>

@@ -147,7 +147,7 @@
         color: #374151;
         font-size: 13px;
     }
-    .ms-dash-table tbody td.num    { text-align: right; font-variant-numeric: tabular-nums; }
+    .ms-dash-table tbody td.num    { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
     .ms-dash-table tbody td.center { text-align: center; }
     .ms-dash-table tbody tr:hover  { background: #fafafa; }
     .ms-dash-table tbody tr:last-child td { border-bottom: none; }
@@ -355,7 +355,7 @@
             <table class="ms-dash-table">
                 <thead>
                     <tr>
-                        <th style="width: 100%;">物件</th>
+                        <th>物件</th>
                         <th>号室</th>
                         <th>間取り</th>
                         <th class="center">賃料</th>
@@ -428,7 +428,7 @@
             <table class="ms-dash-table">
                 <thead>
                     <tr>
-                        <th style="width: 100%;">物件</th>
+                        <th>物件</th>
                         <th>番号</th>
                         <th>区分</th>
                         <th class="center">月額料金</th>

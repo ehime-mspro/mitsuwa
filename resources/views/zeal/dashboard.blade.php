@@ -129,7 +129,7 @@
         border-bottom: 1px solid #f3f4f6;
         color: #374151;
     }
-    .zd-table tbody td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .zd-table tbody td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
     .zd-table tbody tr:last-child td { border-bottom: none; }
     .zd-table tbody tr:hover { background: #fafafa; }
     .zd-table .total-row td {
@@ -279,7 +279,7 @@
         <table class="zd-table">
             <thead>
                 <tr>
-                    <th style="width: 100%;">プラン名</th>
+                    <th>プラン名</th>
                     <th class="num">在籍数</th>
                     <th class="num-center">月会費（税抜）</th>
                     <th class="num-center">消費税</th>
