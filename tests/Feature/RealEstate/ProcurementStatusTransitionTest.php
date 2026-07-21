@@ -76,4 +76,42 @@ class ProcurementStatusTransitionTest extends TestCase
         $this->assertSame(ProcurementStatus::Selling, $procurement->fresh()->status);
         $this->assertSame('山田', $buyer->fresh()->last_name);
     }
+
+    /** T1: 仕入れ販売契約を登録すると、その案件が販売済になる */
+    public function test_storing_procurement_contract_marks_procurement_as_sold(): void
+    {
+        $procurement = $this->makeProcurement('P-001');
+        $buyer       = $this->makeBuyer();
+
+        $response = $this->actingAs($this->executive())->post('/realestate/contracts', [
+            'contract_type'   => 'procurement_land',
+            'procurement_id'  => $procurement->id,
+            'contract_date'   => '2026-07-21',
+            'buyer_id'        => $buyer->id,
+            'contract_amount' => 30000000,
+            'cost_amount'     => 25000000,
+            'property_name'   => '松山市A土地',
+        ]);
+
+        $response->assertRedirect();
+        $response->assertSessionHasNoErrors();
+        $this->assertSame(ProcurementStatus::Sold, $procurement->fresh()->status);
+    }
+
+    /** T2: 仲介契約（procurement_id を持たない）はどの案件のステータスも変えない */
+    public function test_storing_brokerage_contract_leaves_procurements_untouched(): void
+    {
+        $procurement = $this->makeProcurement('P-001');
+
+        $response = $this->actingAs($this->executive())->post('/realestate/contracts', [
+            'contract_type'           => 'brokerage',
+            'property_name'           => '仲介物件B',
+            'brokerage_selling_price' => 20000000,
+            'brokerage_fee'           => 660000,
+        ]);
+
+        $response->assertRedirect();
+        $response->assertSessionHasNoErrors();
+        $this->assertSame(ProcurementStatus::Selling, $procurement->fresh()->status);
+    }
 }

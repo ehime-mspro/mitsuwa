@@ -163,6 +163,14 @@ class ReContractController extends Controller
             ReProjectLot::where('id', $contract->lot_id)->update(['status' => LotStatus::Sold->value]);
         }
 
+        // 仕入れ案件の場合、案件ステータスを販売済に変更
+        // （クエリビルダ更新: $model->update() だと saved フックで
+        //   syncPropertyPurchaseCost() が走るが、ステータス変更に原価の再同期は不要）
+        if ($contractType->isProcurement() && $contract->procurement_id) {
+            ReProcurement::where('id', $contract->procurement_id)
+                ->update(['status' => ProcurementStatus::Sold->value]);
+        }
+
         if ($contractType->isBrokerage()) {
             return redirect()
                 ->route('realestate.contracts.show', $contract)
