@@ -177,4 +177,33 @@ class ProcurementStatusTransitionTest extends TestCase
         $response->assertRedirect();
         $this->assertSame(ProcurementStatus::Selling, $procurement->fresh()->status);
     }
+
+    /** T5: 一覧の既定フィルタ（進行中のみ）に販売済は含まれない */
+    public function test_index_default_filter_excludes_sold(): void
+    {
+        $selling = $this->makeProcurement('P-001', 'selling');
+        $sold    = $this->makeProcurement('P-002', 'sold');
+        $lost    = $this->makeProcurement('P-003', 'lost');
+
+        $response = $this->actingAs($this->executive())->get('/realestate/procurements');
+
+        $response->assertOk();
+        // 一覧が描画するのは property_name（procurement_code は出ない）
+        $response->assertSee($selling->property_name);
+        $response->assertDontSee($sold->property_name);
+        $response->assertDontSee($lost->property_name);
+    }
+
+    /** T6: ?status=sold なら販売済だけが出る（enum に case を足した時点でセレクトに現れる） */
+    public function test_index_status_sold_shows_only_sold(): void
+    {
+        $selling = $this->makeProcurement('P-001', 'selling');
+        $sold    = $this->makeProcurement('P-002', 'sold');
+
+        $response = $this->actingAs($this->executive())->get('/realestate/procurements?status=sold');
+
+        $response->assertOk();
+        $response->assertSee($sold->property_name);
+        $response->assertDontSee($selling->property_name);
+    }
 }

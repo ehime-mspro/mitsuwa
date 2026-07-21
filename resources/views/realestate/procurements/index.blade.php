@@ -41,7 +41,7 @@
           class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mb-4 bg-white border border-gray-200 rounded-lg px-3.5 py-2.5">
         <select name="status" onchange="document.getElementById('filter-form').submit()"
                 class="h-9 px-3 border border-gray-300 rounded-md text-sm text-gray-700 bg-white focus:border-emerald-500 focus:outline-none cursor-pointer w-full sm:w-auto">
-            <option value="active" {{ request('status', 'active') === 'active' ? 'selected' : '' }}>ステータス: 不成約以外</option>
+            <option value="active" {{ request('status', 'active') === 'active' ? 'selected' : '' }}>ステータス: 進行中のみ</option>
             <option value="" {{ request('status') === '' && request()->has('status') ? 'selected' : '' }}>ステータス: 全て</option>
             @foreach(\App\Enums\ProcurementStatus::cases() as $st)
                 <option value="{{ $st->value }}" {{ request('status') === $st->value ? 'selected' : '' }}>{{ $st->label() }}</option>
@@ -192,6 +192,7 @@
 .badge-re-contracted { background: #fef3c7; color: #92400e; }
 .badge-re-settled { background: #a7f3d0; color: #064e3b; }
 .badge-re-selling { background: #c7d2fe; color: #3730a3; }
+.badge-re-sold { background: #86efac; color: #14532d; }
 .badge-re-lost { background: #e5e7eb; color: #374151; }
 </style>
 

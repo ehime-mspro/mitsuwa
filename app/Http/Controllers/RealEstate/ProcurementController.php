@@ -23,10 +23,13 @@ class ProcurementController extends Controller
     {
         $query = ReProcurement::with('supplier', 'costs');
 
-        // フィルター: ステータス（デフォルトは不成約以外）
+        // フィルター: ステータス（デフォルトは進行中のみ = 不成約・販売済を除く）
         $statusFilter = $request->input('status', 'active');
         if ($statusFilter === 'active') {
-            $query->where('status', '!=', ProcurementStatus::Lost->value);
+            $query->whereNotIn('status', [
+                ProcurementStatus::Lost->value,
+                ProcurementStatus::Sold->value,
+            ]);
         } elseif ($statusFilter !== '') {
             $query->where('status', $statusFilter);
         }

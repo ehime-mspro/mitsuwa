@@ -121,6 +121,7 @@
 .badge-re-contracted { background: #fef3c7; color: #92400e; }
 .badge-re-settled { background: #a7f3d0; color: #064e3b; }
 .badge-re-selling { background: #c7d2fe; color: #3730a3; }
+.badge-re-sold { background: #86efac; color: #14532d; }
 .badge-re-lost { background: #e5e7eb; color: #374151; }
 </style>
 
