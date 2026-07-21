@@ -114,4 +114,67 @@ class ProcurementStatusTransitionTest extends TestCase
         $response->assertSessionHasNoErrors();
         $this->assertSame(ProcurementStatus::Selling, $procurement->fresh()->status);
     }
+
+    /** T3: 契約の案件を A→B に付け替えると、A が販売中に戻り B が販売済になる */
+    public function test_updating_procurement_id_reverts_old_and_marks_new(): void
+    {
+        $procurementA = $this->makeProcurement('P-001');
+        $procurementB = $this->makeProcurement('P-002');
+        $buyer        = $this->makeBuyer();
+        $executive    = $this->executive();
+
+        $this->actingAs($executive)->post('/realestate/contracts', [
+            'contract_type'   => 'procurement_land',
+            'procurement_id'  => $procurementA->id,
+            'contract_date'   => '2026-07-21',
+            'buyer_id'        => $buyer->id,
+            'contract_amount' => 30000000,
+            'cost_amount'     => 25000000,
+            'property_name'   => '松山市A土地',
+        ])->assertSessionHasNoErrors();
+
+        $contract = ReContract::firstOrFail();
+
+        $response = $this->actingAs($executive)->put("/realestate/contracts/{$contract->id}", [
+            'contract_type'   => 'procurement_land',
+            'procurement_id'  => $procurementB->id,
+            'contract_date'   => '2026-07-21',
+            'buyer_id'        => $buyer->id,
+            'contract_amount' => 30000000,
+            'cost_amount'     => 25000000,
+            'property_name'   => '松山市B土地',
+        ]);
+
+        $response->assertRedirect();
+        $response->assertSessionHasNoErrors();
+        $this->assertSame(ProcurementStatus::Selling, $procurementA->fresh()->status);
+        $this->assertSame(ProcurementStatus::Sold, $procurementB->fresh()->status);
+    }
+
+    /** T4: 契約を削除すると案件が販売中に戻る（誤登録を消したとき行方不明にしない） */
+    public function test_destroying_contract_reverts_procurement_to_selling(): void
+    {
+        $procurement = $this->makeProcurement('P-001');
+        $buyer       = $this->makeBuyer();
+        $executive   = $this->executive();
+
+        $this->actingAs($executive)->post('/realestate/contracts', [
+            'contract_type'   => 'procurement_land',
+            'procurement_id'  => $procurement->id,
+            'contract_date'   => '2026-07-21',
+            'buyer_id'        => $buyer->id,
+            'contract_amount' => 30000000,
+            'cost_amount'     => 25000000,
+            'property_name'   => '松山市A土地',
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame(ProcurementStatus::Sold, $procurement->fresh()->status);
+
+        $contract = ReContract::firstOrFail();
+
+        $response = $this->actingAs($executive)->delete("/realestate/contracts/{$contract->id}");
+
+        $response->assertRedirect();
+        $this->assertSame(ProcurementStatus::Selling, $procurement->fresh()->status);
+    }
 }

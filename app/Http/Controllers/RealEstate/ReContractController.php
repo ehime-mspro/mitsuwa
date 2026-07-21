@@ -311,6 +311,21 @@ class ReContractController extends Controller
             }
         }
 
+        // 仕入れ案件: 案件変更の場合、旧案件を販売中に戻して新案件を販売済に
+        // （$contract->update() の前に置くこと。procurement_id が旧値である必要がある）
+        if ($contractType->isProcurement()) {
+            $oldProcurementId = $contract->procurement_id;
+            $newProcurementId = $validated['procurement_id'] ?? null;
+            if ($oldProcurementId && $oldProcurementId != $newProcurementId) {
+                ReProcurement::where('id', $oldProcurementId)
+                    ->update(['status' => ProcurementStatus::Selling->value]);
+            }
+            if ($newProcurementId && $newProcurementId != $oldProcurementId) {
+                ReProcurement::where('id', $newProcurementId)
+                    ->update(['status' => ProcurementStatus::Sold->value]);
+            }
+        }
+
         $contract->update($validated);
 
         return redirect()
@@ -326,6 +341,13 @@ class ReContractController extends Controller
         // 分譲地の場合、区画ステータスを販売中に戻す
         if ($contract->contract_type->isSubdivision() && $contract->lot_id) {
             ReProjectLot::where('id', $contract->lot_id)->update(['status' => LotStatus::OnSale->value]);
+        }
+
+        // 仕入れ案件の場合、案件ステータスを販売中に戻す
+        // （1 仕入れ案件 = 1 契約 の前提のため、他契約の有無は確認しない。区画側も同様）
+        if ($contract->contract_type->isProcurement() && $contract->procurement_id) {
+            ReProcurement::where('id', $contract->procurement_id)
+                ->update(['status' => ProcurementStatus::Selling->value]);
         }
 
         $name = $contract->property_name;
