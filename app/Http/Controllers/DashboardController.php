@@ -712,11 +712,14 @@ class DashboardController extends Controller
 
     /**
      * 仕入れパイプライン（進行中件数・予定金額合計）。
-     * status=lost 以外を進行中とみなす。
+     * status=lost（不成約）と status=sold（販売済＝契約済み）を除いたものを進行中とみなす。
      */
     private function aggregateProcurementStats(): array
     {
-        $query = ReProcurement::where('status', '!=', ProcurementStatus::Lost->value);
+        $query = ReProcurement::whereNotIn('status', [
+            ProcurementStatus::Lost->value,
+            ProcurementStatus::Sold->value,
+        ]);
 
         $count        = (clone $query)->count();
         $targetTotal  = (int) (clone $query)->sum('target_selling_price');

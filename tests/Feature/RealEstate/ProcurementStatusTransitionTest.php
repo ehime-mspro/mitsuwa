@@ -6,6 +6,7 @@ use App\Enums\ProcurementStatus;
 use App\Enums\RealEstatePropertyType;
 use App\Enums\RealEstateTransactionType;
 use App\Enums\UserRole;
+use App\Http\Controllers\DashboardController;
 use App\Models\Buyer;
 use App\Models\ReContract;
 use App\Models\ReProcurement;
@@ -205,5 +206,24 @@ class ProcurementStatusTransitionTest extends TestCase
         $response->assertOk();
         $response->assertSee($sold->property_name);
         $response->assertDontSee($selling->property_name);
+    }
+
+    /** 経営ダッシュボードの仕入れパイプラインからも販売済を除外する */
+    public function test_executive_dashboard_pipeline_excludes_sold(): void
+    {
+        $selling = $this->makeProcurement('P-001', 'selling');
+        $selling->update(['target_selling_price' => 10000000]);
+
+        $sold = $this->makeProcurement('P-002', 'sold');
+        $sold->update(['target_selling_price' => 99000000]);
+
+        // aggregateProcurementStats() は private。/dashboard/executive を丸ごと叩くと
+        // 5 事業分のテーブルが要るため、対象メソッドだけを Reflection で呼ぶ
+        // （CustomerSurveyAuthorizationTest と同じ既存パターン）。
+        $method = new \ReflectionMethod(DashboardController::class, 'aggregateProcurementStats');
+        $result = $method->invoke(new DashboardController());
+
+        $this->assertSame(1, $result['in_progress_count']);
+        $this->assertSame(10000000, $result['target_total']);
     }
 }
