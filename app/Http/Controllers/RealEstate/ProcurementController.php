@@ -146,7 +146,10 @@ class ProcurementController extends Controller
      */
     public function show(ReProcurement $procurement)
     {
-        $procurement->load(['supplier', 'costs.costItem', 'createdBy', 'updatedBy']);
+        $procurement->load([
+            'supplier', 'costs.costItem', 'createdBy', 'updatedBy',
+            'contracts.buyer', 'contracts.staff',
+        ]);
 
         // 原価項目マスタ（費用追加のセレクト用）
         $costItems = ReCostItem::active()->ordered()->get();

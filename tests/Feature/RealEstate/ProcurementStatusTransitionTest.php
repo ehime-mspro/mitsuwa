@@ -226,4 +226,44 @@ class ProcurementStatusTransitionTest extends TestCase
         $this->assertSame(1, $result['in_progress_count']);
         $this->assertSame(10000000, $result['target_total']);
     }
+
+    /** 契約がある案件の詳細に「契約情報」カードが出て、契約詳細へ辿れる */
+    public function test_show_renders_contract_card_when_contract_exists(): void
+    {
+        $procurement = $this->makeProcurement('P-001');
+        $buyer       = $this->makeBuyer();
+        $executive   = $this->executive();
+
+        $this->actingAs($executive)->post('/realestate/contracts', [
+            'contract_type'   => 'procurement_land',
+            'procurement_id'  => $procurement->id,
+            'contract_date'   => '2026-07-21',
+            'buyer_id'        => $buyer->id,
+            'contract_amount' => 30000000,
+            'cost_amount'     => 25000000,
+            'property_name'   => '松山市A土地',
+        ])->assertSessionHasNoErrors();
+
+        $contract = ReContract::firstOrFail();
+
+        $response = $this->actingAs($executive)->get("/realestate/procurements/{$procurement->id}");
+
+        $response->assertOk();
+        $response->assertSee('契約情報');
+        $response->assertSee('山田 太郎');
+        $response->assertSee('30,000,000円');
+        $response->assertSee('5,000,000円');   // 粗利 = 契約金額 - 原価
+        $response->assertSee("/realestate/contracts/{$contract->id}");
+    }
+
+    /** 契約が無い案件では「契約情報」カードごと出さない（空カードは情報量が無い） */
+    public function test_show_hides_contract_card_when_no_contract(): void
+    {
+        $procurement = $this->makeProcurement('P-001');
+
+        $response = $this->actingAs($this->executive())->get("/realestate/procurements/{$procurement->id}");
+
+        $response->assertOk();
+        $response->assertDontSee('契約情報');
+    }
 }

@@ -152,6 +152,51 @@
         </div>
     </div>
 
+    {{-- 契約情報（契約が無いときはカードごと出さない） --}}
+    @if($procurement->contracts->isNotEmpty())
+    <div class="bg-white border border-gray-200 rounded-lg p-5 mb-5">
+        <div class="flex items-center gap-2 mb-4">
+            <span class="w-1 h-5 bg-emerald-600 rounded-sm"></span>
+            <h2 class="text-base font-bold text-gray-900">契約情報</h2>
+        </div>
+        <div class="border border-gray-200 rounded-md overflow-hidden" style="overflow-x: auto;">
+            <table class="w-full" style="border-collapse: collapse;">
+                <thead>
+                    <tr class="bg-gray-50">
+                        <th class="px-4 py-3 border-b border-gray-200 text-sm text-gray-600 font-medium text-left whitespace-nowrap">契約日</th>
+                        <th class="px-4 py-3 border-b border-gray-200 text-sm text-gray-600 font-medium text-left whitespace-nowrap">種別</th>
+                        <th class="px-4 py-3 border-b border-gray-200 text-sm text-gray-600 font-medium text-left whitespace-nowrap">買主</th>
+                        <th class="px-4 py-3 border-b border-gray-200 text-sm text-gray-600 font-medium text-center whitespace-nowrap">契約金額</th>
+                        <th class="px-4 py-3 border-b border-gray-200 text-sm text-gray-600 font-medium text-center whitespace-nowrap">粗利</th>
+                        <th class="px-4 py-3 border-b border-gray-200 text-sm text-gray-600 font-medium text-center whitespace-nowrap">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach($procurement->contracts as $c)
+                    <tr>
+                        <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 whitespace-nowrap">{{ $c->contract_date?->format('Y/m/d') ?? '—' }}</td>
+                        <td class="px-4 py-3 border-b border-gray-200 whitespace-nowrap">
+                            <span class="badge" style="{{ $c->contract_type->badgeStyle() }}">{{ $c->contract_type->shortLabel() }}</span>
+                        </td>
+                        <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 whitespace-nowrap">{{ $c->buyer_display_name ?: '—' }}</td>
+                        <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-center whitespace-nowrap" style="font-variant-numeric: tabular-nums; font-weight: 600;">
+                            {{ $c->contract_amount !== null ? number_format($c->contract_amount) . '円' : '—' }}
+                        </td>
+                        <td class="px-4 py-3 border-b border-gray-200 text-sm text-center whitespace-nowrap" style="font-variant-numeric: tabular-nums; color: #047857; font-weight: 700;">
+                            {{ $c->gross_profit !== null ? number_format($c->gross_profit) . '円' : '—' }}
+                        </td>
+                        <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                            <a href="{{ route('realestate.contracts.show', $c) }}"
+                               class="text-xs font-semibold text-emerald-700 px-3 py-1 border border-emerald-200 rounded bg-emerald-50 hover:bg-emerald-100">詳細</a>
+                        </td>
+                    </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
+    </div>
+    @endif
+
     {{-- 原価管理 --}}
     <div class="bg-white border border-gray-200 rounded-lg p-5 mb-5">
         <div class="flex items-center justify-between mb-4">

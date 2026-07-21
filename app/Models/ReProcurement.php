@@ -83,6 +83,15 @@ class ReProcurement extends Model
         return $this->hasMany(ReProcurementCost::class, 'procurement_id');
     }
 
+    /**
+     * この仕入れ案件を対象にした販売契約。
+     * 運用上 1 案件 = 1 契約だが、データ構造としては複数を許す。
+     */
+    public function contracts(): HasMany
+    {
+        return $this->hasMany(ReContract::class, 'procurement_id');
+    }
+
     public function createdBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
