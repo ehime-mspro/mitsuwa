@@ -11,6 +11,7 @@ enum ProcurementStatus: string
     case Contracted   = 'contracted';
     case Settled      = 'settled';
     case Selling      = 'selling';
+    case Sold         = 'sold';
     case Lost         = 'lost';
 
     public function label(): string
@@ -23,6 +24,7 @@ enum ProcurementStatus: string
             self::Contracted   => '契約',
             self::Settled      => '決済完了',
             self::Selling      => '販売中',
+            self::Sold         => '販売済',
             self::Lost         => '不成約',
         };
     }
@@ -37,6 +39,7 @@ enum ProcurementStatus: string
             self::Contracted   => 'badge-re-contracted',
             self::Settled      => 'badge-re-settled',
             self::Selling      => 'badge-re-selling',
+            self::Sold         => 'badge-re-sold',
             self::Lost         => 'badge-re-lost',
         };
     }
