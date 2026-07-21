@@ -145,7 +145,12 @@ D3（1 案件 = 1 契約）の前提により、「他に契約が残ってい�
 
 #### 更新方法の注意
 
-3 経路とも **`ReProcurement::where(...)->update([...])` のクエリビルダ更新**を使う（区画側と同じ）。`$model->update()` を使うと `ReProcurement::booted()` の `saved` フックが走り `syncPropertyPurchaseCost()` が発火するが、ステータス変更に原価の再同期は不要で、副作用を持ち込む理由が無い。
+3 経路とも **`ReProcurement::where(...)->update([...])` のクエリビルダ更新**を使う（区画側と同じ）。ID しか手元に無いので、モデルを読み込まずに 1 発で更新できる。
+
+> **【2026-07-21 実装時に訂正】** 当初この節は「`$model->update()` だと `saved` フックで `syncPropertyPurchaseCost()` が発火するのを避けるため」と書いていたが、**これは誤り**だった。実際の `ReProcurement::booted()` は
+> `if ($procurement->wasChanged(['assessment_price', 'purchase_price']) || $procurement->wasRecentlyCreated)` でガードしており、status だけの更新ではフックは発火しない。
+> また `updated_at` は Eloquent の `Builder::update()` が `addUpdatedAtColumn()` で自動付与するため更新される（素の `DB::table()` 更新と混同しやすい）。
+> **クエリビルダ更新で実際に生じる差分は「モデルイベントを通らないため `updated_by` が据え置きになる」の 1 点のみ。** 選択自体は妥当なので実装は変えていない。
 
 ### 3.3 一覧フィルタ — `ProcurementController::index()`
 

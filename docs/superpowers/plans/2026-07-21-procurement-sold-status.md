@@ -508,8 +508,9 @@ APP_KEY='base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=' vendor/bin/phpunit
         }
 
         // 仕入れ案件の場合、案件ステータスを販売済に変更
-        // （クエリビルダ更新: $model->update() だと saved フックで
-        //   syncPropertyPurchaseCost() が走るが、ステータス変更に原価の再同期は不要）
+        // クエリビルダ更新（区画側と同形）: ID しか無いのでモデルを読まずに 1 発で更新する。
+        // updated_at は Builder::update() が自動付与するが、モデルイベントを通らないため
+        // updated_by は据え置きになる点に注意。
         if ($contractType->isProcurement() && $contract->procurement_id) {
             ReProcurement::where('id', $contract->procurement_id)
                 ->update(['status' => ProcurementStatus::Sold->value]);

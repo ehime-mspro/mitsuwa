@@ -152,6 +152,49 @@ class ProcurementStatusTransitionTest extends TestCase
         $this->assertSame(ProcurementStatus::Sold, $procurementB->fresh()->status);
     }
 
+    /**
+     * T3b: 案件を変えずに契約を更新しても、案件は販売済のまま。
+     *
+     * update() の遷移は `!=` ガード 2 本に依存しており、これを崩すと
+     * 「金額だけ直す」という実運用で最頻の編集で案件が販売中に戻り、
+     * 一覧に復活して契約作成セレクトにも再登場する。T3（付け替え）だけでは
+     * このガードが効いていることを固定できないため独立したテストを置く。
+     */
+    public function test_updating_contract_without_changing_procurement_keeps_sold(): void
+    {
+        $procurement = $this->makeProcurement('P-001');
+        $buyer       = $this->makeBuyer();
+        $executive   = $this->executive();
+
+        $this->actingAs($executive)->post('/realestate/contracts', [
+            'contract_type'   => 'procurement_land',
+            'procurement_id'  => $procurement->id,
+            'contract_date'   => '2026-07-21',
+            'buyer_id'        => $buyer->id,
+            'contract_amount' => 30000000,
+            'cost_amount'     => 25000000,
+            'property_name'   => '松山市A土地',
+        ])->assertSessionHasNoErrors();
+
+        $contract = ReContract::firstOrFail();
+
+        // 案件はそのまま、契約金額だけ変更する
+        $response = $this->actingAs($executive)->put("/realestate/contracts/{$contract->id}", [
+            'contract_type'   => 'procurement_land',
+            'procurement_id'  => $procurement->id,
+            'contract_date'   => '2026-07-21',
+            'buyer_id'        => $buyer->id,
+            'contract_amount' => 31000000,
+            'cost_amount'     => 25000000,
+            'property_name'   => '松山市A土地',
+        ]);
+
+        $response->assertRedirect();
+        $response->assertSessionHasNoErrors();
+        $this->assertSame(ProcurementStatus::Sold, $procurement->fresh()->status);
+        $this->assertSame(31000000, $contract->fresh()->contract_amount);
+    }
+
     /** T4: 契約を削除すると案件が販売中に戻る（誤登録を消したとき行方不明にしない） */
     public function test_destroying_contract_reverts_procurement_to_selling(): void
     {
