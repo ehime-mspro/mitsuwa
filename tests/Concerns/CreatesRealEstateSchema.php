@@ -133,5 +133,131 @@ trait CreatesRealEstateSchema
             $t->unsignedInteger('updated_by')->nullable();
             $t->timestamps();
         });
+
+        Schema::create('re_projects', function (Blueprint $t) {
+            $t->id();
+            $t->string('project_code', 20);
+            $t->string('project_name', 100);
+            $t->string('status', 30);
+            $t->string('postal_code', 10)->nullable();
+            $t->string('address', 200);
+            $t->decimal('land_area_sqm', 10, 2)->nullable();
+            $t->string('zoning', 50)->nullable();
+            $t->decimal('building_coverage', 5, 2)->nullable();
+            $t->decimal('floor_area_ratio', 5, 2)->nullable();
+            $t->decimal('latitude', 10, 7)->nullable();
+            $t->decimal('longitude', 10, 7)->nullable();
+            $t->unsignedBigInteger('supplier_id')->nullable();
+            $t->date('info_obtained_date')->nullable();
+            $t->integer('assessment_price')->nullable();
+            $t->integer('purchase_price')->nullable();
+            $t->integer('target_selling_price')->nullable();
+            $t->date('contract_date')->nullable();
+            $t->date('settlement_date')->nullable();
+            $t->text('notes')->nullable();
+            $t->unsignedInteger('created_by');
+            $t->unsignedInteger('updated_by')->nullable();
+            $t->timestamps();
+        });
+
+        Schema::create('re_project_lots', function (Blueprint $t) {
+            $t->id();
+            $t->unsignedBigInteger('project_id');
+            $t->integer('lot_number');
+            $t->decimal('area_sqm', 10, 2);
+            $t->decimal('area_tsubo', 10, 2);
+            $t->integer('selling_price_per_tsubo')->nullable();
+            $t->integer('selling_price')->nullable();
+            $t->boolean('is_price_manual')->default(false);
+            $t->string('status', 30)->default('unsold');
+            $t->string('notes', 200)->nullable();
+            $t->timestamps();
+        });
+
+        // ReProject::booted() の saved フック（syncPropertyPurchaseCost）が
+        // ReProjectCost::updateOrCreate() を呼ぶため、PJ 作成テストで必要。
+        Schema::create('re_project_costs', function (Blueprint $t) {
+            $t->id();
+            $t->unsignedBigInteger('project_id');
+            $t->unsignedBigInteger('cost_item_id');
+            $t->integer('estimated_amount')->default(0);
+            $t->integer('actual_amount')->nullable();
+            $t->string('notes', 200)->nullable();
+            $t->timestamps();
+        });
+
+        Schema::create('hs_properties', function (Blueprint $t) {
+            $t->id();
+            $t->string('property_code', 20);
+            $t->string('property_name', 100);
+            $t->string('status', 30);
+            $t->string('land_source_type', 20)->nullable();
+            $t->unsignedBigInteger('re_project_lot_id')->nullable();
+            $t->unsignedBigInteger('re_procurement_id')->nullable();
+            $t->string('postal_code', 10)->nullable();
+            $t->string('address', 200);
+            $t->decimal('land_area_sqm', 10, 2)->nullable();
+            $t->decimal('building_area_sqm', 10, 2)->nullable();
+            $t->string('structure', 50)->nullable();
+            $t->unsignedTinyInteger('floors')->nullable();
+            $t->date('scheduled_completion_date')->nullable();
+            $t->date('actual_completion_date')->nullable();
+            $t->integer('building_cost')->nullable();
+            $t->integer('land_cost')->nullable();
+            $t->boolean('is_land_cost_manual')->default(false);
+            $t->integer('target_selling_price_building')->nullable();
+            $t->text('notes')->nullable();
+            $t->unsignedInteger('created_by');
+            $t->unsignedInteger('updated_by')->nullable();
+            $t->timestamps();
+        });
+
+        Schema::create('hs_contracts', function (Blueprint $t) {
+            $t->id();
+            $t->unsignedBigInteger('property_id');
+            $t->unsignedBigInteger('customer_id')->nullable();
+            $t->string('customer_name', 100);
+            $t->integer('selling_price_land');
+            $t->integer('selling_price_building');
+            $t->decimal('tax_rate', 4, 2)->default(10.00);
+            $t->date('contract_date');
+            $t->date('settlement_date')->nullable();
+            $t->text('notes')->nullable();
+            $t->unsignedInteger('created_by');
+            $t->unsignedInteger('updated_by')->nullable();
+            $t->timestamps();
+        });
+
+        Schema::create('hs_custom_orders', function (Blueprint $t) {
+            $t->id();
+            $t->string('order_code', 20);
+            $t->string('order_name', 100);
+            $t->string('status', 30);
+            $t->unsignedBigInteger('customer_id')->nullable();
+            $t->string('customer_name', 100);
+            $t->string('land_source_type', 20)->nullable();
+            $t->unsignedBigInteger('re_project_lot_id')->nullable();
+            $t->unsignedBigInteger('re_procurement_id')->nullable();
+            $t->string('postal_code', 10)->nullable();
+            $t->string('address', 200);
+            $t->decimal('land_area_sqm', 10, 2)->nullable();
+            $t->decimal('building_area_sqm', 10, 2)->nullable();
+            $t->string('structure', 50)->nullable();
+            $t->unsignedTinyInteger('floors')->nullable();
+            $t->integer('building_contract_price')->nullable();
+            $t->integer('building_cost')->nullable();
+            $t->integer('land_selling_price')->nullable();
+            $t->integer('land_cost')->nullable();
+            $t->boolean('is_land_cost_manual')->default(false);
+            $t->decimal('tax_rate', 4, 2)->default(10.00);
+            $t->date('contract_date')->nullable();
+            $t->date('scheduled_completion_date')->nullable();
+            $t->date('actual_completion_date')->nullable();
+            $t->date('delivery_date')->nullable();
+            $t->text('notes')->nullable();
+            $t->unsignedInteger('created_by');
+            $t->unsignedInteger('updated_by')->nullable();
+            $t->timestamps();
+        });
     }
 }
