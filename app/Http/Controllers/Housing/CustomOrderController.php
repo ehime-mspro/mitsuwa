@@ -481,14 +481,22 @@ class CustomOrderController extends Controller
         $newIsContracted = $order->status->isContractedOrLater();
         $oldIsContracted = $oldStatus ? $oldStatus->isContractedOrLater() : false;
 
+        $changed = false;
+
         // 契約以前 → 契約以降: sold に更新
         if ($newIsContracted && !$oldIsContracted) {
             $lot->update(['status' => LotStatus::Sold->value]);
+            $changed = true;
         }
 
         // 契約以降 → 契約以前: on_sale に戻す
         if (!$newIsContracted && $oldIsContracted) {
             $lot->update(['status' => LotStatus::OnSale->value]);
+            $changed = true;
+        }
+
+        if ($changed) {
+            $lot->project?->syncStatusFromLots();
         }
     }
 
@@ -506,6 +514,7 @@ class CustomOrderController extends Controller
             $lot = $order->projectLot;
             if ($lot) {
                 $lot->update(['status' => LotStatus::OnSale->value]);
+                $lot->project?->syncStatusFromLots();
             }
         }
     }

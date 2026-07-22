@@ -344,4 +344,61 @@ class ProjectSoldStatusTransitionTest extends TestCase
         $response->assertRedirect();
         $this->assertSame(ProjectStatus::Selling, $project->fresh()->status);
     }
+
+    /** O1: 注文住宅を契約以降ステータスへ → 区画成約 → PJ が販売済（本番主経路） */
+    public function test_custom_order_contracted_marks_project_sold_out(): void
+    {
+        $project = $this->makeProject('PJ-001', 'selling');
+        $lot     = $this->makeLot($project, 1, 'on_sale');
+
+        $order = \App\Models\HsCustomOrder::create([
+            'order_code'        => 'CO-001',
+            'order_name'        => '注文住宅CO-001',
+            'status'            => 'estimation',
+            'customer_name'     => '佐藤 花子',
+            'land_source_type'  => 'project_lot',
+            're_project_lot_id' => $lot->id,
+            'address'           => '愛媛県松山市3-3-3',
+            'created_by'        => 1,
+        ]);
+
+        $response = $this->actingAs($this->executive())
+            ->patch("/housing/custom-orders/{$order->id}/status", [
+                'status' => 'contracted',
+            ]);
+
+        $response->assertOk();
+        $this->assertSame(LotStatus::Sold, $lot->fresh()->status);
+        $this->assertSame(ProjectStatus::SoldOut, $project->fresh()->status);
+    }
+
+    /** O2: 契約以降 → 契約以前へ戻すと 区画が販売中に戻り PJ も販売中へ降格 */
+    public function test_custom_order_back_to_pre_contract_reverts_project(): void
+    {
+        $project   = $this->makeProject('PJ-001', 'selling');
+        $lot       = $this->makeLot($project, 1, 'on_sale');
+        $executive = $this->executive();
+
+        $order = \App\Models\HsCustomOrder::create([
+            'order_code'        => 'CO-001',
+            'order_name'        => '注文住宅CO-001',
+            'status'            => 'estimation',
+            'customer_name'     => '佐藤 花子',
+            'land_source_type'  => 'project_lot',
+            're_project_lot_id' => $lot->id,
+            'address'           => '愛媛県松山市3-3-3',
+            'created_by'        => 1,
+        ]);
+
+        $this->actingAs($executive)
+            ->patch("/housing/custom-orders/{$order->id}/status", ['status' => 'contracted'])
+            ->assertOk();
+        $this->assertSame(ProjectStatus::SoldOut, $project->fresh()->status);
+
+        $this->actingAs($executive)
+            ->patch("/housing/custom-orders/{$order->id}/status", ['status' => 'design'])
+            ->assertOk();
+
+        $this->assertSame(ProjectStatus::Selling, $project->fresh()->status);
+    }
 }
