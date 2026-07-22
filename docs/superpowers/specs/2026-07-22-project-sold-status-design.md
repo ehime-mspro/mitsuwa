@@ -66,10 +66,20 @@ if ($statusFilter === 'active') {
         ProjectStatus::Lost->value,
         ProjectStatus::SoldOut->value,
     ]);
-} elseif ($statusFilter !== '') {
+} elseif (filled($statusFilter)) {
     $query->where('status', $statusFilter);
 }
 ```
+
+⚠ **`elseif` は `!== ''` ではなく `filled()`**（実装時に判明した既存バグ回避）。
+「全て」オプションは `status=''` を送るが、Laravel 12 既定の `ConvertEmptyStringsToNull`
+グローバルミドルウェアが**クエリ文字列の空文字も null 化**する。`$request->input('status','active')`
+はキーが存在するため既定値 `'active'` を返さず **null** を返し、`null !== ''` は true なので
+`where('status', null)` = `WHERE status IS NULL` で **0 件**になる。`filled(null)` は false
+なので `filled()` ガードなら null/空を弾いてフィルタ無し（＝全件）に落ちる。本機能で sold_out
+を既定表示から外したことで「全て」が販売済PJを見る主導線になるため、この修正は必須。
+テスト F2（`?status=` で全件）がこの挙動を固定する。
+（**同型の潜在バグが `ProcurementController::index` にもある**が、本タスクのスコープ外＝別途対応。）
 
 Blade（`resources/views/realestate/projects/index.blade.php`）のフィルタ option ラベル:
 
