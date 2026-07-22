@@ -401,4 +401,45 @@ class ProjectSoldStatusTransitionTest extends TestCase
 
         $this->assertSame(ProjectStatus::Selling, $project->fresh()->status);
     }
+
+    /** F1: 既定フィルタ（進行中のみ）は sold_out と lost を出さない */
+    public function test_index_default_filter_excludes_sold_out_and_lost(): void
+    {
+        $selling = $this->makeProject('PJ-001', 'selling');
+        $soldOut = $this->makeProject('PJ-002', 'sold_out');
+        $lost    = $this->makeProject('PJ-003', 'lost');
+
+        $response = $this->actingAs($this->executive())->get('/realestate/projects');
+
+        $response->assertOk();
+        $response->assertSee($selling->project_name);
+        $response->assertDontSee($soldOut->project_name);
+        $response->assertDontSee($lost->project_name);
+    }
+
+    /** F2: ?status=（空＝全て）は全ステータスを出す */
+    public function test_index_status_all_shows_everything(): void
+    {
+        $selling = $this->makeProject('PJ-001', 'selling');
+        $soldOut = $this->makeProject('PJ-002', 'sold_out');
+
+        $response = $this->actingAs($this->executive())->get('/realestate/projects?status=');
+
+        $response->assertOk();
+        $response->assertSee($selling->project_name);
+        $response->assertSee($soldOut->project_name);
+    }
+
+    /** F3: ?status=sold_out は販売済だけを出す */
+    public function test_index_status_sold_out_shows_only_sold_out(): void
+    {
+        $selling = $this->makeProject('PJ-001', 'selling');
+        $soldOut = $this->makeProject('PJ-002', 'sold_out');
+
+        $response = $this->actingAs($this->executive())->get('/realestate/projects?status=sold_out');
+
+        $response->assertOk();
+        $response->assertSee($soldOut->project_name);
+        $response->assertDontSee($selling->project_name);
+    }
 }

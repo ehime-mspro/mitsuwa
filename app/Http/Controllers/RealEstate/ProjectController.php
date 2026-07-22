@@ -30,11 +30,17 @@ class ProjectController extends Controller
     {
         $query = ReProject::with('supplier', 'costs', 'lots');
 
-        // フィルター: ステータス（デフォルトは不成立以外）
+        // フィルター: ステータス（デフォルトは進行中のみ = 不成立・販売済を除く）
         $statusFilter = $request->input('status', 'active');
         if ($statusFilter === 'active') {
-            $query->where('status', '!=', ProjectStatus::Lost->value);
-        } elseif ($statusFilter !== '') {
+            $query->whereNotIn('status', [
+                ProjectStatus::Lost->value,
+                ProjectStatus::SoldOut->value,
+            ]);
+        } elseif (filled($statusFilter)) {
+            // 「全て」= status='' は ConvertEmptyStringsToNull で null 化されるため
+            // filled() で弾き、フィルタ無し（＝全件）に落とす。'' 比較では null が
+            // 素通りして where('status', null) となり 0 件になる（Bug 回避）。
             $query->where('status', $statusFilter);
         }
 
