@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\ProjectStatus;
+use App\Enums\LotStatus;
 use App\Models\ReCostItem;
 use App\Models\ReProjectCost;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -186,6 +187,45 @@ class ReProject extends Model
         return $this->lots->every(function ($lot) {
             return $lot->selling_price !== null && $lot->selling_price > 0;
         });
+    }
+
+    /**
+     * 区画の成約状況から PJ ステータスを集約する。
+     *
+     * - 全区画成約（区画1件以上 かつ 全て LotStatus::Sold）→ SoldOut へ昇格
+     *   （昇格元は「販売済・不成立 以外」の任意ステータス。「販売済＝完売」を
+     *     派生的な完了状態として扱う。区画が全て売れるのは実務上終盤のみ）
+     * - 販売済なのに未成約区画が復活 → Selling へ降格
+     * - 区画0件のPJ・上記いずれにも該当しないPJは一切触らない
+     *
+     * ステータス更新はクエリビルダで行う（procurement の案件遷移と同形）。
+     * updated_at は Builder::update() が自動付与するが、モデルイベントを
+     * 通らないため updated_by は据え置き（＝ユーザー操作ではなくシステム反応）。
+     * booted() の saved フック（物件購入費同期）も発火しない。
+     * in-memory の status も揃えて呼び出し元の齟齬を防ぐ。
+     *
+     * ⚠ 本メソッドは「区画の status が変わりうる全経路」から明示的に呼ぶこと。
+     *   既知の呼び出し箇所は docs/superpowers/specs/2026-07-22-project-sold-status-design.md §3.3。
+     *   新経路を足すときは必ず呼び出しを追加すること。
+     */
+    public function syncStatusFromLots(): void
+    {
+        $lots  = ReProjectLot::where('project_id', $this->id)->get(['status']);
+        $total = $lots->count();
+        if ($total === 0) {
+            return; // 区画0件は無干渉（every() が空で true を返す事故も防ぐ）
+        }
+
+        $allSold = $lots->every(fn (ReProjectLot $lot) => $lot->status === LotStatus::Sold);
+        $current = $this->status;
+
+        if ($allSold && ! in_array($current, [ProjectStatus::SoldOut, ProjectStatus::Lost], true)) {
+            ReProject::where('id', $this->id)->update(['status' => ProjectStatus::SoldOut->value]);
+            $this->status = ProjectStatus::SoldOut;
+        } elseif (! $allSold && $current === ProjectStatus::SoldOut) {
+            ReProject::where('id', $this->id)->update(['status' => ProjectStatus::Selling->value]);
+            $this->status = ProjectStatus::Selling;
+        }
     }
 
     // ============================================================
