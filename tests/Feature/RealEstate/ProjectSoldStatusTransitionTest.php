@@ -279,4 +279,69 @@ class ProjectSoldStatusTransitionTest extends TestCase
         $response->assertOk();
         $this->assertSame(ProjectStatus::SoldOut, $project->fresh()->status);
     }
+
+    private function makeHousingProperty(ReProjectLot $lot, string $code = 'HS-001'): \App\Models\HsProperty
+    {
+        return \App\Models\HsProperty::create([
+            'property_code'     => $code,
+            'property_name'     => "建売{$code}",
+            'status'            => 'construction',
+            'land_source_type'  => 'project_lot',
+            're_project_lot_id' => $lot->id,
+            'address'           => '愛媛県松山市2-2-2',
+            'created_by'        => 1,
+        ]);
+    }
+
+    /** H1: 建売契約で最終区画を成約 → 当該分譲地PJが販売済（本番主経路） */
+    public function test_housing_building_contract_marks_project_sold_out(): void
+    {
+        $project  = $this->makeProject('PJ-001', 'selling');
+        $lot      = $this->makeLot($project, 1, 'on_sale');
+        $property = $this->makeHousingProperty($lot);
+        $buyer    = $this->makeBuyer();
+
+        $response = $this->actingAs($this->executive())
+            ->post("/housing/properties/{$property->id}/contract", [
+                'customer_id'            => $buyer->id,
+                'customer_name'          => '山田 太郎',
+                'selling_price_land'     => 12000000,
+                'selling_price_building' => 18000000,
+                'tax_rate'               => 10.00,
+                'contract_date'          => '2026-07-22',
+            ]);
+
+        $response->assertRedirect();
+        $response->assertSessionHasNoErrors();
+        $this->assertSame(LotStatus::Sold, $lot->fresh()->status);
+        $this->assertSame(ProjectStatus::SoldOut, $project->fresh()->status);
+    }
+
+    /** H2: 建売契約を削除 → 区画が販売中に戻り PJ も販売中へ降格 */
+    public function test_deleting_housing_building_contract_reverts_project(): void
+    {
+        $project   = $this->makeProject('PJ-001', 'selling');
+        $lot       = $this->makeLot($project, 1, 'on_sale');
+        $property  = $this->makeHousingProperty($lot);
+        $buyer     = $this->makeBuyer();
+        $executive = $this->executive();
+
+        $this->actingAs($executive)
+            ->post("/housing/properties/{$property->id}/contract", [
+                'customer_id'            => $buyer->id,
+                'customer_name'          => '山田 太郎',
+                'selling_price_land'     => 12000000,
+                'selling_price_building' => 18000000,
+                'tax_rate'               => 10.00,
+                'contract_date'          => '2026-07-22',
+            ])->assertSessionHasNoErrors();
+
+        $this->assertSame(ProjectStatus::SoldOut, $project->fresh()->status);
+
+        $response = $this->actingAs($executive)
+            ->delete("/housing/properties/{$property->id}/contract");
+
+        $response->assertRedirect();
+        $this->assertSame(ProjectStatus::Selling, $project->fresh()->status);
+    }
 }

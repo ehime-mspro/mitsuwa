@@ -213,6 +213,7 @@ class ContractController extends Controller
             $lot = $property->projectLot;
             if ($lot) {
                 $lot->update(['status' => LotStatus::Sold->value]);
+                $lot->project?->syncStatusFromLots();
             }
         }
     }
@@ -226,6 +227,7 @@ class ContractController extends Controller
             $lot = $property->projectLot;
             if ($lot) {
                 $lot->update(['status' => LotStatus::OnSale->value]);
+                $lot->project?->syncStatusFromLots();
             }
         }
     }
