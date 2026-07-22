@@ -157,4 +157,78 @@ class ProjectSoldStatusTransitionTest extends TestCase
 
         $this->assertSame(ProjectStatus::SoldOut, $project->fresh()->status);
     }
+
+    /** C1: 最終区画を分譲地契約で成約 → PJ が販売済 */
+    public function test_subdivision_contract_marks_project_sold_out_on_last_lot(): void
+    {
+        $project = $this->makeProject('PJ-001', 'selling');
+        $lot     = $this->makeLot($project, 1, 'on_sale');
+        $buyer   = $this->makeBuyer();
+
+        $response = $this->actingAs($this->executive())->post('/realestate/contracts', [
+            'contract_type'   => 'subdivision_lot',
+            'project_id'      => $project->id,
+            'lot_id'          => $lot->id,
+            'contract_date'   => '2026-07-22',
+            'buyer_id'        => $buyer->id,
+            'contract_amount' => 20000000,
+            'cost_amount'     => 15000000,
+            'property_name'   => '分譲地PJ-001 1区画',
+        ]);
+
+        $response->assertRedirect();
+        $response->assertSessionHasNoErrors();
+        $this->assertSame(LotStatus::Sold, $lot->fresh()->status);
+        $this->assertSame(ProjectStatus::SoldOut, $project->fresh()->status);
+    }
+
+    /** C2: 他に未成約区画が残るなら PJ は販売中のまま */
+    public function test_subdivision_contract_keeps_selling_when_other_lots_remain(): void
+    {
+        $project = $this->makeProject('PJ-001', 'selling');
+        $lot1    = $this->makeLot($project, 1, 'on_sale');
+        $this->makeLot($project, 2, 'on_sale');
+        $buyer   = $this->makeBuyer();
+
+        $this->actingAs($this->executive())->post('/realestate/contracts', [
+            'contract_type'   => 'subdivision_lot',
+            'project_id'      => $project->id,
+            'lot_id'          => $lot1->id,
+            'contract_date'   => '2026-07-22',
+            'buyer_id'        => $buyer->id,
+            'contract_amount' => 20000000,
+            'cost_amount'     => 15000000,
+            'property_name'   => '分譲地PJ-001 1区画',
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame(ProjectStatus::Selling, $project->fresh()->status);
+    }
+
+    /** C3: 契約を削除すると区画が販売中に戻り、PJ も販売中へ降格 */
+    public function test_destroying_subdivision_contract_reverts_project_to_selling(): void
+    {
+        $project   = $this->makeProject('PJ-001', 'selling');
+        $lot       = $this->makeLot($project, 1, 'on_sale');
+        $buyer     = $this->makeBuyer();
+        $executive = $this->executive();
+
+        $this->actingAs($executive)->post('/realestate/contracts', [
+            'contract_type'   => 'subdivision_lot',
+            'project_id'      => $project->id,
+            'lot_id'          => $lot->id,
+            'contract_date'   => '2026-07-22',
+            'buyer_id'        => $buyer->id,
+            'contract_amount' => 20000000,
+            'cost_amount'     => 15000000,
+            'property_name'   => '分譲地PJ-001 1区画',
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame(ProjectStatus::SoldOut, $project->fresh()->status);
+
+        $contract = \App\Models\ReContract::firstOrFail();
+        $response = $this->actingAs($executive)->delete("/realestate/contracts/{$contract->id}");
+
+        $response->assertRedirect();
+        $this->assertSame(ProjectStatus::Selling, $project->fresh()->status);
+    }
 }

@@ -158,9 +158,10 @@ class ReContractController extends Controller
 
         $contract = ReContract::create($validated);
 
-        // 分譲地の場合、区画ステータスを sold に変更
+        // 分譲地の場合、区画ステータスを sold に変更し PJ を集約
         if ($contractType->isSubdivision() && $contract->lot_id) {
             ReProjectLot::where('id', $contract->lot_id)->update(['status' => LotStatus::Sold->value]);
+            ReProject::find($contract->project_id)?->syncStatusFromLots();
         }
 
         // 仕入れ案件の場合、案件ステータスを販売済に変更
@@ -310,6 +311,13 @@ class ReContractController extends Controller
             if ($newLotId && $newLotId != $oldLotId) {
                 ReProjectLot::where('id', $newLotId)->update(['status' => LotStatus::Sold->value]);
             }
+            // 影響を受ける PJ（旧区画・新区画それぞれの所属）を集約
+            $affectedProjectIds = [];
+            if ($oldLotId) { $affectedProjectIds[] = ReProjectLot::find($oldLotId)?->project_id; }
+            if ($newLotId) { $affectedProjectIds[] = ReProjectLot::find($newLotId)?->project_id; }
+            foreach (array_unique(array_filter($affectedProjectIds)) as $pid) {
+                ReProject::find($pid)?->syncStatusFromLots();
+            }
         }
 
         // 仕入れ案件: 案件変更の場合、旧案件を販売中に戻して新案件を販売済に
@@ -339,9 +347,10 @@ class ReContractController extends Controller
      */
     public function destroy(ReContract $contract)
     {
-        // 分譲地の場合、区画ステータスを販売中に戻す
+        // 分譲地の場合、区画ステータスを販売中に戻し PJ を集約
         if ($contract->contract_type->isSubdivision() && $contract->lot_id) {
             ReProjectLot::where('id', $contract->lot_id)->update(['status' => LotStatus::OnSale->value]);
+            ReProject::find($contract->project_id)?->syncStatusFromLots();
         }
 
         // 仕入れ案件の場合、案件ステータスを販売中に戻す
