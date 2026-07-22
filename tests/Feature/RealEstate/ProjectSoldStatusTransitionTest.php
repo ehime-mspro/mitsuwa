@@ -231,4 +231,52 @@ class ProjectSoldStatusTransitionTest extends TestCase
         $response->assertRedirect();
         $this->assertSame(ProjectStatus::Selling, $project->fresh()->status);
     }
+
+    /** P1: 区画編集で最終区画を成約にすると PJ が販売済 */
+    public function test_update_lot_to_sold_marks_project_sold_out(): void
+    {
+        $project = $this->makeProject('PJ-001', 'selling');
+        $lot     = $this->makeLot($project, 1, 'on_sale');
+
+        $response = $this->actingAs($this->executive())
+            ->put("/realestate/projects/{$project->id}/lots/{$lot->id}", [
+                'lot_number' => 1,
+                'area_sqm'   => 100.00,
+                'status'     => 'sold',
+            ]);
+
+        $response->assertOk();
+        $this->assertSame(ProjectStatus::SoldOut, $project->fresh()->status);
+    }
+
+    /** P2: 販売済PJに販売中区画を追加すると 販売中へ降格 */
+    public function test_store_lot_on_sold_out_project_demotes_to_selling(): void
+    {
+        $project = $this->makeProject('PJ-001', 'sold_out');
+        $this->makeLot($project, 1, 'sold');
+
+        $response = $this->actingAs($this->executive())
+            ->post("/realestate/projects/{$project->id}/lots", [
+                'lot_number' => 2,
+                'area_sqm'   => 120.00,
+                'status'     => 'on_sale',
+            ]);
+
+        $response->assertOk();
+        $this->assertSame(ProjectStatus::Selling, $project->fresh()->status);
+    }
+
+    /** P3: 最後の未成約区画を削除して残りが全成約なら 販売済へ昇格 */
+    public function test_destroy_last_unsold_lot_promotes_to_sold_out(): void
+    {
+        $project = $this->makeProject('PJ-001', 'selling');
+        $this->makeLot($project, 1, 'sold');
+        $lot2 = $this->makeLot($project, 2, 'on_sale');
+
+        $response = $this->actingAs($this->executive())
+            ->delete("/realestate/projects/{$project->id}/lots/{$lot2->id}");
+
+        $response->assertOk();
+        $this->assertSame(ProjectStatus::SoldOut, $project->fresh()->status);
+    }
 }

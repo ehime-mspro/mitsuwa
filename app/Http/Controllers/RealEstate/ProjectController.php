@@ -518,6 +518,7 @@ class ProjectController extends Controller
         $validated['is_price_manual'] = true;
 
         $lot = ReProjectLot::create($validated);
+        $project->syncStatusFromLots();
 
         return response()->json([
             'success' => true,
@@ -554,6 +555,7 @@ class ProjectController extends Controller
         $validated['is_price_manual'] = true;
 
         $lot->update($validated);
+        $project->syncStatusFromLots();
 
         return response()->json([
             'success' => true,
@@ -572,6 +574,7 @@ class ProjectController extends Controller
         }
 
         $lot->delete();
+        $project->syncStatusFromLots();
 
         return response()->json(['success' => true]);
     }
