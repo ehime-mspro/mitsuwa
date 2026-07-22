@@ -309,4 +309,50 @@ class ProcurementStatusTransitionTest extends TestCase
         $response->assertOk();
         $response->assertDontSee('契約情報');
     }
+
+    /**
+     * T7: 「ステータス: 全て」（?status=）は全ステータスを出す。
+     *
+     * ConvertEmptyStringsToNull がクエリ文字列の空文字も null 化するため、
+     * `$request->input('status', 'active')` は既定値ではなく null を返す。
+     * `!== ''` 比較だと null が素通りして where('status', null) となり 0 件になる。
+     */
+    public function test_index_status_all_shows_every_status(): void
+    {
+        $selling = $this->makeProcurement('P-001', 'selling');
+        $sold    = $this->makeProcurement('P-002', 'sold');
+        $lost    = $this->makeProcurement('P-003', 'lost');
+
+        $response = $this->actingAs($this->executive())->get('/realestate/procurements?status=');
+
+        $response->assertOk();
+        $response->assertSee($selling->property_name);
+        $response->assertSee($sold->property_name);
+        $response->assertSee($lost->property_name);
+    }
+
+    /**
+     * T8: 「全て」選択時はセレクトも「全て」を選択状態で描画する。
+     *
+     * 一覧は全件出ているのにセレクトが「進行中のみ」に見える不一致を防ぐ。
+     * assertSee は導入文に一致して false-pass しやすいので option の生 HTML で見る。
+     */
+    public function test_index_status_all_marks_all_option_selected(): void
+    {
+        $response = $this->actingAs($this->executive())->get('/realestate/procurements?status=');
+
+        $response->assertOk();
+        $response->assertSee('<option value="" selected>', false);
+        $response->assertDontSee('<option value="active" selected>', false);
+    }
+
+    /** T9: 無指定（既定＝進行中のみ）ではセレクトも「進行中のみ」を選択状態で描画する */
+    public function test_index_default_marks_active_option_selected(): void
+    {
+        $response = $this->actingAs($this->executive())->get('/realestate/procurements');
+
+        $response->assertOk();
+        $response->assertSee('<option value="active" selected>', false);
+        $response->assertDontSee('<option value="" selected>', false);
+    }
 }

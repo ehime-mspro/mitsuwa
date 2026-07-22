@@ -442,4 +442,30 @@ class ProjectSoldStatusTransitionTest extends TestCase
         $response->assertSee($soldOut->project_name);
         $response->assertDontSee($selling->project_name);
     }
+
+    /**
+     * F4: 「全て」選択時はセレクトも「全て」を選択状態で描画する。
+     *
+     * ConvertEmptyStringsToNull により ?status= は null で届くため、
+     * `request('status') === ''` ではどの option も selected にならず、
+     * 一覧は全件なのにセレクトだけ「進行中のみ」に見える不一致が起きる。
+     */
+    public function test_index_status_all_marks_all_option_selected(): void
+    {
+        $response = $this->actingAs($this->executive())->get('/realestate/projects?status=');
+
+        $response->assertOk();
+        $response->assertSee('<option value="" selected>', false);
+        $response->assertDontSee('<option value="active" selected>', false);
+    }
+
+    /** F5: 無指定（既定＝進行中のみ）ではセレクトも「進行中のみ」を選択状態で描画する */
+    public function test_index_default_marks_active_option_selected(): void
+    {
+        $response = $this->actingAs($this->executive())->get('/realestate/projects');
+
+        $response->assertOk();
+        $response->assertSee('<option value="active" selected>', false);
+        $response->assertDontSee('<option value="" selected>', false);
+    }
 }

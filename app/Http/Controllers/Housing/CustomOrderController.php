@@ -34,7 +34,10 @@ class CustomOrderController extends Controller
         // フィルター: ステータス（デフォルトは全て）
         $statusFilter = $request->input('status', '');
 
-        if ($statusFilter !== '') {
+        // 「全て」= status='' は ConvertEmptyStringsToNull で null 化されるため
+        // filled() で弾き、フィルタ無し（＝全件）に落とす。'' 比較では null が
+        // 素通りして where('status', null) となり 0 件になる（Bug 回避）。
+        if (filled($statusFilter)) {
             $query->where('status', $statusFilter);
         }
 
