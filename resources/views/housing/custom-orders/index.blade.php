@@ -11,8 +11,40 @@
 
 @section('content')
 
-    {{-- ステップバーバッジのホバーエフェクト --}}
-    <style>.badge-step-trigger:hover { box-shadow: 0 0 0 3px rgba(5,150,105,0.18); }</style>
+    {{-- 一覧テーブルのスタイル
+         インラインスタイルでは表現できないもの（:hover、子孫セレクタ）を扱うため
+         <style> ブロックを使う。Bug #19 の inline style 回避とは無関係
+         （Tailwind クラスは 2026-07-15 以降そのまま使えるが、
+          ゾーン背景のホバー上書きは子孫セレクタが必須なのでここに置く）。
+         ⚠ .co-num / .co-td-name は .co-td より後ろに書くこと。
+           どちらも詳細度 0,1,0 なのでソース順で勝敗が決まる。 --}}
+    <style>
+    .badge-step-trigger:hover { box-shadow: 0 0 0 3px rgba(5,150,105,0.18); }
+
+    /* ヘッダー（既存 Tailwind: px-3 py-2.5 text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 と同値） */
+    .co-th        { padding: 10px 12px; background: #f9fafb; border-bottom: 2px solid #e5e7eb; font-size: 12px; font-weight: 600; color: #4b5563; white-space: nowrap; text-align: center; }
+    .co-th-name   { text-align: left; padding-left: 16px; }
+    .co-grp       { font-size: 11.5px; letter-spacing: .08em; padding-top: 6px; padding-bottom: 6px; }
+    .co-grp-b     { background: #f0f9ff; color: #075985; }
+    .co-grp-l     { background: #fefce8; color: #854d0e; }
+    .co-grp small { display: block; font-size: 10px; letter-spacing: 0; font-weight: 500; opacity: .75; margin-top: 1px; }
+    .co-subhead   { display: block; font-size: 10px; font-weight: 400; color: #9ca3af; }
+
+    /* ボディ（既存 Tailwind: px-3 py-3 text-sm border-b border-gray-100 と同値） */
+    .co-td      { padding: 12px; border-bottom: 1px solid #f3f4f6; font-size: 13px; white-space: nowrap; vertical-align: middle; text-align: center; }
+    .co-td-name { text-align: left; padding-left: 16px; }
+    .co-num     { text-align: right; }
+    .co-muted   { color: #d1d5db; }
+    .co-tax-sub { font-size: 11px; color: #9ca3af; margin-top: 2px; }
+
+    /* 建物 / 土地ゾーンの区切りと淡い地色 */
+    .co-gstart { border-left: 1px solid #e5e7eb; }
+    td.co-zone-b { background: #fcfeff; }
+    td.co-zone-l { background: #fffdf5; }
+    /* ⚠ td の背景は tr の背景を上書きするため、行ホバー時の上書き規則が必須 */
+    tbody tr:hover td.co-zone-b { background: #f5fbfe; }
+    tbody tr:hover td.co-zone-l { background: #fefbef; }
+    </style>
 
     {{-- ページヘッダー --}}
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
@@ -51,21 +83,43 @@
             <table class="w-full border-collapse">
                 <thead>
                     <tr>
-                        <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">案件番号</th>
-                        <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">進捗</th>
-                        <th class="py-2.5 text-left text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap" style="padding-left: 16px;">案件名</th>
-                        <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">顧客名</th>
-                        <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">請負金額</th>
-                        <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">詳細</th>
+                        <th rowspan="2" class="co-th">進捗</th>
+                        <th rowspan="2" class="co-th co-th-name">案件名</th>
+                        <th rowspan="2" class="co-th">顧客名</th>
+                        <th colspan="4" class="co-th co-grp co-grp-b co-gstart">建　物<small>消費税 {{ $taxRateLabel }}%</small></th>
+                        <th colspan="4" class="co-th co-grp co-grp-l co-gstart">土　地<small>消費税 非課税</small></th>
+                        <th rowspan="2" class="co-th co-gstart">詳細</th>
+                    </tr>
+                    <tr>
+                        <th class="co-th co-gstart">販売金額<span class="co-subhead">税抜 / 税込</span></th>
+                        <th class="co-th">原価額</th>
+                        <th class="co-th">粗利額</th>
+                        <th class="co-th">粗利率</th>
+                        <th class="co-th co-gstart">販売金額</th>
+                        <th class="co-th">原価額</th>
+                        <th class="co-th">粗利額</th>
+                        <th class="co-th">粗利率</th>
                     </tr>
                 </thead>
                 <tbody>
                     @forelse($orders as $ord)
+                        @php
+                            // 土地は isCompanyLand() を単一の判断軸にする。
+                            // 生カラムに値が残っている行があっても、お客様所有土地なら
+                            // 4 セルすべて「—」にして「販売だけ出て粗利は —」を作らない。
+                            $isCompanyLand = $ord->isCompanyLand();
+                            $bPrice  = $ord->building_contract_price;
+                            $bCost   = $ord->building_cost;
+                            $bProfit = $ord->getBuildingProfit();
+                            $bRate   = $ord->getBuildingProfitRate();
+                            $lPrice  = $isCompanyLand ? $ord->land_selling_price : null;
+                            $lCost   = $isCompanyLand ? $ord->land_cost : null;
+                            $lProfit = $ord->getLandProfit();
+                            $lRate   = $ord->getLandProfitRate();
+                        @endphp
                         <tr class="hover:bg-gray-50">
-                            <td class="px-3 py-3 text-center border-b border-gray-100 whitespace-nowrap">
-                                <a href="{{ route('housing.custom-orders.show', $ord) }}" class="text-sm font-semibold text-blue-700 underline">{{ $ord->order_code }}</a>
-                            </td>
-                            <td class="px-3 py-3 text-center border-b border-gray-100 whitespace-nowrap">
+                            {{-- 進捗（現状維持。data-code はステータス変更ダイアログで使うため残す） --}}
+                            <td class="co-td">
                                 <span class="badge-step-trigger"
                                       data-code="{{ $ord->order_code }}"
                                       data-id="{{ $ord->id }}"
@@ -73,26 +127,103 @@
                                       onclick="openStepBar(this)"
                                       style="display: inline-block; padding: 2px 10px; border-radius: 9999px; font-size: 12px; font-weight: 600; cursor: pointer; transition: box-shadow 0.15s; {{ $ord->getDisplayBadgeStyle() }}">{{ $ord->status->label() }}</span>
                             </td>
-                            <td class="py-3 border-b border-gray-100" style="padding-left: 16px;">
-                                <div class="text-sm font-semibold text-gray-900">{{ $ord->order_name }}</div>
+
+                            {{-- 案件名（詳細画面へのリンク）
+                                 ⚠ text-sm を付けない。.co-td の 13px を継承させてモックと揃える
+                                 （付けると案件名だけ 14px になり他セルと不揃いになる） --}}
+                            <td class="co-td co-td-name">
+                                <div class="font-semibold">
+                                    <a href="{{ route('housing.custom-orders.show', $ord) }}" class="text-blue-700 underline">{{ $ord->order_name }}</a>
+                                </div>
                                 <div class="text-xs text-gray-500">{{ $ord->address }}</div>
                             </td>
-                            <td class="px-3 py-3 text-center text-sm text-gray-800 border-b border-gray-100 whitespace-nowrap">{{ $ord->customer_name }}</td>
-                            <td class="px-3 py-3 text-sm border-b border-gray-100 whitespace-nowrap" style="text-align: center;">
-                                @if($ord->building_contract_price !== null)
-                                    {{ number_format($ord->building_contract_price) }}円
+
+                            <td class="co-td text-gray-800">{{ $ord->customer_name }}</td>
+
+                            {{-- 建物: 販売金額（税抜が主・税込をサブ行に）
+                                 ⚠ getBuildingTax() は null 時 0 を返すので、
+                                    $bPrice の null ガード内でしか税込を出さない --}}
+                            <td class="co-td co-num co-zone-b co-gstart">
+                                @if($bPrice !== null)
+                                    {{ number_format($bPrice) }}円
+                                    <div class="co-tax-sub">税込 {{ number_format($bPrice + $ord->getBuildingTax()) }}円</div>
                                 @else
-                                    <span class="text-gray-400">—</span>
+                                    <span class="co-muted">—</span>
                                 @endif
                             </td>
-                            <td class="px-3 py-3 text-center border-b border-gray-100 whitespace-nowrap">
+
+                            {{-- 建物: 原価額 --}}
+                            <td class="co-td co-num co-zone-b">
+                                @if($bCost !== null)
+                                    {{ number_format($bCost) }}円
+                                @else
+                                    <span class="co-muted">—</span>
+                                @endif
+                            </td>
+
+                            {{-- 建物: 粗利額（税抜ベース） --}}
+                            <td class="co-td co-num co-zone-b">
+                                @if($bProfit !== null)
+                                    <span style="{{ $bProfit >= 0 ? 'color: #047857; font-weight: 700;' : 'color: #dc2626; font-weight: 700;' }}">{{ number_format($bProfit) }}円</span>
+                                @else
+                                    <span class="co-muted">—</span>
+                                @endif
+                            </td>
+
+                            {{-- 建物: 粗利率（常に小数1桁） --}}
+                            <td class="co-td co-num co-zone-b">
+                                @if($bRate !== null)
+                                    <span style="{{ $bRate >= 0 ? 'color: #047857; font-weight: 700;' : 'color: #dc2626; font-weight: 700;' }}">{{ number_format($bRate, 1) }}%</span>
+                                @else
+                                    <span class="co-muted">—</span>
+                                @endif
+                            </td>
+
+                            {{-- 土地: 販売金額（非課税なので税込サブ行は無し） --}}
+                            <td class="co-td co-num co-zone-l co-gstart">
+                                @if($lPrice !== null)
+                                    {{ number_format($lPrice) }}円
+                                @else
+                                    <span class="co-muted">—</span>
+                                @endif
+                            </td>
+
+                            {{-- 土地: 原価額 --}}
+                            <td class="co-td co-num co-zone-l">
+                                @if($lCost !== null)
+                                    {{ number_format($lCost) }}円
+                                @else
+                                    <span class="co-muted">—</span>
+                                @endif
+                            </td>
+
+                            {{-- 土地: 粗利額 --}}
+                            <td class="co-td co-num co-zone-l">
+                                @if($lProfit !== null)
+                                    <span style="{{ $lProfit >= 0 ? 'color: #047857; font-weight: 700;' : 'color: #dc2626; font-weight: 700;' }}">{{ number_format($lProfit) }}円</span>
+                                @else
+                                    <span class="co-muted">—</span>
+                                @endif
+                            </td>
+
+                            {{-- 土地: 粗利率（常に小数1桁） --}}
+                            <td class="co-td co-num co-zone-l">
+                                @if($lRate !== null)
+                                    <span style="{{ $lRate >= 0 ? 'color: #047857; font-weight: 700;' : 'color: #dc2626; font-weight: 700;' }}">{{ number_format($lRate, 1) }}%</span>
+                                @else
+                                    <span class="co-muted">—</span>
+                                @endif
+                            </td>
+
+                            {{-- 詳細（現状維持） --}}
+                            <td class="co-td co-gstart">
                                 <a href="{{ route('housing.custom-orders.show', $ord) }}"
                                    style="display: inline-block; padding: 3px 12px; font-size: 13px; font-weight: 600; color: #b45309; border: 1px solid #b45309; border-radius: 5px; background: #fff; text-decoration: none; cursor: pointer;">詳細</a>
                             </td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="6" class="px-3 py-8 text-center text-sm text-gray-500 border-b border-gray-100">該当する案件がありません</td>
+                            <td colspan="12" class="px-3 py-8 text-center text-sm text-gray-500 border-b border-gray-100">該当する案件がありません</td>
                         </tr>
                     @endforelse
                 </tbody>
