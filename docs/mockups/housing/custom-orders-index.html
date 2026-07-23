@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>注文住宅一覧 — 金額列追加 モック</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', sans-serif; margin: 0; padding: 28px 24px 80px; background: #f3f4f6; color: #111827; }
+  .wrap { max-width: 1240px; margin: 0 auto; }
+
+  .page-title { font-size: 20px; font-weight: 700; margin: 0 0 6px; }
+  .page-sub { font-size: 13px; color: #6b7280; margin: 0 0 24px; }
+
+  .callout { background: #fff; border: 1px solid #e5e7eb; border-left: 3px solid #059669; border-radius: 8px; padding: 14px 18px; margin-bottom: 28px; }
+  .callout h2 { font-size: 13px; font-weight: 700; margin: 0 0 8px; color: #065f46; }
+  .callout ul { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.9; color: #374151; }
+  .callout code { background: #f3f4f6; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+
+  /* ---- 案ブロック ---- */
+  .variant { margin-bottom: 40px; }
+  .variant-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 4px; }
+  .variant-tag { display: inline-block; background: #111827; color: #fff; font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 4px; }
+  .variant-tag.rec { background: #059669; }
+  .variant-title { font-size: 16px; font-weight: 700; }
+  .variant-note { font-size: 12.5px; color: #6b7280; margin: 0 0 12px; line-height: 1.8; }
+
+  /* 実画面の使用可能幅シミュレーション（サイドバー220px + p-8 左右32px） */
+  .screen { background: #fff; border: 1px solid #d1d5db; border-radius: 10px; padding: 0; overflow: hidden; }
+  .screen-bar { display: flex; align-items: center; gap: 8px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; padding: 7px 14px; font-size: 11.5px; color: #9ca3af; }
+  .screen-bar .dot { width: 9px; height: 9px; border-radius: 50%; background: #e5e7eb; }
+  .screen-body { background: #f3f4f6; padding: 16px; }
+  /* ⚠ width に transition を付けないこと。付けると切替直後の実測が
+     アニメーション途中の値を拾い、収まる／はみ出すの判定がズレる。 */
+  .content-area { width: var(--content-w, 1156px); max-width: 100%; }
+
+  /* 画面幅スイッチャー */
+  .switcher { position: sticky; top: 0; z-index: 50; background: #111827; border-radius: 8px; padding: 12px 18px; margin-bottom: 28px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; box-shadow: 0 4px 14px rgba(0,0,0,0.18); }
+  .switcher .sw-label { color: #d1d5db; font-size: 12.5px; font-weight: 600; }
+  .switcher button { background: #374151; color: #e5e7eb; border: 1px solid #4b5563; border-radius: 6px; padding: 6px 12px; font-size: 12.5px; font-family: inherit; cursor: pointer; }
+  .switcher button:hover { background: #4b5563; }
+  .switcher button.on { background: #059669; border-color: #059669; color: #fff; font-weight: 700; }
+  .switcher .sw-hint { color: #9ca3af; font-size: 11.5px; margin-left: auto; }
+
+  .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
+  .scroller { overflow-x: auto; }
+
+  table.t { width: 100%; border-collapse: collapse; }
+  table.t th { padding: 9px 12px; background: #f9fafb; border-bottom: 2px solid #e5e7eb; font-size: 12px; font-weight: 600; color: #4b5563; white-space: nowrap; text-align: center; }
+  table.t td { padding: 11px 12px; border-bottom: 1px solid #f3f4f6; font-size: 13px; white-space: nowrap; vertical-align: middle; text-align: center; }
+  table.t tbody tr:hover { background: #f9fafb; }
+  .num { text-align: right !important; }
+  .name-cell { text-align: left !important; padding-left: 16px !important; }
+  .name-main { font-size: 13px; font-weight: 600; color: #111827; }
+  .name-main a { color: #1d4ed8; text-decoration: underline; }
+  .name-sub { font-size: 11.5px; color: #6b7280; margin-top: 2px; }
+  .muted { color: #d1d5db; }
+  .profit { color: #047857; font-weight: 700; }
+  .profit-neg { color: #dc2626; font-weight: 700; }
+
+  /* グループ罫線（建物 / 土地 の区切り） */
+  .g-start { border-left: 1px solid #e5e7eb; }
+  th.grp { font-size: 11.5px; letter-spacing: 0.08em; padding-top: 7px; padding-bottom: 7px; }
+  th.grp-b { background: #f0f9ff; color: #075985; }
+  th.grp-l { background: #fefce8; color: #854d0e; }
+  td.zone-b { background: #fcfeff; }
+  td.zone-l { background: #fffdf5; }
+  tbody tr:hover td.zone-b { background: #f5fbfe; }
+  tbody tr:hover td.zone-l { background: #fefbef; }
+
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 9999px; font-size: 12px; font-weight: 600; }
+  .b-consult { background: #e0e7ff; color: #3730a3; }
+  .b-design  { background: #fce7f3; color: #9d174d; }
+  .b-estim   { background: #fef3c7; color: #92400e; }
+  .b-contr   { background: #dbeafe; color: #1e40af; }
+  .b-constr  { background: #fed7aa; color: #9a3412; }
+  .b-comp    { background: #d1fae5; color: #065f46; }
+  .b-deliv   { background: #a7f3d0; color: #064e3b; }
+
+  .btn-detail { display: inline-block; padding: 3px 12px; font-size: 13px; font-weight: 600; color: #b45309; border: 1px solid #b45309; border-radius: 5px; background: #fff; text-decoration: none; }
+
+  /* 案B / 案C のセル内スタック */
+  .stack { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+  .stack-row { display: flex; align-items: baseline; gap: 6px; }
+  .chip { display: inline-block; width: 20px; text-align: center; font-size: 10px; font-weight: 700; border-radius: 3px; padding: 1px 0; }
+  .chip-b { background: #e0f2fe; color: #075985; }
+  .chip-l { background: #fef9c3; color: #854d0e; }
+  .sum-main { font-size: 13.5px; font-weight: 600; }
+  .sum-sub { font-size: 11px; color: #9ca3af; margin-top: 3px; }
+
+  .scroll-hint { font-size: 11.5px; color: #b45309; background: #fffbeb; border: 1px solid #fde68a; border-radius: 5px; padding: 5px 10px; display: inline-block; margin-top: 10px; }
+  .fit-hint  { font-size: 11.5px; color: #065f46; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 5px; padding: 5px 10px; display: inline-block; margin-top: 10px; }
+
+  /* 判断リスト */
+  .decide { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 18px 22px; }
+  .decide h2 { font-size: 15px; font-weight: 700; margin: 0 0 4px; }
+  .decide .lead { font-size: 12.5px; color: #6b7280; margin: 0 0 16px; }
+  table.d { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.d th { text-align: left; background: #f9fafb; color: #4b5563; font-size: 12px; font-weight: 600; padding: 8px 12px; border-bottom: 1px solid #e5e7eb; }
+  table.d td { padding: 10px 12px; border-bottom: 1px solid #f3f4f6; vertical-align: top; line-height: 1.7; }
+  table.d td:first-child { width: 34%; font-weight: 600; color: #111827; }
+  table.d td:last-child { color: #6b7280; }
+  .rec-mark { color: #059669; font-weight: 700; }
+
+  .before-note { font-size: 12px; color: #9ca3af; margin: 0 0 10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1 class="page-title">注文住宅一覧 — 金額列追加 モック</h1>
+  <p class="page-sub">
+    /housing/custom-orders　｜　2026-07-23　｜　レイアウト 3 案 + 判断が必要な項目
+  </p>
+
+  <div class="callout">
+    <h2>今回のご依頼</h2>
+    <ul>
+      <li><b>案件番号を一覧から外す</b>（検索は今まで通り案件番号でもヒットします）</li>
+      <li><b>販売金額・原価額・粗利額</b>を <b>建物 / 土地</b> それぞれで表示する（＝金額が 1 列から 6 値に増える）</li>
+    </ul>
+  </div>
+
+  <div class="callout" style="border-left-color:#b45309;">
+    <h2 style="color:#92400e;">先に共有したい事実（レイアウト判断に効きます）</h2>
+    <ul>
+      <li><b>金額はすべて既存データで、追加入力は不要です。</b>建物＝<code>building_contract_price</code>／<code>building_cost</code>、土地＝<code>land_selling_price</code>／<code>land_cost</code>。粗利額は「販売金額 − 原価額」の計算値です。</li>
+      <li><b>土地の 3 値は「自社土地」の案件だけ入ります。</b>お客様所有土地の案件は、土地の販売も原価もそもそも発生しないので <span class="muted">—</span> になります（下の 2 行目がその例）。本番の注文住宅は現状すべて分譲地区画＝自社土地です。</li>
+      <li><b>商談〜見積り段階は金額が未入力のことが多く、行が <span class="muted">—</span> だらけになります</b>（下の 4 行目がその例）。</li>
+      <li><b>横幅が案の分かれ目になります。</b>実画面で表に使える幅は「モニタ幅 − サイドバー220px − 余白64px」。実測した各案の必要幅は <b>案A 1083px ／ 案B 819px ／ 案C 1054px</b> です。<br>
+        → <b>1440px モニタ（使える幅1156px）なら 3 案とも横スクロールなしで収まります。</b>
+        1280px モニタ（同996px）だと <b>案A と案C は横スクロールが出ます</b>。下のボタンで実際に切り替えてご確認ください。</li>
+      <li><b>行の高さは 3 案ともほぼ同じ</b>でした（62〜66px）。案件名＋住所ですでに 2 行使っているため、案B でセル内を 2 段にしても行はほとんど伸びません（実測 +3px）。</li>
+    </ul>
+  </div>
+
+  <div class="switcher">
+    <span class="sw-label">画面幅の想定：</span>
+    <button type="button" data-w="1156" class="on">1440px モニタ（サイドバー展開）→ 1156px</button>
+    <button type="button" data-w="996">1280px モニタ（サイドバー展開）→ 996px</button>
+    <button type="button" data-w="1320">1440px モニタ（サイドバー折りたたみ）→ 1320px</button>
+    <span class="sw-hint">↑ ここは固定表示されます。スクロールしながら切り替えてください</span>
+  </div>
+
+
+  <!-- ============================================ 現状 ============================================ -->
+  <div class="variant">
+    <div class="variant-head">
+      <span class="variant-tag" style="background:#9ca3af;">現状</span>
+      <span class="variant-title">今の一覧（比較用）</span>
+    </div>
+    <p class="before-note">案件番号 / 進捗 / 案件名 / 顧客名 / 請負金額 / 詳細 の 6 列。金額は建物の請負金額 1 つだけ。</p>
+    <div class="screen">
+      <div class="screen-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="sb-text">実画面の使用可能幅 1156px</span></div>
+      <div class="screen-body">
+        <div class="content-area">
+          <div class="card"><div class="scroller">
+            <table class="t">
+              <thead>
+                <tr>
+                  <th>案件番号</th><th>進捗</th><th style="text-align:left; padding-left:16px;">案件名</th>
+                  <th>顧客名</th><th>請負金額</th><th>詳細</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><a href="#" style="color:#1d4ed8; font-weight:600; text-decoration:underline;">CO-2026-0005</a></td>
+                  <td><span class="badge b-contr">契約</span></td>
+                  <td class="name-cell"><div class="name-main">石井町A様邸 新築工事</div><div class="name-sub">松山市石井町1-2-3</div></td>
+                  <td>山田 太郎</td>
+                  <td>28,500,000円</td>
+                  <td><a href="#" class="btn-detail">詳細</a></td>
+                </tr>
+                <tr>
+                  <td><a href="#" style="color:#1d4ed8; font-weight:600; text-decoration:underline;">CO-2026-0004</a></td>
+                  <td><span class="badge b-design">設計</span></td>
+                  <td class="name-cell"><div class="name-main">見奈良B様邸 新築工事</div><div class="name-sub">東温市見奈良456</div></td>
+                  <td>佐藤 花子</td>
+                  <td>32,000,000円</td>
+                  <td><a href="#" class="btn-detail">詳細</a></td>
+                </tr>
+              </tbody>
+            </table>
+          </div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ============================================ 案A ============================================ -->
+  <div class="variant">
+    <div class="variant-head">
+      <span class="variant-tag rec">案A ／ 推奨</span>
+      <span class="variant-title">2段ヘッダーで「建物」「土地」をグループ化（6列フル展開）</span>
+    </div>
+    <p class="variant-note">
+      建物 3 列・土地 3 列を横に並べ、上段のヘッダーでグループを示します。背景の薄い色分けで、視線が建物ゾーン／土地ゾーンを行き来しても迷いません。<br>
+      <b>長所：</b>6 つの数字が全部そのまま並ぶので、案件をまたいだ「縦の比較」（どの案件の建物粗利が厚いか等）が一番しやすい。Excel に近い見え方。<br>
+      <b>短所：</b>必要幅 <b>1083px</b> と 3 案でいちばん広く、<b>1280px モニタでは横スクロールが出ます</b>（上のボタンで確認できます）。列数が 10 と多く、1 列あたりの余白は詰まります。
+    </p>
+    <div class="screen">
+      <div class="screen-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="sb-text">実画面の使用可能幅 1156px</span></div>
+      <div class="screen-body">
+        <div class="content-area">
+          <div class="card"><div class="scroller">
+            <table class="t">
+              <thead>
+                <tr>
+                  <th rowspan="2">進捗</th>
+                  <th rowspan="2" style="text-align:left; padding-left:16px;">案件名</th>
+                  <th rowspan="2">顧客名</th>
+                  <th class="grp grp-b g-start" colspan="3">建　物</th>
+                  <th class="grp grp-l g-start" colspan="3">土　地</th>
+                  <th rowspan="2" class="g-start">詳細</th>
+                </tr>
+                <tr>
+                  <th class="g-start">販売金額</th><th>原価額</th><th>粗利額</th>
+                  <th class="g-start">販売金額</th><th>原価額</th><th>粗利額</th>
+                </tr>
+              </thead>
+              <tbody>
+                <!-- 1 -->
+                <tr>
+                  <td><span class="badge b-contr">契約</span></td>
+                  <td class="name-cell"><div class="name-main"><a href="#">石井町A様邸 新築工事</a></div><div class="name-sub">松山市石井町1-2-3</div></td>
+                  <td>山田 太郎</td>
+                  <td class="num zone-b g-start">28,500,000円</td>
+                  <td class="num zone-b">21,300,000円</td>
+                  <td class="num zone-b profit">7,200,000円</td>
+                  <td class="num zone-l g-start">12,800,000円</td>
+                  <td class="num zone-l">9,600,000円</td>
+                  <td class="num zone-l profit">3,200,000円</td>
+                  <td class="g-start"><a href="#" class="btn-detail">詳細</a></td>
+                </tr>
+                <!-- 2 お客様所有土地 -->
+                <tr>
+                  <td><span class="badge b-design">設計</span></td>
+                  <td class="name-cell"><div class="name-main"><a href="#">見奈良B様邸 新築工事</a></div><div class="name-sub">東温市見奈良456</div></td>
+                  <td>佐藤 花子</td>
+                  <td class="num zone-b g-start">32,000,000円</td>
+                  <td class="num zone-b">24,800,000円</td>
+                  <td class="num zone-b profit">7,200,000円</td>
+                  <td class="num zone-l g-start muted">—</td>
+                  <td class="num zone-l muted">—</td>
+                  <td class="num zone-l muted">—</td>
+                  <td class="g-start"><a href="#" class="btn-detail">詳細</a></td>
+                </tr>
+                <!-- 3 -->
+                <tr>
+                  <td><span class="badge b-deliv">引渡し</span></td>
+                  <td class="name-cell"><div class="name-main"><a href="#">筒井C様邸 新築工事</a></div><div class="name-sub">伊予郡松前町筒井789</div></td>
+                  <td>鈴木 一郎</td>
+                  <td class="num zone-b g-start">26,800,000円</td>
+                  <td class="num zone-b">20,100,000円</td>
+                  <td class="num zone-b profit">6,700,000円</td>
+                  <td class="num zone-l g-start">11,500,000円</td>
+                  <td class="num zone-l">8,900,000円</td>
+                  <td class="num zone-l profit">2,600,000円</td>
+                  <td class="g-start"><a href="#" class="btn-detail">詳細</a></td>
+                </tr>
+                <!-- 4 未入力 -->
+                <tr>
+                  <td><span class="badge b-consult">商談</span></td>
+                  <td class="name-cell"><div class="name-main"><a href="#">市場D様邸 新築工事</a></div><div class="name-sub">伊予市市場321</div></td>
+                  <td>高橋 実</td>
+                  <td class="num zone-b g-start muted">—</td>
+                  <td class="num zone-b muted">—</td>
+                  <td class="num zone-b muted">—</td>
+                  <td class="num zone-l g-start muted">—</td>
+                  <td class="num zone-l muted">—</td>
+                  <td class="num zone-l muted">—</td>
+                  <td class="g-start"><a href="#" class="btn-detail">詳細</a></td>
+                </tr>
+                <!-- 5 -->
+                <tr>
+                  <td><span class="badge b-constr">着工</span></td>
+                  <td class="name-cell"><div class="name-main"><a href="#">北条E様邸 新築工事</a></div><div class="name-sub">松山市北条辻654</div></td>
+                  <td>田中 美咲</td>
+                  <td class="num zone-b g-start">35,000,000円</td>
+                  <td class="num zone-b">27,400,000円</td>
+                  <td class="num zone-b profit">7,600,000円</td>
+                  <td class="num zone-l g-start">14,200,000円</td>
+                  <td class="num zone-l">11,000,000円</td>
+                  <td class="num zone-l profit">3,200,000円</td>
+                  <td class="g-start"><a href="#" class="btn-detail">詳細</a></td>
+                </tr>
+                <!-- 6 赤字 -->
+                <tr>
+                  <td><span class="badge b-comp">完成</span></td>
+                  <td class="name-cell"><div class="name-main"><a href="#">余戸F様邸 新築工事</a></div><div class="name-sub">松山市余戸南987</div></td>
+                  <td>渡辺 健</td>
+                  <td class="num zone-b g-start">24,000,000円</td>
+                  <td class="num zone-b">25,100,000円</td>
+                  <td class="num zone-b profit-neg">-1,100,000円</td>
+                  <td class="num zone-l g-start">10,000,000円</td>
+                  <td class="num zone-l">9,200,000円</td>
+                  <td class="num zone-l profit">800,000円</td>
+                  <td class="g-start"><a href="#" class="btn-detail">詳細</a></td>
+                </tr>
+              </tbody>
+            </table>
+          </div></div>
+        </div>
+      </div>
+    </div>
+    <span class="fit-badge"></span>
+  </div>
+
+
+  <!-- ============================================ 案B ============================================ -->
+  <div class="variant">
+    <div class="variant-head">
+      <span class="variant-tag">案B</span>
+      <span class="variant-title">3列に集約し、セルの中で「建 / 土」を上下に並べる</span>
+    </div>
+    <p class="variant-note">
+      列は 販売金額・原価額・粗利額 の 3 つだけ。各セルの中に <span class="chip chip-b" style="width:auto;padding:1px 5px;">建</span> <span class="chip chip-l" style="width:auto;padding:1px 5px;">土</span> の 2 行を入れます。<br>
+      <b>長所：</b>必要幅 <b>819px</b> と圧倒的に狭く、<b>1280px モニタでも横スクロールが出ません</b>。列が 7 つなので 1 列ずつゆったり見えます。行の高さは案A比 +3px でほぼ変わりません（案件名＋住所ですでに 2 行あるため）。<br>
+      <b>短所：</b>数字が「建・土」で交互に並ぶため、<b>建物粗利だけを案件横断で縦に比べる</b>のはやりにくくなります。1 セルに 2 つの数字が入るので、目で追う手数は増えます。
+    </p>
+    <div class="screen">
+      <div class="screen-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="sb-text">実画面の使用可能幅 1156px</span></div>
+      <div class="screen-body">
+        <div class="content-area">
+          <div class="card"><div class="scroller">
+            <table class="t">
+              <thead>
+                <tr>
+                  <th>進捗</th>
+                  <th style="text-align:left; padding-left:16px;">案件名</th>
+                  <th>顧客名</th>
+                  <th>販売金額</th>
+                  <th>原価額</th>
+                  <th>粗利額</th>
+                  <th>詳細</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><span class="badge b-contr">契約</span></td>
+                  <td class="name-cell"><div class="name-main"><a href="#">石井町A様邸 新築工事</a></div><div class="name-sub">松山市石井町1-2-3</div></td>
+                  <td>山田 太郎</td>
+                  <td><div class="stack">
+                    <div class="stack-row"><span class="chip chip-b">建</span><span>28,500,000円</span></div>
+                    <div class="stack-row"><span class="chip chip-l">土</span><span>12,800,000円</span></div>
+                  </div></td>
+                  <td><div class="stack">
+                    <div class="stack-row"><span class="chip chip-b">建</span><span>21,300,000円</span></div>
+                    <div class="stack-row"><span class="chip chip-l">土</span><span>9,600,000円</span></div>
+                  </div></td>
+                  <td><div class="stack">
+                    <div class="stack-row"><span class="chip chip-b">建</span><span class="profit">7,200,000円</span></div>
+                    <div class="stack-row"><span class="chip chip-l">土</span><span class="profit">3,200,000円</span></div>
+                  </div></td>
+                  <td><a href="#" class="btn-detail">詳細</a></td>
+                </tr>
+                <tr>
+                  <td><span class="badge b-design">設計</span></td>
+                  <td class="name-cell"><div class="name-main"><a href="#">見奈良B様邸 新築工事</a></div><div class="name-sub">東温市見奈良456</div></td>
+                  <td>佐藤 花子</td>
+                  <td><div class="stack">
+                    <div class="stack-row"><span class="chip chip-b">建</span><span>32,000,000円</span></div>
+                    <div class="stack-row"><span class="chip chip-l">土</span><span class="muted">—</span></div>
+                  </div></td>
+                  <td><div class="stack">
+                    <div class="stack-row"><span class="chip chip-b">建</span><span>24,800,000円</span></div>
+                    <div class="stack-row"><span class="chip chip-l">土</span><span class="muted">—</span></div>
+                  </div></td>
+                  <td><div class="stack">
+                    <div class="stack-row"><span class="chip chip-b">建</span><span class="profit">7,200,000円</span></div>
+                    <div class="stack-row"><span class="chip chip-l">土</span><span class="muted">—</span></div>
+                  </div></td>
+                  <td><a href="#" class="btn-detail">詳細</a></td>
+                </tr>
+                <tr>
+                  <td><span class="badge b-deliv">引渡し</span></td>
+                  <td class="name-cell"><div class="name-main"><a href="#">筒井C様邸 新築工事</a></div><div class="name-sub">伊予郡松前町筒井789</div></td>
+                  <td>鈴木 一郎</td>
+                  <td><div class="stack">
+                    <div class="stack-row"><span class="chip chip-b">建</span><span>26,800,000円</span></div>
+                    <div class="stack-row"><span class="chip chip-l">土</span><span>11,500,000円</span></div>
+                  </div></td>
+                  <td><div class="stack">
+                    <div class="stack-row"><span class="chip chip-b">建</span><span>20,100,000円</span></div>
+                    <div class="stack-row"><span class="chip chip-l">土</span><span>8,900,000円</span></div>
+                  </div></td>
+                  <td><div class="stack">
+                    <div class="stack-row"><span class="chip chip-b">建</span><span class="profit">6,700,000円</span></div>
+                    <div class="stack-row"><span class="chip chip-l">土</span><span class="profit">2,600,000円</span></div>
+                  </div></td>
+                  <td><a href="#" class="btn-detail">詳細</a></td>
+                </tr>
+                <tr>
+                  <td><span class="badge b-consult">商談</span></td>
+                  <td class="name-cell"><div class="name-main"><a href="#">市場D様邸 新築工事</a></div><div class="name-sub">伊予市市場321</div></td>
+                  <td>高橋 実</td>
+                  <td><div class="stack">
+                    <div class="stack-row"><span class="chip chip-b">建</span><span class="muted">—</span></div>
+                    <div class="stack-row"><span class="chip chip-l">土</span><span class="muted">—</span></div>
+                  </div></td>
+                  <td><div class="stack">
+                    <div class="stack-row"><span class="chip chip-b">建</span><span class="muted">—</span></div>
+                    <div class="stack-row"><span class="chip chip-l">土</span><span class="muted">—</span></div>
+                  </div></td>
+                  <td><div class="stack">
+                    <div class="stack-row"><span class="chip chip-b">建</span><span class="muted">—</span></div>
+                    <div class="stack-row"><span class="chip chip-l">土</span><span class="muted">—</span></div>
+                  </div></td>
+                  <td><a href="#" class="btn-detail">詳細</a></td>
+                </tr>
+                <tr>
+                  <td><span class="badge b-constr">着工</span></td>
+                  <td class="name-cell"><div class="name-main"><a href="#">北条E様邸 新築工事</a></div><div class="name-sub">松山市北条辻654</div></td>
+                  <td>田中 美咲</td>
+                  <td><div class="stack">
+                    <div class="stack-row"><span class="chip chip-b">建</span><span>35,000,000円</span></div>
+                    <div class="stack-row"><span class="chip chip-l">土</span><span>14,200,000円</span></div>
+                  </div></td>
+                  <td><div class="stack">
+                    <div class="stack-row"><span class="chip chip-b">建</span><span>27,400,000円</span></div>
+                    <div class="stack-row"><span class="chip chip-l">土</span><span>11,000,000円</span></div>
+                  </div></td>
+                  <td><div class="stack">
+                    <div class="stack-row"><span class="chip chip-b">建</span><span class="profit">7,600,000円</span></div>
+                    <div class="stack-row"><span class="chip chip-l">土</span><span class="profit">3,200,000円</span></div>
+                  </div></td>
+                  <td><a href="#" class="btn-detail">詳細</a></td>
+                </tr>
+                <tr>
+                  <td><span class="badge b-comp">完成</span></td>
+                  <td class="name-cell"><div class="name-main"><a href="#">余戸F様邸 新築工事</a></div><div class="name-sub">松山市余戸南987</div></td>
+                  <td>渡辺 健</td>
+                  <td><div class="stack">
+                    <div class="stack-row"><span class="chip chip-b">建</span><span>24,000,000円</span></div>
+                    <div class="stack-row"><span class="chip chip-l">土</span><span>10,000,000円</span></div>
+                  </div></td>
+                  <td><div class="stack">
+                    <div class="stack-row"><span class="chip chip-b">建</span><span>25,100,000円</span></div>
+                    <div class="stack-row"><span class="chip chip-l">土</span><span>9,200,000円</span></div>
+                  </div></td>
+                  <td><div class="stack">
+                    <div class="stack-row"><span class="chip chip-b">建</span><span class="profit-neg">-1,100,000円</span></div>
+                    <div class="stack-row"><span class="chip chip-l">土</span><span class="profit">800,000円</span></div>
+                  </div></td>
+                  <td><a href="#" class="btn-detail">詳細</a></td>
+                </tr>
+              </tbody>
+            </table>
+          </div></div>
+        </div>
+      </div>
+    </div>
+    <span class="fit-badge"></span>
+  </div>
+
+
+  <!-- ============================================ 案C ============================================ -->
+  <div class="variant">
+    <div class="variant-head">
+      <span class="variant-tag">案C</span>
+      <span class="variant-title">合計を主役にして、建物 / 土地 の内訳を小さく添える（＋粗利率）</span>
+    </div>
+    <p class="variant-note">
+      各列は「合計」を大きく、その下に <span style="color:#9ca3af;">建 28,500,000 ・ 土 12,800,000</span> を小さく添えます。建売物件一覧に合わせて粗利率も付けています。<br>
+      <b>長所：</b>経営目線で最初に見たい「案件全体でいくら儲かるのか」が即座に読める。粗利率が付くと案件の良し悪しを一目で比較できます。<br>
+      <b>短所：</b>内訳の文字が小さく、建物／土地の数字を厳密に読み取る用途には向きません。必要幅 <b>1054px</b> で、<b>1280px モニタでは横スクロールが出ます</b>。合計は現状 DB に無い計算値なので、<b>「建物＋土地の合計」という見方を普段されているかどうか</b>で価値が変わります。
+    </p>
+    <div class="screen">
+      <div class="screen-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="sb-text">実画面の使用可能幅 1156px</span></div>
+      <div class="screen-body">
+        <div class="content-area">
+          <div class="card"><div class="scroller">
+            <table class="t">
+              <thead>
+                <tr>
+                  <th>進捗</th>
+                  <th style="text-align:left; padding-left:16px;">案件名</th>
+                  <th>顧客名</th>
+                  <th>販売金額</th>
+                  <th>原価額</th>
+                  <th>粗利額</th>
+                  <th>粗利率</th>
+                  <th>詳細</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><span class="badge b-contr">契約</span></td>
+                  <td class="name-cell"><div class="name-main"><a href="#">石井町A様邸 新築工事</a></div><div class="name-sub">松山市石井町1-2-3</div></td>
+                  <td>山田 太郎</td>
+                  <td class="num"><div class="sum-main">41,300,000円</div><div class="sum-sub">建 28,500,000 ・ 土 12,800,000</div></td>
+                  <td class="num"><div class="sum-main">30,900,000円</div><div class="sum-sub">建 21,300,000 ・ 土 9,600,000</div></td>
+                  <td class="num"><div class="sum-main profit">10,400,000円</div><div class="sum-sub">建 7,200,000 ・ 土 3,200,000</div></td>
+                  <td class="num profit">25.2%</td>
+                  <td><a href="#" class="btn-detail">詳細</a></td>
+                </tr>
+                <tr>
+                  <td><span class="badge b-design">設計</span></td>
+                  <td class="name-cell"><div class="name-main"><a href="#">見奈良B様邸 新築工事</a></div><div class="name-sub">東温市見奈良456</div></td>
+                  <td>佐藤 花子</td>
+                  <td class="num"><div class="sum-main">32,000,000円</div><div class="sum-sub">建 32,000,000 ・ 土 —</div></td>
+                  <td class="num"><div class="sum-main">24,800,000円</div><div class="sum-sub">建 24,800,000 ・ 土 —</div></td>
+                  <td class="num"><div class="sum-main profit">7,200,000円</div><div class="sum-sub">建 7,200,000 ・ 土 —</div></td>
+                  <td class="num profit">22.5%</td>
+                  <td><a href="#" class="btn-detail">詳細</a></td>
+                </tr>
+                <tr>
+                  <td><span class="badge b-deliv">引渡し</span></td>
+                  <td class="name-cell"><div class="name-main"><a href="#">筒井C様邸 新築工事</a></div><div class="name-sub">伊予郡松前町筒井789</div></td>
+                  <td>鈴木 一郎</td>
+                  <td class="num"><div class="sum-main">38,300,000円</div><div class="sum-sub">建 26,800,000 ・ 土 11,500,000</div></td>
+                  <td class="num"><div class="sum-main">29,000,000円</div><div class="sum-sub">建 20,100,000 ・ 土 8,900,000</div></td>
+                  <td class="num"><div class="sum-main profit">9,300,000円</div><div class="sum-sub">建 6,700,000 ・ 土 2,600,000</div></td>
+                  <td class="num profit">24.3%</td>
+                  <td><a href="#" class="btn-detail">詳細</a></td>
+                </tr>
+                <tr>
+                  <td><span class="badge b-consult">商談</span></td>
+                  <td class="name-cell"><div class="name-main"><a href="#">市場D様邸 新築工事</a></div><div class="name-sub">伊予市市場321</div></td>
+                  <td>高橋 実</td>
+                  <td class="num"><div class="sum-main muted">—</div><div class="sum-sub">建 — ・ 土 —</div></td>
+                  <td class="num"><div class="sum-main muted">—</div><div class="sum-sub">建 — ・ 土 —</div></td>
+                  <td class="num"><div class="sum-main muted">—</div><div class="sum-sub">建 — ・ 土 —</div></td>
+                  <td class="num muted">—</td>
+                  <td><a href="#" class="btn-detail">詳細</a></td>
+                </tr>
+                <tr>
+                  <td><span class="badge b-constr">着工</span></td>
+                  <td class="name-cell"><div class="name-main"><a href="#">北条E様邸 新築工事</a></div><div class="name-sub">松山市北条辻654</div></td>
+                  <td>田中 美咲</td>
+                  <td class="num"><div class="sum-main">49,200,000円</div><div class="sum-sub">建 35,000,000 ・ 土 14,200,000</div></td>
+                  <td class="num"><div class="sum-main">38,400,000円</div><div class="sum-sub">建 27,400,000 ・ 土 11,000,000</div></td>
+                  <td class="num"><div class="sum-main profit">10,800,000円</div><div class="sum-sub">建 7,600,000 ・ 土 3,200,000</div></td>
+                  <td class="num profit">22.0%</td>
+                  <td><a href="#" class="btn-detail">詳細</a></td>
+                </tr>
+                <tr>
+                  <td><span class="badge b-comp">完成</span></td>
+                  <td class="name-cell"><div class="name-main"><a href="#">余戸F様邸 新築工事</a></div><div class="name-sub">松山市余戸南987</div></td>
+                  <td>渡辺 健</td>
+                  <td class="num"><div class="sum-main">34,000,000円</div><div class="sum-sub">建 24,000,000 ・ 土 10,000,000</div></td>
+                  <td class="num"><div class="sum-main">34,300,000円</div><div class="sum-sub">建 25,100,000 ・ 土 9,200,000</div></td>
+                  <td class="num"><div class="sum-main profit-neg">-300,000円</div><div class="sum-sub">建 -1,100,000 ・ 土 800,000</div></td>
+                  <td class="num profit-neg">-0.9%</td>
+                  <td><a href="#" class="btn-detail">詳細</a></td>
+                </tr>
+              </tbody>
+            </table>
+          </div></div>
+        </div>
+      </div>
+    </div>
+    <span class="fit-badge"></span>
+  </div>
+
+
+  <!-- ============================================ 判断項目 ============================================ -->
+  <div class="decide">
+    <h2>判断していただきたい項目</h2>
+    <p class="lead">レイアウト（案A / 案B / 案C）に加えて、下記も合わせてご指示ください。「おまかせ」の場合は右端の推奨で進めます。</p>
+    <table class="d">
+      <thead>
+        <tr><th>項目</th><th>選択肢と補足</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>① レイアウト</td>
+          <td>
+            案A（6列フル展開・横スクロールあり）／案B（3列集約・行が2倍高）／案C（合計主役＋内訳小）<br>
+            <span class="rec-mark">推奨：案A</span>　— 「建物と土地それぞれの数字を見たい」というご依頼の主旨に最も忠実で、数字の読み取り精度が落ちません。
+          </td>
+        </tr>
+        <tr>
+          <td>② 粗利率を出すか</td>
+          <td>
+            建売物件一覧には「粗利率」列があります。注文住宅にも付けると事業横断で見え方が揃います。付ける場合、建物・土地それぞれか、合計だけか。<br>
+            <span class="rec-mark">推奨：案A を選ぶ場合は付けない</span>　— これ以上列を増やすと横スクロール量が増えます。案C を選ぶ場合は合計の粗利率のみ付ける。
+          </td>
+        </tr>
+        <tr>
+          <td>③ 合計（建物＋土地）を出すか</td>
+          <td>
+            案A に「合計」グループ（販売／原価／粗利の3列）を足すことも可能ですが、9 列 → 12 列になり横スクロールが大幅に増えます。<br>
+            <span class="rec-mark">推奨：出さない</span>　— 合計は案件詳細画面に既にあります。一覧では内訳の比較を優先。
+          </td>
+        </tr>
+        <tr>
+          <td>④ 案件名をリンクにするか</td>
+          <td>
+            案件番号を消すと、詳細へ飛ぶ導線が右端の「詳細」ボタンだけになります。モックでは案件名を青リンクにしてあります。<br>
+            <span class="rec-mark">推奨：リンクにする</span>　— 行の左端からも詳細に飛べた方が操作が速くなります。
+          </td>
+        </tr>
+        <tr>
+          <td>⑤ 案件番号は本当に完全に消すか</td>
+          <td>
+            列としては消しますが、<b>キーワード検索は案件番号でも引き続きヒットします</b>（検索窓の説明文も現状のまま）。<br>
+            代わりに案件名の下に小さく添える（住所と並べて <span style="font-size:11px;color:#6b7280;">CO-2026-0005 ・ 松山市石井町1-2-3</span>）ことも可能です。<br>
+            <span class="rec-mark">推奨：完全に消す</span>　— ご依頼どおり。必要になれば後から添える形に戻せます。
+          </td>
+        </tr>
+        <tr>
+          <td>⑥ 進捗フィルターの並び</td>
+          <td>
+            今回は触らない想定です（ステータス絞り込み・キーワード検索・クリアボタンは現状のまま）。
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<script>
+// 画面幅スイッチャー ＋ 各案の「収まる / はみ出す」実測バッジ
+(function () {
+  var buttons  = document.querySelectorAll('.switcher button');
+  var variants = document.querySelectorAll('.variant');
+
+  function measure() {
+    variants.forEach(function (v) {
+      var table  = v.querySelector('table.t');
+      var scroll = v.querySelector('.scroller');
+      var badge  = v.querySelector('.fit-badge');
+      if (!table || !scroll || !badge) return;
+
+      // 表の「必要幅」＝ width:100% を外した自然幅
+      var prev = table.style.width;
+      table.style.width = 'max-content';
+      var needed = Math.round(table.getBoundingClientRect().width);
+      table.style.width = prev;
+
+      var avail = Math.round(scroll.clientWidth);
+
+      // ブラウザ窓が狭いと max-width:100% で切り詰められ、判定が実機と食い違う
+      var want = parseInt(getComputedStyle(document.documentElement)
+                   .getPropertyValue('--content-w'), 10) || 1156;
+      if (avail === 0) {
+        badge.className = 'fit-badge';
+        badge.textContent = '';
+        return;
+      }
+      var clamped = (avail < want - 6)
+        ? '　※ブラウザ窓が狭いため ' + want + 'px を再現できていません。窓を広げてご確認ください'
+        : '';
+
+      if (needed > avail + 1) {
+        badge.className = 'fit-badge scroll-hint';
+        badge.textContent = '↔ 必要幅 ' + needed + 'px ＞ 使える幅 ' + avail + 'px … 横スクロールが出ます' + clamped;
+      } else {
+        badge.className = 'fit-badge fit-hint';
+        badge.textContent = '✓ 必要幅 ' + needed + 'px ≦ 使える幅 ' + avail + 'px … 横スクロールなしで収まります' + clamped;
+      }
+    });
+  }
+
+  buttons.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var w = btn.getAttribute('data-w');
+      document.documentElement.style.setProperty('--content-w', w + 'px');
+      buttons.forEach(function (b) { b.classList.remove('on'); });
+      btn.classList.add('on');
+      document.querySelectorAll('.sb-text').forEach(function (el) {
+        el.textContent = '実画面の使用可能幅 ' + w + 'px';
+      });
+      measure();
+    });
+  });
+
+  measure();
+  window.addEventListener('resize', measure);
+})();
+</script>
+</body>
+</html>

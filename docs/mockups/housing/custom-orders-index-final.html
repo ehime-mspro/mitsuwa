@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>注文住宅一覧 — 最終確認モック（A-2 確定）</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', sans-serif; margin: 0; padding: 26px 22px 80px; background: #e5e7eb; color: #111827; }
+  .wrap { max-width: 1500px; margin: 0 auto; }
+
+  .page-title { font-size: 20px; font-weight: 700; margin: 0 0 6px; }
+  .page-sub { font-size: 13px; color: #6b7280; margin: 0 0 22px; }
+
+  .callout { background: #fff; border: 1px solid #d1d5db; border-left: 3px solid #059669; border-radius: 8px; padding: 14px 18px; margin-bottom: 20px; }
+  .callout h2 { font-size: 13px; font-weight: 700; margin: 0 0 8px; color: #065f46; }
+  .callout ul { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.95; color: #374151; }
+  .callout code { background: #f3f4f6; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+  .chk { color: #059669; font-weight: 700; }
+
+  .switcher { position: sticky; top: 0; z-index: 60; background: #111827; border-radius: 8px; padding: 12px 18px; margin-bottom: 22px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; box-shadow: 0 4px 14px rgba(0,0,0,0.18); }
+  .switcher .sw-label { color: #d1d5db; font-size: 12.5px; font-weight: 600; }
+  .switcher button { background: #374151; color: #e5e7eb; border: 1px solid #4b5563; border-radius: 6px; padding: 6px 12px; font-size: 12.5px; font-family: inherit; cursor: pointer; }
+  .switcher button:hover { background: #4b5563; }
+  .switcher button.on { background: #059669; border-color: #059669; color: #fff; font-weight: 700; }
+
+  /* ============ 実画面フレーム（サイドバー + コンテンツ） ============
+     フレームは指定モニタ幅の「実寸」でレイアウトし、はみ出す場合だけ
+     transform: scale() で見た目を縮める。こうすると閲覧者の窓幅に関係なく
+     1440px 実機と同じ折り返し・同じ横スクロール量が再現できる。
+     ⚠ scale は getBoundingClientRect() に効くので、幅の実測は
+     offsetWidth / clientWidth（レイアウト値＝スケール非依存）で行うこと。 */
+  .stage { overflow: hidden; }
+  .browser { border: 1px solid #9ca3af; border-radius: 10px; overflow: hidden; box-shadow: 0 6px 22px rgba(0,0,0,0.13); background: #fff; width: var(--screen-w, 1440px); transform-origin: top left; }
+  .browser-bar { display: flex; align-items: center; gap: 7px; background: #f3f4f6; border-bottom: 1px solid #d1d5db; padding: 8px 14px; }
+  .browser-bar .dot { width: 10px; height: 10px; border-radius: 50%; background: #d1d5db; }
+  .browser-url { flex: 1; background: #fff; border: 1px solid #e5e7eb; border-radius: 5px; padding: 3px 10px; font-size: 11.5px; color: #6b7280; margin-left: 6px; }
+  .browser-w { font-size: 11.5px; color: #9ca3af; white-space: nowrap; }
+  .app { display: flex; height: 620px; overflow: hidden; }
+
+  /* サイドバー 220px（実寸） */
+  .side { width: 220px; min-width: 220px; background: #fff; border-right: 1px solid #e5e7eb; padding: 16px 0 24px; overflow-y: auto; }
+  .side-brand { font-size: 12px; font-weight: 700; color: #059669; padding: 0 16px 12px; letter-spacing: .03em; }
+  .side-grp { font-size: 11.5px; font-weight: 700; color: #6b7280; padding: 10px 16px 4px; }
+  .side-item { display: block; font-size: 12.5px; color: #4b5563; padding: 6px 16px 6px 26px; text-decoration: none; }
+  .side-item:hover { background: #f9fafb; }
+  .side-item.act { background: #ecfdf5; color: #047857; font-weight: 700; border-left: 3px solid #059669; padding-left: 23px; }
+
+  /* コンテンツ領域（p-8 = 32px） */
+  .main { flex: 1; min-width: 0; background: #f3f4f6; overflow-y: auto; padding: 32px; }
+  .crumb { font-size: 11.5px; color: #9ca3af; margin-bottom: 18px; }
+  .crumb a { color: #9ca3af; text-decoration: none; }
+  .head-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+  .h1 { font-size: 17px; font-weight: 700; margin: 0; }
+  .btn-new { display: inline-flex; align-items: center; gap: 6px; background: #059669; color: #fff; font-size: 13px; font-weight: 600; padding: 9px 16px; border-radius: 6px; text-decoration: none; white-space: nowrap; }
+
+  .filterbar { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px 13px; margin-bottom: 15px; }
+  .filterbar select, .filterbar input { height: 34px; padding: 0 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; color: #374151; background: #fff; font-family: inherit; }
+  .filterbar input { flex: 1; min-width: 140px; }
+  .filterbar .clear { height: 34px; padding: 0 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 12px; color: #9ca3af; background: #fff; display: inline-flex; align-items: center; text-decoration: none; white-space: nowrap; }
+
+  .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
+  .scroller { overflow-x: auto; }
+
+  table.t { width: 100%; border-collapse: collapse; }
+  table.t th { padding: 9px 10px; background: #f9fafb; border-bottom: 2px solid #e5e7eb; font-size: 12px; font-weight: 600; color: #4b5563; white-space: nowrap; text-align: center; }
+  table.t td { padding: 10px; border-bottom: 1px solid #f3f4f6; font-size: 13px; white-space: nowrap; vertical-align: middle; text-align: center; }
+  table.t tbody tr:hover { background: #f9fafb; }
+  .num { text-align: right !important; }
+  .name-cell { text-align: left !important; padding-left: 16px !important; }
+  .name-main { font-size: 13px; font-weight: 600; }
+  .name-main a { color: #1d4ed8; text-decoration: underline; }
+  .name-sub { font-size: 11.5px; color: #6b7280; margin-top: 2px; }
+  .muted { color: #d1d5db; }
+
+  .profit { color: #047857; font-weight: 700; }
+  .profit-neg { color: #dc2626; font-weight: 700; }
+  .tax-sub { font-size: 11px; color: #9ca3af; margin-top: 2px; }
+
+  .g-start { border-left: 1px solid #e5e7eb; }
+  th.grp { font-size: 11.5px; letter-spacing: .08em; padding-top: 6px; padding-bottom: 6px; }
+  th.grp-b { background: #f0f9ff; color: #075985; }
+  th.grp-l { background: #fefce8; color: #854d0e; }
+  th.grp small { display: block; font-size: 10px; letter-spacing: 0; font-weight: 500; opacity: .75; margin-top: 1px; }
+  th .sub { display: block; font-size: 10px; font-weight: 400; color: #9ca3af; }
+  td.zone-b { background: #fcfeff; }
+  td.zone-l { background: #fffdf5; }
+  tbody tr:hover td.zone-b { background: #f5fbfe; }
+  tbody tr:hover td.zone-l { background: #fefbef; }
+
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 9999px; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .b-consult { background: #e0e7ff; color: #3730a3; }
+  .b-design  { background: #fce7f3; color: #9d174d; }
+  .b-estim   { background: #fef3c7; color: #92400e; }
+  .b-contr   { background: #dbeafe; color: #1e40af; }
+  .b-constr  { background: #fed7aa; color: #9a3412; }
+  .b-comp    { background: #d1fae5; color: #065f46; }
+  .b-deliv   { background: #a7f3d0; color: #064e3b; }
+
+  .btn-detail { display: inline-block; padding: 3px 12px; font-size: 13px; font-weight: 600; color: #b45309; border: 1px solid #b45309; border-radius: 5px; background: #fff; text-decoration: none; }
+
+  .pager { display: flex; justify-content: center; gap: 2px; margin-top: 16px; }
+  .pager span, .pager a { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 4px; font-size: 12px; border: 1px solid #d1d5db; background: #fff; color: #374151; text-decoration: none; }
+  .pager .cur { background: #059669; border-color: #059669; color: #fff; font-weight: 700; }
+  .pager .off { color: #d1d5db; border-color: #e5e7eb; }
+  .total { font-size: 13px; color: #6b7280; text-align: right; margin-top: 8px; }
+
+  .measure { font-size: 12px; border-radius: 6px; padding: 7px 12px; display: inline-block; margin-top: 12px; }
+  .m-fit  { color: #065f46; background: #ecfdf5; border: 1px solid #a7f3d0; }
+  .m-over { color: #b45309; background: #fffbeb; border: 1px solid #fde68a; }
+
+  .decide { background: #fff; border: 1px solid #d1d5db; border-radius: 8px; padding: 18px 22px; margin-top: 26px; }
+  .decide h2 { font-size: 15px; font-weight: 700; margin: 0 0 12px; }
+  table.d { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.d th { text-align: left; background: #f9fafb; color: #4b5563; font-size: 12px; font-weight: 600; padding: 8px 12px; border-bottom: 1px solid #e5e7eb; }
+  table.d td { padding: 10px 12px; border-bottom: 1px solid #f3f4f6; vertical-align: top; line-height: 1.75; }
+  table.d td:first-child { width: 26%; font-weight: 600; color: #111827; }
+  table.d td:last-child { color: #6b7280; }
+  .rec-mark { color: #059669; font-weight: 700; }
+  mark { background: #fef3c7; padding: 0 3px; border-radius: 2px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1 class="page-title">注文住宅一覧 — 最終確認モック</h1>
+  <p class="page-sub">/housing/custom-orders　｜　2026-07-23　｜　A-2 確定版・実画面そのままの再現</p>
+
+  <div class="callout">
+    <h2>確定した仕様（すべて反映済み）</h2>
+    <ul>
+      <li><span class="chk">✓</span> レイアウトは <b>案A</b>（2段ヘッダーで「建物」「土地」をグループ化）、詰め方は <b>A-2</b>（粗利率を独立列に）</li>
+      <li><span class="chk">✓</span> グループ順は <b>建物 → 土地</b></li>
+      <li><span class="chk">✓</span> 建物の販売金額は <b>税抜が主・税込が副</b>（土地は非課税なのでグループ見出しに明記）</li>
+      <li><span class="chk">✓</span> <b>粗利率</b>を建物・土地それぞれ独立列で表示</li>
+      <li><span class="chk">✓</span> <b>案件名をリンク</b>にして詳細へ遷移</li>
+      <li><span class="chk">✓</span> <b>案件番号の列を廃止</b>（キーワード検索では引き続きヒット。検索窓の説明文もそのまま）</li>
+    </ul>
+  </div>
+
+  <div class="switcher">
+    <span class="sw-label">モニタ幅：</span>
+    <button type="button" data-w="1440" class="on">1440px（標準）</button>
+    <button type="button" data-w="1280">1280px</button>
+    <button type="button" data-w="1600">1600px</button>
+    <span style="color:#9ca3af;font-size:11.5px;margin-left:auto;">サイドバー220px + 余白64px を引いた残りが表の使える幅です</span>
+  </div>
+
+
+  <!-- ================= 実画面フレーム ================= -->
+  <div class="stage" id="stage">
+  <div class="browser" id="browser">
+    <div class="browser-bar">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="browser-url">https://www.mitsuwat.co.jp/system/manage/housing/custom-orders</span>
+      <span class="browser-w" id="bw">1440px</span>
+    </div>
+    <div class="app">
+
+      <!-- サイドバー（実寸 220px） -->
+      <div class="side">
+        <div class="side-brand">ミツワ都市開発</div>
+        <div class="side-grp">ダッシュボード</div>
+        <a class="side-item" href="#">経営ダッシュボード</a>
+        <a class="side-item" href="#">テナントダッシュボード</a>
+        <div class="side-grp">不動産</div>
+        <a class="side-item" href="#">仕入れ案件</a>
+        <a class="side-item" href="#">分譲地</a>
+        <a class="side-item" href="#">仕入れ先管理</a>
+        <div class="side-grp">住宅事業</div>
+        <a class="side-item" href="#">ダッシュボード</a>
+        <a class="side-item" href="#">建売物件</a>
+        <a class="side-item act" href="#">注文住宅</a>
+        <div class="side-grp">賃貸マンション</div>
+        <a class="side-item" href="#">物件</a>
+        <a class="side-item" href="#">入居者</a>
+      </div>
+
+      <!-- コンテンツ -->
+      <div class="main">
+        <div class="crumb"><a href="#">ホーム</a> › 住宅事業 › <span style="color:#6b7280;">注文住宅一覧</span></div>
+
+        <div class="head-row">
+          <h2 class="h1">注文住宅一覧</h2>
+          <a class="btn-new" href="#">＋ 新規登録</a>
+        </div>
+
+        <div class="filterbar">
+          <select><option>ステータス: 全て</option><option>商談</option><option>設計</option><option>見積り</option><option>契約</option><option>着工</option><option>完成</option><option>引渡し</option></select>
+          <input type="text" placeholder="案件番号・案件名・顧客名・住所">
+          <a class="clear" href="#">クリア</a>
+        </div>
+
+        <div class="card"><div class="scroller">
+          <table class="t">
+            <thead>
+              <tr>
+                <th rowspan="2">進捗</th>
+                <th rowspan="2" style="text-align:left; padding-left:16px;">案件名</th>
+                <th rowspan="2">顧客名</th>
+                <th class="grp grp-b g-start" colspan="4">建　物<small>消費税 10%</small></th>
+                <th class="grp grp-l g-start" colspan="4">土　地<small>消費税 非課税</small></th>
+                <th rowspan="2" class="g-start">詳細</th>
+              </tr>
+              <tr>
+                <th class="g-start">販売金額<span class="sub">税抜 / 税込</span></th>
+                <th>原価額</th><th>粗利額</th><th>粗利率</th>
+                <th class="g-start">販売金額</th>
+                <th>原価額</th><th>粗利額</th><th>粗利率</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- 1: 自社土地・契約 -->
+              <tr>
+                <td><span class="badge b-contr">契約</span></td>
+                <td class="name-cell"><div class="name-main"><a href="#">石井町A様邸 新築工事</a></div><div class="name-sub">松山市石井町1-2-3</div></td>
+                <td>山田 太郎</td>
+                <td class="num zone-b g-start">28,500,000円<div class="tax-sub">税込 31,350,000円</div></td>
+                <td class="num zone-b">21,300,000円</td>
+                <td class="num zone-b profit">7,200,000円</td>
+                <td class="num zone-b profit">25.3%</td>
+                <td class="num zone-l g-start">12,800,000円</td>
+                <td class="num zone-l">9,600,000円</td>
+                <td class="num zone-l profit">3,200,000円</td>
+                <td class="num zone-l profit">25.0%</td>
+                <td class="g-start"><a href="#" class="btn-detail">詳細</a></td>
+              </tr>
+              <!-- 2: お客様所有土地 -->
+              <tr>
+                <td><span class="badge b-design">設計</span></td>
+                <td class="name-cell"><div class="name-main"><a href="#">見奈良B様邸 新築工事</a></div><div class="name-sub">東温市見奈良456</div></td>
+                <td>佐藤 花子</td>
+                <td class="num zone-b g-start">32,000,000円<div class="tax-sub">税込 35,200,000円</div></td>
+                <td class="num zone-b">24,800,000円</td>
+                <td class="num zone-b profit">7,200,000円</td>
+                <td class="num zone-b profit">22.5%</td>
+                <td class="num zone-l g-start muted">—</td>
+                <td class="num zone-l muted">—</td>
+                <td class="num zone-l muted">—</td>
+                <td class="num zone-l muted">—</td>
+                <td class="g-start"><a href="#" class="btn-detail">詳細</a></td>
+              </tr>
+              <!-- 3: 自社土地・引渡し -->
+              <tr>
+                <td><span class="badge b-deliv">引渡し</span></td>
+                <td class="name-cell"><div class="name-main"><a href="#">筒井C様邸 新築工事</a></div><div class="name-sub">伊予郡松前町筒井789</div></td>
+                <td>鈴木 一郎</td>
+                <td class="num zone-b g-start">26,800,000円<div class="tax-sub">税込 29,480,000円</div></td>
+                <td class="num zone-b">20,100,000円</td>
+                <td class="num zone-b profit">6,700,000円</td>
+                <td class="num zone-b profit">25.0%</td>
+                <td class="num zone-l g-start">11,500,000円</td>
+                <td class="num zone-l">8,900,000円</td>
+                <td class="num zone-l profit">2,600,000円</td>
+                <td class="num zone-l profit">22.6%</td>
+                <td class="g-start"><a href="#" class="btn-detail">詳細</a></td>
+              </tr>
+              <!-- 4: 金額未入力 -->
+              <tr>
+                <td><span class="badge b-consult">商談</span></td>
+                <td class="name-cell"><div class="name-main"><a href="#">市場D様邸 新築工事</a></div><div class="name-sub">伊予市市場321</div></td>
+                <td>高橋 実</td>
+                <td class="num zone-b g-start muted">—</td>
+                <td class="num zone-b muted">—</td>
+                <td class="num zone-b muted">—</td>
+                <td class="num zone-b muted">—</td>
+                <td class="num zone-l g-start muted">—</td>
+                <td class="num zone-l muted">—</td>
+                <td class="num zone-l muted">—</td>
+                <td class="num zone-l muted">—</td>
+                <td class="g-start"><a href="#" class="btn-detail">詳細</a></td>
+              </tr>
+              <!-- 5: 自社土地・着工 -->
+              <tr>
+                <td><span class="badge b-constr">着工</span></td>
+                <td class="name-cell"><div class="name-main"><a href="#">北条E様邸 新築工事</a></div><div class="name-sub">松山市北条辻654</div></td>
+                <td>田中 美咲</td>
+                <td class="num zone-b g-start">35,000,000円<div class="tax-sub">税込 38,500,000円</div></td>
+                <td class="num zone-b">27,400,000円</td>
+                <td class="num zone-b profit">7,600,000円</td>
+                <td class="num zone-b profit">21.7%</td>
+                <td class="num zone-l g-start">14,200,000円</td>
+                <td class="num zone-l">11,000,000円</td>
+                <td class="num zone-l profit">3,200,000円</td>
+                <td class="num zone-l profit">22.5%</td>
+                <td class="g-start"><a href="#" class="btn-detail">詳細</a></td>
+              </tr>
+              <!-- 6: 建物赤字 -->
+              <tr>
+                <td><span class="badge b-comp">完成</span></td>
+                <td class="name-cell"><div class="name-main"><a href="#">余戸F様邸 新築工事</a></div><div class="name-sub">松山市余戸南987</div></td>
+                <td>渡辺 健</td>
+                <td class="num zone-b g-start">24,000,000円<div class="tax-sub">税込 26,400,000円</div></td>
+                <td class="num zone-b">25,100,000円</td>
+                <td class="num zone-b profit-neg">-1,100,000円</td>
+                <td class="num zone-b profit-neg">-4.6%</td>
+                <td class="num zone-l g-start">10,000,000円</td>
+                <td class="num zone-l">9,200,000円</td>
+                <td class="num zone-l profit">800,000円</td>
+                <td class="num zone-l profit">8.0%</td>
+                <td class="g-start"><a href="#" class="btn-detail">詳細</a></td>
+              </tr>
+              <!-- 7: 見積り -->
+              <tr>
+                <td><span class="badge b-estim">見積り</span></td>
+                <td class="name-cell"><div class="name-main"><a href="#">重信G様邸 新築工事</a></div><div class="name-sub">東温市志津川112</div></td>
+                <td>中村 良子</td>
+                <td class="num zone-b g-start">29,600,000円<div class="tax-sub">税込 32,560,000円</div></td>
+                <td class="num zone-b">23,000,000円</td>
+                <td class="num zone-b profit">6,600,000円</td>
+                <td class="num zone-b profit">22.3%</td>
+                <td class="num zone-l g-start">13,400,000円</td>
+                <td class="num zone-l">10,700,000円</td>
+                <td class="num zone-l profit">2,700,000円</td>
+                <td class="num zone-l profit">20.1%</td>
+                <td class="g-start"><a href="#" class="btn-detail">詳細</a></td>
+              </tr>
+            </tbody>
+          </table>
+        </div></div>
+
+        <div class="pager">
+          <span class="off">&lt;</span>
+          <span class="cur">1</span>
+          <a href="#">2</a>
+          <a href="#">&gt;</a>
+        </div>
+        <div class="total">全 27 件</div>
+      </div>
+
+    </div>
+  </div>
+  </div>
+  <span class="measure" id="measure"></span>
+
+
+  <!-- ================= 最終確認ポイント ================= -->
+  <div class="decide">
+    <h2>最終確認していただきたい点</h2>
+    <table class="d">
+      <thead><tr><th>項目</th><th>内容</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>① 粗利率の小数表示</td>
+          <td>
+            モックは <mark>常に小数 1 桁</mark>（<b>25.0%</b> / 22.6% / -4.6%）にしています。右揃えの率列が 2 つ並ぶので桁が揃ったほうが読みやすいためです。<br>
+            ただし <b>既存の建売物件一覧・注文住宅の詳細画面は「25%」と表示</b>されます（PHP の丸め結果を素で出しており、小数が出たり出なかったりする）。<br>
+            <span class="rec-mark">推奨：この画面は小数 1 桁で統一</span> — 既存画面に合わせる場合はお申し付けください。
+          </td>
+        </tr>
+        <tr>
+          <td>② 横スクロール</td>
+          <td>
+            表は 12 列・必要幅 <b>1187px</b>。実測すると:<br>
+            ・<b>1440px モニタ</b>（使える幅 1152px）→ 右端が <b>35px</b> ぶん切れて横スクロール。上のフレームで「詳細」列が切れているのが実際の見え方です<br>
+            ・<b>1600px モニタ</b>（使える幅 1312px）→ <b>横スクロールなしで収まります</b><br>
+            ・<b>1280px モニタ</b>（使える幅 992px）→ 195px ぶん横スクロール<br>
+            1440px でもサイドバーを折りたためば収まります。承認済みの前提ですが、実物を見て「やはり収めたい」場合は、粗利率をセル内に小さく併記する A-1（必要幅 1057px）に戻せます。
+          </td>
+        </tr>
+        <tr>
+          <td>③ 土地が「—」になる案件</td>
+          <td>
+            <b>2 行目（見奈良B様邸）</b>がお客様所有土地の例です。土地は販売も原価も発生しないため 4 列とも「—」になります。<br>
+            <b>4 行目（市場D様邸）</b>は商談段階で金額未入力の例です。実運用では商談〜見積りの案件がこの見え方になります。
+          </td>
+        </tr>
+        <tr>
+          <td>④ 変更しないもの</td>
+          <td>
+            進捗バッジのクリックによるステータス変更、ステータス絞り込み、キーワード検索、ページネーション、新規登録ボタンは<b>すべて現状のまま</b>です。<br>
+            案件詳細画面（収支サマリーは「土地 → 建物」の順）も今回は触りません。一覧と順序が逆になる点は別途ご相談させてください。
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<script>
+(function () {
+  var buttons = document.querySelectorAll('.switcher button');
+  var badge   = document.getElementById('measure');
+  var bw      = document.getElementById('bw');
+  var stage   = document.getElementById('stage');
+  var browser = document.getElementById('browser');
+
+  function wanted() {
+    return parseInt(getComputedStyle(document.documentElement)
+             .getPropertyValue('--screen-w'), 10) || 1440;
+  }
+
+  /* フレームは実寸のままレイアウトし、閲覧者の窓に入りきらない分だけ縮小表示する。
+     これで窓幅に関係なく指定モニタの見え方を再現できる。 */
+  function fit() {
+    var want = wanted();
+    var room = stage.clientWidth;
+    if (!room) return 1;
+    var scale = Math.min(1, room / want);
+    browser.style.transform = scale < 1 ? 'scale(' + scale + ')' : 'none';
+    stage.style.height = Math.ceil(browser.offsetHeight * scale) + 'px';
+    return scale;
+  }
+
+  function measure() {
+    var scale  = fit();
+    var table  = document.querySelector('table.t');
+    var scroll = document.querySelector('.scroller');
+    if (!table || !scroll) return;
+
+    // 表の「必要幅」＝ width:100% を外した自然幅。
+    // offsetWidth / clientWidth はレイアウト値なので transform: scale の影響を受けない。
+    var prev = table.style.width;
+    table.style.width = 'max-content';
+    var needed = table.offsetWidth;
+    table.style.width = prev;
+
+    var avail = scroll.clientWidth;
+    if (avail === 0) { badge.className = 'measure'; badge.textContent = ''; return; }
+
+    var zoom = scale < 0.995
+      ? '　（画面に収めるため ' + Math.round(scale * 100) + '% に縮小表示中。上の数値は ' + wanted() + 'px 実機での値です）'
+      : '';
+
+    if (needed > avail + 1) {
+      badge.className = 'measure m-over';
+      badge.textContent = '↔ 表の必要幅 ' + needed + 'px ＞ 使える幅 ' + avail + 'px … 右端が ' + (needed - avail) + 'px ぶん横スクロールします' + zoom;
+    } else {
+      badge.className = 'measure m-fit';
+      badge.textContent = '✓ 表の必要幅 ' + needed + 'px ≦ 使える幅 ' + avail + 'px … 横スクロールなしで収まります' + zoom;
+    }
+  }
+
+  buttons.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var w = btn.getAttribute('data-w');
+      document.documentElement.style.setProperty('--screen-w', w + 'px');
+      buttons.forEach(function (b) { b.classList.remove('on'); });
+      btn.classList.add('on');
+      bw.textContent = w + 'px';
+      measure();
+    });
+  });
+
+  measure();
+  window.addEventListener('resize', measure);
+
+  /* 非表示タブ等で読み込まれると stage.clientWidth が 0 になり、fit() が早期 return して
+     縮小が当たらない（ページ全体が横にはみ出したままになる）。幅が確定した時点で
+     測り直すため ResizeObserver で監視する。
+     ⚠ fit() は stage の height を書き換えるので、幅が変わった時だけ再実行してループを防ぐ。 */
+  if (window.ResizeObserver) {
+    var lastW = stage.clientWidth;
+    new ResizeObserver(function () {
+      var w = stage.clientWidth;
+      if (w && w !== lastW) { lastW = w; measure(); }
+    }).observe(stage);
+  }
+})();
+</script>
+</body>
+</html>
