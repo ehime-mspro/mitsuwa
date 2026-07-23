@@ -85,7 +85,6 @@
                     <tr>
                         <th rowspan="2" class="co-th">進捗</th>
                         <th rowspan="2" class="co-th co-th-name">案件名</th>
-                        <th rowspan="2" class="co-th">顧客名</th>
                         <th colspan="4" class="co-th co-grp co-grp-b co-gstart">建　物<small>消費税 {{ $taxRateLabel }}%</small></th>
                         <th colspan="4" class="co-th co-grp co-grp-l co-gstart">土　地<small>消費税 非課税</small></th>
                         <th rowspan="2" class="co-th co-gstart">詳細</th>
@@ -137,8 +136,6 @@
                                 </div>
                                 <div class="text-xs text-gray-500">{{ $ord->address }}</div>
                             </td>
-
-                            <td class="co-td text-gray-800">{{ $ord->customer_name }}</td>
 
                             {{-- 建物: 販売金額（税抜が主・税込をサブ行に）
                                  ⚠ getBuildingTax() は null 時 0 を返すので、
@@ -223,7 +220,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="12" class="px-3 py-8 text-center text-sm text-gray-500 border-b border-gray-100">該当する案件がありません</td>
+                            <td colspan="11" class="px-3 py-8 text-center text-sm text-gray-500 border-b border-gray-100">該当する案件がありません</td>
                         </tr>
                     @endforelse
                 </tbody>

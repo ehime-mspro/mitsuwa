@@ -189,7 +189,7 @@ class CustomOrderIndexListColumnsTest extends TestCase
         // 「建　物」「土　地」の間は全角スペース（U+3000）。
         $res->assertSee('<th colspan="4" class="co-th co-grp co-grp-b co-gstart">建　物', false);
         $res->assertSee('<th colspan="4" class="co-th co-grp co-grp-l co-gstart">土　地', false);
-        // 「進捗 / 案件名 / 顧客名 / 詳細」は 2 段ぶち抜き
+        // 「進捗 / 案件名 / 詳細」は 2 段ぶち抜き
         $res->assertSee('rowspan="2"', false);
     }
 
@@ -334,13 +334,34 @@ class CustomOrderIndexListColumnsTest extends TestCase
         );
     }
 
-    /** 該当 0 件のとき colspan が 12 になっている */
-    public function test_empty_state_spans_twelve_columns(): void
+    /** 該当 0 件のとき colspan が 11 になっている */
+    public function test_empty_state_spans_eleven_columns(): void
     {
         $res = $this->actingAs($this->executive())->get('/housing/custom-orders');
 
         $res->assertOk();
-        $res->assertSee('colspan="12"', false);
+        $res->assertSee('colspan="11"', false);
         $res->assertSee('該当する案件がありません');
+    }
+
+    /**
+     * 顧客名の「列」が消えている（案件名で識別できるため一覧からは外す）。
+     *
+     * 顧客名は tbody のセルにしか出ていなかったので、列を消せば値ごと消える。
+     * ⚠ assertDontSee('顧客名') は使えない — 検索窓のプレースホルダ
+     *   「案件番号・案件名・顧客名・住所」に一致して必ず失敗する。
+     *   列ヘッダーは <th> の形で、値は具体的な氏名で判定する。
+     */
+    public function test_customer_name_column_is_removed(): void
+    {
+        $this->makeCompanyLandOrder();
+
+        $res = $this->actingAs($this->executive())->get('/housing/custom-orders');
+
+        $res->assertOk();
+        $res->assertDontSee('>顧客名</th>', false);
+        $res->assertDontSee('山田 太郎');   // 顧客名の値そのものが本文に出ない
+        // 検索窓のプレースホルダは維持する（表示列を外すだけで検索対象からは外さない）
+        $res->assertSee('案件番号・案件名・顧客名・住所', false);
     }
 }
