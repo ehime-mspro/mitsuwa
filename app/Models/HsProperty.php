@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\HousingLandSourceType;
 use App\Enums\HousingPropertyStatus;
+use App\Support\Settings;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -216,6 +217,137 @@ class HsProperty extends Model
             return null;
         }
         return round($profit / $selling * 100, 1);
+    }
+
+    /**
+     * 自社土地か（分譲地区画 or 仕入れ案件）
+     */
+    public function isCompanyLand(): bool
+    {
+        return $this->land_source_type === HousingLandSourceType::ProjectLot
+            || $this->land_source_type === HousingLandSourceType::Procurement;
+    }
+
+    /**
+     * 建物販売額（契約あり=契約の建物価格 / なし=予定販売価格）
+     */
+    public function getBuildingSellingPrice(): ?int
+    {
+        if ($this->isSold()) {
+            return $this->contract->selling_price_building;
+        }
+        return $this->target_selling_price_building;
+    }
+
+    /**
+     * 土地販売額（契約あり=契約の土地価格 / なし=紐づけ先の参考価格。お客様所有土地は null）
+     */
+    public function getLandSellingPrice(): ?int
+    {
+        if ($this->isSold()) {
+            return $this->contract->selling_price_land;
+        }
+        return $this->getReferenceLandSellingPrice();
+    }
+
+    /**
+     * 建物粗利額（税抜）
+     */
+    public function getBuildingProfit(): ?int
+    {
+        $selling = $this->getBuildingSellingPrice();
+        if ($selling === null || $this->building_cost === null) {
+            return null;
+        }
+        return $selling - $this->building_cost;
+    }
+
+    /**
+     * 建物粗利率（税抜ベース）
+     */
+    public function getBuildingProfitRate(): ?float
+    {
+        $selling = $this->getBuildingSellingPrice();
+        $profit = $this->getBuildingProfit();
+        if ($profit === null || $selling === null || $selling === 0) {
+            return null;
+        }
+        return round($profit / $selling * 100, 1);
+    }
+
+    /**
+     * 土地粗利額（自社土地時のみ）
+     */
+    public function getLandProfit(): ?int
+    {
+        if (! $this->isCompanyLand()) {
+            return null;
+        }
+        $selling = $this->getLandSellingPrice();
+        if ($selling === null || $this->land_cost === null) {
+            return null;
+        }
+        return $selling - $this->land_cost;
+    }
+
+    /**
+     * 土地粗利率（自社土地時のみ）
+     */
+    public function getLandProfitRate(): ?float
+    {
+        if (! $this->isCompanyLand()) {
+            return null;
+        }
+        $selling = $this->getLandSellingPrice();
+        $profit = $this->getLandProfit();
+        if ($profit === null || $selling === null || $selling === 0) {
+            return null;
+        }
+        return round($profit / $selling * 100, 1);
+    }
+
+    /**
+     * 有効消費税率（成約時は契約の税率、未成約時はシステム既定値）
+     */
+    public function getEffectiveTaxRate(): float
+    {
+        return (float) ($this->contract?->tax_rate ?? Settings::taxRate());
+    }
+
+    /**
+     * 建物消費税額（土地は非課税）
+     */
+    public function getBuildingTax(): int
+    {
+        $selling = $this->getBuildingSellingPrice();
+        if ($selling === null) {
+            return 0;
+        }
+        return (int) round($selling * $this->getEffectiveTaxRate() / 100);
+    }
+
+    /**
+     * 建物税込販売額
+     */
+    public function getBuildingSellingPriceWithTax(): ?int
+    {
+        $selling = $this->getBuildingSellingPrice();
+        if ($selling === null) {
+            return null;
+        }
+        return $selling + $this->getBuildingTax();
+    }
+
+    /**
+     * 合計税込販売額（合計販売 + 建物消費税。土地は非課税）
+     */
+    public function getSellingPriceTotalWithTax(): ?int
+    {
+        $total = $this->getSellingPriceTotal();
+        if ($total === null) {
+            return null;
+        }
+        return $total + $this->getBuildingTax();
     }
 
     /**
