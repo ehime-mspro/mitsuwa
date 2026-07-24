@@ -11,6 +11,56 @@
 
 @section('content')
 
+    {{-- 一覧テーブルのスタイル（建売物件一覧から流用）。
+         :hover・子孫セレクタはインラインで表現できないため <style> を使う（Bug #19 とは無関係）。
+         合計ゾーンはレッド（決定 #9）、固定列は 物件名・種別・進行状況 の 3 列。 --}}
+    <style>
+    /* ヘッダー */
+    .co-th        { padding: 10px 12px; background: #f9fafb; border-bottom: 2px solid #e5e7eb; font-size: 12px; font-weight: 600; color: #4b5563; white-space: nowrap; text-align: center; }
+    .co-th-name   { text-align: left; padding-left: 16px; }
+    .co-grp       { font-size: 11.5px; letter-spacing: .08em; padding-top: 6px; padding-bottom: 6px; }
+    .co-grp-t     { background: #fee2e2; color: #991b1b; }   /* 合計＝レッド（決定 #9） */
+    .co-grp-b     { background: #f0f9ff; color: #075985; }   /* 建物＝水色（現状維持） */
+    .co-grp-l     { background: #fefce8; color: #854d0e; }   /* 土地＝黄色（現状維持） */
+
+    /* ボディ */
+    .co-td      { padding: 12px; border-bottom: 1px solid #f3f4f6; font-size: 13px; white-space: nowrap; vertical-align: middle; text-align: center; }
+    .co-td-name { text-align: left; padding-left: 16px; }
+    .co-num     { text-align: right; }
+    .co-muted   { color: #d1d5db; }
+    .co-tax-sub { font-size: 11px; color: #6b7280; margin-top: 2px; }
+
+    /* 合計 / 建物 / 土地ゾーンの区切りと淡い地色 */
+    .co-gstart { border-left: 1px solid #cbd5e1; }
+    td.co-zone-t { background: #fef2f2; }   /* 合計＝淡いレッド地色（決定 #9） */
+    td.co-zone-b { background: #fcfeff; }
+    td.co-zone-l { background: #fffdf5; }
+    /* ⚠ td の背景は tr の背景を上書きするため、行ホバー時の上書き規則が必須 */
+    tbody tr:hover td.co-zone-t { background: #fee2e2; }
+    tbody tr:hover td.co-zone-b { background: #f5fbfe; }
+    tbody tr:hover td.co-zone-l { background: #fefbef; }
+
+    /* --- 横スクロール時に左 3 列（物件名・種別・進行状況）を固定し、合計より右だけスクロールさせる --- */
+    /* ⚠ sticky セルは不透明背景が必須（スクロールで下に潜る右側セルが透けるのを防ぐ）。
+       ⚠ 各固定列の left は左隣までの実幅合計と一致させる。box-sizing:border-box で padding 込み幅を固定。 */
+    th.co-sticky, td.co-sticky { position: sticky; z-index: 1; }
+    th.co-sticky               { z-index: 3; }                 /* ヘッダーの固定列は本文セルより前面 */
+    .co-sticky-name            { left: 0; }
+    .co-sticky-type            { left: 190px; }                /* = .co-col-name の width */
+    .co-sticky-stat            { left: 278px; }                /* = 190 + 88（種別の width まで） */
+    .co-col-name               { width: 190px; min-width: 190px; max-width: 190px; box-sizing: border-box; }
+    .co-col-type               { width: 88px;  min-width: 88px;  box-sizing: border-box; }
+    .co-col-stat               { width: 100px; min-width: 100px; box-sizing: border-box; }
+    /* 物件名が長くても隣へはみ出さないよう省略 */
+    .co-name-link              { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+    /* 固定列の不透明背景（ヘッダー / 本文 / ホバー） */
+    th.co-sticky               { background: #f9fafb; }
+    tbody td.co-sticky         { background: #fff; }
+    tbody tr:hover td.co-sticky { background: #f9fafb; }
+    /* 固定領域とスクロール領域の境界（進行状況の右端に区切り線＋うっすら影） */
+    td.co-sticky-stat, th.co-sticky-stat { border-right: 1px solid #e5e7eb; box-shadow: 4px 0 6px -4px rgba(0, 0, 0, .15); }
+    </style>
+
     {{-- ページヘッダー（+ 新規契約登録ドロップダウン） --}}
     <div class="mb-5" style="display: flex; align-items: center; justify-content: space-between;">
         <h1 class="text-lg font-bold text-gray-900">契約管理</h1>
@@ -126,42 +176,75 @@
         </a>
     </form>
 
-    {{-- テーブル（11列構成） --}}
+    {{-- テーブル（建売物件一覧の 3 ゾーン様式・全 18 列・2 段ヘッダー） --}}
     <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
         <div style="overflow-x: auto;">
-            <table class="w-full border-collapse" style="min-width: 1200px;">
+            <table class="w-full border-collapse" style="min-width: 1400px;">
                 <thead>
                     <tr>
-                        <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">契約日</th>
-                        <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">種別</th>
-                        <th class="py-2.5 text-left text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap" style="padding-left: 16px;">物件名 / 案件名</th>
-                        <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">顧客</th>
-                        <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">契約額</th>
-                        <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">土地粗利率</th>
-                        <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">建物粗利率</th>
-                        <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">合計粗利率</th>
-                        <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">進行状況</th>
-                        <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">担当</th>
-                        <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">アクション</th>
+                        <th rowspan="2" class="co-th co-th-name co-sticky co-sticky-name co-col-name">物件名 / 案件名</th>
+                        <th rowspan="2" class="co-th co-sticky co-sticky-type co-col-type">種別</th>
+                        <th rowspan="2" class="co-th co-sticky co-sticky-stat co-col-stat">進行状況</th>
+                        <th rowspan="2" class="co-th">契約日</th>
+                        <th rowspan="2" class="co-th">顧客</th>
+                        <th colspan="3" class="co-th co-grp co-grp-t co-gstart">合　計</th>
+                        <th colspan="4" class="co-th co-grp co-grp-b co-gstart">建　物</th>
+                        <th colspan="4" class="co-th co-grp co-grp-l co-gstart">土　地</th>
+                        <th rowspan="2" class="co-th co-gstart">担当</th>
+                        <th rowspan="2" class="co-th">詳細</th>
+                    </tr>
+                    <tr>
+                        <th class="co-th co-gstart">販売金額</th>
+                        <th class="co-th">原価額</th>
+                        <th class="co-th">粗利額</th>
+                        <th class="co-th co-gstart">販売金額</th>
+                        <th class="co-th">原価額</th>
+                        <th class="co-th">粗利額</th>
+                        <th class="co-th">粗利率</th>
+                        <th class="co-th co-gstart">販売金額</th>
+                        <th class="co-th">原価額</th>
+                        <th class="co-th">粗利額</th>
+                        <th class="co-th">粗利率</th>
                     </tr>
                 </thead>
                 <tbody>
                     @forelse($contracts as $c)
                         @php
-                            // 担当者苗字重複チェック（同姓が複数いる場合のみフルネーム表示）
+                            // 担当者表示（苗字。同姓が複数いる場合のみフルネーム）— 現状ロジック維持
                             $staffDisplay = $c['staff_name'];
                             if ($staffDisplay !== '—') {
                                 if (($lastNameCounts[$staffDisplay] ?? 0) > 1 && $c['source_model']->createdBy) {
                                     $staffDisplay = $c['source_model']->createdBy->name;
                                 }
                             }
-                        @endphp
-                        <tr class="hover:bg-gray-50 transition-colors">
-                            {{-- 1. 契約日 --}}
-                            <td class="px-3 py-3 border-b border-gray-100 text-sm text-center whitespace-nowrap">{{ $c['contract_date'] ? $c['contract_date']->format('Y/m/d') : '—' }}</td>
 
-                            {{-- 2. 種別 --}}
-                            <td class="px-3 py-3 border-b border-gray-100 text-center whitespace-nowrap">
+                            // 3 ゾーンの内訳（設計書 §3.3）。合計は getTotal*() を直呼びせず、
+                            // 表示している建物＋土地から積み上げる（5f3db713 と同じ轍を踏まない）。
+                            $isCompanyLand = $c['is_company_land'];
+                            $bTax = $c['building_tax'];                          // 建物消費税額（土地は非課税）
+                            // 建物
+                            $bPrice  = $c['building_selling'];
+                            $bCost   = $c['building_cost'];
+                            $bProfit = $c['building_profit'];
+                            $bRate   = $c['building_profit_rate'];
+                            // 土地（顧客所有地は 4 セル「—」）
+                            $lPrice  = $isCompanyLand ? $c['land_selling'] : null;
+                            $lCost   = $isCompanyLand ? $c['land_cost']    : null;
+                            $lProfit = $c['land_profit'];                       // 顧客所有地/原価未入力で既に null
+                            $lRate   = $c['land_profit_rate'];
+                            // 合計 = 表示している建物＋土地の積み上げ
+                            $tPrice  = ($bPrice !== null || $lPrice !== null) ? ($bPrice ?? 0) + ($lPrice ?? 0) : null;
+                            $tCost   = ($bCost  !== null || $lCost  !== null) ? ($bCost  ?? 0) + ($lCost  ?? 0) : null;
+                            $tProfit = ($tPrice !== null && $tCost  !== null) ? $tPrice - $tCost : null;
+                        @endphp
+                        <tr class="hover:bg-gray-50">
+                            {{-- 固定1: 物件名 / 案件名（詳細リンク・建売一覧に準拠した青リンク） --}}
+                            <td class="co-td co-td-name co-sticky co-sticky-name co-col-name">
+                                <a href="{{ $c['detail_url'] }}" class="text-blue-700 underline co-name-link">{{ $c['property_name'] }}</a>
+                            </td>
+
+                            {{-- 固定2: 種別 --}}
+                            <td class="co-td co-sticky co-sticky-type co-col-type">
                                 @if($c['type'] === 'tateuri')
                                     <span style="background: #DBEAFE; color: #1E40AF; display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">建売</span>
                                 @else
@@ -169,52 +252,8 @@
                                 @endif
                             </td>
 
-                            {{-- 3. 物件名 / 案件名 --}}
-                            <td class="py-3 border-b border-gray-100 whitespace-nowrap" style="padding-left: 16px;">
-                                <a href="{{ $c['detail_url'] }}" class="text-sm font-medium text-emerald-600 hover:text-emerald-700 hover:underline">{{ $c['property_name'] }}</a>
-                            </td>
-
-                            {{-- 4. 顧客 --}}
-                            <td class="px-3 py-3 border-b border-gray-100 text-sm text-center whitespace-nowrap">{{ $c['customer_name'] }}</td>
-
-                            {{-- 5. 契約額 --}}
-                            <td class="py-3 border-b border-gray-100 text-sm whitespace-nowrap" style="text-align: right; padding-right: 16px;">
-                                @if($c['selling_total'])
-                                    {{ number_format($c['selling_total']) }}円
-                                @else
-                                    <span class="text-gray-400">—</span>
-                                @endif
-                            </td>
-
-                            {{-- 6. 土地粗利率（注文住宅の顧客所有地は null → — 表示） --}}
-                            <td class="py-3 border-b border-gray-100 text-sm whitespace-nowrap" style="text-align: right; padding-right: 16px;">
-                                @if($c['land_profit_rate'] !== null)
-                                    <span style="color: #047857; font-weight: 700;">{{ $c['land_profit_rate'] }}%</span>
-                                @else
-                                    <span class="text-gray-400">—</span>
-                                @endif
-                            </td>
-
-                            {{-- 7. 建物粗利率 --}}
-                            <td class="py-3 border-b border-gray-100 text-sm whitespace-nowrap" style="text-align: right; padding-right: 16px;">
-                                @if($c['building_profit_rate'] !== null)
-                                    <span style="color: #047857; font-weight: 700;">{{ $c['building_profit_rate'] }}%</span>
-                                @else
-                                    <span class="text-gray-400">—</span>
-                                @endif
-                            </td>
-
-                            {{-- 8. 合計粗利率 --}}
-                            <td class="py-3 border-b border-gray-100 text-sm whitespace-nowrap" style="text-align: right; padding-right: 16px;">
-                                @if($c['total_profit_rate'] !== null)
-                                    <span style="color: #047857; font-weight: 700;">{{ $c['total_profit_rate'] }}%</span>
-                                @else
-                                    <span class="text-gray-400">—</span>
-                                @endif
-                            </td>
-
-                            {{-- 9. 進行状況（建売="契約済"固定 / 注文住宅=Enumのバッジ） --}}
-                            <td class="px-3 py-3 border-b border-gray-100 text-center whitespace-nowrap">
+                            {{-- 固定3: 進行状況（読み取り専用の静的バッジ） --}}
+                            <td class="co-td co-sticky co-sticky-stat co-col-stat">
                                 @if($c['type'] === 'tateuri')
                                     <span style="background: #D1FAE5; color: #065F46; display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">{{ $c['status_label'] }}</span>
                                 @else
@@ -222,18 +261,101 @@
                                 @endif
                             </td>
 
-                            {{-- 10. 担当 --}}
-                            <td class="px-3 py-3 border-b border-gray-100 text-sm text-center whitespace-nowrap">{{ $staffDisplay }}</td>
+                            {{-- 契約日 --}}
+                            <td class="co-td">{{ $c['contract_date'] ? $c['contract_date']->format('Y/m/d') : '—' }}</td>
 
-                            {{-- 11. アクション --}}
-                            <td class="px-3 py-3 border-b border-gray-100 text-center whitespace-nowrap">
+                            {{-- 顧客 --}}
+                            <td class="co-td">{{ $c['customer_name'] }}</td>
+
+                            {{-- 合計: 販売金額（税込サブ行あり） --}}
+                            <td class="co-td co-num co-zone-t co-gstart">
+                                @if($tPrice !== null)
+                                    {{ number_format($tPrice) }}円
+                                    <div class="co-tax-sub">税込 {{ number_format($tPrice + $bTax) }}円</div>
+                                @else
+                                    <span class="co-muted">—</span>
+                                @endif
+                            </td>
+                            {{-- 合計: 原価額 --}}
+                            <td class="co-td co-num co-zone-t">
+                                @if($tCost !== null){{ number_format($tCost) }}円@else<span class="co-muted">—</span>@endif
+                            </td>
+                            {{-- 合計: 粗利額 --}}
+                            <td class="co-td co-num co-zone-t">
+                                @if($tProfit !== null)
+                                    <span style="{{ $tProfit >= 0 ? 'color: #047857; font-weight: 700;' : 'color: #dc2626; font-weight: 700;' }}">{{ number_format($tProfit) }}円</span>
+                                @else
+                                    <span class="co-muted">—</span>
+                                @endif
+                            </td>
+
+                            {{-- 建物: 販売金額（税込サブ行あり） --}}
+                            <td class="co-td co-num co-zone-b co-gstart">
+                                @if($bPrice !== null)
+                                    {{ number_format($bPrice) }}円
+                                    <div class="co-tax-sub">税込 {{ number_format($bPrice + $bTax) }}円</div>
+                                @else
+                                    <span class="co-muted">—</span>
+                                @endif
+                            </td>
+                            {{-- 建物: 原価額 --}}
+                            <td class="co-td co-num co-zone-b">
+                                @if($bCost !== null){{ number_format($bCost) }}円@else<span class="co-muted">—</span>@endif
+                            </td>
+                            {{-- 建物: 粗利額 --}}
+                            <td class="co-td co-num co-zone-b">
+                                @if($bProfit !== null)
+                                    <span style="{{ $bProfit >= 0 ? 'color: #047857; font-weight: 700;' : 'color: #dc2626; font-weight: 700;' }}">{{ number_format($bProfit) }}円</span>
+                                @else
+                                    <span class="co-muted">—</span>
+                                @endif
+                            </td>
+                            {{-- 建物: 粗利率（常に小数1桁） --}}
+                            <td class="co-td co-num co-zone-b">
+                                @if($bRate !== null)
+                                    <span style="{{ $bRate >= 0 ? 'color: #047857; font-weight: 700;' : 'color: #dc2626; font-weight: 700;' }}">{{ number_format($bRate, 1) }}%</span>
+                                @else
+                                    <span class="co-muted">—</span>
+                                @endif
+                            </td>
+
+                            {{-- 土地: 販売金額（非課税＝税込サブ行なし） --}}
+                            <td class="co-td co-num co-zone-l co-gstart">
+                                @if($lPrice !== null){{ number_format($lPrice) }}円@else<span class="co-muted">—</span>@endif
+                            </td>
+                            {{-- 土地: 原価額 --}}
+                            <td class="co-td co-num co-zone-l">
+                                @if($lCost !== null){{ number_format($lCost) }}円@else<span class="co-muted">—</span>@endif
+                            </td>
+                            {{-- 土地: 粗利額 --}}
+                            <td class="co-td co-num co-zone-l">
+                                @if($lProfit !== null)
+                                    <span style="{{ $lProfit >= 0 ? 'color: #047857; font-weight: 700;' : 'color: #dc2626; font-weight: 700;' }}">{{ number_format($lProfit) }}円</span>
+                                @else
+                                    <span class="co-muted">—</span>
+                                @endif
+                            </td>
+                            {{-- 土地: 粗利率（常に小数1桁） --}}
+                            <td class="co-td co-num co-zone-l">
+                                @if($lRate !== null)
+                                    <span style="{{ $lRate >= 0 ? 'color: #047857; font-weight: 700;' : 'color: #dc2626; font-weight: 700;' }}">{{ number_format($lRate, 1) }}%</span>
+                                @else
+                                    <span class="co-muted">—</span>
+                                @endif
+                            </td>
+
+                            {{-- 担当（現状ロジック維持） --}}
+                            <td class="co-td co-gstart">{{ $staffDisplay }}</td>
+
+                            {{-- 詳細（現状の緑ピルを維持） --}}
+                            <td class="co-td">
                                 <a href="{{ $c['detail_url'] }}"
                                    class="inline-block px-3 py-1 bg-white text-emerald-600 border border-emerald-600 rounded text-xs font-semibold hover:bg-emerald-50 transition-colors">詳細</a>
                             </td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="11" class="px-5 py-10 text-center text-sm text-gray-400">契約データがありません。</td>
+                            <td colspan="18" class="px-5 py-10 text-center text-sm text-gray-400">契約データがありません。</td>
                         </tr>
                     @endforelse
                 </tbody>

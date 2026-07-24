@@ -85,7 +85,10 @@ class HsContractListController extends Controller
         }
 
         // 統合・ソート
-        $allItems = $tateuriItems->merge($customItems)->sortByDesc('contract_date')->values();
+        // ⚠ 建売0件のとき $tateuriItems は空マップの EloquentCollection のままで、
+        //   配列 DTO を merge すると EloquentCollection::merge() が getKey() を呼び 500 になる
+        //   （建売0件＋注文住宅ありの契約一覧で発生する既存バグ）。base collection に正規化してから統合する。
+        $allItems = $tateuriItems->toBase()->merge($customItems)->sortByDesc('contract_date')->values();
 
         // 集計（全体）
         $tateuriCount = $tateuriItems->count();
@@ -452,9 +455,10 @@ class HsContractListController extends Controller
         $profit = $sellingTotal - $costTotal;
         $profitRate = $sellingTotal > 0 ? round(($profit / $sellingTotal) * 100, 1) : null;
 
-        // 土地・建物別の売価（サマリー合計用）
+        // 土地・建物別の売価
         // HsContract のカラムは selling_price_land / selling_price_building
-        $landSelling = (int) ($c->selling_price_land ?? 0);
+        // land_selling は null 許容化（建売は常に自社土地なので実値。設計書 §4.2）
+        $landSelling = $c->selling_price_land;
         $buildingSelling = (int) ($c->selling_price_building ?? 0);
 
         // 土地・建物別の粗利
@@ -474,11 +478,17 @@ class HsContractListController extends Controller
             'selling_total'       => $sellingTotal,
             'land_selling'        => $landSelling,
             'building_selling'    => $buildingSelling,
+            // 建売一覧様式（3 ゾーン）用の内訳（設計書 §4.1）。建売は必ず自社土地
+            'is_company_land'     => true,
+            'building_tax'        => $c->getBuildingTax(),
+            'building_cost'       => $property?->building_cost,
+            'land_cost'           => $property?->land_cost,
             'cost_total'          => $costTotal,
             'profit'              => $profit,
             'profit_rate'         => $profitRate,
-            'land_profit'         => $landProfit ?? 0,
-            'building_profit'     => $buildingProfit ?? 0,
+            // ⚠ null を通す（顧客所有地/原価未入力→セル「—」。§3.3）。サマリー sum() は null を 0 とみなすので集計不変
+            'land_profit'         => $landProfit,
+            'building_profit'     => $buildingProfit,
             'land_profit_rate'    => $landProfitRate,
             'building_profit_rate'=> $buildingProfitRate,
             'total_profit_rate'   => $totalProfitRate,
@@ -504,10 +514,11 @@ class HsContractListController extends Controller
         $profit = $c->getTotalProfit() ?? 0;
         $profitRate = $c->getTotalProfitRate();
 
-        // 土地・建物別の売価（サマリー合計用）
+        // 土地・建物別の売価
         // HsCustomOrder のカラムは land_selling_price / building_contract_price
-        // 自社土地でない場合（customer_land）は土地売価は null → 0 扱い
-        $landSelling = (int) ($c->land_selling_price ?? 0);
+        // 顧客所有地(customer_land)は土地売価を null にして土地セルを「—」表示にする（設計書 §4.2）
+        $isCompanyLand = $c->isCompanyLand();
+        $landSelling = $isCompanyLand ? $c->land_selling_price : null;
         $buildingSelling = (int) ($c->building_contract_price ?? 0);
 
         // 土地・建物別の粗利
@@ -531,11 +542,17 @@ class HsContractListController extends Controller
             'selling_total'       => $sellingTotal,
             'land_selling'        => $landSelling,
             'building_selling'    => $buildingSelling,
+            // 建売一覧様式（3 ゾーン）用の内訳（設計書 §4.1）
+            'is_company_land'     => $isCompanyLand,
+            'building_tax'        => $c->getBuildingTax(),
+            'building_cost'       => $c->building_cost,
+            'land_cost'           => $isCompanyLand ? $c->land_cost : null,
             'cost_total'          => $costTotal,
             'profit'              => $profit,
             'profit_rate'         => $profitRate,
-            'land_profit'         => $landProfit ?? 0,
-            'building_profit'     => $buildingProfit ?? 0,
+            // ⚠ null を通す（顧客所有地/原価未入力→セル「—」。§3.3）。サマリー sum() は null を 0 とみなすので集計不変
+            'land_profit'         => $landProfit,
+            'building_profit'     => $buildingProfit,
             'land_profit_rate'    => $landProfitRate,
             'building_profit_rate'=> $buildingProfitRate,
             'total_profit_rate'   => $profitRate, // 合計粗利率は getTotalProfitRate と同値
