@@ -26,6 +26,7 @@ Thumbs.db
 # Claude Code / AI ツール関連
 /.claude/
 /.playwright-mcp/
+/.superpowers/
 
 # ルート直下のスクリーンショット（モック確認用の一時ファイル）
 /*.png
