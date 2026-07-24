@@ -85,8 +85,8 @@
                     <tr>
                         <th rowspan="2" class="co-th">進捗</th>
                         <th rowspan="2" class="co-th co-th-name">案件名</th>
-                        <th colspan="4" class="co-th co-grp co-grp-b co-gstart">建　物<small>消費税 {{ $taxRateLabel }}%</small></th>
-                        <th colspan="4" class="co-th co-grp co-grp-l co-gstart">土　地<small>消費税 非課税</small></th>
+                        <th colspan="4" class="co-th co-grp co-grp-b co-gstart">建　物</th>
+                        <th colspan="4" class="co-th co-grp co-grp-l co-gstart">土　地</th>
                         <th rowspan="2" class="co-th co-gstart">詳細</th>
                     </tr>
                     <tr>

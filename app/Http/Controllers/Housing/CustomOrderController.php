@@ -56,11 +56,7 @@ class CustomOrderController extends Controller
             ->paginate(20)
             ->withQueryString();
 
-        // 「建物」グループ見出しに出す消費税率（システム既定値）。
-        // 各行の税込金額は行ごとの tax_rate で計算されるため、ここは注記の位置づけ。
-        $taxRateLabel = $this->getTaxRateLabel();
-
-        return view('housing.custom-orders.index', compact('orders', 'taxRateLabel'));
+        return view('housing.custom-orders.index', compact('orders'));
     }
 
     /**
@@ -429,18 +425,6 @@ class CustomOrderController extends Controller
         // Settings ヘルパー経由で取得。テーブル不在 / 取得失敗時は内部で 10.0 を返す。
         // view 側は '10.00' のような小数2桁文字列を想定しているため number_format で整形。
         return number_format(Settings::taxRate(), 2, '.', '');
-    }
-
-    /**
-     * グループ見出し用の消費税率ラベル。
-     *
-     * `getDefaultTaxRate()` は '10.00' のような小数2桁文字列を返すが、
-     * 見出しには「消費税 10%」と出したいので末尾の 0 と小数点を落とす。
-     * 8.5% なら '8.5'、10.00% なら '10' になる。
-     */
-    private function getTaxRateLabel(): string
-    {
-        return rtrim(rtrim($this->getDefaultTaxRate(), '0'), '.');
     }
 
     /**

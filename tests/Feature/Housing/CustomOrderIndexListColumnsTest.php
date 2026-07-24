@@ -37,14 +37,17 @@ class CustomOrderIndexListColumnsTest extends TestCase
         ]);
     }
 
-    /** グループ見出しにシステム既定の消費税率が出る（小数以下の 0 は落とす） */
-    public function test_building_group_header_shows_tax_rate(): void
+    /** グループ見出しに消費税の注記を出さない（見出しは「建　物」「土　地」だけ） */
+    public function test_group_headers_have_no_tax_annotation(): void
     {
         $res = $this->actingAs($this->executive())->get('/housing/custom-orders');
 
         $res->assertOk();
-        $res->assertSee('消費税 10%', false);
-        $res->assertSee('消費税 非課税', false);
+        // 「消費税 10%」「消費税 非課税」を撤去したので、ページ内に「消費税」は一切出ない。
+        $res->assertDontSee('消費税', false);
+        // 見出し自体は残っていること。
+        $res->assertSee('建　物', false);
+        $res->assertSee('土　地', false);
     }
 
     // ============================================================
