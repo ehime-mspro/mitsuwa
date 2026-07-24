@@ -367,7 +367,7 @@ class PropertyIndexListColumnsTest extends TestCase
 
         $res->assertOk();
         $res->assertSee(
-            '<a href="' . route('housing.properties.show', $p) . '" class="text-blue-700 underline">石井町A号地</a>',
+            '<a href="' . route('housing.properties.show', $p) . '" class="text-blue-700 underline co-name-link">石井町A号地</a>',
             false
         );
     }
@@ -392,5 +392,24 @@ class PropertyIndexListColumnsTest extends TestCase
         $res->assertOk();
         $res->assertSee('colspan="14"', false);
         $res->assertSee('該当する物件がありません');
+    }
+
+    /**
+     * 左2列（物件名・進捗）が横スクロール時に固定される（sticky class 付与）。
+     * 合計より右だけをスクロールさせる指定を回帰から守る。
+     */
+    public function test_left_columns_are_sticky(): void
+    {
+        $this->makeCompanyLandUnsold();
+
+        $res = $this->actingAs($this->executive())->get('/housing/properties');
+
+        $res->assertOk();
+        // ヘッダー: 物件名（left:0 固定）・進捗（left:200px 固定）
+        $res->assertSee('class="co-th co-th-name co-sticky co-sticky-name co-col-name"', false);
+        $res->assertSee('class="co-th co-sticky co-sticky-stat co-col-stat"', false);
+        // ボディ: 物件名・進捗のセルにも同じ固定指定
+        $res->assertSee('class="co-td co-td-name co-sticky co-sticky-name co-col-name"', false);
+        $res->assertSee('class="co-td co-sticky co-sticky-stat co-col-stat"', false);
     }
 }

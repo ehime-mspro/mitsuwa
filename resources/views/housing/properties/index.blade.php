@@ -59,6 +59,25 @@
     tbody tr:hover td.co-zone-t { background: #eef2f6; }
     tbody tr:hover td.co-zone-b { background: #f5fbfe; }
     tbody tr:hover td.co-zone-l { background: #fefbef; }
+
+    /* --- 横スクロール時に左2列（物件名・進捗）を固定し、合計より右だけスクロールさせる --- */
+    /* ⚠ sticky セルは不透明背景が必須（スクロールで下に潜る右側セルが透けるのを防ぐ）。
+       ⚠ 進捗の left は物件名列の実幅（.co-col-name の width）と一致させる。box-sizing:border-box で
+          padding 込み幅を固定し、table-layout:auto でも列幅がブレないようにする。 */
+    th.co-sticky, td.co-sticky { position: sticky; z-index: 1; }
+    th.co-sticky               { z-index: 3; }                 /* ヘッダーの固定列は本文セルより前面 */
+    .co-sticky-name            { left: 0; }
+    .co-sticky-stat            { left: 200px; }                /* = .co-col-name の width */
+    .co-col-name               { width: 200px; min-width: 200px; max-width: 200px; box-sizing: border-box; }
+    .co-col-stat               { width: 96px;  min-width: 96px;  box-sizing: border-box; }
+    /* 物件名が長くても隣へはみ出さないよう省略（坪数サブ行は元々短い） */
+    .co-name-link              { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+    /* 固定列の不透明背景（ヘッダー / 本文 / ホバー） */
+    th.co-sticky               { background: #f9fafb; }
+    tbody td.co-sticky         { background: #fff; }
+    tbody tr:hover td.co-sticky { background: #f9fafb; }
+    /* 固定領域とスクロール領域の境界（進捗の右端に区切り線＋うっすら影） */
+    td.co-sticky-stat, th.co-sticky-stat { border-right: 1px solid #e5e7eb; box-shadow: 4px 0 6px -4px rgba(0, 0, 0, .15); }
     </style>
 
     {{-- ページヘッダー --}}
@@ -100,8 +119,8 @@
             <table class="w-full border-collapse">
                 <thead>
                     <tr>
-                        <th rowspan="2" class="co-th co-th-name">物件名</th>
-                        <th rowspan="2" class="co-th">進捗</th>
+                        <th rowspan="2" class="co-th co-th-name co-sticky co-sticky-name co-col-name">物件名</th>
+                        <th rowspan="2" class="co-th co-sticky co-sticky-stat co-col-stat">進捗</th>
                         <th colspan="3" class="co-th co-grp co-grp-t co-gstart">合　計</th>
                         <th colspan="4" class="co-th co-grp co-grp-b co-gstart">建　物</th>
                         <th colspan="4" class="co-th co-grp co-grp-l co-gstart">土　地</th>
@@ -149,16 +168,16 @@
                         @endphp
                         <tr class="hover:bg-gray-50">
                             {{-- 物件名（詳細リンク＋坪数サブ行） --}}
-                            <td class="co-td co-td-name">
+                            <td class="co-td co-td-name co-sticky co-sticky-name co-col-name">
                                 <div class="font-semibold">
-                                    <a href="{{ route('housing.properties.show', $prop) }}" class="text-blue-700 underline">{{ $prop->property_name }}</a>
+                                    <a href="{{ route('housing.properties.show', $prop) }}" class="text-blue-700 underline co-name-link">{{ $prop->property_name }}</a>
                                 </div>
                                 <div class="text-xs text-gray-500">土地 {{ $landTsubo !== null ? number_format($landTsubo, 2) . '坪' : '—' }} / 建物 {{ $bldgTsubo !== null ? number_format($bldgTsubo, 2) . '坪' : '—' }}</div>
                             </td>
 
                             {{-- 進捗（現状維持: Ajax ドロップダウン。ステップバーではない） --}}
                             @if($canEditStatus)
-                                <td class="co-td"
+                                <td class="co-td co-sticky co-sticky-stat co-col-stat"
                                     x-data="housingPropertyStatusCell({{ $prop->id }}, '{{ $prop->isSold() ? 'sold' : $prop->status->value }}', '{{ $prop->getDisplayStatusLabel() }}', '{{ $prop->getDisplayBadgeStyle() }}', '{{ route('housing.contracts.create', $prop) }}')">
                                     <span @click="toggle($event)" class="inline-block px-2.5 rounded-full text-xs font-semibold"
                                           :style="'padding-top:2px; padding-bottom:2px; cursor: pointer; ' + badgeStyle"
@@ -173,7 +192,7 @@
                                     </div>
                                 </td>
                             @else
-                                <td class="co-td">
+                                <td class="co-td co-sticky co-sticky-stat co-col-stat">
                                     <span class="inline-block px-2.5 rounded-full text-xs font-semibold" style="padding-top:2px; padding-bottom:2px; {{ $prop->getDisplayBadgeStyle() }}">{{ $prop->getDisplayStatusLabel() }}</span>
                                 </td>
                             @endif
