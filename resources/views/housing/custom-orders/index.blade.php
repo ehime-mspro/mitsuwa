@@ -38,7 +38,7 @@
     .co-tax-sub { font-size: 11px; color: #9ca3af; margin-top: 2px; }
 
     /* 建物 / 土地ゾーンの区切りと淡い地色 */
-    .co-gstart { border-left: 1px solid #e5e7eb; }
+    .co-gstart { border-left: 1px solid #cbd5e1; }
     td.co-zone-b { background: #fcfeff; }
     td.co-zone-l { background: #fffdf5; }
     /* ⚠ td の背景は tr の背景を上書きするため、行ホバー時の上書き規則が必須 */
