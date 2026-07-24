@@ -126,10 +126,7 @@
                         @php
                             // 土地は isCompanyLand() を単一の判断軸にする（設計書 §3.5）。
                             $isCompanyLand = $prop->isCompanyLand();
-                            // 合計（既存メソッド。お客様所有土地×契約ありの組合せでのみ土地列と不整合＝§3.6・本番未到達）
-                            $tPrice  = $prop->getSellingPriceTotal();
-                            $tCost   = $prop->getTotalCost();
-                            $tProfit = $prop->getGrossProfit();
+                            $bTax = $prop->getBuildingTax();   // 合計・建物の税込サブ行で使う（建物ぶんの税）
                             // 建物
                             $bPrice  = $prop->getBuildingSellingPrice();
                             $bCost   = $prop->building_cost;
@@ -140,6 +137,12 @@
                             $lCost   = $isCompanyLand ? $prop->land_cost : null;
                             $lProfit = $prop->getLandProfit();
                             $lRate   = $prop->getLandProfitRate();
+                            // 合計は「表示している建物＋土地」から積み上げる（詳細画面 show と同思想）。
+                            // getSellingPriceTotal()/getTotalCost()/getGrossProfit() 直呼びは isCompanyLand()
+                            // ガード後の内訳とズレる（お客様所有土地・土地種別未選択で不整合）ため使わない（final review §3.6）。
+                            $tPrice  = ($bPrice !== null || $lPrice !== null) ? ($bPrice ?? 0) + ($lPrice ?? 0) : null;
+                            $tCost   = ($bCost  !== null || $lCost  !== null) ? ($bCost  ?? 0) + ($lCost  ?? 0) : null;
+                            $tProfit = ($tPrice !== null && $tCost !== null) ? $tPrice - $tCost : null;
                             // 坪数サブ行
                             $landTsubo = $prop->getLandAreaTsubo();
                             $bldgTsubo = $prop->getBuildingAreaTsubo();
@@ -179,7 +182,7 @@
                             <td class="co-td co-num co-zone-t co-gstart">
                                 @if($tPrice !== null)
                                     {{ number_format($tPrice) }}円
-                                    <div class="co-tax-sub">税込 {{ number_format($prop->getSellingPriceTotalWithTax()) }}円</div>
+                                    <div class="co-tax-sub">税込 {{ number_format($tPrice + $bTax) }}円</div>
                                 @else
                                     <span class="co-muted">—</span>
                                 @endif

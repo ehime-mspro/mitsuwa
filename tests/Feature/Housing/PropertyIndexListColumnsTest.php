@@ -216,7 +216,7 @@ class PropertyIndexListColumnsTest extends TestCase
         $res = $this->actingAs($this->executive())->get('/housing/properties');
 
         $res->assertOk();
-        $res->assertSee('housingPropertyStatusCell(', false);
+        $res->assertSee('x-data="housingPropertyStatusCell(', false);
     }
 
     // ============================================================
@@ -275,8 +275,14 @@ class PropertyIndexListColumnsTest extends TestCase
         $res = $this->actingAs($this->executive())->get('/housing/properties');
 
         $res->assertOk();
-        // 土地原価に入れた値が土地列に出ない（合計原価は §3.6 の既知不整合のためアサートしない）
+        // 土地原価に入れた値が土地列に出ない。合計は積み上げ式になり §3.6 の不整合が根絶されたため、
+        // 以下で「合計＝表示している建物のみ」の整合も検証する（旧直呼び方式の値が出ないことを確認）。
         $res->assertDontSee('9,600,000円');
+        // 合計は積み上げ式（表示内訳から算出）なので、お客様所有土地でも合計＝建物のみで整合する。
+        // 旧・getTotalCost()/getGrossProfit() 直呼びなら合計原価 34,400,000 円・合計粗利 -2,400,000 円(赤) の
+        // 不整合になっていたが、積み上げ化で根絶される（final review §3.6）。
+        $res->assertDontSee('34,400,000円'); // 旧 getTotalCost()（建物原価+土地原価）は出ない
+        $res->assertDontSee('-2,400,000円'); // 旧 getGrossProfit()（土地原価が効いた赤字合計）は出ない
         // 建物は出る
         $res->assertSee('32,000,000円');
         $res->assertSee('税込 35,200,000円');
