@@ -214,7 +214,7 @@
                             {{-- 詳細（現状維持） --}}
                             <td class="co-td co-gstart">
                                 <a href="{{ route('housing.custom-orders.show', $ord) }}"
-                                   style="display: inline-block; padding: 3px 12px; font-size: 13px; font-weight: 600; color: #b45309; border: 1px solid #b45309; border-radius: 5px; background: #fff; text-decoration: none; cursor: pointer;">詳細</a>
+                                   style="display: inline-block; padding: 3px 12px; font-size: 12px; font-weight: 600; color: #b45309; border: 1px solid #b45309; border-radius: 5px; background: #fff; text-decoration: none; cursor: pointer;">詳細</a>
                             </td>
                         </tr>
                     @empty
