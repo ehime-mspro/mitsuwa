@@ -28,7 +28,6 @@
     .co-grp-b     { background: #f0f9ff; color: #075985; }
     .co-grp-l     { background: #fefce8; color: #854d0e; }
     .co-grp small { display: block; font-size: 10px; letter-spacing: 0; font-weight: 500; opacity: .75; margin-top: 1px; }
-    .co-subhead   { display: block; font-size: 10px; font-weight: 400; color: #9ca3af; }
 
     /* ボディ（既存 Tailwind: px-3 py-3 text-sm border-b border-gray-100 と同値） */
     .co-td      { padding: 12px; border-bottom: 1px solid #f3f4f6; font-size: 13px; white-space: nowrap; vertical-align: middle; text-align: center; }
@@ -90,7 +89,7 @@
                         <th rowspan="2" class="co-th co-gstart">詳細</th>
                     </tr>
                     <tr>
-                        <th class="co-th co-gstart">販売金額<span class="co-subhead">税抜 / 税込</span></th>
+                        <th class="co-th co-gstart">販売金額</th>
                         <th class="co-th">原価額</th>
                         <th class="co-th">粗利額</th>
                         <th class="co-th">粗利率</th>

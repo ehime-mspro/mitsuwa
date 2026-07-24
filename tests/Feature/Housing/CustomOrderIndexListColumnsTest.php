@@ -37,7 +37,7 @@ class CustomOrderIndexListColumnsTest extends TestCase
         ]);
     }
 
-    /** グループ見出しに消費税の注記を出さない（見出しは「建　物」「土　地」だけ） */
+    /** グループ見出し・列見出しに税の注記を出さない（見出しは名称だけ） */
     public function test_group_headers_have_no_tax_annotation(): void
     {
         $res = $this->actingAs($this->executive())->get('/housing/custom-orders');
@@ -45,6 +45,8 @@ class CustomOrderIndexListColumnsTest extends TestCase
         $res->assertOk();
         // 「消費税 10%」「消費税 非課税」を撤去したので、ページ内に「消費税」は一切出ない。
         $res->assertDontSee('消費税', false);
+        // 建物の販売金額列の「税抜 / 税込」サブ表記も撤去した。
+        $res->assertDontSee('税抜 / 税込', false);
         // 見出し自体は残っていること。
         $res->assertSee('建　物', false);
         $res->assertSee('土　地', false);
@@ -263,8 +265,6 @@ class CustomOrderIndexListColumnsTest extends TestCase
         // 税込サブ行の要素が 1 つも描画されていないことを見る。
         // ⚠ 裸のクラス名 'co-tax-sub' で探すと <style> ブロックの
         //   セレクタ定義に一致して必ず失敗する。開始タグの形で探すこと。
-        // ⚠ assertDontSee('税込') も使えない — ヘッダーの
-        //   <span class="co-subhead">税抜 / 税込</span> に一致する。
         $res->assertDontSee('<div class="co-tax-sub"', false);
     }
 
