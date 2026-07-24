@@ -34,7 +34,7 @@
     .co-td-name { text-align: left; padding-left: 16px; }
     .co-num     { text-align: right; }
     .co-muted   { color: #d1d5db; }
-    .co-tax-sub { font-size: 11px; color: #9ca3af; margin-top: 2px; }
+    .co-tax-sub { font-size: 11px; color: #6b7280; margin-top: 2px; }
 
     /* 建物 / 土地ゾーンの区切りと淡い地色 */
     .co-gstart { border-left: 1px solid #cbd5e1; }
