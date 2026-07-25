@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>注文住宅一覧 — 合計ゾーン追加モック</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', sans-serif; margin: 0; padding: 26px 22px 80px; background: #e5e7eb; color: #111827; }
+  .wrap { max-width: 1560px; margin: 0 auto; }
+
+  .page-title { font-size: 20px; font-weight: 700; margin: 0 0 6px; }
+  .page-sub { font-size: 13px; color: #6b7280; margin: 0 0 22px; }
+
+  .callout { background: #fff; border: 1px solid #d1d5db; border-left: 3px solid #059669; border-radius: 8px; padding: 14px 18px; margin-bottom: 14px; }
+  .callout h2 { font-size: 13px; font-weight: 700; margin: 0 0 8px; color: #065f46; }
+  .callout ul { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.95; color: #374151; }
+  .callout code { background: #f3f4f6; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+  .chk { color: #059669; font-weight: 700; }
+  .callout.warn { border-left-color: #d97706; }
+  .callout.warn h2 { color: #b45309; }
+
+  .switcher { position: sticky; top: 0; z-index: 60; background: #111827; border-radius: 8px; padding: 11px 18px; margin-bottom: 18px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; box-shadow: 0 4px 14px rgba(0,0,0,0.18); }
+  .switcher .sw-label { color: #d1d5db; font-size: 12.5px; font-weight: 600; }
+  .switcher .sw-sep { width: 1px; height: 22px; background: #374151; margin: 0 6px; }
+  .switcher button { background: #374151; color: #e5e7eb; border: 1px solid #4b5563; border-radius: 6px; padding: 6px 12px; font-size: 12.5px; font-family: inherit; cursor: pointer; }
+  .switcher button:hover { background: #4b5563; }
+  .switcher button.on { background: #059669; border-color: #059669; color: #fff; font-weight: 700; }
+
+  /* ============ 実画面フレーム（サイドバー + コンテンツ） ============ */
+  .stage { overflow: hidden; }
+  .browser { border: 1px solid #9ca3af; border-radius: 10px; overflow: hidden; box-shadow: 0 6px 22px rgba(0,0,0,0.13); background: #fff; width: var(--screen-w, 1440px); transform-origin: top left; }
+  .browser-bar { display: flex; align-items: center; gap: 7px; background: #f3f4f6; border-bottom: 1px solid #d1d5db; padding: 8px 14px; }
+  .browser-bar .dot { width: 10px; height: 10px; border-radius: 50%; background: #d1d5db; }
+  .browser-url { flex: 1; background: #fff; border: 1px solid #e5e7eb; border-radius: 5px; padding: 3px 10px; font-size: 11.5px; color: #6b7280; margin-left: 6px; }
+  .browser-w { font-size: 11.5px; color: #9ca3af; white-space: nowrap; }
+  .app { display: flex; height: 660px; overflow: hidden; }
+
+  .side { width: 220px; min-width: 220px; background: #fff; border-right: 1px solid #e5e7eb; padding: 16px 0 24px; overflow-y: auto; }
+  .side-brand { font-size: 12px; font-weight: 700; color: #059669; padding: 0 16px 12px; letter-spacing: .03em; }
+  .side-grp { font-size: 11.5px; font-weight: 700; color: #6b7280; padding: 10px 16px 4px; }
+  .side-item { display: block; font-size: 12.5px; color: #4b5563; padding: 6px 16px 6px 26px; text-decoration: none; }
+  .side-item.act { background: #ecfdf5; color: #047857; font-weight: 700; border-left: 3px solid #059669; padding-left: 23px; }
+
+  .main { flex: 1; min-width: 0; background: #f3f4f6; overflow-y: auto; padding: 32px; }
+  .crumb { font-size: 11.5px; color: #9ca3af; margin-bottom: 18px; }
+  .crumb a { color: #9ca3af; text-decoration: none; }
+  .head-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+  .h1 { font-size: 17px; font-weight: 700; margin: 0; }
+  .btn-new { display: inline-flex; align-items: center; gap: 6px; background: #059669; color: #fff; font-size: 13px; font-weight: 600; padding: 9px 16px; border-radius: 6px; text-decoration: none; white-space: nowrap; }
+
+  .filterbar { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px 13px; margin-bottom: 15px; }
+  .filterbar select, .filterbar input { height: 34px; padding: 0 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; color: #374151; background: #fff; font-family: inherit; }
+  .filterbar input { flex: 1; min-width: 140px; }
+  .filterbar .clear { height: 34px; padding: 0 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 12px; color: #9ca3af; background: #fff; display: inline-flex; align-items: center; text-decoration: none; white-space: nowrap; }
+
+  .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
+  .scroller { overflow-x: auto; }
+
+  /* ============ 表本体（実装の co-* クラスと 1:1 対応） ============ */
+  table.t { width: 100%; border-collapse: collapse; }
+  table.t th { padding: 10px 12px; background: #f9fafb; border-bottom: 2px solid #e5e7eb; font-size: 12px; font-weight: 600; color: #4b5563; white-space: nowrap; text-align: center; }
+  table.t td { padding: 12px; border-bottom: 1px solid #f3f4f6; font-size: 13px; white-space: nowrap; vertical-align: middle; text-align: center; }
+  table.t tbody tr:hover { background: #f9fafb; }
+  .num { text-align: right !important; }
+  .name-cell { text-align: left !important; padding-left: 16px !important; }
+  .name-main { font-size: 13px; font-weight: 600; }
+  .name-main a { color: #1d4ed8; text-decoration: underline; }
+  .name-sub { font-size: 11.5px; color: #6b7280; margin-top: 2px; }
+  .muted { color: #d1d5db; }
+
+  .profit { color: #047857; font-weight: 700; }
+  .profit-neg { color: #dc2626; font-weight: 700; }
+  .tax-sub { font-size: 11px; color: #6b7280; margin-top: 2px; }
+
+  .g-start { border-left: 1px solid #cbd5e1; }
+  th.grp { font-size: 11.5px; letter-spacing: .08em; padding-top: 6px; padding-bottom: 6px; }
+  th.grp-b { background: #f0f9ff; color: #075985; }
+  th.grp-l { background: #fefce8; color: #854d0e; }
+  td.zone-b { background: #fcfeff; }
+  td.zone-l { background: #fffdf5; }
+  tbody tr:hover td.zone-b { background: #f5fbfe; }
+  tbody tr:hover td.zone-l { background: #fefbef; }
+
+  /* --- 合計ゾーンの配色（トグルで切替） ---
+     既定 = レッド（契約管理と同じ）／ .gray-total = グレー（建売物件一覧と同じ） */
+  th.grp-t     { background: #fee2e2; color: #991b1b; }
+  td.zone-t    { background: #fef2f2; }
+  tbody tr:hover td.zone-t { background: #fee2e2; }
+  .gray-total th.grp-t  { background: #eef2f6; color: #1f2937; }
+  .gray-total td.zone-t { background: #f6f8fa; }
+  .gray-total tbody tr:hover td.zone-t { background: #eef2f6; }
+
+  /* --- 固定列（トグルで切替）。進捗 96px → 案件名 230px の順で左に貼り付ける --- */
+  .sticky-on th.stick, .sticky-on td.stick { position: sticky; z-index: 1; }
+  .sticky-on th.stick { z-index: 3; background: #f9fafb; }
+  .sticky-on tbody td.stick { background: #fff; }
+  .sticky-on tbody tr:hover td.stick { background: #f9fafb; }
+  .sticky-on .stick-stat { left: 0; }
+  .sticky-on .stick-name { left: 96px; }
+  .col-stat { width: 96px;  min-width: 96px;  box-sizing: border-box; }
+  .col-name { width: 230px; min-width: 230px; max-width: 230px; box-sizing: border-box; }
+  .name-link { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+  .sticky-on td.stick-name, .sticky-on th.stick-name { border-right: 1px solid #e5e7eb; box-shadow: 4px 0 6px -4px rgba(0,0,0,.15); }
+
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 9999px; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .b-consult { background: #e0e7ff; color: #3730a3; }
+  .b-design  { background: #fce7f3; color: #9d174d; }
+  .b-estim   { background: #fef3c7; color: #92400e; }
+  .b-contr   { background: #dbeafe; color: #1e40af; }
+  .b-constr  { background: #fed7aa; color: #9a3412; }
+  .b-deliv   { background: #a7f3d0; color: #064e3b; }
+
+  .btn-detail { display: inline-block; padding: 3px 12px; font-size: 12px; font-weight: 600; color: #b45309; border: 1px solid #b45309; border-radius: 5px; background: #fff; text-decoration: none; }
+
+  .pager { display: flex; justify-content: center; gap: 2px; margin-top: 16px; }
+  .pager span, .pager a { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 4px; font-size: 12px; border: 1px solid #d1d5db; background: #fff; color: #374151; text-decoration: none; }
+  .pager .cur { background: #059669; border-color: #059669; color: #fff; font-weight: 700; }
+  .pager .off { color: #d1d5db; border-color: #e5e7eb; }
+  .total { font-size: 13px; color: #6b7280; text-align: right; margin-top: 8px; }
+
+  .measure { font-size: 12px; border-radius: 6px; padding: 7px 12px; display: inline-block; margin-top: 12px; }
+  .m-fit  { color: #065f46; background: #ecfdf5; border: 1px solid #a7f3d0; }
+  .m-over { color: #b45309; background: #fffbeb; border: 1px solid #fde68a; }
+
+  .decide { background: #fff; border: 1px solid #d1d5db; border-radius: 8px; padding: 18px 22px; margin-top: 26px; }
+  .decide h2 { font-size: 15px; font-weight: 700; margin: 0 0 12px; }
+  table.d { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.d th { text-align: left; background: #f9fafb; color: #4b5563; font-size: 12px; font-weight: 600; padding: 8px 12px; border-bottom: 1px solid #e5e7eb; }
+  table.d td { padding: 10px 12px; border-bottom: 1px solid #f3f4f6; vertical-align: top; line-height: 1.75; }
+  table.d td:first-child { width: 5%; text-align: center; color: #9ca3af; }
+  table.d td:nth-child(2) { width: 22%; font-weight: 600; color: #111827; }
+  table.d td:last-child { color: #4b5563; }
+  mark { background: #fef3c7; padding: 0 3px; border-radius: 2px; }
+  .rowmark td { background: #fffbeb !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1 class="page-title">注文住宅一覧 — 「合計」ゾーン追加モック</h1>
+  <p class="page-sub">/housing/custom-orders　｜　2026-07-25　｜　現行 11 列 → <b>14 列</b>（契約管理・建売物件一覧と同じ 3 ゾーン様式に揃える）</p>
+
+  <div class="callout">
+    <h2>今回の変更（提案）</h2>
+    <ul>
+      <li><span class="chk">✓</span> 建物ゾーンの<b>左に「合　計」グループ（3 列）</b>を追加 — <b>販売金額 / 原価額 / 粗利額</b>。<mark>粗利率は出さない</mark>（契約管理・建売物件一覧と同じ決定）</li>
+      <li><span class="chk">✓</span> 合計の販売金額には<b>税込をサブ行</b>で併記（土地は非課税なので、税は建物ぶんだけ）</li>
+      <li><span class="chk">✓</span> 合計は「<b>画面に出ている建物 ＋ 土地</b>」の積み上げ。お客様所有土地の行で <code>land_cost</code> が残っていても合算しない（建売物件一覧の final review で方針転換した思想を踏襲）</li>
+      <li><span class="chk">✓</span> 積み上げ式は <mark>先行 2 画面と 1 文字も変えない</mark>（片側だけ未入力なら 0 円扱いで合算 — 下の黄色い 2 行）</li>
+      <li><span class="chk">✓</span> 14 列は 1440px モニタで <b>437px 横スクロール</b>するため、<b>進捗・案件名の 2 列を左に固定</b>（下のトグルで ON/OFF を比較できます）</li>
+      <li>DB 変更なし・モデル追加なし。<code>getTotalSellingPrice()</code> 等の既存メソッドは触らず、Blade の <code>@php</code> ブロックで積み上げます</li>
+    </ul>
+  </div>
+
+  <div class="switcher">
+    <span class="sw-label">合計ゾーンの色：</span>
+    <button type="button" data-color="red" class="on">レッド（契約管理と同じ）</button>
+    <button type="button" data-color="gray">グレー（建売物件一覧と同じ）</button>
+    <span class="sw-sep"></span>
+    <span class="sw-label">左 2 列の固定：</span>
+    <button type="button" data-stick="on" class="on">する</button>
+    <button type="button" data-stick="off">しない</button>
+    <span class="sw-sep"></span>
+    <span class="sw-label">モニタ幅：</span>
+    <button type="button" data-w="1280">1280</button>
+    <button type="button" data-w="1440" class="on">1440</button>
+    <button type="button" data-w="1600">1600</button>
+  </div>
+
+
+  <!-- ================= 実画面フレーム ================= -->
+  <div class="stage" id="stage">
+  <div class="browser" id="browser">
+    <div class="browser-bar">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="browser-url">https://www.mitsuwat.co.jp/system/manage/housing/custom-orders</span>
+      <span class="browser-w" id="bw">1440px</span>
+    </div>
+    <div class="app">
+
+      <div class="side">
+        <div class="side-brand">ミツワ都市開発</div>
+        <div class="side-grp">ダッシュボード</div>
+        <a class="side-item" href="#">経営ダッシュボード</a>
+        <div class="side-grp">不動産</div>
+        <a class="side-item" href="#">仕入れ案件</a>
+        <a class="side-item" href="#">分譲地</a>
+        <a class="side-item" href="#">契約管理</a>
+        <div class="side-grp">住宅事業</div>
+        <a class="side-item" href="#">ダッシュボード</a>
+        <a class="side-item" href="#">建売物件</a>
+        <a class="side-item act" href="#">注文住宅</a>
+        <a class="side-item" href="#">契約管理</a>
+        <div class="side-grp">賃貸マンション</div>
+        <a class="side-item" href="#">物件</a>
+      </div>
+
+      <div class="main">
+        <div class="crumb"><a href="#">ホーム</a> › 住宅事業 › <span style="color:#6b7280;">注文住宅一覧</span></div>
+
+        <div class="head-row">
+          <h2 class="h1">注文住宅一覧</h2>
+          <a class="btn-new" href="#">＋ 新規登録</a>
+        </div>
+
+        <div class="filterbar">
+          <select><option>ステータス: 全て</option><option>商談</option><option>設計</option><option>見積り</option><option>契約</option><option>着工</option><option>完成</option><option>引渡し</option></select>
+          <input type="text" placeholder="案件番号・案件名・顧客名・住所">
+          <a class="clear" href="#">クリア</a>
+        </div>
+
+        <div class="card"><div class="scroller">
+          <table class="t sticky-on" id="tbl">
+            <thead>
+              <tr>
+                <th rowspan="2" class="stick stick-stat col-stat">進捗</th>
+                <th rowspan="2" class="stick stick-name col-name" style="text-align:left; padding-left:16px;">案件名</th>
+                <th class="grp grp-t g-start" colspan="3">合　計</th>
+                <th class="grp grp-b g-start" colspan="4">建　物</th>
+                <th class="grp grp-l g-start" colspan="4">土　地</th>
+                <th rowspan="2" class="g-start">詳細</th>
+              </tr>
+              <tr>
+                <th class="g-start">販売金額</th><th>原価額</th><th>粗利額</th>
+                <th class="g-start">販売金額</th><th>原価額</th><th>粗利額</th><th>粗利率</th>
+                <th class="g-start">販売金額</th><th>原価額</th><th>粗利額</th><th>粗利率</th>
+              </tr>
+            </thead>
+            <tbody>
+
+              <!-- 1: 自社土地・契約 -->
+              <tr>
+                <td class="stick stick-stat col-stat"><span class="badge b-contr">契約</span></td>
+                <td class="name-cell stick stick-name col-name">
+                  <div class="name-main"><a href="#" class="name-link">石井町A様邸 新築工事</a></div>
+                  <div class="name-sub">松山市石井町1-2-3</div>
+                </td>
+                <td class="num zone-t g-start">41,300,000円<div class="tax-sub">税込 44,150,000円</div></td>
+                <td class="num zone-t">30,900,000円</td>
+                <td class="num zone-t profit">10,400,000円</td>
+                <td class="num zone-b g-start">28,500,000円<div class="tax-sub">税込 31,350,000円</div></td>
+                <td class="num zone-b">21,300,000円</td>
+                <td class="num zone-b profit">7,200,000円</td>
+                <td class="num zone-b profit">25.3%</td>
+                <td class="num zone-l g-start">12,800,000円</td>
+                <td class="num zone-l">9,600,000円</td>
+                <td class="num zone-l profit">3,200,000円</td>
+                <td class="num zone-l profit">25.0%</td>
+                <td class="g-start"><a href="#" class="btn-detail">詳細</a></td>
+              </tr>
+
+              <!-- 2: お客様所有土地（合計＝建物のみ） -->
+              <tr>
+                <td class="stick stick-stat col-stat"><span class="badge b-design">設計</span></td>
+                <td class="name-cell stick stick-name col-name">
+                  <div class="name-main"><a href="#" class="name-link">見奈良B様邸 新築工事</a></div>
+                  <div class="name-sub">東温市見奈良456</div>
+                </td>
+                <td class="num zone-t g-start">32,000,000円<div class="tax-sub">税込 35,200,000円</div></td>
+                <td class="num zone-t">24,800,000円</td>
+                <td class="num zone-t profit">7,200,000円</td>
+                <td class="num zone-b g-start">32,000,000円<div class="tax-sub">税込 35,200,000円</div></td>
+                <td class="num zone-b">24,800,000円</td>
+                <td class="num zone-b profit">7,200,000円</td>
+                <td class="num zone-b profit">22.5%</td>
+                <td class="num zone-l g-start muted">—</td>
+                <td class="num zone-l muted">—</td>
+                <td class="num zone-l muted">—</td>
+                <td class="num zone-l muted">—</td>
+                <td class="g-start"><a href="#" class="btn-detail">詳細</a></td>
+              </tr>
+
+              <!-- 3: 自社土地・引渡し -->
+              <tr>
+                <td class="stick stick-stat col-stat"><span class="badge b-deliv">引渡し</span></td>
+                <td class="name-cell stick stick-name col-name">
+                  <div class="name-main"><a href="#" class="name-link">筒井C様邸 新築工事</a></div>
+                  <div class="name-sub">伊予郡松前町筒井789</div>
+                </td>
+                <td class="num zone-t g-start">38,300,000円<div class="tax-sub">税込 40,980,000円</div></td>
+                <td class="num zone-t">29,000,000円</td>
+                <td class="num zone-t profit">9,300,000円</td>
+                <td class="num zone-b g-start">26,800,000円<div class="tax-sub">税込 29,480,000円</div></td>
+                <td class="num zone-b">20,100,000円</td>
+                <td class="num zone-b profit">6,700,000円</td>
+                <td class="num zone-b profit">25.0%</td>
+                <td class="num zone-l g-start">11,500,000円</td>
+                <td class="num zone-l">8,900,000円</td>
+                <td class="num zone-l profit">2,600,000円</td>
+                <td class="num zone-l profit">22.6%</td>
+                <td class="g-start"><a href="#" class="btn-detail">詳細</a></td>
+              </tr>
+
+              <!-- 4: 建物が赤字（合計も赤字） -->
+              <tr>
+                <td class="stick stick-stat col-stat"><span class="badge b-constr">着工</span></td>
+                <td class="name-cell stick stick-name col-name">
+                  <div class="name-main"><a href="#" class="name-link">重信D様邸 新築工事</a></div>
+                  <div class="name-sub">東温市田窪1122</div>
+                </td>
+                <td class="num zone-t g-start">34,000,000円<div class="tax-sub">税込 36,400,000円</div></td>
+                <td class="num zone-t">34,700,000円</td>
+                <td class="num zone-t profit-neg">-700,000円</td>
+                <td class="num zone-b g-start">24,000,000円<div class="tax-sub">税込 26,400,000円</div></td>
+                <td class="num zone-b">25,500,000円</td>
+                <td class="num zone-b profit-neg">-1,500,000円</td>
+                <td class="num zone-b profit-neg">-6.3%</td>
+                <td class="num zone-l g-start">10,000,000円</td>
+                <td class="num zone-l">9,200,000円</td>
+                <td class="num zone-l profit">800,000円</td>
+                <td class="num zone-l profit">8.0%</td>
+                <td class="g-start"><a href="#" class="btn-detail">詳細</a></td>
+              </tr>
+
+              <!-- 5: 建物「原価」だけ未入力 → 合計原価は土地ぶんだけで積み上がる（先行 2 画面と同一挙動） -->
+              <tr class="rowmark">
+                <td class="stick stick-stat col-stat"><span class="badge b-estim">見積り</span></td>
+                <td class="name-cell stick stick-name col-name">
+                  <div class="name-main"><a href="#" class="name-link">北条E様邸 新築工事</a></div>
+                  <div class="name-sub">松山市北条辻334</div>
+                </td>
+                <td class="num zone-t g-start">43,000,000円<div class="tax-sub">税込 46,000,000円</div></td>
+                <td class="num zone-t">9,800,000円</td>
+                <td class="num zone-t profit">33,200,000円</td>
+                <td class="num zone-b g-start">30,000,000円<div class="tax-sub">税込 33,000,000円</div></td>
+                <td class="num zone-b muted">—</td>
+                <td class="num zone-b muted">—</td>
+                <td class="num zone-b muted">—</td>
+                <td class="num zone-l g-start">13,000,000円</td>
+                <td class="num zone-l">9,800,000円</td>
+                <td class="num zone-l profit">3,200,000円</td>
+                <td class="num zone-l profit">24.6%</td>
+                <td class="g-start"><a href="#" class="btn-detail">詳細</a></td>
+              </tr>
+
+              <!-- 6: 土地「販売金額」だけ未入力 → 合計販売が建物ぶんだけになる（先行 2 画面と同一挙動） -->
+              <tr class="rowmark">
+                <td class="stick stick-stat col-stat"><span class="badge b-estim">見積り</span></td>
+                <td class="name-cell stick stick-name col-name">
+                  <div class="name-main"><a href="#" class="name-link">新居浜G様邸 新築工事</a></div>
+                  <div class="name-sub">新居浜市中村松木2-8</div>
+                </td>
+                <td class="num zone-t g-start">29,000,000円<div class="tax-sub">税込 31,900,000円</div></td>
+                <td class="num zone-t">30,500,000円</td>
+                <td class="num zone-t profit-neg">-1,500,000円</td>
+                <td class="num zone-b g-start">29,000,000円<div class="tax-sub">税込 31,900,000円</div></td>
+                <td class="num zone-b">22,000,000円</td>
+                <td class="num zone-b profit">7,000,000円</td>
+                <td class="num zone-b profit">24.1%</td>
+                <td class="num zone-l g-start muted">—</td>
+                <td class="num zone-l">8,500,000円</td>
+                <td class="num zone-l muted">—</td>
+                <td class="num zone-l muted">—</td>
+                <td class="g-start"><a href="#" class="btn-detail">詳細</a></td>
+              </tr>
+
+              <!-- 7: 金額未入力 -->
+              <tr>
+                <td class="stick stick-stat col-stat"><span class="badge b-consult">商談</span></td>
+                <td class="name-cell stick stick-name col-name">
+                  <div class="name-main"><a href="#" class="name-link">松前F様邸 新築工事</a></div>
+                  <div class="name-sub">伊予郡松前町北黒田55</div>
+                </td>
+                <td class="num zone-t g-start muted">—</td>
+                <td class="num zone-t muted">—</td>
+                <td class="num zone-t muted">—</td>
+                <td class="num zone-b g-start muted">—</td>
+                <td class="num zone-b muted">—</td>
+                <td class="num zone-b muted">—</td>
+                <td class="num zone-b muted">—</td>
+                <td class="num zone-l g-start muted">—</td>
+                <td class="num zone-l muted">—</td>
+                <td class="num zone-l muted">—</td>
+                <td class="num zone-l muted">—</td>
+                <td class="g-start"><a href="#" class="btn-detail">詳細</a></td>
+              </tr>
+
+            </tbody>
+          </table>
+        </div></div>
+
+        <div class="pager">
+          <span class="off">&lt;</span><span class="cur">1</span><a href="#">2</a><a href="#">&gt;</a>
+        </div>
+        <div class="total">全 24 件</div>
+      </div>
+    </div>
+  </div>
+  </div>
+  <div id="measure" class="measure"></div>
+
+
+  <div class="callout warn" style="margin-top:24px;">
+    <h2>黄色い 2 行 — 積み上げ方式で「片側だけ未入力」だとこう出ます（先行 2 画面と同一挙動）</h2>
+    <ul>
+      <li>ルールは <b>先行 2 画面と 1 文字も変えない</b>:
+          <code>($b !== null || $l !== null) ? ($b ?? 0) + ($l ?? 0) : null</code>。
+          <b>片方が未入力なら 0 円として合算</b>されます。</li>
+      <li><b>北条E様邸</b>（建物<b>原価</b>だけ未入力）… 合計原価が土地ぶんだけの 9,800,000円 になり、
+          合計粗利 <b>33,200,000円</b> が<b>過大</b>に出ます（建物粗利は「—」なのに合計だけ緑）。</li>
+      <li><b>新居浜G様邸</b>（土地<b>販売金額</b>だけ未入力）… 合計販売が建物ぶんだけの 29,000,000円 になり、
+          合計粗利 <b>-1,500,000円</b> が<b>過小</b>に出ます
+          （<span class="profit">建物 +7,000,000円（緑）</span>と
+           <span class="profit-neg">合計 -1,500,000円（赤）</span>が同じ行に並びます）。</li>
+      <li>⚠ <b>お客様所有土地は「未入力」ではありません</b>（見奈良B様邸）。<code>isCompanyLand()</code> が
+          false の行は土地 4 セルが「—」で、<b>建物だけで合計が成立</b>します。
+          生カラムに <code>land_cost</code> が残っていても合算しません — ここは積み上げ方式が正しく効く部分です。</li>
+      <li>⚠ 4 つの金額カラムはすべて <code>nullable</code>（<code>CustomOrderController::validateOrder</code> で実測）＝
+          <b>この 2 行は実際に保存できる状態</b>です。ローカル DB は注文住宅 0 件のため、
+          本番での発生件数は未確認（Bug #22/#25/#27 と同じ「実データが特定の形の時だけ出る」型）。</li>
+    </ul>
+  </div>
+
+  <div class="decide">
+    <h2>今回の決定事項（案）</h2>
+    <table class="d">
+      <thead><tr><th>#</th><th>項目</th><th>内容</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>レイアウト</td><td>2 段ヘッダーで「合計」「建物」「土地」をグループ化。<b>全 14 列</b>（現行 11 列 + 3）</td></tr>
+        <tr><td>2</td><td>グループ順</td><td><b>合計 → 建物 → 土地</b>（先行 2 画面と同じ）</td></tr>
+        <tr><td>3</td><td>合計グループ</td><td>販売金額 / 原価額 / 粗利額 の <b>3 列。粗利率は出さない</b></td></tr>
+        <tr><td>4</td><td>合計の算出</td><td>画面に出ている建物 ＋ 土地の<b>積み上げ</b>。お客様所有土地の行は建物のみ（行 2）</td></tr>
+        <tr><td>5</td><td>未入力時の合計</td><td><mark>先行 2 画面と完全に同じ積み上げ式を使う</mark> — <code>($b !== null || $l !== null) ? ($b ?? 0) + ($l ?? 0) : null</code>。<br>片側だけ未入力なら 0 円扱いで合算される（黄色い 2 行）。<b>3 画面で挙動を揃えることを優先</b></td></tr>
+        <tr><td>6</td><td>消費税</td><td>合計・建物の販売金額に<b>税込サブ行</b>。土地は非課税なので税は建物ぶんだけ</td></tr>
+        <tr><td>7</td><td>合計ゾーンの配色</td><td><b>レッド</b>（契約管理と同じ）。見出し <code>#fee2e2</code> / 文字 <code>#991b1b</code> / 地色 <code>#fef2f2</code></td></tr>
+        <tr><td>8</td><td>固定列</td><td><b>進捗 → 案件名 の 2 列</b>を左固定（横スクロール時）。金額ゾーンだけ動く</td></tr>
+        <tr><td>9</td><td>列の順序</td><td>現行どおり <b>進捗 → 案件名</b>（最小差分。建売物件一覧は 物件名 → 進捗 で逆だが揃えない）</td></tr>
+        <tr><td>10</td><td>進捗バッジ</td><td><b>現状維持</b>（クリックでステップバー → PATCH 即更新）。金額列を足すだけ</td></tr>
+        <tr><td>11</td><td>フィルタ / ページネーション</td><td><b>現状維持</b>（今回の変更対象外）</td></tr>
+        <tr><td>12</td><td>粗利の色</td><td>プラス <span class="profit">#047857</span> / マイナス <span class="profit-neg">#dc2626</span>・太字。粗利率は常に小数 1 桁</td></tr>
+        <tr><td>13</td><td>DB / モデル</td><td><b>変更なし</b>。既存メソッドも触らない（Blade の <code>@php</code> ブロックのみ）</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<script>
+(function () {
+  var stage   = document.getElementById('stage');
+  var browser = document.getElementById('browser');
+  var badge   = document.getElementById('measure');
+  var bw      = document.getElementById('bw');
+  var tbl     = document.getElementById('tbl');
+
+  function wanted() {
+    var v = getComputedStyle(document.documentElement).getPropertyValue('--screen-w').trim();
+    return parseInt(v, 10) || 1440;
+  }
+
+  /* 指定モニタ幅の実寸でレイアウトし、閲覧窓に入らない時だけ scale で縮める。
+     ⚠ 幅の実測は offsetWidth / clientWidth（レイアウト値＝scale 非依存）で行うこと。 */
+  function fit() {
+    var avail = stage.clientWidth;
+    var w = wanted();
+    if (!avail) return 1;
+    var scale = Math.min(1, avail / w);
+    browser.style.transform = scale < 1 ? 'scale(' + scale + ')' : 'none';
+    stage.style.height = Math.ceil(browser.offsetHeight * scale) + 'px';
+    return scale;
+  }
+
+  function measure() {
+    var scale  = fit();
+    var table  = document.querySelector('table.t');
+    var scroll = document.querySelector('.scroller');
+    if (!table || !scroll) return;
+
+    var prev = table.style.width;
+    table.style.width = 'max-content';
+    var needed = table.offsetWidth;
+    table.style.width = prev;
+
+    var avail = scroll.clientWidth;
+    if (avail === 0) { badge.className = 'measure'; badge.textContent = ''; return; }
+
+    var zoom = scale < 0.995
+      ? '　（画面に収めるため ' + Math.round(scale * 100) + '% に縮小表示中。上の数値は ' + wanted() + 'px 実機での値です）'
+      : '';
+
+    if (needed > avail + 1) {
+      badge.className = 'measure m-over';
+      badge.textContent = '↔ 表の必要幅 ' + needed + 'px ＞ 使える幅 ' + avail + 'px … 右端が ' + (needed - avail) + 'px ぶん横スクロールします' + zoom;
+    } else {
+      badge.className = 'measure m-fit';
+      badge.textContent = '✓ 表の必要幅 ' + needed + 'px ≦ 使える幅 ' + avail + 'px … 横スクロールなしで収まります' + zoom;
+    }
+  }
+
+  function activate(btn, attr) {
+    var group = document.querySelectorAll('.switcher button[' + attr + ']');
+    group.forEach(function (b) { b.classList.remove('on'); });
+    btn.classList.add('on');
+  }
+
+  document.querySelectorAll('.switcher button[data-w]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var w = btn.getAttribute('data-w');
+      document.documentElement.style.setProperty('--screen-w', w + 'px');
+      activate(btn, 'data-w');
+      bw.textContent = w + 'px';
+      measure();
+    });
+  });
+
+  document.querySelectorAll('.switcher button[data-color]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      tbl.classList.toggle('gray-total', btn.getAttribute('data-color') === 'gray');
+      activate(btn, 'data-color');
+    });
+  });
+
+  document.querySelectorAll('.switcher button[data-stick]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      tbl.classList.toggle('sticky-on', btn.getAttribute('data-stick') === 'on');
+      activate(btn, 'data-stick');
+      measure();
+    });
+  });
+
+  measure();
+  window.addEventListener('resize', measure);
+
+  if (window.ResizeObserver) {
+    var lastW = stage.clientWidth;
+    new ResizeObserver(function () {
+      var w = stage.clientWidth;
+      if (w && w !== lastW) { lastW = w; measure(); }
+    }).observe(stage);
+  }
+})();
+</script>
+</body>
+</html>
