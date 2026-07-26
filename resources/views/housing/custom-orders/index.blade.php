@@ -25,6 +25,7 @@
     .co-th        { padding: 10px 12px; background: #f9fafb; border-bottom: 2px solid #e5e7eb; font-size: 12px; font-weight: 600; color: #4b5563; white-space: nowrap; text-align: center; }
     .co-th-name   { text-align: left; padding-left: 16px; }
     .co-grp       { font-size: 11.5px; letter-spacing: .08em; padding-top: 6px; padding-bottom: 6px; }
+    .co-grp-t     { background: #fee2e2; color: #991b1b; }   /* 合計＝レッド（決定 #7・契約管理と同じ） */
     .co-grp-b     { background: #f0f9ff; color: #075985; }
     .co-grp-l     { background: #fefce8; color: #854d0e; }
     .co-grp small { display: block; font-size: 10px; letter-spacing: 0; font-weight: 500; opacity: .75; margin-top: 1px; }
@@ -36,13 +37,36 @@
     .co-muted   { color: #d1d5db; }
     .co-tax-sub { font-size: 11px; color: #6b7280; margin-top: 2px; }
 
-    /* 建物 / 土地ゾーンの区切りと淡い地色 */
+    /* 合計 / 建物 / 土地ゾーンの区切りと淡い地色 */
     .co-gstart { border-left: 1px solid #cbd5e1; }
+    td.co-zone-t { background: #fef2f2; }
     td.co-zone-b { background: #fcfeff; }
     td.co-zone-l { background: #fffdf5; }
     /* ⚠ td の背景は tr の背景を上書きするため、行ホバー時の上書き規則が必須 */
+    tbody tr:hover td.co-zone-t { background: #fee2e2; }
     tbody tr:hover td.co-zone-b { background: #f5fbfe; }
     tbody tr:hover td.co-zone-l { background: #fefbef; }
+
+    /* --- 横スクロール時に左 2 列（進捗・案件名）を固定し、合計より右だけスクロールさせる --- */
+    /* ⚠ sticky セルは不透明背景が必須（スクロールで下に潜る右側セルが透けるのを防ぐ）。
+       ⚠ 案件名の left は進捗列の実幅（.co-col-stat の width）と一致させる。box-sizing:border-box で
+          padding 込み幅を固定し、table-layout:auto でも列幅がブレないようにする。 */
+    th.co-sticky, td.co-sticky { position: sticky; z-index: 1; }
+    th.co-sticky               { z-index: 3; }                 /* ヘッダーの固定列は本文セルより前面 */
+    .co-sticky-stat            { left: 0; }
+    .co-sticky-name            { left: 96px; }                 /* = .co-col-stat の width */
+    .co-col-stat               { width: 96px;  min-width: 96px;  box-sizing: border-box; }
+    .co-col-name               { width: 230px; min-width: 230px; max-width: 230px; box-sizing: border-box; }
+    /* 案件名リンクと住所サブ行の省略。⚠ 住所は 230px を超えうるので建売一覧（坪数サブ行）と違いサブ行にも要る */
+    .co-name-link              { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+    .co-name-sub               { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* 固定列の不透明背景（ヘッダー / 本文 / ホバー） */
+    th.co-sticky               { background: #f9fafb; }
+    tbody td.co-sticky         { background: #fff; }
+    tbody tr:hover td.co-sticky { background: #f9fafb; }
+    /* 固定領域とスクロール領域の境界。
+       ⚠ 右端の固定列＝案件名に付ける。先行 2 画面は右端が進捗側なので .co-sticky-stat に付いている（罠 #1） */
+    td.co-sticky-name, th.co-sticky-name { border-right: 1px solid #e5e7eb; box-shadow: 4px 0 6px -4px rgba(0, 0, 0, .15); }
     </style>
 
     {{-- ページヘッダー --}}
@@ -82,13 +106,17 @@
             <table class="w-full border-collapse">
                 <thead>
                     <tr>
-                        <th rowspan="2" class="co-th">進捗</th>
-                        <th rowspan="2" class="co-th co-th-name">案件名</th>
+                        <th rowspan="2" class="co-th co-sticky co-sticky-stat co-col-stat">進捗</th>
+                        <th rowspan="2" class="co-th co-th-name co-sticky co-sticky-name co-col-name">案件名</th>
+                        <th colspan="3" class="co-th co-grp co-grp-t co-gstart">合　計</th>
                         <th colspan="4" class="co-th co-grp co-grp-b co-gstart">建　物</th>
                         <th colspan="4" class="co-th co-grp co-grp-l co-gstart">土　地</th>
                         <th rowspan="2" class="co-th co-gstart">詳細</th>
                     </tr>
                     <tr>
+                        <th class="co-th co-gstart">販売金額</th>
+                        <th class="co-th">原価額</th>
+                        <th class="co-th">粗利額</th>
                         <th class="co-th co-gstart">販売金額</th>
                         <th class="co-th">原価額</th>
                         <th class="co-th">粗利額</th>
@@ -106,6 +134,7 @@
                             // 生カラムに値が残っている行があっても、お客様所有土地なら
                             // 4 セルすべて「—」にして「販売だけ出て粗利は —」を作らない。
                             $isCompanyLand = $ord->isCompanyLand();
+                            $bTax    = $ord->getBuildingTax();   // 合計の税込サブ行用（土地は非課税なので建物ぶんの税だけ）
                             $bPrice  = $ord->building_contract_price;
                             $bCost   = $ord->building_cost;
                             $bProfit = $ord->getBuildingProfit();
@@ -114,10 +143,23 @@
                             $lCost   = $isCompanyLand ? $ord->land_cost : null;
                             $lProfit = $ord->getLandProfit();
                             $lRate   = $ord->getLandProfitRate();
+                            // 合計は「表示している建物＋土地」から積み上げる（設計書 §3.3）。
+                            // getTotalSellingPrice()/getTotalCost()/getTotalProfit() は直呼びしない
+                            // ＝先行 2 画面（properties/index.blade.php・contracts/index.blade.php）と
+                            //   1 文字も変えない式にして 3 画面のコード形を揃える。
+                            // ⚠ 現状 HsCustomOrder::getTotalSellingPrice() 等と数式は完全に一致（＝show 画面と値が一致する）。
+                            //    モデル側を変える時はこの Blade と custom-orders/show.blade.php も必ず同時に直す。
+                            // ⚠ 片側だけ未入力なら ?? 0 で 0 円合算され合計が過大／過小になるが、
+                            //    これは仕様（決定 #5・設計書 §2.1 / §3.4）。回帰テスト
+                            //    test_building_cost_only_missing_inflates_total_profit /
+                            //    test_land_price_only_missing_deflates_total_profit で固定済み。直さない。
+                            $tPrice  = ($bPrice !== null || $lPrice !== null) ? ($bPrice ?? 0) + ($lPrice ?? 0) : null;
+                            $tCost   = ($bCost  !== null || $lCost  !== null) ? ($bCost  ?? 0) + ($lCost  ?? 0) : null;
+                            $tProfit = ($tPrice !== null && $tCost  !== null) ? $tPrice - $tCost : null;
                         @endphp
                         <tr class="hover:bg-gray-50">
                             {{-- 進捗（現状維持。data-code はステータス変更ダイアログで使うため残す） --}}
-                            <td class="co-td">
+                            <td class="co-td co-sticky co-sticky-stat co-col-stat">
                                 <span class="badge-step-trigger"
                                       data-code="{{ $ord->order_code }}"
                                       data-id="{{ $ord->id }}"
@@ -128,12 +170,44 @@
 
                             {{-- 案件名（詳細画面へのリンク）
                                  ⚠ text-sm を付けない。.co-td の 13px を継承させてモックと揃える
-                                 （付けると案件名だけ 14px になり他セルと不揃いになる） --}}
-                            <td class="co-td co-td-name">
+                                   （付けると案件名だけ 14px になり他セルと不揃いになる）
+                                 ⚠ 230px 固定幅にしたので、リンクと住所サブ行の両方に省略処理が要る
+                                   （住所は建売一覧の坪数サブ行と違い長くなりうる。設計書 §3.6） --}}
+                            <td class="co-td co-td-name co-sticky co-sticky-name co-col-name">
                                 <div class="font-semibold">
-                                    <a href="{{ route('housing.custom-orders.show', $ord) }}" class="text-blue-700 underline">{{ $ord->order_name }}</a>
+                                    <a href="{{ route('housing.custom-orders.show', $ord) }}" class="text-blue-700 underline co-name-link">{{ $ord->order_name }}</a>
                                 </div>
-                                <div class="text-xs text-gray-500">{{ $ord->address }}</div>
+                                <div class="text-xs text-gray-500 co-name-sub">{{ $ord->address }}</div>
+                            </td>
+
+                            {{-- 合計: 販売金額（税込サブ行あり。土地は非課税なので税は建物ぶんのみ）
+                                 ⚠ getBuildingTax() は建物販売 null 時 0 を返すので、
+                                    $tPrice の null ガード内でしか税込を出さない --}}
+                            <td class="co-td co-num co-zone-t co-gstart">
+                                @if($tPrice !== null)
+                                    {{ number_format($tPrice) }}円
+                                    <div class="co-tax-sub">税込 {{ number_format($tPrice + $bTax) }}円</div>
+                                @else
+                                    <span class="co-muted">—</span>
+                                @endif
+                            </td>
+
+                            {{-- 合計: 原価額 --}}
+                            <td class="co-td co-num co-zone-t">
+                                @if($tCost !== null)
+                                    {{ number_format($tCost) }}円
+                                @else
+                                    <span class="co-muted">—</span>
+                                @endif
+                            </td>
+
+                            {{-- 合計: 粗利額（粗利率は出さない＝決定 #4。先行 2 画面と同じ） --}}
+                            <td class="co-td co-num co-zone-t">
+                                @if($tProfit !== null)
+                                    <span style="{{ $tProfit >= 0 ? 'color: #047857; font-weight: 700;' : 'color: #dc2626; font-weight: 700;' }}">{{ number_format($tProfit) }}円</span>
+                                @else
+                                    <span class="co-muted">—</span>
+                                @endif
                             </td>
 
                             {{-- 建物: 販売金額（税抜が主・税込をサブ行に）
@@ -219,7 +293,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="11" class="px-3 py-8 text-center text-sm text-gray-500 border-b border-gray-100">該当する案件がありません</td>
+                            <td colspan="14" class="px-3 py-8 text-center text-sm text-gray-500 border-b border-gray-100">該当する案件がありません</td>
                         </tr>
                     @endforelse
                 </tbody>
