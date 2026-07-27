@@ -24,7 +24,9 @@
         $initDeposit = (int) old('new_deposit', $unit->deposit);
     @endphp
 
-    {{-- 坪単価計算ウィジェット用スタイル（このページ限定。レイアウトに @stack が無いためインライン） --}}
+    {{-- 坪単価計算ウィジェット用スタイル（このページ限定。インライン）。
+         ⚠ レイアウトに **styles** スタックは今も無い（2026-07-26 に追加したのは @stack('scripts') だけ）。
+           @push('styles') に書くとサイレントに破棄されるので、スタイルはここに直接置く（Bug #28） --}}
     <style>
         .calc-input { width:100%; height:40px; border:1px solid #d1d5db; border-radius:6px; font-size:14px; color:#1f2937; box-sizing:border-box; background:white; }
         .calc-input:focus { outline:none; border-color:#059669; box-shadow:0 0 0 3px rgba(5,150,105,0.12); }

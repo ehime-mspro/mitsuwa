@@ -1,5 +1,6 @@
 {{-- 月次成約件数 棒グラフ（Chart.js）--}}
-{{-- @stack('scripts') がレイアウトに存在しないため、スクリプトをインラインで埋め込む --}}
+{{-- スクリプトはこの partial 内にインラインで置く（@push('scripts') へは移していない）。
+     ⚠ @stack('scripts') は 2026-07-26 に追加済みだが、動いているため移行していない（Bug #28） --}}
 @if($monthly !== null)
 <div class="bg-white border border-gray-200 rounded-lg px-4 py-3 mb-5">
     <div class="text-sm font-semibold text-gray-700 mb-3">月次成約件数</div>

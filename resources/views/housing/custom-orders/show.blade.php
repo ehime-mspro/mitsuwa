@@ -314,7 +314,9 @@
             @endif
         </div>
     </div>
-{{-- @stack('scripts') がレイアウトに存在しないため、スクリプトを @section 内にインラインで埋め込む --}}
+{{-- スクリプトは @section 内にインラインで置く（@push('scripts') へは移していない）。
+     ⚠ 2026-07-26 に layouts/app.blade.php へ @stack('scripts') を追加したので push も使えるが、
+       インラインで正常動作しているため移行していない（Bug #28） --}}
 <script>
 function customOrderFileManager() {
     return {

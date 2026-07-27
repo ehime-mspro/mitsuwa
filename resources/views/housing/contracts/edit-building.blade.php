@@ -539,7 +539,8 @@
 
 </div>
 
-{{-- 日付ピッカー（案C）— レイアウトに @stack('scripts') が無いため @section 内にインライン --}}
+{{-- 日付ピッカー（案C）— @section 内にインライン。
+     ⚠ @stack('scripts') は 2026-07-26 に追加済みだが、動いているため push へ移していない（Bug #28） --}}
 <script>
 // 日付ピッカー（案C）- Alpine.js用データ関数
 // initial: "YYYY-MM-DD"形式の初期値（省略可）

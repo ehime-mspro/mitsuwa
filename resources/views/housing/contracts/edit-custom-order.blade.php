@@ -696,7 +696,8 @@
 
 </div>
 
-{{-- フォーム制御スクリプト（@stack('scripts') が無いためインライン） --}}
+{{-- フォーム制御スクリプト（@section 内にインライン）。
+     ⚠ @stack('scripts') は 2026-07-26 に追加済みだが、動いているため push へ移していない（Bug #28） --}}
 <script>
 // 注文住宅編集フォーム — Alpine.jsのx-data用
 function customOrderEditForm(initial) {
