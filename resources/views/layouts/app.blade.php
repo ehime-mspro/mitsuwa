@@ -142,5 +142,16 @@
             document.querySelectorAll('[data-map-fallback]').forEach(window.renderMapFallback);
         };
     </script>
+
+    {{-- ページ固有スクリプトの差し込み口。
+         @push('scripts') を持つビューのぶんだけ出力され、push が無いページでは何も出ない。
+         ⚠ ここが無いと @push('scripts') の中身がサイレントに破棄される（2026-07-26 に本番で発覚）。
+           注文住宅一覧の進捗ステップバーと建売契約編集の Alpine コンポーネントが、
+           初期コミット 2046289d 以来ずっと動いていなかった。
+         ⚠ 位置は body 末尾かつ上の <script> より後。@vite は module（defer）で Alpine の起動が
+           DOM パース後になるため、ここで定義した関数は x-data の評価時に間に合う。
+           また @yield('content') より後なので、スクリプトが参照する DOM 要素は既に存在する。
+         回帰テスト: tests/Feature/LayoutScriptStackTest.php --}}
+    @stack('scripts')
 </body>
 </html>
