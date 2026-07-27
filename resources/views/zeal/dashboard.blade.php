@@ -148,12 +148,17 @@
         border-radius: 10px;
         padding: 18px 20px;
     }
-    .zd-chart-card canvas { max-height: 220px; }
+    /* max-width: 100% が無いと Chart.js が canvas に付ける inline width を
+       縮められず、カードごと横に溢れる（最新月が見切れる） */
+    .zd-chart-card canvas { max-height: 220px; max-width: 100%; }
 
-    /* グラフ縦積みグリッド */
+    /* グラフ縦積みグリッド
+       1fr ではなく minmax(0, 1fr) にするのは、1fr の最小値 auto が
+       中身の min-content 幅で下限を作り、flex な <main> の中で
+       グリッドトラックがコンテンツ幅を超えて膨らむのを防ぐため */
     .zd-chart-stack {
         display: grid;
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr);
         gap: 20px;
         margin-bottom: 20px;
     }
