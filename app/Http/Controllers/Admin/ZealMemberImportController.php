@@ -66,11 +66,20 @@ class ZealMemberImportController extends Controller
         /** @var MappedMember[] $toImport */ $toImport = [];
         /** @var MappedMember[] $skipped */  $skipped  = [];
         /** @var MappedMember[] $errored */  $errored  = [];
-        $excluded = []; // ['name' => , 'status' => ] ビジター等（取込対象外）
+        $excluded = []; // ['name' => , 'status' => , 'reason' => ] ビジター・テスト用アカウント等（取込対象外）
 
         foreach ($rows as $row) {
             if (!HacomonoMemberMapper::isInScope($row)) {
-                $excluded[] = ['name' => trim($row['名前'] ?? ''), 'status' => trim($row['状態'] ?? '')];
+                $name   = trim($row['名前'] ?? '');
+                $status = trim($row['状態'] ?? '');
+                // テスト用アカウントは状態が「会員」のまま除外されるので、理由を明示しないと誤解を招く
+                $excluded[] = [
+                    'name'   => $name,
+                    'status' => $status,
+                    'reason' => HacomonoMemberMapper::isTestAccountName($name)
+                        ? '本部テスト用アカウント'
+                        : '状態「' . ($status ?: '空') . '」',
+                ];
                 continue;
             }
             $m = $mapper->map($row);

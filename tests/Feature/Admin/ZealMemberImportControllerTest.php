@@ -169,6 +169,53 @@ class ZealMemberImportControllerTest extends TestCase
         $response->assertSee('氏名が空です');   // エラー行のエラーメッセージ描画
     }
 
+    /** 本部テスト用アカウント（2026-07-26 に本番へ混入した実データと同形） */
+    private function testAccountRow(): array
+    {
+        return $this->baseRow([
+            'ID' => 'CL23326867', '名前' => 'MS 二宮／テスト', '性別' => '女性',
+            'カスタム2' => 'セミパーソナル通い放題（松山市駅前）', 'コース 名前' => '',
+            '定期購入' => 'FALSE', '合計金額(2回目以降)' => '0', '入会日' => '2026/3/10',
+        ]);
+    }
+
+    public function test_headquarters_test_account_is_not_imported(): void
+    {
+        $this->seedMasters();
+        $rows   = $this->fixtureRows();
+        $rows[] = $this->testAccountRow();
+        $content = $this->csvContent($rows);
+
+        $this->actingAs($this->executive())
+            ->post(route('admin.zeal.member-import.execute'), [
+                'confirmed' => '1', 'csv_data' => base64_encode($content),
+            ])
+            // ビジター 1 + テストアカウント 1 = 除外 2
+            ->assertSessionHas('success', 'インポート完了: 登録 5件 / スキップ 0件 / エラー 1件 / 除外 2件');
+
+        $this->assertDatabaseCount('zeal_members', 5);
+        $this->assertSame(0, ZealMember::where('name', 'MS 二宮／テスト')->count());
+    }
+
+    public function test_preview_shows_why_a_test_account_was_excluded(): void
+    {
+        $this->seedMasters();
+        $rows   = $this->fixtureRows();
+        $rows[] = $this->testAccountRow();
+
+        $response = $this->actingAs($this->executive())
+            ->post(route('admin.zeal.member-import.preview'), [
+                'csv_file' => $this->uploadFrom($this->csvContent($rows)),
+            ]);
+
+        $response->assertOk();
+        $this->assertCount(2, $response->viewData('excluded'));
+
+        // 状態が「会員」のまま除外されるので、理由が出ないと利用者が誤解する
+        $response->assertSee('MS 二宮／テスト');
+        $response->assertSee('本部テスト用アカウント');
+    }
+
     public function test_execute_skips_existing_duplicate(): void
     {
         $this->seedMasters();

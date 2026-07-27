@@ -36,6 +36,34 @@ class HacomonoMemberMapperTest extends TestCase
         $this->assertFalse(HacomonoMemberMapper::isInScope(['状態' => '']));
     }
 
+    public function test_in_scope_excludes_headquarters_test_accounts(): void
+    {
+        // 本番に実在した本部テストアカウント（2026-07-26 の移行取込で混入）
+        $this->assertFalse(HacomonoMemberMapper::isInScope(['状態' => '会員', '名前' => 'MS 二宮／テスト']));
+        // テスト語のバリエーション（全角カナ / 半角カナ / 英字は大小無視）
+        $this->assertFalse(HacomonoMemberMapper::isInScope(['状態' => '会員', '名前' => 'テスト太郎']));
+        $this->assertFalse(HacomonoMemberMapper::isInScope(['状態' => '会員', '名前' => 'ﾃｽﾄ会員']));
+        $this->assertFalse(HacomonoMemberMapper::isInScope(['状態' => '会員', '名前' => 'Test User']));
+        $this->assertFalse(HacomonoMemberMapper::isInScope(['状態' => '会員', '名前' => 'TEST']));
+        // MS 接頭の本部店舗アカウント（テスト語が無くても除外する）
+        $this->assertFalse(HacomonoMemberMapper::isInScope(['状態' => '会員', '名前' => 'MS 道後']));
+        $this->assertFalse(HacomonoMemberMapper::isInScope(['状態' => '会員', '名前' => 'MS　松山']));
+        $this->assertFalse(HacomonoMemberMapper::isInScope(['状態' => '停止中', '名前' => '  MS 二宮／テスト  ']));
+    }
+
+    public function test_in_scope_keeps_real_member_names(): void
+    {
+        // 本番の実会員 40 件から代表を抽出（誤除外の回帰防止）
+        foreach (['佐伯 政則', '金子佑奈', '宇都宮 さつき', '五十嵐 学', '入交 美緒', '橋本 健四郎'] as $name) {
+            $this->assertTrue(
+                HacomonoMemberMapper::isInScope(['状態' => '会員', '名前' => $name]),
+                "実会員「{$name}」が誤って除外された"
+            );
+        }
+        // MS で始まるが接頭トークンではない氏名は通す（過剰マッチ防止）
+        $this->assertTrue(HacomonoMemberMapper::isInScope(['状態' => '会員', '名前' => 'MSK 田中']));
+    }
+
     public function test_resolve_plan_maps_all_variants(): void
     {
         $m = $this->mapper();

@@ -104,13 +104,13 @@
     </div>
 @endif
 
-{{-- 除外（ビジター等・取込対象外） --}}
+{{-- 除外（ビジター・テスト用アカウント等・取込対象外） --}}
 @if(count($excluded) > 0)
     <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
-        <div style="font-size: 14px; font-weight: 700; color: #6b7280; margin-bottom: 12px;">除外（会員・停止中 以外。ビジター等）</div>
+        <div style="font-size: 14px; font-weight: 700; color: #6b7280; margin-bottom: 12px;">除外（取込対象外）</div>
         @foreach($excluded as $ex)
             <div style="padding: 7px 12px; background: #f9fafb; border-radius: 6px; margin-bottom: 6px; font-size: 13px; color: #6b7280;">
-                {{ $ex['name'] ?: '（氏名なし）' }} — 状態「{{ $ex['status'] ?: '空' }}」
+                {{ $ex['name'] ?: '（氏名なし）' }} — {{ $ex['reason'] }}
             </div>
         @endforeach
     </div>

@@ -29,6 +29,9 @@ class HacomonoMemberMapper
 
     public const GENDER_MAP = ['男性' => 'male', '女性' => 'female', 'その他' => 'other'];
 
+    /** 氏名に含まれていたら本部のテスト用アカウントと見なす語（大小を区別せず部分一致） */
+    public const TEST_NAME_MARKERS = ['テスト', 'ﾃｽﾄ', 'test'];
+
     /**
      * @param array<string,int> $planIdMap    プラン名 => id
      * @param array<string,int> $planPriceMap プラン名 => 税抜定価
@@ -66,10 +69,39 @@ class HacomonoMemberMapper
         return $out;
     }
 
+    /**
+     * 氏名が本部のテスト／管理用アカウントか判定する。
+     *
+     * 本部の会員システムには店舗ごとの動作確認用アカウント（例:「MS 二宮／テスト」）が
+     * 混じっている。実会員として取り込むと在籍数・性別内訳・プラン別集計・
+     * 経営試算表の実績連動がすべて 1 件ぶん狂うため、取込の水際で落とす。
+     */
+    public static function isTestAccountName(string $name): bool
+    {
+        $name = trim($name);
+        if ($name === '') {
+            return false;
+        }
+
+        foreach (self::TEST_NAME_MARKERS as $marker) {
+            if (mb_stripos($name, $marker) !== false) {
+                return true;
+            }
+        }
+
+        // 「MS 二宮」のように MS を接頭トークンに持つ本部アカウント。
+        // 「MSK 田中」のような実氏名を巻き込まないよう、直後の区切り文字まで含めて見る。
+        return preg_match('/^MS[ 　]/u', $name) === 1;
+    }
+
     /** @param array<string,string> $row */
     public static function isInScope(array $row): bool
     {
-        return in_array(trim($row['状態'] ?? ''), ['会員', '停止中'], true);
+        if (!in_array(trim($row['状態'] ?? ''), ['会員', '停止中'], true)) {
+            return false;
+        }
+
+        return !self::isTestAccountName($row['名前'] ?? '');
     }
 
     /**
