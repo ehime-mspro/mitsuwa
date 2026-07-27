@@ -321,7 +321,7 @@
     <div class="zd-chart-card">
         <div class="zd-data-card-header" style="margin-bottom: 12px;">
             <div class="zd-data-card-title">月会費売上推移（税抜）</div>
-            <div class="zd-data-card-sub">過去6か月</div>
+            <div class="zd-data-card-sub">過去1年</div>
         </div>
         <canvas id="revenueChart"></canvas>
     </div>
@@ -330,7 +330,7 @@
     <div class="zd-chart-card">
         <div class="zd-data-card-header" style="margin-bottom: 12px;">
             <div class="zd-data-card-title">在籍会員数推移</div>
-            <div class="zd-data-card-sub">過去6か月</div>
+            <div class="zd-data-card-sub">過去1年</div>
         </div>
         <canvas id="memberChart"></canvas>
     </div>

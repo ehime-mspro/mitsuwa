@@ -27,6 +27,9 @@ class DashboardController extends Controller
     /** emerald グラデーション（プラン色分け用） */
     private const PLAN_COLORS = ['#059669', '#34d399', '#a7f3d0', '#d1fae5', '#6ee7b7'];
 
+    /** グラフの表示期間（当月を含む月数）*/
+    private const CHART_MONTHS = 12;
+
     /**
      * GET /zeal/
      */
@@ -121,10 +124,13 @@ class DashboardController extends Controller
         $revenueTotalIncl     = (int) $planRevenue->sum('total_incl');
         $revenueCampaignCount = (int) $planRevenue->sum('campaign_count');
 
-        // ---- Chart.js: 過去6か月のラベル ----
+        // ---- Chart.js: 過去1年（当月含む 12 か月）のラベル ----
+        // 起点を startOfMonth() にするのは、月末日（31日など）に subMonths() が
+        // 翌月へオーバーフローして月ラベルが重複・欠落するのを防ぐため
         $chartMonths = [];
-        for ($i = 5; $i >= 0; $i--) {
-            $chartMonths[] = $now->copy()->subMonths($i)->format('Y-m');
+        $chartBaseMonth = $now->copy()->startOfMonth();
+        for ($i = self::CHART_MONTHS - 1; $i >= 0; $i--) {
+            $chartMonths[] = $chartBaseMonth->copy()->subMonths($i)->format('Y-m');
         }
 
         // ---- Chart.js: プラン別月次売上（積み上げ棒グラフ） ----
