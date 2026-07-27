@@ -150,10 +150,10 @@
     }
     .zd-chart-card canvas { max-height: 220px; }
 
-    /* 2カラムグリッド */
-    .zd-two-col {
+    /* グラフ縦積みグリッド */
+    .zd-chart-stack {
         display: grid;
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: 1fr;
         gap: 20px;
         margin-bottom: 20px;
     }
@@ -314,8 +314,8 @@
     @endif
 </div>
 
-{{-- ========== 月次グラフ（2カラム） ========== --}}
-<div class="zd-two-col">
+{{-- ========== 月次グラフ（縦積み） ========== --}}
+<div class="zd-chart-stack">
 
     {{-- 売上推移グラフ（棒・スタック） --}}
     <div class="zd-chart-card">
