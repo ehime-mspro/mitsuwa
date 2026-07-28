@@ -650,4 +650,60 @@ class ProcurementListWithProjectsTest extends TestCase
             array_column($options['project'], 'value')
         );
     }
+
+    // ================================================================
+    // Task 5: フィルタバー
+    // ================================================================
+
+    /** 物件種別セレクトの「全て」直下＝実種別の先頭に「分譲地」がある */
+    public function test_property_type_select_has_project_option_right_after_all(): void
+    {
+        $response = $this->actingAs($this->executive())->get('/realestate/procurements');
+
+        $response->assertOk();
+        // ⚠ assertSee('分譲地') は他所にも一致して false-pass するので option の生 HTML で見る
+        //   （Blade コメントはコンパイル時に消え、間に残るのは空白のみ）
+        $this->assertMatchesRegularExpression(
+            '/<option value="">物件種別: 全て<\/option>\s*<option value="project"[^>]*>分譲地<\/option>/u',
+            $response->getContent()
+        );
+    }
+
+    /** 「分譲地」を選択したら selected が付く */
+    public function test_property_type_project_option_is_marked_selected(): void
+    {
+        $response = $this->actingAs($this->executive())
+            ->get('/realestate/procurements?property_type=project');
+
+        $response->assertOk();
+        $response->assertSee('<option value="project" selected>分譲地</option>', false);
+    }
+
+    /** 「現地調査」は分譲地に無いステータスなので選択肢に補記が付く */
+    public function test_site_survey_option_is_annotated(): void
+    {
+        $response = $this->actingAs($this->executive())->get('/realestate/procurements');
+
+        $response->assertOk();
+        $response->assertSee('現地調査（仕入れ案件のみ）');
+    }
+
+    /**
+     * 物件種別セレクトに enum 由来の選択肢が全部あり、かつ enum は汚れていない。
+     *
+     * ⚠ RealEstatePropertyType に Project ケースを足すと登録フォームの選択肢にも出てしまい、
+     *   「物件種別＝分譲地の仕入れ案件」がバリデーションを素通りして作れてしまう。
+     */
+    public function test_property_type_enum_is_not_polluted_by_the_pseudo_value(): void
+    {
+        $values = array_column(RealEstatePropertyType::cases(), 'value');
+
+        $this->assertNotContains('project', $values);
+
+        $response = $this->actingAs($this->executive())->get('/realestate/procurements');
+        $response->assertOk();
+        foreach (RealEstatePropertyType::cases() as $pt) {
+            $response->assertSee('<option value="' . $pt->value . '"', false);
+        }
+    }
 }

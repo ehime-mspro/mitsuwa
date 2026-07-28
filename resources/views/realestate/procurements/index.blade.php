@@ -41,12 +41,21 @@
             <option value="active" {{ !request()->has('status') || request('status') === 'active' ? 'selected' : '' }}>ステータス: 進行中のみ</option>
             <option value="" {{ request()->has('status') && blank(request('status')) ? 'selected' : '' }}>ステータス: 全て</option>
             @foreach(\App\Enums\ProcurementStatus::cases() as $st)
-                <option value="{{ $st->value }}" {{ request('status') === $st->value ? 'selected' : '' }}>{{ $st->label() }}</option>
+                @php
+                    // 「現地調査」は分譲地に存在しないステータス。選ぶと分譲地が結果から外れる旨を補記する
+                    $stLabel = $st === \App\Enums\ProcurementStatus::SiteSurvey
+                        ? $st->label() . '（仕入れ案件のみ）'
+                        : $st->label();
+                @endphp
+                <option value="{{ $st->value }}" {{ request('status') === $st->value ? 'selected' : '' }}>{{ $stLabel }}</option>
             @endforeach
         </select>
         <select name="property_type" onchange="document.getElementById('filter-form').submit()"
                 class="h-9 px-3 border border-gray-300 rounded-md text-sm text-gray-700 bg-white focus:border-emerald-500 focus:outline-none cursor-pointer w-full sm:w-auto">
             <option value="">物件種別: 全て</option>
+            {{-- 「分譲地」は一覧フィルタ専用の擬似値。RealEstatePropertyType enum には追加しない
+                 （追加すると仕入れ案件の登録フォームの選択肢にも出て、実体のないデータが作れてしまう）--}}
+            <option value="project" {{ request('property_type') === 'project' ? 'selected' : '' }}>分譲地</option>
             @foreach(\App\Enums\RealEstatePropertyType::cases() as $pt)
                 <option value="{{ $pt->value }}" {{ request('property_type') === $pt->value ? 'selected' : '' }}>{{ $pt->label() }}</option>
             @endforeach
