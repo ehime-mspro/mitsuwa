@@ -709,4 +709,120 @@ class ProcurementListWithProjectsTest extends TestCase
             $response->assertSee('<option value="' . $pt->value . '"', false);
         }
     }
+
+    // ================================================================
+    // Task 6: ページネーション
+    // ================================================================
+
+    /** 21 件（両種別混在）で 2 ページに割れ、1 ページ目 20 件・2 ページ目 1 件 */
+    public function test_pagination_spans_both_types(): void
+    {
+        // 情報入手日をずらして順序を確定させる（同着タイブレークに依存しない）
+        for ($i = 1; $i <= 11; $i++) {
+            $this->makeProcurement(sprintf('PRC-%03d', $i), [
+                'info_obtained_date' => sprintf('2026-06-%02d', $i),
+            ]);
+        }
+        for ($i = 1; $i <= 10; $i++) {
+            $this->makeProject(sprintf('PJ-%03d', $i), [
+                'info_obtained_date' => sprintf('2026-07-%02d', $i),
+            ]);
+        }
+
+        $user = $this->executive();
+
+        $page1 = $this->actingAs($user)->get('/realestate/procurements');
+        $page1->assertOk();
+        $this->assertSame(21, $page1->viewData('rows')->total());
+        $this->assertCount(20, $page1->viewData('rows')->items());
+
+        $page2 = $this->actingAs($user)->get('/realestate/procurements?page=2');
+        $page2->assertOk();
+        $this->assertCount(1, $page2->viewData('rows')->items());
+        // 最も古い＝ PRC-001（2026-06-01）が最後のページに来る
+        $this->assertSame('物件PRC-001', $page2->viewData('rows')->items()[0]->name);
+    }
+
+    /** ページ送りリンクに絞り込みクエリが載る */
+    public function test_pagination_keeps_filters(): void
+    {
+        for ($i = 1; $i <= 21; $i++) {
+            $this->makeProject(sprintf('PJ-%03d', $i), [
+                'info_obtained_date' => sprintf('2026-07-%02d', $i),
+            ]);
+        }
+        // ⚠ 仕入れ案件も 1 件混ぜる。分譲地だけだと「property_type=project の絞り込みで
+        //   仕入れ案件が漏れないこと」を同時に検証できない（データが無いので当然 0 件になる）
+        $this->makeProcurement('PRC-001', ['info_obtained_date' => '2026-07-31']);
+
+        $response = $this->actingAs($this->executive())
+            ->get('/realestate/procurements?property_type=project&keyword=PJ');
+
+        $response->assertOk();
+        $rows = $response->viewData('rows');
+
+        // 絞り込みが効いていること（仕入れ案件が混ざらない）
+        $this->assertSame(21, $rows->total());
+        $this->assertNotContains('物件PRC-001', collect($rows->items())->pluck('name')->all());
+
+        parse_str(parse_url($rows->url(2), PHP_URL_QUERY) ?? '', $q);
+
+        $this->assertSame('project', $q['property_type']);
+        $this->assertSame('PJ', $q['keyword']);
+        $this->assertSame('2', $q['page']);
+    }
+
+    /**
+     * 「ステータス: 全て」がページ送りで保持される。
+     *
+     * ⚠ ConvertEmptyStringsToNull で ?status= は null になり、そのまま
+     *   LengthAwarePaginator へ渡すと http_build_query が null のキーを捨てる。
+     *   すると 2 ページ目で既定の「進行中のみ」に戻り、終了状態の行が消える。
+     */
+    public function test_pagination_keeps_status_all_filter(): void
+    {
+        for ($i = 1; $i <= 21; $i++) {
+            $this->makeProject(sprintf('PJ-%03d', $i), [
+                'status'             => 'sold_out',
+                'info_obtained_date' => sprintf('2026-07-%02d', $i),
+            ]);
+        }
+
+        $response = $this->actingAs($this->executive())
+            ->get('/realestate/procurements?status=');
+
+        $response->assertOk();
+        $this->assertSame(21, $response->viewData('rows')->total());
+
+        parse_str(parse_url($response->viewData('rows')->url(2), PHP_URL_QUERY) ?? '', $q);
+
+        $this->assertArrayHasKey('status', $q);
+        $this->assertSame('', $q['status']);
+        $this->assertSame('2', $q['page']);
+    }
+
+    /**
+     * 2 ページ以上のとき、インライン番号付きページネーションが描画される。
+     *
+     * ⚠ このプロジェクトは `->links()` を使わずインライン番号付きマークアップで描く規約
+     *   （RULES.md Bug #24）。Task 4 で `$procurements` → `$rows` へ置換したので、
+     *   置換漏れでブロックごと消えていないことを HTML で固定する。
+     */
+    public function test_numbered_pagination_links_are_rendered(): void
+    {
+        for ($i = 1; $i <= 21; $i++) {
+            $this->makeProject(sprintf('PJ-%03d', $i), [
+                'info_obtained_date' => sprintf('2026-07-%02d', $i),
+            ]);
+        }
+
+        $response = $this->actingAs($this->executive())->get('/realestate/procurements');
+
+        $response->assertOk();
+        // 現在ページ（1）は緑のバッジ、2 ページ目はリンク
+        $response->assertSee('bg-emerald-600 border border-emerald-600 font-semibold">1</span>', false);
+        $response->assertSee('?page=2', false);
+        // 全件数の表示も両種別の合算になっている
+        $response->assertSee('全 21 件');
+    }
 }
