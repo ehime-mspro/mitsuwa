@@ -336,4 +336,92 @@ class ProcurementListWithProjectsTest extends TestCase
             $this->namesOf($this->paginateVia())
         );
     }
+
+    // ================================================================
+    // Task 3: 物件種別・取引種別・キーワード フィルタ
+    // ================================================================
+
+    /** ?property_type=project は分譲地だけを出す（擬似値。enum には無い値） */
+    public function test_property_type_project_shows_only_projects(): void
+    {
+        $this->makeProcurement('PRC-001');
+        $this->makeProject('PJ-001');
+
+        $this->assertSame(
+            ['分譲地PJ-001'],
+            $this->namesOf($this->paginateVia('property_type=project'))
+        );
+    }
+
+    /** 実在の物件種別で絞ると分譲地が消える */
+    public function test_property_type_enum_excludes_projects(): void
+    {
+        $this->makeProcurement('PRC-HOUSE', ['property_type' => 'used_house']);
+        $this->makeProcurement('PRC-MANSION', ['property_type' => 'used_mansion']);
+        $this->makeProject('PJ-001');
+
+        $this->assertSame(
+            ['物件PRC-HOUSE'],
+            $this->namesOf($this->paginateVia('property_type=used_house'))
+        );
+    }
+
+    /** 取引種別で絞ると分譲地が消える（分譲地に transaction_type カラムが無いため） */
+    public function test_transaction_type_excludes_projects(): void
+    {
+        $this->makeProcurement('PRC-BUY',    ['transaction_type' => 'purchase']);
+        $this->makeProcurement('PRC-BROKER', ['transaction_type' => 'brokerage']);
+        $this->makeProject('PJ-001');
+
+        $this->assertSame(
+            ['物件PRC-BUY'],
+            $this->namesOf($this->paginateVia('transaction_type=purchase'))
+        );
+    }
+
+    /** キーワードは 仕入れ案件（案件番号/物件名/所在地）と分譲地（PJ番号/PJ名/所在地）を横断する */
+    public function test_keyword_searches_both_tables(): void
+    {
+        $this->makeProcurement('PRC-777');
+        $this->makeProject('PJ-777');
+        $this->makeProcurement('PRC-100');
+        $this->makeProject('PJ-100');
+
+        // 案件番号 / PJ番号 の両方でヒットする
+        $this->assertEqualsCanonicalizing(
+            ['物件PRC-777', '分譲地PJ-777'],
+            $this->namesOf($this->paginateVia('keyword=777'))
+        );
+
+        // 物件名（仕入れ案件のみに一致する語）
+        $this->assertSame(
+            ['物件PRC-100'],
+            $this->namesOf($this->paginateVia('keyword=PRC-100'))
+        );
+
+        // PJ名（分譲地のみに一致する語）
+        $this->assertSame(
+            ['分譲地PJ-100'],
+            $this->namesOf($this->paginateVia('keyword=PJ-100'))
+        );
+    }
+
+    /**
+     * 日本語キーワードで所在地を横断検索できる（本番の検索対象は日本語）。
+     *
+     * ⚠ `Request::create()` にエンコードしていない日本語をそのまま渡すと値が文字化けし
+     *   （実測: '松山' → "\xef\xbf\xbd_\xef\xbf\xbd山"）、ヒット 0 件になって
+     *   「実装が悪い」と誤診する。**必ず urlencode() を通すこと。**
+     */
+    public function test_keyword_matches_japanese_address_in_both_tables(): void
+    {
+        $this->makeProcurement('PRC-001', ['address' => '愛媛県松山市水泥町1-1']);
+        $this->makeProject('PJ-001',      ['address' => '愛媛県松山市水泥町2-2']);
+        $this->makeProcurement('PRC-002', ['address' => '愛媛県今治市別宮町3-3']);
+
+        $this->assertEqualsCanonicalizing(
+            ['物件PRC-001', '分譲地PJ-001'],
+            $this->namesOf($this->paginateVia('keyword=' . urlencode('水泥町')))
+        );
+    }
 }
