@@ -12,7 +12,10 @@ use App\Models\ReProject;
 use App\Models\ReProjectLot;
 use App\Models\User;
 use App\Services\RealEstate\ProcurementListRow;
+use App\Services\RealEstate\ProcurementListService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Tests\Concerns\CreatesRealEstateSchema;
 use Tests\TestCase;
 
@@ -148,5 +151,139 @@ class ProcurementListWithProjectsTest extends TestCase
         $this->assertSame(0, $row->soldLotCount);
         $this->assertSame(0, $row->lotCount);
         $this->assertNotNull($row->lotsUrl);
+    }
+
+    // ================================================================
+    // Task 2: サービス（マージ・ソート・ページング・ステータスフィルタ）
+    // ================================================================
+
+    /**
+     * サービスを直接叩く。
+     *
+     * ⚠ Paginator::resolveCurrentPage() / resolveCurrentPath() は
+     *   コンテナの 'request' を見る（PaginationServiceProvider がそう束ねている）ので、
+     *   作った Request をコンテナへも差し込む。
+     *
+     * ⚠ クエリは文字列で渡す。ConvertEmptyStringsToNull は HTTP ミドルウェアなので
+     *   Request::create では効かないが、`?status=` は '' で届き、サービス側の
+     *   filled() 判定は '' でも null でも同じ経路に落ちるため実挙動と一致する
+     *   （実測確認済み）。
+     */
+    private function paginateVia(string $queryString = ''): LengthAwarePaginator
+    {
+        $uri     = '/realestate/procurements' . ($queryString !== '' ? '?' . $queryString : '');
+        $request = Request::create($uri, 'GET');
+        $this->app->instance('request', $request);
+
+        return app(ProcurementListService::class)->paginate($request);
+    }
+
+    /** @return array<int, string> */
+    private function namesOf(LengthAwarePaginator $rows): array
+    {
+        return collect($rows->items())->pluck('name')->all();
+    }
+
+    /**
+     * 空ケース1: 仕入れ案件 0 件・分譲地のみ。
+     * ⚠ Bug #27 回帰。空の Eloquent\Collection に配列要素のコレクションを merge すると
+     *   getKey() が呼ばれて 500 になる。keysFrom() の ->toBase() が効いていることの検証。
+     */
+    public function test_projects_only_does_not_error(): void
+    {
+        $this->makeProject('PJ-001');
+
+        $rows = $this->paginateVia();
+
+        $this->assertSame(1, $rows->total());
+        $this->assertSame('project', $rows->items()[0]->kind);
+    }
+
+    /** 空ケース2: 分譲地 0 件・仕入れ案件のみ（Bug #27 回帰） */
+    public function test_procurements_only_does_not_error(): void
+    {
+        $this->makeProcurement('PRC-001');
+
+        $rows = $this->paginateVia();
+
+        $this->assertSame(1, $rows->total());
+        $this->assertSame('procurement', $rows->items()[0]->kind);
+    }
+
+    /** 空ケース3: 両方 0 件 */
+    public function test_both_empty_does_not_error(): void
+    {
+        $rows = $this->paginateVia();
+
+        $this->assertSame(0, $rows->total());
+        $this->assertCount(0, $rows->items());
+    }
+
+    /** 情報入手日の降順で両種別が 1 本に混ざる（NULL は末尾） */
+    public function test_sorted_by_info_obtained_date_desc_with_nulls_last(): void
+    {
+        $this->makeProcurement('PRC-OLD', ['info_obtained_date' => '2026-01-01']);
+        $this->makeProject('PJ-NEW',      ['info_obtained_date' => '2026-07-01']);
+        $this->makeProcurement('PRC-MID', ['info_obtained_date' => '2026-04-01']);
+        $this->makeProject('PJ-NULL',     ['info_obtained_date' => null]);
+
+        $this->assertSame(
+            ['分譲地PJ-NEW', '物件PRC-MID', '物件PRC-OLD', '分譲地PJ-NULL'],
+            $this->namesOf($this->paginateVia())
+        );
+    }
+
+    /** 既定（進行中のみ）は 仕入れ sold/lost と 分譲地 sold_out/lost を除外する */
+    public function test_default_active_excludes_closed_of_both_types(): void
+    {
+        $this->makeProcurement('PRC-OK',   ['status' => 'selling']);
+        $this->makeProcurement('PRC-SOLD', ['status' => 'sold']);
+        $this->makeProcurement('PRC-LOST', ['status' => 'lost']);
+        $this->makeProject('PJ-OK',        ['status' => 'selling']);
+        $this->makeProject('PJ-SOLDOUT',   ['status' => 'sold_out']);
+        $this->makeProject('PJ-LOST',      ['status' => 'lost']);
+
+        $this->assertEqualsCanonicalizing(
+            ['物件PRC-OK', '分譲地PJ-OK'],
+            $this->namesOf($this->paginateVia())
+        );
+    }
+
+    /** ?status=sold は 仕入れ sold と 分譲地 sold_out の両方にヒットする */
+    public function test_status_sold_matches_both_sold_and_sold_out(): void
+    {
+        $this->makeProcurement('PRC-SOLD', ['status' => 'sold']);
+        $this->makeProject('PJ-SOLDOUT',   ['status' => 'sold_out']);
+        $this->makeProcurement('PRC-SELL', ['status' => 'selling']);
+        $this->makeProject('PJ-SELL',      ['status' => 'selling']);
+
+        $this->assertEqualsCanonicalizing(
+            ['物件PRC-SOLD', '分譲地PJ-SOLDOUT'],
+            $this->namesOf($this->paginateVia('status=sold'))
+        );
+    }
+
+    /** ?status=site_survey は分譲地に該当が無いので分譲地は消える */
+    public function test_status_site_survey_excludes_projects(): void
+    {
+        $this->makeProcurement('PRC-SURVEY', ['status' => 'site_survey']);
+        $this->makeProject('PJ-001',         ['status' => 'selling']);
+
+        $this->assertSame(
+            ['物件PRC-SURVEY'],
+            $this->namesOf($this->paginateVia('status=site_survey'))
+        );
+    }
+
+    /** ?status=（全て）は終了状態も含めて両種別を出す */
+    public function test_status_all_includes_closed_of_both_types(): void
+    {
+        $this->makeProcurement('PRC-SOLD', ['status' => 'sold']);
+        $this->makeProject('PJ-SOLDOUT',   ['status' => 'sold_out']);
+
+        $this->assertEqualsCanonicalizing(
+            ['物件PRC-SOLD', '分譲地PJ-SOLDOUT'],
+            $this->namesOf($this->paginateVia('status='))
+        );
     }
 }
