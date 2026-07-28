@@ -41,6 +41,24 @@ class ProcurementListService
 
     public function paginate(Request $request, int $perPage = 20): LengthAwarePaginator
     {
+        return $this->paginateWithKindTotals($request, $perPage)[0];
+    }
+
+    /**
+     * ページャに加えて、**絞り込み後の全件を種別ごとに数えた内訳**も返す。
+     *
+     * 一覧のフッタが「全 19 件（仕入れ案件 12 件 + 分譲地 7 件）」と出すために使う。
+     * 経営ダッシュボードの「進行中件数」は仕入れ案件だけを数えているため、
+     * 内訳が無いと数字が食い違って見える。
+     *
+     * ⚠ 内訳を `LengthAwarePaginator` の options 経由で渡す手もあるが、
+     *   コンストラクタが `$this->{$key} = $value` で**動的プロパティ**を生やす実装で、
+     *   PHP 8.2 以降は Deprecated になる（実測確認済み）。タプルで返す。
+     *
+     * @return array{0: LengthAwarePaginator, 1: array<string, int>}
+     */
+    public function paginateWithKindTotals(Request $request, int $perPage = 20): array
+    {
         $keys  = $this->sortedKeys($request);
         // ⚠ 引数の $request ではなくコンテナの 'request' を見る（PaginationServiceProvider が
         //   そう束ねている）。本番経路では同一インスタンスなので実害は無いが、テストでは
@@ -76,10 +94,18 @@ class ProcurementListService
             ->filter()
             ->values();
 
-        return new LengthAwarePaginator($rows, $keys->count(), $perPage, $page, [
+        // 内訳は現在ページの $rows ではなく、絞り込み後の全件（$keys）から数える
+        $kindTotals = [
+            ProcurementListRow::KIND_PROCUREMENT => $keys->where('kind', ProcurementListRow::KIND_PROCUREMENT)->count(),
+            ProcurementListRow::KIND_PROJECT     => $keys->where('kind', ProcurementListRow::KIND_PROJECT)->count(),
+        ];
+
+        $paginator = new LengthAwarePaginator($rows, $keys->count(), $perPage, $page, [
             'path'  => Paginator::resolveCurrentPath(),
             'query' => $this->paginationQuery($request),
         ]);
+
+        return [$paginator, $kindTotals];
     }
 
     /**

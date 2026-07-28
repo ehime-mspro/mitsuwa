@@ -24,7 +24,7 @@ class ProcurementController extends Controller
      */
     public function index(Request $request, ProcurementListService $listService)
     {
-        $rows = $listService->paginate($request);
+        [$rows, $kindTotals] = $listService->paginateWithKindTotals($request);
 
         // ステータスポップオーバー用の選択肢を種別ごとに組む。
         // ⚠ 配列リテラルを Blade の @json() へ直接書かず、ここで組んで変数 1 本で渡す
@@ -34,7 +34,7 @@ class ProcurementController extends Controller
             ProcurementListRow::KIND_PROJECT     => $this->statusOptions(ProjectStatus::cases()),
         ];
 
-        return view('realestate.procurements.index', compact('rows', 'statusOptionsByKind'));
+        return view('realestate.procurements.index', compact('rows', 'kindTotals', 'statusOptionsByKind'));
     }
 
     /**

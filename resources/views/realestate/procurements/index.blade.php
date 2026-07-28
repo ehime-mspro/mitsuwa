@@ -184,7 +184,9 @@
             </table>
         </div>
 
-        <div class="px-4 py-2.5 border-t border-gray-200 text-sm text-gray-500">全 {{ $rows->total() }} 件</div>
+        {{-- 内訳を添えるのは、経営ダッシュボードの「進行中件数」が仕入れ案件だけを数えており、
+             合算値だけだと数字が食い違って見えるため --}}
+        <div class="px-4 py-2.5 border-t border-gray-200 text-sm text-gray-500">全 {{ $rows->total() }} 件 <span class="text-gray-400">（仕入れ案件 {{ $kindTotals['procurement'] }} 件 + 分譲地 {{ $kindTotals['project'] }} 件）</span></div>
 
         @if($rows->hasPages())
             <div class="flex justify-center gap-0.5 px-4 py-3 border-t border-gray-200">

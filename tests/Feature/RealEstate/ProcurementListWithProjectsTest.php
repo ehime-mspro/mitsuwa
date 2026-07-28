@@ -726,6 +726,74 @@ class ProcurementListWithProjectsTest extends TestCase
         }
     }
 
+    /**
+     * 件数表示に種別の内訳が出る。
+     *
+     * 経営ダッシュボードの「進行中件数」は仕入れ案件だけを数えているため、
+     * 合算値だけだと数字が食い違って見える。内訳でどこから差が出ているか分かるようにする。
+     */
+    public function test_total_count_shows_breakdown_by_kind(): void
+    {
+        $this->makeProcurement('PRC-001');
+        $this->makeProcurement('PRC-002');
+        $this->makeProject('PJ-001');
+
+        $response = $this->actingAs($this->executive())->get('/realestate/procurements');
+
+        $response->assertOk();
+        $response->assertSee('全 3 件');
+        $response->assertSee('（仕入れ案件 2 件 + 分譲地 1 件）');
+        $this->assertSame(
+            ['procurement' => 2, 'project' => 1],
+            $response->viewData('kindTotals')
+        );
+    }
+
+    /** 内訳は現在ページではなく絞り込み後の全件から数える（2 ページ目でも同じ値） */
+    public function test_breakdown_counts_all_matching_rows_not_just_current_page(): void
+    {
+        for ($i = 1; $i <= 15; $i++) {
+            $this->makeProcurement(sprintf('PRC-%03d', $i), [
+                'info_obtained_date' => sprintf('2026-06-%02d', $i),
+            ]);
+        }
+        for ($i = 1; $i <= 10; $i++) {
+            $this->makeProject(sprintf('PJ-%03d', $i), [
+                'info_obtained_date' => sprintf('2026-07-%02d', $i),
+            ]);
+        }
+
+        $user = $this->executive();
+
+        foreach (['', '?page=2'] as $suffix) {
+            $response = $this->actingAs($user)->get('/realestate/procurements' . $suffix);
+            $response->assertOk();
+            $this->assertSame(
+                ['procurement' => 15, 'project' => 10],
+                $response->viewData('kindTotals'),
+                "page suffix: {$suffix}"
+            );
+        }
+    }
+
+    /** 絞り込みが効いているときは内訳もその結果を反映する */
+    public function test_breakdown_reflects_the_active_filter(): void
+    {
+        $this->makeProcurement('PRC-001');
+        $this->makeProject('PJ-001');
+        $this->makeProject('PJ-002');
+
+        $response = $this->actingAs($this->executive())
+            ->get('/realestate/procurements?property_type=project');
+
+        $response->assertOk();
+        $this->assertSame(
+            ['procurement' => 0, 'project' => 2],
+            $response->viewData('kindTotals')
+        );
+        $response->assertSee('（仕入れ案件 0 件 + 分譲地 2 件）');
+    }
+
     // ================================================================
     // Task 6: ページネーション
     // ================================================================
