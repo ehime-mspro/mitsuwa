@@ -114,7 +114,7 @@ ls bootstrap/cache/config.php 2>/dev/null && php artisan config:clear
 - Create: `app/Services/RealEstate/ProcurementListRow.php`
 - Create: `tests/Feature/RealEstate/ProcurementListWithProjectsTest.php`
 
-- [ ] **Step 1: テストファイルを作り、DTO のマッピングを検証する失敗テストを書く**
+- [x] **Step 1: テストファイルを作り、DTO のマッピングを検証する失敗テストを書く**
 
 `tests/Feature/RealEstate/ProcurementListWithProjectsTest.php` を新規作成:
 
@@ -273,7 +273,7 @@ class ProcurementListWithProjectsTest extends TestCase
 }
 ```
 
-- [ ] **Step 2: テストを走らせて失敗を確認する**
+- [x] **Step 2: テストを走らせて失敗を確認する**
 
 ```bash
 cd /Users/masanori/site/manage/.claude/worktrees/procurement-list-projects && vendor/bin/phpunit --filter ProcurementListWithProjectsTest
@@ -281,7 +281,7 @@ cd /Users/masanori/site/manage/.claude/worktrees/procurement-list-projects && ve
 
 Expected: FAIL — `Class "App\Services\RealEstate\ProcurementListRow" not found`
 
-- [ ] **Step 3: DTO を実装する**
+- [x] **Step 3: DTO を実装する**
 
 `app/Services/RealEstate/ProcurementListRow.php` を新規作成:
 
@@ -392,7 +392,7 @@ final class ProcurementListRow
 }
 ```
 
-- [ ] **Step 4: テストが通ることを確認する**
+- [x] **Step 4: テストが通ることを確認する**
 
 ```bash
 cd /Users/masanori/site/manage/.claude/worktrees/procurement-list-projects && vendor/bin/phpunit --filter ProcurementListWithProjectsTest
@@ -400,7 +400,7 @@ cd /Users/masanori/site/manage/.claude/worktrees/procurement-list-projects && ve
 
 Expected: PASS（3 tests）
 
-- [ ] **Step 5: コミット**
+- [x] **Step 5: コミット**
 
 ```bash
 git add app/Services/RealEstate/ProcurementListRow.php tests/Feature/RealEstate/ProcurementListWithProjectsTest.php
@@ -415,7 +415,7 @@ git commit -m "feat(realestate): 仕入れ案件一覧の行 DTO ProcurementList
 - Create: `app/Services/RealEstate/ProcurementListService.php`
 - Modify: `tests/Feature/RealEstate/ProcurementListWithProjectsTest.php`（テスト追加）
 
-- [ ] **Step 1: 失敗テストを書く（空ケース 3 本を最優先）**
+- [x] **Step 1: 失敗テストを書く（空ケース 3 本を最優先）**
 
 テストファイルの `use` に以下を追加:
 
@@ -563,7 +563,7 @@ use Illuminate\Pagination\LengthAwarePaginator;
     }
 ```
 
-- [ ] **Step 2: テストを走らせて失敗を確認する**
+- [x] **Step 2: テストを走らせて失敗を確認する**
 
 ```bash
 cd /Users/masanori/site/manage/.claude/worktrees/procurement-list-projects && vendor/bin/phpunit --filter ProcurementListWithProjectsTest
@@ -571,7 +571,7 @@ cd /Users/masanori/site/manage/.claude/worktrees/procurement-list-projects && ve
 
 Expected: FAIL — `Class "App\Services\RealEstate\ProcurementListService" not found`（新規 8 本）
 
-- [ ] **Step 3: サービスを実装する**
+- [x] **Step 3: サービスを実装する**
 
 `app/Services/RealEstate/ProcurementListService.php` を新規作成:
 
@@ -856,7 +856,7 @@ class ProcurementListService
 }
 ```
 
-- [ ] **Step 4: テストが通ることを確認する**
+- [x] **Step 4: テストが通ることを確認する**
 
 ```bash
 cd /Users/masanori/site/manage/.claude/worktrees/procurement-list-projects && vendor/bin/phpunit --filter ProcurementListWithProjectsTest
@@ -864,7 +864,7 @@ cd /Users/masanori/site/manage/.claude/worktrees/procurement-list-projects && ve
 
 Expected: PASS（11 tests）
 
-- [ ] **Step 5: `->toBase()` を外すと本当に落ちることを確認する（罠が生きている証明）**
+- [x] **Step 5: `->toBase()` を外すと本当に落ちることを確認する（罠が生きている証明）**
 
 `keysFrom()` の `->toBase()` を一時的に削除して空ケースだけ走らせる:
 
@@ -875,7 +875,7 @@ cd /Users/masanori/site/manage/.claude/worktrees/procurement-list-projects && ve
 Expected: FAIL — `Call to a member function getKey() on array`
 確認できたら **`->toBase()` を必ず元に戻して**、再度 PASS になることを確認する。
 
-- [ ] **Step 6: コミット**
+- [x] **Step 6: コミット**
 
 ```bash
 git add app/Services/RealEstate/ProcurementListService.php tests/Feature/RealEstate/ProcurementListWithProjectsTest.php
@@ -893,7 +893,7 @@ Task 2 でコードは書けているので、**このタスクはフィルタ�
 - Modify: `tests/Feature/RealEstate/ProcurementListWithProjectsTest.php`
 - Modify（必要な場合のみ）: `app/Services/RealEstate/ProcurementListService.php`
 
-- [ ] **Step 1: フィルタのテストを追加する**
+- [x] **Step 1: フィルタのテストを追加する**
 
 クラス末尾に追記:
 
@@ -1023,7 +1023,7 @@ Task 2 でコードは書けているので、**このタスクはフィルタ�
     }
 ```
 
-- [ ] **Step 2: テストを走らせる**
+- [x] **Step 2: テストを走らせる**
 
 ```bash
 cd /Users/masanori/site/manage/.claude/worktrees/procurement-list-projects && vendor/bin/phpunit --filter ProcurementListWithProjectsTest
@@ -1033,7 +1033,7 @@ Expected: PASS（20 tests）。
 落ちた場合は `procurementQuery()` / `projectQuery()` / `applyKeyword()` の該当分岐を直す
 （Task 2 の実装で通る想定だが、通らなければ**テストではなく実装を直す**）。
 
-- [ ] **Step 3: コミット**
+- [x] **Step 3: コミット**
 
 ```bash
 git add tests/Feature/RealEstate/ProcurementListWithProjectsTest.php
@@ -1053,7 +1053,7 @@ git commit -m "test(realestate): 一覧の物件種別・取引種別・キー�
 - Modify: `resources/views/realestate/procurements/index.blade.php`
 - Modify: `tests/Feature/RealEstate/ProcurementListWithProjectsTest.php`
 
-- [ ] **Step 1: 画面描画の失敗テストを書く**
+- [x] **Step 1: 画面描画の失敗テストを書く**
 
 クラス末尾に追記:
 
@@ -1178,7 +1178,7 @@ git commit -m "test(realestate): 一覧の物件種別・取引種別・キー�
     }
 ```
 
-- [ ] **Step 2: テストを走らせて失敗を確認する**
+- [x] **Step 2: テストを走らせて失敗を確認する**
 
 ```bash
 cd /Users/masanori/site/manage/.claude/worktrees/procurement-list-projects && vendor/bin/phpunit --filter ProcurementListWithProjectsTest
@@ -1186,7 +1186,7 @@ cd /Users/masanori/site/manage/.claude/worktrees/procurement-list-projects && ve
 
 Expected: FAIL — `rows` が view data に無い / `data-lot-count` が無い / `colspan="9"` のまま
 
-- [ ] **Step 3: コントローラの `index()` を差し替える**
+- [x] **Step 3: コントローラの `index()` を差し替える**
 
 `app/Http/Controllers/RealEstate/ProcurementController.php` の `use` に追加:
 
@@ -1234,7 +1234,7 @@ use App\Services\RealEstate\ProcurementListService;
     }
 ```
 
-- [ ] **Step 4: Blade の `@php` ブロックからステータス選択肢を除く**
+- [x] **Step 4: Blade の `@php` ブロックからステータス選択肢を除く**
 
 `resources/views/realestate/procurements/index.blade.php` の 14〜24 行目を以下で置き換える:
 
@@ -1245,7 +1245,7 @@ use App\Services\RealEstate\ProcurementListService;
     @endphp
 ```
 
-- [ ] **Step 5: テーブルの `min-width` と見出しに「区画」列を足す**
+- [x] **Step 5: テーブルの `min-width` と見出しに「区画」列を足す**
 
 80 行目の `style="min-width: 1000px;"` を `style="min-width: 1080px;"` に変更する。
 
@@ -1255,7 +1255,7 @@ use App\Services\RealEstate\ProcurementListService;
                         <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">区画</th>
 ```
 
-- [ ] **Step 6: `<tbody>` を丸ごと置き換える**
+- [x] **Step 6: `<tbody>` を丸ごと置き換える**
 
 94〜161 行目（`<tbody>` 〜 `</tbody>`）を以下で置き換える:
 
@@ -1349,7 +1349,7 @@ use App\Services\RealEstate\ProcurementListService;
                 </tbody>
 ```
 
-- [ ] **Step 7: 件数表示とページネーションの変数名を `$rows` に直す**
+- [x] **Step 7: 件数表示とページネーションの変数名を `$rows` に直す**
 
 165〜187 行目の `$procurements` を **すべて** `$rows` に置き換える。置き換え後はこうなる:
 
@@ -1387,7 +1387,7 @@ grep -n 'procurements\->\|\$procurements' resources/views/realestate/procurement
 
 Expected: 出力なし
 
-- [ ] **Step 8: `badge-prj-*` CSS を追加する**
+- [x] **Step 8: `badge-prj-*` CSS を追加する**
 
 `<style>` ブロック（191〜201 行目付近）の `badge-re-lost` の次の行に追加する:
 
@@ -1403,7 +1403,7 @@ Expected: 出力なし
 .badge-prj-lost { background: #e5e7eb; color: #374151; }
 ```
 
-- [ ] **Step 9: `<script>` のステータスセルを多型化する**
+- [x] **Step 9: `<script>` のステータスセルを多型化する**
 
 ⚠ Step 4 で `$statusOptions` を消しているので、このステップを飛ばすと未定義変数で 500 になる。
 
@@ -1489,7 +1489,7 @@ function realestateStatusCell(kind, id, initialValue, initialLabel, initialBadge
 > （`ProcurementController::updateStatus` / `ProjectController::updateStatus`）。
 > `toggle()` と `then()` 以降のロジックは一切変更しない。
 
-- [ ] **Step 10: 旧識別子が残っていないことを確認する**
+- [x] **Step 10: 旧識別子が残っていないことを確認する**
 
 ```bash
 grep -n 'procurementStatusCell\|__procurementStatusOptions\|\$statusOptions\b\|\$procurements' resources/views/realestate/procurements/index.blade.php
@@ -1497,7 +1497,7 @@ grep -n 'procurementStatusCell\|__procurementStatusOptions\|\$statusOptions\b\|\
 
 Expected: 出力なし
 
-- [ ] **Step 11: テストが通ることを確認する（既存テストの回帰も見る）**
+- [x] **Step 11: テストが通ることを確認する（既存テストの回帰も見る）**
 
 ```bash
 cd /Users/masanori/site/manage/.claude/worktrees/procurement-list-projects && vendor/bin/phpunit --filter 'ProcurementListWithProjectsTest|ProcurementStatusTransitionTest'
@@ -1505,7 +1505,7 @@ cd /Users/masanori/site/manage/.claude/worktrees/procurement-list-projects && ve
 
 Expected: PASS（`ProcurementListWithProjectsTest` は 27 本）
 
-- [ ] **Step 12: コミット**
+- [x] **Step 12: コミット**
 
 ```bash
 git add app/Http/Controllers/RealEstate/ProcurementController.php resources/views/realestate/procurements/index.blade.php tests/Feature/RealEstate/ProcurementListWithProjectsTest.php
@@ -1520,7 +1520,7 @@ git commit -m "feat(realestate): 仕入れ案件一覧に分譲地の行を表�
 - Modify: `resources/views/realestate/procurements/index.blade.php:42-60`
 - Modify: `tests/Feature/RealEstate/ProcurementListWithProjectsTest.php`
 
-- [ ] **Step 1: 失敗テストを書く**
+- [x] **Step 1: 失敗テストを書く**
 
 クラス末尾に追記:
 
@@ -1584,7 +1584,7 @@ git commit -m "feat(realestate): 仕入れ案件一覧に分譲地の行を表�
     }
 ```
 
-- [ ] **Step 2: テストを走らせて失敗を確認する**
+- [x] **Step 2: テストを走らせて失敗を確認する**
 
 ```bash
 cd /Users/masanori/site/manage/.claude/worktrees/procurement-list-projects && vendor/bin/phpunit --filter ProcurementListWithProjectsTest
@@ -1592,7 +1592,7 @@ cd /Users/masanori/site/manage/.claude/worktrees/procurement-list-projects && ve
 
 Expected: FAIL — `<option value="project"` が無い / 「現地調査（仕入れ案件のみ）」が無い
 
-- [ ] **Step 3: ステータスセレクトに「現地調査」の補記を入れる**
+- [x] **Step 3: ステータスセレクトに「現地調査」の補記を入れる**
 
 `resources/views/realestate/procurements/index.blade.php` の 50〜52 行目（`@foreach(\App\Enums\ProcurementStatus::cases() as $st)` のブロック）を置き換える:
 
@@ -1608,7 +1608,7 @@ Expected: FAIL — `<option value="project"` が無い / 「現地調査（仕�
             @endforeach
 ```
 
-- [ ] **Step 4: 物件種別セレクトに「分譲地」を追加する**
+- [x] **Step 4: 物件種別セレクトに「分譲地」を追加する**
 
 54〜60 行目の `property_type` セレクトを置き換える:
 
@@ -1625,7 +1625,7 @@ Expected: FAIL — `<option value="project"` が無い / 「現地調査（仕�
         </select>
 ```
 
-- [ ] **Step 5: テストが通ることを確認する**
+- [x] **Step 5: テストが通ることを確認する**
 
 ```bash
 cd /Users/masanori/site/manage/.claude/worktrees/procurement-list-projects && vendor/bin/phpunit --filter 'ProcurementListWithProjectsTest|ProcurementStatusTransitionTest'
@@ -1636,7 +1636,7 @@ Expected: PASS（`ProcurementListWithProjectsTest` は 32 本）。
 `<option value="" selected>` を assertSee / `<option value="active" selected>` を assertDontSee する。
 新設した `<option value="project">` は selected を持たないので影響しないが、必ず一緒に走らせて確認する。
 
-- [ ] **Step 6: コミット**
+- [x] **Step 6: コミット**
 
 ```bash
 git add resources/views/realestate/procurements/index.blade.php tests/Feature/RealEstate/ProcurementListWithProjectsTest.php
@@ -1651,7 +1651,7 @@ git commit -m "feat(realestate): 一覧の物件種別フィルタに分譲地�
 - Modify: `tests/Feature/RealEstate/ProcurementListWithProjectsTest.php`
 - Modify（テストが落ちた場合のみ）: `app/Services/RealEstate/ProcurementListService.php`
 
-- [ ] **Step 1: 失敗テストを書く**
+- [x] **Step 1: 失敗テストを書く**
 
 クラス末尾に追記:
 
@@ -1748,7 +1748,7 @@ git commit -m "feat(realestate): 一覧の物件種別フィルタに分譲地�
     }
 ```
 
-- [ ] **Step 2: テストを走らせる**
+- [x] **Step 2: テストを走らせる**
 
 ```bash
 cd /Users/masanori/site/manage/.claude/worktrees/procurement-list-projects && vendor/bin/phpunit --filter ProcurementListWithProjectsTest
@@ -1758,7 +1758,7 @@ Expected: PASS（35 本）。Task 2 の `paginationQuery()` が効いていれ�
 `test_pagination_keeps_status_all_filter` が落ちる場合は `paginationQuery()` の
 `array_map(fn ($v) => $v ?? '', ...)` が入っているか確認する。
 
-- [ ] **Step 3: `paginationQuery()` の null 正規化を外すと落ちることを確認する（罠が生きている証明）**
+- [x] **Step 3: `paginationQuery()` の null 正規化を外すと落ちることを確認する（罠が生きている証明）**
 
 `paginationQuery()` の本体を一時的に `return $request->query();` に変えて:
 
@@ -1769,7 +1769,7 @@ cd /Users/masanori/site/manage/.claude/worktrees/procurement-list-projects && ve
 Expected: FAIL — `Failed asserting that an array has the key 'status'`
 確認できたら **必ず元に戻して** 再度 PASS を確認する。
 
-- [ ] **Step 4: コミット**
+- [x] **Step 4: コミット**
 
 ```bash
 git add tests/Feature/RealEstate/ProcurementListWithProjectsTest.php
@@ -1782,7 +1782,7 @@ git commit -m "test(realestate): 一覧のページング（両種別合算・�
 
 コード変更はしない（問題が見つかったら直す）。
 
-- [ ] **Step 1: 全テストを走らせる**
+- [x] **Step 1: 全テストを走らせる**
 
 ```bash
 cd /Users/masanori/site/manage/.claude/worktrees/procurement-list-projects && vendor/bin/phpunit
@@ -1798,7 +1798,7 @@ Expected: 全 PASS、Failures: 0 / Errors: 0。
 - `ProcurementStatusTransitionTest::test_index_default_marks_active_option_selected`
 - `ProjectSoldStatusTransitionTest`（分譲地一覧ページは無変更なので全件）
 
-- [ ] **Step 2: コンパイル済みビューを `php -l` する（Bug #26 対策）**
+- [x] **Step 2: コンパイル済みビューを `php -l` する（Bug #26 対策）**
 
 ⚠ **`view:cache` の「成功」表示だけでは不十分**（コンパイル済み PHP を lint しないため）。
 必ず生成物を lint する。まず worktree で（速い）:
@@ -1820,7 +1820,7 @@ cd /Users/masanori/site/manage && php artisan view:cache && for f in storage/fra
 > ⚠ `git merge --ff-only` が失敗する場合は 13.x が先行している。その場合は worktree で
 > `git rebase 13.x` してから再度 merge する。
 
-- [ ] **Step 3: 横展開検査（この変更で新たに罠を持ち込んでいないか）**
+- [x] **Step 3: 横展開検査（この変更で新たに罠を持ち込んでいないか）**
 
 ```bash
 cd /Users/masanori/site/manage
@@ -1848,7 +1848,7 @@ Expected:
 - `RealEstatePropertyType.php` に `Project` ケース無し
 - `->merge(` は `$procKeys->merge($projKeys)`（両辺とも `keysFrom()` 経由で base 化済み）
 
-- [ ] **Step 4: 本番へ反映する**
+- [x] **Step 4: 本番へ反映する**
 
 ⚠ **`./deploy.sh` はユーザーの明示承認が必要**（自動モードの分類器がブロックする）。
 承認を得てから実行すること。
@@ -1865,7 +1865,7 @@ cd /Users/masanori/site/manage && composer dump-autoload
 cd /Users/masanori/site/manage && ./deploy.sh
 ```
 
-- [ ] **Step 5: 本番ブラウザで確認する**
+- [x] **Step 5: 本番ブラウザで確認する**
 
 `https://www.mitsuwat.co.jp/system/manage/realestate/procurements` を開いて確認する:
 

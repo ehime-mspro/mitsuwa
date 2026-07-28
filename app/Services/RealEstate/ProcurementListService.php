@@ -310,6 +310,13 @@ class ProcurementListService
 
         $keyword = $request->input('keyword');
 
+        // ⚠ `?keyword[]=abc` のように配列で来ると "%{$keyword}%" が
+        //   ErrorException: Array to string conversion で 500 になる。
+        //   status 側（statusFilter）と同じく、想定外の型は絞り込み無しへ落とす。
+        if (! is_string($keyword)) {
+            return;
+        }
+
         $query->where(function (Builder $q) use ($keyword, $columns): void {
             foreach ($columns as $column) {
                 $q->orWhere($column, 'like', "%{$keyword}%");

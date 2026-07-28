@@ -339,6 +339,22 @@ class ProcurementListWithProjectsTest extends TestCase
         $this->assertSame(0, $rows->total());
     }
 
+    /**
+     * ?keyword[]=abc のように配列で来ても 500 にならない。
+     *
+     * ⚠ "%{$keyword}%" は配列だと ErrorException: Array to string conversion になる。
+     *   status 側と同じく、想定外の型は絞り込み無し（＝全件）へ落とす。
+     */
+    public function test_keyword_as_array_does_not_error(): void
+    {
+        $this->makeProcurement('PRC-001');
+        $this->makeProject('PJ-001');
+
+        $rows = $this->paginateVia('keyword[]=PRC');
+
+        $this->assertSame(2, $rows->total());
+    }
+
     /** 未知のステータス値は 0 件（既存挙動の維持。配列ケースと同じ結果になること） */
     public function test_unknown_status_returns_no_rows(): void
     {
