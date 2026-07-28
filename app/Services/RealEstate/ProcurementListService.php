@@ -70,9 +70,11 @@ class ProcurementListService
             $model = $projs->get($k['id']);
 
             return $model ? ProcurementListRow::fromProject($model) : null;
-        // ⚠ ここで消えるのは「キー取得後・モデル取得前に削除された」極めて稀な一過性の行のみ。
-        //   その場合 total()（$keys->count() 由来）と実件数がわずかにズレ得るが許容する。
-        })->filter()->values();
+        })
+            // ⚠ ここで消えるのは「キー取得後・モデル取得前に削除された」極めて稀な一過性の行のみ。
+            //   その場合 total()（$keys->count() 由来）と実件数がわずかにズレ得るが許容する。
+            ->filter()
+            ->values();
 
         return new LengthAwarePaginator($rows, $keys->count(), $perPage, $page, [
             'path'  => Paginator::resolveCurrentPath(),
@@ -122,9 +124,11 @@ class ProcurementListService
             $k['date']?->getTimestamp() ?? 0,                             // 情報入手日 降順
             $k['id'],                                                     // id 降順
             // 完全同着時の確定タイブレーク（仕入れ案件を先に）。
-            // ⚠ 現状は merge 順（procKeys が先）＋ PHP 8 の安定ソートでも同じ順序になるため
-            //   この要素を消しても挙動は変わらない。それでも残すのは、merge の順序を
-            //   入れ替えたときに無言で逆転しないよう意図をコードに固定するため。
+            // ⚠ 現状は merge 順（procKeys が先）＋ PHP 8 の安定ソートでも同じ順序になるため、
+            //   この要素を消しても挙動は変わらない。それでも残すのは、消すと正しさが
+            //   「merge の引数順」「PHP のソート安定性」「Laravel が sortBy で arsort を使うこと」
+            //   という 3 つの暗黙の前提（うち 1 つは vendor 側）に同時に依存するようになるため。
+            //   この要素があれば、そのどれが変わっても順序は変わらない（変異試験で確認済み）。
             $k['kind'] === ProcurementListRow::KIND_PROCUREMENT ? 1 : 0,
         ])->values();
     }
