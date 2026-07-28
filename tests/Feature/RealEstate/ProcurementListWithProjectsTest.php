@@ -521,6 +521,11 @@ class ProcurementListWithProjectsTest extends TestCase
             collect($response->viewData('rows')->items())
                 ->where('kind', 'project')->pluck('propertyTypeLabel')->all()
         );
+
+        // 区画サブ行は分譲地の行にだけ出る（混在時に仕入れ案件の行へ漏れないこと）。
+        // ⚠ 「分譲地が 1 件でもあれば全行に出す」型の条件ミスは、仕入れ案件だけの一覧を見る
+        //   test_procurement_row_has_no_lot_subline では検出できない（実測）。件数で固定する。
+        $this->assertSame(1, substr_count($response->getContent(), 'data-lot-count'));
     }
 
     /** 分譲地の行には物件名の下に「区画 成約数 / 総数」が出る */
@@ -611,8 +616,38 @@ class ProcurementListWithProjectsTest extends TestCase
         // 種別ごとの選択肢マップと更新先エンドポイント
         $response->assertSee('__reStatusOptions', false);
         $response->assertSee('__reStatusEndpoint', false);
-        $response->assertSee('/realestate/projects', false);
+        // ⚠ ここは assertSee('/realestate/projects') では駄目。その文字列は分譲地行の
+        //   「詳細」「区画」の href にも必ず出るので、エンドポイントマップを取り違えても緑になる。
+        //   取り違えると分譲地バッジのクリックが PATCH /realestate/procurements/{分譲地のid}/status
+        //   を叩き、id が衝突した別テーブルのレコードのステータスを黙って書き換える。
+        $response->assertSee("procurement: '" . url('/realestate/procurements') . "'", false);
+        $response->assertSee("project: '" . url('/realestate/projects') . "'", false);
         // 旧関数名が残っていない
         $response->assertDontSee('procurementStatusCell', false);
+    }
+
+    /**
+     * ポップオーバーの選択肢が種別ごとに正しい enum から組まれている。
+     *
+     * ⚠ `assertSee('__reStatusOptions')` だけでは中身を見ていない。分譲地側に
+     *   ProcurementStatus を渡しても緑のままで、本番では分譲地に存在しない「現地調査」が並び、
+     *   選ぶと ProjectController の in: バリデーションに弾かれて 422 になる
+     *   （「販売済」も sold ⇔ sold_out の食い違いで失敗する）。
+     */
+    public function test_status_options_are_built_from_the_right_enum_per_kind(): void
+    {
+        $response = $this->actingAs($this->executive())->get('/realestate/procurements');
+
+        $response->assertOk();
+        $options = $response->viewData('statusOptionsByKind');
+
+        $this->assertSame(
+            array_column(ProcurementStatus::cases(), 'value'),
+            array_column($options['procurement'], 'value')
+        );
+        $this->assertSame(
+            array_column(ProjectStatus::cases(), 'value'),
+            array_column($options['project'], 'value')
+        );
     }
 }
