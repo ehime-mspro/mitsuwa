@@ -121,7 +121,11 @@ class ProcurementListService
             $k['date'] === null ? 0 : 1,                                  // NULL を末尾へ
             $k['date']?->getTimestamp() ?? 0,                             // 情報入手日 降順
             $k['id'],                                                     // id 降順
-            $k['kind'] === ProcurementListRow::KIND_PROCUREMENT ? 1 : 0,  // 完全同着時の確定タイブレーク
+            // 完全同着時の確定タイブレーク（仕入れ案件を先に）。
+            // ⚠ 現状は merge 順（procKeys が先）＋ PHP 8 の安定ソートでも同じ順序になるため
+            //   この要素を消しても挙動は変わらない。それでも残すのは、merge の順序を
+            //   入れ替えたときに無言で逆転しないよう意図をコードに固定するため。
+            $k['kind'] === ProcurementListRow::KIND_PROCUREMENT ? 1 : 0,
         ])->values();
     }
 

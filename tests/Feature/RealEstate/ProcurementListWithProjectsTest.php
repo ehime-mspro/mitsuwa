@@ -313,10 +313,17 @@ class ProcurementListWithProjectsTest extends TestCase
     }
 
     /**
-     * 日付も id も一致する別テーブル同士でも順序が確定する。
+     * 日付も id も一致する別テーブル同士でも順序が確定し、仕入れ案件が先に来る（設計書 §3.4）。
+     * 順序が確定しないとページ境界（20 件目 / 21 件目）で行が重複・欠落しうる。
      *
-     * ソートキーの第 4 要素（種別）が効いていることの検証。これが無いと
-     * ページ境界（20 件目 / 21 件目）で行が重複・欠落しうる（設計書 §3.4）。
+     * ⚠ このテストが検出できるのは「**向き**が仕入れ案件先であること」で、
+     *   「ソートキーの第 4 要素（種別）が無いと壊れること」ではない。
+     *   PHP 8.0+ の `arsort()` は安定ソート（実測確認済み）で、Laravel の
+     *   `Collection::sortByDesc()` はそれを使う（`Collection.php:1603`）。
+     *   `sortedKeys()` は常に `$procKeys->merge($projKeys)` の順でマージするため、
+     *   第 4 要素を消しても merge 順（仕入れ案件が先）がそのまま保持されて PASS する。
+     *   第 4 要素は「merge の順序に依存せず意図を明示する」ための冗長な安全策であり、
+     *   消してよいという意味ではない（merge 順を入れ替えた瞬間に無言で逆転する）。
      */
     public function test_cross_table_id_collision_is_deterministic(): void
     {
