@@ -174,7 +174,19 @@
 }
 @media (max-width: 640px) {
     .exec-dashboard .card-grid-3 { grid-template-columns: minmax(0, 1fr); }
-    .exec-dashboard .filter-bar { padding: 6px 10px; gap: 6px; }
+    .exec-dashboard .filter-bar { padding: 6px 10px; gap: 6px; flex-wrap: wrap; }
+    .exec-dashboard .filter-divider { display: none; }
+
+    /* 住宅事業 KPI カードの内側グリッドを縦積みにする。
+       8 桁の金額（172,715,456円）が横に並ぶと 1 列あたり 60〜130px しか取れず、
+       数値どうしが重なって読めなくなる（実測: 4 列のまま minmax(0,1fr) 化すると
+       「172,712」「28,701,218」「16.6%」が重畳した）。列数を減らすのが唯一の解。
+       ⚠ 基底の 1fr は変えないこと。中間幅では 1fr の auto 最小値が各トラックを
+       内容幅に保っており、そのおかげで重なりが起きていない（実測 main 700px）。 */
+    .exec-dashboard .hs-split         { grid-template-columns: minmax(0, 1fr); }
+    .exec-dashboard .hs-split-divider { display: none; }
+    .exec-dashboard .hs-split-col     { padding-left: 0 !important; padding-right: 0 !important; }
+    .exec-dashboard .hs-totals        { grid-template-columns: minmax(0, 1fr); gap: 14px; }
 }
 </style>
 

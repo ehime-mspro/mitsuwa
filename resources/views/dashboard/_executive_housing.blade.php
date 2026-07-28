@@ -26,10 +26,10 @@
         </div>
 
         {{-- 建売 / 注文住宅 2列 --}}
-        <div style="display:grid; grid-template-columns:1fr 1px 1fr; gap:0; margin-top:8px;">
+        <div class="hs-split" style="display:grid; grid-template-columns:1fr 1px 1fr; gap:0; margin-top:8px;">
 
             {{-- 建売 --}}
-            <div style="padding-right:24px;">
+            <div class="hs-split-col" style="padding-right:24px;">
                 <div style="font-size:11px; font-weight:700; color:#065f46; background:#d1fae5; display:inline-block; padding:2px 10px; border-radius:9999px; margin-bottom:16px;">建売</div>
                 <div style="display:flex; flex-direction:column; gap:14px;">
                     <div>
@@ -63,10 +63,10 @@
             </div>
 
             {{-- 縦区切り線 --}}
-            <div style="background:#e5e7eb;"></div>
+            <div class="hs-split-divider" style="background:#e5e7eb;"></div>
 
             {{-- 注文住宅 --}}
-            <div style="padding-left:24px;">
+            <div class="hs-split-col" style="padding-left:24px;">
                 <div style="font-size:11px; font-weight:700; color:#1e40af; background:#dbeafe; display:inline-block; padding:2px 10px; border-radius:9999px; margin-bottom:16px;">注文住宅</div>
                 <div style="display:flex; flex-direction:column; gap:14px;">
                     <div>
@@ -107,7 +107,7 @@
                 <span style="display:inline-block; padding:3px 12px; background:var(--gray-700); color:#fff; border-radius:4px; font-size:11px; font-weight:700; letter-spacing:0.1em;">合 計</span>
                 <span style="font-size:11px; color:var(--gray-500);">建売 ＋ 注文住宅</span>
             </div>
-            <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:28px;">
+            <div class="hs-totals" style="display:grid; grid-template-columns:repeat(4,1fr); gap:28px;">
                 <div>
                     <div style="font-size:11px; color:var(--gray-500); margin-bottom:4px;">成約件数</div>
                     <div style="display:flex; align-items:baseline; gap:5px;">
