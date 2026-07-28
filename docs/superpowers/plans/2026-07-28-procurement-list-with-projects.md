@@ -966,6 +966,25 @@ Task 2 でコードは書けているので、**このタスクはフィルタ�
             $this->namesOf($this->paginateVia('keyword=PJ-100'))
         );
     }
+
+    /**
+     * 日本語キーワードで所在地を横断検索できる（本番の検索対象は日本語）。
+     *
+     * ⚠ `Request::create()` にエンコードしていない日本語をそのまま渡すと値が文字化けし
+     *   （実測: '松山' → "\xef\xbf\xbd_\xef\xbf\xbd山"）、ヒット 0 件になって
+     *   「実装が悪い」と誤診する。**必ず urlencode() を通すこと。**
+     */
+    public function test_keyword_matches_japanese_address_in_both_tables(): void
+    {
+        $this->makeProcurement('PRC-001', ['address' => '愛媛県松山市水泥町1-1']);
+        $this->makeProject('PJ-001',      ['address' => '愛媛県松山市水泥町2-2']);
+        $this->makeProcurement('PRC-002', ['address' => '愛媛県今治市別宮町3-3']);
+
+        $this->assertEqualsCanonicalizing(
+            ['物件PRC-001', '分譲地PJ-001'],
+            $this->namesOf($this->paginateVia('keyword=' . urlencode('水泥町')))
+        );
+    }
 ```
 
 - [ ] **Step 2: テストを走らせる**
@@ -974,7 +993,7 @@ Task 2 でコードは書けているので、**このタスクはフィルタ�
 cd /Users/masanori/site/manage/.claude/worktrees/procurement-list-projects && vendor/bin/phpunit --filter ProcurementListWithProjectsTest
 ```
 
-Expected: PASS（15 tests）。
+Expected: PASS（19 tests）。
 落ちた場合は `procurementQuery()` / `projectQuery()` / `applyKeyword()` の該当分岐を直す
 （Task 2 の実装で通る想定だが、通らなければ**テストではなく実装を直す**）。
 
@@ -1445,7 +1464,7 @@ Expected: 出力なし
 cd /Users/masanori/site/manage/.claude/worktrees/procurement-list-projects && vendor/bin/phpunit --filter 'ProcurementListWithProjectsTest|ProcurementStatusTransitionTest'
 ```
 
-Expected: PASS（`ProcurementListWithProjectsTest` は 22 本）
+Expected: PASS（`ProcurementListWithProjectsTest` は 26 本）
 
 - [ ] **Step 12: コミット**
 
@@ -1573,7 +1592,7 @@ Expected: FAIL — `<option value="project"` が無い / 「現地調査（仕�
 cd /Users/masanori/site/manage/.claude/worktrees/procurement-list-projects && vendor/bin/phpunit --filter 'ProcurementListWithProjectsTest|ProcurementStatusTransitionTest'
 ```
 
-Expected: PASS（`ProcurementListWithProjectsTest` は 26 本）。
+Expected: PASS（`ProcurementListWithProjectsTest` は 30 本）。
 ⚠ 既存の `ProcurementStatusTransitionTest::test_index_status_all_marks_all_option_selected` は
 `<option value="" selected>` を assertSee / `<option value="active" selected>` を assertDontSee する。
 新設した `<option value="project">` は selected を持たないので影響しないが、必ず一緒に走らせて確認する。
@@ -1687,7 +1706,7 @@ git commit -m "feat(realestate): 一覧の物件種別フィルタに分譲地�
 cd /Users/masanori/site/manage/.claude/worktrees/procurement-list-projects && vendor/bin/phpunit --filter ProcurementListWithProjectsTest
 ```
 
-Expected: PASS（29 本）。Task 2 の `paginationQuery()` が効いていれば通る。
+Expected: PASS（33 本）。Task 2 の `paginationQuery()` が効いていれば通る。
 `test_pagination_keeps_status_all_filter` が落ちる場合は `paginationQuery()` の
 `array_map(fn ($v) => $v ?? '', ...)` が入っているか確認する。
 
@@ -1872,7 +1891,8 @@ Expected: `true`。
 |---|---:|---:|
 | Task 1 DTO | 3 | 3 |
 | Task 2 サービス（マージ/ソート/ステータス） | 8 | 11 |
-| Task 3 フィルタ（種別/取引/キーワード） | 4 | 15 |
-| Task 4 描画 + ステータスセル | 7 | 22 |
-| Task 5 フィルタバー | 4 | 26 |
-| Task 6 ページネーション | 3 | 29 |
+| Task 2 レビュー修正（配列ステータス 2 + 同着順序 1） | 3 | 14 |
+| Task 3 フィルタ（種別/取引/キーワード/日本語） | 5 | 19 |
+| Task 4 描画 + ステータスセル | 7 | 26 |
+| Task 5 フィルタバー | 4 | 30 |
+| Task 6 ページネーション | 3 | 33 |
