@@ -286,4 +286,46 @@ class ProcurementListWithProjectsTest extends TestCase
             $this->namesOf($this->paginateVia('status='))
         );
     }
+
+    /**
+     * ?status[]=selling のように配列で来ても 500 にならない。
+     *
+     * ⚠ 配列を enum の tryFrom() へ渡すと TypeError になる。未知の文字列（?status=zzz）が
+     *   0 件になる既存挙動に合わせ、配列も 0 件へ落とす。
+     */
+    public function test_status_as_array_does_not_error(): void
+    {
+        $this->makeProcurement('PRC-001', ['status' => 'selling']);
+        $this->makeProject('PJ-001',      ['status' => 'selling']);
+
+        $rows = $this->paginateVia('status[]=selling');
+
+        $this->assertSame(0, $rows->total());
+    }
+
+    /** 未知のステータス値は 0 件（既存挙動の維持。配列ケースと同じ結果になること） */
+    public function test_unknown_status_returns_no_rows(): void
+    {
+        $this->makeProcurement('PRC-001', ['status' => 'selling']);
+        $this->makeProject('PJ-001',      ['status' => 'selling']);
+
+        $this->assertSame(0, $this->paginateVia('status=zzz')->total());
+    }
+
+    /**
+     * 日付も id も一致する別テーブル同士でも順序が確定する。
+     *
+     * ソートキーの第 4 要素（種別）が効いていることの検証。これが無いと
+     * ページ境界（20 件目 / 21 件目）で行が重複・欠落しうる（設計書 §3.4）。
+     */
+    public function test_cross_table_id_collision_is_deterministic(): void
+    {
+        $this->makeProcurement('PRC-1', ['info_obtained_date' => '2026-06-01']);  // id=1
+        $this->makeProject('PJ-1',      ['info_obtained_date' => '2026-06-01']);  // id=1
+
+        $this->assertSame(
+            ['物件PRC-1', '分譲地PJ-1'],   // 仕入れ案件が先
+            $this->namesOf($this->paginateVia())
+        );
+    }
 }

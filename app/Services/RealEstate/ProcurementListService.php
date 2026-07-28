@@ -42,6 +42,9 @@ class ProcurementListService
     public function paginate(Request $request, int $perPage = 20): LengthAwarePaginator
     {
         $keys  = $this->sortedKeys($request);
+        // ⚠ 引数の $request ではなくコンテナの 'request' を見る（PaginationServiceProvider が
+        //   そう束ねている）。本番経路では同一インスタンスなので実害は無いが、テストでは
+        //   呼び出し側が $this->app->instance('request', $request) で明示的に揃える必要がある。
         $page  = LengthAwarePaginator::resolveCurrentPage();
         $slice = $keys->forPage($page, $perPage);
 
@@ -67,6 +70,8 @@ class ProcurementListService
             $model = $projs->get($k['id']);
 
             return $model ? ProcurementListRow::fromProject($model) : null;
+        // ⚠ ここで消えるのは「キー取得後・モデル取得前に削除された」極めて稀な一過性の行のみ。
+        //   その場合 total()（$keys->count() 由来）と実件数がわずかにズレ得るが許容する。
         })->filter()->values();
 
         return new LengthAwarePaginator($rows, $keys->count(), $perPage, $page, [
@@ -157,18 +162,20 @@ class ProcurementListService
             return null;
         }
 
+        $statusFilter = $this->statusFilter($request);
+        if ($statusFilter === self::STATUS_NO_MATCH) {
+            return null;   // 想定外の型。該当なし
+        }
+
         $query = ReProcurement::query();
 
-        $statusFilter = $request->input('status', 'active');
         if ($statusFilter === 'active') {
             $query->whereNotIn('status', [
                 ProcurementStatus::Lost->value,
                 ProcurementStatus::Sold->value,
             ]);
-        } elseif (filled($statusFilter)) {
-            // 「全て」= ?status= は ConvertEmptyStringsToNull で null 化されるため
-            // filled() で弾き、フィルタ無し（＝全件）に落とす。'' 比較では null が
-            // 素通りして where('status', null) となり 0 件になる
+        } elseif ($statusFilter !== null) {
+            // null は「全て」＝フィルタ無し
             $query->where('status', $statusFilter);
         }
 
@@ -226,24 +233,42 @@ class ProcurementListService
     }
 
     /**
-     * 仕入れ案件のステータス値を分譲地のステータス値へ写す。
+     * ステータス絞り込みの生値を正規化する。
      *
      * 戻り値:
      *   'active'         — 既定（進行中のみ）
-     *   null             — 全て（フィルタ無し）
-     *   STATUS_NO_MATCH  — 分譲地に該当なし（＝分譲地を結果から外す）
-     *   その他            — re_projects.status に直接当てる値
+     *   null             — 全て（?status= 。ConvertEmptyStringsToNull で null 化されて届く）
+     *   STATUS_NO_MATCH  — 想定外の型（?status[]=... の配列など）。両種別とも該当なしにする
+     *   その他            — status 列へ直接当てる文字列
+     *
+     * ⚠ 配列をそのまま enum の tryFrom() へ渡すと TypeError で 500 になる（実測確認済み）。
+     *   未知の文字列（?status=zzz）が 0 件になる既存挙動に合わせ、配列も 0 件へ落とす。
+     */
+    private function statusFilter(Request $request): ?string
+    {
+        $status = $request->input('status', 'active');
+
+        if (! is_string($status)) {
+            return self::STATUS_NO_MATCH;
+        }
+
+        return filled($status) ? $status : null;
+    }
+
+    /**
+     * 仕入れ案件のステータス値を分譲地のステータス値へ写す。
+     *
+     * 戻り値の意味は statusFilter() と同じ 4 通り。
+     * ⚠ null（全て＝全件）と STATUS_NO_MATCH（該当なし＝0 件）は**正反対**の結果を指す。
+     *   呼び出し側で `if (! $status)` のように緩く畳まないこと。
      */
     private function mapStatusForProject(Request $request): ?string
     {
-        $statusFilter = $request->input('status', 'active');
+        $statusFilter = $this->statusFilter($request);
 
-        if ($statusFilter === 'active') {
-            return 'active';
-        }
-
-        if (! filled($statusFilter)) {
-            return null;   // 「全て」
+        // 既定 / 全て / 想定外の型 はそのまま素通し
+        if ($statusFilter === 'active' || $statusFilter === null || $statusFilter === self::STATUS_NO_MATCH) {
+            return $statusFilter;
         }
 
         // 「販売済」だけラベルが同じで値が違う: 仕入れ sold ⇔ 分譲地 sold_out
