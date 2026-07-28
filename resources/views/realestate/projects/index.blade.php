@@ -92,11 +92,15 @@
                                     <span @click="toggle($event)" :class="'badge ' + badgeClass" x-text="label"
                                           style="cursor: pointer;" title="クリックでステータス変更"></span>
                                     <div x-show="open" x-cloak @click.outside="open = false"
-                                         :style="'position: fixed; top: ' + popoverTop + 'px; left: ' + popoverLeft + 'px; transform: translateX(-50%); z-index: 9999; background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px; box-shadow: 0 6px 20px rgba(0,0,0,0.15); min-width: 130px; display: flex; flex-direction: column; gap: 4px;'">
+                                         :style="'position: fixed; top: ' + popoverTop + 'px; left: ' + popoverLeft + 'px; transform: translateX(-50%); z-index: 9999; background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px; box-shadow: 0 6px 20px rgba(0,0,0,0.15); min-width: 130px;'">
+                                        {{-- ⚠ display は x-show が奪う（表示時に丸ごと削除される）ので :style に書けない。
+                                             flex は内側のラッパーに持たせる。RULES.md Bug #32 --}}
+                                        <div style="display: flex; flex-direction: column; gap: 4px;">
                                         <template x-for="opt in options" :key="opt.value">
                                             <span @click="select(opt)" :class="'badge ' + opt.badge_class" x-text="opt.label"
                                                   :style="(opt.value === value) ? 'opacity: 0.45; cursor: default; text-align: center;' : 'cursor: pointer; text-align: center;'"></span>
                                         </template>
+                                        </div>
                                     </div>
                                 </td>
                             @else

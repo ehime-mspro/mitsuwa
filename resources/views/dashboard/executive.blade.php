@@ -94,9 +94,13 @@
 }
 .exec-dashboard .section-divider { flex: 1; height: 1px; background: var(--gray-200); }
 
-/* カードグリッド */
-.exec-dashboard .card-grid   { display: grid; grid-template-columns: 1fr 1fr;     gap: 16px; }
-.exec-dashboard .card-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+/* カードグリッド
+   ⚠ 1fr ではなく minmax(0, 1fr) にする。1fr は minmax(auto, 1fr) の略で、最小値 auto が
+   中身の min-content 幅で下限を作るため、トラックがコンテナより広がって <main> に
+   横スクロールが漏れる。ここでは .chart-stack（min-width: auto の flex コンテナ）が
+   その下限を押し上げていた（実測: main 700px のとき 211px 溢れ）。RULES.md Bug #29 */
+.exec-dashboard .card-grid   { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);                 gap: 16px; }
+.exec-dashboard .card-grid-3 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
 
 /* KPI カード */
 .exec-dashboard .kpi-card {
@@ -158,14 +162,18 @@
 .exec-dashboard .chart-card-title { font-size: 15px; font-weight: 700; color: var(--gray-800); }
 .exec-dashboard .chart-card-sub   { font-size: 12px; color: var(--gray-400); }
 .exec-dashboard .chart-wrap       { position: relative; height: 220px; }
+/* ⚠ minmax(0, 1fr) と対で入れる。Chart.js は canvas に inline の px 幅を書き込むので、
+   max-width が無いと一度広がった canvas が縮まず min-content 幅の下限になり続ける。
+   RULES.md Bug #29 は「2 点セットで直す。片方だけでは直らない」と明記している */
+.exec-dashboard .chart-wrap canvas { max-width: 100%; }
 
 /* レスポンシブ */
 @media (max-width: 960px) {
-    .exec-dashboard .card-grid, .exec-dashboard .chart-grid { grid-template-columns: 1fr; }
-    .exec-dashboard .card-grid-3 { grid-template-columns: 1fr 1fr; }
+    .exec-dashboard .card-grid, .exec-dashboard .chart-grid { grid-template-columns: minmax(0, 1fr); }
+    .exec-dashboard .card-grid-3 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 }
 @media (max-width: 640px) {
-    .exec-dashboard .card-grid-3 { grid-template-columns: 1fr; }
+    .exec-dashboard .card-grid-3 { grid-template-columns: minmax(0, 1fr); }
     .exec-dashboard .filter-bar { padding: 6px 10px; gap: 6px; }
 }
 </style>
