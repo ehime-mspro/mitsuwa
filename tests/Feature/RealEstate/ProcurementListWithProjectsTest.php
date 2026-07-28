@@ -341,7 +341,14 @@ class ProcurementListWithProjectsTest extends TestCase
     // Task 3: 物件種別・取引種別・キーワード フィルタ
     // ================================================================
 
-    /** ?property_type=project は分譲地だけを出す（擬似値。enum には無い値） */
+    /**
+     * ?property_type=project は分譲地だけを出す（擬似値。enum には無い値）。
+     *
+     * ⚠ これは観測可能な振る舞い（分譲地だけが出ること）の検証。
+     *   procurementQuery() 冒頭の早期 return を消しても、後続の
+     *   where('property_type', 'project') が実在しない値を課すので結果は 0 件のままで
+     *   このテストは PASS する（実測）。早期 return は「意図を明示し無駄なクエリを避ける」ためのもの。
+     */
     public function test_property_type_project_shows_only_projects(): void
     {
         $this->makeProcurement('PRC-001');
@@ -393,17 +400,46 @@ class ProcurementListWithProjectsTest extends TestCase
             $this->namesOf($this->paginateVia('keyword=777'))
         );
 
-        // 物件名（仕入れ案件のみに一致する語）
+        // 仕入れ案件だけに一致する語（分譲地が混ざらないこと）
+        // ⚠ makeProcurement の既定は property_name = "物件{$code}" なので "PRC-100" は
+        //   procurement_code と property_name の両方に含まれる。ここで検証しているのは
+        //   「テーブルをまたいで漏れないこと」であって、どのカラムでヒットしたかではない。
+        //   カラム個別の検証は test_keyword_matches_each_column_independently が担う。
         $this->assertSame(
             ['物件PRC-100'],
             $this->namesOf($this->paginateVia('keyword=PRC-100'))
         );
 
-        // PJ名（分譲地のみに一致する語）
+        // 分譲地だけに一致する語（仕入れ案件が混ざらないこと）
         $this->assertSame(
             ['分譲地PJ-100'],
             $this->namesOf($this->paginateVia('keyword=PJ-100'))
         );
+    }
+
+    /**
+     * キーワードが 4 つの検索カラムそれぞれで独立にヒットする。
+     *
+     * ⚠ ヘルパーの既定値（property_name = "物件{$code}" / project_name = "分譲地{$code}"）を
+     *   そのまま使うと、コードが名前にも含まれてしまい「どのカラムでヒットしたか」を
+     *   区別できない。検索カラムを 1 本外してもテストが緑のまま通る（実測）。
+     *   そのため、ここではコードと名前が重ならないデータを明示的に作る。
+     */
+    public function test_keyword_matches_each_column_independently(): void
+    {
+        // 案件番号だけに 'ALPHA' を含む（物件名・所在地には無い）
+        $this->makeProcurement('PRC-ALPHA', ['property_name' => '三番町ハイツ']);
+        // 物件名だけに '道後' を含む（案件番号・所在地には無い）
+        $this->makeProcurement('PRC-002',   ['property_name' => '道後温泉ビル']);
+        // PJ番号だけに 'BETA' を含む
+        $this->makeProject('PJ-BETA', ['project_name' => '六軒家町分譲地']);
+        // PJ名だけに '星岡' を含む
+        $this->makeProject('PJ-002',  ['project_name' => '星岡ガーデン']);
+
+        $this->assertSame(['三番町ハイツ'],   $this->namesOf($this->paginateVia('keyword=ALPHA')));
+        $this->assertSame(['道後温泉ビル'],   $this->namesOf($this->paginateVia('keyword=' . urlencode('道後'))));
+        $this->assertSame(['六軒家町分譲地'], $this->namesOf($this->paginateVia('keyword=BETA')));
+        $this->assertSame(['星岡ガーデン'],   $this->namesOf($this->paginateVia('keyword=' . urlencode('星岡'))));
     }
 
     /**
