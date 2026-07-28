@@ -1423,7 +1423,10 @@ function procurementStatusCell(id, initialValue, initialLabel, initialBadgeClass
 <script>
 // ステータスポップオーバー: バッジクリックで全ステータスをバッジ風に表示し、選択で Ajax 即更新。
 // 選択肢と更新先エンドポイントは種別（procurement / project）ごとに引く。
-// ⚠ @json は <script> の中だけ。x-data 属性に入れると Alpine が初期化されない（Bug #23）
+// ⚠ @@json は <script> の中だけ。x-data 属性に入れると Alpine が初期化されない（Bug #23）
+// ⚠⚠ 上の行が @@json とエスケープされているのは必須。Blade は JS の // コメント内でも
+//    ディレクティブを展開し、直後が ( でないと json_encode(, 15, 512) を吐いて
+//    view:cache が ParseError になる（RULES.md Bug #30）
 window.__reStatusOptions = @json($statusOptionsByKind);
 window.__reStatusEndpoint = {
     procurement: '{{ url("/realestate/procurements") }}',
@@ -1628,7 +1631,7 @@ Expected: FAIL — `<option value="project"` が無い / 「現地調査（仕�
 cd /Users/masanori/site/manage/.claude/worktrees/procurement-list-projects && vendor/bin/phpunit --filter 'ProcurementListWithProjectsTest|ProcurementStatusTransitionTest'
 ```
 
-Expected: PASS（`ProcurementListWithProjectsTest` は 31 本）。
+Expected: PASS（`ProcurementListWithProjectsTest` は 32 本）。
 ⚠ 既存の `ProcurementStatusTransitionTest::test_index_status_all_marks_all_option_selected` は
 `<option value="" selected>` を assertSee / `<option value="active" selected>` を assertDontSee する。
 新設した `<option value="project">` は selected を持たないので影響しないが、必ず一緒に走らせて確認する。
@@ -1751,7 +1754,7 @@ git commit -m "feat(realestate): 一覧の物件種別フィルタに分譲地�
 cd /Users/masanori/site/manage/.claude/worktrees/procurement-list-projects && vendor/bin/phpunit --filter ProcurementListWithProjectsTest
 ```
 
-Expected: PASS（34 本）。Task 2 の `paginationQuery()` が効いていれば通る。
+Expected: PASS（35 本）。Task 2 の `paginationQuery()` が効いていれば通る。
 `test_pagination_keeps_status_all_filter` が落ちる場合は `paginationQuery()` の
 `array_map(fn ($v) => $v ?? '', ...)` が入っているか確認する。
 
@@ -1939,6 +1942,7 @@ Expected: `true`。
 | Task 2 レビュー修正（配列ステータス 2 + 同着順序 1） | 3 | 14 |
 | Task 3 フィルタ（種別/取引/キーワード/日本語） | 5 | 19 |
 | Task 3 レビュー修正（カラム個別のキーワード検索 1） | 1 | 20 |
-| Task 4 描画 + ステータスセル | 7 | 27 |
-| Task 5 フィルタバー | 4 | 31 |
-| Task 6 ページネーション | 3 | 34 |
+| Task 4 レビュー修正（status=null の回帰 1） | 1 | 21 |
+| Task 4 描画 + ステータスセル | 7 | 28 |
+| Task 5 フィルタバー | 4 | 32 |
+| Task 6 ページネーション | 3 | 35 |
