@@ -256,6 +256,14 @@ class ProcurementListService
     {
         $status = $request->input('status', 'active');
 
+        // ConvertEmptyStringsToNull ミドルウェアにより、実 HTTP 経由の ?status= は
+        // 空文字ではなく null で届く（status キー自体は存在するため既定値 'active' にはならない）。
+        // これは「全て」を意味するので、is_string() 判定より先に拾い、配列など
+        // 想定外の型（STATUS_NO_MATCH 行き）と混同しないようにする。
+        if ($status === null) {
+            return null;
+        }
+
         if (! is_string($status)) {
             return self::STATUS_NO_MATCH;
         }

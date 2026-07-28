@@ -12,14 +12,7 @@
 @section('content')
 
     @php
-        // ステータスポップオーバー用オプション一覧（一覧バッジクリックからの即時変更用）
-        $statusOptions = collect(\App\Enums\ProcurementStatus::cases())->map(function ($s) {
-            return [
-                'value'       => $s->value,
-                'label'       => $s->label(),
-                'badge_class' => $s->badgeClass(),
-            ];
-        })->values()->all();
+        // ステータス選択肢は種別ごとにコントローラで組んで $statusOptionsByKind で受け取る
         $canEditStatus = auth()->user()->role->isManagerOrAbove();
     @endphp
 
@@ -77,7 +70,7 @@
     {{-- テーブル --}}
     <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
         <div style="overflow-x: auto;">
-            <table class="w-full border-collapse" style="min-width: 1000px;">
+            <table class="w-full border-collapse" style="min-width: 1080px;">
                 <thead>
                     <tr>
                         <th class="py-2.5 text-left text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap" style="padding-left: 16px;">物件名</th>
@@ -88,19 +81,23 @@
                         <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">想定販売価格</th>
                         <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">粗利見込み</th>
                         <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">マップ</th>
+                        <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">区画</th>
                         <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">詳細</th>
                     </tr>
                 </thead>
                 <tbody>
-                    @forelse($procurements as $p)
-                        @php
-                            $profit = $p->getExpectedProfit();
-                        @endphp
+                    @forelse($rows as $row)
                         <tr class="hover:bg-gray-50 transition-colors">
-                            <td class="py-3 border-b border-gray-100 text-sm font-medium whitespace-nowrap" style="padding-left: 16px;">{{ $p->property_name }}</td>
+                            <td class="py-3 border-b border-gray-100 text-sm font-medium whitespace-nowrap" style="padding-left: 16px;">
+                                {{ $row->name }}
+                                @if($row->isProject())
+                                    {{-- 区画数は専用列を設けず物件名の下にインライン表示。区画0件でも出す --}}
+                                    <div data-lot-count style="font-size: 11px; color: #6b7280; font-weight: 400; margin-top: 3px;">区画 <span style="color: #047857; font-weight: 700;">{{ $row->soldLotCount }}</span> / {{ $row->lotCount }}</div>
+                                @endif
+                            </td>
                             @if($canEditStatus)
                                 <td class="px-3 py-3 border-b border-gray-100 text-center whitespace-nowrap"
-                                    x-data="procurementStatusCell({{ $p->id }}, '{{ $p->status->value }}', '{{ $p->status->label() }}', '{{ $p->status->badgeClass() }}')">
+                                    x-data="realestateStatusCell('{{ $row->kind }}', {{ $row->id }}, '{{ $row->status->value }}', '{{ $row->status->label() }}', '{{ $row->status->badgeClass() }}')">
                                     <span @click="toggle($event)" :class="'badge ' + badgeClass" x-text="label"
                                           style="cursor: pointer;" title="クリックでステータス変更"></span>
                                     <div x-show="open" x-cloak @click.outside="open = false"
@@ -113,73 +110,89 @@
                                 </td>
                             @else
                                 <td class="px-3 py-3 border-b border-gray-100 text-center whitespace-nowrap">
-                                    <span class="badge {{ $p->status->badgeClass() }}">{{ $p->status->label() }}</span>
+                                    <span class="badge {{ $row->status->badgeClass() }}">{{ $row->status->label() }}</span>
                                 </td>
                             @endif
-                            <td class="px-3 py-3 border-b border-gray-100 text-sm text-center whitespace-nowrap">{{ $p->property_type->label() }}</td>
-                            <td class="px-3 py-3 border-b border-gray-100 text-sm text-center whitespace-nowrap">{{ $p->transaction_type->label() }}</td>
-                            <td class="py-3 border-b border-gray-100 text-sm whitespace-nowrap" style="text-align: right; padding-right: 16px;">
-                                @if($p->purchase_price)
-                                    {{ number_format($p->purchase_price) }}円
+                            <td class="px-3 py-3 border-b border-gray-100 text-sm text-center whitespace-nowrap">{{ $row->propertyTypeLabel }}</td>
+                            <td class="px-3 py-3 border-b border-gray-100 text-sm text-center whitespace-nowrap">
+                                @if($row->transactionTypeLabel !== null)
+                                    {{ $row->transactionTypeLabel }}
                                 @else
                                     <span class="text-gray-400">—</span>
                                 @endif
                             </td>
                             <td class="py-3 border-b border-gray-100 text-sm whitespace-nowrap" style="text-align: right; padding-right: 16px;">
-                                @if($p->target_selling_price)
-                                    {{ number_format($p->target_selling_price) }}円
+                                @if($row->purchasePrice)
+                                    {{ number_format($row->purchasePrice) }}円
                                 @else
                                     <span class="text-gray-400">—</span>
                                 @endif
                             </td>
                             <td class="py-3 border-b border-gray-100 text-sm whitespace-nowrap" style="text-align: right; padding-right: 16px;">
-                                @if($profit !== null)
-                                    <span class="text-emerald-600 font-semibold">{{ number_format($profit) }}円</span>
+                                @if($row->targetSellingPrice)
+                                    {{ number_format($row->targetSellingPrice) }}円
+                                @else
+                                    <span class="text-gray-400">—</span>
+                                @endif
+                            </td>
+                            <td class="py-3 border-b border-gray-100 text-sm whitespace-nowrap" style="text-align: right; padding-right: 16px;">
+                                @if($row->expectedProfit !== null)
+                                    <span class="text-emerald-600 font-semibold">{{ number_format($row->expectedProfit) }}円</span>
                                 @else
                                     <span class="text-gray-400">—</span>
                                 @endif
                             </td>
                             {{-- マップボタン（青）--}}
                             <td class="px-3 py-3 border-b border-gray-100 text-center whitespace-nowrap">
-                                @if($p->latitude && $p->longitude)
-                                    <button type="button" onclick="openMapModal({{ \Illuminate\Support\Js::from($p->property_name) }}, {{ \Illuminate\Support\Js::from($p->address) }}, {{ $p->latitude }}, {{ $p->longitude }})"
+                                @if($row->latitude && $row->longitude)
+                                    <button type="button" onclick="openMapModal({{ \Illuminate\Support\Js::from($row->name) }}, {{ \Illuminate\Support\Js::from($row->address) }}, {{ $row->latitude }}, {{ $row->longitude }})"
                                             style="background: #fff; color: #2563eb; padding: 4px 12px; border-radius: 5px; font-size: 12px; font-weight: 600; border: 1px solid #2563eb; cursor: pointer; white-space: nowrap;">マップ</button>
                                 @else
                                     <span class="text-gray-300">—</span>
                                 @endif
                             </td>
+                            {{-- 区画ボタン（緑・分譲地のみ。区画0件でも表示＝そこから登録するため）--}}
                             <td class="px-3 py-3 border-b border-gray-100 text-center whitespace-nowrap">
-                                <a href="{{ route('realestate.procurements.show', $p) }}"
+                                @if($row->lotsUrl !== null)
+                                    <a href="{{ $row->lotsUrl }}"
+                                       style="display: inline-block; background: #fff; color: #059669; padding: 4px 12px; border-radius: 5px; font-size: 12px; font-weight: 600; border: 1px solid #059669; text-decoration: none; white-space: nowrap;">区画</a>
+                                @else
+                                    <span class="text-gray-300">—</span>
+                                @endif
+                            </td>
+                            {{-- 詳細ボタン（全行とも緑に統一）--}}
+                            <td class="px-3 py-3 border-b border-gray-100 text-center whitespace-nowrap">
+                                <a href="{{ $row->showUrl }}"
                                    class="inline-block px-3 py-1 bg-white text-emerald-600 border border-emerald-600 rounded text-xs font-semibold hover:bg-emerald-50 transition-colors">詳細</a>
                             </td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="9" class="px-5 py-10 text-center text-sm text-gray-400">仕入れ案件データがありません。</td>
+                            <td colspan="10" class="px-5 py-10 text-center text-sm text-gray-400">該当するデータがありません。</td>
                         </tr>
                     @endforelse
                 </tbody>
             </table>
         </div>
 
-        <div class="px-4 py-2.5 border-t border-gray-200 text-sm text-gray-500">全 {{ $procurements->total() }} 件</div>
+        <div class="px-4 py-2.5 border-t border-gray-200 text-sm text-gray-500">全 {{ $rows->total() }} 件</div>
 
-        @if($procurements->hasPages())
+        @if($rows->hasPages())
             <div class="flex justify-center gap-0.5 px-4 py-3 border-t border-gray-200">
-                @if($procurements->onFirstPage())
+                @if($rows->onFirstPage())
                     <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-300 bg-white border border-gray-200">&lt;</span>
                 @else
-                    <a href="{{ $procurements->previousPageUrl() }}" class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-700 bg-white border border-gray-300 hover:bg-gray-50">&lt;</a>
+                    <a href="{{ $rows->previousPageUrl() }}" class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-700 bg-white border border-gray-300 hover:bg-gray-50">&lt;</a>
                 @endif
-                @foreach($procurements->getUrlRange(1, $procurements->lastPage()) as $page => $url)
-                    @if($page == $procurements->currentPage())
+                @foreach($rows->getUrlRange(1, $rows->lastPage()) as $page => $url)
+                    @if($page == $rows->currentPage())
                         <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-white bg-emerald-600 border border-emerald-600 font-semibold">{{ $page }}</span>
                     @else
                         <a href="{{ $url }}" class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-700 bg-white border border-gray-300 hover:bg-gray-50">{{ $page }}</a>
                     @endif
                 @endforeach
-                @if($procurements->hasMorePages())
-                    <a href="{{ $procurements->nextPageUrl() }}" class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-700 bg-white border border-gray-300 hover:bg-gray-50">&gt;</a>
+                @if($rows->hasMorePages())
+                    <a href="{{ $rows->nextPageUrl() }}" class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-700 bg-white border border-gray-300 hover:bg-gray-50">&gt;</a>
                 @else
                     <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-300 bg-white border border-gray-200">&gt;</span>
                 @endif
@@ -198,6 +211,15 @@
 .badge-re-selling { background: #c7d2fe; color: #3730a3; }
 .badge-re-sold { background: #86efac; color: #14532d; }
 .badge-re-lost { background: #e5e7eb; color: #374151; }
+/* 分譲地ステータスバッジ（realestate/projects/index.blade.php と同じ定義）*/
+.badge-prj-info { background: #dbeafe; color: #1e40af; }
+.badge-prj-assess { background: #fce7f3; color: #9d174d; }
+.badge-prj-negotiate { background: #fed7aa; color: #9a3412; }
+.badge-prj-contracted { background: #fef3c7; color: #92400e; }
+.badge-prj-settled { background: #a7f3d0; color: #064e3b; }
+.badge-prj-selling { background: #c7d2fe; color: #3730a3; }
+.badge-prj-soldout { background: #86efac; color: #14532d; }
+.badge-prj-lost { background: #e5e7eb; color: #374151; }
 </style>
 
 {{-- マップモーダル --}}
@@ -216,11 +238,18 @@
 </div>
 
 <script>
-// ステータスポップオーバー: バッジクリックで全ステータスをバッジ風に表示し、選択で Ajax 即更新
-window.__procurementStatusOptions = @json($statusOptions);
+// ステータスポップオーバー: バッジクリックで全ステータスをバッジ風に表示し、選択で Ajax 即更新。
+// 選択肢と更新先エンドポイントは種別（procurement / project）ごとに引く。
+// ⚠ @@json は <script> の中だけ。x-data 属性に入れると Alpine が初期化されない（Bug #23）
+window.__reStatusOptions = @json($statusOptionsByKind);
+window.__reStatusEndpoint = {
+    procurement: '{{ url("/realestate/procurements") }}',
+    project: '{{ url("/realestate/projects") }}'
+};
 
-function procurementStatusCell(id, initialValue, initialLabel, initialBadgeClass) {
+function realestateStatusCell(kind, id, initialValue, initialLabel, initialBadgeClass) {
     return {
+        kind: kind,
         id: id,
         value: initialValue,
         label: initialLabel,
@@ -230,7 +259,7 @@ function procurementStatusCell(id, initialValue, initialLabel, initialBadgeClass
         // ポップオーバーは position:fixed で viewport 基準描画（親コンテナ overflow-hidden 回避）
         popoverTop: 0,
         popoverLeft: 0,
-        options: window.__procurementStatusOptions || [],
+        options: (window.__reStatusOptions || {})[kind] || [],
 
         toggle: function($event) {
             if (this.submitting) return;
@@ -253,7 +282,9 @@ function procurementStatusCell(id, initialValue, initialLabel, initialBadgeClass
 
             var token = document.querySelector('meta[name="csrf-token"]').content;
 
-            fetch('{{ url("/realestate/procurements") }}/' + self.id + '/status', {
+            var endpoint = (window.__reStatusEndpoint || {})[self.kind];
+
+            fetch(endpoint + '/' + self.id + '/status', {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',

@@ -460,4 +460,123 @@ class ProcurementListWithProjectsTest extends TestCase
             $this->namesOf($this->paginateVia('keyword=' . urlencode('水泥町')))
         );
     }
+
+    // ================================================================
+    // Task 4: 画面描画
+    // ================================================================
+
+    /** 一覧に両種別が並ぶ */
+    public function test_index_renders_both_types(): void
+    {
+        $this->makeProcurement('PRC-001');
+        $this->makeProject('PJ-001');
+
+        $response = $this->actingAs($this->executive())->get('/realestate/procurements');
+
+        $response->assertOk();
+        $response->assertSee('物件PRC-001');
+        $response->assertSee('分譲地PJ-001');
+        $this->assertSame(2, $response->viewData('rows')->total());
+
+        // 分譲地の物件種別は素のテキスト「分譲地」。
+        // ⚠ assertSee('分譲地') は PJ 名にも一致して false-pass するので DTO の値で見る
+        $this->assertSame(
+            ['分譲地'],
+            collect($response->viewData('rows')->items())
+                ->where('kind', 'project')->pluck('propertyTypeLabel')->all()
+        );
+    }
+
+    /** 分譲地の行には物件名の下に「区画 成約数 / 総数」が出る */
+    public function test_project_row_shows_lot_counts(): void
+    {
+        $pj = $this->makeProject('PJ-001');
+        $this->makeLot($pj, 1, 'sold');
+        $this->makeLot($pj, 2, 'sold');
+        $this->makeLot($pj, 3, 'on_sale');
+
+        $response = $this->actingAs($this->executive())->get('/realestate/procurements');
+
+        $response->assertOk();
+        // 意匠（inline style）の変更に耐えるよう data 属性 + 数値で見る
+        $this->assertMatchesRegularExpression(
+            '/data-lot-count[^>]*>\s*区画\s*<span[^>]*>2<\/span>\s*\/\s*3/u',
+            $response->getContent()
+        );
+    }
+
+    /** 区画 0 件の分譲地でも「区画 0 / 0」と区画ボタンを出す */
+    public function test_project_with_zero_lots_shows_zero_and_lots_button(): void
+    {
+        $pj = $this->makeProject('PJ-001');
+
+        $response = $this->actingAs($this->executive())->get('/realestate/procurements');
+
+        $response->assertOk();
+        $this->assertMatchesRegularExpression(
+            '/data-lot-count[^>]*>\s*区画\s*<span[^>]*>0<\/span>\s*\/\s*0/u',
+            $response->getContent()
+        );
+        $response->assertSee("/realestate/projects/{$pj->id}/lots", false);
+    }
+
+    /** 仕入れ案件の行には区画サブ行の要素自体を出さない */
+    public function test_procurement_row_has_no_lot_subline(): void
+    {
+        $this->makeProcurement('PRC-001');
+
+        $response = $this->actingAs($this->executive())->get('/realestate/procurements');
+
+        $response->assertOk();
+        $response->assertSee('物件PRC-001');
+        $response->assertDontSee('data-lot-count', false);
+    }
+
+    /** 0 件のときは colspan=10 で「該当するデータがありません。」 */
+    public function test_empty_list_shows_updated_message(): void
+    {
+        $response = $this->actingAs($this->executive())->get('/realestate/procurements');
+
+        $response->assertOk();
+        $response->assertSee('colspan="10"', false);
+        $response->assertSee('該当するデータがありません。');
+    }
+
+    /** 分譲地のステータスバッジ CSS が同梱されている（忘れると無色で描画される） */
+    public function test_project_badge_css_is_present(): void
+    {
+        $this->makeProject('PJ-001', ['status' => 'selling']);
+
+        $response = $this->actingAs($this->executive())->get('/realestate/procurements');
+
+        $response->assertOk();
+        $response->assertSee('badge-prj-selling', false);
+        $response->assertSee('.badge-prj-selling {', false);
+    }
+
+    /**
+     * ステータスセルの「呼び出し側（属性）」と「定義側（<script>）」が対で存在する。
+     *
+     * ⚠ Bug #28 の教訓: 属性だけ見ると定義が無くても緑になる。必ず対で検証する。
+     */
+    public function test_status_cell_caller_and_definition_are_both_present(): void
+    {
+        $this->makeProcurement('PRC-001');
+        $this->makeProject('PJ-001');
+
+        $response = $this->actingAs($this->executive())->get('/realestate/procurements');
+
+        $response->assertOk();
+        // 呼び出し側 — 種別ごとに別の kind が渡る
+        $response->assertSee("realestateStatusCell('procurement'", false);
+        $response->assertSee("realestateStatusCell('project'", false);
+        // 定義側
+        $response->assertSee('function realestateStatusCell(', false);
+        // 種別ごとの選択肢マップと更新先エンドポイント
+        $response->assertSee('__reStatusOptions', false);
+        $response->assertSee('__reStatusEndpoint', false);
+        $response->assertSee('/realestate/projects', false);
+        // 旧関数名が残っていない
+        $response->assertDontSee('procurementStatusCell', false);
+    }
 }

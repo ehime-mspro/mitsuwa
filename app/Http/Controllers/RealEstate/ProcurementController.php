@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\RealEstate;
 
 use App\Enums\ProcurementStatus;
+use App\Enums\ProjectStatus;
 use App\Enums\RealEstatePropertyType;
 use App\Enums\RealEstateTransactionType;
 use App\Http\Controllers\Controller;
@@ -10,59 +11,45 @@ use App\Models\ReCostItem;
 use App\Models\ReProcurement;
 use App\Models\ReProcurementCost;
 use App\Models\ZoningType;
+use App\Services\RealEstate\ProcurementListRow;
+use App\Services\RealEstate\ProcurementListService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class ProcurementController extends Controller
 {
     /**
-     * 仕入れ案件一覧
+     * 仕入れ案件一覧（分譲地を統合した不動産案件の横断ビュー）
      * Route: GET /realestate/procurements
      */
-    public function index(Request $request)
+    public function index(Request $request, ProcurementListService $listService)
     {
-        $query = ReProcurement::with('supplier', 'costs');
+        $rows = $listService->paginate($request);
 
-        // フィルター: ステータス（デフォルトは進行中のみ = 不成約・販売済を除く）
-        $statusFilter = $request->input('status', 'active');
-        if ($statusFilter === 'active') {
-            $query->whereNotIn('status', [
-                ProcurementStatus::Lost->value,
-                ProcurementStatus::Sold->value,
-            ]);
-        } elseif (filled($statusFilter)) {
-            // 「全て」= status='' は ConvertEmptyStringsToNull で null 化されるため
-            // filled() で弾き、フィルタ無し（＝全件）に落とす。'' 比較では null が
-            // 素通りして where('status', null) となり 0 件になる（Bug 回避）。
-            $query->where('status', $statusFilter);
-        }
+        // ステータスポップオーバー用の選択肢を種別ごとに組む。
+        // ⚠ 配列リテラルを Blade の @json() へ直接書かず、ここで組んで変数 1 本で渡す
+        //   （多行の配列リテラル + メソッド呼び出しは Blade の引数パーサを壊す。Bug #26）
+        $statusOptionsByKind = [
+            ProcurementListRow::KIND_PROCUREMENT => $this->statusOptions(ProcurementStatus::cases()),
+            ProcurementListRow::KIND_PROJECT     => $this->statusOptions(ProjectStatus::cases()),
+        ];
 
-        // フィルター: 物件種別
-        if ($request->filled('property_type')) {
-            $query->where('property_type', $request->property_type);
-        }
+        return view('realestate.procurements.index', compact('rows', 'statusOptionsByKind'));
+    }
 
-        // フィルター: 取引種別
-        if ($request->filled('transaction_type')) {
-            $query->where('transaction_type', $request->transaction_type);
-        }
-
-        // フィルター: キーワード
-        if ($request->filled('keyword')) {
-            $keyword = $request->keyword;
-            $query->where(function ($q) use ($keyword) {
-                $q->where('procurement_code', 'like', "%{$keyword}%")
-                  ->orWhere('property_name', 'like', "%{$keyword}%")
-                  ->orWhere('address', 'like', "%{$keyword}%");
-            });
-        }
-
-        $procurements = $query->orderByDesc('info_obtained_date')
-            ->orderByDesc('id')
-            ->paginate(20)
-            ->withQueryString();
-
-        return view('realestate.procurements.index', compact('procurements'));
+    /**
+     * ステータス enum を一覧のポップオーバー用配列へ整形する
+     *
+     * @param  array<int, ProcurementStatus|ProjectStatus>  $cases
+     * @return array<int, array{value: string, label: string, badge_class: string}>
+     */
+    private function statusOptions(array $cases): array
+    {
+        return array_map(fn ($case) => [
+            'value'       => $case->value,
+            'label'       => $case->label(),
+            'badge_class' => $case->badgeClass(),
+        ], $cases);
     }
 
     /**
