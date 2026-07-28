@@ -164,15 +164,32 @@ class ProcurementListWithProjectsTest extends TestCase
      *   コンテナの 'request' を見る（PaginationServiceProvider がそう束ねている）ので、
      *   作った Request をコンテナへも差し込む。
      *
-     * ⚠ クエリは文字列で渡す。ConvertEmptyStringsToNull は HTTP ミドルウェアなので
-     *   Request::create では効かないが、`?status=` は '' で届き、サービス側の
-     *   filled() 判定は '' でも null でも同じ経路に落ちるため実挙動と一致する
-     *   （実測確認済み）。
+     * ⚠ **このヘルパーは実 HTTP と等価ではない。** `ConvertEmptyStringsToNull` は
+     *   HTTP ミドルウェアなので `Request::create()` には効かず、同じ `?status=` が
+     *   ここでは **''**、実 HTTP では **null** で届く。型ガードの置き方次第で
+     *   この 2 つは別経路に落ちる（実際に 0 件になる事故を起こした。RULES.md Bug #31）。
+     *   null 側は `paginateViaNullStatus()` で明示的に固定し、最終的な担保は
+     *   ミドルウェアを通る HTTP テスト（`$this->get('/realestate/procurements?status=')`）で取る。
      */
     private function paginateVia(string $queryString = ''): LengthAwarePaginator
     {
         $uri     = '/realestate/procurements' . ($queryString !== '' ? '?' . $queryString : '');
         $request = Request::create($uri, 'GET');
+        $this->app->instance('request', $request);
+
+        return app(ProcurementListService::class)->paginate($request);
+    }
+
+    /**
+     * 実 HTTP の `?status=`（ConvertEmptyStringsToNull 通過後）と同じ **null** を注入して叩く。
+     *
+     * `Request::create()` のクエリ文字列では null を作れないため、query バッグへ直接入れる
+     * （実測: この方法なら `$request->input('status', 'active')` が null を返す）。
+     */
+    private function paginateViaNullStatus(): LengthAwarePaginator
+    {
+        $request = Request::create('/realestate/procurements', 'GET');
+        $request->query->set('status', null);
         $this->app->instance('request', $request);
 
         return app(ProcurementListService::class)->paginate($request);
@@ -284,6 +301,25 @@ class ProcurementListWithProjectsTest extends TestCase
         $this->assertEqualsCanonicalizing(
             ['物件PRC-SOLD', '分譲地PJ-SOLDOUT'],
             $this->namesOf($this->paginateVia('status='))
+        );
+    }
+
+    /**
+     * 「全て」が **null** で届いても全件出る（実 HTTP の `?status=` はこちら）。
+     *
+     * ⚠ RULES.md Bug #31 の回帰。`is_string()` の型ガードを `filled()` 判定より前に置くと、
+     *   `''`（Request::create 経由）は通るのに `null`（実 HTTP 経由）だけが
+     *   「想定外の型」に落ちて 0 件になる。上の `status=` のテストは '' しか通らないので
+     *   この経路を守れない。
+     */
+    public function test_status_null_is_treated_as_all(): void
+    {
+        $this->makeProcurement('PRC-SOLD', ['status' => 'sold']);
+        $this->makeProject('PJ-SOLDOUT',   ['status' => 'sold_out']);
+
+        $this->assertEqualsCanonicalizing(
+            ['物件PRC-SOLD', '分譲地PJ-SOLDOUT'],
+            $this->namesOf($this->paginateViaNullStatus())
         );
     }
 
