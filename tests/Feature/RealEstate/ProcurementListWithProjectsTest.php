@@ -686,6 +686,9 @@ class ProcurementListWithProjectsTest extends TestCase
 
         $response->assertOk();
         $response->assertSee('現地調査（仕入れ案件のみ）');
+        // ⚠ 「付いていること」だけを見ると、三項演算子を消して全ステータスに付けても緑になる（実測）。
+        //   補記は現地調査だけに付くことまで固定する。
+        $response->assertDontSee('査定・検討（仕入れ案件のみ）');
     }
 
     /**
