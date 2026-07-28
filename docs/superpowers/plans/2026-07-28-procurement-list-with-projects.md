@@ -902,7 +902,14 @@ Task 2 でコードは書けているので、**このタスクはフィルタ�
     // Task 3: 物件種別・取引種別・キーワード フィルタ
     // ================================================================
 
-    /** ?property_type=project は分譲地だけを出す（擬似値。enum には無い値） */
+    /**
+     * ?property_type=project は分譲地だけを出す（擬似値。enum には無い値）。
+     *
+     * ⚠ これは観測可能な振る舞い（分譲地だけが出ること）の検証。
+     *   procurementQuery() 冒頭の早期 return を消しても、後続の
+     *   where('property_type', 'project') が実在しない値を課すので結果は 0 件のままで
+     *   このテストは PASS する（実測）。早期 return は「意図を明示し無駄なクエリを避ける」ためのもの。
+     */
     public function test_property_type_project_shows_only_projects(): void
     {
         $this->makeProcurement('PRC-001');
@@ -954,17 +961,46 @@ Task 2 でコードは書けているので、**このタスクはフィルタ�
             $this->namesOf($this->paginateVia('keyword=777'))
         );
 
-        // 物件名（仕入れ案件のみに一致する語）
+        // 仕入れ案件だけに一致する語（分譲地が混ざらないこと）
+        // ⚠ makeProcurement の既定は property_name = "物件{$code}" なので "PRC-100" は
+        //   procurement_code と property_name の両方に含まれる。ここで検証しているのは
+        //   「テーブルをまたいで漏れないこと」であって、どのカラムでヒットしたかではない。
+        //   カラム個別の検証は test_keyword_matches_each_column_independently が担う。
         $this->assertSame(
             ['物件PRC-100'],
             $this->namesOf($this->paginateVia('keyword=PRC-100'))
         );
 
-        // PJ名（分譲地のみに一致する語）
+        // 分譲地だけに一致する語（仕入れ案件が混ざらないこと）
         $this->assertSame(
             ['分譲地PJ-100'],
             $this->namesOf($this->paginateVia('keyword=PJ-100'))
         );
+    }
+
+    /**
+     * キーワードが 4 つの検索カラムそれぞれで独立にヒットする。
+     *
+     * ⚠ ヘルパーの既定値（property_name = "物件{$code}" / project_name = "分譲地{$code}"）を
+     *   そのまま使うと、コードが名前にも含まれてしまい「どのカラムでヒットしたか」を
+     *   区別できない。検索カラムを 1 本外してもテストが緑のまま通る（実測）。
+     *   そのため、ここではコードと名前が重ならないデータを明示的に作る。
+     */
+    public function test_keyword_matches_each_column_independently(): void
+    {
+        // 案件番号だけに 'ALPHA' を含む（物件名・所在地には無い）
+        $this->makeProcurement('PRC-ALPHA', ['property_name' => '三番町ハイツ']);
+        // 物件名だけに '道後' を含む（案件番号・所在地には無い）
+        $this->makeProcurement('PRC-002',   ['property_name' => '道後温泉ビル']);
+        // PJ番号だけに 'BETA' を含む
+        $this->makeProject('PJ-BETA', ['project_name' => '六軒家町分譲地']);
+        // PJ名だけに '星岡' を含む
+        $this->makeProject('PJ-002',  ['project_name' => '星岡ガーデン']);
+
+        $this->assertSame(['三番町ハイツ'],   $this->namesOf($this->paginateVia('keyword=ALPHA')));
+        $this->assertSame(['道後温泉ビル'],   $this->namesOf($this->paginateVia('keyword=' . urlencode('道後'))));
+        $this->assertSame(['六軒家町分譲地'], $this->namesOf($this->paginateVia('keyword=BETA')));
+        $this->assertSame(['星岡ガーデン'],   $this->namesOf($this->paginateVia('keyword=' . urlencode('星岡'))));
     }
 
     /**
@@ -993,7 +1029,7 @@ Task 2 でコードは書けているので、**このタスクはフィルタ�
 cd /Users/masanori/site/manage/.claude/worktrees/procurement-list-projects && vendor/bin/phpunit --filter ProcurementListWithProjectsTest
 ```
 
-Expected: PASS（19 tests）。
+Expected: PASS（20 tests）。
 落ちた場合は `procurementQuery()` / `projectQuery()` / `applyKeyword()` の該当分岐を直す
 （Task 2 の実装で通る想定だが、通らなければ**テストではなく実装を直す**）。
 
@@ -1464,7 +1500,7 @@ Expected: 出力なし
 cd /Users/masanori/site/manage/.claude/worktrees/procurement-list-projects && vendor/bin/phpunit --filter 'ProcurementListWithProjectsTest|ProcurementStatusTransitionTest'
 ```
 
-Expected: PASS（`ProcurementListWithProjectsTest` は 26 本）
+Expected: PASS（`ProcurementListWithProjectsTest` は 27 本）
 
 - [ ] **Step 12: コミット**
 
@@ -1592,7 +1628,7 @@ Expected: FAIL — `<option value="project"` が無い / 「現地調査（仕�
 cd /Users/masanori/site/manage/.claude/worktrees/procurement-list-projects && vendor/bin/phpunit --filter 'ProcurementListWithProjectsTest|ProcurementStatusTransitionTest'
 ```
 
-Expected: PASS（`ProcurementListWithProjectsTest` は 30 本）。
+Expected: PASS（`ProcurementListWithProjectsTest` は 31 本）。
 ⚠ 既存の `ProcurementStatusTransitionTest::test_index_status_all_marks_all_option_selected` は
 `<option value="" selected>` を assertSee / `<option value="active" selected>` を assertDontSee する。
 新設した `<option value="project">` は selected を持たないので影響しないが、必ず一緒に走らせて確認する。
@@ -1658,12 +1694,21 @@ git commit -m "feat(realestate): 一覧の物件種別フィルタに分譲地�
                 'info_obtained_date' => sprintf('2026-07-%02d', $i),
             ]);
         }
+        // ⚠ 仕入れ案件も 1 件混ぜる。分譲地だけだと「property_type=project の絞り込みで
+        //   仕入れ案件が漏れないこと」を同時に検証できない（データが無いので当然 0 件になる）
+        $this->makeProcurement('PRC-001', ['info_obtained_date' => '2026-07-31']);
 
         $response = $this->actingAs($this->executive())
             ->get('/realestate/procurements?property_type=project&keyword=PJ');
 
         $response->assertOk();
-        parse_str(parse_url($response->viewData('rows')->url(2), PHP_URL_QUERY) ?? '', $q);
+        $rows = $response->viewData('rows');
+
+        // 絞り込みが効いていること（仕入れ案件が混ざらない）
+        $this->assertSame(21, $rows->total());
+        $this->assertNotContains('物件PRC-001', collect($rows->items())->pluck('name')->all());
+
+        parse_str(parse_url($rows->url(2), PHP_URL_QUERY) ?? '', $q);
 
         $this->assertSame('project', $q['property_type']);
         $this->assertSame('PJ', $q['keyword']);
@@ -1706,7 +1751,7 @@ git commit -m "feat(realestate): 一覧の物件種別フィルタに分譲地�
 cd /Users/masanori/site/manage/.claude/worktrees/procurement-list-projects && vendor/bin/phpunit --filter ProcurementListWithProjectsTest
 ```
 
-Expected: PASS（33 本）。Task 2 の `paginationQuery()` が効いていれば通る。
+Expected: PASS（34 本）。Task 2 の `paginationQuery()` が効いていれば通る。
 `test_pagination_keeps_status_all_filter` が落ちる場合は `paginationQuery()` の
 `array_map(fn ($v) => $v ?? '', ...)` が入っているか確認する。
 
@@ -1893,6 +1938,7 @@ Expected: `true`。
 | Task 2 サービス（マージ/ソート/ステータス） | 8 | 11 |
 | Task 2 レビュー修正（配列ステータス 2 + 同着順序 1） | 3 | 14 |
 | Task 3 フィルタ（種別/取引/キーワード/日本語） | 5 | 19 |
-| Task 4 描画 + ステータスセル | 7 | 26 |
-| Task 5 フィルタバー | 4 | 30 |
-| Task 6 ページネーション | 3 | 33 |
+| Task 3 レビュー修正（カラム個別のキーワード検索 1） | 1 | 20 |
+| Task 4 描画 + ステータスセル | 7 | 27 |
+| Task 5 フィルタバー | 4 | 31 |
+| Task 6 ページネーション | 3 | 34 |
