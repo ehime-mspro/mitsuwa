@@ -162,6 +162,12 @@
 .exec-dashboard .chart-card-title { font-size: 15px; font-weight: 700; color: var(--gray-800); }
 .exec-dashboard .chart-card-sub   { font-size: 12px; color: var(--gray-400); }
 .exec-dashboard .chart-wrap       { position: relative; height: 220px; }
+
+/* 住宅事業 KPI カードの内側グリッド。
+   ⚠ 値は従来のインライン style と同一。インライン style は媒体クエリより
+   詳細度が高く上書きできないため、宣言をこちらへ移している。 */
+.exec-dashboard .hs-split  { display: grid; grid-template-columns: 1fr 1px 1fr; gap: 0; }
+.exec-dashboard .hs-totals { display: grid; grid-template-columns: repeat(4, 1fr); gap: 28px; }
 /* ⚠ minmax(0, 1fr) と対で入れる。Chart.js は canvas に inline の px 幅を書き込むので、
    max-width が無いと一度広がった canvas が縮まず min-content 幅の下限になり続ける。
    RULES.md Bug #29 は「2 点セットで直す。片方だけでは直らない」と明記している */
@@ -185,7 +191,7 @@
        内容幅に保っており、そのおかげで重なりが起きていない（実測 main 700px）。 */
     .exec-dashboard .hs-split         { grid-template-columns: minmax(0, 1fr); }
     .exec-dashboard .hs-split-divider { display: none; }
-    .exec-dashboard .hs-split-col     { padding-left: 0 !important; padding-right: 0 !important; }
+    .exec-dashboard .hs-split-col     { padding-left: 0 !important; padding-right: 0 !important; } /* 左右 padding はインライン */
     .exec-dashboard .hs-totals        { grid-template-columns: minmax(0, 1fr); gap: 14px; }
 }
 </style>

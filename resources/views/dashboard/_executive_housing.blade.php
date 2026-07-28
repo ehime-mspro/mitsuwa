@@ -26,7 +26,7 @@
         </div>
 
         {{-- 建売 / 注文住宅 2列 --}}
-        <div class="hs-split" style="display:grid; grid-template-columns:1fr 1px 1fr; gap:0; margin-top:8px;">
+        <div class="hs-split" style="margin-top:8px;">
 
             {{-- 建売 --}}
             <div class="hs-split-col" style="padding-right:24px;">
@@ -107,7 +107,7 @@
                 <span style="display:inline-block; padding:3px 12px; background:var(--gray-700); color:#fff; border-radius:4px; font-size:11px; font-weight:700; letter-spacing:0.1em;">合 計</span>
                 <span style="font-size:11px; color:var(--gray-500);">建売 ＋ 注文住宅</span>
             </div>
-            <div class="hs-totals" style="display:grid; grid-template-columns:repeat(4,1fr); gap:28px;">
+            <div class="hs-totals">
                 <div>
                     <div style="font-size:11px; color:var(--gray-500); margin-bottom:4px;">成約件数</div>
                     <div style="display:flex; align-items:baseline; gap:5px;">
