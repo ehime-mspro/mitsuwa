@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\LotStatus;
+use App\Support\AreaConverter;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -64,10 +65,14 @@ class ReProjectLot extends Model
     }
 
     /**
-     * ㎡ → 坪変換（1坪 = 3.30579㎡）
+     * ㎡ → 坪変換（㎡ × 0.3025 の切り捨て。AreaConverter の docblock 参照）
+     *
+     * ⚠ このモデルの area_tsubo は算出値ではなく DB 保存カラムで、
+     *    ProjectController の区画 store / update がこのメソッドの戻り値を書き込む。
+     *    換算式を変えたら既存行の一括更新も要る。
      */
     public static function sqmToTsubo(float $sqm): float
     {
-        return round($sqm / 3.30579, 2);
+        return AreaConverter::sqmToTsubo($sqm);
     }
 }

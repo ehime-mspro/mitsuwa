@@ -6,6 +6,7 @@ use App\Enums\ProjectStatus;
 use App\Enums\LotStatus;
 use App\Models\ReCostItem;
 use App\Models\ReProjectCost;
+use App\Support\AreaConverter;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -150,14 +151,14 @@ class ReProject extends Model
     }
 
     /**
-     * 土地面積を坪数に変換（1坪 = 3.30579㎡）
+     * 土地面積を坪数に変換（㎡ × 0.3025 の切り捨て。AreaConverter の docblock 参照）
      */
     public function getLandAreaTsubo(): ?float
     {
         if ($this->land_area_sqm === null) {
             return null;
         }
-        return round((float) $this->land_area_sqm / 3.30579, 2);
+        return AreaConverter::sqmToTsubo($this->land_area_sqm);
     }
 
     /**

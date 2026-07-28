@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\CustomOrderStatus;
 use App\Enums\HousingLandSourceType;
+use App\Support\AreaConverter;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -274,14 +275,14 @@ class HsCustomOrder extends Model
     // ============================================================
 
     /**
-     * 土地面積を坪数に変換（1坪 = 3.30579㎡）
+     * 土地面積を坪数に変換（㎡ × 0.3025 の切り捨て。AreaConverter の docblock 参照）
      */
     public function getLandAreaTsubo(): ?float
     {
         if ($this->land_area_sqm === null) {
             return null;
         }
-        return round((float) $this->land_area_sqm / 3.30579, 2);
+        return AreaConverter::sqmToTsubo($this->land_area_sqm);
     }
 
     /**
@@ -292,7 +293,7 @@ class HsCustomOrder extends Model
         if ($this->building_area_sqm === null) {
             return null;
         }
-        return round((float) $this->building_area_sqm / 3.30579, 2);
+        return AreaConverter::sqmToTsubo($this->building_area_sqm);
     }
 
     // ============================================================
