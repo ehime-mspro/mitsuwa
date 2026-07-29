@@ -6,7 +6,7 @@
     <span class="mx-1.5">›</span>
     <span>不動産管理</span>
     <span class="mx-1.5">›</span>
-    <a href="{{ route('realestate.projects.index') }}" class="hover:text-emerald-600 transition-colors">分譲地一覧</a>
+    <a href="{{ $backUrl }}" class="hover:text-emerald-600 transition-colors">{{ $backLabel }}</a>
     <span class="mx-1.5">›</span>
     <span class="text-gray-600">新規登録</span>
 @endsection
@@ -27,7 +27,7 @@
         @csrf
         @include('realestate.projects._form')
 
-        <x-form-actions submit-label="登録する" :cancel-url="route('realestate.projects.index')" />
+        <x-form-actions submit-label="登録する" :cancel-url="$backUrl" />
     </form>
 
 @endsection

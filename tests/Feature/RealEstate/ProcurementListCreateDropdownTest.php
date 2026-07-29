@@ -15,8 +15,8 @@ use Tests\TestCase;
  * 仕入れ案件一覧から分譲地を新規登録する導線の検証。
  *
  * - 一覧ヘッダーの「新規登録」ドロップダウンに 2 経路が出ること
+ * - 分譲地 新規登録画面が正しく開けること（zoning_types 由来の 500 が起きないこと）
  * - 分譲地 新規登録画面が ?from=procurements のときだけ仕入れ案件一覧へ戻ること
- *   （このテストは Task 3 で追加する。本コミット時点では未検証）
  *
  * ⚠ アサーションの作り方に注意（false-pass しやすい）:
  *   サイドバーが /realestate/procurements と /realestate/projects の href を
@@ -99,5 +99,92 @@ class ProcurementListCreateDropdownTest extends TestCase
         $response->assertOk();
         $response->assertSee('分譲地 新規登録');
         $response->assertSee('<option value="第一種住居地域"', false);
+    }
+
+    /**
+     * ?from=procurements のとき、パンくずとキャンセルの両方が仕入れ案件一覧を指すこと。
+     *
+     * ⚠ 単に assertSee(route('realestate.procurements.index')) では駄目。
+     *    サイドバーが同じ URL を 3 箇所描画しているので、実装が何もされていなくても緑になる。
+     *    パンくずは完全な <a ...>ラベル</a>、キャンセルは「キャンセル というラベルを持つ
+     *    <a> の href」を正規表現で見る。
+     */
+    public function test_project_create_from_procurements_points_back_to_procurement_list(): void
+    {
+        $response = $this->actingAs($this->executive())
+            ->get('/realestate/projects/create?from=procurements');
+
+        $response->assertOk();
+
+        // コントローラの判定結果そのものを固定する
+        $response->assertViewHas('backUrl', route('realestate.procurements.index'));
+        $response->assertViewHas('backLabel', '仕入れ案件一覧');
+
+        // パンくずの中間リンク（URL とラベルを同時に固定）
+        $response->assertSee(
+            '<a href="' . route('realestate.procurements.index') . '" class="hover:text-emerald-600 transition-colors">仕入れ案件一覧</a>',
+            false
+        );
+
+        // キャンセルボタン（x-form-actions が描画する「キャンセル」ラベルの <a>）
+        $this->assertMatchesRegularExpression(
+            $this->cancelLinkPattern(route('realestate.procurements.index')),
+            $response->getContent(),
+            'キャンセルボタンが仕入れ案件一覧を指していること'
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            $this->cancelLinkPattern(route('realestate.projects.index')),
+            $response->getContent(),
+            'キャンセルボタンが分譲地一覧を指したまま残っていないこと'
+        );
+    }
+
+    /** パラメータ無しなら従来どおり分譲地一覧（既存挙動の回帰） */
+    public function test_project_create_without_from_points_back_to_project_list(): void
+    {
+        $response = $this->actingAs($this->executive())->get('/realestate/projects/create');
+
+        $response->assertOk();
+        $response->assertViewHas('backUrl', route('realestate.projects.index'));
+        $response->assertViewHas('backLabel', '分譲地一覧');
+        $response->assertSee(
+            '<a href="' . route('realestate.projects.index') . '" class="hover:text-emerald-600 transition-colors">分譲地一覧</a>',
+            false
+        );
+        $this->assertMatchesRegularExpression(
+            $this->cancelLinkPattern(route('realestate.projects.index')),
+            $response->getContent()
+        );
+    }
+
+    /** 未知の from はホワイトリストに落ちて分譲地一覧に戻る */
+    public function test_unknown_from_value_falls_back_to_project_list(): void
+    {
+        $response = $this->actingAs($this->executive())
+            ->get('/realestate/projects/create?from=housing');
+
+        $response->assertOk();
+        $response->assertViewHas('backUrl', route('realestate.projects.index'));
+        $response->assertViewHas('backLabel', '分譲地一覧');
+        $this->assertMatchesRegularExpression(
+            $this->cancelLinkPattern(route('realestate.projects.index')),
+            $response->getContent()
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            $this->cancelLinkPattern(route('realestate.procurements.index')),
+            $response->getContent()
+        );
+    }
+
+    /**
+     * 「キャンセル」というラベルを持つ <a> の href が $url であることを見る正規表現。
+     *
+     * x-form-actions は href の直後に改行 + style/onmouseover 属性を並べるので、
+     * 属性部分は [^>]* で読み飛ばす（属性値に > は含まれないことを実測済み）。
+     * 意匠（inline style）に依存しないので、ボタンを再スタイルしても壊れない。
+     */
+    private function cancelLinkPattern(string $url): string
+    {
+        return '/<a href="' . preg_quote($url, '/') . '"[^>]*>\s*キャンセル\s*<\/a>/u';
     }
 }

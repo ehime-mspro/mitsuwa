@@ -67,7 +67,7 @@ class ProjectController extends Controller
      * プロジェクト登録フォーム
      * Route: GET /realestate/projects/create
      */
-    public function create()
+    public function create(Request $request)
     {
         $zoningTypes = ZoningType::orderBy('sort_order')->get();
 
@@ -82,8 +82,21 @@ class ProjectController extends Controller
         $costSkipList    = config('realestate_cost_import.skip', []);
         $costSubtotalKws = config('realestate_cost_import.subtotal_keywords', []);
 
+        // 戻り先（パンくずの中間リンク + キャンセルボタン）。
+        // 仕入れ案件一覧から入ったときだけそちらへ戻す。
+        // 受け付けるのは 'procurements' の 1 語だけで、URL は route() から自前で組む。
+        // リクエストの文字列を href へ素通しさせないのでオープンリダイレクトにならない。
+        // ⚠ Blade の @php ではなくここで組む。@section('breadcrumb') は子ビューの実行順に
+        //    キャプチャされるため、@php で作ると宣言位置を動かしただけで未定義変数になる。
+        $fromProcurements = $request->query('from') === 'procurements';
+        $backUrl   = $fromProcurements
+            ? route('realestate.procurements.index')
+            : route('realestate.projects.index');
+        $backLabel = $fromProcurements ? '仕入れ案件一覧' : '分譲地一覧';
+
         return view('realestate.projects.create', compact(
-            'zoningTypes', 'costItemsForJs', 'costAliasMap', 'costSkipList', 'costSubtotalKws'
+            'zoningTypes', 'costItemsForJs', 'costAliasMap', 'costSkipList', 'costSubtotalKws',
+            'backUrl', 'backLabel'
         ));
     }
 
