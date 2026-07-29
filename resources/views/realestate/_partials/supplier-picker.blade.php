@@ -146,8 +146,14 @@ function supplierPicker() {
                 return;
             }
             self.searchTimer = setTimeout(function() {
+                // ⚠ X-Requested-With が無いと Laravel がこの GET を通常の画面遷移とみなし、
+                //    セッションの直前 URL をこの JSON エンドポイントで上書きしてしまう
+                //    （バリデーションエラー時の back() がフォームに戻らなくなる）。
                 fetch('{{ url("/api/realestate/suppliers/search") }}?q=' + encodeURIComponent(self.supplierQuery), {
-                    headers: { 'Accept': 'application/json' }
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
                 })
                 .then(function(res) { return res.json(); })
                 .then(function(data) { self.supplierResults = data; })
