@@ -21,8 +21,9 @@ Laravel 12 / PHP 8.5.4 (local) + 8.3 (prod) / MySQL 8 / Blade + Alpine.js 3 + Ta
 | 6 | `@keydown.enter="save()"` を日本語入力フィールドに置く（IME 変換確定 Enter で誤発火→未確定のまま保存）| `@keydown.enter="$event.isComposing \|\| save()"` |
 | 7 | 「効かないクラス一覧」を信じて、コンパイル済みのクラスをわざわざ inline style に書き換える | **Tailwind クラスは普通に書いてよい**（`./deploy.sh` が `npm run build` するので本番は必ず最新。2026-07-15 に組み込み）。**ローカルで見た目を確認する時だけ手で `npm run build`**。旧一覧は 12/12 が誤りだった（`docs/*.md` も走査対象で、一覧に書いた事自体がそのクラスを実在させていた → 2026-07-15 に `@source not "../../docs"` で除外し解消）。測るなら main repo で `grep -oE "\.my-class[,{:>~+ ]" public/build/assets/app-*.css`（`:` `.` `[` を含むなら `grep -oF '.gap-1\.5'`）。⚠ 走査対象は `resources/` だけでない——`app/Enums/UnitStatus.php` は Tailwind クラス文字列を返すので `app/` も必要。詳細は @docs/RULES.md「Vite Build」+「Tailwind 監査の落とし穴」。Bug #19 |
 | 8 | Object.assign 引数順序を逆転（factory がリテラルの getter を評価して static 値に焼き付け、Alpine reactivity 死亡）| 必ず `return Object.assign({...existing with getters...}, factoryResult);` の順。getter は target 側に置く |
+| 9 | JSON API を叩く `fetch` に `X-Requested-With` を付け忘れる（セッションの直前 URL がその API で上書きされ、バリデーションエラー時の `back()` が生の JSON ページへ飛んで**入力が全消失**）| `headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }` を必ず付ける（`Accept` だけでは効かない）。⚠ **「何も入力せず送信」では再現しない** — Ajax を一度叩いてからエラーを出すこと。走査テスト `AjaxFetchSessionGuardTest` が自動で拾う。Bug #35 |
 
-全 34 件の詳細バグカタログ + 各種パターン: @docs/RULES.md
+全 35 件の詳細バグカタログ + 各種パターン: @docs/RULES.md
 
 ## 🔌 利用可能なプラグイン
 
@@ -137,5 +138,5 @@ sudo rm -f storage/framework/views/*.php && brew services restart httpd
 ## 📚 Detailed docs
 
 - @docs/ARCHITECTURE.md — ディレクトリ構成、モデル一覧、認可マトリクス
-- @docs/RULES.md — Bug #1–34 + Tailwind 不可クラス/監査の落とし穴 + Excel/SheetJS + 全角→半角自動変換 + 郵便番号 API
+- @docs/RULES.md — Bug #1–35 + Tailwind 不可クラス/監査の落とし穴 + Excel/SheetJS + 全角→半角自動変換 + 郵便番号 API
 - @docs/BACKLOG.md — 完了済み機能の優先度別一覧（優先度 1〜5 全て本番稼働中）
