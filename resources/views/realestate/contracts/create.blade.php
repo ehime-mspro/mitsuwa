@@ -423,7 +423,15 @@ function contractForm() {
                 self.calcProfit();
                 return;
             }
-            fetch('{{ url("/api/realestate/procurement-cost") }}/' + self.procurementId)
+            // ⚠ X-Requested-With が無いと Laravel がこの GET を通常の画面遷移とみなし、
+            //    セッションの直前 URL をこの JSON エンドポイントで上書きしてしまう
+            //    （バリデーションエラー時の back() がフォームに戻らなくなる）。
+            fetch('{{ url("/api/realestate/procurement-cost") }}/' + self.procurementId, {
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
                     self.procCost = data;
@@ -445,12 +453,22 @@ function contractForm() {
                 self.calcProfit();
                 return;
             }
-            fetch('{{ url("/api/realestate/project-lots") }}/' + self.projectId)
+            fetch('{{ url("/api/realestate/project-lots") }}/' + self.projectId, {
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
                     self.lots = data;
                 });
-            fetch('{{ url("/api/realestate/project-lot-cost") }}/' + self.projectId)
+            fetch('{{ url("/api/realestate/project-lot-cost") }}/' + self.projectId, {
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
                     self.projCost = data;

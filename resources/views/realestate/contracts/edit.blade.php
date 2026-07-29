@@ -241,7 +241,10 @@ function contractEditForm() {
         onProcurementChange: function() {
             var self = this;
             if (!self.procurementId) { self.propertyName = ''; self.addressVal = ''; self.costAmount = ''; self.calcProfit(); return; }
-            fetch('{{ url("/api/realestate/procurement-cost") }}/' + self.procurementId)
+            // ⚠ X-Requested-With が無いと Laravel がこの GET を通常の画面遷移とみなし、
+            //    セッションの直前 URL をこの JSON エンドポイントで上書きしてしまう
+            //    （バリデーションエラー時の back() がフォームに戻らなくなる）。
+            fetch('{{ url("/api/realestate/procurement-cost") }}/' + self.procurementId, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
                 .then(function(r) { return r.json(); })
                 .then(function(data) { self.propertyName = data.property_name; self.addressVal = data.address || ''; self.costAmount = data.cost_amount; self.calcProfit(); });
         },
@@ -250,9 +253,9 @@ function contractEditForm() {
             var self = this;
             self.lotId = ''; self.lotsData = [];
             if (!self.projectId) { self.costAmount = ''; self.contractAmount = ''; self.calcProfit(); return; }
-            fetch('{{ url("/api/realestate/project-lots") }}/' + self.projectId)
+            fetch('{{ url("/api/realestate/project-lots") }}/' + self.projectId, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
                 .then(function(r) { return r.json(); }).then(function(data) { self.lotsData = data; });
-            fetch('{{ url("/api/realestate/project-lot-cost") }}/' + self.projectId)
+            fetch('{{ url("/api/realestate/project-lot-cost") }}/' + self.projectId, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
                 .then(function(r) { return r.json(); }).then(function(data) { self.propertyName = data.project_name || ''; self.costAmount = data.per_lot_cost; self.calcProfit(); });
         },
 
