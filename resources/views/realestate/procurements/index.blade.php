@@ -16,15 +16,32 @@
         $canEditStatus = auth()->user()->role->isManagerOrAbove();
     @endphp
 
-    {{-- ページヘッダー --}}
+    {{-- ページヘッダー（+ 新規登録ドロップダウン） --}}
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
         <h1 class="text-lg font-bold text-gray-900">仕入れ案件一覧</h1>
         @if(auth()->user()->role->isManagerOrAbove())
-            <a href="{{ route('realestate.procurements.create') }}"
-               class="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-md transition-colors w-full sm:w-auto">
-                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                新規登録
-            </a>
+            {{-- 一覧に分譲地の行も並ぶため、登録先を種別ごとに選ばせる。
+                 /housing/contracts（建売 / 注文住宅）と同じパターン。
+                 display は Alpine の x-show が持つので :style を使わず静的クラスだけで組む --}}
+            <div x-data="{ open: false }" class="relative w-full sm:w-auto">
+                <button type="button" @click="open = !open"
+                        class="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-md transition-colors w-full sm:w-auto">
+                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    新規登録
+                    <svg class="w-3 h-3 ml-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+                <div x-show="open" @click.outside="open = false" x-cloak
+                     class="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[200px] z-10 overflow-hidden">
+                    <a href="{{ route('realestate.procurements.create') }}"
+                       class="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-emerald-600 border-b border-gray-100 transition-colors">
+                        仕入れ案件を登録
+                    </a>
+                    <a href="{{ route('realestate.projects.create', ['from' => 'procurements']) }}"
+                       class="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-emerald-600 transition-colors">
+                        分譲地を登録
+                    </a>
+                </div>
+            </div>
         @endif
     </div>
 
