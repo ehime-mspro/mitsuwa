@@ -132,4 +132,45 @@ class AreaConverterTest extends TestCase
             );
         }
     }
+
+    /**
+     * 坪数は必ず小数2桁で表示する（規約）。
+     *
+     * getLandAreaTsubo() / getBuildingAreaTsubo() は float を返すので、素で `{{ }}` に入れると
+     * 割り切れる値が「50坪」と 1 桁も出ずに表示される（165.29㎡ → 50.0 → "50"）。
+     * decimal:2 キャスト済みの area_tsubo は "50.00" になるので素で出してよい。
+     *
+     * 走査が空振りして緑になる事故を防ぐため、Blade を十分拾えていることも併せて固定する。
+     */
+    public function test_tsubo_getters_are_always_formatted_to_two_decimals(): void
+    {
+        $viewDir = dirname(__DIR__, 3) . '/resources/views';
+        $files = [];
+        $it = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($viewDir));
+        foreach ($it as $f) {
+            if ($f->isFile() && str_ends_with($f->getFilename(), '.blade.php')) {
+                $files[] = $f->getPathname();
+            }
+        }
+
+        $this->assertGreaterThan(100, count($files), 'Blade の走査が空振りしている');
+
+        foreach ($files as $file) {
+            $body = (string) file_get_contents($file);
+
+            // {{ $x->getLandAreaTsubo() }} のように number_format を通さず echo している箇所
+            $this->assertDoesNotMatchRegularExpression(
+                '/\{\{\s*\$[A-Za-z0-9_>\-]*->get[A-Za-z]*AreaTsubo\(\)\s*\}\}/',
+                $body,
+                str_replace($viewDir . '/', '', $file) . ' が坪数を number_format せずに出している'
+            );
+
+            // number_format(..., 0) / (..., 1) で坪数を丸めている箇所
+            $this->assertDoesNotMatchRegularExpression(
+                '/number_format\([^)]*[Tt]subo[^)]*,\s*[01]\s*\)/',
+                $body,
+                str_replace($viewDir . '/', '', $file) . ' が坪数を 2 桁未満で表示している'
+            );
+        }
+    }
 }

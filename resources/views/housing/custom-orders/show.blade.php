@@ -85,7 +85,7 @@
             <div style="background: #f9fafb; padding: 10px 14px; font-size: 13px; color: #4b5563; font-weight: 500; border-bottom: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb;">土地面積</div>
             <div style="padding: 10px 14px; font-size: 14px; border-bottom: 1px solid #e5e7eb;">
                 @if($o->land_area_sqm)
-                    {{ $o->land_area_sqm }}㎡（{{ $o->getLandAreaTsubo() }}坪）
+                    {{ $o->land_area_sqm }}㎡（{{ number_format($o->getLandAreaTsubo(), 2) }}坪）
                 @else
                     —
                 @endif
@@ -93,7 +93,7 @@
             <div style="background: #f9fafb; padding: 10px 14px; font-size: 13px; color: #4b5563; font-weight: 500; border-bottom: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb;">建物面積</div>
             <div style="padding: 10px 14px; font-size: 14px; border-bottom: 1px solid #e5e7eb;">
                 @if($o->building_area_sqm)
-                    {{ $o->building_area_sqm }}㎡（{{ $o->getBuildingAreaTsubo() }}坪）
+                    {{ $o->building_area_sqm }}㎡（{{ number_format($o->getBuildingAreaTsubo(), 2) }}坪）
                 @else
                     —
                 @endif

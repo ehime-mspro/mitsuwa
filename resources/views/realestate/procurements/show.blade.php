@@ -67,7 +67,7 @@
             <dt class="bg-gray-50 px-3.5 py-2.5 text-sm text-gray-600 font-medium border-b border-r border-gray-200">土地面積</dt>
             <dd class="px-3.5 py-2.5 text-sm text-gray-900 border-b border-gray-200">
                 @if($procurement->land_area_sqm)
-                    {{ $procurement->land_area_sqm }} ㎡（{{ $procurement->getLandAreaTsubo() }} 坪）
+                    {{ $procurement->land_area_sqm }} ㎡（{{ number_format($procurement->getLandAreaTsubo(), 2) }} 坪）
                 @else
                     <span class="text-gray-400">—</span>
                 @endif

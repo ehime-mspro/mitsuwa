@@ -96,13 +96,13 @@
         <div class="bg-white border border-gray-200 rounded-lg py-3.5 px-2 text-center flex flex-col items-center justify-center min-h-[80px]">
             <div class="text-sm text-gray-600 mb-1 whitespace-nowrap">総坪数</div>
             <div class="text-xl max-lg:text-lg font-bold text-gray-900 whitespace-nowrap leading-tight">
-                {{ number_format($summary['total_tsubo'], 1) }}<span class="text-sm text-gray-600 font-normal">坪</span>
+                {{ number_format($summary['total_tsubo'], 2) }}<span class="text-sm text-gray-600 font-normal">坪</span>
             </div>
         </div>
         <div class="bg-white border border-gray-200 rounded-lg py-3.5 px-2 text-center flex flex-col items-center justify-center min-h-[80px]">
             <div class="text-sm text-gray-600 mb-1 whitespace-nowrap">契約坪数</div>
             <div class="text-xl max-lg:text-lg font-bold text-gray-900 whitespace-nowrap leading-tight">
-                {{ number_format($summary['contracted_tsubo'], 1) }}<span class="text-sm text-gray-600 font-normal">坪</span>
+                {{ number_format($summary['contracted_tsubo'], 2) }}<span class="text-sm text-gray-600 font-normal">坪</span>
             </div>
         </div>
         <div class="bg-white border border-gray-200 rounded-lg py-3.5 px-2 text-center flex flex-col items-center justify-center min-h-[80px]">
