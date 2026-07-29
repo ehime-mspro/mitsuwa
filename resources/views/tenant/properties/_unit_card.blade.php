@@ -42,8 +42,8 @@
     // 坪数・坪単価
     $areaTsubo = $unit->area_tsubo;
     $hasTsubo = $areaTsubo !== null && (float) $areaTsubo > 0;
-    $rentPerTsubo = $hasTsubo ? (int) ceil($rent / (float) $areaTsubo) : null;
-    $commonFeePerTsubo = $hasTsubo ? (int) ceil($commonFee / (float) $areaTsubo) : null;
+    $rentPerTsubo = \App\Support\TsuboPrice::perTsuboYen((int) $rent, $areaTsubo);
+    $commonFeePerTsubo = \App\Support\TsuboPrice::perTsuboYen((int) $commonFee, $areaTsubo);
 
     // 投資バッジ
     $investmentBadge = null;

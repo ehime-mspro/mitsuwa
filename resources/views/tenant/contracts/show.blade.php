@@ -102,10 +102,10 @@
     @php
         $areaTsubo = $contract->unit->area_tsubo;
         $hasTsubo = $areaTsubo !== null && (float) $areaTsubo > 0;
-        $rentPerTsubo = $hasTsubo ? (int) ceil($contract->rent / (float) $areaTsubo) : null;
-        $commonFeePerTsubo = $hasTsubo ? (int) ceil(($contract->common_fee ?? 0) / (float) $areaTsubo) : null;
+        $rentPerTsubo = \App\Support\TsuboPrice::perTsuboYen((int) $contract->rent, $areaTsubo);
+        $commonFeePerTsubo = \App\Support\TsuboPrice::perTsuboYen((int) ($contract->common_fee ?? 0), $areaTsubo);
         $monthlyTotal = $contract->monthly_total;
-        $monthlyTotalPerTsubo = $hasTsubo ? (int) ceil($monthlyTotal / (float) $areaTsubo) : null;
+        $monthlyTotalPerTsubo = \App\Support\TsuboPrice::perTsuboYen((int) $monthlyTotal, $areaTsubo);
         $monthlyTotalTax = (int) round($monthlyTotal * 1.1);
     @endphp
     <div class="bg-white border border-gray-200 rounded-lg px-4 py-4 lg:px-5 lg:py-4 mb-4">

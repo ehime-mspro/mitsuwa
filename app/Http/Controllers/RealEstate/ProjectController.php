@@ -12,6 +12,7 @@ use App\Models\ReProjectDrawing;
 use App\Models\ReProjectLot;
 use App\Models\ZoningType;
 use App\Support\AttachmentDelivery;
+use App\Support\TsuboPrice;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -517,9 +518,11 @@ class ProjectController extends Controller
         $validated['project_id'] = $project->id;
         $validated['area_tsubo'] = ReProjectLot::sqmToTsubo((float) $validated['area_sqm']);
 
-        // 販売坪単価は販売価格と坪数から自動算出（円単位で保存）
+        // 販売坪単価は販売価格と坪数から自動算出（円単位で保存。1円未満は切り上げ）
+        // ⚠ 四捨五入にしないこと。画面の @XX.X（万円）は販売価格から直接切り上げるので
+        //    ここを四捨五入にすると保存値と表示の丸め向きが食い違う（TsuboPrice 罠①）
         $validated['selling_price_per_tsubo'] = (! empty($validated['selling_price']) && $validated['area_tsubo'] > 0)
-            ? (int) round($validated['selling_price'] / $validated['area_tsubo'])
+            ? TsuboPrice::perTsuboYen((int) $validated['selling_price'], $validated['area_tsubo'])
             : null;
         $validated['is_price_manual'] = true;
 
@@ -554,9 +557,11 @@ class ProjectController extends Controller
 
         $validated['area_tsubo'] = ReProjectLot::sqmToTsubo((float) $validated['area_sqm']);
 
-        // 販売坪単価は販売価格と坪数から自動算出（円単位で保存）
+        // 販売坪単価は販売価格と坪数から自動算出（円単位で保存。1円未満は切り上げ）
+        // ⚠ 四捨五入にしないこと。画面の @XX.X（万円）は販売価格から直接切り上げるので
+        //    ここを四捨五入にすると保存値と表示の丸め向きが食い違う（TsuboPrice 罠①）
         $validated['selling_price_per_tsubo'] = (! empty($validated['selling_price']) && $validated['area_tsubo'] > 0)
-            ? (int) round($validated['selling_price'] / $validated['area_tsubo'])
+            ? TsuboPrice::perTsuboYen((int) $validated['selling_price'], $validated['area_tsubo'])
             : null;
         $validated['is_price_manual'] = true;
 

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\LotStatus;
 use App\Support\AreaConverter;
+use App\Support\TsuboPrice;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -52,16 +53,21 @@ class ReProjectLot extends Model
     // ============================================================
 
     /**
-     * 販売坪単価の表示用（@XX.X — 万円単位、小数点第2位切り上げ）
-     * 例: 326,729 円/坪 → "@32.7"、101,500 円/坪 → "@10.2"
+     * 販売坪単価の表示用（@XX.X — 万円単位、小数第2位を切り上げ）
+     * 例: 9,880,000円 / 33.33坪 = 296,429.64…円/坪 → "@29.7"
+     *
+     * ⚠ 保存済みの selling_price_per_tsubo（円/坪の整数）からは計算しない。
+     *    あれは丸め済みなので、そこから万円へ切り上げると二段階丸めになり
+     *    「必ず切り上げ」が破れる（TsuboPrice の docblock 罠①）。
+     *    販売価格と坪数から一度だけ丸める。
      */
     public function getSellingPricePerTsuboFormatted(): ?string
     {
-        if ($this->selling_price_per_tsubo === null) {
+        if ($this->selling_price === null || $this->selling_price <= 0) {
             return null;
         }
-        $man = ceil($this->selling_price_per_tsubo / 1000) / 10;
-        return '@' . number_format($man, 1);
+
+        return TsuboPrice::perTsuboManLabel((int) $this->selling_price, $this->area_tsubo);
     }
 
     /**

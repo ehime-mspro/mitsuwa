@@ -124,9 +124,9 @@
         $recruitTotalTax = (int) round($recruitTotal * 1.1);
         $areaTsubo = $unit->area_tsubo;
         $hasTsubo = $areaTsubo !== null && (float) $areaTsubo > 0;
-        $recruitRentPerTsubo = $hasTsubo ? (int) ceil(($unit->rent ?? 0) / (float) $areaTsubo) : null;
-        $recruitCommonFeePerTsubo = $hasTsubo ? (int) ceil(($unit->common_fee ?? 0) / (float) $areaTsubo) : null;
-        $recruitTotalPerTsubo = $hasTsubo ? (int) ceil($recruitTotal / (float) $areaTsubo) : null;
+        $recruitRentPerTsubo = \App\Support\TsuboPrice::perTsuboYen((int) ($unit->rent ?? 0), $areaTsubo);
+        $recruitCommonFeePerTsubo = \App\Support\TsuboPrice::perTsuboYen((int) ($unit->common_fee ?? 0), $areaTsubo);
+        $recruitTotalPerTsubo = \App\Support\TsuboPrice::perTsuboYen((int) $recruitTotal, $areaTsubo);
     @endphp
     <div class="bg-white border border-gray-200 rounded-lg px-5 py-4 mb-3">
         <div class="flex items-center justify-between pb-2 mb-3 border-b border-gray-200">
@@ -177,9 +177,9 @@
     @if($unit->status === \App\Enums\UnitStatus::Occupied && $activeContract)
         @php
             $contractTotalTax = (int) round($contractMonthlyTotal * 1.1);
-            $contractRentPerTsubo = $hasTsubo ? (int) ceil(($activeContract->rent ?? 0) / (float) $areaTsubo) : null;
-            $contractCommonFeePerTsubo = $hasTsubo ? (int) ceil(($activeContract->common_fee ?? 0) / (float) $areaTsubo) : null;
-            $contractTotalPerTsubo = $hasTsubo ? (int) ceil($contractMonthlyTotal / (float) $areaTsubo) : null;
+            $contractRentPerTsubo = \App\Support\TsuboPrice::perTsuboYen((int) ($activeContract->rent ?? 0), $areaTsubo);
+            $contractCommonFeePerTsubo = \App\Support\TsuboPrice::perTsuboYen((int) ($activeContract->common_fee ?? 0), $areaTsubo);
+            $contractTotalPerTsubo = \App\Support\TsuboPrice::perTsuboYen((int) $contractMonthlyTotal, $areaTsubo);
         @endphp
         <div class="bg-white border border-blue-200 rounded-lg px-5 py-4 mb-3">
             <div class="flex items-center justify-between pb-2 mb-3 border-b border-blue-200">
