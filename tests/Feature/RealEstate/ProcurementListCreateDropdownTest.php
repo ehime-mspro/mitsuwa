@@ -5,6 +5,7 @@ namespace Tests\Feature\RealEstate;
 use App\Enums\UserRole;
 use App\Models\Department;
 use App\Models\User;
+use App\Models\ZoningType;
 use Database\Seeders\DepartmentSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\CreatesRealEstateSchema;
@@ -34,6 +35,8 @@ class ProcurementListCreateDropdownTest extends TestCase
         $this->createRealEstateSchema();
         // 部署マスタは migration では投入されないので seeder で入れる（staff の所属付けに要る）
         $this->seed(DepartmentSeeder::class);
+        // 用途地域の <option> 生成経路を空振りさせないため 1 件だけ入れる
+        ZoningType::create(['name' => '第一種住居地域', 'sort_order' => 5]);
     }
 
     /**
@@ -79,5 +82,22 @@ class ProcurementListCreateDropdownTest extends TestCase
         $response->assertOk();
         $response->assertDontSee(route('realestate.procurements.create'), false);
         $response->assertDontSee(route('realestate.projects.create', ['from' => 'procurements']), false);
+    }
+
+    /**
+     * 分譲地 新規登録画面がそもそも開けること。
+     *
+     * ⚠ zoning_types は本番では raw SQL DDL 管理でマイグレーションに無く、
+     *    CreatesRealEstateSchema にも入っていなかった（この画面を叩く既存テストが
+     *    1 本も無かったため露見していなかった）。ProjectController::create() は
+     *    ZoningType を引くので、trait 側で表を作らないとここで落ちる。
+     */
+    public function test_project_create_page_opens(): void
+    {
+        $response = $this->actingAs($this->executive())->get('/realestate/projects/create');
+
+        $response->assertOk();
+        $response->assertSee('分譲地 新規登録');
+        $response->assertSee('<option value="第一種住居地域"', false);
     }
 }

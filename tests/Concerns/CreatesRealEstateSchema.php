@@ -6,7 +6,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * re_* テーブルと buyers は本番では raw SQL DDL で管理され、Laravel マイグレーションに無い。
+ * re_* テーブル・buyers・zoning_types は本番では raw SQL DDL で管理され、Laravel マイグレーションに無い。
  * テスト（SQLite in-memory）でこれらを使うため、実 DB に準拠した最小スキーマを構築する。
  *
  * - 列名・型・NULL 可否は `php artisan db:table <table>` の実測に合わせる。
@@ -64,6 +64,15 @@ trait CreatesRealEstateSchema
             $t->string('name', 50);
             $t->integer('sort_order');
             $t->boolean('is_active');
+            $t->timestamps();
+        });
+
+        // 用途地域マスタ。database/sql/create_zoning_types.sql に準拠（本番も raw SQL 管理）。
+        // 仕入れ案件・分譲地の登録/編集フォームが <option> をここから作る。
+        Schema::create('zoning_types', function (Blueprint $t) {
+            $t->id();
+            $t->string('name', 100);
+            $t->integer('sort_order')->default(0);
             $t->timestamps();
         });
 
