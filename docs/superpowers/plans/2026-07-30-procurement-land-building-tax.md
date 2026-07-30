@@ -35,7 +35,7 @@
 | `Housing\PropertyController::procurementInfo()` の `target_selling_price` キーも**未消費** | 住宅事業の Blade は `effective_cost_total` / `postal_code` / `address` / `land_area_sqm` だけ読む。設計書どおり参照元を `_land` に直すが表示は変わらない |
 | 一覧の並び替え・フィルタに金額カラムは使われていない | `ProcurementListService` に `orderBy`/`sum` なし ＝ リネームの影響は表示のみ |
 | 仕入れ案件を HTTP POST で金額まで送るテストは存在しない | `SupplierSearchBackUrlTest` が空 POST するだけ ＝ リネーム中に赤くなる既存テストは限定的 |
-| worktree に `vendor` / `.env` が無い | Task 0 で用意する。`phpunit.xml` は `DB_CONNECTION=sqlite` / `DB_DATABASE=:memory:` を持つので `.env` には `APP_KEY` だけあればよい（MySQL 認証情報を置かない＝実 DB に到達不能） |
+| worktree に `vendor` が無い | Task 0 で `composer install`。`.env` は**作らない**（保護ルールでブロックされるうえ不要）。`phpunit.xml` が sqlite `:memory:` を与えるので環境変数 `APP_KEY` を前置きするだけで phpunit も artisan も動く（2026-07-30 実測 373 tests green） |
 
 ---
 
@@ -109,7 +109,7 @@
 ## Task 0: worktree のテスト環境を用意
 
 **Files:**
-- Create: `.claude/worktrees/procurement-land-building-tax/.env`（**コミットしない**。`.gitignore` 済み）
+- 作成するファイルなし（`vendor/` を入れるだけ。`.env` は作らない）
 
 - [ ] **Step 1: worktree に vendor が無いことを確認**
 
@@ -129,39 +129,47 @@ Expected: 最後に `Generating optimized autoload files` が出て `vendor/bin/
 
 ⚠ **main repo では `composer install`（dev 込み）しないこと。** main repo の `vendor` はローカル Apache が読む本番相当なので、dev 依存を混ぜたまま `./deploy.sh` すると本番に開発用パッケージが飛ぶ。
 
-- [ ] **Step 3: テスト専用の .env を作る（MySQL 認証情報は書かない）**
+- [ ] **Step 3: `.env` は作らず、`APP_KEY` を環境変数で渡す**
+
+⚠ **`.env` ファイルは作らない。** 秘密情報ファイルの保護ルールで書き込みがブロックされるうえ、
+そもそも不要（`phpunit.xml` が `DB_CONNECTION=sqlite` / `DB_DATABASE=:memory:` を与えるため
+足りないのは `APP_KEY` だけで、Laravel は実プロセス環境変数の `APP_KEY` を読む）。
+**`.env` を置かない ＝ MySQL 認証情報がどこにも存在しない ＝ テストが実 DB に到達し得ない**、
+という保証にもなる。
+
+以降 worktree で `phpunit` / `artisan` を叩くときは、必ずこのテスト専用ダミー鍵を前置きする:
 
 ```bash
-cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && printf 'APP_KEY=base64:%s\n' "$(head -c 32 /dev/urandom | base64)" > .env && cat .env
+APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ=
 ```
-
-Expected: `APP_KEY=base64:…`（1 行だけ）
-
-⚠ **DB 接続情報を書かない。** `phpunit.xml` が `DB_CONNECTION=sqlite` / `DB_DATABASE=:memory:` を与えるので不要で、書かないことが「テストが実 DB に到達しない」保証になる。
 
 - [ ] **Step 4: 既存テストが全部通ることを確認（ベースライン）**
 
 ```bash
-cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && vendor/bin/phpunit 2>&1 | tail -20
+cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit 2>&1 | tail -20
 ```
 
-Expected: `OK (…)` で失敗 0。**この件数を控えておく**（Task 8 で比較する）
+Expected: `OK (373 tests, 2198 assertions)`（2026-07-30 実測のベースライン）
 
-- [ ] **Step 5: `.env` が git に乗らないことを確認**
+- [ ] **Step 5: 作業ツリーが汚れていないことを確認**
 
 ```bash
 cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && git status --porcelain
 ```
 
-Expected: `.env` も `vendor/` も出力に現れない（両方 `.gitignore` 済み）
+Expected: 何も出力されない（`vendor/` は `.gitignore` 済み）
 
 ---
 
 **Task 0 完了。以降のタスクのテスト実行コマンドは全て:**
 
 ```bash
-cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && vendor/bin/phpunit --filter <TestName>
+cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit --filter <TestName>
 ```
+
+`php artisan view:cache` など artisan 系も同じく `APP_KEY=…` を前置きする。
+
+**ベースライン実測（2026-07-30）: `OK (373 tests, 2198 assertions)`**
 
 
 ---
@@ -294,7 +302,7 @@ class ConsumptionTaxTest extends TestCase
 - [ ] **Step 2: テストを走らせて失敗を確認**
 
 ```bash
-vendor/bin/phpunit --filter ConsumptionTaxTest
+APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit --filter ConsumptionTaxTest
 ```
 
 Expected: FAIL — `Error: Class "App\Support\ConsumptionTax" not found`
@@ -398,7 +406,7 @@ class ConsumptionTax
 - [ ] **Step 4: テストを走らせて成功を確認**
 
 ```bash
-cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && vendor/bin/phpunit --filter ConsumptionTaxTest
+cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit --filter ConsumptionTaxTest
 ```
 
 Expected: `OK (9 tests)`
@@ -412,7 +420,7 @@ Expected: `OK (9 tests)`
 ```
 
 ```bash
-cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && vendor/bin/phpunit --filter ConsumptionTaxTest 2>&1 | tail -20
+cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit --filter ConsumptionTaxTest 2>&1 | tail -20
 ```
 
 Expected: `test_rounding_is_floor_not_round` が FAIL（`1234567` を期待して `1234568`）
@@ -426,7 +434,7 @@ Expected: `test_rounding_is_floor_not_round` が FAIL（`1234567` を期待し�
 ```
 
 ```bash
-cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && vendor/bin/phpunit --filter ConsumptionTaxTest 2>&1 | tail -20
+cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit --filter ConsumptionTaxTest 2>&1 | tail -20
 ```
 
 Expected: `test_to_exclusive_uses_integer_division` が FAIL（`30000000` を期待して `29999999`）
@@ -434,7 +442,7 @@ Expected: `test_to_exclusive_uses_integer_division` が FAIL（`30000000` を期
 - [ ] **Step 7: 変異を戻して green を確認**
 
 ```bash
-cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && vendor/bin/phpunit --filter ConsumptionTaxTest && git diff --stat
+cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit --filter ConsumptionTaxTest && git diff --stat
 ```
 
 Expected: `OK (9 tests)` かつ `git diff` に変異が残っていない（新規 2 ファイルのみ）
@@ -632,7 +640,7 @@ Expected（2026-07-30 実測）: `InfoObtained` / `SiteSurvey` / `Assessment` / 
 - [ ] **Step 3: テストを走らせて green を確認**
 
 ```bash
-cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && vendor/bin/phpunit --filter AmountAggregationNotZeroTest
+cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit --filter AmountAggregationNotZeroTest
 ```
 
 Expected: `OK (3 tests)`
@@ -648,7 +656,7 @@ Expected: `OK (3 tests)`
 ```
 
 ```bash
-cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && vendor/bin/phpunit --filter AmountAggregationNotZeroTest 2>&1 | tail -20
+cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit --filter AmountAggregationNotZeroTest 2>&1 | tail -20
 ```
 
 Expected: `test_contract_list_totals_are_not_zero` と `test_contract_list_profit_rate_is_not_zero` が FAIL（`42000000` を期待して `0` / `16.7` を期待して `0`）
@@ -663,7 +671,7 @@ Step 4 の変異を戻し、`app/Http/Controllers/DashboardController.php:725` �
 ```
 
 ```bash
-cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && vendor/bin/phpunit --filter AmountAggregationNotZeroTest 2>&1 | tail -20
+cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit --filter AmountAggregationNotZeroTest 2>&1 | tail -20
 ```
 
 Expected: `test_dashboard_procurement_pipeline_total_is_not_zero` が FAIL
@@ -672,7 +680,7 @@ Expected: `test_dashboard_procurement_pipeline_total_is_not_zero` が FAIL
 - [ ] **Step 6: 変異を戻して green とクリーンな diff を確認**
 
 ```bash
-cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && vendor/bin/phpunit --filter AmountAggregationNotZeroTest && git status --porcelain
+cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit --filter AmountAggregationNotZeroTest && git status --porcelain
 ```
 
 Expected: `OK (3 tests, …)` かつ `git status` が新規テスト 1 ファイルのみ（`?? tests/Feature/RealEstate/AmountAggregationNotZeroTest.php`）
@@ -806,7 +814,7 @@ cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax &
 - [ ] **Step 2: テストを走らせて赤を確認（スキーマとコードの乖離）**
 
 ```bash
-vendor/bin/phpunit --filter 'ProcurementListWithProjectsTest|ProcurementStatusTransitionTest|AmountAggregationNotZeroTest' 2>&1 | tail -20
+APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit --filter 'ProcurementListWithProjectsTest|ProcurementStatusTransitionTest|AmountAggregationNotZeroTest' 2>&1 | tail -20
 ```
 
 Expected: FAIL — `SQLSTATE[HY000]: General error: 1 table re_procurements has no column named purchase_price`
@@ -1195,7 +1203,7 @@ cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax &
 - [ ] **Step 15: ここまでで既存テストが green に戻ることを確認**
 
 ```bash
-cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && vendor/bin/phpunit --filter 'ProcurementListWithProjectsTest|ProcurementStatusTransitionTest|AmountAggregationNotZeroTest'
+cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit --filter 'ProcurementListWithProjectsTest|ProcurementStatusTransitionTest|AmountAggregationNotZeroTest'
 ```
 
 Expected: `OK (…)` で失敗 0
@@ -1368,7 +1376,7 @@ class ProcurementPriceBreakdownTest extends TestCase
 - [ ] **Step 17: 新規テストを走らせて green を確認**
 
 ```bash
-cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && vendor/bin/phpunit --filter ProcurementPriceBreakdownTest
+cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit --filter ProcurementPriceBreakdownTest
 ```
 
 Expected: `OK (8 tests)`
@@ -1378,7 +1386,7 @@ Expected: `OK (8 tests)`
 `app/Models/ReProcurement.php` の `wasChanged([...])` から `'assessment_price_building'` と `'purchase_price_building'` を一時的に削る。
 
 ```bash
-cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && vendor/bin/phpunit --filter ProcurementPriceBreakdownTest 2>&1 | tail -20
+cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit --filter ProcurementPriceBreakdownTest 2>&1 | tail -20
 ```
 
 Expected: `test_cost_sync_fires_on_building_column_change` が FAIL（`15000000` を期待して `10000000`）
@@ -1386,7 +1394,7 @@ Expected: `test_cost_sync_fires_on_building_column_change` が FAIL（`15000000`
 - [ ] **Step 19: 変異を戻し、全テストを走らせる**
 
 ```bash
-cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && vendor/bin/phpunit 2>&1 | tail -20
+cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit 2>&1 | tail -20
 ```
 
 Expected: `OK (…)`。**Task 0 Step 4 で控えた件数 + 11 件**（ConsumptionTax 10 + 集計 3 + 内訳 8 − …）になっていること。失敗 0 が必須。
@@ -1443,7 +1451,7 @@ cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax &
 - [ ] **Step 2: 和名走査テストが green に戻ることを確認**
 
 ```bash
-vendor/bin/phpunit --filter JapaneseValidationMessagesTest
+APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit --filter JapaneseValidationMessagesTest
 ```
 
 Expected: `OK (…)`（Task 4 Step 19 で赤だったものが戻る）
@@ -1803,7 +1811,7 @@ use App\Models\User;
 - [ ] **Step 12: テストを走らせて green を確認**
 
 ```bash
-cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && vendor/bin/phpunit --filter 'ProcurementPriceBreakdownTest|JapaneseValidationMessagesTest'
+cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit --filter 'ProcurementPriceBreakdownTest|JapaneseValidationMessagesTest'
 ```
 
 Expected: `OK (…)` で失敗 0
@@ -1818,7 +1826,7 @@ Expected: `OK (…)` で失敗 0
 `'target_selling_price_building' => '想定販売価格（建物）',` を一時的に削る。
 
 ```bash
-cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && vendor/bin/phpunit --filter ProcurementPriceBreakdownTest 2>&1 | tail -20
+cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit --filter ProcurementPriceBreakdownTest 2>&1 | tail -20
 ```
 
 Expected: `test_building_price_attribute_is_overridden_for_procurement_only` が FAIL
@@ -1829,7 +1837,7 @@ Expected: `test_building_price_attribute_is_overridden_for_procurement_only` が
 ⚠ **`view:cache` の成功表示だけでは不十分**（compiled PHP を lint しない。Bug #26 / #30）。
 
 ```bash
-cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && php artisan view:cache && for f in storage/framework/views/*.php; do php -l "$f" >/dev/null || echo "INVALID: $f"; done; php artisan view:clear
+cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= php artisan view:cache && for f in storage/framework/views/*.php; do php -l "$f" >/dev/null || echo "INVALID: $f"; done; php artisan view:clear
 ```
 
 Expected: `INVALID:` が 1 件も出ない
@@ -1837,7 +1845,7 @@ Expected: `INVALID:` が 1 件も出ない
 - [ ] **Step 15: 全テストを走らせる**
 
 ```bash
-cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && vendor/bin/phpunit 2>&1 | tail -20
+cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit 2>&1 | tail -20
 ```
 
 Expected: `OK (…)` で失敗 0
@@ -1877,7 +1885,7 @@ cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax &
 - [ ] **Step 2: テストを走らせて赤を確認**
 
 ```bash
-vendor/bin/phpunit --filter 'ProcurementStatusTransitionTest|ProjectSoldStatusTransitionTest|AmountAggregationNotZeroTest' 2>&1 | tail -20
+APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit --filter 'ProcurementStatusTransitionTest|ProjectSoldStatusTransitionTest|AmountAggregationNotZeroTest' 2>&1 | tail -20
 ```
 
 Expected: FAIL — `table re_contracts has no column named contract_amount`
@@ -2241,7 +2249,7 @@ Expected: `No syntax errors detected`
 - [ ] **Step 15: ここまでで既存テストが green に戻ることを確認**
 
 ```bash
-cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && vendor/bin/phpunit --filter 'ProcurementStatusTransitionTest|ProjectSoldStatusTransitionTest|AmountAggregationNotZeroTest'
+cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit --filter 'ProcurementStatusTransitionTest|ProjectSoldStatusTransitionTest|AmountAggregationNotZeroTest'
 ```
 
 Expected: `OK (…)` で失敗 0
@@ -2473,7 +2481,7 @@ class ContractAmountBreakdownTest extends TestCase
 - [ ] **Step 17: 新規テストを走らせて green を確認**
 
 ```bash
-cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && vendor/bin/phpunit --filter ContractAmountBreakdownTest
+cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit --filter ContractAmountBreakdownTest
 ```
 
 Expected: `OK (9 tests)`
@@ -2496,7 +2504,7 @@ Expected: `OK (9 tests)`
 ```
 
 ```bash
-cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && vendor/bin/phpunit --filter ContractAmountBreakdownTest 2>&1 | tail -25
+cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit --filter ContractAmountBreakdownTest 2>&1 | tail -25
 ```
 
 Expected: `test_has_building_is_decided_by_procurement_property_type` が FAIL
@@ -2514,7 +2522,7 @@ Expected: `test_has_building_is_decided_by_procurement_property_type` が FAIL
 ```
 
 ```bash
-cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && vendor/bin/phpunit --filter ContractAmountBreakdownTest 2>&1 | tail -20
+cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit --filter ContractAmountBreakdownTest 2>&1 | tail -20
 ```
 
 Expected: `test_gross_profit_is_calculated_from_pre_tax_total` が FAIL（`5000000` を期待して `6000000`）
@@ -2522,7 +2530,7 @@ Expected: `test_gross_profit_is_calculated_from_pre_tax_total` が FAIL（`50000
 - [ ] **Step 20: 変異を戻して全テストを走らせる**
 
 ```bash
-cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && git diff --stat && vendor/bin/phpunit 2>&1 | tail -20
+cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && git diff --stat && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit 2>&1 | tail -20
 ```
 
 Expected: `OK (…)` で失敗 0。`git diff --stat` に変異の痕跡が残っていないこと
@@ -3003,7 +3011,7 @@ cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax &
 - [ ] **Step 9: コンパイル済みビューを lint する**
 
 ```bash
-php artisan view:cache && for f in storage/framework/views/*.php; do php -l "$f" >/dev/null || echo "INVALID: $f"; done; php artisan view:clear
+APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= php artisan view:cache && for f in storage/framework/views/*.php; do php -l "$f" >/dev/null || echo "INVALID: $f"; done; php artisan view:clear
 ```
 
 Expected: `INVALID:` が 1 件も出ない
@@ -3011,7 +3019,7 @@ Expected: `INVALID:` が 1 件も出ない
 - [ ] **Step 10: 全テストを走らせる**
 
 ```bash
-cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && vendor/bin/phpunit 2>&1 | tail -20
+cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit 2>&1 | tail -20
 ```
 
 Expected: `OK (…)` で失敗 0
@@ -3035,10 +3043,10 @@ cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax &
 - [ ] **Step 1: 全テストを走らせる**
 
 ```bash
-vendor/bin/phpunit 2>&1 | tail -20
+APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit 2>&1 | tail -20
 ```
 
-Expected: `OK (…)` で失敗 0。Task 0 Step 4 のベースライン **+ 31 件**（ConsumptionTax 9 / 集計 3 / 仕入れ内訳 10 / 契約内訳 9）
+Expected: `OK (404 tests, …)` で失敗 0（ベースライン 373 + 31 ＝ ConsumptionTax 9 / 集計 3 / 仕入れ内訳 10 / 契約内訳 9）
 
 - [ ] **Step 2: 旧カラム名が `re_procurements` / `re_contracts` の文脈に残っていないことを走査する**
 
@@ -3059,7 +3067,7 @@ Expected: 0 件
 - [ ] **Step 3: コンパイル済みビューを lint する（Bug #26 / #30）**
 
 ```bash
-cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && php artisan view:cache && for f in storage/framework/views/*.php; do php -l "$f" >/dev/null || echo "INVALID: $f"; done; php artisan view:clear
+cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= php artisan view:cache && for f in storage/framework/views/*.php; do php -l "$f" >/dev/null || echo "INVALID: $f"; done; php artisan view:clear
 ```
 
 Expected: `INVALID:` が 0 件
