@@ -55,10 +55,16 @@ class ProjectController extends Controller
             });
         }
 
+        // ⚠ withQueryString() は使わない。内部の Arr::query()（= http_build_query）が
+        //    値 null のキーを丸ごと捨てるため、「全て」= status='' が
+        //    ConvertEmptyStringsToNull で null 化されている状態でページ送りすると
+        //    2 ページ目のリンクから status が消え、既定の 'active'（進行中のみ）に
+        //    戻ってしまう。null を '' に正規化してから appends する
+        //    （ProcurementListService::paginationQuery() と同じ扱い）。
         $projects = $query->orderByDesc('info_obtained_date')
             ->orderByDesc('id')
             ->paginate(20)
-            ->withQueryString();
+            ->appends(array_map(fn ($v) => $v ?? '', $request->query()));
 
         return view('realestate.projects.index', compact('projects'));
     }
