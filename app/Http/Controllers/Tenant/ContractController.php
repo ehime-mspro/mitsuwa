@@ -151,8 +151,9 @@ class ContractController extends Controller
             'attachments'          => 'nullable|array',
             'attachments.*'        => 'file|max:10240',
         ], [], [
-            // 画面ラベルに合わせる（既定は「顧客」）
+            // 画面ラベルに合わせる（既定は「顧客」「賃料」）
             'customer_id' => 'テナント',
+            'rent'        => '月額家賃',
         ]);
 
         // 追加バリデーション: 区画が指定物件に属しているか
@@ -322,8 +323,9 @@ class ContractController extends Controller
             'attachments'          => 'nullable|array',
             'attachments.*'        => 'file|max:10240',
         ], [], [
-            // 画面ラベルに合わせる（既定は「顧客」）
+            // 画面ラベルに合わせる（既定は「顧客」「賃料」）
             'customer_id' => 'テナント',
+            'rent'        => '月額家賃',
         ]);
 
         // null → 0 変換（費用フィールド）

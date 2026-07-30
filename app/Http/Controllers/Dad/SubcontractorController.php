@@ -163,6 +163,9 @@ class SubcontractorController extends Controller
             'company_name.max' => '会社名は100文字以内で入力してください。',
             'specialty_id.exists' => '選択された専門分野が存在しません。',
             'email.email' => 'メールアドレスの形式が正しくありません。',
+        ], [
+            // 画面ラベルに合わせる（既定は「代表者名」）
+            'representative' => '代表者名・担当者名',
         ]);
     }
 }

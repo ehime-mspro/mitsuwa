@@ -142,6 +142,7 @@ class ClientController extends Controller
         ], [
             // 画面ラベルに合わせる（lang/ja/validation.php の既定は「名称」）
             'name' => '発注者名',
+            'representative' => '代表者名・担当者名',
         ]);
     }
 }

@@ -99,6 +99,9 @@ class UnitController extends Controller
             'garbage_fee'      => 'nullable|integer|min:0',
             'pest_control_fee' => 'nullable|integer|min:0',
             'notes'            => 'nullable|string|max:5000',
+        ], [], [
+            // 画面ラベルに合わせる（既定は「賃料」）
+            'rent' => '家賃',
         ]);
 
         // 階数0は不許可（地下は-1〜-3、地上は1〜99）
