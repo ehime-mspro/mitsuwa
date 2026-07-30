@@ -20,6 +20,10 @@
     <php>
         <env name="APP_ENV" value="testing"/>
         <env name="APP_URL" value="http://localhost"/>
+        <!-- 本番は APP_LOCALE=ja / APP_FALLBACK_LOCALE=ja。config/app.php の既定は 'en' なので
+             ここで指定しないとテストだけ英語になり、日本語メッセージの欠落を検出できない -->
+        <env name="APP_LOCALE" value="ja"/>
+        <env name="APP_FALLBACK_LOCALE" value="ja"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>
