@@ -57,6 +57,9 @@ class DadSpecialtyController extends Controller
             'name.unique' => '同名の専門分野が既に登録されています。',
             'color_bg.regex' => '背景色は #RRGGBB 形式で入力してください。',
             'color_text.regex' => '文字色は #RRGGBB 形式で入力してください。',
+        ], [
+            // 画面ラベルに合わせる（lang/ja/validation.php の既定は「名称」）
+            'name' => '専門分野名',
         ]);
 
         $maxOrder = DadSpecialty::max('sort_order') ?? 0;
@@ -93,6 +96,9 @@ class DadSpecialtyController extends Controller
             'name.unique' => '同名の専門分野が既に登録されています。',
             'color_bg.regex' => '背景色は #RRGGBB 形式で入力してください。',
             'color_text.regex' => '文字色は #RRGGBB 形式で入力してください。',
+        ], [
+            // 画面ラベルに合わせる（lang/ja/validation.php の既定は「名称」）
+            'name' => '専門分野名',
         ]);
 
         $dadSpecialty->update($validated);

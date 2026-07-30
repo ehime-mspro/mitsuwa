@@ -134,6 +134,11 @@ class InvestmentController extends Controller
             'details.*.notes'            => 'nullable|string|max:1000',
             'attachments'                => 'nullable|array',
             'attachments.*'              => 'file|max:10240',
+        ], [], [
+            // 画面ラベルに合わせる（既定は「内容」「開始日」「終了日」）
+            'description' => '工事概要',
+            'start_date'  => '工事開始日',
+            'end_date'    => '工事完了日',
         ]);
 
         // 区画が指定物件に属しているか
@@ -260,6 +265,11 @@ class InvestmentController extends Controller
             'details.*.notes'            => 'nullable|string|max:1000',
             'attachments'                => 'nullable|array',
             'attachments.*'              => 'file|max:10240',
+        ], [], [
+            // 画面ラベルに合わせる（既定は「内容」「開始日」「終了日」）
+            'description' => '工事概要',
+            'start_date'  => '工事開始日',
+            'end_date'    => '工事完了日',
         ]);
 
         // 区画が指定物件に属しているか

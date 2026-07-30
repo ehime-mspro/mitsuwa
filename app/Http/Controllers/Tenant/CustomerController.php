@@ -77,6 +77,9 @@ class CustomerController extends Controller
             'postal_code'       => 'nullable|string|max:10',
             'address'           => 'nullable|string|max:500',
             'notes'             => 'nullable|string|max:5000',
+        ], [], [
+            // 画面ラベルに合わせる（lang/ja/validation.php の既定は「名称」）
+            'name' => '顧客名',
         ]);
 
         $validated['code'] = $this->generateCustomerCode();
@@ -146,6 +149,9 @@ class CustomerController extends Controller
             'postal_code'       => 'nullable|string|max:10',
             'address'           => 'nullable|string|max:500',
             'notes'             => 'nullable|string|max:5000',
+        ], [], [
+            // 画面ラベルに合わせる（lang/ja/validation.php の既定は「名称」）
+            'name' => '顧客名',
         ]);
 
         $customer->update($validated);

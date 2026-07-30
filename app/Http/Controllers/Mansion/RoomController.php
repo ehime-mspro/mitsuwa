@@ -108,6 +108,11 @@ class RoomController extends Controller
             'deposit' => 'nullable|integer|min:0',
             'key_money' => 'nullable|integer|min:0',
             'notes' => 'nullable|string',
+        ], [], [
+            // 画面ラベルに合わせる（既定は「賃料」「面積（㎡）」「号室」）
+            'rent' => '募集賃料',
+            'area_sqm' => '専有面積',
+            'room_number' => '号室番号',
         ]);
     }
 }

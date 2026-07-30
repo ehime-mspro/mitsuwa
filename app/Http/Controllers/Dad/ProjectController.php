@@ -280,6 +280,11 @@ class ProjectController extends Controller
             'project_name.required' => '工事名は必須です。',
             'project_type.required' => '工事種別を選択してください。',
             'status.required' => 'ステータスを選択してください。',
+        ], [
+            // 画面ラベルに合わせる（既定は「プロジェクト名」「契約額」「開始日」）
+            'project_name'    => '工事名',
+            'contract_amount' => '受注金額',
+            'start_date'      => '着工日',
         ]);
     }
 

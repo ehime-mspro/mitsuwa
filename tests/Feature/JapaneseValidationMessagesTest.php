@@ -75,8 +75,122 @@ class JapaneseValidationMessagesTest extends TestCase
 
         $response->assertSessionHasErrors([
             'project_name' => 'プロジェクト名は必須です。',
-            'address'      => '住所は必須です。',
+            // 分譲地の画面ラベルは「所在地」。グローバルの既定「住所」ではなく
+            // ProjectController::validateProject() の第3引数が効いていることを見ている
+            'address'      => '所在地は必須です。',
         ]);
+    }
+
+    /**
+     * 画面ごとの項目名がコントローラの第3引数で上書きされていること。
+     *
+     * ⚠ 「グローバルを所在地に変えた」では通らないように、グローバル既定が「住所」のままで
+     *    あることも同時に確認する。片方だけ見ると、既定を書き換えただけで緑になってしまい、
+     *    住所ラベルの画面（仕入れ先・テナント顧客・DAD 発注者など）の退行を見逃す。
+     */
+    public function test_screen_specific_attribute_overrides_the_global_default(): void
+    {
+        $this->assertSame(
+            '住所',
+            Lang::get('validation.attributes.address'),
+            'グローバル既定が変わっています。画面ごとの差は第3引数で表現すること'
+        );
+
+        $this->actingAs($this->executive())
+            ->post('/realestate/projects', [])
+            ->assertSessionHasErrors(['address' => '所在地は必須です。']);
+    }
+
+    /**
+     * validate() に出てくる項目が全て和名を持つこと。
+     *
+     * 和名が無いキーは Laravel が snake_case を単語に開いてそのまま出すため、
+     * 画面に `guarantor1 name` `started at` のような英字が出る（2026-07-30 に 86 件あった）。
+     * 実際にエラーを起こさないと見えないので、コントローラ側を走査して静的に押さえる。
+     */
+    public function test_every_validated_field_has_a_japanese_attribute_label(): void
+    {
+        $attributes = Lang::get('validation.attributes');
+        $this->assertIsArray($attributes);
+
+        $missing = [];
+        $seen    = 0;
+
+        foreach ($this->validatedKeysByController() as $controller => $keys) {
+            foreach ($keys as $key) {
+                $seen++;
+                if (! $this->hasAttributeLabel($key, $attributes)) {
+                    $missing[] = "{$key}  ({$controller})";
+                }
+            }
+        }
+
+        // 走査が空振りして緑になる事故を防ぐ
+        $this->assertGreaterThan(300, $seen, 'コントローラの走査に失敗している');
+
+        $this->assertSame(
+            [],
+            $missing,
+            "和名が無い項目があります（画面に英字が出ます）:\n" . implode("\n", $missing)
+        );
+    }
+
+    /**
+     * app/Http/Controllers 配下の validate() に渡されるルールキーを集める。
+     *
+     * @return array<string, list<string>> コントローラ相対パス => キー一覧
+     */
+    private function validatedKeysByController(): array
+    {
+        $out = [];
+        $dir = app_path('Http/Controllers');
+
+        /** @var \SplFileInfo $file */
+        foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($dir)) as $file) {
+            if ($file->getExtension() !== 'php') {
+                continue;
+            }
+            $src = file_get_contents($file->getPathname());
+            if (! preg_match_all('/validate\(\s*\[(.*?)\n\s*\]\s*[,)]/s', $src, $blocks)) {
+                continue;
+            }
+            $keys = [];
+            foreach ($blocks[1] as $block) {
+                // ルール定義の行だけを拾う（配列値の中の 'key' => ... は行頭ではない）
+                if (preg_match_all("/^\s*'([a-z0-9_.*]+)'\s*=>/im", $block, $m)) {
+                    foreach ($m[1] as $key) {
+                        $keys[$key] = true;
+                    }
+                }
+            }
+            if ($keys) {
+                $out[str_replace($dir . '/', '', $file->getPathname())] = array_keys($keys);
+            }
+        }
+
+        return $out;
+    }
+
+    /** attributes に完全一致 or ワイルドカード一致のエントリがあるか */
+    private function hasAttributeLabel(string $key, array $attributes): bool
+    {
+        if (isset($attributes[$key])) {
+            return true;
+        }
+
+        // Laravel は costs.0.notes を costs.*.notes で解決する
+        $probe = str_replace('*', '0', $key);
+        foreach (array_keys($attributes) as $candidate) {
+            if (! str_contains($candidate, '*')) {
+                continue;
+            }
+            $pattern = '#^' . str_replace('\*', '([^.]*)', preg_quote($candidate, '#')) . '\z#u';
+            if (preg_match($pattern, $probe) === 1) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

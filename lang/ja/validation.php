@@ -200,133 +200,310 @@ return [
     | ここに無いキーは Laravel が snake_case を単語に開いてそのまま出す
     | （例: land_area_sqm → 「land area sqm」）ので、フォームを新設したら追記する。
     |
-    | 和名は実際の Blade の <label> テキストから採っている（2026-07-29 時点）。
+    | 和名は実際の Blade の <label> テキストから採っている（2026-07-30 に全 32 コントローラ ×
+    | 自身が返すビューを突合して洗い直した）。
     |
-    | ⚠ 画面で意味が変わる項目がある。attributes はアプリ全体で 1 つのマップしか持てないため、
-    |    複数の画面で使われるキーは「どの画面でも通じる中立な語」を当てている。
-    |    例: name は 顧客名 / 発注者名 / 氏名 / プラン名 / 物件名 など 7 通りの用途があるので
-    |    「名称」とした。特定画面で厳密な文言が要るなら、そのコントローラの
-    |    validate() 第2引数で個別に指定すること（このファイルを画面ごとに分岐はできない）。
+    | ⚠ attributes はアプリ全体で 1 つのマップしか持てない。画面ごとに意味が変わるキー
+    |    （name は 物件名 / 顧客名 / 氏名 / 発注者名 など 7 通り、address は 住所 / 所在地）は
+    |    ここに多数派の語を置き、少数派の画面は **そのコントローラの validate() 第3引数**で
+    |    上書きする。第3引数はこのファイルより優先される
+    |    （Illuminate\Validation\Concerns\FormatsMessages::getDisplayableAttribute()）。
+    |
+    |        $request->validate($rules, [], ['address' => '所在地']);
+    |                                   ↑ 第2引数は messages。空配列を渡すこと
+    |
+    | ⚠ 括弧の注記は項目名に含めない方針（2026-07-30 決定）。
+    |    画面ラベル「共益費（月額）」「建物販売価格（税抜）」「顧客（任意）」に対して
+    |    ここでは 共益費 / 建物販売価格 / 顧客 とする。単位・税区分・任意/自動は項目名ではなく、
+    |    「顧客（任意）は必須です」のような矛盾した文言も避けられるため。
+    |    例外: area_sqm「面積（㎡）」と area_tsubo「面積（坪）」は単位が項目の区別そのものなので残す。
+    |    例外: 姓/名のフリガナは画面ラベルが「セイ」「メイ」だが「メイは必須です」が読みにくいため
+    |          「姓（フリガナ）」「名（フリガナ）」を採る。
+    |
+    | ⚠ 保証人・緊急連絡先は画面ラベルが単に「氏名」「住所」で、複数エラー時にどちらの
+    |    ものか分からなくなるため、ここでは接頭辞を付けている（例「保証人1 氏名」）。
     |
     */
 
     'attributes' => [
 
         // --- 共通 ---
-        'name' => '名称',                       // ⚠ 顧客名 / 発注者名 / 氏名 / プラン名 / 物件名 等を兼ねる
+        'name' => '名称',                              // 上書き: 物件名 / 顧客名 / 名前 / 氏名 / 専門分野名 / 発注者名
         'name_kana' => 'フリガナ',
         'last_name' => '姓',
         'first_name' => '名',
-        'last_name_kana' => '姓（フリガナ）',
-        'first_name_kana' => '名（フリガナ）',
-        'status' => 'ステータス',               // ⚠ 在籍状況 も兼ねる
+        'last_name_kana' => '姓（フリガナ）',           // 画面ラベルは「セイ」（冒頭の例外を参照）
+        'first_name_kana' => '名（フリガナ）',          // 画面ラベルは「メイ」（同上）
+        'status' => 'ステータス',                      // 上書き: Dad/Employee は「在籍状況」
         'type' => '区分',
         'category' => 'カテゴリ',
         'notes' => '備考',
-        'memo' => '備考',                       // ⚠ メモ も兼ねる
-        'description' => '内容',                // ⚠ 工事概要 / 修繕内容 / 問合せ内容 を兼ねる
-        'reason' => '理由',
-        'department' => '部署',
+        'memo' => '備考',
+        'note' => '備考',
+        'withdraw_note' => '退会メモ',                 // 画面ラベルは「備考」だが退会画面固有なので区別する
+        'description' => '内容',                       // 上書き: 工事概要 / 修繕内容 / 問合せ内容
+        'content' => '対応内容',
+        'reason' => '改定理由',
+        'result_reason' => '結果理由',
+        'department' => '部署',                        // 上書き: Admin/CustomerImport は「インポート先部署」
         'display_order' => '表示順',
         'active' => '有効',
         'ids' => '並び順',
+        'ids.*' => '並び順',
+        'order' => '表示順',
+        'order.*' => '表示順',
         'mode' => '表示モード',
+        'pattern' => '投資パターン',
+        'color_bg' => '背景色',
+        'color_text' => '文字色',
+        'rank' => 'ランク',
+        'label' => '設問文',
+        'question_type' => '設問タイプ',
 
         // --- 連絡先・住所 ---
         'email' => 'メールアドレス',
-        'phone' => '電話番号',                  // ⚠ 連絡先 も兼ねる
+        'phone' => '電話番号',                         // 上書き: Dad/Employee は「連絡先」
+        'fax' => 'FAX番号',
         'postal_code' => '郵便番号',
         'prefecture' => '都道府県',
         'city' => '市区町村',
-        'address' => '住所',                    // ⚠ 所在地 も兼ねる
-        'address_detail' => '番地以降',
+        'address' => '住所',                           // 上書き: 所在地 / 市区町村・番地以降
+        'address_detail' => '住所詳細',
         'building_name' => '建物名',
         'representative' => '代表者名',
         'contact_person' => '担当者名',
-        'company_name' => '会社名',
-        'owner_name' => '所有者名',
+        'company_name' => '会社名',                    // 上書き: Tenant/Inquiry は「会社名・屋号」
+        'owner_name' => '所有者名',                    // 上書き: Mansion/Property は「オーナー名」
+        'gender' => '性別',
+        'birthday' => '生年月日',
+        'workplace' => '勤務先',
+        'qualifications' => '保有資格',
 
-        // --- 認証・ユーザー ---
-        'password' => 'パスワード',
+        // --- 認証・ユーザー・従業員 ---
+        'password' => 'パスワード',                    // 上書き: Admin/User は「初期パスワード」
         'password_confirmation' => 'パスワード（確認）',
         'current_password' => '現在のパスワード',
-        'role' => '権限',
+        'role' => 'ロール',
+        'departments' => '所属部門',
         'staff_user_id' => '担当者',
+        'assigned_to' => '担当者',
+        'created_by' => '担当者',
         'user_id' => 'ユーザー',
+        'departments.*' => '所属部門',
+        'employee_code' => '社員番号',
+        'position' => '役職',
+        'hire_date' => '入社日',
 
         // --- 物件・区画 ---
         'property_id' => '物件',
         'property_name' => '物件名',
         'unit_id' => '区画',
         'room_number' => '号室',
+        'room_type' => '間取り',
         'floor' => '階数',
-        'total_floors' => '総階数',
+        'floors' => '階数',
+        'total_floors' => '総階数',                    // 上書き: Mansion/Property は「階数」
+        'total_units' => '総戸数',
         'structure' => '構造',
-        'area_sqm' => '面積（㎡）',
+        'area_sqm' => '面積（㎡）',                    // 上書き: Mansion/Room は「専有面積」
         'area_tsubo' => '面積（坪）',
         'land_area_sqm' => '土地面積（㎡）',
         'building_area_sqm' => '建物面積（㎡）',
         'usage_type_id' => '用途',
+        'desired_usage_id' => '希望用途',
         'zoning' => '用途地域',
         'building_coverage' => '建ぺい率',
         'floor_area_ratio' => '容積率',
         'latitude' => '緯度',
         'longitude' => '経度',
         'built_year_month' => '築年月',
+        'built_date' => '築年月',
+        'operation_status' => '稼働状態',
+        'owner_type' => '所有者区分',
+        'ownership_type' => '所有形態',
+        'site_address' => '工事現場住所',
+        'parking_number' => '駐車場番号',
+        'has_roof' => '屋根',
+        'monthly_fee' => '月額料金',
+        'new_monthly_fee' => '新・月額料金',
+        'key_money' => '礼金',
+        'lot_number' => '号地番号',
+        'unit_ids' => '区画',
+        'unit_ids.*' => '区画',
+        'tenant_type' => '入居者区分',
 
         // --- 契約・賃料 ---
         'contract_date' => '契約日',
-        'start_date' => '開始日',               // ⚠ 工事開始日 / 着工日 / 利用開始日 を兼ねる
-        'end_date' => '終了日',                 // ⚠ 工事完了日 / 退去日 を兼ねる
+        'start_date' => '開始日',                      // 上書き: 工事開始日 / 利用開始日
+        'end_date' => '終了日',                        // 上書き: Tenant/Investment は「工事完了日」
+        'rent_start_date' => '家賃発生日',
+        'initial_month_type' => '初月家賃の請求方法',
+        'initial_month_amount' => '初月家賃',
+        'final_month_type' => '最終月家賃の請求方法',
+        'final_month_amount' => '最終月家賃',
+        'contract_end_date' => '契約終了日',
+        'move_out_date' => '退去日',
+        'termination_reason' => '退去理由',
+        'terminate_parkings' => '一括解約する駐車場契約',
+        'terminate_parkings.*' => '一括解約する駐車場契約',
+        'settlement_file' => '解約精算書',
         'settlement_date' => '決済日',
-        'revision_date' => '改定日',
-        'rent' => '賃料',                       // ⚠ 月額家賃 / 募集賃料 を兼ねる
-        'new_rent' => '新賃料',
+        'revision_date' => '改定適用日',
+        'rent' => '賃料',                              // 上書き: Mansion/Room は「募集賃料」
+        'new_rent' => '新・月額家賃',
         'common_fee' => '共益費',
         'new_common_fee' => '新・共益費',
         'deposit' => '敷金',
+        'new_deposit' => '新・敷金',
         'garbage_fee' => 'ゴミ代（月額）',
+        'new_garbage_fee' => '新・ゴミ代',
         'pest_control_fee' => '駆除代（月額）',
+        'new_pest_control_fee' => '新・駆除代',
         'tax_rate' => '消費税率',
-        'contract_amount' => '契約額',          // ⚠ 受注金額 も兼ねる
-        'customer_id' => '顧客',
+        'contract_amount' => '契約額',                 // 上書き: Dad/Project は「受注金額」
+        'estimate_amount' => '見積金額',
+        'brokerage_fee' => '仲介手数料',
+        'customer_id' => '顧客',                       // 上書き: Tenant/Contract は「テナント」
         'customer_name' => '顧客名',
-        'tenant_id' => '入居者',                // ⚠ 利用者 も兼ねる
+        'customer_type' => '顧客種別',
+        'tenant_id' => '入居者',
         'buyer_id' => '買主',
+        'buyer_name' => '買主名',
         'store_name' => '店舗名',
+        'inquiry_id' => '関連問合せ',
 
         // --- 不動産・住宅 ---
-        'project_name' => 'プロジェクト名',
+        'project_name' => 'プロジェクト名',            // 上書き: Dad/Project は「工事名」
         'project_id' => '分譲地',
+        'project_type' => '工事種別',
+        'client_type' => '種別',
+        'estimate_date' => '見積日',
+        'order_date' => '受注日',
+        'payment_date' => '入金日',
+        'completion_date' => '完工日',
+        'period_start' => '工期開始',
+        'period_end' => '工期終了',
+        'order_name' => '案件名',
         're_project_lot_id' => '区画',
         're_procurement_id' => '仕入れ案件',
-        'land_source_type' => '土地種別',
+        'land_source_type' => '土地紐づけ種別',
         'supplier_id' => '仕入れ先',
+        'client_id' => '発注者',
+        'specialty_id' => '専門分野',
         'purchase_price' => '購入価格',
-        'assessment_price' => '査定額',
-        'target_selling_price' => '想定販売価格',
+        'assessment_price' => '査定価格',
+        'target_selling_price' => '想定販売価格',      // 上書き: RealEstate/Project は「想定総販売価格」
+        'target_selling_price_building' => '建物予定販売価格',
         'selling_price' => '販売価格',
+        'selling_price_land' => '土地販売価格',
+        'selling_price_building' => '建物販売価格',
+        'land_selling_price' => '土地販売価格',
+        'building_contract_price' => '建物請負金額',
         'land_cost' => '土地原価',
-        'building_cost' => '建築原価',
+        'building_cost' => '建築原価',                 // 上書き: Housing/Property は「建築費」
         'is_land_cost_manual' => '土地原価の手動入力',
         'info_obtained_date' => '情報入手日',
         'acquired_date' => '取得日',
         'survey_date' => '来場日',
+        'scheduled_completion_date' => '完成予定日',
+        'actual_completion_date' => '実際の完成日',
+        'delivery_date' => '引渡日',
         'property_type' => '物件種別',
         'transaction_type' => '取引種別',
 
         // --- 工事・修繕 ---
-        'contractor_name' => '施工業者名',
+        'contractor_name' => '施工業者名',             // 上書き: Tenant/Repair は「業者名」
         'cost_item_id' => '原価項目',
-        'estimated_amount' => '見込み額',       // ⚠ DAD では「見積額」
-        'actual_amount' => '確定額',            // ⚠ DAD では「実績額」
+        'estimated_amount' => '見込み額',              // ⚠ DAD では「見積額」
+        'actual_amount' => '確定額',                   // ⚠ DAD では「実績額」
+        'cost' => '費用',
+        'started_at' => '実施日',
+        'completed_at' => '完了日',
+
+        // --- 原価明細（Alpine で行を増やす配列。* はワイルドカードとして解決される）---
+        'costs' => '原価明細',
+        'costs.*.cost_item_id' => '費用項目',
+        'costs.*.estimated_amount' => '見込み額',
+        'costs.*.actual_amount' => '確定額',
+        'costs.*.notes' => '備考',
+        'rows' => '原価明細',
+        'rows.*.cost_item_id' => '費用項目',
+        'rows.*.estimated_amount' => '見込み額',
+        'rows.*.actual_amount' => '確定額',
+        'rows.*.notes' => '備考',
+        'details' => '内訳',
+        'details.*.cost_item' => '費用項目',
+        'details.*.contractor_name' => '施工業者名',
+        'details.*.amount' => '金額',
+        'details.*.executed_at' => '実施日',
+        'details.*.notes' => '備考',
 
         // --- 問合せ ---
         'source' => '問合せ経路',
+        'inquiry_date' => '問合せ日',
+        'contact_name' => '問合せ者',
+        'action_type' => '対応種別',
+        'action_date' => '対応日',
+        'desired_area_min' => '希望面積の下限',        // 画面は min/max とも「希望面積（坪）」なので区別する
+        'desired_area_max' => '希望面積の上限',
+        'budget_max' => '予算上限',
+        'desired_move_date' => '希望入居月',
+
+        // --- 保証人・緊急連絡先（画面ラベルは「氏名」等だけなので接頭辞を付ける）---
+        'guarantor1_name' => '保証人1 氏名',
+        'guarantor1_address' => '保証人1 住所',
+        'guarantor1_contact' => '保証人1 連絡先',
+        'guarantor1_workplace' => '保証人1 勤務先',
+        'guarantor2_name' => '保証人2 氏名',
+        'guarantor2_address' => '保証人2 住所',
+        'guarantor2_contact' => '保証人2 連絡先',
+        'guarantor2_workplace' => '保証人2 勤務先',
+        'emergency_contact_name' => '緊急連絡先 氏名',
+        'emergency_contact_phone' => '緊急連絡先 電話番号',
+        'emergency_contact_relation' => '緊急連絡先 続柄',
+
+        // --- ZEAL 会員・プラン ---
+        'store_id' => '所属店舗',
+        'trainer_id' => '担当トレーナー',
+        'acquisition_source' => '集客チャネル',
+        'purpose' => '入会目的',
+        'plan_id' => 'プラン',
+        'change_date' => '変更日',
+        'is_campaign_applied' => '適用価格タイプ',
+        'applied_price_excl' => '適用価格',
+        'withdrew_on' => '退会日',
+        'withdraw_reason' => '退会理由',
+        'regular_price_excl' => '通常価格',
+        'campaign_price_excl' => 'キャンペーン価格',
+        'campaign_starts_on' => 'キャンペーン開始日',
+        'campaign_ends_on' => 'キャンペーン終了日',
+        'max_concurrent_reservations' => '同時予約可能数',
+        'monthly_session_limit' => '月間利用上限回数',
+        'includes_personal' => 'パーソナルセッションを含む',
+        'includes_semi_personal' => 'セミパーソナルセッションを含む',
+        'is_pair_plan' => 'ペアプラン',
+        'open_date' => '開店日',
+
+        // --- ZEAL 経営試算表 ---
+        'fiscal_year' => '会計年度',
+        'code' => 'コード',
+        'group_type' => 'グループ',
+        'calc_type' => '計算タイプ',
+        'default_amount' => 'デフォルト額',
+        'rate_percent' => '率',
+        'values' => '入力値',
+        'values.*' => '入力値',
+        'values.*.*' => '入力値',
+
+        // --- 外部連携 ---
+        'sales_sheet_url' => '売上シートのCSVエクスポートURL',
+        'expense_sheet_url' => '経費シートのCSVエクスポートURL',
 
         // --- ファイル ---
         'file' => 'ファイル',
         'csv_file' => 'CSVファイル',
+        'files' => '添付ファイル',
+        'files.*' => '添付ファイル',
         'attachments' => '添付ファイル',
         'attachments.*' => '添付ファイル',
 

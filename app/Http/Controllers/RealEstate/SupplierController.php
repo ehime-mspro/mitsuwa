@@ -63,6 +63,9 @@ class SupplierController extends Controller
             'postal_code'    => 'nullable|string|max:10',
             'address'        => 'nullable|string|max:200',
             'notes'          => 'nullable|string|max:5000',
+        ], [], [
+            // 画面ラベルに合わせる（lang/ja/validation.php の既定は「名称」）
+            'name' => '名前',
         ]);
 
         $validated['supplier_code'] = $this->generateSupplierCode();
@@ -111,6 +114,9 @@ class SupplierController extends Controller
             'postal_code'    => 'nullable|string|max:10',
             'address'        => 'nullable|string|max:200',
             'notes'          => 'nullable|string|max:5000',
+        ], [], [
+            // 画面ラベルに合わせる（lang/ja/validation.php の既定は「名称」）
+            'name' => '名前',
         ]);
 
         $supplier->update($validated);
@@ -149,6 +155,8 @@ class SupplierController extends Controller
         $validated = $request->validate([
             'type' => 'required|in:individual,corporation,realtor',
             'name' => 'required|string|max:100',
+        ], [], [
+            'name' => '名前',
         ]);
 
         // 完全一致チェック（重複は常にブロック）

@@ -23,8 +23,9 @@ Laravel 12 / PHP 8.5.4 (local) + 8.3 (prod) / MySQL 8 / Blade + Alpine.js 3 + Ta
 | 8 | Object.assign 引数順序を逆転（factory がリテラルの getter を評価して static 値に焼き付け、Alpine reactivity 死亡）| 必ず `return Object.assign({...existing with getters...}, factoryResult);` の順。getter は target 側に置く |
 | 9 | JSON API を叩く `fetch` に `X-Requested-With` を付け忘れる（セッションの直前 URL がその API で上書きされ、バリデーションエラー時の `back()` が生の JSON ページへ飛んで**入力が全消失**）| `headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }` を必ず付ける（`Accept` だけでは効かない）。⚠ **「何も入力せず送信」では再現しない** — Ajax を一度叩いてからエラーを出すこと。走査テスト `AjaxFetchSessionGuardTest` が自動で拾う。Bug #35 |
 | 10 | `__()` を通る機能を足したのに `lang/ja/<group>.php` を作らない（`APP_LOCALE=ja` かつ fallback も ja なので **en にも落ちず生の翻訳キーが画面に出る**）| 対応する `lang/ja/*.php` を必ず追加する。⚠ **`$request->validate()` のようにフレームワーク内部から `__()` が呼ばれる経路は `grep -rn "__('"` に出ない** — 実際にエラーを出して画面で見る。⚠ **`phpunit.xml` の `APP_LOCALE=ja` / `APP_FALLBACK_LOCALE=ja` を消さない**（消すとテストが locale=en で走り、この種の欠陥を原理的に検出できなくなる）。Bug #36 |
+| 11 | フォームに項目を足したのに `lang/ja/validation.php` の `attributes` に和名を書かない（エラー文に **`guarantor1 name` のような英字**が出る）| `attributes` に和名を追加する。画面ごとに語が変わるキー（`name` `address` 等）は**そのコントローラの `validate()` **第3引数**で上書き（`validate($rules, $messages, $attributes)` — **第2引数は messages**）。走査テスト `JapaneseValidationMessagesTest` が和名漏れを自動で拾う。Bug #37 |
 
-全 36 件の詳細バグカタログ + 各種パターン: @docs/RULES.md
+全 37 件の詳細バグカタログ + 各種パターン: @docs/RULES.md
 
 ## 🔌 利用可能なプラグイン
 

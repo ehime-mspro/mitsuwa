@@ -150,6 +150,9 @@ class ContractController extends Controller
             'initial_month_amount' => 'nullable|integer|min:0|required_if:initial_month_type,manual',
             'attachments'          => 'nullable|array',
             'attachments.*'        => 'file|max:10240',
+        ], [], [
+            // 画面ラベルに合わせる（既定は「顧客」）
+            'customer_id' => 'テナント',
         ]);
 
         // 追加バリデーション: 区画が指定物件に属しているか
@@ -318,6 +321,9 @@ class ContractController extends Controller
             'initial_month_amount' => 'nullable|integer|min:0|required_if:initial_month_type,manual',
             'attachments'          => 'nullable|array',
             'attachments.*'        => 'file|max:10240',
+        ], [], [
+            // 画面ラベルに合わせる（既定は「顧客」）
+            'customer_id' => 'テナント',
         ]);
 
         // null → 0 変換（費用フィールド）

@@ -127,6 +127,11 @@ class PropertyController extends Controller
             'structure' => 'nullable|string|max:50',
             'built_year_month' => 'nullable|string|max:7',
             'notes' => 'nullable|string',
+        ], [], [
+            // 画面ラベルに合わせる（lang/ja/validation.php の既定は「住所」「所有者名」「総階数」）
+            'address' => '所在地',
+            'owner_name' => 'オーナー名',
+            'total_floors' => '階数',
         ]);
     }
 

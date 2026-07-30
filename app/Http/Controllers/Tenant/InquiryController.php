@@ -144,6 +144,10 @@ class InquiryController extends Controller
             'desired_move_date' => ['nullable', 'string', 'max:7', 'regex:/^\d{4}-\d{2}$/'],
             'description'      => 'nullable|string|max:5000',
             'notes'            => 'nullable|string|max:5000',
+        ], [], [
+            // 画面ラベルに合わせる（既定は「内容」「会社名」）
+            'description'  => '問合せ内容',
+            'company_name' => '会社名・屋号',
         ]);
 
         // 区画の物件所属チェック
@@ -289,6 +293,10 @@ class InquiryController extends Controller
             'desired_move_date' => ['nullable', 'string', 'max:7', 'regex:/^\d{4}-\d{2}$/'],
             'description'      => 'nullable|string|max:5000',
             'notes'            => 'nullable|string|max:5000',
+        ], [], [
+            // 画面ラベルに合わせる（既定は「内容」「会社名」）
+            'description'  => '問合せ内容',
+            'company_name' => '会社名・屋号',
         ]);
 
         // 区画の物件所属チェック

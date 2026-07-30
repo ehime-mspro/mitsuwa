@@ -95,6 +95,9 @@ class PropertyController extends Controller
             'owner_type'       => 'nullable|in:self_owned,owner',
             'owner_name'       => 'nullable|string|max:200',
             'notes'            => 'nullable|string|max:5000',
+        ], [], [
+            // 画面ラベルに合わせる（lang/ja/validation.php の既定は「名称」）
+            'name' => '物件名',
         ]);
 
         $validated['code'] = $this->generateNextCode();
@@ -274,6 +277,9 @@ class PropertyController extends Controller
             'owner_type'       => 'nullable|in:self_owned,owner',
             'owner_name'       => 'nullable|string|max:200',
             'notes'            => 'nullable|string|max:5000',
+        ], [], [
+            // 画面ラベルに合わせる（lang/ja/validation.php の既定は「名称」）
+            'name' => '物件名',
         ]);
 
         // オーナー所有でない場合はオーナー名をクリア

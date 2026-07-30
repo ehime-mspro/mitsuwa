@@ -719,6 +719,10 @@ class ProjectController extends Controller
             'contract_date'       => 'nullable|date',
             'settlement_date'     => 'nullable|date',
             'notes'               => 'nullable|string|max:5000',
+        ], [], [
+            // 画面ラベルに合わせる（lang/ja/validation.php の既定は「住所」「想定販売価格」）
+            'address'              => '所在地',
+            'target_selling_price' => '想定総販売価格',
         ]);
     }
 

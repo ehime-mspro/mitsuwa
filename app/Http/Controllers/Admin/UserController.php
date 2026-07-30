@@ -86,6 +86,10 @@ class UserController extends Controller
             'departments.min' => '所属部門を1つ以上選択してください。',
             'password.required' => '初期パスワードが必要です。',
             'password.min' => 'パスワードは8文字以上で入力してください。',
+        ], [
+            // 画面ラベルに合わせる（lang/ja/validation.php の既定は「名称」「パスワード」）
+            'name' => '氏名',
+            'password' => '初期パスワード',
         ]);
 
         // role / status は $fillable 対象外のため明示代入する（マスアサインメント対策）
@@ -127,6 +131,9 @@ class UserController extends Controller
             'departments.required' => '所属部門を1つ以上選択してください。',
             'departments.min' => '所属部門を1つ以上選択してください。',
             'status.required' => 'ステータスを選択してください。',
+        ], [
+            'name' => '氏名',
+            'password' => '初期パスワード',
         ]);
 
         // 自分自身のロール変更を防止（ロックアウト防止）

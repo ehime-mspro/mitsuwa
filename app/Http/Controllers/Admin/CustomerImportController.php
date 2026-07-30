@@ -28,6 +28,9 @@ class CustomerImportController extends Controller
         $request->validate([
             'csv_file'   => 'required|file|mimes:csv,txt|max:10240',
             'department' => 'required|in:housing,realestate',
+        ], [], [
+            // 画面ラベルに合わせる（既定は「部署」）
+            'department' => 'インポート先部署',
         ]);
 
         $department  = $request->input('department');

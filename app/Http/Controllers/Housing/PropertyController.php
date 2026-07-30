@@ -470,6 +470,10 @@ class PropertyController extends Controller
             'is_land_cost_manual'           => 'required|in:0,1',
             'target_selling_price_building' => 'nullable|integer|min:0',
             'notes'                         => 'nullable|string|max:5000',
+        ], [], [
+            // 画面ラベルに合わせる（lang/ja/validation.php の既定は「住所」「建築原価」）
+            'address'       => '所在地',
+            'building_cost' => '建築費',
         ]);
     }
 

@@ -264,6 +264,9 @@ class ParkingContractController extends Controller
             $rules['tenant_id'] = 'required|exists:ms_tenants,id';
         }
 
-        return $request->validate($rules);
+        return $request->validate($rules, [], [
+            // 画面ラベルに合わせる（既定は「開始日」）
+            'start_date' => '利用開始日',
+        ]);
     }
 }

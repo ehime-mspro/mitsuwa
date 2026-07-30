@@ -139,6 +139,9 @@ class ClientController extends Controller
             'name.required' => '発注者名は必須です。',
             'name.max' => '発注者名は100文字以内で入力してください。',
             'email.email' => 'メールアドレスの形式が正しくありません。',
+        ], [
+            // 画面ラベルに合わせる（lang/ja/validation.php の既定は「名称」）
+            'name' => '発注者名',
         ]);
     }
 }

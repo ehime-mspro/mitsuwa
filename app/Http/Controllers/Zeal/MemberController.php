@@ -159,6 +159,10 @@ class MemberController extends Controller
             'acquisition_source' => 'nullable|string',
             'purpose'            => 'nullable|string',
             'memo'               => 'nullable|string|max:1000',
+        ], [], [
+            // 画面ラベルに合わせる（lang/ja/validation.php の既定は「名称」「住所」）
+            'name'    => '氏名',
+            'address' => '市区町村・番地以降',
         ]);
 
         // 未入力の任意項目は null にする

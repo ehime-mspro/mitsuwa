@@ -142,6 +142,9 @@ class TenantController extends Controller
             'emergency_contact_phone' => 'nullable|string|max:20',
             'emergency_contact_relation' => 'nullable|string|max:50',
             'notes' => 'nullable|string',
+        ], [], [
+            // 画面ラベルに合わせる（lang/ja/validation.php の既定は「名称」）
+            'name' => '氏名',
         ]);
     }
 }

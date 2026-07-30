@@ -431,6 +431,9 @@ class ProcurementController extends Controller
             'contract_date'       => 'nullable|date',
             'settlement_date'     => 'nullable|date',
             'notes'               => 'nullable|string|max:5000',
+        ], [], [
+            // 画面ラベルに合わせる（lang/ja/validation.php の既定は「住所」）
+            'address' => '所在地',
         ]);
     }
 

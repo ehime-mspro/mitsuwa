@@ -151,6 +151,11 @@ class EmployeeController extends Controller
             'employee_code.unique' => '同じ社員番号が既に登録されています。',
             'name.required' => '氏名は必須です。',
             'status.required' => '在籍状況を選択してください。',
+        ], [
+            // 画面ラベルに合わせる（既定は「名称」「ステータス」「電話番号」）
+            'name' => '氏名',
+            'status' => '在籍状況',
+            'phone' => '連絡先',
         ]);
     }
 }

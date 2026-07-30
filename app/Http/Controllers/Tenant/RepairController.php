@@ -113,6 +113,10 @@ class RepairController extends Controller
             'notes'            => 'nullable|string|max:5000',
             'attachments'      => 'nullable|array',
             'attachments.*'    => 'file|max:10240',
+        ], [], [
+            // 画面ラベルに合わせる（既定は「内容」「施工業者名」）
+            'description'     => '修繕内容',
+            'contractor_name' => '業者名',
         ]);
 
         // 区画が指定物件に属しているか（区画指定時のみ）
@@ -195,6 +199,10 @@ class RepairController extends Controller
             'notes'            => 'nullable|string|max:5000',
             'attachments'      => 'nullable|array',
             'attachments.*'    => 'file|max:10240',
+        ], [], [
+            // 画面ラベルに合わせる（既定は「内容」「施工業者名」）
+            'description'     => '修繕内容',
+            'contractor_name' => '業者名',
         ]);
 
         if ($validated['unit_id']) {
