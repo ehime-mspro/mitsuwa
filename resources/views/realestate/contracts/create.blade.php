@@ -189,14 +189,49 @@
                     </select>
                 </div>
 
-                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 26px;">
+                {{-- 契約額（土地 / 建物 / 建物税込） --}}
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 12px;">
                     <div class="fg">
-                        <label>契約額（税抜） <span class="req">*</span></label>
+                        <label>契約額 土地（税抜） <span class="req">*</span></label>
                         <div style="display: flex; align-items: center; gap: 6px;">
-                            <input type="number" name="contract_amount" :value="contractAmount" @input="contractAmount = $event.target.value; calcProfit()" style="text-align: right;" min="0"
+                            <input type="number" inputmode="numeric" name="contract_amount_land" :value="amountLand"
+                                   @input="amountLand = $event.target.value; calcProfit()" style="text-align: right;" min="0"
                                    :disabled="isBrokerage()">
                             <span style="font-size: 13px; white-space: nowrap;">円</span>
                         </div>
+                    </div>
+                    <div class="fg" x-show="hasBuilding()">
+                        <label>契約額 建物（税抜）</label>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <input type="number" inputmode="numeric" name="contract_amount_building" :value="amountBuildingExcl"
+                                   @input="onBuildingExclInput($event.target.value)" style="text-align: right;" min="0"
+                                   :disabled="isBrokerage() || !hasBuilding()">
+                            <span style="font-size: 13px; white-space: nowrap;">円</span>
+                        </div>
+                    </div>
+                    <div class="fg" x-show="hasBuilding()">
+                        <label>契約額 建物（税込）</label>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <input type="number" inputmode="numeric" :value="amountBuildingIncl"
+                                   @input="onBuildingInclInput($event.target.value)" style="text-align: right; background: #f9fafb;" min="0"
+                                   :disabled="isBrokerage() || !hasBuilding()">
+                            <span style="font-size: 13px; white-space: nowrap;">円</span>
+                        </div>
+                        <div class="fg-note">※ 保存されるのは税抜のみ</div>
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 12px;">
+                    <div class="fg" x-show="hasBuilding()">
+                        <label>消費税額</label>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <input type="number" inputmode="numeric" name="tax_amount" :value="taxAmount"
+                                   :placeholder="String(autoTax())"
+                                   @input="taxAmount = $event.target.value" style="text-align: right;" min="0"
+                                   :disabled="isBrokerage() || !hasBuilding()">
+                            <span style="font-size: 13px; white-space: nowrap;">円</span>
+                        </div>
+                        <div class="fg-note">※ 空欄なら自動計算（税率 <span x-text="taxRate"></span>%）</div>
                     </div>
                     <div class="fg">
                         <label>原価（税抜）</label>
@@ -218,6 +253,14 @@
                         </div>
                     </div>
                 </div>
+
+                <div style="font-size: 12px; color: #6b7280; margin-bottom: 26px;">
+                    税抜合計 <span x-text="money(totalExcl())"></span>
+                    <span x-show="hasBuilding()"> ／ 消費税 <span x-text="money(effectiveTax())"></span> ／ 税込合計 <span x-text="money(totalIncl())"></span></span>
+                </div>
+
+                {{-- 税率は画面に入力欄を出さず、保存時点の設定値をスナップショットする --}}
+                <input type="hidden" name="tax_rate" :value="taxRate">
 
                 <div class="fg" style="margin-bottom: 16px;">
                     <label>備考</label>
@@ -378,7 +421,12 @@ function contractForm() {
         lotId: '{{ old("lot_id", "") }}',
         propertyName: @json(old('property_name', '')),
         addressVal: @json(old('address', '')),
-        contractAmount: '{{ old("contract_amount", "") }}',
+        taxRate: '{{ number_format(\App\Support\Settings::taxRate(), 2, '.', '') }}',
+        amountLand: '{{ old("contract_amount_land", "") }}',
+        amountBuildingExcl: '{{ old("contract_amount_building", "") }}',
+        amountBuildingIncl: '',
+        taxAmount: '{{ old("tax_amount", "") }}',
+        procurementLandOnly: @json($procurementLandOnly),
         costAmount: '{{ old("cost_amount", "") }}',
         grossProfit: null,
         profitRate: null,
@@ -398,13 +446,91 @@ function contractForm() {
             return this.contractType === 'brokerage';
         },
 
+        // 建物欄を出すかは紐づく仕入れ案件の物件種別で決まる（設計書 §4.2）。
+        // 描画時に渡されたマップを見るので、バリデーションエラーで差し戻された直後も正しく開く。
+        hasBuilding: function() {
+            if (!this.isProcurement() || !this.procurementId) { return false; }
+            return this.procurementLandOnly[String(this.procurementId)] === false;
+        },
+
+        // 空文字は null(未入力)として扱う。0 と区別する
+        amountOf: function(field) {
+            var v = this[field];
+            if (v === '' || v === null || v === undefined) { return null; }
+            var n = Math.floor(Number(v));
+            return isNaN(n) || n < 0 ? null : n;
+        },
+
+        taxBp: function() {
+            return Math.round((Number(this.taxRate) || 0) * 100);
+        },
+
+        // 建物 × 税率(切り捨て)。サーバ側 ConsumptionTax と同じ整数演算
+        autoTax: function() {
+            var b = this.amountOf('amountBuildingExcl');
+            if (b === null) { return 0; }
+            return Math.floor(b * this.taxBp() / 10000);
+        },
+
+        // 手入力があればそれを正とする
+        effectiveTax: function() {
+            var m = this.amountOf('taxAmount');
+            return m === null ? this.autoTax() : m;
+        },
+
+        totalExcl: function() {
+            var l = this.amountOf('amountLand');
+            // ⚠ 建物欄が閉じているときは建物の残留 state を無視する。
+            //    x-show + :disabled で隠れても Alpine の state は残るため、
+            //    ガードしないと「画面に見えている土地の額」「実際に保存される額」と食い違う
+            //    (仕入れ案件フォームで同型の欠陥を踏んだ)
+            if (!this.hasBuilding()) { return l; }
+            var b = this.amountOf('amountBuildingExcl');
+            if (l === null && b === null) { return null; }
+            return (l || 0) + (b || 0);
+        },
+
+        totalIncl: function() {
+            var t = this.totalExcl();
+            if (t === null) { return null; }
+            return t + this.effectiveTax();
+        },
+
+        onBuildingExclInput: function(value) {
+            this.amountBuildingExcl = value;
+            var b = this.amountOf('amountBuildingExcl');
+            this.amountBuildingIncl = b === null ? '' : String(b + this.autoTax());
+            this.calcProfit();
+        },
+
+        onBuildingInclInput: function(value) {
+            this.amountBuildingIncl = value;
+            var i = this.amountOf('amountBuildingIncl');
+            this.amountBuildingExcl = i === null
+                ? ''
+                : String(Math.floor(i * 10000 / (10000 + this.taxBp())));
+            this.calcProfit();
+        },
+
+        refreshInclusive: function() {
+            var b = this.amountOf('amountBuildingExcl');
+            this.amountBuildingIncl = b === null ? '' : String(b + this.autoTax());
+        },
+
+        money: function(v) {
+            return v === null ? '—' : Number(v).toLocaleString() + '円';
+        },
+
         onTypeChange: function() {
             this.procurementId = '';
             this.projectId = '';
             this.lotId = '';
             this.propertyName = '';
             this.addressVal = '';
-            this.contractAmount = '';
+            this.amountLand = '';
+            this.amountBuildingExcl = '';
+            this.amountBuildingIncl = '';
+            this.taxAmount = '';
             this.costAmount = '';
             this.grossProfit = null;
             this.profitRate = null;
@@ -438,6 +564,12 @@ function contractForm() {
                     self.propertyName = data.property_name;
                     self.addressVal = data.address || '';
                     self.costAmount = data.cost_amount;
+                    // 仲介土地に切り替えたら建物側の入力を捨てる(disabled で送信もされない)
+                    if (!self.hasBuilding()) {
+                        self.amountBuildingExcl = '';
+                        self.amountBuildingIncl = '';
+                        self.taxAmount = '';
+                    }
                     self.calcProfit();
                 });
         },
@@ -449,7 +581,7 @@ function contractForm() {
             self.projCost = null;
             if (!self.projectId) {
                 self.costAmount = '';
-                self.contractAmount = '';
+                self.amountLand = '';
                 self.calcProfit();
                 return;
             }
@@ -481,19 +613,19 @@ function contractForm() {
         onLotChange: function() {
             var self = this;
             if (!self.lotId) {
-                self.contractAmount = '';
+                self.amountLand = '';
                 self.calcProfit();
                 return;
             }
             var lot = self.lots.find(function(l) { return String(l.id) === String(self.lotId); });
             if (lot && lot.selling_price) {
-                self.contractAmount = lot.selling_price;
+                self.amountLand = lot.selling_price;
                 self.calcProfit();
             }
         },
 
         calcProfit: function() {
-            var ca = parseInt(this.contractAmount) || 0;
+            var ca = this.totalExcl() || 0;
             var co = parseInt(this.costAmount) || 0;
             if (ca > 0 || co > 0) {
                 this.grossProfit = ca - co;
@@ -509,9 +641,8 @@ function contractForm() {
         },
 
         init: function() {
-            if (this.contractAmount && this.costAmount) {
-                this.calcProfit();
-            }
+            this.refreshInclusive();
+            this.calcProfit();
         }
     };
 }

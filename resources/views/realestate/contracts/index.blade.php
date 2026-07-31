@@ -145,8 +145,11 @@
                                         <span class="text-gray-400">—</span>
                                     @endif
                                 @else
-                                    @if($c->contract_amount)
-                                        {{ number_format($c->contract_amount) }}円
+                                    @if($c->getContractAmountTotal() !== null)
+                                        {{ number_format($c->getContractAmountTotal()) }}円
+                                        @if($c->getContractAmountTotalWithTax() !== $c->getContractAmountTotal())
+                                            <div class="text-xs text-gray-500">税込 {{ number_format($c->getContractAmountTotalWithTax()) }}円</div>
+                                        @endif
                                     @else
                                         <span class="text-gray-400">—</span>
                                     @endif

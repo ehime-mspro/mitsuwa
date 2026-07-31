@@ -155,13 +155,47 @@
                     </select>
                 </div>
 
-                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 26px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 12px;">
                     <div class="fg">
-                        <label>契約額（税抜） <span class="req">*</span></label>
+                        <label>契約額 土地（税抜） <span class="req">*</span></label>
                         <div style="display: flex; align-items: center; gap: 6px;">
-                            <input type="number" name="contract_amount" :value="contractAmount" @input="contractAmount = $event.target.value; calcProfit()" style="text-align: right;" min="0">
+                            <input type="number" inputmode="numeric" name="contract_amount_land" :value="amountLand"
+                                   @input="amountLand = $event.target.value; calcProfit()" style="text-align: right;" min="0">
                             <span style="font-size: 13px; white-space: nowrap;">円</span>
                         </div>
+                    </div>
+                    <div class="fg" x-show="hasBuilding()">
+                        <label>契約額 建物（税抜）</label>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <input type="number" inputmode="numeric" name="contract_amount_building" :value="amountBuildingExcl"
+                                   @input="onBuildingExclInput($event.target.value)" style="text-align: right;" min="0"
+                                   :disabled="!hasBuilding()">
+                            <span style="font-size: 13px; white-space: nowrap;">円</span>
+                        </div>
+                    </div>
+                    <div class="fg" x-show="hasBuilding()">
+                        <label>契約額 建物（税込）</label>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <input type="number" inputmode="numeric" :value="amountBuildingIncl"
+                                   @input="onBuildingInclInput($event.target.value)" style="text-align: right; background: #f9fafb;" min="0"
+                                   :disabled="!hasBuilding()">
+                            <span style="font-size: 13px; white-space: nowrap;">円</span>
+                        </div>
+                        <div class="fg-note">※ 保存されるのは税抜のみ</div>
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 12px;">
+                    <div class="fg" x-show="hasBuilding()">
+                        <label>消費税額</label>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <input type="number" inputmode="numeric" name="tax_amount" :value="taxAmount"
+                                   :placeholder="String(autoTax())"
+                                   @input="taxAmount = $event.target.value" style="text-align: right;" min="0"
+                                   :disabled="!hasBuilding()">
+                            <span style="font-size: 13px; white-space: nowrap;">円</span>
+                        </div>
+                        <div class="fg-note">※ 空欄なら自動計算（税率 <span x-text="taxRate"></span>%）</div>
                     </div>
                     <div class="fg">
                         <label>原価（税抜）</label>
@@ -181,6 +215,13 @@
                         </div>
                     </div>
                 </div>
+
+                <div style="font-size: 12px; color: #6b7280; margin-bottom: 26px;">
+                    税抜合計 <span x-text="money(totalExcl())"></span>
+                    <span x-show="hasBuilding()"> ／ 消費税 <span x-text="money(effectiveTax())"></span> ／ 税込合計 <span x-text="money(totalIncl())"></span></span>
+                </div>
+
+                <input type="hidden" name="tax_rate" :value="taxRate">
 
                 <div class="fg" style="margin-bottom: 16px;">
                     <label>備考</label>
@@ -220,14 +261,93 @@ function contractEditForm() {
         lotId: '{{ old("lot_id", $contract->lot_id) }}',
         propertyName: @json(old('property_name', $contract->property_name)),
         addressVal: @json(old('address', $contract->address ?? '')),
-        contractAmount: '{{ old("contract_amount", $contract->contract_amount) }}',
+        contractType: '{{ $contract->contract_type->value }}',
+        taxRate: '{{ old("tax_rate", $contract->tax_rate) }}',
+        amountLand: '{{ old("contract_amount_land", $contract->contract_amount_land) }}',
+        amountBuildingExcl: '{{ old("contract_amount_building", $contract->contract_amount_building) }}',
+        amountBuildingIncl: '',
+        taxAmount: '{{ old("tax_amount", $contract->tax_amount) }}',
+        procurementLandOnly: @json($procurementLandOnly),
         costAmount: '{{ old("cost_amount", $contract->cost_amount) }}',
         grossProfit: null,
         profitRate: null,
         lotsData: @json($lots ?? []),
 
+        isProcurement: function() {
+            return this.contractType === 'procurement_land'
+                || this.contractType === 'procurement_mansion'
+                || this.contractType === 'procurement_house';
+        },
+
+        hasBuilding: function() {
+            if (!this.isProcurement() || !this.procurementId) { return false; }
+            return this.procurementLandOnly[String(this.procurementId)] === false;
+        },
+
+        amountOf: function(field) {
+            var v = this[field];
+            if (v === '' || v === null || v === undefined) { return null; }
+            var n = Math.floor(Number(v));
+            return isNaN(n) || n < 0 ? null : n;
+        },
+
+        taxBp: function() {
+            return Math.round((Number(this.taxRate) || 0) * 100);
+        },
+
+        autoTax: function() {
+            var b = this.amountOf('amountBuildingExcl');
+            if (b === null) { return 0; }
+            return Math.floor(b * this.taxBp() / 10000);
+        },
+
+        effectiveTax: function() {
+            var m = this.amountOf('taxAmount');
+            return m === null ? this.autoTax() : m;
+        },
+
+        totalExcl: function() {
+            var l = this.amountOf('amountLand');
+            // ⚠ 建物欄が閉じているときは建物の残留 state を無視する(create 側と同じ理由)
+            if (!this.hasBuilding()) { return l; }
+            var b = this.amountOf('amountBuildingExcl');
+            if (l === null && b === null) { return null; }
+            return (l || 0) + (b || 0);
+        },
+
+        totalIncl: function() {
+            var t = this.totalExcl();
+            if (t === null) { return null; }
+            return t + this.effectiveTax();
+        },
+
+        onBuildingExclInput: function(value) {
+            this.amountBuildingExcl = value;
+            var b = this.amountOf('amountBuildingExcl');
+            this.amountBuildingIncl = b === null ? '' : String(b + this.autoTax());
+            this.calcProfit();
+        },
+
+        onBuildingInclInput: function(value) {
+            this.amountBuildingIncl = value;
+            var i = this.amountOf('amountBuildingIncl');
+            this.amountBuildingExcl = i === null
+                ? ''
+                : String(Math.floor(i * 10000 / (10000 + this.taxBp())));
+            this.calcProfit();
+        },
+
+        refreshInclusive: function() {
+            var b = this.amountOf('amountBuildingExcl');
+            this.amountBuildingIncl = b === null ? '' : String(b + this.autoTax());
+        },
+
+        money: function(v) {
+            return v === null ? '—' : Number(v).toLocaleString() + '円';
+        },
+
         calcProfit: function() {
-            var ca = parseInt(this.contractAmount) || 0;
+            var ca = this.totalExcl() || 0;
             var co = parseInt(this.costAmount) || 0;
             if (ca > 0 || co > 0) {
                 this.grossProfit = ca - co;
@@ -252,14 +372,14 @@ function contractEditForm() {
         onProjectChange: function() {
             var self = this;
             self.lotId = ''; self.lotsData = [];
-            if (!self.projectId) { self.costAmount = ''; self.contractAmount = ''; self.calcProfit(); return; }
+            if (!self.projectId) { self.costAmount = ''; self.amountLand = ''; self.calcProfit(); return; }
             fetch('{{ url("/api/realestate/project-lots") }}/' + self.projectId, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
                 .then(function(r) { return r.json(); }).then(function(data) { self.lotsData = data; });
             fetch('{{ url("/api/realestate/project-lot-cost") }}/' + self.projectId, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
                 .then(function(r) { return r.json(); }).then(function(data) { self.propertyName = data.project_name || ''; self.costAmount = data.per_lot_cost; self.calcProfit(); });
         },
 
-        init: function() { this.calcProfit(); }
+        init: function() { this.refreshInclusive(); this.calcProfit(); }
     };
 }
 </script>

@@ -68,14 +68,25 @@
     @if(!$contract->contract_type->isBrokerage())
         <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px;">
             <div class="bg-white border border-gray-200 rounded-lg p-4">
-                <div class="text-xs text-gray-500">契約額</div>
+                <div class="text-xs text-gray-500">契約額（税抜）</div>
                 <div class="text-lg font-bold text-gray-900">
-                    @if($contract->contract_amount)
-                        {{ number_format($contract->contract_amount) }}円
+                    @if($contract->getContractAmountTotal() !== null)
+                        {{ number_format($contract->getContractAmountTotal()) }}円
                     @else
                         —
                     @endif
                 </div>
+                @if($contract->hasBuilding())
+                    <div class="text-xs text-gray-500">
+                        土地 {{ number_format((int) $contract->contract_amount_land) }}円 ／ 建物 {{ number_format((int) $contract->contract_amount_building) }}円
+                    </div>
+                    <div class="text-xs text-gray-500">
+                        消費税 {{ number_format((int) $contract->getBuildingTax()) }}円@if($contract->tax_amount !== null)（手入力）@endif
+                    </div>
+                    <div class="text-xs text-gray-500">
+                        税込 {{ number_format((int) $contract->getContractAmountTotalWithTax()) }}円
+                    </div>
+                @endif
             </div>
             <div class="bg-white border border-gray-200 rounded-lg p-4">
                 <div class="text-xs text-gray-500">原価</div>
