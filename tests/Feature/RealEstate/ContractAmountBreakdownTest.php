@@ -85,6 +85,28 @@ class ContractAmountBreakdownTest extends TestCase
         $this->assertSame(30999999, $c->getContractAmountTotalWithTax());
     }
 
+    /**
+     * tax_amount = 0（消費税 0 円と明示）が「未入力」に化けないこと。
+     *
+     * ⚠ `!== null` を `if ($this->tax_amount)`（truthy 判定）に退行させると落ちる。
+     *    既存の「null」「999999」の 2 パターンだけでは**この退行を検出できない**
+     *    （null は false、999999 は true でどちらも変異前後で同じ結果になるため）。
+     * ⚠ 実害: 契約書に消費税 0 円と書かれていても、自動計算値（建物 × 税率 = 1,000,000）で
+     *    勝手に上書きされる。
+     */
+    public function test_manual_tax_amount_of_zero_is_not_treated_as_unset(): void
+    {
+        $c = $this->makeContract([
+            'contract_amount_land'     => 20000000,
+            'contract_amount_building' => 10000000,
+            'tax_rate'                 => '10.00',
+            'tax_amount'               => 0,
+        ]);
+
+        $this->assertSame(0, $c->getBuildingTax());
+        $this->assertSame(30000000, $c->getContractAmountTotalWithTax());
+    }
+
     /** 土地のみなら消費税 0・税込＝税抜 */
     public function test_land_only_contract_has_no_tax(): void
     {
