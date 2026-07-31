@@ -1443,6 +1443,34 @@ class ProcurementPriceBreakdownTest extends TestCase
         $this->assertSame(2400000, $p->getTargetSellingBuildingTax());
         $this->assertSame(32400000, $p->getTargetSellingPriceTotalWithTax());
     }
+
+    /**
+     * 0 円入力が null に化けないこと（sumExcl() の核となる不変条件）。
+     *
+     * ⚠ `=== null` を `== null` や `empty()` に退行させると落ちる。
+     *    PHP では `0 == null` が true なので、既存の「両方 null」「片方未指定」の
+     *    テストだけでは**この退行を検出できない**。
+     * ⚠ 実害は表示だけではない。syncPropertyPurchaseCost() の
+     *    `if ($assessment === null && $purchase === null) { return; }` も誤って
+     *    早期 return し、「物件購入費」の原価行が作られなくなる。
+     */
+    public function test_zero_price_is_not_treated_as_null(): void
+    {
+        $p = $this->make([
+            'assessment_price_land'         => 0,
+            'target_selling_price_land'     => 0,
+            'target_selling_price_building' => null,
+        ]);
+
+        // 合計は null ではなく 0
+        $this->assertNotNull($p->getTargetSellingPriceTotal());
+        $this->assertSame(0, $p->getTargetSellingPriceTotal());
+        $this->assertSame(0, $p->getTargetSellingPriceTotalWithTax());
+
+        // 査定 0 円でも原価同期は走る（早期 return しない）
+        $this->assertNotNull($p->costs()->first(), '査定 0 円でも「物件購入費」の原価行が作られること');
+        $this->assertSame(0, (int) $p->costs()->first()->estimated_amount);
+    }
 }
 ```
 
@@ -1452,7 +1480,7 @@ class ProcurementPriceBreakdownTest extends TestCase
 cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit --filter ProcurementPriceBreakdownTest
 ```
 
-Expected: `OK (8 tests)`
+Expected: `OK (9 tests)`
 
 - [ ] **Step 18: `booted()` の変異で赤になることを確認**
 
@@ -3119,7 +3147,7 @@ cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax &
 APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit 2>&1 | tail -20
 ```
 
-Expected: `OK (406 tests, …)` で失敗 0（ベースライン 373 + 33 ＝ ConsumptionTax 11 / 集計 3 / 仕入れ内訳 10 / 契約内訳 9）
+Expected: `OK (405 tests, …)` で失敗 0（ベースライン 373 + 32 ＝ ConsumptionTax 11 / 集計 3 / 仕入れ内訳 9 / 契約内訳 9）
 
 - [ ] **Step 2: 旧カラム名が `re_procurements` / `re_contracts` の文脈に残っていないことを走査する**
 
