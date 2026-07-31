@@ -296,6 +296,36 @@ class ConsumptionTaxTest extends TestCase
         $this->assertSame(0, ConsumptionTax::tax(0, '10.00'));
         $this->assertSame(0, ConsumptionTax::toInclusive(0, '10.00'));
     }
+
+    /**
+     * 負の税率は 0% として扱う。
+     *
+     * ⚠ クランプを外すと -100.00% で toExclusive() の除数が 0 になり
+     *    DivisionByZeroError で落ちる（500 になる）。
+     */
+    public function test_negative_rate_is_clamped_to_zero(): void
+    {
+        $this->assertSame(0, ConsumptionTax::tax(30000000, '-10.00'));
+        $this->assertSame(30000000, ConsumptionTax::toInclusive(30000000, '-10.00'));
+        $this->assertSame(30000000, ConsumptionTax::toExclusive(30000000, '-100.00'));
+    }
+
+    /**
+     * INT カラム上限（2,147,483,647）× 税率上限（99.99%）でも桁溢れしないこと。
+     *
+     * クラス docblock が「被除数は最大 2.1e13 ＝ PHP_INT_MAX の 1/400,000」と
+     * 設計根拠にしているので、その主張をテストで固定する
+     * （AreaConverterTest::test_boundaries() と同じ流儀）。
+     * 値は 2026-07-30 実測 ＋ レビュアーが筆算で独立検算済み。
+     */
+    public function test_boundaries(): void
+    {
+        $max = 2147483647;
+
+        $this->assertSame(2147268898, ConsumptionTax::tax($max, '99.99'));
+        $this->assertSame(1073795513, ConsumptionTax::toExclusive($max, '99.99'));
+        $this->assertSame($max, ConsumptionTax::toInclusive($max, '0.00'));
+    }
 }
 ```
 
@@ -391,6 +421,11 @@ class ConsumptionTax
      *
      * decimal:2 キャスト済み属性は**文字列**で来るため string も受ける。
      * null は 0%（税額 0）として扱う。
+     *
+     * ⚠ 負の税率は 0% に丸める。負値をそのまま通すと toExclusive() の除数
+     *    (RATE_BASE + rateBp) が -100.00% ちょうどで 0 になり DivisionByZeroError で落ちる。
+     *    呼び出し元は numeric|min:0 で検証済みだが、Support クラスは独立して再利用されるため
+     *    ここでも防ぐ（TsuboPrice が除数を自前でガードしているのと同じ流儀）。
      */
     private static function rateBp(float|int|string|null $rate): int
     {
@@ -398,7 +433,7 @@ class ConsumptionTax
             return 0;
         }
 
-        return (int) round((float) $rate * self::RATE_SCALE);
+        return max(0, (int) round((float) $rate * self::RATE_SCALE));
     }
 }
 ```
@@ -409,7 +444,7 @@ class ConsumptionTax
 cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit --filter ConsumptionTaxTest
 ```
 
-Expected: `OK (9 tests)`
+Expected: `OK (11 tests, 33 assertions)`
 
 - [ ] **Step 5: 誤実装に変異させて赤になることを確認（テストの有効性の証明）**
 
@@ -445,7 +480,7 @@ Expected: `test_to_exclusive_uses_integer_division` が FAIL（`30000000` を期
 cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit --filter ConsumptionTaxTest && git diff --stat
 ```
 
-Expected: `OK (9 tests)` かつ `git diff` に変異が残っていない（新規 2 ファイルのみ）
+Expected: `OK (11 tests, 33 assertions)` かつ `git diff` に変異が残っていない（新規 2 ファイルのみ）
 
 - [ ] **Step 8: コミット**
 
@@ -2484,7 +2519,7 @@ class ContractAmountBreakdownTest extends TestCase
 cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit --filter ContractAmountBreakdownTest
 ```
 
-Expected: `OK (9 tests)`
+Expected: `OK (11 tests, 33 assertions)`
 
 ⚠ `test_gross_profit_is_calculated_from_pre_tax_total` が 500 で落ちるなら、
 `ReContractController` の `use App\Support\Settings;` 追加漏れを疑う。
@@ -3046,7 +3081,7 @@ cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax &
 APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit 2>&1 | tail -20
 ```
 
-Expected: `OK (404 tests, …)` で失敗 0（ベースライン 373 + 31 ＝ ConsumptionTax 9 / 集計 3 / 仕入れ内訳 10 / 契約内訳 9）
+Expected: `OK (406 tests, …)` で失敗 0（ベースライン 373 + 33 ＝ ConsumptionTax 11 / 集計 3 / 仕入れ内訳 10 / 契約内訳 9）
 
 - [ ] **Step 2: 旧カラム名が `re_procurements` / `re_contracts` の文脈に残っていないことを走査する**
 
