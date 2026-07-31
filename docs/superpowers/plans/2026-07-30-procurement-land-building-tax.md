@@ -38,6 +38,7 @@
 | **同一 `ALTER` 文で `CHANGE` した新カラム名を `AFTER` で参照できる** | MySQL 8 は句を記述順に処理するため `ADD COLUMN x AFTER assessment_price_land` が同じ文の `CHANGE` で作られた名前を参照できる。2026-07-30 にローカル実 DB（MySQL 8）で Task 3 の SQL をそのまま流して成功を確認済み |
 | **ロールバック SQL が動きデータも保全される** | 同日、上記の適用直後に「ロールバック手順」の逆向き `CHANGE` + `DROP COLUMN` を実行し、既存行の値（査定 7,000,000 / 購入 null / 想定販売 13,000,000）が往復で無傷なことを実測。`_building` 側は空なので失われる値も無い |
 | **本番の実カラム型は `int NULL DEFAULT NULL`** | 2026-07-30 に本番参照で確認（`re_procurements` の 3 金額 / `re_contracts.contract_amount`）。Task 3 の SQL の `INT NULL` と一致。`tax_rate` / `tax_amount` は本番に未存在なので `ADD COLUMN` が衝突しない |
+| **`wasRecentlyCreated` はフレームワークが一度もリセットしない** | `Model.php:129` の宣言（false）と `1420` の `performInsert()` 内の代入（true）だけで、`performUpdate()` にリセットが無い。**`create()` した同じインスタンスで `update()` しても true のまま**なので、`if (wasChanged([...]) \|\| $m->wasRecentlyCreated)` を守るテストは **`fresh()` で取り直さないと変異を検出できない**。2026-07-30 に Task 4 の変異テストで実際に踏み、`fresh()` の有無で検出可否が反転することを実測（プランのテストコードを訂正済み）|
 | 仕入れ案件を HTTP POST で金額まで送るテストは存在しない | `SupplierSearchBackUrlTest` が空 POST するだけ ＝ リネーム中に赤くなる既存テストは限定的 |
 | worktree に `vendor` が無い | Task 0 で `composer install`。`.env` は**作らない**（保護ルールでブロックされるうえ不要）。`phpunit.xml` が sqlite `:memory:` を与えるので環境変数 `APP_KEY` を前置きするだけで phpunit も artisan も動く（2026-07-30 実測 373 tests green） |
 
@@ -1393,12 +1394,24 @@ class ProcurementPriceBreakdownTest extends TestCase
      *
      * ⚠ booted() の wasChanged() に _building を書き忘れると、
      *    建物金額を変えても原価が同期されない（例外は出ないので気づけない）。
+     *
+     * ⚠ **update() の前に必ず fresh() で取り直すこと。**
+     *    `wasRecentlyCreated` は performInsert() で true になったあと
+     *    フレームワークが一度もリセットしないため、create() した同じインスタンスで
+     *    update() すると booted() の `|| $procurement->wasRecentlyCreated` が
+     *    常に真になり、wasChanged() 側の監視漏れを**このテストが検出できなくなる**。
+     *    実運用の編集フローはルートモデルバインディングで DB から取り直した
+     *    インスタンスなので、fresh() のほうが本番の経路にも忠実。
      */
     public function test_cost_sync_fires_on_building_column_change(): void
     {
         $p = $this->make(['assessment_price_land' => 10000000]);
 
         $this->assertSame(10000000, (int) $p->costs()->first()->estimated_amount);
+
+        // ⚠ この fresh() が無いと変異を検出できない（上の docblock 参照）
+        $p = $p->fresh();
+        $this->assertFalse($p->wasRecentlyCreated, 'fresh() したインスタンスは wasRecentlyCreated=false であること');
 
         $p->update(['assessment_price_building' => 5000000]);
 
