@@ -116,12 +116,24 @@ class ProcurementPriceBreakdownTest extends TestCase
      *
      * ⚠ booted() の wasChanged() に _building を書き忘れると、
      *    建物金額を変えても原価が同期されない（例外は出ないので気づけない）。
+     *
+     * ⚠ **update() の前に必ず fresh() で取り直すこと。**
+     *    `wasRecentlyCreated` は performInsert() で true になったあと
+     *    フレームワークが一度もリセットしないため、create() した同じインスタンスで
+     *    update() すると booted() の `|| $procurement->wasRecentlyCreated` が
+     *    常に真になり、wasChanged() 側の監視漏れを**このテストが検出できなくなる**。
+     *    実運用の編集フローはルートモデルバインディングで DB から取り直した
+     *    インスタンスなので、fresh() のほうが本番の経路にも忠実。
      */
     public function test_cost_sync_fires_on_building_column_change(): void
     {
         $p = $this->make(['assessment_price_land' => 10000000]);
 
         $this->assertSame(10000000, (int) $p->costs()->first()->estimated_amount);
+
+        // ⚠ この fresh() が無いと変異を検出できない（上の docblock 参照）
+        $p = $p->fresh();
+        $this->assertFalse($p->wasRecentlyCreated, 'fresh() したインスタンスは wasRecentlyCreated=false であること');
 
         $p->update(['assessment_price_building' => 5000000]);
 
