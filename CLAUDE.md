@@ -25,7 +25,7 @@ Laravel 12 / PHP 8.5.4 (local) + 8.3 (prod) / MySQL 8 / Blade + Alpine.js 3 + Ta
 | 10 | `__()` を通る機能を足したのに `lang/ja/<group>.php` を作らない（`APP_LOCALE=ja` かつ fallback も ja なので **en にも落ちず生の翻訳キーが画面に出る**）| 対応する `lang/ja/*.php` を必ず追加する。⚠ **`$request->validate()` のようにフレームワーク内部から `__()` が呼ばれる経路は `grep -rn "__('"` に出ない** — 実際にエラーを出して画面で見る。⚠ **`phpunit.xml` の `APP_LOCALE=ja` / `APP_FALLBACK_LOCALE=ja` を消さない**（消すとテストが locale=en で走り、この種の欠陥を原理的に検出できなくなる）。Bug #36 |
 | 11 | フォームに項目を足したのに `lang/ja/validation.php` の `attributes` に和名を書かない（エラー文に **`guarantor1 name` のような英字**が出る）| `attributes` に和名を追加する。画面ごとに語が変わるキー（`name` `address` 等）は**そのコントローラの `validate()` **第3引数**で上書き（`validate($rules, $messages, $attributes)` — **第2引数は messages**）。走査テスト `JapaneseValidationMessagesTest` が和名漏れを自動で拾う。Bug #37 |
 
-全 37 件の詳細バグカタログ + 各種パターン: @docs/RULES.md
+全 40 件の詳細バグカタログ + 各種パターン: @docs/RULES.md
 
 ## 🔌 利用可能なプラグイン
 
@@ -140,5 +140,5 @@ sudo rm -f storage/framework/views/*.php && brew services restart httpd
 ## 📚 Detailed docs
 
 - @docs/ARCHITECTURE.md — ディレクトリ構成、モデル一覧、認可マトリクス
-- @docs/RULES.md — Bug #1–36 + Tailwind 不可クラス/監査の落とし穴 + Excel/SheetJS + 全角→半角自動変換 + 郵便番号 API
+- @docs/RULES.md — Bug #1–40 + Tailwind 不可クラス/監査の落とし穴 + Excel/SheetJS + 全角→半角自動変換 + 郵便番号 API
 - @docs/BACKLOG.md — 完了済み機能の優先度別一覧（優先度 1〜5 全て本番稼働中）
