@@ -305,4 +305,28 @@ class ContractAmountBreakdownTest extends TestCase
         $this->assertSame(900000, $c->tax_amount, '紐づけ不明で消費税額が消えている');
         $this->assertSame(30000000, $c->getContractAmountTotal());
     }
+
+    /**
+     * 分譲地販売・仲介は構造的に土地のみなので、建物額・消費税額が入っていても null に正規化されること。
+     *
+     * ⚠ 画面からは建物欄が出ないので通常この値は入らないが、
+     *    contract_type が変わる更新経路や直接書き込みに対する値クレンジングとして効いている。
+     *    この 2 行を消しても他のテストは 1 本も落ちないので、ここで固定する。
+     */
+    public function test_non_procurement_types_clear_building_columns(): void
+    {
+        foreach ([ReContractType::SubdivisionLot->value, ReContractType::Brokerage->value] as $type) {
+            $c = $this->makeContract([
+                'contract_type'            => $type,
+                'contract_amount_land'     => 20000000,
+                'contract_amount_building' => 10000000,
+                'tax_amount'               => 900000,
+            ]);
+
+            $c = $c->fresh();
+            $this->assertNull($c->contract_amount_building, "{$type} で建物額が残っている");
+            $this->assertNull($c->tax_amount, "{$type} で消費税額が残っている");
+            $this->assertSame(20000000, $c->getContractAmountTotal());
+        }
+    }
 }

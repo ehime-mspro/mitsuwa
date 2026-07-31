@@ -251,24 +251,31 @@ class ProcurementPriceBreakdownTest extends TestCase
         $p = $this->make([
             'assessment_price_land'         => 10000000,
             'assessment_price_building'     => 5000000,
+            'purchase_price_land'           => 9000000,
+            'purchase_price_building'       => 4000000,
             'target_selling_price_land'     => 20000000,
             'target_selling_price_building' => 10000000,
         ]);
 
         $this->assertSame(15000000, $p->getAssessmentPriceTotal());
+        $this->assertSame(13000000, $p->getPurchasePriceTotal());
 
-        // 建物欄が送信されない状態(=キーが無い)で物件種別だけを仲介土地に変える
+        // 建物欄が送信されない状態（＝キーが無い）で物件種別だけを仲介土地に変える
         $p = $p->fresh();
         $p->update(['property_type' => RealEstatePropertyType::BrokerageLand->value]);
 
         $p = $p->fresh();
         $this->assertFalse($p->hasBuilding());
-        $this->assertNull($p->assessment_price_building, '建物列が DB に残っている');
-        $this->assertNull($p->target_selling_price_building);
-        $this->assertSame(10000000, $p->getAssessmentPriceTotal(), '合計に残留建物額が混ざっている');
+        $this->assertNull($p->assessment_price_building, '査定の建物列が DB に残っている');
+        $this->assertNull($p->purchase_price_building, '購入の建物列が DB に残っている');
+        $this->assertNull($p->target_selling_price_building, '想定販売の建物列が DB に残っている');
+        $this->assertSame(10000000, $p->getAssessmentPriceTotal());
+        $this->assertSame(9000000, $p->getPurchasePriceTotal());
         $this->assertSame(20000000, $p->getTargetSellingPriceTotal());
 
-        // 原価同期も土地だけの額になること
-        $this->assertSame(10000000, (int) $p->costs()->first()->estimated_amount);
+        // 原価同期も土地だけの額になること（査定=見込み / 購入=確定）
+        $cost = $p->costs()->first();
+        $this->assertSame(10000000, (int) $cost->estimated_amount);
+        $this->assertSame(9000000, (int) $cost->actual_amount);
     }
 }
