@@ -71,14 +71,37 @@ class ReContract extends Model
      *    残った建物額が契約額合計・一覧・ダッシュボードに混ざる。
      *    しかも gross_profit は $validated から再計算される（建物 0）ため、
      *    「契約額」と「粗利」が食い違って表示される。
+     *
+     * ⚠ hasBuilding() は使わない。hasBuilding() は「procurement_id が無い（＝紐づけ不明）」と
+     *    「紐づく仕入れ案件が土地のみと確定している」を**区別せず両方 false**にする。
+     *    本番の re_contracts.procurement_id は仕入れ案件側の FK が ON DELETE SET NULL
+     *    のため、仕入れ案件を削除すると（ProcurementController::destroy() は紐づく契約の
+     *    有無を確認しない）既存契約の procurement_id が NULL になる。ここで「紐づけ不明」を
+     *    「土地のみ」と同一視すると、記録済みの建物額・消費税額の手入力が黙って失われる
+     *    （本番に該当契約が実在する）。**土地のみと確定できたときだけ**消す。
      */
     protected static function booted(): void
     {
         static::saving(function (ReContract $contract): void {
-            if (! $contract->hasBuilding()) {
-                $contract->contract_amount_building = null;
-                $contract->tax_amount               = null;
+            if ($contract->contract_type->isProcurement()) {
+                // ReProcurement::find() で毎回引き直す（procurement リレーションのキャッシュに
+                // 依存しない）。procurement_id が無い/紐づけ先が既に削除済みなら「不明」として
+                // 何もしない。
+                $procurement = $contract->procurement_id
+                    ? ReProcurement::find($contract->procurement_id)
+                    : null;
+
+                if ($procurement !== null && $procurement->property_type->isLandOnly()) {
+                    $contract->contract_amount_building = null;
+                    $contract->tax_amount               = null;
+                }
+
+                return;
             }
+
+            // 分譲地販売・仲介は構造的に土地のみ（validate も建物欄を受け付けない）
+            $contract->contract_amount_building = null;
+            $contract->tax_amount               = null;
         });
     }
 

@@ -54,20 +54,10 @@ class ContractAmountBreakdownTest extends TestCase
         ], $extra));
     }
 
-    /**
-     * 合計・消費税・税込（tax_amount 未入力なら自動計算）。
-     *
-     * ⚠ contract_type=ProcurementLand は isProcurement()=true のため、
-     *    procurement_id を紐付けないと hasBuilding() が false になり、
-     *    ReContract::booted() の saving フックが contract_amount_building を
-     *    null に正規化してしまう（実運用では procurement_id が必須なので
-     *    起こらない組み合わせだが、テストでは明示的に紐付けが要る）。
-     */
+    /** 合計・消費税・税込（tax_amount 未入力なら自動計算） */
     public function test_totals_use_auto_calculated_tax_when_not_overridden(): void
     {
-        $procurement = $this->makeProcurement(RealEstatePropertyType::UsedHouse->value);
         $c = $this->makeContract([
-            'procurement_id'           => $procurement->id,
             'contract_amount_land'     => 20000000,
             'contract_amount_building' => 10000000,
             'tax_rate'                 => '10.00',
@@ -81,14 +71,10 @@ class ContractAmountBreakdownTest extends TestCase
     /**
      * tax_amount に値があればそれを正とする。
      * 契約書の端数処理が自動計算と一致しない場合に備えた手入力の上書き（設計書 §3.3）。
-     *
-     * ⚠ procurement_id を紐付ける理由は直前のテストの docblock を参照。
      */
     public function test_manual_tax_amount_overrides_auto_calculation(): void
     {
-        $procurement = $this->makeProcurement(RealEstatePropertyType::UsedHouse->value);
         $c = $this->makeContract([
-            'procurement_id'           => $procurement->id,
             'contract_amount_land'     => 20000000,
             'contract_amount_building' => 10000000,
             'tax_rate'                 => '10.00',
@@ -107,14 +93,10 @@ class ContractAmountBreakdownTest extends TestCase
      *    （null は false、999999 は true でどちらも変異前後で同じ結果になるため）。
      * ⚠ 実害: 契約書に消費税 0 円と書かれていても、自動計算値（建物 × 税率 = 1,000,000）で
      *    勝手に上書きされる。
-     * ⚠ procurement_id を紐付ける理由は test_totals_use_auto_calculated_tax_when_not_overridden
-     *    の docblock を参照。
      */
     public function test_manual_tax_amount_of_zero_is_not_treated_as_unset(): void
     {
-        $procurement = $this->makeProcurement(RealEstatePropertyType::UsedHouse->value);
         $c = $this->makeContract([
-            'procurement_id'           => $procurement->id,
             'contract_amount_land'     => 20000000,
             'contract_amount_building' => 10000000,
             'tax_rate'                 => '10.00',
@@ -290,5 +272,37 @@ class ContractAmountBreakdownTest extends TestCase
         $this->assertNull($c->tax_amount, '消費税額の手入力が DB に残っている');
         $this->assertSame(20000000, $c->getContractAmountTotal(), '合計に残留建物額が混ざっている');
         $this->assertSame(20000000, $c->getContractAmountTotalWithTax());
+    }
+
+    /**
+     * 紐づく仕入れ案件が削除されて procurement_id が NULL になっても、
+     * 記録済みの建物額・消費税額を消さないこと。
+     *
+     * ⚠ 本番の FK は `ON DELETE SET NULL`（実測）で、仕入れ案件の削除に
+     *    契約側のガードは無い。「紐づけ不明」を「土地のみ」と同一視して
+     *    正規化すると、既存契約の建物額と消費税額が黙って失われる。
+     */
+    public function test_dangling_procurement_does_not_wipe_building_columns(): void
+    {
+        $procurement = $this->makeProcurement(RealEstatePropertyType::UsedHouse->value);
+
+        $c = $this->makeContract([
+            'contract_type'            => ReContractType::ProcurementHouse->value,
+            'procurement_id'           => $procurement->id,
+            'contract_amount_land'     => 20000000,
+            'contract_amount_building' => 10000000,
+            'tax_rate'                 => '10.00',
+            'tax_amount'               => 900000,
+        ]);
+
+        // 仕入れ案件が削除され、FK により紐づけが外れた状態を再現する
+        $procurement->delete();
+        $c = $c->fresh();
+        $c->update(['procurement_id' => null]);
+
+        $c = $c->fresh();
+        $this->assertSame(10000000, $c->contract_amount_building, '紐づけ不明で建物額が消えている');
+        $this->assertSame(900000, $c->tax_amount, '紐づけ不明で消費税額が消えている');
+        $this->assertSame(30000000, $c->getContractAmountTotal());
     }
 }

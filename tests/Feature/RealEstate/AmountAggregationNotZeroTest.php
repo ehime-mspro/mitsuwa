@@ -78,17 +78,10 @@ class AmountAggregationNotZeroTest extends TestCase
      * 契約一覧の「販売金額合計」「原価合計」「粗利額合計」が実額であること。
      *
      * 30,000,000 + 12,000,000 = 42,000,000 のように、**合計だけに現れる値**を作る。
-     *
-     * ⚠ contract_type=ProcurementLand は isProcurement()=true のため、procurement_id を
-     *    紐付けないと hasBuilding() が false になり、ReContract::booted() の saving フックが
-     *    contract_amount_building を null に正規化してしまう（実運用では procurement_id が
-     *    必須なので起こらない組み合わせだが、テストでは明示的に紐付けが要る）。
      */
     public function test_contract_list_totals_are_not_zero(): void
     {
-        $procurement = $this->makeProcurement('P-100', ProcurementStatus::Selling->value);
         $this->makeContract([
-            'procurement_id'           => $procurement->id,
             'contract_amount_land'     => 20000000,
             'contract_amount_building' => 10000000,   // 建物を含めないと合計が 32,000,000 になり落ちる
             'cost_amount'              => 25000000,
@@ -118,14 +111,10 @@ class AmountAggregationNotZeroTest extends TestCase
     /**
      * 粗利率は「合計金額が 0 でない」ことを前提に計算される。
      * 集計が 0 化すると 0% になるので、率も併せて固定する。
-     *
-     * ⚠ procurement_id を紐付ける理由は test_contract_list_totals_are_not_zero の docblock を参照。
      */
     public function test_contract_list_profit_rate_is_not_zero(): void
     {
-        $procurement = $this->makeProcurement('P-200', ProcurementStatus::Selling->value);
         $this->makeContract([
-            'procurement_id'           => $procurement->id,
             'contract_amount_land'     => 20000000,
             'contract_amount_building' => 10000000,
             'cost_amount'              => 25000000,
