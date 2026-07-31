@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\CustomOrderStatus;
 use App\Enums\HousingLandSourceType;
 use App\Support\AreaConverter;
+use App\Support\ConsumptionTax;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -157,14 +158,19 @@ class HsCustomOrder extends Model
     // ============================================================
 
     /**
-     * 建物消費税額
+     * 建物消費税額（土地は非課税）
+     *
+     * 丸めは切り捨て。`ConsumptionTax` に一本化しているので round に戻さないこと（Bug #33/#34 と同じ規約）。
+     *
+     * ⚠ null ガードを外さないこと。`ConsumptionTax::tax()` は金額 null で null を返すが、
+     *   本メソッドの戻り値型は int で、呼び出し側（一覧の税込サブ行）は「未入力なら 0」に依存している。
      */
     public function getBuildingTax(): int
     {
         if ($this->building_contract_price === null) {
             return 0;
         }
-        return (int) round($this->building_contract_price * $this->tax_rate / 100);
+        return (int) ConsumptionTax::tax($this->building_contract_price, $this->tax_rate);
     }
 
     /**

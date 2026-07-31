@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\ConsumptionTax;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -70,11 +71,13 @@ class HsContract extends Model
     // ============================================================
 
     /**
-     * 建物消費税額
+     * 建物消費税額（土地は非課税）
+     *
+     * 丸めは切り捨て。`ConsumptionTax` に一本化しているので round に戻さないこと（Bug #33/#34 と同じ規約）。
      */
     public function getBuildingTax(): int
     {
-        return (int) round($this->selling_price_building * $this->tax_rate / 100);
+        return (int) ConsumptionTax::tax($this->selling_price_building, $this->tax_rate);
     }
 
     /**

@@ -475,10 +475,17 @@ Bug #37 に従い、新カラムすべてに和名を用意する。`lang/ja/val
    契約側は `tax_amount` の手入力で実額に合わせられるので実害はない。
    仕入れ案件は想定値なのでこのずれを許容する。
 
-2. **`HsContract::getBuildingTax()` は四捨五入（`round`）で、本設計の切り捨てと最大 1 円ずれる。**
-   建売と不動産は別モジュールなので実務上の問題は無いと判断し、本設計は
-   プロジェクトの丸め規約（坪数・坪単価と同じ整数演算）に寄せて切り捨てとする。
-   揃える判断をする場合は `hs_contracts` 側を `ConsumptionTax` に移すのが筋。
+2. ~~**`HsContract::getBuildingTax()` は四捨五入（`round`）で、本設計の切り捨てと最大 1 円ずれる。**~~
+   **【2026-07-31 解消済み】** 住宅事業の 3 モデル（`HsContract` / `HsProperty` / `HsCustomOrder`）を
+   `ConsumptionTax::tax()` に寄せて切り捨てへ統一した。
+   ⚠ **`HsContract` だけでは直らない** — `HsProperty::getBuildingSellingPrice()` と
+   `getEffectiveTaxRate()` は成約時に**同じ契約の値**を読むため、片方だけ切り捨てにすると
+   物件一覧と契約詳細で 1 円食い違う（本番実測: `hs_contracts#1` と `hs_properties#12` が同額 18,345,455）。
+   本番の表示は 7 レコードで消費税が 1 円下がった（DB の保存値は不変。税額は都度算出）。
+   回帰テスト `tests/Feature/Housing/HousingBuildingTaxRoundingTest.php` で固定
+   （3 モデルそれぞれを `round` に戻す変異 + 手書き float `floor` の変異、計 4 通りで赤になることを実測済み。
+   ⚠ 値テストだけでは float `floor` を検出できないので、`ConsumptionTax::tax()` を経由していることを
+   **コメントを除いたコード**で確認する構造テストを併置している）。
 
 3. **仲介手数料の消費税は扱わない。** 仲介手数料自体は課税売上だが、
    今回の要件（買取再販の土地/建物内訳）の範囲外。`brokerage_fee` は現状のまま。
