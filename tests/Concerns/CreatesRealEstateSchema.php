@@ -135,7 +135,10 @@ trait CreatesRealEstateSchema
             $t->unsignedBigInteger('lot_id')->nullable();
             $t->unsignedBigInteger('buyer_id')->nullable();
             $t->string('buyer_name', 100)->nullable();
-            $t->integer('contract_amount')->nullable();
+            $t->integer('contract_amount_land')->nullable();
+            $t->integer('contract_amount_building')->nullable();
+            $t->decimal('tax_rate', 5, 2)->default(10.00);
+            $t->integer('tax_amount')->nullable();
             $t->integer('cost_amount')->nullable();
             $t->integer('gross_profit')->nullable();
             $t->integer('brokerage_selling_price')->nullable();

@@ -14,6 +14,7 @@ use App\Models\ReProcurement;
 use App\Models\ReProject;
 use App\Models\ReProjectLot;
 use App\Models\User;
+use App\Support\Settings;
 use Illuminate\Http\Request;
 
 class ReContractController extends Controller
@@ -73,7 +74,9 @@ class ReContractController extends Controller
             return !$c->contract_type->isBrokerage();
         });
         $salesCount       = $salesContracts->count();
-        $salesAmountTotal = (int) $salesContracts->sum('contract_amount');
+        // ⚠ sum('カラム名') はカラムが消えても例外を出さず 0 を返す。
+        //    合計メソッド経由にして参照箇所を 1 つに寄せる（AmountAggregationNotZeroTest が固定）
+        $salesAmountTotal = (int) $salesContracts->sum(fn ($c) => (int) $c->getContractAmountTotal());
         $costTotal        = (int) $salesContracts->sum('cost_amount');
         $profitTotal      = (int) $salesContracts->sum('gross_profit');
         $profitRate       = $salesAmountTotal > 0 ? round(($profitTotal / $salesAmountTotal) * 100, 1) : 0;
@@ -114,7 +117,11 @@ class ReContractController extends Controller
         // 販売中の仕入れ案件
         $procurements = ReProcurement::where('status', ProcurementStatus::Selling->value)
             ->orderBy('procurement_code')
-            ->get(['id', 'procurement_code', 'property_name', 'address']);
+            ->get(['id', 'procurement_code', 'property_name', 'address', 'property_type']);
+
+        // 建物欄を出すかは「紐づく仕入れ案件の物件種別」で決まる（設計書 §4.2）。
+        // ⚠ Blade で多行配列を @@json に渡すと壊れるので、必ずここで組んで単一変数で渡す（Bug #26）
+        $procurementLandOnly = $this->landOnlyMap($procurements);
 
         // 販売中の分譲地
         $projects = ReProject::where('status', ProjectStatus::Selling->value)
@@ -129,7 +136,7 @@ class ReContractController extends Controller
         $staffUsers = User::assignable()->orderBy('name')->get(['id', 'name']);
 
         return view('realestate.contracts.create', compact(
-            'procurements', 'projects', 'buyers', 'staffUsers'
+            'procurements', 'projects', 'buyers', 'staffUsers', 'procurementLandOnly'
         ));
     }
 
@@ -153,7 +160,7 @@ class ReContractController extends Controller
             $validated['gross_profit'] = (int) ($validated['brokerage_fee'] ?? 0);
         } else {
             $validated['status'] = ReContractStatus::Contracted->value;
-            $validated['gross_profit'] = (int) ($validated['contract_amount'] ?? 0) - (int) ($validated['cost_amount'] ?? 0);
+            $validated['gross_profit'] = $this->grossProfitFrom($validated);
         }
 
         $contract = ReContract::create($validated);
@@ -197,7 +204,7 @@ class ReContractController extends Controller
             $proc = $contract->procurement;
             $proc->load('costs.costItem');
             $costBreakdown = [
-                'purchase_price' => $proc->purchase_price,
+                'purchase_price' => $proc->getPurchasePriceTotal(),
                 'costs' => $proc->costs->map(function ($c) {
                     return [
                         'name' => $c->costItem ? $c->costItem->name : '（削除済み）',
@@ -243,7 +250,9 @@ class ReContractController extends Controller
             if ($contract->procurement_id) {
                 $q->orWhere('id', $contract->procurement_id);
             }
-        })->orderBy('procurement_code')->get(['id', 'procurement_code', 'property_name', 'address']);
+        })->orderBy('procurement_code')->get(['id', 'procurement_code', 'property_name', 'address', 'property_type']);
+
+        $procurementLandOnly = $this->landOnlyMap($procurements);
 
         // 販売中のPJ（+ 現在選択中も含む）
         $projects = ReProject::where(function ($q) use ($contract) {
@@ -281,7 +290,7 @@ class ReContractController extends Controller
         $staffUsers = User::assignableWith($contract->staff_user_id);
 
         return view('realestate.contracts.edit', compact(
-            'contract', 'procurements', 'projects', 'lots', 'buyers', 'staffUsers'
+            'contract', 'procurements', 'projects', 'lots', 'buyers', 'staffUsers', 'procurementLandOnly'
         ));
     }
 
@@ -298,7 +307,7 @@ class ReContractController extends Controller
         if ($contractType->isBrokerage()) {
             $validated['gross_profit'] = (int) ($validated['brokerage_fee'] ?? 0);
         } else {
-            $validated['gross_profit'] = (int) ($validated['contract_amount'] ?? 0) - (int) ($validated['cost_amount'] ?? 0);
+            $validated['gross_profit'] = $this->grossProfitFrom($validated);
         }
 
         // 分譲地: 区画変更の場合、旧区画を販売中に戻して新区画をsoldに
@@ -440,7 +449,7 @@ class ReContractController extends Controller
         return response()->json([
             'property_name'  => $procurement->property_name,
             'address'        => $procurement->address,
-            'purchase_price' => (int) $procurement->purchase_price,
+            'purchase_price' => (int) $procurement->getPurchasePriceTotal(),
             'costs_total'    => $costsTotal,
             // 物件購入費は ReProcurement::syncPropertyPurchaseCost() で costs に
             // 自動同期されるため、cost_amount は costs 合計のみ（二重計上防止）。
@@ -487,6 +496,34 @@ class ReContractController extends Controller
     // プライベートメソッド
     // ================================================================
 
+    /**
+     * 仕入れ案件 id => 土地のみか のマップ。
+     * Alpine が建物欄の出し分けに使う（fetch を介さないので old() 復元後も正しく開く）。
+     *
+     * @param  \Illuminate\Support\Collection<int, ReProcurement>  $procurements
+     * @return array<string, bool>
+     */
+    private function landOnlyMap($procurements): array
+    {
+        $map = [];
+        foreach ($procurements as $p) {
+            $map[(string) $p->id] = $p->property_type->isLandOnly();
+        }
+        return $map;
+    }
+
+    /**
+     * 粗利額（税抜合計 − 原価）。
+     *
+     * ⚠ 消費税は算入しない。仕入れの消費税は仕入税額控除の対象で粗利に影響しない（設計書 §2）
+     */
+    private function grossProfitFrom(array $validated): int
+    {
+        return (int) ($validated['contract_amount_land'] ?? 0)
+             + (int) ($validated['contract_amount_building'] ?? 0)
+             - (int) ($validated['cost_amount'] ?? 0);
+    }
+
     private function validateContract(Request $request, ReContractType $contractType): array
     {
         $rules = [
@@ -499,7 +536,10 @@ class ReContractController extends Controller
             $rules['procurement_id']  = 'required|exists:re_procurements,id';
             $rules['contract_date']   = 'required|date';
             $rules['buyer_id']        = 'required|exists:buyers,id';
-            $rules['contract_amount'] = 'required|integer|min:0';
+            $rules['contract_amount_land']     = 'required|integer|min:0';
+            $rules['contract_amount_building'] = 'nullable|integer|min:0';
+            $rules['tax_rate']                 = 'nullable|numeric|min:0|max:99.99';
+            $rules['tax_amount']               = 'nullable|integer|min:0';
             $rules['cost_amount']     = 'required|integer|min:0';
             $rules['property_name']   = 'required|string|max:200';
             $rules['address']         = 'nullable|string|max:300';
@@ -508,7 +548,7 @@ class ReContractController extends Controller
             $rules['lot_id']          = 'required|exists:re_project_lots,id';
             $rules['contract_date']   = 'required|date';
             $rules['buyer_id']        = 'required|exists:buyers,id';
-            $rules['contract_amount'] = 'required|integer|min:0';
+            $rules['contract_amount_land'] = 'required|integer|min:0';
             $rules['cost_amount']     = 'required|integer|min:0';
             $rules['property_name']   = 'required|string|max:200';
             $rules['address']         = 'nullable|string|max:300';
@@ -519,7 +559,12 @@ class ReContractController extends Controller
             $rules['brokerage_fee']           = 'nullable|integer|min:0';
         }
 
-        return $request->validate($rules);
+        $validated = $request->validate($rules);
+
+        // tax_rate は NOT NULL DEFAULT 10.00。欄を持たない種別でも必ず値を入れる
+        $validated['tax_rate'] = $validated['tax_rate'] ?? Settings::taxRate();
+
+        return $validated;
     }
 
     private function getCurrentFiscalYear(): int

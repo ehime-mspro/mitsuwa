@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\ReContractStatus;
 use App\Enums\ReContractType;
+use App\Support\ConsumptionTax;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -26,7 +27,10 @@ class ReContract extends Model
         'lot_id',
         'buyer_id',
         'buyer_name',
-        'contract_amount',
+        'contract_amount_land',
+        'contract_amount_building',
+        'tax_rate',
+        'tax_amount',
         'cost_amount',
         'gross_profit',
         'brokerage_selling_price',
@@ -43,7 +47,10 @@ class ReContract extends Model
             'contract_type'           => ReContractType::class,
             'status'                  => ReContractStatus::class,
             'contract_date'           => 'date',
-            'contract_amount'         => 'integer',
+            'contract_amount_land'     => 'integer',
+            'contract_amount_building' => 'integer',
+            'tax_rate'                 => 'decimal:2',
+            'tax_amount'               => 'integer',
             'cost_amount'             => 'integer',
             'gross_profit'            => 'integer',
             'brokerage_selling_price' => 'integer',
@@ -91,21 +98,82 @@ class ReContract extends Model
     }
 
     // ============================================================
+    // 金額（土地 / 建物 / 消費税）
+    //
+    // 合計カラムは持たない。都度算出する。消費税は建物価格にのみ掛かる。
+    // ============================================================
+
+    /** 契約金額合計（税抜: 土地 + 建物）。両方 null なら null */
+    public function getContractAmountTotal(): ?int
+    {
+        if ($this->contract_amount_land === null && $this->contract_amount_building === null) {
+            return null;
+        }
+        return (int) $this->contract_amount_land + (int) $this->contract_amount_building;
+    }
+
+    /**
+     * 建物消費税額。
+     *
+     * tax_amount に手入力があればそれを正とする（契約書の端数処理が
+     * 自動計算と一致しないことがあるため）。NULL なら建物 × 税率で自動計算。
+     */
+    public function getBuildingTax(): ?int
+    {
+        if ($this->tax_amount !== null) {
+            return (int) $this->tax_amount;
+        }
+        return ConsumptionTax::tax($this->contract_amount_building, $this->tax_rate);
+    }
+
+    /** 税込の契約金額合計 */
+    public function getContractAmountTotalWithTax(): ?int
+    {
+        $total = $this->getContractAmountTotal();
+        if ($total === null) {
+            return null;
+        }
+        return $total + (int) $this->getBuildingTax();
+    }
+
+    /**
+     * 建物価格欄を持つ契約か。
+     *
+     * ⚠ 契約種別では判定しない。物件種別（RealEstatePropertyType）は建物を持つものが 5 種
+     *    あるのに対し、販売の契約種別（ReContractType）は「中古マンション販売」「中古戸建販売」
+     *    の 2 種しかなく、テナントビル / アパート / 一棟売りマンションに当てはまる種別が無い。
+     *    契約種別で判定すると、それらを「仕入れ土地販売」で登録した瞬間に建物欄が消え、
+     *    建物価格と消費税を記録できなくなる（設計書 §4.2）。
+     *
+     * 仕入れ系契約は procurement_id が必須なので紐づけ先は必ず存在する。
+     * 分譲地販売・仲介は常に土地のみ。
+     */
+    public function hasBuilding(): bool
+    {
+        if ($this->contract_type->isProcurement()) {
+            return $this->procurement !== null
+                && ! $this->procurement->property_type->isLandOnly();
+        }
+        return false;
+    }
+
+    // ============================================================
     // アクセサ
     // ============================================================
 
     /**
-     * 粗利率（%）
+     * 粗利率（%）。分母は**税抜**の契約金額合計
      */
     public function getGrossProfitRateAttribute(): ?float
     {
-        if (!$this->contract_amount || $this->contract_amount == 0) {
+        $total = $this->getContractAmountTotal();
+        if (!$total) {
             return null;
         }
         if ($this->contract_type->isBrokerage()) {
             return null;
         }
-        return round(($this->gross_profit / $this->contract_amount) * 100, 1);
+        return round(($this->gross_profit / $total) * 100, 1);
     }
 
     /**
@@ -195,13 +263,16 @@ class ReContract extends Model
     }
 
     /**
-     * 粗利額自動計算
+     * 粗利額自動計算（税抜合計 − 原価）
+     *
+     * ⚠ 現状どこからも呼ばれていない（コントローラが $validated から直接組み立てるため）。
+     *    仕様の正本として合計ベースに合わせておく。
      */
     public function calculateGrossProfit(): int
     {
         if ($this->contract_type->isBrokerage()) {
             return (int) $this->brokerage_fee;
         }
-        return (int) $this->contract_amount - (int) $this->cost_amount;
+        return (int) $this->getContractAmountTotal() - (int) $this->cost_amount;
     }
 }

@@ -82,14 +82,15 @@ class AmountAggregationNotZeroTest extends TestCase
     public function test_contract_list_totals_are_not_zero(): void
     {
         $this->makeContract([
-            'contract_amount' => 30000000,
-            'cost_amount'     => 25000000,
-            'gross_profit'    => 5000000,
+            'contract_amount_land'     => 20000000,
+            'contract_amount_building' => 10000000,   // 建物を含めないと合計が 32,000,000 になり落ちる
+            'cost_amount'              => 25000000,
+            'gross_profit'             => 5000000,
         ]);
         $this->makeContract([
-            'contract_amount' => 12000000,
-            'cost_amount'     => 10000000,
-            'gross_profit'    => 2000000,
+            'contract_amount_land' => 12000000,
+            'cost_amount'          => 10000000,
+            'gross_profit'         => 2000000,
         ]);
 
         // fiscal_year=all で年度フィルタを外す（実行日に依存させない）
@@ -114,9 +115,10 @@ class AmountAggregationNotZeroTest extends TestCase
     public function test_contract_list_profit_rate_is_not_zero(): void
     {
         $this->makeContract([
-            'contract_amount' => 30000000,
-            'cost_amount'     => 25000000,
-            'gross_profit'    => 5000000,
+            'contract_amount_land'     => 20000000,
+            'contract_amount_building' => 10000000,
+            'cost_amount'              => 25000000,
+            'gross_profit'             => 5000000,
         ]);
 
         $response = $this->actingAs($this->executive())->get('/realestate/contracts?fiscal_year=all');

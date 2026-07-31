@@ -171,7 +171,7 @@ class ProjectSoldStatusTransitionTest extends TestCase
             'lot_id'          => $lot->id,
             'contract_date'   => '2026-07-22',
             'buyer_id'        => $buyer->id,
-            'contract_amount' => 20000000,
+            'contract_amount_land' => 20000000,
             'cost_amount'     => 15000000,
             'property_name'   => '分譲地PJ-001 1区画',
         ]);
@@ -196,7 +196,7 @@ class ProjectSoldStatusTransitionTest extends TestCase
             'lot_id'          => $lot1->id,
             'contract_date'   => '2026-07-22',
             'buyer_id'        => $buyer->id,
-            'contract_amount' => 20000000,
+            'contract_amount_land' => 20000000,
             'cost_amount'     => 15000000,
             'property_name'   => '分譲地PJ-001 1区画',
         ])->assertSessionHasNoErrors();
@@ -218,7 +218,7 @@ class ProjectSoldStatusTransitionTest extends TestCase
             'lot_id'          => $lot->id,
             'contract_date'   => '2026-07-22',
             'buyer_id'        => $buyer->id,
-            'contract_amount' => 20000000,
+            'contract_amount_land' => 20000000,
             'cost_amount'     => 15000000,
             'property_name'   => '分譲地PJ-001 1区画',
         ])->assertSessionHasNoErrors();

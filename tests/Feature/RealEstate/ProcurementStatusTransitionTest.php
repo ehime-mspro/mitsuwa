@@ -89,7 +89,7 @@ class ProcurementStatusTransitionTest extends TestCase
             'procurement_id'  => $procurement->id,
             'contract_date'   => '2026-07-21',
             'buyer_id'        => $buyer->id,
-            'contract_amount' => 30000000,
+            'contract_amount_land' => 30000000,
             'cost_amount'     => 25000000,
             'property_name'   => '松山市A土地',
         ]);
@@ -129,7 +129,7 @@ class ProcurementStatusTransitionTest extends TestCase
             'procurement_id'  => $procurementA->id,
             'contract_date'   => '2026-07-21',
             'buyer_id'        => $buyer->id,
-            'contract_amount' => 30000000,
+            'contract_amount_land' => 30000000,
             'cost_amount'     => 25000000,
             'property_name'   => '松山市A土地',
         ])->assertSessionHasNoErrors();
@@ -141,7 +141,7 @@ class ProcurementStatusTransitionTest extends TestCase
             'procurement_id'  => $procurementB->id,
             'contract_date'   => '2026-07-21',
             'buyer_id'        => $buyer->id,
-            'contract_amount' => 30000000,
+            'contract_amount_land' => 30000000,
             'cost_amount'     => 25000000,
             'property_name'   => '松山市B土地',
         ]);
@@ -171,7 +171,7 @@ class ProcurementStatusTransitionTest extends TestCase
             'procurement_id'  => $procurement->id,
             'contract_date'   => '2026-07-21',
             'buyer_id'        => $buyer->id,
-            'contract_amount' => 30000000,
+            'contract_amount_land' => 30000000,
             'cost_amount'     => 25000000,
             'property_name'   => '松山市A土地',
         ])->assertSessionHasNoErrors();
@@ -184,7 +184,7 @@ class ProcurementStatusTransitionTest extends TestCase
             'procurement_id'  => $procurement->id,
             'contract_date'   => '2026-07-21',
             'buyer_id'        => $buyer->id,
-            'contract_amount' => 31000000,
+            'contract_amount_land' => 31000000,
             'cost_amount'     => 25000000,
             'property_name'   => '松山市A土地',
         ]);
@@ -192,7 +192,7 @@ class ProcurementStatusTransitionTest extends TestCase
         $response->assertRedirect();
         $response->assertSessionHasNoErrors();
         $this->assertSame(ProcurementStatus::Sold, $procurement->fresh()->status);
-        $this->assertSame(31000000, $contract->fresh()->contract_amount);
+        $this->assertSame(31000000, $contract->fresh()->contract_amount_land);
     }
 
     /** T4: 契約を削除すると案件が販売中に戻る（誤登録を消したとき行方不明にしない） */
@@ -207,7 +207,7 @@ class ProcurementStatusTransitionTest extends TestCase
             'procurement_id'  => $procurement->id,
             'contract_date'   => '2026-07-21',
             'buyer_id'        => $buyer->id,
-            'contract_amount' => 30000000,
+            'contract_amount_land' => 30000000,
             'cost_amount'     => 25000000,
             'property_name'   => '松山市A土地',
         ])->assertSessionHasNoErrors();
@@ -282,7 +282,7 @@ class ProcurementStatusTransitionTest extends TestCase
             'procurement_id'  => $procurement->id,
             'contract_date'   => '2026-07-21',
             'buyer_id'        => $buyer->id,
-            'contract_amount' => 30000000,
+            'contract_amount_land' => 30000000,
             'cost_amount'     => 25000000,
             'property_name'   => '松山市A土地',
         ])->assertSessionHasNoErrors();
