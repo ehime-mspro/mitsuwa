@@ -449,7 +449,7 @@ class ConsumptionTax
 cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit --filter ConsumptionTaxTest
 ```
 
-Expected: `OK (11 tests, 33 assertions)`
+Expected: `OK (9 tests)`
 
 - [ ] **Step 5: 誤実装に変異させて赤になることを確認（テストの有効性の証明）**
 
@@ -485,7 +485,7 @@ Expected: `test_to_exclusive_uses_integer_division` が FAIL（`30000000` を期
 cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit --filter ConsumptionTaxTest && git diff --stat
 ```
 
-Expected: `OK (11 tests, 33 assertions)` かつ `git diff` に変異が残っていない（新規 2 ファイルのみ）
+Expected: `OK (9 tests)` かつ `git diff` に変異が残っていない（新規 2 ファイルのみ）
 
 - [ ] **Step 8: コミット**
 
@@ -2589,7 +2589,7 @@ class ContractAmountBreakdownTest extends TestCase
 cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit --filter ContractAmountBreakdownTest
 ```
 
-Expected: `OK (11 tests, 33 assertions)`
+Expected: `OK (9 tests)`
 
 ⚠ `test_gross_profit_is_calculated_from_pre_tax_total` が 500 で落ちるなら、
 `ReContractController` の `use App\Support\Settings;` 追加漏れを疑う。
