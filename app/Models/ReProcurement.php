@@ -288,6 +288,19 @@ class ReProcurement extends Model
 
     protected static function booted(): void
     {
+        // 仲介土地（土地のみ）に変更されたとき、建物側の列を明示的に null へ正規化する。
+        // ⚠ 画面は建物 input を :disabled にして送信しないが、Laravel の validated() は
+        //    未送信キーを結果に含めないため、update() では**旧値が DB に残る**。
+        //    合計メソッドは hasBuilding() を見ない単純加算なので、残った建物額が
+        //    合計・粗利・原価同期・ダッシュボードに混ざる。
+        static::saving(function (ReProcurement $procurement): void {
+            if ($procurement->property_type !== null && $procurement->property_type->isLandOnly()) {
+                $procurement->assessment_price_building     = null;
+                $procurement->purchase_price_building       = null;
+                $procurement->target_selling_price_building = null;
+            }
+        });
+
         static::saved(function (ReProcurement $procurement): void {
             // 査定価格・購入価格（土地・建物とも）が変更されたとき、または新規作成時のみ同期
             // ⚠ _building を書き忘れると、建物金額を変えても原価が同期されない（例外は出ない）

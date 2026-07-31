@@ -54,10 +54,20 @@ class ContractAmountBreakdownTest extends TestCase
         ], $extra));
     }
 
-    /** 合計・消費税・税込（tax_amount 未入力なら自動計算） */
+    /**
+     * 合計・消費税・税込（tax_amount 未入力なら自動計算）。
+     *
+     * ⚠ contract_type=ProcurementLand は isProcurement()=true のため、
+     *    procurement_id を紐付けないと hasBuilding() が false になり、
+     *    ReContract::booted() の saving フックが contract_amount_building を
+     *    null に正規化してしまう（実運用では procurement_id が必須なので
+     *    起こらない組み合わせだが、テストでは明示的に紐付けが要る）。
+     */
     public function test_totals_use_auto_calculated_tax_when_not_overridden(): void
     {
+        $procurement = $this->makeProcurement(RealEstatePropertyType::UsedHouse->value);
         $c = $this->makeContract([
+            'procurement_id'           => $procurement->id,
             'contract_amount_land'     => 20000000,
             'contract_amount_building' => 10000000,
             'tax_rate'                 => '10.00',
@@ -71,10 +81,14 @@ class ContractAmountBreakdownTest extends TestCase
     /**
      * tax_amount に値があればそれを正とする。
      * 契約書の端数処理が自動計算と一致しない場合に備えた手入力の上書き（設計書 §3.3）。
+     *
+     * ⚠ procurement_id を紐付ける理由は直前のテストの docblock を参照。
      */
     public function test_manual_tax_amount_overrides_auto_calculation(): void
     {
+        $procurement = $this->makeProcurement(RealEstatePropertyType::UsedHouse->value);
         $c = $this->makeContract([
+            'procurement_id'           => $procurement->id,
             'contract_amount_land'     => 20000000,
             'contract_amount_building' => 10000000,
             'tax_rate'                 => '10.00',
@@ -93,10 +107,14 @@ class ContractAmountBreakdownTest extends TestCase
      *    （null は false、999999 は true でどちらも変異前後で同じ結果になるため）。
      * ⚠ 実害: 契約書に消費税 0 円と書かれていても、自動計算値（建物 × 税率 = 1,000,000）で
      *    勝手に上書きされる。
+     * ⚠ procurement_id を紐付ける理由は test_totals_use_auto_calculated_tax_when_not_overridden
+     *    の docblock を参照。
      */
     public function test_manual_tax_amount_of_zero_is_not_treated_as_unset(): void
     {
+        $procurement = $this->makeProcurement(RealEstatePropertyType::UsedHouse->value);
         $c = $this->makeContract([
+            'procurement_id'           => $procurement->id,
             'contract_amount_land'     => 20000000,
             'contract_amount_building' => 10000000,
             'tax_rate'                 => '10.00',
@@ -235,5 +253,42 @@ class ContractAmountBreakdownTest extends TestCase
         ]);
 
         $this->assertFalse($contract->hasBuilding());
+    }
+
+    /**
+     * 紐づく仕入れ案件を「仲介土地」のものへ差し替えて保存すると、
+     * 建物・消費税額の列が null に正規化されること。
+     *
+     * ⚠ 正規化が無いと、契約額合計は「土地 + 残留建物」なのに
+     *    gross_profit は $validated から再計算されて「土地 − 原価」になり、
+     *    一覧で数字が食い違う。
+     */
+    public function test_switching_to_land_only_procurement_clears_building_columns(): void
+    {
+        $withBuilding = $this->makeProcurement(RealEstatePropertyType::UsedHouse->value);
+        $landOnly     = $this->makeProcurement(RealEstatePropertyType::BrokerageLand->value);
+
+        $c = $this->makeContract([
+            'contract_type'            => ReContractType::ProcurementHouse->value,
+            'procurement_id'           => $withBuilding->id,
+            'contract_amount_land'     => 20000000,
+            'contract_amount_building' => 10000000,
+            'tax_rate'                 => '10.00',
+            'tax_amount'               => 900000,
+        ]);
+
+        $this->assertTrue($c->hasBuilding());
+        $this->assertSame(30000000, $c->getContractAmountTotal());
+
+        // 建物欄が送信されない状態で、紐づけ先だけを土地のみの案件へ差し替える
+        $c = $c->fresh();
+        $c->update(['procurement_id' => $landOnly->id]);
+
+        $c = $c->fresh();
+        $this->assertFalse($c->hasBuilding());
+        $this->assertNull($c->contract_amount_building, '建物列が DB に残っている');
+        $this->assertNull($c->tax_amount, '消費税額の手入力が DB に残っている');
+        $this->assertSame(20000000, $c->getContractAmountTotal(), '合計に残留建物額が混ざっている');
+        $this->assertSame(20000000, $c->getContractAmountTotalWithTax());
     }
 }

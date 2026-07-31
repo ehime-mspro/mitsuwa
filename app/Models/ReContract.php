@@ -59,6 +59,30 @@ class ReContract extends Model
     }
 
     // ============================================================
+    // ライフサイクルフック
+    // ============================================================
+
+    /**
+     * 建物欄を持たない構成のとき、建物側の列を明示的に null へ正規化する。
+     *
+     * ⚠ 画面は建物 input を :disabled にして送信しないが、Laravel の validated() は
+     *    未送信キーを結果に含めないため、update() では**旧値が DB に残る**。
+     *    getContractAmountTotal() は hasBuilding() を見ない単純加算なので、
+     *    残った建物額が契約額合計・一覧・ダッシュボードに混ざる。
+     *    しかも gross_profit は $validated から再計算される（建物 0）ため、
+     *    「契約額」と「粗利」が食い違って表示される。
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (ReContract $contract): void {
+            if (! $contract->hasBuilding()) {
+                $contract->contract_amount_building = null;
+                $contract->tax_amount               = null;
+            }
+        });
+    }
+
+    // ============================================================
     // リレーション
     // ============================================================
 

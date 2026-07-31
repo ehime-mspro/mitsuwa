@@ -238,4 +238,37 @@ class ProcurementPriceBreakdownTest extends TestCase
         $this->assertSame('査定価格（土地）', __('validation.attributes.assessment_price_land'));
         $this->assertSame('購入価格（建物）', __('validation.attributes.purchase_price_building'));
     }
+
+    /**
+     * 物件種別を「仲介土地」に変更して保存すると、建物側の列が null に正規化されること。
+     *
+     * ⚠ 画面は建物 input を :disabled にして送信しないが、Laravel の validated() は
+     *    未送信キーを含めないため、正規化が無いと update() で**旧値が DB に残る**。
+     *    合計メソッドは hasBuilding() を見ないので、残った建物額が合計にも原価同期にも混ざる。
+     */
+    public function test_switching_to_land_only_clears_building_columns(): void
+    {
+        $p = $this->make([
+            'assessment_price_land'         => 10000000,
+            'assessment_price_building'     => 5000000,
+            'target_selling_price_land'     => 20000000,
+            'target_selling_price_building' => 10000000,
+        ]);
+
+        $this->assertSame(15000000, $p->getAssessmentPriceTotal());
+
+        // 建物欄が送信されない状態(=キーが無い)で物件種別だけを仲介土地に変える
+        $p = $p->fresh();
+        $p->update(['property_type' => RealEstatePropertyType::BrokerageLand->value]);
+
+        $p = $p->fresh();
+        $this->assertFalse($p->hasBuilding());
+        $this->assertNull($p->assessment_price_building, '建物列が DB に残っている');
+        $this->assertNull($p->target_selling_price_building);
+        $this->assertSame(10000000, $p->getAssessmentPriceTotal(), '合計に残留建物額が混ざっている');
+        $this->assertSame(20000000, $p->getTargetSellingPriceTotal());
+
+        // 原価同期も土地だけの額になること
+        $this->assertSame(10000000, (int) $p->costs()->first()->estimated_amount);
+    }
 }
