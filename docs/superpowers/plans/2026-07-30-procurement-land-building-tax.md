@@ -35,6 +35,9 @@
 | `Housing\PropertyController::procurementInfo()` の `target_selling_price` キーも**未消費** | 住宅事業の Blade は `effective_cost_total` / `postal_code` / `address` / `land_area_sqm` だけ読む。設計書どおり参照元を `_land` に直すが表示は変わらない |
 | 一覧の並び替え・フィルタに金額カラムは使われていない | `ProcurementListService` に `orderBy`/`sum` なし ＝ リネームの影響は表示のみ |
 | **SQLite では SQL の `sum()` も存在しない列で例外を出さない** | `SQLiteGrammar` が `wrapValue()` を上書きせず識別子が二重引用符になり、SQLite の「不明な識別子は文字列リテラル扱い」フォールバックに落ちる。実測: `SUM("missing_col")` → **0.0（例外なし）** / バッククォート版 → 例外。**テストでは SQL sum もコレクション sum と同じく静かに 0 になる**ので `AmountAggregationNotZeroTest` が唯一の防御 |
+| **同一 `ALTER` 文で `CHANGE` した新カラム名を `AFTER` で参照できる** | MySQL 8 は句を記述順に処理するため `ADD COLUMN x AFTER assessment_price_land` が同じ文の `CHANGE` で作られた名前を参照できる。2026-07-30 にローカル実 DB（MySQL 8）で Task 3 の SQL をそのまま流して成功を確認済み |
+| **ロールバック SQL が動きデータも保全される** | 同日、上記の適用直後に「ロールバック手順」の逆向き `CHANGE` + `DROP COLUMN` を実行し、既存行の値（査定 7,000,000 / 購入 null / 想定販売 13,000,000）が往復で無傷なことを実測。`_building` 側は空なので失われる値も無い |
+| **本番の実カラム型は `int NULL DEFAULT NULL`** | 2026-07-30 に本番参照で確認（`re_procurements` の 3 金額 / `re_contracts.contract_amount`）。Task 3 の SQL の `INT NULL` と一致。`tax_rate` / `tax_amount` は本番に未存在なので `ADD COLUMN` が衝突しない |
 | 仕入れ案件を HTTP POST で金額まで送るテストは存在しない | `SupplierSearchBackUrlTest` が空 POST するだけ ＝ リネーム中に赤くなる既存テストは限定的 |
 | worktree に `vendor` が無い | Task 0 で `composer install`。`.env` は**作らない**（保護ルールでブロックされるうえ不要）。`phpunit.xml` が sqlite `:memory:` を与えるので環境変数 `APP_KEY` を前置きするだけで phpunit も artisan も動く（2026-07-30 実測 373 tests green） |
 
