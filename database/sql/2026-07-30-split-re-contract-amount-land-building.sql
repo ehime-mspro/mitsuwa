@@ -11,12 +11,13 @@
 --   中古マンション販売 / 中古戸建販売 → 本改修の主対象
 --   仲介 → contract_amount を使わない（brokerage_fee 方式）ので実害なし
 --
--- 適用（ローカル）: php artisan tinker で DB::unprepared(file_get_contents('database/sql/…'))
+-- 適用（ローカル）: main repo の cwd で
+--   php artisan tinker --execute="DB::unprepared(file_get_contents('database/sql/2026-07-30-split-re-contract-amount-land-building.sql'));"
 -- 適用（本番）    : 実装プランの Task 9 の手順。要ユーザー明示承認
 -- ロールバック    : 逆向きの CHANGE + DROP COLUMN（データは失われない）
 
 ALTER TABLE `re_contracts`
   CHANGE `contract_amount` `contract_amount_land` INT NULL,
-  ADD COLUMN `contract_amount_building` INT NULL AFTER `contract_amount_land`,
-  ADD COLUMN `tax_rate`   DECIMAL(5,2) NOT NULL DEFAULT 10.00 AFTER `contract_amount_building`,
-  ADD COLUMN `tax_amount` INT NULL AFTER `tax_rate`;
+  ADD COLUMN `contract_amount_building` INT NULL COMMENT '契約額の建物分（円・税抜）' AFTER `contract_amount_land`,
+  ADD COLUMN `tax_rate`   DECIMAL(5,2) NOT NULL DEFAULT 10.00 COMMENT '消費税率（%）。契約ごとのスナップショット' AFTER `contract_amount_building`,
+  ADD COLUMN `tax_amount` INT NULL COMMENT '消費税額（円）。手入力の上書き値で、NULL なら建物×税率の自動計算を使う' AFTER `tax_rate`;
