@@ -207,7 +207,7 @@
                         </td>
                         <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 whitespace-nowrap">{{ $c->buyer_display_name ?: '—' }}</td>
                         <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-center whitespace-nowrap" style="font-variant-numeric: tabular-nums; font-weight: 600;">
-                            {{ $c->contract_amount !== null ? number_format($c->contract_amount) . '円' : '—' }}
+                            {{ $c->getContractAmountTotal() !== null ? number_format($c->getContractAmountTotal()) . '円' : '—' }}
                         </td>
                         <td class="px-4 py-3 border-b border-gray-200 text-sm text-center whitespace-nowrap" style="font-variant-numeric: tabular-nums; color: #047857; font-weight: 700;">
                             {{ $c->gross_profit !== null ? number_format($c->gross_profit) . '円' : '—' }}
