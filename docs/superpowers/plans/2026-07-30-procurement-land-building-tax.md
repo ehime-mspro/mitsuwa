@@ -34,6 +34,7 @@
 | `calculateGrossProfit()` は**デッドコード** | `grep -rn calculateGrossProfit app/ resources/ tests/` の結果は定義 1 件のみ。設計書どおり直すが呼ばれない |
 | `Housing\PropertyController::procurementInfo()` の `target_selling_price` キーも**未消費** | 住宅事業の Blade は `effective_cost_total` / `postal_code` / `address` / `land_area_sqm` だけ読む。設計書どおり参照元を `_land` に直すが表示は変わらない |
 | 一覧の並び替え・フィルタに金額カラムは使われていない | `ProcurementListService` に `orderBy`/`sum` なし ＝ リネームの影響は表示のみ |
+| **SQLite では SQL の `sum()` も存在しない列で例外を出さない** | `SQLiteGrammar` が `wrapValue()` を上書きせず識別子が二重引用符になり、SQLite の「不明な識別子は文字列リテラル扱い」フォールバックに落ちる。実測: `SUM("missing_col")` → **0.0（例外なし）** / バッククォート版 → 例外。**テストでは SQL sum もコレクション sum と同じく静かに 0 になる**ので `AmountAggregationNotZeroTest` が唯一の防御 |
 | 仕入れ案件を HTTP POST で金額まで送るテストは存在しない | `SupplierSearchBackUrlTest` が空 POST するだけ ＝ リネーム中に赤くなる既存テストは限定的 |
 | worktree に `vendor` が無い | Task 0 で `composer install`。`.env` は**作らない**（保護ルールでブロックされるうえ不要）。`phpunit.xml` が sqlite `:memory:` を与えるので環境変数 `APP_KEY` を前置きするだけで phpunit も artisan も動く（2026-07-30 実測 373 tests green） |
 
@@ -495,7 +496,11 @@ cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax &
 **Files:**
 - Test: `tests/Feature/RealEstate/AmountAggregationNotZeroTest.php`
 
-**なぜ最優先か:** リネーム方式の唯一の弱点は **`$collection->sum('contract_amount')` が、カラムが消えても例外を投げず 0 を返す**こと（Eloquent が未定義属性を null にするため）。SQL の `sum()` は落ちるがコレクション sum は黙る。`ReContractController:76` がまさにこれ。
+**なぜ最優先か:** リネーム方式の唯一の弱点は **金額集計が、カラムが消えても例外を投げず 0 を返す**こと。
+`$collection->sum('contract_amount')` は Eloquent が未定義属性を null にするため黙って 0 になり
+（`ReContractController:76` がまさにこれ）、**SQL の `sum()` もテスト環境（SQLite）では黙って 0 になる**
+（識別子が二重引用符でラップされ SQLite が文字列リテラルにフォールバックするため。Step 5 の実測を参照）。
+つまりテストで参照漏れを止められるのはこのテストだけ。
 
 **設計:** **現行カラム名で書いて green にしてから**リネームに進む。リネーム後に参照漏れが 1 箇所でも残れば、この 3 本が赤くなる（＝変異検出器として機能する）。
 
@@ -710,7 +715,24 @@ cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax &
 ```
 
 Expected: `test_dashboard_procurement_pipeline_total_is_not_zero` が FAIL
-（SQL の `sum()` なので `SQLSTATE… no such column` で落ちる。コレクション sum との挙動差がここで見える）
+（`Failed asserting that 0 is identical to 48000000.`）
+
+⚠ **当初プランは「SQL の `sum()` なので `SQLSTATE… no such column` で落ちる」と書いていたが、これは誤りだった**
+（2026-07-30 に実測で判明）。テストは SQLite で走り、Laravel の `SQLiteGrammar` は `wrapValue()` を
+上書きしないので識別子が**二重引用符**でラップされる（`MySqlGrammar` だけバッククォートに上書きしている）。
+SQLite は「二重引用符が既知の識別子に一致しないとき、黙って文字列リテラルとして解釈する」という
+MySQL 互換のフォールバックを持つため、`SUM("missing_col")` は**例外を出さず 0.0 を返す**。実測:
+
+```
+SUM("a")           => 300      （実在する列）
+SUM("missing_col") => 0.0      ← 例外なし
+SUM(`missing_col`) => SQLSTATE[HY000]: no such column: missing_col   （バッククォート＝MySQL 形式）
+```
+
+**帰結: テスト環境では SQL sum も「静かな 0」に縮退する。** 本番 MySQL なら `Unknown column` で
+落ちるが、**それはデプロイ後にしか分からない**。コレクション sum / SQL sum のどちらであれ
+参照漏れを止められるのはこの `AmountAggregationNotZeroTest` だけ ＝ 当初想定より重要。
+**Task 4 / 6 で「SQL の sum なら自然に守られる」と考えないこと。**
 
 - [ ] **Step 6: 変異を戻して green とクリーンな diff を確認**
 
