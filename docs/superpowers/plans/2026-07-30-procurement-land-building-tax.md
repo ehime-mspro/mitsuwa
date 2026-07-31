@@ -1704,6 +1704,10 @@ function procurementForm() {
 
         totalExcl: function(prefix) {
             var l = this.amountOf(prefix + 'Land');
+            // ⚠ 仲介土地に切り替えると建物欄は x-show で隠れ :disabled で送信もされないが、
+            //    Alpine の state には値が残る。ここでガードしないと「画面に見えている土地の額」と
+            //    「税抜合計」が食い違い、実際に保存される値とも合わなくなる
+            if (this.isLandOnly()) { return l; }
             var b = this.amountOf(prefix + 'BuildingExcl');
             if (l === null && b === null) { return null; }
             return (l || 0) + (b || 0);
