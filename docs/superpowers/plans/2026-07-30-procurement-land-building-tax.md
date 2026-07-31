@@ -2451,6 +2451,28 @@ class ContractAmountBreakdownTest extends TestCase
         $this->assertSame(30999999, $c->getContractAmountTotalWithTax());
     }
 
+    /**
+     * tax_amount = 0（消費税 0 円と明示）が「未入力」に化けないこと。
+     *
+     * ⚠ `!== null` を `if ($this->tax_amount)`（truthy 判定）に退行させると落ちる。
+     *    「null」「999999」の 2 パターンだけでは**この退行を検出できない**
+     *    （null は false、999999 は true でどちらも変異前後で同じ結果になるため）。
+     * ⚠ 実害: 契約書に消費税 0 円と書かれていても、自動計算値（建物 × 税率 = 1,000,000）で
+     *    勝手に上書きされる。
+     */
+    public function test_manual_tax_amount_of_zero_is_not_treated_as_unset(): void
+    {
+        $c = $this->makeContract([
+            'contract_amount_land'     => 20000000,
+            'contract_amount_building' => 10000000,
+            'tax_rate'                 => '10.00',
+            'tax_amount'               => 0,
+        ]);
+
+        $this->assertSame(0, $c->getBuildingTax());
+        $this->assertSame(30000000, $c->getContractAmountTotalWithTax());
+    }
+
     /** 土地のみなら消費税 0・税込＝税抜 */
     public function test_land_only_contract_has_no_tax(): void
     {
@@ -2589,7 +2611,7 @@ class ContractAmountBreakdownTest extends TestCase
 cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit --filter ContractAmountBreakdownTest
 ```
 
-Expected: `OK (9 tests)`
+Expected: `OK (10 tests)`
 
 ⚠ `test_gross_profit_is_calculated_from_pre_tax_total` が 500 で落ちるなら、
 `ReContractController` の `use App\Support\Settings;` 追加漏れを疑う。
@@ -3151,7 +3173,7 @@ cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax &
 APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit 2>&1 | tail -20
 ```
 
-Expected: `OK (405 tests, …)` で失敗 0（ベースライン 373 + 32 ＝ ConsumptionTax 11 / 集計 3 / 仕入れ内訳 9 / 契約内訳 9）
+Expected: `OK (408 tests, …)` で失敗 0（ベースライン 373 + 35 ＝ ConsumptionTax 11 / 集計 3 / 仕入れ内訳 11 / 契約内訳 10）
 
 - [ ] **Step 2: 旧カラム名が `re_procurements` / `re_contracts` の文脈に残っていないことを走査する**
 
