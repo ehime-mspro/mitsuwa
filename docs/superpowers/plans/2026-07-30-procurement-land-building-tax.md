@@ -39,6 +39,8 @@
 | **ロールバック SQL が動きデータも保全される** | 同日、上記の適用直後に「ロールバック手順」の逆向き `CHANGE` + `DROP COLUMN` を実行し、既存行の値（査定 7,000,000 / 購入 null / 想定販売 13,000,000）が往復で無傷なことを実測。`_building` 側は空なので失われる値も無い |
 | **本番の実カラム型は `int NULL DEFAULT NULL`** | 2026-07-30 に本番参照で確認（`re_procurements` の 3 金額 / `re_contracts.contract_amount`）。Task 3 の SQL の `INT NULL` と一致。`tax_rate` / `tax_amount` は本番に未存在なので `ADD COLUMN` が衝突しない |
 | **`wasRecentlyCreated` はフレームワークが一度もリセットしない** | `Model.php:129` の宣言（false）と `1420` の `performInsert()` 内の代入（true）だけで、`performUpdate()` にリセットが無い。**`create()` した同じインスタンスで `update()` しても true のまま**なので、`if (wasChanged([...]) \|\| $m->wasRecentlyCreated)` を守るテストは **`fresh()` で取り直さないと変異を検出できない**。2026-07-30 に Task 4 の変異テストで実際に踏み、`fresh()` の有無で検出可否が反転することを実測（プランのテストコードを訂正済み）|
+| **Laravel の `validated()` は未送信キーを結果に含めない** | `Validator::validated()` は `if ($value !== $missingValue)` で欠落キーをスキップする。**建物 input を `:disabled` にして送信しないと、`update($validated)` は DB の旧値をそのまま残す**。合計メソッドは `hasBuilding()` を見ない単純加算なので、残留した建物額が合計・粗利・原価同期・ダッシュボードに混ざる。→ Task 7b で `saving` フックによる正規化を追加 |
+| **本番の FK は `ON DELETE SET NULL`** | `fk_re_contracts_procurement` / `_project` / `_lot` / `_buyer` / `_staff` すべて（2026-07-30 本番実測）。`ProcurementController::destroy()` に契約のガードは無い。よって**仕入れ案件を削除すると契約の `procurement_id` が NULL になる**（該当契約が本番に 1 件実在）。「紐づけ不明」を「土地のみ」と同一視して正規化すると**記録済みの建物額・消費税額が失われる** |
 | 仕入れ案件を HTTP POST で金額まで送るテストは存在しない | `SupplierSearchBackUrlTest` が空 POST するだけ ＝ リネーム中に赤くなる既存テストは限定的 |
 | worktree に `vendor` が無い | Task 0 で `composer install`。`.env` は**作らない**（保護ルールでブロックされるうえ不要）。`phpunit.xml` が sqlite `:memory:` を与えるので環境変数 `APP_KEY` を前置きするだけで phpunit も artisan も動く（2026-07-30 実測 373 tests green） |
 
@@ -3160,6 +3162,87 @@ Expected: `OK (…)` で失敗 0
 ```bash
 cd /Users/masanori/site/manage/.claude/worktrees/procurement-land-building-tax && git add -A && git commit -m "feat(realestate): 契約画面に土地/建物内訳と消費税の入力・表示を追加する"
 ```
+
+---
+
+## Task 7b: 建物列の残留を正規化する（プラン外・レビューで発見）
+
+**Files:**
+- Modify: `app/Models/ReProcurement.php`（`booted()` に `saving` を追加）
+- Modify: `app/Models/ReContract.php`（`booted()` を新設）
+- Modify: `tests/Feature/RealEstate/ProcurementPriceBreakdownTest.php`（+1 テスト）
+- Modify: `tests/Feature/RealEstate/ContractAmountBreakdownTest.php`（+2 テスト）
+
+⚠ **これは当初プランに無い。Task 7 のレビュー中に見つかったデータ整合性の欠陥への対応。**
+
+### 欠陥
+
+`validated()` が未送信キーを含めないため、建物 input を `:disabled` にして隠すと
+`update($validated)` が**DB の旧値を残す**。物件種別を「仲介土地」に変えて保存しても
+`assessment_price_building` 等が残り、`getAssessmentPriceTotal()`（`hasBuilding()` を見ない単純加算）が
+過大な合計を返し、`syncPropertyPurchaseCost()` が過大な原価を同期する。
+契約側はさらに `gross_profit`（`$validated` から再計算＝建物 0）と契約額合計（建物込み）が食い違う。
+
+### 修正 — 書き込み側で正規化する
+
+読み取り側を `hasBuilding()` 対応にする案もあるが、DB に嘘の値が残り続けるので採らない（Bug #34 の教訓）。
+
+**`ReProcurement`**: `property_type` は NOT NULL で常に確定するので単純にガードできる:
+
+```php
+        static::saving(function (ReProcurement $procurement): void {
+            if ($procurement->property_type !== null && $procurement->property_type->isLandOnly()) {
+                $procurement->assessment_price_building     = null;
+                $procurement->purchase_price_building       = null;
+                $procurement->target_selling_price_building = null;
+            }
+        });
+```
+
+**`ReContract`**: ⚠ **`hasBuilding()` を条件に使ってはいけない。**
+`hasBuilding()` は「土地のみ」と「紐づけ不明（`procurement_id` が NULL）」を区別しない。
+本番の FK は `ON DELETE SET NULL` なので、仕入れ案件を削除すると既存契約の紐づけが外れる。
+そこで正規化すると**記録済みの建物額・消費税額が失われる**（本番に該当契約が 1 件実在）。
+**「土地のみと確定できたときだけ」消す**:
+
+```php
+    protected static function booted(): void
+    {
+        static::saving(function (ReContract $contract): void {
+            if ($contract->contract_type->isProcurement()) {
+                // ⚠ procurement_id が NULL なのは「土地のみ」ではなく「紐づけ不明」。
+                //    本番の FK は ON DELETE SET NULL なので、仕入れ案件を削除すると
+                //    既存契約の procurement_id が NULL になる。ここで消すと
+                //    記録済みの建物額・消費税額が失われる。
+                $procurement = $contract->procurement_id
+                    ? ReProcurement::find($contract->procurement_id)
+                    : null;
+
+                if ($procurement !== null && $procurement->property_type->isLandOnly()) {
+                    $contract->contract_amount_building = null;
+                    $contract->tax_amount               = null;
+                }
+
+                return;
+            }
+
+            // 分譲地販売・仲介は構造的に土地のみ（validate も建物欄を受け付けない）
+            $contract->contract_amount_building = null;
+            $contract->tax_amount               = null;
+        });
+    }
+```
+
+### テスト 3 本（いずれも変異で赤になることを実測済み）
+
+1. `ProcurementPriceBreakdownTest::test_switching_to_land_only_clears_building_columns`
+   — 物件種別を仲介土地に変えたら建物列が null になり、原価同期も土地だけの額になる
+2. `ContractAmountBreakdownTest::test_switching_to_land_only_procurement_clears_building_columns`
+   — 紐づけ先を土地のみの案件に差し替えたら建物列と `tax_amount` が null になる
+3. `ContractAmountBreakdownTest::test_dangling_procurement_does_not_wipe_building_columns`
+   — **`procurement_id` が NULL になっても建物額・消費税額を消さない**（`$procurement !== null &&` を外すと赤）
+
+⚠ **3 本目が無いと、②の修正がデータ消失を生む。** ①②だけ書いて満足しないこと。
 
 ---
 
