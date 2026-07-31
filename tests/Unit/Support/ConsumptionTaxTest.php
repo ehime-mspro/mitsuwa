@@ -49,15 +49,63 @@ class ConsumptionTaxTest extends TestCase
     }
 
     /**
-     * 往復で 1 円ずれることを**仕様として**固定する（設計書 §10-1）。
+     * 罠③: toExclusive を切り捨てに戻すと落ちる。
      *
-     * 税抜を正として保存する以上避けられない。契約側は tax_amount の手入力で実額に合わせられる。
+     * ユーザー報告の実例（2026-07-31）。税込 12,500,000 の税抜は 11,363,636.36… で、
+     * 切り捨てた 11,363,636 は税込に戻すと 12,499,999 と 1 円足りない。
+     * 切り上げた 11,363,637 なら 12,500,000 に戻る。
      */
-    public function test_round_trip_may_lose_one_yen(): void
+    public function test_to_exclusive_rounds_up(): void
     {
-        $excl = ConsumptionTax::toExclusive(33000001, '10.00');
-        $this->assertSame(30000000, $excl);
-        $this->assertSame(33000000, ConsumptionTax::toInclusive($excl, '10.00'));
+        $this->assertSame(11363637, ConsumptionTax::toExclusive(12500000, '10.00'));  // 切り捨てだと 11,363,636
+        $this->assertSame(30000001, ConsumptionTax::toExclusive(33000001, '10.00'));  // 切り捨てだと 30,000,000
+    }
+
+    /**
+     * 罠④: 「常に +1」の誤実装に変えると落ちる。
+     *
+     * 割り切れるときは足してはいけない。税込 11,000,000 の税抜はちょうど 10,000,000 で、
+     * 10,000,001 にすると税込が 11,000,001 になってしまう。
+     */
+    public function test_to_exclusive_does_not_add_one_when_divisible(): void
+    {
+        $this->assertSame(10000000, ConsumptionTax::toExclusive(11000000, '10.00'));
+        $this->assertSame(11000000, ConsumptionTax::toInclusive(10000000, '10.00'));
+    }
+
+    /**
+     * 到達可能な税込なら往復が**完全に一致**する。
+     *
+     * 掃引実測（1,000,000〜100,000,000）: 10% で 90.91% / 8% で 92.59% が一致し、
+     * 一致しなかったものは全件が下記の「到達不能な税込」だった。
+     */
+    public function test_round_trip_is_exact_when_reachable(): void
+    {
+        foreach ([12500000, 33000001, 11000000, 20009999, 32400000] as $inclusive) {
+            $excl = ConsumptionTax::toExclusive($inclusive, '10.00');
+            $this->assertSame(
+                $inclusive,
+                ConsumptionTax::toInclusive($excl, '10.00'),
+                "税込 {$inclusive} の往復が一致しない"
+            );
+        }
+    }
+
+    /**
+     * **どの税抜からも作れない税込が構造的に存在する**ことを仕様として固定する。
+     *
+     * 税額を切り捨てる以上 incl(E) = E + floor(E × 税率) は E が 1 増えるごとに 1 か 2 増えるため、
+     * 飛ばされる値が出る（10% で 11 分の 1）。丸め方向を変えても位置が動くだけで消せない。
+     * ⚠ 本番の建売物件 JG余戸南2号地がこれに該当する（2026-07-31 実測）。
+     */
+    public function test_some_inclusive_amounts_are_unreachable(): void
+    {
+        $this->assertSame(20009999, ConsumptionTax::toInclusive(18190909, '10.00'));
+        $this->assertSame(20010001, ConsumptionTax::toInclusive(18190910, '10.00'));
+
+        // 間の 20,010,000 を作れる税抜は無い。切り上げは「超えない最小」ではなく直上を返す
+        $this->assertSame(18190910, ConsumptionTax::toExclusive(20010000, '10.00'));
+        $this->assertSame(20010001, ConsumptionTax::toInclusive(18190910, '10.00'));
     }
 
     /** 税率 8% / 0% でも整数演算が破れない */
@@ -133,7 +181,7 @@ class ConsumptionTaxTest extends TestCase
         $max = 2147483647;
 
         $this->assertSame(2147268898, ConsumptionTax::tax($max, '99.99'));
-        $this->assertSame(1073795513, ConsumptionTax::toExclusive($max, '99.99'));
+        $this->assertSame(1073795514, ConsumptionTax::toExclusive($max, '99.99')); // 切り捨てだと 1,073,795,513
         $this->assertSame($max, ConsumptionTax::toInclusive($max, '0.00'));
     }
 }

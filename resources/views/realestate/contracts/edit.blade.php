@@ -328,12 +328,14 @@ function contractEditForm() {
             this.calcProfit();
         },
 
+        // 税込 → 税抜は切り上げ。切り捨てると税込に戻したとき 1 円足りなくなる
+        // （12,500,000 → 11,363,636 → 12,499,999）。ConsumptionTax::toExclusive() と同じ規則
         onBuildingInclInput: function(value) {
             this.amountBuildingIncl = value;
             var i = this.amountOf('amountBuildingIncl');
             this.amountBuildingExcl = i === null
                 ? ''
-                : String(Math.floor(i * 10000 / (10000 + this.taxBp())));
+                : String(Math.ceil(i * 10000 / (10000 + this.taxBp())));
             this.calcProfit();
         },
 
