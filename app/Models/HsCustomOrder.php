@@ -332,7 +332,7 @@ class HsCustomOrder extends Model
             return $this->projectLot->selling_price;
         }
         if ($this->land_source_type === HousingLandSourceType::Procurement && $this->procurement) {
-            return $this->procurement->target_selling_price;
+            return $this->procurement->target_selling_price_land;
         }
         return null;
     }

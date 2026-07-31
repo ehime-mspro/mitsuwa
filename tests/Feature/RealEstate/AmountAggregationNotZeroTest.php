@@ -134,15 +134,18 @@ class AmountAggregationNotZeroTest extends TestCase
      */
     public function test_dashboard_procurement_pipeline_total_is_not_zero(): void
     {
+        // 建物込みで 40,000,000。土地だけ数えると 30,000,000 になり合計が 38,000,000 で落ちる
         $this->makeProcurement('P-001', ProcurementStatus::Selling->value, [
-            'target_selling_price' => 40000000,
+            'target_selling_price_land'     => 30000000,
+            'target_selling_price_building' => 10000000,
+            'tax_rate'                      => '10.00',
         ]);
         $this->makeProcurement('P-002', ProcurementStatus::Assessment->value, [
-            'target_selling_price' => 8000000,
+            'target_selling_price_land' => 8000000,
         ]);
         // 販売済は除外される（既存仕様）。除外が効いていることも同時に見る
         $this->makeProcurement('P-003', ProcurementStatus::Sold->value, [
-            'target_selling_price' => 99000000,
+            'target_selling_price_land' => 99000000,
         ]);
 
         $method = new \ReflectionMethod(DashboardController::class, 'aggregateProcurementStats');
@@ -150,5 +153,7 @@ class AmountAggregationNotZeroTest extends TestCase
 
         $this->assertSame(2, $result['in_progress_count']);
         $this->assertSame(48000000, $result['target_total']);
+        // 建物 10,000,000 の消費税 1,000,000 が税込側にだけ乗る
+        $this->assertSame(49000000, $result['target_total_incl']);
     }
 }

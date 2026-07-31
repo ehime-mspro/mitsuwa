@@ -435,7 +435,7 @@ class PropertyController extends Controller
             'address'              => $procurement->address,
             'land_area_sqm'        => $procurement->land_area_sqm ? (float) $procurement->land_area_sqm : null,
             'effective_cost_total' => $procurement->getEffectiveCostTotal(),
-            'target_selling_price' => $procurement->target_selling_price,
+            'target_selling_price' => $procurement->target_selling_price_land,
         ]);
     }
 

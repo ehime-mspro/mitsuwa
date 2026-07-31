@@ -95,8 +95,8 @@ class ProcurementListWithProjectsTest extends TestCase
     public function test_row_from_procurement_maps_fields(): void
     {
         $p = $this->makeProcurement('PRC-001', [
-            'purchase_price'       => 30000000,
-            'target_selling_price' => 40000000,
+            'purchase_price_land'       => 30000000,
+            'target_selling_price_land' => 40000000,
             'latitude'             => 33.8416,
             'longitude'            => 132.7657,
         ]);

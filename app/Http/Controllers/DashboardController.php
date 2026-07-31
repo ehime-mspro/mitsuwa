@@ -721,12 +721,18 @@ class DashboardController extends Controller
             ProcurementStatus::Sold->value,
         ]);
 
-        $count        = (clone $query)->count();
-        $targetTotal  = (int) (clone $query)->sum('target_selling_price');
+        // 税抜・税込とも計算を ConsumptionTax に寄せるため、SQL の SUM ではなくモデル経由で集計する。
+        // 対象は「進行中の仕入れ案件」だけで件数が小さい（2026-07-30 本番実測 12 件）。
+        $items = (clone $query)->get([
+            'target_selling_price_land',
+            'target_selling_price_building',
+            'tax_rate',
+        ]);
 
         return [
-            'in_progress_count' => $count,
-            'target_total'      => $targetTotal,
+            'in_progress_count' => $items->count(),
+            'target_total'      => (int) $items->sum(fn ($p) => (int) $p->getTargetSellingPriceTotal()),
+            'target_total_incl' => (int) $items->sum(fn ($p) => (int) $p->getTargetSellingPriceTotalWithTax()),
         ];
     }
 

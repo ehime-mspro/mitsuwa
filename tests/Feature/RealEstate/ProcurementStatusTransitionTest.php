@@ -255,10 +255,10 @@ class ProcurementStatusTransitionTest extends TestCase
     public function test_executive_dashboard_pipeline_excludes_sold(): void
     {
         $selling = $this->makeProcurement('P-001', 'selling');
-        $selling->update(['target_selling_price' => 10000000]);
+        $selling->update(['target_selling_price_land' => 10000000]);
 
         $sold = $this->makeProcurement('P-002', 'sold');
-        $sold->update(['target_selling_price' => 99000000]);
+        $sold->update(['target_selling_price_land' => 99000000]);
 
         // aggregateProcurementStats() は private。/dashboard/executive を丸ごと叩くと
         // 5 事業分のテーブルが要るため、対象メソッドだけを Reflection で呼ぶ

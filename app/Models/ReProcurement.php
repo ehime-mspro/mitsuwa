@@ -8,6 +8,7 @@ use App\Enums\RealEstateTransactionType;
 use App\Models\ReCostItem;
 use App\Models\ReProcurementCost;
 use App\Support\AreaConverter;
+use App\Support\ConsumptionTax;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -39,9 +40,13 @@ class ReProcurement extends Model
         'floor_area_ratio',
         'supplier_id',
         'info_obtained_date',
-        'assessment_price',
-        'purchase_price',
-        'target_selling_price',
+        'assessment_price_land',
+        'assessment_price_building',
+        'purchase_price_land',
+        'purchase_price_building',
+        'target_selling_price_land',
+        'target_selling_price_building',
+        'tax_rate',
         'contract_date',
         'settlement_date',
         'notes',
@@ -61,9 +66,13 @@ class ReProcurement extends Model
             'building_area_sqm'   => 'decimal:2',
             'building_coverage'   => 'integer',
             'floor_area_ratio'    => 'integer',
-            'assessment_price'    => 'integer',
-            'purchase_price'      => 'integer',
-            'target_selling_price'=> 'integer',
+            'assessment_price_land'         => 'integer',
+            'assessment_price_building'     => 'integer',
+            'purchase_price_land'           => 'integer',
+            'purchase_price_building'       => 'integer',
+            'target_selling_price_land'     => 'integer',
+            'target_selling_price_building' => 'integer',
+            'tax_rate'                      => 'decimal:2',
             'info_obtained_date'  => 'date',
             'contract_date'       => 'date',
             'settlement_date'     => 'date',
@@ -115,6 +124,91 @@ class ReProcurement extends Model
     // ヘルパー
     // ============================================================
 
+    // ============================================================
+    // 金額（土地 / 建物 / 消費税）
+    //
+    // 合計カラムは持たない。都度算出する（派生カラムの stale 化を作らないため）。
+    // 消費税は建物価格にのみ掛かる（土地の譲渡は非課税）。
+    // ============================================================
+
+    /** 査定価格合計（税抜: 土地 + 建物） */
+    public function getAssessmentPriceTotal(): ?int
+    {
+        return $this->sumExcl($this->assessment_price_land, $this->assessment_price_building);
+    }
+
+    /** 購入価格合計（税抜: 土地 + 建物） */
+    public function getPurchasePriceTotal(): ?int
+    {
+        return $this->sumExcl($this->purchase_price_land, $this->purchase_price_building);
+    }
+
+    /** 想定販売価格合計（税抜: 土地 + 建物） */
+    public function getTargetSellingPriceTotal(): ?int
+    {
+        return $this->sumExcl($this->target_selling_price_land, $this->target_selling_price_building);
+    }
+
+    /** 査定の建物消費税額（表示専用。原価にも粗利にも算入しない） */
+    public function getAssessmentBuildingTax(): ?int
+    {
+        return ConsumptionTax::tax($this->assessment_price_building, $this->tax_rate);
+    }
+
+    /** 購入の建物消費税額（表示専用。仕入税額控除の対象なので粗利に影響しない） */
+    public function getPurchaseBuildingTax(): ?int
+    {
+        return ConsumptionTax::tax($this->purchase_price_building, $this->tax_rate);
+    }
+
+    /** 想定販売の建物消費税額 */
+    public function getTargetSellingBuildingTax(): ?int
+    {
+        return ConsumptionTax::tax($this->target_selling_price_building, $this->tax_rate);
+    }
+
+    public function getAssessmentPriceTotalWithTax(): ?int
+    {
+        return $this->addTax($this->getAssessmentPriceTotal(), $this->getAssessmentBuildingTax());
+    }
+
+    public function getPurchasePriceTotalWithTax(): ?int
+    {
+        return $this->addTax($this->getPurchasePriceTotal(), $this->getPurchaseBuildingTax());
+    }
+
+    public function getTargetSellingPriceTotalWithTax(): ?int
+    {
+        return $this->addTax($this->getTargetSellingPriceTotal(), $this->getTargetSellingBuildingTax());
+    }
+
+    /** 建物価格欄を持つ物件種別か（仲介土地は土地のみ） */
+    public function hasBuilding(): bool
+    {
+        return ! $this->property_type->isLandOnly();
+    }
+
+    /**
+     * 土地・建物の税抜合計。
+     * **両方 null のときだけ null** を返す（画面の「—」表示を維持するため）。
+     * 片方だけ入っていれば 0 とみなして合算する。
+     */
+    private function sumExcl(?int $land, ?int $building): ?int
+    {
+        if ($land === null && $building === null) {
+            return null;
+        }
+        return (int) $land + (int) $building;
+    }
+
+    private function addTax(?int $total, ?int $tax): ?int
+    {
+        if ($total === null) {
+            return null;
+        }
+        return $total + (int) $tax;
+    }
+
     /**
      * 原価合計（採用額: 確定額優先、なければ見込み額）
      */
@@ -144,18 +238,22 @@ class ReProcurement extends Model
     }
 
     /**
-     * 粗利見込み（想定販売価格 − 原価合計採用額）
+     * 粗利見込み（想定販売価格の**税抜**合計 − 原価合計採用額）
+     *
+     * ⚠ 消費税は算入しない。査定・購入とも税抜合計が原価「物件購入費」に同期されるため、
+     *    税抜同士の引き算になる（設計書 §2）。
      */
     public function getExpectedProfit(): ?int
     {
-        if ($this->target_selling_price === null) {
+        $target = $this->getTargetSellingPriceTotal();
+        if ($target === null) {
             return null;
         }
         $costTotal = $this->getEffectiveCostTotal();
         if ($costTotal === 0 && $this->costs->isEmpty()) {
             return null;
         }
-        return $this->target_selling_price - $costTotal;
+        return $target - $costTotal;
     }
 
     /**
@@ -191,8 +289,12 @@ class ReProcurement extends Model
     protected static function booted(): void
     {
         static::saved(function (ReProcurement $procurement): void {
-            // 査定価格・購入価格が変更されたとき、または新規作成時のみ同期
-            if ($procurement->wasChanged(['assessment_price', 'purchase_price'])
+            // 査定価格・購入価格（土地・建物とも）が変更されたとき、または新規作成時のみ同期
+            // ⚠ _building を書き忘れると、建物金額を変えても原価が同期されない（例外は出ない）
+            if ($procurement->wasChanged([
+                    'assessment_price_land', 'assessment_price_building',
+                    'purchase_price_land',   'purchase_price_building',
+                ])
                 || $procurement->wasRecentlyCreated) {
                 $procurement->syncPropertyPurchaseCost();
             }
@@ -207,8 +309,9 @@ class ReProcurement extends Model
      */
     public function syncPropertyPurchaseCost(): void
     {
-        $assessment = $this->assessment_price !== null ? (int) $this->assessment_price : null;
-        $purchase   = $this->purchase_price   !== null ? (int) $this->purchase_price   : null;
+        // 税抜の土地＋建物合計を原価に同期する（消費税は原価に算入しない）
+        $assessment = $this->getAssessmentPriceTotal();
+        $purchase   = $this->getPurchasePriceTotal();
 
         if ($assessment === null && $purchase === null) {
             return;

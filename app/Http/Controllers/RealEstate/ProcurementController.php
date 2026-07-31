@@ -13,6 +13,7 @@ use App\Models\ReProcurementCost;
 use App\Models\ZoningType;
 use App\Services\RealEstate\ProcurementListRow;
 use App\Services\RealEstate\ProcurementListService;
+use App\Support\Settings;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -407,7 +408,7 @@ class ProcurementController extends Controller
         $transactionTypes = implode(',', array_column(RealEstateTransactionType::cases(), 'value'));
         $statuses = implode(',', array_column(ProcurementStatus::cases(), 'value'));
 
-        return $request->validate([
+        $validated = $request->validate([
             'property_type'       => "required|in:{$propertyTypes}",
             'transaction_type'    => "required|in:{$transactionTypes}",
             'status'              => "required|in:{$statuses}",
@@ -425,16 +426,29 @@ class ProcurementController extends Controller
             'floor_area_ratio'    => 'nullable|numeric|min:0|max:999.99',
             'supplier_id'         => 'nullable|exists:re_suppliers,id',
             'info_obtained_date'  => 'nullable|date',
-            'assessment_price'    => 'nullable|integer|min:0',
-            'purchase_price'      => 'nullable|integer|min:0',
-            'target_selling_price'=> 'nullable|integer|min:0',
+            'assessment_price_land'         => 'nullable|integer|min:0',
+            'assessment_price_building'     => 'nullable|integer|min:0',
+            'purchase_price_land'           => 'nullable|integer|min:0',
+            'purchase_price_building'       => 'nullable|integer|min:0',
+            'target_selling_price_land'     => 'nullable|integer|min:0',
+            'target_selling_price_building' => 'nullable|integer|min:0',
+            'tax_rate'                      => 'nullable|numeric|min:0|max:99.99',
             'contract_date'       => 'nullable|date',
             'settlement_date'     => 'nullable|date',
             'notes'               => 'nullable|string|max:5000',
         ], [], [
             // 画面ラベルに合わせる（lang/ja/validation.php の既定は「住所」）
             'address' => '所在地',
+            // グローバルの target_selling_price_building は建売の「建物予定販売価格」。
+            // attributes はアプリ全体で 1 つのマップしか持てないので、
+            // 仕入れ案件だけ第 3 引数で上書きする（Bug #37。第 2 引数は messages）
+            'target_selling_price_building' => '想定販売価格（建物）',
         ]);
+
+        // tax_rate は NOT NULL DEFAULT 10.00。欄が空でも必ず値を入れる
+        $validated['tax_rate'] = $validated['tax_rate'] ?? Settings::taxRate();
+
+        return $validated;
     }
 
     /**

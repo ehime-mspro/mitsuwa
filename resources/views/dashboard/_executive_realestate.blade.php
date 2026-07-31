@@ -76,6 +76,9 @@
                             <span class="kpi-row-value">{{ number_format($procurement['target_total']) }}</span>
                             <span class="kpi-row-unit">円</span>
                         </div>
+                        @if($procurement['target_total_incl'] !== $procurement['target_total'])
+                            <div class="text-xs text-gray-500">税込 {{ number_format($procurement['target_total_incl']) }}円</div>
+                        @endif
                     </div>
                 </div>
             </div>

@@ -96,9 +96,13 @@ trait CreatesRealEstateSchema
             $t->decimal('floor_area_ratio', 5, 2)->nullable();
             $t->unsignedBigInteger('supplier_id')->nullable();
             $t->date('info_obtained_date')->nullable();
-            $t->integer('assessment_price')->nullable();
-            $t->integer('purchase_price')->nullable();
-            $t->integer('target_selling_price')->nullable();
+            $t->integer('assessment_price_land')->nullable();
+            $t->integer('assessment_price_building')->nullable();
+            $t->integer('purchase_price_land')->nullable();
+            $t->integer('purchase_price_building')->nullable();
+            $t->integer('target_selling_price_land')->nullable();
+            $t->integer('target_selling_price_building')->nullable();
+            $t->decimal('tax_rate', 5, 2)->default(10.00);
             $t->date('contract_date')->nullable();
             $t->date('settlement_date')->nullable();
             $t->text('notes')->nullable();
