@@ -5,7 +5,9 @@ namespace Tests\Feature\RealEstate;
 use App\Enums\ProcurementStatus;
 use App\Enums\RealEstatePropertyType;
 use App\Enums\RealEstateTransactionType;
+use App\Enums\UserRole;
 use App\Models\ReProcurement;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\CreatesRealEstateSchema;
 use Tests\TestCase;
@@ -192,5 +194,48 @@ class ProcurementPriceBreakdownTest extends TestCase
         // 査定 0 円でも原価同期は走る（早期 return しない）
         $this->assertNotNull($p->costs()->first(), '査定 0 円でも「物件購入費」の原価行が作られること');
         $this->assertSame(0, (int) $p->costs()->first()->estimated_amount);
+    }
+
+    private function executive(): User
+    {
+        return User::factory()->create([
+            'role' => UserRole::Executive->value,
+            'must_change_password' => false,
+        ]);
+    }
+
+    /**
+     * 項目名（:attribute）が画面ラベルと一致すること（Bug #37）。
+     *
+     * ⚠ グローバルの target_selling_price_building は建売の「建物予定販売価格」のまま。
+     *    仕入れ案件だけコントローラの validate() 第 3 引数で上書きしている。
+     *    **片方だけ見ると「グローバルを書き換えただけ」でも緑になる**ので、両方を同時に見る。
+     */
+    public function test_building_price_attribute_is_overridden_for_procurement_only(): void
+    {
+        $this->assertSame('建物予定販売価格', __('validation.attributes.target_selling_price_building'));
+
+        $response = $this->actingAs($this->executive())
+            ->from('/realestate/procurements/create')
+            ->post('/realestate/procurements', [
+                'property_type'                 => RealEstatePropertyType::UsedHouse->value,
+                'transaction_type'              => RealEstateTransactionType::Purchase->value,
+                'status'                        => ProcurementStatus::Selling->value,
+                'property_name'                 => '松山市A物件',
+                'address'                       => '愛媛県松山市1-1-1',
+                'target_selling_price_building' => 'abc',
+            ]);
+
+        $response->assertSessionHasErrors([
+            'target_selling_price_building' => '想定販売価格（建物）は整数で入力してください。',
+        ]);
+    }
+
+    /** 土地側の項目名はグローバルで解決される */
+    public function test_land_price_attribute_comes_from_lang_file(): void
+    {
+        $this->assertSame('想定販売価格（土地）', __('validation.attributes.target_selling_price_land'));
+        $this->assertSame('査定価格（土地）', __('validation.attributes.assessment_price_land'));
+        $this->assertSame('購入価格（建物）', __('validation.attributes.purchase_price_building'));
     }
 }

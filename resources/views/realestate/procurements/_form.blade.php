@@ -1,6 +1,8 @@
 {{-- 仕入れ案件 共通フォームパーツ --}}
 @php
     $p = $procurement ?? null;
+    // 新規登録時の既定税率（settings テーブルの tax_rate。既定 10）
+    $defaultTaxRate = number_format(\App\Support\Settings::taxRate(), 2, '.', '');
 @endphp
 
 <div x-data="procurementForm()">
@@ -140,20 +142,22 @@
                        class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none">
             </div>
             <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-1">査定価格</label>
-                <input type="number" name="assessment_price" value="{{ old('assessment_price', $p?->assessment_price) }}" placeholder=""
-                       class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none">
+                <label class="block text-sm font-semibold text-gray-700 mb-1">消費税率</label>
+                <div class="flex items-center gap-2">
+                    <input type="text" inputmode="numeric" name="tax_rate"
+                           :value="taxRate"
+                           @input="onTaxRateInput($event.target.value)"
+                           class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none"
+                           style="text-align: right;">
+                    <span class="text-sm text-gray-600">%</span>
+                </div>
+                <p class="text-xs text-gray-500 mt-1">建物価格にのみ課税されます</p>
+                @error('tax_rate') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
             </div>
-            <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-1">購入価格</label>
-                <input type="number" name="purchase_price" value="{{ old('purchase_price', $p?->purchase_price) }}" placeholder=""
-                       class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none">
-            </div>
-            <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-1">想定販売価格</label>
-                <input type="number" name="target_selling_price" value="{{ old('target_selling_price', $p?->target_selling_price) }}" placeholder=""
-                       class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none">
-            </div>
+
+            @include('realestate.procurements._price_row', ['label' => '査定価格',     'key' => 'assessment_price',     'prefix' => 'assessment'])
+            @include('realestate.procurements._price_row', ['label' => '購入価格',     'key' => 'purchase_price',       'prefix' => 'purchase'])
+            @include('realestate.procurements._price_row', ['label' => '想定販売価格', 'key' => 'target_selling_price', 'prefix' => 'targetSelling'])
             <div>
                 <label class="block text-sm font-semibold text-gray-700 mb-1">契約日</label>
                 <input type="date" name="contract_date" value="{{ old('contract_date', $p?->contract_date?->format('Y-m-d')) }}"
@@ -181,9 +185,93 @@
 </div>
 
 <script>
+// 金額の計算は表示補助。保存されるのは税抜 input の値で、税額はサーバ側 ConsumptionTax が正。
+// 整数演算のみで組む（金額は最大 2.1e9、被乗数は 2.1e13 で 2^53 未満なので誤差なし）。
 function procurementForm() {
     return Object.assign(supplierPicker(), {
-        propertyType: '{{ old("property_type", $p?->property_type?->value ?? "") }}'
+        propertyType: '{{ old("property_type", $p?->property_type?->value ?? "") }}',
+        taxRate: '{{ old("tax_rate", $p?->tax_rate ?? $defaultTaxRate) }}',
+
+        assessmentLand:            '{{ old("assessment_price_land", $p?->assessment_price_land) }}',
+        assessmentBuildingExcl:    '{{ old("assessment_price_building", $p?->assessment_price_building) }}',
+        assessmentBuildingIncl:    '',
+        purchaseLand:              '{{ old("purchase_price_land", $p?->purchase_price_land) }}',
+        purchaseBuildingExcl:      '{{ old("purchase_price_building", $p?->purchase_price_building) }}',
+        purchaseBuildingIncl:      '',
+        targetSellingLand:         '{{ old("target_selling_price_land", $p?->target_selling_price_land) }}',
+        targetSellingBuildingExcl: '{{ old("target_selling_price_building", $p?->target_selling_price_building) }}',
+        targetSellingBuildingIncl: '',
+
+        isLandOnly: function() {
+            return this.propertyType === 'brokerage_land';
+        },
+
+        // 空文字は null（未入力）として扱う。0 と区別する
+        amountOf: function(field) {
+            var v = this[field];
+            if (v === '' || v === null || v === undefined) { return null; }
+            var n = Math.floor(Number(v));
+            return isNaN(n) || n < 0 ? null : n;
+        },
+
+        taxBp: function() {
+            return Math.round((Number(this.taxRate) || 0) * 100);
+        },
+
+        taxOf: function(prefix) {
+            var b = this.amountOf(prefix + 'BuildingExcl');
+            if (b === null) { return 0; }
+            return Math.floor(b * this.taxBp() / 10000);
+        },
+
+        totalExcl: function(prefix) {
+            var l = this.amountOf(prefix + 'Land');
+            var b = this.amountOf(prefix + 'BuildingExcl');
+            if (l === null && b === null) { return null; }
+            return (l || 0) + (b || 0);
+        },
+
+        totalIncl: function(prefix) {
+            var t = this.totalExcl(prefix);
+            if (t === null) { return null; }
+            return t + this.taxOf(prefix);
+        },
+
+        onBuildingExclInput: function(prefix, value) {
+            this[prefix + 'BuildingExcl'] = value;
+            var b = this.amountOf(prefix + 'BuildingExcl');
+            this[prefix + 'BuildingIncl'] = b === null ? '' : String(b + this.taxOf(prefix));
+        },
+
+        onBuildingInclInput: function(prefix, value) {
+            this[prefix + 'BuildingIncl'] = value;
+            var i = this.amountOf(prefix + 'BuildingIncl');
+            this[prefix + 'BuildingExcl'] = i === null
+                ? ''
+                : String(Math.floor(i * 10000 / (10000 + this.taxBp())));
+        },
+
+        onTaxRateInput: function(value) {
+            this.taxRate = value;
+            this.refreshInclusive();
+        },
+
+        // 税抜を正として税込表示を作り直す
+        refreshInclusive: function() {
+            var self = this;
+            ['assessment', 'purchase', 'targetSelling'].forEach(function(prefix) {
+                var b = self.amountOf(prefix + 'BuildingExcl');
+                self[prefix + 'BuildingIncl'] = b === null ? '' : String(b + self.taxOf(prefix));
+            });
+        },
+
+        money: function(v) {
+            return v === null ? '—' : Number(v).toLocaleString() + '円';
+        },
+
+        init: function() {
+            this.refreshInclusive();
+        }
     });
 }
 

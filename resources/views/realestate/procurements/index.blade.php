@@ -161,6 +161,9 @@
                             <td class="py-3 border-b border-gray-100 text-sm whitespace-nowrap" style="text-align: right; padding-right: 16px;">
                                 @if($row->targetSellingPrice)
                                     {{ number_format($row->targetSellingPrice) }}円
+                                    @if($row->targetSellingPriceWithTax !== null && $row->targetSellingPriceWithTax !== $row->targetSellingPrice)
+                                        <div class="text-xs text-gray-500">税込 {{ number_format($row->targetSellingPriceWithTax) }}円</div>
+                                    @endif
                                 @else
                                     <span class="text-gray-400">—</span>
                                 @endif

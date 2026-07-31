@@ -136,14 +136,41 @@
             <dd class="px-3.5 py-2.5 text-sm text-gray-900 border-b border-gray-200">{{ $procurement->info_obtained_date?->format('Y/m/d') ?? '—' }}</dd>
 
             <dt class="bg-gray-50 px-3.5 py-2.5 text-sm text-gray-600 font-medium border-b border-r border-gray-200">査定価格</dt>
-            <dd class="px-3.5 py-2.5 text-sm text-gray-900 border-b border-gray-200">@if($procurement->assessment_price){{ number_format($procurement->assessment_price) }}円@else—@endif</dd>
+            <dd class="px-3.5 py-2.5 text-sm text-gray-900 border-b border-gray-200">
+                @include('realestate.procurements._price_cell', [
+                    'total'    => $procurement->getAssessmentPriceTotal(),
+                    'land'     => $procurement->assessment_price_land,
+                    'building' => $procurement->assessment_price_building,
+                    'tax'      => $procurement->getAssessmentBuildingTax(),
+                    'withTax'  => $procurement->getAssessmentPriceTotalWithTax(),
+                    'hasBuilding' => $procurement->hasBuilding(),
+                ])
+            </dd>
             <dt class="bg-gray-50 px-3.5 py-2.5 text-sm text-gray-600 font-medium border-b border-r border-gray-200">購入価格</dt>
-            <dd class="px-3.5 py-2.5 text-sm text-gray-900 border-b border-gray-200">@if($procurement->purchase_price){{ number_format($procurement->purchase_price) }}円@else—@endif</dd>
+            <dd class="px-3.5 py-2.5 text-sm text-gray-900 border-b border-gray-200">
+                @include('realestate.procurements._price_cell', [
+                    'total'    => $procurement->getPurchasePriceTotal(),
+                    'land'     => $procurement->purchase_price_land,
+                    'building' => $procurement->purchase_price_building,
+                    'tax'      => $procurement->getPurchaseBuildingTax(),
+                    'withTax'  => $procurement->getPurchasePriceTotalWithTax(),
+                    'hasBuilding' => $procurement->hasBuilding(),
+                ])
+            </dd>
 
             <dt class="bg-gray-50 px-3.5 py-2.5 text-sm text-gray-600 font-medium border-b border-r border-gray-200">想定販売価格</dt>
-            <dd class="px-3.5 py-2.5 text-sm text-gray-900 border-b border-gray-200">@if($procurement->target_selling_price){{ number_format($procurement->target_selling_price) }}円@else—@endif</dd>
-            <dt class="bg-gray-50 px-3.5 py-2.5 text-sm text-gray-600 font-medium border-b border-r border-gray-200"></dt>
-            <dd class="px-3.5 py-2.5 text-sm text-gray-900 border-b border-gray-200"></dd>
+            <dd class="px-3.5 py-2.5 text-sm text-gray-900 border-b border-gray-200">
+                @include('realestate.procurements._price_cell', [
+                    'total'    => $procurement->getTargetSellingPriceTotal(),
+                    'land'     => $procurement->target_selling_price_land,
+                    'building' => $procurement->target_selling_price_building,
+                    'tax'      => $procurement->getTargetSellingBuildingTax(),
+                    'withTax'  => $procurement->getTargetSellingPriceTotalWithTax(),
+                    'hasBuilding' => $procurement->hasBuilding(),
+                ])
+            </dd>
+            <dt class="bg-gray-50 px-3.5 py-2.5 text-sm text-gray-600 font-medium border-b border-r border-gray-200">消費税率</dt>
+            <dd class="px-3.5 py-2.5 text-sm text-gray-900 border-b border-gray-200">{{ rtrim(rtrim(number_format((float) $procurement->tax_rate, 2, '.', ''), '0'), '.') }}%</dd>
 
             <dt class="bg-gray-50 px-3.5 py-2.5 text-sm text-gray-600 font-medium border-r border-gray-200">契約日</dt>
             <dd class="px-3.5 py-2.5 text-sm text-gray-900">{{ $procurement->contract_date?->format('Y/m/d') ?? '—' }}</dd>
@@ -472,7 +499,7 @@ function procurementDetail() {
         editingCostId: null,
         editCost: { estimated_amount: '', actual_amount: null, notes: '' },
         newCost: { cost_item_id: '', estimated_amount: '', actual_amount: null, notes: '' },
-        simA: { sellingPrice: {{ $procurement->target_selling_price ?? 0 }} },
+        simA: { sellingPrice: {{ $procurement->getTargetSellingPriceTotal() ?? 0 }} },
         simB: { targetRate: 20 },
         token: document.querySelector('meta[name="csrf-token"]').content,
         baseUrl: '{{ url("/realestate/procurements/" . $procurement->id . "/costs") }}',

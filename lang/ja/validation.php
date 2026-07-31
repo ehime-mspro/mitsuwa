@@ -394,6 +394,21 @@ return [
         'assessment_price' => '査定価格',
         'target_selling_price' => '想定販売価格',      // 上書き: RealEstate/Project は「想定総販売価格」
         'target_selling_price_building' => '建物予定販売価格',
+
+        // 不動産 仕入れ案件・契約: 金額の土地/建物分割（2026-07-30）
+        // ⚠ target_selling_price_building はここに足さない。
+        //    建売（hs_properties）の「建物予定販売価格」で既に埋まっており、
+        //    attributes はアプリ全体で 1 つのマップしか持てないため。
+        //    仕入れ案件側は ProcurementController::validateProcurement() の第 3 引数で上書きする
+        'assessment_price_land' => '査定価格（土地）',
+        'assessment_price_building' => '査定価格（建物）',
+        'purchase_price_land' => '購入価格（土地）',
+        'purchase_price_building' => '購入価格（建物）',
+        'target_selling_price_land' => '想定販売価格（土地）',
+        'contract_amount_land' => '契約額（土地）',
+        'contract_amount_building' => '契約額（建物）',
+        'tax_amount' => '消費税額',
+
         'selling_price' => '販売価格',
         'selling_price_land' => '土地販売価格',
         'selling_price_building' => '建物販売価格',
