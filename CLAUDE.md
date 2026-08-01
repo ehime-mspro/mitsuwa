@@ -25,7 +25,7 @@ Laravel 12 / PHP 8.5.4 (local) + 8.3 (prod) / MySQL 8 / Blade + Alpine.js 3 + Ta
 | 10 | `__()` を通る機能を足したのに `lang/ja/<group>.php` を作らない（`APP_LOCALE=ja` かつ fallback も ja なので **en にも落ちず生の翻訳キーが画面に出る**）| 対応する `lang/ja/*.php` を必ず追加する。⚠ **`$request->validate()` のようにフレームワーク内部から `__()` が呼ばれる経路は `grep -rn "__('"` に出ない** — 実際にエラーを出して画面で見る。⚠ **`phpunit.xml` の `APP_LOCALE=ja` / `APP_FALLBACK_LOCALE=ja` を消さない**（消すとテストが locale=en で走り、この種の欠陥を原理的に検出できなくなる）。Bug #36 |
 | 11 | フォームに項目を足したのに `lang/ja/validation.php` の `attributes` に和名を書かない（エラー文に **`guarantor1 name` のような英字**が出る）| `attributes` に和名を追加する。画面ごとに語が変わるキー（`name` `address` 等）は**そのコントローラの `validate()` **第3引数**で上書き（`validate($rules, $messages, $attributes)` — **第2引数は messages**）。走査テスト `JapaneseValidationMessagesTest` が和名漏れを自動で拾う。Bug #37 |
 
-全 40 件の詳細バグカタログ + 各種パターン: @docs/RULES.md
+全 42 件の詳細バグカタログ + 各種パターン: @docs/RULES.md
 
 ## 🔌 利用可能なプラグイン
 
@@ -98,6 +98,7 @@ sudo rm -f storage/framework/views/*.php && brew services restart httpd
 - 建蔽率 / 容積率: 整数表示（小数なし）
 - 坪数: `AreaConverter::sqmToTsubo()` 経由（㎡ × 0.3025 の**切り捨て**2桁）。`÷3.30579` も float の `floor` も誤差が出る。Bug #33
 - 坪単価: `TsuboPrice::perTsuboYen()` / `perTsuboManLabel()` 経由。丸めは常に**切り上げ**（分譲地は万円・小数第1位、テナントは円・整数）。**丸めは1回だけ**（円で丸めてから万円で切り上げると切り上げが破れる）。float の `ceil` も不可。Bug #34
+- 消費税: **建物のみ課税**（土地は非課税）。`ConsumptionTax` 経由。⚠ **方向が 2 つある** — **税額は切り捨て**だが、**税込→税抜の逆算だけは切り上げ**（切り捨てると税込に戻したとき 1 円足りない: 12,500,000 → 11,363,636 → 12,499,999）。⚠ **逆算は画面では PHP を通らない**（税込入力欄は `name` 無しで送信されない）。実体は Alpine の `Math.ceil` が 3 箇所で、走査テスト `TaxExclusiveCeilingJsTest` が守っている。Bug #41 / #42
 - ステータスバッジ: モデルの `badgeStyle()` メソッド経由（Tailwind クラス指定 NG）
 - 担当者名: 苗字のみ表示（同姓重複時のみフルネーム）
 - 期: 5/1 始まり（5月〜4月）。ZEAL/DAD は 6/1 始まり
@@ -140,5 +141,5 @@ sudo rm -f storage/framework/views/*.php && brew services restart httpd
 ## 📚 Detailed docs
 
 - @docs/ARCHITECTURE.md — ディレクトリ構成、モデル一覧、認可マトリクス
-- @docs/RULES.md — Bug #1–40 + Tailwind 不可クラス/監査の落とし穴 + Excel/SheetJS + 全角→半角自動変換 + 郵便番号 API
+- @docs/RULES.md — Bug #1–42 + Tailwind 不可クラス/監査の落とし穴 + Excel/SheetJS + 全角→半角自動変換 + 郵便番号 API
 - @docs/BACKLOG.md — 完了済み機能の優先度別一覧（優先度 1〜5 全て本番稼働中）
