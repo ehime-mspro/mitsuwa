@@ -441,4 +441,53 @@ class DeletionGuardTest extends TestCase
         $response->assertSessionHas('success');
         $this->assertDatabaseMissing('re_projects', ['id' => $project->id]);
     }
+
+    // ============================================================
+    // Task 7: ③ 区画 1 件の削除ガード（Ajax）
+    // ============================================================
+
+    /** ③ 注文住宅が紐づく区画は 422 + message で拒否され、区画が残る */
+    public function test_lot_with_custom_order_cannot_be_deleted(): void
+    {
+        $project = $this->makeProject();
+        $lot     = $this->makeLot($project);
+        $this->makeCustomOrder($lot);
+
+        $response = $this->actingAs($this->executive())
+            ->deleteJson("/realestate/projects/{$project->id}/lots/{$lot->id}");
+
+        $response->assertStatus(422);
+        // ⚠ キーは message。lots.blade.php の JS が err.message を読む（error だと理由が出ない）
+        $response->assertExactJson(['message' => '注文住宅 1 件が参照しているため削除できません。']);
+        $this->assertDatabaseHas('re_project_lots', ['id' => $lot->id]);
+    }
+
+    /** ④ 参照の無い区画は従来どおり削除できる */
+    public function test_lot_without_references_can_still_be_deleted(): void
+    {
+        $project = $this->makeProject();
+        $lot     = $this->makeLot($project);
+
+        $response = $this->actingAs($this->executive())
+            ->deleteJson("/realestate/projects/{$project->id}/lots/{$lot->id}");
+
+        $response->assertOk();
+        $response->assertJson(['success' => true]);
+        $this->assertDatabaseMissing('re_project_lots', ['id' => $lot->id]);
+    }
+
+    /** 所属違いの 403 も message キーで返す（JS が理由を出せるように揃える） */
+    public function test_lot_from_another_project_is_rejected_with_message_key(): void
+    {
+        $projectA = $this->makeProject('PJ-001');
+        $projectB = $this->makeProject('PJ-002');
+        $lot      = $this->makeLot($projectB);
+
+        $response = $this->actingAs($this->executive())
+            ->deleteJson("/realestate/projects/{$projectA->id}/lots/{$lot->id}");
+
+        $response->assertStatus(403);
+        $response->assertExactJson(['message' => '不正なリクエストです。']);
+        $this->assertDatabaseHas('re_project_lots', ['id' => $lot->id]);
+    }
 }

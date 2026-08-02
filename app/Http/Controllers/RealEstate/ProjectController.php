@@ -607,8 +607,16 @@ class ProjectController extends Controller
      */
     public function destroyLot(ReProject $project, ReProjectLot $lot)
     {
+        // ⚠ JSON のキーは message。呼び出し元 JS（lots.blade.php の deleteLot）は
+        //   err.message を読むので、error で返すと「エラーが発生しました。」としか出ない。
         if ($lot->project_id !== $project->id) {
-            return response()->json(['error' => '不正なリクエストです。'], 403);
+            return response()->json(['message' => '不正なリクエストです。'], 403);
+        }
+
+        // 契約・建売物件・注文住宅が参照している間は消させない
+        //（PJ 削除だけ塞ぐと「PJ は消せないのに区画は消せる」抜け道が残る）
+        if ($blockers = $lot->deletionBlockers()) {
+            return response()->json(['message' => DeletionBlockers::summarize($blockers)], 422);
         }
 
         $lot->delete();
