@@ -340,4 +340,57 @@ class DeletionGuardTest extends TestCase
         $this->assertSame([], $project->deletionBlockers());
         $this->assertSame([], $this->makeLot($project)->deletionBlockers());
     }
+
+    // ============================================================
+    // Task 5: ① 仕入れ案件の削除ガード（HTTP）
+    // ============================================================
+
+    /** ① 契約が紐づく仕入れ案件は削除できず、レコードが残る */
+    public function test_procurement_with_contract_cannot_be_deleted(): void
+    {
+        $procurement = $this->makeProcurement();
+        $this->makeContract(['procurement_id' => $procurement->id], '仕入れ契約');
+
+        $response = $this->actingAs($this->executive())
+            ->from("/realestate/procurements/{$procurement->id}")
+            ->delete("/realestate/procurements/{$procurement->id}");
+
+        $response->assertRedirect("/realestate/procurements/{$procurement->id}");
+        $response->assertSessionHas('error', '契約 1 件が参照しているため削除できません。');
+        $this->assertDatabaseHas('re_procurements', ['id' => $procurement->id]);
+    }
+
+    /** 建売物件が紐づく仕入れ案件も削除できない */
+    public function test_procurement_with_housing_property_cannot_be_deleted(): void
+    {
+        $procurement = $this->makeProcurement();
+        HsProperty::create([
+            'property_code'     => 'HS-0011',
+            'property_name'     => '仕入れ土地の建売',
+            'status'            => 'construction',
+            'land_source_type'  => 'procurement',
+            're_procurement_id' => $procurement->id,
+            'address'           => '愛媛県松山市5-5-5',
+            'created_by'        => 1,
+        ]);
+
+        $this->actingAs($this->executive())
+            ->delete("/realestate/procurements/{$procurement->id}")
+            ->assertSessionHas('error', '建売物件 1 件が参照しているため削除できません。');
+
+        $this->assertDatabaseHas('re_procurements', ['id' => $procurement->id]);
+    }
+
+    /** ④ 依存が無ければ従来どおり削除できる（ガードが常時ブロック化していないことの確認） */
+    public function test_procurement_without_references_can_still_be_deleted(): void
+    {
+        $procurement = $this->makeProcurement();
+
+        $response = $this->actingAs($this->executive())
+            ->delete("/realestate/procurements/{$procurement->id}");
+
+        $response->assertRedirect('/realestate/procurements');
+        $response->assertSessionHas('success');
+        $this->assertDatabaseMissing('re_procurements', ['id' => $procurement->id]);
+    }
 }

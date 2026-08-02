@@ -13,6 +13,7 @@ use App\Models\ReProcurementCost;
 use App\Models\ZoningType;
 use App\Services\RealEstate\ProcurementListRow;
 use App\Services\RealEstate\ProcurementListService;
+use App\Support\DeletionBlockers;
 use App\Support\Settings;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -251,6 +252,13 @@ class ProcurementController extends Controller
      */
     public function destroy(ReProcurement $procurement)
     {
+        // 契約・建売物件・注文住宅が参照している間は消させない。
+        // 本番の FK は ON DELETE SET NULL なので、消すと参照側が「土地元が仕入れ案件」と
+        // 名乗ったまま参照先を失う矛盾状態になる（判定は DeletionBlockers に一本化）。
+        if ($blockers = $procurement->deletionBlockers()) {
+            return back()->with('error', DeletionBlockers::summarize($blockers));
+        }
+
         $code = $procurement->procurement_code;
 
         // 原価明細も一緒に削除（cascadeOnDelete）
