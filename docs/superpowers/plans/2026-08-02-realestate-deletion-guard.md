@@ -1939,6 +1939,10 @@ cd /Users/masanori/site/manage/.claude/worktrees/deletion-guard && git add app/H
 
 `DeletionGuardTest` の末尾に追加:
 
+**⚠ 2026-08-03 コードレビューで更新 — 当初案の `:title` はボタン自身に置いていたが、
+`disabled` な要素はホバーイベントを発火しないため表示されない欠陥があった（採用①）。
+下記は修正後の最終形。§5.2 の理由と合わせて読むこと。**
+
 ```php
     // ============================================================
     // Task 9: ⑦ 区画一覧の delete_blocked
@@ -1976,6 +1980,10 @@ cd /Users/masanori/site/manage/.claude/worktrees/deletion-guard && git add app/H
      * ⚠ Bug #28 / #35 と同じ構図 — viewData だけ見ていると、Blade からバインドが消えても緑になる。
      * ⚠ Bug #32 — x-show は display を自分のものとして扱うので、この要素は 1 要素のまま
      *    :disabled で出し分ける。静的 style= を残すと Alpine に上書きされる（Bug #2 / #5）。
+     * ⚠ 採用①（コードレビュー指摘）— disabled なボタン自身の title は表示されない
+     *    （ホバーイベントが発火しないため）。理由はホバー可能なラッパー <span> に置く
+     *    （projects/show.blade.php と同じ扱い）。よってボタン自身は :title を持たないことを固定し、
+     *    理由の置き場はラッパー側の正規表現で別途確認する。
      */
     public function test_lots_blade_binds_delete_blocked_without_style_conflict(): void
     {
@@ -1989,9 +1997,93 @@ cd /Users/masanori/site/manage/.claude/worktrees/deletion-guard && git add app/H
         $button = $m[0][0];
 
         $this->assertStringContainsString(':disabled="lot.delete_blocked"', $button);
-        $this->assertStringContainsString('lot.delete_blocked_reason', $button);
         $this->assertStringNotContainsString(' style="', $button, '静的 style= は :style へ寄せること（Bug #2 / #5）');
         $this->assertStringNotContainsString('x-show', $button, 'x-show は display を奪う（Bug #32）');
+        $this->assertStringNotContainsString(':title', $button, 'disabled なボタン自身の title は表示されない（採用①）');
+
+        // 理由はホバー可能なラッパー <span> に載せる（disabled なボタン自身の title は表示されない）。
+        // ⚠ 属性名を明示する（:data-reason 等への付け替えでも赤になるように。採用② G2 対策）。
+        $this->assertMatchesRegularExpression(
+            '/<span[^>]*:title="[^"]*lot\.delete_blocked_reason[^"]*"[^>]*>\s*<button[^>]*deleteLot\(lot\)/us',
+            $blade,
+            'title は disabled なボタンではなくホバー可能なラッパー <span> に置くこと'
+        );
+
+        // 無効時の見た目（色分け）が実際に効いていること（採用③ G1 対策 — :style の三項式を
+        // 落として色分けを消しても :disabled だけは残るため、見た目だけの劣化はここでしか拾えない）。
+        $this->assertStringContainsString('not-allowed', $button, '無効時のカーソルが :style に無い');
+        $this->assertStringContainsString('#9ca3af', $button, '無効時の文字色が :style に無い');
+    }
+
+    /**
+     * ⚠ G3（コードレビュー指摘）— forEachLotId() は建売物件・注文住宅だけテストしており、
+     *    契約による削除ブロックが一度も検証されていなかった。契約分岐を丸ごと削っても
+     *    緑のまま通ることを実測で確認済み（2026-08-03、変異テストで検証）。
+     */
+    public function test_lots_page_marks_lot_blocked_by_contract(): void
+    {
+        $project = $this->makeProject();
+        $blocked = $this->makeLot($project, 1);
+
+        $this->makeContract(['lot_id' => $blocked->id], '区画契約');
+
+        $response = $this->actingAs($this->executive())
+            ->get("/realestate/projects/{$project->id}/lots");
+
+        $response->assertOk();
+
+        $lots = collect($response->viewData('lotsForJs'))->keyBy('id');
+
+        $this->assertTrue($lots[$blocked->id]['delete_blocked']);
+        $this->assertSame(
+            '契約 1 件が参照しているため削除できません。',
+            $lots[$blocked->id]['delete_blocked_reason']
+        );
+    }
+
+    /**
+     * ⚠ 網羅調査（コードレビュー指摘の 12 通り監査）で追加発見 — forProject() は
+     *    契約・建売物件しかテストしておらず、配下区画経由の注文住宅が一度も検証されて
+     *    いなかった。orders を丸ごと落としても緑のまま通ることを実測で確認済み
+     *    （2026-08-03、変異テストで検証）。
+     */
+    public function test_project_blockers_include_custom_order_via_lot(): void
+    {
+        $project = $this->makeProject();
+        $lot     = $this->makeLot($project);
+
+        $this->makeCustomOrder($lot);
+
+        $blockers = DeletionBlockers::forProject($project);
+
+        $this->assertSame(['注文住宅'], array_column($blockers, 'label'));
+        $this->assertCount(1, $blockers[0]['items']);
+    }
+
+    /**
+     * M-2（コードレビュー指摘）— DeletionBlockers の docblock が「forLotIds() をループ内で
+     * 呼ぶと N+1 になる」と明記しているのに、それを固定するテストが無かった。
+     * 区画数が増えてもクエリ本数が一定（3 本）であることを実測で固定する。
+     * ⚠ 閾値は実測値（正しい実装 = 8 本 / forLotIds() ループ変異 = 20 本）の中間に置く。
+     */
+    public function test_lots_page_bulk_queries_do_not_scale_with_lot_count(): void
+    {
+        $project = $this->makeProject();
+        $lots    = collect(range(1, 5))->map(fn (int $n) => $this->makeLot($project, $n));
+        $this->makeProperty($lots[0]);
+        $this->makeCustomOrder($lots[2]);
+
+        $queryCount = 0;
+        \Illuminate\Support\Facades\DB::listen(function () use (&$queryCount) {
+            $queryCount++;
+        });
+
+        $response = $this->actingAs($this->executive())
+            ->get("/realestate/projects/{$project->id}/lots");
+
+        $response->assertOk();
+
+        $this->assertLessThan(15, $queryCount, "区画 5 件でクエリ {$queryCount} 本 — N+1 の疑い");
     }
 ```
 
@@ -2119,7 +2211,9 @@ cd /Users/masanori/site/manage/.claude/worktrees/deletion-guard && git add app/H
 + Task 6/7 完了後のコードレビューで足した 2 通り（`test(realestate): ガードが図面削除より前に
 あることと message キーの受け手を固定`）+ Task 8 完了後のコードレビューで足した 4 通り
 （`fix(realestate): 無効化ボタンの理由表示を実際に出るようにしテストの盲点を塞ぐ`。Step 13〜16）
-の**計 16 通り**を**実際にコードへ入れて赤を確認する**。
++ Task 9 完了後のコードレビューで足した 3 通り（Step 17）
+の**計 19 通り**、および **Step 18 の網羅監査 12 通り**を
+**実際にコードへ入れて赤を確認する**。
 
 各変異は「壊す → 走らせる → 赤を確認 → `git checkout` で戻す」の 4 手。
 **戻し忘れると次の変異の結果が読めなくなる**ので、毎回 `git status` がクリーンなことを確認する。
@@ -2331,7 +2425,44 @@ Expected: **FAIL** — `test_project_show_lists_blockers_and_disables_delete` �
 
 戻す（`git checkout resources/views/realestate/projects/show.blade.php`）。
 
-- [ ] **Step 17: 全部戻っていることを確認**
+- [ ] **Step 17: 変異 17〜19 — 区画一覧の削除ボタン（Task 9 完了後のコードレビューで追加）**
+
+`resources/views/realestate/projects/lots.blade.php` に対して 3 通り。
+**⚠ Task 9 は当初「`:title` をボタン自身に置く」形で実装され、コードレビューで Critical 指摘を受けた**
+（`disabled` な要素はホバーイベントを発火しないので表示されない）。下記はラッパー `<span>` へ移した後の検証。
+
+| # | 変異 | 期待 |
+|---|---|---|
+| 17 | ラッパー `<span>` の `:title="lot.delete_blocked ? ..."` を削除 | `test_lots_blade_binds_delete_blocked_without_style_conflict` が赤 |
+| 18 | `:title=` を `:data-reason=`（式はそのまま別属性へ）に付け替え | 同上（属性名を正規表現で明示しているため） |
+| 19 | `:style` の三項式から無効時の色分け（`#9ca3af` / `not-allowed`）を消す | 同上 |
+
+17 と 19 は 2026-08-03 に実測済み（どちらも `Failures: 1`）。
+
+戻す（`git checkout resources/views/realestate/projects/lots.blade.php`）。
+
+- [ ] **Step 18: 判定分岐の網羅監査 — 4 入口 × 参照元 3 種 = 12 通り**
+
+⚠ **「入口のどれかで、参照元のどれかが一度も実行されない」欠陥がこれまで 3 回出た**
+（`forProcurementId()` の注文住宅 / `forEachLotId()` の契約 / `forProject()` の注文住宅）。
+個別に潰すのではなく、**12 通りを機械的に測って表を埋める**こと。
+
+`app/Support/DeletionBlockers.php` の各消費箇所を `collect()` に潰し、
+`--filter DeletionGuardTest` が赤になるかを見る。⚠ **変異が本当に当たったか
+（`git diff` が非空か）を毎回確認する** — 当たっていない変異を「検出しない」と誤読する事故が実際に起きた。
+
+2026-08-03 実測 — **12/12 すべて検出**:
+
+| 入口 | 契約 | 建売物件 | 注文住宅 |
+|---|---|---|---|
+| `forLotIds()` | ✅ | ✅ | ✅ |
+| `forEachLotId()` | ✅ | ✅ | ✅ |
+| `forProcurementId()` | ✅ | ✅ | ✅ |
+| `forProject()` | ✅ | ✅ | ✅ |
+
+⚠ **参照元を増やすとき（4 種目のテーブルが依存するようになったとき）は、この表を 4 入口 × 4 種に広げて測り直す。**
+
+- [ ] **Step 19: 全部戻っていることを確認**
 
 ```bash
 cd /Users/masanori/site/manage/.claude/worktrees/deletion-guard && git status --short && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit --filter DeletionGuardTest
@@ -2342,7 +2473,7 @@ Expected: `git status` が空、`OK (28 tests, ...)`（Task 5-9 全完了後の�
 既存 3 本のアサーションを強化しただけなので、この総数には影響しない。Task 10 はこの時点、
 つまり Task 5〜9 が全て終わってから実施する）。
 
-⚠ **16 通りすべてで赤を実測できていない場合、そのテストは再発を検出できない。**
+⚠ **19 通り + 網羅監査 12 通りすべてで赤を実測できていない場合、そのテストは再発を検出できない。**
 先に進まず、テストを直すこと。
 
 ---

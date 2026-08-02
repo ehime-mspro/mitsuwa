@@ -296,15 +296,30 @@ if ($blockers = $lot->deletionBlockers()) {
 ```
 
 区画は `<template x-for="lot in lots">`（114 行）で描画されるので、削除ボタン（140 行）を
-**1 要素のまま**バインドする:
+**1 要素のまま**バインドする。
+
+⚠ **`title` は `disabled` なボタン自身に置いても表示されない**（`disabled` な要素は
+ホバーイベントを発火しないため。Firefox もかつては例外的に出していたが Bugzilla 274626 で
+他ブラウザに揃えた）。**ホバーを受けられる `<span>` ラッパーに載せる**
+（`procurements/show.blade.php` / `projects/show.blade.php` の詳細画面パネルと同じ扱い。§5.1）:
 
 ```html
-<button type="button"
-        :disabled="lot.delete_blocked"
-        :title="lot.delete_blocked ? lot.delete_blocked_reason : ''"
-        @click="deleteLot(lot)"
-        :style="…">削除</button>
+<span :title="lot.delete_blocked ? lot.delete_blocked_reason : null"
+      style="display: inline-flex; …">
+    <button type="button"
+            :disabled="lot.delete_blocked"
+            @click="deleteLot(lot)"
+            :style="…">削除</button>
+</span>
 ```
+
+- ラッパー `<span>` は `x-show` も `:style` も持たないため、静的 `style=` を置いても
+  Bug #2 / #32 には触れない。
+- `title` は `''`（空文字）ではなく **`null`** にする。Alpine は非 boolean 属性が
+  `false` / `null` / `undefined` に評価されると属性ごと削除するため、依存なしの行に
+  空の `title=""` が残らない。
+- `@click` は残す（`disabled` な要素は click を発火しないので無害。別タブで参照が
+  作られブロック状態が stale になった場合の二重防御として、サーバの 422 が理由付きで止める）。
 
 ⚠ **`x-show` / `x-if` で出し分けない。** `x-show` は `display` プロパティを自分のものとして扱うため、
 現在の静的 `style="display: inline-block; …"` と競合する（Bug #32・Bug #2）。

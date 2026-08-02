@@ -137,10 +137,14 @@
                                         <button type="button" @click="startEditLot(lot)" style="display: inline-block; padding: 3px 10px; font-size: 12px; font-weight: 600; color: #059669; border: 1px solid #059669; border-radius: 4px; cursor: pointer; background: #fff;">編集</button>
                                     @endif
                                     @if(auth()->user()->role->isExecutive())
-                                        <button type="button" @click="deleteLot(lot)"
-                                                :disabled="lot.delete_blocked"
-                                                :title="lot.delete_blocked ? lot.delete_blocked_reason : ''"
-                                                :style="'display: inline-block; padding: 3px 10px; font-size: 12px; font-weight: 600; border-radius: 4px; background: #fff; margin-left: 4px; ' + (lot.delete_blocked ? 'color: #9ca3af; border: 1px solid #d1d5db; cursor: not-allowed;' : 'color: #dc2626; border: 1px solid #dc2626; cursor: pointer;')">削除</button>
+                                        {{-- ⚠ title は disabled なボタン自身に置いても表示されない（ホバーイベントが発火しない）。
+                                             ホバーを受けられるラッパーに載せる（projects/show.blade.php と同じ扱い）。 --}}
+                                        <span :title="lot.delete_blocked ? lot.delete_blocked_reason : null"
+                                              style="display: inline-flex; margin-left: 4px;">
+                                            <button type="button" @click="deleteLot(lot)"
+                                                    :disabled="lot.delete_blocked"
+                                                    :style="'display: inline-block; padding: 3px 10px; font-size: 12px; font-weight: 600; border-radius: 4px; ' + (lot.delete_blocked ? 'color: #9ca3af; border: 1px solid #d1d5db; background: #f9fafb; cursor: not-allowed;' : 'color: #dc2626; border: 1px solid #dc2626; background: #fff; cursor: pointer;')">削除</button>
+                                        </span>
                                     @endif
                                 </td>
                             </tr>
