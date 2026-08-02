@@ -1085,6 +1085,7 @@ cd /Users/masanori/site/manage/.claude/worktrees/deletion-guard && git add app/H
 
 **Files:**
 - Modify: `app/Http/Controllers/RealEstate/ProjectController.php:278-292`
+- Modify: `tests/Concerns/CreatesRealEstateSchema.php`（`re_project_drawings` テーブルを追加。下記 Step 2 の注記参照）
 - Test: `tests/Feature/RealEstate/DeletionGuardTest.php`
 
 - [ ] **Step 1: 失敗するテストを書く**
@@ -1150,6 +1151,16 @@ cd /Users/masanori/site/manage/.claude/worktrees/deletion-guard && APP_KEY=base6
 Expected: FAIL 2 本 — `test_project_with_housing_property_on_a_lot_cannot_be_deleted` と
 `test_project_with_direct_contract_cannot_be_deleted`。
 
+⚠ **実測ではここで FAIL 3 本になる可能性がある。** `tests/Concerns/CreatesRealEstateSchema.php`
+（Task 1 で作成）に `re_project_drawings` テーブルが無いと、`ProjectController::destroy()` の
+`foreach ($project->drawings as $drawing)` が `SQLSTATE[HY000]: no such column` 相当で 500 になり、
+`test_project_without_references_can_still_be_deleted`（④、本来 destroy() の成功パスを見るだけの
+テスト）まで巻き込まれて落ちる。これはガードの設計とは無関係な**テストインフラの欠落**なので、
+`re_project_drawings` テーブルをスキーマに追加してから改めて FAIL 2 本になることを確認すること
+（列定義は `ReProjectDrawing::$fillable` と `storeDrawing()` の書き込み内容に合わせ、
+`project_id` は同ファイル内の他 FK に倣い `unsignedBigInteger`、`uploaded_by` は
+`created_by`/`updated_by` の慣例に倣い `unsignedInteger` nullable）。
+
 - [ ] **Step 3: import を足す**
 
 `app/Http/Controllers/RealEstate/ProjectController.php` の
@@ -1211,6 +1222,86 @@ Expected: `OK (18 tests, ...)`
 ```bash
 cd /Users/masanori/site/manage/.claude/worktrees/deletion-guard && git add app/Http/Controllers/RealEstate/ProjectController.php tests/Feature/RealEstate/DeletionGuardTest.php && git commit -m "feat(realestate): 参照中の分譲地PJ の削除をサーバ側で禁止"
 ```
+
+- [ ] **Step 7（Task 6 完了後のコードレビューで追記）: 図面ファイルの物理削除順序を固定するテスト**
+
+`ProjectController::destroy()` のガードは「図面ファイルの物理削除より**前**に判定する」と
+コメントで宣言しているが、Step 1〜6 のどのテストもその順序を実際には検証していなかった
+（`$project->drawings` を走査するテストが一本も無く、ループが常に空振りしていた）。
+コードレビュー（2 本のレビュー、独立に同一指摘）で発見され、別コミットで追加した。
+
+`DeletionGuardTest` の `test_project_with_direct_contract_cannot_be_deleted` の直後に追加:
+
+```php
+    /** ブロックされたとき図面ファイルは消えない（ガードが物理削除より前にあることを固定） */
+    public function test_blocked_project_deletion_does_not_touch_drawing_files(): void
+    {
+        Storage::fake('public');
+        Storage::disk('public')->put('re_drawings/plan.pdf', 'dummy');
+
+        $project = $this->makeProject();
+        $lot     = $this->makeLot($project);
+        $this->makeProperty($lot);
+        ReProjectDrawing::create([
+            'project_id' => $project->id,
+            'file_name'  => 'plan.pdf',
+            'file_path'  => 're_drawings/plan.pdf',
+            'file_size'  => 5,
+            'mime_type'  => 'application/pdf',
+        ]);
+
+        $this->actingAs($this->executive())
+            ->delete("/realestate/projects/{$project->id}")
+            ->assertSessionHas('error');
+
+        Storage::disk('public')->assertExists('re_drawings/plan.pdf');
+        $this->assertDatabaseHas('re_project_drawings', ['project_id' => $project->id]);
+    }
+```
+
+既存の `test_project_without_references_can_still_be_deleted`（④）は成功パスの物理削除
+（`Storage::delete()`）が一度も実行されたことが無かったので、同じ観点で強化する:
+
+```php
+    /** ④ 区画があっても参照が無ければ従来どおり削除できる（成功パスの図面物理削除も固定） */
+    public function test_project_without_references_can_still_be_deleted(): void
+    {
+        Storage::fake('public');
+        Storage::disk('public')->put('re_drawings/plan.pdf', 'dummy');
+
+        $project = $this->makeProject();
+        $this->makeLot($project);
+        ReProjectDrawing::create([
+            'project_id' => $project->id,
+            'file_name'  => 'plan.pdf',
+            'file_path'  => 're_drawings/plan.pdf',
+            'file_size'  => 5,
+            'mime_type'  => 'application/pdf',
+        ]);
+
+        $response = $this->actingAs($this->executive())
+            ->delete("/realestate/projects/{$project->id}");
+
+        $response->assertRedirect('/realestate/projects');
+        $response->assertSessionHas('success');
+        $this->assertDatabaseMissing('re_projects', ['id' => $project->id]);
+        Storage::disk('public')->assertMissing('re_drawings/plan.pdf');
+    }
+```
+
+import を追加（アルファベット順）: `use App\Models\ReProjectDrawing;`（`ReProjectLot` の前）、
+`use Illuminate\Support\Facades\Storage;`（`RefreshDatabase` の後）。
+
+⚠ **`Storage::fake('public')` は必須。** 付けないと実 `storage/app/public` を触る。
+
+検証は Task 10 の変異 11 を参照（ガードを物理削除の後ろへ動かす変異で実際に赤になることを確認済み）。
+このステップはコード自体を変更しない（既にガードは正しい位置にある）。テストのみの追加。
+
+```bash
+cd /Users/masanori/site/manage/.claude/worktrees/deletion-guard && git add tests/Feature/RealEstate/DeletionGuardTest.php && git commit -m "test(realestate): ガードが図面削除より前にあることと message キーの受け手を固定"
+```
+
+（Task 7 の Step 7 と合わせて 1 コミット。下記参照。）
 
 ---
 
@@ -1347,6 +1438,56 @@ Expected: 赤 0 本。もし `['error' => '不正なリクエストです。']` 
 
 ```bash
 cd /Users/masanori/site/manage/.claude/worktrees/deletion-guard && git add app/Http/Controllers/RealEstate/ProjectController.php tests/Feature/RealEstate/DeletionGuardTest.php && git commit -m "feat(realestate): 参照中の区画の削除を禁止し Ajax の JSON キーを message に統一"
+```
+
+- [ ] **Step 7（Task 7 完了後のコードレビューで追記）: `message` キーの受け手を固定する走査テスト**
+
+サーバが `message` を返すことは Step 1〜6 で固定したが、**読む側の Blade（`lots.blade.php`）は
+何も固定していなかった**。Unit 4 が `lots.blade.php` を触る際に JS のエラー分岐（`err.message`）が
+壊れても、サーバ側テストは全部緑のまま理由が画面に出なくなる。呼び出し側と定義側を対で検証する
+規約（Bug #28 / #35）に合わせ、走査テストを 1 本追加した。
+
+`DeletionGuardTest` の末尾（`test_lot_from_another_project_is_rejected_with_message_key` の後）に追加:
+
+```php
+    /**
+     * 呼び出し側（Blade）と定義側（コントローラ）を対で固定する。
+     * サーバが message を返しても、読む側が err.message を見なくなれば
+     * 理由は画面に出ない。サーバ側テストは全部緑のまま通るので、ここで固定する（Bug #28 / #35）。
+     *
+     * ⚠ ファイル全体に対する assertStringContainsString だと false-pass する。
+     *    同じ lots.blade.php 内の storeLot / saveLot（区画の追加・更新）にも
+     *    "err.message || 'エラーが発生しました。'" が別途あり、deleteLot だけを
+     *    err.error に変異させても消えないため（実測で確認済み）。
+     *    deleteLot 関数の本体だけを正規表現で切り出してから見る。
+     */
+    public function test_lots_view_reads_message_key_from_delete_error(): void
+    {
+        $blade = file_get_contents(resource_path('views/realestate/projects/lots.blade.php'));
+
+        $matched = preg_match(
+            '/deleteLot:\s*function\s*\([^)]*\)\s*\{(.*?)\n        \},/s',
+            $blade,
+            $m
+        );
+        $this->assertSame(1, $matched, 'deleteLot 関数本体を抽出できなかった（走査の空振り防止）');
+
+        $this->assertStringContainsString("err.message || 'エラーが発生しました。'", $m[1]);
+    }
+```
+
+⚠ **レビューが提示した最初のテスト案は `file_get_contents()` した文字列全体に対して
+`assertStringContainsString` するだけだった。実際に `err.message` → `err.error` の変異を入れて
+確かめたところ、それでは赤にならなかった**（`lots.blade.php` には `storeLot`/`saveLot`
+（区画の追加・更新）用の同一文字列が別途 2 箇所あり、`deleteLot` だけを変異させても
+ファイル全体としては文字列が残るため）。`deleteLot` 関数の本体だけを正規表現で切り出してから
+判定する形に直して、変異で赤になることを確認した（Task 10 の変異 12 参照）。
+
+このステップはコード自体を変更しない（既に Blade は正しい）。テストのみの追加。
+Task 6 の Step 7 と合わせて 1 コミット:
+
+```bash
+cd /Users/masanori/site/manage/.claude/worktrees/deletion-guard && git add tests/Feature/RealEstate/DeletionGuardTest.php && git commit -m "test(realestate): ガードが図面削除より前にあることと message キーの受け手を固定"
 ```
 
 ---
@@ -1875,7 +2016,8 @@ cd /Users/masanori/site/manage/.claude/worktrees/deletion-guard && git add app/H
 ⚠ **「テストが緑」は検証にならない**（Bug #39 / #42）。
 設計書 §6.3 の 5 通り + このプランで足した 2 通り + コードレビューで見つかったテスト検出力の穴 3 通り
 （`test(realestate): 仕入れ案件の注文住宅分岐と要約文の書式を回帰テストで固定` で Task 1 / Task 2 のテストに追加）
-の計 10 通りを**実際にコードへ入れて赤を確認する**。
++ Task 6/7 完了後のコードレビューで足した 2 通り（`test(realestate): ガードが図面削除より前に
+あることと message キーの受け手を固定`）の**計 12 通り**を**実際にコードへ入れて赤を確認する**。
 
 各変異は「壊す → 走らせる → 赤を確認 → `git checkout` で戻す」の 4 手。
 **戻し忘れると次の変異の結果が読めなくなる**ので、毎回 `git status` がクリーンなことを確認する。
@@ -1997,15 +2139,51 @@ Expected: **FAIL** — `test_procurement_without_references_has_no_blockers` が
 
 戻す（`git checkout app/Support/DeletionBlockers.php`）。
 
-- [ ] **Step 11: 全部戻っていることを確認**
+- [ ] **Step 11: 変異 11 — ガードを図面の物理削除より後ろへ動かす**
+
+`ProjectController::destroy()` を、ガードの `if` ブロックを `foreach ($project->drawings as $drawing)`
+の**後ろ**へ動かす形へ変異させて実行:
+
+```bash
+cd /Users/masanori/site/manage/.claude/worktrees/deletion-guard && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit --filter test_blocked_project_deletion_does_not_touch_drawing_files
+```
+
+Expected: **FAIL** — `test_blocked_project_deletion_does_not_touch_drawing_files` が赤
+（`Unable to find a file or directory at path [re_drawings/plan.pdf]` — ガードより先に
+物理削除が走り、ブロックされたはずの図面ファイルが消える）。実測で確認済み。
+
+戻す（`git checkout app/Http/Controllers/RealEstate/ProjectController.php`）。
+
+- [ ] **Step 12: 変異 12 — `lots.blade.php` の `deleteLot` が読むキーを変える**
+
+`lots.blade.php` の `deleteLot` 内 `alert(err.message || 'エラーが発生しました。');` を
+`alert(err.error || 'エラーが発生しました。');` に変異させて実行:
+
+```bash
+cd /Users/masanori/site/manage/.claude/worktrees/deletion-guard && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit --filter test_lots_view_reads_message_key_from_delete_error
+```
+
+Expected: **FAIL** — `test_lots_view_reads_message_key_from_delete_error` が赤。
+
+⚠ **最初に書いたテスト案（ファイル全体に `assertStringContainsString`）ではこの変異が検出できず、
+実測で緑のまま通った。** `lots.blade.php` には `storeLot`/`saveLot`（区画の追加・更新）用の
+同一文字列 `err.message || 'エラーが発生しました。'` が別途 2 箇所（365 行目・425 行目）にあり、
+`deleteLot`（461 行目）だけを変異させてもファイル全体としては文字列が残るため。
+`deleteLot` 関数の本体を正規表現で切り出してから判定する形に直して、初めてこの変異を検出できた。
+**「テストが緑」だけでは検証にならないことを、このテスト自身が実例で示している**（Bug #39-42 と同型）。
+
+戻す（`git checkout resources/views/realestate/projects/lots.blade.php`）。
+
+- [ ] **Step 13: 全部戻っていることを確認**
 
 ```bash
 cd /Users/masanori/site/manage/.claude/worktrees/deletion-guard && git status --short && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit --filter DeletionGuardTest
 ```
 
-Expected: `git status` が空、`OK (26 tests, ...)`。
+Expected: `git status` が空、`OK (28 tests, ...)`（Task 5-9 全完了後の総数。26 + Task 6/7 完了後の
+コードレビュー追記分 2 本 = 28。Task 10 はこの時点、つまり Task 5〜9 が全て終わってから実施する）。
 
-⚠ **10 通りすべてで赤を実測できていない場合、そのテストは再発を検出できない。**
+⚠ **12 通りすべてで赤を実測できていない場合、そのテストは再発を検出できない。**
 先に進まず、テストを直すこと。
 
 ---

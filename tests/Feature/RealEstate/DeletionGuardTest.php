@@ -8,10 +8,12 @@ use App\Models\HsProperty;
 use App\Models\ReContract;
 use App\Models\ReProcurement;
 use App\Models\ReProject;
+use App\Models\ReProjectDrawing;
 use App\Models\ReProjectLot;
 use App\Models\User;
 use App\Support\DeletionBlockers;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Tests\Concerns\CreatesRealEstateSchema;
 use Tests\TestCase;
 
@@ -428,11 +430,46 @@ class DeletionGuardTest extends TestCase
         $this->assertDatabaseHas('re_projects', ['id' => $project->id]);
     }
 
-    /** ④ 区画があっても参照が無ければ従来どおり削除できる */
+    /** ブロックされたとき図面ファイルは消えない（ガードが物理削除より前にあることを固定） */
+    public function test_blocked_project_deletion_does_not_touch_drawing_files(): void
+    {
+        Storage::fake('public');
+        Storage::disk('public')->put('re_drawings/plan.pdf', 'dummy');
+
+        $project = $this->makeProject();
+        $lot     = $this->makeLot($project);
+        $this->makeProperty($lot);
+        ReProjectDrawing::create([
+            'project_id' => $project->id,
+            'file_name'  => 'plan.pdf',
+            'file_path'  => 're_drawings/plan.pdf',
+            'file_size'  => 5,
+            'mime_type'  => 'application/pdf',
+        ]);
+
+        $this->actingAs($this->executive())
+            ->delete("/realestate/projects/{$project->id}")
+            ->assertSessionHas('error');
+
+        Storage::disk('public')->assertExists('re_drawings/plan.pdf');
+        $this->assertDatabaseHas('re_project_drawings', ['project_id' => $project->id]);
+    }
+
+    /** ④ 区画があっても参照が無ければ従来どおり削除できる（成功パスの図面物理削除も固定） */
     public function test_project_without_references_can_still_be_deleted(): void
     {
+        Storage::fake('public');
+        Storage::disk('public')->put('re_drawings/plan.pdf', 'dummy');
+
         $project = $this->makeProject();
         $this->makeLot($project);
+        ReProjectDrawing::create([
+            'project_id' => $project->id,
+            'file_name'  => 'plan.pdf',
+            'file_path'  => 're_drawings/plan.pdf',
+            'file_size'  => 5,
+            'mime_type'  => 'application/pdf',
+        ]);
 
         $response = $this->actingAs($this->executive())
             ->delete("/realestate/projects/{$project->id}");
@@ -440,6 +477,7 @@ class DeletionGuardTest extends TestCase
         $response->assertRedirect('/realestate/projects');
         $response->assertSessionHas('success');
         $this->assertDatabaseMissing('re_projects', ['id' => $project->id]);
+        Storage::disk('public')->assertMissing('re_drawings/plan.pdf');
     }
 
     // ============================================================
@@ -489,5 +527,30 @@ class DeletionGuardTest extends TestCase
         $response->assertStatus(403);
         $response->assertExactJson(['message' => '不正なリクエストです。']);
         $this->assertDatabaseHas('re_project_lots', ['id' => $lot->id]);
+    }
+
+    /**
+     * 呼び出し側（Blade）と定義側（コントローラ）を対で固定する。
+     * サーバが message を返しても、読む側が err.message を見なくなれば
+     * 理由は画面に出ない。サーバ側テストは全部緑のまま通るので、ここで固定する（Bug #28 / #35）。
+     *
+     * ⚠ ファイル全体に対する assertStringContainsString だと false-pass する。
+     *    同じ lots.blade.php 内の storeLot / saveLot（区画の追加・更新）にも
+     *    "err.message || 'エラーが発生しました。'" が別途あり、deleteLot だけを
+     *    err.error に変異させても消えないため（実測で確認済み）。
+     *    deleteLot 関数の本体だけを正規表現で切り出してから見る。
+     */
+    public function test_lots_view_reads_message_key_from_delete_error(): void
+    {
+        $blade = file_get_contents(resource_path('views/realestate/projects/lots.blade.php'));
+
+        $matched = preg_match(
+            '/deleteLot:\s*function\s*\([^)]*\)\s*\{(.*?)\n        \},/s',
+            $blade,
+            $m
+        );
+        $this->assertSame(1, $matched, 'deleteLot 関数本体を抽出できなかった（走査の空振り防止）');
+
+        $this->assertStringContainsString("err.message || 'エラーが発生しました。'", $m[1]);
     }
 }
