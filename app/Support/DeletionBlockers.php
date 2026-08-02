@@ -54,6 +54,70 @@ class DeletionBlockers
     }
 
     /**
+     * 指定した仕入れ案件を参照しているデータ。
+     */
+    public static function forProcurementId(int $procurementId): array
+    {
+        return self::assemble(
+            ReContract::with('buyer')->where('procurement_id', $procurementId)->get(),
+            HsProperty::where('re_procurement_id', $procurementId)->get(),
+            HsCustomOrder::where('re_procurement_id', $procurementId)->get(),
+        );
+    }
+
+    /**
+     * 分譲地PJ を参照しているデータ（PJ 直参照 ＋ 配下区画経由）。
+     *
+     * ⚠ 契約は project_id（PJ 直参照）と lot_id（区画参照）を**両方持ちうる**。
+     *    2 本のクエリに分けて足すと、両方に該当する契約が「2 件」と二重に出る（設計書 §3.4）。
+     *    グループ化した OR の 1 クエリにして、1 行が 1 回しか返らないようにしてある
+     *    （後から unique('id') を書き忘れる余地を作らないため）。
+     */
+    public static function forProject(ReProject $project): array
+    {
+        $lotIds = $project->lots()->pluck('id')->all();
+
+        $contracts = ReContract::with('buyer')
+            ->where(function ($q) use ($project, $lotIds) {
+                $q->where('project_id', $project->id);
+                if ($lotIds !== []) {
+                    $q->orWhereIn('lot_id', $lotIds);
+                }
+            })
+            ->get();
+
+        return self::assemble(
+            $contracts,
+            $lotIds === [] ? collect() : HsProperty::whereIn('re_project_lot_id', $lotIds)->get(),
+            $lotIds === [] ? collect() : HsCustomOrder::whereIn('re_project_lot_id', $lotIds)->get(),
+        );
+    }
+
+    /**
+     * 赤バナー・削除ボタンの title・区画の delete_blocked_reason が共有する 1 文を組む。
+     *   例: 契約 1 件・建売物件 7 件が参照しているため削除できません。
+     *
+     * 名称は入れない（レイアウトの赤バナーは 1 行の <span> なので名称を並べると収まらない）。
+     * 名称は詳細画面のパネルで見せる。
+     *
+     * 空配列なら空文字（呼び出し側は空配列のときは呼ばない前提だが、
+     * 区画一覧の delete_blocked_reason は全区画分を組むので空文字が要る）。
+     */
+    public static function summarize(array $blockers): string
+    {
+        if ($blockers === []) {
+            return '';
+        }
+
+        $parts = array_map(
+            fn (array $b) => $b['label'] . ' ' . count($b['items']) . ' 件',
+            $blockers
+        );
+
+        return implode('・', $parts) . 'が参照しているため削除できません。';
+    }
+
+    /**
      * 種別ごとにまとめる。items が空の種別はエントリごと含めない。
      *
      * @return array<int, array{label: string, items: array<int, array{name: string, url: string}>}>

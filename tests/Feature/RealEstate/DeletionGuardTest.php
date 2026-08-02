@@ -167,4 +167,83 @@ class DeletionGuardTest extends TestCase
         $this->assertCount(1, DeletionBlockers::forLotIds([$lotA->id]));
         $this->assertSame([], DeletionBlockers::forLotIds([$lotB->id]));
     }
+
+    // ============================================================
+    // Task 2: forProcurementId() / forProject()
+    // ============================================================
+
+    /** 仕入れ案件を参照している契約・建売・注文住宅を拾う */
+    public function test_procurement_blockers_collect_all_three_kinds(): void
+    {
+        $procurement = $this->makeProcurement();
+
+        $this->makeContract(['procurement_id' => $procurement->id], '仕入れ契約');
+        HsProperty::create([
+            'property_code'     => 'HS-0011',
+            'property_name'     => '仕入れ土地の建売',
+            'status'            => 'construction',
+            'land_source_type'  => 'procurement',
+            're_procurement_id' => $procurement->id,
+            'address'           => '愛媛県松山市5-5-5',
+            'created_by'        => 1,
+        ]);
+
+        $blockers = DeletionBlockers::forProcurementId($procurement->id);
+
+        $this->assertSame(['契約', '建売物件'], array_column($blockers, 'label'));
+        $this->assertSame('仕入れ契約（山西 太郎 様）', $blockers[0]['items'][0]['name']);
+    }
+
+    /** 参照が無ければ空配列 */
+    public function test_procurement_without_references_has_no_blockers(): void
+    {
+        $procurement = $this->makeProcurement();
+
+        $this->assertSame([], DeletionBlockers::forProcurementId($procurement->id));
+    }
+
+    /** PJ 直参照の契約と、配下区画を参照する建売の両方を拾う */
+    public function test_project_blockers_collect_direct_and_via_lot(): void
+    {
+        $project = $this->makeProject();
+        $lot     = $this->makeLot($project);
+
+        $this->makeContract(['project_id' => $project->id], 'PJ直参照の契約');
+        $this->makeProperty($lot);
+
+        $blockers = DeletionBlockers::forProject($project);
+
+        $this->assertSame(['契約', '建売物件'], array_column($blockers, 'label'));
+        $this->assertCount(1, $blockers[0]['items']);
+        $this->assertCount(1, $blockers[1]['items']);
+    }
+
+    /**
+     * ⑤ 契約が project_id と lot_id の**両方**で紐づくとき、件数は 1。
+     *
+     * ⚠ 2 本のクエリに分けて足すと 2 件に見える（設計書 §3.4）。
+     *    forProject() をグループ化 OR の 1 クエリから 2 クエリ + concat に戻すと**このテストが赤になる**。
+     */
+    public function test_contract_linked_by_both_project_and_lot_is_counted_once(): void
+    {
+        $project = $this->makeProject();
+        $lot     = $this->makeLot($project);
+
+        $this->makeContract([
+            'project_id' => $project->id,
+            'lot_id'     => $lot->id,
+        ], '二重紐づけ契約');
+
+        $blockers = DeletionBlockers::forProject($project);
+
+        $this->assertCount(1, $blockers, '契約以外の種別が混ざっていない');
+        $this->assertCount(1, $blockers[0]['items'], '同じ契約が 2 件に増えていない');
+        $this->assertSame('契約 1 件が参照しているため削除できません。', DeletionBlockers::summarize($blockers));
+    }
+
+    /** 区画も参照も無い PJ は空配列（lotIds が空のときにクエリが暴走しないことも兼ねる） */
+    public function test_project_without_lots_and_references_has_no_blockers(): void
+    {
+        $this->assertSame([], DeletionBlockers::forProject($this->makeProject()));
+    }
 }
