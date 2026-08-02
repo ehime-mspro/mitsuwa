@@ -1,7 +1,7 @@
 {{-- 削除ブロッカー パネル（依存が 1 件以上あるときだけ描画する。0 件なら空枠も出さない） --}}
 {{-- 呼び出し: @include('realestate._partials._deletion_blockers', ['blockers' => $deletionBlockers]) --}}
 @if($blockers)
-    <div class="bg-amber-50 border border-amber-200 rounded-lg p-5 mb-5">
+    <div id="deletion-blockers" class="bg-amber-50 border border-amber-200 rounded-lg p-5 mb-5">
         <div class="flex items-center gap-2 mb-3">
             <svg class="w-4 h-4 text-amber-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />

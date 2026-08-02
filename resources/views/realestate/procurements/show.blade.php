@@ -29,8 +29,13 @@
             @endif
             @if(auth()->user()->role->isExecutive())
                 @if($deletionBlockers)
-                    <button type="button" disabled title="{{ $deletionBlockersSummary }}"
-                            style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #9ca3af; border: 1px solid #d1d5db; border-radius: 6px; background: #f9fafb; cursor: not-allowed;">削除</button>
+                    {{-- ⚠ title は disabled なボタン自身に置いても表示されない（ホバーイベントが発火しない）。
+                         ホバーを受けられるラッパーに載せる。キーボードだけの利用者には
+                         aria-describedby でパネル本文を紐づける（disabled はフォーカス不能なため）。 --}}
+                    <span title="{{ $deletionBlockersSummary }}" style="display: inline-flex;">
+                        <button type="button" disabled aria-describedby="deletion-blockers"
+                                style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #9ca3af; border: 1px solid #d1d5db; border-radius: 6px; background: #f9fafb; cursor: not-allowed;">削除</button>
+                    </span>
                 @else
                     <form method="POST" action="{{ route('realestate.procurements.destroy', $procurement) }}"
                           onsubmit="return confirm('この仕入れ案件を削除しますか？ 原価データも全て削除されます。')">

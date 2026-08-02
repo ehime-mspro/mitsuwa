@@ -1513,6 +1513,21 @@ cd /Users/masanori/site/manage/.claude/worktrees/deletion-guard && git add tests
 買主名でアサートすると既存カードに一致して false-pass する（Bug #40 と同型）。
 **契約の `property_name`** はそのカードに出ないので、それでパネルを見分ける。
 
+⚠ **【2026-08-03 レビューで発覚】`assertSee('建売物件 1 件')` は false-pass する。**
+無効化ボタンの `title`（＝`summarize()` の出力 `"建売物件 1 件が参照しているため削除できません。"`）にも
+部分文字列として一致してしまうため、**パネルの件数行を丸ごと消してもこのアサートは緑のまま通る**
+（Bug #40 と同型）。パネルの件数行はタグに囲まれているので、タグ込みの正規表現で見て区別すること。
+併せて、依存が常に 1 件の fixture では `count()` の実装ミス（常に 1 固定で返す等）を検出できないため、
+パネル系テストのどれか 1 本は**依存 2 件**にして「2 件」の表示を固定する。
+
+⚠ **採用①（2026-08-03）: `title` は `disabled` なボタン自身に置いても表示されない。**
+`disabled` な要素はホバーイベントを発火しないため、ネイティブ tooltip がどのブラウザでも出ない
+（Firefox はかつて例外的に出していたが Bugzilla 274626 で他ブラウザに挙動を揃えた）。
+`title` はホバーを受けられる `<span>` へ移し、`disabled` なボタンには
+`aria-describedby="deletion-blockers"` を持たせてパネル本文（`id="deletion-blockers"`）と紐づける。
+テストは `<span title="...">` の存在と、ブロック時に destroy へ送信する `<form>` が
+跡形もないこと（残っていると confirm() を経ずに直接 POST できる導線が残る）も併せて固定する。
+
 ```php
     // ============================================================
     // Task 8: ⑥ 詳細画面のパネルと削除ボタン
@@ -1543,6 +1558,35 @@ cd /Users/masanori/site/manage/.claude/worktrees/deletion-guard && git add tests
         );
     }
 
+    /**
+     * (b) ブロック時、destroy へ送信する <form> が跡形もないこと。
+     * 残っていると confirm() を経ずに直接 POST できる導線が HTML に残ってしまう。
+     * destroy と show は同じ URI（動詞違いだけ）なので action 属性の文字列一致で判定できる
+     * （実測: routes/web.php でこの URI を action に使う <form> は該当 show.blade.php にしか無い）。
+     */
+    private function assertNoDestroyFormPresent(string $html, string $destroyUrl): void
+    {
+        $this->assertStringNotContainsString(
+            'action="' . $destroyUrl . '"',
+            $html,
+            'ブロック時なのに削除 form の action が残っている'
+        );
+    }
+
+    /**
+     * 採用①: title は disabled なボタン自身に置いても表示されない（disabled 要素はホバーイベントを
+     * 発火しないため。Firefox もかつては例外的に出していたが Bugzilla 274626 で他ブラウザに揃えた）。
+     * ホバーを受けられる <span> 側に載っていることを固定する。
+     */
+    private function assertDeleteReasonShownOnHoverableSpan(string $html, string $expectedSummary): void
+    {
+        $this->assertStringContainsString(
+            '<span title="' . e($expectedSummary) . '"',
+            $html,
+            '<span> に理由の title が無い（disabled なボタン自身に title を置いても表示されない）'
+        );
+    }
+
     /** ⑥ 仕入れ案件詳細: パネルに依存名が出て、かつ削除ボタンが無効 */
     public function test_procurement_show_lists_blockers_and_disables_delete(): void
     {
@@ -1557,23 +1601,56 @@ cd /Users/masanori/site/manage/.claude/worktrees/deletion-guard && git add tests
         $response->assertSee('このデータを参照しているため削除できません');
         $response->assertSee('パネル検証用契約名（山西 太郎 様）');
         $this->assertDeleteButtonDisabled($response->getContent());
+        $this->assertNoDestroyFormPresent(
+            $response->getContent(),
+            route('realestate.procurements.destroy', $procurement)
+        );
+        $this->assertDeleteReasonShownOnHoverableSpan(
+            $response->getContent(),
+            '契約 1 件が参照しているため削除できません。'
+        );
     }
 
     /** ⑥ 分譲地詳細: パネルに依存名が出て、かつ削除ボタンが無効 */
     public function test_project_show_lists_blockers_and_disables_delete(): void
     {
         $project = $this->makeProject();
-        $lot     = $this->makeLot($project);
-        $this->makeProperty($lot, 'HS-0042');
+        $lotA    = $this->makeLot($project, 1);
+        $lotB    = $this->makeLot($project, 2);
+        $this->makeProperty($lotA, 'HS-0042');
+        // ⚠ (d) 依存を複数件にする。常に 1 件だけの fixture では count() の実装ミス
+        //    （例: 常に 1 固定で返す）を原理的に検出できない。
+        $this->makeProperty($lotB, 'HS-0043');
 
         $response = $this->actingAs($this->executive())
             ->get("/realestate/projects/{$project->id}");
+        $html = $response->getContent();
 
         $response->assertOk();
         $response->assertSee('このデータを参照しているため削除できません');
         $response->assertSee('HS-0042 建売テスト邸');
-        $response->assertSee('建売物件 1 件');
-        $this->assertDeleteButtonDisabled($response->getContent());
+        $response->assertSee('HS-0043 建売テスト邸');
+        // ⚠ (a) assertSee('建売物件 2 件') だけでは false-pass する — 無効ボタンの title 要約文
+        //    「建売物件 2 件が参照しているため削除できません。」にも部分文字列として一致するため
+        //    （Bug #40 と同型）。パネルの件数行はタグに囲まれているので、タグ込みで見て区別する。
+        //    実測: 件数行だけを削っても、この確認が無ければ緑のまま通ってしまう。
+        $this->assertMatchesRegularExpression(
+            '/<div class="text-xs font-semibold text-amber-800 mb-1">建売物件 2 件<\/div>/u',
+            $html,
+            'パネルの件数行が正しく描画されていない（title 属性への false-pass 対策）'
+        );
+        // (c) パネルの各行が <a href> リンクになっていること（設計書 §5.1: 該当詳細画面へのリンク）
+        $this->assertMatchesRegularExpression(
+            '#<a\s+href="[^"]*/housing/properties/\d+"[^>]*>HS-0042 建売テスト邸</a>#u',
+            $html,
+            'パネル行が <a href> リンクになっていない（素のテキストに後退している）'
+        );
+        $this->assertDeleteButtonDisabled($html);
+        $this->assertNoDestroyFormPresent($html, route('realestate.projects.destroy', $project));
+        $this->assertDeleteReasonShownOnHoverableSpan(
+            $html,
+            '建売物件 2 件が参照しているため削除できません。'
+        );
     }
 
     /** 依存 0 件のときはパネルを描かない（空枠を全画面に増やさない）+ ボタンは有効のまま */
@@ -1610,11 +1687,16 @@ Expected: FAIL 2 本 — `test_procurement_show_lists_blockers_and_disables_dele
 
 `resources/views/realestate/_partials/_deletion_blockers.blade.php` を新規作成:
 
+⚠ **採用①: ルート `<div>` に `id="deletion-blockers"` を付ける。**
+無効化ボタンの `aria-describedby` がここを指す（キーボードだけの利用者向け。`disabled` はフォーカス不能
+なので `aria-describedby` はスクリーンリーダーの文脈読み上げ用。パネルと無効ボタンは必ず同時に出るので
+id はページに 1 つで足りる）。
+
 ```blade
 {{-- 削除ブロッカー パネル（依存が 1 件以上あるときだけ描画する。0 件なら空枠も出さない） --}}
 {{-- 呼び出し: @include('realestate._partials._deletion_blockers', ['blockers' => $deletionBlockers]) --}}
 @if($blockers)
-    <div class="bg-amber-50 border border-amber-200 rounded-lg p-5 mb-5">
+    <div id="deletion-blockers" class="bg-amber-50 border border-amber-200 rounded-lg p-5 mb-5">
         <div class="flex items-center gap-2 mb-3">
             <svg class="w-4 h-4 text-amber-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
@@ -1715,13 +1797,18 @@ Blade のコンパイルが壊れる。Bug #6）。
             @endif
 ```
 
-置換後:
+置換後（**2026-08-03 レビューで修正 — `title` を `<span>` へ移す。理由は Step 3 の注記参照**）:
 
 ```blade
             @if(auth()->user()->role->isExecutive())
                 @if($deletionBlockers)
-                    <button type="button" disabled title="{{ $deletionBlockersSummary }}"
-                            style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #9ca3af; border: 1px solid #d1d5db; border-radius: 6px; background: #f9fafb; cursor: not-allowed;">削除</button>
+                    {{-- ⚠ title は disabled なボタン自身に置いても表示されない（ホバーイベントが発火しない）。
+                         ホバーを受けられるラッパーに載せる。キーボードだけの利用者には
+                         aria-describedby でパネル本文を紐づける（disabled はフォーカス不能なため）。 --}}
+                    <span title="{{ $deletionBlockersSummary }}" style="display: inline-flex;">
+                        <button type="button" disabled aria-describedby="deletion-blockers"
+                                style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #9ca3af; border: 1px solid #d1d5db; border-radius: 6px; background: #f9fafb; cursor: not-allowed;">削除</button>
+                    </span>
                 @else
                     <form method="POST" action="{{ route('realestate.procurements.destroy', $procurement) }}"
                           onsubmit="return confirm('この仕入れ案件を削除しますか？ 原価データも全て削除されます。')">
@@ -1773,13 +1860,18 @@ Blade のコンパイルが壊れる。Bug #6）。
             @endif
 ```
 
-置換後:
+置換後（**2026-08-03 レビューで修正 — `title` を `<span>` へ移す。理由は Step 3 の注記参照**）:
 
 ```blade
             @if(auth()->user()->role->isExecutive())
                 @if($deletionBlockers)
-                    <button type="button" disabled title="{{ $deletionBlockersSummary }}"
-                            style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #9ca3af; border: 1px solid #d1d5db; border-radius: 6px; background: #f9fafb; cursor: not-allowed;">削除</button>
+                    {{-- ⚠ title は disabled なボタン自身に置いても表示されない（ホバーイベントが発火しない）。
+                         ホバーを受けられるラッパーに載せる。キーボードだけの利用者には
+                         aria-describedby でパネル本文を紐づける（disabled はフォーカス不能なため）。 --}}
+                    <span title="{{ $deletionBlockersSummary }}" style="display: inline-flex;">
+                        <button type="button" disabled aria-describedby="deletion-blockers"
+                                style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #9ca3af; border: 1px solid #d1d5db; border-radius: 6px; background: #f9fafb; cursor: not-allowed;">削除</button>
+                    </span>
                 @else
                     <form method="POST" action="{{ route('realestate.projects.destroy', $project) }}"
                           onsubmit="return confirm('この分譲地を削除しますか？ 原価・区画・図面データも全て削除されます。')">
@@ -1818,7 +1910,15 @@ Blade のコンパイルが壊れる。Bug #6）。
 cd /Users/masanori/site/manage/.claude/worktrees/deletion-guard && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit --filter DeletionGuardTest
 ```
 
-Expected: `OK (24 tests, ...)`
+Expected: `OK (26 tests, ...)`（**2026-08-03 訂正** — 当初案の「24」は誤記。実測は
+23（Task 7 完了時点の総数）+ Task 8 で追加した 3 本 = 26）。
+
+⚠ **2026-08-03 レビューで ① title 表示・② テストの穴 4 件を追加修正した**（`<span>` +
+`aria-describedby` への変更、`assertNoDestroyFormPresent` / `assertDeleteReasonShownOnHoverableSpan`
+の追加、件数アサートの false-pass 修正、依存 2 件での件数固定、`<a href>` の固定）。
+その状態でも **テスト本数は 26 のまま変わらない**（新しい `public function test_*` は増やさず、
+既存 3 本のアサーションを強化 + 非 test の private helper を追加しただけのため）。
+アサーション数は 89 → 95 に増える。
 
 - [ ] **Step 9: コミット**
 
@@ -2017,7 +2117,9 @@ cd /Users/masanori/site/manage/.claude/worktrees/deletion-guard && git add app/H
 設計書 §6.3 の 5 通り + このプランで足した 2 通り + コードレビューで見つかったテスト検出力の穴 3 通り
 （`test(realestate): 仕入れ案件の注文住宅分岐と要約文の書式を回帰テストで固定` で Task 1 / Task 2 のテストに追加）
 + Task 6/7 完了後のコードレビューで足した 2 通り（`test(realestate): ガードが図面削除より前に
-あることと message キーの受け手を固定`）の**計 12 通り**を**実際にコードへ入れて赤を確認する**。
+あることと message キーの受け手を固定`）+ Task 8 完了後のコードレビューで足した 4 通り
+（`fix(realestate): 無効化ボタンの理由表示を実際に出るようにしテストの盲点を塞ぐ`。Step 13〜16）
+の**計 16 通り**を**実際にコードへ入れて赤を確認する**。
 
 各変異は「壊す → 走らせる → 赤を確認 → `git checkout` で戻す」の 4 手。
 **戻し忘れると次の変異の結果が読めなくなる**ので、毎回 `git status` がクリーンなことを確認する。
@@ -2174,16 +2276,73 @@ Expected: **FAIL** — `test_lots_view_reads_message_key_from_delete_error` が�
 
 戻す（`git checkout resources/views/realestate/projects/lots.blade.php`）。
 
-- [ ] **Step 13: 全部戻っていることを確認**
+- [ ] **Step 13: 変異 13 — パネルの件数行を消す（Task 8 完了後のコードレビューで追加）**
+
+`_deletion_blockers.blade.php` の `<div class="text-xs font-semibold text-amber-800 mb-1">{{ $blocker['label'] }} {{ count($blocker['items']) }} 件</div>` を削除して実行:
+
+```bash
+cd /Users/masanori/site/manage/.claude/worktrees/deletion-guard && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit --filter DeletionGuardTest
+```
+
+Expected: **FAIL** — `test_project_show_lists_blockers_and_disables_delete` が赤。
+
+⚠ **`assertSee('建売物件 2 件')` のような素朴なアサートではこの変異を検出できない。**
+無効化ボタンの `title`（＝`summarize()` の出力）に同じ文字列が部分一致で残るため false-pass する
+（Bug #40 と同型）。タグ込みの正規表現（`<div class="...">建売物件 2 件</div>`）に直して、
+初めてこの変異を検出できた。実測済み。
+
+戻す（`git checkout resources/views/realestate/_partials/_deletion_blockers.blade.php`）。
+
+- [ ] **Step 14: 変異 14 — ブロック時に destroy へ送信する `<form>` を残す**
+
+`procurements/show.blade.php` の `@if($deletionBlockers)` 分岐（`<span>` の直後）に
+`<form method="POST" action="{{ route('realestate.procurements.destroy', $procurement) }}">@csrf @method('DELETE')</form>`
+を追加して実行:
+
+```bash
+cd /Users/masanori/site/manage/.claude/worktrees/deletion-guard && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit --filter DeletionGuardTest
+```
+
+Expected: **FAIL** — `test_procurement_show_lists_blockers_and_disables_delete` が赤
+（`assertNoDestroyFormPresent` が検出。残っていると confirm() を経ずに直接 POST できる導線が
+HTML に残ってしまう）。実測済み。
+
+戻す（`git checkout resources/views/realestate/procurements/show.blade.php`）。
+
+- [ ] **Step 15: 変異 15 — パネル行の `<a href>` を外して素のテキストにする**
+
+`_deletion_blockers.blade.php` の `・<a href="{{ $item['url'] }}" ...>{{ $item['name'] }}</a>` を
+`・{{ $item['name'] }}` に変異させて実行。
+
+Expected: **FAIL** — `test_project_show_lists_blockers_and_disables_delete` が赤
+（`<a href="…/housing/properties/…">` を要求する正規表現アサートが不一致。設計書 §5.1 の
+「各行は該当詳細画面へのリンク」が壊れたことを検出）。実測済み。
+
+戻す（`git checkout resources/views/realestate/_partials/_deletion_blockers.blade.php`）。
+
+- [ ] **Step 16: 変異 16 — `<span>` の `title` を消す（採用①の検証）**
+
+`projects/show.blade.php` の `<span title="{{ $deletionBlockersSummary }}" ...>` から
+`title="{{ $deletionBlockersSummary }}"` を削除して実行。
+
+Expected: **FAIL** — `test_project_show_lists_blockers_and_disables_delete` が赤
+（`assertDeleteReasonShownOnHoverableSpan` が検出。`title` が `disabled` なボタン自身に
+残っていても、どのブラウザでもホバー表示されないため無意味 — 採用①の本旨）。実測済み。
+
+戻す（`git checkout resources/views/realestate/projects/show.blade.php`）。
+
+- [ ] **Step 17: 全部戻っていることを確認**
 
 ```bash
 cd /Users/masanori/site/manage/.claude/worktrees/deletion-guard && git status --short && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit --filter DeletionGuardTest
 ```
 
 Expected: `git status` が空、`OK (28 tests, ...)`（Task 5-9 全完了後の総数。26 + Task 6/7 完了後の
-コードレビュー追記分 2 本 = 28。Task 10 はこの時点、つまり Task 5〜9 が全て終わってから実施する）。
+コードレビュー追記分 2 本 = 28。Task 8 完了後のレビュー分（Step 13-16）はテスト本数を増やさず
+既存 3 本のアサーションを強化しただけなので、この総数には影響しない。Task 10 はこの時点、
+つまり Task 5〜9 が全て終わってから実施する）。
 
-⚠ **12 通りすべてで赤を実測できていない場合、そのテストは再発を検出できない。**
+⚠ **16 通りすべてで赤を実測できていない場合、そのテストは再発を検出できない。**
 先に進まず、テストを直すこと。
 
 ---

@@ -583,6 +583,35 @@ class DeletionGuardTest extends TestCase
         );
     }
 
+    /**
+     * (b) ブロック時、destroy へ送信する <form> が跡形もないこと。
+     * 残っていると confirm() を経ずに直接 POST できる導線が HTML に残ってしまう。
+     * destroy と show は同じ URI（動詞違いだけ）なので action 属性の文字列一致で判定できる
+     * （実測: routes/web.php でこの URI を action に使う <form> は該当 show.blade.php にしか無い）。
+     */
+    private function assertNoDestroyFormPresent(string $html, string $destroyUrl): void
+    {
+        $this->assertStringNotContainsString(
+            'action="' . $destroyUrl . '"',
+            $html,
+            'ブロック時なのに削除 form の action が残っている'
+        );
+    }
+
+    /**
+     * 採用①: title は disabled なボタン自身に置いても表示されない（disabled 要素はホバーイベントを
+     * 発火しないため。Firefox もかつては例外的に出していたが Bugzilla 274626 で他ブラウザに揃えた）。
+     * ホバーを受けられる <span> 側に載っていることを固定する。
+     */
+    private function assertDeleteReasonShownOnHoverableSpan(string $html, string $expectedSummary): void
+    {
+        $this->assertStringContainsString(
+            '<span title="' . e($expectedSummary) . '"',
+            $html,
+            '<span> に理由の title が無い（disabled なボタン自身に title を置いても表示されない）'
+        );
+    }
+
     /** ⑥ 仕入れ案件詳細: パネルに依存名が出て、かつ削除ボタンが無効 */
     public function test_procurement_show_lists_blockers_and_disables_delete(): void
     {
@@ -597,23 +626,56 @@ class DeletionGuardTest extends TestCase
         $response->assertSee('このデータを参照しているため削除できません');
         $response->assertSee('パネル検証用契約名（山西 太郎 様）');
         $this->assertDeleteButtonDisabled($response->getContent());
+        $this->assertNoDestroyFormPresent(
+            $response->getContent(),
+            route('realestate.procurements.destroy', $procurement)
+        );
+        $this->assertDeleteReasonShownOnHoverableSpan(
+            $response->getContent(),
+            '契約 1 件が参照しているため削除できません。'
+        );
     }
 
     /** ⑥ 分譲地詳細: パネルに依存名が出て、かつ削除ボタンが無効 */
     public function test_project_show_lists_blockers_and_disables_delete(): void
     {
         $project = $this->makeProject();
-        $lot     = $this->makeLot($project);
-        $this->makeProperty($lot, 'HS-0042');
+        $lotA    = $this->makeLot($project, 1);
+        $lotB    = $this->makeLot($project, 2);
+        $this->makeProperty($lotA, 'HS-0042');
+        // ⚠ (d) 依存を複数件にする。常に 1 件だけの fixture では count() の実装ミス
+        //    （例: 常に 1 固定で返す）を原理的に検出できない。
+        $this->makeProperty($lotB, 'HS-0043');
 
         $response = $this->actingAs($this->executive())
             ->get("/realestate/projects/{$project->id}");
+        $html = $response->getContent();
 
         $response->assertOk();
         $response->assertSee('このデータを参照しているため削除できません');
         $response->assertSee('HS-0042 建売テスト邸');
-        $response->assertSee('建売物件 1 件');
-        $this->assertDeleteButtonDisabled($response->getContent());
+        $response->assertSee('HS-0043 建売テスト邸');
+        // ⚠ (a) assertSee('建売物件 2 件') だけでは false-pass する — 無効ボタンの title 要約文
+        //    「建売物件 2 件が参照しているため削除できません。」にも部分文字列として一致するため
+        //    （Bug #40 と同型）。パネルの件数行はタグに囲まれているので、タグ込みで見て区別する。
+        //    実測: 件数行だけを削っても、この確認が無ければ緑のまま通ってしまう。
+        $this->assertMatchesRegularExpression(
+            '/<div class="text-xs font-semibold text-amber-800 mb-1">建売物件 2 件<\/div>/u',
+            $html,
+            'パネルの件数行が正しく描画されていない（title 属性への false-pass 対策）'
+        );
+        // (c) パネルの各行が <a href> リンクになっていること（設計書 §5.1: 該当詳細画面へのリンク）
+        $this->assertMatchesRegularExpression(
+            '#<a\s+href="[^"]*/housing/properties/\d+"[^>]*>HS-0042 建売テスト邸</a>#u',
+            $html,
+            'パネル行が <a href> リンクになっていない（素のテキストに後退している）'
+        );
+        $this->assertDeleteButtonDisabled($html);
+        $this->assertNoDestroyFormPresent($html, route('realestate.projects.destroy', $project));
+        $this->assertDeleteReasonShownOnHoverableSpan(
+            $html,
+            '建売物件 2 件が参照しているため削除できません。'
+        );
     }
 
     /** 依存 0 件のときはパネルを描かない（空枠を全画面に増やさない）+ ボタンは有効のまま */
