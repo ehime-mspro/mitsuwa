@@ -7,6 +7,7 @@ use App\Enums\LotStatus;
 use App\Models\ReCostItem;
 use App\Models\ReProjectCost;
 use App\Support\AreaConverter;
+use App\Support\DeletionBlockers;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -274,5 +275,14 @@ class ReProject extends Model
                 'actual_amount'    => $purchase,
             ],
         );
+    }
+
+    /**
+     * この分譲地PJ を参照していて、消えると壊れるデータ（PJ 直参照 ＋ 配下区画経由）。
+     * 空配列なら削除可能。判定の実体は DeletionBlockers（画面とサーバで共有する）。
+     */
+    public function deletionBlockers(): array
+    {
+        return DeletionBlockers::forProject($this);
     }
 }

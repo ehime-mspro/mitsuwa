@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\LotStatus;
 use App\Support\AreaConverter;
+use App\Support\DeletionBlockers;
 use App\Support\TsuboPrice;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -80,5 +81,14 @@ class ReProjectLot extends Model
     public static function sqmToTsubo(float $sqm): float
     {
         return AreaConverter::sqmToTsubo($sqm);
+    }
+
+    /**
+     * この区画を参照していて、消えると壊れるデータ（契約・建売物件・注文住宅）。
+     * 空配列なら削除可能。判定の実体は DeletionBlockers（画面とサーバで共有する）。
+     */
+    public function deletionBlockers(): array
+    {
+        return DeletionBlockers::forLotIds([$this->id]);
     }
 }

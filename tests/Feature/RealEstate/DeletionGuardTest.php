@@ -277,4 +277,42 @@ class DeletionGuardTest extends TestCase
     {
         $this->assertSame([], DeletionBlockers::forEachLotId([]));
     }
+
+    // ============================================================
+    // Task 4: モデルのラッパー
+    // ============================================================
+
+    /** 3 モデルのラッパーが DeletionBlockers と同じ結果を返す（配線の確認） */
+    public function test_model_wrappers_delegate_to_deletion_blockers(): void
+    {
+        $procurement = $this->makeProcurement();
+        $project     = $this->makeProject();
+        $lot         = $this->makeLot($project);
+
+        $this->makeContract(['procurement_id' => $procurement->id], '仕入れ契約');
+        $this->makeProperty($lot);
+
+        $this->assertSame(
+            DeletionBlockers::forProcurementId($procurement->id),
+            $procurement->deletionBlockers()
+        );
+        $this->assertSame(
+            DeletionBlockers::forProject($project),
+            $project->deletionBlockers()
+        );
+        $this->assertSame(
+            DeletionBlockers::forLotIds([$lot->id]),
+            $lot->deletionBlockers()
+        );
+    }
+
+    /** 参照が無ければ 3 モデルとも空配列（＝削除可能） */
+    public function test_model_wrappers_return_empty_when_free(): void
+    {
+        $project = $this->makeProject();
+
+        $this->assertSame([], $this->makeProcurement()->deletionBlockers());
+        $this->assertSame([], $project->deletionBlockers());
+        $this->assertSame([], $this->makeLot($project)->deletionBlockers());
+    }
 }

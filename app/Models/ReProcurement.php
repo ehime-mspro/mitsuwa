@@ -9,6 +9,7 @@ use App\Models\ReCostItem;
 use App\Models\ReProcurementCost;
 use App\Support\AreaConverter;
 use App\Support\ConsumptionTax;
+use App\Support\DeletionBlockers;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -345,5 +346,14 @@ class ReProcurement extends Model
                 'actual_amount'    => $purchase,
             ],
         );
+    }
+
+    /**
+     * この仕入れ案件を参照していて、消えると壊れるデータ（契約・建売物件・注文住宅）。
+     * 空配列なら削除可能。判定の実体は DeletionBlockers（画面とサーバで共有する）。
+     */
+    public function deletionBlockers(): array
+    {
+        return DeletionBlockers::forProcurementId($this->id);
     }
 }
