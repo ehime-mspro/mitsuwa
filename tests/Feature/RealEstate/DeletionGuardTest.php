@@ -246,4 +246,35 @@ class DeletionGuardTest extends TestCase
     {
         $this->assertSame([], DeletionBlockers::forProject($this->makeProject()));
     }
+
+    // ============================================================
+    // Task 3: forEachLotId()
+    // ============================================================
+
+    /** 区画ごとに分かれること・参照の無い区画は空配列であること */
+    public function test_for_each_lot_id_groups_blockers_per_lot(): void
+    {
+        $project = $this->makeProject();
+        $lotA    = $this->makeLot($project, 1);
+        $lotB    = $this->makeLot($project, 2);
+        $lotC    = $this->makeLot($project, 3);
+
+        $this->makeProperty($lotA, 'HS-0001');
+        $this->makeCustomOrder($lotB, 'CO-0001');
+
+        $grouped = DeletionBlockers::forEachLotId([$lotA->id, $lotB->id, $lotC->id]);
+
+        $this->assertSame(['建売物件'], array_column($grouped[$lotA->id], 'label'));
+        $this->assertSame(['注文住宅'], array_column($grouped[$lotB->id], 'label'));
+        $this->assertSame([], $grouped[$lotC->id], '参照の無い区画は空配列');
+
+        // 渡した区画は全てキーとして返る（?? [] のフォールバック頼みにしない）
+        $this->assertSame([$lotA->id, $lotB->id, $lotC->id], array_keys($grouped));
+    }
+
+    /** 空配列を渡しても壊れない */
+    public function test_for_each_lot_id_with_empty_input(): void
+    {
+        $this->assertSame([], DeletionBlockers::forEachLotId([]));
+    }
 }

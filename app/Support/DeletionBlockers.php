@@ -54,6 +54,39 @@ class DeletionBlockers
     }
 
     /**
+     * 区画ごとのブロッカー（区画一覧の delete_blocked 用）。
+     * 区画数によらずバルククエリ 3 本だけで全区画分を組む（ループ内で forLotIds() を呼ぶと N+1）。
+     *
+     * @param  array<int>  $lotIds
+     * @return array<int, array> 区画 id => ブロッカー配列（空配列 = 削除可能）
+     */
+    public static function forEachLotId(array $lotIds): array
+    {
+        if ($lotIds === []) {
+            return [];
+        }
+
+        // groupBy のキーは (int) に揃える（ドライバによって属性が string で返ることがあるため）
+        $contracts = ReContract::with('buyer')->whereIn('lot_id', $lotIds)->get()
+            ->groupBy(fn (ReContract $c) => (int) $c->lot_id);
+        $properties = HsProperty::whereIn('re_project_lot_id', $lotIds)->get()
+            ->groupBy(fn (HsProperty $p) => (int) $p->re_project_lot_id);
+        $orders = HsCustomOrder::whereIn('re_project_lot_id', $lotIds)->get()
+            ->groupBy(fn (HsCustomOrder $o) => (int) $o->re_project_lot_id);
+
+        $result = [];
+        foreach ($lotIds as $lotId) {
+            $result[(int) $lotId] = self::assemble(
+                $contracts->get((int) $lotId, collect()),
+                $properties->get((int) $lotId, collect()),
+                $orders->get((int) $lotId, collect()),
+            );
+        }
+
+        return $result;
+    }
+
+    /**
      * 指定した仕入れ案件を参照しているデータ。
      */
     public static function forProcurementId(int $procurementId): array
