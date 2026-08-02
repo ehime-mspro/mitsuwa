@@ -153,6 +153,9 @@ class DeletionGuardTest extends TestCase
         $this->assertSame('HS-0007 建売テスト邸', $blockers[1]['items'][0]['name']);
         $this->assertSame('CO-0003 注文住宅テスト邸', $blockers[2]['items'][0]['name']);
         $this->assertStringContainsString('/housing/properties/', $blockers[1]['items'][0]['url']);
+        // ルート名の取り違え（例: ...show → ...index）を検出するため、契約・注文住宅の url も固定する
+        $this->assertStringContainsString('/realestate/contracts/', $blockers[0]['items'][0]['url']);
+        $this->assertStringContainsString('/housing/custom-orders/', $blockers[2]['items'][0]['url']);
     }
 
     /** 他の区画の参照を巻き込まない（whereIn の取り違えを検出する） */
@@ -172,7 +175,12 @@ class DeletionGuardTest extends TestCase
     // Task 2: forProcurementId() / forProject()
     // ============================================================
 
-    /** 仕入れ案件を参照している契約・建売・注文住宅を拾う */
+    /**
+     * 仕入れ案件を参照している契約・建売・注文住宅を拾う。
+     *
+     * ⚠ 3 種そろえないと forProcurementId() の HsCustomOrder クエリを削除しても
+     *    このテストは緑のまま通る（設計書 §2.2 が要求する 3 種の 1 つが無防備になる）。
+     */
     public function test_procurement_blockers_collect_all_three_kinds(): void
     {
         $procurement = $this->makeProcurement();
@@ -187,19 +195,36 @@ class DeletionGuardTest extends TestCase
             'address'           => '愛媛県松山市5-5-5',
             'created_by'        => 1,
         ]);
+        HsCustomOrder::create([
+            'order_code'        => 'CO-0012',
+            'order_name'        => '仕入れ土地の注文住宅',
+            'status'            => 'contracted',
+            'customer_name'     => '西野 一郎',
+            'land_source_type'  => 'procurement',
+            're_procurement_id' => $procurement->id,
+            'address'           => '愛媛県松山市6-6-6',
+            'created_by'        => 1,
+        ]);
 
         $blockers = DeletionBlockers::forProcurementId($procurement->id);
 
-        $this->assertSame(['契約', '建売物件'], array_column($blockers, 'label'));
+        $this->assertSame(['契約', '建売物件', '注文住宅'], array_column($blockers, 'label'));
         $this->assertSame('仕入れ契約（山西 太郎 様）', $blockers[0]['items'][0]['name']);
+        $this->assertSame('CO-0012 仕入れ土地の注文住宅', $blockers[2]['items'][0]['name']);
+        // summarize() の区切り文字（・）と件数・語順を複数エントリで固定する（1 エントリだけだと implode の区切り文字が見えない）
+        $this->assertSame(
+            '契約 1 件・建売物件 1 件・注文住宅 1 件が参照しているため削除できません。',
+            DeletionBlockers::summarize($blockers)
+        );
     }
 
-    /** 参照が無ければ空配列 */
+    /** 参照が無ければ空配列。summarize([]) が空文字であることも合わせて固定する（区画一覧の delete_blocked_reason で load-bearing） */
     public function test_procurement_without_references_has_no_blockers(): void
     {
         $procurement = $this->makeProcurement();
 
         $this->assertSame([], DeletionBlockers::forProcurementId($procurement->id));
+        $this->assertSame('', DeletionBlockers::summarize([]));
     }
 
     /** PJ 直参照の契約と、配下区画を参照する建売の両方を拾う */

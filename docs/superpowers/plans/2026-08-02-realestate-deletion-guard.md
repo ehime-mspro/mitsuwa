@@ -273,6 +273,9 @@ class DeletionGuardTest extends TestCase
         $this->assertSame('HS-0007 建売テスト邸', $blockers[1]['items'][0]['name']);
         $this->assertSame('CO-0003 注文住宅テスト邸', $blockers[2]['items'][0]['name']);
         $this->assertStringContainsString('/housing/properties/', $blockers[1]['items'][0]['url']);
+        // ルート名の取り違え（例: ...show → ...index）を検出するため、契約・注文住宅の url も固定する
+        $this->assertStringContainsString('/realestate/contracts/', $blockers[0]['items'][0]['url']);
+        $this->assertStringContainsString('/housing/custom-orders/', $blockers[2]['items'][0]['url']);
     }
 
     /** 他の区画の参照を巻き込まない（whereIn の取り違えを検出する） */
@@ -435,7 +438,12 @@ cd /Users/masanori/site/manage/.claude/worktrees/deletion-guard && git add app/S
     // Task 2: forProcurementId() / forProject()
     // ============================================================
 
-    /** 仕入れ案件を参照している契約・建売・注文住宅を拾う */
+    /**
+     * 仕入れ案件を参照している契約・建売・注文住宅を拾う。
+     *
+     * ⚠ 3 種そろえないと forProcurementId() の HsCustomOrder クエリを削除しても
+     *    このテストは緑のまま通る（設計書 §2.2 が要求する 3 種の 1 つが無防備になる）。
+     */
     public function test_procurement_blockers_collect_all_three_kinds(): void
     {
         $procurement = $this->makeProcurement();
@@ -450,19 +458,36 @@ cd /Users/masanori/site/manage/.claude/worktrees/deletion-guard && git add app/S
             'address'           => '愛媛県松山市5-5-5',
             'created_by'        => 1,
         ]);
+        HsCustomOrder::create([
+            'order_code'        => 'CO-0012',
+            'order_name'        => '仕入れ土地の注文住宅',
+            'status'            => 'contracted',
+            'customer_name'     => '西野 一郎',
+            'land_source_type'  => 'procurement',
+            're_procurement_id' => $procurement->id,
+            'address'           => '愛媛県松山市6-6-6',
+            'created_by'        => 1,
+        ]);
 
         $blockers = DeletionBlockers::forProcurementId($procurement->id);
 
-        $this->assertSame(['契約', '建売物件'], array_column($blockers, 'label'));
+        $this->assertSame(['契約', '建売物件', '注文住宅'], array_column($blockers, 'label'));
         $this->assertSame('仕入れ契約（山西 太郎 様）', $blockers[0]['items'][0]['name']);
+        $this->assertSame('CO-0012 仕入れ土地の注文住宅', $blockers[2]['items'][0]['name']);
+        // summarize() の区切り文字（・）と件数・語順を複数エントリで固定する（1 エントリだけだと implode の区切り文字が見えない）
+        $this->assertSame(
+            '契約 1 件・建売物件 1 件・注文住宅 1 件が参照しているため削除できません。',
+            DeletionBlockers::summarize($blockers)
+        );
     }
 
-    /** 参照が無ければ空配列 */
+    /** 参照が無ければ空配列。summarize([]) が空文字であることも合わせて固定する（区画一覧の delete_blocked_reason で load-bearing） */
     public function test_procurement_without_references_has_no_blockers(): void
     {
         $procurement = $this->makeProcurement();
 
         $this->assertSame([], DeletionBlockers::forProcurementId($procurement->id));
+        $this->assertSame('', DeletionBlockers::summarize([]));
     }
 
     /** PJ 直参照の契約と、配下区画を参照する建売の両方を拾う */
@@ -1799,7 +1824,9 @@ cd /Users/masanori/site/manage/.claude/worktrees/deletion-guard && git add app/H
 **Files:** 一時的に編集して戻すだけ（コミットしない）
 
 ⚠ **「テストが緑」は検証にならない**（Bug #39 / #42）。
-設計書 §6.3 の 5 通り + このプランで足した 2 通りを**実際にコードへ入れて赤を確認する**。
+設計書 §6.3 の 5 通り + このプランで足した 2 通り + コードレビューで見つかったテスト検出力の穴 3 通り
+（`test(realestate): 仕入れ案件の注文住宅分岐と要約文の書式を回帰テストで固定` で Task 1 / Task 2 のテストに追加）
+の計 10 通りを**実際にコードへ入れて赤を確認する**。
 
 各変異は「壊す → 走らせる → 赤を確認 → `git checkout` で戻す」の 4 手。
 **戻し忘れると次の変異の結果が読めなくなる**ので、毎回 `git status` がクリーンなことを確認する。
@@ -1888,7 +1915,40 @@ Expected: **FAIL** — `test_lot_with_custom_order_cannot_be_deleted` が赤
 
 戻す（`git checkout app/Http/Controllers/RealEstate/ProjectController.php`）。
 
-- [ ] **Step 8: 全部戻っていることを確認**
+- [ ] **Step 8: 変異 8 — `forProcurementId()` から注文住宅の行を消す**
+
+`DeletionBlockers::forProcurementId()` の `HsCustomOrder::where('re_procurement_id', $procurementId)->get()` を
+`collect()` に変異させて実行:
+
+```bash
+cd /Users/masanori/site/manage/.claude/worktrees/deletion-guard && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit --filter DeletionGuardTest
+```
+
+Expected: **FAIL** — `test_procurement_blockers_collect_all_three_kinds` が赤（注文住宅が消える）。
+
+戻す（`git checkout app/Support/DeletionBlockers.php`）。
+
+- [ ] **Step 9: 変異 9 — `summarize()` の区切り文字を変える**
+
+`summarize()` の `implode('・', $parts)` を `implode('、', $parts)` に変異させて実行。
+
+Expected: **FAIL** — `test_procurement_blockers_collect_all_three_kinds` の要約文アサートが赤。
+
+⚠ **`test_contract_linked_by_both_project_and_lot_is_counted_once`（1 エントリ）は緑のまま**であることも確認する。
+1 エントリでは `implode` の区切り文字が結果に現れないため、複数エントリのテストでしか検出できない
+（これがコードレビューで見つかった元々の穴）。
+
+戻す（`git checkout app/Support/DeletionBlockers.php`）。
+
+- [ ] **Step 10: 変異 10 — `summarize([])` の空文字を変える**
+
+`summarize()` の `if ($blockers === []) { return ''; }` を `return 'なし';` に変異させて実行。
+
+Expected: **FAIL** — `test_procurement_without_references_has_no_blockers` が赤。
+
+戻す（`git checkout app/Support/DeletionBlockers.php`）。
+
+- [ ] **Step 11: 全部戻っていることを確認**
 
 ```bash
 cd /Users/masanori/site/manage/.claude/worktrees/deletion-guard && git status --short && APP_KEY=base64:dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHQ= vendor/bin/phpunit --filter DeletionGuardTest
@@ -1896,7 +1956,7 @@ cd /Users/masanori/site/manage/.claude/worktrees/deletion-guard && git status --
 
 Expected: `git status` が空、`OK (26 tests, ...)`。
 
-⚠ **7 通りすべてで赤を実測できていない場合、そのテストは再発を検出できない。**
+⚠ **10 通りすべてで赤を実測できていない場合、そのテストは再発を検出できない。**
 先に進まず、テストを直すこと。
 
 ---
@@ -2007,7 +2067,7 @@ Expected: `npm run build` 成功 → rsync → 本番で `config:cache && route:
 
 - [ ] 全テスト緑（Task 11 Step 1 の出力を貼る）
 - [ ] コンパイル済み Blade の `php -l` が 0 件（Task 11 Step 2）
-- [ ] **変異 7 通りすべてで赤を実測した**（Task 10）
+- [ ] **変異 10 通りすべてで赤を実測した**（Task 10）
 - [ ] `git status` がクリーンで、変異が残っていない
 - [ ] main repo で `composer dump-autoload` を実行した（Task 12 Step 2）
 - [ ] 本番ブラウザで**実際に押して**確認した（Task 12 Step 5）
