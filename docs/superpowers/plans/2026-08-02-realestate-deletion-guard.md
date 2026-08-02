@@ -343,7 +343,8 @@ class DeletionBlockers
 {
     /**
      * 指定した区画群を参照しているデータ。
-     * 区画 1 件でも PJ 配下の全区画でもここを通す（whereIn のバルククエリで N+1 を避ける）。
+     * 区画 1 件でも複数でも同じ whereIn のバルククエリで引く（N+1 を避ける）。
+     * PJ 配下の全区画をまとめて見るときは forProject() を使う（forProject() は本メソッドを呼ばない）。
      *
      * @param  array<int>  $lotIds
      * @return array<int, array{label: string, items: array<int, array{name: string, url: string}>}>
@@ -354,11 +355,46 @@ class DeletionBlockers
             return [];
         }
 
-        return self::assemble(
-            ReContract::with('buyer')->whereIn('lot_id', $lotIds)->get(),
+        [$properties, $orders] = self::lotScopedHousing($lotIds);
+
+        return self::assemble(self::lotScopedContracts($lotIds), $properties, $orders);
+    }
+
+    /**
+     * 区画群を参照している住宅事業のレコード。
+     * 「どのテーブルのどの列が区画を指しているか」の定義は**ここ 1 箇所だけ**にする
+     *（3 つの入口が同じ whereIn を各自書くと、列名変更で 1 つ直し忘れたときに
+     *  パネルとサーバの判定が割れる。Bug #41 / #42）。
+     *
+     * @param  array<int>  $lotIds
+     * @return array{0: Collection, 1: Collection} [建売物件, 注文住宅]
+     */
+    private static function lotScopedHousing(array $lotIds): array
+    {
+        if ($lotIds === []) {
+            return [collect(), collect()];
+        }
+
+        return [
             HsProperty::whereIn('re_project_lot_id', $lotIds)->get(),
             HsCustomOrder::whereIn('re_project_lot_id', $lotIds)->get(),
-        );
+        ];
+    }
+
+    /**
+     * 区画群を参照している契約。
+     *
+     * ⚠ forProject() はこれを使わない。PJ 直参照と区画参照を「グループ化した OR の 1 クエリ」に
+     *    まとめる必要があり（両方に紐づく契約の二重計上を防ぐ。設計書 §3.4）、
+     *    ここの lot_id 単独クエリとは形が違う。
+     */
+    private static function lotScopedContracts(array $lotIds): Collection
+    {
+        if ($lotIds === []) {
+            return collect();
+        }
+
+        return ReContract::with('buyer')->whereIn('lot_id', $lotIds)->get();
     }
 
     /**
@@ -368,6 +404,15 @@ class DeletionBlockers
      */
     private static function assemble(Collection $contracts, Collection $properties, Collection $orders): array
     {
+        // 呼び出し元の with('buyer') 忘れを静かな N+1 にしない（読み込み済みなら no-op）。
+        // ⚠ 空の $contracts は forEachLotId() の get($key, collect()) フォールバックで
+        //    base Collection（Eloquent Collection ではない）になることがあり、
+        //    loadMissing() は Eloquent Collection にしか存在しないため、空なら呼ばない
+        //    （空である以上ロード対象も無いので、意味的にも no-op で正しい）。
+        if ($contracts->isNotEmpty()) {
+            $contracts->loadMissing('buyer');
+        }
+
         $blockers = [];
 
         if ($contracts->isNotEmpty()) {
@@ -546,11 +591,15 @@ Expected: FAIL — `Call to undefined method App\Support\DeletionBlockers::forPr
 
 - [ ] **Step 3: 2 メソッドを追加**
 
-`app/Support/DeletionBlockers.php` の `forLotIds()` の直後（`assemble()` の前）に挿入:
+`app/Support/DeletionBlockers.php` の `forLotIds()` の直後（`lotScopedHousing()` の前）に挿入。
+`lotScopedHousing()` / `lotScopedContracts()` は Task 1 で既に定義済みなのでここでは触らず、
+`forProject()` の契約以外（建売・注文住宅）はそれを再利用する:
 
 ```php
     /**
      * 指定した仕入れ案件を参照しているデータ。
+     *
+     * @return array<int, array{label: string, items: array<int, array{name: string, url: string}>}>
      */
     public static function forProcurementId(int $procurementId): array
     {
@@ -568,6 +617,9 @@ Expected: FAIL — `Call to undefined method App\Support\DeletionBlockers::forPr
      *    2 本のクエリに分けて足すと、両方に該当する契約が「2 件」と二重に出る（設計書 §3.4）。
      *    グループ化した OR の 1 クエリにして、1 行が 1 回しか返らないようにしてある
      *    （後から unique('id') を書き忘れる余地を作らないため）。
+     *    この OR クエリは lotScopedContracts() では表せない形なので、契約だけはここで自前に組む。
+     *
+     * @return array<int, array{label: string, items: array<int, array{name: string, url: string}>}>
      */
     public static function forProject(ReProject $project): array
     {
@@ -582,11 +634,9 @@ Expected: FAIL — `Call to undefined method App\Support\DeletionBlockers::forPr
             })
             ->get();
 
-        return self::assemble(
-            $contracts,
-            $lotIds === [] ? collect() : HsProperty::whereIn('re_project_lot_id', $lotIds)->get(),
-            $lotIds === [] ? collect() : HsCustomOrder::whereIn('re_project_lot_id', $lotIds)->get(),
-        );
+        [$properties, $orders] = self::lotScopedHousing($lotIds);
+
+        return self::assemble($contracts, $properties, $orders);
     }
 ```
 
@@ -701,7 +751,8 @@ Expected: FAIL — `Call to undefined method App\Support\DeletionBlockers::forEa
 
 - [ ] **Step 3: `forEachLotId()` を追加**
 
-`forLotIds()` の直後に挿入:
+`forLotIds()` の直後に挿入。ここも Task 1 で定義済みの `lotScopedHousing()` / `lotScopedContracts()`
+を再利用し、それぞれを区画 id で `groupBy` する:
 
 ```php
     /**
@@ -709,7 +760,7 @@ Expected: FAIL — `Call to undefined method App\Support\DeletionBlockers::forEa
      * 区画数によらずバルククエリ 3 本だけで全区画分を組む（ループ内で forLotIds() を呼ぶと N+1）。
      *
      * @param  array<int>  $lotIds
-     * @return array<int, array> 区画 id => ブロッカー配列（空配列 = 削除可能）
+     * @return array<int, array<int, array{label: string, items: array<int, array{name: string, url: string}>}>> 区画 id => ブロッカー配列（空配列 = 削除可能）
      */
     public static function forEachLotId(array $lotIds): array
     {
@@ -718,12 +769,10 @@ Expected: FAIL — `Call to undefined method App\Support\DeletionBlockers::forEa
         }
 
         // groupBy のキーは (int) に揃える（ドライバによって属性が string で返ることがあるため）
-        $contracts = ReContract::with('buyer')->whereIn('lot_id', $lotIds)->get()
-            ->groupBy(fn (ReContract $c) => (int) $c->lot_id);
-        $properties = HsProperty::whereIn('re_project_lot_id', $lotIds)->get()
-            ->groupBy(fn (HsProperty $p) => (int) $p->re_project_lot_id);
-        $orders = HsCustomOrder::whereIn('re_project_lot_id', $lotIds)->get()
-            ->groupBy(fn (HsCustomOrder $o) => (int) $o->re_project_lot_id);
+        [$propertiesAll, $ordersAll] = self::lotScopedHousing($lotIds);
+        $contracts  = self::lotScopedContracts($lotIds)->groupBy(fn (ReContract $c) => (int) $c->lot_id);
+        $properties = $propertiesAll->groupBy(fn (HsProperty $p) => (int) $p->re_project_lot_id);
+        $orders     = $ordersAll->groupBy(fn (HsCustomOrder $o) => (int) $o->re_project_lot_id);
 
         $result = [];
         foreach ($lotIds as $lotId) {
