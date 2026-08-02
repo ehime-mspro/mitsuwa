@@ -137,7 +137,10 @@
                                         <button type="button" @click="startEditLot(lot)" style="display: inline-block; padding: 3px 10px; font-size: 12px; font-weight: 600; color: #059669; border: 1px solid #059669; border-radius: 4px; cursor: pointer; background: #fff;">編集</button>
                                     @endif
                                     @if(auth()->user()->role->isExecutive())
-                                        <button type="button" @click="deleteLot(lot)" style="display: inline-block; padding: 3px 10px; font-size: 12px; font-weight: 600; color: #dc2626; border: 1px solid #dc2626; border-radius: 4px; cursor: pointer; background: #fff; margin-left: 4px;">削除</button>
+                                        <button type="button" @click="deleteLot(lot)"
+                                                :disabled="lot.delete_blocked"
+                                                :title="lot.delete_blocked ? lot.delete_blocked_reason : ''"
+                                                :style="'display: inline-block; padding: 3px 10px; font-size: 12px; font-weight: 600; border-radius: 4px; background: #fff; margin-left: 4px; ' + (lot.delete_blocked ? 'color: #9ca3af; border: 1px solid #d1d5db; cursor: not-allowed;' : 'color: #dc2626; border: 1px solid #dc2626; cursor: pointer;')">削除</button>
                                     @endif
                                 </td>
                             </tr>

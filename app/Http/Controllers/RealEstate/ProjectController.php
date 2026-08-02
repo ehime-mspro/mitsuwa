@@ -323,12 +323,18 @@ class ProjectController extends Controller
         $lotSellingTotal = $project->getLotSellingPriceTotal();
         $allHavePrice = $project->allLotsHaveSellingPrice();
 
+        // 削除ブロッカー（区画ごと）。区画数によらずバルククエリ 3 本で組む
+        //（ループ内で 1 件ずつ問い合わせると N+1 になる）
+        $blockersByLotId = DeletionBlockers::forEachLotId($project->lots->pluck('id')->all());
+
         foreach ($project->lots as $lot) {
             // 原価額（原価按分）: 全区画に販売価格が入力済みの場合のみ計算
             $depreciationAmount = null;
             if ($allHavePrice && $lotSellingTotal > 0) {
                 $depreciationAmount = (int) round($effectiveCostTotal * ($lot->selling_price / $lotSellingTotal));
             }
+
+            $lotBlockers = $blockersByLotId[$lot->id] ?? [];
 
             $lotsForJs[] = [
                 'id'                    => $lot->id,
@@ -345,6 +351,9 @@ class ProjectController extends Controller
                 'depreciation_amount'   => $depreciationAmount,
                 'profit'                => ($lot->selling_price && $depreciationAmount !== null) ? $lot->selling_price - $depreciationAmount : null,
                 'tsubo_price_formatted' => $lot->getSellingPricePerTsuboFormatted(),
+                // 削除ボタンの :disabled / :title 用（サーバのガードと同じ判定を通す）
+                'delete_blocked'        => $lotBlockers !== [],
+                'delete_blocked_reason' => DeletionBlockers::summarize($lotBlockers),
             ];
         }
 

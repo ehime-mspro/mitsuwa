@@ -696,4 +696,58 @@ class DeletionGuardTest extends TestCase
         $projectResponse->assertDontSee('このデータを参照しているため削除できません');
         $this->assertDeleteButtonEnabled($projectResponse->getContent());
     }
+
+    // ============================================================
+    // Task 9: ⑦ 区画一覧の delete_blocked
+    // ============================================================
+
+    /** ⑦ 参照のある区画だけ delete_blocked = true、他は false */
+    public function test_lots_page_marks_only_blocked_lots(): void
+    {
+        $project = $this->makeProject();
+        $blocked = $this->makeLot($project, 1);
+        $free    = $this->makeLot($project, 2);
+
+        $this->makeProperty($blocked);
+
+        $response = $this->actingAs($this->executive())
+            ->get("/realestate/projects/{$project->id}/lots");
+
+        $response->assertOk();
+
+        $lots = collect($response->viewData('lotsForJs'))->keyBy('id');
+
+        $this->assertTrue($lots[$blocked->id]['delete_blocked']);
+        $this->assertSame(
+            '建売物件 1 件が参照しているため削除できません。',
+            $lots[$blocked->id]['delete_blocked_reason']
+        );
+
+        $this->assertFalse($lots[$free->id]['delete_blocked']);
+        $this->assertSame('', $lots[$free->id]['delete_blocked_reason']);
+    }
+
+    /**
+     * 呼び出し側（Blade）と定義側（コントローラ）を対で固定する。
+     *
+     * ⚠ Bug #28 / #35 と同じ構図 — viewData だけ見ていると、Blade からバインドが消えても緑になる。
+     * ⚠ Bug #32 — x-show は display を自分のものとして扱うので、この要素は 1 要素のまま
+     *    :disabled で出し分ける。静的 style= を残すと Alpine に上書きされる（Bug #2 / #5）。
+     */
+    public function test_lots_blade_binds_delete_blocked_without_style_conflict(): void
+    {
+        $blade = file_get_contents(resource_path('views/realestate/projects/lots.blade.php'));
+
+        // 削除ボタンの開始タグを全部拾う。
+        // ⚠ preg_match（単数）だと「1 個以上見つかった」しか分からず、
+        //    バインドの無い 2 個目のボタンが増えても緑のまま通る（走査テストの空振り防止）。
+        $found = preg_match_all('/<button[^>]*deleteLot\(lot\)[^>]*>/u', $blade, $m);
+        $this->assertSame(1, $found, '区画削除ボタンはちょうど 1 つ（2026-08-02 実測）');
+        $button = $m[0][0];
+
+        $this->assertStringContainsString(':disabled="lot.delete_blocked"', $button);
+        $this->assertStringContainsString('lot.delete_blocked_reason', $button);
+        $this->assertStringNotContainsString(' style="', $button, '静的 style= は :style へ寄せること（Bug #2 / #5）');
+        $this->assertStringNotContainsString('x-show', $button, 'x-show は display を奪う（Bug #32）');
+    }
 }
