@@ -393,4 +393,52 @@ class DeletionGuardTest extends TestCase
         $response->assertSessionHas('success');
         $this->assertDatabaseMissing('re_procurements', ['id' => $procurement->id]);
     }
+
+    // ============================================================
+    // Task 6: ② 分譲地PJ の削除ガード（HTTP）
+    // ============================================================
+
+    /** ② 建売が紐づく区画を持つ分譲地は削除できず、PJ・区画とも残る */
+    public function test_project_with_housing_property_on_a_lot_cannot_be_deleted(): void
+    {
+        $project = $this->makeProject();
+        $lot     = $this->makeLot($project);
+        $this->makeProperty($lot);
+
+        $response = $this->actingAs($this->executive())
+            ->from("/realestate/projects/{$project->id}")
+            ->delete("/realestate/projects/{$project->id}");
+
+        $response->assertRedirect("/realestate/projects/{$project->id}");
+        $response->assertSessionHas('error', '建売物件 1 件が参照しているため削除できません。');
+        $this->assertDatabaseHas('re_projects', ['id' => $project->id]);
+        $this->assertDatabaseHas('re_project_lots', ['id' => $lot->id]);
+    }
+
+    /** PJ を直接参照する契約でもブロックされる（区画経由だけではない） */
+    public function test_project_with_direct_contract_cannot_be_deleted(): void
+    {
+        $project = $this->makeProject();
+        $this->makeContract(['project_id' => $project->id], 'PJ直参照の契約');
+
+        $this->actingAs($this->executive())
+            ->delete("/realestate/projects/{$project->id}")
+            ->assertSessionHas('error', '契約 1 件が参照しているため削除できません。');
+
+        $this->assertDatabaseHas('re_projects', ['id' => $project->id]);
+    }
+
+    /** ④ 区画があっても参照が無ければ従来どおり削除できる */
+    public function test_project_without_references_can_still_be_deleted(): void
+    {
+        $project = $this->makeProject();
+        $this->makeLot($project);
+
+        $response = $this->actingAs($this->executive())
+            ->delete("/realestate/projects/{$project->id}");
+
+        $response->assertRedirect('/realestate/projects');
+        $response->assertSessionHas('success');
+        $this->assertDatabaseMissing('re_projects', ['id' => $project->id]);
+    }
 }

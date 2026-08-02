@@ -202,6 +202,19 @@ trait CreatesRealEstateSchema
             $t->timestamps();
         });
 
+        // ProjectController::destroy() が $project->drawings を走査する（図面ファイルの物理削除）ため、
+        // 分譲地の削除を HTTP 経由でテストするには必要（DeletionGuardTest Task 6）。
+        Schema::create('re_project_drawings', function (Blueprint $t) {
+            $t->id();
+            $t->unsignedBigInteger('project_id');
+            $t->string('file_name', 255);
+            $t->string('file_path', 255);
+            $t->unsignedInteger('file_size');
+            $t->string('mime_type', 100);
+            $t->unsignedInteger('uploaded_by')->nullable();
+            $t->timestamps();
+        });
+
         Schema::create('hs_properties', function (Blueprint $t) {
             $t->id();
             $t->string('property_code', 20);

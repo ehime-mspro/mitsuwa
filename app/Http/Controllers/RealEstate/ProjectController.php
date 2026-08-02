@@ -12,6 +12,7 @@ use App\Models\ReProjectDrawing;
 use App\Models\ReProjectLot;
 use App\Models\ZoningType;
 use App\Support\AttachmentDelivery;
+use App\Support\DeletionBlockers;
 use App\Support\TsuboPrice;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -277,6 +278,13 @@ class ProjectController extends Controller
      */
     public function destroy(ReProject $project)
     {
+        // 契約・建売物件・注文住宅が参照している間は消させない。
+        // ⚠ 図面ファイルの物理削除より**前**に判定する
+        //   （ブロックされたのにファイルだけ消える事故を防ぐ）。
+        if ($blockers = $project->deletionBlockers()) {
+            return back()->with('error', DeletionBlockers::summarize($blockers));
+        }
+
         $code = $project->project_code;
 
         // 図面ファイルの物理削除
