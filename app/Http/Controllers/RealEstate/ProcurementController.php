@@ -184,10 +184,16 @@ class ProcurementController extends Controller
         $costSkipList     = config('realestate_cost_import.skip', []);
         $costSubtotalKws  = config('realestate_cost_import.subtotal_keywords', []);
 
+        // 削除ブロッカー（パネル + 削除ボタンの無効化。判定はサーバのガードと同じ 1 本を通す）
+        // 要約文は Blade で組まずここで作る（Blade には整形済みの値だけ渡す）
+        $deletionBlockers = $procurement->deletionBlockers();
+        $deletionBlockersSummary = DeletionBlockers::summarize($deletionBlockers);
+
         return view('realestate.procurements.show', compact(
             'procurement', 'costItemsForJs', 'costsForJs',
             'attachments', 'deletedAttachments',
-            'costAliasMap', 'costSkipList', 'costSubtotalKws'
+            'costAliasMap', 'costSkipList', 'costSubtotalKws',
+            'deletionBlockers', 'deletionBlockersSummary'
         ));
     }
 

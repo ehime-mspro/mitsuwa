@@ -553,4 +553,85 @@ class DeletionGuardTest extends TestCase
 
         $this->assertStringContainsString("err.message || 'エラーが発生しました。'", $m[1]);
     }
+
+    // ============================================================
+    // Task 8: ⑥ 詳細画面のパネルと削除ボタン
+    // ============================================================
+
+    /** 依存ありの詳細画面: 削除ボタンが disabled になっている */
+    private function assertDeleteButtonDisabled(string $html): void
+    {
+        $this->assertMatchesRegularExpression(
+            '/<button[^>]*\sdisabled[^>]*>\s*削除\s*<\/button>/u',
+            $html,
+            '削除ボタンが disabled で描画されていない'
+        );
+    }
+
+    /** 依存なしの詳細画面: 従来どおり submit の削除ボタンが出ている */
+    private function assertDeleteButtonEnabled(string $html): void
+    {
+        $this->assertMatchesRegularExpression(
+            '/<button\s+type="submit"[^>]*>\s*削除\s*<\/button>/u',
+            $html,
+            '通常の削除ボタンが描画されていない'
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/<button[^>]*\sdisabled[^>]*>\s*削除\s*<\/button>/u',
+            $html,
+            '依存が無いのに削除ボタンが無効化されている'
+        );
+    }
+
+    /** ⑥ 仕入れ案件詳細: パネルに依存名が出て、かつ削除ボタンが無効 */
+    public function test_procurement_show_lists_blockers_and_disables_delete(): void
+    {
+        $procurement = $this->makeProcurement();
+        // ⚠ 買主名は既存の契約カードにも出るので、パネルの検証には property_name を使う
+        $this->makeContract(['procurement_id' => $procurement->id], 'パネル検証用契約名');
+
+        $response = $this->actingAs($this->executive())
+            ->get("/realestate/procurements/{$procurement->id}");
+
+        $response->assertOk();
+        $response->assertSee('このデータを参照しているため削除できません');
+        $response->assertSee('パネル検証用契約名（山西 太郎 様）');
+        $this->assertDeleteButtonDisabled($response->getContent());
+    }
+
+    /** ⑥ 分譲地詳細: パネルに依存名が出て、かつ削除ボタンが無効 */
+    public function test_project_show_lists_blockers_and_disables_delete(): void
+    {
+        $project = $this->makeProject();
+        $lot     = $this->makeLot($project);
+        $this->makeProperty($lot, 'HS-0042');
+
+        $response = $this->actingAs($this->executive())
+            ->get("/realestate/projects/{$project->id}");
+
+        $response->assertOk();
+        $response->assertSee('このデータを参照しているため削除できません');
+        $response->assertSee('HS-0042 建売テスト邸');
+        $response->assertSee('建売物件 1 件');
+        $this->assertDeleteButtonDisabled($response->getContent());
+    }
+
+    /** 依存 0 件のときはパネルを描かない（空枠を全画面に増やさない）+ ボタンは有効のまま */
+    public function test_show_pages_without_blockers_render_no_panel_and_keep_delete(): void
+    {
+        $procurement = $this->makeProcurement();
+        $project     = $this->makeProject();
+
+        $procurementResponse = $this->actingAs($this->executive())
+            ->get("/realestate/procurements/{$procurement->id}");
+        $procurementResponse->assertOk();
+        $procurementResponse->assertDontSee('このデータを参照しているため削除できません');
+        $this->assertDeleteButtonEnabled($procurementResponse->getContent());
+
+        $projectResponse = $this->actingAs($this->executive())
+            ->get("/realestate/projects/{$project->id}");
+        $projectResponse->assertOk();
+        $projectResponse->assertDontSee('このデータを参照しているため削除できません');
+        $this->assertDeleteButtonEnabled($projectResponse->getContent());
+    }
 }

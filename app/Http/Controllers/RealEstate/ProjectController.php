@@ -210,10 +210,16 @@ class ProjectController extends Controller
         $costSkipList     = config('realestate_cost_import.skip', []);
         $costSubtotalKws  = config('realestate_cost_import.subtotal_keywords', []);
 
+        // 削除ブロッカー（パネル + 削除ボタンの無効化。判定はサーバのガードと同じ 1 本を通す）
+        // 要約文は Blade で組まずここで作る（Blade には整形済みの値だけ渡す）
+        $deletionBlockers = $project->deletionBlockers();
+        $deletionBlockersSummary = DeletionBlockers::summarize($deletionBlockers);
+
         return view('realestate.projects.show', compact(
             'project', 'costItemsForJs', 'costsForJs',
             'attachments', 'deletedAttachments',
-            'costAliasMap', 'costSkipList', 'costSubtotalKws'
+            'costAliasMap', 'costSkipList', 'costSubtotalKws',
+            'deletionBlockers', 'deletionBlockersSummary'
         ));
     }
 

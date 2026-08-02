@@ -28,16 +28,22 @@
                    style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #059669; border: 1px solid #059669; border-radius: 6px; text-decoration: none; background: #fff;">編集</a>
             @endif
             @if(auth()->user()->role->isExecutive())
-                <form method="POST" action="{{ route('realestate.projects.destroy', $project) }}"
-                      onsubmit="return confirm('この分譲地を削除しますか？ 原価・区画・図面データも全て削除されます。')">
-                    @csrf @method('DELETE')
-                    <button type="submit"
-                            style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #dc2626; border: 1px solid #dc2626; border-radius: 6px; background: #fff; cursor: pointer;">削除</button>
-                </form>
+                @if($deletionBlockers)
+                    <button type="button" disabled title="{{ $deletionBlockersSummary }}"
+                            style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #9ca3af; border: 1px solid #d1d5db; border-radius: 6px; background: #f9fafb; cursor: not-allowed;">削除</button>
+                @else
+                    <form method="POST" action="{{ route('realestate.projects.destroy', $project) }}"
+                          onsubmit="return confirm('この分譲地を削除しますか？ 原価・区画・図面データも全て削除されます。')">
+                        @csrf @method('DELETE')
+                        <button type="submit"
+                                style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #dc2626; border: 1px solid #dc2626; border-radius: 6px; background: #fff; cursor: pointer;">削除</button>
+                    </form>
+                @endif
             @endif
         </div>
     </div>
 
+    @include('realestate._partials._deletion_blockers', ['blockers' => $deletionBlockers])
 
     {{-- 基本情報 --}}
     <div class="bg-white border border-gray-200 rounded-lg p-5 mb-5">
