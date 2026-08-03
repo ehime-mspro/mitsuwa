@@ -32,12 +32,60 @@ class AjaxFetchSessionGuardTest extends TestCase
     /**
      * 走査で拾えるはずの呼び出し箇所の下限。走査が空振りして緑になる事故を防ぐ。
      *
-     * 実数は 8（契約 create 3 + edit 3 + 仕入れ先ピッカー 2）。
+     * 実数は 22（不動産 7 + テナント 6 + 住宅事業 6 + 賃貸マンション 3）。
      * 下限を実数ちょうどにすると、正当に fetch を 1 つ減らしただけで
      * 「走査が壊れた」という誤った理由で落ちるので余裕を持たせる。
      * 走査ロジックが壊れれば 0 になるため、この値でも検知できる。
      */
-    private const MIN_CALL_SITES = 5;
+    private const MIN_CALL_SITES = 15;
+
+    /**
+     * `fetch(` の呼び出し全体を括弧の対応で切り出す。
+     *
+     * ⚠ 「最初の `.then(` まで」で切ってはいけない。`Promise.all` 内の `await fetch(…)`
+     *    には近くに `.then(` が無く、固定長のフォールバックに落ちて**別のハンドラの**
+     *    `X-Requested-With` を拾い、**誤って緑になる**（mansion/contracts/create が該当）。
+     */
+    private static function fetchCall(string $source, int $pos): string
+    {
+        $depth = 0;
+
+        for ($i = $pos + 5, $len = strlen($source); $i < $len; $i++) {
+            if ($source[$i] === '(') {
+                $depth++;
+            } elseif ($source[$i] === ')') {
+                $depth--;
+                if ($depth === 0) {
+                    return substr($source, $pos, $i - $pos + 1);
+                }
+            }
+        }
+
+        return substr($source, $pos, 500);
+    }
+
+    /**
+     * `$pos` の直前 `$n` 行を返す。
+     *
+     * ⚠ `var url = '{{ url("/api/…") }}';` と組み立ててから `fetch(url, …)` する形は、
+     *    呼び出し本体だけを見ても URL が分からず**原理的に拾えない**
+     *    （housing/properties/_form と mansion の計 4 箇所が該当）。
+     *    URL の判定材料としてのみ使い、ヘッダーの有無は呼び出し本体だけで判定する。
+     */
+    private static function precedingLines(string $source, int $pos, int $n): string
+    {
+        $start = $pos;
+
+        for ($i = 0; $i <= $n; $i++) {
+            $prev = strrpos(substr($source, 0, $start), "\n");
+            if ($prev === false) {
+                return substr($source, 0, $pos);
+            }
+            $start = $prev;
+        }
+
+        return substr($source, $start, $pos - $start);
+    }
 
     protected function setUp(): void
     {
@@ -84,10 +132,19 @@ class AjaxFetchSessionGuardTest extends TestCase
     }
 
     /**
-     * resources/views/ 全体を走査し、/api/realestate/ を叩く fetch が
+     * resources/views/ 全体を走査し、**自社 API を GET で叩く** fetch が
      * すべて X-Requested-With を送っていること。
+     *
+     * ⚠ **GET だけが対象。** `storeCurrentUrl()` は GET のリクエストしか直前 URL を
+     *    上書きしないので、POST / PUT / DELETE の fetch は無関係（並び替えや
+     *    trainers / stores の CRUD にヘッダーが無くてもこの欠陥は起きない）。
+     * ⚠ **外部 API は対象外。** zipcloud は自社セッションを通らない。
+     *
+     * ⚠ 2026-08-03 に `/api/realestate/` 限定から全モジュールへ広げた。
+     *    限定していた間、テナント・住宅事業・賃貸マンションの 15 箇所が
+     *    **原理的に検出できないまま**残っていた。
      */
-    public function test_all_realestate_api_fetches_send_ajax_header(): void
+    public function test_all_same_origin_get_fetches_send_ajax_header(): void
     {
         $offenders = [];
         $callSites = 0;
@@ -103,17 +160,22 @@ class AjaxFetchSessionGuardTest extends TestCase
             while (($pos = strpos($source, 'fetch(', $offset)) !== false) {
                 $offset = $pos + 6;
 
-                // fetch( から最初の .then( までが引数部分。この書式はプロジェクト全体で共通
-                $end   = strpos($source, '.then(', $pos);
-                $block = $end !== false ? substr($source, $pos, $end - $pos) : substr($source, $pos, 500);
+                $call = self::fetchCall($source, $pos);
+                $ctx  = self::precedingLines($source, $pos, 5) . $call;
 
-                if (! str_contains($block, '/api/realestate/')) {
-                    continue;
+                if (str_contains($ctx, '://')) {
+                    continue;   // 外部 API（zipcloud）
+                }
+                if (! preg_match('#/api/|url\([\'"]api/|route\([\'"]api\.#', $ctx)) {
+                    continue;   // 自社 API を叩いていない
+                }
+                if (preg_match('/method:\s*[\'"](?!GET)/', $call)) {
+                    continue;   // GET 以外は storeCurrentUrl の対象外
                 }
 
                 $callSites++;
 
-                if (! str_contains($block, 'X-Requested-With')) {
+                if (! str_contains($call, 'X-Requested-With')) {
                     $line = substr_count(substr($source, 0, $pos), "\n") + 1;
                     $offenders[] = $file->getRelativePathname() . ':' . $line;
                 }
