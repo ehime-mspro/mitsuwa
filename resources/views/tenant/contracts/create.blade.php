@@ -494,7 +494,9 @@ function contractCreateForm() {
                 return;
             }
             self.customerSearchTimer = setTimeout(function() {
-                fetch('{{ url("/api/tenant/customers/search") }}?q=' + encodeURIComponent(self.customerQuery))
+                fetch('{{ url("/api/tenant/customers/search") }}?q=' + encodeURIComponent(self.customerQuery), {
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                })
                     .then(function(res) {
                         if (!res.ok) {
                             self.customerResults = [];
@@ -540,7 +542,9 @@ function contractCreateForm() {
             }
             var self = this;
             self.loadingUnits = true;
-            fetch('{{ url("/api/tenant/properties") }}/' + self.propertyId + '/vacant-units')
+            fetch('{{ url("/api/tenant/properties") }}/' + self.propertyId + '/vacant-units', {
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+            })
                 .then(function(res) {
                     if (!res.ok) {
                         self.units = [];
@@ -585,7 +589,9 @@ function contractCreateForm() {
             }
             var self = this;
             self.loadingInquiries = true;
-            fetch('{{ url("/api/tenant/properties") }}/' + self.propertyId + '/active-inquiries')
+            fetch('{{ url("/api/tenant/properties") }}/' + self.propertyId + '/active-inquiries', {
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+            })
                 .then(function(res) {
                     if (!res.ok) {
                         self.inquiries = [];

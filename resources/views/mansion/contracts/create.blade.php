@@ -61,8 +61,8 @@
                     const roomsUrl = `{{ url('api/mansion/properties') }}/${this.propertyId}/vacant-rooms`;
                     const parkingsUrl = `{{ url('api/mansion/properties') }}/${this.propertyId}/vacant-parkings`;
                     const [roomsRes, parkingsRes] = await Promise.all([
-                        fetch(roomsUrl, { headers: { 'Accept': 'application/json' } }),
-                        fetch(parkingsUrl, { headers: { 'Accept': 'application/json' } })
+                        fetch(roomsUrl, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } }),
+                        fetch(parkingsUrl, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
                     ]);
                     if (!roomsRes.ok || !parkingsRes.ok) {
                         this.rooms = [];

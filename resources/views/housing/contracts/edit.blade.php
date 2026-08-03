@@ -125,7 +125,7 @@ function contractEditForm() {
             }
             self.searchTimer = setTimeout(function() {
                 fetch('{{ url("/api/tenant/customers/search") }}?q=' + encodeURIComponent(self.customerName), {
-                    headers: { 'Accept': 'application/json' }
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
                 })
                 .then(function(res) {
                     if (!res.ok) {

@@ -54,7 +54,7 @@
                     return;
                 }
                 var url = '{{ url('api/mansion/properties') }}/' + this.propertyId + '/vacant-parkings';
-                fetch(url, { headers: { 'Accept': 'application/json' } })
+                fetch(url, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
                     .then(function (res) {
                         if (!res.ok) {
                             self.parkings = [];

@@ -348,7 +348,7 @@ function customOrderForm() {
         fetchLots: function(projectId) {
             var self = this;
             fetch('{{ url("/api/housing/project-lots") }}?project_id=' + projectId, {
-                headers: { 'Accept': 'application/json' }
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
             })
             .then(function(res) {
                 if (!res.ok) {
@@ -393,7 +393,7 @@ function customOrderForm() {
             var self = this;
             if (!self.selectedProcurementId) return;
             fetch('{{ url("/api/housing/procurement-info") }}/' + self.selectedProcurementId, {
-                headers: { 'Accept': 'application/json' }
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
             })
             .then(function(res) {
                 if (!res.ok) {
@@ -427,7 +427,7 @@ function customOrderForm() {
             }
             self.searchTimer = setTimeout(function() {
                 fetch('{{ url("/api/tenant/customers/search") }}?q=' + encodeURIComponent(self.customerName), {
-                    headers: { 'Accept': 'application/json' }
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
                 })
                 .then(function(res) {
                     if (!res.ok) {

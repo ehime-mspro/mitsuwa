@@ -431,7 +431,9 @@ function contractEditForm() {
                 return;
             }
             self.customerSearchTimer = setTimeout(function() {
-                fetch('{{ url("/api/tenant/customers/search") }}?q=' + encodeURIComponent(self.customerQuery))
+                fetch('{{ url("/api/tenant/customers/search") }}?q=' + encodeURIComponent(self.customerQuery), {
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                })
                     .then(function(res) {
                         if (!res.ok) {
                             self.customerResults = [];

@@ -272,7 +272,7 @@ function housingPropertyForm() {
             url += '&current_property_id={{ $p->id }}';
             @endif
             fetch(url, {
-                headers: { 'Accept': 'application/json' }
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
             })
             .then(function(res) {
                 if (!res.ok) {
@@ -318,7 +318,7 @@ function housingPropertyForm() {
             var self = this;
             if (!self.selectedProcurementId) return;
             fetch('{{ url("/api/housing/procurement-info") }}/' + self.selectedProcurementId, {
-                headers: { 'Accept': 'application/json' }
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
             })
             .then(function(res) {
                 if (!res.ok) {
