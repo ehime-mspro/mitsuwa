@@ -21,12 +21,13 @@ Laravel 12 / PHP 8.5.4 (local) + 8.3 (prod) / MySQL 8 / Blade + Alpine.js 3 + Ta
 | 6 | `@keydown.enter="save()"` を日本語入力フィールドに置く（IME 変換確定 Enter で誤発火→未確定のまま保存）| `@keydown.enter="$event.isComposing \|\| save()"` |
 | 7 | 「効かないクラス一覧」を信じて、コンパイル済みのクラスをわざわざ inline style に書き換える | **Tailwind クラスは普通に書いてよい**（`./deploy.sh` が `npm run build` するので本番は必ず最新。2026-07-15 に組み込み）。**ローカルで見た目を確認する時だけ手で `npm run build`**。旧一覧は 12/12 が誤りだった（`docs/*.md` も走査対象で、一覧に書いた事自体がそのクラスを実在させていた → 2026-07-15 に `@source not "../../docs"` で除外し解消）。測るなら main repo で `grep -oE "\.my-class[,{:>~+ ]" public/build/assets/app-*.css`（`:` `.` `[` を含むなら `grep -oF '.gap-1\.5'`）。⚠ 走査対象は `resources/` だけでない——`app/Enums/UnitStatus.php` は Tailwind クラス文字列を返すので `app/` も必要。詳細は @docs/RULES.md「Vite Build」+「Tailwind 監査の落とし穴」。Bug #19 |
 | 8 | Object.assign 引数順序を逆転（factory がリテラルの getter を評価して static 値に焼き付け、Alpine reactivity 死亡）| 必ず `return Object.assign({...existing with getters...}, factoryResult);` の順。getter は target 側に置く |
-| 9 | JSON API を叩く `fetch` に `X-Requested-With` を付け忘れる（セッションの直前 URL がその API で上書きされ、バリデーションエラー時の `back()` が生の JSON ページへ飛んで**入力が全消失**）| `headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }` を必ず付ける（`Accept` だけでは効かない）。⚠ **「何も入力せず送信」では再現しない** — Ajax を一度叩いてからエラーを出すこと。走査テスト `AjaxFetchSessionGuardTest` が自動で拾う。Bug #35 |
+| 9 | JSON API を **GET** で叩く `fetch` に `X-Requested-With` を付け忘れる（セッションの直前 URL がその API で上書きされ、バリデーションエラー時の `back()` が生の JSON ページへ飛んで**入力が全消失**）| `headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }` を必ず付ける（`Accept` だけでは効かない）。⚠ **GET だけが対象**（`storeCurrentUrl()` は GET しか記録しない）。⚠ **「何も入力せず送信」では再現しない** — Ajax を一度叩いてからエラーを出すこと。走査テスト `AjaxFetchSessionGuardTest` が自動で拾う（2026-08-03 に `/api/realestate/` 限定から**自社 API 全体**へ拡張）。Bug #35 |
 | 10 | `__()` を通る機能を足したのに `lang/ja/<group>.php` を作らない（`APP_LOCALE=ja` かつ fallback も ja なので **en にも落ちず生の翻訳キーが画面に出る**）| 対応する `lang/ja/*.php` を必ず追加する。⚠ **`$request->validate()` のようにフレームワーク内部から `__()` が呼ばれる経路は `grep -rn "__('"` に出ない** — 実際にエラーを出して画面で見る。⚠ **`phpunit.xml` の `APP_LOCALE=ja` / `APP_FALLBACK_LOCALE=ja` を消さない**（消すとテストが locale=en で走り、この種の欠陥を原理的に検出できなくなる）。Bug #36 |
 | 11 | フォームに項目を足したのに `lang/ja/validation.php` の `attributes` に和名を書かない（エラー文に **`guarantor1 name` のような英字**が出る）| `attributes` に和名を追加する。画面ごとに語が変わるキー（`name` `address` 等）は**そのコントローラの `validate()` **第3引数**で上書き（`validate($rules, $messages, $attributes)` — **第2引数は messages**）。走査テスト `JapaneseValidationMessagesTest` が和名漏れを自動で拾う。Bug #37 |
 | 12 | `disabled` なボタン自身に `title` を付けて「押せない理由」を出そうとする（**どのブラウザでも表示されない**。`disabled` な要素はホバーイベントを発火しない。HTML には `title` が出るのでテストも `view:cache` も全部通り、無音で死ぬ）| ホバーを受けられる **`<span title="…">` でボタンを包む** ＋ 画面に理由の領域があれば `aria-describedby` で紐づける（`disabled` はフォーカス不能なので tooltip だけでは届かない）。Alpine なら `:title="cond ? reason : null"`（`''` だと空の `title=""` が残る）。⚠ **検証は「HTML に出るか」では不可能** — 実ブラウザでホバーするか `document.elementFromPoint()` から祖先を辿る。Bug #43 |
+| 13 | 走査テスト（ラチェット）を「直したファイルを配列に並べる」形で書く（**未修正のファイルは検査対象に入らないので永遠に緑**。実測で 19 本が野放しだった）| **対象を全件分類する**形にする — `fetch` を持つ Blade を機械的に列挙し、どのリストにも無ければ落とす（`AjaxErrorFeedbackTest::test_every_fetch_view_is_classified`）。⚠ 検査文字列に**引数名を決め打ちしない**（`(r)` 決め打ちが `(res)` を見逃した）。⚠ **単一の「正準パターン」を機械適用しない** — null 返し / エンベロープ / throw の 3 方式が併存し、どれも正当。Bug #45 |
 
-全 44 件の詳細バグカタログ + 各種パターン: @docs/RULES.md
+全 45 件の詳細バグカタログ + 各種パターン: @docs/RULES.md
 
 ## 🔌 利用可能なプラグイン
 
@@ -142,5 +143,5 @@ sudo rm -f storage/framework/views/*.php && brew services restart httpd
 ## 📚 Detailed docs
 
 - @docs/ARCHITECTURE.md — ディレクトリ構成、モデル一覧、認可マトリクス
-- @docs/RULES.md — Bug #1–44 + Tailwind 不可クラス/監査の落とし穴 + Excel/SheetJS + 全角→半角自動変換 + 郵便番号 API
+- @docs/RULES.md — Bug #1–45 + Tailwind 不可クラス/監査の落とし穴 + Excel/SheetJS + 全角→半角自動変換 + 郵便番号 API
 - @docs/BACKLOG.md — 完了済み機能の優先度別一覧（優先度 1〜5 全て本番稼働中）
