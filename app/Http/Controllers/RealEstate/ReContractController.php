@@ -232,8 +232,29 @@ class ReContractController extends Controller
             ];
         }
 
+        // 契約の cost_amount は「契約時点の原価」のスナップショット（利用者が手編集もできる）。
+        // 一方 上の内訳は仕入れ案件・分譲地から毎回ライブで引くので、契約後に仕入れ側の原価が
+        // 変われば両者は乖離する。⚠ 画面で内訳と合計を並べて出す以上、
+        // 「合計＝内訳の積み上げ」に見えるのに別ソースだと無音で食い違う（実測: 契約 id 2 が
+        // 内訳 26,700,000 円に対し合計 25,095,455 円と表示されていた）。
+        // 乖離はここで 1 度だけ算出し、Blade は表示に徹する（Bug #26: 配列は Controller で組む）。
+        $liveCost = null;
+        if ($costBreakdown !== null) {
+            $liveCost = (int) $costBreakdown['costs']->sum('amount');
+        } elseif ($subdivisionCostInfo !== null) {
+            $liveCost = (int) $subdivisionCostInfo['per_lot_cost'];
+        }
+
+        $costDivergence = ($liveCost !== null && $contract->cost_amount !== null)
+            ? $liveCost - (int) $contract->cost_amount
+            : null;
+
+        if ($costDivergence === 0) {
+            $costDivergence = null;   // 一致しているときは何も出さない
+        }
+
         return view('realestate.contracts.show', compact(
-            'contract', 'costBreakdown', 'subdivisionCostInfo'
+            'contract', 'costBreakdown', 'subdivisionCostInfo', 'liveCost', 'costDivergence'
         ));
     }
 

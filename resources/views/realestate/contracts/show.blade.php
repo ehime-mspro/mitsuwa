@@ -89,7 +89,7 @@
                 @endif
             </div>
             <div class="bg-white border border-gray-200 rounded-lg p-4">
-                <div class="text-xs text-gray-500">原価</div>
+                <div class="text-xs text-gray-500">原価（契約時点）</div>
                 <div class="text-lg font-bold text-gray-900">
                     @if($contract->cost_amount)
                         {{ number_format($contract->cost_amount) }}円
@@ -97,6 +97,11 @@
                         —
                     @endif
                 </div>
+                @if($costDivergence !== null)
+                    <div class="text-xs" style="color: #b45309;">
+                        ⚠ 現在の原価と {{ number_format(abs($costDivergence)) }}円の差
+                    </div>
+                @endif
             </div>
             <div class="bg-white border border-gray-200 rounded-lg p-4">
                 <div class="text-xs text-gray-500">粗利額</div>
@@ -219,9 +224,21 @@
                         @endif
                     </div>
                 @endforeach
-                <div class="text-sm font-bold text-gray-900" style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #fcd34d;">
-                    原価合計: {{ number_format($contract->cost_amount) }}円
+                {{-- ⚠ 上の内訳は仕入れ案件からのライブ値、下の「契約時点の原価」は契約の保存カラム。
+                     別ソースなので「原価合計」と1つだけ出すと無音で食い違う（Bug #46）。必ず両方出す。 --}}
+                <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #fcd34d;">
+                    <div class="text-sm font-bold text-gray-900">
+                        契約時点の原価: {{ $contract->cost_amount !== null ? number_format($contract->cost_amount) . '円' : '—' }}
+                    </div>
+                    <div class="text-sm text-gray-600" style="margin-top: 4px;">
+                        現在の仕入れ原価: {{ number_format($liveCost) }}円
+                    </div>
                 </div>
+                @if($costDivergence !== null)
+                    <div class="text-xs" style="margin-top: 8px; color: #b45309;">
+                        ⚠ 契約後に仕入れ案件の原価が {{ number_format(abs($costDivergence)) }}円{{ $costDivergence > 0 ? '増えて' : '減って' }}います。粗利は契約時点の原価で計算しています。
+                    </div>
+                @endif
             </div>
         </div>
     @endif
@@ -236,9 +253,19 @@
             <div style="background: #fffbeb; border: 1px solid #fcd34d; border-radius: 8px; padding: 16px;">
                 <div class="text-sm text-gray-700">PJ原価合計: {{ number_format($subdivisionCostInfo['total_cost']) }}円</div>
                 <div class="text-sm text-gray-700">区画数: {{ $subdivisionCostInfo['lot_count'] }}区画</div>
-                <div class="text-sm font-bold text-gray-900" style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #fcd34d;">
-                    区画あたり原価: {{ number_format($subdivisionCostInfo['per_lot_cost']) }}円
+                <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #fcd34d;">
+                    <div class="text-sm font-bold text-gray-900">
+                        契約時点の原価: {{ $contract->cost_amount !== null ? number_format($contract->cost_amount) . '円' : '—' }}
+                    </div>
+                    <div class="text-sm text-gray-600" style="margin-top: 4px;">
+                        現在の区画あたり原価: {{ number_format($subdivisionCostInfo['per_lot_cost']) }}円
+                    </div>
                 </div>
+                @if($costDivergence !== null)
+                    <div class="text-xs" style="margin-top: 8px; color: #b45309;">
+                        ⚠ 契約後に分譲地の原価が {{ number_format(abs($costDivergence)) }}円{{ $costDivergence > 0 ? '増えて' : '減って' }}います。粗利は契約時点の原価で計算しています。
+                    </div>
+                @endif
             </div>
         </div>
     @endif
