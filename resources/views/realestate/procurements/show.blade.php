@@ -399,7 +399,7 @@
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {{-- パターンA --}}
             <div class="flex flex-col rounded-lg p-5" style="background: #f8fffe; border: 1px solid #d1fae5;">
-                <div class="text-sm font-bold mb-3.5" style="padding-bottom: 10px;" style="border-bottom: 1px solid #d1fae5;">パターンA: 販売価格仮置き</div>
+                <div class="text-sm font-bold mb-3.5" style="padding-bottom: 10px; border-bottom: 1px solid #d1fae5;">パターンA: 販売価格仮置き</div>
                 <div class="mb-3">
                     <div class="text-xs text-gray-600 font-medium mb-1">販売価格（税抜）</div>
                     <input type="number" x-model.number="simA.sellingPrice"
@@ -410,7 +410,7 @@
                     <div class="text-xs text-gray-600 font-medium mb-0.5">原価合計（採用額）</div>
                     <div class="text-base font-semibold" x-text="formatMoney(effectiveTotal) + '円'"></div>
                 </div>
-                <div class="flex justify-between" style="align-items: flex-end; margin-top: auto;" style="border-top: 2px solid #86efac; padding-top: 14px;">
+                <div class="flex justify-between" style="align-items: flex-end; margin-top: auto; border-top: 2px solid #86efac; padding-top: 14px;">
                     <div>
                         <div class="text-xs text-gray-600 font-medium mb-0.5">粗利額</div>
                         <div class="font-bold text-emerald-600" style="font-size: 22px;" x-text="formatMoney(simA.sellingPrice - effectiveTotal) + '円'"></div>
@@ -424,7 +424,7 @@
 
             {{-- パターンB --}}
             <div class="flex flex-col rounded-lg p-5" style="background: #f8fffe; border: 1px solid #d1fae5;">
-                <div class="text-sm font-bold mb-3.5" style="padding-bottom: 10px;" style="border-bottom: 1px solid #d1fae5;">パターンB: 目標粗利率から逆算</div>
+                <div class="text-sm font-bold mb-3.5" style="padding-bottom: 10px; border-bottom: 1px solid #d1fae5;">パターンB: 目標粗利率から逆算</div>
                 <div class="mb-3">
                     <div class="text-xs text-gray-600 font-medium mb-1">目標粗利率（%）</div>
                     <input type="text" inputmode="decimal" pattern="[0-9.]*" x-model.number="simB.targetRate"
@@ -435,7 +435,7 @@
                     <div class="text-xs text-gray-600 font-medium mb-0.5">原価合計（採用額）</div>
                     <div class="text-base font-semibold" x-text="formatMoney(effectiveTotal) + '円'"></div>
                 </div>
-                <div class="flex justify-between" style="align-items: flex-end; margin-top: auto;" style="border-top: 2px solid #86efac; padding-top: 14px;">
+                <div class="flex justify-between" style="align-items: flex-end; margin-top: auto; border-top: 2px solid #86efac; padding-top: 14px;">
                     <div>
                         <div class="text-xs text-gray-600 font-medium mb-0.5">必要販売価格</div>
                         <div class="font-bold text-emerald-600" style="font-size: 22px;" x-text="formatMoney(simBPrice) + '円'"></div>
@@ -570,8 +570,25 @@ function procurementDetail() {
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': self.token, 'Accept': 'application/json' },
                 body: JSON.stringify(body)
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) {
+                if (!r.ok) {
+                    return r.json().then(function(err) {
+                        var msg = err.message || 'エラーが発生しました。';
+                        if (err.errors) {
+                            var details = Object.values(err.errors).flat().join('\n');
+                            msg = msg + '\n' + details;
+                        }
+                        alert(msg);
+                        return null;
+                    }).catch(function() {
+                        alert('サーバーエラーが発生しました（' + r.status + '）');
+                        return null;
+                    });
+                }
+                return r.json();
+            })
             .then(function(data) {
+                if (!data) return;
                 if (data.success) {
                     self.costs.push(data.cost);
                     self.newCost = { cost_item_id: '', estimated_amount: '', actual_amount: null, notes: '' };
@@ -606,8 +623,25 @@ function procurementDetail() {
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': self.token, 'Accept': 'application/json' },
                 body: JSON.stringify(body)
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) {
+                if (!r.ok) {
+                    return r.json().then(function(err) {
+                        var msg = err.message || 'エラーが発生しました。';
+                        if (err.errors) {
+                            var details = Object.values(err.errors).flat().join('\n');
+                            msg = msg + '\n' + details;
+                        }
+                        alert(msg);
+                        return null;
+                    }).catch(function() {
+                        alert('サーバーエラーが発生しました（' + r.status + '）');
+                        return null;
+                    });
+                }
+                return r.json();
+            })
             .then(function(data) {
+                if (!data) return;
                 if (data.success) {
                     for (var i = 0; i < self.costs.length; i++) {
                         if (self.costs[i].id === cost.id) {
@@ -630,8 +664,25 @@ function procurementDetail() {
                 method: 'DELETE',
                 headers: { 'X-CSRF-TOKEN': self.token, 'Accept': 'application/json' }
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) {
+                if (!r.ok) {
+                    return r.json().then(function(err) {
+                        var msg = err.message || 'エラーが発生しました。';
+                        if (err.errors) {
+                            var details = Object.values(err.errors).flat().join('\n');
+                            msg = msg + '\n' + details;
+                        }
+                        alert(msg);
+                        return null;
+                    }).catch(function() {
+                        alert('サーバーエラーが発生しました（' + r.status + '）');
+                        return null;
+                    });
+                }
+                return r.json();
+            })
             .then(function(data) {
+                if (!data) return;
                 if (data.success) {
                     self.costs = self.costs.filter(function(c) { return c.id !== cost.id; });
                     self.showMessage('費用を削除しました。');

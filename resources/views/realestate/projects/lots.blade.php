@@ -500,8 +500,25 @@ function lotManager() {
                 headers: { 'X-CSRF-TOKEN': self.token, 'Accept': 'application/json' },
                 body: formData
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) {
+                if (!r.ok) {
+                    return r.json().then(function(err) {
+                        var msg = err.message || 'エラーが発生しました。';
+                        if (err.errors) {
+                            var details = Object.values(err.errors).flat().join('\n');
+                            msg = msg + '\n' + details;
+                        }
+                        alert(msg);
+                        return null;
+                    }).catch(function() {
+                        alert('サーバーエラーが発生しました（' + r.status + '）');
+                        return null;
+                    });
+                }
+                return r.json();
+            })
             .then(function(data) {
+                if (!data) return;
                 if (data.success) {
                     self.drawings.push(data.drawing);
                     self.showMsg('図面をアップロードしました。');
@@ -520,8 +537,25 @@ function lotManager() {
                 method: 'DELETE',
                 headers: { 'X-CSRF-TOKEN': self.token, 'Accept': 'application/json' }
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) {
+                if (!r.ok) {
+                    return r.json().then(function(err) {
+                        var msg = err.message || 'エラーが発生しました。';
+                        if (err.errors) {
+                            var details = Object.values(err.errors).flat().join('\n');
+                            msg = msg + '\n' + details;
+                        }
+                        alert(msg);
+                        return null;
+                    }).catch(function() {
+                        alert('サーバーエラーが発生しました（' + r.status + '）');
+                        return null;
+                    });
+                }
+                return r.json();
+            })
             .then(function(data) {
+                if (!data) return;
                 if (data.success) {
                     self.drawings = self.drawings.filter(function(d) { return d.id !== drawing.id; });
                     self.showMsg('図面を削除しました。');

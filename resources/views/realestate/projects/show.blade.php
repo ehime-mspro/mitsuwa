@@ -577,8 +577,25 @@ function projectDetail() {
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': self.token, 'Accept': 'application/json' },
                 body: JSON.stringify(body)
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) {
+                if (!r.ok) {
+                    return r.json().then(function(err) {
+                        var msg = err.message || 'エラーが発生しました。';
+                        if (err.errors) {
+                            var details = Object.values(err.errors).flat().join('\n');
+                            msg = msg + '\n' + details;
+                        }
+                        alert(msg);
+                        return null;
+                    }).catch(function() {
+                        alert('サーバーエラーが発生しました（' + r.status + '）');
+                        return null;
+                    });
+                }
+                return r.json();
+            })
             .then(function(data) {
+                if (!data) return;
                 if (data.success) {
                     self.costs.push(data.cost);
                     self.newCost = { cost_item_id: '', estimated_amount: '', actual_amount: null, notes: '' };
@@ -612,8 +629,25 @@ function projectDetail() {
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': self.token, 'Accept': 'application/json' },
                 body: JSON.stringify(body)
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) {
+                if (!r.ok) {
+                    return r.json().then(function(err) {
+                        var msg = err.message || 'エラーが発生しました。';
+                        if (err.errors) {
+                            var details = Object.values(err.errors).flat().join('\n');
+                            msg = msg + '\n' + details;
+                        }
+                        alert(msg);
+                        return null;
+                    }).catch(function() {
+                        alert('サーバーエラーが発生しました（' + r.status + '）');
+                        return null;
+                    });
+                }
+                return r.json();
+            })
             .then(function(data) {
+                if (!data) return;
                 if (data.success) {
                     for (var i = 0; i < self.costs.length; i++) {
                         if (self.costs[i].id === cost.id) {
@@ -635,8 +669,25 @@ function projectDetail() {
                 method: 'DELETE',
                 headers: { 'X-CSRF-TOKEN': self.token, 'Accept': 'application/json' }
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) {
+                if (!r.ok) {
+                    return r.json().then(function(err) {
+                        var msg = err.message || 'エラーが発生しました。';
+                        if (err.errors) {
+                            var details = Object.values(err.errors).flat().join('\n');
+                            msg = msg + '\n' + details;
+                        }
+                        alert(msg);
+                        return null;
+                    }).catch(function() {
+                        alert('サーバーエラーが発生しました（' + r.status + '）');
+                        return null;
+                    });
+                }
+                return r.json();
+            })
             .then(function(data) {
+                if (!data) return;
                 if (data.success) {
                     self.costs = self.costs.filter(function(c) { return c.id !== cost.id; });
                     self.showMessage('費用を削除しました。');

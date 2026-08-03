@@ -317,7 +317,7 @@ class ProcurementController extends Controller
     public function updateCost(Request $request, ReProcurement $procurement, ReProcurementCost $cost)
     {
         if ($cost->procurement_id !== $procurement->id) {
-            return response()->json(['error' => '不正なリクエストです。'], 403);
+            return response()->json(['message' => '不正なリクエストです。'], 403);
         }
 
         // 物件購入費は仕入れ情報から自動同期されるため手動更新を禁止
@@ -358,7 +358,7 @@ class ProcurementController extends Controller
     public function destroyCost(ReProcurement $procurement, ReProcurementCost $cost)
     {
         if ($cost->procurement_id !== $procurement->id) {
-            return response()->json(['error' => '不正なリクエストです。'], 403);
+            return response()->json(['message' => '不正なリクエストです。'], 403);
         }
 
         // 物件購入費は仕入れ情報から自動同期されるため手動削除を禁止

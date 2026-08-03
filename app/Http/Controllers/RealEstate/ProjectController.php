@@ -442,7 +442,7 @@ class ProjectController extends Controller
     public function updateCost(Request $request, ReProject $project, ReProjectCost $cost)
     {
         if ($cost->project_id !== $project->id) {
-            return response()->json(['error' => '不正なリクエストです。'], 403);
+            return response()->json(['message' => '不正なリクエストです。'], 403);
         }
 
         // 物件購入費は仕入れ情報から自動同期されるため手動更新を禁止
@@ -483,7 +483,7 @@ class ProjectController extends Controller
     public function destroyCost(ReProject $project, ReProjectCost $cost)
     {
         if ($cost->project_id !== $project->id) {
-            return response()->json(['error' => '不正なリクエストです。'], 403);
+            return response()->json(['message' => '不正なリクエストです。'], 403);
         }
 
         // 物件購入費は仕入れ情報から自動同期されるため手動削除を禁止
@@ -584,7 +584,7 @@ class ProjectController extends Controller
     public function updateLot(Request $request, ReProject $project, ReProjectLot $lot)
     {
         if ($lot->project_id !== $project->id) {
-            return response()->json(['error' => '不正なリクエストです。'], 403);
+            return response()->json(['message' => '不正なリクエストです。'], 403);
         }
 
         $lotStatuses = implode(',', array_column(LotStatus::cases(), 'value'));
@@ -720,7 +720,7 @@ class ProjectController extends Controller
         abort_unless(auth()->user()->role->isExecutive(), 403);
 
         if ($drawing->project_id !== $project->id) {
-            return response()->json(['error' => '不正なリクエストです。'], 403);
+            return response()->json(['message' => '不正なリクエストです。'], 403);
         }
 
         Storage::disk('public')->delete($drawing->file_path);
