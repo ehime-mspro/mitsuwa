@@ -66,6 +66,7 @@
                         </template>
                     </div>
                 </div>
+                <p x-show="customerError" x-cloak class="text-xs text-red-600 mt-1" x-text="customerError"></p>
                 @error('customer_name') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
                 <div class="flex gap-2 mt-1" style="align-items: center;">
                     <p class="text-xs text-gray-500">顧客マスタから検索。未登録の場合は直接入力</p>
@@ -314,6 +315,7 @@ function customOrderForm() {
         procurements: @json($procurementsForJs),
         customerName: '{{ old("customer_name", $o?->customer_name ?? "") }}',
         customerResults: [],
+        customerError: '',
         searchTimer: null,
 
         init: function() {
@@ -348,8 +350,16 @@ function customOrderForm() {
             fetch('{{ url("/api/housing/project-lots") }}?project_id=' + projectId, {
                 headers: { 'Accept': 'application/json' }
             })
-            .then(function(res) { return res.json(); })
+            .then(function(res) {
+                if (!res.ok) {
+                    self.lots = [];
+                    alert('区画の取得に失敗しました（' + res.status + '）');
+                    return null;
+                }
+                return res.json();
+            })
             .then(function(data) {
+                if (!data) return;
                 self.lots = data.lots || [];
                 if (data.project && !self.selectedLotId) {
                     self.postalCode = data.project.postal_code || '';
@@ -385,8 +395,15 @@ function customOrderForm() {
             fetch('{{ url("/api/housing/procurement-info") }}/' + self.selectedProcurementId, {
                 headers: { 'Accept': 'application/json' }
             })
-            .then(function(res) { return res.json(); })
+            .then(function(res) {
+                if (!res.ok) {
+                    alert('仕入れ案件情報の取得に失敗しました（' + res.status + '）');
+                    return null;
+                }
+                return res.json();
+            })
             .then(function(data) {
+                if (!data) return;
                 self.postalCode = data.postal_code || '';
                 self.address = data.address || '';
                 if (data.land_area_sqm !== null) {
@@ -397,7 +414,7 @@ function customOrderForm() {
                 }
                 self.autoFilled = true;
             })
-            .catch(function() {});
+            .catch(function() { alert('仕入れ案件情報の取得に失敗しました。通信エラーが発生しました。'); });
         },
 
         searchCustomer: function() {
@@ -405,15 +422,30 @@ function customOrderForm() {
             clearTimeout(self.searchTimer);
             if (self.customerName.length < 2) {
                 self.customerResults = [];
+                self.customerError = '';
                 return;
             }
             self.searchTimer = setTimeout(function() {
                 fetch('{{ url("/api/tenant/customers/search") }}?q=' + encodeURIComponent(self.customerName), {
                     headers: { 'Accept': 'application/json' }
                 })
-                .then(function(res) { return res.json(); })
-                .then(function(data) { self.customerResults = data; })
-                .catch(function() { self.customerResults = []; });
+                .then(function(res) {
+                    if (!res.ok) {
+                        self.customerResults = [];
+                        self.customerError = '顧客の検索に失敗しました（' + res.status + '）';
+                        return null;
+                    }
+                    return res.json();
+                })
+                .then(function(data) {
+                    if (!data) return;
+                    self.customerError = '';
+                    self.customerResults = data;
+                })
+                .catch(function() {
+                    self.customerResults = [];
+                    self.customerError = '顧客の検索に失敗しました。通信エラーが発生しました。';
+                });
             }, 300);
         },
 

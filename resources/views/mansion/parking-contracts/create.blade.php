@@ -55,11 +55,19 @@
                 }
                 var url = '{{ url('api/mansion/properties') }}/' + this.propertyId + '/vacant-parkings';
                 fetch(url, { headers: { 'Accept': 'application/json' } })
-                    .then(function (res) { return res.json(); })
-                    .then(function (data) { self.parkings = data; })
+                    .then(function (res) {
+                        if (!res.ok) {
+                            self.parkings = [];
+                            alert('空き駐車場の取得に失敗しました（' + res.status + '）');
+                            return null;
+                        }
+                        return res.json();
+                    })
+                    .then(function (data) { if (!data) return; self.parkings = data; })
                     .catch(function (e) {
                         console.error(e);
                         self.parkings = [];
+                        alert('空き駐車場の取得に失敗しました。通信エラーが発生しました。');
                     });
             },
 

@@ -64,12 +64,19 @@
                         fetch(roomsUrl, { headers: { 'Accept': 'application/json' } }),
                         fetch(parkingsUrl, { headers: { 'Accept': 'application/json' } })
                     ]);
+                    if (!roomsRes.ok || !parkingsRes.ok) {
+                        this.rooms = [];
+                        this.parkings = [];
+                        alert('空き部屋・空き駐車場の取得に失敗しました（' + (roomsRes.ok ? parkingsRes.status : roomsRes.status) + '）');
+                        return;
+                    }
                     this.rooms = await roomsRes.json();
                     this.parkings = await parkingsRes.json();
                 } catch (e) {
                     console.error(e);
                     this.rooms = [];
                     this.parkings = [];
+                    alert('空き部屋・空き駐車場の取得に失敗しました。通信エラーが発生しました。');
                 }
             },
 

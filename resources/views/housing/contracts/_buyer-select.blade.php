@@ -200,9 +200,22 @@ function buyerSelect(initialName) {
                     department: '{{ $bsDepartment }}'
                 })
             })
-            .then(function(res) { return res.json(); })
-            .then(function(data) { self.duplicates = data.duplicates || []; })
-            .catch(function() { self.duplicates = []; });
+            .then(function(res) {
+                if (!res.ok) {
+                    self.duplicates = [];
+                    self.error = '重複チェックに失敗しました（' + res.status + '）';
+                    return null;
+                }
+                return res.json();
+            })
+            .then(function(data) {
+                if (!data) return;
+                self.duplicates = data.duplicates || [];
+            })
+            .catch(function() {
+                self.duplicates = [];
+                self.error = '重複チェックに失敗しました。通信エラーが発生しました。';
+            });
         },
 
         submitModal: function() {

@@ -140,7 +140,9 @@
                         </div>
                         <div x-show="showCustomerDropdown && customerResults.length === 0 && customerQuery.length >= 2" x-cloak
                              class="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg">
-                            <div class="px-3 py-3 text-sm text-gray-400 text-center">該当する顧客がありません</div>
+                            <div class="px-3 py-3 text-sm text-center"
+                                 :class="customerError ? 'text-red-600' : 'text-gray-400'"
+                                 x-text="customerError || '該当する顧客がありません'"></div>
                         </div>
                     </div>
 
@@ -471,6 +473,7 @@ function contractCreateForm() {
         customerQuery: '',
         customerDisplay: @json($presetCustomer ? ($presetCustomer->code . ' ' . $presetCustomer->name . '（' . $presetCustomer->customer_type->label() . '）') : ''),
         customerResults: [],
+        customerError: '',
         showCustomerDropdown: false,
         customerSearchTimer: null,
 
@@ -487,16 +490,31 @@ function contractCreateForm() {
             if (self.customerQuery.length < 2) {
                 self.showCustomerDropdown = false;
                 self.customerResults = [];
+                self.customerError = '';
                 return;
             }
             self.customerSearchTimer = setTimeout(function() {
                 fetch('{{ url("/api/tenant/customers/search") }}?q=' + encodeURIComponent(self.customerQuery))
-                    .then(function(res) { return res.json(); })
+                    .then(function(res) {
+                        if (!res.ok) {
+                            self.customerResults = [];
+                            self.customerError = '顧客の検索に失敗しました（' + res.status + '）';
+                            self.showCustomerDropdown = true;
+                            return null;
+                        }
+                        return res.json();
+                    })
                     .then(function(data) {
+                        if (!data) return;
+                        self.customerError = '';
                         self.customerResults = data;
                         self.showCustomerDropdown = true;
                     })
-                    .catch(function() { self.customerResults = []; });
+                    .catch(function() {
+                        self.customerResults = [];
+                        self.customerError = '顧客の検索に失敗しました。通信エラーが発生しました。';
+                        self.showCustomerDropdown = true;
+                    });
             }, 300);
         },
 
@@ -523,9 +541,17 @@ function contractCreateForm() {
             var self = this;
             self.loadingUnits = true;
             fetch('{{ url("/api/tenant/properties") }}/' + self.propertyId + '/vacant-units')
-                .then(function(res) { return res.json(); })
-                .then(function(data) { self.units = data; self.renderUnits(); })
-                .catch(function(e) { console.error('区画取得エラー:', e); self.units = []; self.renderUnits(); })
+                .then(function(res) {
+                    if (!res.ok) {
+                        self.units = [];
+                        self.renderUnits();
+                        alert('空き区画の取得に失敗しました（' + res.status + '）');
+                        return null;
+                    }
+                    return res.json();
+                })
+                .then(function(data) { if (!data) return; self.units = data; self.renderUnits(); })
+                .catch(function(e) { console.error('区画取得エラー:', e); self.units = []; self.renderUnits(); alert('空き区画の取得に失敗しました。通信エラーが発生しました。'); })
                 .finally(function() { self.loadingUnits = false; });
         },
 
@@ -560,8 +586,17 @@ function contractCreateForm() {
             var self = this;
             self.loadingInquiries = true;
             fetch('{{ url("/api/tenant/properties") }}/' + self.propertyId + '/active-inquiries')
-                .then(function(res) { return res.json(); })
+                .then(function(res) {
+                    if (!res.ok) {
+                        self.inquiries = [];
+                        self.renderInquiries();
+                        alert('問合せの取得に失敗しました（' + res.status + '）');
+                        return null;
+                    }
+                    return res.json();
+                })
                 .then(function(data) {
+                    if (!data) return;
                     self.inquiries = data;
 
                     // 問合せ起点: プリセット問合せが成約済みでリストに含まれない場合、手動で追加
@@ -588,7 +623,7 @@ function contractCreateForm() {
 
                     self.renderInquiries();
                 })
-                .catch(function(e) { console.error('問合せ取得エラー:', e); self.inquiries = []; self.renderInquiries(); })
+                .catch(function(e) { console.error('問合せ取得エラー:', e); self.inquiries = []; self.renderInquiries(); alert('問合せの取得に失敗しました。通信エラーが発生しました。'); })
                 .finally(function() { self.loadingInquiries = false; });
         },
 

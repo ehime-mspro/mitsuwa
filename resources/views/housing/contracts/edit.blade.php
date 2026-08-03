@@ -76,6 +76,7 @@
                             </template>
                         </div>
                     </div>
+                    <p x-show="customerError" x-cloak class="text-xs text-red-600 mt-1" x-text="customerError"></p>
                     @error('customer_name') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
                 </div>
                 <div>
@@ -111,6 +112,7 @@ function contractEditForm() {
     return {
         customerName: '{{ old("customer_name", $contract->customer_name) }}',
         customerResults: [],
+        customerError: '',
         searchTimer: null,
 
         searchCustomer: function() {
@@ -118,15 +120,30 @@ function contractEditForm() {
             clearTimeout(self.searchTimer);
             if (self.customerName.length < 2) {
                 self.customerResults = [];
+                self.customerError = '';
                 return;
             }
             self.searchTimer = setTimeout(function() {
                 fetch('{{ url("/api/tenant/customers/search") }}?q=' + encodeURIComponent(self.customerName), {
                     headers: { 'Accept': 'application/json' }
                 })
-                .then(function(res) { return res.json(); })
-                .then(function(data) { self.customerResults = data; })
-                .catch(function() { self.customerResults = []; });
+                .then(function(res) {
+                    if (!res.ok) {
+                        self.customerResults = [];
+                        self.customerError = '顧客の検索に失敗しました（' + res.status + '）';
+                        return null;
+                    }
+                    return res.json();
+                })
+                .then(function(data) {
+                    if (!data) return;
+                    self.customerError = '';
+                    self.customerResults = data;
+                })
+                .catch(function() {
+                    self.customerResults = [];
+                    self.customerError = '顧客の検索に失敗しました。通信エラーが発生しました。';
+                });
             }, 300);
         },
 

@@ -424,12 +424,30 @@ function changeStatus(orderId, code, statusValue, statusLabel) {
         },
         body: JSON.stringify({ status: statusValue })
     })
-    .then(function(res) { return res.json(); })
+    .then(function(res) {
+        if (!res.ok) {
+            return res.json().then(function(err) {
+                var msg = err.message || 'ステータスの変更に失敗しました。';
+                if (err.errors) {
+                    msg = msg + '\n' + Object.values(err.errors).flat().join('\n');
+                }
+                alert(msg);
+                closePopover();
+                return null;
+            }).catch(function() {
+                alert('ステータスの変更に失敗しました（' + res.status + '）');
+                closePopover();
+                return null;
+            });
+        }
+        return res.json();
+    })
     .then(function(data) {
+        if (!data) return;
         if (data.success) {
             location.reload();
         } else {
-            alert('エラーが発生しました。');
+            alert(data.message || 'ステータスの変更に失敗しました。');
             closePopover();
         }
     })

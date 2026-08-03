@@ -273,8 +273,26 @@ function zealTrainerManager() {
                 headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                 body: body,
             })
-            .then(function (res) { return res.json(); })
+            .then(function (res) {
+                if (!res.ok) {
+                    return res.json().then(function (err) {
+                        var msg = err.message || 'トレーナーの処理に失敗しました。';
+                        if (err.errors) {
+                            msg = msg + '\n' + Object.values(err.errors).flat().join('\n');
+                        }
+                        self.saving = false;
+                        self.showMessage(msg, 'error');
+                        return null;
+                    }).catch(function () {
+                        self.saving = false;
+                        self.showMessage('トレーナーの処理に失敗しました（' + res.status + '）', 'error');
+                        return null;
+                    });
+                }
+                return res.json();
+            })
             .then(function (data) {
+                if (!data) return;
                 self.saving = false;
                 if (data.success) {
                     self.trainers.push(data.trainer);
@@ -330,8 +348,26 @@ function zealTrainerManager() {
                 headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                 body: body,
             })
-            .then(function (res) { return res.json(); })
+            .then(function (res) {
+                if (!res.ok) {
+                    return res.json().then(function (err) {
+                        var msg = err.message || 'トレーナーの処理に失敗しました。';
+                        if (err.errors) {
+                            msg = msg + '\n' + Object.values(err.errors).flat().join('\n');
+                        }
+                        self.saving = false;
+                        self.showMessage(msg, 'error');
+                        return null;
+                    }).catch(function () {
+                        self.saving = false;
+                        self.showMessage('トレーナーの処理に失敗しました（' + res.status + '）', 'error');
+                        return null;
+                    });
+                }
+                return res.json();
+            })
             .then(function (data) {
+                if (!data) return;
                 self.saving = false;
                 if (data.success) {
                     var idx = self.trainers.findIndex(function (t) { return t.id === data.trainer.id; });
@@ -368,8 +404,26 @@ function zealTrainerManager() {
                 headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                 body: body,
             })
-            .then(function (res) { return res.json(); })
+            .then(function (res) {
+                if (!res.ok) {
+                    return res.json().then(function (err) {
+                        var msg = err.message || 'トレーナーの処理に失敗しました。';
+                        if (err.errors) {
+                            msg = msg + '\n' + Object.values(err.errors).flat().join('\n');
+                        }
+                        self.saving = false;
+                        self.showMessage(msg, 'error');
+                        return null;
+                    }).catch(function () {
+                        self.saving = false;
+                        self.showMessage('トレーナーの処理に失敗しました（' + res.status + '）', 'error');
+                        return null;
+                    });
+                }
+                return res.json();
+            })
             .then(function (data) {
+                if (!data) return;
                 if (data.success) {
                     self.trainers = self.trainers.filter(function (t) { return t.id !== trainer.id; });
                     self.showMessage(data.message, 'success');

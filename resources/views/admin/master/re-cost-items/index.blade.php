@@ -298,11 +298,32 @@ function costItemManager() {
                 },
                 body: JSON.stringify({ ids: ids })
             })
-            .then(function(response) { return response.json(); })
+            .then(function(response) {
+                if (!response.ok) {
+                    return response.json().then(function(err) {
+                        var msg = err.message || '並替えの保存に失敗しました。';
+                        if (err.errors) {
+                            msg = msg + '\n' + Object.values(err.errors).flat().join('\n');
+                        }
+                        self.reorderMessage = '';
+                        alert(msg);
+                        return null;
+                    }).catch(function() {
+                        self.reorderMessage = '';
+                        alert('並替えの保存に失敗しました（' + response.status + '）');
+                        return null;
+                    });
+                }
+                return response.json();
+            })
             .then(function(data) {
+                if (!data) return;
                 if (data.success) {
                     self.reorderMessage = '並び順を更新しました';
                     setTimeout(function() { self.reorderMessage = ''; }, 2500);
+                } else {
+                    self.reorderMessage = '';
+                    alert(data.message || '並替えの保存に失敗しました。');
                 }
             })
             .catch(function(error) {

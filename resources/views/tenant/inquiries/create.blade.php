@@ -24,6 +24,7 @@ function inquiryCreateForm() {
         customerQuery: '',
         customerDisplay: @json($presetCustomer ? ($presetCustomer->code . ' ' . $presetCustomer->name . '（' . $presetCustomer->customer_type->label() . '）') : ''),
         customerResults: [],
+        customerError: '',
         showCustomerDropdown: false,
         customerSearchTimer: null,
 
@@ -41,16 +42,31 @@ function inquiryCreateForm() {
             if (self.customerQuery.length < 2) {
                 self.showCustomerDropdown = false;
                 self.customerResults = [];
+                self.customerError = '';
                 return;
             }
             self.customerSearchTimer = setTimeout(function() {
                 fetch('{{ url("/api/tenant/customers/search") }}?q=' + encodeURIComponent(self.customerQuery))
-                    .then(function(res) { return res.json(); })
+                    .then(function(res) {
+                        if (!res.ok) {
+                            self.customerResults = [];
+                            self.customerError = '顧客の検索に失敗しました（' + res.status + '）';
+                            self.showCustomerDropdown = true;
+                            return null;
+                        }
+                        return res.json();
+                    })
                     .then(function(data) {
+                        if (!data) return;
+                        self.customerError = '';
                         self.customerResults = data;
                         self.showCustomerDropdown = true;
                     })
-                    .catch(function() { self.customerResults = []; });
+                    .catch(function() {
+                        self.customerResults = [];
+                        self.customerError = '顧客の検索に失敗しました。通信エラーが発生しました。';
+                        self.showCustomerDropdown = true;
+                    });
             }, 300);
         },
         selectCustomer: function(c) {
@@ -208,7 +224,9 @@ function inquiryCreateForm() {
                         </div>
                         <div x-show="showCustomerDropdown && customerResults.length === 0 && customerQuery.length >= 2" x-cloak
                              class="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg">
-                            <div class="px-3 py-3 text-sm text-gray-400 text-center">該当する顧客がありません</div>
+                            <div class="px-3 py-3 text-sm text-center"
+                                 :class="customerError ? 'text-red-600' : 'text-gray-400'"
+                                 x-text="customerError || '該当する顧客がありません'"></div>
                         </div>
                     </div>
                     <div x-show="customerId" x-cloak

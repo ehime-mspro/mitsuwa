@@ -274,8 +274,16 @@ function housingPropertyForm() {
             fetch(url, {
                 headers: { 'Accept': 'application/json' }
             })
-            .then(function(res) { return res.json(); })
+            .then(function(res) {
+                if (!res.ok) {
+                    self.lots = [];
+                    alert('区画の取得に失敗しました（' + res.status + '）');
+                    return null;
+                }
+                return res.json();
+            })
             .then(function(data) {
+                if (!data) return;
                 self.lots = data.lots || [];
                 // PJ選択時に住所を自動補完
                 if (data.project && !self.selectedLotId) {
@@ -312,8 +320,15 @@ function housingPropertyForm() {
             fetch('{{ url("/api/housing/procurement-info") }}/' + self.selectedProcurementId, {
                 headers: { 'Accept': 'application/json' }
             })
-            .then(function(res) { return res.json(); })
+            .then(function(res) {
+                if (!res.ok) {
+                    alert('仕入れ案件情報の取得に失敗しました（' + res.status + '）');
+                    return null;
+                }
+                return res.json();
+            })
             .then(function(data) {
+                if (!data) return;
                 self.postalCode = data.postal_code || '';
                 self.address = data.address || '';
                 if (data.land_area_sqm !== null) {
@@ -324,7 +339,7 @@ function housingPropertyForm() {
                 }
                 self.autoFilled = true;
             })
-            .catch(function() {});
+            .catch(function() { alert('仕入れ案件情報の取得に失敗しました。通信エラーが発生しました。'); });
         }
     };
 }

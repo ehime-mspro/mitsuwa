@@ -234,8 +234,26 @@ function attachmentSection() {
                 },
                 body: formData
             })
-            .then(function(res) { return res.json(); })
+            .then(function(res) {
+                if (!res.ok) {
+                    return res.json().then(function(err) {
+                        var msg = err.message || 'アップロードに失敗しました。';
+                        if (err.errors) {
+                            msg = msg + '\n' + Object.values(err.errors).flat().join('\n');
+                        }
+                        self.uploading = false;
+                        self.errorMessage = msg;
+                        return null;
+                    }).catch(function() {
+                        self.uploading = false;
+                        self.errorMessage = 'アップロードに失敗しました（' + res.status + '）';
+                        return null;
+                    });
+                }
+                return res.json();
+            })
             .then(function(data) {
+                if (!data) return;
                 self.uploading = false;
                 if (data.success) {
                     for (var i = 0; i < data.attachments.length; i++) {
@@ -266,8 +284,26 @@ function attachmentSection() {
                     'Accept': 'application/json'
                 }
             })
-            .then(function(res) { return res.json(); })
+            .then(function(res) {
+                if (!res.ok) {
+                    return res.json().then(function(err) {
+                        var msg = err.message || '削除に失敗しました。';
+                        if (err.errors) {
+                            msg = msg + '\n' + Object.values(err.errors).flat().join('\n');
+                        }
+                        self.errorMessage = msg;
+                        file.confirming = false;
+                        return null;
+                    }).catch(function() {
+                        self.errorMessage = '削除に失敗しました（' + res.status + '）';
+                        file.confirming = false;
+                        return null;
+                    });
+                }
+                return res.json();
+            })
             .then(function(data) {
+                if (!data) return;
                 if (data.success) {
                     self.attachments.splice(index, 1);
                     self.deletedAttachments.unshift(data.deleted);
