@@ -321,7 +321,7 @@ class PropertyController extends Controller
         abort_unless(auth()->user()->role->isExecutive(), 403);
 
         if ($file->property_id !== $property->id) {
-            return response()->json(['error' => '不正なリクエストです。'], 403);
+            return response()->json(['message' => '不正なリクエストです。'], 403);
         }
 
         Storage::disk('public')->delete($file->file_path);

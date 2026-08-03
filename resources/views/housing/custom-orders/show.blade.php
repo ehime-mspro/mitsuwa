@@ -354,8 +354,25 @@ function customOrderFileManager() {
                 },
                 body: formData
             })
-            .then(function(res) { return res.json(); })
+            .then(function(res) {
+                if (!res.ok) {
+                    return res.json().then(function(err) {
+                        var msg = err.message || 'エラーが発生しました。';
+                        if (err.errors) {
+                            var details = Object.values(err.errors).flat().join('\n');
+                            msg = msg + '\n' + details;
+                        }
+                        alert(msg);
+                        return null;
+                    }).catch(function() {
+                        alert('サーバーエラーが発生しました（' + res.status + '）');
+                        return null;
+                    });
+                }
+                return res.json();
+            })
             .then(function(data) {
+                if (!data) return;
                 if (data.success) {
                     self.files[category].push(data.file);
                     self.uploadMessage = 'アップロードしました。';
@@ -384,8 +401,25 @@ function customOrderFileManager() {
                     'Accept': 'application/json'
                 }
             })
-            .then(function(res) { return res.json(); })
+            .then(function(res) {
+                if (!res.ok) {
+                    return res.json().then(function(err) {
+                        var msg = err.message || 'エラーが発生しました。';
+                        if (err.errors) {
+                            var details = Object.values(err.errors).flat().join('\n');
+                            msg = msg + '\n' + details;
+                        }
+                        alert(msg);
+                        return null;
+                    }).catch(function() {
+                        alert('サーバーエラーが発生しました（' + res.status + '）');
+                        return null;
+                    });
+                }
+                return res.json();
+            })
             .then(function(data) {
+                if (!data) return;
                 if (data.success) {
                     self.files[category] = self.files[category].filter(function(f) { return f.id !== fileId; });
                     self.uploadMessage = '削除しました。';

@@ -294,7 +294,7 @@ class CustomOrderController extends Controller
         abort_unless(auth()->user()->role->isExecutive(), 403);
 
         if ($file->custom_order_id !== $customOrder->id) {
-            return response()->json(['error' => '不正なリクエストです。'], 403);
+            return response()->json(['message' => '不正なリクエストです。'], 403);
         }
 
         Storage::disk('public')->delete($file->file_path);

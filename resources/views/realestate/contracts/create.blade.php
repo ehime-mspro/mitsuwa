@@ -560,8 +560,8 @@ function contractForm() {
                     'X-Requested-With': 'XMLHttpRequest'
                 }
             })
-                .then(function(r) { return r.json(); })
-                .then(function(data) {
+                .then(function(r) { if (!r.ok) { alert('データの取得に失敗しました（' + r.status + '）'); return null; } return r.json(); })
+                .then(function(data) { if (!data) return;
                     self.procCost = data;
                     self.propertyName = data.property_name;
                     self.addressVal = data.address || '';
@@ -593,8 +593,8 @@ function contractForm() {
                     'X-Requested-With': 'XMLHttpRequest'
                 }
             })
-                .then(function(r) { return r.json(); })
-                .then(function(data) {
+                .then(function(r) { if (!r.ok) { alert('データの取得に失敗しました（' + r.status + '）'); return null; } return r.json(); })
+                .then(function(data) { if (!data) return;
                     self.lots = data;
                 });
             fetch('{{ url("/api/realestate/project-lot-cost") }}/' + self.projectId, {
@@ -603,8 +603,8 @@ function contractForm() {
                     'X-Requested-With': 'XMLHttpRequest'
                 }
             })
-                .then(function(r) { return r.json(); })
-                .then(function(data) {
+                .then(function(r) { if (!r.ok) { alert('データの取得に失敗しました（' + r.status + '）'); return null; } return r.json(); })
+                .then(function(data) { if (!data) return;
                     self.projCost = data;
                     self.propertyName = data.project_name || '';
                     self.costAmount = data.per_lot_cost;

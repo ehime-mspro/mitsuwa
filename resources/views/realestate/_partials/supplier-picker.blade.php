@@ -155,8 +155,8 @@ function supplierPicker() {
                         'X-Requested-With': 'XMLHttpRequest'
                     }
                 })
-                .then(function(res) { return res.json(); })
-                .then(function(data) { self.supplierResults = data; })
+                .then(function(res) { if (!res.ok) { alert('データの取得に失敗しました（' + res.status + '）'); return null; } return res.json(); })
+                .then(function(data) { if (!data) return; self.supplierResults = data; })
                 .catch(function() { self.supplierResults = []; });
             }, 300);
         },
