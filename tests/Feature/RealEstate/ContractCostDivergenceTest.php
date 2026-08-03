@@ -151,6 +151,12 @@ class ContractCostDivergenceTest extends TestCase
         // 乖離額は警告文にしか現れない一意な値
         $response->assertSee('1,604,545円');
         $response->assertSee('契約後に仕入れ案件の原価が');
+
+        // 上部 KPI の注記。⚠ 乖離額そのものは下の警告文と同じ値なので、
+        //    金額で見ると KPI の注記を消しても false-pass する（2026-08-03 実測）。
+        //    KPI 固有の文言で見ること。
+        $response->assertSee('原価（契約時点）');
+        $response->assertSee('現在の原価と');
     }
 
     /**
@@ -264,6 +270,8 @@ class ContractCostDivergenceTest extends TestCase
         $response->assertSee('6,675,000円');
         $response->assertSee('675,000円');
         $response->assertSee('契約後に分譲地の原価が');
+        $response->assertSee('原価（契約時点）');
+        $response->assertSee('現在の原価と');
     }
 
     /** 仕入れ案件に紐づかない契約でも 500 にならない（乖離は算出しようがないので null）。 */
