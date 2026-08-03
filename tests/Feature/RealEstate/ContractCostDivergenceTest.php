@@ -13,6 +13,9 @@ use App\Models\ReContract;
 use App\Models\ReCostItem;
 use App\Models\ReProcurement;
 use App\Models\ReProcurementCost;
+use App\Models\ReProject;
+use App\Models\ReProjectCost;
+use App\Models\ReProjectLot;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\CreatesRealEstateSchema;
@@ -204,6 +207,63 @@ class ContractCostDivergenceTest extends TestCase
         $this->actingAs($this->executive())
             ->get("/realestate/contracts/{$contract->id}")
             ->assertSee('2,268,181円');
+    }
+
+    /**
+     * 分譲地区画の契約でも同じ乖離表示が出ること。
+     *
+     * ⚠ **入口ごとに測る**（docs/RULES.md Bug #44）。仕入れ系だけテストしていた間、
+     *    分譲地側のライブ値を `0` に潰しても 471 テスト全部が緑のままだった（2026-08-03 実測）。
+     */
+    public function test_subdivision_contract_also_shows_both_costs(): void
+    {
+        $project = ReProject::create([
+            'project_code' => 'PJ-COST-001',
+            'project_name' => '分譲地A',
+            'status'       => 'selling',
+            'address'      => '愛媛県松山市2-2-2',
+            'created_by'   => 1,
+        ]);
+
+        // 4 区画で按分 → 区画あたり 26,700,000 ÷ 4 = 6,675,000
+        foreach (range(1, 4) as $n) {
+            ReProjectLot::create([
+                'project_id' => $project->id, 'lot_number' => $n,
+                'area_sqm' => 100.00, 'area_tsubo' => 30.25, 'status' => 'on_sale',
+            ]);
+        }
+        $item = ReCostItem::create(['name' => '造成費', 'sort_order' => 0, 'is_active' => true]);
+        ReProjectCost::create([
+            'project_id' => $project->id, 'cost_item_id' => $item->id, 'estimated_amount' => 26700000,
+        ]);
+
+        $contract = ReContract::create([
+            'department'           => 'realestate',
+            'contract_type'        => ReContractType::SubdivisionLot->value,
+            'status'               => ReContractStatus::Contracted->value,
+            'contract_date'        => '2026-07-19',
+            'property_name'        => '分譲地A 1区画',
+            'project_id'           => $project->id,
+            'contract_amount_land' => 9000000,
+            'cost_amount'          => 6000000,        // 区画あたり原価 6,675,000 とわざとずらす
+            'gross_profit'         => 3000000,
+            'buyer_id'             => Buyer::create(['last_name' => '分譲', 'first_name' => '花子'])->id,
+            'created_by'           => 1,
+        ]);
+
+        $response = $this->actingAs($this->executive())
+            ->get("/realestate/contracts/{$contract->id}");
+
+        $response->assertOk();
+        $this->assertSame(6675000, $response->viewData('liveCost'));
+        $this->assertSame(675000, $response->viewData('costDivergence'));
+
+        $response->assertSee('契約時点の原価');
+        $response->assertSee('6,000,000円');
+        $response->assertSee('現在の区画あたり原価');
+        $response->assertSee('6,675,000円');
+        $response->assertSee('675,000円');
+        $response->assertSee('契約後に分譲地の原価が');
     }
 
     /** 仕入れ案件に紐づかない契約でも 500 にならない（乖離は算出しようがないので null）。 */
