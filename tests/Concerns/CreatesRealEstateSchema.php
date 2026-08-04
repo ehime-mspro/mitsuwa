@@ -44,6 +44,25 @@ trait CreatesRealEstateSchema
             $t->softDeletes();
         });
 
+        // 買主×部署の紐付け（ランク・取得日）。本番も raw SQL 管理でマイグレーションに無い。
+        // 実 DB（実測）:
+        //   id / buyer_id / department enum('housing','realestate') / acquired_date date NOT NULL
+        //   / rank enum('A','B','C','D','lost','unreachable','contracted') default 'C'
+        //   / created_at timestamp（CURRENT_TIMESTAMP 既定値）
+        //   + UNIQUE (buyer_id, department)
+        Schema::create('buyer_departments', function (Blueprint $t) {
+            $t->id();
+            $t->unsignedBigInteger('buyer_id');
+            // MySQL の enum は SQLite に無いので string で代替（re_contracts.department と同じ方針）
+            $t->string('department', 20);
+            $t->date('acquired_date');
+            $t->string('rank', 20)->default('C');
+            // ⚠ 本番は CURRENT_TIMESTAMP の DB 既定値を持つが SQLite に無いので nullable にする。
+            //    BuyerDepartmentPivot は $timestamps = false なので Laravel 側からは書き込まれない。
+            $t->timestamp('created_at')->nullable();
+            $t->unique(['buyer_id', 'department'], 'uq_buyer_department');
+        });
+
         Schema::create('re_suppliers', function (Blueprint $t) {
             $t->id();
             $t->string('supplier_code', 20);
