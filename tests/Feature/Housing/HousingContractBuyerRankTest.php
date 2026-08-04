@@ -388,6 +388,42 @@ class HousingContractBuyerRankTest extends TestCase
     }
 
     /**
+     * 追加: 契約以降から手前のステータスへ戻してもランクは成約のまま（設計書 §2 決定2）。
+     *
+     * ⚠ 同じ isContractedOrLater() を使う syncLotStatus() は区画を販売中へ戻すので
+     *    **意図的な非対称**。区画は在庫、ランクは獲得履歴で意味が違う。
+     *    契約レコードごと削除しても戻さないと決めている以上、ステータスを一段戻しただけで
+     *    戻すのは矛盾する。このテストはその決定を固定するもので、
+     *    「戻すべきなのに戻っていない」ことを示すものではない。
+     */
+    public function test_custom_order_status_regression_keeps_rank_contracted(): void
+    {
+        $buyer = $this->makeBuyer('差し戻し', ['housing' => ['rank' => BuyerRank::C->value]]);
+        $user  = $this->executive();
+
+        $this->actingAs($user)
+            ->post('/housing/custom-orders', $this->customOrderStorePayload($buyer, CustomOrderStatus::Contracted))
+            ->assertSessionHasNoErrors();
+
+        $order = HsCustomOrder::firstOrFail();
+        $this->assertSame(BuyerRank::Contracted, $this->rankOf($buyer, 'housing'), '前提: 契約で登録したので成約');
+
+        // ステップバーで 契約 → 商談 へ戻す
+        $response = $this->actingAs($user)->patch(
+            '/housing/custom-orders/' . $order->id . '/status',
+            ['status' => CustomOrderStatus::Consultation->value],
+        );
+
+        $response->assertOk();
+        $this->assertSame(
+            CustomOrderStatus::Consultation,
+            $order->fresh()->status,
+            'ステータスが戻っていない（操作自体が失敗）',
+        );
+        $this->assertSame(BuyerRank::Contracted, $this->rankOf($buyer, 'housing'), 'ランクが成約から戻ってしまっている');
+    }
+
+    /**
      * 追加: 論理削除済みの買主でもランクは更新される（設計書 §4）。
      *
      * ⚠ この経路は実在する。`customer_id` の `exists:buyers,id` は Laravel の

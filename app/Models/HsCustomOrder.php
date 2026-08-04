@@ -83,6 +83,14 @@ class HsCustomOrder extends Model
      *    （CustomOrderController::syncLotStatus）が使っている判定と同一で、
      *    「契約以降なら区画は販売済」と足並みが揃う。別の閾値を書かないこと。
      *
+     * ⚠ **契約以降から手前へ戻した場合、ランクは成約のまま残す**（戻さない）。
+     *    同じ isContractedOrLater() を使う CustomOrderController::syncLotStatus() は
+     *    双方向に反応して区画を販売中へ戻すので**意図的に非対称**——区画は「また売れるか」という
+     *    在庫の話、顧客ランクは獲得履歴の話で意味が違う。設計書 §2 の決定2 が
+     *    「契約を削除しても元の買主は成約のまま」と定めており、案件ステータスを一段戻しただけで
+     *    戻すのはそれと矛盾する。**「戻す処理の消し忘れ」ではないので足さないこと。**
+     *    回帰テスト test_custom_order_status_regression_keeps_rank_contracted が固定している。
+     *
      * ⚠ wasRecentlyCreated / wasChanged のガードを外さないこと。外すと備考を直しただけで
      *    利用者が手で戻したランクが成約へ書き戻る（設計書 §3.3）。
      *
