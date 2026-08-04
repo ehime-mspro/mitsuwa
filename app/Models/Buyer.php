@@ -199,6 +199,14 @@ class Buyer extends Model
      * ⚠ 既に contracted の行は UPDATE を出さずに抜ける。これは無駄な UPDATE を避けるだけで
      *    **挙動は同じ**なので、この早期 return を消しても回帰テストは緑のまま
      *    (＝テストで守られていない。消さないこと)。
+     *
+     * ⚠ 新規作成の分岐は SELECT → INSERT なので、同一買主・同一部署の「初回」保存が
+     *    真に同時に走ると、負けた側が uq_buyer_department の重複キーで QueryException になる。
+     *    **意図的に握り潰していない**——データは UNIQUE 制約が守り、再送すれば
+     *    (行が既に在るので) update 分岐に入って成功する。社内ツールで同一買主の初回契約が
+     *    同時に 2 本入る確率は極めて低く、ここに catch を足すとテストで固定できない分岐が
+     *    増えるほうが害が大きいと判断した (Bug #45)。頻発するようなら重複キーを
+     *    catch して update へフォールバックすること。
      */
     public function markContracted(string $department, ?string $acquiredDate = null): void
     {
