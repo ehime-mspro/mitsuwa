@@ -63,6 +63,21 @@ trait CreatesRealEstateSchema
             $t->unique(['buyer_id', 'department'], 'uq_buyer_department');
         });
 
+        // 買主アンケート。本番も raw SQL 管理でマイグレーションに無い。
+        // CustomerController::show() が eager load するので、顧客詳細を HTTP で叩くには必要。
+        // （回答テーブル buyer_survey_answers は show が触らないので作らない）
+        Schema::create('buyer_surveys', function (Blueprint $t) {
+            $t->id();
+            $t->unsignedBigInteger('buyer_id');
+            $t->string('department', 20);
+            $t->date('survey_date');
+            $t->unsignedBigInteger('project_id')->nullable();
+            $t->unsignedInteger('staff_user_id')->nullable();
+            $t->string('staff_name', 50)->nullable();
+            $t->text('memo')->nullable();
+            $t->timestamps();
+        });
+
         Schema::create('re_suppliers', function (Blueprint $t) {
             $t->id();
             $t->string('supplier_code', 20);

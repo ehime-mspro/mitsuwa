@@ -62,7 +62,9 @@
         <dt style="background: #f9fafb; padding: 10px 14px; font-size: 13px; color: #4b5563; font-weight: 500; border-bottom: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb;">所属部署</dt>
         <dd style="padding: 10px 14px; font-size: 14px; color: #111827; border-bottom: 1px solid #e5e7eb; margin: 0;">
             @foreach($buyer->departments as $dept)
-                @php $dEnum = \App\Enums\BuyerDepartment::from($dept->department); @endphp
+                {{-- department は BuyerDepartmentPivot で enum キャスト済み。
+                     from() / tryFrom() に渡すと TypeError になる（docs/RULES.md Bug #22） --}}
+                @php $dEnum = $dept->department; @endphp
                 <span style="display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; {{ $dEnum->badgeStyle() }}">{{ $dEnum->label() }}</span>
             @endforeach
         </dd>

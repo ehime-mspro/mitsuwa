@@ -93,7 +93,7 @@ manage/
 | `hs_contracts` | 建売契約 |
 | `hs_custom_orders` | 注文住宅 |
 | `buyers` | 買主マスタ (SoftDeletes) |
-| `buyer_department_pivot` | 買主×部署紐付け |
+| `buyer_departments` | 買主×部署紐付け（ランク・取得日。UNIQUE(buyer_id, department)）|
 | `buyer_surveys` / `buyer_survey_answers` | アンケート |
 | `properties` | テナント物件 |
 | `units` | テナント区画 (floor + room_number → display_name自動生成) |
