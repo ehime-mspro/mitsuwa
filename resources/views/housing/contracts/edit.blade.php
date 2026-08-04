@@ -23,7 +23,8 @@
         </div>
     @endif
 
-    <form method="POST" action="{{ route('housing.contracts.update', $property) }}" x-data="contractEditForm()">
+    {{-- x-data は不要。買主選択は _buyer-select が自前の x-data="buyerSelect()" を持つ --}}
+    <form method="POST" action="{{ route('housing.contracts.update', $property) }}">
         @csrf
         @method('PUT')
 
@@ -55,30 +56,19 @@
         {{-- 顧客情報 --}}
         <div class="bg-white border border-gray-200 rounded-lg p-5 mb-3">
             <div class="text-sm font-bold text-gray-800 pb-2 mb-3.5 border-b border-gray-200">顧客情報</div>
+            {{-- 買主マスタ紐付け（必須・＋新規モーダル）。create / 契約一覧側の編集と同じパーシャル。
+                 ⚠ 以前はここが顧客名のフリーテキストで、しかも**テナント事業の顧客検索 API**を
+                   叩いていた（返るのは Buyer ではなく別テーブルの Customer）。customer_id を送る
+                   仕組みが無く、保存すると customer_name だけが上書きされて紐付け先と食い違っていた。 --}}
+            <div class="mb-4">
+                @include('housing.contracts._buyer-select', [
+                    'buyers'       => $buyers,
+                    'selectedId'   => old('customer_id', $contract->customer_id),
+                    'selectedName' => old('customer_name', $contract->customer_name),
+                    'department'   => 'housing',
+                ])
+            </div>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                    <label class="block text-sm font-semibold text-gray-700 mb-1">顧客名<span class="text-red-600 ml-0.5">*</span></label>
-                    <div style="position: relative;">
-                        <input type="text" name="customer_name" x-model="customerName"
-                               @input="searchCustomer()" @focus="searchCustomer()"
-                               class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none"
-                               placeholder="顧客名を入力して検索..." autocomplete="off">
-                        <div x-show="customerResults.length > 0"
-                             @click.outside="customerResults = []"
-                             style="position: absolute; top: 100%; left: 0; right: 0; background: #fff; border: 1px solid #d1d5db; border-top: none; border-radius: 0 0 6px 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); z-index: 100; max-height: 200px; overflow-y: auto;">
-                            <template x-for="cust in customerResults" :key="cust.id">
-                                <div @click="selectCustomer(cust)"
-                                     style="padding: 8px 12px; font-size: 13px; cursor: pointer; border-bottom: 1px solid #f3f4f6;"
-                                     class="hover:bg-gray-50">
-                                    <div class="text-sm font-semibold text-gray-900" x-text="cust.name"></div>
-                                    <div class="text-xs text-gray-500" x-text="cust.address || ''"></div>
-                                </div>
-                            </template>
-                        </div>
-                    </div>
-                    <p x-show="customerError" x-cloak class="text-xs text-red-600 mt-1" x-text="customerError"></p>
-                    @error('customer_name') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
-                </div>
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1">契約日<span class="text-red-600 ml-0.5">*</span></label>
                     <input type="date" name="contract_date" value="{{ old('contract_date', $contract->contract_date->format('Y-m-d')) }}"
@@ -105,53 +95,3 @@
         <x-form-actions submit-label="更新する" :cancel-url="route('housing.properties.show', $property)" />
     </form>
 @endsection
-
-@push('scripts')
-<script>
-function contractEditForm() {
-    return {
-        customerName: '{{ old("customer_name", $contract->customer_name) }}',
-        customerResults: [],
-        customerError: '',
-        searchTimer: null,
-
-        searchCustomer: function() {
-            var self = this;
-            clearTimeout(self.searchTimer);
-            if (self.customerName.length < 2) {
-                self.customerResults = [];
-                self.customerError = '';
-                return;
-            }
-            self.searchTimer = setTimeout(function() {
-                fetch('{{ url("/api/tenant/customers/search") }}?q=' + encodeURIComponent(self.customerName), {
-                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
-                })
-                .then(function(res) {
-                    if (!res.ok) {
-                        self.customerResults = [];
-                        self.customerError = '顧客の検索に失敗しました（' + res.status + '）';
-                        return null;
-                    }
-                    return res.json();
-                })
-                .then(function(data) {
-                    if (!data) return;
-                    self.customerError = '';
-                    self.customerResults = data;
-                })
-                .catch(function() {
-                    self.customerResults = [];
-                    self.customerError = '顧客の検索に失敗しました。通信エラーが発生しました。';
-                });
-            }, 300);
-        },
-
-        selectCustomer: function(cust) {
-            this.customerName = cust.name;
-            this.customerResults = [];
-        }
-    };
-}
-</script>
-@endpush

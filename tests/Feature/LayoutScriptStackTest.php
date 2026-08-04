@@ -26,7 +26,16 @@ use Tests\TestCase;
  *   JS が実際に動くかはブラウザでの目視確認でしか担保できない（実施済み）。
  *
  * ⚠ @push('scripts') を使うビューを新設したら、ここに 1 本足すこと。
- *   grep -rln "@push('scripts')" resources/views/ で現在の利用箇所を確認できる。
+ *   実使用箇所は `grep -rc "^@push('scripts')" resources/views` で数える
+ *   （`grep -rln` だと `@@push` やコメント中の記述も拾うので数を誤る）。
+ *
+ * ⚠ **2026-08-04 にカバレッジが 2 ページ → 1 ページへ後退している。**
+ *   housing/contracts/edit.blade.php の顧客名フリーテキスト（テナント事業の顧客検索 API を
+ *   叩いていた）を _buyer-select パーシャルへ置き換えた結果、そのビューから
+ *   @push('scripts') が無くなり、対応するテストを削除した。
+ *   移設先が無かったため（実測で @push('scripts') を使うビューは
+ *   housing/custom-orders/index.blade.php だけになった）復旧できていない。
+ *   **@push('scripts') を使うビューを次に作るときは、必ずここにテストを 1 本足して 2 ページへ戻すこと。**
  */
 class LayoutScriptStackTest extends TestCase
 {
@@ -78,41 +87,17 @@ class LayoutScriptStackTest extends TestCase
         $res->assertSee('id="global-step-popover"', false);
     }
 
-    /**
-     * 建売契約 編集フォームの Alpine コンポーネント定義が出力される。
+    /*
+     * 【削除済み】test_housing_contract_edit_renders_alpine_component_script
      *
-     * edit.blade.php は x-data="contractEditForm()" を使うため、定義が
-     * 捨てられていると Alpine がコンポーネントを初期化できず顧客名検索が死ぬ
-     * （docs/RULES.md Bug #23 と同じ症状クラス）。
-     * 到達経路: GET /housing/properties/{property}/contract/edit
+     * 2026-08-04 に housing/contracts/edit.blade.php の顧客名フリーテキストを
+     * _buyer-select パーシャルへ置き換えたため、そのビューから @push('scripts') と
+     * contractEditForm() が無くなり、このテストは検証対象を失った。
+     * （_buyer-select は自前のインライン <script> で buyerSelect() を定義するので push を使わない）
+     *
+     * ⚠ 消したのは「テストが赤になったから」ではなく**検証対象が実在しなくなったから**。
+     *   @stack('scripts') 自体の保護はクラス docblock に書いたとおり 1 ページに減っている。
      */
-    public function test_housing_contract_edit_renders_alpine_component_script(): void
-    {
-        $property = HsProperty::create([
-            'property_code' => 'HS-9001',
-            'property_name' => 'スタック検証A号地',
-            'status'        => 'construction',
-            'address'       => '松山市中央2-2-2',
-            'created_by'    => 1,
-        ]);
-
-        HsContract::create([
-            'property_id'            => $property->id,
-            'customer_name'          => '検証 太郎',
-            'selling_price_building' => 28500000,
-            'selling_price_land'     => 12800000,
-            'tax_rate'               => 10.00,
-            'contract_date'          => '2026-07-01',
-            'created_by'             => 1,
-        ]);
-
-        $res = $this->actingAs($this->executive())->get("/housing/properties/{$property->id}/contract/edit");
-
-        $res->assertOk();
-        // x-data の呼び出しと関数定義を対で検証する
-        $res->assertSee('x-data="contractEditForm()"', false);
-        $res->assertSee('function contractEditForm()', false);
-    }
 
     /**
      * 何も push していないページでは @stack('scripts') が余計な出力を足さない。

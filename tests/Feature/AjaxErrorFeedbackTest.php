@@ -50,7 +50,10 @@ class AjaxErrorFeedbackTest extends TestCase
         'realestate/projects/lots.blade.php',
         'realestate/projects/show.blade.php',
         // 住宅事業
-        'housing/contracts/edit.blade.php',
+        // ⚠ housing/contracts/edit.blade.php は 2026-08-04 にリストから外した。
+        //    顧客名のフリーテキスト（テナント事業の顧客検索 API を叩いていた）を
+        //    _buyer-select パーシャルへ置き換えた結果、このビューから fetch が無くなったため。
+        //    このラチェットの test_every_fetch_view_is_classified が陳腐化を検出してくれた。
         'housing/custom-orders/_form.blade.php',
         'housing/custom-orders/index.blade.php',
         'housing/custom-orders/show.blade.php',

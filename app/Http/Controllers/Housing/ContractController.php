@@ -90,7 +90,18 @@ class ContractController extends Controller
 
         $property->load(['projectLot.project', 'procurement']);
 
-        return view('housing.contracts.edit', compact('property', 'contract'));
+        // 買主マスタ（住宅事業所属。現在紐付け中の buyer が SoftDelete されていても選択可能にする）
+        // ⚠ HsContractListController::editBuilding() と同じ形。CLAUDE.md の
+        //    「edit 画面では現在の buyer を必ず含める」規約（Bug #12）。
+        $buyers = Buyer::ofDepartment('housing')->orderBy('last_name_kana')->get();
+        if ($contract->customer_id) {
+            $current = Buyer::withTrashed()->find($contract->customer_id);
+            if ($current && !$buyers->contains('id', $current->id)) {
+                $buyers->push($current);
+            }
+        }
+
+        return view('housing.contracts.edit', compact('property', 'contract', 'buyers'));
     }
 
     /**
@@ -107,6 +118,17 @@ class ContractController extends Controller
         }
 
         $validated = $this->validateContract($request);
+
+        // 買主マスタ紐付けを必須化し、customer_name を買主名で上書きする（store() と同じ）。
+        // ⚠ ここが無いと customer_name だけが上書きされて customer_id と食い違う。
+        //    修正前はこの画面だけフリーテキスト＋テナント事業の API を叩いていた。
+        $request->validate([
+            'customer_id' => ['required', 'integer', 'exists:buyers,id'],
+        ]);
+        $buyer = Buyer::withTrashed()->findOrFail($request->integer('customer_id'));
+        $validated['customer_id']   = $buyer->id;
+        $validated['customer_name'] = $buyer->full_name;
+
         $validated['updated_by'] = auth()->id();
 
         $contract->update($validated);
