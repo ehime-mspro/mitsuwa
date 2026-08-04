@@ -45,7 +45,7 @@
             <span class="w-1 h-5 bg-emerald-600 rounded-sm"></span>
             <h2 class="text-base font-bold text-gray-900">基本情報</h2>
         </div>
-        <div class="border border-gray-200 rounded-md overflow-hidden" style="display: grid; grid-template-columns: 120px 1fr 120px 1fr;">
+        <div class="border border-gray-200 rounded-md overflow-hidden dl-stack-sm" style="display: grid; grid-template-columns: 120px 1fr 120px 1fr;">
             <dt class="bg-gray-50 px-3.5 py-2.5 text-sm text-gray-600 font-medium border-b border-r border-gray-200">社員番号</dt>
             <dd class="px-3.5 py-2.5 text-sm text-gray-900 border-b border-gray-200" style="font-variant-numeric: tabular-nums;">{{ $employee->employee_code }}</dd>
             <dt class="bg-gray-50 px-3.5 py-2.5 text-sm text-gray-600 font-medium border-b border-r border-gray-200">氏名</dt>

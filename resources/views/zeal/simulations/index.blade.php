@@ -38,7 +38,9 @@
     </div>
 
     <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden;">
-        <table style="width: 100%; border-collapse: collapse;">
+        <div class="scroll-hint at-start">
+        <div class="scroll-hint-inner">
+        <table style="width: 100%; border-collapse: collapse; min-width: 560px;">
             <thead>
                 <tr style="background: #f9fafb;">
                     <th style="padding: 12px 16px; text-align: left; font-size: 12px; font-weight: 600; color: #374151; border-bottom: 1px solid #e5e7eb; width: 130px;">会計年度</th>
@@ -86,5 +88,8 @@
                 @endforelse
             </tbody>
         </table>
+        </div>
+        <div class="scroll-hint-text">← スクロールできます →</div>
+        </div>
     </div>
 @endsection

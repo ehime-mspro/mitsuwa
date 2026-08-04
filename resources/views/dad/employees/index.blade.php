@@ -23,7 +23,7 @@
 
 {{-- フィルターバー --}}
 <form id="filter-form" method="GET" action="{{ route('dad.employees.index') }}"
-      class="flex items-center gap-2 mb-4 bg-white border border-gray-200 rounded-lg" style="padding: 10px 14px;">
+      class="flex flex-wrap items-center gap-2 mb-4 bg-white border border-gray-200 rounded-lg" style="padding: 10px 14px;">
     <select name="status" onchange="document.getElementById('filter-form').submit()"
             class="h-9 px-3 border border-gray-300 rounded-md text-sm text-gray-700 bg-white cursor-pointer">
         <option value="active" {{ $statusFilter === 'active' ? 'selected' : '' }}>在籍状況: 在籍</option>
@@ -37,7 +37,7 @@
 </form>
 
 {{-- 集計 --}}
-<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px;">
+<div class="grid-stack-sm" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px;">
     <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px 16px; text-align: center;">
         <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">在籍</div>
         <div style="font-size: 20px; font-weight: 700; color: #047857;">{{ $countActive }}名</div>
@@ -54,7 +54,9 @@
 
 {{-- テーブル --}}
 <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
-    <table class="w-full border-collapse" style="table-layout: fixed;">
+    <div class="scroll-hint at-start">
+    <div class="scroll-hint-inner">
+    <table class="w-full border-collapse" style="table-layout: fixed; min-width: 780px;">
         <colgroup>
             <col style="width: 10%">
             <col style="width: 16%">
@@ -113,6 +115,9 @@
             @endforelse
         </tbody>
     </table>
+    </div>
+    <div class="scroll-hint-text">← スクロールできます →</div>
+    </div>
 </div>
 
 @if($employees->hasPages())

@@ -64,7 +64,7 @@
 
     .picker-popup {
         position: absolute; top: calc(100% + 6px); left: 0; z-index: 100;
-        width: 340px; background: white; border-radius: 20px;
+        width: 340px; max-width: calc(100vw - 32px); background: white; border-radius: 20px;
         box-shadow: 0 20px 50px rgba(0,0,0,0.1), 0 2px 4px rgba(0,0,0,0.04);
         padding: 20px; box-sizing: border-box;
     }
@@ -524,7 +524,9 @@
             <div style="font-size: 15px; font-weight: 700; color: #111827; margin-bottom: 14px; padding-left: 12px; border-left: 4px solid #10b981;">
                 過去の改定履歴（参考）
             </div>
-            <table class="w-full border-collapse" style="table-layout: fixed;">
+            <div class="scroll-hint at-start">
+            <div class="scroll-hint-inner">
+            <table class="w-full border-collapse" style="table-layout: fixed; min-width: 620px;">
                 <colgroup>
                     <col style="width: 15%">
                     <col style="width: 15%">
@@ -561,6 +563,9 @@
                     @endforeach
                 </tbody>
             </table>
+            </div>
+            <div class="scroll-hint-text">← スクロールできます →</div>
+            </div>
             <div style="font-size: 12px; color: #6b7280; margin-top: 10px;">
                 ※ 駐車場料金の改定は駐車場契約詳細画面から行います。
             </div>

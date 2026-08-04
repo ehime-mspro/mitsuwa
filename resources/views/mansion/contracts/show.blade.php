@@ -42,6 +42,11 @@
     .ms-money-cell:last-child { border-right: none; }
     .ms-money-label { font-size: 12px; color: #6b7280; margin-bottom: 4px; }
     .ms-money-value { font-size: 18px; font-weight: 700; color: #111827; }
+
+    /* モバイル: 金額 4 列は 2 列へ */
+    @media (max-width: 640px) {
+        .ms-money-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
 </style>
 
 {{-- ページヘッダー --}}
@@ -182,7 +187,9 @@
         <div class="ms-card-title" style="margin-bottom: 0;">紐付け駐車場契約（{{ $contract->parkingContracts->count() }}件）</div>
     </div>
     @if($contract->parkingContracts->count() > 0)
-        <table class="w-full border-collapse" style="table-layout: fixed;">
+        <div class="scroll-hint at-start">
+        <div class="scroll-hint-inner">
+        <table class="w-full border-collapse" style="table-layout: fixed; min-width: 640px;">
             <colgroup>
                 <col style="width: 26%">
                 <col style="width: 16%">
@@ -236,6 +243,9 @@
                 @endforeach
             </tbody>
         </table>
+        </div>
+        <div class="scroll-hint-text">← スクロールできます →</div>
+        </div>
     @else
         <div style="padding: 28px 12px; text-align: center; color: #9ca3af; font-size: 13px;">紐付く駐車場契約はありません。</div>
     @endif
@@ -245,7 +255,9 @@
 <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
     <div class="ms-card-title">賃料改定履歴（{{ $contract->revisions->count() }}件）</div>
     @if($contract->revisions->count() > 0)
-        <table class="w-full border-collapse" style="table-layout: fixed;">
+        <div class="scroll-hint at-start">
+        <div class="scroll-hint-inner">
+        <table class="w-full border-collapse" style="table-layout: fixed; min-width: 620px;">
             <colgroup>
                 <col style="width: 15%">
                 <col style="width: 15%">
@@ -287,6 +299,9 @@
                 @endforeach
             </tbody>
         </table>
+        </div>
+        <div class="scroll-hint-text">← スクロールできます →</div>
+        </div>
         <div style="font-size: 12px; color: #6b7280; margin-top: 10px;">
             ※ 「賃料改定」ボタンから新しい改定を登録できます。駐車場料金の改定は駐車場契約詳細画面から行います。
         </div>

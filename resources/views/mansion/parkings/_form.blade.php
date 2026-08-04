@@ -45,7 +45,7 @@
     <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
         <div class="ms-card-title">基本情報</div>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 26px;">
+        <div class="grid-stack-sm" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 26px;">
             {{-- 駐車場番号 --}}
             <div>
                 <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">駐車場番号<span style="color: #ef4444; margin-left: 2px;">*</span></label>

@@ -47,7 +47,7 @@
     .picker-popup {
         position: absolute;
         top: calc(100% + 6px); right: 0;
-        z-index: 100; width: 300px;
+        z-index: 100; width: 300px; max-width: calc(100vw - 32px);
         background: white;
         border-radius: 20px;
         box-shadow: 0 20px 50px rgba(0,0,0,0.1), 0 2px 4px rgba(0,0,0,0.04);
@@ -188,7 +188,7 @@
         </div>
 
         {{-- 郵便番号 + 検索ボタン --}}
-        <div style="display: grid; grid-template-columns: 160px auto 1fr; gap: 10px; margin-bottom: 26px; align-items: flex-end;">
+        <div class="grid-stack-sm" style="display: grid; grid-template-columns: 160px auto 1fr; gap: 10px; margin-bottom: 26px; align-items: flex-end;">
             <div>
                 <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">郵便番号</label>
                 <input type="text" name="postal_code" value="{{ $valPostal }}" maxlength="8"
@@ -218,7 +218,7 @@
     <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
         <div class="ms-card-title">建物情報</div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2" style="grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px; margin-bottom: 4px; display: grid;">
+        <div class="grid grid-cols-1 sm:grid-cols-2 grid-2col-sm" style="grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px; margin-bottom: 4px; display: grid;">
             {{-- 総戸数 --}}
             <div>
                 <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">総戸数</label>

@@ -47,7 +47,9 @@
     </div>
 
     <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden;">
-        <table style="width: 100%; border-collapse: collapse;">
+        <div class="scroll-hint at-start">
+        <div class="scroll-hint-inner">
+        <table style="width: 100%; border-collapse: collapse; min-width: 760px;">
             <thead>
                 <tr style="background: #f9fafb;">
                     <th style="padding: 12px 8px; text-align: center; font-size: 12px; font-weight: 600; color: #374151; border-bottom: 1px solid #e5e7eb; width: 56px;"></th>
@@ -143,6 +145,9 @@
                 @endforelse
             </tbody>
         </table>
+        </div>
+        <div class="scroll-hint-text">← スクロールできます →</div>
+        </div>
     </div>
 
     <div style="margin-top: 12px; font-size: 11px; color: #6b7280;">

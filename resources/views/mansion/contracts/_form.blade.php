@@ -65,7 +65,7 @@
 {{-- ========== カード: 入居者・契約日 ========== --}}
 <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
     <div class="ms-card-title">入居者・契約日</div>
-    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
+    <div class="grid-stack-sm" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
         {{-- 入居者（必須） --}}
         <div>
             <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">入居者<span style="color: #ef4444; margin-left: 2px;">*</span></label>
@@ -100,7 +100,7 @@
 {{-- ========== カード: 金額情報 ========== --}}
 <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
     <div class="ms-card-title">金額情報（税抜・月額）</div>
-    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px;">
+    <div class="grid-2col-sm" style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px;">
         {{-- 賃料 --}}
         <div>
             <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">賃料</label>

@@ -38,7 +38,7 @@
     </div>
 
     {{-- 金額サマリー4カード（3モードハイブリッド） --}}
-    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px;">
+    <div class="grid-2col-sm" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px;">
         {{-- 受注額 --}}
         <div class="stat-card">
             <div class="stat-label">受注額</div>
@@ -156,7 +156,9 @@
             <a href="{{ route('dad.projects.edit', $project) }}" class="text-xs font-semibold text-emerald-700 px-3 py-1 border border-emerald-200 rounded bg-emerald-50 hover:bg-emerald-100">編集画面で追加・修正</a>
         </div>
 
-        <table class="w-full" style="border-collapse: collapse;">
+        <div class="scroll-hint at-start">
+        <div class="scroll-hint-inner">
+        <table class="w-full" style="border-collapse: collapse; min-width: 760px;">
             <thead>
                 <tr>
                     <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: left; width: 12%;">費用カテゴリ</th>
@@ -195,6 +197,9 @@
                 </tr>
             </tfoot>
         </table>
+        </div>
+        <div class="scroll-hint-text">← スクロールできます →</div>
+        </div>
 
         {{-- 凡例 --}}
         <div style="margin-top: 12px; padding: 10px 14px; background: #f9fafb; border-radius: 6px; font-size: 11px; color: #6b7280;">
@@ -214,7 +219,9 @@
                 人員配置がまだ登録されていません。編集画面から追加してください。
             </div>
         @else
-            <table class="w-full" style="border-collapse: collapse;">
+            <div class="scroll-hint at-start">
+            <div class="scroll-hint-inner">
+            <table class="w-full" style="border-collapse: collapse; min-width: 640px;">
                 <thead>
                     <tr>
                         <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #374151; text-align: left;">社員番号</th>
@@ -240,6 +247,9 @@
                     @endforeach
                 </tbody>
             </table>
+            </div>
+            <div class="scroll-hint-text">← スクロールできます →</div>
+            </div>
         @endif
     </div>
 
@@ -257,7 +267,9 @@
     @if($subcontractorOrders->isNotEmpty())
     <div class="bg-white border border-gray-200 rounded-lg" style="padding: 20px; margin-top: 20px;">
         <div class="card-title">協力業者発注履歴</div>
-        <table class="w-full" style="border-collapse: collapse;">
+        <div class="scroll-hint at-start">
+        <div class="scroll-hint-inner">
+        <table class="w-full" style="border-collapse: collapse; min-width: 640px;">
             <thead>
                 <tr>
                     <th style="padding: 10px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; text-align: left; font-size: 12px; font-weight: 700; color: #4b5563;">協力業者</th>
@@ -277,6 +289,9 @@
                 @endforeach
             </tbody>
         </table>
+        </div>
+        <div class="scroll-hint-text">← スクロールできます →</div>
+        </div>
     </div>
     @endif
 

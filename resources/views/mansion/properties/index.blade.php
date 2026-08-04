@@ -52,6 +52,8 @@
 
 {{-- テーブル --}}
 <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+    <div class="scroll-hint at-start">
+    <div class="scroll-hint-inner">
     <table class="w-full border-collapse" style="table-layout: fixed; min-width: 720px;">
         <colgroup>
             <col style="width: 35%">
@@ -135,6 +137,9 @@
             @endforelse
         </tbody>
     </table>
+    </div>
+    <div class="scroll-hint-text">← スクロールできます →</div>
+    </div>
 
     {{-- ページネーション --}}
     @if($properties->hasPages())

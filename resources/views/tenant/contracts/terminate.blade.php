@@ -222,7 +222,9 @@
                 <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center bg-gray-50">
                     <svg class="w-8 h-8 text-gray-400 mx-auto mb-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                     <p class="text-sm text-gray-500 mb-2">PDF形式（10MB以内）</p>
-                    <input type="file" name="settlement_file" accept=".pdf"
+                    {{-- ⚠ max-width が無いと 375px 画面でネイティブのファイル選択 UI が
+                         親からはみ出す。Bug #18 のとおり .form-input は付けない。 --}}
+                    <input type="file" name="settlement_file" accept=".pdf" style="max-width: 100%;"
                            class="text-sm text-gray-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border file:border-gray-300 file:text-sm file:font-medium file:bg-white file:text-gray-700 hover:file:bg-gray-50 file:cursor-pointer">
                 </div>
                 <p class="text-xs text-gray-500 mt-1.5">敷金返還の精算書をアップロード。契約詳細画面で「解約精算書を開く」ボタンが表示されます。</p>

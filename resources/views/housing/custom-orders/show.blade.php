@@ -48,7 +48,7 @@
     {{-- 基本情報 --}}
     <div class="bg-white border border-gray-200 rounded-lg p-5 mb-5">
         <div class="text-sm font-bold text-gray-800 pb-2 mb-3.5 border-b border-gray-200">基本情報</div>
-        <div style="display: grid; grid-template-columns: 140px 1fr 140px 1fr; gap: 0; border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden;">
+        <div class="dl-stack-sm" style="display: grid; grid-template-columns: 140px 1fr 140px 1fr; gap: 0; border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden;">
             <div style="background: #f9fafb; padding: 10px 14px; font-size: 13px; color: #4b5563; font-weight: 500; border-bottom: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb;">案件番号</div>
             <div style="padding: 10px 14px; font-size: 14px; border-bottom: 1px solid #e5e7eb;">{{ $o->order_code }}</div>
             <div style="background: #f9fafb; padding: 10px 14px; font-size: 13px; color: #4b5563; font-weight: 500; border-bottom: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb;">ステータス</div>
@@ -135,7 +135,9 @@
                     $buildingProfit = $o->getBuildingProfit();
                     $totalProfit = $o->getTotalProfit();
                 @endphp
-                <table class="w-full border-collapse">
+                <div class="scroll-hint at-start">
+                <div class="scroll-hint-inner">
+                <table class="w-full border-collapse" style="min-width: 520px;">
                     <thead>
                         <tr>
                             <th class="bg-gray-50 text-center text-xs font-semibold text-gray-600 border border-gray-200" style="padding: 10px 14px; width: 160px;">項目</th>
@@ -195,6 +197,9 @@
                         </tr>
                     </tbody>
                 </table>
+                </div>
+                <div class="scroll-hint-text">← スクロールできます →</div>
+                </div>
             @else
                 {{-- お客様所有土地 or 土地未選択: カード形式 --}}
                 @php
@@ -237,7 +242,7 @@
         {{-- 契約前: 原価情報 --}}
         <div class="bg-white border border-gray-200 rounded-lg p-5 mb-5">
             <div class="text-sm font-bold text-gray-800 pb-2 mb-3.5 border-b border-gray-200">原価情報</div>
-            <div style="display: grid; grid-template-columns: 140px 1fr 140px 1fr; gap: 0; border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden;">
+            <div class="dl-stack-sm" style="display: grid; grid-template-columns: 140px 1fr 140px 1fr; gap: 0; border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden;">
                 @if($isCompanyLand)
                     <div style="background: #f9fafb; padding: 10px 14px; font-size: 13px; color: #4b5563; font-weight: 500; border-bottom: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb;">土地原価</div>
                     <div style="padding: 10px 14px; font-size: 14px; border-bottom: 1px solid #e5e7eb;">{{ $o->land_cost !== null ? number_format($o->land_cost) . '円' : '—' }}</div>

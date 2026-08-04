@@ -108,7 +108,9 @@
             <span style="font-size: 12px; font-weight: 500; color: #6b7280;">{{ $roomContract ? '1' : '0' }} 件</span>
         </div>
         @if($roomContract && $roomContract->room)
-            <table class="w-full" style="border-collapse: collapse; table-layout: fixed;">
+            <div class="scroll-hint at-start">
+            <div class="scroll-hint-inner">
+            <table class="w-full" style="border-collapse: collapse; table-layout: fixed; min-width: 640px;">
                 <colgroup>
                     <col style="width: 34%">
                     <col style="width: 18%">
@@ -159,6 +161,9 @@
                     </tr>
                 </tbody>
             </table>
+            </div>
+            <div class="scroll-hint-text">← スクロールできます →</div>
+            </div>
         @else
             <div style="padding: 28px 12px; text-align: center; color: #9ca3af; font-size: 13px;">有効な部屋契約はありません。</div>
         @endif
@@ -172,7 +177,9 @@
         <span style="font-size: 12px; font-weight: 500; color: #6b7280;">{{ $parkingContracts->count() }} 件</span>
     </div>
     @if($parkingContracts->count() > 0)
-        <table class="w-full" style="border-collapse: collapse; table-layout: fixed;">
+        <div class="scroll-hint at-start">
+        <div class="scroll-hint-inner">
+        <table class="w-full" style="border-collapse: collapse; table-layout: fixed; min-width: 640px;">
             <colgroup>
                 <col style="width: 30%">
                 <col style="width: 20%">
@@ -229,6 +236,9 @@
                 @endforeach
             </tbody>
         </table>
+        </div>
+        <div class="scroll-hint-text">← スクロールできます →</div>
+        </div>
     @else
         <div style="padding: 28px 12px; text-align: center; color: #9ca3af; font-size: 13px;">有効な駐車場契約はありません。</div>
     @endif

@@ -64,7 +64,9 @@
         ※ 確定月の実績計（YEAR）と予算計を比較。差異 = 実績 − 予算 ／ 達成率 = 実績 ÷ 予算 × 100%。
     </p>
 
-    <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+    <div class="scroll-hint at-start">
+    <div class="scroll-hint-inner">
+    <table style="width: 100%; border-collapse: collapse; font-size: 12px; min-width: 560px;">
         <thead>
             <tr style="background: #f9fafb;">
                 <th style="padding: 8px 12px; text-align: left; font-size: 11px; font-weight: 600; color: #374151; border-bottom: 2px solid #d1d5db;">項目</th>
@@ -128,6 +130,9 @@
             @endforeach
         </tbody>
     </table>
+    </div>
+    <div class="scroll-hint-text">← スクロールできます →</div>
+    </div>
 
     <div style="margin-top: 14px; padding: 10px 14px; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 6px; font-size: 11px; color: #075985; line-height: 1.7;">
         <strong>📌 解釈ガイド:</strong><br>

@@ -46,7 +46,7 @@
     <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
         <div class="card-title">基本情報</div>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px 20px;">
+        <div class="grid-stack-sm" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px 20px;">
             <div class="fld">
                 <label>工事種別<span class="required">*</span></label>
                 <select name="project_type" required>
@@ -149,7 +149,7 @@
             </div>
         </div>
 
-        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px 20px;">
+        <div class="grid-stack-sm" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px 20px;">
             <div class="fld">
                 <label>見積日</label>
                 @include('dad.projects._date-picker', [
@@ -222,7 +222,9 @@
             ＋ 行追加 または Excel取込 で原価明細を追加してください。
         </div>
 
-        <table x-show="costRows.length > 0" class="w-full" style="border-collapse: collapse;">
+        <div class="scroll-hint at-start" x-show="costRows.length > 0">
+        <div class="scroll-hint-inner">
+        <table class="w-full" style="border-collapse: collapse; min-width: 860px;">
             <thead>
                 <tr>
                     <th style="padding: 8px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 11px; font-weight: 700; text-align: left; width: 12%;">カテゴリ<span class="required">*</span></th>
@@ -279,6 +281,9 @@
                 </template>
             </tbody>
         </table>
+        </div>
+        <div class="scroll-hint-text">← スクロールできます →</div>
+        </div>
     </div>
 
     @if(!is_null($project))
@@ -294,7 +299,9 @@
                 ＋ 配置追加 ボタンで人員配置を追加してください。
             </div>
 
-            <table x-show="assignmentRows.length > 0" class="w-full" style="border-collapse: collapse;">
+            <div class="scroll-hint at-start" x-show="assignmentRows.length > 0">
+            <div class="scroll-hint-inner">
+            <table class="w-full" style="border-collapse: collapse; min-width: 720px;">
                 <thead>
                     <tr>
                         <th style="padding: 8px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 11px; font-weight: 700; text-align: left;">従業員<span class="required">*</span></th>
@@ -347,6 +354,9 @@
                     </template>
                 </tbody>
             </table>
+            </div>
+            <div class="scroll-hint-text">← スクロールできます →</div>
+            </div>
         </div>
     @endif
 
@@ -398,7 +408,7 @@
     position: absolute;
     top: calc(100% + 6px); left: 0;
     z-index: 100;
-    width: 320px;
+    width: 320px; max-width: calc(100vw - 32px);
     background: white;
     border-radius: 16px;
     box-shadow: 0 20px 50px rgba(0,0,0,0.1), 0 2px 4px rgba(0,0,0,0.04);

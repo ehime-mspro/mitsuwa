@@ -52,7 +52,7 @@
     <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
         <div class="ms-card-title">基本情報</div>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px; margin-bottom: 26px;">
+        <div class="grid-2col-sm" style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px; margin-bottom: 26px;">
             {{-- 号室番号 --}}
             <div>
                 <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">号室番号<span style="color: #ef4444; margin-left: 2px;">*</span></label>
@@ -131,7 +131,7 @@
     <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
         <div class="ms-card-title">募集条件</div>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px; margin-bottom: 0;">
+        <div class="grid-2col-sm" style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px; margin-bottom: 0;">
             {{-- 募集賃料 --}}
             <div>
                 <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">募集賃料</label>

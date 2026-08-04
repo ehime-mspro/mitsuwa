@@ -66,7 +66,7 @@
 
     {{-- 金額カード --}}
     @if(!$contract->contract_type->isBrokerage())
-        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px;">
+        <div class="grid-2col-sm" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px;">
             <div class="bg-white border border-gray-200 rounded-lg p-4">
                 <div class="text-xs text-gray-500">契約額（税抜）</div>
                 <div class="text-lg font-bold text-gray-900">
@@ -128,7 +128,7 @@
 
     {{-- 仲介成約情報カード --}}
     @if($contract->contract_type->isBrokerage() && $contract->status === \App\Enums\ReContractStatus::Closed)
-        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 20px;">
+        <div class="grid-stack-sm" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 20px;">
             <div class="bg-white border border-gray-200 rounded-lg p-4">
                 <div class="text-xs text-gray-500">成約日</div>
                 <div class="text-lg font-bold text-gray-900">{{ $contract->contract_date?->format('Y/m/d') ?? '—' }}</div>
@@ -156,7 +156,7 @@
             <span class="w-1 h-5 bg-emerald-600 rounded-sm"></span>
             <h2 class="text-base font-bold text-gray-900">基本情報</h2>
         </div>
-        <div class="border border-gray-200 rounded-md overflow-hidden" style="display: grid; grid-template-columns: 120px 1fr 120px 1fr;">
+        <div class="border border-gray-200 rounded-md overflow-hidden dl-stack-sm" style="display: grid; grid-template-columns: 120px 1fr 120px 1fr;">
             <dt class="bg-gray-50 px-3.5 py-2.5 text-sm text-gray-600 font-medium border-b border-r border-gray-200">契約種別</dt>
             <dd class="px-3.5 py-2.5 text-sm text-gray-900 border-b border-gray-200">{{ $contract->contract_type->label() }}</dd>
             <dt class="bg-gray-50 px-3.5 py-2.5 text-sm text-gray-600 font-medium border-b border-r border-gray-200">契約日</dt>
@@ -287,7 +287,7 @@
             <span class="w-1 h-5 bg-emerald-600 rounded-sm"></span>
             <h2 class="text-base font-bold text-gray-900">登録情報</h2>
         </div>
-        <div class="border border-gray-200 rounded-md overflow-hidden" style="display: grid; grid-template-columns: 120px 1fr 120px 1fr;">
+        <div class="border border-gray-200 rounded-md overflow-hidden dl-stack-sm" style="display: grid; grid-template-columns: 120px 1fr 120px 1fr;">
             <dt class="bg-gray-50 px-3.5 py-2.5 text-sm text-gray-600 font-medium border-b border-r border-gray-200">登録者</dt>
             <dd class="px-3.5 py-2.5 text-sm text-gray-900 border-b border-gray-200">{{ $contract->createdBy->name ?? '—' }}</dd>
             <dt class="bg-gray-50 px-3.5 py-2.5 text-sm text-gray-600 font-medium border-b border-r border-gray-200">登録日時</dt>

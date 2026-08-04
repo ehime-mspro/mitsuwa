@@ -58,6 +58,8 @@
 
     {{-- テーブル --}}
     <div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
+        <div class="scroll-hint at-start">
+        <div class="scroll-hint-inner">
         <table class="w-full" style="table-layout: fixed;">
             <colgroup>
                 <col style="width: 96px;">
@@ -149,6 +151,9 @@
                 </tr>
             </tbody>
         </table>
+        </div>
+        <div class="scroll-hint-text">← スクロールできます →</div>
+        </div>
     </div>
 
     {{-- 削除確認メッセージ --}}

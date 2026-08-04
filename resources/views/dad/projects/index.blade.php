@@ -64,7 +64,9 @@
 
 {{-- テーブル --}}
 <div class="bg-white border border-gray-200 overflow-hidden" style="border-top: none;">
-    <table class="w-full border-collapse" style="table-layout: fixed;">
+    <div class="scroll-hint at-start">
+    <div class="scroll-hint-inner">
+    <table class="w-full border-collapse" style="table-layout: fixed; min-width: 900px;">
         <colgroup>
             <col style="width: 100px">
             <col style="width: 9%">
@@ -114,6 +116,9 @@
             @endforelse
         </tbody>
     </table>
+    </div>
+    <div class="scroll-hint-text">← スクロールできます →</div>
+    </div>
 </div>
 
 @if($projects->hasPages())

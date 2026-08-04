@@ -107,7 +107,7 @@
 {{-- ========== カード: 基本情報 ========== --}}
 <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
     <div class="ms-card-title">基本情報</div>
-    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px 24px;">
+    <div class="grid-2col-sm" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px 24px;">
         @if($property->ownership_type === \App\Enums\MsOwnershipType::Managed && $property->owner_name)
             <div style="grid-column: span 4;">
                 <div class="ms-info-label">オーナー</div>
@@ -160,7 +160,7 @@
 
     {{-- 部屋 --}}
     <div style="font-size: 12px; font-weight: 600; color: #6b7280; margin-bottom: 8px;">部屋（{{ $totalRooms }}戸）</div>
-    <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px;">
+    <div class="grid-2col-sm" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px;">
         <div class="ms-stat-card">
             <div class="ms-stat-label">総戸数</div>
             <div class="ms-stat-value">{{ $totalRooms }}<span class="ms-stat-value-sub">戸</span></div>
@@ -203,7 +203,7 @@
 {{-- ========== カード: 収支状況 ========== --}}
 <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
     <div class="ms-card-title">収支状況（契約中合計・月額）</div>
-    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;">
+    <div class="grid-2col-sm" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;">
         <div class="ms-stat-card">
             <div class="ms-stat-label">賃料収入</div>
             <div class="ms-stat-value" style="font-size: 20px;">{{ number_format($rentTotal) }}<span class="ms-stat-value-sub">円</span></div>
@@ -239,7 +239,9 @@
     @if($totalRooms === 0)
         <div style="padding: 32px; text-align: center; color: #9ca3af; font-size: 13px;">部屋が登録されていません。</div>
     @else
-        <table class="w-full" style="border-collapse: collapse;">
+        <div class="scroll-hint at-start">
+        <div class="scroll-hint-inner">
+        <table class="w-full" style="border-collapse: collapse; min-width: 820px;">
             <colgroup>
                 <col style="width: 10%">
                 <col style="width: 8%">
@@ -294,6 +296,9 @@
                 @endforeach
             </tbody>
         </table>
+        </div>
+        <div class="scroll-hint-text">← スクロールできます →</div>
+        </div>
     @endif
 </div>
 
@@ -313,7 +318,9 @@
     @if($totalParkings === 0)
         <div style="padding: 32px; text-align: center; color: #9ca3af; font-size: 13px;">駐車場が登録されていません。</div>
     @else
-        <table class="w-full" style="border-collapse: collapse;">
+        <div class="scroll-hint at-start">
+        <div class="scroll-hint-inner">
+        <table class="w-full" style="border-collapse: collapse; min-width: 760px;">
             <colgroup>
                 <col style="width: 13%">
                 <col style="width: 5%">
@@ -379,6 +386,9 @@
                 @endforeach
             </tbody>
         </table>
+        </div>
+        <div class="scroll-hint-text">← スクロールできます →</div>
+        </div>
     @endif
 </div>
 

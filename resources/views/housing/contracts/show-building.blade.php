@@ -69,6 +69,14 @@
     .hc-btn-gray:hover { background: #F9FAFB; }
     .hc-btn-danger  { color: #DC2626; border: 1px solid #DC2626; }
     .hc-btn-danger:hover { background: #FEF2F2; }
+
+    /* モバイル: 4 列サマリーは 2 列へ、定義リストはラベル+値の 1 対へ。
+       .hc-dl-grid はラベル列が 160px×2 = 320px あり、375px 画面の内容領域
+       （約 303px）を固定列だけで超えてしまう。 */
+    @media (max-width: 640px) {
+        .hc-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .hc-dl-grid { grid-template-columns: 96px minmax(0, 1fr); }
+    }
 </style>
 
     {{-- ヘッダー --}}

@@ -23,7 +23,7 @@
 
 {{-- フィルターバー --}}
 <form id="filter-form" method="GET" action="{{ route('dad.subcontractors.index') }}"
-      class="flex items-center gap-2 mb-4 bg-white border border-gray-200 rounded-lg" style="padding: 10px 14px;">
+      class="flex flex-wrap items-center gap-2 mb-4 bg-white border border-gray-200 rounded-lg" style="padding: 10px 14px;">
     <select name="specialty_id" onchange="document.getElementById('filter-form').submit()"
             class="h-9 px-3 border border-gray-300 rounded-md text-sm text-gray-700 bg-white cursor-pointer">
         <option value="">専門分野: すべて</option>
@@ -51,7 +51,9 @@
 
 {{-- テーブル --}}
 <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
-    <table class="w-full border-collapse" style="table-layout: fixed;">
+    <div class="scroll-hint at-start">
+    <div class="scroll-hint-inner">
+    <table class="w-full border-collapse" style="table-layout: fixed; min-width: 720px;">
         <colgroup>
             <col style="width: 14%">
             <col>
@@ -95,6 +97,9 @@
             @endforelse
         </tbody>
     </table>
+    </div>
+    <div class="scroll-hint-text">← スクロールできます →</div>
+    </div>
 </div>
 
 @if($subcontractors->hasPages())

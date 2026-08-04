@@ -54,7 +54,9 @@
             </div>
         @else
             {{-- 6 行サマリ --}}
-            <table style="width:100%; border-collapse:collapse; font-size:13px; margin-bottom:12px;">
+            <div class="scroll-hint at-start">
+            <div class="scroll-hint-inner">
+            <table style="width:100%; border-collapse:collapse; font-size:13px; margin-bottom:12px; min-width: 520px;">
                 <thead>
                     <tr style="background:#f9fafb;">
                         <th style="text-align:left; padding:8px 12px; border-bottom:1px solid #e5e7eb; color:#6b7280;">項目</th>
@@ -70,6 +72,9 @@
                     <tr><td style="padding:6px 12px; font-weight:700;">差し引き精算額</td><td style="padding:6px 12px; text-align:right; font-weight:700;">{{ $fmt($sales['parsed']['settlement']) }}</td></tr>
                 </tbody>
             </table>
+            </div>
+            <div class="scroll-hint-text">← スクロールできます →</div>
+            </div>
 
             {{-- 整合チェック結果 --}}
             <div style="background:{{ $sales['validation']['ok'] ? '#ecfdf5' : '#fef2f2' }}; border:1px solid {{ $sales['validation']['ok'] ? '#a7f3d0' : '#fecaca' }}; color:{{ $sales['validation']['ok'] ? '#065f46' : '#991b1b' }}; padding:10px 14px; border-radius:6px; font-size:12px; line-height:1.7;">
@@ -112,7 +117,7 @@
             </div>
         @else
             {{-- 集計 --}}
-            <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; margin-bottom:14px;">
+            <div class="grid-stack-sm" style="display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; margin-bottom:14px;">
                 <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:6px; padding:10px 14px;">
                     <div style="font-size:11px; color:#6b7280; margin-bottom:2px;">運営費</div>
                     <div style="font-size:16px; font-weight:700; color:#111827;">{{ $fmt($expense['aggregate']['summary_operating']) }}</div>
@@ -129,7 +134,9 @@
 
             {{-- 集約された費目別金額 --}}
             <h3 style="font-size:12px; font-weight:600; color:#374151; margin-bottom:6px;">費目別集約 (試算表への反映単位)</h3>
-            <table style="width:100%; border-collapse:collapse; font-size:13px; margin-bottom:10px;">
+            <div class="scroll-hint at-start">
+            <div class="scroll-hint-inner">
+            <table style="width:100%; border-collapse:collapse; font-size:13px; margin-bottom:10px; min-width: 520px;">
                 <thead>
                     <tr style="background:#f9fafb;">
                         <th style="text-align:left; padding:6px 10px; border-bottom:1px solid #e5e7eb; color:#6b7280;">code</th>
@@ -142,6 +149,9 @@
                     @endforeach
                 </tbody>
             </table>
+            </div>
+            <div class="scroll-hint-text">← スクロールできます →</div>
+            </div>
 
             {{-- hacomono 決済手数料の整合チェック --}}
             @if(!empty($paymentFeeCheck['message']))
@@ -176,7 +186,9 @@
                 <span style="display:inline-block; padding:1px 6px; background:#f3f4f6; color:#6b7280; border-radius:4px; font-weight:600;">同値</span> 変更なし
                 ／ 取り込まれたセルは <code style="background:#fef3c7; padding:1px 4px; border-radius:3px;">is_manual_override=true</code> で保護されます
             </p>
-            <table style="width:100%; border-collapse:collapse; font-size:13px;">
+            <div class="scroll-hint at-start">
+            <div class="scroll-hint-inner">
+            <table style="width:100%; border-collapse:collapse; font-size:13px; min-width: 520px;">
                 <thead>
                     <tr style="background:#f9fafb;">
                         <th style="text-align:left; padding:8px 12px; border-bottom:1px solid #e5e7eb; color:#6b7280;">項目</th>
@@ -202,6 +214,9 @@
                     @endforeach
                 </tbody>
             </table>
+            </div>
+            <div class="scroll-hint-text">← スクロールできます →</div>
+            </div>
         @endif
     </div>
 

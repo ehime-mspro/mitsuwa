@@ -105,7 +105,7 @@
     {{-- ========== カード: 緊急連絡先 ========== --}}
     <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
         <div class="ms-card-title">緊急連絡先</div>
-        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
+        <div class="grid-stack-sm" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
             {{-- 氏名 --}}
             <div>
                 <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">氏名</label>

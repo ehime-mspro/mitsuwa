@@ -55,7 +55,9 @@
 
         {{-- 列マッピングテーブル：mapping select は静的 option で構築（Bug #16 回避） --}}
         <div style="border: 1px solid #d1d5db; border-radius: 8px; overflow: hidden; background: white;">
-            <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+            <div class="scroll-hint at-start">
+            <div class="scroll-hint-inner">
+            <table style="width: 100%; border-collapse: collapse; font-size: 12px; min-width: 520px;">
                 <thead>
                     <tr>
                         <th style="padding: 8px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; text-align: left; font-weight: 700; color: #374151;">列</th>
@@ -85,6 +87,9 @@
                     </template>
                 </tbody>
             </table>
+            </div>
+            <div class="scroll-hint-text">← スクロールできます →</div>
+            </div>
         </div>
 
         <div style="display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end;">

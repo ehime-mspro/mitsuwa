@@ -134,3 +134,34 @@
 .scroll-hint:not(.no-scroll) .scroll-hint-text {
     display: block;
 }
+
+/* ===== モバイルで多列グリッドの段組みを落とすユーティリティ =====
+ *
+ * このアプリのグリッドは大半が style="display: grid; grid-template-columns: …"
+ * というインライン指定で、**インライン宣言は media query より強い**ため、
+ * 通常のレスポンシブ CSS では上書きできない。実際
+ * mansion/properties/_form.blade.php は `class="grid grid-cols-1 sm:grid-cols-2"`
+ * とインラインの 4 列指定を併記しているが、インライン側が勝つのでモバイルでも
+ * 4 列のままだった。
+ *
+ * そこで「モバイル幅のときだけインラインを上書きする」形にする。
+ * !important はインライン宣言に勝つために必要で、ここが数少ない正当な用途。
+ * 対象要素には display:grid が既にインラインで付いているので、ここでは
+ * 列指定だけを上書きする（＝ PC 幅の見た目は一切変えない）。
+ *
+ * なぜ 1fr でなく minmax(0, 1fr) か:
+ *   `1fr` は `minmax(auto, 1fr)` の略で、最小値 auto が中身の min-content 幅で
+ *   下限を作る。これがトラックを膨らませて main を横スクロールさせる（Bug #29）。
+ *   minmax(0, 1fr) なら下限 0 になり、中身が縮むか折り返す。
+ *
+ * 使い方: インラインの style は触らず、クラスを足すだけ。
+ *   .grid-stack-sm … 1 列に落とす（フォームの行、郵便番号行など）
+ *   .grid-2col-sm  … 2 列に落とす（KPI カードなど 4〜6 列のもの）
+ *   .dl-stack-sm   … 「ラベル 値 ラベル 値」の 4 列定義リストを 1 対に落とす
+ *                    ラベル幅は --dl-label-sm で調整可（既定 96px）
+ */
+@media (max-width: 640px) {
+    .grid-stack-sm { grid-template-columns: minmax(0, 1fr) !important; }
+    .grid-2col-sm  { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+    .dl-stack-sm   { grid-template-columns: var(--dl-label-sm, 96px) minmax(0, 1fr) !important; }
+}

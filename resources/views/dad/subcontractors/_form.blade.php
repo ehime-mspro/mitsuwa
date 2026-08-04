@@ -44,7 +44,7 @@
 <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
     <div class="card-title">住所・連絡先</div>
 
-    <div style="display: grid; grid-template-columns: 200px auto 1fr; gap: 10px; margin-bottom: 16px; align-items: flex-start;">
+    <div class="grid-stack-sm" style="display: grid; grid-template-columns: 200px auto 1fr; gap: 10px; margin-bottom: 16px; align-items: flex-start;">
         <div class="fld">
             <label>郵便番号</label>
             <input type="text" id="postal_code" name="postal_code" maxlength="8" placeholder="例: 790-0011"
@@ -69,7 +69,7 @@
                value="{{ old('address', $subcontractor?->address) }}">
     </div>
 
-    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px 20px;">
+    <div class="grid-stack-sm" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px 20px;">
         <div class="fld">
             <label>電話番号</label>
             <input type="tel" name="phone" maxlength="20" placeholder="例: 089-921-3344"

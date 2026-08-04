@@ -94,7 +94,7 @@
                     </div>
                 </div>
 
-                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 26px;">
+                <div class="grid-stack-sm" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 26px;">
                     <div class="fg">
                         <label>販売金額</label>
                         <div style="display: flex; align-items: center; gap: 6px;">
@@ -155,7 +155,7 @@
                     </select>
                 </div>
 
-                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 12px;">
+                <div class="grid-stack-sm" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 12px;">
                     <div class="fg">
                         <label>契約額 土地（税抜） <span class="req">*</span></label>
                         <div style="display: flex; align-items: center; gap: 6px;">
@@ -185,7 +185,7 @@
                     </div>
                 </div>
 
-                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 12px;">
+                <div class="grid-stack-sm" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 12px;">
                     <div class="fg" x-show="hasBuilding()">
                         <label>消費税額</label>
                         <div style="display: flex; align-items: center; gap: 6px;">

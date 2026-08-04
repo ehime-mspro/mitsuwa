@@ -35,7 +35,7 @@
         <span style="width: 4px; height: 18px; background: #059669; border-radius: 2px; flex-shrink: 0;"></span>
         基本情報
     </div>
-    <dl style="display: grid; grid-template-columns: 140px 1fr 140px 1fr; gap: 0; border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden;">
+    <dl class="dl-stack-sm" style="display: grid; grid-template-columns: 140px 1fr 140px 1fr; gap: 0; border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden;">
         <dt style="background: #f9fafb; padding: 10px 14px; font-size: 13px; color: #4b5563; font-weight: 500; border-bottom: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb;">氏名</dt>
         <dd style="padding: 10px 14px; font-size: 14px; color: #111827; border-bottom: 1px solid #e5e7eb; margin: 0;">
             <strong>{{ $buyer->full_name }}</strong>

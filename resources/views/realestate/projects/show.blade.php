@@ -56,7 +56,7 @@
             <span class="w-1 h-5 bg-emerald-600 rounded-sm"></span>
             <h2 class="text-base font-bold text-gray-900">基本情報</h2>
         </div>
-        <div class="border border-gray-200 rounded-md overflow-hidden" style="display: grid; grid-template-columns: 130px 1fr 130px 1fr;">
+        <div class="border border-gray-200 rounded-md overflow-hidden dl-stack-sm" style="display: grid; grid-template-columns: 130px 1fr 130px 1fr;">
             <dt class="bg-gray-50 px-3.5 py-2.5 text-sm text-gray-600 font-medium border-b border-r border-gray-200">PJ番号</dt>
             <dd class="px-3.5 py-2.5 text-sm text-gray-900 border-b border-gray-200 font-semibold">{{ $project->project_code }}</dd>
             <dt class="bg-gray-50 px-3.5 py-2.5 text-sm text-gray-600 font-medium border-b border-r border-gray-200">ステータス</dt>
@@ -128,7 +128,7 @@
             <span class="w-1 h-5 bg-emerald-600 rounded-sm"></span>
             <h2 class="text-base font-bold text-gray-900">仕入れ情報</h2>
         </div>
-        <div class="border border-gray-200 rounded-md overflow-hidden" style="display: grid; grid-template-columns: 130px 1fr 130px 1fr;">
+        <div class="border border-gray-200 rounded-md overflow-hidden dl-stack-sm" style="display: grid; grid-template-columns: 130px 1fr 130px 1fr;">
             <dt class="bg-gray-50 px-3.5 py-2.5 text-sm text-gray-600 font-medium border-b border-r border-gray-200">仕入れ先</dt>
             <dd class="px-3.5 py-2.5 text-sm text-gray-900 border-b border-gray-200">
                 @if($project->supplier)
@@ -238,7 +238,9 @@
 
         {{-- 原価テーブル --}}
         <div class="border border-gray-200 rounded-md overflow-hidden">
-            <table class="w-full border-collapse" style="table-layout: fixed;">
+            <div class="scroll-hint at-start">
+            <div class="scroll-hint-inner">
+            <table class="w-full border-collapse" style="table-layout: fixed; min-width: 900px;">
                 <colgroup>
                     <col style="width: 160px;">
                     <col style="width: 250px;">
@@ -318,6 +320,9 @@
                     </tr>
                 </tfoot>
             </table>
+            </div>
+            <div class="scroll-hint-text">← スクロールできます →</div>
+            </div>
         </div>
     </div>
 
@@ -401,7 +406,7 @@
                 <svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
             </a>
         </div>
-        <div class="border border-gray-200 rounded-md overflow-hidden" style="display: grid; grid-template-columns: repeat(6, 1fr);">
+        <div class="border border-gray-200 rounded-md overflow-hidden grid-2col-sm" style="display: grid; grid-template-columns: repeat(6, 1fr);">
             <div style="padding: 14px 16px; text-align: center; border-right: 1px solid #e5e7eb;">
                 <div style="font-size: 11px; color: #6b7280; font-weight: 500; margin-bottom: 4px;">区画数</div>
                 <div style="font-size: 16px; font-weight: 700;">{{ $lotCount }}</div>
@@ -429,7 +434,9 @@
         </div>
         @if($lotCount > 0)
         <div class="border border-gray-200 rounded-md overflow-hidden" style="margin-top: 12px;">
-            <table class="w-full border-collapse">
+            <div class="scroll-hint at-start">
+            <div class="scroll-hint-inner">
+            <table class="w-full border-collapse" style="min-width: 640px;">
                 <thead>
                     <tr>
                         <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">号地</th>
@@ -457,6 +464,9 @@
                     @endforeach
                 </tbody>
             </table>
+            </div>
+            <div class="scroll-hint-text">← スクロールできます →</div>
+            </div>
         </div>
         @endif
     </div>

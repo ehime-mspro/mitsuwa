@@ -56,7 +56,7 @@
             <span class="w-1 h-5 bg-emerald-600 rounded-sm"></span>
             <h2 class="text-base font-bold text-gray-900">基本情報</h2>
         </div>
-        <div class="border border-gray-200 rounded-md overflow-hidden" style="display: grid; grid-template-columns: 120px 1fr 120px 1fr;">
+        <div class="border border-gray-200 rounded-md overflow-hidden dl-stack-sm" style="display: grid; grid-template-columns: 120px 1fr 120px 1fr;">
             <dt class="bg-gray-50 px-3.5 py-2.5 text-sm text-gray-600 font-medium border-b border-r border-gray-200">物件種別</dt>
             <dd class="px-3.5 py-2.5 text-sm text-gray-900 border-b border-gray-200">{{ $procurement->property_type->label() }}</dd>
             <dt class="bg-gray-50 px-3.5 py-2.5 text-sm text-gray-600 font-medium border-b border-r border-gray-200">取引種別</dt>
@@ -132,7 +132,7 @@
             <span class="w-1 h-5 bg-emerald-600 rounded-sm"></span>
             <h2 class="text-base font-bold text-gray-900">仕入れ情報</h2>
         </div>
-        <div class="border border-gray-200 rounded-md overflow-hidden" style="display: grid; grid-template-columns: 120px 1fr 120px 1fr;">
+        <div class="border border-gray-200 rounded-md overflow-hidden dl-stack-sm" style="display: grid; grid-template-columns: 120px 1fr 120px 1fr;">
             <dt class="bg-gray-50 px-3.5 py-2.5 text-sm text-gray-600 font-medium border-b border-r border-gray-200">仕入れ先</dt>
             <dd class="px-3.5 py-2.5 text-sm text-gray-900 border-b border-gray-200">
                 @if($procurement->supplier)
@@ -298,7 +298,9 @@
 
         {{-- 原価テーブル --}}
         <div class="border border-gray-200 rounded-md overflow-hidden">
-            <table class="w-full border-collapse" style="table-layout: fixed;">
+            <div class="scroll-hint at-start">
+            <div class="scroll-hint-inner">
+            <table class="w-full border-collapse" style="table-layout: fixed; min-width: 900px;">
                 <colgroup>
                     <col style="width: 160px;">
                     <col style="width: 250px;">
@@ -387,6 +389,9 @@
                     </tr>
                 </tfoot>
             </table>
+            </div>
+            <div class="scroll-hint-text">← スクロールできます →</div>
+            </div>
         </div>
     </div>
 

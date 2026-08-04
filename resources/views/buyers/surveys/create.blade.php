@@ -22,7 +22,7 @@
     @csrf
     <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
         {{-- ヘッダ情報 --}}
-        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 24px;">
+        <div class="grid-stack-sm" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 24px;">
             <div>
                 <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">来場日<span class="text-red-600" style="margin-left: 2px;">*</span></label>
                 <input type="date" name="survey_date" value="{{ old('survey_date', date('Y-m-d')) }}"

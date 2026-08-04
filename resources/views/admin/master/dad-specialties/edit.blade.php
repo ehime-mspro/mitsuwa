@@ -60,7 +60,7 @@
             {{-- プリセットから選択 --}}
             <div class="fld" style="margin-bottom: 20px;">
                 <label>プリセットから選択</label>
-                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;">
+                <div class="grid-2col-sm" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;">
                     <template x-for="(p, idx) in presets" :key="idx">
                         <div class="preset-chip"
                              :class="colorBg.toLowerCase() === p.bg.toLowerCase() && colorText.toLowerCase() === p.text.toLowerCase() ? 'selected' : ''"

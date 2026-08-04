@@ -11,7 +11,7 @@
             <span style="width: 4px; height: 18px; background: #059669; border-radius: 2px; flex-shrink: 0;"></span>
             来場情報
         </div>
-        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 24px;">
+        <div class="grid-stack-sm" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 24px;">
             <div>
                 <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">取得日（来場日）<span class="text-red-600" style="margin-left: 2px;">*</span></label>
                 <input type="date" name="acquired_date"
@@ -63,7 +63,7 @@
     @endif
 
     {{-- 氏名 4カラム --}}
-    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px; margin-bottom: 4px;">
+    <div class="grid-2col-sm" style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px; margin-bottom: 4px;">
         <div>
             <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">姓<span class="text-red-600" style="margin-left: 2px;">*</span></label>
             <input type="text" name="last_name" value="{{ old('last_name', $isEdit ? $buyer->last_name : '') }}"
@@ -167,7 +167,7 @@
     </div>
 
     {{-- 郵便番号 + 住所 --}}
-    <div style="display: grid; grid-template-columns: 160px auto 1fr 1fr; gap: 10px; margin-bottom: 4px; align-items: flex-end;">
+    <div class="grid-stack-sm" style="display: grid; grid-template-columns: 160px auto 1fr 1fr; gap: 10px; margin-bottom: 4px; align-items: flex-end;">
         <div>
             <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">郵便番号</label>
             <input type="text" name="postal_code" x-ref="postal_code"
@@ -239,7 +239,7 @@
     </div>
 
     {{-- 職業 + 勤務先 + 勤続年数 --}}
-    <div style="display: grid; grid-template-columns: 200px 1fr 120px; gap: 16px; margin-bottom: 26px;">
+    <div class="grid-stack-sm" style="display: grid; grid-template-columns: 200px 1fr 120px; gap: 16px; margin-bottom: 26px;">
         <div>
             <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">ご職業</label>
             <select name="occupation"

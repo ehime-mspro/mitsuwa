@@ -283,7 +283,9 @@
     @if($properties->isEmpty())
         <p style="text-align: center; color: #9ca3af; font-size: 13px; padding: 24px 0;">物件がまだ登録されていません。</p>
     @else
-        <table class="ms-dash-table">
+        <div class="scroll-hint at-start">
+        <div class="scroll-hint-inner">
+        <table class="ms-dash-table" style="min-width: 820px;">
             <thead>
                 <tr>
                     <th>物件名</th>
@@ -336,6 +338,9 @@
                 @endforeach
             </tbody>
         </table>
+        </div>
+        <div class="scroll-hint-text">← スクロールできます →</div>
+        </div>
     @endif
 </div>
 
@@ -352,7 +357,9 @@
         @if($vacantList->isEmpty())
             <p style="text-align: center; color: #9ca3af; font-size: 13px; padding: 24px 0;">空室はありません。</p>
         @else
-            <table class="ms-dash-table">
+            <div class="scroll-hint at-start">
+            <div class="scroll-hint-inner">
+            <table class="ms-dash-table" style="min-width: 640px;">
                 <thead>
                     <tr>
                         <th>物件</th>
@@ -397,6 +404,9 @@
                     @endforeach
                 </tbody>
             </table>
+            </div>
+            <div class="scroll-hint-text">← スクロールできます →</div>
+            </div>
         @endif
     </div>
 
@@ -425,7 +435,9 @@
         @if($vacantParkings->isEmpty())
             <p style="text-align: center; color: #9ca3af; font-size: 13px; padding: 24px 0;">空き駐車場はありません。</p>
         @else
-            <table class="ms-dash-table">
+            <div class="scroll-hint at-start">
+            <div class="scroll-hint-inner">
+            <table class="ms-dash-table" style="min-width: 640px;">
                 <thead>
                     <tr>
                         <th>物件</th>
@@ -469,6 +481,9 @@
                     @endforeach
                 </tbody>
             </table>
+            </div>
+            <div class="scroll-hint-text">← スクロールできます →</div>
+            </div>
         @endif
     </div>
 

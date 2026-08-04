@@ -61,7 +61,7 @@
 {{-- ========== カード: 利用者・契約日 ========== --}}
 <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
     <div class="ms-card-title">利用者・契約日</div>
-    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
+    <div class="grid-stack-sm" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
         {{-- 利用者（必須）— resident / parking_only 両方を表示 --}}
         <div>
             <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">

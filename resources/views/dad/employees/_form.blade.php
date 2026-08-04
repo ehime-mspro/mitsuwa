@@ -8,7 +8,7 @@
 {{-- カード: 基本情報 --}}
 <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
     <div class="card-title">基本情報</div>
-    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px 20px;">
+    <div class="grid-stack-sm" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px 20px;">
         <div class="fld">
             <label>社員番号<span class="required">*</span></label>
             <input type="text" name="employee_code" maxlength="20" required placeholder="例: M008"
@@ -38,7 +38,7 @@
         </div>
     </div>
 
-    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px 20px; margin-top: 16px;">
+    <div class="grid-stack-sm" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px 20px; margin-top: 16px;">
         <div class="fld">
             <label>入社日</label>
             <input type="text" name="hire_date" maxlength="10" placeholder="例: 2024-04-01"

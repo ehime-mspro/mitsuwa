@@ -75,7 +75,7 @@
 
     .picker-popup {
         position: absolute; top: calc(100% + 6px); left: 0; z-index: 100;
-        width: 340px; background: white; border-radius: 20px;
+        width: 340px; max-width: calc(100vw - 32px); background: white; border-radius: 20px;
         box-shadow: 0 20px 50px rgba(0,0,0,0.1), 0 2px 4px rgba(0,0,0,0.04);
         padding: 20px; box-sizing: border-box;
     }
@@ -121,6 +121,14 @@
     .picker-popup .cal-foot { margin-top: 16px; padding-top: 14px; border-top: 1px solid #f3f4f6; display: flex; gap: 8px; }
     .picker-popup .cal-foot .shortcut { flex: 1; padding: 7px 10px; font-size: 11px; font-weight: 600; background: #f9fafb; color: #374151; border: 1px solid #e5e7eb; border-radius: 8px; cursor: pointer; text-align: center; font-family: inherit; }
     .picker-popup .cal-foot .shortcut:hover { background: #ecfdf5; color: #059669; border-color: #a7f3d0; }
+
+    /* モバイル: 敷金精算行と駐車場行を縦積みにする。
+       それぞれ固定 180px / 40px+120px を含み、375px 画面では残りを
+       3 列で分け合うため文字が重なって読めなくなる。 */
+    @media (max-width: 640px) {
+        .deposit-row      { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+        .parking-link-row { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+    }
 </style>
 
 {{-- Alpine 状態関数（アロー関数 => 不使用、function() 宣言のみ） --}}

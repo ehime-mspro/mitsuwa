@@ -140,7 +140,7 @@
         position: absolute;
         top: calc(100% + 6px); left: 0;
         z-index: 100;
-        width: 340px;
+        width: 340px; max-width: calc(100vw - 32px);
         background: white;
         border-radius: 20px;
         box-shadow: 0 20px 50px rgba(0,0,0,0.1), 0 2px 4px rgba(0,0,0,0.04);

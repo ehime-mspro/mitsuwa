@@ -186,7 +186,9 @@
 <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
     <div class="ms-card-title">料金改定履歴（{{ $parkingContract->revisions->count() }}件）</div>
     @if($parkingContract->revisions->count() > 0)
-        <table class="w-full border-collapse" style="table-layout: fixed;">
+        <div class="scroll-hint at-start">
+        <div class="scroll-hint-inner">
+        <table class="w-full border-collapse" style="table-layout: fixed; min-width: 620px;">
             <colgroup>
                 <col style="width: 18%">
                 <col style="width: 22%">
@@ -219,6 +221,9 @@
                 @endforeach
             </tbody>
         </table>
+        </div>
+        <div class="scroll-hint-text">← スクロールできます →</div>
+        </div>
         <div style="font-size: 12px; color: #6b7280; margin-top: 10px;">
             ※ 「料金改定」ボタンから新しい改定を登録できます。
         </div>

@@ -170,7 +170,7 @@
     .picker-popup {
         position: absolute;
         top: calc(100% + 6px); left: 0;
-        z-index: 100; width: 340px;
+        z-index: 100; width: 340px; max-width: calc(100vw - 32px);
         background: white;
         border-radius: 20px;
         box-shadow: 0 20px 50px rgba(0,0,0,0.1), 0 2px 4px rgba(0,0,0,0.04);
@@ -675,7 +675,7 @@
                 <span class="bar"></span>
                 <h2>登録情報</h2>
             </div>
-            <div style="display: grid; grid-template-columns: 160px 1fr 160px 1fr; border: 1px solid #E5E7EB; border-radius: 6px; overflow: hidden; font-size: 13px;">
+            <div class="dl-stack-sm" style="display: grid; grid-template-columns: 160px 1fr 160px 1fr; border: 1px solid #E5E7EB; border-radius: 6px; overflow: hidden; font-size: 13px;">
                 <div style="background:#F9FAFB; padding:10px 14px; color:#6B7280; font-weight:500; border-right:1px solid #E5E7EB; border-bottom:1px solid #E5E7EB;">登録者</div>
                 <div style="padding:10px 14px; color:#111827; border-bottom:1px solid #E5E7EB;">{{ $hsCustomOrder->createdBy->name ?? '—' }}</div>
                 <div style="background:#F9FAFB; padding:10px 14px; color:#6B7280; font-weight:500; border-right:1px solid #E5E7EB; border-bottom:1px solid #E5E7EB;">登録日時</div>

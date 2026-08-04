@@ -102,7 +102,9 @@
 
     {{-- 原価テーブル（hidden inputs で submit に乗せる） --}}
     <div class="border border-gray-200 rounded-md overflow-hidden">
-        <table class="w-full border-collapse" style="table-layout: fixed;">
+        <div class="scroll-hint at-start">
+        <div class="scroll-hint-inner">
+        <table class="w-full border-collapse" style="table-layout: fixed; min-width: 720px;">
             <colgroup>
                 <col style="width: 200px;">
                 <col style="width: 150px;">
@@ -163,6 +165,9 @@
                 </tr>
             </tfoot>
         </table>
+        </div>
+        <div class="scroll-hint-text">← スクロールできます →</div>
+        </div>
     </div>
 </div>
 

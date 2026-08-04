@@ -52,7 +52,7 @@
     .date-input-trigger .placeholder { color: #9ca3af; }
     .date-input-trigger .cal-icon { color: #059669; display: inline-flex; }
 
-    .picker-popup { position: absolute; top: calc(100% + 6px); left: 0; z-index: 100; width: 340px; background: white; border-radius: 20px; box-shadow: 0 20px 50px rgba(0,0,0,0.1), 0 2px 4px rgba(0,0,0,0.04); padding: 20px; box-sizing: border-box; }
+    .picker-popup { position: absolute; top: calc(100% + 6px); left: 0; z-index: 100; width: 340px; max-width: calc(100vw - 32px); background: white; border-radius: 20px; box-shadow: 0 20px 50px rgba(0,0,0,0.1), 0 2px 4px rgba(0,0,0,0.04); padding: 20px; box-sizing: border-box; }
     .picker-popup .cal-info { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
     .picker-popup .cal-info .pill { background: #ecfdf5; color: #047857; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 9999px; }
     .picker-popup .cal-info .sel-date { font-size: 13px; color: #374151; }

@@ -54,7 +54,9 @@
 
     {{-- テーブル --}}
     <div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
-        <table class="w-full" style="table-layout: fixed;">
+        <div class="scroll-hint at-start">
+        <div class="scroll-hint-inner">
+        <table class="w-full" style="table-layout: fixed; min-width: 620px;">
             <colgroup>
                 <col style="width: 56px;">
                 <col style="width: 22%;">
@@ -130,6 +132,9 @@
                 @endif
             </tbody>
         </table>
+        </div>
+        <div class="scroll-hint-text">← スクロールできます →</div>
+        </div>
     </div>
 
     {{-- フッター情報 --}}

@@ -179,6 +179,12 @@
 
     /* バッジ */
     .zd-badge-campaign { display: inline-block; padding: 3px 10px; border-radius: 99px; font-size: 11px; font-weight: 700; background: #fef3c7; color: #92400e; }
+
+    /* モバイル: KPI 5 列は 2 列へ。5 列のままだとカード 1 枚あたり約 57px しか
+       取れず、ラベルが一文字ずつ折れて値も切れる。 */
+    @media (max-width: 640px) {
+        .zd-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
 </style>
 
 {{-- ページヘッダー --}}
@@ -283,7 +289,9 @@
     </div>
 
     @if($planRevenue->count() > 0)
-        <table class="zd-table">
+        <div class="scroll-hint at-start">
+        <div class="scroll-hint-inner">
+        <table class="zd-table" style="min-width: 560px;">
             <thead>
                 <tr>
                     <th>プラン名</th>
@@ -312,6 +320,9 @@
                 </tr>
             </tbody>
         </table>
+        </div>
+        <div class="scroll-hint-text">← スクロールできます →</div>
+        </div>
     @else
         <div style="padding: 24px; text-align: center; color: #9ca3af; font-size: 13px;">
             在籍中の会員がいないため、月会費売上データはありません。

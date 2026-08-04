@@ -173,7 +173,7 @@
                         @if(count($subFields) > 0)
                             <div x-show="selectedOption === '{{ $optVal }}'" style="border: 2px dashed #d1d5db; border-radius: 8px; padding: 16px; background: #fff;">
                                 <div style="font-size: 12px; font-weight: 600; color: #6b7280; margin-bottom: 10px;">▼ {{ $optVal }} — 希望エリア</div>
-                                <div style="display: grid; grid-template-columns: repeat({{ count($subFields) }}, 1fr); gap: 10px;">
+                                <div class="grid-stack-sm" style="display: grid; grid-template-columns: repeat({{ count($subFields) }}, 1fr); gap: 10px;">
                                     @foreach($subFields as $sf)
                                         <div>
                                             <label style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 4px;">{{ $sf['label'] ?? '' }}</label>

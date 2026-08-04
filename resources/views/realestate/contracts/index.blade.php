@@ -36,7 +36,7 @@
             </span>
             <span class="text-xs text-gray-400">不動産事業</span>
         </div>
-        <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-bottom: 12px;">
+        <div class="grid-2col-sm" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-bottom: 12px;">
             <div>
                 <div class="text-xs text-gray-500">契約件数</div>
                 <div class="text-base font-bold text-gray-900">{{ $salesCount }}件</div>

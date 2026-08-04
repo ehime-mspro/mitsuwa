@@ -46,7 +46,7 @@
     {{-- 基本情報 --}}
     <div class="bg-white border border-gray-200 rounded-lg p-5 mb-5">
         <div class="text-sm font-bold text-gray-800 pb-2 mb-3.5 border-b border-gray-200">基本情報</div>
-        <div style="display: grid; grid-template-columns: 130px 1fr 130px 1fr; gap: 0; border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden;">
+        <div class="dl-stack-sm" style="display: grid; grid-template-columns: 130px 1fr 130px 1fr; gap: 0; border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden;">
             <div style="background: #f9fafb; padding: 10px 14px; font-size: 13px; color: #4b5563; font-weight: 500; border-bottom: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb;">物件番号</div>
             <div style="padding: 10px 14px; font-size: 14px; border-bottom: 1px solid #e5e7eb;">{{ $property->property_code }}</div>
             <div style="background: #f9fafb; padding: 10px 14px; font-size: 13px; color: #4b5563; font-weight: 500; border-bottom: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb;">ステータス</div>
@@ -145,7 +145,9 @@
         @if(! $isSold && $landPrice === null && $buildingPrice === null && $landCost === null && $buildingCost === null)
             <div class="text-sm text-gray-400" style="padding: 10px 14px;">金額情報が未入力です。</div>
         @else
-            <table class="w-full border-collapse">
+            <div class="scroll-hint at-start">
+            <div class="scroll-hint-inner">
+            <table class="w-full border-collapse" style="min-width: 520px;">
                 <thead>
                     <tr>
                         <th class="bg-gray-50 text-center text-xs font-semibold text-gray-600 border border-gray-200" style="padding: 10px 14px; width: 130px;">項目</th>
@@ -197,6 +199,9 @@
                     </tr>
                 </tbody>
             </table>
+            </div>
+            <div class="scroll-hint-text">← スクロールできます →</div>
+            </div>
 
             {{-- 税抜・消費税・税込 --}}
             <div style="margin-top: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden;">
@@ -236,7 +241,7 @@
                     </form>
                 </div>
             </div>
-            <div style="display: grid; grid-template-columns: 130px 1fr 130px 1fr; gap: 0; border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden;">
+            <div class="dl-stack-sm" style="display: grid; grid-template-columns: 130px 1fr 130px 1fr; gap: 0; border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden;">
                 <div style="background: #f9fafb; padding: 10px 14px; font-size: 13px; color: #4b5563; font-weight: 500; border-bottom: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb;">顧客名</div>
                 <div style="padding: 10px 14px; font-size: 14px; font-weight: 600; border-bottom: 1px solid #e5e7eb;">
                     <a href="#" style="color: #1d4ed8; text-decoration: underline;">{{ $contract->customer_name }}</a>
