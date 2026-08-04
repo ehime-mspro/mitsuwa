@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\BuyerDepartment;
 use App\Enums\ReContractStatus;
 use App\Enums\ReContractType;
 use App\Support\ConsumptionTax;
@@ -102,6 +103,43 @@ class ReContract extends Model
             // 分譲地販売・仲介は構造的に土地のみ（validate も建物欄を受け付けない）
             $contract->contract_amount_building = null;
             $contract->tax_amount               = null;
+        });
+
+        /**
+         * 買主が紐づいたら、その部署の顧客ランクを「成約」にする。
+         *
+         * ⚠ コントローラではなくモデルに置く。買主が契約に紐づく入口は登録・編集の 2 経路あり、
+         *    片方に書き忘れても画面は正常に動いて無音で漏れる（Bug #41 / #44 と同型）。
+         *
+         * ⚠ 仲介は buyer_id を持たない（買主欄が :disabled で validate にもルートが無く、
+         *    成約処理も自由入力の buyer_name を受け取るだけ）。「buyer_id があるときだけ」
+         *    という条件で自然に対象外になる（設計書 §3.1）。
+         *
+         * ⚠ wasRecentlyCreated / wasChanged のガードを外さないこと。外すと契約のメモを
+         *    直しただけで、利用者が手で戻したランクが成約へ書き戻る（設計書 §3.3）。
+         *
+         * ⚠ department はハードコードしない。re_contracts は住宅事業へ拡張可能な設計で
+         *    department カラムを持つ。ただし buyer_departments.department は
+         *    enum('housing','realestate') なので、範囲外なら何もしない（設計書 §5.3）。
+         */
+        static::saved(function (ReContract $contract): void {
+            if ($contract->buyer_id === null) {
+                return;
+            }
+
+            if (! $contract->wasRecentlyCreated && ! $contract->wasChanged('buyer_id')) {
+                return;
+            }
+
+            $department = BuyerDepartment::tryFrom((string) $contract->department);
+            if ($department === null) {
+                return;
+            }
+
+            Buyer::withTrashed()->find($contract->buyer_id)?->markContracted(
+                $department->value,
+                $contract->contract_date?->toDateString(),
+            );
         });
     }
 
