@@ -3,10 +3,13 @@
 namespace Tests\Feature\Housing;
 
 use App\Enums\BuyerRank;
+use App\Enums\CustomOrderStatus;
+use App\Enums\HousingLandSourceType;
 use App\Enums\UserRole;
 use App\Models\Buyer;
 use App\Models\BuyerDepartmentPivot;
 use App\Models\HsContract;
+use App\Models\HsCustomOrder;
 use App\Models\HsProperty;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -203,6 +206,208 @@ class HousingContractBuyerRankTest extends TestCase
 
         $response = $this->actingAs($this->executive())
             ->post('/housing/properties/' . $property->id . '/contract', $this->tateuriStorePayload($buyer));
+
+        $response->assertSessionHasNoErrors();
+        $response->assertRedirect();
+        $this->assertSame(BuyerRank::Contracted, $this->rankOf($buyer, 'housing'));
+    }
+
+    // ---------------- 注文住宅のヘルパー ----------------
+
+    private function customOrderStorePayload(Buyer $buyer, CustomOrderStatus $status): array
+    {
+        return [
+            'order_name'          => 'ランク検証A邸',
+            'status'              => $status->value,
+            'customer_id'         => $buyer->id,
+            'customer_name'       => '上書きされる名前',
+            'address'             => '松山市石井町1-2-3',
+            'is_land_cost_manual' => 0,
+            'tax_rate'            => 10.00,
+            'contract_date'       => '2026-07-19',
+        ];
+    }
+
+    /** 契約一覧からの注文住宅契約編集（HsContractListController::updateCustomOrder）の payload。 */
+    private function customOrderListUpdatePayload(Buyer $buyer, array $overrides = []): array
+    {
+        return array_merge([
+            'customer_id'             => $buyer->id,
+            'customer_name'           => '上書きされる名前',
+            'contract_date'           => '2026-07-19',
+            'land_source_type'        => HousingLandSourceType::CustomerLand->value,
+            'building_contract_price' => 32000000,
+            'tax_rate'                => 10.00,
+            'building_cost'           => 24800000,
+        ], $overrides);
+    }
+
+    // ---------------- 注文住宅 ----------------
+
+    /**
+     * 設計書 #8 商談ステータスで登録してもランクは変わらない（設計書 §3.2）。
+     *
+     * hs_custom_orders は商談段階から登録できる案件レコード。登録＝契約ではないので、
+     * まだ商談中の見込み客を成約扱いにしてはいけない。
+     */
+    public function test_custom_order_stored_as_consultation_changes_no_rank(): void
+    {
+        $buyer = $this->makeBuyer('商談', ['housing' => ['rank' => BuyerRank::C->value]]);
+
+        $response = $this->actingAs($this->executive())->post(
+            '/housing/custom-orders',
+            $this->customOrderStorePayload($buyer, CustomOrderStatus::Consultation),
+        );
+
+        $response->assertSessionHasNoErrors();
+        $response->assertRedirect();
+        $this->assertDatabaseCount('hs_custom_orders', 1);
+        $this->assertSame(BuyerRank::C, $this->rankOf($buyer, 'housing'), '商談段階の見込み客が成約になっている');
+    }
+
+    /** 設計書 #9 契約ステータスで登録すると成約になる。 */
+    public function test_custom_order_stored_as_contracted_marks_buyer_contracted(): void
+    {
+        $buyer = $this->makeBuyer('注文契約', ['housing' => ['rank' => BuyerRank::C->value]]);
+
+        $response = $this->actingAs($this->executive())->post(
+            '/housing/custom-orders',
+            $this->customOrderStorePayload($buyer, CustomOrderStatus::Contracted),
+        );
+
+        $response->assertSessionHasNoErrors();
+        $response->assertRedirect();
+        $this->assertSame(BuyerRank::Contracted, $this->rankOf($buyer, 'housing'));
+    }
+
+    /** 設計書 #10 一覧のステップバーで 商談 → 契約 に進めると成約になる。 */
+    public function test_custom_order_step_bar_advance_to_contracted_marks_buyer(): void
+    {
+        $buyer = $this->makeBuyer('ステップ', ['housing' => ['rank' => BuyerRank::C->value]]);
+        $user  = $this->executive();
+
+        $this->actingAs($user)
+            ->post('/housing/custom-orders', $this->customOrderStorePayload($buyer, CustomOrderStatus::Consultation))
+            ->assertSessionHasNoErrors();
+
+        $order = HsCustomOrder::firstOrFail();
+        $this->assertSame(BuyerRank::C, $this->rankOf($buyer, 'housing'), '前提: 登録時点ではまだ C');
+
+        $response = $this->actingAs($user)->patch(
+            '/housing/custom-orders/' . $order->id . '/status',
+            ['status' => CustomOrderStatus::Contracted->value],
+        );
+
+        $response->assertOk();
+        $response->assertJson(['success' => true]);
+        $this->assertSame(BuyerRank::Contracted, $this->rankOf($buyer, 'housing'));
+    }
+
+    /**
+     * 追加（入口の取りこぼし）: 編集フォーム（PUT /housing/custom-orders/{id}）で
+     * 商談 → 契約 に進めた場合も成約になる。
+     *
+     * ステップバー（PATCH .../status）とは別のコントローラメソッドなので、
+     * 片方だけ測ると一方の入口が一度も実行されない（Bug #44）。
+     */
+    public function test_custom_order_edit_form_advance_to_contracted_marks_buyer(): void
+    {
+        $buyer = $this->makeBuyer('注文編集', ['housing' => ['rank' => BuyerRank::C->value]]);
+        $user  = $this->executive();
+
+        $this->actingAs($user)
+            ->post('/housing/custom-orders', $this->customOrderStorePayload($buyer, CustomOrderStatus::Consultation))
+            ->assertSessionHasNoErrors();
+
+        $order = HsCustomOrder::firstOrFail();
+        $this->assertSame(BuyerRank::C, $this->rankOf($buyer, 'housing'), '前提: 登録時点ではまだ C');
+
+        $response = $this->actingAs($user)->put(
+            '/housing/custom-orders/' . $order->id,
+            $this->customOrderStorePayload($buyer, CustomOrderStatus::Contracted),
+        );
+
+        $response->assertSessionHasNoErrors();
+        $response->assertRedirect();
+        $this->assertSame(BuyerRank::Contracted, $this->rankOf($buyer, 'housing'));
+    }
+
+    /**
+     * 追加（入口の取りこぼし）: 契約一覧からの注文住宅契約編集で買主を差し替えると
+     * 新しい買主が成約になる（HsContractListController::updateCustomOrder）。
+     */
+    public function test_custom_order_update_from_contract_list_marks_new_buyer(): void
+    {
+        $oldBuyer = $this->makeBuyer('注文旧', ['housing' => ['rank' => BuyerRank::C->value]]);
+        $newBuyer = $this->makeBuyer('注文新', ['housing' => ['rank' => BuyerRank::C->value]]);
+        $user     = $this->executive();
+
+        $this->actingAs($user)
+            ->post('/housing/custom-orders', $this->customOrderStorePayload($oldBuyer, CustomOrderStatus::Contracted))
+            ->assertSessionHasNoErrors();
+
+        $order = HsCustomOrder::firstOrFail();
+
+        $response = $this->actingAs($user)->put(
+            '/housing/contracts/custom-order/' . $order->id,
+            $this->customOrderListUpdatePayload($newBuyer),
+        );
+
+        $response->assertSessionHasNoErrors();
+        $response->assertRedirect();
+        $this->assertSame(BuyerRank::Contracted, $this->rankOf($newBuyer, 'housing'));
+        $this->assertSame(BuyerRank::Contracted, $this->rankOf($oldBuyer, 'housing'), '元の買主が差し戻されている');
+    }
+
+    /**
+     * 追加（設計書 #15 の注文住宅版）: 買主・ステータスを変えずに備考だけ編集しても
+     * ランクは書き戻らない。
+     */
+    public function test_custom_order_editing_notes_only_does_not_rewrite_rank(): void
+    {
+        $buyer = $this->makeBuyer('注文メモ', ['housing' => ['rank' => BuyerRank::C->value]]);
+        $user  = $this->executive();
+
+        $this->actingAs($user)
+            ->post('/housing/custom-orders', $this->customOrderStorePayload($buyer, CustomOrderStatus::Contracted))
+            ->assertSessionHasNoErrors();
+
+        $order = HsCustomOrder::firstOrFail();
+
+        // 利用者が手でランクを A に戻した
+        $this->pivot($buyer, 'housing')->update(['rank' => BuyerRank::A->value]);
+
+        $response = $this->actingAs($user)->put(
+            '/housing/contracts/custom-order/' . $order->id,
+            $this->customOrderListUpdatePayload($buyer, ['notes' => '仕様変更の件を確認']),
+        );
+
+        $response->assertSessionHasNoErrors();
+        $this->assertSame('仕様変更の件を確認', $order->fresh()->notes, '備考が保存されていない（編集自体が失敗）');
+        $this->assertSame(BuyerRank::A, $this->rankOf($buyer, 'housing'), '手で戻したランクが成約へ書き戻っている');
+    }
+
+    /**
+     * 追加: 論理削除済みの買主でもランクは更新される（設計書 §4）。
+     *
+     * ⚠ この経路は実在する。`customer_id` の `exists:buyers,id` は Laravel の
+     *    DatabasePresenceVerifier がテーブルを直接引くので **SoftDeletingScope を通らない**
+     *    （コントローラ自身も `Buyer::withTrashed()->findOrFail()` で受けている）。
+     *
+     * ⚠ フックが `Buyer::withTrashed()` でなく素の `Buyer::find()` だと null が返り、
+     *    `?->` で**無音で何も起きない**（例外も出ない）。このテストが唯一その退行を捕まえる。
+     */
+    public function test_custom_order_soft_deleted_buyer_is_still_marked_contracted(): void
+    {
+        $buyer = $this->makeBuyer('注文削除済', ['housing' => ['rank' => BuyerRank::C->value]]);
+
+        $buyer->delete();
+        $this->assertSoftDeleted('buyers', ['id' => $buyer->id]);
+
+        $response = $this->actingAs($this->executive())->post(
+            '/housing/custom-orders',
+            $this->customOrderStorePayload($buyer, CustomOrderStatus::Contracted),
+        );
 
         $response->assertSessionHasNoErrors();
         $response->assertRedirect();

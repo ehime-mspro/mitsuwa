@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\BuyerDepartment;
 use App\Enums\CustomOrderStatus;
 use App\Enums\HousingLandSourceType;
 use App\Support\AreaConverter;
@@ -65,6 +66,58 @@ class HsCustomOrder extends Model
             'actual_completion_date'    => 'date',
             'delivery_date'             => 'date',
         ];
+    }
+
+    // ============================================================
+    // ライフサイクルフック
+    // ============================================================
+
+    /**
+     * ステータスが「契約」以降になったとき、住宅事業の顧客ランクを「成約」にする。
+     *
+     * ⚠ **登録時ではない。** hs_custom_orders は 商談 → 設計 → 見積り → 契約 → 着工 →
+     *    完成 → 引渡し と進む案件レコードで、商談段階でも登録できる。登録＝契約ではないので、
+     *    登録時に成約へ変えるとまだ商談中の見込み客が成約扱いになる（設計書 §3.2）。
+     *
+     * ⚠ 判定は CustomOrderStatus::isContractedOrLater()。分譲地区画のステータス連動
+     *    （CustomOrderController::syncLotStatus）が使っている判定と同一で、
+     *    「契約以降なら区画は販売済」と足並みが揃う。別の閾値を書かないこと。
+     *
+     * ⚠ wasRecentlyCreated / wasChanged のガードを外さないこと。外すと備考を直しただけで
+     *    利用者が手で戻したランクが成約へ書き戻る（設計書 §3.3）。
+     *
+     * ⚠ 買主は withTrashed() で引く。customer_id の exists:buyers,id は
+     *    DatabasePresenceVerifier がテーブルを直接引くので SoftDeletingScope を通らず、
+     *    論理削除済みの id が届きうる（コントローラ自身も withTrashed() で受けている）。
+     *    素の find() だと null が返り ?-> で無音になる。
+     *
+     * ⚠ ここで例外が飛ぶと案件行は既に保存済みなのに後続処理（区画ステータス連動）が
+     *    中断する。CustomOrderController は DB::transaction を使っていないので巻き戻らない。
+     *    **意図的にそのまま**——唯一の現実的な例外源は markContracted() の初回作成の競合で、
+     *    そちらの docblock に受容の理由がある。
+     *
+     * 部署は hs_custom_orders が住宅事業固有のテーブルなので housing 固定（設計書 §5.3）。
+     */
+    protected static function booted(): void
+    {
+        static::saved(function (HsCustomOrder $order): void {
+            if ($order->customer_id === null) {
+                return;
+            }
+
+            if ($order->status?->isContractedOrLater() !== true) {
+                return;
+            }
+
+            if (! $order->wasRecentlyCreated && ! $order->wasChanged(['customer_id', 'status'])) {
+                return;
+            }
+
+            Buyer::withTrashed()->find($order->customer_id)?->markContracted(
+                BuyerDepartment::Housing->value,
+                $order->contract_date?->toDateString(),
+            );
+        });
     }
 
     // ============================================================
