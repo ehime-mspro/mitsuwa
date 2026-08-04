@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\BuyerRank;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
@@ -182,5 +183,40 @@ class Buyer extends Model
     public function getDepartmentPivot(string $dept): ?BuyerDepartmentPivot
     {
         return $this->departments()->where('department', $dept)->first();
+    }
+
+    /**
+     * 指定部署の顧客ランクを「成約」にする。
+     *
+     * - 対象部署の行が無ければ、その部署を成約ランクで追加する
+     *   (取得日は $acquiredDate、無ければ当日。buyer_departments.acquired_date は NOT NULL)。
+     * - 既にある行は rank だけ上書きする。A〜D だけでなく**他決・追客不可も対象**
+     *   (契約したという事実が最も強いため。設計書 §4)。
+     *
+     * ⚠ 既存行の acquired_date は書き換えない。取得日は「いつ獲得した顧客か」という
+     *    独立した実データで、契約日で潰すと獲得経路の履歴が失われる。
+     *
+     * ⚠ 既に contracted の行は UPDATE を出さずに抜ける。これは無駄な UPDATE を避けるだけで
+     *    **挙動は同じ**なので、この早期 return を消しても回帰テストは緑のまま
+     *    (＝テストで守られていない。消さないこと)。
+     */
+    public function markContracted(string $department, ?string $acquiredDate = null): void
+    {
+        $pivot = $this->getDepartmentPivot($department);
+
+        if ($pivot === null) {
+            $this->addToDepartment(
+                $department,
+                $acquiredDate ?: now()->toDateString(),
+                BuyerRank::Contracted->value,
+            );
+            return;
+        }
+
+        if ($pivot->rank === BuyerRank::Contracted) {
+            return;
+        }
+
+        $pivot->update(['rank' => BuyerRank::Contracted->value]);
     }
 }
