@@ -175,6 +175,63 @@ Bug #44 の教訓（入口が複数あると、ある入口のある挙動だけ
 ⚠ 変異が実際に当たったか（`git diff` が非空か）を毎回確認する。
 当たっていない変異を「検出しない」と誤読する事故を過去に踏んでいる（Bug #44）。
 
+**実測結果マトリクス（2026-08-04 追記）**
+
+実測日: 2026-08-04。ベースラインはテスト総数 506 tests, 2801 assertions（全 green）。
+
+- 変異はすべて `Edit`（構造化置換）で手当てし、`sed` / `perl` の一括置換は使っていない
+  （同じ文字列がファイル内に複数あると意図しない行を書き換え、テストが正しく緑のまま残って
+  「検出しない」と誤読する。Bug #44）。各変異の適用後は毎回 `git diff --stat` が空でないことを
+  確認してから対象テストを実行し、確認後は `git checkout --` で戻して `git status --short` が
+  空に戻ることを都度確認した。
+- **M15 だけは他と種類が異なる測定。** 「正しい実装では緑・変異後は赤」という通常の1方向の
+  変異テストではなく、**旧ロジック（`explode(';', ...)` 方式）と新ロジックを実際に差し替えて
+  「旧では見逃す（緑のまま）・新では検出する（赤になる）」の両方を確認**した。これは改善そのものが
+  load-bearing であることの証明になっている。
+- 下表の「実測区分」列は、**このタスク（Task 7）で実際にコマンドを実行して確認したもの**
+  （新規測定・抜き取り確認）と、**実装・レビュー時の記録をそのまま引き写したもの**
+  （このタスクでは再実行していない）を区別する。守られていない範囲を「守られている」と
+  書かないため（Bug #45 の教訓）。
+
+| # | 変異内容 | 対象ファイル | 赤になったテスト | 実測区分 |
+|---|---|---|---|---|
+| M1 | `saved` フック本体を丸ごと削除 | `app/Models/ReContract.php` | ReContractBuyerRankTest **11 本中 8 本**赤（brokerage / memo / unknown_department 以外）※1 | 今回実測（抜き取り確認・数値の食い違いを検出） |
+| M2 | `saved` フック本体を丸ごと削除 | `app/Models/HsContract.php` | 建売 2 本赤（store / update_from_list） | 実装/レビュー時の記録を引き写し（今回未実行） |
+| M3 | `saved` フック本体を丸ごと削除 | `app/Models/HsCustomOrder.php` | 注文住宅 5 本赤 | 実装/レビュー時の記録を引き写し（今回未実行） |
+| M4 | `isContractedOrLater()` 判定を削除 | `app/Models/HsCustomOrder.php` | 3 本赤（consultation ＋ step_bar / edit_form の「前提」assert） | 実装/レビュー時の記録を引き写し（今回未実行） |
+| M5 | `markContracted()` の「部署行が無ければ作る」分岐を潰す | `app/Models/Buyer.php` | 3 本赤 — `test_missing_department_row_is_created_as_contracted_with_given_date` / `test_missing_date_falls_back_to_today` / `test_buyer_without_realestate_row_gets_one_with_contract_date` | **今回実測（新規）** |
+| M6 | 既存行の `acquired_date` も上書きするようにする | `app/Models/Buyer.php` | 2 本赤 — `test_existing_row_keeps_its_acquired_date` / `test_existing_acquired_date_is_not_overwritten_through_http` | **今回実測（新規）** |
+| M7 | `wasRecentlyCreated`/`wasChanged` ガード削除 | `app/Models/ReContract.php` | `test_editing_memo_only_does_not_rewrite_rank` のみ赤 | 実装/レビュー時の記録を引き写し（今回未実行） |
+| M8 | `BuyerDepartment::tryFrom` ガード削除 | `app/Models/ReContract.php` | `test_unknown_department_writes_nothing` のみ赤 | 実装/レビュー時の記録を引き写し（今回未実行） |
+| M9 | 上書き対象を A〜D 限定にする（他決・追客不可を除外） | `app/Models/Buyer.php` | `test_lost_and_unreachable_ranks_are_overwritten` のみ赤 | **今回実測（新規）** |
+| M10 | 再発火ガード削除 | `app/Models/HsContract.php` | `test_tateuri_editing_notes_only_does_not_rewrite_rank` のみ赤 | 実装/レビュー時の記録を引き写し（今回未実行） |
+| M11 | 再発火ガード削除 | `app/Models/HsCustomOrder.php` | `test_custom_order_editing_notes_only_does_not_rewrite_rank` のみ赤 | 今回実測（抜き取り確認・表と一致） |
+| M12 | `Buyer::withTrashed()->find(` → `Buyer::find(` | `app/Models/ReContract.php` | `test_soft_deleted_buyer_is_still_marked_contracted` のみ赤 | 実装/レビュー時の記録を引き写し（今回未実行） |
+| M13 | 同上 | `app/Models/HsContract.php` | `test_tateuri_soft_deleted_buyer_is_still_marked_contracted` のみ赤 | 実装/レビュー時の記録を引き写し（今回未実行） |
+| M14 | 同上 | `app/Models/HsCustomOrder.php` | `test_custom_order_soft_deleted_buyer_is_still_marked_contracted` のみ赤 | 実装/レビュー時の記録を引き写し（今回未実行） |
+| M15 | 走査テストの文切り出しを旧 `explode(';', ...)` 方式に戻す | `tests/Feature/ContractModelEventPathTest.php` | `DeletionBlockers::forProject()` へのクエリビルダ更新を**見逃す**（新方式では赤）＝改善が load-bearing | 実装/レビュー時の記録を引き写し（新旧比較・今回未実行） |
+| M16 | `ROOT_PATTERNS` を存在しないクラス名 1 つに差し替え | 同上 | `rootStatements` の下限で赤（`scannedFiles` の下限では落ちない） | 実装/レビュー時の記録を引き写し（今回未実行） |
+
+※1 **M1 は表の初出記録（7 本赤）と今回の再測定（8 本赤）が食い違った。** 2026-08-04 に
+`app/Models/ReContract.php` の `saved` フック（買主ランク自動更新の本体）を丸ごと削除して
+`vendor/bin/phpunit tests/Feature/RealEstate/ReContractBuyerRankTest.php` を実行したところ、
+11 本中 8 本が赤になった（`test_procurement_contract_store_marks_buyer_contracted` /
+`test_subdivision_contract_store_marks_buyer_contracted` /
+`test_swapping_buyer_on_update_marks_new_buyer_contracted` /
+`test_swapping_buyer_leaves_previous_buyer_contracted` /
+`test_buyer_without_realestate_row_gets_one_with_contract_date` /
+`test_existing_acquired_date_is_not_overwritten_through_http` /
+`test_other_department_rank_is_untouched` /
+`test_soft_deleted_buyer_is_still_marked_contracted`）。緑のまま残った3本
+（`test_brokerage_contract_store_changes_no_rank` / `test_editing_memo_only_does_not_rewrite_rank` /
+`test_unknown_department_writes_nothing`）は表の記載「brokerage / memo / unknown_department 以外」と
+一致しており、**「どのテストが赤くなるか」の一覧は表と食い違っていない**。ズレているのは合計数
+（7 → 8）だけで、最有力の説明は「表の初出時点では `test_buyer_without_realestate_row_gets_one_with_contract_date`
+`test_existing_acquired_date_is_not_overwritten_through_http`（M5/M6 の HTTP 経路カバレッジとして
+後日追加された2本）のうち少なくとも1本がまだ存在せず、対象ファイルのテスト総数が 11 本より
+少なかった」というもの。実装の欠陥ではなくテスト総数の増加によるズレと考えられるが、
+**辻褄を合わせず実測どおり「8 本」をここに記録する**。
+
 ### 7.3 テスト用スキーマ
 
 `tests/Concerns/CreatesRealEstateSchema.php` は `buyers` を作るが
