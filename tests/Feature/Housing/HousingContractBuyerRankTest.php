@@ -13,6 +13,7 @@ use App\Models\HsCustomOrder;
 use App\Models\HsProperty;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Tests\Concerns\CreatesRealEstateSchema;
 use Tests\TestCase;
 
@@ -210,6 +211,48 @@ class HousingContractBuyerRankTest extends TestCase
         $response->assertSessionHasNoErrors();
         $response->assertRedirect();
         $this->assertSame(BuyerRank::Contracted, $this->rankOf($buyer, 'housing'));
+    }
+
+    /**
+     * 追加: 建売で housing の部署行が無い買主は、取得日＝契約日で自動作成される（設計書 §7.1 #11）。
+     *
+     * ⚠ 不動産側（ReContractBuyerRankTest）にしか無かった検証。規則自体は
+     *    BuyerMarkContractedTest が固定しているが、**この入口が contract_date を
+     *    正しく渡しているか**は入口ごとに測らないと分からない（Bug #44）。
+     *    もう一方の部署（不動産）が変わらないことも同時に見る（#14 の逆方向）。
+     */
+    public function test_tateuri_buyer_without_housing_row_gets_one_with_contract_date(): void
+    {
+        // 不動産事業にだけ登録された顧客を建売契約の買主に選ぶ
+        $buyer    = $this->makeBuyer('不動産のみ', ['realestate' => ['rank' => BuyerRank::C->value]]);
+        $property = $this->makeProperty();
+
+        $this->actingAs($this->executive())
+            ->post('/housing/properties/' . $property->id . '/contract', $this->tateuriStorePayload($buyer))
+            ->assertSessionHasNoErrors();
+
+        $pivot = $this->pivot($buyer, 'housing');
+        $this->assertNotNull($pivot, '住宅事業の部署行が自動作成されていない');
+        $this->assertSame(BuyerRank::Contracted, $pivot->rank);
+        $this->assertSame('2026-07-19', $pivot->acquired_date->toDateString(), '取得日が契約日になっていない');
+        $this->assertSame(BuyerRank::C, $this->rankOf($buyer, 'realestate'), '不動産事業のランクまで変わっている');
+    }
+
+    /** 追加: 建売でも既存行の acquired_date は書き換わらない（設計書 §7.1 #12）。 */
+    public function test_tateuri_existing_acquired_date_is_not_overwritten(): void
+    {
+        $buyer = $this->makeBuyer('建売取得日', [
+            'housing' => ['rank' => BuyerRank::B->value, 'acquired_date' => '2026-01-05'],
+        ]);
+        $property = $this->makeProperty();
+
+        $this->actingAs($this->executive())
+            ->post('/housing/properties/' . $property->id . '/contract', $this->tateuriStorePayload($buyer))
+            ->assertSessionHasNoErrors();
+
+        $pivot = $this->pivot($buyer, 'housing');
+        $this->assertSame(BuyerRank::Contracted, $pivot->rank);
+        $this->assertSame('2026-01-05', $pivot->acquired_date->toDateString(), '取得日が契約日で上書きされている');
     }
 
     // ---------------- 注文住宅のヘルパー ----------------
@@ -448,5 +491,53 @@ class HousingContractBuyerRankTest extends TestCase
         $response->assertSessionHasNoErrors();
         $response->assertRedirect();
         $this->assertSame(BuyerRank::Contracted, $this->rankOf($buyer, 'housing'));
+    }
+
+    /** 追加: 注文住宅でも housing の部署行が無い買主は取得日＝契約日で自動作成される（設計書 §7.1 #11）。 */
+    public function test_custom_order_buyer_without_housing_row_gets_one_with_contract_date(): void
+    {
+        $buyer = $this->makeBuyer('注文不動産のみ', ['realestate' => ['rank' => BuyerRank::C->value]]);
+
+        $this->actingAs($this->executive())->post(
+            '/housing/custom-orders',
+            $this->customOrderStorePayload($buyer, CustomOrderStatus::Contracted),
+        )->assertSessionHasNoErrors();
+
+        $pivot = $this->pivot($buyer, 'housing');
+        $this->assertNotNull($pivot, '住宅事業の部署行が自動作成されていない');
+        $this->assertSame(BuyerRank::Contracted, $pivot->rank);
+        $this->assertSame('2026-07-19', $pivot->acquired_date->toDateString(), '取得日が契約日になっていない');
+    }
+
+    /**
+     * 追加: 契約日が未入力の注文住宅では、取得日に当日が入る。
+     *
+     * ⚠ hs_custom_orders.contract_date は nullable なので、ステータスが「契約」でも
+     *    契約日が空のまま保存できる。一方 buyer_departments.acquired_date は **NOT NULL** で、
+     *    フックが null をそのまま渡すと本番 MySQL で落ちる。
+     *    救っているのは markContracted() の `?:` フォールバックだが、
+     *    **この経路は実入口から一度も実行されていなかった**（設計書 §7.1 の 15 項目にも無い）。
+     *
+     * ⚠ 凍結日は「実際の今日」と違う日にすること。今日と同じ日付だと
+     *    フォールバックが壊れていても緑になり、テストが何も証明しない。
+     */
+    public function test_custom_order_without_contract_date_uses_today_as_acquired_date(): void
+    {
+        $this->travelTo(Carbon::parse('2030-03-15'));
+
+        $buyer   = $this->makeBuyer('契約日なし', ['realestate' => ['rank' => BuyerRank::C->value]]);
+        $payload = $this->customOrderStorePayload($buyer, CustomOrderStatus::Contracted);
+        unset($payload['contract_date']);
+
+        $this->actingAs($this->executive())
+            ->post('/housing/custom-orders', $payload)
+            ->assertSessionHasNoErrors();
+
+        $order = HsCustomOrder::firstOrFail();
+        $this->assertNull($order->contract_date, '前提: 契約日が保存されている（テストの意図と違う）');
+
+        $pivot = $this->pivot($buyer, 'housing');
+        $this->assertNotNull($pivot, '住宅事業の部署行が自動作成されていない');
+        $this->assertSame('2030-03-15', $pivot->acquired_date->toDateString(), '取得日が当日になっていない');
     }
 }
