@@ -6,6 +6,15 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>@yield('title', '経営管理システム') - {{ config('app.name', '経営管理システム') }}</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
+
+    {{-- ページ固有の CSS を差し込む口（@@push('styles') ... @@endpush）。
+         ⚠ 位置は @@vite の**後**。Vite バンドルより後に出すことでページ側が上書きできる。
+         ⚠ @@push('styles') は対応する @@stack('styles') が無いと Laravel が警告も例外も出さずに捨てる（Bug #28）。
+           scripts スタックが 2026-07-26 に追加されるまで、@@push('scripts') が初期コミット以来
+           ずっと無音で破棄されていたのと同じ罠。styles 側はこの行が 2026-08-04 に入るまで
+           同じ状態だった。**この行を消すと、push しているページの CSS が無音で消える。**
+         ⚠ push が無いページでは何も出力しない（約 200 ルートへの影響ゼロ）。 --}}
+    @stack('styles')
 </head>
 @php
     // サイドバー アコーディオン用: 現在ページのセクション判定

@@ -24,9 +24,10 @@
         $initDeposit = (int) old('new_deposit', $unit->deposit);
     @endphp
 
-    {{-- 坪単価計算ウィジェット用スタイル（このページ限定。インライン）。
-         ⚠ レイアウトに **styles** スタックは今も無い（2026-07-26 に追加したのは @stack('scripts') だけ）。
-           @push('styles') に書くとサイレントに破棄されるので、スタイルはここに直接置く（Bug #28） --}}
+    {{-- 坪単価計算ウィジェット用スタイル（このページ限定）。
+         2026-08-04 に layouts/app.blade.php へ @@stack('styles') を追加したので <head> へ送れる。
+         ⚠ この push が効いていることは LayoutStyleStackTest が固定している。 --}}
+    @push('styles')
     <style>
         .calc-input { width:100%; height:40px; border:1px solid #d1d5db; border-radius:6px; font-size:14px; color:#1f2937; box-sizing:border-box; background:white; }
         .calc-input:focus { outline:none; border-color:#059669; box-shadow:0 0 0 3px rgba(5,150,105,0.12); }
@@ -35,6 +36,7 @@
         .calc-suffix { position:absolute; top:50%; transform:translateY(-50%); color:#6b7280; pointer-events:none; }
         .tsubo-box { background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:12px 14px; }
     </style>
+    @endpush
 
     {{-- 戻るリンク --}}
     <a href="{{ route('tenant.units.show', $unit) }}"
