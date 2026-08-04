@@ -121,6 +121,14 @@ class ReContract extends Model
          * ⚠ department はハードコードしない。re_contracts は住宅事業へ拡張可能な設計で
          *    department カラムを持つ。ただし buyer_departments.department は
          *    enum('housing','realestate') なので、範囲外なら何もしない（設計書 §5.3）。
+         *    ((string) キャストは Bug #22 型の TypeError 予防。department は NOT NULL なので
+         *    現状 null は来ないが、tryFrom() は string|int しか受け付けないため残してある)
+         *
+         * ⚠ ここで例外が飛ぶと、契約行は既に INSERT 済みなのにコントローラの後続処理
+         *    (区画・仕入れ案件のステータス同期) が中断する。ReContractController::store() は
+         *    DB::transaction を使っていないため巻き戻らない。**意図的にそのままにしている**——
+         *    唯一の現実的な例外源は markContracted() の初回作成の競合で、そちらの docblock に
+         *    受容の理由がある。store() をトランザクションで包むのは既存の本番挙動を変えるので別案件。
          */
         static::saved(function (ReContract $contract): void {
             if ($contract->buyer_id === null) {

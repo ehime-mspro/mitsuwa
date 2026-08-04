@@ -326,6 +326,34 @@ class ReContractBuyerRankTest extends TestCase
         $this->assertSame(BuyerRank::A, $this->rankOf($buyer, 'realestate'), '手で戻したランクが成約へ書き戻っている');
     }
 
+    // ---------------- 追加: 論理削除済み買主 ----------------
+
+    /**
+     * 論理削除済みの買主でもランクは更新される（設計書 §4）。
+     *
+     * ⚠ この経路は実在する。`validateContract()` の `exists:buyers,id` は Laravel の
+     *    DatabasePresenceVerifier がテーブルを直接引くので **SoftDeletingScope を通らない**。
+     *    削除済み買主の id はバリデーションを素通りしてフックまで届く。
+     *
+     * ⚠ フックが `Buyer::withTrashed()` でなく素の `Buyer::find()` だと null が返り、
+     *    `?->` で**無音で何も起きない**（例外も出ない）。このテストが唯一その退行を捕まえる。
+     */
+    public function test_soft_deleted_buyer_is_still_marked_contracted(): void
+    {
+        $buyer = $this->makeBuyer('削除済', ['realestate' => ['rank' => BuyerRank::C->value]]);
+        $proc  = $this->makeProcurement();
+
+        $buyer->delete();
+        $this->assertSoftDeleted('buyers', ['id' => $buyer->id]);
+
+        $response = $this->actingAs($this->executive())
+            ->post('/realestate/contracts', $this->procurementPayload($proc, $buyer));
+
+        $response->assertSessionHasNoErrors();
+        $response->assertRedirect();
+        $this->assertSame(BuyerRank::Contracted, $this->rankOf($buyer, 'realestate'));
+    }
+
     // ---------------- #18（追加）: department が enum 範囲外 ----------------
 
     /**
