@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\BuyerDepartment;
 use App\Support\ConsumptionTax;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -36,6 +37,51 @@ class HsContract extends Model
             'contract_date'          => 'date',
             'settlement_date'        => 'date',
         ];
+    }
+
+    // ============================================================
+    // ライフサイクルフック
+    // ============================================================
+
+    /**
+     * 買主が紐づいたら、住宅事業の顧客ランクを「成約」にする。
+     *
+     * ⚠ コントローラではなくモデルに置く。買主が契約に紐づく入口は
+     *    Housing\ContractController::store と HsContractListController::updateBuilding の
+     *    2 経路あり、片方に書き忘れても画面は正常に動いて無音で漏れる（Bug #41 / #44）。
+     *
+     * ⚠ wasRecentlyCreated / wasChanged のガードを外さないこと。外すと備考を直しただけで
+     *    利用者が手で戻したランクが成約へ書き戻る（設計書 §3.3）。
+     *
+     * ⚠ 買主は withTrashed() で引く。customer_id の exists:buyers,id は
+     *    DatabasePresenceVerifier がテーブルを直接引くので SoftDeletingScope を通らず、
+     *    論理削除済みの id が届きうる（コントローラ自身も withTrashed() で受けている）。
+     *    素の find() だと null が返り ?-> で無音になる。
+     *
+     * ⚠ ここで例外が飛ぶと契約行は既に保存済みなのに後続処理が中断する。
+     *    HsContractListController::updateBuilding は DB::transaction 内なので巻き戻るが、
+     *    Housing\ContractController::store は使っていないので巻き戻らない。**意図的にそのまま**——
+     *    唯一の現実的な例外源は markContracted() の初回作成の競合で、そちらの docblock に
+     *    受容の理由がある。
+     *
+     * 部署は hs_contracts が住宅事業固有のテーブルなので housing 固定（設計書 §5.3）。
+     */
+    protected static function booted(): void
+    {
+        static::saved(function (HsContract $contract): void {
+            if ($contract->customer_id === null) {
+                return;
+            }
+
+            if (! $contract->wasRecentlyCreated && ! $contract->wasChanged('customer_id')) {
+                return;
+            }
+
+            Buyer::withTrashed()->find($contract->customer_id)?->markContracted(
+                BuyerDepartment::Housing->value,
+                $contract->contract_date?->toDateString(),
+            );
+        });
     }
 
     // ============================================================
