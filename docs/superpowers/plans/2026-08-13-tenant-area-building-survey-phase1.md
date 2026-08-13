@@ -963,9 +963,33 @@ enum AreaTenantStatus: string
         };
     }
 
+    /** 「営業」と判定する語（現況が営業中であることを示す） */
+    private const OPERATING = ['営業', '入居', '稼働'];
+
+    /** 「空き」と判定する語（現況が空きであることを示す） */
+    private const VACANT = ['空室', '空き', '空店舗', '空'];
+
+    /**
+     * これらを含むときは「営業」と判定しない（現況が営業でないことを示す語）。
+     *
+     * ⚠ この一覧は Vacant への昇格には使わない。判定を Unknown 側へ倒すだけに使う。
+     *   空室率は「不明」も空きに数える（設計 §4）ので、Unknown へ倒すのは安全側。
+     *   逆に Operating へ倒すと空室率が下振れして経営指標が狂う。
+     */
+    private const NOT_OPERATING = ['不', '非', '退去', '撤退', '閉店', '休業'];
+
     /**
      * Excel 取込の状態列を正規化する（設計 §7.2）。
      * 判定できない値は Unknown に倒す（勝手に営業扱いすると空室率が下振れするため）。
+     *
+     * ⚠ 営業系・空き系の両方の語を含む場合、あるいはどちらも含まない場合は判定不能として
+     *   Unknown に倒す（順序に依存させない — 「空き営業中」のような文言は現況が確定できない）。
+     *
+     * DAD の工事案件 Excel 取込はエイリアス解決をクライアント側 JS で行っているが、
+     * こちらはビル名の DB 突合が要り最初から PHP 側処理が必要なため、Enum に置いている。
+     *
+     * ⚠ 既知の限界: VACANT の単一文字 needle 「空」は広く一致する（例:「空調工事中」も Vacant 判定）。
+     *   空室率を過大に出す方向 = 安全側であり、「空」単体も実データにありうる値のため意図的に許容している。
      */
     public static function fromRawLabel(?string $raw): self
     {
@@ -977,22 +1001,40 @@ enum AreaTenantStatus: string
             return self::Unknown;
         }
 
-        foreach (['営業', '入居', '稼働'] as $needle) {
-            if (str_contains($s, $needle)) {
-                return self::Operating;
-            }
+        $negated       = self::containsAny($s, self::NOT_OPERATING);
+        $hitsOperating = ! $negated && self::containsAny($s, self::OPERATING);
+        $hitsVacant    = self::containsAny($s, self::VACANT);
+
+        // 両方の信号が立つときは判定不能。順序で勝敗を決めず Unknown へ倒す。
+        if ($hitsOperating && $hitsVacant) {
+            return self::Unknown;
         }
 
-        foreach (['空室', '空き', '空店舗', '空'] as $needle) {
-            if (str_contains($s, $needle)) {
-                return self::Vacant;
-            }
+        if ($hitsOperating) {
+            return self::Operating;
+        }
+
+        if ($hitsVacant) {
+            return self::Vacant;
         }
 
         return self::Unknown;
     }
+
+    private static function containsAny(string $haystack, array $needles): bool
+    {
+        foreach ($needles as $needle) {
+            if (str_contains($haystack, $needle)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
 }
 ```
+
+> **2026-08-14 追記（コード品質レビューによる訂正）:** 当初の `fromRawLabel()` は「営業系の語を先に走査 → ヒットすれば即 Operating」という**順序依存**の実装だった。実測で `不稼働（休業中）`（「不」＝否定なのに `稼働` にヒット）・`入居者退去済み`（退去済みなのに `入居` にヒット）・`空床あり、他は稼働`（両方の信号があるのに順序で Operating が勝つ）が誤って Operating と判定されることが判明した。docblock に書いた「判定できない値は Unknown に倒す（安全側）」という原則そのものに反する誤爆だった。**順序に依存しない構造**（否定語で営業判定を打ち消す `NOT_OPERATING`、両方の信号が立つ場合は判定不能として Unknown、に再設計）に置き換えた。語彙の拡張はしていない（すべての変化は Unknown 側へ向かう安全な訂正のみ）。
 
 - [ ] **Step 4: テストが通ることを確認する**
 
@@ -1002,10 +1044,11 @@ vendor/bin/phpunit --filter AreaTenantStatusTest
 
 Expected: PASS（4 tests）
 
-- [ ] **Step 5: 変異テストで 2 通り確認する**
+- [ ] **Step 5: 変異テストで 3 通り確認する**
 
 - [ ] `return self::Unknown;`（末尾）を `return self::Operating;` に変える → `test_from_raw_label_normalizes_aliases` が **赤**
 - [ ] `$s = preg_replace('/[\s\x{3000}]+/u', '', (string) $raw);` を `$s = (string) $raw;`（空白正規化を丸ごと外す）に変える → `test_from_raw_label_ignores_full_width_space` が **赤**
+- [ ] 両方ヒット時の `if ($hitsOperating && $hitsVacant) { return self::Unknown; }` を削除して Operating 優先に戻す → `test_from_raw_label_falls_back_to_unknown_for_ambiguous_or_negated_text` が **赤**
 - [ ] 戻して PASS を確認
 
 > **2026-08-14 追記（実測による訂正）:** 当初の変異 2 は「`preg_replace('/[\s\x{3000}]+/u', ...)` を `preg_replace('/\s+/u', ...)` に変える」だったが、実測（PHP 8.3.30 / PCRE 10.47。ローカル CLI・本番とも同じ PHP 8.3 系）でこの変異は**挙動が変わらず**、そもそも変異になっていなかった。原因は PHP の `/u` 修飾子が `PCRE2_UTF` だけでなく `PCRE2_UCP` も立てるため、`\s` 単体でも U+3000 に一致すること（`\d` `\w` も同様に Unicode プロパティベースになる）。「PCRE の `\s` は `/u` を付けても U+3000 に当たらない」という前提そのものが誤りだった。実装（`[\s\x{3000}]+` の明示指定）は UCP 無効なビルドへの保険として妥当なため変更せず、コメントと本 Step の変異 2 だけを「空白正規化を丸ごと外す」に訂正した。
