@@ -6002,6 +6002,31 @@ APP_KEY=base64:$(head -c 32 /dev/urandom | base64) php artisan serve --port=8000
 - [ ] 「この内容で取り込む」で一覧へ戻り、件数の内訳がメッセージに出る
 - [ ] ブラウザのコンソールにエラーが 0 件
 
+- [ ] **Step 10b: 状態エイリアスの取りこぼしを実データで測る**
+
+2026-08-14 の Task 3 レビューで、`AreaTenantStatus::fromRawLabel()` を網羅的に叩いた結果、
+**実データにありそうなのに `Unknown` へ落ちる語**が見つかっている:
+
+| 入力 | 結果 |
+|---|---|
+| `募集中` / `テナント募集中` | Unknown（日本語としては「空き」を強く示唆する） |
+| `退去済` | Unknown（同上） |
+| `閉店` | Unknown（境界的） |
+| `調査中` | Unknown（これは妥当） |
+
+**設計書 §7.2 のエイリアス一覧に無い語なので、今は意図どおり `Unknown` に倒している。**
+空室率は `空室数 = vacant_count + unknown_count`（設計 §4）で「不明」も空きに数えるため、
+**この取りこぼしは空室率には影響しない**。影響するのはテナント明細のバッジが
+「空き」（赤）でなく「不明」（灰）になる表示粒度だけ。`Operating` への誤爆は起きない。
+
+- [ ] 実データを流した後、`area_building_tenants` の `status` 別件数を数える:
+      `SELECT status, COUNT(*) FROM area_building_tenants GROUP BY status;`
+- [ ] `unknown` が不自然に多ければ、元の Excel の生の値を見て
+      `AreaTenantStatus::fromRawLabel()` のエイリアス一覧に `募集` / `退去` 系を追加する
+- [ ] 追加したら Enum のテストにその語を足す
+
+⚠ **実データを見る前に語彙を先回りで広げないこと**（過剰適合になる）。
+
 - [ ] **Step 11: コミット**
 
 `/commit` で `feat(tenant): 周辺ビル調査の Excel 取込を追加`
