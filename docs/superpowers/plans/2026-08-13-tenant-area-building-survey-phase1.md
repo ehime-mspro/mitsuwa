@@ -1322,6 +1322,9 @@ class AreaBuilding extends Model
      */
     public static function normalizeName(?string $name): string
     {
+        // ⚠ /u は PCRE2_UCP も立てるので、下の \s+ だけで U+3000 も半角空白に潰せる
+        //   （PHP 8.3 / PCRE 10.47 で実測）。この str_replace は冗長だが、
+        //   UCP 無効なビルドでも同じ挙動になるよう残している。
         $s = str_replace("\u{3000}", ' ', (string) $name);
 
         return trim(preg_replace('/\s+/u', ' ', $s));
@@ -5435,7 +5438,11 @@ class AreaBuildingImportController extends Controller
             return null;
         }
 
+        // ⚠ mb_convert_kana は必須。/u 付きの \d は全角数字にも一致するが、
+        //   (int) '１２３' は 0 になるので、判定の前に半角へ寄せる必要がある。
         $s = mb_convert_kana(trim((string) $raw), 'n');                 // 全角数字 → 半角
+        // ⚠ \x{3000} は冗長（/u が PCRE2_UCP を立てるので \s が U+3000 に当たる）。
+        //   UCP 無効なビルドへの保険として残している。
         $s = preg_replace('/[,，\s\x{3000}円¥￥]/u', '', $s);
 
         if ($s === '') {
