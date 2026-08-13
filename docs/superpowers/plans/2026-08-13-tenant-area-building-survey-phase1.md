@@ -969,7 +969,8 @@ enum AreaTenantStatus: string
      */
     public static function fromRawLabel(?string $raw): self
     {
-        // ⚠ PCRE の \s は /u を付けても U+3000 に当たらないので明示する
+        // ⚠ /u は PCRE2_UCP も立てるので \s だけでも U+3000 に当たる(PHP 8.3 / PCRE 10.47 で実測)。
+        //   \x{3000} の明示は冗長だが、UCP 無効なビルドでも同じ挙動になるよう残している。
         $s = preg_replace('/[\s\x{3000}]+/u', '', (string) $raw);
 
         if ($s === '' || $s === '?' || $s === '？') {
@@ -1004,8 +1005,10 @@ Expected: PASS（4 tests）
 - [ ] **Step 5: 変異テストで 2 通り確認する**
 
 - [ ] `return self::Unknown;`（末尾）を `return self::Operating;` に変える → `test_from_raw_label_normalizes_aliases` が **赤**
-- [ ] `preg_replace('/[\s\x{3000}]+/u', ...)` を `preg_replace('/\s+/u', ...)` に変える → `test_from_raw_label_ignores_full_width_space` が **赤**
+- [ ] `$s = preg_replace('/[\s\x{3000}]+/u', '', (string) $raw);` を `$s = (string) $raw;`（空白正規化を丸ごと外す）に変える → `test_from_raw_label_ignores_full_width_space` が **赤**
 - [ ] 戻して PASS を確認
+
+> **2026-08-14 追記（実測による訂正）:** 当初の変異 2 は「`preg_replace('/[\s\x{3000}]+/u', ...)` を `preg_replace('/\s+/u', ...)` に変える」だったが、実測（PHP 8.3.30 / PCRE 10.47。ローカル CLI・本番とも同じ PHP 8.3 系）でこの変異は**挙動が変わらず**、そもそも変異になっていなかった。原因は PHP の `/u` 修飾子が `PCRE2_UTF` だけでなく `PCRE2_UCP` も立てるため、`\s` 単体でも U+3000 に一致すること（`\d` `\w` も同様に Unicode プロパティベースになる）。「PCRE の `\s` は `/u` を付けても U+3000 に当たらない」という前提そのものが誤りだった。実装（`[\s\x{3000}]+` の明示指定）は UCP 無効なビルドへの保険として妥当なため変更せず、コメントと本 Step の変異 2 だけを「空白正規化を丸ごと外す」に訂正した。
 
 - [ ] **Step 6: コミット**
 

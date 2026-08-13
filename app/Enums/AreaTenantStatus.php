@@ -40,7 +40,8 @@ enum AreaTenantStatus: string
      */
     public static function fromRawLabel(?string $raw): self
     {
-        // ⚠ PCRE の \s は /u を付けても U+3000 に当たらないので明示する
+        // ⚠ /u は PCRE2_UCP も立てるので \s だけでも U+3000 に当たる(PHP 8.3 / PCRE 10.47 で実測)。
+        //   \x{3000} の明示は冗長だが、UCP 無効なビルドでも同じ挙動になるよう残している。
         $s = preg_replace('/[\s\x{3000}]+/u', '', (string) $raw);
 
         if ($s === '' || $s === '?' || $s === '？') {
