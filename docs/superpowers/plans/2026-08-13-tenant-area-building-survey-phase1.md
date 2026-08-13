@@ -276,7 +276,7 @@ class VacancyRate
 vendor/bin/phpunit --filter VacancyRateTest
 ```
 
-Expected: PASS（7 tests）
+Expected: PASS（6 tests）
 
 - [ ] **Step 5: 変異テスト — 3 通りで赤になることを実測する**
 
