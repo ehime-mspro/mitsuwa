@@ -288,11 +288,27 @@ Expected: PASS（7 tests）
 | 2 | `($vacant + $unknown)` → `$vacant` | `test_unknown_counts_as_vacant` が赤 |
 | 3 | `$total <= 0` の early return を削除 | `test_returns_null_when_there_are_no_units` が赤（DivisionByZeroError） |
 
-さらに **構造テストが load-bearing であることの証明**（Bug #42 ②）:
+さらに **コメント除去が機能していることの確認**（Bug #42 ②）:
 
-- [ ] 変異 1 を当てたまま、`sourceWithoutComments()` の中身を `return file_get_contents($path);` に差し替える
-- [ ] `test_implementation_uses_integer_division` が **緑に戻る**ことを確認する（docblock の「round は使わない」に一致するため）
+⚠ **2026-08-13 実測で修正。** 当初この欄には「変異 1 を当てたまま `sourceWithoutComments()` を
+`file_get_contents()` に差し替えると `test_implementation_uses_integer_division` が緑に戻る」と
+書いていたが、**再現しない**。理由: 変異 1 は `round(` を**実コード**に入れるので、コメント除去の
+有無にかかわらず `assertStringNotContainsString('round(', ...)` が失敗する。Bug #42 ② の
+false-pass は「**docblock 側に識別子 literal がある**」ときにだけ起きる条件で、この
+`VacancyRate.php` の docblock は日本語（「四捨五入」「丸め」）だけで `round(` を含まない。
+
+正しい確認手順（実装者と仕様レビュアーの双方が実測済み）:
+
+- [ ] 実装は**正しいまま**、docblock に `round(` を含む行を一時的に足す（例: `⚠ 丸めに round() を使わない。`）
+- [ ] `test_implementation_uses_integer_division` が **緑**であることを確認する（コメント除去が効いている）
+- [ ] `sourceWithoutComments()` の中身を `return file_get_contents($path);` に差し替える
+- [ ] 同じテストが **赤になる**ことを確認する（docblock の `round(` を拾うため）
 - [ ] 両方を元に戻し、再度 PASS を確認する
+
+⚠ 現在の `VacancyRate.php` に対しては、コメント除去は**今この瞬間は inert**（docblock に
+識別子 literal が無いため）。将来 docblock に英語の識別子を書き足したときの予防線として残す。
+**この形の構造テストを他のタスクで書くときも、「除去が今 load-bearing か」と
+「除去の仕組みが動くか」を混同しないこと。**
 
 - [ ] **Step 6: コミット**
 
