@@ -4,7 +4,14 @@
 --   片方だけ直すと SQLite テストだけが落ちる drift になる
 --   （AreaBuildingSchemaTest::test_raw_sql_and_migration_declare_the_same_columns が拾う）。
 --
--- 適用: php artisan tinker --execute="DB::unprepared(file_get_contents('database/sql/2026-08-12-create-area-building-tables.sql'));"
+-- 適用: sudo mysql manage < database/sql/2026-08-12-create-area-building-tables.sql
+--   CREATE TABLE IF NOT EXISTS なので、途中で失敗しても再実行して安全。
+--
+-- 代替: php artisan tinker --execute="DB::unprepared(file_get_contents('database/sql/2026-08-12-create-area-building-tables.sql'));"
+--   ⚠ このファイルは CREATE TABLE を 3 本含むため、PDO::exec() のマルチステートメント
+--   挙動に依存する。この方式はこのリポジトリに前例が無い（database/sql/ の他ファイルで
+--   tinker + DB::unprepared() を案内しているのは単一ステートメントのみ。複数テーブルの
+--   ファイルは create_mansion_tables.sql 等すべて sudo mysql の直接実行を案内している）。
 
 CREATE TABLE IF NOT EXISTS area_buildings (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

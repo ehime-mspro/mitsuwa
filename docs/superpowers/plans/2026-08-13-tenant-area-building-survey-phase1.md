@@ -336,6 +336,7 @@ git add app/Support/VacancyRate.php tests/Unit/Support/VacancyRateTest.php
 
 namespace Tests\Feature\Tenant;
 
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -399,6 +400,71 @@ class AreaBuildingSchemaTest extends TestCase
     }
 
     /**
+     * area_buildings を削除すると、紐づく調査回・入居テナントの行も削除される
+     * （CASCADE。設計 §3.2 / §3.3）。
+     *
+     * ⚠ area_buildings は Task 4 で Eloquent モデルに SoftDeletes が付く想定。Eloquent の
+     *   delete() を使うと UPDATE ... SET deleted_at = ... になるだけで実際の DELETE 文が
+     *   発行されず CASCADE が発火しない（テストは書いたが何も検証していない状態になる）。
+     *   DB::table(...)->delete() で物理削除して検証すること。
+     */
+    public function test_deleting_a_building_cascades_to_its_surveys_and_tenants(): void
+    {
+        $buildingId = DB::table('area_buildings')->insertGetId([
+            'name' => 'テストビル', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $surveyId = DB::table('area_building_surveys')->insertGetId([
+            'area_building_id' => $buildingId,
+            'surveyed_month'   => '2026-08-01',
+            'operating_count'  => 1, 'vacant_count' => 0, 'unknown_count' => 0,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $tenantId = DB::table('area_building_tenants')->insertGetId([
+            'area_building_id' => $buildingId,
+            'status' => 'operating',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        DB::table('area_buildings')->where('id', $buildingId)->delete();
+
+        $this->assertFalse(DB::table('area_building_surveys')->where('id', $surveyId)->exists());
+        $this->assertFalse(DB::table('area_building_tenants')->where('id', $tenantId)->exists());
+    }
+
+    /**
+     * users を削除すると、area_buildings.created_by / area_building_surveys.surveyed_by は
+     * NULL になる（SET NULL。設計 §3.2 / §3.3）。登録者・調査者の情報が失われても、
+     * 調査データそのものは残す設計。
+     *
+     * ⚠ 上のテストと同じ理由で DB::table(...)->delete() を使うこと
+     *   （Eloquent の delete() だと SoftDeletes で物理削除が発生しない）。
+     */
+    public function test_deleting_a_user_nulls_out_created_by_and_surveyed_by(): void
+    {
+        $user = User::factory()->create();
+
+        $buildingId = DB::table('area_buildings')->insertGetId([
+            'name' => 'テストビル', 'created_by' => $user->id,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $surveyId = DB::table('area_building_surveys')->insertGetId([
+            'area_building_id' => $buildingId,
+            'surveyed_month'   => '2026-08-01',
+            'operating_count'  => 1, 'vacant_count' => 0, 'unknown_count' => 0,
+            'surveyed_by' => $user->id,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        DB::table('users')->where('id', $user->id)->delete();
+
+        $this->assertNull(DB::table('area_buildings')->where('id', $buildingId)->value('created_by'));
+        $this->assertNull(DB::table('area_building_surveys')->where('id', $surveyId)->value('surveyed_by'));
+    }
+
+    /**
      * raw SQL と migration が同じ列を宣言していること。
      *
      * ⚠ 手書きの期待リストと突き合わせてはいけない。それだと「リストに書き忘れた列」が
@@ -406,6 +472,10 @@ class AreaBuildingSchemaTest extends TestCase
      *   （CLAUDE.md Top trap #13 / Bug #45 ①）。
      *   migration 側は Schema::getColumnListing() で「実際に作られた列」を取り、
      *   raw SQL 側は DDL を機械的にパースして、集合として双方向に比較する。
+     *
+     * ⚠ このテストが見ているのは列名の集合だけ。型・NULL 可否・デフォルト値・
+     *   インデックス定義の drift は検出しない（型マッピング層を追加するとそれ自体が
+     *   壊れやすい新しい依存になるため見送り。2026-08-14 コード品質レビュー Important #3）。
      */
     public function test_raw_sql_and_migration_declare_the_same_columns(): void
     {
@@ -440,44 +510,114 @@ class AreaBuildingSchemaTest extends TestCase
     /**
      * raw SQL の DDL から「実際の列名」を機械的に拾う。
      *
-     * `CREATE TABLE IF NOT EXISTS <table> (` から対応する `) ENGINE=InnoDB` までを本文として
-     * 切り出し、各行の先頭トークンを列名候補にする。ただし PRIMARY KEY / INDEX / UNIQUE KEY /
-     * CONSTRAINT ... FOREIGN KEY のような列ではない行は、先頭トークンで除外する
-     * （行全体への部分一致にすると created_by のような列名を誤って落とすため）。
+     * `CREATE TABLE IF NOT EXISTS <table> (` の直後の `(` から対応する `) ENGINE=InnoDB` までを
+     * 本文として切り出し、括弧の深さとシングルクォート状態を追いながらトップレベルの
+     * カンマで分割する。
+     *
+     * ⚠ テーブル名は境界付き正規表現で探す。`strpos` の前方一致だと、
+     *   `area_buildings_history` のように同じ接頭辞を持つ架空テーブルを先に誤って
+     *   拾ってしまう（設計書 §12 は第2段での area_* テーブル追加を示唆しており、
+     *   共通接頭辞が増える前提のため）。
+     * ⚠ 本文を行単位で分割してはいけない。1 行に複数カラムを圧縮された drift
+     *   （`total_floors INT NULL, extra_field VARCHAR(10) NULL,` のように既存行へ
+     *   追記された新しい列）を見逃す ── それ自体がこのテストの検出対象。
+     *   DECIMAL(10,7) の括弧内カンマや COMMENT '...' の文字列内カンマで誤って
+     *   分割しないよう、括弧の深さとクォート状態を持つスキャナーでトップレベルの
+     *   カンマだけを区切りに使う。
      */
     private function columnsInRawSql(string $sql, string $table): array
     {
-        $start = strpos($sql, "CREATE TABLE IF NOT EXISTS {$table}");
-        $this->assertNotFalse($start, "{$table} が見つからない");
-        $end = strpos($sql, ') ENGINE=InnoDB', $start);
+        $found = preg_match(
+            '/CREATE TABLE IF NOT EXISTS ' . preg_quote($table, '/') . '\s*\(/',
+            $sql,
+            $matches,
+            PREG_OFFSET_CAPTURE
+        );
+        $this->assertSame(1, $found, "{$table} が見つからない");
+
+        $openParenPos = $matches[0][1] + strlen($matches[0][0]) - 1;
+        $end = strpos($sql, ') ENGINE=InnoDB', $openParenPos);
         $this->assertNotFalse($end, "{$table} の終端が見つからない");
 
-        $openParenPos = strpos($sql, '(', $start);
-        $this->assertNotFalse($openParenPos, "{$table} の開き括弧が見つからない");
         $body = substr($sql, $openParenPos + 1, $end - ($openParenPos + 1));
 
+        return $this->splitTopLevelColumns($body);
+    }
+
+    /** 括弧の深さとシングルクォート状態を追いながら、トップレベルのカンマで分割する。 */
+    private function splitTopLevelColumns(string $body): array
+    {
         $notColumns = ['PRIMARY', 'KEY', 'INDEX', 'UNIQUE', 'CONSTRAINT', 'FOREIGN'];
         $columns = [];
+        $segment = '';
+        $depth = 0;
+        $inQuote = false;
 
-        foreach (explode("\n", $body) as $line) {
-            $line = trim($line);
-            if ($line === '') {
+        $length = strlen($body);
+        for ($i = 0; $i < $length; $i++) {
+            $char = $body[$i];
+
+            if ($inQuote) {
+                $segment .= $char;
+                if ($char === "'") {
+                    $inQuote = false;
+                }
                 continue;
             }
 
-            if (! preg_match('/^([A-Za-z_][A-Za-z0-9_]*)/', $line, $m)) {
+            if ($char === "'") {
+                $inQuote = true;
+                $segment .= $char;
                 continue;
             }
 
-            $firstToken = $m[1];
-            if (in_array(strtoupper($firstToken), $notColumns, true)) {
+            if ($char === '(') {
+                $depth++;
+                $segment .= $char;
                 continue;
             }
 
-            $columns[] = $firstToken;
+            if ($char === ')') {
+                $depth--;
+                $segment .= $char;
+                continue;
+            }
+
+            if ($char === ',' && $depth === 0) {
+                $columns[] = $this->firstColumnToken($segment, $notColumns);
+                $segment = '';
+                continue;
+            }
+
+            $segment .= $char;
+        }
+        $columns[] = $this->firstColumnToken($segment, $notColumns);
+
+        return array_values(array_filter($columns, static fn ($column) => $column !== null));
+    }
+
+    /**
+     * 断片の先頭トークンを列名候補として取り出す。PRIMARY KEY / INDEX / UNIQUE KEY /
+     * CONSTRAINT ... FOREIGN KEY のような列ではない断片は、先頭トークンで除外する
+     * （断片全体への部分一致にすると created_by のような列名を誤って落とすため）。
+     */
+    private function firstColumnToken(string $segment, array $notColumns): ?string
+    {
+        $segment = trim($segment);
+        if ($segment === '') {
+            return null;
         }
 
-        return $columns;
+        if (! preg_match('/^([A-Za-z_][A-Za-z0-9_]*)/', $segment, $m)) {
+            return null;
+        }
+
+        $firstToken = $m[1];
+        if (in_array(strtoupper($firstToken), $notColumns, true)) {
+            return null;
+        }
+
+        return $firstToken;
     }
 }
 ```
@@ -486,6 +626,19 @@ class AreaBuildingSchemaTest extends TestCase
 > 照合しており、migration 側の drift（列が消える／余分に増える）を検出できなかった。
 > レビューで実測して判明し、`Schema::getColumnListing()` と DDL の機械的パースを
 > 双方向に比較する形へ書き直した（commit は Task 2 のコミット履歴を参照）。
+>
+> **2026-08-14 追記2（コード品質レビューで訂正）**: `columnsInRawSql()` を行単位で
+> 分割していたため、1 行に複数カラムを圧縮された drift（例:
+> `total_floors INT NULL, extra_field VARCHAR(10) NULL,`）を見逃していた。加えて
+> テーブル名の切り出しが `strpos` の前方一致だったため、`area_buildings_history` の
+> ような同じ接頭辞を持つ架空テーブルを誤って拾いうる状態だった。括弧の深さと
+> シングルクォート状態を追うスキャナー（トップレベルのカンマで分割）＋境界付き
+> 正規表現によるテーブル名検索に書き直した。あわせて CASCADE / SET NULL の FK 挙動を
+> 固定する回帰テスト 2 本（`test_deleting_a_building_cascades_to_its_surveys_and_tenants` /
+> `test_deleting_a_user_nulls_out_created_by_and_surveyed_by`）を追加した。
+> **見送った項目**: `test_raw_sql_and_migration_declare_the_same_columns` は列名の集合
+> しか見ていない。型・NULL 可否・デフォルト値・インデックス定義の drift は検出しない
+> （型マッピング層は壊れやすい新しい依存になるため見送り。テストの docblock に明記）。
 
 - [ ] **Step 2: テストが落ちることを確認する**
 
@@ -584,7 +737,14 @@ return new class extends Migration
 --   片方だけ直すと SQLite テストだけが落ちる drift になる
 --   （AreaBuildingSchemaTest::test_raw_sql_and_migration_declare_the_same_columns が拾う）。
 --
--- 適用: php artisan tinker --execute="DB::unprepared(file_get_contents('database/sql/2026-08-12-create-area-building-tables.sql'));"
+-- 適用: sudo mysql manage < database/sql/2026-08-12-create-area-building-tables.sql
+--   CREATE TABLE IF NOT EXISTS なので、途中で失敗しても再実行して安全。
+--
+-- 代替: php artisan tinker --execute="DB::unprepared(file_get_contents('database/sql/2026-08-12-create-area-building-tables.sql'));"
+--   ⚠ このファイルは CREATE TABLE を 3 本含むため、PDO::exec() のマルチステートメント
+--   挙動に依存する。この方式はこのリポジトリに前例が無い（database/sql/ の他ファイルで
+--   tinker + DB::unprepared() を案内しているのは単一ステートメントのみ。複数テーブルの
+--   ファイルは create_mansion_tables.sql 等すべて sudo mysql の直接実行を案内している）。
 
 CREATE TABLE IF NOT EXISTS area_buildings (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -643,28 +803,46 @@ CREATE TABLE IF NOT EXISTS area_building_tenants (
 vendor/bin/phpunit --filter AreaBuildingSchemaTest
 ```
 
-Expected: PASS（4 tests）
+Expected: PASS（6 tests。2026-08-14 コード品質レビューで CASCADE / SET NULL の回帰テスト 2 本を追加）
 
 - [ ] **Step 6: 変異テストで drift 検出を実測する**
 
-`test_raw_sql_and_migration_declare_the_same_columns`（双方向比較。2026-08-14 訂正版）:
+`test_raw_sql_and_migration_declare_the_same_columns`（双方向比較。2026-08-14 コード品質レビューで
+`columnsInRawSql()` を行分割からトップレベルカンマ分割＋境界付きテーブル名検索へ書き直した最終版）:
 
 | # | 変異 | 期待 |
 |---|---|---|
-| 1 | raw SQL から `industry VARCHAR(100) NULL ...` の行を削除 | 赤 |
+| 1 | raw SQL から `industry VARCHAR(100) NULL ...` の行を丸ごと削除 | 赤 |
 | 2 | migration から `$table->string('industry', 100)->nullable()...` の行を削除 | 赤 |
 | 3 | migration にだけ `$table->string('dummy_col')->nullable();` を追加 | 赤 |
 | 4 | raw SQL にだけ `dummy_col VARCHAR(50) NULL,` を追加 | 赤 |
 | 5 | `columnsInRawSql()` が常に `[]` を返すように潰す | `assertNotEmpty` で赤（`assertSame([], [])` で緑にならないこと） |
+| 6 | raw SQL の既存行に `extra_field VARCHAR(10) NULL COMMENT 'ダミー',` を**圧縮して**追記（1 行に複数カラム） | 新ロジックで**赤**。同じ変異のまま `columnsInRawSql()` を行分割の旧ロジックに戻すと**緑**になることを確認済み（旧ロジックはこの drift を原理的に検出できない） |
+| 7 | `DECIMAL(10,7)` を持つ `latitude` の行・`COMMENT '...'` にカンマを含む行が誤分割されていないか | 通常状態・コメント内カンマ変異のどちらも green。`columnsInRawSql()` の戻り値を実測（`dump()` 相当）し `latitude` `longitude` が個別に、かつカンマで分裂せず拾えていることを確認済み |
+| 8 | raw SQL の先頭に `area_buildings_history`（`ghost_column` を持つ）の架空 CREATE TABLE を挿入 | 境界付き正規表現により本物の `area_buildings`（11 列）を正しく拾い、`ghost_column` を誤抽出しないことを実測確認済み |
 
-`test_same_building_and_month_cannot_be_inserted_twice`（UNIQUE 制約。既存の検証で変更なし）:
+`test_same_building_and_month_cannot_be_inserted_twice`（UNIQUE 制約）:
 
 | # | 変異 | 期待 |
 |---|---|---|
-| 6 | migration の `$table->unique([...], 'uk_area_survey_building_month');` を削除 | 赤 |
+| 9 | migration の `$table->unique([...], 'uk_area_survey_building_month');` を削除 | 赤 |
 
-- [ ] 上記 6 通りをすべて当てて赤になることを確認する。変異のたびに `git diff` が非空であることを確認する
-- [ ] 全部戻して PASS を確認
+`test_deleting_a_building_cascades_to_its_surveys_and_tenants` / `test_deleting_a_user_nulls_out_created_by_and_surveyed_by`
+（2026-08-14 コード品質レビューで追加した FK 回帰テスト）:
+
+| # | 変異 | 期待 |
+|---|---|---|
+| 10 | `area_building_surveys.area_building_id` の `cascadeOnDelete()` を `restrictOnDelete()` に変更 | CASCADE のテストが赤（`FOREIGN KEY constraint failed`） |
+| 11 | `area_buildings.created_by` の `nullOnDelete()` を外す | SET NULL のテストが赤（`FOREIGN KEY constraint failed`） |
+
+- [ ] 上記すべてを当てて赤になることを確認する。変異のたびに `git diff` が非空であることを確認する
+- [ ] 全部戻して PASS を確認し、`git status` が clean であることを確認する
+
+⚠ **見送った項目**: raw SQL 適用コマンドの案内（`sudo mysql manage < file` を第一の方法にし、
+tinker + `DB::unprepared()` は複数 `CREATE TABLE` のマルチステートメント実行に前例が無い旨の
+注記付きで代替として残す）はコード品質レビュー Important #5 で修正済み。型・NULL 可否・
+デフォルト値・インデックス定義の drift 検出（Important #3）は型マッピング層が新しい壊れやすい
+依存になるため見送り、テストの docblock に検査範囲の限界を明記した。
 
 - [ ] **Step 7: コミット**
 
