@@ -67,46 +67,82 @@ class AreaBuildingSchemaTest extends TestCase
     /**
      * raw SQL と migration が同じ列を宣言していること。
      *
-     * ⚠ 走査が空振りして緑になる事故を防ぐため、拾えた列数の下限も固定する。
+     * ⚠ 手書きの期待リストと突き合わせてはいけない。それだと「リストに書き忘れた列」が
+     *   永遠に検査対象に入らず、migration にだけ列が増えても緑のまま通る
+     *   （CLAUDE.md Top trap #13 / Bug #45 ①）。
+     *   migration 側は Schema::getColumnListing() で「実際に作られた列」を取り、
+     *   raw SQL 側は DDL を機械的にパースして、集合として双方向に比較する。
      */
     public function test_raw_sql_and_migration_declare_the_same_columns(): void
     {
         $sql = file_get_contents(base_path('database/sql/2026-08-12-create-area-building-tables.sql'));
 
-        $tables = [
-            'area_buildings'        => ['id', 'name', 'address', 'latitude', 'longitude', 'total_floors', 'notes', 'created_by', 'created_at', 'updated_at', 'deleted_at'],
-            'area_building_surveys' => ['id', 'area_building_id', 'surveyed_month', 'operating_count', 'vacant_count', 'unknown_count', 'surveyed_by', 'notes', 'created_at', 'updated_at'],
-            'area_building_tenants' => ['id', 'area_building_id', 'floor', 'room_number', 'name', 'industry', 'status', 'confirmed_on', 'moved_out_on', 'notes', 'created_at', 'updated_at'],
-        ];
-
+        $tables = ['area_buildings', 'area_building_surveys', 'area_building_tenants'];
         $checked = 0;
-        foreach ($tables as $table => $columns) {
-            $this->assertMatchesRegularExpression(
-                '/CREATE TABLE IF NOT EXISTS ' . $table . '\s*\(/',
-                $sql,
-                "{$table} の CREATE TABLE が raw SQL に無い"
+
+        foreach ($tables as $table) {
+            $fromMigration = Schema::getColumnListing($table);
+            $fromRawSql    = $this->columnsInRawSql($sql, $table);
+
+            sort($fromMigration);
+            sort($fromRawSql);
+
+            // 走査が空振りして「両方とも空 = 一致」で緑になる事故を防ぐ
+            $this->assertNotEmpty($fromRawSql, "{$table} の raw SQL から列を 1 つも拾えていない");
+            $this->assertGreaterThanOrEqual(10, count($fromMigration), "{$table} の migration 側の列が少なすぎる");
+
+            $this->assertSame(
+                $fromRawSql,
+                $fromMigration,
+                "{$table} の raw SQL と migration で列が食い違っている（drift）"
             );
-            $body = $this->tableBody($sql, $table);
-            foreach ($columns as $column) {
-                $checked++;
-                $this->assertMatchesRegularExpression(
-                    '/^\s*' . $column . '\s/mi',
-                    $body,
-                    "{$table}.{$column} が raw SQL に無い（migration とズレている）"
-                );
-            }
+
+            $checked += count($fromRawSql);
         }
 
         $this->assertGreaterThanOrEqual(33, $checked, 'raw SQL の走査が機能していない（空振り防止）');
     }
 
-    private function tableBody(string $sql, string $table): string
+    /**
+     * raw SQL の DDL から「実際の列名」を機械的に拾う。
+     *
+     * `CREATE TABLE IF NOT EXISTS <table> (` から対応する `) ENGINE=InnoDB` までを本文として
+     * 切り出し、各行の先頭トークンを列名候補にする。ただし PRIMARY KEY / INDEX / UNIQUE KEY /
+     * CONSTRAINT ... FOREIGN KEY のような列ではない行は、先頭トークンで除外する
+     * （行全体への部分一致にすると created_by のような列名を誤って落とすため）。
+     */
+    private function columnsInRawSql(string $sql, string $table): array
     {
         $start = strpos($sql, "CREATE TABLE IF NOT EXISTS {$table}");
         $this->assertNotFalse($start, "{$table} が見つからない");
-        $end = strpos($sql, 'ENGINE=InnoDB', $start);
+        $end = strpos($sql, ') ENGINE=InnoDB', $start);
         $this->assertNotFalse($end, "{$table} の終端が見つからない");
 
-        return substr($sql, $start, $end - $start);
+        $openParenPos = strpos($sql, '(', $start);
+        $this->assertNotFalse($openParenPos, "{$table} の開き括弧が見つからない");
+        $body = substr($sql, $openParenPos + 1, $end - ($openParenPos + 1));
+
+        $notColumns = ['PRIMARY', 'KEY', 'INDEX', 'UNIQUE', 'CONSTRAINT', 'FOREIGN'];
+        $columns = [];
+
+        foreach (explode("\n", $body) as $line) {
+            $line = trim($line);
+            if ($line === '') {
+                continue;
+            }
+
+            if (! preg_match('/^([A-Za-z_][A-Za-z0-9_]*)/', $line, $m)) {
+                continue;
+            }
+
+            $firstToken = $m[1];
+            if (in_array(strtoupper($firstToken), $notColumns, true)) {
+                continue;
+            }
+
+            $columns[] = $firstToken;
+        }
+
+        return $columns;
     }
 }

@@ -401,50 +401,91 @@ class AreaBuildingSchemaTest extends TestCase
     /**
      * raw SQL と migration が同じ列を宣言していること。
      *
-     * ⚠ 走査が空振りして緑になる事故を防ぐため、拾えた列数の下限も固定する。
+     * ⚠ 手書きの期待リストと突き合わせてはいけない。それだと「リストに書き忘れた列」が
+     *   永遠に検査対象に入らず、migration にだけ列が増えても緑のまま通る
+     *   （CLAUDE.md Top trap #13 / Bug #45 ①）。
+     *   migration 側は Schema::getColumnListing() で「実際に作られた列」を取り、
+     *   raw SQL 側は DDL を機械的にパースして、集合として双方向に比較する。
      */
     public function test_raw_sql_and_migration_declare_the_same_columns(): void
     {
         $sql = file_get_contents(base_path('database/sql/2026-08-12-create-area-building-tables.sql'));
 
-        $tables = [
-            'area_buildings'        => ['id', 'name', 'address', 'latitude', 'longitude', 'total_floors', 'notes', 'created_by', 'created_at', 'updated_at', 'deleted_at'],
-            'area_building_surveys' => ['id', 'area_building_id', 'surveyed_month', 'operating_count', 'vacant_count', 'unknown_count', 'surveyed_by', 'notes', 'created_at', 'updated_at'],
-            'area_building_tenants' => ['id', 'area_building_id', 'floor', 'room_number', 'name', 'industry', 'status', 'confirmed_on', 'moved_out_on', 'notes', 'created_at', 'updated_at'],
-        ];
-
+        $tables = ['area_buildings', 'area_building_surveys', 'area_building_tenants'];
         $checked = 0;
-        foreach ($tables as $table => $columns) {
-            $this->assertMatchesRegularExpression(
-                '/CREATE TABLE IF NOT EXISTS ' . $table . '\s*\(/',
-                $sql,
-                "{$table} の CREATE TABLE が raw SQL に無い"
+
+        foreach ($tables as $table) {
+            $fromMigration = Schema::getColumnListing($table);
+            $fromRawSql    = $this->columnsInRawSql($sql, $table);
+
+            sort($fromMigration);
+            sort($fromRawSql);
+
+            // 走査が空振りして「両方とも空 = 一致」で緑になる事故を防ぐ
+            $this->assertNotEmpty($fromRawSql, "{$table} の raw SQL から列を 1 つも拾えていない");
+            $this->assertGreaterThanOrEqual(10, count($fromMigration), "{$table} の migration 側の列が少なすぎる");
+
+            $this->assertSame(
+                $fromRawSql,
+                $fromMigration,
+                "{$table} の raw SQL と migration で列が食い違っている（drift）"
             );
-            $body = $this->tableBody($sql, $table);
-            foreach ($columns as $column) {
-                $checked++;
-                $this->assertMatchesRegularExpression(
-                    '/^\s*' . $column . '\s/mi',
-                    $body,
-                    "{$table}.{$column} が raw SQL に無い（migration とズレている）"
-                );
-            }
+
+            $checked += count($fromRawSql);
         }
 
         $this->assertGreaterThanOrEqual(33, $checked, 'raw SQL の走査が機能していない（空振り防止）');
     }
 
-    private function tableBody(string $sql, string $table): string
+    /**
+     * raw SQL の DDL から「実際の列名」を機械的に拾う。
+     *
+     * `CREATE TABLE IF NOT EXISTS <table> (` から対応する `) ENGINE=InnoDB` までを本文として
+     * 切り出し、各行の先頭トークンを列名候補にする。ただし PRIMARY KEY / INDEX / UNIQUE KEY /
+     * CONSTRAINT ... FOREIGN KEY のような列ではない行は、先頭トークンで除外する
+     * （行全体への部分一致にすると created_by のような列名を誤って落とすため）。
+     */
+    private function columnsInRawSql(string $sql, string $table): array
     {
         $start = strpos($sql, "CREATE TABLE IF NOT EXISTS {$table}");
         $this->assertNotFalse($start, "{$table} が見つからない");
-        $end = strpos($sql, 'ENGINE=InnoDB', $start);
+        $end = strpos($sql, ') ENGINE=InnoDB', $start);
         $this->assertNotFalse($end, "{$table} の終端が見つからない");
 
-        return substr($sql, $start, $end - $start);
+        $openParenPos = strpos($sql, '(', $start);
+        $this->assertNotFalse($openParenPos, "{$table} の開き括弧が見つからない");
+        $body = substr($sql, $openParenPos + 1, $end - ($openParenPos + 1));
+
+        $notColumns = ['PRIMARY', 'KEY', 'INDEX', 'UNIQUE', 'CONSTRAINT', 'FOREIGN'];
+        $columns = [];
+
+        foreach (explode("\n", $body) as $line) {
+            $line = trim($line);
+            if ($line === '') {
+                continue;
+            }
+
+            if (! preg_match('/^([A-Za-z_][A-Za-z0-9_]*)/', $line, $m)) {
+                continue;
+            }
+
+            $firstToken = $m[1];
+            if (in_array(strtoupper($firstToken), $notColumns, true)) {
+                continue;
+            }
+
+            $columns[] = $firstToken;
+        }
+
+        return $columns;
     }
 }
 ```
+
+> **2026-08-14 追記（仕様レビューで訂正）**: 当初は raw SQL 側だけを手書きの期待リストと
+> 照合しており、migration 側の drift（列が消える／余分に増える）を検出できなかった。
+> レビューで実測して判明し、`Schema::getColumnListing()` と DDL の機械的パースを
+> 双方向に比較する形へ書き直した（commit は Task 2 のコミット履歴を参照）。
 
 - [ ] **Step 2: テストが落ちることを確認する**
 
@@ -606,9 +647,24 @@ Expected: PASS（4 tests）
 
 - [ ] **Step 6: 変異テストで drift 検出を実測する**
 
-- [ ] raw SQL の `industry VARCHAR(100) NULL ...` の行を削除 → `test_raw_sql_and_migration_declare_the_same_columns` が **赤**
-- [ ] migration の `$table->unique([...], 'uk_area_survey_building_month');` を削除 → `test_same_building_and_month_cannot_be_inserted_twice` が **赤**
-- [ ] 両方戻して PASS を確認
+`test_raw_sql_and_migration_declare_the_same_columns`（双方向比較。2026-08-14 訂正版）:
+
+| # | 変異 | 期待 |
+|---|---|---|
+| 1 | raw SQL から `industry VARCHAR(100) NULL ...` の行を削除 | 赤 |
+| 2 | migration から `$table->string('industry', 100)->nullable()...` の行を削除 | 赤 |
+| 3 | migration にだけ `$table->string('dummy_col')->nullable();` を追加 | 赤 |
+| 4 | raw SQL にだけ `dummy_col VARCHAR(50) NULL,` を追加 | 赤 |
+| 5 | `columnsInRawSql()` が常に `[]` を返すように潰す | `assertNotEmpty` で赤（`assertSame([], [])` で緑にならないこと） |
+
+`test_same_building_and_month_cannot_be_inserted_twice`（UNIQUE 制約。既存の検証で変更なし）:
+
+| # | 変異 | 期待 |
+|---|---|---|
+| 6 | migration の `$table->unique([...], 'uk_area_survey_building_month');` を削除 | 赤 |
+
+- [ ] 上記 6 通りをすべて当てて赤になることを確認する。変異のたびに `git diff` が非空であることを確認する
+- [ ] 全部戻して PASS を確認
 
 - [ ] **Step 7: コミット**
 
