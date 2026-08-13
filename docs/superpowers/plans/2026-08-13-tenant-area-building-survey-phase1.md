@@ -6526,12 +6526,32 @@ cd /Users/masanori/site/manage && composer dump-autoload
 
 - [ ] **Step 10: ローカル DB に raw SQL を流す**
 
+⚠ **2026-08-14 訂正。** 当初ここは tinker + `DB::unprepared()` だけを案内していたが、
+**この SQL ファイルは `CREATE TABLE` を 3 本含む**のに対し、`Connection::unprepared()` は
+ファイル全体を **1 回の `PDO::exec()`** に渡す実装（`vendor/laravel/framework/.../Connection.php`）。
+マルチステートメントが通るかは `PDO::MYSQL_ATTR_MULTI_STATEMENTS` の既定に依存し、
+`config/database.php` にも `MySqlConnector` にも明示指定が無い。
+
+実測（2026-08-14、Task 2 のコード品質レビュー）: `database/sql/` で tinker + `DB::unprepared()` を
+案内しているファイルは**すべて単一ステートメント**。複数テーブルを含むファイル
+（`create_mansion_tables.sql` 8 本 / `create_dad_tables.sql` 7 本 / `create_zeal_tables.sql` 5 本）は
+**すべて `sudo mysql manage < file` を案内**しており、そちらが実証済みの慣行。
+
+**第一の方法**（複数テーブルのファイルの既存慣行）:
+
+```bash
+cd /Users/masanori/site/manage && sudo mysql <db> < database/sql/2026-08-12-create-area-building-tables.sql
+```
+
+**代替**（`sudo mysql` が非対話でパスワードを渡せない場合）— ⚠ マルチステートメント依存:
+
 ```bash
 cd /Users/masanori/site/manage && php artisan tinker --execute="DB::unprepared(file_get_contents('database/sql/2026-08-12-create-area-building-tables.sql'));"
 ```
 
-⚠ `sudo mysql` は非対話でパスワードを渡せないので tinker 経由にする。
 ⚠ ローカルの実 DB 名は `.env` を見ること（CLAUDE.md の記載と食い違っている可能性がある）。
+⚠ `CREATE TABLE IF NOT EXISTS` なので**冪等**。途中で失敗しても再実行・個別実行で安全に復旧できる。
+**だからこそ、下の確認を必ず 3 テーブル分すべて行うこと**（部分適用を見逃さないため）。
 
 適用後の確認:
 
