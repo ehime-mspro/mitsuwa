@@ -1652,7 +1652,10 @@ dump(\Illuminate\Support\Facades\DB::table('area_building_surveys')->value('surv
 | 3 | `pendingGeocodeQuery()` の `whereNull('latitude')` を削除 | `..._skips_rows_that_already_have_coordinates` が赤 |
 | 4 | `activeTenants()` の `whereNull('moved_out_on')` を削除 | `..._excludes_moved_out_rows` が赤 |
 
-- [ ] 変異 1 を当てたまま、Step 1 の `$survey = $survey->fresh();` を消すと `..._on_update_too` が**素通り**することも確認する（`fresh()` が load-bearing であることの証明。Bug #39）
+- [x] ~~変異 1 を当てたまま、Step 1 の `$survey = $survey->fresh();` を消すと `..._on_update_too` が**素通り**することも確認する（`fresh()` が load-bearing であることの証明。Bug #39）~~
+      → **実測すると素通りせず赤のままだった。この主張は誤りだったので下の訂正ブロックを読むこと。**
+      `fresh()` は「本番の経路（ルートモデルバインディングで DB から取り直す）に忠実」という理由で
+      残すが、**この実装では変異の検出には寄与していない。**
 
 ⚠ **実装時の訂正（2026-08-16）— 上の項目は実測で成立しなかった。プランどおりに実装せず、
 実測結果をそのまま記録する。** 変異 1（`saving` フック全削除）を当てたまま、
@@ -3610,7 +3613,9 @@ Task 7 で入れた「⚠ /area-buildings/create /import /geocode はこの行�
 
     <div id="map-status" style="display: none; padding: 8px 14px; border-radius: 6px; font-size: 13px; margin-bottom: 8px;"></div>
 
-    <div id="map-wrap" style="display: {{ ($b && $b->latitude) ? 'block' : 'none' }};">
+    {{-- ⚠ 緯度だけでなく経度も見る。Task 4 の hasCoordinates() を使う（片方だけ入った行で
+         地図枠だけ出て中身が描画されない状態を防ぐ） --}}
+    <div id="map-wrap" style="display: {{ $b?->hasCoordinates() ? 'block' : 'none' }};">
         <div style="border: 1px solid #d1d5db; border-radius: 8px; overflow: hidden;">
             <div id="area-building-map" data-map-fallback style="height: 350px; max-width: 100%;"></div>
         </div>
