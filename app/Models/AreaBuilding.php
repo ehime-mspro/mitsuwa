@@ -1,0 +1,147 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
+/**
+ * 周辺ビル（恒久情報）。
+ *
+ * ⚠ 論理削除。調査回とテナントは FK ON DELETE CASCADE だが、SoftDeletes ではビル行が
+ *   残るので子は消えない（復元可能にするための意図どおりの挙動。設計 §8）。
+ */
+class AreaBuilding extends Model
+{
+    use SoftDeletes;
+
+    protected $fillable = [
+        'name',
+        'address',
+        'latitude',
+        'longitude',
+        'total_floors',
+        'notes',
+        'created_by',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'latitude'     => 'decimal:7',
+            'longitude'    => 'decimal:7',
+            'total_floors' => 'integer',
+        ];
+    }
+
+    // ============================================================
+    // リレーション
+    // ============================================================
+
+    public function surveys(): HasMany
+    {
+        return $this->hasMany(AreaBuildingSurvey::class, 'area_building_id');
+    }
+
+    public function tenants(): HasMany
+    {
+        return $this->hasMany(AreaBuildingTenant::class, 'area_building_id');
+    }
+
+    /** 現況の入居テナント（退去済みを除く） */
+    public function activeTenants(): HasMany
+    {
+        return $this->tenants()->whereNull('moved_out_on');
+    }
+
+    /** ⚠ User は SoftDeletes（app/Models/User.php:16）。退職者が消えないよう withTrashed */
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by')->withTrashed();
+    }
+
+    // ============================================================
+    // 表示ヘルパー
+    // ============================================================
+
+    public function latestSurvey(): ?AreaBuildingSurvey
+    {
+        return $this->surveys()->orderByDesc('surveyed_month')->orderByDesc('id')->first();
+    }
+
+    public function hasCoordinates(): bool
+    {
+        return $this->latitude !== null && $this->longitude !== null;
+    }
+
+    /**
+     * 別タブで開く Google マップの URL。
+     * ⚠ 詳細画面に埋め込み地図を置かず、このリンクで済ませる（課金ゼロ。設計 §6.0）。
+     */
+    public function googleMapsUrl(): ?string
+    {
+        if (! $this->hasCoordinates()) {
+            return null;
+        }
+
+        return 'https://www.google.com/maps/search/?api=1&query=' . $this->latitude . ',' . $this->longitude;
+    }
+
+    public function totalFloorsLabel(): string
+    {
+        return $this->total_floors === null ? '—' : $this->total_floors . '階';
+    }
+
+    // ============================================================
+    // Excel 取込 / 座標一括取得
+    // ============================================================
+
+    /**
+     * Excel 取込のビル名突合キー。
+     *
+     * 前後の空白を落とし、全角空白（U+3000）は半角に、連続空白は 1 個に潰す。
+     * ⚠ 内部の空白まで消さないこと。「ミツワ ビル」と「ミツワビル」を同一視すると、
+     *   別のビルの調査回を誤って同じビルにぶら下げる。重複して登録されるほうがまだ直せる。
+     */
+    public static function normalizeName(?string $name): string
+    {
+        // ⚠ /u は PCRE2_UCP も立てるので、下の \s+ だけで U+3000 も半角空白に潰せる
+        //   （PHP 8.3 / PCRE 10.47 で実測）。この str_replace は冗長だが、
+        //   UCP 無効なビルドでも同じ挙動になるよう残している。
+        $s = str_replace("\u{3000}", ' ', (string) $name);
+
+        return trim(preg_replace('/\s+/u', ' ', $s));
+    }
+
+    /**
+     * 座標未取得のビル（住所があるものだけ）。
+     *
+     * ⚠ latitude IS NULL に限定するのが二重課金の防止そのもの。何度実行しても
+     *   未設定分しか Google に投げない（設計 §7.4）。住所が空の行は最初から対象外。
+     *
+     * @return Collection<int, static>
+     */
+    public static function pendingGeocode(int $limit): Collection
+    {
+        return static::pendingGeocodeQuery()
+            ->orderBy('id')
+            ->limit($limit)
+            ->get(['id', 'name', 'address']);
+    }
+
+    public static function pendingGeocodeCount(): int
+    {
+        return static::pendingGeocodeQuery()->count();
+    }
+
+    private static function pendingGeocodeQuery(): \Illuminate\Database\Eloquent\Builder
+    {
+        return static::query()
+            ->whereNull('latitude')
+            ->whereNotNull('address')
+            ->where('address', '<>', '');
+    }
+}

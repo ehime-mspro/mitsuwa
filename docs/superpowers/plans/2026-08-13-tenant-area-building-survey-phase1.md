@@ -1531,6 +1531,30 @@ class AreaBuildingSurvey extends Model
 }
 ```
 
+⚠ **実装時の訂正（2026-08-16）— 上記コードには無いが `protected $attributes` の DEFAULT ミラーが
+load-bearing で必要だった。** `test_survey_without_units_has_no_rate`（`operating_count` /
+`vacant_count` / `unknown_count` を一切指定せず `create()` した直後に `fresh()` を挟まず
+`vacancyRate()` を呼ぶテスト）が実測で `TypeError: App\Support\VacancyRate::percent(): Argument #1
+($operating) must be of type int, null given` になった。原因: `area_building_surveys` の
+DB 列は `->default(0)` だが、Eloquent の `create()` は **渡された属性だけ**で INSERT 文を組む。
+DB は省略された列に `DEFAULT 0` を適用するが、それは DB 側の話でしかなく、`fresh()`/`refresh()`
+で読み直すまで in-memory の `$this->operating_count` 等は `null` のまま。`vacancyRate()` は
+これを `VacancyRate::percent(int $operating, int $vacant, int $unknown)` という非 nullable
+`int` 引数へそのまま渡すため、`null` を渡すと（weak mode でも scalar 型の暗黙変換対象は
+int/float/string/bool のみで `null` は対象外なので）即 `TypeError`。実装した `AreaBuildingSurvey`
+には次を追加している（`$fillable` 直後）:
+
+```php
+protected $attributes = [
+    'operating_count' => 0,
+    'vacant_count'    => 0,
+    'unknown_count'   => 0,
+];
+```
+
+DB の DEFAULT をミラーする標準的な Eloquent パターンで、`fresh()` を挟むテスト・実際に
+値を指定する呼び出しの挙動は変えない。
+
 - [ ] **Step 5: `AreaBuildingTenant` を書く**
 
 `app/Models/AreaBuildingTenant.php`:
@@ -1614,7 +1638,10 @@ dump(\Illuminate\Support\Facades\DB::table('area_building_surveys')->value('surv
 `'2026-08-01'` か `'2026-08-01 00:00:00'` かを下に書き残し、確認したらその行は消す。
 **どちらであっても実装は `whereDate` を使う**（本番 MySQL とテスト SQLite で割れない書き方だから）。
 
-計測結果: `__________________`（実装時に記入）
+計測結果: `'2026-08-01 00:00:00'`（2026-08-16 実装時に実測。SQLite は `date` cast の Carbon
+インスタンスを保存する際に時刻部分 `00:00:00` を含むフル datetime 文字列として格納する。
+`=` での完全一致比較は本番 MySQL の `DATE` 型（時刻部分を持たない）とテスト SQLite で
+異なる文字列表現になりうるため、後続タスクの重複判定は計画どおり `whereDate()` を使うこと）
 
 - [ ] **Step 8: 変異テストで 4 通り確認する**
 
@@ -1626,6 +1653,27 @@ dump(\Illuminate\Support\Facades\DB::table('area_building_surveys')->value('surv
 | 4 | `activeTenants()` の `whereNull('moved_out_on')` を削除 | `..._excludes_moved_out_rows` が赤 |
 
 - [ ] 変異 1 を当てたまま、Step 1 の `$survey = $survey->fresh();` を消すと `..._on_update_too` が**素通り**することも確認する（`fresh()` が load-bearing であることの証明。Bug #39）
+
+⚠ **実装時の訂正（2026-08-16）— 上の項目は実測で成立しなかった。プランどおりに実装せず、
+実測結果をそのまま記録する。** 変異 1（`saving` フック全削除）を当てたまま、
+`$survey = $survey->fresh();` の行を消しても（`assertFalse($survey->wasRecentlyCreated);` を
+一緒に消しても）`..._on_update_too` は**素通りせず、正しく赤のまま**だった
+（`assertSame('2026-09-01', ...)` に対し実際の値 `'2026-09-30'` で失敗）。
+
+原因: Bug #39 の原型（`ReProcurement` 等）は `booted()` 側に
+`if (wasChanged([...]) || $model->wasRecentlyCreated) { ... }` という **OR 分岐**を持ち、
+`wasRecentlyCreated` が真のままだと `wasChanged()` 側の変異が隠れる、という構造だった。
+一方 `AreaBuildingSurvey::booted()` の `saving` フックは
+`if ($survey->surveyed_month !== null) { ...startOfMonth()... }` のみで、
+**`wasRecentlyCreated` を一切参照しない無条件の正規化**。加えてこのテストの最終行は
+`$survey->update(...)` の**後**に `$survey->fresh()->surveyed_month->format(...)` と
+改めて DB から読み直しており、この最終 `fresh()`（Step 1 のコード内にもう 1 箇所ある、
+消す対象に含まれていない別の呼び出し）だけで DB の実値（正規化されていなければ
+`2026-09-30` のまま）を正しく検出できる。よって `$survey = $survey->fresh();`（中間の
+リセット）は Bug #39 一般の教訓に沿った良い習慣ではあるが、**このテスト・この実装において
+load-bearing ではない**（無くても mutation 1 は検出される）。過去の Bug #39 のパターンを
+機械的に踏襲した結果、成立しない主張をプランに書いてしまっていた。
+
 - [ ] すべて戻して PASS を確認
 
 - [ ] **Step 9: コミット**
