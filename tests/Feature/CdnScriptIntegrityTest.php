@@ -23,17 +23,23 @@ class CdnScriptIntegrityTest extends TestCase
 {
     /**
      * SRI 導入（2026-08-17）より前からある CDN スクリプト。**凍結。追加しないこと。**
+     *
+     * ⚠ **キーは `ビュー|src` の組。** ビュー名だけで凍結すると、この 9 本のビューは
+     *   将来ぶんも含めて永久に無検査になる（実測: legacy のビューへ無 SRI スクリプトを
+     *   足しても緑だった）。しかもこの 9 本は Excel 取込 4 + チャート 4 + 分析 1 ＝
+     *   **次に CDN スクリプトが増える可能性がいちばん高いビュー群**。
+     *   件数（同じ URL が 2 本あるケース）まで見るため、多重集合として突き合わせる。
      */
     private const LEGACY_WITHOUT_SRI = [
-        'dad/projects/_form.blade.php',
-        'dashboard/_executive_charts.blade.php',
-        'housing/_dashboard_chart.blade.php',
-        'realestate/_partials/_cost_section_form.blade.php',
-        'realestate/procurements/show.blade.php',
-        'realestate/projects/show.blade.php',
-        'tenant/analysis/index.blade.php',
-        'transactions/summary.blade.php',
-        'zeal/dashboard.blade.php',
+        'dad/projects/_form.blade.php|https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',
+        'dashboard/_executive_charts.blade.php|https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js',
+        'housing/_dashboard_chart.blade.php|https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js',
+        'realestate/_partials/_cost_section_form.blade.php|https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',
+        'realestate/procurements/show.blade.php|https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',
+        'realestate/projects/show.blade.php|https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',
+        'tenant/analysis/index.blade.php|https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js',
+        'transactions/summary.blade.php|https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js',
+        'zeal/dashboard.blade.php|https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js',
     ];
 
     /**
@@ -59,7 +65,10 @@ class CdnScriptIntegrityTest extends TestCase
             }
 
             foreach ($m[0] as [$tag, $offset]) {
-                if (! preg_match('/\bsrc="(https?:\/\/[^"]+)"/i', $tag, $srcMatch)) {
+                // ⚠ 二重引用符＋絶対 URL だけを見ると、単引用符や protocol-relative（//host/…）が
+                //   素通りする（Bug #45 ③ と同型）。実測では **単引用符の cdnjs** が
+                //   ホスト検査ごとすり抜けていた。
+                if (! preg_match('/\bsrc=["\']((?:https?:)?\/\/[^"\']+)["\']/i', $tag, $srcMatch)) {
                     continue;
                 }
 
@@ -82,10 +91,12 @@ class CdnScriptIntegrityTest extends TestCase
     {
         $tags = $this->externalScriptTags();
 
-        $this->assertGreaterThanOrEqual(19, count($tags), '外部 <script src> の走査が機能していない（空振り防止）');
+        // ⚠ 現値ちょうど（19 / 10）にしない。正当な掃除で誤って赤になる
+        //   （house style: AjaxErrorFeedbackTest は実数 33 に対し下限 30）
+        $this->assertGreaterThanOrEqual(15, count($tags), '外部 <script src> の走査が機能していない（空振り防止）');
 
         $jsDelivr = array_filter($tags, fn (array $t) => $this->isJsDelivr($t['src']));
-        $this->assertGreaterThanOrEqual(10, count($jsDelivr), 'jsDelivr のスクリプトを拾えていない（空振り防止）');
+        $this->assertGreaterThanOrEqual(8, count($jsDelivr), 'jsDelivr のスクリプトを拾えていない（空振り防止）');
     }
 
     public function test_only_allowed_hosts_are_used(): void
@@ -106,9 +117,15 @@ class CdnScriptIntegrityTest extends TestCase
         );
     }
 
+    /** protocol-relative（`//host/…`）も同じホストとして扱う */
+    private function host(string $src): string
+    {
+        return preg_match('#^(?:https?:)?//([^/?\#]+)#i', $src, $m) ? strtolower($m[1]) : '';
+    }
+
     private function isJsDelivr(string $src): bool
     {
-        return str_starts_with($src, 'https://cdn.jsdelivr.net/');
+        return $this->host($src) === 'cdn.jsdelivr.net';
     }
 
     /**
@@ -119,7 +136,7 @@ class CdnScriptIntegrityTest extends TestCase
      */
     private function isGoogleMapsLoader(string $src): bool
     {
-        return str_starts_with($src, 'https://maps.googleapis.com/maps/api/js');
+        return $this->host($src) === 'maps.googleapis.com' && str_contains($src, '/maps/api/js');
     }
 
     /**
@@ -130,8 +147,11 @@ class CdnScriptIntegrityTest extends TestCase
      */
     public function test_every_cdn_script_is_classified(): void
     {
-        $unclassified = [];
+        $unclassified  = [];
         $legacyWithSri = [];
+
+        // 多重集合として消し込む（同じ URL が 2 本あるケースも数える）
+        $remaining = array_count_values(self::LEGACY_WITHOUT_SRI);
 
         foreach ($this->externalScriptTags() as $tag) {
             // ハッシュを固定できないローダーは対象外（理由は isGoogleMapsLoader の docblock）
@@ -142,17 +162,28 @@ class CdnScriptIntegrityTest extends TestCase
             $hasSri = str_contains($tag['tag'], 'integrity="sha')
                 && str_contains($tag['tag'], 'crossorigin="anonymous"');
 
-            $isLegacy = in_array($tag['view'], self::LEGACY_WITHOUT_SRI, true);
+            $key      = $tag['view'] . '|' . $tag['src'];
+            $isLegacy = ($remaining[$key] ?? 0) > 0;
+
+            if ($isLegacy) {
+                $remaining[$key]--;
+            }
 
             if ($hasSri && $isLegacy) {
-                $legacyWithSri[] = $tag['view'];
+                $legacyWithSri[] = $key;
                 continue;
             }
 
             if (! $hasSri && ! $isLegacy) {
-                $unclassified[] = $tag['view'] . ':' . $tag['line'];
+                $unclassified[] = $tag['view'] . ':' . $tag['line'] . ' → ' . $tag['src'];
             }
         }
+
+        $this->assertSame(
+            [],
+            array_keys(array_filter($remaining)),
+            'legacy リストに実在しない行が残っている（消したビューの行を削ること）'
+        );
 
         $this->assertSame(
             [],
@@ -175,19 +206,15 @@ class CdnScriptIntegrityTest extends TestCase
     /** legacy リストの行が実在すること（消えたビューが残ると分類器が緩む） */
     public function test_the_legacy_list_has_no_stale_entries(): void
     {
-        $views = [];
+        $keys = [];
         foreach ($this->externalScriptTags() as $tag) {
             if ($this->isJsDelivr($tag['src'])) {
-                $views[] = $tag['view'];
+                $keys[] = $tag['view'] . '|' . $tag['src'];
             }
         }
 
-        foreach (self::LEGACY_WITHOUT_SRI as $view) {
-            $this->assertContains(
-                $view,
-                $views,
-                "legacy リストの {$view} に CDN スクリプトが無い（行を消すこと）"
-            );
+        foreach (self::LEGACY_WITHOUT_SRI as $key) {
+            $this->assertContains($key, $keys, "legacy リストの {$key} が実在しない（行を消すこと）");
         }
     }
 }
