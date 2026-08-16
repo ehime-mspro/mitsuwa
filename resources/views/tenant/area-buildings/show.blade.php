@@ -13,14 +13,18 @@
 
 @section('content')
 
-    <a href="{{ route('tenant.area-buildings.index') }}"
-       class="inline-flex items-center gap-1 text-sm text-gray-600 hover:text-emerald-600 transition-colors mb-3">
-        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-        周辺ビル調査に戻る
-    </a>
-
+    {{-- ヘッダー
+         ⚠ 「戻る」はヘッダーのボタン列に置く（show 画面の流儀。realestate/procurements/show.blade.php
+           23-25 行等を参照。create/edit は独立リンクで正しい。上に単独で置いていたのは create の
+           流儀を show に誤って適用したもの）。
+         ⚠ Task 8 がこのボタン列に編集・削除ボタンを追加する。既存の列に足すだけで済むよう、
+           先にこの div を用意しておく。 --}}
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
         <h1 class="text-lg max-lg:text-base font-bold text-gray-900">{{ $building->name }}</h1>
+        <div style="display: flex; gap: 8px; align-items: center;">
+            <a href="{{ route('tenant.area-buildings.index') }}"
+               style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #6b7280; border: 1px solid #d1d5db; border-radius: 6px; text-decoration: none; background: #fff;">周辺ビル調査に戻る</a>
+        </div>
     </div>
 
     {{-- ヘッダ --}}
@@ -113,6 +117,8 @@
         <div class="scroll-hint at-start">
             <div class="scroll-hint-inner">
                 <table class="w-full border-collapse" style="table-layout:fixed; min-width:760px;">
+                    {{-- ⚠ Task 9 がこの colgroup / thead / 各行に「操作」列を追加する（colspan も更新）。
+                         下の入居テナントのテーブルと構造がほぼ同じなので、置換するときは必ずこのコメントを目印にすること --}}
                     <colgroup>
                         <col style="width:14%"><col style="width:9%"><col style="width:9%"><col style="width:9%">
                         <col style="width:12%"><col style="width:15%"><col style="width:32%">
@@ -157,6 +163,8 @@
         <div class="scroll-hint at-start">
             <div class="scroll-hint-inner">
                 <table class="w-full border-collapse" style="table-layout:fixed; min-width:720px;">
+                    {{-- ⚠ Task 10 がこの colgroup / thead / 各行に「操作」列を追加する（colspan も更新）。
+                         上の調査履歴のテーブルと構造がほぼ同じなので、置換するときは必ずこのコメントを目印にすること --}}
                     <colgroup>
                         <col style="width:9%"><col style="width:13%"><col style="width:28%">
                         <col style="width:18%"><col style="width:10%"><col style="width:22%">

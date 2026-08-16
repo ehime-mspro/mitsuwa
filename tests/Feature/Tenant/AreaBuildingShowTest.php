@@ -132,6 +132,26 @@ class AreaBuildingShowTest extends AreaBuildingTestCase
         $response->assertDontSee('調査時の実測とテナント明細が一致していません');
     }
 
+    /**
+     * ④ 調査が 1 件も無いのにテナント明細だけあるビル（Important I-1）。
+     *
+     * ⚠ Task 8 の初回調査入力は任意なので「ビルだけ登録 → テナント明細を先に入れる」は
+     *   普通に起こる操作。divergence() の `$latest === null ||` を消す変異を当てても、
+     *   このテストが無いと 11 本すべて緑のまま通ってしまう（実測確認済み）。
+     *   ガードを外すと $latest->operating_count で
+     *   `Attempt to read property "operating_count" on null` → 500 になる。
+     */
+    public function test_no_crash_when_tenants_exist_but_no_survey_at_all(): void
+    {
+        $building = $this->makeBuilding('調査なしテナントありビル');
+        $this->makeTenant($building, ['name' => 'A', 'status' => AreaTenantStatus::Operating->value]);
+
+        $response = $this->actingAs($this->staff())->get("/tenant/area-buildings/{$building->id}");
+
+        $response->assertOk();
+        $this->assertNull($response->viewData('divergence'));
+    }
+
     /** 退去済みは明細集計に入れない */
     public function test_moved_out_tenants_are_excluded_from_the_counted_side(): void
     {
@@ -145,6 +165,31 @@ class AreaBuildingShowTest extends AreaBuildingTestCase
         $this->assertNull($response->viewData('divergence'), '退去済みを数えてしまっている');
         $this->assertCount(1, $response->viewData('activeTenants'));
         $this->assertCount(1, $response->viewData('movedOutTenants'));
+    }
+
+    /**
+     * 現況 0 件・退去済みのみのビル（Minor M-2）。
+     *
+     * ⚠ 既存の test_moved_out_tenants_are_excluded_from_the_counted_side は現況 1 件 +
+     *   退去済み 1 件なので、現況テーブルが空になる経路（@forelse の @empty 側）を
+     *   一度も通っていなかった。
+     */
+    public function test_moved_out_only_building_shows_empty_current_table_and_details(): void
+    {
+        $building = $this->makeBuilding('退去済みだけのビル');
+        $this->makeTenant($building, [
+            'name'         => '退去済みテナント',
+            'status'       => AreaTenantStatus::Operating->value,
+            'moved_out_on' => '2026-07-31',
+        ]);
+
+        $response = $this->actingAs($this->staff())->get("/tenant/area-buildings/{$building->id}");
+
+        $response->assertOk();
+        $this->assertCount(0, $response->viewData('activeTenants'));
+        $this->assertCount(1, $response->viewData('movedOutTenants'));
+        $response->assertSee('入居テナントの明細がありません。');
+        $response->assertSee('退去済み 1 件を表示');
     }
 
     /**

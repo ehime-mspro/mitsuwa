@@ -3129,6 +3129,26 @@ class AreaBuildingShowTest extends AreaBuildingTestCase
         $response->assertDontSee('調査時の実測とテナント明細が一致していません');
     }
 
+    /**
+     * ④ 調査が 1 件も無いのにテナント明細だけあるビル（コード品質レビュー Important I-1、2026-08-16）。
+     *
+     * ⚠ Task 8 の初回調査入力は任意なので「ビルだけ登録 → テナント明細を先に入れる」は
+     *   普通に起こる操作。divergence() の `$latest === null ||` を消す変異を当てても、
+     *   このテストが無いと既存 11 本すべて緑のまま通ってしまう（実測確認済み）。
+     *   ガードを外すと $latest->operating_count で
+     *   `Attempt to read property "operating_count" on null` → 500 になる。
+     */
+    public function test_no_crash_when_tenants_exist_but_no_survey_at_all(): void
+    {
+        $building = $this->makeBuilding('調査なしテナントありビル');
+        $this->makeTenant($building, ['name' => 'A', 'status' => AreaTenantStatus::Operating->value]);
+
+        $response = $this->actingAs($this->staff())->get("/tenant/area-buildings/{$building->id}");
+
+        $response->assertOk();
+        $this->assertNull($response->viewData('divergence'));
+    }
+
     /** 退去済みは明細集計に入れない */
     public function test_moved_out_tenants_are_excluded_from_the_counted_side(): void
     {
@@ -3142,6 +3162,31 @@ class AreaBuildingShowTest extends AreaBuildingTestCase
         $this->assertNull($response->viewData('divergence'), '退去済みを数えてしまっている');
         $this->assertCount(1, $response->viewData('activeTenants'));
         $this->assertCount(1, $response->viewData('movedOutTenants'));
+    }
+
+    /**
+     * 現況 0 件・退去済みのみのビル（コード品質レビュー Minor M-2、2026-08-16）。
+     *
+     * ⚠ 上の test_moved_out_tenants_are_excluded_from_the_counted_side は現況 1 件 +
+     *   退去済み 1 件なので、現況テーブルが空になる経路（@forelse の @empty 側）を
+     *   一度も通っていなかった。
+     */
+    public function test_moved_out_only_building_shows_empty_current_table_and_details(): void
+    {
+        $building = $this->makeBuilding('退去済みだけのビル');
+        $this->makeTenant($building, [
+            'name'         => '退去済みテナント',
+            'status'       => AreaTenantStatus::Operating->value,
+            'moved_out_on' => '2026-07-31',
+        ]);
+
+        $response = $this->actingAs($this->staff())->get("/tenant/area-buildings/{$building->id}");
+
+        $response->assertOk();
+        $this->assertCount(0, $response->viewData('activeTenants'));
+        $this->assertCount(1, $response->viewData('movedOutTenants'));
+        $response->assertSee('入居テナントの明細がありません。');
+        $response->assertSee('退去済み 1 件を表示');
     }
 
     /**
@@ -3263,6 +3308,11 @@ Task 6 で入れた一覧ルートの**直後**に追加する（`create` / `imp
 
 `resources/views/tenant/area-buildings/show.blade.php`:
 
+⚠ 「戻る」の置き方は **show と create/edit で流儀が違う**（コード品質レビュー Minor M-1、2026-08-16）。
+**show はヘッダーのボタン列の中**（罫線付きボタン。`realestate/procurements/show.blade.php` 23-25 行等）、
+**create/edit はヘッダーの外の独立リンク**（`tenant/repairs/create.blade.php` 等）。下のコードは show の
+流儀（ボタン列）で書いてある。Task 8 がこのボタン列に編集・削除ボタンを追加する。
+
 ```blade
 @extends('layouts.app')
 
@@ -3279,14 +3329,17 @@ Task 6 で入れた一覧ルートの**直後**に追加する（`create` / `imp
 
 @section('content')
 
-    <a href="{{ route('tenant.area-buildings.index') }}"
-       class="inline-flex items-center gap-1 text-sm text-gray-600 hover:text-emerald-600 transition-colors mb-3">
-        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-        周辺ビル調査に戻る
-    </a>
-
+    {{-- ヘッダー
+         ⚠ 「戻る」はヘッダーのボタン列に置く（show 画面の流儀。realestate/procurements/show.blade.php
+           23-25 行等を参照。create/edit は独立リンクで正しい）。
+         ⚠ Task 8 がこのボタン列に編集・削除ボタンを追加する。既存の列に足すだけで済むよう、
+           先にこの div を用意しておく。 --}}
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
         <h1 class="text-lg max-lg:text-base font-bold text-gray-900">{{ $building->name }}</h1>
+        <div style="display: flex; gap: 8px; align-items: center;">
+            <a href="{{ route('tenant.area-buildings.index') }}"
+               style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #6b7280; border: 1px solid #d1d5db; border-radius: 6px; text-decoration: none; background: #fff;">周辺ビル調査に戻る</a>
+        </div>
     </div>
 
     {{-- ヘッダ --}}
@@ -3379,6 +3432,8 @@ Task 6 で入れた一覧ルートの**直後**に追加する（`create` / `imp
         <div class="scroll-hint at-start">
             <div class="scroll-hint-inner">
                 <table class="w-full border-collapse" style="table-layout:fixed; min-width:760px;">
+                    {{-- ⚠ Task 9 がこの colgroup / thead / 各行に「操作」列を追加する（colspan も更新）。
+                         下の入居テナントのテーブルと構造がほぼ同じなので、置換するときは必ずこのコメントを目印にすること --}}
                     <colgroup>
                         <col style="width:14%"><col style="width:9%"><col style="width:9%"><col style="width:9%">
                         <col style="width:12%"><col style="width:15%"><col style="width:32%">
@@ -3423,6 +3478,8 @@ Task 6 で入れた一覧ルートの**直後**に追加する（`create` / `imp
         <div class="scroll-hint at-start">
             <div class="scroll-hint-inner">
                 <table class="w-full border-collapse" style="table-layout:fixed; min-width:720px;">
+                    {{-- ⚠ Task 10 がこの colgroup / thead / 各行に「操作」列を追加する（colspan も更新）。
+                         上の調査履歴のテーブルと構造がほぼ同じなので、置換するときは必ずこのコメントを目印にすること --}}
                     <colgroup>
                         <col style="width:9%"><col style="width:13%"><col style="width:28%">
                         <col style="width:18%"><col style="width:10%"><col style="width:22%">
@@ -3477,6 +3534,11 @@ Task 6 で入れた一覧ルートの**直後**に追加する（`create` / `imp
 
 @endsection
 ```
+
+⚠ 調査履歴 / 入居テナントの 2 テーブルは `<colgroup>` から `@forelse/@empty` まで構造がほぼ同一
+（コード品質レビュー Recommendation 3、2026-08-16）。Bug #46 で実際に踏んだ「位置を曖昧に指定した
+置換が意図しない方を書き換え、テストが正しく緑のまま残って誤読する」を先取りして防ぐため、
+両方の `<colgroup>` の直前に「Task 9/10 がここに操作列を足す」旨の Blade コメントを目印として置いてある。
 
 - [ ] **Step 6: 一覧にビル名リンクと操作列を足す**
 
@@ -3534,14 +3596,18 @@ Task 6 で入れた一覧ルートの**直後**に追加する（`create` / `imp
 vendor/bin/phpunit --filter 'AreaBuildingShowTest|AreaBuildingListTest'
 ```
 
-Expected: PASS（Show 11 tests + List 18 tests = 29）
+Expected: PASS（Show 13 tests + List 18 tests = 31）
 
 ⚠ 2026-08-16 訂正: List は当初「12 本」と書いていたが実測 **18 本**。
 内訳は Task 6 のコードブロックが元々 13 本 + 自己レビューで見つけた配列パラメータの
 回帰 2 本 + コード品質レビュー（M-2 / M-3）の境界値 3 本。
 **Task 6 の結果に依存する数字**なので、Task 6 を先に完了させてから数えること。
 
-- [ ] **Step 8: 変異テストで 4 通り確認する**
+⚠ 2026-08-16 追記: Show も当初「11 本」だったが、コード品質レビュー
+（Important I-1 / Minor M-2）で `test_no_crash_when_tenants_exist_but_no_survey_at_all` と
+`test_moved_out_only_building_shows_empty_current_table_and_details` の 2 本を追加し **13 本**。
+
+- [ ] **Step 8: 変異テストで 5 通り確認する**
 
 | # | 変異 | 期待 |
 |---|---|---|
@@ -3549,6 +3615,7 @@ Expected: PASS（Show 11 tests + List 18 tests = 29）
 | 2 | `divergence()` の `$input === $counted ? null : ...` を `['input' => ..., 'counted' => ...]` 固定に | `test_no_warning_when_counts_agree` が赤 |
 | 3 | `show()` の `$activeTenants` を `$tenants` に（退去済みを含める） | `test_moved_out_tenants_are_excluded_from_the_counted_side` が赤 |
 | 4 | 詳細ビューに `<script src="https://maps.googleapis.com/maps/api/js?key=x"></script>` を 1 行足す | `test_detail_does_not_load_the_maps_javascript_api` が赤 |
+| 5 | `divergence()` の `$latest === null \|\|` を削除（`$activeTenants->isEmpty()` だけ残す）| `test_no_crash_when_tenants_exist_but_no_survey_at_all` が赤（500: `Attempt to read property "operating_count" on null`）。⚠ この変異は元の 11 本では**全部緑のまま通ってしまう**（コード品質レビュー Important I-1、2026-08-16 実測確認済み）。このテストを足して初めて検出できる |
 
 - [ ] **Step 9: 警告ブロックの文言が false-pass しないことを確認する（Bug #43 型）**
 
