@@ -50,6 +50,8 @@ cd /Users/masanori/site/manage/.claude/worktrees/tenant-area-survey && vendor/bi
 | 9 | テストのヘルパーは各ファイルに複製するのが既存の流儀 | **この機能に限り共有の抽象基底 `tests/Feature/Tenant/AreaBuildingTestCase.php` を使う。** 既存機能はテストが 1〜4 本なので複製で足りているが、本機能は Task 6〜12 で 8〜10 本が同じ actor（executive / manager / staff）と factory（`makeBuilding` / `makeSurvey` / `makeTenant`）を要るため複製コストの桁が違う。⚠ ファイル名を `*TestCase.php` にして PHPUnit の自動探索を避けている（実測確認済み）。**2026-08-16 の Task 6 コード品質レビューで是非を検討し、継続と決めた。後続レビューで蒸し返さないこと。** |
 | 10 | `?keyword=大_ビル` の `_` が LIKE のワイルドカードとして効く | **直さない。** `ProcurementListService::applyKeyword()` にも同じ未エスケープがあり、アプリ全体の既存パターン。ここだけ直すと流儀が割れる。直すなら共通ヘルパーで一括対応が筋（本プランのスコープ外）。⚠ 500 にはならず、余計な行が混ざるだけ。 |
 | 11 | 一覧の閲覧を staff でしかテストしていない | **これでよい。** `index` に role ミドルウェアは無く `department.access:tenant` のみで、部署アクセスは `tests/Feature/Security/DepartmentAccessMiddlewareTest.php` が一元的にテストする既存規約と整合。2026-08-16 のレビューで manager / executive が 200、他部署が 403 になることは実測確認済み。 |
+| 12 | 削除確認は画面によって**モーダルと `confirm()` が混在**する | **意図的に使い分ける。** `<x-delete-confirm-modal>` は `showDeleteModal` という**単一の Alpine 変数**でしか開閉できず、1 ページ 1 対象が前提（実測: 使用 5 ファイルすべて tenant の詳細画面で、テーブル行に使った例は 0 件）。よって **ページ単位の削除＝モーダル**（ビル本体。tenant 詳細 5/5 と同形）、**テーブル行ごとの削除＝`confirm()`**（Task 9 の調査回・Task 10 のテナント）。`show.blade.php` にも同趣旨のコメントを置いた。 |
+| 13 | CDN スクリプトに SRI を付けるのはこのリポジトリで**初** | **付ける**（設計 §7）。実測: `grep -rn "integrity=" resources/views/` が **0 件**で、既存の SheetJS 4 箇所（`realestate/projects/show` / `realestate/_partials/_cost_section_form` / `realestate/procurements/show` / `dad/projects/_form`）はいずれも SRI 無し。**既存 4 箇所への後付けは本プランのスコープ外**（下記フォローアップ）。⚠ SRI が不一致だとブラウザはスクリプトを**黙って読み込まない**ので、テストは「属性がある」ではなく**実測したハッシュ literal と一致すること**を見る（Task 11 H2）。 |
 
 ---
 
@@ -3839,7 +3841,9 @@ class AreaBuildingCrudTest extends AreaBuildingTestCase
             ->post('/tenant/area-buildings', ['name' => '']);
 
         $response->assertRedirect('/tenant/area-buildings/create');
-        $response->assertSessionHasErrors(['name' => 'ビル名は必ず入力してください。']);
+        // ⚠ 'ビル名は必ず入力してください。' ではない。lang/ja/validation.php の
+        //   required テンプレートは ':attributeは必須です。'（2026-08-16 実測で修正）
+        $response->assertSessionHasErrors(['name' => 'ビル名は必須です。']);
     }
 
     /** 所在地はグローバルの「住所」でなく画面ラベルの「所在地」（Bug #37） */
@@ -4070,7 +4074,7 @@ Expected: FAIL — 404 / 405
             ->with('success', 'ビルを削除しました。');
     }
 
-    /** @return array<string, string> */
+    // このあとに Task 7 で書いた private divergence() が続く（クラスの閉じ括弧もそちら側）
 ```
 
 - [ ] **Step 4: ルートを足す**
@@ -4913,8 +4917,94 @@ class AreaBuildingSurveyCrudTest extends AreaBuildingTestCase
             ->get("/tenant/area-buildings/{$building->id}/surveys/{$survey->id}/edit")
             ->getContent();
 
-        $this->assertStringContainsString('value="' . $retired->id . '"', $html, '退職者が選択肢から消えている');
-        $this->assertStringNotContainsString('x-for', $html, 'option を x-for で生成している（Bug #16）');
+        // ⚠ ページ全体で 'x-for' を探してはいけない。実測: str_contains('x-form-actions', 'x-for')
+        //   === true で、components/form-actions.blade.php の使い方コメントにその文字列が実在する
+        //   （今は Blade コメントなので出力に出ないだけ）。セレクトの中だけを見る。
+        $select = $this->extractSelect($html, 'surveyed_by');
+        $this->assertStringContainsString('value="' . $retired->id . '"', $select, '退職者が選択肢から消えている');
+        $this->assertStringNotContainsString('x-for', $select, 'option を x-for で生成している（Bug #16）');
+    }
+
+    /**
+     * 編集で調査者が黙って書き換わらないこと。
+     * ⚠ payload() に `?? Auth::id()` を残すと、別人が編集した瞬間に調査者がその人に化ける。
+     */
+    public function test_update_does_not_reassign_the_surveyor_to_the_editor(): void
+    {
+        $building = $this->makeBuilding('ミツワビル');
+        $walker   = $this->actor(UserRole::Staff);
+        $survey   = $this->makeSurvey($building, '2026-08-01', 5, 5, 0, ['surveyed_by' => $walker->id]);
+
+        $this->actingAs($this->manager())
+            ->put("/tenant/area-buildings/{$building->id}/surveys/{$survey->id}", [
+                'surveyed_month' => '2026-08',
+                'surveyed_by'    => $walker->id,   // フォームが出す値をそのまま返す
+            ])
+            ->assertRedirect();
+
+        $this->assertSame($walker->id, $survey->fresh()->surveyed_by, '調査者が編集者に置き換わっている');
+    }
+
+    /** 「未指定」に戻せること（`?? $survey->surveyed_by` にすると戻せなくなる） */
+    public function test_update_can_clear_the_surveyor(): void
+    {
+        $building = $this->makeBuilding('ミツワビル');
+        $walker   = $this->actor(UserRole::Staff);
+        $survey   = $this->makeSurvey($building, '2026-08-01', 5, 5, 0, ['surveyed_by' => $walker->id]);
+
+        $this->actingAs($this->manager())
+            ->put("/tenant/area-buildings/{$building->id}/surveys/{$survey->id}", [
+                'surveyed_month' => '2026-08',
+                'surveyed_by'    => '',
+            ])
+            ->assertRedirect();
+
+        $this->assertNull($survey->fresh()->surveyed_by);
+    }
+
+    /**
+     * 経営層でも追加・編集できること。
+     * ⚠ これが無いと `role:executive,manager` から executive を落としても全部緑のまま通る
+     *   （Task 8 のコード品質レビューで同じ穴が見つかった）。
+     */
+    public function test_executive_can_add_and_edit(): void
+    {
+        $building  = $this->makeBuilding('ミツワビル');
+        $executive = $this->executive();
+
+        $this->actingAs($executive)->get("/tenant/area-buildings/{$building->id}/surveys/create")->assertOk();
+        $this->actingAs($executive)->post("/tenant/area-buildings/{$building->id}/surveys", [
+            'surveyed_month'  => '2026-08',
+            'operating_count' => 4,
+        ])->assertRedirect(route('tenant.area-buildings.show', $building));
+
+        $survey = AreaBuildingSurvey::firstOrFail();
+
+        $this->actingAs($executive)->get("/tenant/area-buildings/{$building->id}/surveys/{$survey->id}/edit")->assertOk();
+        $this->actingAs($executive)->put("/tenant/area-buildings/{$building->id}/surveys/{$survey->id}", [
+            'surveyed_month'  => '2026-08',
+            'operating_count' => 9,
+        ])->assertRedirect();
+
+        $this->assertSame(9, $survey->fresh()->operating_count);
+    }
+
+    /**
+     * `<select ... name="X"> … </select>` を切り出す。
+     * ⚠ ページ全体を対象にしたアサーションは、無関係な文字列（`x-form-actions` が
+     *   `x-for` を部分文字列に含む等）に反応して誤って赤／緑になる。
+     */
+    private function extractSelect(string $html, string $name): string
+    {
+        $start = preg_match('/<select[^>]*name="' . preg_quote($name, '/') . '"/', $html, $m, PREG_OFFSET_CAPTURE)
+            ? $m[0][1]
+            : false;
+        $this->assertNotFalse($start, "<select name=\"{$name}\"> が見つからない");
+
+        $end = strpos($html, '</select>', $start);
+        $this->assertNotFalse($end, "<select name=\"{$name}\"> が閉じていない");
+
+        return substr($html, $start, $end - $start);
     }
 }
 ```
@@ -4969,10 +5059,14 @@ class AreaBuildingSurveyController extends Controller
             'operating_count' => 'nullable|integer|min:0|max:9999',
             'vacant_count'    => 'nullable|integer|min:0|max:9999',
             'unknown_count'   => 'nullable|integer|min:0|max:9999',
+            // ⚠ `exists:users,id` は SoftDeletes を除外しない（`exists` はグローバルスコープを
+            //   通らない）。これは**必要な挙動** — 調査者が退職済みの調査回を編集して保存できる
+            //   ようにするため。「厳しくすべき」と後から締めないこと。
             'surveyed_by'     => 'nullable|integer|exists:users,id',
             'notes'           => 'nullable|string|max:2000',
         ], [], [
-            // ⚠ この画面のラベルは「所見」。グローバルは「備考」なので上書きする
+            // ⚠ 第3引数が attributes（第2引数は messages）。Bug #37
+            //   この画面のラベルは「所見」。グローバルは「備考」なので上書きする
             'notes' => '所見',
         ]);
 
@@ -4984,7 +5078,10 @@ class AreaBuildingSurveyController extends Controller
             ]);
         }
 
-        AreaBuildingSurvey::create($this->payload($validated, $month, $building));
+        AreaBuildingSurvey::create($this->payload($validated, $month, $building) + [
+            // 新規だけログインユーザーを既定にする（現地を歩いた担当が別なら変更できる）
+            'surveyed_by' => $validated['surveyed_by'] ?? Auth::id(),
+        ]);
 
         return redirect()->route('tenant.area-buildings.show', $building)
             ->with('success', '調査を登録しました。');
@@ -5016,10 +5113,12 @@ class AreaBuildingSurveyController extends Controller
             'operating_count' => 'nullable|integer|min:0|max:9999',
             'vacant_count'    => 'nullable|integer|min:0|max:9999',
             'unknown_count'   => 'nullable|integer|min:0|max:9999',
+            // ⚠ store() と同じ理由で SoftDeletes を除外しない（退職者を調査者に持つ調査回を保存できるように）
             'surveyed_by'     => 'nullable|integer|exists:users,id',
             'notes'           => 'nullable|string|max:2000',
         ], [], [
-            // ⚠ この画面のラベルは「所見」。グローバルは「備考」なので上書きする
+            // ⚠ 第3引数が attributes（第2引数は messages）。Bug #37
+            //   この画面のラベルは「所見」。グローバルは「備考」なので上書きする
             'notes' => '所見',
         ]);
 
@@ -5031,7 +5130,13 @@ class AreaBuildingSurveyController extends Controller
             ]);
         }
 
-        $survey->update($this->payload($validated, $month, $building));
+        $survey->update($this->payload($validated, $month, $building) + [
+            // ⚠ 編集は **フォームが出している値をそのまま**書く。`?? Auth::id()` にすると
+            //   調査者が未送信のとき元の調査者が黙って編集者に置き換わる（`surveyed_by` は
+            //   FK ON DELETE SET NULL なので DB 上 null もありうる）。フォームが描画している
+            //   項目はフォームを正本にする — Task 8 の座標クリア（空 → null）と同じ扱い。Bug #38。
+            'surveyed_by' => $validated['surveyed_by'] ?? null,
+        ]);
 
         return redirect()->route('tenant.area-buildings.show', $building)
             ->with('success', '調査を更新しました。');
@@ -5068,7 +5173,13 @@ class AreaBuildingSurveyController extends Controller
             ->exists();
     }
 
-    /** @return array<string, mixed> */
+    /**
+     * store / update に共通する列だけを返す。
+     * ⚠ `surveyed_by` はここに入れない — 新規は「ログインユーザーを既定」、編集は
+     *   「フォームの値をそのまま」で**挙動が違う**ため、呼び出し側で `+ [...]` して足す。
+     *
+     * @return array<string, mixed>
+     */
     private function payload(array $validated, string $month, AreaBuilding $building): array
     {
         return [
@@ -5078,14 +5189,9 @@ class AreaBuildingSurveyController extends Controller
             'operating_count'  => $validated['operating_count'] ?? 0,
             'vacant_count'     => $validated['vacant_count'] ?? 0,
             'unknown_count'    => $validated['unknown_count'] ?? 0,
-            // 既定はログインユーザー。現地を歩いた担当が別なら変更できる
-            'surveyed_by'      => $validated['surveyed_by'] ?? Auth::id(),
             'notes'            => $validated['notes'] ?? null,
         ];
     }
-
-    /** @return array<string, string> */
-    /** ⚠ 第3引数が attributes（第2引数は messages）。Bug #37 */
 }
 ```
 
@@ -5130,7 +5236,9 @@ class AreaBuildingSurveyController extends Controller
             {{-- ⚠ option は @@foreach で静的に生成する（x-for は x-model 同期後に描画される。Bug #16） --}}
             <select name="surveyed_by"
                     class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none cursor-pointer">
-                <option value="">— 未指定（登録者になります）—</option>
+                {{-- ⚠ 新規と編集でラベルが違う。編集で「未指定」を選ぶと調査者は null になる
+                     （登録者にも編集者にもならない）ので「登録者になります」と書くと嘘になる --}}
+                <option value="">{{ $survey === null ? '— 未指定（登録者になります）—' : '— 未指定 —' }}</option>
                 @foreach($surveyors as $surveyor)
                     <option value="{{ $surveyor->id }}"
                         {{ (string) old('surveyed_by', $survey?->surveyed_by ?? auth()->id()) === (string) $surveyor->id ? 'selected' : '' }}>
@@ -5242,8 +5350,11 @@ class AreaBuildingSurveyController extends Controller
                                                class="text-xs font-semibold text-emerald-700 px-3 py-1 border border-emerald-200 rounded bg-emerald-50 hover:bg-emerald-100 transition-colors">編集</a>
                                         @endif
                                         @if(auth()->user()->role->isExecutive())
+                                            {{-- ⚠ 行ごとの削除なので `<x-delete-confirm-modal>` は使えない（§1-12）。
+                                                 ⚠ JS 文字列への差し込みは Js::from()。生の {{ }} だと `'` を含む値で壊れる。
+                                                    前例: zeal/plans/index.blade.php:143 --}}
                                             <form method="POST" action="{{ route('tenant.area-buildings.surveys.destroy', [$building, $survey]) }}"
-                                                  onsubmit="return confirm('{{ $survey->monthLabel() }} の調査を削除します。よろしいですか？');">
+                                                  onsubmit="return confirm({{ \Illuminate\Support\Js::from($survey->monthLabel()) }} + ' の調査を削除します。よろしいですか？');">
                                                 @csrf
                                                 @method('DELETE')
                                                 <button type="submit"
@@ -5262,9 +5373,11 @@ class AreaBuildingSurveyController extends Controller
 vendor/bin/phpunit --filter 'AreaBuildingSurveyCrudTest|AreaBuildingShowTest'
 ```
 
-Expected: PASS（Survey 11 + Show 11）
+Expected: PASS（Survey 15 本 ＋ Show は現状の本数）。
+⚠ Show の本数は Task 7 以降ずっと動いている（2026-08-16 時点で 13 本）ので数字を当てにしない。
+**「何本になったか」ではなく「1 本も赤が無いか」で見る。**
 
-- [ ] **Step 8: 変異テストで 4 通り確認する**
+- [ ] **Step 8: 変異テストで 7 通り確認する**
 
 | # | 変異 | 期待 |
 |---|---|---|
@@ -5272,6 +5385,15 @@ Expected: PASS（Survey 11 + Show 11）
 | 2 | `monthTaken()` の `when($ignoreId !== null, ...)` を削除 | `test_update_can_keep_the_same_month` が赤 |
 | 3 | `monthTaken()` の `whereDate` を `where('surveyed_month', $month)` に | **測って記録する。** Laravel の `date` キャストは `$dateFormat`（既定 `Y-m-d H:i:s`）で書き込む。MySQL の DATE 列は日付に切り詰めるが、SQLite は型が無いので `'2026-08-01 00:00:00'` が残りうる。残るなら `test_duplicate_month_is_rejected_with_a_validation_error` が赤、切り詰められるなら緑。**緑でも `whereDate` のままにする**（本番 MySQL とテスト SQLite で挙動が割れない書き方だから） |
 | 4 | `edit()` の `User::assignableWith($survey->surveyed_by)` を `User::assignable()->get()` に | `test_edit_form_keeps_a_deactivated_surveyor_in_the_options` が赤 |
+| 5 | `update()` の `'surveyed_by' => $validated['surveyed_by'] ?? null` を `?? Auth::id()` に | `test_update_does_not_reassign_the_surveyor_to_the_editor` が赤 |
+| 6 | 同上を `?? $survey->surveyed_by` に | `test_update_can_clear_the_surveyor` が赤 |
+| 7 | ルートの `role:executive,manager` を `role:manager` に | `test_executive_can_add_and_edit` が赤 |
+
+⚠ **`extractSelect()` が load-bearing であることも測る。** 4 を当てたうえで
+`extractSelect($html, ...)` を `$html` に戻し、**それでも赤になるか**を見る
+（今は偶然どちらでも赤になるはず）。**赤になるなら「今は差が出ない」と記録するだけでよい** —
+`extractSelect()` の値は「将来ページに `x-for` を含む文字列が出ても誤判定しない」ことなので、
+差が出ないこと自体は想定どおり。⚠ ただし**測らずに「効いている」と書かないこと**（Bug #45）。
 
 - [ ] **Step 9: コミット**
 
@@ -5459,10 +5581,57 @@ class AreaBuildingTenantCrudTest extends AreaBuildingTestCase
             ->get("/tenant/area-buildings/{$building->id}/tenants/create")
             ->getContent();
 
+        // ⚠ ページ全体で 'x-for' を探してはいけない。実測:
+        //   str_contains('x-form-actions', 'x-for') === true。セレクトの中だけを見る。
+        $select = $this->extractSelect($html, 'status');
         foreach (AreaTenantStatus::cases() as $case) {
-            $this->assertStringContainsString('value="' . $case->value . '"', $html);
+            $this->assertStringContainsString('value="' . $case->value . '"', $select, $case->name);
         }
-        $this->assertStringNotContainsString('x-for', $html);
+        $this->assertStringNotContainsString('x-for', $select);
+    }
+
+    /**
+     * 経営層でも追加・編集できること。
+     * ⚠ これが無いと `role:executive,manager` から executive を落としても全部緑のまま通る。
+     */
+    public function test_executive_can_add_and_edit(): void
+    {
+        $building  = $this->makeBuilding('ミツワビル');
+        $executive = $this->executive();
+
+        $this->actingAs($executive)->get("/tenant/area-buildings/{$building->id}/tenants/create")->assertOk();
+        $this->actingAs($executive)->post("/tenant/area-buildings/{$building->id}/tenants", [
+            'name'   => '経営層が入れた行',
+            'status' => AreaTenantStatus::Operating->value,
+        ])->assertRedirect(route('tenant.area-buildings.show', $building));
+
+        $tenant = AreaBuildingTenant::firstOrFail();
+
+        $this->actingAs($executive)->get("/tenant/area-buildings/{$building->id}/tenants/{$tenant->id}/edit")->assertOk();
+        $this->actingAs($executive)->put("/tenant/area-buildings/{$building->id}/tenants/{$tenant->id}", [
+            'name'   => '書き換えた',
+            'status' => AreaTenantStatus::Vacant->value,
+        ])->assertRedirect();
+
+        $this->assertSame('書き換えた', $tenant->fresh()->name);
+    }
+
+    /**
+     * `<select ... name="X"> … </select>` を切り出す。
+     * ⚠ ページ全体を対象にしたアサーションは、無関係な文字列（`x-form-actions` が
+     *   `x-for` を部分文字列に含む等）に反応して誤って赤／緑になる。
+     */
+    private function extractSelect(string $html, string $name): string
+    {
+        $start = preg_match('/<select[^>]*name="' . preg_quote($name, '/') . '"/', $html, $m, PREG_OFFSET_CAPTURE)
+            ? $m[0][1]
+            : false;
+        $this->assertNotFalse($start, "<select name=\"{$name}\"> が見つからない");
+
+        $end = strpos($html, '</select>', $start);
+        $this->assertNotFalse($end, "<select name=\"{$name}\"> が閉じていない");
+
+        return substr($html, $start, $end - $start);
     }
 }
 ```
@@ -5601,14 +5770,14 @@ class AreaBuildingTenantController extends Controller
             ->with('success', 'テナントを削除しました。');
     }
 
-    /** ⚠ URL の {building} と {tenant} の親子関係を明示的に確かめる */
+    /**
+     * ⚠ ミドルウェアは部門単位でしか見ない。URL の {building} と {tenant} の
+     *   親子関係はここで明示的に確かめる（付け忘れると別ビルのテナントを編集・削除できる）。
+     */
     private function assertOwnedBy(AreaBuilding $building, AreaBuildingTenant $tenant): void
     {
         abort_unless($tenant->area_building_id === $building->id, 404);
     }
-
-    /** @return array<string, string> */
-    /** ⚠ 第3引数が attributes（第2引数は messages）。Bug #37 */
 }
 ```
 
@@ -5725,12 +5894,22 @@ class AreaBuildingTenantController extends Controller
 
 テナント表に操作列を足す（`<colgroup>` の最後に `<col style="width:12%">` を足し「業種」を `18%` → `12%` に、
 `<thead>` に `操作`、各行の末尾に編集・削除ボタン。調査履歴と同形で
-`tenants.edit` / `tenants.destroy` を使い、`confirm()` の文言は
-`'{{ $tenant->name ?: "この行" }} を削除します。よろしいですか？'`）。空行の `colspan="6"` を `colspan="7"` に変える。
+`tenants.edit` / `tenants.destroy` を使う）。空行の `colspan="6"` を `colspan="7"` に変える。
 
-⚠ `confirm()` の中で `{{ }}` を使うときは**シングルクォート内にダブルクォートを入れない**
-（Blade コンポーネント属性ではないので Bug #21 には当たらないが、JS の文字列としては壊れる）。
-名前に `'` が含まれる可能性を考えて `{{ addslashes($tenant->name ?: 'この行') }}` とする。
+削除確認は**行ごと**なので `<x-delete-confirm-modal>` は使えない（§1-12）。`confirm()` にするが、
+**テナント名は利用者の自由入力**なので JS 文字列へ生で差し込まないこと:
+
+```blade
+onsubmit="return confirm({{ \Illuminate\Support\Js::from($tenant->name ?: 'この行') }} + ' を削除します。よろしいですか？');"
+```
+
+⚠ **`addslashes()` は使わない。** 実測でこのリポジトリに前例が **0 件**
+（`grep -rn "addslashes" resources/views/`）で、道具としても不適切 —
+改行や U+2028 を escape せず、しかも `{{ }}` の `e()` と二重にかかる
+（`O'Brien` → `O\'Brien` → `O\&#039;Brien`。ブラウザが属性をデコードして偶然動くだけ）。
+`Js::from()` は `JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_TAG | JSON_HEX_AMP` 付きの
+JSON エンコードで、**クォートごと**返すので HTML 属性の中でも JS 文字列としても安全。
+**正しい前例が既にある**: `resources/views/zeal/plans/index.blade.php:143`。
 
 - [ ] **Step 7: テストが通ることを確認する**
 
@@ -5738,15 +5917,21 @@ class AreaBuildingTenantController extends Controller
 vendor/bin/phpunit --filter 'AreaBuildingTenantCrudTest|AreaBuildingShowTest'
 ```
 
-Expected: PASS（Tenant 10 + Show 11）
+Expected: PASS（Tenant 11 本 ＋ Show は現状の本数）。
+⚠ Show の本数は動くので数字を当てにしない。**「1 本も赤が無いか」で見る。**
 
-- [ ] **Step 8: 変異テストで 3 通り確認する**
+- [ ] **Step 8: 変異テストで 5 通り確認する**
 
 | # | 変異 | 期待 |
 |---|---|---|
 | 1 | `assertOwnedBy()` の中身を空にする | `test_tenant_of_another_building_is_404` が赤 |
 | 2 | `store()` の `keep_adding` 分岐を削除 | `test_keep_adding_returns_to_the_create_screen` が赤 |
-| 3 | `attributes()` の `'name' => 'テナント名'` を削除 | `test_error_labels_match_the_screen` が赤 |
+| 3 | `validate()` 第3引数の `'name' => 'テナント名'` を削除 | `test_error_labels_match_the_screen` が赤（グローバルは「名称」） |
+| 4 | ルートの `role:executive,manager` を `role:manager` に | `test_executive_can_add_and_edit` が赤 |
+| 5 | `_form.blade.php` の状態 option を `<template x-for>` に | `test_status_options_are_static` が赤 |
+
+⚠ 5 は `extractSelect()` の妥当性確認も兼ねる。**変異が本当に当たったか `git diff` で確認する**
+（当たっていない変異を「検出しない」と誤読する事故が実際に起きている。Bug #44）。
 
 - [ ] **Step 9: コミット**
 
@@ -6020,14 +6205,24 @@ class AreaBuildingImportTest extends AreaBuildingTestCase
         $this->assertSame(0, AreaBuilding::count());
     }
 
-    /** SheetJS は SRI 付きで読み込む（新規に足す CDN スクリプトの方針。設計 §7） */
+    /**
+     * SheetJS は SRI 付きで読み込む（新規に足す CDN スクリプトの方針。設計 §7 / プラン §1-13）。
+     *
+     * ⚠ **ハッシュは literal で固定する。** `/integrity="sha384-[A-Za-z0-9+\/=]+"/` のような
+     *   「sha384- で始まる何か」の正規表現だと、**打ち間違えたハッシュでも緑になる**。
+     *   SRI が一致しないとブラウザはスクリプトを**黙って読み込まない**（コンソールにだけ出る）ので、
+     *   取込画面が無反応になっているのにテストも `view:cache` も全部通る＝ Bug #28 と同型。
+     *   jsDelivr のバージョン固定 URL は不変なので固定値でよい。
+     */
+    private const SHEETJS_SRI = 'sha384-<Step 5 で実測した値>';
+
     public function test_sheetjs_is_loaded_from_jsdelivr_with_sri(): void
     {
         $html = $this->actingAs($this->manager())->get('/tenant/area-buildings/import')->getContent();
 
         $this->assertStringContainsString('cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js', $html);
         $this->assertStringNotContainsString('cdnjs.cloudflare.com', $html, '本番でブロックされる CDN を使っている');
-        $this->assertMatchesRegularExpression('/integrity="sha384-[A-Za-z0-9+\/=]+"/', $html, 'SRI が付いていない');
+        $this->assertStringContainsString('integrity="' . self::SHEETJS_SRI . '"', $html, 'SRI が無いか、実測値と違う');
         $this->assertStringContainsString('crossorigin="anonymous"', $html);
     }
 
@@ -6390,7 +6585,17 @@ Task 8 で置いた「⚠ /area-buildings/import /geocode はこの行より上�
 curl -sL https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js | openssl dgst -sha384 -binary | openssl base64 -A
 ```
 
-出力を `sha384-` に続けて次の Step の `integrity` に貼る。
+出力を `sha384-` に続けて **3 箇所**へ貼る:
+
+1. 次の Step の Blade の `integrity="..."`
+2. Step 1 のテストの `SHEETJS_SRI` 定数
+3. **このプランのこの行**（後から「どの値を測ったのか」を追えるようにする）
+
+   実測値: `sha384-________________________________________`（Step 5 で埋める）
+
+⚠ **同じ値を 2 箇所に手で書くので、片方だけ打ち間違えるとテストが赤になって気づける** —
+これが H2 の狙い（正規表現だと打ち間違えても緑）。逆に**両方を同じ間違った値にすると
+テストは緑のままブラウザだけ死ぬ**ので、コピー&ペーストで貼ること（打ち直さない）。
 
 - [ ] **Step 6: 取込画面を書く**
 
@@ -6548,6 +6753,9 @@ curl -sL https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js | openss
 @endsection
 
 @push('scripts')
+{{-- ⚠ integrity は Step 5 の実測値をコピー&ペーストで貼る（打ち直さない）。
+     テストの SHEETJS_SRI 定数と同じ値であること。不一致だとブラウザはこのスクリプトを
+     黙って読み込まず、取込画面が無反応になる（Bug #28 と同型）。 --}}
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"
         integrity="sha384-PASTE_MEASURED_HASH_HERE" crossorigin="anonymous"></script>
 <script>
@@ -7568,7 +7776,7 @@ cd /Users/masanori/site/manage && php artisan db:table area_buildings && php art
 - [ ] **Ajax を叩いてから必須項目を空で送信**しても、生の JSON でなくフォームに戻る
       （本機能に `fetch` は無いので理屈上は起きないが、確認して記録に残す。Bug #35）
 - [ ] バリデーションエラーの文言が日本語で、項目名が画面ラベルと一致している
-      （「ビル名は必ず入力してください。」「所在地は…」）
+      （「ビル名は必須です。」「所在地は…」）
 
 - [ ] **Step 13: デプロイ後に Google Cloud Console を確認する**
 
@@ -7659,3 +7867,23 @@ SRI を付けられるのはバージョン固定の SheetJS のような静的�
 - ビル名の重複マージ UI — 取込でビル名が一致しなかった場合は別のビルとして登録される。
   第1段では手で編集・削除して整える（マージ機能は実データを見てから判断する）
 - 一覧の全件メモリロード — 棟数が数千を超えたら SQL 側の並び替えへ移す（プラン §1-4）
+
+### フォローアップ（本プランでは触らないが、記録として残す）
+
+いずれも**今回のスコープ外**。本番稼働中のモジュールを広く触ることになり、
+今回の変更と関係のない範囲で事故る危険のほうが大きいので分離する。
+
+- **Google Maps の地図 JS が 4 コピーになった** — `realestate/procurements/_form` /
+  `realestate/projects/_form` / `dad/projects/_form` に加えて本機能の
+  `tenant/area-buildings/_form`。約 150 行が同一で、`_partials` へ切り出すのが筋。
+  ⚠ 重複は**今回始まったものではなく既に 3 コピーあった**。しかも
+  `procurements` と `projects` は `_cost_section_form` や `supplier-picker` を
+  `_partials` 経由で共有しているのに**地図 JS だけ共有していない**という不整合が前からある。
+  ⚠ Task 12（座標の一括取得）は `new google.maps.Map(` も段階フォールバックも持たない
+  別設計なので、**5 コピー目にはならない**（確認済み）。
+- **既存 SheetJS 4 箇所に SRI が無い** — 上記 §1-13。本機能の取込画面にだけ付く状態になる。
+- **生の `{{ $x->name }}` を JS 文字列に差し込んでいる箇所が 3 つ残っている** —
+  `admin/master/zeal-simulation-categories/index.blade.php:130` /
+  `zeal/members/show.blade.php:116` /
+  `zeal/simulations/index.blade.php:73`（最後は数値なので実害なし）。
+  正しい形は `zeal/plans/index.blade.php:143` の `\Illuminate\Support\Js::from()`。
