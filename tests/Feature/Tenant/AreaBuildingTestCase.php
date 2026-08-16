@@ -218,10 +218,15 @@ abstract class AreaBuildingTestCase extends TestCase
      * タグから属性値を取り出す。
      * ⚠ `\bname=` だと `data-name=` にも当たる（`-` の直後は語境界）。
      *   語構成文字とハイフンの直後を除外する。
+     * ⚠ **Alpine のバインド属性も除外する。** `:value="payload()"` / `x-bind:value="…"` /
+     *   `@change="…"` は素の属性ではないのに `(?<![\w-])value="…"` に一致してしまい、
+     *   **Alpine の式文字列がそのまま「フォームの値」として返る**（2026-08-17 実測で
+     *   `kind => 'kind'`、`rows => 'payload()'` が返った）。ブラウザが描画直後に持つ値は
+     *   空なので、`:` `.` `@` の直後も除外して空を返させる。
      */
     private function htmlAttr(string $tag, string $name): ?string
     {
-        $pattern = '/(?<![\w-])' . preg_quote($name, '/') . '="([^"]*)"/i';
+        $pattern = '/(?<![\w:.@-])' . preg_quote($name, '/') . '="([^"]*)"/i';
 
         return preg_match($pattern, $tag, $m) ? html_entity_decode($m[1], ENT_QUOTES, 'UTF-8') : null;
     }
