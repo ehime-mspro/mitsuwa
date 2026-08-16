@@ -81,6 +81,33 @@ class AreaBuildingListTest extends AreaBuildingTestCase
         );
     }
 
+    /**
+     * 空室率フィルタの境界は「以上」（inclusive）。
+     *
+     * ⚠ コード品質レビュー M-2/M-3（2026-08-16）で指摘: 上の test_vacancy_bands は
+     *   10% / 30% / 50% しか使っておらず、`matchesVacancy()` の `$rate >= 20.0` /
+     *   `$rate >= 40.0` の**等号側を一度も踏んでいない**（`>` に変異させても緑のまま。
+     *   実装自体は正しいのに、テストが境界を検出できていなかった）。
+     *   ちょうど 20.0%（営業8/空き2）・ちょうど 40.0%（営業6/空き4）のビルを作り、
+     *   両境界の等号側を固定する。あわせて 19.9%（境界のすぐ下）が over20 に
+     *   含まれないことも固定し、境界が「20.0 ちょうど」にあることを両側から挟む。
+     */
+    public function test_vacancy_band_boundaries_are_inclusive_at_20_and_40_percent(): void
+    {
+        $this->makeSurvey($this->makeBuilding('率ちょうど20'), '2026-08-01', 8, 2);     // 20.0%
+        $this->makeSurvey($this->makeBuilding('率ちょうど40'), '2026-08-01', 6, 4);     // 40.0%
+        $this->makeSurvey($this->makeBuilding('率19.9'), '2026-08-01', 161, 40);        // 19.9%（実測: intdiv(40*1000,201)/10 = 19.9）
+
+        $staff = $this->staff();
+
+        $over20 = $this->listedNames($this->actingAs($staff)->get('/tenant/area-buildings?vacancy=over20'));
+        $this->assertContains('率ちょうど20', $over20, 'ちょうど 20.0% が over20 に含まれていない（境界が inclusive でない）');
+        $this->assertNotContains('率19.9', $over20, '19.9%（20.0% 未満）が over20 に含まれてしまっている');
+
+        $over40 = $this->listedNames($this->actingAs($staff)->get('/tenant/area-buildings?vacancy=over40'));
+        $this->assertContains('率ちょうど40', $over40, 'ちょうど 40.0% が over40 に含まれていない（境界が inclusive でない）');
+    }
+
     /** 「不明」は空き扱いなので率のバンドに効く（VacancyRate を通っている証拠） */
     public function test_unknown_counts_toward_the_vacancy_band(): void
     {
@@ -204,6 +231,43 @@ class AreaBuildingListTest extends AreaBuildingTestCase
         $response->assertOk();
         $this->assertCount(20, $this->listedNames($response));
         $this->assertSame(25, $response->viewData('rows')->total());
+    }
+
+    /**
+     * ちょうど 20 件では次ページが無い（$perPage=20 の境界の片側）。
+     *
+     * ⚠ コード品質レビュー M-2/M-3（2026-08-16）で指摘: 上の test_paginates_at_twenty_per_page は
+     *   25 件で試しており、「ちょうど 20 件のとき hasPages() が false」の分岐を一度も
+     *   通っていなかった。
+     */
+    public function test_has_no_next_page_at_exactly_twenty_buildings(): void
+    {
+        for ($i = 1; $i <= 20; $i++) {
+            $this->makeBuilding(sprintf('ビル%02d', $i));
+        }
+
+        $response = $this->actingAs($this->staff())->get('/tenant/area-buildings');
+
+        $response->assertOk();
+        $paginator = $response->viewData('rows');
+        $this->assertSame(20, $paginator->total());
+        $this->assertFalse($paginator->hasPages(), 'ちょうど 20 件なのに次ページが出ている（$perPage が 20 でない）');
+    }
+
+    /** 21 件では 2 ページ目ができる（$perPage=20 の境界のもう片側） */
+    public function test_has_a_second_page_at_twenty_one_buildings(): void
+    {
+        for ($i = 1; $i <= 21; $i++) {
+            $this->makeBuilding(sprintf('ビル%02d', $i));
+        }
+
+        $response = $this->actingAs($this->staff())->get('/tenant/area-buildings');
+
+        $response->assertOk();
+        $paginator = $response->viewData('rows');
+        $this->assertSame(21, $paginator->total());
+        $this->assertTrue($paginator->hasPages(), '21 件なのに次ページが出ていない（$perPage が 20 でない）');
+        $this->assertSame(2, $paginator->lastPage());
     }
 
     /**

@@ -2233,6 +2233,33 @@ class AreaBuildingListTest extends AreaBuildingTestCase
         );
     }
 
+    /**
+     * 空室率フィルタの境界は「以上」（inclusive）。
+     *
+     * ⚠ **2026-08-16 コード品質レビュー M-2/M-3 で追加。** 上の test_vacancy_bands は
+     *   10% / 30% / 50% しか使っておらず、`matchesVacancy()` の `$rate >= 20.0` /
+     *   `$rate >= 40.0` の**等号側を一度も踏んでいない**（`>` に変異させても緑のまま。
+     *   実装自体は正しいのに、テストが境界を検出できていなかった）。
+     *   ちょうど 20.0%（営業8/空き2）・ちょうど 40.0%（営業6/空き4）のビルを作り、
+     *   両境界の等号側を固定する。あわせて 19.9%（境界のすぐ下）が over20 に
+     *   含まれないことも固定し、境界が「20.0 ちょうど」にあることを両側から挟む。
+     */
+    public function test_vacancy_band_boundaries_are_inclusive_at_20_and_40_percent(): void
+    {
+        $this->makeSurvey($this->makeBuilding('率ちょうど20'), '2026-08-01', 8, 2);     // 20.0%
+        $this->makeSurvey($this->makeBuilding('率ちょうど40'), '2026-08-01', 6, 4);     // 40.0%
+        $this->makeSurvey($this->makeBuilding('率19.9'), '2026-08-01', 161, 40);        // 19.9%（実測: intdiv(40*1000,201)/10 = 19.9）
+
+        $staff = $this->staff();
+
+        $over20 = $this->listedNames($this->actingAs($staff)->get('/tenant/area-buildings?vacancy=over20'));
+        $this->assertContains('率ちょうど20', $over20, 'ちょうど 20.0% が over20 に含まれていない（境界が inclusive でない）');
+        $this->assertNotContains('率19.9', $over20, '19.9%（20.0% 未満）が over20 に含まれてしまっている');
+
+        $over40 = $this->listedNames($this->actingAs($staff)->get('/tenant/area-buildings?vacancy=over40'));
+        $this->assertContains('率ちょうど40', $over40, 'ちょうど 40.0% が over40 に含まれていない（境界が inclusive でない）');
+    }
+
     /** 「不明」は空き扱いなので率のバンドに効く（VacancyRate を通っている証拠） */
     public function test_unknown_counts_toward_the_vacancy_band(): void
     {
@@ -2326,6 +2353,50 @@ class AreaBuildingListTest extends AreaBuildingTestCase
         $response->assertOk();
         $this->assertCount(20, $this->listedNames($response));
         $this->assertSame(25, $response->viewData('rows')->total());
+    }
+
+    /**
+     * ちょうど 20 件では次ページが無い（$perPage=20 の境界の片側）。
+     *
+     * ⚠ **2026-08-16 コード品質レビュー M-2/M-3 で追加。** 上の test_paginates_at_twenty_per_page は
+     *   25 件で試しており、「ちょうど 20 件のとき hasPages() が false」の分岐を一度も
+     *   通っていなかった。
+     */
+    public function test_has_no_next_page_at_exactly_twenty_buildings(): void
+    {
+        for ($i = 1; $i <= 20; $i++) {
+            $this->makeBuilding(sprintf('ビル%02d', $i));
+        }
+
+        $response = $this->actingAs($this->staff())->get('/tenant/area-buildings');
+
+        $response->assertOk();
+        $paginator = $response->viewData('rows');
+        $this->assertSame(20, $paginator->total());
+        $this->assertFalse($paginator->hasPages(), 'ちょうど 20 件なのに次ページが出ている（$perPage が 20 でない）');
+    }
+
+    /**
+     * 21 件では 2 ページ目ができる（$perPage=20 の境界のもう片側）。
+     *
+     * ⚠ この 2 本は組で意味を持つ：20 件の方は $perPage が 20 未満に縮んだ場合を検出し、
+     *   21 件の方は 20 を超えて広がった場合を検出する。実測で $perPage=21 への変異は
+     *   21 件の方だけを赤にし（20 件の方は 21 でも 1 ページに収まるので緑のまま）、
+     *   逆に $perPage=19 への変異は 20 件の方だけを赤にする（2026-08-16 実測）。
+     */
+    public function test_has_a_second_page_at_twenty_one_buildings(): void
+    {
+        for ($i = 1; $i <= 21; $i++) {
+            $this->makeBuilding(sprintf('ビル%02d', $i));
+        }
+
+        $response = $this->actingAs($this->staff())->get('/tenant/area-buildings');
+
+        $response->assertOk();
+        $paginator = $response->viewData('rows');
+        $this->assertSame(21, $paginator->total());
+        $this->assertTrue($paginator->hasPages(), '21 件なのに次ページが出ていない（$perPage が 20 でない）');
+        $this->assertSame(2, $paginator->lastPage());
     }
 
     /**
@@ -2426,8 +2497,25 @@ use Illuminate\Support\Collection;
  * ⚠ 率を SQL 側で計算しないこと。VacancyRate と二重実装になり（Bug #41）、
  *   さらに MySQL の `/` は小数を返すのに SQLite の `/` は整数除算なので値が食い違う。
  *
- * ⚠ 絞り込み後の全件を一度メモリに載せる。本番の想定棟数は数十〜数百なので問題ないが、
- *   数千を超えるようなら SQL 側の並び替えへ移す（そのときは率の算出も 1 箇所に保つ工夫が要る）。
+ * ⚠ 絞り込み後の全件を一度メモリに載せる。**実用上は数万棟まで問題ない**
+ *   （2026-08-16 コード品質レビューで実測較正。当初の docblock は「数千を超えたら見直す」と
+ *   安全側に振りすぎていた）:
+ *
+ *   | 棟数    | 応答時間  | メモリ増分 |
+ *   |---------|-----------|-----------|
+ *   | 300     | 44ms      | +4.0MB    |
+ *   | 1,000   | 56ms      | +6.0MB    |
+ *   | 5,000   | 147ms     | +20.0MB   |
+ *   | 20,000  | 509ms     | +72.0MB   |
+ *   | 50,000  | 1,275ms   | +176.5MB  |
+ *
+ *   増分はほぼ線形（1 棟あたり約 3.5〜4KB / 約 25μs）。5,000 棟でも 147ms で全く問題なく、
+ *   体感できる遅さは 20,000 棟付近から、明確に問題化するのは 50,000 棟付近。
+ *   ⚠ 計測は SQLite（in-memory）で行ったため絶対値は参考値だが、インデックス構造は
+ *   本番 MySQL と同一（`uk_area_survey_building_month`）なので傾向は転用できる。
+ *   ⚠ さらに、この一覧は手作業の現地調査で作られるデータで、現状の Excel 台帳でも
+ *   50 棟超程度。数万棟という規模自体が現実の運用では起こらない。
+ *   見直すとしても、まずはこの想定を覆すだけの実データが増えてから検討すればよい。
  */
 class AreaBuildingListService
 {
@@ -2862,6 +2950,27 @@ if (! is_string($vacancy) || ! array_key_exists($vacancy, self::VACANCY_OPTIONS)
 
 ⚠ 変異 5 は「テストで守れない」ことの確認。無理に検出しようとしてサイドバーの構造テストを
 足すより、Step 8 の `grep -c` を手順として残すほうが素直（走査テストの盲点。Bug #45）。
+
+⚠ **2026-08-16 コード品質レビュー M-2/M-3 で追加 — 境界値の変異 3 通り。**
+実装（`$rate >= 20.0` / `$rate >= 40.0` / `$perPage = 20`）自体は正しかったが、
+上記の変異 1〜5 やそれ以前のテストは**どれも境界の等号側・ちょうどの件数を踏んでいなかった**
+（`test_vacancy_bands` は 10/30/50% のみ、`test_paginates_at_twenty_per_page` は 25 件のみ）。
+Step 2 に `test_vacancy_band_boundaries_are_inclusive_at_20_and_40_percent` /
+`test_has_no_next_page_at_exactly_twenty_buildings` /
+`test_has_a_second_page_at_twenty_one_buildings` の 3 本を追加し、次の変異で確認する:
+
+| # | 変異 | 追加前（当時のテスト）| 追加後（新テスト込み） |
+|---|---|---|---|
+| 1 | `matchesVacancy()` の `$rate >= 20.0` を `$rate > 20.0` に | **緑のまま**（2026-08-16 実測） | `test_vacancy_band_boundaries_are_inclusive_at_20_and_40_percent` が赤（「ちょうど 20.0% が over20 に含まれていない」） |
+| 2 | 同じく `$rate >= 40.0` を `$rate > 40.0` に | **緑のまま**（2026-08-16 実測） | 同テストが赤（「ちょうど 40.0% が over40 に含まれていない」） |
+| 3 | `paginate()` の `$perPage` 既定値を `20` → `21` に | `test_paginates_at_twenty_per_page` が赤（21 件返り 20 と不一致。副次効果） | 上記に加えて `test_has_a_second_page_at_twenty_one_buildings` が赤。**`test_has_no_next_page_at_exactly_twenty_buildings` は緑のまま**（20 件は 21 件/ページでも 1 ページに収まるため。数学的に正しい非検出） |
+
+⚠ **変異 1・2 は「追加前は検出できなかった」ことが load-bearing の証明そのもの**——
+片方だけ見ると「元から境界は守られていた」と誤読する（Bug #45 と同型の確認手順）。
+⚠ **境界ペアの片方だけでは不十分**——実測で `$perPage=19`（20 未満へ縮小）は
+`test_has_no_next_page_at_exactly_twenty_buildings` だけを赤にし、`$perPage=21`
+（20 超へ拡大）は `test_has_a_second_page_at_twenty_one_buildings` だけを赤にする
+（2026-08-16 実測。相互に排他的で、2 本そろって初めて `$perPage=20` を両側から挟める）。
 
 - [ ] **Step 12: コミット**
 
