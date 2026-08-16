@@ -3612,20 +3612,30 @@ Expected: FAIL — 404 / 405
 
     public function store(Request $request)
     {
-        $validated = $request->validate(
-            array_merge($this->buildingRules(), [
-                // 新規登録時のみ 1 回目の調査を同時に作れる（設計 §5.5）。
-                // ⚠ 所見は survey_notes。ビル自身の notes と衝突するため名前を分けている
-                'surveyed_month'  => 'nullable|date_format:Y-m',
-                'operating_count' => 'nullable|integer|min:0|max:9999',
-                'vacant_count'    => 'nullable|integer|min:0|max:9999',
-                'unknown_count'   => 'nullable|integer|min:0|max:9999',
-                'survey_notes'    => 'nullable|string|max:2000',
-            ]),
-            [],
+        // ⚠ ルールは literal 配列で直書きする。$this->rules() のような間接参照にすると
+        //   JapaneseValidationMessagesTest の走査正規表現
+        //   /validate\(\s*\[(.*?)\n\s*\]\s*[,)]/s にマッチせず、このコントローラのキーが
+        //   和名チェックから丸ごと外れる（2026-08-16 実測）。store と update で重複するが、
+        //   既存 185 ルートも同じ書き方をしている。
+        $validated = $request->validate([
+            'name'         => 'required|string|max:255',
+            'address'      => 'nullable|string|max:255',
+            'latitude'     => 'nullable|numeric|between:-90,90',
+            'longitude'    => 'nullable|numeric|between:-180,180',
+            'total_floors' => 'nullable|integer|min:0|max:200',
+            'notes'        => 'nullable|string|max:5000',
+            // 新規登録時のみ 1 回目の調査を同時に作れる（設計 §5.5）。
+            // ⚠ 所見は survey_notes。ビル自身の notes と衝突するため名前を分けている
+            'surveyed_month'  => 'nullable|date_format:Y-m',
+            'operating_count' => 'nullable|integer|min:0|max:9999',
+            'vacant_count'    => 'nullable|integer|min:0|max:9999',
+            'unknown_count'   => 'nullable|integer|min:0|max:9999',
+            'survey_notes'    => 'nullable|string|max:2000',
+        ], [], [
             // ⚠ 第3引数が attributes（第2引数は messages）。Bug #37
-            $this->buildingAttributes()
-        );
+            'name'    => 'ビル名',
+            'address' => '所在地',
+        ]);
 
         $building = AreaBuilding::create([
             'name'         => $validated['name'],
@@ -3663,7 +3673,18 @@ Expected: FAIL — 404 / 405
     {
         // ⚠ 編集画面に調査欄は出さない（調査は履歴側で管理する。設計 §5.5）。
         //   buildingRules() だけを通すので、調査の項目が送られてきても validated に入らない。
-        $validated = $request->validate($this->buildingRules(), [], $this->buildingAttributes());
+        // ⚠ literal 配列で直書きする理由は store() のコメントを参照
+        $validated = $request->validate([
+            'name'         => 'required|string|max:255',
+            'address'      => 'nullable|string|max:255',
+            'latitude'     => 'nullable|numeric|between:-90,90',
+            'longitude'    => 'nullable|numeric|between:-180,180',
+            'total_floors' => 'nullable|integer|min:0|max:200',
+            'notes'        => 'nullable|string|max:5000',
+        ], [], [
+            'name'    => 'ビル名',
+            'address' => '所在地',
+        ]);
 
         $building->update([
             'name'         => $validated['name'],
@@ -3689,29 +3710,6 @@ Expected: FAIL — 404 / 405
     }
 
     /** @return array<string, string> */
-    private function buildingRules(): array
-    {
-        return [
-            'name'         => 'required|string|max:255',
-            'address'      => 'nullable|string|max:255',
-            'latitude'     => 'nullable|numeric|between:-90,90',
-            'longitude'    => 'nullable|numeric|between:-180,180',
-            'total_floors' => 'nullable|integer|min:0|max:200',
-            'notes'        => 'nullable|string|max:5000',
-        ];
-    }
-
-    /**
-     * 画面ラベルに合わせた項目名。
-     * ⚠ グローバルは name=名称 / address=住所 のままにする（他画面が使っている）。
-     */
-    private function buildingAttributes(): array
-    {
-        return [
-            'name'    => 'ビル名',
-            'address' => '所在地',
-        ];
-    }
 ```
 
 - [ ] **Step 4: ルートを足す**
@@ -4155,7 +4153,7 @@ Expected: PASS（Crud 13 + Show 11 + List 12）
 |---|---|---|
 | 1 | ルートの create / store ブロックを show ルートの**後**へ移動 | `test_create_route_is_not_swallowed_by_the_show_route` が赤（404） |
 | 2 | `update()` の validate を `store()` と同じルール配列に変える | `test_update_changes_the_building_and_never_touches_surveys` が赤 |
-| 3 | `buildingAttributes()` の `'address' => '所在地'` を削除 | `test_address_error_says_shozaichi_not_juusho` が赤 |
+| 3 | `store()` と `update()` の第3引数から `'address' => '所在地'` を削除（**2 箇所とも**） | `test_address_error_says_shozaichi_not_juusho` が赤。⚠ 片方だけ消すと、もう片方の経路を叩くテストが緑のまま残る |
 | 4 | `_form.blade.php` の `streetViewControl: false` を `true` に | `test_form_disables_street_view_control` が赤 |
 
 - [ ] **Step 11: 本番同等のコンパイルを確認する（Bug #26 / #30）**
@@ -4421,7 +4419,22 @@ class AreaBuildingSurveyController extends Controller
 
     public function store(Request $request, AreaBuilding $building)
     {
-        $validated = $request->validate($this->rules(), [], $this->attributes());
+        // ⚠ ルールは literal 配列で直書きする。$this->rules() のような間接参照にすると
+        //   JapaneseValidationMessagesTest の走査正規表現
+        //   /validate\(\s*\[(.*?)\n\s*\]\s*[,)]/s にマッチせず、このコントローラのキーが
+        //   和名チェックから丸ごと外れる（2026-08-16 実測）。store と update で重複するが、
+        //   既存 185 ルートも同じ書き方をしている。
+        $validated = $request->validate([
+            'surveyed_month'  => 'required|date_format:Y-m',
+            'operating_count' => 'nullable|integer|min:0|max:9999',
+            'vacant_count'    => 'nullable|integer|min:0|max:9999',
+            'unknown_count'   => 'nullable|integer|min:0|max:9999',
+            'surveyed_by'     => 'nullable|integer|exists:users,id',
+            'notes'           => 'nullable|string|max:2000',
+        ], [], [
+            // ⚠ この画面のラベルは「所見」。グローバルは「備考」なので上書きする
+            'notes' => '所見',
+        ]);
 
         $month = $validated['surveyed_month'] . '-01';
 
@@ -4453,7 +4466,22 @@ class AreaBuildingSurveyController extends Controller
     {
         $this->assertOwnedBy($building, $survey);
 
-        $validated = $request->validate($this->rules(), [], $this->attributes());
+        // ⚠ ルールは literal 配列で直書きする。$this->rules() のような間接参照にすると
+        //   JapaneseValidationMessagesTest の走査正規表現
+        //   /validate\(\s*\[(.*?)\n\s*\]\s*[,)]/s にマッチせず、このコントローラのキーが
+        //   和名チェックから丸ごと外れる（2026-08-16 実測）。store と update で重複するが、
+        //   既存 185 ルートも同じ書き方をしている。
+        $validated = $request->validate([
+            'surveyed_month'  => 'required|date_format:Y-m',
+            'operating_count' => 'nullable|integer|min:0|max:9999',
+            'vacant_count'    => 'nullable|integer|min:0|max:9999',
+            'unknown_count'   => 'nullable|integer|min:0|max:9999',
+            'surveyed_by'     => 'nullable|integer|exists:users,id',
+            'notes'           => 'nullable|string|max:2000',
+        ], [], [
+            // ⚠ この画面のラベルは「所見」。グローバルは「備考」なので上書きする
+            'notes' => '所見',
+        ]);
 
         $month = $validated['surveyed_month'] . '-01';
 
@@ -4517,23 +4545,7 @@ class AreaBuildingSurveyController extends Controller
     }
 
     /** @return array<string, string> */
-    private function rules(): array
-    {
-        return [
-            'surveyed_month'  => 'required|date_format:Y-m',
-            'operating_count' => 'nullable|integer|min:0|max:9999',
-            'vacant_count'    => 'nullable|integer|min:0|max:9999',
-            'unknown_count'   => 'nullable|integer|min:0|max:9999',
-            'surveyed_by'     => 'nullable|integer|exists:users,id',
-            'notes'           => 'nullable|string|max:2000',
-        ];
-    }
-
     /** ⚠ 第3引数が attributes（第2引数は messages）。Bug #37 */
-    private function attributes(): array
-    {
-        return ['notes' => '所見'];
-    }
 }
 ```
 
@@ -4953,7 +4965,26 @@ class AreaBuildingTenantController extends Controller
 
     public function store(Request $request, AreaBuilding $building)
     {
-        $validated = $request->validate($this->rules(), [], $this->attributes());
+        // ⚠ ルールは literal 配列で直書きする。$this->rules() のような間接参照にすると
+        //   JapaneseValidationMessagesTest の走査正規表現
+        //   /validate\(\s*\[(.*?)\n\s*\]\s*[,)]/s にマッチせず、このコントローラのキーが
+        //   和名チェックから丸ごと外れる（2026-08-16 実測）。store と update で重複するが、
+        //   既存 185 ルートも同じ書き方をしている。
+        $validated = $request->validate([
+            'floor'        => 'nullable|integer|min:-10|max:200',
+            'room_number'  => 'nullable|string|max:50',
+            'name'         => 'nullable|string|max:255',
+            'industry'     => 'nullable|string|max:100',
+            'status'       => 'required|in:operating,vacant,unknown',
+            'confirmed_on' => 'nullable|date',
+            'moved_out_on' => 'nullable|date',
+            'notes'        => 'nullable|string|max:2000',
+        ], [], [
+            'name'        => 'テナント名',
+            'room_number' => '部屋番号',
+            'floor'       => '階',
+            'status'      => '状態',
+        ]);
 
         AreaBuildingTenant::create(array_merge($validated, ['area_building_id' => $building->id]));
 
@@ -4982,7 +5013,26 @@ class AreaBuildingTenantController extends Controller
     {
         $this->assertOwnedBy($building, $tenant);
 
-        $validated = $request->validate($this->rules(), [], $this->attributes());
+        // ⚠ ルールは literal 配列で直書きする。$this->rules() のような間接参照にすると
+        //   JapaneseValidationMessagesTest の走査正規表現
+        //   /validate\(\s*\[(.*?)\n\s*\]\s*[,)]/s にマッチせず、このコントローラのキーが
+        //   和名チェックから丸ごと外れる（2026-08-16 実測）。store と update で重複するが、
+        //   既存 185 ルートも同じ書き方をしている。
+        $validated = $request->validate([
+            'floor'        => 'nullable|integer|min:-10|max:200',
+            'room_number'  => 'nullable|string|max:50',
+            'name'         => 'nullable|string|max:255',
+            'industry'     => 'nullable|string|max:100',
+            'status'       => 'required|in:operating,vacant,unknown',
+            'confirmed_on' => 'nullable|date',
+            'moved_out_on' => 'nullable|date',
+            'notes'        => 'nullable|string|max:2000',
+        ], [], [
+            'name'        => 'テナント名',
+            'room_number' => '部屋番号',
+            'floor'       => '階',
+            'status'      => '状態',
+        ]);
 
         // ⚠ 未送信キーは validated() に入らないので、null に落としたい列は明示的に埋める
         //   （x-show や任意項目で送られなかったとき旧値が残る事故を防ぐ。Bug #38）
@@ -5018,32 +5068,7 @@ class AreaBuildingTenantController extends Controller
     }
 
     /** @return array<string, string> */
-    private function rules(): array
-    {
-        $statuses = implode(',', array_column(AreaTenantStatus::cases(), 'value'));
-
-        return [
-            'floor'        => 'nullable|integer|min:-10|max:200',
-            'room_number'  => 'nullable|string|max:50',
-            'name'         => 'nullable|string|max:255',
-            'industry'     => 'nullable|string|max:100',
-            'status'       => 'required|in:' . $statuses,
-            'confirmed_on' => 'nullable|date',
-            'moved_out_on' => 'nullable|date',
-            'notes'        => 'nullable|string|max:2000',
-        ];
-    }
-
     /** ⚠ 第3引数が attributes（第2引数は messages）。Bug #37 */
-    private function attributes(): array
-    {
-        return [
-            'name'        => 'テナント名',
-            'room_number' => '部屋番号',
-            'floor'       => '階',
-            'status'      => '状態',
-        ];
-    }
 }
 ```
 
@@ -5869,7 +5894,9 @@ curl -sL https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js | openss
         <div class="text-sm font-bold text-gray-800 pb-2 mb-3.5 border-b border-gray-200">取込の種類</div>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-1">種別</label>
+                {{-- ⚠ ラベルは「取込種別」。lang/ja/validation.php の attributes と同じ語にする
+                     （画面が「種別」だとエラー文の「取込種別は…」と食い違う。Bug #37） --}}
+                <label class="block text-sm font-semibold text-gray-700 mb-1">取込種別</label>
                 {{-- ⚠ option は @@foreach 相当の静的生成。x-for は使わない（Bug #16） --}}
                 <select x-model="kind" @change="resetAll()"
                         class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none cursor-pointer">
@@ -6576,11 +6603,13 @@ Expected: FAIL — 404 / `Undefined view variable`
      */
     public function storeCoordinates(Request $request)
     {
-        $validated = $request->validate(
-            ['coordinates' => 'required|string'],
-            [],
-            ['coordinates' => '取得した座標']
-        );
+        // ⚠ 1 行にまとめると走査正規表現の `\n\s*\]` 要件を満たさず、和名チェックの
+        //   対象から外れる（2026-08-16 実測）。閉じ括弧を行頭に置く形で書くこと。
+        $validated = $request->validate([
+            'coordinates' => 'required|string',
+        ], [], [
+            'coordinates' => '取得した座標',
+        ]);
 
         $decoded = json_decode($validated['coordinates'], true);
 
@@ -6791,6 +6820,52 @@ Expected: 既存テストと本機能の約 105 本がすべて PASS。
 - `AjaxErrorFeedbackTest`（本機能は `fetch` を 1 つも使わないので分類対象に増えない。**増えていたら設計から外れている**）
 - `JapaneseValidationMessagesTest`（新しい `validate()` キーに和名がある）
 - `LayoutScriptStackTest` / `LayoutStyleStackTest`
+
+- [ ] **Step 1b: 和名の走査テストが新しい 4 コントローラを本当に見ているかを確認する**
+
+⚠ **「テストが緑」では判定できない。** `JapaneseValidationMessagesTest::validatedKeysByController()` は
+`/validate\(\s*\[(.*?)\n\s*\]\s*[,)]/s` で `validate()` を探すので、
+**`validate($this->rules(), ...)` のような間接参照や、配列を 1 行で書いた形は 1 件も拾えない**
+（2026-08-16 実測。プランは当初その書き方で、Task 8 / 9 / 10 / 12 が丸ごと不可視だった）。
+拾えていないコントローラのキーは、和名を消しても永遠に緑のまま通る。
+
+次を実行して、**4 コントローラすべてが列挙され、キーが期待どおり拾えていること**を確認する:
+
+```bash
+vendor/bin/phpunit --filter test_every_validated_field_has_a_japanese_attribute_label
+```
+
+これが緑なだけでは足りないので、**中身を目で見る**。一時的に次のテストを足して出力を確認し、
+確認後に消すこと:
+
+```php
+public function test_tmp_dump_scanned_controllers(): void
+{
+    $out = $this->validatedKeysByController();   // private → 一時的に public にするか Reflection で
+    foreach ($out as $file => $keys) {
+        if (str_contains($file, 'AreaBuilding')) {
+            fwrite(STDERR, "{$file}: " . implode(', ', $keys) . "\n");
+        }
+    }
+    $this->assertTrue(true);
+}
+```
+
+期待する出力（4 ファイルすべてが出ること）:
+
+| コントローラ | 拾えるべきキー |
+|---|---|
+| `Tenant/AreaBuildingController.php` | name / address / latitude / longitude / total_floors / notes / surveyed_month / operating_count / vacant_count / unknown_count / survey_notes / coordinates |
+| `Tenant/AreaBuildingSurveyController.php` | surveyed_month / operating_count / vacant_count / unknown_count / surveyed_by / notes |
+| `Tenant/AreaBuildingTenantController.php` | floor / room_number / name / industry / status / confirmed_on / moved_out_on / notes |
+| `Tenant/AreaBuildingImportController.php` | kind / surveyed_month / rows |
+
+- [ ] 4 ファイルすべてが出力に現れる（1 つでも欠けていたら、そのコントローラの `validate()` を
+      **複数行の literal 配列**に書き直す。`$this->rules()` や `array_merge()` に戻さない）
+- [ ] **変異で確かめる:** `lang/ja/validation.php` から `'industry' => '業種',` を消して
+      `test_every_validated_field_has_a_japanese_attribute_label` が**赤**になること
+      （`industry` は `AreaBuildingTenantController` にしか出てこないので、
+      このコントローラが走査対象に入っていなければ緑のままになる＝走査の穴を直接測れる）
 
 - [ ] **Step 2: `fetch` を増やしていないことを確認する**
 
