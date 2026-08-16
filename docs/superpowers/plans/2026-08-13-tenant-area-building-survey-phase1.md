@@ -7947,31 +7947,67 @@ option は DOM API で動的注入（Bug #16）。
 ⚠ **`fetch` は使わない。** ブラウザ側で Google の Geocoder を回し、結果をふつうの
 `<form>` POST（hidden の JSON）でサーバへ渡す。
 
-### 実装時に判明したプランの誤り（4 件）
+### 実装時に判明したプランの誤り（7 件）
 
 | # | プランの記述 | 実測 | 対応 |
 |---|---|---|---|
 | 1 | テストの補助メソッド名が `private function post(array $coordinates)` | **PHP の fatal**。`MakesHttpRequests::post()` は public なので、private で上書きすると「Access level must be public」。しかも中で `$this->post(...)` を呼ぶので無限再帰でもある | `postCoordinates()` に改名 |
 | 2 | テストが `DB::table(...)` を使うのに `use Illuminate\Support\Facades\DB;` が無い | 未定義クラスで fatal | import を追加 |
 | 3 | ボタンを `disabled` で描画し `onAreaGeocodeReady` で有効化する | **Bug #43 の再発**。Maps が読めない環境（CSP・オフライン・キー失効）で「押せず理由も出ない」ボタンが残る | **最初から押せる状態**にし、`runBulkGeocode()` 冒頭の `if (!areaGeocoder) { alert(…) }` を唯一のガードにする。ガードは実駆動テストで単独固定（Bug #48） |
-| 4 | `isset($item['id'], …)` の後は緯度経度だけ `is_numeric` を見る | `id` に配列を渡すと `whereKey()` が **`whereIn` に化けて無関係な行まで一括更新**される | `is_numeric($item['id'])` も見る（変異 13 で赤を実測） |
+| 4 | `isset($item['id'], …)` の後は緯度経度だけ `is_numeric` を見る | `id` に配列を渡すと `whereKey()` が **`whereIn` に化けて無関係な行まで一括更新**される | `is_numeric($item['id'])` も見る（変異 m-1a で赤を実測）＋ `whereKey()` 自体をやめる（下記 m-1） |
+| 5 | ルートを Excel 取込の group の中に足す | group に相乗りすると middleware が暗黙になる | 独立した 1 本にして `->middleware('role:executive,manager')` を明示 |
+| 6 | `@push('scripts')` を `@endsection` の**直前**に置く | `import.blade.php` は `@endsection` の**後**に置いている | 既存に合わせて後ろへ（`@if` で囲む） |
+| 7 | 進捗表示が件数だけ | payload の `name` がどこからも読まれない死にデータになる | 進捗にビル名を出す ＋ `aria-live="polite"` |
+
+### コードレビュー指摘の反映（2026-08-17、2 本のレビュー）
+
+課金の中核不変条件は 24 通り中 19 通りが赤だったが、**5 通りが緑**だった。うち 4 つは
+**「Google に課金した直後に無音で全部捨てる」**というこの機能で最悪の失敗モード。
+
+| # | 指摘 | なぜ緑だったか | 直し方 |
+|---|---|---|---|
+| **I-1** | **node ハーネスの `getElementById` がブラウザより寛容**。`el(id)` が未知の id にも要素を捏造して返すため、**Blade の id をズラす変異が全部緑** | 実ブラウザは `null` を返す。`geocode-payload` をズラすと**課金済みで `Cannot set properties of null`** ＝ 保存 0・エラー表示なし。200 棟なら 200 回課金して 0 件保存 | 画面から `id="…"` を全部集めて plan に渡し、**一覧に無い id には `null` を返す**（2 行）。⚠ **自作の JS 駆動ハーネスがブラウザより寛容だと、丸ごと一類のバグが原理的に検出できない。必ずこの形にする** |
+| **I-2** | `callback=onAreaGeocodeReady` の**前方一致**。置換型（`zzzInit`）は赤だが**追記型（`…ReadyZZ`）が緑** | Bug #43 の `\bdisabled\b` が `disabled:opacity-50` に当たるのと同型 | ローダー URL から**名前を導出**して `function {$name}(` の実体を見る。`onerror` も同じ形で対に |
+| **I-3** | **全件失敗すると「緑の成功メッセージ」**。`{"calls":1,"payload":"[]","submitted":1}` → `0 件の座標を保存しました` | Maps JS API は有効でも **Geocoding API が未有効**だと全件 `REQUEST_DENIED` ＝ 到達可能。テストに全件失敗のケースが 1 本も無かった | **クライアント**: `results.length === 0` なら送らず、失敗を進捗欄に出してボタンを戻す（往復も減る）。**サーバ**: `$updated === 0` は `error` フラッシュ |
+| **I-4** | **120ms のスロットルに一切テストが無い**。`setTimeout(step, 120)` → `step()` に変異して全部緑 | 他の課金定数は全部固定されているのにここだけ素通し。バーストは `OVER_QUERY_LIMIT` を誘発し、押し直しで**同じ棟をもう一度課金**する | ハーネスの `setTimeout` が `ms` を記録し、`delay >= 100` を固定 |
+| **仕様** | 設計 §7.4 の**「失敗した棟に一覧で印を付ける」が未実装** | 一覧 9 列に座標の有無が無く、「失敗 2 件」がどの 2 棟か分からない。しかもボタンは総数を数え続けるので、**恒久的にジオコード不能な住所を押すたびに叩き直す**＝費用方針の一部が抜けていた | 「位置」列を足し `coordinateBadge()`（inline style）で 取得済 / 未取得。⚠ colgroup 合計 100% / th 本数 / colspan の 3 点セットをテストで固定 |
+
+Minor（全部反映済み）:
+
+| # | 内容 |
+|---|---|
+| m-1 | `whereKey()` はこのコミットが持ち込んだ新イディオム（既存 10 箇所は `where('id', $x)->update()`）。実測差: `where('id',[a,b])` は IN に化けないが `whereKey([a,b])` は化ける → **既存に揃えて危険源を消す**。`is_numeric` ガードは二重防御として残す |
+| m-2 | 「既に座標がある行は更新しない」が**緯度側にしか掛かっていない** — 経度だけ手入力された行は潰され、緯度だけの行は `pendingGeocode` にも入らない**詰み行**になる → `saving` フックで**片方だけなら両方 null**（Bug #38 の規約。読み取りで隠さず書き込み側で正規化） |
+| m-4 | Maps が読めないと「読み込み中です」が永久に出る → ローダーに `onerror` を付け、恒久失敗は別文言 |
+| m-5 | 保存後のリダイレクトで絞り込み・ページが飛ぶ → フォームの `action` に `request()->query()` を載せ、コントローラの `backToList()` がそれを引き継ぐ |
+| 仕様6 | ボタンの件数（総数）と confirm の件数（今回分）が食い違う → confirm に「（残り N 件は次回）」 |
+| Nit7 | 実行中の `disabled` ボタンは**ホバーもフォーカスも受けない**（Bug #43 後半）→ `aria-describedby="geocode-progress"` |
+| Nit8 | `validate()` 第3引数の `'coordinates' => '取得した座標'` は `lang/ja/validation.php:484` と同値で冗長 → 削除（走査テストがグローバルを守っている） |
+| Nit10 | `aria-live` と `Js::from()` を固定するテストが無い → 追加（`@json` へ戻すと `JSON.parse(` が消えて赤） |
+
+直さないもの（判断を記録）:
+
+- **m-3 1 棟 1 UPDATE（200 件で約 203 クエリ）** — PK 更新なので実害薄く、`whereNull` ガードの明快さと引き換えなら妥当
+- **仕様 Nit9 Maps ローダーが一覧表示のたびに読み込まれる** — `new Map()` をしないので**課金は発生しない**
+- **仕様3 バリデーション失敗が画面に出ない** — JS が空 payload を送らなくなったので画面から到達不能。かつ `layouts/app.blade.php` に `$errors` サマリが無いのは**アプリ全体の既知の穴**（Task 10 で記録済み）
 
 - [x] **Step 1〜2: 失敗するテストを書く → 落ちることを確認**
 
 `tests/Feature/Tenant/AreaBuildingGeocodeTest.php`。実装前は 18/18 が赤（404 /
 `Undefined variable $pendingGeocodeCount` / `runBulkGeocode を含む <script> が画面に無い`）。
 
-テストの構成（最終 20 本）:
+テストの構成（レビュー反映後 31 本 ＋ `AreaBuildingModelTest` に 1 本）:
 
 | 群 | 本数 | 内容 |
 |---|---|---|
 | 権限 | 2 | staff は 403 / **executive は通る**（Task 8・9・10 で 3 回続けて空いた穴） |
-| 保存 | 5 | 生 DB 値で丸めを見る / 既存座標を上書きしない / 範囲外・不正エントリを無視 / 壊れた JSON / 残件数の文言 |
-| サーバ上限 | 1 | 201 件送っても 200 件しか書かない（**画面からは到達しない分岐**。Step 7 の変異 14 で発見） |
-| 一覧の表示 | 4 | 未取得 0 件ならスクリプトごと出さない / 件数付きボタン＋Geocoder（Map は作らない・`disabled` を付けない）/ staff には出さない / 上限と残件の表示 |
-| 配線 | 2 | フォームの往復（Bug #47）/ **ボタンの `onclick` とローダーの `callback=` が定義と対**（Bug #28。変異 15・16 で発見） |
-| ブラウザ JS の実駆動 | 5 | 1 棟 1 回で叩く＋その payload をサーバへ通す / 失敗を飛ばす / 上限で止まる / 未読込なら送らない / キャンセルで何もしない |
+| 保存 | 7 | 生 DB 値で丸めを見る / 既存座標を上書きしない / 範囲外・不正エントリを無視 / 壊れた JSON / 残件数の文言 / **0 件は error であって success ではない**（I-3）/ サーバ上限 |
+| 戻り先 | 2 | リダイレクトが絞り込みとページを保つ / フォームの `action` にそれが載っている（m-5） |
+| 一覧の表示 | 6 | 未取得 0 件ならスクリプトごと出さない / 件数付きボタン＋Geocoder（Map は作らない・`disabled` を付けない）/ staff には出さない / 上限と残件の表示 / **位置バッジ** / **列数の 3 点セット** |
+| 配線 | 4 | フォームの往復（Bug #47）/ ボタンの `onclick`・ローダーの `callback=`・`onerror` が定義と対（Bug #28・I-2）/ `aria-describedby` と `aria-live` / `Js::from()` |
+| ブラウザ JS の実駆動 | 9 | 1 棟 1 回で叩く＋その payload をサーバへ通す / 失敗を飛ばす / 上限で止まる / **全件失敗なら送らない** / **スロットル** / **confirm の残件表示** / **恒久失敗の文言** / 未読込なら送らない / キャンセルで何もしない |
 | 構造 | 1 | `.geocode(` の呼び出し箇所が 1 つだけ |
+| モデル（別ファイル） | 1 | 片方だけの座標は保存時に両方 null（m-2） |
 
 ⚠ **丸めのアサートは生の DB 値で見る。** モデル経由（`$building->latitude`）だと
 `decimal:7` キャストの `number_format()` が丸めるので、**`round()` を消しても緑のまま**通る。
@@ -7992,6 +8028,21 @@ REAL で持つ SQLite（＝テスト）だけで、本番では「保存値と�
 （`runBrowserScript()` / `harness()`）。偽の `google.maps.Geocoder` が住所と回数を記録し、
 `setTimeout` はキューに積んで後で回す（同期実行にすると棟数ぶんスタックが深くなる）。
 node が無い環境では `markTestSkipped`。
+
+⚠ **ハーネスはブラウザより寛容であってはいけない**（レビュー I-1。**一般則**）。
+`getElementById` が未知の id にも要素を捏造して返す実装だと、**Blade の id をズラす変異が
+丸ごと検出できない**。画面から `id="…"` を全部集めて渡し、一覧に無い id には `null` を返す:
+
+```php
+preg_match_all('/\bid="([^"]+)"/', $html, $idm);
+$plan['ids'] = array_values(array_unique($idm[1]));
+```
+```js
+if (plan.ids && plan.ids.indexOf(id) === -1) { return null; }
+```
+
+2026-08-17 実測: この 2 行が無いと `geocode-payload` / `geocode-form` / `geocode-progress` の
+どれをズラしても **31/31 緑**、入れると各 4〜6 本が赤。**旧ロジック緑 / 新ロジック赤**まで確認済み。
 
 - [x] **Step 3: コントローラ**（`AreaBuildingController`）
 
@@ -8022,8 +8073,10 @@ node が無い環境では `markTestSkipped`。
     }
 ```
 
-`storeCoordinates()` は `validate(['coordinates' => 'required|string'], [], ['coordinates' => '取得した座標'])`
-→ `json_decode` → 配列でなければ `error` フラッシュ → 1 件ずつ検証して `whereKey()->whereNull('latitude')->update()`。
+`storeCoordinates()` は `validate(['coordinates' => 'required|string'])`
+→ `json_decode` → 配列でなければ `error` フラッシュ → 1 件ずつ検証して
+`where('id', $item['id'])->whereNull('latitude')->update()` → **1 件も書けなければ `error`**。
+戻り先は `backToList()` が `$request->query()` を引き継ぐ。
 
 ⚠ **意図的に `DB::transaction()` で囲まない。** 囲むのは積極的に間違い（Bug #48 の後半）:
 ① Geocoding API の課金はブラウザ側で**既に発生済み**。199 行目で落ちて 198 件を巻き戻すと
@@ -8032,8 +8085,8 @@ node が無い環境では `markTestSkipped`。
 `store()`（親＋子を 1 リクエストで書く）を囲んだのとは状況が違う。**この理由をコード側にも書いてある**
 （書かないと次のレビューで必ず「囲むべき」と言われる）。
 
-⚠ `whereKey()->update()` はクエリビルダの一括更新なので**モデルイベントが発火しない**
-（`saving` フックの住所正規化を素通り）。今は address を触らないので無害。
+⚠ `where('id', …)->update()` はクエリビルダの一括更新なので**モデルイベントが発火しない**
+（`saving` フックの住所正規化・座標の対正規化を素通り）。今はその 2 列を触らないので無害。
 `updated_at` は `Eloquent\Builder::update()` が自動で足す。
 
 ⚠ `array_slice($decoded, 0, self::GEOCODE_BATCH_LIMIT)` は**画面からは一生実行されない分岐**
@@ -8064,9 +8117,13 @@ node が無い環境では `markTestSkipped`。
 ⚠ 地図は 1 つも作らない（`new google.maps.Map(` がゼロ件であることをテストで固定）。
 ⚠ 進捗表示にビル名を出しているので、payload の `name` は死にデータではない。
 
-- [x] **Step 6: 緑を確認** — `AreaBuildingGeocodeTest` 20 本 / 84 assertions
+⚠ 一覧のテーブルに「位置」列を足したので、**colgroup の合計 100% / `<th>` の本数 /
+空行の `colspan`** の 3 点セットが揃っていることをテストで固定してある
+（Task 10 で幅合計を 106% にした前科がある）。
 
-- [x] **Step 7: 変異テスト（18 通りを実測）**
+- [x] **Step 6: 緑を確認** — `AreaBuildingGeocodeTest` 31 本 / 126 assertions
+
+- [x] **Step 7: 変異テスト（レビュー前 18 通り ＋ レビュー後 22 通り＝計 40 通りを実測）**
 
 ⚠ 新規ファイルは untracked なので `git checkout --` で戻せず `git diff` にも出ない。
 **内容バックアップとの `diff` で着弾を確認**し、各変異前に `storage/framework/views/*.php` を消す。
@@ -8094,16 +8151,50 @@ node が無い環境では `markTestSkipped`。
 | 17 | 候補の `address` を `name` にすり替え | 赤（実駆動の `calls` がビル名になる＝間違った住所で課金する） |
 | 18 | 5a をテスト 20 本の状態で再測 | 赤（テストを増やしても検出力が落ちていない） |
 
+**レビュー反映後（22 通り）。** 1〜18 も全部再測して赤のままであることを確認済み。
+
+| # | 変異 | 結果 |
+|---|---|---|
+| I-1a | `id="geocode-payload"` をズラす | 赤 4 本（旧ハーネスでは **31/31 緑**） |
+| I-1b | `id="geocode-form"` をズラす | 赤 4 本 |
+| I-1c | `id="geocode-progress"` をズラす | 赤 6 本 |
+| **I-1d** | **I-1a ＋ ハーネスを旧（寛容な `el`）に戻す** | **31/31 緑**。⚠ **2 行の修正が load-bearing であることの証明**（Bug #45 の流儀） |
+| I-2a | `callback=zzzInit`（置換型） | 赤 |
+| I-2b | `callback=onAreaGeocodeReadyZZ`（**追記型**） | 赤 |
+| **I-2c** | **I-2b ＋ 旧アサート（前方一致）に戻す** | **31/31 緑**。⚠ 前方一致は追記型を原理的に見逃す |
+| I-3a | JS: `results.length === 0` でも送信する | 赤 `…does_not_submit_when_every_lookup_failed` |
+| I-3b | サーバ: `$updated === 0` でも success | 赤 `…reported_as_an_error_not_a_success` |
+| I-4 | `setTimeout(step, 120)` → `step()` | 赤 `…throttles_between_lookups` |
+| 仕様6 | confirm の残件表示を削除 | 赤 `…explains_the_remainder_when_the_batch_is_capped` |
+| m-4a | ローダーの `onerror` を外す | 赤（配線テスト） |
+| m-4b | 恒久失敗の文言を分けない | 赤 `…reports_a_permanent_maps_failure_differently` |
+| m-5a | リダイレクトを固定 URL に | 赤 `…keeps_the_current_filter_and_page` |
+| m-5b | フォーム `action` から絞り込みを外す | 赤 `…form_action_carries_the_current_filter` |
+| m-2 | `saving` の座標対正規化を削除 | 赤 `…one_sided_coordinates_are_normalized_to_null_on_save` |
+| Nit7 | `aria-describedby` を外す | 赤 |
+| Nit10a | `aria-live` を外す | 赤 |
+| Nit10b | `Js::from()` → `@json` | 赤 |
+| 位置1 | 位置の `<td>` を削除 | 赤（バッジ数） |
+| 位置2 | 位置の `<th>` を削除 | 赤 2 本（ヘッダ / col と th の本数） |
+| 位置3 | colgroup の幅を 18% → 20% | 赤（合計 102%） |
+| 位置4 | `colspan="10"` → `"9"` | 赤 |
+| 位置5 | `coordinateBadge()` を常に取得済に | 赤 |
+| m-1a | `where('id', …)` のまま `is_numeric($item['id'])` を外す | 赤（`['id' => [5]]` が通る）＝ **ガードは二重防御ではなく独立に効いている** |
+| m-1b | `where('id', …)` を `whereKey()` に戻す（ガードあり） | **緑**。⚠ ガードが手前で弾くので応答からは区別が付かない（Bug #48 そのもの）。**イディオムの選択自体はテストで固定できていない**ので、`whereKey()` に untrusted な値を渡さないことは規約として残す（実測: `app/` の `whereKey(` は**コメント 4 件のみ**で呼び出し 0 件） |
+
 ⚠ **14・15・16 は「変異を当てたら緑だった」＝テストの穴**。3 件とも新しいテストを足して赤にした。
 **変異テストを 7 通りで止めていたら 3 つとも見逃していた。**
+⚠ **それでもレビューが 5 通りの緑を見つけた。** 自分の変異表は「自分が意識した箇所」しか
+当てないので、**測定器そのものの寛容さ（I-1）や前方一致（I-2）は自分では気づけない**。
 
 - [x] **compiled view の lint** — 295 本 / invalid 0。
-  コンパイル済みに `runBulkGeocode` / `座標未設定` / `onAreaGeocodeReady` /
-  `tenant.area-buildings.geocode` が入っていることを確認（**Blade コメント内の文字列は
-  コンパイル時に消える**ので、コメント外の文字列で見る）。
+  コンパイル済みに `runBulkGeocode` / `座標未設定` / `onAreaGeocodeFailed` / `aria-live` /
+  `aria-describedby` / `>位置<` / `coordinateBadge` / `tenant.area-buildings.geocode` が
+  入っていることを確認（**Blade コメント内の文字列はコンパイル時に消える**ので、
+  コメント外の文字列で見る）。
 
-- [x] **全体テスト** — 769 tests / 4153 assertions green（Task 11 時点 749 / 4069 から +20 / +84）。
-  ピークメモリ 154.50 MB（`phpunit.xml` の `memory_limit=512M` は引き続き load-bearing）。
+- [x] **全体テスト** — 781 tests / 4201 assertions green（Task 11 時点 749 / 4069 から +32 / +132）。
+  ピークメモリ 156.50 MB（`phpunit.xml` の `memory_limit=512M` は引き続き load-bearing）。
 
 - [ ] **Step 8: ブラウザで実際に動かす（未実施 — Task 13 で実施）**
 
