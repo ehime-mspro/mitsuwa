@@ -17,9 +17,17 @@
     </div>
 
     {{-- フィルターバー --}}
+    {{-- ⚠ keyword / year は ?keyword[]=x のように配列でも届きうる。htmlspecialchars() や (string)
+         キャストへ配列をそのまま渡すと Array to string conversion で 500 になる（実測確認済み）ので、
+         ここで文字列以外を空文字へ正規化してから使う。vacancy は下の @foreach で === 比較のみ
+         （型が違えば単に不一致になるだけ）なので同じ対応は不要。 --}}
+    @php
+        $keywordValue = is_string(request('keyword')) ? request('keyword') : '';
+        $yearValue    = is_string(request('year')) ? request('year') : '';
+    @endphp
     <form id="filter-form" method="GET" action="{{ route('tenant.area-buildings.index') }}"
           class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mb-4 bg-white border border-gray-200 rounded-lg px-3.5 py-2.5">
-        <input type="text" name="keyword" value="{{ request('keyword') }}"
+        <input type="text" name="keyword" value="{{ $keywordValue }}"
                placeholder="ビル名・所在地・テナント名"
                class="h-9 px-3 border border-gray-300 rounded-md text-sm text-gray-700 bg-white focus:border-emerald-500 focus:outline-none flex-1 min-w-[140px] w-full sm:w-auto">
         <select onchange="document.getElementById('filter-form').submit()" name="vacancy"
@@ -34,7 +42,7 @@
                 class="h-9 px-3 border border-gray-300 rounded-md text-sm text-gray-700 bg-white focus:border-emerald-500 focus:outline-none cursor-pointer w-full sm:w-auto">
             <option value="">調査年: 全て</option>
             @foreach($surveyYears as $year)
-                <option value="{{ $year }}" {{ (string) request('year') === (string) $year ? 'selected' : '' }}>{{ $year }}年</option>
+                <option value="{{ $year }}" {{ $yearValue === (string) $year ? 'selected' : '' }}>{{ $year }}年</option>
             @endforeach
         </select>
         <a href="{{ route('tenant.area-buildings.index') }}"

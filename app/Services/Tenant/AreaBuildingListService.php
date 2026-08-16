@@ -113,7 +113,10 @@ class AreaBuildingListService
             ]);
 
         $keyword = $request->input('keyword');
-        if (filled($keyword)) {
+        // ⚠ `?keyword[]=x` のように配列で来ると "%{$keyword}%" が
+        //   ErrorException: Array to string conversion で 500 になる（実測確認済み）。
+        //   ProcurementListService::applyKeyword() と同じ防御（想定外の型は絞り込み無しへ）。
+        if (filled($keyword) && is_string($keyword)) {
             $like = '%' . $keyword . '%';
             $query->where(function (Builder $q) use ($like) {
                 $q->where('area_buildings.name', 'like', $like)

@@ -145,6 +145,41 @@ class AreaBuildingListTest extends AreaBuildingTestCase
         $this->assertSame([], $this->listedNames($response));
     }
 
+    /**
+     * `?keyword[]=x` のように配列で来ても 500 にならない。
+     *
+     * ⚠ プランのコードには無かったが、実装時のセルフレビューで発見（load-bearing）。
+     *   `"%" . $keyword . "%"` に配列を渡すと ErrorException: Array to string conversion で
+     *   500 になる（実測確認済み）。ProcurementListService::applyKeyword() が同じ形の
+     *   防御を持つ既知パターン。
+     */
+    public function test_keyword_as_array_does_not_500(): void
+    {
+        $this->makeBuilding('大街道ビル');
+
+        $response = $this->actingAs($this->staff())->get('/tenant/area-buildings?keyword[]=x');
+
+        $response->assertOk();
+    }
+
+    /**
+     * `?year[]=x` のように配列で来ても 500 にならない。
+     *
+     * ⚠ プランのコードには無かったが、実装時のセルフレビューで発見（load-bearing）。
+     *   ビューの `(string) request('year') === (string) $year` が配列に `(string)` キャストを
+     *   かけると同じ Array to string conversion で 500 になる（実測確認済み）。
+     *   ⚠ `$surveyYears` が空だと `@foreach` 本体（危険な行）自体が実行されず空振りするため、
+     *      調査データを 1 件作ってからでないとこの回帰は検出できない。
+     */
+    public function test_year_as_array_does_not_500(): void
+    {
+        $this->makeSurvey($this->makeBuilding('大街道ビル'), '2026-08-01', 5, 5);
+
+        $response = $this->actingAs($this->staff())->get('/tenant/area-buildings?year[]=x');
+
+        $response->assertOk();
+    }
+
     /** 既定の並び順は空室率降順・未調査は末尾（設計 §5.3） */
     public function test_default_order_is_vacancy_rate_desc_with_unsurveyed_last(): void
     {
