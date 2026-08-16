@@ -7934,8 +7934,10 @@ option は DOM API で動的注入（Bug #16）。
 
 ## Task 12: 座標の一括取得
 
+**Status: 完了（2026-08-17）。** 以下は実装後に実測へ合わせて書き直したもの。
+
 **Files:**
-- Create: `tests/Feature/Tenant/AreaBuildingGeocodeTest.php`
+- Create: `tests/Feature/Tenant/AreaBuildingGeocodeTest.php`（20 本）
 - Modify: `app/Http/Controllers/Tenant/AreaBuildingController.php`（`index` に候補を渡す ＋ `storeCoordinates`）
 - Modify: `routes/web.php`
 - Modify: `resources/views/tenant/area-buildings/index.blade.php`（ボタン＋フォーム＋JS）
@@ -7945,180 +7947,55 @@ option は DOM API で動的注入（Bug #16）。
 ⚠ **`fetch` は使わない。** ブラウザ側で Google の Geocoder を回し、結果をふつうの
 `<form>` POST（hidden の JSON）でサーバへ渡す。
 
-- [ ] **Step 1: 失敗するテストを書く**
+### 実装時に判明したプランの誤り（4 件）
 
-`tests/Feature/Tenant/AreaBuildingGeocodeTest.php`:
+| # | プランの記述 | 実測 | 対応 |
+|---|---|---|---|
+| 1 | テストの補助メソッド名が `private function post(array $coordinates)` | **PHP の fatal**。`MakesHttpRequests::post()` は public なので、private で上書きすると「Access level must be public」。しかも中で `$this->post(...)` を呼ぶので無限再帰でもある | `postCoordinates()` に改名 |
+| 2 | テストが `DB::table(...)` を使うのに `use Illuminate\Support\Facades\DB;` が無い | 未定義クラスで fatal | import を追加 |
+| 3 | ボタンを `disabled` で描画し `onAreaGeocodeReady` で有効化する | **Bug #43 の再発**。Maps が読めない環境（CSP・オフライン・キー失効）で「押せず理由も出ない」ボタンが残る | **最初から押せる状態**にし、`runBulkGeocode()` 冒頭の `if (!areaGeocoder) { alert(…) }` を唯一のガードにする。ガードは実駆動テストで単独固定（Bug #48） |
+| 4 | `isset($item['id'], …)` の後は緯度経度だけ `is_numeric` を見る | `id` に配列を渡すと `whereKey()` が **`whereIn` に化けて無関係な行まで一括更新**される | `is_numeric($item['id'])` も見る（変異 13 で赤を実測） |
 
-```php
-<?php
+- [x] **Step 1〜2: 失敗するテストを書く → 落ちることを確認**
 
-namespace Tests\Feature\Tenant;
+`tests/Feature/Tenant/AreaBuildingGeocodeTest.php`。実装前は 18/18 が赤（404 /
+`Undefined variable $pendingGeocodeCount` / `runBulkGeocode を含む <script> が画面に無い`）。
 
-use App\Models\AreaBuilding;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+テストの構成（最終 20 本）:
 
-class AreaBuildingGeocodeTest extends AreaBuildingTestCase
-{
-    use RefreshDatabase;
+| 群 | 本数 | 内容 |
+|---|---|---|
+| 権限 | 2 | staff は 403 / **executive は通る**（Task 8・9・10 で 3 回続けて空いた穴） |
+| 保存 | 5 | 生 DB 値で丸めを見る / 既存座標を上書きしない / 範囲外・不正エントリを無視 / 壊れた JSON / 残件数の文言 |
+| サーバ上限 | 1 | 201 件送っても 200 件しか書かない（**画面からは到達しない分岐**。Step 7 の変異 14 で発見） |
+| 一覧の表示 | 4 | 未取得 0 件ならスクリプトごと出さない / 件数付きボタン＋Geocoder（Map は作らない・`disabled` を付けない）/ staff には出さない / 上限と残件の表示 |
+| 配線 | 2 | フォームの往復（Bug #47）/ **ボタンの `onclick` とローダーの `callback=` が定義と対**（Bug #28。変異 15・16 で発見） |
+| ブラウザ JS の実駆動 | 5 | 1 棟 1 回で叩く＋その payload をサーバへ通す / 失敗を飛ばす / 上限で止まる / 未読込なら送らない / キャンセルで何もしない |
+| 構造 | 1 | `.geocode(` の呼び出し箇所が 1 つだけ |
 
-    private function post(array $coordinates)
-    {
-        return $this->actingAs($this->manager())->post('/tenant/area-buildings/geocode', [
-            'coordinates' => json_encode($coordinates),
-        ]);
-    }
+⚠ **丸めのアサートは生の DB 値で見る。** モデル経由（`$building->latitude`）だと
+`decimal:7` キャストの `number_format()` が丸めるので、**`round()` を消しても緑のまま**通る。
+2026-08-17 に両方の書き方で実測して確認した（Step 7 の変異 5）:
 
-    public function test_staff_cannot_post_coordinates(): void
-    {
-        $this->actingAs($this->staff())
-            ->post('/tenant/area-buildings/geocode', ['coordinates' => '[]'])
-            ->assertForbidden();
-    }
-
-    public function test_saves_coordinates_for_pending_buildings(): void
-    {
-        $building = $this->makeBuilding('未取得ビル', ['address' => '松山市1-1']);
-
-        $this->post([
-            ['id' => $building->id, 'latitude' => 33.83921234567, 'longitude' => 132.76571234567],
-        ])->assertRedirect(route('tenant.area-buildings.index'));
-
-        // ⚠ モデル経由で読むと `decimal:7` キャストの number_format() が丸めてしまうので、
-        //   **書き込みを測るなら生の DB 値を見る**。2026-08-17 実測:
-        //     number_format(33.83921234567, 7, '.', '') === '33.8392123'
-        //     number_format(round(33.83921234567, 7), 7, '.', '') === '33.8392123'   ← 同じ
-        //   つまりモデル経由のアサートは round() を消しても緑になり、
-        //   「小数第7位に丸めて保存されていない」という失敗メッセージが嘘になる。
-        $raw = DB::table('area_buildings')->where('id', $building->id)->first();
-        $this->assertEqualsWithDelta(33.8392123, (float) $raw->latitude, 1e-9, '小数第7位に丸めて保存されていない');
-        $this->assertEqualsWithDelta(132.7657123, (float) $raw->longitude, 1e-9);
-        $this->assertStringContainsString('1 件', session('success'));
-    }
-
-    /**
-     * ⚠ 既に座標がある行は上書きしない（手で直した位置を一括処理で潰さない）。
-     *   二重課金の防止と対で load-bearing（設計 §7.4 / §11-11）。
-     */
-    public function test_does_not_overwrite_buildings_that_already_have_coordinates(): void
-    {
-        $building = $this->makeBuilding('取得済みビル', [
-            'address' => '松山市1-1', 'latitude' => 33.8000000, 'longitude' => 132.7000000,
-        ]);
-
-        $this->post([
-            ['id' => $building->id, 'latitude' => 34.0, 'longitude' => 133.0],
-        ])->assertRedirect();
-
-        $building->refresh();
-        $this->assertSame('33.8000000', $building->latitude);
-        $this->assertSame('132.7000000', $building->longitude);
-    }
-
-    public function test_ignores_out_of_range_and_malformed_entries(): void
-    {
-        $a = $this->makeBuilding('A', ['address' => '松山市1-1']);
-        $b = $this->makeBuilding('B', ['address' => '松山市2-2']);
-        $c = $this->makeBuilding('C', ['address' => '松山市3-3']);
-
-        $this->post([
-            ['id' => $a->id, 'latitude' => 91.0, 'longitude' => 132.0],       // 緯度が範囲外
-            ['id' => $b->id, 'latitude' => 'あ', 'longitude' => 132.0],        // 数値でない
-            ['id' => $c->id],                                                  // キー欠落
-            'これは配列ですらない',
-        ])->assertRedirect();
-
-        $this->assertNull($a->fresh()->latitude);
-        $this->assertNull($b->fresh()->latitude);
-        $this->assertNull($c->fresh()->latitude);
-    }
-
-    public function test_rejects_malformed_json(): void
-    {
-        $this->actingAs($this->manager())
-            ->from('/tenant/area-buildings')
-            ->post('/tenant/area-buildings/geocode', ['coordinates' => 'ぐちゃぐちゃ'])
-            ->assertRedirect('/tenant/area-buildings');
-
-        $this->assertNotNull(session('error'));
-    }
-
-    // ============================================================
-    // 一覧側の表示（費用の見え方）
-    // ============================================================
-
-    /** 座標未取得が 0 件なら Maps のスクリプト自体を出さない（設計 §6.0 / プラン §1-8） */
-    public function test_list_does_not_load_maps_when_nothing_is_pending(): void
-    {
-        $this->makeBuilding('座標あり', ['address' => '松山市1-1', 'latitude' => 33.8, 'longitude' => 132.7]);
-        $this->makeBuilding('住所なし');
-
-        $html = $this->actingAs($this->manager())->get('/tenant/area-buildings')->getContent();
-
-        $this->assertStringNotContainsString('maps.googleapis.com', $html);
-        $this->assertStringNotContainsString('一括取得', $html);
-    }
-
-    /** 未取得があるときだけボタンと Geocoder が出る。⚠ Map は 1 つも作らない */
-    public function test_list_shows_the_button_with_the_pending_count(): void
-    {
-        $this->makeBuilding('未取得A', ['address' => '松山市1-1']);
-        $this->makeBuilding('未取得B', ['address' => '松山市2-2']);
-
-        $response = $this->actingAs($this->manager())->get('/tenant/area-buildings');
-        $html = $response->getContent();
-
-        $this->assertSame(2, $response->viewData('pendingGeocodeCount'));
-        $this->assertStringContainsString('座標未設定 2 件を一括取得', $html);
-        $this->assertStringContainsString('maps.googleapis.com', $html);
-        $this->assertStringContainsString('new google.maps.Geocoder()', $html);
-        $this->assertStringNotContainsString('new google.maps.Map(', $html, '一覧で地図を生成している（課金する）');
-    }
-
-    /** staff にはボタンを出さない */
-    public function test_staff_does_not_see_the_button(): void
-    {
-        $this->makeBuilding('未取得A', ['address' => '松山市1-1']);
-
-        $html = $this->actingAs($this->staff())->get('/tenant/area-buildings')->getContent();
-
-        $this->assertStringNotContainsString('一括取得', $html);
-        $this->assertStringNotContainsString('maps.googleapis.com', $html);
-    }
-
-    /** 1 回の実行で叩く上限（設計 §7.4）。超過分は次回に回し、残件数を知らせる */
-    public function test_pending_list_is_capped_and_the_remainder_is_reported(): void
-    {
-        for ($i = 1; $i <= 205; $i++) {
-            $this->makeBuilding("未取得{$i}", ['address' => "松山市{$i}"]);
-        }
-
-        $response = $this->actingAs($this->manager())->get('/tenant/area-buildings');
-
-        $this->assertSame(205, $response->viewData('pendingGeocodeCount'));
-        $this->assertCount(200, $response->viewData('pendingGeocode'), '1 回の上限が効いていない');
-        $response->assertSee('座標未設定 205 件を一括取得');
-        $response->assertSee('今回は 200 件まで');
-    }
-}
+```
+number_format(33.83921234567, 7, '.', '')          === '33.8392123'
+number_format(round(33.83921234567, 7), 7, '.', '') === '33.8392123'   ← 同じ
 ```
 
-- [ ] **Step 2: テストが落ちることを確認する**
+⚠ **本番 MySQL は `decimal(10,7)` 列なのでエンジン側でも丸まる。** `round()` が観測できるのは
+REAL で持つ SQLite（＝テスト）だけで、本番では「保存値と表示値を一致させる」ための防御。
+効果が見えないからといって外さないよう、テストで固定してある。
 
-```bash
-vendor/bin/phpunit --filter AreaBuildingGeocodeTest
-```
+⚠ **ブラウザで走る JS は PHP のテストからは原理的に守れない**（Bug #47 の 2026-08-17 追記）。
+ここで守りたいのは「**1 棟につき Google を 1 回しか叩かない**」という課金に直結する不変条件なので、
+**画面が返した `<script>` の文字列をそのまま node の `vm` で実駆動**して呼び出し回数を数える
+（`runBrowserScript()` / `harness()`）。偽の `google.maps.Geocoder` が住所と回数を記録し、
+`setTimeout` はキューに積んで後で回す（同期実行にすると棟数ぶんスタックが深くなる）。
+node が無い環境では `markTestSkipped`。
 
-Expected: FAIL — 404 / `Undefined view variable`
-
-- [ ] **Step 3: コントローラを直す**
-
-`AreaBuildingController` にクラス定数と `storeCoordinates()` を足し、`index()` を差し替える:
+- [x] **Step 3: コントローラ**（`AreaBuildingController`）
 
 ```php
-    /**
-     * 1 回の一括取得で Google に投げる上限（設計 §7.4）。
-     * ⚠ 無制限にすると、取込ミスで大量の行が入ったときにそのままリクエストが飛ぶ。
-     */
     public const GEOCODE_BATCH_LIMIT = 200;
 
     public function index(Request $request, AreaBuildingListService $service)
@@ -8143,215 +8020,95 @@ Expected: FAIL — 404 / `Undefined view variable`
             'geocodeBatchLimit'   => self::GEOCODE_BATCH_LIMIT,
         ]);
     }
-
-    /**
-     * ブラウザで取得した座標をまとめて保存する（設計 §7.4）。
-     *
-     * ⚠ 既に座標がある行は更新しない。手で直した位置を一括処理で潰さないため。
-     */
-    public function storeCoordinates(Request $request)
-    {
-        // ⚠ 1 行にまとめると走査正規表現の `\n\s*\]` 要件を満たさず、和名チェックの
-        //   対象から外れる（2026-08-16 実測）。閉じ括弧を行頭に置く形で書くこと。
-        $validated = $request->validate([
-            'coordinates' => 'required|string',
-        ], [], [
-            'coordinates' => '取得した座標',
-        ]);
-
-        $decoded = json_decode($validated['coordinates'], true);
-
-        if (! is_array($decoded)) {
-            return redirect()->route('tenant.area-buildings.index')
-                ->with('error', '座標データを解釈できませんでした。もう一度お試しください。');
-        }
-
-        $updated = 0;
-
-        // ⚠ **ここは意図的に DB::transaction() で囲まない。** 囲むのは積極的に間違い:
-        //   ① Geocoding API の課金はブラウザ側で**既に発生済み**。199 行目で落ちて 198 件を
-        //      巻き戻すと、もう一度 Google に払い直すことになる
-        //   ② `whereNull('latitude')` ガードがあるので**再実行が安全**
-        //      （部分成功のまま押し直せば残りだけ埋まる）
-        //   ③ 親子関係のある書き込みではなく独立した N 行の更新なので原子性が要らない
-        //   Task 8 の `store()`（親＋子を 1 リクエストで書く）を囲んだのとは状況が違う。
-        //
-        // ⚠ `whereKey()->update()` はクエリビルダの一括更新なので**モデルイベントが発火しない**
-        //   （`saving` フックの住所正規化を素通りする）。今は address を触らないので無害だが、
-        //   将来フックに処理を足すときはこの経路が抜けることに注意。
-        //   なお `updated_at` は Eloquent\Builder::update() が自動で足すので更新される。
-        foreach (array_slice($decoded, 0, self::GEOCODE_BATCH_LIMIT) as $item) {
-            if (! is_array($item) || ! isset($item['id'], $item['latitude'], $item['longitude'])) {
-                continue;
-            }
-            if (! is_numeric($item['latitude']) || ! is_numeric($item['longitude'])) {
-                continue;
-            }
-
-            $lat = (float) $item['latitude'];
-            $lng = (float) $item['longitude'];
-
-            if ($lat < -90 || $lat > 90 || $lng < -180 || $lng > 180) {
-                continue;
-            }
-
-            $updated += AreaBuilding::whereKey($item['id'])
-                ->whereNull('latitude')
-                ->update([
-                    'latitude'  => round($lat, 7),
-                    'longitude' => round($lng, 7),
-                ]);
-        }
-
-        $remaining = AreaBuilding::pendingGeocodeCount();
-
-        return redirect()->route('tenant.area-buildings.index')->with(
-            'success',
-            $remaining > 0
-                ? "{$updated} 件の座標を保存しました。座標未設定は残り {$remaining} 件です。"
-                : "{$updated} 件の座標を保存しました。座標未設定はありません。"
-        );
-    }
 ```
 
-- [ ] **Step 4: ルートを足す**
+`storeCoordinates()` は `validate(['coordinates' => 'required|string'], [], ['coordinates' => '取得した座標'])`
+→ `json_decode` → 配列でなければ `error` フラッシュ → 1 件ずつ検証して `whereKey()->whereNull('latitude')->update()`。
 
-Task 11 で入れた取込ルートの group の中に 1 本追加する（`/{building}` より前）:
+⚠ **意図的に `DB::transaction()` で囲まない。** 囲むのは積極的に間違い（Bug #48 の後半）:
+① Geocoding API の課金はブラウザ側で**既に発生済み**。199 行目で落ちて 198 件を巻き戻すと
+**もう一度 Google に払い直す** ② `whereNull('latitude')` ガードがあるので**再実行が安全**
+③ 親子関係のある書き込みではなく独立した N 行の更新なので原子性が要らない。
+`store()`（親＋子を 1 リクエストで書く）を囲んだのとは状況が違う。**この理由をコード側にも書いてある**
+（書かないと次のレビューで必ず「囲むべき」と言われる）。
+
+⚠ `whereKey()->update()` はクエリビルダの一括更新なので**モデルイベントが発火しない**
+（`saving` フックの住所正規化を素通り）。今は address を触らないので無害。
+`updated_at` は `Eloquent\Builder::update()` が自動で足す。
+
+⚠ `array_slice($decoded, 0, self::GEOCODE_BATCH_LIMIT)` は**画面からは一生実行されない分岐**
+（ブラウザは 200 件しか回さない）。変異 14 で無検査だと判明したので専用テストを追加した。
+
+- [x] **Step 4: ルート**（`/{building}` より前、`role:executive,manager`）
 
 ```php
-            Route::post('/area-buildings/geocode', [\App\Http\Controllers\Tenant\AreaBuildingController::class, 'storeCoordinates'])
-                ->name('tenant.area-buildings.geocode');
+        // 座標の一括取得（経営層+管理者）。⚠ /{building} より上に置くこと
+        Route::post('/area-buildings/geocode', [\App\Http\Controllers\Tenant\AreaBuildingController::class, 'storeCoordinates'])
+            ->middleware('role:executive,manager')
+            ->name('tenant.area-buildings.geocode');
 ```
 
-- [ ] **Step 5: 一覧にボタンとスクリプトを足す**
+- [x] **Step 5: 一覧のボタンとスクリプト**
 
-`index.blade.php` のフィルターバーの**直後**に:
+フィルターバーとテーブルの間に `@if($pendingGeocodeCount > 0)` で囲んだ青いバー
+（件数付きボタン / 説明文 / 上限の注記 / `id="geocode-progress"` の進捗）＋ hidden 1 個だけの
+`<form id="geocode-form">`。スクリプトは **`@endsection` の後**に `@if` ＋ `@push('scripts')`
+（`import.blade.php` と同じ置き方）。
 
-```blade
-    {{-- 座標の一括取得（経営層+管理者、未取得があるときだけ） --}}
-    @if($pendingGeocodeCount > 0)
-        <div class="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
-            <div class="flex flex-col sm:flex-row sm:items-center gap-2">
-                <button type="button" id="btn-bulk-geocode" onclick="runBulkGeocode()" disabled
-                        class="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-md transition-colors disabled:opacity-50">
-                    座標未設定 {{ $pendingGeocodeCount }} 件を一括取得
-                </button>
-                <span class="text-xs text-blue-900">
-                    住所から座標を取得します。1 棟につき 1 回だけ問い合わせ、取得済みの棟は対象外です。
-                    @if($pendingGeocodeCount > $geocodeBatchLimit)
-                        <strong>今回は {{ $geocodeBatchLimit }} 件までで、残りは次回に回ります。</strong>
-                    @endif
-                </span>
-                <span id="geocode-progress" class="text-xs font-semibold text-blue-900"></span>
-            </div>
-        </div>
+⚠ ボタンに `disabled` を**付けない**（上記の誤り #3）。`class` の `disabled:opacity-50` は
+実行中に JS が付ける `disabled` 用なので残す。⚠ テストで `\bdisabled\b` を使うと
+このクラス名に一致して**正しい実装のほうが赤になる**ので `\sdisabled(\s|>|=)` で見る。
 
-        <form id="geocode-form" method="POST" action="{{ route('tenant.area-buildings.geocode') }}">
-            @csrf
-            <input type="hidden" name="coordinates" id="geocode-payload" value="">
-        </form>
-    @endif
-```
+⚠ `Js::from()` を使う（`@json` は構造区切りの `"` を素通しする。Bug #23）。
+⚠ `<script>` 内の `//` コメントにディレクティブ名を書かない（Bug #30）。
+⚠ 地図は 1 つも作らない（`new google.maps.Map(` がゼロ件であることをテストで固定）。
+⚠ 進捗表示にビル名を出しているので、payload の `name` は死にデータではない。
 
-ページの末尾（`@endsection` の直前）に:
+- [x] **Step 6: 緑を確認** — `AreaBuildingGeocodeTest` 20 本 / 84 assertions
 
-```blade
-@if($pendingGeocodeCount > 0)
-    @push('scripts')
-    <script>
-    // 座標一括取得。⚠ 地図は生成しない（Geocoder だけ使う。設計 §6.0）
-    var areaGeocoder = null;
-    var AREA_PENDING = {{ \Illuminate\Support\Js::from($pendingGeocode) }};
+- [x] **Step 7: 変異テスト（18 通りを実測）**
 
-    function onAreaGeocodeReady() {
-        areaGeocoder = new google.maps.Geocoder();
-        var btn = document.getElementById('btn-bulk-geocode');
-        if (btn) { btn.disabled = false; }
-    }
+⚠ 新規ファイルは untracked なので `git checkout --` で戻せず `git diff` にも出ない。
+**内容バックアップとの `diff` で着弾を確認**し、各変異前に `storage/framework/views/*.php` を消す。
+⚠ 実ワークツリーで測る（`git archive` ＋ vendor symlink は変異が全部 no-op になる。Bug #50）。
 
-    function runBulkGeocode() {
-        if (!areaGeocoder) {
-            alert('Google Maps を読み込み中です。しばらくお待ちください。');
-            return;
-        }
-        if (!confirm(AREA_PENDING.length + ' 件の住所から座標を取得します。よろしいですか？')) {
-            return;
-        }
-
-        var btn = document.getElementById('btn-bulk-geocode');
-        var progress = document.getElementById('geocode-progress');
-        var results = [];
-        var failed = 0;
-        var i = 0;
-        btn.disabled = true;
-
-        function finish(note) {
-            progress.textContent = note || ('取得 ' + results.length + ' 件 / 失敗 ' + failed + ' 件。保存しています…');
-            document.getElementById('geocode-payload').value = JSON.stringify(results);
-            document.getElementById('geocode-form').submit();
-        }
-
-        function step() {
-            if (i >= AREA_PENDING.length) { finish(); return; }
-
-            var item = AREA_PENDING[i];
-            progress.textContent = '取得中… ' + (i + 1) + ' / ' + AREA_PENDING.length;
-
-            // ⚠ 1 棟につきフル住所で 1 回だけ。段階フォールバック（最大 5 回）は使わない。
-            //    失敗した棟は登録フォームから手で確定する（設計 §7.4）
-            areaGeocoder.geocode({ address: item.address }, function (res, status) {
-                if (status === 'OK' && res[0]) {
-                    results.push({
-                        id: item.id,
-                        latitude: res[0].geometry.location.lat(),
-                        longitude: res[0].geometry.location.lng()
-                    });
-                } else if (status === 'OVER_QUERY_LIMIT') {
-                    finish('Google の呼び出し上限に達しました。取得できた ' + results.length + ' 件だけ保存します。');
-                    return;
-                } else {
-                    failed++;
-                }
-                i++;
-                setTimeout(step, 120);
-            });
-        }
-
-        step();
-    }
-    </script>
-    <script src="https://maps.googleapis.com/maps/api/js?key={{ config('services.google_maps.api_key') }}&callback=onAreaGeocodeReady&language=ja&region=JP" async defer></script>
-    @endpush
-@endif
-```
-
-⚠ `Js::from()` を使う（`@json` は構造区切りの `"` を素通しするので属性・スクリプトを壊す。Bug #23）。
-⚠ `<script>` 内の `//` コメントにディレクティブ名を書かない（Bug #30）。上のコメントには含めていない。
-
-- [ ] **Step 6: テストが通ることを確認する**
-
-```bash
-vendor/bin/phpunit --filter 'AreaBuildingGeocodeTest|AreaBuildingListTest'
-```
-
-Expected: PASS（Geocode 9 + List 12）
-
-- [ ] **Step 7: 変異テストで 7 通り確認する**
-
-| # | 変異 | 期待 |
+| # | 変異 | 結果 |
 |---|---|---|
-| 1 | `storeCoordinates()` の `whereNull('latitude')` を削除 | `test_does_not_overwrite_buildings_that_already_have_coordinates` が赤 |
-| 2 | `pendingGeocode(self::GEOCODE_BATCH_LIMIT)` を `pendingGeocode(100000)` に | `test_pending_list_is_capped_and_the_remainder_is_reported` が赤 |
-| 3 | `index()` の `$pendingCount = $canEdit ? ... : 0;` を `AreaBuilding::pendingGeocodeCount()` 固定に | `test_staff_does_not_see_the_button` が赤 |
-| 4 | ビューの `@if($pendingGeocodeCount > 0)`（スクリプト側）を外す | `test_list_does_not_load_maps_when_nothing_is_pending` が赤 |
-| 5 | `round($lat, 7)` / `round($lng, 7)` を `$lat` / `$lng` に | `test_saves_coordinates_for_pending_buildings` が赤。⚠ **生の DB 値を見る形に直したから赤になる。** モデル経由（`$building->latitude`）のままだと `decimal:7` キャストが丸めるので**緑のまま**通る（2026-08-17 実測）。**両方の書き方で測って、旧ロジックでは検出できないことまで確認する**（Bug #45 の流儀） |
-| 6 | `$lat < -90 \|\| $lat > 90` の範囲チェックを削除 | `test_ignores_out_of_range_and_malformed_entries` が赤 |
-| 7 | ルートの `role:executive,manager` を `role:manager` に | 経営層のテストが赤。**無ければ 1 本足す**（Task 8 / 9 と同じ穴） |
+| 1 | `whereNull('latitude')` を削除 | 赤 `test_does_not_overwrite_buildings_that_already_have_coordinates`（33.8 → 34.0） |
+| 2 | `pendingGeocode(self::GEOCODE_BATCH_LIMIT)` → `(100000)` | 赤 `test_pending_list_is_capped_and_the_remainder_is_reported`（205 件返る） |
+| 3 | `$pendingCount = $canEdit ? … : 0;` → 常に count | 赤 `test_staff_does_not_see_the_button` |
+| 4 | ビューのスクリプト側 `@if` を外す | 赤 2 本（`…does_not_load_maps…` / `…staff_does_not_see…`） |
+| 5a | `round($lat, 7)` → `$lat` | 赤 `test_saves_coordinates_for_pending_buildings`（33.83921234567） |
+| **5b** | **同じ変異＋テストを旧ロジック（`$building->latitude` の `assertSame`）へ戻す** | **20/20 緑**。⚠ **旧ロジックでは原理的に検出できない**ことを実測で確認（Bug #45 の流儀） |
+| 6 | 緯度経度の範囲チェックを削除 | 赤 `test_ignores_out_of_range_and_malformed_entries`（91.0 が保存される） |
+| 7 | ルートを `role:manager` に狭める | 赤 `test_executive_can_post_coordinates`（403） |
+| 8 | JS の `OVER_QUERY_LIMIT` 早期終了を削除 | 赤 `…stops_when_google_reports_the_query_limit`（**2 回 → 3 回叩く**） |
+| 9 | JS の `failed++` を `finish(); return;` に（1 件失敗で全部やめる） | 赤 `…skips_failures_and_still_saves_the_rest` |
+| 10 | JS の `if (!areaGeocoder)` ガードを削除 | 赤 `…refuses_to_run_before_maps_is_ready`（node が TypeError） |
+| 11 | `btn.disabled = true;` を `confirm()` より前へ | 赤 `…does_nothing_when_the_confirmation_is_cancelled`（キャンセル後に死んだボタンが残る） |
+| 12 | JS に 2 つ目の `geocode()`（段階フォールバック）を持ち込む | 赤 2 本（実駆動が 3 → 5 回 / 構造テストが 2 箇所） |
+| 13 | `is_numeric($item['id'])` を削除 | 赤 `test_ignores_out_of_range_and_malformed_entries`（`['id' => [5]]` が通る） |
+| **14** | サーバ側の `array_slice` を削除 | **初回は 18/18 緑＝無検査だった** → `test_the_server_caps_the_batch_it_will_write` を追加して赤に |
+| **15** | ボタンの `onclick="runBulkGeocode()"` を削除 | **初回は 19/19 緑**（実駆動テストが関数を直接呼ぶので Bug #28 を見逃す）→ 配線テストを追加して赤に |
+| **16** | ローダーの `callback=onAreaGeocodeReady` を別名に | 同上のテストで赤（Geocoder が永久に作られない） |
+| 17 | 候補の `address` を `name` にすり替え | 赤（実駆動の `calls` がビル名になる＝間違った住所で課金する） |
+| 18 | 5a をテスト 20 本の状態で再測 | 赤（テストを増やしても検出力が落ちていない） |
 
-- [ ] **Step 8: ブラウザで実際に動くことを確認する**
+⚠ **14・15・16 は「変異を当てたら緑だった」＝テストの穴**。3 件とも新しいテストを足して赤にした。
+**変異テストを 7 通りで止めていたら 3 つとも見逃していた。**
 
-⚠ **サーバ側テストは JSON を手で送るだけなので、Geocoder のループが 1 度も走らなくても緑になる**
-（Bug #28 / #35 と同じ構図）。ローカルで実際に押すこと。
+- [x] **compiled view の lint** — 295 本 / invalid 0。
+  コンパイル済みに `runBulkGeocode` / `座標未設定` / `onAreaGeocodeReady` /
+  `tenant.area-buildings.geocode` が入っていることを確認（**Blade コメント内の文字列は
+  コンパイル時に消える**ので、コメント外の文字列で見る）。
+
+- [x] **全体テスト** — 769 tests / 4153 assertions green（Task 11 時点 749 / 4069 から +20 / +84）。
+  ピークメモリ 154.50 MB（`phpunit.xml` の `memory_limit=512M` は引き続き load-bearing）。
+
+- [ ] **Step 8: ブラウザで実際に動かす（未実施 — Task 13 で実施）**
+
+⚠ node の実駆動で「1 棟 1 回」は固定したが、**本物の Google Geocoder との組み合わせは未検証**。
+⚠ 実行すると**実際に課金される**ので、利用者の明示的な了解を得てから行う。
 
 - [ ] 住所つきのビルを 2〜3 件登録し、一覧のボタンを押す
 - [ ] 進捗表示が進み、一覧に戻って「N 件の座標を保存しました」が出る
@@ -8359,9 +8116,7 @@ Expected: PASS（Geocode 9 + List 12）
 - [ ] Google Cloud Console の Geocoding API のリクエスト数が**棟数と同じだけ**増えている
       （段階フォールバックが混入していると棟数の数倍になる）
 
-- [ ] **Step 9: コミット**
-
-`/commit` で `feat(tenant): 周辺ビルの座標一括取得を追加`
+- [x] **Step 9: コミット**
 
 ---
 
