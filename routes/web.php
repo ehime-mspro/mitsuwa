@@ -503,6 +503,23 @@ Route::middleware(['auth', 'password.change'])->group(function () {
         Route::delete('/area-buildings/{building}/surveys/{survey}', [\App\Http\Controllers\Tenant\AreaBuildingSurveyController::class, 'destroy'])
             ->middleware('role:executive')
             ->name('tenant.area-buildings.surveys.destroy');
+
+        // 入居テナント（追加・編集は経営層+管理者 / 削除は経営層）
+        // ⚠ /tenants/create は /tenants/{tenant}/edit より先に宣言する必要は無い（形が違うため
+        //   衝突しない）が、調査回と対称に並べておく
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/area-buildings/{building}/tenants/create', [\App\Http\Controllers\Tenant\AreaBuildingTenantController::class, 'create'])
+                ->name('tenant.area-buildings.tenants.create');
+            Route::post('/area-buildings/{building}/tenants', [\App\Http\Controllers\Tenant\AreaBuildingTenantController::class, 'store'])
+                ->name('tenant.area-buildings.tenants.store');
+            Route::get('/area-buildings/{building}/tenants/{tenant}/edit', [\App\Http\Controllers\Tenant\AreaBuildingTenantController::class, 'edit'])
+                ->name('tenant.area-buildings.tenants.edit');
+            Route::put('/area-buildings/{building}/tenants/{tenant}', [\App\Http\Controllers\Tenant\AreaBuildingTenantController::class, 'update'])
+                ->name('tenant.area-buildings.tenants.update');
+        });
+        Route::delete('/area-buildings/{building}/tenants/{tenant}', [\App\Http\Controllers\Tenant\AreaBuildingTenantController::class, 'destroy'])
+            ->middleware('role:executive')
+            ->name('tenant.area-buildings.tenants.destroy');
     });
 
     /*
