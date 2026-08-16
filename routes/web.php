@@ -461,6 +461,12 @@ Route::middleware(['auth', 'password.change'])->group(function () {
         // 一覧（全ロール閲覧可）
         Route::get('/area-buildings', [\App\Http\Controllers\Tenant\AreaBuildingController::class, 'index'])
             ->name('tenant.area-buildings.index');
+
+        // ⚠ /area-buildings/create /import /geocode はこの行より上に置くこと
+
+        // 詳細（全ロール閲覧可）
+        Route::get('/area-buildings/{building}', [\App\Http\Controllers\Tenant\AreaBuildingController::class, 'show'])
+            ->name('tenant.area-buildings.show');
     });
 
     /*

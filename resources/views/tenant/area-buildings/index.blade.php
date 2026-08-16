@@ -57,14 +57,15 @@
             <div class="scroll-hint-inner">
                 <table class="w-full border-collapse" style="table-layout:fixed; min-width:900px;">
                     <colgroup>
+                        <col style="width:20%">
                         <col style="width:22%">
-                        <col style="width:26%">
-                        <col style="width:8%">
                         <col style="width:7%">
-                        <col style="width:7%">
-                        <col style="width:7%">
-                        <col style="width:10%">
-                        <col style="width:13%">
+                        <col style="width:6%">
+                        <col style="width:6%">
+                        <col style="width:6%">
+                        <col style="width:9%">
+                        <col style="width:12%">
+                        <col style="width:12%">
                     </colgroup>
                     <thead>
                         <tr>
@@ -76,13 +77,17 @@
                             <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">不明</th>
                             <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">空室率</th>
                             <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">最終調査</th>
+                            <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">操作</th>
                         </tr>
                     </thead>
                     <tbody>
                         @forelse($rows as $row)
                             <tr class="hover:bg-gray-50 transition-colors">
-                                <td class="px-4 py-3 lg:px-5 lg:py-3.5 border-b border-gray-200 text-sm font-semibold text-gray-900">
-                                    {{ $row['building']->name }}
+                                <td class="px-4 py-3 lg:px-5 lg:py-3.5 border-b border-gray-200">
+                                    <a href="{{ route('tenant.area-buildings.show', $row['building']) }}"
+                                       class="text-sm font-semibold text-emerald-600 hover:text-emerald-700 hover:underline transition-colors">
+                                        {{ $row['building']->name }}
+                                    </a>
                                 </td>
                                 <td class="px-4 py-3 lg:px-5 lg:py-3.5 border-b border-gray-200 text-sm text-gray-700">
                                     {{ $row['building']->address ?: '—' }}
@@ -105,10 +110,16 @@
                                 <td class="px-4 py-3 lg:px-5 lg:py-3.5 border-b border-gray-200 text-sm text-center text-gray-700 whitespace-nowrap">
                                     {{ $row['month'] ? $row['month']->format('Y年n月') : '—' }}
                                 </td>
+                                <td class="px-4 py-3 lg:px-5 lg:py-3.5 border-b border-gray-200 text-center whitespace-nowrap">
+                                    <a href="{{ route('tenant.area-buildings.show', $row['building']) }}"
+                                       class="text-xs font-semibold text-blue-700 px-3.5 py-1.5 border border-blue-200 rounded bg-blue-50 hover:bg-blue-100 hover:border-blue-300 transition-colors">
+                                        詳細
+                                    </a>
+                                </td>
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="8" class="px-5 py-10 text-center text-sm text-gray-400">
+                                <td colspan="9" class="px-5 py-10 text-center text-sm text-gray-400">
                                     周辺ビルのデータがありません。
                                 </td>
                             </tr>
