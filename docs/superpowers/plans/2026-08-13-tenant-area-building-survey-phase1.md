@@ -3534,7 +3534,12 @@ Task 6 で入れた一覧ルートの**直後**に追加する（`create` / `imp
 vendor/bin/phpunit --filter 'AreaBuildingShowTest|AreaBuildingListTest'
 ```
 
-Expected: PASS（Show 11 tests + List 12 tests）
+Expected: PASS（Show 11 tests + List 18 tests = 29）
+
+⚠ 2026-08-16 訂正: List は当初「12 本」と書いていたが実測 **18 本**。
+内訳は Task 6 のコードブロックが元々 13 本 + 自己レビューで見つけた配列パラメータの
+回帰 2 本 + コード品質レビュー（M-2 / M-3）の境界値 3 本。
+**Task 6 の結果に依存する数字**なので、Task 6 を先に完了させてから数えること。
 
 - [ ] **Step 8: 変異テストで 4 通り確認する**
 
