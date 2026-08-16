@@ -97,10 +97,22 @@ class AreaBuildingListService
             ->values();
     }
 
-    /** フィルタバーの「調査年」選択肢(降順) */
+    /**
+     * フィルタバーの「調査年」選択肢(降順)。
+     *
+     * ⚠ 論理削除済みのビルの調査年を含めない(設計 §5.3 / Task 6 レビューで発見)。
+     *   AreaBuildingSurvey に SoftDeletes は無いので、ビルを消しても調査回の行は残る。
+     *   ⚠ `->whereHas('building')` では効かない(2026-08-17 実測)。
+     *   `AreaBuildingSurvey::building()` は withTrashed() 付きのリレーションなので、
+     *   whereHas の EXISTS サブクエリもそのリレーション定義をそのまま使い、
+     *   SoftDeletingScope が掛からない=論理削除済みでも存在ありと判定されてしまう。
+     *   代わりに AreaBuilding 側(SoftDeletes スコープが自然に効く)から生存 ID を引き、
+     *   whereIn で絞る。
+     */
     public function surveyYears(): array
     {
         return AreaBuildingSurvey::query()
+            ->whereIn('area_building_id', AreaBuilding::query()->select('id'))
             ->orderByDesc('surveyed_month')
             ->pluck('surveyed_month')
             ->map(fn ($month) => (int) Carbon::parse($month)->format('Y'))

@@ -14,6 +14,13 @@
     {{-- ページヘッダー --}}
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
         <h1 class="text-lg font-bold text-gray-900">周辺ビル調査</h1>
+        @if(auth()->user()->role->isManagerOrAbove())
+            <a href="{{ route('tenant.area-buildings.create') }}"
+               class="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-md transition-colors w-full sm:w-auto">
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                新規登録
+            </a>
+        @endif
     </div>
 
     {{-- フィルターバー --}}
@@ -111,10 +118,18 @@
                                     {{ $row['month'] ? $row['month']->format('Y年n月') : '—' }}
                                 </td>
                                 <td class="px-4 py-3 lg:px-5 lg:py-3.5 border-b border-gray-200 text-center whitespace-nowrap">
-                                    <a href="{{ route('tenant.area-buildings.show', $row['building']) }}"
-                                       class="text-xs font-semibold text-blue-700 px-3.5 py-1.5 border border-blue-200 rounded bg-blue-50 hover:bg-blue-100 hover:border-blue-300 transition-colors">
-                                        詳細
-                                    </a>
+                                    <div class="flex gap-1.5 justify-center">
+                                        <a href="{{ route('tenant.area-buildings.show', $row['building']) }}"
+                                           class="text-xs font-semibold text-blue-700 px-3.5 py-1.5 border border-blue-200 rounded bg-blue-50 hover:bg-blue-100 hover:border-blue-300 transition-colors">
+                                            詳細
+                                        </a>
+                                        @if(auth()->user()->role->isManagerOrAbove())
+                                            <a href="{{ route('tenant.area-buildings.edit', $row['building']) }}"
+                                               class="text-xs font-semibold text-emerald-700 px-3.5 py-1.5 border border-emerald-200 rounded bg-emerald-50 hover:bg-emerald-100 hover:border-emerald-300 transition-colors">
+                                                編集
+                                            </a>
+                                        @endif
+                                    </div>
                                 </td>
                             </tr>
                         @empty

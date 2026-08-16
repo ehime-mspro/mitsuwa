@@ -24,6 +24,20 @@
         <div style="display: flex; gap: 8px; align-items: center;">
             <a href="{{ route('tenant.area-buildings.index') }}"
                style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #6b7280; border: 1px solid #d1d5db; border-radius: 6px; text-decoration: none; background: #fff;">周辺ビル調査に戻る</a>
+            @if(auth()->user()->role->isManagerOrAbove())
+                <a href="{{ route('tenant.area-buildings.edit', $building) }}"
+                   style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #047857; border: 1px solid #a7f3d0; border-radius: 6px; text-decoration: none; background: #ecfdf5;">編集</a>
+            @endif
+            @if(auth()->user()->role->isExecutive())
+                <form method="POST" action="{{ route('tenant.area-buildings.destroy', $building) }}"
+                      onsubmit="return confirm('このビルを削除します。調査履歴とテナント明細も画面から見えなくなります。よろしいですか？');"
+                      style="display: inline;">
+                    @csrf
+                    @method('DELETE')
+                    <button type="submit"
+                            style="padding: 6px 16px; font-size: 13px; font-weight: 600; color: #b91c1c; border: 1px solid #fecaca; border-radius: 6px; background: #fef2f2; cursor: pointer;">削除</button>
+                </form>
+            @endif
         </div>
     </div>
 

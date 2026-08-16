@@ -462,11 +462,32 @@ Route::middleware(['auth', 'password.change'])->group(function () {
         Route::get('/area-buildings', [\App\Http\Controllers\Tenant\AreaBuildingController::class, 'index'])
             ->name('tenant.area-buildings.index');
 
-        // ⚠ /area-buildings/create /import /geocode はこの行より上に置くこと
+        // 登録（経営層+管理者）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/area-buildings/create', [\App\Http\Controllers\Tenant\AreaBuildingController::class, 'create'])
+                ->name('tenant.area-buildings.create');
+            Route::post('/area-buildings', [\App\Http\Controllers\Tenant\AreaBuildingController::class, 'store'])
+                ->name('tenant.area-buildings.store');
+        });
+
+        // ⚠ /area-buildings/import /geocode はこの行より上に置くこと
 
         // 詳細（全ロール閲覧可）
         Route::get('/area-buildings/{building}', [\App\Http\Controllers\Tenant\AreaBuildingController::class, 'show'])
             ->name('tenant.area-buildings.show');
+
+        // 編集・更新（経営層+管理者）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/area-buildings/{building}/edit', [\App\Http\Controllers\Tenant\AreaBuildingController::class, 'edit'])
+                ->name('tenant.area-buildings.edit');
+            Route::put('/area-buildings/{building}', [\App\Http\Controllers\Tenant\AreaBuildingController::class, 'update'])
+                ->name('tenant.area-buildings.update');
+        });
+
+        // 削除（経営層のみ）
+        Route::delete('/area-buildings/{building}', [\App\Http\Controllers\Tenant\AreaBuildingController::class, 'destroy'])
+            ->middleware('role:executive')
+            ->name('tenant.area-buildings.destroy');
     });
 
     /*

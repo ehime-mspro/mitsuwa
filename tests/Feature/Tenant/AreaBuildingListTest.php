@@ -309,6 +309,30 @@ class AreaBuildingListTest extends AreaBuildingTestCase
             ->assertSee('周辺ビル調査');
     }
 
+    /**
+     * Step 7b: 論理削除済みのビルの調査年は「調査年」フィルタの選択肢に出ない。
+     *
+     * ⚠ Task 6 レビュー時点では削除機能が無く到達不能だった欠陥。AreaBuildingSurvey に
+     *   SoftDeletes は無いので、ビルを消しても調査回の行自体は残る。surveyYears() が
+     *   AreaBuildingSurvey を素通しで引くと、消えたビルの年が選択肢に残ったまま
+     *   一覧側は AreaBuilding の SoftDeletes スコープで正しく除外されるため
+     *   「選べるのに選ぶと 0 件」という不整合になる。
+     */
+    public function test_survey_years_excludes_soft_deleted_buildings(): void
+    {
+        $building = $this->makeBuilding('消えるビル');
+        $this->makeSurvey($building, '2020-06-01', 5, 5);
+        $this->makeSurvey($this->makeBuilding('残るビル'), '2026-08-01', 5, 5);
+
+        $building->delete();
+
+        $response = $this->actingAs($this->staff())->get('/tenant/area-buildings');
+
+        $response->assertOk();
+        $this->assertNotContains(2020, $response->viewData('surveyYears'), '削除済みビルの調査年が選択肢に残っている');
+        $this->assertContains(2026, $response->viewData('surveyYears'));
+    }
+
     /** 日本語を含む配列を安定した順で比較するためのヘルパー */
     private function sortedJa(array $names): array
     {
