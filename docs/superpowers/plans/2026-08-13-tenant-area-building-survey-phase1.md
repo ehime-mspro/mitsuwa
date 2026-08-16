@@ -2833,11 +2833,32 @@ Expected: PASS。`MobileLayoutTest`（テーブルが `scroll-hint-inner` の中
 
 | # | 変異 | 期待 |
 |---|---|---|
-| 1 | `matchesVacancy()` の先頭 `if ($vacancy === null \|\| $vacancy === '')` を `if ($vacancy === '')` に | `test_empty_vacancy_filter_means_all_over_real_http` が赤 |
+| 1 | `matchesVacancy()` の**2 つのガードを 1 つに畳み、既定を `false` にする**（下記） | `test_empty_vacancy_filter_means_all_over_real_http` ほか **7 本が赤**（2026-08-16 実測） |
 | 2 | `paginate()` の `'query' => ...` の行を削除 | `test_pagination_keeps_the_keyword_filter` が赤 |
 | 3 | `sortByDesc()` の第1要素 `$row['rate'] === null ? 0 : 1` を `0` 固定に | `test_default_order_is_vacancy_rate_desc_with_unsurveyed_last` が赤 |
 | 4 | `orWhereHas('tenants', ...)` の `whereNull('moved_out_on')` を削除 | `test_keyword_ignores_moved_out_tenants` が赤 |
 | 5 | サイドバー 2 箇所のうち**片方だけ**を消す | `test_sidebar_has_the_link` は **緑のまま**（片方が残るため）。→ `grep -c` が 2 であることを手で確認するのが唯一の防御だと理解しておく |
+
+⚠ **2026-08-16 訂正 — 当初の変異 1 は変異になっていなかった。**
+「先頭の `if ($vacancy === null || $vacancy === '')` を `if ($vacancy === '')` に」と書いていたが、
+**どのテストでも検出できない**。直後の
+`if (! is_string($vacancy) || ! array_key_exists($vacancy, self::VACANCY_OPTIONS)) { return true; }`
+が **null に対しても `true` を返す**ため（`is_string(null)` は `false`）、先頭のガードは
+**構造上どう書いても結果が変わらない死んだコード**だからだ。
+先頭のガードは「意図の記録」と「将来 fallback の向きを変えたときの保険」として残すが、
+**それ自体は今どのテストにも守られていない**ことを理解しておくこと。
+
+代わりに、**現実的な再発の形**を変異 1 とする。「ガードが 2 つあるのは冗長だ」と整理した人が
+既定の向きを間違える、という Bug #31 そのものの筋:
+
+```php
+// 変異: 2 つのガードを 1 つに畳み、既定を false（＝絞り込む）にする
+if (! is_string($vacancy) || ! array_key_exists($vacancy, self::VACANCY_OPTIONS)) {
+    return false;
+}
+```
+
+これで `?vacancy=`（null）が「該当なし」に落ち、**7 本が赤になる**（実測）。
 
 ⚠ 変異 5 は「テストで守れない」ことの確認。無理に検出しようとしてサイドバーの構造テストを
 足すより、Step 8 の `grep -c` を手順として残すほうが素直（走査テストの盲点。Bug #45）。
