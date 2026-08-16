@@ -334,7 +334,11 @@ class JapaneseValidationMessagesTest extends TestCase
         $attributes = Lang::get('validation.attributes');
 
         foreach (['operating_count', 'vacant_count', 'unknown_count', 'surveyed_month'] as $key) {
-            $this->assertStringNotContainsString('（', $attributes[$key], "{$key} に括弧の注記が入っている");
+            $this->assertDoesNotMatchRegularExpression(
+                '/[（(]/u',
+                $attributes[$key],
+                "{$key} に括弧の注記が入っている（Bug #37: 単位・任意/自動は項目名に含めない）"
+            );
         }
     }
 }

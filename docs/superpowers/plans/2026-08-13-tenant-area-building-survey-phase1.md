@@ -1896,16 +1896,29 @@ load-bearing ではない**（無くても mutation 1 は検出される）。�
     /**
      * 括弧の注記は項目名に含めない方針（Bug #37）。
      * 「営業（そのビルのテナント部屋数）」ではなく「営業」。
+     *
+     * ⚠ 2026-08-16 訂正: 全角「（」しか見ていない実装だと半角 `(` の注記が
+     *   無音ですり抜ける（Bug #45 ③「正規表現の文字クラスが狭い」と同型）。
+     *   全角・半角の両方を 1 つの文字クラスで拾う。
      */
     public function test_area_building_attributes_have_no_parenthetical_notes(): void
     {
         $attributes = Lang::get('validation.attributes');
 
         foreach (['operating_count', 'vacant_count', 'unknown_count', 'surveyed_month'] as $key) {
-            $this->assertStringNotContainsString('（', $attributes[$key], "{$key} に括弧の注記が入っている");
+            $this->assertDoesNotMatchRegularExpression(
+                '/[（(]/u',
+                $attributes[$key],
+                "{$key} に括弧の注記が入っている（Bug #37: 単位・任意/自動は項目名に含めない）"
+            );
         }
     }
 ```
+
+⚠ **2026-08-16 追記（仕様レビュー）**: 上記は初版の `assertStringNotContainsString('（', ...)` から
+差し替えた最終形。初版は全角「（」しか検査しておらず、`'営業(テナント部屋数)'`（半角）のような注記が
+無音ですり抜けることが実測で判明した。`assertDoesNotMatchRegularExpression('/[（(]/u', ...)` に変更し、
+全角・半角の両方を 1 回の検査で拾う形にした。
 
 - [ ] **Step 2: テストが落ちることを確認する**
 
@@ -1954,9 +1967,22 @@ Expected: PASS（既存 8 本 + 追加 2 本 = 10 tests）
 
 - [ ] **Step 5: 変異テストで確認する**
 
-- [ ] `'industry' => '業種',` の行を削除 → `test_area_building_survey_attributes_are_registered` が **赤**
-- [ ] `'operating_count' => '営業',` を `'operating_count' => '営業（テナント部屋数）',` に → `test_area_building_attributes_have_no_parenthetical_notes` が **赤**
-- [ ] 戻して PASS を確認
+⚠ **2026-08-16 訂正**: 当初「変異2は `test_area_building_attributes_have_no_parenthetical_notes` のみ赤」
+と書いていたが、実測では `test_area_building_survey_attributes_are_registered` も同時に赤くなった
+（2 本）。`operating_count` の値そのものを変える変異なので、`assertSame` による厳密一致の側も
+道連れで落ちるのは当然で、当初の記載が甘かった。テストの正しさを損なうものではなく、
+むしろ二重に守られていることの確認になる。
+
+- [ ] `'industry' => '業種',` の行を削除 → `test_area_building_survey_attributes_are_registered` が **赤**（1 本）
+- [ ] `'operating_count' => '営業',` を `'operating_count' => '営業（テナント部屋数）',`（**全角**）に →
+      `test_area_building_survey_attributes_are_registered` と
+      `test_area_building_attributes_have_no_parenthetical_notes` の **2 本が赤**
+- [ ] `'operating_count' => '営業',` を `'operating_count' => '営業(テナント部屋数)',`（**半角**）に →
+      同じく **2 本が赤**（全角・半角の両方を検出できることの確認。片方だけ試すと見落としを繰り返す）
+- [ ] `'surveyed_month' => '調査年月',` を `'surveyed_month' => '調査年月(YYYY-MM)',`（**半角**・別キー）に →
+      同じく **2 本が赤**（4 キー全部が検査対象であることの確認）
+- [ ] 変異のたびに `git diff` が非空であることを確認する
+- [ ] 戻して PASS を確認、`git status` が clean であることを確認する
 
 - [ ] **Step 6: コミット**
 
