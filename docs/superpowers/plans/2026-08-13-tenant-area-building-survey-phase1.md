@@ -52,6 +52,9 @@ cd /Users/masanori/site/manage/.claude/worktrees/tenant-area-survey && vendor/bi
 | 11 | 一覧の閲覧を staff でしかテストしていない | **これでよい。** `index` に role ミドルウェアは無く `department.access:tenant` のみで、部署アクセスは `tests/Feature/Security/DepartmentAccessMiddlewareTest.php` が一元的にテストする既存規約と整合。2026-08-16 のレビューで manager / executive が 200、他部署が 403 になることは実測確認済み。 |
 | 12 | 削除確認は画面によって**モーダルと `confirm()` が混在**する | **意図的に使い分ける。** `<x-delete-confirm-modal>` は `showDeleteModal` という**単一の Alpine 変数**でしか開閉できず、1 ページ 1 対象が前提（実測: 使用 5 ファイルすべて tenant の詳細画面で、テーブル行に使った例は 0 件）。よって **ページ単位の削除＝モーダル**（ビル本体。tenant 詳細 5/5 と同形）、**テーブル行ごとの削除＝`confirm()`**（Task 9 の調査回・Task 10 のテナント）。`show.blade.php` にも同趣旨のコメントを置いた。 |
 | 13 | CDN スクリプトに SRI を付けるのはこのリポジトリで**初** | **付ける**（設計 §7）。実測: `grep -rn "integrity=" resources/views/` が **0 件**で、既存の SheetJS 4 箇所（`realestate/projects/show` / `realestate/_partials/_cost_section_form` / `realestate/procurements/show` / `dad/projects/_form`）はいずれも SRI 無し。**既存 4 箇所への後付けは本プランのスコープ外**（下記フォローアップ）。⚠ SRI が不一致だとブラウザはスクリプトを**黙って読み込まない**ので、テストは「属性がある」ではなく**実測したハッシュ literal と一致すること**を見る（Task 11 H2）。 |
+| 14 | 座標の一括保存（Task 12）だけ `DB::transaction()` で囲まない | **意図的。囲むのは積極的に間違い。** Geocoding API の課金はブラウザ側で**既に発生済み**なので、199 行目で落ちて 198 件を巻き戻すと**もう一度 Google に払い直す**ことになる。`whereNull('latitude')` ガードで再実行が安全（部分成功のまま押し直せば残りだけ埋まる）。独立した N 行の更新で原子性が要らない。⚠ Task 8 の `store()`（親＋子を 1 リクエストで書く）を囲んだ慣習と**状況が違う**ので、レビューで蒸し返さないこと。 |
+| 15 | UNIQUE 違反を捕まえて差し戻すのはこのリポジトリで**初**（`app/` に前例 0 件） | **入れる。** 設計 §3.2 が「衝突したら確認を出す」と言う以上 500 は仕様違反で、`x-form-actions` は submit を無効化しないため**ダブルクリックが現実的な引き金**。⚠ **`UniqueConstraintViolationException` に絞る**（SQLSTATE `23000` では FK 違反・NOT NULL 違反まで飲み込む — 実測）。この例外は `SQLiteConnection` / `MySqlConnection` の**両方**が `isUniqueConstraintError()` を実装しているのでテスト（SQLite）でも本番（MySQL）でも出る。⚠ **安全網を足したら、それが隠す主機構を測り直すこと**（下記 §1-16）。 |
+| 16 | **安全網を足すと、それが backstop している主機構の変異が検出できなくなる** | **2026-08-17 に実際に踏んだ。** Task 9 で UNIQUE 違反の try/catch を入れた直後、**変異「`whereDate` → `where`」が検出されなくなった** — 事前チェック（`monthTaken()`）が死んでも DB 制約が同じ差し戻しを返すので、HTTP のレスポンスからは区別が付かないため。`creating`/`updating` を監視して「**INSERT / UPDATE を試みていないこと**」まで見るテスト（`watchWrites()`）で復活させ、主機構と安全網が**独立に**固定されることを再測定した。⚠ **二重防御を入れたら、外側だけで緑にならないかを必ず測り直す。** Bug #42 / #45 と同族の「テストが緑でも守られていない」型。 |
 
 ---
 
@@ -6063,9 +6066,40 @@ Expected: PASS（Tenant 11 本 ＋ Show は現状の本数）。
 | 3 | `validate()` 第3引数の `'name' => 'テナント名'` を削除 | `test_error_labels_match_the_screen` が赤（グローバルは「名称」） |
 | 4 | ルートの `role:executive,manager` を `role:manager` に | `test_executive_can_add_and_edit` が赤 |
 | 5 | `_form.blade.php` の状態 option を `<template x-for>` に | `test_status_options_are_static` が赤 |
+| 6 | `tenants/edit.blade.php` の `@method('PUT')` を削除 | 往復テストが赤（下記） |
+| 7 | `tenants/edit.blade.php` の `action` を `tenants.store` に | 往復テストが赤（**編集のはずが新規が増える**） |
+| 8 | `show.blade.php` の行削除フォームの `@method('DELETE')` を削除 | 削除の往復テストが赤 |
+| 9 | `store()`/`update()` の `->withInput()` を削除 | 差し戻しテストが赤 |
+| 10 | `min:0` / `max:9999` / `required` を 1 つずつ外す | バリデーション表テストが赤 |
 
 ⚠ 5 は `extractSelect()` の妥当性確認も兼ねる。**変異が本当に当たったか `git diff` で確認する**
 （当たっていない変異を「検出しない」と誤読する事故が実際に起きている。Bug #44）。
+⚠ 新規ファイルは untracked なので `git checkout --` では戻せず `git diff` にも出ない。
+**内容バックアップとの diff で着弾確認する**（Task 9 の実装者が作ったハーネスを流用）。
+
+- [ ] **Step 8b: フォームの往復テストを書く（Task 9 のレビューで見つかった軸）**
+
+⚠ **これを省くと、HTTP メソッド・送信先・選択肢が丸ごと無防備になる。**
+Task 9 で実測したところ、往復テストが無い状態では **18 通りの変異が全テストを素通り**した
+（`@method('PUT')` を消すと「更新する」が 405 になるのにテストは全部緑、など）。
+URL だけを `assertSee` で固定しても**半分しか押さえられない**（Bug #28 と同型）。
+
+`AreaBuildingTestCase::parseForm($html, $needle)` が Task 9 で追加済み。
+`[method, action, fields]` を返すので、**画面が描画したフォームをそのまま送る**:
+
+```php
+$form = $this->parseForm($html, 'action="' . route('tenant.area-buildings.tenants.update', [$building, $tenant]) . '"');
+$this->assertSame('PUT', $form['fields']['_method'] ?? null);
+$this->assertArrayHasKey('_token', $form['fields']);   // ⚠ @csrf 欠落を見る唯一の手（下記）
+$this->actingAs($this->manager())->post($form['action'], $form['fields'])->assertRedirect(...);
+$this->assertSame(1, $building->tenants()->count(), '編集のはずが新規レコードが増えている');
+```
+
+⚠ **`$needle` は `action="…"` まで含める形で渡す。** 素の URL だと destroy の URL が
+edit の URL に前方一致して**別のフォームを掴む**（Task 9 で実際に踏んだ）。
+⚠ **`@csrf` の欠落は Feature テストで原理的に検出できない** —
+`VerifyCsrfToken::handle()` が `runningUnitTests()` で素通りする（実測）。
+描画された `_token` hidden の存在をアサートするのが唯一の手。
 
 - [ ] **Step 9: コミット**
 
@@ -7323,9 +7357,15 @@ class AreaBuildingGeocodeTest extends AreaBuildingTestCase
             ['id' => $building->id, 'latitude' => 33.83921234567, 'longitude' => 132.76571234567],
         ])->assertRedirect(route('tenant.area-buildings.index'));
 
-        $building->refresh();
-        $this->assertSame('33.8392123', $building->latitude, '小数第7位に丸めて保存されていない');
-        $this->assertSame('132.7657123', $building->longitude);
+        // ⚠ モデル経由で読むと `decimal:7` キャストの number_format() が丸めてしまうので、
+        //   **書き込みを測るなら生の DB 値を見る**。2026-08-17 実測:
+        //     number_format(33.83921234567, 7, '.', '') === '33.8392123'
+        //     number_format(round(33.83921234567, 7), 7, '.', '') === '33.8392123'   ← 同じ
+        //   つまりモデル経由のアサートは round() を消しても緑になり、
+        //   「小数第7位に丸めて保存されていない」という失敗メッセージが嘘になる。
+        $raw = DB::table('area_buildings')->where('id', $building->id)->first();
+        $this->assertEqualsWithDelta(33.8392123, (float) $raw->latitude, 1e-9, '小数第7位に丸めて保存されていない');
+        $this->assertEqualsWithDelta(132.7657123, (float) $raw->longitude, 1e-9);
         $this->assertStringContainsString('1 件', session('success'));
     }
 
@@ -7502,6 +7542,18 @@ Expected: FAIL — 404 / `Undefined view variable`
 
         $updated = 0;
 
+        // ⚠ **ここは意図的に DB::transaction() で囲まない。** 囲むのは積極的に間違い:
+        //   ① Geocoding API の課金はブラウザ側で**既に発生済み**。199 行目で落ちて 198 件を
+        //      巻き戻すと、もう一度 Google に払い直すことになる
+        //   ② `whereNull('latitude')` ガードがあるので**再実行が安全**
+        //      （部分成功のまま押し直せば残りだけ埋まる）
+        //   ③ 親子関係のある書き込みではなく独立した N 行の更新なので原子性が要らない
+        //   Task 8 の `store()`（親＋子を 1 リクエストで書く）を囲んだのとは状況が違う。
+        //
+        // ⚠ `whereKey()->update()` はクエリビルダの一括更新なので**モデルイベントが発火しない**
+        //   （`saving` フックの住所正規化を素通りする）。今は address を触らないので無害だが、
+        //   将来フックに処理を足すときはこの経路が抜けることに注意。
+        //   なお `updated_at` は Eloquent\Builder::update() が自動で足すので更新される。
         foreach (array_slice($decoded, 0, self::GEOCODE_BATCH_LIMIT) as $item) {
             if (! is_array($item) || ! isset($item['id'], $item['latitude'], $item['longitude'])) {
                 continue;
@@ -7658,7 +7710,7 @@ vendor/bin/phpunit --filter 'AreaBuildingGeocodeTest|AreaBuildingListTest'
 
 Expected: PASS（Geocode 9 + List 12）
 
-- [ ] **Step 7: 変異テストで 4 通り確認する**
+- [ ] **Step 7: 変異テストで 7 通り確認する**
 
 | # | 変異 | 期待 |
 |---|---|---|
@@ -7666,6 +7718,9 @@ Expected: PASS（Geocode 9 + List 12）
 | 2 | `pendingGeocode(self::GEOCODE_BATCH_LIMIT)` を `pendingGeocode(100000)` に | `test_pending_list_is_capped_and_the_remainder_is_reported` が赤 |
 | 3 | `index()` の `$pendingCount = $canEdit ? ... : 0;` を `AreaBuilding::pendingGeocodeCount()` 固定に | `test_staff_does_not_see_the_button` が赤 |
 | 4 | ビューの `@if($pendingGeocodeCount > 0)`（スクリプト側）を外す | `test_list_does_not_load_maps_when_nothing_is_pending` が赤 |
+| 5 | `round($lat, 7)` / `round($lng, 7)` を `$lat` / `$lng` に | `test_saves_coordinates_for_pending_buildings` が赤。⚠ **生の DB 値を見る形に直したから赤になる。** モデル経由（`$building->latitude`）のままだと `decimal:7` キャストが丸めるので**緑のまま**通る（2026-08-17 実測）。**両方の書き方で測って、旧ロジックでは検出できないことまで確認する**（Bug #45 の流儀） |
+| 6 | `$lat < -90 \|\| $lat > 90` の範囲チェックを削除 | `test_ignores_out_of_range_and_malformed_entries` が赤 |
+| 7 | ルートの `role:executive,manager` を `role:manager` に | 経営層のテストが赤。**無ければ 1 本足す**（Task 8 / 9 と同じ穴） |
 
 - [ ] **Step 8: ブラウザで実際に動くことを確認する**
 
