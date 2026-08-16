@@ -3634,6 +3634,7 @@ Expected: PASS（Show 13 tests + List 18 tests = 31）
 
 **Files:**
 - Create: `tests/Feature/Tenant/AreaBuildingCrudTest.php`
+- Create: `tests/Feature/Tenant/AreaBuildingAddressFallbackRegexTest.php`（2026-08-17 コード品質レビューで追加。Step 5b 参照）
 - Create: `resources/views/tenant/area-buildings/create.blade.php`
 - Create: `resources/views/tenant/area-buildings/edit.blade.php`
 - Create: `resources/views/tenant/area-buildings/_form.blade.php`
@@ -3709,6 +3710,36 @@ class AreaBuildingCrudTest extends AreaBuildingTestCase
             ->assertRedirect(route('tenant.area-buildings.index'));
 
         $this->assertSoftDeleted('area_buildings', ['id' => $building->id]);
+    }
+
+    /**
+     * executive も create/store/edit/update に到達できること（設計 §8）。
+     *
+     * ⚠ **2026-08-17 コード品質レビューで追加。** destroy 以外の 4 操作は manager でしか
+     *   テストしておらず、`role:executive,manager` ミドルウェアから executive が
+     *   誤って外れても検出できなかった。create/store 用と edit/update 用のミドルウェア
+     *   グループは routes/web.php 上で 2 箇所に分かれているため、**片方だけ
+     *   `role:manager` に変異させても本テストが両方とも拾える**ことを個別に実測確認済み
+     *   （create/store だけ落とす／edit/update だけ落とす、の 2 通り）。
+     */
+    public function test_executive_can_also_create_store_edit_and_update(): void
+    {
+        $executive = $this->executive();
+        $building  = $this->makeBuilding('既存ビル');
+
+        $this->actingAs($executive)->get('/tenant/area-buildings/create')->assertOk();
+
+        $this->actingAs($executive)->post('/tenant/area-buildings', [
+            'name' => 'executive登録ビル',
+        ])->assertRedirect();
+        $this->assertTrue(AreaBuilding::where('name', 'executive登録ビル')->exists());
+
+        $this->actingAs($executive)->get("/tenant/area-buildings/{$building->id}/edit")->assertOk();
+
+        $this->actingAs($executive)->put("/tenant/area-buildings/{$building->id}", [
+            'name' => '新名(executive)',
+        ])->assertRedirect(route('tenant.area-buildings.show', $building));
+        $this->assertSame('新名(executive)', $building->fresh()->name);
     }
 
     // ============================================================
@@ -4283,6 +4314,115 @@ function updateAreaCoords(lat, lng) {
 <script src="https://maps.googleapis.com/maps/api/js?key={{ config('services.google_maps.api_key') }}&callback=onGoogleMapsReady&language=ja&region=JP" async defer></script>
 ```
 
+- [ ] **Step 5b: 移植した正規表現の文字クラスを 1 文字ずつ照合する**
+
+⚠ **2026-08-17 コード品質レビューで発見。** Step 5 の `_form.blade.php` は
+`realestate/procurements/_form.blade.php` の移植だが、識別子リネーム（`procMap`→`areaMap` 等）を
+手作業でやる過程で、住所の段階的フォールバック正規表現の文字クラス `[\d０-９]`（半角 `\d` ＋
+**全角数字** U+FF10-FF19）が `[\d0-9]` に転記ミスされたことが実装時に判明した
+（`0-9` は `\d` の**部分集合**でしかなく、追加の意味を持たない冗長な記述。しかも全角数字には
+一切マッチしない）。
+
+⚠ **なぜ実際に起きるか:** 住所欄は `type="text"` で `inputmode="numeric"` を持たないため
+（Step 5 の `_form.blade.php` 21 行目）、`layouts/app.blade.php` のグローバル全角→半角変換
+リスナー（対象は `input[inputmode="numeric"]` / `input[type="number"]` のみ）の**対象外**。
+IME で自然に入る全角数字がそのまま JS の正規表現へ渡る。
+
+**影響:** フル住所でジオコーディングに失敗したとき、設計 §6.1 が要求する 5 段階
+（フル → 番地除去 → 丁目除去 → 市区町村 → 都道府県）のうち番地除去・丁目除去の
+**中間 2 段が無音でスキップ**され、実質 3 段に劣化する。500 やデータ破壊は起きないため、
+他の走査テスト・変異テストには一切引っかからない。
+
+**教訓（Bug #45 ③「正規表現の文字クラスが狭い」と同型）:** 動いているコードを移植・複製する
+ときは、**識別子だけでなく正規表現の文字クラスも 1 文字ずつ移植元と照合する**こと。
+「動いているコードを流用した」という安心感が、文字クラスのような目視で気づきにくい差分の
+見落としを誘発する。特に全角/半角の入り混じった文字クラスは、エディタ上で見た目が近く
+差分に気づきにくい。
+
+- [ ] `_form.blade.php` の段階的フォールバック正規表現（3 行、5 箇所）が
+      `[\d０-９]` を使っていることを確認する（`[\d0-9]` になっていないか）
+- [ ] `tests/Feature/Tenant/AreaBuildingAddressFallbackRegexTest.php` を書く:
+
+```php
+<?php
+
+namespace Tests\Feature\Tenant;
+
+use Illuminate\Support\Facades\File;
+use Tests\TestCase;
+
+/**
+ * 住所の段階的フォールバック（フル→番地除去→丁目除去→市区町村→都道府県。設計 §6.1）の
+ * 正規表現が全角数字（０-９）を含むことを固定する。
+ *
+ * ⚠ **PHP のテストだけでは原理的に守れない。** これは JS の正規表現であり、住所欄
+ *   （`type="text"`）は `inputmode="numeric"` も `type="number"` も持たないため、
+ *   layouts/app.blade.php のグローバル全角→半角変換リスナーの対象外。IME で自然に入る
+ *   全角数字がそのまま JS の正規表現へ渡る。
+ */
+class AreaBuildingAddressFallbackRegexTest extends TestCase
+{
+    /**
+     * この文字クラスパターンを使う既知のフォームの総数（procurements / projects（不動産）/
+     * projects（DAD）/ area-buildings の 4 ファイル × 5 箇所 = 20。実測して数を確定させてから
+     * 書くこと）。走査が空振りして「対象 0 件だから両方緑」という事故を防ぐための下限。
+     */
+    private const MIN_TOTAL_OCCURRENCES = 20;
+
+    /** area-buildings 単体の下限（実測 5 箇所）。 */
+    private const MIN_AREA_BUILDING_OCCURRENCES = 5;
+
+    private const CORRECT_CLASS  = '[\\d０-９]';
+    private const DEGRADED_CLASS = '[\\d0-9]';
+
+    public function test_area_building_form_fallback_regex_includes_fullwidth_digits(): void
+    {
+        $content = File::get(resource_path('views/tenant/area-buildings/_form.blade.php'));
+
+        $this->assertGreaterThanOrEqual(
+            self::MIN_AREA_BUILDING_OCCURRENCES,
+            substr_count($content, self::CORRECT_CLASS),
+            '_form.blade.php の段階フォールバック正規表現に全角数字 [\\d０-９] が見つからない'
+        );
+    }
+
+    /**
+     * ⚠ 対象を「直したファイル」に限定しない（Bug #45 ①と同型の穴を作らないため）。
+     *   resources/views/ 全体を機械的に走査し、劣化形がどこにも無いことを固定する。
+     */
+    public function test_no_view_uses_the_degraded_half_width_only_digit_class(): void
+    {
+        $offenders = [];
+
+        foreach (File::allFiles(resource_path('views')) as $file) {
+            if (! str_ends_with($file->getFilename(), '.blade.php')) {
+                continue;
+            }
+            if (str_contains($file->getContents(), self::DEGRADED_CLASS)) {
+                $offenders[] = $file->getRelativePathname();
+            }
+        }
+
+        $this->assertSame([], $offenders, "劣化形 [\\d0-9] を含むファイルがあります:\n" . implode("\n", $offenders));
+    }
+
+    public function test_scan_finds_the_known_fallback_regex_call_sites(): void
+    {
+        $total = 0;
+        foreach (File::allFiles(resource_path('views')) as $file) {
+            if (! str_ends_with($file->getFilename(), '.blade.php')) {
+                continue;
+            }
+            $total += substr_count($file->getContents(), self::CORRECT_CLASS);
+        }
+
+        $this->assertGreaterThanOrEqual(self::MIN_TOTAL_OCCURRENCES, $total, '走査ロジックが壊れている可能性がある');
+    }
+}
+```
+
+- [ ] **変異で確認:** `[\d０-９]` を `[\d0-9]` に戻すと、上記 3 本すべてが赤になること
+
 - [ ] **Step 6: `create.blade.php` と `edit.blade.php` を書く**
 
 `resources/views/tenant/area-buildings/create.blade.php`:
@@ -4444,7 +4584,7 @@ vendor/bin/phpunit --filter 'AreaBuildingCrudTest|AreaBuildingShowTest|AreaBuild
 
 Expected: PASS（Crud 13 + Show 11 + List 12）
 
-- [ ] **Step 10: 変異テストで 4 通り確認する**
+- [ ] **Step 10: 変異テストで 6 通り確認する**
 
 | # | 変異 | 期待 |
 |---|---|---|
@@ -4452,6 +4592,8 @@ Expected: PASS（Crud 13 + Show 11 + List 12）
 | 2 | `update()` の validate を `store()` と同じルール配列に変える | `test_update_changes_the_building_and_never_touches_surveys` が赤 |
 | 3 | `store()` と `update()` の第3引数から `'address' => '所在地'` を削除（**2 箇所とも**） | `test_address_error_says_shozaichi_not_juusho` が赤。⚠ 片方だけ消すと、もう片方の経路を叩くテストが緑のまま残る |
 | 4 | `_form.blade.php` の `streetViewControl: false` を `true` に | `test_form_disables_street_view_control` が赤 |
+| 5 | `_form.blade.php` の段階的フォールバック正規表現 `[\d０-９]` を `[\d0-9]` に戻す（Step 5b） | `AreaBuildingAddressFallbackRegexTest` の 3 本すべてが赤 |
+| 6 | routes/web.php の `role:executive,manager` を `role:manager` に変える（create/store 側・edit/update 側の**どちらか片方ずつ**、計 2 通り） | `test_executive_can_also_create_store_edit_and_update` が赤。⚠ 2 グループに分かれているので片方ずつ試し、両方とも検出できることを確認する |
 
 - [ ] **Step 11: 本番同等のコンパイルを確認する（Bug #26 / #30）**
 

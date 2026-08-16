@@ -63,6 +63,36 @@ class AreaBuildingCrudTest extends AreaBuildingTestCase
         $this->assertSoftDeleted('area_buildings', ['id' => $building->id]);
     }
 
+    /**
+     * executive も create/store/edit/update に到達できること（設計 §8）。
+     *
+     * ⚠ コード品質レビュー（2026-08-17）で指摘: destroy 以外の 4 操作は manager でしか
+     *   テストしておらず、`role:executive,manager` ミドルウェアから executive が
+     *   誤って外れても検出できなかった（実際に叩けば通ることは確認済みだったが、
+     *   将来の変更を検出する回帰テストが無かった）。create/store 用と edit/update 用の
+     *   ミドルウェアグループは routes/web.php 上で 2 箇所に分かれているため、
+     *   片方だけ role:manager に変異させても本テストが両方とも拾えることを個別に確認済み。
+     */
+    public function test_executive_can_also_create_store_edit_and_update(): void
+    {
+        $executive = $this->executive();
+        $building  = $this->makeBuilding('既存ビル');
+
+        $this->actingAs($executive)->get('/tenant/area-buildings/create')->assertOk();
+
+        $this->actingAs($executive)->post('/tenant/area-buildings', [
+            'name' => 'executive登録ビル',
+        ])->assertRedirect();
+        $this->assertTrue(AreaBuilding::where('name', 'executive登録ビル')->exists());
+
+        $this->actingAs($executive)->get("/tenant/area-buildings/{$building->id}/edit")->assertOk();
+
+        $this->actingAs($executive)->put("/tenant/area-buildings/{$building->id}", [
+            'name' => '新名(executive)',
+        ])->assertRedirect(route('tenant.area-buildings.show', $building));
+        $this->assertSame('新名(executive)', $building->fresh()->name);
+    }
+
     // ============================================================
     // 登録
     // ============================================================

@@ -110,6 +110,9 @@
 // ============================================================
 // Google Maps - 所在地マップ
 // realestate/procurements/_form.blade.php の移植。相違点は streetViewControl のみ。
+// 検証方法(2026-08-17): area* 識別子を proc* へ機械的に戻して移植元と diff し、
+// streetViewControl 以外の差はコメント文言とスタイルの凝縮(中間変数の省略等)のみで
+// 挙動差が無いことを確認した。次に触る人も同じ手順で再検証できる。
 // ============================================================
 var areaMap = null;
 var areaMarker = null;
@@ -134,14 +137,14 @@ function buildAreaAddressFallbacks(address) {
     var candidates = [{ address: address, level: 'full', zoom: 17 }];
 
     var stripped = address
-        .replace(/[\d0-9]+(?:[-‐−ー－―][\d0-9]+)+(?:号)?$/, '')
-        .replace(/[\d0-9]+番地?(?:[\d0-9]+号?)?$/, '')
+        .replace(/[\d０-９]+(?:[-‐−ー－―][\d０-９]+)+(?:号)?$/, '')
+        .replace(/[\d０-９]+番地?(?:[\d０-９]+号?)?$/, '')
         .trim();
     if (stripped && stripped !== address) {
         candidates.push({ address: stripped, level: 'block', zoom: 16 });
     }
 
-    stripped = address.replace(/[\d0-9]+丁目.*$/, '').trim();
+    stripped = address.replace(/[\d０-９]+丁目.*$/, '').trim();
     if (stripped && !candidates.some(function(c) { return c.address === stripped; })) {
         candidates.push({ address: stripped, level: 'town', zoom: 15 });
     }
