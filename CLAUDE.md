@@ -27,7 +27,7 @@ Laravel 12 / PHP 8.5.4 (local) + 8.3 (prod) / MySQL 8 / Blade + Alpine.js 3 + Ta
 | 12 | `disabled` なボタン自身に `title` を付けて「押せない理由」を出そうとする（**どのブラウザでも表示されない**。`disabled` な要素はホバーイベントを発火しない。HTML には `title` が出るのでテストも `view:cache` も全部通り、無音で死ぬ）| ホバーを受けられる **`<span title="…">` でボタンを包む** ＋ 画面に理由の領域があれば `aria-describedby` で紐づける（`disabled` はフォーカス不能なので tooltip だけでは届かない）。Alpine なら `:title="cond ? reason : null"`（`''` だと空の `title=""` が残る）。⚠ **検証は「HTML に出るか」では不可能** — 実ブラウザでホバーするか `document.elementFromPoint()` から祖先を辿る。Bug #43 |
 | 13 | 走査テスト（ラチェット）を「直したファイルを配列に並べる」形で書く（**未修正のファイルは検査対象に入らないので永遠に緑**。実測で 19 本が野放しだった）| **対象を全件分類する**形にする — `fetch` を持つ Blade を機械的に列挙し、どのリストにも無ければ落とす（`AjaxErrorFeedbackTest::test_every_fetch_view_is_classified`）。⚠ 検査文字列に**引数名を決め打ちしない**（`(r)` 決め打ちが `(res)` を見逃した）。⚠ **単一の「正準パターン」を機械適用しない** — null 返し / エンベロープ / throw の 3 方式が併存し、どれも正当。Bug #45 |
 
-全 48 件の詳細バグカタログ + 各種パターン: @docs/RULES.md
+全 50 件の詳細バグカタログ + 各種パターン: @docs/RULES.md
 
 ## 🔌 利用可能なプラグイン
 
@@ -143,5 +143,5 @@ sudo rm -f storage/framework/views/*.php && brew services restart httpd
 ## 📚 Detailed docs
 
 - @docs/ARCHITECTURE.md — ディレクトリ構成、モデル一覧、認可マトリクス
-- @docs/RULES.md — Bug #1–48 + Tailwind 不可クラス/監査の落とし穴 + Excel/SheetJS + 全角→半角自動変換 + 郵便番号 API
+- @docs/RULES.md — Bug #1–50 + Tailwind 不可クラス/監査の落とし穴 + Excel/SheetJS + 全角→半角自動変換 + 郵便番号 API
 - @docs/BACKLOG.md — 完了済み機能の優先度別一覧（優先度 1〜5 全て本番稼働中）
