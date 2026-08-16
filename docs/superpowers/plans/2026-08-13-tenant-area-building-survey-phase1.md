@@ -1857,23 +1857,25 @@ load-bearing ではない**（無くても mutation 1 は検出される）。�
 **既に存在するキー（実測 2026-08-13）:** `name`(名称) / `address`(住所) / `notes`(備考) / `latitude`(緯度) / `longitude`(経度) / `floor`(階数) / `room_number`(号室) / `total_floors`(総階数) / `rows`(原価明細)
 **追加が要るキー:** `industry` / `surveyed_month` / `surveyed_by` / `operating_count` / `vacant_count` / `unknown_count` / `confirmed_on` / `moved_out_on` / `survey_notes` / `kind` / `coordinates`
 
+⚠ **2026-08-16 追記（コード品質レビュー）: 4 キー限定 → 11 キー全部に拡大。**
+括弧の注記が無いことを検査する対象を、当初の `operating_count` / `vacant_count` / `unknown_count` /
+`surveyed_month` の 4 キー限定から、上記 11 キー全部に広げた（Bug #45 ①「対象を全件分類する」に寄せた）。
+
 - [ ] **Step 1: 失敗するテストを書く**
 
 `tests/Feature/JapaneseValidationMessagesTest.php` の末尾（クラスの閉じ括弧の直前）に追加:
 
 ```php
     /**
-     * 周辺ビル調査で追加した項目名がグローバルに載っていること。
+     * 周辺ビル調査で追加した項目名の期待マップ（キー => 和名）。
      *
-     * ⚠ 第3引数で上書きするキー（name / address / room_number / floor / notes / rows）も
-     *   グローバルに存在していないと test_every_validated_field_has_a_japanese_attribute_label が
-     *   落ちる。上書きは「語を変える」だけで「登録する」ものではない。
+     * ⚠ この項目名一覧に関する唯一の情報源。テストごとに別々のハードコード配列を
+     *   持つと「片方に足してもう片方に足し忘れる」という Bug #44 型の事故を招くため、
+     *   ここに 1 箇所だけ持ち、他のテストはこのキー一覧を流用する（2026-08-16 導入）。
      */
-    public function test_area_building_survey_attributes_are_registered(): void
+    private function areaBuildingSurveyAttributeExpectations(): array
     {
-        $attributes = Lang::get('validation.attributes');
-
-        $expected = [
+        return [
             'industry'        => '業種',
             'surveyed_month'  => '調査年月',
             'surveyed_by'     => '調査者',
@@ -1886,8 +1888,20 @@ load-bearing ではない**（無くても mutation 1 は検出される）。�
             'kind'            => '取込種別',
             'coordinates'     => '取得した座標',
         ];
+    }
 
-        foreach ($expected as $key => $label) {
+    /**
+     * 周辺ビル調査で追加した項目名がグローバルに載っていること。
+     *
+     * ⚠ 第3引数で上書きするキー（name / address / room_number / floor / notes / rows）も
+     *   グローバルに存在していないと test_every_validated_field_has_a_japanese_attribute_label が
+     *   落ちる。上書きは「語を変える」だけで「登録する」ものではない。
+     */
+    public function test_area_building_survey_attributes_are_registered(): void
+    {
+        $attributes = Lang::get('validation.attributes');
+
+        foreach ($this->areaBuildingSurveyAttributeExpectations() as $key => $label) {
             $this->assertArrayHasKey($key, $attributes, "attributes に {$key} が無い");
             $this->assertSame($label, $attributes[$key], "{$key} の和名が想定と違う");
         }
@@ -1897,15 +1911,20 @@ load-bearing ではない**（無くても mutation 1 は検出される）。�
      * 括弧の注記は項目名に含めない方針（Bug #37）。
      * 「営業（そのビルのテナント部屋数）」ではなく「営業」。
      *
-     * ⚠ 2026-08-16 訂正: 全角「（」しか見ていない実装だと半角 `(` の注記が
+     * ⚠ 2026-08-16 訂正①: 全角「（」しか見ていない実装だと半角 `(` の注記が
      *   無音ですり抜ける（Bug #45 ③「正規表現の文字クラスが狭い」と同型）。
      *   全角・半角の両方を 1 つの文字クラスで拾う。
+     * ⚠ 2026-08-16 訂正②: 検査対象が operating_count / vacant_count / unknown_count /
+     *   surveyed_month の 4 キーに限定されていた（設計書 §3.2 の括弧付き説明がこの 3 つを
+     *   狙い撃ちしていたのが由来）。残り 7 キーが無検査だったため、Bug #45 ①「対象を
+     *   全件分類する」に寄せて 11 キー全部に広げる。ハードコードの配列を 2 か所に
+     *   持たないよう、期待マップ（areaBuildingSurveyAttributeExpectations）のキーを流用する。
      */
     public function test_area_building_attributes_have_no_parenthetical_notes(): void
     {
         $attributes = Lang::get('validation.attributes');
 
-        foreach (['operating_count', 'vacant_count', 'unknown_count', 'surveyed_month'] as $key) {
+        foreach (array_keys($this->areaBuildingSurveyAttributeExpectations()) as $key) {
             $this->assertDoesNotMatchRegularExpression(
                 '/[（(]/u',
                 $attributes[$key],
@@ -1919,6 +1938,12 @@ load-bearing ではない**（無くても mutation 1 は検出される）。�
 差し替えた最終形。初版は全角「（」しか検査しておらず、`'営業(テナント部屋数)'`（半角）のような注記が
 無音ですり抜けることが実測で判明した。`assertDoesNotMatchRegularExpression('/[（(]/u', ...)` に変更し、
 全角・半角の両方を 1 回の検査で拾う形にした。
+
+⚠ **2026-08-16 追記（コード品質レビュー）**: 検査対象を `operating_count` / `vacant_count` /
+`unknown_count` / `surveyed_month` の 4 キー限定から 11 キー全部に広げた。狙い撃ちの根拠
+（設計書 §3.2 の DB カラム表がこの 3 キーに括弧付き説明を使っていたこと）は保ちつつ、
+Bug #45 ①「対象を全件分類する」に寄せた。ハードコード配列を 2 か所に持たないよう、
+`areaBuildingSurveyAttributeExpectations()` を新設し、両テストがそのキー一覧を流用する形にした。
 
 - [ ] **Step 2: テストが落ちることを確認する**
 
@@ -1967,20 +1992,32 @@ Expected: PASS（既存 8 本 + 追加 2 本 = 10 tests）
 
 - [ ] **Step 5: 変異テストで確認する**
 
-⚠ **2026-08-16 訂正**: 当初「変異2は `test_area_building_attributes_have_no_parenthetical_notes` のみ赤」
+⚠ **2026-08-16 訂正①**: 当初「変異2は `test_area_building_attributes_have_no_parenthetical_notes` のみ赤」
 と書いていたが、実測では `test_area_building_survey_attributes_are_registered` も同時に赤くなった
 （2 本）。`operating_count` の値そのものを変える変異なので、`assertSame` による厳密一致の側も
 道連れで落ちるのは当然で、当初の記載が甘かった。テストの正しさを損なうものではなく、
 むしろ二重に守られていることの確認になる。
 
+⚠ **2026-08-16 訂正②（コード品質レビュー）**: 検査対象を 4 キーから 11 キー全部に広げた
+（下記「4 キー限定 → 11 キー全部に拡大」参照）。industry / coordinates のような
+「新たに対象へ入れたキー」の変異は、**`test_area_building_attributes_have_no_parenthetical_notes`
+単体では**旧スコープ（4 キー）だと検出できず緑のままだった（実測で確認）。
+⚠ ただし **`--filter JapaneseValidationMessagesTest` をファイル全体で見ると**、旧スコープでも
+`test_area_building_survey_attributes_are_registered`（全 11 キーを厳密一致で見ている）が
+同じ変異を別経路（「括弧が入っている」ではなく「和名の値が想定と違う」）で検出しており、
+**赤のままだった**（実測で確認）。「広げる前は緑のまま」という言い方は
+括弧検査メソッド単体でのみ正確で、ファイル全体には当てはまらない。
+
 - [ ] `'industry' => '業種',` の行を削除 → `test_area_building_survey_attributes_are_registered` が **赤**（1 本）
-- [ ] `'operating_count' => '営業',` を `'operating_count' => '営業（テナント部屋数）',`（**全角**）に →
-      `test_area_building_survey_attributes_are_registered` と
-      `test_area_building_attributes_have_no_parenthetical_notes` の **2 本が赤**
-- [ ] `'operating_count' => '営業',` を `'operating_count' => '営業(テナント部屋数)',`（**半角**）に →
-      同じく **2 本が赤**（全角・半角の両方を検出できることの確認。片方だけ試すと見落としを繰り返す）
-- [ ] `'surveyed_month' => '調査年月',` を `'surveyed_month' => '調査年月(YYYY-MM)',`（**半角**・別キー）に →
-      同じく **2 本が赤**（4 キー全部が検査対象であることの確認）
+- [ ] `'industry' => '業種',` を `'industry' => '業種(サービス業など)',`（**半角**・新たに対象へ入れたキー）に →
+      新スコープでは `test_area_building_survey_attributes_are_registered` と
+      `test_area_building_attributes_have_no_parenthetical_notes` の **2 本が赤**。
+      旧スコープ（4 キー限定）だと括弧検査メソッド単体は緑（検出漏れ）だが、
+      ファイル全体は前者の厳密一致テストにより引き続き赤
+- [ ] `'coordinates' => '取得した座標',` を `'coordinates' => '取得した座標（緯度経度）',`（**全角**・同上）に →
+      同じパターンで新スコープは **2 本が赤**、旧スコープは括弧検査メソッド単体のみ緑
+- [ ] `'operating_count' => '営業',` を `'operating_count' => '営業(テナント部屋数)',`（**半角**・従来からの対象キー）に →
+      **2 本が赤**（退行していないことの確認）
 - [ ] 変異のたびに `git diff` が非空であることを確認する
 - [ ] 戻して PASS を確認、`git status` が clean であることを確認する
 

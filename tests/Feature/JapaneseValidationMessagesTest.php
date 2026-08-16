@@ -295,17 +295,15 @@ class JapaneseValidationMessagesTest extends TestCase
     }
 
     /**
-     * 周辺ビル調査で追加した項目名がグローバルに載っていること。
+     * 周辺ビル調査で追加した項目名の期待マップ（キー => 和名）。
      *
-     * ⚠ 第3引数で上書きするキー（name / address / room_number / floor / notes / rows）も
-     *   グローバルに存在していないと test_every_validated_field_has_a_japanese_attribute_label が
-     *   落ちる。上書きは「語を変える」だけで「登録する」ものではない。
+     * ⚠ この項目名一覧に関する唯一の情報源。テストごとに別々のハードコード配列を
+     *   持つと「片方に足してもう片方に足し忘れる」という Bug #44 型の事故を招くため、
+     *   ここに 1 箇所だけ持ち、他のテストはこのキー一覧を流用する（2026-08-16 導入）。
      */
-    public function test_area_building_survey_attributes_are_registered(): void
+    private function areaBuildingSurveyAttributeExpectations(): array
     {
-        $attributes = Lang::get('validation.attributes');
-
-        $expected = [
+        return [
             'industry'        => '業種',
             'surveyed_month'  => '調査年月',
             'surveyed_by'     => '調査者',
@@ -318,8 +316,20 @@ class JapaneseValidationMessagesTest extends TestCase
             'kind'            => '取込種別',
             'coordinates'     => '取得した座標',
         ];
+    }
 
-        foreach ($expected as $key => $label) {
+    /**
+     * 周辺ビル調査で追加した項目名がグローバルに載っていること。
+     *
+     * ⚠ 第3引数で上書きするキー（name / address / room_number / floor / notes / rows）も
+     *   グローバルに存在していないと test_every_validated_field_has_a_japanese_attribute_label が
+     *   落ちる。上書きは「語を変える」だけで「登録する」ものではない。
+     */
+    public function test_area_building_survey_attributes_are_registered(): void
+    {
+        $attributes = Lang::get('validation.attributes');
+
+        foreach ($this->areaBuildingSurveyAttributeExpectations() as $key => $label) {
             $this->assertArrayHasKey($key, $attributes, "attributes に {$key} が無い");
             $this->assertSame($label, $attributes[$key], "{$key} の和名が想定と違う");
         }
@@ -328,12 +338,21 @@ class JapaneseValidationMessagesTest extends TestCase
     /**
      * 括弧の注記は項目名に含めない方針（Bug #37）。
      * 「営業（そのビルのテナント部屋数）」ではなく「営業」。
+     *
+     * ⚠ 2026-08-16 訂正①: 全角「（」しか見ていない実装だと半角 `(` の注記が
+     *   無音ですり抜ける（Bug #45 ③「正規表現の文字クラスが狭い」と同型）。
+     *   全角・半角の両方を 1 つの文字クラスで拾う。
+     * ⚠ 2026-08-16 訂正②: 検査対象が operating_count / vacant_count / unknown_count /
+     *   surveyed_month の 4 キーに限定されていた（設計書 §3.2 の括弧付き説明がこの 3 つを
+     *   狙い撃ちしていたのが由来）。残り 7 キーが無検査だったため、Bug #45 ①「対象を
+     *   全件分類する」に寄せて 11 キー全部に広げる。ハードコードの配列を 2 か所に
+     *   持たないよう、期待マップ（areaBuildingSurveyAttributeExpectations）のキーを流用する。
      */
     public function test_area_building_attributes_have_no_parenthetical_notes(): void
     {
         $attributes = Lang::get('validation.attributes');
 
-        foreach (['operating_count', 'vacant_count', 'unknown_count', 'surveyed_month'] as $key) {
+        foreach (array_keys($this->areaBuildingSurveyAttributeExpectations()) as $key) {
             $this->assertDoesNotMatchRegularExpression(
                 '/[（(]/u',
                 $attributes[$key],
