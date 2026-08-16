@@ -66,6 +66,7 @@
             <x-sidebar-item :href="url('/tenant/repairs')" label="一般修繕" :active="request()->is('tenant/repairs*')" />
             <x-sidebar-item :href="url('/tenant/customers')" label="顧客一覧" :active="request()->is('tenant/customers*')" />
             <x-sidebar-item :href="url('/tenant/inquiries')" label="問合せ管理" :active="request()->is('tenant/inquiries*')" />
+            <x-sidebar-item :href="url('/tenant/area-buildings')" label="周辺ビル調査" :active="request()->is('tenant/area-buildings*')" />
 
             {{-- サブ見出し: 分析 --}}
             <div style="display: flex; align-items: center; gap: 8px; padding: 8px 20px 3px;">
@@ -342,6 +343,7 @@
             <x-sidebar-item :href="url('/tenant/repairs')" label="一般修繕" :active="request()->is('tenant/repairs*')" />
             <x-sidebar-item :href="url('/tenant/customers')" label="顧客一覧" :active="request()->is('tenant/customers*')" />
             <x-sidebar-item :href="url('/tenant/inquiries')" label="問合せ管理" :active="request()->is('tenant/inquiries*')" />
+            <x-sidebar-item :href="url('/tenant/area-buildings')" label="周辺ビル調査" :active="request()->is('tenant/area-buildings*')" />
 
             {{-- サブ見出し: 分析 --}}
             <div style="display: flex; align-items: center; gap: 8px; padding: 8px 20px 3px;">

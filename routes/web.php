@@ -448,6 +448,19 @@ Route::middleware(['auth', 'password.change'])->group(function () {
         Route::patch('/inquiries/{inquiry}/status', [\App\Http\Controllers\Tenant\InquiryController::class, 'updateStatus'])
             ->middleware('role:executive,manager')
             ->name('tenant.inquiries.updateStatus');
+
+        /*
+        |------------------------------------------------------------------
+        | 周辺ビル調査（20ルート）
+        |------------------------------------------------------------------
+        |
+        | ⚠ /area-buildings/create /import /geocode は /{building} より必ず先に宣言する。
+        |   後に置くとルーターが create を ID として解釈し、モデルバインディングで 404 になる。
+        */
+
+        // 一覧（全ロール閲覧可）
+        Route::get('/area-buildings', [\App\Http\Controllers\Tenant\AreaBuildingController::class, 'index'])
+            ->name('tenant.area-buildings.index');
     });
 
     /*

@@ -2280,7 +2280,15 @@ class AreaBuildingListTest extends AreaBuildingTestCase
         );
 
         sort($names);
-        $this->assertSame(['大街道ビル', 'テナント持ちビル', '別名ビル'], $this->sortedJa($names));
+        // ⚠ 実装時修正: この行の期待値はもともと ['大街道ビル', 'テナント持ちビル', '別名ビル'] と
+        //   書かれていたが、実測すると常に失敗する。sortedJa() は usort($names, 'strcmp') で
+        //   完全に再ソートするため、結果は strcmp の入力順に依存しない ＝ 直前の sort($names) は
+        //   完全な死コード（何を渡しても最終結果は変わらない）。strcmp のバイト順は UTF-8 では
+        //   Unicode コードポイント順と一致し、この 3 文字列の先頭コードポイントは
+        //   テ=U+30C6 < 別=U+5225 < 大=U+5927 なので、正しい期待値は
+        //   ['テナント持ちビル', '別名ビル', '大街道ビル']（`php -r` で実測確認済み）。
+        //   実装側のバグではなく、プランの期待値を手計算した際の誤りだった。
+        $this->assertSame(['テナント持ちビル', '別名ビル', '大街道ビル'], $this->sortedJa($names));
     }
 
     /** 退去済みテナント名では拾わない（もう居ない会社でヒットさせない。設計 §5.3） */
@@ -2372,6 +2380,14 @@ class AreaBuildingListTest extends AreaBuildingTestCase
 ⚠ `test_keyword_searches_name_address_and_current_tenants` は 3 件がヒットすることだけを見る。
 順序は空室率がすべて `null` なので名前順のタイブレークに落ちるが、日本語の照合順序は
 DB に依存するため `sortedJa()` で正規化してから比較している。
+
+⚠ **実装時に判明した誤り（Task 6 実装セッションで訂正）**: 上のコード内の期待値
+`['大街道ビル', 'テナント持ちビル', '別名ビル']` は実測すると常に失敗する。`sortedJa()` は
+`usort($names, 'strcmp')` で完全に再ソートするため結果は入力順に依存せず、直前の
+`sort($names)` は死コード。strcmp の UTF-8 バイト順は Unicode コードポイント順と一致し、
+3 文字列の先頭コードポイントは `テ`=U+30C6 < `別`=U+5225 < `大`=U+5927 なので、
+正しい期待値は `['テナント持ちビル', '別名ビル', '大街道ビル']`（`php -r` で実測確認済み）。
+サービス実装のバグではなく、プランの期待値を手計算した際の誤りだった。
 
 - [ ] **Step 3: テストが落ちることを確認する**
 
@@ -2799,7 +2815,10 @@ Expected: `2`（1 だと片方しか直っていない）
 vendor/bin/phpunit --filter AreaBuildingListTest
 ```
 
-Expected: PASS（12 tests）
+Expected: PASS（13 tests。⚠ プラン原文は「12 tests」だったが、Step 2 のコード内の
+`public function test_` は実測 13 個ある。実装時に数え直して訂正。Task 7 の Step
+「Expected: PASS（Show 11 tests + List 12 tests）」も同じ数え間違いを引き継いでいる可能性が
+あるため、Task 7 着手時に要再確認 — Task 6 の範囲外なのでここでは訂正しない）
 
 - [ ] **Step 10: 走査テストを含む全体が緑であることを確認する**
 
