@@ -6353,6 +6353,8 @@ update は `$validated['status']` で Undefined array key → **どちらも 500
 - Create: `resources/views/tenant/area-buildings/import.blade.php`
 - Modify: `routes/web.php`
 - Modify: `resources/views/tenant/area-buildings/index.blade.php`（「Excel 取込」ボタン）
+- Modify: `tests/Feature/Tenant/AreaBuildingTestCase.php`（`parseForm()` が Alpine の `:value` を
+  素の `value` と読み違えていた。実装時の差分 ⑨）
 
 方式は DAD 工事案件・仕入れ案件と同じ **SheetJS（クライアント側で解析・プレビュー）→ サーバで確定**。
 確定はふつうの `<form>` POST で、正規化済みの行を hidden の JSON として送る。
@@ -6360,7 +6362,7 @@ update は `$validated['status']` で Undefined array key → **どちらも 500
 ⚠ **`fetch` は使わない。** GET の `fetch` にヘッダーを付け忘れる Bug #35 に触れないうえ、
 `AjaxErrorFeedbackTest::test_every_fetch_view_is_classified` の分類対象にもならない。
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `tests/Feature/Tenant/AreaBuildingImportTest.php`:
 
@@ -6620,7 +6622,7 @@ class AreaBuildingImportTest extends AreaBuildingTestCase
      *   取込画面が無反応になっているのにテストも `view:cache` も全部通る＝ Bug #28 と同型。
      *   jsDelivr のバージョン固定 URL は不変なので固定値でよい。
      */
-    private const SHEETJS_SRI = 'sha384-<Step 5 で実測した値>';
+    private const SHEETJS_SRI = 'sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw';
 
     public function test_sheetjs_is_loaded_from_jsdelivr_with_sri(): void
     {
@@ -6642,7 +6644,7 @@ class AreaBuildingImportTest extends AreaBuildingTestCase
 }
 ```
 
-- [ ] **Step 2: テストが落ちることを確認する**
+- [x] **Step 2: テストが落ちることを確認する**
 
 ```bash
 vendor/bin/phpunit --filter AreaBuildingImportTest
@@ -6650,7 +6652,7 @@ vendor/bin/phpunit --filter AreaBuildingImportTest
 
 Expected: FAIL — 404
 
-- [ ] **Step 3: 取込コントローラを書く**
+- [x] **Step 3: 取込コントローラを書く**
 
 `app/Http/Controllers/Tenant/AreaBuildingImportController.php`:
 
@@ -6969,7 +6971,7 @@ class AreaBuildingImportController extends Controller
 }
 ```
 
-- [ ] **Step 4: ルートを足す**
+- [x] **Step 4: ルートを足す**
 
 Task 8 で置いた「⚠ /area-buildings/import /geocode はこの行より上に置くこと」の**直前**に:
 
@@ -6983,7 +6985,7 @@ Task 8 で置いた「⚠ /area-buildings/import /geocode はこの行より上�
         });
 ```
 
-- [ ] **Step 5: SheetJS の SRI ハッシュを実測する**
+- [x] **Step 5: SheetJS の SRI ハッシュを実測する**
 
 **推測で書かない。** 実ファイルから計算する:
 
@@ -6997,13 +6999,15 @@ curl -sL https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js | openss
 2. Step 1 のテストの `SHEETJS_SRI` 定数
 3. **このプランのこの行**（後から「どの値を測ったのか」を追えるようにする）
 
-   実測値: `sha384-________________________________________`（Step 5 で埋める）
+   **実測値（2026-08-17）: `sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw`**
+   ⚠ jsDelivr と unpkg の同版が**バイト一致**することも確認済み（`cmp` で 0 差分）。
+   片側 CDN だけを見て測ると、そのミラーが差し替わっていたときに気づけない。
 
 ⚠ **同じ値を 2 箇所に手で書くので、片方だけ打ち間違えるとテストが赤になって気づける** —
 これが H2 の狙い（正規表現だと打ち間違えても緑）。逆に**両方を同じ間違った値にすると
 テストは緑のままブラウザだけ死ぬ**ので、コピー&ペーストで貼ること（打ち直さない）。
 
-- [ ] **Step 6: 取込画面を書く**
+- [x] **Step 6: 取込画面を書く**
 
 `resources/views/tenant/area-buildings/import.blade.php`。
 ⚠ `x-data` 属性の中に `@json` を書かない。マッピング定義は `<script>` 内の定数に置き、
@@ -7163,7 +7167,8 @@ curl -sL https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js | openss
      テストの SHEETJS_SRI 定数と同じ値であること。不一致だとブラウザはこのスクリプトを
      黙って読み込まず、取込画面が無反応になる（Bug #28 と同型）。 --}}
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"
-        integrity="sha384-PASTE_MEASURED_HASH_HERE" crossorigin="anonymous"></script>
+        integrity="sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw"
+        crossorigin="anonymous"></script>
 <script>
 // 取込先の項目定義。x-data 属性へ渡さず、ここに置いて areaImportForm() から参照する（Bug #23）
 var AREA_IMPORT_TARGETS = {
@@ -7455,7 +7460,7 @@ function areaImportForm() {
 ⚠ `@push('scripts')` は `layouts/app.blade.php:164` の `@stack('scripts')` で展開される
 （無いと静かに捨てられる。Bug #28。2026-07-26 に追加済みで実在することを確認済み）。
 
-- [ ] **Step 7: 一覧に取込ボタンを足す**
+- [x] **Step 7: 一覧に取込ボタンを足す**
 
 `index.blade.php` の「新規登録」ボタンの**直前**（同じ `@if` ブロック内）:
 
@@ -7468,7 +7473,7 @@ function areaImportForm() {
 
 ボタンが 2 つ以上になるので、`<h1>` の隣は `<div class="flex flex-col sm:flex-row gap-2">` でくくる。
 
-- [ ] **Step 8: テストが通ることを確認する**
+- [x] **Step 8: テストが通ることを確認する**
 
 ```bash
 vendor/bin/phpunit --filter AreaBuildingImportTest
@@ -7476,7 +7481,7 @@ vendor/bin/phpunit --filter AreaBuildingImportTest
 
 Expected: PASS（15 tests）
 
-- [ ] **Step 9: 変異テストで 5 通り確認する**
+- [x] **Step 9: 変異テストで 5 通り確認する**
 
 | # | 変異 | 期待 |
 |---|---|---|
@@ -7486,7 +7491,7 @@ Expected: PASS（15 tests）
 | 4 | `importTenants()` の `! isset($map[$key])` の分岐を `AreaBuilding::create(...)` に | `test_tenant_rows_for_unknown_buildings_are_reported_not_created` が赤 |
 | 5 | `parseMonth()` の戻り値を常に `null` に（画面の既定月だけを使う） | `test_row_level_month_wins_over_the_screen_default` が赤 |
 
-- [ ] **Step 10: ブラウザで実際に取り込めることを確認する**
+- [x] **Step 10: ブラウザで実際に取り込めることを確認する**
 
 ⚠ サーバ側テストは JSON を PHP から手で送るので、**SheetJS の解析・マッピング・
 プレビューが壊れていても緑のまま通る**（Bug #28 / #35 と同じ構図）。
@@ -7503,7 +7508,7 @@ APP_KEY=base64:$(head -c 32 /dev/urandom | base64) php artisan serve --port=8000
 - [ ] 「この内容で取り込む」で一覧へ戻り、件数の内訳がメッセージに出る
 - [ ] ブラウザのコンソールにエラーが 0 件
 
-- [ ] **Step 10b: 状態エイリアスの取りこぼしを実データで測る**
+- [x] **Step 10b: 状態エイリアスの取りこぼしを実データで測る**
 
 2026-08-14 の Task 3 レビューで、`AreaTenantStatus::fromRawLabel()` を網羅的に叩いた結果、
 **実データにありそうなのに `Unknown` へ落ちる語**が見つかっている:
@@ -7538,9 +7543,134 @@ Operating に誤爆していた（部分一致のループが営業系を先に�
 `fromRawLabel()` を順序非依存にして修正済み（両方の信号があれば Unknown / 否定語は営業判定を打ち消す）。
 **この型の誤りは「Unknown 過多」だけを見ていても原理的に見つからない**ので、上の 2 方向を必ず両方測ること。
 
-- [ ] **Step 11: コミット**
+- [x] **Step 11: コミット**
 
 `/commit` で `feat(tenant): 周辺ビル調査の Excel 取込を追加`
+
+### 実装時の差分（2026-08-17。**テストは 15 本 → 27 本**）
+
+プランどおりに動かなかった / 直した点。**実装側が正**。
+
+① **プランの変異 #1（同一年月スキップ判定の削除）は、プランのテストでは検出できない**（Bug #48）。
+`AreaBuildingSurvey::create()` を UNIQUE 違反で `catch` して `$skipped++` する安全網が、
+事前チェックと**同じ「スキップ 1 件」を返す**ため、HTTP の応答からは①の死を区別できない。
+実測（対照実験 6a / 6b）: `watchWrites()` のアサートを外すと変異 #1 は**緑**、
+戻すと**赤**。→ `test_skips_a_survey_that_already_exists_for_the_same_month` に
+「**INSERT を試みていないこと**」（`creating` が発火しないこと）を追加した。
+
+② **件数と階数に上限が無く、本番 MySQL でだけ 500 になる**（Bug #40）。
+`operating_count` 等は `INT UNSIGNED`、`total_floors` は `INT` で、画面 CRUD は
+`max:9999` / `min:0|max:200` を課している。取込にだけ上限が無いと、Excel の桁間違いが
+strict モードの MySQL で **1264 Out of range** になる。SQLite は範囲を強制しないので
+**テストは静かに緑のまま**。→ `parseCount()` に `MAX_COUNT`、`parseBounded()` に範囲を入れた。
+件数は**行ごと拒否**、階数は**その列だけ null**（集計に効かない補助情報のために調査回を捨てない）。
+
+③ **Excel の「本物の日付セル」が無音で無視されていた。** node で実測したところ、
+`XLSX.read(buf, { type: 'array' })` は日付セルを**シリアル値 `45809`** で返し、
+`cellDates: true` を足すと今度は `String(date)` が `'Sun Jun 01 2025 00:00:00 GMT+0900 (…)'` になる。
+**どちらも `parseMonth()` が読めず、設計 §7.1 の「Excel 側の年月列を優先」が効かない**
+（安全側に画面の既定月へ落ちるので気づけない）。→ `cellDates: true` ＋
+`areaImportCellText()` の `Date → 'YYYY-MM-DD'` 整形を**対で**入れた。
+走査テスト `test_the_import_screen_reads_excel_date_cells` が両方を固定する。
+
+④ **「ビル名が空」を「数値不正でスキップ」に数えていた。** 利用者が数字の間違いを探しに行くので、
+理由ごとに別カウンタへ分けた（テナント側は元から分かれていたので非対称でもあった）。
+メッセージは両種別とも**常に全内訳を出す**形に揃えた。
+
+⑤ **`catch (QueryException)` は広すぎる。** 桁あふれ等の別の DB エラーまで
+「同一年月のためスキップ」と偽って報告してしまう。→ Task 9 と同じ
+`UniqueConstraintViolationException` に狭めた（重複だけを飲み込む）。
+
+⑥ **`rtrim($s, '月')` はバイト単位**なので、末尾が「曜」(E6 9B 9C) のようにバイトを共有する
+文字だと壊れた UTF-8 を作る。→ `preg_replace('/月\z/u', '', $s)`。
+併せて年の下限（`MIN_YEAR = 1900`）を入れた（`'0000-06'` は MySQL の DATE に入らず 1292）。
+
+⑦ **`rows` は利用者が組み立てた任意の JSON** なので、素の `(string) $raw` は配列が来ると
+"Array to string conversion" を出す。→ `text()` / `parseInt()` に `is_scalar` ガード。
+
+⑧ **`parseInt()` に桁数上限（`\d{1,18}`）を置いたが、呼び出し元の範囲チェックが必ず先に弾くので
+どんな変異でも差が出ない**＝測れない安全網だった（Bug #48 の逆パターン）。→ 外して
+範囲チェック 1 本に寄せた。
+
+⑨ **`parseForm()` が Alpine の `:value` を素の `value` と読み違えていた。**
+実測で `kind => 'kind'` / `rows => 'payload()'` という**式文字列**が「フォームの値」として返った。
+→ `AreaBuildingTestCase::htmlAttr()` の否定先読みを `(?<![\w:.@-])` に広げ、
+`:value` / `x-bind:value` / `@change` を素の属性と混同しないようにした（664 本とも緑のまま）。
+確定フォームの往復テストは、この 3 つが**空で返ること**も併せて固定している。
+
+⑩ `injectSheetOptions()` の `setTimeout(…, 50)` を `$nextTick` に置き換え（描画待ちを勘で決めない）。
+
+⑪ プランには無かった導線・防御のテストを追加: 一覧の取込リンク（manager のみ）/ 確定フォームの
+往復（Bug #47）/ 差し戻しエラーの画面表示（Bug #49 に従いセッションに触らない）/
+VARCHAR 長の切り詰め / 非スカラー値。
+
+#### 変異の実測（2026-08-17。**29 通り、全て期待どおり**）
+
+実ワークツリーで測った（Bug #50: `git archive` ＋ vendor symlink は変異が全部 no-op になる）。
+新規ファイルは untracked で `git diff` に出ないため、**バックアップとの `diff` が非空**であることを
+毎回確認している。各変異の前に `php artisan view:clear`。
+先頭に**カナリア**（`form()` が存在しないビューを返す）を通し、ハーネスが本当に赤を出せることを先に確認した。
+
+| # | 変異 | 結果 |
+|---|---|---|
+| 0 | カナリア: `form()` が未定義ビューを返す | 赤 |
+| 1 | 同一年月スキップ判定を削除 | 赤（**①のアサート込みで**） |
+| 2 | 既存ビル補完の `blank()` ガードを外す | 赤 |
+| 3 | `parseCount()` が数値不正を 0 扱い | 赤 |
+| 4 | 台帳に無いビル名を自動生成 | 赤 |
+| 5 | `parseMonth()` が常に null | 赤 |
+| **6a** | **変異 1 ＋ `watchWrites()` のアサートを外す** | **緑（＝安全網が主機構を隠す。Bug #48）** |
+| **6b** | **変異 1（アサートは残す）** | **赤** |
+| 7 | `parseCount()` の上限チェックを外す | 赤 |
+| 8 | `parseBounded()` の範囲チェックを外す | 赤 |
+| 9 | SRI ハッシュを **1 文字だけ**変える | 赤 |
+| 10 | SRI 属性を丸ごと外す | 赤 |
+| 11 | `cellDates: true` を外す | 赤 |
+| 12 | `areaImportCellText()` の Date 整形を外す | 赤 |
+| 13 | 取込ルートを `/{building}` より後ろへ | 赤 |
+| 14 | 取込ルートから role ミドルウェアを外す | 赤 |
+| 15 | 確定フォームの `action` を一覧へ差し替え | 赤 |
+| 16 | 確定フォームから `@csrf` を外す | 赤 |
+| 17 | 確定フォームの hidden `rows` を消す | 赤 |
+| 18 | エラーサマリのブロックを消す | 赤 |
+| 19 | 一覧から Excel 取込リンクを消す | 赤 |
+| 20 | 一覧の取込リンクをロールガードの外へ | 赤 |
+| 21 | `MAX_ROWS` の上限チェックを外す | 赤 |
+| 22 | `nullableString()` の切り詰めを外す | 赤 |
+| 23 | `text()` の `is_scalar` ガードを外す | 赤 |
+| 24 | `parseMonth()` の年・月の範囲チェックを外す | 赤 |
+| 25 | `surveyed_month` の `required_if` を外す | 赤 |
+| 26 | 壊れた JSON のガードを外す | 赤 |
+| 27 | `surveyed_by`（取込実行者）を入れない | 赤 |
+
+#### Step 10 の代わりに行った実測（実ブラウザは未実施）
+
+worktree には本番同等の DB もログイン済みセッションも無いため、**実ブラウザでの取込は未実施**。
+代わりに **画面に載る `<script>` をそのまま node で駆動**して、サーバ側テストが
+原理的に見られない部分を実測した（`scratchpad/sheetjs-t11/drive.js`）:
+
+- 見出し「建物名 / 所在地 / 総階数 / 営業中 / 空室 / 不明 / 調査年月」を **7 列とも自動推測できた**
+- 日付セル → `'2025-06-01'`、`'2025年7月'` → そのまま、全角 `'１，２３４'` は警告にならない
+- `'数棟'` の行 → `operating が数値でない`、ビル名空の行 → `ビル名が空`。**両方 `okRows()` から外れる**
+- シート切替（2 シート）→ 列が入れ替わる / `resetAll()` で step 1 に戻る / 種別切替で targets が変わる
+- **その `payload()` の出力をそのまま実 POST** したところ、
+  「ビル新規 2 件 / 調査追加 2 件」で `2025-06-01` と `2025-07-01`、`営4 空1` と `営1234 空0`、
+  総階数 5 / 3（全角 `'５'` から）が入った
+
+⚠ **これでも残る未確認**: SRI 付き `<script>` が実際に読み込まれること、ドラッグ&ドロップ、
+`x-show` のステップ遷移、`:disabled` の見た目、コンソールエラー 0 件。
+**本番反映前に Task 13 でブラウザ確認すること。**
+
+#### 直さないもの（判断の記録）
+
+- **取込全体を `DB::transaction()` で囲まない** — 理由はコントローラの docblock に書いた
+  （1 行の失敗で 2000 行が巻き戻ると原因の行に辿り着けない / ビル＋調査は再実行が安全 /
+  長時間ロックを避ける）。Bug #48 の「安全網を入れない判断にも理由を書き残す」に従う
+- **テナント明細の再取込は重複行を作る** — 設計 §7.2 に突合キーの定義が無く、
+  部屋番号だけでは同定できない（空室行は部屋番号も空でありうる）。仕様の判断が要るので
+  **フォローアップ**として記録する
+- **`AreaTenantStatus` のエイリアス拡張（Step 10b）は実データを見るまで行わない** — 先回りは過剰適合。
+  本番投入後に `status` 別件数を `operating` 過多 / `unknown` 過多の**両方向**で測る
 
 ---
 
