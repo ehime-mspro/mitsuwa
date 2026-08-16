@@ -4394,32 +4394,48 @@ function updateAreaCoords(lat, lng) {
 - [ ] 回帰テスト: 調査を持つビルを 1 棟だけ作って削除 → その年が選択肢に**出ない**ことを固定
 - [ ] **変異で確認:** `whereHas('building')` を外すと赤になること
 
-- [ ] **Step 8: 詳細画面に編集・削除ボタンを足す**
+- [ ] **Step 8: 詳細画面のボタン列に編集・削除を足す**
 
-`show.blade.php` のページヘッダー（`<h1>` を含む `div`）の中、`</div>` の直前:
+⚠ **2026-08-17 更新。** Task 7 のコード品質レビューで「戻る」の置き方が show 画面の流儀から
+外れていたことが分かり、**ヘッダーに既にボタン列の div がある状態**に直しました。
+**新しく div を作らず、既存の列に足してください。**
+
+現在の `show.blade.php` のヘッダーはこうなっています:
 
 ```blade
-        <div class="flex gap-2">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
+        <h1 class="text-lg max-lg:text-base font-bold text-gray-900">{{ $building->name }}</h1>
+        <div style="display: flex; gap: 8px; align-items: center;">
+            <a href="{{ route('tenant.area-buildings.index') }}"
+               style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #6b7280; border: 1px solid #d1d5db; border-radius: 6px; text-decoration: none; background: #fff;">周辺ビル調査に戻る</a>
+        </div>
+    </div>
+```
+
+**「周辺ビル調査に戻る」の `</a>` の直後**（内側の `</div>` の前）に足します。
+⚠ **既存の 2 ボタンと意匠を揃えること**（`realestate/procurements/show.blade.php` と同じ inline style 系）。
+Tailwind クラスの別意匠を持ち込むと、同じ列にボタンが 3 つ並んだときに見た目が割れます。
+
+```blade
             @if(auth()->user()->role->isManagerOrAbove())
                 <a href="{{ route('tenant.area-buildings.edit', $building) }}"
-                   class="inline-flex items-center gap-1.5 px-4 py-2.5 border border-emerald-200 bg-emerald-50 text-emerald-700 text-sm font-semibold rounded-md hover:bg-emerald-100 transition-colors">
-                    編集
-                </a>
+                   style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #047857; border: 1px solid #a7f3d0; border-radius: 6px; text-decoration: none; background: #ecfdf5;">編集</a>
             @endif
             @if(auth()->user()->role->isExecutive())
                 <form method="POST" action="{{ route('tenant.area-buildings.destroy', $building) }}"
-                      onsubmit="return confirm('このビルを削除します。調査履歴とテナント明細も画面から見えなくなります。よろしいですか？');">
+                      onsubmit="return confirm('このビルを削除します。調査履歴とテナント明細も画面から見えなくなります。よろしいですか？');"
+                      style="display: inline;">
                     @csrf
                     @method('DELETE')
                     <button type="submit"
-                            class="inline-flex items-center gap-1.5 px-4 py-2.5 border border-red-200 bg-red-50 text-red-700 text-sm font-semibold rounded-md hover:bg-red-100 transition-colors">
-                        削除
-                    </button>
+                            style="padding: 6px 16px; font-size: 13px; font-weight: 600; color: #b91c1c; border: 1px solid #fecaca; border-radius: 6px; background: #fef2f2; cursor: pointer;">削除</button>
                 </form>
             @endif
-        </div>
 ```
 
+⚠ `<form>` に `style="display: inline;"` を付けること（付けないとブロック要素として折り返り、
+ボタン列が縦に割れる）。⚠ 静的 `style=` のみで `:style` は使わないこと（Bug #2 / #32 は
+`x-show` や `:style` と併用したときの話で、このラッパーはどちらも持たないので静的 style で安全）。
 - [ ] **Step 9: テストが通ることを確認する**
 
 ```bash
