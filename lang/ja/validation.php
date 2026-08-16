@@ -464,6 +464,25 @@ return [
         'budget_max' => '予算上限',
         'desired_move_date' => '希望入居月',
 
+        // --- 周辺ビル調査（テナント管理）---
+        // ⚠ name / address / room_number / floor / notes / rows は既存のグローバル値を変えず、
+        //   各コントローラの validate() 第3引数で上書きする（第2引数は messages）。
+        //     AreaBuildingController       … name→ビル名 / address→所在地
+        //     AreaBuildingTenantController … name→テナント名 / room_number→部屋番号 / floor→階
+        //     AreaBuildingSurveyController … notes→所見
+        //     AreaBuildingImportController … rows→取込データ
+        'industry' => '業種',
+        'surveyed_month' => '調査年月',
+        'surveyed_by' => '調査者',
+        'operating_count' => '営業',
+        'vacant_count' => '空き',
+        'unknown_count' => '不明',
+        'confirmed_on' => '最終確認日',
+        'moved_out_on' => '退去日',
+        'survey_notes' => '所見',                       // ビル登録画面で同時入力する初回調査の所見
+        'kind' => '取込種別',
+        'coordinates' => '取得した座標',
+
         // --- 保証人・緊急連絡先（画面ラベルは「氏名」等だけなので接頭辞を付ける）---
         'guarantor1_name' => '保証人1 氏名',
         'guarantor1_address' => '保証人1 住所',

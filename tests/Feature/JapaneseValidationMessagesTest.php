@@ -293,4 +293,48 @@ class JapaneseValidationMessagesTest extends TestCase
             'validation.required が自分自身を返している = 翻訳が解決できていない'
         );
     }
+
+    /**
+     * 周辺ビル調査で追加した項目名がグローバルに載っていること。
+     *
+     * ⚠ 第3引数で上書きするキー（name / address / room_number / floor / notes / rows）も
+     *   グローバルに存在していないと test_every_validated_field_has_a_japanese_attribute_label が
+     *   落ちる。上書きは「語を変える」だけで「登録する」ものではない。
+     */
+    public function test_area_building_survey_attributes_are_registered(): void
+    {
+        $attributes = Lang::get('validation.attributes');
+
+        $expected = [
+            'industry'        => '業種',
+            'surveyed_month'  => '調査年月',
+            'surveyed_by'     => '調査者',
+            'operating_count' => '営業',
+            'vacant_count'    => '空き',
+            'unknown_count'   => '不明',
+            'confirmed_on'    => '最終確認日',
+            'moved_out_on'    => '退去日',
+            'survey_notes'    => '所見',
+            'kind'            => '取込種別',
+            'coordinates'     => '取得した座標',
+        ];
+
+        foreach ($expected as $key => $label) {
+            $this->assertArrayHasKey($key, $attributes, "attributes に {$key} が無い");
+            $this->assertSame($label, $attributes[$key], "{$key} の和名が想定と違う");
+        }
+    }
+
+    /**
+     * 括弧の注記は項目名に含めない方針（Bug #37）。
+     * 「営業（そのビルのテナント部屋数）」ではなく「営業」。
+     */
+    public function test_area_building_attributes_have_no_parenthetical_notes(): void
+    {
+        $attributes = Lang::get('validation.attributes');
+
+        foreach (['operating_count', 'vacant_count', 'unknown_count', 'surveyed_month'] as $key) {
+            $this->assertStringNotContainsString('（', $attributes[$key], "{$key} に括弧の注記が入っている");
+        }
+    }
 }
