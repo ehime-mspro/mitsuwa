@@ -93,4 +93,119 @@ abstract class AreaBuildingTestCase extends TestCase
             ->map(fn (array $row) => $row['building']->name)
             ->all();
     }
+
+    // ============================================================
+    // 描画されたフォームの往復（Bug #28: 呼び出し側と実体を対で固定する）
+    // ============================================================
+
+    /**
+     * 画面が実際に描画したフォームを、ブラウザと同じように分解する。
+     *
+     * これが無いと、HTTP メソッド（`@method`）・送信先（`action`）・選択肢が**片側だけ**の
+     * 状態になる。実測（2026-08-17）で、`@method('PUT')` や `@method('DELETE')` を消しても
+     * `action` を store 側へ向けても、テストは全部緑のままだった。
+     *
+     * 使い方（返り値をそのまま送り返すのが「ブラウザと同じ」）:
+     *   $form = $this->parseForm($html, 'action="' . route('...update', [$a, $b]) . '"');
+     *   $this->post($form['action'], $form['fields']);   // _method で PUT / DELETE へ化ける
+     *
+     * ⚠ **$needle は `action="…"` まで含める形で渡すこと。** 素の URL で探すと
+     *   destroy の URL（`…/surveys/1`）が編集リンク（`…/surveys/1/edit`）に前方一致し、
+     *   その手前にある**別のフォーム**を掴む。誤用を黙って通さないよう、needle が
+     *   開始タグの中にあることを下でアサートしている。
+     *
+     * ⚠ `@csrf` の欠落は Feature テストでは**原理的に挙動から検出できない**
+     *   （VerifyCsrfToken が runningUnitTests() で素通りする）。描画された `_token` hidden の
+     *   存在をアサートするのが唯一の手なので、fields に `_token` を残している。
+     *
+     * @return array{method: string, action: string, fields: array<string, string>}
+     */
+    protected function parseForm(string $html, string $needle): array
+    {
+        $pos = strpos($html, $needle);
+        $this->assertNotFalse($pos, "フォームが見つからない: {$needle}");
+
+        $open = strrpos(substr($html, 0, $pos), '<form');
+        $this->assertNotFalse($open, "{$needle} を含む <form> の開始タグが見つからない");
+
+        $close = strpos($html, '</form>', $pos);
+        $this->assertNotFalse($close, "{$needle} を含む <form> が閉じていない");
+
+        $form    = substr($html, $open, $close - $open);
+        $openTag = substr($form, 0, strpos($form, '>') + 1);
+
+        $this->assertStringContainsString(
+            $needle,
+            $openTag,
+            "{$needle} が <form> の開始タグの中に無い。素の URL ではなく action=\"…\" 込みで指定すること"
+        );
+
+        $fields = [];
+
+        preg_match_all('/<input\b[^>]*>/i', $form, $inputs);
+        foreach ($inputs[0] as $tag) {
+            $name = $this->htmlAttr($tag, 'name');
+            $type = strtolower($this->htmlAttr($tag, 'type') ?? 'text');
+
+            if ($name === null || in_array($type, ['submit', 'button', 'reset', 'image', 'file'], true)) {
+                continue;
+            }
+            // 未チェックの checkbox / radio はブラウザも送らない
+            if (in_array($type, ['checkbox', 'radio'], true) && ! preg_match('/\bchecked\b/i', $tag)) {
+                continue;
+            }
+
+            $fields[$name] = $this->htmlAttr($tag, 'value') ?? '';
+        }
+
+        preg_match_all('/<textarea\b([^>]*)>(.*?)<\/textarea>/is', $form, $areas, PREG_SET_ORDER);
+        foreach ($areas as $area) {
+            $name = $this->htmlAttr('<textarea' . $area[1] . '>', 'name');
+            if ($name !== null) {
+                $fields[$name] = html_entity_decode($area[2], ENT_QUOTES, 'UTF-8');
+            }
+        }
+
+        preg_match_all('/<select\b([^>]*)>(.*?)<\/select>/is', $form, $selects, PREG_SET_ORDER);
+        foreach ($selects as $select) {
+            $name = $this->htmlAttr('<select' . $select[1] . '>', 'name');
+            if ($name === null) {
+                continue;
+            }
+            $fields[$name] = $this->selectedValue($select[2]);
+        }
+
+        return [
+            // 実効メソッド。@method('PUT') が消えれば POST に落ちるので、ここで差が出る
+            'method' => strtoupper($fields['_method'] ?? $this->htmlAttr($openTag, 'method') ?? 'GET'),
+            'action' => $this->htmlAttr($openTag, 'action') ?? '',
+            'fields' => $fields,
+        ];
+    }
+
+    /** ブラウザと同じく、selected な option（無ければ先頭）の value を送る */
+    private function selectedValue(string $optionsHtml): string
+    {
+        preg_match_all('/<option\b[^>]*>/i', $optionsHtml, $options);
+
+        foreach ($options[0] as $option) {
+            if (preg_match('/\bselected\b/i', $option)) {
+                return $this->htmlAttr($option, 'value') ?? '';
+            }
+        }
+
+        return isset($options[0][0]) ? ($this->htmlAttr($options[0][0], 'value') ?? '') : '';
+    }
+
+    /**
+     * タグから属性値を取り出す。
+     * ⚠ `\bname=` だと `data-name=` にも当たる（`-` の直後は語境界）。
+     *   語構成文字とハイフンの直後を除外する。
+     */
+    private function htmlAttr(string $tag, string $name): ?string
+    {
+        $pattern = '/(?<![\w-])' . preg_quote($name, '/') . '="([^"]*)"/i';
+
+        return preg_match($pattern, $tag, $m) ? html_entity_decode($m[1], ENT_QUOTES, 'UTF-8') : null;
+    }
 }

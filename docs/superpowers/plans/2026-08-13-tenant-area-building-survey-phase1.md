@@ -4726,10 +4726,37 @@ Expected: `INVALID:` が 1 件も出ない
 - Create: `resources/views/tenant/area-buildings/surveys/create.blade.php` / `edit.blade.php` / `_form.blade.php`
 - Modify: `routes/web.php`
 - Modify: `resources/views/tenant/area-buildings/show.blade.php`（「調査を追加」＋行ごとの編集・削除）
+- Modify: `tests/Feature/Tenant/AreaBuildingTestCase.php`（`parseForm()` を追加。Task 10 以降でも使うので共有基底へ）
+
+⚠ **調査回を作る経路はここだけではない。** `AreaBuildingController::store()` にも
+「1 回目の調査」を同時に作る経路がある（設計 §5.5）。月初正規化・件数既定 0・
+`surveyed_by = Auth::id()` は 2026-08-17 時点で両者一致しているが、**片方だけ直すと無音で割れる**
+（Bug #41 の型）。ここを触るときは向こうも見ること（コントローラの docblock にも同じ注記あり）。
 
 - [x] **Step 1: 失敗するテストを書く**
 
 `tests/Feature/Tenant/AreaBuildingSurveyCrudTest.php`:
+
+⚠ **以下は着手時点の下書きで、最終形ではない。** これだけを写すと
+**URL の半分しか固定しない弱いテスト**になる（実測で `@method('PUT')` を消しても
+`action` を store へ向けても全部緑だった）。最終形では次が加わっている — 実装時は
+最終形（リポジトリの当該ファイル）を正とすること:
+
+| 追加したもの | なぜ |
+|---|---|
+| `test_edit_form_round_trips_unchanged` / `test_delete_form_round_trips` | 描画したフォームをそのまま送り返す。`@method` / `action` / `_token` は URL を見るだけでは固定できない（Bug #28） |
+| `test_surveyor_can_be_cleared_through_the_rendered_form` | `test_update_can_clear_the_surveyor` は `surveyed_by => ''` を直接 POST するので、`<option value="">` を画面から消しても緑 |
+| `test_count_fields_start_blank_on_the_create_form` | 空欄スタート（設計 §5.5 / CLAUDE.md Form 規約） |
+| `test_input_survives_a_validation_error` | 差し戻しで入力が残ること（`withInput()` ＋ `old()` の対）。Bug #35 |
+| `test_invalid_input_is_rejected_on_both_entry_points` | 表駆動。⚠ **SQLite は範囲外の整数を黙って通す**ので `min:0` / `max:9999` は本番 MySQL 専用の防波堤 = テストで固定しないと永久に見えない（Bug #40） |
+| `test_a_retired_surveyor_can_still_be_saved_from_the_form` | `exists:users,id` を **SoftDeletes で締めてはいけない**方向の固定。締めると退職者を調査者に持つ回が永久に編集不能になる |
+| `test_a_concurrent_duplicate_insert_is_shown_as_a_validation_error` | TOCTOU（下記 M-1） |
+| `test_notes_error_says_shoken_on_both_entry_points` | store だけだと update() の項目名上書きを消しても緑（Bug #44） |
+| `watchWrites()` / `errorKeys()` / `selectedOptionValue()` ヘルパー ＋ `use Illuminate\Support\Js;` `use Illuminate\Support\Facades\DB;` | 下記参照 |
+
+⚠ **`parseForm()` は `AreaBuildingTestCase`（共有基底）に置いた** — Task 10 / 11 / 12 でも
+同じ往復検証が要るため。`$needle` は必ず `action="…"` 込みで渡すこと（素の URL だと
+destroy の URL が edit の URL に前方一致して別のフォームを掴む）。
 
 ```php
 <?php
@@ -5335,6 +5362,12 @@ class AreaBuildingSurveyController extends Controller
 @endsection
 ```
 
+⚠ **実装では上のブロックから 2 点変えている**（どちらも Task 8 の既存ビューに揃えたもの）:
+- `_form.blade.php` の各項目に **`@error('…') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror` を 6 箇所**追加
+  （`area-buildings/_form.blade.php` と同じ流儀。上のブロックには入っていない）
+- `create.blade.php` / `edit.blade.php` のパンくずに **「テナント管理」の段**を追加
+  （`area-buildings/create.blade.php` と同じ 4 段構成）
+
 `edit.blade.php` は同じ構造で、次の 3 点だけ違う:
 - `@section('title', '調査を編集')` / 見出しとパンくずの末尾を「調査を編集」
 - `<form ... action="{{ route('tenant.area-buildings.surveys.update', [$building, $survey]) }}">` ＋ 直下に `@method('PUT')`
@@ -5359,7 +5392,7 @@ class AreaBuildingSurveyController extends Controller
 `<thead>` の末尾に `操作` の `<th>`、各行の末尾に:
 
 ```blade
-                                <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                <td class="px-2 py-3 border-b border-gray-200 text-center whitespace-nowrap">
                                     <div class="flex gap-1.5 justify-center">
                                         @if(auth()->user()->role->isManagerOrAbove())
                                             <a href="{{ route('tenant.area-buildings.surveys.edit', [$building, $survey]) }}"
@@ -5414,6 +5447,30 @@ Expected: PASS（Survey 15 本 ＋ Show は現状の本数）。
 | 11 | **追加** 削除の `Js::from(...)` を生の `{{ }}` に戻す | — | ✅ `test_row_delete_uses_confirm_with_js_from` |
 | 12 | **追加** フォームの既定値を `$survey?->surveyed_by ?? auth()->id()` に戻す | — | ✅ `test_edit_form_preselects_the_stored_surveyor_not_the_editor` |
 
+**レビュー指摘への対応で追加した実装と、その変異（2026-08-17 実測。全 16 通り検出）**
+
+| # | 変異 | 実測で赤になったテスト |
+|---|---|---|
+| A | show の `@method('DELETE')` を削除 | ✅ `test_delete_form_round_trips` |
+| B | edit の `@method('PUT')` を削除 | ✅ `test_edit_form_round_trips_unchanged` ほか 2 本 |
+| C | edit の `action` を `surveys.store` に | ✅ 同上 3 本 |
+| D | `_form` の `<option value="">` を削除 | ✅ `test_surveyor_can_be_cleared_through_the_rendered_form` |
+| E | `exists:users,id` を `…,deleted_at,NULL` に**締める** | ✅ `test_a_retired_surveyor_can_still_be_saved_from_the_form` |
+| F | `exists:users,id` を**丸ごと削除** | ✅ `test_invalid_input_is_rejected_on_both_entry_points` |
+| G | `update()` の `'notes' => '所見'` だけ削除 | ✅ `test_notes_error_says_shoken_on_both_entry_points` |
+| H | `withInput()` を削除 | ✅ `test_input_survives_a_validation_error` |
+| I / J | `_form` の `old('operating_count'…)` / `old('notes'…)` を削除 | ✅ 同上（＋ 往復テスト） |
+| K | 件数欄に `?? 0` の既定値を入れる | ✅ `test_count_fields_start_blank_on_the_create_form` |
+| L | store の TOCTOU try/catch を削除 | ✅ `test_a_concurrent_duplicate_insert_is_shown_as_a_validation_error` |
+| N | `after_or_equal:1900-01` を削除 | ✅ `test_invalid_input_is_rejected_on_both_entry_points` |
+| O / P | `min:0\|max:9999` / `date_format:Y-m` を削除 | ✅ 同上 |
+
+⚠ **安全網が主機構のカバレッジを食った実例（重要）** — L の try/catch を入れた直後、
+**変異 3（`whereDate` → `where`）が検出されなくなった**。事前チェックが効かなくても
+DB の UNIQUE 制約が同じ差し戻しを返すので、HTTP から見ると区別が付かないため。
+`watchWrites()`（`creating` / `updating` を監視）で「**INSERT / UPDATE を試みていないこと**」
+まで見るようにして検出を復活させた。**安全網を足したら、それが隠す主機構を測り直すこと。**
+
 **`extractSelect()` の load-bearing 検証（実測）**: 4 を当てたうえで `extractSelect($html, ...)` を
 `$html` に戻しても**赤のまま**だった＝**今は差が出ない**。想定どおりで、`extractSelect()` の値は
 「将来ページに `x-for` を含む文字列が出ても誤判定しない」ことにある（測らずに「効いている」と
@@ -5448,8 +5505,33 @@ Expected: PASS（Survey 15 本 ＋ Show は現状の本数）。
    `test_update_into_another_existing_month_is_rejected`（他の回が使う年月へは移せない）/
    `test_permissions` に staff の PUT を追加。
 
-**最終状態**: `AreaBuildingSurveyCrudTest` 21 本、全体 628 テスト / 3268 アサーション green。
+### レビューを受けて追加した実装（2026-08-17）
+
+- **M-1 TOCTOU**: 事前チェックをすり抜けた同時送信が `UniqueConstraintViolationException` →
+  **500** になっていた（コミットメッセージが「UNIQUE 違反の 500 ではなく」と掲げた当のもの）。
+  store / update を try/catch し、事前チェックと**同じ差し戻し**を返す。
+  ⚠ **捕まえるのは例外クラス 1 本**。SQLSTATE `23000` は FK 違反・NOT NULL 違反も含むので広すぎる
+  （実測: SQLite の UNIQUE 違反も `SQLSTATE[23000]` を返す）。この例外は
+  `SQLiteConnection` / `MySqlConnection` 双方の `isUniqueConstraintError()` が判定するので
+  テスト（SQLite）でも本番（MySQL）でも出る。
+- **M-2 年月の下限**: `0000-01` が保存でき「0年1月」と表示されていた。`after_or_equal:1900-01` を追加。
+  ⚠ **`date_format:Y-m` と組み合わせて効くことを実測してから採用した**
+  （`1899-12` は弾き `1900-01` は通す。メッセージも和文で出る）。到達経路は
+  **Safari が `<input type="month">` を実装しておらずただのテキスト欄になる**こと。
+- **M-3**: 重複エラーの文言を `DUPLICATE_MONTH_MESSAGE` 定数に集約（store / update に二重だった）。
+- **M-4**: `payload(...) + [...]` をやめ `$data['surveyed_by'] = …;` の素直な代入に
+  （`+` は左辺優先なので、将来 `payload()` に `surveyed_by` が入ると呼び出し側が黙って無視される）。
+  ⚠ **ルール配列そのものの重複は維持**（`JapaneseValidationMessagesTest` の走査正規表現が
+  literal 配列しか見ないため。間接参照にするとこのコントローラが和名チェックから丸ごと外れる）。
+
+**最終状態**: `AreaBuildingSurveyCrudTest` 29 本、全体 636 テスト / 3406 アサーション green。
 compiled view の lint は 290 本 0 invalid（新規 3 ビューが対象に入っていることを grep で実測）。
+変異は計 28 通り実測（Task 9 本編 12 ＋ レビュー対応 16）。
+
+⚠ **既知の未カバー（意図的）**: `create.blade.php` / `edit.blade.php` の
+`<x-form-actions :cancel-url=…>` の戻り先は固定していない。ページ上部の「戻る」リンクも
+同じ URL を指すため、素朴なアサーションは**必ず false-pass する**（Bug #43 と同型）。
+偽の安心を作るより未カバーと明記するほうが正しいと判断した。
 
 ---
 
