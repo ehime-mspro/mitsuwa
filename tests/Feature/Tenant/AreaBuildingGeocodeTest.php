@@ -185,9 +185,103 @@ class AreaBuildingGeocodeTest extends AreaBuildingTestCase
         $this->assertStringContainsString('座標未設定はありません', session('success'));
     }
 
+    /**
+     * 1 件も書けなかったら success を出さない（レビュー I-3 のサーバ側）。
+     *
+     * ⚠ 「0 件の座標を保存しました」を success の緑帯で出すと、課金だけして何も
+     *   保存されていないことが利用者に伝わらない。
+     */
+    public function test_saving_nothing_is_reported_as_an_error_not_a_success(): void
+    {
+        $building = $this->makeBuilding('取得済みビル', [
+            'address' => '松山市1-1', 'latitude' => 33.8, 'longitude' => 132.7,
+        ]);
+
+        $this->postCoordinates([
+            ['id' => $building->id, 'latitude' => 34.0, 'longitude' => 133.0],
+        ]);
+
+        $this->assertNull(session('success'), '0 件しか書けていないのに成功として出している');
+        $this->assertNotNull(session('error'));
+    }
+
+    /**
+     * 保存後の戻り先が絞り込み・ページを落とさない（m-5）。
+     * ⚠ 200 件処理したあと 1 ページ目の既定表示に戻されると、続きが探せない。
+     */
+    public function test_the_redirect_keeps_the_current_filter_and_page(): void
+    {
+        $building = $this->makeBuilding('未取得ビル', ['address' => '松山市1-1']);
+        $query    = ['keyword' => '未取得', 'vacancy' => 'any', 'page' => '2'];
+
+        $this->actingAs($this->manager())
+            ->post(self::GEOCODE_URL . '?' . http_build_query($query), [
+                'coordinates' => json_encode([
+                    ['id' => $building->id, 'latitude' => 33.84, 'longitude' => 132.77],
+                ]),
+            ])
+            ->assertRedirect(route('tenant.area-buildings.index', $query));
+    }
+
+    /** フォームの action にその時の絞り込みが載っていること（上のリダイレクトの入力側） */
+    public function test_the_form_action_carries_the_current_filter(): void
+    {
+        $this->makeBuilding('未取得ビル', ['address' => '松山市1-1']);
+
+        $html = $this->actingAs($this->manager())
+            ->get(self::LIST_URL . '?keyword=' . urlencode('未取得') . '&page=2')
+            ->getContent();
+
+        // ⚠ Blade は `&` を `&amp;` にエスケープするので、生の route() 文字列では見つからない
+        $form = $this->parseForm($html, 'action="' . e(route('tenant.area-buildings.geocode', [
+            'keyword' => '未取得', 'page' => '2',
+        ])) . '"');
+
+        $this->assertSame('POST', $form['method']);
+    }
+
     // ============================================================
     // 一覧側の表示（費用の見え方）
     // ============================================================
+
+    /**
+     * 座標の有無を一覧で見分けられること（設計 §7.4）。
+     *
+     * ⚠ 印が無いと「取得 8 件 / 失敗 2 件」のあと**どの 2 棟が失敗したか一覧から分からない**。
+     *   それだけでなく、ボタンは未取得の総数を数え続けるので、恒久的にジオコードできない
+     *   住所を**押すたびに叩き直す＝再課金**する。手で確定させるための印。
+     */
+    public function test_the_list_marks_which_buildings_still_lack_coordinates(): void
+    {
+        $this->makeBuilding('座標あり', ['address' => '松山市1-1', 'latitude' => 33.8, 'longitude' => 132.7]);
+        $this->makeBuilding('座標なし', ['address' => '松山市2-2']);
+
+        $html = $this->actingAs($this->staff())->get(self::LIST_URL)->getContent();
+
+        $this->assertStringContainsString('>位置</th>', $html, '「位置」列が無い');
+        $this->assertSame(1, substr_count($html, '>未取得</span>'), '未取得のバッジが 1 つでない');
+        $this->assertSame(1, substr_count($html, '>取得済</span>'), '取得済のバッジが 1 つでない');
+    }
+
+    /**
+     * 列を足したときの 3 点セット（Task 10 で幅合計 106% を踏んだ）。
+     * ⚠ colgroup の合計・th の本数・空行の colspan は必ず揃える。
+     */
+    public function test_the_table_columns_stay_consistent(): void
+    {
+        $html = $this->actingAs($this->staff())->get(self::LIST_URL)->getContent();
+
+        preg_match_all('/<col style="width:(\d+)%">/', $html, $cols);
+        $this->assertNotEmpty($cols[1], 'colgroup を拾えていない');
+        $this->assertSame(100, array_sum(array_map('intval', $cols[1])), 'colgroup の幅合計が 100% でない');
+
+        $this->assertCount(count($cols[1]), $this->tableHeaders($html), 'col の本数と th の本数が違う');
+        $this->assertStringContainsString(
+            'colspan="' . count($cols[1]) . '"',
+            $html,
+            '空行の colspan が列数と揃っていない'
+        );
+    }
 
     /** 座標未取得が 0 件なら Maps のスクリプト自体を出さない（設計 §6.0 / プラン §1-8） */
     public function test_list_does_not_load_maps_when_nothing_is_pending(): void
@@ -247,8 +341,60 @@ class AreaBuildingGeocodeTest extends AreaBuildingTestCase
         $this->assertStringContainsString('onclick="runBulkGeocode()"', $html, 'ボタンが関数を呼んでいない');
         $this->assertStringContainsString('function runBulkGeocode(', $script, 'runBulkGeocode の実体が無い');
 
-        $this->assertStringContainsString('callback=onAreaGeocodeReady', $html, 'ローダーの callback が指定されていない');
-        $this->assertStringContainsString('function onAreaGeocodeReady(', $script, 'onAreaGeocodeReady の実体が無い');
+        // ⚠ `callback=onAreaGeocodeReady` の部分一致で見てはいけない。
+        //   `callback=onAreaGeocodeReadyZZ`（**追記型**の変異）に前方一致して緑になる
+        //   （Bug #43 の `\bdisabled\b` が `disabled:opacity-50` に当たるのと同型）。
+        //   ローダーの URL から**名前を取り出して**、その実体があるかを見る。
+        preg_match('/maps\.googleapis\.com[^"]*[?&]callback=([A-Za-z_$][\w$]*)/', $html, $cb);
+        $this->assertNotEmpty($cb, 'Maps ローダーに callback が無い');
+        $this->assertStringContainsString(
+            "function {$cb[1]}(",
+            $script,
+            "ローダーが呼ぶ {$cb[1]} の実体が無い（Geocoder が永久に作られない）"
+        );
+
+        // onerror も同じく対で見る（m-4: 「まだ」と「もう無理」を区別する）
+        preg_match('/maps\.googleapis\.com[^>]*onerror="([A-Za-z_$][\w$]*)\(\)"/', $html, $oe);
+        $this->assertNotEmpty($oe, 'ローダーに onerror が無い（読み込み失敗が永久に「読み込み中」になる）');
+        $this->assertStringContainsString("function {$oe[1]}(", $script, "onerror が呼ぶ {$oe[1]} の実体が無い");
+    }
+
+    /**
+     * 進捗領域の配線（Nit 7 / 10）。
+     * ⚠ 実行中のボタンは `disabled` ＝ ホバーもフォーカスも受けない（Bug #43）ので、
+     *   `aria-describedby` と `aria-live` が唯一の伝達経路になる。
+     */
+    public function test_the_progress_area_is_announced_and_linked_to_the_button(): void
+    {
+        $this->makeBuilding('未取得A', ['address' => '松山市1-1']);
+
+        $html = $this->actingAs($this->manager())->get(self::LIST_URL)->getContent();
+
+        $this->assertStringContainsString('aria-describedby="geocode-progress"', $html, 'ボタンが進捗領域を参照していない');
+        $this->assertMatchesRegularExpression(
+            '/<span id="geocode-progress"[^>]*aria-live="polite"/',
+            $html,
+            '進捗領域が読み上げ対象になっていない'
+        );
+    }
+
+    /**
+     * 候補データは `Js::from()` で埋める（Bug #23）。
+     * ⚠ `@json` に戻すと `JSON.parse(` が消えるのでここが赤くなる。
+     */
+    public function test_the_pending_payload_is_embedded_with_js_from(): void
+    {
+        $this->makeBuilding('未取得A', ['address' => "松山市'1-1"]);
+
+        $script = $this->bulkGeocodeScript(
+            $this->actingAs($this->manager())->get(self::LIST_URL)->getContent()
+        );
+
+        $this->assertMatchesRegularExpression(
+            '/var AREA_PENDING = JSON\.parse\(/',
+            $script,
+            'Js::from() を通していない（@json は構造区切りの " を素通しする）'
+        );
     }
 
     /** staff にはボタンを出さない */
@@ -431,6 +577,84 @@ class AreaBuildingGeocodeTest extends AreaBuildingTestCase
     }
 
     /**
+     * **全件失敗したら送信しない**（レビュー I-3）。
+     *
+     * ⚠ 到達可能な経路: Maps JS API は有効だが **Geocoding API が未有効**だと全件
+     *   `REQUEST_DENIED`。取込で住所が崩れていれば全件 `ZERO_RESULTS`。空配列を送ると
+     *   サーバは 0 件更新で応答するしかなく、**「200 回課金して 0 件保存」なのに
+     *   緑の成功メッセージ**が出る。
+     */
+    public function test_the_browser_script_does_not_submit_when_every_lookup_failed(): void
+    {
+        $this->makeBuilding('未取得A', ['address' => '松山市一番町1-1']);
+        $this->makeBuilding('未取得B', ['address' => '松山市二番町2-2']);
+
+        $html = $this->actingAs($this->manager())->get(self::LIST_URL)->getContent();
+        $run  = $this->runBrowserScript($html, ['statuses' => ['REQUEST_DENIED', 'REQUEST_DENIED']]);
+
+        $this->assertCount(2, $run['calls']);
+        $this->assertSame(0, $run['submitted'], '1 件も取れていないのに送信している（成功メッセージが出る）');
+        $this->assertStringContainsString('取得できませんでした', $run['progress']);
+        $this->assertFalse($run['buttonDisabled'], '失敗したのに押し直せない');
+    }
+
+    /**
+     * 呼び出しの間隔（レビュー I-4）。課金に効く定数なのでここで固定する。
+     *
+     * ⚠ 無くすと 200 件が一気にバーストして `OVER_QUERY_LIMIT` を誘発する。この機能は
+     *   上限に当たると「取れた分だけ保存して停止」するので、利用者は残りを取るために
+     *   **もう一度押す＝同じ棟をもう一度課金**する。
+     */
+    public function test_the_browser_script_throttles_between_lookups(): void
+    {
+        $this->makeBuilding('未取得A', ['address' => '松山市一番町1-1']);
+        $this->makeBuilding('未取得B', ['address' => '松山市二番町2-2']);
+
+        $html = $this->actingAs($this->manager())->get(self::LIST_URL)->getContent();
+        $run  = $this->runBrowserScript($html, ['statuses' => ['OK', 'OK']]);
+
+        $this->assertNotEmpty($run['delays'], '連続呼び出しの間隔が入っていない');
+        foreach ($run['delays'] as $delay) {
+            $this->assertGreaterThanOrEqual(100, $delay, 'Google への問い合わせ間隔が短すぎる');
+        }
+    }
+
+    /**
+     * 上限で切り詰めたとき、確認ダイアログが「今回の件数」と「次回に回る件数」を両方言う。
+     * ⚠ ボタンは総数（205）、実際に叩くのは 200 なので、黙っていると食い違って見える。
+     */
+    public function test_the_confirmation_explains_the_remainder_when_the_batch_is_capped(): void
+    {
+        for ($i = 1; $i <= 202; $i++) {
+            $this->makeBuilding("未取得{$i}", ['address' => "松山市{$i}"]);
+        }
+
+        $html = $this->actingAs($this->manager())->get(self::LIST_URL)->getContent();
+        $run  = $this->runBrowserScript($html, ['statuses' => ['OK'], 'confirm' => false]);
+
+        $this->assertCount(1, $run['confirms']);
+        $this->assertStringContainsString('200 件', $run['confirms'][0]);
+        $this->assertStringContainsString('残り 2 件', $run['confirms'][0], '次回に回る件数を伝えていない');
+    }
+
+    /**
+     * ローダーが失敗したときは「まだ」ではなく「もう無理」と言う（m-4）。
+     * ⚠ 区別しないと、キーが失効した環境で「読み込み中です」が永久に出続ける。
+     */
+    public function test_the_browser_script_reports_a_permanent_maps_failure_differently(): void
+    {
+        $this->makeBuilding('未取得A', ['address' => '松山市一番町1-1']);
+
+        $html    = $this->actingAs($this->manager())->get(self::LIST_URL)->getContent();
+        $loading = $this->runBrowserScript($html, ['statuses' => ['OK'], 'ready' => false]);
+        $broken  = $this->runBrowserScript($html, ['statuses' => ['OK'], 'ready' => false, 'mapsFailed' => true]);
+
+        $this->assertStringContainsString('読み込み中', $loading['alerts'][0]);
+        $this->assertStringContainsString('読み込めませんでした', $broken['alerts'][0]);
+        $this->assertNotSame($loading['alerts'][0], $broken['alerts'][0], '「まだ」と「もう無理」を区別していない');
+    }
+
+    /**
      * 構造側の保険: 一覧のスクリプトに geocode の呼び出しは 1 箇所しか無い。
      *
      * ⚠ 実駆動テストと重複しているように見えるが役割が違う。実駆動は「今の入力での
@@ -457,6 +681,16 @@ class AreaBuildingGeocodeTest extends AreaBuildingTestCase
     // ヘルパー
     // ============================================================
 
+    /** `<thead>` の `<th>` テキスト一覧 */
+    private function tableHeaders(string $html): array
+    {
+        $this->assertMatchesRegularExpression('/<thead>.*?<\/thead>/s', $html, '<thead> が無い');
+        preg_match('/<thead>(.*?)<\/thead>/s', $html, $head);
+        preg_match_all('/<th\b[^>]*>(.*?)<\/th>/s', $head[1], $ths);
+
+        return array_map('trim', $ths[1]);
+    }
+
     /** 一覧に載った「一括取得」用の inline `<script>` の中身 */
     private function bulkGeocodeScript(string $html): string
     {
@@ -477,8 +711,15 @@ class AreaBuildingGeocodeTest extends AreaBuildingTestCase
      * ⚠ ここで実行するのは**テスト用に書き写したコピーではなく、画面が返した文字列そのもの**。
      *   書き写すと Blade を壊しても緑のままになる（Bug #28 と同型）。
      *
-     * @param  array{statuses: list<string>, ready?: bool, confirm?: bool}  $plan
-     * @return array{calls: list<string>, payload: string, submitted: int, progress: string, alerts: list<string>, buttonDisabled: bool}
+     * ⚠ **ハーネスはブラウザより寛容であってはいけない。** `getElementById` が未知の id にも
+     *   要素を捏造して返すと、**Blade 側の id をズラす変異が丸ごと検出できなくなる**
+     *   （実ブラウザは `null` を返して TypeError になる ＝「課金だけして保存 0・画面は無音」）。
+     *   そこで**画面に実在する id の一覧を渡し、それ以外は null を返させる**。
+     *   2026-08-17 実測: この 2 行が無いと `geocode-payload` / `geocode-form` / `geocode-progress`
+     *   のいずれをズラしても 20/20 緑、入れると各 5 本が赤になる。
+     *
+     * @param  array{statuses: list<string>, ready?: bool, confirm?: bool, mapsFailed?: bool}  $plan
+     * @return array{calls: list<string>, payload: string, submitted: int, progress: string, alerts: list<string>, confirms: list<string>, delays: list<int>, buttonDisabled: bool}
      */
     private function runBrowserScript(string $html, array $plan): array
     {
@@ -486,6 +727,10 @@ class AreaBuildingGeocodeTest extends AreaBuildingTestCase
         if ($node === '') {
             $this->markTestSkipped('node が無いのでブラウザ側スクリプトの実駆動を飛ばす');
         }
+
+        // 画面に実在する id だけをハーネスの DOM に持たせる（上記のとおり load-bearing）
+        preg_match_all('/\bid="([^"]+)"/', $html, $idm);
+        $plan['ids'] = array_values(array_unique($idm[1]));
 
         $dir = sys_get_temp_dir() . '/area-geocode-' . bin2hex(random_bytes(6));
         mkdir($dir);
@@ -530,10 +775,16 @@ const plan = JSON.parse(fs.readFileSync(process.argv[3], 'utf8'));
 
 const calls = [];
 const alerts = [];
+const confirms = [];
+const delays = [];
 const queue = [];
 const elements = {};
 
+// ⚠ ブラウザと同じく、存在しない id には null を返す。
+//    捏造して返すと Blade の id をズラす変異が全部素通りする（レビュー I-1）。
 function el(id) {
+    if (plan.ids && plan.ids.indexOf(id) === -1) { return null; }
+
     if (!elements[id]) {
         elements[id] = {
             id: id,
@@ -545,6 +796,12 @@ function el(id) {
         };
     }
     return elements[id];
+}
+
+/** 出力用。存在しない id でも落ちないよう既定値で読む */
+function peek(id, key, fallback) {
+    const found = elements[id];
+    return found ? found[key] : fallback;
 }
 
 function FakeGeocoder() {
@@ -567,14 +824,19 @@ const sandbox = {
     console: console,
     document: { getElementById: function (id) { return el(id); } },
     alert: function (message) { alerts.push(String(message)); },
-    confirm: function () { return plan.confirm !== false; },
-    setTimeout: function (fn) { queue.push(fn); },
+    confirm: function (message) { confirms.push(String(message)); return plan.confirm !== false; },
+    // ⚠ 待ち時間も記録する。スロットルが消えると実ブラウザで 200 件が一気にバーストして
+    //    OVER_QUERY_LIMIT を誘発し、押し直しで同じ棟をもう一度課金することになる
+    setTimeout: function (fn, ms) { delays.push(ms); queue.push(fn); },
     google: { maps: { Geocoder: FakeGeocoder } }
 };
 
 const context = vm.createContext(sandbox);
 vm.runInContext(code, context, { filename: 'list-script.js' });
 
+if (plan.mapsFailed === true) {
+    context.onAreaGeocodeFailed();
+}
 if (plan.ready !== false) {
     context.onAreaGeocodeReady();
 }
@@ -589,10 +851,12 @@ while (queue.length) {
 process.stdout.write(JSON.stringify({
     calls: calls,
     alerts: alerts,
-    payload: el('geocode-payload').value,
-    submitted: el('geocode-form').submitted,
-    progress: el('geocode-progress').textContent,
-    buttonDisabled: el('btn-bulk-geocode').disabled
+    confirms: confirms,
+    delays: delays,
+    payload: peek('geocode-payload', 'value', ''),
+    submitted: peek('geocode-form', 'submitted', 0),
+    progress: peek('geocode-progress', 'textContent', ''),
+    buttonDisabled: peek('btn-bulk-geocode', 'disabled', false)
 }));
 JS;
     }
