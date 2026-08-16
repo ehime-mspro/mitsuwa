@@ -470,7 +470,15 @@ Route::middleware(['auth', 'password.change'])->group(function () {
                 ->name('tenant.area-buildings.store');
         });
 
-        // ⚠ /area-buildings/import /geocode はこの行より上に置くこと
+        // Excel 取込（経営層+管理者）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/area-buildings/import', [\App\Http\Controllers\Tenant\AreaBuildingImportController::class, 'form'])
+                ->name('tenant.area-buildings.import');
+            Route::post('/area-buildings/import', [\App\Http\Controllers\Tenant\AreaBuildingImportController::class, 'execute'])
+                ->name('tenant.area-buildings.import.execute');
+        });
+
+        // ⚠ /area-buildings/geocode はこの行より上に置くこと
 
         // 詳細（全ロール閲覧可）
         Route::get('/area-buildings/{building}', [\App\Http\Controllers\Tenant\AreaBuildingController::class, 'show'])

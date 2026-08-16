@@ -15,11 +15,18 @@
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
         <h1 class="text-lg font-bold text-gray-900">周辺ビル調査</h1>
         @if(auth()->user()->role->isManagerOrAbove())
-            <a href="{{ route('tenant.area-buildings.create') }}"
-               class="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-md transition-colors w-full sm:w-auto">
-                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                新規登録
-            </a>
+            <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                <a href="{{ route('tenant.area-buildings.import') }}"
+                   class="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 border border-gray-300 bg-white text-gray-700 text-sm font-semibold rounded-md hover:bg-gray-50 transition-colors w-full sm:w-auto">
+                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Excel 取込
+                </a>
+                <a href="{{ route('tenant.area-buildings.create') }}"
+                   class="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-md transition-colors w-full sm:w-auto">
+                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    新規登録
+                </a>
+            </div>
         @endif
     </div>
 
