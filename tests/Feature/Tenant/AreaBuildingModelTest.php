@@ -6,6 +6,7 @@ use App\Enums\AreaTenantStatus;
 use App\Models\AreaBuilding;
 use App\Models\AreaBuildingSurvey;
 use App\Models\AreaBuildingTenant;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -107,6 +108,13 @@ class AreaBuildingModelTest extends TestCase
         );
     }
 
+    /** タブ・改行も半角スペース 1 個に正規化する（\s は /u の有無に関わらず ASCII 空白を含む） */
+    public function test_normalize_name_collapses_tabs_and_newlines(): void
+    {
+        $this->assertSame('ミツワ ビル', AreaBuilding::normalizeName("ミツワ\tビル"));
+        $this->assertSame('ミツワ ビル', AreaBuilding::normalizeName("ミツワ\nビル"));
+    }
+
     public function test_google_maps_url_only_when_coordinates_exist(): void
     {
         $this->assertNull($this->building()->googleMapsUrl());
@@ -118,21 +126,68 @@ class AreaBuildingModelTest extends TestCase
         );
     }
 
+    /** 緯度・経度のどちらか片方だけでは URL を出さない（hasCoordinates() の && 短絡が肝） */
+    public function test_google_maps_url_requires_both_coordinates(): void
+    {
+        $latOnly = $this->building(['name' => '緯度のみ', 'latitude' => 33.8392]);
+        $lonOnly = $this->building(['name' => '経度のみ', 'longitude' => 132.7657]);
+
+        $this->assertNull($latOnly->googleMapsUrl());
+        $this->assertNull($lonOnly->googleMapsUrl());
+    }
+
     /**
      * 座標一括取得の対象は「latitude が NULL」かつ「住所がある」行だけ。
      * ⚠ 二重課金の防止が load-bearing（設計 §7.4 / §11-11）。
      */
     public function test_pending_geocode_skips_rows_that_already_have_coordinates(): void
     {
-        $this->building(['name' => '未取得A', 'address' => '松山市1-1']);
+        $buildingA = $this->building(['name' => '未取得A', 'address' => '松山市1-1']);
         $this->building(['name' => '取得済み', 'address' => '松山市2-2', 'latitude' => 33.8, 'longitude' => 132.7]);
         $this->building(['name' => '住所なし']);
         $this->building(['name' => '住所空文字', 'address' => '']);
         $this->building(['name' => '未取得B', 'address' => '松山市3-3']);
 
         $this->assertSame(2, AreaBuilding::pendingGeocodeCount());
-        $this->assertSame(['未取得A', '未取得B'], AreaBuilding::pendingGeocode(200)->pluck('name')->all());
-        $this->assertCount(1, AreaBuilding::pendingGeocode(1), '上限が効いていない');
+
+        // 内容(対象が確かにこの2件だけ)を見る。並び順は問わないので比較前に揃える。
+        $names = AreaBuilding::pendingGeocode(200)->pluck('name')->all();
+        sort($names);
+        $this->assertSame(['未取得A', '未取得B'], $names);
+
+        // 上限が効いていることは「件数」と「どの行が返るか」で見る。
+        // ⚠ 並び順そのものは SQLite が挿入順を素で返すため assertSame では固定できない
+        //   （orderBy('id') を外しても緑のままになる。実測済み）。
+        //   上限件数が意味を持つのは「ID の小さい順から取る」ことなので、そこを直接見る。
+        $first = AreaBuilding::pendingGeocode(1);
+        $this->assertCount(1, $first, '上限が効いていない');
+        $this->assertSame($buildingA->id, $first->first()->id, 'ID の小さい順に取れていない');
+    }
+
+    /**
+     * 空白だけの住所は保存時に null へ正規化される（読み取り側でなく書き込み側。Bug #38）。
+     * 半角・全角スペース・タブ・改行のいずれも対象。
+     */
+    public function test_whitespace_only_address_is_normalized_to_null(): void
+    {
+        foreach (['  ', '　', "\t", "\n"] as $whitespace) {
+            $building = $this->building(['name' => '空白住所', 'address' => $whitespace]);
+            $this->assertNull($building->fresh()->address, var_export($whitespace, true));
+        }
+    }
+
+    /**
+     * 空白だけの住所のビルは座標一括取得の対象に入らない。
+     * ⚠ 全角スペースは MySQL の PAD SPACE 照合でも '' と等しくならないため、
+     *   クエリ側の <> '' だけでは本番でも取りこぼす（実測）。書き込み側の正規化で防ぐ。
+     */
+    public function test_pending_geocode_excludes_whitespace_only_address(): void
+    {
+        $this->building(['name' => '全角空白住所', 'address' => '　']);
+        $this->building(['name' => '半角空白住所', 'address' => '  ']);
+
+        $this->assertSame(0, AreaBuilding::pendingGeocodeCount());
+        $this->assertCount(0, AreaBuilding::pendingGeocode(200));
     }
 
     public function test_tenant_casts_and_floor_label(): void
@@ -162,5 +217,39 @@ class AreaBuildingModelTest extends TestCase
 
         $this->assertSame(['在'], $building->activeTenants()->pluck('name')->all());
         $this->assertSame(2, $building->tenants()->count());
+    }
+
+    /**
+     * ソフトデリートしたビル・ユーザーでも withTrashed() 経由でリレーションが解決できる。
+     * このリポジトリは withTrashed() の付け忘れで何度も本番不具合を出している（Bug #12 系）。
+     * 対象 4 箇所: AreaBuilding::creator() / AreaBuildingSurvey::building() /
+     * AreaBuildingSurvey::surveyor() / AreaBuildingTenant::building()。
+     */
+    public function test_soft_deleted_relations_resolve_via_with_trashed(): void
+    {
+        $creator = User::factory()->create();
+        $building = $this->building(['created_by' => $creator->id]);
+        $survey = AreaBuildingSurvey::create([
+            'area_building_id' => $building->id,
+            'surveyed_month'   => '2026-08-01',
+            'operating_count'  => 1,
+            'surveyed_by'      => $creator->id,
+        ]);
+        $tenant = AreaBuildingTenant::create([
+            'area_building_id' => $building->id,
+            'status'           => 'operating',
+        ]);
+
+        $creator->delete();  // User は SoftDeletes（退職者を想定）
+        $building->delete(); // AreaBuilding は SoftDeletes
+
+        // 調査回・テナントは物理削除されない行のまま、ソフトデリートされた親ビルを解決できる
+        $this->assertSame($building->id, $survey->fresh()->building->id);
+        $this->assertSame($building->id, $tenant->fresh()->building->id);
+
+        // ソフトデリートしたユーザーも creator() / surveyor() で解決できる
+        $trashedBuilding = AreaBuilding::withTrashed()->find($building->id);
+        $this->assertSame($creator->id, $trashedBuilding->creator->id);
+        $this->assertSame($creator->id, $survey->fresh()->surveyor->id);
     }
 }

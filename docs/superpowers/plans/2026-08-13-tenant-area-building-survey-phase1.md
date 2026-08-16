@@ -1107,6 +1107,17 @@ Expected: PASS（6 tests）
 
 `tests/Feature/Tenant/AreaBuildingModelTest.php`:
 
+⚠ **実装時の同期（2026-08-16、コード品質レビュー Important #2 / Minor #3・#4 反映後）——
+下のコードブロックは初回実装時点のものではなく、レビュー対応後の最終形。** 差分の要点:
+`use App\Models\User;` 追加 / `test_normalize_name_collapses_tabs_and_newlines`・
+`test_google_maps_url_requires_both_coordinates`・
+`test_whitespace_only_address_is_normalized_to_null`・
+`test_pending_geocode_excludes_whitespace_only_address`・
+`test_soft_deleted_relations_resolve_via_with_trashed` を追加 /
+`test_pending_geocode_skips_rows_that_already_have_coordinates` は
+`$buildingA` を捕まえて ID ベースで上限を検証する形に変更（理由は本節末尾の
+「直さないもの」の下、Step 8 の変異表の直前を参照）。
+
 ```php
 <?php
 
@@ -1116,6 +1127,7 @@ use App\Enums\AreaTenantStatus;
 use App\Models\AreaBuilding;
 use App\Models\AreaBuildingSurvey;
 use App\Models\AreaBuildingTenant;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -1217,6 +1229,13 @@ class AreaBuildingModelTest extends TestCase
         );
     }
 
+    /** タブ・改行も半角スペース 1 個に正規化する（\s は /u の有無に関わらず ASCII 空白を含む） */
+    public function test_normalize_name_collapses_tabs_and_newlines(): void
+    {
+        $this->assertSame('ミツワ ビル', AreaBuilding::normalizeName("ミツワ\tビル"));
+        $this->assertSame('ミツワ ビル', AreaBuilding::normalizeName("ミツワ\nビル"));
+    }
+
     public function test_google_maps_url_only_when_coordinates_exist(): void
     {
         $this->assertNull($this->building()->googleMapsUrl());
@@ -1228,21 +1247,68 @@ class AreaBuildingModelTest extends TestCase
         );
     }
 
+    /** 緯度・経度のどちらか片方だけでは URL を出さない（hasCoordinates() の && 短絡が肝） */
+    public function test_google_maps_url_requires_both_coordinates(): void
+    {
+        $latOnly = $this->building(['name' => '緯度のみ', 'latitude' => 33.8392]);
+        $lonOnly = $this->building(['name' => '経度のみ', 'longitude' => 132.7657]);
+
+        $this->assertNull($latOnly->googleMapsUrl());
+        $this->assertNull($lonOnly->googleMapsUrl());
+    }
+
     /**
      * 座標一括取得の対象は「latitude が NULL」かつ「住所がある」行だけ。
      * ⚠ 二重課金の防止が load-bearing（設計 §7.4 / §11-11）。
      */
     public function test_pending_geocode_skips_rows_that_already_have_coordinates(): void
     {
-        $this->building(['name' => '未取得A', 'address' => '松山市1-1']);
+        $buildingA = $this->building(['name' => '未取得A', 'address' => '松山市1-1']);
         $this->building(['name' => '取得済み', 'address' => '松山市2-2', 'latitude' => 33.8, 'longitude' => 132.7]);
         $this->building(['name' => '住所なし']);
         $this->building(['name' => '住所空文字', 'address' => '']);
         $this->building(['name' => '未取得B', 'address' => '松山市3-3']);
 
         $this->assertSame(2, AreaBuilding::pendingGeocodeCount());
-        $this->assertSame(['未取得A', '未取得B'], AreaBuilding::pendingGeocode(200)->pluck('name')->all());
-        $this->assertCount(1, AreaBuilding::pendingGeocode(1), '上限が効いていない');
+
+        // 内容(対象が確かにこの2件だけ)を見る。並び順は問わないので比較前に揃える。
+        $names = AreaBuilding::pendingGeocode(200)->pluck('name')->all();
+        sort($names);
+        $this->assertSame(['未取得A', '未取得B'], $names);
+
+        // 上限が効いていることは「件数」と「どの行が返るか」で見る。
+        // ⚠ 並び順そのものは SQLite が挿入順を素で返すため assertSame では固定できない
+        //   （orderBy('id') を外しても緑のままになる。実測済み）。
+        //   上限件数が意味を持つのは「ID の小さい順から取る」ことなので、そこを直接見る。
+        $first = AreaBuilding::pendingGeocode(1);
+        $this->assertCount(1, $first, '上限が効いていない');
+        $this->assertSame($buildingA->id, $first->first()->id, 'ID の小さい順に取れていない');
+    }
+
+    /**
+     * 空白だけの住所は保存時に null へ正規化される（読み取り側でなく書き込み側。Bug #38）。
+     * 半角・全角スペース・タブ・改行のいずれも対象。
+     */
+    public function test_whitespace_only_address_is_normalized_to_null(): void
+    {
+        foreach (['  ', '　', "\t", "\n"] as $whitespace) {
+            $building = $this->building(['name' => '空白住所', 'address' => $whitespace]);
+            $this->assertNull($building->fresh()->address, var_export($whitespace, true));
+        }
+    }
+
+    /**
+     * 空白だけの住所のビルは座標一括取得の対象に入らない。
+     * ⚠ 全角スペースは MySQL の PAD SPACE 照合でも '' と等しくならないため、
+     *   クエリ側の <> '' だけでは本番でも取りこぼす（実測）。書き込み側の正規化で防ぐ。
+     */
+    public function test_pending_geocode_excludes_whitespace_only_address(): void
+    {
+        $this->building(['name' => '全角空白住所', 'address' => '　']);
+        $this->building(['name' => '半角空白住所', 'address' => '  ']);
+
+        $this->assertSame(0, AreaBuilding::pendingGeocodeCount());
+        $this->assertCount(0, AreaBuilding::pendingGeocode(200));
     }
 
     public function test_tenant_casts_and_floor_label(): void
@@ -1273,6 +1339,40 @@ class AreaBuildingModelTest extends TestCase
         $this->assertSame(['在'], $building->activeTenants()->pluck('name')->all());
         $this->assertSame(2, $building->tenants()->count());
     }
+
+    /**
+     * ソフトデリートしたビル・ユーザーでも withTrashed() 経由でリレーションが解決できる。
+     * このリポジトリは withTrashed() の付け忘れで何度も本番不具合を出している（Bug #12 系）。
+     * 対象 4 箇所: AreaBuilding::creator() / AreaBuildingSurvey::building() /
+     * AreaBuildingSurvey::surveyor() / AreaBuildingTenant::building()。
+     */
+    public function test_soft_deleted_relations_resolve_via_with_trashed(): void
+    {
+        $creator = User::factory()->create();
+        $building = $this->building(['created_by' => $creator->id]);
+        $survey = AreaBuildingSurvey::create([
+            'area_building_id' => $building->id,
+            'surveyed_month'   => '2026-08-01',
+            'operating_count'  => 1,
+            'surveyed_by'      => $creator->id,
+        ]);
+        $tenant = AreaBuildingTenant::create([
+            'area_building_id' => $building->id,
+            'status'           => 'operating',
+        ]);
+
+        $creator->delete();  // User は SoftDeletes（退職者を想定）
+        $building->delete(); // AreaBuilding は SoftDeletes
+
+        // 調査回・テナントは物理削除されない行のまま、ソフトデリートされた親ビルを解決できる
+        $this->assertSame($building->id, $survey->fresh()->building->id);
+        $this->assertSame($building->id, $tenant->fresh()->building->id);
+
+        // ソフトデリートしたユーザーも creator() / surveyor() で解決できる
+        $trashedBuilding = AreaBuilding::withTrashed()->find($building->id);
+        $this->assertSame($creator->id, $trashedBuilding->creator->id);
+        $this->assertSame($creator->id, $survey->fresh()->surveyor->id);
+    }
 }
 ```
 
@@ -1287,6 +1387,11 @@ Expected: FAIL — `Class "App\Models\AreaBuilding" not found`
 - [ ] **Step 3: `AreaBuilding` を書く**
 
 `app/Models/AreaBuilding.php`:
+
+⚠ **実装時の同期（2026-08-16、コード品質レビュー Important #1・#2 反映後）——
+下は最終形。** 差分の要点: `casts()` の直後に `booted()` の `saving` フックを追加
+（空白だけの住所を `null` へ正規化。Important #1）／`latestSurvey()` に N+1 の docblock を追加
+（Important #2）。理由と実測は Step 8 の変異表の直前を参照。
 
 ```php
 <?php
@@ -1328,6 +1433,21 @@ class AreaBuilding extends Model
         ];
     }
 
+    /**
+     * ⚠ 空白だけの住所は null に寄せる。読み取り側（pendingGeocodeQuery）で弾くのではなく
+     *   書き込み側で正規化する（読み取りで隠すと DB に嘘の値が残り続ける。Bug #38）。
+     *   ⚠ 全角スペース（U+3000）は MySQL の PAD SPACE 照合でも '' と等しくならないため、
+     *     クエリ側の <> '' では本番でも取りこぼす（実測）。
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (AreaBuilding $building): void {
+            if ($building->address !== null && self::normalizeName($building->address) === '') {
+                $building->address = null;
+            }
+        });
+    }
+
     // ============================================================
     // リレーション
     // ============================================================
@@ -1358,6 +1478,11 @@ class AreaBuilding extends Model
     // 表示ヘルパー
     // ============================================================
 
+    /**
+     * ⚠ N+1 に注意: 一覧で行ごとに呼ぶと 1+N クエリになる。一覧では使わず、
+     *   相関サブクエリで最新調査回を引くこと（設計 §5.3 / Task 6 の AreaBuildingListService）。
+     *   詳細画面など単発呼び出し専用。
+     */
     public function latestSurvey(): ?AreaBuildingSurvey
     {
         return $this->surveys()->orderByDesc('surveyed_month')->orderByDesc('id')->first();
@@ -1678,6 +1803,42 @@ load-bearing ではない**（無くても mutation 1 は検出される）。�
 機械的に踏襲した結果、成立しない主張をプランに書いてしまっていた。
 
 - [ ] すべて戻して PASS を確認
+
+- [x] **Step 8 追加分（2026-08-16、コード品質レビュー Critical 0 / Important 2 / Minor 7 の
+      うち Important 2 件 + Minor 3 件を修正）— 変異 4 通りを実測**
+
+修正内容: ①`AreaBuilding` に `booted()` の `saving` フックを追加し、空白だけの住所を保存時に
+`null` へ正規化（読み取り側の `pendingGeocodeQuery()` では弾かない。Bug #38 の教訓）
+②`latestSurvey()` に N+1 の docblock を追加
+③`test_pending_geocode_skips_rows_that_already_have_coordinates` の上限検証を、
+並び順に依存した `assertSame` から「どの ID が返るか」を直接見る形へ変更
+④`googleMapsUrl()` の片側座標ケース／`normalizeName()` のタブ・改行／
+ソフトデリートしたビル・ユーザーに対する `withTrashed()` 4 箇所（`AreaBuilding::creator()` /
+`AreaBuildingSurvey::building()` / `AreaBuildingSurvey::surveyor()` /
+`AreaBuildingTenant::building()`）の回帰テストを追加。
+
+| # | 変異 | 期待 | 実測 |
+|---|---|---|---|
+| 1 | `AreaBuilding::booted()` の `saving` フックを丸ごと削除 | `test_whitespace_only_address_is_normalized_to_null` / `..._excludes_whitespace_only_address` が赤 | 赤（想定どおり。他 13 本は影響なし） |
+| 2 | `pendingGeocode()` の `orderBy('id')` を `orderByDesc('id')` に | `..._skips_rows_that_already_have_coordinates` が赤（`ID の小さい順に取れていない`） | 赤。⚠ 同テスト内の「内容」検証（`sort()` してから比較する行）はソート済みなので**通ったまま**——並び順の検出は新設した ID ベースの行だけが担っている |
+| 3 | `hasCoordinates()` の `&&` を `\|\|` に | `test_google_maps_url_requires_both_coordinates` が赤 | 赤。実際の失敗値は `'https://www.google.com/maps/search/?api=1&query=33.8392000,'`（経度側が空のまま URL 化される）で、片側座標が漏れて外部に届く実害と一致 |
+| 4 | `creator()` の `withTrashed()` を外す | `test_soft_deleted_relations_resolve_via_with_trashed` が赤（withTrashed 付け忘れを検出できることの証明） | エラー `Attempt to read property "id" on null`（`$trashedBuilding->creator->id` で発火）。付け忘れが起きても静かに null を返すだけでなく、テストとしてはっきり落ちることを確認 |
+
+4 通りとも `git diff` が非空であること（変異が実際に当たっていること）を確認済み。
+すべて戻して `vendor/bin/phpunit --filter AreaBuildingModelTest`（15 tests, 42 assertions）
+および全体 `vendor/bin/phpunit`（552 tests, 2982 assertions）が green であることを確認済み。
+
+### 直さないもの（レビュー Minor #5〜#7。判断の記録）
+
+- **Minor #6「`AreaBuilding` が 3 つの関心事を持つ」**: 変えない。既存の先例
+  （`Unit::generateDisplayName()` / `User::assignableWith()`）と同じ形で逸脱ではないが、
+  同じ diff で `vacancyRate()` の計算式だけ `VacancyRate` へ切り出し、`normalizeName` /
+  `pendingGeocode*` はモデルに残したという非対称がある。**Task 11（Excel 取込）でさらに
+  ロジックが積まれるようなら切り出しを再検討する。**
+- **Minor #7（FQCN 直書き `\Illuminate\Database\Eloquent\Builder`）**: 直さない。好みの範囲で
+  必須ではない。直すなら `use` 文に寄せる。
+- **Minor #5（`QueryException` のクラスだけ見ている）**: 変えない。Task 2 が同じ流儀
+  （raw SQL の制約違反はメッセージでなくクラスで判定）を確立済みで、それに合わせている。
 
 - [ ] **Step 9: コミット**
 

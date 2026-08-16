@@ -37,6 +37,21 @@ class AreaBuilding extends Model
         ];
     }
 
+    /**
+     * ⚠ 空白だけの住所は null に寄せる。読み取り側（pendingGeocodeQuery）で弾くのではなく
+     *   書き込み側で正規化する（読み取りで隠すと DB に嘘の値が残り続ける。Bug #38）。
+     *   ⚠ 全角スペース（U+3000）は MySQL の PAD SPACE 照合でも '' と等しくならないため、
+     *     クエリ側の <> '' では本番でも取りこぼす（実測）。
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (AreaBuilding $building): void {
+            if ($building->address !== null && self::normalizeName($building->address) === '') {
+                $building->address = null;
+            }
+        });
+    }
+
     // ============================================================
     // リレーション
     // ============================================================
@@ -67,6 +82,11 @@ class AreaBuilding extends Model
     // 表示ヘルパー
     // ============================================================
 
+    /**
+     * ⚠ N+1 に注意: 一覧で行ごとに呼ぶと 1+N クエリになる。一覧では使わず、
+     *   相関サブクエリで最新調査回を引くこと（設計 §5.3 / Task 6 の AreaBuildingListService）。
+     *   詳細画面など単発呼び出し専用。
+     */
     public function latestSurvey(): ?AreaBuildingSurvey
     {
         return $this->surveys()->orderByDesc('surveyed_month')->orderByDesc('id')->first();
