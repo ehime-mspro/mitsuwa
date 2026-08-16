@@ -103,7 +103,7 @@ class AreaBuildingTenantCrudTest extends AreaBuildingTestCase
         $manager  = $this->manager();
 
         $payload = [
-            'status'      => 'closed',
+            'status'      => '__nope__',   // ⚠ 絶対に case にならない値（M-5）
             'name'        => str_repeat('あ', 256),
             'room_number' => str_repeat('A', 51),
             'floor'       => 999,
@@ -484,7 +484,12 @@ class AreaBuildingTenantCrudTest extends AreaBuildingTestCase
         $this->assertSame($update, $form['action'], 'action が更新先を向いていない');
         $this->assertArrayHasKey('_token', $form['fields'], '@csrf が無い');
         $this->assertNotSame('', $form['fields']['_token']);
-        $this->assertArrayNotHasKey('keep_adding', $form['fields'], '編集画面に「続けて登録」が出ている');
+        // ⚠ 「無いこと」は生 HTML で見る。parseForm() は未チェックの checkbox を fields に
+        //   入れない（ブラウザと同じ）ので、assertArrayNotHasKey は「チェック済みで出ている」
+        //   場合しか検出できない。実測（2026-08-17）: create の「続けて登録」ブロックを
+        //   edit に貼り付けても 662 テスト全部が緑だった（Bug #43 / #47 と同型）。
+        $this->assertStringNotContainsString('name="keep_adding"', $html, '編集画面に「続けて登録」が出ている（設計 §5.6）');
+        $this->assertArrayNotHasKey('keep_adding', $form['fields'], '編集画面の「続けて登録」がチェック済みで出ている');
 
         $this->actingAs($manager)->post($form['action'], $form['fields'])
             ->assertRedirect(route('tenant.area-buildings.show', $building));
@@ -500,6 +505,43 @@ class AreaBuildingTenantCrudTest extends AreaBuildingTestCase
         $this->assertSame('2026-08-10', $fresh->confirmed_on->format('Y-m-d'));
         $this->assertNull($fresh->moved_out_on);
         $this->assertSame('角地の路面店', $fresh->notes);
+    }
+
+    /**
+     * 編集画面が**保存済みの状態**を選択済みで描画すること。
+     *
+     * ⚠ **先頭 option 以外の case で測る。** `AreaTenantStatus::cases()` の先頭は Operating で、
+     *   セレクトに空の先頭 option が無い。`parseForm()` は「selected が 1 つも無ければ先頭 option」
+     *   を返す（ブラウザ挙動として正しい）ので、Operating の行で測ると
+     *   **正しい描画と壊れた描画が同じ値になり false-pass する**。実測（2026-08-17）:
+     *   `_form.blade.php` から `$tenant?->status?->value ??` を落としても 26 本全部が緑だった
+     *   （同じ壊し方を `old('floor', …)` / `old('industry', …)` にすると両方赤。select だけが例外）。
+     * ⚠ 実害: 落ちた状態だと「空き」「不明」の行を開いて**何も触らず「更新する」を押すだけで
+     *   状態が営業に化ける**。空室率（設計 §4）と AreaBuildingController::divergence() が
+     *   この値を数えているので、このモジュール唯一の経営指標が静かに狂う。
+     */
+    public function test_edit_form_preselects_the_stored_status(): void
+    {
+        $building = $this->makeBuilding('ミツワビル');
+        $manager  = $this->manager();
+
+        // 先頭 option は既定値と区別が付かないので除く（case が増えたら自動で対象に入る）
+        $cases = array_slice(AreaTenantStatus::cases(), 1);
+        $this->assertNotEmpty($cases, '先頭以外の case が無い（このテストが空振りしている）');
+
+        foreach ($cases as $case) {
+            $tenant = $this->makeTenant($building, ['name' => '行 ' . $case->value, 'status' => $case->value]);
+
+            $html = $this->actingAs($manager)
+                ->get("/tenant/area-buildings/{$building->id}/tenants/{$tenant->id}/edit")->getContent();
+
+            $form = $this->parseForm($html, 'action="' . route('tenant.area-buildings.tenants.update', [$building, $tenant]) . '"');
+            $this->assertSame($case->value, $form['fields']['status'], "{$case->value} の行が編集画面で選択済みになっていない");
+
+            // 何も触らずそのまま送り返す（利用者が「更新する」を押しただけの状態）
+            $this->actingAs($manager)->post($form['action'], $form['fields'])->assertRedirect();
+            $this->assertSame($case, $tenant->fresh()->status, "{$case->value} の行が、触っていないのに状態が化けた");
+        }
     }
 
     /** 削除フォームを描画 → そのまま送信 → 実際に消える */
@@ -584,10 +626,23 @@ class AreaBuildingTenantCrudTest extends AreaBuildingTestCase
     }
 
     /**
-     * エラーで差し戻されても入力が残ること。
+     * エラーで差し戻されても入力が残り、**理由が画面に出る**こと。
+     *
      * ⚠ このリポジトリは Bug #35 で「バリデーションエラーで入力が全消失する」を本番で踏んでいる。
      *   `$request->validate()` の自動 withInput と、ビュー側の `old(...)` の**両方**が
      *   生きていないと成立しない。
+     * ⚠ 理由の表示（エラーサマリと項目別の `@error`）も対で見る。`layouts/app.blade.php` は
+     *   `session('success')` / `session('error')` しか描画せず **`$errors` は描画しない**ので、
+     *   ビュー側の表示が消えると**利用者は理由が見えないままフォームに戻される**
+     *   （Bug #36 / #37 で本番実測した症状そのもの）。実測（2026-08-17）: `@error` 8 個と
+     *   サマリを全部消しても 662 テスト全部が緑だった。
+     * ⚠ サマリと `@error` は**役割ごとに別々にアサートする**。同じ文言が両方に出るので、
+     *   1 本にまとめると片方だけ消しても緑になる（Bug #43 と同型）。
+     * ⚠ **`assertSessionHasErrors()` をここで呼んではいけない。** 呼ぶと、そのあとに描画した
+     *   ページから**エラー表示が丸ごと消える**（2026-08-17 実測。`assertSessionHasErrors()` を
+     *   1 行足すだけで `入力内容にエラーがあります` が出なくなり、`session('errors')` を読むか
+     *   どうかは無関係だった）。⚠ **`old()` の復元は生き残る**ので、入力保持だけを見ている
+     *   テストでは気づけない。期待文言はセッションから取らず `trans()` で組み立てる。
      */
     public function test_input_survives_a_validation_error(): void
     {
@@ -606,6 +661,9 @@ class AreaBuildingTenantCrudTest extends AreaBuildingTestCase
             'notes'        => '角地の路面店',
         ];
 
+        // 期待文言は翻訳ファイルから組み立てる（セッションを触らない）
+        $message = trans('validation.max.string', ['attribute' => '部屋番号', 'max' => 50]);
+
         $this->actingAs($manager)->from($create)
             ->post("/tenant/area-buildings/{$building->id}/tenants", $payload)
             ->assertRedirect($create);
@@ -617,6 +675,20 @@ class AreaBuildingTenantCrudTest extends AreaBuildingTestCase
         foreach ($payload as $name => $value) {
             $this->assertSame($value, $form['fields'][$name], "{$name} が差し戻し後に消えている（Bug #35）");
         }
+
+        // ① ページ上部のエラーサマリ（create.blade.php）
+        $this->assertStringContainsString('入力内容にエラーがあります', $html, 'エラーサマリの見出しが画面に出ていない');
+        $this->assertStringContainsString('<li>' . e($message) . '</li>', $html, 'エラーサマリに理由が並んでいない');
+
+        // ② 項目別の @error（_form.blade.php）— 該当の入力欄のそばに出ていること。
+        //    ⚠ ラベル「部屋番号」だけを探すと、@error を全部消しても label に一致して緑になる
+        $anchor = strpos($html, 'name="room_number"');
+        $this->assertNotFalse($anchor, '部屋番号の入力欄が無い');
+        $this->assertStringContainsString(
+            e($message),
+            substr($html, $anchor, 600),
+            '部屋番号の入力欄のそばにエラー文が出ていない（@error が消えている）'
+        );
     }
 
     /** 編集画面でも差し戻し後に入力が残ること（入口ごとに測る。Bug #44） */
@@ -666,7 +738,9 @@ class AreaBuildingTenantCrudTest extends AreaBuildingTestCase
 
         $cases = [
             '状態が空'                => [['status' => ''], 'status'],
-            '状態が未知の値'           => [['status' => 'closed'], 'status'],
+            // ⚠ センチネルは「絶対に case にならない値」にする。'closed' のような
+            //   ありそうな語だと、将来 Enum に入ったとき意図が読めない赤になる
+            '状態が未知の値'           => [['status' => '__nope__'], 'status'],
             '階が下限より下'           => [['floor' => -11], 'floor'],
             '階が上限超'              => [['floor' => 201], 'floor'],
             '階が小数'                => [['floor' => 3.5], 'floor'],
@@ -712,6 +786,44 @@ class AreaBuildingTenantCrudTest extends AreaBuildingTestCase
                 "update / {$label}: 不正な値が保存された"
             );
         }
+    }
+
+    /**
+     * `status` キーを**送らない**リクエスト。`required` を外すと 500 になる経路。
+     *
+     * ⚠ `Rule::enum` は implicit rule ではないので、`required` が無いとキーの欠けた
+     *   リクエストは**ルールごとスキップ**される。その結果 store() は NOT NULL 列を欠いた
+     *   INSERT（本番 MySQL 1364 / SQLite も NOT NULL 違反）、update() は payload() の
+     *   `$validated['status']` で Undefined array key → どちらも **500**。
+     *   `required` は UX ではなく**500 の防波堤**なので、明示的に固定する。
+     * ⚠ 表の「状態が空」（`''`）は ConvertEmptyStringsToNull で「**存在する null**」になるため
+     *   **別経路**で、こちらは検出できない（実測: required を外しても表は緑のままだった）。
+     */
+    public function test_missing_status_key_is_rejected_on_both_entry_points(): void
+    {
+        $building = $this->makeBuilding('ミツワビル');
+        $tenant   = $this->makeTenant($building, [
+            'name'   => '大街道珈琲',
+            'status' => AreaTenantStatus::Vacant->value,
+        ]);
+        $manager = $this->manager();
+
+        // --- store ---
+        $this->actingAs($manager)->from(route('tenant.area-buildings.tenants.create', $building))
+            ->post("/tenant/area-buildings/{$building->id}/tenants", ['name' => 'キーが無い行'])
+            ->assertStatus(302)
+            ->assertSessionHasErrors('status');
+        $this->assertSame(1, $building->tenants()->count(), 'status キーが無いのに行が作られた');
+
+        // --- update ---
+        $this->actingAs($manager)->from(route('tenant.area-buildings.tenants.edit', [$building, $tenant]))
+            ->put("/tenant/area-buildings/{$building->id}/tenants/{$tenant->id}", ['name' => 'キーが無い更新'])
+            ->assertStatus(302)
+            ->assertSessionHasErrors('status');
+
+        $fresh = $tenant->fresh();
+        $this->assertSame(AreaTenantStatus::Vacant, $fresh->status);
+        $this->assertSame('大街道珈琲', $fresh->name, 'status キーが無い更新が通ってしまった');
     }
 
     // ============================================================

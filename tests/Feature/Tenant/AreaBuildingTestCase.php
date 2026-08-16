@@ -118,6 +118,23 @@ abstract class AreaBuildingTestCase extends TestCase
      *   （VerifyCsrfToken が runningUnitTests() で素通りする）。描画された `_token` hidden の
      *   存在をアサートするのが唯一の手なので、fields に `_token` を残している。
      *
+     * ⚠ **`<select>` の往復テストは「先頭 option 以外」の値で測ること。**
+     *   下の selectedValue() は「`selected` が 1 つも無ければ**先頭 option**」を返す
+     *   （ブラウザ挙動として正しい）。空の先頭 option を持たないセレクトで、たまたま
+     *   先頭 case のデータを使うと、**正しい描画と壊れた描画が同じ値になり false-pass する**。
+     *   実測（2026-08-17）: `AreaTenantStatus::cases()` の先頭は Operating なので、
+     *   `tenants/_form.blade.php` から `$tenant?->status?->value ??` を落としても
+     *   26 本全部が緑だった（同じ壊し方を `old('floor', …)` にすると赤になる。**select だけが例外**）。
+     *   固定するときは Vacant / Unknown のような**先頭以外の case**で往復させる
+     *   （`AreaBuildingTenantCrudTest::test_edit_form_preselects_the_stored_status`）。
+     *
+     * ⚠ **未チェックの checkbox は fields に入らない**（ブラウザと同じ）。よって
+     *   `assertArrayNotHasKey('x', $form['fields'])` は「**チェック済みで出ている**」場合しか
+     *   検出できず、「その画面に出してはいけない項目が出ていないこと」の証明にはならない。
+     *   実測（2026-08-17）: 「保存して続けて登録」ブロックを edit 画面へ貼り付けても
+     *   662 テスト全部が緑だった。**「無いこと」は生 HTML で見る**
+     *   （`assertStringNotContainsString('name="keep_adding"', $html)`）。
+     *
      * @return array{method: string, action: string, fields: array<string, string>}
      */
     protected function parseForm(string $html, string $needle): array

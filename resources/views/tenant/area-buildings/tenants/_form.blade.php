@@ -31,7 +31,12 @@
             {{-- ⚠ option は @@foreach で静的に生成する（x-for は x-model 同期後に描画される。Bug #16） --}}
             <select name="status" required
                     class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none cursor-pointer">
-                @php($selectedStatus = (string) old('status', $tenant?->status?->value ?? \App\Enums\AreaTenantStatus::Operating->value))
+                {{-- ⚠ 既定は「新規だけ営業」。編集では**保存されている状態**を選ぶ。
+                     `$tenant?->status?->value ??` を落とすと、空き／不明の行を開いたときに
+                     「営業」が選択済みで描画され、触らず更新するだけで状態が化ける（空室率が狂う）。
+                     ⚠ セレクトの先頭 option が Operating なので、往復テストは
+                     **先頭以外の case** で測らないと false-pass する（AreaBuildingTestCase の docblock 参照）。 --}}
+                @php($selectedStatus = old('status', $tenant?->status?->value ?? \App\Enums\AreaTenantStatus::Operating->value))
                 @foreach(\App\Enums\AreaTenantStatus::cases() as $case)
                     <option value="{{ $case->value }}" {{ $selectedStatus === $case->value ? 'selected' : '' }}>
                         {{ $case->label() }}
