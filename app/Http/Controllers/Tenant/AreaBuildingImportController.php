@@ -88,7 +88,12 @@ class AreaBuildingImportController extends Controller
             // ⚠ 下限が要る理由は MIN_YEAR のコメントを参照（Safari は month 入力をただの
             //   テキスト欄として描画するので '0000-01' が現実に届きうる）
             'surveyed_month' => 'required_if:kind,buildings|nullable|date_format:Y-m|after_or_equal:1900-01',
-            'rows'           => 'required|string',
+            // ⚠ 上限は MAX_ROWS の判定より前に効く必要がある（json_decode はその後なので、
+            //   これが無いと巨大な文字列をデコードしてからでないと弾けない）。
+            //   根拠: 1 行の JSON は最悪でも ビル名 255 + 所在地 255 + 数値 5 列 + キー名 ≒ 700 文字。
+            //   2000 行 × 700 = 1.4M に 2 倍強の余裕を見て 3,000,000。
+            //   画面側は 5 MB のファイルサイズ上限で止めるが、画面を経由しない POST には効かない。
+            'rows'           => 'required|string|max:3000000',
         ], [
             // ⚠ 第2引数が messages。既定の required_if は「取込種別がbuildingsの場合、…」と
             //   内部値がそのまま出るので、この画面用に上書きする
@@ -161,7 +166,17 @@ class AreaBuildingImportController extends Controller
                 continue;
             }
 
-            $month   = $this->parseMonth($row['surveyed_month'] ?? null) ?? $defaultMonth;
+            // ⚠ 年月も非空で読めなければ行ごと弾く。既定月へ黙って落とすと、
+            //   cellDates が失われたときに届く生のシリアル値（'45809'）が
+            //   **完全成功に見えたまま**既定月で登録され、同一年月スキップにより
+            //   正しいファイルで取り直しても直らなくなる（2026-08-17 レビュー I-b）。
+            $month = $this->parseMonth($row['surveyed_month'] ?? null);
+            if ($month === false) {
+                $invalid++;
+                continue;
+            }
+            $month ??= $defaultMonth;
+
             $address = $this->nullableString($row['address'] ?? null, 255);
 
             if (isset($map[$key])) {
@@ -479,32 +494,45 @@ class AreaBuildingImportController extends Controller
     /**
      * 「2026年8月」「2026/08」「2026-08-15」などを 'Y-m' に正規化する。
      *
+     * ⚠ `FloorNumber::parse()` と同じ三値。**非空で読めない値を既定月へ落とさない**
+     *   （クラス docblock の「黙って値を捨てる経路を作らない」の一部）。
+     *
+     * @return string|null|false null = 空欄（既定月を使う）/ false = 読めない（行ごと弾く）
+     *
      * ⚠ 画面側は Excel の日付セルを 'YYYY-MM-DD' に整形して送ってくる
      *   （import.blade.php の areaImportCellText()）。日付セルをそのまま送るとシリアル値
      *   '45809' になり、ここで読めず無音で画面の既定月に落ちる（2026-08-17 実測）。
      *   ⚠ 読めなかったことはプレビューが警告する（areaImportMonthIsReadable）。
      */
-    private function parseMonth(mixed $raw): ?string
+    private function parseMonth(mixed $raw): string|null|false
     {
-        if ($raw === null || ! is_scalar($raw)) {
+        if ($raw === null) {
             return null;
+        }
+        if (! is_scalar($raw)) {
+            return false;
         }
 
         $s = mb_convert_kana(trim((string) $raw), 'n');
+
+        if ($s === '') {
+            return null;        // 空欄 → 画面の既定月を使う
+        }
+
         $s = str_replace(['年', '/', '.'], ['-', '-', '-'], $s);
         // ⚠ rtrim($s, '月') は**バイト単位**で削るので、末尾が「曜」(E6 9B 9C) のように
         //   バイトを共有する文字だと壊れた UTF-8 を作る。文字として落とす。
         $s = preg_replace('/月\z/u', '', $s);
 
         if (preg_match('/\A(\d{4})-(\d{1,2})(?:-\d{1,2})?\z/', $s, $m) !== 1) {
-            return null;
+            return false;
         }
 
         $year  = (int) $m[1];
         $month = (int) $m[2];
 
         if ($year < self::MIN_YEAR || $month < 1 || $month > 12) {
-            return null;
+            return false;
         }
 
         return sprintf('%04d-%02d', $year, $month);

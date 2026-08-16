@@ -93,7 +93,7 @@
             <label class="block text-sm font-semibold text-gray-700 mb-1">ヘッダー行</label>
             <select id="area-import-header-row" @change="onHeaderRowChange($event)"
                     class="form-input w-full sm:w-[420px] h-[40px] px-3 border border-gray-300 rounded-md text-sm"></select>
-            <p class="mt-1 text-xs text-gray-500">見出しが並ぶ行を自動検出しています。1 行目がタイトルの表など、違っていれば変更してください。</p>
+            <p class="mt-1 text-xs text-gray-500">見出しが並ぶ行を先頭 50 行から自動検出しています。1 行目がタイトルの表など、違っていれば変更してください（先頭 200 行まで選べます）。</p>
         </div>
 
         <div class="scroll-hint at-start">
@@ -154,7 +154,10 @@
                 {{-- ⚠ 押せない理由は **ラッパーの span** に置く。disabled なボタン自身の title は
                      どのブラウザでも表示されない（Bug #43）。'' でなく null で属性ごと消す --}}
                 <span :title="submitBlockedReason()" style="display: inline-flex;">
+                    {{-- ⚠ tooltip だけでは disabled な要素にフォーカスできない利用者へ届かない。
+                         画面に出している理由の段落と aria-describedby で紐づける（Bug #43 の後半） --}}
                     <button type="submit" :disabled="submitBlockedReason() !== null"
+                            aria-describedby="area-import-submit-reason"
                             class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-md transition-colors disabled:opacity-50">
                         この内容で取り込む
                     </button>
@@ -162,7 +165,8 @@
                 <button type="button" @click="step = 2"
                         class="px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-semibold rounded-md hover:bg-gray-50 transition-colors">戻る</button>
             </div>
-            <p class="mt-2 text-xs text-red-600" x-show="submitBlockedReason() !== null" x-text="submitBlockedReason()"></p>
+            <p id="area-import-submit-reason" class="mt-2 text-xs text-red-600"
+               x-show="submitBlockedReason() !== null" x-text="submitBlockedReason()"></p>
         </form>
     </div>
 
@@ -210,6 +214,10 @@ var AREA_IMPORT_LIMITS = {"maxCount":9999,"minFloors":0,"maxFloors":200,"minTena
 
 // ヘッダー行の自動検出で走査する行数
 var AREA_IMPORT_HEADER_SCAN_ROWS = 50;
+
+// ⚠ 手動で選べる行数は**検出の窓より広く**する。同じ値にすると、51 行目にヘッダーがある表は
+//   自動検出も select も届かず「画面の中で修復できない」状態が残る（C-1 が直したはずの症状）。
+var AREA_IMPORT_HEADER_CHOICE_ROWS = 200;
 
 /**
  * セルの値を文字列にする。
@@ -401,19 +409,25 @@ function areaImportForm() {
 
             for (var i = 0; i < limit; i++) {
                 var row = rows[i] || [];
-                var hits = {};
+                var cells = 0;
                 for (var c = 0; c < row.length; c++) {
                     var text = areaImportCellText(row[c]).replace(/\s/g, '');
                     if (!text) { continue; }
                     for (var t = 0; t < targets.length; t++) {
-                        if (targets[t].guess.test(text)) { hits[targets[t].key] = true; }
+                        // ⚠ **セル単位で数える。この break が load-bearing。**
+                        //   無いと 1 セルが複数 target に同時ヒットし、
+                        //   「ビル別 営業・空き状況調査」「周辺物件 稼働状況一覧」のような
+                        //   複合タイトルが 1 行だけで閾値を越えてヘッダー行に選ばれる
+                        //   （2026-08-17 のレビューで実測。C-1 の症状がそのまま再現した）。
+                        if (targets[t].guess.test(text)) { cells++; break; }
                     }
                 }
-                if (Object.keys(hits).length >= 2) { return i; }
+                if (cells >= 2) { return i; }
             }
 
             var first = rows.findIndex(function (r) {
-                return r.some(function (v) { return areaImportCellText(v) !== ''; });
+                // ⚠ 本ループと同じく sparse 配列を防御する（片方だけ素の r.some だと TypeError）
+                return (r || []).some(function (v) { return areaImportCellText(v) !== ''; });
             });
             return first >= 0 ? first : 0;
         },
@@ -425,7 +439,7 @@ function areaImportForm() {
                 var sel = document.getElementById('area-import-header-row');
                 if (!sel) { return; }
                 sel.innerHTML = '';
-                var limit = Math.min(self.allRows.length, AREA_IMPORT_HEADER_SCAN_ROWS);
+                var limit = Math.min(self.allRows.length, AREA_IMPORT_HEADER_CHOICE_ROWS);
                 for (var i = 0; i < limit; i++) {
                     var row = self.allRows[i] || [];
                     var cells = [];
@@ -456,7 +470,7 @@ function areaImportForm() {
             var header = this.allRows[this.headerRowIndex] || [];
             var body = this.allRows.slice(this.headerRowIndex + 1, this.headerRowIndex + 4);
             var colCount = this.allRows.length
-                ? Math.max.apply(null, this.allRows.map(function (r) { return r.length; }))
+                ? Math.max.apply(null, this.allRows.map(function (r) { return (r || []).length; }))
                 : 0;
             var targets = this.targets();
             var used = {};
@@ -542,7 +556,7 @@ function areaImportForm() {
             }
 
             var body = this.allRows.slice(this.headerRowIndex + 1).filter(function (r) {
-                return r.some(function (v) { return areaImportCellText(v) !== ''; });
+                return (r || []).some(function (v) { return areaImportCellText(v) !== ''; });
             });
 
             var cell = function (row, key) {

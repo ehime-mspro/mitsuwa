@@ -8,6 +8,7 @@ use App\Models\AreaBuilding;
 use App\Models\AreaBuildingSurvey;
 use App\Models\AreaBuildingTenant;
 use App\Support\FloorNumber;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 
@@ -78,11 +79,12 @@ class AreaBuildingImportTest extends AreaBuildingTestCase
     {
         $seen = new class
         {
-            public bool $created = false;
+            /** ⚠ bool でなく回数。「1 回だけ INSERT した」を固定するのに要る（I-e） */
+            public int $creates = 0;
         };
 
         AreaBuildingSurvey::creating(function () use ($seen): void {
-            $seen->created = true;
+            $seen->creates++;
         });
 
         return $seen;
@@ -233,12 +235,22 @@ class AreaBuildingImportTest extends AreaBuildingTestCase
 
         // ⚠ Bug #48: UNIQUE + catch の安全網が同じ「スキップ 1 件」を返すので、
         //   応答だけを見ていると事前チェックが死んでも緑になる
-        $this->assertFalse($writes->created, '事前チェックをすり抜けて INSERT を試みている');
+        $this->assertSame(0, $writes->creates, '事前チェックをすり抜けて INSERT を試みている');
     }
 
-    /** 同じファイル内に同一ビル・同一月の行が 2 つあっても 1 件だけ入る */
+    /**
+     * 同じファイル内に同一ビル・同一月の行が 2 つあっても 1 件だけ入る。
+     *
+     * ⚠ **`watchWrites()` はこちらにも要る（I-e / Bug #48 の再発）。** `$taken` への記帳を
+     *   1 行消すだけで `creating` は 2 回発火し、2 回目を UNIQUE + catch が飲み込むため
+     *   **応答が完全に同一**になる。2026-08-17 の実測ではその変異で 744 本全部が緑だった。
+     *   コントローラの docblock が「同一ファイル内の重複は $taken が拾う」と断言している
+     *   以上、その主張自体を固定する。
+     */
     public function test_the_same_month_twice_in_one_file_inserts_once(): void
     {
+        $writes = $this->watchWrites();
+
         $this->importBuildings([
             ['name' => 'アルファビル', 'operating' => '4'],
             ['name' => 'アルファビル', 'operating' => '7'],
@@ -247,6 +259,29 @@ class AreaBuildingImportTest extends AreaBuildingTestCase
         $this->assertSame(1, AreaBuildingSurvey::count());
         $this->assertSame(4, AreaBuildingSurvey::firstOrFail()->operating_count);
         $this->assertStringContainsString('同一年月のためスキップ 1 件', session('success'));
+        $this->assertSame(1, $writes->creates, '2 回目の INSERT を試みている（UNIQUE の安全網に頼っている）');
+    }
+
+    /**
+     * UNIQUE 以外の DB エラーを「同一年月」と偽って報告しないこと（48-C）。
+     *
+     * ⚠ `catch` を `QueryException` に広げると、桁あふれ等が黙って「スキップ」に化ける。
+     *   docblock が明示的に禁じている規約なので、挙動で固定する。
+     */
+    public function test_a_non_unique_database_error_is_not_swallowed_as_a_duplicate(): void
+    {
+        AreaBuildingSurvey::creating(function (): void {
+            throw new QueryException('sqlite', 'insert into area_building_surveys', [], new \PDOException('out of range'));
+        });
+
+        $this->expectException(QueryException::class);
+
+        $this->withoutExceptionHandling()
+            ->actingAs($this->manager())
+            ->post(self::IMPORT_URL, [
+                'kind' => 'buildings', 'surveyed_month' => '2026-08',
+                'rows' => json_encode([['name' => 'アルファビル', 'operating' => '1']]),
+            ]);
     }
 
     /** Excel 側に年月列があればそちらを優先する（設計 §7.1） */
@@ -280,18 +315,28 @@ class AreaBuildingImportTest extends AreaBuildingTestCase
         $this->assertSame('2025-06-01', $this->monthOf('ベータビル'));
     }
 
-    /** 読めない年月・範囲外の年月は画面の既定月に落とす（行ごと捨てない） */
-    public function test_unreadable_row_level_months_fall_back_to_the_screen_default(): void
+    /**
+     * 読めない年月は**行ごと弾く**（設計 §7.3）。空欄のときだけ画面の既定月に落とす。
+     *
+     * ⚠ 既定月へ黙って落とすと、`cellDates: true` が失われたときに届く生のシリアル値
+     *   `'45809'` が**完全成功に見えたまま**既定月で登録される。しかも一度この形で入ると
+     *   同一年月スキップにより**正しいファイルで取り直しても直らない**（2026-08-17 レビュー I-b）。
+     */
+    public function test_unreadable_row_level_months_reject_the_row(): void
     {
         $this->importBuildings([
             ['name' => 'ビルA', 'operating' => '1', 'surveyed_month' => '45809'],      // Excel のシリアル値
             ['name' => 'ビルB', 'operating' => '1', 'surveyed_month' => '2025年13月'],  // 月が範囲外
             ['name' => 'ビルC', 'operating' => '1', 'surveyed_month' => '1800年5月'],   // 年が範囲外
+            ['name' => 'ビルD', 'operating' => '1', 'surveyed_month' => '2026年8月度'], // 読めない書式
+            ['name' => 'ビルE', 'operating' => '1', 'surveyed_month' => ''],           // 空欄 → 既定月
+            ['name' => 'ビルF', 'operating' => '1'],                                   // 列そのものが無い → 既定月
         ], '2026-08')->assertRedirect();
 
-        foreach (['ビルA', 'ビルB', 'ビルC'] as $name) {
-            $this->assertSame('2026-08-01', $this->monthOf($name), "{$name} が既定月になっていない");
-        }
+        $this->assertSame(['ビルE', 'ビルF'], AreaBuilding::pluck('name')->all());
+        $this->assertSame('2026-08-01', $this->monthOf('ビルE'));
+        $this->assertSame('2026-08-01', $this->monthOf('ビルF'));
+        $this->assertStringContainsString('値が不正でスキップ 4 件', session('success'));
     }
 
     /** 全角数字・カンマ・空白を落としてから数値判定する（設計 §7.3） */
@@ -463,6 +508,41 @@ class AreaBuildingImportTest extends AreaBuildingTestCase
     // ============================================================
     // テナント明細（設計 §7.2）
     // ============================================================
+
+    /**
+     * テナント取込のクエリ数（I-f。Bug #44「入口ごとに測る」）。
+     * ⚠ buildings 側だけ固定していたので、tenants に per-row find() を足す変異が緑だった。
+     */
+    public function test_tenant_import_does_not_scale_queries_per_row(): void
+    {
+        $rows = [];
+        foreach (range(1, 20) as $i) {
+            $this->makeBuilding("既存ビル{$i}");
+            $rows[] = ['building_name' => "既存ビル{$i}", 'room_number' => (string) $i, 'status' => '営業'];
+        }
+
+        $manager = $this->manager();
+
+        $queries = 0;
+        DB::listen(function ($query) use (&$queries) {
+            if (str_contains($query->sql, 'area_building')) {
+                $queries++;
+            }
+        });
+
+        $this->actingAs($manager)->post(self::IMPORT_URL, [
+            'kind' => 'tenants', 'rows' => json_encode($rows),
+        ])->assertRedirect();
+
+        $this->assertSame(20, AreaBuildingTenant::count());
+
+        // 内訳: ビル一覧 1 + INSERT 20 + 現況テナント数の集計 1 = 22
+        $this->assertLessThanOrEqual(
+            25,
+            $queries,
+            "20 行の取込で area_building 系のクエリが {$queries} 本。行ごとにビルを引き直している"
+        );
+    }
 
     public function test_imports_tenant_rows_into_an_existing_building(): void
     {
@@ -641,6 +721,23 @@ class AreaBuildingImportTest extends AreaBuildingTestCase
         $this->assertSame(0, AreaBuilding::count());
     }
 
+    /**
+     * ⚠ 5 MB の上限はクライアント側だけで、`MAX_ROWS` の判定は json_decode の後。
+     *   画面を経由しない POST に対しては validate の max: が唯一の防波堤になる。
+     */
+    public function test_rejects_an_oversized_payload_before_decoding(): void
+    {
+        $this->actingAs($this->manager())
+            ->from(self::IMPORT_URL)
+            ->post(self::IMPORT_URL, [
+                'kind' => 'buildings', 'surveyed_month' => '2026-08',
+                'rows' => str_repeat('a', 3_000_001),
+            ])
+            ->assertSessionHasErrors('rows');
+
+        $this->assertSame(0, AreaBuilding::count());
+    }
+
     public function test_accepts_exactly_the_row_limit_and_rejects_one_more(): void
     {
         $row = ['name' => 'X', 'operating' => '1'];
@@ -774,15 +871,83 @@ class AreaBuildingImportTest extends AreaBuildingTestCase
             'detectHeaderRow が複数行を走査していない（1 行目固定に戻っている）'
         );
         $this->assertMatchesRegularExpression(
-            '/Object\.keys\(hits\)\.length >= 2/',
+            '/cells >= 2/',
             $body,
-            'detectHeaderRow が「マッピング対象が 2 つ以上ヒットする行」で選んでいない'
+            'detectHeaderRow が「2 セル以上が見出しに見える行」で選んでいない'
         );
+        // ⚠ **この break が load-bearing。** 無いと 1 セルが複数 target に同時ヒットし、
+        //   「ビル別 営業・空き状況調査」のような複合タイトルが 1 行で閾値を越える
+        //   （2026-08-17 のレビューで 5 通りの現実的なタイトルが再現）。
+        $this->assertMatchesRegularExpression(
+            '/cells\+\+;\s*break;/',
+            $body,
+            '1 セルが複数 target に多重カウントされる（target キー数でなくセル数で数えること）'
+        );
+        // ⚠ トークンが在るだけでは足りない。走査ループ自体が生きていることも見る
+        //   （2026-08-17 実測: `i < limit` を `i < 0` にすると、他の assert は全部残るので緑になった）。
+        //   ⚠ **それでも構造テストは「形」しか押さえられない。**振る舞いは node での実測が正本。
+        $this->assertMatchesRegularExpression(
+            '/var limit = Math\.min\(rows\.length, AREA_IMPORT_HEADER_SCAN_ROWS\);/',
+            $body,
+            'detectHeaderRow の走査範囲が検出窓になっていない'
+        );
+        $this->assertMatchesRegularExpression(
+            '/for \(var i = 0; i < limit; i\+\+\)/',
+            $body,
+            'detectHeaderRow の走査ループが検出窓を回っていない（空回りしている）'
+        );
+
+        $this->assertMatchesRegularExpression(
+            '/rows\.findIndex\(function \(r\) \{\s*(?:\/\/[^\n]*\n\s*)*return \(r \|\| \[\]\)\.some\(/',
+            $body,
+            'フォールバックの sparse 配列防御が本ループと非対称（片方だけ素の r.some だと TypeError）'
+        );
+
+        // ⚠ 手動で選べる窓が検出の窓と同じだと、51 行目にヘッダーがある表は
+        //   自動でも手動でも到達できない＝「画面の中で修復できない」状態が残る
+        $scan   = $this->jsNumber($blade, 'AREA_IMPORT_HEADER_SCAN_ROWS');
+        $choice = $this->jsNumber($blade, 'AREA_IMPORT_HEADER_CHOICE_ROWS');
+        $this->assertGreaterThan($scan, $choice, '手動で選べる行数が自動検出の窓より広くない');
         $this->assertStringContainsString(
-            'findIndex',
-            $body,
-            'detectHeaderRow に「最初の非空行」フォールバックが無い'
+            'AREA_IMPORT_HEADER_CHOICE_ROWS',
+            $this->jsFunctionBody($blade, 'populateHeaderRowSelect'),
+            'ヘッダー行 select が手動用の窓を使っていない'
         );
+    }
+
+    /**
+     * JS 側の階の判定を body で固定する（I-a）。
+     *
+     * ⚠ **語彙の一致テストだけでは JS の振る舞いを守れない。** 2026-08-17 の実測で、
+     *   語彙を触らずに `v = -v;` を消す（`B1` が +1 になる）/ 接尾辞ループの `break` を消す /
+     *   `!allowBasement && v < 0` を消す、のいずれも **744 本全部が緑**だった。
+     *   1 番目は実害があり、`B15` がプレビューでは +15（警告なし）・サーバでは -15（範囲外で拒否）
+     *   ＝「画面が取り込めると言った行をサーバが黙って捨てる」Bug #41 そのものになる。
+     */
+    public function test_the_js_floor_parser_keeps_its_load_bearing_branches(): void
+    {
+        $body = $this->jsFunctionBody($this->importView(), 'areaImportParseFloor');
+
+        $this->assertMatchesRegularExpression('/v = -v;/', $body, '地下を負数にしていない（B1 が +1 になる）');
+        $this->assertMatchesRegularExpression(
+            "/if \(v < 0\) \{ return \{ state: 'bad'/",
+            $body,
+            "符号の二重（'B-1'）を弾いていない"
+        );
+        $this->assertMatchesRegularExpression(
+            "/if \(!allowBasement && v < 0\) \{ return \{ state: 'bad'/",
+            $body,
+            '総階数で地下を弾いていない'
+        );
+
+        // 3 つの接頭辞・接尾辞ループはいずれも「最初に一致したものだけ」落とす
+        foreach (['aboveGround', 'basement', 'suffix'] as $group) {
+            $this->assertMatchesRegularExpression(
+                '/t\.' . $group . '\[i\]\.length\);?\s*break;/',
+                $body,
+                "{$group} のループに break が無い（複数の接辞を続けて落としてしまう）"
+            );
+        }
     }
 
     /** 必須マッピングのガード（I-1）。件数列を割り当て忘れて 0/0/0 の調査回を作らない */
@@ -808,25 +973,109 @@ class AreaBuildingImportTest extends AreaBuildingTestCase
      */
     public function test_floor_vocabulary_matches_between_php_and_js(): void
     {
-        $js = $this->jsonLiteral('AREA_IMPORT_FLOOR_TOKENS');
+        $js  = $this->jsonLiteral('AREA_IMPORT_FLOOR_TOKENS');
+        $map = [
+            'BASEMENT_PREFIXES'     => 'basement',
+            'ABOVE_GROUND_PREFIXES' => 'aboveGround',
+            'FLOOR_SUFFIXES'        => 'suffix',
+        ];
 
-        $this->assertSame(FloorNumber::BASEMENT_PREFIXES, $js['basement']);
-        $this->assertSame(FloorNumber::ABOVE_GROUND_PREFIXES, $js['aboveGround']);
-        $this->assertSame(FloorNumber::FLOOR_SUFFIXES, $js['suffix']);
+        // ⚠ 固定リストの照合だけだと **PHP に 4 つ目の語彙を足しても気づけない**。
+        //   public 定数の集合そのものを突き合わせる。
+        $php = (new \ReflectionClass(FloorNumber::class))->getConstants(\ReflectionClassConstant::IS_PUBLIC);
+        $this->assertSame(
+            array_keys($map),
+            array_keys($php),
+            'FloorNumber の public 定数が増減している。JS の AREA_IMPORT_FLOOR_TOKENS も揃えること'
+        );
+        $this->assertSame(array_values($map), array_keys($js), 'JS 側のキーが PHP 定数と対応していない');
+
+        foreach ($map as $const => $jsKey) {
+            $this->assertSame($php[$const], $js[$jsKey], "{$const} が JS と割れている");
+        }
     }
 
     /** 範囲の定数が PHP と JS で一致すること（Bug #41） */
     public function test_limits_match_between_php_and_js(): void
     {
-        $js = $this->jsonLiteral('AREA_IMPORT_LIMITS');
+        $js  = $this->jsonLiteral('AREA_IMPORT_LIMITS');
+        $map = [
+            'MAX_COUNT'        => 'maxCount',
+            'MIN_FLOORS'       => 'minFloors',
+            'MAX_FLOORS'       => 'maxFloors',
+            'MIN_TENANT_FLOOR' => 'minTenantFloor',
+            'MIN_YEAR'         => 'minYear',
+        ];
 
-        $this->assertSame([
-            'maxCount'       => Importer::MAX_COUNT,
-            'minFloors'      => Importer::MIN_FLOORS,
-            'maxFloors'      => Importer::MAX_FLOORS,
-            'minTenantFloor' => Importer::MIN_TENANT_FLOOR,
-            'minYear'        => Importer::MIN_YEAR,
-        ], $js);
+        // ⚠ 6 つ目の public 定数を足したら JS にも足すこと（固定リストだけでは気づけない）
+        $php = (new \ReflectionClass(Importer::class))->getConstants(\ReflectionClassConstant::IS_PUBLIC);
+        $this->assertSame(
+            array_keys($map),
+            array_keys($php),
+            'Importer の public 定数が増減している。JS の AREA_IMPORT_LIMITS も揃えること'
+        );
+        $this->assertSame(array_values($map), array_keys($js), 'JS 側のキーが PHP 定数と対応していない');
+
+        foreach ($map as $const => $jsKey) {
+            $this->assertSame($php[$const], $js[$jsKey], "{$const} が JS と割れている");
+        }
+    }
+
+    /**
+     * 範囲の定数が**画面 CRUD の validate と同じ**であること。
+     *
+     * ⚠ Importer の docblock が「画面 CRUD の min:0|max:200 と同じ」と主張しているのに、
+     *   3 系統目（各コントローラの直書き）だけ何にも固定されていなかった。
+     *   ⚠ フォーム HTML の min= / max= 属性は**まだ未固定**（プランに記録）。
+     */
+    public function test_limits_match_the_crud_controllers(): void
+    {
+        $counts = 'nullable|integer|min:0|max:' . Importer::MAX_COUNT;
+
+        $expectations = [
+            'AreaBuildingController.php' => [
+                'total_floors'    => 'nullable|integer|min:' . Importer::MIN_FLOORS . '|max:' . Importer::MAX_FLOORS,
+                'operating_count' => $counts,
+                'vacant_count'    => $counts,
+                'unknown_count'   => $counts,
+            ],
+            'AreaBuildingSurveyController.php' => [
+                'operating_count' => $counts,
+                'vacant_count'    => $counts,
+                'unknown_count'   => $counts,
+            ],
+            'AreaBuildingTenantController.php' => [
+                'floor' => 'nullable|integer|min:' . Importer::MIN_TENANT_FLOOR . '|max:' . Importer::MAX_FLOORS,
+            ],
+        ];
+
+        $checked = 0;
+
+        foreach ($expectations as $file => $keys) {
+            $source = file_get_contents(app_path('Http/Controllers/Tenant/' . $file));
+
+            foreach ($keys as $key => $expected) {
+                // ⚠ **出現を全部見る。** store と update に同じルールが 2 本あるので、
+                //   assertStringContainsString だと**片方だけ変えても緑**になる（Bug #44。実測済み）。
+                preg_match_all("/'" . preg_quote($key, '/') . "'\s*=>\s*'([^']*)'/", $source, $m);
+                $rules = array_values(array_filter($m[1], static fn (string $r) => str_contains($r, 'integer')));
+
+                $this->assertNotEmpty($rules, "{$file} に {$key} の integer ルールが無い（走査の空振り）");
+
+                foreach ($rules as $i => $rule) {
+                    $checked++;
+                    $this->assertSame(
+                        $expected,
+                        $rule,
+                        "{$file} の {$key} #{$i} が取込側の定数と割れている"
+                    );
+                }
+            }
+        }
+
+        // 実測 13 本（ビル: 総階数 ×2 + 件数 ×3 / 調査回: 件数 ×3 ×2 / テナント: 階 ×2）。
+        // ⚠ 現値ちょうどにしない — 正当な掃除で誤って赤になる
+        $this->assertGreaterThanOrEqual(11, $checked, 'ルールの走査が機能していない（空振り防止）');
     }
 
     /**
@@ -884,6 +1133,19 @@ class AreaBuildingImportTest extends AreaBuildingTestCase
         // ⚠ ボタン自身の title は効かない（Bug #43）。付いていたら設計意図と食い違う
         $button = $this->tagAfter($html, '<span :title="submitBlockedReason()"', '<button');
         $this->assertStringNotContainsString('title=', $button, 'disabled なボタン自身に title が付いている（Bug #43）');
+
+        // ⚠ Bug #43 の後半: tooltip は disabled な要素にフォーカスできない利用者へ届かない。
+        //   画面に出している理由と aria-describedby で紐づける（呼び出し側と実体を対で）
+        $this->assertStringContainsString(
+            'aria-describedby="area-import-submit-reason"',
+            $button,
+            'ボタンが理由の段落に紐づいていない（Bug #43 の後半）'
+        );
+        $this->assertStringContainsString(
+            'id="area-import-submit-reason"',
+            $html,
+            'aria-describedby の参照先が画面に無い'
+        );
     }
 
     /**
@@ -934,6 +1196,19 @@ class AreaBuildingImportTest extends AreaBuildingTestCase
             ->format('Y-m-d');
     }
 
+    /** `var NAME = 123;` の数値を取り出す */
+    private function jsNumber(string $blade, string $name): int
+    {
+        $this->assertMatchesRegularExpression(
+            '/var ' . preg_quote($name, '/') . ' = (\d+);/',
+            $blade,
+            "{$name} が数値リテラルとして書かれていない"
+        );
+        preg_match('/var ' . preg_quote($name, '/') . ' = (\d+);/', $blade, $m);
+
+        return (int) $m[1];
+    }
+
     /** `var NAME = { … };` の JSON リテラルを取り出す */
     private function jsonLiteral(string $name): array
     {
@@ -958,8 +1233,11 @@ class AreaBuildingImportTest extends AreaBuildingTestCase
      */
     private function jsFunctionBody(string $blade, string $name): string
     {
-        $needle = $name . ': function (';
-        $at     = strpos($blade, $needle);
+        // メソッド形式（`name: function (`）と関数宣言形式（`function name(`）の両方
+        $at = strpos($blade, $name . ': function (');
+        if ($at === false) {
+            $at = strpos($blade, 'function ' . $name . '(');
+        }
         $this->assertNotFalse($at, "{$name} の定義が見つからない");
 
         $open = strpos($blade, '{', strpos($blade, ')', $at));
