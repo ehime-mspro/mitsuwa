@@ -47,6 +47,9 @@ cd /Users/masanori/site/manage/.claude/worktrees/tenant-area-survey && vendor/bi
 | 6 | §10.1「画面ごとに語が変わるキーは第3引数で上書き」 | **`JapaneseValidationMessagesTest::test_every_validated_field_has_a_japanese_attribute_label` はグローバルの `attributes` しか見ない**（`tests/Feature/JapaneseValidationMessagesTest.php:113`）。→ 第3引数で上書きするキーも**グローバルに存在させる必要がある**。 |
 | 7 | §3.2「`User` は SoftDeletes なので `withTrashed()`」 | **設計書が正しい。** `app/Models/User.php:16` が `use HasFactory, Notifiable, SoftDeletes;`、`:58` に `'deleted_at' => 'datetime'`。CLAUDE.md の「`User` モデルに `deleted_at` 列なし」は**現在は誤り**（別途 CLAUDE.md を直す価値がある。本プランでは触らない）。 |
 | 8 | §6.0「地図を生成する箇所は 2 つだけ」 | 一覧には**座標一括取得のために Google Maps JS の bootstrap を読み込む**。課金対象の Dynamic Maps SKU は `new google.maps.Map()` の実行に対して発生し、bootstrap の読み込みだけでは発生しない（Geocoder は Geocoding SKU で 1 棟 1 回）。→ §6.0 と矛盾しない。ただし**座標未取得が 0 件のときは `<script>` 自体を出さない**ことをテストで固定する。 |
+| 9 | テストのヘルパーは各ファイルに複製するのが既存の流儀 | **この機能に限り共有の抽象基底 `tests/Feature/Tenant/AreaBuildingTestCase.php` を使う。** 既存機能はテストが 1〜4 本なので複製で足りているが、本機能は Task 6〜12 で 8〜10 本が同じ actor（executive / manager / staff）と factory（`makeBuilding` / `makeSurvey` / `makeTenant`）を要るため複製コストの桁が違う。⚠ ファイル名を `*TestCase.php` にして PHPUnit の自動探索を避けている（実測確認済み）。**2026-08-16 の Task 6 コード品質レビューで是非を検討し、継続と決めた。後続レビューで蒸し返さないこと。** |
+| 10 | `?keyword=大_ビル` の `_` が LIKE のワイルドカードとして効く | **直さない。** `ProcurementListService::applyKeyword()` にも同じ未エスケープがあり、アプリ全体の既存パターン。ここだけ直すと流儀が割れる。直すなら共通ヘルパーで一括対応が筋（本プランのスコープ外）。⚠ 500 にはならず、余計な行が混ざるだけ。 |
+| 11 | 一覧の閲覧を staff でしかテストしていない | **これでよい。** `index` に role ミドルウェアは無く `department.access:tenant` のみで、部署アクセスは `tests/Feature/Security/DepartmentAccessMiddlewareTest.php` が一元的にテストする既存規約と整合。2026-08-16 のレビューで manager / executive が 200、他部署が 403 になることは実測確認済み。 |
 
 ---
 
@@ -4298,6 +4301,26 @@ function updateAreaCoords(lat, lng) {
                                     </div>
                                 </td>
 ```
+
+- [ ] **Step 7b: `surveyYears()` を論理削除済みのビルに対応させる**
+
+⚠ **削除機能をこのタスクで入れるまでは到達不能だった欠陥**（2026-08-16 の Task 6 レビューで発見）。
+
+`AreaBuildingListService::surveyYears()` は `AreaBuildingSurvey` を直接引いており、
+**親のビルが論理削除されているかを見ていません。** `AreaBuildingSurvey` に SoftDeletes は無いので、
+ビルを消しても調査回の行は残ります。
+
+実測（Task 6 レビュー時）: 2020 年の調査を持つビルを 1 棟だけ作って論理削除すると、
+一覧の「調査年」ドロップダウンに **`2020年` の選択肢が残る**のに、選ぶと `total=0` になる
+（一覧クエリ側は `AreaBuilding` の SoftDeletes スコープで正しく除外されるため）。
+
+- [ ] `surveyYears()` に `->whereHas('building')` を足す
+      （`AreaBuildingSurvey::building()` は `withTrashed()` 付きなので、
+      **`whereHas` が期待どおり論理削除を除外するかを必ず実測すること**。
+      `withTrashed()` のリレーションに対する `whereHas` の挙動は自明ではない。
+      効かないなら `whereIn('area_building_id', AreaBuilding::query()->select('id'))` に切り替える）
+- [ ] 回帰テスト: 調査を持つビルを 1 棟だけ作って削除 → その年が選択肢に**出ない**ことを固定
+- [ ] **変異で確認:** `whereHas('building')` を外すと赤になること
 
 - [ ] **Step 8: 詳細画面に編集・削除ボタンを足す**
 
