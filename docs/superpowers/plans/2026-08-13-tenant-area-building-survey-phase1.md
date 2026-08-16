@@ -4727,7 +4727,7 @@ Expected: `INVALID:` が 1 件も出ない
 - Modify: `routes/web.php`
 - Modify: `resources/views/tenant/area-buildings/show.blade.php`（「調査を追加」＋行ごとの編集・削除）
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `tests/Feature/Tenant/AreaBuildingSurveyCrudTest.php`:
 
@@ -4886,7 +4886,15 @@ class AreaBuildingSurveyCrudTest extends AreaBuildingTestCase
         $this->assertDatabaseMissing('area_building_surveys', ['id' => $survey->id]);
     }
 
-    /** 所見のエラー文言は「備考」でなく「所見」（第3引数の上書きが効いていること） */
+    /**
+     * 所見のエラー文言は「備考」でなく「所見」（第3引数の上書きが効いていること）。
+     *
+     * ⚠ `session('errors')` は **assertSessionHasErrors() を通すまで生の配列**で、
+     *   いきなり `->first()` を呼ぶと `Call to a member function first() on array` で
+     *   落ちる（2026-08-17 実測。TestResponse::assertSessionHasErrors が ViewErrorBag へ
+     *   復元してセッションへ書き戻している）。上の重複テストが動いていたのは、
+     *   たまたま assertSessionHasErrors を先に呼んでいたから。
+     */
     public function test_notes_error_says_shoken(): void
     {
         $building = $this->makeBuilding('ミツワビル');
@@ -4898,6 +4906,7 @@ class AreaBuildingSurveyCrudTest extends AreaBuildingTestCase
                 'notes'          => str_repeat('あ', 2001),
             ]);
 
+        $response->assertSessionHasErrors('notes');
         $this->assertStringContainsString('所見', session('errors')->first('notes'));
     }
 
@@ -5009,7 +5018,7 @@ class AreaBuildingSurveyCrudTest extends AreaBuildingTestCase
 }
 ```
 
-- [ ] **Step 2: テストが落ちることを確認する**
+- [x] **Step 2: テストが落ちることを確認する**
 
 ```bash
 vendor/bin/phpunit --filter AreaBuildingSurveyCrudTest
@@ -5017,7 +5026,7 @@ vendor/bin/phpunit --filter AreaBuildingSurveyCrudTest
 
 Expected: FAIL — 404
 
-- [ ] **Step 3: コントローラを書く**
+- [x] **Step 3: コントローラを書く**
 
 `app/Http/Controllers/Tenant/AreaBuildingSurveyController.php`:
 
@@ -5195,7 +5204,7 @@ class AreaBuildingSurveyController extends Controller
 }
 ```
 
-- [ ] **Step 4: ルートを足す**
+- [x] **Step 4: ルートを足す**
 
 `tenant.area-buildings.destroy` の直後に:
 
@@ -5216,7 +5225,7 @@ class AreaBuildingSurveyController extends Controller
             ->name('tenant.area-buildings.surveys.destroy');
 ```
 
-- [ ] **Step 5: 調査フォームのビューを書く**
+- [x] **Step 5: 調査フォームのビューを書く**
 
 `resources/views/tenant/area-buildings/surveys/_form.blade.php`:
 
@@ -5239,9 +5248,14 @@ class AreaBuildingSurveyController extends Controller
                 {{-- ⚠ 新規と編集でラベルが違う。編集で「未指定」を選ぶと調査者は null になる
                      （登録者にも編集者にもならない）ので「登録者になります」と書くと嘘になる --}}
                 <option value="">{{ $survey === null ? '— 未指定（登録者になります）—' : '— 未指定 —' }}</option>
+                {{-- ⚠ 既定値は「新規だけログインユーザー」。編集では保存されている値をそのまま選ぶ。
+                     `$survey?->surveyed_by ?? auth()->id()` と書くと、調査者が未設定の調査回を開いた
+                     ときに編集者が選択済みになり、触らず「更新する」を押しただけで調査者が編集者に
+                     化ける（コントローラの `?? null` で防いだ事故がビュー側で復活する。Bug #38 と同族）。 --}}
+                @php($selectedSurveyor = (string) old('surveyed_by', $survey === null ? auth()->id() : $survey->surveyed_by))
                 @foreach($surveyors as $surveyor)
                     <option value="{{ $surveyor->id }}"
-                        {{ (string) old('surveyed_by', $survey?->surveyed_by ?? auth()->id()) === (string) $surveyor->id ? 'selected' : '' }}>
+                        {{ $selectedSurveyor === (string) $surveyor->id ? 'selected' : '' }}>
                         {{ $surveyor->name }}
                     </option>
                 @endforeach
@@ -5326,7 +5340,7 @@ class AreaBuildingSurveyController extends Controller
 - `<form ... action="{{ route('tenant.area-buildings.surveys.update', [$building, $survey]) }}">` ＋ 直下に `@method('PUT')`
 - `<x-form-actions submit-label="更新する" ... />`
 
-- [ ] **Step 6: 詳細画面に導線を足す**
+- [x] **Step 6: 詳細画面に導線を足す**
 
 `show.blade.php` の調査履歴カードのヘッダー（`<div class="text-sm font-bold text-gray-800">調査履歴</div>` の隣）:
 
@@ -5339,8 +5353,10 @@ class AreaBuildingSurveyController extends Controller
             @endif
 ```
 
-調査履歴テーブルに操作列を足す（`<colgroup>` の最後に `<col style="width:12%">` を足し、
-「所見」の幅を `32%` → `20%` に、`<thead>` の末尾に `操作` の `<th>`、各行の末尾に）:
+調査履歴テーブルに操作列を足す。⚠ **`min-width` も 760 → 900px へ広げること**——
+`table-layout: fixed` なので列は伸びず、狭い画面で編集＋削除ボタン（実測で約 106px 必要）が
+隣のセルへはみ出す。実装した幅は `13/8/8/8/11/14/22/16 %`（操作セルだけ `px-2`）。
+`<thead>` の末尾に `操作` の `<th>`、各行の末尾に:
 
 ```blade
                                 <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
@@ -5367,7 +5383,7 @@ class AreaBuildingSurveyController extends Controller
 
 空行の `colspan="7"` を `colspan="8"` に変える。
 
-- [ ] **Step 7: テストが通ることを確認する**
+- [x] **Step 7: テストが通ることを確認する**
 
 ```bash
 vendor/bin/phpunit --filter 'AreaBuildingSurveyCrudTest|AreaBuildingShowTest'
@@ -5377,27 +5393,63 @@ Expected: PASS（Survey 15 本 ＋ Show は現状の本数）。
 ⚠ Show の本数は Task 7 以降ずっと動いている（2026-08-16 時点で 13 本）ので数字を当てにしない。
 **「何本になったか」ではなく「1 本も赤が無いか」で見る。**
 
-- [ ] **Step 8: 変異テストで 7 通り確認する**
+- [x] **Step 8: 変異テストで確認する（2026-08-17 実測 = 12 通り。全部検出できた）**
 
-| # | 変異 | 期待 |
-|---|---|---|
-| 1 | `assertOwnedBy()` の中身を空にする | `test_survey_of_another_building_is_404` が赤 |
-| 2 | `monthTaken()` の `when($ignoreId !== null, ...)` を削除 | `test_update_can_keep_the_same_month` が赤 |
-| 3 | `monthTaken()` の `whereDate` を `where('surveyed_month', $month)` に | **測って記録する。** Laravel の `date` キャストは `$dateFormat`（既定 `Y-m-d H:i:s`）で書き込む。MySQL の DATE 列は日付に切り詰めるが、SQLite は型が無いので `'2026-08-01 00:00:00'` が残りうる。残るなら `test_duplicate_month_is_rejected_with_a_validation_error` が赤、切り詰められるなら緑。**緑でも `whereDate` のままにする**（本番 MySQL とテスト SQLite で挙動が割れない書き方だから） |
-| 4 | `edit()` の `User::assignableWith($survey->surveyed_by)` を `User::assignable()->get()` に | `test_edit_form_keeps_a_deactivated_surveyor_in_the_options` が赤 |
-| 5 | `update()` の `'surveyed_by' => $validated['surveyed_by'] ?? null` を `?? Auth::id()` に | `test_update_does_not_reassign_the_surveyor_to_the_editor` が赤 |
-| 6 | 同上を `?? $survey->surveyed_by` に | `test_update_can_clear_the_surveyor` が赤 |
-| 7 | ルートの `role:executive,manager` を `role:manager` に | `test_executive_can_add_and_edit` が赤 |
+⚠ コントローラ・ビューは**この時点でまだ untracked** なので `git checkout --` では戻せず、
+`git diff` にも出ない。復旧と「変異が当たった証拠」は**内容のバックアップとの diff** で取ること
+（`git diff` が空なのを「変異が当たらなかった」と誤読する Bug #44 の罠）。
 
-⚠ **`extractSelect()` が load-bearing であることも測る。** 4 を当てたうえで
-`extractSelect($html, ...)` を `$html` に戻し、**それでも赤になるか**を見る
-（今は偶然どちらでも赤になるはず）。**赤になるなら「今は差が出ない」と記録するだけでよい** —
-`extractSelect()` の値は「将来ページに `x-for` を含む文字列が出ても誤判定しない」ことなので、
-差が出ないこと自体は想定どおり。⚠ ただし**測らずに「効いている」と書かないこと**（Bug #45）。
+| # | 変異 | 予想 | **実測で赤になったテスト** |
+|---|---|---|---|
+| 1 | `assertOwnedBy()` の中身を空にする | 〃 | ✅ `test_survey_of_another_building_is_404` |
+| 2 | `monthTaken()` の `when($ignoreId !== null, ...)` を削除 | `..._keep_the_same_month` | ✅ `test_update_can_keep_the_same_month` ＋ `test_update_can_clear_the_surveyor` ＋ `test_executive_can_add_and_edit`（予想より広く検出） |
+| 3 | `whereDate` → `where('surveyed_month', $month)` | 測って記録する | ✅ **赤**（`test_duplicate_month_is_rejected_with_a_validation_error` / `..._is_month_based` / `test_update_into_another_existing_month_is_rejected`）。SQLite に `'2026-08-01 00:00:00'` が残るという想定どおりで、`whereDate` は load-bearing |
+| 4 | `edit()` を `User::assignable()->get()` に | 〃 | ✅ `test_edit_form_keeps_a_deactivated_surveyor_in_the_options` |
+| 5 | `update()` の `?? null` を `?? Auth::id()` に | `..._does_not_reassign_...` | ⚠ **予想が外れた** → 赤になったのは `test_update_can_clear_the_surveyor` のみ。`..._does_not_reassign_...` は `surveyed_by` を**明示的に送っている**ので `??` が発火せず緑のまま |
+| 6 | 同上を `?? $survey->surveyed_by` に | 〃 | ✅ `test_update_can_clear_the_surveyor` |
+| 7 | ルートの `role:executive,manager` を `role:manager` に | 〃 | ✅ `test_executive_can_add_and_edit` |
+| 8 | **追加** `update()` を `'surveyed_by' => Auth::id()` に（5 が狙っていた挙動） | — | ✅ `test_update_does_not_reassign_the_surveyor_to_the_editor` ＋ `test_update_can_clear_the_surveyor` — この 1 本で `..._does_not_reassign_...` も load-bearing だと確認できた |
+| 9 | **追加** show の「調査を追加」の `href` を `#` に | — | ✅ `test_detail_shows_survey_links_according_to_role` |
+| 10 | **追加** 空行の `colspan="8"` を `7` に戻す | — | ✅ `test_empty_survey_table_spans_every_column` |
+| 11 | **追加** 削除の `Js::from(...)` を生の `{{ }}` に戻す | — | ✅ `test_row_delete_uses_confirm_with_js_from` |
+| 12 | **追加** フォームの既定値を `$survey?->surveyed_by ?? auth()->id()` に戻す | — | ✅ `test_edit_form_preselects_the_stored_surveyor_not_the_editor` |
 
-- [ ] **Step 9: コミット**
+**`extractSelect()` の load-bearing 検証（実測）**: 4 を当てたうえで `extractSelect($html, ...)` を
+`$html` に戻しても**赤のまま**だった＝**今は差が出ない**。想定どおりで、`extractSelect()` の値は
+「将来ページに `x-for` を含む文字列が出ても誤判定しない」ことにある（測らずに「効いている」と
+書かないための実測。Bug #45）。
+
+- [x] **Step 9: コミット**
 
 `/commit` で `feat(tenant): 周辺ビル調査の調査回 CRUD を追加`
+
+### 実装時にプランと食い違った点（2026-08-17 実測）
+
+1. **`session('errors')` は生の配列**。`assertSessionHasErrors()` を通すまで `ViewErrorBag` に
+   ならないので、`session('errors')->first(...)` を単独で呼ぶと fatal になる
+   （`test_notes_error_says_shoken` が実際に落ちた）。Step 1 の該当箇所を修正済み。
+2. **フォームの調査者既定値が、コントローラで潰した事故をビュー側で復活させていた**。
+   `$survey?->surveyed_by ?? auth()->id()` だと、調査者が未設定（null）の調査回を開いた瞬間に
+   編集者が選択済みになり、触らず「更新する」を押すだけで調査者が化ける。
+   `$survey === null ? auth()->id() : $survey->surveyed_by` に変更（Step 5 を修正済み）。
+   回帰テスト `test_edit_form_preselects_the_stored_surveyor_not_the_editor` ＋
+   `test_create_form_preselects_the_logged_in_user` を追加。
+3. **Step 6（show 画面の導線）を見るテストが 1 本も無かった** — リンクも操作列も丸ごと消して
+   全部緑のままだった。呼び出し側と実体は対で固定する規約（Bug #28）に合わせて 3 本追加:
+   `test_detail_shows_survey_links_according_to_role` / `test_row_delete_uses_confirm_with_js_from` /
+   `test_empty_survey_table_spans_every_column`。
+   ⚠ 権限テストで**素の URL をアサートしてはいけない** — destroy の URL（`…/surveys/{id}`）は
+   edit の URL（`…/surveys/{id}/edit`）の前方一致なので、管理者に対する `assertDontSee(destroy)` が
+   編集リンクに反応して必ず落ちる。`href="…"` / `action="…"` と属性込みで見る。
+4. **変異 5 の予想が外れていた**（上表参照）。狙っていた挙動は追加の変異 8 で別途固定した。
+5. Step 6 は **`min-width` も 760 → 900px** に広げる必要があった（`table-layout: fixed` では
+   列が伸びず、操作ボタンが隣のセルへはみ出す）。
+6. その他の追加テスト: `test_same_month_on_another_building_is_allowed`（重複判定がビル単位）/
+   `test_update_into_another_existing_month_is_rejected`（他の回が使う年月へは移せない）/
+   `test_permissions` に staff の PUT を追加。
+
+**最終状態**: `AreaBuildingSurveyCrudTest` 21 本、全体 628 テスト / 3268 アサーション green。
+compiled view の lint は 290 本 0 invalid（新規 3 ビューが対象に入っていることを grep で実測）。
 
 ---
 

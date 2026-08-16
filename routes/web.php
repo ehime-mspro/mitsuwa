@@ -488,6 +488,21 @@ Route::middleware(['auth', 'password.change'])->group(function () {
         Route::delete('/area-buildings/{building}', [\App\Http\Controllers\Tenant\AreaBuildingController::class, 'destroy'])
             ->middleware('role:executive')
             ->name('tenant.area-buildings.destroy');
+
+        // 調査回（追加・編集は経営層+管理者 / 削除は経営層）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::get('/area-buildings/{building}/surveys/create', [\App\Http\Controllers\Tenant\AreaBuildingSurveyController::class, 'create'])
+                ->name('tenant.area-buildings.surveys.create');
+            Route::post('/area-buildings/{building}/surveys', [\App\Http\Controllers\Tenant\AreaBuildingSurveyController::class, 'store'])
+                ->name('tenant.area-buildings.surveys.store');
+            Route::get('/area-buildings/{building}/surveys/{survey}/edit', [\App\Http\Controllers\Tenant\AreaBuildingSurveyController::class, 'edit'])
+                ->name('tenant.area-buildings.surveys.edit');
+            Route::put('/area-buildings/{building}/surveys/{survey}', [\App\Http\Controllers\Tenant\AreaBuildingSurveyController::class, 'update'])
+                ->name('tenant.area-buildings.surveys.update');
+        });
+        Route::delete('/area-buildings/{building}/surveys/{survey}', [\App\Http\Controllers\Tenant\AreaBuildingSurveyController::class, 'destroy'])
+            ->middleware('role:executive')
+            ->name('tenant.area-buildings.surveys.destroy');
     });
 
     /*

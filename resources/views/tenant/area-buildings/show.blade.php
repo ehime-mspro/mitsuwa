@@ -122,15 +122,23 @@
     <div class="bg-white border border-gray-200 rounded-lg p-5 mb-3">
         <div class="flex items-center justify-between pb-2 mb-3.5 border-b border-gray-200">
             <div class="text-sm font-bold text-gray-800">調査履歴</div>
+            @if(auth()->user()->role->isManagerOrAbove())
+                <a href="{{ route('tenant.area-buildings.surveys.create', $building) }}"
+                   class="text-xs font-semibold text-emerald-700 px-3 py-1.5 border border-emerald-200 rounded bg-emerald-50 hover:bg-emerald-100 transition-colors">
+                    調査を追加
+                </a>
+            @endif
         </div>
         <div class="scroll-hint at-start">
             <div class="scroll-hint-inner">
-                <table class="w-full border-collapse" style="table-layout:fixed; min-width:760px;">
-                    {{-- ⚠ Task 9 がこの colgroup / thead / 各行に「操作」列を追加する（colspan も更新）。
-                         下の入居テナントのテーブルと構造がほぼ同じなので、置換するときは必ずこのコメントを目印にすること --}}
+                {{-- ⚠ min-width は 760 → 900px。「操作」列を足したので、狭い画面で編集/削除ボタン
+                     （実測で約 106px 必要）が隣のセルへはみ出さないだけの幅を確保する --}}
+                <table class="w-full border-collapse" style="table-layout:fixed; min-width:900px;">
+                    {{-- ⚠ 下の入居テナントのテーブルと構造がほぼ同じなので、置換するときは必ずこのコメントを目印にすること
+                         （Task 10 が向こうに同じ「操作」列を追加する）。 --}}
                     <colgroup>
-                        <col style="width:14%"><col style="width:9%"><col style="width:9%"><col style="width:9%">
-                        <col style="width:12%"><col style="width:15%"><col style="width:32%">
+                        <col style="width:13%"><col style="width:8%"><col style="width:8%"><col style="width:8%">
+                        <col style="width:11%"><col style="width:14%"><col style="width:22%"><col style="width:16%">
                     </colgroup>
                     <thead>
                         <tr>
@@ -141,6 +149,7 @@
                             <th class="px-4 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">空室率</th>
                             <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">調査者</th>
                             <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">所見</th>
+                            <th class="px-2 py-3 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">操作</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -153,9 +162,29 @@
                                 <td class="px-4 py-3 border-b border-gray-200 text-sm text-center font-bold text-gray-900">{{ $survey->vacancyRateLabel() }}</td>
                                 <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700">{{ $survey->surveyor?->name ?? '—' }}</td>
                                 <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700">{{ $survey->notes ?: '—' }}</td>
+                                <td class="px-2 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                                    <div class="flex gap-1.5 justify-center">
+                                        @if(auth()->user()->role->isManagerOrAbove())
+                                            <a href="{{ route('tenant.area-buildings.surveys.edit', [$building, $survey]) }}"
+                                               class="text-xs font-semibold text-emerald-700 px-3 py-1 border border-emerald-200 rounded bg-emerald-50 hover:bg-emerald-100 transition-colors">編集</a>
+                                        @endif
+                                        @if(auth()->user()->role->isExecutive())
+                                            {{-- ⚠ 行ごとの削除なので <x-delete-confirm-modal> は使えない（このページ末尾のコメント参照）。
+                                                 ⚠ JS 文字列への差し込みは Js::from()。生の {{ }} だと `'` を含む値で壊れる。
+                                                    前例: zeal/plans/index.blade.php:143 --}}
+                                            <form method="POST" action="{{ route('tenant.area-buildings.surveys.destroy', [$building, $survey]) }}"
+                                                  onsubmit="return confirm({{ \Illuminate\Support\Js::from($survey->monthLabel()) }} + ' の調査を削除します。よろしいですか？');">
+                                                @csrf
+                                                @method('DELETE')
+                                                <button type="submit"
+                                                        class="text-xs font-semibold text-red-700 px-3 py-1 border border-red-200 rounded bg-red-50 hover:bg-red-100 transition-colors">削除</button>
+                                            </form>
+                                        @endif
+                                    </div>
+                                </td>
                             </tr>
                         @empty
-                            <tr><td colspan="7" class="px-5 py-8 text-center text-sm text-gray-400">調査履歴がありません。</td></tr>
+                            <tr><td colspan="8" class="px-5 py-8 text-center text-sm text-gray-400">調査履歴がありません。</td></tr>
                         @endforelse
                     </tbody>
                 </table>
