@@ -6256,6 +6256,93 @@ Task 10 のルールは `min:-10|max:200`（floor）/ `max:50` `max:255` `max:10
 （プランには無い。⑨ の理由）。**テストは 26 本**（プランの 11 本 ＋ 往復 5 本 ＋ 差し戻し 2 本 ＋
 バリデーション表 1 本 ＋ 詳細画面の導線 4 本 ＋ Enum 全 case 1 本 ＋ 退去済み 1 本 ＋ Bug #38 1 本）。
 
+### コードレビュー対応（2026-08-17。**テスト 26 → 28 本**）
+
+仕様適合＝適合 / コード品質＝With fixes（Critical 0）。直した 8 件と、直さずに記録した 4 件。
+
+**I-1（実害あり）: 編集画面が保存済みの `status` を出すことが固定されていなかった。**
+`_form.blade.php` から `$tenant?->status?->value ??` を落としても **26 本全部が緑**だった。
+落ちた状態だと「空き」「不明」の行を開いて**何も触らず更新するだけで状態が営業に化ける**
+（空室率＝設計 §4 と `divergence()` がこの値を数えている）。
+すり抜けた理由は **`AreaTenantStatus::cases()` の先頭が `Operating`** で、セレクトに空の先頭
+option が無く、`parseForm()` の「selected が無ければ先頭 option」（ブラウザ挙動として正しい）と
+**壊れた描画が同じ値になる**ため。同じ壊し方を `old('floor', …)` / `old('industry', …)` にすると
+両方赤になり、**select だけが例外**だった。→ 先頭以外の case（Vacant / Unknown）で往復させる
+`test_edit_form_preselects_the_stored_status` を追加。**この罠は `AreaBuildingTestCase::parseForm()`
+の docblock に追記した**（Task 11 / 12 でも同じ形を書くため）。
+
+**keep_adding の不在アサートが原理的に失敗しない。** `parseForm()` は未チェックの checkbox を
+`fields` に入れない（ブラウザと同じ）ので、`assertArrayNotHasKey('keep_adding', …)` は
+「**チェック済みで出ている**」場合しか検出しない。実測: create の「続けて登録」ブロックを
+`edit.blade.php` に貼り付けても **662 本全部が緑**。→ `assertStringNotContainsString('name="keep_adding"', $html)`
+を併置。**「無いこと」は生 HTML で見る**——これも `parseForm()` の docblock に追記した。
+
+**I-2: 画面上のエラー表示が一切テストされていなかった。** `_form` の `@error` 8 個 ＋ create / edit の
+エラーサマリを全部消しても 662 本が緑。`layouts/app.blade.php` は `session('success')` /
+`session('error')` しか描画せず **`$errors` は描画しない**ので、消えると利用者は理由が見えない
+（Bug #36 / #37 で本番実測した症状）。→ `test_input_survives_a_validation_error` に
+**サマリと `@error` を役割ごとに別々に**アサート（同じ文言が両方に出るので 1 本にまとめると
+片方だけ消しても緑。Bug #43 と同型）。実測で **R3a（@error 全削除）/ R3b（サマリ削除）が
+それぞれ単独で赤**になることを確認。
+⚠ **アプリ全体（`resources/views/` の 42 ファイル）は未対応**——`grep -rn "入力内容にエラーがあります" tests/`
+が 0 件で、エラー表示を検証しているテストはアプリ全体で 1 本も無い。**スコープ外のフォローアップ**として記録する。
+
+⚠ **その過程で新しい罠を 1 つ実測した（Task 11 / 12 でも踏む）。**
+**`assertSessionHasErrors()` を呼ぶと、そのあとに描画したページからエラー表示が丸ごと消える。**
+`session('errors')` を読むかどうかは無関係で、`assertSessionHasErrors()` を 1 行足すだけで
+`入力内容にエラーがあります` が出なくなった。⚠ **`old()` の復元は生き残る**ので、入力保持だけを
+見ているテストでは気づけない。→ 差し戻し後の画面を描画するテストでは
+**`assertSessionHasErrors()` を使わず、期待文言は `trans('validation.max.string', [...])` で組み立てる**。
+
+**M-1: `required` は UX ではなく 500 の防波堤。** `['required', Rule::enum(...)]` から `required` を
+落としても 26/28 が緑だった。`Rule::enum` は implicit rule ではないので **`status` キーが丸ごと
+欠けたリクエストはルールごとスキップ**され、store は NOT NULL 列を欠いた INSERT（本番 MySQL 1364）、
+update は `$validated['status']` で Undefined array key → **どちらも 500**。
+⚠ 表の「状態が空」（`''`）は `ConvertEmptyStringsToNull` で「**存在する null**」になるので**別経路**。
+→ `test_missing_status_key_is_rejected_on_both_entry_points` を追加（store / update 両方で赤を実測）。
+
+**M-2: `Rule::enum` のコメントが、テストが守る範囲より強く主張していた。** 「その形に戻した瞬間に
+赤くなる」は実測で偽で、`'required|in:operating,vacant,unknown'` に戻しても**今日は緑**。
+赤くなるのは **case を足したとき**だけ。→ 文言を実測に合わせた（ガード自体は設計どおり有効）。
+
+**M-3: `@php($selectedStatus = (string) old(...))` の `(string)` は何も買っていない**（外しても緑）→ 削除。
+
+**M-4: store と update で列リストの書き方が 2 通りだった。** 今日は挙動同一だが、**非 NULL 既定の列が
+1 本増えた瞬間に無音で割れる**。兄弟の `AreaBuildingSurveyController::payload()` に前例があるので
+同じ形に揃えた。⚠ **store 側の `payload()` 化は変異が緑**（R5b。任意列が全て nullable で既定 NULL
+なので今日は本当に挙動が同じ）。**構造の統一であって挙動の修正ではない**と明記しておく。
+
+**M-5: 「未知の値」のセンチネルを `'closed'` → `'__nope__'` に**（将来 Enum に入ると意図が読めない赤になる）。
+
+#### 追加した変異（2026-08-17。**R5b 以外は全部赤**）
+
+| # | 変異 | 検出したテスト |
+|---|---|---|
+| R1 | `_form` から `$tenant?->status?->value ??` を落とす | `test_edit_form_preselects_the_stored_status` |
+| R2 | create の「続けて登録」ブロックを edit に貼り付け | `test_edit_form_round_trips_unchanged` |
+| R3a | `_form` の `@error` 8 個を全削除 | `test_input_survives_a_validation_error` |
+| R3b | create のエラーサマリを削除 | 同上（**R3a とは独立に**赤） |
+| R4a | **store** の `required` を外す | `test_missing_status_key_is_rejected_on_both_entry_points` |
+| R4b | **update** の `required` を外す | 同上 |
+| R5 | **update** の `payload()` を `$validated` に | `test_fields_missing_from_the_request_are_not_left_behind` |
+| R5b | **store** の `payload()` を `$validated` に | **緑（挙動同一。構造の統一なので想定どおり）** |
+
+リファクタ後に既存の M3 / M3b / M5 / M9 / M10a / M10b / M10c / M11 も再実測し、**全て引き続き赤**。
+
+#### 直さないもの（判断の記録）
+
+- **`cancel-url` / `min-width:900px` / `<select required>` 属性 / `inputmode`** — 変異が緑だが、
+  `cancel-url` は「戻る」リンクと同じ URL を指すため素朴なアサートが必ず false-pass する
+  （Bug #47 が宣言済みの穴と同型）。残り 3 つは意匠・クライアント側のみで、サーバ側は固定済み。
+  **未カバーと明記するのが正しい**（偽の安心より正直な穴）
+- **`department.access:tenant` を周辺ビル調査のテストで検証していない** — 冒頭の判断一覧 **#11** で
+  決着済み（`tests/Feature/Security/DepartmentAccessMiddlewareTest.php` が一元的にテストする既存規約）。
+  蒸し返さないこと
+- **エラー表示のアプリ全体是正（42 ファイル）** — スコープ外。上記のとおりフォローアップとして記録
+- **`git archive` ＋ vendor symlink で隔離コピーを作って変異を測ってはいけない**（レビュアー 2 名が
+  実際に踏んだ）。symlink だと `autoload_psr4.php` の `$baseDir` が**実 worktree に解決される**ため、
+  隔離コピー側の変異が全部 no-op になり **偽の GREEN** が出る。**実 worktree で測る**
+
 ---
 
 ## Task 11: Excel 取込（ビル＋調査 / テナント明細）
