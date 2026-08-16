@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AreaBuilding;
 use App\Models\AreaBuildingSurvey;
 use App\Models\AreaBuildingTenant;
+use App\Support\FloorNumber;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -14,12 +15,17 @@ use Illuminate\Support\Facades\Auth;
 /**
  * 周辺ビル調査の Excel 取込（設計 §7）。
  *
- * クライアント側の SheetJS がシート選択・列マッピング・プレビューまで行い、
+ * クライアント側の SheetJS がシート選択・ヘッダー行選択・列マッピング・プレビューまで行い、
  * 正規化済みの行を hidden の JSON として POST してくる。サーバ側でもう一度正規化する
  * （画面を経由しない POST でも壊れたデータが入らないようにするため）。
  *
  * ⚠ `fetch` は使わない。GET の fetch にヘッダーを付け忘れる Bug #35 に触れないうえ、
  *   AjaxErrorFeedbackTest::test_every_fetch_view_is_classified の分類対象にもならない。
+ *
+ * ⚠ **黙って値を捨てる経路を作らない。** 非空なのに読めなかった列はその行を取り込まず
+ *   件数で報告する（設計 §7.3）。2026-08-17 のレビューまで階だけが例外で、`'1F'` `'B1'`
+ *   `'2階'` が無警告で NULL になっていた。正規化は `App\Support\FloorNumber` に集約し、
+ *   プレビュー（JS）と同じ判定を使う（Bug #41）。
  *
  * ⚠ **取込全体を 1 つの DB::transaction で囲まない**（Bug #48 の「安全網を入れない判断にも
  *   理由を書き残す」に従って明記する）。理由は 3 つ:
@@ -32,6 +38,12 @@ use Illuminate\Support\Facades\Auth;
  */
 class AreaBuildingImportController extends Controller
 {
+    /*
+     * ⚠ 下の 5 つは **public**。取込プレビュー（import.blade.php の AREA_IMPORT_LIMITS）が
+     *   同じ範囲で警告を出す必要があり、割れると「画面が取り込めると言った行をサーバが弾く」
+     *   （Bug #41）。一致は AreaBuildingImportTest::test_limits_match_between_php_and_js が固定する。
+     */
+
     /** 1 回の取込で受け付ける最大行数 */
     private const MAX_ROWS = 2000;
 
@@ -40,21 +52,24 @@ class AreaBuildingImportController extends Controller
      * ⚠ SQLite は範囲を強制しないので、これが無いと本番 MySQL（strict）でだけ
      *   1264 Out of range で 500 になる（Bug #40）。
      */
-    private const MAX_COUNT = 9999;
+    public const MAX_COUNT = 9999;
 
     /** 総階数の範囲。画面 CRUD の min:0|max:200 と同じ */
-    private const MIN_FLOORS = 0;
+    public const MIN_FLOORS = 0;
 
-    private const MAX_FLOORS = 200;
+    public const MAX_FLOORS = 200;
 
     /** テナントの階の範囲。地下は負数（B1 = -1）。画面 CRUD の min:-10|max:200 と同じ */
-    private const MIN_TENANT_FLOOR = -10;
+    public const MIN_TENANT_FLOOR = -10;
 
     /**
      * 調査年月の下限。画面 CRUD の after_or_equal:1900-01 と同じ。
      * ⚠ 下限が無いと '0000-06' のような値が MySQL の DATE に入らず 1292 で落ちる。
      */
-    private const MIN_YEAR = 1900;
+    public const MIN_YEAR = 1900;
+
+    /** 結果メッセージに名前を並べる上限 */
+    private const MAX_NAMES_IN_MESSAGE = 10;
 
     public function form()
     {
@@ -68,6 +83,7 @@ class AreaBuildingImportController extends Controller
         //   /validate\(\s*\[(.*?)\n\s*\]\s*[,)]/s にマッチせず、このコントローラのキーが
         //   和名チェックから丸ごと外れる。
         $validated = $request->validate([
+            // ⚠ in: を外すと未知の kind が黙ってテナント取込へ落ちる
             'kind' => 'required|in:buildings,tenants',
             // ⚠ 下限が要る理由は MIN_YEAR のコメントを参照（Safari は month 入力をただの
             //   テキスト欄として描画するので '0000-01' が現実に届きうる）
@@ -111,7 +127,8 @@ class AreaBuildingImportController extends Controller
         $invalid = 0;
         $blank   = 0;
 
-        $map = $this->buildingMapByNormalizedName();
+        $map   = $this->buildingMapByNormalizedName();
+        $taken = $this->existingSurveyMonths($map);
 
         foreach ($rows as $row) {
             if (! is_array($row)) {
@@ -136,16 +153,19 @@ class AreaBuildingImportController extends Controller
                 continue;
             }
 
+            // ⚠ 総階数が非空なのに読めない / 範囲外なら**行ごと**取り込まない（設計 §7.3）。
+            //   黙って null に落とすと、利用者は入力したはずの階数が消えたことに気づけない。
+            $floors = $this->parseFloors($row['total_floors'] ?? null);
+            if ($floors === false) {
+                $invalid++;
+                continue;
+            }
+
             $month   = $this->parseMonth($row['surveyed_month'] ?? null) ?? $defaultMonth;
-            $floors  = $this->parseBounded($row['total_floors'] ?? null, self::MIN_FLOORS, self::MAX_FLOORS);
             $address = $this->nullableString($row['address'] ?? null, 255);
 
             if (isset($map[$key])) {
-                $building = AreaBuilding::find($map[$key]);
-                if ($building === null) {
-                    $invalid++;
-                    continue;
-                }
+                $building = $map[$key];
 
                 // 既存ビルは「空の項目だけ」Excel の値で補完する（既存の値は上書きしない）
                 $fill = [];
@@ -160,18 +180,24 @@ class AreaBuildingImportController extends Controller
                 }
             } else {
                 $building = AreaBuilding::create([
+                    // ⚠ VARCHAR(255) の防波堤。SQLite は長さを強制しないので、外すと
+                    //   本番 MySQL でだけ 1406 で 500 になる（Bug #40）
                     'name'         => mb_substr($rawName, 0, 255),
                     'address'      => $address,
                     'total_floors' => $floors,
                     'created_by'   => $userId,
                 ]);
-                $map[$key] = $building->id;
+                // ⚠ ここで map に載せないと、同じファイル内の同名の行が別のビルを作る
+                $map[$key] = $building;
                 $created++;
             }
 
             // 同じビル・同じ調査年月が既にあれば取り込まずスキップする
-            // ⚠ whereDate で見る（= 比較は MySQL と SQLite で割れうる。Task 9 の注記を参照）
-            if ($building->surveys()->whereDate('surveyed_month', $month . '-01')->exists()) {
+            // ⚠ SQL の whereDate をやめて先読み済みの集合で判定する（1 行ごとに
+            //   exists() を投げると 2000 行で 2000 往復になる）。日付は date キャスト後に
+            //   'Y-m-d' へ揃えるので MySQL / SQLite の比較差にも影響されない。
+            $monthKey = $building->id . '|' . $month . '-01';
+            if (isset($taken[$monthKey])) {
                 $skipped++;
                 continue;
             }
@@ -182,9 +208,12 @@ class AreaBuildingImportController extends Controller
                     'surveyed_month'   => $month . '-01',
                     'surveyed_by'      => $userId,
                 ]));
+                $taken[$monthKey] = true;
                 $added++;
             } catch (UniqueConstraintViolationException) {
-                // ⚠ UNIQUE のバックストップ（同じファイル内に同一ビル・同一月が 2 行あった場合）。
+                // ⚠ **並行リクエスト専用のバックストップ。** 同一ファイル内の重複は上の
+                //   $taken が拾うので、1 リクエスト内では原理的にここへ来ない
+                //   （2026-08-17 実測: 同一ビル・同一月の 2 行で creating は 1 回しか発火しない）。
                 //   ⚠ 汎用の QueryException で受けないこと — 桁あふれ等を「同一年月」と
                 //     偽って報告してしまう。ここは重複だけを黙って飲み込む。
                 $skipped++;
@@ -192,7 +221,7 @@ class AreaBuildingImportController extends Controller
         }
 
         return sprintf(
-            '取込が完了しました。ビル新規 %d 件 / 調査追加 %d 件 / 同一年月のためスキップ %d 件 / 数値不正でスキップ %d 件 / ビル名が空でスキップ %d 件',
+            '取込が完了しました。ビル新規 %d 件 / 調査追加 %d 件 / 同一年月のためスキップ %d 件 / 値が不正でスキップ %d 件 / ビル名が空でスキップ %d 件',
             $created,
             $added,
             $skipped,
@@ -207,9 +236,12 @@ class AreaBuildingImportController extends Controller
 
     private function importTenants(array $rows): string
     {
-        $created   = 0;
-        $blank     = 0;
-        $unmatched = [];
+        $created        = 0;
+        $blank          = 0;
+        $invalid        = 0;
+        $unmatchedRows  = 0;
+        $unmatchedNames = [];
+        $touched        = [];
 
         $map = $this->buildingMapByNormalizedName();
 
@@ -227,39 +259,93 @@ class AreaBuildingImportController extends Controller
 
             // 台帳に無いビル名の行は取り込まない（ビルの自動生成はしない。設計 §7.2）
             if (! isset($map[$key])) {
-                $unmatched[$key] = true;
+                $unmatchedRows++;
+                $unmatchedNames[$key] = true;
                 continue;
             }
 
+            // ⚠ 階も非空で読めない / 範囲外なら行ごと弾く（黙って NULL にしない）
+            $floor = $this->parseTenantFloor($row['floor'] ?? null);
+            if ($floor === false) {
+                $invalid++;
+                continue;
+            }
+
+            $building = $map[$key];
+
             AreaBuildingTenant::create([
-                'area_building_id' => $map[$key],
-                'floor'            => $this->parseBounded($row['floor'] ?? null, self::MIN_TENANT_FLOOR, self::MAX_FLOORS),
+                'area_building_id' => $building->id,
+                'floor'            => $floor,
                 'room_number'      => $this->nullableString($row['room_number'] ?? null, 50),
                 'name'             => $this->nullableString($row['name'] ?? null, 255),
                 'industry'         => $this->nullableString($row['industry'] ?? null, 100),
                 'status'           => AreaTenantStatus::fromRawLabel($this->text($row['status'] ?? null))->value,
             ]);
             $created++;
+            $touched[$building->id] = $building;
         }
 
         $message = sprintf(
-            '取込が完了しました。テナント登録 %d 件 / ビル名が空でスキップ %d 件 / 台帳に無いビルでスキップ %d 件',
+            '取込が完了しました。テナント登録 %d 件 / ビル名が空でスキップ %d 件 / 値が不正でスキップ %d 件 / 台帳に無いビルでスキップ %d 行',
             $created,
             $blank,
-            count($unmatched)
+            $invalid,
+            $unmatchedRows
         );
 
-        if ($unmatched !== []) {
-            $names = array_keys($unmatched);
-            $shown = array_slice($names, 0, 10);
-            $message .= '（' . implode(' / ', $shown);
-            if (count($names) > count($shown)) {
-                $message .= sprintf(' ほか %d 件', count($names) - count($shown));
-            }
-            $message .= '）';
+        if ($unmatchedNames !== []) {
+            $message .= sprintf('（%d 棟: %s）', count($unmatchedNames), $this->joinNames(array_keys($unmatchedNames)));
+        }
+
+        // ⚠ 再取込は行を二重にする（突合キーが設計に無いので重複判定ができない）。
+        //   `AreaBuildingController::divergence()` が現況テナント数と調査回の件数を
+        //   突き合わせるため、二重取込は乖離警告に嘘の数字を出させる。
+        //   せめて「今そのビルに何件あるか」を返して、その場で気づけるようにする。
+        if ($touched !== []) {
+            $message .= ' 取込後の現況テナント数: ' . $this->currentTenantTotals($touched);
         }
 
         return $message;
+    }
+
+    /**
+     * 取込対象になったビルの現況テナント数。
+     *
+     * @param  array<int, AreaBuilding>  $buildings
+     */
+    private function currentTenantTotals(array $buildings): string
+    {
+        $counts = AreaBuildingTenant::whereIn('area_building_id', array_keys($buildings))
+            ->whereNull('moved_out_on')
+            ->selectRaw('area_building_id, COUNT(*) as aggregate')
+            ->groupBy('area_building_id')
+            ->pluck('aggregate', 'area_building_id');
+
+        $shown = array_slice($buildings, 0, self::MAX_NAMES_IN_MESSAGE, true);
+        $parts = [];
+        foreach ($shown as $id => $building) {
+            $parts[] = $building->name . ' ' . (int) ($counts[$id] ?? 0) . ' 件';
+        }
+
+        $text = implode(' / ', $parts);
+        if (count($buildings) > count($shown)) {
+            $text .= sprintf(' ほか %d 棟', count($buildings) - count($shown));
+        }
+
+        return $text;
+    }
+
+    /** @param  list<string>  $names */
+    private function joinNames(array $names): string
+    {
+        $shown = array_slice($names, 0, self::MAX_NAMES_IN_MESSAGE);
+        $text  = implode(' / ', $shown);
+
+        if (count($names) > count($shown)) {
+            $text .= sprintf(' ほか %d 件', count($names) - count($shown));
+        }
+
+        return $text;
     }
 
     // ============================================================
@@ -267,26 +353,50 @@ class AreaBuildingImportController extends Controller
     // ============================================================
 
     /**
-     * 正規化したビル名 → id。
+     * 正規化したビル名 → ビル。
      *
-     * ⚠ 同じキーに複数のビルがぶら下がる場合は id の小さいほうを採る（後勝ちにしない）。
-     * ⚠ 台帳が数千棟になったら SQL 側の突合へ移す。現状の想定は数十〜数百棟。
+     * ⚠ 同じキーに複数のビルがぶら下がる場合は **id の小さいほう**を採る（後勝ちにしない）。
+     *   `orderBy('id')` がそれを担保している。
+     * ⚠ **モデルごと持つ**（id だけにすると 1 行ごとに find() が飛び、100 行で 100 往復になる）。
+     *   台帳が数千棟になったら SQL 側の突合へ移す。現状の想定は数十〜数百棟。
      * ⚠ SoftDeletes は含めない（削除済みのビルに調査回を足さない）。同名で登録し直される。
      *
-     * @return array<string, int>
+     * @return array<string, AreaBuilding>
      */
     private function buildingMapByNormalizedName(): array
     {
         $map = [];
 
-        foreach (AreaBuilding::orderBy('id')->get(['id', 'name']) as $building) {
+        foreach (AreaBuilding::orderBy('id')->get(['id', 'name', 'address', 'total_floors']) as $building) {
             $key = AreaBuilding::normalizeName($building->name);
             if ($key !== '' && ! isset($map[$key])) {
-                $map[$key] = $building->id;
+                $map[$key] = $building;
             }
         }
 
         return $map;
+    }
+
+    /**
+     * 既に登録済みの「ビル id + 調査年月」の集合を 1 クエリで先読みする。
+     *
+     * @param  array<string, AreaBuilding>  $map
+     * @return array<string, true>
+     */
+    private function existingSurveyMonths(array $map): array
+    {
+        if ($map === []) {
+            return [];
+        }
+
+        $ids = array_map(static fn (AreaBuilding $b) => $b->id, array_values($map));
+
+        $taken = [];
+        foreach (AreaBuildingSurvey::whereIn('area_building_id', $ids)->get(['area_building_id', 'surveyed_month']) as $survey) {
+            $taken[$survey->area_building_id . '|' . $survey->surveyed_month->format('Y-m-d')] = true;
+        }
+
+        return $taken;
     }
 
     /**
@@ -307,19 +417,32 @@ class AreaBuildingImportController extends Controller
     }
 
     /**
-     * 階数のような「任意の整数列」。読めない値・範囲外は null（未設定）に落とす。
-     * ⚠ 行そのものは捨てない — 件数と違って集計に効かない補助情報なので、
-     *   1 列の汚れで調査回を落とすほうが損失が大きい。
+     * 総階数。'10階建' '地上5階' も読む。地下は総階数として不正。
+     *
+     * @return int|null|false null = 空欄 / false = 読めない・範囲外（行ごと弾く）
      */
-    private function parseBounded(mixed $raw, int $min, int $max): ?int
+    private function parseFloors(mixed $raw): int|null|false
     {
-        $value = $this->parseInt($raw);
+        return $this->bounded(FloorNumber::parse($raw, false), self::MIN_FLOORS, self::MAX_FLOORS);
+    }
 
+    /**
+     * テナントの階。'1F' 'B1' '2階' '地下1階' を読む（地下は負数）。
+     *
+     * @return int|null|false null = 空欄 / false = 読めない・範囲外（行ごと弾く）
+     */
+    private function parseTenantFloor(mixed $raw): int|null|false
+    {
+        return $this->bounded(FloorNumber::parse($raw, true), self::MIN_TENANT_FLOOR, self::MAX_FLOORS);
+    }
+
+    private function bounded(int|null|false $value, int $min, int $max): int|null|false
+    {
         if (! is_int($value)) {
-            return null;
+            return $value;      // null（空欄）/ false（読めない）はそのまま
         }
 
-        return ($value >= $min && $value <= $max) ? $value : null;
+        return ($value >= $min && $value <= $max) ? $value : false;
     }
 
     /**
@@ -348,7 +471,7 @@ class AreaBuildingImportController extends Controller
         }
 
         // ⚠ 桁あふれは (int) が PHP_INT_MAX / PHP_INT_MIN に飽和させるが、呼び出し元
-        //   （parseCount / parseBounded）が必ず範囲で弾くので、ここで桁数を制限しない。
+        //   （parseCount / bounded）が必ず範囲で弾くので、ここで桁数を制限しない。
         //   ⚠ 桁数の上限を重ねると、範囲チェックを壊す変異が検出できなくなる（Bug #48）。
         return preg_match('/\A-?\d+\z/', $s) === 1 ? (int) $s : false;
     }
@@ -357,8 +480,9 @@ class AreaBuildingImportController extends Controller
      * 「2026年8月」「2026/08」「2026-08-15」などを 'Y-m' に正規化する。
      *
      * ⚠ 画面側は Excel の日付セルを 'YYYY-MM-DD' に整形して送ってくる
-     *   （import.blade.php の cellText()）。日付セルをそのまま送るとシリアル値
+     *   （import.blade.php の areaImportCellText()）。日付セルをそのまま送るとシリアル値
      *   '45809' になり、ここで読めず無音で画面の既定月に落ちる（2026-08-17 実測）。
+     *   ⚠ 読めなかったことはプレビューが警告する（areaImportMonthIsReadable）。
      */
     private function parseMonth(mixed $raw): ?string
     {
@@ -390,6 +514,8 @@ class AreaBuildingImportController extends Controller
     {
         $s = $this->text($raw);
 
+        // ⚠ mb_substr は VARCHAR 長の防波堤。SQLite は長さを強制しないので、外すと
+        //   本番 MySQL でだけ 1406 Data too long で 500 になる（Bug #40）
         return $s === '' ? null : mb_substr($s, 0, $max);
     }
 

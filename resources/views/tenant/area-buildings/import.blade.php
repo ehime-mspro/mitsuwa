@@ -54,6 +54,8 @@
         </div>
         <p class="mt-3 text-xs text-gray-500" x-show="kind === 'tenants'">
             テナント明細は、台帳に既にあるビル名の行だけを取り込みます。台帳に無いビルは作成しません。
+            <strong class="text-amber-700">同じファイルを 2 回取り込むと行が二重になります</strong>（既存行との突合は行いません）。
+            取込後に表示される現況テナント数を確認してください。
         </p>
     </div>
 
@@ -68,11 +70,11 @@
                 ファイルを選択
                 <input type="file" accept=".xlsx,.xls,.csv" @change="onFile($event)" style="display:none;">
             </label>
-            <div style="font-size: 11px; color: #9ca3af; margin-top: 10px;">列の並びは自由です。次のステップで対応を指定できます。</div>
+            <div style="font-size: 11px; color: #9ca3af; margin-top: 10px;">列の並びは自由です。次のステップで対応を指定できます（上限 5 MB）。</div>
         </div>
     </div>
 
-    {{-- STEP 2: 列マッピング --}}
+    {{-- STEP 2: シート・ヘッダー行・列マッピング --}}
     <div class="bg-white border border-gray-200 rounded-lg p-5 mb-3" x-show="step === 2">
         <div class="text-sm font-bold text-gray-800 pb-2 mb-3.5 border-b border-gray-200">2. 列マッピング</div>
         <p class="text-xs text-gray-600 mb-3"><strong x-text="fileName"></strong> を読み込みました。</p>
@@ -82,6 +84,16 @@
             {{-- option は JS から動的注入する（x-for で option を作らない。Bug #16） --}}
             <select id="area-import-sheet" @change="selectedSheet = $event.target.value; loadSheet();"
                     class="form-input w-full sm:w-72 h-[40px] px-3 border border-gray-300 rounded-md text-sm"></select>
+        </div>
+
+        {{-- ヘッダー行。1 行目がタイトルの Excel（日本語の業務ファイルでは普通）だと
+             自動検出だけでは足りず、タイトル文字列がビル名として取り込まれる。
+             option は JS 動的注入（Bug #16） --}}
+        <div class="mb-3">
+            <label class="block text-sm font-semibold text-gray-700 mb-1">ヘッダー行</label>
+            <select id="area-import-header-row" @change="onHeaderRowChange($event)"
+                    class="form-input w-full sm:w-[420px] h-[40px] px-3 border border-gray-300 rounded-md text-sm"></select>
+            <p class="mt-1 text-xs text-gray-500">見出しが並ぶ行を自動検出しています。1 行目がタイトルの表など、違っていれば変更してください。</p>
         </div>
 
         <div class="scroll-hint at-start">
@@ -139,13 +151,18 @@
             <input type="hidden" name="surveyed_month" :value="kind === 'buildings' ? surveyedMonth : ''">
             <input type="hidden" name="rows" :value="payload()">
             <div class="flex flex-col sm:flex-row gap-2">
-                <button type="submit" :disabled="okRows().length === 0"
-                        class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-md transition-colors disabled:opacity-50">
-                    この内容で取り込む
-                </button>
+                {{-- ⚠ 押せない理由は **ラッパーの span** に置く。disabled なボタン自身の title は
+                     どのブラウザでも表示されない（Bug #43）。'' でなく null で属性ごと消す --}}
+                <span :title="submitBlockedReason()" style="display: inline-flex;">
+                    <button type="submit" :disabled="submitBlockedReason() !== null"
+                            class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-md transition-colors disabled:opacity-50">
+                        この内容で取り込む
+                    </button>
+                </span>
                 <button type="button" @click="step = 2"
                         class="px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-semibold rounded-md hover:bg-gray-50 transition-colors">戻る</button>
             </div>
+            <p class="mt-2 text-xs text-red-600" x-show="submitBlockedReason() !== null" x-text="submitBlockedReason()"></p>
         </form>
     </div>
 
@@ -183,6 +200,17 @@ var AREA_IMPORT_TARGETS = {
     ]
 };
 
+// 階の表記ゆれの語彙。**App\Support\FloorNumber の定数と同じ値**であること。
+// 割れるとプレビューが「取り込める」と言った行をサーバが弾く（Bug #41）。
+// 一致は AreaBuildingImportTest::test_floor_vocabulary_matches_between_php_and_js が固定する。
+var AREA_IMPORT_FLOOR_TOKENS = {"basement":["B","Ｂ","地下"],"aboveGround":["地上"],"suffix":["階建て","階建","階","Ｆ","F","f"]};
+
+// サーバ側の範囲（AreaBuildingImportController の公開定数）と同じ値であること。
+var AREA_IMPORT_LIMITS = {"maxCount":9999,"minFloors":0,"maxFloors":200,"minTenantFloor":-10,"minYear":1900};
+
+// ヘッダー行の自動検出で走査する行数
+var AREA_IMPORT_HEADER_SCAN_ROWS = 50;
+
 /**
  * セルの値を文字列にする。
  * ⚠ Date を素の String() に通すと 'Sun Jun 01 2025 00:00:00 GMT+0900 (…)' になり、
@@ -198,10 +226,62 @@ function areaImportCellText(v) {
     return String(v).trim();
 }
 
-function areaImportNormalizeNumber(raw) {
+function areaImportToHalfWidth(raw) {
     return String(raw === undefined || raw === null ? '' : raw)
-        .replace(/[０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); })
-        .replace(/[,，\s　円¥￥]/g, '');
+        .replace(/[０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); });
+}
+
+function areaImportNormalizeNumber(raw) {
+    return areaImportToHalfWidth(raw).replace(/[,，\s　円¥￥]/g, '');
+}
+
+/**
+ * 階の正規化。App\Support\FloorNumber::parse() と同じ判定にすること。
+ * 返り値: { state: 'blank' | 'bad' | 'ok', value: number|null }
+ */
+function areaImportParseFloor(raw, allowBasement) {
+    if (raw === undefined || raw === null) { return { state: 'blank', value: null }; }
+
+    var s = areaImportToHalfWidth(raw).trim().replace(/[,，\s　]/g, '');
+    if (s === '') { return { state: 'blank', value: null }; }
+
+    var t = AREA_IMPORT_FLOOR_TOKENS;
+    var i;
+
+    for (i = 0; i < t.aboveGround.length; i++) {
+        if (s.indexOf(t.aboveGround[i]) === 0) { s = s.slice(t.aboveGround[i].length); break; }
+    }
+
+    var basement = false;
+    for (i = 0; i < t.basement.length; i++) {
+        if (s !== '' && s.indexOf(t.basement[i]) === 0) { basement = true; s = s.slice(t.basement[i].length); break; }
+    }
+
+    for (i = 0; i < t.suffix.length; i++) {
+        if (s !== '' && s.slice(-t.suffix[i].length) === t.suffix[i]) { s = s.slice(0, s.length - t.suffix[i].length); break; }
+    }
+
+    if (!/^-?\d+$/.test(s)) { return { state: 'bad', value: null }; }
+
+    var v = parseInt(s, 10);
+    if (basement) {
+        if (v < 0) { return { state: 'bad', value: null }; }
+        v = -v;
+    }
+    if (!allowBasement && v < 0) { return { state: 'bad', value: null }; }
+
+    return { state: 'ok', value: v };
+}
+
+/** 調査年月が読めるか。App\Support 側は AreaBuildingImportController::parseMonth()。 */
+function areaImportMonthIsReadable(raw) {
+    var s = areaImportToHalfWidth(raw).trim()
+        .replace(/[年\/.]/g, '-')
+        .replace(/月$/, '');
+    var m = /^(\d{4})-(\d{1,2})(?:-\d{1,2})?$/.exec(s);
+    if (!m) { return false; }
+    var month = Number(m[2]);
+    return Number(m[1]) >= AREA_IMPORT_LIMITS.minYear && month >= 1 && month <= 12;
 }
 
 function areaImportForm() {
@@ -211,7 +291,9 @@ function areaImportForm() {
         fileName: '',
         sheets: [],
         selectedSheet: '',
-        surveyedMonth: '',
+        // ⚠ 既定を当月にする。空のまま送ると required_if で差し戻され、back() の
+        //   フルリロードで解析済みのファイル・マッピング・プレビューが全部消える
+        surveyedMonth: '{{ now()->format('Y-m') }}',
         allRows: [],
         headerRowIndex: 0,
         columns: [],
@@ -232,6 +314,13 @@ function areaImportForm() {
             this._workbook = null;
         },
 
+        /** 送信できない理由（押せるときは null。Bug #43: 属性ごと消すため '' にしない） */
+        submitBlockedReason: function () {
+            if (this.kind === 'buildings' && !this.surveyedMonth) { return '調査年月を入力してください。'; }
+            if (this.okRows().length === 0) { return '取り込める行がありません。'; }
+            return null;
+        },
+
         onFile: async function (e) {
             var file = e.target.files && e.target.files[0];
             if (file) { await this.readExcel(file); }
@@ -243,6 +332,10 @@ function areaImportForm() {
         },
 
         readExcel: async function (file) {
+            if (file.size > 5 * 1024 * 1024) {
+                alert('ファイルサイズが大きすぎます（上限 5 MB）。');
+                return;
+            }
             if (typeof XLSX === 'undefined') {
                 alert('Excel 読み込みライブラリが読み込まれていません。ページを再読み込みしてください。');
                 return;
@@ -285,10 +378,76 @@ function areaImportForm() {
             if (!this._workbook) { return; }
             var ws = this._workbook.Sheets[this.selectedSheet];
             this.allRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-            var first = this.allRows.findIndex(function (r) {
+            this.headerRowIndex = this.detectHeaderRow();
+            this.buildColumns();
+            this.renderMapping();
+            this.populateHeaderRowSelect();
+        },
+
+        /**
+         * 見出しが並ぶ行を上から 50 行走査して選ぶ。
+         *
+         * ⚠ 「最初の非空行」固定にしてはいけない。1 行目がタイトル
+         *   （例: '周辺ビル調査表（2026年8月）'）の Excel だと、その文字列がビル名の
+         *   guess に当たってマッピングが付き、**'ビル名' という架空のビルが台帳に入る**。
+         *   しかもプレビューは警告 0 行、結果メッセージは「新規 3 件」と完全成功に見える。
+         * 判定は「マッピング対象が 2 つ以上ヒットする行」。1 つだけの行はタイトルでも
+         * 起こりうるので採らない。見つからなければ最初の非空行へフォールバック。
+         */
+        detectHeaderRow: function () {
+            var rows = this.allRows;
+            var targets = this.targets();
+            var limit = Math.min(rows.length, AREA_IMPORT_HEADER_SCAN_ROWS);
+
+            for (var i = 0; i < limit; i++) {
+                var row = rows[i] || [];
+                var hits = {};
+                for (var c = 0; c < row.length; c++) {
+                    var text = areaImportCellText(row[c]).replace(/\s/g, '');
+                    if (!text) { continue; }
+                    for (var t = 0; t < targets.length; t++) {
+                        if (targets[t].guess.test(text)) { hits[targets[t].key] = true; }
+                    }
+                }
+                if (Object.keys(hits).length >= 2) { return i; }
+            }
+
+            var first = rows.findIndex(function (r) {
                 return r.some(function (v) { return areaImportCellText(v) !== ''; });
             });
-            this.headerRowIndex = first >= 0 ? first : 0;
+            return first >= 0 ? first : 0;
+        },
+
+        populateHeaderRowSelect: function () {
+            var self = this;
+            // option は JS 動的注入（x-for で option を作らない。Bug #16）
+            this.$nextTick(function () {
+                var sel = document.getElementById('area-import-header-row');
+                if (!sel) { return; }
+                sel.innerHTML = '';
+                var limit = Math.min(self.allRows.length, AREA_IMPORT_HEADER_SCAN_ROWS);
+                for (var i = 0; i < limit; i++) {
+                    var row = self.allRows[i] || [];
+                    var cells = [];
+                    for (var c = 0; c < row.length && cells.length < 5; c++) {
+                        var v = areaImportCellText(row[c]);
+                        if (v) { cells.push(v); }
+                    }
+                    var label = cells.join(' / ') || '（空）';
+                    if (label.length > 60) { label = label.substring(0, 60) + '…'; }
+                    var opt = document.createElement('option');
+                    opt.value = String(i);
+                    opt.textContent = (i + 1) + '行目: ' + label;
+                    if (i === self.headerRowIndex) { opt.selected = true; }
+                    sel.appendChild(opt);
+                }
+            });
+        },
+
+        onHeaderRowChange: function (e) {
+            var v = parseInt(e.target.value, 10);
+            if (isNaN(v) || v < 0) { return; }
+            this.headerRowIndex = v;
             this.buildColumns();
             this.renderMapping();
         },
@@ -369,14 +528,27 @@ function areaImportForm() {
             var map = {};
             this.columns.forEach(function (c) { if (c.mapping) { map[c.mapping] = c.idx; } });
 
+            var isBuildings = this.kind === 'buildings';
+
+            // 必須マッピングのガード。ビル名が無い / 件数列が 1 つも無いまま進むと、
+            // 「0/0/0 の調査回」が入り、正しいファイルで取り直しても同一年月スキップで直せない
+            if (map[isBuildings ? 'name' : 'building_name'] === undefined) {
+                alert('「ビル名」列を指定してください。');
+                return;
+            }
+            if (isBuildings && map.operating === undefined && map.vacant === undefined && map.unknown === undefined) {
+                alert('「営業」「空き」「不明」のうち少なくとも 1 列を指定してください。');
+                return;
+            }
+
             var body = this.allRows.slice(this.headerRowIndex + 1).filter(function (r) {
                 return r.some(function (v) { return areaImportCellText(v) !== ''; });
             });
 
-            var isBuildings = this.kind === 'buildings';
             var cell = function (row, key) {
                 return map[key] === undefined ? '' : areaImportCellText(row[map[key]]);
             };
+            var limits = AREA_IMPORT_LIMITS;
 
             this.previewRows = body.map(function (r) {
                 var out = {};
@@ -392,13 +564,24 @@ function areaImportForm() {
                     out.surveyed_month = cell(r, 'surveyed_month');
 
                     if (out.name === '') { warnings.push('ビル名が空'); }
+
                     ['operating', 'vacant', 'unknown'].forEach(function (key) {
                         var v = areaImportNormalizeNumber(out[key]);
                         if (v === '') { return; }
                         if (!/^\d+$/.test(v)) { warnings.push(key + ' が数値でない'); return; }
-                        // サーバ側の上限（INT UNSIGNED / max:9999）と揃える
-                        if (Number(v) > 9999) { warnings.push(key + ' が大きすぎる'); }
+                        if (Number(v) > limits.maxCount) { warnings.push(key + ' が 0〜' + limits.maxCount + ' の範囲外'); }
                     });
+
+                    var floors = areaImportParseFloor(out.total_floors, false);
+                    if (floors.state === 'bad') {
+                        warnings.push('階数が読めない');
+                    } else if (floors.state === 'ok' && (floors.value < limits.minFloors || floors.value > limits.maxFloors)) {
+                        warnings.push('階数が ' + limits.minFloors + '〜' + limits.maxFloors + ' の範囲外');
+                    }
+
+                    if (out.surveyed_month !== '' && !areaImportMonthIsReadable(out.surveyed_month)) {
+                        warnings.push('調査年月が読めない');
+                    }
                 } else {
                     out.building_name = cell(r, 'building_name');
                     out.floor = cell(r, 'floor');
@@ -408,6 +591,13 @@ function areaImportForm() {
                     out.status = cell(r, 'status');
 
                     if (out.building_name === '') { warnings.push('ビル名が空'); }
+
+                    var floor = areaImportParseFloor(out.floor, true);
+                    if (floor.state === 'bad') {
+                        warnings.push('階が読めない');
+                    } else if (floor.state === 'ok' && (floor.value < limits.minTenantFloor || floor.value > limits.maxFloors)) {
+                        warnings.push('階が ' + limits.minTenantFloor + '〜' + limits.maxFloors + ' の範囲外');
+                    }
                 }
 
                 out._warnings = warnings;
