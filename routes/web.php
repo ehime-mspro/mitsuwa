@@ -478,7 +478,10 @@ Route::middleware(['auth', 'password.change'])->group(function () {
                 ->name('tenant.area-buildings.import.execute');
         });
 
-        // ⚠ /area-buildings/geocode はこの行より上に置くこと
+        // 座標の一括取得（経営層+管理者）。⚠ /{building} より上に置くこと
+        Route::post('/area-buildings/geocode', [\App\Http\Controllers\Tenant\AreaBuildingController::class, 'storeCoordinates'])
+            ->middleware('role:executive,manager')
+            ->name('tenant.area-buildings.geocode');
 
         // 詳細（全ロール閲覧可）
         Route::get('/area-buildings/{building}', [\App\Http\Controllers\Tenant\AreaBuildingController::class, 'show'])

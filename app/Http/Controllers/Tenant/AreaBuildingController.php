@@ -20,13 +20,104 @@ use Illuminate\Support\Facades\DB;
  */
 class AreaBuildingController extends Controller
 {
+    /**
+     * 1 回の一括取得で Google に投げる上限（設計 §7.4）。
+     * ⚠ 無制限にすると、取込ミスで大量の行が入ったときにそのままリクエストが飛ぶ。
+     */
+    public const GEOCODE_BATCH_LIMIT = 200;
+
     public function index(Request $request, AreaBuildingListService $service)
     {
+        $canEdit = $request->user()->role->isManagerOrAbove();
+
+        // 座標未取得の候補は、ボタンを出す人にだけ渡す（画面に住所を撒かない・無駄な検索もしない）
+        $pendingCount = $canEdit ? AreaBuilding::pendingGeocodeCount() : 0;
+        $pending      = $pendingCount > 0
+            ? AreaBuilding::pendingGeocode(self::GEOCODE_BATCH_LIMIT)
+                ->map(fn (AreaBuilding $b) => ['id' => $b->id, 'name' => $b->name, 'address' => $b->address])
+                ->values()
+                ->all()
+            : [];
+
         return view('tenant.area-buildings.index', [
-            'rows'           => $service->paginate($request),
-            'surveyYears'    => $service->surveyYears(),
-            'vacancyOptions' => AreaBuildingListService::VACANCY_OPTIONS,
+            'rows'                => $service->paginate($request),
+            'surveyYears'         => $service->surveyYears(),
+            'vacancyOptions'      => AreaBuildingListService::VACANCY_OPTIONS,
+            'pendingGeocode'      => $pending,
+            'pendingGeocodeCount' => $pendingCount,
+            'geocodeBatchLimit'   => self::GEOCODE_BATCH_LIMIT,
         ]);
+    }
+
+    /**
+     * ブラウザで取得した座標をまとめて保存する（設計 §7.4）。
+     *
+     * ⚠ 既に座標がある行は更新しない。手で直した位置を一括処理で潰さないため。
+     */
+    public function storeCoordinates(Request $request)
+    {
+        // ⚠ 1 行にまとめると走査正規表現の `\n\s*\]` 要件を満たさず、和名チェックの
+        //   対象から外れる（2026-08-16 実測）。閉じ括弧を行頭に置く形で書くこと。
+        $validated = $request->validate([
+            'coordinates' => 'required|string',
+        ], [], [
+            'coordinates' => '取得した座標',
+        ]);
+
+        $decoded = json_decode($validated['coordinates'], true);
+
+        if (! is_array($decoded)) {
+            return redirect()->route('tenant.area-buildings.index')
+                ->with('error', '座標データを解釈できませんでした。もう一度お試しください。');
+        }
+
+        $updated = 0;
+
+        // ⚠ **ここは意図的に DB::transaction() で囲まない。** 囲むのは積極的に間違い:
+        //   ① Geocoding API の課金はブラウザ側で**既に発生済み**。199 行目で落ちて 198 件を
+        //      巻き戻すと、もう一度 Google に払い直すことになる
+        //   ② `whereNull('latitude')` ガードがあるので**再実行が安全**
+        //      （部分成功のまま押し直せば残りだけ埋まる）
+        //   ③ 親子関係のある書き込みではなく独立した N 行の更新なので原子性が要らない
+        //   store()（親＋子を 1 リクエストで書く）を囲んだのとは状況が違う（Bug #48 の後半）。
+        //
+        // ⚠ `whereKey()->update()` はクエリビルダの一括更新なので**モデルイベントが発火しない**
+        //   （saving フックの住所正規化を素通りする）。今は address を触らないので無害だが、
+        //   将来フックに処理を足すときはこの経路が抜けることに注意。
+        //   なお `updated_at` は Eloquent\Builder::update() が自動で足すので更新される。
+        foreach (array_slice($decoded, 0, self::GEOCODE_BATCH_LIMIT) as $item) {
+            if (! is_array($item) || ! isset($item['id'], $item['latitude'], $item['longitude'])) {
+                continue;
+            }
+            // ⚠ id も数値であることを見る。配列を渡されると whereKey() が whereIn へ化け、
+            //   1 エントリで無関係な行まで一括更新されてしまう。
+            if (! is_numeric($item['id']) || ! is_numeric($item['latitude']) || ! is_numeric($item['longitude'])) {
+                continue;
+            }
+
+            $lat = (float) $item['latitude'];
+            $lng = (float) $item['longitude'];
+
+            if ($lat < -90 || $lat > 90 || $lng < -180 || $lng > 180) {
+                continue;
+            }
+
+            $updated += AreaBuilding::whereKey($item['id'])
+                ->whereNull('latitude')
+                ->update([
+                    'latitude'  => round($lat, 7),
+                    'longitude' => round($lng, 7),
+                ]);
+        }
+
+        $remaining = AreaBuilding::pendingGeocodeCount();
+
+        return redirect()->route('tenant.area-buildings.index')->with(
+            'success',
+            $remaining > 0
+                ? "{$updated} 件の座標を保存しました。座標未設定は残り {$remaining} 件です。"
+                : "{$updated} 件の座標を保存しました。座標未設定はありません。"
+        );
     }
 
     public function show(AreaBuilding $building)

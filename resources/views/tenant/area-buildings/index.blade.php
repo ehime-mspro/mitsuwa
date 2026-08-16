@@ -65,6 +65,32 @@
         </a>
     </form>
 
+    {{-- 座標の一括取得（経営層+管理者、未取得があるときだけ） --}}
+    @if($pendingGeocodeCount > 0)
+        <div class="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
+            <div class="flex flex-col sm:flex-row sm:items-center gap-2">
+                {{-- ⚠ 読み込み待ちで disabled にしない。Maps が読めない環境で「押せず理由も出ない」
+                     ボタンが残る（Bug #43）。未読込のクリックはスクリプト側が理由を出して弾く。 --}}
+                <button type="button" id="btn-bulk-geocode" onclick="runBulkGeocode()"
+                        class="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-md transition-colors disabled:opacity-50">
+                    座標未設定 {{ $pendingGeocodeCount }} 件を一括取得
+                </button>
+                <span class="text-xs text-blue-900">
+                    住所から座標を取得します。1 棟につき 1 回だけ問い合わせ、取得済みの棟は対象外です。
+                    @if($pendingGeocodeCount > $geocodeBatchLimit)
+                        <strong>今回は {{ $geocodeBatchLimit }} 件までで、残りは次回に回ります。</strong>
+                    @endif
+                </span>
+                <span id="geocode-progress" aria-live="polite" class="text-xs font-semibold text-blue-900"></span>
+            </div>
+        </div>
+
+        <form id="geocode-form" method="POST" action="{{ route('tenant.area-buildings.geocode') }}">
+            @csrf
+            <input type="hidden" name="coordinates" id="geocode-payload" value="">
+        </form>
+    @endif
+
     {{-- テーブル --}}
     <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
         <div class="scroll-hint at-start">
@@ -180,3 +206,72 @@
     </div>
 
 @endsection
+
+@if($pendingGeocodeCount > 0)
+@push('scripts')
+<script>
+// 座標一括取得。地図は生成しない（Geocoder だけ使う。設計 6.0）
+var areaGeocoder = null;
+var AREA_PENDING = {{ \Illuminate\Support\Js::from($pendingGeocode) }};
+
+function onAreaGeocodeReady() {
+    areaGeocoder = new google.maps.Geocoder();
+}
+
+function runBulkGeocode() {
+    var btn = document.getElementById('btn-bulk-geocode');
+    var progress = document.getElementById('geocode-progress');
+
+    // ⚠ ボタンを最初から disabled にする代わりのガード。単独で成立させること（Bug #48）
+    if (!areaGeocoder) {
+        alert('Google Maps を読み込み中です。しばらくお待ちください。');
+        return;
+    }
+    if (!confirm(AREA_PENDING.length + ' 件の住所から座標を取得します。よろしいですか？')) {
+        return;
+    }
+
+    var results = [];
+    var failed = 0;
+    var i = 0;
+    btn.disabled = true;
+
+    function finish(note) {
+        progress.textContent = note || ('取得 ' + results.length + ' 件 / 失敗 ' + failed + ' 件。保存しています…');
+        document.getElementById('geocode-payload').value = JSON.stringify(results);
+        document.getElementById('geocode-form').submit();
+    }
+
+    function step() {
+        if (i >= AREA_PENDING.length) { finish(); return; }
+
+        var item = AREA_PENDING[i];
+        progress.textContent = '取得中… ' + (i + 1) + ' / ' + AREA_PENDING.length + '（' + item.name + '）';
+
+        // ⚠ 1 棟につきフル住所で 1 回だけ。段階フォールバック（最大 5 回）は使わない。
+        //    失敗した棟は登録フォームから手で確定する（設計 7.4）
+        areaGeocoder.geocode({ address: item.address }, function (res, status) {
+            if (status === 'OK' && res[0]) {
+                results.push({
+                    id: item.id,
+                    latitude: res[0].geometry.location.lat(),
+                    longitude: res[0].geometry.location.lng()
+                });
+            } else if (status === 'OVER_QUERY_LIMIT') {
+                finish('Google の呼び出し上限に達しました。取得できた ' + results.length + ' 件だけ保存します。');
+                return;
+            } else {
+                failed++;
+            }
+            i++;
+            setTimeout(step, 120);
+        });
+    }
+
+    step();
+}
+</script>
+{{-- Google Maps API 読み込み。⚠ Blade で env() を直接呼ばない（Bug #17） --}}
+<script src="https://maps.googleapis.com/maps/api/js?key={{ config('services.google_maps.api_key') }}&callback=onAreaGeocodeReady&language=ja&region=JP" async defer></script>
+@endpush
+@endif
