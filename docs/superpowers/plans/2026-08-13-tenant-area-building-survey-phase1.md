@@ -5547,7 +5547,7 @@ compiled view の lint は 290 本 0 invalid（新規 3 ビューが対象に入
 - Modify: `routes/web.php`
 - Modify: `resources/views/tenant/area-buildings/show.blade.php`（「テナントを追加」＋行ごとの編集・削除）
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `tests/Feature/Tenant/AreaBuildingTenantCrudTest.php`:
 
@@ -5648,24 +5648,53 @@ class AreaBuildingTenantCrudTest extends AreaBuildingTestCase
         $this->assertSame(0, $building->tenants()->count());
     }
 
-    /** 項目名は画面ラベルどおり（第3引数の上書きが効いていること。Bug #37） */
+    /**
+     * 項目名は画面ラベルどおり（第3引数の上書きが効いていること。Bug #37）。
+     *
+     * ⚠ **`session('errors')` を触る前に assertSessionHasErrors を通すこと。**
+     *   通す前は生の配列で返り `->first()` が Error になる（2026-08-17 実測）。
+     * ⚠ **store と update の 2 入口でループさせる。** 片方だけだともう片方の第3引数を
+     *   消しても緑のまま通る（Bug #44。実測の M3b がこれ）。
+     */
     public function test_error_labels_match_the_screen(): void
     {
         $building = $this->makeBuilding('ミツワビル');
+        $tenant   = $this->makeTenant($building, ['name' => 'A']);
+        $manager  = $this->manager();
 
-        $response = $this->actingAs($this->manager())
-            ->from(route('tenant.area-buildings.tenants.create', $building))
-            ->post("/tenant/area-buildings/{$building->id}/tenants", [
-                'status'      => AreaTenantStatus::Operating->value,
-                'name'        => str_repeat('あ', 256),
-                'room_number' => str_repeat('A', 51),
-            ]);
+        $payload = [
+            'status'      => 'closed',
+            'name'        => str_repeat('あ', 256),
+            'room_number' => str_repeat('A', 51),
+            'floor'       => 999,
+        ];
 
-        $errors = session('errors');
-        $this->assertStringContainsString('テナント名', $errors->first('name'));
-        $this->assertStringNotContainsString('名称', $errors->first('name'));
-        $this->assertStringContainsString('部屋番号', $errors->first('room_number'));
-        $this->assertStringNotContainsString('号室', $errors->first('room_number'));
+        $entries = [
+            'store' => fn () => $this->actingAs($manager)
+                ->from(route('tenant.area-buildings.tenants.create', $building))
+                ->post("/tenant/area-buildings/{$building->id}/tenants", $payload),
+            'update' => fn () => $this->actingAs($manager)
+                ->from(route('tenant.area-buildings.tenants.edit', [$building, $tenant]))
+                ->put("/tenant/area-buildings/{$building->id}/tenants/{$tenant->id}", $payload),
+        ];
+
+        // キー => [画面のラベル, 上書きを外したときに出るグローバルの語]
+        $expected = [
+            'name'        => ['テナント名', '名称'],
+            'room_number' => ['部屋番号', '号室'],
+            'floor'       => ['階', '階数'],
+            'status'      => ['状態', 'ステータス'],
+        ];
+
+        foreach ($entries as $entry => $send) {
+            $send()->assertSessionHasErrors(array_keys($expected));
+            $errors = session('errors');
+
+            foreach ($expected as $key => [$screen, $global]) {
+                $this->assertStringContainsString($screen, $errors->first($key), "{$entry}() / {$key}");
+                $this->assertStringNotContainsString($global, $errors->first($key), "{$entry}() / {$key}");
+            }
+        }
     }
 
     public function test_tenant_of_another_building_is_404(): void
@@ -5773,7 +5802,7 @@ class AreaBuildingTenantCrudTest extends AreaBuildingTestCase
 }
 ```
 
-- [ ] **Step 2: テストが落ちることを確認する**
+- [x] **Step 2: テストが落ちることを確認する**
 
 ```bash
 vendor/bin/phpunit --filter AreaBuildingTenantCrudTest
@@ -5781,7 +5810,7 @@ vendor/bin/phpunit --filter AreaBuildingTenantCrudTest
 
 Expected: FAIL — 404
 
-- [ ] **Step 3: コントローラを書く**
+- [x] **Step 3: コントローラを書く**
 
 `app/Http/Controllers/Tenant/AreaBuildingTenantController.php`:
 
@@ -5795,6 +5824,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AreaBuilding;
 use App\Models\AreaBuildingTenant;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 /**
  * 周辺ビルの入居テナント（現況リスト）。Ajax ではなく別画面で追加・編集する（設計 §5.6）。
@@ -5817,15 +5847,22 @@ class AreaBuildingTenantController extends Controller
         //   和名チェックから丸ごと外れる（2026-08-16 実測）。store と update で重複するが、
         //   既存 185 ルートも同じ書き方をしている。
         $validated = $request->validate([
+            // 地下は負数（B1 = -1）。列は signed INT なので下限も要る
             'floor'        => 'nullable|integer|min:-10|max:200',
+            // ⚠ max:50 / max:255 / max:100 は本番 MySQL（strict）の VARCHAR 長に対する防波堤。
+            //   SQLite は長さを強制しないので、外してもテストは静かに緑になる（Bug #40）。
             'room_number'  => 'nullable|string|max:50',
             'name'         => 'nullable|string|max:255',
             'industry'     => 'nullable|string|max:100',
-            'status'       => 'required|in:operating,vacant,unknown',
+            // ⚠ `in:operating,vacant,unknown` と値を手で並べない。Enum に case を足したとき
+            //   「セレクトには出るのに保存できない」が無音で起きる（Bug #41 と同型）。
+            'status'       => ['required', Rule::enum(AreaTenantStatus::class)],
             'confirmed_on' => 'nullable|date',
             'moved_out_on' => 'nullable|date',
             'notes'        => 'nullable|string|max:2000',
         ], [], [
+            // ⚠ 第3引数が attributes（第2引数は messages）。Bug #37
+            //   グローバルは name→名称 / room_number→号室 / floor→階数 / status→ステータス
             'name'        => 'テナント名',
             'room_number' => '部屋番号',
             'floor'       => '階',
@@ -5838,6 +5875,10 @@ class AreaBuildingTenantController extends Controller
         // ⚠ validate() には載せない（項目名が要らないうえ、画面の入力項目ではない）
         if ($request->boolean('keep_adding')) {
             return redirect()->route('tenant.area-buildings.tenants.create', $building)
+                // ⚠ チェック状態だけを持ち越す。持ち越さないと連続入力のたびに入れ直しになり、
+                //   往復を減らすという目的が果たせない。⚠ 引数無しの withInput() にすると
+                //   前の行の入力（テナント名など）まで次の画面に残ってしまう。
+                ->withInput(['keep_adding' => '1'])
                 ->with('success', 'テナントを登録しました。続けて登録できます。');
         }
 
@@ -5865,15 +5906,22 @@ class AreaBuildingTenantController extends Controller
         //   和名チェックから丸ごと外れる（2026-08-16 実測）。store と update で重複するが、
         //   既存 185 ルートも同じ書き方をしている。
         $validated = $request->validate([
+            // 地下は負数（B1 = -1）。列は signed INT なので下限も要る
             'floor'        => 'nullable|integer|min:-10|max:200',
+            // ⚠ max:50 / max:255 / max:100 は本番 MySQL（strict）の VARCHAR 長に対する防波堤。
+            //   SQLite は長さを強制しないので、外してもテストは静かに緑になる（Bug #40）。
             'room_number'  => 'nullable|string|max:50',
             'name'         => 'nullable|string|max:255',
             'industry'     => 'nullable|string|max:100',
-            'status'       => 'required|in:operating,vacant,unknown',
+            // ⚠ `in:operating,vacant,unknown` と値を手で並べない。Enum に case を足したとき
+            //   「セレクトには出るのに保存できない」が無音で起きる（Bug #41 と同型）。
+            'status'       => ['required', Rule::enum(AreaTenantStatus::class)],
             'confirmed_on' => 'nullable|date',
             'moved_out_on' => 'nullable|date',
             'notes'        => 'nullable|string|max:2000',
         ], [], [
+            // ⚠ 第3引数が attributes（第2引数は messages）。Bug #37
+            //   グローバルは name→名称 / room_number→号室 / floor→階数 / status→ステータス
             'name'        => 'テナント名',
             'room_number' => '部屋番号',
             'floor'       => '階',
@@ -5918,7 +5966,7 @@ class AreaBuildingTenantController extends Controller
 }
 ```
 
-- [ ] **Step 4: ルートを足す**
+- [x] **Step 4: ルートを足す**
 
 調査回のルートの直後に、同じ形で `tenants` を追加する:
 
@@ -5939,7 +5987,7 @@ class AreaBuildingTenantController extends Controller
             ->name('tenant.area-buildings.tenants.destroy');
 ```
 
-- [ ] **Step 5: テナントフォームのビューを書く**
+- [x] **Step 5: テナントフォームのビューを書く**
 
 `resources/views/tenant/area-buildings/tenants/_form.blade.php`:
 
@@ -6024,14 +6072,28 @@ class AreaBuildingTenantController extends Controller
 `edit.blade.php` は `@method('PUT')` ＋ `tenants.update` ＋ `submit-label="更新する"`。
 **「保存して続けて登録」のチェックボックスは編集画面には出さない。**
 
-- [ ] **Step 6: 詳細画面に導線を足す**
+⚠ 各項目に `@error('<key>') <p …>{{ $message }}</p> @enderror` を付ける（調査回の `_form` と同形）。
+⚠ **create 画面に `session('success')` の表示を足さない** — `layouts/app.blade.php` が既に描画する
+ので、「保存して続けて登録」の完了メッセージが二重に出る。
+
+- [x] **Step 6: 詳細画面に導線を足す**
 
 入居テナントカードのヘッダーに「テナントを追加」ボタン（Task 9 の「調査を追加」と同形、
 リンク先は `route('tenant.area-buildings.tenants.create', $building)`）。
 
-テナント表に操作列を足す（`<colgroup>` の最後に `<col style="width:12%">` を足し「業種」を `18%` → `12%` に、
-`<thead>` に `操作`、各行の末尾に編集・削除ボタン。調査履歴と同形で
+テナント表に操作列を足す（`<thead>` に `操作`、各行の末尾に編集・削除ボタン。調査履歴と同形で
 `tenants.edit` / `tenants.destroy` を使う）。空行の `colspan="6"` を `colspan="7"` に変える。
+
+⚠ **`<colgroup>` は 7 列ぶんを書き直して合計 100% にする。** 当初の指示「最後に `<col style="width:12%">`
+を足し 業種 18%→12%」だと `9+13+28+12+10+22+12 = 106%` になる（実測）。
+採用値: `8 / 12 / 26 / 14 / 10 / 14 / 16`。合計は `test_tenant_table_column_widths_add_up` が固定する。
+⚠ **`min-width` も `720px` → `900px` に上げる**（「操作」列のボタン 2 個で実測 約 106px 必要。
+調査履歴も同じ理由で `760px` → `900px` にしてある）。
+
+⚠ **操作ボタンは `tenants/_row_actions.blade.php` に切り出し、現況リストと退去済みリストの
+両方から `@include` する。** 退去日を入れた行は現況リストから外れるので、折りたたみ側に導線が
+無いと**退去日の打ち間違いを二度と直せない**。同じマークアップを 2 か所に写すと片方だけ直す
+事故になる（Bug #41 / #44）。
 
 削除確認は**行ごと**なので `<x-delete-confirm-modal>` は使えない（§1-12）。`confirm()` にするが、
 **テナント名は利用者の自由入力**なので JS 文字列へ生で差し込まないこと:
@@ -6048,7 +6110,7 @@ onsubmit="return confirm({{ \Illuminate\Support\Js::from($tenant->name ?: 'こ�
 JSON エンコードで、**クォートごと**返すので HTML 属性の中でも JS 文字列としても安全。
 **正しい前例が既にある**: `resources/views/zeal/plans/index.blade.php:143`。
 
-- [ ] **Step 7: テストが通ることを確認する**
+- [x] **Step 7: テストが通ることを確認する**
 
 ```bash
 vendor/bin/phpunit --filter 'AreaBuildingTenantCrudTest|AreaBuildingShowTest'
@@ -6057,27 +6119,51 @@ vendor/bin/phpunit --filter 'AreaBuildingTenantCrudTest|AreaBuildingShowTest'
 Expected: PASS（Tenant 11 本 ＋ Show は現状の本数）。
 ⚠ Show の本数は動くので数字を当てにしない。**「1 本も赤が無いか」で見る。**
 
-- [ ] **Step 8: 変異テストで 5 通り確認する**
+- [x] **Step 8: 変異テストで確認する（実測 18 通り・全部赤）**
 
-| # | 変異 | 期待 |
+⚠ **当初この表は 10 行で、うち 2 行は Task 9 のコードを指していて Task 10 では当たらなかった**
+（下記「実測との食い違い」③④）。実際に走らせた 18 通りと、それぞれを検出したテストは次のとおり。
+`2026-08-17` 実測、`--filter AreaBuildingTenantCrudTest`（26 本）。
+
+| # | 変異 | 検出したテスト |
 |---|---|---|
-| 1 | `assertOwnedBy()` の中身を空にする | `test_tenant_of_another_building_is_404` が赤 |
-| 2 | `store()` の `keep_adding` 分岐を削除 | `test_keep_adding_returns_to_the_create_screen` が赤 |
-| 3 | `validate()` 第3引数の `'name' => 'テナント名'` を削除 | `test_error_labels_match_the_screen` が赤（グローバルは「名称」） |
-| 4 | ルートの `role:executive,manager` を `role:manager` に | `test_executive_can_add_and_edit` が赤 |
-| 5 | `_form.blade.php` の状態 option を `<template x-for>` に | `test_status_options_are_static` が赤 |
-| 6 | `tenants/edit.blade.php` の `@method('PUT')` を削除 | 往復テストが赤（下記） |
-| 7 | `tenants/edit.blade.php` の `action` を `tenants.store` に | 往復テストが赤（**編集のはずが新規が増える**） |
-| 8 | `show.blade.php` の行削除フォームの `@method('DELETE')` を削除 | 削除の往復テストが赤 |
-| 9 | `store()`/`update()` の `->withInput()` を削除 | 差し戻しテストが赤 |
-| 10 | `min:0` / `max:9999` / `required` を 1 つずつ外す | バリデーション表テストが赤 |
+| 1 | `assertOwnedBy()` の中身を空にする | `test_tenant_of_another_building_is_404` |
+| 2 | `store()` の `keep_adding` 分岐を削除 | `test_keep_adding_returns_to_the_create_screen` ＋ `..._stays_checked` |
+| 3 | **store** の第3引数 `'name' => 'テナント名'` を削除 | `test_error_labels_match_the_screen` |
+| 3b | **update** の第3引数 `'name' => 'テナント名'` を削除 | 同上（**入口ごとに回さないとこれを見逃す**。Bug #44） |
+| 4 | ルートの `role:executive,manager` を `role:manager` に | `test_executive_can_add_and_edit` ＋ `test_moved_out_rows_keep_their_actions` |
+| 5 | `_form.blade.php` の状態 option を `<template x-for>` に | `test_status_options_are_static` |
+| 6 | `tenants/edit.blade.php` の `@method('PUT')` を削除 | `test_edit_form_round_trips_unchanged` ほか 2 本 |
+| 7 | `tenants/edit.blade.php` の `action` を `tenants.store` に | 同上 ＋ `test_input_survives_a_validation_error_on_the_edit_screen` |
+| 8 | `_row_actions.blade.php` の `@method('DELETE')` を削除 | `test_delete_form_round_trips` ＋ `test_moved_out_rows_keep_their_actions` |
+| 9 | `_form.blade.php` の `old('name', …)` を `$tenant?->name` に | `test_input_survives_a_validation_error`（store / edit の 2 本） |
+| 9b | `store()` の `withInput(['keep_adding' => '1'])` を削除 | `test_keep_adding_can_be_checked_on_the_form_and_stays_checked` |
+| 9c | `create.blade.php` の `{{ old('keep_adding') ? 'checked' : '' }}` を削除 | 同上 |
+| 10a | **store** の `room_number` から `max:50` を外す | `test_invalid_input_is_rejected_on_both_entry_points` ほか 2 本 |
+| 10b | **update** の `floor` から `min:-10` を外す | `test_invalid_input_is_rejected_on_both_entry_points` |
+| 10c | **update** の `status` を `required` → `nullable` に | 同上 |
+| 11 | `Rule::enum(...)` を手書きの `in:operating,vacant` に（case を 1 つ落とす） | `test_every_status_case_is_accepted_on_both_entry_points` |
+| 12 | `update()` の明示 null 埋めを `$tenant->update($validated)` に | `test_fields_missing_from_the_request_are_not_left_behind` |
+| 13 | 行削除の `Js::from()` を生の `{{ }}` に | `test_row_delete_uses_confirm_with_js_from` ＋ `..._nameless_row_...` |
+| 14 | `show.blade.php` の `colspan="7"` を `6` に | `test_empty_tenant_table_spans_every_column` |
+| 15 | 入居テナント `<colgroup>` から「操作」の `<col>` を落とす | `test_tenant_table_column_widths_add_up` |
+| 16 | 行削除の権限を `isExecutive` → `isManagerOrAbove` に | `test_detail_shows_tenant_links_according_to_role` |
+| 17 | 退去済みリストから `_row_actions` の `@include` を外す | `test_moved_out_rows_keep_their_actions` |
+| 18 | 「テナントを追加」ボタンの権限ガードを外す | `test_detail_shows_tenant_links_according_to_role` |
 
-⚠ 5 は `extractSelect()` の妥当性確認も兼ねる。**変異が本当に当たったか `git diff` で確認する**
+⚠ 5 は `extractSelect()` の妥当性確認も兼ねる。**変異が本当に当たったか毎回確認する**
 （当たっていない変異を「検出しない」と誤読する事故が実際に起きている。Bug #44）。
 ⚠ 新規ファイルは untracked なので `git checkout --` では戻せず `git diff` にも出ない。
-**内容バックアップとの diff で着弾確認する**（Task 9 の実装者が作ったハーネスを流用）。
+**内容バックアップとの diff で着弾確認する**。実測で **2 回**「置換が 0 箇所 / 2 箇所に当たった」
+のを検出できた（M4 は行末で切った検索文字列が実ファイルと一致せず 0 箇所、M10c は store と
+update の両方に一致して 2 箇所）。ヘルパー側で**期待件数と一致しなければ止める**のが要る。
+⚠ 変異の前に `storage/framework/views/*.php` を消す（コンパイル済み Blade のキャッシュ汚染）。
+⚠ **安全網は足していない**ので Bug #48 の測り直しは該当なし（try/catch も `DB::transaction()` も
+無く、`assertOwnedBy` / `required` / 明示 null 埋めはいずれも単独の主機構）。
+`maxlength` / `min` / `max` の HTML 属性はクライアント側の網だが、テストは
+`$this->post()` で直接送るため server 側ルールの変異を隠さない（M10a / M10b が赤で実証）。
 
-- [ ] **Step 8b: フォームの往復テストを書く（Task 9 のレビューで見つかった軸）**
+- [x] **Step 8b: フォームの往復テストを書く（Task 9 のレビューで見つかった軸）**
 
 ⚠ **これを省くと、HTTP メソッド・送信先・選択肢が丸ごと無防備になる。**
 Task 9 で実測したところ、往復テストが無い状態では **18 通りの変異が全テストを素通り**した
@@ -6101,9 +6187,74 @@ edit の URL に前方一致して**別のフォームを掴む**（Task 9 で�
 `VerifyCsrfToken::handle()` が `runningUnitTests()` で素通りする（実測）。
 描画された `_token` hidden の存在をアサートするのが唯一の手。
 
-- [ ] **Step 9: コミット**
+- [x] **Step 9: コミット**
 
 `/commit` で `feat(tenant): 周辺ビル調査の入居テナント CRUD を追加`
+
+### 実測との食い違い（2026-08-17 実装時。**この節が正**）
+
+プランの記述と実測が違った点。**実装側を正とし、上のコード片も直してある。**
+
+① **`test_error_labels_match_the_screen` はそのままでは動かない。**
+`session('errors')` は `assertSessionHasErrors()` を通すまで**生の配列**で返るので、
+先に `->first()` を呼ぶと `Error: Call to a member function first() on array` になる（実測）。
+Task 9 の `test_notes_error_says_shoken_on_both_entry_points` の docblock に同じ注意が書いてあるのに、
+Task 10 のコード片がそれを取り込めていなかった。→ `assertSessionHasErrors()` を先に通す。
+
+② **同テストが store しか叩いていない。** Task 9 で「update の第3引数を消しても全部緑だった」
+（Bug #44）と記録した直後の節なのに、同じ形で書かれていた。→ store / update の 2 入口でループする。
+実測でも **M3b（update だけ和名を消す）** は store だけのテストでは検出できない。
+
+③ **変異 #9「`store()`/`update()` の `->withInput()` を削除」は Task 10 に該当コードが無い。**
+`$request->validate()` は失敗時に**自動で** `withInput()` する（明示呼び出しは Task 9 の
+`duplicateMonthResponse()` にしかない）。→ 差し戻しを守っているのは**ビュー側の `old()`** なので、
+そちらを外す変異（M9）に置き換えた。
+
+④ **変異 #10「`min:0` / `max:9999` / `required` を外す」も Task 9 のルールを指している。**
+Task 10 のルールは `min:-10|max:200`（floor）/ `max:50` `max:255` `max:100` `max:2000`（文字列）/
+`required`（status）。→ M10a / M10b / M10c に置き換えた。
+なお `max:50` などは **本番 MySQL（strict）の VARCHAR 長に対する防波堤**で、SQLite は長さを
+強制しないため外してもテストは静かに緑になる（Bug #40）。表駆動テストで明示的に固定した。
+
+⑤ **列幅の合計が 106% になる。** プランどおり「`<col style="width:12%">` を足し 業種 18%→12%」に
+すると `9+13+28+12+10+22+12 = 106`。`table-layout:fixed` は比例配分するので「動いてしまう」が
+意図した幅にはならない。→ `8/12/26/14/10/14/16 = 100` にし、**合計 100% を固定するテスト**
+（`test_tenant_table_column_widths_add_up`）を追加した。
+
+⑥ **`min-width` の引き上げがプランに無い。** 調査履歴は「操作」列（実測 約 106px）を足したとき
+`760px → 900px` に上げている。テナント表も同じ列を足すので `720px → 900px` にした。
+
+⑦ **`in:operating,vacant,unknown` と値を手で並べるのは二重管理。** セレクトは
+`@foreach(AreaTenantStatus::cases())` で生成するので、Enum に case を足すと
+「画面には出るのに保存できない」が無音で起きる（Bug #41 と同型）。
+→ `Rule::enum(AreaTenantStatus::class)` にし、**全 case が store / update の両方で通ること**を
+テストで固定した（M11 が赤になる）。⚠ `Rule::enum(...)` を literal 配列の中に書いても
+`JapaneseValidationMessagesTest` の走査正規表現は 2 ブロック 8 キー全部を拾う（実測確認済み）。
+
+⑧ **「保存して続けて登録」のチェックが次の追加画面で外れる。** 設計 §5.6 の目的（1 棟 10〜20 区画の
+連続入力で往復を減らす）が果たせない。→ `->withInput(['keep_adding' => '1'])` で**チェックだけ**
+持ち越す（引数無しの `withInput()` にすると前の行のテナント名まで残る）。
+テストは**画面のチェックボックスを実際に使う**形にした（値を直接 POST するだけだと、
+チェックボックスを画面から消しても緑のまま通る。Bug #47）。
+
+⑨ **退去済みの行に操作が無く、退去日の打ち間違いが二度と直せない。** 退去日を入れた行は現況リストから
+外れるので、折りたたみ側に導線が無いと編集画面へ到達できない。→ 操作ボタンを
+`tenants/_row_actions.blade.php` に切り出し、現況リストと退去済みリストの**両方**から `@include` する
+（同じマークアップを 2 か所に写すと片方だけ直す事故になる。Bug #41 / #44）。
+
+⑩ **create 画面に `session('success')` の表示を足してはいけない。** `layouts/app.blade.php` が
+既に描画するので二重に出る（実装中に気づいて撤去）。
+
+⑪ **`test_status_is_required_and_must_be_a_known_value` は required を一度も試していない**
+（`['status' => 'closed']` は `in` 側だけを踏む）。→ 表駆動テストに統合し「空」と「未知の値」の
+両方を store / update で回す。
+
+⑫ プランの `test_tenant_of_another_building_is_404` は**ルートを作る前から緑**だった
+（ルートが無いので 404 が返る）。ルート追加後は M1 で赤になることを確認済み。
+
+**追加したファイル**: `resources/views/tenant/area-buildings/tenants/_row_actions.blade.php`
+（プランには無い。⑨ の理由）。**テストは 26 本**（プランの 11 本 ＋ 往復 5 本 ＋ 差し戻し 2 本 ＋
+バリデーション表 1 本 ＋ 詳細画面の導線 4 本 ＋ Enum 全 case 1 本 ＋ 退去済み 1 本 ＋ Bug #38 1 本）。
 
 ---
 
