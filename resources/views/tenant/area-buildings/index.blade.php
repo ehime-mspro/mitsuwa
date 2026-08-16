@@ -71,7 +71,10 @@
             <div class="flex flex-col sm:flex-row sm:items-center gap-2">
                 {{-- ⚠ 読み込み待ちで disabled にしない。Maps が読めない環境で「押せず理由も出ない」
                      ボタンが残る（Bug #43）。未読込のクリックはスクリプト側が理由を出して弾く。 --}}
+                {{-- ⚠ 実行中は disabled になる＝ホバーもフォーカスも受けないので、理由・進捗は
+                     aria-describedby で下の進捗領域に紐づける（Bug #43 の後半） --}}
                 <button type="button" id="btn-bulk-geocode" onclick="runBulkGeocode()"
+                        aria-describedby="geocode-progress"
                         class="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-md transition-colors disabled:opacity-50">
                     座標未設定 {{ $pendingGeocodeCount }} 件を一括取得
                 </button>
@@ -85,7 +88,9 @@
             </div>
         </div>
 
-        <form id="geocode-form" method="POST" action="{{ route('tenant.area-buildings.geocode') }}">
+        {{-- ⚠ action にその時の検索条件を載せる。保存後のリダイレクトがこれを読んで
+             同じ絞り込み・同じページへ戻す（固定 URL だと 1 ページ目の既定表示に戻る） --}}
+        <form id="geocode-form" method="POST" action="{{ route('tenant.area-buildings.geocode', request()->query()) }}">
             @csrf
             <input type="hidden" name="coordinates" id="geocode-payload" value="">
         </form>
@@ -96,16 +101,19 @@
         <div class="scroll-hint at-start">
             <div class="scroll-hint-inner">
                 <table class="w-full border-collapse" style="table-layout:fixed; min-width:900px;">
+                    {{-- ⚠ 列を足すときは colgroup の合計 100% / th の本数 / 空行の colspan を
+                         3 点セットで揃える（Task 10 で合計 106% にした前科あり）。テストで固定済み --}}
                     <colgroup>
+                        <col style="width:18%">
                         <col style="width:20%">
-                        <col style="width:22%">
-                        <col style="width:7%">
                         <col style="width:6%">
                         <col style="width:6%">
                         <col style="width:6%">
-                        <col style="width:9%">
-                        <col style="width:12%">
-                        <col style="width:12%">
+                        <col style="width:6%">
+                        <col style="width:8%">
+                        <col style="width:8%">
+                        <col style="width:11%">
+                        <col style="width:11%">
                     </colgroup>
                     <thead>
                         <tr>
@@ -116,6 +124,7 @@
                             <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">空き</th>
                             <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">不明</th>
                             <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">空室率</th>
+                            <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">位置</th>
                             <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">最終調査</th>
                             <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">操作</th>
                         </tr>
@@ -147,6 +156,11 @@
                                 <td class="px-4 py-3 lg:px-5 lg:py-3.5 border-b border-gray-200 text-sm text-center font-bold text-gray-900 whitespace-nowrap">
                                     {{ $row['rate_label'] }}
                                 </td>
+                                {{-- 座標の有無。一括取得で失敗した棟をここで特定する（設計 §7.4） --}}
+                                <td class="px-4 py-3 lg:px-5 lg:py-3.5 border-b border-gray-200 text-center whitespace-nowrap">
+                                    @php($coordBadge = $row['building']->coordinateBadge())
+                                    <span style="display:inline-block; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:700; {{ $coordBadge['style'] }}">{{ $coordBadge['label'] }}</span>
+                                </td>
                                 <td class="px-4 py-3 lg:px-5 lg:py-3.5 border-b border-gray-200 text-sm text-center text-gray-700 whitespace-nowrap">
                                     {{ $row['month'] ? $row['month']->format('Y年n月') : '—' }}
                                 </td>
@@ -167,7 +181,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="9" class="px-5 py-10 text-center text-sm text-gray-400">
+                                <td colspan="10" class="px-5 py-10 text-center text-sm text-gray-400">
                                     周辺ビルのデータがありません。
                                 </td>
                             </tr>
@@ -212,10 +226,17 @@
 <script>
 // 座標一括取得。地図は生成しない（Geocoder だけ使う。設計 6.0）
 var areaGeocoder = null;
+var areaMapsFailed = false;
 var AREA_PENDING = {{ \Illuminate\Support\Js::from($pendingGeocode) }};
+var AREA_PENDING_TOTAL = {{ $pendingGeocodeCount }};
 
 function onAreaGeocodeReady() {
     areaGeocoder = new google.maps.Geocoder();
+}
+
+// ローダーが取得できなかったとき。「まだ」と「もう無理」を区別するために要る
+function onAreaGeocodeFailed() {
+    areaMapsFailed = true;
 }
 
 function runBulkGeocode() {
@@ -224,10 +245,18 @@ function runBulkGeocode() {
 
     // ⚠ ボタンを最初から disabled にする代わりのガード。単独で成立させること（Bug #48）
     if (!areaGeocoder) {
-        alert('Google Maps を読み込み中です。しばらくお待ちください。');
+        alert(areaMapsFailed
+            ? 'Google Maps を読み込めませんでした。通信環境と API キーの設定を確認してください。'
+            : 'Google Maps を読み込み中です。しばらくお待ちください。');
         return;
     }
-    if (!confirm(AREA_PENDING.length + ' 件の住所から座標を取得します。よろしいですか？')) {
+
+    // ⚠ ボタンの件数（未取得の総数）と、今回叩く件数は一致しないことがある
+    var question = AREA_PENDING.length + ' 件の住所から座標を取得します。';
+    if (AREA_PENDING_TOTAL > AREA_PENDING.length) {
+        question += '（残り ' + (AREA_PENDING_TOTAL - AREA_PENDING.length) + ' 件は次回）';
+    }
+    if (!confirm(question + 'よろしいですか？')) {
         return;
     }
 
@@ -237,7 +266,14 @@ function runBulkGeocode() {
     btn.disabled = true;
 
     function finish(note) {
-        progress.textContent = note || ('取得 ' + results.length + ' 件 / 失敗 ' + failed + ' 件。保存しています…');
+        // ⚠ 1 件も取れていないなら送らない。空配列を送るとサーバは 0 件更新で応答するしかなく、
+        //    「課金だけして何も保存されていない」ことが利用者に伝わらない
+        if (results.length === 0) {
+            progress.textContent = (note || '') + '座標を取得できませんでした（失敗 ' + failed + ' 件）。住所を確認してからもう一度お試しください。';
+            btn.disabled = false;
+            return;
+        }
+        progress.textContent = (note || '') + '取得 ' + results.length + ' 件 / 失敗 ' + failed + ' 件。保存しています…';
         document.getElementById('geocode-payload').value = JSON.stringify(results);
         document.getElementById('geocode-form').submit();
     }
@@ -258,7 +294,7 @@ function runBulkGeocode() {
                     longitude: res[0].geometry.location.lng()
                 });
             } else if (status === 'OVER_QUERY_LIMIT') {
-                finish('Google の呼び出し上限に達しました。取得できた ' + results.length + ' 件だけ保存します。');
+                finish('Google の呼び出し上限に達しました。');
                 return;
             } else {
                 failed++;
@@ -271,7 +307,9 @@ function runBulkGeocode() {
     step();
 }
 </script>
-{{-- Google Maps API 読み込み。⚠ Blade で env() を直接呼ばない（Bug #17） --}}
-<script src="https://maps.googleapis.com/maps/api/js?key={{ config('services.google_maps.api_key') }}&callback=onAreaGeocodeReady&language=ja&region=JP" async defer></script>
+{{-- Google Maps API 読み込み。⚠ Blade で env() を直接呼ばない（Bug #17）
+     ⚠ onerror が無いと、読み込めなかったときも「読み込み中です」が永久に出る --}}
+<script src="https://maps.googleapis.com/maps/api/js?key={{ config('services.google_maps.api_key') }}&callback=onAreaGeocodeReady&language=ja&region=JP"
+        onerror="onAreaGeocodeFailed()" async defer></script>
 @endpush
 @endif

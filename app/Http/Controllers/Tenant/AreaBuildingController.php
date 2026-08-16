@@ -58,17 +58,17 @@ class AreaBuildingController extends Controller
     {
         // ⚠ 1 行にまとめると走査正規表現の `\n\s*\]` 要件を満たさず、和名チェックの
         //   対象から外れる（2026-08-16 実測）。閉じ括弧を行頭に置く形で書くこと。
+        // ⚠ 第3引数の attributes は書かない。`coordinates` の和名は
+        //   lang/ja/validation.php に載っていて（走査テストが守っている）、
+        //   ここで同じ語を重ねても上書きにならず冗長なだけ。
         $validated = $request->validate([
             'coordinates' => 'required|string',
-        ], [], [
-            'coordinates' => '取得した座標',
         ]);
 
         $decoded = json_decode($validated['coordinates'], true);
 
         if (! is_array($decoded)) {
-            return redirect()->route('tenant.area-buildings.index')
-                ->with('error', '座標データを解釈できませんでした。もう一度お試しください。');
+            return $this->backToList($request, 'error', '座標データを解釈できませんでした。もう一度お試しください。');
         }
 
         $updated = 0;
@@ -81,7 +81,7 @@ class AreaBuildingController extends Controller
         //   ③ 親子関係のある書き込みではなく独立した N 行の更新なので原子性が要らない
         //   store()（親＋子を 1 リクエストで書く）を囲んだのとは状況が違う（Bug #48 の後半）。
         //
-        // ⚠ `whereKey()->update()` はクエリビルダの一括更新なので**モデルイベントが発火しない**
+        // ⚠ `where('id', …)->update()` はクエリビルダの一括更新なので**モデルイベントが発火しない**
         //   （saving フックの住所正規化を素通りする）。今は address を触らないので無害だが、
         //   将来フックに処理を足すときはこの経路が抜けることに注意。
         //   なお `updated_at` は Eloquent\Builder::update() が自動で足すので更新される。
@@ -102,7 +102,11 @@ class AreaBuildingController extends Controller
                 continue;
             }
 
-            $updated += AreaBuilding::whereKey($item['id'])
+            // ⚠ `whereKey()` を使わない。既存の単一行一括更新 10 箇所は全て
+            //   `where('id', $x)->update(...)` で、`whereKey()` に配列を渡すと
+            //   whereIn に化けて**無関係な行まで一括更新**される（上の is_numeric は
+            //   その二重防御として残す）。
+            $updated += AreaBuilding::where('id', $item['id'])
                 ->whereNull('latitude')
                 ->update([
                     'latitude'  => round($lat, 7),
@@ -110,14 +114,35 @@ class AreaBuildingController extends Controller
                 ]);
         }
 
+        // ⚠ 1 件も書けなかったときに success を出さない。Maps JS API は有効でも
+        //   Geocoding API が未有効だと全件 REQUEST_DENIED になり、
+        //   「200 回課金して 0 件保存」なのに緑の成功メッセージが出る（レビュー I-3）。
+        if ($updated === 0) {
+            return $this->backToList(
+                $request,
+                'error',
+                '座標を保存できませんでした。住所が正しいか、Geocoding API が有効かを確認してください。'
+            );
+        }
+
         $remaining = AreaBuilding::pendingGeocodeCount();
 
-        return redirect()->route('tenant.area-buildings.index')->with(
-            'success',
-            $remaining > 0
-                ? "{$updated} 件の座標を保存しました。座標未設定は残り {$remaining} 件です。"
-                : "{$updated} 件の座標を保存しました。座標未設定はありません。"
-        );
+        return $this->backToList($request, 'success', $remaining > 0
+            ? "{$updated} 件の座標を保存しました。座標未設定は残り {$remaining} 件です。"
+            : "{$updated} 件の座標を保存しました。座標未設定はありません。");
+    }
+
+    /**
+     * 一覧へ戻す。⚠ 絞り込み・ページを落とさない。
+     *
+     * フォームの action にその時の検索条件が載っているので、そのまま引き継ぐ
+     * （固定の `route(...index)` だと「200 件処理したら 1 ページ目の既定表示に戻る」）。
+     */
+    private function backToList(Request $request, string $key, string $message)
+    {
+        return redirect()
+            ->route('tenant.area-buildings.index', $request->query())
+            ->with($key, $message);
     }
 
     public function show(AreaBuilding $building)

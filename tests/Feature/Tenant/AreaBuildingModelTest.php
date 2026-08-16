@@ -137,6 +137,40 @@ class AreaBuildingModelTest extends TestCase
     }
 
     /**
+     * 片方だけの座標は保存時に**両方 null**へ正規化される（Bug #38 の規約）。
+     *
+     * ⚠ 読み取り側（`hasCoordinates()`）で隠すだけだと DB に嘘が残り、
+     *   「経度だけある行」は `pendingGeocodeQuery()` が latitude しか見ないので
+     *   **一括取得の対象に入って手入力の経度が上書きされる**。
+     *   「緯度だけある行」は逆に対象にも入らず、地図リンクも出ない**詰み行**になる。
+     *   書き込み側で潰しておけば、この非対称が構造的に到達不能になる。
+     */
+    public function test_one_sided_coordinates_are_normalized_to_null_on_save(): void
+    {
+        $latOnly = $this->building(['name' => '緯度のみ', 'address' => '松山市1-1', 'latitude' => 33.8392]);
+        $lonOnly = $this->building(['name' => '経度のみ', 'address' => '松山市2-2', 'longitude' => 132.7657]);
+
+        $this->assertNull($latOnly->fresh()->latitude);
+        $this->assertNull($lonOnly->fresh()->longitude, '経度だけの行が残ると一括取得で上書きされる');
+
+        // 対で入っていれば当然そのまま
+        $both = $this->building(['name' => '両方', 'latitude' => 33.8392, 'longitude' => 132.7657]);
+        $this->assertSame('33.8392000', $both->fresh()->latitude);
+        $this->assertSame('132.7657000', $both->fresh()->longitude);
+
+        // 片方を消す編集も両方 null に寄る
+        $both->update(['longitude' => null]);
+        $this->assertNull($both->fresh()->latitude, '片方を消したのに緯度が残っている');
+
+        // 「経度だけの行」も latitude が null に揃うので、対象は住所のある 2 件ちょうど
+        // （正規化が無いと「経度だけの行」が対象に入り、手入力の経度が上書きされる）
+        $this->assertEqualsCanonicalizing(
+            ['緯度のみ', '経度のみ'],
+            AreaBuilding::pendingGeocode(200)->pluck('name')->all()
+        );
+    }
+
+    /**
      * 座標一括取得の対象は「latitude が NULL」かつ「住所がある」行だけ。
      * ⚠ 二重課金の防止が load-bearing（設計 §7.4 / §11-11）。
      */

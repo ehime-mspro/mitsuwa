@@ -49,6 +49,17 @@ class AreaBuilding extends Model
             if ($building->address !== null && self::normalizeName($building->address) === '') {
                 $building->address = null;
             }
+
+            // ⚠ 緯度・経度は必ず対で持つ。片方だけの行は
+            //   ①`hasCoordinates()` が false ＝ 地図リンクも出ない
+            //   ②`pendingGeocodeQuery()` は latitude だけを見るので
+            //     「経度だけある行」は一括取得の対象に入り、手入力の経度が上書きされる／
+            //     「緯度だけある行」は対象にも入らない**詰み行**になる
+            //   という非対称を生む。読み取り側で隠さず**書き込み側で正規化**する（Bug #38）。
+            if ($building->latitude === null || $building->longitude === null) {
+                $building->latitude  = null;
+                $building->longitude = null;
+            }
         });
     }
 
@@ -113,6 +124,22 @@ class AreaBuilding extends Model
     public function totalFloorsLabel(): string
     {
         return $this->total_floors === null ? '—' : $this->total_floors . '階';
+    }
+
+    /**
+     * 一覧に出す座標の有無バッジ（設計 §7.4）。
+     *
+     * ⚠ 一括取得で失敗した棟を**一覧から特定できる**ようにするためのもの。印が無いと、
+     *   恒久的にジオコードできない住所をボタンが拾い続け、押すたびに再課金する。
+     * ⚠ バッジは Tailwind クラスでなく inline style を返す（プロジェクト規約）。
+     *
+     * @return array{label: string, style: string}
+     */
+    public function coordinateBadge(): array
+    {
+        return $this->hasCoordinates()
+            ? ['label' => '取得済', 'style' => 'background:#d1fae5; color:#065f46; border:1px solid #a7f3d0;']
+            : ['label' => '未取得', 'style' => 'background:#fef3c7; color:#92400e; border:1px solid #fde68a;'];
     }
 
     // ============================================================
