@@ -12,6 +12,7 @@
 @endsection
 
 @section('content')
+<div x-data="{ showDeleteModal: false }">
 
     {{-- ヘッダー
          ⚠ 「戻る」はヘッダーのボタン列に置く（show 画面の流儀。realestate/procurements/show.blade.php
@@ -29,14 +30,8 @@
                    style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #047857; border: 1px solid #a7f3d0; border-radius: 6px; text-decoration: none; background: #ecfdf5;">編集</a>
             @endif
             @if(auth()->user()->role->isExecutive())
-                <form method="POST" action="{{ route('tenant.area-buildings.destroy', $building) }}"
-                      onsubmit="return confirm('このビルを削除します。調査履歴とテナント明細も画面から見えなくなります。よろしいですか？');"
-                      style="display: inline;">
-                    @csrf
-                    @method('DELETE')
-                    <button type="submit"
-                            style="padding: 6px 16px; font-size: 13px; font-weight: 600; color: #b91c1c; border: 1px solid #fecaca; border-radius: 6px; background: #fef2f2; cursor: pointer;">削除</button>
-                </form>
+                <button @click="showDeleteModal = true"
+                        style="padding: 6px 16px; font-size: 13px; font-weight: 600; color: #b91c1c; border: 1px solid #fecaca; border-radius: 6px; background: #fef2f2; cursor: pointer;">削除</button>
             @endif
         </div>
     </div>
@@ -231,4 +226,19 @@
         @endif
     </div>
 
+    {{-- ⚠ このページ（ビル本体）の削除は 1 画面 1 対象なのでモーダル（<x-delete-confirm-modal>）を使う
+         （tenant モジュールの他の詳細画面 5/5 と同じ流儀。Minor M-1 2026-08-17）。
+         Task 9 / 10 が実装する調査回・入居テナントの削除は同じ画面内で行ごとに複数あり、
+         このコンポーネントは showDeleteModal という単一の Alpine 変数でしか開閉できず
+         1 対象しか持てないため、行ごとの削除には引き続き confirm() を使う。 --}}
+    @if(auth()->user()->role->isExecutive())
+        <x-delete-confirm-modal
+            title="このビルを削除しますか？"
+            :action="route('tenant.area-buildings.destroy', $building)"
+            :target="$building->name"
+            message="調査履歴とテナント明細も画面から見えなくなります。"
+        />
+    @endif
+
+</div>
 @endsection

@@ -10,6 +10,7 @@ use App\Services\Tenant\AreaBuildingListService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 /**
  * 周辺ビル調査(テナント管理)。
@@ -89,28 +90,37 @@ class AreaBuildingController extends Controller
             'address' => '所在地',
         ]);
 
-        $building = AreaBuilding::create([
-            'name'         => $validated['name'],
-            'address'      => $validated['address'] ?? null,
-            'latitude'     => $validated['latitude'] ?? null,
-            'longitude'    => $validated['longitude'] ?? null,
-            'total_floors' => $validated['total_floors'] ?? null,
-            'notes'        => $validated['notes'] ?? null,
-            'created_by'   => Auth::id(),
-        ]);
-
-        if (filled($validated['surveyed_month'] ?? null)) {
-            AreaBuildingSurvey::create([
-                'area_building_id' => $building->id,
-                'surveyed_month'   => $validated['surveyed_month'] . '-01',
-                // 件数欄は空欄スタート。未入力は 0 として保存する
-                'operating_count'  => $validated['operating_count'] ?? 0,
-                'vacant_count'     => $validated['vacant_count'] ?? 0,
-                'unknown_count'    => $validated['unknown_count'] ?? 0,
-                'surveyed_by'      => Auth::id(),
-                'notes'            => $validated['survey_notes'] ?? null,
+        // ⚠ ビル本体＋初回調査の 2 書き込みを同一トランザクションで囲む（コード品質レビュー
+        //   Important I-1、2026-08-17）。囲まないと、調査回の作成で DB 接続断・デッドロック等の
+        //   汎用的な失敗が起きた場合にビル行だけがコミットされ、利用者からは
+        //   「登録ボタンで 500 → 再送信 → 調査なしの孤児ビルと正常なビルが両方できる」に見える。
+        //   ProcurementController::store() と同じ形（親作成＋子作成を DB::transaction で囲む）。
+        $building = DB::transaction(function () use ($validated) {
+            $building = AreaBuilding::create([
+                'name'         => $validated['name'],
+                'address'      => $validated['address'] ?? null,
+                'latitude'     => $validated['latitude'] ?? null,
+                'longitude'    => $validated['longitude'] ?? null,
+                'total_floors' => $validated['total_floors'] ?? null,
+                'notes'        => $validated['notes'] ?? null,
+                'created_by'   => Auth::id(),
             ]);
-        }
+
+            if (filled($validated['surveyed_month'] ?? null)) {
+                AreaBuildingSurvey::create([
+                    'area_building_id' => $building->id,
+                    'surveyed_month'   => $validated['surveyed_month'] . '-01',
+                    // 件数欄は空欄スタート。未入力は 0 として保存する
+                    'operating_count'  => $validated['operating_count'] ?? 0,
+                    'vacant_count'     => $validated['vacant_count'] ?? 0,
+                    'unknown_count'    => $validated['unknown_count'] ?? 0,
+                    'surveyed_by'      => Auth::id(),
+                    'notes'            => $validated['survey_notes'] ?? null,
+                ]);
+            }
+
+            return $building;
+        });
 
         return redirect()->route('tenant.area-buildings.show', $building)
             ->with('success', 'ビルを登録しました。');

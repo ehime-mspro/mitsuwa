@@ -5,6 +5,7 @@ namespace Tests\Feature\Tenant;
 use App\Models\AreaBuilding;
 use App\Models\AreaBuildingSurvey;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 
 class AreaBuildingCrudTest extends AreaBuildingTestCase
 {
@@ -138,6 +139,38 @@ class AreaBuildingCrudTest extends AreaBuildingTestCase
         $this->assertSame($manager->id, $survey->surveyed_by, '調査者の既定がログインユーザーになっていない');
     }
 
+    /**
+     * store() が AreaBuilding + AreaBuildingSurvey の 2 書き込みをトランザクションで囲んでいること
+     * （コード品質レビュー Important I-1、2026-08-17）。
+     *
+     * ⚠ UNIQUE 制約違反ではない。store() は毎回新規採番するので、直後に作る調査回が
+     *   既存行と衝突することは原理的に無い。実際に起こりうるのは DB 接続断・デッドロック・
+     *   ディスク枯渇のような汎用的な失敗で、それを模すためモデルイベントで例外を発生させる。
+     * ⚠ 登録した listener は他のテストへ漏れないよう try/finally で確実に外す。
+     */
+    public function test_store_rolls_back_the_building_if_the_survey_creation_fails(): void
+    {
+        AreaBuildingSurvey::creating(function () {
+            throw new \RuntimeException('simulated failure between the two creates (I-1 regression test)');
+        });
+
+        try {
+            $this->actingAs($this->manager())->post('/tenant/area-buildings', [
+                'name'            => '途中失敗ビル',
+                'surveyed_month'  => '2026-08',
+                'operating_count' => 5,
+            ]);
+        } finally {
+            Event::forget('eloquent.creating: ' . AreaBuildingSurvey::class);
+        }
+
+        $this->assertSame(
+            0,
+            AreaBuilding::count(),
+            'トランザクションが無いため、調査回の作成失敗時にビルだけが残っている'
+        );
+    }
+
     /** 件数欄は空欄スタート。未入力は 0 として保存する（設計 §5.5） */
     public function test_blank_counts_are_saved_as_zero(): void
     {
@@ -197,6 +230,30 @@ class AreaBuildingCrudTest extends AreaBuildingTestCase
         $this->assertSame('新住所', $building->address);
         $this->assertSame(1, $building->surveys()->count(), '編集で調査回が増えている');
         $this->assertSame(5, $building->surveys()->first()->operating_count);
+    }
+
+    /**
+     * 座標入りのビルを編集し、空欄で送ると座標が null になること
+     * （コード品質レビュー Important I-2、2026-08-17。Bug #38 の裏返し―
+     *   あちらは「消えるべき値が残った」、こちらは「意図せず消えうる」。
+     *   どちらも「条件付きで値が消える/残る」が無音で壊れるパターンなので固定する）。
+     *
+     * ⚠ 空文字 '' は ConvertEmptyStringsToNull ミドルウェア（web グループ既定）で
+     *   実 HTTP では null に正規化されてから validate() に届く。
+     */
+    public function test_update_can_clear_the_coordinates(): void
+    {
+        $building = $this->makeBuilding('座標ありビル', ['latitude' => 33.8392, 'longitude' => 132.7657]);
+
+        $this->actingAs($this->manager())->put("/tenant/area-buildings/{$building->id}", [
+            'name'      => $building->name,
+            'latitude'  => '',
+            'longitude' => '',
+        ])->assertRedirect(route('tenant.area-buildings.show', $building));
+
+        $building->refresh();
+        $this->assertNull($building->latitude);
+        $this->assertNull($building->longitude);
     }
 
     /**

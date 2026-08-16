@@ -3654,6 +3654,7 @@ namespace Tests\Feature\Tenant;
 use App\Models\AreaBuilding;
 use App\Models\AreaBuildingSurvey;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 
 class AreaBuildingCrudTest extends AreaBuildingTestCase
 {
@@ -3787,6 +3788,38 @@ class AreaBuildingCrudTest extends AreaBuildingTestCase
         $this->assertSame($manager->id, $survey->surveyed_by, '調査者の既定がログインユーザーになっていない');
     }
 
+    /**
+     * store() が AreaBuilding + AreaBuildingSurvey の 2 書き込みをトランザクションで囲んでいること
+     * （コード品質レビュー Important I-1、2026-08-17）。
+     *
+     * ⚠ UNIQUE 制約違反ではない。store() は毎回新規採番するので、直後に作る調査回が
+     *   既存行と衝突することは原理的に無い。実際に起こりうるのは DB 接続断・デッドロック・
+     *   ディスク枯渇のような汎用的な失敗で、それを模すためモデルイベントで例外を発生させる。
+     * ⚠ 登録した listener は他のテストへ漏れないよう try/finally で確実に外す。
+     */
+    public function test_store_rolls_back_the_building_if_the_survey_creation_fails(): void
+    {
+        AreaBuildingSurvey::creating(function () {
+            throw new \RuntimeException('simulated failure between the two creates (I-1 regression test)');
+        });
+
+        try {
+            $this->actingAs($this->manager())->post('/tenant/area-buildings', [
+                'name'            => '途中失敗ビル',
+                'surveyed_month'  => '2026-08',
+                'operating_count' => 5,
+            ]);
+        } finally {
+            Event::forget('eloquent.creating: ' . AreaBuildingSurvey::class);
+        }
+
+        $this->assertSame(
+            0,
+            AreaBuilding::count(),
+            'トランザクションが無いため、調査回の作成失敗時にビルだけが残っている'
+        );
+    }
+
     /** 件数欄は空欄スタート。未入力は 0 として保存する（設計 §5.5） */
     public function test_blank_counts_are_saved_as_zero(): void
     {
@@ -3845,6 +3878,30 @@ class AreaBuildingCrudTest extends AreaBuildingTestCase
         $this->assertSame(5, $building->surveys()->first()->operating_count);
     }
 
+    /**
+     * 座標入りのビルを編集し、空欄で送ると座標が null になること
+     * （コード品質レビュー Important I-2、2026-08-17。Bug #38 の裏返し―
+     *   あちらは「消えるべき値が残った」、こちらは「意図せず消えうる」。
+     *   どちらも「条件付きで値が消える/残る」が無音で壊れるパターンなので固定する）。
+     *
+     * ⚠ 空文字 '' は ConvertEmptyStringsToNull ミドルウェア（web グループ既定）で
+     *   実 HTTP では null に正規化されてから validate() に届く。
+     */
+    public function test_update_can_clear_the_coordinates(): void
+    {
+        $building = $this->makeBuilding('座標ありビル', ['latitude' => 33.8392, 'longitude' => 132.7657]);
+
+        $this->actingAs($this->manager())->put("/tenant/area-buildings/{$building->id}", [
+            'name'      => $building->name,
+            'latitude'  => '',
+            'longitude' => '',
+        ])->assertRedirect(route('tenant.area-buildings.show', $building));
+
+        $building->refresh();
+        $this->assertNull($building->latitude);
+        $this->assertNull($building->longitude);
+    }
+
     /** 編集フォームは保存済みの座標を hidden に載せる（地図の初期表示に使う） */
     public function test_edit_form_carries_the_saved_coordinates(): void
     {
@@ -3894,7 +3951,8 @@ Expected: FAIL — 404 / 405
 
 - [ ] **Step 3: コントローラに create / store / edit / update / destroy を足す**
 
-`app/Http/Controllers/Tenant/AreaBuildingController.php` に追加（`use Illuminate\Support\Facades\Auth;` を足す）:
+`app/Http/Controllers/Tenant/AreaBuildingController.php` に追加
+（`use Illuminate\Support\Facades\Auth;` と `use Illuminate\Support\Facades\DB;` を足す）:
 
 ```php
     public function create()
@@ -3929,28 +3987,39 @@ Expected: FAIL — 404 / 405
             'address' => '所在地',
         ]);
 
-        $building = AreaBuilding::create([
-            'name'         => $validated['name'],
-            'address'      => $validated['address'] ?? null,
-            'latitude'     => $validated['latitude'] ?? null,
-            'longitude'    => $validated['longitude'] ?? null,
-            'total_floors' => $validated['total_floors'] ?? null,
-            'notes'        => $validated['notes'] ?? null,
-            'created_by'   => Auth::id(),
-        ]);
-
-        if (filled($validated['surveyed_month'] ?? null)) {
-            AreaBuildingSurvey::create([
-                'area_building_id' => $building->id,
-                'surveyed_month'   => $validated['surveyed_month'] . '-01',
-                // 件数欄は空欄スタート。未入力は 0 として保存する
-                'operating_count'  => $validated['operating_count'] ?? 0,
-                'vacant_count'     => $validated['vacant_count'] ?? 0,
-                'unknown_count'    => $validated['unknown_count'] ?? 0,
-                'surveyed_by'      => Auth::id(),
-                'notes'            => $validated['survey_notes'] ?? null,
+        // ⚠ ビル本体＋初回調査の 2 書き込みを同一トランザクションで囲む（コード品質レビュー
+        //   Important I-1、2026-08-17）。囲まないと、調査回の作成で DB 接続断・デッドロック等の
+        //   汎用的な失敗が起きた場合にビル行だけがコミットされ、利用者からは
+        //   「登録ボタンで 500 → 再送信 → 調査なしの孤児ビルと正常なビルが両方できる」に見える。
+        //   ⚠ UNIQUE 違反ではない（store() は毎回新規採番するので直後の調査回が既存行と
+        //   衝突することは原理的に無い）。ProcurementController::store() と同じ形
+        //  （親作成＋子作成を DB::transaction で囲む）。
+        $building = DB::transaction(function () use ($validated) {
+            $building = AreaBuilding::create([
+                'name'         => $validated['name'],
+                'address'      => $validated['address'] ?? null,
+                'latitude'     => $validated['latitude'] ?? null,
+                'longitude'    => $validated['longitude'] ?? null,
+                'total_floors' => $validated['total_floors'] ?? null,
+                'notes'        => $validated['notes'] ?? null,
+                'created_by'   => Auth::id(),
             ]);
-        }
+
+            if (filled($validated['surveyed_month'] ?? null)) {
+                AreaBuildingSurvey::create([
+                    'area_building_id' => $building->id,
+                    'surveyed_month'   => $validated['surveyed_month'] . '-01',
+                    // 件数欄は空欄スタート。未入力は 0 として保存する
+                    'operating_count'  => $validated['operating_count'] ?? 0,
+                    'vacant_count'     => $validated['vacant_count'] ?? 0,
+                    'unknown_count'    => $validated['unknown_count'] ?? 0,
+                    'surveyed_by'      => Auth::id(),
+                    'notes'            => $validated['survey_notes'] ?? null,
+                ]);
+            }
+
+            return $building;
+        });
 
         return redirect()->route('tenant.area-buildings.show', $building)
             ->with('success', 'ビルを登録しました。');
@@ -4556,26 +4625,56 @@ class AreaBuildingAddressFallbackRegexTest extends TestCase
 ⚠ **既存の 2 ボタンと意匠を揃えること**（`realestate/procurements/show.blade.php` と同じ inline style 系）。
 Tailwind クラスの別意匠を持ち込むと、同じ列にボタンが 3 つ並んだときに見た目が割れます。
 
+⚠ **2026-08-17 更新（Minor M-1）。** 削除確認は素の `confirm()` ではなく
+`<x-delete-confirm-modal>` を使う。`tenant` モジュールの詳細画面は 5/5
+（`inquiries` / `repairs` / `units` / `properties` / `investments`）がこのコンポーネントを
+使っており、`area-buildings/show.blade.php` だけ `confirm()` にすると唯一の例外になる。
+
+まず `@section('content')` の直後をページ全体を包む `<div x-data="{ showDeleteModal: false }">` にし、
+`@endsection` の直前で閉じる（`repairs/show.blade.php` と同じ形）:
+
+```blade
+@section('content')
+<div x-data="{ showDeleteModal: false }">
+    ...（既存の内容）...
+</div>
+@endsection
+```
+
+ボタン列の削除ボタンは `<form>` をやめ、モーダルを開くだけのボタンにする:
+
 ```blade
             @if(auth()->user()->role->isManagerOrAbove())
                 <a href="{{ route('tenant.area-buildings.edit', $building) }}"
                    style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #047857; border: 1px solid #a7f3d0; border-radius: 6px; text-decoration: none; background: #ecfdf5;">編集</a>
             @endif
             @if(auth()->user()->role->isExecutive())
-                <form method="POST" action="{{ route('tenant.area-buildings.destroy', $building) }}"
-                      onsubmit="return confirm('このビルを削除します。調査履歴とテナント明細も画面から見えなくなります。よろしいですか？');"
-                      style="display: inline;">
-                    @csrf
-                    @method('DELETE')
-                    <button type="submit"
-                            style="padding: 6px 16px; font-size: 13px; font-weight: 600; color: #b91c1c; border: 1px solid #fecaca; border-radius: 6px; background: #fef2f2; cursor: pointer;">削除</button>
-                </form>
+                <button @click="showDeleteModal = true"
+                        style="padding: 6px 16px; font-size: 13px; font-weight: 600; color: #b91c1c; border: 1px solid #fecaca; border-radius: 6px; background: #fef2f2; cursor: pointer;">削除</button>
             @endif
 ```
 
-⚠ `<form>` に `style="display: inline;"` を付けること（付けないとブロック要素として折り返り、
-ボタン列が縦に割れる）。⚠ 静的 `style=` のみで `:style` は使わないこと（Bug #2 / #32 は
-`x-show` や `:style` と併用したときの話で、このラッパーはどちらも持たないので静的 style で安全）。
+モーダル本体はコンテンツの末尾（`</div>` で閉じる直前）に置く:
+
+```blade
+    {{-- ⚠ このページ（ビル本体）の削除は 1 画面 1 対象なのでモーダル（<x-delete-confirm-modal>）を使う
+         （tenant モジュールの他の詳細画面 5/5 と同じ流儀。Minor M-1 2026-08-17）。
+         Task 9 / 10 が実装する調査回・入居テナントの削除は同じ画面内で行ごとに複数あり、
+         このコンポーネントは showDeleteModal という単一の Alpine 変数でしか開閉できず
+         1 対象しか持てないため、行ごとの削除には引き続き confirm() を使う。 --}}
+    @if(auth()->user()->role->isExecutive())
+        <x-delete-confirm-modal
+            title="このビルを削除しますか？"
+            :action="route('tenant.area-buildings.destroy', $building)"
+            :target="$building->name"
+            message="調査履歴とテナント明細も画面から見えなくなります。"
+        />
+    @endif
+```
+
+⚠ `:action` / `:target` に `&quot;` を書かないこと（Bug #21）。上の形（単一引用符の静的ルート名 ＋
+変数）なら安全。⚠ `<form method="POST"> + @method('DELETE')` はコンポーネント側が持つので、
+show 側に二重に置かないこと。
 - [ ] **Step 9: テストが通ることを確認する**
 
 ```bash
@@ -4584,7 +4683,7 @@ vendor/bin/phpunit --filter 'AreaBuildingCrudTest|AreaBuildingShowTest|AreaBuild
 
 Expected: PASS（Crud 13 + Show 11 + List 12）
 
-- [ ] **Step 10: 変異テストで 6 通り確認する**
+- [ ] **Step 10: 変異テストで 8 通り確認する**
 
 | # | 変異 | 期待 |
 |---|---|---|
@@ -4594,6 +4693,8 @@ Expected: PASS（Crud 13 + Show 11 + List 12）
 | 4 | `_form.blade.php` の `streetViewControl: false` を `true` に | `test_form_disables_street_view_control` が赤 |
 | 5 | `_form.blade.php` の段階的フォールバック正規表現 `[\d０-９]` を `[\d0-9]` に戻す（Step 5b） | `AreaBuildingAddressFallbackRegexTest` の 3 本すべてが赤 |
 | 6 | routes/web.php の `role:executive,manager` を `role:manager` に変える（create/store 側・edit/update 側の**どちらか片方ずつ**、計 2 通り） | `test_executive_can_also_create_store_edit_and_update` が赤。⚠ 2 グループに分かれているので片方ずつ試し、両方とも検出できることを確認する |
+| 7 | `store()` の `DB::transaction()` ラップを外す（コード品質レビュー Important I-1） | `test_store_rolls_back_the_building_if_the_survey_creation_fails` が赤（ビルだけ残る） |
+| 8 | `update()` の `'latitude' => $validated['latitude'] ?? null` / `'longitude' => ...` を `?? $building->latitude` / `?? $building->longitude` に変える（コード品質レビュー Important I-2。**どちらか片方ずつ、計 2 通り**） | `test_update_can_clear_the_coordinates` が赤。⚠ 片方ずつ試し、両方とも検出できることを確認する |
 
 - [ ] **Step 11: 本番同等のコンパイルを確認する（Bug #26 / #30）**
 
