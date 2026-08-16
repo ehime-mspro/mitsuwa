@@ -1947,7 +1947,10 @@ Expected: FAIL — `attributes に industry が無い`
 vendor/bin/phpunit --filter JapaneseValidationMessagesTest
 ```
 
-Expected: PASS（既存 9 本 + 追加 2 本 = 11 tests）
+Expected: PASS（既存 8 本 + 追加 2 本 = 10 tests）
+
+⚠ 2026-08-16 訂正: 当初「既存 9 本」と書いていたが実測は **8 本**だった
+（`attributes` に足すキーの数 9 と、テストメソッドの本数を取り違えた記載）。
 
 - [ ] **Step 5: 変異テストで確認する**
 
