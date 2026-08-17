@@ -53,6 +53,23 @@
         </div>
     </div>
 
+    {{-- ⚠ この画面には長らくエラー表示が 1 つも無く、`update()` の検証（name は max:100、
+         notes は max:5000）に落ちても**理由が一切出なかった**（2026-08-17 に本番で再現）。
+         `layouts/app.blade.php` は session('success') / session('error') しか描画せず
+         **$errors を描画しない**ので、各フォーム画面が自前で出す必要がある。
+         マークアップはアプリの正準形（tenant/customers/edit.blade.php）に合わせている。
+         ⚠ 予算モードでも values.* の検証に落ちうるので @@if(!$isBudgetMode) の外に置くこと --}}
+    @if($errors->any())
+        <div class="mb-4 rounded-lg border border-red-200 bg-red-50 p-4">
+            <p class="text-sm font-semibold text-red-800 mb-1">入力内容にエラーがあります。</p>
+            <ul class="list-disc list-inside text-xs text-red-700 space-y-0.5">
+                @foreach($errors->all() as $error)
+                    <li>{{ $error }}</li>
+                @endforeach
+            </ul>
+        </div>
+    @endif
+
     <form action="{{ route('zeal.simulations.update', $simulation) }}" method="POST">
         @csrf
         @method('PUT')

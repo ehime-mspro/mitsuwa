@@ -8,6 +8,21 @@
 </div>
 <h1 style="font-size: 20px; font-weight: 700; margin: 0 0 20px;">顧客CSVインポート</h1>
 
+{{-- ⚠ この画面は長らく無音だった（2026-08-17 に発見）。`execute()` は csv_file を
+     mimes:csv,txt で、department を in:housing,realestate で検証しており、落ちると
+     この画面へ差し戻される。取込の行単位の警告はプレビューに出るが、**validate() の
+     失敗は $errors に入る**ので別の表示先が要る（`session('error')` はレイアウトが
+     描画するが、$errors は描画しない）。例: xlsx を上げると何も起きないように見えた --}}
+@if($errors->any())
+    <div class="mb-4 rounded-lg border border-red-200 bg-red-50 p-4">
+        <p class="text-sm font-semibold text-red-800 mb-1">入力内容にエラーがあります。</p>
+        <ul class="list-disc list-inside text-xs text-red-700 space-y-0.5">
+            @foreach($errors->all() as $error)
+                <li>{{ $error }}</li>
+            @endforeach
+        </ul>
+    </div>
+@endif
 
 <div class="bg-white border border-gray-200 rounded-lg p-5" x-data="csvImport()">
 

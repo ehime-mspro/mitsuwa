@@ -8,6 +8,22 @@
 </div>
 <h1 style="font-size: 20px; font-weight: 700; margin: 0 0 20px;">テナントCSVインポート</h1>
 
+{{-- ⚠ この画面は長らく無音だった（2026-08-17 に実測で発見）。`loadCsv()` の
+     `csv_file` 検証（mimes:csv,txt / max:10240）に落ちるとここへ差し戻されるが、
+     表示手段が 1 つも無く**何も起きないように見えた**（例: xlsx を上げたとき）。
+     行単位の警告は _preview に出る／実行時の失敗は session('error') でレイアウトが
+     描画するが、**validate() の失敗は $errors に入る**ので別の表示先が要る --}}
+@if($errors->any())
+    <div class="mb-4 rounded-lg border border-red-200 bg-red-50 p-4">
+        <p class="text-sm font-semibold text-red-800 mb-1">入力内容にエラーがあります。</p>
+        <ul class="list-disc list-inside text-xs text-red-700 space-y-0.5">
+            @foreach($errors->all() as $error)
+                <li>{{ $error }}</li>
+            @endforeach
+        </ul>
+    </div>
+@endif
+
 
 <div x-data="tenantImportTabs()">
     {{-- タブヘッダー --}}
