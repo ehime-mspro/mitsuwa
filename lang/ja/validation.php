@@ -346,6 +346,14 @@ return [
         'termination_reason' => '退去理由',
         'terminate_parkings' => '一括解約する駐車場契約',
         'terminate_parkings.*' => '一括解約する駐車場契約',
+        // 賃貸マンション 解約時の敷金精算（2026-08-17 追加）
+        // ⚠ ワイルドカードは `キー.*` の形でそのまま書ける（Laravel が `xxx.0` を `xxx.*` で解決する）
+        'restoration_cost' => '原状回復費',
+        'cleaning_cost' => '清掃費',
+        'other_deduction_name' => '差引項目名',
+        'other_deduction_name.*' => '差引項目名',
+        'other_deduction_amount' => '差引金額',
+        'other_deduction_amount.*' => '差引金額',
         'settlement_file' => '解約精算書',
         'settlement_date' => '決済日',
         'revision_date' => '改定適用日',

@@ -233,14 +233,42 @@ class ContractController extends Controller
         $validated = $request->validate([
             'move_out_date' => 'required|date',
             'terminate_parkings' => 'nullable|array',
+            // 敷金精算。⚠ 画面には以前からこの入力欄があったが、ここで受けていなかったため
+            //   入力が丸ごと捨てられていた（2026-08-17 に発見・修正）
+            'termination_reason' => 'nullable|string|max:200',
+            'restoration_cost' => 'nullable|integer|min:0',
+            'cleaning_cost' => 'nullable|integer|min:0',
+            'other_deduction_name' => 'nullable|array',
+            'other_deduction_name.*' => 'nullable|string|max:100',
+            'other_deduction_amount' => 'nullable|array',
+            'other_deduction_amount.*' => 'nullable|integer|min:0',
         ]);
 
-        DB::transaction(function () use ($validated, $contract) {
+        $deductions = $this->pairDeductions($request);
+
+        DB::transaction(function () use ($validated, $contract, $deductions) {
             $contract->update([
                 'status' => MsContractStatus::Terminated->value,
                 'move_out_date' => $validated['move_out_date'],
+                // ⚠ `?? 0` にしない。空欄は null のまま保存して「未入力」と「0 円」を区別する
+                //   （ConvertEmptyStringsToNull により空欄は null で届く）
+                'termination_reason' => $validated['termination_reason'] ?? null,
+                'restoration_cost' => $validated['restoration_cost'] ?? null,
+                'cleaning_cost' => $validated['cleaning_cost'] ?? null,
+                // ⚠ 精算時点の敷金をスナップショットする。deposit は解約後も編集でき、
+                //   書き換えられると返金額の根拠が動いてしまう
+                'deposit_at_settlement' => $contract->deposit,
                 'updated_by' => Auth::id(),
             ]);
+
+            foreach ($deductions as $i => $d) {
+                $contract->deductions()->create([
+                    'name' => $d['name'],
+                    'amount' => $d['amount'],
+                    'sort_order' => $i,
+                ]);
+            }
+
             $contract->room->update(['status' => MsRoomStatus::Vacant->value]);
 
             // 紐付く駐車場契約の一括解約（チェックされたもののみ）
@@ -259,6 +287,45 @@ class ContractController extends Controller
 
         return redirect()->route('mansion.contracts.show', $contract)
             ->with('success', '契約を解約しました');
+    }
+
+    /**
+     * 敷金精算の「その他差引項目」を、名称と金額の**並行配列**から組にする。
+     *
+     * 画面は `other_deduction_name[]` と `other_deduction_amount[]` を別々に送る。
+     *
+     * ⚠ **`array_values()` で詰め直してはいけない。** Alpine 側は
+     *   `otherDeductions.splice(idx, 1)` で行を消すので、送られてくる添字は
+     *   name 側と amount 側で**同じ位置が同じ行**を指す。片方だけ詰め直すと
+     *   名称と金額が別の行どうしで組になり、無音で取り違える。
+     *
+     * ⚠ 名称と金額の**両方が揃った行だけ**保存する（入力途中の空行を弾く）。
+     *   捨てたことは画面に出さない — 利用者は空行を「無い行」と認識しているため。
+     *
+     * @return list<array{name: string, amount: int}>
+     */
+    private function pairDeductions(Request $request): array
+    {
+        $names   = $request->input('other_deduction_name', []);
+        $amounts = $request->input('other_deduction_amount', []);
+
+        if (! is_array($names) || ! is_array($amounts)) {
+            return [];
+        }
+
+        $rows = [];
+        foreach ($names as $i => $name) {
+            $name   = is_string($name) ? trim($name) : '';
+            $amount = $amounts[$i] ?? null;
+
+            if ($name === '' || $amount === null || $amount === '') {
+                continue;
+            }
+
+            $rows[] = ['name' => $name, 'amount' => (int) $amount];
+        }
+
+        return $rows;
     }
 
     /**

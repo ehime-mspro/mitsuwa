@@ -251,6 +251,86 @@
     @endif
 </div>
 
+{{-- ========== カード: 敷金精算（解約済みで精算の記録があるときだけ） ==========
+     ⚠ 差引合計・返金額は **DB に保存していない**。ここで内訳から毎回積み上げる。
+        保存すると内訳と合計が別ソースになり無音で食い違う（Bug #46 を本番で踏んでいる）。
+     ⚠ 敷金は現在の `deposit` ではなく **精算時点のスナップショット** を出す。
+        `deposit` は解約後も編集でき、書き換えられると返金の根拠が動いてしまう。 --}}
+@if($contract->isTerminated() && $contract->hasSettlement())
+<div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
+    <div class="ms-card-title">敷金精算</div>
+
+    <div class="scroll-hint at-start">
+    <div class="scroll-hint-inner">
+    <table class="w-full border-collapse" style="table-layout: fixed; min-width: 420px;">
+        <colgroup>
+            <col style="width: 60%">
+            <col style="width: 40%">
+        </colgroup>
+        <tbody>
+            <tr>
+                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-600">預かり敷金（精算時点）</td>
+                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-right whitespace-nowrap">
+                    {{ number_format((int) $contract->deposit_at_settlement) }}円
+                </td>
+            </tr>
+            @if($contract->restoration_cost !== null)
+                <tr>
+                    <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-600">原状回復費を差引</td>
+                    <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-right whitespace-nowrap">
+                        −{{ number_format($contract->restoration_cost) }}円
+                    </td>
+                </tr>
+            @endif
+            @if($contract->cleaning_cost !== null)
+                <tr>
+                    <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-600">清掃費を差引</td>
+                    <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-right whitespace-nowrap">
+                        −{{ number_format($contract->cleaning_cost) }}円
+                    </td>
+                </tr>
+            @endif
+            @foreach($contract->deductions as $d)
+                <tr>
+                    <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-600">{{ $d->name }}を差引</td>
+                    <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-right whitespace-nowrap">
+                        −{{ number_format($d->amount) }}円
+                    </td>
+                </tr>
+            @endforeach
+            <tr>
+                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-600 font-medium">差引合計</td>
+                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-right font-semibold whitespace-nowrap">
+                    {{ number_format($contract->totalDeduction()) }}円
+                </td>
+            </tr>
+            <tr>
+                <td class="px-4 py-3 text-sm text-gray-900 font-bold">
+                    @if($contract->refundAmount() < 0)
+                        入居者へ請求
+                    @else
+                        返金額
+                    @endif
+                </td>
+                <td class="px-4 py-3 text-right whitespace-nowrap"
+                    style="font-size: 16px; font-weight: 700; color: {{ $contract->refundAmount() < 0 ? '#b91c1c' : '#047857' }};">
+                    {{ $contract->refundAmount() < 0 ? '−' : '' }}{{ number_format(abs($contract->refundAmount())) }}円
+                </td>
+            </tr>
+        </tbody>
+    </table>
+    </div>
+    </div>
+
+    @if($contract->termination_reason)
+        <div style="margin-top: 14px;">
+            <div class="ms-info-label">退去理由</div>
+            <div class="text-sm text-gray-900" style="margin-top: 4px; white-space: pre-wrap;">{{ $contract->termination_reason }}</div>
+        </div>
+    @endif
+</div>
+@endif
+
 {{-- ========== カード: 賃料改定履歴 ========== --}}
 <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
     <div class="ms-card-title">賃料改定履歴（{{ $contract->revisions->count() }}件）</div>
