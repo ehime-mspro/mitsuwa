@@ -8215,6 +8215,50 @@ if (plan.ids && plan.ids.indexOf(id) === -1) { return null; }
 
 **Files:** 変更なし（検査と手順のみ）
 
+### 実施記録 — Step 1〜7 完了（2026-08-17、HEAD `d18853bc`）
+
+| Step | 実測結果 |
+|---|---|
+| 1 | **781 tests / 4201 assertions OK**（作業前後の 2 回）。メモリピーク 154.50 MB |
+| 1b | 4 コントローラすべて走査済み・MISSING 0。キーは下の期待表と完全一致。**変異**（`'industry' => '業種'` を削除）で**赤**になり `industry (Tenant/AreaBuildingTenantController.php)` を名指しすることを実測 → 復元して緑 |
+| 2 | `fetch(` **0 件** |
+| 3 | Blade コメント除去後 **全て 0 件**（生の grep は偽陽性 3 件。上記 ⚠ 参照）。実装は `config('services.google_maps.api_key')` / `getUrlRange` を使用 |
+| 4 | compiled views **295 本 / INVALID 0** |
+| 5 | **20 本**。ルータ実マッチ 8 件すべて期待どおり（上記の表） |
+| 6 | サイドバー **2** |
+| 7 | 下記 |
+
+**Step 7 の実測条件（再現手順として残す）:**
+
+- worktree に `public/build` が無いと **CSS が載らず計測が無意味**になる（RULES.md 落とし穴 1）。
+  main repo の CSS は `13.x` 時点のビルドで新ビューのクラスを含まないため流用不可。
+  → **worktree を対象に実ビルド**した（`node_modules` は無いが、worktree が main repo 配下にあるため
+  Node の解決が上へ辿って main repo の `node_modules` を掴む）:
+  `/Users/masanori/site/manage/node_modules/.bin/vite build` → `app-Dl_VCfvY.css` 49.11 kB
+- CSS が本当に効いていることを `flex items-center gap-3` の computed 値
+  （`display:flex` / `align-items:center` / `gap:12px`）で確認してから計測した
+- DB は **scratchpad の sqlite**。worktree の `.env` は `DB_DATABASE` が `/dev/null/nonexistent.sqlite`
+  で実 DB へ到達不能にしてあるので、`.env` は編集せず**環境変数で上書き**した
+  （Dotenv は既存の環境変数を上書きしないので shell 側が勝つ）
+- 認証必須画面は**ログインフォームを経由せず**、認証済みで内部レンダリングして
+  `public/step7/*.html` へ静的出力した。⚠ `Request::create($uri)` だとホストが `localhost:80` になり
+  `@vite` の CSS が Apache 側を指して 404 になる → **絶対 URL で作る** ＋ `URL::forceRootUrl()`
+- 計測: 10 画面 × **375px と 1400px** の両方（Bug #29 — 超過幅は定数になるので片方では判定できない）
+
+**Step 7 の結果: 10 画面 × 2 幅すべて `main.scrollWidth === main.clientWidth`。**
+`overflow:hidden` による無音の切り落とし 0 件、スクロール祖先を持たない表 0 件、
+コンソール **エラー 0 件**（警告は Google Maps の `NoApiKeys` / `InvalidKey` のみ＝ worktree に鍵が無い
+ローカル固有の事情）。表は `.scroll-hint-inner` の中だけが横スクロールする（375px で 908px の表）。
+
+⚠ **計測器が赤を出せることをカナリアで実測した**（Bug #50 の規律）——
+① `main` に幅 2000px の要素を注入 → `mainOk: false` / `scrollWidth: 2000`
+② `overflow-x:hidden` の 100px 箱に 900px の中身 → 切り落としとして検出。
+**これを省くと「常に緑を返す計測」で全画面 OK を集めてしまう。**
+
+⚠ `<input>` / `<textarea>` / `<select>` は**値**がボックスより長いと `scrollWidth > clientWidth` に
+なるが、キャレット移動で横スクロールする正常な挙動なので**検出器から除外する**
+（除外前は長いビル名・住所を入れた `edit` で 2 件の偽陽性が出た）。
+
 - [ ] **Step 1: 全テストを走らせる**
 
 ```bash
@@ -8312,6 +8356,28 @@ grep -rn "env(" resources/views/tenant/area-buildings/
 
 Expected: **すべて 0 件**
 
+⚠ **2026-08-17 実測 — この grep は偽陽性を 2 種類出す。0 件にならなくても即欠陥とは限らない。**
+実測では `->links()` が 1 件・`env(` が 2 件ヒットしたが、**いずれも規約そのものを書いた
+Blade コメント `{{-- --}}` の中**だった（`{{-- ページネーション（->links() は使わない…）--}}` /
+`{{-- ⚠ Blade で env() を直接呼ばない（Bug #17）--}}`）。Blade コメントはコンパイル時に
+除去されるので出力にも compiled PHP にも残らず、実害はない。
+**Bug #30 と同じ自己参照**（注意書きを書いた事自体が検査に引っかかる）。
+
+判定は grep の生の件数ではなく、**Blade コメントを除去してから**行うこと:
+
+```bash
+for f in resources/views/tenant/area-buildings/**/*.blade.php; do
+  perl -0777 -pe 's/\{\{--.*?--\}\}//gs' "$f" | grep -Hn --label="$f" -e 'env(' -e '\->links()'
+done
+```
+
+さらに **実装側が正しいことを別途 1 回だけ確認する**（「無いこと」の確認だけでは片手落ち）:
+
+```bash
+grep -rn "services.google_maps" resources/views/tenant/area-buildings/   # config() 経由か
+grep -rn "getUrlRange"          resources/views/tenant/area-buildings/   # インライン番号付きか
+```
+
 - [ ] **Step 4: 本番同等にコンパイルして lint する（Bug #26 / #30）**
 
 `view:cache` は成功表示してもコンパイル済み PHP を lint しない。生成物を必ず lint する:
@@ -8324,13 +8390,50 @@ APP_KEY=base64:$(head -c 32 /dev/urandom | base64) php artisan view:cache \
 
 Expected: `INVALID:` が 1 件も出ない
 
-- [ ] **Step 5: ルートの並びを目で確認する**
+- [ ] **Step 5: ルートの本数と、`create` 等が `{building}` に食われないことを確認する**
 
 ```bash
 APP_KEY=base64:$(head -c 32 /dev/urandom | base64) php artisan route:list --path=area-buildings
 ```
 
-Expected: 20 本。`create` / `import` / `geocode` が `{building}` より**上**に並んでいること。
+Expected: 20 本。
+
+⚠ **2026-08-17 訂正 — 「`create` / `import` / `geocode` が `{building}` より上に並んでいること」
+という当初の判定は、構造上いつでも緑になる false-pass だった。**
+`route:list` は既定で **URI の辞書順**に並べ、`{`（0x7B）は英小文字（0x61–0x7A）より大きいので、
+**`{param}` を含む URI は登録順に関係なく必ず後ろに表示される**。並びを見ても何も分からない。
+
+Laravel は**登録順**でマッチするため、`/x/{id}` を `/x/create` より先に登録すると
+`/x/create` が `{id}="create"` に食われて本番 404 / 500 になる（Bug #20 / #25 と同じ「ルートだけが
+ずれている」型）。よって**ルータに実際にマッチさせて測る**:
+
+```bash
+php artisan tinker --execute='
+$r = app("router")->getRoutes();
+foreach ([["GET","/tenant/area-buildings/create"],["GET","/tenant/area-buildings/import"],
+          ["POST","/tenant/area-buildings/import"],["POST","/tenant/area-buildings/geocode"],
+          ["GET","/tenant/area-buildings/123"],["GET","/tenant/area-buildings/123/edit"],
+          ["GET","/tenant/area-buildings/123/surveys/create"],
+          ["GET","/tenant/area-buildings/123/tenants/create"]] as [$m,$u]) {
+    printf("%-5s %-48s -> %s\n", $m, $u, $r->match(Illuminate\Http\Request::create($u,$m))->getName());
+}'
+```
+
+Expected（2026-08-17 実測。8 件すべてこの通りだった）:
+
+| メソッド | URI | 解決先 |
+|---|---|---|
+| GET | `/tenant/area-buildings/create` | `tenant.area-buildings.create` |
+| GET | `/tenant/area-buildings/import` | `tenant.area-buildings.import` |
+| POST | `/tenant/area-buildings/import` | `tenant.area-buildings.import.execute` |
+| POST | `/tenant/area-buildings/geocode` | `tenant.area-buildings.geocode` |
+| GET | `/tenant/area-buildings/123` | `tenant.area-buildings.show` |
+| GET | `/tenant/area-buildings/123/edit` | `tenant.area-buildings.edit` |
+| GET | `/tenant/area-buildings/123/surveys/create` | `tenant.area-buildings.surveys.create` |
+| GET | `/tenant/area-buildings/123/tenants/create` | `tenant.area-buildings.tenants.create` |
+
+⚠ **同型の検査が他のプランにもある。** リソースルート＋独自 URI を持つモジュールは
+すべて同じリスクを持つので、「`route:list` の並びを目で見る」形の確認を見つけたら実マッチへ直すこと。
 
 - [ ] **Step 6: サイドバーを 2 箇所とも直したか確認する**
 
@@ -8418,7 +8521,8 @@ cd /Users/masanori/site/manage && php artisan db:table area_buildings && php art
 1. 本番 DB に `database/sql/2026-08-12-create-area-building-tables.sql` を適用する
 2. `./deploy.sh`（`npm run build` → rsync → 本番で `config:cache && route:cache && view:cache`）
 
-⚠ ルートを 19 本追加しているので **`git push` だけでは本番に反映されない**（`route:cache` の
+⚠ ルートを 20 本追加しているので **`git push` だけでは本番に反映されない**（設計 §5.1 の 19 本
+＋ 座標一括取得 1 本。2026-08-17 に `route:list --path=area-buildings` で 20 本を実測）（`route:cache` の
 再生成が要る。Bug #20 / #25 と同じ）。
 ⚠ `docs/` と `tests/` は rsync 除外なので本番には行かない（意図どおり）。
 
