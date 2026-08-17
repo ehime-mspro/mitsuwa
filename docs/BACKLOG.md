@@ -183,6 +183,49 @@
 
 ---
 
+## ✅ 周辺ビル調査 第1段（テナント管理）— 本番稼働中
+
+詳細仕様: @docs/superpowers/specs/2026-08-12-tenant-area-building-survey-design.md
+実装計画: @docs/superpowers/plans/2026-08-13-tenant-area-building-survey-phase1.md
+
+自社物件の周辺にあるビルの空室状況を定点観測し、テナント需給の肌感を数字で持つための機能。
+**2026-08-17 に本番反映（`13.x` = `c8a445da`）。**
+
+| 区分 | 実装内容 |
+|------|---------|
+| Controllers | `Tenant/{AreaBuilding,AreaBuildingSurvey,AreaBuildingTenant,AreaBuildingImport}Controller.php`（4本）|
+| Models | `AreaBuilding`（SoftDeletes）/ `AreaBuildingSurvey`（月初正規化）/ `AreaBuildingTenant`（3本）|
+| Enum | `AreaTenantStatus`（operating / vacant / unknown。状態エイリアスは順序非依存）|
+| Support | `VacancyRate`（空室率を 1 箇所に集約）/ `FloorNumber`（B1 = -1 の相互変換）|
+| Service | `Tenant/AreaBuildingListService` |
+| Blade | 13本（`tenant/area-buildings/` + `surveys/` + `tenants/`）|
+| ルート | **20本**（設計 §5.1 の 19 本 ＋ 座標一括取得 1 本）|
+| DB | `area_buildings` / `area_building_surveys` / `area_building_tenants`（raw SQL ＋ migration の両方を維持）|
+| テスト | 本機能で約 105 本追加（全体 781 tests / 4201 assertions green）|
+
+### 主な機能
+
+- 一覧: 空室率フィルタ（満室 / 空きあり / 20% 以上 / 40% 以上）・調査年フィルタ・キーワード検索
+  （ビル名 / 所在地 / **在籍中のテナント名**。退去済みは引っかからない）・インライン番号付きページネーション
+- 詳細: 最新調査の KPI・**調査時の実測とテナント明細の乖離警告**（両方を並べて出す。Bug #46 の教訓）・
+  調査履歴・入居テナント一覧・Google マップリンク
+- 登録編集: 地図でピン配置（**Street View は出さない＝課金方針**。押したときだけ地図を生成）・初回調査の同時作成
+- Excel / CSV 取込: ビル＋調査 / テナント明細の 2 種。SheetJS は **SRI 付き**で読み込む
+- 座標の一括取得: 住所から Geocoding。**1 棟 1 回・上限 200・取得済みは対象外**。
+  取得できなかった棟は一覧の「位置」列に **未取得**と出し、再課金を防ぐ
+
+### 第2段の着手条件
+
+実データがある程度たまってから、**色分けの閾値**（空室率どこから赤にするか）と
+**集計の粒度**（エリア別 / 用途別 / 前年同月比）を決める。データを見る前に決めない。
+
+⚠ 運用開始前に **Google Cloud Console 側の設定**が要る（コードでは対処できない）:
+HTTP リファラー制限 / API 制限（Maps JavaScript API と Geocoding API のみ。Places は有効にしない）/ 予算アラート。
+詳細は実装計画の Task 13 Step 13〜14。
+
+---
+
 ## バックログ完了状況
 
-優先度 1〜5 のすべてのバックログ項目が本番稼働中。新規要件は別途追記する。
+優先度 1〜5 のすべてのバックログ項目が本番稼働中。周辺ビル調査 第1段も 2026-08-17 に本番稼働。
+新規要件は別途追記する。
