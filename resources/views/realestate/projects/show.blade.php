@@ -495,7 +495,11 @@
 </div>
 
 {{-- SheetJS（試算表 Excel 取込用）— CLAUDE.md ルール: cdn.jsdelivr.net のみ許可 --}}
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+{{-- ⚠ integrity は打ち直さずコピー&ペーストで貼る。値は CdnScriptIntegrityTest::PINNED_SRI で固定。
+     不一致だとブラウザはこのスクリプトを黙って実行せず、Excel 取込が無反応になる（Bug #28 と同型）--}}
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"
+        integrity="sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw"
+        crossorigin="anonymous"></script>
 
 {{-- 試算表 Excel/CSV 取込の Alpine factory（仕入れ案件・分譲地PJ 共用） --}}
 @include('realestate._partials._cost_excel_import_script')
