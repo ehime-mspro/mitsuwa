@@ -161,7 +161,7 @@ class ContractTerminationSettlementTest extends TestCase
      *   ここは「1 行目だけ完全、2 行目は名称のみ、3 行目は金額のみ」を送り、
      *   **1 行目だけがそのままの組で保存される**ことを見る。
      */
-    public function test_incomplete_deduction_rows_are_dropped_and_pairs_stay_aligned(): void
+    public function test_incomplete_deduction_rows_are_dropped(): void
     {
         $contract = $this->makeContract();
 
@@ -176,7 +176,42 @@ class ContractTerminationSettlementTest extends TestCase
 
         $this->assertCount(1, $contract->deductions, '不完全な行が保存されている');
         $this->assertSame('鍵交換費', $contract->deductions[0]->name);
-        $this->assertSame(15000, $contract->deductions[0]->amount, '名称と金額の組がずれている');
+        $this->assertSame(15000, $contract->deductions[0]->amount);
+    }
+
+    /**
+     * **途中の行が落ちても、残った行の名称と金額がずれないこと。**
+     *
+     * ⚠ このケースが無いと `array_values()` で詰め直す変異を検出できない。
+     *   実測（2026-08-17）: 「末尾だけ不完全」なデータでは詰め直しても結果が同じになり、
+     *   **変異が緑のまま通った**。**真ん中の行を落とす**データでなければ区別できない。
+     *
+     *   名称 ['A', '', 'C'] / 金額 [100, 200, 300] を送ると:
+     *     正しい実装 → A=100, C=300（添字で組にする）
+     *     詰め直す実装 → A=100, C=**200**（2 番目の金額を拾ってしまう）
+     */
+    public function test_deduction_pairs_stay_aligned_when_a_middle_row_is_dropped(): void
+    {
+        $contract = $this->makeContract();
+
+        $this->actingAs($this->actor())
+            ->put(route('mansion.contracts.terminate', $contract), [
+                'move_out_date'          => '2026-08-31',
+                'other_deduction_name'   => ['鍵交換費', '', 'エアコン清掃'],
+                'other_deduction_amount' => [100, 200, 300],
+            ]);
+
+        $contract->refresh()->load('deductions');
+
+        $this->assertCount(2, $contract->deductions);
+        $this->assertSame('鍵交換費', $contract->deductions[0]->name);
+        $this->assertSame(100, $contract->deductions[0]->amount);
+        $this->assertSame('エアコン清掃', $contract->deductions[1]->name);
+        $this->assertSame(
+            300,
+            $contract->deductions[1]->amount,
+            '名称と金額の組がずれている（真ん中の行が落ちた後の添字がずれた）'
+        );
     }
 
     /**
