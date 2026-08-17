@@ -206,7 +206,12 @@ function __chartLoadError() {
     if (el) { el.textContent = 'Chart.jsの読み込みに失敗しました。ネットワーク設定を確認してください。'; el.style.display = 'block'; }
 }
 </script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"
+{{-- ⚠ `.min.js` に戻さないこと。npm に実在せず jsDelivr の動的生成物で、そのバナー自身が
+     「Do NOT use SRI with dynamically generated files!」と警告する。値は CdnScriptIntegrityTest::PINNED_SRI で固定。
+     ⚠ SRI 不一致でも onerror が発火するので、下の __chartLoadError() が受け止める --}}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.js"
+        integrity="sha384-zYPBGXwO4633CABX/5Spf6emCKUJCfoOkhOMYyxMsatqQZPnDblmmOewfjsIVWCM"
+        crossorigin="anonymous"
         onload="__renderSummaryChart();"
         onerror="__chartLoadError();"></script>
 @endsection

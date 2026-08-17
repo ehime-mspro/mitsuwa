@@ -11,14 +11,20 @@ use Tests\TestCase;
  *   無 SRI でも無音で通る。**全件を分類**し、legacy リストにも載らず integrity も無い
  *   `<script src>` があれば落とす。
  *
- * ⚠ **legacy は凍結リスト。** 設計 §7 の判断で「新しく増やす分にだけ SRI を付ける」ことに
- *   なっており、既存分への後付けはフォローアップとして順次潰している
- *   （2026-08-17 に SheetJS 4 本を処理し 9 → 5 本。残りは Chart.js）。
- *   ここに**追記してはいけない** — 追記できてしまうと分類器の意味が無くなる。
- *   既存分に SRI を付けたら**行を消す**。
+ * ⚠ **2026-08-17 に legacy は空になった**（SheetJS 4 本 → Chart.js 5 本の順で潰した）。
+ *   例外がゼロになったので、jsDelivr のスクリプトには
+ *   **① SRI が付いている ② ハッシュが `PINNED_SRI` に実測値として載っている**
+ *   の両方を課している。ここに**追記してはいけない** — 追記できてしまうと分類器の意味が無くなる。
  *
  * ⚠ **分類器は `integrity` の有無しか見ない。値の正しさは `PINNED_SRI` 側で固定する**
  *   （値が違うとブラウザだけが黙ってスクリプトを実行しなくなる。Bug #28 / #43 と同型）。
+ *
+ * ⚠ **jsDelivr の「動的生成ファイル」に SRI を付けてはいけない。**
+ *   `chart.umd.min.js` は npm に実在せず（unpkg で 404）jsDelivr がその場で作る物で、
+ *   生成物の先頭バナー自身が `Do NOT use SRI with dynamically generated files!` と警告する。
+ *   publisher が実際に配っているファイル（`chart.umd.js`）を使うこと。
+ *   実ファイルなら **jsdelivr と unpkg でハッシュ一致を確認できる**＝ CDN 片側の改竄でない
+ *   裏取りが取れるが、生成物ではそれが原理的に取れない。
  *
  * ⚠ 外部ホストは `cdn.jsdelivr.net`（バンドル）と `maps.googleapis.com`（Maps ローダー）だけ許可。
  *   `cdnjs.cloudflare.com` は本番でブロックされる。Maps ローダーは**内容が動的**で
@@ -27,42 +33,45 @@ use Tests\TestCase;
 class CdnScriptIntegrityTest extends TestCase
 {
     /**
-     * SRI 導入（2026-08-17）より前からある CDN スクリプト。**凍結。追加しないこと。**
+     * SRI 導入（2026-08-17）より前からあり、まだ SRI を付けていない CDN スクリプト。
      *
-     * ⚠ **キーは `ビュー|src` の組。** ビュー名だけで凍結すると、このビュー群は
-     *   将来ぶんも含めて永久に無検査になる（実測: legacy のビューへ無 SRI スクリプトを
-     *   足しても緑だった）。しかもここは **次に CDN スクリプトが増える可能性がいちばん高い
-     *   ビュー群**。件数（同じ URL が 2 本あるケース）まで見るため、多重集合として突き合わせる。
+     * **2026-08-17 に全件を潰して空になった**（SheetJS 4 本 → Chart.js 5 本）。
+     * **空のまま維持すること。ここへ追記してはいけない** — 追記できてしまうと
+     * 「SRI が無くても通る」抜け道が復活し、分類器の意味が無くなる。
      *
-     * ⚠ **2026-08-17 に SheetJS 4 本を潰して 9 → 5 本になった**（Excel 取込ぶん）。
-     *   残りはすべて Chart.js。**SRI を付けたら必ずこの行を消すこと**
-     *   （消し忘れは `test_every_cdn_script_is_classified` の `$legacyWithSri` が落とす）。
+     * ⚠ キーは `ビュー|src` の組（ビュー名だけで凍結すると、そのビューは将来ぶんも含めて
+     * 永久に無検査になる。実測でそうなった）。件数まで見るため多重集合として突き合わせる。
+     *
+     * @var list<string>
      */
-    private const LEGACY_WITHOUT_SRI = [
-        'dashboard/_executive_charts.blade.php|https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js',
-        'housing/_dashboard_chart.blade.php|https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js',
-        'tenant/analysis/index.blade.php|https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js',
-        'transactions/summary.blade.php|https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js',
-        'zeal/dashboard.blade.php|https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js',
-    ];
+    private const LEGACY_WITHOUT_SRI = [];
 
     /**
      * 実測済みのハッシュ。**src ごとに 1 つだけ正解がある。**
      *
      * ⚠ **分類器（`test_every_cdn_script_is_classified`）は `integrity` の "有無" しか見ない。**
      *   値が間違っていてもそこは緑のまま通り、ブラウザだけが黙ってスクリプトを実行しなくなる
-     *   （Bug #28 / #43 と同じ「HTML には出るが実行時に効かない」型）。SheetJS を 5 ビューへ
-     *   手で貼った時点で「1 箇所だけ打ち間違える」が現実的な事故になったので、値を固定する。
+     *   （Bug #28 / #43 と同じ「HTML には出るが実行時に効かない」型）。同じ URL を複数ビューへ
+     *   手で貼る以上「1 箇所だけ打ち間違える」は現実的な事故なので、値を固定する。
      *
-     * 実測（2026-08-17、CDN の実ファイルから再計算して一致を確認）:
+     * ⚠ **legacy が空になったので、jsDelivr のスクリプトは全件ここに載っていることを要求する**
+     *   （`test_every_jsdelivr_script_is_pinned`）。「SRI は付けたがハッシュを実測していない」
+     *   状態を原理的に作れなくするため。バージョンを上げるときは必ず実測してから貼る。
+     *
+     * 実測手順（2026-08-17 に全エントリで実施）:
      *   curl -sL <url> | openssl dgst -sha384 -binary | openssl base64 -A
      *
-     * ここに載っていない src は値を検査しない（Chart.js は SRI 未導入なので現状は対象外）。
-     * Chart.js に SRI を付けるときは**実測してからここへ追加する**こと。
+     * ⚠ **`unpkg` の同版とも突き合わせること**（CDN 片側の改竄でないことの裏取り）。
+     *   裏取りが取れない URL ＝ jsDelivr の動的生成物なので、そもそも使ってはいけない
+     *   （クラス冒頭の警告を参照）。
      */
     private const PINNED_SRI = [
         'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js'
             => 'sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw',
+        'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js'
+            => 'sha384-dug+JxfBvklEQdJ4AYuBBAIScUz0bVN73xpy273gcAwHjb3qI0fXmuYNaNfdyYJG',
+        'https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.js'
+            => 'sha384-zYPBGXwO4633CABX/5Spf6emCKUJCfoOkhOMYyxMsatqQZPnDblmmOewfjsIVWCM',
     ];
 
     /**
@@ -290,7 +299,13 @@ class CdnScriptIntegrityTest extends TestCase
         );
     }
 
-    /** legacy リストの行が実在すること（消えたビューが残ると分類器が緩む） */
+    /**
+     * legacy リストの行が実在すること（消えたビューが残ると分類器が緩む）。
+     *
+     * ⚠ **`foreach` + `assertContains` で書かない。** legacy が空になった今、
+     *   ループが 1 周も回らず**アサーション 0 本の risky テスト**に縮退してしまう
+     *   （「緑」に見えるが何も測っていない）。差集合を取って**必ず 1 本**アサートする。
+     */
     public function test_the_legacy_list_has_no_stale_entries(): void
     {
         $keys = [];
@@ -300,8 +315,49 @@ class CdnScriptIntegrityTest extends TestCase
             }
         }
 
-        foreach (self::LEGACY_WITHOUT_SRI as $key) {
-            $this->assertContains($key, $keys, "legacy リストの {$key} が実在しない（行を消すこと）");
+        $this->assertSame(
+            [],
+            array_values(array_diff(self::LEGACY_WITHOUT_SRI, $keys)),
+            'legacy リストに実在しない行が残っている（消したビューの行を削ること）'
+        );
+    }
+
+    /**
+     * jsDelivr のスクリプトは全件 `PINNED_SRI` に載っていること。
+     *
+     * legacy が空になり例外がゼロになったので課せるようになった不変条件。
+     * これで「SRI は付いているが**ハッシュを実測していない**」状態が原理的に作れない。
+     *
+     * ⚠ jsDelivr の**動的生成 URL**（`chart.umd.min.js` 等）は実測の裏取りが取れないので
+     *   `PINNED_SRI` に載せられない＝このテストが自動的に弾く。
+     *   「min のほうが速そう」と URL を戻す変更を止めるのが主目的（クラス冒頭の警告を参照）。
+     */
+    public function test_every_jsdelivr_script_is_pinned(): void
+    {
+        $unpinned = [];
+        $seen     = 0;
+
+        foreach ($this->externalScriptTags() as $tag) {
+            if (! $this->isJsDelivr($tag['src'])) {
+                continue;
+            }
+            $seen++;
+            if (! array_key_exists($tag['src'], self::PINNED_SRI)) {
+                $unpinned[] = $tag['view'] . ':' . $tag['line'] . ' → ' . $tag['src'];
+            }
         }
+
+        // 走査が空振りして緑になる事故を防ぐ
+        $this->assertGreaterThanOrEqual(8, $seen, 'jsDelivr のスクリプトを拾えていない（空振り防止）');
+
+        $this->assertSame(
+            [],
+            $unpinned,
+            "jsDelivr のスクリプトが PINNED_SRI に載っていない。\n"
+            . "ハッシュを実測し、unpkg の同版とも突き合わせてから PINNED_SRI へ追加すること:\n"
+            . "  curl -sL <url> | openssl dgst -sha384 -binary | openssl base64 -A\n"
+            . "⚠ unpkg で 404 になる URL は jsDelivr の動的生成物。SRI を付けてはいけない\n"
+            . '該当: ' . implode(', ', $unpinned)
+        );
     }
 }
