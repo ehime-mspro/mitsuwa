@@ -19,18 +19,28 @@ class LoginThrottleTest extends TestCase
 {
     use RefreshDatabase;
 
+    /**
+     * ⚠ **`assertStatus()` ではなく生のステータスコードで見る。**
+     *   差し戻し（302）のレスポンスに対して `assertStatus()` が失敗すると、Laravel が
+     *   メッセージを組み立てる際にセッションの `errors` を読もうとして
+     *   `Call to a member function all() on array` で**落ちた理由が読めなくなる**
+     *   （`session('errors')` は `assertSessionHasErrors()` を通すまで生の配列。Bug #49 の関連）。
+     *   実測（2026-08-17）: throttle を外す変異で、検出はできるがメッセージが潰れた。
+     */
     public function test_login_attempts_are_rate_limited(): void
     {
         User::factory()->create(['email' => 'user@example.com', 'must_change_password' => false]);
 
         // 5 回までは通常どおり差し戻される
         for ($i = 1; $i <= 5; $i++) {
-            $this->post('/login', ['email' => 'user@example.com', 'password' => 'wrong'])
-                ->assertStatus(302, "{$i} 回目でレート制限が掛かっている（早すぎる）");
+            $status = $this->post('/login', ['email' => 'user@example.com', 'password' => 'wrong'])
+                ->getStatusCode();
+            $this->assertSame(302, $status, "{$i} 回目でレート制限が掛かっている（早すぎる）");
         }
 
-        $this->post('/login', ['email' => 'user@example.com', 'password' => 'wrong'])
-            ->assertStatus(429, '6 回目が通っている＝ブルートフォース対策が効いていない');
+        $status = $this->post('/login', ['email' => 'user@example.com', 'password' => 'wrong'])
+            ->getStatusCode();
+        $this->assertSame(429, $status, '6 回目が通っている＝ブルートフォース対策が効いていない');
     }
 
     /**
@@ -46,9 +56,10 @@ class LoginThrottleTest extends TestCase
             $this->post('/login', ['email' => 'other@example.com', 'password' => 'wrong']);
         }
 
-        $this->post('/login', ['email' => $user->email, 'password' => 'password'])
-            ->assertStatus(429);
+        $status = $this->post('/login', ['email' => $user->email, 'password' => 'password'])
+            ->getStatusCode();
 
+        $this->assertSame(429, $status, '制限中なのに正しい資格情報だと通ってしまう');
         $this->assertGuest();
     }
 }
