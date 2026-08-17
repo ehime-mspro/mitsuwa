@@ -213,7 +213,19 @@ class AuthenticationTest extends TestCase
     // ログイン成功時の副作用
     // ============================================================
 
-    /** セッション固定攻撃対策: ログインでセッション ID が変わる */
+    /**
+     * セッション固定攻撃対策: ログインでセッション ID が変わる。
+     *
+     * ⚠ **このテストは `AuthController` の `$request->session()->regenerate()` を守らない。**
+     *   実測（2026-08-17）で、その 1 行を消しても緑のままだった。原因は安全網が
+     *   **フレームワーク側**にあること — `SessionGuard::updateSession()`（`SessionGuard.php:584`）が
+     *   ログイン時に `$this->session->regenerate(true)` を呼ぶので、コントローラの 1 行は冗長。
+     *   Bug #48（安全網を足すと主機構の変異が検出できなくなる）と同型。
+     *
+     *   固定しているのは「**ログインでセッション ID が変わる**」という性質そのもので、
+     *   これはどの層が担保していても守る価値がある。**コントローラの行は未カバーと明記する**
+     *   （偽の安心より正直な穴のほうがよい。Bug #43）。
+     */
     public function test_the_session_id_changes_on_login(): void
     {
         $user = $this->makeUser();
