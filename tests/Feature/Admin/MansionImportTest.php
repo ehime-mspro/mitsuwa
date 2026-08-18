@@ -307,4 +307,95 @@ class MansionImportTest extends TestCase
 
         $this->assertSame(2, MsProperty::count());
     }
+
+    private const ROOM_HEADER = '物件名,部屋番号,階,間取り,面積(㎡),状態,家賃,共益費,敷金,礼金,備考';
+
+    private function seedProperty(string $name = 'ミツワレジデンス'): MsProperty
+    {
+        $this->confirm('property', self::PROPERTY_HEADER . "\n{$name},自社所有,,,松山市1,,,,,\n");
+
+        return MsProperty::where('property_name', $name)->sole();
+    }
+
+    public function test_room_round_trip_creates_the_row(): void
+    {
+        $property = $this->seedProperty();
+
+        $csv = self::ROOM_HEADER . "\n"
+             . "ミツワレジデンス,101,1,1K,25.50,空室,55000,3000,55000,55000,メモ\n";
+
+        $this->confirm('room', $csv)->assertSessionHas('success', '部屋インポート完了: 1件を登録しました');
+
+        $room = \App\Models\MsRoom::sole();
+        $this->assertSame($property->id, $room->property_id);
+        $this->assertSame('101', $room->room_number);
+        $this->assertSame(1, $room->floor);
+        $this->assertSame('vacant', $room->status->value);
+        $this->assertSame(55000, $room->rent);
+        $this->assertSame('25.50', $room->area_sqm);
+    }
+
+    /**
+     * 物件が未登録ならエラー行になり、部屋は作られない。
+     *
+     * ⚠ **ここで `confirm()` を使ってはいけない。** この CSV は 1 行しかなく、その 1 行が
+     *   エラーなので `validCount` が 0 になる。`_preview.blade.php` は確定フォームを
+     *   `@if($validCount > 0)` で囲んでいるため、**画面には押すものが 1 つも描かれない**
+     *   （代わりに「インポート可能なデータがありません。CSVを修正してください。」が出る）。
+     *   `confirmed=1` を手で POST すれば「0件を登録しました」は返るが、それは
+     *   **ブラウザには作れないリクエスト**なので、そういう CSV は
+     *   `assertPreviewOffersNoImport()` で受ける（物件取込の同型テストと同じ扱い）。
+     */
+    public function test_a_room_whose_property_is_missing_is_an_error_row(): void
+    {
+        $this->assertPreviewOffersNoImport('room', self::ROOM_HEADER . "\n知らない物件,101,,,,,,,,,\n")
+            ->assertSee('物件「知らない物件」がシステムに登録されていません', false);
+
+        $this->assertSame(0, \App\Models\MsRoom::count());
+    }
+
+    /**
+     * 同じ物件の同じ部屋番号は 2 度入らない。
+     *
+     * ⚠ **本番は `UNIQUE (property_id, room_number)`。** アプリ側の重複判定が
+     *   死ぬと例外 → `rollBack()` で取込全体が落ちる。
+     *   `CreatesMansionSchema` に UNIQUE を足してあるので、この形が本番同等で測れる。
+     */
+    public function test_a_room_number_already_in_the_database_is_an_error_row(): void
+    {
+        $this->seedProperty();
+        $this->confirm('room', self::ROOM_HEADER . "\nミツワレジデンス,101,,,,,,,,,\n");
+
+        $csv = self::ROOM_HEADER . "\n"
+             . "ミツワレジデンス,101,,,,,,,,,\n"
+             . "ミツワレジデンス,102,,,,,,,,,\n";
+
+        $preview = $this->preview('room', $csv);
+        $preview->assertSee('の部屋「101」は既に登録されています', false);
+
+        $this->confirm('room', $csv)->assertSessionHas('success', '部屋インポート完了: 1件を登録しました');
+
+        $this->assertSame(['101', '102'], \App\Models\MsRoom::orderBy('id')->pluck('room_number')->all());
+    }
+
+    /**
+     * 取込後に `total_units` が実際の部屋数で上書きされる。
+     *
+     * ⚠ **物件取込で入れた値は捨てられる**（画面にも「※ 総戸数は部屋インポート後に
+     *   自動再集計で上書きされます」と出ている）。ここを固定しておかないと、
+     *   再集計を消す変異が素通りする。
+     */
+    public function test_total_units_is_recalculated_after_importing_rooms(): void
+    {
+        $this->confirm('property', self::PROPERTY_HEADER . "\nミツワレジデンス,自社所有,,,松山市1,99,,,,\n");
+        $this->assertSame(99, MsProperty::sole()->total_units);
+
+        $csv = self::ROOM_HEADER . "\n"
+             . "ミツワレジデンス,101,,,,,,,,,\n"
+             . "ミツワレジデンス,102,,,,,,,,,\n";
+
+        $this->confirm('room', $csv);
+
+        $this->assertSame(2, MsProperty::sole()->total_units);
+    }
 }
