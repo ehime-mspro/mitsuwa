@@ -27,8 +27,9 @@ Laravel 12 / PHP 8.5.4 (local) + 8.3 (prod) / MySQL 8 / Blade + Alpine.js 3 + Ta
 | 12 | `disabled` なボタン自身に `title` を付けて「押せない理由」を出そうとする（**どのブラウザでも表示されない**。`disabled` な要素はホバーイベントを発火しない。HTML には `title` が出るのでテストも `view:cache` も全部通り、無音で死ぬ）| ホバーを受けられる **`<span title="…">` でボタンを包む** ＋ 画面に理由の領域があれば `aria-describedby` で紐づける（`disabled` はフォーカス不能なので tooltip だけでは届かない）。Alpine なら `:title="cond ? reason : null"`（`''` だと空の `title=""` が残る）。⚠ **検証は「HTML に出るか」では不可能** — 実ブラウザでホバーするか `document.elementFromPoint()` から祖先を辿る。Bug #43 |
 | 13 | 走査テスト（ラチェット）を「直したファイルを配列に並べる」形で書く（**未修正のファイルは検査対象に入らないので永遠に緑**。実測で 19 本が野放しだった）| **対象を全件分類する**形にする — `fetch` を持つ Blade を機械的に列挙し、どのリストにも無ければ落とす（`AjaxErrorFeedbackTest::test_every_fetch_view_is_classified`）。⚠ 検査文字列に**引数名を決め打ちしない**（`(r)` 決め打ちが `(res)` を見逃した）。⚠ **単一の「正準パターン」を機械適用しない** — null 返し / エンベロープ / throw の 3 方式が併存し、どれも正当。Bug #45 |
 | 14 | **view データに `'errors'` キーを渡す**（Blade の `$errors` = `ViewErrorBag` を上書きする。そのビューが `$errors->any()` を呼んだ瞬間に **`Call to a member function any() on array` で 500**）| 行エラーなど独自のエラー配列は **`rowErrors` のような別名**にする。⚠ **画面を開くだけでは分からない** — 壊れるのはそのデータを渡す経路（取込ならファイルを上げた後のプレビュー）だけ。⚠ **200 を見るだけのテストでは守れない** — ビュー側だけ `$errors` に戻すと**エラー表示が画面から消えるのに例外は出ず全テストが緑**（実測）。コントローラ側の件数と画面の表示を突き合わせること。走査テスト `ImportPreviewRenderTest` が「view に `'errors'` を渡していない」を全件分類で自動で拾う。Bug #53 |
+| 15 | 日付の検証を `strtotime()` でやる（**存在しない日付を繰り上げて通す**。`2026-02-30` は 3/2 と解釈されるのに入力文字列がそのまま返り、本番 MySQL の strict mode が `Incorrect date value` で落ちて `rollBack()` ＝ **1 行の打ち間違いで数百行の取込が丸ごと消える**。逆に `strtotime('1970-01-01')` は `0` ＝ falsy で epoch だけ理由なく拒否される）| **`checkdate()` で存在を判定する**（`App\Support\CsvDate::normalize()` に集約済み）。`preg_match` は**書式**しか見ていないので存在判定の代わりにならない。⚠ **テストの SQLite は `'2026-02-30'` をそのまま格納する**ので DB には守ってもらえない。⚠ 併せて「テストが緑でも測っていない」7 通りの実測（Laravel を起動しない Unit テストは `config/app.php` でなく `php.ini` の timezone に支配される / 手組みリクエストの往復テストは手書き部分を守らない / `assertSee` は警告とエラーを区別しない 等）も同項に。Bug #54 |
 
-全 53 件の詳細バグカタログ + 各種パターン: @docs/RULES.md
+全 54 件の詳細バグカタログ + 各種パターン: @docs/RULES.md
 
 ## 🔌 利用可能なプラグイン
 
