@@ -135,6 +135,14 @@ class MansionImportTest extends TestCase
             }
         }
 
+        // 確定フラグが無いと、押しても `boolean('confirmed')` が false のまま
+        // プレビューが再描画されるだけで 1 件も登録されない（エラーも出ない）。
+        // ⚠ 往復だけでも赤くはなるが、落ち方が「ファイル未選択の差し戻し」になり
+        //   理由が読めない（実測: assertRedirect の失敗が
+        //   `Call to a member function all() on array` という別物の fatal に化ける）。
+        //   名前を変えるならコントローラの `boolean('confirmed')` と対で直すこと。
+        $this->assertArrayHasKey('confirmed', $fields, "「インポート実行」フォームに confirmed hidden が無い（tab={$tab}）");
+
         // ⚠ `@csrf` の欠落は Feature テストでは**原理的に挙動から検出できない**
         //   （`VerifyCsrfToken::handle()` が `runningUnitTests()` で素通りする）。
         //   描画された `_token` hidden の存在を見るのが唯一の手。Bug #47。
