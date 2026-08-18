@@ -1,5 +1,5 @@
 {{-- 各タブ共通のプレビュー表示 --}}
-{{-- 必要変数: $tab, $routeName, $entityLabel, $totalRows, $validCount, $errors, $skippedRows, $warnings(任意), $summary, $csvData --}}
+{{-- 必要変数: $tab, $routeName, $entityLabel, $totalRows, $validCount, $rowErrors, $skippedRows, $warnings(任意), $summary, $csvData --}}
 
 {{-- プレビュー結果 --}}
 <div style="display: flex; align-items: flex-start; gap: 14px; margin-bottom: 20px;">
@@ -14,8 +14,8 @@
             <div style="background: #ecfdf5; padding: 10px 16px; font-size: 14px; font-weight: 600; display: flex; gap: 20px; flex-wrap: wrap;">
                 <span>全 <strong>{{ $totalRows }}</strong> 件</span>
                 <span style="color: #059669;">正常: <strong>{{ $validCount }}</strong> 件</span>
-                @if(count($errors ?? []) > 0)
-                    <span style="color: #dc2626;">エラー: <strong>{{ count($errors) }}</strong> 件</span>
+                @if(count($rowErrors ?? []) > 0)
+                    <span style="color: #dc2626;">エラー: <strong>{{ count($rowErrors) }}</strong> 件</span>
                 @endif
                 @if(count($skippedRows ?? []) > 0)
                     <span style="color: #6b7280;">スキップ: <strong>{{ count($skippedRows) }}</strong> 件</span>
@@ -51,9 +51,9 @@
             @endif
 
             {{-- エラー一覧 --}}
-            @if(count($errors ?? []) > 0)
+            @if(count($rowErrors ?? []) > 0)
                 <div style="max-height: 200px; overflow-y: auto;">
-                    @foreach($errors as $err)
+                    @foreach($rowErrors as $err)
                         <div style="padding: 8px 16px; font-size: 13px; border-bottom: 1px solid #f3f4f6; color: #dc2626;">
                             行{{ $err['row'] }}: {{ $err['message'] }}
                         </div>
@@ -82,8 +82,8 @@
                         style="background: #059669; color: #fff; padding: 10px 28px; border-radius: 6px; font-size: 15px; font-weight: 600; border: none; cursor: pointer;">
                     インポート実行（{{ $validCount }}件）
                 </button>
-                @if(count($errors ?? []) > 0)
-                    <div style="font-size: 12px; color: #6b7280; margin-top: 6px;">※ エラー行（{{ count($errors) }}件）はスキップされます</div>
+                @if(count($rowErrors ?? []) > 0)
+                    <div style="font-size: 12px; color: #6b7280; margin-top: 6px;">※ エラー行（{{ count($rowErrors) }}件）はスキップされます</div>
                 @endif
                 @if(count($skippedRows ?? []) > 0)
                     <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">※ 既存データ（{{ count($skippedRows) }}件）はスキップされます</div>

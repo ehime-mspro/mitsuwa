@@ -166,7 +166,7 @@ class CustomerImportController extends Controller
                 'department' => $department,
                 'totalRows'  => count($lines),
                 'validCount' => count($validRows),
-                'errors'     => $errors,
+                'rowErrors'  => $errors,
                 'dupeRows'   => $dupeRows,
                 'csvData'    => base64_encode($content),
             ]);

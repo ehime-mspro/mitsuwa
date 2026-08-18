@@ -112,10 +112,10 @@
                     <div style="background: #ecfdf5; padding: 10px 16px; font-size: 14px; font-weight: 600; display: flex; gap: 20px;">
                         <span>全 <strong>{{ $totalRows }}</strong> 件</span>
                         <span style="color: #059669;">正常: <strong>{{ $validCount }}</strong> 件</span>
-                        <span style="color: #dc2626;">エラー: <strong>{{ count($errors ?? []) }}</strong> 件</span>
+                        <span style="color: #dc2626;">エラー: <strong>{{ count($rowErrors ?? []) }}</strong> 件</span>
                         <span style="color: #d97706;">重複候補: <strong>{{ count($dupeRows ?? []) }}</strong> 件</span>
                     </div>
-                    @foreach($errors ?? [] as $err)
+                    @foreach($rowErrors ?? [] as $err)
                         <div style="padding: 8px 16px; font-size: 13px; border-bottom: 1px solid #f3f4f6; color: #dc2626;">
                             ⚠ 行{{ $err['row'] }}: {{ $err['message'] }}
                         </div>
@@ -151,7 +151,7 @@
                             style="background: #059669; color: #fff; padding: 10px 28px; border-radius: 6px; font-size: 15px; font-weight: 600; border: none; cursor: pointer;">
                         インポート実行（{{ $validCount }}件）
                     </button>
-                    <div style="font-size: 12px; color: #6b7280; margin-top: 6px;">※ エラー行（{{ count($errors ?? []) }}件）はスキップされます</div>
+                    <div style="font-size: 12px; color: #6b7280; margin-top: 6px;">※ エラー行（{{ count($rowErrors ?? []) }}件）はスキップされます</div>
                 </form>
 
                 <a href="{{ route('admin.customers.import') }}" style="display: inline-block; margin-top: 12px; font-size: 13px; color: #6b7280; text-decoration: underline;">← やり直す</a>
