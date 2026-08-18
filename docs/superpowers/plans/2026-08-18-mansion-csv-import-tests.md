@@ -1437,6 +1437,121 @@ git add docs/superpowers/plans/2026-08-18-mansion-csv-import-tests.md
 git commit -m "docs(plan): 賃貸マンション取込テストの変異テスト結果を記録する"
 ```
 
+### Step 5: 実測結果（2026-08-18 実施 / HEAD `1403ba3f`）
+
+**測定条件**: worktree `tenant-area-survey`（branch `mansion-import-tests`）、
+ベースライン **868 tests / 5044 assertions green**。各変異とも
+①`git status --porcelain` が空 ②変異を当てる ③`git diff` で**当たったこと**と
+**当たり先が意図どおりであること**を確認 ④`./vendor/bin/phpunit` の**終了コード**で判定
+⑤`git checkout -- <個別ファイル>` で復元、の順で実施した
+（`git checkout -- .` は使わない。Bug #44）。
+
+| # | 変異 | 検出 | 落ちたテスト | 実際の失敗メッセージ | 判定 |
+|---|---|---|---|---|---|
+| 1 | `CsvDate::normalize()` を `strtotime()` 版に戻す | ✅ | `CsvDateTest::test_it_rejects_dates_that_do_not_exist` / `::test_it_accepts_the_unix_epoch` / `MansionImportTest::test_an_impossible_contract_date_drops_only_that_row` | `Failed asserting that '2026-02-30' is null.` ／ `Failed asserting that null is identical to '1970-01-01'.` ／ `Failed asserting that '<!DOCTYPE html>…' contains "契約日「2026-02-30」の形式が不正です".` | 正しく検出 |
+| 2 | `checkdate()` の判定を反転 | ✅ | `CsvDateTest` の **4 本全部** | `Failed asserting that null is identical to '2026-04-01'.` ／ `Failed asserting that '2026-13-01' is null.` ／ `Failed asserting that '2026-02-30' is null.` ／ `Failed asserting that null is identical to '1970-01-01'.` | 正しく検出 |
+| 3 | 物件の CSV 内重複チェックを消す | ✅ | `test_a_duplicate_name_inside_the_csv_drops_only_that_row` | `Failed asserting that '<!DOCTYPE html>…' contains "物件名「同名」がCSV内で重複しています".`（**プレビュー**の assert、:287） | 正しく検出 |
+| 4 | 部屋の DB 重複チェックを消す | ✅ | `test_a_room_number_already_in_the_database_is_an_error_row` | `Failed asserting that '<!DOCTYPE html>…' contains "の部屋「101」は既に登録されています".`（**プレビュー**の assert、:374） | 正しく検出（ただし理由は計画の予測と違う。下記 ⚠1） |
+| 5 | `total_units` 再集計のループを消す | ✅ | `test_total_units_is_recalculated_after_importing_rooms` | `Failed asserting that 99 is identical to 2.` | 正しく検出 |
+| 6 | active 契約時の `room.status` 更新を消す | ✅ | `test_an_active_room_contract_marks_the_room_occupied` | `Failed asserting that two strings are identical. -'occupied' +'vacant'` | 正しく検出 |
+| 7 | 駐車場契約の `contract_id` を常に null にする | ✅ | `test_a_linked_room_number_attaches_the_active_room_contract` | `Failed asserting that null is identical to 1.` | 正しく検出 |
+| 8 | `csv_data` hidden を `csv_data_x` に改名 | ✅ | `MansionImportTest` の **7 failures ＋ 12 errors** | 主信号: `Failed asserting that null matches expected '物件インポート完了: 3件を登録しました'.` | 検出（巻き添えが多い。下記 ⚠2） |
+| 8b | `confirmed` hidden を `confirmed_x` に改名 | ✅ | `test_property_round_trip_creates_the_row` | `「インポート実行」フォームに confirmed hidden が無い（tab=property）` / `Failed asserting that an array has the key 'confirmed'.` | 正しく検出 |
+| 8c | フォームの `action` を別タブへ向ける | ✅ | 同上 | `「インポート実行」フォームの action が別の endpoint を指している（tab=property）` / `-'http://localhost/admin/mansion-import/property' +'…/tenant'` | 正しく検出 |
+| 8d | `@csrf` を消す | ✅ | 同上 | `「インポート実行」フォームに @csrf が無い（tab=property）` / `Failed asserting that an array has the key '_token'.` | 正しく検出 |
+| 9 | 二重契約の**警告をエラーに変える** | ❌ | **なし** | — （**全 868 テスト green**） | **検出せず**。下記 ⚠3 |
+| 10 | テスト用スキーマの UNIQUE 3 本を消す ＋ 変異 4 | ✅ | `test_a_room_number_already_in_the_database_is_an_error_row` | 変異 4 単体と**同じ** `…contains "の部屋「101」は既に登録されています".` | 計画の予測と逆。下記 ⚠1 |
+| 10b | UNIQUE 3 本だけ消す（変異なし） | ❌ | **なし** | — （**全 868 テスト green**） | UNIQUE は現状どのテストも検出していない。⚠1 |
+
+#### ⚠1 変異 4 を捕まえているのは UNIQUE 制約ではなく、プレビューの assert だった
+
+計画は「変異 4 → UNIQUE 違反 → `rollBack()` → 0 件」で赤くなると予測し、
+それを Task 5 の UNIQUE が load-bearing である証拠と位置づけていた。**実測は違う。**
+
+`test_a_room_number_already_in_the_database_is_an_error_row` は
+**先に** `$preview->assertSee('の部屋「101」は既に登録されています')`（:374）を見る。
+これはコントローラの `$existingRoom` チェックが出すメッセージ＝**アプリのロジックだけ**で決まり、
+DB 制約は一切関与しない。変異 4 はまさにそのチェックを消すので、
+**UNIQUE の有無に関係なく**この行で落ちる。テストはそこで停止するため、
+末尾の件数 assert（UNIQUE が効く場所）は**一度も実行されていない**。
+
+実測で裏を取った:
+
+- 変異 10（UNIQUE 3 本を消して変異 4 を当てる）→ **赤のまま**。しかも失敗メッセージが変異 4 単体と 1 文字も違わない
+- 変異 10b（UNIQUE 3 本だけ消す）→ **868 tests green**
+
+⇒ **現状、この 3 本の UNIQUE を検出しているテストは 1 本も無い。**
+本番 DDL への忠実さという意味は残る（テスト用スキーマが本番と乖離すると
+Bug「migration vs live schema drift」の再来になる）が、
+**「Task 5 の UNIQUE が効いている証拠」としては成立していない**ので、
+計画のその記述は誤りとして訂正しておく。
+
+#### ⚠2 変異 8 は検出するが、落ち方が読みにくい
+
+`csv_data` を改名すると往復 POST が CSV を運ばなくなるため、
+**19 本が赤**になるが内訳は **7 failures ＋ 12 errors**。
+12 件は `Illuminate\Database\Eloquent\ModelNotFoundException: No query results for model [App\Models\MsProperty].`
+＝ 取込が 0 件で終わった後に seed ヘルパの `MsProperty::sole()` が落ちる**巻き添え**であって、
+`csv_data` を名指ししてはいない。原因を名指しする主信号は
+`Failed asserting that null matches expected '物件インポート完了: 3件を登録しました'.` の側。
+
+⚠ **`ImportPreviewRenderTest` はこの変異で緑のまま**だった（実測 `OK (2 tests, 6 assertions)`）。
+同テストはプレビューが 200 を返すことと view へ `'errors'` を渡していないことしか見ておらず、
+**往復はしない**。計画の期待欄が `ImportPreviewRenderTest` も赤になると書いていたのは誤り。
+往復を守っているのは `MansionImportTest::parseImportForm()` だけである。
+
+#### ⚠3 【未検出】変異 9 — 警告をエラーに変えても全 868 テストが緑
+
+**`$warnings[]` → `$errors[]` に変えても、`./vendor/bin/phpunit` は
+`OK (868 tests, 5044 assertions)` を返す（終了コード 0）。** 変異が当たっていることは
+`git diff` で確認済み（1 行 1 箇所）。
+
+原因は 2 つ重なっている:
+
+1. **`$errors[]` に積む行に `continue` が無い。** よってエラー扱いにしても
+   **その行はそのまま取り込まれる**。取込件数もレコード数も変わらないので、
+   `'部屋契約インポート完了: 1件を登録しました'` も `MsContract::count() === 2` も**真のまま**
+2. **`assertSee('には既に契約中の入居者がいます', false)` は、その文字列が
+   警告ブロックに出ていてもエラーブロックに出ていても等しく一致する。**
+   つまり「警告として出た」ことを**一度も確かめていない**
+
+`test_a_second_active_contract_warns_but_still_imports` の docblock は
+「⚠ 警告（`warnings`）とエラー（`rowErrors`）は別物。**警告をエラーに変える変異で赤くなるよう**、
+『警告が出ること』と『それでも入ること』を対で見る。」と書いているが、
+**その保証は実測で成立していない**。Bug #43 / #46 / #49 と同型
+（同じ文字列が複数の役割で画面に出るため、素の `assertSee` が false-pass する）。
+
+⚠ **本件は本タスクでは修正しない**（Task 13 は測定であって、
+未検出を埋めてテストを緑に見せる作業ではない）。**提案**は次のとおり:
+
+コントローラは `rowErrors` と `warnings` を**別々の view データ**として渡している
+（`MansionImportController` の 976/977 行・1217/1218 行）ので、
+文字列一致ではなく**役割ごとに件数で**見れば区別できる。
+
+```php
+$preview = $this->preview('room-contract', $csv);
+$preview->assertSee('には既に契約中の入居者がいます', false);
+
+// ⚠ 文字列は警告ブロックにもエラーブロックにも出るので、
+//    「警告として出たこと」を役割で固定する（実測: これが無いと
+//    $warnings[] → $errors[] の変異が 868 テスト全部を素通りする）
+$this->assertCount(1, $preview->viewData('warnings'));
+$this->assertCount(0, $preview->viewData('rowErrors'));
+```
+
+⚠ この 2 行を足したら、**再度 `$warnings[]` → `$errors[]` の変異を当てて
+赤になることを実測すること**（足しただけでは「守られている」証拠にならない）。
+
+#### まとめ
+
+- 実施 **13 通り**（1〜9 ＋ 8b/8c/8d ＋ 10/10b）
+- **正しく検出 11 通り**（1・2・3・4・5・6・7・8b・8c・8d、および 8 は巻き添え付きで検出）
+- **未検出 1 通り**（変異 9）＝ 警告とエラーの区別が固定されていない
+- **計画の予測が誤りだった箇所 2 件**（変異 4 の赤くなる理由と UNIQUE の位置づけ／
+  変異 8 における `ImportPreviewRenderTest` の関与）
+- 測定後、`git status --porcelain` が空であることと
+  **868 tests / 5044 assertions green** に戻っていることを確認済み
+
 ---
 
 ## Task 14: 判明した罠を RULES.md に記録する
