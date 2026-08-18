@@ -470,4 +470,104 @@ class MansionImportTest extends TestCase
 
         $this->assertSame(['まともな人'], \App\Models\MsTenant::pluck('name')->all());
     }
+
+    private const ROOM_CONTRACT_HEADER = '物件名,部屋番号,入居者名,契約日,入居日,退去日,家賃,共益費,敷金,礼金,担当者ユーザー名,メモ';
+
+    private function seedRoomAndTenant(): void
+    {
+        $this->seedProperty();
+        $this->confirm('room', self::ROOM_HEADER . "\nミツワレジデンス,101,,,,,,,,,\n");
+        $this->confirm('tenant', self::TENANT_HEADER . "\n入居者,山田太郎,,,,,,,\n");
+    }
+
+    /**
+     * 退去日が無ければ active になり、**部屋のステータスが occupied に変わる**。
+     *
+     * ⚠ 契約を作るだけでなく親の部屋を書き換える副作用があるので、両方見る。
+     */
+    public function test_an_active_room_contract_marks_the_room_occupied(): void
+    {
+        $this->seedRoomAndTenant();
+
+        $csv = self::ROOM_CONTRACT_HEADER . "\n"
+             . "ミツワレジデンス,101,山田太郎,2024-04-01,2024-04-15,,55000,3000,55000,55000,,メモ\n";
+
+        $this->confirm('room-contract', $csv)
+            ->assertSessionHas('success', '部屋契約インポート完了: 1件を登録しました');
+
+        $contract = \App\Models\MsContract::sole();
+        $this->assertSame('active', $contract->status->value);
+        $this->assertSame('2024-04-01', $contract->contract_date->toDateString());
+        $this->assertSame('2024-04-15', $contract->move_in_date->toDateString());
+        $this->assertNull($contract->move_out_date);
+
+        $this->assertSame('occupied', \App\Models\MsRoom::sole()->status->value);
+    }
+
+    /** 退去日があれば terminated になり、部屋は occupied にしない。 */
+    public function test_a_terminated_room_contract_leaves_the_room_alone(): void
+    {
+        $this->seedRoomAndTenant();
+
+        $csv = self::ROOM_CONTRACT_HEADER . "\n"
+             . "ミツワレジデンス,101,山田太郎,2024-04-01,2024-04-15,2025-03-31,,,,,,\n";
+
+        $this->confirm('room-contract', $csv);
+
+        $this->assertSame('terminated', \App\Models\MsContract::sole()->status->value);
+        $this->assertSame('vacant', \App\Models\MsRoom::sole()->status->value);
+    }
+
+    /**
+     * 存在しない日付はエラー行になり、**その行だけ**落ちる。
+     *
+     * ⚠ **これが Task 6 の修正の効き目を実データ経路で見るテスト。**
+     *   旧実装（`strtotime` の真偽判定）は `2026-02-30` を素通りさせ、
+     *   本番 MySQL で `Incorrect date value` → `rollBack()` ＝
+     *   **正しい行まで含めて 1 件も入らない**状態だった。
+     */
+    public function test_an_impossible_contract_date_drops_only_that_row(): void
+    {
+        $this->seedRoomAndTenant();
+        $this->confirm('room', self::ROOM_HEADER . "\nミツワレジデンス,102,,,,,,,,,\n");
+        $this->confirm('tenant', self::TENANT_HEADER . "\n入居者,鈴木次郎,,,,,,,\n");
+
+        $csv = self::ROOM_CONTRACT_HEADER . "\n"
+             . "ミツワレジデンス,101,山田太郎,2026-02-30,,,,,,,,\n"
+             . "ミツワレジデンス,102,鈴木次郎,2026-04-01,,,,,,,,\n";
+
+        $preview = $this->preview('room-contract', $csv);
+        $preview->assertSee('契約日「2026-02-30」の形式が不正です', false);
+
+        $this->confirm('room-contract', $csv)
+            ->assertSessionHas('success', '部屋契約インポート完了: 1件を登録しました');
+
+        $contract = \App\Models\MsContract::sole();
+        $this->assertSame('2026-04-01', $contract->contract_date->toDateString());
+    }
+
+    /**
+     * 既に契約中の部屋には**警告**が出るが、取り込みは止まらない。
+     *
+     * ⚠ 警告（`warnings`）とエラー（`rowErrors`）は別物。警告をエラーに変える変異で
+     *   赤くなるよう、「警告が出ること」と「それでも入ること」を対で見る。
+     */
+    public function test_a_second_active_contract_warns_but_still_imports(): void
+    {
+        $this->seedRoomAndTenant();
+        $this->confirm('tenant', self::TENANT_HEADER . "\n入居者,鈴木次郎,,,,,,,\n");
+
+        $this->confirm('room-contract', self::ROOM_CONTRACT_HEADER
+            . "\nミツワレジデンス,101,山田太郎,2024-04-01,,,,,,,,\n");
+
+        $csv = self::ROOM_CONTRACT_HEADER . "\nミツワレジデンス,101,鈴木次郎,2025-04-01,,,,,,,,\n";
+
+        $preview = $this->preview('room-contract', $csv);
+        $preview->assertSee('には既に契約中の入居者がいます', false);
+
+        $this->confirm('room-contract', $csv)
+            ->assertSessionHas('success', '部屋契約インポート完了: 1件を登録しました');
+
+        $this->assertSame(2, \App\Models\MsContract::count());
+    }
 }
