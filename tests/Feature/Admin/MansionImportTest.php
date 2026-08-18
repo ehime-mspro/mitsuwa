@@ -398,4 +398,76 @@ class MansionImportTest extends TestCase
 
         $this->assertSame(2, MsProperty::sole()->total_units);
     }
+
+    private const PARKING_HEADER = '物件名,駐車場番号,月額料金,状態,屋根あり,備考';
+
+    public function test_parking_round_trip_creates_the_row(): void
+    {
+        $property = $this->seedProperty();
+
+        $this->confirm('parking', self::PARKING_HEADER . "\nミツワレジデンス,P-1,8000,空き,有,メモ\n")
+            ->assertSessionHas('success', '駐車場インポート完了: 1件を登録しました');
+
+        $parking = \App\Models\MsParking::sole();
+        $this->assertSame($property->id, $parking->property_id);
+        $this->assertSame('P-1', $parking->parking_number);
+        $this->assertSame(8000, $parking->monthly_fee);
+        $this->assertSame('vacant', $parking->status->value);
+        $this->assertTrue($parking->has_roof);
+    }
+
+    /**
+     * 「屋根あり」は表記ゆれを受ける。
+     *
+     * ⚠ **未入力は false 扱い**（`hasRoofMap` に無い値も同じ）。
+     *   null にする変異を入れたら赤くなるよう、明示的に false を見る。
+     */
+    public function test_the_roof_flag_accepts_common_spellings(): void
+    {
+        $this->seedProperty();
+
+        $csv = self::PARKING_HEADER . "\n"
+             . "ミツワレジデンス,P-1,8000,空き,有,\n"
+             . "ミツワレジデンス,P-2,8000,空き,あり,\n"
+             . "ミツワレジデンス,P-3,8000,空き,無,\n"
+             . "ミツワレジデンス,P-4,8000,空き,,\n";
+
+        $this->confirm('parking', $csv);
+
+        $this->assertSame(
+            [true, true, false, false],
+            \App\Models\MsParking::orderBy('id')->pluck('has_roof')->all()
+        );
+    }
+
+    private const TENANT_HEADER = '区分,氏名,電話番号,メールアドレス,勤務先,緊急連絡先氏名,緊急連絡先電話,続柄,備考';
+
+    public function test_tenant_round_trip_creates_the_row(): void
+    {
+        $csv = self::TENANT_HEADER . "\n"
+             . "入居者,山田太郎,090-1234-5678,taro@example.com,株式会社サンプル,山田花子,090-9876-5432,配偶者,メモ\n";
+
+        $this->confirm('tenant', $csv)->assertSessionHas('success', '入居者インポート完了: 1件を登録しました');
+
+        $tenant = \App\Models\MsTenant::sole();
+        $this->assertSame('resident', $tenant->tenant_type->value);
+        $this->assertSame('山田太郎', $tenant->name);
+        $this->assertSame('taro@example.com', $tenant->email);
+        $this->assertSame('配偶者', $tenant->emergency_contact_relation);
+    }
+
+    /** 不正なメールアドレスはエラー行になる（その行だけ落ちる）。 */
+    public function test_an_invalid_email_drops_only_that_row(): void
+    {
+        $csv = self::TENANT_HEADER . "\n"
+             . "入居者,壊れた人,,not-an-email,,,,,\n"
+             . "入居者,まともな人,,ok@example.com,,,,,\n";
+
+        $preview = $this->preview('tenant', $csv);
+        $preview->assertSee('メールアドレス「not-an-email」の形式が不正です', false);
+
+        $this->confirm('tenant', $csv)->assertSessionHas('success', '入居者インポート完了: 1件を登録しました');
+
+        $this->assertSame(['まともな人'], \App\Models\MsTenant::pluck('name')->all());
+    }
 }
