@@ -8,6 +8,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Tests\Concerns\CreatesMansionSchema;
+use Tests\Concerns\ParsesForms;
 use Tests\TestCase;
 
 /**
@@ -20,13 +21,28 @@ use Tests\TestCase;
  *
  * ⚠ **プレビューと確定は別の HTTP リクエスト。** 確定側は画面が持ち回った base64 から
  *   CSV を復元し、行バリデーションを最初からやり直す。よってテストも
- *   **画面が描画した hidden をそのまま送り返す**（Bug #47 の往復テスト）。
+ *   **画面が描画したフォームをそのまま分解して送り返す**（Bug #47 の往復テスト）。
  *   URL を `assertSee` で見るだけでは配線の半分も押さえられない。
  */
 class MansionImportTest extends TestCase
 {
     use RefreshDatabase;
     use CreatesMansionSchema;
+    // htmlAttr()（`data-name=` や Alpine バインドを除外する実測済みの罠込み）を借りる。
+    // 属性の取り出しを書き直すと、そこに書かれた注意書きごと drift する。
+    use ParsesForms;
+
+    /**
+     * 確定フォームの送信ボタン。
+     *
+     * ⚠ **素の「インポート実行」で探してはいけない。** 同じ語が `<form>` の**外**にある
+     *   セクション見出しにも出るため（実測: 1 ページに 2 箇所）、そこから `<form` を遡ると
+     *   レイアウト先頭の**ログアウトフォーム**を掴む。必ず `<button>` ごと探す。
+     */
+    private const IMPORT_BUTTON_PATTERN = '/<button\b[^>]*>\s*インポート実行/u';
+
+    /** 全行がエラーのときにプレビューが出す文言（フォームの代わりに描画される）。 */
+    private const NO_IMPORTABLE_ROWS = 'インポート可能なデータがありません。CSVを修正してください。';
 
     protected function setUp(): void
     {
@@ -53,27 +69,122 @@ class MansionImportTest extends TestCase
     /**
      * プレビュー → 確定の往復。
      *
-     * **画面が描画した `csv_data` hidden を抜き出して送り返す**ので、
-     * その hidden が消えたり名前が変わったりすれば赤くなる。
-     * 自前で base64 を組み立ててはいけない（画面が壊れていても緑になる）。
+     * **画面が描画した「インポート実行」フォームを分解し、その `action` へ、その hidden を
+     * そのまま送り返す**（Bug #47）。送信先も送信内容も自前で組み立てないので、
+     * hidden の名前が変わっても・`action` が別タブへ向いても・`@csrf` が消えても赤くなる。
+     *
+     * ⚠ 以前は `csv_data` だけを抜いて残りを手で組んでいた。実測で
+     *   `name="confirmed"` を `name="confirmed_x"` に変えても**緑のまま**通り、
+     *   本番では「インポート実行」を押すたびにプレビューが再表示されるだけで
+     *   1 件も登録されない（エラーも出ない）状態を素通りさせていた。
      */
     private function confirm(string $tab, string $csv): \Illuminate\Testing\TestResponse
     {
         $preview = $this->preview($tab, $csv);
         $preview->assertStatus(200);
 
-        $matched = preg_match(
-            '/<input type="hidden" name="csv_data" value="([^"]*)">/',
-            $preview->getContent(),
-            $m
+        $form = $this->parseImportForm($preview->getContent(), $tab);
+
+        return $this->actingAs($this->executive())->post($form['action'], $form['fields']);
+    }
+
+    /**
+     * プレビュー画面の「インポート実行」フォームを、ブラウザと同じように分解する。
+     *
+     * @return array{action: string, fields: array<string, string>}
+     */
+    private function parseImportForm(string $html, string $tab): array
+    {
+        $found = preg_match(self::IMPORT_BUTTON_PATTERN, $html, $m, PREG_OFFSET_CAPTURE);
+        $this->assertSame(1, $found, "プレビュー画面に「インポート実行」ボタンが無い（tab={$tab}）");
+
+        $buttonPos = $m[0][1];
+
+        $open = strrpos(substr($html, 0, $buttonPos), '<form');
+        $this->assertNotFalse($open, "「インポート実行」ボタンを囲む <form> の開始タグが無い（tab={$tab}）");
+
+        $close = strpos($html, '</form>', $open);
+        $this->assertNotFalse($close, "「インポート実行」ボタンを囲む <form> が閉じていない（tab={$tab}）");
+        // 手前の別フォーム（レイアウトのログアウト等）を掴んでいないことの確認
+        $this->assertGreaterThan(
+            $buttonPos,
+            $close,
+            "「インポート実行」ボタンが <form> の外にある（tab={$tab}）"
         );
 
-        $this->assertSame(1, $matched, "プレビュー画面に csv_data hidden が無い（tab={$tab}）");
+        $form    = substr($html, $open, $close - $open);
+        $openTag = substr($form, 0, strpos($form, '>') + 1);
 
-        return $this->actingAs($this->executive())->post("/admin/mansion-import/{$tab}", [
-            'confirmed' => '1',
-            'csv_data'  => $m[1],
-        ]);
+        // 確定フォームは「そのプレビューを描いたタブ自身」の endpoint へ戻さねばならない。
+        // 別タブを指していると、押しても 1 件も登録されないまま別のタブへ飛ぶ。
+        $this->assertSame(
+            url("/admin/mansion-import/{$tab}"),
+            (string) $this->htmlAttr($openTag, 'action'),
+            "「インポート実行」フォームの action が別の endpoint を指している（tab={$tab}）"
+        );
+
+        $fields = [];
+        preg_match_all('/<input\b[^>]*>/i', $form, $inputs);
+        foreach ($inputs[0] as $tag) {
+            if (strtolower((string) $this->htmlAttr($tag, 'type')) !== 'hidden') {
+                continue;
+            }
+            $name = $this->htmlAttr($tag, 'name');
+            if ($name !== null) {
+                $fields[$name] = $this->htmlAttr($tag, 'value') ?? '';
+            }
+        }
+
+        // ⚠ `@csrf` の欠落は Feature テストでは**原理的に挙動から検出できない**
+        //   （`VerifyCsrfToken::handle()` が `runningUnitTests()` で素通りする）。
+        //   描画された `_token` hidden の存在を見るのが唯一の手。Bug #47。
+        $this->assertArrayHasKey('_token', $fields, "「インポート実行」フォームに @csrf が無い（tab={$tab}）");
+
+        return [
+            'action' => (string) $this->htmlAttr($openTag, 'action'),
+            'fields' => $fields,
+        ];
+    }
+
+    /**
+     * 全行がエラーの CSV では、プレビューが**取込の入口を 1 つも描かない**ことを固定する。
+     *
+     * ⚠ 確定フォームは `@if($validCount > 0)` に囲まれているので、
+     *   正常行が 0 件だと**フォームごと消える**（実測: `name="confirmed"` も `name="csv_data"` も
+     *   HTML に出ない）。よって「0 件を登録しました」という完了メッセージは
+     *   **画面からは到達できない**。そこを `confirm()` で叩くとブラウザにできない操作を
+     *   テストが勝手に作ることになるので、そういう CSV はこちらで受ける。
+     */
+    private function assertPreviewOffersNoImport(string $tab, string $csv): \Illuminate\Testing\TestResponse
+    {
+        $preview = $this->preview($tab, $csv);
+        $preview->assertStatus(200);
+
+        $html = $preview->getContent();
+
+        $this->assertSame(0, $preview->viewData('validCount'), "取込可能な行が残っている（tab={$tab}）");
+
+        // コントローラが数えたエラー行が、画面にも出ていること（Bug #53: 件数と表示を突き合わせる）
+        $rowErrors = $preview->viewData('rowErrors');
+        $this->assertNotEmpty($rowErrors, "エラー行が 1 件も無い（tab={$tab}）");
+        $this->assertStringContainsString(
+            $rowErrors[0]['message'],
+            $html,
+            "エラー行の内容が画面に出ていない（tab={$tab}）"
+        );
+
+        $this->assertStringContainsString(
+            self::NO_IMPORTABLE_ROWS,
+            $html,
+            "「" . self::NO_IMPORTABLE_ROWS . "」が画面に出ていない（tab={$tab}）"
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            self::IMPORT_BUTTON_PATTERN,
+            $html,
+            "取込できないはずのプレビューに「インポート実行」ボタンが出ている（tab={$tab}）"
+        );
+
+        return $preview;
     }
 
     private const PROPERTY_HEADER = '物件名,所有区分,オーナー名,郵便番号,住所,総戸数,階数,構造,築年月,備考';
@@ -96,5 +207,23 @@ class MansionImportTest extends TestCase
         $this->assertSame(20, $property->total_units);
         $this->assertSame(5, $property->total_floors);
         $this->assertSame('2010-04', $property->built_year_month);
+    }
+
+    /**
+     * 正常行が 1 件も無いプレビューには、確定ボタンもフォームも出ない。
+     *
+     * ⚠ これが「0 件を登録しました」を画面から出せない根拠。
+     *   `confirm()` で叩けば確かに完了メッセージは返るが、それは HTTP を直接叩いた
+     *   場合だけで、利用者には押すものが無い。
+     */
+    public function test_a_preview_with_no_valid_rows_offers_no_import(): void
+    {
+        $csv = self::PROPERTY_HEADER . "\n"
+             . ",自社所有,,790-0001,愛媛県松山市一番町1-1,20,5,RC造,2010-04,メモ\n";
+
+        $this->assertPreviewOffersNoImport('property', $csv)
+            ->assertSee('物件名が未入力です', false);
+
+        $this->assertSame(0, MsProperty::count());
     }
 }
