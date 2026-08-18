@@ -15,6 +15,10 @@ use App\Models\MsProperty;
 use App\Models\MsRoom;
 use App\Models\MsTenant;
 use App\Models\User;
+use App\Support\CsvDate;
+use App\Support\CsvImportException;
+use App\Support\CsvImportReader;
+use App\Support\CsvImportTemplate;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -892,7 +896,7 @@ class MansionImportController extends Controller
             // 日付チェック
             $contractDate = null;
             if ($row['contract_date'] !== '') {
-                $contractDate = $this->normalizeDate($row['contract_date']);
+                $contractDate = CsvDate::normalize($row['contract_date']);
                 if (!$contractDate) {
                     $errors[] = ['row' => $rowNum, 'message' => "契約日「{$row['contract_date']}」の形式が不正です（YYYY-MM-DD）"];
                     continue;
@@ -900,7 +904,7 @@ class MansionImportController extends Controller
             }
             $moveInDate = null;
             if ($row['move_in_date'] !== '') {
-                $moveInDate = $this->normalizeDate($row['move_in_date']);
+                $moveInDate = CsvDate::normalize($row['move_in_date']);
                 if (!$moveInDate) {
                     $errors[] = ['row' => $rowNum, 'message' => "入居日「{$row['move_in_date']}」の形式が不正です"];
                     continue;
@@ -908,7 +912,7 @@ class MansionImportController extends Controller
             }
             $moveOutDate = null;
             if ($row['move_out_date'] !== '') {
-                $moveOutDate = $this->normalizeDate($row['move_out_date']);
+                $moveOutDate = CsvDate::normalize($row['move_out_date']);
                 if (!$moveOutDate) {
                     $errors[] = ['row' => $rowNum, 'message' => "退去日「{$row['move_out_date']}」の形式が不正です"];
                     continue;
@@ -1155,7 +1159,7 @@ class MansionImportController extends Controller
             // 日付チェック
             $contractDate = null;
             if ($row['contract_date'] !== '') {
-                $contractDate = $this->normalizeDate($row['contract_date']);
+                $contractDate = CsvDate::normalize($row['contract_date']);
                 if (!$contractDate) {
                     $errors[] = ['row' => $rowNum, 'message' => "契約日「{$row['contract_date']}」の形式が不正です（YYYY-MM-DD）"];
                     continue;
@@ -1163,7 +1167,7 @@ class MansionImportController extends Controller
             }
             $startDate = null;
             if ($row['start_date'] !== '') {
-                $startDate = $this->normalizeDate($row['start_date']);
+                $startDate = CsvDate::normalize($row['start_date']);
                 if (!$startDate) {
                     $errors[] = ['row' => $rowNum, 'message' => "開始日「{$row['start_date']}」の形式が不正です"];
                     continue;
@@ -1171,7 +1175,7 @@ class MansionImportController extends Controller
             }
             $endDate = null;
             if ($row['end_date'] !== '') {
-                $endDate = $this->normalizeDate($row['end_date']);
+                $endDate = CsvDate::normalize($row['end_date']);
                 if (!$endDate) {
                     $errors[] = ['row' => $rowNum, 'message' => "終了日「{$row['end_date']}」の形式が不正です"];
                     continue;
@@ -1275,7 +1279,7 @@ class MansionImportController extends Controller
             '20', '5', 'RC造', '2010-04', '',
         ];
 
-        return $this->buildCsvResponse($headers, [$sample], 'マンション物件インポートテンプレート.csv');
+        return CsvImportTemplate::response($headers, [$sample], 'マンション物件インポートテンプレート.csv');
     }
 
     /**
@@ -1288,7 +1292,7 @@ class MansionImportController extends Controller
         $sample1 = ['サンプルマンション', '101', '1', '1K',  '25.50', '空室', '55000', '3000', '55000', '55000', ''];
         $sample2 = ['サンプルマンション', '201', '2', '2LDK', '52.30', '空室', '85000', '5000', '85000', '85000', ''];
 
-        return $this->buildCsvResponse($headers, [$sample1, $sample2], 'マンション部屋インポートテンプレート.csv');
+        return CsvImportTemplate::response($headers, [$sample1, $sample2], 'マンション部屋インポートテンプレート.csv');
     }
 
     /**
@@ -1301,7 +1305,7 @@ class MansionImportController extends Controller
         $sample1 = ['サンプルマンション', 'P-1', '8000', '空き', '無', ''];
         $sample2 = ['サンプルマンション', 'P-2', '10000', '空き', '有', ''];
 
-        return $this->buildCsvResponse($headers, [$sample1, $sample2], 'マンション駐車場インポートテンプレート.csv');
+        return CsvImportTemplate::response($headers, [$sample1, $sample2], 'マンション駐車場インポートテンプレート.csv');
     }
 
     /**
@@ -1316,7 +1320,7 @@ class MansionImportController extends Controller
             '山田花子', '090-9876-5432', '配偶者', '',
         ];
 
-        return $this->buildCsvResponse($headers, [$sample], 'マンション入居者インポートテンプレート.csv');
+        return CsvImportTemplate::response($headers, [$sample], 'マンション入居者インポートテンプレート.csv');
     }
 
     /**
@@ -1333,7 +1337,7 @@ class MansionImportController extends Controller
             '担当者名', '',
         ];
 
-        return $this->buildCsvResponse($headers, [$sample], 'マンション部屋契約インポートテンプレート.csv');
+        return CsvImportTemplate::response($headers, [$sample], 'マンション部屋契約インポートテンプレート.csv');
     }
 
     /**
@@ -1350,7 +1354,7 @@ class MansionImportController extends Controller
             '担当者名', '',
         ];
 
-        return $this->buildCsvResponse($headers, [$sample], 'マンション駐車場契約インポートテンプレート.csv');
+        return CsvImportTemplate::response($headers, [$sample], 'マンション駐車場契約インポートテンプレート.csv');
     }
 
     // ================================================================
@@ -1358,119 +1362,35 @@ class MansionImportController extends Controller
     // ================================================================
 
     /**
-     * CSVファイルの読み込み共通処理。
-     * TenantImportController::loadCsv() からの逐語コピー。
+     * CSV を読み込んで行配列にする。
      *
-     * @return array|\Illuminate\Http\RedirectResponse [rows配列, content文字列] またはリダイレクト
+     * 純粋な読み取りは [[\App\Support\CsvImportReader]] にある。ここに残るのは
+     * HTTP 依存の 3 つだけ: ファイル取得 / 確定時の base64 復元 / 差し戻し。
+     *
+     * @return array{0: list<array<string, string>>, 1: string}|\Illuminate\Http\RedirectResponse
      */
     private function loadCsv(Request $request, array $columnMap, array $requiredKeys)
     {
-        // 確認済みの場合はbase64からCSVを復元
         if ($request->boolean('confirmed')) {
+            // 確認画面が持ち回った base64 から復元（既に UTF-8・BOM 除去済み）
             $content = base64_decode($request->input('csv_data', ''));
         } else {
             $request->validate([
                 'csv_file' => 'required|file|mimes:csv,txt|max:10240',
             ]);
 
-            $file = $request->file('csv_file');
-            $content = file_get_contents($file->getRealPath());
-
-            // Shift_JIS自動判定→UTF-8変換
-            $encoding = mb_detect_encoding($content, ['UTF-8', 'SJIS', 'SJIS-win', 'EUC-JP'], true);
-            if ($encoding && $encoding !== 'UTF-8') {
-                $content = mb_convert_encoding($content, 'UTF-8', $encoding);
-            }
-            // BOM除去
-            $content = preg_replace('/^\xEF\xBB\xBF/', '', $content);
+            $content = CsvImportReader::decode(
+                file_get_contents($request->file('csv_file')->getRealPath())
+            );
         }
 
-        $lines = array_values(array_filter(explode("\n", $content), function ($line) {
-            return trim($line) !== '';
-        }));
-
-        if (count($lines) < 2) {
-            return back()->with('error', 'CSVファイルにデータがありません。');
-        }
-
-        $header = str_getcsv(array_shift($lines));
-        $header = array_map('trim', $header);
-
-        // ヘッダー→内部キーのインデックスマッピング
-        $colIndex = [];
-        foreach ($header as $idx => $headerName) {
-            if (isset($columnMap[$headerName])) {
-                $colIndex[$columnMap[$headerName]] = $idx;
-            }
-        }
-
-        // 必須ヘッダーチェック
-        foreach ($requiredKeys as $key) {
-            if (!isset($colIndex[$key])) {
-                $jpName = array_search($key, $columnMap);
-                return back()->with('error', "必須ヘッダー「{$jpName}」がCSVに見つかりません。");
-            }
-        }
-
-        // 行データ抽出
-        $rows = [];
-        foreach ($lines as $line) {
-            $cols = str_getcsv($line);
-            $row = [];
-            foreach ($columnMap as $jpName => $key) {
-                $idx = $colIndex[$key] ?? -1;
-                $row[$key] = ($idx >= 0 && isset($cols[$idx])) ? trim($cols[$idx]) : '';
-            }
-            $rows[] = $row;
+        try {
+            $rows = CsvImportReader::parse($content, $columnMap, $requiredKeys);
+        } catch (CsvImportException $e) {
+            return back()->with('error', $e->getMessage());
         }
 
         return [$rows, $content];
-    }
-
-    /**
-     * 日付文字列を正規化（YYYY-MM-DD）。
-     * TenantImportController::normalizeDate() からの逐語コピー。
-     */
-    private function normalizeDate(string $value): ?string
-    {
-        $value = str_replace('/', '-', $value);
-        if (preg_match('/^\d{4}-\d{1,2}-\d{1,2}$/', $value) && strtotime($value)) {
-            $parts = explode('-', $value);
-            return sprintf('%04d-%02d-%02d', $parts[0], $parts[1], $parts[2]);
-        }
-        return null;
-    }
-
-    /**
-     * 配列をCSV行に変換。
-     * TenantImportController::toCsvLine() からの逐語コピー。
-     */
-    private function toCsvLine(array $fields): string
-    {
-        $escaped = [];
-        foreach ($fields as $f) {
-            $escaped[] = '"' . str_replace('"', '""', $f) . '"';
-        }
-        return implode(',', $escaped) . "\n";
-    }
-
-    /**
-     * CSVレスポンスを生成。
-     * TenantImportController::buildCsvResponse() からの逐語コピー。
-     */
-    private function buildCsvResponse(array $headers, array $sampleRows, string $filename): \Illuminate\Http\Response
-    {
-        $bom = "\xEF\xBB\xBF";
-        $csv = $bom;
-        $csv .= $this->toCsvLine($headers);
-        foreach ($sampleRows as $sample) {
-            $csv .= $this->toCsvLine($sample);
-        }
-
-        return response($csv, 200, [
-            'Content-Type'        => 'text/csv; charset=UTF-8',
-            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
-        ]);
     }
 
     /**

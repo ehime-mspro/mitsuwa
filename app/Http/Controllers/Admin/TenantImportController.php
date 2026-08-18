@@ -13,6 +13,10 @@ use App\Models\Customer;
 use App\Models\InquiryUsageType;
 use App\Models\Property;
 use App\Models\Unit;
+use App\Support\CsvDate;
+use App\Support\CsvImportException;
+use App\Support\CsvImportReader;
+use App\Support\CsvImportTemplate;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -705,7 +709,7 @@ class TenantImportController extends Controller
             }
 
             // 日付チェック
-            $contractDate = $this->normalizeDate($row['contract_date']);
+            $contractDate = CsvDate::normalize($row['contract_date']);
             if (!$contractDate) {
                 $errors[] = ['row' => $rowNum, 'message' => "契約日「{$row['contract_date']}」の形式が不正です（YYYY-MM-DD）"];
                 continue;
@@ -713,7 +717,7 @@ class TenantImportController extends Controller
             $row['contract_date'] = $contractDate;
 
             if ($row['rent_start_date'] !== '') {
-                $rentStartDate = $this->normalizeDate($row['rent_start_date']);
+                $rentStartDate = CsvDate::normalize($row['rent_start_date']);
                 if (!$rentStartDate) {
                     $errors[] = ['row' => $rowNum, 'message' => "賃料開始日「{$row['rent_start_date']}」の形式が不正です"];
                     continue;
@@ -904,14 +908,14 @@ class TenantImportController extends Controller
             }
 
             // 日付チェック
-            $contractDate = $this->normalizeDate($row['contract_date']);
+            $contractDate = CsvDate::normalize($row['contract_date']);
             if (!$contractDate) {
                 $errors[] = ['row' => $rowNum, 'message' => "契約日「{$row['contract_date']}」の形式が不正です（YYYY-MM-DD）"];
                 continue;
             }
             $row['contract_date'] = $contractDate;
 
-            $endDate = $this->normalizeDate($row['contract_end_date']);
+            $endDate = CsvDate::normalize($row['contract_end_date']);
             if (!$endDate) {
                 $errors[] = ['row' => $rowNum, 'message' => "解約日「{$row['contract_end_date']}」の形式が不正です（YYYY-MM-DD）"];
                 continue;
@@ -931,7 +935,7 @@ class TenantImportController extends Controller
 
             // 賃料開始日チェック（契約日 〜 解約日 の範囲内）
             if ($row['rent_start_date'] !== '') {
-                $rentStartDate = $this->normalizeDate($row['rent_start_date']);
+                $rentStartDate = CsvDate::normalize($row['rent_start_date']);
                 if (!$rentStartDate) {
                     $errors[] = ['row' => $rowNum, 'message' => "賃料開始日「{$row['rent_start_date']}」の形式が不正です"];
                     continue;
@@ -1116,7 +1120,7 @@ class TenantImportController extends Controller
             '自社', '', '稼働中',
         ];
 
-        return $this->buildCsvResponse($headers, [$sample], 'テナント物件インポートテンプレート.csv');
+        return CsvImportTemplate::response($headers, [$sample], 'テナント物件インポートテンプレート.csv');
     }
 
     /**
@@ -1129,7 +1133,7 @@ class TenantImportController extends Controller
         $sample1 = ['サンプルビル', '1', 'A', '15.5', '店舗', '空室', '80000', '5000', '160000', '1000', '500'];
         $sample2 = ['サンプルビル', '2', 'B', '20.0', '事務所', '空室', '100000', '8000', '200000', '1500', '500'];
 
-        return $this->buildCsvResponse($headers, [$sample1, $sample2], 'テナント区画インポートテンプレート.csv');
+        return CsvImportTemplate::response($headers, [$sample1, $sample2], 'テナント区画インポートテンプレート.csv');
     }
 
     /**
@@ -1144,7 +1148,7 @@ class TenantImportController extends Controller
             '089-999-9999', 'info@sample.co.jp', '790-0002', '愛媛県松山市二番町2-2',
         ];
 
-        return $this->buildCsvResponse($headers, [$sample], 'テナント顧客インポートテンプレート.csv');
+        return CsvImportTemplate::response($headers, [$sample], 'テナント顧客インポートテンプレート.csv');
     }
 
     /**
@@ -1162,7 +1166,7 @@ class TenantImportController extends Controller
             'サンプル商事 松山支店', '',
         ];
 
-        return $this->buildCsvResponse($headers, [$sample], 'テナント契約インポートテンプレート.csv');
+        return CsvImportTemplate::response($headers, [$sample], 'テナント契約インポートテンプレート.csv');
     }
 
     /**
@@ -1180,7 +1184,7 @@ class TenantImportController extends Controller
             '過去商事 松山支店', '期間満了で解約',
         ];
 
-        return $this->buildCsvResponse($headers, [$sample], 'テナント過去契約インポートテンプレート.csv');
+        return CsvImportTemplate::response($headers, [$sample], 'テナント過去契約インポートテンプレート.csv');
     }
 
     // ================================================================
@@ -1188,115 +1192,35 @@ class TenantImportController extends Controller
     // ================================================================
 
     /**
-     * CSVファイルの読み込み共通処理
+     * CSV を読み込んで行配列にする。
      *
-     * @return array|RedirectResponse [rows配列, content文字列] またはリダイレクト
+     * 純粋な読み取りは [[\App\Support\CsvImportReader]] にある。ここに残るのは
+     * HTTP 依存の 3 つだけ: ファイル取得 / 確定時の base64 復元 / 差し戻し。
+     *
+     * @return array{0: list<array<string, string>>, 1: string}|\Illuminate\Http\RedirectResponse
      */
     private function loadCsv(Request $request, array $columnMap, array $requiredKeys)
     {
-        // 確認済みの場合はbase64からCSVを復元
         if ($request->boolean('confirmed')) {
+            // 確認画面が持ち回った base64 から復元（既に UTF-8・BOM 除去済み）
             $content = base64_decode($request->input('csv_data', ''));
         } else {
             $request->validate([
                 'csv_file' => 'required|file|mimes:csv,txt|max:10240',
             ]);
 
-            $file = $request->file('csv_file');
-            $content = file_get_contents($file->getRealPath());
-
-            // Shift_JIS自動判定→UTF-8変換
-            $encoding = mb_detect_encoding($content, ['UTF-8', 'SJIS', 'SJIS-win', 'EUC-JP'], true);
-            if ($encoding && $encoding !== 'UTF-8') {
-                $content = mb_convert_encoding($content, 'UTF-8', $encoding);
-            }
-            // BOM除去
-            $content = preg_replace('/^\xEF\xBB\xBF/', '', $content);
+            $content = CsvImportReader::decode(
+                file_get_contents($request->file('csv_file')->getRealPath())
+            );
         }
 
-        $lines = array_values(array_filter(explode("\n", $content), function ($line) {
-            return trim($line) !== '';
-        }));
-
-        if (count($lines) < 2) {
-            return back()->with('error', 'CSVファイルにデータがありません。');
-        }
-
-        $header = str_getcsv(array_shift($lines));
-        $header = array_map('trim', $header);
-
-        // ヘッダー→内部キーのインデックスマッピング
-        $colIndex = [];
-        foreach ($header as $idx => $headerName) {
-            if (isset($columnMap[$headerName])) {
-                $colIndex[$columnMap[$headerName]] = $idx;
-            }
-        }
-
-        // 必須ヘッダーチェック
-        foreach ($requiredKeys as $key) {
-            if (!isset($colIndex[$key])) {
-                $jpName = array_search($key, $columnMap);
-                return back()->with('error', "必須ヘッダー「{$jpName}」がCSVに見つかりません。");
-            }
-        }
-
-        // 行データ抽出
-        $rows = [];
-        foreach ($lines as $line) {
-            $cols = str_getcsv($line);
-            $row = [];
-            foreach ($columnMap as $jpName => $key) {
-                $idx = $colIndex[$key] ?? -1;
-                $row[$key] = ($idx >= 0 && isset($cols[$idx])) ? trim($cols[$idx]) : '';
-            }
-            $rows[] = $row;
+        try {
+            $rows = CsvImportReader::parse($content, $columnMap, $requiredKeys);
+        } catch (CsvImportException $e) {
+            return back()->with('error', $e->getMessage());
         }
 
         return [$rows, $content];
-    }
-
-    /**
-     * 日付文字列を正規化（YYYY-MM-DD）
-     */
-    private function normalizeDate(string $value): ?string
-    {
-        $value = str_replace('/', '-', $value);
-        if (preg_match('/^\d{4}-\d{1,2}-\d{1,2}$/', $value) && strtotime($value)) {
-            $parts = explode('-', $value);
-            return sprintf('%04d-%02d-%02d', $parts[0], $parts[1], $parts[2]);
-        }
-        return null;
-    }
-
-    /**
-     * 配列をCSV行に変換
-     */
-    private function toCsvLine(array $fields): string
-    {
-        $escaped = [];
-        foreach ($fields as $f) {
-            $escaped[] = '"' . str_replace('"', '""', $f) . '"';
-        }
-        return implode(',', $escaped) . "\n";
-    }
-
-    /**
-     * CSVレスポンスを生成
-     */
-    private function buildCsvResponse(array $headers, array $sampleRows, string $filename): \Illuminate\Http\Response
-    {
-        $bom = "\xEF\xBB\xBF";
-        $csv = $bom;
-        $csv .= $this->toCsvLine($headers);
-        foreach ($sampleRows as $sample) {
-            $csv .= $this->toCsvLine($sample);
-        }
-
-        return response($csv, 200, [
-            'Content-Type'        => 'text/csv; charset=UTF-8',
-            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
-        ]);
     }
 
     /**
