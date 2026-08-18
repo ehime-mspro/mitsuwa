@@ -145,5 +145,21 @@ trait CreatesMansionSchema
             $t->unsignedInteger('updated_by')->nullable();
             $t->timestamps();
         });
+
+        // 駐車場契約 料金改定履歴。`ms_contract_revisions`（部屋契約側）と対になる。
+        // ⚠ この trait は本番 DDL（database/sql/create_mansion_tables.sql）を手で写した
+        //   もので、`ms_*` は raw SQL 管理＝ migration が無いため自動では追従しない。
+        //   本表は 2026-08-18 まで**丸ごと抜けていた**（本番 9 テーブルに対し trait は 8）。
+        //   lazy な `MsParkingContract::revisions()` しか参照しないので何も落ちず、
+        //   料金改定のテストを書いて初めて `no such table` で気づく形だった。
+        Schema::create('ms_parking_contract_revisions', function (Blueprint $t) {
+            $t->id();
+            $t->unsignedBigInteger('parking_contract_id');
+            $t->date('revision_date');
+            $t->unsignedInteger('new_monthly_fee');
+            $t->string('reason', 200)->nullable();
+            $t->unsignedInteger('created_by');
+            $t->timestamps();
+        });
     }
 }
