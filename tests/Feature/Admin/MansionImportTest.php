@@ -419,7 +419,8 @@ class MansionImportTest extends TestCase
     /**
      * 「屋根あり」は表記ゆれを受ける。
      *
-     * ⚠ **未入力は false 扱い**（`hasRoofMap` に無い値も同じ）。
+     * ⚠ **未入力だけが false 扱い。** `hasRoofMap` に無い値は false にはならず
+     *   **エラー行になる**（`executeParking()` が「屋根あり「x」は不正な値です」を積む）。
      *   null にする変異を入れたら赤くなるよう、明示的に false を見る。
      */
     public function test_the_roof_flag_accepts_common_spellings(): void
