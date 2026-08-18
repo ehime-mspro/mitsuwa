@@ -26,8 +26,9 @@ Laravel 12 / PHP 8.5.4 (local) + 8.3 (prod) / MySQL 8 / Blade + Alpine.js 3 + Ta
 | 11 | フォームに項目を足したのに `lang/ja/validation.php` の `attributes` に和名を書かない（エラー文に **`guarantor1 name` のような英字**が出る）| `attributes` に和名を追加する。画面ごとに語が変わるキー（`name` `address` 等）は**そのコントローラの `validate()` **第3引数**で上書き（`validate($rules, $messages, $attributes)` — **第2引数は messages**）。走査テスト `JapaneseValidationMessagesTest` が和名漏れを自動で拾う。Bug #37 |
 | 12 | `disabled` なボタン自身に `title` を付けて「押せない理由」を出そうとする（**どのブラウザでも表示されない**。`disabled` な要素はホバーイベントを発火しない。HTML には `title` が出るのでテストも `view:cache` も全部通り、無音で死ぬ）| ホバーを受けられる **`<span title="…">` でボタンを包む** ＋ 画面に理由の領域があれば `aria-describedby` で紐づける（`disabled` はフォーカス不能なので tooltip だけでは届かない）。Alpine なら `:title="cond ? reason : null"`（`''` だと空の `title=""` が残る）。⚠ **検証は「HTML に出るか」では不可能** — 実ブラウザでホバーするか `document.elementFromPoint()` から祖先を辿る。Bug #43 |
 | 13 | 走査テスト（ラチェット）を「直したファイルを配列に並べる」形で書く（**未修正のファイルは検査対象に入らないので永遠に緑**。実測で 19 本が野放しだった）| **対象を全件分類する**形にする — `fetch` を持つ Blade を機械的に列挙し、どのリストにも無ければ落とす（`AjaxErrorFeedbackTest::test_every_fetch_view_is_classified`）。⚠ 検査文字列に**引数名を決め打ちしない**（`(r)` 決め打ちが `(res)` を見逃した）。⚠ **単一の「正準パターン」を機械適用しない** — null 返し / エンベロープ / throw の 3 方式が併存し、どれも正当。Bug #45 |
+| 14 | **view データに `'errors'` キーを渡す**（Blade の `$errors` = `ViewErrorBag` を上書きする。そのビューが `$errors->any()` を呼んだ瞬間に **`Call to a member function any() on array` で 500**）| 行エラーなど独自のエラー配列は **`rowErrors` のような別名**にする。⚠ **画面を開くだけでは分からない** — 壊れるのはそのデータを渡す経路（取込ならファイルを上げた後のプレビュー）だけ。⚠ **200 を見るだけのテストでは守れない** — ビュー側だけ `$errors` に戻すと**エラー表示が画面から消えるのに例外は出ず全テストが緑**（実測）。コントローラ側の件数と画面の表示を突き合わせること。走査テスト `ImportPreviewRenderTest` が「view に `'errors'` を渡していない」を全件分類で自動で拾う。Bug #53 |
 
-全 52 件の詳細バグカタログ + 各種パターン: @docs/RULES.md
+全 53 件の詳細バグカタログ + 各種パターン: @docs/RULES.md
 
 ## 🔌 利用可能なプラグイン
 
