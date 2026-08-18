@@ -177,9 +177,14 @@ class ImportPreviewRenderTest extends TestCase
                 'department' => 'housing',
             ]);
 
-            $results[$label] = $response->getStatusCode() === 200
-                ? 'OK'
-                : "{$executeUrl} が " . $response->getStatusCode() . '（' . $this->failureReason($response) . '）';
+            if ($response->getStatusCode() !== 200) {
+                $results[$label] = "{$executeUrl} が " . $response->getStatusCode()
+                    . '（' . $this->failureReason($response) . '）';
+
+                continue;
+            }
+
+            $results[$label] = $this->errorRowsAreVisible($response);
         }
 
         $expected = array_fill_keys(array_keys($results), 'OK');
@@ -188,14 +193,20 @@ class ImportPreviewRenderTest extends TestCase
     }
 
     /**
-     * データ行が 1 本も無いテンプレートに、空欄だけの行を足す。
+     * テンプレートに、全項目が空欄の行を 1 本足す。
      *
-     * 顧客取込のテンプレートは**ヘッダー行だけ**で見本の行を持たない（賃貸マンションと
-     * テナントは見本を持つ）。行が無いと取込は「CSVファイルにデータがありません。」で
-     * 差し戻し、**プレビューを描画しない**ので、この往復では何も測れなくなる。
+     * 2 つの理由でこれが要る:
      *
-     * 足す行は全項目が空欄なので必ず検証に落ちるが、**それでよい** —
-     * 見たいのは「エラー行を抱えたプレビューが描画されること」であって取込の成功ではない。
+     * ① 顧客取込のテンプレートは**ヘッダー行だけ**で見本の行を持たない（賃貸マンションと
+     *    テナントは見本を持つ）。行が無いと取込は「CSVファイルにデータがありません。」で
+     *    差し戻し、**プレビューを描画しない**ので、この往復では何も測れない。
+     *
+     * ② 全項目が空欄の行は**どの取込でも必ず必須チェックに落ちる**。よって
+     *    「行エラーが 1 件以上あるプレビュー」を全経路で確実に作れる。
+     *    エラーが 0 件だと、下記 [[errorRowsAreVisible]] の検査が空振りする。
+     *
+     * 行が検証に落ちること自体は問題ない — 見たいのは取込の成功ではなく、
+     * **エラー行を抱えたプレビューが正しく描画されること**。
      */
     private function withDataRow(string $csv): string
     {
@@ -204,13 +215,39 @@ class ImportPreviewRenderTest extends TestCase
             fn (string $line): bool => trim($line) !== ''
         ));
 
-        if (count($lines) >= 2) {
-            return $csv;
-        }
-
         $columns = count(str_getcsv($lines[0] ?? ''));
 
         return rtrim($csv, "\n") . "\n" . str_repeat(',', max(0, $columns - 1)) . "\n";
+    }
+
+    /**
+     * コントローラが出した行エラーが、**画面に実際に出ている**こと。
+     *
+     * ⚠ **200 を見るだけでは足りない。** ビューが `$rowErrors` でなく `$errors`
+     *   （ViewErrorBag）を読むよう戻すと、`count()` が 0 を返すので
+     *   `@if(count(...) > 0)` が false になり、**エラー行の一覧が画面から丸ごと消える**。
+     *   例外は出ないので 200 のままで、**830 テスト全部が緑になる**（2026-08-18 実測）。
+     *   Bug #43 / #46 / #49 と同じ「表示が消えても緑」型。
+     *
+     * コントローラ側の件数（`viewData('rowErrors')`）と画面の表示を突き合わせるので、
+     * 変数名がズレた瞬間に赤くなる。
+     */
+    private function errorRowsAreVisible(\Illuminate\Testing\TestResponse $response): string
+    {
+        $rowErrors = $response->viewData('rowErrors');
+
+        if (! is_array($rowErrors) || $rowErrors === []) {
+            return '行エラーが 0 件。空欄だけの行が必須チェックに落ちていない';
+        }
+
+        $expected = 'エラー: <strong>' . count($rowErrors) . '</strong> 件';
+
+        if (! str_contains($response->getContent(), $expected)) {
+            return "行エラー " . count($rowErrors) . ' 件がコントローラにあるのに画面に出ていない'
+                . "（「{$expected}」が見当たらない）";
+        }
+
+        return 'OK';
     }
 
     /** 失敗した応答から原因の 1 行を取り出す（500 の例外メッセージなど）。 */
