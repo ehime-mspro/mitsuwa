@@ -550,8 +550,28 @@ class MansionImportTest extends TestCase
     /**
      * 既に契約中の部屋には**警告**が出るが、取り込みは止まらない。
      *
-     * ⚠ 警告（`warnings`）とエラー（`rowErrors`）は別物。警告をエラーに変える変異で
-     *   赤くなるよう、「警告が出ること」と「それでも入ること」を対で見る。
+     * ⚠ **`assertSee` では警告とエラー行を区別できない。** 同じ文言が
+     *   `warnings` ブロックにも `rowErrors` ブロックにも出しうるので、
+     *   「文言が画面にある」だけでは**チャネルの取り違えを一切検出しない**。
+     *   実測（2026-08-18）: コントローラの二重契約チェックを `$warnings[] =` から
+     *   `$errors[] =` に変える変異で、**868 テスト全部が緑のまま**通った。
+     *   → 役割は**画面の文字列でなく view データのバケツ**で見る。
+     *
+     * ⚠ **「それでも入る」側は、この変異に対して無反応。** 当該箇所は
+     *   `$errors[]` に積んでも `continue` しない（＝行はそのまま取り込まれる）ので、
+     *   契約件数のアサートは変異前後で同じ 2 件になる。件数だけを見ていると
+     *   守れているように読めてしまう。**役割と件数は対で置くこと。**
+     *
+     * ⚠ **view データだけでも守れない**（Bug #53）。ビューが警告ブロックを
+     *   描かなくなっても `viewData` は素通りするので、**画面に警告として
+     *   出ていること**まで見る。サマリーの件数チップと警告一覧の本文は
+     *   片方が消えても他方が残るため、**役割ごとに分けて**アサートする
+     *   （Bug #43 / #46 / #49）。
+     *
+     * ⚠ **未カバー**: 「エラーにした上で `continue` も足す」変異までは、
+     *   落ちる理由が `confirm()` の「インポート実行ボタンが無い」に化ける
+     *   （`validCount` が 0 になり確定フォームごと消えるため）。赤にはなるが、
+     *   二重契約の扱いが変わったことは読み取れない。
      */
     public function test_a_second_active_contract_warns_but_still_imports(): void
     {
@@ -564,8 +584,36 @@ class MansionImportTest extends TestCase
         $csv = self::ROOM_CONTRACT_HEADER . "\nミツワレジデンス,101,鈴木次郎,2025-04-01,,,,,,,,\n";
 
         $preview = $this->preview('room-contract', $csv);
-        $preview->assertSee('には既に契約中の入居者がいます', false);
 
+        // ① 役割: 二重契約は **警告**バケツに入り、エラー行にはならない。
+        $warnings = $preview->viewData('warnings');
+        $this->assertCount(1, $warnings, '二重契約の警告が warnings に 1 件入っていない');
+        $this->assertStringContainsString(
+            'には既に契約中の入居者がいます',
+            $warnings[0]['message'],
+            'warnings に入っているのが二重契約の警告ではない'
+        );
+        $this->assertSame(
+            [],
+            $preview->viewData('rowErrors'),
+            '二重契約が rowErrors（取込を止めるエラー行）として扱われている'
+        );
+
+        // ② 表示: コントローラが数えた警告が、画面にも警告として出ている（Bug #53）。
+        //    警告一覧の本文とサマリーの件数チップは別々の描画なので、役割ごとに見る。
+        $html = $preview->getContent();
+        $this->assertStringContainsString(
+            "⚠ 行{$warnings[0]['row']}: {$warnings[0]['message']}",
+            $html,
+            '警告一覧に二重契約の警告が出ていない'
+        );
+        $this->assertStringContainsString(
+            '警告: <strong>' . count($warnings) . '</strong> 件',
+            $html,
+            'サマリーに警告件数が出ていない'
+        );
+
+        // ③ それでも取り込みは止まらない。
         $this->confirm('room-contract', $csv)
             ->assertSessionHas('success', '部屋契約インポート完了: 1件を登録しました');
 
