@@ -14,6 +14,32 @@ use PHPUnit\Framework\TestCase;
  */
 class CsvDateTest extends TestCase
 {
+    private string $originalTimezone;
+
+    /**
+     * ⚠ **タイムゾーンをこのテスト自身で固定する。ラチェットの一部なので外さないこと。**
+     *
+     * このクラスは `PHPUnit\Framework\TestCase` を継承していて **Laravel を起動しない**ので、
+     * `config/app.php` の `'timezone' => 'UTC'` は効かない。実際に効くのは php.ini の
+     * `date.timezone` で、`phpunit.xml` も指定していない ＝ **走らせるマシン任せ**になる。
+     * 固定しないと `test_it_accepts_the_unix_epoch` の検出力が環境依存になる（同メソッドの注記）。
+     */
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->originalTimezone = date_default_timezone_get();
+        date_default_timezone_set('UTC');
+    }
+
+    protected function tearDown(): void
+    {
+        // 同一プロセスで走る後続テストへ UTC を漏らさない
+        date_default_timezone_set($this->originalTimezone);
+
+        parent::tearDown();
+    }
+
     public function test_it_pads_and_accepts_slashes(): void
     {
         $this->assertSame('2026-04-01', CsvDate::normalize('2026-04-01'));
@@ -50,9 +76,17 @@ class CsvDateTest extends TestCase
     /**
      * 1970-01-01 を受け付けること。
      *
-     * ⚠ **この値を消さないこと。** `config/app.php` の timezone は `'UTC'` なので
-     *   `strtotime('1970-01-01')` は **0**（falsy）を返す。`&& strtotime($value)` で
-     *   真偽判定していた旧実装は、この 1 日だけを理由なく拒否していた。
+     * ⚠ **この値を消さないこと。** `&& strtotime($value)` で真偽判定していた旧実装は、
+     *   `strtotime('1970-01-01')` が **0**（falsy）を返すせいで、この 1 日だけを理由なく
+     *   拒否していた。誤実装に戻したときに落ちるのはこの値だけ。
+     *
+     * ⚠ **0 が返るのは UTC のときだけ ＝ 検出力はタイムゾーン依存。** 実測:
+     *   UTC `0`（falsy）/ Asia/Tokyo `-32400` / America/New_York `18000` /
+     *   Europe/London `-3600`（UTC 以外はいずれも **truthy**）。
+     *   つまり日本のマシンで素直に走らせると、`strtotime()` へ戻す変異が**このテストを
+     *   緑のまま素通りする**（実測: `php -d date.timezone=Asia/Tokyo` では本メソッドだけ通り、
+     *   ラチェットが無音で死んだ）。**`config/app.php` の timezone は無関係** —
+     *   Laravel を起動しないので効かない。だから `setUp()` で UTC を固定している。
      */
     public function test_it_accepts_the_unix_epoch(): void
     {
