@@ -234,4 +234,77 @@ class MansionImportTest extends TestCase
 
         $this->assertSame(0, MsProperty::count());
     }
+
+    /**
+     * 物件コードは連番で採番される。
+     *
+     * ⚠ 本番の `ms_properties.property_code` は UNIQUE（テスト用スキーマにも入れてある）。
+     *   採番が重複すると例外 → `rollBack()` で**取込全体が失敗**する（1 行も入らない）。
+     */
+    public function test_property_codes_are_numbered_sequentially(): void
+    {
+        $csv = self::PROPERTY_HEADER . "\n"
+             . "A棟,自社所有,,,松山市1,,,,,\n"
+             . "B棟,自社所有,,,松山市2,,,,,\n"
+             . "C棟,自社所有,,,松山市3,,,,,\n";
+
+        $this->confirm('property', $csv)->assertSessionHas('success', '物件インポート完了: 3件を登録しました');
+
+        $this->assertSame(
+            ['MS-001', 'MS-002', 'MS-003'],
+            MsProperty::orderBy('id')->pluck('property_code')->all()
+        );
+    }
+
+    /** 採番は既存の続きから始まる（既存 MS-001 があれば次は MS-002）。 */
+    public function test_property_codes_continue_from_the_existing_maximum(): void
+    {
+        $this->confirm('property', self::PROPERTY_HEADER . "\n先客,自社所有,,,松山市0,,,,,\n");
+
+        $this->confirm('property', self::PROPERTY_HEADER . "\n後客,自社所有,,,松山市9,,,,,\n");
+
+        $this->assertSame(
+            ['MS-001', 'MS-002'],
+            MsProperty::orderBy('id')->pluck('property_code')->all()
+        );
+    }
+
+    /**
+     * CSV 内で物件名が重複したらエラー行になり、**その行だけ**落ちる。
+     *
+     * ⚠ 「2 行目が落ちる」ではなく「1 行目は入り 2 行目だけ落ちる」ことを見る。
+     *   全体が落ちる実装に変異したときに赤くなる。
+     */
+    public function test_a_duplicate_name_inside_the_csv_drops_only_that_row(): void
+    {
+        $csv = self::PROPERTY_HEADER . "\n"
+             . "同名,自社所有,,,松山市1,,,,,\n"
+             . "同名,自社所有,,,松山市2,,,,,\n"
+             . "別名,自社所有,,,松山市3,,,,,\n";
+
+        $preview = $this->preview('property', $csv);
+        $preview->assertStatus(200);
+        $preview->assertSee('物件名「同名」がCSV内で重複しています', false);
+
+        $this->confirm('property', $csv)->assertSessionHas('success', '物件インポート完了: 2件を登録しました');
+
+        $this->assertSame(['同名', '別名'], MsProperty::orderBy('id')->pluck('property_name')->all());
+    }
+
+    /** DB に同名が既にあれば「スキップ」（エラーではない）。 */
+    public function test_an_existing_name_is_skipped_not_errored(): void
+    {
+        $this->confirm('property', self::PROPERTY_HEADER . "\n先客,自社所有,,,松山市0,,,,,\n");
+
+        $csv = self::PROPERTY_HEADER . "\n"
+             . "先客,自社所有,,,松山市1,,,,,\n"
+             . "新顔,自社所有,,,松山市2,,,,,\n";
+
+        $preview = $this->preview('property', $csv);
+        $preview->assertSee('物件「先客」は既に登録済みのためスキップ', false);
+
+        $this->confirm('property', $csv)->assertSessionHas('success', '物件インポート完了: 1件を登録しました');
+
+        $this->assertSame(2, MsProperty::count());
+    }
 }
