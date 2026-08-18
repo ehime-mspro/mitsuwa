@@ -37,6 +37,7 @@ trait CreatesMansionSchema
             $t->text('notes')->nullable();
             $t->unsignedInteger('created_by');
             $t->unsignedInteger('updated_by')->nullable();
+            $t->unique('property_code', 'uk_ms_properties_code');
             $t->timestamps();
         });
 
@@ -53,6 +54,7 @@ trait CreatesMansionSchema
             $t->unsignedInteger('deposit')->nullable();
             $t->unsignedInteger('key_money')->nullable();
             $t->text('notes')->nullable();
+            $t->unique(['property_id', 'room_number'], 'uk_ms_rooms_property_room');
             $t->timestamps();
         });
 
@@ -122,6 +124,7 @@ trait CreatesMansionSchema
             $t->string('status', 20);
             $t->boolean('has_roof')->nullable();
             $t->text('notes')->nullable();
+            $t->unique(['property_id', 'parking_number'], 'uk_ms_parkings_property_number');
             $t->timestamps();
         });
 
