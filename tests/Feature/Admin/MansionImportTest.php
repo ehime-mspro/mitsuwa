@@ -570,4 +570,69 @@ class MansionImportTest extends TestCase
 
         $this->assertSame(2, \App\Models\MsContract::count());
     }
+
+    private const PARKING_CONTRACT_HEADER = '物件名,駐車場番号,入居者名,紐付部屋番号,契約日,開始日,終了日,月額料金,敷金,担当者ユーザー名,メモ';
+
+    /**
+     * 終了日が無ければ active になり、**駐車場のステータスが occupied に変わる**。
+     *
+     * ⚠ 部屋契約と同じく親を書き換える副作用があるので、契約と駐車場の両方を見る。
+     */
+    public function test_an_active_parking_contract_marks_the_parking_occupied(): void
+    {
+        $this->seedProperty();
+        $this->confirm('parking', self::PARKING_HEADER . "\nミツワレジデンス,P-1,8000,空き,無,\n");
+        $this->confirm('tenant', self::TENANT_HEADER . "\n駐車場利用のみ,佐藤三郎,,,,,,,\n");
+
+        $csv = self::PARKING_CONTRACT_HEADER . "\n"
+             . "ミツワレジデンス,P-1,佐藤三郎,,2024-04-01,2024-04-15,,8000,8000,,メモ\n";
+
+        $this->confirm('parking-contract', $csv)
+            ->assertSessionHas('success', '駐車場契約インポート完了: 1件を登録しました');
+
+        $contract = \App\Models\MsParkingContract::sole();
+        $this->assertSame('active', $contract->status->value);
+        $this->assertSame(8000, $contract->monthly_fee);
+        $this->assertNull($contract->contract_id);
+
+        $this->assertSame('occupied', \App\Models\MsParking::sole()->status->value);
+    }
+
+    /**
+     * 紐付部屋番号を指定すると、その部屋の **active な部屋契約 ID** が入る。
+     *
+     * ⚠ 紐付けを消す変異（常に null にする）で赤くなるよう、ID の一致まで見る。
+     */
+    public function test_a_linked_room_number_attaches_the_active_room_contract(): void
+    {
+        $this->seedRoomAndTenant();
+        $this->confirm('parking', self::PARKING_HEADER . "\nミツワレジデンス,P-1,8000,空き,無,\n");
+        $this->confirm('room-contract', self::ROOM_CONTRACT_HEADER
+            . "\nミツワレジデンス,101,山田太郎,2024-04-01,,,,,,,,\n");
+
+        $roomContractId = \App\Models\MsContract::sole()->id;
+
+        $csv = self::PARKING_CONTRACT_HEADER . "\n"
+             . "ミツワレジデンス,P-1,山田太郎,101,2024-04-01,2024-04-15,,8000,,,\n";
+
+        $this->confirm('parking-contract', $csv);
+
+        $this->assertSame($roomContractId, \App\Models\MsParkingContract::sole()->contract_id);
+    }
+
+    /** 終了日があれば terminated になり、駐車場は空きのまま。 */
+    public function test_a_terminated_parking_contract_leaves_the_parking_vacant(): void
+    {
+        $this->seedProperty();
+        $this->confirm('parking', self::PARKING_HEADER . "\nミツワレジデンス,P-1,8000,空き,無,\n");
+        $this->confirm('tenant', self::TENANT_HEADER . "\n駐車場利用のみ,佐藤三郎,,,,,,,\n");
+
+        $csv = self::PARKING_CONTRACT_HEADER . "\n"
+             . "ミツワレジデンス,P-1,佐藤三郎,,2024-04-01,2024-04-15,2025-03-31,8000,,,\n";
+
+        $this->confirm('parking-contract', $csv);
+
+        $this->assertSame('terminated', \App\Models\MsParkingContract::sole()->status->value);
+        $this->assertSame('vacant', \App\Models\MsParking::sole()->status->value);
+    }
 }
