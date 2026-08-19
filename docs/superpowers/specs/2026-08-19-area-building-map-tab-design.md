@@ -299,6 +299,57 @@ public const VACANCY_OVER40 = 'over40';   // → VACANCY_OVER50 = 'over50'
 - 地図タブでページングする（ピンが 20 本に減る）
 - 所在地の列を戻す / 取込マッピングを消す（消しすぎ・消し足りないの両方向）
 
+### 変異テストの実測（2026-08-20）
+
+Task 10。worktree `tenant-area-survey`（HEAD `12cd6eba`）、ベースライン **909 tests / 5457 assertions green**。
+作法は Bug #44 のとおり: ①変異前に `git status --porcelain` が空 ②変異を当てる
+③`git diff --stat` が非空で着弾を確認 ④`vendor/bin/phpunit` を**全体で**回す
+⑤落ちたテスト名と**理由の文言**を記録 ⑥`git checkout --` で戻し `git status --porcelain` が
+空に戻ったことを確認。**7 通り全てで着弾・検出を確認した（未検出 0 件）。**
+
+| # | 変異 | 着弾（`git diff --stat`） | 落ちたテスト | 落ちた理由の文言 |
+|---|---|---|---|---|
+| 1 | `storeCoordinate()` の `$building->update([...])` を `$building->newQuery()->whereKey($building->id)->whereNull('latitude')->update([...])` に | `AreaBuildingController.php \| 2 +-`（1 insertion, 1 deletion） | `AreaBuildingCoordinateStoreTest::test_existing_coordinates_are_overwritten`（予告どおり）＋ `AreaBuildingCoordinateStoreTest::test_manager_can_store_coordinates`（想定外の追加検出） | ①既存座標(33.1/132.1)ありのケース: `Failed asserting that two strings are equal.` `"latitude": 33.85` → `"latitude": 33.1`、`"longitude": 132.77` → `"longitude": 132.1`（`whereNull` ガードで UPDATE 0 件、DB も in-memory も古いまま）。②新規棟(座標未設定)のケース: `"latitude": 33.8392` → `"latitude": 0`、`"longitude": 132.7657` → `"longitude": 0`（DB は正しく更新されるが、クエリビルダの `update()` は `$building` の in-memory 属性を書き換えないため、レスポンス JSON が stale な 0/0 を返す） |
+| 2 | `VacancyRate::BAND_MID` を `25.0` → `20.0` | `VacancyRate.php \| 2 +-`（1 insertion, 1 deletion） | `VacancyRateTest::test_level_bands` ＋ `AreaBuildingListTest::test_vacancy_band_boundaries_are_inclusive_at_25_and_50_percent`（予告どおり2件） | ①`24.9% は low（営業 301 / 空き 100 / 不明 0）` → `Failed asserting that two strings are identical.` `-'low' +'mid'`。②`24.9%（25.0% 未満）が over25 に含まれてしまっている` → `Failed asserting that an array does not contain '率24.9'.` |
+| 3 | `AreaBuildingListService::matchesVacancy()` の `VACANCY_OVER25 => $rate >= VacancyRate::BAND_MID` を `$rate >= 25.0`（値は同じ） | `AreaBuildingListService.php \| 2 +-`（1 insertion, 1 deletion） | `AreaBuildingListTest::test_vacancy_filter_reads_the_shared_band_constants`（予告どおり） | `フィルタが共有の閾値定数を見ていない` → `Failed asserting that '<コメント除去済みソース全文>' contains "VacancyRate::BAND_MID".`（PHPUnit は同一テスト内の最初の失敗で止まるため、後続の `assertDoesNotMatchRegularExpression('/>=\s*\d+(\.\d+)?/', …)` は未実行のまま。ただし直値 `25.0` はこの正規表現にも一致するはずで、実質 2 つの不変条件が同時に破れていた） |
+| 4 | `index()` の `'mapPins' => $isMap ? $this->mapPins($rows) : []` を `$this->mapPins($rows)`（常時組み立て）＋ `index.blade.php` の `@if($isMap) @include('tenant.area-buildings._map') @else` を `@include('tenant.area-buildings._map') @if($isMap) @else`（無条件 include） | `AreaBuildingController.php \| 2 +-` ＋ `index.blade.php \| 2 +-`（2 files, 2 insertions, 2 deletions） | 6 件（予告 1 件 + 想定外 5 件）: `AreaBuildingMapTabTest::test_the_table_tab_is_the_default_and_loads_no_map`（予告） / `AreaBuildingMapTabTest::test_the_maps_api_is_loaded_at_most_once_per_page` / `AreaBuildingGeocodeTest::test_list_does_not_load_maps_when_nothing_is_pending` / `AreaBuildingGeocodeTest::test_list_shows_the_button_with_the_pending_count` / `AreaBuildingGeocodeTest::test_the_button_and_the_maps_callback_are_wired_to_their_definitions` / `AreaBuildingGeocodeTest::test_staff_does_not_see_the_button` | 代表的な文言: `表タブで Google Maps を読み込んでいる（課金が発生する）` → `does not contain "maps.googleapis.com"`。`表タブの Maps ローダーが 1 本でない（一括取得の Geocoder だけのはず）` → `Failed asserting that 2 is identical to 1.`（表タブに Maps ローダーが 2 本になった）。`一覧で地図を生成している（課金する）` → `does not contain "new google.maps.Map("`。`ローダーが呼ぶ onAreaMapReady の実体が無い（Geocoder が永久に作られない）` → 表タブに `_map.blade.php` 側のローダー（`callback=onAreaMapReady`）が先に出るようになり、`test_the_button_and_the_maps_callback_are_wired_to_their_definitions` の「HTML 中で最初に見つかった callback 名の定義をスクリプト側で探す」ロジックが誤爆した（本来拾うはずの `onAreaGeocodeReady` でなく `onAreaMapReady` を拾った） |
+| 5 | `index()` で `$paged = $service->paginateRows($rows, $request)` を先に作り、`mapPins($rows)` / `mapUnlocated($rows)` を `mapPins(collect($paged->items()))` / `mapUnlocated(collect($paged->items()))` に差し替え | `AreaBuildingController.php \| 7 ++++---`（4 insertions, 3 deletions） | `AreaBuildingMapTabTest::test_the_map_tab_is_not_paginated`（予告どおり） | `地図タブがページングされている（ピンが欠けている）` → `Failed asserting that actual size 20 matches expected size 25.` |
+| 6 | `update()` の `if (array_key_exists('address', $validated)) { $changes['address'] = $validated['address']; }` を外し、`$changes` に直接 `'address' => $validated['address'] ?? null` を書く | `AreaBuildingController.php \| 5 +----`（1 insertion, 4 deletions） | `AreaBuildingCrudTest::test_update_without_address_keeps_the_existing_address`（予告どおり） | `所在地を送らない更新で既存の住所が消えている` → `Failed asserting that null is identical to '愛媛県松山市一番町1-1'.` |
+| 7 | `_map.blade.php` の `saveCoordinate()` 末尾（最後の `.catch(...)` の後、閉じ `}` の直前）に `areaMapInstance.setCenter({lat: lat, lng: lng});` を追加 | `_map.blade.php \| 2 ++`（2 insertions） | 3 件（構造 1 + 実駆動 2、予告どおり範囲内）: `AreaBuildingMapTabTest::test_saving_a_pin_does_not_recenter_the_map`（構造） / `AreaBuildingMapTabTest::test_the_locate_mode_walks_the_list_and_never_moves_the_map`（実駆動） / `AreaBuildingMapTabTest::test_a_placed_building_can_be_placed_again_from_the_list`（実駆動） | ①構造: `saveCoordinate() が地図の中心を動かしている` → `does not contain "setCenter"`。②実駆動: `登録中に地図を動かしている: setCenter,setCenter,setCenter` → `Failed asserting that two arrays are identical.` `-[] +['setCenter','setCenter','setCenter']`。③実駆動: `置き直しで地図を動かしている` → `Failed asserting that two arrays are identical.` `-[] +['setCenter','setCenter']` |
+
+**未検出はゼロ件。** 7 通りとも着弾を確認し、想定したテスト（またはそれ以上のテスト）が理由まで
+一致する形で赤くなることを確認した。各変異のあと `git checkout --` で戻し `git status --porcelain`
+が空に戻ったことを都度確認し、最後に全体を再実行して `909 tests / 5457 assertions` の green に
+戻ったことを確認済み。
+
+⚠ 変異 4 は「表タブでは絶対に Maps API を読み込まない・地図を作らない」という**課金ゼロ方針**が、
+単一のテストでなく複数の切り口（表タブ自身 / 座標一括取得のある画面の 4 パターン / ローダー本数 /
+callback 定義の対応）から**多層に**守られていることを裏付けた。⚠ 変異 1 は「クエリビルダの
+`update()` は Eloquent モデルの in-memory 属性を書き換えない」という Laravel の一般的な挙動を、
+狙った既存座標のケースだけでなく新規棟のケースでも実測で示した——**1 つの変異が意図と別の理由で
+複数箇所を検出することがある**という Bug #44 の教訓のとおりだった。
+
+#### 既知の未検出項目（Task 7 / 8 のレビューで実測済み。隠さない）
+
+| 未検出の変異 | なぜ測れないか |
+|---|---|
+| `_map.blade.php` の `minmax(0, 1fr)` を `1fr` に戻す | PHP からは Bug #29 の横スクロールを測れない。ブラウザで `main.scrollWidth === main.clientWidth` を広狭 2 幅で見るしかない |
+| Maps ローダーの `onerror="onAreaMapFailed()"` を消す | 同上（スクリプト読込失敗は PHP からは起こせない） |
+| `center: { lat, lng }` を `center: AREA_MAP_CENTER`（`zoom` 混入）に戻す | Maps JS API の `InvalidValueError` は PHP からは測れない。**ローカルの実ブラウザ検証で `areaMapInstance` が生成されマーカー 5 個が作られることを確認済み**（2026-08-20） |
+| `paginateRows()` の `'query' => array_map(...)` を `$request->query()` に戻す | この画面は既定が「全て」なので Bug #31 の実害が出ず、結果が変わらない |
+| `saveCoordinate()` の「保存中...」メッセージを消す | スナップショットが settle 後に取られるので原理的に測れない |
+
+#### 2026-08-20 ローカル実ブラウザ検証で確認できたこと
+
+- 表タブで `maps.googleapis.com` 0 件 / `new google.maps.Map(` 0 件 / `typeof google === "undefined"`
+- 地図タブでピン 5・マーカー 5・帯が none/low/mid/high/unknown に正しく割当
+- 登録モード OFF のまま地図クリック → fetch 0 回（ゲートが実挙動で効く）
+- 保存時に `setCenter` / `setZoom` / `fitBounds` / `panTo` を**一度も呼ばない**（実ブラウザでスパイして確認）
+- 置き直しで同じ棟が上書きされ、古いマーカーが残らない
+- `address` を送らない編集保存で住所と座標が消えない（Bug #38 の実地確認）
+- ⚠ 地図タイルは `RefererNotAllowedMapError` で描画されない（API キーの HTTP リファラー制限に localhost が無い）＝ Google Cloud Console 側の設定。**ピンの見た目と InfoWindow は本番で確認する**
+- ⚠ 375px の実測は Chrome のウィンドウ最小幅（606px）に阻まれ未実施。606px で単一カラムへの切替と横スクロール無しは確認済み
+
 ---
 
 ## 10. スコープ外（今回やらないこと）
