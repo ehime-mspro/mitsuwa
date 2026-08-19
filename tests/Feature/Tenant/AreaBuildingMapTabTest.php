@@ -106,6 +106,74 @@ class AreaBuildingMapTabTest extends AreaBuildingTestCase
     }
 
     /**
+     * ⚠ プラン外の追加。**Street View を出さないという課金方針が無検査だった**
+     *   （変異テストで `streetViewControl: false` を `true` にしても 7 本すべて緑）。
+     *   Street View は利用者が開いた回数だけ課金されるので、設計書 §7 は
+     *   周辺ビル調査の地図では出さないと決めている。
+     *
+     * ⚠ **走査を周辺ビル調査のビューに限る。** 不動産・DAD の地図は
+     *   `streetViewControl: true` を**意図して**使っており（実測 9 箇所）、
+     *   アプリ全体へ広げるとその判断を勝手に覆すことになる。
+     *
+     * ⚠ **コメントを落としてから測る**（Bug #42 ②）。落とさないと
+     *   `index.blade.php` の注意書き（`new google.maps.Map()` と書いてある）を
+     *   地図ビューと誤認し、`_form.blade.php:108` の
+     *   「streetViewControl を出さない(課金対策)」というコメントに一致して
+     *   **実体を消しても緑のまま**通る。
+     *
+     * ⚠ 下限 2 本を併せて固定する。走査が空振りして「対象 0 件だから緑」に
+     *   なる事故を防ぐため（Bug #45）。
+     */
+    public function test_area_building_maps_never_offer_street_view(): void
+    {
+        $dir       = resource_path('views/tenant/area-buildings');
+        $mapViews  = [];
+        $offenders = [];
+
+        foreach (\Illuminate\Support\Facades\File::allFiles($dir) as $file) {
+            if (! str_ends_with($file->getFilename(), '.blade.php')) {
+                continue;
+            }
+
+            $code = $this->withoutComments($file->getContents());
+
+            if (! str_contains($code, 'new google.maps.Map(')) {
+                continue;
+            }
+            $mapViews[] = $file->getFilename();
+
+            if (! str_contains($code, 'streetViewControl: false')) {
+                $offenders[] = $file->getFilename() . '（streetViewControl: false が無い）';
+            }
+            if (str_contains($code, 'streetViewControl: true')) {
+                $offenders[] = $file->getFilename() . '（streetViewControl: true になっている）';
+            }
+        }
+
+        $this->assertGreaterThanOrEqual(
+            2,
+            count($mapViews),
+            '走査が空振りしている（周辺ビル調査で地図を作るビューが既知の下限を下回った）'
+        );
+
+        $this->assertSame(
+            [],
+            $offenders,
+            "周辺ビル調査の地図で Street View を出そうとしています（開いた回数だけ課金されます。設計書 §7）:\n"
+                . implode("\n", $offenders)
+        );
+    }
+
+    /** Blade コメントと JS コメントを落とす。⚠ 行頭アンカーを外すと `https://` まで消える。 */
+    private function withoutComments(string $source): string
+    {
+        $source = preg_replace('/\{\{--.*?--\}\}/s', '', $source);
+        $source = preg_replace('#/\*.*?\*/#s', '', $source);
+
+        return preg_replace('#^[ \t]*//.*$#m', '', $source);
+    }
+
+    /**
      * ⚠ プラン外の追加（Task 7 実装中に実測で見つけた欠陥を固定する）。
      *
      * 一覧には**もう 1 本** Maps ローダーがある — 座標一括取得（Geocoder 用）で、
