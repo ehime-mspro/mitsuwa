@@ -296,14 +296,22 @@ class AreaBuildingController extends Controller
             'address' => '所在地',
         ]);
 
-        $building->update([
+        // ⚠ 送られてこなかったキーは触らない。所在地は 2026-08-19 に画面から外したので
+        //   実運用の更新には含まれない。`?? null` のままだと Excel 取込で入った住所が
+        //   編集のたびに消える（Bug #38 と同型）。
+        $changes = [
             'name'         => $validated['name'],
-            'address'      => $validated['address'] ?? null,
             'latitude'     => $validated['latitude'] ?? null,
             'longitude'    => $validated['longitude'] ?? null,
             'total_floors' => $validated['total_floors'] ?? null,
             'notes'        => $validated['notes'] ?? null,
-        ]);
+        ];
+
+        if (array_key_exists('address', $validated)) {
+            $changes['address'] = $validated['address'];
+        }
+
+        $building->update($changes);
 
         return redirect()->route('tenant.area-buildings.show', $building)
             ->with('success', 'ビル情報を更新しました。');

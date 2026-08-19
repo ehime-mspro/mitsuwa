@@ -320,4 +320,44 @@ class AreaBuildingCrudTest extends AreaBuildingTestCase
         // new google.maps.Map は showAreaMap() の中だけ。onGoogleMapsReady では作らない
         $this->assertSame(1, substr_count($html, 'new google.maps.Map('), 'Map を生成する箇所が 1 つでない');
     }
+
+    /**
+     * 所在地を送らない更新で、既存の住所が消えないこと。
+     *
+     * ⚠ 2026-08-19 に所在地の入力欄を画面から外したので、**実運用の編集は必ずこの形**になる。
+     *   `'address' => $validated['address'] ?? null` のままだと、Excel 取込で入った住所が
+     *   編集保存のたびに NULL へ落ちる（Bug #38 と同型。画面に出ないので誰も気づけない）。
+     */
+    public function test_update_without_address_keeps_the_existing_address(): void
+    {
+        $building = $this->makeBuilding('取込で入った棟', ['address' => '愛媛県松山市一番町1-1']);
+
+        $this->actingAs($this->manager())
+            ->put('/tenant/area-buildings/' . $building->id, [
+                'name'         => '取込で入った棟',
+                'total_floors' => 5,
+            ])
+            ->assertRedirect();
+
+        $this->assertSame(
+            '愛媛県松山市一番町1-1',
+            $building->refresh()->address,
+            '所在地を送らない更新で既存の住所が消えている'
+        );
+    }
+
+    /** 送れば今までどおり更新できる（サーバ側の受け口は残してある。設計書 §6.2） */
+    public function test_update_with_address_still_updates_it(): void
+    {
+        $building = $this->makeBuilding('住所を直す棟', ['address' => '旧住所']);
+
+        $this->actingAs($this->manager())
+            ->put('/tenant/area-buildings/' . $building->id, [
+                'name'    => '住所を直す棟',
+                'address' => '新住所',
+            ])
+            ->assertRedirect();
+
+        $this->assertSame('新住所', $building->refresh()->address);
+    }
 }
