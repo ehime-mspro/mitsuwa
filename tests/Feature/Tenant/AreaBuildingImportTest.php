@@ -813,6 +813,69 @@ class AreaBuildingImportTest extends AreaBuildingTestCase
     }
 
     /**
+     * 列名の自動判定が、実運用の調査表の見出しに当たること。
+     *
+     * ⚠ 2026-08-19 の本番取込で発覚。「営業（空室）状況調査表」の見出しは **'階' '空' の
+     *   1 文字**で、`/(階数|総階)/` `/(空き|空室|空店)/` のどちらにも当たらない。
+     *   気づかず進むと **総階数が空・空き 0 件**で取り込まれ、**空室率が全棟 0%** になる。
+     *   プレビューは警告 0 行、結果も「ビル新規 187 件」と**完全成功に見える**ので、
+     *   利用者が列マッピングの画面を自分で読まない限り無音で壊れる（Bug #28 / #43 と同型）。
+     *
+     * ⚠ PHP から JS の正規表現は実行できないので、Blade の guess 表を取り出して
+     *   PCRE として当てる（TaxExclusiveCeilingJsTest と同じ走査の流儀）。
+     */
+    public function test_column_guesses_hit_the_headers_of_the_real_survey_sheet(): void
+    {
+        // 実運用の「営業（空室）状況調査表」の 1 行目そのもの（'ビ　ル　名' は全角空白入り）
+        $this->assertSame(
+            ['name', 'total_floors', 'operating', 'vacant', 'unknown', ''],
+            $this->guessMapping(['ビ　ル　名', '階', '営業', '空', '不明', '計']),
+            '実運用の調査表の見出しに自動判定が当たっていない（総階数と空きが「使わない」に落ちる）'
+        );
+    }
+
+    /**
+     * 見出しの語彙。
+     *
+     * ⚠ 1 文字の見出しを足したせいで**他の語が壊れていない**ことと、
+     *   合計列・備考が**どれにも当たらない**ことを対で見る。'計' が件数列に当たると
+     *   合計値が営業/空きとして入り、空室率が静かに壊れる。
+     */
+    public function test_column_guesses_cover_the_common_header_vocabulary(): void
+    {
+        $expected = [
+            'ビル名'   => 'name',
+            '建物名'   => 'name',
+            '物件名'   => 'name',
+            '所在地'   => 'address',
+            '住所'     => 'address',
+            '階'       => 'total_floors',
+            '階数'     => 'total_floors',
+            '総階数'   => 'total_floors',
+            '営業'     => 'operating',
+            '入居'     => 'operating',
+            '稼働'     => 'operating',
+            '空'       => 'vacant',
+            '空き'     => 'vacant',
+            '空室'     => 'vacant',
+            '空室数'   => 'vacant',
+            '不明'     => 'unknown',
+            '調査年月' => 'surveyed_month',
+            '計'       => '',
+            '合計'     => '',
+            '備考'     => '',
+        ];
+
+        foreach ($expected as $header => $key) {
+            $this->assertSame(
+                [$key],
+                $this->guessMapping([$header]),
+                "見出し「{$header}」の自動判定が期待と違う"
+            );
+        }
+    }
+
+    /**
      * Excel の日付セルを読む設定が画面側に入っていること。
      *
      * ⚠ PHP 側のテストでは JS の挙動を原理的に守れないので、
@@ -1256,6 +1319,76 @@ class AreaBuildingImportTest extends AreaBuildingTestCase
         }
 
         $this->fail("{$name} の body が閉じていない");
+    }
+
+    /**
+     * 画面の buildColumns() と同じ手順で、見出しの並びを項目キーの並びへ割り当てる。
+     *
+     * ⚠ **used を持つのが load-bearing。**「先に当たった列が勝つ」ので、
+     *   1 列ずつ独立に見るだけでは列同士の取り合い（同じキーの二重割当）を検出できない。
+     */
+    private function guessMapping(array $headers): array
+    {
+        $targets = $this->jsGuessTable('buildings');
+        $used    = [];
+        $out     = [];
+
+        foreach ($headers as $header) {
+            // 画面は `areaImportCellText(...).replace(/\s/g, '')` で空白を落としてから当てる。
+            // ⚠ /u が PCRE2_UCP を立てるので \s は U+3000 も含む（AreaBuilding::normalizeName と同じ）
+            $text    = preg_replace('/\s+/u', '', $header);
+            $mapping = '';
+
+            foreach ($targets as $key => $pattern) {
+                if (! isset($used[$key]) && preg_match($pattern, $text) === 1) {
+                    $mapping    = $key;
+                    $used[$key] = true;
+                    break;
+                }
+            }
+
+            $out[] = $mapping;
+        }
+
+        return $out;
+    }
+
+    /**
+     * Blade の `AREA_IMPORT_TARGETS` から `キー => PCRE` を取り出す。
+     *
+     * ⚠ 走査が空振りして緑になる事故を防ぐため、**取れた件数も固定する**（Bug #45）。
+     *   項目を増やしたらここも増やすこと。
+     *
+     * @return array<string, string>
+     */
+    private function jsGuessTable(string $kind): array
+    {
+        $blade = $this->importView();
+
+        $at = strpos($blade, 'var AREA_IMPORT_TARGETS');
+        $this->assertNotFalse($at, 'AREA_IMPORT_TARGETS が無い');
+
+        $open = strpos($blade, '[', strpos($blade, $kind . ':', $at));
+        $this->assertNotFalse($open, "AREA_IMPORT_TARGETS.{$kind} が配列リテラルで書かれていない");
+        $close = strpos($blade, ']', $open);
+        $this->assertNotFalse($close, "AREA_IMPORT_TARGETS.{$kind} が閉じていない");
+
+        // ⚠ 行単位で拾う。`//` のコメント行に '階' 等が出てくるので、
+        //   ブロック全体への正規表現だと注意書きを guess として拾いうる
+        $targets = [];
+        foreach (explode("\n", substr($blade, $open, $close - $open)) as $line) {
+            if (preg_match("/^\s*\{\s*key:\s*'(\w+)',\s*label:\s*'[^']*',\s*guess:\s*\/(.+)\/\s*\},?\s*$/u", $line, $m) === 1) {
+                $targets[$m[1]] = '/' . $m[2] . '/u';
+            }
+        }
+
+        $this->assertCount(
+            $kind === 'buildings' ? 7 : 6,
+            $targets,
+            "AREA_IMPORT_TARGETS.{$kind} の項目を取り出せていない（走査が空振りしている）"
+        );
+
+        return $targets;
     }
 
     /** $from の直後にある最初の $tag の開始タグを返す */

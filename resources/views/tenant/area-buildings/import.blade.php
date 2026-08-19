@@ -188,9 +188,12 @@ var AREA_IMPORT_TARGETS = {
     buildings: [
         { key: 'name',           label: 'ビル名',   guess: /(ビル|建物|物件|名称|名前)/ },
         { key: 'address',        label: '所在地',   guess: /(所在|住所|場所)/ },
-        { key: 'total_floors',   label: '階数',     guess: /(階数|総階)/ },
+        // ⚠ 見出しが 1 文字の表が現実にある（実運用の「営業（空室）状況調査表」は '階' '空'）。
+        //   ヘッダー文字列は空白を除去してから当てるので、'^…$' は 1 文字の見出しだけに効く。
+        //   当たらないと総階数が空・空き 0 のまま取り込まれ、**空室率が全棟 0%** になる。
+        { key: 'total_floors',   label: '階数',     guess: /(階数|総階|^階$)/ },
         { key: 'operating',      label: '営業',     guess: /(営業|入居|稼働)/ },
-        { key: 'vacant',         label: '空き',     guess: /(空き|空室|空店)/ },
+        { key: 'vacant',         label: '空き',     guess: /(空き|空室|空店|^空$)/ },
         { key: 'unknown',        label: '不明',     guess: /(不明|不詳)/ },
         { key: 'surveyed_month', label: '調査年月', guess: /(年月|調査月|調査日)/ }
     ],
