@@ -46,15 +46,20 @@ class AreaBuildingListService
 {
     public const VACANCY_FULL   = 'full';
     public const VACANCY_ANY    = 'any';
-    public const VACANCY_OVER20 = 'over20';
-    public const VACANCY_OVER40 = 'over40';
+    public const VACANCY_OVER25 = 'over25';
+    public const VACANCY_OVER50 = 'over50';
 
-    /** フィルタバーの選択肢(「全て」は空値なのでここには入れない) */
+    /**
+     * フィルタバーの選択肢(「全て」は空値なのでここには入れない)。
+     *
+     * ⚠ ラベルの数字は VacancyRate::BAND_MID / BAND_HIGH と揃えること。
+     *   閾値を動かすときは両方直す(表示だけ 25% で判定が 20% は最悪の状態)。
+     */
     public const VACANCY_OPTIONS = [
         self::VACANCY_FULL   => '満室（0%）',
         self::VACANCY_ANY    => '空きあり（1%以上）',
-        self::VACANCY_OVER20 => '空室率 20% 以上',
-        self::VACANCY_OVER40 => '空室率 40% 以上',
+        self::VACANCY_OVER25 => '空室率 25% 以上',
+        self::VACANCY_OVER50 => '空室率 50% 以上',
     ];
 
     public function paginate(Request $request, int $perPage = 20): LengthAwarePaginator
@@ -199,8 +204,9 @@ class AreaBuildingListService
         return match ($vacancy) {
             self::VACANCY_FULL   => $rate <= 0.0,
             self::VACANCY_ANY    => $rate > 0.0,
-            self::VACANCY_OVER20 => $rate >= 20.0,
-            self::VACANCY_OVER40 => $rate >= 40.0,
+            // ⚠ 直値を書かない。地図の凡例と別々に閾値を持つと片方だけ直す事故が起きる(Bug #41)
+            self::VACANCY_OVER25 => $rate >= VacancyRate::BAND_MID,
+            self::VACANCY_OVER50 => $rate >= VacancyRate::BAND_HIGH,
         };
     }
 

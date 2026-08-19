@@ -73,39 +73,40 @@ class AreaBuildingListTest extends AreaBuildingTestCase
         );
         $this->assertSame(
             ['率50', '率30'],
-            $this->listedNames($this->actingAs($staff)->get('/tenant/area-buildings?vacancy=over20'))
+            $this->listedNames($this->actingAs($staff)->get('/tenant/area-buildings?vacancy=over25'))
         );
         $this->assertSame(
             ['率50'],
-            $this->listedNames($this->actingAs($staff)->get('/tenant/area-buildings?vacancy=over40'))
+            $this->listedNames($this->actingAs($staff)->get('/tenant/area-buildings?vacancy=over50'))
         );
     }
 
     /**
      * 空室率フィルタの境界は「以上」（inclusive）。
      *
-     * ⚠ コード品質レビュー M-2/M-3（2026-08-16）で指摘: 上の test_vacancy_bands は
-     *   10% / 30% / 50% しか使っておらず、`matchesVacancy()` の `$rate >= 20.0` /
-     *   `$rate >= 40.0` の**等号側を一度も踏んでいない**（`>` に変異させても緑のまま。
-     *   実装自体は正しいのに、テストが境界を検出できていなかった）。
-     *   ちょうど 20.0%（営業8/空き2）・ちょうど 40.0%（営業6/空き4）のビルを作り、
-     *   両境界の等号側を固定する。あわせて 19.9%（境界のすぐ下）が over20 に
-     *   含まれないことも固定し、境界が「20.0 ちょうど」にあることを両側から挟む。
+     * ⚠ 上の test_vacancy_bands は 10% / 30% / 50% しか使っておらず、
+     *   等号側を一度も踏んでいない(`>=` を `>` に変異させても緑のまま)。
+     *   ちょうど 25.0% / ちょうど 50.0% のビルを作って等号側を固定し、
+     *   境界のすぐ下(24.9% / 49.9%)が含まれないことで両側から挟む。
+     *
+     * ⚠ 閾値は VacancyRate::BAND_MID / BAND_HIGH に集約済み。20 / 40 に戻すとここが赤になる。
      */
-    public function test_vacancy_band_boundaries_are_inclusive_at_20_and_40_percent(): void
+    public function test_vacancy_band_boundaries_are_inclusive_at_25_and_50_percent(): void
     {
-        $this->makeSurvey($this->makeBuilding('率ちょうど20'), '2026-08-01', 8, 2);     // 20.0%
-        $this->makeSurvey($this->makeBuilding('率ちょうど40'), '2026-08-01', 6, 4);     // 40.0%
-        $this->makeSurvey($this->makeBuilding('率19.9'), '2026-08-01', 161, 40);        // 19.9%（実測: intdiv(40*1000,201)/10 = 19.9）
+        $this->makeSurvey($this->makeBuilding('率ちょうど25'), '2026-08-01', 3, 1);      // 25.0%
+        $this->makeSurvey($this->makeBuilding('率ちょうど50'), '2026-08-01', 5, 5);      // 50.0%
+        $this->makeSurvey($this->makeBuilding('率24.9'), '2026-08-01', 301, 100);        // 24.9%
+        $this->makeSurvey($this->makeBuilding('率49.9'), '2026-08-01', 501, 500);        // 49.9%
 
         $staff = $this->staff();
 
-        $over20 = $this->listedNames($this->actingAs($staff)->get('/tenant/area-buildings?vacancy=over20'));
-        $this->assertContains('率ちょうど20', $over20, 'ちょうど 20.0% が over20 に含まれていない（境界が inclusive でない）');
-        $this->assertNotContains('率19.9', $over20, '19.9%（20.0% 未満）が over20 に含まれてしまっている');
+        $over25 = $this->listedNames($this->actingAs($staff)->get('/tenant/area-buildings?vacancy=over25'));
+        $this->assertContains('率ちょうど25', $over25, 'ちょうど 25.0% が over25 に含まれていない（境界が inclusive でない）');
+        $this->assertNotContains('率24.9', $over25, '24.9%（25.0% 未満）が over25 に含まれてしまっている');
 
-        $over40 = $this->listedNames($this->actingAs($staff)->get('/tenant/area-buildings?vacancy=over40'));
-        $this->assertContains('率ちょうど40', $over40, 'ちょうど 40.0% が over40 に含まれていない（境界が inclusive でない）');
+        $over50 = $this->listedNames($this->actingAs($staff)->get('/tenant/area-buildings?vacancy=over50'));
+        $this->assertContains('率ちょうど50', $over50, 'ちょうど 50.0% が over50 に含まれていない（境界が inclusive でない）');
+        $this->assertNotContains('率49.9', $over50, '49.9%（50.0% 未満）が over50 に含まれてしまっている');
     }
 
     /** 「不明」は空き扱いなので率のバンドに効く（VacancyRate を通っている証拠） */
@@ -113,7 +114,7 @@ class AreaBuildingListTest extends AreaBuildingTestCase
     {
         $this->makeSurvey($this->makeBuilding('不明だらけ'), '2026-08-01', 5, 0, 5);
 
-        $response = $this->actingAs($this->staff())->get('/tenant/area-buildings?vacancy=over40');
+        $response = $this->actingAs($this->staff())->get('/tenant/area-buildings?vacancy=over50');
 
         $this->assertSame(['不明だらけ'], $this->listedNames($response));
     }
@@ -339,5 +340,36 @@ class AreaBuildingListTest extends AreaBuildingTestCase
         usort($names, 'strcmp');
 
         return $names;
+    }
+
+    /**
+     * 閾値の直値がサービス側に残っていないこと。
+     *
+     * ⚠ 値のテストだけでは守れない。`>= 25.0` と直書きしても上のテストは緑のままで、
+     *   地図の凡例（VacancyRate::LEVELS）と別々に動く状態が残る（Bug #41 / #42 ②）。
+     * ⚠ コメントを落としてから測る。docblock に「25%」と書いてあると false-pass する。
+     */
+    public function test_vacancy_filter_reads_the_shared_band_constants(): void
+    {
+        $source = $this->sourceWithoutComments(app_path('Services/Tenant/AreaBuildingListService.php'));
+
+        $this->assertStringContainsString('VacancyRate::BAND_MID', $source, 'フィルタが共有の閾値定数を見ていない');
+        $this->assertStringContainsString('VacancyRate::BAND_HIGH', $source, 'フィルタが共有の閾値定数を見ていない');
+        $this->assertDoesNotMatchRegularExpression('/>=\s*\d+\.\d+/', $source, '閾値の直値がフィルタに残っている');
+    }
+
+    /** コメント（`//` と docblock）を落としたソース。Bug #42 ② の false-pass 対策 */
+    private function sourceWithoutComments(string $path): string
+    {
+        $out = '';
+
+        foreach (token_get_all(file_get_contents($path)) as $token) {
+            if (is_array($token) && in_array($token[0], [T_COMMENT, T_DOC_COMMENT], true)) {
+                continue;
+            }
+            $out .= is_array($token) ? $token[1] : $token;
+        }
+
+        return $out;
     }
 }
