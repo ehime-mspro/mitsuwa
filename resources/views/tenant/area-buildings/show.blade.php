@@ -38,7 +38,7 @@
 
     {{-- ヘッダ --}}
     <div class="bg-white border border-gray-200 rounded-lg p-5 mb-3">
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div class="grid grid-cols-1 gap-3">
             <div>
                 <div class="text-xs font-semibold text-gray-500 mb-1">総階数</div>
                 <div class="text-sm text-gray-800">{{ $building->totalFloorsLabel() }}</div>

@@ -19,6 +19,27 @@ class AreaBuildingShowTest extends AreaBuildingTestCase
             ->assertSee('ミツワビル');
     }
 
+    /**
+     * ヘッダの総階数がラベルと値の両方とも出ること。
+     *
+     * ⚠ 2026-08-19 コード品質レビュー: 所在地をヘッダから外した際、
+     *   `grid grid-cols-1 sm:grid-cols-2` が総階数 1 項目だけの状態で残っていた
+     *   （640px 以上でヘッダカードの右半分が空くだけで表示内容自体は壊れていなかった
+     *   ため、他のテストは全部緑のままだった）。`sm:grid-cols-2` を外した後も
+     *   表示内容が壊れていないことを実測で固定する。
+     */
+    public function test_header_shows_the_total_floors_label_and_value(): void
+    {
+        $building = $this->makeBuilding('階数表示チェック', ['total_floors' => 8]);
+
+        $html = $this->actingAs($this->staff())
+            ->get("/tenant/area-buildings/{$building->id}")
+            ->getContent();
+
+        $this->assertStringContainsString('総階数', $html, '総階数のラベルが出ていない');
+        $this->assertStringContainsString('8階', $html, '総階数の値が出ていない');
+    }
+
     /** 調査 0 件・テナント 0 件でも落ちない（Bug #27 型） */
     public function test_detail_renders_with_no_surveys_and_no_tenants(): void
     {
