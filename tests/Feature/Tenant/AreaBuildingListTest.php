@@ -355,7 +355,7 @@ class AreaBuildingListTest extends AreaBuildingTestCase
 
         $this->assertStringContainsString('VacancyRate::BAND_MID', $source, 'フィルタが共有の閾値定数を見ていない');
         $this->assertStringContainsString('VacancyRate::BAND_HIGH', $source, 'フィルタが共有の閾値定数を見ていない');
-        $this->assertDoesNotMatchRegularExpression('/>=\s*\d+\.\d+/', $source, '閾値の直値がフィルタに残っている');
+        $this->assertDoesNotMatchRegularExpression('/>=\s*\d+(\.\d+)?/', $source, '閾値の直値がフィルタに残っている');
     }
 
     /** コメント（`//` と docblock）を落としたソース。Bug #42 ② の false-pass 対策 */
