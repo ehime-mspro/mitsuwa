@@ -205,8 +205,12 @@ function onAreaMapReady() {
 // 作業リスト（座標が無い棟）。⚠ コントローラで組み立てた単一変数を受ける（Bug #23 / #26）
 var AREA_MAP_UNLOCATED = {{ \Illuminate\Support\Js::from($mapUnlocated) }};
 
-// 保存先の組み立て元。⚠ パスを直書きせずルート表から取る（本番は /system/manage 配下）
-var AREA_MAP_SAVE_BASE = '{{ route('tenant.area-buildings.index') }}';
+/* 保存先と詳細の URL。⚠ パスを組み立てず**名前付きルートから起こす**（`__ID__` を差し替えて使う）。
+   `route('...index') + '/' + id + '/coordinates'` のように文字列で組むと、routes/web.php で
+   パスを変えたときに **JS だけが取り残されて誰も止めない**（実測でこのルート名は定義以外
+   どこからも参照されていなかった）。`__ID__` は unreserved 文字なので route() でも素通りする。 */
+var AREA_MAP_SAVE_URL = '{{ route('tenant.area-buildings.coordinates', ['building' => '__ID__']) }}';
+var AREA_MAP_SHOW_URL = '{{ route('tenant.area-buildings.show', ['building' => '__ID__']) }}';
 
 /* CSRF トークン。⚠ **要素が無い可能性を潰しておく。**
    `document.querySelector(...).getAttribute(...)` と直に書くと、レイアウトから meta が
@@ -333,7 +337,7 @@ function saveCoordinate(lat, lng) {
 
     showMessage('「' + target.name + '」を保存中...');
 
-    fetch(AREA_MAP_SAVE_BASE + '/' + target.id + '/coordinates', {
+    fetch(AREA_MAP_SAVE_URL.replace('__ID__', target.id), {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -363,7 +367,7 @@ function saveCoordinate(lat, lng) {
             id: data.id, name: target.name, lat: data.latitude, lng: data.longitude,
             level: 'unknown', rateLabel: '—', floors: '—',
             operating: null, vacant: null, unknown: null, month: '—',
-            url: AREA_MAP_SAVE_BASE + '/' + data.id
+            url: AREA_MAP_SHOW_URL.replace('__ID__', data.id)
         });
 
         target.done = true;

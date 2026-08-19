@@ -595,6 +595,21 @@ JS);
             $postedIds,
             '保存先の URL が「今の棟」を追いかけていない'
         );
+
+        // ⚠ 組み立てた URL を**実際にルータへ食わせる**。ここが「JS が名前付きルートから
+        //   URL を起こしている」ことの唯一の担保 —— パスを文字列で組んでいた頃は
+        //   routes/web.php を直しても JS だけが取り残され、誰も止められなかった
+        //   （このルート名は実測で定義以外どこからも参照されていなかった）。
+        try {
+            $matched = app('router')->getRoutes()->match(
+                \Illuminate\Http\Request::create($run['fetches'][0]['url'], 'POST')
+            );
+        } catch (\Symfony\Component\HttpKernel\Exception\NotFoundHttpException $e) {
+            $this->fail('JS が投げている URL に対応するルートが無い: ' . $run['fetches'][0]['url']);
+        }
+
+        $this->assertSame('tenant.area-buildings.coordinates', $matched->getName(),
+            'JS が投げている URL が座標保存のルートに解決されない');
         $this->assertSame('POST', $run['fetches'][0]['method']);
         $this->assertSame('test-token', $run['fetches'][0]['headers']['X-CSRF-TOKEN'] ?? null,
             'CSRF トークンを送っていない（本番では保存が全部 419 になる）');
