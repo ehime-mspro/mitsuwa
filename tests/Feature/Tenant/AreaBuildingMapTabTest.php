@@ -196,15 +196,33 @@ class AreaBuildingMapTabTest extends AreaBuildingTestCase
      */
     private function mapScriptSource(string $html): string
     {
-        foreach (explode('<script', $html) as $chunk) {
-            if (str_contains($chunk, 'function areaMapEscape(')) {
-                $script = substr($chunk, (int) strpos($chunk, '>') + 1);
+        $anchor = 'function areaMapEscape(';
+        $at     = strpos($html, $anchor);
+        $this->assertNotFalse($at, $anchor . ' を含むスクリプトが画面に無い');
 
-                return substr($script, 0, (int) strpos($script, '</script'));
-            }
-        }
+        // ⚠ 終端は「アンカーより後の最初の `</script`」＝**ブラウザと同じ規則**。
+        //   script ブロック内の `</script` は HTML 的に不正でブラウザもそこで切るが、
+        //   **開始タグの literal はブロック内に書いてもブラウザは何とも思わない** ——
+        //   explode で切っていた頃はコメント 1 行で本体を丸ごと失い、本番の Blade に
+        //   「コメントに書くな」というテスト都合の制約を残していた。
+        $end = strpos($html, '</script', $at);
+        $this->assertNotFalse($end, 'スクリプトが閉じていない');
 
-        $this->fail('areaMapEscape を含む <script> が画面に無い');
+        $open = strrpos(substr($html, 0, $at), '<script');
+        $this->assertNotFalse($open, 'スクリプトの開始タグが見つからない');
+
+        $start  = strpos($html, '>', $open);
+        $script = substr($html, $start + 1, $end - $start - 1);
+
+        // ⚠ 空を返して素通りさせない。抽出が壊れたら**読める理由**で落とす（Bug #44）
+        $this->assertNotSame('', trim($script), '地図タブのスクリプト本体を切り出せていない（抽出が空）');
+        $this->assertStringContainsString(
+            'function onAreaMapReady(',
+            $script,
+            '切り出した範囲に地図の初期化が入っていない（抽出の始点・終点が狂っている）'
+        );
+
+        return $script;
     }
 
     /**
@@ -810,7 +828,14 @@ JS);
             } elseif ($blade[$i] === '}') {
                 $depth--;
                 if ($depth === 0) {
-                    return substr($blade, $open, $i - $open + 1);
+                    $body = substr($blade, $open, $i - $open + 1);
+
+                    // ⚠ 空でも assertStringNotContainsString は**常に通る**。波括弧の数え方は
+                    //   文字列・コメント非対応なので、リテラルに `{` が 1 つ紛れた瞬間に
+                    //   呼び出し側のアサートが無音で空回りする（Bug #45 ④）
+                    $this->assertGreaterThan(30, strlen($body), $name . ' の body が空同然（波括弧の対応が壊れている）');
+
+                    return $body;
                 }
             }
         }
@@ -859,7 +884,11 @@ JS);
         mkdir($dir);
 
         try {
-            file_put_contents($dir . '/script.js', $this->mapScriptSource($html));
+            $script = $this->mapScriptSource($html);
+            $this->assertStringContainsString('function saveCoordinate(', $script,
+                '切り出したスクリプトに登録モードが入っていない（ハーネスが何も駆動しない）');
+
+            file_put_contents($dir . '/script.js', $script);
             file_put_contents($dir . '/plan.json', json_encode($plan));
             file_put_contents($dir . '/harness.js', $this->locateHarness());
 

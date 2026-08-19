@@ -212,11 +212,7 @@ var AREA_MAP_SAVE_BASE = '{{ route('tenant.area-buildings.index') }}';
    `document.querySelector(...).getAttribute(...)` と直に書くと、レイアウトから meta が
    消えたときに TypeError で **このスクリプト全体が死ぬ** —— onAreaMapReady も定義されず、
    地図が灰色の箱のまま無音で終わる（Bug #28 / #43 と同型で、HTML は妥当・テストも緑）。
-   取れなかった場合は保存が 419 で戻り、下の !res.ok がステータス行に理由を出す。
-
-   ⚠ ついでに: このブロックのコメントに `＜script` の literal を書かないこと。
-      走査・実駆動テストが `<` + `script` でスクリプト本体を切り出しているため、
-      コメント 1 行でハーネスが空文字を掴む（実測で踏んだ）。 */
+   取れなかった場合は保存が 419 で戻り、下の !res.ok がステータス行に理由を出す。 */
 var areaMapCsrfMeta = document.querySelector('meta[name="csrf-token"]');
 var AREA_MAP_TOKEN  = areaMapCsrfMeta ? areaMapCsrfMeta.getAttribute('content') : '';
 
