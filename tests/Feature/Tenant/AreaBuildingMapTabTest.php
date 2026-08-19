@@ -463,12 +463,18 @@ JS);
         $this->assertStringContainsString('id="locate-panel"', $managerHtml, '管理者に作業パネルが出ていない');
         $this->assertStringContainsString('function toggleLocateMode(', $managerHtml,
             'ボタンは出ているのに定義側のスクリプトが push されていない（押しても無反応）');
+        // 件数が開いた時点のものである注記（保存しても動かないので、乖離を隠さない。Bug #46）
+        $this->assertStringContainsString('※ 件数はページを開いた時点のものです。', $managerHtml,
+            '登録できる人に、上の件数が古くなる旨が出ていない');
 
         $staffHtml = $this->actingAs($this->staff())->get('/tenant/area-buildings?view=map')->getContent();
         $this->assertStringNotContainsString('id="btn-locate-mode"', $staffHtml, 'staff に登録モードのトグルが出ている');
         $this->assertStringNotContainsString('id="locate-panel"', $staffHtml, 'staff に作業パネルの markup が残っている');
         $this->assertStringNotContainsString('function toggleLocateMode(', $staffHtml,
             'staff に登録モードのスクリプトを配っている（押す口が無いので実行されないが、棟の一覧まで載る）');
+        // 自分では保存できない人の画面では件数が古くならないので、注記はノイズ
+        $this->assertStringNotContainsString('※ 件数はページを開いた時点のものです。', $staffHtml,
+            'セッション中に古くならない画面にまで注記を出している');
     }
 
     /**
