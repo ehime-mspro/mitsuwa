@@ -438,7 +438,12 @@ class AreaBuildingCrudTest extends AreaBuildingTestCase
         }
 
         $this->assertStringContainsString('地図で位置を指定', $html, '地図を開くボタンが無い');
-        $this->assertStringContainsString('openAreaMap()', $html, '地図を開くボタンが配線されていない');
+
+        // ⚠ 呼び出し側（onclick）と定義側（function）を**対で**見る（Bug #28）。
+        //    素の 'openAreaMap()' だけだと定義側に一致するので、onclick を消しても緑のまま通る
+        //    （2026-08-19 の変異テスト T2 で実測）。
+        $this->assertStringContainsString('onclick="openAreaMap()"', $html, '地図を開くボタンが配線されていない');
+        $this->assertStringContainsString('function openAreaMap()', $html, '地図を開く関数が定義されていない');
     }
 
     /** ピンのドラッグと地図クリックで座標が入る仕掛けは残っていること */
