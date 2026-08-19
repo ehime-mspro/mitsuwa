@@ -106,6 +106,41 @@ class AreaBuildingMapTabTest extends AreaBuildingTestCase
     }
 
     /**
+     * 一括取得の **UI（呼び出し側）とスクリプト（定義側）の表示条件が揃っている**こと。
+     *
+     * ⚠ 条件は `index.blade.php` の 2 箇所（UI ブロックと @push('scripts')）に分かれており、
+     *   **片方だけ外しても HTML としては妥当**なので 200 を見るテストは全部緑のまま通る。
+     *   実測（レビュアーの変異 X9）: UI 側だけ `! $isMap` を外すと 8 本すべて緑だったが、
+     *   画面には `onclick="runBulkGeocode()"` のボタンだけが出て定義側は push されず、
+     *   **押しても無反応**になる（Bug #28 そのもの）。
+     *
+     * ⚠ **呼び出し側と定義側を必ず対で見る。** 片方だけ見ると、もう片方が消えても緑になる。
+     * ⚠ ボタンは「manager 以上 ＋ 住所ありで座標なしのビルが 1 件以上」でしか出ない。
+     *   staff や座標済みのデータで測ると**常に不在**になり、何も検出しないテストになる。
+     */
+    public function test_the_bulk_geocode_ui_and_its_script_appear_together(): void
+    {
+        // 住所あり・座標なし ＝ 一括取得の対象
+        $this->makeBuilding('未取得ビル', ['address' => '松山市番町1-1']);
+        $manager = $this->manager();
+
+        $table = $this->actingAs($manager)->get('/tenant/area-buildings')->getContent();
+        $map   = $this->actingAs($manager)->get('/tenant/area-buildings?view=map')->getContent();
+
+        // 表タブ: 呼び出し側と定義側が**両方**出る
+        $this->assertStringContainsString('onclick="runBulkGeocode()"', $table,
+            '表タブに一括取得のボタンが出ていない');
+        $this->assertStringContainsString('function runBulkGeocode(', $table,
+            '表タブでボタンは出ているのに定義側のスクリプトが push されていない（押しても無反応）');
+
+        // 地図タブ: 呼び出し側と定義側が**両方**出ない
+        $this->assertStringNotContainsString('onclick="runBulkGeocode()"', $map,
+            '地図タブに一括取得のボタンが出ている（定義側は push されないので押しても無反応）');
+        $this->assertStringNotContainsString('function runBulkGeocode(', $map,
+            '地図タブで一括取得のスクリプトが push されている（Maps ローダーが 2 本になる）');
+    }
+
+    /**
      * ⚠ プラン外の追加。**Street View を出さないという課金方針が無検査だった**
      *   （変異テストで `streetViewControl: false` を `true` にしても 7 本すべて緑）。
      *   Street View は利用者が開いた回数だけ課金されるので、設計書 §7 は
