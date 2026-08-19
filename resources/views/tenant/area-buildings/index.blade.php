@@ -68,11 +68,16 @@
     {{-- 表示切替。⚠ 既定は「表」＝地図を作らない＝課金ゼロ（設計書 §7） --}}
     @php($tabQuery = request()->except(['view', 'page']))
     <div class="flex gap-1 mb-4">
-        <a href="{{ route('tenant.area-buildings.index', $tabQuery) }}"
+        {{-- ⚠ 現在タブを色だけで示さない。aria-current で支援技術にも伝える。
+             ⚠ `aria-current="{{ $cond ? 'page' : null }}"` と書かないこと — 素の HTML 属性では
+                `{{ null }}` は空文字を出すので、現在でないタブに `aria-current=""` が残る
+                （属性ごと消えるのは Alpine の `:attr` と コンポーネントの属性バッグの話。Bug #43）。
+                @@if で属性そのものを出し分ける。 --}}
+        <a href="{{ route('tenant.area-buildings.index', $tabQuery) }}"@if(! $isMap) aria-current="page"@endif
            class="px-4 py-2 text-sm font-semibold rounded-md border transition-colors {{ $isMap ? 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50' : 'bg-emerald-600 border-emerald-600 text-white' }}">
             表
         </a>
-        <a href="{{ route('tenant.area-buildings.index', array_merge($tabQuery, ['view' => 'map'])) }}"
+        <a href="{{ route('tenant.area-buildings.index', array_merge($tabQuery, ['view' => 'map'])) }}"@if($isMap) aria-current="page"@endif
            class="px-4 py-2 text-sm font-semibold rounded-md border transition-colors {{ $isMap ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50' }}">
             地図
         </a>

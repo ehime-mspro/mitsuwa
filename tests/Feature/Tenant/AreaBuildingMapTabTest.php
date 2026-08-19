@@ -260,6 +260,63 @@ JS);
     }
 
     /**
+     * ピンが 1 本も無くても地図タブが開くこと（設計書 §9）。
+     *
+     * 本番は 187 棟すべて座標未登録なので、**これが初日の実際の姿**。
+     * ⚠ ピン 0 件では `fitBounds()` を呼べない（空の LatLngBounds を渡すと
+     *   地図が世界全体まで引くか例外になる）ので、松山市中心へフォールバックする。
+     *   その中心が画面に出ていることまで見る（`AREA_MAP_CENTER` が消えると
+     *   `new google.maps.Map()` の center が undefined になり地図が出ない）。
+     */
+    public function test_the_map_tab_opens_with_no_pins_at_all(): void
+    {
+        $this->makeBuilding('座標なしA');
+        $this->makeBuilding('座標なしB');
+
+        $response = $this->actingAs($this->staff())->get('/tenant/area-buildings?view=map');
+        $html     = $response->getContent();
+
+        $response->assertOk();
+        $this->assertCount(0, $response->viewData('mapPins'), 'ピンが 0 件のはず');
+        $this->assertStringContainsString('id="area-map"', $html, 'ピン 0 件で地図の器が消えている');
+        $this->assertStringContainsString('位置未登録 2 棟', $html, 'ピン 0 件のとき件数が出ていない');
+
+        // フォールバックの中心（松山市）。⚠ 緯度まで見る（変数名だけだと空でも通る）
+        $this->assertStringContainsString(
+            'AREA_MAP_CENTER = { lat: 33.8392',
+            $html,
+            'ピン 0 件のときのフォールバック中心（松山市）が出ていない'
+        );
+    }
+
+    /**
+     * 現在タブが**色以外でも**判別できること（CLAUDE.md のアクセシビリティ方針）。
+     *
+     * ⚠ `aria-current="{{ $cond ? 'page' : null }}"` と書くと、素の HTML 属性では
+     *   `{{ null }}` が空文字を出すので**現在でないタブに `aria-current=""` が残る**
+     *   （属性ごと消えるのは Alpine の `:attr` と コンポーネントの属性バッグの話）。
+     *   両タブについて「付く側」と「付かない側」を対で見る。
+     */
+    public function test_the_current_tab_is_marked_for_assistive_tech(): void
+    {
+        $staff = $this->staff();
+
+        $table = $this->actingAs($staff)->get('/tenant/area-buildings')->getContent();
+        $map   = $this->actingAs($staff)->get('/tenant/area-buildings?view=map')->getContent();
+
+        $this->assertSame(1, substr_count($table, 'aria-current="page"'), '表タブで現在タブの印が 1 つでない');
+        $this->assertSame(1, substr_count($map, 'aria-current="page"'), '地図タブで現在タブの印が 1 つでない');
+
+        // 空の aria-current="" が残っていないこと
+        $this->assertStringNotContainsString('aria-current=""', $table, '空の aria-current が残っている');
+        $this->assertStringNotContainsString('aria-current=""', $map, '空の aria-current が残っている');
+
+        // 印が付いているのが**現在のタブ側**であること（両方とも同じ側に付く事故を防ぐ）
+        $this->assertMatchesRegularExpression('/aria-current="page"[^>]*>\s*表\s*</u', $table, '表タブで印が「表」に付いていない');
+        $this->assertMatchesRegularExpression('/aria-current="page"[^>]*>\s*地図\s*</u', $map, '地図タブで印が「地図」に付いていない');
+    }
+
+    /**
      * ⚠ プラン外の追加。**Street View を出さないという課金方針が無検査だった**
      *   （変異テストで `streetViewControl: false` を `true` にしても 7 本すべて緑）。
      *   Street View は利用者が開いた回数だけ課金されるので、設計書 §7 は
