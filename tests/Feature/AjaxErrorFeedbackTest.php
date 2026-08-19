@@ -61,6 +61,7 @@ class AjaxErrorFeedbackTest extends TestCase
         'housing/properties/index.blade.php',
         'housing/properties/show.blade.php',
         // テナント
+        'tenant/area-buildings/_map.blade.php',
         'tenant/contracts/create.blade.php',
         'tenant/contracts/edit.blade.php',
         'tenant/inquiries/create.blade.php',

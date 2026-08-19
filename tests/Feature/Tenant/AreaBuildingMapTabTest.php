@@ -190,6 +190,24 @@ class AreaBuildingMapTabTest extends AreaBuildingTestCase
     }
 
     /**
+     * 画面が返した地図タブの `<script>` 本体を取り出す。
+     *
+     * ⚠ **書き写さずに、返ってきた文字列そのものを使う**（Bug #47「振る舞いの正本は実駆動」）。
+     */
+    private function mapScriptSource(string $html): string
+    {
+        foreach (explode('<script', $html) as $chunk) {
+            if (str_contains($chunk, 'function areaMapEscape(')) {
+                $script = substr($chunk, (int) strpos($chunk, '>') + 1);
+
+                return substr($script, 0, (int) strpos($script, '</script'));
+            }
+        }
+
+        $this->fail('areaMapEscape を含む <script> が画面に無い');
+    }
+
+    /**
      * 地図タブの `<script>` を node の `vm` でそのまま実駆動する。
      *
      * ⚠ ハーネスはブラウザより寛容であってはいけない（`AreaBuildingGeocodeTest` の
@@ -205,21 +223,11 @@ class AreaBuildingMapTabTest extends AreaBuildingTestCase
             $this->markTestSkipped('node が無いのでブラウザ側スクリプトの実駆動を飛ばす');
         }
 
-        $script = null;
-        foreach (explode('<script', $html) as $chunk) {
-            if (str_contains($chunk, 'function areaMapEscape(')) {
-                $script = substr($chunk, (int) strpos($chunk, '>') + 1);
-                $script = substr($script, 0, (int) strpos($script, '</script'));
-                break;
-            }
-        }
-        $this->assertNotNull($script, 'areaMapEscape を含む <script> が画面に無い');
-
         $dir = sys_get_temp_dir() . '/area-map-' . bin2hex(random_bytes(6));
         mkdir($dir);
 
         try {
-            file_put_contents($dir . '/script.js', $script);
+            file_put_contents($dir . '/script.js', $this->mapScriptSource($html));
             file_put_contents($dir . '/harness.js', <<<'JS'
 const fs = require('fs');
 const vm = require('vm');
@@ -414,5 +422,470 @@ JS);
 
         $this->assertSame(1, substr_count($map, 'maps.googleapis.com/maps/api/js'),
             '地図タブで Maps JS API を 2 回読み込んでいる（どちらの callback も走らなくなる）');
+    }
+
+    // ============================================================
+    // Task 8 — 登録モード（地図クリックで位置を登録する）
+    // ============================================================
+
+    /**
+     * 登録モードの入口は経営層＋管理者にだけ出る（設計書 §8）。
+     *
+     * ⚠ **呼び出し側（ボタン）と定義側（作業パネル・スクリプト）を対で見る。**
+     *   片方だけ残しても HTML としては妥当なので 200 を見るテストは全部緑のまま通る。
+     *   Task 7 の一括取得で実際に踏んだ形（Bug #28）。
+     */
+    public function test_the_locate_panel_is_only_offered_to_managers(): void
+    {
+        $this->makeBuilding('座標なし');
+
+        $managerHtml = $this->actingAs($this->manager())->get('/tenant/area-buildings?view=map')->getContent();
+        $this->assertStringContainsString('id="btn-locate-mode"', $managerHtml, '管理者に登録モードのトグルが出ていない');
+        $this->assertStringContainsString('id="locate-panel"', $managerHtml, '管理者に作業パネルが出ていない');
+        $this->assertStringContainsString('function toggleLocateMode(', $managerHtml,
+            'ボタンは出ているのに定義側のスクリプトが push されていない（押しても無反応）');
+
+        $staffHtml = $this->actingAs($this->staff())->get('/tenant/area-buildings?view=map')->getContent();
+        $this->assertStringNotContainsString('id="btn-locate-mode"', $staffHtml, 'staff に登録モードのトグルが出ている');
+        $this->assertStringNotContainsString('id="locate-panel"', $staffHtml, 'staff に作業パネルの markup が残っている');
+        $this->assertStringNotContainsString('function toggleLocateMode(', $staffHtml,
+            'staff に登録モードのスクリプトを配っている（押す口が無いので実行されないが、棟の一覧まで載る）');
+    }
+
+    /**
+     * 登録する棟が 1 つも無ければ入口を出さない。
+     *
+     * ⚠ 条件の**もう半分**（`count($mapUnlocated) > 0`）を固定する。これが無いと
+     *   その半分を消しても全テストが緑のまま通り、空のパネルが常時出る。
+     */
+    public function test_the_locate_ui_is_absent_when_every_building_is_already_located(): void
+    {
+        $this->makeBuilding('座標あり', ['latitude' => 33.84, 'longitude' => 132.76]);
+
+        $html = $this->actingAs($this->manager())->get('/tenant/area-buildings?view=map')->getContent();
+
+        $this->assertStringNotContainsString('id="btn-locate-mode"', $html, '登録する棟が無いのにトグルが出ている');
+        $this->assertStringNotContainsString('id="locate-panel"', $html, '登録する棟が無いのに作業パネルが出ている');
+    }
+
+    public function test_the_locate_list_carries_the_unlocated_buildings(): void
+    {
+        $this->makeBuilding('座標あり', ['latitude' => 33.84, 'longitude' => 132.76]);
+        $this->makeBuilding('まだの棟A');
+        $this->makeBuilding('まだの棟B');
+
+        $html = $this->actingAs($this->manager())->get('/tenant/area-buildings?view=map')->getContent();
+
+        // ⚠ 日本語は Js::from() が \uXXXX へ escape するので、ここに一致するのは
+        //   Blade が静的に描く <li> のほう（＝作業リストが実在することの検査になる）
+        $this->assertStringContainsString('まだの棟A', $html);
+        $this->assertStringContainsString('まだの棟B', $html);
+        $this->assertStringNotContainsString('座標あり', $html, '座標済みの棟が作業リストに混ざっている');
+
+        $this->assertStringContainsString('AREA_MAP_UNLOCATED', $html, '登録モードの作業リストが渡っていない');
+        $this->assertStringContainsString('/coordinates', $html, '保存先の URL が渡っていない');
+    }
+
+    /**
+     * 保存後に地図を動かさないこと。
+     *
+     * ⚠ 隣接する棟が続けて出てくるので、保存のたびに setCenter すると毎回探し直しになる。
+     *   振る舞いは PHP からは測れないので、**動かす API を呼んでいないこと**で固定する。
+     *
+     * ⚠ **saveCoordinate だけ見ても足りない。** 保存の後始末は advanceLocateTarget /
+     *   selectLocateTarget / renderLocateList に分かれているので、そちらに setCenter を
+     *   置かれると saveCoordinate だけを見る検査は素通りする（Bug #45 ④ と同型）。
+     *   登録モードの関数を**全部**見る（onAreaMapReady の fitBounds は初期表示なので対象外）。
+     */
+    public function test_saving_a_pin_does_not_recenter_the_map(): void
+    {
+        $blade = file_get_contents(resource_path('views/tenant/area-buildings/_map.blade.php'));
+
+        $functions = [
+            'toggleLocateMode',
+            'renderLocateList',
+            'selectLocateTarget',
+            'skipLocateTarget',
+            'advanceLocateTarget',
+            'saveCoordinate',
+        ];
+
+        foreach ($functions as $name) {
+            $body = $this->jsFunctionBody($blade, $name);
+
+            $this->assertStringNotContainsString('setCenter', $body, $name . '() が地図の中心を動かしている');
+            $this->assertStringNotContainsString('setZoom', $body, $name . '() が地図のズームを動かしている');
+            $this->assertStringNotContainsString('fitBounds', $body, $name . '() が地図の表示範囲を動かしている');
+        }
+    }
+
+    /**
+     * 登録モードの**振る舞い**を node の `vm` でそのまま実駆動する（Bug #47「振る舞いの正本は実駆動」）。
+     *
+     * 構造テストでは押さえられないものを 4 つ固定する:
+     *   ① 保存すると次の未登録の棟へ進む（進捗＝残り件数が減る）
+     *   ② 末尾まで行ったら**先頭へ戻って**取りこぼしを拾う
+     *   ③ 全部片付いたら残り件数が 0 になる
+     *   ④ その間、地図の中心・ズーム・表示範囲を一度も動かさない
+     */
+    public function test_the_locate_mode_walks_the_list_and_never_moves_the_map(): void
+    {
+        $this->makeBuilding('棟A');
+        $this->makeBuilding('棟B');
+        $this->makeBuilding('棟C');
+
+        $response  = $this->actingAs($this->manager())->get('/tenant/area-buildings?view=map');
+        $html      = $response->getContent();
+        $unlocated = $response->viewData('mapUnlocated');
+        $this->assertCount(3, $unlocated);
+
+        $run = $this->runLocateScript($html, [
+            ['action' => 'toggle'],
+            ['action' => 'save', 'lat' => 33.81, 'lng' => 132.71],
+            ['action' => 'skip'],
+            ['action' => 'save', 'lat' => 33.83, 'lng' => 132.73],
+            ['action' => 'save', 'lat' => 33.82, 'lng' => 132.72],
+        ], [
+            ['ok' => true, 'body' => ['id' => $unlocated[0]['id'], 'latitude' => 33.81, 'longitude' => 132.71]],
+            ['ok' => true, 'body' => ['id' => $unlocated[2]['id'], 'latitude' => 33.83, 'longitude' => 132.73]],
+            ['ok' => true, 'body' => ['id' => $unlocated[1]['id'], 'latitude' => 33.82, 'longitude' => 132.72]],
+        ]);
+
+        [$open, $saved1, $skipped, $saved3, $saved2] = $run['snapshots'];
+
+        // ① 開いた直後 — 先頭が「今の棟」
+        $this->assertSame('block', $open['panelDisplay'], '登録モードにしてもパネルが開かない');
+        $this->assertContains('is-locating', $open['layoutClasses'], '登録モードのレイアウトになっていない');
+        $this->assertSame('登録をやめる', $open['buttonText'], 'トグルのラベルが切り替わらない');
+        $this->assertSame($unlocated[0]['name'], $open['current'], '先頭の棟が「今の棟」になっていない');
+        $this->assertSame('3', $open['remaining'], '残り件数が合っていない');
+        $this->assertStringContainsString($unlocated[0]['name'], $open['message'], '今の棟をクリックするよう促していない');
+        $this->assertSame('#059669', $open['buttons'][0]['background'], '今の棟が強調されていない');
+        $this->assertSame('', $open['buttons'][1]['background'], '今の棟でない行まで強調されている');
+
+        // ② 1 件保存 — 保存先・ヘッダー・ピン追加・次の棟へ
+        // ⚠ fetches は run 全体の累計。保存した順（先頭 → 末尾 → 飛ばした棟）が URL に出る
+        $postedIds = array_map(function (array $f) {
+            $this->assertSame(1, preg_match('#/(\d+)/coordinates$#', $f['url'], $m),
+                '保存先の URL が /{building}/coordinates になっていない: ' . $f['url']);
+
+            return (int) $m[1];
+        }, $run['fetches']);
+
+        $this->assertSame(
+            [$unlocated[0]['id'], $unlocated[2]['id'], $unlocated[1]['id']],
+            $postedIds,
+            '保存先の URL が「今の棟」を追いかけていない'
+        );
+        $this->assertSame('POST', $run['fetches'][0]['method']);
+        $this->assertSame('test-token', $run['fetches'][0]['headers']['X-CSRF-TOKEN'] ?? null,
+            'CSRF トークンを送っていない（本番では保存が全部 419 になる）');
+        $this->assertSame('XMLHttpRequest', $run['fetches'][0]['headers']['X-Requested-With'] ?? null);
+        $this->assertSame(
+            ['latitude' => 33.81, 'longitude' => 132.71],
+            json_decode($run['fetches'][0]['body'], true),
+            'クリックした座標をそのまま送っていない'
+        );
+
+        $this->assertSame([true, false, false], $saved1['done'], '保存した棟に印が付いていない');
+        $this->assertSame($unlocated[1]['name'], $saved1['current'], '保存後に次の棟へ進んでいない');
+        $this->assertSame('2', $saved1['remaining'], '残り件数が減っていない');
+        $this->assertSame(1, $saved1['markerCount'], '保存した位置にピンが立っていない');
+        $this->assertStringContainsString('を保存しました', $saved1['message']);
+        $this->assertStringContainsString($unlocated[1]['name'], $saved1['message'], '次に何をすればよいか出ていない');
+
+        // ③ 飛ばす — 3 番目へ。残り件数は変わらない
+        $this->assertSame($unlocated[2]['name'], $skipped['current'], 'スキップで次の棟へ進んでいない');
+        $this->assertSame('2', $skipped['remaining'], 'スキップで残り件数が減っている（保存していないのに）');
+
+        // ④ 末尾を保存 — **先頭へ戻って**飛ばした棟を拾う
+        $this->assertSame([true, false, true], $saved3['done']);
+        $this->assertSame($unlocated[1]['name'], $saved3['current'],
+            '末尾まで行ったあと先頭へ戻っていない（飛ばした棟が二度と回ってこない）');
+        $this->assertSame('1', $saved3['remaining']);
+
+        // ⑤ 最後の 1 件 — 残り 0 とお知らせ
+        $this->assertSame([true, true, true], $saved2['done']);
+        $this->assertSame('0', $saved2['remaining'], '全部片付いたのに残り件数が 0 になっていない');
+        $this->assertStringContainsString('すべて片付きました', $saved2['message']);
+
+        // ⑥ その間、地図は一度も動いていない
+        $this->assertSame([], $run['mapMoves'], '登録中に地図を動かしている: ' . implode(',', $run['mapMoves']));
+        $this->assertSame(3, count($run['markers']), '保存したぶんのピンが立っていない');
+    }
+
+    /**
+     * 保存が失敗したら**理由を出して、次へ進めない**（設計書 §4.3）。
+     *
+     * ⚠ 黙って次へ行くと、置いたつもりの棟が未登録のまま残る（Bug #45）。
+     */
+    public function test_a_failed_save_stops_on_the_same_building_and_says_why(): void
+    {
+        $this->makeBuilding('棟A');
+        $this->makeBuilding('棟B');
+
+        $response  = $this->actingAs($this->manager())->get('/tenant/area-buildings?view=map');
+        $unlocated = $response->viewData('mapUnlocated');
+
+        $run = $this->runLocateScript($response->getContent(), [
+            ['action' => 'toggle'],
+            ['action' => 'save', 'lat' => 33.81, 'lng' => 132.71],
+        ], [
+            ['ok' => false, 'status' => 422, 'body' => ['message' => '緯度の値が不正です。']],
+        ]);
+
+        $after = $run['snapshots'][1];
+
+        $this->assertStringContainsString('緯度の値が不正です。', $after['message'], '失敗の理由が画面に出ていない');
+        $this->assertSame('#b91c1c', $after['color'], '失敗がエラーとして表示されていない');
+        $this->assertSame([false, false], $after['done'], '失敗したのに保存済みの印が付いている');
+        $this->assertSame($unlocated[0]['name'], $after['current'], '失敗したのに次の棟へ進んでいる');
+        $this->assertSame('2', $after['remaining'], '失敗したのに残り件数が減っている');
+        $this->assertSame(0, $after['markerCount'], '保存できていないのにピンが立っている');
+    }
+
+    /** `function name(…) { … }` の body を波括弧の対応で切り出す（Bug #45 ④） */
+    private function jsFunctionBody(string $blade, string $name): string
+    {
+        $at = strpos($blade, 'function ' . $name . '(');
+        $this->assertNotFalse($at, $name . ' の定義が見つからない');
+
+        $open = strpos($blade, '{', strpos($blade, ')', $at));
+        $this->assertNotFalse($open, $name . ' の body が開いていない');
+
+        $depth = 0;
+        for ($i = $open; $i < strlen($blade); $i++) {
+            if ($blade[$i] === '{') {
+                $depth++;
+            } elseif ($blade[$i] === '}') {
+                $depth--;
+                if ($depth === 0) {
+                    return substr($blade, $open, $i - $open + 1);
+                }
+            }
+        }
+
+        $this->fail($name . ' の body が閉じていない');
+    }
+
+    /**
+     * 登録モードの `<script>` を node の `vm` で実駆動する。
+     *
+     * ⚠ ハーネスはブラウザより寛容であってはいけない（`AreaBuildingGeocodeTest` と同方針）:
+     *   - 画面に実在する id にしか要素を返さない（id をズラす変異が素通りしない）
+     *   - `querySelector` / `querySelectorAll` はセレクタが一致したときだけ返す
+     *   - `google.maps` は記録するだけの偽物。**地図を動かす API は呼ばれたら記録する**
+     *
+     * @param  list<array<string, mixed>>  $steps
+     * @param  list<array<string, mixed>>  $responses
+     * @return array<string, mixed>
+     */
+    private function runLocateScript(string $html, array $steps, array $responses): array
+    {
+        $node = trim((string) shell_exec('command -v node 2>/dev/null'));
+        if ($node === '') {
+            $this->markTestSkipped('node が無いのでブラウザ側スクリプトの実駆動を飛ばす');
+        }
+
+        // 画面に実在する id だけをハーネスの DOM に持たせる
+        preg_match_all('/\bid="([^"]+)"/', $html, $idm);
+
+        // 作業リストの行も**画面から**起こす（Blade がリストを描かなくなったら 0 行になる）
+        preg_match_all('/data-locate-index="(\d+)"[^>]*>\s*(.*?)\s*<\/button>/s', $html, $bm, PREG_SET_ORDER);
+        $buttons = array_map(fn (array $m) => ['index' => (int) $m[1], 'text' => $m[2]], $bm);
+
+        $plan = [
+            'ids'       => array_values(array_unique($idm[1])),
+            'buttons'   => $buttons,
+            'steps'     => $steps,
+            'responses' => $responses,
+        ];
+
+        $dir = sys_get_temp_dir() . '/area-locate-' . bin2hex(random_bytes(6));
+        mkdir($dir);
+
+        try {
+            file_put_contents($dir . '/script.js', $this->mapScriptSource($html));
+            file_put_contents($dir . '/plan.json', json_encode($plan));
+            file_put_contents($dir . '/harness.js', $this->locateHarness());
+
+            $output = shell_exec(sprintf(
+                '%s %s %s %s 2>&1',
+                escapeshellarg($node),
+                escapeshellarg($dir . '/harness.js'),
+                escapeshellarg($dir . '/script.js'),
+                escapeshellarg($dir . '/plan.json')
+            ));
+
+            $decoded = json_decode((string) $output, true);
+            $this->assertIsArray($decoded, "node の実行に失敗した:\n" . $output);
+
+            return $decoded;
+        } finally {
+            array_map('unlink', glob($dir . '/*'));
+            rmdir($dir);
+        }
+    }
+
+    private function locateHarness(): string
+    {
+        return <<<'JS'
+const fs = require('fs');
+const vm = require('vm');
+
+const code = fs.readFileSync(process.argv[2], 'utf8');
+const plan = JSON.parse(fs.readFileSync(process.argv[3], 'utf8'));
+
+const elements = {};
+const fetches  = [];
+const mapMoves = [];
+const markers  = [];
+
+// ⚠ ブラウザと同じく、存在しない id には null を返す
+function el(id) {
+    if (plan.ids.indexOf(id) === -1) { return null; }
+
+    if (!elements[id]) {
+        elements[id] = {
+            id: id,
+            textContent: '',
+            style: {},
+            classList: {
+                names: [],
+                toggle: function (name, force) {
+                    const at = this.names.indexOf(name);
+                    const on = force === undefined ? at === -1 : force === true;
+                    if (on && at === -1) { this.names.push(name); }
+                    if (!on && at !== -1) { this.names.splice(at, 1); }
+                    return on;
+                }
+            }
+        };
+    }
+
+    return elements[id];
+}
+
+const buttons = plan.buttons.map(function (b) {
+    return {
+        locateIndex: b.index,
+        textContent: b.text,
+        style: {},
+        getAttribute: function (name) {
+            return name === 'data-locate-index' ? String(this.locateIndex) : null;
+        }
+    };
+});
+
+function FakeMarker(options) {
+    markers.push({ title: options.title, position: options.position, hasMap: !!options.map });
+    this.addListener = function () {};
+}
+
+function FakeInfoWindow() {
+    this.setContent = function () {};
+    this.open = function () {};
+}
+
+const sandbox = {
+    console: console,
+    JSON: JSON,
+    document: {
+        getElementById: function (id) { return el(id); },
+        // ⚠ セレクタが一致したときだけ返す。捏造すると Blade 側のセレクタを
+        //    ズラす変異（id / 属性名の改名）が全部素通りする
+        querySelector: function (selector) {
+            if (selector === 'meta[name="csrf-token"]') {
+                return { getAttribute: function () { return 'test-token'; }, content: 'test-token' };
+            }
+            return null;
+        },
+        querySelectorAll: function (selector) {
+            return selector === '#locate-list button[data-locate-index]' ? buttons : [];
+        }
+    },
+    google: { maps: { Marker: FakeMarker, InfoWindow: FakeInfoWindow, SymbolPath: { CIRCLE: 'circle' } } },
+    fetch: function (url, options) {
+        fetches.push({
+            url: url,
+            method: options.method,
+            headers: options.headers,
+            body: options.body
+        });
+
+        const res = plan.responses[fetches.length - 1] || { ok: true, body: {} };
+
+        return Promise.resolve({
+            ok: res.ok !== false,
+            status: res.status || 200,
+            json: function () { return Promise.resolve(res.body || {}); }
+        });
+    }
+};
+
+const context = vm.createContext(sandbox);
+vm.runInContext(code, context, { filename: 'map-script.js' });
+
+// 地図はすでに出来ている状態にする。⚠ 動かす API は**記録するだけ**
+context.areaMapInstance = {
+    setCenter: function () { mapMoves.push('setCenter'); },
+    setZoom:   function () { mapMoves.push('setZoom'); },
+    fitBounds: function () { mapMoves.push('fitBounds'); },
+    addListener: function () {}
+};
+context.areaMapInfoWindow = new FakeInfoWindow();
+
+function snapshot() {
+    const status    = el('area-map-status');
+    const panel     = el('locate-panel');
+    const layout    = el('area-map-layout');
+    const toggle    = el('btn-locate-mode');
+    const remaining = el('locate-remaining');
+    const target    = context.currentLocateTarget();
+
+    return {
+        message:       status ? status.textContent : null,
+        color:         status ? (status.style.color || '') : null,
+        panelDisplay:  panel ? (panel.style.display || '') : null,
+        layoutClasses: layout ? layout.classList.names.slice() : null,
+        buttonText:    toggle ? toggle.textContent : null,
+        remaining:     remaining ? remaining.textContent : null,
+        current:       target ? target.name : null,
+        done:          context.AREA_MAP_UNLOCATED.map(function (item) { return item.done === true; }),
+        buttons:       buttons.map(function (b) {
+            return { index: b.locateIndex, text: b.textContent, background: b.style.background || '' };
+        }),
+        markerCount:   markers.length
+    };
+}
+
+async function settle() {
+    for (let i = 0; i < 20; i++) {
+        await new Promise(function (resolve) { setImmediate(resolve); });
+    }
+}
+
+(async function () {
+    const snapshots = [];
+
+    for (const step of plan.steps) {
+        if (step.action === 'toggle')      { context.toggleLocateMode(); }
+        else if (step.action === 'skip')   { context.skipLocateTarget(); }
+        else if (step.action === 'select') { context.selectLocateTarget(step.index); }
+        else if (step.action === 'save')   { context.saveCoordinate(step.lat, step.lng); }
+        else { throw new Error('unknown action: ' + step.action); }
+
+        await settle();
+        snapshots.push(snapshot());
+    }
+
+    process.stdout.write(JSON.stringify({
+        snapshots: snapshots,
+        fetches:   fetches,
+        mapMoves:  mapMoves,
+        markers:   markers
+    }));
+})();
+JS;
     }
 }

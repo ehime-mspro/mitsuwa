@@ -2,6 +2,12 @@
      ⚠ このファイルは ?view=map のときだけ include される。表タブでは Google Maps を
         1 行も読み込まない＝課金ゼロ（設計書 §7）。 --}}
 
+{{-- 登録モード（設計書 §4.3）を出すかどうか。
+     ⚠ **判定は 1 つの変数だけにする。** ボタン・作業パネル・スクリプトの 3 箇所で
+        条件を書き直すと、片方だけ外れても HTML としては妥当なまま
+        「ボタンはあるのに押しても無反応」になる（Bug #28。Task 7 の一括取得で実際に踏んだ形）。 --}}
+@php($canLocate = $canEdit && count($mapUnlocated) > 0)
+
 @push('styles')
 <style>
     /* ⚠ minmax(0, 1fr) にする。素の 1fr は min-content 幅で下限を作るので、
@@ -26,6 +32,13 @@
                 </span>
             @endforeach
         </div>
+
+        @if($canLocate)
+            <button type="button" id="btn-locate-mode" onclick="toggleLocateMode()"
+                    class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-md transition-colors whitespace-nowrap">
+                位置を登録
+            </button>
+        @endif
     </div>
 
     <p class="text-xs text-gray-500 mb-2">
@@ -36,6 +49,29 @@
     </p>
 
     <div id="area-map-layout" class="area-map-layout">
+        @if($canLocate)
+            <div id="locate-panel" style="display:none;" class="border border-gray-200 rounded-md p-3 bg-gray-50">
+                <div class="text-xs font-bold text-gray-700 mb-1">位置を登録する棟</div>
+                <div class="text-xs text-gray-500 mb-2">
+                    地図をクリックすると保存して次の棟へ進みます。
+                    残り <strong id="locate-remaining">{{ count($mapUnlocated) }}</strong> 棟
+                </div>
+                <button type="button" onclick="skipLocateTarget()"
+                        class="mb-2 px-3 py-1 border border-gray-300 bg-white text-xs text-gray-700 rounded hover:bg-gray-50">
+                    この棟を飛ばす
+                </button>
+                {{-- ⚠ リストは JS が描き替えるが、初期表示は Blade で静的に出す（Bug #16 の流儀） --}}
+                <ul id="locate-list" style="max-height: 46vh; overflow-y: auto; margin:0; padding:0; list-style:none;">
+                    @foreach($mapUnlocated as $index => $item)
+                        <li>
+                            <button type="button" onclick="selectLocateTarget({{ $index }})"
+                                    data-locate-index="{{ $index }}"
+                                    class="w-full text-left px-2 py-1.5 text-xs rounded hover:bg-white">{{ $item['name'] }}</button>
+                        </li>
+                    @endforeach
+                </ul>
+            </div>
+        @endif
         <div id="area-map"></div>
     </div>
 
@@ -142,7 +178,192 @@ function onAreaMapReady() {
         AREA_MAP_PINS.forEach(function (pin) { bounds.extend({ lat: pin.lat, lng: pin.lng }); });
         areaMapInstance.fitBounds(bounds);
     }
+
+@if($canLocate)
+    // 登録モードのときだけ、地図クリックを「今の棟」の座標として拾う
+    areaMapInstance.addListener('click', function (e) {
+        if (!areaLocateMode) { return; }
+        saveCoordinate(e.latLng.lat(), e.latLng.lng());
+    });
+@endif
 }
+
+@if($canLocate)
+/* ------------------------------------------------------------------------
+   登録モード（設計書 §4.3）
+   地図をクリック → その座標を即保存 → 自動で次の棟へ。
+   本番は 187 棟すべて座標未登録なので、これを上から順に片付けるのが本機能の主目的。
+   ------------------------------------------------------------------------ */
+
+// 作業リスト（座標が無い棟）。⚠ コントローラで組み立てた単一変数を受ける（Bug #23 / #26）
+var AREA_MAP_UNLOCATED = {{ \Illuminate\Support\Js::from($mapUnlocated) }};
+
+// 保存先の組み立て元。⚠ パスを直書きせずルート表から取る（本番は /system/manage 配下）
+var AREA_MAP_SAVE_BASE = '{{ route('tenant.area-buildings.index') }}';
+
+/* CSRF トークン。⚠ **要素が無い可能性を潰しておく。**
+   `document.querySelector(...).getAttribute(...)` と直に書くと、レイアウトから meta が
+   消えたときに TypeError で **このスクリプト全体が死ぬ** —— onAreaMapReady も定義されず、
+   地図が灰色の箱のまま無音で終わる（Bug #28 / #43 と同型で、HTML は妥当・テストも緑）。
+   取れなかった場合は保存が 419 で戻り、下の !res.ok がステータス行に理由を出す。
+
+   ⚠ ついでに: このブロックのコメントに `＜script` の literal を書かないこと。
+      走査・実駆動テストが `<` + `script` でスクリプト本体を切り出しているため、
+      コメント 1 行でハーネスが空文字を掴む（実測で踏んだ）。 */
+var areaMapCsrfMeta = document.querySelector('meta[name="csrf-token"]');
+var AREA_MAP_TOKEN  = areaMapCsrfMeta ? areaMapCsrfMeta.getAttribute('content') : '';
+
+var areaLocateMode  = false;
+var areaLocateIndex = 0;
+
+function toggleLocateMode() {
+    // ⚠ 地図が無ければクリックしようがない。ここで止めないと「登録モードにしたのに
+    //    何も起きない」＝理由の出ない行き止まりになる（Bug #43）
+    if (!areaLocateMode && !areaMapInstance) {
+        showMessage('地図をまだ読み込めていないため位置を登録できません。少し待つか、ページを再読み込みしてください。', true);
+        return;
+    }
+
+    areaLocateMode = !areaLocateMode;
+
+    document.getElementById('locate-panel').style.display = areaLocateMode ? 'block' : 'none';
+    document.getElementById('area-map-layout').classList.toggle('is-locating', areaLocateMode);
+    document.getElementById('btn-locate-mode').textContent = areaLocateMode ? '登録をやめる' : '位置を登録';
+
+    if (!areaLocateMode) {
+        showMessage('');
+        return;
+    }
+
+    // 前回の続きから。もう片付いた棟に居るなら次の未登録へ送る
+    var target = currentLocateTarget();
+    if (target && !target.done) {
+        selectLocateTarget(areaLocateIndex);
+    } else {
+        advanceLocateTarget();
+    }
+}
+
+function currentLocateTarget() {
+    return AREA_MAP_UNLOCATED[areaLocateIndex] || null;
+}
+
+/**
+ * 作業リストの見た目と残り件数を描き直す。
+ * ⚠ ここではメッセージを出さない（次に何を促すかは呼び出し側が決める）。
+ */
+function renderLocateList() {
+    var buttons = document.querySelectorAll('#locate-list button[data-locate-index]');
+
+    for (var i = 0; i < buttons.length; i++) {
+        var index     = Number(buttons[i].getAttribute('data-locate-index'));
+        var item      = AREA_MAP_UNLOCATED[index] || {};
+        var isCurrent = index === areaLocateIndex;
+
+        buttons[i].textContent      = item.done ? item.name + '（登録済み）' : item.name;
+        buttons[i].style.background = isCurrent ? '#059669' : '';
+        buttons[i].style.color      = isCurrent ? '#ffffff' : (item.done ? '#9ca3af' : '');
+        buttons[i].style.fontWeight = isCurrent ? '700' : '';
+    }
+
+    // ⚠ 残り件数はここでだけ更新する。サーバは done を送らないので、初期状態は全件が残り
+    document.getElementById('locate-remaining').textContent = String(
+        AREA_MAP_UNLOCATED.filter(function (item) { return !item.done; }).length
+    );
+}
+
+/**
+ * その棟を「今の棟」にして、次にすることをステータス行へ出す。
+ * 第 2 引数は直前の結果（保存しました等）。次の指示と 1 行にまとめる
+ * （別々に出すと直前の結果が一瞬で上書きされて読めない）。
+ */
+function selectLocateTarget(index, note) {
+    areaLocateIndex = index;
+    renderLocateList();
+
+    var target = currentLocateTarget();
+    showMessage((note || '') + (target
+        ? '「' + target.name + '」の位置を地図でクリックしてください。'
+        : '未登録の棟はありません。'));
+}
+
+function skipLocateTarget() {
+    var target = currentLocateTarget();
+    advanceLocateTarget(target ? '「' + target.name + '」は飛ばしました。' : '');
+}
+
+/**
+ * 次の未登録の棟へ進む。
+ * ⚠ 末尾まで行ったら**先頭へ戻す**。戻さないと、飛ばした棟が二度と回ってこない。
+ */
+function advanceLocateTarget(note) {
+    for (var i = areaLocateIndex + 1; i < AREA_MAP_UNLOCATED.length; i++) {
+        if (!AREA_MAP_UNLOCATED[i].done) { selectLocateTarget(i, note); return; }
+    }
+    for (var j = 0; j < AREA_MAP_UNLOCATED.length; j++) {
+        if (!AREA_MAP_UNLOCATED[j].done) { selectLocateTarget(j, note); return; }
+    }
+
+    renderLocateList();
+    showMessage((note || '') + '未登録の棟はすべて片付きました。');
+}
+
+/**
+ * クリックした位置を保存する。
+ *
+ * ⚠ **地図を動かさない。** 隣り合う棟が続けて出てくるので、保存のたびに
+ *   中心やズームを動かすと毎回同じ場所へ戻す操作が要る（設計書 §4.3）。
+ * ⚠ 失敗したら理由を出して**次へ進めない**。黙って進むと、置いたつもりの棟が
+ *   未登録のまま残る（Bug #45）。
+ * ⚠ null 返し方式。`if (!res.ok)` と `if (!data)` を対で置く（AjaxErrorFeedbackTest）。
+ */
+function saveCoordinate(lat, lng) {
+    var target = currentLocateTarget();
+    if (!target) { return; }
+
+    showMessage('「' + target.name + '」を保存中...');
+
+    fetch(AREA_MAP_SAVE_BASE + '/' + target.id + '/coordinates', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRF-TOKEN': AREA_MAP_TOKEN
+        },
+        body: JSON.stringify({ latitude: lat, longitude: lng })
+    })
+    .then(function (res) {
+        if (!res.ok) {
+            return res.json().then(function (err) {
+                showMessage('保存に失敗しました: ' + (err.message || res.status), true);
+                return null;
+            }).catch(function () {
+                showMessage('保存に失敗しました（' + res.status + '）。もう一度クリックしてください。', true);
+                return null;
+            });
+        }
+        return res.json();
+    })
+    .then(function (data) {
+        if (!data) { return; }
+
+        // 置いた位置をその場でピンにする。調査回はまだ無いので「調査なし」の見た目になる
+        addAreaMapMarker({
+            id: data.id, name: target.name, lat: data.latitude, lng: data.longitude,
+            level: 'unknown', rateLabel: '—', floors: '—',
+            operating: null, vacant: null, unknown: null, month: '—',
+            url: AREA_MAP_SAVE_BASE + '/' + data.id
+        });
+
+        target.done = true;
+        advanceLocateTarget('「' + target.name + '」を保存しました。');
+    })
+    .catch(function () {
+        showMessage('保存に失敗しました。通信環境を確認してください。', true);
+    });
+}
+@endif
 
 function onAreaMapFailed() {
     showMessage('地図を読み込めませんでした。通信環境を確認してページを再読み込みしてください。', true);
