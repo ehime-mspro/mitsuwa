@@ -104,7 +104,7 @@
                     {{-- ⚠ 列を足し引きするときは colgroup の合計 100% / th の本数 /
                          空行の colspan を 3 点セットで揃える（Task 10 で合計 106% にした前科あり） --}}
                     <colgroup>
-                        <col style="width:24%">
+                        <col style="width:30%">
                         <col style="width:6%">
                         <col style="width:6%">
                         <col style="width:6%">
@@ -112,7 +112,7 @@
                         <col style="width:8%">
                         <col style="width:11%">
                         <col style="width:13%">
-                        <col style="width:20%">
+                        <col style="width:14%">
                     </colgroup>
                     <thead>
                         <tr>
