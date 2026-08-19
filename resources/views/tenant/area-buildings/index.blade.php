@@ -65,8 +65,31 @@
         </a>
     </form>
 
-    {{-- 座標の一括取得（経営層+管理者、未取得があるときだけ） --}}
-    @if($pendingGeocodeCount > 0)
+    {{-- 表示切替。⚠ 既定は「表」＝地図を作らない＝課金ゼロ（設計書 §7） --}}
+    @php($tabQuery = request()->except(['view', 'page']))
+    <div class="flex gap-1 mb-4">
+        <a href="{{ route('tenant.area-buildings.index', $tabQuery) }}"
+           class="px-4 py-2 text-sm font-semibold rounded-md border transition-colors {{ $isMap ? 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50' : 'bg-emerald-600 border-emerald-600 text-white' }}">
+            表
+        </a>
+        <a href="{{ route('tenant.area-buildings.index', array_merge($tabQuery, ['view' => 'map'])) }}"
+           class="px-4 py-2 text-sm font-semibold rounded-md border transition-colors {{ $isMap ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50' }}">
+            地図
+        </a>
+    </div>
+
+    {{-- 座標の一括取得（経営層+管理者、未取得があるときだけ）。
+         ⚠ **地図タブでは出さない（`! $isMap`）。** 機能を削ったのではなく置き場所の話で、
+            表タブでは従来どおり動く。理由は「同一ページで Maps JS API を 2 回読み込ませない」——
+            この一括取得は Geocoder のために `maps.googleapis.com` を自前で読み込み、
+            地図タブ（_map.blade.php）も同じ API を読み込む。2 本並ぶと Google が
+            「You have included the Google Maps JavaScript API multiple times on this page」を
+            投げ、**どちらの callback も走らない**ことがある（HTML は妥当・テストは緑・
+            ブラウザだけが壊れる。Bug #28 / #43 と同型）。
+         ⚠ 表タブが読むのは Geocoder だけで `new google.maps.Map()` は実行しない＝課金ゼロ。
+            課金されるのは地図の生成と、実際に叩いた geocode() だけ（設計書 §7）。
+         回帰テスト: AreaBuildingMapTabTest::test_the_maps_api_is_loaded_at_most_once_per_page --}}
+    @if($pendingGeocodeCount > 0 && ! $isMap)
         <div class="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
             <div class="flex flex-col sm:flex-row sm:items-center gap-2">
                 {{-- ⚠ 読み込み待ちで disabled にしない。Maps が読めない環境で「押せず理由も出ない」
@@ -96,6 +119,9 @@
         </form>
     @endif
 
+    @if($isMap)
+        @include('tenant.area-buildings._map')
+    @else
     {{-- テーブル --}}
     <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
         <div class="scroll-hint at-start">
@@ -213,10 +239,13 @@
             </div>
         @endif
     </div>
+    @endif
 
 @endsection
 
-@if($pendingGeocodeCount > 0)
+{{-- ⚠ 条件は上の UI ブロックと必ず同じにすること。片方だけ残すと
+     「ボタンが無いのに Maps を読む」か「ボタンはあるが Geocoder が用意されない」になる --}}
+@if($pendingGeocodeCount > 0 && ! $isMap)
 @push('scripts')
 <script>
 // 座標一括取得。地図は生成しない（Geocoder だけ使う。設計 6.0）

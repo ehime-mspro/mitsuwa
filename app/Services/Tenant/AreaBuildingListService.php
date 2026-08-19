@@ -64,7 +64,19 @@ class AreaBuildingListService
 
     public function paginate(Request $request, int $perPage = 20): LengthAwarePaginator
     {
-        $rows = $this->rows($request);
+        return $this->paginateRows($this->rows($request), $request, $perPage);
+    }
+
+    /**
+     * 組み立て済みの行をページャに載せる。
+     *
+     * ⚠ 地図タブは全件（rows）とページャの両方が要るので、この形にしないと
+     *   1 リクエストで rows() が 2 回走る。
+     *
+     * @param  Collection<int, array<string, mixed>>  $rows
+     */
+    public function paginateRows(Collection $rows, Request $request, int $perPage = 20): LengthAwarePaginator
+    {
         $page = LengthAwarePaginator::resolveCurrentPage();
 
         return new LengthAwarePaginator(

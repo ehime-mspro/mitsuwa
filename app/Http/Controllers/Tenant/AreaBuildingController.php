@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AreaBuilding;
 use App\Models\AreaBuildingSurvey;
 use App\Services\Tenant\AreaBuildingListService;
+use App\Support\VacancyRate;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
@@ -29,6 +30,7 @@ class AreaBuildingController extends Controller
     public function index(Request $request, AreaBuildingListService $service)
     {
         $canEdit = $request->user()->role->isManagerOrAbove();
+        $isMap   = $request->query('view') === 'map';
 
         // 座標未取得の候補は、ボタンを出す人にだけ渡す（画面に住所を撒かない・無駄な検索もしない）
         $pendingCount = $canEdit ? AreaBuilding::pendingGeocodeCount() : 0;
@@ -39,14 +41,75 @@ class AreaBuildingController extends Controller
                 ->all()
             : [];
 
+        // ⚠ rows() は 1 回だけ呼ぶ（地図タブは全件とページャの両方を使う）
+        $rows = $service->rows($request);
+
         return view('tenant.area-buildings.index', [
-            'rows'                => $service->paginate($request),
+            'rows'                => $service->paginateRows($rows, $request),
             'surveyYears'         => $service->surveyYears(),
             'vacancyOptions'      => AreaBuildingListService::VACANCY_OPTIONS,
             'pendingGeocode'      => $pending,
             'pendingGeocodeCount' => $pendingCount,
             'geocodeBatchLimit'   => self::GEOCODE_BATCH_LIMIT,
+            'isMap'               => $isMap,
+            'canEdit'             => $canEdit,
+            // ⚠ 地図タブのときだけ組み立てる。表タブでは使わない配列を作らない
+            'mapPins'             => $isMap ? $this->mapPins($rows) : [],
+            'mapUnlocated'        => $isMap ? $this->mapUnlocated($rows) : [],
+            'mapLevels'           => VacancyRate::LEVELS,
         ]);
+    }
+
+    /**
+     * 地図のピン。
+     *
+     * ⚠ **必ずここで組み立てて単一変数として Blade へ渡す。** Blade の `@json()` に
+     *   多行の配列リテラルやメソッド呼び出しを書くと壊れた PHP にコンパイルされる（Bug #26）。
+     *
+     * @param  Collection<int, array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function mapPins(Collection $rows): array
+    {
+        return $rows
+            ->filter(fn (array $row) => $row['building']->hasCoordinates())
+            ->map(fn (array $row) => [
+                'id'   => $row['building']->id,
+                'name' => $row['building']->name,
+                'lat'  => (float) $row['building']->latitude,
+                'lng'  => (float) $row['building']->longitude,
+                // ⚠ 調査回がまだ無い棟は operating が null。level() は int しか受けない
+                'level'     => $row['operating'] === null
+                    ? VacancyRate::LEVEL_UNKNOWN
+                    : VacancyRate::level($row['operating'], $row['vacant'], $row['unknown']),
+                'rateLabel' => $row['rate_label'],
+                'floors'    => $row['building']->totalFloorsLabel(),
+                'operating' => $row['operating'],
+                'vacant'    => $row['vacant'],
+                'unknown'   => $row['unknown'],
+                'month'     => $row['month'] ? $row['month']->format('Y年n月') : '—',
+                'url'       => route('tenant.area-buildings.show', $row['building']),
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * 座標が無くて地図に出せない棟。件数の表示と、登録モードの作業リストに使う。
+     *
+     * @param  Collection<int, array<string, mixed>>  $rows
+     * @return list<array{id: int, name: string}>
+     */
+    private function mapUnlocated(Collection $rows): array
+    {
+        return $rows
+            ->reject(fn (array $row) => $row['building']->hasCoordinates())
+            ->map(fn (array $row) => [
+                'id'   => $row['building']->id,
+                'name' => $row['building']->name,
+            ])
+            ->values()
+            ->all();
     }
 
     /**
