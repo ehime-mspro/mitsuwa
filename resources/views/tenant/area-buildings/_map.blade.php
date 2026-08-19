@@ -315,7 +315,10 @@ function advanceLocateTarget(note) {
  *   中心やズームを動かすと毎回同じ場所へ戻す操作が要る（設計書 §4.3）。
  * ⚠ 失敗したら理由を出して**次へ進めない**。黙って進むと、置いたつもりの棟が
  *   未登録のまま残る（Bug #45）。
- * ⚠ null 返し方式。`if (!res.ok)` と `if (!data)` を対で置く（AjaxErrorFeedbackTest）。
+ * ⚠ null 返し方式。`!res.ok` の分岐と `!data` のガードを対で置く（AjaxErrorFeedbackTest）。
+ *   ⚠ ここに `if` 付きの literal を書かないこと —— 走査テストが分岐の**個数**を数えて
+ *     突き合わせているので、コメントが 1 個ぶん水増しして実体を消しても釣り合ってしまう
+ *     （Bug #42 ②。変異テストで実際に踏んだ）。
  */
 function saveCoordinate(lat, lng) {
     var target = currentLocateTarget();
