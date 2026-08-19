@@ -60,14 +60,27 @@ class AreaBuildingMapTabTest extends AreaBuildingTestCase
         $this->assertCount(25, $response->viewData('mapPins'), '地図タブがページングされている（ピンが欠けている）');
     }
 
+    /**
+     * ⚠ **座標あり／なしの件数を必ず食い違わせる。** 1 対 1 のデータだと
+     *   `reject` を `filter` に変える変異（＝座標ありを未登録として数える）が
+     *   どちらも「1 棟」になり**原理的に区別できない**（実測で緑のまま通った。
+     *   Bug #52 の「並行配列は真ん中の行が落ちるデータで書く」と同型）。
+     * ⚠ ピン側の件数も対で見る。片側だけだと filter/reject の入れ替えが半分しか映らない。
+     */
     public function test_unlocated_buildings_are_reported_not_silently_dropped(): void
     {
-        $this->makeBuilding('座標あり', ['latitude' => 33.84, 'longitude' => 132.76]);
-        $this->makeBuilding('座標なし');
+        $this->makeBuilding('座標ありA', ['latitude' => 33.84, 'longitude' => 132.76]);
+        $this->makeBuilding('座標ありB', ['latitude' => 33.85, 'longitude' => 132.77]);
+        $this->makeBuilding('座標なしA');
+        $this->makeBuilding('座標なしB');
+        $this->makeBuilding('座標なしC');
 
-        $html = $this->actingAs($this->staff())->get('/tenant/area-buildings?view=map')->getContent();
+        $response = $this->actingAs($this->staff())->get('/tenant/area-buildings?view=map');
+        $html     = $response->getContent();
 
-        $this->assertStringContainsString('位置未登録 1 棟', $html, '地図に出せない棟の件数が画面に出ていない');
+        $this->assertStringContainsString('位置未登録 3 棟', $html, '地図に出せない棟の件数が画面に出ていない');
+        $this->assertCount(3, $response->viewData('mapUnlocated'), '座標なしの棟数が合っていない');
+        $this->assertCount(2, $response->viewData('mapPins'), '座標ありの棟だけがピンになっていない');
     }
 
     public function test_the_legend_uses_the_shared_levels(): void
@@ -77,8 +90,18 @@ class AreaBuildingMapTabTest extends AreaBuildingTestCase
         $html = $this->actingAs($this->staff())->get('/tenant/area-buildings?view=map')->getContent();
 
         foreach (\App\Support\VacancyRate::LEVELS as $level) {
-            $this->assertStringContainsString($level['label'], $html, '凡例に ' . $level['label'] . ' が無い');
-            $this->assertStringContainsString($level['color'], $html, '凡例の色が共有定数から来ていない');
+            // ⚠ 色もラベルも**ページの別の場所にも出る**ので、単独の
+            //   assertStringContainsString は false-pass する。実測（2026-08-19）:
+            //   色は 2〜4 回（凡例の丸 ＋ AREA_MAP_LEVELS の JSON ＋ 吹き出しの #059669）、
+            //   ラベルは 1〜2 回（`満室（0%）` `50% 以上` は空室率フィルタの <option> にもある）。
+            //   凡例の丸を固定色 #000000 に潰す変異が緑のまま通った（Bug #43 / #46 と同型）。
+            //   → **丸の色とラベルを凡例のマークアップとして対で**見る。
+            $this->assertMatchesRegularExpression(
+                '/border-radius:50%; background:' . preg_quote($level['color'], '/')
+                    . ';"><\/span>\s*' . preg_quote($level['label'], '/') . '/u',
+                $html,
+                '凡例の「' . $level['label'] . '」が共有定数（VacancyRate::LEVELS）から来ていない'
+            );
         }
     }
 
