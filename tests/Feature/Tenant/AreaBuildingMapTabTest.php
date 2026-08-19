@@ -449,9 +449,10 @@ JS);
     /**
      * 登録モードの入口は経営層＋管理者にだけ出る（設計書 §8）。
      *
-     * ⚠ **呼び出し側（ボタン）と定義側（作業パネル・スクリプト）を対で見る。**
-     *   片方だけ残しても HTML としては妥当なので 200 を見るテストは全部緑のまま通る。
-     *   Task 7 の一括取得で実際に踏んだ形（Bug #28）。
+     * ⚠ **ここが見るのは「出る／出ない」だけ。** 要素と関数が**繋がっている**ことは
+     *   `test_the_locate_controls_are_wired_to_their_handlers` の担当で、そちらが無いと
+     *   onclick を全部外して起動不能にしても緑のまま通る（実測。Bug #28 / #42 ②）。
+     *   テストの docblock に「対で見る」と書くだけでは対にならない。
      */
     public function test_the_locate_panel_is_only_offered_to_managers(): void
     {
