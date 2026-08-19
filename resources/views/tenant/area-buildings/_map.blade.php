@@ -140,6 +140,13 @@ function areaMapInfoHtml(pin) {
 }
 
 function addAreaMapMarker(pin) {
+    // ⚠ 同じ棟のピンは 1 本だけにする。位置を置き直したとき、古いピンを消さずに
+    //    上書きすると areaMapMarkers の**参照だけ**が入れ替わり、間違った位置の
+    //    ピンが地図に残り続ける（消えるのは再読み込みしたときだけ）
+    if (areaMapMarkers[pin.id]) {
+        areaMapMarkers[pin.id].setMap(null);
+    }
+
     var marker = new google.maps.Marker({
         position: { lat: pin.lat, lng: pin.lng },
         map: areaMapInstance,

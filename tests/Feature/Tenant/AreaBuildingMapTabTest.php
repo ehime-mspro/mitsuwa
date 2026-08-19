@@ -541,10 +541,10 @@ JS);
 
         $run = $this->runLocateScript($html, [
             ['action' => 'toggle'],
-            ['action' => 'save', 'lat' => 33.81, 'lng' => 132.71],
+            ['action' => 'mapclick', 'lat' => 33.81, 'lng' => 132.71],
             ['action' => 'skip'],
-            ['action' => 'save', 'lat' => 33.83, 'lng' => 132.73],
-            ['action' => 'save', 'lat' => 33.82, 'lng' => 132.72],
+            ['action' => 'mapclick', 'lat' => 33.83, 'lng' => 132.73],
+            ['action' => 'mapclick', 'lat' => 33.82, 'lng' => 132.72],
         ], [
             ['ok' => true, 'body' => ['id' => $unlocated[0]['id'], 'latitude' => 33.81, 'longitude' => 132.71]],
             ['ok' => true, 'body' => ['id' => $unlocated[2]['id'], 'latitude' => 33.83, 'longitude' => 132.73]],
@@ -632,7 +632,7 @@ JS);
 
         $run = $this->runLocateScript($response->getContent(), [
             ['action' => 'toggle'],
-            ['action' => 'save', 'lat' => 33.81, 'lng' => 132.71],
+            ['action' => 'mapclick', 'lat' => 33.81, 'lng' => 132.71],
         ], [
             ['ok' => false, 'status' => 422, 'body' => ['message' => '緯度の値が不正です。']],
         ]);
@@ -645,6 +645,153 @@ JS);
         $this->assertSame($unlocated[0]['name'], $after['current'], '失敗したのに次の棟へ進んでいる');
         $this->assertSame('2', $after['remaining'], '失敗したのに残り件数が減っている');
         $this->assertSame(0, $after['markerCount'], '保存できていないのにピンが立っている');
+    }
+
+    /**
+     * 【最重要】**登録モードでない地図クリックは何も保存しない。**
+     *
+     * ⚠ click リスナーは `$canLocate` な全員に**無条件で**登録され、`areaLocateIndex` の
+     *   初期値は 0、`saveCoordinate()` は「今の棟」が無いときしか抜けない。つまり
+     *   `if (!areaLocateMode) { return; }` の 1 行を失うと、**登録モードを一度も開いて
+     *   いない管理者の何気ない地図クリックが、リスト先頭の棟の座標を無言で上書きする。**
+     *
+     * ⚠ 設計書 §4.3 の不変条件のうち**唯一「実データを壊す」もの**なので、
+     *   構造（ゲートの行がある）ではなく**振る舞い**で固定する（Bug #47）。
+     *   ハーネスは `saveCoordinate()` を直接呼ばず、本物の click ハンドラを発火させる。
+     */
+    public function test_a_map_click_outside_locate_mode_saves_nothing(): void
+    {
+        $this->makeBuilding('棟A');
+        $this->makeBuilding('棟B');
+
+        $response = $this->actingAs($this->manager())->get('/tenant/area-buildings?view=map');
+
+        // 登録モードを開かずに地図をクリックする（閲覧のつもりの何気ないクリック）
+        $run = $this->runLocateScript($response->getContent(), [
+            ['action' => 'mapclick', 'lat' => 33.81, 'lng' => 132.71],
+            ['action' => 'mapclick', 'lat' => 33.99, 'lng' => 132.99],
+        ], []);
+
+        $after = $run['snapshots'][1];
+
+        $this->assertSame([], $run['fetches'],
+            '登録モードでないのに地図クリックで座標を保存している（リスト先頭の棟が無言で上書きされる）');
+        $this->assertSame([false, false], $after['done'], '登録モードでないのに保存済みの印が付いている');
+        $this->assertSame(0, $after['markerCount'], '登録モードでないのにピンを立てている');
+        $this->assertSame('', $after['message'], '登録モードでないクリックで何か表示している');
+    }
+
+    /**
+     * 起動配線（`onclick`）が**その要素に**載っていること。
+     *
+     * ⚠ 「id がある」＋「関数が定義されている」だけでは**2 つが繋がっていることを
+     *   一度も見ていない**。実測（レビュアーの変異 V5b / V5c）: 3 つの onclick を全部
+     *   外して UI から完全に起動不能にしても、全テストが緑のまま通った（Bug #28 の
+     *   呼び出し側／定義側そのもので、しかも docblock の自称と実体がズレていた形）。
+     */
+    public function test_the_locate_controls_are_wired_to_their_handlers(): void
+    {
+        $this->makeBuilding('まだの棟A');
+        $this->makeBuilding('まだの棟B');
+
+        $html = $this->actingAs($this->manager())->get('/tenant/area-buildings?view=map')->getContent();
+
+        // 呼び出し側 — 属性が「その要素の中に」載っていること
+        $this->assertStringContainsString(
+            'onclick="toggleLocateMode()"',
+            $this->tagContaining($html, 'id="btn-locate-mode"'),
+            '登録モードのトグルにハンドラが繋がっていない（押しても無反応）'
+        );
+
+        // ⚠ 2 行分見る。1 行だけだと全行が同じ番号になる変異を検出できない
+        $this->assertStringContainsString(
+            'onclick="selectLocateTarget(0)"',
+            $this->tagContaining($html, 'data-locate-index="0"'),
+            '作業リストの 1 行目にハンドラが繋がっていない'
+        );
+        $this->assertStringContainsString(
+            'onclick="selectLocateTarget(1)"',
+            $this->tagContaining($html, 'data-locate-index="1"'),
+            '作業リストの 2 行目のハンドラが 1 行目と同じ棟を指している'
+        );
+
+        $this->assertSame(
+            1,
+            preg_match('/<button\b[^>]*>\s*この棟を飛ばす\s*<\/button>/u', $html, $skip),
+            '「この棟を飛ばす」ボタンが見つからない'
+        );
+        $this->assertStringContainsString('onclick="skipLocateTarget()"', $skip[0],
+            'スキップにハンドラが繋がっていない');
+
+        // 定義側 — 呼ばれる関数が実在すること（片方だけ見ると、もう片方が消えても緑になる）
+        foreach (['toggleLocateMode', 'selectLocateTarget', 'skipLocateTarget'] as $fn) {
+            $this->assertStringContainsString('function ' . $fn . '(', $html,
+                $fn . '() の定義が push されていない');
+        }
+    }
+
+    /**
+     * 置き直し（設計書 §4.3）: リストで棟を選び直してもう一度クリックすると**上書きされる**。
+     *
+     * ⚠ この入口（`selectLocateTarget`）は仕様に書いてあるのに、どのテストも通していなかった。
+     * ⚠ 古いピンを消さずに置き直すと `areaMapMarkers` の**参照だけ**が入れ替わり、
+     *   間違った位置のピンが地図に残り続ける（再読み込みするまで消えない）。
+     */
+    public function test_a_placed_building_can_be_placed_again_from_the_list(): void
+    {
+        $this->makeBuilding('棟A');
+        $this->makeBuilding('棟B');
+
+        $response  = $this->actingAs($this->manager())->get('/tenant/area-buildings?view=map');
+        $unlocated = $response->viewData('mapUnlocated');
+
+        $run = $this->runLocateScript($response->getContent(), [
+            ['action' => 'toggle'],
+            ['action' => 'mapclick', 'lat' => 33.81, 'lng' => 132.71],
+            ['action' => 'select', 'index' => 0],
+            ['action' => 'mapclick', 'lat' => 33.95, 'lng' => 132.95],
+        ], [
+            ['ok' => true, 'body' => ['id' => $unlocated[0]['id'], 'latitude' => 33.81, 'longitude' => 132.71]],
+            ['ok' => true, 'body' => ['id' => $unlocated[0]['id'], 'latitude' => 33.95, 'longitude' => 132.95]],
+        ]);
+
+        [, $saved, $reselected, $replaced] = $run['snapshots'];
+
+        // 選び直すと「今の棟」が戻る（保存済みでも選べる＝置き直せる）
+        $this->assertSame($unlocated[1]['name'], $saved['current'], '1 件目の保存で次の棟へ進んでいない');
+        $this->assertSame($unlocated[0]['name'], $reselected['current'], 'リストで選び直しても今の棟が変わらない');
+        $this->assertStringContainsString($unlocated[0]['name'], $reselected['message'],
+            '選び直した棟をクリックするよう促していない');
+
+        // 2 回目も同じ棟へ、新しい座標で飛ぶ
+        $this->assertCount(2, $run['fetches'], '置き直しが保存されていない');
+        $this->assertStringEndsWith('/' . $unlocated[0]['id'] . '/coordinates', $run['fetches'][1]['url'],
+            '置き直しの保存先が選び直した棟になっていない');
+        $this->assertSame(
+            ['latitude' => 33.95, 'longitude' => 132.95],
+            json_decode($run['fetches'][1]['body'], true),
+            '置き直しで新しい座標を送っていない'
+        );
+
+        // 残りは二重に減らない ＋ 古いピンは消してから置き直す
+        $this->assertSame('1', $replaced['remaining'], '同じ棟を 2 回保存して残り件数が二重に減っている');
+        $this->assertSame(1, $replaced['removedMarkers'], '置き直しで古い位置のピンが地図に残っている');
+        $this->assertSame([], $run['mapMoves'], '置き直しで地図を動かしている');
+    }
+
+    /** `$needle` を含む HTML タグ 1 つを切り出す（属性の並び順に依存しないため） */
+    private function tagContaining(string $html, string $needle): string
+    {
+        $at = strpos($html, $needle);
+        $this->assertNotFalse($at, $needle . ' が画面に無い');
+
+        $open = strrpos(substr($html, 0, $at), '<');
+        $this->assertNotFalse($open, $needle . ' を含むタグの開始が見つからない');
+
+        $close = strpos($html, '>', $at);
+        $this->assertNotFalse($close, $needle . ' を含むタグが閉じていない');
+
+        return substr($html, $open, $close - $open + 1);
     }
 
     /** `function name(…) { … }` の body を波括弧の対応で切り出す（Bug #45 ④） */
@@ -747,6 +894,7 @@ const elements = {};
 const fetches  = [];
 const mapMoves = [];
 const markers  = [];
+const removed  = [];
 
 // ⚠ ブラウザと同じく、存在しない id には null を返す
 function el(id) {
@@ -787,11 +935,28 @@ const buttons = plan.buttons.map(function (b) {
 function FakeMarker(options) {
     markers.push({ title: options.title, position: options.position, hasMap: !!options.map });
     this.addListener = function () {};
+    // 置き直しで古いピンを地図から外しているか
+    this.setMap = function (map) { if (map === null) { removed.push(options.title); } };
 }
 
 function FakeInfoWindow() {
     this.setContent = function () {};
     this.open = function () {};
+}
+
+function FakeBounds() {
+    this.extend = function () {};
+}
+
+// ⚠ 地図を動かす API は**記録するだけ**。addListener は本物の onAreaMapReady が
+//    登録したハンドラを捕まえる（配線ごと実駆動するため）
+const listeners = {};
+
+function FakeMap() {
+    this.setCenter = function () { mapMoves.push('setCenter'); };
+    this.setZoom   = function () { mapMoves.push('setZoom'); };
+    this.fitBounds = function () { mapMoves.push('fitBounds'); };
+    this.addListener = function (event, handler) { listeners[event] = handler; };
 }
 
 const sandbox = {
@@ -811,7 +976,13 @@ const sandbox = {
             return selector === '#locate-list button[data-locate-index]' ? buttons : [];
         }
     },
-    google: { maps: { Marker: FakeMarker, InfoWindow: FakeInfoWindow, SymbolPath: { CIRCLE: 'circle' } } },
+    google: { maps: {
+        Map: FakeMap,
+        Marker: FakeMarker,
+        InfoWindow: FakeInfoWindow,
+        LatLngBounds: FakeBounds,
+        SymbolPath: { CIRCLE: 'circle' }
+    } },
     fetch: function (url, options) {
         fetches.push({
             url: url,
@@ -833,14 +1004,16 @@ const sandbox = {
 const context = vm.createContext(sandbox);
 vm.runInContext(code, context, { filename: 'map-script.js' });
 
-// 地図はすでに出来ている状態にする。⚠ 動かす API は**記録するだけ**
-context.areaMapInstance = {
-    setCenter: function () { mapMoves.push('setCenter'); },
-    setZoom:   function () { mapMoves.push('setZoom'); },
-    fitBounds: function () { mapMoves.push('fitBounds'); },
-    addListener: function () {}
-};
-context.areaMapInfoWindow = new FakeInfoWindow();
+// ⚠ areaMapInstance を手で差し込まない。**本物の onAreaMapReady を走らせる** ——
+//    地図クリックの配線（addListener('click', ...)）もそこで行われるので、
+//    手で差し込むと「配線が消えても緑」になる（Bug #47「振る舞いの正本は実駆動」）。
+context.onAreaMapReady();
+
+// 初期表示ぶんは対象外。守りたいのは「**登録中に**地図を動かさない」ことなので、
+// 既存ピンの fitBounds とマーカー生成はここで数え直す
+mapMoves.length = 0;
+markers.length  = 0;
+removed.length  = 0;
 
 function snapshot() {
     const status    = el('area-map-status');
@@ -862,7 +1035,8 @@ function snapshot() {
         buttons:       buttons.map(function (b) {
             return { index: b.locateIndex, text: b.textContent, background: b.style.background || '' };
         }),
-        markerCount:   markers.length
+        markerCount:   markers.length,
+        removedMarkers: removed.length
     };
 }
 
@@ -879,7 +1053,13 @@ async function settle() {
         if (step.action === 'toggle')      { context.toggleLocateMode(); }
         else if (step.action === 'skip')   { context.skipLocateTarget(); }
         else if (step.action === 'select') { context.selectLocateTarget(step.index); }
-        else if (step.action === 'save')   { context.saveCoordinate(step.lat, step.lng); }
+        else if (step.action === 'mapclick') {
+            // ⚠ saveCoordinate() を直接呼ばない。**画面と同じく地図の click を発火させる** ——
+            //    直接呼ぶと「登録モードでないときは保存しない」ゲートを通らず、
+            //    ゲートを消す変異が素通りする（レビュアーの変異 V2）
+            if (!listeners.click) { throw new Error('地図の click ハンドラが登録されていない'); }
+            listeners.click({ latLng: { lat: function () { return step.lat; }, lng: function () { return step.lng; } } });
+        }
         else { throw new Error('unknown action: ' + step.action); }
 
         await settle();
