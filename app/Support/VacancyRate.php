@@ -28,6 +28,41 @@ class VacancyRate
     private const SCALE = 1000;
 
     /**
+     * 空室率の帯（%）。⚠ **閾値はここ 1 箇所だけ。**
+     * 一覧のフィルタ（AreaBuildingListService::matchesVacancy）も
+     * 地図の色分け・凡例もこれを見る。別々に持つと片方だけ直す事故が起きる（Bug #41）。
+     *
+     * 2026-08-19 の実データ 187 棟で 24:18:26:31 に割れることを確認して決めた（設計書 §3）。
+     */
+    public const BAND_MID  = 25.0;
+
+    public const BAND_HIGH = 50.0;
+
+    public const LEVEL_NONE    = 'none';
+
+    public const LEVEL_LOW     = 'low';
+
+    public const LEVEL_MID     = 'mid';
+
+    public const LEVEL_HIGH    = 'high';
+
+    public const LEVEL_UNKNOWN = 'unknown';
+
+    /**
+     * 凡例と地図のピンの見た目。
+     *
+     * ⚠ 色は Tailwind クラスでなく 16 進で持つ。Google Maps のマーカーへ
+     *   そのまま渡す値で、CSS クラスでは指定できないため（UnitStatus とは事情が違う）。
+     */
+    public const LEVELS = [
+        self::LEVEL_NONE    => ['label' => '満室（0%）', 'color' => '#059669'],
+        self::LEVEL_LOW     => ['label' => '1〜24%',     'color' => '#eab308'],
+        self::LEVEL_MID     => ['label' => '25〜49%',    'color' => '#f97316'],
+        self::LEVEL_HIGH    => ['label' => '50% 以上',   'color' => '#dc2626'],
+        self::LEVEL_UNKNOWN => ['label' => '調査なし',   'color' => '#9ca3af'],
+    ];
+
+    /**
      * 空室率（%）。総区画数が 0 のときは null（ゼロ除算＝未調査）。
      */
     public static function percent(int $operating, int $vacant, int $unknown): ?float
@@ -49,5 +84,24 @@ class VacancyRate
         $rate = self::percent($operating, $vacant, $unknown);
 
         return $rate === null ? '—' : number_format($rate, 1) . '%';
+    }
+
+    /**
+     * 空室率の帯。総区画数が 0（＝率が出せない）なら unknown。
+     *
+     * ⚠ 調査回がまだ無いビルは呼び出し側で unknown にする。ここへ null は渡せない
+     *   （引数は int なので TypeError になる）。
+     */
+    public static function level(int $operating, int $vacant, int $unknown): string
+    {
+        $rate = self::percent($operating, $vacant, $unknown);
+
+        return match (true) {
+            $rate === null           => self::LEVEL_UNKNOWN,
+            $rate >= self::BAND_HIGH => self::LEVEL_HIGH,
+            $rate >= self::BAND_MID  => self::LEVEL_MID,
+            $rate > 0.0              => self::LEVEL_LOW,
+            default                  => self::LEVEL_NONE,
+        };
     }
 }

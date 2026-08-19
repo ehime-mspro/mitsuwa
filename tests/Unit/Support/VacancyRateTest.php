@@ -84,4 +84,56 @@ class VacancyRateTest extends TestCase
 
         return $out;
     }
+
+    /**
+     * 帯の境界。
+     *
+     * ⚠ 閾値は 2026-08-19 の実データ 187 棟で決めた（設計書 §3）。
+     *   0 / 25 / 50 で 24:18:26:31 とほぼ四等分になる。20 / 40 に戻すとここが赤になる。
+     *
+     * ⚠ 境界は**両側から挟む**。「ちょうど 25.0%」だけを見ると `>` へ変異させても
+     *   気づけない（AreaBuildingListTest が 20/40 時代に同じ穴を踏んでいる）。
+     */
+    public function test_level_bands(): void
+    {
+        $cases = [
+            ['区画 0 は未調査',        0,   0,   0, VacancyRate::LEVEL_UNKNOWN],
+            ['満室は none',            10,  0,   0, VacancyRate::LEVEL_NONE],
+            ['1.0% は low',            99,  1,   0, VacancyRate::LEVEL_LOW],
+            ['24.9% は low',           301, 100, 0, VacancyRate::LEVEL_LOW],
+            ['ちょうど 25.0% は mid',  3,   1,   0, VacancyRate::LEVEL_MID],
+            ['49.9% は mid',           501, 500, 0, VacancyRate::LEVEL_MID],
+            ['ちょうど 50.0% は high', 1,   1,   0, VacancyRate::LEVEL_HIGH],
+            ['100% は high',           0,   5,   0, VacancyRate::LEVEL_HIGH],
+            ['不明も空きとして数える', 1,   0,   1, VacancyRate::LEVEL_HIGH],
+        ];
+
+        foreach ($cases as [$label, $operating, $vacant, $unknown, $expected]) {
+            $this->assertSame(
+                $expected,
+                VacancyRate::level($operating, $vacant, $unknown),
+                $label . '（営業 ' . $operating . ' / 空き ' . $vacant . ' / 不明 ' . $unknown . '）'
+            );
+        }
+    }
+
+    /** 凡例に使う 5 段が全部あり、色とラベルを持つこと（地図の凡例が欠けないように） */
+    public function test_levels_table_covers_every_level(): void
+    {
+        $keys = [
+            VacancyRate::LEVEL_NONE,
+            VacancyRate::LEVEL_LOW,
+            VacancyRate::LEVEL_MID,
+            VacancyRate::LEVEL_HIGH,
+            VacancyRate::LEVEL_UNKNOWN,
+        ];
+
+        $this->assertSame($keys, array_keys(VacancyRate::LEVELS), '凡例の並び順が変わっている');
+
+        foreach (VacancyRate::LEVELS as $key => $level) {
+            $this->assertArrayHasKey('label', $level, $key . ' にラベルが無い');
+            $this->assertArrayHasKey('color', $level, $key . ' に色が無い');
+            $this->assertMatchesRegularExpression('/^#[0-9a-f]{6}$/', $level['color'], $key . ' の色が 16 進表記でない');
+        }
+    }
 }
