@@ -46,6 +46,14 @@
         @if(count($mapUnlocated) > 0)
             <strong class="text-amber-700">位置未登録 {{ count($mapUnlocated) }} 棟</strong>
         @endif
+        {{-- ⚠ この 2 つの件数はページを開いた時点の値で、登録モードで保存しても動かない
+             （片方だけ live にすると和が総数と合わなくなる。Bug #46 の「別ソースの数が
+             無音で食い違う」）。乖離は 1 件目の保存から始まるので、注記は**常に**出す。
+             ⚠ 出すのは自分で保存できる人にだけ。閲覧しかできない人の画面では
+             セッション中に古くならないので、ただのノイズになる。 --}}
+        @if($canLocate)
+            <span class="text-gray-400">※ 件数はページを開いた時点のものです。</span>
+        @endif
     </p>
 
     <div id="area-map-layout" class="area-map-layout">
