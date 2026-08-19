@@ -36,7 +36,6 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
             地図で位置を指定
         </button>
-        <span class="text-xs text-gray-500">地図をクリック、またはピンをドラッグして位置を決めます</span>
     </div>
 
     <div id="map-status" style="display: none; padding: 8px 14px; border-radius: 6px; font-size: 13px; margin-bottom: 8px;"></div>
@@ -47,6 +46,8 @@
         <div style="border: 1px solid #d1d5db; border-radius: 8px; overflow: hidden;">
             <div id="area-building-map" data-map-fallback style="height: 350px; max-width: 100%;"></div>
         </div>
+        {{-- 操作の案内はここ 1 箇所だけにする。ボタン脇にも同じ内容を出すと、座標が入った
+             ビルの編集画面（map-wrap が最初から display: block）で 2 つ同時に見える --}}
         <div class="flex gap-2" style="margin-top: 6px;">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4b5563" stroke-width="2" style="flex-shrink: 0; margin-top: 1px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
             <span class="text-xs text-gray-500">ピンをドラッグ、またはマップ上をクリックして正確な位置に調整できます</span>
