@@ -694,6 +694,10 @@ JS);
         preg_match_all('/data-locate-index="(\d+)"[^>]*>\s*(.*?)\s*<\/button>/s', $html, $bm, PREG_SET_ORDER);
         $buttons = array_map(fn (array $m) => ['index' => (int) $m[1], 'text' => $m[2]], $bm);
 
+        // ⚠ 空振りしたまま走らせない。0 行のまま進むと後段が
+        //   「Undefined array key 0」という理由の読めないエラーで落ちる（Bug #44）
+        $this->assertNotSame([], $buttons, '作業リストの行を画面から 1 つも拾えていない（Blade がリストを描いていない）');
+
         $plan = [
             'ids'       => array_values(array_unique($idm[1])),
             'buttons'   => $buttons,
