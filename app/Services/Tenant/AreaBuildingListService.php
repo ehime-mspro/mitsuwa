@@ -62,16 +62,12 @@ class AreaBuildingListService
         self::VACANCY_OVER50 => '空室率 50% 以上',
     ];
 
-    public function paginate(Request $request, int $perPage = 20): LengthAwarePaginator
-    {
-        return $this->paginateRows($this->rows($request), $request, $perPage);
-    }
-
     /**
      * 組み立て済みの行をページャに載せる。
      *
-     * ⚠ 地図タブは全件（rows）とページャの両方が要るので、この形にしないと
-     *   1 リクエストで rows() が 2 回走る。
+     * ⚠ 呼び出し側で `rows()` を先に呼ぶ形にしてある。地図タブは全件（rows）と
+     *   ページャの両方を使うので、サービス側で `rows()` を呼ぶと
+     *   1 リクエストで 2 回走ってしまう。
      *
      * @param  Collection<int, array<string, mixed>>  $rows
      */
