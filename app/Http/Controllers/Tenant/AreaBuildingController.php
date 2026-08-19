@@ -299,6 +299,8 @@ class AreaBuildingController extends Controller
         // ⚠ 送られてこなかったキーは触らない。所在地は 2026-08-19 に画面から外したので
         //   実運用の更新には含まれない。`?? null` のままだと Excel 取込で入った住所が
         //   編集のたびに消える（Bug #38 と同型）。
+        // ⚠ 他の項目（total_floors / notes / latitude / longitude）をフォームから外すときも、
+        //   同じ array_key_exists() の処置が要る。`?? null` のままだと同じ形で旧値が消える。
         $changes = [
             'name'         => $validated['name'],
             'latitude'     => $validated['latitude'] ?? null,

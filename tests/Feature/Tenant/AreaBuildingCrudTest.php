@@ -360,4 +360,31 @@ class AreaBuildingCrudTest extends AreaBuildingTestCase
 
         $this->assertSame('新住所', $building->refresh()->address);
     }
+
+    /**
+     * 総階数と備考が編集で実際に保存されること。
+     *
+     * ⚠ この 2 項目は update() 経路で無検査だった（2026-08-19 実測: `$changes` から
+     *   notes の行を丸ごと消しても 882 テスト全部が緑）。将来この欄をフォームから
+     *   外したときに Bug #38 型の欠陥が無音で入るのを止めるための土台として置く。
+     */
+    public function test_update_saves_total_floors_and_notes(): void
+    {
+        $building = $this->makeBuilding('階数とメモを直す棟', [
+            'total_floors' => 3,
+            'notes'        => '旧メモ',
+        ]);
+
+        $this->actingAs($this->manager())
+            ->put('/tenant/area-buildings/' . $building->id, [
+                'name'         => '階数とメモを直す棟',
+                'total_floors' => 8,
+                'notes'        => '新メモ',
+            ])
+            ->assertRedirect();
+
+        $building->refresh();
+        $this->assertSame(8, $building->total_floors);
+        $this->assertSame('新メモ', $building->notes);
+    }
 }
