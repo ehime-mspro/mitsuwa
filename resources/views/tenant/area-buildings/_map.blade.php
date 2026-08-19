@@ -110,8 +110,14 @@ function addAreaMapMarker(pin) {
 
 function onAreaMapReady() {
     areaMapInstance = new google.maps.Map(document.getElementById('area-map'), {
-        center: AREA_MAP_CENTER,
-        zoom: AREA_MAP_CENTER.zoom,
+        // ⚠ center には lat/lng だけを渡す。AREA_MAP_CENTER を丸ごと渡すと
+        //   LatLngLiteral の厳格検査に引っかかり InvalidValueError（unknown property zoom）で
+        //   onAreaMapReady がそこで死ぬ。onerror はスクリプトの読込失敗しか捕まえないので
+        //   灰色の空箱＋ステータス行も空という完全な無音になる（Bug #28 / #43 と同型）。
+        //   このリポジトリで地図を作る他 5 箇所（_form.blade.php の showAreaMap /
+        //   realestate の procurements・projects / dad の projects）も全て この形。
+        center: { lat: AREA_MAP_CENTER.lat, lng: AREA_MAP_CENTER.lng },
+        zoom:  AREA_MAP_CENTER.zoom,
         mapTypeControl: true,
         // ⚠ 出すと利用者が開いた回数だけ Street View が課金される（設計書 §7）
         streetViewControl: false
