@@ -451,7 +451,7 @@ Route::middleware(['auth', 'password.change'])->group(function () {
 
         /*
         |------------------------------------------------------------------
-        | 周辺ビル調査（20ルート）
+        | 周辺ビル調査（21ルート）
         |------------------------------------------------------------------
         |
         | ⚠ /area-buildings/create /import /geocode は /{building} より必ず先に宣言する。
@@ -493,6 +493,11 @@ Route::middleware(['auth', 'password.change'])->group(function () {
                 ->name('tenant.area-buildings.edit');
             Route::put('/area-buildings/{building}', [\App\Http\Controllers\Tenant\AreaBuildingController::class, 'update'])
                 ->name('tenant.area-buildings.update');
+
+            // 地図クリックで置いた座標（1 棟ずつ・上書き可）。
+            // ⚠ 一括取得の /area-buildings/geocode とは別物。あちらは住所ベースで上書き不可
+            Route::post('/area-buildings/{building}/coordinates', [\App\Http\Controllers\Tenant\AreaBuildingController::class, 'storeCoordinate'])
+                ->name('tenant.area-buildings.coordinates');
         });
 
         // 削除（経営層のみ）

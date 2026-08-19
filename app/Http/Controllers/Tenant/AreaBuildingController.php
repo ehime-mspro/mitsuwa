@@ -133,6 +133,38 @@ class AreaBuildingController extends Controller
     }
 
     /**
+     * 地図上でクリックして置いた 1 棟ぶんの座標(設計書 §5.1)。
+     *
+     * ⚠ **既存座標を上書きする。** 置き直せることが目的なので、一括取得
+     *   (storeCoordinates)の `whereNull('latitude')` ガードをここへ持ち込まない。
+     *   あちらは「機械が引いた座標で人の手入力を潰さない」ためのもので、目的が逆。
+     *
+     * ⚠ 緯度と経度は必ず対で受ける(片方だけの行は hasCoordinates() が false なのに
+     *   一括取得の対象にもならない詰み行になる。AreaBuilding の saving フック参照)。
+     *
+     * ⚠ ルールは literal 配列で直書きする。閉じ括弧を行頭に置かないと
+     *   JapaneseValidationMessagesTest の走査から外れる(store() のコメント参照)。
+     */
+    public function storeCoordinate(Request $request, AreaBuilding $building)
+    {
+        $validated = $request->validate([
+            'latitude'  => 'required|numeric|between:-90,90',
+            'longitude' => 'required|numeric|between:-180,180',
+        ]);
+
+        $building->update([
+            'latitude'  => round((float) $validated['latitude'], 7),
+            'longitude' => round((float) $validated['longitude'], 7),
+        ]);
+
+        return response()->json([
+            'id'        => $building->id,
+            'latitude'  => (float) $building->latitude,
+            'longitude' => (float) $building->longitude,
+        ]);
+    }
+
+    /**
      * 一覧へ戻す。⚠ 絞り込み・ページを落とさない。
      *
      * フォームの action にその時の検索条件が載っているので、そのまま引き継ぐ
