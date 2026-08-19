@@ -266,9 +266,19 @@ class AreaBuildingGeocodeTest extends AreaBuildingTestCase
     /**
      * 列を足したときの 3 点セット（Task 10 で幅合計 106% を踏んだ）。
      * ⚠ colgroup の合計・th の本数・空行の colspan は必ず揃える。
+     *
+     * ⚠ 2026-08-19 コード品質レビュー R2: この 3 点だけでは、データ行の <td> が
+     *   1 つ欠けても検出できない（実測: 空室率のセルを 1 つ消しても 885 テスト全部が
+     *   緑だった）。原因はこのテスト自身がビルを 1 件も作らず空データのまま叩いていた
+     *   ことで、@empty の 1 セルだけの行しか描画しておらず、データ行を一度も見て
+     *   いなかった。実在のビルを 1 件作ってデータ行を描画させ、その行の td 本数も
+     *   th の本数と突き合わせる。
      */
     public function test_the_table_columns_stay_consistent(): void
     {
+        // ⚠ 空データのまま測る(colgroup / th / 空行の colspan は @empty 行が
+        //   出ているときの形)。ここでビルを作ってしまうと @empty 行が消え、
+        //   colspan の検査対象が無くなって別の理由で落ちる。
         $html = $this->actingAs($this->staff())->get(self::LIST_URL)->getContent();
 
         preg_match_all('/<col style="width:(\d+)%">/', $html, $cols);
@@ -280,6 +290,17 @@ class AreaBuildingGeocodeTest extends AreaBuildingTestCase
             'colspan="' . count($cols[1]) . '"',
             $html,
             '空行の colspan が列数と揃っていない'
+        );
+
+        // ここからデータ行の td 本数を見る。実在のビルを 1 件作って描画させないと
+        // @empty の 1 セルだけの行しか出ず、データ行を一度も見ないまま緑になる。
+        $this->makeBuilding('列整合チェック用');
+        $dataHtml = $this->actingAs($this->staff())->get(self::LIST_URL)->getContent();
+
+        $this->assertCount(
+            count($cols[1]),
+            $this->tableDataCells($dataHtml),
+            'データ行の td の本数が th の本数と違う'
         );
     }
 
@@ -689,6 +710,30 @@ class AreaBuildingGeocodeTest extends AreaBuildingTestCase
         preg_match_all('/<th\b[^>]*>(.*?)<\/th>/s', $head[1], $ths);
 
         return array_map('trim', $ths[1]);
+    }
+
+    /**
+     * <tbody> 内、最初のデータ行（<tr>）の <td> テキスト一覧。
+     *
+     * ⚠ 呼び出し側で必ずビルを 1 件以上作ってから呼ぶこと。空データのまま呼ぶと
+     *   @empty の行しか無く、下の assertMatchesRegularExpression で必ず落ちる
+     *   （「th の本数と一致しない」ではなく「行が無い」という別の理由で落ちて
+     *   紛らわしくなるのを避けるため、理由を分けて明示的に検査する）。
+     */
+    private function tableDataCells(string $html): array
+    {
+        $this->assertMatchesRegularExpression('/<tbody>.*?<\/tbody>/s', $html, '<tbody> が無い');
+        preg_match('/<tbody>(.*?)<\/tbody>/s', $html, $body);
+
+        $this->assertMatchesRegularExpression(
+            '/<tr\b[^>]*>.*?<\/tr>/s',
+            $body[1],
+            'データ行(<tr>)が無い(空データのまま測っていないか確認すること)'
+        );
+        preg_match('/<tr\b[^>]*>(.*?)<\/tr>/s', $body[1], $row);
+        preg_match_all('/<td\b[^>]*>(.*?)<\/td>/s', $row[1], $tds);
+
+        return array_map('trim', $tds[1]);
     }
 
     /** 一覧に載った「一括取得」用の inline `<script>` の中身 */
