@@ -422,4 +422,33 @@ class AreaBuildingCrudTest extends AreaBuildingTestCase
         $html = $this->actingAs($this->manager())->get('/tenant/area-buildings/import')->getContent();
         $this->assertStringContainsString("label: '所在地'", $html, 'Excel 取込の「所在地」マッピングが消えている');
     }
+
+    /**
+     * フォームの地図は「押したら開く」だけにする（設計書 §6.3）。
+     *
+     * ⚠ 所在地欄が無くなった以上、住所検索の JS は**必ず空の分岐に落ちる到達不能コード**。
+     *   残すと「動かないコードが居座る」うえ、次に読む人が住所検索が生きていると誤解する。
+     */
+    public function test_the_form_map_no_longer_searches_by_address(): void
+    {
+        $html = $this->actingAs($this->manager())->get('/tenant/area-buildings/create')->getContent();
+
+        foreach (['geocodeAreaAddress', 'buildAreaAddressFallbacks', 'tryGeocodeAreaCandidates', 'new google.maps.Geocoder'] as $dead) {
+            $this->assertStringNotContainsString($dead, $html, '到達不能になった住所検索の JS が残っている: ' . $dead);
+        }
+
+        $this->assertStringContainsString('地図で位置を指定', $html, '地図を開くボタンが無い');
+        $this->assertStringContainsString('openAreaMap()', $html, '地図を開くボタンが配線されていない');
+    }
+
+    /** ピンのドラッグと地図クリックで座標が入る仕掛けは残っていること */
+    public function test_the_form_map_still_places_a_pin(): void
+    {
+        $html = $this->actingAs($this->manager())->get('/tenant/area-buildings/create')->getContent();
+
+        $this->assertStringContainsString('id="input-latitude"', $html);
+        $this->assertStringContainsString('id="input-longitude"', $html);
+        $this->assertStringContainsString("addListener('click'", $html, '地図クリックでピンを置く配線が消えている');
+        $this->assertStringContainsString('draggable', $html, 'ピンのドラッグが消えている');
+    }
 }

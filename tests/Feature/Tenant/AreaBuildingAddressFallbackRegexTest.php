@@ -26,36 +26,29 @@ use Tests\TestCase;
  * 地図パーツを `tenant/area-buildings/_form.blade.php` へ移植する際、識別子リネームの
  * ついでに `[\d０-９]` を `[\d0-9]` へ転記ミスした。Bug #45 ③「正規表現の文字クラスが
  * 狭い」と同型 ── **移植するときは正規表現の文字クラスを 1 文字ずつ照合すること。**
+ *
+ * ⚠ 2026-08-19: `_form.blade.php` の段階フォールバックを名指しで見ていたケースを削除した。
+ *   所在地の入力欄を画面から外したので、フォームの住所検索そのものが無くなったため。
+ *   ⚠ **一括取得（index.blade.php）側へは移していない。** 設計書 §6.1 に
+ *   「1 クリックで最大 5 回ジオコーディングを叩く。一括処理でこの関数を使い回さないこと」と
+ *   あり、移すと一括取得の費用が最大 5 倍になる。
+ *   `resources/views` 全体を走査する残りのケースはそのまま有効。
  */
 class AreaBuildingAddressFallbackRegexTest extends TestCase
 {
     /**
-     * この文字クラスパターンを使う既知のフォームの総数（2026-08-17 実測）:
-     * procurements / projects（不動産）/ projects（DAD）/ area-buildings の 4 ファイル ×
-     * 5 箇所 = 20。走査が空振りして「対象 0 件だから両方緑」という事故を防ぐための下限。
+     * この文字クラスパターンを使う既知のフォームの総数（2026-08-19 実測）:
+     * procurements / projects（不動産）/ projects（DAD）の 3 ファイル × 5 箇所 = 15。
+     * 走査が空振りして「対象 0 件だから両方緑」という事故を防ぐための下限。
+     *
+     * ⚠ 2026-08-19 に 20 から 15 へ下げた。area-buildings の住所検索 JS を削除した
+     *   （所在地の入力欄が画面から無くなり到達不能になったため）ので、
+     *   4 ファイル × 5 = 20 → 3 ファイル × 5 = 15 になった。
      */
-    private const MIN_TOTAL_OCCURRENCES = 20;
-
-    /** area-buildings 単体の下限（2026-08-17 実測 5 箇所）。 */
-    private const MIN_AREA_BUILDING_OCCURRENCES = 5;
+    private const MIN_TOTAL_OCCURRENCES = 15;
 
     private const CORRECT_CLASS   = '[\\d０-９]';
     private const DEGRADED_CLASS  = '[\\d0-9]';
-
-    /** area-buildings の _form.blade.php が正しい文字クラスを実測どおりの数だけ持つこと。 */
-    public function test_area_building_form_fallback_regex_includes_fullwidth_digits(): void
-    {
-        $content = File::get(resource_path('views/tenant/area-buildings/_form.blade.php'));
-
-        $count = substr_count($content, self::CORRECT_CLASS);
-
-        $this->assertGreaterThanOrEqual(
-            self::MIN_AREA_BUILDING_OCCURRENCES,
-            $count,
-            '_form.blade.php の段階フォールバック正規表現に全角数字 [\\d０-９] が '
-                . self::MIN_AREA_BUILDING_OCCURRENCES . ' 箇所見つからない（劣化、または走査の空振り）'
-        );
-    }
 
     /**
      * ⚠ 対象を「直したファイル」に限定しない（Bug #45 ①「列挙リスト方式は列挙漏れで
@@ -88,7 +81,7 @@ class AreaBuildingAddressFallbackRegexTest extends TestCase
 
     /**
      * 走査ロジック自体が壊れて「対象が見つからないから両方緑」にならないことを固定する
-     * （既知の 4 ファイル × 5 箇所 = 20 が resources/views/ 全体で実在することを確認）。
+     * （既知の 3 ファイル × 5 箇所 = 15 が resources/views/ 全体で実在することを確認）。
      */
     public function test_scan_finds_the_known_fallback_regex_call_sites(): void
     {

@@ -482,8 +482,9 @@ class AreaBuildingGeocodeTest extends AreaBuildingTestCase
     /**
      * **課金の不変条件**: 1 棟につき Geocoder を 1 回だけ叩く。
      *
-     * ⚠ `_form.blade.php` の手作業用 `geocodeAreaAddress()` は 1 クリックで**最大 5 回**
-     *   叩く（段階フォールバック）。それを一括処理へ持ち込むと請求が 5 倍になる。
+     * ⚠ `_form.blade.php` にあった手作業用 `geocodeAreaAddress()` は 1 クリックで
+     *   **最大 5 回**叩いていた（段階フォールバック）。それを一括処理へ持ち込むと
+     *   請求が 5 倍になる（2026-08-19 に削除済み。同型の再導入を止めるため注記を残す）。
      *   構造テスト（呼び出し箇所が 1 つ）だけでは「ループが 2 周する」変異を拾えないので、
      *   実際に走らせて**呼ばれた回数と住所**を数える。
      *
@@ -680,7 +681,8 @@ class AreaBuildingGeocodeTest extends AreaBuildingTestCase
      *
      * ⚠ 実駆動テストと重複しているように見えるが役割が違う。実駆動は「今の入力での
      *   呼び出し回数」を測り、こちらは「呼び出し**箇所**が増えていないこと」を測る
-     *   （`_form.blade.php` の段階フォールバックを一括処理へコピーする退行を止める）。
+     *   （かつて `_form.blade.php` にあった段階フォールバックを一括処理へ持ち込む
+     *   退行を止める。当該コードは 2026-08-19 に削除したが、退行の口は残っている）。
      */
     public function test_the_list_script_has_a_single_geocode_call_site(): void
     {

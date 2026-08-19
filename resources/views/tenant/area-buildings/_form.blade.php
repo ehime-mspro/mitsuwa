@@ -32,11 +32,11 @@
     <input type="hidden" name="longitude" id="input-longitude" value="{{ old('longitude', $b?->longitude) }}">
 
     <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
-        <button type="button" id="btn-geocode" onclick="geocodeAreaAddress()" style="background: #059669; color: #fff; padding: 7px 16px; border-radius: 6px; font-size: 13px; font-weight: 600; border: none; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px;">
+        <button type="button" id="btn-open-map" onclick="openAreaMap()" style="background: #059669; color: #fff; padding: 7px 16px; border-radius: 6px; font-size: 13px; font-weight: 600; border: none; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-            マップで確認
+            地図で位置を指定
         </button>
-        <span class="text-xs text-gray-500">住所からピン位置を検索します。空欄でも地図上でピンを配置できます</span>
+        <span class="text-xs text-gray-500">地図をクリック、またはピンをドラッグして位置を決めます</span>
     </div>
 
     <div id="map-status" style="display: none; padding: 8px 14px; border-radius: 6px; font-size: 13px; margin-bottom: 8px;"></div>
@@ -103,20 +103,22 @@
 <script>
 // ============================================================
 // Google Maps - 位置
-// realestate/procurements/_form.blade.php の移植。相違点は streetViewControl のみ。
-// 検証方法(2026-08-17): area* 識別子を proc* へ機械的に戻して移植元と diff し、
-// streetViewControl 以外の差はコメント文言とスタイルの凝縮(中間変数の省略等)のみで
-// 挙動差が無いことを確認した。次に触る人も同じ手順で再検証できる。
+// realestate/procurements/_form.blade.php からの移植だが、もう等価ではない。
+// 相違点は 2 つ: streetViewControl を出さない(課金対策) / 住所からの検索を持たない。
+// 2026-08-19 に住所の入力欄を画面から外した(設計 6.1)ため、住所検索の JS は
+// 必ず「住所が空」の分岐に落ちる到達不能コードになった。丸ごと削除し、
+// 地図は「押したら開くだけ」にしてある(設計 6.3)。
+// ⚠ このファイルの JS コメントは HTML にそのまま出る。画面から外した項目名を
+//    そのまま書くと AreaBuildingCrudTest の「画面に出さない」検査に引っかかる。
 // ============================================================
 var areaMap = null;
 var areaMarker = null;
-var areaGeocoder = null;
-
-// 既定の中心位置(松山市役所付近) - 住所空欄/全失敗時のフォールバック
+// 既定の中心位置(松山市役所付近) - 座標が未設定のまま地図を開いたときの表示位置
 var AREA_DEFAULT_CENTER = { lat: 33.8392, lng: 132.7657, zoom: 13 };
+var areaMapsReady = false;
 
 function onGoogleMapsReady() {
-    areaGeocoder = new google.maps.Geocoder();
+    areaMapsReady = true;
 
     var savedLat = document.getElementById('input-latitude').value;
     var savedLng = document.getElementById('input-longitude').value;
@@ -125,89 +127,24 @@ function onGoogleMapsReady() {
     }
 }
 
-// 住所を段階的に短くしてフォールバック候補を生成
-// 例: 東予市中心1丁目2-3 のような住所を段階的に短くする(フル,番地除去,丁目除去,市区町村,都道府県)
-function buildAreaAddressFallbacks(address) {
-    var candidates = [{ address: address, level: 'full', zoom: 17 }];
-
-    var stripped = address
-        .replace(/[\d０-９]+(?:[-‐−ー－―][\d０-９]+)+(?:号)?$/, '')
-        .replace(/[\d０-９]+番地?(?:[\d０-９]+号?)?$/, '')
-        .trim();
-    if (stripped && stripped !== address) {
-        candidates.push({ address: stripped, level: 'block', zoom: 16 });
-    }
-
-    stripped = address.replace(/[\d０-９]+丁目.*$/, '').trim();
-    if (stripped && !candidates.some(function(c) { return c.address === stripped; })) {
-        candidates.push({ address: stripped, level: 'town', zoom: 15 });
-    }
-
-    var cityMatch = address.match(/^.*?[市区町村]/);
-    if (cityMatch && !candidates.some(function(c) { return c.address === cityMatch[0]; })) {
-        candidates.push({ address: cityMatch[0], level: 'city', zoom: 13 });
-    }
-
-    var prefMatch = address.match(/^.*?[都道府県]/);
-    if (prefMatch && !candidates.some(function(c) { return c.address === prefMatch[0]; })) {
-        candidates.push({ address: prefMatch[0], level: 'prefecture', zoom: 10 });
-    }
-
-    return candidates;
-}
-
-function tryGeocodeAreaCandidates(candidates, index, callback) {
-    if (index >= candidates.length) { callback(null); return; }
-    var candidate = candidates[index];
-    areaGeocoder.geocode({ address: candidate.address }, function(results, status) {
-        if (status === 'OK' && results[0]) {
-            callback({
-                location: results[0].geometry.location,
-                level: candidate.level,
-                zoom: candidate.zoom,
-                matchedAddress: candidate.address
-            });
-        } else {
-            tryGeocodeAreaCandidates(candidates, index + 1, callback);
-        }
-    });
-}
-
-// 手作業の1棟ずつ用。1クリックで最大5回ジオコーディングを叩く。
-// 一括処理でこの関数を使い回さないこと(設計 6.1 / 7.4)。
-function geocodeAreaAddress() {
-    var addressInput = document.querySelector('input[name=address]');
-    var address = addressInput ? addressInput.value.trim() : '';
-
-    if (!areaGeocoder) {
+// 地図を開くだけ。住所からの検索はしない(住所の入力欄が無いので。設計 6.3)
+function openAreaMap() {
+    if (!areaMapsReady) {
         showAreaMapStatus('Google Maps を読み込み中です。しばらくお待ちください。', '#fef3c7', '#92400e');
         return;
     }
 
-    if (!address) {
-        showAreaMapStatus('住所が空欄です。松山市中心を表示しています。地図をクリックして位置を指定してください。', '#dbeafe', '#1e40af');
-        showAreaMap(AREA_DEFAULT_CENTER.lat, AREA_DEFAULT_CENTER.lng, AREA_DEFAULT_CENTER.zoom);
+    var savedLat = document.getElementById('input-latitude').value;
+    var savedLng = document.getElementById('input-longitude').value;
+
+    if (savedLat && savedLng) {
+        showAreaMap(parseFloat(savedLat), parseFloat(savedLng), 17);
+        showAreaMapStatus('地図をクリック、またはピンをドラッグして位置を調整できます。', '#dbeafe', '#1e40af');
         return;
     }
 
-    showAreaMapStatus('住所を検索中...', '#fef3c7', '#92400e');
-    document.getElementById('btn-geocode').disabled = true;
-
-    tryGeocodeAreaCandidates(buildAreaAddressFallbacks(address), 0, function(result) {
-        document.getElementById('btn-geocode').disabled = false;
-
-        if (result) {
-            if (result.level === 'full') {
-                showAreaMapStatus('住所が見つかりました。ピンをドラッグして正確な位置に調整できます。', '#d1fae5', '#065f46');
-            } else {
-                showAreaMapStatus('「' + result.matchedAddress + '」までヒットしました。地図をクリックして正確な位置を指定してください。', '#fef3c7', '#92400e');
-            }
-            showAreaMap(result.location.lat(), result.location.lng(), result.zoom);
-        } else {
-            showAreaMapStatus('住所が見つかりませんでした。松山市中心を表示しています。地図をクリックして位置を指定してください。', '#fef3c7', '#92400e');
-            showAreaMap(AREA_DEFAULT_CENTER.lat, AREA_DEFAULT_CENTER.lng, AREA_DEFAULT_CENTER.zoom);
-        }
-    });
+    showAreaMap(AREA_DEFAULT_CENTER.lat, AREA_DEFAULT_CENTER.lng, AREA_DEFAULT_CENTER.zoom);
+    showAreaMapStatus('松山市中心を表示しています。地図をクリックして位置を指定してください。', '#dbeafe', '#1e40af');
 }
 
 function showAreaMapStatus(msg, bg, color) {
