@@ -304,8 +304,12 @@ function advanceLocateTarget(note) {
         if (!AREA_MAP_UNLOCATED[j].done) { selectLocateTarget(j, note); return; }
     }
 
+    // ⚠ 上の「位置未登録 N 棟 / 登録済み N 棟」は**ページを開いた時点の値**で、ここでは動かさない。
+    //    片方だけ live にすると 2 つの数の和が総数に合わなくなる（Bug #46 の「別ソースの数が
+    //    無音で食い違う」）。進捗の正本はこのパネルの「残り N 棟」なので、
+    //    食い違いを隠さずに再読み込みを促す。
     renderLocateList();
-    showMessage((note || '') + '未登録の棟はすべて片付きました。');
+    showMessage((note || '') + '未登録の棟はすべて片付きました。ページを再読み込みすると上の件数にも反映されます。');
 }
 
 /**

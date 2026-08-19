@@ -608,6 +608,9 @@ JS);
         $this->assertSame([true, true, true], $saved2['done']);
         $this->assertSame('0', $saved2['remaining'], '全部片付いたのに残り件数が 0 になっていない');
         $this->assertStringContainsString('すべて片付きました', $saved2['message']);
+        // ⚠ 上の「位置未登録 N 棟」は開いた時点の値のまま。隠さず再読み込みを促していること
+        $this->assertStringContainsString('再読み込み', $saved2['message'],
+            '全部片付いたのに、上の件数が古いままであることを伝えていない');
 
         // ⑥ その間、地図は一度も動いていない
         $this->assertSame([], $run['mapMoves'], '登録中に地図を動かしている: ' . implode(',', $run['mapMoves']));
