@@ -34,6 +34,14 @@ class AreaBuildingCoordinateStoreTest extends AreaBuildingTestCase
             ->postJson($this->url($building), ['latitude' => 33.8392, 'longitude' => 132.7657]);
 
         $response->assertOk();
+        // ⚠ DB だけ見ていると、レスポンスが常にゼロを返す実装でも緑になる(実測)。
+        //   このレスポンスは Task 8 の JS が読んでその場にマーカーを立てるので、
+        //   壊れると「保存は成功しているのにピンが (0, 0) に立つ」無音の欠陥になる。
+        $response->assertExactJson([
+            'id'        => $building->id,
+            'latitude'  => 33.8392,
+            'longitude' => 132.7657,
+        ]);
         $building->refresh();
         $this->assertSame('33.8392000', (string) $building->latitude);
         $this->assertSame('132.7657000', (string) $building->longitude);
@@ -44,9 +52,18 @@ class AreaBuildingCoordinateStoreTest extends AreaBuildingTestCase
     {
         $building = $this->makeBuilding('須山ビル', ['latitude' => 33.1, 'longitude' => 132.1]);
 
-        $this->actingAs($this->manager())
-            ->postJson($this->url($building), ['latitude' => 33.8500000, 'longitude' => 132.7700000])
-            ->assertOk();
+        $response = $this->actingAs($this->manager())
+            ->postJson($this->url($building), ['latitude' => 33.8500000, 'longitude' => 132.7700000]);
+
+        $response->assertOk();
+        // ⚠ 上書き後の新しい座標がレスポンスにも出ていることを見る(stale なインスタンスを
+        //   返していないことの証明。$building->update() 後に in-memory 属性が古いままだと
+        //   ここが 33.1 / 132.1 のまま返る)。
+        $response->assertExactJson([
+            'id'        => $building->id,
+            'latitude'  => 33.85,
+            'longitude' => 132.77,
+        ]);
 
         $building->refresh();
         $this->assertSame('33.8500000', (string) $building->latitude, '既存座標が上書きされていない(置き直しができない)');
