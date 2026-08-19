@@ -141,6 +141,125 @@ class AreaBuildingMapTabTest extends AreaBuildingTestCase
     }
 
     /**
+     * 吹き出しの HTML が**属性位置でも壊れない**こと（node の `vm` で実駆動）。
+     *
+     * ⚠ `areaMapEscape()` は本文（ビル名・階数）と**属性**（`href="…"`）の両方で使う。
+     *   旧実装の `textContent` → `innerHTML` は `&` `<` `>` しか変換せず
+     *   **`"` と `'` を素通し**するので、属性位置では属性を閉じて抜け出せた。
+     *   `pin.url` は `route()` 由来で現状は攻撃不能だが、Task 8 が
+     *   `addAreaMapMarker()` をクライアント生成のピンへ再利用するため穴を残さない。
+     *
+     * ⚠ **実行するのは画面が返した文字列そのもの**（書き写すと Blade を壊しても緑になる。
+     *   Bug #28 / #47「振る舞いの正本は実駆動」）。
+     */
+    public function test_the_info_window_html_is_safe_in_attribute_position(): void
+    {
+        $this->makeBuilding('棟', ['latitude' => 33.84, 'longitude' => 132.76]);
+
+        $html   = $this->actingAs($this->staff())->get('/tenant/area-buildings?view=map')->getContent();
+        $result = $this->runMapScript($html);
+
+        // 1) エスケープ自体が 5 文字すべてを変換する
+        $this->assertSame(
+            '&amp;&lt;&gt;&quot;&#39;',
+            $result['escaped'],
+            'areaMapEscape() が属性で危険な文字（" と \'）を素通ししている'
+        );
+
+        // 2) 吹き出しを組んだとき href の属性から抜け出せない
+        // ⚠ ` onmouseover=` だけで見てはいけない。エスケープが効いていると
+        //   `onmouseover=&quot;` という**無害な文字列**として値の内側に残るので、
+        //   正しい実装でも一致して**常に赤**になる（実測で踏んだ）。
+        //   **生の `"` を伴う形**＝実際に属性を閉じて抜け出せた形だけを見る。
+        $this->assertStringNotContainsString(
+            ' onmouseover="',
+            $result['info'],
+            '吹き出しの href="…" から抜け出して属性を注入できている'
+        );
+        // href の値の中に生の `"` が残っていないこと（抜け出しの直接の条件）
+        $this->assertSame(
+            1,
+            preg_match('/href="[^"]*" style="color:#059669/', $result['info']),
+            'href 属性が意図しない位置で閉じている'
+        );
+        $this->assertStringNotContainsString(
+            '<img',
+            $result['info'],
+            'ビル名から生タグを注入できている'
+        );
+    }
+
+    /**
+     * 地図タブの `<script>` を node の `vm` でそのまま実駆動する。
+     *
+     * ⚠ ハーネスはブラウザより寛容であってはいけない（`AreaBuildingGeocodeTest` の
+     *   `runBrowserScript()` と同じ方針）。ここで呼ぶ 2 関数は DOM も google も
+     *   参照しない純関数なので、サンドボックスには何も渡さない。
+     *
+     * @return array{escaped: string, info: string}
+     */
+    private function runMapScript(string $html): array
+    {
+        $node = trim((string) shell_exec('command -v node 2>/dev/null'));
+        if ($node === '') {
+            $this->markTestSkipped('node が無いのでブラウザ側スクリプトの実駆動を飛ばす');
+        }
+
+        $script = null;
+        foreach (explode('<script', $html) as $chunk) {
+            if (str_contains($chunk, 'function areaMapEscape(')) {
+                $script = substr($chunk, (int) strpos($chunk, '>') + 1);
+                $script = substr($script, 0, (int) strpos($script, '</script'));
+                break;
+            }
+        }
+        $this->assertNotNull($script, 'areaMapEscape を含む <script> が画面に無い');
+
+        $dir = sys_get_temp_dir() . '/area-map-' . bin2hex(random_bytes(6));
+        mkdir($dir);
+
+        try {
+            file_put_contents($dir . '/script.js', $script);
+            file_put_contents($dir . '/harness.js', <<<'JS'
+const fs = require('fs');
+const vm = require('vm');
+
+const code = fs.readFileSync(process.argv[2], 'utf8');
+const sandbox = { console: console };
+const context = vm.createContext(sandbox);
+vm.runInContext(code, context, { filename: 'map-script.js' });
+
+const hostileUrl  = '/tenant/area-buildings/1" onmouseover="alert(1)';
+const hostileName = '<img src=x onerror=alert(1)>';
+
+process.stdout.write(JSON.stringify({
+    escaped: context.areaMapEscape('&<>"\''),
+    info: context.areaMapInfoHtml({
+        name: hostileName,
+        floors: '5階',
+        operating: 3,
+        vacant: 1,
+        unknown: 0,
+        rateLabel: '25.0%',
+        month: '2026年8月',
+        url: hostileUrl
+    })
+}));
+JS);
+
+            $output  = shell_exec(sprintf('%s %s %s 2>&1',
+                escapeshellarg($node), escapeshellarg($dir . '/harness.js'), escapeshellarg($dir . '/script.js')));
+            $decoded = json_decode((string) $output, true);
+            $this->assertIsArray($decoded, "node の実行に失敗した:\n" . $output);
+
+            return $decoded;
+        } finally {
+            array_map('unlink', glob($dir . '/*'));
+            rmdir($dir);
+        }
+    }
+
+    /**
      * ⚠ プラン外の追加。**Street View を出さないという課金方針が無検査だった**
      *   （変異テストで `streetViewControl: false` を `true` にしても 7 本すべて緑）。
      *   Street View は利用者が開いた回数だけ課金されるので、設計書 §7 は

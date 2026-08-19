@@ -61,10 +61,21 @@ function showMessage(text, isError) {
     el.style.color = isError ? '#b91c1c' : '#4b5563';
 }
 
+/**
+ * HTML エスケープ。⚠ **属性値に置いても安全な形にする。**
+ *   `textContent` → `innerHTML` は `&` `<` `>` しか変換せず `"` `'` を素通しするので、
+ *   `href="' + escape(url) + '"` のような**属性位置**では属性を閉じて抜け出せてしまう。
+ *   この関数は本文と属性の両方で使うため、**厳しい側（属性）に合わせる**。
+ *   本文位置で `&quot;` が増えてもブラウザは `"` として描画するので見た目は変わらない。
+ * ⚠ `&` を必ず最初に置換すること（後にすると `&lt;` が `&amp;lt;` へ二重変換される）。
+ */
 function areaMapEscape(value) {
-    var div = document.createElement('div');
-    div.textContent = value === null || value === undefined ? '' : String(value);
-    return div.innerHTML;
+    return (value === null || value === undefined ? '' : String(value))
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 function areaMapMarkerIcon(level) {
