@@ -17,12 +17,6 @@
             @error('total_floors') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
         </div>
         <div class="sm:col-span-2">
-            <label class="block text-sm font-semibold text-gray-700 mb-1">所在地</label>
-            <input type="text" name="address" value="{{ old('address', $b?->address) }}" maxlength="255" placeholder="愛媛県松山市…"
-                   class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none">
-            @error('address') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
-        </div>
-        <div class="sm:col-span-2">
             <label class="block text-sm font-semibold text-gray-700 mb-1">備考</label>
             <textarea name="notes" rows="3"
                       class="form-input w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none">{{ old('notes', $b?->notes) }}</textarea>
@@ -31,9 +25,9 @@
     </div>
 </div>
 
-{{-- 所在地マップ --}}
+{{-- 位置（地図でピンを置く） --}}
 <div class="bg-white border border-gray-200 rounded-lg p-5 mb-3">
-    <div class="text-sm font-bold text-gray-800 pb-2 mb-3.5 border-b border-gray-200">所在地マップ</div>
+    <div class="text-sm font-bold text-gray-800 pb-2 mb-3.5 border-b border-gray-200">位置</div>
     <input type="hidden" name="latitude" id="input-latitude" value="{{ old('latitude', $b?->latitude) }}">
     <input type="hidden" name="longitude" id="input-longitude" value="{{ old('longitude', $b?->longitude) }}">
 
@@ -108,7 +102,7 @@
 
 <script>
 // ============================================================
-// Google Maps - 所在地マップ
+// Google Maps - 位置
 // realestate/procurements/_form.blade.php の移植。相違点は streetViewControl のみ。
 // 検証方法(2026-08-17): area* 識別子を proc* へ機械的に戻して移植元と diff し、
 // streetViewControl 以外の差はコメント文言とスタイルの凝縮(中間変数の省略等)のみで
@@ -182,7 +176,7 @@ function tryGeocodeAreaCandidates(candidates, index, callback) {
 // 手作業の1棟ずつ用。1クリックで最大5回ジオコーディングを叩く。
 // 一括処理でこの関数を使い回さないこと(設計 6.1 / 7.4)。
 function geocodeAreaAddress() {
-    var addressInput = document.querySelector('input[name="address"]');
+    var addressInput = document.querySelector('input[name=address]');
     var address = addressInput ? addressInput.value.trim() : '';
 
     if (!areaGeocoder) {
@@ -191,7 +185,7 @@ function geocodeAreaAddress() {
     }
 
     if (!address) {
-        showAreaMapStatus('所在地が空欄です。松山市中心を表示しています。地図をクリックして位置を指定してください。', '#dbeafe', '#1e40af');
+        showAreaMapStatus('住所が空欄です。松山市中心を表示しています。地図をクリックして位置を指定してください。', '#dbeafe', '#1e40af');
         showAreaMap(AREA_DEFAULT_CENTER.lat, AREA_DEFAULT_CENTER.lng, AREA_DEFAULT_CENTER.zoom);
         return;
     }

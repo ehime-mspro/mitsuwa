@@ -387,4 +387,39 @@ class AreaBuildingCrudTest extends AreaBuildingTestCase
         $this->assertSame(8, $building->total_floors);
         $this->assertSame('新メモ', $building->notes);
     }
+
+    /**
+     * 所在地は画面に出さない(設計書 §6.1)。住所が分からない運用なので常に空欄になり、
+     * 入力欄と列がノイズにしかならない。
+     *
+     * ⚠ **DB 列と Excel 取込のマッピングは残す**(§6.2)。消しすぎの検出も対で置く。
+     */
+    public function test_address_is_not_shown_on_any_screen(): void
+    {
+        $building = $this->makeBuilding('住所つきの棟', ['address' => '愛媛県松山市一番町1-1']);
+        $manager  = $this->manager();
+
+        foreach ([
+            '/tenant/area-buildings',
+            '/tenant/area-buildings/' . $building->id,
+            '/tenant/area-buildings/create',
+            '/tenant/area-buildings/' . $building->id . '/edit',
+        ] as $url) {
+            $html = $this->actingAs($manager)->get($url)->assertOk()->getContent();
+
+            $this->assertStringNotContainsString('所在地', $html, $url . ' に「所在地」が残っている');
+            $this->assertStringNotContainsString('name="address"', $html, $url . ' に住所の入力欄が残っている');
+            $this->assertStringNotContainsString('愛媛県松山市一番町1-1', $html, $url . ' に住所の値が出ている');
+        }
+    }
+
+    /** 消しすぎの検出。DB 列と取込の受け口は生きていること(設計書 §6.2) */
+    public function test_address_is_still_accepted_by_the_database_and_the_importer(): void
+    {
+        $building = $this->makeBuilding('取込棟', ['address' => '愛媛県松山市二番町2-2']);
+        $this->assertSame('愛媛県松山市二番町2-2', $building->refresh()->address, 'DB 列が消えている');
+
+        $html = $this->actingAs($this->manager())->get('/tenant/area-buildings/import')->getContent();
+        $this->assertStringContainsString("label: '所在地'", $html, 'Excel 取込の「所在地」マッピングが消えている');
+    }
 }

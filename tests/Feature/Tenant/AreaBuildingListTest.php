@@ -141,10 +141,16 @@ class AreaBuildingListTest extends AreaBuildingTestCase
         );
     }
 
-    public function test_keyword_searches_name_address_and_current_tenants(): void
+    /**
+     * キーワードはビル名と在籍テナント名で引く。
+     *
+     * ⚠ 所在地は 2026-08-19 に検索対象から外した（画面に出していない項目で
+     *   ヒットすると、利用者からは「なぜこの棟が出るのか」が分からない）。
+     */
+    public function test_keyword_searches_name_and_current_tenants_but_not_address(): void
     {
         $this->makeBuilding('大街道ビル');
-        $this->makeBuilding('別名ビル', ['address' => '愛媛県松山市大街道1-1']);
+        $this->makeBuilding('住所だけ一致ビル', ['address' => '愛媛県松山市大街道1-1']);
 
         $withTenant = $this->makeBuilding('テナント持ちビル');
         $this->makeTenant($withTenant, ['name' => '大街道珈琲']);
@@ -156,10 +162,8 @@ class AreaBuildingListTest extends AreaBuildingTestCase
         );
 
         sort($names);
-        // ⚠ 期待値はプラン原文では ['大街道ビル', 'テナント持ちビル', '別名ビル'] だったが、
-        //   strcmp によるバイト順は Unicode コードポイント順（テ=U+30C6 < 別=U+5225 < 大=U+5927）
-        //   になるため実際には成立しない（実測で確認・プラン Task 6 節側も訂正済み）。
-        $this->assertSame(['テナント持ちビル', '別名ビル', '大街道ビル'], $this->sortedJa($names));
+        $this->assertSame(['テナント持ちビル', '大街道ビル'], $this->sortedJa($names));
+        $this->assertNotContains('住所だけ一致ビル', $names, '検索対象から外したはずの所在地でヒットしている');
     }
 
     /** 退去済みテナント名では拾わない（もう居ない会社でヒットさせない。設計 §5.3） */

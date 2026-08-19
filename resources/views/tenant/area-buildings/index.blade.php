@@ -42,7 +42,7 @@
     <form id="filter-form" method="GET" action="{{ route('tenant.area-buildings.index') }}"
           class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mb-4 bg-white border border-gray-200 rounded-lg px-3.5 py-2.5">
         <input type="text" name="keyword" value="{{ $keywordValue }}"
-               placeholder="ビル名・所在地・テナント名"
+               placeholder="ビル名・テナント名"
                class="h-9 px-3 border border-gray-300 rounded-md text-sm text-gray-700 bg-white focus:border-emerald-500 focus:outline-none flex-1 min-w-[140px] w-full sm:w-auto">
         <select onchange="document.getElementById('filter-form').submit()" name="vacancy"
                 class="h-9 px-3 border border-gray-300 rounded-md text-sm text-gray-700 bg-white focus:border-emerald-500 focus:outline-none cursor-pointer w-full sm:w-auto">
@@ -101,24 +101,22 @@
         <div class="scroll-hint at-start">
             <div class="scroll-hint-inner">
                 <table class="w-full border-collapse" style="table-layout:fixed; min-width:900px;">
-                    {{-- ⚠ 列を足すときは colgroup の合計 100% / th の本数 / 空行の colspan を
-                         3 点セットで揃える（Task 10 で合計 106% にした前科あり）。テストで固定済み --}}
+                    {{-- ⚠ 列を足し引きするときは colgroup の合計 100% / th の本数 /
+                         空行の colspan を 3 点セットで揃える（Task 10 で合計 106% にした前科あり） --}}
                     <colgroup>
-                        <col style="width:18%">
+                        <col style="width:24%">
+                        <col style="width:6%">
+                        <col style="width:6%">
+                        <col style="width:6%">
+                        <col style="width:6%">
+                        <col style="width:8%">
+                        <col style="width:11%">
+                        <col style="width:13%">
                         <col style="width:20%">
-                        <col style="width:6%">
-                        <col style="width:6%">
-                        <col style="width:6%">
-                        <col style="width:6%">
-                        <col style="width:8%">
-                        <col style="width:8%">
-                        <col style="width:11%">
-                        <col style="width:11%">
                     </colgroup>
                     <thead>
                         <tr>
                             <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-left text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">ビル名</th>
-                            <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-left text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">所在地</th>
                             <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">総階数</th>
                             <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">営業</th>
                             <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">空き</th>
@@ -137,9 +135,6 @@
                                        class="text-sm font-semibold text-emerald-600 hover:text-emerald-700 hover:underline transition-colors">
                                         {{ $row['building']->name }}
                                     </a>
-                                </td>
-                                <td class="px-4 py-3 lg:px-5 lg:py-3.5 border-b border-gray-200 text-sm text-gray-700">
-                                    {{ $row['building']->address ?: '—' }}
                                 </td>
                                 <td class="px-4 py-3 lg:px-5 lg:py-3.5 border-b border-gray-200 text-sm text-center text-gray-700 whitespace-nowrap">
                                     {{ $row['building']->totalFloorsLabel() }}
@@ -181,7 +176,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="10" class="px-5 py-10 text-center text-sm text-gray-400">
+                                <td colspan="9" class="px-5 py-10 text-center text-sm text-gray-400">
                                     周辺ビルのデータがありません。
                                 </td>
                             </tr>

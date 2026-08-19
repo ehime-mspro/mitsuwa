@@ -153,8 +153,8 @@ class AreaBuildingListService
         if (filled($keyword) && is_string($keyword)) {
             $like = '%' . $keyword . '%';
             $query->where(function (Builder $q) use ($like) {
+                // ⚠ 所在地は画面に出していないので検索対象にもしない（設計書 §6.1）
                 $q->where('area_buildings.name', 'like', $like)
-                    ->orWhere('area_buildings.address', 'like', $like)
                     // 現況の行だけ。退去済みまで拾うと「もう居ない会社」でヒットする
                     ->orWhereHas('tenants', fn ($t) => $t->whereNull('moved_out_on')->where('name', 'like', $like));
             });
