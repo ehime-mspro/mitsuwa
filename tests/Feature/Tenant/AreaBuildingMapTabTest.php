@@ -533,6 +533,11 @@ JS);
             'skipLocateTarget',
             'advanceLocateTarget',
             'saveCoordinate',
+            // ⚠ ズームでマーカーを描き替える経路も同じ不変条件を持つ。ここで地図を
+            //   動かすと、利用者がズームするたびに地図が跳ねて操作できなくなる。
+            //   挙動側は test_crossing_the_zoom_threshold_... の mapMoves が見ている
+            'applyAreaMapMarkerStyle',
+            'refreshAreaMapMarkerStyles',
         ];
 
         foreach ($functions as $name) {
@@ -819,6 +824,211 @@ JS);
         $this->assertSame([], $run['mapMoves'], '置き直しで地図を動かしている');
     }
 
+    // ============================================================
+    // Task 14 — 引いたらしずく型のピン / 寄せたら空室率つきの丸
+    // ============================================================
+
+    /**
+     * 丸の中に出す短いラベルがピンデータに載っていること（コントローラ側）。
+     *
+     * ⚠ 吹き出しの `rateLabel` と**対で**見る。片方だけ見ると、丸へ 1/10% 刻みの
+     *   `rateLabel` をそのまま流用する変異（33px に「42.8%」で溢れる）が緑のまま通る。
+     * ⚠ 調査回が無い棟の分岐も見る（`level` と同じ `operating === null` の分岐）。
+     */
+    public function test_every_pin_carries_a_compact_label_for_the_zoomed_in_view(): void
+    {
+        $surveyed = $this->makeBuilding('数字が出る棟', ['latitude' => 33.84, 'longitude' => 132.76]);
+        $this->makeSurvey($surveyed, '2026-07-01', 4, 3, 0);   // 3 ÷ 7 = 42.857…%
+        $this->makeBuilding('調査なしの棟', ['latitude' => 33.85, 'longitude' => 132.77]);
+
+        $pins = collect(
+            $this->actingAs($this->staff())->get('/tenant/area-buildings?view=map')->viewData('mapPins')
+        )->keyBy('name');
+
+        $this->assertSame('42%', $pins['数字が出る棟']['pinLabel'], '丸のラベルが切り捨ての整数になっていない');
+        $this->assertSame('42.8%', $pins['数字が出る棟']['rateLabel'], '吹き出しまで整数に丸めている');
+
+        $this->assertSame('—', $pins['調査なしの棟']['pinLabel'], '調査回が無い棟に数字が出ている');
+        $this->assertSame(\App\Support\VacancyRate::LEVEL_UNKNOWN, $pins['調査なしの棟']['level']);
+    }
+
+    /**
+     * 引いているとき（zoom < AREA_MAP_LABEL_ZOOM）は**しずく型のピン**。
+     *
+     * ⚠ `anchor` が `(0, 0)`（＝ path の先端）であることまで見る。これが無いと
+     *   Google は**図形の中心**を実位置に合わせるので、ピン全体が約 11px 北へずれ、
+     *   先端が指しているのは隣の建物になる。
+     * ⚠ ラベルは `null`。空文字だと Google が空のラベル要素を残す。
+     */
+    public function test_markers_are_teardrop_pins_when_zoomed_out(): void
+    {
+        $this->seedTwoLocatedBuildingsAndOneUnlocated();
+
+        $run    = $this->runLocateScript($this->mapHtml(), [['action' => 'zoom', 'zoom' => 17]], []);
+        $styles = $this->markerStylesByTitle($run['snapshots'][0]);
+
+        // ⚠ 並び順に依存しない形で「3 本とも拾えている」ことを固定する
+        //   （0 本のまま foreach が空回りして緑になる事故を防ぐ。Bug #45）
+        $titles = array_keys($styles);
+        sort($titles);
+        $this->assertSame(['満室の棟', '空きの棟', '調査なしの棟'], $titles,
+            '座標のある 3 棟のピンが揃っていない（掃引が空振りしている）');
+
+        foreach ($styles as $title => $style) {
+            $this->assertStringStartsWith('M0 0 C', (string) $style['icon']['path'],
+                $title . ' がしずく型のピンになっていない');
+            $this->assertSame(['x' => 0, 'y' => 0], $style['icon']['anchor'],
+                $title . ' の anchor が先端 (0,0) でない（ピンが実位置からずれる）');
+            $this->assertNull($style['label'], $title . ' に引いた状態でラベルが載っている');
+        }
+    }
+
+    /**
+     * 寄せたとき（zoom >= AREA_MAP_LABEL_ZOOM）は**空室率の数字つきの丸**。
+     *
+     * ⚠ 丸は `anchor` の既定が中心なので**指定しない**（ピンとは基準点が違う）。
+     *   ここで anchor を足すと丸が半径ぶん北へずれる。
+     */
+    public function test_markers_become_labelled_circles_when_zoomed_in(): void
+    {
+        $this->seedTwoLocatedBuildingsAndOneUnlocated();
+
+        $run    = $this->runLocateScript($this->mapHtml(), [['action' => 'zoom', 'zoom' => 18]], []);
+        $styles = $this->markerStylesByTitle($run['snapshots'][0]);
+
+        $expected = ['満室の棟' => '0%', '空きの棟' => '50%', '調査なしの棟' => '—'];
+
+        foreach ($expected as $title => $text) {
+            $style = $styles[$title];
+
+            $this->assertSame('circle', $style['icon']['path'], $title . ' が丸になっていない');
+            $this->assertArrayNotHasKey('anchor', $style['icon'],
+                $title . ' の丸に anchor が付いている（丸は中心が既定なので位置がずれる）');
+            $this->assertSame($text, $style['label']['text'] ?? null,
+                $title . ' の丸に空室率が出ていない');
+        }
+
+        // 色は VacancyRate::LEVELS から来ていること（形が変わっても色分けは同じ）
+        $this->assertSame(\App\Support\VacancyRate::LEVELS['none']['color'], $styles['満室の棟']['icon']['fillColor']);
+        $this->assertSame(\App\Support\VacancyRate::LEVELS['high']['color'], $styles['空きの棟']['icon']['fillColor']);
+    }
+
+    /**
+     * **境目をまたぐと切り替わる**（17 → 18 → 17 の往復）。
+     *
+     * ⚠ 往復で見る。上げるだけだと「一度ラベルにしたら戻らない」変異を検出できない。
+     * ⚠ ズームの度に地図を動かしていないことも対で見る（`zoom_changed` の中で
+     *   `setZoom` を呼ぶと、利用者のズーム操作のたびに地図が跳ねて操作不能になる）。
+     */
+    public function test_crossing_the_zoom_threshold_switches_the_markers_both_ways(): void
+    {
+        $this->seedTwoLocatedBuildingsAndOneUnlocated();
+
+        $run = $this->runLocateScript($this->mapHtml(), [
+            ['action' => 'zoom', 'zoom' => 17],
+            ['action' => 'zoom', 'zoom' => 18],
+            ['action' => 'zoom', 'zoom' => 17],
+        ], []);
+
+        [$out, $in, $back] = array_map(fn (array $s) => $this->markerStylesByTitle($s), $run['snapshots']);
+
+        $this->assertStringStartsWith('M0 0 C', (string) $out['空きの棟']['icon']['path'], '17 でしずく型でない');
+        $this->assertNull($out['空きの棟']['label']);
+
+        $this->assertSame('circle', $in['空きの棟']['icon']['path'], '18 へ寄せても丸に切り替わらない');
+        $this->assertSame('50%', $in['空きの棟']['label']['text'] ?? null);
+
+        $this->assertStringStartsWith('M0 0 C', (string) $back['空きの棟']['icon']['path'],
+            '17 へ戻してもしずく型に戻らない');
+        $this->assertNull($back['空きの棟']['label'], '引き戻してもラベルが残っている');
+
+        $this->assertSame([], $run['mapMoves'],
+            'ズームの切り替えで地図を動かしている: ' . implode(',', $run['mapMoves']));
+    }
+
+    /**
+     * **保存で追加したマーカーもズームに追従する。**
+     *
+     * ⚠ ここが登録簿（`areaMapPinData`）が load-bearing であることの証明。
+     *   保存で足したピンは `AREA_MAP_PINS` に**入っていない**ので、登録簿を持たずに
+     *   初期データだけを回すと、そのマーカーだけ**しずく型のまま取り残される**
+     *   （画面には出ているので、見落としやすい）。
+     */
+    public function test_a_marker_added_by_saving_also_follows_the_zoom(): void
+    {
+        $this->seedTwoLocatedBuildingsAndOneUnlocated();
+
+        $response  = $this->actingAs($this->manager())->get('/tenant/area-buildings?view=map');
+        $unlocated = $response->viewData('mapUnlocated');
+        $this->assertCount(1, $unlocated);
+
+        $run = $this->runLocateScript($response->getContent(), [
+            ['action' => 'toggle'],
+            ['action' => 'mapclick', 'lat' => 33.81, 'lng' => 132.71],
+            ['action' => 'zoom', 'zoom' => 18],
+        ], [
+            ['ok' => true, 'body' => ['id' => $unlocated[0]['id'], 'latitude' => 33.81, 'longitude' => 132.71]],
+        ]);
+
+        [, $saved, $zoomed] = array_map(fn (array $s) => $this->markerStylesByTitle($s), $run['snapshots']);
+
+        // 保存した直後は引いたまま ＝ しずく型（作成時に今のモードが当たっている）
+        $this->assertArrayHasKey('まだの棟', $saved, '保存した棟のピンが立っていない');
+        $this->assertStringStartsWith('M0 0 C', (string) $saved['まだの棟']['icon']['path'],
+            '保存で足したピンが作成時のモード（しずく型）になっていない');
+        $this->assertNull($saved['まだの棟']['label']);
+
+        // 寄せると、あとから足したピンも丸へ切り替わる
+        $this->assertSame('circle', $zoomed['まだの棟']['icon']['path'],
+            '保存で足したピンだけがズーム切替から漏れている（登録簿に載っていない）');
+        $this->assertSame('—', $zoomed['まだの棟']['label']['text'] ?? null,
+            '保存で足したピン（調査回なし）のラベルが「—」でない');
+
+        // 既存のピンは巻き添えになっていない
+        $this->assertSame('circle', $zoomed['空きの棟']['icon']['path']);
+        $this->assertSame([], $run['mapMoves'], '保存とズームの間に地図を動かしている');
+    }
+
+    /** 座標あり 2 棟（満室 / 全空き）＋ 座標なし 1 棟。⚠ 座標なしが無いと作業リストが 0 行になる */
+    private function seedTwoLocatedBuildingsAndOneUnlocated(): void
+    {
+        $full = $this->makeBuilding('満室の棟', ['latitude' => 33.84, 'longitude' => 132.76]);
+        $this->makeSurvey($full, '2026-07-01', 5, 0, 0);
+
+        $half = $this->makeBuilding('空きの棟', ['latitude' => 33.85, 'longitude' => 132.77]);
+        $this->makeSurvey($half, '2026-07-01', 2, 2, 0);
+
+        $this->makeBuilding('調査なしの棟', ['latitude' => 33.86, 'longitude' => 132.78]);
+        $this->makeBuilding('まだの棟');
+    }
+
+    private function mapHtml(): string
+    {
+        return $this->actingAs($this->manager())->get('/tenant/area-buildings?view=map')->getContent();
+    }
+
+    /**
+     * スナップショットのマーカー記録を「ビル名 → 見た目」に組み替える。
+     *
+     * ⚠ 生成順に依存しない形にする（一覧の並び順が変わっただけでテストが落ちないように）。
+     * ⚠ 空のまま返さない。0 本だと後続の foreach が 1 度も回らず**常に緑**になる（Bug #45）。
+     *
+     * @param  array<string, mixed>  $snapshot
+     * @return array<string, array<string, mixed>>
+     */
+    private function markerStylesByTitle(array $snapshot): array
+    {
+        $styles = [];
+
+        foreach ($snapshot['markerStyles'] as $marker) {
+            $styles[$marker['title']] = $marker;
+        }
+
+        $this->assertNotSame([], $styles, 'マーカーを 1 本も拾えていない（ハーネスが空振りしている）');
+
+        return $styles;
+    }
+
     /** `$needle` を含む HTML タグ 1 つを切り出す（属性の並び順に依存しないため） */
     private function tagContaining(string $html, string $needle): string
     {
@@ -947,6 +1157,11 @@ const mapMoves = [];
 const markers  = [];
 const removed  = [];
 
+// ⚠ markers は「登録中に増えたぶん」で onAreaMapReady のあとに一度空にする。
+//    ズーム切替は**初期表示のピンも**対象なので、空にしない一覧を別に持つ。
+//    どちらも同じ record を指すので、setIcon / setLabel の記録は両方に映る。
+const allMarkers = [];
+
 // ⚠ ブラウザと同じく、存在しない id には null を返す
 function el(id) {
     if (plan.ids.indexOf(id) === -1) { return null; }
@@ -984,10 +1199,22 @@ const buttons = plan.buttons.map(function (b) {
 });
 
 function FakeMarker(options) {
-    markers.push({ title: options.title, position: options.position, hasMap: !!options.map });
+    // ⚠ 偽物は**記録するだけ**。どんな icon / label が正しいかの判定はテスト側で行う
+    const record = {
+        title: options.title,
+        position: options.position,
+        hasMap: !!options.map,
+        icon: options.icon === undefined ? null : options.icon,
+        label: options.label === undefined ? null : options.label
+    };
+    markers.push(record);
+    allMarkers.push(record);
+
     this.addListener = function () {};
     // 置き直しで古いピンを地図から外しているか
     this.setMap = function (map) { if (map === null) { removed.push(options.title); } };
+    this.setIcon  = function (icon)  { record.icon  = icon; };
+    this.setLabel = function (label) { record.label = label; };
 }
 
 function FakeInfoWindow() {
@@ -1003,11 +1230,21 @@ function FakeBounds() {
 //    登録したハンドラを捕まえる（配線ごと実駆動するため）
 const listeners = {};
 
-function FakeMap() {
+function FakeMap(options) {
+    // 画面が渡した初期ズーム（AREA_MAP_CENTER.zoom）をそのまま持つ
+    let zoom = options && typeof options.zoom === 'number' ? options.zoom : null;
+
+    this.getZoom   = function () { return zoom; };
     this.setCenter = function () { mapMoves.push('setCenter'); };
-    this.setZoom   = function () { mapMoves.push('setZoom'); };
+    // ⚠ **記録は続ける。** スクリプトが setZoom を呼んだら「地図を動かした」ことに変わりない
+    this.setZoom   = function (z) { mapMoves.push('setZoom'); zoom = z; };
     this.fitBounds = function () { mapMoves.push('fitBounds'); };
     this.addListener = function (event, handler) { listeners[event] = handler; };
+
+    // ⚠ テスト専用。**利用者のピンチ操作**を表す —— 実ブラウザでも誰も setZoom() を
+    //    呼ばないままズームが変わり、そのあと zoom_changed が飛ぶ。だから記録しない
+    //    （記録すると「スクリプトが動かした」と区別が付かなくなる）。
+    this.simulateUserZoom = function (z) { zoom = z; };
 }
 
 const sandbox = {
@@ -1032,6 +1269,7 @@ const sandbox = {
         Marker: FakeMarker,
         InfoWindow: FakeInfoWindow,
         LatLngBounds: FakeBounds,
+        Point: function (x, y) { this.x = x; this.y = y; },
         SymbolPath: { CIRCLE: 'circle' }
     } },
     fetch: function (url, options) {
@@ -1087,7 +1325,12 @@ function snapshot() {
             return { index: b.locateIndex, text: b.textContent, background: b.style.background || '' };
         }),
         markerCount:   markers.length,
-        removedMarkers: removed.length
+        removedMarkers: removed.length,
+        // ⚠ 初期表示ぶんも含む全マーカーの見た目（ズーム切替の検査用）。
+        //    icon.anchor は偽の Point なので {x, y} として JSON に出る
+        markerStyles:  allMarkers.map(function (m) {
+            return { title: m.title, icon: m.icon, label: m.label };
+        })
     };
 }
 
@@ -1104,6 +1347,13 @@ async function settle() {
         if (step.action === 'toggle')      { context.toggleLocateMode(); }
         else if (step.action === 'skip')   { context.skipLocateTarget(); }
         else if (step.action === 'select') { context.selectLocateTarget(step.index); }
+        else if (step.action === 'zoom') {
+            // ⚠ setZoom() を使わない。利用者がピンチでズームした状況を作る
+            //    （スクリプトが地図を動かしたことにすると mapMoves の意味が壊れる）
+            if (!listeners.zoom_changed) { throw new Error('地図の zoom_changed ハンドラが登録されていない'); }
+            context.areaMapInstance.simulateUserZoom(step.zoom);
+            listeners.zoom_changed();
+        }
         else if (step.action === 'mapclick') {
             // ⚠ saveCoordinate() を直接呼ばない。**画面と同じく地図の click を発火させる** ——
             //    直接呼ぶと「登録モードでないときは保存しない」ゲートを通らず、

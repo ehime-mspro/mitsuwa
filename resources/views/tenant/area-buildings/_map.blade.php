@@ -97,6 +97,23 @@ var areaMapInstance = null;
 var areaMapInfoWindow = null;
 var areaMapMarkers = {};
 
+/* 空室率の数字つきの丸へ切り替えるズーム。ここより引いていればしずく型のピン。
+   松山（緯度 33.84）では 1px あたり 156543.03392 x cos(33.84°) / 2^zoom
+   = 約 130,043 / 2^zoom メートル。zoom 18 は 0.50m/px なので、30m 離れた棟が
+   60px 離れる = 直径 33px の丸どうしが重ならない下限になる。
+   187 棟を fitBounds すると zoom 15〜16 に落ち着くので、既定はピン表示。
+   ⚠ 閾値を動かしたいときはこの 1 行だけを変える。 */
+var AREA_MAP_LABEL_ZOOM = 18;
+
+/* id -> ピンデータの登録簿。
+   ⚠ **保存で足したピン（saveCoordinate 由来）は AREA_MAP_PINS に入っていない。**
+      ここに覚えておかないと、そのマーカーだけズーム切替の対象から漏れて
+      しずく型のまま取り残される（画面には出ているので気づきにくい）。 */
+var areaMapPinData = {};
+
+/* 今「数字つきの丸」を出しているか。境目をまたいだときだけ描き替えるための記憶。 */
+var areaMapLabelMode = false;
+
 /** ステータス行への表示。⚠ 握り潰さないための出口（Bug #45） */
 function showMessage(text, isError) {
     var el = document.getElementById('area-map-status');
@@ -122,16 +139,94 @@ function areaMapEscape(value) {
         .replace(/'/g, '&#39;');
 }
 
-function areaMapMarkerIcon(level) {
-    var color = (AREA_MAP_LEVELS[level] || AREA_MAP_LEVELS.unknown).color;
+function areaMapLevelColor(level) {
+    return (AREA_MAP_LEVELS[level] || AREA_MAP_LEVELS.unknown).color;
+}
+
+/**
+ * 引いているとき — しずく型のピン（高さ約 23px）。
+ *
+ * ⚠ **anchor は先端 (0,0)。** 指定しないと Google は図形の中心を実位置に合わせるので、
+ *   ピン全体が約 11px 北へずれ、先端が指しているのは隣の建物になる。
+ * ⚠ **中に白い丸は入れない。** google.maps.Symbol は単一 path + nonzero 巻き方向で
+ *   fill-rule を指定できず、穴を開けるには逆巻きの副パスが要る。白フチ 2px があれば
+ *   重なったピンは分離できるので、そこまでやらない。
+ */
+function areaMapPinIcon(color) {
+    return {
+        path: 'M0 0 C -3.2 -9 -11 -13.5 -11 -21.5 A 11 11 0 1 1 11 -21.5 C 11 -13.5 3.2 -9 0 0 Z',
+        scale: 1,
+        fillColor: color,
+        fillOpacity: 1,
+        strokeColor: '#ffffff',
+        strokeWeight: 2,
+        anchor: new google.maps.Point(0, 0)
+    };
+}
+
+/**
+ * 寄せたとき — 空室率の数字を載せる丸（直径 33px）。
+ *
+ * ⚠ **anchor を書かない。** 丸は既定で中心が実位置なので、足すと半径ぶん北へずれる
+ *   （しずく型とは基準点が違う）。
+ */
+function areaMapLabelIcon(color) {
     return {
         path: google.maps.SymbolPath.CIRCLE,
-        scale: 7,
+        scale: 15,
         fillColor: color,
-        fillOpacity: 0.95,
+        fillOpacity: 1,
         strokeColor: '#ffffff',
-        strokeWeight: 2
+        strokeWeight: 2.5
     };
+}
+
+/**
+ * 今のズームが「数字つきの丸」を出す側かどうか。
+ * 地図がまだ無い / ズームが取れないときはピン側に倒す（数字の無いほうが安全）。
+ */
+function areaMapWantsLabels() {
+    var zoom = areaMapInstance ? areaMapInstance.getZoom() : null;
+
+    return typeof zoom === 'number' && zoom >= AREA_MAP_LABEL_ZOOM;
+}
+
+/**
+ * 今のモードをマーカー 1 本に当てる。
+ *
+ * ⚠ ピン表示では **setLabel(null)**。空文字だと Google が空のラベル要素を残す。
+ */
+function applyAreaMapMarkerStyle(marker, pin) {
+    var color = areaMapLevelColor(pin.level);
+
+    if (areaMapLabelMode) {
+        marker.setIcon(areaMapLabelIcon(color));
+        marker.setLabel({ text: pin.pinLabel, color: '#ffffff', fontSize: '11px', fontWeight: '600' });
+        return;
+    }
+
+    marker.setIcon(areaMapPinIcon(color));
+    marker.setLabel(null);
+}
+
+/**
+ * ズームが境目をまたいだときだけ、全マーカーを描き替える。
+ *
+ * ⚠ 毎段のズームで全マーカーを触らない（187 本の setIcon が 1 段ごとに走る）。
+ * ⚠ **ここで地図を動かさない。** 動かすと利用者がズームするたびに地図が跳ねる
+ *   （saveCoordinate と同じ理由。AreaBuildingMapTabTest が対で固定している）。
+ */
+function refreshAreaMapMarkerStyles() {
+    var wants = areaMapWantsLabels();
+
+    if (wants === areaMapLabelMode) { return; }
+    areaMapLabelMode = wants;
+
+    Object.keys(areaMapMarkers).forEach(function (id) {
+        // ⚠ 登録簿から引く。AREA_MAP_PINS だけを回すと保存で足したピンが漏れる
+        var pin = areaMapPinData[id];
+        if (pin) { applyAreaMapMarkerStyle(areaMapMarkers[id], pin); }
+    });
 }
 
 function areaMapInfoHtml(pin) {
@@ -158,9 +253,12 @@ function addAreaMapMarker(pin) {
     var marker = new google.maps.Marker({
         position: { lat: pin.lat, lng: pin.lng },
         map: areaMapInstance,
-        title: pin.name,
-        icon: areaMapMarkerIcon(pin.level)
+        title: pin.name
     });
+
+    // ⚠ **作成時に今のモードを当てる。** 省くと、寄せた状態で保存したピンだけが
+    //    次にズームの境目をまたぐまで丸にならない
+    applyAreaMapMarkerStyle(marker, pin);
 
     marker.addListener('click', function () {
         areaMapInfoWindow.setContent(areaMapInfoHtml(pin));
@@ -168,6 +266,7 @@ function addAreaMapMarker(pin) {
     });
 
     areaMapMarkers[pin.id] = marker;
+    areaMapPinData[pin.id] = pin;
 }
 
 function onAreaMapReady() {
@@ -185,6 +284,11 @@ function onAreaMapReady() {
         streetViewControl: false
     });
     areaMapInfoWindow = new google.maps.InfoWindow();
+
+    // ⚠ 初期のモードは**地図を作った直後のズームから**決める。このあと fitBounds が
+    //    ズームを変えると zoom_changed が飛ぶので、そこで自然に整う
+    areaMapLabelMode = areaMapWantsLabels();
+    areaMapInstance.addListener('zoom_changed', refreshAreaMapMarkerStyles);
 
     AREA_MAP_PINS.forEach(addAreaMapMarker);
 
@@ -373,7 +477,7 @@ function saveCoordinate(lat, lng) {
         // 置いた位置をその場でピンにする。調査回はまだ無いので「調査なし」の見た目になる
         addAreaMapMarker({
             id: data.id, name: target.name, lat: data.latitude, lng: data.longitude,
-            level: 'unknown', rateLabel: '—', floors: '—',
+            level: 'unknown', rateLabel: '—', pinLabel: '—', floors: '—',
             operating: null, vacant: null, unknown: null, month: '—',
             url: AREA_MAP_SHOW_URL.replace('__ID__', data.id)
         });
