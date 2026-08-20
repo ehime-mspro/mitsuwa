@@ -156,6 +156,40 @@ class AreaBuildingListTest extends AreaBuildingTestCase
         $this->assertStringContainsString('<option value="under75" selected>', $select[1], '選んだ値が保持されていない');
     }
 
+    /**
+     * 表の見出しは**入居率が空室率の前**（依頼の文言そのもの）。
+     *
+     * ⚠ 「どちらの文字列も HTML にある」だけでは順序を守れない。並びを配列で丸ごと固定する。
+     * ⚠ 見出しだけ入れ替えて中身が逆のまま、を防ぐため**同じ添字のセルの値**も対で見る
+     *   （Bug #47。列を入れ替える変異はどちらか片方だけでも成立してしまう）。
+     * ⚠ 2 つの数字の和が 100.0% になっていることも、ここで実データとして見ておく。
+     */
+    public function test_the_table_shows_occupancy_before_vacancy(): void
+    {
+        // 営業 4 / 空き 3 → 空室率 42.8% ＋ 入居率 57.2% ＝ 100.0%
+        $this->makeSurvey($this->makeBuilding('大街道ビル'), '2026-08-01', 4, 3, 0);
+
+        $html = $this->actingAs($this->staff())->get('/tenant/area-buildings')->getContent();
+
+        $this->assertSame(1, preg_match('/<thead>(.*?)<\/thead>/s', $html, $head), '<thead> が無い');
+        preg_match_all('/<th\b[^>]*>(.*?)<\/th>/s', $head[1], $ths);
+        $headers = array_map('trim', $ths[1]);
+
+        $this->assertSame(
+            ['ビル名', '総階数', '営業', '空き', '不明', '入居率', '空室率', '位置', '最終調査', '操作'],
+            $headers,
+            '表の見出しの並びが変わっている（入居率は空室率の前）'
+        );
+
+        $this->assertSame(1, preg_match('/<tbody>(.*?)<\/tbody>/s', $html, $body), '<tbody> が無い');
+        $this->assertSame(1, preg_match('/<tr\b[^>]*>(.*?)<\/tr>/s', $body[1], $row), 'データ行が無い');
+        preg_match_all('/<td\b[^>]*>(.*?)<\/td>/s', $row[1], $tds);
+        $cells = array_map('trim', $tds[1]);
+
+        $this->assertSame('57.2%', $cells[array_search('入居率', $headers, true)], '入居率の列に入居率が出ていない');
+        $this->assertSame('42.8%', $cells[array_search('空室率', $headers, true)], '空室率の列に空室率が出ていない');
+    }
+
     /** 調査年フィルタは「最終調査年月」の年で見る */
     public function test_year_filter_uses_the_latest_survey(): void
     {

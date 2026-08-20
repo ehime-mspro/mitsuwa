@@ -134,16 +134,19 @@
                 <table class="w-full border-collapse" style="table-layout:fixed; min-width:900px;">
                     {{-- ⚠ 列を足し引きするときは colgroup の合計 100% / th の本数 /
                          空行の colspan を 3 点セットで揃える（Task 10 で合計 106% にした前科あり） --}}
+                    {{-- ビル名 26 / 総階数 6 / 営業 6 / 空き 6 / 不明 6 / 入居率 8 / 空室率 8
+                         / 位置 11 / 最終調査 11 / 操作 12 = 100 --}}
                     <colgroup>
-                        <col style="width:30%">
+                        <col style="width:26%">
                         <col style="width:6%">
                         <col style="width:6%">
                         <col style="width:6%">
                         <col style="width:6%">
                         <col style="width:8%">
+                        <col style="width:8%">
                         <col style="width:11%">
-                        <col style="width:13%">
-                        <col style="width:14%">
+                        <col style="width:11%">
+                        <col style="width:12%">
                     </colgroup>
                     <thead>
                         <tr>
@@ -152,6 +155,7 @@
                             <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">営業</th>
                             <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">空き</th>
                             <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">不明</th>
+                            <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">入居率</th>
                             <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">空室率</th>
                             <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">位置</th>
                             <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">最終調査</th>
@@ -178,6 +182,11 @@
                                 </td>
                                 <td class="px-4 py-3 lg:px-5 lg:py-3.5 border-b border-gray-200 text-sm text-center text-gray-700 whitespace-nowrap">
                                     {{ $row['unknown'] ?? '—' }}
+                                </td>
+                                {{-- ⚠ 入居率と空室率は必ず和が 100.0% になる（VacancyRate で裏返しにしている）。
+                                     片方を「営業 ÷ 総数」で独立に出すと 99.9% の行が出る（Bug #46） --}}
+                                <td class="px-4 py-3 lg:px-5 lg:py-3.5 border-b border-gray-200 text-sm text-center font-bold text-gray-900 whitespace-nowrap">
+                                    {{ $row['occupancy_label'] }}
                                 </td>
                                 <td class="px-4 py-3 lg:px-5 lg:py-3.5 border-b border-gray-200 text-sm text-center font-bold text-gray-900 whitespace-nowrap">
                                     {{ $row['rate_label'] }}
@@ -207,7 +216,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="9" class="px-5 py-10 text-center text-sm text-gray-400">
+                                <td colspan="10" class="px-5 py-10 text-center text-sm text-gray-400">
                                     周辺ビルのデータがありません。
                                 </td>
                             </tr>
