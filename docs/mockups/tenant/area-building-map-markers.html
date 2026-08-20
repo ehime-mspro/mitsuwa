@@ -1,0 +1,561 @@
+<meta charset="utf-8">
+<title>周辺ビル調査のピン 3 案</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700;900&family=IBM+Plex+Mono:wght@400;600&display=swap">
+
+<style>
+  /* ── トークン（明） ─────────────────────────────── */
+  :root {
+    --ground:      #f2f3f5;
+    --surface:     #ffffff;
+    --surface-2:   #f7f8fa;
+    --line:        #dfe3e8;
+    --line-strong: #c3cad3;
+    --ink:         #1b1f24;
+    --ink-2:       #414a55;
+    --muted:       #6b7480;
+    --accent:      #3d5a80;   /* ページ側の唯一のアクセント。5 色のピンと競合しない色を選んである */
+    --accent-soft: #e7ecf3;
+    --ok:          #0f7a52;
+    --warn:        #9a5b00;
+    --code-bg:     #f4f6f9;
+    --shadow:      0 1px 2px rgba(20,28,38,.06), 0 8px 24px -12px rgba(20,28,38,.18);
+  }
+  /* OS が暗い & 明示指定が無い／暗い指定 */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:      #14181d;
+      --surface:     #1b2027;
+      --surface-2:   #21272f;
+      --line:        #2e3640;
+      --line-strong: #3d4753;
+      --ink:         #eef1f4;
+      --ink-2:       #c2cad3;
+      --muted:       #8b95a1;
+      --accent:      #8fb0d9;
+      --accent-soft: #24303f;
+      --ok:          #4bbd8c;
+      --warn:        #d99a3d;
+      --code-bg:     #161b21;
+      --shadow:      0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:      #14181d;
+    --surface:     #1b2027;
+    --surface-2:   #21272f;
+    --line:        #2e3640;
+    --line-strong: #3d4753;
+    --ink:         #eef1f4;
+    --ink-2:       #c2cad3;
+    --muted:       #8b95a1;
+    --accent:      #8fb0d9;
+    --accent-soft: #24303f;
+    --ok:          #4bbd8c;
+    --warn:        #d99a3d;
+    --code-bg:     #161b21;
+    --shadow:      0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "Zen Kaku Gothic New", "Hiragino Kaku Gothic ProN", "Yu Gothic", system-ui, sans-serif;
+    font-weight: 400;
+    line-height: 1.75;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 48px 24px 96px; }
+
+  /* ── ヘッダ ─────────────────────────────── */
+  .masthead { display: flex; flex-direction: column; gap: 14px; margin-bottom: 12px; }
+  .eyebrow {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 11px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase;
+    color: var(--accent);
+  }
+  h1 {
+    margin: 0; font-size: clamp(28px, 4vw, 40px); font-weight: 900; line-height: 1.25;
+    letter-spacing: -.01em; text-wrap: balance;
+  }
+  .lede { margin: 0; max-width: 62ch; font-size: 16px; color: var(--ink-2); }
+  .rule { height: 3px; background: var(--accent); width: 56px; border-radius: 2px; margin: 22px 0 40px; }
+
+  h2 {
+    margin: 0 0 6px; font-size: 21px; font-weight: 700; letter-spacing: -.005em;
+    display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; text-wrap: balance;
+  }
+  h2 .tag {
+    font-family: "IBM Plex Mono", monospace; font-size: 11px; font-weight: 600;
+    letter-spacing: .1em; color: var(--accent);
+    background: var(--accent-soft); padding: 3px 9px; border-radius: 4px;
+  }
+  h3 { margin: 0 0 8px; font-size: 14px; font-weight: 700; color: var(--ink); }
+  .section { margin-top: 56px; }
+  .section > p { margin: 0 0 20px; max-width: 68ch; color: var(--ink-2); font-size: 15px; }
+
+  /* ── 地図（テーマに関係なく Google roadmap の実際の配色を保つ） ── */
+  .map {
+    display: block; width: 100%; height: auto;
+    border-radius: 10px; border: 1px solid var(--line-strong);
+    background: #e9eaeb;
+  }
+  .map-note {
+    margin: 8px 0 0; font-size: 12px; color: var(--muted);
+    font-family: "IBM Plex Mono", monospace; letter-spacing: .01em;
+  }
+
+  /* ── カード ─────────────────────────────── */
+  .card {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 12px; padding: 20px; box-shadow: var(--shadow);
+  }
+
+  .density-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+  .density-cell { display: flex; flex-direction: column; gap: 8px; }
+  .density-cell h3 { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .density-cell .verdict { font-size: 12px; color: var(--muted); line-height: 1.6; }
+  .badge-now {
+    font-family: "IBM Plex Mono", monospace; font-size: 10px; font-weight: 600;
+    color: var(--muted); border: 1px solid var(--line-strong);
+    padding: 1px 6px; border-radius: 999px; letter-spacing: .06em;
+  }
+
+  /* ── 案ごとの帯 ─────────────────────────── */
+  .option { margin-top: 44px; }
+  .option-body {
+    display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 24px;
+    align-items: start; margin-top: 16px;
+  }
+  .spec { display: flex; flex-direction: column; gap: 18px; }
+
+  .metrics { display: flex; gap: 22px; flex-wrap: wrap; }
+  .metric { display: flex; flex-direction: column; gap: 2px; }
+  .metric dt {
+    font-family: "IBM Plex Mono", monospace; font-size: 10px; font-weight: 600;
+    letter-spacing: .11em; text-transform: uppercase; color: var(--muted);
+  }
+  .metric dd {
+    margin: 0; font-family: "IBM Plex Mono", monospace; font-size: 17px; font-weight: 600;
+    font-variant-numeric: tabular-nums; color: var(--ink);
+  }
+
+  pre {
+    margin: 0; background: var(--code-bg); border: 1px solid var(--line);
+    border-radius: 8px; padding: 13px 15px; overflow-x: auto;
+    font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 12.5px; line-height: 1.7;
+    color: var(--ink-2);
+  }
+  pre .add { color: var(--ok); font-weight: 600; }
+  pre .del { color: #c2410c; text-decoration: line-through; opacity: .75; }
+  :root[data-theme="dark"] pre .del { color: #f4a582; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) pre .del { color: #f4a582; } }
+
+  ul.points { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 7px; }
+  ul.points li { position: relative; padding-left: 22px; font-size: 14px; color: var(--ink-2); line-height: 1.65; }
+  ul.points li::before {
+    position: absolute; left: 0; top: 0; font-family: "IBM Plex Mono", monospace;
+    font-size: 13px; font-weight: 600;
+  }
+  ul.points li.pro::before  { content: "+"; color: var(--ok); }
+  ul.points li.con::before  { content: "−"; color: var(--warn); }
+  ul.points li strong { color: var(--ink); font-weight: 700; }
+
+  /* ── 凡例（5 段の見え方） ─────────────────── */
+  .levels { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+  .level-chip {
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    min-width: 78px; padding: 10px 6px 8px;
+    background: #e9eaeb; border: 1px solid var(--line-strong); border-radius: 8px;
+  }
+  .level-chip .cap { font-size: 10.5px; color: #3c4043; letter-spacing: .01em; white-space: nowrap; }
+  .level-chip .slot { display: flex; align-items: flex-end; justify-content: center; height: 40px; }
+
+  /* ── 比較表 ─────────────────────────────── */
+  .table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; min-width: 720px; font-size: 14px; }
+  th, td { text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  thead th {
+    background: var(--surface-2); font-size: 11px; font-weight: 700; letter-spacing: .09em;
+    text-transform: uppercase; color: var(--muted); white-space: nowrap;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody th { font-weight: 700; color: var(--ink); white-space: nowrap; }
+  td.num { font-family: "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; }
+  .pick { color: var(--ok); font-weight: 700; }
+  .nope { color: var(--muted); }
+
+  .callout {
+    margin-top: 20px; padding: 16px 18px; border-radius: 10px;
+    background: var(--accent-soft); border: 1px solid var(--line);
+    font-size: 14px; color: var(--ink-2); line-height: 1.7;
+  }
+  .callout strong { color: var(--ink); }
+
+  @media (max-width: 900px) {
+    .option-body { grid-template-columns: minmax(0, 1fr); }
+    .density-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 560px) {
+    .density-grid { grid-template-columns: minmax(0, 1fr); }
+    .wrap { padding: 32px 16px 64px; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="eyebrow">周辺ビル調査 — 地図タブ</div>
+    <h1>ピンが小さくて見つけにくい</h1>
+    <p class="lede">
+      いまのピンは直径 14px の丸（白フチ 2px）。松山中心部に 187 棟が集まるので、
+      <strong>密集したときに読めるか</strong>が決め手になります。3 案とも同じ 5 色
+      （<code style="font-family:'IBM Plex Mono',monospace;font-size:13px">VacancyRate::LEVELS</code>）を使い、形と大きさだけを変えます。
+    </p>
+  </header>
+  <div class="rule"></div>
+
+  <!-- ── 密集比較 ── -->
+  <section class="section">
+    <h2>まず密集で比べる<span class="tag">決め手</span></h2>
+    <p>
+      182 棟の登録が終わった後の一番狭い範囲を想定して、同じ 40 棟を 4 通りで描いています。
+      現状は小さくて背景に沈み、大きくすると読めるかわりに重なります。ここが唯一のトレードオフです。
+    </p>
+    <div class="card">
+      <div class="density-grid" id="density"></div>
+    </div>
+  </section>
+
+  <!-- ── 各案 ── -->
+  <section class="section">
+    <h2>3 案</h2>
+    <p>
+      地図はいま本番に座標が入っている 5 棟を実際の緯度経度どおりに配置しています。
+      <strong>ベルビー一番町ビルと京ビル ハートⅠは約 10m 差</strong>で、実データですでにほぼ重なります。
+    </p>
+    <div id="options"></div>
+  </section>
+
+  <!-- ── 5 段の見え方 ── -->
+  <section class="section">
+    <h2>5 段すべての見え方</h2>
+    <p>色は 3 案とも共通で、<code style="font-family:'IBM Plex Mono',monospace;font-size:13px">VacancyRate::LEVELS</code> の 1 箇所から来ます（閾値と色を二重に持たない）。</p>
+    <div class="card" id="legend-sets" style="display:flex; flex-direction:column; gap:22px;"></div>
+  </section>
+
+  <!-- ── 比較表 ── -->
+  <section class="section">
+    <h2>判断材料</h2>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>観点</th><th>現状</th><th>案 A 大きい丸</th><th>案 B ピン</th><th>案 C 空室率つき</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><th>見かけの大きさ</th>
+            <td class="num">18px</td><td class="num">25px</td><td class="num">24 × 34px</td><td class="num">33px</td></tr>
+          <tr><th>密集時の重なり</th>
+            <td class="nope">重ならないが沈む</td><td class="pick">実用範囲</td><td>下の棟が隠れる</td><td>かなり重なる</td></tr>
+          <tr><th>位置の正確さ</th>
+            <td>中心が実位置</td><td>中心が実位置</td><td class="pick">先端が実位置で明確</td><td>中心が実位置</td></tr>
+          <tr><th>色以外の手がかり</th>
+            <td class="nope">なし</td><td class="nope">なし</td><td class="nope">なし</td><td class="pick">数字（色覚特性に強い）</td></tr>
+          <tr><th>ズームアウト耐性</th>
+            <td>△</td><td class="pick">◎</td><td>◎</td><td class="nope">×（数字が潰れる）</td></tr>
+          <tr><th>実装の変更量</th>
+            <td>—</td><td class="pick">2 行</td><td>path 差し替え</td><td>path + label + 未調査の分岐</td></tr>
+          <tr><th>登録作業のしやすさ</th>
+            <td>—</td><td>済んだ棟が見やすい</td><td class="pick">刺した感じが出る</td><td>大きすぎて次の位置が隠れる</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout">
+      <strong>私の推しは案 A、次点で案 B です。</strong>
+      いまやりたいのは 182 棟の位置登録で、そのあいだは「どこが未登録か」を見つけるのが主目的です。
+      案 C の数字は魅力的ですが、登録作業中は 33px が次に置きたい場所を覆ってしまいます。
+      数字を出すなら<strong>登録が一段落してから、拡大時だけ出す</strong>（ズームで出し分ける）のが素直です。
+      ただしこれは私の見立てなので、<strong>実際に見て決めてください</strong>。
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>決まったら</h2>
+    <p style="margin-bottom:0">
+      どれか選んでいただければ実装します。触るのは
+      <code style="font-family:'IBM Plex Mono',monospace;font-size:13px">_map.blade.php</code> の
+      <code style="font-family:'IBM Plex Mono',monospace;font-size:13px">areaMapMarkerIcon()</code> だけで、
+      色・閾値・保存の仕組みは変わりません。案 B と C は登録編集フォーム側の地図（`_form.blade.php`）も
+      揃えるかどうかを併せて決めさせてください。
+    </p>
+  </section>
+
+</div>
+
+<script>
+(function () {
+  var LEVELS = {
+    none:    { color: '#059669', label: '満室（0%）' },
+    low:     { color: '#eab308', label: '1〜24%' },
+    mid:     { color: '#f97316', label: '25〜49%' },
+    high:    { color: '#dc2626', label: '50% 以上' },
+    unknown: { color: '#9ca3af', label: '調査なし' }
+  };
+  var SVGNS = 'http://www.w3.org/2000/svg';
+  function el(name, attrs, parent) {
+    var n = document.createElementNS(SVGNS, name);
+    for (var k in attrs) { n.setAttribute(k, attrs[k]); }
+    if (parent) { parent.appendChild(n); }
+    return n;
+  }
+
+  /* ── マーカー描画。4 通りとも実寸で描く ── */
+  function drawMarker(parent, variant, level, x, y, rateText) {
+    var c = LEVELS[level] || LEVELS.unknown;
+    var g = el('g', { transform: 'translate(' + x + ',' + y + ')' }, parent);
+
+    if (variant === 'now') {
+      el('circle', { r: 7, fill: c.color, 'fill-opacity': '0.95', stroke: '#fff', 'stroke-width': 2 }, g);
+    } else if (variant === 'a') {
+      el('circle', { r: 11, fill: c.color, stroke: '#fff', 'stroke-width': 3 }, g);
+      el('circle', { r: 12.5, fill: 'none', stroke: 'rgba(0,0,0,.22)', 'stroke-width': 1 }, g);
+    } else if (variant === 'b') {
+      // しずく型。先端 (0,0) が実位置
+      el('path', {
+        d: 'M0 0 C -3.2 -9 -11 -13.5 -11 -21.5 A 11 11 0 1 1 11 -21.5 C 11 -13.5 3.2 -9 0 0 Z',
+        fill: c.color, stroke: '#fff', 'stroke-width': 2, 'stroke-linejoin': 'round'
+      }, g);
+      el('circle', { cy: -21.5, r: 4, fill: '#fff', 'fill-opacity': '.92' }, g);
+    } else if (variant === 'c') {
+      el('circle', { r: 15, fill: c.color, stroke: '#fff', 'stroke-width': 2.5 }, g);
+      el('circle', { r: 16.25, fill: 'none', stroke: 'rgba(0,0,0,.2)', 'stroke-width': 1 }, g);
+      var t = el('text', {
+        y: 4.5, 'text-anchor': 'middle', fill: '#fff',
+        'font-family': 'IBM Plex Mono, monospace', 'font-size': 11, 'font-weight': 600
+      }, g);
+      t.textContent = rateText || '—';
+    }
+    return g;
+  }
+
+  /* ── 地図の下地。Google roadmap の実際の配色 ── */
+  function drawBase(svg, w, h, seedOffset) {
+    el('rect', { x: 0, y: 0, width: w, height: h, fill: '#e9eaeb' }, svg);
+    // 公園
+    el('rect', { x: w * 0.04, y: h * 0.06, width: w * 0.20, height: h * 0.26, rx: 6, fill: '#c9e3c4' }, svg);
+    // 川（堀）
+    el('path', {
+      d: 'M0 ' + (h * 0.86) + ' Q ' + (w * 0.3) + ' ' + (h * 0.74) + ' ' + (w * 0.58) + ' ' + (h * 0.9) +
+         ' T ' + w + ' ' + (h * 0.82),
+      fill: 'none', stroke: '#a5cdf2', 'stroke-width': Math.max(7, h * 0.045)
+    }, svg);
+    // 街路グリッド
+    var step = Math.max(46, Math.round(w / 9));
+    for (var x = step - (seedOffset || 0) % step; x < w; x += step) {
+      el('line', { x1: x, y1: 0, x2: x, y2: h, stroke: '#ffffff', 'stroke-width': 5 }, svg);
+    }
+    for (var y = Math.round(step * 0.8); y < h; y += Math.round(step * 0.8)) {
+      el('line', { x1: 0, y1: y, x2: w, y2: y, stroke: '#ffffff', 'stroke-width': 4 }, svg);
+    }
+    // 幹線
+    el('line', { x1: 0, y1: h * 0.42, x2: w, y2: h * 0.42, stroke: '#fdf3d2', 'stroke-width': 11 }, svg);
+    el('line', { x1: 0, y1: h * 0.42, x2: w, y2: h * 0.42, stroke: '#f6dfa0', 'stroke-width': 11, 'stroke-opacity': .5 }, svg);
+    el('line', { x1: w * 0.63, y1: 0, x2: w * 0.63, y2: h, stroke: '#fdf3d2', 'stroke-width': 10 }, svg);
+  }
+
+  function makeSvg(w, h) {
+    var s = document.createElementNS(SVGNS, 'svg');
+    s.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
+    s.setAttribute('class', 'map');
+    s.setAttribute('role', 'img');
+    return s;
+  }
+
+  /* ── 密集シナリオ（40 棟。位置は固定・再現可能） ── */
+  var DENSE = (function () {
+    var out = [], lv = ['high', 'high', 'mid', 'none', 'low', 'high', 'mid', 'none', 'unknown', 'mid'];
+    var seed = 7;
+    function rnd() { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; }
+    for (var i = 0; i < 40; i++) {
+      out.push({
+        x: 34 + rnd() * 292,
+        y: 30 + rnd() * 176,
+        level: lv[i % lv.length],
+        rate: ['72%', '55%', '43%', '0%', '18%', '61%', '31%', '0%', '—', '38%'][i % 10]
+      });
+    }
+    return out;
+  })();
+
+  var VARIANTS = [
+    { key: 'now', name: '現状', now: true,  verdict: '14px。背景の白い街路に紛れて、どこに何があるか目で追えない。' },
+    { key: 'a',   name: '案 A 大きい丸',     verdict: '22px＋白フチ 3px。重なりは増えるが、拾える。' },
+    { key: 'b',   name: '案 B ピン',          verdict: '縦に伸びるぶん目立つ。下の棟が隠れやすい。' },
+    { key: 'c',   name: '案 C 空室率つき',    verdict: '数字は読めるが、この密度だと半分が重なる。' }
+  ];
+
+  var dense = document.getElementById('density');
+  VARIANTS.forEach(function (v) {
+    var cell = document.createElement('div');
+    cell.className = 'density-cell';
+    var h3 = document.createElement('h3');
+    h3.textContent = v.name;
+    if (v.now) { var b = document.createElement('span'); b.className = 'badge-now'; b.textContent = 'いま'; h3.appendChild(b); }
+    cell.appendChild(h3);
+
+    var svg = makeSvg(360, 236);
+    drawBase(svg, 360, 236, 12);
+    DENSE.forEach(function (p) { drawMarker(svg, v.key, p.level, p.x, p.y, p.rate); });
+    cell.appendChild(svg);
+
+    var vd = document.createElement('p');
+    vd.className = 'verdict';
+    vd.textContent = v.verdict;
+    cell.appendChild(vd);
+    dense.appendChild(cell);
+  });
+
+  /* ── 本番の実データ 5 棟（緯度経度そのまま） ── */
+  var REAL = [
+    { name: '須山ビル',           x: 60,  y: 60,  level: 'none', rate: '0%' },
+    { name: '夢想案Buill',        x: 331, y: 92,  level: 'none', rate: '0%' },
+    { name: '京ビル ハートⅠ',     x: 432, y: 165, level: 'high', rate: '67%' },
+    { name: 'ベルビー一番町ビル', x: 460, y: 163, level: 'high', rate: '80%' },
+    { name: '魚政ビル',           x: 163, y: 240, level: 'mid',  rate: '43%' }
+  ];
+
+  var OPTIONS = [
+    {
+      key: 'a', tag: '案 A', title: '丸を大きくする',
+      metrics: [['直径', '22px'], ['白フチ', '3px'], ['変更量', '2 行']],
+      code: '<span class="del">scale: 7,</span>\n<span class="add">scale: 11,</span>\n<span class="del">strokeWeight: 2</span>\n<span class="add">strokeWeight: 3</span>',
+      pros: [
+        '<strong>いまの意匠のまま</strong>。凡例の丸とも形が一致していて説明が要らない。',
+        '3 案で<strong>いちばん重なりにくい</strong>。182 棟を入れたあとも破綻しにくい。',
+        'ズームアウトしても丸のまま縮むので、広域で分布を見るのに向く。'
+      ],
+      cons: [
+        '情報量は増えない。空室率は吹き出しを開かないと分からない。',
+        '色だけが手がかりなので、色の見分けがつきにくい人には現状と同じ。'
+      ]
+    },
+    {
+      key: 'b', tag: '案 B', title: 'ピン（しずく型）にする',
+      metrics: [['大きさ', '24 × 34px'], ['基準点', '先端'], ['変更量', 'path 差し替え']],
+      code: 'path: \'M0 0 C -3.2 -9 -11 -13.5 -11 -21.5\n       A 11 11 0 1 1 11 -21.5\n       C 11 -13.5 3.2 -9 0 0 Z\',\n<span class="add">anchor: new google.maps.Point(0, 0),</span>\nscale: 1,',
+      pros: [
+        '<strong>先端が実際の位置</strong>なので、どこを指しているか誤解が無い（丸は中心が位置）。',
+        '地図の慣習どおりの形。初めて見た人でも「ピンを置く画面」だと分かる。',
+        '縦に伸びるぶん、丸より少ない面積で目立つ。'
+      ],
+      cons: [
+        '<strong>上に伸びるので、すぐ北側の棟を隠す</strong>。密集地ではこれが効く。',
+        '凡例の丸と形が変わるので、凡例側も合わせる必要がある。'
+      ]
+    },
+    {
+      key: 'c', tag: '案 C', title: '空室率を数字で載せる',
+      metrics: [['直径', '33px'], ['文字', '11px / 600'], ['変更量', 'path + label']],
+      code: 'scale: 15,\nstrokeWeight: 2.5\n<span class="add">// marker 側</span>\n<span class="add">label: { text: pin.rateLabel, color: \'#fff\',</span>\n<span class="add">        fontSize: \'11px\', fontWeight: \'600\' }</span>',
+      pros: [
+        '<strong>色と数字の二重符号化</strong>。色の見分けがつきにくい人にも、白黒印刷でも伝わる。',
+        '吹き出しを開かずに地図だけで空室率が読める。',
+        '「調査なし」は <code>—</code> と出るので、未調査が一目で分かる。'
+      ],
+      cons: [
+        '<strong>3 案で最大。この密度だと半分が重なる</strong>。',
+        'ズームアウトすると数字が潰れて、ただの大きい丸になる。',
+        '位置登録の作業中は、次に置きたい場所を覆ってしまう。'
+      ]
+    }
+  ];
+
+  var host = document.getElementById('options');
+  OPTIONS.forEach(function (o) {
+    var sec = document.createElement('div');
+    sec.className = 'option';
+
+    var h2 = document.createElement('h2');
+    var tag = document.createElement('span'); tag.className = 'tag'; tag.textContent = o.tag;
+    h2.appendChild(document.createTextNode(o.title));
+    h2.appendChild(tag);
+    sec.appendChild(h2);
+
+    var body = document.createElement('div');
+    body.className = 'option-body';
+
+    // 左: 実データの地図
+    var left = document.createElement('div');
+    var svg = makeSvg(520, 300);
+    drawBase(svg, 520, 300, 0);
+    REAL.forEach(function (p) { drawMarker(svg, o.key, p.level, p.x, p.y, p.rate); });
+    left.appendChild(svg);
+    var note = document.createElement('p');
+    note.className = 'map-note';
+    note.textContent = '本番の 5 棟を実際の緯度経度で配置（zoom 18 相当）';
+    left.appendChild(note);
+    body.appendChild(left);
+
+    // 右: 仕様
+    var right = document.createElement('div');
+    right.className = 'spec';
+
+    var dl = document.createElement('dl');
+    dl.className = 'metrics';
+    o.metrics.forEach(function (m) {
+      var d = document.createElement('div'); d.className = 'metric';
+      var dt = document.createElement('dt'); dt.textContent = m[0];
+      var dd = document.createElement('dd'); dd.textContent = m[1];
+      d.appendChild(dt); d.appendChild(dd); dl.appendChild(d);
+    });
+    right.appendChild(dl);
+
+    var pre = document.createElement('pre');
+    pre.innerHTML = o.code;
+    right.appendChild(pre);
+
+    var ul = document.createElement('ul');
+    ul.className = 'points';
+    o.pros.forEach(function (t) { var li = document.createElement('li'); li.className = 'pro'; li.innerHTML = t; ul.appendChild(li); });
+    o.cons.forEach(function (t) { var li = document.createElement('li'); li.className = 'con'; li.innerHTML = t; ul.appendChild(li); });
+    right.appendChild(ul);
+
+    body.appendChild(right);
+    sec.appendChild(body);
+    host.appendChild(sec);
+  });
+
+  /* ── 凡例セット ── */
+  var legendHost = document.getElementById('legend-sets');
+  [['now', '現状（14px）'], ['a', '案 A（22px）'], ['b', '案 B（ピン）'], ['c', '案 C（33px＋数字）']]
+    .forEach(function (pair) {
+      var block = document.createElement('div');
+      var h3 = document.createElement('h3'); h3.textContent = pair[1]; block.appendChild(h3);
+      var row = document.createElement('div'); row.className = 'levels';
+      var rates = { none: '0%', low: '18%', mid: '43%', high: '72%', unknown: '—' };
+      ['none', 'low', 'mid', 'high', 'unknown'].forEach(function (lv) {
+        var chip = document.createElement('div'); chip.className = 'level-chip';
+        var slot = document.createElement('div'); slot.className = 'slot';
+        var s = makeSvg(46, 40);
+        s.removeAttribute('class');
+        s.setAttribute('width', 46); s.setAttribute('height', 40);
+        s.style.background = 'transparent'; s.style.border = 'none';
+        drawMarker(s, pair[0], lv, 23, pair[0] === 'b' ? 38 : 20, rates[lv]);
+        slot.appendChild(s);
+        var cap = document.createElement('div'); cap.className = 'cap'; cap.textContent = LEVELS[lv].label;
+        chip.appendChild(slot); chip.appendChild(cap); row.appendChild(chip);
+      });
+      block.appendChild(row);
+      legendHost.appendChild(block);
+    });
+})();
+</script>
