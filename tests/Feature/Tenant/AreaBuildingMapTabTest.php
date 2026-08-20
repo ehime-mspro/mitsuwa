@@ -38,10 +38,10 @@ class AreaBuildingMapTabTest extends AreaBuildingTestCase
     public function test_both_tabs_are_linked_and_keep_the_filters(): void
     {
         $html = $this->actingAs($this->staff())
-            ->get('/tenant/area-buildings?vacancy=over25&keyword=' . urlencode('番町'))
+            ->get('/tenant/area-buildings?occupancy=under75&keyword=' . urlencode('番町'))
             ->getContent();
 
-        $this->assertStringContainsString('vacancy=over25', $html);
+        $this->assertStringContainsString('occupancy=under75', $html);
         $this->assertStringContainsString('view=map', $html, '地図タブへのリンクが無い');
     }
 

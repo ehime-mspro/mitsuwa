@@ -212,7 +212,7 @@ class AreaBuildingGeocodeTest extends AreaBuildingTestCase
     public function test_the_redirect_keeps_the_current_filter_and_page(): void
     {
         $building = $this->makeBuilding('未取得ビル', ['address' => '松山市1-1']);
-        $query    = ['keyword' => '未取得', 'vacancy' => 'any', 'page' => '2'];
+        $query    = ['keyword' => '未取得', 'occupancy' => 'any', 'page' => '2'];
 
         $this->actingAs($this->manager())
             ->post(self::GEOCODE_URL . '?' . http_build_query($query), [
