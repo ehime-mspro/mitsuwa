@@ -82,14 +82,16 @@ class AreaBuildingController extends Controller
                 'level'     => $row['operating'] === null
                     ? VacancyRate::LEVEL_UNKNOWN
                     : VacancyRate::level($row['operating'], $row['vacant'], $row['unknown']),
+                // 吹き出しには入居率と空室率を並べる。⚠ 和は必ず 100.0%（Bug #46）
+                'occupancyLabel' => $row['occupancy_label'],
                 'rateLabel' => $row['rate_label'],
-                // 拡大したときに丸の中へ出す短いラベル（切り捨ての整数）。
-                // ⚠ 吹き出しの rateLabel（1/10% 刻み）を流用しない —— 33px の丸に
-                //   「42.8%」は収まらない。分岐は level と同じで、operating が null
+                // 拡大したときに丸の中へ出す短いラベル。⚠ **入居率**の切り捨て整数。
+                // ⚠ 吹き出しの occupancyLabel（1/10% 刻み）を流用しない —— 33px の丸に
+                //   「57.2%」は収まらない。分岐は level と同じで、operating が null
                 //   なら調査回がまだ無い棟。
                 'pinLabel'  => $row['operating'] === null
                     ? '—'
-                    : VacancyRate::compactLabel($row['operating'], $row['vacant'], $row['unknown']),
+                    : VacancyRate::occupancyCompactLabel($row['operating'], $row['vacant'], $row['unknown']),
                 'floors'    => $row['building']->totalFloorsLabel(),
                 'operating' => $row['operating'],
                 'vacant'    => $row['vacant'],

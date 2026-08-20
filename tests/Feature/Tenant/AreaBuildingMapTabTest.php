@@ -289,6 +289,7 @@ process.stdout.write(JSON.stringify({
         operating: 3,
         vacant: 1,
         unknown: 0,
+        occupancyLabel: '75.0%',
         rateLabel: '25.0%',
         month: '2026年8月',
         url: hostileUrl
@@ -716,6 +717,39 @@ JS);
     }
 
     /**
+     * 保存で足した仮のピンも、吹き出しの項目が**欠けない**こと。
+     *
+     * ⚠ 調査回がまだ無いので入居率も空室率も「—」。片方だけ足し忘れると
+     *   `areaMapEscape(undefined)` が空文字を返すので、**空の <strong></strong> が
+     *   出るだけで例外も警告も出ない**（Bug #28 / #43 と同型の無音）。
+     * ⚠ 書き写さず、登録簿のピンを**本物の吹き出し生成**へ通した結果で見る（Bug #47）。
+     */
+    public function test_a_pin_saved_in_locate_mode_still_fills_in_both_rates(): void
+    {
+        $this->makeBuilding('棟A');
+
+        $response = $this->actingAs($this->manager())->get('/tenant/area-buildings?view=map');
+
+        $run = $this->runLocateScript($response->getContent(), [
+            ['action' => 'toggle'],
+            ['action' => 'mapclick', 'lat' => 33.81, 'lng' => 132.71],
+        ], [
+            ['ok' => true, 'body' => ['id' => 1, 'latitude' => 33.81, 'longitude' => 132.71]],
+        ]);
+
+        $pins = $run['snapshots'][1]['pinInfo'];
+        $this->assertCount(1, $pins, '保存したピンが登録簿に入っていない');
+
+        preg_match_all('/(入居率|空室率): <strong>([^<]*)<\/strong>/u', $pins[0]['html'], $m, PREG_SET_ORDER);
+
+        $this->assertSame(
+            [['入居率', '—'], ['空室率', '—']],
+            array_map(fn (array $hit) => [$hit[1], $hit[2]], $m),
+            '保存したピンの吹き出しに入居率・空室率が「—」で揃っていない'
+        );
+    }
+
+    /**
      * 【最重要】**登録モードでない地図クリックは何も保存しない。**
      *
      * ⚠ click リスナーは `$canLocate` な全員に**無条件で**登録され、`areaLocateIndex` の
@@ -848,31 +882,60 @@ JS);
     }
 
     // ============================================================
-    // Task 14 — 引いたらしずく型のピン / 寄せたら空室率つきの丸
+    // Task 14 — 引いたらしずく型のピン / 寄せたら入居率つきの丸
     // ============================================================
 
     /**
      * 丸の中に出す短いラベルがピンデータに載っていること（コントローラ側）。
      *
-     * ⚠ 吹き出しの `rateLabel` と**対で**見る。片方だけ見ると、丸へ 1/10% 刻みの
-     *   `rateLabel` をそのまま流用する変異（33px に「42.8%」で溢れる）が緑のまま通る。
+     * ⚠ **丸に載るのは入居率**（利用者の依頼）。吹き出し用の 1/10% 刻みと**対で**見る。
+     *   片方だけ見ると、丸へ `occupancyLabel` をそのまま流用する変異（33px に
+     *   「57.2%」で溢れる）や、丸を空室率へ戻す変異が緑のまま通る。
+     * ⚠ 入居率と空室率の和が 100.0% になっていることもここで見る（Bug #46）。
      * ⚠ 調査回が無い棟の分岐も見る（`level` と同じ `operating === null` の分岐）。
      */
     public function test_every_pin_carries_a_compact_label_for_the_zoomed_in_view(): void
     {
         $surveyed = $this->makeBuilding('数字が出る棟', ['latitude' => 33.84, 'longitude' => 132.76]);
-        $this->makeSurvey($surveyed, '2026-07-01', 4, 3, 0);   // 3 ÷ 7 = 42.857…%
+        $this->makeSurvey($surveyed, '2026-07-01', 4, 3, 0);   // 空室 3 ÷ 7 = 42.857…%
         $this->makeBuilding('調査なしの棟', ['latitude' => 33.85, 'longitude' => 132.77]);
 
         $pins = collect(
             $this->actingAs($this->staff())->get('/tenant/area-buildings?view=map')->viewData('mapPins')
         )->keyBy('name');
 
-        $this->assertSame('42%', $pins['数字が出る棟']['pinLabel'], '丸のラベルが切り捨ての整数になっていない');
-        $this->assertSame('42.8%', $pins['数字が出る棟']['rateLabel'], '吹き出しまで整数に丸めている');
+        $this->assertSame('57%', $pins['数字が出る棟']['pinLabel'], '丸のラベルが入居率の切り捨て整数になっていない');
+        $this->assertSame('57.2%', $pins['数字が出る棟']['occupancyLabel'], '吹き出し用の入居率が 1/10% 刻みでない');
+        $this->assertSame('42.8%', $pins['数字が出る棟']['rateLabel'], '吹き出し用の空室率が変わっている');
 
         $this->assertSame('—', $pins['調査なしの棟']['pinLabel'], '調査回が無い棟に数字が出ている');
+        $this->assertSame('—', $pins['調査なしの棟']['occupancyLabel'], '調査回が無い棟に入居率が出ている');
+        $this->assertSame('—', $pins['調査なしの棟']['rateLabel'], '調査回が無い棟に空室率が出ている');
         $this->assertSame(\App\Support\VacancyRate::LEVEL_UNKNOWN, $pins['調査なしの棟']['level']);
+    }
+
+    /**
+     * 吹き出しに**入居率が空室率の前**に出ること。
+     *
+     * ⚠ **これは必須。** 丸が「57」（入居率）なのに吹き出しが「空室率: 42.8%」だけだと、
+     *   利用者が地図の数字と吹き出しを突き合わせられない。
+     * ⚠ 書き写さず**画面が返したスクリプトを実駆動**した出力で見る（Bug #47）。
+     */
+    public function test_the_info_window_shows_occupancy_before_vacancy(): void
+    {
+        $this->makeBuilding('棟', ['latitude' => 33.84, 'longitude' => 132.76]);
+
+        $info = $this->runMapScript(
+            $this->actingAs($this->staff())->get('/tenant/area-buildings?view=map')->getContent()
+        )['info'];
+
+        preg_match_all('/(入居率|空室率): <strong>([^<]*)<\/strong>/u', $info, $m, PREG_SET_ORDER);
+
+        $this->assertSame(
+            [['入居率', '75.0%'], ['空室率', '25.0%']],
+            array_map(fn (array $hit) => [$hit[1], $hit[2]], $m),
+            '吹き出しが「入居率 → 空室率」の順で出ていない'
+        );
     }
 
     /**
@@ -918,7 +981,7 @@ JS);
     }
 
     /**
-     * 寄せたとき（zoom >= AREA_MAP_LABEL_ZOOM）は**空室率の数字つきの丸**。
+     * 寄せたとき（zoom >= AREA_MAP_LABEL_ZOOM）は**入居率の数字つきの丸**。
      *
      * ⚠ 丸は `anchor` の既定が中心なので**指定しない**（ピンとは基準点が違う）。
      *   ここで anchor を足すと丸が半径ぶん北へずれる。
@@ -930,11 +993,12 @@ JS);
         $run    = $this->runLocateScript($this->mapHtml(), [['action' => 'zoom', 'zoom' => 18]], []);
         $styles = $this->markerStylesByTitle($run['snapshots'][0]);
 
-        // 空室率の数字（＝中身）と、色の帯（＝見た目）を対で持つ
+        // 入居率の数字（＝中身）と、色の帯（＝見た目）を対で持つ。
+        // ⚠ 色は空室率の帯のまま。満室が 0% → 100% に変わるので、丸を空室率へ戻す変異はここで赤になる
         $expected = [
-            '満室の棟'     => ['0%',  \App\Support\VacancyRate::LEVELS['none']['color']],
-            '空きの棟'     => ['50%', \App\Support\VacancyRate::LEVELS['high']['color']],
-            '調査なしの棟' => ['—',   \App\Support\VacancyRate::LEVELS['unknown']['color']],
+            '満室の棟'     => ['100%', \App\Support\VacancyRate::LEVELS['none']['color']],
+            '空きの棟'     => ['50%',  \App\Support\VacancyRate::LEVELS['high']['color']],
+            '調査なしの棟' => ['—',    \App\Support\VacancyRate::LEVELS['unknown']['color']],
         ];
 
         foreach ($expected as $title => [$text, $color]) {
@@ -950,7 +1014,7 @@ JS);
             // ⚠ ラベルは「中身」と「読める見た目」を**別々に**アサートする。
             //   1 本にまとめると、色が黒に潰れたのか数字が違うのかが文言から分からない
             $this->assertSame($text, $style['label']['text'] ?? null,
-                $title . ' の丸に空室率が出ていない');
+                $title . ' の丸に入居率が出ていない');
             $this->assertLabelIsReadable($style['label'], $title);
         }
     }
@@ -1467,6 +1531,11 @@ function snapshot() {
         //    icon.anchor は偽の Point なので {x, y} として JSON に出る
         markerStyles:  allMarkers.map(function (m) {
             return { title: m.title, icon: m.icon, label: m.label };
+        }),
+        // ⚠ 登録簿のピンを**本物の吹き出し生成**へ通した結果（保存で足したピンも含む）。
+        //    保存直後のピンに欠けている項目があれば、ここに空の値として現れる
+        pinInfo: Object.keys(context.areaMapPinData).map(function (id) {
+            return { name: context.areaMapPinData[id].name, html: context.areaMapInfoHtml(context.areaMapPinData[id]) };
         })
     };
 }

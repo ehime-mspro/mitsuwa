@@ -97,7 +97,7 @@ var areaMapInstance = null;
 var areaMapInfoWindow = null;
 var areaMapMarkers = {};
 
-/* 空室率の数字つきの丸へ切り替えるズーム。ここより引いていればしずく型のピン。
+/* 入居率の数字つきの丸へ切り替えるズーム。ここより引いていればしずく型のピン。
    松山（緯度 33.84）では 1px あたり 156543.03392 x cos(33.84°) / 2^zoom
    = 約 130,043 / 2^zoom メートル。zoom 18 は 0.50m/px なので、30m 離れた棟が
    60px 離れる = 直径 33px の丸どうしが重ならない下限になる。
@@ -165,7 +165,7 @@ function areaMapPinIcon(color) {
 }
 
 /**
- * 寄せたとき — 空室率の数字を載せる丸（直径 33px）。
+ * 寄せたとき — 入居率の数字を載せる丸（直径 33px）。
  *
  * ⚠ **anchor を書かない。** 丸は既定で中心が実位置なので、足すと半径ぶん北へずれる
  *   （しずく型とは基準点が違う）。
@@ -236,6 +236,7 @@ function areaMapInfoHtml(pin) {
         + '<div>営業 ' + areaMapEscape(pin.operating === null ? '—' : pin.operating)
         + ' / 空き ' + areaMapEscape(pin.vacant === null ? '—' : pin.vacant)
         + ' / 不明 ' + areaMapEscape(pin.unknown === null ? '—' : pin.unknown) + '</div>'
+        + '<div>入居率: <strong>' + areaMapEscape(pin.occupancyLabel) + '</strong></div>'
         + '<div>空室率: <strong>' + areaMapEscape(pin.rateLabel) + '</strong></div>'
         + '<div style="color:#6b7280;">最終調査: ' + areaMapEscape(pin.month) + '</div>'
         + '<a href="' + areaMapEscape(pin.url) + '" style="color:#059669; font-weight:600;">詳細を開く</a>'
@@ -477,7 +478,7 @@ function saveCoordinate(lat, lng) {
         // 置いた位置をその場でピンにする。調査回はまだ無いので「調査なし」の見た目になる
         addAreaMapMarker({
             id: data.id, name: target.name, lat: data.latitude, lng: data.longitude,
-            level: 'unknown', rateLabel: '—', pinLabel: '—', floors: '—',
+            level: 'unknown', occupancyLabel: '—', rateLabel: '—', pinLabel: '—', floors: '—',
             operating: null, vacant: null, unknown: null, month: '—',
             url: AREA_MAP_SHOW_URL.replace('__ID__', data.id)
         });
