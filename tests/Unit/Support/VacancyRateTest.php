@@ -117,6 +117,102 @@ class VacancyRateTest extends TestCase
         }
     }
 
+    /**
+     * ピンに載せる短いラベル。**切り捨ての整数**（42.8% → '42%'）。
+     *
+     * ⚠ 吹き出しは従来どおり 1/10% 刻み（`label()`）。短いのは地図の丸の中だけ。
+     */
+    public function test_compact_label_truncates_to_a_whole_percent(): void
+    {
+        $cases = [
+            ['区画 0 は —',            0,   0,   0, '—'],
+            ['満室は 0%',              3,   0,   0, '0%'],
+            ['24.9% は 24%',           301, 100, 0, '24%'],
+            ['ちょうど 25.0% は 25%',  3,   1,   0, '25%'],
+            ['42.8% は 42%',           4,   3,   0, '42%'],
+            ['49.9% は 49%',           501, 500, 0, '49%'],
+            ['ちょうど 50.0% は 50%',  1,   1,   0, '50%'],
+            ['100% は 100%',           0,   5,   0, '100%'],
+            ['不明も空きとして数える', 1,   0,   1, '50%'],
+        ];
+
+        foreach ($cases as [$label, $operating, $vacant, $unknown, $expected]) {
+            $this->assertSame(
+                $expected,
+                VacancyRate::compactLabel($operating, $vacant, $unknown),
+                $label . '（営業 ' . $operating . ' / 空き ' . $vacant . ' / 不明 ' . $unknown . '）'
+            );
+        }
+    }
+
+    /**
+     * **数字と色が矛盾しない。** 丸に出る整数が `level()` の帯からはみ出さないこと。
+     *
+     * ⚠ ここが切り捨てを選んだ理由そのもの。四捨五入だと 49.6% が「50%」と出るのに
+     *   色は橙（25〜49% の帯）のままで、**橙の丸に 50% と書いてある**状態になる。
+     *   24.6% も同型（「25%」と出るのに黄）。切り捨てなら帯の境界（25.0 / 50.0）を
+     *   またぐ表示が原理的に起きない。
+     *
+     * ⚠ 狙い撃ちの 2 値だけでなく総当たりも通す。狙い撃ちは「その値だけ辻褄を合わせる」
+     *   変異に弱く、総当たりは「境界に当たる内訳が掃引に入っていない」と空振りするため。
+     */
+    public function test_compact_label_never_contradicts_the_band(): void
+    {
+        // 帯 → 出てよい整数の範囲
+        $bands = [
+            VacancyRate::LEVEL_NONE => [0, 0],
+            VacancyRate::LEVEL_LOW  => [1, 24],
+            VacancyRate::LEVEL_MID  => [25, 49],
+            VacancyRate::LEVEL_HIGH => [50, 100],
+        ];
+
+        // ① 四捨五入に変異させたら赤になる 2 値（round: 49.6 → 50 / 24.6 → 25）
+        $this->assertSame('49%', VacancyRate::compactLabel(504, 496, 0), '49.6% が切り捨てられていない');
+        $this->assertSame(VacancyRate::LEVEL_MID, VacancyRate::level(504, 496, 0));
+        $this->assertSame('24%', VacancyRate::compactLabel(754, 246, 0), '24.6% が切り捨てられていない');
+        $this->assertSame(VacancyRate::LEVEL_LOW, VacancyRate::level(754, 246, 0));
+
+        // ② 総当たり（1〜200 区画のあらゆる内訳）
+        $offenders = [];
+        $checked   = 0;
+        $belowOne  = 0;
+
+        for ($total = 1; $total <= 200; $total++) {
+            for ($vacant = 0; $vacant <= $total; $vacant++) {
+                $operating = $total - $vacant;
+                $level     = VacancyRate::level($operating, $vacant, 0);
+                $shown     = (int) rtrim(VacancyRate::compactLabel($operating, $vacant, 0), '%');
+                [$min, $max] = $bands[$level];
+                $checked++;
+
+                // ⚠ **既知の例外を 1 つだけ名指しで除外する**（偽の安心より正直な穴。Bug #43）。
+                //   率が 1% 未満のとき切り捨ては 0 になるが帯は low（黄）＝
+                //   **黄の丸に「0%」と出る**。満室の緑も「0%」なので、数字だけ見ると紛らわしい。
+                //   純粋な切り捨てを保つことを優先して直していない —— 1% 未満になるには
+                //   1 棟で 101 区画以上が要り（1 ÷ 101 = 0.99%）、周辺ビル調査の実データには
+                //   その規模の棟が無い。⚠ 件数まで固定するので、切り捨ての仕方を変えたら動く。
+                if ($level === VacancyRate::LEVEL_LOW && $shown === 0) {
+                    $belowOne++;
+
+                    continue;
+                }
+
+                if ($shown < $min || $shown > $max) {
+                    $offenders[] = sprintf(
+                        '営業 %d / 空き %d → %s（%s の帯は %d〜%d%%）',
+                        $operating, $vacant, $shown . '%', $level, $min, $max
+                    );
+                }
+            }
+        }
+
+        $this->assertSame(20300, $checked, '掃引が空振りしている（内訳を 1 つも見ていない）');
+        $this->assertSame([], $offenders, "丸の数字が色の帯と矛盾しています:\n" . implode("\n", array_slice($offenders, 0, 10)));
+
+        // 空き 1 区画 × 総数 101〜200 の 100 通りだけが上の例外に当たる
+        $this->assertSame(100, $belowOne, '1% 未満の扱いが変わっている（切り捨て以外になった可能性）');
+    }
+
     /** 凡例に使う 5 段が全部あり、色とラベルを持つこと（地図の凡例が欠けないように） */
     public function test_levels_table_covers_every_level(): void
     {

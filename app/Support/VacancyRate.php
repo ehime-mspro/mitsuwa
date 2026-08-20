@@ -86,6 +86,35 @@ class VacancyRate
         return $rate === null ? '—' : number_format($rate, 1) . '%';
     }
 
+
+    /**
+     * 地図のピンに載せる短いラベル。**切り捨ての整数** ＋ '%'（42.8% → '42%'）。
+     * 総区画数が 0（＝率が出せない）なら '—'。
+     *
+     * ⚠ **四捨五入にしない。** 49.6% を「50%」と出すと、色は橙（25〜49% の帯）のままで
+     *   数字だけが 50 になり、**橙の丸に 50% と書いてある**状態になる。切り捨てなら
+     *   帯の境界（BAND_MID / BAND_HIGH）をまたぐ表示が原理的に起きない。
+     *   VacancyRateTest::test_compact_label_never_contradicts_the_band が固定している。
+     *
+     * ⚠ **float を一度も経由しない。** 二進誤差で下振れするため（Bug #33 / #34）。
+     *   percent() は intdiv((空き + 不明) × 1000, 総数) / 10、ここは
+     *   intdiv((空き + 不明) × 100, 総数)。正の整数では
+     *   intdiv(intdiv(a, b), c) === intdiv(a, b × c) なので、
+     *   **percent() の 1/10% 値を 10 で割って切り捨てた数と厳密に一致する**
+     *   （intdiv(v × 1000, t × 10) === intdiv(v × 100, t)）。
+     *
+     * ⚠ 吹き出しは従来どおり 1/10% 刻みの label() を使う。短いのは丸の中だけ。
+     */
+    public static function compactLabel(int $operating, int $vacant, int $unknown): string
+    {
+        // ⚠ 「率が出せない」の定義は percent() 1 箇所に置く（総数の判定を二重に持たない）
+        if (self::percent($operating, $vacant, $unknown) === null) {
+            return '—';
+        }
+
+        return intdiv(($vacant + $unknown) * 100, $operating + $vacant + $unknown) . '%';
+    }
+
     /**
      * 空室率の帯。総区画数が 0（＝率が出せない）なら unknown。
      *
