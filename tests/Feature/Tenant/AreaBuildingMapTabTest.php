@@ -904,7 +904,9 @@ JS);
             $this->actingAs($this->staff())->get('/tenant/area-buildings?view=map')->viewData('mapPins')
         )->keyBy('name');
 
-        $this->assertSame('57%', $pins['数字が出る棟']['pinLabel'], '丸のラベルが入居率の切り捨て整数になっていない');
+        // ⚠ 丸は「空室率の整数 42 の裏返し」＝ 58。表の 1 桁（57.2%）とは食い違うが、
+        //   **表に出る空室率の整数と足して 100** になるほうを採る（VacancyRate の docblock）
+        $this->assertSame('58%', $pins['数字が出る棟']['pinLabel'], '丸のラベルが空室率の整数の裏返しになっていない');
         $this->assertSame('57.2%', $pins['数字が出る棟']['occupancyLabel'], '吹き出し用の入居率が 1/10% 刻みでない');
         $this->assertSame('42.8%', $pins['数字が出る棟']['rateLabel'], '吹き出し用の空室率が変わっている');
 
