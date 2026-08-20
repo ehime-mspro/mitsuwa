@@ -877,8 +877,10 @@ JS);
         foreach ($styles as $title => $style) {
             $this->assertStringStartsWith('M0 0 C', (string) $style['icon']['path'],
                 $title . ' がしずく型のピンになっていない');
-            $this->assertSame(['x' => 0, 'y' => 0], $style['icon']['anchor'],
-                $title . ' の anchor が先端 (0,0) でない（ピンが実位置からずれる）');
+            // ⚠ `?? null` を挟む。素で引くと anchor を消す変異が
+            //   「Undefined array key」という**理由の読めない**エラーで落ちる（Bug #44）
+            $this->assertSame(['x' => 0, 'y' => 0], $style['icon']['anchor'] ?? null,
+                $title . ' の anchor が先端 (0,0) でない（ピンが実位置から約 11px 北へずれる）');
             $this->assertNull($style['label'], $title . ' に引いた状態でラベルが載っている');
         }
     }
