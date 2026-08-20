@@ -874,13 +874,22 @@ JS);
         $this->assertSame(['満室の棟', '空きの棟', '調査なしの棟'], $titles,
             '座標のある 3 棟のピンが揃っていない（掃引が空振りしている）');
 
+        // ⚠ 空室率の帯ごとに色が変わることも、ここで一緒に固定する（ピン側の fillColor は
+        //   丸側と違って他のどのテストも見ていなかった。実測で変異 P4 が素通りした）
+        $colors = [
+            '満室の棟'     => \App\Support\VacancyRate::LEVELS['none']['color'],
+            '空きの棟'     => \App\Support\VacancyRate::LEVELS['high']['color'],
+            '調査なしの棟' => \App\Support\VacancyRate::LEVELS['unknown']['color'],
+        ];
+
         foreach ($styles as $title => $style) {
-            $this->assertStringStartsWith('M0 0 C', (string) $style['icon']['path'],
-                $title . ' がしずく型のピンになっていない');
-            // ⚠ `?? null` を挟む。素で引くと anchor を消す変異が
-            //   「Undefined array key」という**理由の読めない**エラーで落ちる（Bug #44）
+            // ⚠ anchor は**独立に**名指しで見る。golden の全文比較でも落ちるが、
+            //   位置がずれるという結果の重さに対して差分だけでは理由が伝わらない（Bug #43 / #46）
             $this->assertSame(['x' => 0, 'y' => 0], $style['icon']['anchor'] ?? null,
                 $title . ' の anchor が先端 (0,0) でない（ピンが実位置から約 11px 北へずれる）');
+
+            $this->assertIconSame($this->expectedPinIcon($colors[$title]), $style['icon'],
+                $title . ' のしずく型ピンの見た目が変わっている');
             $this->assertNull($style['label'], $title . ' に引いた状態でラベルが載っている');
         }
     }
@@ -898,21 +907,29 @@ JS);
         $run    = $this->runLocateScript($this->mapHtml(), [['action' => 'zoom', 'zoom' => 18]], []);
         $styles = $this->markerStylesByTitle($run['snapshots'][0]);
 
-        $expected = ['満室の棟' => '0%', '空きの棟' => '50%', '調査なしの棟' => '—'];
+        // 空室率の数字（＝中身）と、色の帯（＝見た目）を対で持つ
+        $expected = [
+            '満室の棟'     => ['0%',  \App\Support\VacancyRate::LEVELS['none']['color']],
+            '空きの棟'     => ['50%', \App\Support\VacancyRate::LEVELS['high']['color']],
+            '調査なしの棟' => ['—',   \App\Support\VacancyRate::LEVELS['unknown']['color']],
+        ];
 
-        foreach ($expected as $title => $text) {
+        foreach ($expected as $title => [$text, $color]) {
             $style = $styles[$title];
 
-            $this->assertSame('circle', $style['icon']['path'], $title . ' が丸になっていない');
+            // ⚠ anchor だけ名指しで見る（丸に付くと半径ぶん北へずれる。golden でも落ちるが理由が伝わらない）
             $this->assertArrayNotHasKey('anchor', $style['icon'],
                 $title . ' の丸に anchor が付いている（丸は中心が既定なので位置がずれる）');
+
+            $this->assertIconSame($this->expectedCircleIcon($color), $style['icon'],
+                $title . ' の丸の見た目が変わっている');
+
+            // ⚠ ラベルは「中身」と「読める見た目」を**別々に**アサートする。
+            //   1 本にまとめると、色が黒に潰れたのか数字が違うのかが文言から分からない
             $this->assertSame($text, $style['label']['text'] ?? null,
                 $title . ' の丸に空室率が出ていない');
+            $this->assertLabelIsReadable($style['label'], $title);
         }
-
-        // 色は VacancyRate::LEVELS から来ていること（形が変わっても色分けは同じ）
-        $this->assertSame(\App\Support\VacancyRate::LEVELS['none']['color'], $styles['満室の棟']['icon']['fillColor']);
-        $this->assertSame(\App\Support\VacancyRate::LEVELS['high']['color'], $styles['空きの棟']['icon']['fillColor']);
     }
 
     /**
@@ -934,13 +951,17 @@ JS);
 
         [$out, $in, $back] = array_map(fn (array $s) => $this->markerStylesByTitle($s), $run['snapshots']);
 
-        $this->assertStringStartsWith('M0 0 C', (string) $out['空きの棟']['icon']['path'], '17 でしずく型でない');
+        $red = \App\Support\VacancyRate::LEVELS['high']['color'];
+
+        $this->assertIconSame($this->expectedPinIcon($red), $out['空きの棟']['icon'], '17 でしずく型でない');
         $this->assertNull($out['空きの棟']['label']);
 
-        $this->assertSame('circle', $in['空きの棟']['icon']['path'], '18 へ寄せても丸に切り替わらない');
+        $this->assertIconSame($this->expectedCircleIcon($red), $in['空きの棟']['icon'],
+            '18 へ寄せても丸に切り替わらない');
         $this->assertSame('50%', $in['空きの棟']['label']['text'] ?? null);
+        $this->assertLabelIsReadable($in['空きの棟']['label'], '空きの棟');
 
-        $this->assertStringStartsWith('M0 0 C', (string) $back['空きの棟']['icon']['path'],
+        $this->assertIconSame($this->expectedPinIcon($red), $back['空きの棟']['icon'],
             '17 へ戻してもしずく型に戻らない');
         $this->assertNull($back['空きの棟']['label'], '引き戻してもラベルが残っている');
 
@@ -975,20 +996,111 @@ JS);
         [, $saved, $zoomed] = array_map(fn (array $s) => $this->markerStylesByTitle($s), $run['snapshots']);
 
         // 保存した直後は引いたまま ＝ しずく型（作成時に今のモードが当たっている）
+        $grey = \App\Support\VacancyRate::LEVELS['unknown']['color'];
+
         $this->assertArrayHasKey('まだの棟', $saved, '保存した棟のピンが立っていない');
-        $this->assertStringStartsWith('M0 0 C', (string) $saved['まだの棟']['icon']['path'],
+        $this->assertIconSame($this->expectedPinIcon($grey), $saved['まだの棟']['icon'],
             '保存で足したピンが作成時のモード（しずく型）になっていない');
         $this->assertNull($saved['まだの棟']['label']);
 
         // 寄せると、あとから足したピンも丸へ切り替わる
-        $this->assertSame('circle', $zoomed['まだの棟']['icon']['path'],
+        $this->assertIconSame($this->expectedCircleIcon($grey), $zoomed['まだの棟']['icon'],
             '保存で足したピンだけがズーム切替から漏れている（登録簿に載っていない）');
         $this->assertSame('—', $zoomed['まだの棟']['label']['text'] ?? null,
             '保存で足したピン（調査回なし）のラベルが「—」でない');
+        $this->assertLabelIsReadable($zoomed['まだの棟']['label'], 'まだの棟');
 
         // 既存のピンは巻き添えになっていない
         $this->assertSame('circle', $zoomed['空きの棟']['icon']['path']);
         $this->assertSame([], $run['mapMoves'], '保存とズームの間に地図を動かしている');
+    }
+
+    /**
+     * しずく型のピンの見た目（golden）。
+     *
+     * ⚠ **数値まで全部固定する。** 「`M0 0 C` で始まる」だけを見ていた頃は、曲線の
+     *   `-21.5` を `-10` に潰す変異（ピンが判別不能な塊になる）が緑のまま通った。
+     *   実測（2026-08-20）では `scale` / `strokeWeight` / `fillOpacity` /
+     *   `strokeColor` / **ピン側の `fillColor`** の 5 つが**どのテストからも見られていなかった**。
+     * ⚠ ここを変えるときは**ブラウザで実物を見てから**にすること。テストが言えるのは
+     *   「前と違う」ことだけで、良くなったかは測れない。
+     *
+     * @return array<string, mixed>
+     */
+    private function expectedPinIcon(string $color): array
+    {
+        return [
+            'path'         => 'M0 0 C -3.2 -9 -11 -13.5 -11 -21.5 A 11 11 0 1 1 11 -21.5 C 11 -13.5 3.2 -9 0 0 Z',
+            'scale'        => 1,
+            'fillColor'    => $color,
+            'fillOpacity'  => 1,
+            'strokeColor'  => '#ffffff',
+            'strokeWeight' => 2,
+            // 先端が実位置。⚠ 消すとピン全体が約 11px 北へずれる
+            'anchor'       => ['x' => 0, 'y' => 0],
+        ];
+    }
+
+    /**
+     * 空室率の数字つきの丸の見た目（golden）。
+     *
+     * ⚠ **`anchor` を持たない**（丸は中心が既定）。キー集合ごと突き合わせるので、
+     *   足された場合もここで落ちる。
+     *
+     * @return array<string, mixed>
+     */
+    private function expectedCircleIcon(string $color): array
+    {
+        return [
+            // ハーネスの偽 google.maps.SymbolPath.CIRCLE
+            'path'         => 'circle',
+            'scale'        => 15,
+            'fillColor'    => $color,
+            'fillOpacity'  => 1,
+            'strokeColor'  => '#ffffff',
+            'strokeWeight' => 2.5,
+        ];
+    }
+
+    /**
+     * icon をキー集合ごと突き合わせる。
+     *
+     * ⚠ 比較の前に `ksort` する。`assertSame` は配列の**並び順まで**見るので、
+     *   Blade でキーを並べ替えただけの無害な変更で赤になると、直す側が
+     *   「テストのほうを合わせる」癖を付けてしまう。
+     *
+     * @param  array<string, mixed>  $expected
+     * @param  array<string, mixed>  $actual
+     */
+    private function assertIconSame(array $expected, array $actual, string $message): void
+    {
+        ksort($expected);
+        ksort($actual);
+
+        $this->assertSame($expected, $actual, $message);
+    }
+
+    /**
+     * 丸の中の文字が**読める見た目**であること。
+     *
+     * ⚠ 文字は色つきの丸の上に載るので、白でないと読めない（実測で `color` を
+     *   `'#000000'` に変える変異が 916 テスト全部を素通りした）。
+     * ⚠ `text` は別のアサートで見る。まとめると「数字が違う」のか
+     *   「色が潰れた」のかが文言から分からなくなる（Bug #43 / #46）。
+     *
+     * @param  array<string, mixed>|null  $label
+     */
+    private function assertLabelIsReadable(?array $label, string $title): void
+    {
+        $look = $label ?? [];
+        unset($look['text']);
+        ksort($look);
+
+        $this->assertSame(
+            ['color' => '#ffffff', 'fontSize' => '11px', 'fontWeight' => '600'],
+            $look,
+            $title . ' の丸の文字が読める見た目でない（色つきの丸に載るので白・11px・600 が要る）'
+        );
     }
 
     /** 座標あり 2 棟（満室 / 全空き）＋ 座標なし 1 棟。⚠ 座標なしが無いと作業リストが 0 行になる */
