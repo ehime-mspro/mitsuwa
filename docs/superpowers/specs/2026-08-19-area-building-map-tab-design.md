@@ -124,6 +124,12 @@ public const VACANCY_OVER40 = 'over40';   // → VACANCY_OVER50 = 'over50'
 `matchesVacancy()` の `match` に書かれた `>= 20.0` / `>= 40.0` の直値も **`VacancyRate::level()` 経由に寄せる**
 （フィルタと凡例が別々に閾値を持たないようにする）。
 
+> ⚠ **2026-08-20 に改名済み。この節の名前はもう実在しない。**
+> クエリキー `vacancy` → **`occupancy`**、`matchesVacancy()` → **`matchesOccupancy()`**、
+> `VACANCY_*` / `VACANCY_OPTIONS` → **`OCCUPANCY_*` / `OCCUPANCY_OPTIONS`**、
+> 値 `over25` / `over50` → **`under75` / `under50`**（画面を入居率主体へ変更したため）。
+> **閾値と判定式は変えていない。** 詳細は `2026-08-12-tenant-area-building-survey-design.md` §4。
+
 ⚠ 値の名前が変わるので、**古いブックマークの `?vacancy=over20` は「全て」に落ちる**
 （`array_key_exists` に無い値は `return true`。実測）。エラーにはならないが、絞ったつもりで全件が出る。
 運用が始まって日が浅いので影響は無いと判断する。
