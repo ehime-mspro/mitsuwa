@@ -36,87 +36,124 @@ class AreaBuildingListTest extends AreaBuildingTestCase
     }
 
     /**
-     * 「空室率: 全て」= 空値。
+     * 「入居率: 全て」= 空値。
      *
      * ⚠ 実 HTTP でしか再現しない。ConvertEmptyStringsToNull は HTTP ミドルウェアなので
      *   Request::create() では '' のまま届き、この欠陥を原理的に検出できない（Bug #31）。
      */
-    public function test_empty_vacancy_filter_means_all_over_real_http(): void
+    public function test_empty_occupancy_filter_means_all_over_real_http(): void
     {
         $this->makeSurvey($this->makeBuilding('満室ビル'), '2026-08-01', 10, 0);
         $this->makeSurvey($this->makeBuilding('空きビル'), '2026-08-01', 5, 5);
         $this->makeBuilding('未調査ビル');
 
-        $response = $this->actingAs($this->staff())->get('/tenant/area-buildings?vacancy=');
+        $response = $this->actingAs($this->staff())->get('/tenant/area-buildings?occupancy=');
 
         $response->assertOk();
         $this->assertCount(3, $this->listedNames($response), '「全て」なのに絞り込まれている');
     }
 
-    public function test_vacancy_bands(): void
+    public function test_occupancy_bands(): void
     {
-        $this->makeSurvey($this->makeBuilding('満室'), '2026-08-01', 10, 0);
-        $this->makeSurvey($this->makeBuilding('率10'), '2026-08-01', 9, 1);
-        $this->makeSurvey($this->makeBuilding('率30'), '2026-08-01', 7, 3);
-        $this->makeSurvey($this->makeBuilding('率50'), '2026-08-01', 5, 5);
+        $this->makeSurvey($this->makeBuilding('入居100'), '2026-08-01', 10, 0);
+        $this->makeSurvey($this->makeBuilding('入居90'), '2026-08-01', 9, 1);
+        $this->makeSurvey($this->makeBuilding('入居70'), '2026-08-01', 7, 3);
+        $this->makeSurvey($this->makeBuilding('入居50'), '2026-08-01', 5, 5);
         $this->makeBuilding('未調査');
 
         $staff = $this->staff();
 
+        // ⚠ 並びは従来どおり空室率の降順＝入居率の昇順
         $this->assertSame(
-            ['満室'],
-            $this->listedNames($this->actingAs($staff)->get('/tenant/area-buildings?vacancy=full'))
+            ['入居100'],
+            $this->listedNames($this->actingAs($staff)->get('/tenant/area-buildings?occupancy=full'))
         );
         $this->assertSame(
-            ['率50', '率30', '率10'],
-            $this->listedNames($this->actingAs($staff)->get('/tenant/area-buildings?vacancy=any'))
+            ['入居50', '入居70', '入居90'],
+            $this->listedNames($this->actingAs($staff)->get('/tenant/area-buildings?occupancy=any'))
         );
         $this->assertSame(
-            ['率50', '率30'],
-            $this->listedNames($this->actingAs($staff)->get('/tenant/area-buildings?vacancy=over25'))
+            ['入居50', '入居70'],
+            $this->listedNames($this->actingAs($staff)->get('/tenant/area-buildings?occupancy=under75'))
         );
         $this->assertSame(
-            ['率50'],
-            $this->listedNames($this->actingAs($staff)->get('/tenant/area-buildings?vacancy=over50'))
+            ['入居50'],
+            $this->listedNames($this->actingAs($staff)->get('/tenant/area-buildings?occupancy=under50'))
         );
     }
 
     /**
-     * 空室率フィルタの境界は「以上」（inclusive）。
+     * 入居率フィルタの境界は「以下」（inclusive）。
      *
-     * ⚠ 上の test_vacancy_bands は 10% / 30% / 50% しか使っておらず、
+     * ⚠ 上の test_occupancy_bands は 90% / 70% / 50% しか使っておらず、
      *   等号側を一度も踏んでいない(`>=` を `>` に変異させても緑のまま)。
-     *   ちょうど 25.0% / ちょうど 50.0% のビルを作って等号側を固定し、
-     *   境界のすぐ下(24.9% / 49.9%)が含まれないことで両側から挟む。
+     *   ちょうど 75.0% / ちょうど 50.0% のビルを作って等号側を固定し、
+     *   境界のすぐ上(75.1% / 50.1%)が含まれないことで両側から挟む。
      *
-     * ⚠ 閾値は VacancyRate::BAND_MID / BAND_HIGH に集約済み。20 / 40 に戻すとここが赤になる。
+     * ⚠ 閾値は VacancyRate::BAND_MID / BAND_HIGH に集約済み（判定は空室率のまま
+     *   `>= 25.0` / `>= 50.0` で、入居率で言い直しただけ）。20 / 40 に戻すとここが赤になる。
      */
-    public function test_vacancy_band_boundaries_are_inclusive_at_25_and_50_percent(): void
+    public function test_occupancy_band_boundaries_are_inclusive_at_75_and_50_percent(): void
     {
-        $this->makeSurvey($this->makeBuilding('率ちょうど25'), '2026-08-01', 3, 1);      // 25.0%
-        $this->makeSurvey($this->makeBuilding('率ちょうど50'), '2026-08-01', 5, 5);      // 50.0%
-        $this->makeSurvey($this->makeBuilding('率24.9'), '2026-08-01', 301, 100);        // 24.9%
-        $this->makeSurvey($this->makeBuilding('率49.9'), '2026-08-01', 501, 500);        // 49.9%
+        $this->makeSurvey($this->makeBuilding('入居ちょうど75'), '2026-08-01', 3, 1);    // 入居 75.0%
+        $this->makeSurvey($this->makeBuilding('入居ちょうど50'), '2026-08-01', 5, 5);    // 入居 50.0%
+        $this->makeSurvey($this->makeBuilding('入居75.1'), '2026-08-01', 301, 100);      // 入居 75.1%
+        $this->makeSurvey($this->makeBuilding('入居50.1'), '2026-08-01', 501, 500);      // 入居 50.1%
 
         $staff = $this->staff();
 
-        $over25 = $this->listedNames($this->actingAs($staff)->get('/tenant/area-buildings?vacancy=over25'));
-        $this->assertContains('率ちょうど25', $over25, 'ちょうど 25.0% が over25 に含まれていない（境界が inclusive でない）');
-        $this->assertNotContains('率24.9', $over25, '24.9%（25.0% 未満）が over25 に含まれてしまっている');
+        $under75 = $this->listedNames($this->actingAs($staff)->get('/tenant/area-buildings?occupancy=under75'));
+        $this->assertContains('入居ちょうど75', $under75, 'ちょうど 75.0% が under75 に含まれていない（境界が inclusive でない）');
+        $this->assertNotContains('入居75.1', $under75, '75.1%（75.0% 超）が under75 に含まれてしまっている');
 
-        $over50 = $this->listedNames($this->actingAs($staff)->get('/tenant/area-buildings?vacancy=over50'));
-        $this->assertContains('率ちょうど50', $over50, 'ちょうど 50.0% が over50 に含まれていない（境界が inclusive でない）');
-        $this->assertNotContains('率49.9', $over50, '49.9%（50.0% 未満）が over50 に含まれてしまっている');
+        $under50 = $this->listedNames($this->actingAs($staff)->get('/tenant/area-buildings?occupancy=under50'));
+        $this->assertContains('入居ちょうど50', $under50, 'ちょうど 50.0% が under50 に含まれていない（境界が inclusive でない）');
+        $this->assertNotContains('入居50.1', $under50, '50.1%（50.0% 超）が under50 に含まれてしまっている');
     }
 
-    /** 「不明」は空き扱いなので率のバンドに効く（VacancyRate を通っている証拠） */
-    public function test_unknown_counts_toward_the_vacancy_band(): void
+    /**
+     * 「不明」は入居に数えないので率のバンドに効く（VacancyRate を通っている証拠）。
+     *
+     * ⚠ 絞られる側の棟も置くこと。1 棟だけだと絞り込みが**丸ごと効いていなくても**
+     *   同じ結果になり、クエリキーを取り違えた変異が緑のまま通る。
+     */
+    public function test_unknown_does_not_count_toward_the_occupancy_band(): void
     {
         $this->makeSurvey($this->makeBuilding('不明だらけ'), '2026-08-01', 5, 0, 5);
+        $this->makeSurvey($this->makeBuilding('満室'), '2026-08-01', 10, 0, 0);
 
-        $response = $this->actingAs($this->staff())->get('/tenant/area-buildings?vacancy=over50');
+        $response = $this->actingAs($this->staff())->get('/tenant/area-buildings?occupancy=under50');
 
         $this->assertSame(['不明だらけ'], $this->listedNames($response));
+    }
+
+    /**
+     * 絞り込みの <select> が入居率のクエリキーと文言で配線されていること。
+     *
+     * ⚠ `name` と `<option value>` を**対で**見る。文言が画面のどこかにあるだけでは
+     *   配線を守れない（Bug #47）。選択の保持も同じ <select> の中で見る。
+     */
+    public function test_the_filter_select_is_wired_to_the_occupancy_key(): void
+    {
+        $html = $this->actingAs($this->staff())->get('/tenant/area-buildings?occupancy=under75')->getContent();
+
+        $this->assertSame(
+            1,
+            preg_match('/<select[^>]*\bname="occupancy"[^>]*>(.*?)<\/select>/s', $html, $select),
+            '入居率の <select name="occupancy"> が無い'
+        );
+
+        preg_match_all('/<option value="([^"]*)"[^>]*>([^<]*)<\/option>/', $select[1], $options, PREG_SET_ORDER);
+
+        $this->assertSame([
+            ['', '入居率: 全て'],
+            ['full', '満室（100%）'],
+            ['any', '空きあり（99% 以下）'],
+            ['under75', '入居率 75% 以下'],
+            ['under50', '入居率 50% 以下'],
+        ], array_map(fn (array $option) => [$option[1], $option[2]], $options));
+
+        $this->assertStringContainsString('<option value="under75" selected>', $select[1], '選んだ値が保持されていない');
     }
 
     /** 調査年フィルタは「最終調査年月」の年で見る */
@@ -353,7 +390,7 @@ class AreaBuildingListTest extends AreaBuildingTestCase
      *   地図の凡例（VacancyRate::LEVELS）と別々に動く状態が残る（Bug #41 / #42 ②）。
      * ⚠ コメントを落としてから測る。docblock に「25%」と書いてあると false-pass する。
      */
-    public function test_vacancy_filter_reads_the_shared_band_constants(): void
+    public function test_occupancy_filter_reads_the_shared_band_constants(): void
     {
         $source = $this->sourceWithoutComments(app_path('Services/Tenant/AreaBuildingListService.php'));
 

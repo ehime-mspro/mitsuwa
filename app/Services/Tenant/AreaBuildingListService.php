@@ -17,7 +17,7 @@ use Illuminate\Support\Collection;
  *
  * 2 層に分かれている:
  *   SQL … 最新調査回の 4 列を相関サブクエリで引き、キーワード検索で絞る
- *   PHP … 空室率の算出・空室率フィルタ・調査年フィルタ・並び替え・ページ切り出し
+ *   PHP … 空室率／入居率の算出・入居率フィルタ・調査年フィルタ・並び替え・ページ切り出し
  *
  * ⚠ 率を SQL 側で計算しないこと。VacancyRate と二重実装になり（Bug #41）、
  *   さらに MySQL の `/` は小数を返すのに SQLite の `/` は整数除算なので値が食い違う。
@@ -44,22 +44,24 @@ use Illuminate\Support\Collection;
  */
 class AreaBuildingListService
 {
-    public const VACANCY_FULL   = 'full';
-    public const VACANCY_ANY    = 'any';
-    public const VACANCY_OVER25 = 'over25';
-    public const VACANCY_OVER50 = 'over50';
+    public const OCCUPANCY_FULL    = 'full';
+    public const OCCUPANCY_ANY     = 'any';
+    public const OCCUPANCY_UNDER75 = 'under75';
+    public const OCCUPANCY_UNDER50 = 'under50';
 
     /**
      * フィルタバーの選択肢(「全て」は空値なのでここには入れない)。
      *
-     * ⚠ ラベルの数字は VacancyRate::BAND_MID / BAND_HIGH と揃えること。
-     *   閾値を動かすときは両方直す(表示だけ 25% で判定が 20% は最悪の状態)。
+     * ⚠ **判定の中身は空室率のまま**（VacancyRate::BAND_MID / BAND_HIGH）で、
+     *   同じ帯を入居率の側から言い直しているだけ。閾値は 1 ミリも動いていない。
+     *   ラベルの数字は BAND_MID / BAND_HIGH の裏返しと揃えること
+     *   (表示だけ 75% で判定が 80% は最悪の状態)。
      */
-    public const VACANCY_OPTIONS = [
-        self::VACANCY_FULL   => '満室（0%）',
-        self::VACANCY_ANY    => '空きあり（1%以上）',
-        self::VACANCY_OVER25 => '空室率 25% 以上',
-        self::VACANCY_OVER50 => '空室率 50% 以上',
+    public const OCCUPANCY_OPTIONS = [
+        self::OCCUPANCY_FULL    => '満室（100%）',
+        self::OCCUPANCY_ANY     => '空きあり（99% 以下）',
+        self::OCCUPANCY_UNDER75 => '入居率 75% 以下',
+        self::OCCUPANCY_UNDER50 => '入居率 50% 以下',
     ];
 
     /**
@@ -92,17 +94,17 @@ class AreaBuildingListService
     /**
      * 絞り込み・並び替え済みの行。
      *
-     * @return Collection<int, array{building: AreaBuilding, month: ?Carbon, operating: ?int, vacant: ?int, unknown: ?int, rate: ?float, rate_label: string}>
+     * @return Collection<int, array{building: AreaBuilding, month: ?Carbon, operating: ?int, vacant: ?int, unknown: ?int, rate: ?float, occupancy_label: string, rate_label: string}>
      */
     public function rows(Request $request): Collection
     {
-        $vacancy = $request->input('vacancy');
-        $year    = $request->input('year');
+        $occupancy = $request->input('occupancy');
+        $year      = $request->input('year');
 
         return $this->baseQuery($request)
             ->get()
             ->map(fn (AreaBuilding $building) => $this->toRow($building))
-            ->filter(fn (array $row) => $this->matchesYear($row, $year) && $this->matchesVacancy($row, $vacancy))
+            ->filter(fn (array $row) => $this->matchesYear($row, $year) && $this->matchesOccupancy($row, $occupancy))
             ->sortByDesc(fn (array $row) => [
                 $row['rate'] === null ? 0 : 1,   // 未調査を末尾へ
                 $row['rate'] ?? 0.0,             // 空室率 降順
@@ -172,7 +174,7 @@ class AreaBuildingListService
         return $query->orderBy('area_buildings.name')->orderBy('area_buildings.id');
     }
 
-    /** @return array{building: AreaBuilding, month: ?Carbon, operating: ?int, vacant: ?int, unknown: ?int, rate: ?float, rate_label: string} */
+    /** @return array{building: AreaBuilding, month: ?Carbon, operating: ?int, vacant: ?int, unknown: ?int, rate: ?float, occupancy_label: string, rate_label: string} */
     private function toRow(AreaBuilding $building): array
     {
         $hasSurvey = $building->latest_month !== null;
@@ -187,20 +189,29 @@ class AreaBuildingListService
             'operating'  => $operating,
             'vacant'     => $vacant,
             'unknown'    => $unknown,
-            'rate'       => $hasSurvey ? VacancyRate::percent($operating, $vacant, $unknown) : null,
-            'rate_label' => $hasSurvey ? VacancyRate::label($operating, $vacant, $unknown) : '—',
+            'rate'            => $hasSurvey ? VacancyRate::percent($operating, $vacant, $unknown) : null,
+            // ⚠ 「営業 ÷ 総数」で独立に出さない。並べたとき和が 100.0% にならない（Bug #46）
+            'occupancy_label' => $hasSurvey ? VacancyRate::occupancyLabel($operating, $vacant, $unknown) : '—',
+            'rate_label'      => $hasSurvey ? VacancyRate::label($operating, $vacant, $unknown) : '—',
         ];
     }
 
-    private function matchesVacancy(array $row, mixed $vacancy): bool
+    /**
+     * 入居率での絞り込み。
+     *
+     * ⚠ **判定は空室率（$row['rate']）のまま**で、同じ境界を入居率の言い方に置き換えただけ。
+     *   入居率 = 100 − 空室率 なので「入居率 75% 以下」＝「空室率 25% 以上」で完全に等価。
+     *   入居率を別に計算して比べる形にすると、丸めの向きの違いで境界の 1 行がズレる。
+     */
+    private function matchesOccupancy(array $row, mixed $occupancy): bool
     {
         // ⚠ 型ガードより先に null を「全て」として返す。ConvertEmptyStringsToNull により
-        //   ?vacancy= は実 HTTP では null で届く(Request::create() では '' のまま。Bug #31)。
-        if ($vacancy === null || $vacancy === '') {
+        //   ?occupancy= は実 HTTP では null で届く(Request::create() では '' のまま。Bug #31)。
+        if ($occupancy === null || $occupancy === '') {
             return true;
         }
 
-        if (! is_string($vacancy) || ! array_key_exists($vacancy, self::VACANCY_OPTIONS)) {
+        if (! is_string($occupancy) || ! array_key_exists($occupancy, self::OCCUPANCY_OPTIONS)) {
             return true;
         }
 
@@ -209,12 +220,12 @@ class AreaBuildingListService
             return false;   // 未調査は率で絞ると対象外
         }
 
-        return match ($vacancy) {
-            self::VACANCY_FULL   => $rate <= 0.0,
-            self::VACANCY_ANY    => $rate > 0.0,
+        return match ($occupancy) {
+            self::OCCUPANCY_FULL    => $rate <= 0.0,
+            self::OCCUPANCY_ANY     => $rate > 0.0,
             // ⚠ 直値を書かない。地図の凡例と別々に閾値を持つと片方だけ直す事故が起きる(Bug #41)
-            self::VACANCY_OVER25 => $rate >= VacancyRate::BAND_MID,
-            self::VACANCY_OVER50 => $rate >= VacancyRate::BAND_HIGH,
+            self::OCCUPANCY_UNDER75 => $rate >= VacancyRate::BAND_MID,
+            self::OCCUPANCY_UNDER50 => $rate >= VacancyRate::BAND_HIGH,
         };
     }
 

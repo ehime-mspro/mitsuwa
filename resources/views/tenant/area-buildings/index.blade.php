@@ -33,7 +33,7 @@
     {{-- フィルターバー --}}
     {{-- ⚠ keyword / year は ?keyword[]=x のように配列でも届きうる。htmlspecialchars() や (string)
          キャストへ配列をそのまま渡すと Array to string conversion で 500 になる（実測確認済み）ので、
-         ここで文字列以外を空文字へ正規化してから使う。vacancy は下の @foreach で === 比較のみ
+         ここで文字列以外を空文字へ正規化してから使う。occupancy は下の @foreach で === 比較のみ
          （型が違えば単に不一致になるだけ）なので同じ対応は不要。 --}}
     @php
         $keywordValue = is_string(request('keyword')) ? request('keyword') : '';
@@ -44,12 +44,12 @@
         <input type="text" name="keyword" value="{{ $keywordValue }}"
                placeholder="ビル名・テナント名"
                class="h-9 px-3 border border-gray-300 rounded-md text-sm text-gray-700 bg-white focus:border-emerald-500 focus:outline-none flex-1 min-w-[140px] w-full sm:w-auto">
-        <select onchange="document.getElementById('filter-form').submit()" name="vacancy"
+        <select onchange="document.getElementById('filter-form').submit()" name="occupancy"
                 class="h-9 px-3 border border-gray-300 rounded-md text-sm text-gray-700 bg-white focus:border-emerald-500 focus:outline-none cursor-pointer w-full sm:w-auto">
-            <option value="">空室率: 全て</option>
+            <option value="">入居率: 全て</option>
             {{-- ⚠ option は @foreach で静的に生成する（x-for は x-model 同期後に描画される。Bug #16） --}}
-            @foreach($vacancyOptions as $value => $label)
-                <option value="{{ $value }}" {{ request('vacancy') === $value ? 'selected' : '' }}>{{ $label }}</option>
+            @foreach($occupancyOptions as $value => $label)
+                <option value="{{ $value }}" {{ request('occupancy') === $value ? 'selected' : '' }}>{{ $label }}</option>
             @endforeach
         </select>
         <select onchange="document.getElementById('filter-form').submit()" name="year"

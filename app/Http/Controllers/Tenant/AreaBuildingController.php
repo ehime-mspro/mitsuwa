@@ -47,7 +47,7 @@ class AreaBuildingController extends Controller
         return view('tenant.area-buildings.index', [
             'rows'                => $service->paginateRows($rows, $request),
             'surveyYears'         => $service->surveyYears(),
-            'vacancyOptions'      => AreaBuildingListService::VACANCY_OPTIONS,
+            'occupancyOptions'    => AreaBuildingListService::OCCUPANCY_OPTIONS,
             'pendingGeocode'      => $pending,
             'pendingGeocodeCount' => $pendingCount,
             'geocodeBatchLimit'   => self::GEOCODE_BATCH_LIMIT,
