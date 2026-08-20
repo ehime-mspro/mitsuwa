@@ -227,4 +227,27 @@ class AreaBuildingShowTest extends AreaBuildingTestCase
 
         $this->assertSame(50.0, $response->viewData('latestSurvey')->vacancyRate());
     }
+    /**
+     * 最新調査の KPI に**入居率が空室率の前**に出ること（依頼の文言そのもの）。
+     *
+     * ⚠ 「両方の文字列がある」だけでは順序を守れない。`<strong>` に載る値ごと
+     *   並びを配列で固定する（同じ画面の調査履歴の表は <strong> を使わないので拾わない）。
+     * ⚠ 2 つの和が 100.0% になっていることも実データで見ておく（Bug #46）。
+     */
+    public function test_the_latest_survey_kpi_shows_occupancy_before_vacancy(): void
+    {
+        $building = $this->makeBuilding('大街道ビル');
+        // 営業 4 / 空き 3 → 空室率 42.8% ＋ 入居率 57.2% ＝ 100.0%
+        $this->makeSurvey($building, '2026-08-01', 4, 3, 0);
+
+        $html = $this->actingAs($this->staff())->get("/tenant/area-buildings/{$building->id}")->getContent();
+
+        preg_match_all('/(入居率|空室率)\s*<strong[^>]*>([^<]+)<\/strong>/u', $html, $m, PREG_SET_ORDER);
+
+        $this->assertSame(
+            [['入居率', '57.2%'], ['空室率', '42.8%']],
+            array_map(fn (array $hit) => [$hit[1], $hit[2]], $m),
+            '最新調査の KPI が「入居率 → 空室率」の順で出ていない'
+        );
+    }
 }

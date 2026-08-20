@@ -67,7 +67,7 @@ class AreaBuildingModelTest extends TestCase
         ]);
     }
 
-    /** 空室率はモデルからも VacancyRate と同じ値で引ける */
+    /** 空室率・入居率はモデルからも VacancyRate と同じ値で引ける */
     public function test_survey_exposes_vacancy_rate(): void
     {
         $survey = AreaBuildingSurvey::create([
@@ -79,6 +79,8 @@ class AreaBuildingModelTest extends TestCase
         $this->assertSame(3, $survey->totalUnits());
         $this->assertSame(66.6, $survey->vacancyRate());
         $this->assertSame('66.6%', $survey->vacancyRateLabel());
+        // ⚠ 「営業 ÷ 総数」で独立に切り捨てると 33.3% になり、並べたとき和が 99.9% になる
+        $this->assertSame('33.4%', $survey->occupancyRateLabel());
         $this->assertSame('2026年8月', $survey->monthLabel());
     }
 
@@ -90,6 +92,7 @@ class AreaBuildingModelTest extends TestCase
 
         $this->assertNull($survey->vacancyRate());
         $this->assertSame('—', $survey->vacancyRateLabel());
+        $this->assertSame('—', $survey->occupancyRateLabel());
     }
 
     /** 突合キー: 前後の空白を落とし、全角空白は半角に、連続空白は 1 個に潰す */

@@ -52,6 +52,9 @@
                     <span class="text-sm text-gray-700">営業 <strong class="text-gray-900">{{ $latestSurvey->operating_count }}</strong></span>
                     <span class="text-sm text-gray-700">空き <strong class="text-gray-900">{{ $latestSurvey->vacant_count }}</strong></span>
                     <span class="text-sm text-gray-700">不明 <strong class="text-gray-900">{{ $latestSurvey->unknown_count }}</strong></span>
+                    {{-- ⚠ 入居率と空室率は必ず和が 100.0% になる（VacancyRate で裏返しにしている）。
+                         片方を「営業 ÷ 総数」で独立に出すと 99.9% の行が出る（Bug #46） --}}
+                    <span class="text-sm text-gray-700">入居率 <strong class="text-base text-gray-900">{{ $latestSurvey->occupancyRateLabel() }}</strong></span>
                     <span class="text-sm text-gray-700">空室率 <strong class="text-base text-gray-900">{{ $latestSurvey->vacancyRateLabel() }}</strong></span>
                 </div>
             </div>

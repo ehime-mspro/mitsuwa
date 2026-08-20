@@ -91,6 +91,16 @@ class AreaBuildingSurvey extends Model
         return VacancyRate::label($this->operating_count, $this->vacant_count, $this->unknown_count);
     }
 
+    /**
+     * 入居率のラベル。⚠ 「営業 ÷ 総数」で独立に出さないこと。
+     *   画面では空室率と並べて出すので、和が 100.0% にならない行が出てはいけない（Bug #46）。
+     *   計算式は VacancyRate 1 箇所を通す（Bug #41）。
+     */
+    public function occupancyRateLabel(): string
+    {
+        return VacancyRate::occupancyLabel($this->operating_count, $this->vacant_count, $this->unknown_count);
+    }
+
     public function monthLabel(): string
     {
         return $this->surveyed_month === null ? '—' : $this->surveyed_month->format('Y年n月');
