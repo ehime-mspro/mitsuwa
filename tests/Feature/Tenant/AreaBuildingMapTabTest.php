@@ -83,6 +83,29 @@ class AreaBuildingMapTabTest extends AreaBuildingTestCase
         $this->assertCount(2, $response->viewData('mapPins'), '座標ありの棟だけがピンになっていない');
     }
 
+    /**
+     * 凡例が**入居率の言い方**になっていること。
+     *
+     * ⚠ 上の test_the_legend_uses_the_shared_levels は VacancyRate::LEVELS から
+     *   期待値を作るので、**定数のラベルを空室率の言い方に戻しても緑のまま通る**。
+     *   ここは literal で並びごと固定する（Bug #42 ② と同型の false-pass 対策）。
+     * ⚠ 丸とラベルを**対で**拾う。ラベル単体だと絞り込みの <option> にも一致する。
+     */
+    public function test_the_legend_reads_as_occupancy_not_vacancy(): void
+    {
+        $this->makeBuilding('棟', ['latitude' => 33.84, 'longitude' => 132.76]);
+
+        $html = $this->actingAs($this->staff())->get('/tenant/area-buildings?view=map')->getContent();
+
+        preg_match_all('/border-radius:50%; background:#[0-9a-f]{6};"><\/span>\s*([^<]+)/u', $html, $m);
+
+        $this->assertSame(
+            ['満室（100%）', '76〜99%', '51〜75%', '50% 以下', '調査なし'],
+            array_map('trim', $m[1]),
+            '地図の凡例が入居率の言い方になっていない（または並びが変わっている）'
+        );
+    }
+
     public function test_the_legend_uses_the_shared_levels(): void
     {
         $this->makeBuilding('棟', ['latitude' => 33.84, 'longitude' => 132.76]);

@@ -387,6 +387,23 @@ class VacancyRateTest extends TestCase
         $this->assertSame(100, $belowOne, '1% 未満の扱いが変わっている（切り捨て以外になった可能性）');
     }
 
+    /**
+     * 帯のラベルは**入居率の言い方**。⚠ キー（none / low / mid / high）は空室率の段階のまま。
+     *
+     * ⚠ 閾値（BAND_MID / BAND_HIGH）も level() も空室率のままで、ここは言い換えだけ。
+     *   キーとラベルが逆向きに見えるのはそのため（LEVEL_LOW ＝ 空室率が低い ＝ 入居率 76〜99%）。
+     */
+    public function test_levels_are_labelled_by_occupancy(): void
+    {
+        $this->assertSame([
+            VacancyRate::LEVEL_NONE    => '満室（100%）',
+            VacancyRate::LEVEL_LOW     => '76〜99%',
+            VacancyRate::LEVEL_MID     => '51〜75%',
+            VacancyRate::LEVEL_HIGH    => '50% 以下',
+            VacancyRate::LEVEL_UNKNOWN => '調査なし',
+        ], array_map(fn (array $level) => $level['label'], VacancyRate::LEVELS));
+    }
+
     /** 凡例に使う 5 段が全部あり、色とラベルを持つこと（地図の凡例が欠けないように） */
     public function test_levels_table_covers_every_level(): void
     {

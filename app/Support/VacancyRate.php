@@ -51,15 +51,21 @@ class VacancyRate
     /**
      * 凡例と地図のピンの見た目。
      *
+     * ⚠ **キーは空室率の段階・ラベルは入居率の言い換え**（2026-08-20 に画面を入居率主体へ変更）。
+     *   `level()` は空室率から帯を決め、BAND_MID / BAND_HIGH も空室率の閾値なので、
+     *   キー名（none / low / mid / high）は**空室率の内部名のまま**にしてある。
+     *   `LEVEL_LOW` に「76〜99%」が並ぶのはそのため（空室率が低い ＝ 入居率が高い）。
+     *   **閾値は 1 ミリも動いていない。** 同じ帯を反対側から言い直しただけ。
+     *
      * ⚠ 色は Tailwind クラスでなく 16 進で持つ。Google Maps のマーカーへ
      *   そのまま渡す値で、CSS クラスでは指定できないため（UnitStatus とは事情が違う）。
      */
     public const LEVELS = [
-        self::LEVEL_NONE    => ['label' => '満室（0%）', 'color' => '#059669'],
-        self::LEVEL_LOW     => ['label' => '1〜24%',     'color' => '#eab308'],
-        self::LEVEL_MID     => ['label' => '25〜49%',    'color' => '#f97316'],
-        self::LEVEL_HIGH    => ['label' => '50% 以上',   'color' => '#dc2626'],
-        self::LEVEL_UNKNOWN => ['label' => '調査なし',   'color' => '#9ca3af'],
+        self::LEVEL_NONE    => ['label' => '満室（100%）', 'color' => '#059669'],
+        self::LEVEL_LOW     => ['label' => '76〜99%',      'color' => '#eab308'],
+        self::LEVEL_MID     => ['label' => '51〜75%',      'color' => '#f97316'],
+        self::LEVEL_HIGH    => ['label' => '50% 以下',     'color' => '#dc2626'],
+        self::LEVEL_UNKNOWN => ['label' => '調査なし',     'color' => '#9ca3af'],
     ];
 
     /**
