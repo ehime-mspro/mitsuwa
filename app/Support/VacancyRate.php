@@ -77,11 +77,51 @@ class VacancyRate
     }
 
     /**
+     * 入居率（%）＝ 100 − 空室率。総区画数が 0 のときは null（ゼロ除算＝未調査）。
+     *
+     * ⚠ **「営業 ÷ 総数」で独立に切り捨てないこと。** 画面には空室率と並べて出すので、
+     *   2 つの和が 100.0% にならない行が出てはいけない（営業 1 / 空き 2 なら
+     *   空室率 66.6% ＋ 入居率 33.3% ＝ **99.9%**。Bug #46「並べた数字が無音で食い違う」）。
+     *   裏返しにする以上、入居率側の丸めは 1/10% 単位の**切り上げ**になる。
+     *
+     * ⚠ **float の引き算にしないこと**（Bug #33 / #34）。`100.0 - self::percent(...)` は
+     *   営業 1 / 空き 2 で `33.400000000000006` を返す（2026-08-20 実測）。
+     *   1/10% 単位の**整数のまま引いてから、最後に 1 回だけ 10 で割る**。
+     *
+     * ⚠ 「不明」は入居に数えない（空室率が空きに数えているのと対）。上の式で自動的にそうなる。
+     *
+     * ⚠ 割り算の式が percent() と**対で 2 つある**（percent() は既存の構造テストが
+     *   経路を固定しているので触らない）。片方だけ直すと和が 100.0% でなくなるが、
+     *   VacancyRateTest::test_the_two_rates_on_screen_always_add_up_to_100_percent が
+     *   39,710 通りの内訳で突き合わせているので無音にはならない。
+     */
+    public static function occupancyPercent(int $operating, int $vacant, int $unknown): ?float
+    {
+        $total = $operating + $vacant + $unknown;
+
+        if ($total <= 0) {
+            return null;
+        }
+
+        return (self::SCALE - intdiv(($vacant + $unknown) * self::SCALE, $total)) / 10;
+    }
+
+    /**
      * 画面表示用のラベル。未調査は「—」。
      */
     public static function label(int $operating, int $vacant, int $unknown): string
     {
         $rate = self::percent($operating, $vacant, $unknown);
+
+        return $rate === null ? '—' : number_format($rate, 1) . '%';
+    }
+
+    /**
+     * 入居率の表示用ラベル。未調査は「—」。⚠ 空室率の label() と同じ流儀。
+     */
+    public static function occupancyLabel(int $operating, int $vacant, int $unknown): string
+    {
+        $rate = self::occupancyPercent($operating, $vacant, $unknown);
 
         return $rate === null ? '—' : number_format($rate, 1) . '%';
     }
@@ -113,6 +153,34 @@ class VacancyRate
         }
 
         return intdiv(($vacant + $unknown) * 100, $operating + $vacant + $unknown) . '%';
+    }
+
+    /**
+     * 地図の丸に載せる入居率の短いラベル。**切り捨ての整数** ＋ '%'（57.2% → '57%'）。
+     * 総区画数が 0（＝率が出せない）なら '—'。
+     *
+     * ⚠ **float を一度も経由しない**（Bug #33 / #34）。1/10% 単位の整数を
+     *   intdiv(…, 10) で落とす。occupancyPercent() の値を (int) キャストするのと
+     *   同値だが、float を挟むと下振れしうる。
+     *
+     * ⚠ **帯（色）の言い方から 1 だけはみ出す内訳がある。** 帯のキーは空室率の段階のままで、
+     *   入居率の切り捨ては空室率から見ると切り上げになるため、境界のすぐ上で
+     *   low（凡例は「76〜99%」）に 75%、mid（同「51〜75%」）に 50% が出る
+     *   （例: 29 区画中 7 空きは空室率 24.1% ＝ low、入居率 75.8% → 「75%」）。
+     *   閾値を動かさない判断なのでそのままにしてある。実データ 187 棟の規模では
+     *   総区画 22 以上の棟でしか起こらない。
+     *   VacancyRateTest::test_occupancy_compact_label_against_the_bands が件数を固定している。
+     */
+    public static function occupancyCompactLabel(int $operating, int $vacant, int $unknown): string
+    {
+        // ⚠ 「率が出せない」の定義は occupancyPercent() 1 箇所に置く（総数の判定を二重に持たない）
+        if (self::occupancyPercent($operating, $vacant, $unknown) === null) {
+            return '—';
+        }
+
+        $total = $operating + $vacant + $unknown;
+
+        return intdiv(self::SCALE - intdiv(($vacant + $unknown) * self::SCALE, $total), 10) . '%';
     }
 
     /**

@@ -52,6 +52,180 @@ class VacancyRateTest extends TestCase
     }
 
     /**
+     * 入居率 = 100 − 空室率。
+     *
+     * ⚠ **「営業 ÷ 総数」で独立に切り捨てないこと。** 2 つを並べて出す以上、
+     *   和が 100.0% にならない行が出てはいけない（営業 1 / 空き 2 なら
+     *   空室率 66.6% ＋ 入居率 33.3% ＝ 99.9%。Bug #46「並べた数字が無音で食い違う」）。
+     *   ここは切り捨てた空室率の裏返しなので、入居率側は 1/10% 単位で**切り上げ**になる。
+     *
+     * ⚠ **float の引き算にしないこと。** `100.0 - percent(...)` は
+     *   営業 1 / 空き 2 で 33.400000000000006 を返す（実測）。Bug #33 / #34。
+     */
+    public function test_occupancy_is_the_complement_of_the_vacancy_rate(): void
+    {
+        // 2 ÷ 3 = 66.666…% の裏返し。⚠ float 引き算だと 33.400000000000006 になって赤
+        $this->assertSame(33.4, VacancyRate::occupancyPercent(1, 2, 0));
+        // 2 ÷ 7 = 28.571…% の裏返し
+        $this->assertSame(71.5, VacancyRate::occupancyPercent(5, 2, 0));
+        // 3 ÷ 7 = 42.857…% の裏返し（地図の丸に出る 57 の元）
+        $this->assertSame(57.2, VacancyRate::occupancyPercent(4, 3, 0));
+    }
+
+    /** 「不明」は入居に数えない（空室率が空きに数えているのと対） */
+    public function test_unknown_does_not_count_as_occupied(): void
+    {
+        $this->assertSame(80.0, VacancyRate::occupancyPercent(8, 0, 2));
+        $this->assertSame(50.0, VacancyRate::occupancyPercent(5, 3, 2));
+    }
+
+    public function test_occupancy_boundaries(): void
+    {
+        $this->assertNull(VacancyRate::occupancyPercent(0, 0, 0));
+        $this->assertSame(100.0, VacancyRate::occupancyPercent(3, 0, 0));
+        $this->assertSame(0.0, VacancyRate::occupancyPercent(0, 1, 0));
+        $this->assertSame(0.0, VacancyRate::occupancyPercent(0, 0, 2));
+    }
+
+    public function test_occupancy_label_formats_one_decimal_and_dashes_when_unsurveyed(): void
+    {
+        $this->assertSame('33.4%', VacancyRate::occupancyLabel(1, 2, 0));
+        $this->assertSame('100.0%', VacancyRate::occupancyLabel(3, 0, 0));
+        $this->assertSame('0.0%', VacancyRate::occupancyLabel(0, 1, 0));
+        $this->assertSame('—', VacancyRate::occupancyLabel(0, 0, 0));
+    }
+
+    /** 地図の丸に載る短いラベル。**切り捨ての整数**（57.2% → '57%'） */
+    public function test_occupancy_compact_label_truncates_to_a_whole_percent(): void
+    {
+        $cases = [
+            ['区画 0 は —',            0,   0,   0, '—'],
+            ['満室は 100%',            3,   0,   0, '100%'],
+            ['全空きは 0%',            0,   5,   0, '0%'],
+            ['57.2% は 57%',           4,   3,   0, '57%'],
+            ['33.4% は 33%',           1,   2,   0, '33%'],
+            ['ちょうど 75.0% は 75%',  3,   1,   0, '75%'],
+            ['ちょうど 50.0% は 50%',  1,   1,   0, '50%'],
+            ['不明は入居に数えない',   1,   0,   1, '50%'],
+        ];
+
+        foreach ($cases as [$label, $operating, $vacant, $unknown, $expected]) {
+            $this->assertSame(
+                $expected,
+                VacancyRate::occupancyCompactLabel($operating, $vacant, $unknown),
+                $label . '（営業 ' . $operating . ' / 空き ' . $vacant . ' / 不明 ' . $unknown . '）'
+            );
+        }
+    }
+
+    /**
+     * **画面に並ぶ 2 つの数字の和が必ず 100.0% になる。** 本件の一番大事な不変条件。
+     *
+     * ⚠ **float で足して比べてはいけない。** 正しい実装でも `66.6 + 33.4 !== 100.0` に
+     *   なる内訳が実測で 20,300 通り中 2,840 通りある（二進表現の丸め。Bug #33 / #34）。
+     *   **画面に出る文字列**を 1/10% 単位の整数へ戻して、整数のまま足す。
+     *
+     * ⚠ 「営業 ÷ 総数」で独立に切り捨てる実装へ変異させたら赤になること。そのため
+     *   **営業 1 / 空き 2（99.9% になる）を必ず掃引に含める** ＝ 総数 3 を含める。
+     */
+    public function test_the_two_rates_on_screen_always_add_up_to_100_percent(): void
+    {
+        // ① 名指しの 1 件。掃引が空振りしても、この行だけは必ず 99.9% を捕まえる
+        $this->assertSame(1000, $this->labelTenths(VacancyRate::label(1, 2, 0))
+            + $this->labelTenths(VacancyRate::occupancyLabel(1, 2, 0)),
+            '営業 1 / 空き 2 で 空室率 66.6% ＋ 入居率 33.3% ＝ 99.9% になっている');
+
+        // ② 総当たり（1〜60 区画のあらゆる 営業/空き/不明 の内訳）
+        $offenders = [];
+        $checked   = 0;
+
+        for ($total = 1; $total <= 60; $total++) {
+            for ($vacant = 0; $vacant <= $total; $vacant++) {
+                for ($unknown = 0; $unknown <= $total - $vacant; $unknown++) {
+                    $operating = $total - $vacant - $unknown;
+                    $checked++;
+
+                    $vacancyLabel   = VacancyRate::label($operating, $vacant, $unknown);
+                    $occupancyLabel = VacancyRate::occupancyLabel($operating, $vacant, $unknown);
+                    $sum = $this->labelTenths($vacancyLabel) + $this->labelTenths($occupancyLabel);
+
+                    if ($sum !== 1000) {
+                        $offenders[] = sprintf(
+                            '営業 %d / 空き %d / 不明 %d → 空室率 %s ＋ 入居率 %s = %s%%',
+                            $operating, $vacant, $unknown, $vacancyLabel, $occupancyLabel, $sum / 10
+                        );
+                    }
+                }
+            }
+        }
+
+        $this->assertSame(39710, $checked, '掃引が空振りしている（内訳を 1 つも見ていない）');
+        $this->assertSame([], $offenders,
+            "空室率と入居率の和が 100.0% になっていません:\n" . implode("\n", array_slice($offenders, 0, 10)));
+    }
+
+    /**
+     * 丸に出る整数と帯（色）の関係。**ズレが出る内訳を隠さず件数で固定する**（Bug #43）。
+     *
+     * ⚠ 帯のキーは**空室率**の段階のままで、ラベルだけを入居率で言い換えている。
+     *   入居率の切り捨ては空室率から見ると切り上げなので、境界の直上で 1 だけ
+     *   下の帯の言い方へはみ出す内訳がある（low の帯に 75% / mid の帯に 50%）。
+     *   閾値そのものを動かさないという判断なので直していない。件数を固定してあるので、
+     *   切り捨ての向きや帯を変えたらここが動く。
+     */
+    public function test_occupancy_compact_label_against_the_bands(): void
+    {
+        // 帯 → 凡例のラベルが謳う整数の範囲（入居率）
+        $bands = [
+            VacancyRate::LEVEL_NONE => [100, 100],
+            VacancyRate::LEVEL_LOW  => [76, 99],
+            VacancyRate::LEVEL_MID  => [51, 75],
+            VacancyRate::LEVEL_HIGH => [0, 50],
+        ];
+
+        $offenders = [];
+        $justBelow = 0;
+        $checked   = 0;
+
+        for ($total = 1; $total <= 200; $total++) {
+            for ($vacant = 0; $vacant <= $total; $vacant++) {
+                $operating = $total - $vacant;
+                $level     = VacancyRate::level($operating, $vacant, 0);
+                $shown     = (int) rtrim(VacancyRate::occupancyCompactLabel($operating, $vacant, 0), '%');
+                [$min, $max] = $bands[$level];
+                $checked++;
+
+                // 既知のはみ出し: low に 75 / mid に 50（帯の下端をちょうど 1 だけ下回る）
+                if ($shown === $min - 1) {
+                    $justBelow++;
+
+                    continue;
+                }
+
+                if ($shown < $min || $shown > $max) {
+                    $offenders[] = sprintf(
+                        '営業 %d / 空き %d → %d%%（%s の帯は %d〜%d%%）',
+                        $operating, $vacant, $shown, $level, $min, $max
+                    );
+                }
+            }
+        }
+
+        $this->assertSame(20300, $checked, '掃引が空振りしている（内訳を 1 つも見ていない）');
+        $this->assertSame([], $offenders,
+            "丸の数字が帯の言い方から 2 以上はみ出しています:\n" . implode("\n", array_slice($offenders, 0, 10)));
+        $this->assertSame(290, $justBelow, '帯の下端を 1 だけ下回る内訳の数が変わっている（切り捨ての向きが変わった可能性）');
+    }
+
+    /** '66.6%' → 666。⚠ float で足すと丸めで 100.0 にならないので整数へ戻してから足す */
+    private function labelTenths(string $label): int
+    {
+        $this->assertMatchesRegularExpression('/^\d+\.\d%$/', $label, '1/10% 刻みのラベルでない: ' . $label);
+
+        return (int) str_replace('.', '', rtrim($label, '%'));
+    }
+
+    /**
      * 経路を構造で固定する。
      *
      * ⚠ コメントを落としてから検索すること。この判定を消すと、クラスの docblock に
