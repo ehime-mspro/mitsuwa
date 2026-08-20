@@ -134,10 +134,16 @@
                 <table class="w-full border-collapse" style="table-layout:fixed; min-width:900px;">
                     {{-- ⚠ 列を足し引きするときは colgroup の合計 100% / th の本数 /
                          空行の colspan を 3 点セットで揃える（Task 10 で合計 106% にした前科あり） --}}
-                    {{-- ビル名 26 / 総階数 6 / 営業 6 / 空き 6 / 不明 6 / 入居率 8 / 空室率 8
-                         / 位置 11 / 最終調査 11 / 操作 12 = 100 --}}
+                    {{-- ビル名 22 / 総階数 6 / 営業 6 / 空き 6 / 不明 6 / 入居率 8 / 空室率 8
+                         / 位置 11 / 最終調査 13 / 操作 14 = 100
+                         ⚠ 入居率のぶん（8）は**全部ビル名から取る**。table-layout:fixed ＋
+                            min-width:900px なので割合は硬く、狭めた列からはみ出した中身は
+                            隣へ食い込む（表は広がらない）。900px 時に 操作 12% = 108px では
+                            ボタン 2 個（約 134px）が、最終調査 11% = 99px では「2026年8月」
+                            （約 102px）が入らない。最終調査 13 / 操作 14 は本番で実績のある値。
+                            ビル名は唯一 whitespace-nowrap を持たない列＝折り返せるので削れる。 --}}
                     <colgroup>
-                        <col style="width:26%">
+                        <col style="width:22%">
                         <col style="width:6%">
                         <col style="width:6%">
                         <col style="width:6%">
@@ -145,8 +151,8 @@
                         <col style="width:8%">
                         <col style="width:8%">
                         <col style="width:11%">
-                        <col style="width:11%">
-                        <col style="width:12%">
+                        <col style="width:13%">
+                        <col style="width:14%">
                     </colgroup>
                     <thead>
                         <tr>

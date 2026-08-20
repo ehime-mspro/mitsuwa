@@ -133,6 +133,8 @@ class VacancyRateTest extends TestCase
      */
     public function test_the_two_whole_percent_labels_also_add_up_to_100(): void
     {
+        $this->assertLabelFormats();
+
         // ① 名指しの 1 件（掃引が空振りしてもここだけは 99 を捕まえる）
         $this->assertSame(100, $this->compactTotal(4, 3, 0), '空室率 42% ＋ 入居率 58% になっていない');
 
@@ -165,30 +167,32 @@ class VacancyRateTest extends TestCase
             "整数どうしの和が 100% になっていません:\n" . implode("\n", array_slice($offenders, 0, 10)));
     }
 
-    /** 空室率の整数 ＋ 入居率の整数。⚠ float に戻さず整数のまま足す */
+    /** 空室率の整数 ＋ 入居率の整数。⚠ 書式は assertLabelFormats() が掃引の外で見る */
     private function compactTotal(int $operating, int $vacant, int $unknown): int
     {
-        $vacancy   = VacancyRate::compactLabel($operating, $vacant, $unknown);
-        $occupancy = VacancyRate::occupancyCompactLabel($operating, $vacant, $unknown);
-
-        $this->assertMatchesRegularExpression('/^\d+%$/', $vacancy, '整数のラベルでない: ' . $vacancy);
-        $this->assertMatchesRegularExpression('/^\d+%$/', $occupancy, '整数のラベルでない: ' . $occupancy);
-
-        return (int) rtrim($vacancy, '%') + (int) rtrim($occupancy, '%');
+        return (int) rtrim(VacancyRate::compactLabel($operating, $vacant, $unknown), '%')
+            + (int) rtrim(VacancyRate::occupancyCompactLabel($operating, $vacant, $unknown), '%');
     }
 
     /**
      * **画面に並ぶ 2 つの数字の和が必ず 100.0% になる。** 本件の一番大事な不変条件。
      *
-     * ⚠ **float で足して比べてはいけない。** 正しい実装でも `66.6 + 33.4 !== 100.0` に
-     *   なる内訳が実測で 20,300 通り中 2,840 通りある（二進表現の丸め。Bug #33 / #34）。
-     *   **画面に出る文字列**を 1/10% 単位の整数へ戻して、整数のまま足す。
+     * ⚠ **画面に出る文字列**を 1/10% 単位の整数へ戻し、**整数のまま足す**。
+     *   理由は二進誤差ではない（2026-08-20 実測: `66.6 + 33.4 === 100.0` は **true**、
+     *   `%.20f` で `100.00000000000000000000`）。**PHP の `/` は割り切れると int を返す**ので、
+     *   `intdiv(200000, 1000) / 10` は `int(20)`。`int(20) + int(80) === 100.0` は
+     *   **値ではなく型**で false になる。生の式で掃引すると 20,300 通り中 2,840 通りが
+     *   これに当たった（`percent()` は戻り値型 `?float` があるので実際には矯正され、
+     *   型付き API 経由なら 0 件）。整数で足せば型にも丸めにも左右されない。
+     *   ⚠ この注記自体が次の人を誤らせないよう、断定は必ず実測してから書くこと（Bug #42 ②）。
      *
      * ⚠ 「営業 ÷ 総数」で独立に切り捨てる実装へ変異させたら赤になること。そのため
      *   **営業 1 / 空き 2（99.9% になる）を必ず掃引に含める** ＝ 総数 3 を含める。
      */
     public function test_the_two_rates_on_screen_always_add_up_to_100_percent(): void
     {
+        $this->assertLabelFormats();
+
         // ① 名指しの 1 件。掃引が空振りしても、この行だけは必ず 99.9% を捕まえる
         $this->assertSame(1000, $this->labelTenths(VacancyRate::label(1, 2, 0))
             + $this->labelTenths(VacancyRate::occupancyLabel(1, 2, 0)),
@@ -280,12 +284,32 @@ class VacancyRateTest extends TestCase
         $this->assertSame(100, $belowOne, '1% 未満の扱いが変わっている（丸めの向きが変わった可能性）');
     }
 
-    /** '66.6%' → 666。⚠ float で足すと丸めで 100.0 にならないので整数へ戻してから足す */
+    /**
+     * '66.6%' → 666。⚠ 整数へ戻してから足す（型で `!==` が落ちるのを避ける）。
+     *
+     * ⚠ 書式そのものは**掃引の外で 1 回だけ**検査する（assertLabelFormats）。
+     *   ラベルは `number_format($x, 1) . '%'` の 1 本道で入力によって形が変わらないので、
+     *   ループ内で毎回 assert しても検出力は増えず assertion 数だけが 8 万件増える。
+     */
     private function labelTenths(string $label): int
     {
-        $this->assertMatchesRegularExpression('/^\d+\.\d%$/', $label, '1/10% 刻みのラベルでない: ' . $label);
-
         return (int) str_replace('.', '', rtrim($label, '%'));
+    }
+
+    /**
+     * 2 つの掃引が前提にしている**ラベルの書式**を、掃引の外で 1 回だけ固定する。
+     *
+     * ⚠ ここが無いと `'42 %'` のような書式変更を `rtrim` + `(int)` が黙って吸収する
+     *   （和は 100 のままなので掃引では捕まらない）。
+     */
+    private function assertLabelFormats(): void
+    {
+        foreach ([[1, 2, 0], [3, 0, 0], [0, 5, 0], [4, 3, 0]] as [$o, $v, $u]) {
+            $this->assertMatchesRegularExpression('/^\d+\.\d%$/', VacancyRate::label($o, $v, $u));
+            $this->assertMatchesRegularExpression('/^\d+\.\d%$/', VacancyRate::occupancyLabel($o, $v, $u));
+            $this->assertMatchesRegularExpression('/^\d+%$/', VacancyRate::compactLabel($o, $v, $u));
+            $this->assertMatchesRegularExpression('/^\d+%$/', VacancyRate::occupancyCompactLabel($o, $v, $u));
+        }
     }
 
     /**

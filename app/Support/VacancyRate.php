@@ -29,7 +29,7 @@ class VacancyRate
 
     /**
      * 空室率の帯（%）。⚠ **閾値はここ 1 箇所だけ。**
-     * 一覧のフィルタ（AreaBuildingListService::matchesVacancy）も
+     * 一覧のフィルタ（AreaBuildingListService::matchesOccupancy）も
      * 地図の色分け・凡例もこれを見る。別々に持つと片方だけ直す事故が起きる（Bug #41）。
      *
      * 2026-08-19 の実データ 187 棟で 24:18:26:31 に割れることを確認して決めた（設計書 §3）。
@@ -134,8 +134,16 @@ class VacancyRate
 
 
     /**
-     * 地図のピンに載せる短いラベル。**切り捨ての整数** ＋ '%'（42.8% → '42%'）。
-     * 総区画数が 0（＝率が出せない）なら '—'。
+     * 丸に載せる空室率の整数（1% 単位の切り捨て）。総区画数が 0 なら null。
+     *
+     * ⚠ **compactLabel() と occupancyCompactLabel() の唯一の材料。** 両方をこの 1 つの
+     *   整数から作るので、`ceil(100 − v) === 100 − floor(v)` により
+     *   **2 つの整数の和が必ず 100 になることが構造として保証される**
+     *   （テストで見張るのではなく、原理的に破れない）。
+     *   ⚠ 片方が他方の**表示文字列**を解釈する形にしない。2026-08-20 のレビューで
+     *     `'空室 42%'` のような接頭辞が付くと `(int)` が 0 と読んで**無音で 100% を返す**、
+     *     番兵 `'—'` を別の文字に変えると**未調査の棟が満室の緑丸で出る**ことが実測された。
+     *     整数を直接受け渡せばこの経路自体が存在しない。
      *
      * ⚠ **四捨五入にしない。** 49.6% を「50%」と出すと、色は橙（25〜49% の帯）のままで
      *   数字だけが 50 になり、**橙の丸に 50% と書いてある**状態になる。切り捨てなら
@@ -148,27 +156,36 @@ class VacancyRate
      *   intdiv(intdiv(a, b), c) === intdiv(a, b × c) なので、
      *   **percent() の 1/10% 値を 10 で割って切り捨てた数と厳密に一致する**
      *   （intdiv(v × 1000, t × 10) === intdiv(v × 100, t)）。
+     */
+    private static function compactPercent(int $operating, int $vacant, int $unknown): ?int
+    {
+        // ⚠ 「率が出せない」の定義は percent() 1 箇所に置く（総数の判定を二重に持たない）
+        if (self::percent($operating, $vacant, $unknown) === null) {
+            return null;
+        }
+
+        return intdiv(($vacant + $unknown) * 100, $operating + $vacant + $unknown);
+    }
+
+    /**
+     * 地図のピンに載せる空室率の短いラベル。**切り捨ての整数** ＋ '%'（42.8% → '42%'）。
+     * 総区画数が 0（＝率が出せない）なら '—'。
      *
      * ⚠ 吹き出しは従来どおり 1/10% 刻みの label() を使う。短いのは丸の中だけ。
      */
     public static function compactLabel(int $operating, int $vacant, int $unknown): string
     {
-        // ⚠ 「率が出せない」の定義は percent() 1 箇所に置く（総数の判定を二重に持たない）
-        if (self::percent($operating, $vacant, $unknown) === null) {
-            return '—';
-        }
+        $percent = self::compactPercent($operating, $vacant, $unknown);
 
-        return intdiv(($vacant + $unknown) * 100, $operating + $vacant + $unknown) . '%';
+        return $percent === null ? '—' : $percent . '%';
     }
 
     /**
      * 地図の丸に載せる入居率の短いラベル。**100 − 空室率の整数**（実質は切り上げ）＋ '%'。
      * 総区画数が 0（＝率が出せない）なら '—'。
      *
-     * ⚠ **compactLabel() が出した整数を 100 から引く。** 自前で割り直さない ——
-     *   `ceil(100 − v) === 100 − floor(v)` なので、こう書くと
-     *   **2 つの整数の和が必ず 100 になることが構造として保証される**
-     *   （テストで見張るのではなく、原理的に破れない）。float は一度も経由しない（Bug #33 / #34）。
+     * ⚠ **compactPercent() の整数をそのまま 100 から引く**（compactLabel() と同じ材料）。
+     *   自前で割り直さない —— 詳しくは compactPercent() の docblock。
      *
      * ⚠ **1/10% 表示（57.2%）と丸の整数（58%）は食い違って見えるが、これが正しい。**
      *   丸は「空室率 42% の裏返し」で、**表に出ている空室率の整数と足して 100** になる。
@@ -179,20 +196,16 @@ class VacancyRate
      *   丸は「100%」と出るのに帯は low（凡例「76〜99%」）＝ **黄色い丸に 100%**。
      *   これは compactLabel() 側に既にある「1% 未満」の穴と**同じ入力**で、
      *   1 棟で 101 区画以上が要る（周辺ビル調査の実データにその規模は無い）。
-     *   ⚠ 以前の「入居率を独立に切り捨てる」実装では total 22 以上で起き（実データにある）、
-     *     20,300 通り中 290 件だった。この形にして 100 件へ減っている。
+     *   ⚠ 以前の「入居率を独立に切り捨てる」実装では **総区画 29 以上**（最小例は
+     *     営業 22 / 空き 7 ＝ 空室率 24.1% で黄なのに丸は「75%」）で起き、実データにある規模だった。
+     *     20,300 通り中 290 件。この形にして 100 件へ減っている。
      *   VacancyRateTest::test_occupancy_compact_label_against_the_bands が件数を固定している。
      */
     public static function occupancyCompactLabel(int $operating, int $vacant, int $unknown): string
     {
-        // ⚠ 「率が出せない」の判定も compactLabel() に委ねる（総数の判定を二重に持たない）
-        $vacancy = self::compactLabel($operating, $vacant, $unknown);
+        $vacancy = self::compactPercent($operating, $vacant, $unknown);
 
-        if ($vacancy === '—') {
-            return '—';
-        }
-
-        return (100 - (int) rtrim($vacancy, '%')) . '%';
+        return $vacancy === null ? '—' : (100 - $vacancy) . '%';
     }
 
     /**

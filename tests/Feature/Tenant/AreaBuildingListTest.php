@@ -53,6 +53,35 @@ class AreaBuildingListTest extends AreaBuildingTestCase
         $this->assertCount(3, $this->listedNames($response), '「全て」なのに絞り込まれている');
     }
 
+    /**
+     * 知らない値・配列で届いた値は「全て」に倒す（絞り込んで 0 件にしない）。
+     *
+     * ⚠ 早期 return（null / ''）とこの型ガードは**別の機構**で、いまはどちらも「全て」を返す。
+     *   片方だけ壊す変異は互いに隠れて緑になるため、**入口ごとに別々に**測る必要がある
+     *   （Bug #48。2026-08-20 のレビューで、型ガードを `return false` にする変異が
+     *   全テスト緑のまま通ることが実測された ＝ この経路は誰も見ていなかった）。
+     * ⚠ 未調査ビルを含めること。型ガードが絞り込み側に倒れると率の無い行が真っ先に消える。
+     */
+    public function test_unknown_occupancy_values_fall_back_to_all(): void
+    {
+        $this->makeSurvey($this->makeBuilding('満室ビル'), '2026-08-01', 10, 0);
+        $this->makeSurvey($this->makeBuilding('空きビル'), '2026-08-01', 5, 5);
+        $this->makeBuilding('未調査ビル');
+
+        $staff = $this->staff();
+
+        $this->assertCount(
+            3,
+            $this->listedNames($this->actingAs($staff)->get('/tenant/area-buildings?occupancy=bogus')),
+            '選択肢に無い値で絞り込まれている'
+        );
+
+        // ⚠ 配列で届く経路（?occupancy[]=full）。500 にならないことも対で見る
+        $response = $this->actingAs($staff)->get('/tenant/area-buildings?occupancy[]=full');
+        $response->assertOk();
+        $this->assertCount(3, $this->listedNames($response), '配列で届いた値で絞り込まれている');
+    }
+
     public function test_occupancy_bands(): void
     {
         $this->makeSurvey($this->makeBuilding('入居100'), '2026-08-01', 10, 0);
