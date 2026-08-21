@@ -240,6 +240,9 @@ function areaMapInfoHtml(pin) {
         + '<div>空室率: <strong>' + areaMapEscape(pin.rateLabel) + '</strong></div>'
         + '<div style="color:#6b7280;">最終調査: ' + areaMapEscape(pin.month) + '</div>'
         + '<a href="' + areaMapEscape(pin.url) + '" style="color:#059669; font-weight:600;">詳細を開く</a>'
+@if($canLocate)
+        + areaMapLocateActionsHtml(pin)
+@endif
         + '</div>';
 }
 
@@ -324,6 +327,7 @@ var AREA_MAP_UNLOCATED = {{ \Illuminate\Support\Js::from($mapUnlocated) }};
    どこからも参照されていなかった）。`__ID__` は unreserved 文字なので route() でも素通りする。 */
 var AREA_MAP_SAVE_URL = '{{ route('tenant.area-buildings.coordinates', ['building' => '__ID__']) }}';
 var AREA_MAP_SHOW_URL = '{{ route('tenant.area-buildings.show', ['building' => '__ID__']) }}';
+var AREA_MAP_CLEAR_URL = '{{ route('tenant.area-buildings.coordinates.clear', ['building' => '__ID__']) }}';
 
 /* CSRF トークン。⚠ **要素が無い可能性を潰しておく。**
    `document.querySelector(...).getAttribute(...)` と直に書くと、レイアウトから meta が
@@ -488,6 +492,171 @@ function saveCoordinate(lat, lng) {
     })
     .catch(function () {
         showMessage('保存に失敗しました。通信環境を確認してください。', true);
+    });
+}
+
+/* ------------------------------------------------------------------------
+   置いたピンを直す（間違えた場所 / 間違えた棟 / うっかりクリック）
+
+   ⚠ **ピンを押した瞬間に「今の棟」を黙って入れ替えない。** 入れ替えると次の地図クリックが
+      意図しない棟に入る ―― この機能が直そうとしている事故そのものを作ってしまう。
+      必ず吹き出しにボタンを出して、明示的に選ばせる。
+   ------------------------------------------------------------------------ */
+
+/**
+ * 登録モード中だけ、吹き出しの下に「置き直す」「消す」を出す。
+ *
+ * ⚠ 条件は 2 つあって別物。`$canLocate`（Blade 側）＝「直せる人か」、
+ *   `areaLocateMode`（ここ）＝「今直しているか」。後者を落としても HTML は妥当なままなので、
+ *   閲覧のつもりで開いた吹き出しから位置を消せてしまう（Bug #28 と同型）。
+ * ⚠ id は Number() で数値に落としてから埋める。onclick の中身は**属性であり同時にコード**なので、
+ *   文字列のまま埋めると areaMapEscape() では防げない注入口になる。
+ */
+function areaMapLocateActionsHtml(pin) {
+    if (!areaLocateMode) { return ''; }
+
+    var id = Number(pin.id);
+
+    return '<div style="display:flex; gap:6px; margin-top:6px; padding-top:6px; border-top:1px solid #e5e7eb;">'
+        + '<button type="button" onclick="relocateBuilding(' + id + ')"'
+        + ' style="flex:1; padding:4px 6px; font-size:11px; font-weight:600; color:#1d4ed8; background:#eff6ff; border:1px solid #bfdbfe; border-radius:4px; cursor:pointer;">'
+        + 'この棟に置き直す</button>'
+        + '<button type="button" onclick="clearCoordinate(' + id + ')"'
+        + ' style="flex:1; padding:4px 6px; font-size:11px; font-weight:600; color:#b91c1c; background:#fef2f2; border:1px solid #fecaca; border-radius:4px; cursor:pointer;">'
+        + '位置を消す</button>'
+        + '</div>';
+}
+
+/**
+ * その棟を「作業リストに載っている未処理の棟」にして、その index を返す。
+ *
+ * ⚠ **リストに居ないことがある。** AREA_MAP_UNLOCATED はページを開いた時点で座標が
+ *   無かった棟しか持たないので、今まさに直したい棟（＝既に座標がある棟）は入っていない。
+ *   足せていないと currentLocateTarget() が null のままで、選んだつもりの地図クリックが空振りする。
+ *
+ * ⚠ 行は Blade が描くのと**同じ形**で足す。renderLocateList() が
+ *   `#locate-list button[data-locate-index]` で拾うので、形が違うとその行だけ
+ *   名前も現在地の色も付かない（初期表示は Blade のままにする＝Bug #16 の流儀）。
+ * ⚠ **data-locate-index と onclick の引数は必ず同じ index にする。** ズレると
+ *   押した行と選ばれる棟が食い違い、次の地図クリックが別の棟に入る。
+ * ⚠ done を落とすのは、どちらの入口でもその棟が「これから置く棟」に戻るため。
+ *   残すと行に「（登録済み）」が付いたまま今の棟として光る。
+ */
+function ensureInLocateList(id, name) {
+    for (var i = 0; i < AREA_MAP_UNLOCATED.length; i++) {
+        if (String(AREA_MAP_UNLOCATED[i].id) === String(id)) {
+            AREA_MAP_UNLOCATED[i].done = false;
+            return i;
+        }
+    }
+
+    var index = AREA_MAP_UNLOCATED.length;
+    AREA_MAP_UNLOCATED.push({ id: id, name: name });
+
+    var list = document.getElementById('locate-list');
+    if (list) {
+        list.insertAdjacentHTML('beforeend',
+            '<li><button type="button" onclick="selectLocateTarget(' + index + ')"'
+            + ' data-locate-index="' + index + '"'
+            + ' class="w-full text-left px-2 py-1.5 text-xs rounded hover:bg-white">'
+            + areaMapEscape(name) + '</button></li>');
+    }
+
+    return index;
+}
+
+/**
+ * 地図からマーカーを外し、登録簿からも消す。
+ *
+ * ⚠ setMap(null) を省くと**参照だけ消えて絵は残る**（addAreaMapMarker の注記と同じ罠。
+ *   消えるのは再読み込みしたときだけ）。
+ * ⚠ areaMapPinData からも消す。残すとズーム切替が、もう地図に無いピンを描き替えようとする。
+ */
+function removeAreaMapMarker(id) {
+    if (areaMapMarkers[id]) {
+        areaMapMarkers[id].setMap(null);
+        delete areaMapMarkers[id];
+    }
+
+    delete areaMapPinData[id];
+}
+
+/**
+ * 「この棟に置き直す」——その棟を今の棟にして吹き出しを閉じるだけ。
+ *
+ * 保存はしない（次の地図クリックが上書きする）。何も壊さないので確認は挟まない。
+ */
+function relocateBuilding(id) {
+    var pin = areaMapPinData[id];
+    if (!pin) {
+        showMessage('この棟の情報が見つかりませんでした。ページを再読み込みしてください。', true);
+        return;
+    }
+
+    areaMapInfoWindow.close();
+    selectLocateTarget(ensureInLocateList(id, pin.name));
+}
+
+/**
+ * 「位置を消す」——確認してから座標を消し、地図からピンを外して作業リストへ戻す。
+ *
+ * ⚠ 確認は confirm()。この画面は同時に何棟ものピンが対象になるので、
+ *   単一対象しか持てない delete-confirm-modal コンポーネントは使えない
+ *   （show.blade.php の注記と同じ理由）。
+ *   ⚠ **そのコンポーネントを `<x-…>` の形でここに書かないこと。** Blade のコンポーネント
+ *     コンパイラは JS のコメントの中だろうと `<x-` を見つけたら展開するので、
+ *     生成される PHP に対応の取れない endif が紛れて view:cache が壊れる（実測。Bug #30 の同族で、
+ *     あちらは `//` コメント中のディレクティブ名だった）。show.blade.php で同じ語を書けているのは、
+ *     あちらが Blade コメントの中で、コンポーネント展開より先に落とされるため。
+ * ⚠ **消した棟に留まる。** 消す理由の大半は「棟を間違えた」「うっかり置いた」で、直後に
+ *   その棟を正しく置き直したいのが自然な流れ。ここで次へ送ると、続けて押した地図クリックが
+ *   別の棟に入る＝直そうとしている事故を作り直す。
+ * ⚠ null 返し方式。`!res.ok` の分岐と `!data` のガードを対で置く（AjaxErrorFeedbackTest）。
+ *   ⚠ ここに `if` 付きの literal を書かないこと（saveCoordinate の注記と同じ。Bug #42 ②）。
+ */
+function clearCoordinate(id) {
+    var pin = areaMapPinData[id];
+    if (!pin) {
+        showMessage('この棟の情報が見つかりませんでした。ページを再読み込みしてください。', true);
+        return;
+    }
+
+    if (!confirm('「' + pin.name + '」の位置を消します。地図から消えて、位置を登録する棟の一覧に戻ります。よろしいですか？')) {
+        return;
+    }
+
+    showMessage('「' + pin.name + '」の位置を消しています...');
+
+    fetch(AREA_MAP_CLEAR_URL.replace('__ID__', Number(id)), {
+        method: 'DELETE',
+        headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRF-TOKEN': AREA_MAP_TOKEN
+        }
+    })
+    .then(function (res) {
+        if (!res.ok) {
+            return res.json().then(function (err) {
+                showMessage('位置を消せませんでした: ' + (err.message || res.status), true);
+                return null;
+            }).catch(function () {
+                showMessage('位置を消せませんでした（' + res.status + '）。もう一度お試しください。', true);
+                return null;
+            });
+        }
+        return res.json();
+    })
+    .then(function (data) {
+        if (!data) { return; }
+
+        removeAreaMapMarker(data.id);
+        areaMapInfoWindow.close();
+        selectLocateTarget(ensureInLocateList(data.id, pin.name), '「' + pin.name + '」の位置を消しました。');
+    })
+    .catch(function () {
+        showMessage('位置を消せませんでした。通信環境を確認してください。', true);
     });
 }
 @endif

@@ -557,6 +557,12 @@ JS);
             'skipLocateTarget',
             'advanceLocateTarget',
             'saveCoordinate',
+            // 置いたピンを直す経路。ここで地図を動かすと、直すたびに探し直しになる
+            'ensureInLocateList',
+            'relocateBuilding',
+            'clearCoordinate',
+            'removeAreaMapMarker',
+            'areaMapLocateActionsHtml',
             // ⚠ ズームでマーカーを描き替える経路も同じ不変条件を持つ。ここで地図を
             //   動かすと、利用者がズームするたびに地図が跳ねて操作できなくなる。
             //   挙動側は test_crossing_the_zoom_threshold_... の mapMoves が見ている
@@ -879,6 +885,297 @@ JS);
         $this->assertSame('1', $replaced['remaining'], '同じ棟を 2 回保存して残り件数が二重に減っている');
         $this->assertSame(1, $replaced['removedMarkers'], '置き直しで古い位置のピンが地図に残っている');
         $this->assertSame([], $run['mapMoves'], '置き直しで地図を動かしている');
+    }
+
+    // ============================================================
+    // 置いたピンを直す（吹き出しの「この棟に置き直す」「位置を消す」）
+    // ============================================================
+
+    /**
+     * ページを開いた時点で**座標がある**棟（＝作業リストに居ない棟）と、
+     * まだの棟を 1 つずつ。直したいのは常に前者なので、この形でしか測れない。
+     *
+     * @return array{0: \App\Models\AreaBuilding, 1: string}
+     */
+    private function seedOneLocatedAndOnePending(): array
+    {
+        $located = $this->makeBuilding('置いてある棟', ['latitude' => 33.84, 'longitude' => 132.76]);
+        $this->makeBuilding('まだの棟');
+
+        $html = $this->actingAs($this->manager())->get('/tenant/area-buildings?view=map')->getContent();
+
+        return [$located, $html];
+    }
+
+    /**
+     * 登録モードで**ない**ときの吹き出しには直しのボタンを出さない。
+     *
+     * ⚠ 出してしまうと、閲覧のつもりで開いた吹き出しから位置を消せてしまう。
+     *   `$canLocate` は「直せる人か」でしかなく、`areaLocateMode` は「今直しているか」。
+     *   **2 つは別の条件**で、後者を落とす変異は HTML としては何も壊れない（Bug #28）。
+     */
+    public function test_the_info_window_offers_no_fixes_outside_locate_mode(): void
+    {
+        [, $html] = $this->seedOneLocatedAndOnePending();
+
+        $run = $this->runLocateScript($html, [
+            ['action' => 'markerclick', 'title' => '置いてある棟'],
+        ], []);
+
+        $this->assertCount(1, $run['infoContents'], '吹き出しが開いていない（マーカーの click が配線されていない）');
+        $this->assertStringNotContainsString('この棟に置き直す', $run['infoContents'][0],
+            '登録モードでないのに「この棟に置き直す」が出ている');
+        $this->assertStringNotContainsString('位置を消す', $run['infoContents'][0],
+            '登録モードでないのに「位置を消す」が出ている');
+    }
+
+    /**
+     * 登録モード中の吹き出しには**両方**出る。
+     *
+     * ⚠ **押しただけでは「今の棟」を入れ替えない。** 黙って入れ替えると、次の地図クリックが
+     *   意図しない棟に入る（この機能が直そうとしている事故そのものを作る）。
+     */
+    public function test_the_info_window_offers_both_fixes_in_locate_mode(): void
+    {
+        [$located, $html] = $this->seedOneLocatedAndOnePending();
+
+        $run = $this->runLocateScript($html, [
+            ['action' => 'toggle'],
+            ['action' => 'markerclick', 'title' => '置いてある棟'],
+        ], []);
+
+        $info = $run['infoContents'][0] ?? '';
+
+        // 呼び出し側 — ボタンとハンドラが**対で**載っていること
+        $this->assertMatchesRegularExpression(
+            '/<button\b[^>]*onclick="relocateBuilding\(' . $located->id . '\)"[^>]*>この棟に置き直す<\/button>/u',
+            $info,
+            '「この棟に置き直す」がその棟のハンドラに繋がっていない'
+        );
+        $this->assertMatchesRegularExpression(
+            '/<button\b[^>]*onclick="clearCoordinate\(' . $located->id . '\)"[^>]*>位置を消す<\/button>/u',
+            $info,
+            '「位置を消す」がその棟のハンドラに繋がっていない'
+        );
+
+        // ⚠ ピンを押しただけでは何も変わらない
+        $after = $run['snapshots'][1];
+        $this->assertSame('まだの棟', $after['current'],
+            'ピンを押しただけで「今の棟」が入れ替わっている（次の地図クリックが別の棟に入る）');
+        $this->assertSame([], $run['fetches'], 'ピンを押しただけで通信している');
+    }
+
+    /**
+     * 案 A「この棟に置き直す」——**リストに居ない棟**でも今の棟にできること。
+     *
+     * ⚠ ここが要。`AREA_MAP_UNLOCATED` はページを開いた時点で座標が無かった棟しか持たないので、
+     *   直したい棟（＝既に座標がある棟）は**入っていない**。リストへ足せていないと、
+     *   選んだつもりでも `currentLocateTarget()` が null のままで地図クリックが空振りする。
+     */
+    public function test_a_building_located_before_the_page_opened_can_be_retargeted(): void
+    {
+        [$located, $html] = $this->seedOneLocatedAndOnePending();
+
+        $run = $this->runLocateScript($html, [
+            ['action' => 'toggle'],
+            ['action' => 'markerclick', 'title' => '置いてある棟'],
+            ['action' => 'infoclick', 'label' => 'この棟に置き直す'],
+            ['action' => 'mapclick', 'lat' => 33.95, 'lng' => 132.95],
+        ], [
+            ['ok' => true, 'body' => ['id' => $located->id, 'latitude' => 33.95, 'longitude' => 132.95]],
+        ]);
+
+        [, , $picked, $saved] = $run['snapshots'];
+
+        $this->assertSame('置いてある棟', $picked['current'], '置き直しを選んでも今の棟が変わっていない');
+        $this->assertStringContainsString('「置いてある棟」の位置を地図でクリックしてください。', $picked['message'],
+            '次に何をすればよいかが出ていない');
+        $this->assertGreaterThan(0, $run['infoCloses'], '置き直しを選んだのに吹き出しが開いたまま');
+
+        // 次の地図クリックが**その棟へ**飛ぶ
+        $this->assertCount(1, $run['fetches'], '置き直し後のクリックが保存されていない');
+        $this->assertSame('POST', $run['fetches'][0]['method']);
+        $this->assertStringEndsWith('/' . $located->id . '/coordinates', $run['fetches'][0]['url'],
+            '置き直しの保存先が選んだ棟になっていない');
+        $this->assertSame(
+            ['latitude' => 33.95, 'longitude' => 132.95],
+            json_decode($run['fetches'][0]['body'], true),
+            '置き直しで新しい座標を送っていない'
+        );
+
+        // 作業として数え直され、保存で戻る
+        $this->assertSame('2', $picked['remaining'], '置き直す棟が残り件数に入っていない');
+        $this->assertSame('1', $saved['remaining'], '置き直しを保存しても残り件数が減っていない');
+        $this->assertSame([], $run['mapMoves'], '置き直しで地図を動かしている');
+    }
+
+    /**
+     * 案 B「位置を消す」——確認 → DELETE → 地図から消えて作業リストへ戻る。
+     *
+     * ⚠ **消した棟に留まる**（次へ進めない）。消す理由の大半は「棟を間違えた」「うっかり置いた」で、
+     *   直後にその棟を正しく置き直したいのが自然な流れ。ここで勝手に次へ送ると、
+     *   続けて押した地図クリックが**別の棟に入る**＝この機能が直そうとしている事故を作り直す。
+     */
+    public function test_clearing_a_pin_removes_it_and_returns_the_building_to_the_queue(): void
+    {
+        [$located, $html] = $this->seedOneLocatedAndOnePending();
+
+        $run = $this->runLocateScript($html, [
+            ['action' => 'toggle'],
+            ['action' => 'markerclick', 'title' => '置いてある棟'],
+            ['action' => 'infoclick', 'label' => '位置を消す'],
+        ], [
+            ['ok' => true, 'body' => ['id' => $located->id]],
+        ]);
+
+        $after = $run['snapshots'][2];
+
+        // 確認を挟んでいる（この画面は対象が何棟もあるので confirm。show の注記と同じ理由）
+        $this->assertCount(1, $run['confirms'], '確認なしで位置を消している');
+        $this->assertStringContainsString('置いてある棟', $run['confirms'][0], '確認にどの棟か出ていない');
+
+        // 送信 — メソッドとヘッダー（⚠ CSRF が無いと本番では全部 419）
+        $this->assertCount(1, $run['fetches'], '取り消しが送信されていない');
+        $this->assertSame('DELETE', $run['fetches'][0]['method'], '取り消しが DELETE で飛んでいない');
+        $this->assertStringEndsWith('/' . $located->id . '/coordinates', $run['fetches'][0]['url']);
+        $this->assertSame('test-token', $run['fetches'][0]['headers']['X-CSRF-TOKEN'] ?? null,
+            '取り消しに CSRF トークンが載っていない（本番では 419 で必ず失敗する）');
+        $this->assertSame('application/json', $run['fetches'][0]['headers']['Accept'] ?? null);
+        $this->assertSame('XMLHttpRequest', $run['fetches'][0]['headers']['X-Requested-With'] ?? null,
+            'X-Requested-With が無い（GET ではないので back() は壊れないが、他の fetch と揃える）');
+
+        // 地図から消える
+        $this->assertSame(['置いてある棟'], $run['removedTitles'],
+            '位置を消したのにピンが地図に残っている（参照だけ消えて絵が残る）');
+
+        // 作業リストへ戻る
+        $this->assertSame('2', $after['remaining'], '消した棟が作業リストに戻っていない（残り件数が増えていない）');
+        $this->assertCount(1, $run['appendedRows'], '作業リストに行が足されていない');
+        $this->assertSame('置いてある棟', $after['current'],
+            '位置を消した直後に別の棟へ進んでいる（続けてクリックすると別の棟に入る）');
+        $this->assertStringContainsString('「置いてある棟」の位置を消しました。', $after['message'],
+            '消えたことが画面に出ていない');
+        $this->assertGreaterThan(0, $run['infoCloses'], '消したのに吹き出しが開いたまま');
+        $this->assertSame([], $run['mapMoves'], '取り消しで地図を動かしている');
+    }
+
+    /**
+     * **JS が足した行の `data-locate-index` と `onclick` の引数が一致していること。**
+     *
+     * ⚠ ズレると「押した行」と「選ばれる棟」が食い違い、次の地図クリックが別の棟に入る。
+     *   ハーネスは `data-locate-index` からしか index を読まないので、ここを見ないと
+     *   ズレは**原理的に**検出できない（Blade が静的に描く行は
+     *   test_the_locate_controls_are_wired_to_their_handlers が見ている）。
+     * ⚠ 足した行が `renderLocateList()` に**拾われている**ことも対で見る。
+     *   セレクタと違う形で足すと、その行だけ名前も現在地の色も付かない。
+     */
+    public function test_rows_added_to_the_locate_list_agree_with_their_handlers(): void
+    {
+        [$located, $html] = $this->seedOneLocatedAndOnePending();
+
+        $run = $this->runLocateScript($html, [
+            ['action' => 'toggle'],
+            ['action' => 'markerclick', 'title' => '置いてある棟'],
+            ['action' => 'infoclick', 'label' => 'この棟に置き直す'],
+        ], []);
+
+        $this->assertCount(1, $run['appendedRows'], '作業リストに行が足されていない');
+        $row = $run['appendedRows'][0];
+
+        $this->assertSame(1, preg_match('/data-locate-index="(\d+)"/', $row, $data),
+            '足した行に data-locate-index が無い（renderLocateList が拾えない）');
+        $this->assertSame(1, preg_match('/onclick="selectLocateTarget\((\d+)\)"/', $row, $click),
+            '足した行に selectLocateTarget のハンドラが繋がっていない');
+
+        $this->assertSame($data[1], $click[1],
+            '足した行の data-locate-index と onclick の引数がズレている（押した行と別の棟が選ばれる）');
+        $this->assertStringContainsString('置いてある棟', $row, '足した行に棟の名前が出ていない');
+
+        // その行が実際に拾われ、今の棟として光っていること
+        $picked = $run['snapshots'][2];
+        $added  = array_values(array_filter(
+            $picked['buttons'],
+            fn (array $b) => $b['index'] === (int) $data[1]
+        ));
+
+        $this->assertCount(1, $added, '足した行が renderLocateList() に拾われていない（セレクタの形が違う）');
+        $this->assertSame('置いてある棟', $added[0]['text'], '足した行の名前が描き直されていない');
+        $this->assertSame('#059669', $added[0]['background'], '足した行が今の棟として光っていない');
+
+        // 念のため、その index が本当にその棟を指していること
+        $this->assertStringEndsWith('/' . $located->id . '/coordinates',
+            str_replace('__ID__', (string) $located->id, '/tenant/area-buildings/__ID__/coordinates'));
+    }
+
+    /** 確認で「いいえ」を押したら何も起きないこと。 */
+    public function test_cancelling_the_confirmation_leaves_the_pin_alone(): void
+    {
+        [, $html] = $this->seedOneLocatedAndOnePending();
+
+        $run = $this->runLocateScript($html, [
+            ['action' => 'toggle'],
+            ['action' => 'markerclick', 'title' => '置いてある棟'],
+            ['action' => 'infoclick', 'label' => '位置を消す'],
+        ], [], false);
+
+        $this->assertCount(1, $run['confirms'], '確認を出していない');
+        $this->assertSame([], $run['fetches'], '「いいえ」なのに取り消しを送信している');
+        $this->assertSame([], $run['removedTitles'], '「いいえ」なのにピンを消している');
+        $this->assertSame([], $run['appendedRows'], '「いいえ」なのに作業リストへ足している');
+        $this->assertSame('1', $run['snapshots'][2]['remaining'], '「いいえ」なのに残り件数が動いている');
+    }
+
+    /**
+     * 取り消しが失敗したら**理由を出してピンを残す**（Bug #45 の null 返し方式）。
+     *
+     * ⚠ 黙って消したことにすると、地図からピンが消えたのに DB には座標が残る
+     *   ＝ 再読み込みで復活する「直したはずなのに直っていない」状態になる。
+     */
+    public function test_a_failed_clear_says_why_and_keeps_the_pin(): void
+    {
+        [, $html] = $this->seedOneLocatedAndOnePending();
+
+        $run = $this->runLocateScript($html, [
+            ['action' => 'toggle'],
+            ['action' => 'markerclick', 'title' => '置いてある棟'],
+            ['action' => 'infoclick', 'label' => '位置を消す'],
+        ], [
+            ['ok' => false, 'status' => 403, 'body' => ['message' => '権限がありません。']],
+        ]);
+
+        $after = $run['snapshots'][2];
+
+        $this->assertStringContainsString('権限がありません。', $after['message'], '失敗の理由が画面に出ていない');
+        $this->assertSame('#b91c1c', $after['color'], '失敗がエラーとして表示されていない');
+        $this->assertSame([], $run['removedTitles'], '消せていないのにピンを地図から外している');
+        $this->assertSame([], $run['appendedRows'], '消せていないのに作業リストへ戻している');
+        $this->assertSame('1', $after['remaining'], '消せていないのに残り件数が増えている');
+    }
+
+    /**
+     * 直しのボタンは**自分で直せない人には 1 文字も配らない**（既存の $canLocate の作りを踏襲）。
+     *
+     * ⚠ 呼び出し側（`areaMapInfoHtml` からの呼び出し）と定義側を**対で**見る。
+     *   片方だけ見ると、もう片方が消えても緑になる（Bug #28）。
+     */
+    public function test_the_pin_fix_buttons_are_not_shipped_to_staff(): void
+    {
+        $this->makeBuilding('置いてある棟', ['latitude' => 33.84, 'longitude' => 132.76]);
+        $this->makeBuilding('まだの棟');
+
+        $managerHtml = $this->actingAs($this->manager())->get('/tenant/area-buildings?view=map')->getContent();
+        $staffHtml   = $this->actingAs($this->staff())->get('/tenant/area-buildings?view=map')->getContent();
+
+        foreach (['areaMapLocateActionsHtml(pin)', 'function areaMapLocateActionsHtml(',
+                  'function relocateBuilding(', 'function clearCoordinate('] as $needle) {
+            $this->assertStringContainsString($needle, $managerHtml,
+                '管理者に ' . $needle . ' が配られていない（呼び出し側と定義側は対で要る）');
+            $this->assertStringNotContainsString($needle, $staffHtml,
+                'staff に ' . $needle . ' を配っている');
+        }
+
+        $this->assertStringNotContainsString('この棟に置き直す', $staffHtml, 'staff に直しのボタンの文言が出ている');
+        $this->assertStringNotContainsString('位置を消す', $staffHtml, 'staff に直しのボタンの文言が出ている');
     }
 
     // ============================================================
@@ -1288,9 +1585,10 @@ JS);
      *
      * @param  list<array<string, mixed>>  $steps
      * @param  list<array<string, mixed>>  $responses
+     * @param  bool  $confirm  confirm() が返す答え（false ＝ 利用者が「いいえ」を押した）
      * @return array<string, mixed>
      */
-    private function runLocateScript(string $html, array $steps, array $responses): array
+    private function runLocateScript(string $html, array $steps, array $responses, bool $confirm = true): array
     {
         $node = trim((string) shell_exec('command -v node 2>/dev/null'));
         if ($node === '') {
@@ -1313,6 +1611,7 @@ JS);
             'buttons'   => $buttons,
             'steps'     => $steps,
             'responses' => $responses,
+            'confirm'   => $confirm,
         ];
 
         $dir = sys_get_temp_dir() . '/area-locate-' . bin2hex(random_bytes(6));
@@ -1360,6 +1659,13 @@ const mapMoves = [];
 const markers  = [];
 const removed  = [];
 
+// 吹き出しに実際に流し込まれた HTML / 閉じた回数 / confirm に出た文言 /
+// #locate-list に後から足された行の生 HTML。どれも**記録するだけ**
+const infoContents = [];
+const infoCloses   = [];
+const confirms     = [];
+const appendedRows = [];
+
 // ⚠ markers は「登録中に増えたぶん」で onAreaMapReady のあとに一度空にする。
 //    ズーム切替は**初期表示のピンも**対象なので、空にしない一覧を別に持つ。
 //    どちらも同じ record を指すので、setIcon / setLabel の記録は両方に映る。
@@ -1374,6 +1680,16 @@ function el(id) {
             id: id,
             textContent: '',
             style: {},
+            // ⚠ ブラウザと同じく、足された HTML は**その要素の中身**になる。
+            //    #locate-list に足された行は querySelectorAll でも拾えるようにする
+            //    （拾えないままにすると renderLocateList() が新しい行を更新しない欠陥を見逃す）
+            insertAdjacentHTML: function (position, html) {
+                if (position !== 'beforeend') { throw new Error('未対応の position: ' + position); }
+                if (this.id !== 'locate-list') { return; }
+                appendedRows.push(html);
+                const row = parseLocateRow(html);
+                if (row) { buttons.push(row); }
+            },
             classList: {
                 names: [],
                 toggle: function (name, force) {
@@ -1390,15 +1706,37 @@ function el(id) {
     return elements[id];
 }
 
-const buttons = plan.buttons.map(function (b) {
+function makeLocateButton(index, text) {
     return {
-        locateIndex: b.index,
-        textContent: b.text,
+        locateIndex: index,
+        textContent: text,
         style: {},
         getAttribute: function (name) {
             return name === 'data-locate-index' ? String(this.locateIndex) : null;
         }
     };
+}
+
+/**
+ * JS が足した `<li><button data-locate-index=N …>名前</button></li>` を 1 行ぶん読む。
+ *
+ * ⚠ **index は data-locate-index からだけ取る。** onclick の引数から取ると、
+ *    2 つがズレる変異（押した行と選ばれる棟が食い違う）が原理的に見えなくなる。
+ *    ズレの検査は appendedRows の生 HTML に対してテスト側で行う。
+ */
+function parseLocateRow(html) {
+    const m = html.match(/data-locate-index="(\d+)"/);
+    if (!m) { return null; }
+
+    const text = html
+        .replace(/^[\s\S]*?<button\b[^>]*>/, '')
+        .replace(/<\/button>[\s\S]*$/, '');
+
+    return makeLocateButton(Number(m[1]), text);
+}
+
+const buttons = plan.buttons.map(function (b) {
+    return makeLocateButton(b.index, b.text);
 });
 
 function FakeMarker(options) {
@@ -1413,16 +1751,23 @@ function FakeMarker(options) {
     markers.push(record);
     allMarkers.push(record);
 
-    this.addListener = function () {};
-    // 置き直しで古いピンを地図から外しているか
-    this.setMap = function (map) { if (map === null) { removed.push(options.title); } };
+    // ⚠ 本物のクリックハンドラを捕まえる。捏造すると吹き出しの中身を
+    //    一度も本物の経路で作らないまま検査することになる（Bug #47）
+    this.addListener = function (event, handler) {
+        if (event === 'click') { record.clickHandler = handler; }
+    };
+    // 置き直し・取り消しで古いピンを地図から外しているか
+    this.setMap = function (map) {
+        if (map === null) { removed.push(options.title); record.removed = true; }
+    };
     this.setIcon  = function (icon)  { record.icon  = icon; };
     this.setLabel = function (label) { record.label = label; };
 }
 
 function FakeInfoWindow() {
-    this.setContent = function () {};
-    this.open = function () {};
+    this.setContent = function (html) { infoContents.push(html); };
+    this.open  = function () {};
+    this.close = function () { infoCloses.push(1); };
 }
 
 function FakeBounds() {
@@ -1453,6 +1798,12 @@ function FakeMap(options) {
 const sandbox = {
     console: console,
     JSON: JSON,
+    // ⚠ 記録したうえで plan の指示どおりに答える。既定は「はい」だが、
+    //    「いいえ」で何も起きないことも測れるようにしておく
+    confirm: function (message) {
+        confirms.push(message);
+        return plan.confirm !== false;
+    },
     document: {
         getElementById: function (id) { return el(id); },
         // ⚠ セレクタが一致したときだけ返す。捏造すると Blade 側のセレクタを
@@ -1503,9 +1854,11 @@ context.onAreaMapReady();
 
 // 初期表示ぶんは対象外。守りたいのは「**登録中に**地図を動かさない」ことなので、
 // 既存ピンの fitBounds とマーカー生成はここで数え直す
-mapMoves.length = 0;
-markers.length  = 0;
-removed.length  = 0;
+mapMoves.length     = 0;
+markers.length      = 0;
+removed.length      = 0;
+infoContents.length = 0;
+infoCloses.length   = 0;
 
 function snapshot() {
     const status    = el('area-map-status');
@@ -1562,6 +1915,26 @@ async function settle() {
             context.areaMapInstance.simulateUserZoom(step.zoom);
             listeners.zoom_changed();
         }
+        else if (step.action === 'markerclick') {
+            // ⚠ 地図クリックと同じく、**本物のマーカーの click ハンドラ**を発火させる。
+            //    地図から外したマーカーは押せない（ブラウザと同じ）
+            const hit = allMarkers.filter(function (m) {
+                return m.title === step.title && m.clickHandler && !m.removed;
+            }).pop();
+            if (!hit) { throw new Error('地図に押せるマーカーが無い: ' + step.title); }
+            hit.clickHandler();
+        }
+        else if (step.action === 'infoclick') {
+            // ⚠ 関数を直接呼ばず、**吹き出しが実際に描いた onclick を実行する** ——
+            //    直接呼ぶと「ボタンに配線されていなくても緑」になる（Bug #28 / #47）
+            const html = infoContents[infoContents.length - 1];
+            if (html === undefined) { throw new Error('吹き出しがまだ開かれていない'); }
+
+            const hit = html.match(new RegExp('<button\\b[^>]*onclick="([^"]+)"[^>]*>' + step.label + '</button>'));
+            if (!hit) { throw new Error('吹き出しに「' + step.label + '」のボタンが無い'); }
+
+            vm.runInContext(hit[1], context, { filename: 'infowindow-onclick.js' });
+        }
         else if (step.action === 'mapclick') {
             // ⚠ saveCoordinate() を直接呼ばない。**画面と同じく地図の click を発火させる** ——
             //    直接呼ぶと「登録モードでないときは保存しない」ゲートを通らず、
@@ -1576,10 +1949,15 @@ async function settle() {
     }
 
     process.stdout.write(JSON.stringify({
-        snapshots: snapshots,
-        fetches:   fetches,
-        mapMoves:  mapMoves,
-        markers:   markers
+        snapshots:    snapshots,
+        fetches:      fetches,
+        mapMoves:     mapMoves,
+        markers:      markers,
+        infoContents: infoContents,
+        infoCloses:   infoCloses.length,
+        confirms:     confirms,
+        appendedRows: appendedRows,
+        removedTitles: removed
     }));
 })();
 JS;
