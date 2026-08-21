@@ -120,6 +120,147 @@ class AreaBuildingCoordinateStoreTest extends AreaBuildingTestCase
         $this->assertNull($building->refresh()->latitude);
     }
 
+    // ============================================================
+    // 位置を消す（DELETE）— 棟を間違えた / うっかり置いた を直す経路
+    // ============================================================
+
+    public function test_manager_can_clear_coordinates(): void
+    {
+        $building = $this->makeBuilding('置き間違えた棟', [
+            'address'      => '愛媛県松山市一番町1-1',
+            'total_floors' => 5,
+            'latitude'     => 33.8392,
+            'longitude'    => 132.7657,
+        ]);
+
+        $response = $this->actingAs($this->manager())->deleteJson($this->url($building));
+
+        $response->assertOk();
+        $response->assertExactJson(['id' => $building->id]);
+
+        $building->refresh();
+        $this->assertNull($building->latitude, '緯度が消えていない');
+        $this->assertNull($building->longitude, '経度が消えていない（片方だけ残ると詰み行になる）');
+
+        // ⚠ 座標だけを消す経路であって、行の他の項目を巻き込まないこと
+        $this->assertSame('愛媛県松山市一番町1-1', $building->address, '座標を消したら住所まで消えている');
+        $this->assertSame(5, $building->total_floors, '座標を消したら総階数まで消えている');
+    }
+
+    /**
+     * ⚠ **冪等**。既に空でも 200 を返す。
+     *
+     * 押し直し・二重送信・別タブでの重複操作で 404 / 422 を返すと、DB は空なのに
+     * 画面には「位置を消せませんでした」と出る＝直っているのに直っていないと見える。
+     */
+    public function test_clearing_an_already_empty_building_still_succeeds(): void
+    {
+        $building = $this->makeBuilding('もともと未登録の棟');
+
+        $this->actingAs($this->manager())
+            ->deleteJson($this->url($building))
+            ->assertOk()
+            ->assertExactJson(['id' => $building->id]);
+
+        $building->refresh();
+        $this->assertNull($building->latitude);
+        $this->assertNull($building->longitude);
+    }
+
+    /**
+     * **コントローラ自身が緯度と経度を対で消していること。**
+     *
+     * ⚠ **これは振る舞いでは測れない**（Bug #48「安全網が測定器を鈍らせる」）。
+     *   `AreaBuilding` の `saving` フックが「片方が null なら両方 null」へ正規化するので、
+     *   コントローラが `latitude` しか消さなくても **DB は両方 null になり、上の 2 本は緑のまま**
+     *   通る（実測）。安全網は残す価値があるが、主機構が仕事をしたことは別に固定する必要がある。
+     *
+     * ⚠ コメントを落としてから測る。docblock に「latitude / longitude を両方 null にする」と
+     *   書いてあるので、除去しないと**実体を消しても緑のまま**通る（Bug #42 ②）。
+     */
+    public function test_the_controller_itself_nulls_both_columns(): void
+    {
+        $body = $this->methodBodyWithoutComments('clearCoordinate');
+
+        $this->assertMatchesRegularExpression(
+            "/'latitude'\s*=>\s*null/",
+            $body,
+            'clearCoordinate() が緯度を消していない'
+        );
+        $this->assertMatchesRegularExpression(
+            "/'longitude'\s*=>\s*null/",
+            $body,
+            'clearCoordinate() が経度を消していない（saving フックが後始末するので DB を見ても分からない）'
+        );
+    }
+
+    public function test_staff_cannot_clear_coordinates(): void
+    {
+        $building = $this->makeBuilding('触らせない棟', ['latitude' => 33.8, 'longitude' => 132.7]);
+
+        $this->actingAs($this->staff())
+            ->deleteJson($this->url($building))
+            ->assertForbidden();
+
+        $building->refresh();
+        $this->assertSame('33.8000000', (string) $building->latitude, 'staff が座標を消せている');
+    }
+
+    public function test_guest_cannot_clear_coordinates(): void
+    {
+        $building = $this->makeBuilding('未ログインで触らせない棟', ['latitude' => 33.8, 'longitude' => 132.7]);
+
+        $this->delete($this->url($building))->assertRedirect('/login');
+
+        $building->refresh();
+        $this->assertSame('33.8000000', (string) $building->latitude, '未ログインで座標を消せている');
+    }
+
+    /**
+     * `AreaBuildingController` の 1 メソッドの body を、コメントを落として返す。
+     *
+     * ⚠ 空を返して素通りさせない。抽出が壊れたら**読める理由**で落とす（Bug #44）。
+     */
+    private function methodBodyWithoutComments(string $method): string
+    {
+        $source = file_get_contents(app_path('Http/Controllers/Tenant/AreaBuildingController.php'));
+
+        $stripped = '';
+        foreach (token_get_all($source) as $token) {
+            if (is_array($token)) {
+                if ($token[0] === T_COMMENT || $token[0] === T_DOC_COMMENT) {
+                    continue;
+                }
+                $stripped .= $token[1];
+            } else {
+                $stripped .= $token;
+            }
+        }
+
+        $at = strpos($stripped, 'function ' . $method . '(');
+        $this->assertNotFalse($at, $method . '() の定義が見つからない');
+
+        $open = strpos($stripped, '{', $at);
+        $this->assertNotFalse($open, $method . '() の body が開いていない');
+
+        $depth = 0;
+        for ($i = $open; $i < strlen($stripped); $i++) {
+            if ($stripped[$i] === '{') {
+                $depth++;
+            } elseif ($stripped[$i] === '}') {
+                $depth--;
+                if ($depth === 0) {
+                    $body = substr($stripped, $open, $i - $open + 1);
+                    $this->assertGreaterThan(30, strlen($body), $method . '() の body が空同然（波括弧の対応が壊れている）');
+
+                    return $body;
+                }
+            }
+        }
+
+        $this->fail($method . '() の body が閉じていない');
+    }
+
     /**
      * 一括取得の二重課金ガードを緩めていないこと。
      *

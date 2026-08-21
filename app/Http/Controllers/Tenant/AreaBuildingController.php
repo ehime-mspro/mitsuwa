@@ -237,6 +237,35 @@ class AreaBuildingController extends Controller
     }
 
     /**
+     * 地図で置いた座標を取り消す(設計書 §5.1 の追補)。
+     *
+     * 間違えた棟に置いてしまった / うっかりクリックした を直すための経路。これが無いと
+     * 嘘の座標が入った棟が「登録済み」として作業リストから消え、正しい位置を知らない限り
+     * 二度と直せなくなる。
+     *
+     * ⚠ **冪等**。既に空でも 200 を返す。押し直しや二重送信で 404 / 422 を返すと、
+     *   DB は空なのに画面には「消せませんでした」と出る。
+     *
+     * ⚠ **緯度と経度は必ず対で消す。** 片方だけ残すと hasCoordinates() が false なのに
+     *   一括取得の whereNull('latitude') にも掛からない詰み行になる(storeCoordinate の注記と同じ)。
+     *   モデルの saving フックが同じ正規化を持っているが、あれは**安全網**であって
+     *   ここが対で消さなくてよい理由ではない(Bug #48。実測でフックが後始末するため
+     *   片方だけ消す実装でも DB の検査は緑になる)。
+     *
+     * ⚠ 権限は保存(storeCoordinate)と同じ role:executive,manager。作業した人が自分の
+     *   間違いを直せないと、この経路を足した意味が無くなる。
+     */
+    public function clearCoordinate(AreaBuilding $building)
+    {
+        $building->update([
+            'latitude'  => null,
+            'longitude' => null,
+        ]);
+
+        return response()->json(['id' => $building->id]);
+    }
+
+    /**
      * 一覧へ戻す。⚠ 絞り込み・ページを落とさない。
      *
      * フォームの action にその時の検索条件が載っているので、そのまま引き継ぐ
