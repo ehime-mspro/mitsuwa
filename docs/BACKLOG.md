@@ -240,8 +240,8 @@ HTTP リファラー制限 / API 制限（Maps JavaScript API と Geocoding API 
 
 | 区分 | 実装内容 |
 |------|---------|
-| ルート | **1本追加**（`POST /tenant/area-buildings/{building}/coordinates`。`role:executive,manager`。**上書き可**）。地図タブは既存 index に `?view=map` で統合し新ルートを作らない |
-| Controller | `AreaBuildingController` に `storeCoordinate()` / `mapPins()` / `mapUnlocated()` ＋ `index()` の `$isMap` 分岐 |
+| ルート | **2本追加**（`POST` / `DELETE /tenant/area-buildings/{building}/coordinates`。どちらも `role:executive,manager`。POST は**上書き可**、DELETE は**冪等**）。地図タブは既存 index に `?view=map` で統合し新ルートを作らない。周辺ビル調査は計 **22ルート**（`routes/web.php` の見出しと揃える）|
+| Controller | `AreaBuildingController` に `storeCoordinate()` / `clearCoordinate()` / `mapPins()` / `mapUnlocated()` ＋ `index()` の `$isMap` 分岐 |
 | Support | `VacancyRate` に `BAND_MID` / `BAND_HIGH` / `LEVEL_*` / `LEVELS` / `level()` を追加（**閾値はここ 1 箇所だけ**）|
 | Service | `AreaBuildingListService::paginateRows()` を切り出し（地図タブは全件とページャの両方が要る）|
 | Blade | `_map.blade.php` を新設（`?view=map` のときだけ include）＋ index / show / _form を改修 |
@@ -255,6 +255,19 @@ HTTP リファラー制限 / API 制限（Maps JavaScript API と Geocoding API 
   **ページングしない**（絞り込み後の全件）
 - **登録モード**（経営層＋管理者のみ）: 未登録の棟のリストを出し、地図クリックで即保存 → 自動で次の棟へ。
   スキップ・置き直し（上書き）可。**保存しても地図の中心とズームを動かさない**
+- **置いたピンを直せる（2026-08-21 追加）**: 登録モード中だけ、吹き出しに
+  「**この棟に置き直す**」（その棟を今の棟にする。次の地図クリックが上書き）と
+  「**位置を消す**」（confirm → DELETE → ピンを地図から外し作業リストへ戻す）を出す。
+  ⚠ **ピンを押しただけでは「今の棟」を入れ替えない** —— 黙って入れ替えると次の地図クリックが
+  意図しない棟に入る＝直そうとしている事故を作り直す。
+  ⚠ **消したあとはその棟に留まる**（次へ送らない）。消す理由の大半は「棟を間違えた」
+  「うっかり置いた」で、直後に置き直したいのが自然な流れ。
+  ⚠ `AREA_MAP_UNLOCATED` は**ページを開いた時点で座標が無かった棟**しか持たないので、直したい棟は
+  入っていない。`ensureInLocateList()` が Blade と同じ形の行を足す（`data-locate-index` と
+  `onclick` の引数を必ず揃える）。
+  ⚠ **`$canLocate`（＝ manager 以上 かつ 未登録が 1 棟以上）に丸ごと従うので、
+  187 棟すべて登録し終えると登録モードごと消えて、この直し方も使えなくなる。**
+  そのときの直し方は登録編集フォーム（緯度・経度欄）のまま。
 - **所在地を画面から消した**（一覧の列 / 詳細 / 登録編集フォーム / キーワード検索）。
   ⚠ **DB 列・Excel 取込の「所在地」マッピング・住所からの座標一括取得は温存**
 - **マーカーの形（2026-08-20 追加）**: 直径 14px の丸だと背景の白い街路に沈むという指摘を受け、
