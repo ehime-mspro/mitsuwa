@@ -1107,6 +1107,57 @@ JS);
             str_replace('__ID__', (string) $located->id, '/tenant/area-buildings/__ID__/coordinates'));
     }
 
+    /**
+     * **消した直後は「その棟」に留まり、勝手に次へ進まないこと。**
+     *
+     * 消す理由の大半は「棟を間違えた」「うっかり置いた」で、直後にその棟を正しく置き直したいのが
+     * 自然な流れ。ここで次へ送ると、続けて押した地図クリックが**別の棟に入る**
+     * ＝ この機能が直そうとしている事故を作り直す。
+     *
+     * ⚠ **データの形が load-bearing。** 上の test_clearing_a_pin_... の形（ページを開いた時点で
+     *   座標があった棟）では `ensureInLocateList()` が**末尾に足す**ので、「留まる」も「次へ進む」も
+     *   同じ棟に着地して**原理的に区別が付かない**（実測: 変異 M8 が 945 テスト全部緑のまま通った。
+     *   Bug #52 の「並行配列は真ん中の行が落ちるデータで書く」と同型）。
+     *   3 棟用意し、**今の棟より後ろに未処理の棟が残っている状態**で、
+     *   **リストの先頭に居る棟**を消して初めて 2 つが分岐する。
+     */
+    public function test_clearing_stays_on_the_building_that_was_just_cleared(): void
+    {
+        $this->makeBuilding('棟A');
+        $this->makeBuilding('棟B');
+        $this->makeBuilding('棟C');
+
+        $response  = $this->actingAs($this->manager())->get('/tenant/area-buildings?view=map');
+        $unlocated = $response->viewData('mapUnlocated');
+        $this->assertCount(3, $unlocated);
+
+        $run = $this->runLocateScript($response->getContent(), [
+            ['action' => 'toggle'],
+            // 1 棟目を置いて 2 棟目へ進む（＝今の棟より後ろに未処理が残っている状態を作る）
+            ['action' => 'mapclick', 'lat' => 33.81, 'lng' => 132.71],
+            // 置いたばかりの 1 棟目が間違いだったと気づいて消す
+            ['action' => 'markerclick', 'title' => $unlocated[0]['name']],
+            ['action' => 'infoclick', 'label' => '位置を消す'],
+        ], [
+            ['ok' => true, 'body' => ['id' => $unlocated[0]['id'], 'latitude' => 33.81, 'longitude' => 132.71]],
+            ['ok' => true, 'body' => ['id' => $unlocated[0]['id']]],
+        ]);
+
+        [, $saved, , $cleared] = $run['snapshots'];
+
+        $this->assertSame($unlocated[1]['name'], $saved['current'], '前提が崩れている（保存で次の棟へ進んでいない）');
+
+        $this->assertSame($unlocated[0]['name'], $cleared['current'],
+            '位置を消した直後に別の棟へ進んでいる（続けてクリックすると別の棟に入る）');
+        $this->assertNotSame($unlocated[2]['name'], $cleared['current'],
+            '消したあと advanceLocateTarget() 相当で次の未処理へ送っている');
+
+        // 消した棟が作業として数え直されていること（3 → 保存で 2 → 取り消しで 3）
+        $this->assertSame('2', $saved['remaining']);
+        $this->assertSame('3', $cleared['remaining'], '消した棟が残り件数に戻っていない');
+        $this->assertSame([false, false, false], $cleared['done'], '消したのに保存済みの印が残っている');
+    }
+
     /** 確認で「いいえ」を押したら何も起きないこと。 */
     public function test_cancelling_the_confirmation_leaves_the_pin_alone(): void
     {
