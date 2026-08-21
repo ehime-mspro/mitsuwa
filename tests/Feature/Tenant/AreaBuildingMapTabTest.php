@@ -502,19 +502,135 @@ JS);
     }
 
     /**
-     * 登録する棟が 1 つも無ければ入口を出さない。
+     * **187 棟すべて登録し終えても入口は残る。**
      *
-     * ⚠ 条件の**もう半分**（`count($mapUnlocated) > 0`）を固定する。これが無いと
-     *   その半分を消しても全テストが緑のまま通り、空のパネルが常時出る。
+     * ⚠ かつてこのテストは「座標ありのビル 1 棟」で**入口が出ないこと**を固定していた
+     *   （出す条件が `count($mapUnlocated) > 0` だけだった頃）。だがそれだと
+     *   最後の 1 棟を登録した瞬間に登録モードごと消え、**置いたピンを直す手段まで無くなる**。
+     *   しかも「作業が終わったあとに間違いに気づく」のが最も自然なタイミングなので必ず当たる。
+     *   守りたかったのは「条件が `$canEdit` だけではないこと」なので、その意図は
+     *   下の test_..._absent_when_there_is_nothing_on_the_map が引き継いでいる。
      */
-    public function test_the_locate_ui_is_absent_when_every_building_is_already_located(): void
+    public function test_the_locate_ui_stays_available_when_every_building_is_already_located(): void
     {
         $this->makeBuilding('座標あり', ['latitude' => 33.84, 'longitude' => 132.76]);
 
         $html = $this->actingAs($this->manager())->get('/tenant/area-buildings?view=map')->getContent();
 
-        $this->assertStringNotContainsString('id="btn-locate-mode"', $html, '登録する棟が無いのにトグルが出ている');
-        $this->assertStringNotContainsString('id="locate-panel"', $html, '登録する棟が無いのに作業パネルが出ている');
+        $this->assertStringContainsString('id="btn-locate-mode"', $html,
+            '全棟登録済みだと入口が消えて、置いたピンを直せなくなっている');
+        $this->assertStringContainsString('id="locate-panel"', $html, '全棟登録済みだと作業パネルが出ない');
+        $this->assertStringContainsString('function ensureInLocateList(', $html,
+            'ボタンは出ているのに、リストへ戻す定義側が push されていない（押しても無反応）');
+
+        // 直す作業だと分かる文言になっていること（「残り 0 棟」に「次の棟へ進みます」は成立しない）
+        $this->assertStringContainsString('位置を直す', $html, 'することが無いのに「位置を登録」のままになっている');
+        $this->assertStringNotContainsString('地図をクリックすると保存して次の棟へ進みます。', $html,
+            '進む先が無いのに「次の棟へ進みます」と案内している');
+    }
+
+    /**
+     * 地図に何も無ければ入口を出さない（条件が `$canEdit` だけではないことの固定）。
+     *
+     * ⚠ 上のテストが「未登録 0 でも出る」に変わったので、**条件のもう半分を守る役はここ**。
+     *   これが無いと条件を `$canEdit` だけに潰しても全テストが緑のまま通り、
+     *   対象が 1 つも無い空のパネルが常時出る。
+     */
+    public function test_the_locate_ui_is_absent_when_there_is_nothing_on_the_map(): void
+    {
+        $html = $this->actingAs($this->manager())->get('/tenant/area-buildings?view=map')->getContent();
+
+        $this->assertStringNotContainsString('id="btn-locate-mode"', $html, 'ビルが 1 棟も無いのにトグルが出ている');
+        $this->assertStringNotContainsString('id="locate-panel"', $html, 'ビルが 1 棟も無いのに作業パネルが出ている');
+    }
+
+    /**
+     * **Blade が描いた初期ラベルと、JS が押すたびに戻すラベルが噛み合っていること。**
+     *
+     * ⚠ 未登録の有無でラベルを出し分けた結果、Blade 側（初期表示）と JS 側（トグル）の
+     *   2 箇所に同じ語が要る。片方だけ literal で書くと、全棟登録済みの画面で
+     *   「位置を直す」→ 押す →「登録をやめる」→ 戻す →「位置を登録」と**別の語に化ける**
+     *   （HTML としては妥当なので 200 を見るテストは全部緑。Bug #28 の同型）。
+     */
+    public function test_the_toggle_label_survives_a_round_trip_in_both_states(): void
+    {
+        // ① 未登録あり — 従来どおりの語（作業中の人の画面を変えない）
+        $this->makeBuilding('まだの棟');
+        $pending = $this->actingAs($this->manager())->get('/tenant/area-buildings?view=map')->getContent();
+
+        $this->assertSame(1, preg_match('/id="btn-locate-mode"[\s\S]{0,400}?>\s*([^<\s][^<]*?)\s*</u', $pending, $m),
+            'トグルのラベルを読み取れない');
+        $this->assertSame('位置を登録', $m[1], '未登録があるのにラベルが変わっている');
+
+        $run = $this->runLocateScript($pending, [
+            ['action' => 'toggle'],
+            ['action' => 'toggle'],
+        ], []);
+
+        $this->assertSame('登録をやめる', $run['snapshots'][0]['buttonText'], '開いたときのラベルが違う');
+        $this->assertSame($m[1], $run['snapshots'][1]['buttonText'],
+            '閉じたときに Blade が描いた初期ラベルへ戻っていない');
+
+        // ② 全棟登録済み — 直す作業の語
+        \App\Models\AreaBuilding::query()->update(['latitude' => 33.84, 'longitude' => 132.76]);
+        $located = $this->actingAs($this->manager())->get('/tenant/area-buildings?view=map')->getContent();
+
+        $this->assertSame(1, preg_match('/id="btn-locate-mode"[\s\S]{0,400}?>\s*([^<\s][^<]*?)\s*</u', $located, $m2));
+        $this->assertSame('位置を直す', $m2[1], '全棟登録済みなのに「位置を登録」のままになっている');
+
+        $run2 = $this->runLocateScript($located, [
+            ['action' => 'toggle'],
+            ['action' => 'toggle'],
+        ], [], true, 0);
+
+        $this->assertSame('直すのをやめる', $run2['snapshots'][0]['buttonText'],
+            '「位置を直す」を押したのに「登録をやめる」に化けている');
+        $this->assertSame($m2[1], $run2['snapshots'][1]['buttonText'],
+            '閉じたときに Blade が描いた初期ラベルへ戻っていない');
+    }
+
+    /**
+     * **全棟登録済み（作業リストが空）の状態でも、ピンから置き直せること。**
+     *
+     * ⚠ `ensureInLocateList()` を**空のリスト**に対して呼ぶ唯一の経路。他のテストは必ず
+     *   未登録が 1 棟以上ある状態から始まるので、この境界を一度も通っていなかった。
+     * ⚠ 「未登録が 0 なら何もできない」に戻す変異は、HTML を見るテストだけだと
+     *   入口の有無しか分からない。**実際に置き直して保存が飛ぶ**ところまで見る。
+     */
+    public function test_a_pin_can_still_be_replaced_when_the_work_list_is_empty(): void
+    {
+        $located = $this->makeBuilding('唯一の棟', ['latitude' => 33.84, 'longitude' => 132.76]);
+
+        $response = $this->actingAs($this->manager())->get('/tenant/area-buildings?view=map');
+        $this->assertCount(0, $response->viewData('mapUnlocated'), '前提が崩れている（未登録が残っている）');
+
+        // ⚠ Blade は行を 1 つも描かないので、行数の下限を 0 まで下げて走らせる
+        $run = $this->runLocateScript($response->getContent(), [
+            ['action' => 'toggle'],
+            ['action' => 'markerclick', 'title' => '唯一の棟'],
+            ['action' => 'infoclick', 'label' => 'この棟に置き直す'],
+            ['action' => 'mapclick', 'lat' => 33.95, 'lng' => 132.95],
+        ], [
+            ['ok' => true, 'body' => ['id' => $located->id, 'latitude' => 33.95, 'longitude' => 132.95]],
+        ], true, 0);
+
+        [$opened, , $picked, $saved] = $run['snapshots'];
+
+        // 開いた直後は「これから置く棟」が無いので、直す作業だと案内する
+        $this->assertSame('0', $opened['remaining'], '未登録 0 なのに残り件数が 0 でない');
+        $this->assertStringContainsString('直したいピンを地図でクリックして', $opened['message'],
+            '何もしていないのに「すべて片付きました」と出している');
+
+        // 空のリストへ 1 件目として足せること
+        $this->assertCount(1, $run['appendedRows'], '空の作業リストに行を足せていない');
+        $this->assertSame('唯一の棟', $picked['current'], '空のリストからでは置き直しを選べない');
+        $this->assertSame('1', $picked['remaining'], '置き直す棟が残り件数に入っていない');
+
+        // そのまま保存できること
+        $this->assertCount(1, $run['fetches'], '置き直し後のクリックが保存されていない');
+        $this->assertStringEndsWith('/' . $located->id . '/coordinates', $run['fetches'][0]['url']);
+        $this->assertSame('0', $saved['remaining'], '保存しても残り件数が戻っていない');
+        $this->assertSame([], $run['mapMoves'], '置き直しで地図を動かしている');
     }
 
     public function test_the_locate_list_carries_the_unlocated_buildings(): void
@@ -1637,9 +1753,13 @@ JS);
      * @param  list<array<string, mixed>>  $steps
      * @param  list<array<string, mixed>>  $responses
      * @param  bool  $confirm  confirm() が返す答え（false ＝ 利用者が「いいえ」を押した）
+     * @param  int  $minRows  作業リストの行数の下限。⚠ 既定の 1 は**空振り防止**（Blade が
+     *                        リストを描かなくなったら落とすため）。0 にしてよいのは
+     *                        「未登録が 1 棟も無い」＝ Blade が行を描かないことが**仕様**の
+     *                        ときだけで、その場合は JS が行を作ることを別途アサートすること。
      * @return array<string, mixed>
      */
-    private function runLocateScript(string $html, array $steps, array $responses, bool $confirm = true): array
+    private function runLocateScript(string $html, array $steps, array $responses, bool $confirm = true, int $minRows = 1): array
     {
         $node = trim((string) shell_exec('command -v node 2>/dev/null'));
         if ($node === '') {
@@ -1655,7 +1775,8 @@ JS);
 
         // ⚠ 空振りしたまま走らせない。0 行のまま進むと後段が
         //   「Undefined array key 0」という理由の読めないエラーで落ちる（Bug #44）
-        $this->assertNotSame([], $buttons, '作業リストの行を画面から 1 つも拾えていない（Blade がリストを描いていない）');
+        $this->assertGreaterThanOrEqual($minRows, count($buttons),
+            '作業リストの行を画面から拾えていない（Blade がリストを描いていない）');
 
         $plan = [
             'ids'       => array_values(array_unique($idm[1])),

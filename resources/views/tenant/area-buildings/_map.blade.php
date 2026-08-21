@@ -3,10 +3,22 @@
         1 行も読み込まない＝課金ゼロ（設計書 §7）。 --}}
 
 {{-- 登録モード（設計書 §4.3）を出すかどうか。
+     ⚠ **未登録が 0 になっても出す。** 出す条件を「未登録が 1 棟以上」だけにすると、
+        187 棟を登録し終えた瞬間に登録モードごと消えて、**置いたピンを直す手段まで無くなる**。
+        しかも「作業が終わったあとに間違いに気づく」のが最も自然なタイミングなので必ず当たる。
+        ピンが 1 本でもあれば直す対象がある（ensureInLocateList がリストへ戻す）。
+        ビルが 1 棟も無いときだけ、することが無いので出さない。
      ⚠ **判定は 1 つの変数だけにする。** ボタン・作業パネル・スクリプトの 3 箇所で
         条件を書き直すと、片方だけ外れても HTML としては妥当なまま
         「ボタンはあるのに押しても無反応」になる（Bug #28。Task 7 の一括取得で実際に踏んだ形）。 --}}
-@php($canLocate = $canEdit && count($mapUnlocated) > 0)
+@php($hasPendingLocate = count($mapUnlocated) > 0)
+@php($canLocate = $canEdit && ($hasPendingLocate || count($mapPins) > 0))
+
+{{-- トグルのラベル。⚠ **やめる側と対で持つ。** JS が押すたびに書き換えるので、
+     片方だけ Blade・片方だけ JS に literal で置くと、未登録が 0 になった画面で
+     「位置を直す」→「登録をやめる」と噛み合わない表示になる（Bug #28 の同型）。 --}}
+@php($locateLabel     = $hasPendingLocate ? '位置を登録' : '位置を直す')
+@php($locateStopLabel = $hasPendingLocate ? '登録をやめる' : '直すのをやめる')
 
 @push('styles')
 <style>
@@ -36,7 +48,7 @@
         @if($canLocate)
             <button type="button" id="btn-locate-mode" onclick="toggleLocateMode()"
                     class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-md transition-colors whitespace-nowrap">
-                位置を登録
+                {{ $locateLabel }}
             </button>
         @endif
     </div>
@@ -61,7 +73,14 @@
             <div id="locate-panel" style="display:none;" class="border border-gray-200 rounded-md p-3 bg-gray-50">
                 <div class="text-xs font-bold text-gray-700 mb-1">位置を登録する棟</div>
                 <div class="text-xs text-gray-500 mb-2">
-                    地図をクリックすると保存して次の棟へ進みます。
+                    @if($hasPendingLocate)
+                        地図をクリックすると保存して次の棟へ進みます。
+                    @else
+                        直したいピンをクリックして「この棟に置き直す」を選ぶと、ここに並びます。
+                    @endif
+                    {{-- ⚠ この行は未登録が 0 のときも必ず出す。renderLocateList() が
+                         getElementById('locate-remaining') を**null ガード無しで**参照するので、
+                         消すと TypeError でパネルの描き直しごと死ぬ（画面は無音）。 --}}
                     残り <strong id="locate-remaining">{{ count($mapUnlocated) }}</strong> 棟
                 </div>
                 <button type="button" onclick="skipLocateTarget()"
@@ -329,6 +348,10 @@ var AREA_MAP_SAVE_URL = '{{ route('tenant.area-buildings.coordinates', ['buildin
 var AREA_MAP_SHOW_URL = '{{ route('tenant.area-buildings.show', ['building' => '__ID__']) }}';
 var AREA_MAP_CLEAR_URL = '{{ route('tenant.area-buildings.coordinates.clear', ['building' => '__ID__']) }}';
 
+/* トグルのラベル。⚠ Blade が描いた初期表示と対になる（ここに literal を書くと噛み合わなくなる） */
+var AREA_MAP_LOCATE_LABEL      = {{ \Illuminate\Support\Js::from($locateLabel) }};
+var AREA_MAP_LOCATE_STOP_LABEL = {{ \Illuminate\Support\Js::from($locateStopLabel) }};
+
 /* CSRF トークン。⚠ **要素が無い可能性を潰しておく。**
    `document.querySelector(...).getAttribute(...)` と直に書くと、レイアウトから meta が
    消えたときに TypeError で **このスクリプト全体が死ぬ** —— onAreaMapReady も定義されず、
@@ -352,7 +375,7 @@ function toggleLocateMode() {
 
     document.getElementById('locate-panel').style.display = areaLocateMode ? 'block' : 'none';
     document.getElementById('area-map-layout').classList.toggle('is-locating', areaLocateMode);
-    document.getElementById('btn-locate-mode').textContent = areaLocateMode ? '登録をやめる' : '位置を登録';
+    document.getElementById('btn-locate-mode').textContent = areaLocateMode ? AREA_MAP_LOCATE_STOP_LABEL : AREA_MAP_LOCATE_LABEL;
 
     if (!areaLocateMode) {
         showMessage('');
@@ -433,6 +456,14 @@ function advanceLocateTarget(note) {
     //    無音で食い違う」）。進捗の正本はこのパネルの「残り N 棟」なので、
     //    食い違いを隠さずに再読み込みを促す。
     renderLocateList();
+
+    // ⚠ 「1 件も無い」と「全部片付いた」は別物。全棟登録済みの画面で
+    //    「すべて片付きました」と出すと、何もしていないのに完了したように読める
+    if (AREA_MAP_UNLOCATED.length === 0) {
+        showMessage((note || '') + '直したいピンを地図でクリックして「この棟に置き直す」を選んでください。');
+        return;
+    }
+
     showMessage((note || '') + '未登録の棟はすべて片付きました。ページを再読み込みすると上の件数にも反映されます。');
 }
 
