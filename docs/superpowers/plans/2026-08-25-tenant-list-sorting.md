@@ -784,10 +784,12 @@ Expected: FAIL — 並び替えが未実装なので `test_units_without_an_area
 
 - [ ] **Step 3: `UnitController::index()` を書き換える**
 
-`app/Http/Controllers/Tenant/UnitController.php` の冒頭 `use` に 1 行足す（`use App\Services\Tenant\RentalIncomeService;` の**下**）:
+`app/Http/Controllers/Tenant/UnitController.php` の冒頭 `use` に 2 行足す。
+**既存の並びはアルファベット順**なので、その順序を保って挿入する:
 
 ```php
-use App\Support\ListSort;
+use App\Support\ListSort;                        // ← App\Services\... の直後
+use Illuminate\Database\Eloquent\Builder;        // ← App\Support\... の直後
 ```
 
 まず `index()` の**直前**（クラスの先頭、`public function index` の上）に定数を置く:
@@ -876,12 +878,6 @@ use App\Support\ListSort;
               ->orderBy('units.floor')
               ->orderBy('units.room_number');
     }
-```
-
-`Builder` の import を冒頭の `use` に足す（`use App\Support\ListSort;` の**上**、アルファベット順で `App\...` の後ろ）:
-
-```php
-use Illuminate\Database\Eloquent\Builder;
 ```
 
 - [ ] **Step 4: テストが通ることを確認する**
