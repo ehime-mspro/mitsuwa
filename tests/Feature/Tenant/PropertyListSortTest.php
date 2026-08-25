@@ -543,4 +543,63 @@ class PropertyListSortTest extends TestCase
             'クリアがクエリ付きのリンクになっている（並び順が残ってしまう）'
         );
     }
+
+    /**
+     * 2 ページ目で見出しを押したら 1 ページ目へ戻る（設計書 §4.3-5）。
+     *
+     * ⚠ **部屋一覧の同名テストでは代替できない。** 物件一覧のページャは手組みで、
+     *   'query' に page を含んだまま渡している。正しく動くのは LengthAwarePaginator::url() が
+     *   array_merge($this->query, ['page' => $n]) と**正しい page を後ろに置く**からで、
+     *   フレームワークの実装詳細に依存している。部屋一覧は withQueryString() なのでこの経路を通らない。
+     */
+    public function test_clicking_a_header_from_page_two_returns_to_page_one(): void
+    {
+        for ($i = 1; $i <= 25; $i++) {
+            $this->makeProperty($i, units: 1, contracted: 1, rentEach: $i * 10000);
+        }
+
+        $user = $this->executive();
+
+        $page1 = $this->actingAs($user)->get(route('tenant.properties.index'));
+        $page2 = $this->actingAs($user)->get($page1->viewData('properties')->nextPageUrl());
+        $page2->assertOk();
+        $this->assertSame(2, $page2->viewData('properties')->currentPage());
+
+        $url = $this->sortLinkFor($page2->getContent(), '賃料収入');
+
+        $this->assertStringNotContainsString('page=', $url, '見出しリンクが page を持ち越している');
+        $this->assertSame(1, $this->actingAs($user)->get($url)->viewData('properties')->currentPage());
+    }
+
+    /**
+     * 絞り込み中に見出しを押しても、絞り込みが残る。
+     *
+     * ⚠ ListSortTest は Request::create() 経由なので **ConvertEmptyStringsToNull を通らない**
+     *   （Bug #31 / #35 が名指しで警告している経路差）。実 HTTP の往復はここだけ。
+     * ⚠ 既定 [1,2,3] / 賃料収入降順 [2,1,3] で食い違わせてある。
+     */
+    public function test_clicking_a_header_keeps_the_current_filter(): void
+    {
+        $a = $this->makeProperty(1, units: 1, contracted: 1, rentEach: 200000);
+        $b = $this->makeProperty(2, units: 1, contracted: 1, rentEach: 300000);
+        $c = $this->makeProperty(3, units: 1, contracted: 1, rentEach: 100000);
+        $inactive = $this->makeProperty(4, operationStatus: 'inactive');
+
+        $user = $this->executive();
+
+        $html = $this->actingAs($user)
+            ->get(route('tenant.properties.index', ['operation_status' => 'active']))
+            ->getContent();
+
+        $url = $this->sortLinkFor($html, '賃料収入');
+
+        $this->assertStringContainsString('operation_status=active', $url, '見出しリンクが絞り込みを落としている');
+
+        $response = $this->actingAs($user)->get($url);
+
+        $response->assertOk();
+        $ids = $response->viewData('properties')->pluck('id')->all();
+        $this->assertSame([$b->id, $a->id, $c->id], $ids, '絞り込みを保ったまま賃料収入の降順になっていない');
+        $this->assertNotContains($inactive->id, $ids, '絞り込みが効いていない');
+    }
 }
