@@ -2124,7 +2124,7 @@ Expected: FAIL — `「賃料収入」の並び替えリンクが見つからな
 vendor/bin/phpunit --filter=PropertyListSortTest
 ```
 
-Expected: PASS（13 tests）
+Expected: PASS（14 tests）
 
 - [ ] **Step 6: コンパイル済みビューを lint する**
 
@@ -2196,7 +2196,7 @@ git status --porcelain && echo "--- 空なら OK ---"
 これは**特性テスト（現状の固定）**であって、検出力があるという主張はしないこと。
 配列の往復がどこにも書かれていない暗黙の前提だったので置いてある。
 
-- [ ] **Step 2: 25 通りの変異を 1 つずつ当てて測る**
+- [ ] **Step 2: 27 通りの変異を 1 つずつ当てて測る**
 
 各行について「変異を当てる → `git diff --stat` で着弾確認 → 該当テストを走らせる → 文言を控える → `git checkout --`」を繰り返す。
 
@@ -2219,6 +2219,8 @@ git status --porcelain && echo "--- 空なら OK ---"
 | 8b | 往復の送信フィールドから `sort` / `dir` を落とす（`unset($fields['sort'], $fields['dir'])`） | `UnitListSortTest` の往復テスト | `test_changing_a_filter_keeps_the_current_sort` が赤。⚠ **面積の昇順と既定順を食い違わせるまでは緑だった**（旧データで実測）。往復の後半が飾りになっていないことの証明 |
 | 9 | `<x-sort-hidden :sort="$sort" />` の行を物件一覧から消す | `tenant/properties/index.blade.php` | `SortableListWiringTest` が赤（走査は全件分類なので物件一覧も自動で対象） |
 | 9b | `calculatePropertyStats()` の `$property->contracts` を `$property->contracts()->where('status', ContractStatus::Active)->get()` に変える（**値は不変・クエリだけ N 本になる**） | `PropertyController` | **実測済み（Task 6 レビュー）: N+1 テストだけが赤・他 7 本は緑**。文言「物件が増えるとクエリが増える（N+1）: 5 件で 8 本 / 25 件で 28 本」。⚠ `->with([...])` を丸ごと消す変異は契約の絞り込みまで変わって**別の理由で赤**になるので測定として濁る |
+| 9c | 物件一覧の「クリア」の `href` を `route('tenant.properties.index', ['sort' => 'income', 'dir' => 'desc'])` にする | `tenant/properties/index.blade.php` | **実測済み（Task 7）: 赤。** `PropertyListSortTest::test_the_clear_link_drops_the_sort` が「クリアがクエリ付きのリンクになっている」で落ちる。⚠ **足すまでは 994 テスト全部が緑だった。** サイドバーが同じ bare URL を **3 箇所**で出すので、素の href 一致では**確実に**飾りになる |
+| 9d | 見出しの `align="center"` を `align="left"` にする | `tenant/properties/index.blade.php` | **実測済み（Task 7）: 赤。** ⚠ 足すまでは 15 本全緑だった。⚠ **部屋一覧側のアサートは `text-align: right;`** で書くこと — 面積は right で、`center` にすると**家賃・月額合計の `<th>` に一致して**面積列を一切見なくなる（実測） |
 | 10 | `MONTHLY_TOTAL_SQL` から `+ COALESCE(units.pest_control_fee, 0)` を落とす | `app/Models/Unit.php` | `UnitListSortTest::test_the_monthly_total_sql_agrees_with_the_php_accessor` が赤 |
 | 11 | `MONTHLY_TOTAL_SQL` の `units.rent` を `units.rentt` に綴り間違える | `app/Models/Unit.php` | 赤。⚠ **理由が違う**ことに注意 — Bug #40 の「SQLite が黙って 0 を返す」は**二重引用符で囲まれた識別子**（`->sum('col')` 経由）の話で、`selectRaw` / `orderByRaw` に素で書いた識別子は `no such column` で**例外**になる。**文言を必ず確認する。** 併せて `assertGreaterThan(1, ...)` と `assertContains(315000, ...)` の 2 行を外しても赤のままかを実測し、**その 2 行が load-bearing かどうかを記録する** |
 | 12 | `! in_array($key, $allowed, true)` を消す（`! is_string($key)` だけ残す） | `app/Support/ListSort.php` | `UnitListSortTest::test_invalid_sort_parameters_fall_back_to_the_default_order` が赤（`?sort=name` が `self::SORTABLE['name']` で `Undefined array key` → 500） |
