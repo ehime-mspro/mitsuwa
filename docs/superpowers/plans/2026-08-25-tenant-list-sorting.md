@@ -2120,7 +2120,7 @@ git status --porcelain && echo "--- 空なら OK ---"
 これは**特性テスト（現状の固定）**であって、検出力があるという主張はしないこと。
 配列の往復がどこにも書かれていない暗黙の前提だったので置いてある。
 
-- [ ] **Step 2: 17 通りの変異を 1 つずつ当てて測る**
+- [ ] **Step 2: 19 通りの変異を 1 つずつ当てて測る**
 
 各行について「変異を当てる → `git diff --stat` で着弾確認 → 該当テストを走らせる → 文言を控える → `git checkout --`」を繰り返す。
 
@@ -2133,6 +2133,8 @@ git status --porcelain && echo "--- 空なら OK ---"
 | 5 | `sortProperties` の null 分離（`$withValue` / `$withoutValue`）をやめて全件 `sortBy` にする | `PropertyController::sortProperties` | `PropertyListSortTest::test_inactive_properties_sort_last_in_both_directions` が赤。⚠ #4 と同じく**昇順だけ**落ちる |
 | 6 | `'rent' => ['COALESCE(units.rent, 0)', false]` を `['units.rent', true]` に変える | `UnitController::applySort` | `UnitListSortTest::test_units_with_a_null_rent_sort_as_zero_not_last` が赤。文言「NULL の家賃が 0 として先頭に来ていない（末尾へ飛ばしている）」 |
 | 7 | `href="{{ \App\Support\ListSort::url(...) }}"` を `href="{{ url()->current() }}"` に変える | `components/sortable-th.blade.php` | `UnitListSortTest::test_clicking_the_area_header_three_times_cycles_back_to_the_default_order` と `PropertyListSortTest::test_clicking_the_income_header_...` が赤 |
+| 7b | `$ariaSort` の算出を `match ($state)` から `match ($sort?->direction)` に変える（＝ 並び替え中はどの列も `descending` になる） | `components/sortable-th.blade.php` | `UnitListSortTest::test_only_the_sorted_column_is_marked_and_the_padding_sits_on_the_link` が赤。文言「並び替えていない列に aria-sort が載っている」。⚠ **ページ全体を見る `assertStringContainsString('aria-sort="descending"')` だけでは緑のまま通る**（Task 4 のレビューで実測） |
+| 7c | `<th>` の `padding: 0` を `padding: 14px 20px` に戻し、`<a>` 側の `{{ $linkStyle }}` を消す | `components/sortable-th.blade.php` | 同テストが赤。文言「見出しセルのパディングが 0 になっていない（`<a>` 側へ移していない）」。⚠ 当たり判定そのものは HTML では測れないが（Bug #43）、**どちらに載っているか**は測れる |
 | 8 | `<input type="hidden" name="sort" ...>` の行を消す | `tenant/units/index.blade.php` | `UnitListSortTest::test_changing_a_filter_keeps_the_current_sort` が赤。文言「フィルターフォームが sort を持ち回していない」 |
 | 9 | 同上を物件一覧で | `tenant/properties/index.blade.php` | `PropertyListSortTest::test_changing_a_filter_keeps_the_current_sort` が赤 |
 | 10 | `MONTHLY_TOTAL_SQL` から `+ COALESCE(units.pest_control_fee, 0)` を落とす | `app/Models/Unit.php` | `UnitListSortTest::test_the_monthly_total_sql_agrees_with_the_php_accessor` が赤 |
