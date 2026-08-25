@@ -35,7 +35,12 @@ trait ParsesSortLinks
         preg_match_all('/<th\b([^>]*)>(.*?)<\/th>/su', $html, $cells, PREG_SET_ORDER);
 
         foreach ($cells as [, $attributes, $inner]) {
-            if (! str_contains($inner, $label)) {
+            // ⚠ $inner は <th>…</th> の「中身だけ」。sortable-th の中身は
+            //   <a href="…">面積<span>…</span></a> のようにタグに包まれるので
+            //   >ラベル< で挟まれるが、並び替え不可の素の <th>敷金</th> は
+            //   $inner が「敷金」という文字列そのもので > も < も持たない。
+            //   両方を拾うため、境界を「文字列の先頭/末尾」も許容する。
+            if (! preg_match('/(?:^|>)\s*' . preg_quote($label, '/') . '\s*(?:<|$)/u', $inner)) {
                 continue;
             }
 

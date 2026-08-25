@@ -18,6 +18,10 @@ props:
 ⚠ **<a> の中は「ラベル → 矢印」の順にする。** テストの sortLinkFor() が
    <a …> の直後にラベルが来ることを要求しているので、矢印を先に置くとリンクを見つけられない。
 ⚠ JS は 1 行も使わない。ただのリンク。
+⚠ `color` は inline style なので `hover:text-*` / `focus:text-*` は**効かない**（inline が勝つ）。
+   文字色を状態で変えたいなら inline 側を CSS 変数にするか app.css へ逃がすこと。
+⚠ <a> の高さは自分の content + padding で決まり、行の高さには追従しない。
+   将来どこかの見出しが 2 行になると、並び替え可能な列だけ当たり判定が縮む（HTML では見えない）。
 --}}
 @props([
     'column',
@@ -45,20 +49,21 @@ props:
     $iconColor = $state === null ? '#D1D5DB' : '#059669';
     $labelColor = $state === null ? 'inherit' : '#047857';
 @endphp
-<th class="text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap"
-    style="padding: 0; text-align: {{ $align }};"
-    aria-sort="{{ $ariaSort }}">
+<th {{ $attributes->merge([
+        'class' => 'text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap',
+        'style' => 'padding: 0; text-align: ' . $align . ';',
+    ]) }} aria-sort="{{ $ariaSort }}">
     <a href="{{ \App\Support\ListSort::url(request(), $column, $sort) }}"
-       class="hover:bg-gray-100 transition-colors {{ $linkClass }}"
+       class="{{ trim('sortable-th-link hover:bg-gray-100 transition-colors ' . $linkClass) }}"
        style="display: flex; align-items: center; justify-content: {{ $justify }}; gap: 5px; text-decoration: none; cursor: pointer; user-select: none; color: {{ $labelColor }}; {{ $linkStyle }}">
         {{ $label }}
         <span style="flex-shrink: 0; width: 12px; height: 12px; color: {{ $iconColor }};">
             @if($state === \App\Support\ListSort::ASC)
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 15 12 8 18 15"/></svg>
+                <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 15 12 8 18 15"/></svg>
             @elseif($state === \App\Support\ListSort::DESC)
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 16 18 9"/></svg>
+                <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 16 18 9"/></svg>
             @else
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="7 15 12 20 17 15"/><polyline points="7 9 12 4 17 9"/></svg>
+                <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="7 15 12 20 17 15"/><polyline points="7 9 12 4 17 9"/></svg>
             @endif
         </span>
     </a>

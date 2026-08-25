@@ -81,6 +81,17 @@
     color: #9a3412;
 }
 
+/* ===== 並び替えできる列見出し ===== */
+/* ⚠ outline-offset を負にするのが load-bearing。この見出しは .scroll-hint-inner
+   （overflow-x: auto）の中にあり、CSS の計算で overflow-y も auto になるため上下にも
+   クリップする。<th> の padding を 0 にして <a> 側へ移している都合上、リンクの上辺は
+   コンテナ内容ボックスの上辺とほぼ一致するので、外側に描くリングは上が切れる。
+   ⚠ 検証は「HTML にクラスが出ているか」では不可能。実ブラウザで Tab して目視すること。 */
+.sortable-th-link:focus-visible {
+    outline: 2px solid #059669;
+    outline-offset: -2px;
+}
+
 /* ===== スクロールヒント（横スクロール可能なテーブル用） ===== */
 .scroll-hint {
     position: relative;
