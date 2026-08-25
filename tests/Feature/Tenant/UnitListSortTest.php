@@ -72,6 +72,11 @@ class UnitListSortTest extends TestCase
 
         $values = [];
         foreach (Unit::orderBy('id')->get() as $unit) {
+            // ⚠ (int) キャストが NULL を 0 に潰すので、キャストの前に NULL でないことを見る。
+            //   これが無いと COALESCE を全部外す変異が緑のまま通る（実測済み）。
+            //   定数の docblock が「この式は NULL にならない」と断言しており、
+            //   Task 3 はそれを根拠に null 判定句を書かないので、断言のほうを固定する。
+            $this->assertNotNull($fromSql[$unit->id], 'COALESCE が外れて式が NULL になっている');
             $this->assertSame(
                 $unit->monthly_total,
                 (int) $fromSql[$unit->id],
