@@ -2177,58 +2177,63 @@ EOF
 ⚠ **シェル経由の置換（`sed` / `perl`）はエスケープが合わず 0 箇所置換でも成功に見える。**
 エディタで編集し、必ず 3 の `git diff --stat` で着弾を確認すること。
 
-- [ ] **Step 1: 作業ツリーが清浄であることを確認する**
+- [x] **Step 1: 作業ツリーが清浄であることを確認する**
 
 ```bash
 git status --porcelain && echo "--- 空なら OK ---"
 ```
 
-### Task 1 の時点で既に実測済み（再測不要。結果をそのまま採用する）
+### Task 1 の時点で既に実測済み（**2026-08-26 に HEAD `04609b26` で全件再測し、4 通りとも同じ結果だった**）
 
 | 変異 | 実測（2026-08-25） |
 |---|---|
 | #3 `sortProperties()` から `['code', 'asc']`（第 2 キー）を消す | **緑**（予告どおり）。PHP 8 の `uasort` は安定で、`$all` が SQL 側で既に `code` 昇順なので第 2 キーが無くても同じ並びになる。**冗長だが、将来 `$all` の取得順が変わったときの保険＋意図の記録として残す** |
 | #13 `! is_string($key)` を消す | **緑**（予測どおり）。`in_array(['area'], $allowed, true)` が false を返すのでガードが無くても null に落ちる。ガードは純粋な二重防御であり、`test_array_sort_does_not_explode` が実際に守っているのは `in_array` のほう |
 | #15 `array_map(fn ($v) => $v ?? '', $query)` を `$query` に戻す | **赤**。`ListSortTest::test_url_keeps_a_null_filter_by_normalising_it_to_an_empty_string` が `Failed asserting that '...?sort=occupancy&dir=desc' contains "operation_status="` で落ちる |
-| （追加）`Arr::query(...)` を素の `http_build_query(...)` に替える | **緑**。`Arr::query()` は `http_build_query($array, '', '&', PHP_QUERY_RFC3986)` の薄いラッパーで（`vendor/laravel/framework/.../Arr.php:939-942`）、配列の展開ロジックは同一。差は RFC3986 と RFC1738 のエンコード（スペースの扱い等）だけで、テストデータにスペースが無いため差が出なかった |
+| （追加）`Arr::query(...)` を素の `http_build_query(...)` に替える | **緑**（2026-08-26 再測でも 997 tests / 6138 assertions すべて green）。`Arr::query()` は `http_build_query($array, '', '&', PHP_QUERY_RFC3986)` の薄いラッパーで（`vendor/laravel/framework/.../Arr.php:939-942`）、配列の展開ロジックは同一。差は RFC3986 と RFC1738 のエンコード（スペースの扱い等）だけで、テストデータにスペースが無いため差が出なかった |
 
 ⚠ **`test_url_keeps_an_array_filter` は上記 2 通りの変異では落ちない**ことが実測で分かっている。
 これは**特性テスト（現状の固定）**であって、検出力があるという主張はしないこと。
 配列の往復がどこにも書かれていない暗黙の前提だったので置いてある。
 
-- [ ] **Step 2: 27 通りの変異を 1 つずつ当てて測る**
+⚠ **2026-08-26 追記 — 上の 4 行も「今の HEAD で」測り直すこと。** 中間コミットで測った結果は、
+その後の変更（`UnitController` のページャ / `sortable-th` / テストの追加）で変わりうる。
+実際、**#8c / #8d は Task 5 の時点では赤 1 本だったが、物件一覧のテストが増えた今は赤 2 本**になっている
+（結果自体は変わっていないが、守っている本数が増えた）。
+
+- [x] **Step 2: 27 通りの変異を 1 つずつ当てて測る**
 
 各行について「変異を当てる → `git diff --stat` で着弾確認 → 該当テストを走らせる → 文言を控える → `git checkout --`」を繰り返す。
 
 | # | 変異 | 対象 | 期待 |
 |---|---|---|---|
-| 1 | 並べ替えを**ページを切った後**に移す（下記コード） | `PropertyController::index` | `PropertyListSortTest::test_paging_through_a_sorted_list_never_shows_a_larger_value_on_a_later_page` が赤。文言「ページをまたいで降順になっていない（1 ページ目の中だけで並んでいる）」 |
-| 2 | 既定順の 3 行 `->orderBy('units.property_id')...` を消す | `UnitController::applySort` | `UnitListSortTest::test_tied_rows_keep_the_default_order` が赤。文言「同点の中が既定順になっていない」 |
-| 3 | `['code', 'asc']` を消す | `PropertyController::sortProperties` | ⚠ **緑になる見込み。** PHP 8 の sort は安定で、`$all` が既定順で来るので第 2 キーが無くても同じ並びになる。**実測して結果を記録する**（緑なら「冗長だが将来 `$all` の取得順が変わったときの保険＋意図の記録」として残す。Bug #54 ⑤ と同型） |
-| 4 | `$query->orderByRaw("({$expression} IS NULL) asc")` の行を消す | `UnitController::applySort` | `UnitListSortTest::test_units_without_an_area_sort_last_in_both_directions` が赤。⚠ **降順は偶然通る**（SQLite は NULL を最小として扱うので降順なら末尾）。**昇順のアサートだけが落ちる**ので、両方向を見ているのが load-bearing |
-| 5 | `sortProperties` の null 分離（`$withValue` / `$withoutValue`）をやめて全件 `sortBy` にする | `PropertyController::sortProperties` | `PropertyListSortTest::test_inactive_properties_sort_last_in_both_directions` が赤。⚠ #4 と同じく**昇順だけ**落ちる |
-| 5b | `sortProperties()` の判定を `!== null` / `=== null` から truthy（`(bool) $p->{$field}` / `! $p->{$field}`）へ変える | `PropertyController::sortProperties` | **実測済み（Task 6）: 赤。** `test_an_active_property_with_zero_income_is_not_pushed_to_the_end` の**昇順側**が「0 円の稼働物件が末尾へ飛んでいる」で落ちる。⚠ **降順は素通りする**（0 は元々最後に来るので末尾へ飛ばしても同じ並び）＝ 昇順・降順の**両方**を見ているのが load-bearing。⚠ このテストを足すまでは 987 テスト全部が緑だった |
-| 6 | `'rent' => ['COALESCE(units.rent, 0)', false]` を `['units.rent', true]` に変える | `UnitController::applySort` | `UnitListSortTest::test_units_with_a_null_rent_sort_as_zero_not_last` が赤。文言「NULL の家賃が 0 として先頭に来ていない（末尾へ飛ばしている）」 |
-| 7 | `href="{{ \App\Support\ListSort::url(...) }}"` を `href="{{ url()->current() }}"` に変える | `components/sortable-th.blade.php` | `UnitListSortTest::test_clicking_the_area_header_three_times_cycles_back_to_the_default_order` と `PropertyListSortTest::test_clicking_the_income_header_...` が赤 |
-| 7b | `$ariaSort` の算出を `match ($state)` から `match ($sort?->direction)` に変える（＝ 並び替え中はどの列も `descending` になる） | `components/sortable-th.blade.php` | `UnitListSortTest::test_only_the_sorted_column_is_marked_and_the_padding_sits_on_the_link` が赤。文言「並び替えていない列に aria-sort が載っている」。⚠ **ページ全体を見る `assertStringContainsString('aria-sort="descending"')` だけでは緑のまま通る**（Task 4 のレビューで実測） |
-| 7c | `<th>` の `padding: 0` を `padding: 14px 20px` に戻し、`<a>` 側の `{{ $linkStyle }}` を消す | `components/sortable-th.blade.php` | 同テストが赤。文言「見出しセルのパディングが 0 になっていない（`<a>` 側へ移していない）」。⚠ 当たり判定そのものは HTML では測れないが（Bug #43）、**どちらに載っているか**は測れる |
-| 8 | `<x-sort-hidden :sort="$sort" />` の行を消す | `tenant/units/index.blade.php` | **実測済み（Task 5）: 赤。** `SortableListWiringTest` が「index.blade.php は並び替え見出しを持つのに、並び順を持ち回す hidden が無い」で落ちる |
-| 8c | `sort-hidden.blade.php` の `value="{{ $sort->direction }}"` を `value="asc"` に固定する | `components/sort-hidden.blade.php` | **実測済み（Task 5）: 赤。** 文言「フィルターフォームが dir=desc を持ち回していない」。⚠ **往復が 1 組（area/asc）だけのときは緑だった。** この変異が本番で起きると「降順で見ていた利用者がフィルタを触った瞬間に昇順へ静かに反転する」 |
-| 8d | 同じく `value="{{ $sort->key }}"` を `value="area"` に固定する | `components/sort-hidden.blade.php` | **実測済み（Task 5）: 赤。** 文言「フィルターフォームが sort=rent を持ち回していない」 |
-| 8e | 「クリア」の `href` を `route('tenant.units.index', ['sort' => 'area'])` にする | `tenant/units/index.blade.php` | **実測済み（Task 5）: 赤。** ⚠ **素の `assertStringContainsString('href="…"')` では緑だった** — サイドバーの「部屋一覧」が同じ bare URL を指すため（Bug #47 の「同じ URL を指す要素が 2 つある」）。`sortLinkFor()` で「クリア」ラベルに絞って初めて落ちる |
-| 8b | 往復の送信フィールドから `sort` / `dir` を落とす（`unset($fields['sort'], $fields['dir'])`） | `UnitListSortTest` の往復テスト | `test_changing_a_filter_keeps_the_current_sort` が赤。⚠ **面積の昇順と既定順を食い違わせるまでは緑だった**（旧データで実測）。往復の後半が飾りになっていないことの証明 |
-| 9 | `<x-sort-hidden :sort="$sort" />` の行を物件一覧から消す | `tenant/properties/index.blade.php` | `SortableListWiringTest` が赤（走査は全件分類なので物件一覧も自動で対象） |
-| 9b | `calculatePropertyStats()` の `$property->contracts` を `$property->contracts()->where('status', ContractStatus::Active)->get()` に変える（**値は不変・クエリだけ N 本になる**） | `PropertyController` | **実測済み（Task 6 レビュー）: N+1 テストだけが赤・他 7 本は緑**。文言「物件が増えるとクエリが増える（N+1）: 5 件で 8 本 / 25 件で 28 本」。⚠ `->with([...])` を丸ごと消す変異は契約の絞り込みまで変わって**別の理由で赤**になるので測定として濁る |
-| 9c | 物件一覧の「クリア」の `href` を `route('tenant.properties.index', ['sort' => 'income', 'dir' => 'desc'])` にする | `tenant/properties/index.blade.php` | **実測済み（Task 7）: 赤。** `PropertyListSortTest::test_the_clear_link_drops_the_sort` が「クリアがクエリ付きのリンクになっている」で落ちる。⚠ **足すまでは 994 テスト全部が緑だった。** サイドバーが同じ bare URL を **3 箇所**で出すので、素の href 一致では**確実に**飾りになる |
-| 9d | 見出しの `align="center"` を `align="left"` にする | `tenant/properties/index.blade.php` | **実測済み（Task 7）: 赤。** ⚠ 足すまでは 15 本全緑だった。⚠ **部屋一覧側のアサートは `text-align: right;`** で書くこと — 面積は right で、`center` にすると**家賃・月額合計の `<th>` に一致して**面積列を一切見なくなる（実測） |
-| 10 | `MONTHLY_TOTAL_SQL` から `+ COALESCE(units.pest_control_fee, 0)` を落とす | `app/Models/Unit.php` | `UnitListSortTest::test_the_monthly_total_sql_agrees_with_the_php_accessor` が赤 |
-| 11 | `MONTHLY_TOTAL_SQL` の `units.rent` を `units.rentt` に綴り間違える | `app/Models/Unit.php` | 赤。⚠ **理由が違う**ことに注意 — Bug #40 の「SQLite が黙って 0 を返す」は**二重引用符で囲まれた識別子**（`->sum('col')` 経由）の話で、`selectRaw` / `orderByRaw` に素で書いた識別子は `no such column` で**例外**になる。**文言を必ず確認する。** 併せて `assertGreaterThan(1, ...)` と `assertContains(315000, ...)` の 2 行を外しても赤のままかを実測し、**その 2 行が load-bearing かどうかを記録する** |
-| 12 | `! in_array($key, $allowed, true)` を消す（`! is_string($key)` だけ残す） | `app/Support/ListSort.php` | `UnitListSortTest::test_invalid_sort_parameters_fall_back_to_the_default_order` が赤（`?sort=name` が `self::SORTABLE['name']` で `Undefined array key` → 500） |
-| 12b | `self::SORTABLE` の `'monthly'` の式を `Unit::MONTHLY_TOTAL_SQL` から `'COALESCE(units.rent, 0)'` に変える | `UnitController` | `UnitListSortTest::test_the_rent_and_monthly_headers_sort_their_own_columns` が赤。⚠ **定数そのものでなく「定数が並び替えに使われているか」を測る唯一の変異。** #10 / #11 は定数を直接評価するテストが拾うだけで、この経路は無検査だった（Task 2 のレビューで発覚） |
-| 13 | `! is_string($key)` を消す（`in_array` だけ残す） | `app/Support/ListSort.php` | ⚠ **緑になる見込み。** `in_array(['area'], $allowed, true)` は false を返すので、ガードが無くても null へ落ちる。**実測して記録する**（緑なら「守っているのは `in_array` のほうで、`is_string` は型の保証として残す」と書く） |
-| 14 | `unset($query['page']);` を消す | `app/Support/ListSort.php` | `ListSortTest::test_url_drops_the_page_parameter` と `UnitListSortTest::test_clicking_a_header_from_page_two_returns_to_page_one` が赤 |
-| 15 | `array_map(fn ($value) => $value ?? '', $query)` を `$query` に戻す | `app/Support/ListSort.php` | `ListSortTest::test_url_keeps_a_null_filter_by_normalising_it_to_an_empty_string` が赤（Bug #31） |
-| 16 | `$request->query('dir') === self::ASC ? self::ASC : self::DESC` の三項を反転して既定を `asc` にする | `app/Support/ListSort.php` | `ListSortTest::test_direction_defaults_to_descending` と 2 つの 3 状態往復テストが赤 |
+| 1 | 並べ替えを**ページを切った後**に移す（下記コード） | `PropertyController::index` | `PropertyListSortTest::test_paging_through_a_sorted_list_never_shows_a_larger_value_on_a_later_page` が赤。文言「ページをまたいで降順になっていない（1 ページ目の中だけで並んでいる）」 → **実測（2026-08-26 / HEAD 04609b26 / 全 997 本）: 赤 1 本。** `PropertyListSortTest::test_paging_through_a_sorted_list_never_shows_a_larger_value_on_a_later_page` が予告どおりの文言「ページをまたいで降順になっていない（1 ページ目の中だけで並んでいる）」で落ちる（1 ページ目が 200000→10000、2 ページ目が 250000→210000） |
+| 2 | 既定順の 3 行 `->orderBy('units.property_id')...` を消す | `UnitController::applySort` | `UnitListSortTest::test_tied_rows_keep_the_default_order` が赤。文言「同点の中が既定順になっていない」 → **実測: 赤 3 本。** 予告の `test_tied_rows_keep_the_default_order`「同点の中が既定順になっていない」に加えて `test_the_default_order_is_unchanged` と `test_invalid_sort_parameters_fall_back_to_the_default_order` も落ちる（いずれも期待 `[2,3,1]` に対し実際 `[1,2,3]`） |
+| 3 | `['code', 'asc']` を消す | `PropertyController::sortProperties` | ⚠ **緑になる見込み。** PHP 8 の sort は安定で、`$all` が既定順で来るので第 2 キーが無くても同じ並びになる。**実測して結果を記録する**（緑なら「冗長だが将来 `$all` の取得順が変わったときの保険＋意図の記録」として残す。Bug #54 ⑤ と同型） → **実測: 緑（997 tests / 6138 assertions すべて green）。予告どおり。** 冗長だが「将来 `$all` の取得順が変わったときの保険＋意図の記録」として残す |
+| 4 | `$query->orderByRaw("({$expression} IS NULL) asc")` の行を消す | `UnitController::applySort` | `UnitListSortTest::test_units_without_an_area_sort_last_in_both_directions` が赤。⚠ **降順は偶然通る**（SQLite は NULL を最小として扱うので降順なら末尾）。**昇順のアサートだけが落ちる**ので、両方向を見ているのが load-bearing → **実測: 赤 2 本。** `test_units_without_an_area_sort_last_in_both_directions` は **昇順のアサート（L206）だけ**が落ち、降順（L203）は通過した＝**両方向を見ているのが load-bearing** であることを実測で確認。ついでに `test_a_zero_area_is_not_pushed_to_the_end`「0 の面積は末尾へ回さない（NULL だけを回す）」も落ちる |
+| 5 | `sortProperties` の null 分離（`$withValue` / `$withoutValue`）をやめて全件 `sortBy` にする | `PropertyController::sortProperties` | `PropertyListSortTest::test_inactive_properties_sort_last_in_both_directions` が赤。⚠ #4 と同じく**昇順だけ**落ちる → **実測: 赤 1 本。** `test_inactive_properties_sort_last_in_both_directions` が **昇順のアサート（L199）だけ**で落ちる（降順 L189 は通過）＝ #4 と同じく両方向が load-bearing |
+| 5b | `sortProperties()` の判定を `!== null` / `=== null` から truthy（`(bool) $p->{$field}` / `! $p->{$field}`）へ変える | `PropertyController::sortProperties` | **実測済み（Task 6）: 赤。** `test_an_active_property_with_zero_income_is_not_pushed_to_the_end` の**昇順側**が「0 円の稼働物件が末尾へ飛んでいる」で落ちる。⚠ **降順は素通りする**（0 は元々最後に来るので末尾へ飛ばしても同じ並び）＝ 昇順・降順の**両方**を見ているのが load-bearing。⚠ このテストを足すまでは 987 テスト全部が緑だった → **実測（今回・HEAD 04609b26 で再測）: 赤 1 本。** `test_an_active_property_with_zero_income_is_not_pushed_to_the_end` が昇順のアサート（L231）で「0 円の稼働物件が末尾へ飛んでいる（「—」と取り違えている）」。Task 6 の結果と一致 |
+| 6 | `'rent' => ['COALESCE(units.rent, 0)', false]` を `['units.rent', true]` に変える | `UnitController::applySort` | `UnitListSortTest::test_units_with_a_null_rent_sort_as_zero_not_last` が赤。文言「NULL の家賃が 0 として先頭に来ていない（末尾へ飛ばしている）」 → **実測: 赤 1 本。** `test_units_with_a_null_rent_sort_as_zero_not_last` が予告どおりの文言「NULL の家賃が 0 として先頭に来ていない（末尾へ飛ばしている）」 |
+| 7 | `href="{{ \App\Support\ListSort::url(...) }}"` を `href="{{ url()->current() }}"` に変える | `components/sortable-th.blade.php` | `UnitListSortTest::test_clicking_the_area_header_three_times_cycles_back_to_the_default_order` と `PropertyListSortTest::test_clicking_the_income_header_...` が赤 → **実測: 赤 5 本。** 予告の 2 本（`UnitListSortTest::test_clicking_the_area_header_three_times_...` / `PropertyListSortTest::test_clicking_the_income_header_...`）に加え `PropertyListSortTest::test_the_occupancy_header_sorts_by_occupancy` / `PropertyListSortTest::test_clicking_a_header_keeps_the_current_filter`「見出しリンクが絞り込みを落としている」/ `UnitListSortTest::test_the_rent_and_monthly_headers_sort_their_own_columns` |
+| 7b | `$ariaSort` の算出を `match ($state)` から `match ($sort?->direction)` に変える（＝ 並び替え中はどの列も `descending` になる） | `components/sortable-th.blade.php` | `UnitListSortTest::test_only_the_sorted_column_is_marked_and_the_padding_sits_on_the_link` が赤。文言「並び替えていない列に aria-sort が載っている」。⚠ **ページ全体を見る `assertStringContainsString('aria-sort="descending"')` だけでは緑のまま通る**（Task 4 のレビューで実測） → **実測: 赤 2 本。** 両一覧の `test_only_the_sorted_column_is_marked_and_the_padding_sits_on_the_link` が予告どおりの文言「並び替えていない列に aria-sort が載っている」で落ちる |
+| 7c | `<th>` の `padding: 0` を `padding: 14px 20px` に戻し、`<a>` 側の `{{ $linkStyle }}` を消す | `components/sortable-th.blade.php` | 同テストが赤。文言「見出しセルのパディングが 0 になっていない（`<a>` 側へ移していない）」。⚠ 当たり判定そのものは HTML では測れないが（Bug #43）、**どちらに載っているか**は測れる → **実測: 赤 2 本。** 両一覧の同テストが「見出しセルのパディングが 0 になっていない（`<a>` 側へ移していない）」で落ちる |
+| 8 | `<x-sort-hidden :sort="$sort" />` の行を消す | `tenant/units/index.blade.php` | **実測済み（Task 5）: 赤。** `SortableListWiringTest` が「index.blade.php は並び替え見出しを持つのに、並び順を持ち回す hidden が無い」で落ちる → **実測（今回・再測）: 赤 2 本。** `SortableListWiringTest::test_every_sortable_list_carries_the_sort_in_its_filter_form`「index.blade.php は並び替え見出しを持つのに、並び順を持ち回す hidden が無い」＋ `UnitListSortTest::test_changing_a_filter_keeps_the_current_sort`「フィルターフォームが sort=area を持ち回していない」 |
+| 8c | `sort-hidden.blade.php` の `value="{{ $sort->direction }}"` を `value="asc"` に固定する | `components/sort-hidden.blade.php` | **実測済み（Task 5）: 赤。** 文言「フィルターフォームが dir=desc を持ち回していない」。⚠ **往復が 1 組（area/asc）だけのときは緑だった。** この変異が本番で起きると「降順で見ていた利用者がフィルタを触った瞬間に昇順へ静かに反転する」 → **実測（今回・再測）: 赤 2 本。** `UnitListSortTest`「フィルターフォームが dir=desc を持ち回していない」＋ **`PropertyListSortTest`「フィルターフォームが dir を持ち回していない」（Task 5 の時点では物件一覧のテストが無く 1 本だった）** |
+| 8d | 同じく `value="{{ $sort->key }}"` を `value="area"` に固定する | `components/sort-hidden.blade.php` | **実測済み（Task 5）: 赤。** 文言「フィルターフォームが sort=rent を持ち回していない」 → **実測（今回・再測）: 赤 2 本。** `UnitListSortTest`「フィルターフォームが sort=rent を持ち回していない」＋ `PropertyListSortTest`「フィルターフォームが sort を持ち回していない」 |
+| 8e | 「クリア」の `href` を `route('tenant.units.index', ['sort' => 'area'])` にする | `tenant/units/index.blade.php` | **実測済み（Task 5）: 赤。** ⚠ **素の `assertStringContainsString('href="…"')` では緑だった** — サイドバーの「部屋一覧」が同じ bare URL を指すため（Bug #47 の「同じ URL を指す要素が 2 つある」）。`sortLinkFor()` で「クリア」ラベルに絞って初めて落ちる → **実測（今回・再測）: 赤 1 本。** `UnitListSortTest::test_the_clear_link_drops_the_sort`「クリアがクエリ付きのリンクになっている（並び順が残ってしまう）」 |
+| 8b | 往復の送信フィールドから `sort` / `dir` を落とす（`unset($fields['sort'], $fields['dir'])`） | `UnitListSortTest` の往復テスト | `test_changing_a_filter_keeps_the_current_sort` が赤。⚠ **面積の昇順と既定順を食い違わせるまでは緑だった**（旧データで実測）。往復の後半が飾りになっていないことの証明 → **実測: 赤 1 本。** `test_changing_a_filter_keeps_the_current_sort` が**往復の後半**のアサート「フィルタを変えたら並び順が既定に戻った（area の asc のままであるべき）」で落ちる（前半の hidden 検査は通ったまま）＝ 後半が飾りになっていないことの証明 |
+| 9 | `<x-sort-hidden :sort="$sort" />` の行を物件一覧から消す | `tenant/properties/index.blade.php` | `SortableListWiringTest` が赤（走査は全件分類なので物件一覧も自動で対象） → **実測: 赤 2 本。** `SortableListWiringTest::test_every_sortable_list_carries_the_sort_in_its_filter_form`（同文言）＋ `PropertyListSortTest::test_changing_a_filter_keeps_the_current_sort`「フィルターフォームが sort を持ち回していない」 |
+| 9b | `calculatePropertyStats()` の `$property->contracts` を `$property->contracts()->where('status', ContractStatus::Active)->get()` に変える（**値は不変・クエリだけ N 本になる**） | `PropertyController` | **実測済み（Task 6 レビュー）: N+1 テストだけが赤・他 7 本は緑**。文言「物件が増えるとクエリが増える（N+1）: 5 件で 8 本 / 25 件で 28 本」。⚠ `->with([...])` を丸ごと消す変異は契約の絞り込みまで変わって**別の理由で赤**になるので測定として濁る → **実測（今回・再測）: 赤 1 本だけ。** `PropertyListSortTest::test_the_query_count_does_not_grow_with_the_number_of_properties`「物件が増えるとクエリが増える（N+1）: 5 件で 8 本 / 25 件で 28 本」。**他 996 本は緑**＝ 値は変わらずクエリ本数だけが変わる変異を N+1 テストが単独で拾っている |
+| 9c | 物件一覧の「クリア」の `href` を `route('tenant.properties.index', ['sort' => 'income', 'dir' => 'desc'])` にする | `tenant/properties/index.blade.php` | **実測済み（Task 7）: 赤。** `PropertyListSortTest::test_the_clear_link_drops_the_sort` が「クリアがクエリ付きのリンクになっている」で落ちる。⚠ **足すまでは 994 テスト全部が緑だった。** サイドバーが同じ bare URL を **3 箇所**で出すので、素の href 一致では**確実に**飾りになる → **実測（今回・再測）: 赤 1 本。** `PropertyListSortTest::test_the_clear_link_drops_the_sort`「クリアがクエリ付きのリンクになっている（並び順が残ってしまう）」 |
+| 9d | 見出しの `align="center"` を `align="left"` にする | `tenant/properties/index.blade.php` | **実測済み（Task 7）: 赤。** ⚠ 足すまでは 15 本全緑だった。⚠ **部屋一覧側のアサートは `text-align: right;`** で書くこと — 面積は right で、`center` にすると**家賃・月額合計の `<th>` に一致して**面積列を一切見なくなる（実測） → **実測: 2 箇所とも変えれば赤 1 本**（`test_only_the_sorted_column_is_marked_and_the_padding_sits_on_the_link`。文言は「見出しセルのパディングが 0 になっていない」だが**落ちている原因は `text-align`**）。⚠⚠ **だが片方だけ変えると緑 ＝ テストの穴。** 入居率の `align` だけを `left` にする変異は **997 本すべて緑**だった（`assertMatchesRegularExpression` はページ全体を見るので、賃料収入の `<th>` が `text-align: center` のまま残っていれば一致してしまう。Bug #44「同じ文字列が 2 箇所にある」型）。部屋一覧も同型で、**面積（`align="right"`）だけは一意なので赤**になるが、**家賃を `left` にする変異は 997 本すべて緑**だった |
+| 10 | `MONTHLY_TOTAL_SQL` から `+ COALESCE(units.pest_control_fee, 0)` を落とす | `app/Models/Unit.php` | `UnitListSortTest::test_the_monthly_total_sql_agrees_with_the_php_accessor` が赤 → **実測: 赤 1 本。** `test_the_monthly_total_sql_agrees_with_the_php_accessor`「部屋 101 の月額合計が SQL 式と PHP アクセサで食い違う」（`313000` is identical to `315000`） |
+| 11 | `MONTHLY_TOTAL_SQL` の `units.rent` を `units.rentt` に綴り間違える | `app/Models/Unit.php` | 赤。⚠ **理由が違う**ことに注意 — Bug #40 の「SQLite が黙って 0 を返す」は**二重引用符で囲まれた識別子**（`->sum('col')` 経由）の話で、`selectRaw` / `orderByRaw` に素で書いた識別子は `no such column` で**例外**になる。**文言を必ず確認する。** 併せて `assertGreaterThan(1, ...)` と `assertContains(315000, ...)` の 2 行を外しても赤のままかを実測し、**その 2 行が load-bearing かどうかを記録する** → **実測: 赤（Errors: 1 / Failures: 1）。理由も予告どおり例外だった** — `Illuminate\Database\QueryException: SQLSTATE[HY000]: General error: 1 no such column: units.rentt`（Bug #40 の「静かな 0」ではない）。併せて `test_the_rent_and_monthly_headers_sort_their_own_columns` が 500 → `The response is not a view.` で落ちる。⚠ **`assertGreaterThan(1, ...)` と `assertContains(315000, ...)` の 2 行は #11 に対しては load-bearing ではない**（外しても同じ例外で赤。例外が `selectRaw` の行で出るので 2 行に到達しない）。⚠ **ただし別の変異に対しては load-bearing** — `MONTHLY_TOTAL_SQL` を `'(0)'` に、PHP アクセサも `return 0;` に**両側同時に**潰すと `assertSame` も `assertNotNull` も通ってしまい、**`assertGreaterThan` だけが**「月額合計に分散が無いデータでは検出力が出ない」で落ちる（実測）。この 2 行はそのために置いてある |
+| 12 | `! in_array($key, $allowed, true)` を消す（`! is_string($key)` だけ残す） | `app/Support/ListSort.php` | `UnitListSortTest::test_invalid_sort_parameters_fall_back_to_the_default_order` が赤（`?sort=name` が `self::SORTABLE['name']` で `Undefined array key` → 500） → **実測: 赤 5 本。** 予告どおり両一覧の `test_invalid_sort_parameters_fall_back_to_the_default_order` が 500（`ErrorException: Undefined array key "name" in PropertyController.php:114`）＋ `ListSortTest` の 3 本（`test_unknown_key_...` / `test_script_like_sort_...` / `test_empty_string_and_null_...`）が `Failed asserting that App\Support\ListSort Object ... is null` |
+| 12b | `self::SORTABLE` の `'monthly'` の式を `Unit::MONTHLY_TOTAL_SQL` から `'COALESCE(units.rent, 0)'` に変える | `UnitController` | `UnitListSortTest::test_the_rent_and_monthly_headers_sort_their_own_columns` が赤。⚠ **定数そのものでなく「定数が並び替えに使われているか」を測る唯一の変異。** #10 / #11 は定数を直接評価するテストが拾うだけで、この経路は無検査だった（Task 2 のレビューで発覚） → **実測: 赤 1 本。** `test_the_rent_and_monthly_headers_sort_their_own_columns`「月額合計の降順になっていない（家賃の順と同じなら式を取り違えている）」 |
+| 13 | `! is_string($key)` を消す（`in_array` だけ残す） | `app/Support/ListSort.php` | ⚠ **緑になる見込み。** `in_array(['area'], $allowed, true)` は false を返すので、ガードが無くても null へ落ちる。**実測して記録する**（緑なら「守っているのは `in_array` のほうで、`is_string` は型の保証として残す」と書く） → **実測: 緑（997 tests / 6138 assertions すべて green）。予告どおり。** 守っているのは `in_array` のほうで、`is_string` は型の保証（`$key` を `string` として `new self()` に渡すため）として残す |
+| 14 | `unset($query['page']);` を消す | `app/Support/ListSort.php` | `ListSortTest::test_url_drops_the_page_parameter` と `UnitListSortTest::test_clicking_a_header_from_page_two_returns_to_page_one` が赤 → **実測: 赤 3 本。** 予告の 2 本（`ListSortTest::test_url_drops_the_page_parameter`「並べ替えたら 1 ページ目に戻す」/ `UnitListSortTest::test_clicking_a_header_from_page_two_returns_to_page_one`「見出しリンクが page を持ち越している」）＋ 物件一覧の同名テスト |
+| 15 | `array_map(fn ($value) => $value ?? '', $query)` を `$query` に戻す | `app/Support/ListSort.php` | `ListSortTest::test_url_keeps_a_null_filter_by_normalising_it_to_an_empty_string` が赤（Bug #31） → **実測（今回・再測）: 赤 1 本。** `ListSortTest::test_url_keeps_a_null_filter_by_normalising_it_to_an_empty_string` が `Failed asserting that 'http://localhost/tenant/properties?sort=occupancy&dir=desc' contains "operation_status="`。Task 1 の結果と一致 |
+| 16 | `$request->query('dir') === self::ASC ? self::ASC : self::DESC` の三項を反転して既定を `asc` にする | `app/Support/ListSort.php` | `ListSortTest::test_direction_defaults_to_descending` と 2 つの 3 状態往復テストが赤 → **実測: 赤 2 本。ただし落ちた顔ぶれが予告と違う。** 落ちたのは `ListSortTest::test_direction_defaults_to_descending` と **`UnitListSortTest::test_invalid_sort_parameters_fall_back_to_the_default_order`**（末尾の `?sort=rent&dir=up` ＝ dir だけ不正なら降順、のケース）。⚠ **予告した「2 つの 3 状態往復テスト」は落ちない** — 見出しリンクは常に `dir=` を明示して出すので、往復テストは既定値の経路を一度も通らない。⚠ **物件一覧の `test_invalid_sort_parameters_fall_back_to_the_default_order` も緑**（`?dir=up` は入っているが `sort` が無いので `ListSort` が null に落ち、向きが評価されない）＝ **既定が降順であることを守っているのは実質この 2 本だけ** |
 
 変異 #1 のコード（`index()` の `$properties = $this->paginateCollection(...)` を丸ごと置き換える）:
 
@@ -2241,19 +2246,70 @@ git status --porcelain && echo "--- 空なら OK ---"
         $properties = $properties->withQueryString();
 ```
 
-- [ ] **Step 3: 結果をこのプランに書き戻す**
+### 実測のまとめ（2026-08-26 / HEAD `04609b26` / 全 997 tests・6138 assertions が基準）
+
+**27 通りすべてを「今の HEAD」で測り直した。** 各変異は `git status --porcelain` が空であることを
+確認してから当て、`git diff --stat` と `git diff` の中身で着弾を確認し、**フルスイート**（`--filter` なし）を
+走らせて、赤／緑だけでなく**落ちたテスト名と文言**まで控えた。置換は `python3` でリテラル比較しながら行い
+（`sed` / `perl` はエスケープが合わず 0 箇所置換でも成功に見える）、**置換件数を毎回表示させて**から測った。
+
+| 結果 | 変異 |
+|---|---|
+| **赤（25 通り）** | 1 / 2 / 4 / 5 / 5b / 6 / 7 / 7b / 7c / 8 / 8b / 8c / 8d / 8e / 9 / 9b / 9c / 9d / 10 / 11 / 12 / 12b / 14 / 15 / 16 |
+| **緑（2 通り・予告どおり）** | 3（第 2 キー `['code','asc']`）/ 13（`! is_string($key)`）|
+
+**予告と食い違った点は 2 つ**（どちらも「守られていない」ではなく「守っている顔ぶれが違う」）:
+
+- **#16**: プランは「2 つの 3 状態往復テストが赤」と書いていたが、**往復テストは落ちない**。
+  見出しリンクは常に `dir=` を明示するので、既定値（三項の else 側）の経路を一度も通らないため。
+  実際に落ちたのは `ListSortTest::test_direction_defaults_to_descending` と
+  `UnitListSortTest::test_invalid_sort_parameters_fall_back_to_the_default_order` の 2 本だけ。
+- **#11**: 2 本のガード行（`assertGreaterThan` / `assertContains`）は **#11 に対しては load-bearing ではない**
+  （例外が `selectRaw` の行で出るのでそこへ到達しない）。ただし「PHP と SQL を**同時に** 0 へ潰す」変異では
+  `assertGreaterThan` だけが落ちるので、**別の変異に対しては load-bearing**。
+
+#### ⚠ 見つかった穴: 見出しの `text-align` は「一覧あたり 1 列」しか守られていない
+
+`test_only_the_sorted_column_is_marked_and_the_padding_sits_on_the_link` の
+
+```php
+$this->assertMatchesRegularExpression('/<th\b[^>]*style="padding: 0; text-align: center;/u', $html, ...);
+```
+
+は**ページ全体**を見るので、同じ `text-align` を持つ `<th>` が 1 つでも残っていれば一致する。実測:
+
+| 変異 | 結果 |
+|---|---|
+| 物件一覧の `align="center"` を **2 箇所とも** `left` に | **赤** |
+| 物件一覧の **入居率だけ** `left` に（賃料収入は center のまま） | **緑（997 本すべて）** ← 穴 |
+| 部屋一覧の **面積**（`align="right"`。この一覧で唯一の right） | **赤** |
+| 部屋一覧の **家賃だけ** `left` に（月額合計は center のまま） | **緑（997 本すべて）** ← 穴 |
+
+つまり守られているのは「その一覧で `text-align` の値が**一意**な列」だけで、
+`center` が 2 つ以上ある一覧では**どの 1 列を崩しても検出できない**（Bug #44「同じ文字列が 2 箇所にある」型）。
+⚠ 併せて、この変異で落ちたときの**文言が「見出しセルのパディングが 0 になっていない」**なのも紛らわしい
+（実際に壊れているのは `text-align`）。**直すなら列ごとに `<th>` を切り出して個別にアサートする**
+（`ariaSortFor()` と同じくラベルで `<th>` を特定する形）。**このタスクでは測るだけに留め、対処は保留**。
+
+#### 記録: 昇順・降順の両方を見ているのが load-bearing であること（#4 / #5 / #5b）
+
+3 通りとも「**昇順のアサートだけ**が落ち、降順は素通り」だった（SQLite / PHP のソートは NULL・0 を
+最小として扱うので、降順なら末尾へ回す処理が無くても同じ並びになる）。
+**片方向だけのテストに縮めると 3 通りとも検出できなくなる。**
+
+- [x] **Step 3: 結果をこのプランに書き戻す**
 
 上の表の「期待」欄の横に**実測**（赤／緑・落ちたテスト名・文言）を追記する。
 ⚠ **「緑になる見込み」と書いた #3 #13 が本当に緑なら、そう書く。** 思い込みでなく実測を残す。
 ⚠ **赤になるはずの変異が緑だったら、そこがテストの穴。** テストを足してから先へ進む。
 
-- [ ] **Step 4: 作業ツリーが清浄に戻っていることを確認する**
+- [x] **Step 4: 作業ツリーが清浄に戻っていることを確認する**
 
 ```bash
 git status --porcelain && echo "--- 空なら OK（変異が残っていない） ---"
 ```
 
-- [ ] **Step 5: 全テストを走らせる**
+- [x] **Step 5: 全テストを走らせる**
 
 ```bash
 vendor/bin/phpunit
@@ -2261,7 +2317,7 @@ vendor/bin/phpunit
 
 Expected: 全て PASS
 
-- [ ] **Step 6: プランの更新をコミット**
+- [x] **Step 6: プランの更新をコミット**
 
 ```bash
 git add docs/superpowers/plans/2026-08-25-tenant-list-sorting.md
@@ -2444,7 +2500,7 @@ cd /Users/masanori/site/manage && git worktree remove .claude/worktrees/tenant-l
 
 ### 4. 実測で分かっている「緑になる見込み」の変異
 
-Task 8 の #3 と #13 は**赤にならない見込み**で、それを承知で表に入れてある
+Task 8 の #3 と #13 は**赤にならない見込み**で、それを承知で表に入れてある（**2026-08-26 に実測して 2 通りとも緑を確認済み**）
 （「守っているつもりだったが守っていなかった」を発見するのが変異テストの目的なので、
 緑だった事実を記録することに価値がある。Bug #54 ⑤ と同じ扱い）。
 
