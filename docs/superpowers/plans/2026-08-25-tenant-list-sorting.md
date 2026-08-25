@@ -367,7 +367,7 @@ class ListSort
 vendor/bin/phpunit --filter=ListSortTest
 ```
 
-Expected: PASS（12 tests）
+Expected: PASS（13 tests）。⚠ 後述の追加テスト（配列の絞り込み）を入れると **14 tests** になる
 
 - [ ] **Step 5: コミット**
 
@@ -2067,7 +2067,19 @@ EOF
 git status --porcelain && echo "--- 空なら OK ---"
 ```
 
-- [ ] **Step 2: 15 通りの変異を 1 つずつ当てて測る**
+### Task 1 の時点で既に実測済み（再測不要。結果をそのまま採用する）
+
+| 変異 | 実測（2026-08-25） |
+|---|---|
+| #13 `! is_string($key)` を消す | **緑**（予測どおり）。`in_array(['area'], $allowed, true)` が false を返すのでガードが無くても null に落ちる。ガードは純粋な二重防御であり、`test_array_sort_does_not_explode` が実際に守っているのは `in_array` のほう |
+| #15 `array_map(fn ($v) => $v ?? '', $query)` を `$query` に戻す | **赤**。`ListSortTest::test_url_keeps_a_null_filter_by_normalising_it_to_an_empty_string` が `Failed asserting that '...?sort=occupancy&dir=desc' contains "operation_status="` で落ちる |
+| （追加）`Arr::query(...)` を素の `http_build_query(...)` に替える | **緑**。`Arr::query()` は `http_build_query($array, '', '&', PHP_QUERY_RFC3986)` の薄いラッパーで（`vendor/laravel/framework/.../Arr.php:939-942`）、配列の展開ロジックは同一。差は RFC3986 と RFC1738 のエンコード（スペースの扱い等）だけで、テストデータにスペースが無いため差が出なかった |
+
+⚠ **`test_url_keeps_an_array_filter` は上記 2 通りの変異では落ちない**ことが実測で分かっている。
+これは**特性テスト（現状の固定）**であって、検出力があるという主張はしないこと。
+配列の往復がどこにも書かれていない暗黙の前提だったので置いてある。
+
+- [ ] **Step 2: 16 通りの変異を 1 つずつ当てて測る**
 
 各行について「変異を当てる → `git diff --stat` で着弾確認 → 該当テストを走らせる → 文言を控える → `git checkout --`」を繰り返す。
 

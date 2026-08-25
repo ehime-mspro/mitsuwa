@@ -366,7 +366,7 @@ public const MONTHLY_TOTAL_SQL = '(COALESCE(units.rent,0) + COALESCE(units.commo
 | フィルタの hidden `sort` を消す | #5 が赤 |
 | `MONTHLY_TOTAL_SQL` から `pest_control_fee` を落とす | #6 が赤 |
 | `MONTHLY_TOTAL_SQL` の列名を綴り間違える | #6 が赤。**併せて「0 チェックを外すと緑になる」ことも実測**し、そのチェックが効いていることを証明する |
-| `is_string()` ガードを消す | #7 が赤 |
+| `is_string()` ガードを消す | ⚠ **緑**（2026-08-25 実測）。`in_array(配列, [...], true)` が false を返すので、ガードが無くても既定順に落ちる。**守っているのは `in_array` のほう**で、`is_string()` は型の保証として残す二重防御 |
 | 許可リスト（`in_array`）を外す | #7 が赤 |
 | リンクから `page` を落とす処理を消す | #4 が赤 |
 | `dir` の既定を `asc` にする | 3 状態のテストが赤 |
