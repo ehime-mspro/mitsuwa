@@ -113,6 +113,27 @@ class ListSortTest extends TestCase
         $this->assertStringContainsString('keyword=', $url);
     }
 
+    /**
+     * 配列の絞り込み（部屋一覧の物件チップ `property_ids[]`。設計書 §4.1 の URL 例）が
+     * リンクから消えないこと。
+     *
+     * ⚠ 上の null 正規化と**同じ 1 行**が担っている。将来その行を
+     *   再帰的な正規化や素の http_build_query に書き換えたときに、
+     *   スカラーのテストだけでは緑のまま配列が壊れる（Bug #31 と同じ壊れ方）。
+     */
+    public function test_url_keeps_an_array_filter(): void
+    {
+        $request = $this->request('/tenant/units?property_ids%5B%5D=3&property_ids%5B%5D=5');
+
+        $url = ListSort::url($request, 'rent', null);
+
+        $this->assertSame(
+            ['3', '5'],
+            Request::create($url)->query('property_ids'),
+            '配列の絞り込みがリンクから消えている'
+        );
+    }
+
     public function test_url_keeps_a_null_filter_by_normalising_it_to_an_empty_string(): void
     {
         // 実 HTTP では ?operation_status= がミドルウェアで null になる。

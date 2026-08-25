@@ -14,6 +14,9 @@ use Illuminate\Support\Arr;
  *   物件一覧は PHP・部屋一覧は SQL と方法が違うため（設計書 §3.2）。
  *
  * ⚠ 「—」を末尾へ回す規則はここには無い。**列ごとに違う**ので各画面が持つ（設計書 §4.4）。
+ *
+ * ⚠ 許可リストはコントローラ（fromRequest の第 2 引数）とビュー（x-sortable-th の column）の
+ *   2 箇所に分かれており、その一致は各一覧の往復 Feature テストが担保している。
  */
 class ListSort
 {
@@ -21,6 +24,12 @@ class ListSort
 
     public const DESC = 'desc';
 
+    /**
+     * ⚠ private なのは意図。**作る経路を fromRequest() 1 本に絞る**ことで、
+     *   $key が必ず許可リストの中・$direction が必ず asc|desc であることを型で保証する
+     *   （UnitController の match が default アーム無しで書ける根拠）。
+     *   代償として、テストから ListSort を直接組み立てることはできない。
+     */
     private function __construct(
         public readonly string $key,
         public readonly string $direction,
