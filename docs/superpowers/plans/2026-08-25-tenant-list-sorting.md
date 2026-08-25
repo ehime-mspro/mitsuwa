@@ -2279,7 +2279,7 @@ EOF
 
 **Files:** なし（確認のみ）
 
-⚠ 以下 3 点は**HTML に出ているかでは判定できない**（Bug #43 / #26 / #30）。
+⚠ 以下は**HTML に出ているかでは判定できない**（Bug #43 / #26 / #30）。
 
 - [ ] **Step 1: コンパイル済みビューを lint する**
 
@@ -2300,9 +2300,12 @@ Expected: `INVALID:` が 1 行も出ない
 /Users/masanori/site/manage/node_modules/.bin/vite build
 ```
 
-- [ ] **Step 3: ブラウザで 3 点を確認する**
+- [ ] **Step 3: ブラウザで 6 点を確認する**
 
 `/tenant/units` と `/tenant/properties` を開いて確認する。
+
+⚠ **4 と 5 は、コード側が「Task 9 で見る」と明示的に約束している項目**。
+ここに無いと「テストは別の場所で見ると言い、その別の場所が存在しない」状態になる（Bug #28 / #43 と同型）。
 
 1. **見出しセル全体が押せること** — 文字の上だけでなく、`<th>` の余白部分を押しても並び替わる。
    ⚠ `title` と同じで **HTML では検証できない**（Bug #43）。実際にセルの端をクリックするか、
@@ -2310,6 +2313,22 @@ Expected: `INVALID:` が 1 行も出ない
 2. **部屋一覧を横スクロールした状態でも「月額合計」の見出しが押せること**（12 列あり画面外に出る）
 3. **3 状態が見た目で区別できること** — 未使用は薄い上下矢印（⇅）、降順は ▼、昇順は ▲。
    並び替え中の列だけ文字と矢印が緑になる
+4. **物件チップを押しても並び順が維持されること**（部屋一覧）。
+   ⚠ `UnitListSortTest::test_changing_a_filter_keeps_the_current_sort` の docblock が
+   「この経路は未カバー。ブラウザでの確認に回す（Task 9）」と明記している。
+   Alpine の `x-model` が実行時に `checked` を立てるため `parseForm()` が拾えず、
+   **PHP の Feature テストからは原理的に測れない**。
+   `<x-sort-hidden>` が Alpine 管理下のフォームでも送信されることの**唯一の確認手段**
+5. **見出しに Tab でフォーカスし、緑のリングが「上辺も含めて」見えること**（両画面）。
+   部屋一覧は**横スクロールした状態でも**見ること。
+   ⚠ `resources/css/app.css` の `.sortable-th-link:focus-visible` は
+   「検証は『HTML にクラスが出ているか』では不可能。実ブラウザで Tab して目視すること」と書いている。
+   ⚠ `outline-offset: -2px` は「`overflow-x: auto` のコンテナで上辺が切れる」という
+   **推測に対する未検証の対策**。実際に切れるのか・-2px で足りるのかを誰も見ていない
+6. **入居率の見出しが列からはみ出していないこと**（物件一覧）。
+   ⚠ 矢印で +17px（gap 5px + icon 12px）増えたので、`table-layout: fixed` の 13% 列に対し
+   **viewport 375px と 1024px の 2 幅で約 2px 不足**する試算がある（未実測）。
+   直すなら `link-class` を `px-3 py-3 lg:px-4 lg:py-3.5` にするか `<col>` を 13%→14% に振る
 
 - [ ] **Step 4: 確認結果を記録する**
 
@@ -2329,7 +2348,13 @@ git checkout 13.x && git merge --ff-only tenant-list-sorting
 
 - [ ] **Step 2: オートローダを作り直す**
 
-⚠ **新規 PHP クラス `App\Support\ListSort` を足したので必須。**
+新規 PHP クラス（`App\Support\ListSort`）を足したので、classmap を正確に保つために実行する。
+
+⚠ **「忘れたら本番が落ちる」ではない**（2026-08-26 実測）。`composer.json` は
+`"optimize-autoloader": true` だが **`setClassMapAuthoritative` は設定されていない**ので、
+`ClassLoader::findFile()` は classmap ミス時に **PSR-4 へフォールバック**する。
+忘れても `App\Support\ListSort` は解決される。それでも実行するのは house convention として。
+
 ⚠ **必ず main repo を cwd にして実行する。** worktree から実行すると autoloader の
 `$baseDir` に worktree のパスが焼き込まれ、main repo の Apache が worktree を参照する事故になる。
 
