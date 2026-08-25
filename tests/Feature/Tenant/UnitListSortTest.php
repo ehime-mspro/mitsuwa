@@ -553,6 +553,14 @@ class UnitListSortTest extends TestCase
      *
      * ⚠ 現状は素のリンクなので自動的に成立しているが、誰かが「親切に」
      *   route(..., request()->only('sort','dir')) へ変えても**何も落ちない**。約束を固定する。
+     * ⚠ **サイドバーの「部屋一覧」メニューが同じ bare URL を指す**（実測でページ内に 2 箇所）。
+     *   assertStringContainsString('href="'.route(...).'"', $html) はクリアの href を
+     *   一切見ずにサイドバー側とマッチして常に緑になる false-pass だった
+     *   （Bug #47 の「同じ URL を指す要素が 2 つある」と同型。変異でクリアの href を
+     *   ?sort=area 付きに壊しても検出しないことを実測で確認した）。
+     *   「クリア」というラベルを持つ <a> だけを見る sortLinkFor()（ParsesSortLinks。
+     *   名前は sort だが任意ラベルの <a> href を取り出す汎用ヘルパー）で
+     *   href を直接比較するよう直した。
      */
     public function test_the_clear_link_drops_the_sort(): void
     {
@@ -562,9 +570,9 @@ class UnitListSortTest extends TestCase
             ->get(route('tenant.units.index', ['sort' => 'area', 'dir' => 'desc']))
             ->getContent();
 
-        $this->assertStringContainsString(
-            'href="' . route('tenant.units.index') . '"',
-            $html,
+        $this->assertSame(
+            route('tenant.units.index'),
+            $this->sortLinkFor($html, 'クリア'),
             'クリアがクエリ付きのリンクになっている（並び順が残ってしまう）'
         );
     }
