@@ -409,6 +409,41 @@ class UnitListSortTest extends TestCase
         $this->assertStringContainsString('>共益費</th>', $html);
     }
 
+    /**
+     * aria-sort が**並び替え中の列だけ**に載ること、パディングが <a> 側にあること。
+     *
+     * ⚠ どちらも実測で「緑のまま通る変異」があったので足した:
+     *   ① aria-sort を $sort?->direction 由来にすると 3 列全部が descending になるが、
+     *      ページ全体を見る assertStringContainsString では通ってしまう
+     *   ② パディングを <th> に戻すと「文字の上しか押せない」（Bug #43）が、
+     *      当たり判定そのものは HTML では測れない。**どちらに載っているか**なら測れる
+     */
+    public function test_only_the_sorted_column_is_marked_and_the_padding_sits_on_the_link(): void
+    {
+        $this->makeUnit($this->makeProperty(), '101');
+
+        $html = $this->actingAs($this->executive())
+            ->get(route('tenant.units.index', ['sort' => 'area', 'dir' => 'desc']))
+            ->getContent();
+
+        $this->assertSame('descending', $this->ariaSortFor($html, '面積'));
+        $this->assertSame('none', $this->ariaSortFor($html, '家賃'), '並び替えていない列に aria-sort が載っている');
+        $this->assertSame('none', $this->ariaSortFor($html, '月額合計'));
+        $this->assertSame('none', $this->ariaSortFor($html, '敷金'), '並び替え不可の列に aria-sort が載っている');
+
+        // パディングは <th> ではなく中の <a> に載る（<th> 側に残すと文字の上しか押せない）
+        $this->assertMatchesRegularExpression(
+            '/<th\b[^>]*style="padding: 0;/u',
+            $html,
+            '見出しセルのパディングが 0 になっていない（<a> 側へ移していない）'
+        );
+        $this->assertMatchesRegularExpression(
+            '/<a\b[^>]*style="[^"]*padding: 14px 20px;/u',
+            $html,
+            '見出しリンクにパディングが載っていない'
+        );
+    }
+
     /** 2 ページ目で見出しを押したら 1 ページ目へ戻る（設計書 §4.3-5） */
     public function test_clicking_a_header_from_page_two_returns_to_page_one(): void
     {

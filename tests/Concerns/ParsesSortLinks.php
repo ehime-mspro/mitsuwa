@@ -22,4 +22,26 @@ trait ParsesSortLinks
 
         return html_entity_decode($matches[1], ENT_QUOTES, 'UTF-8');
     }
+
+    /**
+     * ラベルを含む見出しセルの aria-sort を返す。属性が無ければ 'none'。
+     *
+     * ⚠ ページ全体に対する assertStringContainsString('aria-sort="descending"') では
+     *   **3 列すべてに descending を出す変異が緑のまま通る**（実測済み）。
+     *   「どの列に載っているか」を見るにはセル単位で切り出す必要がある。
+     */
+    protected function ariaSortFor(string $html, string $label): string
+    {
+        preg_match_all('/<th\b([^>]*)>(.*?)<\/th>/su', $html, $cells, PREG_SET_ORDER);
+
+        foreach ($cells as [, $attributes, $inner]) {
+            if (! str_contains($inner, $label)) {
+                continue;
+            }
+
+            return preg_match('/\baria-sort="([a-z]+)"/', $attributes, $matches) ? $matches[1] : 'none';
+        }
+
+        $this->fail("「{$label}」の見出しセルが見つからない");
+    }
 }
