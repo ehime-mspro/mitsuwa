@@ -232,9 +232,13 @@ class UnitListSortTest extends TestCase
     }
 
     /**
-     * 既知の穴（設計書 §4.4）: area_tsubo = 0 は画面では「—」と出るが IS NULL ではないので
-     * **末尾へ飛ばず 0 として並ぶ**。実データに 0 件で到達不能なため直さない。
-     * 意図であることをここで固定しておく（勝手に「直した」ときに落ちる）。
+     * 面積 0 は「—」ではないので、末尾へ飛ばさず 0 として並ぶ（設計書 §4.4）。
+     *
+     * ⚠ **これは「表示と食い違う既知の穴」ではない。** area_tsubo は decimal:2 キャストなので
+     *   0 は**文字列 '0.00' で返り、PHP では truthy**（falsy な文字列は '' と '0' だけ）。
+     *   実測: area_tsubo = '0.00' (string) truthy=YES → 画面には「0.00坪」と出る。
+     *   つまり `(units.area_tsubo IS NULL)` はビューの `@if($unit->area_tsubo)` と完全に一致する。
+     * ⚠ ここを「0 も末尾へ」に変えると、**逆に表示と食い違う**。それを止めるためのテスト。
      */
     public function test_a_zero_area_is_not_pushed_to_the_end(): void
     {
