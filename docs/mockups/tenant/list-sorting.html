@@ -1,0 +1,424 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>テナント管理 一覧の並び替え — モック</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700;900&family=IBM+Plex+Mono:wght@400;600&display=swap">
+
+<style>
+  /* 本番アプリの実配色（Tailwind の emerald / gray）をそのまま写している。
+     ここは docs/ 配下なので Tailwind の走査対象外（app.css の @source not）。 */
+  :root {
+    --emerald-50:  #ecfdf5;
+    --emerald-200: #a7f3d0;
+    --emerald-600: #059669;
+    --emerald-700: #047857;
+    --blue-50:  #eff6ff;
+    --blue-200: #bfdbfe;
+    --blue-700: #1d4ed8;
+    --gray-50:  #f9fafb;
+    --gray-100: #f3f4f6;
+    --gray-200: #e5e7eb;
+    --gray-300: #d1d5db;
+    --gray-400: #9ca3af;
+    --gray-500: #6b7280;
+    --gray-600: #4b5563;
+    --gray-700: #374151;
+    --gray-800: #1f2937;
+    --gray-900: #111827;
+    --ground:   #f2f3f5;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 28px 20px 60px;
+    background: var(--ground);
+    color: var(--gray-900);
+    font-family: "Zen Kaku Gothic New", -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif;
+    font-size: 14px;
+    line-height: 1.7;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+
+  h1 { font-size: 20px; font-weight: 900; margin: 0 0 6px; letter-spacing: .01em; }
+  .lede { color: var(--gray-500); font-size: 13px; margin: 0 0 28px; }
+
+  h2 {
+    font-size: 15px; font-weight: 800; margin: 40px 0 4px;
+    padding-bottom: 8px; border-bottom: 2px solid var(--gray-200);
+  }
+  h2 .n {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px; margin-right: 8px; border-radius: 5px;
+    background: var(--emerald-600); color: #fff; font-size: 12px; font-weight: 700;
+  }
+  h2 + .note { margin-top: 10px; }
+  .note { color: var(--gray-500); font-size: 12.5px; margin: 0 0 14px; }
+
+  code, .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+
+  /* ── カード（本番の bg-white rounded-lg border border-gray-200） ── */
+  .card {
+    background: #fff; border: 1px solid var(--gray-200); border-radius: 8px;
+    overflow: hidden; box-shadow: 0 1px 2px rgba(17,24,39,.04);
+  }
+  .scroller { overflow-x: auto; }
+
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    background: var(--gray-50); border-bottom: 1px solid var(--gray-200);
+    font-size: 12px; font-weight: 700; color: var(--gray-600);
+    white-space: nowrap; padding: 0;
+  }
+  tbody td {
+    border-bottom: 1px solid var(--gray-200); padding: 14px 20px;
+    font-size: 13.5px; color: var(--gray-800); white-space: nowrap;
+  }
+  tbody tr:hover { background: var(--gray-50); }
+  tbody tr.inactive { opacity: .5; }
+  .dash { color: var(--gray-400); }
+  .strong { font-weight: 700; color: var(--gray-900); }
+  .money-total { color: var(--emerald-700); font-weight: 700; }
+  .link { color: var(--emerald-700); font-weight: 700; text-decoration: none; }
+  .link:hover { text-decoration: underline; }
+
+  .badge {
+    display: inline-block; padding: 3px 10px; border-radius: 100px;
+    font-size: 11px; font-weight: 700; line-height: 1.5;
+  }
+  .b-active   { background: var(--emerald-50); color: var(--emerald-700); border: 1px solid var(--emerald-200); }
+  .b-inactive { background: var(--gray-100);   color: var(--gray-500);    border: 1px solid var(--gray-200); }
+  .b-occupied { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+  .b-vacant   { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+  .b-nego     { background: #f5f3ff; color: #6d28d9; border: 1px solid #ddd6fe; }
+
+  .btn-detail {
+    display: inline-block; font-size: 11.5px; font-weight: 700; color: var(--blue-700);
+    padding: 6px 14px; border: 1px solid var(--blue-200); border-radius: 4px;
+    background: var(--blue-50); text-decoration: none;
+  }
+
+  /* ── 並び替えヘッダー ─────────────────────────────
+     並び替え可能な th は中身をまるごと <a> にする。
+     矢印は 3 状態: 未ソート（薄い⇅）/ 降順 ▼ / 昇順 ▲ */
+  th .th-pad { display: block; padding: 14px 20px; }
+
+  th a.sortable {
+    display: flex; align-items: center; gap: 5px;
+    padding: 14px 20px; color: inherit; text-decoration: none;
+    cursor: pointer; user-select: none;
+  }
+  th a.sortable:hover { background: var(--gray-100); color: var(--gray-800); }
+  th a.sortable:focus-visible { outline: 2px solid var(--emerald-600); outline-offset: -2px; }
+  th.al-left  a.sortable, th.al-left  .th-pad { justify-content: flex-start; text-align: left; }
+  th.al-center a.sortable { justify-content: center; }
+  th.al-center .th-pad { text-align: center; }
+  th.al-right a.sortable { justify-content: flex-end; }
+  th.al-right .th-pad { text-align: right; }
+
+  .sort-icon { flex-shrink: 0; width: 12px; height: 12px; color: var(--gray-300); }
+  th a.sortable:hover .sort-icon { color: var(--gray-500); }
+  th[aria-sort="ascending"]  a.sortable,
+  th[aria-sort="descending"] a.sortable { color: var(--emerald-700); }
+  th[aria-sort="ascending"]  .sort-icon,
+  th[aria-sort="descending"] .sort-icon { color: var(--emerald-600); }
+
+  /* ── URL 表示 ───────────────────────────────── */
+  .urlbar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin: 0 0 10px; padding: 9px 13px;
+    background: #fff; border: 1px solid var(--gray-200); border-radius: 6px;
+  }
+  .urlbar .tag {
+    font-size: 10.5px; font-weight: 700; letter-spacing: .04em;
+    color: var(--gray-500); background: var(--gray-100);
+    padding: 2px 7px; border-radius: 3px;
+  }
+  .urlbar .u { font-size: 12.5px; color: var(--gray-700); word-break: break-all; }
+  .urlbar .u .q { color: var(--emerald-700); font-weight: 600; }
+
+  /* ── 凡例 ──────────────────────────────────── */
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0 0;
+  }
+  .legend div {
+    display: flex; align-items: center; gap: 7px;
+    background: #fff; border: 1px solid var(--gray-200); border-radius: 6px;
+    padding: 8px 13px; font-size: 12.5px; color: var(--gray-600);
+  }
+  .legend .ic { display: inline-flex; }
+  .legend .ic svg { width: 12px; height: 12px; }
+  .legend .g svg { color: var(--gray-300); }
+  .legend .e svg { color: var(--emerald-600); }
+
+  .callout {
+    margin: 16px 0 0; padding: 13px 16px;
+    background: #fffbeb; border: 1px solid #fde68a; border-left: 3px solid #f59e0b;
+    border-radius: 6px; font-size: 12.5px; color: #78350f;
+  }
+  .callout b { font-weight: 800; }
+  .callout + .callout { margin-top: 8px; }
+  .callout.ok { background: var(--emerald-50); border-color: var(--emerald-200); border-left-color: var(--emerald-600); color: #065f46; }
+
+  .hintbar {
+    padding: 7px 16px; background: var(--blue-50); border-bottom: 1px solid var(--blue-200);
+    font-size: 11.5px; font-weight: 600; color: var(--blue-700); text-align: center;
+  }
+</style>
+
+<div class="wrap">
+
+  <h1>テナント管理 一覧の並び替え</h1>
+  <p class="lede">
+    ヘッダーを実際に押せます。<b>降順 ▼ → 昇順 ▲ → 既定に戻る</b> の 3 状態と、「—」が常に末尾へ回ること、
+    同点の行が既定順で並ぶことを確認してください。上のバーに、そのとき生成される URL が出ます。
+  </p>
+
+  <!-- ═══════════════ 物件一覧 ═══════════════ -->
+  <h2><span class="n">1</span>物件一覧 <span style="font-weight:400;color:var(--gray-500);font-size:13px">/tenant/properties</span></h2>
+  <p class="note">並び替えできるのは <b>入居率</b>・<b>賃料収入</b> の 2 列。非稼働の物件は値が「—」なので常に末尾へ回ります。</p>
+
+  <div class="urlbar">
+    <span class="tag">URL</span>
+    <span class="u" id="url-p">/tenant/properties</span>
+  </div>
+
+  <div class="card">
+    <div class="scroller">
+      <table style="table-layout:fixed;min-width:680px">
+        <colgroup>
+          <col style="width:25%"><col style="width:11%"><col style="width:13%">
+          <col style="width:13%"><col style="width:18%"><col style="width:20%">
+        </colgroup>
+        <thead>
+          <tr>
+            <th class="al-left"><span class="th-pad">物件名</span></th>
+            <th class="al-center"><span class="th-pad">稼働</span></th>
+            <th class="al-center"><span class="th-pad">所有者</span></th>
+            <th class="al-center" id="th-occupancy" aria-sort="none">
+              <a class="sortable" href="#" data-table="p" data-key="occupancy">入居率<span class="sort-icon" data-icon></span></a>
+            </th>
+            <th class="al-center" id="th-income" aria-sort="none">
+              <a class="sortable" href="#" data-table="p" data-key="income">賃料収入<span class="sort-icon" data-icon></span></a>
+            </th>
+            <th class="al-center"><span class="th-pad">操作</span></th>
+          </tr>
+        </thead>
+        <tbody id="tbody-p"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="legend">
+    <div><span class="ic g" data-legend="none"></span>並び替えできる（まだ押していない）</div>
+    <div><span class="ic e" data-legend="desc"></span>降順で並び替え中</div>
+    <div><span class="ic e" data-legend="asc"></span>昇順で並び替え中</div>
+    <div><span style="color:var(--gray-400)">（矢印なし）</span>この列では並び替えできない</div>
+  </div>
+
+  <div class="callout ok">
+    <b>非稼働の 2 件が常に一番下に居ること</b>を確認してください。「入居率が低い順」で見たいのは
+    稼働中で入居率が低い物件であって、そもそも計算対象外の非稼働物件ではないためです。
+  </div>
+
+  <!-- ═══════════════ 部屋一覧 ═══════════════ -->
+  <h2><span class="n">2</span>部屋一覧 <span style="font-weight:400;color:var(--gray-500);font-size:13px">/tenant/units</span></h2>
+  <p class="note">
+    並び替えできるのは <b>面積</b>・<b>家賃</b>・<b>月額合計</b> の 3 列。共益費・ゴミ代・駆除代・敷金には矢印が出ません。
+    実画面は横幅 1500px で横スクロールします（ここでも同じ幅にしてあります）。
+  </p>
+
+  <div class="urlbar">
+    <span class="tag">URL</span>
+    <span class="u" id="url-u">/tenant/units</span>
+  </div>
+
+  <div class="card">
+    <div class="hintbar">← 横にスクロールできます →</div>
+    <div class="scroller">
+      <table style="table-layout:fixed;min-width:1500px">
+        <colgroup>
+          <col style="width:200px"><col style="width:80px"><col style="width:110px"><col style="width:100px">
+          <col style="width:130px"><col style="width:120px"><col style="width:120px"><col style="width:120px">
+          <col style="width:140px"><col style="width:120px"><col style="width:160px"><col style="width:80px">
+        </colgroup>
+        <thead>
+          <tr>
+            <th class="al-left"><span class="th-pad">物件名</span></th>
+            <th class="al-center"><span class="th-pad">部屋名</span></th>
+            <th class="al-right" id="th-area" aria-sort="none">
+              <a class="sortable" href="#" data-table="u" data-key="area">面積<span class="sort-icon" data-icon></span></a>
+            </th>
+            <th class="al-center"><span class="th-pad">ステータス</span></th>
+            <th class="al-right" id="th-rent" aria-sort="none">
+              <a class="sortable" href="#" data-table="u" data-key="rent">家賃<span class="sort-icon" data-icon></span></a>
+            </th>
+            <th class="al-right"><span class="th-pad">共益費</span></th>
+            <th class="al-right"><span class="th-pad">ゴミ代</span></th>
+            <th class="al-right"><span class="th-pad">駆除代</span></th>
+            <th class="al-right" id="th-monthly" aria-sort="none">
+              <a class="sortable" href="#" data-table="u" data-key="monthly">月額合計<span class="sort-icon" data-icon></span></a>
+            </th>
+            <th class="al-right"><span class="th-pad">敷金</span></th>
+            <th class="al-left"><span class="th-pad">店舗名</span></th>
+            <th class="al-center"><span class="th-pad">操作</span></th>
+          </tr>
+        </thead>
+        <tbody id="tbody-u"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="callout">
+    <b>同点の行に注目してください。</b>「三番町ビル 2F201」と「3F301」は面積・家賃・月額合計がすべて同じ、
+    「湊町テラス 2F201」と「千舟町スクエア 1F101」は月額合計が同じ 0 円です。
+    どの列で並べても、この同点どうしは<b>常に既定順（物件→階→号室）</b>で並びます。
+    ここが不定だと、実画面の 8 ページに切ったときに<b>同じ部屋が 2 ページに出たり、どのページにも出なくなったり</b>します。
+  </div>
+
+  <div class="callout">
+    <b>「湊町テラス 2F201」は面積が未入力（—）</b>なので、面積で並べたときだけ末尾へ回ります。
+    家賃・月額合計は 0 円という実際の値なので、末尾扱いにはせず 0 として並びます。
+  </div>
+
+</div>
+
+<script>
+// ── 矢印アイコン（3 状態） ──────────────────────────
+var ICON = {
+  // 未ソート: 上下二重の薄い矢印（押せることを示す）
+  none: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="7 15 12 20 17 15"/><polyline points="7 9 12 4 17 9"/></svg>',
+  // 降順
+  desc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 16 18 9"/></svg>',
+  // 昇順
+  asc:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 15 12 8 18 15"/></svg>'
+};
+
+// ── データ（既定順で並べてある。i が既定順の位置＝同点の第2キー） ──
+var PROPERTIES = [
+  { i:0, name:'三番町ビル',     act:1, owner:'自社',       occupancy:100.0, income:1284000 },
+  { i:1, name:'大街道プラザ',   act:1, owner:'自社',       occupancy:72.4,  income:986500  },
+  { i:2, name:'湊町テラス',     act:1, owner:'オーナー',   occupancy:45.8,  income:412000  },
+  { i:3, name:'千舟町スクエア', act:1, owner:'自社',       occupancy:88.9,  income:1050000 },
+  { i:4, name:'一番町ビル',     act:1, owner:'オーナー',   occupancy:0.0,   income:0       },
+  { i:5, name:'松山中央ビル',   act:0, owner:'自社',       occupancy:null,  income:null    },
+  { i:6, name:'道後別館',       act:0, owner:'オーナー',   occupancy:null,  income:null    }
+];
+
+var UNITS = [
+  { i:0, prop:'三番町ビル',     room:'1F101',  area:32.33, st:'occupied', rent:285000, common:25000, gomi:3000, chujo:2000, deposit:570000, store:'カフェ ミツワ' },
+  { i:1, prop:'三番町ビル',     room:'2F201',  area:24.00, st:'vacant',   rent:180000, common:18000, gomi:3000, chujo:0,    deposit:360000, store:null },
+  { i:2, prop:'三番町ビル',     room:'3F301',  area:24.00, st:'vacant',   rent:180000, common:18000, gomi:3000, chujo:0,    deposit:360000, store:null },
+  { i:3, prop:'大街道プラザ',   room:'B1F101', area:45.60, st:'occupied', rent:320000, common:30000, gomi:5000, chujo:3000, deposit:640000, store:'居酒屋 大黒' },
+  { i:4, prop:'大街道プラザ',   room:'1F102',  area:10.50, st:'nego',     rent:95000,  common:9000,  gomi:1500, chujo:0,    deposit:190000, store:null },
+  { i:5, prop:'湊町テラス',     room:'1F101',  area:20.48, st:'occupied', rent:150000, common:15000, gomi:2000, chujo:1000, deposit:300000, store:'美容室 LUCE' },
+  { i:6, prop:'湊町テラス',     room:'2F201',  area:null,  st:'vacant',   rent:0,      common:0,     gomi:0,    chujo:0,    deposit:0,      store:null },
+  { i:7, prop:'千舟町スクエア', room:'1F101',  area:11.70, st:'vacant',   rent:0,      common:0,     gomi:0,    chujo:0,    deposit:0,      store:null }
+];
+UNITS.forEach(function (u) { u.monthly = u.rent + u.common + u.gomi + u.chujo; });
+
+// ── 状態 ──────────────────────────────────────
+var state = { p: { key:null, dir:null }, u: { key:null, dir:null } };
+
+var TABLES = {
+  p: { rows: PROPERTIES, tbody:'tbody-p', url:'url-p', path:'/tenant/properties',
+       keys:['occupancy','income'], th:{ occupancy:'th-occupancy', income:'th-income' }, render: renderProperties },
+  u: { rows: UNITS,      tbody:'tbody-u', url:'url-u', path:'/tenant/units',
+       keys:['area','rent','monthly'], th:{ area:'th-area', rent:'th-rent', monthly:'th-monthly' }, render: renderUnits }
+};
+
+// ── 並び替え本体 ──────────────────────────────
+// 「—」(null) は常に末尾。同点と末尾の中はいつも既定順（i）。
+function sortRows(rows, key, dir) {
+  if (!key) { return rows.slice().sort(function (a, b) { return a.i - b.i; }); }
+  var has = [], none = [];
+  rows.forEach(function (r) { (r[key] === null ? none : has).push(r); });
+  has.sort(function (a, b) {
+    var d = a[key] - b[key];
+    if (d !== 0) { return dir === 'asc' ? d : -d; }
+    return a.i - b.i;                       // 同点は既定順（＝ページをまたいでも安定）
+  });
+  none.sort(function (a, b) { return a.i - b.i; });
+  return has.concat(none);                  // null は昇順でも降順でも末尾
+}
+
+// ── 描画 ──────────────────────────────────────
+function yen(n) { return n.toLocaleString('ja-JP') + '円'; }
+
+function renderProperties(rows) {
+  return rows.map(function (p) {
+    return '<tr class="' + (p.act ? '' : 'inactive') + '">'
+      + '<td><a class="link" href="#">' + p.name + '</a></td>'
+      + '<td style="text-align:center"><span class="badge ' + (p.act ? 'b-active">稼働' : 'b-inactive">非稼働') + '</span></td>'
+      + '<td style="text-align:center">' + p.owner + '</td>'
+      + '<td style="text-align:center">' + (p.occupancy === null
+          ? '<span class="dash">—</span>'
+          : '<span class="strong">' + p.occupancy.toFixed(1) + '%</span>') + '</td>'
+      + '<td style="text-align:center">' + (p.income === null
+          ? '<span class="dash">—</span>'
+          : '<span class="strong">' + yen(p.income) + '</span><span style="font-size:11.5px;color:var(--gray-500)">/月</span>') + '</td>'
+      + '<td style="text-align:center"><a class="btn-detail" href="#">詳細</a></td>'
+      + '</tr>';
+  }).join('');
+}
+
+var ST_BADGE = { occupied:['b-occupied','入居中'], vacant:['b-vacant','空室'], nego:['b-nego','交渉中'] };
+
+function renderUnits(rows) {
+  return rows.map(function (u) {
+    var b = ST_BADGE[u.st];
+    return '<tr>'
+      + '<td><a class="link" href="#">' + u.prop + '</a></td>'
+      + '<td style="text-align:center"><a class="link" href="#">' + u.room + '</a></td>'
+      + '<td style="text-align:right">' + (u.area === null
+          ? '<span class="dash">—</span>' : u.area.toFixed(2) + '坪') + '</td>'
+      + '<td style="text-align:center"><span class="badge ' + b[0] + '">' + b[1] + '</span></td>'
+      + '<td style="text-align:right">' + yen(u.rent) + '</td>'
+      + '<td style="text-align:right">' + yen(u.common) + '</td>'
+      + '<td style="text-align:right">' + yen(u.gomi) + '</td>'
+      + '<td style="text-align:right">' + yen(u.chujo) + '</td>'
+      + '<td style="text-align:right" class="money-total">' + yen(u.monthly) + '</td>'
+      + '<td style="text-align:right">' + yen(u.deposit) + '</td>'
+      + '<td>' + (u.store ? u.store : '<span class="dash">—</span>') + '</td>'
+      + '<td style="text-align:center"><a class="btn-detail" href="#">詳細</a></td>'
+      + '</tr>';
+  }).join('');
+}
+
+function paint(t) {
+  var cfg = TABLES[t], s = state[t];
+  document.getElementById(cfg.tbody).innerHTML = cfg.render(sortRows(cfg.rows, s.key, s.dir));
+
+  cfg.keys.forEach(function (k) {
+    var th = document.getElementById(cfg.th[k]);
+    var on = (s.key === k);
+    th.setAttribute('aria-sort', on ? (s.dir === 'asc' ? 'ascending' : 'descending') : 'none');
+    th.querySelector('[data-icon]').innerHTML = ICON[on ? s.dir : 'none'];
+  });
+
+  document.getElementById(cfg.url).innerHTML = s.key
+    ? cfg.path + '<span class="q">?sort=' + s.key + '&amp;dir=' + s.dir + '</span>'
+    : cfg.path + ' <span style="color:var(--gray-400);font-size:11.5px">（並び替えなし＝既定順）</span>';
+}
+
+// ── ヘッダークリック: 降順 → 昇順 → 解除 ────────────
+document.querySelectorAll('a.sortable').forEach(function (a) {
+  a.addEventListener('click', function (e) {
+    e.preventDefault();
+    var t = a.dataset.table, k = a.dataset.key, s = state[t];
+    if (s.key !== k)            { s.key = k; s.dir = 'desc'; }   // 1回目: 多い順
+    else if (s.dir === 'desc')  { s.dir = 'asc'; }               // 2回目: 少ない順
+    else                        { s.key = null; s.dir = null; }  // 3回目: 既定に戻る
+    paint(t);
+  });
+});
+
+// 凡例のアイコン
+document.querySelectorAll('[data-legend]').forEach(function (el) {
+  el.innerHTML = ICON[el.dataset.legend];
+});
+
+paint('p');
+paint('u');
+</script>
