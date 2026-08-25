@@ -35,7 +35,9 @@
 |---|---|---|
 | 新規 | `app/Support/ListSort.php` | `?sort` / `?dir` の解釈・3 状態の遷移・見出しリンクの URL 生成。**並べ替えそのものはしない** |
 | 新規 | `resources/views/components/sortable-th.blade.php` | 並び替え見出し `<th>`（リンク・矢印・`aria-sort`） |
-| 新規 | `tests/Concerns/ParsesSortLinks.php` | 描画された見出しリンクの href を取り出す（2 つの Feature テストが共有） |
+| 新規 | `resources/views/components/sort-hidden.blade.php` | 並び順をフィルターフォームに持ち回す hidden（2 画面で共有） |
+| 新規 | `tests/Concerns/ParsesSortLinks.php` | 描画された見出しリンクの href / aria-sort を取り出す（2 つの Feature テストが共有） |
+| 新規 | `tests/Feature/SortableListWiringTest.php` | `<x-sortable-th` を持つビューは必ず `<x-sort-hidden` も持つことを**全件走査**で固定（Bug #45） |
 | 新規 | `tests/Unit/Support/ListSortTest.php` | `ListSort` の単体テスト（DB 不要） |
 | 新規 | `tests/Feature/Tenant/UnitListSortTest.php` | 部屋一覧の並び替え |
 | 新規 | `tests/Feature/Tenant/PropertyListSortTest.php` | 物件一覧の並び替え |
@@ -2097,13 +2099,13 @@ Expected: FAIL — `「賃料収入」の並び替えリンクが見つからな
 
 ```blade
 
-        {{-- 並び替え中にフィルタを変えても並び順が消えないように持ち回す（設計書 §4.3-4）。
-             ⚠ 「クリア」は route(...) への素のリンクなので、従来どおり全部が初期化される。 --}}
-        @if($sort)
-            <input type="hidden" name="sort" value="{{ $sort->key }}">
-            <input type="hidden" name="dir" value="{{ $sort->direction }}">
-        @endif
+        <x-sort-hidden :sort="$sort" />
 ```
+
+⚠ **hidden を直書きしないこと。** Task 5 で `resources/views/components/sort-hidden.blade.php` に
+切り出してあります（同じ 7 行を 2 画面へ逐語コピーすると片方だけ直す事故が起きる。Bug #41 / #46）。
+⚠ `tests/Feature/SortableListWiringTest.php` が **`<x-sortable-th` を持つビューは必ず
+`<x-sort-hidden` も持つこと**を全件走査で検査しています。忘れると赤になります。
 
 - [ ] **Step 5: テストが通ることを確認する**
 
@@ -2182,7 +2184,7 @@ git status --porcelain && echo "--- 空なら OK ---"
 これは**特性テスト（現状の固定）**であって、検出力があるという主張はしないこと。
 配列の往復がどこにも書かれていない暗黙の前提だったので置いてある。
 
-- [ ] **Step 2: 20 通りの変異を 1 つずつ当てて測る**
+- [ ] **Step 2: 23 通りの変異を 1 つずつ当てて測る**
 
 各行について「変異を当てる → `git diff --stat` で着弾確認 → 該当テストを走らせる → 文言を控える → `git checkout --`」を繰り返す。
 
@@ -2197,9 +2199,12 @@ git status --porcelain && echo "--- 空なら OK ---"
 | 7 | `href="{{ \App\Support\ListSort::url(...) }}"` を `href="{{ url()->current() }}"` に変える | `components/sortable-th.blade.php` | `UnitListSortTest::test_clicking_the_area_header_three_times_cycles_back_to_the_default_order` と `PropertyListSortTest::test_clicking_the_income_header_...` が赤 |
 | 7b | `$ariaSort` の算出を `match ($state)` から `match ($sort?->direction)` に変える（＝ 並び替え中はどの列も `descending` になる） | `components/sortable-th.blade.php` | `UnitListSortTest::test_only_the_sorted_column_is_marked_and_the_padding_sits_on_the_link` が赤。文言「並び替えていない列に aria-sort が載っている」。⚠ **ページ全体を見る `assertStringContainsString('aria-sort="descending"')` だけでは緑のまま通る**（Task 4 のレビューで実測） |
 | 7c | `<th>` の `padding: 0` を `padding: 14px 20px` に戻し、`<a>` 側の `{{ $linkStyle }}` を消す | `components/sortable-th.blade.php` | 同テストが赤。文言「見出しセルのパディングが 0 になっていない（`<a>` 側へ移していない）」。⚠ 当たり判定そのものは HTML では測れないが（Bug #43）、**どちらに載っているか**は測れる |
-| 8 | `<input type="hidden" name="sort" ...>` の行を消す | `tenant/units/index.blade.php` | `UnitListSortTest::test_changing_a_filter_keeps_the_current_sort` が赤。文言「フィルターフォームが sort を持ち回していない」 |
+| 8 | `<x-sort-hidden :sort="$sort" />` の行を消す | `tenant/units/index.blade.php` | **実測済み（Task 5）: 赤。** `SortableListWiringTest` が「index.blade.php は並び替え見出しを持つのに、並び順を持ち回す hidden が無い」で落ちる |
+| 8c | `sort-hidden.blade.php` の `value="{{ $sort->direction }}"` を `value="asc"` に固定する | `components/sort-hidden.blade.php` | **実測済み（Task 5）: 赤。** 文言「フィルターフォームが dir=desc を持ち回していない」。⚠ **往復が 1 組（area/asc）だけのときは緑だった。** この変異が本番で起きると「降順で見ていた利用者がフィルタを触った瞬間に昇順へ静かに反転する」 |
+| 8d | 同じく `value="{{ $sort->key }}"` を `value="area"` に固定する | `components/sort-hidden.blade.php` | **実測済み（Task 5）: 赤。** 文言「フィルターフォームが sort=rent を持ち回していない」 |
+| 8e | 「クリア」の `href` を `route('tenant.units.index', ['sort' => 'area'])` にする | `tenant/units/index.blade.php` | **実測済み（Task 5）: 赤。** ⚠ **素の `assertStringContainsString('href="…"')` では緑だった** — サイドバーの「部屋一覧」が同じ bare URL を指すため（Bug #47 の「同じ URL を指す要素が 2 つある」）。`sortLinkFor()` で「クリア」ラベルに絞って初めて落ちる |
 | 8b | 往復の送信フィールドから `sort` / `dir` を落とす（`unset($fields['sort'], $fields['dir'])`） | `UnitListSortTest` の往復テスト | `test_changing_a_filter_keeps_the_current_sort` が赤。⚠ **面積の昇順と既定順を食い違わせるまでは緑だった**（旧データで実測）。往復の後半が飾りになっていないことの証明 |
-| 9 | 同上を物件一覧で | `tenant/properties/index.blade.php` | `PropertyListSortTest::test_changing_a_filter_keeps_the_current_sort` が赤 |
+| 9 | `<x-sort-hidden :sort="$sort" />` の行を物件一覧から消す | `tenant/properties/index.blade.php` | `SortableListWiringTest` が赤（走査は全件分類なので物件一覧も自動で対象） |
 | 10 | `MONTHLY_TOTAL_SQL` から `+ COALESCE(units.pest_control_fee, 0)` を落とす | `app/Models/Unit.php` | `UnitListSortTest::test_the_monthly_total_sql_agrees_with_the_php_accessor` が赤 |
 | 11 | `MONTHLY_TOTAL_SQL` の `units.rent` を `units.rentt` に綴り間違える | `app/Models/Unit.php` | 赤。⚠ **理由が違う**ことに注意 — Bug #40 の「SQLite が黙って 0 を返す」は**二重引用符で囲まれた識別子**（`->sum('col')` 経由）の話で、`selectRaw` / `orderByRaw` に素で書いた識別子は `no such column` で**例外**になる。**文言を必ず確認する。** 併せて `assertGreaterThan(1, ...)` と `assertContains(315000, ...)` の 2 行を外しても赤のままかを実測し、**その 2 行が load-bearing かどうかを記録する** |
 | 12 | `! in_array($key, $allowed, true)` を消す（`! is_string($key)` だけ残す） | `app/Support/ListSort.php` | `UnitListSortTest::test_invalid_sort_parameters_fall_back_to_the_default_order` が赤（`?sort=name` が `self::SORTABLE['name']` で `Undefined array key` → 500） |
