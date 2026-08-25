@@ -1733,6 +1733,7 @@ Expected: FAIL — `test_paging_through_a_sorted_list_never_shows_a_larger_value
 ```php
 use App\Support\ListSort;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Collection;
 ```
 
@@ -1792,7 +1793,7 @@ use Illuminate\Support\Collection;
             $request,
             $sort !== null ? $this->sortProperties($all, $sort) : $all,
             20
-        )->withQueryString();
+        );
 ```
 
 `return` 行を次に変える:
@@ -1833,6 +1834,13 @@ use Illuminate\Support\Collection;
      * ⚠ ->links() には戻さない。既存ビューはインライン番号付きページネーション
      *   （hasPages / getUrlRange / nextPageUrl）を使っている（Bug #24 以来の規約）。
      *   LengthAwarePaginator を自分で組めばそのまま動く。
+     *
+     * ⚠ **withQueryString() は使わない。** null 値のキーは http_build_query が丸ごと捨てるため、
+     *   `?operation_status=` のような空の絞り込みがページ送りリンクから消える（Bug #31）。
+     *   AreaBuildingListService / ProcurementListService と同じ形にする。
+     *   ⚠ 見出しリンク側（ListSort::url()）も同じ正規化をしている。**片方だけ変えないこと。**
+     *
+     * @param  Collection<int, Property>  $items
      */
     private function paginateCollection(Request $request, Collection $items, int $perPage): LengthAwarePaginator
     {
@@ -1843,7 +1851,10 @@ use Illuminate\Support\Collection;
             $items->count(),
             $perPage,
             $page,
-            ['path' => $request->url()]
+            [
+                'path' => Paginator::resolveCurrentPath(),
+                'query' => array_map(fn ($value) => $value ?? '', $request->query()),
+            ]
         );
     }
 ```
@@ -1854,7 +1865,7 @@ use Illuminate\Support\Collection;
 vendor/bin/phpunit --filter=PropertyListSortTest
 ```
 
-Expected: PASS（7 tests）
+Expected: PASS（8 tests）
 
 - [ ] **Step 5: 既存テストが壊れていないことを確認する**
 
@@ -2185,7 +2196,7 @@ git status --porcelain && echo "--- 空なら OK ---"
 これは**特性テスト（現状の固定）**であって、検出力があるという主張はしないこと。
 配列の往復がどこにも書かれていない暗黙の前提だったので置いてある。
 
-- [ ] **Step 2: 24 通りの変異を 1 つずつ当てて測る**
+- [ ] **Step 2: 25 通りの変異を 1 つずつ当てて測る**
 
 各行について「変異を当てる → `git diff --stat` で着弾確認 → 該当テストを走らせる → 文言を控える → `git checkout --`」を繰り返す。
 
@@ -2207,6 +2218,7 @@ git status --porcelain && echo "--- 空なら OK ---"
 | 8e | 「クリア」の `href` を `route('tenant.units.index', ['sort' => 'area'])` にする | `tenant/units/index.blade.php` | **実測済み（Task 5）: 赤。** ⚠ **素の `assertStringContainsString('href="…"')` では緑だった** — サイドバーの「部屋一覧」が同じ bare URL を指すため（Bug #47 の「同じ URL を指す要素が 2 つある」）。`sortLinkFor()` で「クリア」ラベルに絞って初めて落ちる |
 | 8b | 往復の送信フィールドから `sort` / `dir` を落とす（`unset($fields['sort'], $fields['dir'])`） | `UnitListSortTest` の往復テスト | `test_changing_a_filter_keeps_the_current_sort` が赤。⚠ **面積の昇順と既定順を食い違わせるまでは緑だった**（旧データで実測）。往復の後半が飾りになっていないことの証明 |
 | 9 | `<x-sort-hidden :sort="$sort" />` の行を物件一覧から消す | `tenant/properties/index.blade.php` | `SortableListWiringTest` が赤（走査は全件分類なので物件一覧も自動で対象） |
+| 9b | `calculatePropertyStats()` の `$property->contracts` を `$property->contracts()->where('status', ContractStatus::Active)->get()` に変える（**値は不変・クエリだけ N 本になる**） | `PropertyController` | **実測済み（Task 6 レビュー）: N+1 テストだけが赤・他 7 本は緑**。文言「物件が増えるとクエリが増える（N+1）: 5 件で 8 本 / 25 件で 28 本」。⚠ `->with([...])` を丸ごと消す変異は契約の絞り込みまで変わって**別の理由で赤**になるので測定として濁る |
 | 10 | `MONTHLY_TOTAL_SQL` から `+ COALESCE(units.pest_control_fee, 0)` を落とす | `app/Models/Unit.php` | `UnitListSortTest::test_the_monthly_total_sql_agrees_with_the_php_accessor` が赤 |
 | 11 | `MONTHLY_TOTAL_SQL` の `units.rent` を `units.rentt` に綴り間違える | `app/Models/Unit.php` | 赤。⚠ **理由が違う**ことに注意 — Bug #40 の「SQLite が黙って 0 を返す」は**二重引用符で囲まれた識別子**（`->sum('col')` 経由）の話で、`selectRaw` / `orderByRaw` に素で書いた識別子は `no such column` で**例外**になる。**文言を必ず確認する。** 併せて `assertGreaterThan(1, ...)` と `assertContains(315000, ...)` の 2 行を外しても赤のままかを実測し、**その 2 行が load-bearing かどうかを記録する** |
 | 12 | `! in_array($key, $allowed, true)` を消す（`! is_string($key)` だけ残す） | `app/Support/ListSort.php` | `UnitListSortTest::test_invalid_sort_parameters_fall_back_to_the_default_order` が赤（`?sort=name` が `self::SORTABLE['name']` で `Undefined array key` → 500） |
