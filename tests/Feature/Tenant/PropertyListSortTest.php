@@ -465,7 +465,7 @@ class PropertyListSortTest extends TestCase
             'link-class のレスポンシブなパディングが <a> に載っていない'
         );
         $this->assertMatchesRegularExpression(
-            '/<th\b[^>]*style="padding: 0;/u',
+            '/<th\b[^>]*style="padding: 0; text-align: center;/u',
             $html,
             '見出しセルのパディングが 0 になっていない'
         );
@@ -520,5 +520,27 @@ class PropertyListSortTest extends TestCase
 
         $this->assertArrayNotHasKey('sort', $form['fields']);
         $this->assertArrayNotHasKey('dir', $form['fields']);
+    }
+
+    /**
+     * 「クリア」は並び順も初期化する（設計書 §4.3-4）。
+     *
+     * ⚠ サイドバー（layouts/partials/sidebar.blade.php の 62 / 225 / 339 行）が
+     *   同じ bare URL を 3 箇所で出すので、素の href 一致は**確実に** false-pass する。
+     *   ラベルで絞る sortLinkFor() を使うこと（Bug #47）。
+     */
+    public function test_the_clear_link_drops_the_sort(): void
+    {
+        $this->makeProperty(1);
+
+        $html = $this->actingAs($this->executive())
+            ->get(route('tenant.properties.index', ['sort' => 'income', 'dir' => 'desc']))
+            ->getContent();
+
+        $this->assertSame(
+            route('tenant.properties.index'),
+            $this->sortLinkFor($html, 'クリア'),
+            'クリアがクエリ付きのリンクになっている（並び順が残ってしまう）'
+        );
     }
 }

@@ -435,7 +435,7 @@ class UnitListSortTest extends TestCase
 
         // パディングは <th> ではなく中の <a> に載る（<th> 側に残すと文字の上しか押せない）
         $this->assertMatchesRegularExpression(
-            '/<th\b[^>]*style="padding: 0;/u',
+            '/<th\b[^>]*style="padding: 0; text-align: right;/u',
             $html,
             '見出しセルのパディングが 0 になっていない（<a> 側へ移していない）'
         );
