@@ -201,6 +201,45 @@ class PropertyListSortTest extends TestCase
     }
 
     /**
+     * 稼働していて値が 0 の物件は「—」ではない。末尾へ飛ばさず 0 として並べる。
+     *
+     * ⚠ calculatePropertyStats() は**非稼働のときだけ null** を入れる（稼働なら坪数 0 でも 0）。
+     *   ビューも `@if($property->occupancy_rate !== null)` で判定しているので、
+     *   **稼働で 0 の物件は画面に `0.0%` `0円` と出る**。
+     * ⚠ 判定を truthy（`(bool) $p->{$field}`）に変えると、その物件が「—」扱いされて末尾へ飛ぶ。
+     *   画面は `0.0%` なのに並び順だけ末尾 ＝ 避けたい食い違いそのもの（Bug #41 / #46）。
+     *   実測: このテストが無いと 987 テスト全部が緑のまま通った。
+     * ⚠ 設計書 §2.1 のとおり**実データは 16 件中 14 件がこの形**なので、本番で確実に目に見える。
+     * ⚠ 既定 [1,2,3] / 降順 [1,3,2] / 昇順 [2,3,1] で 3 つとも食い違わせてある（設計書 §6.2-0）。
+     */
+    public function test_an_active_property_with_zero_income_is_not_pushed_to_the_end(): void
+    {
+        $high = $this->makeProperty(1, units: 1, contracted: 1, rentEach: 200000);
+        $zero = $this->makeProperty(2);                                            // 稼働・契約なし ＝ 0円
+        $low = $this->makeProperty(3, units: 1, contracted: 1, rentEach: 100000);
+
+        $user = $this->executive();
+
+        // まず「null ではなく 0」であることを固定する（ここが崩れると検査が空振りする）
+        $rows = $this->actingAs($user)->get(route('tenant.properties.index'))->viewData('properties');
+        $this->assertSame(0, $rows->firstWhere('id', $zero->id)->rental_income, '稼働物件の賃料収入が 0 になっていない');
+        $this->assertSame(0.0, (float) $rows->firstWhere('id', $zero->id)->occupancy_rate, '稼働物件の入居率が 0 になっていない');
+
+        $asc = $this->actingAs($user)->get(route('tenant.properties.index', ['sort' => 'income', 'dir' => 'asc']));
+        $this->assertSame(
+            [$zero->id, $low->id, $high->id],
+            $asc->viewData('properties')->pluck('id')->all(),
+            '0 円の稼働物件が末尾へ飛んでいる（「—」と取り違えている）'
+        );
+
+        $desc = $this->actingAs($user)->get(route('tenant.properties.index', ['sort' => 'income', 'dir' => 'desc']));
+        $this->assertSame(
+            [$high->id, $low->id, $zero->id],
+            $desc->viewData('properties')->pluck('id')->all()
+        );
+    }
+
+    /**
      * 入居率と賃料収入は別々の列として並ぶ（列の取り違えを検出する）。
      *
      * ⚠ **3 つの並びを全部食い違わせてある。** 既定 [1,2,3] / 入居率降順 [2,1,3] /
