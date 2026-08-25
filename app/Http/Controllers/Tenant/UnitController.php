@@ -76,7 +76,10 @@ class UnitController extends Controller
 
         $this->applySort($query, $sort);
 
-        $units = $query->paginate(20)->withQueryString();
+        // ⚠ withQueryString() は使わない。null 値のキーは http_build_query が丸ごと捨てるため、
+        //   `?status=` のような空の絞り込みがページ送りリンクから消える（Bug #31）。
+        //   物件一覧の paginateCollection() / 見出しリンクの ListSort::url() と同じ正規化にする。
+        $units = $query->paginate(20)->appends(array_map(fn ($value) => $value ?? '', $request->query()));
 
         // 物件一覧（チェックボックス用）
         $properties = Property::where('department', DepartmentCode::Tenant)
