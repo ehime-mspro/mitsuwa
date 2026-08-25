@@ -29,6 +29,12 @@ trait ParsesSortLinks
      * ⚠ ページ全体に対する assertStringContainsString('aria-sort="descending"') では
      *   **3 列すべてに descending を出す変異が緑のまま通る**（実測済み）。
      *   「どの列に載っているか」を見るにはセル単位で切り出す必要がある。
+     *
+     * ⚠ 境界を `(?:^|>)` … `(?:<|$)` にしてあるのは意図。素の部分一致だと
+     *   「家賃」が「家賃収入」に誤マッチするが、`>ラベル<` だけに絞ると
+     *   **並び替え不可の素の `<th>敷金</th>` に一致しなくなる**（$inner は `<th>` の
+     *   中身だけ ＝ `敷金` で、`>` も `<` も含まないため）。実測で 4 通り確認済み:
+     *   素の <th>敷金</th> ○ / <a>面積<span> ○ / 「家賃」→「家賃収入」× / 「面積」→「面積合計」×
      */
     protected function ariaSortFor(string $html, string $label): string
     {

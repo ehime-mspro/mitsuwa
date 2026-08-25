@@ -1904,13 +1904,13 @@ use Tests\Concerns\ParsesSortLinks;
         $first = $this->actingAs($user)->get($this->sortLinkFor($html, '賃料収入'));
         $first->assertOk();
         $this->assertSame([$b->id, $a->id, $c->id], $first->viewData('properties')->pluck('id')->all());
-        $this->assertStringContainsString('aria-sort="descending"', $first->getContent());
+        $this->assertSame('descending', $this->ariaSortFor($first->getContent(), '賃料収入'));
 
         // 2 回目: 降順 → 昇順
         $second = $this->actingAs($user)->get($this->sortLinkFor($first->getContent(), '賃料収入'));
         $second->assertOk();
         $this->assertSame([$c->id, $a->id, $b->id], $second->viewData('properties')->pluck('id')->all());
-        $this->assertStringContainsString('aria-sort="ascending"', $second->getContent());
+        $this->assertSame('ascending', $this->ariaSortFor($second->getContent(), '賃料収入'));
 
         // 3 回目: 昇順 → 既定順
         $thirdUrl = $this->sortLinkFor($second->getContent(), '賃料収入');
@@ -1945,6 +1945,40 @@ use Tests\Concerns\ParsesSortLinks;
 
         $this->assertStringContainsString('>所有者</th>', $html, '所有者の見出しが素の <th> でなくなっている');
         $this->assertStringContainsString('>稼働</th>', $html);
+    }
+
+    /**
+     * aria-sort が**並び替え中の列だけ**に載ること、パディングが <a> 側にあること。
+     *
+     * ⚠ Task 4（部屋一覧）で、ページ全体を見る assertStringContainsString だけだと
+     *   **3 列全部に descending を出す変異が緑のまま通る**ことを実測した。物件一覧にも同じ網を張る。
+     * ⚠ **物件一覧は `link-class` を使う最初の画面**（部屋一覧は `link-style`）。
+     *   この経路が黙って効かないと <th> も <a> も padding 0 で見出しが潰れるので、
+     *   レスポンシブなパディングが本当に <a> へ載ったかを見る。
+     */
+    public function test_only_the_sorted_column_is_marked_and_the_padding_sits_on_the_link(): void
+    {
+        $this->makeProperty(1, units: 1, contracted: 1, rentEach: 100000);
+
+        $html = $this->actingAs($this->executive())
+            ->get(route('tenant.properties.index', ['sort' => 'income', 'dir' => 'desc']))
+            ->getContent();
+
+        $this->assertSame('descending', $this->ariaSortFor($html, '賃料収入'));
+        $this->assertSame('none', $this->ariaSortFor($html, '入居率'), '並び替えていない列に aria-sort が載っている');
+        $this->assertSame('none', $this->ariaSortFor($html, '所有者'), '並び替え不可の列に aria-sort が載っている');
+
+        // ⚠ link-class は物件一覧が最初の利用者。効いていなければ見出しが潰れる
+        $this->assertMatchesRegularExpression(
+            '/<a\b[^>]*class="[^"]*px-4 py-3 lg:px-5 lg:py-3\.5/u',
+            $html,
+            'link-class のレスポンシブなパディングが <a> に載っていない'
+        );
+        $this->assertMatchesRegularExpression(
+            '/<th\b[^>]*style="padding: 0;/u',
+            $html,
+            '見出しセルのパディングが 0 になっていない'
+        );
     }
 
     /**
@@ -2049,7 +2083,7 @@ Expected: FAIL — `「賃料収入」の並び替えリンクが見つからな
 vendor/bin/phpunit --filter=PropertyListSortTest
 ```
 
-Expected: PASS（12 tests）
+Expected: PASS（13 tests）
 
 - [ ] **Step 6: コンパイル済みビューを lint する**
 
