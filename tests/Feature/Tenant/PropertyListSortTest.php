@@ -340,6 +340,8 @@ class PropertyListSortTest extends TestCase
      *
      * ⚠ 絶対本数ではなく「件数を増やしても本数が変わらないこと」を見る。
      *   本数を決め打ちすると、無関係な変更で落ちる脆いテストになる。
+     * ⚠ **定数分の増加（常に +5 本など）は原理的に検出しない。** 意図的なトレードオフで、
+     *   絶対本数を決め打ちすると無関係な変更で落ちる脆いテストになるため。
      */
     public function test_the_query_count_does_not_grow_with_the_number_of_properties(): void
     {

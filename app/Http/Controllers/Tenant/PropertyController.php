@@ -17,6 +17,7 @@ use App\Services\Tenant\RentalIncomeService;
 use App\Support\ListSort;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -79,6 +80,7 @@ class PropertyController extends Controller
                      ->get();
 
         // 各物件の入居率・賃料収入を計算（Eager Loadedデータを使用、追加クエリなし）
+        //   ⚠ occupancy_rate / rental_income は実カラムではない（メモリ上のみ・DB 書き込みなし）。
         foreach ($all as $property) {
             $this->calculatePropertyStats($property);
         }
@@ -87,7 +89,7 @@ class PropertyController extends Controller
             $request,
             $sort !== null ? $this->sortProperties($all, $sort) : $all,
             20
-        )->withQueryString();
+        );
 
         return view('tenant.properties.index', compact('properties', 'sort'));
     }
@@ -101,6 +103,11 @@ class PropertyController extends Controller
      *
      * ⚠ 同点の第 2 キーに code を**明示指定する**。PHP のソートが安定であることに
      *   暗黙に頼らない。これが無いとページをまたいで行が重複・消失する（設計書 §4.3-3）。
+     *
+     * ⚠ **呼ぶ前に calculatePropertyStats() を通しておくこと。** 通していないコレクションを
+     *   渡すと全行が「値なし」に落ちて、例外も警告も出さずに静かに既定順を返す。
+     *
+     * @param  Collection<int, Property>  $properties
      */
     private function sortProperties(Collection $properties, ListSort $sort): Collection
     {
@@ -121,6 +128,13 @@ class PropertyController extends Controller
      * ⚠ ->links() には戻さない。既存ビューはインライン番号付きページネーション
      *   （hasPages / getUrlRange / nextPageUrl）を使っている（Bug #24 以来の規約）。
      *   LengthAwarePaginator を自分で組めばそのまま動く。
+     *
+     * ⚠ **withQueryString() は使わない。** null 値のキーは http_build_query が
+     *   丸ごと捨てるため、`?operation_status=` のような空の絞り込みがページ送りリンクから
+     *   消える（Bug #31）。AreaBuildingListService / ProcurementListService と同じ形にする。
+     *   ⚠ 見出しリンク側（ListSort::url()）も同じ正規化をしている。片方だけ変えないこと。
+     *
+     * @param  Collection<int, Property>  $items
      */
     private function paginateCollection(Request $request, Collection $items, int $perPage): LengthAwarePaginator
     {
@@ -131,7 +145,10 @@ class PropertyController extends Controller
             $items->count(),
             $perPage,
             $page,
-            ['path' => $request->url()]
+            [
+                'path' => Paginator::resolveCurrentPath(),
+                'query' => array_map(fn ($value) => $value ?? '', $request->query()),
+            ]
         );
     }
 
