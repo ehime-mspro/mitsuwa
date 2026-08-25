@@ -7,6 +7,7 @@ use App\Models\Property;
 use App\Models\Unit;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\ParsesForms;
 use Tests\Concerns\ParsesSortLinks;
 use Tests\TestCase;
 
@@ -19,6 +20,7 @@ use Tests\TestCase;
  */
 class UnitListSortTest extends TestCase
 {
+    use ParsesForms;
     use ParsesSortLinks;
     use RefreshDatabase;
 
@@ -463,5 +465,57 @@ class UnitListSortTest extends TestCase
 
         $this->assertStringNotContainsString('page=', $url, '見出しリンクが page を持ち越している');
         $this->assertSame(1, $this->actingAs($user)->get($url)->viewData('units')->currentPage());
+    }
+
+    /**
+     * 並び替え中にフィルタを変えても並び順が消えない（設計書 §4.3-4）。
+     *
+     * ⚠ hidden があることを見るだけでは足りない。**画面が描画したフォームを解析して
+     *   そのまま送り返す**（Bug #47）。フィルターフォームは GET なので
+     *   fields をクエリ文字列に組み直して送る。
+     */
+    public function test_changing_a_filter_keeps_the_current_sort(): void
+    {
+        $property = $this->makeProperty();
+        $a = $this->makeUnit($property, '101', ['floor' => 1, 'area_tsubo' => 20.00, 'status' => 'vacant']);
+        $b = $this->makeUnit($property, '201', ['floor' => 2, 'area_tsubo' => 30.00, 'status' => 'vacant']);
+        $c = $this->makeUnit($property, '301', ['floor' => 3, 'area_tsubo' => 10.00, 'status' => 'occupied']);
+
+        $user = $this->executive();
+
+        $html = $this->actingAs($user)
+            ->get(route('tenant.units.index', ['sort' => 'area', 'dir' => 'asc']))
+            ->getContent();
+
+        $form = $this->parseForm($html, 'action="' . route('tenant.units.index') . '"');
+
+        $this->assertSame('area', $form['fields']['sort'] ?? null, 'フィルターフォームが sort を持ち回していない');
+        $this->assertSame('asc', $form['fields']['dir'] ?? null, 'フィルターフォームが dir を持ち回していない');
+
+        // ブラウザと同じように、ステータスだけ変えて送り返す
+        $fields = $form['fields'];
+        $fields['status'] = 'vacant';
+
+        $response = $this->actingAs($user)->get($form['action'] . '?' . http_build_query($fields));
+
+        $response->assertOk();
+        $this->assertSame(
+            [$a->id, $b->id],
+            $response->viewData('units')->pluck('id')->all(),
+            'フィルタを変えたら並び順が既定に戻った（面積の昇順のままであるべき）'
+        );
+        $this->assertNotContains($c->id, $response->viewData('units')->pluck('id')->all(), 'ステータス絞り込みが効いていない');
+    }
+
+    /** 並び替えていないときは余計な hidden を出さない */
+    public function test_no_sort_hidden_fields_when_not_sorting(): void
+    {
+        $this->makeUnit($this->makeProperty(), '101');
+
+        $html = $this->actingAs($this->executive())->get(route('tenant.units.index'))->getContent();
+        $form = $this->parseForm($html, 'action="' . route('tenant.units.index') . '"');
+
+        $this->assertArrayNotHasKey('sort', $form['fields']);
+        $this->assertArrayNotHasKey('dir', $form['fields']);
     }
 }

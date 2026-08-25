@@ -21,6 +21,13 @@
         <form id="filter-form" method="GET" action="{{ route('tenant.units.index') }}"
               class="mb-4 bg-white border border-gray-200 rounded-lg">
 
+            {{-- 並び替え中にフィルタを変えても並び順が消えないように持ち回す（設計書 §4.3-4）。
+                 ⚠ 「クリア」は route(...) への素のリンクなので、従来どおり全部が初期化される。 --}}
+            @if($sort)
+                <input type="hidden" name="sort" value="{{ $sort->key }}">
+                <input type="hidden" name="dir" value="{{ $sort->direction }}">
+            @endif
+
             {{-- 上段: 物件フィルターチップ（常時表示） --}}
             <div style="padding: 10px 14px; border-bottom: 1px solid #E5E7EB;">
                 <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px;">
