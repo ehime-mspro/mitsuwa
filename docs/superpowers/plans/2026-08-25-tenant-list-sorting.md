@@ -2176,6 +2176,7 @@ git status --porcelain && echo "--- 空なら OK ---"
 
 | 変異 | 実測（2026-08-25） |
 |---|---|
+| #3 `sortProperties()` から `['code', 'asc']`（第 2 キー）を消す | **緑**（予告どおり）。PHP 8 の `uasort` は安定で、`$all` が SQL 側で既に `code` 昇順なので第 2 キーが無くても同じ並びになる。**冗長だが、将来 `$all` の取得順が変わったときの保険＋意図の記録として残す** |
 | #13 `! is_string($key)` を消す | **緑**（予測どおり）。`in_array(['area'], $allowed, true)` が false を返すのでガードが無くても null に落ちる。ガードは純粋な二重防御であり、`test_array_sort_does_not_explode` が実際に守っているのは `in_array` のほう |
 | #15 `array_map(fn ($v) => $v ?? '', $query)` を `$query` に戻す | **赤**。`ListSortTest::test_url_keeps_a_null_filter_by_normalising_it_to_an_empty_string` が `Failed asserting that '...?sort=occupancy&dir=desc' contains "operation_status="` で落ちる |
 | （追加）`Arr::query(...)` を素の `http_build_query(...)` に替える | **緑**。`Arr::query()` は `http_build_query($array, '', '&', PHP_QUERY_RFC3986)` の薄いラッパーで（`vendor/laravel/framework/.../Arr.php:939-942`）、配列の展開ロジックは同一。差は RFC3986 と RFC1738 のエンコード（スペースの扱い等）だけで、テストデータにスペースが無いため差が出なかった |
@@ -2184,7 +2185,7 @@ git status --porcelain && echo "--- 空なら OK ---"
 これは**特性テスト（現状の固定）**であって、検出力があるという主張はしないこと。
 配列の往復がどこにも書かれていない暗黙の前提だったので置いてある。
 
-- [ ] **Step 2: 23 通りの変異を 1 つずつ当てて測る**
+- [ ] **Step 2: 24 通りの変異を 1 つずつ当てて測る**
 
 各行について「変異を当てる → `git diff --stat` で着弾確認 → 該当テストを走らせる → 文言を控える → `git checkout --`」を繰り返す。
 
@@ -2195,6 +2196,7 @@ git status --porcelain && echo "--- 空なら OK ---"
 | 3 | `['code', 'asc']` を消す | `PropertyController::sortProperties` | ⚠ **緑になる見込み。** PHP 8 の sort は安定で、`$all` が既定順で来るので第 2 キーが無くても同じ並びになる。**実測して結果を記録する**（緑なら「冗長だが将来 `$all` の取得順が変わったときの保険＋意図の記録」として残す。Bug #54 ⑤ と同型） |
 | 4 | `$query->orderByRaw("({$expression} IS NULL) asc")` の行を消す | `UnitController::applySort` | `UnitListSortTest::test_units_without_an_area_sort_last_in_both_directions` が赤。⚠ **降順は偶然通る**（SQLite は NULL を最小として扱うので降順なら末尾）。**昇順のアサートだけが落ちる**ので、両方向を見ているのが load-bearing |
 | 5 | `sortProperties` の null 分離（`$withValue` / `$withoutValue`）をやめて全件 `sortBy` にする | `PropertyController::sortProperties` | `PropertyListSortTest::test_inactive_properties_sort_last_in_both_directions` が赤。⚠ #4 と同じく**昇順だけ**落ちる |
+| 5b | `sortProperties()` の判定を `!== null` / `=== null` から truthy（`(bool) $p->{$field}` / `! $p->{$field}`）へ変える | `PropertyController::sortProperties` | **実測済み（Task 6）: 赤。** `test_an_active_property_with_zero_income_is_not_pushed_to_the_end` の**昇順側**が「0 円の稼働物件が末尾へ飛んでいる」で落ちる。⚠ **降順は素通りする**（0 は元々最後に来るので末尾へ飛ばしても同じ並び）＝ 昇順・降順の**両方**を見ているのが load-bearing。⚠ このテストを足すまでは 987 テスト全部が緑だった |
 | 6 | `'rent' => ['COALESCE(units.rent, 0)', false]` を `['units.rent', true]` に変える | `UnitController::applySort` | `UnitListSortTest::test_units_with_a_null_rent_sort_as_zero_not_last` が赤。文言「NULL の家賃が 0 として先頭に来ていない（末尾へ飛ばしている）」 |
 | 7 | `href="{{ \App\Support\ListSort::url(...) }}"` を `href="{{ url()->current() }}"` に変える | `components/sortable-th.blade.php` | `UnitListSortTest::test_clicking_the_area_header_three_times_cycles_back_to_the_default_order` と `PropertyListSortTest::test_clicking_the_income_header_...` が赤 |
 | 7b | `$ariaSort` の算出を `match ($state)` から `match ($sort?->direction)` に変える（＝ 並び替え中はどの列も `descending` になる） | `components/sortable-th.blade.php` | `UnitListSortTest::test_only_the_sorted_column_is_marked_and_the_padding_sits_on_the_link` が赤。文言「並び替えていない列に aria-sort が載っている」。⚠ **ページ全体を見る `assertStringContainsString('aria-sort="descending"')` だけでは緑のまま通る**（Task 4 のレビューで実測） |
