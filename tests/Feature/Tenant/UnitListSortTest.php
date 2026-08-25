@@ -473,27 +473,55 @@ class UnitListSortTest extends TestCase
      * ⚠ hidden があることを見るだけでは足りない。**画面が描画したフォームを解析して
      *   そのまま送り返す**（Bug #47）。フィルターフォームは GET なので
      *   fields をクエリ文字列に組み直して送る。
-     *
-     * ⚠ **面積の昇順（b, a）と既定順（a, b）をわざと食い違わせてある。**
-     *   揃えると sort / dir が落ちても同じ並びになり、往復の後半が飾りになる（実測済み）。
+     * ⚠ **2 組（area/asc と rent/desc）を通す。** 1 組だけだと hidden の値を
+     *   ハードコードする変異が緑のまま通る（実測済み）。とくに dir が asc に化けると
+     *   「降順で見ていた利用者がフィルタを触った瞬間に昇順へ静かに反転する」。
+     * ⚠ **絞り込み後に 3 件残す。** 2 件だと順列が 2 通りしか無く、既定順・昇順・降順の
+     *   どれかが必ず一致して飾りになる（設計書 §6.2-0）。
+     *   このデータ: 既定[a,b,c] / 面積昇順[b,a,c] / 面積降順[c,a,b] / 家賃降順[b,c,a]
+     * ⚠ 物件チップ（property_ids[]）の経路は**未カバー**。Alpine の x-model が実行時に
+     *   checked を立てるため、サーバ HTML に checked が無く parseForm が拾えない
+     *   （ブラウザと同じ挙動）。PHP の Feature テストからは原理的に測れないので、
+     *   ブラウザでの確認に回す（Task 9）。
      */
     public function test_changing_a_filter_keeps_the_current_sort(): void
     {
         $property = $this->makeProperty();
-        $a = $this->makeUnit($property, '101', ['floor' => 1, 'area_tsubo' => 30.00, 'status' => 'vacant']);
-        $b = $this->makeUnit($property, '201', ['floor' => 2, 'area_tsubo' => 20.00, 'status' => 'vacant']);
-        $c = $this->makeUnit($property, '301', ['floor' => 3, 'area_tsubo' => 10.00, 'status' => 'occupied']);
+        $a = $this->makeUnit($property, '101', ['floor' => 1, 'area_tsubo' => 30.00, 'rent' => 100000, 'status' => 'vacant']);
+        $b = $this->makeUnit($property, '201', ['floor' => 2, 'area_tsubo' => 20.00, 'rent' => 300000, 'status' => 'vacant']);
+        $c = $this->makeUnit($property, '301', ['floor' => 3, 'area_tsubo' => 40.00, 'rent' => 200000, 'status' => 'vacant']);
+        $excluded = $this->makeUnit($property, '401', ['floor' => 4, 'area_tsubo' => 10.00, 'rent' => 400000, 'status' => 'occupied']);
 
         $user = $this->executive();
 
+        // 1 組目: 面積の昇順（既定順とも降順とも食い違う）
+        $this->assertFilterRoundTripKeepsOrder($user, 'area', 'asc', [$b->id, $a->id, $c->id], $excluded->id);
+
+        // 2 組目: 家賃の降順。**キーも向きも 1 組目と変える**ことで、
+        //         sort / dir のどちらをハードコードしても落ちるようになる
+        $this->assertFilterRoundTripKeepsOrder($user, 'rent', 'desc', [$b->id, $c->id, $a->id], $excluded->id);
+    }
+
+    /**
+     * 並び替え中の画面のフィルターフォームを解析し、ステータスだけ変えて送り返して、
+     * 並び順が維持されることを見る。
+     */
+    private function assertFilterRoundTripKeepsOrder(
+        User $user,
+        string $key,
+        string $direction,
+        array $expected,
+        int $excludedId,
+    ): void {
         $html = $this->actingAs($user)
-            ->get(route('tenant.units.index', ['sort' => 'area', 'dir' => 'asc']))
+            ->get(route('tenant.units.index', ['sort' => $key, 'dir' => $direction]))
             ->getContent();
 
         $form = $this->parseForm($html, 'action="' . route('tenant.units.index') . '"');
 
-        $this->assertSame('area', $form['fields']['sort'] ?? null, 'フィルターフォームが sort を持ち回していない');
-        $this->assertSame('asc', $form['fields']['dir'] ?? null, 'フィルターフォームが dir を持ち回していない');
+        $this->assertSame($key, $form['fields']['sort'] ?? null, "フィルターフォームが sort={$key} を持ち回していない");
+        $this->assertSame($direction, $form['fields']['dir'] ?? null, "フィルターフォームが dir={$direction} を持ち回していない");
+        $this->assertArrayNotHasKey('page', $form['fields'], 'フィルタを変えたらページ送りは 1 ページ目に戻るべき');
 
         // ブラウザと同じように、ステータスだけ変えて送り返す
         $fields = $form['fields'];
@@ -502,12 +530,10 @@ class UnitListSortTest extends TestCase
         $response = $this->actingAs($user)->get($form['action'] . '?' . http_build_query($fields));
 
         $response->assertOk();
-        $this->assertSame(
-            [$b->id, $a->id],
-            $response->viewData('units')->pluck('id')->all(),
-            'フィルタを変えたら並び順が既定に戻った（面積の昇順のままであるべき）'
-        );
-        $this->assertNotContains($c->id, $response->viewData('units')->pluck('id')->all(), 'ステータス絞り込みが効いていない');
+        $ids = $response->viewData('units')->pluck('id')->all();
+
+        $this->assertSame($expected, $ids, "フィルタを変えたら並び順が既定に戻った（{$key} の {$direction} のままであるべき）");
+        $this->assertNotContains($excludedId, $ids, 'ステータス絞り込みが効いていない');
     }
 
     /** 並び替えていないときは余計な hidden を出さない */
@@ -520,5 +546,26 @@ class UnitListSortTest extends TestCase
 
         $this->assertArrayNotHasKey('sort', $form['fields']);
         $this->assertArrayNotHasKey('dir', $form['fields']);
+    }
+
+    /**
+     * 「クリア」は並び順も初期化する（設計書 §4.3-4）。
+     *
+     * ⚠ 現状は素のリンクなので自動的に成立しているが、誰かが「親切に」
+     *   route(..., request()->only('sort','dir')) へ変えても**何も落ちない**。約束を固定する。
+     */
+    public function test_the_clear_link_drops_the_sort(): void
+    {
+        $this->makeUnit($this->makeProperty(), '101');
+
+        $html = $this->actingAs($this->executive())
+            ->get(route('tenant.units.index', ['sort' => 'area', 'dir' => 'desc']))
+            ->getContent();
+
+        $this->assertStringContainsString(
+            'href="' . route('tenant.units.index') . '"',
+            $html,
+            'クリアがクエリ付きのリンクになっている（並び順が残ってしまう）'
+        );
     }
 }
