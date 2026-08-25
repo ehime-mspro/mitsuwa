@@ -7,6 +7,7 @@ use App\Models\Property;
 use App\Models\Unit;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\ParsesSortLinks;
 use Tests\TestCase;
 
 /**
@@ -18,6 +19,7 @@ use Tests\TestCase;
  */
 class UnitListSortTest extends TestCase
 {
+    use ParsesSortLinks;
     use RefreshDatabase;
 
     /** password.change を通過する経営層ユーザー（経営層は department.access を素通り） */
@@ -322,5 +324,109 @@ class UnitListSortTest extends TestCase
         rsort($sorted);
         $this->assertSame($sorted, $rents, 'ページをまたいで降順になっていない（1 ページ目の中だけで並んでいる）');
         $this->assertSame(250000, $rents[0], '最大の家賃が 1 ページ目の先頭に来ていない');
+    }
+
+    /**
+     * 見出しを 3 回押す往復。既定 → 降順 → 昇順 → 既定。
+     *
+     * ⚠ 面積の昇順と既定順（floor 昇順）が**わざと食い違う**データにしてある。
+     *   一致させると 2 回目と 3 回目の結果が同じになり、片方が壊れても緑になる。
+     */
+    public function test_clicking_the_area_header_three_times_cycles_back_to_the_default_order(): void
+    {
+        $property = $this->makeProperty();
+        $a = $this->makeUnit($property, '101', ['floor' => 1, 'area_tsubo' => 20.00]);
+        $b = $this->makeUnit($property, '201', ['floor' => 2, 'area_tsubo' => 30.00]);
+        $c = $this->makeUnit($property, '301', ['floor' => 3, 'area_tsubo' => 10.00]);
+
+        $user    = $this->executive();
+        $default = [$a->id, $b->id, $c->id];
+
+        $this->assertNotSame($default, [$c->id, $a->id, $b->id], '既定順と面積昇順が同じデータになっている');
+
+        // 1 回目: 既定 → 降順
+        $html  = $this->actingAs($user)->get(route('tenant.units.index'))->getContent();
+        $first = $this->actingAs($user)->get($this->sortLinkFor($html, '面積'));
+        $first->assertOk();
+        $this->assertSame([$b->id, $a->id, $c->id], $first->viewData('units')->pluck('id')->all());
+        $this->assertStringContainsString('aria-sort="descending"', $first->getContent());
+
+        // 2 回目: 降順 → 昇順
+        $second = $this->actingAs($user)->get($this->sortLinkFor($first->getContent(), '面積'));
+        $second->assertOk();
+        $this->assertSame([$c->id, $a->id, $b->id], $second->viewData('units')->pluck('id')->all());
+        $this->assertStringContainsString('aria-sort="ascending"', $second->getContent());
+
+        // 3 回目: 昇順 → 既定順
+        $thirdUrl = $this->sortLinkFor($second->getContent(), '面積');
+        $this->assertStringNotContainsString('sort=', $thirdUrl, '3 巡目は並び替えを解除する');
+        $third = $this->actingAs($user)->get($thirdUrl);
+        $third->assertOk();
+        $this->assertSame($default, $third->viewData('units')->pluck('id')->all());
+    }
+
+    /** 家賃と月額合計の見出しもそれぞれの列で並び替わる */
+    public function test_the_rent_and_monthly_headers_sort_their_own_columns(): void
+    {
+        $property = $this->makeProperty();
+        $a = $this->makeUnit($property, '101', ['floor' => 1, 'rent' => 100000, 'common_fee' => 50000]);
+        $b = $this->makeUnit($property, '201', ['floor' => 2, 'rent' => 300000, 'common_fee' => 0]);
+        $c = $this->makeUnit($property, '301', ['floor' => 3, 'rent' => 200000, 'common_fee' => 150000]);
+
+        $user = $this->executive();
+        $html = $this->actingAs($user)->get(route('tenant.units.index'))->getContent();
+
+        // 家賃の降順: 300000 > 200000 > 100000
+        $byRent = $this->actingAs($user)->get($this->sortLinkFor($html, '家賃'));
+        $this->assertSame([$b->id, $c->id, $a->id], $byRent->viewData('units')->pluck('id')->all());
+
+        // 月額合計の降順: c(353000) > b(303000) > a(153000)
+        // ⚠ **家賃の順（b, c, a）とわざと食い違わせてある。**
+        //   揃えると 'monthly' の式を 'rent' の式に変えても同じ順になり、変異が素通りする。
+        //   実測: c の common_fee を 100000（= 合計 303000、b と同点）にすると
+        //   monthly を units.rent に差し替えても順が変わらず、このテストは緑のまま通った。
+        $byMonthly = $this->actingAs($user)->get($this->sortLinkFor($html, '月額合計'));
+        $this->assertSame(
+            [$c->id, $b->id, $a->id],
+            $byMonthly->viewData('units')->pluck('id')->all(),
+            '月額合計の降順になっていない（家賃の順と同じなら式を取り違えている）'
+        );
+        $this->assertSame(
+            [353000, 303000, 153000],
+            $byMonthly->viewData('units')->map(fn ($unit) => $unit->monthly_total)->all(),
+            '月額合計の実値が想定と違う'
+        );
+    }
+
+    /** 並び替え不可の列には矢印もリンクも出さない */
+    public function test_non_sortable_headers_stay_plain(): void
+    {
+        $this->makeUnit($this->makeProperty(), '101');
+
+        $html = $this->actingAs($this->executive())->get(route('tenant.units.index'))->getContent();
+
+        $this->assertStringContainsString('>敷金</th>', $html, '敷金の見出しが素の <th> でなくなっている');
+        $this->assertStringContainsString('>共益費</th>', $html);
+    }
+
+    /** 2 ページ目で見出しを押したら 1 ページ目へ戻る（設計書 §4.3-5） */
+    public function test_clicking_a_header_from_page_two_returns_to_page_one(): void
+    {
+        $property = $this->makeProperty();
+        for ($i = 1; $i <= 25; $i++) {
+            $this->makeUnit($property, sprintf('%03d', $i), ['floor' => $i, 'rent' => $i * 10000]);
+        }
+
+        $user = $this->executive();
+
+        $page1 = $this->actingAs($user)->get(route('tenant.units.index'));
+        $page2 = $this->actingAs($user)->get($page1->viewData('units')->nextPageUrl());
+        $page2->assertOk();
+        $this->assertSame(2, $page2->viewData('units')->currentPage());
+
+        $url = $this->sortLinkFor($page2->getContent(), '家賃');
+
+        $this->assertStringNotContainsString('page=', $url, '見出しリンクが page を持ち越している');
+        $this->assertSame(1, $this->actingAs($user)->get($url)->viewData('units')->currentPage());
     }
 }

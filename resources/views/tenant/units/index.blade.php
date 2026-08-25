@@ -111,13 +111,13 @@
                         <tr>
                             <th class="text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap" style="padding: 14px 20px; text-align: left;">物件名</th>
                             <th class="text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap" style="padding: 14px 20px; text-align: center;">部屋名</th>
-                            <th class="text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap" style="padding: 14px 20px; text-align: right;">面積</th>
+                            <x-sortable-th column="area" label="面積" :sort="$sort" align="right" link-style="padding: 14px 20px;" />
                             <th class="text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap" style="padding: 14px 20px; text-align: center;">ステータス</th>
-                            <th class="text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap" style="padding: 14px 20px; text-align: center;">家賃</th>
+                            <x-sortable-th column="rent" label="家賃" :sort="$sort" align="center" link-style="padding: 14px 20px;" />
                             <th class="text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap" style="padding: 14px 20px; text-align: center;">共益費</th>
                             <th class="text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap" style="padding: 14px 20px; text-align: center;">ゴミ代</th>
                             <th class="text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap" style="padding: 14px 20px; text-align: center;">駆除代</th>
-                            <th class="text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap" style="padding: 14px 20px; text-align: center;">月額合計</th>
+                            <x-sortable-th column="monthly" label="月額合計" :sort="$sort" align="center" link-style="padding: 14px 20px;" />
                             <th class="text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap" style="padding: 14px 20px; text-align: center;">敷金</th>
                             <th class="text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap" style="padding: 14px 20px 14px 36px; text-align: left;">店舗名</th>
                             <th class="text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap" style="padding: 14px 20px; text-align: center;">操作</th>
