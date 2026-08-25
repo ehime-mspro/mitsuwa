@@ -26,6 +26,8 @@
     {{-- フィルターバー --}}
     <form id="filter-form" method="GET" action="{{ route('tenant.properties.index') }}"
           class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mb-4 bg-white border border-gray-200 rounded-lg px-3.5 py-2.5">
+
+        <x-sort-hidden :sort="$sort" />
         <select name="operation_status" onchange="document.getElementById('filter-form').submit()"
                 class="h-9 px-3 border border-gray-300 rounded-md text-sm text-gray-700 bg-white focus:border-emerald-500 focus:outline-none cursor-pointer w-full sm:w-auto">
             <option value="">稼働状態: すべて</option>
@@ -65,8 +67,8 @@
                             <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-left text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">物件名</th>
                             <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">稼働</th>
                             <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">所有者</th>
-                            <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">入居率</th>
-                            <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">賃料収入</th>
+                            <x-sortable-th column="occupancy" label="入居率" :sort="$sort" align="center" link-class="px-4 py-3 lg:px-5 lg:py-3.5" />
+                            <x-sortable-th column="income" label="賃料収入" :sort="$sort" align="center" link-class="px-4 py-3 lg:px-5 lg:py-3.5" />
                             <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">操作</th>
                         </tr>
                     </thead>

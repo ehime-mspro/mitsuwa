@@ -11,6 +11,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\Concerns\ParsesForms;
+use Tests\Concerns\ParsesSortLinks;
 use Tests\TestCase;
 
 /**
@@ -23,6 +24,7 @@ use Tests\TestCase;
 class PropertyListSortTest extends TestCase
 {
     use ParsesForms;
+    use ParsesSortLinks;
     use RefreshDatabase;
 
     private ?Customer $customer = null;
@@ -370,5 +372,153 @@ class PropertyListSortTest extends TestCase
             $withTwentyFive,
             "物件が増えるとクエリが増える（N+1）: 5 件で {$withFive} 本 / 25 件で {$withTwentyFive} 本"
         );
+    }
+
+    /**
+     * 見出しを 3 回押す往復。既定 → 降順 → 昇順 → 既定。
+     *
+     * ⚠ 賃料収入の昇順と既定順（code 昇順）が**わざと食い違う**データにしてある。
+     *   一致させると 2 回目と 3 回目の結果が同じになり、片方が壊れても緑になる。
+     */
+    public function test_clicking_the_income_header_three_times_cycles_back_to_the_default_order(): void
+    {
+        $a = $this->makeProperty(1, units: 1, contracted: 1, rentEach: 200000);
+        $b = $this->makeProperty(2, units: 1, contracted: 1, rentEach: 300000);
+        $c = $this->makeProperty(3, units: 1, contracted: 1, rentEach: 100000);
+
+        $user = $this->executive();
+        $default = [$a->id, $b->id, $c->id];
+
+        // 1 回目: 既定 → 降順
+        $html = $this->actingAs($user)->get(route('tenant.properties.index'))->getContent();
+        $first = $this->actingAs($user)->get($this->sortLinkFor($html, '賃料収入'));
+        $first->assertOk();
+        $this->assertSame([$b->id, $a->id, $c->id], $first->viewData('properties')->pluck('id')->all());
+        $this->assertSame('descending', $this->ariaSortFor($first->getContent(), '賃料収入'));
+
+        // 2 回目: 降順 → 昇順
+        $second = $this->actingAs($user)->get($this->sortLinkFor($first->getContent(), '賃料収入'));
+        $second->assertOk();
+        $this->assertSame([$c->id, $a->id, $b->id], $second->viewData('properties')->pluck('id')->all());
+        $this->assertSame('ascending', $this->ariaSortFor($second->getContent(), '賃料収入'));
+
+        // 3 回目: 昇順 → 既定順
+        $thirdUrl = $this->sortLinkFor($second->getContent(), '賃料収入');
+        $this->assertStringNotContainsString('sort=', $thirdUrl, '3 巡目は並び替えを解除する');
+        $third = $this->actingAs($user)->get($thirdUrl);
+        $third->assertOk();
+        $this->assertSame($default, $third->viewData('properties')->pluck('id')->all());
+    }
+
+    /** 入居率の見出しも自分の列で並び替わる */
+    public function test_the_occupancy_header_sorts_by_occupancy(): void
+    {
+        $half = $this->makeProperty(1, units: 2, contracted: 1, rentEach: 100000);  // 50%
+        $full = $this->makeProperty(2, units: 2, contracted: 2, rentEach: 10000);   // 100%
+        $none = $this->makeProperty(3, units: 2, contracted: 0);                    // 0%
+
+        $user = $this->executive();
+        $html = $this->actingAs($user)->get(route('tenant.properties.index'))->getContent();
+
+        $response = $this->actingAs($user)->get($this->sortLinkFor($html, '入居率'));
+
+        $response->assertOk();
+        $this->assertSame([$full->id, $half->id, $none->id], $response->viewData('properties')->pluck('id')->all());
+    }
+
+    /** 並び替え不可の列には矢印もリンクも出さない */
+    public function test_non_sortable_headers_stay_plain(): void
+    {
+        $this->makeProperty(1);
+
+        $html = $this->actingAs($this->executive())->get(route('tenant.properties.index'))->getContent();
+
+        $this->assertStringContainsString('>所有者</th>', $html, '所有者の見出しが素の <th> でなくなっている');
+        $this->assertStringContainsString('>稼働</th>', $html);
+    }
+
+    /**
+     * aria-sort が**並び替え中の列だけ**に載ること、パディングが <a> 側にあること。
+     *
+     * ⚠ Task 4（部屋一覧）で、ページ全体を見る assertStringContainsString だけだと
+     *   **3 列全部に descending を出す変異が緑のまま通る**ことを実測した。物件一覧にも同じ網を張る。
+     * ⚠ **物件一覧は `link-class` を使う最初の画面**（部屋一覧は `link-style`）。
+     *   この経路が黙って効かないと <th> も <a> も padding 0 で見出しが潰れるので、
+     *   レスポンシブなパディングが本当に <a> へ載ったかを見る。
+     */
+    public function test_only_the_sorted_column_is_marked_and_the_padding_sits_on_the_link(): void
+    {
+        $this->makeProperty(1, units: 1, contracted: 1, rentEach: 100000);
+
+        $html = $this->actingAs($this->executive())
+            ->get(route('tenant.properties.index', ['sort' => 'income', 'dir' => 'desc']))
+            ->getContent();
+
+        $this->assertSame('descending', $this->ariaSortFor($html, '賃料収入'));
+        $this->assertSame('none', $this->ariaSortFor($html, '入居率'), '並び替えていない列に aria-sort が載っている');
+        $this->assertSame('none', $this->ariaSortFor($html, '所有者'), '並び替え不可の列に aria-sort が載っている');
+
+        // ⚠ link-class は物件一覧が最初の利用者。効いていなければ見出しが潰れる
+        $this->assertMatchesRegularExpression(
+            '/<a\b[^>]*class="[^"]*px-4 py-3 lg:px-5 lg:py-3\.5/u',
+            $html,
+            'link-class のレスポンシブなパディングが <a> に載っていない'
+        );
+        $this->assertMatchesRegularExpression(
+            '/<th\b[^>]*style="padding: 0;/u',
+            $html,
+            '見出しセルのパディングが 0 になっていない'
+        );
+    }
+
+    /**
+     * 並び替え中にフィルタを変えても並び順が消えない（設計書 §4.3-4）。
+     *
+     * ⚠ hidden があることを見るだけでは足りない。**画面が描画したフォームを解析して
+     *   そのまま送り返す**（Bug #47）。フィルターフォームは GET なので
+     *   fields をクエリ文字列に組み直して送る。
+     */
+    public function test_changing_a_filter_keeps_the_current_sort(): void
+    {
+        $a = $this->makeProperty(1, units: 1, contracted: 1, rentEach: 200000);
+        $b = $this->makeProperty(2, units: 1, contracted: 1, rentEach: 300000);
+        $inactive = $this->makeProperty(3, operationStatus: 'inactive');
+
+        $user = $this->executive();
+
+        $html = $this->actingAs($user)
+            ->get(route('tenant.properties.index', ['sort' => 'income', 'dir' => 'desc']))
+            ->getContent();
+
+        $form = $this->parseForm($html, 'action="' . route('tenant.properties.index') . '"');
+
+        $this->assertSame('income', $form['fields']['sort'] ?? null, 'フィルターフォームが sort を持ち回していない');
+        $this->assertSame('desc', $form['fields']['dir'] ?? null, 'フィルターフォームが dir を持ち回していない');
+
+        // ブラウザと同じように、稼働状態だけ変えて送り返す
+        $fields = $form['fields'];
+        $fields['operation_status'] = 'active';
+
+        $response = $this->actingAs($user)->get($form['action'] . '?' . http_build_query($fields));
+
+        $response->assertOk();
+        $this->assertSame(
+            [$b->id, $a->id],
+            $response->viewData('properties')->pluck('id')->all(),
+            'フィルタを変えたら並び順が既定に戻った（賃料収入の降順のままであるべき）'
+        );
+        $this->assertNotContains($inactive->id, $response->viewData('properties')->pluck('id')->all());
+    }
+
+    /** 並び替えていないときは余計な hidden を出さない */
+    public function test_no_sort_hidden_fields_when_not_sorting(): void
+    {
+        $this->makeProperty(1);
+
+        $html = $this->actingAs($this->executive())->get(route('tenant.properties.index'))->getContent();
+        $form = $this->parseForm($html, 'action="' . route('tenant.properties.index') . '"');
+
+        $this->assertArrayNotHasKey('sort', $form['fields']);
+        $this->assertArrayNotHasKey('dir', $form['fields']);
     }
 }
