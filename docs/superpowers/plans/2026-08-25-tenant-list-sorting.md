@@ -790,6 +790,29 @@ Expected: FAIL — 並び替えが未実装なので `test_units_without_an_area
 use App\Support\ListSort;
 ```
 
+まず `index()` の**直前**（クラスの先頭、`public function index` の上）に定数を置く:
+
+```php
+    /**
+     * 部屋一覧で並び替えを許す列 → [SQL 式, 「—」を末尾へ回すか]。
+     *
+     * ⚠ **許可リストはここ 1 箇所だけ。** ListSort::fromRequest() には array_keys() を渡す。
+     *   許可リストと式のマップを別々のリテラルで持つと、キーを足して片方を忘れたときに
+     *   一覧が 500 になる。しかも「不正なキーを投げる」テストでは**この向きの取り違えを
+     *   原理的に検出できない**（不正キーは既定順に落ちるだけなので）。
+     *
+     * ⚠ 「—」を末尾へ回すのは**画面に「—」と出る列だけ**（設計書 §4.4）。
+     *   units.rent は nullable だが、ビューは number_format(null) で **「0円」**と描画するので、
+     *   末尾へ飛ばさず COALESCE で 0 として並べる。ここを揃え損なうと
+     *   「画面は 0円 なのにその行だけ末尾に飛ぶ」という食い違いになる（Bug #41 / #46）。
+     */
+    private const SORTABLE = [
+        'area' => ['units.area_tsubo', true],           // NULL は画面で「—」  → 末尾へ
+        'rent' => ['COALESCE(units.rent, 0)', false],   // NULL は画面で「0円」→ 0 として
+        'monthly' => [Unit::MONTHLY_TOTAL_SQL, false],  // COALESCE 済みで NULL になりえない
+    ];
+```
+
 `index()` の中で、既存の並び順の 4 行:
 
 ```php
@@ -803,17 +826,16 @@ use App\Support\ListSort;
 を次に置き換える:
 
 ```php
-        $this->applySort($query, ListSort::fromRequest($request, ['area', 'rent', 'monthly']));
+        $this->applySort($query, $sort);
 
         $units = $query->paginate(20)->withQueryString();
 ```
 
-`return view(...)` の `compact()` に `'sort'` を足す。あわせて `$sort` を先に受けておくため、
-`index()` の **1 行目**（`$query = Unit::whereHas(...)` の前）に次を置き、上の `applySort` 呼び出しは
-`$this->applySort($query, $sort);` にする:
+`return view(...)` の `compact()` に `'sort'` を足す。あわせて `index()` の **1 行目**
+（`$query = Unit::whereHas(...)` の前）に次を置く:
 
 ```php
-        $sort = ListSort::fromRequest($request, ['area', 'rent', 'monthly']);
+        $sort = ListSort::fromRequest($request, array_keys(self::SORTABLE));
 ```
 
 `return` 行はこうなる:
@@ -833,17 +855,13 @@ use App\Support\ListSort;
      *   末尾へ飛ばさず COALESCE で 0 として並べる。ここを揃え損なうと
      *   「画面は 0円 なのにその行だけ末尾に飛ぶ」という食い違いになる（Bug #41 / #46）。
      *
-     * ⚠ 許可リストを通った値しか来ないので match の結果は必ずコード内の定数。
-     *   利用者の入力が SQL に混ざる経路は無い。
+     * ⚠ 許可リストを通った値しか来ないので、self::SORTABLE のキーは必ず存在し、
+     *   式は必ずコード内の定数。利用者の入力が SQL に混ざる経路は無い。
      */
     private function applySort(Builder $query, ?ListSort $sort): void
     {
         if ($sort !== null) {
-            [$expression, $nullsLast] = match ($sort->key) {
-                'area'    => ['units.area_tsubo', true],            // NULL は画面で「—」  → 末尾へ
-                'rent'    => ['COALESCE(units.rent, 0)', false],    // NULL は画面で「0円」→ 0 として
-                'monthly' => [Unit::MONTHLY_TOTAL_SQL, false],      // COALESCE 済みで NULL になりえない
-            };
+            [$expression, $nullsLast] = self::SORTABLE[$sort->key];
 
             if ($nullsLast) {
                 $query->orderByRaw("({$expression} IS NULL) asc");
@@ -1003,7 +1021,7 @@ use Tests\Concerns\ParsesSortLinks;
         $property = $this->makeProperty();
         $a = $this->makeUnit($property, '101', ['floor' => 1, 'rent' => 100000, 'common_fee' => 50000]);
         $b = $this->makeUnit($property, '201', ['floor' => 2, 'rent' => 300000, 'common_fee' => 0]);
-        $c = $this->makeUnit($property, '301', ['floor' => 3, 'rent' => 200000, 'common_fee' => 100000]);
+        $c = $this->makeUnit($property, '301', ['floor' => 3, 'rent' => 200000, 'common_fee' => 150000]);
 
         $user = $this->executive();
         $html = $this->actingAs($user)->get(route('tenant.units.index'))->getContent();
@@ -1012,13 +1030,22 @@ use Tests\Concerns\ParsesSortLinks;
         $byRent = $this->actingAs($user)->get($this->sortLinkFor($html, '家賃'));
         $this->assertSame([$b->id, $c->id, $a->id], $byRent->viewData('units')->pluck('id')->all());
 
-        // 月額合計の降順: 303000(b の合計と違う順になる) を実値で確かめる
+        // 月額合計の降順: c(353000) > b(303000) > a(153000)
+        // ⚠ **家賃の順（b, c, a）とわざと食い違わせてある。**
+        //   揃えると 'monthly' の式を 'rent' の式に変えても同じ順になり、変異が素通りする。
+        //   実測: c の common_fee を 100000（= 合計 303000、b と同点）にすると
+        //   monthly を units.rent に差し替えても順が変わらず、このテストは緑のまま通った。
         $byMonthly = $this->actingAs($user)->get($this->sortLinkFor($html, '月額合計'));
-        $totals = $byMonthly->viewData('units')->map(fn ($unit) => $unit->monthly_total)->all();
-        $sorted = $totals;
-        rsort($sorted);
-        $this->assertSame($sorted, $totals, '月額合計の降順になっていない');
-        $this->assertGreaterThan(1, count(array_unique($totals)), '月額合計に分散が無いデータでは検出力が出ない');
+        $this->assertSame(
+            [$c->id, $b->id, $a->id],
+            $byMonthly->viewData('units')->pluck('id')->all(),
+            '月額合計の降順になっていない（家賃の順と同じなら式を取り違えている）'
+        );
+        $this->assertSame(
+            [353000, 303000, 153000],
+            $byMonthly->viewData('units')->map(fn ($unit) => $unit->monthly_total)->all(),
+            '月額合計の実値が想定と違う'
+        );
     }
 
     /** 並び替え不可の列には矢印もリンクも出さない */
@@ -1681,10 +1708,26 @@ use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 ```
 
+`index()` の**直前**（クラスの先頭、`public function index` の上）に定数を置く:
+
+```php
+    /**
+     * 物件一覧で並び替えを許す列 → calculatePropertyStats() が入れる属性の名前。
+     *
+     * ⚠ **許可リストはここ 1 箇所だけ。** ListSort::fromRequest() には array_keys() を渡す。
+     *   三項演算子で書くと、キーを足したときに**黙って賃料収入で並んでしまう**
+     *   （落ちないので画面から気づけない）。
+     */
+    private const SORTABLE = [
+        'occupancy' => 'occupancy_rate',
+        'income' => 'rental_income',
+    ];
+```
+
 `index()` の 1 行目（`$query = Property::where(...)` の**前**）に足す:
 
 ```php
-        $sort = ListSort::fromRequest($request, ['occupancy', 'income']);
+        $sort = ListSort::fromRequest($request, array_keys(self::SORTABLE));
 
 ```
 
@@ -1745,7 +1788,7 @@ use Illuminate\Support\Collection;
      */
     private function sortProperties(Collection $properties, ListSort $sort): Collection
     {
-        $field = $sort->key === 'occupancy' ? 'occupancy_rate' : 'rental_income';
+        $field = self::SORTABLE[$sort->key];
 
         $withValue = $properties->filter(fn (Property $p) => $p->{$field} !== null);
         $withoutValue = $properties->filter(fn (Property $p) => $p->{$field} === null);
@@ -2079,7 +2122,7 @@ git status --porcelain && echo "--- 空なら OK ---"
 これは**特性テスト（現状の固定）**であって、検出力があるという主張はしないこと。
 配列の往復がどこにも書かれていない暗黙の前提だったので置いてある。
 
-- [ ] **Step 2: 16 通りの変異を 1 つずつ当てて測る**
+- [ ] **Step 2: 17 通りの変異を 1 つずつ当てて測る**
 
 各行について「変異を当てる → `git diff --stat` で着弾確認 → 該当テストを走らせる → 文言を控える → `git checkout --`」を繰り返す。
 
@@ -2096,7 +2139,8 @@ git status --porcelain && echo "--- 空なら OK ---"
 | 9 | 同上を物件一覧で | `tenant/properties/index.blade.php` | `PropertyListSortTest::test_changing_a_filter_keeps_the_current_sort` が赤 |
 | 10 | `MONTHLY_TOTAL_SQL` から `+ COALESCE(units.pest_control_fee, 0)` を落とす | `app/Models/Unit.php` | `UnitListSortTest::test_the_monthly_total_sql_agrees_with_the_php_accessor` が赤 |
 | 11 | `MONTHLY_TOTAL_SQL` の `units.rent` を `units.rentt` に綴り間違える | `app/Models/Unit.php` | 赤。⚠ **理由が違う**ことに注意 — Bug #40 の「SQLite が黙って 0 を返す」は**二重引用符で囲まれた識別子**（`->sum('col')` 経由）の話で、`selectRaw` / `orderByRaw` に素で書いた識別子は `no such column` で**例外**になる。**文言を必ず確認する。** 併せて `assertGreaterThan(1, ...)` と `assertContains(315000, ...)` の 2 行を外しても赤のままかを実測し、**その 2 行が load-bearing かどうかを記録する** |
-| 12 | `! in_array($key, $allowed, true)` を消す（`! is_string($key)` だけ残す） | `app/Support/ListSort.php` | `UnitListSortTest::test_invalid_sort_parameters_fall_back_to_the_default_order` が赤（`?sort=name` が `match` に落ちず `UnhandledMatchError` → 500） |
+| 12 | `! in_array($key, $allowed, true)` を消す（`! is_string($key)` だけ残す） | `app/Support/ListSort.php` | `UnitListSortTest::test_invalid_sort_parameters_fall_back_to_the_default_order` が赤（`?sort=name` が `self::SORTABLE['name']` で `Undefined array key` → 500） |
+| 12b | `self::SORTABLE` の `'monthly'` の式を `Unit::MONTHLY_TOTAL_SQL` から `'COALESCE(units.rent, 0)'` に変える | `UnitController` | `UnitListSortTest::test_the_rent_and_monthly_headers_sort_their_own_columns` が赤。⚠ **定数そのものでなく「定数が並び替えに使われているか」を測る唯一の変異。** #10 / #11 は定数を直接評価するテストが拾うだけで、この経路は無検査だった（Task 2 のレビューで発覚） |
 | 13 | `! is_string($key)` を消す（`in_array` だけ残す） | `app/Support/ListSort.php` | ⚠ **緑になる見込み。** `in_array(['area'], $allowed, true)` は false を返すので、ガードが無くても null へ落ちる。**実測して記録する**（緑なら「守っているのは `in_array` のほうで、`is_string` は型の保証として残す」と書く） |
 | 14 | `unset($query['page']);` を消す | `app/Support/ListSort.php` | `ListSortTest::test_url_drops_the_page_parameter` と `UnitListSortTest::test_clicking_a_header_from_page_two_returns_to_page_one` が赤 |
 | 15 | `array_map(fn ($value) => $value ?? '', $query)` を `$query` に戻す | `app/Support/ListSort.php` | `ListSortTest::test_url_keeps_a_null_filter_by_normalising_it_to_an_empty_string` が赤（Bug #31） |
