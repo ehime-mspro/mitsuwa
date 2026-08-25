@@ -473,12 +473,15 @@ class UnitListSortTest extends TestCase
      * ⚠ hidden があることを見るだけでは足りない。**画面が描画したフォームを解析して
      *   そのまま送り返す**（Bug #47）。フィルターフォームは GET なので
      *   fields をクエリ文字列に組み直して送る。
+     *
+     * ⚠ **面積の昇順（b, a）と既定順（a, b）をわざと食い違わせてある。**
+     *   揃えると sort / dir が落ちても同じ並びになり、往復の後半が飾りになる（実測済み）。
      */
     public function test_changing_a_filter_keeps_the_current_sort(): void
     {
         $property = $this->makeProperty();
-        $a = $this->makeUnit($property, '101', ['floor' => 1, 'area_tsubo' => 20.00, 'status' => 'vacant']);
-        $b = $this->makeUnit($property, '201', ['floor' => 2, 'area_tsubo' => 30.00, 'status' => 'vacant']);
+        $a = $this->makeUnit($property, '101', ['floor' => 1, 'area_tsubo' => 30.00, 'status' => 'vacant']);
+        $b = $this->makeUnit($property, '201', ['floor' => 2, 'area_tsubo' => 20.00, 'status' => 'vacant']);
         $c = $this->makeUnit($property, '301', ['floor' => 3, 'area_tsubo' => 10.00, 'status' => 'occupied']);
 
         $user = $this->executive();
@@ -500,7 +503,7 @@ class UnitListSortTest extends TestCase
 
         $response->assertOk();
         $this->assertSame(
-            [$a->id, $b->id],
+            [$b->id, $a->id],
             $response->viewData('units')->pluck('id')->all(),
             'フィルタを変えたら並び順が既定に戻った（面積の昇順のままであるべき）'
         );
