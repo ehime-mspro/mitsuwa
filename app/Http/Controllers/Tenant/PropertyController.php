@@ -14,7 +14,10 @@ use App\Models\PropertyChangeLog;
 use App\Models\Repair;
 use App\Models\StructureType;
 use App\Services\Tenant\RentalIncomeService;
+use App\Support\ListSort;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Database\QueryException;
@@ -22,11 +25,25 @@ use Illuminate\Database\QueryException;
 class PropertyController extends Controller
 {
     /**
+     * 物件一覧で並び替えを許す列 → calculatePropertyStats() が入れる属性の名前。
+     *
+     * ⚠ **許可リストはここ 1 箇所だけ。** ListSort::fromRequest() には array_keys() を渡す。
+     *   三項演算子で書くと、キーを足したときに**黙って賃料収入で並んでしまう**
+     *   （落ちないので画面から気づけない）。
+     */
+    private const SORTABLE = [
+        'occupancy' => 'occupancy_rate',
+        'income' => 'rental_income',
+    ];
+
+    /**
      * 物件一覧
      * Route: GET /tenant/properties
      */
     public function index(Request $request)
     {
+        $sort = ListSort::fromRequest($request, array_keys(self::SORTABLE));
+
         $query = Property::where('department', DepartmentCode::Tenant)
             ->with([
                 'units:id,property_id,area_tsubo',
@@ -54,17 +71,68 @@ class PropertyController extends Controller
             });
         }
 
-        $properties = $query->orderBy('operation_status', 'asc')  // 稼働が先
-                            ->orderBy('code', 'asc')
-                            ->paginate(20)
-                            ->withQueryString();
+        // ⚠ 並べ替えの対象は「全件」。ページを切ってから並べると 1 ページ目の中だけで
+        //   並んで答えが変わる（設計書 §3.1）。入居率・賃料収入は PHP にしか計算が無いので
+        //   ここで全件に計算してから並べる。eager load は据え置きなのでクエリ本数は増えない。
+        $all = $query->orderBy('operation_status', 'asc')  // 稼働が先
+                     ->orderBy('code', 'asc')
+                     ->get();
 
         // 各物件の入居率・賃料収入を計算（Eager Loadedデータを使用、追加クエリなし）
-        foreach ($properties as $property) {
+        foreach ($all as $property) {
             $this->calculatePropertyStats($property);
         }
 
-        return view('tenant.properties.index', compact('properties'));
+        $properties = $this->paginateCollection(
+            $request,
+            $sort !== null ? $this->sortProperties($all, $sort) : $all,
+            20
+        )->withQueryString();
+
+        return view('tenant.properties.index', compact('properties', 'sort'));
+    }
+
+    /**
+     * 入居率・賃料収入で並べ替える（設計書 §5.3）。
+     *
+     * ⚠ calculatePropertyStats() は**非稼働のときだけ null** を入れる（稼働は坪数 0 でも 0）。
+     *   よって「値を持つ行＝稼働中・null の行＝非稼働」に分かれ、null を末尾へ回す処理が
+     *   既定順の「稼働が先」とも矛盾しない。末尾の中は code 昇順＝既定順。
+     *
+     * ⚠ 同点の第 2 キーに code を**明示指定する**。PHP のソートが安定であることに
+     *   暗黙に頼らない。これが無いとページをまたいで行が重複・消失する（設計書 §4.3-3）。
+     */
+    private function sortProperties(Collection $properties, ListSort $sort): Collection
+    {
+        $field = self::SORTABLE[$sort->key];
+
+        $withValue = $properties->filter(fn (Property $p) => $p->{$field} !== null);
+        $withoutValue = $properties->filter(fn (Property $p) => $p->{$field} === null);
+
+        return $withValue
+            ->sortBy([[$field, $sort->isAscending() ? 'asc' : 'desc'], ['code', 'asc']])
+            ->concat($withoutValue->sortBy('code'))
+            ->values();
+    }
+
+    /**
+     * 並べ替え済みのコレクションを手でページングする。
+     *
+     * ⚠ ->links() には戻さない。既存ビューはインライン番号付きページネーション
+     *   （hasPages / getUrlRange / nextPageUrl）を使っている（Bug #24 以来の規約）。
+     *   LengthAwarePaginator を自分で組めばそのまま動く。
+     */
+    private function paginateCollection(Request $request, Collection $items, int $perPage): LengthAwarePaginator
+    {
+        $page = LengthAwarePaginator::resolveCurrentPage();
+
+        return new LengthAwarePaginator(
+            $items->forPage($page, $perPage)->values(),
+            $items->count(),
+            $perPage,
+            $page,
+            ['path' => $request->url()]
+        );
     }
 
     /**
