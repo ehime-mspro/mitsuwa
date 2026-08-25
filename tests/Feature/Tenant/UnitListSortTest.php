@@ -102,4 +102,221 @@ class UnitListSortTest extends TestCase
         $this->assertContains(315000, $values, '4 項目すべてを足していない（285000+25000+3000+2000）');
         $this->assertSame(0, $values[3], 'NULL ばかりの部屋は COALESCE で 0 になる');
     }
+
+    /**
+     * ページ送りのリンクを実際に辿って、全ページの部屋 ID を順に集める。
+     *
+     * ⚠ **`?page=2` を自分で組み立ててはいけない。** リンクが壊れていても sort が付いた
+     *   状態で届くので**必ず緑**になる（Bug #31）。$paginator->nextPageUrl() を辿ること。
+     */
+    private function collectIdsAcrossPages(User $user, string $url): array
+    {
+        $ids = [];
+        $guard = 0;
+
+        while ($url !== null) {
+            $response = $this->actingAs($user)->get($url);
+            $response->assertOk();
+
+            $paginator = $response->viewData('units');
+            foreach ($paginator as $unit) {
+                $ids[] = $unit->id;
+            }
+
+            $url = $paginator->nextPageUrl();
+
+            $this->assertLessThan(20, ++$guard, 'ページ送りが終わらない');
+        }
+
+        return $ids;
+    }
+
+    /** 並び替え指定が無ければ、今までと同じ順（property_id → floor → room_number） */
+    public function test_the_default_order_is_unchanged(): void
+    {
+        $property = $this->makeProperty();
+        $c = $this->makeUnit($property, '301', ['floor' => 3]);
+        $a = $this->makeUnit($property, '101', ['floor' => 1]);
+        $b = $this->makeUnit($property, '201', ['floor' => 2]);
+
+        $response = $this->actingAs($this->executive())->get(route('tenant.units.index'));
+
+        $response->assertOk();
+        $this->assertSame(
+            [$a->id, $b->id, $c->id],
+            $response->viewData('units')->pluck('id')->all()
+        );
+    }
+
+    /** 不正な sort / dir は 500 にせず既定順へ落ちる */
+    public function test_invalid_sort_parameters_fall_back_to_the_default_order(): void
+    {
+        $property = $this->makeProperty();
+        $c = $this->makeUnit($property, '301', ['floor' => 3, 'rent' => 300000]);
+        $a = $this->makeUnit($property, '101', ['floor' => 1, 'rent' => 100000]);
+        $b = $this->makeUnit($property, '201', ['floor' => 2, 'rent' => 200000]);
+
+        $expected = [$a->id, $b->id, $c->id];
+        $user = $this->executive();
+
+        foreach ([
+            '?sort=name',            // 許可リストに無い
+            '?sort[]=rent',          // 配列で来る
+            '?sort=%3Cscript%3E',    // 手入力・古いブックマーク
+            '?sort=',                // 空
+            '?sort=rent&dir=up',     // dir だけ不正 → 既定の降順になる（下で別途確認）
+        ] as $queryString) {
+            $response = $this->actingAs($user)->get(route('tenant.units.index') . $queryString);
+            $response->assertOk();
+
+            if ($queryString === '?sort=rent&dir=up') {
+                continue;   // sort は妥当なので既定順ではなく「降順」になる
+            }
+
+            $this->assertSame(
+                $expected,
+                $response->viewData('units')->pluck('id')->all(),
+                "{$queryString} で既定順に落ちていない"
+            );
+        }
+
+        // dir だけ不正なら降順（設計書 §4.2: 1 回目は降順）
+        $response = $this->actingAs($user)->get(route('tenant.units.index') . '?sort=rent&dir=up');
+        $this->assertSame([$c->id, $b->id, $a->id], $response->viewData('units')->pluck('id')->all());
+    }
+
+    /** 面積は画面で「—」と出るので、昇順でも降順でも末尾（設計書 §4.4） */
+    public function test_units_without_an_area_sort_last_in_both_directions(): void
+    {
+        $property = $this->makeProperty();
+        $small   = $this->makeUnit($property, '101', ['floor' => 1, 'area_tsubo' => 10.00]);
+        $noArea  = $this->makeUnit($property, '201', ['floor' => 2, 'area_tsubo' => null]);
+        $large   = $this->makeUnit($property, '301', ['floor' => 3, 'area_tsubo' => 30.00]);
+
+        $user = $this->executive();
+
+        $desc = $this->actingAs($user)->get(route('tenant.units.index', ['sort' => 'area', 'dir' => 'desc']));
+        $this->assertSame([$large->id, $small->id, $noArea->id], $desc->viewData('units')->pluck('id')->all());
+
+        $asc = $this->actingAs($user)->get(route('tenant.units.index', ['sort' => 'area', 'dir' => 'asc']));
+        $this->assertSame([$small->id, $large->id, $noArea->id], $asc->viewData('units')->pluck('id')->all());
+    }
+
+    /**
+     * 家賃 NULL は画面に「0円」と出るので **0 として並べる**（末尾へ飛ばさない）。
+     *
+     * ⚠ 上の面積のテストと**期待する位置が正反対**。1 本にまとめてはいけない。
+     */
+    public function test_units_with_a_null_rent_sort_as_zero_not_last(): void
+    {
+        $property = $this->makeProperty();
+        $high    = $this->makeUnit($property, '101', ['floor' => 1, 'rent' => 300000]);
+        $nullish = $this->makeUnit($property, '201', ['floor' => 2, 'rent' => null]);
+        $low     = $this->makeUnit($property, '301', ['floor' => 3, 'rent' => 100000]);
+
+        $user = $this->executive();
+
+        // ⚠ 0 ではなく NULL が入っていることを先に固定する。
+        //   0 で作ると NULL の経路を一度も通らず、この検査が空振りして緑になる（設計書 §6.2-5）
+        $this->assertNull($nullish->fresh()->rent, '家賃が NULL のデータになっていない');
+
+        $asc = $this->actingAs($user)->get(route('tenant.units.index', ['sort' => 'rent', 'dir' => 'asc']));
+        $this->assertSame(
+            [$nullish->id, $low->id, $high->id],
+            $asc->viewData('units')->pluck('id')->all(),
+            'NULL の家賃が 0 として先頭に来ていない（末尾へ飛ばしている）'
+        );
+
+        $desc = $this->actingAs($user)->get(route('tenant.units.index', ['sort' => 'rent', 'dir' => 'desc']));
+        $this->assertSame([$high->id, $low->id, $nullish->id], $desc->viewData('units')->pluck('id')->all());
+    }
+
+    /**
+     * 既知の穴（設計書 §4.4）: area_tsubo = 0 は画面では「—」と出るが IS NULL ではないので
+     * **末尾へ飛ばず 0 として並ぶ**。実データに 0 件で到達不能なため直さない。
+     * 意図であることをここで固定しておく（勝手に「直した」ときに落ちる）。
+     */
+    public function test_a_zero_area_is_not_pushed_to_the_end(): void
+    {
+        $property = $this->makeProperty();
+        $zero   = $this->makeUnit($property, '101', ['floor' => 1, 'area_tsubo' => 0]);
+        $noArea = $this->makeUnit($property, '201', ['floor' => 2, 'area_tsubo' => null]);
+        $large  = $this->makeUnit($property, '301', ['floor' => 3, 'area_tsubo' => 30.00]);
+
+        $response = $this->actingAs($this->executive())
+            ->get(route('tenant.units.index', ['sort' => 'area', 'dir' => 'asc']));
+
+        $this->assertSame(
+            [$zero->id, $large->id, $noArea->id],
+            $response->viewData('units')->pluck('id')->all(),
+            '0 の面積は末尾へ回さない（NULL だけを回す）'
+        );
+    }
+
+    /**
+     * 同点の中は既定順。
+     *
+     * ⚠ **id の昇順と既定順（floor 昇順）がわざと食い違う順で作る。**
+     *   同じ順で作ると、第 2 キーを消しても SQLite が id 順＝既定順で返してしまい
+     *   変異が素通りする（Bug #52 の「真ん中の行が落ちるデータで書く」と同じ理屈）。
+     */
+    public function test_tied_rows_keep_the_default_order(): void
+    {
+        $property = $this->makeProperty();
+        $third  = $this->makeUnit($property, '301', ['floor' => 3, 'rent' => 100000]);
+        $first  = $this->makeUnit($property, '101', ['floor' => 1, 'rent' => 100000]);
+        $second = $this->makeUnit($property, '201', ['floor' => 2, 'rent' => 100000]);
+
+        $this->assertSame(
+            [$third->id, $first->id, $second->id],
+            Unit::orderBy('id')->pluck('id')->all(),
+            'id 順と既定順が食い違うデータになっていない（変異が検出できなくなる）'
+        );
+
+        $response = $this->actingAs($this->executive())
+            ->get(route('tenant.units.index', ['sort' => 'rent', 'dir' => 'desc']));
+
+        $this->assertSame(
+            [$first->id, $second->id, $third->id],
+            $response->viewData('units')->pluck('id')->all(),
+            '同点の中が既定順になっていない'
+        );
+    }
+
+    /**
+     * ページをまたいでも行が重複せず・消えず・全体を通して降順であること。
+     *
+     * ⚠ **1 ページ目だけでは測れない。** 1 ページ目の 20 件が降順に並ぶことは
+     *   「ページを切ってから並べ替える」壊れ方でも成立する（設計書 §3.1）。
+     */
+    public function test_paging_through_a_sorted_list_yields_every_unit_exactly_once(): void
+    {
+        $property = $this->makeProperty();
+        $rentById = [];
+
+        // 25 件（＝ 2 ページ）。家賃は作成順と逆向きに増やすので、
+        // 「ページを切ってから並べ替える」実装では 2 ページ目に大きい値が現れる
+        for ($i = 1; $i <= 25; $i++) {
+            $unit = $this->makeUnit($property, sprintf('%03d', $i), [
+                'floor' => $i,
+                'rent'  => $i * 10000,
+            ]);
+            $rentById[$unit->id] = $i * 10000;
+        }
+
+        $ids = $this->collectIdsAcrossPages(
+            $this->executive(),
+            route('tenant.units.index', ['sort' => 'rent', 'dir' => 'desc'])
+        );
+
+        $this->assertCount(25, $ids, 'ページ送りで行が消えている');
+        $this->assertCount(25, array_unique($ids), 'ページ送りで行が重複している');
+        $this->assertEqualsCanonicalizing(Unit::pluck('id')->all(), $ids);
+
+        $rents = array_map(fn ($id) => $rentById[$id], $ids);
+        $sorted = $rents;
+        rsort($sorted);
+        $this->assertSame($sorted, $rents, 'ページをまたいで降順になっていない（1 ページ目の中だけで並んでいる）');
+        $this->assertSame(250000, $rents[0], '最大の家賃が 1 ページ目の先頭に来ていない');
+    }
 }

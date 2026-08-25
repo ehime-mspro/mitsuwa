@@ -12,6 +12,8 @@ use App\Models\Repair;
 use App\Models\Unit;
 use App\Models\UnitRentRevision;
 use App\Services\Tenant\RentalIncomeService;
+use Illuminate\Database\Eloquent\Builder;
+use App\Support\ListSort;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -20,11 +22,32 @@ use Illuminate\Validation\Rule;
 class UnitController extends Controller
 {
     /**
+     * 部屋一覧で並び替えを許す列 → [SQL 式, 「—」を末尾へ回すか]。
+     *
+     * ⚠ **許可リストはここ 1 箇所だけ。** ListSort::fromRequest() には array_keys() を渡す。
+     *   許可リストと式のマップを別々のリテラルで持つと、キーを足して片方を忘れたときに
+     *   一覧が 500 になる。しかも「不正なキーを投げる」テストでは**この向きの取り違えを
+     *   原理的に検出できない**（不正キーは既定順に落ちるだけなので）。
+     *
+     * ⚠ 「—」を末尾へ回すのは**画面に「—」と出る列だけ**（設計書 §4.4）。
+     *   units.rent は nullable だが、ビューは number_format(null) で **「0円」**と描画するので、
+     *   末尾へ飛ばさず COALESCE で 0 として並べる。ここを揃え損なうと
+     *   「画面は 0円 なのにその行だけ末尾に飛ぶ」という食い違いになる（Bug #41 / #46）。
+     */
+    private const SORTABLE = [
+        'area' => ['units.area_tsubo', true],           // NULL は画面で「—」  → 末尾へ
+        'rent' => ['COALESCE(units.rent, 0)', false],   // NULL は画面で「0円」→ 0 として
+        'monthly' => [Unit::MONTHLY_TOTAL_SQL, false],  // COALESCE 済みで NULL になりえない
+    ];
+
+    /**
      * 部屋一覧（物件横断）
      * Route: GET /tenant/units
      */
     public function index(Request $request)
     {
+        $sort = ListSort::fromRequest($request, array_keys(self::SORTABLE));
+
         // テナント物件に属する区画を取得
         $query = Unit::whereHas('property', function ($q) {
             $q->where('department', DepartmentCode::Tenant);
@@ -51,11 +74,9 @@ class UnitController extends Controller
             });
         }
 
-        $units = $query->orderBy('property_id')
-                       ->orderBy('floor')
-                       ->orderBy('room_number')
-                       ->paginate(20)
-                       ->withQueryString();
+        $this->applySort($query, $sort);
+
+        $units = $query->paginate(20)->withQueryString();
 
         // 物件一覧（チェックボックス用）
         $properties = Property::where('department', DepartmentCode::Tenant)
@@ -67,7 +88,37 @@ class UnitController extends Controller
             return (string) $id;
         })->values()->toArray();
 
-        return view('tenant.units.index', compact('units', 'properties', 'propertyIdsForJs'));
+        return view('tenant.units.index', compact('units', 'properties', 'propertyIdsForJs', 'sort'));
+    }
+
+    /**
+     * 部屋一覧の並び替えを適用する。指定が無ければ既定順だけを付ける。
+     *
+     * ⚠ 「—」を末尾へ回すのは**画面に「—」と出る列だけ**（設計書 §4.4）。
+     *   units.rent は nullable だが、ビューは number_format(null) で **「0円」**と描画するので、
+     *   末尾へ飛ばさず COALESCE で 0 として並べる。ここを揃え損なうと
+     *   「画面は 0円 なのにその行だけ末尾に飛ぶ」という食い違いになる（Bug #41 / #46）。
+     *
+     * ⚠ 許可リストを通った値しか来ないので、self::SORTABLE のキーは必ず存在し、
+     *   式は必ずコード内の定数。利用者の入力が SQL に混ざる経路は無い。
+     */
+    private function applySort(Builder $query, ?ListSort $sort): void
+    {
+        if ($sort !== null) {
+            [$expression, $nullsLast] = self::SORTABLE[$sort->key];
+
+            if ($nullsLast) {
+                $query->orderByRaw("({$expression} IS NULL) asc");
+            }
+
+            $query->orderByRaw($expression . ' ' . ($sort->isAscending() ? 'asc' : 'desc'));
+        }
+
+        // ⚠ 既定順は**必ず最後に**付ける。これが無いと同点の行がページをまたいで
+        //   重複したり消えたりする（設計書 §4.3-3）。
+        $query->orderBy('units.property_id')
+              ->orderBy('units.floor')
+              ->orderBy('units.room_number');
     }
 
     /**
