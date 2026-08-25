@@ -120,7 +120,10 @@
 
     {{-- 募集条件 --}}
     @php
-        $recruitTotal = ($unit->rent ?? 0) + ($unit->common_fee ?? 0) + ($unit->garbage_fee ?? 0) + ($unit->pest_control_fee ?? 0);
+        // ⚠ 月額合計はアクセサ 1 箇所に寄せる。ここで足し直すと計算の経路が 3 本になり、
+        //   片方だけ直す事故が起きる（Bug #41）。一覧は $unit->monthly_total、
+        //   並び替えは Unit::MONTHLY_TOTAL_SQL が同じ計算を持っている。
+        $recruitTotal = $unit->monthly_total;
         $recruitTotalTax = (int) round($recruitTotal * 1.1);
         $areaTsubo = $unit->area_tsubo;
         $hasTsubo = $areaTsubo !== null && (float) $areaTsubo > 0;

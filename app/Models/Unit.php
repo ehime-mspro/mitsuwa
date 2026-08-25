@@ -130,6 +130,8 @@ class Unit extends Model
      *   画面から気づけないので、UnitListSortTest が両者の一致を固定している。
      * ⚠ COALESCE 済みなので**この式は NULL にならない**。
      *   並び替えで `(… IS NULL)` を前置しても常に false ＝ 死んだ SQL になるので書かないこと。
+     * ⚠ `units` が**素の名前で FROM に居る**ことを前提にしている。
+     *   `Unit::from('units as u')` や別名付き join を書くと `no such column: units.rent` で落ちる。
      */
     public const MONTHLY_TOTAL_SQL = '(COALESCE(units.rent, 0) + COALESCE(units.common_fee, 0)'
         . ' + COALESCE(units.garbage_fee, 0) + COALESCE(units.pest_control_fee, 0))';

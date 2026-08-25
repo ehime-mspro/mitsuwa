@@ -29,6 +29,10 @@ class UnitListSortTest extends TestCase
         ]);
     }
 
+    /**
+     * ⚠ `properties.code` は UNIQUE。同じテストで 2 棟以上作るなら `$code` を必ず変えること
+     *   （既定のまま 2 回呼ぶと、意味の分かりにくい制約違反で落ちる）。
+     */
     private function makeProperty(string $code = 'T-S001'): Property
     {
         return Property::create([
@@ -41,7 +45,14 @@ class UnitListSortTest extends TestCase
         ]);
     }
 
-    /** 部屋を 1 つ作る。金額・面積は指定が無ければ既定値。 */
+    /**
+     * 部屋を 1 つ作る。金額・面積は指定が無ければ既定値。
+     *
+     * ⚠ `display_name` は本番と形が違う（本番は `UnitController::generateDisplayName()` を
+     *   通すので floor 3 / '301' は '3301' になる）。並び替えのテストは display_name を
+     *   見ないので今は無害だが、**キーワード検索は display_name を like する**ので、
+     *   検索を扱うテストを足すときはここを本番の形に合わせること。
+     */
     private function makeUnit(Property $property, string $room, array $attrs = []): Unit
     {
         return Unit::create(array_merge([
