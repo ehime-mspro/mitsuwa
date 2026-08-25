@@ -1261,12 +1261,14 @@ use Tests\Concerns\ParsesForms;
      * ⚠ hidden があることを見るだけでは足りない。**画面が描画したフォームを解析して
      *   そのまま送り返す**（Bug #47）。フィルターフォームは GET なので
      *   fields をクエリ文字列に組み直して送る。
+     * ⚠ **面積の昇順（b, a）と既定順（a, b）をわざと食い違わせてある。**
+     *   揃えると sort / dir が落ちても同じ並びになり、往復の後半が飾りになる（実測済み）。
      */
     public function test_changing_a_filter_keeps_the_current_sort(): void
     {
         $property = $this->makeProperty();
-        $a = $this->makeUnit($property, '101', ['floor' => 1, 'area_tsubo' => 20.00, 'status' => 'vacant']);
-        $b = $this->makeUnit($property, '201', ['floor' => 2, 'area_tsubo' => 30.00, 'status' => 'vacant']);
+        $a = $this->makeUnit($property, '101', ['floor' => 1, 'area_tsubo' => 30.00, 'status' => 'vacant']);
+        $b = $this->makeUnit($property, '201', ['floor' => 2, 'area_tsubo' => 20.00, 'status' => 'vacant']);
         $c = $this->makeUnit($property, '301', ['floor' => 3, 'area_tsubo' => 10.00, 'status' => 'occupied']);
 
         $user = $this->executive();
@@ -1288,7 +1290,7 @@ use Tests\Concerns\ParsesForms;
 
         $response->assertOk();
         $this->assertSame(
-            [$a->id, $b->id],
+            [$b->id, $a->id],
             $response->viewData('units')->pluck('id')->all(),
             'フィルタを変えたら並び順が既定に戻った（面積の昇順のままであるべき）'
         );
@@ -1337,7 +1339,7 @@ Expected: FAIL — `フィルターフォームが sort を持ち回していな
 vendor/bin/phpunit --filter=UnitListSortTest
 ```
 
-Expected: PASS（14 tests）
+Expected: PASS（15 tests）
 
 - [ ] **Step 5: 全テストを走らせる**
 
@@ -1547,43 +1549,69 @@ class PropertyListSortTest extends TestCase
         }
     }
 
-    /** 非稼働（画面では「—」）は昇順でも降順でも末尾 */
+    /**
+     * 非稼働（画面では「—」）は昇順でも降順でも末尾。
+     *
+     * ⚠ **稼働を 3 棟にしてあるのは意図。** 2 棟だと既定順（code 昇順）が
+     *   昇順か降順のどちらかと必ず一致してしまい、その向きが飾りになる（実測済み）。
+     *   3 棟なら 既定 [1,2,3] / 降順 [2,1,3] / 昇順 [3,1,2] で全部食い違う。
+     */
     public function test_inactive_properties_sort_last_in_both_directions(): void
     {
-        $high = $this->makeProperty(1, units: 1, contracted: 1, rentEach: 300000);
-        $inactive = $this->makeProperty(2, operationStatus: 'inactive');
+        $mid = $this->makeProperty(1, units: 1, contracted: 1, rentEach: 200000);
+        $high = $this->makeProperty(2, units: 1, contracted: 1, rentEach: 300000);
         $low = $this->makeProperty(3, units: 1, contracted: 1, rentEach: 100000);
+        $inactive = $this->makeProperty(4, operationStatus: 'inactive');
 
         $user = $this->executive();
 
         $desc = $this->actingAs($user)->get(route('tenant.properties.index', ['sort' => 'income', 'dir' => 'desc']));
-        $this->assertSame([$high->id, $low->id, $inactive->id], $desc->viewData('properties')->pluck('id')->all());
+        $this->assertSame(
+            [$high->id, $mid->id, $low->id, $inactive->id],
+            $desc->viewData('properties')->pluck('id')->all()
+        );
         $this->assertNull(
             $desc->viewData('properties')->firstWhere('id', $inactive->id)->rental_income,
             '非稼働物件に賃料収入が入っている（「—」にならない）'
         );
 
         $asc = $this->actingAs($user)->get(route('tenant.properties.index', ['sort' => 'income', 'dir' => 'asc']));
-        $this->assertSame([$low->id, $high->id, $inactive->id], $asc->viewData('properties')->pluck('id')->all());
+        $this->assertSame(
+            [$low->id, $mid->id, $high->id, $inactive->id],
+            $asc->viewData('properties')->pluck('id')->all()
+        );
     }
 
-    /** 入居率と賃料収入は別々の列として並ぶ（列の取り違えを検出する） */
+    /**
+     * 入居率と賃料収入は別々の列として並ぶ（列の取り違えを検出する）。
+     *
+     * ⚠ **3 つの並びを全部食い違わせてある。** 既定 [1,2,3] / 入居率降順 [2,1,3] /
+     *   賃料収入降順 [3,1,2]。どれか 2 つが揃うと、列を取り違えた実装でも緑になる。
+     *   実測: 賃料収入降順を既定順と同じにすると、その半分が飾りになった。
+     */
     public function test_occupancy_and_income_sort_by_different_columns(): void
     {
-        $half = $this->makeProperty(1, units: 2, contracted: 1, rentEach: 100000);  // 50% / 100,000円
-        $full = $this->makeProperty(2, units: 2, contracted: 2, rentEach: 10000);   // 100% /  20,000円
-        $none = $this->makeProperty(3, units: 2, contracted: 0);                    //  0% /       0円
+        // 入居率 50% / 賃料収入 200,000円（どちらも真ん中）
+        $mid = $this->makeProperty(1, units: 2, contracted: 1, rentEach: 200000);
+        // 入居率 100%（最大） / 賃料収入 20,000円（最小）
+        $fullOccupancy = $this->makeProperty(2, units: 2, contracted: 2, rentEach: 10000);
+        // 入居率 25%（最小） / 賃料収入 300,000円（最大）
+        $topIncome = $this->makeProperty(3, units: 4, contracted: 1, rentEach: 300000);
 
         $user = $this->executive();
 
         $byOccupancy = $this->actingAs($user)->get(route('tenant.properties.index', ['sort' => 'occupancy', 'dir' => 'desc']));
-        $this->assertSame([$full->id, $half->id, $none->id], $byOccupancy->viewData('properties')->pluck('id')->all());
+        $this->assertSame(
+            [$fullOccupancy->id, $mid->id, $topIncome->id],
+            $byOccupancy->viewData('properties')->pluck('id')->all(),
+            '入居率の降順になっていない'
+        );
 
         $byIncome = $this->actingAs($user)->get(route('tenant.properties.index', ['sort' => 'income', 'dir' => 'desc']));
         $this->assertSame(
-            [$half->id, $full->id, $none->id],
+            [$topIncome->id, $mid->id, $fullOccupancy->id],
             $byIncome->viewData('properties')->pluck('id')->all(),
-            '入居率と賃料収入が同じ並びになっている（列を取り違えても気づけないデータ）'
+            '賃料収入の降順になっていない（入居率と同じ並びなら列を取り違えている）'
         );
     }
 
@@ -2154,7 +2182,7 @@ git status --porcelain && echo "--- 空なら OK ---"
 これは**特性テスト（現状の固定）**であって、検出力があるという主張はしないこと。
 配列の往復がどこにも書かれていない暗黙の前提だったので置いてある。
 
-- [ ] **Step 2: 19 通りの変異を 1 つずつ当てて測る**
+- [ ] **Step 2: 20 通りの変異を 1 つずつ当てて測る**
 
 各行について「変異を当てる → `git diff --stat` で着弾確認 → 該当テストを走らせる → 文言を控える → `git checkout --`」を繰り返す。
 
@@ -2170,6 +2198,7 @@ git status --porcelain && echo "--- 空なら OK ---"
 | 7b | `$ariaSort` の算出を `match ($state)` から `match ($sort?->direction)` に変える（＝ 並び替え中はどの列も `descending` になる） | `components/sortable-th.blade.php` | `UnitListSortTest::test_only_the_sorted_column_is_marked_and_the_padding_sits_on_the_link` が赤。文言「並び替えていない列に aria-sort が載っている」。⚠ **ページ全体を見る `assertStringContainsString('aria-sort="descending"')` だけでは緑のまま通る**（Task 4 のレビューで実測） |
 | 7c | `<th>` の `padding: 0` を `padding: 14px 20px` に戻し、`<a>` 側の `{{ $linkStyle }}` を消す | `components/sortable-th.blade.php` | 同テストが赤。文言「見出しセルのパディングが 0 になっていない（`<a>` 側へ移していない）」。⚠ 当たり判定そのものは HTML では測れないが（Bug #43）、**どちらに載っているか**は測れる |
 | 8 | `<input type="hidden" name="sort" ...>` の行を消す | `tenant/units/index.blade.php` | `UnitListSortTest::test_changing_a_filter_keeps_the_current_sort` が赤。文言「フィルターフォームが sort を持ち回していない」 |
+| 8b | 往復の送信フィールドから `sort` / `dir` を落とす（`unset($fields['sort'], $fields['dir'])`） | `UnitListSortTest` の往復テスト | `test_changing_a_filter_keeps_the_current_sort` が赤。⚠ **面積の昇順と既定順を食い違わせるまでは緑だった**（旧データで実測）。往復の後半が飾りになっていないことの証明 |
 | 9 | 同上を物件一覧で | `tenant/properties/index.blade.php` | `PropertyListSortTest::test_changing_a_filter_keeps_the_current_sort` が赤 |
 | 10 | `MONTHLY_TOTAL_SQL` から `+ COALESCE(units.pest_control_fee, 0)` を落とす | `app/Models/Unit.php` | `UnitListSortTest::test_the_monthly_total_sql_agrees_with_the_php_accessor` が赤 |
 | 11 | `MONTHLY_TOTAL_SQL` の `units.rent` を `units.rentt` に綴り間違える | `app/Models/Unit.php` | 赤。⚠ **理由が違う**ことに注意 — Bug #40 の「SQLite が黙って 0 を返す」は**二重引用符で囲まれた識別子**（`->sum('col')` 経由）の話で、`selectRaw` / `orderByRaw` に素で書いた識別子は `no such column` で**例外**になる。**文言を必ず確認する。** 併せて `assertGreaterThan(1, ...)` と `assertContains(315000, ...)` の 2 行を外しても赤のままかを実測し、**その 2 行が load-bearing かどうかを記録する** |
