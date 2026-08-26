@@ -433,12 +433,12 @@ class UnitListSortTest extends TestCase
         $this->assertSame('none', $this->ariaSortFor($html, '月額合計'));
         $this->assertSame('none', $this->ariaSortFor($html, '敷金'), '並び替え不可の列に aria-sort が載っている');
 
-        // パディングは <th> ではなく中の <a> に載る（<th> 側に残すと文字の上しか押せない）
-        $this->assertMatchesRegularExpression(
-            '/<th\b[^>]*style="padding: 0; text-align: right;/u',
-            $html,
-            '見出しセルのパディングが 0 になっていない（<a> 側へ移していない）'
-        );
+        // パディングは <th> ではなく中の <a> に載る（<th> 側に残すと文字の上しか押せない）。
+        // ⚠ **列ごとに見る。** ページ全体を見る正規表現だと、同じ値の <th> が 1 つでも
+        //   残っていれば一致するので「一覧あたり 1 列」しか守れない（実測済み）。
+        $this->assertSame('padding: 0; text-align: right;', $this->thStyleFor($html, '面積'));
+        $this->assertSame('padding: 0; text-align: center;', $this->thStyleFor($html, '家賃'));
+        $this->assertSame('padding: 0; text-align: center;', $this->thStyleFor($html, '月額合計'));
         $this->assertMatchesRegularExpression(
             '/<a\b[^>]*style="[^"]*padding: 14px 20px;/u',
             $html,

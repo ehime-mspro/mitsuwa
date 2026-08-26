@@ -55,4 +55,26 @@ trait ParsesSortLinks
 
         $this->fail("「{$label}」の見出しセルが見つからない");
     }
+
+    /**
+     * ラベルを含む見出しセルの style 属性を返す。属性が無ければ空文字。
+     *
+     * ⚠ ページ全体に対する assertMatchesRegularExpression では、**同じ値の <th> が
+     *   1 つでも残っていれば一致する**ので「一覧あたり 1 列」しか守れない（実測済み:
+     *   2 列とも壊すと赤・1 列だけ壊すと 997 本すべて緑）。列ごとに切り出して見ること。
+     */
+    protected function thStyleFor(string $html, string $label): string
+    {
+        preg_match_all('/<th\b([^>]*)>(.*?)<\/th>/su', $html, $cells, PREG_SET_ORDER);
+
+        foreach ($cells as [, $attributes, $inner]) {
+            if (! preg_match('/(?:^|>)\s*' . preg_quote($label, '/') . '\s*(?:<|$)/u', $inner)) {
+                continue;
+            }
+
+            return preg_match('/\bstyle="([^"]*)"/', $attributes, $matches) ? $matches[1] : '';
+        }
+
+        $this->fail("「{$label}」の見出しセルが見つからない");
+    }
 }

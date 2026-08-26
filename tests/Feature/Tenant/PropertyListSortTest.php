@@ -464,11 +464,10 @@ class PropertyListSortTest extends TestCase
             $html,
             'link-class のレスポンシブなパディングが <a> に載っていない'
         );
-        $this->assertMatchesRegularExpression(
-            '/<th\b[^>]*style="padding: 0; text-align: center;/u',
-            $html,
-            '見出しセルのパディングが 0 になっていない'
-        );
+        // ⚠ **列ごとに見る。** ページ全体を見る正規表現だと、同じ値の <th> が 1 つでも
+        //   残っていれば一致するので「一覧あたり 1 列」しか守れない（実測済み）。
+        $this->assertSame('padding: 0; text-align: center;', $this->thStyleFor($html, '入居率'));
+        $this->assertSame('padding: 0; text-align: center;', $this->thStyleFor($html, '賃料収入'));
     }
 
     /**
