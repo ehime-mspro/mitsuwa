@@ -4,6 +4,7 @@ namespace Tests\Feature\Tenant;
 
 use App\Models\AreaBuilding;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\ParsesSortLinks;
 
 /**
  * 周辺ビル調査の並び替え（設計書 2026-08-28 §4）。
@@ -17,6 +18,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
  */
 class AreaBuildingListSortTest extends AreaBuildingTestCase
 {
+    use ParsesSortLinks;
     use RefreshDatabase;
 
     /**
@@ -326,5 +328,154 @@ class AreaBuildingListSortTest extends AreaBuildingTestCase
         // dir だけ不正なら降順（前設計書 §4.2: 1 回目は降順）
         $response = $this->actingAs($staff)->get('/tenant/area-buildings?sort=floors&dir=up');
         $this->assertSame(['Cビル', 'Bビル', 'Dビル', 'Aビル'], $this->listedNames($response));
+    }
+
+    /**
+     * 見出しを 3 回押す往復。既定 → 降順 → 昇順 → 既定（前設計書 §4.2）。
+     *
+     * ⚠ **URL を自分で組み立てない。** 画面が描画した href をそのまま辿ること。
+     *   組み立てると、リンクが壊れていても sort が付いた状態で届くので**必ず緑**になる（Bug #31）。
+     * ⚠ 入居率の昇順と既定順（名前の昇順）が**わざと食い違う**データ。
+     *   一致させると 2 回目と 3 回目の結果が同じになり、片方が壊れても緑になる。
+     */
+    public function test_clicking_the_occupancy_header_three_times_cycles_back_to_the_default_order(): void
+    {
+        $this->seedFourBuildings();
+
+        $staff   = $this->staff();
+        $default = ['Aビル', 'Bビル', 'Cビル', 'Dビル'];
+
+        $html  = $this->actingAs($staff)->get('/tenant/area-buildings')->getContent();
+        $first = $this->actingAs($staff)->get($this->sortLinkFor($html, '入居率'));
+        $first->assertOk();
+        $this->assertSame(['Cビル', 'Aビル', 'Dビル', 'Bビル'], $this->listedNames($first), '1 回目が入居率の降順でない');
+        $this->assertSame('descending', $this->ariaSortFor($first->getContent(), '入居率'));
+
+        $second = $this->actingAs($staff)->get($this->sortLinkFor($first->getContent(), '入居率'));
+        $second->assertOk();
+        $this->assertSame(['Bビル', 'Dビル', 'Aビル', 'Cビル'], $this->listedNames($second), '2 回目が入居率の昇順でない');
+        $this->assertSame('ascending', $this->ariaSortFor($second->getContent(), '入居率'));
+
+        $thirdUrl = $this->sortLinkFor($second->getContent(), '入居率');
+        $this->assertStringNotContainsString('sort=', $thirdUrl, '3 巡目は並び替えを解除する');
+        $third = $this->actingAs($staff)->get($thirdUrl);
+        $third->assertOk();
+        $this->assertSame($default, $this->listedNames($third));
+    }
+
+    /**
+     * 7 列すべてに並び替えリンクがあり、aria-sort は**並び替え中の列だけ**に載ること。
+     *
+     * ⚠ ページ全体に対する assertStringContainsString('aria-sort="descending"') では
+     *   **全列に descending を出す変異が緑のまま通る**（ParsesSortLinks の docblock に実測済み）。
+     */
+    public function test_all_seven_headers_link_and_only_the_sorted_one_is_marked(): void
+    {
+        $this->seedFourBuildings();
+
+        // ⚠ dir=asc（3 回目クリック＝解除の直前）だと、最終調査自身の次クリック先は
+        //   ListSort::next() の仕様により sort= を持たない解除リンクになる
+        //   （test_clicking_the_occupancy_header_three_times_cycles_back_to_the_default_order の
+        //   $thirdUrl と同じ挙動）。ここでは「7 列すべてがまだ次の並び替えへ進めるリンクを
+        //   持つ」ことを見たいので、まだ 1 回しか押していない dir=desc を使う。
+        $html = $this->actingAs($this->staff())
+            ->get('/tenant/area-buildings?sort=month&dir=desc')
+            ->getContent();
+
+        foreach (['総階数', '営業', '空き', '不明', '入居率', '空室率', '最終調査'] as $label) {
+            $this->assertStringContainsString('sort=', $this->sortLinkFor($html, $label), "「{$label}」の見出しが並び替えリンクになっていない");
+        }
+
+        $this->assertSame('descending', $this->ariaSortFor($html, '最終調査'));
+        foreach (['総階数', '営業', '空き', '不明', '入居率', '空室率'] as $label) {
+            $this->assertSame('none', $this->ariaSortFor($html, $label), "並び替えていない列「{$label}」に aria-sort が載っている");
+        }
+    }
+
+    /** 並び替え対象外の列は素の <th> のまま（設計書 §4.1 / §10） */
+    public function test_the_name_location_and_actions_columns_stay_plain(): void
+    {
+        $this->makeBuilding('Aビル');
+
+        $html = $this->actingAs($this->staff())->get('/tenant/area-buildings')->getContent();
+
+        $this->assertStringContainsString('>ビル名</th>', $html, 'ビル名が並び替え見出しになっている（対象外）');
+        $this->assertStringContainsString('>位置</th>', $html);
+        $this->assertStringContainsString('>操作</th>', $html);
+        $this->assertSame('none', $this->ariaSortFor($html, 'ビル名'));
+    }
+
+    /**
+     * フィルタを変えても並び順が消えないこと（`x-sort-hidden`。前設計書 §4.3-4）。
+     *
+     * ⚠ 画面が描画したフォームを分解してそのまま送り返す（Bug #47）。
+     *   hidden が無いと GET で送り直された瞬間に ?sort と ?dir が落ち、**黙って既定順へ戻る**。
+     */
+    public function test_changing_a_filter_keeps_the_current_sort(): void
+    {
+        $this->seedFourBuildings();
+        $this->makeSurvey($this->makeBuilding('Eビル', ['total_floors' => 1]), '2025-08-01', 5, 5, 0);
+
+        $staff = $this->staff();
+        $html  = $this->actingAs($staff)->get('/tenant/area-buildings?sort=floors&dir=desc')->getContent();
+        $form  = $this->parseForm($html, 'action="' . route('tenant.area-buildings.index') . '"');
+
+        $this->assertSame('floors', $form['fields']['sort'] ?? null, 'フィルターフォームが sort を持ち回していない');
+        $this->assertSame('desc', $form['fields']['dir'] ?? null, 'フィルターフォームが dir を持ち回していない');
+
+        // ブラウザと同じように、調査年だけ変えて送り返す
+        $fields = $form['fields'];
+        $fields['year'] = '2026';
+
+        $response = $this->actingAs($staff)->get($form['action'] . '?' . http_build_query($fields));
+
+        $response->assertOk();
+        $this->assertSame(
+            ['Cビル', 'Bビル', 'Dビル', 'Aビル'],
+            $this->listedNames($response),
+            'フィルタを変えたら並び順が既定に戻った（総階数の降順のままであるべき）'
+        );
+        $this->assertNotContains('Eビル', $this->listedNames($response), '調査年の絞り込みが効いていない');
+    }
+
+    /** 並び替えていないときは余計な hidden を出さない（?sort= が URL に現れて汚れる） */
+    public function test_no_sort_hidden_fields_when_not_sorting(): void
+    {
+        $this->makeBuilding('Aビル');
+
+        $html = $this->actingAs($this->staff())->get('/tenant/area-buildings')->getContent();
+        $form = $this->parseForm($html, 'action="' . route('tenant.area-buildings.index') . '"');
+
+        $this->assertArrayNotHasKey('sort', $form['fields']);
+        $this->assertArrayNotHasKey('dir', $form['fields']);
+    }
+
+    /**
+     * タブを切り替えても並び順が持ち回されること（設計書 §4.5）。
+     *
+     * ⚠ タブリンクは `request()->except(['view','page'])` なので何もしなくても付くが、
+     *   **そこを触ったときに気づけないと「表へ戻ると並び順が消える」**が無音で入る。
+     * ⚠ ここで sortLinkFor() を使うのは並び替え見出しではなく**タブのリンク**。
+     *   要件（`<a …>` の直後にラベル）が同じなので流用できる。URL を組み立てないための流用で、
+     *   「表」が別のリンク（サイドバーの『経営試算表』など）に誤マッチしないことは
+     *   境界 `>ラベル<` が保証している（ParsesSortLinks の docblock に実測済み）。
+     */
+    public function test_the_sort_survives_a_trip_through_the_map_tab(): void
+    {
+        $this->seedFourBuildings();
+
+        $staff  = $this->staff();
+        $sorted = ['Cビル', 'Bビル', 'Dビル', 'Aビル'];
+
+        $tableHtml = $this->actingAs($staff)->get('/tenant/area-buildings?sort=floors&dir=desc')->getContent();
+        $mapUrl    = $this->sortLinkFor($tableHtml, '地図');
+        $this->assertStringContainsString('sort=floors', $mapUrl, '地図タブのリンクが並び順を落としている');
+
+        $mapHtml = $this->actingAs($staff)->get($mapUrl)->assertOk()->getContent();
+        $backUrl = $this->sortLinkFor($mapHtml, '表');
+        $this->assertStringContainsString('sort=floors', $backUrl, '表タブのリンクが並び順を落としている');
+
+        $back = $this->actingAs($staff)->get($backUrl);
+        $this->assertSame($sorted, $this->listedNames($back), '表へ戻ったら並び順が消えている');
     }
 }

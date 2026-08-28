@@ -41,6 +41,7 @@
     @endphp
     <form id="filter-form" method="GET" action="{{ route('tenant.area-buildings.index') }}"
           class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mb-4 bg-white border border-gray-200 rounded-lg px-3.5 py-2.5">
+        <x-sort-hidden :sort="$sort" />
         <input type="text" name="keyword" value="{{ $keywordValue }}"
                placeholder="ビル名・テナント名"
                class="h-9 px-3 border border-gray-300 rounded-md text-sm text-gray-700 bg-white focus:border-emerald-500 focus:outline-none flex-1 min-w-[140px] w-full sm:w-auto">
@@ -157,14 +158,14 @@
                     <thead>
                         <tr>
                             <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-left text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">ビル名</th>
-                            <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">総階数</th>
-                            <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">営業</th>
-                            <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">空き</th>
-                            <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">不明</th>
-                            <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">入居率</th>
-                            <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">空室率</th>
+                            <x-sortable-th column="floors" :sort="$sort" :columns="$sortColumns" align="center" link-class="px-4 py-3 lg:px-5 lg:py-3.5" />
+                            <x-sortable-th column="operating" :sort="$sort" :columns="$sortColumns" align="center" link-class="px-4 py-3 lg:px-5 lg:py-3.5" />
+                            <x-sortable-th column="vacant" :sort="$sort" :columns="$sortColumns" align="center" link-class="px-4 py-3 lg:px-5 lg:py-3.5" />
+                            <x-sortable-th column="unknown" :sort="$sort" :columns="$sortColumns" align="center" link-class="px-4 py-3 lg:px-5 lg:py-3.5" />
+                            <x-sortable-th column="occupancy" :sort="$sort" :columns="$sortColumns" align="center" link-class="px-4 py-3 lg:px-5 lg:py-3.5" />
+                            <x-sortable-th column="vacancy" :sort="$sort" :columns="$sortColumns" align="center" link-class="px-4 py-3 lg:px-5 lg:py-3.5" />
                             <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">位置</th>
-                            <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">最終調査</th>
+                            <x-sortable-th column="month" :sort="$sort" :columns="$sortColumns" align="center" link-class="px-4 py-3 lg:px-5 lg:py-3.5" />
                             <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">操作</th>
                         </tr>
                     </thead>

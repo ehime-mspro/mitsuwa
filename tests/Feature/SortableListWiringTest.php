@@ -35,8 +35,9 @@ class SortableListWiringTest extends TestCase
      * ⚠ 本数も固定する。走査が空振りして緑になる事故を防ぐ（Bug #45）。
      */
     private const SORT_COLUMN_SOURCES = [
-        'tenant/properties/index.blade.php' => [PropertyController::class, 2],
-        'tenant/units/index.blade.php'      => [UnitController::class, 3],
+        'tenant/area-buildings/index.blade.php' => [AreaBuildingListService::class, 7],
+        'tenant/properties/index.blade.php'     => [PropertyController::class, 2],
+        'tenant/units/index.blade.php'          => [UnitController::class, 3],
     ];
 
     /**

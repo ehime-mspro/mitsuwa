@@ -209,7 +209,14 @@ class AreaBuildingListTest extends AreaBuildingTestCase
 
         $this->assertSame(1, preg_match('/<thead>(.*?)<\/thead>/s', $html, $head), '<thead> が無い');
         preg_match_all('/<th\b[^>]*>(.*?)<\/th>/s', $head[1], $ths);
-        $headers = array_map('trim', $ths[1]);
+        // ⚠ Task 7 で 7 列が <x-sortable-th> になり、<th> の中身がラベルの生テキストではなく
+        //   <a><span class="sortable-th-label">…</span>…</a> になった。ラベルは
+        //   sortable-th-label の中身を、対象外の素の <th>（ビル名/位置/操作）はそのまま使う。
+        $headers = array_map(function (string $inner) {
+            return preg_match('/<span class="sortable-th-label">(.*?)<\/span>/s', $inner, $m)
+                ? trim($m[1])
+                : trim($inner);
+        }, $ths[1]);
 
         $this->assertSame(
             ['ビル名', '総階数', '営業', '空き', '不明', '入居率', '空室率', '位置', '最終調査', '操作'],
