@@ -44,6 +44,7 @@ props:
             </span>
         </span>
         <a href="{{ \App\Support\ListSort::clearUrl(request()) }}"
+           aria-label="並び替え: {{ $column['label'] }} {{ $direction }} を解除"
            class="px-2 py-0.5 rounded border border-gray-200 bg-white text-[11px] font-semibold text-gray-500 hover:text-gray-700 hover:border-gray-300 hover:bg-gray-50 transition-colors">解除</a>
     @endif
     <span class="inline-flex items-center gap-1.5">

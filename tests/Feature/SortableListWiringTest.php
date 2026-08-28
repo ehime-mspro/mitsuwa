@@ -82,6 +82,21 @@ class SortableListWiringTest extends TestCase
                 $source,
                 "{$relative} は並び替え見出しを持つのに、現在の並び順バーが無い（既定順が画面のどこにも出ない）"
             );
+
+            // ⚠ タグが在るだけでは足りない。**プロップの半分は既定表示では発火しない** ——
+            //   $columns は並び替え中の枝でしか触られないので、`:columns` を忘れた画面は
+            //   一覧を開くだけなら健全に見え、**見出しを 1 回押した瞬間に 500** になる
+            //   （2026-08-28 実測。Bug #22 / #25 / #26 / #27 と同じ「状態が特定の形の時だけ死ぬ」型）。
+            $this->assertMatchesRegularExpression('/<x-sort-bar\b[^>]*>/s', $source, "{$relative} の x-sort-bar タグが取り出せない");
+            preg_match('/<x-sort-bar\b[^>]*>/s', $source, $barTag);
+
+            foreach ([':columns="', 'default-label="'] as $required) {
+                $this->assertStringContainsString(
+                    $required,
+                    $barTag[0],
+                    "{$relative} の x-sort-bar に {$required} が無い: {$barTag[0]}"
+                );
+            }
         }
 
         // ⚠ 走査が空振りして緑になる事故を防ぐ（Bug #45）

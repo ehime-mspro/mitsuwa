@@ -65,16 +65,29 @@ class SortBarTest extends AreaBuildingTestCase
     {
         $user = $this->executive();
 
-        $area = $this->actingAs($user)->get('/tenant/area-buildings')->getContent();
-        $this->assertStringContainsString('並び替え: 既定（ビル名順）', $area);
+        // ⚠ 3 画面を 1 つの表から回す。個別に書くと**片側だけの除外**になり、
+        //   「別の画面のラベルが漏れて出ている」が無音で通る（2026-08-28 実測: units へ
+        //   properties のラベルを持つバーをもう 1 本足しても 1039 本すべて緑だった）。
+        //   4 画面目を足したらこの表を直さないと網羅が崩れる形にしてある。
+        $screens = [
+            '/tenant/area-buildings'              => 'ビル名順',
+            route('tenant.properties.index')      => '稼働中が先・コード順',
+            route('tenant.units.index')           => '物件・階・部屋番号順',
+        ];
 
-        $properties = $this->actingAs($user)->get(route('tenant.properties.index'))->getContent();
-        $this->assertStringContainsString('並び替え: 既定（稼働中が先・コード順）', $properties);
-        $this->assertStringNotContainsString('ビル名順', $properties, '別の画面の既定順が出ている');
+        foreach ($screens as $url => $own) {
+            $html = $this->actingAs($user)->get($url)->getContent();
 
-        $units = $this->actingAs($user)->get(route('tenant.units.index'))->getContent();
-        $this->assertStringContainsString('並び替え: 既定（物件・階・部屋番号順）', $units);
-        $this->assertStringNotContainsString('ビル名順', $units, '別の画面の既定順が出ている');
+            $this->assertStringContainsString("並び替え: 既定（{$own}）", $html, "{$url} が自分の既定順を名乗っていない");
+
+            // ⚠ バーが 2 本出ると、片方が別の画面の既定順を語っていても
+            //   「含まれている」系のアサートは全部通ってしまう
+            $this->assertSame(1, substr_count($html, '並び替え: 既定（'), "{$url} にバーが 2 本出ている");
+
+            foreach (array_diff(array_values($screens), [$own]) as $foreign) {
+                $this->assertStringNotContainsString($foreign, $html, "{$url} に別の画面の既定順（{$foreign}）が出ている");
+            }
+        }
     }
 
     /**
