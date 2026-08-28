@@ -92,7 +92,13 @@ class AreaBuildingListService
     }
 
     /**
-     * 絞り込み・並び替え済みの行。
+     * 絞り込み済みの行（既定順 ＝ ビル名の昇順）。
+     *
+     * ⚠ **PHP 側で並べ替えない。** baseQuery() が
+     *   `ORDER BY area_buildings.name, area_buildings.id` で引いており、
+     *   map() / filter() は順序を保つので、**ここに並べ替えを書かないことがビル名の昇順**
+     *   （設計書 2026-08-28 §4.4。利用者の依頼で従来の「空室率の降順」から変更）。
+     *   従来の順は「空室率」の見出しを 1 回押せば戻る。
      *
      * @return Collection<int, array{building: AreaBuilding, month: ?Carbon, operating: ?int, vacant: ?int, unknown: ?int, rate: ?float, occupancy_label: string, rate_label: string}>
      */
@@ -105,10 +111,6 @@ class AreaBuildingListService
             ->get()
             ->map(fn (AreaBuilding $building) => $this->toRow($building))
             ->filter(fn (array $row) => $this->matchesYear($row, $year) && $this->matchesOccupancy($row, $occupancy))
-            ->sortByDesc(fn (array $row) => [
-                $row['rate'] === null ? 0 : 1,   // 未調査を末尾へ
-                $row['rate'] ?? 0.0,             // 空室率 降順
-            ])
             ->values();
     }
 
@@ -170,7 +172,8 @@ class AreaBuildingListService
             });
         }
 
-        // 空室率が同じ行のタイブレーク(PHP の sort は 8.0 以降 stable なのでこの順が残る)
+        // ⚠ **これが既定順そのもの**（設計書 §4.4）。PHP 側は並べ替えないのでこの順が残る。
+        //   並び替え中は同点のタイブレークとしても効く（PHP のソートは 8.0 以降 stable）。
         return $query->orderBy('area_buildings.name')->orderBy('area_buildings.id');
     }
 

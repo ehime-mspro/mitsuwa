@@ -92,7 +92,11 @@ class AreaBuildingListTest extends AreaBuildingTestCase
 
         $staff = $this->staff();
 
-        // ⚠ 並びは従来どおり空室率の降順＝入居率の昇順
+        // ⚠ **このテストは並び順を守っていない。** 既定順がビル名の昇順になっても結果が同じで
+        //   （'入居50' < '入居70' < '入居90' がたまたま率の降順と一致する）、
+        //   **緑のままなので検出力がゼロ**。並び順の固定は
+        //   test_the_default_order_is_the_building_name_ascending と AreaBuildingListSortTest が行う。
+        //   ここが見ているのは**絞り込みの帯**だけ。
         $this->assertSame(
             ['入居100'],
             $this->listedNames($this->actingAs($staff)->get('/tenant/area-buildings?occupancy=full'))
@@ -312,8 +316,20 @@ class AreaBuildingListTest extends AreaBuildingTestCase
         $response->assertOk();
     }
 
-    /** 既定の並び順は空室率降順・未調査は末尾（設計 §5.3） */
-    public function test_default_order_is_vacancy_rate_desc_with_unsurveyed_last(): void
+    /**
+     * 既定の並び順はビル名の昇順（設計書 2026-08-28 §4.4。利用者の依頼で変更）。
+     *
+     * ⚠ 従来は空室率の降順・未調査は末尾だった。**その順は失われていない** ——
+     *   空室率は並び替えできる列になったので、見出しを 1 回押せば戻る。
+     *   その対の固定は AreaBuildingListSortTest::test_the_old_default_order_is_still_reachable()。
+     *
+     * ⚠ データは名前順と率順が**わざと食い違う**（率順なら う→い→え→あ）。
+     *   揃えると「並べ替えを消しただけ」の変異が緑のまま通る。
+     *
+     * ⚠ 漢字は「読み」ではなく文字コード順に並ぶ（読みがな列が無い。設計書 §4.4）。
+     *   かな 4 文字なので SQLite（BINARY）と MySQL（utf8mb4_unicode_ci）で順は一致する。
+     */
+    public function test_the_default_order_is_the_building_name_ascending(): void
     {
         $this->makeBuilding('あ未調査');
         $this->makeSurvey($this->makeBuilding('い率10'), '2026-08-01', 9, 1);
@@ -322,7 +338,7 @@ class AreaBuildingListTest extends AreaBuildingTestCase
 
         $response = $this->actingAs($this->staff())->get('/tenant/area-buildings');
 
-        $this->assertSame(['う率50', 'い率10', 'え率0', 'あ未調査'], $this->listedNames($response));
+        $this->assertSame(['あ未調査', 'い率10', 'う率50', 'え率0'], $this->listedNames($response));
     }
 
     public function test_paginates_at_twenty_per_page(): void
