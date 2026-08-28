@@ -1,0 +1,521 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>並び替えできる列を分かるようにする — モック3案</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700;900&family=IBM+Plex+Mono:wght@400;600&display=swap">
+
+<style>
+  /* 本番アプリの実配色（Tailwind の emerald / gray）をそのまま写している。
+     ここは docs/ 配下なので Tailwind の走査対象外（app.css の @source not）。 */
+  :root {
+    --emerald-50:  #ecfdf5;
+    --emerald-100: #d1fae5;
+    --emerald-200: #a7f3d0;
+    --emerald-300: #6ee7b7;
+    --emerald-600: #059669;
+    --emerald-700: #047857;
+    --blue-50:  #eff6ff;
+    --blue-100: #dbeafe;
+    --blue-200: #bfdbfe;
+    --blue-700: #1d4ed8;
+    --amber-50: #fffbeb;
+    --amber-200:#fde68a;
+    --amber-800:#92400e;
+    --red-50:   #fef2f2;
+    --red-200:  #fecaca;
+    --red-700:  #b91c1c;
+    --gray-50:  #f9fafb;
+    --gray-100: #f3f4f6;
+    --gray-200: #e5e7eb;
+    --gray-300: #d1d5db;
+    --gray-400: #9ca3af;
+    --gray-500: #6b7280;
+    --gray-600: #4b5563;
+    --gray-700: #374151;
+    --gray-800: #1f2937;
+    --gray-900: #111827;
+    --ground:   #f2f3f5;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 28px 20px 80px;
+    background: var(--ground);
+    color: var(--gray-900);
+    font-family: "Zen Kaku Gothic New", -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif;
+    font-size: 14px;
+    line-height: 1.7;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+
+  h1 { font-size: 20px; font-weight: 900; margin: 0 0 6px; letter-spacing: .01em; }
+  .lede { color: var(--gray-500); font-size: 13px; margin: 0 0 8px; }
+
+  h2 {
+    font-size: 15px; font-weight: 800; margin: 44px 0 4px;
+    padding-bottom: 8px; border-bottom: 2px solid var(--gray-200);
+  }
+  h2 .n {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 22px; height: 22px; padding: 0 6px; margin-right: 8px; border-radius: 5px;
+    background: var(--emerald-600); color: #fff; font-size: 12px; font-weight: 700;
+  }
+  h2.now .n { background: var(--gray-500); }
+  h2 + .note { margin-top: 10px; }
+  .note { color: var(--gray-500); font-size: 12.5px; margin: 0 0 14px; }
+  .note strong { color: var(--gray-700); }
+
+  code, .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 12px; }
+  code { background: var(--gray-200); padding: 1px 5px; border-radius: 3px; }
+
+  /* 長所/短所 */
+  .pros { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
+  .pros li {
+    list-style: none; font-size: 12px; font-weight: 600;
+    padding: 3px 10px; border-radius: 999px; border: 1px solid;
+  }
+  .pros .ok { background: var(--emerald-50); border-color: var(--emerald-200); color: var(--emerald-700); }
+  .pros .ng { background: var(--amber-50);   border-color: var(--amber-200);   color: var(--amber-800); }
+  ul.pros { padding: 0; margin: 0 0 14px; }
+
+  /* ---- カード & 表（本番の Blade をそのまま写している） ---- */
+  .card { background: #fff; border: 1px solid var(--gray-200); border-radius: 8px; overflow: hidden; }
+  .scroller { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 900px; }
+  th {
+    font-size: 12px; font-weight: 700; color: var(--gray-600);
+    background: var(--gray-50); border-bottom: 1px solid var(--gray-200);
+    white-space: nowrap; padding: 14px 12px; text-align: center;
+  }
+  th.name { text-align: left; }
+  td {
+    font-size: 13px; color: var(--gray-700); border-bottom: 1px solid var(--gray-200);
+    padding: 14px 12px; text-align: center; white-space: nowrap;
+  }
+  td.name { text-align: left; white-space: normal; }
+  td.rate { font-weight: 700; color: var(--gray-900); }
+  tbody tr:hover { background: var(--gray-50); }
+  td.name a { color: var(--emerald-600); font-weight: 600; text-decoration: none; }
+  td.name a:hover { text-decoration: underline; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .badge.on  { background: var(--emerald-50); color: var(--emerald-700); }
+  .badge.off { background: var(--gray-100);   color: var(--gray-500); }
+  .ops { display: flex; gap: 6px; justify-content: center; }
+  .ops a {
+    font-size: 11px; font-weight: 600; padding: 5px 12px; border-radius: 4px;
+    text-decoration: none; border: 1px solid;
+  }
+  .ops .d { color: var(--blue-700);    border-color: var(--blue-200);    background: var(--blue-50); }
+  .ops .e { color: var(--emerald-700); border-color: var(--emerald-200); background: var(--emerald-50); }
+
+  /* ---- 並び替え見出しの共通部（本番 x-sortable-th と同じ構造） ---- */
+  th.s { padding: 0; }
+  th.s > a {
+    display: flex; align-items: center; gap: 5px; padding: 14px 12px;
+    text-decoration: none; color: inherit; cursor: pointer; user-select: none;
+    justify-content: center; transition: background-color .12s;
+  }
+  th.s.name > a { justify-content: flex-start; }
+  th.s > a:hover { background: var(--gray-100); }
+  .ico { flex-shrink: 0; width: 12px; height: 12px; display: block; }
+
+  /* ==== 現状 ==== */
+  .v0 .ico { color: var(--gray-300); }
+  .v0 th.s.active > a { color: var(--emerald-700); }
+  .v0 th.s.active .ico { color: var(--emerald-600); }
+
+  /* ==== 案A: アイコン強調 + 点線下線 ==== */
+  .vA .ico { color: var(--gray-500); }
+  .vA th.s > a .lbl {
+    text-decoration: underline dotted var(--gray-400);
+    text-underline-offset: 4px; text-decoration-thickness: 1px;
+  }
+  .vA th.s > a:hover .lbl { text-decoration-color: var(--gray-600); }
+  .vA th.s.active > a { color: var(--emerald-700); }
+  .vA th.s.active .ico { color: var(--emerald-600); }
+  .vA th.s.active > a .lbl { text-decoration-color: var(--emerald-600); }
+
+  /* ==== 案B: チップ（押せる部品の形） ==== */
+  .vB .ico { color: var(--gray-500); }
+  .vB th.s > a { padding: 9px 8px; }
+  .vB th.s > a .chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 4px 9px; border: 1px solid var(--gray-300); border-radius: 6px;
+    background: #fff; transition: background-color .12s, border-color .12s;
+  }
+  .vB th.s > a:hover { background: transparent; }
+  .vB th.s > a:hover .chip { background: var(--gray-100); border-color: var(--gray-400); }
+  .vB th.s.active > a .chip {
+    background: var(--emerald-50); border-color: var(--emerald-300); color: var(--emerald-700);
+  }
+  .vB th.s.active .ico { color: var(--emerald-600); }
+
+  /* ==== 案C: 見出しの塗り分け + 現在の並び順バー ==== */
+  .vC .ico { color: var(--gray-500); }
+  .vC th.s { background: #fff; box-shadow: inset 0 -2px 0 var(--gray-300); }
+  .vC th.s > a:hover { background: var(--gray-50); }
+  .vC th.s.active { background: var(--emerald-50); box-shadow: inset 0 -2px 0 var(--emerald-600); }
+  .vC th.s.active > a { color: var(--emerald-700); }
+  .vC th.s.active .ico { color: var(--emerald-600); }
+
+  /* ==== 採用案: 案A ＋ 案C ==== */
+  .vD .ico { color: var(--gray-500); }
+  .vD th.s > a .lbl {
+    text-decoration: underline dotted var(--gray-400);
+    text-underline-offset: 4px; text-decoration-thickness: 1px;
+  }
+  .vD th.s > a:hover .lbl { text-decoration-color: var(--gray-600); }
+  .vD th.s { background: #fff; box-shadow: inset 0 -2px 0 var(--gray-300); }
+  .vD th.s > a:hover { background: var(--gray-50); }
+  .vD th.s.active { background: var(--emerald-50); box-shadow: inset 0 -2px 0 var(--emerald-600); }
+  .vD th.s.active > a { color: var(--emerald-700); }
+  .vD th.s.active .ico { color: var(--emerald-600); }
+  .vD th.s.active > a .lbl { text-decoration-color: var(--emerald-600); }
+  /* 塗り分けを外したとき ＝「案A ＋ 案C のバーだけ」 */
+  .vD.nofill th.s { background: var(--gray-50); box-shadow: none; }
+  .vD.nofill th.s > a:hover { background: var(--gray-100); }
+  .vD.nofill th.s.active { background: var(--gray-50); }
+
+  .toggle {
+    display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
+    font-size: 12.5px; font-weight: 700; color: var(--gray-700);
+    background: #fff; border: 1px solid var(--gray-200); border-radius: 6px;
+    padding: 6px 12px; margin: 0 0 12px;
+  }
+  .toggle input { width: 15px; height: 15px; accent-color: var(--emerald-600); cursor: pointer; margin: 0; }
+  .toggle .sub { font-weight: 500; color: var(--gray-500); }
+
+  .sortbar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    margin-bottom: 10px; font-size: 12.5px; color: var(--gray-500);
+  }
+  .sortbar .pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 10px; border-radius: 999px; font-weight: 700; font-size: 12px;
+    border: 1px solid var(--gray-200); background: #fff; color: var(--gray-600);
+  }
+  .sortbar .pill.on { border-color: var(--emerald-200); background: var(--emerald-50); color: var(--emerald-700); }
+  .sortbar .pill .ico { width: 11px; height: 11px; color: currentColor; }
+  .sortbar .clear {
+    font-size: 11px; font-weight: 600; color: var(--gray-500); text-decoration: none;
+    border: 1px solid var(--gray-200); background: #fff; border-radius: 4px; padding: 2px 8px; cursor: pointer;
+  }
+  .sortbar .clear:hover { color: var(--gray-700); border-color: var(--gray-300); background: var(--gray-50); }
+  .sortbar .hint { display: inline-flex; align-items: center; gap: 5px; }
+  .sortbar .hint svg { width: 13px; height: 13px; color: var(--gray-400); }
+
+  /* ---- 比較表 ---- */
+  table.cmp { min-width: 0; table-layout: auto; background: #fff; border: 1px solid var(--gray-200); border-radius: 8px; }
+  table.cmp th, table.cmp td { text-align: left; font-size: 12.5px; padding: 10px 14px; white-space: normal; }
+  table.cmp th { background: var(--gray-50); }
+  table.cmp td:first-child { font-weight: 700; color: var(--gray-800); white-space: nowrap; }
+
+  .callout {
+    border: 1px solid var(--amber-200); background: var(--amber-50); color: var(--amber-800);
+    border-radius: 8px; padding: 12px 16px; font-size: 12.5px; margin: 14px 0 0;
+  }
+  .callout b { font-weight: 800; }
+</style>
+
+<div class="wrap">
+  <h1>並び替えできる列を分かるようにする — モック3案</h1>
+  <p class="lede">
+    テナント管理 <span class="mono">/tenant/area-buildings</span>（周辺ビル調査）の表で確認。<br>
+    並び替えの<b>挙動</b>（3 状態・「—」は末尾・フィルタ共存）は
+    <span class="mono">docs/superpowers/specs/2026-08-25-tenant-list-sorting-design.md</span> のまま変えない。
+    ここで選ぶのは<b>見た目だけ</b>。
+  </p>
+  <p class="note">
+    並び替えできる列＝<strong>総階数 / 営業 / 空き / 不明 / 入居率 / 空室率 / 最終調査</strong> の 7 列。
+    <strong>ビル名 / 位置 / 操作</strong> は並び替え不可。各表の見出しは実際に押せます（既定 → 降順 ▼ → 昇順 ▲ → 既定 の 3 巡）。
+  </p>
+
+  <h2 class="now"><span class="n">現状</span>今の見た目（＝分かりにくいと言われている状態）</h2>
+  <p class="note">
+    未使用の列の ⇅ は <code>#D1D5DB</code>（gray-300）で、見出しの背景 <code>#F9FAFB</code> との
+    コントラスト比は <strong>約 1.4:1</strong>。UI 部品に必要な 3:1 を大きく下回り、実質見えていない。
+    手掛かりは「ホバーすると背景が薄く変わる」だけなので、<strong>マウスを乗せるまで押せると気づけない</strong>。
+  </p>
+  <ul class="pros">
+    <li class="ng">⇅ が薄すぎて見えない（1.4:1）</li>
+    <li class="ng">ホバーするまで分からない</li>
+    <li class="ng">既定順のときは、どう並んでいるか画面のどこにも出ない</li>
+  </ul>
+  <div class="card"><div class="scroller"><div id="v0"></div></div></div>
+
+  <h2><span class="n">A</span>案A: アイコンを濃くする ＋ ラベルに点線の下線</h2>
+  <p class="note">
+    ⇅ を <code>#D1D5DB</code> → <code>#6B7280</code>（gray-500・<strong>4.8:1</strong>）にして、
+    ラベルに薄い点線の下線を敷く。<strong>「押せる文字」だと分かる最小の合図</strong>。
+    ホバーで下線が濃くなり、並び替え中の列は下線ごと緑になる。
+    変更は <code>sortable-th.blade.php</code> の色 2 箇所＋<code>text-decoration</code> だけ。
+  </p>
+  <ul class="pros">
+    <li class="ok">既存の見た目をほぼ保つ・行の高さが変わらない</li>
+    <li class="ok">実装が最小（共通コンポーネント 1 ファイル）</li>
+    <li class="ok">10 列の表でも密度が上がらない</li>
+    <li class="ng">3 案の中では一番おとなしい</li>
+  </ul>
+  <div class="card"><div class="scroller"><div id="vA"></div></div></div>
+
+  <h2><span class="n">B</span>案B: 見出しを「チップ（ボタン）」の形にする</h2>
+  <p class="note">
+    ラベルと ⇅ を枠線つきの小さなチップで囲む。<strong>押せることが色ではなく「形」で分かる</strong>ので、
+    並び替え不可の素の見出し（ビル名・位置・操作）との差が一目でつく。並び替え中は緑のチップになる。
+    当たり判定はセル全体のまま（チップは見た目だけで、リンクはセルいっぱいに広がる）。
+  </p>
+  <ul class="pros">
+    <li class="ok">押せる／押せないの差が最もはっきりする</li>
+    <li class="ok">現在の並び順（緑のチップ）が遠目でも分かる</li>
+    <li class="ng">見出し行がやや賑やかになる（10 列中 7 列がチップ）</li>
+    <li class="ng">テストヘルパ <span class="mono">sortLinkFor()</span> の正規表現を 1 行広げる必要がある</li>
+  </ul>
+  <div class="card"><div class="scroller"><div id="vB"></div></div></div>
+
+  <h2><span class="n">C</span>案C: 見出しセルを塗り分ける ＋ 表の上に「現在の並び順」バー</h2>
+  <p class="note">
+    並び替えできる列の見出しだけ<strong>白背景＋下辺 2px のグレーの線</strong>にして、
+    できない列（従来のグレー背景）と塗り分ける。さらに<strong>表の上に今の並び順を文で出す</strong>ので、
+    横スクロールで見出しが視界から外れても、また既定順のままでも「今どう並んでいるか」が分かる。
+    並び替え中は見出しが薄緑＋下辺が緑になり、バーに解除ボタンが出る。
+  </p>
+  <ul class="pros">
+    <li class="ok">既定順（空室率が高い順）も画面に出る＝現状で唯一どこにも出ていない情報が見える</li>
+    <li class="ok">解除が 1 クリック（3 巡させなくてよい）</li>
+    <li class="ok">横スクロール中でも並び順が分かる</li>
+    <li class="ng">要素が 1 つ増える（表の上のバー）</li>
+    <li class="ng">見出し行が 2 色に割れるので、好みが分かれる</li>
+  </ul>
+  <div id="vC-bar"></div>
+  <div class="card"><div class="scroller"><div id="vC"></div></div></div>
+
+  <h2 style="border-bottom-color: var(--emerald-300);"><span class="n">採用</span>案A ＋ 案C（合成）</h2>
+  <p class="note">
+    <strong>ご指定の組み合わせです。</strong> 案A（濃い ⇅ ＋ 点線下線）の上に、案C の 2 要素
+    ——<strong>見出しの塗り分け</strong>と<strong>表の上のバー</strong>——を重ねています。<br>
+    案C の「塗り分け」だけは下のスイッチで外せます。外すと
+    <strong>案A ＋ 案C のバーだけ</strong>（見出しは従来のグレーのまま・現在の並び順は文で出る）になります。
+    <strong>どちらにするか決めてください。</strong>
+  </p>
+  <label class="toggle">
+    <input type="checkbox" id="fill-toggle" checked>
+    見出しの塗り分け（案C）を使う
+    <span class="sub">— 外すと「案A ＋ 案C のバーだけ」</span>
+  </label>
+  <div id="vD-bar"></div>
+  <div class="card"><div class="scroller"><div id="vD"></div></div></div>
+
+  <h2><span class="n">比較</span>3 案の比較</h2>
+  <div class="scroller">
+  <table class="cmp">
+    <thead>
+      <tr><th>観点</th><th>案A アイコン強調</th><th>案B チップ</th><th>案C 塗り分け＋バー</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>ひと目で分かる度</td><td>中</td><td><b>高</b></td><td><b>高</b></td></tr>
+      <tr><td>見た目の変化量</td><td><b>小</b></td><td>中</td><td>大</td></tr>
+      <tr><td>既定順が分かるか</td><td>分からない</td><td>分からない</td><td><b>分かる</b></td></tr>
+      <tr><td>並び替えの解除</td><td>3 回押す</td><td>3 回押す</td><td><b>解除ボタン 1 回</b>（3 巡も残す）</td></tr>
+      <tr><td>10 列表の窮屈さ</td><td><b>変わらない</b></td><td>やや増す</td><td>変わらない</td></tr>
+      <tr><td>触るファイル</td><td><span class="mono">sortable-th.blade.php</span> のみ</td><td>同左 ＋ テストヘルパ 1 行</td><td>同左 ＋ 新コンポーネント 1 本を 3 一覧へ設置</td></tr>
+      <tr><td>反映される画面</td><td colspan="3">共通コンポーネントなので <b>物件一覧 / 部屋一覧 / 周辺ビル調査</b> の 3 画面に同時に反映される（案C のバーだけは各一覧に 1 行足す）</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="callout">
+    <b>組み合わせも可能です。</b> 案A（濃いアイコン＋点線）は案B・案Cの土台にもなっていて、
+    たとえば「<b>案A ＋ 案C のバーだけ</b>」（見出しは控えめのまま、現在の並び順は文で出す）も選べます。
+    ご希望があれば言ってください。
+  </div>
+</div>
+
+<script>
+/* ------------------------------------------------------------------
+   表示デモ専用のスクリプト。
+   ⚠ 本実装は Blade のただのリンクで、JS は 1 行も足さない（設計書 §5.1）。
+   ⚠ 並べ替え規則の正本はここではなく設計書。ここは見た目と操作感の確認用。
+------------------------------------------------------------------ */
+
+// 営業 / 空き / 不明 が null＝調査回がまだ無い棟
+const BUILDINGS = [
+  { name: '雅ビル',         floors: 4,    op: 3,    va: 5,    un: 1,    month: '2026-08', geo: true  },
+  { name: '三番町スクエア', floors: 6,    op: 5,    va: 4,    un: 2,    month: '2026-08', geo: true  },
+  { name: '大手町第一ビル', floors: 10,   op: 9,    va: 6,    un: 3,    month: '2026-08', geo: true  },
+  { name: '武智ビル',       floors: 3,    op: 2,    va: 1,    un: 0,    month: '2026-06', geo: false },
+  { name: '湊町ハイツ',     floors: null, op: 4,    va: 1,    un: 0,    month: '2026-05', geo: true  },
+  { name: '相原ビル',       floors: 5,    op: 8,    va: 2,    un: 0,    month: '2026-08', geo: true  },
+  { name: '久万ノ台ビル',   floors: 8,    op: 12,   va: 0,    un: 0,    month: '2026-07', geo: true  },
+  { name: '千舟町ビル',     floors: 7,    op: null, va: null, un: null, month: null,      geo: false },
+];
+
+/* VacancyRate と同じ整数演算。空室率と入居率は必ず和が 100.0%（Bug #46） */
+function tenths(b) {                       // 空室率の 1/10% 単位の整数
+  if (b.op === null) return null;
+  const total = b.op + b.va + b.un;
+  if (total <= 0) return null;
+  return Math.floor((b.va + b.un) * 1000 / total);
+}
+function vacancyPct(b)   { const t = tenths(b); return t === null ? null : t / 10; }
+function occupancyPct(b) { const t = tenths(b); return t === null ? null : (1000 - t) / 10; }
+function pctLabel(v)     { return v === null ? '—' : v.toFixed(1) + '%'; }
+function monthLabel(m)   { return m === null ? '—' : m.slice(0, 4) + '年' + Number(m.slice(5)) + '月'; }
+function floorsLabel(f)  { return f === null ? '—' : f + '階'; }
+
+/* 並び替えできる列。
+   value … その列の並べ替えキー（null は画面の「—」）
+   desc / asc … バーに出す言い方。⚠ 率に「大きい順」、日付に「多い順」は不自然なので
+                 件数・率・日付で言い分ける（本番も列ごとに文言を持たせる） */
+const COLUMNS = [
+  { key: 'floors',    label: '総階数',   value: b => b.floors,        desc: '多い順',   asc: '少ない順' },
+  { key: 'operating', label: '営業',     value: b => b.op,            desc: '多い順',   asc: '少ない順' },
+  { key: 'vacant',    label: '空き',     value: b => b.va,            desc: '多い順',   asc: '少ない順' },
+  { key: 'unknown',   label: '不明',     value: b => b.un,            desc: '多い順',   asc: '少ない順' },
+  { key: 'occupancy', label: '入居率',   value: b => occupancyPct(b), desc: '高い順',   asc: '低い順'   },
+  { key: 'vacancy',   label: '空室率',   value: b => vacancyPct(b),   desc: '高い順',   asc: '低い順'   },
+  { key: 'month',     label: '最終調査', value: b => b.month,         desc: '新しい順', asc: '古い順'   },
+];
+const COLUMN_BY_KEY = Object.fromEntries(COLUMNS.map(c => [c.key, c]));
+
+/* 既定順: 空室率が高い順 → 未調査は末尾 → 同点はビル名順（本番の AreaBuildingListService と同じ） */
+function defaultOrder() {
+  return BUILDINGS.slice().sort((x, y) => {
+    const vx = vacancyPct(x), vy = vacancyPct(y);
+    if (vx === null && vy !== null) return 1;
+    if (vy === null && vx !== null) return -1;
+    if (vx !== vy) return vy - vx;
+    return x.name.localeCompare(y.name, 'ja');
+  });
+}
+
+/* 指定の列で並べる。「—」（null）は昇順でも降順でも末尾。同点は既定順のまま（安定ソート） */
+function ordered(state) {
+  const base = defaultOrder();
+  if (!state) return base;
+  const col = COLUMN_BY_KEY[state.key];
+  const sign = state.dir === 'asc' ? 1 : -1;
+  return base.slice().sort((x, y) => {
+    const vx = col.value(x), vy = col.value(y);
+    if (vx === null && vy === null) return 0;
+    if (vx === null) return 1;
+    if (vy === null) return -1;
+    if (vx < vy) return -1 * sign;
+    if (vx > vy) return  1 * sign;
+    return 0;
+  });
+}
+
+/* 既定 → 降順 → 昇順 → 既定 */
+function nextState(state, key) {
+  if (!state || state.key !== key) return { key, dir: 'desc' };
+  return state.dir === 'desc' ? { key, dir: 'asc' } : null;
+}
+
+const SVG = {
+  none: '<svg class="ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="7 15 12 20 17 15"/><polyline points="7 9 12 4 17 9"/></svg>',
+  asc:  '<svg class="ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 15 12 8 18 15"/></svg>',
+  desc: '<svg class="ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 16 18 9"/></svg>',
+};
+const ARIA = { asc: 'ascending', desc: 'descending' };
+
+/* 見出し 1 本。variant によってラベルの包み方だけ変える（案B はチップで包む） */
+function headerCell(col, state, variant) {
+  const on   = state && state.key === col.key;
+  const icon = SVG[on ? state.dir : 'none'];
+  const inner = variant === 'B'
+    ? '<span class="chip"><span class="lbl">' + col.label + '</span>' + icon + '</span>'
+    : '<span class="lbl">' + col.label + '</span>' + icon;
+  return '<th class="s' + (on ? ' active' : '') + '" aria-sort="' + (on ? ARIA[state.dir] : 'none') + '">'
+       +   '<a href="#" data-key="' + col.key + '">' + inner + '</a>'
+       + '</th>';
+}
+
+function renderTable(variant, state) {
+  // 列の並びは本番と同じ: ビル名 / 総階数 / 営業 / 空き / 不明 / 入居率 / 空室率 / 位置 / 最終調査 / 操作
+  const head =
+      '<th class="name">ビル名</th>'
+    + COLUMNS.slice(0, 6).map(c => headerCell(c, state, variant)).join('')
+    + '<th>位置</th>'
+    + headerCell(COLUMNS[6], state, variant)
+    + '<th>操作</th>';
+
+  const body = ordered(state).map(b =>
+      '<tr>'
+    +   '<td class="name"><a href="#">' + b.name + '</a></td>'
+    +   '<td>' + floorsLabel(b.floors) + '</td>'
+    +   '<td>' + (b.op === null ? '—' : b.op) + '</td>'
+    +   '<td>' + (b.va === null ? '—' : b.va) + '</td>'
+    +   '<td>' + (b.un === null ? '—' : b.un) + '</td>'
+    +   '<td class="rate">' + pctLabel(occupancyPct(b)) + '</td>'
+    +   '<td class="rate">' + pctLabel(vacancyPct(b)) + '</td>'
+    +   '<td><span class="badge ' + (b.geo ? 'on">登録済' : 'off">未取得') + '</span></td>'
+    +   '<td>' + monthLabel(b.month) + '</td>'
+    +   '<td><div class="ops"><a class="d" href="#">詳細</a><a class="e" href="#">編集</a></div></td>'
+    + '</tr>'
+  ).join('');
+
+  // ⚠ 変種の判別は class ではなく data 属性で行う（.vD は nofill が付くことがあるため）
+  return '<table class="v' + variant + '" data-variant="' + variant + '">'
+    + '<colgroup>'
+    + '<col style="width:22%"><col style="width:6%"><col style="width:6%"><col style="width:6%">'
+    + '<col style="width:6%"><col style="width:8%"><col style="width:8%"><col style="width:11%">'
+    + '<col style="width:13%"><col style="width:14%">'
+    + '</colgroup>'
+    + '<thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table>';
+}
+
+/* 案C の「現在の並び順」バー。解除リンクは自分の表だけを戻す（variant で紐づける） */
+function renderBar(state, variant) {
+  const hint =
+      '<span class="hint">'
+    +   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>'
+    +   '見出しをクリックすると並び替えできます'
+    + '</span>';
+
+  if (!state) {
+    return '<div class="sortbar"><span class="pill">並び替え: 既定（空室率が高い順）</span>' + hint + '</div>';
+  }
+  const col = COLUMN_BY_KEY[state.key];
+  return '<div class="sortbar">'
+    +   '<span class="pill on">並び替え: ' + col.label + ' ' + col[state.dir] + SVG[state.dir] + '</span>'
+    +   '<a class="clear" href="#" data-clear="' + variant + '">解除</a>'
+    +   hint
+    + '</div>';
+}
+
+const STATE = { '0': null, 'A': null, 'B': null, 'C': null, 'D': null };
+let USE_FILL = true;            // 案C の「見出しの塗り分け」を使うか（採用案セクションのスイッチ）
+
+function paint(variant) {
+  document.getElementById('v' + variant).innerHTML = renderTable(variant, STATE[variant]);
+
+  // バーを持つのは案C と 採用案(D)
+  if (variant === 'C' || variant === 'D') {
+    document.getElementById('v' + variant + '-bar').innerHTML = renderBar(STATE[variant], variant);
+  }
+  if (variant === 'D') {
+    document.querySelector('.vD').classList.toggle('nofill', ! USE_FILL);
+  }
+}
+
+document.addEventListener('click', function (e) {
+  const clear = e.target.closest('[data-clear]');
+  if (clear) { e.preventDefault(); const v = clear.dataset.clear; STATE[v] = null; paint(v); return; }
+
+  const link = e.target.closest('th.s > a');
+  if (!link) return;
+  e.preventDefault();
+  const variant = link.closest('table').dataset.variant;
+  STATE[variant] = nextState(STATE[variant], link.dataset.key);
+  paint(variant);
+});
+
+document.getElementById('fill-toggle').addEventListener('change', function (e) {
+  USE_FILL = e.target.checked;
+  paint('D');
+});
+
+['0', 'A', 'B', 'C', 'D'].forEach(paint);
+</script>
