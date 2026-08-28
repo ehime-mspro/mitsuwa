@@ -91,11 +91,26 @@ class AreaBuildingListSortTest extends AreaBuildingTestCase
      * ⚠ 入居率を VacancyRate::occupancyPercent() で別に計算して並べると、
      *   画面に並ぶ 2 つの数字と並び順が食い違う余地ができる（Bug #46）。
      *   実装は空室率の符号を反転しているので、これは**構造として**成り立つ。
+     *
+     * ⚠ **調査なしの棟の名前は '0号ビル' でなければならない。** 'Eビル' だったときは、
+     *   applySort() を丸ごと無効化して `return $rows->values();` にしても
+     *   このテストは緑のまま通っていた（実測）。理由は 2 つ:
+     *   ① `?sort=occupancy&dir=desc` と `?sort=vacancy&dir=asc` がどちらも既定順へ
+     *      フォールバックするだけなので、assertSame() は実質「同じ結果を自分自身と比較」
+     *      していただけだった。
+     *   ② 'Eビル' は A〜E の中で名前が最後なので、既定順（ビル名の昇順）でも自然に
+     *      末尾に来ており、「率が「—」の棟が末尾に来る」という本来検証したい性質を
+     *      一度も運動させていなかった。
+     *   '0号ビル' は SQLite の BINARY 照合で '0'（0x30）が 'A'（0x41）より前に来るため、
+     *   既定順では先頭に来る。それでも実装が正しければ調査なし（rate が null）は
+     *   partition() で末尾に回されるので、この棟が最終的に末尾へ来ることこそが
+     *   「並び替えが効いている」ことの証拠になる。**A〜D と体裁を揃えたくて 'Eビル' へ
+     *   戻すと、揃えた瞬間にこのテストは何も検出しなくなる。**
      */
     public function test_the_occupancy_order_is_exactly_the_reverse_of_the_vacancy_order(): void
     {
         $this->seedFourBuildings();
-        $this->makeBuilding('Eビル');   // 調査なし＝率は「—」
+        $this->makeBuilding('0号ビル');   // 調査なし＝率は「—」
 
         $staff = $this->staff();
 
@@ -104,7 +119,7 @@ class AreaBuildingListSortTest extends AreaBuildingTestCase
 
         $this->assertCount(5, $byOccupancyDesc);
         $this->assertSame($byVacancyAsc, $byOccupancyDesc, '入居率と空室率で並びが食い違う（片方を別計算で出している。Bug #46）');
-        $this->assertSame('Eビル', end($byOccupancyDesc), '率が「—」の棟が末尾に来ていない');
+        $this->assertSame('0号ビル', end($byOccupancyDesc), '率が「—」の棟が末尾に来ていない');
     }
 
     /**
