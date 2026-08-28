@@ -85,6 +85,16 @@ class SortableListWiringTest extends TestCase
             [$class, $expectedCount] = self::SORT_COLUMN_SOURCES[$relative];
             $keys = array_keys($class::SORT_COLUMNS);
 
+            // ⚠ label は描画されるので壊せば落ちるが、desc / asc は Task 8 の x-sort-bar が
+            //   最初の読み手になるまで**誰も読まない**＝消しても全テストが緑のまま通る（実測）。
+            //   表示文字列を 1 箇所に集約した意味が無くなるので、ここで形を固定する（Bug #41 / #46）。
+            foreach ($class::SORT_COLUMNS as $key => $spec) {
+                foreach (['label', 'desc', 'asc'] as $required) {
+                    $this->assertArrayHasKey($required, $spec, "{$class}::SORT_COLUMNS['{$key}'] に {$required} が無い");
+                    $this->assertNotSame('', trim($spec[$required]), "{$class}::SORT_COLUMNS['{$key}']['{$required}'] が空");
+                }
+            }
+
             preg_match_all('/<x-sortable-th\b[^>]*>/s', $source, $tags);
             $this->assertCount($expectedCount, $tags[0], "{$relative} の並び替え見出しの本数が変わっている");
 
