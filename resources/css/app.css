@@ -109,10 +109,16 @@
 .sortable-th-link:hover .sortable-th-label {
     text-decoration-color: #4B5563;
 }
-/* ⚠ ホバーより後に置くのが load-bearing。逆だと並び替え中の列にマウスを乗せた瞬間に
-      下線がグレーへ落ち、「今どの列で並んでいるか」の手掛かりが消える。 */
-th[aria-sort="ascending"] .sortable-th-label,
-th[aria-sort="descending"] .sortable-th-label {
+/* ⚠ **ホバーより詳細度を高くするのが load-bearing**（順序ではない）。
+      .sortable-th-link:hover .sortable-th-label             = (0,3,0)
+      th[aria-sort="…"] .sortable-th-link .sortable-th-label = (0,3,1)
+   ⚠ かつて .sortable-th-link を挟まない (0,2,1) で書いていた。**順序を後ろにしてあっても
+      ホバーに常に負けていた**（詳細度が違う 2 本には「同じ詳細度なら後勝ち」は当てはまらない）。
+      実ブラウザ実測: ホバー前 rgb(5,150,105) #059669 / ホバー中 rgb(75,85,99) #4B5563
+      ＝ 並び替え中の列にマウスを乗せると緑の手掛かりが消えていた。
+   ⚠ 位置はホバーの後のままにしてある（詳細度で決着が付くので実害は無いが、読む順の慣例として）。 */
+th[aria-sort="ascending"] .sortable-th-link .sortable-th-label,
+th[aria-sort="descending"] .sortable-th-link .sortable-th-label {
     text-decoration-color: #059669;
 }
 

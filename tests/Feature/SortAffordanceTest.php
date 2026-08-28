@@ -91,27 +91,53 @@ class SortAffordanceTest extends TestCase
             'ホバーで下線が濃くならない'
         );
         $this->assertMatchesRegularExpression(
-            '/th\[aria-sort="ascending"\] \.sortable-th-label,\s*th\[aria-sort="descending"\] \.sortable-th-label\s*\{[^}]*text-decoration-color:\s*#059669/s',
+            '/th\[aria-sort="ascending"\] \.sortable-th-link \.sortable-th-label,\s*th\[aria-sort="descending"\] \.sortable-th-link \.sortable-th-label\s*\{[^}]*text-decoration-color:\s*#059669/s',
             $css,
-            '並び替え中の列で下線が緑にならない'
+            '並び替え中の列で下線が緑にならない、またはホバーに詳細度で勝てない形（.sortable-th-link 抜き）になっている'
         );
     }
 
     /**
-     * 並び替え中の緑は**ホバーより後**に置くこと。
+     * 並び替え中の緑は、CSS の**詳細度でホバーに勝てる**選択子で書かれていること。
      *
-     * ⚠ 順序が逆だと、並び替え中の列にマウスを乗せた瞬間に下線がグレーへ落ち、
-     *   「今どの列で並んでいるか」の手掛かりが消える。CSS は同じ詳細度なら後勝ち。
+     * ⚠ **同じ詳細度なら後勝ちだが、この 2 本は詳細度が違う。** 実測（標準ページで再現し
+     *   Chrome で計測）:
+     *     .sortable-th-link:hover .sortable-th-label            = (0,3,0)
+     *     th[aria-sort="…"] .sortable-th-label（旧実装）          = (0,2,1) ← 常にホバー負け
+     *     th[aria-sort="…"] .sortable-th-link .sortable-th-label = (0,3,1) ← ホバーに勝つ
+     *   旧実装は**順序をホバーの後ろにしても**ホバー中は rgb(5,150,105) 緑 → rgb(75,85,99)
+     *   グレーへ落ちていた（`a.matches(':hover') === true` で確認済み）。順序だけを見るテストは
+     *   この破綻を検出できなかった（Bug #42 「テストが緑でも測っていない」と同型）。
+     * ⚠ **カスケードの決着そのものは PHP では証明できない。** ここで測れるのは「ホバーに
+     *   勝てるだけの詳細度を持つ選択子で書かれているか」だけ。実際にブラウザがどちらの色を
+     *   描くかは実ブラウザで見ること（Task 11。Bug #28 / #43 / #51 と同型）。
      */
-    public function test_the_active_underline_rule_comes_after_the_hover_rule(): void
+    public function test_the_active_underline_outranks_the_hover_underline(): void
     {
         $css = preg_replace('#/\*.*?\*/#s', '', file_get_contents(resource_path('css/app.css')));
 
+        $this->assertMatchesRegularExpression(
+            '/\.sortable-th-link:hover \.sortable-th-label\s*\{/',
+            $css,
+            'ホバーの下線ルールが見つからない'
+        );
+
+        // ⚠ [aria-sort] を足しただけの (0,2,1) は (0,3,0) のホバーに常に負ける。
+        //   .sortable-th-link と .sortable-th-label の両方（ホバー側と同じクラス数）を
+        //   selector に持って初めて (0,3,1) でホバーに勝てる。
+        $this->assertMatchesRegularExpression(
+            '/th\[aria-sort="ascending"\] \.sortable-th-link \.sortable-th-label\s*,\s*'
+            . 'th\[aria-sort="descending"\] \.sortable-th-link \.sortable-th-label\s*\{/',
+            $css,
+            '並び替え中の下線セレクタがホバーに詳細度で勝てる形になっていない（.sortable-th-link が抜けている）'
+        );
+
+        // 位置は副次的なチェック（詳細度で決着が付くので実害は無いが、読む順の慣例として残す）
         $hover  = strpos($css, '.sortable-th-link:hover .sortable-th-label');
-        $active = strpos($css, 'th[aria-sort="ascending"] .sortable-th-label');
+        $active = strpos($css, 'th[aria-sort="ascending"] .sortable-th-link .sortable-th-label');
 
         $this->assertNotFalse($hover);
         $this->assertNotFalse($active);
-        $this->assertGreaterThan($hover, $active, '並び替え中の下線がホバーに負ける順序で書かれている');
+        $this->assertGreaterThan($hover, $active, '並び替え中の下線ルールがホバーより前に書かれている');
     }
 }
