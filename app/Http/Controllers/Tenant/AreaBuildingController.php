@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AreaBuilding;
 use App\Models\AreaBuildingSurvey;
 use App\Services\Tenant\AreaBuildingListService;
+use App\Support\ListSort;
 use App\Support\VacancyRate;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -29,6 +30,7 @@ class AreaBuildingController extends Controller
 
     public function index(Request $request, AreaBuildingListService $service)
     {
+        $sort    = ListSort::fromRequest($request, array_keys(AreaBuildingListService::SORT_COLUMNS));
         $canEdit = $request->user()->role->isManagerOrAbove();
         $isMap   = $request->query('view') === 'map';
 
@@ -42,7 +44,7 @@ class AreaBuildingController extends Controller
             : [];
 
         // ⚠ rows() は 1 回だけ呼ぶ（地図タブは全件とページャの両方を使う）
-        $rows = $service->rows($request);
+        $rows = $service->rows($request, $sort);
 
         return view('tenant.area-buildings.index', [
             'rows'                => $service->paginateRows($rows, $request),
@@ -53,6 +55,8 @@ class AreaBuildingController extends Controller
             'geocodeBatchLimit'   => self::GEOCODE_BATCH_LIMIT,
             'isMap'               => $isMap,
             'canEdit'             => $canEdit,
+            'sort'                => $sort,
+            'sortColumns'         => AreaBuildingListService::SORT_COLUMNS,
             // ⚠ 地図タブのときだけ組み立てる。表タブでは使わない配列を作らない
             'mapPins'             => $isMap ? $this->mapPins($rows) : [],
             'mapUnlocated'        => $isMap ? $this->mapUnlocated($rows) : [],

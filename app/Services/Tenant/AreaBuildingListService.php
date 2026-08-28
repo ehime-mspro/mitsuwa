@@ -4,6 +4,7 @@ namespace App\Services\Tenant;
 
 use App\Models\AreaBuilding;
 use App\Models\AreaBuildingSurvey;
+use App\Support\ListSort;
 use App\Support\VacancyRate;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -65,6 +66,29 @@ class AreaBuildingListService
     ];
 
     /**
+     * 並び替えを許す列 → 日本語ラベルと「向きの言い方」（設計書 2026-08-28 §4.1 / §7.1）。
+     *
+     * ⚠ **許可リストもラベルもここ 1 箇所だけ。** ListSort::fromRequest() には array_keys() を渡し、
+     *   ビュー（見出しとバー）にはこの配列そのものを渡す。見出しとバーで別々に文字列を持つと
+     *   食い違う（Bug #41 / #46）。
+     *
+     * ⚠ 「多い/少ない」「高い/低い」「新しい/古い」を**列ごとに持つ**。率に「大きい順」、
+     *   日付に「多い順」は日本語として不自然で、バーにそのまま出る。
+     *
+     * ⚠ ビル名・位置・操作は並び替えない（設計書 §4.1 / §10）。ビル名は**既定順**であって
+     *   見出しからは押せない。
+     */
+    public const SORT_COLUMNS = [
+        'floors'    => ['label' => '総階数',   'desc' => '多い順',   'asc' => '少ない順'],
+        'operating' => ['label' => '営業',     'desc' => '多い順',   'asc' => '少ない順'],
+        'vacant'    => ['label' => '空き',     'desc' => '多い順',   'asc' => '少ない順'],
+        'unknown'   => ['label' => '不明',     'desc' => '多い順',   'asc' => '少ない順'],
+        'occupancy' => ['label' => '入居率',   'desc' => '高い順',   'asc' => '低い順'],
+        'vacancy'   => ['label' => '空室率',   'desc' => '高い順',   'asc' => '低い順'],
+        'month'     => ['label' => '最終調査', 'desc' => '新しい順', 'asc' => '古い順'],
+    ];
+
+    /**
      * 組み立て済みの行をページャに載せる。
      *
      * ⚠ 呼び出し側で `rows()` を先に呼ぶ形にしてある。地図タブは全件（rows）と
@@ -92,27 +116,89 @@ class AreaBuildingListService
     }
 
     /**
-     * 絞り込み済みの行（既定順 ＝ ビル名の昇順）。
+     * 絞り込み・並び替え済みの行。
      *
-     * ⚠ **PHP 側で並べ替えない。** baseQuery() が
+     * ⚠ **既定順（$sort が null）はビル名の昇順。** baseQuery() が
      *   `ORDER BY area_buildings.name, area_buildings.id` で引いており、
-     *   map() / filter() は順序を保つので、**ここに並べ替えを書かないことがビル名の昇順**
-     *   （設計書 2026-08-28 §4.4。利用者の依頼で従来の「空室率の降順」から変更）。
-     *   従来の順は失われていない —— Task 6 で空室率を並び替えできる列にするので、
-     *   見出しを 1 回押せば戻せるようになる。
+     *   map() / filter() は順序を保つので、並べ替えを書かないことがそのまま既定順になる
+     *   （設計書 2026-08-28 §4.4）。従来の「空室率の降順」は `?sort=vacancy&dir=desc`。
+     *
+     * ⚠ 呼び出し元は AreaBuildingController::index() の 1 箇所だけ（2026-08-28 実測）。
      *
      * @return Collection<int, array{building: AreaBuilding, month: ?Carbon, operating: ?int, vacant: ?int, unknown: ?int, rate: ?float, occupancy_label: string, rate_label: string}>
      */
-    public function rows(Request $request): Collection
+    public function rows(Request $request, ?ListSort $sort = null): Collection
     {
         $occupancy = $request->input('occupancy');
         $year      = $request->input('year');
 
-        return $this->baseQuery($request)
+        $rows = $this->baseQuery($request)
             ->get()
             ->map(fn (AreaBuilding $building) => $this->toRow($building))
-            ->filter(fn (array $row) => $this->matchesYear($row, $year) && $this->matchesOccupancy($row, $occupancy))
-            ->values();
+            ->filter(fn (array $row) => $this->matchesYear($row, $year) && $this->matchesOccupancy($row, $occupancy));
+
+        return $this->applySort($rows, $sort);
+    }
+
+    /**
+     * 並び替えを適用する。指定が無ければ既定順（ビル名の昇順）のまま返す。
+     *
+     * ⚠ **「—」は昇順でも降順でも末尾**（前設計書 §4.3-2）。partition で分けて連結する。
+     *   `[null 判定, 値]` の複合キーを sortBy / sortByDesc に渡す形は、**向きによって
+     *   null フラグの 0/1 を反転させないと末尾に行かない**（降順では「値あり」を 1、
+     *   昇順では 0 にする必要がある）。書いた本人しか気づけない取り違えになるので、
+     *   読んだだけで正しいと分かる形を優先する（設計書 §4.2）。
+     *
+     * ⚠ 並び替えは**既定順に並べ終えた列に対して**掛ける。PHP のソートは 8.0 以降 stable なので
+     *   同点の行はビル名順のまま残る。これが無いとページをまたいで行が重複／消失する
+     *   （前設計書 §4.3-3）。
+     *
+     * @param  Collection<int, array<string, mixed>>  $rows
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function applySort(Collection $rows, ?ListSort $sort): Collection
+    {
+        if ($sort === null) {
+            return $rows->values();
+        }
+
+        [$known, $blank] = $rows->partition(fn (array $row) => $this->sortValue($row, $sort->key) !== null);
+
+        $sorted = $sort->isAscending()
+            ? $known->sortBy(fn (array $row) => $this->sortValue($row, $sort->key))
+            : $known->sortByDesc(fn (array $row) => $this->sortValue($row, $sort->key));
+
+        return $sorted->concat($blank)->values();
+    }
+
+    /**
+     * その列の並べ替えキー。null は「画面に —」＝末尾へ回す行。
+     *
+     * ⚠ **入居率は VacancyRate::occupancyPercent() を使わない。** 空室率の符号を反転する。
+     *   入居率 = 100 − 空室率 なので順序は厳密に一致し（VacancyRate が 1/10% 単位の同じ整数から
+     *   両方を作っており、和が 100.0% になることは構造で保証されている）、別々に計算すると
+     *   **画面に並ぶ 2 つの数字と並び順が食い違う余地**を自分で作る（設計書 §4.3 / Bug #46）。
+     *
+     * ⚠ 「調査回はあるが総区画 0」の行は rate だけが null。営業・空き・不明は 0（画面も「0」）、
+     *   month は実在する日付なので、**列によって末尾かどうかが変わる**のが正しい（設計書 §2.2）。
+     *
+     * ⚠ 日付は Carbon のまま比べず `format('Y-m-d')` の文字列にする（辞書順で一致し、
+     *   比較の意味がオブジェクトの実装に依存しない。設計書 §4.4.1）。
+     *
+     * ⚠ default アームを書かないのは意図。$sort->key は ListSort::fromRequest() の
+     *   許可リストを通った値しか来ない（ListSort のコンストラクタが private な根拠）。
+     */
+    private function sortValue(array $row, string $key): int|float|string|null
+    {
+        return match ($key) {
+            'floors'    => $row['building']->total_floors,
+            'operating' => $row['operating'],
+            'vacant'    => $row['vacant'],
+            'unknown'   => $row['unknown'],
+            'occupancy' => $row['rate'] === null ? null : -$row['rate'],
+            'vacancy'   => $row['rate'],
+            'month'     => $row['month']?->format('Y-m-d'),
+        };
     }
 
     /**
