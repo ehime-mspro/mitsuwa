@@ -101,20 +101,47 @@ class SortBarTest extends AreaBuildingTestCase
      * ⚠ **GAP チェック**: `PropertyController::index()` の既定順（$sort が null のときだけ通る経路）は
      *   `orderBy('operation_status', 'asc')->orderBy('code', 'asc')`。OperationStatus は
      *   `enum('active','inactive')`（migration）で asc なら active が先 ＝ 「稼働中が先」。
-     *   非稼働を最初に作り、code の昇順が作成順と食い違うようにしてある
-     *   （`PropertyListSortTest::test_the_default_order_is_unchanged` と同じ作り方）。
+     *
+     * ⚠ **フィクスチャは 2 つの orderBy キーそれぞれが単独で検出力を持つように組んである**
+     *   （2026-08-28 コード品質レビューで指摘・実測）。**旧形**（非稼働の code を最大にし、
+     *   稼働 2 件を作成順のまま並べる）は `orderBy('operation_status', …)` を落としても
+     *   **GREEN のまま**だった（`OK (1 test, 2 assertions)`）——非稼働の code がたまたま最大で、
+     *   code 単独の並びが既定順と一致してしまうため。「稼働中が先」の半分が未検証だった。
+     *   今回は非稼働の code を**最小**にし、稼働 2 件を**コード順の逆に作成**する:
+     *
+     *   | 変数                | 稼働状態 | code | 作成順 |
+     *   |----------------------|----------|------|--------|
+     *   | $inactive            | 非稼働   | 001  | 1 番目 |
+     *   | $activeHigherCode    | 稼働     | 003  | 2 番目 |
+     *   | $activeLowerCode     | 稼働     | 002  | 3 番目 |
+     *
+     *   - 実際の既定順: [$activeLowerCode(002), $activeHigherCode(003), $inactive(001)]
+     *   - `operation_status` を落とすと: code 昇順のみ →
+     *     [$inactive(001), $activeLowerCode(002), $activeHigherCode(003)]
+     *     （**非稼働が先頭に来て実際の既定順と食い違う**）
+     *   - `code` を落とすと: 稼働 2 件は作成順のまま →
+     *     [$activeHigherCode, $activeLowerCode, $inactive]
+     *     （**稼働 2 件の順が実際の既定順と逆転する**）
+     *   のいずれも、変異を当てて実測で赤になることを確認済み（両キーが独立に load-bearing）。
      */
     public function test_the_properties_bar_names_the_real_default_order(): void
     {
-        $inactive = $this->makeProperty(3, 'inactive');
-        $b = $this->makeProperty(2);
-        $a = $this->makeProperty(1);
+        $inactive         = $this->makeProperty(1, 'inactive');
+        $activeHigherCode = $this->makeProperty(3);
+        $activeLowerCode  = $this->makeProperty(2);
+
+        // 作成順が id 順であることを固定する（崩れると上の予測が成立しない）
+        $this->assertSame(
+            [$inactive->id, $activeHigherCode->id, $activeLowerCode->id],
+            Property::orderBy('id')->pluck('id')->all(),
+            'id 順と作成順が食い違うデータになっていない（変異の検出力の前提が崩れる）'
+        );
 
         $response = $this->actingAs($this->staff())->get(route('tenant.properties.index'));
 
         $this->assertStringContainsString('並び替え: 既定（稼働中が先・コード順）', $response->getContent());
         $this->assertSame(
-            [$a->id, $b->id, $inactive->id],
+            [$activeLowerCode->id, $activeHigherCode->id, $inactive->id],
             $response->viewData('properties')->pluck('id')->all(),
             'バーの文言と実際の並びが食い違っている'
         );
@@ -123,23 +150,62 @@ class SortBarTest extends AreaBuildingTestCase
     /**
      * 部屋一覧の既定順の**文言と実際の並びが揃っている**こと。
      *
-     * ⚠ **GAP チェック**: `UnitController::applySort()` が無条件に末尾へ付ける既定順は
+     * ⚠ **GAP チェック**: `UnitController::applySort()` が無条件に付ける既定順は
      *   `orderBy('units.property_id')->orderBy('units.floor')->orderBy('units.room_number')`。
-     *   階数の昇順が作成順と食い違うようにしてある
-     *   （`UnitListSortTest::test_the_default_order_is_unchanged` と同じ作り方）。
+     *
+     * ⚠ **フィクスチャは 3 つの orderBy キーそれぞれが単独で検出力を持つように組んである**
+     *   （2026-08-28 コード品質レビューで指摘・実測）。**旧形**（物件 1 件・階数だけを作成順と
+     *   食い違わせる）は、`property_id` を落としても物件が 1 件しかないので**GREEN のまま**、
+     *   `room_number` を落としても階数だけで一意に決まるので**GREEN のまま**だった
+     *   （「物件・階」の 2 キーが未検証だった）。今回は物件を 2 件にし、
+     *   階の跨ぎ方・同一階の部屋番号を意図的に食い違わせる:
+     *
+     *   | 変数 | 物件 | 階 | 部屋番号 | 作成順 |
+     *   |------|------|----|----------|--------|
+     *   | $u1  | P1   | 5  | "301"    | 1 番目 |
+     *   | $u2  | P1   | 5  | "105"    | 2 番目 |
+     *   | $u3  | P1   | 2  | "902"    | 3 番目 |
+     *   | $v1  | P2   | 1  | "101"    | 4 番目 |
+     *
+     *   - $u1/$u2 は**同一物件・同一階**を部屋番号の逆順に作成（room_number を落とすと検出）
+     *   - $u3 は**部屋番号の大小が階の大小と逆**（"902" は文字列として最大だが階は最小の 2。
+     *     floor を落とすと検出）
+     *   - $v1 は P1 のどの階よりも小さい階 1 を、作成順で id が大きい P2 に置く
+     *     （property_id を落とすと検出）
+     *
+     *   実際の既定順: [$u3, $u2, $u1, $v1]
+     *   - `property_id` を落とすと: 階昇順のみ（物件を跨いで比較）→
+     *     [$v1(1), $u3(2), $u2(5,"105"), $u1(5,"301")]（**$v1 が先頭に来て食い違う**）
+     *   - `floor` を落とすと: 物件→部屋番号のみ → P1 内は "105"<"301"<"902" なので
+     *     [$u2, $u1, $u3, $v1]（**P1 内の順がまるごと変わる**）
+     *   - `room_number` を落とすと: 物件→階のみ、同一階内は作成順（$u1→$u2）→
+     *     [$u3, $u1, $u2, $v1]（**$u1/$u2 が実際の既定順と逆転する**）
+     *   のいずれも、変異を当てて実測で赤になることを確認済み（3 キーとも独立に load-bearing）。
+     *   ⚠ room_number は文字列比較（`'101' < '105' < '202'` の桁ごと比較）。本フィクスチャは
+     *   全て 3 桁の部屋番号にそろえ、数値表記との混同を避けている。
      */
     public function test_the_units_bar_names_the_real_default_order(): void
     {
-        $property = $this->makeProperty(1);
-        $c = $this->makeUnit($property, '301', 3);
-        $a = $this->makeUnit($property, '101', 1);
-        $b = $this->makeUnit($property, '201', 2);
+        $p1 = $this->makeProperty(1);
+        $u1 = $this->makeUnit($p1, '301', 5);
+        $u2 = $this->makeUnit($p1, '105', 5);
+        $u3 = $this->makeUnit($p1, '902', 2);
+
+        $p2 = $this->makeProperty(2);
+        $v1 = $this->makeUnit($p2, '101', 1);
+
+        // 作成順が id 順であることを固定する（崩れると上の予測が成立しない）
+        $this->assertSame(
+            [$u1->id, $u2->id, $u3->id, $v1->id],
+            Unit::orderBy('id')->pluck('id')->all(),
+            'id 順と作成順が食い違うデータになっていない（変異の検出力の前提が崩れる）'
+        );
 
         $response = $this->actingAs($this->staff())->get(route('tenant.units.index'));
 
         $this->assertStringContainsString('並び替え: 既定（物件・階・部屋番号順）', $response->getContent());
         $this->assertSame(
-            [$a->id, $b->id, $c->id],
+            [$u3->id, $u2->id, $u1->id, $v1->id],
             $response->viewData('units')->pluck('id')->all(),
             'バーの文言と実際の並びが食い違っている'
         );
