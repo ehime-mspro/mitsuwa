@@ -5,6 +5,9 @@ namespace Tests\Feature;
 use App\Enums\UserRole;
 use App\Http\Controllers\Tenant\PropertyController;
 use App\Http\Controllers\Tenant\UnitController;
+use App\Models\AreaBuilding;
+use App\Models\Property;
+use App\Models\Unit;
 use App\Models\User;
 use App\Services\Tenant\AreaBuildingListService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -165,6 +168,16 @@ class SortableListWiringTest extends TestCase
      * ⚠ 経営層ユーザーは department.access ミドルウェアを素通りする
      *   （CheckDepartmentAccess::handle()）ので、3 画面とも部門の紐付けは要らない
      *   （UnitListSortTest / PropertyListSortTest と同じ流儀）。
+     *
+     * ⚠ **各画面に最低 1 行のデータが要る**（Bug #22/#25/#26/#27 と同型の実測済みの罠）。
+     *   AreaBuildingListService::applySort() の欠落検出は Collection::partition() の
+     *   コールバック（＝ sortValue()）が実行されて初めて起きるが、partition() は
+     *   空コレクションではコールバックを 1 度も呼ばない。0 件のまま `?sort=<未知キー>` を
+     *   叩いても UnhandledMatchError は発火せず静かに 200 が返る（実測: 8 番目のキーを
+     *   match アーム無しで追加する変異が、行を作らないままだと検出できなかった）。
+     *   部屋一覧・物件一覧の欠落検出はクエリ組み立て時（SORT_COLUMNS[$key] の配列アクセス）
+     *   に起きるため行数に依存しないが、**3 画面とも同じ流儀で最低 1 行作る**
+     *   （どの画面が将来 per-row 化されても素通りしないため）。
      */
     public function test_every_sort_column_can_be_requested_without_erroring(): void
     {
@@ -172,6 +185,8 @@ class SortableListWiringTest extends TestCase
             'role'                 => UserRole::Executive->value,
             'must_change_password' => false,
         ]);
+
+        $this->seedOneRowPerScreen();
 
         $definingClasses = $this->classesDefiningSortColumns();
 
@@ -200,6 +215,41 @@ class SortableListWiringTest extends TestCase
                 }
             }
         }
+    }
+
+    /**
+     * 3 画面それぞれに最低 1 行を作る。
+     *
+     * ⚠ **これが無いと周辺ビル調査の match アーム欠落を検出できない**（実測。
+     *   test_every_sort_column_can_be_requested_without_erroring() の docblock を参照）。
+     *   部屋一覧・物件一覧は行数に依存しない欠落検出だが、3 画面とも同じ流儀で揃える。
+     */
+    private function seedOneRowPerScreen(): void
+    {
+        AreaBuilding::create(['name' => '配線検査用ビル']);
+
+        $property = Property::create([
+            'code'             => 'T-WIRE01',
+            'name'             => '配線検査用物件',
+            'property_type'    => 'tenant',
+            'department'       => 'tenant',
+            'operation_status' => 'active',
+            'address'          => '愛媛県松山市本町1-1',
+        ]);
+
+        Unit::create([
+            'property_id'      => $property->id,
+            'floor'            => 1,
+            'room_number'      => '101',
+            'display_name'     => '101',
+            'status'           => 'vacant',
+            'area_tsubo'       => 20.00,
+            'rent'             => 100000,
+            'common_fee'       => 10000,
+            'garbage_fee'      => 2000,
+            'pest_control_fee' => 1000,
+            'deposit'          => 200000,
+        ]);
     }
 
     /**
