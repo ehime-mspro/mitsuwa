@@ -64,6 +64,20 @@ class ParsesSortLinksTest extends TestCase
         $this->sortLinkFor('<a href="/x"><span>家賃</span></a>', '面積');
     }
 
+    /**
+     * **広げすぎていないことの証明③**: 1 つでも <span> 以外のタグは許さない。
+     *
+     * ⚠ ①の svg は開始・終了の **2 タグ**なので「タグは 1 つまで」しか固定できておらず、
+     *   `(?:<span\b[^>]*>\s*)?` を `(?:<[^>]*>\s*)?` へ広げる変異が**全テスト緑のまま通った**（実測）。
+     *   1 タグの非 span を対で置いて初めて「span だけ」が固定される。
+     */
+    public function test_it_refuses_a_link_that_wraps_the_label_in_a_tag_other_than_span(): void
+    {
+        $this->expectException(AssertionFailedError::class);
+
+        $this->sortLinkFor('<a href="/x"><b>面積</b></a>', '面積');
+    }
+
     /** <th> の中身をそのまま返すヘルパ（案A の矢印の色を列ごとに測るのに使う） */
     public function test_th_inner_returns_the_cell_contents(): void
     {
