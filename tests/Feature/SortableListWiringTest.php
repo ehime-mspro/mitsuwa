@@ -2,8 +2,12 @@
 
 namespace Tests\Feature;
 
+use App\Enums\UserRole;
 use App\Http\Controllers\Tenant\PropertyController;
 use App\Http\Controllers\Tenant\UnitController;
+use App\Models\User;
+use App\Services\Tenant\AreaBuildingListService;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
@@ -19,6 +23,8 @@ use Tests\TestCase;
  */
 class SortableListWiringTest extends TestCase
 {
+    use RefreshDatabase;
+
     /**
      * 見出しの column を照合するラベル表と、その画面の見出しの本数。
      *
@@ -28,6 +34,23 @@ class SortableListWiringTest extends TestCase
     private const SORT_COLUMN_SOURCES = [
         'tenant/properties/index.blade.php' => [PropertyController::class, 2],
         'tenant/units/index.blade.php'      => [UnitController::class, 3],
+    ];
+
+    /**
+     * 並び替えを実行するクラス → [一覧の URL, SORT_COLUMNS の列数]。
+     *
+     * ⚠ SORT_COLUMN_SOURCES とは軸が違う（あちらは「ビュー → 見出しの列数」、
+     *   こちらは「SORT_COLUMNS を定義するクラス → 一覧 URL」）。ビューがまだ
+     *   <x-sortable-th> を持たない画面（周辺ビル調査。Task 7 待ち）でも、
+     *   コントローラ／サービスが SORT_COLUMNS さえ持っていればここに登録できる。
+     * ⚠ **ここに無ければ test_every_sort_column_can_be_requested_without_erroring() が
+     *   落ちる**（classesDefiningSortColumns() が app/ 全体を機械的に走査して
+     *   突き合わせるため。Bug #45 ①「全件分類」）。
+     */
+    private const SORT_ENDPOINTS = [
+        AreaBuildingListService::class => ['/tenant/area-buildings', 7],
+        UnitController::class          => ['/tenant/units', 3],
+        PropertyController::class      => ['/tenant/properties', 2],
     ];
 
     public function test_every_sortable_list_carries_the_sort_in_its_filter_form(): void
@@ -117,6 +140,101 @@ class SortableListWiringTest extends TestCase
             $found,
             'ラベル表に登録済みのビューが走査で見つからない（ビューを消したか、表が古い）'
         );
+    }
+
+    /**
+     * SORT_COLUMNS の全キーが、実際に並べ替えを最後まで実行できること（設計 §7.1 の逆方向）。
+     *
+     * ⚠ **test_every_sortable_header_names_a_column_that_exists_in_its_label_map() は
+     *   一方向しか見ていない。** あちらは「見出しの column が SORT_COLUMNS に載っているか」
+     *   （ビュー → 定義）だけを確認しており、「SORT_COLUMNS の全キーが実際に並べ替えを
+     *   最後まで実行できるか」（定義 → 実行）は誰も見ていなかった。SORT_COLUMNS（許可リスト・
+     *   ラベル）と、実際に並べ替えを行うコード（match 式・SQL 式・attribute 参照）は
+     *   **別の場所に書かれている**ため、キーを足して片方を書き忘れても許可リストは
+     *   通ってしまい、その列を押した瞬間だけ 500 になる。壊れ方は画面ごとに違う
+     *   （周辺ビル調査は AreaBuildingListService::sortValue() の match に default アームが
+     *   無く UnhandledMatchError、部屋一覧は SORT_COLUMNS 自身の 'expr' キー欠落で
+     *   ErrorException、物件一覧は 'attribute' キー欠落で同種の未定義キーアクセス）が、
+     *   「許可リストは通るのに実行だけ落ちる」という構図は共通している。
+     *
+     * ⚠ **対象クラスは grep で全件分類する**（Bug #45 ①）。「知っている 3 画面」を
+     *   手で列挙すると、4 画面目が SORT_COLUMNS を持って追加されても検査対象に入らず
+     *   永遠に緑になる。`public const SORT_COLUMNS =` を定義するクラスを app/ 全体から
+     *   機械的に拾い、SORT_ENDPOINTS に登録されていなければ落とす。
+     *
+     * ⚠ 経営層ユーザーは department.access ミドルウェアを素通りする
+     *   （CheckDepartmentAccess::handle()）ので、3 画面とも部門の紐付けは要らない
+     *   （UnitListSortTest / PropertyListSortTest と同じ流儀）。
+     */
+    public function test_every_sort_column_can_be_requested_without_erroring(): void
+    {
+        $user = User::factory()->create([
+            'role'                 => UserRole::Executive->value,
+            'must_change_password' => false,
+        ]);
+
+        $definingClasses = $this->classesDefiningSortColumns();
+
+        // ⚠ 走査が空振りして緑になる事故を防ぐ（Bug #45）
+        $this->assertCount(
+            3,
+            $definingClasses,
+            'SORT_COLUMNS を定義するクラスの数が変わった（走査漏れ、または画面の増減）'
+        );
+
+        $this->assertEqualsCanonicalizing(
+            array_keys(self::SORT_ENDPOINTS),
+            $definingClasses,
+            'SORT_COLUMNS を定義するクラスが SORT_ENDPOINTS に登録されていない（新しい並び替え画面を追加したら、ここにも登録すること）'
+        );
+
+        foreach (self::SORT_ENDPOINTS as $class => [$url, $expectedCount]) {
+            $keys = array_keys($class::SORT_COLUMNS);
+            $this->assertCount($expectedCount, $keys, "{$class}::SORT_COLUMNS の列数が変わっている");
+
+            foreach ($keys as $key) {
+                foreach (['asc', 'desc'] as $dir) {
+                    $this->actingAs($user)
+                        ->get("{$url}?sort={$key}&dir={$dir}")
+                        ->assertOk();
+                }
+            }
+        }
+    }
+
+    /**
+     * `public const SORT_COLUMNS =` を定義しているクラスを app/ 全体から機械的に拾う。
+     *
+     * ⚠ PSR-4（`App\` => `app/`）でファイルパスから直接クラス名を導く。
+     *   namespace / class 宣言を別途パースする必要が無く、取りこぼしにくい。
+     *
+     * @return list<class-string>
+     */
+    private function classesDefiningSortColumns(): array
+    {
+        $found = [];
+        $root  = app_path() . DIRECTORY_SEPARATOR;
+
+        $files = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator(app_path(), \FilesystemIterator::SKIP_DOTS)
+        );
+
+        foreach ($files as $file) {
+            if (! str_ends_with($file->getFilename(), '.php')) {
+                continue;
+            }
+
+            if (! preg_match('/public const SORT_COLUMNS\s*=/', file_get_contents($file->getPathname()))) {
+                continue;
+            }
+
+            $relative = str_replace($root, '', $file->getPathname());
+            $found[] = 'App\\' . str_replace(['/', '.php'], ['\\', ''], $relative);
+        }
+
+        sort($found);
+
+        return $found;
     }
 
     /**

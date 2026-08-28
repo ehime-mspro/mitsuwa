@@ -4,7 +4,6 @@ namespace Tests\Feature\Tenant;
 
 use App\Models\AreaBuilding;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Tests\Concerns\ParsesSortLinks;
 
 /**
  * 周辺ビル調査の並び替え（設計書 2026-08-28 §4）。
@@ -18,7 +17,6 @@ use Tests\Concerns\ParsesSortLinks;
  */
 class AreaBuildingListSortTest extends AreaBuildingTestCase
 {
-    use ParsesSortLinks;
     use RefreshDatabase;
 
     /**
@@ -155,6 +153,40 @@ class AreaBuildingListSortTest extends AreaBuildingTestCase
         // 最終調査: D だけが「—」
         $this->assertSame(['Aビル', 'Cビル', 'Bビル', 'Dビル'], $get('sort=month&dir=desc'));
         $this->assertSame(['Bビル', 'Cビル', 'Aビル', 'Dビル'], $get('sort=month&dir=asc'));
+    }
+
+    /**
+     * 「—」が複数あるとき、末尾ブロックの**内部の並び**も名前の昇順（既定順）のまま。
+     *
+     * ⚠ 直前の test_blank_values_stay_at_the_end_in_both_directions() は列ごとに
+     *   ちょうど 1 棟しか「—」を作らないため、末尾ブロックの**内部の順序**は
+     *   一度も運動していない（applySort() の `concat($blank)` を
+     *   `concat($blank->reverse())` に変えても、あのテストだけでは全テスト緑のまま通る）。
+     * ⚠ **id 順と名前順をわざと食い違わせる**（test_tied_rows_keep_the_building_name_order
+     *   と同じ理屈）。3 棟とも total_floors が null（未調査）なので、'floors' で並べると
+     *   3 棟とも partition() の「—」側に落ち、「値あり」側は空になる —— つまりこのテストが
+     *   確かめているのは「—」ブロック**内部**の順序だけで、「値あり」側の並べ替えとは無関係。
+     */
+    public function test_multiple_blank_rows_keep_the_building_name_order_among_themselves(): void
+    {
+        $this->makeBuilding('Zビル');   // total_floors null
+        $this->makeBuilding('Aビル');   // total_floors null
+        $this->makeBuilding('Mビル');   // total_floors null
+
+        $this->assertSame(
+            ['Zビル', 'Aビル', 'Mビル'],
+            AreaBuilding::orderBy('id')->pluck('name')->all(),
+            'id 順と名前順が食い違うデータになっていない（変異が検出できなくなる）'
+        );
+
+        $staff    = $this->staff();
+        $expected = ['Aビル', 'Mビル', 'Zビル'];   // 名前の昇順（既定順）
+
+        $desc = $this->listedNames($this->actingAs($staff)->get('/tenant/area-buildings?sort=floors&dir=desc'));
+        $asc  = $this->listedNames($this->actingAs($staff)->get('/tenant/area-buildings?sort=floors&dir=asc'));
+
+        $this->assertSame($expected, $desc, '降順での「—」ブロック内部の並びが名前の昇順になっていない');
+        $this->assertSame($expected, $asc, '昇順での「—」ブロック内部の並びが名前の昇順になっていない');
     }
 
     /**
