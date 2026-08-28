@@ -26,15 +26,18 @@ use Illuminate\Database\QueryException;
 class PropertyController extends Controller
 {
     /**
-     * 物件一覧で並び替えを許す列 → calculatePropertyStats() が入れる属性の名前。
+     * 物件一覧で並び替えを許す列。
      *
-     * ⚠ **許可リストはここ 1 箇所だけ。** ListSort::fromRequest() には array_keys() を渡す。
-     *   三項演算子で書くと、キーを足したときに**黙って賃料収入で並んでしまう**
-     *   （落ちないので画面から気づけない）。
+     * ⚠ **許可リストもラベルもここ 1 箇所だけ。** ListSort::fromRequest() には array_keys() を渡し、
+     *   ビュー（見出しとバー）にはこの配列そのものを渡す。三項演算子で書くと、
+     *   キーを足したときに**黙って賃料収入で並んでしまう**（落ちないので画面から気づけない）。
+     *
+     * ⚠ `desc` / `asc` は**バーに出る「向きの言い方」**（設計書 §6）。
+     * ⚠ `attribute` は Property に生えるメモリ上の属性（実カラムではない）。
      */
-    private const SORTABLE = [
-        'occupancy' => 'occupancy_rate',
-        'income' => 'rental_income',
+    public const SORT_COLUMNS = [
+        'occupancy' => ['label' => '入居率',   'desc' => '高い順', 'asc' => '低い順',   'attribute' => 'occupancy_rate'],
+        'income'    => ['label' => '賃料収入', 'desc' => '多い順', 'asc' => '少ない順', 'attribute' => 'rental_income'],
     ];
 
     /**
@@ -43,7 +46,7 @@ class PropertyController extends Controller
      */
     public function index(Request $request)
     {
-        $sort = ListSort::fromRequest($request, array_keys(self::SORTABLE));
+        $sort = ListSort::fromRequest($request, array_keys(self::SORT_COLUMNS));
 
         $query = Property::where('department', DepartmentCode::Tenant)
             ->with([
@@ -91,7 +94,9 @@ class PropertyController extends Controller
             20
         );
 
-        return view('tenant.properties.index', compact('properties', 'sort'));
+        $sortColumns = self::SORT_COLUMNS;
+
+        return view('tenant.properties.index', compact('properties', 'sort', 'sortColumns'));
     }
 
     /**
@@ -111,7 +116,7 @@ class PropertyController extends Controller
      */
     private function sortProperties(Collection $properties, ListSort $sort): Collection
     {
-        $field = self::SORTABLE[$sort->key];
+        $field = self::SORT_COLUMNS[$sort->key]['attribute'];
 
         $withValue = $properties->filter(fn (Property $p) => $p->{$field} !== null);
         $withoutValue = $properties->filter(fn (Property $p) => $p->{$field} === null);

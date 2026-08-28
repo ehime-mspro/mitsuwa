@@ -22,22 +22,29 @@ use Illuminate\Validation\Rule;
 class UnitController extends Controller
 {
     /**
-     * 部屋一覧で並び替えを許す列 → [SQL 式, 「—」を末尾へ回すか]。
+     * 部屋一覧で並び替えを許す列。
      *
-     * ⚠ **許可リストはここ 1 箇所だけ。** ListSort::fromRequest() には array_keys() を渡す。
-     *   許可リストと式のマップを別々のリテラルで持つと、キーを足して片方を忘れたときに
-     *   一覧が 500 になる。しかも「不正なキーを投げる」テストでは**この向きの取り違えを
-     *   原理的に検出できない**（不正キーは既定順に落ちるだけなので）。
+     * ⚠ **許可リストもラベルもここ 1 箇所だけ。** ListSort::fromRequest() には array_keys() を渡し、
+     *   ビュー（見出しとバー）にはこの配列そのものを渡す。許可リスト・SQL 式・日本語ラベルを
+     *   別々のリテラルで持つと、キーを足して片方を忘れたときに一覧が 500 になる。しかも
+     *   「不正なキーを投げる」テストでは**この向きの取り違えを原理的に検出できない**
+     *   （不正キーは既定順に落ちるだけなので）。
      *
-     * ⚠ 「—」を末尾へ回すのは**画面に「—」と出る列だけ**（設計書 §4.4）。
+     * ⚠ `desc` / `asc` は**バーに出る「向きの言い方」**（設計書 §6）。列ごとに語が違う
+     *   （率は「高い/低い」、件数は「多い/少ない」、日付は「新しい/古い」）。
+     *
+     * ⚠ `nullsLast` ＝ 「—」を末尾へ回すかは**画面に「—」と出る列だけ**（前設計書 §4.4）。
      *   units.rent は nullable だが、ビューは number_format(null) で **「0円」**と描画するので、
      *   末尾へ飛ばさず COALESCE で 0 として並べる。ここを揃え損なうと
      *   「画面は 0円 なのにその行だけ末尾に飛ぶ」という食い違いになる（Bug #41 / #46）。
      */
-    private const SORTABLE = [
-        'area' => ['units.area_tsubo', true],           // NULL は画面で「—」  → 末尾へ
-        'rent' => ['COALESCE(units.rent, 0)', false],   // NULL は画面で「0円」→ 0 として
-        'monthly' => [Unit::MONTHLY_TOTAL_SQL, false],  // COALESCE 済みで NULL になりえない
+    public const SORT_COLUMNS = [
+        // NULL は画面で「—」→ 末尾へ
+        'area'    => ['label' => '面積',     'desc' => '広い順', 'asc' => '狭い順', 'expr' => 'units.area_tsubo', 'nullsLast' => true],
+        // NULL は画面で「0円」→ 0 として
+        'rent'    => ['label' => '家賃',     'desc' => '高い順', 'asc' => '安い順', 'expr' => 'COALESCE(units.rent, 0)', 'nullsLast' => false],
+        // COALESCE 済みで NULL になりえない
+        'monthly' => ['label' => '月額合計', 'desc' => '高い順', 'asc' => '安い順', 'expr' => Unit::MONTHLY_TOTAL_SQL, 'nullsLast' => false],
     ];
 
     /**
@@ -46,7 +53,7 @@ class UnitController extends Controller
      */
     public function index(Request $request)
     {
-        $sort = ListSort::fromRequest($request, array_keys(self::SORTABLE));
+        $sort = ListSort::fromRequest($request, array_keys(self::SORT_COLUMNS));
 
         // テナント物件に属する区画を取得
         $query = Unit::whereHas('property', function ($q) {
@@ -91,22 +98,24 @@ class UnitController extends Controller
             return (string) $id;
         })->values()->toArray();
 
-        return view('tenant.units.index', compact('units', 'properties', 'propertyIdsForJs', 'sort'));
+        $sortColumns = self::SORT_COLUMNS;
+
+        return view('tenant.units.index', compact('units', 'properties', 'propertyIdsForJs', 'sort', 'sortColumns'));
     }
 
     /**
      * 部屋一覧の並び替えを適用する。指定が無ければ既定順だけを付ける。
      *
-     * ⚠ 「—」を末尾へ回す判断は列ごとに違う。理由は @see self::SORTABLE に書いてある
+     * ⚠ 「—」を末尾へ回す判断は列ごとに違う。理由は @see self::SORT_COLUMNS に書いてある
      *   （同じ規範を 2 箇所へ写すと片方だけ直す事故が起きる。Bug #41 / #46）。
      *
-     * ⚠ 許可リストを通った値しか来ないので、self::SORTABLE のキーは必ず存在し、
+     * ⚠ 許可リストを通った値しか来ないので、self::SORT_COLUMNS のキーは必ず存在し、
      *   式は必ずコード内の定数。利用者の入力が SQL に混ざる経路は無い。
      */
     private function applySort(Builder $query, ?ListSort $sort): void
     {
         if ($sort !== null) {
-            [$expression, $nullsLast] = self::SORTABLE[$sort->key];
+            ['expr' => $expression, 'nullsLast' => $nullsLast] = self::SORT_COLUMNS[$sort->key];
 
             if ($nullsLast) {
                 $query->orderByRaw("({$expression} IS NULL) asc");

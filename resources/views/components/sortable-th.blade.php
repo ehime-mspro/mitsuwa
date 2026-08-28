@@ -1,22 +1,28 @@
-{{-- 並び替えできる列見出し（設計書 §4.2 / §5.6）
+{{-- 並び替えできる列見出し（前設計書 §4.2 / §5.6、設計書 2026-08-28 §7.1）
 
 使い方:
-  <x-sortable-th column="area" label="面積" :sort="$sort" align="right" link-style="padding: 14px 20px;" />
-  <x-sortable-th column="occupancy" label="入居率" :sort="$sort" link-class="px-4 py-3 lg:px-5 lg:py-3.5" />
+  <x-sortable-th column="area" :sort="$sort" :columns="$sortColumns" align="right" link-style="padding: 14px 20px;" />
+  <x-sortable-th column="occupancy" :sort="$sort" :columns="$sortColumns" link-class="px-4 py-3 lg:px-5 lg:py-3.5" />
 
 props:
   column     … ?sort に載るキー（コントローラの許可リストと揃える）
-  label      … 見出しの文字
+  columns    … その画面の SORT_COLUMNS（日本語ラベルと「向きの言い方」）
   sort       … App\Support\ListSort|null（コントローラから渡す）
   align      … left | center | right（既定 center）。<th> の text-align と <a> の justify-content
   linkClass  … <a> に足すクラス。**パディングはここ**（Tailwind の responsive を使いたい画面用）
   linkStyle  … <a> に足す inline style。**パディングはここ**（inline style で組まれた画面用）
 
+⚠ **ラベルはここに書かない。** バー（x-sort-bar）が同じ列名を出すので、
+   2 箇所に文字列を置くと片方だけ直す事故が起きる（Bug #41 / #46）。
+⚠ column を打ち間違えると `$columns[$column]` が未定義になり、Laravel が警告を
+   ErrorException へ変えて**この画面が 500 になる**。黙って既定順へ落ちるより良い
+   （設計書 §7.1）。配線は SortableListWiringTest が静的に守っている。
 ⚠ 属性式に &quot; を書かないこと。本番の view:cache でだけ 500 になる（Bug #21）。
 ⚠ パディングは <th> ではなく中の <a> に載せる。**見出しセル全体を押せるようにするため**で、
    <th> 側に残すと文字の上しか反応しない。HTML を見ても分からないので画面で確かめる（Bug #43）。
 ⚠ **<a> の中は「ラベル → 矢印」の順にする。** テストの sortLinkFor() が
-   <a …> の直後にラベルが来ることを要求しているので、矢印を先に置くとリンクを見つけられない。
+   <a …> の直後（span 1 つは可）にラベルが来ることを要求しているので、矢印を先に置くと
+   リンクを見つけられない。
 ⚠ JS は 1 行も使わない。ただのリンク。
 ⚠ `color` は inline style なので `hover:text-*` / `focus:text-*` は**効かない**（inline が勝つ）。
    文字色を状態で変えたいなら inline 側を CSS 変数にするか app.css へ逃がすこと。
@@ -25,13 +31,14 @@ props:
 --}}
 @props([
     'column',
-    'label',
+    'columns',
     'sort' => null,
     'align' => 'center',
     'linkClass' => '',
     'linkStyle' => '',
 ])
 @php
+    $label = $columns[$column]['label'];
     $state = \App\Support\ListSort::stateOf($sort, $column);
 
     $ariaSort = match ($state) {

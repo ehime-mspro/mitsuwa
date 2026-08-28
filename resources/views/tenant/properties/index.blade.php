@@ -67,8 +67,8 @@
                             <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-left text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">物件名</th>
                             <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">稼働</th>
                             <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">所有者</th>
-                            <x-sortable-th column="occupancy" label="入居率" :sort="$sort" align="center" link-class="px-4 py-3 lg:px-5 lg:py-3.5" />
-                            <x-sortable-th column="income" label="賃料収入" :sort="$sort" align="center" link-class="px-4 py-3 lg:px-5 lg:py-3.5" />
+                            <x-sortable-th column="occupancy" :sort="$sort" :columns="$sortColumns" align="center" link-class="px-4 py-3 lg:px-5 lg:py-3.5" />
+                            <x-sortable-th column="income" :sort="$sort" :columns="$sortColumns" align="center" link-class="px-4 py-3 lg:px-5 lg:py-3.5" />
                             <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">操作</th>
                         </tr>
                     </thead>
