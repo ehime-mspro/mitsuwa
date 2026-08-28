@@ -98,7 +98,8 @@ class AreaBuildingListService
      *   `ORDER BY area_buildings.name, area_buildings.id` で引いており、
      *   map() / filter() は順序を保つので、**ここに並べ替えを書かないことがビル名の昇順**
      *   （設計書 2026-08-28 §4.4。利用者の依頼で従来の「空室率の降順」から変更）。
-     *   従来の順は「空室率」の見出しを 1 回押せば戻る。
+     *   従来の順は失われていない —— Task 6 で空室率を並び替えできる列にするので、
+     *   見出しを 1 回押せば戻せるようになる。
      *
      * @return Collection<int, array{building: AreaBuilding, month: ?Carbon, operating: ?int, vacant: ?int, unknown: ?int, rate: ?float, occupancy_label: string, rate_label: string}>
      */

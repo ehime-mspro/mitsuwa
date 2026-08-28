@@ -92,11 +92,14 @@ class AreaBuildingListTest extends AreaBuildingTestCase
 
         $staff = $this->staff();
 
-        // ⚠ **このテストは並び順を守っていない。** 既定順がビル名の昇順になっても結果が同じで
-        //   （'入居50' < '入居70' < '入居90' がたまたま率の降順と一致する）、
-        //   **緑のままなので検出力がゼロ**。並び順の固定は
-        //   test_the_default_order_is_the_building_name_ascending と AreaBuildingListSortTest が行う。
-        //   ここが見ているのは**絞り込みの帯**だけ。
+        // ⚠ **このテストは並び順を見ている**（assertSame は配列を並び順まで比較する)。
+        //   実測: baseQuery() の orderBy('area_buildings.name') を落として
+        //   orderBy('area_buildings.id') だけにする変異で、1013 本中このテストだけが赤くなる。
+        //   ただし**新旧の既定順(名前の昇順 ⇔ 空室率の降順)を区別する力は無い** ——
+        //   このデータでは '入居50' < '入居70' < '入居90' が名前の昇順でも空室率の降順でも
+        //   たまたま同じ並びになるため(旧既定順に戻す変異では緑のまま)。
+        //   新旧の既定順を区別する固定は test_the_default_order_is_the_building_name_ascending が行う。
+        //   ここが本来見ているのは**絞り込みの帯**で、並び順を守っているのは副産物。
         $this->assertSame(
             ['入居100'],
             $this->listedNames($this->actingAs($staff)->get('/tenant/area-buildings?occupancy=full'))
@@ -320,21 +323,26 @@ class AreaBuildingListTest extends AreaBuildingTestCase
      * 既定の並び順はビル名の昇順（設計書 2026-08-28 §4.4。利用者の依頼で変更）。
      *
      * ⚠ 従来は空室率の降順・未調査は末尾だった。**その順は失われていない** ——
-     *   空室率は並び替えできる列になったので、見出しを 1 回押せば戻る。
-     *   その対の固定は AreaBuildingListSortTest::test_the_old_default_order_is_still_reachable()。
+     *   Task 6 で空室率を並び替えできる列にするので、見出しを 1 回押せば戻せるようになる。
+     *   その対の固定は AreaBuildingListSortTest::test_the_old_default_order_is_still_reachable()
+     *   （Task 6 で追加）。
      *
-     * ⚠ データは名前順と率順が**わざと食い違う**（率順なら う→い→え→あ）。
-     *   揃えると「並べ替えを消しただけ」の変異が緑のまま通る。
+     * ⚠ データは名前順・率順・**作成順(id 順)の 3 つが互いに食い違う**
+     *   （名前順 あ→い→う→え／率順 う→い→え→あ／作成順 え→う→い→あ）。
+     *   名前順と作成順を一致させると、baseQuery() の `orderBy('area_buildings.name')` を
+     *   丸ごと削って `orderBy('area_buildings.id')` だけにする変異が、たまたま作成順のまま
+     *   出力されて気づかれず緑のまま通る(実測済み)。3 つとも食い違わせることで、
+     *   その変異にも赤くなる。
      *
      * ⚠ 漢字は「読み」ではなく文字コード順に並ぶ（読みがな列が無い。設計書 §4.4）。
      *   かな 4 文字なので SQLite（BINARY）と MySQL（utf8mb4_unicode_ci）で順は一致する。
      */
     public function test_the_default_order_is_the_building_name_ascending(): void
     {
-        $this->makeBuilding('あ未調査');
-        $this->makeSurvey($this->makeBuilding('い率10'), '2026-08-01', 9, 1);
-        $this->makeSurvey($this->makeBuilding('う率50'), '2026-08-01', 5, 5);
         $this->makeSurvey($this->makeBuilding('え率0'), '2026-08-01', 8, 0);
+        $this->makeSurvey($this->makeBuilding('う率50'), '2026-08-01', 5, 5);
+        $this->makeSurvey($this->makeBuilding('い率10'), '2026-08-01', 9, 1);
+        $this->makeBuilding('あ未調査');
 
         $response = $this->actingAs($this->staff())->get('/tenant/area-buildings');
 
@@ -491,5 +499,52 @@ class AreaBuildingListTest extends AreaBuildingTestCase
         }
 
         return $out;
+    }
+
+    /**
+     * 設計の中心ルール「PHP 側では並べ替えない」の構造ガード。
+     *
+     * ⚠ 値テストだけでは守れない。`rows()` に `->sortBy('building.name')` を足しても
+     *   既存の値テストは全部緑のまま通る —— SQLite はバイト比較なのでビル名の昇順と
+     *   たまたま一致するため(実測)。本番 MySQL（utf8mb4_unicode_ci）は UCA の重みで
+     *   比較するので、PHP 側で並べ替えるとテストが緑のまま本番だけ静かに順序が変わりうる
+     *   （Bug #40 と同型）。
+     * ⚠ コメントを落としてから測る（docblock に「並べ替え」という語が繰り返し出るため。
+     *   Bug #42 ②）。
+     * ⚠ ファイル全体でなく `rows()` の中身だけを波括弧の対応で切り出して見る。
+     *   ファイル全体を見ると、将来 `rows()` 以外のメソッドが正当な理由で
+     *   `sort` を使ったときに false positive になる。
+     */
+    public function test_rows_does_not_sort_in_php(): void
+    {
+        $source = $this->sourceWithoutComments(app_path('Services/Tenant/AreaBuildingListService.php'));
+        $body   = $this->extractMethodBody($source, 'rows');
+
+        $this->assertDoesNotMatchRegularExpression('/->sort\w*\s*\(/', $body, 'rows() が PHP 側で並べ替えている（設計の中心ルールに反する）');
+    }
+
+    /** `function <name>(...) { ... }` の本体を波括弧の対応で切り出す */
+    private function extractMethodBody(string $source, string $methodName): string
+    {
+        $needle = 'function ' . $methodName . '(';
+        $start  = strpos($source, $needle);
+        $this->assertNotFalse($start, "{$methodName}() が見つからない");
+
+        $brace = strpos($source, '{', $start);
+        $this->assertNotFalse($brace, "{$methodName}() の開始 '{' が見つからない");
+
+        $depth = 0;
+        for ($i = $brace; $i < strlen($source); $i++) {
+            if ($source[$i] === '{') {
+                $depth++;
+            } elseif ($source[$i] === '}') {
+                $depth--;
+                if ($depth === 0) {
+                    return substr($source, $brace, $i - $brace + 1);
+                }
+            }
+        }
+
+        $this->fail("{$methodName}() の閉じ '}' が見つからない");
     }
 }
