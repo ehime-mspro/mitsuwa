@@ -53,7 +53,10 @@ props:
         default => 'center',
     };
 
-    $iconColor = $state === null ? '#D1D5DB' : '#059669';
+    // ⚠ #D1D5DB は見出し背景 #F9FAFB に対して 1.41:1 しかなく、UI 部品の 3:1 を大きく下回る。
+    //   #6B7280 なら 4.63:1（設計書 §2.3 の実測表）。**手掛かりの本体はこの矢印**で、
+    //   ラベルの点線下線は補強（app.css）。
+    $iconColor = $state === null ? '#6B7280' : '#059669';
     $labelColor = $state === null ? 'inherit' : '#047857';
 @endphp
 <th {{ $attributes->merge([
@@ -63,7 +66,7 @@ props:
     <a href="{{ \App\Support\ListSort::url(request(), $column, $sort) }}"
        class="{{ trim('sortable-th-link hover:bg-gray-100 transition-colors ' . $linkClass) }}"
        style="display: flex; align-items: center; justify-content: {{ $justify }}; gap: 5px; text-decoration: none; cursor: pointer; user-select: none; color: {{ $labelColor }}; {{ $linkStyle }}">
-        {{ $label }}
+        <span class="sortable-th-label">{{ $label }}</span>
         <span style="flex-shrink: 0; width: 12px; height: 12px; color: {{ $iconColor }};">
             @if($state === \App\Support\ListSort::ASC)
                 <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 15 12 8 18 15"/></svg>

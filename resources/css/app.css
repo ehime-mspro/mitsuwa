@@ -92,6 +92,30 @@
     outline-offset: -2px;
 }
 
+/* 並び替えできる列であることの手掛かり（設計書 2026-08-28 §5 / モック 案A）。
+   ⚠ **矢印の色は Blade 側の inline style にある**（#6B7280 / #059669）。color は inline が
+      勝つのでここからは変えられない。下線の色は inline に無いのでここで状態を出し分ける。
+   ⚠ 状態は <th> の aria-sort を見る。見た目用の class を別に足すと、支援技術向けの属性と
+      見た目が別々に動く（片方だけ直す事故＝ Bug #41）。
+   ⚠ 点線そのものは #9CA3AF ＝ 2.43:1 で UI 部品の 3:1 に届かない。これは承知のうえで、
+      手掛かりの本体は 4.63:1 の矢印、下線は「文字がリンクである」ことの補強として扱う
+      （濃くすると 10 列の見出しが騒がしくなる。モックで選ばれた濃さ）。
+   ⚠ 検証は「HTML にクラスが出ているか」では不可能。実ブラウザで見ること（Bug #28 / #43 / #51）。 */
+.sortable-th-label {
+    text-decoration: underline dotted #9CA3AF;
+    text-underline-offset: 4px;
+    text-decoration-thickness: 1px;
+}
+.sortable-th-link:hover .sortable-th-label {
+    text-decoration-color: #4B5563;
+}
+/* ⚠ ホバーより後に置くのが load-bearing。逆だと並び替え中の列にマウスを乗せた瞬間に
+      下線がグレーへ落ち、「今どの列で並んでいるか」の手掛かりが消える。 */
+th[aria-sort="ascending"] .sortable-th-label,
+th[aria-sort="descending"] .sortable-th-label {
+    text-decoration-color: #059669;
+}
+
 /* ===== スクロールヒント（横スクロール可能なテーブル用） ===== */
 .scroll-hint {
     position: relative;
