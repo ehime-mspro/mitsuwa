@@ -107,6 +107,37 @@ class ListSort
             $query['dir'] = $next;
         }
 
+        return self::buildUrl($request, $query);
+    }
+
+    /**
+     * 並び順だけを解除する URL（バーの「解除」。設計書 §6）。
+     *
+     * ⚠ **絞り込みは残す。** フィルタごと初期化する「クリア」ボタン（route(...) への素のリンク）
+     *   とは役割が違う。両方が同じ結果になるなら、バーに解除を出す意味が無い。
+     * ⚠ page も落とす。並びが変わるので 5 ページ目に居るのはおかしい（url() と同じ規約）。
+     */
+    public static function clearUrl(Request $request): string
+    {
+        $query = $request->query();
+        unset($query['page'], $query['sort'], $query['dir']);
+
+        return self::buildUrl($request, $query);
+    }
+
+    /**
+     * クエリ配列から URL を組み立てる。
+     *
+     * ⚠ null の値は '' へ正規化してから Arr::query() に渡す。怠ると
+     *   `?occupancy=` のような空の絞り込みが**リンクから丸ごと消える**
+     *   （実測: Arr::query(['a'=>null,'b'=>'','c'=>'x']) === 'b=&c=x'。Bug #31）。
+     * ⚠ url() と clearUrl() で**同じ正規化**を通すためにここに集約している。
+     *   片方だけ直すと、見出しリンクと解除リンクで絞り込みの残り方が食い違う。
+     *
+     * @param  array<string, mixed>  $query
+     */
+    private static function buildUrl(Request $request, array $query): string
+    {
         $queryString = Arr::query(array_map(fn ($value) => $value ?? '', $query));
 
         return $request->url() . ($queryString === '' ? '' : '?' . $queryString);

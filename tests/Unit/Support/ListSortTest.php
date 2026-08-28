@@ -163,4 +163,52 @@ class ListSortTest extends TestCase
         $this->assertStringNotContainsString('dir=', $url);
         $this->assertStringContainsString('status=vacant', $url, '絞り込みは残す');
     }
+
+    /**
+     * 「解除」は**並び順だけ**を消し、絞り込みは残す（設計書 §6）。
+     *
+     * ⚠ フィルタごと初期化する「クリア」ボタンとは役割が違う。両方が同じ結果になるなら
+     *   バーに解除を出す意味が無い。**フィルタが残ることを必ず対で見る。**
+     */
+    public function test_clear_url_removes_only_the_sort(): void
+    {
+        $request = $this->request('/tenant/area-buildings?sort=occupancy&dir=desc&occupancy=under75&year=2026');
+
+        $url = ListSort::clearUrl($request);
+
+        $this->assertStringNotContainsString('sort=', $url, '並び順が消えていない');
+        $this->assertStringNotContainsString('dir=', $url, '向きが消えていない');
+        $this->assertStringContainsString('occupancy=under75', $url, '絞り込みまで消えている（「クリア」と区別が無くなる）');
+        $this->assertStringContainsString('year=2026', $url, '絞り込みまで消えている');
+    }
+
+    /** 並べ替えを解除したら 1 ページ目へ戻す（url() と同じ規約。前設計書 §4.3-5） */
+    public function test_clear_url_drops_the_page_parameter(): void
+    {
+        $request = $this->request('/tenant/area-buildings?sort=vacancy&dir=asc&page=3');
+
+        $this->assertStringNotContainsString('page=', ListSort::clearUrl($request));
+    }
+
+    /**
+     * null の絞り込みを '' へ正規化してから組み立てる（Bug #31）。
+     *
+     * ⚠ 怠ると `?occupancy=` のような空の絞り込みが**解除リンクから丸ごと消える**
+     *   （実測: Arr::query(['a'=>null,'b'=>'','c'=>'x']) === 'b=&c=x'）。
+     */
+    public function test_clear_url_keeps_a_null_filter_by_normalising_it_to_an_empty_string(): void
+    {
+        $request = $this->request('/tenant/area-buildings?sort=vacancy');
+        $request->query->set('occupancy', null);
+
+        $this->assertStringContainsString('occupancy=', ListSort::clearUrl($request));
+    }
+
+    /** 絞り込みが 1 つも無ければ素の URL（`?` を付けない） */
+    public function test_clear_url_returns_a_bare_url_when_nothing_else_remains(): void
+    {
+        $request = $this->request('/tenant/area-buildings?sort=vacancy&dir=desc');
+
+        $this->assertSame('http://localhost/tenant/area-buildings', ListSort::clearUrl($request));
+    }
 }
