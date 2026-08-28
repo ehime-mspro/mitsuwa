@@ -76,6 +76,12 @@ class SortableListWiringTest extends TestCase
                 $source,
                 "{$relative} は並び替え見出しを持つのに、並び順を持ち回す hidden が無い"
             );
+
+            $this->assertStringContainsString(
+                '<x-sort-bar',
+                $source,
+                "{$relative} は並び替え見出しを持つのに、現在の並び順バーが無い（既定順が画面のどこにも出ない）"
+            );
         }
 
         // ⚠ 走査が空振りして緑になる事故を防ぐ（Bug #45）

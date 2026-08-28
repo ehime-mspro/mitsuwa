@@ -49,6 +49,8 @@
         </a>
     </form>
 
+    <x-sort-bar :sort="$sort" :columns="$sortColumns" default-label="稼働中が先・コード順" />
+
     {{-- テーブル --}}
     <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
         <div class="scroll-hint at-start">

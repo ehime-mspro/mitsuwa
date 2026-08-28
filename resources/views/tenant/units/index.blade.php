@@ -82,6 +82,8 @@
         </form>
     </div>
 
+    <x-sort-bar :sort="$sort" :columns="$sortColumns" default-label="物件・階・部屋番号順" />
+
     {{-- テーブル --}}
     <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
         {{-- 横スクロールヒントバー --}}

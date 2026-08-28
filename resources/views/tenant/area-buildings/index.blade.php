@@ -128,6 +128,8 @@
     @if($isMap)
         @include('tenant.area-buildings._map')
     @else
+    <x-sort-bar :sort="$sort" :columns="$sortColumns" default-label="ビル名順" />
+
     {{-- テーブル --}}
     <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
         <div class="scroll-hint at-start">
