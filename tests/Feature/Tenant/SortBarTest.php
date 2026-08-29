@@ -229,20 +229,54 @@ class SortBarTest extends AreaBuildingTestCase
      *
      * ⚠ 率は「高い/低い」、件数は「多い/少ない」、日付は「新しい/古い」。
      *   ここを 1 語に統一すると日本語として不自然になる（設計書 §4.1）。
+     *
+     * ⚠ **`aria-label` を落としてからピルを見る。** 解除リンクが
+     *   `aria-label="並び替え: 入居率 高い順 を解除"` を持つので、素の
+     *   assertStringContainsString は**ピルを丸ごと消しても緑になる**
+     *   （2026-08-29 の変異 #10 で実測。同じ文字列が 2 箇所に出る Bug #43 / #46 と同型）。
+     * ⚠ ピルと解除リンクの読み上げ名は**役割が違う**ので別々にアサートする。
+     *   まとめて見ると片方が消えても緑になる（本ファイル冒頭の ⚠ と同じ理由）。
      */
     public function test_the_bar_names_the_column_and_the_direction(): void
     {
         $this->makeBuilding('Aビル');
         $staff = $this->staff();
 
-        $get = fn (string $q) => $this->actingAs($staff)->get('/tenant/area-buildings?' . $q)->getContent();
+        $cases = [
+            'sort=occupancy&dir=desc' => '入居率 高い順',
+            'sort=occupancy&dir=asc'  => '入居率 低い順',
+            'sort=floors&dir=desc'    => '総階数 多い順',
+            'sort=floors&dir=asc'     => '総階数 少ない順',
+            'sort=month&dir=desc'     => '最終調査 新しい順',
+            'sort=month&dir=asc'      => '最終調査 古い順',
+        ];
 
-        $this->assertStringContainsString('並び替え: 入居率 高い順', $get('sort=occupancy&dir=desc'));
-        $this->assertStringContainsString('並び替え: 入居率 低い順', $get('sort=occupancy&dir=asc'));
-        $this->assertStringContainsString('並び替え: 総階数 多い順', $get('sort=floors&dir=desc'));
-        $this->assertStringContainsString('並び替え: 総階数 少ない順', $get('sort=floors&dir=asc'));
-        $this->assertStringContainsString('並び替え: 最終調査 新しい順', $get('sort=month&dir=desc'));
-        $this->assertStringContainsString('並び替え: 最終調査 古い順', $get('sort=month&dir=asc'));
+        foreach ($cases as $query => $phrase) {
+            $html = $this->actingAs($staff)->get('/tenant/area-buildings?' . $query)->getContent();
+
+            $this->assertStringContainsString(
+                "並び替え: {$phrase}",
+                $this->withoutAriaLabels($html),
+                "?{$query} のピルに列名と向きが出ていない（画面に見える文字が消えている）"
+            );
+
+            $this->assertStringContainsString(
+                'aria-label="並び替え: ' . $phrase . ' を解除"',
+                $html,
+                "?{$query} の解除リンクが何を解除するのか名乗っていない"
+            );
+        }
+    }
+
+    /**
+     * `aria-label="..."` を丸ごと落とした HTML。
+     *
+     * ⚠ 「画面に見える文字」と「読み上げ名」を分けて見るための道具。
+     *   属性値だけを落とすので、ピル（属性を持たない素のテキスト）は残る。
+     */
+    private function withoutAriaLabels(string $html): string
+    {
+        return preg_replace('/aria-label="[^"]*"/', '', $html);
     }
 
     /**
