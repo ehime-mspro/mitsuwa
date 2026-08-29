@@ -511,23 +511,29 @@ class AreaBuildingListTest extends AreaBuildingTestCase
     /**
      * 設計の中心ルール「PHP 側では並べ替えない」の構造ガード。
      *
-     * ⚠ 値テストだけでは守れない。`rows()` に `->sortBy('building.name')` を足しても
+     * ⚠ 値テストだけでは守れない。`filteredRows()` に `->sortBy('building.name')` を足しても
      *   既存の値テストは全部緑のまま通る —— SQLite はバイト比較なのでビル名の昇順と
      *   たまたま一致するため(実測)。本番 MySQL（utf8mb4_unicode_ci）は UCA の重みで
      *   比較するので、PHP 側で並べ替えるとテストが緑のまま本番だけ静かに順序が変わりうる
      *   （Bug #40 と同型）。
      * ⚠ コメントを落としてから測る（docblock に「並べ替え」という語が繰り返し出るため。
      *   Bug #42 ②）。
-     * ⚠ ファイル全体でなく `rows()` の中身だけを波括弧の対応で切り出して見る。
-     *   ファイル全体を見ると、将来 `rows()` 以外のメソッドが正当な理由で
+     * ⚠ ファイル全体でなく `filteredRows()` の中身だけを波括弧の対応で切り出して見る。
+     *   ファイル全体を見ると、将来 `filteredRows()` 以外のメソッドが正当な理由で
      *   `sort` を使ったときに false positive になる。
+     * ⚠ **2026-08-29 に対象を `rows()` から `filteredRows()` へ差し替えた**（コードレビュー
+     *   指摘）。地図タブが並び替え前の行を要るため baseQuery() からの組み立てを
+     *   `filteredRows()` へ切り出し、`rows()` は `applySort(filteredRows($request), $sort)`
+     *   を呼ぶだけの薄いラッパになった。`rows()` のままだと、`filteredRows()` の中に
+     *   PHP 側の並べ替えを足す変異をこの検査が原理的に検出できなくなる
+     *   （ラッパの本体には `->sortXxx(` という文字列が現れないため）。
      */
-    public function test_rows_does_not_sort_in_php(): void
+    public function test_filtered_rows_does_not_sort_in_php(): void
     {
         $source = $this->sourceWithoutComments(app_path('Services/Tenant/AreaBuildingListService.php'));
-        $body   = $this->extractMethodBody($source, 'rows');
+        $body   = $this->extractMethodBody($source, 'filteredRows');
 
-        $this->assertDoesNotMatchRegularExpression('/->sort\w*\s*\(/', $body, 'rows() が PHP 側で並べ替えている（設計の中心ルールに反する）');
+        $this->assertDoesNotMatchRegularExpression('/->sort\w*\s*\(/', $body, 'filteredRows() が PHP 側で並べ替えている（設計の中心ルールに反する）');
     }
 
     /** `function <name>(...) { ... }` の本体を波括弧の対応で切り出す */

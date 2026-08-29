@@ -116,28 +116,54 @@ class AreaBuildingListService
     }
 
     /**
-     * 絞り込み・並び替え済みの行。
+     * 絞り込み済みの行(並び替え前)。
      *
-     * ⚠ **既定順（$sort が null）はビル名の昇順。** baseQuery() が
+     * ⚠ **既定順はビル名の昇順。** baseQuery() が
      *   `ORDER BY area_buildings.name, area_buildings.id` で引いており、
-     *   map() / filter() は順序を保つので、並べ替えを書かないことがそのまま既定順になる
-     *   （設計書 2026-08-28 §4.4）。従来の「空室率の降順」は `?sort=vacancy&dir=desc`。
+     *   map() / filter() は順序を保つので、ここでは並べ替えを一切書かない
+     *   （設計書 2026-08-28 §4.4）。
      *
-     * ⚠ 呼び出し元は AreaBuildingController::index() の 1 箇所だけ（2026-08-28 実測）。
+     * ⚠ **地図タブの作業リストは必ずこの戻り値(並び替え前)を使う。**
+     *   AreaBuildingController::index() は `$sort` の値に関わらずこの結果を
+     *   mapUnlocated() へ渡す（設計書 §4.5、コードレビュー指摘 2026-08-29）。
+     *   applySort() を通した後の値を再度名前で並べ直す形だと、「同名の棟は id 昇順」が
+     *   崩れる —— PHP の stable sort が保つのは**渡された時点の順序**であって
+     *   baseQuery() の順序ではないため、表を並び替えた状態で同名 2 棟があると
+     *   再ソート後も表の並び順（例: id 降順）が同名グループの中に残ってしまう
+     *   （実測: 総階数の降順で同名 2 棟が id 降順のまま残った）。
+     *
+     * ⚠ **1 リクエストにつき 1 回だけ呼ぶこと。** AreaBuildingController::index() は
+     *   この結果を `$base` として保持し、表用の `$rows` は `applySort($base, $sort)` で
+     *   作る（baseQuery() の実行を 2 回に増やさないため）。
+     *
+     * @return Collection<int, array{building: AreaBuilding, month: ?Carbon, operating: ?int, vacant: ?int, unknown: ?int, rate: ?float, occupancy_label: string, rate_label: string}>
+     */
+    public function filteredRows(Request $request): Collection
+    {
+        $occupancy = $request->input('occupancy');
+        $year      = $request->input('year');
+
+        return $this->baseQuery($request)
+            ->get()
+            ->map(fn (AreaBuilding $building) => $this->toRow($building))
+            ->filter(fn (array $row) => $this->matchesYear($row, $year) && $this->matchesOccupancy($row, $occupancy));
+    }
+
+    /**
+     * 絞り込み・並び替え済みの行。`filteredRows()` + `applySort()` の薄いラッパ。
+     *
+     * ⚠ **2026-08-29 時点でアプリ内に呼び出し元は無い。** 従来はここが
+     *   AreaBuildingController::index() の唯一の呼び出し元だったが、地図タブの作業リストが
+     *   並び替え前の行（filteredRows()）を必要とするため、index() は filteredRows() と
+     *   applySort() を分けて直接呼ぶ形に変えた（コードレビュー指摘）。このメソッドは
+     *   「絞り込み済みの行をそのまま並び替えて使う」将来の呼び出し元のための
+     *   薄いラッパとして残している。
      *
      * @return Collection<int, array{building: AreaBuilding, month: ?Carbon, operating: ?int, vacant: ?int, unknown: ?int, rate: ?float, occupancy_label: string, rate_label: string}>
      */
     public function rows(Request $request, ?ListSort $sort = null): Collection
     {
-        $occupancy = $request->input('occupancy');
-        $year      = $request->input('year');
-
-        $rows = $this->baseQuery($request)
-            ->get()
-            ->map(fn (AreaBuilding $building) => $this->toRow($building))
-            ->filter(fn (array $row) => $this->matchesYear($row, $year) && $this->matchesOccupancy($row, $occupancy));
-
-        return $this->applySort($rows, $sort);
+        return $this->applySort($this->filteredRows($request), $sort);
     }
 
     /**
@@ -153,10 +179,15 @@ class AreaBuildingListService
      *   同点の行はビル名順のまま残る。これが無いとページをまたいで行が重複／消失する
      *   （前設計書 §4.3-3）。
      *
+     * ⚠ **2026-08-29 に private から public へ変更。** AreaBuildingController::index() が
+     *   filteredRows() の戻り値（並び替え前の $base）から表用の $rows を作るのに、
+     *   ここを直接呼ぶ必要があるため（コードレビュー指摘。地図タブが並び替え前の行を
+     *   別途必要とし、rows() 経由の間接呼び出しだけでは $base を取り出せない）。
+     *
      * @param  Collection<int, array<string, mixed>>  $rows
      * @return Collection<int, array<string, mixed>>
      */
-    private function applySort(Collection $rows, ?ListSort $sort): Collection
+    public function applySort(Collection $rows, ?ListSort $sort): Collection
     {
         if ($sort === null) {
             return $rows->values();

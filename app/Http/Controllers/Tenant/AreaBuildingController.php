@@ -43,8 +43,12 @@ class AreaBuildingController extends Controller
                 ->all()
             : [];
 
-        // ⚠ rows() は 1 回だけ呼ぶ（地図タブは全件とページャの両方を使う）
-        $rows = $service->rows($request, $sort);
+        // ⚠ filteredRows() は 1 回だけ呼ぶ（baseQuery() を 1 リクエスト 1 回に保つ）。
+        //   表は applySort() 済みの $rows、地図タブの作業リストは並び替え前の $base を使う
+        //   （表を並び替えても登録モードの作業順が崩れないようにするため。設計書 §4.5、
+        //   コードレビュー指摘 2026-08-29）。
+        $base = $service->filteredRows($request);
+        $rows = $service->applySort($base, $sort);
 
         return view('tenant.area-buildings.index', [
             'rows'                => $service->paginateRows($rows, $request),
@@ -59,7 +63,8 @@ class AreaBuildingController extends Controller
             'sortColumns'         => AreaBuildingListService::SORT_COLUMNS,
             // ⚠ 地図タブのときだけ組み立てる。表タブでは使わない配列を作らない
             'mapPins'             => $isMap ? $this->mapPins($rows) : [],
-            'mapUnlocated'        => $isMap ? $this->mapUnlocated($rows) : [],
+            // ⚠ 並び替え前の $base を渡す（$rows ではない）。表の並び替えに追従させないため
+            'mapUnlocated'        => $isMap ? $this->mapUnlocated($base) : [],
             'mapLevels'           => VacancyRate::LEVELS,
         ]);
     }
@@ -112,11 +117,18 @@ class AreaBuildingController extends Controller
      *
      * ⚠ **常にビル名の昇順に固定する（表の並び替えに追従させない）。** 187 棟を上から順に
      *   登録していく作業なので、表で何をしていても順番が変わらないことが要る（設計書 §4.5）。
-     *   ⚠ 表は SQL（本番は utf8mb4_unicode_ci）、ここは PHP（バイト順）で並ぶ。漢字・かな主体の
-     *      名前では一致するが、**大文字小文字だけが違う名前では本番で 2 つの順が食い違いうる**。
-     *      テストデータにそういう名前を使わないこと（設計書 §4.4）。
-     *   ⚠ 同名の棟は id 昇順のまま（PHP のソートは stable で、$rows は baseQuery の
-     *      `ORDER BY name, id` を保っている）。
+     *   **ここでは並べ替えを一切書かない。** 呼び出し元（index()）が並び替え前の $base
+     *   （AreaBuildingListService::filteredRows() の戻り値）を渡すので、baseQuery() の
+     *   `ORDER BY area_buildings.name, area_buildings.id` がそのまま反映される。
+     *   ⚠ **並び替え済みの $rows を渡してはいけない。** かつてここで `$rows` を受けて
+     *   PHP 側で再度名前ソートしていたが、PHP の stable sort が保つのは**渡された時点の
+     *   順序**であって baseQuery() の順序ではないため、表を並び替えた状態（特に降順）で
+     *   同名 2 棟があると、再ソート後も表の並び順が同名グループの中に残ってしまい
+     *   下の「同名は id 昇順」が崩れていた（コードレビュー指摘・実測。2026-08-29 修正）。
+     *   ⚠ ここで PHP 側の並べ替えを行わないことにより、表（SQL・utf8mb4_unicode_ci）と
+     *   このリスト（同じ SQL 結果をそのまま使う）の照合順序が食い違う余地も無くなった。
+     *   ⚠ 同名の棟は id 昇順のまま（$base が baseQuery() の `ORDER BY name, id` を
+     *   そのまま保っているため）。
      *
      * ⚠ 既知の例外: 登録モード中に「位置を消す」を押した棟は、_map.blade.php の
      *   ensureInLocateList() が AREA_MAP_UNLOCATED の**末尾に push する**ので、その 1 行だけ
@@ -124,14 +136,14 @@ class AreaBuildingController extends Controller
      *   onclick の引数を全行で振り直す必要があり、得られる利益に対して壊す面積が大きいので
      *   **意図してそのままにしている**（設計書 §4.5）。
      *
-     * @param  Collection<int, array<string, mixed>>  $rows
+     * @param  Collection<int, array<string, mixed>>  $base  並び替え前の行
+     *         （AreaBuildingListService::filteredRows() の戻り値。$rows（applySort() 済み）を渡さないこと）
      * @return list<array{id: int, name: string}>
      */
-    private function mapUnlocated(Collection $rows): array
+    private function mapUnlocated(Collection $base): array
     {
-        return $rows
+        return $base
             ->reject(fn (array $row) => $row['building']->hasCoordinates())
-            ->sortBy(fn (array $row) => $row['building']->name)
             ->map(fn (array $row) => [
                 'id'   => $row['building']->id,
                 'name' => $row['building']->name,

@@ -3,6 +3,7 @@
 namespace Tests\Feature\Tenant;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 
 /**
  * 一覧の地図タブ（設計書 §4）。
@@ -2182,5 +2183,72 @@ JS;
         $this->assertCount(3, $matches, '作業リストの行が描画されていない');
         $this->assertSame(['0', '1', '2'], array_column($matches, 1), 'data-locate-index が連番でない');
         $this->assertSame(['Aビル', 'Bビル', 'Cビル'], array_column($matches, 2));
+    }
+
+    /**
+     * 同名の棟は、表の並び替え（?sort）に関わらず常に id 昇順で並ぶこと
+     * （設計書 §4.4「同名の行は id の昇順」）。
+     *
+     * ⚠ **コードレビュー指摘（2026-08-29）。** mapUnlocated() が並び替え済みの行
+     *   （AreaBuildingListService::applySort() を通した後）を受け取って再度名前でソートする
+     *   実装だと、この不変条件は表の既定順（?sort 無し）や、たまたま id 順と一致する向きの
+     *   並び替えでしか成り立たない。PHP の stable sort が保つのは**渡された時点の順序**で
+     *   あって baseQuery() の順序ではないため、表を降順に並び替えた状態では同名グループの
+     *   中に表の並び順（id 降順）がタイブレークとして残ってしまう
+     *   （実測: 総階数の降順で id が [2, 1]（降順）のまま残った）。
+     * ⚠ floors を 1 と 9 の**大きく離れた値**にしてあるのは、昇順・降順のどちらでも
+     *   同名 2 棟の相対順序だけを純粋に見るため（間に別の棟の floors 値が紛れない）。
+     * ⚠ 「Aビル」は同名ペアより名前が辞書順で必ず先に来るように選んである
+     *   （半角英字 'A'(0x41) は CJK 漢字の UTF-8 バイト列より必ず小さい）。
+     */
+    public function test_the_locate_list_keeps_same_name_buildings_in_id_order_across_every_sort(): void
+    {
+        $first  = $this->makeBuilding('重複ビル', ['total_floors' => 1]);
+        $second = $this->makeBuilding('重複ビル', ['total_floors' => 9]);
+        $other  = $this->makeBuilding('Aビル', ['total_floors' => 5]);
+
+        $staff = $this->staff();
+
+        $idsFor = function (string $query) use ($staff) {
+            $response = $this->actingAs($staff)->get('/tenant/area-buildings?view=map' . $query);
+            $response->assertOk();
+
+            return array_column($response->viewData('mapUnlocated'), 'id');
+        };
+
+        $expected = [$other->id, $first->id, $second->id];
+
+        $this->assertSame($expected, $idsFor(''), '既定順ですら同名の id 昇順が崩れている');
+        $this->assertSame($expected, $idsFor('&sort=floors&dir=desc'), '表を総階数の降順にすると同名の id 順が変わる');
+        $this->assertSame($expected, $idsFor('&sort=floors&dir=asc'), '表を総階数の昇順にすると同名の id 順が変わる');
+    }
+
+    /**
+     * 地図タブは表とページャの両方に行が要るが、baseQuery() の実行は 1 リクエストにつき
+     * 1 回だけであること（コードレビュー指摘 2026-08-29）。
+     *
+     * ⚠ AreaBuildingController::index() が `filteredRows()`（並び替え前の $base）と
+     *   `applySort()`（表用の $rows）を分けて呼ぶようになったため、$base を使い回さず
+     *   誤って `filteredRows()` を 2 回呼ぶと baseQuery() の SELECT も 2 回走る。
+     * ⚠ `latest_month` は baseQuery() の相関サブクエリだけが addSelect する別名で、
+     *   他の一覧・詳細のクエリには出てこないので誤検出しにくい目印として使う。
+     */
+    public function test_base_query_runs_exactly_once_per_map_tab_request(): void
+    {
+        $this->makeBuilding('Aビル', ['total_floors' => 1]);
+        $this->makeBuilding('Bビル', ['total_floors' => 5]);
+
+        $count = 0;
+        DB::listen(function ($query) use (&$count) {
+            if (str_contains($query->sql, 'latest_month')) {
+                $count++;
+            }
+        });
+
+        $this->actingAs($this->staff())
+            ->get('/tenant/area-buildings?view=map&sort=floors&dir=desc')
+            ->assertOk();
+
+        $this->assertSame(1, $count, 'baseQuery() が 1 リクエストで複数回実行されている（地図タブは全件を 1 回だけ取得すべき）');
     }
 }
