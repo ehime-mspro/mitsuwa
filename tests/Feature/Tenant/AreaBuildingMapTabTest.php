@@ -2134,4 +2134,53 @@ async function settle() {
 })();
 JS;
     }
+
+    /**
+     * 登録モードの作業リストは**常にビル名の昇順**で、表の並び替えに追従しない（設計書 §4.5）。
+     *
+     * ⚠ **必ず `?sort` 付きで測ること。** 素の地図タブでは既定順がもう名前順なので、
+     *   `$rows` を素通しする実装と結果が同じになり**原理的に区別が付かない**（設計書 §8.1.1-4）。
+     * ⚠ 名前順と表の並び順がわざと食い違うデータにしてある（総階数の降順は C→B→A）。
+     */
+    public function test_the_locate_list_ignores_the_table_sort(): void
+    {
+        $this->makeBuilding('Aビル', ['total_floors' => 1]);
+        $this->makeBuilding('Bビル', ['total_floors' => 5]);
+        $this->makeBuilding('Cビル', ['total_floors' => 9]);
+
+        $staff = $this->staff();
+
+        $sorted = $this->actingAs($staff)->get('/tenant/area-buildings?view=map&sort=floors&dir=desc');
+        $sorted->assertOk();
+        $this->assertSame(
+            ['Aビル', 'Bビル', 'Cビル'],
+            array_column($sorted->viewData('mapUnlocated'), 'name'),
+            '作業リストが表の並び替えに追従している（登録作業の途中で順番が変わる）'
+        );
+
+        // 逆向きでも同じ（片方だけ固定する実装を落とす）
+        $reverse = $this->actingAs($staff)->get('/tenant/area-buildings?view=map&sort=floors&dir=asc');
+        $this->assertSame(
+            ['Aビル', 'Bビル', 'Cビル'],
+            array_column($reverse->viewData('mapUnlocated'), 'name')
+        );
+    }
+
+    /** 作業リストの並びが、画面に描画される <li> の並びと一致していること */
+    public function test_the_locate_list_markup_follows_the_same_order(): void
+    {
+        $this->makeBuilding('Aビル', ['total_floors' => 1]);
+        $this->makeBuilding('Bビル', ['total_floors' => 5]);
+        $this->makeBuilding('Cビル', ['total_floors' => 9]);
+
+        $html = $this->actingAs($this->manager())
+            ->get('/tenant/area-buildings?view=map&sort=floors&dir=desc')
+            ->getContent();
+
+        preg_match_all('/data-locate-index="(\d+)"[^>]*>([^<]+)</u', $html, $matches, PREG_SET_ORDER);
+
+        $this->assertCount(3, $matches, '作業リストの行が描画されていない');
+        $this->assertSame(['0', '1', '2'], array_column($matches, 1), 'data-locate-index が連番でない');
+        $this->assertSame(['Aビル', 'Bビル', 'Cビル'], array_column($matches, 2));
+    }
 }

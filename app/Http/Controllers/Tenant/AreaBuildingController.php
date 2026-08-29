@@ -110,6 +110,20 @@ class AreaBuildingController extends Controller
     /**
      * 座標が無くて地図に出せない棟。件数の表示と、登録モードの作業リストに使う。
      *
+     * ⚠ **常にビル名の昇順に固定する（表の並び替えに追従させない）。** 187 棟を上から順に
+     *   登録していく作業なので、表で何をしていても順番が変わらないことが要る（設計書 §4.5）。
+     *   ⚠ 表は SQL（本番は utf8mb4_unicode_ci）、ここは PHP（バイト順）で並ぶ。漢字・かな主体の
+     *      名前では一致するが、**大文字小文字だけが違う名前では本番で 2 つの順が食い違いうる**。
+     *      テストデータにそういう名前を使わないこと（設計書 §4.4）。
+     *   ⚠ 同名の棟は id 昇順のまま（PHP のソートは stable で、$rows は baseQuery の
+     *      `ORDER BY name, id` を保っている）。
+     *
+     * ⚠ 既知の例外: 登録モード中に「位置を消す」を押した棟は、_map.blade.php の
+     *   ensureInLocateList() が AREA_MAP_UNLOCATED の**末尾に push する**ので、その 1 行だけ
+     *   名前順から外れて最下部に出る。名前順の位置へ差し込むには data-locate-index と
+     *   onclick の引数を全行で振り直す必要があり、得られる利益に対して壊す面積が大きいので
+     *   **意図してそのままにしている**（設計書 §4.5）。
+     *
      * @param  Collection<int, array<string, mixed>>  $rows
      * @return list<array{id: int, name: string}>
      */
@@ -117,6 +131,7 @@ class AreaBuildingController extends Controller
     {
         return $rows
             ->reject(fn (array $row) => $row['building']->hasCoordinates())
+            ->sortBy(fn (array $row) => $row['building']->name)
             ->map(fn (array $row) => [
                 'id'   => $row['building']->id,
                 'name' => $row['building']->name,
