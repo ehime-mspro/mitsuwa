@@ -93,8 +93,14 @@ class AreaBuildingListTest extends AreaBuildingTestCase
         $staff = $this->staff();
 
         // ⚠ **このテストは並び順を見ている**（assertSame は配列を並び順まで比較する)。
-        //   実測: baseQuery() の orderBy('area_buildings.name') を落として
-        //   orderBy('area_buildings.id') だけにする変異で、1013 本中このテストだけが赤くなる。
+        //   実測(2026-08-28): baseQuery() の orderBy('area_buildings.name') を落として
+        //   orderBy('area_buildings.id') だけにする変異で、1013 本中このテストだけが赤くなった。
+        //   ⚠ **その「だけ」はもう古い** —— 同じ変異を 2026-08-29 に測り直すと 1043 本中 5 本が赤
+        //   (本テスト / test_the_default_order_is_the_building_name_ascending /
+        //    test_tied_rows_keep_the_building_name_order /
+        //    test_multiple_blank_rows_keep_the_building_name_order_among_themselves /
+        //    AreaBuildingMapTabTest::test_the_locate_list_keeps_same_name_buildings_in_id_order_across_every_sort)。
+        //   Task 5〜9 で並び順を直接見るテストが増えたため。**排他性は主張しないこと。**
         //   ただし**新旧の既定順(名前の昇順 ⇔ 空室率の降順)を区別する力は無い** ——
         //   このデータでは '入居50' < '入居70' < '入居90' が名前の昇順でも空室率の降順でも
         //   たまたま同じ並びになるため(旧既定順に戻す変異では緑のまま)。

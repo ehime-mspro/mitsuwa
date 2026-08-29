@@ -2885,11 +2885,34 @@ Task 7 の `test_the_sort_survives_a_trip_through_the_map_tab` で表↔地図�
 
 ### 6. 既知の穴（意図して塞いでいないもの）
 
-- **表と作業リストで照合順序が違う。** 表は SQL（本番 `utf8mb4_unicode_ci`）、
-  地図の作業リストは PHP（バイト順）。漢字・かな主体の名前では一致するが、
-  大文字小文字だけが違う名前では本番で食い違いうる（Task 9 Step 3 の docblock に明記）
+- ~~**表と作業リストで照合順序が違う。**~~ **2026-08-29 の Task 9 の refactor（`48528c1d`）で消えた。**
+  作業リストは `filteredRows()`（並び替え前・SQL の順のまま）をそのまま使うので、
+  **PHP 側で名前を比較する箇所が 0 本**になり、「SQL の `utf8mb4_unicode_ci` と PHP のバイト順が
+  食い違う」という穴は構造ごと無くなった（下記「プラン自体の欠陥」#10）
 - **`ensureInLocateList()` で復帰した棟は作業リストの末尾に出る**（設計書 §4.5 の既知の例外）
 - **`x-sortable-th` の `column` を打ち間違えるとその画面が 500**（設計書 §7.1 の意図した取引。
   `SortableListWiringTest` が静的に守る）
 - **点線下線そのものは 2.43:1 で 3:1 に届かない**（設計書 §5 の意図した選択。
   手掛かりの本体は 4.63:1 の矢印）
+---
+
+## プラン自体の欠陥（実装中に実測で判明したもの）
+
+⚠ **この節は「プランに書いてあったが、測ったら違った」ことの一覧。**
+プランを読み直す人が同じ誤りを引き継がないために残す。
+**12 件のうち 11 件は既にコードで決着済み**（該当コミットを併記）。
+
+| # | プランの記述 | 実測 | 決着 |
+|---|---|---|---|
+| 1 | Task 0 Step 5 のカナリア変異コマンド（`perl -0pi -e "s/\Q…\E/…/"`）| perl の `\Q…\E` の中では `\$` が「バックスラッシュ＋ドル」としてクォートされるので、`$this` や `$row` を含む needle は **0 件マッチで exit 0**（`git diff --stat` が空＝無効な測定）| **置換件数を数えて 0 なら止まる道具**を使う（Task 10 の実測メモ）。needle / replacement は**ファイル渡し**にしてシェルのクォートを通さない |
+| 2 | Task 2「許すのは `<span>` **1 つだけ**、両方向をガードテストが固定している」| ガードの fixture が `<svg></svg>` ＝ **開始・終了の 2 タグ**なので「タグは 1 つまで」しか縛れておらず、`(?:<span\b[^>]*>\s*)?` を `(?:<[^>]*>\s*)?` に広げる変異が**全テスト緑のまま通った** | **1 タグの非 span**（`<b>面積</b>`）を対で置くテストを追加（`708cbd51`。`ParsesSortLinksTest::test_it_refuses_a_link_that_wraps_the_label_in_a_tag_other_than_span`）|
+| 3 | Task 2 の `sortableHeaderCell()` — 複数の `<th>` が同じラベルに一致したときの扱いが**無記載・無検査** | 実装は**最初の 1 つ**を返す（`array_reverse($cells)` の変異は検出できない）| docblock に「意図的に先頭を返す」「同一ラベルの `<th>` が並ぶビューは現状無いので fixture 専用テストは置かない」と明記（`3512ed53` / `baccbd60`）|
+| 4 | Task 4「並び替え中の下線は**ホバーより後に置く**のが load-bearing」| **事実として誤り。** `.sortable-th-link:hover .sortable-th-label` は (0,3,0)、当時の `th[aria-sort="…"] .sortable-th-label` は (0,2,1) で、**順序に関係なくホバーが勝つ**。実ブラウザ実測: 並び替え中の列にマウスを乗せると緑の手掛かりが `#4B5563` に落ちていた（**今回唯一の本番級バグ**。PHP も `view:cache` も 1013 本のテストも全部素通り）| セレクタに `.sortable-th-link` を挟んで (0,3,1) にし、**詳細度で勝たせる**（`d9cb2f10`）。回帰は `SortAffordanceTest::test_the_active_underline_selector_carries_the_extra_specificity_component` |
+| 5 | Task 5 の既定順テスト | フィクスチャの**作成順が名前順と同じ**だったので、`ORDER BY name` を落としても id 順＝名前順で**緑のまま**＝機構を守れていなかった | 作成順を名前順とわざと食い違わせた（`0f7d3b53`）。2026-08-29 の変異 #6 で赤になることを実測 |
+| 6 | Task 5「`test_occupancy_bands` は既定順の変更に対して検出力がゼロ」| **逆。** `ORDER BY name` を落とす変異を**当時 1013 本中このテストだけが**捕まえていた（旧既定順に戻す変異には無力、という限定つき）| コメントを実測どおりに書き直し（`ec6261cb`）。⚠ **さらにその「だけ」も 2026-08-29 には古い** —— 同じ変異で 1043 本中 5 本が赤。排他性を主張しない形へ再修正した |
+| 7 | 「PHP 側では並べ替えない（SQL の順をそのまま使う）」という**中心規則** | **何も守っていなかった。** `filteredRows()` に `->sortBy(...)` を足す変異は当時どのテストも捕まえない | 構造テスト `AreaBuildingListTest::test_filtered_rows_does_not_sort_in_php` を追加。2026-08-29 の変異 #5 で赤を実測 |
+| 8 | Task 7 の `test_all_seven_headers_…` を `?sort=month&dir=asc` で見る手順 | **自己矛盾。** `dir=asc` は 3 巡目の直前なので、最終調査自身の次のリンクは `sort=` を持たない**解除リンク**になり「7 列すべてが並び替えリンク」を満たせない | `dir=desc`（1 回目の状態）で見る形に変更し、理由をテストの docblock に明記（`f7ed994e`）|
+| 9 | Task 7 の Files 一覧が 3 本 | 見出しをリンクにすると `AreaBuildingListTest::test_the_table_shows_occupancy_before_vacancy` が壊れるので **4 本目**（`tests/Feature/Tenant/AreaBuildingListTest.php`）が要る | 実際の commit は 4 ファイル（`f7ed994e`）。2026-08-29 の変異 #13 でもこのテストが赤になる |
+| 10 | Task 9 の `mapUnlocated()` docblock 2 件（「同名は id 順」「表と作業リストで照合順序が違う」）| どちらも**実装と食い違っていた**（当時は並び替え後の行を PHP で名前ソートし直していたため、同名グループの内部順が表の並びを引きずる）| **構造ごと解消**（`48528c1d`）。`rows()` を `filteredRows()`（並び替え前・public）と `applySort()`（public）に割り、作業リストは並び替え前の行から作る ＝ **PHP 側の名前比較が 0 本**。上の「既知の穴」も更新済み |
+| 11 | Task 8 のバー配置テスト | **画面を分離できていなかった** —— 部屋一覧へ物件一覧のラベルを持つバーをもう 1 本足しても 1039 本すべて緑だった | 3 画面を 1 つの表から回し、**自分以外のラベルが出ていないこと**まで見る形へ（`86ab6547`。`SortBarTest::test_each_list_names_its_own_default_order`）|
+| 12 | Task 10 の変異 #10（ピルを消す）| `SortBarTest::test_the_bar_names_the_column_and_the_direction` が**緑のまま**。素の部分一致が解除リンクの `aria-label` に当たっていた | `aria-label` を落とした HTML でピルを見て、読み上げ名は別アサートへ（`8b0a709f`）。詳細は Task 10 の実測メモ |
