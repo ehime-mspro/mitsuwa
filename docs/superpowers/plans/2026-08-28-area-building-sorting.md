@@ -2748,7 +2748,7 @@ EOF
 
 ⚠ **`./deploy.sh` はユーザーの明示的な承認が要る。** 承認なしに実行しない。
 
-- [ ] **Step 1: main repo へ FF マージする**
+- [x] **Step 1: main repo へ FF マージする**（2026-08-30。`13.x = 64c33eec`、27 コミット）
 
 ```bash
 cd /Users/masanori/site/manage && git checkout 13.x && git merge --ff-only area-building-sorting
@@ -2756,16 +2756,16 @@ cd /Users/masanori/site/manage && git checkout 13.x && git merge --ff-only area-
 
 ⚠ FF できないなら 13.x が先に進んでいる。worktree で `git rebase 13.x` してからやり直す。
 
-- [ ] **Step 2: `composer dump-autoload` は不要**
+- [x] **Step 2: `composer dump-autoload` は不要**（実測: `git diff --name-status 4a667f9f..HEAD -- app/` に追加 0 件）
 
 新規の PHP クラスは 1 つも足していない（新規は Blade コンポーネントとテストだけ）。
 classmap に変化が無いので実行しない。
 
-- [ ] **Step 3: ユーザーに本番デプロイの可否を確認する**
+- [x] **Step 3: ユーザーに本番デプロイの可否を確認する**（2026-08-30 に承認。origin への push も併せて承認）
 
 `AskUserQuestion` で明示的に確認してから次へ進む。
 
-- [ ] **Step 4: デプロイする**
+- [x] **Step 4: デプロイする**（2026-08-30。`app-cUmeSh4E.css` → `app-DiqFK324.css` へ差し替わり、旧バンドルも掃除された）
 
 ```bash
 cd /Users/masanori/site/manage && ./deploy.sh
@@ -2776,7 +2776,7 @@ cd /Users/masanori/site/manage && ./deploy.sh
 組み込み済みなので自動（ビルド失敗時は本番へ何も転送せず中断する）。
 `view:cache` / `route:cache` の再生成も `deploy.sh` が行う。
 
-- [ ] **Step 5: 本番で動作を確認する**
+- [x] **Step 5: 本番で動作を確認する**
 
 ⚠ 本番 URL は `/index.php/` prefix が要る（`.../manage/tenant/area-buildings` は 302 で流れる）。
 Playwright は未ログインで止まるので、実 Chrome（claude-in-chrome）の既存セッションを使う。
@@ -2788,6 +2788,20 @@ Playwright は未ログインで止まるので、実 Chrome（claude-in-chrome�
 4. その状態で「入居率 75% 以下」に絞る → **並び順が維持される**
 5. 地図タブ → 登録モードの作業リストが**ビル名順**（⚠ 手順 3 の並び替えを掛けた状態で見る）
 
+### 本番での実測結果（2026-08-30）
+
+| # | 確認項目 | 結果 |
+|---|---|---|
+| 1 | 初期表示がビル名順 | ✅ `１０４弐番館 → １２ヶ月ビル → ADIPU → ADRESS → ASUKビル → BOLT BLOG → ConChiビル → EDOCHO BLDG`（10 ページ ＝ 187 棟）。⚠ **全角数字とアルファベットの大小が本番の `utf8mb4_unicode_ci` で畳まれた順**になっており、PHP のバイト順とは別物（Task 9 の refactor で PHP 側の名前比較を 0 本にしておいたのが効いている）|
+| 2 | バーが既定順を名乗る | ✅ 「並び替え: 既定（ビル名順）」＋ヒント文 |
+| 3 | 入居率の見出しを押す | ✅ 「並び替え: 入居率 高い順」・`aria-sort=descending` は入居率だけ・**解除**が出る・上位 5 件が 100.0% で**同点はビル名順のまま** |
+| 4 | 絞り込んでも並び順が残る | ✅ 「入居率 75% 以下」に変えても `sort=occupancy&dir=desc` が URL に残り、バーも並びも維持（hidden が効いている）|
+| 5 | 地図タブの作業リスト | ✅ **入居率の降順で見ている状態から**タブを切り替えても、未登録 76 棟が `ADIPU → ASUKビル → BOLT BLOG → EDOCHO BLDG → …` の**ビル名順**。バーは出ない。Maps ローダーは **1 本**（"included multiple times" は再発していない）|
+| 6 | ホバーで下線が落ちないこと | ✅ **今回唯一の本番級バグの答え合わせ。** 並び替え中の列にマウスを乗せた状態で `getComputedStyle(...).textDecorationColor` が `rgb(5, 150, 105)` のまま（`:hover` が当たっていることも `th.matches(':hover')` で確認）。未使用の列は `rgb(156, 163, 175)` |
+
+⚠ 本番の座標登録は **31 棟**まで進んでいた（2026-08-20 時点の記録は 5 棟）。
+⚠ **地図タイルの見た目は未確認**（自動操作したタブが `document.hidden === true` で Google がタイル描画を止める）。前面のタブで人が目視すること。
+
 ⚠ **本番の CSS が更新されたことの確認**（認証不要で取れる）:
 
 ```bash
@@ -2797,7 +2811,11 @@ curl -s https://www.mitsuwat.co.jp/system/manage/build/manifest.json | head -c 2
 取得した `app-*.css` のファイル名がローカルのビルド成果物と一致し、
 `grep -oF '.sortable-th-label'` がヒットすれば転移できている。
 
-- [ ] **Step 6: worktree を片付ける**
+**実測（2026-08-30）**: 本番 manifest が `assets/app-DiqFK324.css` を指し、
+ダウンロードした実体が worktree の `public/build/assets/app-DiqFK324.css` と **byte 完全一致**。
+ホバーの詳細度修正（`th[aria-sort=…] .sortable-th-link .sortable-th-label`）も入っている。
+
+- [x] **Step 6: worktree を片付ける**
 
 ```bash
 cd /Users/masanori/site/manage && git worktree remove .claude/worktrees/area-building-sorting && git branch -d area-building-sorting
