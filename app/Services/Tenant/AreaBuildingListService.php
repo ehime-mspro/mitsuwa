@@ -91,9 +91,11 @@ class AreaBuildingListService
     /**
      * 組み立て済みの行をページャに載せる。
      *
-     * ⚠ 呼び出し側で `rows()` を先に呼ぶ形にしてある。地図タブは全件（rows）と
-     *   ページャの両方を使うので、サービス側で `rows()` を呼ぶと
-     *   1 リクエストで 2 回走ってしまう。
+     * ⚠ 呼び出し側で `filteredRows()` → `applySort()` を先に呼ぶ形にしてある
+     *   （2026-08-29 に `rows()` から差し替え。コードレビュー指摘）。地図タブは
+     *   並び替え前の全件（filteredRows()）と、ここに渡す並び替え後の行（applySort()）の
+     *   両方を使うので、サービス側でここが baseQuery() を呼び直すと
+     *   1 リクエストで複数回走ってしまう。
      *
      * @param  Collection<int, array<string, mixed>>  $rows
      */
