@@ -2504,7 +2504,7 @@ EOF
 4. `git checkout -- <当該ファイル>` で戻す
 5. **赤/緑ではなく落ちた理由の文言**を突き合わせる（意図と別の機構が落としている可能性を排除する）
 
-- [ ] **Step 1: 作業ツリーが清浄であることを確認する**
+- [x] **Step 1: 作業ツリーが清浄であることを確認する**
 
 ```bash
 git status --porcelain && echo "---clean---"
@@ -2512,27 +2512,27 @@ git status --porcelain && echo "---clean---"
 
 Expected: `---clean---` だけ
 
-- [ ] **Step 2: 15 通りの変異を 1 つずつ当てて測る**
+- [x] **Step 2: 15 通りの変異を 1 つずつ当てて測る**（＋ #16 / #17 の 2 通りを追加）
 
 各行について「変異 → `git diff --stat` で着弾確認 → 指定のテストを走らせる → 理由を読む → 戻す」。
 
 | # | 変異する場所 | 変異の内容 | 赤になるはずのテスト | 結果 |
 |---|---|---|---|---|
-| 1 | `AreaBuildingListService::sortValue()` | `'occupancy' => … -$row['rate']` の `-` を消す | `AreaBuildingListSortTest::test_every_sortable_column_sorts_by_its_own_values` ＋ `..._reverse_of_the_vacancy_order` | 未測定 |
-| 2 | 同 `applySort()` | `partition` をやめて `$rows` を丸ごと `sortBy` / `sortByDesc` する | `..._blank_values_stay_at_the_end_in_both_directions` | 未測定 |
-| 3 | 同 `applySort()` | `->concat($blank)` を落とす（「—」の行が消える） | `..._blank_values_…`（件数が合わない） | 未測定 |
-| 4 | 同 `applySort()` | `$sort->isAscending()` の分岐を逆にする | `..._every_sortable_column_…`（昇順と降順が入れ替わる） | 未測定 |
-| 5 | 同 `rows()` | 既定順を元の `->sortByDesc([$row['rate'] === null ? 0 : 1, $row['rate'] ?? 0.0])` に戻す | `AreaBuildingListTest::test_the_default_order_is_the_building_name_ascending` ＋ `SortBarTest::test_the_area_building_bar_names_the_real_default_order` | 未測定 |
-| 6 | `AreaBuildingListService::baseQuery()` | `->orderBy('area_buildings.name')` を消す（既定順への安定ソート依存を壊す） | `AreaBuildingListSortTest::test_tied_rows_keep_the_building_name_order` | 未測定 |
-| 7 | `AreaBuildingController::mapUnlocated()` | `->sortBy(...)` を外して `$rows` を素通しさせる | `AreaBuildingMapTabTest::test_the_locate_list_ignores_the_table_sort` ⚠ **`?sort` 付きで測る** | 未測定 |
-| 8 | `sort-bar.blade.php` | `default-label` の受け渡しを無視して常に「空室率が高い順」と出す | `SortBarTest::test_the_area_building_bar_names_the_real_default_order` | 未測定 |
-| 9 | `sort-bar.blade.php` | ヒント文の `<span>` だけを消す | `SortBarTest::test_the_hint_is_shown_whether_or_not_the_list_is_sorted` | 未測定 |
-| 10 | `sort-bar.blade.php` | ピル（`並び替え: …` の span）だけを消す | `SortBarTest::test_each_list_names_its_own_default_order` ＋ `..._names_the_column_and_the_direction` | 未測定 |
-| 11 | `ListSort::clearUrl()` | `unset($query['page'], $query['sort'], $query['dir']);` を `$query = [];` にする | `ListSortTest::test_clear_url_removes_only_the_sort` ＋ `SortBarTest::test_the_clear_link_removes_only_the_sort` | 未測定 |
-| 12 | `sortable-th.blade.php` | `$iconColor` の `#6B7280` を `#D1D5DB` に戻す | `SortAffordanceTest::test_the_idle_arrow_is_dark_enough_to_be_seen` | 未測定 |
-| 13 | `sortable-th.blade.php` | `<span class="sortable-th-label">` を外して素の `{{ $label }}` に戻す | `SortAffordanceTest::test_the_label_is_wrapped_…` | 未測定 |
-| 14 | `area-buildings/index.blade.php` | `<x-sort-hidden :sort="$sort" />` を消す | `AreaBuildingListSortTest::test_changing_a_filter_keeps_the_current_sort` ＋ `SortableListWiringTest` | 未測定 |
-| 15 | `SortableListWiringTest` | 走査を 1 本に絞る（`if ($relative !== 'tenant/units/index.blade.php') continue;`） | 自分自身（`assertEqualsCanonicalizing` と `assertGreaterThan(100, $scanned)`） | 未測定 |
+| 1 | `AreaBuildingListService::sortValue()` | `'occupancy' => … -$row['rate']` の `-` を消す | `AreaBuildingListSortTest::test_every_sortable_column_sorts_by_its_own_values` ＋ `..._reverse_of_the_vacancy_order` | ✅ 赤 3 本（`occupancy の降順が違う` / `入居率と空室率で並びが食い違う（片方を別計算で出している。Bug #46）`。ほかに 3 巡目のテストも） |
+| 2 | 同 `applySort()` | `partition` をやめて `$rows` を丸ごと `sortBy` / `sortByDesc` する | `..._blank_values_stay_at_the_end_in_both_directions` | ✅ 赤 3 本（`blank_values…`: 「—」の 0号ビル が末尾でなく**先頭**に来る） |
+| 3 | 同 `applySort()` | `->concat($blank)` を落とす（「—」の行が消える） | `..._blank_values_…`（件数が合わない） | ✅ 赤 5 本（`blank_values…`: `Failed asserting that actual size 4 matches expected size 5` ＝ 「—」の行が**消える**） |
+| 4 | 同 `applySort()` | `$sort->isAscending()` の分岐を逆にする | `..._every_sortable_column_…`（昇順と降順が入れ替わる） | ✅ 赤 10 本（`floors の降順が違う` ＝ 昇順と降順が入れ替わる） |
+| 5 | 同 `rows()` | 既定順を元の `->sortByDesc([$row['rate'] === null ? 0 : 1, $row['rate'] ?? 0.0])` に戻す | `AreaBuildingListTest::test_the_default_order_is_the_building_name_ascending` ＋ `SortBarTest::test_the_area_building_bar_names_the_real_default_order` | ✅ 赤 6 本（`既定順が名前の昇順でない` ＋ `SortBarTest::…names_the_real_default_order` ＋ **構造テスト** `test_filtered_rows_does_not_sort_in_php`）⚠ 変異先は refactor 後の `filteredRows()`（末尾に旧 `->sortByDesc([...])->values()` を戻す） |
+| 6 | `AreaBuildingListService::baseQuery()` | `->orderBy('area_buildings.name')` を消す（既定順への安定ソート依存を壊す） | `AreaBuildingListSortTest::test_tied_rows_keep_the_building_name_order` | ✅ 赤 5 本（`降順での「—」ブロック内部の並びが名前の昇順になっていない` / `tied_rows…` / `occupancy_bands` / 地図の同名 id 順） |
+| 7 | `AreaBuildingController::mapUnlocated()` | `->sortBy(...)` を外して `$rows` を素通しさせる | `AreaBuildingMapTabTest::test_the_locate_list_ignores_the_table_sort` ⚠ **`?sort` 付きで測る** | ✅ 赤 3 本（`作業リストが表の並び替えに追従している（登録作業の途中で順番が変わる）`）⚠ **読み替えて測定**（下記メモ） |
+| 8 | `sort-bar.blade.php` | `default-label` の受け渡しを無視して常に「空室率が高い順」と出す | `SortBarTest::test_the_area_building_bar_names_the_real_default_order` | ✅ 赤 5 本（`/tenant/area-buildings が自分の既定順を名乗っていない` ＋ 物件・部屋の 3 画面とも） |
+| 9 | `sort-bar.blade.php` | ヒント文の `<span>` だけを消す | `SortBarTest::test_the_hint_is_shown_whether_or_not_the_list_is_sorted` | ✅ 赤 1 本（ヒント文だけが消え、ピルのアサートに救われない＝役割分けが効いている） |
+| 10 | `sort-bar.blade.php` | ピル（`並び替え: …` の span）だけを消す | `SortBarTest::test_each_list_names_its_own_default_order` ＋ `..._names_the_column_and_the_direction` | ✅ 赤 6 本 ⚠ **穴が 1 つあった**。修正前は 5 本で `test_the_bar_names_the_column_and_the_direction` が**緑のまま**だった（下記メモ） |
+| 11 | `ListSort::clearUrl()` | `unset($query['page'], $query['sort'], $query['dir']);` を `$query = [];` にする | `ListSortTest::test_clear_url_removes_only_the_sort` ＋ `SortBarTest::test_the_clear_link_removes_only_the_sort` | ✅ 赤 3 本（`絞り込みまで消えている（「クリア」と区別が無くなる）`） |
+| 12 | `sortable-th.blade.php` | `$iconColor` の `#6B7280` を `#D1D5DB` に戻す | `SortAffordanceTest::test_the_idle_arrow_is_dark_enough_to_be_seen` | ✅ 赤 1 本（`未使用の矢印が薄いまま（1.41:1 の #D1D5DB に戻っている）`） |
+| 13 | `sortable-th.blade.php` | `<span class="sortable-th-label">` を外して素の `{{ $label }}` に戻す | `SortAffordanceTest::test_the_label_is_wrapped_…` | ✅ 赤 2 本（`ラベルが sortable-th-label で包まれていない（下線が矢印にも掛かる）` ＋ 見出しの並びのテスト） |
+| 14 | `area-buildings/index.blade.php` | `<x-sort-hidden :sort="$sort" />` を消す | `AreaBuildingListSortTest::test_changing_a_filter_keeps_the_current_sort` ＋ `SortableListWiringTest` | ✅ 赤 2 本（`…並び替え見出しを持つのに、並び順を持ち回す hidden が無い` / `フィルターフォームが sort を持ち回していない`） |
+| 15 | `SortableListWiringTest` | 走査を 1 本に絞る（`if ($relative !== 'tenant/units/index.blade.php') continue;`） | 自分自身（`assertEqualsCanonicalizing` と `assertGreaterThan(100, $scanned)`） | ✅ 赤 2 本（`Blade の走査が空振りしている`＝`1 is greater than 100` ＋ `ラベル表に登録済みのビューが走査で見つからない`） |
 
 ⚠ **#7 を `?sort` 無しで測ってはいけない。** 既定順が名前順になった以上、
 素の地図タブでは `$rows` を素通ししても結果が同じで、**「検出しない」と誤読する**。
@@ -2551,26 +2551,64 @@ vendor/bin/phpunit --filter AreaBuildingListSortTest 2>&1 | tail -20
 git checkout -- app/Services/Tenant/AreaBuildingListService.php
 ```
 
-- [ ] **Step 3: 結果をこのプランに書き戻す**
+- [x] **Step 3: 結果をこのプランに書き戻す**
 
 上の表の「結果」列を `✅ 赤（理由: …）` / `❌ 緑` で埋める。
 **緑だったものは、テストを足すか設計上の穴として明記する**（偽の安心より正直な穴のほうがよい）。
 
-- [ ] **Step 4: 作業ツリーが清浄に戻っていることを確認する**
+### 実測メモ（2026-08-29）
+
+**結論: 17 通り測って 17 通りとも赤。** ただし**そのうち 1 通り（#10）は測って初めて穴が見つかり、
+テストを足してから赤になった**。測らなければ「守られている」と誤読したまま先へ進んでいた。
+
+⚠ **#10 で見つかった穴（Bug #43 / #46 と同型）。** `SortBarTest::test_the_bar_names_the_column_and_the_direction`
+は `assertStringContainsString('並び替え: 入居率 高い順', $html)` と素で見ていたが、**同じ文字列が
+解除リンクの `aria-label="並び替え: 入居率 高い順 を解除"` にも出る**ため、
+**ピルの span を丸ごと消しても緑**だった（実測: 修正前 5 本赤 → ピルのテストは緑）。
+`aria-label="…"` を落とした HTML でピルを見て、読み上げ名は**別のアサート**で見る形に直した（`8b0a709f`）。
+追加の 2 通りで両方が独立に load-bearing であることを実測:
+
+| # | 変異 | 結果 |
+|---|---|---|
+| 16 | 並び替え中のピル（emerald の span）**だけ**を消す | ✅ 赤 1 本（`…のピルに列名と向きが出ていない（画面に見える文字が消えている）`）|
+| 17 | 解除リンクの `aria-label` **だけ**を消す | ✅ 赤 1 本（`…の解除リンクが何を解除するのか名乗っていない`）|
+
+⚠ **#7 は表のとおりには測れない**（Task 9 の refactor で `mapUnlocated()` の `->sortBy(...)` が消えたため）。
+**`index()` の `mapUnlocated($base)` を `mapUnlocated($rows)`（並び替え後）へ戻す**変異に読み替えて測定した。
+`?sort` 付きで見るテストが 3 本とも赤になる。
+
+⚠ **Task 0 Step 5 のカナリア変異コマンドは動かない。** perl の `\Q…\E` の中では `\$` が
+「バックスラッシュ＋ドル」としてクォートされるので、`$this` を含む needle は **0 件マッチで exit 0**
+（`git diff --stat` が空＝無効な測定）。**置換件数を数えて 0 なら止まる道具**を使うこと
+（needle / replacement は**ファイル渡し**にしてシェルのクォートを一切通さない）。
+
+⚠ **測定装置のカナリアを先に通した**（Bug #50）。`index.blade.php` へ未定義変数を 1 つ足す変異で
+**67 本が赤**になることを確認してから本測定に入った。
+
+⚠ **変異ランナーの出力を `head` に通してはいけない。** SIGPIPE でスクリプトが
+**`git checkout --` の前に死に**、変異が作業ツリーに残る（実際に踏んだ。次の測定の
+「清浄確認」で止まったので事故にはならなかった＝作法 ② が効いた）。出力の間引きは
+スクリプトの内側でやること。
+
+⚠ **本数は実測を信じる。** プラン執筆時点の `1035 tests` は既に古い（ガードテストを多数
+足したため）。下の Step 5 の Expected は 2026-08-29 実測の **1043 tests / 6549 assertions** に更新した。
+
+
+- [x] **Step 4: 作業ツリーが清浄に戻っていることを確認する**
 
 ```bash
 git status --porcelain && echo "---clean---"
 ```
 
-- [ ] **Step 5: 全テストを走らせる**
+- [x] **Step 5: 全テストを走らせる**
 
 ```bash
 vendor/bin/phpunit
 ```
 
-Expected: `OK (1035 tests, ...)`
+Expected: `OK (1043 tests, 6549 assertions)`（2026-08-29 実測）
 
-- [ ] **Step 6: プランの更新をコミット**
+- [x] **Step 6: プランの更新をコミット**
 
 ```bash
 git add docs/superpowers/plans/2026-08-28-area-building-sorting.md
