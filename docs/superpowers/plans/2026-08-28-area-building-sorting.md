@@ -2628,7 +2628,7 @@ EOF
 
 ⚠ 以下は **HTML に出ているかでは判定できない**（Bug #28 / #43 / #51）。
 
-- [ ] **Step 1: コンパイル済みビューを lint する**
+- [x] **Step 1: コンパイル済みビューを lint する**（299 ビュー / `INVALID:` 0 件）
 
 ```bash
 php artisan view:cache && for f in storage/framework/views/*.php; do php -l "$f" >/dev/null || echo "INVALID: $f"; done && php artisan view:clear
@@ -2636,7 +2636,7 @@ php artisan view:cache && for f in storage/framework/views/*.php; do php -l "$f"
 
 Expected: `INVALID:` が 1 行も出ない
 
-- [ ] **Step 2: ローカルで CSS をビルドする**
+- [x] **Step 2: ローカルで CSS をビルドする**（`app-DiqFK324.css` 生成・`.sortable-th-label` ヒット）
 
 ⚠ **`resources/css/app.css` を変えたので必須。** `public/build` は gitignore 済みで
 worktree には存在せず、ビルドするまで点線下線は**1px も出ない**。
@@ -2654,7 +2654,7 @@ grep -oF '.sortable-th-label' public/build/assets/app-*.css | head -3
 
 Expected: 1 行以上ヒットする
 
-- [ ] **Step 3: ログインできる状態を作る**
+- [x] **Step 3: ログインできる状態を作る**
 
 ⚠ **実 MySQL に触らない。** 使い捨ての SQLite ＋ worktree の artisan で見る
 （前回の Task 9 と同じ手）。⚠ **パスワードを一切扱わない**よう、一時的な dev 専用ルートを
@@ -2670,7 +2670,7 @@ Route::get('/__preview-login', function () {
 });
 ```
 
-- [ ] **Step 4: ブラウザで 7 点を確認する**
+- [x] **Step 4: ブラウザで 7 点を確認する**
 
 `/tenant/area-buildings`・`/tenant/units`・`/tenant/properties` を開いて確認する。
 
@@ -2693,23 +2693,44 @@ Route::get('/__preview-login', function () {
    ⚠ 漢字が読み順（あいうえお順）でないのは仕様（読みがな列が無い。設計書 §4.4 / §10）。
    `三 → 久 → 千 → 大 → 武 → 湊 → 相 → 雅` のような並びで正しい
 
-- [ ] **Step 5: 使い捨てルートを消す**
+- [x] **Step 5: 使い捨てルートを消す**
 
 ```bash
 git checkout -- routes/web.php && git status --porcelain && echo "---clean---"
 ```
 
-- [ ] **Step 6: 確認結果をこのプランに書き戻す**
+- [x] **Step 6: 確認結果をこのプランに書き戻す**
 
 | # | 確認項目 | 結果 |
 |---|---|---|
-| 1 | 未使用の ⇅ が見える | 未確認 |
-| 2 | 点線がラベルだけに掛かる | 未確認 |
-| 3 | 見出しセル全体が押せる | 未確認 |
-| 4 | フォーカスリングが切れない | 未確認 |
-| 5 | 解除でフィルタが残る | 未確認 |
-| 6 | 作業リストがビル名順（表を並び替えた状態で） | 未確認 |
-| 7 | 表の初期表示がビル名順 | 未確認 |
+| 1 | 未使用の ⇅ が見える | ✅ **3 画面とも**。`#6B7280` の ⇅ が見出し背景 `#F9FAFB` ではっきり見える（3 倍表示で目視）|
+| 2 | 点線がラベルだけに掛かる | ✅ 総階数 / 営業 / 面積 / 家賃 / 入居率 / 賃料収入 のいずれも**文字の下だけ**。⇅ の下には線が無い。並び替えない列（ビル名・ステータス・操作）には点線も矢印も無い |
+| 3 | 見出しセル全体が押せる | ✅ `<th>` の**左上角から 3px**（＝ラベル span の矩形の外＝文字の無い余白）を実クリック → `?sort=floors&dir=desc` へ遷移、バーが「総階数 多い順」、並びも 12→9→7 階。`<a>` の矩形が `<th>` と一致（padding が `<a>` 側にある）|
+| 4 | フォーカスリングが切れない | ✅ Tab 後に `:focus-visible` が真、`outline: rgb(5,150,105) solid 2px` / `outline-offset: -2px`。**リンク上辺とスクロールコンテナ上辺の差は 0px** だが内側に描くので 4 辺とも切れない（3 倍表示で目視）|
+| 5 | 解除でフィルタが残る | ✅ 「入居率 75% 以下」＋入居率の降順から**解除を実クリック** → `?occupancy=under75` だけが残り、バーは「既定（ビル名順）」、行は 4 件のまま（絞り込み維持）、解除リンクは消える |
+| 6 | 作業リストがビル名順（表を並び替えた状態で） | ✅ **表を総階数の降順にしてから**地図タブへ → 未登録 5 棟が 千舟町→大街道→武智→湊町→相原（名前順）。表の並び（大街道 12 階が先頭）に追従していない。地図タブにバーは出ない |
+| 7 | 表の初期表示がビル名順 | ✅ 三好→久万→千舟町→大街道→武智→湊町→相原→雅（符号位置順。漢字が読み順でないのは仕様）|
+
+### 確認環境と、測り方で踏んだ罠（2026-08-29）
+
+**環境**: worktree ＋ scratchpad の**使い捨て SQLite**（実 MySQL には一切触れていない）＋ `php artisan serve`。
+`vite build` を cwd=worktree で実行して `public/build` を作り、`.sortable-th-label` が
+ビルド済み CSS に入っていることを確認してから見た。使い捨てログインルートは撤去済み
+（`git checkout -- routes/web.php` → `git status --porcelain` が空）。
+
+⚠ **`getComputedStyle` を `focus()` の直後に読むと「リングがグレー」に見える。**
+`<a>` は `transition-colors` を持ち、Tailwind v4 の `.transition-colors` は
+**`outline-color` を遷移対象に含む**。よって focus した瞬間の計算値は**遷移の開始値**＝
+`currentColor`（見出しの `text-gray-600` ＝ `rgb(74,85,101)`）で、危うく
+「focus-visible の色指定が効いていない」と誤読しかけた。**1 秒待つと `rgb(5,150,105)`**。
+色を実測するときは遷移の終了を待つこと。
+
+⚠ **ブラウザのパネルが隠れると `innerWidth` が 0 になる。** その状態では
+`document.elementFromPoint()` が null を返し、実クリックも `(0,0)` で失敗する
+（「要素が見つからない」と誤読しやすい）。`preview_start` で開き直してから測る。
+
+⚠ **拡大は `computer` の `zoom`（region 指定）ではできない**（region crop 未対応で全体像が返る）。
+`table.style.zoom = '3'` を当てて撮ると、点線の掛かり方とリングの 4 辺が判別できる。
 
 ```bash
 git add docs/superpowers/plans/2026-08-28-area-building-sorting.md
