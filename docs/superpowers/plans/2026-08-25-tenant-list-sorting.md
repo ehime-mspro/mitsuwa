@@ -2461,7 +2461,7 @@ Playwright は未ログインで止まるので、実 Chrome（claude-in-chrome�
 2. その状態でステータス絞り込みを変える → 並び順が維持される
 3. `/tenant/properties` で「賃料収入」を 3 回押す → 既定順（稼働が先 → コード順）に戻る
 
-- [ ] **Step 6: worktree を片付ける** ⚠ **未実施**（実測 2026-08-29: `git worktree list` に `.claude/worktrees/tenant-list-sorting` が残っている）
+- [x] **Step 6: worktree を片付ける**（2026-08-30 に撤去。branch `tenant-list-sorting` も `ebec4420` で削除済み）
 
 ```bash
 cd /Users/masanori/site/manage && git worktree remove .claude/worktrees/tenant-list-sorting && git branch -d tenant-list-sorting

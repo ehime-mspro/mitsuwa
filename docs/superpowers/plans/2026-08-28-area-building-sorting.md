@@ -2815,7 +2815,20 @@ curl -s https://www.mitsuwat.co.jp/system/manage/build/manifest.json | head -c 2
 ダウンロードした実体が worktree の `public/build/assets/app-DiqFK324.css` と **byte 完全一致**。
 ホバーの詳細度修正（`th[aria-sort=…] .sortable-th-link .sortable-th-label`）も入っている。
 
-- [x] **Step 6: worktree を片付ける**
+- [x] **Step 6: worktree を片付ける**（2026-08-30。⚠ **この worktree は残した**）
+
+⚠ **`area-building-sorting` の worktree は意図的に残している。** main repo は `composer install --no-dev`
+で `vendor/bin/phpunit` を**持たない**（dev 依存を入れると `deploy.sh` がそれを本番へ rsync する）ので、
+**テストを回せる環境が worktree にしか無い**。マージ済みでも 1 つは残すのが安全
+（memory「テスト環境はセットアップ済み worktree」）。撤去したのは役目を終えた古い 2 本:
+
+```bash
+cd /Users/masanori/site/manage
+git worktree remove .claude/worktrees/tenant-list-sorting && git branch -d tenant-list-sorting
+git worktree remove .claude/worktrees/tenant-area-survey  && git branch -d area-building-map-tab
+```
+
+⚠ 本当にこの worktree も畳むなら、次に作る worktree で `composer install`（dev 込み）が要る:
 
 ```bash
 cd /Users/masanori/site/manage && git worktree remove .claude/worktrees/area-building-sorting && git branch -d area-building-sorting
