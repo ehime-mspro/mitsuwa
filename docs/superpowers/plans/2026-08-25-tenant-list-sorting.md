@@ -2417,13 +2417,13 @@ Expected: `INVALID:` が 1 行も出ない
 
 ⚠ **`./deploy.sh` はユーザーの明示的な承認が要る。** 承認なしに実行しない。
 
-- [ ] **Step 1: main repo へ FF マージする**
+- [x] **Step 1: main repo へ FF マージする**（実測 2026-08-29: `git merge-base --is-ancestor ebec4420 13.x` が真）
 
 ```bash
 git checkout 13.x && git merge --ff-only tenant-list-sorting
 ```
 
-- [ ] **Step 2: オートローダを作り直す**
+- [x] **Step 2: オートローダを作り直す**（実測 2026-08-29: main repo の `vendor/composer/autoload_classmap.php:208` に `App\Support\ListSort` がある）
 
 新規 PHP クラス（`App\Support\ListSort`）を足したので、classmap を正確に保つために実行する。
 
@@ -2439,11 +2439,11 @@ git checkout 13.x && git merge --ff-only tenant-list-sorting
 cd /Users/masanori/site/manage && composer dump-autoload
 ```
 
-- [ ] **Step 3: ユーザーに本番デプロイの可否を確認する**
+- [x] **Step 3: ユーザーに本番デプロイの可否を確認する**
 
 `AskUserQuestion` で明示的に確認してから次へ進む。
 
-- [ ] **Step 4: デプロイする**
+- [x] **Step 4: デプロイする**（実測 2026-08-29: 本番 `build/assets/app-cUmeSh4E.css` に `.sortable-th-link:focus-visible` が在る＝転移済み）
 
 ```bash
 cd /Users/masanori/site/manage && ./deploy.sh
@@ -2451,7 +2451,7 @@ cd /Users/masanori/site/manage && ./deploy.sh
 
 ⚠ DB 変更は無いので SQL の実行は不要。`view:cache` の再生成は `deploy.sh` が行う。
 
-- [ ] **Step 5: 本番で動作を確認する**
+- [ ] **Step 5: 本番で動作を確認する** ⚠ **記録が残っていない。** 反映されていること自体は Step 4 の CSS で裏取りできたが、下の 3 点を実際に踏んだ記録は無い（次に本番を触るときに併せて見る）
 
 ⚠ 本番 URL は `/index.php/` prefix が要る（`.../manage/tenant/units` は 302 で流れる）。
 Playwright は未ログインで止まるので、実 Chrome（claude-in-chrome）の既存セッションを使う。
@@ -2461,7 +2461,7 @@ Playwright は未ログインで止まるので、実 Chrome（claude-in-chrome�
 2. その状態でステータス絞り込みを変える → 並び順が維持される
 3. `/tenant/properties` で「賃料収入」を 3 回押す → 既定順（稼働が先 → コード順）に戻る
 
-- [ ] **Step 6: worktree を片付ける**
+- [ ] **Step 6: worktree を片付ける** ⚠ **未実施**（実測 2026-08-29: `git worktree list` に `.claude/worktrees/tenant-list-sorting` が残っている）
 
 ```bash
 cd /Users/masanori/site/manage && git worktree remove .claude/worktrees/tenant-list-sorting && git branch -d tenant-list-sorting
