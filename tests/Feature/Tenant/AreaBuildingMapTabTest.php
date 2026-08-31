@@ -250,11 +250,47 @@ class AreaBuildingMapTabTest extends AreaBuildingTestCase
     }
 
     /**
+     * スタイル定義の partial（`_map_style.blade.php`）が出した `<script>` 本体を取り出す。
+     *
+     * ⚠ **サンドボックスに配列を直書きしない。** 直書きすると
+     *   ①テストに 3 つ目のコピーができて `resources/views` しか見ない Bug #41 の走査から外れる
+     *   ②`@include` が外れてもハーネスが気づかなくなる —— このハーネスは
+     *     このリポジトリで唯一 JS を**実際に実行する**仕組みなので、それを捨てるのは惜しい。
+     *   同じ HTML から切り出せば、ブラウザと同じものを同じ順序で流せる。
+     */
+    private function mapStyleScriptSource(string $html): string
+    {
+        $anchor = 'var AREA_MAP_STYLES';
+        $at     = strpos($html, $anchor);
+        $this->assertNotFalse(
+            $at,
+            'スタイル定義のスクリプトが画面に無い（_map_style の include が外れた？）'
+        );
+
+        // ⚠ 終端の規則は mapScriptSource() と同じ（アンカーより後の最初の `</script`）
+        $end = strpos($html, '</script', $at);
+        $this->assertNotFalse($end, 'スタイル定義のスクリプトが閉じていない');
+
+        $open = strrpos(substr($html, 0, $at), '<script');
+        $this->assertNotFalse($open, 'スタイル定義のスクリプトの開始タグが見つからない');
+
+        $start  = strpos($html, '>', $open);
+        $script = substr($html, $start + 1, $end - $start - 1);
+
+        $this->assertNotSame('', trim($script), 'スタイル定義の本体を切り出せていない（抽出が空）');
+
+        return $script;
+    }
+
+    /**
      * 地図タブの `<script>` を node の `vm` でそのまま実駆動する。
      *
      * ⚠ ハーネスはブラウザより寛容であってはいけない（`AreaBuildingGeocodeTest` の
      *   `runBrowserScript()` と同じ方針）。ここで呼ぶ 2 関数は DOM も google も
      *   参照しない純関数なので、サンドボックスには何も渡さない。
+     *
+     * ⚠ こちらは `mapStyleScriptSource()` を前置きしなくてよい —— `AREA_MAP_STYLES` の参照は
+     *   `onAreaMapReady` の本体の中にあり、ここが呼ぶ 2 関数は純関数なので評価に到達しない。
      *
      * @return array{escaped: string, info: string}
      */
@@ -1791,7 +1827,11 @@ JS);
         mkdir($dir);
 
         try {
-            $script = $this->mapScriptSource($html);
+            // ⚠ ブラウザと同じ順序で流す —— スタイル定義の <script> が先、本体が後。
+            //   前置きしないと onAreaMapReady() 内の `styles: AREA_MAP_STYLES` が
+            //   ReferenceError になり、node ごと落ちて json_decode が null を返す
+            //   （＝「Failed asserting that null is of type array」という理由の読めない赤になる）。
+            $script = $this->mapStyleScriptSource($html) . "\n" . $this->mapScriptSource($html);
             $this->assertStringContainsString('function saveCoordinate(', $script,
                 '切り出したスクリプトに登録モードが入っていない（ハーネスが何も駆動しない）');
 
@@ -1971,15 +2011,6 @@ function FakeMap(options) {
 const sandbox = {
     console: console,
     JSON: JSON,
-    // ⚠ 実ブラウザでは _map_style.blade.php の**別の** <script> が先に定義する global。
-    //   ここに無いと onAreaMapReady() 内の `styles: AREA_MAP_STYLES` が
-    //   ReferenceError になる（ハーネスがブラウザより厳しくなってしまう。周辺ビル調査の
-    //   地図から POI/駅ラベルを消す変更で AREA_MAP_STYLES を渡すようになったため追加）。
-    //   中身は FakeMap が読まないので値そのものはテストの結果を左右しない。
-    AREA_MAP_STYLES: [
-        { featureType: 'poi',     elementType: 'labels', stylers: [{ visibility: 'off' }] },
-        { featureType: 'transit', elementType: 'labels', stylers: [{ visibility: 'off' }] }
-    ],
     // ⚠ 記録したうえで plan の指示どおりに答える。既定は「はい」だが、
     //    「いいえ」で何も起きないことも測れるようにしておく
     confirm: function (message) {
