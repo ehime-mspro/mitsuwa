@@ -106,6 +106,7 @@
 </div>
 
 @push('scripts')
+@include('tenant.area-buildings._map_style')
 <script>
 // ⚠ データはコントローラで組み立て済みの単一変数を受ける（Bug #23 / #26）
 var AREA_MAP_PINS   = {{ \Illuminate\Support\Js::from($mapPins) }};

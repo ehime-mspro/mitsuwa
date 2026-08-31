@@ -101,6 +101,7 @@
     </div>
 @endisset
 
+@include('tenant.area-buildings._map_style')
 <script>
 // ============================================================
 // Google Maps - 位置
