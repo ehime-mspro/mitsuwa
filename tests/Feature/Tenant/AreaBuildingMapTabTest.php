@@ -279,6 +279,15 @@ class AreaBuildingMapTabTest extends AreaBuildingTestCase
 
         $this->assertNotSame('', trim($script), 'スタイル定義の本体を切り出せていない（抽出が空）');
 
+        // ⚠ 兄の mapScriptSource() と同じく、切り出した範囲が健全であることまで見る。
+        //   partial の開始タグが消えると strrpos が手前の別ブロックに着地し、
+        //   19 本が「SyntaxError: Unexpected token '<'」という**原因を名指ししない**理由で落ちる。
+        $this->assertStringNotContainsString(
+            '</script',
+            $script,
+            'スタイル定義の抽出が別の <script> をまたいでいる（partial の開始タグが消えた？）'
+        );
+
         return $script;
     }
 

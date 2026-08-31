@@ -30,6 +30,14 @@ class AreaBuildingMapPoiTest extends AreaBuildingTestCase
     /** スタイル定義の唯一の置き場所。 */
     private const STYLE_PARTIAL = 'resources/views/tenant/area-buildings/_map_style.blade.php';
 
+    /**
+     * アプリ全体の `new google.maps.Map(` の下限（2026-08-31 実測 12 箇所）。
+     *
+     * 内訳: area-buildings 2 / realestate procurements 4 / realestate projects 4 / dad projects 2。
+     * 走査が空振りして緑になる事故を防ぐためだけの値なので、地図が増えたら上げてよい。
+     */
+    private const MIN_MAP_SITES_APP_WIDE = 12;
+
     // ============================================================
     // 定義側 — 何を消すか
     // ============================================================
@@ -220,6 +228,11 @@ class AreaBuildingMapPoiTest extends AreaBuildingTestCase
      *   登録モードで Google 側の吹き出しが地図クリックに割り込む余地を残さないために入れている。
      *   効いているかは測っていない（測るには POI があった座標を狙って押し、
      *   InfoWindow が出ないことを見る必要がある）。ここでは「消えたら気づく」ことだけを固定する。
+     *
+     * ⚠ **部分一致で書かないこと。** `assertStringContainsString('styles: AREA_MAP_STYLES', …)` は
+     *   `AREA_MAP_STYLES_V2` に前方一致する。`_map` は実駆動ハーネス（`AreaBuildingMapTabTest`）が
+     *   `ReferenceError` で拾うが、**`_form` の JS を実行するものは何も無い**ので、
+     *   実測で全 1049 テストが緑のまま `/create` `/edit` の地図だけが死んだ（Bug #28 の形）。
      */
     public function test_the_area_building_maps_pass_the_style_to_google_maps(): void
     {
@@ -228,15 +241,18 @@ class AreaBuildingMapPoiTest extends AreaBuildingTestCase
         $this->assertNotSame([], $sites, '走査が空振りしている');
 
         foreach ($sites as $where => $block) {
-            $this->assertStringContainsString(
-                'styles: AREA_MAP_STYLES',
+            $this->assertMatchesRegularExpression(
+                '/\bstyles:\s*AREA_MAP_STYLES(?![\w$])/',
                 $block,
                 "{$where}: new google.maps.Map() の引数に styles: AREA_MAP_STYLES がありません"
-                    . '（POI が既定のまま描かれ、自社のビルピンと重なります）'
+                    . '（POI が既定のまま描かれ、自社のビルピンと重なります）。'
+                    . '⚠ 部分一致では AREA_MAP_STYLES_V2 のような別名も通ってしまうので'
+                    . '識別子の末尾まで見る —— _form は実駆動ハーネスを持たないため、'
+                    . 'ここが緩いと create / edit の地図が無音で死ぬ'
             );
 
-            $this->assertStringNotContainsString(
-                'mapId',
+            $this->assertDoesNotMatchRegularExpression(
+                '/\bmapId\s*:/',
                 $block,
                 "{$where}: mapId があると Google が styles を丸ごと無視する（設計書 §4 に実測記録あり）。"
                     . 'POI 抑止が無音で死ぬ。⚠ 両ビューは deprecated な new google.maps.Marker を使っており、'
@@ -244,14 +260,52 @@ class AreaBuildingMapPoiTest extends AreaBuildingTestCase
                     . 'マーカー移行の日にこれを踏む'
             );
 
-            $this->assertStringContainsString(
-                'clickableIcons: false',
+            $this->assertMatchesRegularExpression(
+                '/\bclickableIcons:\s*false(?![\w$])/',
                 $block,
                 "{$where}: new google.maps.Map() の引数に clickableIcons: false がありません"
                     . '（設計書 §3.3 の二重防御。登録モードで Google の吹き出しが'
                     . '地図クリックに割り込む余地を残さないため）'
             );
         }
+    }
+
+    /**
+     * 適用は周辺ビル調査の 2 箇所だけ（設計書 §2）。
+     *
+     * 仕入れ案件・分譲地 PJ・DAD の地図（10 箇所）は「周辺に何があるか」を見るための地図で、
+     * POI を消すと用途そのものが損なわれる。**あちらへ広げる変更をここで止める。**
+     *
+     * ⚠ アプリ全体の件数は**下限**で見る（新しい地図が増えても、それ自体では落ちない）。
+     *   走査が空振りして「対象 0 件だから緑」になる事故だけを防ぐ（Bug #45）。
+     *   一方でスタイルが乗っている集合は**完全一致**で見る ＝ 他所へ広げたら必ず落ちる。
+     */
+    public function test_the_other_maps_in_the_app_are_left_alone(): void
+    {
+        $sites = $this->mapCreationSites(resource_path('views'));
+
+        $this->assertGreaterThanOrEqual(
+            self::MIN_MAP_SITES_APP_WIDE,
+            count($sites),
+            'アプリ全体の地図生成箇所が既知の下限を下回った（走査が壊れている可能性がある）'
+        );
+
+        $styled = array_keys(array_filter(
+            $sites,
+            fn (string $block): bool => str_contains($block, 'AREA_MAP_STYLES')
+        ));
+        sort($styled);
+
+        $this->assertSame(
+            [
+                'resources/views/tenant/area-buildings/_form.blade.php#1',
+                'resources/views/tenant/area-buildings/_map.blade.php#1',
+            ],
+            $styled,
+            'POI を消すスタイルは周辺ビル調査の 2 箇所だけに当てること（設計書 §2）。'
+                . '仕入れ案件・分譲地・DAD の地図は「周辺に何があるか」を見る用途なので'
+                . 'POI を消してはいけない'
+        );
     }
 
     // ============================================================
@@ -316,7 +370,12 @@ class AreaBuildingMapPoiTest extends AreaBuildingTestCase
         return $sites;
     }
 
-    /** `$open` の位置にある `(` に対応する `)` の位置。見つからなければ null。 */
+    /**
+     * `$open` の位置にある `(` に対応する `)` の位置。見つからなければ null。
+     *
+     * ⚠ 文字列リテラルを飛ばさない。将来オプション値に閉じていない括弧を含む文字列が入ると
+     *   切り出しがずれる。false-green ではなく**読める false-red** になるので記録に留める。
+     */
     private function matchingParen(string $src, int $open): ?int
     {
         $depth = 0;
