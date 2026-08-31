@@ -638,6 +638,34 @@ EOF
 
 ---
 
+## Task 2 追補（プラン未記載。実装中に実測で発覚）
+
+**`styles: AREA_MAP_STYLES` を渡した瞬間、`AreaBuildingMapTabTest` の 19 テストが赤化した。**
+
+原因: 同テストの `runLocateScript()` は、**画面が返した `<script>` を node の `vm` でそのまま実駆動**し
+`onAreaMapReady()` を呼ぶ（Bug #47「振る舞いの正本は実駆動」）。だが切り出すのは
+`_map.blade.php` 本体のスクリプトだけで、**`_map_style.blade.php` が出す別の `<script>` を含めていない**。
+よって `AREA_MAP_STYLES` が未定義になり `ReferenceError` → node が落ちて `json_decode` が null。
+
+⚠ **これは事故ではなく、ハーネスが正しく仕事をした結果**。実ブラウザで `@include` が外れたときに
+起きることを、そのまま再現している。
+
+**対応（サンドボックスに配列を直書きしない）:** ハーネスが**同じ HTML から partial のスクリプトも切り出して
+前置きする**。こうすると:
+
+- テストに配列の**3 つ目のコピー**を作らずに済む（値がドリフトしない）
+- ハーネスが本当にブラウザを写す（`@include` が外れたら**振る舞いとして**落ちる）
+- 再レビューが指摘した「テストは定義の文面・位置・唯一性は固定するが、**ブラウザが実行するか**は
+  固定しない」という穴の、実行側を実際に塞ぐ
+
+⚠ `runMapScript()` のほうは変更不要 —— `AREA_MAP_STYLES` の参照は `onAreaMapReady` の**本体の中**で、
+そちらは純関数 2 つしか呼ばないので評価に到達しない。
+
+⚠ **変異 G を追加**（下記表）: `_map.blade.php` の `@include` を消すと、構造テストだけでなく
+**ハーネスも**落ちること。これが落ちなければ、この追補は意味を持っていない。
+
+---
+
 ## Task 3: 適用範囲のガード（他 10 箇所の地図は触らない）
 
 **Files:**
@@ -737,7 +765,7 @@ EOF
 
 ---
 
-## Task 4: 検証（compiled view の lint ＋ 変異テスト 16 通り）
+## Task 4: 検証（compiled view の lint ＋ 変異テスト 17 通り）
 
 **Files:** なし（測るだけ。変異は毎回戻す）
 
@@ -817,7 +845,7 @@ chmod +x /private/tmp/claude-501/-Users-masanori-site-manage/2d46599e-6379-45c2-
 
 ⚠ **needle / replacement をファイル渡しにするのが要点。** シェルのクォートを通すと `$` や `\` の扱いで 0 件マッチになり、それでも exit 0 になって「検出しない」と誤読する。上のランナーは **出現回数が 1 件でなければ中断**する。
 
-- [ ] **Step 4: 変異の当て方（1 件だけ手順を全部書く。残り 15 件も同じ形）**
+- [ ] **Step 4: 変異の当て方（1 件だけ手順を全部書く。残り 16 件も同じ形）**
 
 例として変異 #1（`poi` の行を消す）を当てる。**needle と replacement は必ずファイル渡し**にする
 （シェルのクォートを通すと `$` や `\` の扱いで 0 件マッチになり、それでも exit 0 になって
@@ -866,7 +894,7 @@ needle は `procurements/_form.blade.php:425` の `new google.maps.Map(` の**�
 あちらは「周辺に何があるか」を見る地図なので Street View を出すのが仕様。
 変異を当てる先を間違えて `false` を探すと 0 件マッチになる。
 
-- [ ] **Step 5: 変異 16 通りを実測する**
+- [ ] **Step 5: 変異 17 通りを実測する**
 
 各変異について「**赤になること**」と「**落ちた理由の文言**」を突き合わせる。⚠ 赤/緑だけを見ない（意図と別の機構が落としている可能性を排除できない）。
 
@@ -888,6 +916,7 @@ needle は `procurements/_form.blade.php:425` の `new google.maps.Map(` の**�
 | 14 | `_map.blade.php` | `window.AREA_MAP_STYLES = [… visibility: 'on' …]` を**足す** | 同上 / 定義は 1 箇所だけ |
 | 15 | `_map.blade.php` | Map の引数に `mapId: 'x',` を**足す** | `test_the_area_building_maps_pass_the_style_to_google_maps` / `mapId があると Google が styles を丸ごと無視する` |
 | 16 | `_map_style.blade.php` | `<script>` → `<script type="text/template">` | `test_the_style_array_is_defined_in_exactly_one_place` / classic script で包むこと（⚠ `module` 名指しの版ではこれを**見逃す**）|
+| 17 | `_map.blade.php` | `@include` を消す（`styles:` は残す）| **構造** `test_both_area_building_maps_receive_the_style_definition` ＋ **振る舞い** `AreaBuildingMapTabTest`（ハーネスがスタイル用スクリプトを切り出せない）の**両方** |
 
 ⚠ **変異 #9 は「検査対象に入るはずの場所」へ当てる**（Bug #44 の 2026-08-17 追記）。`resources/views` 配下の実在する `new google.maps.Map(` の引数の中へ入れること。コメント行に足しても走査が落とすので当たらない。
 
@@ -1040,6 +1069,7 @@ EOF
 | 14 | `_map` に `window.AREA_MAP_STYLES` を足す | | | | |
 | 15 | `_map` の Map に `mapId:` を足す | | | | |
 | 16 | partial を `<script type="text/template">` に | | | | |
+| 17 | `_map` の include を消す（ハーネスも落ちるか） | | | | |
 
 ---
 
