@@ -342,9 +342,23 @@ partial を作った理由そのもの（Bug #41）が無防備だった。
 ```php
 $partial = trim(file_get_contents(base_path(self::STYLE_PARTIAL)));
 
-$this->assertMatchesRegularExpression('/\A<script(?![^>]*module)[^>]*>/', $partial, '…');
+$this->assertMatchesRegularExpression('/\A<script(?![^>]*\stype\s*=)[^>]*>/', $partial, '…');
 $this->assertStringEndsWith('</script>', $partial, '…');
 ```
+
+⚠ **`module` を名指しするのでは足りない**（再レビューの実測）。**非 JS の `type` は何であれ実行を止める**:
+
+| 変異 | `(?![^>]*module)` 版 |
+|---|---|
+| `<script type="text/template">` | **緑（見逃す）** |
+| `<script type="application/json">` | **緑（見逃す）** |
+| `<script type="text/x-template">` | **緑（見逃す）** |
+
+いずれも partial が**実行されないデータブロック**になり、`module` と同じ「灰色の地図＋200」で死ぬ。
+このリポジトリは Alpine を多用するので `text/x-template` の語彙は身近にある。
+→ **`type` 属性の存在そのものを禁じる**（`\stype\s*=`）。`<script nonce="…">` は通り、
+`type="text/javascript"` は落ちるが、この partial が `type` を持つ理由は無いので
+「`type` 属性を持たない」という単純な不変条件のほうがよい。
 
 ### 同じく再レビュー: 定義の正規表現が不変条件より狭い
 
@@ -723,7 +737,7 @@ EOF
 
 ---
 
-## Task 4: 検証（compiled view の lint ＋ 変異テスト 15 通り）
+## Task 4: 検証（compiled view の lint ＋ 変異テスト 16 通り）
 
 **Files:** なし（測るだけ。変異は毎回戻す）
 
@@ -803,7 +817,7 @@ chmod +x /private/tmp/claude-501/-Users-masanori-site-manage/2d46599e-6379-45c2-
 
 ⚠ **needle / replacement をファイル渡しにするのが要点。** シェルのクォートを通すと `$` や `\` の扱いで 0 件マッチになり、それでも exit 0 になって「検出しない」と誤読する。上のランナーは **出現回数が 1 件でなければ中断**する。
 
-- [ ] **Step 4: 変異の当て方（1 件だけ手順を全部書く。残り 14 件も同じ形）**
+- [ ] **Step 4: 変異の当て方（1 件だけ手順を全部書く。残り 15 件も同じ形）**
 
 例として変異 #1（`poi` の行を消す）を当てる。**needle と replacement は必ずファイル渡し**にする
 （シェルのクォートを通すと `$` や `\` の扱いで 0 件マッチになり、それでも exit 0 になって
@@ -852,7 +866,7 @@ needle は `procurements/_form.blade.php:425` の `new google.maps.Map(` の**�
 あちらは「周辺に何があるか」を見る地図なので Street View を出すのが仕様。
 変異を当てる先を間違えて `false` を探すと 0 件マッチになる。
 
-- [ ] **Step 5: 変異 15 通りを実測する**
+- [ ] **Step 5: 変異 16 通りを実測する**
 
 各変異について「**赤になること**」と「**落ちた理由の文言**」を突き合わせる。⚠ 赤/緑だけを見ない（意図と別の機構が落としている可能性を排除できない）。
 
@@ -873,6 +887,7 @@ needle は `procurements/_form.blade.php:425` の `new google.maps.Map(` の**�
 | 13 | `_map_style.blade.php` | `<script>` / `</script>` の囲いを外す | 同上 / `<script> で包まないと JS が画面に文字として出るだけ` |
 | 14 | `_map.blade.php` | `window.AREA_MAP_STYLES = [… visibility: 'on' …]` を**足す** | 同上 / 定義は 1 箇所だけ |
 | 15 | `_map.blade.php` | Map の引数に `mapId: 'x',` を**足す** | `test_the_area_building_maps_pass_the_style_to_google_maps` / `mapId があると Google が styles を丸ごと無視する` |
+| 16 | `_map_style.blade.php` | `<script>` → `<script type="text/template">` | `test_the_style_array_is_defined_in_exactly_one_place` / classic script で包むこと（⚠ `module` 名指しの版ではこれを**見逃す**）|
 
 ⚠ **変異 #9 は「検査対象に入るはずの場所」へ当てる**（Bug #44 の 2026-08-17 追記）。`resources/views` 配下の実在する `new google.maps.Map(` の引数の中へ入れること。コメント行に足しても走査が落とすので当たらない。
 
@@ -1024,6 +1039,7 @@ EOF
 | 13 | partial の `<script>` 囲いを外す | | | | |
 | 14 | `_map` に `window.AREA_MAP_STYLES` を足す | | | | |
 | 15 | `_map` の Map に `mapId:` を足す | | | | |
+| 16 | partial を `<script type="text/template">` に | | | | |
 
 ---
 
