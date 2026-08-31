@@ -109,7 +109,7 @@ class AreaBuildingMapPoiTest extends AreaBuildingTestCase
                 continue;
             }
 
-            if (preg_match('/\bvar\s+AREA_MAP_STYLES\s*=/', $this->withoutComments($file->getContents()))) {
+            if (preg_match('/\bAREA_MAP_STYLES\s*=(?!=)/', $this->withoutComments($file->getContents()))) {
                 $definitions[] = str_replace(base_path() . '/', '', $file->getPathname());
             }
         }
@@ -121,6 +121,28 @@ class AreaBuildingMapPoiTest extends AreaBuildingTestCase
             $definitions,
             'AREA_MAP_STYLES の定義は _map_style.blade.php 1 箇所だけにすること。'
                 . '2 つ目のコピーができると片方だけ直す事故になる（Bug #41）'
+        );
+
+        // ⚠ ここまでは「定義の文面と唯一性」しか見ていない。**ブラウザが実行するか**は別問題で、
+        //    下の 2 つが無いと以下の 2 変異が全テスト緑のまま通る（実測）:
+        //    ・`type="module"` にする → var がモジュールスコープになり global に出ない
+        //      （さらに module は defer 相当なのでローダーとの順序保証も壊れる）
+        //    ・`<script>` の囲いを外す → JS が画面に文字として出るだけで一度も実行されない
+        //    どちらも灰色の地図 ＋ HTTP 200 という無音の死に方をする（Bug #28）。
+        $partial = trim(file_get_contents(base_path(self::STYLE_PARTIAL)));
+
+        $this->assertMatchesRegularExpression(
+            '/\A<script(?![^>]*module)[^>]*>/',
+            $partial,
+            'スタイル定義は classic script で包むこと。type="module" だと var が'
+                . 'モジュールスコープになり global に出ず、classic script の Maps callback から'
+                . 'ReferenceError になる'
+        );
+
+        $this->assertStringEndsWith(
+            '</script>',
+            $partial,
+            '<script> で包まないと JS が実行されず、画面に文字として出るだけになる'
         );
     }
 
