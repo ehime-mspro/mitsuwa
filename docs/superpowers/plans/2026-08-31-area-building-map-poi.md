@@ -321,6 +321,48 @@ partial を作った理由そのもの（Bug #41）が無防備だった。
 （`_form.blade.php:113-114` に同じ注意書きの前例がある。`AreaBuildingCrudTest` の
 「画面に出さない」検査に引っかかるため）。
 
+### 再レビューで見つかった 3 つ目（同型・実測で全 1047 テスト緑）
+
+**「定義が *実行される global scope の classic script* であること」を誰も見ていない。**
+
+| 変異 | ブラウザでの結果 | 当初 |
+|---|---|---|
+| `<script>` → `<script type="module">` | `var` が**モジュールスコープ**になり global に出ない → classic script の Maps callback から `ReferenceError`。さらに module は defer 相当なので**上の ② の順序保証も壊れる** | **緑** |
+| `<script>` の囲いを外す | JS が**画面に文字として表示される**だけで一度も実行されない | **緑** |
+
+既存テストは両方を素通りする —— test 2 は HTML に `var AREA_MAP_STYLES = [` を見つけるし、
+定義の正規表現も当たるし、`strpos` の順序も保たれる。**灰色の地図＋HTTP 200**（Bug #28 の形）。
+⚠ `type="module"` は「インラインスクリプトを現代化する」編集で自然に入る（このリポジトリは
+`@vite` を module として出しているので語彙が既にある）。
+
+**対応:** `test_the_style_array_is_defined_in_exactly_one_place` に 2 アサート追加。
+⚠ レビュアー案の `assertStringStartsWith('<script>')` は**将来 CSP の `nonce` を足したときに
+壊れていないのに赤**になるので、`module` だけを狙う正規表現にする:
+
+```php
+$partial = trim(file_get_contents(base_path(self::STYLE_PARTIAL)));
+
+$this->assertMatchesRegularExpression('/\A<script(?![^>]*module)[^>]*>/', $partial, '…');
+$this->assertStringEndsWith('</script>', $partial, '…');
+```
+
+### 同じく再レビュー: 定義の正規表現が不変条件より狭い
+
+`/\bvar\s+AREA_MAP_STYLES\s*=/` は `window.AREA_MAP_STYLES = …` / `const` / `let` を見逃す。
+⚠ **実測**: `_map.blade.php` に `window.AREA_MAP_STYLES = [… visibility: 'on' …]` を足すと、
+partial の `var` より後に代入されるので**実行時はそちらが勝って POI が戻る**のに、全テスト緑。
+
+→ `/\bAREA_MAP_STYLES\s*=(?!=)/` にする。`var`/`const`/`let`/`window.` を全部拾い、
+Task 2 の `styles: AREA_MAP_STYLES,`（`=` が無い）にも `AREA_MAP_STYLES ===`（`(?!=)`）にも当たらない。
+
+### まとめ（次に触る人へ）
+
+テストが固定しているのは定義の**文面**・**位置**・**唯一性**であって、
+**ブラウザがそれを実行するか**と **Google がそれを尊重するか**ではない。
+後者 2 つは上の 2 節と、下記 Task 2 の `mapId` で塞いだ。
+
+---
+
 ⚠ **設計書 §3.2 の「定義が地図生成より前に走ることは構造で保証される」には前提が省かれている** ——
 正しくは「**`@include` がローダーより前にある限り**構造で保証される」。設計書は承認済みの正本なので
 ここに記録だけ残す（書き換えるならユーザーの判断で）。
@@ -388,6 +430,15 @@ partial を作った理由そのもの（Bug #41）が無防備だった。
                 $block,
                 "{$where}: new google.maps.Map() の引数に styles: AREA_MAP_STYLES がありません"
                     . '（POI が既定のまま描かれ、自社のビルピンと重なります）'
+            );
+
+            $this->assertStringNotContainsString(
+                'mapId',
+                $block,
+                "{$where}: mapId があると Google が styles を**丸ごと無視する**（設計書 §4 に実測記録あり）。"
+                    . 'POI 抑止が無音で死ぬ。⚠ 両ビューは deprecated な new google.maps.Marker を使っており、'
+                    . '後継の AdvancedMarkerElement は Map ID を要求するので、'
+                    . 'マーカー移行の日にこれを踏む'
             );
 
             $this->assertStringContainsString(
@@ -672,7 +723,7 @@ EOF
 
 ---
 
-## Task 4: 検証（compiled view の lint ＋ 変異テスト 11 通り）
+## Task 4: 検証（compiled view の lint ＋ 変異テスト 15 通り）
 
 **Files:** なし（測るだけ。変異は毎回戻す）
 
@@ -752,7 +803,7 @@ chmod +x /private/tmp/claude-501/-Users-masanori-site-manage/2d46599e-6379-45c2-
 
 ⚠ **needle / replacement をファイル渡しにするのが要点。** シェルのクォートを通すと `$` や `\` の扱いで 0 件マッチになり、それでも exit 0 になって「検出しない」と誤読する。上のランナーは **出現回数が 1 件でなければ中断**する。
 
-- [ ] **Step 4: 変異の当て方（1 件だけ手順を全部書く。残り 10 件も同じ形）**
+- [ ] **Step 4: 変異の当て方（1 件だけ手順を全部書く。残り 14 件も同じ形）**
 
 例として変異 #1（`poi` の行を消す）を当てる。**needle と replacement は必ずファイル渡し**にする
 （シェルのクォートを通すと `$` や `\` の扱いで 0 件マッチになり、それでも exit 0 になって
@@ -801,7 +852,7 @@ needle は `procurements/_form.blade.php:425` の `new google.maps.Map(` の**�
 あちらは「周辺に何があるか」を見る地図なので Street View を出すのが仕様。
 変異を当てる先を間違えて `false` を探すと 0 件マッチになる。
 
-- [ ] **Step 5: 変異 11 通りを実測する**
+- [ ] **Step 5: 変異 15 通りを実測する**
 
 各変異について「**赤になること**」と「**落ちた理由の文言**」を突き合わせる。⚠ 赤/緑だけを見ない（意図と別の機構が落としている可能性を排除できない）。
 
@@ -818,6 +869,10 @@ needle は `procurements/_form.blade.php:425` の `new google.maps.Map(` の**�
 | 9 | `realestate/procurements/_form.blade.php` | Map の引数に `styles: AREA_MAP_STYLES,` を**足す** | `test_the_other_maps_in_the_app_are_left_alone` / `POI を消すスタイルは周辺ビル調査の 2 箇所だけに当てること` |
 | 10 | `_form.blade.php` | `@include` を**インラインの複製**（`var AREA_MAP_STYLES = […]` を直書き）に置換 | `test_the_style_array_is_defined_in_exactly_one_place` / `AREA_MAP_STYLES の定義は _map_style.blade.php 1 箇所だけにすること` |
 | 11 | `_map.blade.php` | `@include` を Maps ローダーの**後ろ**（最後の `@endpush` の直前）へ移す ⚠ `@endpush` は複数あるので**最後の 1 つ**を狙う（狙い違いで非着弾した実例あり）| `test_the_style_definition_comes_before_the_maps_loader` / `スタイル定義は async な Maps ローダーより前に置くこと` |
+| 12 | `_map_style.blade.php` | `<script>` → `<script type="module">` | `test_the_style_array_is_defined_in_exactly_one_place` / classic script で包むこと |
+| 13 | `_map_style.blade.php` | `<script>` / `</script>` の囲いを外す | 同上 / `<script> で包まないと JS が画面に文字として出るだけ` |
+| 14 | `_map.blade.php` | `window.AREA_MAP_STYLES = [… visibility: 'on' …]` を**足す** | 同上 / 定義は 1 箇所だけ |
+| 15 | `_map.blade.php` | Map の引数に `mapId: 'x',` を**足す** | `test_the_area_building_maps_pass_the_style_to_google_maps` / `mapId があると Google が styles を丸ごと無視する` |
 
 ⚠ **変異 #9 は「検査対象に入るはずの場所」へ当てる**（Bug #44 の 2026-08-17 追記）。`resources/views` 配下の実在する `new google.maps.Map(` の引数の中へ入れること。コメント行に足しても走査が落とすので当たらない。
 
@@ -965,6 +1020,10 @@ EOF
 | 9 | procurements の Map に `styles:` を足す | | | | |
 | 10 | `_form` の include をインライン複製に置換 | | | | |
 | 11 | `_map` の include をローダーの後ろへ移動 | | | | |
+| 12 | partial を `<script type="module">` に | | | | |
+| 13 | partial の `<script>` 囲いを外す | | | | |
+| 14 | `_map` に `window.AREA_MAP_STYLES` を足す | | | | |
+| 15 | `_map` の Map に `mapId:` を足す | | | | |
 
 ---
 
