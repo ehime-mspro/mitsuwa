@@ -1971,6 +1971,15 @@ function FakeMap(options) {
 const sandbox = {
     console: console,
     JSON: JSON,
+    // ⚠ 実ブラウザでは _map_style.blade.php の**別の** <script> が先に定義する global。
+    //   ここに無いと onAreaMapReady() 内の `styles: AREA_MAP_STYLES` が
+    //   ReferenceError になる（ハーネスがブラウザより厳しくなってしまう。周辺ビル調査の
+    //   地図から POI/駅ラベルを消す変更で AREA_MAP_STYLES を渡すようになったため追加）。
+    //   中身は FakeMap が読まないので値そのものはテストの結果を左右しない。
+    AREA_MAP_STYLES: [
+        { featureType: 'poi',     elementType: 'labels', stylers: [{ visibility: 'off' }] },
+        { featureType: 'transit', elementType: 'labels', stylers: [{ visibility: 'off' }] }
+    ],
     // ⚠ 記録したうえで plan の指示どおりに答える。既定は「はい」だが、
     //    「いいえ」で何も起きないことも測れるようにしておく
     confirm: function (message) {

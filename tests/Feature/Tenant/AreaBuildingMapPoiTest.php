@@ -132,11 +132,11 @@ class AreaBuildingMapPoiTest extends AreaBuildingTestCase
         $partial = trim(file_get_contents(base_path(self::STYLE_PARTIAL)));
 
         $this->assertMatchesRegularExpression(
-            '/\A<script(?![^>]*module)[^>]*>/',
+            '/\A<script(?![^>]*\stype\s*=)[^>]*>/',
             $partial,
-            'スタイル定義は classic script で包むこと。type="module" だと var が'
-                . 'モジュールスコープになり global に出ず、classic script の Maps callback から'
-                . 'ReferenceError になる'
+            'スタイル定義は classic script で包むこと。type 属性が付くと（module / text/template / '
+                . 'application/json いずれでも）実行されないか var が global に出ず、'
+                . 'Maps callback から ReferenceError になる'
         );
 
         $this->assertStringEndsWith(
@@ -185,6 +185,76 @@ class AreaBuildingMapPoiTest extends AreaBuildingTestCase
     }
 
     // ============================================================
+    // 適用側 — Map の引数に渡っているか
+    // ============================================================
+
+    /**
+     * 走査が空振りして「対象 0 件だから緑」になる事故を防ぐ（Bug #45）。
+     *
+     * 周辺ビル調査で地図を作るのは `_map`（一覧の地図タブ）と `_form`（地図で位置を指定）の
+     * ちょうど 2 箇所。増えたらこのテストが落ちるので、増やした人が
+     * 「その地図にもスタイルを当てるか」を必ず判断することになる。
+     */
+    public function test_the_map_creation_scan_finds_both_area_building_maps(): void
+    {
+        $sites = $this->mapCreationSites(resource_path('views/tenant/area-buildings'));
+
+        $this->assertSame(
+            [
+                'resources/views/tenant/area-buildings/_form.blade.php#1',
+                'resources/views/tenant/area-buildings/_map.blade.php#1',
+            ],
+            array_keys($sites),
+            '周辺ビル調査で地図を作る箇所が想定と違う（走査が壊れたか、地図が増減した）'
+        );
+    }
+
+    /**
+     * `new google.maps.Map(` の**引数の中**に必要なオプションがあること。
+     *
+     * ⚠ 「ファイルのどこかに文字列がある」では不十分 —— コメントに書いただけで緑になる。
+     *   括弧の対応で引数ブロックを切り出してその中だけを見る（Bug #42 ②）。
+     *
+     * ⚠ `clickableIcons: false` は設計書 §3.3 の**未測定の二重防御**。
+     *   ラベルを消せば POI のアイコン自体が描かれないので冗長な可能性があるが、
+     *   登録モードで Google 側の吹き出しが地図クリックに割り込む余地を残さないために入れている。
+     *   効いているかは測っていない（測るには POI があった座標を狙って押し、
+     *   InfoWindow が出ないことを見る必要がある）。ここでは「消えたら気づく」ことだけを固定する。
+     */
+    public function test_the_area_building_maps_pass_the_style_to_google_maps(): void
+    {
+        $sites = $this->mapCreationSites(resource_path('views/tenant/area-buildings'));
+
+        $this->assertNotSame([], $sites, '走査が空振りしている');
+
+        foreach ($sites as $where => $block) {
+            $this->assertStringContainsString(
+                'styles: AREA_MAP_STYLES',
+                $block,
+                "{$where}: new google.maps.Map() の引数に styles: AREA_MAP_STYLES がありません"
+                    . '（POI が既定のまま描かれ、自社のビルピンと重なります）'
+            );
+
+            $this->assertStringNotContainsString(
+                'mapId',
+                $block,
+                "{$where}: mapId があると Google が styles を丸ごと無視する（設計書 §4 に実測記録あり）。"
+                    . 'POI 抑止が無音で死ぬ。⚠ 両ビューは deprecated な new google.maps.Marker を使っており、'
+                    . '後継の AdvancedMarkerElement は Map ID を要求するので、'
+                    . 'マーカー移行の日にこれを踏む'
+            );
+
+            $this->assertStringContainsString(
+                'clickableIcons: false',
+                $block,
+                "{$where}: new google.maps.Map() の引数に clickableIcons: false がありません"
+                    . '（設計書 §3.3 の二重防御。登録モードで Google の吹き出しが'
+                    . '地図クリックに割り込む余地を残さないため）'
+            );
+        }
+    }
+
+    // ============================================================
     // 共有ヘルパ
     // ============================================================
 
@@ -199,5 +269,70 @@ class AreaBuildingMapPoiTest extends AreaBuildingTestCase
         $source = preg_replace('#/\*.*?\*/#s', '', $source);
 
         return preg_replace('#^[ \t]*//.*$#m', '', $source);
+    }
+
+    /**
+     * `new google.maps.Map(` の**引数ブロック**を括弧の対応で切り出す。
+     *
+     * ⚠ コメントを落としてから走査する（`index.blade.php` の注意書きに
+     *   `new google.maps.Map()` と文字列で書いてあるため。Bug #42 ②）。
+     *
+     * ⚠ キーは行番号でなく**ファイル内の出現順**にする。行番号だとコメントを 1 行足しただけで
+     *   期待値がずれて、テストが「壊れていないのに落ちる」ものになる。
+     *
+     * @return array<string, string> "相対パス#出現順" => 引数ブロック（`new` から対応する `)` まで）
+     */
+    private function mapCreationSites(string $dir): array
+    {
+        $needle = 'new google.maps.Map(';
+        $sites  = [];
+
+        foreach (File::allFiles($dir) as $file) {
+            if (! str_ends_with($file->getFilename(), '.blade.php')) {
+                continue;
+            }
+
+            $code  = $this->withoutComments($file->getContents());
+            $short = str_replace(base_path() . '/', '', $file->getPathname());
+
+            $offset = 0;
+            $n      = 0;
+
+            while (($pos = strpos($code, $needle, $offset)) !== false) {
+                $end = $this->matchingParen($code, $pos + strlen($needle) - 1);
+
+                if ($end === null) {
+                    $this->fail("{$short}: new google.maps.Map( の括弧が閉じていない（走査が壊れている）");
+                }
+
+                $n++;
+                $sites["{$short}#{$n}"] = substr($code, $pos, $end - $pos + 1);
+                $offset                 = $end + 1;
+            }
+        }
+
+        ksort($sites);
+
+        return $sites;
+    }
+
+    /** `$open` の位置にある `(` に対応する `)` の位置。見つからなければ null。 */
+    private function matchingParen(string $src, int $open): ?int
+    {
+        $depth = 0;
+        $len   = strlen($src);
+
+        for ($i = $open; $i < $len; $i++) {
+            if ($src[$i] === '(') {
+                $depth++;
+            } elseif ($src[$i] === ')') {
+                $depth--;
+                if ($depth === 0) {
+                    return $i;
+                }
+            }
+        }
+
+        return null;
     }
 }

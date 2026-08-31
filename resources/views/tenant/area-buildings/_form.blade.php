@@ -169,7 +169,12 @@ function showAreaMap(lat, lng, zoom) {
             mapTypeControl: true,
             // Street View を開いた回数だけ課金されるのでコントロールを出さない(設計 6.0)
             streetViewControl: false,
-            fullscreenControl: false
+            fullscreenControl: false,
+            // 店舗・施設と駅・バス停のラベルを消す(定義は _map_style.blade.php に 1 箇所だけ)
+            styles: AREA_MAP_STYLES,
+            // 未測定の二重防御。ラベルを消せばアイコンも描かれないので冗長かもしれないが、
+            // 登録モードで Google 側の吹き出しが地図クリックに割り込む余地を残さない
+            clickableIcons: false
         });
 
         areaMarker = new google.maps.Marker({

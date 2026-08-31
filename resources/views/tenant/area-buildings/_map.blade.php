@@ -305,7 +305,12 @@ function onAreaMapReady() {
         zoom:  AREA_MAP_CENTER.zoom,
         mapTypeControl: true,
         // ⚠ 出すと利用者が開いた回数だけ Street View が課金される（設計書 §7）
-        streetViewControl: false
+        streetViewControl: false,
+        // 店舗・施設と駅・バス停のラベルを消す（定義は _map_style.blade.php に 1 箇所だけ）
+        styles: AREA_MAP_STYLES,
+        // 未測定の二重防御。ラベルを消せばアイコンも描かれないので冗長かもしれないが、
+        // 登録モードで Google 側の吹き出しが地図クリックに割り込む余地を残さない
+        clickableIcons: false
     });
     areaMapInfoWindow = new google.maps.InfoWindow();
 
