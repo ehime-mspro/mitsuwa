@@ -666,6 +666,48 @@ EOF
 
 ---
 
+### Task 2 のレビューで実測: 部分一致が `_form` を無防備にしていた
+
+⚠ **`assertStringContainsString('styles: AREA_MAP_STYLES', $block)` は `AREA_MAP_STYLES_V2` に前方一致する。**
+
+| 変異 | `_map.blade.php` | `_form.blade.php` |
+|---|---|---|
+| `styles: AREA_MAP_STYLES_V2,` に書き換え | **赤**（ハーネスが `ReferenceError` を出す）| **緑（全 1049 テスト）** |
+
+`_map` は実駆動ハーネスが backstop になるが、**`_form` の JS を実行するものは何も無い**。
+ブラウザでは `showAreaMap()` が `ReferenceError` を投げ、`/create` `/edit` の
+「地図で位置を指定」が灰色のまま死ぬ（HTTP 200）＝ この機能がずっと防ごうとしてきた Bug #28 の形。
+**しかも被覆が非対称であることを何も知らせない。**
+
+→ 部分一致をやめ、識別子の末尾を否定先読みで固定する（`_form` 用にもう 1 つハーネスを作るより安い）:
+
+```php
+$this->assertMatchesRegularExpression('/\bstyles:\s*AREA_MAP_STYLES(?![\w$])/', $block, …);
+$this->assertMatchesRegularExpression('/\bclickableIcons:\s*false(?![\w$])/', $block, …);
+$this->assertDoesNotMatchRegularExpression('/\bmapId\s*:/', $block, …);
+```
+
+⚠ **変異は「被覆されているはずの場所」へ当てる**（Bug #44）—— この変異を `_map` に当てると
+ハーネスが拾って**緑にならない**ので、「守られている」と誤読する。**`_form` に当てること。**
+
+### 同じく: ハーネスの抽出に範囲の健全性チェックが無い
+
+`mapScriptSource()` は切り出した範囲に `function onAreaMapReady(` が入っていることを確かめるのに、
+`mapStyleScriptSource()` は非空しか見ていない。実測: partial の `<script>` 開始タグを消すと
+`strrpos` が**手前の別ブロック**に着地し、19 本が
+`SyntaxError: Unexpected token '<'` という**原因を名指ししない**理由で落ちる。
+
+```php
+$this->assertStringNotContainsString('</script', $script,
+    'スタイル定義の抽出が別の <script> をまたいでいる（partial の開始タグが消えた？）');
+```
+
+⚠ `matchingParen()` は**文字列リテラルを飛ばさない**ので、将来オプション値に閉じていない
+括弧を含む文字列が入ると切り出しがずれる。**false-green ではなく読める false-red** なので
+記録に留める（docblock に 1 行）。
+
+---
+
 ## Task 3: 適用範囲のガード（他 10 箇所の地図は触らない）
 
 **Files:**
@@ -735,7 +777,7 @@ EOF
 cd /Users/masanori/site/manage/.claude/worktrees/area-building-sorting && vendor/bin/phpunit --filter AreaBuildingMapPoiTest 2>&1 | tail -5
 ```
 
-期待: `OK (5 tests, ...)`
+期待: `OK (7 tests, ...)`
 
 ⚠ このテストは**最初から緑**（既に正しい状態だから）。緑であること自体は検証にならないので、**Task 4 の変異 #9 で赤になることを必ず実測する**。
 
@@ -745,7 +787,10 @@ cd /Users/masanori/site/manage/.claude/worktrees/area-building-sorting && vendor
 cd /Users/masanori/site/manage/.claude/worktrees/area-building-sorting && vendor/bin/phpunit 2>&1 | tail -5
 ```
 
-期待: `OK (1048 tests, ...)`（基線 1043 + 新規 5）
+期待: `OK (1050 tests, ...)`
+
+⚠ **当初プランの「1048（基線 1043 + 新規 5）」は誤り。** Task 1 の追補で 2 本、
+Task 2 で 2 本、Task 3 で 1 本 ＝ `AreaBuildingMapPoiTest` は **7 本**、全体は **1050**。
 
 - [ ] **Step 4: コミット**
 
@@ -765,7 +810,7 @@ EOF
 
 ---
 
-## Task 4: 検証（compiled view の lint ＋ 変異テスト 17 通り）
+## Task 4: 検証（compiled view の lint ＋ 変異テスト 18 通り）
 
 **Files:** なし（測るだけ。変異は毎回戻す）
 
@@ -845,7 +890,7 @@ chmod +x /private/tmp/claude-501/-Users-masanori-site-manage/2d46599e-6379-45c2-
 
 ⚠ **needle / replacement をファイル渡しにするのが要点。** シェルのクォートを通すと `$` や `\` の扱いで 0 件マッチになり、それでも exit 0 になって「検出しない」と誤読する。上のランナーは **出現回数が 1 件でなければ中断**する。
 
-- [ ] **Step 4: 変異の当て方（1 件だけ手順を全部書く。残り 16 件も同じ形）**
+- [ ] **Step 4: 変異の当て方（1 件だけ手順を全部書く。残り 17 件も同じ形）**
 
 例として変異 #1（`poi` の行を消す）を当てる。**needle と replacement は必ずファイル渡し**にする
 （シェルのクォートを通すと `$` や `\` の扱いで 0 件マッチになり、それでも exit 0 になって
@@ -894,7 +939,7 @@ needle は `procurements/_form.blade.php:425` の `new google.maps.Map(` の**�
 あちらは「周辺に何があるか」を見る地図なので Street View を出すのが仕様。
 変異を当てる先を間違えて `false` を探すと 0 件マッチになる。
 
-- [ ] **Step 5: 変異 17 通りを実測する**
+- [ ] **Step 5: 変異 18 通りを実測する**
 
 各変異について「**赤になること**」と「**落ちた理由の文言**」を突き合わせる。⚠ 赤/緑だけを見ない（意図と別の機構が落としている可能性を排除できない）。
 
@@ -917,6 +962,7 @@ needle は `procurements/_form.blade.php:425` の `new google.maps.Map(` の**�
 | 15 | `_map.blade.php` | Map の引数に `mapId: 'x',` を**足す** | `test_the_area_building_maps_pass_the_style_to_google_maps` / `mapId があると Google が styles を丸ごと無視する` |
 | 16 | `_map_style.blade.php` | `<script>` → `<script type="text/template">` | `test_the_style_array_is_defined_in_exactly_one_place` / classic script で包むこと（⚠ `module` 名指しの版ではこれを**見逃す**）|
 | 17 | `_map.blade.php` | `@include` を消す（`styles:` は残す）| **構造** `test_both_area_building_maps_receive_the_style_definition` ＋ **振る舞い** `AreaBuildingMapTabTest`（ハーネスがスタイル用スクリプトを切り出せない）の**両方** |
+| 18 | **`_form.blade.php`** | `styles: AREA_MAP_STYLES` → `styles: AREA_MAP_STYLES_V2` | `test_the_area_building_maps_pass_the_style_to_google_maps` / `_form.blade.php#1`。⚠ **`_map` に当ててはいけない** —— あちらはハーネスが拾うので、部分一致の穴が塞がっていなくても赤になり「守られている」と誤読する |
 
 ⚠ **変異 #9 は「検査対象に入るはずの場所」へ当てる**（Bug #44 の 2026-08-17 追記）。`resources/views` 配下の実在する `new google.maps.Map(` の引数の中へ入れること。コメント行に足しても走査が落とすので当たらない。
 
@@ -936,7 +982,7 @@ needle は `procurements/_form.blade.php:425` の `new google.maps.Map(` の**�
 cd /Users/masanori/site/manage/.claude/worktrees/area-building-sorting && git status --porcelain && echo "--- (空なら OK) ---" && vendor/bin/phpunit 2>&1 | tail -5
 ```
 
-期待: `git status` が空 ／ `OK (1048 tests, ...)`
+期待: `git status` が空 ／ `OK (1050 tests, ...)`
 
 - [ ] **Step 8: 実測結果をコミット**
 
@@ -1011,7 +1057,7 @@ Google Maps の POI（店舗・施設）と駅・バス停の**ラベルだけ**
 |------|---------|
 | Blade | `_map_style.blade.php` を新設（`AREA_MAP_STYLES` の**唯一の定義**）＋ `_map` / `_form` が `@include` |
 | 地図オプション | 両方の `new google.maps.Map(` に `styles: AREA_MAP_STYLES` と `clickableIcons: false` |
-| テスト | 1043 → **1048 tests**（`AreaBuildingMapPoiTest` 5 本）|
+| テスト | 1043 → **1050 tests**（`AreaBuildingMapPoiTest` 7 本 ＋ 実駆動ハーネスの改修）|
 
 ### 要点
 
@@ -1070,6 +1116,7 @@ EOF
 | 15 | `_map` の Map に `mapId:` を足す | | | | |
 | 16 | partial を `<script type="text/template">` に | | | | |
 | 17 | `_map` の include を消す（ハーネスも落ちるか） | | | | |
+| 18 | **`_form`** の `styles:` を `AREA_MAP_STYLES_V2` に | | | | |
 
 ---
 
