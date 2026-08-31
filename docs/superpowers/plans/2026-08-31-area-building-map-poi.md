@@ -972,153 +972,50 @@ needle は `procurements/_form.blade.php:425` の `new google.maps.Map(` の**�
 
 - [ ] **Step 6: 実測結果を記録する**
 
-このプランの末尾「## 変異テストの実測結果」表に、9 通りの結果（赤/緑・落ちたテスト名・文言の一致）を書き込む。
+このプランの末尾「## 変異テストの実測結果
 
-⚠ **1 件でも「緑のまま」があれば、そこはテストが守っていない。** テストを足してから先へ進む（測って初めて穴が見つかるのは普通のこと）。
+**Task 1〜3 の実装・レビューの各ラウンドで随時実測した**（Task 4 でまとめて回し直してはいない ——
+同じ変異を二度当てても情報が増えないため）。作法は毎回 Bug #44 どおり:
+①先にコミット ②`git status --porcelain` が空 ③`git diff --stat` が非空で着弾確認
+④**落ちた理由の文言**を突き合わせ ⑤`git checkout --` で復元。
 
-- [ ] **Step 7: 全件テストと清浄確認**
+| # | 変異 | 着弾 | 結果 | 落ちたところ |
+|---|---|:---:|:---:|---|
+| 1 | `_map_style`: `poi` の行を消す | ✅ | **赤** | 定義テスト・poi を名指し |
+| 2 | `_map_style`: `transit` の行を消す | ✅ | **赤** | 定義テスト・transit を名指し |
+| 3 | `_map_style`: poi の `visibility` を `'on'` に | ✅ | **赤** | 同上 |
+| 4 | `_map_style`: `featureType: 'poi'` → `'landscape'` | ✅ | **赤** | 同上 |
+| 5 | `_map`: `@include` を消す | ✅ | **赤** | 構造（HTTP）＋**振る舞い（ハーネス 19 本）**＝ 計 21 |
+| 6 | `_form`: `@include` を消す | ✅ | **赤** | 構造（新規登録で停止）|
+| 7 | `_form`: `@include` をインラインの複製に置換 | ✅ | **赤** | 唯一性テスト・`_form` を名指し ⚠ 修正前は **303 テスト緑**だった |
+| 8 | `_map`: `@include` をローダーの後ろへ移動 | ✅ | **赤** | 位置テスト ⚠ 修正前は**全テスト緑** |
+| 9 | layout の `@stack('scripts')` を消す | ✅ | **赤** | 構造（HTTP）|
+| 10 | `_map_style`: `<script type="module">` に | ✅ | **赤** | classic script アサート ⚠ 修正前は**全テスト緑** |
+| 11 | `_map_style`: `<script>` の囲いを外す | ✅ | **赤** | classic script アサート（`\A` が先に落ちる）|
+| 11b | `_map_style`: **閉じタグだけ**外す | ✅ | **赤** | `assertStringEndsWith` ＝ 2 つの guard が独立に効く証明（アサート数 16 → 17）|
+| 12 | `_map_style`: `<script type="text/template">` に | ✅ | **赤** | classic script アサート ⚠ `module` 名指し版では**見逃していた** |
+| 13 | `_map`: `window.AREA_MAP_STYLES = […'on'…]` を足す | ✅ | **赤** | 唯一性テスト・`_map` を名指し |
+| 14 | `_map`: 本体で `AREA_MAP_STYLES = []` と**再代入** | ✅ | **赤** | 唯一性テスト（正規表現が再代入も拾う）|
+| 15 | `_map`: `styles:` を消す | ✅ | **赤** | 適用テスト・`_map#1` |
+| 16 | `_form`: `styles:` を消す | ✅ | **赤** | 適用テスト・`_form#1` |
+| 17 | `_map`: `clickableIcons: false` を消す | ✅ | **赤** | 適用テスト |
+| 18 | `_map`: 引数に `mapId: 'x',` を足す | ✅ | **赤** | mapId ガード |
+| 19 | `_map`: `styles: AREA_MAP_STYLES_V2` に | ✅ | **赤** | **ハーネスが** `ReferenceError` を名指し（構造テストは素通り）|
+| 20 | **`_form`**: `styles: AREA_MAP_STYLES_V2` に | ✅ | **赤** | 適用テスト・`_form#1` ⚠ **修正前は全 1049 緑**。修正前のテストファイルに当てて緑を確認する対照実験も実施 |
+| 21 | procurements の Map に `styles: AREA_MAP_STYLES,` を足す | ✅ | **赤** | スコープガード・侵入者を名指し |
+| 22 | `MIN_MAP_SITES_APP_WIDE` → `99` | ✅ | **赤** | 下限アサート（`12 is not >= 99`）＝ 下限が実数に紐づいている |
+| 23 | 走査の needle を `new google.maps.MapX(` に | ✅ | **赤** | 走査テスト（空配列）|
+| 24 | **procurements に配列リテラルを直書きして POI を消す** | ✅ | **緑** | **既知の限界（下記）** |
 
-```bash
-cd /Users/masanori/site/manage/.claude/worktrees/area-building-sorting && git status --porcelain && echo "--- (空なら OK) ---" && vendor/bin/phpunit 2>&1 | tail -5
-```
+### 24 番だけ緑 —— 塞がずに文書化する判断
 
-期待: `git status` が空 ／ `OK (1050 tests, ...)`
+スコープガードは `str_contains($block, 'AREA_MAP_STYLES')` で見るので、**定数を参照せず
+配列リテラルを直書き**して他の地図へ POI 抑止を広げる経路は捕まえられない。
 
-- [ ] **Step 8: 実測結果をコミット**
-
-```bash
-cd /Users/masanori/site/manage/.claude/worktrees/area-building-sorting
-git add docs/superpowers/plans/2026-08-31-area-building-map-poi.md
-git commit -m "$(cat <<'EOF'
-docs(plan): POI 非表示の変異テスト 9 通りの実測結果を書き戻す
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
-EOF
-)"
-```
-
----
-
-## Task 5: 本番反映と目視確認
-
-**Files:**
-- Modify: `docs/BACKLOG.md`
-
-⚠ **`./deploy.sh` と `git push` はユーザーの明示承認が必要。** 勝手に走らせない。
-
-- [ ] **Step 1: ユーザーに本番反映の可否を確認する**
-
-AskUserQuestion で「本番へ反映してよいか」を聞く。DB 変更・ルート追加は無く、`./deploy.sh`（`npm run build` → rsync → `config:cache && route:cache && view:cache`）のみ。
-
-- [ ] **Step 2: main repo へ FF マージ**
-
-```bash
-cd /Users/masanori/site/manage && git checkout 13.x && git merge --ff-only area-building-sorting && git log --oneline -1
-```
-
-⚠ **新規 PHP クラスは無い**ので `composer dump-autoload` は不要（追加したのは Blade 1 本とテスト 1 本）。
-
-- [ ] **Step 3: デプロイ**
-
-```bash
-cd /Users/masanori/site/manage && ./deploy.sh
-```
-
-- [ ] **Step 4: 人が前面のタブで目視する（設計書 §7）**
-
-⚠ **自動操作したタブは `document.hidden === true` で Google Maps がタイルを描かない。** 見た目の確認は人がやるしかない。
-
-以下 6 点をユーザーに依頼する:
-
-1. `/tenant/area-buildings?view=map` を開き、**店舗・駅のアイコンと名前が出ていない**こと
-2. **道路名・地名は出ている**こと（全部消えていたら消し過ぎ）
-3. 自社のビルピンが読めること
-4. 「位置を登録」を押した登録モードで、地図クリックが従来どおり保存されること
-5. 登録編集フォームの「地図で位置を指定」でも同じく POI が出ないこと
-6. コンソールで `areaMapInstance.get('styles')` が `poi` / `transit` の 2 件を返すこと
-
-- [ ] **Step 5: BACKLOG.md に稼働記録を追記**
-
-`## ✅ 周辺ビル調査 第2段の一部（一覧の並び替えと見出しの視認性）— 本番稼働中` セクションの**後ろ**に足す:
-
-```markdown
----
-
-## ✅ 周辺ビル調査 第2段の一部（地図から店舗・駅のピンを消す）— 本番稼働中
-
-詳細仕様: @docs/superpowers/specs/2026-08-30-area-building-map-poi-design.md
-実装計画: @docs/superpowers/plans/2026-08-31-area-building-map-poi.md
-
-利用者の依頼は「地図で見るときに店舗の表示があり、設置しているビルのピンが被って見にくい」。
-Google Maps の POI（店舗・施設）と駅・バス停の**ラベルだけ**を消した。
-道路名・地名・行政区画は残る。**DB 変更・ルート追加は無し。**
-
-| 区分 | 実装内容 |
-|------|---------|
-| Blade | `_map_style.blade.php` を新設（`AREA_MAP_STYLES` の**唯一の定義**）＋ `_map` / `_form` が `@include` |
-| 地図オプション | 両方の `new google.maps.Map(` に `styles: AREA_MAP_STYLES` と `clickableIcons: false` |
-| テスト | 1043 → **1050 tests**（`AreaBuildingMapPoiTest` 7 本 ＋ 実駆動ハーネスの改修）|
-
-### 要点
-
-- **適用は周辺ビル調査の 2 箇所だけ。** 仕入れ案件・分譲地・DAD の地図（10 箇所）は
-  「周辺に何があるか」を見る用途なので触らない。`test_the_other_maps_in_the_app_are_left_alone`
-  が広げる変更を自動で止める
-- ⚠ **`styles` が効くのは地図が Map ID を持たないから**（本番実測 `get('mapId') === null`）。
-  将来クラウドスタイルへ移行すると `styles` は無視され、Cloud Console 側の設定に置き換わる
-- ⚠ **`clickableIcons: false` は未測定の二重防御**（設計書 §3.3）。ラベルを消せば
-  アイコンも描かれないので冗長かもしれないが、登録モードで Google 側の吹き出しが
-  地図クリックに割り込む余地を残さないために入れている
-- ⚠ **定義側（`@include`）と適用側（`styles:`）は対で固定する。** `@include` だけ消えると
-  `AREA_MAP_STYLES` が `ReferenceError` になり地図が灰色の空箱のまま無音で死ぬのに、
-  構造テストは `styles:` が残っているので緑になる（Bug #28 の構図）。
-  だから include の有無は**レンダリング済み HTML** で見ている
-- ⚠ **POI が実際に消えるかはテストでは測れない**（Google が描くもの）。人が前面のタブで目視する
-```
-
-⚠ 併せて最下部の「## バックログ完了状況」の日付・内容も更新する。
-
-- [ ] **Step 6: コミット**
-
-```bash
-cd /Users/masanori/site/manage/.claude/worktrees/area-building-sorting
-git add docs/BACKLOG.md
-git commit -m "$(cat <<'EOF'
-docs: 地図から店舗・駅のピンを消す変更を本番反映済みとして記録する
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
-EOF
-)"
-```
-
----
-
-## 変異テストの実測結果
-
-⚠ Task 4 Step 6 で埋める。**空のまま先へ進まない。**
-
-| # | 変異 | 着弾（`git diff --stat` 非空）| 結果 | 落ちたテスト | 文言が期待と一致 |
-|---|---|---|---|---|---|
-| 1 | `poi` の行を消す | | | | |
-| 2 | `transit` の行を消す | | | | |
-| 3 | poi の `visibility` を `'on'` に | | | | |
-| 4 | `_map` の include を消す | | | | |
-| 5 | `_form` の include を消す | | | | |
-| 6 | `_map` の `styles:` を消す | | | | |
-| 7 | `_form` の `styles:` を消す | | | | |
-| 8 | `_map` の `clickableIcons:` を消す | | | | |
-| 9 | procurements の Map に `styles:` を足す | | | | |
-| 10 | `_form` の include をインライン複製に置換 | | | | |
-| 11 | `_map` の include をローダーの後ろへ移動 | | | | |
-| 12 | partial を `<script type="module">` に | | | | |
-| 13 | partial の `<script>` 囲いを外す | | | | |
-| 14 | `_map` に `window.AREA_MAP_STYLES` を足す | | | | |
-| 15 | `_map` の Map に `mapId:` を足す | | | | |
-| 16 | partial を `<script type="text/template">` に | | | | |
-| 17 | `_map` の include を消す（ハーネスも落ちるか） | | | | |
-| 18 | **`_form`** の `styles:` を `AREA_MAP_STYLES_V2` に | | | | |
-
----
+塞がない理由: **定数はコピペだけでは漏れない** —— 他部署の画面に `AREA_MAP_STYLES` は
+未定義なので、持って行くには `@include` も足す必要があり、そうすれば自然に書くのは
+コンストラクタ形（＝ 21 番で捕まる）。リテラル直書きは「その地図を意図的にスタイルする」
+という**別の決定**であって、こちらの変更の漏出ではない。
 
 ## やらないこと（設計書 §6）
 

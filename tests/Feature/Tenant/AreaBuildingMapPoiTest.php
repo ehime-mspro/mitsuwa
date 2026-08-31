@@ -35,6 +35,10 @@ class AreaBuildingMapPoiTest extends AreaBuildingTestCase
      *
      * 内訳: area-buildings 2 / realestate procurements 4 / realestate projects 4 / dad projects 2。
      * 走査が空振りして緑になる事故を防ぐためだけの値なので、地図が増えたら上げてよい。
+     *
+     * ⚠ 走査するのは `resources/views` だけ。公開済み JS アセットや `resources/js/` から
+     *   地図を作ると、下限にもスタイル適用集合にも入らない。このリポジトリは JS を
+     *   全て Blade に置く流儀なので今は問題にならないが、崩れたらここも広げること。
      */
     private const MIN_MAP_SITES_APP_WIDE = 12;
 
@@ -107,6 +111,10 @@ class AreaBuildingMapPoiTest extends AreaBuildingTestCase
      *   `new google.maps.Map(` の引数ブロックの中しか見ないので、
      *   2 つ目の定義をインラインで複製してもスタイルが乗った地図の集合は変わらず緑になる
      *   （実測: 複製すると AreaBuilding 関連 303 テストが全部緑だった）。
+     *
+     * ⚠ **正規表現を `var` 限定に戻さないこと。** `\bAREA_MAP_STYLES\s*=(?!=)` は、
+     *   `_map.blade.php` の本体で `AREA_MAP_STYLES = []` と**再代入**する変異も
+     *   「2 つ目の定義」として拾う（実測で赤）。狭めるとその経路が無音になる。
      */
     public function test_the_style_array_is_defined_in_exactly_one_place(): void
     {
