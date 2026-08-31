@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>工程表ボード（全案件横断）— 不動産 仕入れ案件 / 分譲地</title>
+<title>工程表ボード（部署ごとに 2 画面）— 不動産 / 住宅事業</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
     body {
@@ -97,8 +97,10 @@
     .pname { font-size: 12.5px; font-weight: 600; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
     .tag { font-size: 9.5px; font-weight: 700; padding: 1px 5px; border-radius: 3px; flex-shrink: 0; }
-    .tag-proc { background: #EEF2FF; color: #4338CA; }
-    .tag-prj  { background: #ECFDF5; color: #047857; }
+    .tag-proc    { background: #EEF2FF; color: #4338CA; }
+    .tag-prj     { background: #ECFDF5; color: #047857; }
+    .tag-hsprop  { background: #FEF3C7; color: #92400E; }
+    .tag-hsorder { background: #F3E8FF; color: #6B21A8; }
 
     /* 帯（案件サマリ = 工程を段に振り分けて連結） */
     .seg { position: absolute; height: 14px; box-sizing: border-box; border-radius: 3px; }
@@ -132,17 +134,25 @@
 <body>
 <div class="wrap">
 
-    <div class="crumb"><a href="#">不動産管理</a> › <span style="color:#6B7280">工程表</span></div>
-    <h1>工程表ボード</h1>
+    <h1>工程表ボード — 部署ごとに 2 画面</h1>
     <p class="subtitle">
-        仕入れ案件と分譲地PJの<strong>契約後の工程</strong>を 1 本の時間軸に並べた画面です。1 行 = 1 案件。帯の色は工程の種類で、いま動いている工程がどれかが色で分かります。<br>
-        行頭の ▸ を押すとその案件の工程が展開されます（「余戸南 分譲地」を開いた状態にしています）。
+        工程を 1 本の時間軸に並べた画面です。1 行 = 1 案件。帯の色は工程の種類で、いま動いている工程がどれかが色で分かります。<br>
+        行頭の ▸ を押すとその案件の工程が展開されます（各ボードで 1 件ずつ開いた状態にしています）。
     </p>
 
     <div class="note">
         <strong>このモックの前提</strong>：今日は <strong>2026/08/31</strong>（赤い破線）。案件名・工程名はすべてサンプルです。
-        遅れている工程には<strong>赤い枠</strong>を付けています。まだ始まっていない工程は<strong>薄く</strong>表示しています。
+        遅れている工程には<strong>赤い枠</strong>を付け、まだ始まっていない工程は<strong>薄く</strong>表示しています。<br>
+        ⚠ <strong>担当者フィルタは外しました</strong> — 仕入れ案件・分譲地・建売物件・注文住宅の
+        <strong>どれにも担当者カラムが存在しない</strong>ため（初版には架空の担当者名を描いていました）。<br>
+        ⚠ <strong>並べ替えは ↑↓ ボタン</strong>にします（詳細側モックのドラッグハンドルは実装しません）。<br>
+        ⚠ このモックの遅延判定は「実績が入っている工程」しか見ていませんが、
+        <strong>設計書では「未着手のまま予定終了日を過ぎた工程」も遅延に含めます</strong>。
+        サンプルに該当が無いため見た目は同じです。
     </div>
+
+    <!-- ============================ 不動産管理 ============================ -->
+    <div class="crumb" style="margin-top:26px;"><a href="#">不動産管理</a> › <span style="color:#6B7280">工程表</span> &nbsp;<code style="font-size:11px;color:#9CA3AF;">/realestate/schedules</code></div>
 
     <div class="kpis">
         <div class="kpi"><div class="k">工程が動いている案件</div><div class="v">5</div><div class="s">仕入れ 3 / 分譲地 2</div></div>
@@ -154,7 +164,6 @@
     <div class="filters">
         <div class="f"><label>種別</label><select><option>すべて</option><option>仕入れ案件のみ</option><option>分譲地PJのみ</option></select></div>
         <div class="f"><label>ステータス</label><select><option>進行中のみ</option><option>すべて</option><option>遅延のみ</option><option>完了</option></select></div>
-        <div class="f"><label>担当者</label><select><option>すべて</option><option>佐伯</option><option>山西</option><option>古澤</option></select></div>
         <div class="f"><label>キーワード</label><input type="text" placeholder="案件名・工程名"></div>
         <button class="btn-clear" type="button">クリア</button>
         <div class="zoom">
@@ -165,15 +174,41 @@
     </div>
 
     <div class="board">
-        <div class="board-scroll"><div class="board-inner" id="board"></div></div>
+        <div class="board-scroll"><div class="board-inner" id="board-re"></div></div>
+    </div>
+
+    <!-- ============================ 住宅事業 ============================ -->
+    <div class="crumb" style="margin-top:40px;"><a href="#">住宅事業</a> › <span style="color:#6B7280">工程表</span> &nbsp;<code style="font-size:11px;color:#9CA3AF;">/housing/schedules</code></div>
+
+    <div class="kpis">
+        <div class="kpi"><div class="k">工程が動いている案件</div><div class="v">4</div><div class="s">建売 2 / 注文住宅 2</div></div>
+        <div class="kpi warn"><div class="k">予定より遅れている案件</div><div class="v">3</div><div class="s">最大 +10 日（T様邸 基礎工事）</div></div>
+        <div class="kpi"><div class="k">30日以内に始まる工程</div><div class="v">2</div><div class="s">直近: 9/28 内装・設備工事</div></div>
+        <div class="kpi"><div class="k">30日以内に終わる工程</div><div class="v">2</div><div class="s">直近: 9/25 木工事</div></div>
+    </div>
+
+    <div class="filters">
+        <div class="f"><label>種別</label><select><option>すべて</option><option>建売物件のみ</option><option>注文住宅のみ</option></select></div>
+        <div class="f"><label>ステータス</label><select><option>進行中のみ</option><option>すべて</option><option>遅延のみ</option><option>完了</option></select></div>
+        <div class="f"><label>キーワード</label><input type="text" placeholder="案件名・工程名"></div>
+        <button class="btn-clear" type="button">クリア</button>
+        <div class="zoom">
+            <button type="button">週</button>
+            <button type="button" class="on">月</button>
+            <button type="button">四半期</button>
+        </div>
+    </div>
+
+    <div class="board">
+        <div class="board-scroll"><div class="board-inner" id="board-hs"></div></div>
     </div>
 
     <div class="legend">
         <span><i style="background:#3B82F6"></i>許認可・申請</span>
-        <span><i style="background:#059669"></i>工事（造成・解体など）</span>
-        <span><i style="background:#8B5CF6"></i>測量・登記</span>
+        <span><i style="background:#059669"></i>工事（造成・解体・建築など）</span>
+        <span><i style="background:#8B5CF6"></i>測量・登記・検査</span>
         <span><i style="background:#F59E0B"></i>販売</span>
-        <span><i style="background:#111827;width:9px;height:9px;transform:rotate(45deg);border-radius:2px"></i>契約 / 決済などの節目</span>
+        <span><i style="background:#111827;width:9px;height:9px;transform:rotate(45deg);border-radius:2px"></i>契約 / 決済 / 完成などの節目（既存の日付列から自動で描く）</span>
         <span><i style="box-shadow:inset 0 0 0 2px #DC2626;background:#fff"></i>遅延</span>
         <span><i style="background:#059669;opacity:.38"></i>これから始まる工程</span>
     </div>
@@ -196,9 +231,9 @@ var CAT = {
 };
 
 // kind: 'proc' = 仕入れ案件 / 'prj' = 分譲地PJ
-var PROJECTS = [
+var RE_PROJECTS = [
     {
-        kind:'prj', code:'PJ-2026-003', name:'余戸南 分譲地（全12区画）', staff:'佐伯', open:true,
+        kind:'prj', code:'PJ-2026-003', name:'余戸南 分譲地（全12区画）', status:'決済完了', open:true,
         ms:[ {name:'売買契約', date:'2026-03-10', done:true}, {name:'決済', date:'2026-04-28', done:true} ],
         steps:[
             { name:'開発許可申請',       cat:'permit', plan:['2026-03-16','2026-06-19'], actual:['2026-03-16','2026-07-03'] },
@@ -211,7 +246,7 @@ var PROJECTS = [
         ]
     },
     {
-        kind:'prj', code:'PJ-2026-001', name:'北条辻 分譲地（全8区画）', staff:'山西',
+        kind:'prj', code:'PJ-2026-001', name:'北条辻 分譲地（全8区画）', status:'販売中',
         ms:[ {name:'決済', date:'2026-02-06', done:true} ],
         steps:[
             { name:'造成工事',     cat:'work',   plan:['2026-02-16','2026-06-30'], actual:['2026-02-16','2026-06-24'] },
@@ -220,7 +255,7 @@ var PROJECTS = [
         ]
     },
     {
-        kind:'proc', code:'RE-2026-018', name:'三番町 中古ビル（解体・更地化）', staff:'古澤',
+        kind:'proc', code:'RE-2026-018', name:'三番町 中古ビル（解体・更地化）', status:'決済完了',
         ms:[ {name:'売買契約', date:'2026-05-22', done:true}, {name:'決済', date:'2026-06-30', done:true} ],
         steps:[
             { name:'アスベスト事前調査', cat:'permit', plan:['2026-06-01','2026-06-26'], actual:['2026-06-01','2026-07-10'] },
@@ -230,7 +265,7 @@ var PROJECTS = [
         ]
     },
     {
-        kind:'proc', code:'RE-2026-025', name:'久米 農地（転用・宅地化）', staff:'佐伯',
+        kind:'proc', code:'RE-2026-025', name:'久米 農地（転用・宅地化）', status:'契約',
         ms:[ {name:'売買契約', date:'2026-07-08', done:true} ],
         steps:[
             { name:'農地転用許可申請', cat:'permit', plan:['2026-07-15','2026-10-30'], actual:['2026-07-21', null] },
@@ -240,7 +275,7 @@ var PROJECTS = [
         ]
     },
     {
-        kind:'prj', code:'PJ-2026-005', name:'松前町 分譲地（全6区画）', staff:'山西',
+        kind:'prj', code:'PJ-2026-005', name:'松前町 分譲地（全6区画）', status:'契約',
         ms:[ {name:'売買契約', date:'2026-08-19', done:true} ],
         steps:[
             { name:'開発許可申請', cat:'permit', plan:['2026-09-07','2026-12-18'], actual:null },
@@ -250,7 +285,7 @@ var PROJECTS = [
         ]
     },
     {
-        kind:'proc', code:'RE-2026-022', name:'山越 借地権付戸建', staff:'古澤',
+        kind:'proc', code:'RE-2026-022', name:'山越 借地権付戸建', status:'販売中',
         ms:[ {name:'決済', date:'2026-04-14', done:true} ],
         steps:[
             { name:'リフォーム工事', cat:'work', plan:['2026-04-20','2026-06-12'], actual:['2026-04-20','2026-06-05'] },
@@ -258,11 +293,83 @@ var PROJECTS = [
         ]
     },
     {
-        kind:'proc', code:'RE-2025-140', name:'井門町 更地（販売済）', staff:'佐伯', done:true,
+        kind:'proc', code:'RE-2025-140', name:'井門町 更地（販売済）', status:'販売済', done:true,
         ms:[ {name:'決済', date:'2026-01-23', done:true}, {name:'引渡', date:'2026-05-29', done:true} ],
         steps:[
             { name:'測量・境界確定', cat:'survey', plan:['2026-01-26','2026-02-27'], actual:['2026-01-26','2026-02-20'] },
             { name:'販売',           cat:'sale',   plan:['2026-03-02','2026-05-29'], actual:['2026-03-02','2026-05-29'] }
+        ]
+    }
+];
+
+var TAGS = {
+    proc:    ['tag-proc',    '仕入れ'],
+    prj:     ['tag-prj',     '分譲地'],
+    hsprop:  ['tag-hsprop',  '建売'],
+    hsorder: ['tag-hsorder', '注文住宅']
+};
+
+// ===== 住宅事業ボード（/housing/schedules）=====
+// kind: 'hsprop' = 建売物件 / 'hsorder' = 注文住宅
+// ms は既存の日付列から自動で描く節目（建売＝完成 / 注文住宅＝契約・完成・引渡し）
+var HS_PROJECTS = [
+    {
+        kind:'hsprop', code:'HS-2026-014', name:'余戸南 3号地（建売）', status:'建築中', open:true,
+        ms:[ {name:'完成（予定）', date:'2026-12-11', done:false} ],
+        steps:[
+            { name:'建築確認申請',   cat:'permit', plan:['2026-05-11','2026-06-05'], actual:['2026-05-11','2026-06-12'] },
+            { name:'地盤改良',       cat:'work',   plan:['2026-06-15','2026-06-26'], actual:['2026-06-15','2026-06-24'] },
+            { name:'基礎工事',       cat:'work',   plan:['2026-06-29','2026-07-24'], actual:['2026-06-29','2026-07-22'] },
+            { name:'木工事',         cat:'work',   plan:['2026-07-27','2026-09-25'], actual:['2026-08-03', null] },
+            { name:'内装・設備工事', cat:'work',   plan:['2026-09-28','2026-11-06'], actual:null },
+            { name:'外構工事',       cat:'work',   plan:['2026-11-09','2026-11-27'], actual:null },
+            { name:'完成検査',       cat:'survey', plan:['2026-11-30','2026-12-04'], actual:null },
+            { name:'販売',           cat:'sale',   plan:['2026-10-01','2027-03-31'], actual:null }
+        ]
+    },
+    {
+        kind:'hsprop', code:'HS-2026-011', name:'北条辻 2号地（建売）', status:'販売中',
+        ms:[ {name:'完成', date:'2026-07-31', done:true} ],
+        steps:[
+            { name:'建築確認申請',   cat:'permit', plan:['2026-01-19','2026-02-13'], actual:['2026-01-19','2026-02-10'] },
+            { name:'基礎・木工事',   cat:'work',   plan:['2026-02-16','2026-05-29'], actual:['2026-02-16','2026-06-05'] },
+            { name:'内装・外構工事', cat:'work',   plan:['2026-06-08','2026-07-24'], actual:['2026-06-08','2026-07-28'] },
+            { name:'完成検査',       cat:'survey', plan:['2026-07-27','2026-07-31'], actual:['2026-07-27','2026-07-31'] },
+            { name:'販売',           cat:'sale',   plan:['2026-08-03','2026-12-25'], actual:['2026-08-03', null] }
+        ]
+    },
+    {
+        kind:'hsorder', code:'CO-2026-007', name:'松山市 T様邸', status:'着工',
+        ms:[ {name:'契約', date:'2026-04-18', done:true}, {name:'完成（予定）', date:'2026-11-20', done:false} ],
+        steps:[
+            { name:'実施設計',           cat:'permit', plan:['2026-04-20','2026-05-29'], actual:['2026-04-20','2026-06-05'] },
+            { name:'建築確認申請',       cat:'permit', plan:['2026-06-08','2026-07-03'], actual:['2026-06-08','2026-07-10'] },
+            { name:'基礎工事',           cat:'work',   plan:['2026-07-14','2026-08-14'], actual:['2026-07-16','2026-08-24'] },
+            { name:'上棟',               cat:'work',   plan:['2026-08-24','2026-08-28'], actual:['2026-08-26', null] },
+            { name:'木工事・内装',       cat:'work',   plan:['2026-08-31','2026-10-30'], actual:null },
+            { name:'完成検査・引渡し',   cat:'survey', plan:['2026-11-16','2026-11-20'], actual:null }
+        ]
+    },
+    {
+        kind:'hsorder', code:'CO-2026-009', name:'東温市 M様邸', status:'設計',
+        ms:[ {name:'契約', date:'2026-07-27', done:true}, {name:'完成（予定）', date:'2027-04-16', done:false} ],
+        steps:[
+            { name:'基本設計',         cat:'permit', plan:['2026-08-03','2026-09-25'], actual:['2026-08-03', null] },
+            { name:'実施設計',         cat:'permit', plan:['2026-09-28','2026-11-13'], actual:null },
+            { name:'建築確認申請',     cat:'permit', plan:['2026-11-16','2026-12-11'], actual:null },
+            { name:'着工〜上棟',       cat:'work',   plan:['2027-01-12','2027-02-26'], actual:null },
+            { name:'内装・外構工事',   cat:'work',   plan:['2027-03-01','2027-04-09'], actual:null },
+            { name:'完成検査・引渡し', cat:'survey', plan:['2027-04-12','2027-04-16'], actual:null }
+        ]
+    },
+    {
+        kind:'hsprop', code:'HS-2026-002', name:'北斎院 1号地（建売・販売済）', status:'販売済', done:true,
+        ms:[ {name:'完成', date:'2026-05-29', done:true} ],
+        steps:[
+            { name:'基礎・木工事',   cat:'work',   plan:['2026-01-05','2026-04-17'], actual:['2026-01-05','2026-04-15'] },
+            { name:'内装・外構工事', cat:'work',   plan:['2026-04-20','2026-05-22'], actual:['2026-04-20','2026-05-20'] },
+            { name:'完成検査',       cat:'survey', plan:['2026-05-25','2026-05-29'], actual:['2026-05-25','2026-05-29'] },
+            { name:'販売',           cat:'sale',   plan:['2026-06-01','2026-08-14'], actual:['2026-06-01','2026-08-07'] }
         ]
     }
 ];
@@ -333,7 +440,7 @@ function packLanes(steps) {
     return lanes;
 }
 
-function render() {
+function render(elId, projects) {
     var h = '';
 
     // ヘッダ
@@ -347,13 +454,14 @@ function render() {
     h += '</div></div></div>';
 
     var first = true;
-    PROJECTS.forEach(function (p) {
+    projects.forEach(function (p) {
         // ---- 案件サマリ行 ----
         var lateCnt = p.steps.filter(isLate).length;
-        var tag = p.kind === 'prj' ? '<span class="tag tag-prj">分譲地</span>' : '<span class="tag tag-proc">仕入れ</span>';
+        var tg  = TAGS[p.kind];
+        var tag = '<span class="tag ' + tg[0] + '">' + tg[1] + '</span>';
         var right = p.done ? '<span class="right-note">完了</span>'
                   : lateCnt ? '<span class="right-late">遅延 ' + lateCnt + '</span>'
-                  : '<span class="right-note">' + p.staff + '</span>';
+                  : '<span class="right-note">' + p.status + '</span>';
 
         var lanes = packLanes(p.steps);
         var rowH  = LANE_TOP + lanes.length * LANE_H + LANE_BOTTOM;
@@ -403,9 +511,11 @@ function render() {
         });
     });
 
-    document.getElementById('board').innerHTML = h;
+    document.getElementById(elId).innerHTML = h;
 }
-render();
+
+render('board-re', RE_PROJECTS);
+render('board-hs', HS_PROJECTS);
 </script>
 </body>
 </html>
