@@ -27,6 +27,13 @@
 | ビューの読み込み元 | `index.blade.php:129` が `_map` / `create.blade.php:37`・`edit.blade.php:38` が `_form` |
 | 権限 | `/tenant/area-buildings/create` と `/{id}/edit` は `role:executive,manager` |
 
+⚠ **`withoutComments()` の妥当性を実コーパスで確認済み**（2026-08-31 実測）: `resources/views` 全件に
+当てると `new google.maps.Map(` が **13 → 12** に減り、消えるのは設計書が「コメントなので数に入れない」と
+名指しした `tenant/area-buildings/index.blade.php:95` の Blade コメント 1 件だけ。
+⚠ views には**コメントでない `/*` が 18 件**ある（`sidebar.blade.php` の `'tenant/*'` 等のルート
+ワイルドカード）。`#/\*.*?\*/#s` は無アンカーなのでそれらを起点に刈りうるが、実測では地図を持つ
+ビューは 1 件も損なわれていない。Task 3 の `>= 12` 下限が「刈り過ぎ」方向を拾う。
+
 ---
 
 ## ファイル構成
@@ -280,6 +287,43 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 EOF
 )"
 ```
+
+---
+
+## Task 1 追補（コード品質レビューが実測で見つけた穴）
+
+⚠ **プラン側の欠落だった。** Task 1 のレビューで、以下 2 つの変異が**全テスト緑**のまま通ることを実測した。
+
+| 変異 | 当初の結果 |
+|---|---|
+| `_form.blade.php` の `@include` を**インラインの複製**に置き換える | **緑**（AreaBuilding 関連 303 テスト全部）|
+| `_map.blade.php` の `@include` を Maps ローダーの**後ろ**へ移す | **緑**（全テスト）|
+
+**① 「定義は 1 箇所だけ」は Task 2 / Task 3 では原理的に検出できない。**
+どちらも `new google.maps.Map(` の**引数ブロックの中**しか見ないので、2 つ目の定義が
+インラインで増えてもスタイルが乗った地図の集合は 2 箇所のまま ＝ 完全一致アサートは緑。
+partial を作った理由そのもの（Bug #41）が無防備だった。
+
+**② `@include` がローダーより前にあることも固定されていない。**
+ローダーは `async defer` で、classic script では **async が勝つ** ＝ パース途中で実行されうる。
+定義が後ろにあると `onAreaMapReady` / `onGoogleMapsReady` が定義前に走って
+`AREA_MAP_STYLES` が `ReferenceError` になり、地図が灰色の空箱のまま死ぬ（200 は返る。Bug #28 と同型）。
+ネットワーク取得のぶん実際にはほぼ負けるので**再現しないハイゼンバグ**になる。
+⚠ 既存コードも `AREA_MAP_PINS` / `AREA_MAP_CENTER` で同じ順序に依存しているので、
+これは新しく作った危険ではなく**元からあった不変条件が無防備だった**という話。
+位置まで固定するのは Bug #28 の「⚠ 位置まで固定すること」と同じ流儀（`LayoutStyleStackTest` が同型）。
+
+**対応:** `AreaBuildingMapPoiTest` に 2 本追加し、上記 2 変異で赤になることを実測する。
+- `test_the_style_array_is_defined_in_exactly_one_place`（`resources/views` 全件走査 ＝ Bug #45 の全件分類）
+- `test_the_style_definition_comes_before_the_maps_loader`
+
+併せて partial のコメントに「このコメントは `/create` `/edit` の HTML にそのまま出る」旨を 1 行足す
+（`_form.blade.php:113-114` に同じ注意書きの前例がある。`AreaBuildingCrudTest` の
+「画面に出さない」検査に引っかかるため）。
+
+⚠ **設計書 §3.2 の「定義が地図生成より前に走ることは構造で保証される」には前提が省かれている** ——
+正しくは「**`@include` がローダーより前にある限り**構造で保証される」。設計書は承認済みの正本なので
+ここに記録だけ残す（書き換えるならユーザーの判断で）。
 
 ---
 
@@ -628,7 +672,7 @@ EOF
 
 ---
 
-## Task 4: 検証（compiled view の lint ＋ 変異テスト 9 通り）
+## Task 4: 検証（compiled view の lint ＋ 変異テスト 11 通り）
 
 **Files:** なし（測るだけ。変異は毎回戻す）
 
@@ -641,6 +685,9 @@ cd /Users/masanori/site/manage/.claude/worktrees/area-building-sorting && php ar
 ```
 
 期待: `grep` が何も出さない（`php -l` の失敗行が 0）。`view:cache` は `Blade templates cached successfully.` と出る。
+
+⚠ **Task 1 のコード品質レビューで一度実施済み**（2026-08-31 実測: **300 ビュー / `php -l` 失敗 0 件**、
+コンパイル済み partial はソースと**バイト等価** ＝ ディレクティブ展開なし）。ここでは再確認でよい。
 
 ⚠ ここで `Illuminate\View\AnonymousComponent::resolve` や対応の取れない `endif` が出たら、partial のコメントが Blade に展開されている。文面から `@<ディレクティブ名>` と `<x-` を消す。
 
@@ -705,7 +752,7 @@ chmod +x /private/tmp/claude-501/-Users-masanori-site-manage/2d46599e-6379-45c2-
 
 ⚠ **needle / replacement をファイル渡しにするのが要点。** シェルのクォートを通すと `$` や `\` の扱いで 0 件マッチになり、それでも exit 0 になって「検出しない」と誤読する。上のランナーは **出現回数が 1 件でなければ中断**する。
 
-- [ ] **Step 4: 変異の当て方（1 件だけ手順を全部書く。残り 8 件も同じ形）**
+- [ ] **Step 4: 変異の当て方（1 件だけ手順を全部書く。残り 10 件も同じ形）**
 
 例として変異 #1（`poi` の行を消す）を当てる。**needle と replacement は必ずファイル渡し**にする
 （シェルのクォートを通すと `$` や `\` の扱いで 0 件マッチになり、それでも exit 0 になって
@@ -754,7 +801,7 @@ needle は `procurements/_form.blade.php:425` の `new google.maps.Map(` の**�
 あちらは「周辺に何があるか」を見る地図なので Street View を出すのが仕様。
 変異を当てる先を間違えて `false` を探すと 0 件マッチになる。
 
-- [ ] **Step 5: 変異 9 通りを実測する**
+- [ ] **Step 5: 変異 11 通りを実測する**
 
 各変異について「**赤になること**」と「**落ちた理由の文言**」を突き合わせる。⚠ 赤/緑だけを見ない（意図と別の機構が落としている可能性を排除できない）。
 
@@ -769,6 +816,8 @@ needle は `procurements/_form.blade.php:425` の `new google.maps.Map(` の**�
 | 7 | `_form.blade.php` | 同上 | 同上 / `_form.blade.php#1: …` |
 | 8 | `_map.blade.php` | `clickableIcons: false` の行を消す | 同上 / `… clickableIcons: false がありません` |
 | 9 | `realestate/procurements/_form.blade.php` | Map の引数に `styles: AREA_MAP_STYLES,` を**足す** | `test_the_other_maps_in_the_app_are_left_alone` / `POI を消すスタイルは周辺ビル調査の 2 箇所だけに当てること` |
+| 10 | `_form.blade.php` | `@include` を**インラインの複製**（`var AREA_MAP_STYLES = […]` を直書き）に置換 | `test_the_style_array_is_defined_in_exactly_one_place` / `AREA_MAP_STYLES の定義は _map_style.blade.php 1 箇所だけにすること` |
+| 11 | `_map.blade.php` | `@include` を Maps ローダーの**後ろ**（最後の `@endpush` の直前）へ移す ⚠ `@endpush` は複数あるので**最後の 1 つ**を狙う（狙い違いで非着弾した実例あり）| `test_the_style_definition_comes_before_the_maps_loader` / `スタイル定義は async な Maps ローダーより前に置くこと` |
 
 ⚠ **変異 #9 は「検査対象に入るはずの場所」へ当てる**（Bug #44 の 2026-08-17 追記）。`resources/views` 配下の実在する `new google.maps.Map(` の引数の中へ入れること。コメント行に足しても走査が落とすので当たらない。
 
@@ -914,6 +963,8 @@ EOF
 | 7 | `_form` の `styles:` を消す | | | | |
 | 8 | `_map` の `clickableIcons:` を消す | | | | |
 | 9 | procurements の Map に `styles:` を足す | | | | |
+| 10 | `_form` の include をインライン複製に置換 | | | | |
+| 11 | `_map` の include をローダーの後ろへ移動 | | | | |
 
 ---
 
