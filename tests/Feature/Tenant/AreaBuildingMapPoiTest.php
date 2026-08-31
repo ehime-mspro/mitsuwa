@@ -92,6 +92,76 @@ class AreaBuildingMapPoiTest extends AreaBuildingTestCase
         }
     }
 
+    /**
+     * 配列の定義はこの partial 1 箇所だけであること（Bug #41）。
+     *
+     * ⚠ **後続タスクのテストでは原理的に検出できない。** あちらは
+     *   `new google.maps.Map(` の引数ブロックの中しか見ないので、
+     *   2 つ目の定義をインラインで複製してもスタイルが乗った地図の集合は変わらず緑になる
+     *   （実測: 複製すると AreaBuilding 関連 303 テストが全部緑だった）。
+     */
+    public function test_the_style_array_is_defined_in_exactly_one_place(): void
+    {
+        $definitions = [];
+
+        foreach (File::allFiles(resource_path('views')) as $file) {
+            if (! str_ends_with($file->getFilename(), '.blade.php')) {
+                continue;
+            }
+
+            if (preg_match('/\bvar\s+AREA_MAP_STYLES\s*=/', $this->withoutComments($file->getContents()))) {
+                $definitions[] = str_replace(base_path() . '/', '', $file->getPathname());
+            }
+        }
+
+        sort($definitions);
+
+        $this->assertSame(
+            [self::STYLE_PARTIAL],
+            $definitions,
+            'AREA_MAP_STYLES の定義は _map_style.blade.php 1 箇所だけにすること。'
+                . '2 つ目のコピーができると片方だけ直す事故になる（Bug #41）'
+        );
+    }
+
+    /**
+     * スタイル定義は **Maps ローダーより前**に置くこと。
+     *
+     * ローダーは `async defer` で、classic script では async が勝つ ＝ パース途中で実行されうる。
+     * 定義がローダーより後ろにあると `onAreaMapReady` / `onGoogleMapsReady` が定義前に走り、
+     * `AREA_MAP_STYLES` が ReferenceError になって地図が灰色の空箱のまま死ぬ
+     * （それでも 200 は返る。Bug #28 と同型）。ネットワーク取得のぶん実際にはほぼ負けるので、
+     * **再現しないハイゼンバグ**になる。
+     *
+     * ⚠ 位置まで固定するのは Bug #28 の「⚠ 位置まで固定すること」と同じ流儀
+     *   （`LayoutStyleStackTest` が同じことをしている）。実測で、include をローダーの
+     *   後ろへ移す変異は全テスト緑だった。
+     */
+    public function test_the_style_definition_comes_before_the_maps_loader(): void
+    {
+        $views = [
+            'resources/views/tenant/area-buildings/_map.blade.php',
+            'resources/views/tenant/area-buildings/_form.blade.php',
+        ];
+
+        foreach ($views as $view) {
+            $code = $this->withoutComments(file_get_contents(base_path($view)));
+
+            $include = strpos($code, "@include('tenant.area-buildings._map_style')");
+            $loader  = strpos($code, 'maps.googleapis.com');
+
+            $this->assertNotFalse($include, "{$view}: スタイル定義の @include が無い");
+            $this->assertNotFalse($loader, "{$view}: Maps ローダーが無い（走査が空振りしている）");
+
+            $this->assertLessThan(
+                $loader,
+                $include,
+                "{$view}: スタイル定義は async な Maps ローダーより前に置くこと。"
+                    . '後ろだと callback が定義前に走って ReferenceError になりうる'
+            );
+        }
+    }
+
     // ============================================================
     // 共有ヘルパ
     // ============================================================
