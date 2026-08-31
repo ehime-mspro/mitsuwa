@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>契約後工程 ガント表示（3案比較）— 不動産 仕入れ案件 / 分譲地</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+    body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Helvetica Neue', Arial, sans-serif;
+        background: #F3F4F6; color: #111827;
+        padding: 36px 24px 80px; margin: 0;
+    }
+    .wrap { max-width: 1360px; margin: 0 auto; }
+
+    h1 { font-size: 21px; font-weight: 700; margin: 0 0 6px; }
+    .subtitle { font-size: 13px; color: #6B7280; margin-bottom: 8px; line-height: 1.7; }
+
+    .note {
+        background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 8px;
+        padding: 12px 14px; font-size: 12.5px; color: #92400E; line-height: 1.75;
+        margin-bottom: 26px;
+    }
+    .note strong { font-weight: 700; }
+
+    /* ===== 提案カード ===== */
+    .proposal {
+        background: white; border: 1px solid #E5E7EB; border-radius: 12px;
+        padding: 22px 24px 24px; margin-bottom: 26px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+    .proposal-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+    .proposal-num {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 28px; height: 28px; background: #059669; color: white;
+        border-radius: 50%; font-size: 13px; font-weight: 700; flex-shrink: 0;
+    }
+    .proposal-title { font-size: 15px; font-weight: 700; }
+    .proposal-desc { font-size: 12.5px; color: #6B7280; margin: 0 0 18px 38px; line-height: 1.7; }
+
+    .verdict { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 18px; }
+    .verdict > div { border-radius: 8px; padding: 11px 13px; font-size: 12px; line-height: 1.7; }
+    .verdict .good { background: #ECFDF5; border: 1px solid #A7F3D0; color: #065F46; }
+    .verdict .bad  { background: #FEF2F2; border: 1px solid #FECACA; color: #991B1B; }
+    .verdict b { display: block; font-weight: 700; margin-bottom: 3px; font-size: 11.5px; letter-spacing: .02em; }
+    .verdict ul { margin: 0; padding-left: 16px; }
+
+    /* ===== ガント本体 ===== */
+    .gantt {
+        border: 1px solid #E5E7EB; border-radius: 8px; overflow: hidden; background: white;
+    }
+    .gantt-scroll { overflow-x: auto; }
+    .gantt-inner { min-width: 940px; }
+
+    .g-row { display: grid; align-items: stretch; }
+    .g-head { background: #F9FAFB; border-bottom: 1px solid #E5E7EB; }
+
+    .g-label {
+        border-right: 1px solid #E5E7EB; padding: 0 12px;
+        display: flex; align-items: center; gap: 8px;
+        font-size: 12.5px; color: #111827; background: white;
+    }
+    .g-head .g-label { background: #F9FAFB; font-size: 11.5px; font-weight: 700; color: #6B7280; }
+    /* 工程名は折り返さず、長ければ省略する（右の期間表示を押し出さない） */
+    .g-label > span:not(.period-txt):not(.delay-txt):not(.chip) {
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+    }
+
+    .g-track { position: relative; }
+
+    /* 月ヘッダ */
+    .g-months { position: relative; height: 100%; display: flex; }
+    .g-month {
+        border-right: 1px solid #E5E7EB;
+        font-size: 11px; color: #6B7280; text-align: center;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        line-height: 1.35; box-sizing: border-box;
+    }
+    .g-month .y { font-size: 9.5px; color: #9CA3AF; }
+    .g-month.q-start { border-left: 1px solid #D1D5DB; }
+
+    /* 縦グリッド線 */
+    .g-grid { position: absolute; inset: 0; pointer-events: none; }
+    .g-grid span { position: absolute; top: 0; bottom: 0; width: 1px; background: #F3F4F6; }
+    .g-grid span.q { background: #E5E7EB; }
+
+    /* 今日線 */
+    .g-today { position: absolute; top: 0; bottom: 0; width: 0; border-left: 2px dashed #EF4444; pointer-events: none; z-index: 3; }
+    .g-today-cap {
+        position: absolute; top: 2px; transform: translateX(-50%);
+        background: #EF4444; color: white; font-size: 9.5px; font-weight: 700;
+        padding: 1px 6px; border-radius: 999px; white-space: nowrap; z-index: 4;
+    }
+
+    /* バー */
+    .bar { position: absolute; border-radius: 4px; box-sizing: border-box; }
+    .bar-plan   { background: #E5E7EB; border: 1px solid #D1D5DB; }
+    .bar-label  { position: absolute; font-size: 10.5px; color: #6B7280; white-space: nowrap; line-height: 1; }
+
+    .ms { position: absolute; z-index: 2; }
+    .ms i {
+        display: block; width: 11px; height: 11px; background: #111827;
+        transform: rotate(45deg); border-radius: 2px;
+    }
+    .ms.open i { background: white; border: 2px solid #111827; }
+    .ms b { position: absolute; left: 15px; top: -3px; font-size: 10.5px; font-weight: 600; color: #374151; white-space: nowrap; }
+
+    .cat-legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 12px; font-size: 11.5px; color: #6B7280; }
+    .cat-legend i { display: inline-block; width: 22px; height: 9px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+
+    .row-alt { background: #FCFCFD; }
+    .g-body .g-row { border-bottom: 1px solid #F3F4F6; }
+    .g-body .g-row:last-child { border-bottom: none; }
+
+    .period-txt { font-size: 10.5px; color: #9CA3AF; margin-left: auto; white-space: nowrap; }
+    .delay-txt { font-size: 10.5px; color: #DC2626; font-weight: 700; margin-left: auto; white-space: nowrap; }
+
+    .chip {
+        display: inline-flex; align-items: center; font-size: 10px; font-weight: 700;
+        padding: 1px 6px; border-radius: 4px; flex-shrink: 0;
+    }
+    .chip-done { background: #F3F4F6; color: #6B7280; }
+    .chip-run  { background: #D1FAE5; color: #047857; }
+    .chip-todo { background: #EFF6FF; color: #1D4ED8; }
+    .chip-late { background: #FEE2E2; color: #B91C1C; }
+
+    /* 編集 UI */
+    .edit-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    .edit-table th {
+        background: #F9FAFB; color: #6B7280; font-size: 11.5px; font-weight: 700;
+        padding: 8px 10px; border-bottom: 2px solid #E5E7EB; text-align: left; white-space: nowrap;
+    }
+    .edit-table td { padding: 7px 10px; border-bottom: 1px solid #F3F4F6; }
+    .edit-table input, .edit-table select {
+        width: 100%; height: 32px; padding: 0 8px; font-size: 12.5px;
+        border: 1px solid #D1D5DB; border-radius: 6px; background: white; box-sizing: border-box;
+    }
+    .btn-ghost {
+        padding: 5px 12px; font-size: 12px; font-weight: 600; color: #059669;
+        border: 1px solid #059669; border-radius: 6px; background: white; cursor: pointer;
+    }
+    .btn-del { color: #DC2626; border: none; background: none; cursor: pointer; font-size: 16px; line-height: 1; }
+    .drag { color: #D1D5DB; cursor: grab; font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+    <h1>契約後工程の横棒（ガント）表示 — 3案比較</h1>
+    <p class="subtitle">
+        対象: 不動産管理の <strong>仕入れ案件</strong> / <strong>分譲地PJ</strong>。契約〜決済のあとに走る工程（造成・許認可・測量・販売など）を Excel の工程表のように横棒で見せます。<br>
+        3案とも <strong>同じ 1 件のデータ</strong>（分譲地PJ「余戸南 分譲地」）を描いています。見え方だけが違います。
+    </p>
+
+    <div class="note">
+        <strong>このモックの前提（違っていたら直します）</strong><br>
+        ・工程名は<strong>案件ごとに自由に足す</strong>前提です（固定マスタではない）。ここに出ている工程名はサンプルです。<br>
+        ・今日は <strong>2026/08/31</strong> として描いています（赤い破線）。<br>
+        ・データはわざと<strong>遅れている状態</strong>にしています（造成工事が予定 9/30 → 実績 10/16 見込み）。遅れがどう見えるかを比べるためです。
+    </div>
+
+    <!-- ===================== 案 1 ===================== -->
+    <div class="proposal">
+        <div class="proposal-head">
+            <span class="proposal-num">1</span>
+            <span class="proposal-title">月グリッド・1行1本（Excel の工程表に一番近い）</span>
+        </div>
+        <p class="proposal-desc">
+            月の縦線が入ったグリッドに、工程ごとに横棒を 1 本だけ引きます。棒の色は工程の種類（許認可 / 工事 / 測量登記 / 販売）。
+            契約日・決済日・販売開始のような「点」の予定は ◆ で置きます。<strong>一番シンプルで、印刷にも強い</strong>方式です。
+        </p>
+
+        <div class="gantt">
+            <div class="gantt-scroll"><div class="gantt-inner" id="g1"></div></div>
+        </div>
+        <div class="cat-legend">
+            <span><i style="background:#3B82F6"></i>許認可・申請</span>
+            <span><i style="background:#059669"></i>工事</span>
+            <span><i style="background:#8B5CF6"></i>測量・登記</span>
+            <span><i style="background:#F59E0B"></i>販売</span>
+            <span><i style="background:#111827;width:9px;height:9px;transform:rotate(45deg);border-radius:2px"></i>マイルストーン（1日の予定）</span>
+        </div>
+
+        <div class="verdict">
+            <div class="good"><b>良い点</b>
+                <ul>
+                    <li>見慣れた工程表そのもの。説明不要で読める</li>
+                    <li>HTML と CSS だけ。JS ライブラリ 0（外部 CDN も増えない）</li>
+                    <li>行数が増えても素直に伸びる。印刷・PDF 化しやすい</li>
+                </ul>
+            </div>
+            <div class="bad"><b>気になる点</b>
+                <ul>
+                    <li><strong>遅れているかどうかが分からない</strong>（予定と実績が1本に混ざる）</li>
+                    <li>進捗率が出せない。「造成 6 割」のような情報は持てない</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================== 案 2 ===================== -->
+    <div class="proposal">
+        <div class="proposal-head">
+            <span class="proposal-num">2</span>
+            <span class="proposal-title">予定＋実績の 2 段バー（遅れが一目で分かる）</span>
+        </div>
+        <p class="proposal-desc">
+            1 工程に対して<strong>上に予定（グレーの枠）・下に実績（色つき）</strong>の 2 本を引きます。実績が予定からはみ出せば、それがそのまま遅れの長さになります。
+            右端に「+16日」のように遅れ日数を出します。実績がまだ無い工程は予定だけが出ます。
+        </p>
+
+        <div class="gantt">
+            <div class="gantt-scroll"><div class="gantt-inner" id="g2"></div></div>
+        </div>
+        <div class="cat-legend">
+            <span><i style="background:#E5E7EB;border:1px solid #D1D5DB"></i>予定</span>
+            <span><i style="background:#059669"></i>実績（工事）</span>
+            <span><i style="background:#3B82F6"></i>実績（許認可）</span>
+            <span><i style="background:#8B5CF6"></i>実績（測量・登記）</span>
+            <span style="color:#DC2626">赤字 = 予定に対する遅れ日数</span>
+        </div>
+
+        <div class="verdict">
+            <div class="good"><b>良い点</b>
+                <ul>
+                    <li><strong>遅れが図でも数字でも出る</strong>。経営で見たい情報がここに集まる</li>
+                    <li>「予定どおり終わった工程」も履歴として残る</li>
+                    <li>案1と同じく HTML / CSS だけで作れる</li>
+                </ul>
+            </div>
+            <div class="bad"><b>気になる点</b>
+                <ul>
+                    <li>1 行が<strong>約 2 倍の高さ</strong>。工程が 15 行を超えると縦に長い</li>
+                    <li>入力欄が 1 工程あたり 4 つ（予定開始・予定終了・実績開始・実績終了）に増える</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================== 案 3 ===================== -->
+    <div class="proposal">
+        <div class="proposal-head">
+            <span class="proposal-num">3</span>
+            <span class="proposal-title">1本バー＋進捗塗り（コンパクト）</span>
+        </div>
+        <p class="proposal-desc">
+            棒は予定の期間で 1 本だけ引き、その<strong>中を進捗率で塗りつぶします</strong>。塗りが今日線に届いていなければ遅れ。
+            行の高さが案1と同じまま、進捗まで持てます。左に「済 / 進行中 / 予定 / 遅延」のチップを出します。
+        </p>
+
+        <div class="gantt">
+            <div class="gantt-scroll"><div class="gantt-inner" id="g3"></div></div>
+        </div>
+        <div class="cat-legend">
+            <span><i style="background:#A7F3D0"></i>予定の期間</span>
+            <span><i style="background:#059669"></i>進んだぶん（進捗率）</span>
+            <span style="color:#DC2626">赤い破線 = 今日。塗りが線に届いていなければ遅れ</span>
+        </div>
+
+        <div class="verdict">
+            <div class="good"><b>良い点</b>
+                <ul>
+                    <li>案1 と同じ高さのまま<strong>進捗が持てる</strong>。行が多くても見やすい</li>
+                    <li>入力は「予定開始・予定終了・進捗％」の 3 つで済む</li>
+                </ul>
+            </div>
+            <div class="bad"><b>気になる点</b>
+                <ul>
+                    <li>進捗％は<strong>人が手で入れる主観の数字</strong>。更新されないと嘘になる</li>
+                    <li>「いつ終わったか（実績日）」が残らない。過去案件の振り返りに使えない</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================== 入力 UI ===================== -->
+    <div class="proposal">
+        <div class="proposal-head">
+            <span class="proposal-num" style="background:#6B7280">＋</span>
+            <span class="proposal-title">工程の入力画面（3案 共通のイメージ・案2の項目で表示）</span>
+        </div>
+        <p class="proposal-desc">
+            「案件ごとに工程がバラバラ」なので、<strong>行を自由に足す表</strong>にします。よく使う工程名は候補から選べて、無ければ直接入力。
+            並び順はドラッグで入れ替え。この表を保存すると上のガントがそのまま変わります。
+        </p>
+
+        <table class="edit-table">
+            <thead>
+                <tr>
+                    <th style="width:28px"></th>
+                    <th style="min-width:190px">工程名</th>
+                    <th style="width:120px">種類</th>
+                    <th style="width:135px">予定開始</th>
+                    <th style="width:135px">予定終了</th>
+                    <th style="width:135px">実績開始</th>
+                    <th style="width:135px">実績終了</th>
+                    <th style="width:38px"></th>
+                </tr>
+            </thead>
+            <tbody id="editRows"></tbody>
+        </table>
+        <div style="margin-top:12px; display:flex; gap:8px; align-items:center;">
+            <button class="btn-ghost" type="button">＋ 工程を追加</button>
+            <span style="font-size:11.5px;color:#9CA3AF;">※「契約日」「決済日」のように 1 日で終わるものは、終了日を空にすると ◆ のマイルストーンになります</span>
+        </div>
+    </div>
+
+    <p style="font-size:12px;color:#9CA3AF;text-align:center;margin-top:30px;">
+        横断ボード（全案件を 1 本の時間軸に並べる画面）のモックは <strong>schedule-board.html</strong> にあります。
+    </p>
+</div>
+
+<script>
+// =======================================================================
+//  共通データ / 描画エンジン（モック用。実装では Blade + PHP で同じ計算をする）
+// =======================================================================
+var TODAY = '2026-08-31';
+var SPAN_FROM = '2026-03-01';
+var SPAN_TO   = '2027-04-30';
+
+var CAT = {
+    permit:  { label: '許認可・申請', color: '#3B82F6', soft: '#DBEAFE' },
+    work:    { label: '工事',         color: '#059669', soft: '#A7F3D0' },
+    survey:  { label: '測量・登記',   color: '#8B5CF6', soft: '#DDD6FE' },
+    sale:    { label: '販売',         color: '#F59E0B', soft: '#FDE68A' }
+};
+
+// plan = [予定開始, 予定終了] / actual = [実績開始, 実績終了(null = 進行中)]
+var ROWS = [
+    { kind:'ms',  name:'売買契約',            date:'2026-03-10', done:true },
+    { kind:'bar', name:'開発許可申請',        cat:'permit', plan:['2026-03-16','2026-06-19'], actual:['2026-03-16','2026-07-03'], progress:100 },
+    { kind:'ms',  name:'決済・所有権移転',    date:'2026-04-28', done:true },
+    { kind:'bar', name:'造成設計',            cat:'permit', plan:['2026-04-01','2026-05-15'], actual:['2026-04-06','2026-05-22'], progress:100 },
+    { kind:'bar', name:'造成工事',            cat:'work',   plan:['2026-05-18','2026-09-30'], actual:['2026-06-01','2026-10-16'], progress:72 },
+    { kind:'bar', name:'上下水道 引込工事',   cat:'work',   plan:['2026-07-01','2026-08-31'], actual:['2026-07-13','2026-09-04'], progress:88 },
+    { kind:'bar', name:'確定測量・分筆',      cat:'survey', plan:['2026-09-01','2026-10-31'], actual:['2026-08-24', null],        progress:15 },
+    { kind:'bar', name:'表題登記',            cat:'survey', plan:['2026-11-01','2026-11-30'], actual:null,                        progress:0  },
+    { kind:'ms',  name:'販売開始',            date:'2026-10-01', done:false },
+    { kind:'bar', name:'区画販売（全12区画）', cat:'sale',   plan:['2026-10-01','2027-03-31'], actual:null,                        progress:0  },
+    { kind:'ms',  name:'完売（目標）',        date:'2027-03-31', done:false }
+];
+
+var DAY = 86400000;
+function D(s) { return new Date(s + 'T00:00:00'); }
+var T0 = D(SPAN_FROM), T1 = D(SPAN_TO);
+var TOTAL = (T1 - T0) / DAY;
+
+function posPct(dateStr) { return (D(dateStr) - T0) / DAY / TOTAL * 100; }
+function widthPct(a, b)  { return ((D(b) - D(a)) / DAY + 1) / TOTAL * 100; }
+function diffDays(a, b)  { return Math.round((D(b) - D(a)) / DAY); }
+function fmt(s) { var p = s.split('-'); return p[1].replace(/^0/,'') + '/' + p[2]; }
+
+// 月ヘッダの各月 [開始, 日数]
+function months() {
+    var out = [], cur = new Date(T0.getFullYear(), T0.getMonth(), 1);
+    while (cur <= T1) {
+        var next = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+        var from = cur < T0 ? T0 : cur;
+        var to   = next > T1 ? new Date(T1.getTime() + DAY) : next;
+        out.push({ y: cur.getFullYear(), m: cur.getMonth() + 1, days: (to - from) / DAY });
+        cur = next;
+    }
+    return out;
+}
+
+var LABEL_W = 262;   // 左の工程名カラム幅(px)
+
+function headerHtml() {
+    var ms = months(), h = '';
+    h += '<div class="g-row g-head" style="grid-template-columns:' + LABEL_W + 'px 1fr; height:42px;">';
+    h += '<div class="g-label">工程</div><div class="g-track"><div class="g-months">';
+    ms.forEach(function (mo, i) {
+        var q = (mo.m === 1 || mo.m === 4 || mo.m === 7 || mo.m === 10);
+        h += '<div class="g-month' + (q ? ' q-start' : '') + '" style="width:' + (mo.days / TOTAL * 100) + '%">'
+           + (mo.m === 1 || i === 0 ? '<span class="y">' + mo.y + '</span>' : '')
+           + '<span>' + mo.m + '月</span></div>';
+    });
+    h += '</div></div></div>';
+    return h;
+}
+
+function gridHtml() {
+    var ms = months(), acc = 0, g = '<div class="g-grid">';
+    ms.forEach(function (mo) {
+        acc += mo.days;
+        var q = (mo.m === 12 || mo.m === 3 || mo.m === 6 || mo.m === 9);
+        g += '<span class="' + (q ? 'q' : '') + '" style="left:' + (acc / TOTAL * 100) + '%"></span>';
+    });
+    return g + '</div>';
+}
+
+function todayHtml(withCap) {
+    var l = posPct(TODAY);
+    return '<div class="g-today" style="left:' + l + '%"></div>'
+        + (withCap ? '<div class="g-today-cap" style="left:' + l + '%">今日 8/31</div>' : '');
+}
+
+function statusChip(r) {
+    if (r.kind === 'ms') return r.done ? '<span class="chip chip-done">済</span>' : '<span class="chip chip-todo">予定</span>';
+    if (r.actual && r.actual[1]) {
+        var late = diffDays(r.plan[1], r.actual[1]);
+        return late > 0 ? '<span class="chip chip-late">遅延</span>' : '<span class="chip chip-done">済</span>';
+    }
+    if (r.actual) return '<span class="chip chip-run">進行中</span>';
+    return '<span class="chip chip-todo">予定</span>';
+}
+
+// ---------------------------------------------------------------- 案1
+function render1(el) {
+    var h = headerHtml() + '<div class="g-body">';
+    ROWS.forEach(function (r, i) {
+        var alt = i % 2 ? ' row-alt' : '';
+        h += '<div class="g-row' + alt + '" style="grid-template-columns:' + LABEL_W + 'px 1fr; height:34px;">';
+        if (r.kind === 'ms') {
+            h += '<div class="g-label"><span>' + r.name + '</span><span class="period-txt">' + fmt(r.date) + '</span></div>';
+            h += '<div class="g-track">' + gridHtml() + todayHtml(i === 0)
+               + '<div class="ms' + (r.done ? '' : ' open') + '" style="left:' + posPct(r.date) + '%; top:11px; margin-left:-5px;"><i></i></div></div>';
+        } else {
+            // 実績があれば実績、無ければ予定を 1 本引く
+            var s = r.actual ? r.actual[0] : r.plan[0];
+            var e = r.actual && r.actual[1] ? r.actual[1] : r.plan[1];
+            var c = CAT[r.cat].color;
+            h += '<div class="g-label"><span>' + r.name + '</span><span class="period-txt">' + fmt(s) + '〜' + fmt(e) + '</span></div>';
+            h += '<div class="g-track">' + gridHtml() + todayHtml(i === 0)
+               + '<div class="bar" style="left:' + posPct(s) + '%; width:' + widthPct(s, e) + '%; top:10px; height:14px; background:' + c + ';"></div></div>';
+        }
+        h += '</div>';
+    });
+    el.innerHTML = h + '</div>';
+}
+
+// ---------------------------------------------------------------- 案2
+function render2(el) {
+    var h = headerHtml() + '<div class="g-body">';
+    ROWS.forEach(function (r, i) {
+        var alt = i % 2 ? ' row-alt' : '';
+        if (r.kind === 'ms') {
+            h += '<div class="g-row' + alt + '" style="grid-template-columns:' + LABEL_W + 'px 1fr; height:34px;">';
+            h += '<div class="g-label">' + statusChip(r) + '<span>' + r.name + '</span><span class="period-txt">' + fmt(r.date) + '</span></div>';
+            h += '<div class="g-track">' + gridHtml() + todayHtml(i === 0)
+               + '<div class="ms' + (r.done ? '' : ' open') + '" style="left:' + posPct(r.date) + '%; top:11px; margin-left:-5px;"><i></i></div></div></div>';
+            return;
+        }
+        var late = (r.actual && r.actual[1]) ? diffDays(r.plan[1], r.actual[1]) : 0;
+        var right = late > 0
+            ? '<span class="delay-txt">+' + late + '日</span>'
+            : '<span class="period-txt">' + fmt(r.plan[0]) + '〜' + fmt(r.plan[1]) + '</span>';
+
+        h += '<div class="g-row' + alt + '" style="grid-template-columns:' + LABEL_W + 'px 1fr; height:52px;">';
+        h += '<div class="g-label">' + statusChip(r) + '<span>' + r.name + '</span>' + right + '</div>';
+        h += '<div class="g-track">' + gridHtml() + todayHtml(i === 0);
+        // 予定（上・細いグレー枠）
+        h += '<div class="bar bar-plan" style="left:' + posPct(r.plan[0]) + '%; width:' + widthPct(r.plan[0], r.plan[1]) + '%; top:11px; height:11px;"></div>';
+        // 実績（下・色つき）。終了未定は今日まで引いて右端を開く
+        if (r.actual) {
+            var ae = r.actual[1] || TODAY;
+            var open = !r.actual[1];
+            h += '<div class="bar" style="left:' + posPct(r.actual[0]) + '%; width:' + widthPct(r.actual[0], ae) + '%; top:27px; height:13px; background:' + CAT[r.cat].color + ';'
+               + (open ? 'border-top-right-radius:0;border-bottom-right-radius:0;opacity:.85;' : '') + '"></div>';
+        }
+        h += '</div></div>';
+    });
+    el.innerHTML = h + '</div>';
+}
+
+// ---------------------------------------------------------------- 案3
+function render3(el) {
+    var h = headerHtml() + '<div class="g-body">';
+    ROWS.forEach(function (r, i) {
+        var alt = i % 2 ? ' row-alt' : '';
+        h += '<div class="g-row' + alt + '" style="grid-template-columns:' + LABEL_W + 'px 1fr; height:34px;">';
+        if (r.kind === 'ms') {
+            h += '<div class="g-label">' + statusChip(r) + '<span>' + r.name + '</span><span class="period-txt">' + fmt(r.date) + '</span></div>';
+            h += '<div class="g-track">' + gridHtml() + todayHtml(i === 0)
+               + '<div class="ms' + (r.done ? '' : ' open') + '" style="left:' + posPct(r.date) + '%; top:11px; margin-left:-5px;"><i></i></div></div></div>';
+            return;
+        }
+        var w = widthPct(r.plan[0], r.plan[1]);
+        h += '<div class="g-label">' + statusChip(r) + '<span>' + r.name + '</span><span class="period-txt">' + r.progress + '%</span></div>';
+        h += '<div class="g-track">' + gridHtml() + todayHtml(i === 0);
+        h += '<div class="bar" style="left:' + posPct(r.plan[0]) + '%; width:' + w + '%; top:10px; height:14px; background:' + CAT[r.cat].soft + '; border:1px solid ' + CAT[r.cat].color + '33;">'
+           + '<div style="height:100%; width:' + r.progress + '%; background:' + CAT[r.cat].color + '; border-radius:3px;"></div></div>';
+        h += '</div></div>';
+    });
+    el.innerHTML = h + '</div>';
+}
+
+// ---------------------------------------------------------------- 入力 UI
+function renderEdit(el) {
+    var catOpts = { permit:'許認可・申請', work:'工事', survey:'測量・登記', sale:'販売' };
+    var h = '';
+    ROWS.forEach(function (r) {
+        var isMs = r.kind === 'ms';
+        h += '<tr>';
+        h += '<td class="drag">⠿</td>';
+        h += '<td><input value="' + r.name + '"></td>';
+        h += '<td><select>';
+        if (isMs) { h += '<option>— 節目 —</option>'; }
+        for (var k in catOpts) { h += '<option' + (!isMs && r.cat === k ? ' selected' : '') + '>' + catOpts[k] + '</option>'; }
+        h += '</select></td>';
+        h += '<td><input type="date" value="' + (isMs ? r.date : r.plan[0]) + '"></td>';
+        h += '<td><input type="date" value="' + (isMs ? '' : r.plan[1]) + '"></td>';
+        h += '<td><input type="date" value="' + (!isMs && r.actual ? r.actual[0] : '') + '"></td>';
+        h += '<td><input type="date" value="' + (!isMs && r.actual && r.actual[1] ? r.actual[1] : '') + '"></td>';
+        h += '<td><button class="btn-del" type="button">×</button></td>';
+        h += '</tr>';
+    });
+    el.innerHTML = h;
+}
+
+render1(document.getElementById('g1'));
+render2(document.getElementById('g2'));
+render3(document.getElementById('g3'));
+renderEdit(document.getElementById('editRows'));
+</script>
+</body>
+</html>
