@@ -1323,6 +1323,23 @@ Route::middleware(['auth', 'password.change'])->group(function () {
                 ->name('housing.custom-orders.schedule-steps.update');
             Route::delete('/custom-orders/{customOrder}/schedule-steps/{step}', [\App\Http\Controllers\ScheduleStepController::class, 'destroy'])
                 ->name('housing.custom-orders.schedule-steps.destroy');
+
+            /*
+             | ANDPAD 工程表の取込（3ルート）
+             |
+             | 設計書: docs/superpowers/specs/2026-09-01-andpad-schedule-import-design.md §5
+             |
+             | ⚠ **建売物件だけ。** 注文住宅・仕入れ案件・分譲地PJ には出さない
+             |   （運用が回ってから判断する。設計書 §7）。
+             | ⚠ 入口を物件詳細に限ることで、ANDPAD の現場名から物件を推測する必要が無くなる
+             |   （現場名では特定できない。設計書 §2.5）。
+             */
+            Route::get('/properties/{property}/schedule-import', [\App\Http\Controllers\Housing\ScheduleImportController::class, 'form'])
+                ->name('housing.properties.schedule-import.form');
+            Route::post('/properties/{property}/schedule-import/preview', [\App\Http\Controllers\Housing\ScheduleImportController::class, 'preview'])
+                ->name('housing.properties.schedule-import.preview');
+            Route::post('/properties/{property}/schedule-import', [\App\Http\Controllers\Housing\ScheduleImportController::class, 'execute'])
+                ->name('housing.properties.schedule-import.execute');
         });
 
     /*

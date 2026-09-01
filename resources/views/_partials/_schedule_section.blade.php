@@ -6,6 +6,12 @@
 
     必要な変数: $schedule（App\Services\ScheduleCardService::build() の戻り値）
                 $scheduleCanEdit（bool）
+
+    任意の変数: $scheduleImportUrl（?string）—— ANDPAD 取込の入口。渡した画面にだけボタンが出る。
+
+    ⚠ **partial の中で親の種別を判定しないこと**（`$owner instanceof HsProperty` のように書かない）。
+       4 親が共有する部品に「建売のときだけ」という知識を持ち込むと、次に親が増えたときに
+       ここを直す必要が生まれる。出すか出さないかは**渡す側**が決める。
 --}}
 <div class="bg-white border border-gray-200 rounded-lg p-5 mb-5">
     <div class="flex items-center gap-2 mb-3">
@@ -22,6 +28,15 @@
                         style="padding: 5px 12px; font-size: 12px; font-weight: 600; color: #059669; border: 1px solid #059669; border-radius: 6px; background: white; cursor: pointer;">
                     ＋ 工程を追加
                 </button>
+
+                {{-- ⚠ 渡された画面にだけ出す。権限が無いときは（この @@if の外なので）そもそも描かれない。
+                     押せない理由を disabled な要素の title に書く形にしないこと（Bug #43） --}}
+                @if(($scheduleImportUrl ?? null) !== null)
+                    <a href="{{ $scheduleImportUrl }}"
+                       style="padding: 5px 12px; font-size: 12px; font-weight: 600; color: #374151; border: 1px solid #D1D5DB; border-radius: 6px; background: white; text-decoration: none;">
+                        ANDPAD 取込
+                    </a>
+                @endif
                 <span x-show="message" x-text="message" style="font-size: 12px; color: #047857;"></span>
             </div>
 

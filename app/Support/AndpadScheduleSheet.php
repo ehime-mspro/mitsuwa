@@ -232,14 +232,6 @@ final class AndpadScheduleSheet
             }
         }
 
-        // ⚠ **大工程名を工程名に含める**（設計書 §3 決定 2）。落とすと区別できない
-        //    ——実測で「器具取付」が電気工事と給排水設備工事の 2 件ある。
-        $fullName = $group === '' ? $name : "{$group} / {$name}";
-        if (mb_strlen($fullName) > self::MAX_NAME) {
-            $warnings[] = sprintf('%s: 工程名が %d 文字を超えたので切り詰めました。', $where, self::MAX_NAME);
-            $fullName = mb_substr($fullName, 0, self::MAX_NAME);
-        }
-
         // ⚠ 担当会社 / 担当者 / 状態は工程表の表示項目ではないが、捨てると ANDPAD を
         //    見に行くことになる（設計書 §3.1 F）。
         $notes = implode(' / ', array_filter([
@@ -247,11 +239,6 @@ final class AndpadScheduleSheet
             self::cell($sheet, self::COL_PERSON . $r),
             self::cell($sheet, self::COL_STATUS . $r),
         ], fn ($v) => $v !== ''));
-
-        if (mb_strlen($notes) > self::MAX_NOTES) {
-            $warnings[] = sprintf('%s: 備考が %d 文字を超えたので切り詰めました。', $where, self::MAX_NOTES);
-            $notes = mb_substr($notes, 0, self::MAX_NOTES);
-        }
 
         // ⚠ ANDPAD の「期間」は読むが**保存しない**（内訳と合計の二重管理を作らない。Bug #46）。
         //    読み違えの検出にだけ使う。実測では 65 件すべてで 完了 - 開始 + 1 と一致した。
@@ -268,9 +255,112 @@ final class AndpadScheduleSheet
             }
         }
 
+        return self::buildRow($group, $name, $start, $end, $notes, $order, $where, $warnings);
+    }
+
+    /**
+     * 画面から返ってきた行を、読み取り時と**同じ規則**で作り直す。
+     *
+     * ⚠ **プレビューが返した値をそのまま信じない。** 2 段目の hidden は利用者が
+     *   書き換えられるので、日付・桁・分類はここで引き直す。
+     *   ⚠ 規則を確定側で書き直さないこと —— 同じ計算の 2 実装は無音で漂流する（Bug #41）。
+     *   読み取りも確定も buildRow() を通る。
+     *
+     * @param array<int, mixed> $submitted
+     * @return array{rows: array<int, array<string, mixed>>, warnings: array<int, string>, rowErrors: array<int, string>}
+     */
+    public static function sanitizeSubmittedRows(array $submitted): array
+    {
+        $rows = [];
+        $warnings = [];
+        $rowErrors = [];
+
+        foreach ($submitted as $i => $raw) {
+            $where = sprintf('%d 行目', $i + 1);
+
+            if (! is_array($raw)) {
+                $rowErrors[] = "{$where}: 行の形式が壊れています。";
+                continue;
+            }
+
+            $group = is_scalar($raw['group'] ?? null) ? trim((string) $raw['group']) : '';
+            $name  = is_scalar($raw['name'] ?? null) ? trim((string) $raw['name']) : '';
+            $notes = is_scalar($raw['notes'] ?? null) ? trim((string) $raw['notes']) : '';
+
+            // ⚠ プレビューの name は「大工程名 / 工程名」に連結済みなので、ここでは再連結しない
+            if ($name === '') {
+                $rowErrors[] = "{$where}: 工程名がありません。";
+                continue;
+            }
+
+            $startRaw = is_scalar($raw['planned_start'] ?? null) ? trim((string) $raw['planned_start']) : '';
+            $start = $startRaw === '' ? null : CsvDate::normalize($startRaw);
+            if ($start === null) {
+                $rowErrors[] = "{$where}: 施工開始日「{$startRaw}」を日付として読めません。";
+                continue;
+            }
+
+            $endRaw = is_scalar($raw['planned_end'] ?? null) ? trim((string) $raw['planned_end']) : '';
+            $end = null;
+            if ($endRaw !== '') {
+                $end = CsvDate::normalize($endRaw);
+                if ($end === null) {
+                    $rowErrors[] = "{$where}: 施工完了日「{$endRaw}」を日付として読めません。";
+                    continue;
+                }
+                if ($end < $start) {
+                    $rowErrors[] = "{$where}: 施工完了日が施工開始日より前です。";
+                    continue;
+                }
+            }
+
+            if (count($rows) >= self::MAX_ROWS) {
+                $rowErrors[] = sprintf('工程が %d 件を超えています。', self::MAX_ROWS);
+                break;
+            }
+
+            // ⚠ sort_order は受け取った値でなく**並び順から振り直す**（重複・欠番を持ち込ませない）
+            $rows[] = self::buildRow($group, $name, $start, $end, $notes, count($rows) + 1, $where, $warnings, false);
+        }
+
+        return ['rows' => $rows, 'warnings' => $warnings, 'rowErrors' => $rowErrors];
+    }
+
+    /**
+     * 読み取りと確定で共有する行の組み立て（桁の切り詰めと分類の決定）。
+     *
+     * @param array<int, string> $warnings
+     * @return array<string, mixed>
+     */
+    private static function buildRow(
+        string $group,
+        string $name,
+        string $start,
+        ?string $end,
+        string $notes,
+        int $order,
+        string $where,
+        array &$warnings,
+        bool $joinGroup = true
+    ): array {
+        // ⚠ **大工程名を工程名に含める**（設計書 §3 決定 2）。落とすと区別できない
+        //    ——実測で「器具取付」が電気工事と給排水設備工事の 2 件ある。
+        $fullName = ($joinGroup && $group !== '') ? "{$group} / {$name}" : $name;
+
+        if (mb_strlen($fullName) > self::MAX_NAME) {
+            $warnings[] = sprintf('%s: 工程名が %d 文字を超えたので切り詰めました。', $where, self::MAX_NAME);
+            $fullName = mb_substr($fullName, 0, self::MAX_NAME);
+        }
+
+        if (mb_strlen($notes) > self::MAX_NOTES) {
+            $warnings[] = sprintf('%s: 備考が %d 文字を超えたので切り詰めました。', $where, self::MAX_NOTES);
+            $notes = mb_substr($notes, 0, self::MAX_NOTES);
+        }
+
         return [
             'group'         => $group,
             'name'          => $fullName,
+            // ⚠ 分類は**必ず大工程名から引き直す**。画面から送られてきた値を信じない
             'category'      => AndpadCategory::forGroup($group)->value,
             'planned_start' => $start,
             'planned_end'   => $end,
