@@ -84,6 +84,46 @@ class ScheduleImportTest extends ScheduleTestCase
         $this->assertSame(0, ScheduleStep::count());
     }
 
+    /**
+     * ⚠ **工程表カードは 4 親の共有 partial。** 「建売に出る」だけを見ると、
+     *   条件を落として他部署にボタンが生えても緑のまま通る（Bug #41 の「経路が複数」型）。
+     *   4 画面すべてを見る。
+     */
+    public function test_the_import_button_appears_only_on_the_tateuri_detail_page(): void
+    {
+        foreach (self::PARENTS as $label => [$_class, $prefix, $_dept]) {
+            $owner = $this->makeParent($label);
+
+            $html = $this->actingAs($this->manager())
+                ->get(route("{$prefix}.show", $owner))
+                ->assertOk()
+                ->getContent();
+
+            if ($label === 'property') {
+                $this->assertStringContainsString('ANDPAD 取込', $html, '建売にボタンが出ていない');
+                $this->assertStringContainsString(
+                    route('housing.properties.schedule-import.form', $owner),
+                    $html
+                );
+            } else {
+                $this->assertStringNotContainsString('ANDPAD', $html, "{$label}: 建売以外にボタンが出ている");
+            }
+        }
+    }
+
+    /** ⚠ 押せない理由を disabled な要素の title に書かず、そもそも出さない（Bug #43） */
+    public function test_staff_does_not_see_the_import_button(): void
+    {
+        $property = $this->makeParent('property');
+
+        $html = $this->actingAs($this->staff())
+            ->get(route('housing.properties.show', $property))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringNotContainsString('ANDPAD', $html);
+    }
+
     // ============================================================
     // プレビュー
     // ============================================================
