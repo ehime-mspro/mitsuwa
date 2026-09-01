@@ -5914,29 +5914,44 @@ Task 12 の Step 4〜8 と同じ 6 画面を、**本番の URL**（`https://www.
 
 ---
 
-## 変異テストの実測結果（Task 11 で埋める）
+## 変異テストの実測結果（Task 11 で実測。2026-09-01）
 
-| # | 変異 | 当たったか（`git diff --stat` 非空） | 検出したテスト | 落ちた理由の文言 |
+作法（Bug #44 / #54）はスクリプトで強制した: ①事前に `git status --porcelain` が空
+②`git diff --stat` が非空で着弾を確認 ③`php -l` が通ることを確認（構文エラーで赤くなる誤読を防ぐ）
+④**落ちた理由の文言**まで突き合わせる ⑤必ず `git checkout --` で戻す。
+
+⚠ **最初に perl の `\Q...\E` で置換しようとして 2 件が 0 箇所置換になった。**
+`\Q...\E` の中でも `$s` `$e` のような**変数は展開される**ため。スクリプトが「0 箇所＝無効な測定」と
+して止めたので誤読せずに済んだ（これを止めないと「検出しない」と読み違える。過去に 2 回踏んでいる）。
+以降は python のリテラル置換に切り替えた。
+
+| # | 変異 | 当たったか | 検出したテスト | 落ちた理由の文言 |
 |---|---|---|---|---|
-| 1 | `width()` の `+1` を消す | | | |
-| 2 | `startOfDay()` を外す | | | |
-| 3 | 遅延判定を `>=` に | | | |
-| 4 | 未着手の遅延を数えない | | | |
-| 5 | 段振り分けを 1 段固定に | | | |
-| 6 | 段の判定を「以降」に | | | |
-| 7 | 実績優先をやめる | | | |
-| 8 | 所有権の型比較を消す | | | |
-| 9 | 完成 ◆ を 2 つ描く | | | |
-| 10 | ルートを 1 本消す | | | |
-| 11 | `reorder` を `{step}` の後ろへ | | | |
-| 12 | ボードの対象を全親に広げる | | | |
-| 13 | `@include` をインライン複製に | | | |
-| 14 | `countSoon` の実績ガードを消す | | | |
-| 15 | KPI を絞り込み前から数える | | | |
-| 16 | サイドバーの片ブロックを消す | | | |
+| 1 | `width()` の `+1` を消す | ✅ 1 file, 1+/1- | `GanttScaleTest::test_a_single_day_step_has_a_non_zero_width` ほか 3 本 | `1 日だけの工程は幅 0 になってはいけない`／`Failed asserting that 0.0 is greater than 0.0` |
+| 2 | `startOfDay()` を外す | ✅ 1 file, 1+/1- | `GanttScaleTest::test_time_components_are_normalised_to_the_start_of_the_day` | `endOfMonth の時刻成分で 1 日ずれている`／`213 is identical to 212` |
+| 3 | 遅延判定を `>=` に（`lessThanOrEqualTo` → `lessThan`） | ✅ 1 file, 1+/1- | **検出せず（全 1151 緑）** | — ⚠ **振る舞いが変わらない変異だった**（equivalent mutant）。等値のとき早期 return を通らなくても `diffInDays` が 0 を返すため、`delayDays` は 0 のまま。**テストの穴ではない** |
+| 3b | 境界を 1 日ずらす（`$due` を `subDay()`）＝ #3 の意図を測り直したもの | ✅ 1 file, 1+/1- | `ScheduleStepStatusTest::test_finishing_exactly_on_the_planned_end_is_not_late` ほか 5 本 | `予定終了ちょうどに終わったのを遅延にしないこと` ⇒ **境界は実際に守られている** |
+| 4 | 未着手の遅延を数えない | ✅ 1 file, 1+/1- | `ScheduleStepStatusTest::test_never_started_past_the_planned_end_is_late` ほか 6 本（ボードのステータスまで波及） | `Failed asserting that 0 is identical to 11` |
+| 5 | 段振り分けを 1 段固定に | ✅ 1 file, 1+/1- | `LanePackerTest` 3 本 ＋ `ScheduleBoardTest::test_overlapping_steps_are_spread_across_lanes` | `重なる工程が同じ段に載っている（読めなくなる）` |
+| 6 | 段の判定を「以降」に | ✅ 1 file, 1+/1- | `LanePackerTest::test_a_step_starting_on_the_day_the_previous_one_ends_goes_to_a_new_lane` | `Failed asserting that two arrays are identical`（`[0,1]` が `[0,0]` に） |
+| 7 | 実績優先をやめる | ✅ 1 file, 1+/1- | **初回は検出せず（全 1151 緑）→ テストを足して赤を実測** | ⚠ **実在の穴だった。** 予定と実績が**両方**入った工程を 1 件も作っていなかったので、`actual_start ?? planned_start` を入れ替えても差が出なかった。設計書 §5.2 の例（予定 5/18〜9/30・実績 6/1〜10/16）を `ScheduleSectionRenderTest::test_a_step_with_both_planned_and_actual_dates_is_drawn_from_the_actual_ones` として追加（`16e27cb1`）→ 再測定で `実績で描いていない（設計書 §5.2）` で赤 |
+| 8 | 所有権の型比較を消す | ✅ 1 file, 1+/2- | `ScheduleStepAuthorizationTest::test_a_step_belonging_to_a_same_id_parent_in_another_department_is_not_found` | `Failed asserting that 200 is identical to 404`（他部署の工程が書き換えられた） |
+| 9 | 完成 ◆ を 2 つ描く | ✅ 1 file, 4+/3- | `ScheduleAutoMilestoneTest::test_property_completion_is_a_single_milestone_even_when_both_dates_exist` | `完成の ◆ を 2 つ描かないこと（設計書 §3.4）` |
+| 10 | ルートを 1 本消す | ✅ 1 file, 2+/2-（`php -l` 通過を確認済み＝構文エラーで赤くなっていない） | `ScheduleRouteWiringTest` 3 本 ＋ `ScheduleStepCrudTest` 2 本 | `工程ルートの本数が 16 でない（走査の空振り防止）`／`actual size 15 matches expected size 16` |
+| 11 | `reorder` を `{step}` の後ろへ | ✅ 1 file, 2+/2- | `ScheduleRouteWiringTest::test_reorder_wins_over_the_step_parameter` ＋ `ScheduleStepCrudTest::test_reorder_rewrites_sort_order_for_every_parent` | `realestate.procurements: /schedule-steps/reorder が {step} に食われている（登録順を直すこと）`／`404 is identical to 200` |
+| 12 | ボードの対象を全親に広げる | ✅ 1 file, 1+ | `ScheduleBoardTest::test_the_realestate_board_never_shows_housing_cases` | `Failed asserting that two arrays are identical`（住宅の案件が不動産のボードに出た） |
+| 13 | `@include` をインライン複製に | ✅ 1 file, 6+/1- | 挙動 6 本 ＋ **構造 2 本**（`test_all_four_detail_views_include_the_one_shared_partial` / `test_the_gantt_markup_lives_only_in_the_partial`） | `共通 partial を include していない（マークアップを複製していないか）` ⚠ 構造テストが**名指しで**落ちることを、その 2 本だけに絞って別途確認した |
+| 14 | `countSoon` の実績ガードを消す | ✅ 1 file, 1+/1- | `ScheduleBoardTest::test_the_kpis_agree_with_the_rows_on_screen` | `Failed asserting that 2 is identical to 1`（着手済みの工程まで数えた） |
+| 15 | KPI を絞り込み前から数える | ✅ 1 file, 1+/1- | `ScheduleBoardTest::test_the_kpis_follow_the_filter` ＋ `test_the_kpis_agree_with_the_rows_on_screen` | `絞り込み後の行から数えていない` |
+| 16 | サイドバーの片ブロックを消す（**モバイルドロワー側だけ**） | ✅ 1 file, 1- | `ScheduleBoardTest::test_both_sidebar_blocks_link_to_each_board` | `/housing/schedules へのサイドバー導線が 2 箇所（PC 展開 / モバイルドロワー）ありません` |
 
-⚠ **検出しなかった変異があれば、テストを足してから赤になることを確認し、その事実も残すこと。**
-「検出しない」と書く前に必ず「当たったか」の列を見返す（0 箇所置換の誤読を 2 回踏んでいる）。
+**結論: 17 通り測って 16 検出 / 1 は equivalent mutant（#3）。**
+穴は **#7 の 1 件**で、テストを足して赤になることまで確認した。
+
+⚠ **#3 を「テストの穴」と書かなかった理由**を残しておく —— 変異が当たっている（`git diff` 非空）のに
+緑だった場合、**まず「その変異で本当に振る舞いが変わるのか」を確かめる**こと。
+#3 は等値のとき早期 return を通らなくても `diffInDays` が 0 を返すので出力が変わらない。
+意図（境界の `>` と `>=`）が守られているかは **#3b の意味が変わる変異**で測り直して確認した。
 
 ---
 
