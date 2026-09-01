@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\ProjectStatus;
 use App\Enums\LotStatus;
+use App\Models\Concerns\HasScheduleSteps;
 use App\Models\ReCostItem;
 use App\Models\ReProjectCost;
 use App\Support\AreaConverter;
@@ -17,6 +18,7 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 class ReProject extends Model
 {
     use HasFactory;
+    use HasScheduleSteps;
 
     protected $table = 're_projects';
 
@@ -284,5 +286,32 @@ class ReProject extends Model
     public function deletionBlockers(): array
     {
         return DeletionBlockers::forProject($this);
+    }
+
+    // ============================================================
+    // 工程表（設計書 §3.3）
+    // ============================================================
+
+    public function scheduleCode(): string
+    {
+        return $this->project_code;
+    }
+
+    public function scheduleName(): string
+    {
+        return $this->project_name;
+    }
+
+    public function scheduleRoutePrefix(): string
+    {
+        return 'realestate.projects';
+    }
+
+    public function autoMilestones(): array
+    {
+        return array_values(array_filter([
+            $this->contract_date   ? ['label' => '契約', 'date' => $this->contract_date] : null,
+            $this->settlement_date ? ['label' => '決済', 'date' => $this->settlement_date] : null,
+        ]));
     }
 }

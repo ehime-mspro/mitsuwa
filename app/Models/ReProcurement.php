@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\ProcurementStatus;
 use App\Enums\RealEstatePropertyType;
 use App\Enums\RealEstateTransactionType;
+use App\Models\Concerns\HasScheduleSteps;
 use App\Models\ReCostItem;
 use App\Models\ReProcurementCost;
 use App\Support\AreaConverter;
@@ -19,6 +20,7 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 class ReProcurement extends Model
 {
     use HasFactory;
+    use HasScheduleSteps;
 
     protected $table = 're_procurements';
 
@@ -355,5 +357,32 @@ class ReProcurement extends Model
     public function deletionBlockers(): array
     {
         return DeletionBlockers::forProcurementId($this->id);
+    }
+
+    // ============================================================
+    // 工程表（設計書 §3.3）
+    // ============================================================
+
+    public function scheduleCode(): string
+    {
+        return $this->procurement_code;
+    }
+
+    public function scheduleName(): string
+    {
+        return $this->property_name;
+    }
+
+    public function scheduleRoutePrefix(): string
+    {
+        return 'realestate.procurements';
+    }
+
+    public function autoMilestones(): array
+    {
+        return array_values(array_filter([
+            $this->contract_date   ? ['label' => '契約', 'date' => $this->contract_date] : null,
+            $this->settlement_date ? ['label' => '決済', 'date' => $this->settlement_date] : null,
+        ]));
     }
 }

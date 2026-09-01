@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\HousingLandSourceType;
 use App\Enums\HousingPropertyStatus;
+use App\Models\Concerns\HasScheduleSteps;
 use App\Support\AreaConverter;
 use App\Support\ConsumptionTax;
 use App\Support\Settings;
@@ -16,6 +17,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 class HsProperty extends Model
 {
     use HasFactory;
+    use HasScheduleSteps;
 
     protected $table = 'hs_properties';
 
@@ -415,5 +417,36 @@ class HsProperty extends Model
             return $p->procurement_code . ' ' . $p->property_name;
         }
         return null;
+    }
+
+    // ============================================================
+    // 工程表（設計書 §3.3）
+    // ============================================================
+
+    public function scheduleCode(): string
+    {
+        return $this->property_code;
+    }
+
+    public function scheduleName(): string
+    {
+        return $this->property_name;
+    }
+
+    public function scheduleRoutePrefix(): string
+    {
+        return 'housing.properties';
+    }
+
+    /**
+     * ⚠ **「完成」は 1 つだけ。** scheduled_completion_date と actual_completion_date は
+     *   同じ節目なので、実績があれば実績・無ければ予定の位置に ◆ を 1 つだけ描く。
+     *   2 つ描くと「完成が 2 回ある」ように見える（設計書 §3.4）。
+     */
+    public function autoMilestones(): array
+    {
+        $completion = $this->actual_completion_date ?? $this->scheduled_completion_date;
+
+        return $completion ? [['label' => '完成', 'date' => $completion]] : [];
     }
 }

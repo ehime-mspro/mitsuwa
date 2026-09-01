@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\BuyerDepartment;
 use App\Enums\CustomOrderStatus;
 use App\Enums\HousingLandSourceType;
+use App\Models\Concerns\HasScheduleSteps;
 use App\Support\AreaConverter;
 use App\Support\ConsumptionTax;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -15,6 +16,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class HsCustomOrder extends Model
 {
     use HasFactory;
+    use HasScheduleSteps;
 
     protected $table = 'hs_custom_orders';
 
@@ -402,5 +404,36 @@ class HsCustomOrder extends Model
             return $this->procurement->target_selling_price_land;
         }
         return null;
+    }
+
+    // ============================================================
+    // 工程表（設計書 §3.3）
+    // ============================================================
+
+    public function scheduleCode(): string
+    {
+        return $this->order_code;
+    }
+
+    public function scheduleName(): string
+    {
+        return $this->order_name;
+    }
+
+    public function scheduleRoutePrefix(): string
+    {
+        return 'housing.custom-orders';
+    }
+
+    /** ⚠ HsProperty と同じく「完成」は 1 つだけ（設計書 §3.4） */
+    public function autoMilestones(): array
+    {
+        $completion = $this->actual_completion_date ?? $this->scheduled_completion_date;
+
+        return array_values(array_filter([
+            $this->contract_date ? ['label' => '契約', 'date' => $this->contract_date] : null,
+            $completion          ? ['label' => '完成', 'date' => $completion] : null,
+            $this->delivery_date ? ['label' => '引渡し', 'date' => $this->delivery_date] : null,
+        ]));
     }
 }
