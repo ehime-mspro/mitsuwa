@@ -4412,13 +4412,20 @@ class ScheduleBoardTest extends ScheduleTestCase
             ['planned_start' => '2026-09-10', 'planned_end' => '2026-10-31'],
             ['planned_start' => '2026-08-01', 'planned_end' => '2026-09-05', 'actual_start' => '2026-08-01'],
         ]);
+        // ⚠ **この 1 件が countSoon の「すでに始まった工程は数えない」ガードを load-bearing にする。**
+        //    予定開始 9/15 は 30 日の窓の中だが、実績開始が入っているので startingSoon には
+        //    数えない。この案件が無いと、ガードを消す変異が素通りする（実測して足した）。
+        //    予定終了 9/25 は実績終了が空なので endingSoon には数える。
+        $this->caseWithSteps('PRC-STARTED', [
+            ['planned_start' => '2026-09-15', 'planned_end' => '2026-09-25', 'actual_start' => '2026-09-05'],
+        ]);
 
         $board = $this->actingAs($this->manager())->get('/realestate/schedules?status=all')->viewData('board');
 
-        $this->assertSame(2, $board['kpi']['running'], '進行中の案件数');
+        $this->assertSame(3, $board['kpi']['running'], '進行中の案件数');
         $this->assertSame(1, $board['kpi']['late'], '遅延の案件数');
-        $this->assertSame(1, $board['kpi']['startingSoon'], '30 日以内に始まる工程');
-        $this->assertSame(1, $board['kpi']['endingSoon'], '30 日以内に終わる工程');
+        $this->assertSame(1, $board['kpi']['startingSoon'], '30 日以内に始まる工程（実績開始済みは数えない）');
+        $this->assertSame(2, $board['kpi']['endingSoon'], '30 日以内に終わる工程');
 
         // 本体の行と突き合わせる（KPI だけ・行だけ、のどちらの変異も止める）
         $byStatus = array_count_values(array_column($board['rows'], 'status'));
@@ -4601,6 +4608,7 @@ class ScheduleBoardService
         $scale = new GanttScale($from, $to);
 
         $rows         = [];
+        $keptSteps    = [];   // 絞り込みを通った案件の工程。KPI がこれを数える（Blade へは渡さない）
         $unregistered = 0;
 
         foreach ($kinds as $key => [$class, $label]) {
@@ -4624,13 +4632,16 @@ class ScheduleBoardService
                     continue;
                 }
 
-                $rows[] = $row;
+                $rows[]      = $row;
+                // ⚠ $rows と添字を揃える。KPI は「絞り込み後」から数える（決定 H）ので、
+                //   ここで一緒に積むのが唯一ずれない書き方。
+                $keptSteps[] = $steps;
             }
         }
 
         return [
             'rows'              => $rows,
-            'kpi'               => $this->kpi($rows, $today),
+            'kpi'               => $this->kpi($rows, $keptSteps, $today),
             'unregisteredCount' => $unregistered,
             'filters'           => $filters,
             'kinds'             => $kinds,
@@ -4767,28 +4778,42 @@ class ScheduleBoardService
     }
 
     /** @param list<array<string, mixed>> $rows 絞り込み**後**の行（決定 H） */
-    private function kpi(array $rows, CarbonImmutable $today): array
+    /**
+     * @param  list<array<string, mixed>>  $rows       絞り込み**後**の行（決定 H）
+     * @param  list<\Illuminate\Support\Collection>  $keptSteps  同じ添字の案件の工程
+     *
+     * ⚠ **`$rows` と `$keptSteps` は添字が揃っている前提。** `build()` が同じループで
+     *   一緒に積んでいる。片方だけ絞り込むと KPI と画面が食い違う（設計書 §8.4）。
+     */
+    private function kpi(array $rows, array $keptSteps, CarbonImmutable $today): array
     {
         $limit = $today->addDays(self::SOON_DAYS);
 
         return [
             'running'      => count(array_filter($rows, fn ($r) => $r['status'] === self::STATUS_RUNNING)),
             'late'         => count(array_filter($rows, fn ($r) => $r['status'] === self::STATUS_LATE)),
-            'startingSoon' => $this->countSoon($rows, 'start', $today, $limit),
-            'endingSoon'   => $this->countSoon($rows, 'end', $today, $limit),
+            'startingSoon' => $this->countSoon($keptSteps, 'start', $today, $limit),
+            'endingSoon'   => $this->countSoon($keptSteps, 'end', $today, $limit),
         ];
     }
 
     /**
      * ⚠ 数えるのは**工程**であって案件ではない（設計書 §4.2 の KPI 3 / 4）。
      *   すでに始まった（終わった）工程は数えない。
+     *
+     * ⚠ **工程は行の配列を経由させず、Eloquent のまま直接受け取る。**
+     *   かつては行に `rawSteps` を紛れ込ませていたが、キーが欠けたときに例外ではなく
+     *   **KPI が静かに 0 になる**（Bug #40 の「静かな 0」そのもの）。
+     *   Blade へ渡す配列に Eloquent Collection を混ぜない形にも揃う。
+     *
+     * @param  list<\Illuminate\Support\Collection>  $keptSteps
      */
-    private function countSoon(array $rows, string $edge, CarbonImmutable $today, CarbonImmutable $limit): int
+    private function countSoon(array $keptSteps, string $edge, CarbonImmutable $today, CarbonImmutable $limit): int
     {
         $count = 0;
 
-        foreach ($rows as $row) {
-            foreach ($row['rawSteps'] ?? [] as $step) {
+        foreach ($keptSteps as $steps) {
+            foreach ($steps as $step) {
                 $actual  = $edge === 'start' ? $step->actual_start : $step->actual_end;
                 $planned = $edge === 'start' ? $step->planned_start : $step->planned_end;
 
@@ -4853,22 +4878,16 @@ class ScheduleBoardService
 }
 ```
 
-⚠ **`countSoon()` は行に `rawSteps` を持たせないと 0 のまま動く。** `row()` の戻り値に
-`'rawSteps' => $steps,` を必ず足すこと（Blade では使わないが KPI が読む）。
-⚠ **これは「静かに 0 を返す」典型**（Bug #40 と同型）なので、上のテスト
-`test_the_kpis_agree_with_the_rows_on_screen` が 1 / 1 を期待して押さえている。
+⚠ **`$rows` と `$keptSteps` の添字が揃っていることが KPI の前提。** `build()` の同じループで
+一緒に積んでいるのはそのため。**片方だけに `continue` を足すような編集をしない**こと
+（KPI と画面が食い違い、設計書 §8.4 が禁じている状態になる）。
+上のテスト `test_the_kpis_agree_with_the_rows_on_screen` が KPI 4 値と行の内訳を突き合わせて押さえている。
 
-- [ ] **Step 4: `row()` に `rawSteps` を足す**
+⚠ **KPI 用の工程を行の配列に紛れ込ませない。** 以前の版は `row()` に `rawSteps` を持たせていたが、
+キーが欠けたときに例外ではなく **KPI が静かに 0 になる**（Bug #40 の「静かな 0」）。
+Blade へ渡す配列に Eloquent Collection を混ぜない形にも揃う。
 
-`ScheduleBoardService::row()` の `return [` の中、`'steps' => ...` の**次の行**に足す:
-
-```php
-            // ⚠ KPI（countSoon）が読む。Blade では使わない。
-            //   これを落とすと「30 日以内」の KPI が静かに 0 になる（Bug #40 と同型）。
-            'rawSteps'   => $steps,
-```
-
-- [ ] **Step 5: ボードのコントローラを 2 本書く**
+- [ ] **Step 4: ボードのコントローラを 2 本書く**
 
 `app/Http/Controllers/RealEstate/ScheduleBoardController.php`:
 
@@ -4939,7 +4958,7 @@ class ScheduleBoardController extends Controller
 }
 ```
 
-- [ ] **Step 6: ボードのルートを 2 本足す**
+- [ ] **Step 5: ボードのルートを 2 本足す**
 
 Task 7 で足した「不動産 工程表 — 工程 CRUD（8ルート）」ブロックの**直前**に:
 
@@ -4972,7 +4991,7 @@ Task 7 で足した「不動産 工程表 — 工程 CRUD（8ルート）」ブ�
 
 ```
 
-- [ ] **Step 7: ボードの partial と 2 つの画面を書く**
+- [ ] **Step 6: ボードの partial と 2 つの画面を書く**
 
 `resources/views/_partials/_schedule_board.blade.php`:
 
@@ -5161,7 +5180,7 @@ Task 7 で足した「不動産 工程表 — 工程 CRUD（8ルート）」ブ�
 ⚠ `@section('breadcrumb')` の中身は既存画面（`realestate/procurements/index.blade.php` 等）の
 書き方に合わせること。上はひな型なので、**実ファイルを 1 本開いて同じマークアップに揃える**。
 
-- [ ] **Step 8: サイドバーに「工程表」を足す（4 箇所）**
+- [ ] **Step 7: サイドバーに「工程表」を足す（4 箇所）**
 
 `resources/views/layouts/partials/sidebar.blade.php` は**同じグループが 2 ブロックに出てくる**
 （PC 展開サイドバーとモバイルドロワー。実測で `label="不動産管理"` が 2 箇所・`label="住宅事業"` が 2 箇所）。
@@ -5179,7 +5198,7 @@ Task 7 で足した「不動産 工程表 — 工程 CRUD（8ルート）」ブ�
             <x-sidebar-item :href="url('/housing/schedules')" label="工程表" :active="request()->is('housing/schedules*')" />
 ```
 
-- [ ] **Step 9: テストが通ることを確認する**
+- [ ] **Step 8: テストが通ることを確認する**
 
 ```bash
 ./vendor/bin/phpunit --filter ScheduleBoardTest
@@ -5187,7 +5206,7 @@ Task 7 で足した「不動産 工程表 — 工程 CRUD（8ルート）」ブ�
 
 Expected: `OK (19 tests, ...)`
 
-- [ ] **Step 10: 全体が壊れていないことを確認する**
+- [ ] **Step 9: 全体が壊れていないことを確認する**
 
 ```bash
 cd /Users/masanori/site/manage/.claude/worktrees/realestate-schedule && ./vendor/bin/phpunit
@@ -5195,7 +5214,7 @@ cd /Users/masanori/site/manage/.claude/worktrees/realestate-schedule && ./vendor
 
 Expected: `OK (1145 tests, ...)`
 
-- [ ] **Step 11: コミット**
+- [ ] **Step 10: コミット**
 
 ```bash
 cd /Users/masanori/site/manage/.claude/worktrees/realestate-schedule
@@ -5400,7 +5419,7 @@ cd /Users/masanori/site/manage/.claude/worktrees/realestate-schedule && git stat
 
 Expected: 出力なし
 
-- [ ] **Step 2: 14 通りの変異を 1 つずつ測る**
+- [ ] **Step 2: 15 通りの変異を 1 つずつ測る**
 
 各変異について、下のひな型で回す（`<file>` `<from>` `<to>` を表から埋める）:
 
@@ -5430,7 +5449,8 @@ git checkout -- <file>
 | 11 | `reorder` を `{step}` の**後ろ**へ移す（不動産・仕入れ案件の 2 行を入れ替える） | `routes/web.php` | `ScheduleRouteWiringTest::test_reorder_wins_over_the_step_parameter` — `/schedule-steps/reorder が {step} に食われている` |
 | 12 | ボードの対象を全親に広げる（`RealEstate\ScheduleBoardController::KINDS` に `HsProperty::class` を足す） | `app/Http/Controllers/RealEstate/ScheduleBoardController.php` | `ScheduleBoardTest::test_the_realestate_board_never_shows_housing_cases` — `不動産のボードに住宅の案件が出ている` |
 | 13 | 共通 partial の `@include` をインライン複製に置換（`realestate/procurements/show.blade.php` の 1 行を `_schedule_section` の中身のコピーへ） | `resources/views/realestate/procurements/show.blade.php` | `ScheduleSectionRenderTest::test_all_four_detail_views_include_the_one_shared_partial` ＋ `test_the_gantt_markup_lives_only_in_the_partial` — `ガントのマークアップが partial 以外にもあります` |
-| 14 | `rawSteps` を落とす（`ScheduleBoardService::row()` の `'rawSteps' => $steps,` を削除） | `app/Services/ScheduleBoardService.php` | `ScheduleBoardTest::test_the_kpis_agree_with_the_rows_on_screen` — `30 日以内に始まる工程` が 1 でなく 0 |
+| 14 | `countSoon()` の「すでに始まった工程は数えない」ガードを消す（`if ($actual !== null \|\| $planned === null)` → `if ($planned === null)`） | `app/Services/ScheduleBoardService.php` | `ScheduleBoardTest::test_the_kpis_agree_with_the_rows_on_screen` — `30 日以内に始まる工程（実績開始済みは数えない）` が 1 でなく 2 |
+| 15 | KPI を絞り込み前から数える（`kpi()` の `count(array_filter($rows, fn ($r) => $r['status'] === self::STATUS_RUNNING))` → `count($rows)`） | `app/Services/ScheduleBoardService.php` | `ScheduleBoardTest::test_the_kpis_follow_the_filter` — `絞り込み後の行から数えていない` |
 
 - [ ] **Step 3: 結果を表に書き起こす**
 
@@ -5454,7 +5474,7 @@ Expected: `git status` は出力なし、テストは `OK (1148 tests, ...)`
 cd /Users/masanori/site/manage/.claude/worktrees/realestate-schedule
 git add docs/superpowers/plans/2026-09-01-realestate-housing-schedule-gantt.md
 git commit -m "$(cat <<'MSG'
-docs(plan): 工程表の変異 14 通りの実測結果を記録する
+docs(plan): 工程表の変異 15 通りの実測結果を記録する
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 MSG
@@ -5825,7 +5845,8 @@ Task 12 の Step 4〜8 と同じ 6 画面を、**本番の URL**（`https://www.
 | 11 | `reorder` を `{step}` の後ろへ | | | |
 | 12 | ボードの対象を全親に広げる | | | |
 | 13 | `@include` をインライン複製に | | | |
-| 14 | `rawSteps` を落とす | | | |
+| 14 | `countSoon` の実績ガードを消す | | | |
+| 15 | KPI を絞り込み前から数える | | | |
 
 ⚠ **検出しなかった変異があれば、テストを足してから赤になることを確認し、その事実も残すこと。**
 「検出しない」と書く前に必ず「当たったか」の列を見返す（0 箇所置換の誤読を 2 回踏んでいる）。
@@ -5837,7 +5858,7 @@ Task 12 の Step 4〜8 と同じ 6 画面を、**本番の URL**（`https://www.
 - [ ] `./vendor/bin/phpunit` が緑で、本数が 1050 から減っていない
 - [ ] コンパイル済みビューの `php -l` が 0 件（Task 12-1）
 - [ ] 実ブラウザで 6 画面を目視し、`main.scrollWidth === main.clientWidth` を広い幅・狭い幅の両方で確認
-- [ ] 変異 14 通りの結果表が埋まっている
+- [ ] 変異 15 通りの結果表が埋まっている
 - [ ] `docs/BACKLOG.md` / `docs/ARCHITECTURE.md` を更新した
 - [ ] main repo で ff-merge ＋ `composer dump-autoload` を実行した
 - [ ] **本番 DDL を流してから** `./deploy.sh`（ユーザーの明示承認あり）
