@@ -163,6 +163,61 @@ class AndpadScheduleSheetTest extends TestCase
             '状態は全件あるので備考が空になる行は無い');
     }
 
+    /**
+     * ⚠ **読み取った値がすべて妥当な UTF-8 であること。**
+     *
+     *   2026-09-01 に実際に踏んだ: セルの trim を `trim($v, " \t\n\r\0\x0B\u{3000}")` と
+     *   書いたところ、**文字リストがバイト単位**なので全角空白 U+3000（e3 80 80）の
+     *   `e3` が `サ`（e3 82 b5）の先頭バイトを剥がし、不正な UTF-8 になった。
+     *   結果 `json_encode()` が false を返し、**確定フォームの hidden が空**になって
+     *   取込が 1 件も入らなかった。
+     *
+     *   ⚠ **当時の他のテストは全部緑だった** —— 名前で固定していた工程
+     *   （`検査 /…` `器具取付`）がたまたま e3 で始まらず、分類の内訳も
+     *   「工事」を含むかどうかだけ見ていて影響を受けなかったため。
+     */
+    public function test_every_parsed_value_is_valid_utf8(): void
+    {
+        $rows = AndpadScheduleSheet::read(self::FIXTURE)['rows'];
+
+        $this->assertCount(65, $rows, '走査の空振り防止');
+
+        foreach ($rows as $row) {
+            foreach ($row as $key => $value) {
+                if (is_string($value)) {
+                    $this->assertTrue(
+                        mb_check_encoding($value, 'UTF-8'),
+                        "不正な UTF-8: {$key} = " . bin2hex(substr($value, 0, 24))
+                    );
+                }
+            }
+        }
+    }
+
+    /**
+     * ⚠ **画面はこの JSON を hidden に埋めて確定へ渡す。** 1 文字でも壊れていると
+     *   `json_encode()` が false を返し、hidden が空になって**無音で 0 件**になる。
+     */
+    public function test_the_rows_can_be_json_encoded_for_the_confirm_form(): void
+    {
+        $rows = AndpadScheduleSheet::read(self::FIXTURE)['rows'];
+
+        $json = json_encode($rows, JSON_UNESCAPED_UNICODE);
+
+        $this->assertNotFalse($json, 'json_encode が失敗する: ' . json_last_error_msg());
+        $this->assertCount(65, json_decode((string) $json, true));
+    }
+
+    /** e3 で始まる文字（カタカナ）を含む工程名が壊れていないこと */
+    public function test_katakana_group_names_survive_trimming(): void
+    {
+        $names = array_column(AndpadScheduleSheet::read(self::FIXTURE)['rows'], 'name');
+
+        $this->assertContains('サッシ工事 / 枠搬入', $names);
+        $this->assertContains('クロス・床工事 / クロス工事', $names);
+        $this->assertContains('タイル工事 / タイル工事', $names);
+    }
+
     // ============================================================
     // 合成データ（実ファイルは桁の上限に当たらないので、ここでしか測れない）
     // ============================================================
@@ -238,6 +293,20 @@ class AndpadScheduleSheetTest extends TestCase
         $this->assertCount(1, $result['warnings']);
         $this->assertStringContainsString('9 日', $result['warnings'][0]);
         $this->assertStringContainsString('3 日', $result['warnings'][0]);
+    }
+
+    /** 前後の全角空白は落とす（文字として扱っていること。バイトで剥がすと上の UTF-8 テストが落ちる） */
+    public function test_it_trims_ideographic_spaces_as_characters(): void
+    {
+        $path = $this->makeListXlsx([
+            ['A' => "\u{3000}サッシ工事\u{3000}", 'B' => "\u{3000}枠搬入\u{3000}",
+             'E' => '2026/07/01', 'H' => '2026/07/01', 'K' => '1'],
+        ]);
+
+        $row = AndpadScheduleSheet::read($path)['rows'][0];
+
+        $this->assertSame('サッシ工事 / 枠搬入', $row['name']);
+        $this->assertTrue(mb_check_encoding($row['name'], 'UTF-8'));
     }
 
     /** 工程名だけ空の行は黙って捨てず、行エラーで報告する */

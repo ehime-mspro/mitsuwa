@@ -293,7 +293,11 @@ final class AndpadScheduleSheet
             return '';
         }
 
-        // ⚠ 全角空白も落とす。ANDPAD の見出しは `ビ　ル　名` のように全角空白が入ることがある
-        return trim((string) $value, " \t\n\r\0\x0B\u{3000}");
+        // ⚠ **trim() の文字リストを使わないこと。** 文字リストは**バイト単位**なので、
+        //    全角空白 U+3000（e3 80 80）を渡すと `サ`（e3 82 b5）の先頭バイトまで剥がれ、
+        //    不正な UTF-8 が生まれる（2026-09-01 実測: `サッシ工事` が壊れて json_encode が
+        //    false を返し、確定フォームの hidden が空になった）。
+        //    全角空白も落としたいので preg_replace の /u で文字として扱う。
+        return (string) preg_replace('/\A[\s\x{3000}]+|[\s\x{3000}]+\z/u', '', (string) $value);
     }
 }
