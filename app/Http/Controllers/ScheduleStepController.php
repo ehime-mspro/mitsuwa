@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Enums\ScheduleStepCategory;
 use App\Models\ScheduleStep;
+use App\Services\ScheduleCardService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -64,7 +65,11 @@ class ScheduleStepController extends Controller
         $step->updated_by = $request->user()->id;
         $step->save();
 
-        return response()->json(['success' => true, 'step' => $this->payload($step)]);
+        return response()->json([
+            'success'    => true,
+            'step'       => $this->payload($step),
+            'gantt_html' => $this->ganttHtml($owner),
+        ]);
     }
 
     /**
@@ -85,7 +90,11 @@ class ScheduleStepController extends Controller
         $step->updated_by = $request->user()->id;
         $step->save();
 
-        return response()->json(['success' => true, 'step' => $this->payload($step->fresh())]);
+        return response()->json([
+            'success'    => true,
+            'step'       => $this->payload($step->fresh()),
+            'gantt_html' => $this->ganttHtml($owner),
+        ]);
     }
 
     /**
@@ -99,7 +108,11 @@ class ScheduleStepController extends Controller
 
         $step->delete();
 
-        return response()->json(['success' => true, 'id' => $step->id]);
+        return response()->json([
+            'success'    => true,
+            'id'         => $step->id,
+            'gantt_html' => $this->ganttHtml($owner),
+        ]);
     }
 
     /**
@@ -134,7 +147,11 @@ class ScheduleStepController extends Controller
             ]);
         }
 
-        return response()->json(['success' => true, 'ids' => $ids]);
+        return response()->json([
+            'success'    => true,
+            'ids'        => $ids,
+            'gantt_html' => $this->ganttHtml($owner),
+        ]);
     }
 
     // ============================================================
@@ -254,5 +271,18 @@ class ScheduleStepController extends Controller
             'sort_order'    => $step->sort_order,
             'notes'         => $step->notes ?? '',
         ];
+    }
+    /**
+     * 保存後のガントをサーバでレンダリングして返す（プラン 決定 A）。
+     *
+     * ⚠ **JS 側で位置(%) を再計算させない。** 同じ計算の 2 実装は無音で漂流する（Bug #41）。
+     *   しかも日付を動かすと軸の範囲（設計書 §5.5）ごと変わるので、部分的な再計算では
+     *   原理的に足りない。
+     */
+    private function ganttHtml(Model $owner): string
+    {
+        return view('_partials._schedule_gantt', [
+            'schedule' => app(ScheduleCardService::class)->build($owner->refresh()),
+        ])->render();
     }
 }

@@ -136,7 +136,7 @@ class ProcurementController extends Controller
      * 仕入れ案件詳細
      * Route: GET /realestate/procurements/{procurement}
      */
-    public function show(ReProcurement $procurement)
+    public function show(Request $request, ReProcurement $procurement)
     {
         $procurement->load([
             'supplier', 'costs.costItem', 'createdBy', 'updatedBy',
@@ -189,11 +189,16 @@ class ProcurementController extends Controller
         $deletionBlockers = $procurement->deletionBlockers();
         $deletionBlockersSummary = DeletionBlockers::summarize($deletionBlockers);
 
+                // 工程表（設計書 §4.1）
+        $schedule        = app(\App\Services\ScheduleCardService::class)->build($procurement);
+        $scheduleCanEdit = $request->user()->role->isManagerOrAbove();
+
         return view('realestate.procurements.show', compact(
             'procurement', 'costItemsForJs', 'costsForJs',
             'attachments', 'deletedAttachments',
             'costAliasMap', 'costSkipList', 'costSubtotalKws',
-            'deletionBlockers', 'deletionBlockersSummary'
+            'deletionBlockers', 'deletionBlockersSummary',
+            'schedule', 'scheduleCanEdit'
         ));
     }
 

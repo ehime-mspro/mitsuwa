@@ -40,6 +40,10 @@ class AjaxErrorFeedbackTest extends TestCase
      * `if (!data …) return;` が対で書かれているので、両者の数の一致を固定できる。
      */
     private const VIEWS_NULL_RETURN = [
+        // 工程表（4 親の詳細画面が共有する唯一の定義。設計書 §4.1）
+        //   ⚠ fetch は send() の 1 本だけ。`.ok` 分岐 1 個 == `!data` ガード 1 個 の対応を崩さないこと
+        //     （増やすなら send() を経由させる）。
+        '_partials/_schedule_section.blade.php',                    // null 返し（工程表の CRUD）
         // 不動産
         'realestate/_partials/supplier-picker.blade.php',
         'realestate/contracts/create.blade.php',

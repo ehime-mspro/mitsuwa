@@ -323,6 +323,36 @@ trait CreatesRealEstateSchema
             $t->timestamps();
         });
 
+        // 住宅事業の添付ファイル。
+        //   ⚠ **リポジトリに正本の DDL が無い**（migration にも database/sql/ にも無く、
+        //     本番で直接作られたまま。survey_questions と同じ状況＝Bug #53 の副産物）。
+        //     ここはモデルの $fillable と casts() から起こしてある。
+        //   ⚠ 無いと housing の詳細 2 画面が show() の files 読み込みで 500 する
+        //     （工程表のカードを 4 画面で開くまで、これを踏むテストが 1 本も無かった）。
+        Schema::create('hs_property_files', function (Blueprint $t) {
+            $t->id();
+            $t->unsignedBigInteger('property_id');
+            $t->string('category', 30);
+            $t->string('file_name', 255);
+            $t->string('file_path', 255);
+            $t->unsignedBigInteger('file_size')->default(0);
+            $t->string('mime_type', 100)->nullable();
+            $t->unsignedBigInteger('uploaded_by')->nullable();
+            $t->timestamps();
+        });
+
+        Schema::create('hs_custom_order_files', function (Blueprint $t) {
+            $t->id();
+            $t->unsignedBigInteger('custom_order_id');
+            $t->string('category', 30);
+            $t->string('file_name', 255);
+            $t->string('file_path', 255);
+            $t->unsignedBigInteger('file_size')->default(0);
+            $t->string('mime_type', 100)->nullable();
+            $t->unsignedBigInteger('uploaded_by')->nullable();
+            $t->timestamps();
+        });
+
         // 工程表（設計書 §3.1）。⚠ database/sql/2026-08-31-create-schedule-steps.sql と対で維持する。
         //   ⚠ 4 親（re_procurements / re_projects / hs_properties / hs_custom_orders）が
         //     ポリモーフィックにぶら下がるので re_ / hs_ の接頭辞を付けない。

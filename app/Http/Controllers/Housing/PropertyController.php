@@ -121,7 +121,7 @@ class PropertyController extends Controller
      * 詳細
      * GET /housing/properties/{property}
      */
-    public function show(HsProperty $property)
+    public function show(Request $request, HsProperty $property)
     {
         $property->load([
             'contract.createdBy',
@@ -154,7 +154,12 @@ class PropertyController extends Controller
         // 金額内訳カードで使う消費税率（成約時は契約の税率優先、未成約時は設定値）
         $taxRate = $property->contract?->tax_rate ?? Settings::taxRate();
 
-        return view('housing.properties.show', compact('property', 'filesByCategory', 'taxRate'));
+                // 工程表（設計書 §4.1）
+        $schedule        = app(\App\Services\ScheduleCardService::class)->build($property);
+        $scheduleCanEdit = $request->user()->role->isManagerOrAbove();
+
+        return view('housing.properties.show', compact('property', 'filesByCategory', 'taxRate',
+            'schedule', 'scheduleCanEdit'));
     }
 
     /**

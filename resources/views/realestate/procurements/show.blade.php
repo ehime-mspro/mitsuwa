@@ -455,6 +455,9 @@
         <p class="text-xs text-gray-500 mt-3">※ シミュレーションは保存されません。入力値に応じてリアルタイムで計算されます。</p>
     </div>
 
+    {{-- 工程表（4 画面共通の partial。設計書 §4.1） --}}
+    @include('_partials._schedule_section', ['schedule' => $schedule, 'scheduleCanEdit' => $scheduleCanEdit])
+
     {{-- 添付ファイル --}}
     <div class="bg-white border border-gray-200 rounded-lg p-5 mb-5">
         @include('components.attachment-section', [

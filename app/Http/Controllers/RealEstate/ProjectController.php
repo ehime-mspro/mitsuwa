@@ -165,7 +165,7 @@ class ProjectController extends Controller
      * プロジェクト詳細
      * Route: GET /realestate/projects/{project}
      */
-    public function show(ReProject $project)
+    public function show(Request $request, ReProject $project)
     {
         $project->load(['supplier', 'costs.costItem', 'lots', 'createdBy', 'updatedBy']);
 
@@ -215,11 +215,16 @@ class ProjectController extends Controller
         $deletionBlockers = $project->deletionBlockers();
         $deletionBlockersSummary = DeletionBlockers::summarize($deletionBlockers);
 
+                // 工程表（設計書 §4.1）
+        $schedule        = app(\App\Services\ScheduleCardService::class)->build($project);
+        $scheduleCanEdit = $request->user()->role->isManagerOrAbove();
+
         return view('realestate.projects.show', compact(
             'project', 'costItemsForJs', 'costsForJs',
             'attachments', 'deletedAttachments',
             'costAliasMap', 'costSkipList', 'costSubtotalKws',
-            'deletionBlockers', 'deletionBlockersSummary'
+            'deletionBlockers', 'deletionBlockersSummary',
+            'schedule', 'scheduleCanEdit'
         ));
     }
 

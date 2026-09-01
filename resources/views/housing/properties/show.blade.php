@@ -261,6 +261,9 @@
         </div>
     @endif
 
+    {{-- 工程表（4 画面共通の partial。設計書 §4.1） --}}
+    @include('_partials._schedule_section', ['schedule' => $schedule, 'scheduleCanEdit' => $scheduleCanEdit])
+
     {{-- ファイル管理 --}}
     <div class="bg-white border border-gray-200 rounded-lg p-5 mb-5" x-data="housingFileManager()">
         <div class="text-sm font-bold text-gray-800 pb-2 mb-3.5 border-b border-gray-200">ファイル管理</div>

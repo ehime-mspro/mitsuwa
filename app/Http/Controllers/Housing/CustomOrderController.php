@@ -109,7 +109,7 @@ class CustomOrderController extends Controller
      * 詳細
      * GET /housing/custom-orders/{customOrder}
      */
-    public function show(HsCustomOrder $customOrder)
+    public function show(Request $request, HsCustomOrder $customOrder)
     {
         $customOrder->load([
             'projectLot.project',
@@ -138,7 +138,12 @@ class CustomOrderController extends Controller
             ];
         }
 
-        return view('housing.custom-orders.show', compact('customOrder', 'filesByCategory'));
+                // 工程表（設計書 §4.1）
+        $schedule        = app(\App\Services\ScheduleCardService::class)->build($customOrder);
+        $scheduleCanEdit = $request->user()->role->isManagerOrAbove();
+
+        return view('housing.custom-orders.show', compact('customOrder', 'filesByCategory',
+            'schedule', 'scheduleCanEdit'));
     }
 
     /**

@@ -260,6 +260,9 @@
         </div>
     @endif
 
+    {{-- 工程表（4 画面共通の partial。設計書 §4.1） --}}
+    @include('_partials._schedule_section', ['schedule' => $schedule, 'scheduleCanEdit' => $scheduleCanEdit])
+
     {{-- 備考 --}}
     @if($o->notes)
         <div class="bg-white border border-gray-200 rounded-lg px-5 py-3 mb-5">
