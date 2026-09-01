@@ -124,6 +124,31 @@ class ScheduleImportTest extends ScheduleTestCase
         $this->assertStringNotContainsString('ANDPAD', $html);
     }
 
+    /**
+     * ⚠ **応答ではなく、コントローラが仕事をしたかを直接見る**（Bug #48）。
+     *
+     *   工程表カードは `@if($scheduleCanEdit)` で編集 UI 全体を隠すので、
+     *   コントローラ側の権限判定を外しても**画面の見た目は変わらない**
+     *   （2026-09-01 の変異テストで実測: 16 本すべて緑のまま通った）。
+     *   partial の判定が backstop になって、主機構の変異が測れなくなっている状態。
+     *   view に渡す値そのものを見れば両方が独立に固定される。
+     */
+    public function test_the_controller_does_not_offer_the_import_url_to_staff(): void
+    {
+        $property = $this->makeParent('property');
+
+        $forStaff = $this->actingAs($this->staff())->get(route('housing.properties.show', $property));
+        $forStaff->assertOk();
+        $this->assertNull($forStaff->viewData('scheduleImportUrl'), 'staff に取込 URL を渡してはいけない');
+
+        $forManager = $this->actingAs($this->manager())->get(route('housing.properties.show', $property));
+        $forManager->assertOk();
+        $this->assertSame(
+            route('housing.properties.schedule-import.form', $property),
+            $forManager->viewData('scheduleImportUrl')
+        );
+    }
+
     // ============================================================
     // プレビュー
     // ============================================================
