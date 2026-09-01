@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS `schedule_steps` (
   `actual_end`       DATE            NULL COMMENT '実績終了',
   `sort_order`       INT             NOT NULL DEFAULT 0 COMMENT '画面の並び順',
   `notes`            VARCHAR(255)    NULL COMMENT '備考',
+  `source`           VARCHAR(20)     NULL COMMENT '取込元。NULL=手入力 / andpad=ANDPAD 取込',
   `created_by`       BIGINT UNSIGNED NULL,
   `updated_by`       BIGINT UNSIGNED NULL,
   `created_at`       TIMESTAMP       NULL,
@@ -37,5 +38,6 @@ CREATE TABLE IF NOT EXISTS `schedule_steps` (
   PRIMARY KEY (`id`),
   KEY `idx_sched_owner` (`schedulable_type`, `schedulable_id`, `sort_order`),
   KEY `idx_sched_planned_start` (`planned_start`),
-  KEY `idx_sched_planned_end`   (`planned_end`)
+  KEY `idx_sched_planned_end`   (`planned_end`),
+  KEY `idx_sched_source` (`schedulable_type`, `schedulable_id`, `source`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='工程表の 1 行';

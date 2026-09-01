@@ -28,6 +28,8 @@ class ScheduleStep extends Model
         'actual_end',
         'sort_order',
         'notes',
+        // 取込元。⚠ enum にしない（「手入力 = null」と Manual の 2 通りができてしまう）
+        'source',
         'created_by',
         'updated_by',
     ];

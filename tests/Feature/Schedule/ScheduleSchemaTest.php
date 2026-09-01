@@ -47,7 +47,7 @@ class ScheduleSchemaTest extends TestCase
         sort($ddlColumns);
 
         // 走査が空振りして緑になる事故を防ぐ
-        $this->assertGreaterThanOrEqual(14, count($ddlColumns), 'DDL の列を拾えていない（走査の空振り防止）');
+        $this->assertGreaterThanOrEqual(15, count($ddlColumns), 'DDL の列を拾えていない（走査の空振り防止）');
 
         $testColumns = Schema::getColumnListing('schedule_steps');
         sort($testColumns);
@@ -69,5 +69,29 @@ class ScheduleSchemaTest extends TestCase
             file_get_contents(base_path(self::DDL)),
             '親 + 並び順の複合インデックスが DDL にありません'
         );
+    }
+
+    /** ANDPAD 取込の入れ替え対象を絞るためのインデックスが DDL にあること */
+    public function test_the_source_index_is_declared(): void
+    {
+        $this->assertStringContainsString(
+            '(`schedulable_type`, `schedulable_id`, `source`)',
+            file_get_contents(base_path(self::DDL)),
+            '親 + 取込元の複合インデックスが DDL にありません'
+        );
+    }
+
+    /**
+     * ⚠ **`source` の既定は NULL（手入力）**。
+     *   ここが `'andpad'` などに倒れると、手で足した工程まで再取込の削除対象になる。
+     */
+    public function test_source_defaults_to_null_for_hand_written_steps(): void
+    {
+        $step = new \App\Models\ScheduleStep(['name' => '手入力の工程', 'category' => 'work']);
+        $step->schedulable_type = \App\Models\HsProperty::class;
+        $step->schedulable_id = 1;
+        $step->save();
+
+        $this->assertNull($step->fresh()->source, '取込元を指定せずに作った工程は手入力（NULL）であること');
     }
 }

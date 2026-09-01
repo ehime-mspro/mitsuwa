@@ -368,6 +368,7 @@ trait CreatesRealEstateSchema
             $t->date('actual_end')->nullable();
             $t->integer('sort_order')->default(0);
             $t->string('notes', 255)->nullable();
+            $t->string('source', 20)->nullable();
             $t->unsignedBigInteger('created_by')->nullable();
             $t->unsignedBigInteger('updated_by')->nullable();
             $t->timestamps();
