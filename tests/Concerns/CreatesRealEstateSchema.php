@@ -322,5 +322,26 @@ trait CreatesRealEstateSchema
             $t->unsignedInteger('updated_by')->nullable();
             $t->timestamps();
         });
+
+        // 工程表（設計書 §3.1）。⚠ database/sql/2026-08-31-create-schedule-steps.sql と対で維持する。
+        //   ⚠ 4 親（re_procurements / re_projects / hs_properties / hs_custom_orders）が
+        //     ポリモーフィックにぶら下がるので re_ / hs_ の接頭辞を付けない。
+        Schema::create('schedule_steps', function (Blueprint $t) {
+            $t->id();
+            $t->string('schedulable_type', 255);
+            $t->unsignedBigInteger('schedulable_id');
+            $t->string('name', 100);
+            $t->string('category', 20)->default('other');
+            $t->date('planned_start')->nullable();
+            $t->date('planned_end')->nullable();
+            $t->date('actual_start')->nullable();
+            $t->date('actual_end')->nullable();
+            $t->integer('sort_order')->default(0);
+            $t->string('notes', 255)->nullable();
+            $t->unsignedBigInteger('created_by')->nullable();
+            $t->unsignedBigInteger('updated_by')->nullable();
+            $t->timestamps();
+            $t->index(['schedulable_type', 'schedulable_id', 'sort_order'], 'idx_sched_owner');
+        });
     }
 }
