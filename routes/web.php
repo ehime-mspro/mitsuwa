@@ -1021,6 +1021,17 @@ Route::middleware(['auth', 'password.change'])->group(function () {
 
     /*
     |----------------------------------------------------------------------
+    | 不動産 工程表 — 横断ボード（1ルート）
+    |----------------------------------------------------------------------
+    */
+    Route::prefix('realestate')->middleware('department.access:realestate')->group(function () {
+        // 全ロール閲覧可（編集は工程 CRUD 側の role ガードで制御する）
+        Route::get('/schedules', [\App\Http\Controllers\RealEstate\ScheduleBoardController::class, 'index'])
+            ->name('realestate.schedules.index');
+    });
+
+    /*
+    |----------------------------------------------------------------------
     | 不動産 工程表 — 工程 CRUD（8ルート）
     |----------------------------------------------------------------------
     | 設計書: docs/superpowers/specs/2026-08-31-realestate-schedule-gantt-design.md §6
@@ -1274,6 +1285,16 @@ Route::middleware(['auth', 'password.change'])->group(function () {
             ->name('housing.custom-orders.files.show');
     });
     
+    /*
+    |----------------------------------------------------------------------
+    | 住宅事業 工程表 — 横断ボード（1ルート）
+    |----------------------------------------------------------------------
+    */
+    Route::prefix('housing')->middleware('department.access:housing')->group(function () {
+        Route::get('/schedules', [\App\Http\Controllers\Housing\ScheduleBoardController::class, 'index'])
+            ->name('housing.schedules.index');
+    });
+
     /*
     |----------------------------------------------------------------------
     | 住宅事業 工程表 — 工程 CRUD（8ルート）

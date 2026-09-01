@@ -100,6 +100,7 @@
         <x-sidebar-group label="不動産管理" section="realestate">
             <x-sidebar-item :href="url('/realestate/procurements')" label="仕入れ案件" :active="request()->is('realestate/procurements*')" />
             <x-sidebar-item :href="url('/realestate/projects')" label="分譲地" :active="request()->is('realestate/projects*')" />
+            <x-sidebar-item :href="url('/realestate/schedules')" label="工程表" :active="request()->is('realestate/schedules*')" />
             <x-sidebar-item :href="url('/realestate/suppliers')" label="仕入れ先管理" :active="request()->is('realestate/suppliers*')" />
             <x-sidebar-item :href="url('/realestate/customers')" label="顧客管理" :active="request()->is('realestate/customers*')" />
             <x-sidebar-item :href="url('/realestate/contracts')" label="契約管理" :active="request()->is('realestate/contracts*')" />
@@ -112,6 +113,7 @@
             <x-sidebar-item :href="url('/housing')" label="ダッシュボード" :active="request()->is('housing') || request()->is('housing/')" />
             <x-sidebar-item :href="url('/housing/properties')" label="建売物件" :active="request()->is('housing/properties*')" />
             <x-sidebar-item :href="url('/housing/custom-orders')" label="注文住宅" :active="request()->is('housing/custom-orders*')" />
+            <x-sidebar-item :href="url('/housing/schedules')" label="工程表" :active="request()->is('housing/schedules*')" />
             <x-sidebar-item :href="url('/housing/contracts')" label="契約管理" :active="request()->is('housing/contracts*')" />
             <x-sidebar-item :href="url('/housing/customers')" label="顧客管理" :active="request()->is('housing/customers*')" />
         </x-sidebar-group>
@@ -375,6 +377,7 @@
         <x-sidebar-group label="不動産管理" section="realestate">
             <x-sidebar-item :href="url('/realestate/procurements')" label="仕入れ案件" :active="request()->is('realestate/procurements*')" />
             <x-sidebar-item :href="url('/realestate/projects')" label="分譲地" :active="request()->is('realestate/projects*')" />
+            <x-sidebar-item :href="url('/realestate/schedules')" label="工程表" :active="request()->is('realestate/schedules*')" />
             <x-sidebar-item :href="url('/realestate/suppliers')" label="仕入れ先管理" :active="request()->is('realestate/suppliers*')" />
             <x-sidebar-item :href="url('/realestate/customers')" label="顧客管理" :active="request()->is('realestate/customers*')" />
             <x-sidebar-item :href="url('/realestate/contracts')" label="契約管理" :active="request()->is('realestate/contracts*')" />
@@ -386,6 +389,7 @@
             <x-sidebar-item :href="url('/housing')" label="ダッシュボード" :active="request()->is('housing') || request()->is('housing/')" />
             <x-sidebar-item :href="url('/housing/properties')" label="建売物件" :active="request()->is('housing/properties*')" />
             <x-sidebar-item :href="url('/housing/custom-orders')" label="注文住宅" :active="request()->is('housing/custom-orders*')" />
+            <x-sidebar-item :href="url('/housing/schedules')" label="工程表" :active="request()->is('housing/schedules*')" />
             <x-sidebar-item :href="url('/housing/contracts')" label="契約管理" :active="request()->is('housing/contracts*')" />
             <x-sidebar-item :href="url('/housing/customers')" label="顧客管理" :active="request()->is('housing/customers*')" />
         </x-sidebar-group>

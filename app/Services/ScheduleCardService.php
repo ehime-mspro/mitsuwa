@@ -122,10 +122,13 @@ class ScheduleCardService
             return null;
         }
 
-        $from = min($dates)->subMonths(self::PADDING_MONTHS)->startOfMonth();
+        // ⚠ **月初に正規化してから加減算する。** Carbon の subMonths()/addMonths() は
+        //   月末日で溢れる（実測: 2026-03-31 の 1 ヶ月前は 2026-03-03 になり、そのあと
+        //   startOfMonth() を通しても 3/1 ＝ **前の余白が丸ごと消えて棒が左端に貼り付く**）。
+        $from = min($dates)->startOfMonth()->subMonths(self::PADDING_MONTHS);
         // ⚠ endOfMonth() は 23:59:59.999999 を返すので startOfDay() で揃える。
         //   揃えないと日数が 1 多く出る（実測: 2026-02-01〜2026-08-31 が 213 日になった）。
-        $to = max($dates)->addMonths(self::PADDING_MONTHS)->endOfMonth()->startOfDay();
+        $to = max($dates)->startOfMonth()->addMonths(self::PADDING_MONTHS)->endOfMonth()->startOfDay();
 
         // 今日が範囲外なら今日も含める（今日線が枠外に出ないように）
         if ($today->lessThan($from)) {

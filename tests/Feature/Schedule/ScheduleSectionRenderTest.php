@@ -272,4 +272,28 @@ class ScheduleSectionRenderTest extends ScheduleTestCase
             'ガントのマークアップが partial 以外にもあります（複製すると一部だけ直す事故が起きます）'
         );
     }
+    /**
+     * ⚠ **月末日から余白 1 ヶ月を引いても月が飛ばないこと。**
+     *   Carbon の subMonths() は月末日で溢れる（実測: 2026-03-31 の 1 ヶ月前が 2026-03-03）。
+     *   溢れると startOfMonth() を通しても 3/1 になり、**前の余白が丸ごと消えて
+     *   棒が軸の左端に貼り付く**（画面では「なんとなく詰まっている」だけなので気づけない）。
+     */
+    public function test_the_padding_month_survives_a_step_that_starts_on_the_last_day_of_a_month(): void
+    {
+        $owner = $this->makeParent('procurement');
+        $owner->scheduleSteps()->create([
+            'name' => '月末開始', 'category' => 'work',
+            'planned_start' => '2026-03-31', 'planned_end' => '2026-04-30', 'sort_order' => 1,
+        ]);
+
+        $card = app(\App\Services\ScheduleCardService::class)
+            ->build($owner, \Carbon\CarbonImmutable::parse('2026-04-01'));
+
+        $this->assertNotNull($card['gantt']);
+        $this->assertSame(
+            ['2026', '2月'],
+            [$card['gantt']['months'][0]['year'], $card['gantt']['months'][0]['label']],
+            '前の余白 1 ヶ月が消えている（Carbon の月末オーバーフロー）'
+        );
+    }
 }
