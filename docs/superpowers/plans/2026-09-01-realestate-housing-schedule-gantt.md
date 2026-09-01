@@ -4506,6 +4506,42 @@ class ScheduleBoardTest extends ScheduleTestCase
     // サービスの契約（設計書 §4.3）
     // ============================================================
 
+    // ============================================================
+    // サイドバーの導線
+    // ============================================================
+
+    /**
+     * ⚠ **`assertSee('工程表')` では原理的に検出できない。**
+     *   「工程表」はボードの `<h1>` にも詳細カードの見出しにも出るので、
+     *   サイドバーのリンクを 4 箇所とも消しても緑になる（Bug #43 の部分一致と同型）。
+     *   **href の出現回数**で見る。
+     *
+     * ⚠ **ボード自身のページで数えない。** フィルタの `action` と「クリア」リンクが
+     *   同じ URL を指すので数が混ざる。**別の画面**（一覧）で数える。
+     *
+     * ⚠ 期待値 2 は「PC 展開サイドバー」＋「モバイルドロワー」の 2 ブロック
+     *   （折りたたみサイドバーは部署ごとにアイコン 1 個なので項目を持たない）。
+     *   **どちらか片方の編集を忘れると 1 になって落ちる。** これが 4 箇所編集の担保。
+     */
+    public function test_both_sidebar_blocks_link_to_each_board(): void
+    {
+        $executive = $this->actor(\App\Enums\UserRole::Executive);
+
+        foreach ([
+            '/realestate/procurements' => '/realestate/schedules',
+            '/housing/properties'      => '/housing/schedules',
+        ] as $page => $link) {
+            $html = $this->actingAs($executive)->get($page)->assertOk()->getContent();
+
+            $this->assertSame(
+                2,
+                substr_count($html, 'href="' . url($link) . '"'),
+                "{$link} へのサイドバー導線が 2 箇所（PC 展開 / モバイルドロワー）ありません。"
+                . 'sidebar.blade.php は同じグループが 2 ブロックに出てくるので両方直すこと'
+            );
+        }
+    }
+
     /**
      * ⚠ **対象クラスを既定値にしない。** 既定を持たせると、新しい部署のボードを足した人が
      *   引数を省略した瞬間に全部署の案件が漏れる。
@@ -5005,8 +5041,14 @@ Task 7 で足した「不動産 工程表 — 工程 CRUD（8ルート）」ブ�
 @php($f = $board['filters'])
 @php($axis = $board['axis'])
 
-{{-- KPI 4 枚。⚠ minmax(0, 1fr) にする（素の 1fr は中身で膨らむ。Bug #29） --}}
-<div class="grid-stack-sm" style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px;">
+{{-- KPI 4 枚。
+     ⚠ **`grid-2col-sm` を使う**（`grid-stack-sm` ではない）。app.css の注記どおり
+        `grid-2col-sm` が「KPI カードなど 4〜6 列のもの」用で、既存の
+        `realestate/contracts/index` `dad/projects/show` も 4〜5 列の KPI にこれを当てている。
+        `grid-stack-sm` だと 375px で 4 枚が縦 1 列に伸びて既存画面と挙動が食い違う。
+     ⚠ トラックは `minmax(0, 1fr)`（素の 1fr は最小値が auto で中身に押し広げられる。Bug #29）。
+        既存箇所は `1fr` だが、こちらのほうが安全で見た目は変わらない。 --}}
+<div class="grid-2col-sm" style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px;">
     @foreach([
         ['進行中の案件', $board['kpi']['running'], '#047857'],
         ['遅れている案件', $board['kpi']['late'], '#B91C1C'],
@@ -5026,34 +5068,43 @@ Task 7 で足した「不動産 工程表 — 工程 CRUD（8ルート）」ブ�
     </div>
 @endif
 
-{{-- 絞り込み --}}
+{{-- 絞り込み。
+     ⚠ **既存のフィルタバーとまったく同じマークアップにする**（`realestate/procurements/index.blade.php`
+        から書き写した）。⚠ **`class="form-input"` を使わない** —— アプリのフィルタバーは
+        どこも下のユーティリティ列を直接書いており、`.form-input` は
+        `appearance: none; border-radius: 0` を含むのでセレクトから矢印が消える（Bug #18 と同型）。
+     ⚠ フォーム側の `flex flex-col sm:flex-row` がモバイルでの縦積みを担っている。
+        インラインの `display: flex` で置き換えない。 --}}
 <form id="filter-form" method="GET" action="{{ route($boardRoute) }}"
-      style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 14px;">
-    <select name="kind" class="form-input" style="width: auto;" onchange="document.getElementById('filter-form').submit()">
+      class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mb-4 bg-white border border-gray-200 rounded-lg px-3.5 py-2.5">
+    <select name="kind" onchange="document.getElementById('filter-form').submit()"
+            class="h-9 px-3 border border-gray-300 rounded-md text-sm text-gray-700 bg-white focus:border-emerald-500 focus:outline-none cursor-pointer w-full sm:w-auto">
         <option value="all" @selected($f['kind'] === 'all')>種別: すべて</option>
         @foreach($board['kinds'] as $key => $kind)
-            <option value="{{ $key }}" @selected($f['kind'] === $key)>{{ $kind[1] }}</option>
+            <option value="{{ $key }}" @selected($f['kind'] === $key)>種別: {{ $kind[1] }}</option>
         @endforeach
     </select>
 
-    <select name="status" class="form-input" style="width: auto;" onchange="document.getElementById('filter-form').submit()">
+    <select name="status" onchange="document.getElementById('filter-form').submit()"
+            class="h-9 px-3 border border-gray-300 rounded-md text-sm text-gray-700 bg-white focus:border-emerald-500 focus:outline-none cursor-pointer w-full sm:w-auto">
         @foreach($board['statuses'] as $value => $label)
-            <option value="{{ $value }}" @selected($f['status'] === $value)>{{ $label }}</option>
+            <option value="{{ $value }}" @selected($f['status'] === $value)>ステータス: {{ $label }}</option>
         @endforeach
     </select>
 
-    <select name="zoom" class="form-input" style="width: auto;" onchange="document.getElementById('filter-form').submit()">
+    <select name="zoom" onchange="document.getElementById('filter-form').submit()"
+            class="h-9 px-3 border border-gray-300 rounded-md text-sm text-gray-700 bg-white focus:border-emerald-500 focus:outline-none cursor-pointer w-full sm:w-auto">
         @foreach($board['zooms'] as $value => $zoom)
             <option value="{{ $value }}" @selected($f['zoom'] === $value)>表示: {{ $zoom['label'] }}</option>
         @endforeach
     </select>
 
     <input type="text" name="q" value="{{ $f['q'] }}" placeholder="案件名・工程名で検索"
-           class="form-input" style="width: 220px;">
+           class="h-9 px-3 border border-gray-300 rounded-md text-sm text-gray-700 bg-white focus:border-emerald-500 focus:outline-none w-full sm:w-56">
 
     <button type="submit" class="h-9 px-3 border border-gray-200 rounded-md text-xs text-gray-600">検索</button>
     <a href="{{ route($boardRoute) }}" class="h-9 px-3 border border-gray-200 rounded-md text-xs text-gray-400"
-       style="display: inline-flex; align-items: center;">クリア</a>
+       style="display: inline-flex; align-items: center; justify-content: center;">クリア</a>
 </form>
 
 @if($board['rows'] === [])
@@ -5204,7 +5255,7 @@ Task 7 で足した「不動産 工程表 — 工程 CRUD（8ルート）」ブ�
 ./vendor/bin/phpunit --filter ScheduleBoardTest
 ```
 
-Expected: `OK (19 tests, ...)`
+Expected: `OK (20 tests, ...)`
 
 - [ ] **Step 9: 全体が壊れていないことを確認する**
 
@@ -5212,7 +5263,7 @@ Expected: `OK (19 tests, ...)`
 cd /Users/masanori/site/manage/.claude/worktrees/realestate-schedule && ./vendor/bin/phpunit
 ```
 
-Expected: `OK (1145 tests, ...)`
+Expected: `OK (1146 tests, ...)`
 
 - [ ] **Step 10: コミット**
 
@@ -5378,7 +5429,7 @@ Expected: `OK (3 tests, ...)`
 cd /Users/masanori/site/manage/.claude/worktrees/realestate-schedule && ./vendor/bin/phpunit
 ```
 
-Expected: `OK (1148 tests, ...)`
+Expected: `OK (1149 tests, ...)`
 
 - [ ] **Step 6: コミット**
 
@@ -5419,7 +5470,7 @@ cd /Users/masanori/site/manage/.claude/worktrees/realestate-schedule && git stat
 
 Expected: 出力なし
 
-- [ ] **Step 2: 15 通りの変異を 1 つずつ測る**
+- [ ] **Step 2: 16 通りの変異を 1 つずつ測る**
 
 各変異について、下のひな型で回す（`<file>` `<from>` `<to>` を表から埋める）:
 
@@ -5451,6 +5502,7 @@ git checkout -- <file>
 | 13 | 共通 partial の `@include` をインライン複製に置換（`realestate/procurements/show.blade.php` の 1 行を `_schedule_section` の中身のコピーへ） | `resources/views/realestate/procurements/show.blade.php` | `ScheduleSectionRenderTest::test_all_four_detail_views_include_the_one_shared_partial` ＋ `test_the_gantt_markup_lives_only_in_the_partial` — `ガントのマークアップが partial 以外にもあります` |
 | 14 | `countSoon()` の「すでに始まった工程は数えない」ガードを消す（`if ($actual !== null \|\| $planned === null)` → `if ($planned === null)`） | `app/Services/ScheduleBoardService.php` | `ScheduleBoardTest::test_the_kpis_agree_with_the_rows_on_screen` — `30 日以内に始まる工程（実績開始済みは数えない）` が 1 でなく 2 |
 | 15 | KPI を絞り込み前から数える（`kpi()` の `count(array_filter($rows, fn ($r) => $r['status'] === self::STATUS_RUNNING))` → `count($rows)`） | `app/Services/ScheduleBoardService.php` | `ScheduleBoardTest::test_the_kpis_follow_the_filter` — `絞り込み後の行から数えていない` |
+| 16 | サイドバーのモバイルドロワー側だけ「工程表」を消す（`sidebar.blade.php` の 2 つ目の `label="住宅事業"` ブロックの行を削除） | `resources/views/layouts/partials/sidebar.blade.php` | `ScheduleBoardTest::test_both_sidebar_blocks_link_to_each_board` — `サイドバー導線が 2 箇所（PC 展開 / モバイルドロワー）ありません` |
 
 - [ ] **Step 3: 結果を表に書き起こす**
 
@@ -5466,7 +5518,7 @@ git checkout -- <file>
 cd /Users/masanori/site/manage/.claude/worktrees/realestate-schedule && git status --porcelain && ./vendor/bin/phpunit | tail -3
 ```
 
-Expected: `git status` は出力なし、テストは `OK (1148 tests, ...)`
+Expected: `git status` は出力なし、テストは `OK (1149 tests, ...)`
 
 - [ ] **Step 5: 結果をコミット**
 
@@ -5474,7 +5526,7 @@ Expected: `git status` は出力なし、テストは `OK (1148 tests, ...)`
 cd /Users/masanori/site/manage/.claude/worktrees/realestate-schedule
 git add docs/superpowers/plans/2026-09-01-realestate-housing-schedule-gantt.md
 git commit -m "$(cat <<'MSG'
-docs(plan): 工程表の変異 15 通りの実測結果を記録する
+docs(plan): 工程表の変異 16 通りの実測結果を記録する
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 MSG
@@ -5847,6 +5899,7 @@ Task 12 の Step 4〜8 と同じ 6 画面を、**本番の URL**（`https://www.
 | 13 | `@include` をインライン複製に | | | |
 | 14 | `countSoon` の実績ガードを消す | | | |
 | 15 | KPI を絞り込み前から数える | | | |
+| 16 | サイドバーの片ブロックを消す | | | |
 
 ⚠ **検出しなかった変異があれば、テストを足してから赤になることを確認し、その事実も残すこと。**
 「検出しない」と書く前に必ず「当たったか」の列を見返す（0 箇所置換の誤読を 2 回踏んでいる）。
@@ -5858,7 +5911,7 @@ Task 12 の Step 4〜8 と同じ 6 画面を、**本番の URL**（`https://www.
 - [ ] `./vendor/bin/phpunit` が緑で、本数が 1050 から減っていない
 - [ ] コンパイル済みビューの `php -l` が 0 件（Task 12-1）
 - [ ] 実ブラウザで 6 画面を目視し、`main.scrollWidth === main.clientWidth` を広い幅・狭い幅の両方で確認
-- [ ] 変異 15 通りの結果表が埋まっている
+- [ ] 変異 16 通りの結果表が埋まっている
 - [ ] `docs/BACKLOG.md` / `docs/ARCHITECTURE.md` を更新した
 - [ ] main repo で ff-merge ＋ `composer dump-autoload` を実行した
 - [ ] **本番 DDL を流してから** `./deploy.sh`（ユーザーの明示承認あり）
