@@ -1021,6 +1021,43 @@ Route::middleware(['auth', 'password.change'])->group(function () {
 
     /*
     |----------------------------------------------------------------------
+    | 不動産 工程表 — 工程 CRUD（8ルート）
+    |----------------------------------------------------------------------
+    | 設計書: docs/superpowers/specs/2026-08-31-realestate-schedule-gantt-design.md §6
+    |
+    | ⚠ reorder を {step} より先に登録すること。schedule-steps/reorder は
+    |   schedule-steps/{step} にマッチしうる。route:list の並びは URI 辞書順なので
+    |   優先順位の確認には使えない（ScheduleRouteWiringTest がルータに実マッチさせて測る）。
+    |
+    | ⚠ 4 親 × 4 本を対称に定義すること。片側が足りないと共通 partial の route() で
+    |   その画面だけ本番 500 になる（Bug #25）。
+    */
+    Route::prefix('realestate')
+        ->middleware(['department.access:realestate', 'role:executive,manager'])
+        ->group(function () {
+            // --- 仕入れ案件 ---
+            Route::post('/procurements/{procurement}/schedule-steps', [\App\Http\Controllers\ScheduleStepController::class, 'store'])
+                ->name('realestate.procurements.schedule-steps.store');
+            Route::patch('/procurements/{procurement}/schedule-steps/reorder', [\App\Http\Controllers\ScheduleStepController::class, 'reorder'])
+                ->name('realestate.procurements.schedule-steps.reorder');
+            Route::patch('/procurements/{procurement}/schedule-steps/{step}', [\App\Http\Controllers\ScheduleStepController::class, 'update'])
+                ->name('realestate.procurements.schedule-steps.update');
+            Route::delete('/procurements/{procurement}/schedule-steps/{step}', [\App\Http\Controllers\ScheduleStepController::class, 'destroy'])
+                ->name('realestate.procurements.schedule-steps.destroy');
+
+            // --- 分譲地PJ ---
+            Route::post('/projects/{project}/schedule-steps', [\App\Http\Controllers\ScheduleStepController::class, 'store'])
+                ->name('realestate.projects.schedule-steps.store');
+            Route::patch('/projects/{project}/schedule-steps/reorder', [\App\Http\Controllers\ScheduleStepController::class, 'reorder'])
+                ->name('realestate.projects.schedule-steps.reorder');
+            Route::patch('/projects/{project}/schedule-steps/{step}', [\App\Http\Controllers\ScheduleStepController::class, 'update'])
+                ->name('realestate.projects.schedule-steps.update');
+            Route::delete('/projects/{project}/schedule-steps/{step}', [\App\Http\Controllers\ScheduleStepController::class, 'destroy'])
+                ->name('realestate.projects.schedule-steps.destroy');
+        });
+
+    /*
+    |----------------------------------------------------------------------
     | 不動産 仕入れ先 Ajax 検索 + 簡易登録（2ルート）
     |----------------------------------------------------------------------
     */
@@ -1237,6 +1274,36 @@ Route::middleware(['auth', 'password.change'])->group(function () {
             ->name('housing.custom-orders.files.show');
     });
     
+    /*
+    |----------------------------------------------------------------------
+    | 住宅事業 工程表 — 工程 CRUD（8ルート）
+    |----------------------------------------------------------------------
+    | ⚠ 不動産側（上）と対称に保つこと。注意点は同じ。
+    */
+    Route::prefix('housing')
+        ->middleware(['department.access:housing', 'role:executive,manager'])
+        ->group(function () {
+            // --- 建売物件 ---
+            Route::post('/properties/{property}/schedule-steps', [\App\Http\Controllers\ScheduleStepController::class, 'store'])
+                ->name('housing.properties.schedule-steps.store');
+            Route::patch('/properties/{property}/schedule-steps/reorder', [\App\Http\Controllers\ScheduleStepController::class, 'reorder'])
+                ->name('housing.properties.schedule-steps.reorder');
+            Route::patch('/properties/{property}/schedule-steps/{step}', [\App\Http\Controllers\ScheduleStepController::class, 'update'])
+                ->name('housing.properties.schedule-steps.update');
+            Route::delete('/properties/{property}/schedule-steps/{step}', [\App\Http\Controllers\ScheduleStepController::class, 'destroy'])
+                ->name('housing.properties.schedule-steps.destroy');
+
+            // --- 注文住宅 ---
+            Route::post('/custom-orders/{customOrder}/schedule-steps', [\App\Http\Controllers\ScheduleStepController::class, 'store'])
+                ->name('housing.custom-orders.schedule-steps.store');
+            Route::patch('/custom-orders/{customOrder}/schedule-steps/reorder', [\App\Http\Controllers\ScheduleStepController::class, 'reorder'])
+                ->name('housing.custom-orders.schedule-steps.reorder');
+            Route::patch('/custom-orders/{customOrder}/schedule-steps/{step}', [\App\Http\Controllers\ScheduleStepController::class, 'update'])
+                ->name('housing.custom-orders.schedule-steps.update');
+            Route::delete('/custom-orders/{customOrder}/schedule-steps/{step}', [\App\Http\Controllers\ScheduleStepController::class, 'destroy'])
+                ->name('housing.custom-orders.schedule-steps.destroy');
+        });
+
     /*
     |----------------------------------------------------------------------
     | 顧客管理 買主マスタ — 住宅事業（7ルート）

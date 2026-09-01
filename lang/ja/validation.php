@@ -238,6 +238,13 @@ return [
         'type' => '区分',
         'category' => 'カテゴリ',
         'notes' => '備考',
+        // --- 工程表（設計書 §4.5）---
+        // ⚠ name は画面ごとに意味が変わる語なので、ここでは上書きしない。
+        //   工程名は ScheduleStepController の validate() 第 3 引数で指定する。
+        'planned_start' => '予定開始',
+        'planned_end' => '予定終了',
+        'actual_start' => '実績開始',
+        'actual_end' => '実績終了',
         'memo' => '備考',
         'note' => '備考',
         'withdraw_note' => '退会メモ',                 // 画面ラベルは「備考」だが退会画面固有なので区別する
