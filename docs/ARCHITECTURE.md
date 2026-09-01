@@ -16,6 +16,7 @@ manage/
 │   │   ├── BuyerRank.php, BuyerDepartment.php
 │   │   ├── SupplierType.php
 │   │   ├── RealEstatePropertyType.php, RealEstateTransactionType.php
+│   │   ├── ScheduleStepCategory.php      # 工程の分類 (5種: permit/work/survey/sale/other)
 │   │   └── InquiryStatus.php, InitialMonthType.php, SurveyQuestionType.php
 │   ├── Http/Controllers/
 │   │   ├── Admin/                   # UserController, UsageTypeController, ReCostItemController, SurveyQuestionController, CustomerImportController
@@ -24,6 +25,7 @@ manage/
 │   │   ├── Tenant/                  # PropertyController, ContractController, CustomerController, InvestmentController, RepairController, InquiryController, UnitController
 │   │   ├── CustomerController.php   # 買主マスタ (部署横断)
 │   │   ├── CustomerSurveyController.php
+│   │   ├── ScheduleStepController.php # 工程表 CRUD (4親共通, Ajax)
 │   │   └── AttachmentController.php # ファイル添付 (ポリモーフィック)
 │   └── Models/
 │       ├── ReContract.php           # 不動産契約
@@ -40,6 +42,7 @@ manage/
 │       ├── Buyer.php                # 買主マスタ (SoftDeletes)
 │       ├── BuyerSurvey.php, BuyerSurveyAnswer.php
 │       ├── Customer.php             # テナント顧客
+│       ├── ScheduleStep.php         # 工程表の1行 (ポリモーフィック, 4親)
 │       ├── Attachment.php           # 添付ファイル (ポリモーフィック, SoftDeletes)
 │       └── ... (Property, Unit, Contract, Investment, Repair, Inquiry, etc.)
 ├── resources/views/
@@ -92,6 +95,7 @@ manage/
 | `hs_properties` | 建売物件 |
 | `hs_contracts` | 建売契約 |
 | `hs_custom_orders` | 注文住宅 |
+| `schedule_steps` | 工程表（ポリモーフィック。仕入れ案件 / 分譲地PJ / 建売物件 / 注文住宅 の 4 親）|
 | `buyers` | 買主マスタ (SoftDeletes) |
 | `buyer_departments` | 買主×部署紐付け（ランク・取得日。UNIQUE(buyer_id, department)）|
 | `buyer_surveys` / `buyer_survey_answers` | アンケート |
