@@ -58,7 +58,7 @@ main repo には `vendor/bin/phpunit` が無く（`--no-dev`）、dev 依存を�
 | # | 決定 | 理由 |
 |---|---|---|
 | A | Ajax の応答に **サーバでレンダリングし直したガントの HTML 断片**（`gantt_html`）を載せ、JS はそれを差し替えるだけにする | §4.4 の「Ajax 即時保存」と §5 の「位置計算は PHP だけ」を両立させる唯一の形。JS 側で % を再計算すると **同じ計算の 2 実装**になり無音で漂流する（Bug #41 / #47）。日付を動かすと軸の範囲（§5.5）ごと変わるので、部分的な再計算では原理的に足りない |
-| B | §8.2 の `ParsesForms` は Ajax には直接使えないので、**画面が実際に出力したエンドポイント設定（`SCHEDULE_ENDPOINTS`）をテストが抜き出して、それを叩く** | §8.2 の意図は「画面が描いたものをそのまま送り返す」。フォームが無い画面での同等物がこれ。URL を테스트側で `route()` から組むと、画面側が壊れても緑のまま通る（Bug #47） |
+| B | §8.2 の `ParsesForms` は Ajax には直接使えないので、**画面が実際に出力したエンドポイント設定（`SCHEDULE_ENDPOINTS`）をテストが抜き出して、それを叩く** | §8.2 の意図は「画面が描いたものをそのまま送り返す」。フォームが無い画面での同等物がこれ。URL をテスト側で `route()` から組むと、画面側が壊れても緑のまま通る（Bug #47） |
 | C | `HasScheduleSteps` の親ごとメソッドは **`abstract`** にする（既定実装を置かない） | 既定値を置くと、新しい親を足した人が override を忘れた瞬間に**無音で空欄**になる（設計書 §3.2 の警告そのもの）。`abstract` なら PHP が Fatal で止める |
 | D | ボードに **ステータスバッジを出さない**（モックには在る） | §4.2 の「中身」の列挙に無い。§2.1「モックを正本にしない」に従う。必要になったら足す |
 | E | 遅延（`delayDays`）と進捗（`done` / `running` / `todo`）を **別の軸**として返す | 「完了したが遅れた」が表現できなくなるのを防ぐ。表示側がどう混ぜるかを決める |
@@ -1428,6 +1428,11 @@ override を忘れた瞬間に**無音で空欄**になる（設計書 §3.2 の
 ⚠ **コード列・名称列の名前が親ごとに違う**（`procurement_code` / `project_code` / `property_code` / `order_code`、
 `property_name` / `project_name` / `property_name` / `order_name`）。ボードで直に `$model->name` と書かない。
 
+⚠ **「今日」を受け取るメソッドは全部 `$today` を必須にする**（`drawEnd` / `periodText` /
+`delayDays` / `isLate`）。`App\Support\ScheduleStepStatus` と同じ方針で、既定値を置いて
+内部で `now()` に落ちる経路を残すと、**テストが実行日に依存して「時刻を凍結したつもりで
+効いていない」状態**を作れてしまう（Bug #54 ① と同型の測定不能）。
+
 - [ ] **Step 1: 失敗するテストを書く**
 
 `tests/Feature/Schedule/ScheduleAutoMilestoneTest.php`:
@@ -1666,7 +1671,6 @@ namespace App\Models;
 
 use App\Enums\ScheduleStepCategory;
 use App\Support\ScheduleStepStatus;
-use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
@@ -1751,11 +1755,16 @@ class ScheduleStep extends Model
 
     /**
      * ⚠ 実績開始があって実績終了が無いときは「進行中」なので右端を今日まで伸ばす。
+     *
+     * ⚠ **`$today` は必須。既定値を持たせない**（`ScheduleStepStatus` と同じ方針）。
+     *   内部で `now()` に落ちる経路を残すと、テストが実行日に依存して
+     *   「時刻を凍結したつもりで効いていない」状態を作れてしまう。
+     *   呼び出し側（`ScheduleCardService` / `ScheduleBoardService`）は必ず渡している。
      */
-    public function drawEnd(?CarbonInterface $today = null): ?CarbonInterface
+    public function drawEnd(CarbonInterface $today): ?CarbonInterface
     {
         if ($this->actual_start !== null) {
-            return $this->actual_end ?? ($today ?? CarbonImmutable::today());
+            return $this->actual_end ?? $today;
         }
 
         if ($this->planned_start === null) {
@@ -1784,8 +1793,12 @@ class ScheduleStep extends Model
         return ScheduleStepStatus::progress($this->actual_start, $this->actual_end);
     }
 
-    /** 左カラムに出す期間テキスト（`3/16〜7/03`）。描けない行は「日付未設定」。 */
-    public function periodText(?CarbonInterface $today = null): string
+    /**
+     * 左カラムに出す期間テキスト（`3/16〜7/03`）。描けない行は「日付未設定」。
+     *
+     * ⚠ `drawEnd()` と同じ理由で `$today` は必須。
+     */
+    public function periodText(CarbonInterface $today): string
     {
         if (! $this->isDrawable()) {
             return '日付未設定';
