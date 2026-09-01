@@ -617,28 +617,35 @@ Excel の工程表のように横棒で見る機能。**JS ライブラリ・外
 
 ---
 
-## 🚧 ANDPAD 工程表の取込（建売物件）— 実装済み・**本番未反映**
+## 🚧 工程表の取込（建売物件）— 実装済み・**本番未反映**
 
 詳細仕様: @docs/superpowers/specs/2026-09-01-schedule-import-design.md
 実装計画: @docs/superpowers/plans/2026-09-01-schedule-import.md
 
-建売の工程管理は ANDPAD で行っているので、その書き出しを取り込んで工程表を自動で作る。
-**2026-09-01 実装。ローカルのテストは green だが、実ブラウザ確認と本番反映は未了。**
+建売の工程管理は外部サービス（**ANDPAD**）で行っているので、その書き出しを取り込んで
+工程表を自動で作る。**2026-09-01 実装。本番反映だけが未了。**
+
+⚠ **サービス名はアプリのどこにも出さない**（利用者の指示。2026-09-01）。書き出し元にすぎず
+システム上に必要がないため、画面・コード・DB の値から取り除いてある
+（`app` / `resources` / `routes` / `database` / `tests` に `ANDPAD` は **0 件**）。
+名称が残るのは**この BACKLOG と設計書・プランだけ**で、これは「なぜサーバ側で xlsx を
+解析しているのか」の記録として要るため（いずれも `deploy.sh` の rsync 対象外）。
+画面の言い方は「工程表の取込」/ ボタンは「工程表を取り込む」。
 
 | 区分 | 実装内容 |
 |------|---------|
 | 依存 | **`phpoffice/phpspreadsheet` を新規導入**（vendor 78M → 85M / phpoffice 本体 6.3M）|
-| DB | `schedule_steps` に **`source` 列**（NULL=手入力 / `andpad`=取込）＋ 複合インデックス 1 本 |
-| Support | `AndpadScheduleSheet`（xlsx → 工程の配列）/ `AndpadCategory`（大工程名 → 5 分類）|
+| DB | `schedule_steps` に **`source` 列**（NULL=手入力 / `import`=取込）＋ 複合インデックス 1 本 |
+| Support | `ScheduleImportSheet`（xlsx → 工程の配列）/ `ScheduleImportCategory`（大工程名 → 5 分類）|
 | Controller | `Housing\ScheduleImportController`（form / preview / execute）|
 | Blade | `housing/properties/schedule-import.blade.php` ＋ 共有 partial にボタン 1 個 |
 | ルート | **3 本**（`role:executive,manager`）。工程表は計 **21 本**に |
-| 固定資産 | `tests/fixtures/andpad/`（加工版 xlsx ＋ 加工スクリプト ＋ README）|
-| テスト | 1152 → **1202 tests / 8061 assertions green**（+50）|
+| 固定資産 | `tests/fixtures/schedule-import/`（加工版 xlsx ＋ 加工スクリプト ＋ README）|
+| テスト | 1152 → **1202 tests / 8065 assertions green**（+50）|
 
 ### 要点
 
-- **クライアント側の SheetJS では読めない。** ANDPAD の xlsx はロゴ画像に拡張子が無く、
+- **クライアント側の SheetJS では読めない。** この xlsx はロゴ画像に拡張子が無く、
   SheetJS 0.18.5 がバイナリを文字列展開しようとして落ちる（原本・加工版とも実測）。
   よってアプリで唯一**サーバ側で Excel を解析する**取込になっている
 - **ガント形式は取り込めない**（施工完了日が存在しない）。上げたら差し戻す。
@@ -646,8 +653,8 @@ Excel の工程表のように横棒で見る機能。**JS ライブラリ・外
   53 日になるが実際はどちらも 1 日
 - **入口は建売物件の詳細だけ。** 現場名から物件を自動で特定しない
   （実測で現場名「JG保免中3号地」に当たる建売物件は本番に 0 件）
-- **再取込は `source='andpad'` の工程だけ入れ替える。** 手で足した工程は残る
-- **実績（`actual_*`）は取り込まない。** ANDPAD の日付は予定
+- **再取込は `source='import'` の工程だけ入れ替える。** 手で足した工程は残る
+- **実績（`actual_*`）は取り込まない。** 取り込む日付は予定
 - 大工程名は工程名に含める（`電気工事 / 器具取付`）—— 実データで `器具取付` が
   電気工事と給排水設備工事の 2 件ある
 
@@ -668,7 +675,7 @@ Excel の工程表のように横棒で見る機能。**JS ライブラリ・外
 
 ### 検証
 
-- 全テスト **OK (1202 tests, 8061 assertions)**（ベースライン 1152 から +50）
+- 全テスト **OK (1202 tests, 8065 assertions)**（ベースライン 1152 から +50）
 - **変異 20 通りで赤を実測**（初回 19/20 → テストを 1 本足して 20/20）。詳細はプラン
 - コンパイル済みビュー **266 本を `php -l`** → 構文エラー 0 件
 - ✅ **ローカル実ブラウザで 7 点中 6 点を確認**（2026-09-01。使い捨て SQLite ＋ `artisan serve`）——

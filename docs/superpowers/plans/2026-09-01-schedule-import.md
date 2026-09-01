@@ -7,6 +7,29 @@
 
 ---
 
+## ⚠ 2026-09-01 追記 — アプリから「ANDPAD」の名称を外した（commit `78108891`）
+
+利用者の指示は「**ANDPAD は書き出し元というだけなので、システム上に文言があれば省いて**」。
+このプランの本文（Task 4〜8 の画面文言・クラス名）は**改名前**の姿なので、現物と読み合わせるときは
+下の対応表で引き直すこと。**プランと設計書に名称を残しているのは「なぜサーバ側で xlsx を解析して
+いるのか」の記録として要るため**で、`app` / `resources` / `routes` / `database` / `tests` には **0 件**。
+
+| プラン本文 | 現物 |
+|---|---|
+| 画面「ANDPAD 工程表の取込」 | **「工程表の取込」** |
+| カードのボタン「ANDPAD 取込」 | **「工程表を取り込む」** |
+| 「ANDPAD の書き出しファイル」 | **「工程表の書き出しファイル」**（`andpad_…` というファイル名の案内は削除）|
+| `App\Support\AndpadScheduleSheet` | `App\Support\ScheduleImportSheet` |
+| `App\Support\AndpadCategory` | `App\Support\ScheduleImportCategory` |
+| `schedule_steps.source = 'andpad'` | `= 'import'`（**本番未反映で該当行 0 件**のため無償で変えられた）|
+| `$andpadCount` | `$importedCount` |
+| `tests/fixtures/andpad/` | `tests/fixtures/schedule-import/` |
+| テスト 3 本 `Andpad*Test` | `ScheduleImport{Sheet,Category,Fixture}Test` |
+
+⚠ **`source` の値を変えられるのは本番反映前だけ。** 反映後に変えるなら `UPDATE` が要る。
+
+---
+
 ## 0. 着手前に読むこと
 
 `CLAUDE.md` の Top traps 16 件と `docs/RULES.md` の Bug #1–55。とくに本件が触るのは
@@ -145,14 +168,14 @@ sheet1 / sheet2 とも **`r64` に `A='10'` だけ**の行がある（他セル�
 
 | ファイル | 役割 |
 |---|---|
-| `app/Support/AndpadScheduleSheet.php` | xlsx → 行の配列。書き出し形式の判別・全シート連結・見出し/ゴミ行の除去・日付正規化 |
-| `app/Support/AndpadCategory.php` | 大工程名 → `ScheduleStepCategory`（5 分類） |
+| `app/Support/ScheduleImportSheet.php` | xlsx → 行の配列。書き出し形式の判別・全シート連結・見出し/ゴミ行の除去・日付正規化 |
+| `app/Support/ScheduleImportCategory.php` | 大工程名 → `ScheduleStepCategory`（5 分類） |
 | `app/Http/Controllers/Housing/ScheduleImportController.php` | `form` / `preview` / `execute` |
 | `resources/views/housing/properties/schedule-import.blade.php` | 取込画面（2 段。①ファイル選択 → プレビュー ②確定） |
 | `database/sql/2026-09-01-add-source-to-schedule-steps.sql` | `schedule_steps.source` 列追加 |
-| `tests/fixtures/andpad/list-format.xlsx` | **加工版**の一覧形式（Task 1） |
-| `tests/fixtures/andpad/gantt-format.xlsx` | **加工版**のガント形式（Task 1。⚠ 実ファイル再添付待ち） |
-| `tests/fixtures/andpad/README.md` | 加工の方針・加工スクリプト・壊れ方が残っている実測値 |
+| `tests/fixtures/schedule-import/list-format.xlsx` | **加工版**の一覧形式（Task 1） |
+| `tests/fixtures/schedule-import/gantt-format.xlsx` | **加工版**のガント形式（Task 1。⚠ 実ファイル再添付待ち） |
+| `tests/fixtures/schedule-import/README.md` | 加工の方針・加工スクリプト・壊れ方が残っている実測値 |
 
 ### 変更
 
@@ -170,8 +193,8 @@ sheet1 / sheet2 とも **`r64` に `A='10'` だけ**の行がある（他セル�
 
 | ファイル | 内容 |
 |---|---|
-| `tests/Unit/Support/AndpadScheduleSheetTest.php` | 解析（実ファイル ＋ 合成行） |
-| `tests/Unit/Support/AndpadCategoryTest.php` | 21 大工程名 → 5 分類の全件 |
+| `tests/Unit/Support/ScheduleImportSheetTest.php` | 解析（実ファイル ＋ 合成行） |
+| `tests/Unit/Support/ScheduleImportCategoryTest.php` | 21 大工程名 → 5 分類の全件 |
 | `tests/Feature/Housing/ScheduleImportTest.php` | プレビュー → 確定の往復・再取込・権限・ガント形式の拒否 |
 | `tests/Feature/Schedule/ScheduleSchemaTest.php`（既存に追加なし） | `source` 列は既存の列一致テストが自動で拾う |
 
@@ -237,7 +260,7 @@ APP_KEY="base64:$(head -c 32 /dev/urandom | base64)" ./vendor/bin/phpunit 2>&1 |
    - ローカルヘッダの `csize` / `usize` を `0xFFFFFFFF` にし、20 byte の ZIP64 extra（0x0001）を付ける
    - 中央ディレクトリと EOCD は**通常形式**（ZIP64 EOCD レコードを書かない）
    - **エントリ名と順序を原本どおりに保つ**（拡張子なし media 2 個を含む）
-3. 加工スクリプトを `tests/fixtures/andpad/README.md` に貼る（再現できるように）
+3. 加工スクリプトを `tests/fixtures/schedule-import/README.md` に貼る（再現できるように）
 
 ### ⚠ 加工が「壊れ方」を消していないことを実測する
 
@@ -259,7 +282,7 @@ APP_KEY="base64:$(head -c 32 /dev/urandom | base64)" ./vendor/bin/phpunit 2>&1 |
 ### ⚠ ガント形式のファイル
 
 **利用者に再添付してもらう**（このプラン作成時点でデスクトップに無い）。
-届いたら同じ手順で加工し `tests/fixtures/andpad/gantt-format.xlsx` に置く。
+届いたら同じ手順で加工し `tests/fixtures/schedule-import/gantt-format.xlsx` に置く。
 
 ⚠ **届くまで Task 6 の「ガント形式を拒否する」テストは書けない。**
 Task 1 は一覧形式だけ先に進めてよいが、**Task 6 の完了条件に「ガント形式の拒否テストが緑」を
@@ -374,7 +397,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 
 ---
 
-## Task 4: `AndpadScheduleSheet`（解析）
+## Task 4: `ScheduleImportSheet`（解析）
 
 ### 目的
 
@@ -383,7 +406,7 @@ xlsx を受け取り、**書き出し形式を判別**して、工程の配列�
 ### 公開 API（案）
 
 ```php
-final class AndpadScheduleSheet
+final class ScheduleImportSheet
 {
     public const FORMAT_LIST  = 'list';    // 一覧形式（使える）
     public const FORMAT_GANTT = 'gantt';   // ガント形式（使えない）
@@ -424,7 +447,7 @@ final class AndpadScheduleSheet
 `assertSee` は両者を区別できないので、テストは `viewData('warnings')` /
 `viewData('rowErrors')` で**役割ごとに**見る。
 
-### テスト（`tests/Unit/Support/AndpadScheduleSheetTest.php`）
+### テスト（`tests/Unit/Support/ScheduleImportSheetTest.php`）
 
 **実ファイル（加工版）で固定する:**
 
@@ -467,7 +490,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 
 ---
 
-## Task 5: `AndpadCategory`（大工程名 → 5 分類）
+## Task 5: `ScheduleImportCategory`（大工程名 → 5 分類）
 
 ### 実装
 
@@ -487,7 +510,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 
 ⚠ **`ScheduleStepCategory` は `casts()` 済みなので `tryFrom()` を呼ばない**（Bug #22）。
 
-### テスト（`tests/Unit/Support/AndpadCategoryTest.php`）
+### テスト（`tests/Unit/Support/ScheduleImportCategoryTest.php`）
 
 | # | アサーション |
 |---|---|
@@ -578,7 +601,7 @@ Route::post('/properties/{property}/schedule-import', [ScheduleImportController:
 | 5 | **現場名と物件名が食い違うとき警告が出る。ただし確定フォームは描画される**（止めない。設計書 §3.1 C） |
 | 6 | **ガント形式を上げると「使えない」と言い、確定フォームを描画しない**（⚠ 実ファイル待ち） |
 | 7 | 描画されたフォームをそのまま送り返すと **65 件の `schedule_steps` ができる** |
-| 8 | できた工程の `source` が全件 `'andpad'` |
+| 8 | できた工程の `source` が全件 `'import'` |
 | 9 | `sort_order` が 1..65 で重複なし |
 | 10 | 分類の内訳が work 55 / permit 6 / other 4 |
 | 11 | **`actual_start` / `actual_end` が全件 null**（決定 A。実績は触らない） |
@@ -664,8 +687,8 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 `execute` を `DB::transaction()` で囲み:
 
 ```
-1. その物件の schedule_steps のうち source = 'andpad' を削除
-2. 読み取った行を新規に登録（source = 'andpad'）
+1. その物件の schedule_steps のうち source = 'import' を削除
+2. 読み取った行を新規に登録（source = 'import'）
 3. sort_order は手入力の後ろへ続ける（手入力の max + 1 から）
 ```
 
@@ -737,7 +760,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 | 6 | E（開始）と H（完了）を取り違える | 期間が負・完了 < 開始 |
 | 7 | 分類の `検査 → permit` を落とす | 分類内訳 permit 6 → 0 |
 | 8 | 分類の判定順を入れ替える | 順序を固定したテスト |
-| 9 | `source = 'andpad'` を書かない | 再取込で入れ替わらない |
+| 9 | `source = 'import'` を書かない | 再取込で入れ替わらない |
 | 10 | 再取込の削除から `source` 条件を外す | 手入力が消える |
 | 11 | 再取込の削除から `schedulable_type` を外す | **他部署の工程が消える** |
 | 12 | `execute` のサーバ側再検証を外す | 改竄 JSON が通る |
@@ -809,7 +832,7 @@ APP_KEY="base64:$(head -c 32 /dev/urandom | base64)" php artisan view:cache \
 | 1 | 実ファイルを上げてプレビューが出る | ✅ 現場名「JG見本町3号地 分譲住宅新築工事様邸」/ 住所「愛媛県松山市見本町1丁目1-1、1-2」/ 工事期間「2026/07/28〜2026/12/25」/ 読み取った工程 **65 件**、表の `tbody tr` も **65 行** |
 | 2 | 食い違い警告が出て、**それでも確定できる** | ✅ 黄色帯「ファイルの現場名「…」と、取込先の物件名「余戸南 3号地」が一致しません。…このまま取り込むこともできます。」→ 確定できて `ANDPAD の工程を 65 件取り込みました。` |
 | 3 | 65 本の棒 ＋ 色が 3 系統 | ✅ `getComputedStyle` の実測で **緑 `rgb(5,150,105)` 55 / 青 `rgb(59,130,246)` 6 / 灰 `rgb(107,114,128)` 4**（＋手入力の青 1・橙 1）。トラック **69**（節目 1 ＋ 68）、棒 **67**（地鎮祭は日付 1 つなので ◆）、◆ **2**（完成＝白抜き / 地鎮祭＝灰） |
-| 4 | 再取込で手入力が残る | ✅ プレビューが「ANDPAD 由来の既存の工程 **65** 件を削除します / ファイルから **65** 件を登録します / 手で追加した工程 **3** 件は残ります」。確定後 `既存の 65 件を入れ替えて 65 件を登録`。DB 実測で**手入力は id 1・2・3 のまま**（実績日付も保持）、ANDPAD は id 4–68 → **69–133** に総入れ替え。`source='andpad'` の `actual_*` は **0 件**（設計書 §3.1 A どおり） |
+| 4 | 再取込で手入力が残る | ✅ プレビューが「ANDPAD 由来の既存の工程 **65** 件を削除します / ファイルから **65** 件を登録します / 手で追加した工程 **3** 件は残ります」。確定後 `既存の 65 件を入れ替えて 65 件を登録`。DB 実測で**手入力は id 1・2・3 のまま**（実績日付も保持）、ANDPAD は id 4–68 → **69–133** に総入れ替え。`source='import'` の `actual_*` は **0 件**（設計書 §3.1 A どおり） |
 | 5 | ガント形式を上げると差し戻される | ⚠ **部分的**。**ANDPAD のガント書き出しそのものは未取得のまま**。代わりに見出しが揃わない xlsx を作って上げ、`format` が `other` と判定され**赤帯つきでフォームへ差し戻される**ことをブラウザで確認した（プレビュー表は 0 行、DB も無変化）。実ファイルでの確認は依然として残る |
 | 6 | `main.scrollWidth === main.clientWidth` を 1800 / 1200 / 375px で実測 | ✅ 4 画面 × 3 幅 = **12 通りすべて一致**（下表） |
 | 7 | コンソール出力ゼロ | ✅ **新しいタブで ANDPAD の 4 画面だけを歩いて 0 件**（`No console logs.`）。ネットワークも該当リクエストは全部 200 |
@@ -910,7 +933,7 @@ APP_KEY="base64:$(head -c 32 /dev/urandom | base64)" php artisan view:cache \
 | 4 | 大工程名を工程名に含めない | 検出 | `..._keeps_the_five_steps_that_only_exist_on_the_second_sheet` |
 | 5 | 日付検証を `strtotime()` に戻す | 検出 | `..._rejects_a_date_that_does_not_exist` |
 | 6 | 開始日に完了日の列を読む | 検出 | `..._reads_every_step_from_every_sheet` |
-| 7 | 分類から `検査` を落とす | 検出 | `AndpadCategoryTest`「大工程名『検査』の分類」 |
+| 7 | 分類から `検査` を落とす | 検出 | `ScheduleImportCategoryTest`「大工程名『検査』の分類」 |
 | 8 | 分類の判定順を入れ替える | 検出 | 同「大工程名『仮設工事』の分類」 |
 | 9 | `source` を書かない | 検出 | `..._submitting_the_rendered_form_imports_every_step` |
 | 10 | 削除から `source` 条件を外す | 検出 | `..._reimporting_replaces_only_the_andpad_steps` |
@@ -953,10 +976,31 @@ staff で null、manager で URL）。これで partial 側とコントローラ
 
 ---
 
+### 改名後の再測定（2026-09-01。commit `78108891`）
+
+画面の文言と `source` の値を変えたので、**それに依存していた変異 4 通りを当て直した**。
+とくに危ないのは「ボタンの有無」を見るテストで、判定文字列を `ANDPAD` から
+`工程表を取り込む` に替えた瞬間、**カード見出しの「工程表」に部分一致する語を選ぶと
+false-pass する**（Bug #43 / #46 の型）。そこで**文言と URL の両方**で見る形にした。
+
+| 変異 | 結果 | 落ちたテストと理由 |
+|---|---|---|
+| partial のボタン条件を外す（4 親すべてに出す） | 検出 | `..._the_import_button_appears_only_on_the_tateuri_detail_page`「**建売以外にボタンが出ている**」|
+| ボタンの文言を「取り込む」に変える | 検出 | 同上「**建売にボタンが出ていない**」（＝文言が pin されている） |
+| `source` を書かない | 検出 | `..._submitting_the_rendered_form_imports_every_step` ほか **3 本** |
+| 削除から `source` 条件を外す | 検出 | `..._reimporting_replaces_only_the_imported_steps`「actual size 65 matches expected size 68」ほか 2 本 |
+
+⚠ 併せて `assertStringNotContainsString('schedule-import', $html)` を足した（**URL の漏れ**も見る）。
+文言だけだと、将来ボタンの言い方を変えた人が負のアサートを緩めてしまう余地が残る。
+
+⚠ **`assertSee('工程表の取込')` は `<title>` / `<h1>` / パンくずの 3 箇所に一致する**（改名前は 2 箇所）。
+「画面が開く」ことの確認としては十分だが、**`<h1>` を消しただけの変異は捕まえられない**。
+意図して pin していないことを記録しておく。
+
 ## 完了の定義
 
 - [x] Task 0〜10 が完了し、それぞれコミットされている（Task 11 の本番反映だけ未実施）
-- [x] `./vendor/bin/phpunit` が green —— **OK (1202 tests, 8061 assertions)**（2026-09-01 実測）
+- [x] `./vendor/bin/phpunit` が green —— **OK (1202 tests, 8065 assertions)**（2026-09-01 実測。改名後に再実測）
 - [x] **変異 20 通りを実測**し、結果の表がこのプランに追記されている（未検出 1 件はテストを足して赤を確認済み）
 - [x] コンパイル済みビューの `php -l` が **0 件 INVALID**（266 本。2026-09-01 に再実測）
 - [ ] **ガント形式の実ファイルが固定資産にあり、拒否テストが緑**（⚠ **再添付待ち。唯一の未了項目**）
