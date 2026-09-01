@@ -828,6 +828,63 @@ APP_KEY="base64:$(head -c 32 /dev/urandom | base64)" php artisan view:cache \
 
 ---
 
+## 変異テストの実測結果（Task 9 で実測。2026-09-01）
+
+作法は Bug #44 / #54 どおり: ①先にコミット ②各変異の前に `git status --porcelain` が空
+③`git diff --stat` が非空で着弾を確認 ④`git checkout --` で戻す ⑤**落ちた理由の文言まで**突き合わせる。
+実行器は `scratchpad/mutate.py`（同じ手順を機械化したもの）。
+
+| # | 変異 | 結果 | 落ちたテストと理由 |
+|---|---|---|---|
+| 1 | 行の採用条件に大工程名を含める | 検出 | `..._reads_every_step_from_every_sheet`（rowErrors が 2 件増える） |
+| 2 | 見出し行もデータとして読む | 検出 | 同上 |
+| 3 | 1 シート目だけ読む | 検出 | 同上 — `actual size 60 matches expected size 65` |
+| 4 | 大工程名を工程名に含めない | 検出 | `..._keeps_the_five_steps_that_only_exist_on_the_second_sheet` |
+| 5 | 日付検証を `strtotime()` に戻す | 検出 | `..._rejects_a_date_that_does_not_exist` |
+| 6 | 開始日に完了日の列を読む | 検出 | `..._reads_every_step_from_every_sheet` |
+| 7 | 分類から `検査` を落とす | 検出 | `AndpadCategoryTest`「大工程名『検査』の分類」 |
+| 8 | 分類の判定順を入れ替える | 検出 | 同「大工程名『仮設工事』の分類」 |
+| 9 | `source` を書かない | 検出 | `..._submitting_the_rendered_form_imports_every_step` |
+| 10 | 削除から `source` 条件を外す | 検出 | `..._reimporting_replaces_only_the_andpad_steps` |
+| 11 | 削除から `schedulable_type` を外す | 検出 | `..._reimporting_does_not_touch_another_owners_steps` |
+| 12 | サーバ側の再検証を外す | 検出 | `..._a_tampered_payload_is_rejected_and_changes_nothing` |
+| 13 | 書き出し形式の判別を外す | 検出 | `..._a_file_that_is_not_the_list_format_is_rejected`（302 のはずが 200） |
+| 14 | view に `'errors'` キーを渡す | 検出 | **`ImportPreviewRenderTest`**（既存の全件走査が自動で拾った） |
+| 15 | 確定フォームから `@csrf` を消す | 検出 | `..._the_confirm_form_carries_a_csrf_token` |
+| 16 | partial のボタン条件を外す | 検出 | `..._the_import_button_appears_only_on_the_tateuri_detail_page`（他 3 画面が 500） |
+| 17 | ボタンの権限判定を外す | **初回 未検出 → テスト追加後 検出** | 下記 |
+| 18 | 工程名の 100 文字切りを外す | 検出 | `..._truncates_and_warns_on_a_long_step_name`（123 ≠ 100） |
+| 19 | 備考の 255 文字切りを外す | 検出 | `..._truncates_and_warns_on_long_notes`（403 ≠ 255） |
+| 20 | 全角空白の trim をバイト単位に戻す | 検出 | `..._every_parsed_value_is_valid_utf8` |
+
+**初回 19/20 → テストを 1 本足して 20/20。**
+
+### ⚠ #17 が測れていなかった理由（Bug #48 の型）
+
+`$scheduleImportUrl = $scheduleCanEdit ? route(...) : null;` の権限判定を外しても
+**画面の見た目が変わらない**。工程表カードが `@if($scheduleCanEdit)` で編集 UI 全体を
+隠しているので、partial の判定がコントローラの判定を backstop してしまう。
+
+→ **応答でなく「主機構が仕事をしたか」を直接見る**（`viewData('scheduleImportUrl')` が
+staff で null、manager で URL）。これで partial 側とコントローラ側が独立に固定される。
+
+### ⚠ 18 / 19 は「実ファイルでは equivalent」
+
+実データの最長は工程名 22 文字 / 備考 174 文字で**どちらも上限に当たらない**。
+よって切り詰めを外しても**実ファイルのテストは全部緑**で、赤くなるのは合成データの
+2 本だけ。実ファイルだけで測ると検出力ゼロになる。
+
+### ⚠ 測定器そのものの罠（実測）
+
+- **変異ランナーが phpunit の出力デコードで落ちた** —— #20 の変異が壊れた UTF-8 を
+  出力に混ぜるため。`errors='replace'` を付けるまで、**その回の測定は途中で止まり
+  ツリーが汚れたまま**だった（`git status` で気づいた）。
+- **`APP_KEY="base64:x"` は無効な鍵。** 構造テストは通るが暗号を使う経路が
+  `Unsupported cipher or incorrect key length` で落ち、**14 本すべてが同じ理由で赤**になる。
+  「変異が効いた」と誤読しかけた。鍵は必ず 32 byte を base64 で渡す。
+
+---
+
 ## 完了の定義
 
 - [ ] Task 0〜11 がすべて完了し、それぞれコミットされている
