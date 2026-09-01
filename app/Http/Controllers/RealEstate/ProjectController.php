@@ -303,6 +303,13 @@ class ProjectController extends Controller
             Storage::disk('public')->delete($drawing->file_path);
         }
 
+        // 工程は親に完全従属するので一緒に消す（設計書 §3.5）。
+        // ⚠ DeletionBlockers には足さない（足すと工程を書いた案件が二度と消せなくなる）。
+        // ⚠ morphMany 経由で消すこと。schedulable_id だけで消すと、別テーブルの
+        //   同じ id の工程まで巻き添えになる。
+        // ⚠ 削除ブロックの判定より**後**に置くこと（ブロックされたのに工程だけ消える事故を防ぐ）。
+        $project->scheduleSteps()->delete();
+
         // 原価・区画・図面はcascadeOnDeleteで自動削除
         $project->delete();
 

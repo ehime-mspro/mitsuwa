@@ -200,6 +200,13 @@ class CustomOrderController extends Controller
         // 区画ステータスを戻す
         $this->releaseLot($customOrder);
 
+        // 工程は親に完全従属するので一緒に消す（設計書 §3.5）。
+        // ⚠ DeletionBlockers には足さない（足すと工程を書いた案件が二度と消せなくなる）。
+        // ⚠ morphMany 経由で消すこと。schedulable_id だけで消すと、別テーブルの
+        //   同じ id の工程まで巻き添えになる。
+        // ⚠ 削除ブロックの判定より**後**に置くこと（ブロックされたのに工程だけ消える事故を防ぐ）。
+        $customOrder->scheduleSteps()->delete();
+
         // ファイルはcascadeOnDeleteで自動削除
         $customOrder->delete();
 
