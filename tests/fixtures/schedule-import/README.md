@@ -1,7 +1,9 @@
-# ANDPAD 固定資産
+# 工程表の取込 固定資産
 
-ANDPAD の書き出し xlsx。**個人情報を差し替えた加工版**で、
+外部の工程管理サービスの書き出し xlsx。**個人情報を差し替えた加工版**で、
 zip の構造（＝取込が壊れる原因そのもの）は原本のまま保っている。
+⚠ **書き出し元のサービス名はアプリ側には一切出さない方針**（利用者の指示。2026-09-01）。
+どのサービスの書き出しかは `docs/superpowers/specs/2026-09-01-schedule-import-design.md` を見ること。
 
 | ファイル | 形式 | 用途 |
 |---|---|---|
@@ -10,8 +12,8 @@ zip の構造（＝取込が壊れる原因そのもの）は原本のまま保�
 
 ## なぜ実ファイルでないといけないか
 
-**手で作った正常な xlsx では ANDPAD の壊れ方を再現できない。**
-ANDPAD の xlsx は次の 2 点で行儀が悪く、これが取込方式を決めている:
+**手で作った正常な xlsx では実ファイルの壊れ方を再現できない。**
+この xlsx は次の 2 点で行儀が悪く、これが取込方式を決めている:
 
 1. **ロゴ画像に拡張子が無い**（`xl/media/…_client__149963__brand_output_filename` が 2 個）
    → SheetJS が種類を判別できずバイナリを文字列展開しようとして落ちる
@@ -27,7 +29,7 @@ ANDPAD の xlsx は次の 2 点で行儀が悪く、これが取込方式を決�
 `redact.py` を使う（再実行できる）:
 
 ```bash
-python3 tests/fixtures/andpad/redact.py <原本.xlsx> tests/fixtures/andpad/list-format.xlsx
+python3 tests/fixtures/schedule-import/redact.py <原本.xlsx> tests/fixtures/schedule-import/list-format.xlsx
 ```
 
 ⚠ **Python の `zipfile` で書き直してはいけない。** 必要になるまで ZIP64 を使わないので、
@@ -56,7 +58,7 @@ C 列（担当会社）/ D 列（担当者）。
 ⑤だけだと「正常化されて読めるようになった」ものを固定してしまう。
 
 ⚠ **④は PHP のテストからは測れない**（SheetJS は node が要る）。
-`AndpadFixtureTest` が測るのは①②③⑤で、④は再加工したときに手で測り直すこと:
+`ScheduleImportFixtureTest` が測るのは①②③⑤で、④は再加工したときに手で測り直すこと:
 
 ```bash
 npm install xlsx@0.18.5   # 使い捨てディレクトリで
@@ -65,7 +67,7 @@ node -e 'try{require("xlsx").readFile("list-format.xlsx");console.log("★読め
 
 ## ⚠ 同一性を sha256 で固定しないこと
 
-**ANDPAD の書き出しは同じ内容でもバイト単位では再現しない。**
+**この書き出しは同じ内容でもバイト単位では再現しない。**
 2026-09-01 に同じ現場を 2 回書き出したら sha256 が変わった
 （46967 bytes / 46971 bytes。展開後のシート・見出し・工程 65 件はどちらも同一で、差は zip の圧縮結果だけ）。
 固定は**内容**で行う（工程 65 件 / 見出し 12 列 / シート 2 枚）。

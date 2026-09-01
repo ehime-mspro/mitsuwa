@@ -6,16 +6,16 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
 /**
- * ANDPAD の「一覧」書き出し xlsx を工程の配列に変換する（設計書 §2.2 / §4.2）。
+ * 外部の工程管理サービスの「一覧」書き出し xlsx を工程の配列に変換する（設計書 §2.2 / §4.2）。
  *
  * ⚠ **DB には触らない。** 呼び出し側（ScheduleImportController）が保存する。
  *
  * ⚠ **クライアント側の SheetJS では読めない**ので、ここはサーバ側の PhpSpreadsheet でやる。
- *   ANDPAD の xlsx はロゴ画像に拡張子が無く、SheetJS 0.18.5 がバイナリを文字列展開しようとして
+ *   この xlsx はロゴ画像に拡張子が無く、SheetJS 0.18.5 がバイナリを文字列展開しようとして
  *   落ちる（実測: 原本・加工版とも `Cannot create a string longer than 0x1fffffe8 characters`）。
- *   詳細は tests/fixtures/andpad/README.md。
+ *   詳細は tests/fixtures/schedule-import/README.md。
  */
-final class AndpadScheduleSheet
+final class ScheduleImportSheet
 {
     /** 取り込める書き出し */
     public const FORMAT_LIST = 'list';
@@ -51,7 +51,7 @@ final class AndpadScheduleSheet
      * 見出し行と判定するのに要求するラベル。
      *
      * ⚠ **実際に読む列だけを要求する。** 曜日や時間の列まで一致を求めると、
-     *   ANDPAD が些細なラベル変更をしただけで取り込めなくなる。
+     *   書き出し元が些細なラベル変更をしただけで取り込めなくなる。
      */
     private const REQUIRED_HEADERS = [
         self::COL_GROUP  => '大工程名',
@@ -232,7 +232,7 @@ final class AndpadScheduleSheet
             }
         }
 
-        // ⚠ 担当会社 / 担当者 / 状態は工程表の表示項目ではないが、捨てると ANDPAD を
+        // ⚠ 担当会社 / 担当者 / 状態は工程表の表示項目ではないが、捨てると書き出し元を
         //    見に行くことになる（設計書 §3.1 F）。
         $notes = implode(' / ', array_filter([
             self::cell($sheet, self::COL_COMPANY . $r),
@@ -240,14 +240,14 @@ final class AndpadScheduleSheet
             self::cell($sheet, self::COL_STATUS . $r),
         ], fn ($v) => $v !== ''));
 
-        // ⚠ ANDPAD の「期間」は読むが**保存しない**（内訳と合計の二重管理を作らない。Bug #46）。
+        // ⚠ ファイルの「期間」は読むが**保存しない**（内訳と合計の二重管理を作らない。Bug #46）。
         //    読み違えの検出にだけ使う。実測では 65 件すべてで 完了 - 開始 + 1 と一致した。
         $daysRaw = self::cell($sheet, self::COL_DAYS . $r);
         if ($daysRaw !== '' && $end !== null && ctype_digit($daysRaw)) {
             $expected = (new \DateTimeImmutable($start))->diff(new \DateTimeImmutable($end))->days + 1;
             if ((int) $daysRaw !== $expected) {
                 $warnings[] = sprintf(
-                    '%s: ANDPAD の期間 %d 日と、開始〜完了から計算した %d 日が食い違います。',
+                    '%s: ファイルの期間 %d 日と、開始〜完了から計算した %d 日が食い違います。',
                     $where,
                     (int) $daysRaw,
                     $expected
@@ -361,7 +361,7 @@ final class AndpadScheduleSheet
             'group'         => $group,
             'name'          => $fullName,
             // ⚠ 分類は**必ず大工程名から引き直す**。画面から送られてきた値を信じない
-            'category'      => AndpadCategory::forGroup($group)->value,
+            'category'      => ScheduleImportCategory::forGroup($group)->value,
             'planned_start' => $start,
             'planned_end'   => $end,
             'notes'         => $notes,

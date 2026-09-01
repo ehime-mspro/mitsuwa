@@ -1,6 +1,6 @@
 -- 工程に取込元（source）を足す — 2026-09-01
 --
--- 設計書: docs/superpowers/specs/2026-09-01-andpad-schedule-import-design.md §4.1
+-- 設計書: docs/superpowers/specs/2026-09-01-schedule-import-design.md §4.1  （工程表の取込）
 --
 -- ⚠ 2026-08-31-create-schedule-steps.sql（新規構築用）にも同じ列を足してある。
 --   ScheduleSchemaTest は CREATE TABLE 本体からしか列を拾わないので、
@@ -18,5 +18,5 @@
 --   （sudo mysql は非対話でパスワードを渡せない。memory 参照）
 
 ALTER TABLE `schedule_steps`
-  ADD COLUMN `source` VARCHAR(20) NULL COMMENT '取込元。NULL=手入力 / andpad=ANDPAD 取込' AFTER `notes`,
+  ADD COLUMN `source` VARCHAR(20) NULL COMMENT '取込元。NULL=手入力 / import=工程表の取込' AFTER `notes`,
   ADD KEY `idx_sched_source` (`schedulable_type`, `schedulable_id`, `source`);

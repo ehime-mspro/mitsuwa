@@ -158,7 +158,7 @@ class PropertyController extends Controller
         $schedule        = app(\App\Services\ScheduleCardService::class)->build($property);
         $scheduleCanEdit = $request->user()->role->isManagerOrAbove();
 
-        // ANDPAD 取込は建売物件だけ（設計書 §5.1）。共有 partial に親の種別を持ち込まないため、
+        // 工程表の取込は建売物件だけ（設計書 §5.1）。共有 partial に親の種別を持ち込まないため、
         // 出すかどうかはここで決めて URL を渡す。渡さない画面にはボタンが出ない。
         $scheduleImportUrl = $scheduleCanEdit
             ? route('housing.properties.schedule-import.form', $property)

@@ -71,7 +71,7 @@ class ScheduleSchemaTest extends TestCase
         );
     }
 
-    /** ANDPAD 取込の入れ替え対象を絞るためのインデックスが DDL にあること */
+    /** 取込の入れ替え対象を絞るためのインデックスが DDL にあること */
     public function test_the_source_index_is_declared(): void
     {
         $this->assertStringContainsString(
@@ -83,7 +83,7 @@ class ScheduleSchemaTest extends TestCase
 
     /**
      * ⚠ **`source` の既定は NULL（手入力）**。
-     *   ここが `'andpad'` などに倒れると、手で足した工程まで再取込の削除対象になる。
+     *   ここが `'import'` などに倒れると、手で足した工程まで再取込の削除対象になる。
      */
     public function test_source_defaults_to_null_for_hand_written_steps(): void
     {

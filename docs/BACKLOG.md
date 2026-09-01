@@ -619,8 +619,8 @@ Excel の工程表のように横棒で見る機能。**JS ライブラリ・外
 
 ## 🚧 ANDPAD 工程表の取込（建売物件）— 実装済み・**本番未反映**
 
-詳細仕様: @docs/superpowers/specs/2026-09-01-andpad-schedule-import-design.md
-実装計画: @docs/superpowers/plans/2026-09-01-andpad-schedule-import.md
+詳細仕様: @docs/superpowers/specs/2026-09-01-schedule-import-design.md
+実装計画: @docs/superpowers/plans/2026-09-01-schedule-import.md
 
 建売の工程管理は ANDPAD で行っているので、その書き出しを取り込んで工程表を自動で作る。
 **2026-09-01 実装。ローカルのテストは green だが、実ブラウザ確認と本番反映は未了。**

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""ANDPAD の xlsx から個人情報を差し替えた固定資産を作る。
+"""書き出し xlsx から個人情報を差し替えた固定資産を作る。
 
 使い方:
-    python3 tests/fixtures/andpad/redact.py <入力.xlsx> <出力.xlsx>
+    python3 tests/fixtures/schedule-import/redact.py <入力.xlsx> <出力.xlsx>
 
 ⚠ **Python の zipfile で書き直してはいけない。**
-  ANDPAD の xlsx は「ローカルヘッダと中央ディレクトリの csize/usize が 0xFFFFFFFF ＋
+  この xlsx は「ローカルヘッダと中央ディレクトリの csize/usize が 0xFFFFFFFF ＋
   20 byte の ZIP64 extra を持つのに、EOCD は通常形式」という混成で、
   この形が素朴な zip 実装を壊す。zipfile は必要になるまで ZIP64 を使わないので、
   書き直すと壊れ方が消えて固定資産の意味が無くなる（プラン §0.1-3）。
@@ -60,12 +60,12 @@ def read_zip(path):
 
 
 def zip64_extra(usize, csize):
-    """ANDPAD と同じ 20 byte の ZIP64 extra（id=0x0001, size=16, usize, csize）。"""
+    """実ファイルと同じ 20 byte の ZIP64 extra（id=0x0001, size=16, usize, csize）。"""
     return struct.pack('<HHQQ', 0x0001, 16, usize, csize)
 
 
 def write_zip(path, entries):
-    """ANDPAD と同じレイアウトで書き出す（ZIP64 ローカルヘッダ ＋ 通常 EOCD）。"""
+    """実ファイルと同じレイアウトで書き出す（ZIP64 ローカルヘッダ ＋ 通常 EOCD）。"""
     out, offsets = bytearray(), []
     for e in entries:
         offsets.append(len(out))

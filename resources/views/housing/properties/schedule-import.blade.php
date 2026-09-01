@@ -1,5 +1,5 @@
 {{--
-    ANDPAD 工程表の取込（設計書 §5.2）。2 段構成。
+    工程表の取込（設計書 §5.2）。2 段構成。
 
     ⚠ ①ファイルを選ぶ → プレビュー ②確定、の 2 段。確定フォームは**この画面が描いたものを
        そのまま送り返す**形にする（Bug #47 / #54 ②）。テストも parseForm で解析して送る。
@@ -8,7 +8,7 @@
 --}}
 @extends('layouts.app')
 
-@section('title', 'ANDPAD 工程表の取込')
+@section('title', '工程表の取込')
 
 @section('breadcrumb')
     <span class="mx-1.5">›</span>
@@ -18,7 +18,7 @@
     <span class="mx-1.5">›</span>
     <a href="{{ route('housing.properties.show', $property) }}" class="text-gray-500 hover:text-emerald-600">{{ $property->property_code }}</a>
     <span class="mx-1.5">›</span>
-    <span class="text-gray-600">ANDPAD 取込</span>
+    <span class="text-gray-600">工程表の取込</span>
 @endsection
 
 @section('content')
@@ -29,7 +29,7 @@
         物件詳細に戻る
     </a>
 
-    <h1 class="text-lg max-lg:text-base font-bold text-gray-900 mb-4">ANDPAD 工程表の取込</h1>
+    <h1 class="text-lg max-lg:text-base font-bold text-gray-900 mb-4">工程表の取込</h1>
 
     @if($errors->any())
         <div class="mb-4 rounded-lg border border-red-200 bg-red-50 p-4">
@@ -57,12 +57,12 @@
         <form method="POST" action="{{ route('housing.properties.schedule-import.preview', $property) }}"
               enctype="multipart/form-data">
             @csrf
-            <label class="block text-sm font-semibold text-gray-700 mb-1">ANDPAD の書き出しファイル</label>
+            <label class="block text-sm font-semibold text-gray-700 mb-1">工程表の書き出しファイル</label>
             {{-- ⚠ file input に .form-input を付けない（角丸とネイティブ装飾が消える。Bug #18） --}}
             <input type="file" name="file" accept=".xlsx" required
                    style="display:block; width:100%; max-width:520px; padding:8px 12px; font-size:13px; color:#374151; background:white; border:1px solid #d1d5db; border-radius:6px; cursor:pointer; box-sizing:border-box;">
             <p class="mt-2 text-xs text-gray-500">
-                ANDPAD の「一覧」形式（ファイル名が <code>andpad_…</code>）を選んでください。
+                「一覧」形式で書き出したファイルを選んでください。
                 工程表（ガント）形式は施工完了日を持たないため取り込めません。
                 上限 {{ $maxUploadMb }}MB。
             </p>
@@ -114,12 +114,12 @@
         <div class="bg-white border border-gray-200 rounded-lg p-5 mb-3">
             <div class="text-sm font-bold text-gray-800 pb-2 mb-3.5 border-b border-gray-200">取り込むと どうなるか</div>
             <ul class="list-disc list-inside text-sm text-gray-700 space-y-1">
-                <li>ANDPAD 由来の既存の工程 <span class="font-bold">{{ $andpadCount }}</span> 件を削除します</li>
+                <li>取り込み済みの既存の工程 <span class="font-bold">{{ $importedCount }}</span> 件を削除します</li>
                 <li>ファイルから <span class="font-bold">{{ count($result['rows']) }}</span> 件を登録します</li>
                 <li>手で追加した工程 <span class="font-bold">{{ $manualCount }}</span> 件は残ります</li>
             </ul>
             <p class="mt-3 text-xs text-gray-500">
-                実績（実績開始・実績終了）は取り込みません。ANDPAD の日付は予定として登録します。
+                実績（実績開始・実績終了）は取り込みません。取り込んだ日付は予定として登録します。
             </p>
         </div>
 

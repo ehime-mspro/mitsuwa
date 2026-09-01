@@ -13,7 +13,7 @@ use Tests\Concerns\CreatesRealEstateSchema;
 use Tests\Feature\Schedule\ScheduleTestCase;
 
 /**
- * ANDPAD 工程表取込の往復（プラン Task 6 / 8）。
+ * 工程表の取込の往復（プラン Task 6 / 8）。
  *
  * ⚠ **確定は「画面が描いたフォームをそのまま送り返す」形で測る**（Bug #47 / #54 ②）。
  *   hidden の名前を変えたり action を差し替えたりする変異は、手組みリクエストでは
@@ -21,15 +21,15 @@ use Tests\Feature\Schedule\ScheduleTestCase;
  *
  * ⚠ **ガント形式の実ファイルはまだ手元に無い。** 見出しが揃わないファイルを拒否することは
  *   test_a_file_that_is_not_the_list_format_is_rejected で測っているが、
- *   「ANDPAD のガント書き出し」そのものでの確認は未了
- *   （tests/fixtures/andpad/README.md の gantt-format.xlsx が届いたら足すこと）。
+ *   書き出し元のガント形式そのものでの確認は未了
+ *   （tests/fixtures/schedule-import/README.md の gantt-format.xlsx が届いたら足すこと）。
  */
 class ScheduleImportTest extends ScheduleTestCase
 {
     use RefreshDatabase;
     use CreatesRealEstateSchema;
 
-    private const FIXTURE = __DIR__ . '/../../fixtures/andpad/list-format.xlsx';
+    private const FIXTURE = __DIR__ . '/../../fixtures/schedule-import/list-format.xlsx';
 
     /** @var array<int, string> */
     private array $temporary = [];
@@ -60,7 +60,7 @@ class ScheduleImportTest extends ScheduleTestCase
         $this->actingAs($this->manager())
             ->get(route('housing.properties.schedule-import.form', $property))
             ->assertOk()
-            ->assertSee('ANDPAD 工程表の取込')
+            ->assertSee('工程表の取込')
             ->assertSee($property->property_code);
     }
 
@@ -100,13 +100,14 @@ class ScheduleImportTest extends ScheduleTestCase
                 ->getContent();
 
             if ($label === 'property') {
-                $this->assertStringContainsString('ANDPAD 取込', $html, '建売にボタンが出ていない');
+                $this->assertStringContainsString('工程表を取り込む', $html, '建売にボタンが出ていない');
                 $this->assertStringContainsString(
                     route('housing.properties.schedule-import.form', $owner),
                     $html
                 );
             } else {
-                $this->assertStringNotContainsString('ANDPAD', $html, "{$label}: 建売以外にボタンが出ている");
+                $this->assertStringNotContainsString('工程表を取り込む', $html, "{$label}: 建売以外にボタンが出ている");
+                $this->assertStringNotContainsString('schedule-import', $html, "{$label}: 取込 URL が漏れている");
             }
         }
     }
@@ -121,7 +122,8 @@ class ScheduleImportTest extends ScheduleTestCase
             ->assertOk()
             ->getContent();
 
-        $this->assertStringNotContainsString('ANDPAD', $html);
+        $this->assertStringNotContainsString('工程表を取り込む', $html);
+        $this->assertStringNotContainsString('schedule-import', $html);
     }
 
     /**
@@ -207,7 +209,7 @@ class ScheduleImportTest extends ScheduleTestCase
         $response->assertSessionHasErrors('file');
 
         // ⚠ 理由まで見る。「ファイル形式が不正」のような汎用文だと、
-        //    どう直せばよいか分からず ANDPAD を開き直すことになる。
+        //    どう直せばよいか分からず書き出し元を開き直すことになる。
         $this->assertStringContainsString(
             '一覧',
             (string) session('errors')?->first('file'),
@@ -245,7 +247,7 @@ class ScheduleImportTest extends ScheduleTestCase
         $steps = $property->scheduleSteps()->get();
 
         $this->assertCount(65, $steps);
-        $this->assertSame(['andpad'], array_values(array_unique($steps->pluck('source')->all())));
+        $this->assertSame(['import'], array_values(array_unique($steps->pluck('source')->all())));
         $this->assertSame(range(1, 65), $steps->pluck('sort_order')->all());
 
         // ⚠ 実績は触らない（設計書 §3.1 A）
@@ -311,22 +313,22 @@ class ScheduleImportTest extends ScheduleTestCase
     // 再取込（Task 8）
     // ============================================================
 
-    public function test_reimporting_replaces_only_the_andpad_steps(): void
+    public function test_reimporting_replaces_only_the_imported_steps(): void
     {
         $property = $this->makeParent('property');
 
         $manual = collect(['手入力A', '手入力B', '手入力C'])->map(
             fn ($name, $i) => $this->makeStep($property, $name, null, $i + 1)
         );
-        $stale = $this->makeStep($property, '古い ANDPAD 工程', 'andpad', 10);
+        $stale = $this->makeStep($property, '古い取込工程', 'import', 10);
 
         $this->importFixture($property);
 
         $fresh = $property->scheduleSteps()->get();
 
-        $this->assertCount(68, $fresh, '手入力 3 件 + ANDPAD 65 件');
+        $this->assertCount(68, $fresh, '手入力 3 件 + 取込 65 件');
         $this->assertSame(3, $fresh->whereNull('source')->count(), '手入力が残っていること');
-        $this->assertSame(65, $fresh->where('source', 'andpad')->count());
+        $this->assertSame(65, $fresh->where('source', 'import')->count());
 
         // ⚠ 手入力は**同じ行**が残ること（消して作り直していないこと）
         $this->assertSame(
@@ -334,8 +336,8 @@ class ScheduleImportTest extends ScheduleTestCase
             $fresh->whereNull('source')->pluck('id')->sort()->values()->all()
         );
 
-        // ⚠ 古い ANDPAD 工程は残っていないこと
-        $this->assertNull(ScheduleStep::find($stale->id), '古い ANDPAD 工程が消えていない');
+        // ⚠ 古い取込工程は残っていないこと
+        $this->assertNull(ScheduleStep::find($stale->id), '古い取込工程が消えていない');
     }
 
     /**
@@ -350,9 +352,9 @@ class ScheduleImportTest extends ScheduleTestCase
         // 同じ id になるように、どちらも 1 件目として作る
         $this->assertSame($property->getKey(), $procurement->getKey(), '前提: id が衝突している');
 
-        $other = $this->makeStep($procurement, '他案件の ANDPAD 工程', 'andpad', 1);
+        $other = $this->makeStep($procurement, '他案件の取込工程', 'import', 1);
         $customOrder = $this->makeParent('customOrder');
-        $otherHousing = $this->makeStep($customOrder, '注文住宅の ANDPAD 工程', 'andpad', 1);
+        $otherHousing = $this->makeStep($customOrder, '注文住宅の取込工程', 'import', 1);
 
         $this->importFixture($property);
 
@@ -367,7 +369,7 @@ class ScheduleImportTest extends ScheduleTestCase
         $property = $this->makeParent('property');
         $this->makeStep($property, '手入力1', null, 1);
         $this->makeStep($property, '手入力2', null, 2);
-        $this->makeStep($property, '既存 ANDPAD', 'andpad', 3);
+        $this->makeStep($property, '既存の取込工程', 'import', 3);
 
         $html = $this->previewFixture($property)->getContent();
 
@@ -376,7 +378,7 @@ class ScheduleImportTest extends ScheduleTestCase
         $this->assertMatchesRegularExpression('/工程\s*<span[^>]*>2<\/span>\s*件は残ります/u', $html, 'K（残る件数）');
     }
 
-    /** ANDPAD の工程は手入力の後ろへ続けて並ぶこと */
+    /** 取り込んだ工程は手入力の後ろへ続けて並ぶこと */
     public function test_imported_steps_are_ordered_after_the_hand_written_ones(): void
     {
         $property = $this->makeParent('property');
@@ -385,8 +387,8 @@ class ScheduleImportTest extends ScheduleTestCase
 
         $this->importFixture($property);
 
-        $andpad = $property->scheduleSteps()->where('source', 'andpad')->get();
-        $this->assertSame(range(3, 67), $andpad->pluck('sort_order')->all());
+        $imported = $property->scheduleSteps()->where('source', 'import')->get();
+        $this->assertSame(range(3, 67), $imported->pluck('sort_order')->all());
     }
 
     // ============================================================
@@ -395,13 +397,13 @@ class ScheduleImportTest extends ScheduleTestCase
 
     private function previewFixture(HsProperty $property)
     {
-        $copy = tempnam(sys_get_temp_dir(), 'andpad') . '.xlsx';
+        $copy = tempnam(sys_get_temp_dir(), 'sched') . '.xlsx';
         copy(self::FIXTURE, $copy);
         $this->temporary[] = $copy;
 
         return $this->actingAs($this->manager())->post(
             route('housing.properties.schedule-import.preview', $property),
-            ['file' => new UploadedFile($copy, 'andpad_list.xlsx', null, null, true)]
+            ['file' => new UploadedFile($copy, 'schedule-list.xlsx', null, null, true)]
         );
     }
 
@@ -437,7 +439,7 @@ class ScheduleImportTest extends ScheduleTestCase
 
     private function save(Spreadsheet $book): string
     {
-        $path = tempnam(sys_get_temp_dir(), 'andpad') . '.xlsx';
+        $path = tempnam(sys_get_temp_dir(), 'sched') . '.xlsx';
         (new XlsxWriter($book))->save($path);
         $this->temporary[] = $path;
 

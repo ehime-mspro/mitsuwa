@@ -6,7 +6,7 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 use PHPUnit\Framework\TestCase;
 
 /**
- * ANDPAD の固定資産が「正常化されていない」ことを守る（プラン Task 1）。
+ * 取込の固定資産が「正常化されていない」ことを守る（プラン Task 1）。
  *
  * ⚠ **このテストは取込の振る舞いではなく、固定資産そのものを測る。**
  *   誰かが固定資産を Excel で開いて上書き保存したり、`zipfile` で作り直したりすると、
@@ -14,11 +14,11 @@ use PHPUnit\Framework\TestCase;
  *   そうなると「本番でだけ読めない」を原理的に防げなくなるので、ここで落とす。
  *
  * ⚠ **SheetJS で読めないことはここでは測れない**（node が要る）。
- *   再加工したときは `tests/fixtures/andpad/README.md` の手順で手で測ること。
+ *   再加工したときは `tests/fixtures/schedule-import/README.md` の手順で手で測ること。
  */
-class AndpadFixtureTest extends TestCase
+class ScheduleImportFixtureTest extends TestCase
 {
-    private const LIST_FORMAT = __DIR__ . '/../../fixtures/andpad/list-format.xlsx';
+    private const LIST_FORMAT = __DIR__ . '/../../fixtures/schedule-import/list-format.xlsx';
 
     /** 中央ディレクトリを読んで [名前, 中央csize, 中央usize, ローカルcsize, ローカルusize] を返す */
     private function zipEntries(string $path): array
@@ -51,7 +51,7 @@ class AndpadFixtureTest extends TestCase
     {
         $this->assertFileExists(
             self::LIST_FORMAT,
-            '一覧形式の固定資産が無い。tests/fixtures/andpad/README.md の手順で作り直すこと'
+            '一覧形式の固定資産が無い。tests/fixtures/schedule-import/README.md の手順で作り直すこと'
         );
     }
 

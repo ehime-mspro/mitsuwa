@@ -7,7 +7,7 @@
     必要な変数: $schedule（App\Services\ScheduleCardService::build() の戻り値）
                 $scheduleCanEdit（bool）
 
-    任意の変数: $scheduleImportUrl（?string）—— ANDPAD 取込の入口。渡した画面にだけボタンが出る。
+    任意の変数: $scheduleImportUrl（?string）—— 工程表の取込の入口。渡した画面にだけボタンが出る。
 
     ⚠ **partial の中で親の種別を判定しないこと**（`$owner instanceof HsProperty` のように書かない）。
        4 親が共有する部品に「建売のときだけ」という知識を持ち込むと、次に親が増えたときに
@@ -34,7 +34,7 @@
                 @if(($scheduleImportUrl ?? null) !== null)
                     <a href="{{ $scheduleImportUrl }}"
                        style="padding: 5px 12px; font-size: 12px; font-weight: 600; color: #374151; border: 1px solid #D1D5DB; border-radius: 6px; background: white; text-decoration: none;">
-                        ANDPAD 取込
+                        工程表を取り込む
                     </a>
                 @endif
                 <span x-show="message" x-text="message" style="font-size: 12px; color: #047857;"></span>

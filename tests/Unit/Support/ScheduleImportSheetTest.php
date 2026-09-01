@@ -2,24 +2,24 @@
 
 namespace Tests\Unit\Support;
 
-use App\Support\AndpadScheduleSheet;
+use App\Support\ScheduleImportSheet;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx as XlsxWriter;
 use PHPUnit\Framework\TestCase;
 
 /**
- * ANDPAD の一覧形式 xlsx の解析（プラン Task 4）。
+ * 一覧形式 xlsx の解析（プラン Task 4）。
  *
  * ⚠ **実ファイルと合成データの両方が要る。**
- *   実ファイルは ANDPAD 特有の構造（2 シート・ページ番号行・文字列の日付）を持つが、
+ *   実ファイルは書き出し元に特有の構造（2 シート・ページ番号行・文字列の日付）を持つが、
  *   桁の上限には当たらない（工程名 最長 22 文字 / 備考 最長 174 文字）。
  *   よって**切り詰めの検証は合成データでしか書けない** —— 実ファイルだけで測ると
  *   切り詰めを消しても緑になる。
  */
-class AndpadScheduleSheetTest extends TestCase
+class ScheduleImportSheetTest extends TestCase
 {
-    private const FIXTURE = __DIR__ . '/../../fixtures/andpad/list-format.xlsx';
+    private const FIXTURE = __DIR__ . '/../../fixtures/schedule-import/list-format.xlsx';
 
     /** @var array<int, string> */
     private array $temporary = [];
@@ -39,7 +39,7 @@ class AndpadScheduleSheetTest extends TestCase
 
     public function test_it_recognises_the_list_format(): void
     {
-        $this->assertSame(AndpadScheduleSheet::FORMAT_LIST, AndpadScheduleSheet::detectFormat(self::FIXTURE));
+        $this->assertSame(ScheduleImportSheet::FORMAT_LIST, ScheduleImportSheet::detectFormat(self::FIXTURE));
     }
 
     /**
@@ -49,7 +49,7 @@ class AndpadScheduleSheetTest extends TestCase
      */
     public function test_it_reads_every_step_from_every_sheet(): void
     {
-        $result = AndpadScheduleSheet::read(self::FIXTURE);
+        $result = ScheduleImportSheet::read(self::FIXTURE);
 
         $this->assertCount(65, $result['rows']);
         $this->assertSame([], $result['rowErrors']);
@@ -62,7 +62,7 @@ class AndpadScheduleSheetTest extends TestCase
      */
     public function test_it_keeps_the_five_steps_that_only_exist_on_the_second_sheet(): void
     {
-        $names = array_column(AndpadScheduleSheet::read(self::FIXTURE)['rows'], 'name');
+        $names = array_column(ScheduleImportSheet::read(self::FIXTURE)['rows'], 'name');
 
         $this->assertSame([
             '検査 / 外壁下地検査',
@@ -75,7 +75,7 @@ class AndpadScheduleSheetTest extends TestCase
 
     public function test_no_page_number_or_header_row_is_taken_as_a_step(): void
     {
-        $names = array_column(AndpadScheduleSheet::read(self::FIXTURE)['rows'], 'name');
+        $names = array_column(ScheduleImportSheet::read(self::FIXTURE)['rows'], 'name');
 
         // 各シート末尾の `A='10'`（印刷のページ番号）
         $this->assertNotContains('10', $names);
@@ -86,9 +86,9 @@ class AndpadScheduleSheetTest extends TestCase
     }
 
     /** ⚠ 読み違えの検出。実測では 65 件すべてで成り立つ */
-    public function test_every_step_satisfies_andpad_duration_arithmetic(): void
+    public function test_every_step_satisfies_sheet_duration_arithmetic(): void
     {
-        $rows = AndpadScheduleSheet::read(self::FIXTURE)['rows'];
+        $rows = ScheduleImportSheet::read(self::FIXTURE)['rows'];
 
         $this->assertCount(65, $rows, '走査の空振り防止');
 
@@ -112,7 +112,7 @@ class AndpadScheduleSheetTest extends TestCase
      */
     public function test_the_group_name_disambiguates_steps_that_share_a_name(): void
     {
-        $names = array_column(AndpadScheduleSheet::read(self::FIXTURE)['rows'], 'name');
+        $names = array_column(ScheduleImportSheet::read(self::FIXTURE)['rows'], 'name');
 
         $shared = array_values(array_filter($names, fn ($n) => str_contains($n, '器具取付')));
 
@@ -123,7 +123,7 @@ class AndpadScheduleSheetTest extends TestCase
     /** ⚠ 分類が実装から実際に呼ばれていること（マッピング単体のテストでは測れない） */
     public function test_it_assigns_categories_from_the_group_name(): void
     {
-        $rows = AndpadScheduleSheet::read(self::FIXTURE)['rows'];
+        $rows = ScheduleImportSheet::read(self::FIXTURE)['rows'];
 
         $counts = array_count_values(array_column($rows, 'category'));
         ksort($counts);
@@ -133,7 +133,7 @@ class AndpadScheduleSheetTest extends TestCase
 
     public function test_it_reads_the_header_block(): void
     {
-        $result = AndpadScheduleSheet::read(self::FIXTURE);
+        $result = ScheduleImportSheet::read(self::FIXTURE);
 
         $this->assertSame('JG見本町3号地 分譲住宅新築工事様邸', $result['site_name']);
         $this->assertSame('愛媛県松山市見本町1丁目1-1、1-2', $result['address']);
@@ -148,7 +148,7 @@ class AndpadScheduleSheetTest extends TestCase
 
     public function test_rows_are_numbered_sequentially_across_sheets(): void
     {
-        $orders = array_column(AndpadScheduleSheet::read(self::FIXTURE)['rows'], 'sort_order');
+        $orders = array_column(ScheduleImportSheet::read(self::FIXTURE)['rows'], 'sort_order');
 
         $this->assertSame(range(1, 65), $orders);
     }
@@ -156,7 +156,7 @@ class AndpadScheduleSheetTest extends TestCase
     /** 担当会社が空でも取り込む（実測で 5 件ある） */
     public function test_steps_without_a_company_are_still_imported(): void
     {
-        $rows = AndpadScheduleSheet::read(self::FIXTURE)['rows'];
+        $rows = ScheduleImportSheet::read(self::FIXTURE)['rows'];
 
         $this->assertCount(65, $rows);
         $this->assertSame([], array_values(array_filter($rows, fn ($r) => $r['notes'] === '')),
@@ -178,7 +178,7 @@ class AndpadScheduleSheetTest extends TestCase
      */
     public function test_every_parsed_value_is_valid_utf8(): void
     {
-        $rows = AndpadScheduleSheet::read(self::FIXTURE)['rows'];
+        $rows = ScheduleImportSheet::read(self::FIXTURE)['rows'];
 
         $this->assertCount(65, $rows, '走査の空振り防止');
 
@@ -200,7 +200,7 @@ class AndpadScheduleSheetTest extends TestCase
      */
     public function test_the_rows_can_be_json_encoded_for_the_confirm_form(): void
     {
-        $rows = AndpadScheduleSheet::read(self::FIXTURE)['rows'];
+        $rows = ScheduleImportSheet::read(self::FIXTURE)['rows'];
 
         $json = json_encode($rows, JSON_UNESCAPED_UNICODE);
 
@@ -211,7 +211,7 @@ class AndpadScheduleSheetTest extends TestCase
     /** e3 で始まる文字（カタカナ）を含む工程名が壊れていないこと */
     public function test_katakana_group_names_survive_trimming(): void
     {
-        $names = array_column(AndpadScheduleSheet::read(self::FIXTURE)['rows'], 'name');
+        $names = array_column(ScheduleImportSheet::read(self::FIXTURE)['rows'], 'name');
 
         $this->assertContains('サッシ工事 / 枠搬入', $names);
         $this->assertContains('クロス・床工事 / クロス工事', $names);
@@ -228,9 +228,9 @@ class AndpadScheduleSheetTest extends TestCase
             ['A' => str_repeat('大', 60), 'B' => str_repeat('名', 60), 'E' => '2026/07/01', 'H' => '2026/07/01', 'K' => '1'],
         ]);
 
-        $result = AndpadScheduleSheet::read($path);
+        $result = ScheduleImportSheet::read($path);
 
-        $this->assertSame(AndpadScheduleSheet::MAX_NAME, mb_strlen($result['rows'][0]['name']));
+        $this->assertSame(ScheduleImportSheet::MAX_NAME, mb_strlen($result['rows'][0]['name']));
         $this->assertCount(1, $result['warnings']);
         $this->assertStringContainsString('工程名', $result['warnings'][0]);
     }
@@ -242,9 +242,9 @@ class AndpadScheduleSheetTest extends TestCase
              'E' => '2026/07/01', 'H' => '2026/07/01', 'K' => '1'],
         ]);
 
-        $result = AndpadScheduleSheet::read($path);
+        $result = ScheduleImportSheet::read($path);
 
-        $this->assertSame(AndpadScheduleSheet::MAX_NOTES, mb_strlen($result['rows'][0]['notes']));
+        $this->assertSame(ScheduleImportSheet::MAX_NOTES, mb_strlen($result['rows'][0]['notes']));
         $this->assertCount(1, $result['warnings']);
         $this->assertStringContainsString('備考', $result['warnings'][0]);
     }
@@ -259,7 +259,7 @@ class AndpadScheduleSheetTest extends TestCase
             ['A' => '仮設工事', 'B' => '設置', 'E' => '2026/02/30', 'H' => '2026/03/01', 'K' => '1'],
         ]);
 
-        $result = AndpadScheduleSheet::read($path);
+        $result = ScheduleImportSheet::read($path);
 
         $this->assertSame([], $result['rows'], '存在しない日付の行を取り込んではいけない');
         $this->assertCount(1, $result['rowErrors']);
@@ -272,7 +272,7 @@ class AndpadScheduleSheetTest extends TestCase
             ['A' => '仮設工事', 'B' => '設置', 'E' => '2026/07/10', 'H' => '2026/07/01', 'K' => '1'],
         ]);
 
-        $result = AndpadScheduleSheet::read($path);
+        $result = ScheduleImportSheet::read($path);
 
         $this->assertSame([], $result['rows']);
         $this->assertCount(1, $result['rowErrors']);
@@ -286,7 +286,7 @@ class AndpadScheduleSheetTest extends TestCase
             ['A' => '仮設工事', 'B' => '設置', 'E' => '2026/07/01', 'H' => '2026/07/03', 'K' => '9'],
         ]);
 
-        $result = AndpadScheduleSheet::read($path);
+        $result = ScheduleImportSheet::read($path);
 
         $this->assertCount(1, $result['rows'], '警告であって取りこぼしではない');
         $this->assertSame([], $result['rowErrors']);
@@ -303,7 +303,7 @@ class AndpadScheduleSheetTest extends TestCase
              'E' => '2026/07/01', 'H' => '2026/07/01', 'K' => '1'],
         ]);
 
-        $row = AndpadScheduleSheet::read($path)['rows'][0];
+        $row = ScheduleImportSheet::read($path)['rows'][0];
 
         $this->assertSame('サッシ工事 / 枠搬入', $row['name']);
         $this->assertTrue(mb_check_encoding($row['name'], 'UTF-8'));
@@ -316,7 +316,7 @@ class AndpadScheduleSheetTest extends TestCase
             ['A' => '仮設工事', 'B' => '', 'E' => '2026/07/01', 'H' => '2026/07/01', 'K' => '1'],
         ]);
 
-        $result = AndpadScheduleSheet::read($path);
+        $result = ScheduleImportSheet::read($path);
 
         $this->assertSame([], $result['rows']);
         $this->assertCount(1, $result['rowErrors']);
@@ -332,9 +332,9 @@ class AndpadScheduleSheetTest extends TestCase
         $sheet->setCellValue('A3', '2026/07/01');
         $path = $this->save($book);
 
-        $result = AndpadScheduleSheet::read($path);
+        $result = ScheduleImportSheet::read($path);
 
-        $this->assertSame(AndpadScheduleSheet::FORMAT_OTHER, $result['format']);
+        $this->assertSame(ScheduleImportSheet::FORMAT_OTHER, $result['format']);
         $this->assertSame([], $result['rows']);
     }
 
@@ -362,7 +362,7 @@ class AndpadScheduleSheetTest extends TestCase
         $r = 4;
         foreach ($dataRows as $row) {
             foreach ($row as $col => $value) {
-                // ⚠ ANDPAD と同じく**文字列**で入れる（日付をシリアル値にしない）
+                // ⚠ 実ファイルと同じく**文字列**で入れる（日付をシリアル値にしない）
                 $sheet->setCellValueExplicit($col . $r, (string) $value, DataType::TYPE_STRING);
             }
             $r++;
@@ -373,7 +373,7 @@ class AndpadScheduleSheetTest extends TestCase
 
     private function save(Spreadsheet $book): string
     {
-        $path = tempnam(sys_get_temp_dir(), 'andpad') . '.xlsx';
+        $path = tempnam(sys_get_temp_dir(), 'sched') . '.xlsx';
         (new XlsxWriter($book))->save($path);
         $this->temporary[] = $path;
 

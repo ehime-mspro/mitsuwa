@@ -1,7 +1,7 @@
 # ANDPAD 工程表取込 実装プラン
 
 **作成日**: 2026-09-01
-**設計書（正本）**: `docs/superpowers/specs/2026-09-01-andpad-schedule-import-design.md`
+**設計書（正本）**: `docs/superpowers/specs/2026-09-01-schedule-import-design.md`
 **worktree**: `.claude/worktrees/andpad-import`（branch `andpad-import`、`021a1530` から）
 **前提**: 工程表機能（`schedule_steps`）は 2026-09-01 に本番稼働済み・実データ 0 件
 
