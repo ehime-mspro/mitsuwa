@@ -135,7 +135,7 @@ class ScheduleImportController extends Controller
             ->route('housing.properties.show', $property)
             ->with('success', $replaced > 0
                 ? "工程表を取り込みました（既存の {$replaced} 件を入れ替えて {$count} 件を登録）。"
-                : "工程表を {$count} 件取り込みました。");
+                : "工程を {$count} 件取り込みました。");
     }
 
     // ============================================================
