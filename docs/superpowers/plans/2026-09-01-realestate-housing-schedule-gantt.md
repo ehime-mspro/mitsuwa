@@ -111,6 +111,7 @@ main repo には `vendor/bin/phpunit` が無く（`--no-dev`）、dev 依存を�
 
 | ファイル | 対象 |
 |---|---|
+| `tests/Unit/Schedule/ScheduleStepCategoryTest.php` | §3.6 |
 | `tests/Unit/Support/GanttScaleTest.php` | §5.1 |
 | `tests/Unit/Support/ScheduleStepStatusTest.php` | §5.4 |
 | `tests/Unit/Support/LanePackerTest.php` | §5.3 |
@@ -373,16 +374,20 @@ MSG
 
 **Files:**
 - Create: `app/Enums/ScheduleStepCategory.php`
-- Test: `tests/Unit/Support/ScheduleStepCategoryTest.php`
+- Test: `tests/Unit/Schedule/ScheduleStepCategoryTest.php`
+  （⚠ Enum のテストは **Support ではなく領域フォルダ**に置くのが既存の流儀。
+  実測: `App\Enums\ProcurementStatus` → `tests/Unit/RealEstate/`、
+  `App\Enums\AreaTenantStatus` → `tests/Unit/Tenant/`。
+  `App\Support\*` のほうは `tests/Unit/Support/` が正しいので Task 3〜5 は据え置き）
 
 - [ ] **Step 1: 失敗するテストを書く**
 
-`tests/Unit/Support/ScheduleStepCategoryTest.php`:
+`tests/Unit/Schedule/ScheduleStepCategoryTest.php`:
 
 ```php
 <?php
 
-namespace Tests\Unit\Support;
+namespace Tests\Unit\Schedule;
 
 use App\Enums\ScheduleStepCategory;
 use PHPUnit\Framework\TestCase;
@@ -520,7 +525,7 @@ Expected: `OK (3 tests, ...)`
 
 ```bash
 cd /Users/masanori/site/manage/.claude/worktrees/realestate-schedule
-git add app/Enums/ScheduleStepCategory.php tests/Unit/Support/ScheduleStepCategoryTest.php
+git add app/Enums/ScheduleStepCategory.php tests/Unit/Schedule/ScheduleStepCategoryTest.php
 git commit -m "$(cat <<'MSG'
 feat(schedule): 工程の分類 enum を足す
 
@@ -5677,11 +5682,23 @@ CSS が要るので、main repo の Vite で worktree をビルドする（workt
 cd /Users/masanori/site/manage/.claude/worktrees/realestate-schedule && /Users/masanori/site/manage/node_modules/.bin/vite build
 ```
 
-開発サーバを立てる:
+開発サーバを立てる。
+
+⚠ **`artisan serve` は終わらないプロセス。必ずバックグラウンドで起動すること。**
+前面で起動すると、そのままステップが止まって以降の確認へ進めない
+（エージェントが実行する場合は `run_in_background: true`、人が実行する場合は別ターミナル）。
 
 ```bash
 cd /Users/masanori/site/manage/.claude/worktrees/realestate-schedule && APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= DB_CONNECTION=sqlite DB_DATABASE=storage/schedule-demo.sqlite php artisan serve --port=8000
 ```
+
+起動を確認してから次へ進む:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8000/login
+```
+
+Expected: `200`
 
 - [ ] **Step 4: 6 画面を目で見る**
 
@@ -5733,6 +5750,8 @@ Expected: 6 画面すべてで `ok: true`。**幅 1800px と 1200px の両方**�
 （設計書 §10-2 と同じ穴）。
 
 - [ ] **Step 9: 後片付け**
+
+⚠ **バックグラウンドで起動した `artisan serve` を止めること**（ポート 8000 を掴んだままになる）。
 
 ```bash
 cd /Users/masanori/site/manage/.claude/worktrees/realestate-schedule && rm -f storage/schedule-demo.sqlite storage/schedule-demo.php && git status --porcelain && echo "clean"
@@ -5849,7 +5868,22 @@ cd /Users/masanori/site/manage && composer dump-autoload
 ⚠ **必ず main repo の cwd で実行する。** worktree から実行すると autoloader の `$baseDir` に
 worktree のパスが焼き込まれ、main repo の Apache が worktree を参照する事故になる。
 
-- [ ] **Step 6: 本番へ DDL を流す（⚠ `./deploy.sh` より先）**
+- [ ] **Step 6: ローカルの DB にも DDL を流す（⚠ 忘れるとローカルが 6 画面 500 になる）**
+
+⚠ **ff-merge した瞬間、ローカルの Apache は新しいコードを実 MySQL に対して動かす。**
+`schedule_steps` がまだ無いので、詳細 4 画面とボード 2 画面が
+`Base table or view not found` で落ちる。**本番と同じ理由がローカルで先に起きる。**
+
+```bash
+cd /Users/masanori/site/manage && sudo mysql manage < database/sql/2026-08-31-create-schedule-steps.sql
+```
+
+⚠ **実 DB 名は `manage` とは限らない。** memory の記録では実体は別名なので、
+`sudo mysql` が非対話で通らない場合も含めて、迷ったら
+`php artisan tinker --execute="DB::unprepared(file_get_contents('database/sql/2026-08-31-create-schedule-steps.sql')); echo 'ok';"`
+で `.env` の接続先へ流す（`CREATE TABLE IF NOT EXISTS` の単一文なので再実行して安全）。
+
+- [ ] **Step 7: 本番へ DDL を流す（⚠ `./deploy.sh` より先）**
 
 ⚠ **順番を逆にしない。** テーブルが無い状態でコードだけ本番へ出ると、
 **詳細 4 画面とボード 2 画面が `Base table or view not found` で 500 する**（設計書 §7）。
@@ -5858,18 +5892,18 @@ worktree のパスが焼き込まれ、main repo の Apache が worktree を参�
 `php artisan tinker --execute` 経由で流す（memory「SoftDelete等スキーマ依存コードは DB 先→コード後」参照）。
 DDL は `CREATE TABLE IF NOT EXISTS` の**単一ステートメント**なので `DB::unprepared()` で流せる。
 
-- [ ] **Step 7: 本番反映の可否をユーザーに確認する**
+- [ ] **Step 8: 本番反映の可否をユーザーに確認する**
 
 ⚠ **`./deploy.sh` はユーザーの明示承認がある時だけ実行する**（設計書 §7）。
 承認が無い文脈では自動モードの分類器が止める。`AskUserQuestion` で明示的に聞くこと。
 
-- [ ] **Step 8: 承認が得られたらデプロイする**
+- [ ] **Step 9: 承認が得られたらデプロイする**
 
 ```bash
 cd /Users/masanori/site/manage && ./deploy.sh
 ```
 
-- [ ] **Step 9: 本番で目視する**
+- [ ] **Step 10: 本番で目視する**
 
 Task 12 の Step 4〜8 と同じ 6 画面を、**本番の URL**（`https://www.mitsuwat.co.jp/system/manage/...`）で見る。
 
