@@ -296,4 +296,51 @@ class ScheduleSectionRenderTest extends ScheduleTestCase
             '前の余白 1 ヶ月が消えている（Carbon の月末オーバーフロー）'
         );
     }
+    /**
+     * ⚠ **予定と実績が両方あるときは実績で描く**（設計書 §5.2 の例そのもの:
+     *   「予定 5/18〜9/30・実績 6/1〜10/16」の工程は **6/1〜10/16 の 1 本**）。
+     *
+     *   ⚠ **予定と実績の片方しか入っていない工程では、この規則を測れない。**
+     *     両方入った行が 1 つも無いと `actual_start ?? planned_start` を
+     *     `planned_start ?? actual_start` へ入れ替える変異が**素通りする**
+     *     （Task 11 の変異 M7 で実測した。この 1 本はその穴を塞ぐために足した）。
+     *
+     *   ⚠ **画面の文字列では測れない。** この行は遅延（+16日）なので、
+     *     ガントの左カラムは期間テキストではなく遅延チップを出す。
+     *     §5.2 が支配するのは**描画区間**なので、そちらを直接見る。
+     */
+    public function test_a_step_with_both_planned_and_actual_dates_is_drawn_from_the_actual_ones(): void
+    {
+        $owner = $this->makeParent('procurement');
+        $owner->scheduleSteps()->create([
+            'name'          => '造成工事',
+            'category'      => 'work',
+            'planned_start' => '2026-05-18',
+            'planned_end'   => '2026-09-30',
+            'actual_start'  => '2026-06-01',
+            'actual_end'    => '2026-10-16',
+            'sort_order'    => 1,
+        ]);
+
+        $card = app(\App\Services\ScheduleCardService::class)
+            ->build($owner, \Carbon\CarbonImmutable::parse('2026-08-31'));
+
+        $row = $card['gantt']['rows'][0];
+
+        $this->assertSame('6/01〜10/16', $row['periodText'], '実績で描いていない（設計書 §5.2）');
+
+        // 棒の左端も実績開始に載っていること（軸は 2026-04-01〜2026-11-30）
+        $expectedLeft = (new \App\Support\GanttScale(
+            \Carbon\CarbonImmutable::parse('2026-04-01'),
+            \Carbon\CarbonImmutable::parse('2026-11-30'),
+        ))->left(\Carbon\CarbonImmutable::parse('2026-06-01'));
+
+        $this->assertEqualsWithDelta($expectedLeft, $row['leftPct'], 0.0001, '棒の左端が予定開始に載っている');
+
+        // 画面には遅延として出る（この行が実際に描かれていることの裏取り）
+        $html = $this->actingAs($this->manager())->get($this->showUrl('procurement', $owner))
+            ->assertOk()->getContent();
+
+        $this->assertStringContainsString('+16日', $html, '遅延日数が画面に出ていない');
+    }
 }
