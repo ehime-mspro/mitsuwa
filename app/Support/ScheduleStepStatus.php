@@ -91,6 +91,10 @@ final class ScheduleStepStatus
      *
      * ⚠ 実績終了だけが入って実績開始が空、という状態は validate() が禁じている（設計書 §4.5）が、
      *   万一入っても「完了」に倒して描画側の分岐が壊れないようにする。
+     *
+     * ⚠ **返す `RUNNING` / `DONE` の文字列は `dateState()`（日付だけの状態）と共有している。**
+     *   ボードの絞り込みの URL（`?status=running`）を部署で食い違わせないため。どちらかの
+     *   文字列だけを変えないこと。
      */
     public static function progress(?CarbonInterface $actualStart, ?CarbonInterface $actualEnd): string
     {

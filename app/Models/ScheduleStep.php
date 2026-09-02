@@ -110,7 +110,8 @@ class ScheduleStep extends Model
     }
 
     // ============================================================
-    // 遅延・進捗（判定は App\Support\ScheduleStepStatus に集約。Bug #46）
+    // 遅延・進捗・状態（判定は App\Support\ScheduleStepStatus に集約。Bug #46）
+    // ⚠ 「遅延・進捗」は実績を持つ親（不動産）用、「状態」は実績を持たない親（住宅事業）用で別の軸。
     // ============================================================
 
     public function delayDays(CarbonInterface $today): int

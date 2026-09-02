@@ -209,6 +209,34 @@ class ScheduleStepStatusTest extends TestCase
         );
     }
 
+    /**
+     * ⚠ **時刻付きで渡されても日付だけで判定する。** 実運用では呼び出し側が
+     *   `startOfDay()` 済みの値を渡すので今は壊れないが、その前提を型では強制できない。
+     *   この 1 本が無いと `dateState()` の `startOfDay()` を 3 箇所とも消しても全部緑になる。
+     */
+    public function test_the_time_of_day_is_ignored(): void
+    {
+        // 終了日が「今日の朝」でも、今日いっぱいは進行中（時刻で切り上がらない）
+        $this->assertSame(
+            ScheduleStepStatus::RUNNING,
+            ScheduleStepStatus::dateState(
+                CarbonImmutable::parse('2026-08-20 09:00:00'),
+                CarbonImmutable::parse('2026-09-02 09:00:00'),
+                CarbonImmutable::parse('2026-09-02 18:30:00')
+            )
+        );
+
+        // 開始日が「今日の夜」でも、今日はもう進行中（これからではない）
+        $this->assertSame(
+            ScheduleStepStatus::RUNNING,
+            ScheduleStepStatus::dateState(
+                CarbonImmutable::parse('2026-09-02 23:00:00'),
+                CarbonImmutable::parse('2026-09-10'),
+                CarbonImmutable::parse('2026-09-02 01:00:00')
+            )
+        );
+    }
+
     public function test_a_step_that_ended_before_today_is_done(): void
     {
         $this->assertSame(
