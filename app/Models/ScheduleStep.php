@@ -40,8 +40,23 @@ class ScheduleStep extends Model
      *   **そのカラムに触れず旧値を残す**（Bug #38 と同型）。書き込み経路が増えても漏れないよう、
      *   ここ 1 箇所で正規化する。
      *
-     * ⚠ **`schedulable` は `associate()` 済みなのでクエリは増えない。** 親が未解決のときは
-     *   何もしない（保存前に親を紐づけていない呼び出しは元々成立しない）。
+     * ⚠ **Eloquent の `save()` を通る経路にだけ効く。** クエリビルダの一括 update
+     *   （`ScheduleStep::whereKey(...)->update([...])`）はモデルイベントを通らない
+     *   （`Illuminate\Database\Eloquent\Builder::update()` は `toBase()->update()` に
+     *   落ちて Eloquent を経由しないため。実測）。現状そこで書くのは
+     *   `ScheduleStepController::reorder()` の sort_order / updated_by だけなので穴ではないが、
+     *   一括更新で actual_* を書く経路を足すときはここで守られないことを前提にすること。
+     *
+     * ⚠ **`schedulable` の解決コスト**（実測）: `store()` と取込は `associate()` 済み
+     *   （`MorphTo::associate()` が `setRelation()` する）なのでクエリは増えない。
+     *   `update()`（`findOrFail()` で工程だけを読む）と `$owner->scheduleSteps()->create()`
+     *   （`MorphOneOrMany::setForeignAttributesForCreate()` は FK 2 列を代入するだけで、
+     *   `chaperone()` していないので `setRelation()` されない）は、ここで `schedulable` に
+     *   触れた瞬間に lazy-load が 1 回走る。**FK は `save()` の前に必ず入る**ので
+     *   親は必ず解決できる（クエリが 1 本増えるだけで結果は正しい）。
+     *
+     * ⚠ `$owner !== null` は**未測定の分岐**（親を紐づけずに `save()` する経路が現状無い）。
+     *   変異で「検出しない」と出ても穴ではない。
      */
     protected static function booted(): void
     {

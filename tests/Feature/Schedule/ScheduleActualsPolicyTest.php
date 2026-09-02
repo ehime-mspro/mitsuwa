@@ -126,6 +126,52 @@ class ScheduleActualsPolicyTest extends ScheduleTestCase
         $this->assertNull(\App\Models\ScheduleStep::find($step->id)->actual_end);
     }
 
+    /**
+     * ⚠ **INSERT 側**。既存の 2 本は update 経路（`performUpdate()` は `updating` を
+     *   `getDirtyForUpdate()` の前に発火する）とコントローラ経由（`rules()` が先に落とす）
+     *   しか通らないので、`saving` を `creating` / `updating` に変える変異を止められない。
+     */
+    public function test_creating_a_housing_step_with_actual_dates_stores_none(): void
+    {
+        $owner = $this->makeParent('property');
+
+        $step = $owner->scheduleSteps()->create([
+            'name' => '基礎工事', 'category' => 'work',
+            'planned_start' => '2026-05-01', 'planned_end' => '2026-05-20',
+            'actual_start'  => '2026-05-02', 'actual_end'  => '2026-05-19',
+            'sort_order'    => 1,
+        ]);
+
+        $fresh = \App\Models\ScheduleStep::find($step->id);
+        $this->assertNull($fresh->actual_start);
+        $this->assertNull($fresh->actual_end);
+    }
+
+    /**
+     * ⚠ **何も変えずに保存し直しても掃除される。** これは `saving` でしか届かない
+     *   （`updating` は `performUpdate()` の中＝ dirty が無いと到達しない）。
+     *   フックのイベント名の選択そのものを固定する 1 本。
+     */
+    public function test_re_saving_an_untouched_housing_step_still_clears_its_actual_dates(): void
+    {
+        $owner = $this->makeParent('property');
+        $step  = $owner->scheduleSteps()->create([
+            'name' => '基礎工事', 'category' => 'work',
+            'planned_start' => '2026-05-01', 'planned_end' => '2026-05-20', 'sort_order' => 1,
+        ]);
+
+        \Illuminate\Support\Facades\DB::table('schedule_steps')->where('id', $step->id)
+            ->update(['actual_start' => '2026-05-02', 'actual_end' => '2026-05-19']);
+
+        $reloaded = \App\Models\ScheduleStep::find($step->id);
+        $this->assertNotNull($reloaded->actual_start, '前提: DB には実績が入っている');
+
+        $reloaded->save();   // ⚠ 何も変えない
+
+        $this->assertNull(\App\Models\ScheduleStep::find($step->id)->actual_start);
+        $this->assertNull(\App\Models\ScheduleStep::find($step->id)->actual_end);
+    }
+
     public function test_the_hook_leaves_realestate_actual_dates_alone(): void
     {
         $owner = $this->makeParent('procurement');

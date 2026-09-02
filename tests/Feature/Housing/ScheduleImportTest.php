@@ -250,7 +250,14 @@ class ScheduleImportTest extends ScheduleTestCase
         $this->assertSame(['import'], array_values(array_unique($steps->pluck('source')->all())));
         $this->assertSame(range(1, 65), $steps->pluck('sort_order')->all());
 
-        // ⚠ 実績は触らない（設計書 §3.1 A）
+        // ⚠ 実績は触らない（設計書 §3.1 A）。
+        //   ⚠ **この 2 行は挙動としては守られているが、この変異は検出しない**
+        //   （実測。Bug #48）: 取込先は必ず HsProperty（実績を持たない）なので、
+        //   ScheduleStep の saving フックが何を書いても null に潰す。よって
+        //   ScheduleImportController::execute() の new ScheduleStep([...]) に
+        //   'actual_start' => $row['planned_start'] を足しても、この 2 行は緑のまま通る。
+        //   取込が実績に触らないことは test_the_importer_never_writes_actual_dates
+        //   （ソースの構造）が担当する。
         $this->assertSame(0, $steps->whereNotNull('actual_start')->count());
         $this->assertSame(0, $steps->whereNotNull('actual_end')->count());
 
@@ -389,6 +396,34 @@ class ScheduleImportTest extends ScheduleTestCase
 
         $imported = $property->scheduleSteps()->where('source', 'import')->get();
         $this->assertSame(range(3, 67), $imported->pluck('sort_order')->all());
+    }
+
+    // ============================================================
+    // 実績は触らない（構造）— Bug #48
+    // ============================================================
+
+    /**
+     * ⚠ **挙動では測れなくなった。** 取込先は必ず HsProperty（実績を持たない）なので、
+     *   ScheduleStep の saving フックが何を書いても null に潰す ＝ 取込側に
+     *   'actual_start' を足す変異が挙動テストでは緑のまま通る（実測。Bug #48）。
+     *   取込が実績に触らないことは**ソースの構造**で固定する。
+     */
+    public function test_the_importer_never_writes_actual_dates(): void
+    {
+        $source = file_get_contents(app_path('Http/Controllers/Housing/ScheduleImportController.php'));
+
+        // ⚠ コメントを落としてから測る（注意書きに actual_ と書いてあると自分に一致する。Bug #42 ②）
+        $code = '';
+        foreach (token_get_all($source) as $token) {
+            if (is_array($token) && in_array($token[0], [T_COMMENT, T_DOC_COMMENT], true)) {
+                continue;
+            }
+            $code .= is_array($token) ? $token[1] : $token;
+        }
+
+        $this->assertStringNotContainsString('actual_start', $code);
+        $this->assertStringNotContainsString('actual_end', $code);
+        $this->assertStringContainsString('planned_start', $code, '走査の空振りでないこと');
     }
 
     // ============================================================
