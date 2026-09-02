@@ -117,6 +117,12 @@
                 <li>取り込み済みの既存の工程 <span class="font-bold">{{ $importedCount }}</span> 件を削除します</li>
                 <li>ファイルから <span class="font-bold">{{ count($result['rows']) }}</span> 件を登録します</li>
                 <li>手で追加した工程 <span class="font-bold">{{ $manualCount }}</span> 件は残ります</li>
+                {{--
+                    ⚠ `?? []` は防御。現状この <li> は @@isset($result) の内側にあり、
+                       preview() が result と dateChanges を常にセットで渡す（他に代入経路が
+                       無い）ので実際には到達しないが、将来この <li> が @@isset の外へ動いた
+                       ときに Undefined variable にならないようにしている（消さないこと）。
+                --}}
                 @foreach($dateChanges ?? [] as $change)
                     <li>{{ $change['label'] }}を <span class="font-bold">{{ $change['to'] }}</span> にします（現在: {{ $change['from'] }}）</li>
                 @endforeach

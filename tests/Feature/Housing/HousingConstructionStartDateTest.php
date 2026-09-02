@@ -422,4 +422,50 @@ class HousingConstructionStartDateTest extends ScheduleTestCase
         $this->assertNull($fresh->construction_start_date, 'プレビューだけでは着工予定日を書き込まない');
         $this->assertNull($fresh->scheduled_completion_date, 'プレビューだけでは完成予定日を書き込まない');
     }
+
+    /**
+     * ⚠ **`preview()` は `$result['rows']` が空かどうかを見ずに `dateChanges()` を呼ぶ。**
+     *   `ScheduleImportSheet::read()` は見出し行（`REQUIRED_HEADERS`）が見つかった時点で
+     *   `format = FORMAT_LIST` を確定し、そのあとデータ行が 0 件でも `rows = []` のまま返す。
+     *   よって「見出しは揃っているが有効な工程行が 1 つも無いファイル」を `preview()` に
+     *   送ると `derivedDates([])` に到達する。`execute()` は `$sanitized['rows'] === []` を
+     *   弾くのでこの経路は取込側（確定）からは見えないが、**プレビュー側にはその弾きが無い**
+     *   （コード品質レビュー指摘・実測済み）。
+     *
+     * ⚠ **現在のコードは安全**（`$starts === [] ? null : min($starts)` のガードが効き、
+     *   両方 null を返して `dateChanges()` は空配列になる）。このテストは**その安全性を
+     *   固定する**——ガードを外す変異（c3 と同型）を当てたとき、execute() 経由の
+     *   HTTP テストは 1 本も検出できないが、このテストは 500 として検出する。
+     */
+    public function test_the_preview_does_not_crash_on_a_file_with_headers_but_no_data_rows(): void
+    {
+        $property = $this->makeParent('property', ['property_code' => 'HS-PRE4']);
+
+        $path = sys_get_temp_dir() . '/schedule-import-headers-only-' . bin2hex(random_bytes(8)) . '.xlsx';
+
+        try {
+            $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+            $sheet = $spreadsheet->getActiveSheet();
+            // ScheduleImportSheet::REQUIRED_HEADERS と同じ見出しを 3 行目に置く。データ行は無し。
+            $sheet->setCellValue('A3', '大工程名');
+            $sheet->setCellValue('B3', '工程名');
+            $sheet->setCellValue('E3', '施工開始日');
+            $sheet->setCellValue('H3', '施工完了日');
+            $sheet->setCellValue('L3', '状態');
+            (new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet))->save($path);
+
+            $response = $this->actingAs($this->manager())->post(
+                route('housing.properties.schedule-import.preview', $property),
+                ['file' => new \Illuminate\Http\UploadedFile($path, 'headers-only.xlsx', null, null, true)]
+            );
+
+            $response->assertOk();
+
+            $html = $response->getContent();
+            $this->assertStringNotContainsString('着工予定日を', $html, '工程が無いので予告は出ない');
+            $this->assertStringNotContainsString('完成予定日を', $html);
+        } finally {
+            @unlink($path);
+        }
+    }
 }
