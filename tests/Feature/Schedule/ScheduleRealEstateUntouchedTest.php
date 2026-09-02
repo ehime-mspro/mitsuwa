@@ -61,7 +61,7 @@ class ScheduleRealEstateUntouchedTest extends ScheduleTestCase
             $this->assertNull($row['state'], "{$key} に状態チップは付けない");
             $this->assertFalse($row['ring'], "{$key} に輪郭は付けない");
             $this->assertSame(13, $row['delayDays'], "{$key} の遅延は 8/20 から 9/02 で 13 日");
-            $this->assertSame('6/01〜9/02', $row['periodText'], "{$key} は実績開始から今日まで描く");
+            $this->assertSame('6/01〜9/02', $row['periodText'], "{$key} は実績開始から今日まで描く（設計書 §5.2）");
         }
     }
 
@@ -100,7 +100,7 @@ class ScheduleRealEstateUntouchedTest extends ScheduleTestCase
         $this->assertSame('2026-06-05', $step->actual_end->toDateString());
     }
 
-    /** 実績終了だけを送るのは従来どおり弾く */
+    /** 実績終了だけを送るのは従来どおり弾く（設計書 §4.5） */
     public function test_a_realestate_step_still_rejects_an_end_without_a_start(): void
     {
         $owner = $this->makeParent('procurement');
@@ -110,7 +110,10 @@ class ScheduleRealEstateUntouchedTest extends ScheduleTestCase
                 'actual_start' => null,
                 'actual_end'   => '2026-06-05',
             ]))
-            ->assertStatus(422);
+            // ⚠ M-1: assertStatus(422) だけでは「なぜ 422 か」を見ていない（name 等、別のルールで
+            //   落ちても緑になる）。ScheduleStepCrudTest::test_an_actual_end_without_an_actual_start_is_rejected
+            //   と同じ流儀で、落ちた項目まで見る。
+            ->assertStatus(422)->assertJsonValidationErrors('actual_start');
     }
 
     // ============================================================
@@ -131,6 +134,7 @@ class ScheduleRealEstateUntouchedTest extends ScheduleTestCase
 
         $response = $this->actingAs($this->manager())->get('/realestate/schedules?status=all')->assertOk();
         $board    = $response->viewData('board');
+        $html     = $response->getContent();
 
         // KPI 4 枚（住宅の 3 枚スタイルに巻き込まれていない。ラベルまで見る＝Bug #43）
         $this->assertSame(
@@ -144,15 +148,38 @@ class ScheduleRealEstateUntouchedTest extends ScheduleTestCase
             $board['statuses']
         );
 
-        // 行自身も遅延を持つ（住宅は delayDays を常に 0 に潰す。ここが不動産だけの経路であること）
+        // ⚠ M-2: 走査の空振り（PRC-001 の行が無い）を「行が無いので null」と誤読しないよう名指しする
         $row = collect($board['rows'])->firstWhere('code', 'PRC-001');
+        $this->assertNotNull($row, 'PRC-001 の行がボードに出ていない');
+
+        // 行自身も遅延を持つ（住宅は delayDays を常に 0 に潰す。ここが不動産だけの経路であること）
         $this->assertSame('late', $row['status']);
         $this->assertSame(13, $row['delayDays']);
+        // ⚠ I-2: steps[].delayDays（展開した工程明細の遅延）は row['delayDays']（案件行の遅延の
+        //   最大値）と別のサイトで、以前は不動産方向にまったく固定されていなかった（0 に潰しても
+        //   1283 全緑）。$s->delayDays($today) と同じ計算なので同じ 13 日。
+        $this->assertSame(13, $row['steps'][0]['delayDays'], '工程明細の遅延も残る');
 
-        // viewData だけでなく HTML にも実際に描かれていること（Bug #43: 部分一致の false-pass を避ける）
+        // ⚠ I-2: bars[].late（遅延した棒の赤枠）を肯定的に見ているテストはアプリ全体に無かった
+        //   （`false` に潰しても 1283 全緑）。border: 2px solid #DC2626 はこの画面に 1 箇所しか無い
+        //   （grep 済み）ので部分一致の心配は無い。
+        $this->assertStringContainsString('border: 2px solid #DC2626', $html, '遅延した棒は赤枠');
+
+        // ⚠ I-1（Bug #43）: 遅延バッジは案件行と工程明細の 2 箇所にあり、
+        //   `/color: #DC2626; font-weight: 700[^>]*>\+13日/` は両方に当たるため片方だけ消しても
+        //   緑のままだった。役割ごとに分けて見る。
+        //   案件行のバッジは margin-left: auto; font-size: 10.5px; を前置きに持つのに対し、
+        //   工程明細のバッジは style="color: #DC2626; font-weight: 700;" だけ（この前置きが無い）
+        //   ので、正規表現とタグ全体一致で確実に区別できる（どちらも grep 済みでこの画面に 1 箇所）。
         $this->assertMatchesRegularExpression(
-            '/color: #DC2626; font-weight: 700[^>]*>\+13日/',
-            $response->getContent()
+            '/margin-left: auto; font-size: 10\.5px; color: #DC2626; font-weight: 700[^>]*>\+13日/',
+            $html,
+            '案件行の遅延バッジが描かれていない'
+        );
+        $this->assertStringContainsString(
+            '<span style="color: #DC2626; font-weight: 700;">+13日</span>',
+            $html,
+            '工程明細の遅延バッジが描かれていない'
         );
     }
 }
