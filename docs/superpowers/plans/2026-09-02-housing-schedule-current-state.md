@@ -2727,6 +2727,47 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 EOF
 ```
 
+### ⚠ Task 9 完了後のコードレビューで見つかった穴 2 件（I-1 / I-2）
+
+レビュアーが Step 1 のテスト（当初 5 本。プラン逐語の 4 本 ＋ (B) で追加したボードテスト 1 本）に
+**変異を全 1283 本に当てて**実測し、2 つの穴を見つけた（commit d0fe843f で修正）。
+
+- **I-1**: `_schedule_board.blade.php` は遅延バッジを**案件行**と**展開した工程明細**の 2 箇所に描くが、
+  `/color: #DC2626; font-weight: 700[^>]*>\+13日/` は両方に当たるため、片方だけを消す変異が
+  **1283 全緑**で通っていた（実測: 案件行のバッジ削除 → 全緑 / 工程明細のバッジ削除 → 全緑）。
+  役割ごとに分けた（案件行は `margin-left: auto; font-size: 10\.5px;` を前置きにした正規表現、
+  工程明細は `<span style="color: #DC2626; font-weight: 700;">+13日</span>` の完全一致）。
+- **I-2**: `ScheduleBoardService::row()` の `bars[].late`（棒の赤枠）と `steps[].delayDays`
+  （工程明細の遅延）は不動産方向にまったく固定されておらず、`false` / `0` に潰しても
+  **1283 全緑**だった。`border: 2px solid #DC2626` を肯定的に見るテストがアプリ全体に 1 本も無く、
+  下記 Task 10 の変異 15 は住宅側が赤枠を出す向きしか測っていなかった（不動産が赤枠を
+  **失う**向きは素通り）。`border: 2px solid #DC2626` はこの画面に 1 箇所しか無いことを grep で
+  確認したうえで固定した。
+
+### ⚠ 記録の訂正 — c2（`_schedule_gantt.blade.php` の `@if($g['tracksActuals'])` を消す）の検出理由
+
+Step 1 完了直後の実測記録は「c2 は 2/5 で赤になった」で止めており、**落ちた理由の文言**まで
+突き合わせていなかった（Bug #44 の「赤になっただけでは足りない、理由まで見る」に反する）。
+
+コードレビューの指摘を受けて再実測すると、赤になった 2 本
+（`test_the_realestate_detail_page_still_shows_the_delay_badge` /
+`test_a_realestate_step_still_accepts_actual_dates_over_http`）は**どちらも `assertOk()` の 500**
+（`$chipStyle[$row['state']]` が `state=null` の不動産行で
+`ErrorException: Undefined array key ""`）で落ちていた。**狙っていた
+`assertMatchesRegularExpression` は一度も評価されていなかった。**
+
+`$chipStyle[$row['state']] ?? ''` と**検証のためだけに一時的に**フォールバックを足してから
+c2 を当て直すと、`test_the_realestate_detail_page_still_shows_the_delay_badge` が今度は
+正規表現不一致で赤になる（`Failed asserting that '<!DOCTYPE html>...'` — PHPUnit の regex
+不一致の出力形式）ことを実測で確認した。**網自体は本物で、`$chipStyle[null]` の 500 が
+それを覆い隠していただけ。**
+
+⚠ **このフォールバックは実装に入れていない。** `state` と `tracksActuals` は同じ 1 つの変数
+（`ScheduleCardService::row()` の `$state = $tracksActuals ? null : $step->dateState($today);`）
+から出るので実運用では `$chipStyle[null]` に到達しない。フォールバックを入れると
+「無音で無スタイルのチップが出る」へ化けるので、**騒がしく落ちる側（フォールバック無し）
+のままにする**のが正しい判断。
+
 ---
 
 ## Task 10: 変異テスト（設計書 §12）
