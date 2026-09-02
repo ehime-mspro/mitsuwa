@@ -397,7 +397,15 @@ class ScheduleBoardTest extends ScheduleTestCase
     // 住宅事業ボード（設計書 §8）— 状態 3 種 / KPI 3 枚 / 遅延なし
     // ============================================================
 
-    /** 済 / 進行中 / これから を 1 件ずつ持つ 3 物件を作る */
+    /**
+     * 済 / 進行中 / これから を 1 件ずつ持つ 3 物件 ＋ `dateStatus()` の残り 2 分岐
+     * （コード品質レビュー ②）を通す 2 物件、計 5 物件を作る。
+     *
+     * ⚠ **HS-MIX / HS-UNDATED は他の多くのテストにも影響する。** このフィクスチャを使う
+     *   既存テストの期待値（KPI の枚数・棒の本数・絞り込み結果の件数）は全部この 5 件を
+     *   前提に実測し直してある。ここへさらに案件を足すときは、使っている全テストを
+     *   再実測すること。
+     */
     private function housingBoardFixture(): void
     {
         // ⚠ 日付は ScheduleBoardTest の凍結日 2026-08-31 基準。
@@ -413,6 +421,18 @@ class ScheduleBoardTest extends ScheduleTestCase
                 'planned_start' => $s, 'planned_end' => $e, 'sort_order' => 1,
             ]);
         }
+
+        // ⚠ コード品質レビュー ②: dateStatus() は 3 分岐あるが、上の 3 物件（1 案件 1 工程）
+        //   だけでは「DONE と UPCOMING が混ざれば RUNNING」「全部未定なら UPCOMING」の
+        //   2 分岐が一度も実行されない。2 物件を足して通す。
+        $mix = $this->makeParent('property', ['property_code' => 'HS-MIX', 'property_name' => 'HS-MIX 邸']);
+        $mix->scheduleSteps()->create(['name' => '済です', 'category' => 'work', 'planned_start' => '2026-05-01', 'planned_end' => '2026-05-20', 'sort_order' => 1]);
+        $mix->scheduleSteps()->create(['name' => 'これからです', 'category' => 'work', 'planned_start' => '2026-09-15', 'planned_end' => '2026-09-20', 'sort_order' => 2]);
+
+        // ⚠ 日付が 1 つも無い工程。isDrawable() が false になるので「棒が 1 本も描けない行」の
+        //   レンダリング経路も併せて通す。
+        $undated = $this->makeParent('property', ['property_code' => 'HS-UNDATED', 'property_name' => 'HS-UNDATED 邸']);
+        $undated->scheduleSteps()->create(['name' => '日付未定', 'category' => 'work', 'sort_order' => 1]);
     }
 
     public function test_the_housing_board_offers_the_three_date_states(): void
@@ -448,7 +468,13 @@ class ScheduleBoardTest extends ScheduleTestCase
         $this->assertSame('done', $rows['HS-DONE']['status']);
         $this->assertSame('running', $rows['HS-RUN']['status']);
         $this->assertSame('upcoming', $rows['HS-SOON']['status']);
-        $this->assertSame([0, 0, 0], $rows->pluck('delayDays')->all(), '住宅に遅延日数は出さない');
+        // ⚠ コード品質レビュー ②: dateStatus() の残り 2 分岐をここで直接固定する
+        //   （1 案件 1 工程の 3 件だけでは一度も実行されない）。
+        $this->assertSame('running', $rows['HS-MIX']['status'], '済とこれからが混ざれば進行中に見せる');
+        $this->assertSame('upcoming', $rows['HS-UNDATED']['status'], '全部未定ならこれから');
+        // ⚠ 件数はフィクスチャの案件数（5 件）に追従させる。固定の [0, 0, 0] は
+        //   フィクスチャに案件が増えるたびに書き換えが要る壊れやすい形になる。
+        $this->assertSame(array_fill(0, $rows->count(), 0), $rows->pluck('delayDays')->all(), '住宅に遅延日数は出さない');
     }
 
     public function test_the_housing_status_filter_narrows_the_rows(): void
@@ -457,7 +483,30 @@ class ScheduleBoardTest extends ScheduleTestCase
 
         $rows = $this->actingAs($this->manager())->get('/housing/schedules?status=upcoming')->viewData('board')['rows'];
 
-        $this->assertSame(['HS-SOON'], array_column($rows, 'code'));
+        // ⚠ HS-UNDATED（全部未定）も「これから」に倒れるので、HS-SOON と並んで出る。
+        $this->assertSame(['HS-SOON', 'HS-UNDATED'], array_column($rows, 'code'));
+    }
+
+    /**
+     * コード品質レビュー ①: KPI は「絞り込み後」の行から数える（決定 H）。
+     *
+     * ⚠ **`?status=all` だけでは決定 H が測れない。** `status=all` は事実上「絞り込み無し」
+     *   なので、`$keptSteps` を `matches()` の前に積む変異（絞り込みを無視して全件を数える）が
+     *   全緑で通ってしまう。ここでは絞り込み後に**行が減る**ことが分かるフィルタで見る。
+     */
+    public function test_the_housing_kpis_are_scoped_to_the_filtered_status(): void
+    {
+        $this->housingBoardFixture();
+
+        $board = $this->actingAs($this->manager())->get('/housing/schedules?status=upcoming')->viewData('board');
+
+        // 絞り込み後に残るのは HS-SOON ＋ HS-UNDATED の 2 件（工程は HS-SOON の 1 本 ＋
+        // HS-UNDATED の日付未定 1 本）。HS-RUN / HS-MIX の工程が数に混じっていないことを、
+        // 実測して固定する。
+        //   進行中の工程       = 0（絞り込み後に running の工程は無い）
+        //   30日以内に始まる工程 = 1（HS-SOON の 9/15 だけ。HS-UNDATED は日付未定なので数えない）
+        //   30日以内に終わる工程 = 1（HS-SOON の 9/20 だけ）
+        $this->assertSame([0, 1, 1], array_column($board['kpi'], 'value'));
     }
 
     /**
@@ -475,11 +524,14 @@ class ScheduleBoardTest extends ScheduleTestCase
         );
 
         // ⚠ **3 枚を別々の値にしてある。** 全部同じ数だと、カードの並びを入れ替える変異が
-        //   素通りする（凍結日 8/31 / 窓は 9/30 まで）:
-        //     進行中の工程       = HS-RUN の 1 本
-        //     30日以内に始まる工程 = HS-SOON の 9/15 だけ（HS-RUN は 8/20 開始で既に始まっている）
-        //     30日以内に終わる工程 = HS-RUN の 9/30 と HS-SOON の 9/20 で 2 本
-        $this->assertSame([1, 1, 2], array_column($board['kpi'], 'value'));
+        //   素通りする（凍結日 8/31 / 窓は 9/30 まで。フィクスチャは 5 件）:
+        //     進行中の工程       = HS-RUN の 1 本だけ（HS-MIX は案件としては「進行中」に
+        //                          見えるが、済とこれからの 2 工程はどちらも個別には
+        //                          進行中ではない）
+        //     30日以内に始まる工程 = HS-SOON の 9/15 ＋ HS-MIX「これからです」の 9/15 で 2 本
+        //     30日以内に終わる工程 = HS-RUN の 9/30 ＋ HS-SOON の 9/20 ＋
+        //                          HS-MIX「これからです」の 9/20 で 3 本
+        $this->assertSame([1, 2, 3], array_column($board['kpi'], 'value'));
     }
 
     /** ⚠ 不動産の KPI は 4 枚のまま */
@@ -504,18 +556,139 @@ class ScheduleBoardTest extends ScheduleTestCase
         $this->assertStringContainsString('HS-RUN 邸', $html, '走査の空振りでないこと');
     }
 
+    // ============================================================
+    // 住宅事業ボード — 棒の見せ方（設計書 §8。コード品質レビュー ③）
+    // ⚠ 設計書 §8 は「分類色のまま（濃さを変えない）＋ 進行中だけ輪郭。§4.2 と同じ」と
+    //   定めている。プラン初版の Files 一覧が KPI と遅延バッジしか挙げておらず、
+    //   future / opacity の対処が Task 5 の範囲から取りこぼされていた
+    //   （設計書は承認済みなので、Task 5 の範囲としてここで直す）。
+    // ============================================================
+
+    /** 棒 1 本ぶんの style 属性を出現順で返す（Task 4 の _schedule_gantt 用ヘルパーと同じ流儀） */
+    private function barStyles(string $html): array
+    {
+        preg_match_all('/position: absolute; height: 13px;[^"]*/', $html, $m);
+
+        return $m[0];
+    }
+
+    /**
+     * ⚠ **§4.2 は opacity 案を明示的に却下している**（「済」を 1.6:1 まで落とすため）。
+     *   住宅は 3 本とも分類色のまま出す（HS-DONE=済 / HS-RUN=進行中 / HS-SOON=これから の
+     *   3 状態を跨いで確認する）。
+     */
+    public function test_the_housing_board_bars_are_never_dimmed(): void
+    {
+        $this->housingBoardFixture();
+
+        $html  = $this->actingAs($this->manager())->get('/housing/schedules?status=all')->assertOk()->getContent();
+        $styles = $this->barStyles($html);
+
+        // HS-DONE 1 ＋ HS-RUN 1 ＋ HS-SOON 1 ＋ HS-MIX 2（済です・これからです）＋
+        // HS-UNDATED 0（日付未定は isDrawable() が false で棒にならない）＝ 5 本
+        $this->assertCount(5, $styles, '棒が 5 本描かれている（HS-UNDATED は棒 0 本）');
+        foreach ($styles as $style) {
+            $this->assertStringNotContainsString('opacity', $style, '住宅の棒を薄くしてはいけない（設計書 §8）');
+        }
+    }
+
+    /**
+     * 進行中の棒だけに輪郭が出る（詳細カード `_schedule_gantt.blade.php` と同じ規則。設計書 §8）。
+     *
+     * ⚠ **棒の side だけを数える。** ボード partial にはこのフィクスチャでは凡例が無いので
+     *   衝突の心配は無いが、Task 4 と同じ流儀（`barStyles()` でスコープを絞る）を踏襲する。
+     */
+    public function test_the_housing_board_puts_a_ring_only_on_the_running_bar(): void
+    {
+        $this->housingBoardFixture();
+
+        $html   = $this->actingAs($this->manager())->get('/housing/schedules?status=all')->assertOk()->getContent();
+        $styles = $this->barStyles($html);
+        $ringed = array_filter($styles, fn ($s) => str_contains($s, 'box-shadow: 0 0 0 1.5px #111827'));
+
+        $this->assertCount(5, $styles, '棒が 5 本描かれている');
+        // ⚠ HS-MIX の「これからです」は案件としては running に見える組でも、工程自体は
+        //   UPCOMING（個別には進行中でない）なので輪郭は付かない。付くのは HS-RUN の 1 本だけ。
+        $this->assertCount(1, $ringed, '輪郭が付くのは進行中（HS-RUN）の 1 本だけ');
+    }
+
+    /** ⚠ 不動産側は従来どおり「これから」の棒を薄くする（巻き込み事故の検出） */
+    public function test_the_realestate_board_still_dims_future_bars(): void
+    {
+        $this->caseWithSteps('PRC-FUTURE', [
+            ['planned_start' => '2026-10-01', 'planned_end' => '2026-10-31'],
+        ]);
+
+        $html   = $this->actingAs($this->manager())->get('/realestate/schedules?status=all')->assertOk()->getContent();
+        $styles = $this->barStyles($html);
+        $dimmed = array_filter($styles, fn ($s) => str_contains($s, 'opacity: 0.45;'));
+
+        $this->assertNotEmpty($styles, '走査の空振りでないこと');
+        $this->assertCount(1, $dimmed, '不動産の「これから」の棒は従来どおり薄く出す');
+    }
+
     /**
      * ⚠ **1 枚のボードに実績を持つ親と持たない親を混ぜない。** 静かにどちらかへ倒れるのを防ぐ
      *   （決定 P4）。
+     *
+     * ⚠ M-1: 例外メッセージにどのボードの組み合わせかを名指しする
+     *   （`ScheduleBoardController` の KINDS は複数あるので、「混ぜられません」だけでは
+     *   どの設定を直せばいいか分からない）。
      */
     public function test_mixing_tracked_and_untracked_kinds_on_one_board_is_refused(): void
     {
         $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('procurement / property');
 
         app(\App\Services\ScheduleBoardService::class)->build([
             'procurement' => [\App\Models\ReProcurement::class, '仕入れ案件'],
             'property'    => [\App\Models\HsProperty::class, '建売'],
         ], new \Illuminate\Http\Request());
+    }
+
+    /**
+     * ⚠ M-1: 空と混在は別の例外にする。空は「対象クラスの指定漏れ」であって
+     *   「部署をまたいで束ねた」わけではないので、メッセージが違う必要がある。
+     */
+    public function test_an_empty_kinds_list_is_refused_with_its_own_message(): void
+    {
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('対象クラスが空です');
+
+        app(\App\Services\ScheduleBoardService::class)->build([], new \Illuminate\Http\Request());
+    }
+
+    /**
+     * コード品質レビュー M-5: countSoon() は `$step->actual_start` / `actual_end` を見て
+     * 「もう実績が付いた工程は数えない」を判定しているが、住宅の工程は saving フックで
+     * 常に null に正規化される（`ScheduleActualsPolicyTest` がモデル単体で固定済み）ため、
+     * この分岐は住宅では原理的に到達しない（クエリビルダの一括 update はフックを通らないので
+     * 原理的には残るが、今その経路で actual_* を書く箇所は無い）。
+     *
+     * countSoon() 自体を tracksActuals で分岐させて未テストの経路を増やすのではなく、
+     * 「住宅の工程には実績が入らない」という前提を、ボードの KPI という消費側から見て
+     * 裏を取る。
+     *
+     * ⚠ **わざと actual_start / actual_end を渡して確かめる。** 何も渡さず null のままだと、
+     *   フックが効いているのか単に何も渡さなかっただけなのか区別できない。もし
+     *   null 化されていなければ、countSoon() の `$actual !== null` に引っかかって
+     *   このステップは数えられず KPI が 0 になる。
+     */
+    public function test_the_housing_soon_kpi_still_counts_a_step_even_if_you_try_to_give_it_actuals(): void
+    {
+        $owner = $this->makeParent('property');
+        $owner->scheduleSteps()->create([
+            'name' => '工程', 'category' => 'work',
+            'planned_start' => '2026-09-10', 'planned_end' => '2026-09-10',
+            'actual_start'  => '2026-08-01', 'actual_end' => '2026-08-01',
+            'sort_order' => 1,
+        ]);
+
+        $board = $this->actingAs($this->manager())->get('/housing/schedules?status=all')->viewData('board');
+        $kpi   = array_column($board['kpi'], 'value', 'label');
+
+        $this->assertSame(1, $kpi['30日以内に始まる工程'], 'countSoon() が実績を見て工程を除外している(=実績が null 化されていない)');
+        $this->assertSame(1, $kpi['30日以内に終わる工程'], 'countSoon() が実績を見て工程を除外している(=実績が null 化されていない)');
     }
 
     // ============================================================
@@ -554,11 +727,12 @@ class ScheduleBoardTest extends ScheduleTestCase
 
         $html = $this->actingAs($this->manager())->get('/housing/schedules?status=all')->assertOk()->getContent();
 
+        // ⚠ 値は test_the_housing_board_shows_three_step_based_kpis と同じ根拠（5 件フィクスチャ）。
         $this->assertSame(
             [
                 ['label' => '進行中の工程', 'color' => '#047857', 'value' => 1],
-                ['label' => '30日以内に始まる工程', 'color' => '#1D4ED8', 'value' => 1],
-                ['label' => '30日以内に終わる工程', 'color' => '#B45309', 'value' => 2],
+                ['label' => '30日以内に始まる工程', 'color' => '#1D4ED8', 'value' => 2],
+                ['label' => '30日以内に終わる工程', 'color' => '#B45309', 'value' => 3],
             ],
             $this->kpiCards($html),
             'KPI カードが HTML に 3 枚、ラベル・色・値の対で描かれていない'

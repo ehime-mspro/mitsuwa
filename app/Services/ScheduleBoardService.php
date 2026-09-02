@@ -23,13 +23,13 @@ use Illuminate\Http\Request;
  */
 class ScheduleBoardService
 {
-    public const STATUS_ALL     = 'all';
+    public const STATUS_ALL      = 'all';
 
-    public const STATUS_RUNNING = 'running';
+    public const STATUS_RUNNING  = 'running';
 
-    public const STATUS_LATE    = 'late';
+    public const STATUS_LATE     = 'late';
 
-    public const STATUS_DONE    = 'done';
+    public const STATUS_DONE     = 'done';
 
     public const STATUS_UPCOMING = 'upcoming';
 
@@ -81,8 +81,12 @@ class ScheduleBoardService
         // ⚠ **1 枚のボードで親の方針が混ざらないことを先に確かめる**（決定 P4）。
         //   混ざったまま進むと、案件ごとに遅延の有無が食い違う画面になる。
         $tracksActuals = $this->tracksActuals($kinds);
+        // ⚠ **ここ 1 箇所だけで出す**（M-2）。build()（view へ返す側）と filters()
+        //   （入力を検証する側）の 2 箇所に同じ三項演算子を置くと、語彙が 3 つ目に
+        //   増えたときどちらかを直し忘れる形になる。
+        $statuses      = $tracksActuals ? self::STATUSES : self::DATE_STATUSES;
 
-        $filters = $this->filters($kinds, $request, $tracksActuals);
+        $filters = $this->filters($kinds, $request, $statuses);
         $zoom    = self::ZOOMS[$filters['zoom']];
 
         // ⚠ **月初に正規化してから加減算する。** Carbon の subMonths()/addMonths() は
@@ -131,7 +135,7 @@ class ScheduleBoardService
             'unregisteredCount' => $unregistered,
             'filters'           => $filters,
             'kinds'             => $kinds,
-            'statuses'          => $tracksActuals ? self::STATUSES : self::DATE_STATUSES,
+            'statuses'          => $statuses,
             'zooms'             => self::ZOOMS,
             'axis'              => [
                 'from'        => $scale->from()->toDateString(),
@@ -149,14 +153,12 @@ class ScheduleBoardService
      *   ズームのリンクを組むときに `Arr::query()` が null のキーを丸ごと捨てるため、
      *   ここで `''` / 既定値へ正規化しておく。
      */
-    private function filters(array $kinds, Request $request, bool $tracksActuals): array
+    private function filters(array $kinds, Request $request, array $statuses): array
     {
         $kind = (string) ($request->query('kind') ?? self::STATUS_ALL);
         if ($kind !== self::STATUS_ALL && ! array_key_exists($kind, $kinds)) {
             $kind = self::STATUS_ALL;
         }
-
-        $statuses = $tracksActuals ? self::STATUSES : self::DATE_STATUSES;
 
         $status = (string) ($request->query('status') ?? self::STATUS_RUNNING);
         if (! array_key_exists($status, $statuses)) {
@@ -256,11 +258,23 @@ class ScheduleBoardService
     }
 
     /**
-     * 実績を持たない親の案件ステータス（設計書 §8: **済 > 進行中 > これから**）。
+     * 実績を持たない親の案件ステータス（設計書 §8）。
+     *
+     * ⚠ **「済 > 進行中 > これから」は画面（絞り込みの並び）の見せ方であって、
+     *   判定の評価順ではない。** 直上の status()「完了 > 遅延 > 進行中」は評価順そのものの
+     *   説明だったので、同じ書き方をここでも踏襲すると**コードの方が誤りに見えて直されかねない**。
+     *   実際の評価順は次の 3 行:
+     *
+     *   1. 1 つでも進行中の工程があれば → 進行中
+     *   2. 進行中が無く これから があれば → 済も混ざっていれば 進行中 / 無ければ これから
+     *   3. どちらも無ければ → 済があれば 済 / 無ければ（全部未定）これから
      *
      * ⚠ 「未定」（日付が 1 つも無い工程）は判定に数えない。全部が未定の案件は
-     *   「これから」に倒す（絞り込みから消えると、日付を入れ忘れた案件が画面から
-     *   見えなくなって直せない）。
+     *   「これから」に倒す。**既定の絞り込みは running なので、全部未定の案件は
+     *   どのみち既定の画面には出ない**（「これから」か「すべて」に切り替えて初めて見える）。
+     *   ここで「これから」に倒しておくのは、その 2 つの絞り込みに切り替えたときに
+     *   日付を入れ忘れた案件が見えて直せるようにするため（「進行中」や「済」に倒すと、
+     *   絞り込みをどれに切り替えても永遠に画面から見えなくなる）。
      */
     private function dateStatus($steps, CarbonImmutable $today): string
     {
@@ -287,18 +301,30 @@ class ScheduleBoardService
      *
      * ⚠ **混在したら黙ってどちらかへ倒さない。** 案件ごとに遅延の有無が食い違う画面になり、
      *   絞り込みの選択肢も決められない。
+     *
+     * ⚠ **空と混在は別の例外にする。** 空は「対象クラスの指定漏れ」、混在は
+     *   「部署をまたいで束ねてしまった」で、原因も直し方も違う。混在のほうは
+     *   `implode()` でどの組み合わせか名指しする（コントローラの KINDS が複数あるので、
+     *   「混ぜられません」だけではどのボードの設定か分からない）。
      */
     private function tracksActuals(array $kinds): bool
     {
+        if ($kinds === []) {
+            throw new \LogicException(
+                '対象クラスが空です。ScheduleBoardController の KINDS を確認してください。'
+            );
+        }
+
         $flags = [];
 
         foreach ($kinds as [$class]) {
             $flags[] = (new $class())->scheduleTracksActuals();
         }
 
-        if ($flags === [] || count(array_unique($flags)) > 1) {
+        if (count(array_unique($flags)) > 1) {
             throw new \LogicException(
-                '1 枚のボードに、実績を持つ親と持たない親を混ぜられません。'
+                '1 枚のボードに、実績を持つ親と持たない親を混ぜられません（'
+                . implode(' / ', array_keys($kinds)) . '）。'
                 . 'ScheduleBoardController の KINDS を部署ごとに分けてください。'
             );
         }
