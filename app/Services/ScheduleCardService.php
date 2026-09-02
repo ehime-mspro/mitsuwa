@@ -56,10 +56,12 @@ class ScheduleCardService
                 'actual_end'    => $s->actual_end?->toDateString(),
                 'notes'         => $s->notes ?? '',
             ])->values()->all(),
-            'endpoints'  => $this->endpoints($owner),
-            'categories' => $this->categories(),
-            'today'      => $today,
-            'gantt'      => $this->gantt($steps, $owner->autoMilestones(), $today),
+            'endpoints'     => $this->endpoints($owner),
+            'categories'    => $this->categories(),
+            'today'         => $today,
+            // ⚠ 親に聞く。partial やサービスに instanceof / 部署名を書かない（設計書 §3.1）
+            'tracksActuals' => $owner->scheduleTracksActuals(),
+            'gantt'         => $this->gantt($steps, $owner->autoMilestones(), $today, $owner->scheduleTracksActuals()),
         ];
     }
 
@@ -92,7 +94,7 @@ class ScheduleCardService
      * ⚠ **日付が 1 つも無い案件は軸を作れない**（設計書 §5.5）。0 除算とレイアウト崩れの
      *   両方を防ぐため、ここで null を返して Blade 側に案内文を出させる。
      */
-    private function gantt(Collection $steps, array $milestones, CarbonImmutable $today): ?array
+    private function gantt(Collection $steps, array $milestones, CarbonImmutable $today, bool $tracksActuals): ?array
     {
         $dates = [];
 
@@ -141,11 +143,14 @@ class ScheduleCardService
         $scale = new GanttScale($from, $to);
 
         return [
-            'months'     => $this->months($scale),
-            'rows'       => $steps->map(fn (ScheduleStep $s) => $this->row($s, $scale, $today))->all(),
-            'milestones' => $this->milestones($milestones, $scale, $today),
-            'todayPct'   => $scale->contains($today) ? $scale->left($today) : null,
-            'todayLabel' => $today->format('n/j'),
+            'months'        => $this->months($scale),
+            'rows'          => $steps->map(fn (ScheduleStep $s) => $this->row($s, $scale, $today, $tracksActuals))->all(),
+            'milestones'    => $this->milestones($milestones, $scale, $today),
+            'todayPct'      => $scale->contains($today) ? $scale->left($today) : null,
+            'todayLabel'    => $today->format('n/j'),
+            'tracksActuals' => $tracksActuals,
+            // 凡例のチップに出す日本語。⚠ Blade に直書きしない（語が 2 箇所に散らない）
+            'stateLabels'   => ScheduleStepStatus::STATE_LABELS,
         ];
     }
 
@@ -175,15 +180,24 @@ class ScheduleCardService
      * ⚠ **範囲外へはみ出さないよう clamp するのは呼び出し側（ここ）の責務**（設計書 §5.1）。
      *   幅は「左端からの残り」までに抑える（棒が枠を突き抜けてレイアウトを壊さないため）。
      */
-    private function row(ScheduleStep $step, GanttScale $scale, CarbonImmutable $today): array
+    private function row(ScheduleStep $step, GanttScale $scale, CarbonImmutable $today, bool $tracksActuals): array
     {
+        // ⚠ 実績を扱う親（不動産）には状態を付けない。あちらは遅延と進捗で見る（設計書 §4.3）
+        $state = $tracksActuals ? null : $step->dateState($today);
+
         $row = [
             'id'         => $step->id,
             'name'       => $step->name,
             'color'      => $step->category->color(),
             'periodText' => $step->periodText($today),
-            'delayDays'  => $step->delayDays($today),
+            // ⚠ **住宅では 0 に潰す。** 実績を取り込まない仕様なので、予定終了を過ぎた工程が
+            //   全部「遅延」になる（本番で 64 本中 57 本が赤くなった。設計書 §1）
+            'delayDays'  => $tracksActuals ? $step->delayDays($today) : 0,
             'progress'   => $step->progress(),
+            'state'      => $state,
+            'stateLabel' => $state === null ? '' : ScheduleStepStatus::STATE_LABELS[$state],
+            // 進行中の棒だけ濃い輪郭（案B′）。⚠ CSS は Blade が組む。ここは真偽値だけ返す
+            'ring'       => $state === ScheduleStepStatus::RUNNING,
             'kind'       => 'none',
             'leftPct'    => 0.0,
             'widthPct'   => 0.0,

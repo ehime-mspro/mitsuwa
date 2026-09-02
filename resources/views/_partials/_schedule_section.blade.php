@@ -12,6 +12,12 @@
     ⚠ **partial の中で親の種別を判定しないこと**（`$owner instanceof HsProperty` のように書かない）。
        4 親が共有する部品に「建売のときだけ」という知識を持ち込むと、次に親が増えたときに
        ここを直す必要が生まれる。出すか出さないかは**渡す側**が決める。
+
+    ⚠ **実績 2 列（実績開始・実績終了）の出し分けは `$schedule['tracksActuals']` を見て
+       `<th>`/`<td>` を消すだけ。JS（`save()` / `payload()`）は分岐させない**——住宅では
+       `row.actual_start` / `row.actual_end` は常に null のまま送られるが、サーバ側の
+       `ScheduleStepController::rules()` がそのキーごと落とすので無害。JS を分岐させると
+       PHP と JS の二重実装になり、どちらかが無音で漂流する（Bug #41）。
 --}}
 <div class="bg-white border border-gray-200 rounded-lg p-5 mb-5">
     <div class="flex items-center gap-2 mb-3">
@@ -49,8 +55,10 @@
                             <th style="background: #F9FAFB; color: #6B7280; font-size: 11.5px; font-weight: 700; padding: 8px 10px; border-bottom: 2px solid #E5E7EB; text-align: left; white-space: nowrap;">種類</th>
                             <th style="background: #F9FAFB; color: #6B7280; font-size: 11.5px; font-weight: 700; padding: 8px 10px; border-bottom: 2px solid #E5E7EB; text-align: left; white-space: nowrap;">予定開始</th>
                             <th style="background: #F9FAFB; color: #6B7280; font-size: 11.5px; font-weight: 700; padding: 8px 10px; border-bottom: 2px solid #E5E7EB; text-align: left; white-space: nowrap;">予定終了</th>
-                            <th style="background: #F9FAFB; color: #6B7280; font-size: 11.5px; font-weight: 700; padding: 8px 10px; border-bottom: 2px solid #E5E7EB; text-align: left; white-space: nowrap;">実績開始</th>
-                            <th style="background: #F9FAFB; color: #6B7280; font-size: 11.5px; font-weight: 700; padding: 8px 10px; border-bottom: 2px solid #E5E7EB; text-align: left; white-space: nowrap;">実績終了</th>
+                            @if($schedule['tracksActuals'])
+                                <th style="background: #F9FAFB; color: #6B7280; font-size: 11.5px; font-weight: 700; padding: 8px 10px; border-bottom: 2px solid #E5E7EB; text-align: left; white-space: nowrap;">実績開始</th>
+                                <th style="background: #F9FAFB; color: #6B7280; font-size: 11.5px; font-weight: 700; padding: 8px 10px; border-bottom: 2px solid #E5E7EB; text-align: left; white-space: nowrap;">実績終了</th>
+                            @endif
                             <th style="background: #F9FAFB; color: #6B7280; font-size: 11.5px; font-weight: 700; padding: 8px 10px; border-bottom: 2px solid #E5E7EB; text-align: left; white-space: nowrap;">備考</th>
                             <th style="background: #F9FAFB; color: #6B7280; font-size: 11.5px; font-weight: 700; padding: 8px 10px; border-bottom: 2px solid #E5E7EB; text-align: left; white-space: nowrap;">操作</th>
                         </tr>
@@ -82,8 +90,10 @@
                                 </td>
                                 <td style="padding: 7px 10px; border-bottom: 1px solid #F3F4F6;"><input type="date" x-model="row.planned_start" @change="save(row)" style="width: 100%; height: 32px; padding: 0 8px; font-size: 12.5px; border: 1px solid #D1D5DB; border-radius: 6px; background: white; box-sizing: border-box;"></td>
                                 <td style="padding: 7px 10px; border-bottom: 1px solid #F3F4F6;"><input type="date" x-model="row.planned_end" @change="save(row)" style="width: 100%; height: 32px; padding: 0 8px; font-size: 12.5px; border: 1px solid #D1D5DB; border-radius: 6px; background: white; box-sizing: border-box;"></td>
-                                <td style="padding: 7px 10px; border-bottom: 1px solid #F3F4F6;"><input type="date" x-model="row.actual_start" @change="save(row)" style="width: 100%; height: 32px; padding: 0 8px; font-size: 12.5px; border: 1px solid #D1D5DB; border-radius: 6px; background: white; box-sizing: border-box;"></td>
-                                <td style="padding: 7px 10px; border-bottom: 1px solid #F3F4F6;"><input type="date" x-model="row.actual_end" @change="save(row)" style="width: 100%; height: 32px; padding: 0 8px; font-size: 12.5px; border: 1px solid #D1D5DB; border-radius: 6px; background: white; box-sizing: border-box;"></td>
+                                @if($schedule['tracksActuals'])
+                                    <td style="padding: 7px 10px; border-bottom: 1px solid #F3F4F6;"><input type="date" x-model="row.actual_start" @change="save(row)" style="width: 100%; height: 32px; padding: 0 8px; font-size: 12.5px; border: 1px solid #D1D5DB; border-radius: 6px; background: white; box-sizing: border-box;"></td>
+                                    <td style="padding: 7px 10px; border-bottom: 1px solid #F3F4F6;"><input type="date" x-model="row.actual_end" @change="save(row)" style="width: 100%; height: 32px; padding: 0 8px; font-size: 12.5px; border: 1px solid #D1D5DB; border-radius: 6px; background: white; box-sizing: border-box;"></td>
+                                @endif
                                 <td style="padding: 7px 10px; border-bottom: 1px solid #F3F4F6;">
                                     <input type="text" x-model="row.notes" maxlength="255" @change="save(row)"
                                            @keydown.enter="$event.isComposing || save(row)"
