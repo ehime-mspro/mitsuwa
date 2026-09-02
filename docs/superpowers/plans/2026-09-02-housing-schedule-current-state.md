@@ -3055,6 +3055,44 @@ git checkout 13.x && git merge --ff-only housing-schedule-dates
 
 - [ ] **Step 2: 本番の現状を実測してから ALTER を流す**
 
+### 実測結果（2026-09-02。read-only のみ実施。ALTER / UPDATE / deploy.sh は未実行）
+
+`ssh mitsuwa-ud@www3586.sakura.ne.jp /bin/sh` に heredoc を流し、
+`/usr/local/php/8.3/bin/php artisan tinker --execute='...'` で **SELECT COUNT だけ**を実行した。
+
+| 見たこと | 実測値 |
+|---|---|
+| database | `mitsuwa-ud_masa8787kanri637` |
+| `hs_properties` | 7 行 / `actual_completion_date` **あり** / `construction_start_date` **なし**（＝未改名）|
+| `hs_custom_orders` | 2 行 / 同上 |
+| `hs_properties.actual_completion_date IS NOT NULL` | **0** ＝ データ移行**不要** |
+| `hs_custom_orders.actual_completion_date IS NOT NULL` | **0** ＝ 同上 |
+| `hs_properties.scheduled_completion_date IS NOT NULL` | **0** |
+| `hs_custom_orders.scheduled_completion_date IS NOT NULL` | **0** |
+| `schedule_steps` | **64 行**、すべて `App\Models\HsProperty` |
+| うち `actual_start` か `actual_end` が非 NULL | **0** ＝ **掃除の `UPDATE` は不要** |
+
+⚠ **プランが 2026-09-02 に記録した「両テーブルとも全行 NULL・建売 7 件 / 注文住宅 2 件」は
+実測と一致した。** よって「実際の完成日の記録を捨てる」前提は成立している。
+
+⚠ **Task 3 のレビューで足した「残存 `actual_*` の掃除」は、実測の結果 0 件なので流す必要が無い。**
+ただし**手順としては残す**（次に同じ改修をする人が測らずに飛ばさないため）。
+
+⚠ **`scheduled_completion_date` も全行 NULL** なので、反映直後の建売 7 件は
+基本情報の着工予定日・完成予定日がどちらも空になる。**64 工程を持つ物件も ◆ は 0 個**のままで、
+取込をやり直すか手で入れるまで節目は描かれない（欠陥ではなく、値がまだ無いだけ）。
+
+⚠ **実行環境の注意（実測で判明）**
+
+- **本番の既定 `php` は 7.4.33** で composer の要求（>= 8.3）を満たさない。
+  **`/usr/local/php/8.3/bin/php` を明示する**こと（`deploy.sh` の `ssh` 部分と同じ）
+- **`SHOW COLUMNS ... LIKE ?` はバインドを受け付けない**（`SQLSTATE[42000] 1064`）。
+  列の有無は `information_schema.columns` を bind 付きで引く
+- `sudo mysql` は**非対話でパスワードを渡せない**ので使えない。DDL は
+  `/usr/local/php/8.3/bin/php artisan tinker --execute` から `DB::statement()` を**1 文ずつ 2 回**
+  （`PDO::MYSQL_ATTR_MULTI_STATEMENTS` が未設定なので 2 文を 1 回では流せない）
+
+
 ⚠ **流す前に測る。** 本番は 2026-09-02 時点で両テーブルとも当該 2 列が全行 NULL だったが、
 運用が進んで値が入っている可能性がある。**入っていたら移行方針を決め直す**（この改修は
 「実際の完成日」の記録を捨てる前提で書かれている）。
