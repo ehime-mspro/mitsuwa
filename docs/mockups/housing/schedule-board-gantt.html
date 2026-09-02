@@ -86,9 +86,17 @@
             <option value="b" selected>案B: データの範囲に合わせて横スクロール（推奨）</option>
           </select>
         </label>
-        <label><input type="checkbox" id="fit6" checked> 初期表示を <b>6 ヶ月</b>に合わせる（幅を自動計算）</label>
+        <label>初期表示:
+          <select id="vis">
+            <option value="3">3 ヶ月</option>
+            <option value="4" selected>4 ヶ月</option>
+            <option value="5">5 ヶ月</option>
+            <option value="6">6 ヶ月</option>
+            <option value="0">自動計算しない（幅を手で決める）</option>
+          </select>
+        </label>
         <label id="wwrap">1 ヶ月の幅:
-          <input type="range" id="mw" min="60" max="360" step="10" value="150">
+          <input type="range" id="mw" min="60" max="420" step="10" value="150">
           <b id="mwv">150</b> px
         </label>
         <label><input type="checkbox" id="stick" checked> 案件名の列を固定する</label>
@@ -240,15 +248,15 @@ function compare(mw, availAxisPx) {
 }
 
 /** 初期表示 N ヶ月ぶんがちょうど収まる 1 ヶ月の幅 */
-const VISIBLE_MONTHS = 6;
+function visibleMonths() { return Number(document.getElementById('vis').value); }
 function fitWidth() {
   const avail = document.getElementById('scroller').clientWidth - 320;
-  return Math.max(40, Math.round(avail / VISIBLE_MONTHS));
+  return Math.max(40, Math.round(avail / (visibleMonths() || 6)));
 }
 
 function render() {
   const mode = document.getElementById('mode').value;
-  const fit = document.getElementById('fit6').checked;
+  const fit = visibleMonths() > 0;
   const slider = document.getElementById('mw');
   if (fit) { slider.value = Math.min(slider.max, Math.max(slider.min, fitWidth())); }
   const mw = fit ? fitWidth() : Number(slider.value);
@@ -359,7 +367,7 @@ function render() {
 
     // 初期スクロール位置: 今日の 1 ヶ月前あたりを左端に
     if (mode !== 'now' && todayPct !== null) {
-      const x = (todayPct / 100) * axW - (mw * 1);
+      const x = (todayPct / 100) * axW - (mw * Math.max(1, (visibleMonths() || 6) / 2 - 0.5));
       scroller.scrollLeft = Math.max(0, x);
     } else {
       scroller.scrollLeft = 0;
@@ -367,7 +375,7 @@ function render() {
   });
 }
 
-['mode', 'mw', 'stick', 'dummies', 'fit6'].forEach(id =>
+['mode', 'mw', 'stick', 'dummies', 'vis'].forEach(id =>
   document.getElementById(id).addEventListener('input', render));
 window.addEventListener('resize', render);
 render();
