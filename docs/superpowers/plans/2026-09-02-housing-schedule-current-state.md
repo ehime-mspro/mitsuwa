@@ -1241,12 +1241,20 @@ EOF
 ## Task 5: 住宅事業ボード — 状態 3 種 / KPI 3 枚（設計書 §8）
 
 **Files:**
-- Modify: `app/Services/ScheduleBoardService.php`
-- Modify: `resources/views/_partials/_schedule_board.blade.php:17-29,110-113,138-140`
+- Modify: `app/Services/ScheduleBoardService.php`（`row()` の `$bars[]` — `future` / `ring` の出し分けを含む）
+- Modify: `resources/views/_partials/_schedule_board.blade.php:17-29,110-113,138-140`（棒の style に `ring` の box-shadow を含む）
 - Test: `tests/Feature/Schedule/ScheduleBoardTest.php`（既存に追記）
 
 **設計:** partial に「住宅なら」と書かない。サービスが
 ①`statuses`（絞り込みの選択肢）②`kpi`（カードの**並び**）を親に応じて返し、partial は並べるだけ（決定 P5）。
+
+⚠ **プラン初版はここを取りこぼしていた（設計書 §8 の『棒の色』行）。** 設計書 §8 は住宅ボードの棒を
+「分類色のまま（濃さを変えない）＋ 進行中だけ輪郭。§4.2 と同じ」と定めていたが、
+下記 Step 1〜4 の初版は KPI と遅延バッジしか挙げておらず、`future`（opacity で薄くする）と
+`ring`（進行中の輪郭）の対処が本文に一度も出てこない。実装時のコード品質レビューで発覚し、
+Task 5 の範囲として追加で直した（詳細は Step 4 の末尾の追記を参照）。詳細カード
+（`ScheduleCardService` / `_schedule_gantt.blade.php`。Task 4）は最初から `ring` を持っていたため、
+直すまで同じ住宅事業の 2 画面で棒の規則が食い違っていた。
 
 - [ ] **Step 1: 失敗するテストを書く**
 
@@ -1625,6 +1633,32 @@ KPI ブロック（17-29 行の `<div class="grid-2col-sm" ...>` から `</div>`
 （住宅では `delayDays` が 0 なので描かれない）。⚠ **条件を消さないこと**——不動産で必要。
 
 工程明細の遅延（138-140 行の `@if($step['delayDays'] > 0)`）も**そのまま**。
+
+⚠ **【実装時の追記】プラン初版が取りこぼしていた棒の見せ方（設計書 §8）。**
+上記の KPI ブロックの差し替えだけでは、住宅の棒が不動産と同じ `future`（opacity 0.45）の
+まま薄く出て、進行中の輪郭（`ring`）も無いままだった。`row()` の `$bars[] = [...]` に
+以下を追加で当てる（Task 4 の `ScheduleCardService::row()` の `ring` 計算と同じ考え方）:
+
+```php
+'late'     => $tracksActuals && $step->isLate($today),
+// まだ始まっていない工程は薄く出す（設計書 §4.2）。
+// ⚠ 実績を持たない親では薄くしない（§4.2 は opacity 案を「済を 1.6:1 まで
+//   落とす」として却下しており、住宅は分類色のまま出す。設計書 §8）。
+'future'   => $tracksActuals && $step->actual_start === null && $spans[$i]['from']->greaterThan($today),
+// 進行中の棒だけ濃い輪郭。詳細カード（_schedule_gantt.blade.php）と同じ規則にする（設計書 §8）
+'ring'     => ! $tracksActuals && $step->dateState($today) === ScheduleStepStatus::RUNNING,
+```
+
+partial 側（棒の `<div>` の `style`）には `ring` の box-shadow をカードと同じ hex・太さで足す:
+
+```blade
+{{ $bar['late'] ? 'border: 2px solid #DC2626;' : '' }}{{ $bar['ring'] ? ' box-shadow: 0 0 0 1.5px #111827;' : '' }}
+```
+
+テストは「住宅の棒に opacity が 1 つも出ない」「進行中の棒だけに輪郭が出る」
+「不動産は従来どおり `future` で薄く出る（巻き込み事故の検出）」の 3 本を追加した。
+実装は 2 コミットに分割し、この棒の見せ方だけを独立した `feat:` コミットにした
+（①②のテスト強化・軽微修正は別の `test:` コミット）。
 
 - [ ] **Step 5: テストを流して通ることを確かめる**
 
@@ -2685,6 +2719,20 @@ Task 3 の中でテストをまたいで起きた実例。実測済み——詳�
 | 20 | `$chipStyle` の `running`/`done` の**値**を入れ替え（キーはそのまま） | `test_the_running_chip_is_paired_with_its_dark_color` **だけ**が赤。ラベル文字列自体は変わらず色だけが変わるため、①②のチップ個数・存在テストは検出しない（実測: 他 12 本は green のまま） |
 | 21 | 凡例の `@foreach(['upcoming', 'running', 'done'] as $s) ... @endforeach` ブロック（3 行）を削除 | `test_the_legend_explains_the_states`（凡例チップ 3 個の assertSame）。⚠ **旧テスト（`e247676e`）では green のまま**（実測）。`進行中は棒にも輪郭` は `@foreach` の外の兄弟 `<span>` で無関係に残るため、当時のテストはこの文字列しか見ておらず気づけなかった |
 | 22 | 行のラベル欄（`@foreach($g['rows']...)` 内の 1 箇所だけ）の `262px` を `260px` に（月ヘッダ・節目行は不変） | `test_the_label_column_cannot_be_pushed_wider_than_its_track`（件数の下限アサート。4→1 に減り不一致で赤）。⚠ 件数下限を足す前の `assertNotEmpty` 単体だと、月ヘッダの `flex: 0 0 262px;` だけで非空を満たすため検出できない穴だった |
+
+⚠ **23〜27 は Task 5 完了後のコード品質レビューで追加した。** 指摘は 3 件（①決定 H が住宅で一度も
+測られていない ②`dateStatus()` の 3 分岐のうち 2 本が一度も実行されていない ③設計書 §8 の
+「棒の色」がプランごと落ちていた）で、**23〜25 は「足す前なら緑だった」ことも実測している**
+（＝この改善が load-bearing であることの証明。作法は上記と同じ：新しいテストを除いて残りが
+green のままであることを、変異を当てた同じ実行結果の中で確認した）。
+
+| # | 変異 | 落ちるべきテスト |
+|---|---|---|
+| 23 | `build()` の `$keptSteps[] = $steps;` を `matches()` の early-return より上へ移す（決定 H の絞り込みを無視） | `ScheduleBoardTest::test_the_housing_kpis_are_scoped_to_the_filtered_status`（新設）**だけ**が赤（実測: 38 本中 1 本。Expected `[0, 1, 1]` / Actual `[1, 2, 3]` ＝ 絞り込み前の全件の数字がそのまま出ている）。⚠ **足す前は緑だった**——この 1 本を除く 37 本（`?status=all` しか見ていない既存の KPI テストを含む）はこの変異を検出しない |
+| 24 | `dateStatus()` の「済 と これから が混ざれば進行中」の三項演算子を `self::STATUS_UPCOMING` 固定に | `test_a_housing_case_is_classified_by_its_dates`（新設アサート「済とこれからが混ざれば進行中に見せる」）＋ 巻き込みで `test_the_housing_status_filter_narrows_the_rows` / `test_the_housing_kpis_are_scoped_to_the_filtered_status` も赤（実測: 38 本中 3 本）。⚠ **足す前は緑だった**——HS-MIX 自体が新設の fixture なので、この変異は旧テストからは原理的に見えない |
+| 25 | `dateStatus()` の「全部未定なら これから」を `self::STATUS_DONE` 固定に | `test_a_housing_case_is_classified_by_its_dates`（新設アサート「全部未定ならこれから」）＋ `test_the_housing_status_filter_narrows_the_rows`（実測: 38 本中 2 本）。⚠ **足す前は緑だった**——HS-UNDATED も新設 fixture |
+| 26 | `ScheduleBoardService::row()` の `'future' => $tracksActuals && ...` から `$tracksActuals &&` を消す（設計書 §8 の「住宅は薄くしない」を無効化） | `test_the_housing_board_bars_are_never_dimmed`（新設）が赤。実測の失敗理由: `opacity: 0.45` を含む棒が 1 本検出された（該当バーの実際の style 属性がテスト出力に出る） |
+| 27 | `ScheduleBoardService::row()` の `'ring' => ...` を `false` 固定に | `test_the_housing_board_puts_a_ring_only_on_the_running_bar`（新設）が赤。実測: 輪郭ありの棒が 1 本 → 0 本に |
 
 - [ ] **Step 3: 検出できなかった変異があればテストを足す**
 
