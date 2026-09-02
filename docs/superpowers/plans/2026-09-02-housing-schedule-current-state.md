@@ -2791,26 +2791,52 @@ c2 を当て直すと、`test_the_realestate_detail_page_still_shows_the_delay_b
 
 | # | 変異 | 落ちるべきテスト |
 |---|---|---|
-| 1 | `HsProperty::scheduleTracksActuals()` を `true` に | `ScheduleActualsPolicyTest::test_every_parent_declares_whether_it_tracks_actuals` ＋ `ScheduleDateStateTest`（実績列が出る・チップが消える）|
-| 2 | `ScheduleStep::booted()` の `saving` フック本体を削除 | `ScheduleActualsPolicyTest::test_saving_a_housing_step_clears_any_actual_dates_already_in_the_database` |
-| 3 | `ScheduleStepController::rules()` の `if ($owner->scheduleTracksActuals())` を消して常に実績を入れる | `ScheduleActualsPolicyTest::test_the_validation_rules_drop_the_actual_columns_for_housing` **だけ**が落ちること（②の安全網があるので挙動テストは緑のまま ＝ Bug #48 の「安全網が測定器を鈍らせる」を実測で確認する）|
-| 4 | `ScheduleStepStatus::dateState()` の `$t->lessThan($s)` を `lessThanOrEqualTo` に | `ScheduleStepStatusTest::test_a_step_starting_exactly_today_is_running` |
-| 5 | 同 `$e->lessThan($t)` を `lessThanOrEqualTo` に | `ScheduleStepStatusTest::test_a_step_ending_exactly_today_is_still_running` |
-| 6 | `ScheduleCardService::row()` の `'ring' => false` に固定 | `ScheduleDateStateTest::test_only_the_running_row_asks_for_a_ring` ＋ `..._carries_the_ring_in_the_html` |
-| 7 | `_schedule_gantt.blade.php` のラベル欄から `min-width: 0; overflow: hidden;` を消す | `ScheduleDateStateTest::test_the_label_column_cannot_be_pushed_wider_than_its_track` |
-| 8 | `ScheduleCardService::row()` の `'delayDays'` を常に `$step->delayDays($today)` に | `ScheduleDateStateTest::test_housing_rows_never_report_a_delay` |
-| 9 | `ScheduleBoardService::kpi()` の `if (! $tracksActuals)` を消す | `ScheduleBoardTest::test_the_housing_board_shows_three_step_based_kpis` |
-| 10 | `ScheduleImportController` のトランザクション内の日付更新ブロックを削除 | `HousingConstructionStartDateTest::test_importing_sets_the_construction_start_and_completion_dates` |
-| 11 | `derivedDates()` の `min` と `max` を入れ替える | 同上（着工＞完成という値になる）|
-| 12 | `HsProperty::autoMilestones()` から `着工` の行を削除 | `ScheduleAutoMilestoneTest::test_a_property_draws_a_milestone_for_the_construction_start_and_the_completion` |
+| 1 | `HsProperty::scheduleTracksActuals()` を `true` に | `ScheduleActualsPolicyTest::test_every_parent_declares_whether_it_tracks_actuals` ＋ `ScheduleDateStateTest`（実績列が出る・チップが消える）。⚠ **実測（2026-09-02）: 想定よりはるかに多い——30 本が赤化**（`ScheduleActualsPolicyTest` 6 本 / `ScheduleBoardTest` 14 本 / `ScheduleDateStateTest` 10 本）。理由の代表: 当該アサート自体は `Failed asserting that true is identical to false.`、`ScheduleBoardTest` 側の大半は住宅ボードが不動産と同じ「実績あり」の形になり `Failed asserting that 500 is identical to 200.`（actual_start 列を前提にした描画が壊れる）、`ScheduleDateStateTest` 側は状態チップが消え配列不一致になる、など |
+| 2 | `ScheduleStep::booted()` の `saving` フック本体を削除 | `ScheduleActualsPolicyTest::test_saving_a_housing_step_clears_any_actual_dates_already_in_the_database`。⚠ **実測: 4 本が赤**（想定の 1 本 ＋ `test_creating_a_housing_step_with_actual_dates_stores_none` / `test_re_saving_an_untouched_housing_step_still_clears_its_actual_dates` / `ScheduleBoardTest::test_the_housing_soon_kpi_still_counts_a_step_even_if_you_try_to_give_it_actuals`。理由はいずれも「`actual_start`/`actual_end` が Carbon のまま残り null化されていない」）。**`test_posting_actual_dates_to_a_housing_step_stores_nothing` は緑のまま**——`ScheduleStepController::rules()`（変異 3 の対象）がそもそも actual_* キーを弾くため、HTTP 経由では saving フック単体の欠落が見えない（Bug #48 と同型の二重防御を実測で確認）|
+| 3 | `ScheduleStepController::rules()` の `if ($owner->scheduleTracksActuals())` を消して常に実績を入れる | `ScheduleActualsPolicyTest::test_the_validation_rules_drop_the_actual_columns_for_housing` **だけ**が落ちること（②の安全網があるので挙動テストは緑のまま ＝ Bug #48 の「安全網が測定器を鈍らせる」を実測で確認する）。⚠ **実測: 想定どおり 1 本だけが赤**（`Failed asserting that an array does not have the key 'actual_start'.`）。挙動テスト（`test_posting_actual_dates_to_a_housing_step_stores_nothing` 等）はすべて緑のまま——ScheduleStep の saving フックが引き続き actual_* を null化するため HTTP 応答は変わらない。**Bug #48 の実証に成功**（「1 本だけ赤」が正解どおりの結果）|
+| 4 | `ScheduleStepStatus::dateState()` の `$t->lessThan($s)` を `lessThanOrEqualTo` に | `ScheduleStepStatusTest::test_a_step_starting_exactly_today_is_running`。⚠ **実測: 3 本が赤**（想定の 1 本 ＋ `test_the_time_of_day_is_ignored` / `test_a_milestone_row_without_an_end_is_upcoming_or_done`。いずれも「今日 == 開始日」の境界を別の角度で踏んでいた。diff 例: `'running'` → `'upcoming'`）|
+| 5 | 同 `$e->lessThan($t)` を `lessThanOrEqualTo` に（最終 `return` 文のみ。`$s === null` 分岐内の同一表現〈行 138〉は変えない）| `ScheduleStepStatusTest::test_a_step_ending_exactly_today_is_still_running`。⚠ **実測: 2 本が赤**（想定の 1 本 ＋ `test_the_time_of_day_is_ignored`。「今日 == 終了日」の境界を共有。diff 例: `'running'` → `'done'`）|
+| 6 | `ScheduleCardService::row()` の `'ring' => false` に固定 | `ScheduleDateStateTest::test_only_the_running_row_asks_for_a_ring` ＋ `..._carries_the_ring_in_the_html`。⚠ **実測: 想定どおり 2 本**|
+| 7 | `_schedule_gantt.blade.php` のラベル欄（`@foreach($g['rows']...)` 内の行。月ヘッダ・節目行は不変）から `min-width: 0; overflow: hidden;` を消す | `ScheduleDateStateTest::test_the_label_column_cannot_be_pushed_wider_than_its_track`。⚠ **実測: 想定どおり 1 本**（`Failed asserting that '...' contains "min-width: 0"`）|
+| 8 | `ScheduleCardService::row()` の `'delayDays'` を常に `$step->delayDays($today)` に | `ScheduleDateStateTest::test_housing_rows_never_report_a_delay`。⚠ **実測: 想定どおり 1 本**（配列 diff `0 => 0` → `0 => 105`）|
+| 9 | `ScheduleBoardService::kpi()` の `if (! $tracksActuals) { ... }` ブロック（条件と中身の両方）を削除 | `ScheduleBoardTest::test_the_housing_board_shows_three_step_based_kpis`。⚠ **実測: 3 本が赤**（想定の 1 本 ＋ `test_the_housing_kpis_are_scoped_to_the_filtered_status` / `test_the_housing_kpi_cards_are_actually_rendered`。住宅の KPI が 3 枚→4 枚に増え、「進行中の工程」1 枚が「進行中の案件」＋「遅れている案件」の 2 枚に分裂した）。不動産側（`test_the_realestate_board_keeps_four_kpis` 等）は**緑のまま**——元々この if の外側（残す側）と同じ形なので無変化 |
+| 10 | `ScheduleImportController` のトランザクション内の日付更新ブロックを削除 | `HousingConstructionStartDateTest::test_importing_sets_the_construction_start_and_completion_dates`。⚠ **実測: 7 本が赤/エラー**（想定の 1 本 ＋ `test_a_missing_end_date_leaves_the_completion_date_alone` / `test_the_steps_and_the_parent_dates_move_together` / `test_submitting_the_rendered_form_writes_the_dates_it_announced`〈いずれも `Error: Call to a member function toDateString() on null`〉／ `test_importing_overwrites_dates_that_were_already_there`〈日付が旧値のまま〉／ `test_importing_stamps_updated_by_with_the_importing_user`〈`Failed asserting that null is identical to 1.`〉／ `test_the_steps_and_the_parent_dates_roll_back_together_on_failure`〈日付書き込み自体が無いのでロールバック検証が成立せず `Failed asserting that 302 is identical to 500.`〉）|
+| 11 | `derivedDates()` の `min` と `max` を入れ替える | 同上（着工＞完成という値になる）。⚠ **実測: 7 本が赤**（`test_importing_sets_the_construction_start_and_completion_dates` / `test_importing_overwrites_dates_that_were_already_there` / `test_derived_dates_treats_the_two_fields_independently` / `test_the_steps_and_the_parent_dates_move_together` / `test_the_preview_announces_the_dates_it_will_write` / `test_the_preview_stays_quiet_when_a_date_would_not_change` / `test_submitting_the_rendered_form_writes_the_dates_it_announced`。値の食い違い例: `'2026-07-23'` → `'2026-12-03'`）|
+| 12 | `HsProperty::autoMilestones()` から `着工` の行を削除 | `ScheduleAutoMilestoneTest::test_a_property_draws_a_milestone_for_the_construction_start_and_the_completion`。⚠ **実測: 3 本が赤**（想定の 1 本 ＋ `test_a_property_with_only_one_of_the_two_dates_draws_only_that_one` / `ScheduleSectionRenderTest::test_auto_milestones_are_drawn_from_the_existing_date_columns`）|
 
 - [ ] **Step 2: 巻き込み事故の変異 13〜15（これが本命）**
 
 | # | 変異 | 落ちるべきテスト |
 |---|---|---|
-| 13 | `ReProcurement::scheduleTracksActuals()` を `false` に | `ScheduleRealEstateUntouchedTest` の 4 本すべて |
-| 14 | `_schedule_gantt.blade.php` の `@if($g['tracksActuals'])` を消して常にチップを出す | `ScheduleRealEstateUntouchedTest::test_the_realestate_detail_page_still_shows_the_delay_badge` |
-| 15 | `ScheduleBoardService::row()` の `'late' => $tracksActuals && ...` から `$tracksActuals &&` を消す | `ScheduleBoardTest::test_the_housing_board_never_paints_a_delay_badge` |
+| 13 | `ReProcurement::scheduleTracksActuals()` を `false` に | `ScheduleRealEstateUntouchedTest` の **5 本すべて**（Task 9 で 4→5 本に増えている。プラン記載の「4 本」は旧い）。⚠ **実測: 想定どおり 5/5 が赤、かつ広範囲に巻き込み事故（計 35 本が赤/エラー）**。内訳: `ScheduleRealEstateUntouchedTest` 5/5（`test_the_hook_leaves_realestate_actual_dates_alone`〈`ScheduleActualsPolicyTest`〉/ `test_a_realestate_step_still_accepts_actual_dates_over_http` / `test_both_realestate_parents_still_draw_from_actuals_and_report_delays` / `test_the_realestate_detail_page_still_shows_the_delay_badge` / `test_a_realestate_step_still_rejects_an_end_without_a_start` / `test_the_realestate_board_still_shows_four_kpis_a_delay_badge_and_its_four_way_filter`）に加え、`ScheduleBoardTest` 22 本・`ScheduleAutoMilestoneTest::test_the_realestate_milestones_are_untouched`・`ScheduleDateStateTest` 2 本・`ScheduleSectionRenderTest` 1 本・`ScheduleStepCrudTest` 1 本も赤化した（`ReProcurement` が「住宅と同じ扱い」になり、KPI の形・バリデーション・422 の扱いが軒並み変わるため。この巻き込みの広さ自体が「共有部品を触ると不動産が壊れる」という Bug #41 の実証になっている）|
+| 14 | `_schedule_gantt.blade.php` の `@if($g['tracksActuals'])`（行チップ/遅延バッジの分岐）を `@if(false)` に変えて常にチップを出す | `ScheduleRealEstateUntouchedTest::test_the_realestate_detail_page_still_shows_the_delay_badge`。⚠ **実測: 16 本が赤/エラー**（Task 9 postscript の記録訂正どおりの機構——`$chipStyle[$row['state']]` に `state=null` の不動産行が渡り `ErrorException: Undefined array key "" `で 500。この partial は詳細ページだけでなく store/update/destroy の Ajax 応答（`gantt_html`）も経由するため、`ScheduleSectionRenderTest` 6 本・`ScheduleStepCrudTest` 6 本〈うち 1 本は後続の DB 前提が崩れての `UrlGenerationException` という別理由〉・`ScheduleDateStateTest::test_the_realestate_edit_table_keeps_the_actual_columns` にも波及した。狙っていた「正規表現の不一致」ではなく「500 による assertOk() 失敗」で落ちる点も Task 9 の記録と一致）|
+| 15a | `ScheduleBoardService::row()` の `'late' => $tracksActuals && ...` から `$tracksActuals &&` を消す（**住宅向き**——住宅の棒も `isLate()` の生値をそのまま使うようになる）| `ScheduleBoardTest::test_the_housing_board_never_paints_a_delay_badge`。⚠ **実測: 想定どおり 1 本だけが赤**（`assertStringNotContainsString('border: 2px solid #DC2626', ...)` が失敗＝住宅の棒に赤枠が出た）|
+| 15b | 同 `'late' => $tracksActuals && ...` を `'late' => false` に固定（**不動産向き・逆方向**——Task 9 の I-2 で新たに追加された検出対象）| `ScheduleRealEstateUntouchedTest::test_the_realestate_board_still_shows_four_kpis_a_delay_badge_and_its_four_way_filter`。⚠ **実測: 想定どおり 1 本だけが赤**（`assertStringContainsString('border: 2px solid #DC2626', ..., '遅延した棒は赤枠')` が失敗＝赤枠が消えた。**Task 9 の I-2 修正がまさにこの向きの検出力を担保していることを実測で確認**——I-2 が無ければこの変異は「対応するテストが無く検出不能」だった箇所）|
+
+### Step 1〜2 実測結果のまとめ（2026-09-02、変異 1〜15 ＋ 15 の逆方向〈計 16 通り〉）
+
+作法は上記どおり厳守した: 各変異の前に `git status --porcelain` が空であることを確認 →
+変異を当てて `git diff --stat` が非空・狙った行だけであることを目視 → 全体テストを走らせ
+`Tests: 1283, Assertions: ..., Failures/Errors: N` と落ちたテスト名・理由の文言を記録 →
+`git checkout -- <当該ファイル>` で戻し `git status --porcelain` が空に戻ることを確認、を
+16 通り連続で行った（ログは `/private/tmp/claude-501/.../scratchpad/mutation-logs/m1.log`〜`m15b.log`）。
+
+- **16 通りすべてが検出された（未検出 0 件）。** Step 3（テスト追加）は不要だった
+- **プランの想定より広く赤化した変異が多い**（1・2・4・5・9・10・11・12・13・14 の 10 通り）。
+  これは Task 1〜9 の実装が進むにつれてテストが「その変異が壊す前提」を複数本で共有するように
+  なったためで、**悪いことではない**——むしろ同じ壊れ方を複数の角度から固定できていることの表れ
+- **想定どおり 1 本だけが赤になった変異**（3・6・7・8・15a・15b）は、いずれも狙った不変条件が
+  過不足なくテストに落とし込まれていることの確認になった。特に **3 は Bug #48 の実証**
+  （安全網〈saving フック〉があるので構造テストだけが落ち挙動テストは緑のまま）、
+  **15b は Task 9 の I-2 修正が load-bearing であることの実証**
+  （この修正が無ければ「不動産の棒が赤枠を失う」向きの変異に対応するテストが無かった）
+- **行 13 の「4 本」はプランの初版時点の記述で、Task 9 で `ScheduleRealEstateUntouchedTest` に
+  ボードのテストが 1 本追加され現在は 5 本。実測でも 5/5 が赤化**することを確認した
+- **行 15 は住宅向き（15a）と不動産向き（15b）を分けて実測**した。どちらも独立に
+  ちょうど 1 本だけが赤くなり、Task 9 のコードレビューで塞いだ「片方向だけでは半分しか
+  守れない」巻き込み事故が、いまは両方向とも検出できていることを確認した
+- 各変異を戻した直後の `git status --porcelain` はすべて空。最終確認として全変異を戻し切った
+  状態で全体テストを再実行し `OK (1283 tests, 8351 assertions)` を確認済み（ベースラインと完全一致）
 
 ⚠ **16〜17 は Task 3 のコードレビューで追加した**（Bug #48「安全網が測定器を鈍らせる」が
 Task 3 の中でテストをまたいで起きた実例。実測済み——詳細は Task 3 の実装コミット参照）。
@@ -2866,6 +2892,9 @@ green のままであることを、変異を当てた同じ実行結果の中�
 
 ⚠ **「検出しなかった」で終わらせない。** 穴が見つかったらテストを足し、**足したあとに同じ変異で
 赤になることまで確かめる**（Bug #45 の「改善が load-bearing であることの証明」）。
+
+**2026-09-02 実測: 該当なし。** 変異 1〜15（＋ 15 の逆方向。計 16 通り）はすべて既存のテストで
+検出できた。テストを追加する必要は無かった（詳細は上記「Step 1〜2 実測結果のまとめ」）。
 
 - [ ] **Step 4: 実測結果をこのプランに追記してコミット**
 
