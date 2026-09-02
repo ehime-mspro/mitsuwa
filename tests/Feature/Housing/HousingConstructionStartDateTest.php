@@ -579,18 +579,28 @@ class HousingConstructionStartDateTest extends ScheduleTestCase
      * I-4（設計書 §7.3・同一トランザクション）を**実際に測る**。
      *
      * ⚠ テスト名や docblock で「守っている」と宣言するだけでは、失敗を注入しない限り、
-     *   日付更新をトランザクションの外へ移す変異が緑のまま通る（コード品質レビュー指摘・実測済み）。
+     *   日付更新をトランザクションの外へ移す変異が緑のまま通る（コード品質レビュー指摘）。
      *
-     * ⚠ **登録した `creating` リスナは `finally` で必ず後始末する。**
-     *   `ScheduleStep::creating()` は `"eloquent.creating: " . ScheduleStep::class` という
+     * ⚠ **初版は `ScheduleStep::creating()` で失敗を注入していたが、これでは §7.3 の変異
+     *   （日付更新をトランザクションの外＝ `});` の後へ移す）を検出できないことが実測で
+     *   分かった。** 工程作成中の例外は `DB::transaction()` が再送出し `execute()` を
+     *   丸ごと中断するので、**移動先のコード（トランザクションの外）にもどのみち
+     *   到達しない**——「工程は巻き戻る・日付も変わらない」という結果が移動の有無に
+     *   関係なく同じになり、変異が無音で通過する（実測: 初版のまま変異Eを当てても
+     *   `OK (1 test, 3 assertions)` で緑だった）。
+     *
+     * ⚠ **正しい注入点は `HsProperty::saving()`。** 工程の保存が全部終わった**後**に
+     *   親の保存だけを失敗させれば、「トランザクションの外に出た」変異のときだけ
+     *   工程が確定したまま日付だけ失敗する（＝食い違いが実際に生まれる）ことを区別
+     *   して検出できる。正しい実装（同一トランザクション）ならこの失敗でも工程ごと
+     *   巻き戻る。
+     *
+     * ⚠ **登録した `saving` リスナは `finally` で必ず後始末する。**
+     *   `HsProperty::saving()` は `"eloquent.saving: " . HsProperty::class` という
      *   固定の event 名でディスパッチャに登録される（`HasEvents::registerModelEvent()`）。
-     *   `Event::forget()` はその event 名の listener だけを外し、`ScheduleStep::booted()` が
-     *   別の event 名（`"eloquent.saving: ..."`）で登録している実績なしフックには触れない
-     *   （実測で確認: このプロジェクトの TestCase は毎テスト `refreshApplication()` 経由で
-     *   `DatabaseServiceProvider::register()` が `Model::clearBootedModels()` を呼び、
-     *   新しい event dispatcher も張り直すため、後始末しなくても次のテストへは実際には
-     *   漏れないことを確認済みだが、同一テスト内の後続処理を汚さないため、また将来の
-     *   フレームワーク挙動の変化に備えて明示的に外す）。
+     *   `Event::forget()` はその event 名の listener だけを外す。`HsProperty` は現状
+     *   `booted()` を持たない（実測: `grep -n 'booted\|saving(\|updating(' HsProperty.php`
+     *   が 0 件）ので、この登録は既存の他のフックと衝突しない。
      */
     public function test_the_steps_and_the_parent_dates_roll_back_together_on_failure(): void
     {
@@ -599,10 +609,10 @@ class HousingConstructionStartDateTest extends ScheduleTestCase
             'construction_start_date' => '2020-01-01',
         ]);
 
-        $event = 'eloquent.creating: ' . \App\Models\ScheduleStep::class;
+        $event = 'eloquent.saving: ' . \App\Models\HsProperty::class;
 
-        \App\Models\ScheduleStep::creating(function (\App\Models\ScheduleStep $step): void {
-            if ($step->sort_order > 2) {
+        \App\Models\HsProperty::saving(function (\App\Models\HsProperty $model): void {
+            if ($model->isDirty('construction_start_date')) {
                 throw new \RuntimeException('boom');
             }
         });
@@ -615,7 +625,7 @@ class HousingConstructionStartDateTest extends ScheduleTestCase
             \Illuminate\Support\Facades\Event::forget($event);
         }
 
-        $this->assertSame(0, $property->scheduleSteps()->count(), '工程が巻き戻っていない');
+        $this->assertSame(0, $property->scheduleSteps()->count(), '工程が巻き戻っていない（親の保存失敗でも工程ごと戻る）');
         $this->assertSame(
             '2020-01-01',
             $property->fresh()->construction_start_date->toDateString(),
