@@ -434,15 +434,14 @@ class HsCustomOrder extends Model
         return false;
     }
 
-    /** ⚠ HsProperty と同じく「完成」は 1 つだけ（設計書 §3.4） */
+    /** ⚠ HsProperty と同じく、着工と完成は**別の節目**なので 2 つ描く（設計書 §6） */
     public function autoMilestones(): array
     {
-        $completion = $this->actual_completion_date ?? $this->scheduled_completion_date;
-
         return array_values(array_filter([
-            $this->contract_date ? ['label' => '契約', 'date' => $this->contract_date] : null,
-            $completion          ? ['label' => '完成', 'date' => $completion] : null,
-            $this->delivery_date ? ['label' => '引渡し', 'date' => $this->delivery_date] : null,
+            $this->contract_date             ? ['label' => '契約',   'date' => $this->contract_date] : null,
+            $this->construction_start_date   ? ['label' => '着工',   'date' => $this->construction_start_date] : null,
+            $this->scheduled_completion_date ? ['label' => '完成',   'date' => $this->scheduled_completion_date] : null,
+            $this->delivery_date             ? ['label' => '引渡し', 'date' => $this->delivery_date] : null,
         ]));
     }
 }

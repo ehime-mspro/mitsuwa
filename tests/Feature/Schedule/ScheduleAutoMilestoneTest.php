@@ -13,8 +13,8 @@ use Tests\TestCase;
 /**
  * 自動マイルストーン（設計書 §3.4）。既存の日付列から ◆ を描く。工程行としては作らない。
  *
- * ⚠ **`scheduled_completion_date` と `actual_completion_date` は同じ「完成」という 1 つの節目。**
- *   ◆ を 2 つ描くと「完成が 2 回ある」ように見える。実績があれば実績、無ければ予定で 1 つだけ。
+ * ⚠ **住宅事業の ◆ は「着工」と「完成」の 2 つ**（設計書 §6）。別々の節目なので 2 つ描いてよい。
+ *   ⚠ 不動産（仕入れ案件 / 分譲地PJ）の ◆ は変えない。
  *
  * ⚠ 親ごとにアクセサ名が違う（procurement_code / project_code / property_code / order_code）ので、
  *   trait 経由で読めることも 4 親ぶん対称に固定する（直に $model->name と書くと静かに空欄になる）。
@@ -118,21 +118,40 @@ class ScheduleAutoMilestoneTest extends TestCase
     }
 
     // ============================================================
-    // 完成の ◆ は 1 つだけ
+    // 住宅事業の ◆ は着工と完成の 2 つ（設計書 §6）／不動産の ◆ は変えない
     // ============================================================
 
-    /**
-     * ⚠ **これが「◆ が 2 つ出る」変異を止めるテスト。**
-     */
-    public function test_property_completion_is_a_single_milestone_even_when_both_dates_exist(): void
+    public function test_a_property_draws_a_milestone_for_the_construction_start_and_the_completion(): void
     {
-        $m = $this->property([
-            'scheduled_completion_date' => '2026-12-11',
-            'actual_completion_date'    => '2026-11-28',
-        ])->autoMilestones();
+        $owner = $this->property([
+            'construction_start_date'   => '2026-02-19',
+            'scheduled_completion_date' => '2026-09-27',
+        ]);
+        $owner->scheduleSteps()->create([
+            'name' => '基礎工事', 'category' => 'work',
+            'planned_start' => '2026-03-01', 'planned_end' => '2026-03-20', 'sort_order' => 1,
+        ]);
 
-        $this->assertSame(['完成'], $this->labels($m), '完成の ◆ を 2 つ描かないこと（設計書 §3.4）');
-        $this->assertSame('2026-11-28', $m[0]['date']->toDateString(), '実績があれば実績を採る');
+        $milestones = $owner->autoMilestones();
+
+        $this->assertSame(['着工', '完成'], $this->labels($milestones));
+        $this->assertSame('2026-02-19', $milestones[0]['date']->toDateString());
+        $this->assertSame('2026-09-27', $milestones[1]['date']->toDateString());
+    }
+
+    public function test_a_property_with_only_one_of_the_two_dates_draws_only_that_one(): void
+    {
+        $onlyStart = $this->property([
+            'property_code'           => 'HS-ONLY-START',
+            'construction_start_date' => '2026-02-19',
+        ]);
+        $this->assertSame(['着工'], $this->labels($onlyStart->autoMilestones()));
+
+        $onlyEnd = $this->property([
+            'property_code'             => 'HS-ONLY-END',
+            'scheduled_completion_date' => '2026-09-27',
+        ]);
+        $this->assertSame(['完成'], $this->labels($onlyEnd->autoMilestones()));
     }
 
     public function test_property_falls_back_to_the_scheduled_completion(): void
@@ -143,17 +162,54 @@ class ScheduleAutoMilestoneTest extends TestCase
         $this->assertSame('2026-12-11', $m[0]['date']->toDateString());
     }
 
-    public function test_custom_order_shows_contract_completion_and_delivery(): void
+    public function test_a_custom_order_keeps_its_contract_and_delivery_milestones(): void
     {
-        $m = $this->customOrder([
-            'contract_date'             => '2026-04-18',
-            'scheduled_completion_date' => '2026-11-20',
-            'actual_completion_date'    => '2026-11-15',
-            'delivery_date'             => '2026-11-30',
+        $owner = $this->customOrder([
+            'contract_date'             => '2026-01-10',
+            'construction_start_date'   => '2026-02-19',
+            'scheduled_completion_date' => '2026-09-27',
+            'delivery_date'             => '2026-10-15',
+        ]);
+
+        $this->assertSame(
+            ['契約', '着工', '完成', '引渡し'],
+            $this->labels($owner->autoMilestones()),
+            '注文住宅は契約・引渡しも節目に持つ（順序は日付の並びどおり）'
+        );
+    }
+
+    /**
+     * ⚠ 不動産の ◆ は変えない（巻き込み事故の検出。Bug #41）。
+     *
+     * ⚠ **これ単体では弱いテスト。** `ReProcurement` が自分で `autoMilestones()` を宣言していることと
+     *   `scheduleTracksActuals()` が true であることしか見ておらず、`autoMilestones()` の中身
+     *   （ラベル・順序）を書き換えても、このテスト単体は緑のまま通ることを実測済み
+     *   （`--filter test_the_realestate_milestones_are_untouched` で確認）。
+     *   実際の出力は次の `test_the_realestate_milestones_show_the_real_labels_in_order` で固定する。
+     */
+    public function test_the_realestate_milestones_are_untouched(): void
+    {
+        $before = (new \ReflectionMethod(\App\Models\ReProcurement::class, 'autoMilestones'))->getDeclaringClass()->getName();
+
+        $this->assertSame(\App\Models\ReProcurement::class, $before);
+        $this->assertTrue((new \App\Models\ReProcurement())->scheduleTracksActuals());
+    }
+
+    /**
+     * 上のテストの弱さを補う。`ReProcurement::autoMilestones()` の実装
+     * （`契約` → `決済` の固定順で、それぞれ null なら array_filter で除外）を読んでから
+     * 期待値を決めている。ラベルを 1 つ変える変異を当てるとこのテストが赤になることを確認済み。
+     */
+    public function test_the_realestate_milestones_show_the_real_labels_in_order(): void
+    {
+        $m = $this->procurement([
+            'contract_date'   => '2026-03-02',
+            'settlement_date' => '2026-07-18',
         ])->autoMilestones();
 
-        $this->assertSame(['契約', '完成', '引渡し'], $this->labels($m));
-        $this->assertSame('2026-11-15', $m[1]['date']->toDateString(), '完成は実績を優先し 1 つだけ');
+        $this->assertSame(['契約', '決済'], $this->labels($m));
+        $this->assertSame('2026-03-02', $m[0]['date']->toDateString());
+        $this->assertSame('2026-07-18', $m[1]['date']->toDateString());
     }
 
     // ============================================================

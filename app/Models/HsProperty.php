@@ -448,14 +448,19 @@ class HsProperty extends Model
     }
 
     /**
-     * ⚠ **「完成」は 1 つだけ。** scheduled_completion_date と actual_completion_date は
-     *   同じ節目なので、実績があれば実績・無ければ予定の位置に ◆ を 1 つだけ描く。
-     *   2 つ描くと「完成が 2 回ある」ように見える（設計書 §3.4）。
+     * ガントの ◆（設計書 §6）。**着工と完成の 2 つ。**
+     *
+     * ⚠ 以前は「完成は 1 つだけ」という注意書きだった。あれは `scheduled_completion_date` と
+     *   `actual_completion_date` が**同じ節目の予定と実績**だったから。
+     *   `construction_start_date` へ付け替えた今は**別の節目**なので 2 つ描いてよい。
+     *
+     * ⚠ 2 つは独立に判定する。片方だけ入っている案件は片方だけ描く。
      */
     public function autoMilestones(): array
     {
-        $completion = $this->actual_completion_date ?? $this->scheduled_completion_date;
-
-        return $completion ? [['label' => '完成', 'date' => $completion]] : [];
+        return array_values(array_filter([
+            $this->construction_start_date   ? ['label' => '着工', 'date' => $this->construction_start_date] : null,
+            $this->scheduled_completion_date ? ['label' => '完成', 'date' => $this->scheduled_completion_date] : null,
+        ]));
     }
 }
