@@ -129,6 +129,23 @@ class ScheduleStep extends Model
     }
 
     /**
+     * 日付だけで決まる状態（設計書 §4.1）。住宅事業の画面が使う。
+     *
+     * ⚠ **`planned_*` を直接見る**（`drawStart()` / `drawEnd()` を経由しない）。
+     *   `drawEnd()` は「実績開始があれば今日まで伸ばす」を含むので分岐が二重になる。
+     *   実績を持つ親では使わない（そちらは遅延と進捗で見る）。
+     */
+    public function dateState(CarbonInterface $today): string
+    {
+        return ScheduleStepStatus::dateState($this->planned_start, $this->planned_end, $today);
+    }
+
+    public function stateLabel(CarbonInterface $today): string
+    {
+        return ScheduleStepStatus::STATE_LABELS[$this->dateState($today)];
+    }
+
+    /**
      * 左カラムに出す期間テキスト（`3/16〜7/03`）。描けない行は「日付未設定」。
      *
      * ⚠ `drawEnd()` と同じ理由で `$today` は必須。

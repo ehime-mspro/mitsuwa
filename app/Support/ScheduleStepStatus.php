@@ -26,6 +26,25 @@ final class ScheduleStepStatus
     public const TODO    = 'todo';
 
     /**
+     * 日付だけで決まる状態（設計書 §4.1）。**住宅事業が使う。遅延とは別の軸。**
+     *
+     * ⚠ `RUNNING` / `DONE` は上の進捗の定数と**同じ文字列**を意図的に共有している。
+     *   ボードの絞り込みの URL（`?status=running`）が部署で食い違わないようにするため。
+     *   語彙を 2 つ持つと、どちらの 'running' なのかが読めなくなる。
+     */
+    public const UPCOMING = 'upcoming';
+
+    public const UNDATED = 'undated';
+
+    /** チップに出す日本語。⚠ 画面はここだけを見る（Blade に直書きしない） */
+    public const STATE_LABELS = [
+        self::UPCOMING => 'これから',
+        self::RUNNING  => '進行中',
+        self::DONE     => '済',
+        self::UNDATED  => '未定',
+    ];
+
+    /**
      * 遅延日数。遅れていなければ 0（設計書 §5.4）。
      *
      * ```
@@ -80,6 +99,50 @@ final class ScheduleStepStatus
         }
 
         return $actualStart !== null ? self::RUNNING : self::TODO;
+    }
+
+    /**
+     * 日付だけで決まる状態（設計書 §4.1）。
+     *
+     * ```
+     * 開始日も終了日も無い     → 未定
+     * 今日 < 開始日            → これから
+     * 開始日 ≤ 今日 ≤ 終了日   → 進行中
+     * 終了日 < 今日            → 済
+     * ```
+     *
+     * ⚠ **終了日が無く開始日だけの行（＝ ◆）**: `今日 < 開始日` なら これから、それ以外は 済。
+     * ⚠ **開始日が無く終了日だけの行**は「終了日 < 今日 なら 済 / そうでなければ 進行中」。
+     *   入力上ありうるので分岐を落とさない。
+     * ⚠ **判定は `<` であって `<=`。** 開始日ちょうどの工程は「これから」ではなく「進行中」。
+     * ⚠ **「今日」は必ず引数で受け取る**（このクラスの方針）。
+     */
+    public static function dateState(
+        ?CarbonInterface $start,
+        ?CarbonInterface $end,
+        CarbonInterface $today
+    ): string {
+        $t = CarbonImmutable::instance($today)->startOfDay();
+        $s = $start !== null ? CarbonImmutable::instance($start)->startOfDay() : null;
+        $e = $end !== null ? CarbonImmutable::instance($end)->startOfDay() : null;
+
+        if ($s === null && $e === null) {
+            return self::UNDATED;
+        }
+
+        if ($s === null) {
+            return $e->lessThan($t) ? self::DONE : self::RUNNING;
+        }
+
+        if ($t->lessThan($s)) {
+            return self::UPCOMING;
+        }
+
+        if ($e === null) {
+            return self::DONE;
+        }
+
+        return $e->lessThan($t) ? self::DONE : self::RUNNING;
     }
 
     /**
