@@ -2668,6 +2668,24 @@ Task 3 の中でテストをまたいで起きた実例。実測済み——詳�
 | 16 | `ScheduleStep::booted()` の `static::saving` を `static::updating` に | `ScheduleActualsPolicyTest::test_creating_a_housing_step_with_actual_dates_stores_none` と `..._re_saving_an_untouched_...`（⚠ 既存の `test_saving_a_housing_step_clears_...` は**緑のまま**であること＝イベント名の選択が load-bearing である証明）|
 | 17 | `ScheduleImportController::execute()` の `new ScheduleStep([...])` に `'actual_start' => $row['planned_start']` を足す | `ScheduleImportTest` は**緑のまま**（saving フックが潰すので挙動では測れない）／`test_the_importer_never_writes_actual_dates`（構造）だけが赤 |
 
+⚠ **18〜22 は Task 4 完了後のコード品質レビューで追加した**（Bug #43「凡例が行チップと同じ
+ラベル文字列を出すため、行チップを丸ごと消しても凡例だけで素の文字列アサートが満たされる」を
+実測で確認した実例）。**18 と 21 は「Task 4 完了時点のテスト（コミット `e247676e`）では
+検出しなかった」ことも実測している**（＝この改善が load-bearing であることの証明。作法は
+上記と同じ: 旧テストファイルを一時的に `git show e247676e:tests/Feature/Schedule/ScheduleDateStateTest.php`
+で展開し変異を当てて green を確認 → 新テストファイルへ戻して同じ変異で red を確認）。
+⚠ **19 は既存の変異 14 とは逆方向。** 14 は `@if($g['tracksActuals'])` を消して**常にチップを出す**
+（不動産が壊れる向き）。19 は `@if(true)` にして**常に実績分岐（遅延バッジ / 期間テキスト）へ落とす**
+（住宅のチップが消える向き）。片方向だけでは巻き込み事故の半分しか守れない。
+
+| # | 変異 | 落ちるべきテスト |
+|---|---|---|
+| 18 | 行チップの `<span>`（`{{ $row['stateLabel'] }}` を出す部分。ラベル欄 `@else` 節の 2 行目）を丸ごと削除 | `ScheduleDateStateTest::test_each_housing_row_carries_its_own_state_chip`（＋ `..._shows_the_undated_chip` も判別子を共有するため巻き添えで赤）。⚠ **旧テスト（`e247676e`）では green のまま**（実測）。凡例が同じ `>これから</span>` 等を出すため、当時の素の文字列アサート（`assertStringContainsString('>これから</span>', $html)`）は凡例だけで満たされていた |
+| 19 | ラベル欄の `@if($g['tracksActuals'])`（住宅向き。既存の変異 14 とは逆方向）を `@if(true)` に | `test_each_housing_row_carries_its_own_state_chip` ＋ `..._shows_the_undated_chip` |
+| 20 | `$chipStyle` の `running`/`done` の**値**を入れ替え（キーはそのまま） | `test_the_running_chip_is_paired_with_its_dark_color` **だけ**が赤。ラベル文字列自体は変わらず色だけが変わるため、①②のチップ個数・存在テストは検出しない（実測: 他 12 本は green のまま） |
+| 21 | 凡例の `@foreach(['upcoming', 'running', 'done'] as $s) ... @endforeach` ブロック（3 行）を削除 | `test_the_legend_explains_the_states`（凡例チップ 3 個の assertSame）。⚠ **旧テスト（`e247676e`）では green のまま**（実測）。`進行中は棒にも輪郭` は `@foreach` の外の兄弟 `<span>` で無関係に残るため、当時のテストはこの文字列しか見ておらず気づけなかった |
+| 22 | 行のラベル欄（`@foreach($g['rows']...)` 内の 1 箇所だけ）の `262px` を `260px` に（月ヘッダ・節目行は不変） | `test_the_label_column_cannot_be_pushed_wider_than_its_track`（件数の下限アサート。4→1 に減り不一致で赤）。⚠ 件数下限を足す前の `assertNotEmpty` 単体だと、月ヘッダの `flex: 0 0 262px;` だけで非空を満たすため検出できない穴だった |
+
 - [ ] **Step 3: 検出できなかった変異があればテストを足す**
 
 ⚠ **「検出しなかった」で終わらせない。** 穴が見つかったらテストを足し、**足したあとに同じ変異で
