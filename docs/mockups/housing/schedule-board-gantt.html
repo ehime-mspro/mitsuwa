@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>工程表ボードのガント — 見え方の比較</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif;
+         background: #F3F4F6; color: #111827; }
+
+  /* ⚠ 本番と同じレイアウト階層を再現する。単体 HTML のモックでは <main> の flex 文脈が無く
+       グリッド/フレックスのブローアウトが再現しない（Bug #29 の教訓）。 */
+  .shell { display: flex; height: 100vh; }
+  .side  { flex: 0 0 232px; background: #14532D; }
+  main   { flex: 1 1 auto; min-width: 0; overflow-y: auto; padding: 20px 24px 60px; }
+
+  h1 { font-size: 17px; margin: 0 0 4px; }
+  .lead { font-size: 12.5px; color: #4B5563; margin: 0 0 16px; line-height: 1.7; }
+  .panel { background: white; border: 1px solid #E5E7EB; border-radius: 8px; padding: 14px 16px; margin-bottom: 18px; }
+  .row { display: flex; flex-wrap: wrap; gap: 18px; align-items: center; }
+  label { font-size: 12px; color: #374151; display: flex; align-items: center; gap: 7px; }
+  select, input[type=range] { font-size: 12.5px; }
+  .metric { font-size: 12px; color: #6B7280; }
+  .metric b { color: #111827; font-size: 13px; }
+  .note { font-size: 11.5px; color: #6B7280; line-height: 1.75; margin-top: 10px; }
+  .warn { color: #B45309; }
+
+  /* ---- ガント本体（本番 _schedule_board.blade.php の構造をそのまま写す） ---- */
+  .board { border: 1px solid #E5E7EB; border-radius: 8px; overflow: hidden; background: white; }
+  .scroller { overflow-x: auto; }
+  .track-outer { display: flex; flex-direction: column; }
+
+  .hrow { display: flex; height: 42px; background: #F9FAFB; border-bottom: 1px solid #E5E7EB; }
+  .brow { display: flex; border-bottom: 1px solid #F3F4F6; }
+
+  /* 案件名の列。案A/案B では sticky で貼り付ける */
+  .cname { flex: 0 0 320px; border-right: 1px solid #E5E7EB; display: flex; align-items: center;
+           gap: 6px; padding: 0 12px; font-size: 12.5px; min-width: 0; background: white; }
+  .hrow .cname { font-size: 11.5px; font-weight: 700; color: #6B7280; background: #F9FAFB; }
+  .sticky .cname { position: sticky; left: 0; z-index: 5; }
+  .sticky .cname::after { content: ""; position: absolute; top: 0; right: -6px; bottom: 0; width: 6px;
+                          background: linear-gradient(to right, rgba(0,0,0,.07), rgba(0,0,0,0)); }
+
+  .axis { flex: 1 1 auto; min-width: 0; position: relative; display: flex; }
+  .arow { flex: 1 1 auto; min-width: 0; position: relative; }
+
+  .mcell { border-right: 1px solid #E5E7EB; font-size: 11px; color: #6B7280;
+           display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .mcell.q { border-right-color: #D1D5DB; }
+  .mcell i { font-style: normal; font-size: 9.5px; color: #9CA3AF; margin-right: 3px; }
+
+  .today-pill { position: absolute; top: 2px; transform: translateX(-50%); background: #EF4444; color: white;
+                font-size: 9.5px; font-weight: 700; padding: 1px 6px; border-radius: 999px;
+                white-space: nowrap; z-index: 4; }
+  .today-line { position: absolute; top: 0; bottom: 0; width: 0; border-left: 2px dashed #EF4444; z-index: 3; }
+
+  .bar { position: absolute; height: 13px; border-radius: 3px; }
+  .kind { font-size: 10px; font-weight: 700; color: #6B7280; background: #F3F4F6;
+          border-radius: 4px; padding: 1px 6px; white-space: nowrap; }
+  .cname a { color: #111827; text-decoration: none; white-space: nowrap; overflow: hidden;
+             text-overflow: ellipsis; min-width: 0; }
+  .dummy { color: #9CA3AF; font-size: 10.5px; margin-left: auto; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 9px; font-size: 11.5px; color: #6B7280; align-items: center; }
+  .legend i { display: inline-block; width: 20px; height: 9px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="side"></div>
+  <main>
+    <h1>工程表ボードのガント — 見え方の比較</h1>
+    <p class="lead">
+      本番の実データ（建売 <b>JG西長戸4号地</b> / 工程 <b>64 件</b>、うち <b>35 件が 1 日</b>）で描いています。
+      データの範囲は <b>2026-02-19 〜 2026-09-27</b>（約 7 ヶ月）。今日は <b>2026-09-03</b>。<br>
+      本番で工程を持つ案件は<b>この 1 件だけ</b>なので既定は 1 行です。複数行の見え方は「ダミー案件も出す」で確認できます。
+    </p>
+
+    <div class="panel">
+      <div class="row">
+        <label>表示:
+          <select id="mode">
+            <option value="now">現状（19 ヶ月を画面幅に圧縮）</option>
+            <option value="a">案A: 今日基準の 19 ヶ月を横スクロール</option>
+            <option value="b" selected>案B: データの範囲に合わせて横スクロール（推奨）</option>
+          </select>
+        </label>
+        <label><input type="checkbox" id="fit6" checked> 初期表示を <b>6 ヶ月</b>に合わせる（幅を自動計算）</label>
+        <label id="wwrap">1 ヶ月の幅:
+          <input type="range" id="mw" min="60" max="360" step="10" value="150">
+          <b id="mwv">150</b> px
+        </label>
+        <label><input type="checkbox" id="stick" checked> 案件名の列を固定する</label>
+        <label><input type="checkbox" id="dummies"> ダミー案件も出す（既定は本番と同じ 1 案件）</label>
+      </div>
+      <div class="row" style="margin-top: 12px;">
+        <span class="metric">軸の範囲: <b id="mRange">—</b></span>
+        <span class="metric">画面に見えている月数: <b id="mVis">—</b></span>
+        <span class="metric">1 日の工程の幅: <b id="mDay">—</b></span>
+        <span class="metric">横スクロール量: <b id="mScroll">—</b></span>
+      </div>
+      <div class="note" id="modeNote"></div>
+
+      <table id="cmp" style="width:100%; margin-top:14px; border-collapse:collapse; font-size:12px;">
+        <thead>
+          <tr style="background:#F9FAFB; color:#6B7280; text-align:left;">
+            <th style="padding:6px 8px; border:1px solid #E5E7EB;">案</th>
+            <th style="padding:6px 8px; border:1px solid #E5E7EB;">軸の月数</th>
+            <th style="padding:6px 8px; border:1px solid #E5E7EB;">1 日の工程の幅</th>
+            <th style="padding:6px 8px; border:1px solid #E5E7EB;">見えている月数</th>
+            <th style="padding:6px 8px; border:1px solid #E5E7EB;">横スクロール量</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div class="board">
+      <div class="scroller" id="scroller">
+        <div class="track-outer" id="track"></div>
+      </div>
+    </div>
+
+    <div class="legend">
+      <span><i style="background:#059669"></i>工事</span>
+      <span><i style="background:#1D4ED8"></i>許認可・申請</span>
+      <span><i style="background:#7C3AED"></i>測量・登記</span>
+      <span><i style="background:#F59E0B"></i>販売</span>
+      <span><i style="background:#6B7280"></i>その他</span>
+      <span style="margin-left:8px;">赤い破線 = 今日</span>
+    </div>
+
+    <div class="note" style="max-width: 900px;">
+      ⚠ <b>この比較の要点は「1 日の工程が読めるか」です。</b>本番の 64 工程のうち 35 件（55%）が 1 日で、
+      <b>現状のボードでは幅 1.00px</b>（＝ 1 ピクセル）しかありません。<br>
+      ⚠ 位置の計算（<code>GanttScale</code>）は<b>トラックに対する %</b> なので、トラックに px 幅を与えるだけで
+      そのまま使えます。PHP 側の計算は変えません。
+    </div>
+  </main>
+</div>
+
+<script>
+const TODAY = '2026-09-03';
+const COLORS = { work: '#059669', permit: '#1D4ED8', survey: '#7C3AED', sale: '#F59E0B', other: '#6B7280' };
+
+const REAL = [["仮設工事 / 仮囲・仮設トイレ設置","work","2026-02-21","2026-02-21"],["仮設工事 / 撤去","work","2026-09-04","2026-09-04"],["仮設工事 / 仮設水道","work","2026-02-19","2026-02-20"],["仮設工事 / 仮設電気","work","2026-02-28","2026-03-06"],["仮設工事 / ダストBOX設置","work","2026-06-05","2026-06-05"],["地盤改良 / 柱状改良","other","2026-03-09","2026-03-10"],["基礎工事 / 基礎工事","work","2026-04-22","2026-05-28"],["基礎工事 / 鉄筋配筋予定","work","2026-04-30","2026-05-01"],["基礎工事 / JIO検査","work","2026-05-02","2026-05-02"],["基礎工事 / 土間打設","work","2026-05-27","2026-05-27"],["白蟻工事 / 土壌処理","work","2026-04-24","2026-04-24"],["白蟻工事 / 木材処理","work","2026-06-19","2026-06-19"],["足場工事 / 足場組立","work","2026-06-01","2026-06-01"],["足場工事 / 足場解体","work","2026-07-21","2026-07-22"],["大工工事 / 土台敷き","work","2026-05-28","2026-05-30"],["大工工事 / 上棟","work","2026-06-05","2026-06-05"],["大工工事 / 造作","work","2026-06-06","2026-08-05"],["大工工事 / 内部建具取付","work","2026-08-31","2026-08-31"],["大工工事 / 養生剥ぎ","work","2026-09-01","2026-09-01"],["サッシ工事 / 枠搬入","work","2026-06-12","2026-06-12"],["サッシ工事 / 障子取付","work","2026-06-13","2026-06-13"],["サッシ工事 / ベランダ笠木","work","2026-07-23","2026-07-27"],["サッシ工事 / 網戸・物干し取付","work","2026-09-05","2026-09-05"],["屋根工事 / ルーフィング","work","2026-06-05","2026-06-05"],["屋根工事 / 屋根工事","work","2026-06-12","2026-06-16"],["外壁工事 / 防水紙貼り","work","2026-06-15","2026-06-16"],["外壁工事 / サイディング工事","work","2026-06-19","2026-07-13"],["外壁工事 / コーキング工事","work","2026-07-13","2026-07-15"],["塗装・防水工事 / ベランダFRP防水下地","work","2026-06-15","2026-06-15"],["塗装・防水工事 / 防水上塗仕上","work","2026-08-28","2026-08-29"],["樋工事 / 樋工事","work","2026-07-16","2026-07-18"],["電気工事 / アース設置","work","2026-05-02","2026-05-02"],["電気工事 / 内部配線","work","2026-06-17","2026-06-17"],["電気工事 / 外部仕舞","work","2026-07-16","2026-07-18"],["電気工事 / 開口","work","2026-08-04","2026-08-05"],["電気工事 / 器具取付","work","2026-08-28","2026-08-29"],["給排水設備工事 / さや管配管","work","2026-05-07","2026-05-07"],["給排水設備工事 / 内部・外部先行配管","work","2026-05-25","2026-05-25"],["給排水設備工事 / 内部給排水配管","work","2026-06-15","2026-06-15"],["給排水設備工事 / 外部配管仕舞","work","2026-08-04","2026-08-05"],["給排水設備工事 / 1階配管立上","work","2026-08-04","2026-08-05"],["給排水設備工事 / 器具取付","work","2026-08-28","2026-08-29"],["クロス・床工事 / クロス工事","work","2026-08-07","2026-08-18"],["左官工事 / 玄関モルタル詰め","work","2026-06-15","2026-06-19"],["左官工事 / 基礎塗・土間モルタル仕上","work","2026-08-27","2026-08-28"],["タイル工事 / タイル工事","work","2026-08-18","2026-08-19"],["設備工事 / ＵＢ据付","work","2026-06-26","2026-06-26"],["設備工事 / キッチン取付","work","2026-08-28","2026-08-28"],["設備工事 / 照明器具搬入","work","2026-08-21","2026-08-21"],["設備工事 / トイレ搬入","work","2026-08-21","2026-08-21"],["設備工事 / 洗面化粧台搬入","work","2026-08-21","2026-08-21"],["設備工事 / エコキュート搬入","work","2026-08-26","2026-08-26"],["浄化槽 / 浄化槽設置","other","2026-07-23","2026-07-27"],["美装工事 / 外部美装","work","2026-07-16","2026-07-18"],["美装工事 / 美装工事","work","2026-09-03","2026-09-04"],["雑工事 / 天井鋼製野縁材 搬入","work","2026-06-02","2026-06-02"],["雑工事 / 内部シール","work","2026-09-07","2026-09-07"],["検査 / 配筋検査","permit","2026-05-02","2026-05-02"],["検査 / 金物検査","permit","2026-06-16","2026-06-16"],["検査 / 外壁下地検査","permit","2026-06-19","2026-06-19"],["検査 / 断熱検査","permit","2026-06-25","2026-06-25"],["検査 / ２次検査（木完検査）","permit","2026-08-06","2026-08-06"],["検査 / 竣工検査","permit","2026-09-07","2026-09-07"],["外構工事 / 外構工事","work","2026-09-08","2026-09-27"]];
+
+// ダミー案件（複数行の見え方の確認用）
+function shift(rows, days, keep) {
+  return rows.slice(0, keep).map(r => [r[0], r[1], addDays(r[2], days), addDays(r[3], days)]);
+}
+const ALL_CASES = [
+  { kind: '建売', name: 'JG西長戸4号地', dummy: false, steps: REAL },
+  { kind: '建売', name: 'JG保免中3号地（ダミー）', dummy: true, steps: shift(REAL, 95, 22) },
+  { kind: '注文', name: '高木豊邸（ダミー）',       dummy: true, steps: shift(REAL, 40, 14) },
+];
+// 本番は工程を持つ案件が 1 件だけ。既定はその実態に合わせる。
+let CASES = ALL_CASES.filter(c => !c.dummy);
+
+// ---- 日付ユーティリティ（UTC 固定で timezone のずれを避ける） ----
+function d(s) { const [y, m, dd] = s.split('-').map(Number); return Date.UTC(y, m - 1, dd); }
+function fmt(ms) { const x = new Date(ms); return x.getUTCFullYear() + '-' + String(x.getUTCMonth() + 1).padStart(2, '0') + '-' + String(x.getUTCDate()).padStart(2, '0'); }
+function addDays(s, n) { return fmt(d(s) + n * 86400000); }
+function days(a, b) { return Math.round((d(b) - d(a)) / 86400000); }
+function monthStart(s) { const [y, m] = s.split('-').map(Number); return fmt(Date.UTC(y, m - 1, 1)); }
+function addMonths(s, n) { const [y, m, dd] = s.split('-').map(Number); return fmt(Date.UTC(y, m - 1 + n, dd)); }
+function endOfMonth(s) { const [y, m] = s.split('-').map(Number); return fmt(Date.UTC(y, m, 0)); }
+
+// ---- 軸の決め方 ----
+function axisFor(mode) {
+  const anchor = monthStart(TODAY);
+  if (mode === 'b') {
+    let lo = null, hi = null;
+    CASES.forEach(c => c.steps.forEach(s => {
+      if (lo === null || d(s[2]) < d(lo)) lo = s[2];
+      if (hi === null || d(s[3]) > d(hi)) hi = s[3];
+    }));
+    return { from: monthStart(lo), to: endOfMonth(hi) };
+  }
+  // 現状 / 案A: 今日の 6 ヶ月前 〜 12 ヶ月後（本番の既定 ZOOM 'month' と同じ）
+  return { from: addMonths(anchor, -6), to: endOfMonth(addMonths(anchor, 12)) };
+}
+
+function monthsIn(from, to) {
+  const out = [];
+  let cur = monthStart(from);
+  while (d(cur) <= d(to)) {
+    const next = addMonths(cur, 1);
+    const end = d(next) > d(to) ? addDays(to, 1) : next;
+    out.push({ start: cur, days: days(cur, end), label: Number(cur.split('-')[1]) + '月', year: cur.split('-')[0] });
+    cur = next;
+  }
+  return out;
+}
+
+// ---- 段の振り分け（本番 LanePacker と同じ貪欲法） ----
+function packLanes(steps) {
+  const lanes = [];
+  const sorted = steps.slice().sort((a, b) => d(a[2]) - d(b[2]));
+  sorted.forEach(s => {
+    let i = 0;
+    while (i < lanes.length && d(lanes[i]) >= d(s[2])) i++;
+    if (i === lanes.length) lanes.push(null);
+    lanes[i] = addDays(s[3], 4); // 4 日ぶんの隙間を空ける
+    s._lane = i;
+  });
+  return Math.max(1, lanes.length);
+}
+
+// ---- 描画 ----
+/** 3 案を同じ条件で並べて比べる（DOM を切り替えずに数値だけ出す） */
+function compare(mw, availAxisPx) {
+  const rows = [
+    ['現状（19 ヶ月を画面幅に圧縮）', 'now', null],
+    ['案A: 今日基準の 19 ヶ月をスクロール', 'a', mw],
+    ['案B: データの範囲に合わせてスクロール', 'b', mw],
+  ];
+  const tb = document.querySelector('#cmp tbody');
+  tb.innerHTML = '';
+  rows.forEach(([label, mode, w]) => {
+    const ax = axisFor(mode);
+    const ms = monthsIn(ax.from, ax.to);
+    const total = days(ax.from, ax.to) + 1;
+    const axisPx = w === null ? availAxisPx : ms.length * w;
+    const perDay = axisPx / total;
+    const vis = axisPx === 0 ? 0 : (availAxisPx / (axisPx / ms.length));
+    const over = Math.max(0, axisPx - availAxisPx);
+    const tr = document.createElement('tr');
+    [label, ms.length + ' ヶ月', perDay.toFixed(2) + ' px',
+     Math.min(vis, ms.length).toFixed(1) + ' ヶ月', over < 1 ? 'なし' : Math.round(over) + ' px']
+      .forEach((v, i) => {
+        const td = document.createElement('td');
+        td.style.cssText = 'padding:6px 8px; border:1px solid #E5E7EB;' + (i === 2 ? 'font-weight:700;' : '');
+        td.textContent = v;
+        tr.appendChild(td);
+      });
+    tb.appendChild(tr);
+  });
+}
+
+/** 初期表示 N ヶ月ぶんがちょうど収まる 1 ヶ月の幅 */
+const VISIBLE_MONTHS = 6;
+function fitWidth() {
+  const avail = document.getElementById('scroller').clientWidth - 320;
+  return Math.max(40, Math.round(avail / VISIBLE_MONTHS));
+}
+
+function render() {
+  const mode = document.getElementById('mode').value;
+  const fit = document.getElementById('fit6').checked;
+  const slider = document.getElementById('mw');
+  if (fit) { slider.value = Math.min(slider.max, Math.max(slider.min, fitWidth())); }
+  const mw = fit ? fitWidth() : Number(slider.value);
+  const sticky = document.getElementById('stick').checked;
+  CASES = ALL_CASES.filter(c => document.getElementById('dummies').checked || !c.dummy);
+  document.getElementById('mwv').textContent = mw;
+  slider.disabled = fit;
+  document.getElementById('wwrap').style.opacity = (mode === 'now' || fit) ? .35 : 1;
+
+  const ax = axisFor(mode);
+  const months = monthsIn(ax.from, ax.to);
+  const total = days(ax.from, ax.to) + 1;
+  const pct = s => days(ax.from, s) / total * 100;
+  const wpct = (a, b) => (days(a, b) + 1) / total * 100;
+
+  const scroller = document.getElementById('scroller');
+  const track = document.getElementById('track');
+  track.innerHTML = '';
+  track.className = 'track-outer' + (sticky && mode !== 'now' ? ' sticky' : '');
+
+  // トラックの幅: 現状は画面幅いっぱい（min-width 1000px）。案A/案B は 月数 × mw px
+  const trackW = mode === 'now' ? null : (320 + months.length * mw);
+  track.style.width = trackW ? trackW + 'px' : '';
+  track.style.minWidth = trackW ? '' : '1000px';
+
+  const todayPct = (d(TODAY) >= d(ax.from) && d(TODAY) <= d(ax.to)) ? pct(TODAY) : null;
+
+  // ヘッダ
+  const h = document.createElement('div');
+  h.className = 'hrow';
+  h.innerHTML = '<div class="cname">案件</div>';
+  const hax = document.createElement('div');
+  hax.className = 'axis';
+  months.forEach((m, i) => {
+    const c = document.createElement('div');
+    c.className = 'mcell' + (m.label === '1月' ? ' q' : '');
+    c.style.width = (m.days / total * 100) + '%';
+    c.innerHTML = (i === 0 || m.label === '1月' ? '<i>' + m.year + '</i>' : '') + m.label;
+    hax.appendChild(c);
+  });
+  if (todayPct !== null) {
+    const p = document.createElement('div');
+    p.className = 'today-pill'; p.style.left = todayPct + '%';
+    p.textContent = '今日 9/3';
+    hax.appendChild(p);
+  }
+  h.appendChild(hax);
+  track.appendChild(h);
+
+  // 案件行
+  let dayW = 0;
+  CASES.forEach(c => {
+    const laneCount = packLanes(c.steps);
+    const rowH = Math.max(56, laneCount * 17 + 16);
+
+    const r = document.createElement('div');
+    r.className = 'brow';
+    r.style.height = rowH + 'px';
+    r.innerHTML = '<div class="cname"><span style="color:#6B7280;font-size:12px;">▸</span>'
+      + '<span class="kind">' + c.kind + '</span><a href="#">' + c.name + '</a>'
+      + (c.dummy ? '<span class="dummy">ダミー</span>' : '') + '</div>';
+
+    const a = document.createElement('div');
+    a.className = 'arow';
+    if (todayPct !== null) {
+      const l = document.createElement('div');
+      l.className = 'today-line'; l.style.left = todayPct + '%';
+      a.appendChild(l);
+    }
+    c.steps.forEach(s => {
+      const left = Math.max(0, Math.min(100, pct(s[2])));
+      const w = Math.max(0, Math.min(100 - left, wpct(s[2], s[3])));
+      const b = document.createElement('div');
+      b.className = 'bar';
+      b.title = s[0] + '  ' + s[2] + '〜' + s[3];
+      b.style.cssText = 'top:' + (8 + s._lane * 17) + 'px; left:' + left + '%; width:' + w + '%; background:' + COLORS[s[1]];
+      a.appendChild(b);
+      if (!c.dummy && s[2] === s[3] && !dayW) dayW = w;
+    });
+    r.appendChild(a);
+    track.appendChild(r);
+  });
+
+  // 実測を出す
+  requestAnimationFrame(() => {
+    const axEl = track.querySelector('.arow');
+    const axW = axEl ? axEl.getBoundingClientRect().width : 0;
+    const oneDay = axEl ? (axW / total) : 0;
+    document.getElementById('mRange').textContent =
+      ax.from.slice(0, 7) + ' 〜 ' + ax.to.slice(0, 7) + '（' + months.length + ' ヶ月）';
+    document.getElementById('mVis').textContent =
+      (scroller.clientWidth - 320 > 0 ? ((scroller.clientWidth - 320) / (axW / months.length)).toFixed(1) : '—') + ' ヶ月';
+    document.getElementById('mDay').textContent = oneDay.toFixed(2) + ' px';
+    const over = track.scrollWidth - scroller.clientWidth;
+    document.getElementById('mScroll').textContent = over > 1 ? Math.round(over) + ' px' : 'なし';
+
+    compare(mw, Math.max(0, scroller.clientWidth - 320));
+
+    document.getElementById('modeNote').innerHTML = ({
+      now: '⚠ <b>現状。</b>19 ヶ月を画面幅に押し込むので 1 日の工程が <b>約 2.8px</b> しかない。'
+         + 'しかも <b>2026-10 以降の 12 ヶ月は完全に空白</b>（データは 2026-09-27 で終わる）＝ 幅の 2/3 近くが無駄。',
+      a: '<b>案A。</b>軸の範囲は今のまま（今日の 6 ヶ月前〜12 ヶ月後）で、1 ヶ月に固定幅を与えて横スクロールにする。'
+         + '<span class="warn">⚠ 空白の 12 ヶ月もスクロール範囲に残るので、右へ延々と空白が続く。</span>',
+      b: '<b>案B（推奨）。</b>軸を<b>データの範囲</b>（全案件の最小開始〜最大終了の月）に合わせる。'
+         + '空白が消えるのでスクロール量が小さく、同じ 1 ヶ月幅でも全体を把握しやすい。'
+         + '<span class="warn">⚠ 案件を絞り込むと軸の幅が変わる</span>（見えている案件に合わせて伸縮する）。'
+    })[mode];
+
+    // 初期スクロール位置: 今日の 1 ヶ月前あたりを左端に
+    if (mode !== 'now' && todayPct !== null) {
+      const x = (todayPct / 100) * axW - (mw * 1);
+      scroller.scrollLeft = Math.max(0, x);
+    } else {
+      scroller.scrollLeft = 0;
+    }
+  });
+}
+
+['mode', 'mw', 'stick', 'dummies', 'fit6'].forEach(id =>
+  document.getElementById(id).addEventListener('input', render));
+window.addEventListener('resize', render);
+render();
+</script>
+</body>
+</html>
