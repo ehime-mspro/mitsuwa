@@ -233,6 +233,25 @@ class HousingConstructionStartDateTest extends ScheduleTestCase
     }
 
     /**
+     * I-1: 日付 2 列しか fill していなかったので `updated_by` が据え置きになり、物件詳細の
+     *   「更新: 〇〇」が**取込を実行した人ではなく前回フォームを編集した人**の名前に、
+     *   取込の時刻だけが貼り付く（無いより悪い監査行）。工程には同じトランザクションで
+     *   `updated_by` を打っており、ここだけ規約から漏れていた（コード品質レビュー指摘）。
+     */
+    public function test_importing_stamps_updated_by_with_the_importing_user(): void
+    {
+        $property = $this->makeParent('property', ['property_code' => 'HS-IMP8', 'created_by' => 1]);
+        $importer = $this->manager();
+
+        $this->actingAs($importer)->post(
+            route('housing.properties.schedule-import.execute', $property),
+            ['rows_json' => json_encode($this->importableRows(), JSON_UNESCAPED_UNICODE)]
+        )->assertRedirect();
+
+        $this->assertSame($importer->id, $property->fresh()->updated_by, '取込を実行した人が updated_by に入ること');
+    }
+
+    /**
      * ⚠ **2 つは独立。** `planned_end` が 1 つも無い取込で完成予定日を潰さない。
      *   「両方そろわなければ何もしない」にもしない（片方だけ入ることはありうる）。
      *
@@ -302,6 +321,19 @@ class HousingConstructionStartDateTest extends ScheduleTestCase
             ['construction_start_date' => '2026-02-19', 'scheduled_completion_date' => '2026-09-27'],
             \App\Http\Controllers\Housing\ScheduleImportController::derivedDates($this->importableRows()),
             '最小の開始日・最大の終了日を独立に出す'
+        );
+
+        // ⚠ 危険なのは null と実値の**混在**（コード品質レビュー指摘・実測済み）。
+        //   `array_filter` を外すと `min([null, '2026-02-19'])` は `null` を返す
+        //   （null は文字列比較で '' 相当になり、実在の日付より必ず小さい）。
+        //   全行 null（既存の他ケース）だけでは、この分岐（一部だけ null）は検出できない。
+        $this->assertSame(
+            ['construction_start_date' => '2026-02-19', 'scheduled_completion_date' => '2026-09-27'],
+            \App\Http\Controllers\Housing\ScheduleImportController::derivedDates([
+                ['planned_start' => null, 'planned_end' => '2026-09-27'],
+                ['planned_start' => '2026-02-19', 'planned_end' => null],
+            ]),
+            'null と実値が混在していても正しい min/max を出す'
         );
     }
 
@@ -378,16 +410,39 @@ class HousingConstructionStartDateTest extends ScheduleTestCase
         )->assertOk()->getContent();
     }
 
+    /**
+     * ⚠ **元は4つの独立した部分一致だった**（コード品質レビュー指摘・実測済み）。
+     *   ① `$labels` の着工予定日/完成予定日を入れ替える変異 → 4文字列とも別々にHTML中に
+     *   存在するため全部緑のまま通った（着工と完成が逆に出る画面が検出されない）。
+     *   ② `from`/`to` を入れ替える変異も同様に緑（`HS-PRE1` は日付未設定で `from='—'` の
+     *   ため、入れ替えても `'着工予定日を'` `'2026/07/23'` は残る）。
+     *   ③ さらに `2026/12/25` のアサートは**空振り**していた——固定資産の工事期間セル
+     *   （`D1` = `2026/07/28〜2026/12/25`）を Blade が `{{ $result['period'] ?? '—' }}` で
+     *   そのまま出力するため、予告の `<li>` が 1 つも無くても `2026/12/25` 自体は常に
+     *   HTML に存在する（Bug #43 と同型）。
+     *
+     * ⚠ **既存の日付を持つ物件で `<li>` を全文で突き合わせる形に置き換えた。**
+     *   `from` が具体的な値（'2020/01/01' 等）を持つことで、ラベル⇄値・from⇄to の対応が
+     *   同時に固定され、かつ全文一致なので工事期間セルへの部分一致では成立しない。
+     */
     public function test_the_preview_announces_the_dates_it_will_write(): void
     {
-        $property = $this->makeParent('property', ['property_code' => 'HS-PRE1']);
+        $property = $this->makeParent('property', [
+            'property_code'             => 'HS-PRE1',
+            'construction_start_date'   => '2020-01-01',
+            'scheduled_completion_date' => '2020-12-31',
+        ]);
 
         $html = $this->preview($property);
 
-        $this->assertStringContainsString('着工予定日を', $html);
-        $this->assertStringContainsString('完成予定日を', $html);
-        $this->assertStringContainsString('2026/07/23', $html, '固定資産の最小の開始日');
-        $this->assertStringContainsString('2026/12/25', $html, '固定資産の最大の終了日');
+        $this->assertStringContainsString(
+            '着工予定日を <span class="font-bold">2026/07/23</span> にします（現在: 2020/01/01）',
+            $html
+        );
+        $this->assertStringContainsString(
+            '完成予定日を <span class="font-bold">2026/12/25</span> にします（現在: 2020/12/31）',
+            $html
+        );
     }
 
     /** ⚠ 値が変わらないときは行を出さない（「2026/09/27 → 2026/09/27」というノイズを出さない） */
@@ -404,6 +459,57 @@ class HousingConstructionStartDateTest extends ScheduleTestCase
         $this->assertStringNotContainsString('着工予定日を', $html);
         $this->assertStringNotContainsString('完成予定日を', $html);
         $this->assertStringContainsString('取り込むと どうなるか', $html, '走査の空振りでないこと');
+    }
+
+    /**
+     * M-2: `dateChanges()` の `if ($to === null) { continue; }` を守る。
+     *
+     * ⚠ **`test_the_preview_does_not_crash_...`（rows=0）では検出できない。** あちらは
+     *   `HS-PRE4` に日付が何も設定されていないため `$current` も null で、2 つ目の
+     *   `if ($current === $to)` ガード（`null === null` = true）が偶然かぶって守ってしまう。
+     *   ここでは **`$to` が null・`$current` が非 null** の組み合わせを作る（完成予定日が
+     *   既に入っている物件に、`planned_end` を 1 つも持たないファイルを取り込む）。
+     *
+     * ⚠ このガードを外すと `CarbonImmutable::parse(null)` が実行時点の日時を返す
+     *   （実測: `2026/09/02`）ため、「完成予定日を <実行日> にします」という**嘘の予告**が出る
+     *   （コード品質レビュー指摘）。
+     */
+    public function test_the_preview_does_not_announce_a_column_with_no_new_dates(): void
+    {
+        $property = $this->makeParent('property', [
+            'property_code'             => 'HS-PRE5',
+            'scheduled_completion_date' => '2020-12-31',
+        ]);
+
+        $path = sys_get_temp_dir() . '/schedule-import-no-end-dates-' . bin2hex(random_bytes(8)) . '.xlsx';
+
+        try {
+            $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+            $sheet = $spreadsheet->getActiveSheet();
+            $sheet->setCellValue('A3', '大工程名');
+            $sheet->setCellValue('B3', '工程名');
+            $sheet->setCellValue('E3', '施工開始日');
+            $sheet->setCellValue('H3', '施工完了日');
+            $sheet->setCellValue('L3', '状態');
+            // データ行は施工開始日のみ。施工完了日は空欄のまま（milestone 行）にする。
+            $sheet->setCellValue('A4', '仮設工事');
+            $sheet->setCellValue('B4', '仮囲');
+            $sheet->setCellValue('E4', '2026/09/27');
+            (new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet))->save($path);
+
+            $response = $this->actingAs($this->manager())->post(
+                route('housing.properties.schedule-import.preview', $property),
+                ['file' => new \Illuminate\Http\UploadedFile($path, 'no-end-dates.xlsx', null, null, true)]
+            );
+
+            $response->assertOk();
+
+            $html = $response->getContent();
+            $this->assertStringContainsString('着工予定日を', $html, '開始日はあるので着工予定日は予告する');
+            $this->assertStringNotContainsString('完成予定日を', $html, '終了日が1つも無いので完成予定日は予告しない');
+        } finally {
+            @unlink($path);
+        }
     }
 
     /**
@@ -467,5 +573,93 @@ class HousingConstructionStartDateTest extends ScheduleTestCase
         } finally {
             @unlink($path);
         }
+    }
+
+    /**
+     * I-4（設計書 §7.3・同一トランザクション）を**実際に測る**。
+     *
+     * ⚠ テスト名や docblock で「守っている」と宣言するだけでは、失敗を注入しない限り、
+     *   日付更新をトランザクションの外へ移す変異が緑のまま通る（コード品質レビュー指摘・実測済み）。
+     *
+     * ⚠ **登録した `creating` リスナは `finally` で必ず後始末する。**
+     *   `ScheduleStep::creating()` は `"eloquent.creating: " . ScheduleStep::class` という
+     *   固定の event 名でディスパッチャに登録される（`HasEvents::registerModelEvent()`）。
+     *   `Event::forget()` はその event 名の listener だけを外し、`ScheduleStep::booted()` が
+     *   別の event 名（`"eloquent.saving: ..."`）で登録している実績なしフックには触れない
+     *   （実測で確認: このプロジェクトの TestCase は毎テスト `refreshApplication()` 経由で
+     *   `DatabaseServiceProvider::register()` が `Model::clearBootedModels()` を呼び、
+     *   新しい event dispatcher も張り直すため、後始末しなくても次のテストへは実際には
+     *   漏れないことを確認済みだが、同一テスト内の後続処理を汚さないため、また将来の
+     *   フレームワーク挙動の変化に備えて明示的に外す）。
+     */
+    public function test_the_steps_and_the_parent_dates_roll_back_together_on_failure(): void
+    {
+        $property = $this->makeParent('property', [
+            'property_code'           => 'HS-IMP6',
+            'construction_start_date' => '2020-01-01',
+        ]);
+
+        $event = 'eloquent.creating: ' . \App\Models\ScheduleStep::class;
+
+        \App\Models\ScheduleStep::creating(function (\App\Models\ScheduleStep $step): void {
+            if ($step->sort_order > 2) {
+                throw new \RuntimeException('boom');
+            }
+        });
+
+        try {
+            // ⚠ 例外は HTTP カーネルが内部で捕まえて 500 レスポンスに変換するので、
+            //   ここに raw な RuntimeException が届くことはない（実測）。
+            $this->importRows($property, $this->importableRows())->assertStatus(500);
+        } finally {
+            \Illuminate\Support\Facades\Event::forget($event);
+        }
+
+        $this->assertSame(0, $property->scheduleSteps()->count(), '工程が巻き戻っていない');
+        $this->assertSame(
+            '2020-01-01',
+            $property->fresh()->construction_start_date->toDateString(),
+            '工程が巻き戻ったら日付も元の値のまま巻き戻る'
+        );
+    }
+
+    /**
+     * I-5（Bug #54 ②）: これまでの新規テストは全部 `rows_json` を手組みの POST で
+     *   送っており、画面が実際に描いたフォームを一度も送り返していなかった
+     *   （隣の `ScheduleImportTest` は既に `parseForm()` で往復しており、この 1 ファイルだけ
+     *   流儀が退行していた）。
+     *
+     * ⚠ **`preview()` は `$result['rows']`、`execute()` は `$sanitized['rows']` と別ソース。**
+     *   現状は一致する（Blade が確定フォームに `json_encode($result['rows'])` をそのまま
+     *   載せ、`sanitizeSubmittedRows()` の `CsvDate::normalize()` は冪等）が、その一致を
+     *   守るテストがこれまで無かった（Bug #46 の型）。ここでは固定資産を実際に往復させ、
+     *   プレビューが予告した値と、確定後に実際に書き込まれた値が一致することを対で見る。
+     *
+     * ⚠ `_token` hidden の存在も対でアサートする（`@csrf` の欠落は Feature テストでは
+     *   原理的に検出できないため。`ParsesForms` の注記）。
+     */
+    public function test_submitting_the_rendered_form_writes_the_dates_it_announced(): void
+    {
+        $property = $this->makeParent('property', ['property_code' => 'HS-IMP7']);
+
+        $html = $this->preview($property);
+
+        $form = $this->parseForm(
+            $html,
+            'action="' . route('housing.properties.schedule-import.execute', $property) . '"'
+        );
+
+        $this->assertArrayHasKey('_token', $form['fields']);
+        $this->assertNotSame('', $form['fields']['_token']);
+
+        $this->actingAs($this->manager())
+            ->post($form['action'], $form['fields'])
+            ->assertRedirect(route('housing.properties.show', $property));
+
+        // プレビューが予告した値（test_the_preview_announces_the_dates_it_will_write と同じ固定資産の値）
+        // と、確定後に実際に書き込まれた値が一致すること
+        $fresh = $property->fresh();
+        $this->assertSame('2026-07-23', $fresh->construction_start_date->toDateString());
+        $this->assertSame('2026-12-25', $fresh->scheduled_completion_date->toDateString());
     }
 }

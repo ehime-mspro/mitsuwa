@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\HsProperty;
 use App\Models\ScheduleStep;
 use App\Support\ScheduleImportSheet;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -165,6 +166,13 @@ class ScheduleImportController extends Controller
      * ⚠ **2 つは独立に決める。** 片方の日付が 1 つも無ければ、その項目は null を返して
      *   現在値を保つ。「両方そろわなければ何もしない」にはしない（片方だけ入ることはありうる）。
      *
+     * ⚠ **前提条件: `planned_start` / `planned_end` はゼロ埋め `YYYY-MM-DD` であること。**
+     *   `min()`/`max()` は文字列比較なので、ゼロ埋めが崩れると誤答する
+     *   （実測: `min(['2026-10-01', '2026-9-01'])` は `'2026-10-01'` を返す＝誤り。
+     *   本来 9 月 1 日のほうが早い）。呼び出し元（`ScheduleImportSheet` の読み取り・確定の
+     *   両方）は `CsvDate::normalize()` を通すのでゼロ埋め済みだが、`public static` で
+     *   外から呼べる以上、この前提を満たさない入力を渡さないこと。
+     *
      * @param  list<array<string, mixed>>  $rows
      * @return array{construction_start_date: ?string, scheduled_completion_date: ?string}
      */
@@ -209,8 +217,11 @@ class ScheduleImportController extends Controller
 
             $changes[] = [
                 'label' => $labels[$column],
-                'from'  => $current === null ? '—' : \Carbon\CarbonImmutable::parse($current)->format('Y/m/d'),
-                'to'    => \Carbon\CarbonImmutable::parse($to)->format('Y/m/d'),
+                // ⚠ $current（比較用）は toDateString() のまま残す。表示用はここで
+                //   $property->{$column} を直接 format() すれば足り、文字列を
+                //   パースし直す往復が要らない。
+                'from'  => $current === null ? '—' : $property->{$column}->format('Y/m/d'),
+                'to'    => CarbonImmutable::parse($to)->format('Y/m/d'),
             ];
         }
 
