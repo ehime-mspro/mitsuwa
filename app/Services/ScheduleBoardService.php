@@ -200,8 +200,12 @@ class ScheduleBoardService
                 'leftPct'  => $left,
                 'widthPct' => GanttScale::clamp($scale->width($spans[$i]['from'], $spans[$i]['to']), 0.0, 100.0 - $left),
                 'late'     => $tracksActuals && $step->isLate($today),
-                // まだ始まっていない工程は薄く出す（設計書 §4.2）
-                'future'   => $step->actual_start === null && $spans[$i]['from']->greaterThan($today),
+                // まだ始まっていない工程は薄く出す（設計書 §4.2）。
+                // ⚠ 実績を持たない親では薄くしない（§4.2 は opacity 案を「済を 1.6:1 まで
+                //   落とす」として却下しており、住宅は分類色のまま出す。設計書 §8）。
+                'future'   => $tracksActuals && $step->actual_start === null && $spans[$i]['from']->greaterThan($today),
+                // 進行中の棒だけ濃い輪郭。詳細カード（_schedule_gantt.blade.php）と同じ規則にする（設計書 §8）
+                'ring'     => ! $tracksActuals && $step->dateState($today) === ScheduleStepStatus::RUNNING,
             ];
         }
 

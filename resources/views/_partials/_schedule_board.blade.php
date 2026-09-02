@@ -115,7 +115,7 @@
                                 @endforeach
                                 @foreach($row['bars'] as $bar)
                                     <div title="{{ $bar['name'] }}"
-                                         style="position: absolute; height: 13px; border-radius: 3px; box-sizing: border-box; top: {{ $bar['topPx'] }}px; left: {{ $bar['leftPct'] }}%; width: {{ $bar['widthPct'] }}%; background: {{ $bar['color'] }}; {{ $bar['future'] ? 'opacity: 0.45;' : '' }} {{ $bar['late'] ? 'border: 2px solid #DC2626;' : '' }}"></div>
+                                         style="position: absolute; height: 13px; border-radius: 3px; box-sizing: border-box; top: {{ $bar['topPx'] }}px; left: {{ $bar['leftPct'] }}%; width: {{ $bar['widthPct'] }}%; background: {{ $bar['color'] }}; {{ $bar['future'] ? 'opacity: 0.45;' : '' }} {{ $bar['late'] ? 'border: 2px solid #DC2626;' : '' }}{{ $bar['ring'] ? ' box-shadow: 0 0 0 1.5px #111827;' : '' }}"></div>
                                 @endforeach
                             </div>
                         </div>
