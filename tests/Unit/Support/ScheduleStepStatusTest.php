@@ -253,6 +253,15 @@ class ScheduleStepStatusTest extends TestCase
             ScheduleStepStatus::RUNNING,
             ScheduleStepStatus::dateState(null, CarbonImmutable::parse('2026-09-30'), $today)
         );
+
+        // ⚠ **終了日ちょうどは「進行中」。** この 1 本が無いと、この分岐の lessThan を
+        //   lessThanOrEqualTo に変える変異が緑のまま通る(過去と未来の 2 本では結果が変わらない)。
+        //   最終行の同じ境界は test_a_step_ending_exactly_today_is_still_running が守っているが、
+        //   あちらは start が非 null なのでこの分岐には入らない。
+        $this->assertSame(
+            ScheduleStepStatus::RUNNING,
+            ScheduleStepStatus::dateState(null, CarbonImmutable::parse('2026-09-02'), $today)
+        );
     }
 
     /**
