@@ -67,4 +67,97 @@ class ScheduleActualsPolicyTest extends ScheduleTestCase
             );
         }
     }
+
+    // ============================================================
+    // ① validate 側（構造）— 住宅ではルールに actual_* が無い
+    // ============================================================
+
+    /**
+     * ⚠ **応答では測れない。** saving フックが同じ結果を作るので、ルールを戻しても
+     *   HTTP の結果は変わらない（Bug #48）。ルールの中身を直接見る。
+     */
+    public function test_the_validation_rules_drop_the_actual_columns_for_housing(): void
+    {
+        $rules = new \ReflectionMethod(\App\Http\Controllers\ScheduleStepController::class, 'rules');
+        $rules->setAccessible(true);
+        $controller = new \App\Http\Controllers\ScheduleStepController();
+
+        foreach (['procurement', 'project'] as $key) {
+            $r = $rules->invoke($controller, $this->makeParent($key, ['procurement_code' => 'PRC-R' . $key, 'project_code' => 'PRJ-R' . $key]));
+            $this->assertArrayHasKey('actual_start', $r, "{$key}（不動産）は実績を受け付ける");
+            $this->assertArrayHasKey('actual_end', $r);
+        }
+
+        foreach (['property', 'customOrder'] as $key) {
+            $r = $rules->invoke($controller, $this->makeParent($key, ['property_code' => 'HS-R' . $key, 'order_code' => 'CO-R' . $key]));
+            $this->assertArrayNotHasKey('actual_start', $r, "{$key}（住宅）は実績を受け付けない");
+            $this->assertArrayNotHasKey('actual_end', $r);
+        }
+    }
+
+    // ============================================================
+    // ② saving フック側（挙動）— DB に入っていても保存時に潰れる
+    // ============================================================
+
+    /**
+     * ⚠ **validate を通さない経路で入れてから測る。** コントローラ経由だと
+     *   ①のルールが先に落とすので、フックが効いているかを区別できない（Bug #48）。
+     */
+    public function test_saving_a_housing_step_clears_any_actual_dates_already_in_the_database(): void
+    {
+        $owner = $this->makeParent('property');
+        $step  = $owner->scheduleSteps()->create([
+            'name' => '基礎工事', 'category' => 'work',
+            'planned_start' => '2026-05-01', 'planned_end' => '2026-05-20', 'sort_order' => 1,
+        ]);
+
+        // フックを通さずに直接書き込む（過去データや手動 SQL を模す）
+        \Illuminate\Support\Facades\DB::table('schedule_steps')->where('id', $step->id)
+            ->update(['actual_start' => '2026-05-02', 'actual_end' => '2026-05-19']);
+
+        $reloaded = \App\Models\ScheduleStep::find($step->id);
+        $this->assertNotNull($reloaded->actual_start, '前提: DB には実績が入っている');
+
+        // 何か 1 つ触って保存すると正規化される
+        $reloaded->name = '基礎工事（改）';
+        $reloaded->save();
+
+        $this->assertNull(\App\Models\ScheduleStep::find($step->id)->actual_start);
+        $this->assertNull(\App\Models\ScheduleStep::find($step->id)->actual_end);
+    }
+
+    public function test_the_hook_leaves_realestate_actual_dates_alone(): void
+    {
+        $owner = $this->makeParent('procurement');
+        $step  = $owner->scheduleSteps()->create([
+            'name' => '造成工事', 'category' => 'work',
+            'planned_start' => '2026-05-01', 'planned_end' => '2026-05-20',
+            'actual_start'  => '2026-05-02', 'actual_end'  => '2026-05-19',
+            'sort_order'    => 1,
+        ]);
+
+        $step->name = '造成工事（改）';
+        $step->save();
+
+        $fresh = \App\Models\ScheduleStep::find($step->id);
+        $this->assertSame('2026-05-02', $fresh->actual_start->toDateString(), '不動産は実績を保持する');
+        $this->assertSame('2026-05-19', $fresh->actual_end->toDateString());
+    }
+
+    /** 画面（Ajax）から実績を送り込んでも住宅では入らない — 経路の裏取り */
+    public function test_posting_actual_dates_to_a_housing_step_stores_nothing(): void
+    {
+        $owner = $this->makeParent('property');
+
+        $this->actingAs($this->manager())
+            ->postJson(route($owner->scheduleStepRoute('store'), $owner), $this->stepInput([
+                'actual_start' => '2026-05-11',
+                'actual_end'   => '2026-06-05',
+            ]))
+            ->assertOk();
+
+        $step = $owner->scheduleSteps()->first();
+        $this->assertNull($step->actual_start);
+        $this->assertNull($step->actual_end);
+    }
 }

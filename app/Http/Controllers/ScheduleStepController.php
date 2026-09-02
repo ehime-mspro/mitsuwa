@@ -55,7 +55,7 @@ class ScheduleStepController extends Controller
     public function store(Request $request): JsonResponse
     {
         $owner = $this->owner($request);
-        $data  = $request->validate($this->rules(), [], $this->attributes());
+        $data  = $request->validate($this->rules($owner), [], $this->attributes());
 
         $step = new ScheduleStep($data);
         $step->schedulable()->associate($owner);
@@ -84,7 +84,7 @@ class ScheduleStepController extends Controller
         $owner = $this->owner($request);
         $step  = $this->step($request, $owner);
 
-        $data = $request->validate($this->rules(), [], $this->attributes());
+        $data = $request->validate($this->rules($owner), [], $this->attributes());
 
         $step->fill($data);
         $step->updated_by = $request->user()->id;
@@ -228,21 +228,33 @@ class ScheduleStepController extends Controller
         );
     }
 
-    /** @return array<string, mixed> */
-    private function rules(): array
+    /**
+     * @return array<string, mixed>
+     *
+     * ⚠ **実績の 2 列は親が扱うと宣言したときだけ受け付ける**（設計書 §3.3）。
+     *   住宅事業ではキーごと落とすので `validated()` に現れず、`fill()` も触らない。
+     *   ⚠ これは `ScheduleStep` の saving フックとの**二重防御**。片方だけ壊しても
+     *     HTTP の応答は変わらないので、テストは構造と挙動を別々に見ること（Bug #48）。
+     */
+    private function rules(Model $owner): array
     {
-        return [
+        $rules = [
             'name'          => 'required|string|max:100',
             'category'      => ['required', Rule::in(ScheduleStepCategory::values())],
             'planned_start' => 'nullable|date',
             'planned_end'   => 'nullable|date|after_or_equal:planned_start',
+            'notes'         => 'nullable|string|max:255',
+        ];
+
+        if ($owner->scheduleTracksActuals()) {
             // ⚠ 実績終了だけが入って実績開始が空、という状態を許さない（設計書 §4.5）。
             //   許すと描画が「実績開始が無い」側へ落ち、**実績終了を入れたのに予定の棒が出る**
             //   という無音の食い違いになる。逆（実績開始だけ）は「進行中」なので正当。
-            'actual_start'  => 'nullable|date|required_with:actual_end',
-            'actual_end'    => 'nullable|date|after_or_equal:actual_start',
-            'notes'         => 'nullable|string|max:255',
-        ];
+            $rules['actual_start'] = 'nullable|date|required_with:actual_end';
+            $rules['actual_end']   = 'nullable|date|after_or_equal:actual_start';
+        }
+
+        return $rules;
     }
 
     /**

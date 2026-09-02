@@ -34,6 +34,27 @@ class ScheduleStep extends Model
         'updated_by',
     ];
 
+    /**
+     * ⚠ **住宅事業の工程は実績を持たない**（設計書 §3.3）。画面から消すだけにすると、
+     *   `Validator::validated()` が未送信キーを結果に含めないため `update($validated)` が
+     *   **そのカラムに触れず旧値を残す**（Bug #38 と同型）。書き込み経路が増えても漏れないよう、
+     *   ここ 1 箇所で正規化する。
+     *
+     * ⚠ **`schedulable` は `associate()` 済みなのでクエリは増えない。** 親が未解決のときは
+     *   何もしない（保存前に親を紐づけていない呼び出しは元々成立しない）。
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (self $step): void {
+            $owner = $step->schedulable;
+
+            if ($owner !== null && ! $owner->scheduleTracksActuals()) {
+                $step->actual_start = null;
+                $step->actual_end   = null;
+            }
+        });
+    }
+
     protected function casts(): array
     {
         return [

@@ -78,7 +78,16 @@ class ScheduleStepCrudTest extends ScheduleTestCase
 
             $step = ScheduleStep::findOrFail($created);
             $this->assertSame('地盤改良', $step->name, "{$label}: 更新が効いていない");
-            $this->assertSame('2026-06-15', $step->actual_start->toDateString(), "{$label}: 実績開始が保存されていない");
+
+            // ⚠ 実績を持つか（procurement/project=true, property/customOrder=false）は
+            //   ScheduleActualsPolicyTest が個別に固定している（Bug #48）。ここでは
+            //   「全4親で更新の往復ができる」という本題を崩さないよう、期待値を
+            //   scheduleTracksActuals() に合わせるだけにする。
+            if ($owner->scheduleTracksActuals()) {
+                $this->assertSame('2026-06-15', $step->actual_start->toDateString(), "{$label}: 実績開始が保存されていない");
+            } else {
+                $this->assertNull($step->actual_start, "{$label}: 住宅事業は実績を保存しないはず");
+            }
 
             $this->actingAs($manager)->deleteJson(
                 route("{$prefix}.schedule-steps.destroy", [$owner, $created])
