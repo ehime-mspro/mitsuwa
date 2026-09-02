@@ -1803,7 +1803,9 @@ class HousingConstructionStartDateTest extends ScheduleTestCase
         $html = $this->actingAs($this->manager())->get('/housing/custom-orders/create')->assertOk()->getContent();
 
         $this->assertStringContainsString('name="construction_start_date"', $html);
+        $this->assertStringContainsString('着工予定日', $html);
         $this->assertStringNotContainsString('name="actual_completion_date"', $html);
+        $this->assertStringNotContainsString('実際の完成日', $html);
     }
 
     /** ⚠ 画面の**並び**まで見る。「両方出ている」だけでは順番の入れ替わりを検出できない */
@@ -1822,6 +1824,67 @@ class HousingConstructionStartDateTest extends ScheduleTestCase
             $this->assertNotFalse($end, $url);
             $this->assertLessThan($end, $start, "{$url}: 着工予定日は完成予定日の前に置く");
         }
+    }
+
+    /**
+     * ⚠ **詳細画面も見る。** フォーム（/create）しか見ていないと、show のラベルだけを
+     *   「実際の完成日」に戻す変異（値は construction_start_date のまま）が緑のまま通る
+     *   （コード品質レビュー指摘・実測済み。Bug #43 / #46 / #49 と同型）。
+     *
+     * ⚠ **ラベルの有無だけでなく「ラベル ↔ 値」の対で見る。** ラベルだけ見ると、値を旧列
+     *   （もう存在しない actual_completion_date）から読む変異——結果は常に null＝「—」——を
+     *   検出できない。空白を正規化したうえで「ラベルの div の直後に、そのラベルに対応する
+     *   正しい日付の div が続く」ことを固定する。
+     */
+    public function test_the_property_show_page_pairs_the_label_with_its_own_value(): void
+    {
+        $property = HsProperty::create([
+            'property_code' => 'HS-CS2', 'property_name' => 'ラベル対応テスト', 'status' => 'construction',
+            'address' => '愛媛県松山市1-1-1', 'created_by' => 1,
+            'construction_start_date'   => '2026-03-10',
+            'scheduled_completion_date' => '2026-04-20',
+        ]);
+
+        $html       = $this->actingAs($this->manager())->get("/housing/properties/{$property->id}")->assertOk()->getContent();
+        $normalized = preg_replace('/\s+/', ' ', $html);
+
+        $this->assertStringNotContainsString('実際の完成日', $html);
+        $this->assertStringContainsString(
+            '着工予定日</div> <div style="padding: 10px 14px; font-size: 14px; border-bottom: 1px solid #e5e7eb;">2026/03/10</div>',
+            $normalized,
+            '着工予定日のラベル直後に着工予定日の値（2026/03/10）が無い'
+        );
+        $this->assertStringContainsString(
+            '完成予定日</div> <div style="padding: 10px 14px; font-size: 14px; border-bottom: 1px solid #e5e7eb;">2026/04/20</div>',
+            $normalized,
+            '完成予定日のラベル直後に完成予定日の値（2026/04/20）が無い'
+        );
+    }
+
+    /** ⚠ 建売と対で見る（Bug #44 の「代表 1 種だけ」を避ける）。同じ変異は注文住宅の show にも当たりうる */
+    public function test_the_custom_order_show_page_pairs_the_label_with_its_own_value(): void
+    {
+        $order = HsCustomOrder::create([
+            'order_code' => 'CO-CS2', 'order_name' => 'ラベル対応テスト', 'status' => 'construction',
+            'customer_name' => 'テスト顧客', 'address' => '愛媛県松山市1-1-1', 'created_by' => 1,
+            'construction_start_date'   => '2026-05-15',
+            'scheduled_completion_date' => '2026-06-25',
+        ]);
+
+        $html       = $this->actingAs($this->manager())->get("/housing/custom-orders/{$order->id}")->assertOk()->getContent();
+        $normalized = preg_replace('/\s+/', ' ', $html);
+
+        $this->assertStringNotContainsString('実際の完成日', $html);
+        $this->assertStringContainsString(
+            '着工予定日</div> <div style="padding: 10px 14px; font-size: 14px; border-bottom: 1px solid #e5e7eb;">2026/05/15</div>',
+            $normalized,
+            '着工予定日のラベル直後に着工予定日の値（2026/05/15）が無い'
+        );
+        $this->assertStringContainsString(
+            '完成予定日</div> <div style="padding: 10px 14px; font-size: 14px; border-bottom: 1px solid #e5e7eb;">2026/06/25</div>',
+            $normalized,
+            '完成予定日のラベル直後に完成予定日の値（2026/06/25）が無い'
+        );
     }
 
     public function test_saving_a_property_stores_the_construction_start_date(): void
@@ -1861,7 +1924,13 @@ Expected: FAIL — 列が無い／DDL ファイルが無い
 
 ```sql
 -- 住宅事業: 「実際の完成日」を「着工予定日」へ付け替える（設計書 §5.1）
--- 実行: sudo mysql manage < database/sql/2026-09-02-rename-actual-completion-to-construction-start.sql
+--
+-- 実行: sudo mysql は非対話でパスワードを渡せないため使えない。main repo の cwd で
+--   1 呼び出し 1 ALTER として tinker に流す（多重ステートメントは
+--   PDO::MYSQL_ATTR_MULTI_STATEMENTS 未設定のため保証されない。同種の DDL は既に
+--   tinker 案内へ改められている: database/sql/2026-09-01-add-source-to-schedule-steps.sql）:
+--     php artisan tinker --execute="DB::statement('ALTER TABLE hs_properties CHANGE COLUMN actual_completion_date construction_start_date DATE NULL DEFAULT NULL');"
+--     php artisan tinker --execute="DB::statement('ALTER TABLE hs_custom_orders CHANGE COLUMN actual_completion_date construction_start_date DATE NULL DEFAULT NULL');"
 --
 -- ⚠ 実行前に本番を実測したところ、両テーブルとも actual_completion_date は
 --    全行 NULL だった（建売 7 件 / 注文住宅 2 件。2026-09-02）。よってデータの移行は不要。
@@ -1874,7 +1943,15 @@ ALTER TABLE `hs_properties`
 
 ALTER TABLE `hs_custom_orders`
   CHANGE COLUMN `actual_completion_date` `construction_start_date` DATE NULL DEFAULT NULL;
+
+-- ロールバック（データは失われない。全行 NULL のため）:
+--   ALTER TABLE `hs_properties`    CHANGE COLUMN `construction_start_date` `actual_completion_date` DATE NULL DEFAULT NULL;
+--   ALTER TABLE `hs_custom_orders` CHANGE COLUMN `construction_start_date` `actual_completion_date` DATE NULL DEFAULT NULL;
 ```
+
+⚠ **①②はコード品質レビュー指摘で追加**（`sudo mysql` は非対話でパスワードを渡せず書いてあるとおりには
+流せない／リネーム系 DDL の直近前例 `2026-07-30-split-re-contract-amount-land-building.sql` には
+ロールバック行があるのに本ファイルには無かった）。両ファイルを実際に読んで house style に揃えた。
 
 - [ ] **Step 4: テスト用スキーマを直す**
 
@@ -1966,7 +2043,7 @@ cd /Users/masanori/site/manage/.claude/worktrees/housing-schedule-dates
 APP_KEY="base64:$(head -c 32 /dev/urandom | base64)" ./vendor/bin/phpunit --filter HousingConstructionStartDateTest
 ```
 
-Expected: PASS（8 tests）
+Expected: PASS（10 tests。うち show 画面のラベル↔値の対を見る 2 本はコード品質レビューで追加）
 
 - [ ] **Step 10: 全体テスト**
 
@@ -2733,6 +2810,16 @@ green のままであることを、変異を当てた同じ実行結果の中�
 | 25 | `dateStatus()` の「全部未定なら これから」を `self::STATUS_DONE` 固定に | `test_a_housing_case_is_classified_by_its_dates`（新設アサート「全部未定ならこれから」）＋ `test_the_housing_status_filter_narrows_the_rows`（実測: 38 本中 2 本）。⚠ **足す前は緑だった**——HS-UNDATED も新設 fixture |
 | 26 | `ScheduleBoardService::row()` の `'future' => $tracksActuals && ...` から `$tracksActuals &&` を消す（設計書 §8 の「住宅は薄くしない」を無効化） | `test_the_housing_board_bars_are_never_dimmed`（新設）が赤。実測の失敗理由: `opacity: 0.45` を含む棒が 1 本検出された（該当バーの実際の style 属性がテスト出力に出る） |
 | 27 | `ScheduleBoardService::row()` の `'ring' => ...` を `false` 固定に | `test_the_housing_board_puts_a_ring_only_on_the_running_bar`（新設）が赤。実測: 輪郭ありの棒が 1 本 → 0 本に |
+
+⚠ **28〜29 は Task 6 完了後のコード品質レビューで追加した。** 新規テストがフォーム（`/create`）
+しか見ておらず、詳細画面（`show`）の**ラベルだけ**を「実際の完成日」に戻す変異（値は
+`construction_start_date` のまま）が全テスト緑のまま通っていた実例。**建売・注文住宅の両方に
+当てること**——片方だけだと Bug #44 の「代表 1 種だけ」と同型の穴になる。
+
+| # | 変異 | 落ちるべきテスト |
+|---|---|---|
+| 28 | `properties/show.blade.php` の「着工予定日」ラベルだけを「実際の完成日」に戻す（値は `construction_start_date` のまま） | `HousingConstructionStartDateTest::test_the_property_show_page_pairs_the_label_with_its_own_value` |
+| 29 | `custom-orders/show.blade.php` の「着工予定日」ラベルだけを「実際の完成日」に戻す（値は `construction_start_date` のまま） | `HousingConstructionStartDateTest::test_the_custom_order_show_page_pairs_the_label_with_its_own_value` |
 
 - [ ] **Step 3: 検出できなかった変異があればテストを足す**
 
