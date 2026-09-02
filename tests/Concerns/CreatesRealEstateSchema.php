@@ -263,8 +263,8 @@ trait CreatesRealEstateSchema
             $t->decimal('building_area_sqm', 10, 2)->nullable();
             $t->string('structure', 50)->nullable();
             $t->unsignedTinyInteger('floors')->nullable();
+            $t->date('construction_start_date')->nullable();
             $t->date('scheduled_completion_date')->nullable();
-            $t->date('actual_completion_date')->nullable();
             $t->integer('building_cost')->nullable();
             $t->integer('land_cost')->nullable();
             $t->boolean('is_land_cost_manual')->default(false);
@@ -314,8 +314,8 @@ trait CreatesRealEstateSchema
             $t->boolean('is_land_cost_manual')->default(false);
             $t->decimal('tax_rate', 4, 2)->default(10.00);
             $t->date('contract_date')->nullable();
+            $t->date('construction_start_date')->nullable();
             $t->date('scheduled_completion_date')->nullable();
-            $t->date('actual_completion_date')->nullable();
             $t->date('delivery_date')->nullable();
             $t->text('notes')->nullable();
             $t->unsignedInteger('created_by');

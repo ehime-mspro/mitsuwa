@@ -42,8 +42,8 @@ class HsCustomOrder extends Model
         'is_land_cost_manual',
         'tax_rate',
         'contract_date',
+        'construction_start_date',
         'scheduled_completion_date',
-        'actual_completion_date',
         'delivery_date',
         'notes',
         'created_by',
@@ -64,8 +64,8 @@ class HsCustomOrder extends Model
             'is_land_cost_manual'       => 'boolean',
             'tax_rate'                  => 'decimal:2',
             'contract_date'             => 'date',
+            'construction_start_date'   => 'date',
             'scheduled_completion_date' => 'date',
-            'actual_completion_date'    => 'date',
             'delivery_date'             => 'date',
         ];
     }

@@ -161,17 +161,15 @@
                        placeholder="2">
             </div>
             <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-1">着工予定日</label>
+                <input type="date" name="construction_start_date" value="{{ old('construction_start_date', $p?->construction_start_date?->format('Y-m-d')) }}"
+                       class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none">
+            </div>
+            <div>
                 <label class="block text-sm font-semibold text-gray-700 mb-1">完成予定日</label>
                 <input type="date" name="scheduled_completion_date" value="{{ old('scheduled_completion_date', $p?->scheduled_completion_date?->format('Y-m-d')) }}"
                        class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none">
             </div>
-            @if($isEdit)
-                <div>
-                    <label class="block text-sm font-semibold text-gray-700 mb-1">実際の完成日</label>
-                    <input type="date" name="actual_completion_date" value="{{ old('actual_completion_date', $p?->actual_completion_date?->format('Y-m-d')) }}"
-                           class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none">
-                </div>
-            @endif
         </div>
     </div>
 

@@ -370,8 +370,8 @@ class CustomOrderController extends Controller
             'is_land_cost_manual'       => 'required|in:0,1',
             'tax_rate'                  => 'required|numeric|min:0|max:100',
             'contract_date'             => 'nullable|date',
+            'construction_start_date'   => 'nullable|date',
             'scheduled_completion_date' => 'nullable|date',
-            'actual_completion_date'    => 'nullable|date',
             'delivery_date'             => 'nullable|date',
             'notes'                     => 'nullable|string|max:5000',
         ], [], [

@@ -99,10 +99,10 @@
                 @endif
             </div>
 
+            <div style="background: #f9fafb; padding: 10px 14px; font-size: 13px; color: #4b5563; font-weight: 500; border-bottom: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb;">着工予定日</div>
+            <div style="padding: 10px 14px; font-size: 14px; border-bottom: 1px solid #e5e7eb;">{{ $property->construction_start_date?->format('Y/m/d') ?? '—' }}</div>
             <div style="background: #f9fafb; padding: 10px 14px; font-size: 13px; color: #4b5563; font-weight: 500; border-bottom: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb;">完成予定日</div>
             <div style="padding: 10px 14px; font-size: 14px; border-bottom: 1px solid #e5e7eb;">{{ $property->scheduled_completion_date?->format('Y/m/d') ?? '—' }}</div>
-            <div style="background: #f9fafb; padding: 10px 14px; font-size: 13px; color: #4b5563; font-weight: 500; border-bottom: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb;">実際の完成日</div>
-            <div style="padding: 10px 14px; font-size: 14px; border-bottom: 1px solid #e5e7eb;">{{ $property->actual_completion_date?->format('Y/m/d') ?? '—' }}</div>
         </div>
     </div>
 

@@ -34,8 +34,8 @@ class HsProperty extends Model
         'building_area_sqm',
         'structure',
         'floors',
+        'construction_start_date',
         'scheduled_completion_date',
-        'actual_completion_date',
         'building_cost',
         'land_cost',
         'is_land_cost_manual',
@@ -56,8 +56,8 @@ class HsProperty extends Model
             'land_cost'                    => 'integer',
             'is_land_cost_manual'          => 'boolean',
             'target_selling_price_building' => 'integer',
+            'construction_start_date'      => 'date',
             'scheduled_completion_date'    => 'date',
-            'actual_completion_date'       => 'date',
         ];
     }
 
