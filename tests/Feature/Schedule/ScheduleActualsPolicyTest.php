@@ -54,9 +54,17 @@ class ScheduleActualsPolicyTest extends ScheduleTestCase
                 "{$key} の scheduleTracksActuals() が期待と違う"
             );
 
-            // 親自身が宣言していること(trait から継がれた既定ではない)
-            $declaring = (new ReflectionClass($owner))->getMethod('scheduleTracksActuals')->getDeclaringClass()->getName();
-            $this->assertSame($owner::class, $declaring, "{$key} が自分で宣言していない");
+            // ⚠ **親自身のファイルで宣言していること**（trait から継がれた既定ではない）。
+            //   trait メソッドは使用側クラスへフラット化されるので `getDeclaringClass()` は
+            //   override の有無に関わらず使用側クラス名を返す＝**判別できない**（実測）。
+            //   `getFileName()` なら、override していない場合は trait のファイルを返すので区別が付く。
+            $method = new ReflectionMethod($owner, 'scheduleTracksActuals');
+
+            $this->assertSame(
+                (new ReflectionClass($owner))->getFileName(),
+                $method->getFileName(),
+                "{$key} が自分のファイルで宣言していない（trait の既定に乗っている）"
+            );
         }
     }
 }
