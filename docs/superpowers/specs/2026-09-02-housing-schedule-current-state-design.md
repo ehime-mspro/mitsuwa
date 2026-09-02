@@ -104,6 +104,13 @@ static::saving(function (ScheduleStep $step) {
 });
 ```
 
+⚠ **実装時の実測による訂正:** 「associate() 済みなのでクエリは増えない」は `store()` と
+取込の経路にしか当てはまらない。`ScheduleStepController::update()`（`findOrFail()` で
+工程だけを読む）と `$owner->scheduleSteps()->create()`（`morphMany` は FK 2 列を代入する
+だけで `chaperone()` していないので `setRelation()` されない）は、`$step->schedulable` に
+触れた時点で lazy-load が 1 回走る。FK は `save()` の前に必ず入るので親は必ず解決でき、
+結果は正しい（実装は `app/Models/ScheduleStep.php` の `booted()` docblock を参照）。
+
 ⚠ コントローラ側だけで落とすと、書き込み経路が増えたとき（今は手入力 CRUD と取込の 2 本）に
 片方だけ漏れる。**1 箇所に寄せる。**
 

@@ -542,6 +542,11 @@ EOF
 
 ## Task 3: 住宅事業では実績を保存しない（設計書 §3.3）
 
+⚠ **このタスク単独では本番へ出せない。** Task 3 の時点では住宅の画面に実績入力欄が残った
+ままで、`save()` はレスポンスから行を再同期しないため、**入力欄に値が残ったまま
+「保存しました。」が出て実際には保存されない**中間状態になる（Task 4 が同じブランチで
+続くので問題ないが、ここで切り出してデプロイしてはいけない）。
+
 **Files:**
 - Modify: `app/Models/ScheduleStep.php`（`booted()` を新設）
 - Modify: `app/Http/Controllers/ScheduleStepController.php:58,87,236-250`
@@ -2655,6 +2660,14 @@ EOF
 | 14 | `_schedule_gantt.blade.php` の `@if($g['tracksActuals'])` を消して常にチップを出す | `ScheduleRealEstateUntouchedTest::test_the_realestate_detail_page_still_shows_the_delay_badge` |
 | 15 | `ScheduleBoardService::row()` の `'late' => $tracksActuals && ...` から `$tracksActuals &&` を消す | `ScheduleBoardTest::test_the_housing_board_never_paints_a_delay_badge` |
 
+⚠ **16〜17 は Task 3 のコードレビューで追加した**（Bug #48「安全網が測定器を鈍らせる」が
+Task 3 の中でテストをまたいで起きた実例。実測済み——詳細は Task 3 の実装コミット参照）。
+
+| # | 変異 | 落ちるべきテスト |
+|---|---|---|
+| 16 | `ScheduleStep::booted()` の `static::saving` を `static::updating` に | `ScheduleActualsPolicyTest::test_creating_a_housing_step_with_actual_dates_stores_none` と `..._re_saving_an_untouched_...`（⚠ 既存の `test_saving_a_housing_step_clears_...` は**緑のまま**であること＝イベント名の選択が load-bearing である証明）|
+| 17 | `ScheduleImportController::execute()` の `new ScheduleStep([...])` に `'actual_start' => $row['planned_start']` を足す | `ScheduleImportTest` は**緑のまま**（saving フックが潰すので挙動では測れない）／`test_the_importer_never_writes_actual_dates`（構造）だけが赤 |
+
 - [ ] **Step 3: 検出できなかった変異があればテストを足す**
 
 ⚠ **「検出しなかった」で終わらせない。** 穴が見つかったらテストを足し、**足したあとに同じ変異で
@@ -2774,6 +2787,25 @@ sudo mysql manage < database/sql/2026-09-02-rename-actual-completion-to-construc
 ```
 
 実行後 `SHOW CREATE TABLE hs_properties;` / `hs_custom_orders;` で列名を確認する。
+
+⚠ **住宅事業の工程に残っている実績も、同じタイミングで測って掃除する。** `ScheduleStep` の
+`saving` フックは「保存し直したとき」にしか働かないため、Task 3 の反映後も**一度も編集されて
+いない行には実績が残ったまま**になる。残った実績は画面のどこにも出ないのに、
+`ScheduleStep::drawStart()`（`actual_start ?? planned_start`）と `ScheduleCardService` の
+軸の収集が親を問わず `actual_*` を見るため、**棒の位置と軸の範囲を無音で動かしてしまう**。
+しかも Task 4 で住宅の実績入力欄が画面から消えるため、**画面から直す手段が無くなる**——
+今のうちに（測ってから）掃除しておく。**0 と決め打ちしない。**
+
+```sql
+-- 住宅事業の工程に残っている実績（saving フックは保存し直したときしか働かない）
+SELECT COUNT(*) AS housing_steps_with_actuals FROM schedule_steps
+ WHERE schedulable_type IN ('App\\Models\\HsProperty', 'App\\Models\\HsCustomOrder')
+   AND (actual_start IS NOT NULL OR actual_end IS NOT NULL);
+
+-- 0 でなければ掃除する（DDL ではないので deploy.sh の前後どちらでもよいが、測るのは先）
+UPDATE schedule_steps SET actual_start = NULL, actual_end = NULL
+ WHERE schedulable_type IN ('App\\Models\\HsProperty', 'App\\Models\\HsCustomOrder');
+```
 
 - [ ] **Step 3: デプロイ**
 
