@@ -439,6 +439,15 @@ class HsProperty extends Model
     }
 
     /**
+     * ⚠ 住宅事業は実績を持たない（設計書 §2 D1）。工程表は「いま現在どういう工程で
+     *   動いているか」を見るもので、予定の管理は基本情報の着工予定日・完成予定日で行う。
+     */
+    public function scheduleTracksActuals(): bool
+    {
+        return false;
+    }
+
+    /**
      * ⚠ **「完成」は 1 つだけ。** scheduled_completion_date と actual_completion_date は
      *   同じ節目なので、実績があれば実績・無ければ予定の位置に ◆ を 1 つだけ描く。
      *   2 つ描くと「完成が 2 回ある」ように見える（設計書 §3.4）。

@@ -44,6 +44,21 @@ trait HasScheduleSteps
      */
     abstract public function scheduleRoutePrefix(): string;
 
+    /**
+     * 実績（`actual_start` / `actual_end`）を扱うか（設計書 §3.1 D1）。
+     *
+     * `false` のとき:
+     *   - 編集表に実績の 2 列を出さない
+     *   - 保存経路が `actual_*` を受け付けず、`ScheduleStep` の saving フックが null に正規化する
+     *   - 遅延を判定しない（工程の状態は日付だけで決まる。設計書 §4.1）
+     *
+     * ⚠ **既定実装を置かない**（この trait 冒頭の規約）。既定値を置くと、新しい親を足した人が
+     *   override を忘れた瞬間に**無音で片方の挙動へ倒れる**。abstract なら PHP が Fatal で止める。
+     *
+     * ⚠ **共有部品（サービス・partial・コントローラ）は `instanceof` を書かず、必ずここに聞く。**
+     */
+    abstract public function scheduleTracksActuals(): bool;
+
     /** 詳細ページの URL */
     public function scheduleUrl(): string
     {

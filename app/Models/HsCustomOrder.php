@@ -425,6 +425,15 @@ class HsCustomOrder extends Model
         return 'housing.custom-orders';
     }
 
+    /**
+     * ⚠ 住宅事業は実績を持たない（設計書 §2 D1）。工程表は「いま現在どういう工程で
+     *   動いているか」を見るもので、予定の管理は基本情報の着工予定日・完成予定日で行う。
+     */
+    public function scheduleTracksActuals(): bool
+    {
+        return false;
+    }
+
     /** ⚠ HsProperty と同じく「完成」は 1 つだけ（設計書 §3.4） */
     public function autoMilestones(): array
     {

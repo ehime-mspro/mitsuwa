@@ -307,6 +307,12 @@ class ReProject extends Model
         return 'realestate.projects';
     }
 
+    /** ⚠ 不動産は予定と実績を分けて持つ（設計書 §4.3）。住宅事業と対称に保つこと。 */
+    public function scheduleTracksActuals(): bool
+    {
+        return true;
+    }
+
     public function autoMilestones(): array
     {
         return array_values(array_filter([
