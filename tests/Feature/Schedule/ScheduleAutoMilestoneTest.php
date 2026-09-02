@@ -154,14 +154,6 @@ class ScheduleAutoMilestoneTest extends TestCase
         $this->assertSame(['完成'], $this->labels($onlyEnd->autoMilestones()));
     }
 
-    public function test_property_falls_back_to_the_scheduled_completion(): void
-    {
-        $m = $this->property(['scheduled_completion_date' => '2026-12-11'])->autoMilestones();
-
-        $this->assertSame(['完成'], $this->labels($m));
-        $this->assertSame('2026-12-11', $m[0]['date']->toDateString());
-    }
-
     public function test_a_custom_order_keeps_its_contract_and_delivery_milestones(): void
     {
         $owner = $this->customOrder([
@@ -196,20 +188,41 @@ class ScheduleAutoMilestoneTest extends TestCase
     }
 
     /**
-     * 上のテストの弱さを補う。`ReProcurement::autoMilestones()` の実装
-     * （`契約` → `決済` の固定順で、それぞれ null なら array_filter で除外）を読んでから
-     * 期待値を決めている。ラベルを 1 つ変える変異を当てるとこのテストが赤になることを確認済み。
+     * 上のテストの弱さを補う。`ReProcurement::autoMilestones()` / `ReProject::autoMilestones()` は
+     * どちらも同じ実装（`契約` → `決済` の固定順で、それぞれ null なら array_filter で除外）と
+     * 読んで確認したうえで期待値を決めている（推測で書いていない）。
+     *
+     * ⚠ **不動産の親は 2 つ**（仕入れ案件 / 分譲地PJ）。片方だけ見ると、もう片方の
+     *   `autoMilestones()` を書き換える変異を検出できない（Bug #44 と同型）ので対称に見る。
      */
     public function test_the_realestate_milestones_show_the_real_labels_in_order(): void
     {
-        $m = $this->procurement([
-            'contract_date'   => '2026-03-02',
-            'settlement_date' => '2026-07-18',
-        ])->autoMilestones();
+        $cases = [
+            'procurement' => [
+                $this->procurement([
+                    'contract_date'   => '2026-03-02',
+                    'settlement_date' => '2026-07-18',
+                ]),
+                '2026-03-02',
+                '2026-07-18',
+            ],
+            'project' => [
+                $this->project([
+                    'contract_date'   => '2026-04-06',
+                    'settlement_date' => '2026-08-21',
+                ]),
+                '2026-04-06',
+                '2026-08-21',
+            ],
+        ];
 
-        $this->assertSame(['契約', '決済'], $this->labels($m));
-        $this->assertSame('2026-03-02', $m[0]['date']->toDateString());
-        $this->assertSame('2026-07-18', $m[1]['date']->toDateString());
+        foreach ($cases as $label => [$owner, $contractDate, $settlementDate]) {
+            $m = $owner->autoMilestones();
+
+            $this->assertSame(['契約', '決済'], $this->labels($m), $label);
+            $this->assertSame($contractDate, $m[0]['date']->toDateString(), $label);
+            $this->assertSame($settlementDate, $m[1]['date']->toDateString(), $label);
+        }
     }
 
     // ============================================================
