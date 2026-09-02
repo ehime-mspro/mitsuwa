@@ -135,6 +135,9 @@ class ScheduleImportController extends Controller
             $dates = array_filter(self::derivedDates($sanitized['rows']), fn ($v) => $v !== null);
 
             if ($dates !== []) {
+                // ⚠ 日付 2 列しか fill しないので updated_by が据え置きのままになる
+                //   （工程には上で打っているのに、ここだけ規約から漏れていた）。
+                $dates['updated_by'] = $userId;
                 $property->fill($dates)->save();
             }
         });
