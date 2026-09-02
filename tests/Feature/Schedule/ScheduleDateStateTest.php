@@ -67,6 +67,38 @@ class ScheduleDateStateTest extends ScheduleTestCase
         return app(ScheduleCardService::class)->build($owner, CarbonImmutable::parse(self::TODAY));
     }
 
+    // ============================================================
+    // 行チップ / 凡例チップの抽出ヘルパー
+    //
+    // ⚠ **凡例は行チップと同じラベル文字列（>これから</span> 等）を出す。** 素の文字列で
+    //   見ると、行チップを丸ごと消しても凡例だけで assertStringContainsString が満たされ、
+    //   全テストが緑のまま通る（Bug #43。実測で確認済み — レビューで指摘され、実際の
+    //   レンダリング結果を突き合わせて below の判別子を選んだ）。
+    //
+    // ⚠ 判別子は実 HTML を見て決めた（`_schedule_gantt.blade.php` の 2 箇所の <span> の
+    //   style を突き合わせ）:
+    //   - 行チップ  : `flex: 0 0 auto; font-size: 10px; ... white-space: nowrap; <色>`
+    //   - 凡例チップ: `font-size: 10px; font-weight: 700; ... <色>`（`flex:` も
+    //     `white-space:` も無い）
+    //   行チップは必ず `flex: 0 0 auto;` から始まるので、それを唯一のアンカーにする。
+    // ============================================================
+
+    /** @return list<string> 行チップのラベルを出現順で返す（ラベル欄の中。凡例は含まない） */
+    private function rowChipLabels(string $html): array
+    {
+        preg_match_all('/<span style="flex: 0 0 auto; font-size: 10px;[^"]*">([^<]*)<\/span>/u', $html, $m);
+
+        return $m[1];
+    }
+
+    /** @return list<string> 凡例チップのラベルを出現順で返す（行チップは含まない） */
+    private function legendChipLabels(string $html): array
+    {
+        preg_match_all('/<span style="font-size: 10px; font-weight: 700;[^"]*">([^<]*)<\/span>/u', $html, $m);
+
+        return $m[1];
+    }
+
     public function test_housing_rows_carry_a_state_derived_from_the_dates(): void
     {
         $card = $this->card($this->housingWithThreeStates());
@@ -122,7 +154,15 @@ class ScheduleDateStateTest extends ScheduleTestCase
     // 画面（HTML）— 「配列に載った」だけでは足りない
     // ============================================================
 
-    public function test_the_housing_detail_page_shows_state_chips_and_no_delay_badge(): void
+    /**
+     * ⚠ **「チップが出ること」自体は `test_each_housing_row_carries_its_own_state_chip()` が
+     *   行の側だけを数えて固定している。ここでは遅延バッジが出ないことだけを見る。**
+     *   以前はここでも `assertStringContainsString('>これから</span>', ...)` のように
+     *   素の文字列で見ていたが、凡例（`_schedule_gantt.blade.php` の状態の行）が
+     *   **同じ `>これから</span>` を出す**ため、行チップを丸ごと削除しても
+     *   凡例だけでこのアサートが満たされ緑のまま通ってしまう（Bug #43。レビューで指摘され実測）。
+     */
+    public function test_the_housing_detail_page_shows_no_delay_badge(): void
     {
         $owner = $this->housingWithThreeStates();
 
@@ -130,11 +170,69 @@ class ScheduleDateStateTest extends ScheduleTestCase
             ->get(route($owner->scheduleRoutePrefix() . '.show', $owner))
             ->assertOk()->getContent();
 
-        // ⚠ タグ込みで見る。素の「進行中」はボードの KPI 名などにも前方一致する（Bug #43）
-        $this->assertStringContainsString('>これから</span>', $html);
-        $this->assertStringContainsString('>進行中</span>', $html);
-        $this->assertStringContainsString('>済</span>', $html);
         $this->assertDoesNotMatchRegularExpression('/color: #DC2626; font-weight: 700[^>]*>\+\d+日/', $html, '住宅に遅延バッジを出さない');
+    }
+
+    /**
+     * ⚠ **行チップだけを数える。** 凡例チップ（`rowChipLabels()` 冒頭の注記）と混ざらないよう
+     *   判別子で分離する。この 1 本が壊れると:
+     *   - 行チップの `<span>` を丸ごと削除しても（凡例が残っていれば）他のテストは気づけない
+     *   - ラベル欄の `@if($g['tracksActuals'])` を `@if(true)` にして住宅の行が不動産の
+     *     分岐へ落ち、チップが全部消えても気づけない（住宅は delayDays が常に 0 なので
+     *     遅延バッジも出ず、period テキストが出るだけで見た目上「壊れていない」ように映る）
+     */
+    public function test_each_housing_row_carries_its_own_state_chip(): void
+    {
+        $owner = $this->housingWithThreeStates();
+
+        $html = $this->actingAs($this->manager())
+            ->get(route($owner->scheduleRoutePrefix() . '.show', $owner))
+            ->assertOk()->getContent();
+
+        $this->assertSame(['済', '進行中', 'これから'], $this->rowChipLabels($html), '行チップが 3 個・状態の並び順で出ていない');
+    }
+
+    /**
+     * ⚠ **チップの色を語と対で固定する。** `$chipStyle` の `running`/`done` を入れ替える変異は、
+     *   ラベル文字列だけを見るテスト（`>進行中</span>` の有無等）では検出できない
+     *   —— 文字列自体は変わらず色だけが変わるため。行チップの style 属性に色とラベルを
+     *   対で埋め込んで見る（実 HTML の実測値そのまま。running/done を入れ替えると
+     *   進行中チップが #F3F4F6/#9CA3AF になりこの部分文字列が消える）。
+     */
+    public function test_the_running_chip_is_paired_with_its_dark_color(): void
+    {
+        $owner = $this->housingWithThreeStates();
+
+        $html = $this->actingAs($this->manager())
+            ->get(route($owner->scheduleRoutePrefix() . '.show', $owner))
+            ->assertOk()->getContent();
+
+        $this->assertStringContainsString(
+            'background: #111827; color: #fff; border: 1px solid #111827;">進行中</span>',
+            $html,
+            '進行中チップの色が違う（$chipStyle の running/done 入れ替わりを検出できていない）'
+        );
+    }
+
+    /**
+     * ⚠ **「＋ 工程を追加」を押した直後に毎回通る経路。** `_schedule_section.blade.php` の
+     *   `startAdd()` は `planned_start: null, planned_end: null` で工程を作るので、
+     *   最も踏みやすい経路なのに一度もテストが実行していなかった（レビュー指摘）。
+     *   既存の `ScheduleSectionRenderTest::test_a_step_without_dates_is_listed_with_a_placeholder`
+     *   は procurement（実績あり）で書かれているため `$chipStyle` に到達しない。
+     *   `$chipStyle['undated']` を消しても fatal にならず（`Undefined array key` の警告＋
+     *   素の style）、本番では枠の無いチップが無音で出る。
+     */
+    public function test_a_housing_step_without_dates_shows_the_undated_chip(): void
+    {
+        $owner = $this->makeParent('property');
+        $owner->scheduleSteps()->create(['name' => '未定の工程', 'category' => 'other', 'sort_order' => 1]);
+
+        $html = $this->actingAs($this->manager())
+            ->get(route($owner->scheduleRoutePrefix() . '.show', $owner))
+            ->assertOk()->getContent();
+
+        $this->assertSame(['未定'], $this->rowChipLabels($html));
     }
 
     /**
@@ -152,7 +250,12 @@ class ScheduleDateStateTest extends ScheduleTestCase
 
         preg_match_all('/flex: 0 0 262px;([^"]*)"/', $html, $m);
 
-        $this->assertNotEmpty($m[1], 'ラベル欄が 1 つも見つからない（走査の空振り）');
+        // ⚠ **件数の下限も固定する。** `assertNotEmpty` だけだと「行のラベル欄だけ 262px→260px に
+        //   変える」変異が素通りする（月ヘッダの `flex: 0 0 262px;` だけ拾えれば非空を満たすため）。
+        //   このフィクスチャ（工程 3 行・自動マイルストーン 0 件）での内訳は月ヘッダ 1 ＋ 行 3 の
+        //   4 個（実測で確認済み）。マイルストーンが増えると「節目」ラベル欄も同じ形で 1 個増える。
+        $this->assertCount(4, $m[1], 'ラベル欄（flex: 0 0 262px;）の総数が想定と違う（月ヘッダ1 + 行3）');
+
         foreach ($m[1] as $style) {
             $this->assertStringContainsString('min-width: 0', $style);
             $this->assertStringContainsString('overflow: hidden', $style);
@@ -178,7 +281,15 @@ class ScheduleDateStateTest extends ScheduleTestCase
         $this->assertCount(1, $ringed, '輪郭が付くのは進行中の 1 本だけ');
     }
 
-    /** 凡例にも状態の説明が出ること（棒の検査とは別に見る） */
+    /**
+     * 凡例にも状態の説明が出ること（棒の検査とは別に見る）。
+     *
+     * ⚠ **`進行中は棒にも輪郭` の文字列だけでは、凡例のチップ 3 個（`@foreach(['upcoming',
+     *   'running', 'done'] ...)`）自体は守れない。** その `@foreach` を丸ごと消しても、
+     *   直後の兄弟 `<span>`（`進行中は棒にも輪郭`）は無関係に残るので緑のまま通る。
+     *   `$g['stateLabels']` のキーを消す変異も同様（`@foreach` の中身が空文字になるだけ）。
+     *   凡例チップの個数とラベルを `legendChipLabels()` で別途固定する。
+     */
     public function test_the_legend_explains_the_states(): void
     {
         $owner = $this->housingWithThreeStates();
@@ -188,6 +299,7 @@ class ScheduleDateStateTest extends ScheduleTestCase
             ->assertOk()->getContent();
 
         $this->assertStringContainsString('進行中は棒にも輪郭', $html);
+        $this->assertSame(['これから', '進行中', '済'], $this->legendChipLabels($html), '凡例のチップ 3 個が消えている');
     }
 
     // ============================================================

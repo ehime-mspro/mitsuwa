@@ -23,6 +23,12 @@
         'done'     => 'background: #F3F4F6; color: #9CA3AF; border: 1px solid #F3F4F6;',
         'undated'  => 'background: #fff; color: #9CA3AF; border: 1px dashed #D1D5DB;',
     ])
+    {{-- ⚠ **「済」チップのコントラスト比は 2.31:1（#9CA3AF / #F3F4F6）で、10px bold は
+         「通常テキスト」扱いのため AA の 4.5:1 に届かない（`undated` も #9CA3AF / #fff で
+         2.54:1 で同様に届かない）。承知のうえでモックの意匠を採用している
+         （upcoming 4.83:1 / running 17.74:1 は AA を満たす）。次に直す人向けに実測値を残す:
+         前景を `#6B7280` にすると 4.39:1、`#4B5563` にすると 6.87:1 で AA を満たす
+         （周辺ビル調査で「点線は 2.43:1 で 3:1 に届かないのは承知のうえ」と明記した前例に倣う）。 --}}
     <div style="border: 1px solid #E5E7EB; border-radius: 8px; overflow: hidden; background: white;">
         <div style="overflow-x: auto;">
             <div style="min-width: 940px;">
@@ -78,6 +84,12 @@
                                     <span style="margin-left: auto; font-size: 10.5px; color: #9CA3AF; white-space: nowrap;">{{ $row['periodText'] }}</span>
                                 @endif
                             @else
+                                {{-- ⚠ **`margin-left: auto` の span が 2 つあるのは意図どおり。**
+                                     flex の auto マージンが 2 つあると余白がほぼ等分されるので、
+                                     チップは右端ではなく**工程名と期間テキストの中間**に来る
+                                     （モックの採寸で確定した意匠。実測で前後 51.1px / 52.4px）。
+                                     空の `<span>` を「冗長」と判断して消さないこと——消すと
+                                     チップが期間テキストの直左に張り付き、意匠が変わる。 --}}
                                 <span style="margin-left: auto;"></span>
                                 <span style="flex: 0 0 auto; font-size: 10px; font-weight: 700; line-height: 1.5; padding: 0 5px; border-radius: 3px; white-space: nowrap; {{ $chipStyle[$row['state']] }}">{{ $row['stateLabel'] }}</span>
                                 <span style="margin-left: auto; font-size: 10.5px; color: #9CA3AF; white-space: nowrap;">{{ $row['periodText'] }}</span>
