@@ -33,6 +33,40 @@ class ScheduleSectionRenderTest extends ScheduleTestCase
         'resources/views/housing/custom-orders/show.blade.php',
     ];
 
+    /**
+     * 4 親ぶんの ◆ 用日付（設計書 §3.4 / §6）。`ScheduleAutoMilestoneTest` と同じ値を使う
+     * （property / customOrder は Task 7 の fixture と揃え、procurement / project は
+     * 既存の `test_procurement_shows_contract_and_settlement` 系と揃えている）。
+     */
+    private const MILESTONE_TEST_DATES = [
+        'procurement' => [
+            'contract_date'   => '2026-01-23',
+            'settlement_date' => '2026-05-29',
+        ],
+        'project' => [
+            'contract_date'   => '2026-02-10',
+            'settlement_date' => '2026-06-30',
+        ],
+        'property' => [
+            'construction_start_date'   => '2026-02-19',
+            'scheduled_completion_date' => '2026-09-27',
+        ],
+        'customOrder' => [
+            'contract_date'             => '2026-01-10',
+            'construction_start_date'   => '2026-02-19',
+            'scheduled_completion_date' => '2026-09-27',
+            'delivery_date'             => '2026-10-15',
+        ],
+    ];
+
+    /** 4 親ぶんの期待ラベル（`autoMilestones()` の固定順どおり） */
+    private const MILESTONE_EXPECTED_LABELS = [
+        'procurement' => ['契約', '決済'],
+        'project'     => ['契約', '決済'],
+        'property'    => ['着工', '完成'],
+        'customOrder' => ['契約', '着工', '完成', '引渡し'],
+    ];
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -43,6 +77,22 @@ class ScheduleSectionRenderTest extends ScheduleTestCase
     private function showUrl(string $label, \Illuminate\Database\Eloquent\Model $owner): string
     {
         return route(self::PARENTS[$label][1] . '.show', $owner);
+    }
+
+    /**
+     * ⚠ **素の語で見ない（Bug #43）。** 「着工」「契約」等は基本情報欄のラベル
+     *   （「着工予定日」「契約日」等）にも出るため、そのまま探すと ◆ を描いていなくても
+     *   通ってしまう false positive になる（実測: procurement / property / customOrder
+     *   いずれの show.blade.php にも同じ文字列が基本情報欄・契約情報欄に出る）。
+     *   `_schedule_gantt.blade.php` で ◆ のラベルにしか使われていない CSS を手掛かりにする。
+     */
+    private function assertMilestoneLabelIsDrawn(string $label, string $html, string $context): void
+    {
+        $this->assertStringContainsString(
+            'font-size: 10.5px; font-weight: 600; color: #374151; white-space: nowrap;">' . $label . '</span>',
+            $html,
+            "{$context}: ◆ のラベル『{$label}』が描かれていない"
+        );
     }
 
     // ============================================================
@@ -100,23 +150,31 @@ class ScheduleSectionRenderTest extends ScheduleTestCase
         $this->assertStringContainsString('日付未設定', $html, '期間欄に「日付未設定」を出すこと');
     }
 
-    /** 自動マイルストーンが画面に出ること（設計書 §3.4） */
+    /**
+     * 自動マイルストーンが画面に出ること（設計書 §3.4 / §6）。
+     *
+     * ⚠ **4 親すべてで見る。** procurement だけ開いていると、この改修（設計書 §6）が
+     *   変えた property / customOrder の ◆（着工と完成の 2 つ化）を一度も検証しないまま
+     *   緑になる（Bug #44 と同型。`ScheduleTestCase` の docblock が名指しで警告している形）。
+     *   `autoMilestones()` の戻り値が正しくても、共有 partial 側で描画が壊れていれば
+     *   これが唯一それを検出するテストになる。
+     */
     public function test_auto_milestones_are_drawn_from_the_existing_date_columns(): void
     {
-        $owner = $this->makeParent('procurement', [
-            'contract_date'   => '2026-01-23',
-            'settlement_date' => '2026-05-29',
-        ]);
-        $owner->scheduleSteps()->create([
-            'name' => '測量', 'category' => 'survey',
-            'planned_start' => '2026-02-01', 'planned_end' => '2026-03-01', 'sort_order' => 1,
-        ]);
+        foreach (self::MILESTONE_TEST_DATES as $label => $dateAttrs) {
+            $owner = $this->makeParent($label, $dateAttrs);
+            $owner->scheduleSteps()->create([
+                'name' => '測量', 'category' => 'survey',
+                'planned_start' => '2026-02-01', 'planned_end' => '2026-03-01', 'sort_order' => 1,
+            ]);
 
-        $html = $this->actingAs($this->manager())->get($this->showUrl('procurement', $owner))
-            ->assertOk()->getContent();
+            $html = $this->actingAs($this->manager())->get($this->showUrl($label, $owner))
+                ->assertOk()->getContent();
 
-        $this->assertStringContainsString('契約', $html);
-        $this->assertStringContainsString('決済', $html);
+            foreach (self::MILESTONE_EXPECTED_LABELS[$label] as $milestoneLabel) {
+                $this->assertMilestoneLabelIsDrawn($milestoneLabel, $html, $label);
+            }
+        }
     }
 
     // ============================================================

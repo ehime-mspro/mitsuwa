@@ -156,18 +156,26 @@ class ScheduleAutoMilestoneTest extends TestCase
 
     public function test_a_custom_order_keeps_its_contract_and_delivery_milestones(): void
     {
-        $owner = $this->customOrder([
+        $milestones = $this->customOrder([
             'contract_date'             => '2026-01-10',
             'construction_start_date'   => '2026-02-19',
             'scheduled_completion_date' => '2026-09-27',
             'delivery_date'             => '2026-10-15',
-        ]);
+        ])->autoMilestones();
 
         $this->assertSame(
             ['契約', '着工', '完成', '引渡し'],
-            $this->labels($owner->autoMilestones()),
-            '注文住宅は契約・引渡しも節目に持つ（順序は日付の並びどおり）'
+            $this->labels($milestones),
+            '注文住宅は契約・引渡しも節目に持つ（順序は配列の固定順。日付では並べ替えない）'
         );
+
+        // ⚠ ラベルだけでなく date も index ごとに固定する。ガード条件は正しいまま
+        //   'date' の参照先だけを交差させる変異（例: 着工の date に delivery_date を渡す）は
+        //   ラベル列だけでは検出できない（fixture が 4 日付とも別値であることが前提）。
+        $this->assertSame('2026-01-10', $milestones[0]['date']->toDateString(), '契約の date が違う');
+        $this->assertSame('2026-02-19', $milestones[1]['date']->toDateString(), '着工の date が違う');
+        $this->assertSame('2026-09-27', $milestones[2]['date']->toDateString(), '完成の date が違う');
+        $this->assertSame('2026-10-15', $milestones[3]['date']->toDateString(), '引渡しの date が違う');
     }
 
     /**
