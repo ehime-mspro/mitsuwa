@@ -253,15 +253,20 @@ class ScheduleBoardTest extends ScheduleTestCase
 
         $board = $this->actingAs($this->manager())->get('/realestate/schedules?status=all')->viewData('board');
 
-        $this->assertSame(3, $board['kpi']['running'], '進行中の案件数');
-        $this->assertSame(1, $board['kpi']['late'], '遅延の案件数');
-        $this->assertSame(1, $board['kpi']['startingSoon'], '30 日以内に始まる工程（実績開始済みは数えない）');
-        $this->assertSame(2, $board['kpi']['endingSoon'], '30 日以内に終わる工程');
+        // ⚠ Task 5(設計書 §8)で `kpi` が連想配列からカードのリストへ変わった
+        //   (partial が枚数を書かずに並べられるようにするため。決定 P5)。
+        //   ここではラベルで引き直す。不動産のボードを見ているテストなので枚数は 4 枚のまま。
+        $kpi = array_column($board['kpi'], 'value', 'label');
+
+        $this->assertSame(3, $kpi['進行中の案件'], '進行中の案件数');
+        $this->assertSame(1, $kpi['遅れている案件'], '遅延の案件数');
+        $this->assertSame(1, $kpi['30日以内に始まる工程'], '30 日以内に始まる工程（実績開始済みは数えない）');
+        $this->assertSame(2, $kpi['30日以内に終わる工程'], '30 日以内に終わる工程');
 
         // 本体の行と突き合わせる（KPI だけ・行だけ、のどちらの変異も止める）
         $byStatus = array_count_values(array_column($board['rows'], 'status'));
-        $this->assertSame($board['kpi']['running'], $byStatus['running'] ?? 0);
-        $this->assertSame($board['kpi']['late'], $byStatus['late'] ?? 0);
+        $this->assertSame($kpi['進行中の案件'], $byStatus['running'] ?? 0);
+        $this->assertSame($kpi['遅れている案件'], $byStatus['late'] ?? 0);
     }
 
     /** ⚠ 絞り込むと KPI も一緒に動く（決定 H） */
@@ -271,9 +276,10 @@ class ScheduleBoardTest extends ScheduleTestCase
         $this->caseWithSteps('PRC-RUN',  [['planned_start' => '2026-08-01', 'planned_end' => '2026-09-30', 'actual_start' => '2026-08-01']]);
 
         $board = $this->actingAs($this->manager())->get('/realestate/schedules?status=late')->viewData('board');
+        $kpi   = array_column($board['kpi'], 'value', 'label');
 
-        $this->assertSame(1, $board['kpi']['late']);
-        $this->assertSame(0, $board['kpi']['running'], '絞り込み後の行から数えていない');
+        $this->assertSame(1, $kpi['遅れている案件']);
+        $this->assertSame(0, $kpi['進行中の案件'], '絞り込み後の行から数えていない');
     }
 
     // ============================================================
@@ -384,6 +390,249 @@ class ScheduleBoardTest extends ScheduleTestCase
         $this->assertFalse(
             $method->getParameters()[0]->isDefaultValueAvailable(),
             '対象クラスの引数に既定値があります（引数を省略すると全部署が漏れます。設計書 §4.3）'
+        );
+    }
+
+    // ============================================================
+    // 住宅事業ボード（設計書 §8）— 状態 3 種 / KPI 3 枚 / 遅延なし
+    // ============================================================
+
+    /** 済 / 進行中 / これから を 1 件ずつ持つ 3 物件を作る */
+    private function housingBoardFixture(): void
+    {
+        // ⚠ 日付は ScheduleBoardTest の凍結日 2026-08-31 基準。
+        //   30 日以内の窓は 2026-08-31 〜 2026-09-30。
+        foreach ([
+            ['HS-DONE', '2026-05-01', '2026-05-20'],
+            ['HS-RUN',  '2026-08-20', '2026-09-30'],
+            ['HS-SOON', '2026-09-15', '2026-09-20'],
+        ] as $i => [$code, $s, $e]) {
+            $owner = $this->makeParent('property', ['property_code' => $code, 'property_name' => $code . ' 邸']);
+            $owner->scheduleSteps()->create([
+                'name' => '工程' . $i, 'category' => 'work',
+                'planned_start' => $s, 'planned_end' => $e, 'sort_order' => 1,
+            ]);
+        }
+    }
+
+    public function test_the_housing_board_offers_the_three_date_states(): void
+    {
+        $board = $this->actingAs($this->manager())->get('/housing/schedules')->viewData('board');
+
+        $this->assertSame(
+            ['running' => '進行中', 'all' => 'すべて', 'upcoming' => 'これから', 'done' => '済'],
+            $board['statuses'],
+            '住宅事業に「遅延」は無い（設計書 §8）'
+        );
+    }
+
+    /** ⚠ 不動産のボードは 4 種のまま（巻き込み事故の検出。Bug #41） */
+    public function test_the_realestate_board_keeps_its_own_statuses(): void
+    {
+        $board = $this->actingAs($this->manager())->get('/realestate/schedules')->viewData('board');
+
+        $this->assertSame(
+            ['running' => '進行中', 'all' => 'すべて', 'late' => '遅延', 'done' => '完了'],
+            $board['statuses']
+        );
+    }
+
+    public function test_a_housing_case_is_classified_by_its_dates(): void
+    {
+        $this->housingBoardFixture();
+
+        $rows = collect(
+            $this->actingAs($this->manager())->get('/housing/schedules?status=all')->viewData('board')['rows']
+        )->keyBy('code');
+
+        $this->assertSame('done', $rows['HS-DONE']['status']);
+        $this->assertSame('running', $rows['HS-RUN']['status']);
+        $this->assertSame('upcoming', $rows['HS-SOON']['status']);
+        $this->assertSame([0, 0, 0], $rows->pluck('delayDays')->all(), '住宅に遅延日数は出さない');
+    }
+
+    public function test_the_housing_status_filter_narrows_the_rows(): void
+    {
+        $this->housingBoardFixture();
+
+        $rows = $this->actingAs($this->manager())->get('/housing/schedules?status=upcoming')->viewData('board')['rows'];
+
+        $this->assertSame(['HS-SOON'], array_column($rows, 'code'));
+    }
+
+    /**
+     * KPI は 3 枚。⚠ **3 枚とも数えるのは「工程」であって案件ではない**（設計書 §8）。
+     */
+    public function test_the_housing_board_shows_three_step_based_kpis(): void
+    {
+        $this->housingBoardFixture();
+
+        $board = $this->actingAs($this->manager())->get('/housing/schedules?status=all')->viewData('board');
+
+        $this->assertSame(
+            ['進行中の工程', '30日以内に始まる工程', '30日以内に終わる工程'],
+            array_column($board['kpi'], 'label')
+        );
+
+        // ⚠ **3 枚を別々の値にしてある。** 全部同じ数だと、カードの並びを入れ替える変異が
+        //   素通りする（凍結日 8/31 / 窓は 9/30 まで）:
+        //     進行中の工程       = HS-RUN の 1 本
+        //     30日以内に始まる工程 = HS-SOON の 9/15 だけ（HS-RUN は 8/20 開始で既に始まっている）
+        //     30日以内に終わる工程 = HS-RUN の 9/30 と HS-SOON の 9/20 で 2 本
+        $this->assertSame([1, 1, 2], array_column($board['kpi'], 'value'));
+    }
+
+    /** ⚠ 不動産の KPI は 4 枚のまま */
+    public function test_the_realestate_board_keeps_four_kpis(): void
+    {
+        $board = $this->actingAs($this->manager())->get('/realestate/schedules')->viewData('board');
+
+        $this->assertSame(
+            ['進行中の案件', '遅れている案件', '30日以内に始まる工程', '30日以内に終わる工程'],
+            array_column($board['kpi'], 'label')
+        );
+    }
+
+    public function test_the_housing_board_never_paints_a_delay_badge(): void
+    {
+        $this->housingBoardFixture();
+
+        $html = $this->actingAs($this->manager())->get('/housing/schedules?status=all')->assertOk()->getContent();
+
+        $this->assertDoesNotMatchRegularExpression('/color: #DC2626; font-weight: 700[^>]*>\+\d+日/', $html);
+        $this->assertStringNotContainsString('border: 2px solid #DC2626', $html, '棒の赤枠も出さない');
+        $this->assertStringContainsString('HS-RUN 邸', $html, '走査の空振りでないこと');
+    }
+
+    /**
+     * ⚠ **1 枚のボードに実績を持つ親と持たない親を混ぜない。** 静かにどちらかへ倒れるのを防ぐ
+     *   （決定 P4）。
+     */
+    public function test_mixing_tracked_and_untracked_kinds_on_one_board_is_refused(): void
+    {
+        $this->expectException(\LogicException::class);
+
+        app(\App\Services\ScheduleBoardService::class)->build([
+            'procurement' => [\App\Models\ReProcurement::class, '仕入れ案件'],
+            'property'    => [\App\Models\HsProperty::class, '建売'],
+        ], new \Illuminate\Http\Request());
+    }
+
+    // ============================================================
+    // 住宅事業ボード — HTML に実際に描画されているか
+    // ⚠ **viewData だけでは partial が描いているか分からない。** Task 4 のレビューで
+    //   「凡例が行チップと同じ文字列を出すため、行チップを消しても緑のまま」という穴が
+    //   見つかった（Bug #43 と同型）。ここでは KPI カードと絞り込みの option を、
+    //   実際にレンダリングされた HTML から「ラベル・色・値」「value・ラベル」の対で抜き出して見る。
+    // ============================================================
+
+    /**
+     * KPI カード 1 枚ぶんを「ラベル → 色 → 値」の並びで抜き出す。
+     *
+     * ⚠ **3 つを対にして見る。** ラベルだけ・値だけを別々に集めると、カードの並びを
+     *   入れ替える変異や、色を取り違える変異が素通りする（Bug #43 の教訓）。
+     *   正規表現は Blade の実マークアップ（ラベル div の直後に値 div が続く）に対応させてある。
+     *
+     * @return list<array{label: string, color: string, value: int}>
+     */
+    private function kpiCards(string $html): array
+    {
+        preg_match_all(
+            '/<div style="font-size: 11\.5px; color: #6B7280; margin-bottom: 4px;">([^<]*)<\/div>\s*'
+            . '<div style="font-size: 22px; font-weight: 700; color: (#[0-9A-Fa-f]{6});">(-?\d+)<\/div>/',
+            $html,
+            $m,
+            PREG_SET_ORDER
+        );
+
+        return array_map(fn ($row) => ['label' => $row[1], 'color' => $row[2], 'value' => (int) $row[3]], $m);
+    }
+
+    public function test_the_housing_kpi_cards_are_actually_rendered(): void
+    {
+        $this->housingBoardFixture();
+
+        $html = $this->actingAs($this->manager())->get('/housing/schedules?status=all')->assertOk()->getContent();
+
+        $this->assertSame(
+            [
+                ['label' => '進行中の工程', 'color' => '#047857', 'value' => 1],
+                ['label' => '30日以内に始まる工程', 'color' => '#1D4ED8', 'value' => 1],
+                ['label' => '30日以内に終わる工程', 'color' => '#B45309', 'value' => 2],
+            ],
+            $this->kpiCards($html),
+            'KPI カードが HTML に 3 枚、ラベル・色・値の対で描かれていない'
+        );
+    }
+
+    /** ⚠ 不動産側は 4 枚のまま描かれることも同じ形で見る（巻き込み事故の検出） */
+    public function test_the_realestate_kpi_cards_are_actually_rendered_as_four(): void
+    {
+        $this->caseWithSteps('PRC-KPI', [
+            ['planned_start' => '2026-08-01', 'planned_end' => '2026-12-31', 'actual_start' => '2026-08-01'],
+        ]);
+
+        $html = $this->actingAs($this->manager())->get('/realestate/schedules?status=all')->assertOk()->getContent();
+
+        $this->assertSame(
+            [
+                ['label' => '進行中の案件', 'color' => '#047857', 'value' => 1],
+                ['label' => '遅れている案件', 'color' => '#B91C1C', 'value' => 0],
+                ['label' => '30日以内に始まる工程', 'color' => '#1D4ED8', 'value' => 0],
+                ['label' => '30日以内に終わる工程', 'color' => '#B45309', 'value' => 0],
+            ],
+            $this->kpiCards($html),
+            'KPI カードが HTML に 4 枚、ラベル・色・値の対で描かれていない'
+        );
+    }
+
+    /**
+     * 絞り込み「ステータス」の `<option>` を value → ラベルの対で抜き出す。
+     *
+     * ⚠ **タグ込みで見る。** 素の「進行中」は KPI ラベル「進行中の工程」にも案件ステータスにも
+     *   前方一致するので false-pass する（Bug #43）。「ステータス: 」の接頭辞は他の 2 つの
+     *   セレクト（種別: / 表示:）と衝突しないので、これをアンカーにする。
+     *
+     * @return list<array{value: string, label: string}>
+     */
+    private function statusOptionsInOrder(string $html): array
+    {
+        preg_match_all('/<option value="(\w+)"[^>]*>ステータス: ([^<]*)<\/option>/u', $html, $m, PREG_SET_ORDER);
+
+        return array_map(fn ($row) => ['value' => $row[1], 'label' => $row[2]], $m);
+    }
+
+    public function test_the_housing_status_options_are_actually_rendered(): void
+    {
+        $html = $this->actingAs($this->manager())->get('/housing/schedules')->assertOk()->getContent();
+
+        $this->assertSame(
+            [
+                ['value' => 'running',  'label' => '進行中'],
+                ['value' => 'all',      'label' => 'すべて'],
+                ['value' => 'upcoming', 'label' => 'これから'],
+                ['value' => 'done',     'label' => '済'],
+            ],
+            $this->statusOptionsInOrder($html),
+            '住宅の絞り込み option が 4 つ・想定の並びで描かれていない'
+        );
+
+        $this->assertStringNotContainsString('ステータス: 遅延', $html, '住宅のボードに「遅延」の選択肢が出ている');
+    }
+
+    /** ⚠ 不動産側は従来の 4 択のまま描かれることも同じ形で見る（巻き込み事故の検出） */
+    public function test_the_realestate_status_options_are_unchanged(): void
+    {
+        $html = $this->actingAs($this->manager())->get('/realestate/schedules')->assertOk()->getContent();
+
+        $this->assertSame(
+            [
+                ['value' => 'running', 'label' => '進行中'],
+                ['value' => 'all',     'label' => 'すべて'],
+                ['value' => 'late',    'label' => '遅延'],
+                ['value' => 'done',    'label' => '完了'],
+            ],
+            $this->statusOptionsInOrder($html)
         );
     }
 }

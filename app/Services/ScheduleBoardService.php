@@ -31,12 +31,27 @@ class ScheduleBoardService
 
     public const STATUS_DONE    = 'done';
 
+    public const STATUS_UPCOMING = 'upcoming';
+
     /** ⚠ 「すべて」は空文字にしない（Arr::query() が null キーを捨てる。Bug #31 / 決定 I） */
     public const STATUSES = [
         self::STATUS_RUNNING => '進行中',
         self::STATUS_ALL     => 'すべて',
         self::STATUS_LATE    => '遅延',
         self::STATUS_DONE    => '完了',
+    ];
+
+    /**
+     * 実績を持たない親（住宅事業）の絞り込み（設計書 §8）。**遅延は無い。**
+     *
+     * ⚠ 「すべて」は空文字にしない（`Arr::query()` が null / 空のキーを捨てる。Bug #31）。
+     * ⚠ `running` / `done` は不動産と同じ文字列。URL の語彙を 2 つ持たない（決定 P2）。
+     */
+    public const DATE_STATUSES = [
+        self::STATUS_RUNNING  => '進行中',
+        self::STATUS_ALL      => 'すべて',
+        self::STATUS_UPCOMING => 'これから',
+        self::STATUS_DONE     => '済',
     ];
 
     /**
@@ -63,7 +78,11 @@ class ScheduleBoardService
     {
         $today = ($today ?? CarbonImmutable::today())->startOfDay();
 
-        $filters = $this->filters($kinds, $request);
+        // ⚠ **1 枚のボードで親の方針が混ざらないことを先に確かめる**（決定 P4）。
+        //   混ざったまま進むと、案件ごとに遅延の有無が食い違う画面になる。
+        $tracksActuals = $this->tracksActuals($kinds);
+
+        $filters = $this->filters($kinds, $request, $tracksActuals);
         $zoom    = self::ZOOMS[$filters['zoom']];
 
         // ⚠ **月初に正規化してから加減算する。** Carbon の subMonths()/addMonths() は
@@ -93,7 +112,7 @@ class ScheduleBoardService
                     continue;
                 }
 
-                $row = $this->row($owner, $label, $key, $steps, $scale, $today);
+                $row = $this->row($owner, $label, $key, $steps, $scale, $today, $tracksActuals);
 
                 if (! $this->matches($row, $owner, $steps, $filters)) {
                     continue;
@@ -108,11 +127,11 @@ class ScheduleBoardService
 
         return [
             'rows'              => $rows,
-            'kpi'               => $this->kpi($rows, $keptSteps, $today),
+            'kpi'               => $this->kpi($rows, $keptSteps, $today, $tracksActuals),
             'unregisteredCount' => $unregistered,
             'filters'           => $filters,
             'kinds'             => $kinds,
-            'statuses'          => self::STATUSES,
+            'statuses'          => $tracksActuals ? self::STATUSES : self::DATE_STATUSES,
             'zooms'             => self::ZOOMS,
             'axis'              => [
                 'from'        => $scale->from()->toDateString(),
@@ -130,15 +149,17 @@ class ScheduleBoardService
      *   ズームのリンクを組むときに `Arr::query()` が null のキーを丸ごと捨てるため、
      *   ここで `''` / 既定値へ正規化しておく。
      */
-    private function filters(array $kinds, Request $request): array
+    private function filters(array $kinds, Request $request, bool $tracksActuals): array
     {
         $kind = (string) ($request->query('kind') ?? self::STATUS_ALL);
         if ($kind !== self::STATUS_ALL && ! array_key_exists($kind, $kinds)) {
             $kind = self::STATUS_ALL;
         }
 
+        $statuses = $tracksActuals ? self::STATUSES : self::DATE_STATUSES;
+
         $status = (string) ($request->query('status') ?? self::STATUS_RUNNING);
-        if (! array_key_exists($status, self::STATUSES)) {
+        if (! array_key_exists($status, $statuses)) {
             $status = self::STATUS_RUNNING;
         }
 
@@ -156,7 +177,7 @@ class ScheduleBoardService
     }
 
     /** 1 案件ぶんの行（サマリの色帯 ＋ 展開用の工程明細） */
-    private function row(Model $owner, string $kindLabel, string $kindKey, $steps, GanttScale $scale, CarbonImmutable $today): array
+    private function row(Model $owner, string $kindLabel, string $kindKey, $steps, GanttScale $scale, CarbonImmutable $today, bool $tracksActuals): array
     {
         $drawable = $steps->filter(fn (ScheduleStep $s) => $s->isDrawable())->values();
 
@@ -178,7 +199,7 @@ class ScheduleBoardService
                 'topPx'    => LanePacker::LANE_TOP + $lanes[$i] * LanePacker::LANE_HEIGHT,
                 'leftPct'  => $left,
                 'widthPct' => GanttScale::clamp($scale->width($spans[$i]['from'], $spans[$i]['to']), 0.0, 100.0 - $left),
-                'late'     => $step->isLate($today),
+                'late'     => $tracksActuals && $step->isLate($today),
                 // まだ始まっていない工程は薄く出す（設計書 §4.2）
                 'future'   => $step->actual_start === null && $spans[$i]['from']->greaterThan($today),
             ];
@@ -192,8 +213,11 @@ class ScheduleBoardService
             'code'       => $owner->scheduleCode(),
             'name'       => $owner->scheduleName(),
             'url'        => $owner->scheduleUrl(),
-            'status'     => $this->status($steps, $today),
-            'delayDays'  => (int) $steps->max(fn (ScheduleStep $s) => $s->delayDays($today)),
+            'status'     => $tracksActuals
+                ? $this->status($steps, $today)
+                : $this->dateStatus($steps, $today),
+            // ⚠ 実績を持たない親では遅延を出さない（設計書 §8）
+            'delayDays'  => $tracksActuals ? (int) $steps->max(fn (ScheduleStep $s) => $s->delayDays($today)) : 0,
             'laneCount'  => $laneCount,
             'rowHeight'  => LanePacker::rowHeight($laneCount),
             'bars'       => $bars,
@@ -202,7 +226,7 @@ class ScheduleBoardService
                 'name'       => $s->name,
                 'color'      => $s->category->color(),
                 'periodText' => $s->periodText($today),
-                'delayDays'  => $s->delayDays($today),
+                'delayDays'  => $tracksActuals ? $s->delayDays($today) : 0,
                 'progress'   => $s->progress(),
             ])->all(),
         ];
@@ -227,6 +251,57 @@ class ScheduleBoardService
         return self::STATUS_RUNNING;
     }
 
+    /**
+     * 実績を持たない親の案件ステータス（設計書 §8: **済 > 進行中 > これから**）。
+     *
+     * ⚠ 「未定」（日付が 1 つも無い工程）は判定に数えない。全部が未定の案件は
+     *   「これから」に倒す（絞り込みから消えると、日付を入れ忘れた案件が画面から
+     *   見えなくなって直せない）。
+     */
+    private function dateStatus($steps, CarbonImmutable $today): string
+    {
+        $states = $steps->map(fn (ScheduleStep $s) => $s->dateState($today));
+
+        if ($states->contains(ScheduleStepStatus::RUNNING)) {
+            return self::STATUS_RUNNING;
+        }
+
+        if ($states->contains(ScheduleStepStatus::UPCOMING)) {
+            // 済 と これから が混ざっていれば「進行中」に見せる（工事は動いている）
+            return $states->contains(ScheduleStepStatus::DONE)
+                ? self::STATUS_RUNNING
+                : self::STATUS_UPCOMING;
+        }
+
+        return $states->contains(ScheduleStepStatus::DONE)
+            ? self::STATUS_DONE
+            : self::STATUS_UPCOMING;
+    }
+
+    /**
+     * 1 枚のボードに乗る親が全部同じ方針か（決定 P4）。
+     *
+     * ⚠ **混在したら黙ってどちらかへ倒さない。** 案件ごとに遅延の有無が食い違う画面になり、
+     *   絞り込みの選択肢も決められない。
+     */
+    private function tracksActuals(array $kinds): bool
+    {
+        $flags = [];
+
+        foreach ($kinds as [$class]) {
+            $flags[] = (new $class())->scheduleTracksActuals();
+        }
+
+        if ($flags === [] || count(array_unique($flags)) > 1) {
+            throw new \LogicException(
+                '1 枚のボードに、実績を持つ親と持たない親を混ぜられません。'
+                . 'ScheduleBoardController の KINDS を部署ごとに分けてください。'
+            );
+        }
+
+        return $flags[0];
+    }
+
     private function matches(array $row, Model $owner, $steps, array $filters): bool
     {
         if ($filters['status'] !== self::STATUS_ALL && $row['status'] !== $filters['status']) {
@@ -244,24 +319,54 @@ class ScheduleBoardService
         return mb_stripos($haystack, $filters['q']) !== false;
     }
 
-    /** @param list<array<string, mixed>> $rows 絞り込み**後**の行（決定 H） */
     /**
+     * KPI カードの並び（決定 P5）。**partial は並べるだけ**にして「住宅なら 3 枚」を書かせない。
+     *
      * @param  list<array<string, mixed>>  $rows       絞り込み**後**の行（決定 H）
      * @param  list<\Illuminate\Support\Collection>  $keptSteps  同じ添字の案件の工程
+     * @return list<array{label: string, value: int, color: string}>
      *
      * ⚠ **`$rows` と `$keptSteps` は添字が揃っている前提。** `build()` が同じループで
      *   一緒に積んでいる。片方だけ絞り込むと KPI と画面が食い違う（設計書 §8.4）。
      */
-    private function kpi(array $rows, array $keptSteps, CarbonImmutable $today): array
+    private function kpi(array $rows, array $keptSteps, CarbonImmutable $today, bool $tracksActuals): array
     {
         $limit = $today->addDays(self::SOON_DAYS);
 
-        return [
-            'running'      => count(array_filter($rows, fn ($r) => $r['status'] === self::STATUS_RUNNING)),
-            'late'         => count(array_filter($rows, fn ($r) => $r['status'] === self::STATUS_LATE)),
-            'startingSoon' => $this->countSoon($keptSteps, 'start', $today, $limit),
-            'endingSoon'   => $this->countSoon($keptSteps, 'end', $today, $limit),
+        $soon = [
+            ['label' => '30日以内に始まる工程', 'value' => $this->countSoon($keptSteps, 'start', $today, $limit), 'color' => '#1D4ED8'],
+            ['label' => '30日以内に終わる工程', 'value' => $this->countSoon($keptSteps, 'end', $today, $limit),   'color' => '#B45309'],
         ];
+
+        if (! $tracksActuals) {
+            // ⚠ 3 枚とも数えるのは**工程**であって案件ではない（設計書 §8）
+            return array_merge([[
+                'label' => '進行中の工程',
+                'value' => $this->countRunningSteps($keptSteps, $today),
+                'color' => '#047857',
+            ]], $soon);
+        }
+
+        return array_merge([
+            ['label' => '進行中の案件',   'value' => count(array_filter($rows, fn ($r) => $r['status'] === self::STATUS_RUNNING)), 'color' => '#047857'],
+            ['label' => '遅れている案件', 'value' => count(array_filter($rows, fn ($r) => $r['status'] === self::STATUS_LATE)),    'color' => '#B91C1C'],
+        ], $soon);
+    }
+
+    /** @param  list<\Illuminate\Support\Collection>  $keptSteps */
+    private function countRunningSteps(array $keptSteps, CarbonImmutable $today): int
+    {
+        $count = 0;
+
+        foreach ($keptSteps as $steps) {
+            foreach ($steps as $step) {
+                if ($step->dateState($today) === ScheduleStepStatus::RUNNING) {
+                    $count++;
+                }
+            }
+        }
+
+        return $count;
     }
 
     /**
