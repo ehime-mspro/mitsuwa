@@ -76,7 +76,9 @@ class HousingConstructionStartDateTest extends ScheduleTestCase
         $html = $this->actingAs($this->manager())->get('/housing/custom-orders/create')->assertOk()->getContent();
 
         $this->assertStringContainsString('name="construction_start_date"', $html);
+        $this->assertStringContainsString('着工予定日', $html);
         $this->assertStringNotContainsString('name="actual_completion_date"', $html);
+        $this->assertStringNotContainsString('実際の完成日', $html);
     }
 
     /** ⚠ 画面の**並び**まで見る。「両方出ている」だけでは順番の入れ替わりを検出できない */
@@ -95,6 +97,69 @@ class HousingConstructionStartDateTest extends ScheduleTestCase
             $this->assertNotFalse($end, $url);
             $this->assertLessThan($end, $start, "{$url}: 着工予定日は完成予定日の前に置く");
         }
+    }
+
+    /**
+     * ⚠ **詳細画面も見る。** 新規テストは元々フォーム（/create）しか見ておらず、show の
+     *   ラベルだけを「実際の完成日」に戻す変異（値は construction_start_date のまま）が
+     *   全テスト緑のまま通っていた（コード品質レビュー指摘・実測済み）。ラベルと値が
+     *   食い違っても例外は出ない（Bug #43 / #46 / #49 と同型）。
+     *
+     * ⚠ **ラベルの有無だけでなく「ラベル ↔ 値」の対で見る。** ラベルだけ見ると、値を旧列
+     *   （もう存在しない actual_completion_date）から読む変異——結果は常に null＝「—」——を
+     *   検出できない。空白を正規化したうえで「ラベルの div の直後に、そのラベルに対応する
+     *   正しい日付の div が続く」ことを固定することで、ラベル単独の書き換えにも、
+     *   値だけ入れ替わる（あるいは 2 つの値が入れ替わる）書き換えにも反応する。
+     */
+    public function test_the_property_show_page_pairs_the_label_with_its_own_value(): void
+    {
+        $property = HsProperty::create([
+            'property_code' => 'HS-CS2', 'property_name' => 'ラベル対応テスト', 'status' => 'construction',
+            'address' => '愛媛県松山市1-1-1', 'created_by' => 1,
+            'construction_start_date'   => '2026-03-10',
+            'scheduled_completion_date' => '2026-04-20',
+        ]);
+
+        $html       = $this->actingAs($this->manager())->get("/housing/properties/{$property->id}")->assertOk()->getContent();
+        $normalized = preg_replace('/\s+/', ' ', $html);
+
+        $this->assertStringNotContainsString('実際の完成日', $html);
+        $this->assertStringContainsString(
+            '着工予定日</div> <div style="padding: 10px 14px; font-size: 14px; border-bottom: 1px solid #e5e7eb;">2026/03/10</div>',
+            $normalized,
+            '着工予定日のラベル直後に着工予定日の値（2026/03/10）が無い'
+        );
+        $this->assertStringContainsString(
+            '完成予定日</div> <div style="padding: 10px 14px; font-size: 14px; border-bottom: 1px solid #e5e7eb;">2026/04/20</div>',
+            $normalized,
+            '完成予定日のラベル直後に完成予定日の値（2026/04/20）が無い'
+        );
+    }
+
+    /** ⚠ 建売と対で見る（Bug #44 の「代表 1 種だけ」を避ける）。同じ変異は注文住宅の show にも当たりうる */
+    public function test_the_custom_order_show_page_pairs_the_label_with_its_own_value(): void
+    {
+        $order = HsCustomOrder::create([
+            'order_code' => 'CO-CS2', 'order_name' => 'ラベル対応テスト', 'status' => 'construction',
+            'customer_name' => 'テスト顧客', 'address' => '愛媛県松山市1-1-1', 'created_by' => 1,
+            'construction_start_date'   => '2026-05-15',
+            'scheduled_completion_date' => '2026-06-25',
+        ]);
+
+        $html       = $this->actingAs($this->manager())->get("/housing/custom-orders/{$order->id}")->assertOk()->getContent();
+        $normalized = preg_replace('/\s+/', ' ', $html);
+
+        $this->assertStringNotContainsString('実際の完成日', $html);
+        $this->assertStringContainsString(
+            '着工予定日</div> <div style="padding: 10px 14px; font-size: 14px; border-bottom: 1px solid #e5e7eb;">2026/05/15</div>',
+            $normalized,
+            '着工予定日のラベル直後に着工予定日の値（2026/05/15）が無い'
+        );
+        $this->assertStringContainsString(
+            '完成予定日</div> <div style="padding: 10px 14px; font-size: 14px; border-bottom: 1px solid #e5e7eb;">2026/06/25</div>',
+            $normalized,
+            '完成予定日のラベル直後に完成予定日の値（2026/06/25）が無い'
+        );
     }
 
     public function test_saving_a_property_stores_the_construction_start_date(): void
