@@ -181,4 +181,245 @@ class HousingConstructionStartDateTest extends ScheduleTestCase
         $this->assertSame('着工予定日', $attributes['attributes']['construction_start_date'] ?? null);
         $this->assertArrayNotHasKey('actual_completion_date', $attributes['attributes']);
     }
+
+    // ============================================================
+    // 取込による自動入力（設計書 §7）
+    // ============================================================
+
+    /** 取込のプレビュー → 確定を、画面が描いたフォームどおりに往復する */
+    private function importRows(HsProperty $property, array $rows): \Illuminate\Testing\TestResponse
+    {
+        return $this->actingAs($this->manager())->post(
+            route('housing.properties.schedule-import.execute', $property),
+            ['rows_json' => json_encode($rows, JSON_UNESCAPED_UNICODE)]
+        );
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function importableRows(): array
+    {
+        return [
+            ['name' => '仮設工事 / 仮囲', 'category' => 'work', 'planned_start' => '2026-02-19', 'planned_end' => '2026-02-19', 'notes' => '', 'sort_order' => 1],
+            ['name' => '基礎工事 / 配筋', 'category' => 'work', 'planned_start' => '2026-03-05', 'planned_end' => '2026-03-20', 'notes' => '', 'sort_order' => 2],
+            ['name' => '検査 / 竣工検査', 'category' => 'permit', 'planned_start' => '2026-09-20', 'planned_end' => '2026-09-27', 'notes' => '', 'sort_order' => 3],
+        ];
+    }
+
+    public function test_importing_sets_the_construction_start_and_completion_dates(): void
+    {
+        $property = $this->makeParent('property', ['property_code' => 'HS-IMP1']);
+
+        $this->importRows($property, $this->importableRows())->assertRedirect();
+
+        $fresh = $property->fresh();
+        $this->assertSame('2026-02-19', $fresh->construction_start_date->toDateString(), '最も早い開始日');
+        $this->assertSame('2026-09-27', $fresh->scheduled_completion_date->toDateString(), '最も遅い終了日');
+    }
+
+    /** ⚠ 常に上書きする（設計書 §7.2） */
+    public function test_importing_overwrites_dates_that_were_already_there(): void
+    {
+        $property = $this->makeParent('property', [
+            'property_code'             => 'HS-IMP2',
+            'construction_start_date'   => '2020-01-01',
+            'scheduled_completion_date' => '2020-12-31',
+        ]);
+
+        $this->importRows($property, $this->importableRows());
+
+        $fresh = $property->fresh();
+        $this->assertSame('2026-02-19', $fresh->construction_start_date->toDateString());
+        $this->assertSame('2026-09-27', $fresh->scheduled_completion_date->toDateString());
+    }
+
+    /**
+     * ⚠ **2 つは独立。** `planned_end` が 1 つも無い取込で完成予定日を潰さない。
+     *   「両方そろわなければ何もしない」にもしない（片方だけ入ることはありうる）。
+     *
+     * ⚠ **プランは逆方向（`planned_start` が 1 つも無い取込）で書かれていたが、実測すると
+     *   HTTP 経由では再現できない。** `ScheduleImportSheet::sanitizeSubmittedRows()` は
+     *   `planned_start` の無い行を「壊れた行」として rowErrors に積み、`continue` で
+     *   `$rows` から外す（buildRow() に一度も到達しない）。その行が唯一の送信行だと
+     *   `execute()` の `if ($sanitized['rowErrors'] !== [] || $sanitized['rows'] === [])` が
+     *   真になり、取込全体が `back()->withErrors(...)` で拒否される——`derivedDates()` は
+     *   一度も呼ばれない。実測（`ScheduleImportSheet::sanitizeSubmittedRows()` に
+     *   `planned_start: null` の行を直接通す）: rows=0 / rowErrors=1
+     *   （"1 行目: 施工開始日「」を日付として読めません。"）。
+     *   よって「開始日だけ無い」行は $sanitized['rows'] に届く前に排除される一方、
+     *   `planned_end` は任意（milestone 行として正当）なので、逆方向のみ HTTP から
+     *   到達できる。ここでは reachable な方向で独立性を検証し、到達不能な方向は
+     *   下の test_derived_dates_... で `derivedDates()` を直接呼んで確かめる。
+     */
+    public function test_a_missing_end_date_leaves_the_completion_date_alone(): void
+    {
+        $property = $this->makeParent('property', [
+            'property_code'             => 'HS-IMP3',
+            'scheduled_completion_date' => '2020-12-31',
+        ]);
+
+        $this->importRows($property, [
+            ['name' => '開始日だけの工程', 'category' => 'work', 'planned_start' => '2026-09-27', 'planned_end' => null, 'notes' => '', 'sort_order' => 1],
+        ])->assertRedirect();
+
+        $fresh = $property->fresh();
+        $this->assertSame('2026-09-27', $fresh->construction_start_date->toDateString(), '着工予定日は更新する');
+        $this->assertSame('2020-12-31', $fresh->scheduled_completion_date->toDateString(), '終了日が無いので完成予定日は据え置き');
+    }
+
+    /**
+     * `ScheduleImportController::derivedDates()` を直接呼び、HTTP からは到達できない
+     * 「開始日が 1 つも無い」側の分岐まで確かめる（上のテストの注記のとおり、
+     * `sanitizeSubmittedRows()` を経由すると開始日の無い行は execute() 到達前に
+     * 全体が差し戻されるため）。**この直接呼び出しが無いと、`derivedDates()` の
+     * `$starts === [] ? null : min($starts)` を `min($starts)` 決め打ちに変異させても
+     * どのテストも検出できない**（HTTP 経由の全テストで $starts は必ず非空になるため）。
+     */
+    public function test_derived_dates_treats_the_two_fields_independently(): void
+    {
+        $this->assertSame(
+            ['construction_start_date' => null, 'scheduled_completion_date' => null],
+            \App\Http\Controllers\Housing\ScheduleImportController::derivedDates([]),
+            '行が 1 つも無ければ両方 null'
+        );
+
+        $this->assertSame(
+            ['construction_start_date' => null, 'scheduled_completion_date' => '2026-09-27'],
+            \App\Http\Controllers\Housing\ScheduleImportController::derivedDates([
+                ['planned_start' => null, 'planned_end' => '2026-09-27'],
+            ]),
+            '開始日が 1 つも無ければ着工予定日は null（HTTP からは到達しない分岐）'
+        );
+
+        $this->assertSame(
+            ['construction_start_date' => '2026-09-27', 'scheduled_completion_date' => null],
+            \App\Http\Controllers\Housing\ScheduleImportController::derivedDates([
+                ['planned_start' => '2026-09-27', 'planned_end' => null],
+            ]),
+            '終了日が 1 つも無ければ完成予定日は null'
+        );
+
+        $this->assertSame(
+            ['construction_start_date' => '2026-02-19', 'scheduled_completion_date' => '2026-09-27'],
+            \App\Http\Controllers\Housing\ScheduleImportController::derivedDates($this->importableRows()),
+            '最小の開始日・最大の終了日を独立に出す'
+        );
+    }
+
+    /**
+     * ⚠ **工程と親の日付は同じトランザクションで**（設計書 §7.3）。
+     *   片方だけ通ると工程とヘッダーの数字が食い違ったまま残る。
+     */
+    public function test_the_steps_and_the_parent_dates_move_together(): void
+    {
+        $property = $this->makeParent('property', ['property_code' => 'HS-IMP4']);
+
+        $this->importRows($property, $this->importableRows());
+
+        $this->assertSame(3, $property->scheduleSteps()->count());
+        $this->assertSame('2026-02-19', $property->fresh()->construction_start_date->toDateString());
+
+        // 取り込んだ工程の端と、親に入った日付が一致していること（別ソースにしない。Bug #46）
+        //
+        // ⚠ **両辺を Y-m-d に揃える。** min() はクエリビルダの集約なので DB の生値
+        //   （SQLite では時刻付き '2026-02-19 00:00:00'）が返り、toDateString()（'2026-02-19'）
+        //   と形が合わない。見たいのは値であって文字列表現ではないので、両辺を正規化する。
+        //   片方だけリテラル比較に弱めると「工程の端と同じソース」という不変条件が消える。
+        $this->assertSame(
+            \Carbon\CarbonImmutable::parse($property->scheduleSteps()->min('planned_start'))->toDateString(),
+            $property->fresh()->construction_start_date->toDateString()
+        );
+    }
+
+    /**
+     * `derivedDates()` が構築する `$dates` を、execute() と**同じ式**
+     * （`array_filter(..., fn ($v) => $v !== null)` → `$property->fill($dates)->save()`）
+     * に通し、開始日が 1 つも無いときに着工予定日が本当に据え置かれることを確かめる。
+     *
+     * ⚠ **HTTP 経由では再現できない。** 上の「終了日だけ無い」テストの注記のとおり、
+     *   `planned_start` の無い行は `sanitizeSubmittedRows()` の時点で rowErrors に落ち、
+     *   execute() が取込全体を差し戻すため、この分岐に生きたデータで到達できない。
+     *   ここでは execute() の該当 2 行を**逐語再現**して、その式が正しく動くことを直接確かめる。
+     *   `test_a_missing_end_date_leaves_the_completion_date_alone`
+     *   （$dates から scheduled_completion_date キーが落ちるケース）と対で見ることで、
+     *   同じ汎用機構（キーの有無で列を区別しない array_filter + fill + save）が
+     *   どちらの列でも対称に働くことを示す。
+     */
+    public function test_a_missing_start_date_leaves_the_construction_start_date_alone(): void
+    {
+        $property = $this->makeParent('property', [
+            'property_code'           => 'HS-IMP5',
+            'construction_start_date' => '2020-01-01',
+        ]);
+
+        // execute() の DB::transaction 内と同じ式
+        $dates = array_filter(
+            \App\Http\Controllers\Housing\ScheduleImportController::derivedDates([
+                ['planned_start' => null, 'planned_end' => '2026-09-27'],
+            ]),
+            fn ($v) => $v !== null
+        );
+        $property->fill($dates)->save();
+
+        $fresh = $property->fresh();
+        $this->assertSame('2020-01-01', $fresh->construction_start_date->toDateString(), '開始日が無いので着工予定日は据え置き');
+        $this->assertSame('2026-09-27', $fresh->scheduled_completion_date->toDateString(), '完成予定日は更新する');
+    }
+
+    // ---- プレビューの予告 ----
+
+    private function preview(HsProperty $property): string
+    {
+        return $this->actingAs($this->manager())->post(
+            route('housing.properties.schedule-import.preview', $property),
+            ['file' => new \Illuminate\Http\UploadedFile(
+                base_path('tests/fixtures/schedule-import/list-format.xlsx'),
+                'list-format.xlsx', null, null, true
+            )]
+        )->assertOk()->getContent();
+    }
+
+    public function test_the_preview_announces_the_dates_it_will_write(): void
+    {
+        $property = $this->makeParent('property', ['property_code' => 'HS-PRE1']);
+
+        $html = $this->preview($property);
+
+        $this->assertStringContainsString('着工予定日を', $html);
+        $this->assertStringContainsString('完成予定日を', $html);
+        $this->assertStringContainsString('2026/07/23', $html, '固定資産の最小の開始日');
+        $this->assertStringContainsString('2026/12/25', $html, '固定資産の最大の終了日');
+    }
+
+    /** ⚠ 値が変わらないときは行を出さない（「2026/09/27 → 2026/09/27」というノイズを出さない） */
+    public function test_the_preview_stays_quiet_when_a_date_would_not_change(): void
+    {
+        $property = $this->makeParent('property', [
+            'property_code'             => 'HS-PRE2',
+            'construction_start_date'   => '2026-07-23',
+            'scheduled_completion_date' => '2026-12-25',
+        ]);
+
+        $html = $this->preview($property);
+
+        $this->assertStringNotContainsString('着工予定日を', $html);
+        $this->assertStringNotContainsString('完成予定日を', $html);
+        $this->assertStringContainsString('取り込むと どうなるか', $html, '走査の空振りでないこと');
+    }
+
+    /**
+     * ⚠ 設計書 §7.2:「プレビューは DB を書かない（現状どおり）。書き込みは確定時のみ」。
+     *   `dateChanges()` が `$property->{$column}` を読むだけで書かないことを、
+     *   構造でなく**挙動で**固定する（親エージェント指示 (B)）。
+     */
+    public function test_the_preview_does_not_write_the_dates_it_announces(): void
+    {
+        $property = $this->makeParent('property', ['property_code' => 'HS-PRE3']);
+
+        $html = $this->preview($property);
+        $this->assertStringContainsString('着工予定日を', $html, '前提: 予告が出ていること');
+
+        $fresh = $property->fresh();
+        $this->assertNull($fresh->construction_start_date, 'プレビューだけでは着工予定日を書き込まない');
+        $this->assertNull($fresh->scheduled_completion_date, 'プレビューだけでは完成予定日を書き込まない');
+    }
 }

@@ -65,6 +65,8 @@ class ScheduleImportController extends Controller
             //   壊して、そのビューが $errors->any() を呼んだ瞬間に 500 する（Bug #53）。
             'rowErrors' => $result['rowErrors'],
             'warnings'  => $result['warnings'],
+            // 取り込むと親の日付がどうなるか（設計書 §7.2）。⚠ **変わらない項目は出さない**
+            'dateChanges' => $this->dateChanges($property, $result['rows']),
         ]);
     }
 
@@ -127,6 +129,14 @@ class ScheduleImportController extends Controller
                 $step->updated_by = $userId;
                 $step->save();
             }
+
+            // ⚠ **工程の入れ替えと同じトランザクションで**（設計書 §7.3）。
+            //   片方だけ通ると、工程とヘッダーの数字が食い違ったまま残る。
+            $dates = array_filter(self::derivedDates($sanitized['rows']), fn ($v) => $v !== null);
+
+            if ($dates !== []) {
+                $property->fill($dates)->save();
+            }
         });
 
         $count = count($sanitized['rows']);
@@ -141,6 +151,68 @@ class ScheduleImportController extends Controller
     // ============================================================
     // 内部
     // ============================================================
+
+    /**
+     * 取り込む工程から親に入れる日付を出す（設計書 §7.1）。
+     *
+     * ⚠ **ファイルのヘッダーの「工事期間」は使わない。** 実測で実データの範囲と一致しない
+     *   （固定資産では D1 が 07/28 開始なのに実データの最小は 07/23）。ガントの棒の両端と
+     *   基本情報の数字が食い違うのを防ぐため、**画面に出るのと同じソース**から出す。
+     *
+     * ⚠ **2 つは独立に決める。** 片方の日付が 1 つも無ければ、その項目は null を返して
+     *   現在値を保つ。「両方そろわなければ何もしない」にはしない（片方だけ入ることはありうる）。
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return array{construction_start_date: ?string, scheduled_completion_date: ?string}
+     */
+    public static function derivedDates(array $rows): array
+    {
+        $starts = array_filter(array_column($rows, 'planned_start'));
+        $ends   = array_filter(array_column($rows, 'planned_end'));
+
+        return [
+            'construction_start_date'   => $starts === [] ? null : min($starts),
+            'scheduled_completion_date' => $ends === [] ? null : max($ends),
+        ];
+    }
+
+    /**
+     * プレビューに出す「日付がこう変わる」の行（設計書 §7.2）。
+     *
+     * ⚠ **値が変わらない項目は返さない。**「2026/09/27 → 2026/09/27」というノイズを出さない。
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array{label: string, from: string, to: string}>
+     */
+    private function dateChanges(HsProperty $property, array $rows): array
+    {
+        $labels = [
+            'construction_start_date'   => '着工予定日',
+            'scheduled_completion_date' => '完成予定日',
+        ];
+
+        $changes = [];
+
+        foreach (self::derivedDates($rows) as $column => $to) {
+            if ($to === null) {
+                continue;
+            }
+
+            $current = $property->{$column}?->toDateString();
+
+            if ($current === $to) {
+                continue;
+            }
+
+            $changes[] = [
+                'label' => $labels[$column],
+                'from'  => $current === null ? '—' : \Carbon\CarbonImmutable::parse($current)->format('Y/m/d'),
+                'to'    => \Carbon\CarbonImmutable::parse($to)->format('Y/m/d'),
+            ];
+        }
+
+        return $changes;
+    }
 
     /** @return array<string, mixed> */
     private function base(HsProperty $property): array

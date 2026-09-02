@@ -117,6 +117,9 @@
                 <li>取り込み済みの既存の工程 <span class="font-bold">{{ $importedCount }}</span> 件を削除します</li>
                 <li>ファイルから <span class="font-bold">{{ count($result['rows']) }}</span> 件を登録します</li>
                 <li>手で追加した工程 <span class="font-bold">{{ $manualCount }}</span> 件は残ります</li>
+                @foreach($dateChanges ?? [] as $change)
+                    <li>{{ $change['label'] }}を <span class="font-bold">{{ $change['to'] }}</span> にします（現在: {{ $change['from'] }}）</li>
+                @endforeach
             </ul>
             <p class="mt-3 text-xs text-gray-500">
                 実績（実績開始・実績終了）は取り込みません。取り込んだ日付は予定として登録します。
