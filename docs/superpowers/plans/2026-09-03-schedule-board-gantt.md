@@ -2200,6 +2200,162 @@ EOF
 
 ---
 
+## 変異テストの実測結果
+
+**実施日**: 2026-09-03。**環境**: worktree `.claude/worktrees/schedule-board-gantt`（`a409b0d7`、着手時 clean）。
+**手順**（Bug #44 / #50 の作法どおり）: 各変異について
+①`git status --porcelain` が空であることを確認 →
+②変異を当てる →
+③`git diff --stat` が非空であることで着弾を確認 →
+④`APP_KEY="base64:$(head -c 32 /dev/urandom | base64)" ./vendor/bin/phpunit --filter 'Schedule|Gantt'`
+（ベースライン 221 tests / 1669 assertions、全緑）で判定 →
+⑤落ちた理由の文言をそのまま記録 →
+⑥`git checkout -- <file>` で戻し、`git status --porcelain` が再び空であることを確認。
+
+**M1〜M24 ＋ M2b の 25 行は全件、本セッションで実際にコードへ当てて実行した**（引き継ぎメモの記述を
+転記したものではない）。加えて、引き継ぎメモが「Task 1〜8 で実測済み」と述べていた行のうち
+具体的な内容を特定できたものは、コミットメッセージ／ソースコード中の実測注記で裏取りした
+（表2）。さらに、引き継ぎメモにあって裏取りできなかった記述のうち再現可能なものは、
+このセッションで追加に実行して確認した（表3）。
+
+全 31 通り（M 25 ＋ 表3 6 通り）を戻したあとの最終状態は
+`./vendor/bin/phpunit`（フィルタ無し）で **OK (1304 tests, 8498 assertions)** ——
+着手前の実測値と完全に一致しており、取りこぼし・戻し忘れが無いことを確認済み。
+
+### ⚠ 着手前に判明した食い違い（引き継ぎメモ vs プランの実物）
+
+1. **M7 の内容が引き継ぎメモとプランの実物で異なっていた。** 引き継ぎメモの M7
+   （「`scale()` のフォールバックを消す｜検出 8 本｜`ValueError: min(): Argument #1 ($value)
+   must contain at least one element`」）は、**プランの実物では M8 の内容**
+   （`$dates === []` フォールバックの削除）そのものだった。プランの実物の M7 は
+   「`scale()` に『今日が範囲外なら伸ばす』を足す」で、これは引き継ぎメモに無かった内容。
+   このセッションでは **M7・M8 の両方を実際に当てて実測**し、どちらも検出を確認した
+   （下表）ので、番号のズレによる実害（検出漏れの見落とし）は無かった。
+2. **具体的な失敗文言・件数が、いくつかの行で引き継ぎメモと実測値で異なっていた**
+   （M3 / M17 / M19 / M21）。**判定（検出/未検出）が覆った行は無い**——すべて「検出」で
+   一致しており、差異は文言中の具体的な数値（フィクスチャの組み方や実装の当て方の違いに
+   由来すると見られる）にとどまる。
+3. **M24 は引き継ぎメモが「ScheduleDateStateTest / ボードの輪郭テスト」の 2 本が検出すると
+   述べていたが、実測では ScheduleBoardTest の 1 本のみが検出した。** `ScheduleDateStateTest`
+   が見ている `ring` は **詳細カード側**（`ScheduleCardService::row()`）の実装で、
+   `ScheduleBoardService::position()` とは別の独立した実装であり、ボード側だけを変異させても
+   カード側のテストは無関係のため反応しない。判定（検出）自体は変わらないが、
+   「どのテストが守っているか」の理解は訂正が要る。
+
+### 表1: M1〜M24 ＋ M2b（25 件・全件フレッシュに実測）
+
+| # | 変異 | 対象 | 着弾 | Failures/221 | 検出したテスト（代表） | 落ちた理由の文言（代表） | 判定 |
+|---|---|---|:--:|:--:|---|---|---|
+| M1 | `MONTH_WIDTH_PX` を `150`→`120` | GanttScale.php | ✅ | 10 | `GanttScaleTest::test_a_single_day_range_is_still_one_month_wide` 他9本 | `Failed asserting that 120 is identical to 150.` | 検出 |
+| M2 | `monthCount()` の `+ 1` を消す | GanttScale.php | ✅ | 7 | `GanttScaleTest::test_the_production_range_is_eight_months` 他6本 | `Failed asserting that 7 is identical to 8.` | 検出 |
+| M2b | `monthCount()` の `max(1, ...)` を外す | GanttScale.php | ✅ | 1 | `test_a_reversed_range_never_yields_a_negative_width` | `Failed asserting that -2 is identical to 1.` | 検出 |
+| M3 | `monthCount()` の `($this->to->year - $this->from->year) * 12` を消す | GanttScale.php | ✅ | 2 | `test_a_range_that_crosses_a_year_counts_correctly` ＋ `test_a_reversed_range_never_yields_a_negative_width` | `Failed asserting that 1 is identical to 4.`（引き継ぎメモは `-8` と記録していたが実測は `1`。判定への影響なし） | 検出 |
+| M4 | `scale()` の `autoMilestones()` ループを消す | ScheduleBoardService.php | ✅ | 1 | `test_the_axis_includes_the_auto_milestones` | `着工予定日が軸に入っていない` ／ `-'2026-02-01' +'2026-05-01'` | 検出 |
+| M5 | `scale()` の `drawEnd($today)` を `$step->planned_end` に替える | ScheduleBoardService.php | ✅ | 1 | `test_the_axis_uses_draw_end_not_the_raw_planned_end_for_running_steps` | `軸の終わりが今日（drawEnd）でなく、まだ先の planned_end になっている` ／ `-'2026-08-31' +'2027-06-30'` | 検出 |
+| M6 | `scale()` を絞り込み前の全件から出す | ScheduleBoardService.php | ✅ | 1 | `test_the_axis_follows_the_filter` | `絞り込み後の案件だけで軸を出していない` ／ `-'2026-05-01' +'2026-01-01'` | 検出 |
+| M7 | `scale()` に「今日が範囲外なら伸ばす」を足す（**プランの実物の内容**） | ScheduleBoardService.php | ✅ | 5 | `test_a_past_only_board_draws_no_today_marker_and_does_not_stretch_the_axis` 他4本 | `今日まで軸が伸びている` ／ `-'2026-01-31' +'2026-08-31'` | 検出 |
+| M8 | `scale()` の `$dates === []` フォールバックを消す（**プランの実物の内容**。引き継ぎメモは「M7」として記録していた） | ScheduleBoardService.php | ✅ | 8 | `test_a_board_of_undated_steps_falls_back_to_the_current_month` 他7本 | `min(): Argument #1 ($value) must contain at least one element`（未捕捉例外） | 検出 |
+| M9 | `build()` の戻り値に `'kpi' => []` を足す | ScheduleBoardService.php | ✅ | 1 | `test_the_boards_no_longer_show_kpi_cards` | `/housing/schedules が kpi を返している` ／ `Failed asserting that an array does not have the key 'kpi'.` | 検出 |
+| M10 | Blade に `<select name="zoom">` を戻す | _schedule_board.blade.php | ✅ | 1 | `test_the_zoom_selector_is_gone_and_the_query_key_is_ignored` | `does not contain "name="zoom""` | 検出 |
+| M11 | `unregisteredCount` の `@if` ブロックを消す | _schedule_board.blade.php | ✅ | 1 | `test_the_unregistered_count_line_survives` | `contains "工程が未登録の案件が 1 件あります"`（期待した文言が消えて不一致） | 検出 |
+| M12 | 行の `class="gantt-label"` を消す（style はそのまま） | _schedule_board.blade.php | ✅ | 1 | `test_the_case_name_column_is_sticky_and_sized_by_the_css_variable` | `行のラベル欄にクラスが無い` | 検出 |
+| M13 | `width: calc(...)` を `min-width: 1000px` に戻す | _schedule_board.blade.php | ✅ | 1 | `test_the_track_is_as_wide_as_the_months_it_spans` | `contains "width: calc(var(--gantt-label-w) + 450px)"`（不一致） | 検出 |
+| M14 | `scheduleBoardScrollToToday(...)` の**呼び出し行だけ**消す | _schedule_board.blade.php | ✅ | 1 | `test_the_board_scrolls_to_today_on_open` | `contains "scheduleBoardScrollToToday('schedule-board-scroller', 79.738562091503, 750);"`（不一致） | 検出 |
+| M15 | 同じく**関数定義だけ**消す（呼び出しは残す） | _schedule_board.blade.php | ✅ | 1 | `test_the_board_scrolls_to_today_on_open`（M14 と同一テストの別アサートが検出） | `contains "function scheduleBoardScrollToToday(id, pct, trackPx)"`（不一致） | 検出 |
+| M16 | `@include('_partials._schedule_gantt_style')` をボードから消す | _schedule_board.blade.php | ✅ | 1 | `test_the_gantt_style_partial_is_rendered_with_the_label_width_variables` | `ボードの --gantt-label-w(320px) が無い` | 検出 |
+| M17 | CSS partial の `@media` を `.gantt-scroll--card` の**前**へ移す | _schedule_gantt_style.blade.php | ✅ | 1 | `test_the_gantt_style_partial_is_rendered_with_the_label_width_variables` | `メディアクエリが .gantt-scroll--card の実ルールより前にある` ／ `Failed asserting that 301 is greater than 475.`（引き継ぎメモは `1822`/`1936` と記録。位置オフセットは移し方の実装差で変わるため数値自体に意味は無い） | 検出 |
+| M18 | CSS partial の `--gantt-label-w: 320px` を `300px` に | _schedule_gantt_style.blade.php | ✅ | 1 | `test_the_gantt_style_partial_is_rendered_with_the_label_width_variables` | `ボードの --gantt-label-w(320px) が無い` | 検出 |
+| M19 | カードの force-today を戻す | ScheduleCardService.php | ✅ | 3（引き継ぎメモは「2 本」） | `test_the_card_axis_is_not_stretched_to_today` ＋ `test_every_parent_avoids_stretching_the_axis_to_today` ＋ `test_the_card_track_is_as_wide_as_the_months_it_spans` | `今日まで軸が伸びている` ／ `-'2026-02-28' +...`（トラック幅のテストは `Failed asserting that 900 is identical to 600.`） | 検出 |
+| M20 | カードの `width: calc(...)` を `min-width: 940px` に戻す | _schedule_gantt.blade.php | ✅ | 1 | `test_the_card_track_is_as_wide_as_the_months_it_spans` | `contains "width: calc(var(--gantt-label-w) + ...px)"`（不一致） | 検出 |
+| M21 | カードの工程の行だけ `flex: 0 0 262px` に戻す | _schedule_gantt.blade.php | ✅ | 4（引き継ぎメモは「2 本 ＋ ScheduleDateStateTest」の計3本相当） | `test_the_step_name_column_is_sticky`（2→1）／`test_the_striping_reaches_into_the_sticky_label_column`（3→0）／`test_the_milestone_row_label_cannot_be_pushed_wider_either`（3→2）／`ScheduleDateStateTest::test_the_label_column_cannot_be_pushed_wider_than_its_track`（4→1） | `ラベル欄の数が想定と違う（月ヘッダ1+行1）` ／ `Failed asserting that actual size 1 matches expected size 2.` | 検出 |
+| M22 | カードにスクロールのスクリプトを足す | _schedule_gantt.blade.php | ✅ | 1 | `test_the_card_has_no_scroll_script` | `does not contain "scheduleBoardScrollToToday"`（含まれてしまっている） | 検出 |
+| M23 | `meta()` の `'status'` を常に `STATUS_RUNNING` にする | ScheduleBoardService.php | ✅ | 7 | `test_status_is_done_when_every_step_has_finished_even_if_it_was_late` 他6本（`ScheduleRealEstateUntouchedTest` 含む） | `完了は遅延より優先する（決定G）` ／ `Failed asserting that two strings are identical.` | 検出 |
+| M24 | `position()` の `'ring'` を常に `false` にする | ScheduleBoardService.php | ✅ | 1 | `test_the_housing_board_puts_a_ring_only_on_the_running_bar`（`ScheduleDateStateTest` はカード側 `ring` を見ており無関係。上記「食い違い③」参照） | `輪郭が付くのは進行中（HS-RUN）の1本だけ` ／ `Failed asserting that actual size 0 matches expected size 1.` | 検出 |
+
+**25 行中 25 行が検出。未検出 0 件。**
+
+### 表2: プランの表に無いが、Task 1〜8 の実装中に実測済みだった変異（出典つき・本セッションでは未再実行）
+
+⚠ この表はコミットメッセージとソースコード中の「実測」注記を実際に読み、file:line で
+裏取りしたうえで転記したもので、**このセッションでコードへ当て直してはいない**。
+
+| # | 変異 | 対象 | 出典 | 実測結果の引用 | 判定 |
+|---|---|---|---|---|---|
+| A1 | `scale()` 末尾の明示 `startOfDay()` 呼び出しを外す | ScheduleBoardService.php:176-178 | ソース内注記 | 「外しても 1288 本すべて緑＝等価変異」（GanttScale のコンストラクタが from/to を必ず startOfDay() するため冗長） | 等価変異 |
+| A2 | `headers()` の `$end = ... ? ... : $next;` 三項演算子を外す | ScheduleBoardService.php:423-427 | ソース内注記 | 「この三項演算子を外しても 183 本すべて緑＝同値変異」（`$scale->to()` が現状の構築経路では常に月末に揃うため実質未到達） | 等価変異 |
+| A3 | `scale()` が `drawEnd($today)` でなく生の `planned_end` を使う（M5 の初出時点） | ScheduleBoardService.php（Task 4） | commit `dcd51a5a` | 「planned_end に替えても 188 本すべて緑のまま通る状態だった（実測）」→ `test_the_axis_uses_draw_end_not_the_raw_planned_end_for_running_steps` を追加して解消（現 M5 として本セッションでも再確認済み） | 当初検出漏れ→テスト追加で検出 |
+| A4 | `headers()` の `label` を `''` に／`strong` を常に `false` に／`widthPct` を正規化前の日数に | ScheduleBoardService.php（Task 3） | commit `94577bbb` | 「3 つとも無防備でいずれかを潰してもフルスイートが緑のまま通る状態だった（実測）」→ `test_the_axis_headers_are_month_labels_with_quarter_emphasis` を追加 | 当初検出漏れ→テスト追加で検出 |
+| A5 | ボードのラベル欄（ヘッダ側・行側）の `min-width: 0` / `overflow: hidden` を落とす | _schedule_board.blade.php（Task 5） | commit `749c6190` | 「ヘッダ側・行側のどちらから min-width: 0 を落としても 1292 本すべて緑のまま通る状態だった」 | 当初検出漏れ→テスト追加で検出 |
+| A6 | `class="gantt-scroll"`（CSS変数スコープ用クラス）だけを落とす | _schedule_board.blade.php（Task 5） | commit `749c6190` ／ ScheduleBoardTest.php:467 | 「実測 2026-09-03: class だけ落とす変異が 119 本すべて緑だった」 | 当初検出漏れ→テスト追加で検出 |
+| A7 | `.gantt-label--head` の `z-index` / `background` を丸ごと消す | _schedule_gantt_style.blade.php（Task 5） | ScheduleBoardTest.php:434 | 「`.gantt-label--head` を丸ごと消しても検出できなかった（実測 2026-09-03: 0/119）」 | 当初検出漏れ→テスト追加で検出 |
+| A8 | `.gantt-label` の `box-shadow` を消す | _schedule_gantt_style.blade.php（Task 5） | ScheduleBoardTest.php:441 | 同上（実測 2026-09-03: 0/119） | 当初検出漏れ→テスト追加で検出 |
+| A9 | `.gantt-scroll--card` の位置判定を素の `strpos($html, '.gantt-scroll--card')` で見る（実ルールでなく警告コメント中の同一文字列に前方一致してしまう。Bug #42②） | ScheduleBoardTest.php（Task 5） | commit `749c6190` | 「本物のルールだけを @media の後ろへ移す変異が 41 本すべて緑だった」→ needle を宣言 `.gantt-scroll--card {` に限定（M17 の判定方法の前身） | 当初検出漏れ→テスト追加で検出 |
+| A10 | `@push('scripts')` を `@push('styles')` に押し間違える（ボードのスクロール script） | _schedule_board.blade.php（Task 6） | commit `5265f5eb` ／ ScheduleBoardTest.php:574 | 「実測（2026-09-03）では styles へ押し間違える変異が 2 本とも緑のまま通った」→ スクローラー要素とスクリプトの出現位置の前後関係を見るアサートを追加 | 当初検出漏れ→テスト追加で検出 |
+| A11 | `build()` の `'rows'` を `[]` に潰す（KPI 削除確認テストの死角） | ScheduleBoardService.php（Task 2） | ScheduleBoardTest.php:1003 | 「実測: build() の 'rows' を [] に潰しても緑だった」→ `assertNotEmpty($response->viewData('board')['rows'], ...)` を先に追加 | 当初検出漏れ→テスト追加で検出 |
+| A12 | `meta()` に `'bars' => []` を足す（`$meta + [...]` の左辺優先マージでキー衝突） | ScheduleBoardService.php（Task 4） | commit `dcd51a5a` ／ ScheduleBoardTest.php:635-637 | 「meta() へ 'bars' => [] を足す変異を当てて実測: `test_a_row_has_exactly_the_twelve_keys...` は落ちない」。ただし `bars` の中身を見る他の5本（`test_overlapping_steps_are_spread_across_lanes` 等）が確実に検出することを同じ実測で確認 | 単独では未検出（意図的な役割分担。別の5本が担保） |
+| A13 | 4 親を回すループの消費先を procurement 1 種に絞る（`PARENTS` 定数自体は 4 件のまま） | ScheduleCardAxisTest.php（Task 7） | commit `4537a329` ／ ScheduleCardAxisTest.php:116-122 | 「ループの消費先を procurement 1 種に絞る変異が実測 0/3 本で素通りしていた」→ 「回した親」を記録して突き合わせる形に強化 | 当初検出漏れ→テスト追加で検出 |
+| A14 | カードから CSS partial の `@include('_partials._schedule_gantt_style')` を消す | _schedule_gantt.blade.php（Task 8） | commit `a409b0d7` ／ ScheduleCardAxisTest.php:286 | 「実測 2026-09-03: 1302 本すべて緑だった。定義が消えると --gantt-label-w が未定義になり固定幅も sticky も丸ごと無効になっても」 | 当初検出漏れ→テスト追加で検出 |
+| A15 | 節目（◆）行のラベル欄の `min-width: 0` を落とす | _schedule_gantt.blade.php（Task 8） | commit `a409b0d7` ／ ScheduleCardAxisTest.php:314-315 | 「実測 2026-09-03: 節目行の min-width: 0 を落としても 1302 本すべて緑」（◆ が出るフィクスチャが無く構造的に未検査だった） | 当初検出漏れ→テスト追加で検出 |
+
+### 表3: 引き継ぎメモにあったが裏取りできなかった記述 — 本セッションで追加に実行して確認（6 通り）
+
+⚠ 表2 と違い、**この 6 通りはこのセッションで実際にコードへ当てて実行した**（表1と同じ作法）。
+
+| # | 変異 | 対象 | 着弾 | Failures/221 | 検出したテスト／理由 | 判定 |
+|---|---|---|---|:--:|---|---|
+| A16 | `position()` の `return $meta + [...]` を `return [...] + $meta` に反転（union の順序） | ScheduleBoardService.php | ✅ | 0 | ― | 等価変異（`$meta` と追加4キーは互いに素なので PHP の `+` 演算子は順序に関わらず同じ結果を返す。実測で確認） |
+| A17 | `scale()` 最終 `return` の `min($dates)->startOfMonth()` から `->startOfMonth()` を外す | ScheduleBoardService.php | ✅ | 6 | `test_the_axis_spans_only_the_range_the_bars_occupy` 他5本 | 検出（`軸の始まりが最小の開始月でない` ／ `Failed asserting that two strings are identical.`） |
+| A18 | `headers()` の `$next = $cursor->addMonth()->startOfMonth();` から `->startOfMonth()` を外す | ScheduleBoardService.php | ✅ | 0 | ― | 等価変異（`$cursor` は既に月初（day=1）なので `addMonth()` の結果も必ず月初になり、`startOfMonth()` は無意味。実測で確認） |
+| A19 | カードの工程行ラベル欄の縞模様（`$loop->odd ? ' background: #FCFCFD;' : ''`）を全行へ無条件に付ける | _schedule_gantt.blade.php | ✅ | 1 | `test_the_striping_reaches_into_the_sticky_label_column` | 検出（`2本目（偶数行）に縞模様が付いている`） |
+| A20 | ボードのスクロール関数から `if (! el) { return; }` を消す | _schedule_board.blade.php | ✅ | 0 | ― | **未検出（テストの死角）**。現行テストは関数シグネチャの行と呼び出し行の文字列一致しか見ておらず、本文中間行の増減を検知できない。JS を実行するテスト（node vm 等）が無いため、PHPUnit だけでは原理的に検出不能 |
+| A21 | ボードのスクロール関数の `Math.max(0, ...)` クランプを外す | _schedule_board.blade.php | ✅ | 0 | ― | **未検出（テストの死角）**。A20 と同型。JS の数式部分の変更は文字列完全一致のアサートに引っかからない限り検出できない |
+
+⚠ **A20 / A21 は「等価変異」ではなく「テストの死角」と判定した。** ロジックとしては
+`el` が null のときの挙動や、`scrollLeft` が負値になり得るケースで実際の振る舞いが変わりうるが、
+①スクローラー要素は常に存在してからスクリプトが呼ばれる設計（設計上 el は null にならない）
+②現行のアサートが本文の中間行を見ていない、の 2 つが重なって PHPUnit からは観測できない。
+「ロジック上変わらないから緑」ではなく「観測する手段が無いから緑」なので、A1/A2/A16/A18 の
+等価変異とは性質が異なる。
+
+### 裏取りできなかった記述
+
+引き継ぎメモにあった次の 1 件は、対象キーが特定できず（「`meta()` のキー改名」がどのキーを
+指すか不明）、本セッションでは再現・実行しなかった: **「`meta()` のキー改名（28本検出）」**。
+`meta()` が返すキーは `kind` / `kindLabel` / `code` / `name` / `url` / `status` / `delayDays` /
+`steps` の 8 種あり、どれを改名した実測かが分からないため、誤った変異を作って誤判定を報告する
+くらいなら、事実として「未検証」と明記するほうが安全と判断した。
+
+### 等価変異（equivalent mutant）まとめ
+
+| # | 変異 | なぜ等価か |
+|---|---|---|
+| A1 | `scale()` の明示的 `startOfDay()` を外す | `GanttScale` のコンストラクタが `from` / `to` を無条件に `startOfDay()` するため、呼び出し側の明示呼び出しは意味を持たない |
+| A2 | `headers()` の `$end` 三項演算子を外す | 現状の構築経路では `$scale->to()` が常に月末に揃っており、`$next->greaterThan($scale->to())` が真になる分岐へ実質到達しない |
+| A16 | `position()` の union順序を反転 | `$meta`（8キー）と追加の4キー（`laneCount`/`rowHeight`/`bars`/`milestones`）は完全に素な集合であり、PHP の `+` 演算子は重複が無ければ順序に関わらず同じ結果を返す |
+| A18 | `headers()` の `$next` の `startOfMonth()` を外す | ループの不変条件として `$cursor` は常に月初（day=1）で入るため、`addMonth()` の結果も必ず月初になり `startOfMonth()` は無意味 |
+
+### 判定の異なる「テストの死角」（等価変異ではない）
+
+| # | 変異 | 死角の理由 |
+|---|---|---|
+| A20 | ボードのスクロール関数の null ガード `if (! el) { return; }` を消す | JS の本文中間行は文字列一致でしか見ておらず、かつ JS 実行系のテストハーネスが無い（node vm 等は本機能では未導入）ため、行の増減そのものを検出できない |
+| A21 | 同関数の `Math.max(0, ...)` クランプを外す | 同上。数式の変更も文字列完全一致のアサートの外側にあるため検出できない |
+
+### 総括
+
+- **本セッションで実際にコードへ当てて実行した変異**: 31 通り（M1〜M24 ＋ M2b の 25 通り ＋ 表3 の 6 通り）
+- **検出**: 29 通り（表1 25 通りすべて ＋ A17 ＋ A19）
+- **等価変異**: 2 通り（A16 ／ A18。本セッションで新規に実測）
+- **未検出（テストの死角）**: 2 通り（A20 ／ A21。JS 実行系のテストが無いための構造的な限界）
+- 別途、**出典つきで確認した「Task 1〜8 で実測済み」の記録**: 15 通り（表2 A1〜A15。
+  うち等価変異 2、当初検出漏れ→テスト追加で検出 12、単独では未検出だが別の5本が担保 1）
+- **裏取りできず未検証のまま残した記述**: 1 件（`meta()` のキー改名）
+- **M1〜M24 ＋ M2b（プラン本来の対象範囲）に限れば、25 行中 25 行が検出、未検出 0 件、
+  判定が覆った行は無い。** 全変異を戻したあとの最終状態は着手前と完全に一致
+  （`OK (1304 tests, 8498 assertions)`）。
+
+---
+
 ## 本番反映（利用者の承認後）
 
 ⚠ **DB 変更なし・ルート変更なし・新規 composer 依存なし。**
