@@ -117,7 +117,7 @@ public function trackWidthPx(): int;    // monthCount() * MONTH_WIDTH_PX
 ### 4.1 固定表示
 
 `position: sticky; left: 0; z-index: 5;` ＋ 背景色（ヘッダ行 `#F9FAFB` / 案件行 `white`）。
-右端に薄い影を出して「ここから先はスクロールする」ことを示す（疑似要素なので `app.css` 側）。
+右端に薄い影を出して「ここから先はスクロールする」ことを示す（`box-shadow`。§4.2 の CSS partial に置く）。
 
 ⚠ **展開パネル（工程明細）は sticky にしない。** 全幅のテキストブロックなので、
 左端に戻れば読める。sticky にすると明細が案件名の列に重なる。
@@ -135,14 +135,29 @@ public function trackWidthPx(): int;    // monthCount() * MONTH_WIDTH_PX
 320px 固定は軸が 19px しか見えず実質使えない。sticky をやめると軸は一番広く見えるが、
 右へスクロールすると案件名が画面外へ流れて**どの案件の棒か分からなくなる**。
 
-⚠ **幅の数値（320 / 262 / 140）は PHP に持たせない。** `app.css` の CSS 変数だけが持つ:
+⚠ **幅の数値（320 / 262 / 140）は PHP に持たせない。** CSS 変数だけが持つ。
+
+置き場所は **`resources/views/_partials/_schedule_gantt_style.blade.php`（新規）** で、
+`@push('styles')` に入れてボードとカードの両 partial が `@include` する。
+`resources/css/app.css` には置かない。理由:
+
+- アプリの先行例がこの形（`housing/contracts/index.blade.php` の `.co-sticky` は
+  ビューの中に CSS を置き、`CustomOrderIndexListColumnsTest` が
+  **レンダリング済み HTML の正規表現**で `left: 0` / `left: 96px` を固定している）
+- **テストが CSS を直接見られる。** `app.css` に置くと、ビルド済み CSS は `.gitignore` 済みで
+  worktree に存在しないため（RULES「Tailwind 監査の落とし穴 1」）、テストはソースを読むしかない
+- ビルドに依存しないので、ローカルで `npm run build` をしなくても効く
+- `AREA_MAP_STYLES` を `_map_style.blade.php` に 1 本化した先行例（2026-08-31）と同じ形
 
 ```css
 /* 横スクロールする外側の div に当てる。ボードは .gantt-scroll だけ、
    カードは .gantt-scroll.gantt-scroll--card の 2 つを当てる（後者が変数を上書きする）。 */
 .gantt-scroll       { --gantt-label-w: 320px; }
 .gantt-scroll--card { --gantt-label-w: 262px; }
-@media (max-width: 639px) {
+.gantt-label        { position: sticky; left: 0; z-index: 5; background: #fff;
+                      box-shadow: 6px 0 6px -6px rgba(0, 0, 0, 0.18); }
+.gantt-label--head  { z-index: 6; background: #F9FAFB; }
+@media (max-width: 640px) {
     .gantt-scroll   { --gantt-label-w: 140px; }   /* --card より後に置く。両方 140px になる */
 }
 ```
@@ -150,6 +165,13 @@ public function trackWidthPx(): int;    // monthCount() * MONTH_WIDTH_PX
 ⚠ **メディアクエリを `--card` より後ろに置く。** 詳細度は両方 (0,1,0) なので後勝ちになり、
 カードにも 140px が効く。順序を入れ替えるとカードだけ 262px のまま残る（Bug #29 の
 「PHP もテストも素通りしてブラウザでだけ壊れる」型）。
+
+⚠ **影は `::after` ではなく `box-shadow` で出す。** ラベルのセルは `overflow: hidden` を
+持っており（Bug #29 対策で外せない）、`::after` を `right: -6px` に置くと**クリップされて消える**。
+`overflow` は子孫を切るが、その要素自身の `box-shadow` は切らない。
+
+⚠ **`@once` で囲む。** ボードとカードが同一ページに同居することは現状ないが、
+将来同居したときに `<style>` が 2 回出るのを防ぐ。
 
 PHP が出すのは動的な部分だけ:
 
@@ -160,7 +182,9 @@ PHP が出すのは動的な部分だけ:
 案件名セルは `flex: 0 0 var(--gantt-label-w)`。軸トラックは `flex: 1 1 auto; min-width: 0`（現状のまま）。
 親の幅が確定するのでトラックはちょうど `trackWidthPx` を取る。
 
-⚠ 境目は **640px**（Tailwind の `sm:`）に揃える。アプリの他のレスポンシブ分岐と同じ境目にする。
+⚠ 境目は **`max-width: 640px`** にする。`app.css` の既存ユーティリティ
+（`.grid-stack-sm` / `.grid-2col-sm` / `.dl-stack-sm`）がこの値なので**それに揃える**
+（Tailwind の `sm:` の厳密な補集合は 639.98px だが、アプリ内で境目が 2 種類あるほうが害が大きい）。
 
 ---
 
@@ -287,13 +311,15 @@ scheduleBoardScrollToToday('schedule-board-scroller', {{ $axis['todayPct'] }}, {
 | `app/Services/ScheduleCardService.php` | 今日を含める 2 ブロックを削除。`gantt.trackWidthPx` を追加 |
 | `resources/views/_partials/_schedule_board.blade.php` | KPI ブロックとズーム `<select>` を削除。`min-width: 1000px` → `calc(var(--gantt-label-w) + Npx)`。案件名セルを sticky ＋ `flex: 0 0 var(--gantt-label-w)`。`@push('scripts')` を追加 |
 | `resources/views/_partials/_schedule_gantt.blade.php` | `min-width: 940px` → 同上。工程名セルを sticky。ラッパに `gantt-scroll--card` |
-| `resources/css/app.css` | `.gantt-scroll` / `.gantt-scroll--card` の CSS 変数、640px 未満の上書き、sticky の影 |
+| `resources/views/_partials/_schedule_gantt_style.blade.php` | **新規**。`@push('styles')` に §4.2 の CSS。ボードとカードの両 partial が `@include` する |
 | `tests/Feature/Schedule/ScheduleBoardTest.php` | §9 |
 | `tests/Feature/Schedule/ScheduleRealEstateUntouchedTest.php` | §9 |
 
 ### 新規
 
-なし（クラス・ルート・DB とも増えない）。
+- `resources/views/_partials/_schedule_gantt_style.blade.php`（CSS の唯一の定義）
+
+PHP のクラス・ルート・DB は増えない。
 
 ### 8.1 `build()` の 3 パス
 
@@ -312,7 +338,7 @@ scheduleBoardScrollToToday('schedule-board-scroller', {{ $axis['todayPct'] }}, {
 
 ## 9. テスト
 
-### 9.1 削除・書き換え（12 本）
+### 9.1 削除・書き換え（13 本）
 
 `ScheduleBoardTest`（削除 10 / 書き換え 1）:
 
@@ -329,6 +355,13 @@ scheduleBoardScrollToToday('schedule-board-scroller', {{ $axis['todayPct'] }}, {
 | `test_zoom_changes_both_the_range_and_the_header_granularity` | 削除 |
 | `test_an_unknown_zoom_falls_back_to_month` | 削除 |
 | `test_the_default_axis_is_six_months_back_and_twelve_forward` | **書き換え**（案B の軸を固定する）|
+
+`ScheduleDateStateTest`（書き換え 1）:
+
+`test_the_label_column_cannot_be_pushed_wider_than_its_track` は
+**`flex: 0 0 262px;` をリテラルで走査**している（`preg_match_all` ＋ 件数 4 を固定）。
+`var(--gantt-label-w)` に変えると**このテストが落ちる**ので、正規表現を新しいリテラルへ更新する。
+⚠ **件数 4 と `min-width: 0` / `overflow: hidden` の検査は残すこと。** そこが Bug #29 の本体。
 
 `ScheduleRealEstateUntouchedTest`（書き換え 1）:
 
@@ -379,13 +412,13 @@ test_posting_actual_dates_to_a_housing_step_stores_nothing
 | **KPI ブロックが無い / ズーム select が無い** | 消したものが戻らない |
 | 初期スクロールの**定義側と呼び出し側が対で在る** | Bug #28 |
 | カードの force-today が消えた（今日が範囲外の案件で `todayPct` が null） | D8 |
-| `app.css` に `.gantt-scroll` / `--gantt-label-w` の定義があり、Blade 側が同じ変数名を使っている | 変数名のタイプミスを無音で通さない |
+| **レンダリング済み HTML** に `.gantt-scroll { --gantt-label-w: 320px }` と `.gantt-label { position: sticky` が出る／`@media (max-width: 640px)` が `--card` より**後ろ**にある | 変数名のタイプミスと順序の入れ替えを止める（先行例 `CustomOrderIndexListColumnsTest`）|
 
 ⚠ **走査するテストは「拾えた件数の下限」も併せて固定する**（空振りして緑になる事故を防ぐ。Bug #45）。
 
-⚠ **ビルド済み CSS（`public/build/assets/app-*.css`）はテストで見られない** —— `.gitignore` 済みで
-worktree には存在しない（RULES「Tailwind 監査の落とし穴 1」）。テストは `app.css` のソースまでを見て、
-実際にコンパイルされたかは **main repo で手動確認**する。
+⚠ **CSS をビューに置いたので `app.css` は触らない** ＝ ビルド済み CSS
+（`public/build/assets/app-*.css`。`.gitignore` 済みで worktree に存在しない）を
+確認する必要がそもそも無くなる。`view:cache` の対象なので**本番反映は `./deploy.sh`**。
 
 ---
 
@@ -405,8 +438,8 @@ worktree には存在しない（RULES「Tailwind 監査の落とし穴 1」）�
    - コンソール出力 0 件
 4. **本番反映後の目視**（Bug #21 / #26 が「本番だけ壊れる」前例）
 
-⚠ **CSS を変えるのでビルドが要る。** `./deploy.sh` が `npm run build` を実行する。
-ローカルで見た目を確認するときだけ手で `npm run build`。
+⚠ **`resources/css/app.css` は変更しない**ので、この改修に `npm run build` は要らない
+（CSS はビューの `@push('styles')` に入る）。`./deploy.sh` は従来どおりビルドを走らせる。
 
 ⚠ **DB 変更・ルート変更なし** → 本番反映は `./deploy.sh` のみ。
 
