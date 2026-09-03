@@ -37,13 +37,6 @@
         @endforeach
     </select>
 
-    <select name="zoom" onchange="document.getElementById('filter-form').submit()"
-            class="h-9 px-3 border border-gray-300 rounded-md text-sm text-gray-700 bg-white focus:border-emerald-500 focus:outline-none cursor-pointer w-full sm:w-auto">
-        @foreach($board['zooms'] as $value => $zoom)
-            <option value="{{ $value }}" @selected($f['zoom'] === $value)>表示: {{ $zoom['label'] }}</option>
-        @endforeach
-    </select>
-
     <input type="text" name="q" value="{{ $f['q'] }}" placeholder="案件名・工程名で検索"
            class="h-9 px-3 border border-gray-300 rounded-md text-sm text-gray-700 bg-white focus:border-emerald-500 focus:outline-none w-full sm:w-56">
 

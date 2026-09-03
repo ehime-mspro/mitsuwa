@@ -224,7 +224,7 @@ class ScheduleBoardTest extends ScheduleTestCase
     }
 
     // ============================================================
-    // 軸とズーム（決定 F）
+    // 軸（決定 F。ズームは 2026-09-03 に削除した。設計書 §2 D7）
     // ============================================================
 
     public function test_the_default_axis_is_six_months_back_and_twelve_forward(): void
@@ -237,29 +237,42 @@ class ScheduleBoardTest extends ScheduleTestCase
         $this->assertSame('2027-08-31', $board['axis']['to'], '既定の軸の終わりが設計書 §5.5 と違う');
     }
 
-    public function test_zoom_changes_both_the_range_and_the_header_granularity(): void
+    /**
+     * `headers()` の label / strong / widthPct を固定する。
+     *
+     * ⚠ **3 つとも無防備だった**（2026-09-03 のレビューで判明）。`label` を `''` に、
+     *   `strong` を常に `false` に、`widthPct` を正規化前の日数に、それぞれ潰しても
+     *   フルスイートが緑のまま通ることを実測済み。
+     *
+     * ⚠ **件数（19）も固定する**（Bug #45）。件数を見ないと、ループ境界が壊れて
+     *   見出しが 1 つも無くなっても先頭・末尾の値だけ合っていれば緑になる。
+     *
+     * ⚠ 軸は Task 4 で「データの範囲」へ変わるので、そのとき件数と末尾の月は書き換わる。
+     */
+    public function test_the_axis_headers_are_month_labels_with_quarter_emphasis(): void
     {
         $this->caseWithSteps('PRC-RUN', [['planned_start' => '2026-08-01', 'planned_end' => '2026-09-30']]);
 
-        $week = $this->actingAs($this->manager())->get('/realestate/schedules?status=all&zoom=week')->viewData('board');
-        $this->assertSame('week', $week['axis']['granularity']);
-        $this->assertSame('2026-07-01', $week['axis']['from']);
+        $headers = $this->actingAs($this->manager())
+            ->get('/realestate/schedules?status=all')
+            ->viewData('board')['axis']['headers'];
 
-        $quarter = $this->actingAs($this->manager())->get('/realestate/schedules?status=all&zoom=quarter')->viewData('board');
-        $this->assertSame('quarter', $quarter['axis']['granularity']);
-        $this->assertSame('2025-08-01', $quarter['axis']['from']);
-    }
+        $this->assertCount(19, $headers, '既定の軸（19 ヶ月分）から見出しの数が変わっている');
 
-    /** 不正なズーム値で 500 にしない（既定へ落とす） */
-    public function test_an_unknown_zoom_falls_back_to_month(): void
-    {
-        $this->caseWithSteps('PRC-RUN', [['planned_start' => '2026-08-01', 'planned_end' => '2026-09-30']]);
+        $this->assertSame('2月', $headers[0]['label'], '先頭の見出しが「2月」でない');
+        $this->assertFalse($headers[0]['strong'], '四半期の頭でない月が強調されている');
 
-        $board = $this->actingAs($this->manager())
-            ->get('/realestate/schedules?status=all&zoom=' . urlencode('<script>'))
-            ->assertOk()->viewData('board');
+        // 2026-04 は四半期の頭（1, 4, 7, 10 月）
+        $this->assertSame('4月', $headers[2]['label']);
+        $this->assertTrue($headers[2]['strong'], '四半期の頭（4月）が強調されていない');
 
-        $this->assertSame('month', $board['axis']['granularity']);
+        $this->assertSame('8月', $headers[18]['label'], '末尾の見出しが「8月」でない');
+        $this->assertFalse($headers[18]['strong']);
+
+        // ⚠ widthPct は月の日数に比例するので、全セルの合計が軸の全長（100%）と一致するはず。
+        //   ここが崩れると、$next / $end の計算が壊れて棒とヘッダの位置がズレる。
+        $sum = array_sum(array_column($headers, 'widthPct'));
+        $this->assertEqualsWithDelta(100.0, $sum, 0.01, 'widthPct の合計が軸の全長（100%）と一致しない');
     }
 
     // ============================================================
@@ -554,7 +567,8 @@ class ScheduleBoardTest extends ScheduleTestCase
      *
      * ⚠ **タグ込みで見る。** 素の文字列検索だと「すべて」のように種別・ステータスの
      *   両セレクトに出る語もあり、値が混ざる（Bug #43）。「ステータス: 」の接頭辞は他の
-     *   2 つのセレクト（種別: / 表示:）と衝突しないので、これをアンカーにする。
+     *   セレクト（種別:）と衝突しないので、これをアンカーにする。
+     *   ⚠ ズームの選択肢（表示:）は 2026-09-03 に削除した（設計書 §2 D7）。
      *   ⚠ かつては素の「進行中」が KPI ラベル「進行中の工程」とも衝突していたが、KPI カードは
      *     2026-09-03 に削除した（設計書 §2 D1）。実測（2026-09-03）では、この画面で
      *     「進行中」が出るのはこの `<option>` の 1 箇所だけ。
@@ -603,7 +617,7 @@ class ScheduleBoardTest extends ScheduleTestCase
     }
 
     // ============================================================
-    // 消したものが戻らないこと（設計書 §2 D1 / D2）
+    // 消したものが戻らないこと（設計書 §2 D1 / D2 / D7）
     // ============================================================
 
     /**
@@ -653,5 +667,41 @@ class ScheduleBoardTest extends ScheduleTestCase
         $html = $this->actingAs($this->manager())->get('/housing/schedules')->assertOk()->getContent();
 
         $this->assertStringContainsString('工程が未登録の案件が 1 件あります', $html);
+    }
+
+    /**
+     * ズームセレクタは削除した（設計書 §2 D7 / §5）。
+     *
+     * ⚠ **「効かない」だけでなく「画面に出ていない」ことも見る。** サービスが `zoom` を
+     *   無視するようになっても、Blade に `<select name="zoom">` が残っていれば
+     *   利用者は押せてしまい、押しても何も起きない画面になる。
+     *
+     * ⚠ 既存の URL `?zoom=week` は**無視されるだけ**でよい（リダイレクトはしない）。
+     */
+    public function test_the_zoom_selector_is_gone_and_the_query_key_is_ignored(): void
+    {
+        $prop = $this->makeParent('property');
+        $prop->scheduleSteps()->create(['name' => '基礎工事', 'category' => 'work', 'planned_start' => '2026-08-01', 'planned_end' => '2026-09-30', 'sort_order' => 1]);
+
+        $plain = $this->actingAs($this->manager())->get('/housing/schedules')->assertOk();
+        $zoomed = $this->actingAs($this->manager())->get('/housing/schedules?zoom=quarter')->assertOk();
+
+        $this->assertArrayNotHasKey('zooms', $plain->viewData('board'), 'zooms がまだ view へ渡っている');
+        $this->assertArrayNotHasKey('zoom', $plain->viewData('board')['filters'], 'filters に zoom が残っている');
+
+        $this->assertStringNotContainsString('name="zoom"', $plain->getContent(), 'ズームの select が残っている');
+        $this->assertStringNotContainsString('表示: ', $plain->getContent(), 'ズームのラベルが残っている');
+
+        // ⚠ 軸が ?zoom で変わらないこと（無視されている証拠）
+        $this->assertSame(
+            $plain->viewData('board')['axis']['from'],
+            $zoomed->viewData('board')['axis']['from'],
+            '?zoom= が軸を変えている'
+        );
+        $this->assertSame(
+            $plain->viewData('board')['axis']['to'],
+            $zoomed->viewData('board')['axis']['to'],
+            '?zoom= が軸を変えている'
+        );
     }
 }

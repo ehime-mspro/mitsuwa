@@ -52,18 +52,6 @@ class ScheduleBoardService
     ];
 
     /**
-     * ズーム（プラン 決定 F）。範囲とヘッダの粒度を一緒に変える。
-     * ⚠ 既定 `month` は設計書 §5.5 の「今日の 6 ヶ月前 〜 12 ヶ月後」ちょうど。
-     */
-    public const ZOOMS = [
-        'week'    => ['label' => '週',     'before' => 1,  'after' => 2,  'granularity' => 'week'],
-        'month'   => ['label' => '月',     'before' => 6,  'after' => 12, 'granularity' => 'month'],
-        'quarter' => ['label' => '四半期', 'before' => 12, 'after' => 24, 'granularity' => 'quarter'],
-    ];
-
-    private const DEFAULT_ZOOM = 'month';
-
-    /**
      * @param  array<string, array{0: class-string, 1: string}>  $kinds  絞り込みキー => [親クラス, 表示名]
      *
      * ⚠ 第 1 引数に既定値を付けないこと（設計書 §4.3。ReflectionMethod でテストが固定している）。
@@ -81,15 +69,17 @@ class ScheduleBoardService
         $statuses      = $tracksActuals ? self::STATUSES : self::DATE_STATUSES;
 
         $filters = $this->filters($kinds, $request, $statuses);
-        $zoom    = self::ZOOMS[$filters['zoom']];
 
         // ⚠ **月初に正規化してから加減算する。** Carbon の subMonths()/addMonths() は
         //   月末日で溢れる（実測: 2026-08-31 の 6 ヶ月前は 2026-03-03 になり、そのあと
         //   startOfMonth() を通しても 3/1 ＝ 軸が 1 ヶ月ずれる）。
+        // ⚠ この範囲は Task 4 で「データの範囲」（案B）へ差し替える。ここでは
+        //   ズームを消しても振る舞いが変わらないことを優先して直書きしている。
         $anchor = $today->startOfMonth();
-        $from   = $anchor->subMonths($zoom['before']);
-        $to     = $anchor->addMonths($zoom['after'])->endOfMonth()->startOfDay();
-        $scale = new GanttScale($from, $to);
+        $scale  = new GanttScale(
+            $anchor->subMonths(6),
+            $anchor->addMonths(12)->endOfMonth()->startOfDay()
+        );
 
         $rows         = [];
         $unregistered = 0;
@@ -125,12 +115,10 @@ class ScheduleBoardService
             'filters'           => $filters,
             'kinds'             => $kinds,
             'statuses'          => $statuses,
-            'zooms'             => self::ZOOMS,
             'axis'              => [
                 'from'        => $scale->from()->toDateString(),
                 'to'          => $scale->to()->toDateString(),
-                'granularity' => $zoom['granularity'],
-                'headers'     => $this->headers($scale, $zoom['granularity']),
+                'headers'     => $this->headers($scale),
                 'todayPct'    => $scale->contains($today) ? $scale->left($today) : null,
                 'todayLabel'  => $today->format('n/j'),
             ],
@@ -139,7 +127,7 @@ class ScheduleBoardService
 
     /**
      * ⚠ **クエリキーに null を入れない**（設計書 §4.2 / Bug #31）。
-     *   ズームのリンクを組むときに `Arr::query()` が null のキーを丸ごと捨てるため、
+     *   リンクを組むときに `Arr::query()` が null のキーを丸ごと捨てるため、
      *   ここで `''` / 既定値へ正規化しておく。
      */
     private function filters(array $kinds, Request $request, array $statuses): array
@@ -154,15 +142,9 @@ class ScheduleBoardService
             $status = self::STATUS_RUNNING;
         }
 
-        $zoom = (string) ($request->query('zoom') ?? self::DEFAULT_ZOOM);
-        if (! array_key_exists($zoom, self::ZOOMS)) {
-            $zoom = self::DEFAULT_ZOOM;
-        }
-
         return [
             'kind'   => $kind,
             'status' => $status,
-            'zoom'   => $zoom,
             'q'      => trim((string) ($request->query('q') ?? '')),
         ];
     }
@@ -351,29 +333,30 @@ class ScheduleBoardService
         }, $owner->autoMilestones());
     }
 
-    /** @return list<array{label: string, widthPct: float, strong: bool}> */
-    private function headers(GanttScale $scale, string $granularity): array
+    /**
+     * 月の見出し。⚠ 粒度の切り替え（週 / 四半期）は 2026-09-03 に削除した（設計書 §5）。
+     *
+     * @return list<array{label: string, widthPct: float, strong: bool}>
+     */
+    private function headers(GanttScale $scale): array
     {
         $headers = [];
-        $cursor  = $granularity === 'week'
-            ? $scale->from()->startOfWeek()
-            : $scale->from()->startOfMonth();
+        $cursor  = $scale->from()->startOfMonth();
 
         while ($cursor->lessThanOrEqualTo($scale->to())) {
-            [$next, $label, $strong] = match ($granularity) {
-                'week'    => [$cursor->addWeek(), $cursor->format('n/j'), $cursor->day <= 7],
-                'quarter' => [$cursor->addMonths(3), $cursor->format('Y') . ' Q' . (intdiv($cursor->month - 1, 3) + 1), true],
-                default   => [$cursor->addMonth()->startOfMonth(), $cursor->format('n') . '月', in_array($cursor->month, [1, 4, 7, 10], true)],
-            };
+            $next = $cursor->addMonth()->startOfMonth();
 
             // ⚠ 最後のセルが軸をはみ出さないように、区間の終わりで打ち切る
+            // ⚠ `$scale->to()` が常に月末に揃っている現状では実質到達しない（2026-09-03 実測で
+            //   この三項演算子を外しても 183 本すべて緑＝同値変異）。GanttScale の構築元が
+            //   増えて月末以外の `to` が来たときの防御として残す。
             $end  = $next->greaterThan($scale->to()) ? $scale->to()->addDay() : $next;
             $days = max(1, (int) round($cursor->diffInDays($end)));
 
             $headers[] = [
-                'label'    => $label,
+                'label'    => $cursor->format('n') . '月',
                 'widthPct' => $days / $scale->totalDays() * 100,
-                'strong'   => $strong,
+                'strong'   => in_array($cursor->month, [1, 4, 7, 10], true),
             ];
 
             $cursor = $next;
