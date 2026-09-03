@@ -46,7 +46,7 @@ export APP_KEY="base64:$(head -c 32 /dev/urandom | base64)"
 | `resources/views/_partials/_schedule_gantt_style.blade.php` | **新規**。CSS 変数と sticky の唯一の定義 | 5 |
 | `resources/views/_partials/_schedule_board.blade.php` | ボードの表示 | 2 / 3 / 5 / 6 |
 | `resources/views/_partials/_schedule_gantt.blade.php` | カードの表示 | 8 |
-| `tests/Unit/Schedule/GanttScaleWidthTest.php` | **新規**。月数と px 幅 | 1 |
+| `tests/Unit/Support/GanttScaleTest.php` | `GanttScale` の単体テスト（**既存**。月数と px 幅を末尾に足す）| 1 |
 | `tests/Feature/Schedule/ScheduleBoardTest.php` | ボードの挙動 | 2 / 3 / 4 / 5 / 6 |
 | `tests/Feature/Schedule/ScheduleRealEstateUntouchedTest.php` | 住宅の機能が不動産へ漏れていないこと | 2 |
 | `tests/Feature/Schedule/ScheduleDateStateTest.php` | 状態チップとラベル欄 | 8 |
@@ -95,54 +95,28 @@ export APP_KEY="base64:$(head -c 32 /dev/urandom | base64)"
 
 **Files:**
 - Modify: `app/Support/GanttScale.php`
-- Create: `tests/Unit/Schedule/GanttScaleWidthTest.php`
+- Modify: `tests/Unit/Support/GanttScaleTest.php`
+
+⚠ **`GanttScale` の単体テストの正本は既存の `tests/Unit/Support/GanttScaleTest.php`。**
+新しいファイルを作らない（同じクラスのテストを 2 ファイル・2 namespace に割ると、
+次に触る人が片方を見落とす）。既存ファイルには `setUp()` / `tearDown()` の timezone 固定と
+`private function d(string $s): CarbonImmutable` ヘルパが**既にある**ので、それを使う。
 
 - [ ] **Step 1: 失敗するテストを書く**
 
-`tests/Unit/Schedule/GanttScaleWidthTest.php`:
+`tests/Unit/Support/GanttScaleTest.php` の**末尾**に足す（`$this->d(...)` は既存のヘルパ）:
 
 ```php
-<?php
-
-namespace Tests\Unit\Schedule;
-
-use App\Support\GanttScale;
-use Carbon\CarbonImmutable;
-use PHPUnit\Framework\TestCase;
-
-/**
- * 軸のトラック幅（設計書 §3）。
- *
- * ⚠ **1 ヶ月 = 150px という数字はここ 1 箇所にしか無い。** Blade にも PHP の別の場所にも
- *   書かない（Bug #41 の二重実装）。
- *
- * ⚠ Laravel を起動しない Unit テストなので `config/app.php` の timezone は効かない
- *   （実際に効くのは `php.ini`。Bug #54 ①）。ここで扱うのは日付だけで時刻に依存しないが、
- *   念のため `setUp()` で固定し `tearDown()` で戻す。
- */
-class GanttScaleWidthTest extends TestCase
-{
-    private string $tz;
-
-    protected function setUp(): void
-    {
-        parent::setUp();
-        $this->tz = date_default_timezone_get();
-        date_default_timezone_set('UTC');
-    }
-
-    protected function tearDown(): void
-    {
-        date_default_timezone_set($this->tz);
-        parent::tearDown();
-    }
+    // ============================================================
+    // トラックの幅（1 ヶ月 = 150px 固定。設計書 §3）
+    //
+    // ⚠ **1 ヶ月 = 150px という数字は GanttScale::MONTH_WIDTH_PX 1 箇所にしか無い。**
+    //   Blade にも PHP の別の場所にも書かない（Bug #41 の二重実装）。
+    // ============================================================
 
     public function test_one_month_range_counts_one_month(): void
     {
-        $scale = new GanttScale(
-            CarbonImmutable::parse('2026-09-01'),
-            CarbonImmutable::parse('2026-09-30')
-        );
+        $scale = new GanttScale($this->d('2026-09-01'), $this->d('2026-09-30'));
 
         $this->assertSame(1, $scale->monthCount());
         $this->assertSame(150, $scale->trackWidthPx());
@@ -151,10 +125,7 @@ class GanttScaleWidthTest extends TestCase
     /** 本番の実データ（2026-02-19 〜 2026-09-27）を月初・月末に丸めた範囲 */
     public function test_the_production_range_is_eight_months(): void
     {
-        $scale = new GanttScale(
-            CarbonImmutable::parse('2026-02-01'),
-            CarbonImmutable::parse('2026-09-30')
-        );
+        $scale = new GanttScale($this->d('2026-02-01'), $this->d('2026-09-30'));
 
         $this->assertSame(8, $scale->monthCount());
         $this->assertSame(1200, $scale->trackWidthPx());
@@ -166,10 +137,7 @@ class GanttScaleWidthTest extends TestCase
      */
     public function test_a_range_that_crosses_a_year_counts_correctly(): void
     {
-        $scale = new GanttScale(
-            CarbonImmutable::parse('2026-11-01'),
-            CarbonImmutable::parse('2027-02-28')
-        );
+        $scale = new GanttScale($this->d('2026-11-01'), $this->d('2027-02-28'));
 
         $this->assertSame(4, $scale->monthCount());
         $this->assertSame(600, $scale->trackWidthPx());
@@ -182,32 +150,48 @@ class GanttScaleWidthTest extends TestCase
      */
     public function test_a_partial_month_still_counts_as_a_whole_month(): void
     {
-        $scale = new GanttScale(
-            CarbonImmutable::parse('2026-02-19'),
-            CarbonImmutable::parse('2026-09-27')
-        );
+        $scale = new GanttScale($this->d('2026-02-19'), $this->d('2026-09-27'));
 
         $this->assertSame(8, $scale->monthCount());
     }
 
-    /** 同じ日で始まり終わる範囲でも 1 ヶ月ぶんの幅を持つ（0 除算・幅 0 を防ぐ） */
-    public function test_a_single_day_range_is_one_month_wide(): void
+    /**
+     * 同じ日で始まり終わる範囲でも 1 ヶ月ぶんの幅を持つ（0 除算・幅 0 を防ぐ）。
+     *
+     * ⚠ 既存の `test_a_single_day_range_does_not_divide_by_zero` と紛らわしいので
+     *   `_is_still_one_month_wide` と名前を分けている。
+     */
+    public function test_a_single_day_range_is_still_one_month_wide(): void
     {
-        $day = CarbonImmutable::parse('2026-09-03');
+        $day = $this->d('2026-09-03');
 
         $this->assertSame(1, (new GanttScale($day, $day))->monthCount());
         $this->assertSame(150, (new GanttScale($day, $day))->trackWidthPx());
     }
-}
+
+    /**
+     * ⚠ **逆転区間（from > to）でも負の幅を返さない。** 既存の `totalDays()` が
+     *   `max(1, ...)` で守っているのと同じ扱いに揃える。`monthCount()` は public なので
+     *   将来の呼び出し元が逆転区間を渡しうる。実測では `max(1, ...)` を外すと
+     *   `monthCount() = -2` / `trackWidthPx() = -300` になり、Blade へ
+     *   `width: calc(var(--gantt-label-w) + -300px)` が渡る。
+     */
+    public function test_a_reversed_range_never_yields_a_negative_width(): void
+    {
+        $scale = new GanttScale($this->d('2027-02-01'), $this->d('2026-11-01'));
+
+        $this->assertSame(1, $scale->monthCount());
+        $this->assertSame(150, $scale->trackWidthPx());
+    }
 ```
 
 - [ ] **Step 2: 失敗を確認する**
 
 ```bash
-./vendor/bin/phpunit tests/Unit/Schedule/GanttScaleWidthTest.php
+./vendor/bin/phpunit tests/Unit/Support/GanttScaleTest.php
 ```
 
-期待: `Error: Call to undefined method App\Support\GanttScale::monthCount()`（5 本とも失敗）
+期待: `Error: Call to undefined method App\Support\GanttScale::monthCount()`（新しい 6 本が失敗）
 
 - [ ] **Step 3: 実装する**
 
@@ -222,8 +206,10 @@ class GanttScaleWidthTest extends TestCase
      */
     public function monthCount(): int
     {
-        return ($this->to->year - $this->from->year) * 12
-            + ($this->to->month - $this->from->month) + 1;
+        // ⚠ 既存の totalDays() と揃えて必ず 1 以上を返す。逆転区間（from > to）でも
+        //   負の px 幅を Blade へ渡さないため（実測: 外すと -2 / -300px になる）。
+        return max(1, ($this->to->year - $this->from->year) * 12
+            + ($this->to->month - $this->from->month) + 1);
     }
 
     /**
@@ -255,10 +241,10 @@ class GanttScaleWidthTest extends TestCase
 - [ ] **Step 4: テストが通ることを確認する**
 
 ```bash
-./vendor/bin/phpunit tests/Unit/Schedule/GanttScaleWidthTest.php
+./vendor/bin/phpunit tests/Unit/Support/GanttScaleTest.php
 ```
 
-期待: `OK (5 tests, 8 assertions)`
+期待: `OK (16 tests, 29 assertions)`（既存 10 本 + 新規 6 本）
 
 - [ ] **Step 5: 既存テストが壊れていないことを確認する**
 
@@ -271,7 +257,7 @@ class GanttScaleWidthTest extends TestCase
 - [ ] **Step 6: コミット**
 
 ```bash
-git add app/Support/GanttScale.php tests/Unit/Schedule/GanttScaleWidthTest.php
+git add app/Support/GanttScale.php tests/Unit/Support/GanttScaleTest.php
 git commit -m "$(cat <<'EOF'
 feat(schedule): GanttScale に軸の月数とトラックの px 幅を足す
 
@@ -1818,8 +1804,9 @@ git checkout -- <file>
 
 | # | 変異 | 対象 | 期待して落ちるテスト |
 |---|---|---|---|
-| M1 | `MONTH_WIDTH_PX` を `150` → `120` | `GanttScale.php` | `GanttScaleWidthTest` ＋ 幅のテスト |
-| M2 | `monthCount()` の `+ 1` を消す | `GanttScale.php` | `GanttScaleWidthTest`（5 本） |
+| M1 | `MONTH_WIDTH_PX` を `150` → `120` | `GanttScale.php` | `GanttScaleTest` ＋ 幅のテスト |
+| M2 | `monthCount()` の `+ 1` を消す | `GanttScale.php` | `GanttScaleTest`（幅のテスト複数本）|
+| M2b | `monthCount()` の `max(1, ...)` を外す | `GanttScale.php` | `test_a_reversed_range_never_yields_a_negative_width`（**実測済み**: `Failed asserting that -2 is identical to 1.`）|
 | M3 | `monthCount()` の `($this->to->year - $this->from->year) * 12` を消す | `GanttScale.php` | `test_a_range_that_crosses_a_year_counts_correctly` |
 | M4 | `scale()` の `$k['owner']->autoMilestones()` のループを消す | `ScheduleBoardService.php` | `test_the_axis_includes_the_auto_milestones` |
 | M5 | `scale()` の `drawEnd($today)` を `$step->planned_end` に替える | 同上 | 軸の `to` を見るテスト |
@@ -1874,16 +1861,16 @@ EOF
 ./vendor/bin/phpunit 2>&1 | tail -5
 ```
 
-期待: `OK`。Task 0 のベースラインから **+12**。内訳:
+期待: `OK`。Task 0 のベースラインから **+13**。内訳:
 
 | | 本数 |
 |---|---|
 | 削除 | 11（Task 2 の 8 ＋ Task 3 の 2 ＋ Task 4 で 1 本を 5 本に置き換えた分の 1）|
-| 追加 | 23（Task 1: 5 / Task 2: 2 / Task 3: 1 / Task 4: 5 / Task 5: 3 / Task 6: 2 / Task 7: 2 / Task 8: 3）|
-| 差引 | **+12** |
+| 追加 | 24（Task 1: 6 / Task 2: 2 / Task 3: 1 / Task 4: 5 / Task 5: 3 / Task 6: 2 / Task 7: 2 / Task 8: 3）|
+| 差引 | **+13** |
 
 ⚠ `ScheduleRealEstateUntouchedTest` と `ScheduleDateStateTest` は**その場で書き換える**ので本数は変わらない。
-⚠ **実測が +12 でなければ、どこかで削除・追加を取りこぼしている。** 数が合うまで進めない。
+⚠ **実測が +13（= 1296 tests）でなければ、どこかで削除・追加を取りこぼしている。** 数が合うまで進めない。
 
 - [ ] **Step 2: コンパイル済みビューを全数 lint する**
 
