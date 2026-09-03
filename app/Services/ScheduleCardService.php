@@ -132,17 +132,17 @@ class ScheduleCardService
         //   揃えないと日数が 1 多く出る（実測: 2026-02-01〜2026-08-31 が 213 日になった）。
         $to = max($dates)->startOfMonth()->addMonths(self::PADDING_MONTHS)->endOfMonth()->startOfDay();
 
-        // 今日が範囲外なら今日も含める（今日線が枠外に出ないように）
-        if ($today->lessThan($from)) {
-            $from = $today->startOfMonth();
-        }
-        if ($today->greaterThan($to)) {
-            $to = $today->endOfMonth()->startOfDay();
-        }
-
+        // ⚠ **今日が範囲外でも軸を伸ばさない**（2026-09-03 の設計書 §2 D8）。
+        //   伸ばすとボードと規則が食い違い、完了案件のカードが空白だらけになる。
+        //   今日が外なら todayPct が null になり、Blade が今日線を描かない。
         $scale = new GanttScale($from, $to);
 
         return [
+            // ⚠ from / to / trackWidthPx はボードの `axis` と対称にしておく。
+            //   テストが軸を直接見られるようにするため（HTML だけでは月ヘッダから逆算になる）。
+            'from'          => $scale->from()->toDateString(),
+            'to'            => $scale->to()->toDateString(),
+            'trackWidthPx'  => $scale->trackWidthPx(),
             'months'        => $this->months($scale),
             'rows'          => $steps->map(fn (ScheduleStep $s) => $this->row($s, $scale, $today, $tracksActuals))->all(),
             'milestones'    => $this->milestones($milestones, $scale, $today),
