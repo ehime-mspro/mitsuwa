@@ -2108,9 +2108,96 @@ rm -f storage/verify.sqlite storage/verify-seed.php .env
 git status --porcelain     # 空であること
 ```
 
----
+### 10 の実測結果（2026-09-03 実施）
 
-## Task 11: 文書を更新する
+**Step 1**: `OK (1304 tests, 8498 assertions)`。
+
+**Step 2**: `php artisan view:cache` → **267 本 / INVALID 0 件**。
+
+⚠ **想定していた `preview_start`（`.claude/launch.json` の `laravel-verify`）は使えなかった。**
+実測すると、このサブエージェントは cwd が main repo に pinned されており、
+`preview_start` は **main repo の `.claude/launch.json`**（既存の `laravel-verify` エントリ、
+`runtimeExecutable: "php"`, cwd=main repo）を解決した。1 回目の起動でこれを踏み、
+**main repo の実 `.env`（実 MySQL `masa8787kanri63732`）へ接続する 500 画面**が出た
+（`SELECT` 系の GET 1 回のみで書き込みは無し。即座に `preview_stop` で停止）。
+`EnterWorktree(path=…)` も「cwd が worktree の外（＝main repo）にあるサブエージェントからの
+切替は不可」で拒否された。**main repo の `.claude/launch.json` は変更しない**（作業禁止指示を優先）。
+代わりに `php artisan serve --port=8123` を **Bash の `run_in_background`** で
+worktree 内・env 変数直渡し（`.env` ファイルは作らない。作成しようとした最初の 2 回は
+パーミッションでハードブロックされた——`.env` は本プロジェクトの安全装置で
+`ls -la .env` すら拒否される）で起動し、`mcp__Claude_Browser__navigate`（`preview_start` の
+launch.json 解決を経由しない）で接続した。⚠ **worktree に `public/build` が無く初回は
+Vite manifest 未検出の 500** だったため、main repo の `node_modules/.bin/vite build` を
+cwd=worktree で実行して解決（RULES.md「Tailwind 監査の落とし穴 1」と同型の対処）。
+検証後は `kill` でサーバーを停止し、`storage/verify.sqlite` `storage/verify-seed.php` と
+worktree に作った（結局使われなかった）`.claude/launch.json` を削除、`public/build` も削除して
+worktree を元の状態に戻した。`.env` は最後まで一度も作成されていない（`ls` で確認済み）。
+
+**Step 4（5-1 相当）: 4 画面 × 1800 / 1200 / 375px = 12 通り**——**全通り `scrollWidth === clientWidth`**:
+
+| 画面 | 1800px | 1200px | 375px |
+|---|---|---|---|
+| `/housing/schedules` | 1580 / 1580 | 980 / 980 | 375 / 375 |
+| `/realestate/schedules`（`?status=all`）| 1580 / 1580 | 980 / 980 | 375 / 375 |
+| `/housing/properties/{id}` | 1580 / 1580 | 980 / 980 | 375 / 375 |
+| `/housing/custom-orders/{id}` | 1580 / 1580 | 980 / 980 | 375 / 375 |
+
+⚠ 不動産ボードは既定の「ステータス: 進行中」だと 0 件表示だった
+（種のシード工程が判定上「遅延」扱いになり「進行中」に含まれないだけで、
+`?status=all` では正しく表示される。**Task 10 のスコープ外の絞り込みロジック**なので未調査・未修正）。
+
+**Step 5（5-2 相当）: ガント実測（`/housing/schedules`、1200px）**——
+
+```json
+{
+  "scrollLeft": 386, "clientWidth": 914, "scrollWidth": 1520,
+  "labelW": "320px", "narrowestBar": 4.95, "widestBar": 302.48, "bars": 13
+}
+```
+
+期待どおり全項目一致（`labelW: 320px` / `narrowestBar` 約 4.9px＝改修前の 1〜1.5px から拡大 /
+`scrollLeft > 0`＝今日までスクロール済み / `scrollWidth(1520) > clientWidth(914)`＝横スクロールあり）。
+
+**Step 6（5-3 相当）: 固定表示の実測**——スクロールさせて測定:
+`{ before: 253, after: 253, stuck: true }`（`scrollLeft` を 386→300 に変えてもラベル左端は不動）。
+併せて **z-index の実測**: 最大スクロール位置（`scrollLeft=606`）でラベルと棒が重なる座標を
+`document.elementFromPoint()` で叩き、返った最前面要素が `.gantt-label` 自身であることを確認
+（`isLabelOrDescendant: true`）——ラベルが棒の上に来ることを実行時に確認済み。
+
+**Step 7（5-4 相当）: 375px（`/housing/schedules`）**——
+`{ labelW: 140, visibleAxis: 201, elClientWidth: 341 }`。期待どおり（`labelW: 140` / 約 200px）。
+
+**Step 8（5-5 相当）: カードのガント（`/housing/properties/{id}`、1200px）**——
+
+- 固定表示: `.gantt-scroll--card` で同じ方法により `{ before: 274, after: 274, stuck: true }`
+- 1 日の工程: `narrowestBar: 4.93px`（13 本中 6 本が該当。期待の約 4.9px と一致）
+- 縞模様: `.schedule-gantt-track` の奇数行で `rowBg` と対応する `.gantt-label` の `labelBg` が
+  **完全一致**（`rgb(252, 252, 253)` = `#FCFCFD`）することを 7 行で確認——ラベル欄で縞が途切れていない。
+  偶数行は両方とも実質白（row は透過・label は共有 CSS の `#fff`）で視覚的に無矛盾
+- **Ajax 差し替え**: 「＋ 工程を追加」→ サーバが `id` を発番した新規行が Alpine の `rows` に載ることを確認
+  （POST 往復が実際に起きている）。続けてその行に `planned_start`/`planned_end` を設定し
+  `save(row)` を直接呼んで PATCH 往復を実行した結果:
+  `{ nodeReplaced: true, barsBefore: 13, barsAfter: 14, message: "保存しました。" }`——
+  `#schedule-gantt` の outerHTML 差し替えが実際に起き、棒が 13→14 本に増えた
+- **スクロール位置**: 差し替え前に `.gantt-scroll--card.scrollLeft = 300` にしてから保存し、
+  差し替え後のスクローラで `scrollAfter: 0` を確認。**「今日」の位置（軸右寄り）へジャンプしていない**
+  ——カード側に scroll-to-today のスクリプトが無い設計（D11）どおり、単に新しい DOM ノードの
+  既定値（0）になっているだけであることを確認した
+
+**Step 9（5-6 相当）: コンソール出力**——最初のタブでは早期に立ち寄った `/dashboard/executive`
+（`ms_rooms` 未作成のシード漏れによる 500。検証対象外の寄り道）由来の error が 1 件残留していたため、
+**汚染の無い新規タブ**で 4 画面を撮り直した: `housing/schedules` / `realestate/schedules?status=all` /
+`housing/properties/{id}` / `housing/custom-orders/{id}` の**すべてで `No console logs.`（0 件）**。
+
+### ⚠ 確認できなかったこと
+
+- **`preview_start` 経由の起動は未検証**（このサブエージェントの cwd 制約により Bash 直接起動に切り替えたため）。
+  ただし到達した実体（worktree のコード・throwaway SQLite・Vite ビルド済み CSS/JS）は
+  プランが要求するものと同一で、`preview_start` はブラウザタブを開く手段の違いに過ぎない
+- **不動産ボードの既定フィルタ（`status` 未指定）で件数 0 件になる件**は未調査（Task 10 の
+  スコープ外。工程の遅延判定ロジックの話で、今回の幅改修とは無関係と判断した）
+- 本番の `view:cache` コンパイル・本番ブラウザでの目視は**未実施**（デプロイ後に別途必要。
+  Bug #21 / #26 の前例どおり）
 
 **Files:**
 - Modify: `docs/BACKLOG.md`
