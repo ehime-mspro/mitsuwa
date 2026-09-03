@@ -104,6 +104,19 @@ class ScheduleCardService
                     $dates[] = CarbonImmutable::instance($d)->startOfDay();
                 }
             }
+
+            // ⚠ **棒の右端（`drawEnd($today)`）も入れる。** 実績開始があり実績終了が無い工程は
+            //   「進行中」として棒が**今日まで**伸びる（`ScheduleStep::drawEnd()`）ので、
+            //   生の 4 カラムだけでは軸が届かず、棒が `clamp()` で軸の右端に切られる。
+            //   2026-09-04 に Codex の独立レビューが検出した退行で、実測では
+            //   軸 2025-12-01〜2026-02-28 に対し棒 1/10〜8/31 が
+            //   `left=44.44% / width=55.56%` と 2 月末で切れていた。
+            //   ⚠ `drawStart()`（`actual_start ?? planned_start`）は**必ず上の 4 カラムのどれか**なので
+            //     足す必要はない。新しい日付を持ち込みうるのは `drawEnd()` だけ。
+            //   ⚠ ボード（`ScheduleBoardService::scale()`）は最初からこの規則（設計書 §6.1）。
+            if ($step->isDrawable()) {
+                $dates[] = CarbonImmutable::instance($step->drawEnd($today))->startOfDay();
+            }
         }
 
         foreach ($milestones as $m) {

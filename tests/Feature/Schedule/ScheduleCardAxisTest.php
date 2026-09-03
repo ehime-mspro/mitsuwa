@@ -348,4 +348,54 @@ class ScheduleCardAxisTest extends ScheduleTestCase
             $this->assertStringContainsString('overflow: hidden', $style);
         }
     }
+
+    /**
+     * ⚠ **進行中の工程（実績開始あり・実績終了なし）は棒が今日まで伸びるので、軸も今日まで届くこと。**
+     *
+     * ⚠ **これは「今日まで伸ばす」を外した Task 7 が持ち込んだ退行だった**（2026-09-04 に
+     *   Codex の独立レビューが検出）。設計書 §6.1 は**ボードだけ**に
+     *   「`drawEnd($today)` を使う（生の `planned_end` ではない）」と ⚠ を書き、
+     *   カードは「現状のまま（4 日付すべて）」としていたため、
+     *   `drawEnd()` が返す**今日**が軸の日付集合に入らなかった。
+     *
+     * ⚠ **軸を伸ばさないのは「もう終わった案件」だけ**でよく、進行中の工程まで
+     *   同じ扱いにしてはいけない。棒だけが軸の外へ出て `clamp()` で
+     *   **100% の位置で切られる**（実測: 軸 2025-12-01〜2026-02-28 に対し
+     *   棒は 1/10〜8/31 のはずが `left=44.44% / width=55.56%` で 2 月末に切れていた）。
+     *
+     * ⚠ **`test_the_card_axis_is_not_stretched_to_today` と対で見ること。**
+     *   あちらは実績終了**あり**（＝完了）で伸ばさない、こちらは実績終了**なし**（＝進行中）で
+     *   伸ばす。片方だけだと「常に伸ばす」「常に伸ばさない」のどちらの変異も素通りする。
+     */
+    public function test_the_card_axis_reaches_today_for_a_step_still_in_progress(): void
+    {
+        $owner = $this->makeParent('procurement');
+        $owner->scheduleSteps()->create([
+            'name' => '造成', 'category' => 'work',
+            'planned_start' => '2026-01-05', 'planned_end' => '2026-01-20',
+            'actual_start'  => '2026-01-10', 'actual_end'   => null,
+            'sort_order' => 1,
+        ]);
+
+        $gantt = $this->actingAs($this->manager())
+            ->get(route($owner->scheduleRoutePrefix() . '.show', $owner))
+            ->assertOk()
+            ->viewData('schedule')['gantt'];
+
+        // ⚠ 軸の右端は「今日（2026-08-31）の月 ＋ パディング 1 ヶ月」の月末
+        $this->assertSame('2025-12-01', $gantt['from'], '軸の始まりが変わっている');
+        $this->assertSame('2026-09-30', $gantt['to'], '進行中の棒が今日まで伸びるのに軸が届いていない');
+
+        // ⚠ **棒が clamp() で切られていないこと。** ここが本体。
+        //   width が 100 - left ちょうどだと「軸の右端で切られた」状態になる。
+        $row = $gantt['rows'][0];
+        $this->assertLessThan(
+            100.0 - $row['leftPct'] - 0.01,
+            $row['widthPct'],
+            '棒が軸の右端で clamp() されている（軸が今日まで届いていない）'
+        );
+
+        // 今日が軸の中にあるので今日線も描かれる
+        $this->assertNotNull($gantt['todayPct'], '今日が軸の中にあるのに今日線が描かれない');
+    }
 }
