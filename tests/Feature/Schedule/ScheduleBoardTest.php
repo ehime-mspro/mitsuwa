@@ -536,6 +536,72 @@ class ScheduleBoardTest extends ScheduleTestCase
         }
     }
 
+    /**
+     * 開いた直後に今日が見える位置までスクロールしておく（設計書 §2 D9 / §7.1）。
+     *
+     * ⚠ **定義側と呼び出し側を対で見る。** 片方だけ消えても HTML としては妥当なので、
+     *   呼び出しだけ見ると「関数が無いのに緑」になる（Bug #28）。
+     *
+     * ⚠ **`@push('scripts')` が実際に出ていることまで見る。** `@stack` が無い時代は
+     *   push した中身が黙って捨てられていた（Bug #28）。
+     */
+    public function test_the_board_scrolls_to_today_on_open(): void
+    {
+        $proc = $this->makeParent('procurement');
+        $proc->scheduleSteps()->create(['name' => '測量', 'category' => 'survey', 'planned_start' => '2026-05-11', 'planned_end' => '2026-09-30', 'sort_order' => 1]);
+
+        $response = $this->actingAs($this->manager())->get('/realestate/schedules?status=all')->assertOk();
+        $html     = $response->getContent();
+        $axis     = $response->viewData('board')['axis'];
+
+        $this->assertNotNull($axis['todayPct'], 'このフィクスチャでは今日が軸の中にあるはず');
+
+        // 定義側
+        $this->assertStringContainsString('function scheduleBoardScrollToToday(id, pct, trackPx)', $html);
+        // 呼び出し側(引数は実際の値で出ていること)
+        $this->assertStringContainsString(
+            "scheduleBoardScrollToToday('schedule-board-scroller', {$axis['todayPct']}, {$axis['trackWidthPx']});",
+            $html
+        );
+        // スクロール先の要素
+        $this->assertStringContainsString('id="schedule-board-scroller"', $html);
+
+        // ⚠ **スクリプトはスクローラーの HTML より後ろに出ていなければならない**（Bug #28）。
+        //   @push('scripts') を @push('styles') に押し間違えると <head> 側に出るため、
+        //   body の描画前に走って document.getElementById() が null を返し、
+        //   if (! el) return; のガードで**無音でスクロールが起きない**（コンソールエラーも出ない）。
+        //   ⚠ **文字列の存在を見るだけでは検出できない** —— 内容は消えず場所が変わるだけなので、
+        //     実測（2026-09-03）では styles へ押し間違える変異が 2 本とも緑のまま通った。
+        $scrollerPos = strpos($html, 'id="schedule-board-scroller"');
+        $scriptPos   = strpos($html, 'function scheduleBoardScrollToToday');
+        $this->assertNotFalse($scrollerPos, 'スクローラーの要素が無い');
+        $this->assertNotFalse($scriptPos, 'スクロールの関数定義が無い');
+        $this->assertGreaterThan(
+            $scrollerPos,
+            $scriptPos,
+            'スクロールのスクリプトがスクローラーより前に出ている（@push の宛先が scripts でない可能性）'
+        );
+    }
+
+    /**
+     * ⚠ 今日が軸の外なら**スクロールのスクリプトごと出さない**（設計書 §7.1）。
+     *   `pct` が null のまま出すと `scrollLeft = NaN` になる。
+     */
+    public function test_no_scroll_script_when_today_is_outside_the_axis(): void
+    {
+        $proc = $this->makeParent('procurement');
+        $proc->scheduleSteps()->create([
+            'name' => '決済', 'category' => 'other',
+            'planned_start' => '2026-01-05', 'planned_end' => '2026-01-20',
+            'actual_start'  => '2026-01-05', 'actual_end'   => '2026-01-20',
+            'sort_order' => 1,
+        ]);
+
+        $html = $this->actingAs($this->manager())->get('/realestate/schedules?status=all')->assertOk()->getContent();
+
+        $this->assertStringNotContainsString('scheduleBoardScrollToToday', $html);
+    }
+
     // ============================================================
     // 段の振り分け（設計書 §5.3）
     // ============================================================

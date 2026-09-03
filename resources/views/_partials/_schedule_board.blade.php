@@ -119,4 +119,28 @@
             </div>
         </div>
     </div>
+
+    @if($axis['todayPct'] !== null)
+        {{-- 開いた直後に今日が見える位置まで横スクロールしておく（設計書 §7.1）。
+
+             ⚠ **アロー関数を属性にも <script> にも書かない。** Blade の属性内では
+                `=>` の `>` が HTML 終了タグとして解釈される（Top trap #4）。
+                x-init ではなく名前付き関数にしているのはこのため。
+
+             ⚠ **位置(%) は PHP が出す。** ここが計算するのはスクロール量だけで、
+                日付 → % の計算は持たない（Bug #41 の二重実装を避ける）。
+
+             ⚠ ラベル欄の幅は画面幅で変わるので CSS 変数から実行時に読む。 --}}
+        @push('scripts')
+            <script>
+                function scheduleBoardScrollToToday(id, pct, trackPx) {
+                    var el = document.getElementById(id);
+                    if (! el) { return; }
+                    var labelW = parseFloat(getComputedStyle(el).getPropertyValue('--gantt-label-w')) || 0;
+                    el.scrollLeft = Math.max(0, trackPx * pct / 100 - (el.clientWidth - labelW) / 2);
+                }
+                scheduleBoardScrollToToday('schedule-board-scroller', {{ $axis['todayPct'] }}, {{ $axis['trackWidthPx'] }});
+            </script>
+        @endpush
+    @endif
 @endif
