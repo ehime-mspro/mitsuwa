@@ -1,8 +1,8 @@
 {{--
     ガントの CSS（設計書 §4.2）。**ここがこの CSS の唯一の定義**で、
-    現在はボード（_schedule_board）だけが @include する。
-    詳細カード（_schedule_gantt）は **Task 8 で**同じ partial を @include する予定
-    （本コミットの時点ではまだ min-width: 940px / flex: 0 0 262px の旧実装のまま）。
+    ボード（_schedule_board）と詳細カード（_schedule_gantt）の両方が @include する
+    （2026-09-03 の Task 8 でカード側も min-width: 940px / flex: 0 0 262px の旧実装から
+    calc(var(--gantt-label-w) + …px) / flex: 0 0 var(--gantt-label-w) へ移行済み）。
 
     ⚠ **`resources/css/app.css` には置かない。** ビルド済み CSS は .gitignore 済みで
        worktree に存在しないため、テストが実物を見られなくなる

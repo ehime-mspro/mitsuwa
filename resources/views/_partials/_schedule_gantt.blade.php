@@ -9,6 +9,7 @@
        min-content 幅がカードを押し広げるため（Bug #29）。track 側の min-width: 0 が要。
 --}}
 <div id="schedule-gantt">
+@include('_partials._schedule_gantt_style')
 @if($schedule['gantt'] === null)
     <div style="padding: 28px 16px; text-align: center; color: #9CA3AF; font-size: 13px;">
         工程が登録されていません。「＋ 工程を追加」から登録してください。
@@ -30,12 +31,12 @@
          前景を `#6B7280` にすると 4.39:1、`#4B5563` にすると 6.87:1 で AA を満たす
          （周辺ビル調査で「点線は 2.43:1 で 3:1 に届かないのは承知のうえ」と明記した前例に倣う）。 --}}
     <div style="border: 1px solid #E5E7EB; border-radius: 8px; overflow: hidden; background: white;">
-        <div style="overflow-x: auto;">
-            <div style="min-width: 940px;">
+        <div class="gantt-scroll gantt-scroll--card" style="overflow-x: auto;">
+            <div style="width: calc(var(--gantt-label-w) + {{ $g['trackWidthPx'] }}px);">
 
                 {{-- 月ヘッダ --}}
                 <div style="display: flex; height: 42px; background: #F9FAFB; border-bottom: 1px solid #E5E7EB;">
-                    <div style="flex: 0 0 262px; min-width: 0; overflow: hidden; border-right: 1px solid #E5E7EB; display: flex; align-items: center; padding: 0 12px; font-size: 11.5px; font-weight: 700; color: #6B7280;">工程</div>
+                    <div class="gantt-label gantt-label--head" style="flex: 0 0 var(--gantt-label-w); min-width: 0; overflow: hidden; border-right: 1px solid #E5E7EB; display: flex; align-items: center; padding: 0 12px; font-size: 11.5px; font-weight: 700; color: #6B7280;">工程</div>
                     <div style="flex: 1 1 auto; min-width: 0; position: relative; display: flex;">
                         @foreach($g['months'] as $m)
                             <div style="width: {{ $m['widthPct'] }}%; border-right: 1px solid #E5E7EB; {{ $m['quarterStart'] ? 'border-left: 1px solid #D1D5DB;' : '' }} font-size: 11px; color: #6B7280; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.35; box-sizing: border-box;">
@@ -52,7 +53,7 @@
                 {{-- 自動マイルストーン（既存の日付列から描く ◆。読み取り専用） --}}
                 @if($g['milestones'] !== [])
                     <div class="schedule-gantt-track" style="display: flex; height: 34px; border-bottom: 1px solid #F3F4F6;">
-                        <div style="flex: 0 0 262px; min-width: 0; overflow: hidden; border-right: 1px solid #E5E7EB; display: flex; align-items: center; padding: 0 12px; font-size: 12.5px; color: #6B7280;">節目</div>
+                        <div class="gantt-label" style="flex: 0 0 var(--gantt-label-w); min-width: 0; overflow: hidden; border-right: 1px solid #E5E7EB; display: flex; align-items: center; padding: 0 12px; font-size: 12.5px; color: #6B7280;">節目</div>
                         <div style="flex: 1 1 auto; min-width: 0; position: relative;">
                             @if($g['todayPct'] !== null)
                                 <div style="position: absolute; top: 0; bottom: 0; left: {{ $g['todayPct'] }}%; width: 0; border-left: 2px dashed #EF4444; z-index: 3;"></div>
@@ -71,11 +72,20 @@
                 @foreach($g['rows'] as $row)
                     <div class="schedule-gantt-track" style="display: flex; height: 34px; border-bottom: 1px solid #F3F4F6; {{ $loop->odd ? 'background: #FCFCFD;' : '' }}">
                         {{-- ⚠ **min-width: 0; overflow: hidden; を落とさないこと。**
-                             flex の min-width は既定が auto なので、チップを足した行が 262px を
-                             超えて広がり、**その行の棒だけ最大 31.1px（軸 275 日で約 12.6 日）
-                             右へずれる**（モックで実測。月ヘッダは 262px のままなので月境界とも
-                             合わなくなる）。Bug #29 と同型。 --}}
-                        <div style="flex: 0 0 262px; min-width: 0; overflow: hidden; border-right: 1px solid #E5E7EB; display: flex; align-items: center; gap: 6px; padding: 0 12px; font-size: 12.5px; color: #111827;">
+                             flex の min-width は既定が auto なので、チップを足した行が
+                             ラベル欄の幅（`--gantt-label-w`。2026-09-03 に 262px 固定から
+                             CSS 変数へ移行。既定値はカードで 262px）を超えて広がり、
+                             **その行の棒だけ最大 31.1px（軸 275 日で約 12.6 日）右へずれる**
+                             （モックで実測。月ヘッダも同じ `--gantt-label-w` を参照するので、
+                             揃わなくなると月境界ともずれる）。Bug #29 と同型。 --}}
+                        {{-- ⚠ **縞模様を末尾にインラインで足す。** `.gantt-label` は共有 CSS で
+                             `background: #fff` を持つので、行の `$loop->odd` の縞模様は
+                             ラベル欄には自動で届かない。`background: inherit` にしないこと——
+                             行の div の背景は既定 transparent なので、ラベル欄が透けて
+                             スクロール時に棒が透けて見える（sticky の意味が消える）。
+                             インライン style はクラスより強いので、この宣言が
+                             `.gantt-label` の `background: #fff` に勝つ。 --}}
+                        <div class="gantt-label" style="flex: 0 0 var(--gantt-label-w); min-width: 0; overflow: hidden; border-right: 1px solid #E5E7EB; display: flex; align-items: center; gap: 6px; padding: 0 12px; font-size: 12.5px; color: #111827;{{ $loop->odd ? ' background: #FCFCFD;' : '' }}">
                             <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;">{{ $row['name'] }}</span>
                             @if($g['tracksActuals'])
                                 @if($row['delayDays'] > 0)

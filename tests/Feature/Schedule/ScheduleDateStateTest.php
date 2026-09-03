@@ -239,6 +239,10 @@ class ScheduleDateStateTest extends ScheduleTestCase
      * ⚠ **ラベル欄の min-width: 0 を落とさない。** flex の min-width は既定が auto なので、
      *   チップで押し広げられた行は 262px を超え、**その行の棒だけ最大 31.1px（約 12.6 日）
      *   ずれる**（モックで実測。Bug #29）。HTML では位置ズレを測れないので属性で固定する。
+     *
+     * ⚠ **262px は 2026-09-03 に CSS 変数 `--gantt-label-w` へ移した**（設計書 §4.2）。
+     *   px の値は `_schedule_gantt_style.blade.php` が持つ。ここで見るのは
+     *   「ラベル欄が中身に押し広げられないこと」（min-width: 0 / overflow: hidden）。
      */
     public function test_the_label_column_cannot_be_pushed_wider_than_its_track(): void
     {
@@ -248,7 +252,7 @@ class ScheduleDateStateTest extends ScheduleTestCase
             ->get(route($owner->scheduleRoutePrefix() . '.show', $owner))
             ->assertOk()->getContent();
 
-        preg_match_all('/flex: 0 0 262px;([^"]*)"/', $html, $m);
+        preg_match_all('/flex: 0 0 var\(--gantt-label-w\);([^"]*)"/', $html, $m);
 
         // ⚠ **件数の下限も固定する。** `assertNotEmpty` だけだと「行のラベル欄だけ 262px→260px に
         //   変える」変異が素通りする（月ヘッダの `flex: 0 0 262px;` だけ拾えれば非空を満たすため）。
