@@ -7,6 +7,7 @@ use Carbon\CarbonInterface;
 
 /**
  * ガントの時間軸（設計書 §5.1）。区間 [from, to] を保持し、日付を位置(%) と幅(%) に変換する。
+ * 併せて軸のトラック幅(px) も出す（`MONTH_WIDTH_PX` / `trackWidthPx()`。設計書 §3）。
  *
  * ⚠ **JS ライブラリを足さない方針の中核。** 位置の計算はここだけが持ち、Blade は
  *   結果を inline style に置くだけにする。JS 側で同じ計算を持つと無音で漂流する（Bug #41）。
@@ -21,6 +22,14 @@ use Carbon\CarbonInterface;
  */
 class GanttScale
 {
+    /**
+     * 1 ヶ月ぶんの幅(px)。設計書 §3.2。
+     *
+     * モックで承認した密度(1 ヶ月 145px / 1 日 4.79px)を丸めた値。**画面幅から算出しない**
+     * ——固定にすることで 1 日の工程の太さが画面幅に依存しなくなる(375px でも同じ約 4.9px)。
+     */
+    public const MONTH_WIDTH_PX = 150;
+
     private CarbonImmutable $from;
 
     private CarbonImmutable $to;
@@ -49,6 +58,33 @@ class GanttScale
     public function totalDays(): int
     {
         return $this->totalDays;
+    }
+
+    /**
+     * 軸が掛かっている月の数(月初・月末に丸めない範囲でも、掛かっている月を全部数える)。
+     *
+     * ⚠ **`diffInMonths()` を使わない。** Carbon 3 は float を返し、月末日をまたぐと
+     *   端数が出る(`GanttScale::days()` の注記と同じ理由)。年と月の整数演算で出す。
+     *
+     * ⚠ 既存の `totalDays()` と揃えて必ず 1 以上を返す。逆転区間でも負の px 幅を
+     *   Blade へ渡さないため。
+     */
+    public function monthCount(): int
+    {
+        return max(1, ($this->to->year - $this->from->year) * 12
+            + ($this->to->month - $this->from->month) + 1);
+    }
+
+    /**
+     * ガントのトラック(案件名の列を除いた軸の部分)の幅(px)。
+     *
+     * ⚠ **「1 ヶ月 150px」はこの定数 1 箇所にしか無い。** Blade にも別のサービスにも
+     *   数字を書かない(Bug #41)。ラベル列の幅(320 / 262 / 140px)は CSS 変数側が持ち、
+     *   PHP は一切知らない(設計書 §4.2)。
+     */
+    public function trackWidthPx(): int
+    {
+        return $this->monthCount() * self::MONTH_WIDTH_PX;
     }
 
     /** 区間内かどうか（今日線を描くかの判定に使う） */

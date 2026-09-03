@@ -128,4 +128,71 @@ class GanttScaleTest extends TestCase
         $this->assertSame(100.0, GanttScale::clamp(140.0, 0.0, 100.0));
         $this->assertSame(42.0, GanttScale::clamp(42.0, 0.0, 100.0));
     }
+
+    // ============================================================
+    // トラックの幅（1 ヶ月 = 150px 固定。設計書 §3）
+    // ============================================================
+
+    public function test_one_month_range_counts_one_month(): void
+    {
+        $scale = new GanttScale($this->d('2026-09-01'), $this->d('2026-09-30'));
+
+        $this->assertSame(1, $scale->monthCount());
+        $this->assertSame(150, $scale->trackWidthPx());
+    }
+
+    /** 本番の実データ（2026-02-19 〜 2026-09-27）を月初・月末に丸めた範囲 */
+    public function test_the_production_range_is_eight_months(): void
+    {
+        $scale = new GanttScale($this->d('2026-02-01'), $this->d('2026-09-30'));
+
+        $this->assertSame(8, $scale->monthCount());
+        $this->assertSame(1200, $scale->trackWidthPx());
+    }
+
+    /**
+     * ⚠ **年をまたぐ範囲を必ず 1 本置く。** 月番号の引き算だけで書くと
+     *   2026-11 〜 2027-02 が「11 → 2」で負になり、月数が 0 以下になる。
+     */
+    public function test_a_range_that_crosses_a_year_counts_correctly(): void
+    {
+        $scale = new GanttScale($this->d('2026-11-01'), $this->d('2027-02-28'));
+
+        $this->assertSame(4, $scale->monthCount());
+        $this->assertSame(600, $scale->trackWidthPx());
+    }
+
+    /**
+     * ⚠ **月の途中で始まり途中で終わる範囲も、掛かっている月を全部数える。**
+     *   ヘッダは月セルを掛かっている月ぶん出すので、数え方がずれるとトラック幅と
+     *   月セルの合計が食い違い、最後の月だけ幅が違って見える。
+     */
+    public function test_a_partial_month_still_counts_as_a_whole_month(): void
+    {
+        $scale = new GanttScale($this->d('2026-02-19'), $this->d('2026-09-27'));
+
+        $this->assertSame(8, $scale->monthCount());
+    }
+
+    /** 同じ日で始まり終わる範囲でも 1 ヶ月ぶんの幅を持つ（0 除算・幅 0 を防ぐ） */
+    public function test_a_single_day_range_is_still_one_month_wide(): void
+    {
+        $day = $this->d('2026-09-03');
+
+        $this->assertSame(1, (new GanttScale($day, $day))->monthCount());
+        $this->assertSame(150, (new GanttScale($day, $day))->trackWidthPx());
+    }
+
+    /**
+     * ⚠ **逆転区間（from > to）でも負の幅を返さない。** 既存の `totalDays()` が
+     *   `max(1, ...)` で守っているのと同じ扱いに揃える。負の px 幅が Blade へ渡ると
+     *   トラックが潰れる。
+     */
+    public function test_a_reversed_range_never_yields_a_negative_width(): void
+    {
+        $scale = new GanttScale($this->d('2027-02-01'), $this->d('2026-11-01'));
+
+        $this->assertSame(1, $scale->monthCount());
+        $this->assertSame(150, $scale->trackWidthPx());
+    }
 }
