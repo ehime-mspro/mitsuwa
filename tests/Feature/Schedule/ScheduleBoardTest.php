@@ -224,17 +224,148 @@ class ScheduleBoardTest extends ScheduleTestCase
     }
 
     // ============================================================
-    // 軸（決定 F。ズームは 2026-09-03 に削除した。設計書 §2 D7）
+    // 軸はデータの範囲（案B。設計書 §2 D3 / §6）
     // ============================================================
 
-    public function test_the_default_axis_is_six_months_back_and_twelve_forward(): void
+    /**
+     * ⚠ **今日は 2026-08-31 に固定してある**（setUp）。旧実装なら軸は
+     *   2026-02-01 〜 2027-08-31 の 19 ヶ月になる。案B ではデータの範囲だけ。
+     */
+    public function test_the_axis_spans_only_the_range_the_bars_occupy(): void
     {
-        $this->caseWithSteps('PRC-RUN', [['planned_start' => '2026-08-01', 'planned_end' => '2026-09-30']]);
+        $proc = $this->makeParent('procurement');
+        $proc->scheduleSteps()->create(['name' => '測量', 'category' => 'survey', 'planned_start' => '2026-05-11', 'planned_end' => '2026-06-05', 'sort_order' => 1]);
+        $proc->scheduleSteps()->create(['name' => '造成', 'category' => 'work', 'planned_start' => '2026-07-01', 'planned_end' => '2026-07-20', 'sort_order' => 2]);
 
-        $board = $this->actingAs($this->manager())->get('/realestate/schedules?status=all')->viewData('board');
+        $axis = $this->actingAs($this->manager())->get('/realestate/schedules?status=all')->assertOk()->viewData('board')['axis'];
 
-        $this->assertSame('2026-02-01', $board['axis']['from'], '既定の軸の始まりが設計書 §5.5 と違う');
-        $this->assertSame('2027-08-31', $board['axis']['to'], '既定の軸の終わりが設計書 §5.5 と違う');
+        $this->assertSame('2026-05-01', $axis['from'], '軸の始まりが最小の開始月でない');
+        $this->assertSame('2026-07-31', $axis['to'], '軸の終わりが最大の終了月でない');
+        $this->assertSame(450, $axis['trackWidthPx'], '3 ヶ月 × 150px でない');
+    }
+
+    /**
+     * ⚠ **絞り込みを変えると軸が変わる**（案B のトレードオフ。設計書 §2 D3）。
+     *   意図した挙動なのでテストで固定する。「軸が動くのは不具合」と読んで
+     *   全件から軸を出す変異に戻すのを止める。
+     */
+    public function test_the_axis_follows_the_filter(): void
+    {
+        $lateCase = $this->makeParent('procurement');
+        $lateCase->scheduleSteps()->create(['name' => '測量', 'category' => 'survey', 'planned_start' => '2026-05-11', 'planned_end' => '2026-06-05', 'sort_order' => 1]);
+
+        $doneCase = $this->makeParent('procurement', ['procurement_code' => 'PRC-002', 'property_name' => '完了案件']);
+        $doneCase->scheduleSteps()->create([
+            'name' => '決済', 'category' => 'other',
+            'planned_start' => '2026-01-05', 'planned_end' => '2026-01-20',
+            'actual_start'  => '2026-01-05', 'actual_end'   => '2026-01-20',
+            'sort_order' => 1,
+        ]);
+
+        $all = $this->actingAs($this->manager())->get('/realestate/schedules?status=all')->viewData('board')['axis'];
+        $this->assertSame('2026-01-01', $all['from'], '全件では完了案件まで含めた範囲になるはず');
+
+        // ⚠ **`status=running` にしない。** 測量は予定終了 6/5 が今日（8/31）を過ぎていて
+        //   実績が無いので判定は `late`、決済は実績が揃っているので `done` ＝ **running は 0 件**になり、
+        //   軸が「今日の 1 ヶ月」フォールバックに落ちて別の理由で緑になる。
+        $lateAxis = $this->actingAs($this->manager())->get('/realestate/schedules?status=late')->viewData('board')['axis'];
+        $this->assertSame('2026-05-01', $lateAxis['from'], '絞り込み後の案件だけで軸を出していない');
+        $this->assertSame('2026-06-30', $lateAxis['to'], '完了案件の範囲が混ざっている');
+    }
+
+    /**
+     * ⚠ **◆（自動マイルストーン）の日付も軸に入れる**（設計書 §6.1）。
+     *   入れないと clamp() で 0% / 100% に貼り付き、**軸の端に嘘の位置で出る**。
+     */
+    public function test_the_axis_includes_the_auto_milestones(): void
+    {
+        $prop = $this->makeParent('property', ['construction_start_date' => '2026-02-10']);
+        $prop->scheduleSteps()->create(['name' => '基礎工事', 'category' => 'work', 'planned_start' => '2026-05-11', 'planned_end' => '2026-06-05', 'sort_order' => 1]);
+
+        $board = $this->actingAs($this->manager())->get('/housing/schedules?status=all')->assertOk()->viewData('board');
+
+        $this->assertSame('2026-02-01', $board['axis']['from'], '着工予定日が軸に入っていない');
+
+        // ⚠ 端に貼り付いていないこと（0% ちょうどでも 100% ちょうどでもない）
+        $left = $board['rows'][0]['milestones'][0]['leftPct'];
+        $this->assertGreaterThan(0.0, $left);
+        $this->assertLessThan(100.0, $left);
+    }
+
+    /**
+     * `drawEnd($today)` を使う（生の `planned_end` ではない）（設計書 §6.1）。
+     *   実績開始があり実績終了が無い工程は「進行中」で棒が今日まで伸びるので、軸もそこで
+     *   打ち切る。生の `planned_end`（まだ先の予定終了日）を使うと、軸が不要に伸びて
+     *   案B が解消したはずの「空白だらけ」（設計書 §1.2）に逆戻りする。
+     */
+    public function test_the_axis_uses_draw_end_not_the_raw_planned_end_for_running_steps(): void
+    {
+        $proc = $this->makeParent('procurement');
+        $proc->scheduleSteps()->create([
+            'name' => '造成', 'category' => 'work',
+            'planned_start' => '2026-01-05', 'planned_end' => '2027-06-30',
+            'actual_start'  => '2026-01-05', 'actual_end'   => null,
+            'sort_order' => 1,
+        ]);
+
+        $axis = $this->actingAs($this->manager())->get('/realestate/schedules?status=all')->assertOk()->viewData('board')['axis'];
+
+        $this->assertSame('2026-01-01', $axis['from'], '軸の始まりが実績開始の月でない');
+        $this->assertSame('2026-08-31', $axis['to'], '軸の終わりが今日（drawEnd）でなく、まだ先の planned_end になっている');
+        $this->assertSame(1200, $axis['trackWidthPx'], '8 ヶ月 × 150px でない（planned_end を使うと 18 ヶ月分に広がる）');
+    }
+
+    /**
+     * 今日が軸の外なら今日線を描かない（設計書 §2 D8 / §6）。**軸は伸ばさない。**
+     *
+     * ⚠ **viewData と HTML の両方を見る。** `todayPct` が null でも Blade が
+     *   別経路で赤い線を描いていたら意味がない。
+     */
+    public function test_a_past_only_board_draws_no_today_marker_and_does_not_stretch_the_axis(): void
+    {
+        $proc = $this->makeParent('procurement');
+        $proc->scheduleSteps()->create([
+            'name' => '決済', 'category' => 'other',
+            'planned_start' => '2026-01-05', 'planned_end' => '2026-01-20',
+            'actual_start'  => '2026-01-05', 'actual_end'   => '2026-01-20',
+            'sort_order' => 1,
+        ]);
+
+        $response = $this->actingAs($this->manager())->get('/realestate/schedules?status=all')->assertOk();
+        $board    = $response->viewData('board');
+
+        $this->assertSame('2026-01-01', $board['axis']['from']);
+        $this->assertSame('2026-01-31', $board['axis']['to'], '今日まで軸が伸びている');
+        $this->assertNull($board['axis']['todayPct']);
+
+        $html = $response->getContent();
+        $this->assertStringNotContainsString('今日 8/31', $html, '今日バッジが出ている');
+        $this->assertStringNotContainsString('dashed #EF4444', $html, '今日線が出ている');
+    }
+
+    /**
+     * 工程はあるが日付が 1 つも無い案件だけが残ったとき（設計書 §6.2）。
+     *
+     * ⚠ **0 除算で落ちない・案件が画面から消えない**の 2 つを見る。
+     *   軸は今日の 1 ヶ月にフォールバックする。
+     */
+    public function test_a_board_of_undated_steps_falls_back_to_the_current_month(): void
+    {
+        $prop = $this->makeParent('property');
+        $prop->scheduleSteps()->create(['name' => '日付未定', 'category' => 'work', 'sort_order' => 1]);
+
+        $board = $this->actingAs($this->manager())->get('/housing/schedules?status=all')->assertOk()->viewData('board');
+
+        $this->assertSame('2026-08-01', $board['axis']['from']);
+        $this->assertSame('2026-08-31', $board['axis']['to']);
+        $this->assertSame(150, $board['axis']['trackWidthPx']);
+        $this->assertSame(['HS-001'], array_column($board['rows'], 'code'), '案件が画面から消えている');
+        // ⚠ **この行はフォールバックの「値」を守っていない。** 日付未設定の工程は
+        //   isDrawable() が false で、position() の $drawable も同じ判定を使うので、
+        //   軸が何であっても bars は構造的に必ず [] になる（実測）。
+        //   フォールバックの値を守っているのは上の from / to / trackWidthPx の 3 行。
+        //   ここで見ているのは「案件の行が消えず 0 除算もしない」ことの副次確認。
+        $this->assertSame([], $board['rows'][0]['bars'], '棒が描かれている');
     }
 
     /**
@@ -244,30 +375,35 @@ class ScheduleBoardTest extends ScheduleTestCase
      *   `strong` を常に `false` に、`widthPct` を正規化前の日数に、それぞれ潰しても
      *   フルスイートが緑のまま通ることを実測済み。
      *
-     * ⚠ **件数（19）も固定する**（Bug #45）。件数を見ないと、ループ境界が壊れて
+     * ⚠ **件数も固定する**（Bug #45）。件数を見ないと、ループ境界が壊れて
      *   見出しが 1 つも無くなっても先頭・末尾の値だけ合っていれば緑になる。
      *
-     * ⚠ 軸は Task 4 で「データの範囲」へ変わるので、そのとき件数と末尾の月は書き換わる。
+     * ⚠ **軸は案B（データの範囲）なのでフィクスチャが軸を決める。**
+     *   6/15〜11/10 → 軸 2026-06-01 〜 2026-11-30 ＝ 6 ヶ月（6/7/8/9/10/11 月）。
+     *   四半期の頭（1・4・7・10 月）が **7月 と 10月 の 2 つ**入るので、
+     *   `strong` の true / false を両方見られる。8/1〜9/30 のような 2 ヶ月の範囲だと
+     *   四半期の頭が 1 つも入らず、`strong = true` のカバレッジが消える。
      */
     public function test_the_axis_headers_are_month_labels_with_quarter_emphasis(): void
     {
-        $this->caseWithSteps('PRC-RUN', [['planned_start' => '2026-08-01', 'planned_end' => '2026-09-30']]);
+        $this->caseWithSteps('PRC-RUN', [['planned_start' => '2026-06-15', 'planned_end' => '2026-11-10']]);
 
         $headers = $this->actingAs($this->manager())
             ->get('/realestate/schedules?status=all')
             ->viewData('board')['axis']['headers'];
 
-        $this->assertCount(19, $headers, '既定の軸（19 ヶ月分）から見出しの数が変わっている');
+        $this->assertCount(6, $headers, '軸の月数（データの範囲 6/1〜11/30）が変わっている');
 
-        $this->assertSame('2月', $headers[0]['label'], '先頭の見出しが「2月」でない');
-        $this->assertFalse($headers[0]['strong'], '四半期の頭でない月が強調されている');
-
-        // 2026-04 は四半期の頭（1, 4, 7, 10 月）
-        $this->assertSame('4月', $headers[2]['label']);
-        $this->assertTrue($headers[2]['strong'], '四半期の頭（4月）が強調されていない');
-
-        $this->assertSame('8月', $headers[18]['label'], '末尾の見出しが「8月」でない');
-        $this->assertFalse($headers[18]['strong']);
+        $this->assertSame(
+            ['6月', '7月', '8月', '9月', '10月', '11月'],
+            array_column($headers, 'label'),
+            '月の見出しが順に出ていない'
+        );
+        $this->assertSame(
+            [false, true, false, false, true, false],
+            array_column($headers, 'strong'),
+            '四半期の頭（7月 / 10月）だけが強調されるはず'
+        );
 
         // ⚠ widthPct は月の日数に比例するので、全セルの合計が軸の全長（100%）と一致するはず。
         //   ここが崩れると、$next / $end の計算が壊れて棒とヘッダの位置がズレる。
@@ -296,6 +432,40 @@ class ScheduleBoardTest extends ScheduleTestCase
     // ============================================================
     // サービスの契約（設計書 §4.3）
     // ============================================================
+
+    /**
+     * 行のキーが 12 種ちょうどであることを固定する（`meta()` の 8 ＋ `position()` の 4）。
+     *
+     * ⚠ **これは「キーの追加・削除・改名」を止めるテストであって、衝突は検出しない。**
+     *   `position()` は `$meta + [...]`（**左辺優先**。`array_merge()` と左右が逆）で合成するため、
+     *   将来 `meta()` に `position()` と同名のキーが増えると、`position()` 側の値が
+     *   例外も Warning も無く黙って捨てられる。だが**キーの集合は変わらない**ので
+     *   `array_keys()` を見るこのテストは緑のまま通る（2026-09-03 に `meta()` へ
+     *   `'bars' => []` を足す変異を当てて実測: このテストは落ちない）。
+     *
+     * ⚠ **衝突を実際に捕まえているのは、`bars` の中身を見ている次の 5 本**（同じ実測で確認）:
+     *     ScheduleBoardTest::test_overlapping_steps_are_spread_across_lanes
+     *     ScheduleBoardTest::test_the_housing_board_bars_are_never_dimmed
+     *     ScheduleBoardTest::test_the_housing_board_puts_a_ring_only_on_the_running_bar
+     *     ScheduleBoardTest::test_the_realestate_board_still_dims_future_bars
+     *     ScheduleRealEstateUntouchedTest::test_the_realestate_board_keeps_its_delay_badge_and_four_way_filter
+     *   ⚠ **この 5 本を減らすときは、衝突の守り手が消えることを思い出すこと。**
+     */
+    public function test_a_row_has_exactly_the_twelve_keys_meta_and_position_produce(): void
+    {
+        $this->caseWithSteps('PRC-RUN', [['planned_start' => '2026-08-01', 'planned_end' => '2026-09-30']]);
+
+        $row = collect(
+            $this->actingAs($this->manager())->get('/realestate/schedules?status=all')->viewData('board')['rows']
+        )->firstWhere('code', 'PRC-RUN');
+
+        $this->assertEqualsCanonicalizing(
+            ['kind', 'kindLabel', 'code', 'name', 'url', 'status', 'delayDays', 'steps',
+             'laneCount', 'rowHeight', 'bars', 'milestones'],
+            array_keys($row),
+            'meta() と position() のキーが 12 種で揃っていない（衝突の可能性）'
+        );
+    }
 
     // ============================================================
     // サイドバーの導線

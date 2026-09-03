@@ -17,6 +17,9 @@ use Illuminate\Http\Request;
  *   ボードを足した人が引数を省略した瞬間に**全部署の案件が漏れる**。
  *
  * ⚠ **ページングしない**（設計書 §4.2）。1 部署の案件数が 200 を超えたら見直す。
+ *
+ * ⚠ **`build()` は 3 パス**（① 絞り込み ② 軸を決める ③ 位置(%) を計算）。軸が
+ *   「絞り込み後の行」に依存するため（案B。2026-09-03 の設計書 §8.1）。
  */
 class ScheduleBoardService
 {
@@ -55,6 +58,10 @@ class ScheduleBoardService
      * @param  array<string, array{0: class-string, 1: string}>  $kinds  絞り込みキー => [親クラス, 表示名]
      *
      * ⚠ 第 1 引数に既定値を付けないこと（設計書 §4.3。ReflectionMethod でテストが固定している）。
+     *
+     * ⚠ **3 パスなのは軸が「絞り込み後の行」に依存するから**（案B。2026-09-03 の設計書 §8.1）。
+     *   ① 絞り込み ② 軸を決める ③ 位置(%) を計算する、の順。①で作る値は軸に依存しない
+     *   （ステータス・遅延日数・工程明細はどれも日付だけで決まる）。
      */
     public function build(array $kinds, Request $request, ?CarbonImmutable $today = null): array
     {
@@ -66,22 +73,11 @@ class ScheduleBoardService
         // ⚠ **ここ 1 箇所だけで出す**（M-2）。build()（view へ返す側）と filters()
         //   （入力を検証する側）の 2 箇所に同じ三項演算子を置くと、語彙が 3 つ目に
         //   増えたときどちらかを直し忘れる形になる。
-        $statuses      = $tracksActuals ? self::STATUSES : self::DATE_STATUSES;
+        $statuses = $tracksActuals ? self::STATUSES : self::DATE_STATUSES;
+        $filters  = $this->filters($kinds, $request, $statuses);
 
-        $filters = $this->filters($kinds, $request, $statuses);
-
-        // ⚠ **月初に正規化してから加減算する。** Carbon の subMonths()/addMonths() は
-        //   月末日で溢れる（実測: 2026-08-31 の 6 ヶ月前は 2026-03-03 になり、そのあと
-        //   startOfMonth() を通しても 3/1 ＝ 軸が 1 ヶ月ずれる）。
-        // ⚠ この範囲は Task 4 で「データの範囲」（案B）へ差し替える。ここでは
-        //   ズームを消しても振る舞いが変わらないことを優先して直書きしている。
-        $anchor = $today->startOfMonth();
-        $scale  = new GanttScale(
-            $anchor->subMonths(6),
-            $anchor->addMonths(12)->endOfMonth()->startOfDay()
-        );
-
-        $rows         = [];
+        // ---- パス1: 絞り込み。軸に依存しない値だけを作る ----
+        $kept         = [];
         $unregistered = 0;
 
         foreach ($kinds as $key => [$class, $label]) {
@@ -99,14 +95,24 @@ class ScheduleBoardService
                     continue;
                 }
 
-                $row = $this->row($owner, $label, $key, $steps, $scale, $today, $tracksActuals);
+                $meta = $this->meta($owner, $label, $key, $steps, $today, $tracksActuals);
 
-                if (! $this->matches($row, $owner, $steps, $filters)) {
+                if (! $this->matches($meta, $owner, $steps, $filters)) {
                     continue;
                 }
 
-                $rows[] = $row;
+                $kept[] = ['owner' => $owner, 'steps' => $steps, 'meta' => $meta];
             }
+        }
+
+        // ---- パス2: 残った案件から軸を決める ----
+        $scale = $this->scale($kept, $today);
+
+        // ---- パス3: 位置(%) を計算する ----
+        $rows = [];
+
+        foreach ($kept as $k) {
+            $rows[] = $this->position($k['meta'], $k['owner'], $k['steps'], $scale, $today, $tracksActuals);
         }
 
         return [
@@ -116,13 +122,64 @@ class ScheduleBoardService
             'kinds'             => $kinds,
             'statuses'          => $statuses,
             'axis'              => [
-                'from'        => $scale->from()->toDateString(),
-                'to'          => $scale->to()->toDateString(),
-                'headers'     => $this->headers($scale),
-                'todayPct'    => $scale->contains($today) ? $scale->left($today) : null,
-                'todayLabel'  => $today->format('n/j'),
+                'from'         => $scale->from()->toDateString(),
+                'to'           => $scale->to()->toDateString(),
+                'headers'      => $this->headers($scale),
+                'trackWidthPx' => $scale->trackWidthPx(),
+                'todayPct'     => $scale->contains($today) ? $scale->left($today) : null,
+                'todayLabel'   => $today->format('n/j'),
             ],
         ];
+    }
+
+    /**
+     * 絞り込み後の案件から軸を決める（案B。設計書 §6.1）。
+     *
+     * 集めるのは**画面に描くもの**の日付だけ ——棒の区間（`drawStart()` 〜 `drawEnd($today)`）と
+     * ◆ の日付。生の `planned_end` を使わないのは、不動産で実績開始があり実績終了が無い工程は
+     * 棒が今日まで伸びるため（`drawEnd()` が今日を返す）。
+     *
+     * ⚠ **◆ を入れ忘れないこと。** 着工予定日・完成予定日が棒の範囲の外にあると、
+     *   `clamp()` で 0% / 100% に貼り付いて**軸の端に嘘の位置で出る**。
+     *
+     * ⚠ **今日を必ず含める処理は入れない**（設計書 §2 D8）。今日が範囲外なら
+     *   今日線を描かないだけにする。伸ばすと案A で却下した「空白だらけ」に戻る。
+     *
+     * @param  list<array{owner: Model, steps: \Illuminate\Support\Collection, meta: array}>  $kept
+     */
+    private function scale(array $kept, CarbonImmutable $today): GanttScale
+    {
+        $dates = [];
+
+        foreach ($kept as $k) {
+            foreach ($k['steps'] as $step) {
+                if (! $step->isDrawable()) {
+                    continue;
+                }
+
+                $dates[] = CarbonImmutable::instance($step->drawStart())->startOfDay();
+                $dates[] = CarbonImmutable::instance($step->drawEnd($today))->startOfDay();
+            }
+
+            foreach ($k['owner']->autoMilestones() as $m) {
+                $dates[] = CarbonImmutable::instance($m['date'])->startOfDay();
+            }
+        }
+
+        // ⚠ 日付が 1 つも無いとき（行が 0 件 / 工程はあるが全部未設定）は今日の 1 ヶ月に倒す
+        //   （設計書 §6.2）。0 除算を避けつつ案件の行は残す。
+        if ($dates === []) {
+            return new GanttScale($today->startOfMonth(), $today->endOfMonth()->startOfDay());
+        }
+
+        // ⚠ `endOfMonth()` は 23:59:59.999999 を返すので `startOfDay()` で揃えている。
+        //   ただし **GanttScale のコンストラクタが from / to の両方を startOfDay() するので、
+        //   ここでの明示呼び出しは冗長**（2026-09-03 実測: 外しても 1288 本すべて緑＝等価変異）。
+        //   意図を読み取れるように残しているだけで、日数がずれる防御にはなっていない。
+        return new GanttScale(
+            min($dates)->startOfMonth(),
+            max($dates)->endOfMonth()->startOfDay()
+        );
     }
 
     /**
@@ -149,8 +206,37 @@ class ScheduleBoardService
         ];
     }
 
-    /** 1 案件ぶんの行（サマリの色帯 ＋ 展開用の工程明細） */
-    private function row(Model $owner, string $kindLabel, string $kindKey, $steps, GanttScale $scale, CarbonImmutable $today, bool $tracksActuals): array
+    /**
+     * 1 案件ぶんの、**軸に依存しない**値（パス1で作る）。
+     *
+     * ⚠ ステータス・遅延日数・工程明細はどれも日付だけで決まるので、軸より先に確定できる。
+     *   絞り込み（`matches()`）が `status` を見るため、ここで作れないと 3 パスが成立しない。
+     */
+    private function meta(Model $owner, string $kindLabel, string $kindKey, $steps, CarbonImmutable $today, bool $tracksActuals): array
+    {
+        return [
+            'kind'      => $kindKey,
+            'kindLabel' => $kindLabel,
+            'code'      => $owner->scheduleCode(),
+            'name'      => $owner->scheduleName(),
+            'url'       => $owner->scheduleUrl(),
+            'status'    => $tracksActuals
+                ? $this->status($steps, $today)
+                : $this->dateStatus($steps, $today),
+            // ⚠ 実績を持たない親では遅延を出さない（設計書 §8）
+            'delayDays' => $tracksActuals ? (int) $steps->max(fn (ScheduleStep $s) => $s->delayDays($today)) : 0,
+            'steps'     => $steps->map(fn (ScheduleStep $s) => [
+                'name'       => $s->name,
+                'color'      => $s->category->color(),
+                'periodText' => $s->periodText($today),
+                'delayDays'  => $tracksActuals ? $s->delayDays($today) : 0,
+                'progress'   => $s->progress(),
+            ])->all(),
+        ];
+    }
+
+    /** 軸が決まってから位置(%) を足す（パス3） */
+    private function position(array $meta, Model $owner, $steps, GanttScale $scale, CarbonImmutable $today, bool $tracksActuals): array
     {
         $drawable = $steps->filter(fn (ScheduleStep $s) => $s->isDrawable())->values();
 
@@ -162,6 +248,7 @@ class ScheduleBoardService
         $lanes = LanePacker::assign($spans);
 
         $bars = [];
+
         foreach ($drawable as $i => $step) {
             $left = GanttScale::clamp($scale->left($spans[$i]['from']), 0.0, 100.0);
 
@@ -184,28 +271,15 @@ class ScheduleBoardService
 
         $laneCount = LanePacker::laneCount($lanes);
 
-        return [
-            'kind'       => $kindKey,
-            'kindLabel'  => $kindLabel,
-            'code'       => $owner->scheduleCode(),
-            'name'       => $owner->scheduleName(),
-            'url'        => $owner->scheduleUrl(),
-            'status'     => $tracksActuals
-                ? $this->status($steps, $today)
-                : $this->dateStatus($steps, $today),
-            // ⚠ 実績を持たない親では遅延を出さない（設計書 §8）
-            'delayDays'  => $tracksActuals ? (int) $steps->max(fn (ScheduleStep $s) => $s->delayDays($today)) : 0,
+        // ⚠ `+` は**左辺優先**（`array_merge()` と左右の優先が逆で紛らわしい）。
+        //   `meta()` の 8 キーと下の 4 キーは現状完全に排他だが、それを保証するものは無い。
+        //   将来どちらかにキーが増えて重複すると、右辺（ここ）の新しい値が例外も Warning も
+        //   出さず黙って `$meta` 側に負けて捨てられる。
+        return $meta + [
             'laneCount'  => $laneCount,
             'rowHeight'  => LanePacker::rowHeight($laneCount),
             'bars'       => $bars,
             'milestones' => $this->milestones($owner, $scale, $today),
-            'steps'      => $steps->map(fn (ScheduleStep $s) => [
-                'name'       => $s->name,
-                'color'      => $s->category->color(),
-                'periodText' => $s->periodText($today),
-                'delayDays'  => $tracksActuals ? $s->delayDays($today) : 0,
-                'progress'   => $s->progress(),
-            ])->all(),
         ];
     }
 
@@ -303,9 +377,9 @@ class ScheduleBoardService
         return $flags[0];
     }
 
-    private function matches(array $row, Model $owner, $steps, array $filters): bool
+    private function matches(array $meta, Model $owner, $steps, array $filters): bool
     {
-        if ($filters['status'] !== self::STATUS_ALL && $row['status'] !== $filters['status']) {
+        if ($filters['status'] !== self::STATUS_ALL && $meta['status'] !== $filters['status']) {
             return false;
         }
 
