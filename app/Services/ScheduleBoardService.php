@@ -16,9 +16,6 @@ use Illuminate\Http\Request;
  * ⚠ **対象クラスに既定値を持たせない**（設計書 §4.3）。既定を持たせると、新しい部署の
  *   ボードを足した人が引数を省略した瞬間に**全部署の案件が漏れる**。
  *
- * ⚠ **KPI は絞り込み後の行から数える**（プラン 決定 H）。全件から数えると
- *   絞り込んだときに画面の行数と食い違う（Bug #46）。
- *
  * ⚠ **ページングしない**（設計書 §4.2）。1 部署の案件数が 200 を超えたら見直す。
  */
 class ScheduleBoardService
@@ -66,9 +63,6 @@ class ScheduleBoardService
 
     private const DEFAULT_ZOOM = 'month';
 
-    /** 「まもなく」の窓（日） */
-    private const SOON_DAYS = 30;
-
     /**
      * @param  array<string, array{0: class-string, 1: string}>  $kinds  絞り込みキー => [親クラス, 表示名]
      *
@@ -98,7 +92,6 @@ class ScheduleBoardService
         $scale = new GanttScale($from, $to);
 
         $rows         = [];
-        $keptSteps    = [];   // 絞り込みを通った案件の工程。KPI がこれを数える（Blade へは渡さない）
         $unregistered = 0;
 
         foreach ($kinds as $key => [$class, $label]) {
@@ -122,16 +115,12 @@ class ScheduleBoardService
                     continue;
                 }
 
-                $rows[]      = $row;
-                // ⚠ $rows と添字を揃える。KPI は「絞り込み後」から数える（決定 H）ので、
-                //   ここで一緒に積むのが唯一ずれない書き方。
-                $keptSteps[] = $steps;
+                $rows[] = $row;
             }
         }
 
         return [
             'rows'              => $rows,
-            'kpi'               => $this->kpi($rows, $keptSteps, $today, $tracksActuals),
             'unregisteredCount' => $unregistered,
             'filters'           => $filters,
             'kinds'             => $kinds,
@@ -347,91 +336,6 @@ class ScheduleBoardService
             . $steps->pluck('name')->implode(' ');
 
         return mb_stripos($haystack, $filters['q']) !== false;
-    }
-
-    /**
-     * KPI カードの並び（決定 P5）。**partial は並べるだけ**にして「住宅なら 3 枚」を書かせない。
-     *
-     * @param  list<array<string, mixed>>  $rows       絞り込み**後**の行（決定 H）
-     * @param  list<\Illuminate\Support\Collection>  $keptSteps  同じ添字の案件の工程
-     * @return list<array{label: string, value: int, color: string}>
-     *
-     * ⚠ **`$rows` と `$keptSteps` は添字が揃っている前提。** `build()` が同じループで
-     *   一緒に積んでいる。片方だけ絞り込むと KPI と画面が食い違う（設計書 §8.4）。
-     */
-    private function kpi(array $rows, array $keptSteps, CarbonImmutable $today, bool $tracksActuals): array
-    {
-        $limit = $today->addDays(self::SOON_DAYS);
-
-        $soon = [
-            ['label' => '30日以内に始まる工程', 'value' => $this->countSoon($keptSteps, 'start', $today, $limit), 'color' => '#1D4ED8'],
-            ['label' => '30日以内に終わる工程', 'value' => $this->countSoon($keptSteps, 'end', $today, $limit),   'color' => '#B45309'],
-        ];
-
-        if (! $tracksActuals) {
-            // ⚠ 3 枚とも数えるのは**工程**であって案件ではない（設計書 §8）
-            return array_merge([[
-                'label' => '進行中の工程',
-                'value' => $this->countRunningSteps($keptSteps, $today),
-                'color' => '#047857',
-            ]], $soon);
-        }
-
-        return array_merge([
-            ['label' => '進行中の案件',   'value' => count(array_filter($rows, fn ($r) => $r['status'] === self::STATUS_RUNNING)), 'color' => '#047857'],
-            ['label' => '遅れている案件', 'value' => count(array_filter($rows, fn ($r) => $r['status'] === self::STATUS_LATE)),    'color' => '#B91C1C'],
-        ], $soon);
-    }
-
-    /** @param  list<\Illuminate\Support\Collection>  $keptSteps */
-    private function countRunningSteps(array $keptSteps, CarbonImmutable $today): int
-    {
-        $count = 0;
-
-        foreach ($keptSteps as $steps) {
-            foreach ($steps as $step) {
-                if ($step->dateState($today) === ScheduleStepStatus::RUNNING) {
-                    $count++;
-                }
-            }
-        }
-
-        return $count;
-    }
-
-    /**
-     * ⚠ 数えるのは**工程**であって案件ではない（設計書 §4.2 の KPI 3 / 4）。
-     *   すでに始まった（終わった）工程は数えない。
-     *
-     * ⚠ **工程は行の配列を経由させず、Eloquent のまま直接受け取る。**
-     *   かつては行に `rawSteps` を紛れ込ませていたが、キーが欠けたときに例外ではなく
-     *   **KPI が静かに 0 になる**（Bug #40 の「静かな 0」そのもの）。
-     *   Blade へ渡す配列に Eloquent Collection を混ぜない形にも揃う。
-     *
-     * @param  list<\Illuminate\Support\Collection>  $keptSteps
-     */
-    private function countSoon(array $keptSteps, string $edge, CarbonImmutable $today, CarbonImmutable $limit): int
-    {
-        $count = 0;
-
-        foreach ($keptSteps as $steps) {
-            foreach ($steps as $step) {
-                $actual  = $edge === 'start' ? $step->actual_start : $step->actual_end;
-                $planned = $edge === 'start' ? $step->planned_start : $step->planned_end;
-
-                if ($actual !== null || $planned === null) {
-                    continue;
-                }
-
-                $d = CarbonImmutable::instance($planned)->startOfDay();
-
-                if ($d->greaterThanOrEqualTo($today) && $d->lessThanOrEqualTo($limit)) {
-                    $count++;
-                }
-            }
-        }
-
-        return $count;
     }
 
     private function milestones(Model $owner, GanttScale $scale, CarbonImmutable $today): array

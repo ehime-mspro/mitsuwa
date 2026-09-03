@@ -17,7 +17,7 @@ use Tests\Concerns\CreatesRealEstateSchema;
  * ⚠ 最初の 4 本（カード＋工程 CRUD）は ScheduleBoardService / _schedule_board.blade.php を
  *   一度も実行しない。既存の ScheduleBoardTest と重複するが、共有部品を触ったときの
  *   巻き込みをこのファイル 1 枚でも捕まえられるよう、不動産のボードを 1 本足してある
- *   （末尾の test_the_realestate_board_still_shows_four_kpis_a_delay_badge_and_its_four_way_filter）。
+ *   （末尾の test_the_realestate_board_keeps_its_delay_badge_and_four_way_filter）。
  */
 class ScheduleRealEstateUntouchedTest extends ScheduleTestCase
 {
@@ -123,8 +123,22 @@ class ScheduleRealEstateUntouchedTest extends ScheduleTestCase
     //   （このファイルの趣旨は「共有部品を触ったときの巻き込みを 1 枚で捕まえる」こと）。
     // ============================================================
 
-    /** 不動産のボードは KPI 4 枚・遅延バッジ・4 択の絞り込みを保っている（住宅の 3 種に巻き込まれない） */
-    public function test_the_realestate_board_still_shows_four_kpis_a_delay_badge_and_its_four_way_filter(): void
+    /**
+     * 不動産のボードは遅延の概念を保つ（住宅の変更が漏れていないこと）。
+     *
+     * ⚠ **KPI カードは 2026-09-03 に両ボードから削除した**（設計書 §2 D1）ので、
+     *   かつてここにあった「不動産は 4 枚 / 住宅は 3 枚」という証拠はもう使えない。
+     *
+     * ⚠ **残る証拠は次の 3 つだけ**（設計書 §9.3）。**これ以上減らすときは、
+     *   代わりの証拠をこのファイルに足すこと**:
+     *     ① 遅延バッジ（行の `+N日` と 棒の `border: 2px solid #DC2626`）
+     *     ② 4 択フィルタ（進行中 / すべて / 遅延 / 完了。住宅は 進行中 / すべて / これから / 済）
+     *     ③ 詳細カードの実績 2 列
+     *        （フラグの値は本ファイルの test_both_realestate_parents_still_draw_from_actuals_and_report_delays、
+     *          **HTML に実際に描かれること**は ScheduleDateStateTest::test_the_realestate_edit_table_keeps_the_actual_columns
+     *          が分担。⚠ 前者は ScheduleCardService を直接呼ぶだけで Blade を描かない）
+     */
+    public function test_the_realestate_board_keeps_its_delay_badge_and_four_way_filter(): void
     {
         $owner = $this->makeParent('procurement');
         $owner->scheduleSteps()->create([
@@ -135,12 +149,6 @@ class ScheduleRealEstateUntouchedTest extends ScheduleTestCase
         $response = $this->actingAs($this->manager())->get('/realestate/schedules?status=all')->assertOk();
         $board    = $response->viewData('board');
         $html     = $response->getContent();
-
-        // KPI 4 枚（住宅の 3 枚スタイルに巻き込まれていない。ラベルまで見る＝Bug #43）
-        $this->assertSame(
-            ['進行中の案件', '遅れている案件', '30日以内に始まる工程', '30日以内に終わる工程'],
-            array_column($board['kpi'], 'label')
-        );
 
         // 4 択の絞り込み（住宅の 3 択に巻き込まれていない）
         $this->assertSame(

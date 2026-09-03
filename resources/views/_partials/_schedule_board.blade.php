@@ -7,23 +7,6 @@
 @php($f = $board['filters'])
 @php($axis = $board['axis'])
 
-{{-- KPI。⚠ **枚数と中身はサービスが決める**（不動産 4 枚 / 住宅 3 枚）。
-     ここに「住宅なら」と書かない（設計書 §8）。
-     ⚠ **`grid-2col-sm` を使う**（`grid-stack-sm` ではない）。app.css の注記どおり
-        `grid-2col-sm` が「KPI カードなど 4〜6 列のもの」用で、既存の
-        `realestate/contracts/index` `dad/projects/show` も 4〜5 列の KPI にこれを当てている。
-        `grid-stack-sm` だと 375px で 4 枚が縦 1 列に伸びて既存画面と挙動が食い違う。
-     ⚠ トラックは `minmax(0, 1fr)`（素の 1fr は最小値が auto で中身に押し広げられる。Bug #29）。
-        既存箇所は `1fr` だが、こちらのほうが安全で見た目は変わらない。 --}}
-<div class="grid-2col-sm" style="display: grid; grid-template-columns: repeat({{ count($board['kpi']) }}, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px;">
-    @foreach($board['kpi'] as $card)
-        <div style="background: white; border: 1px solid #E5E7EB; border-radius: 8px; padding: 12px 14px;">
-            <div style="font-size: 11.5px; color: #6B7280; margin-bottom: 4px;">{{ $card['label'] }}</div>
-            <div style="font-size: 22px; font-weight: 700; color: {{ $card['color'] }};">{{ $card['value'] }}</div>
-        </div>
-    @endforeach
-</div>
-
 @if($board['unregisteredCount'] > 0)
     <div style="font-size: 12px; color: #6B7280; margin-bottom: 12px;">
         工程が未登録の案件が {{ $board['unregisteredCount'] }} 件あります（ボードには出ません）。
