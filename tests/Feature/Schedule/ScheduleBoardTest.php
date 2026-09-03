@@ -369,6 +369,39 @@ class ScheduleBoardTest extends ScheduleTestCase
     }
 
     /**
+     * 案件（`re_procurements` / `re_projects` の行）が 1 件も無いとき（設計書 §6.2）。
+     *
+     * ⚠ **本番の不動産ボードは、今まさにこの状態に近い**（本番の `schedule_steps` は 64 行すべて
+     *   建売に紐づき、工程を持つ仕入れ案件・分譲地は 0 件。2026-09-03 の総合レビューで判明）。
+     *   既存の `test_cases_without_steps_are_counted_but_not_listed` は「1 件 kept ＋ N 件
+     *   unregistered」の**混在**しか見ておらず、`rows` が丸ごと空になるケース（かつ
+     *   `unregisteredCount` も 0 のまま）は未テストだった。
+     *
+     * ⚠ **案B（軸＝データの範囲）では行が 0 件だと軸を作る種が無い。** `scale()` のフォールバック
+     *   （今日の 1 ヶ月。設計書 §6.2）が効いて 0 除算にならないこと、「該当する案件がありません。」
+     *   が出ること、スクロールのスクリプトが出ないこと（`@else` の中にしかない。行 0 件と
+     *   「今日が軸の外」は別の理由だが、どちらも `@else` を通らない点は同じ）を対で見る。
+     */
+    public function test_a_board_with_no_cases_at_all_falls_back_to_the_current_month(): void
+    {
+        $response = $this->actingAs($this->manager())->get('/realestate/schedules')->assertOk();
+        $board    = $response->viewData('board');
+
+        $this->assertSame([], $board['rows'], '案件を 1 件も作っていないのに rows が空でない');
+        $this->assertSame(0, $board['unregisteredCount'], '案件を 1 件も作っていないのに未登録件数が 0 でない');
+
+        $this->assertSame('2026-08-01', $board['axis']['from'], 'フォールバック軸の開始が今日の月初でない');
+        $this->assertSame('2026-08-31', $board['axis']['to'], 'フォールバック軸の終わりが今日の月末でない');
+        $this->assertSame(150, $board['axis']['trackWidthPx'], 'フォールバック軸が 1 ヶ月ぶん(150px)でない');
+        $this->assertNotNull($board['axis']['todayPct'], 'フォールバック軸（今日の1ヶ月）は今日を含むはず');
+
+        $html = $response->getContent();
+        $this->assertStringContainsString('該当する案件がありません。', $html);
+        $this->assertStringNotContainsString('schedule-board-scroller', $html, 'rows が空なのにスクローラーの要素が出ている');
+        $this->assertStringNotContainsString('scheduleBoardScrollToToday(', $html, 'rows が空なのにスクロールのスクリプトが出ている');
+    }
+
+    /**
      * `headers()` の label / strong / widthPct を固定する。
      *
      * ⚠ **3 つとも無防備だった**（2026-09-03 のレビューで判明）。`label` を `''` に、
