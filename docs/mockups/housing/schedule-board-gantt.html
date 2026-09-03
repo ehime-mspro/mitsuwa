@@ -101,6 +101,7 @@
         </label>
         <label><input type="checkbox" id="stick" checked> 案件名の列を固定する</label>
         <label><input type="checkbox" id="dummies"> ダミー案件も出す（既定は本番と同じ 1 案件）</label>
+        <label><input type="checkbox" id="scrollToday" checked> 開いたとき今日の位置までスクロールしておく</label>
       </div>
       <div class="row" style="margin-top: 12px;">
         <span class="metric">軸の範囲: <b id="mRange">—</b></span>
@@ -150,6 +151,36 @@
       <b>現状のボードでは幅 1.00px</b>（＝ 1 ピクセル）しかありません。<br>
       ⚠ 位置の計算（<code>GanttScale</code>）は<b>トラックに対する %</b> なので、トラックに px 幅を与えるだけで
       そのまま使えます。PHP 側の計算は変えません。
+    </div>
+
+    <h2 style="font-size: 14px; margin: 28px 0 6px;">モバイル（375px）での見え方</h2>
+    <p class="lead" style="margin-bottom: 12px;">
+      スマホではサイドバーが出ない（<code>hidden lg:flex</code>）ので <code>main</code> = 375px、
+      <code>p-4</code> を引いて中身は <b>343px</b>。1 ヶ月は PC と同じ <b>150px 固定</b>なので
+      <b>1 日の工程は PC と同じ太さのまま</b>読めます。<br>
+      残る問題は <b>案件名の列（320px）が 343px の大半を食う</b>ことだけです。下で 3 案を見比べてください。
+    </p>
+    <div class="panel">
+      <div class="row">
+        <label>案件名の列:
+          <select id="mobLabel">
+            <option value="320">320px 固定（PC と同じ）</option>
+            <option value="140" selected>モバイルだけ 140px に縮める</option>
+            <option value="nostick">320px のまま sticky をやめる</option>
+          </select>
+        </label>
+        <span class="metric">見えている軸: <b id="mobAxis">—</b></span>
+        <span class="metric">見えている月数: <b id="mobMonths">—</b></span>
+        <span class="metric">1 日の工程: <b id="mobDay">—</b></span>
+      </div>
+      <div style="width: 375px; margin-top: 14px; background: #F3F4F6; border: 1px solid #9CA3AF; border-radius: 10px; padding: 16px;">
+        <div class="board">
+          <div class="scroller" id="mobScroller">
+            <div class="track-outer" id="mobTrack"></div>
+          </div>
+        </div>
+      </div>
+      <div class="note" id="mobNote"></div>
     </div>
   </main>
 </div>
@@ -347,7 +378,7 @@ function render() {
   });
 
   // 実測を出す
-  requestAnimationFrame(() => {
+  setTimeout(() => {
     const axEl = track.querySelector('.arow');
     const axW = axEl ? axEl.getBoundingClientRect().width : 0;
     const oneDay = axEl ? (axW / total) : 0;
@@ -372,7 +403,7 @@ function render() {
     })[mode];
 
     // 初期スクロール位置: 今日の 1 ヶ月前あたりを左端に
-    if (mode !== 'now' && todayPct !== null) {
+    if (mode !== 'now' && todayPct !== null && document.getElementById('scrollToday').checked) {
       const x = (todayPct / 100) * axW - (mw * Math.max(1, (visibleMonths() || 6) / 2 - 0.5));
       scroller.scrollLeft = Math.max(0, x);
     } else {
@@ -381,10 +412,106 @@ function render() {
   });
 }
 
-['mode', 'mw', 'stick', 'dummies', 'vis'].forEach(id =>
-  document.getElementById(id).addEventListener('input', render));
-window.addEventListener('resize', render);
+/* ---- モバイル（375px）のプレビュー。月幅は PC と同じ 150px 固定・軸は案B ---- */
+const MOB_MONTH_W = 150;
+
+function renderMobile() {
+  const sel    = document.getElementById('mobLabel').value;
+  const labelW = sel === 'nostick' ? 320 : Number(sel);
+  const stick  = sel !== 'nostick';
+
+  const ax     = axisFor('b');
+  const months = monthsIn(ax.from, ax.to);
+  const total  = days(ax.from, ax.to) + 1;
+  const pct    = s => days(ax.from, s) / total * 100;
+  const wpct   = (a, b) => (days(a, b) + 1) / total * 100;
+  const todayPct = (d(TODAY) >= d(ax.from) && d(TODAY) <= d(ax.to)) ? pct(TODAY) : null;
+
+  const track = document.getElementById('mobTrack');
+  track.innerHTML = '';
+  track.className = 'track-outer' + (stick ? ' sticky' : '');
+  track.style.width = (labelW + months.length * MOB_MONTH_W) + 'px';
+
+  const h = document.createElement('div');
+  h.className = 'hrow';
+  const hn = document.createElement('div');
+  hn.className = 'cname';
+  hn.style.flex = '0 0 ' + labelW + 'px';
+  hn.textContent = '案件';
+  h.appendChild(hn);
+  const hax = document.createElement('div');
+  hax.className = 'axis';
+  months.forEach((m, i) => {
+    const c = document.createElement('div');
+    c.className = 'mcell' + (m.label === '1月' ? ' q' : '');
+    c.style.width = (m.days / total * 100) + '%';
+    c.innerHTML = (i === 0 || m.label === '1月' ? '<i>' + m.year + '</i>' : '') + m.label;
+    hax.appendChild(c);
+  });
+  if (todayPct !== null) {
+    const p = document.createElement('div');
+    p.className = 'today-pill'; p.style.left = todayPct + '%'; p.textContent = '今日 9/3';
+    hax.appendChild(p);
+  }
+  h.appendChild(hax);
+  track.appendChild(h);
+
+  CASES.forEach(c => {
+    const laneCount = packLanes(c.steps);
+    const r = document.createElement('div');
+    r.className = 'brow';
+    r.style.height = Math.max(56, laneCount * 17 + 16) + 'px';
+    const cn = document.createElement('div');
+    cn.className = 'cname';
+    cn.style.flex = '0 0 ' + labelW + 'px';
+    cn.innerHTML = '<span style="color:#6B7280;font-size:12px;">▸</span>'
+      + '<span class="kind">' + c.kind + '</span><a href="#">' + c.name + '</a>';
+    r.appendChild(cn);
+    const a = document.createElement('div');
+    a.className = 'arow';
+    if (todayPct !== null) {
+      const l = document.createElement('div');
+      l.className = 'today-line'; l.style.left = todayPct + '%';
+      a.appendChild(l);
+    }
+    c.steps.forEach(s => {
+      const left = Math.max(0, Math.min(100, pct(s[2])));
+      const w = Math.max(0, Math.min(100 - left, wpct(s[2], s[3])));
+      const b = document.createElement('div');
+      b.className = 'bar';
+      b.title = s[0] + '  ' + s[2] + '〜' + s[3];
+      b.style.cssText = 'top:' + (8 + s._lane * 17) + 'px; left:' + left + '%; width:' + w + '%; background:' + COLORS[s[1]];
+      a.appendChild(b);
+    });
+    r.appendChild(a);
+    track.appendChild(r);
+  });
+
+  setTimeout(() => {
+    const scroller = document.getElementById('mobScroller');
+    const visAxis  = Math.max(0, scroller.clientWidth - (stick ? labelW : 0));
+    document.getElementById('mobAxis').textContent   = Math.round(visAxis) + ' px';
+    document.getElementById('mobMonths').textContent = (visAxis / MOB_MONTH_W).toFixed(2) + ' ヶ月';
+    document.getElementById('mobDay').textContent    = (MOB_MONTH_W * 12 / 365).toFixed(2) + ' px';
+    document.getElementById('mobNote').innerHTML = ({
+      '320': '⚠ <b>320px 固定。</b>343px のうち 320px を案件名が占めるので、'
+           + '<b>軸は 23px しか見えない</b>。横スクロールしても案件名が貼り付いたままなので実質使えない。',
+      '140': '<b>140px に縮める（推奨）。</b>軸が 203px＝約 1.35 ヶ月ぶん見える。'
+           + '案件名は省略記号で切れるが、貼り付いたまま残るので「どの案件の棒か」が分かる。'
+           + 'PC（<code>sm:</code> 以上）では 320px のまま。',
+      'nostick': '<b>sticky をやめる。</b>左端では案件名が全部読めるが、右へスクロールすると'
+           + '<span class="warn">案件名が画面外へ流れて「どの案件の棒か」が分からなくなる</span>。'
+           + '案件が 1 件なら困らないが、複数行では厳しい。'
+    })[sel];
+  });
+}
+
+['mode', 'mw', 'stick', 'dummies', 'vis', 'scrollToday'].forEach(id =>
+  document.getElementById(id).addEventListener('input', () => { render(); renderMobile(); }));
+document.getElementById('mobLabel').addEventListener('input', renderMobile);
+window.addEventListener('resize', () => { render(); renderMobile(); });
 render();
+renderMobile();
 </script>
 </body>
 </html>
