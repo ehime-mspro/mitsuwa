@@ -418,6 +418,42 @@ test_posting_actual_dates_to_a_housing_step_stores_nothing
 
 ⚠ **走査するテストは「拾えた件数の下限」も併せて固定する**（空振りして緑になる事故を防ぐ。Bug #45）。
 
+### 9.5 ⚠ 実装中に踏んだ罠 — 警告コメント自身がテストを無効化する
+
+`@media` を `.gantt-scroll--card` より後ろに置く（§4.2）ことを固定するテストを
+
+```php
+$card  = strpos($html, '.gantt-scroll--card');
+$media = strpos($html, '@media (max-width: 640px)');
+$this->assertGreaterThan($card, $media);
+```
+
+と書いたところ、**設計書が名指しする実際の回帰**（本物のルールだけを `@media` の後ろへ移す）を
+当てても **41 本すべて緑**だった（2026-09-03 実測）。
+
+原因は、**この設計書が「そう書け」と指示した警告コメント自身**が
+
+```
+⚠ **この @media は .gantt-scroll--card より後ろでなければならない。**
+```
+
+という**同じ文字列を含んでいた**こと。`strpos` は最初の出現＝コメント側（`@media` より前）を拾うので、
+本物のルールがどこへ動いても比較は常に真になる。
+
+⚠ **Bug #42 ② と同型**（「経路を固定する構造テストが、自分が書いた docblock に一致して false-pass する」）。
+Bug #30 の「Bug #23 の注意書きをコメントに書いた事が発火源だった」とも同じ構造で、
+**再発防止のために書いた文が、その再発を検出する仕組みを壊す**。
+
+**直し方**: needle を「**実際の宣言**」に限定する（直後に `{` が来ることを要求）:
+
+```php
+preg_match('/\.gantt-scroll--card\s*\{/', $html, $m, PREG_OFFSET_CAPTURE);
+$card = $m[0][1];
+```
+
+⚠ **一般化**: CSS ルールやセレクタの**位置・順序**を見るテストは、素の文字列検索を使わない。
+`token_get_all()` でコメントを落とす（Bug #42 ②）か、宣言の形（`セレクタ {`）に限定すること。
+
 ⚠ **CSS をビューに置いたので `app.css` は触らない** ＝ ビルド済み CSS
 （`public/build/assets/app-*.css`。`.gitignore` 済みで worktree に存在しない）を
 確認する必要がそもそも無くなる。`view:cache` の対象なので**本番反映は `./deploy.sh`**。
