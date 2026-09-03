@@ -7,6 +7,8 @@
 @php($f = $board['filters'])
 @php($axis = $board['axis'])
 
+@include('_partials._schedule_gantt_style')
+
 @if($board['unregisteredCount'] > 0)
     <div style="font-size: 12px; color: #6B7280; margin-bottom: 12px;">
         工程が未登録の案件が {{ $board['unregisteredCount'] }} 件あります（ボードには出ません）。
@@ -51,12 +53,12 @@
     </div>
 @else
     <div style="border: 1px solid #E5E7EB; border-radius: 8px; overflow: hidden; background: white;">
-        <div style="overflow-x: auto;">
-            <div style="min-width: 1000px;">
+        <div id="schedule-board-scroller" class="gantt-scroll" style="overflow-x: auto;">
+            <div style="width: calc(var(--gantt-label-w) + {{ $axis['trackWidthPx'] }}px);">
 
                 {{-- ヘッダ --}}
                 <div style="display: flex; height: 42px; background: #F9FAFB; border-bottom: 1px solid #E5E7EB;">
-                    <div style="flex: 0 0 320px; border-right: 1px solid #E5E7EB; display: flex; align-items: center; padding: 0 12px; font-size: 11.5px; font-weight: 700; color: #6B7280;">案件</div>
+                    <div class="gantt-label gantt-label--head" style="flex: 0 0 var(--gantt-label-w); min-width: 0; overflow: hidden; border-right: 1px solid #E5E7EB; display: flex; align-items: center; padding: 0 12px; font-size: 11.5px; font-weight: 700; color: #6B7280;">案件</div>
                     <div style="flex: 1 1 auto; min-width: 0; position: relative; display: flex;">
                         @foreach($axis['headers'] as $h)
                             <div style="width: {{ $h['widthPct'] }}%; border-right: 1px solid {{ $h['strong'] ? '#D1D5DB' : '#E5E7EB' }}; font-size: 11px; color: #6B7280; display: flex; align-items: center; justify-content: center; box-sizing: border-box; overflow: hidden;">{{ $h['label'] }}</div>
@@ -71,7 +73,7 @@
                 @foreach($board['rows'] as $row)
                     <div x-data="{ open: false }" style="border-bottom: 1px solid #F3F4F6;">
                         <div style="display: flex; height: {{ $row['rowHeight'] }}px;">
-                            <div style="flex: 0 0 320px; border-right: 1px solid #E5E7EB; display: flex; align-items: center; gap: 6px; padding: 0 12px; font-size: 12.5px; min-width: 0;">
+                            <div class="gantt-label" style="flex: 0 0 var(--gantt-label-w); border-right: 1px solid #E5E7EB; display: flex; align-items: center; gap: 6px; padding: 0 12px; font-size: 12.5px; min-width: 0; overflow: hidden;">
                                 <button type="button" @click="open = !open" :aria-expanded="open ? 'true' : 'false'"
                                         style="border: none; background: none; cursor: pointer; color: #6B7280; font-size: 12px; padding: 0 2px;">▸</button>
                                 <span style="font-size: 10px; font-weight: 700; color: #6B7280; background: #F3F4F6; border-radius: 4px; padding: 1px 6px; white-space: nowrap;">{{ $row['kindLabel'] }}</span>

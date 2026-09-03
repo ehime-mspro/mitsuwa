@@ -412,6 +412,131 @@ class ScheduleBoardTest extends ScheduleTestCase
     }
 
     // ============================================================
+    // トラックの幅と案件名の固定表示（設計書 §3 / §4）
+    // ============================================================
+
+    /**
+     * ⚠ **CSS はレンダリング済み HTML で見る**（先行例 `CustomOrderIndexListColumnsTest`）。
+     *   `app.css` に置くとビルド済み CSS が worktree に無く（`.gitignore`）テストで測れない。
+     */
+    public function test_the_gantt_style_partial_is_rendered_with_the_label_width_variables(): void
+    {
+        $prop = $this->makeParent('property');
+        $prop->scheduleSteps()->create(['name' => '基礎工事', 'category' => 'work', 'planned_start' => '2026-08-01', 'planned_end' => '2026-09-30', 'sort_order' => 1]);
+
+        $html = $this->actingAs($this->manager())->get('/housing/schedules')->assertOk()->getContent();
+
+        $this->assertMatchesRegularExpression('/\.gantt-scroll\s*\{[^}]*--gantt-label-w:\s*320px;/', $html, 'ボードの --gantt-label-w(320px) が無い');
+        $this->assertMatchesRegularExpression('/\.gantt-scroll--card\s*\{[^}]*--gantt-label-w:\s*262px;/', $html, 'カードの --gantt-label-w(262px) が無い');
+        $this->assertMatchesRegularExpression('/\.gantt-label\s*\{[^}]*position:\s*sticky;/', $html, 'ラベル欄が sticky でない');
+        $this->assertMatchesRegularExpression('/\.gantt-label\s*\{[^}]*left:\s*0;/', $html, 'ラベル欄の left が 0 でない');
+
+        // ⚠ **`.gantt-label--head` を丸ごと消しても検出できなかった**（実測 2026-09-03: 0/119）。
+        //   消えると①ヘッダの背景が白になり行の #F9FAFB と食い違う②z-index が本文行のラベル
+        //   （同じく 5）と同値になりスタッキング順が DOM 順依存の不定挙動になる。
+        $this->assertMatchesRegularExpression('/\.gantt-label--head\s*\{[^}]*z-index:\s*6;/', $html, 'ヘッダのラベル欄の z-index が無い');
+        $this->assertMatchesRegularExpression('/\.gantt-label--head\s*\{[^}]*background:\s*#F9FAFB;/', $html, 'ヘッダのラベル欄の背景が無い');
+
+        // ⚠ **box-shadow は「ここから先はスクロールする」ことを示す唯一の視覚的手掛かり。**
+        //   消しても検出できなかった（実測 2026-09-03: 0/119）。
+        $this->assertMatchesRegularExpression('/\.gantt-label\s*\{[^}]*box-shadow:\s*6px 0 6px -6px rgba\(0, 0, 0, 0\.18\);/', $html, 'スクロール可能を示す box-shadow が無い');
+
+        // ⚠ **メディアクエリは `.gantt-scroll--card` の実ルールより後ろでなければならない。**
+        //   詳細度が同じ (0,1,0) なので後勝ち。前に置くとカードだけ 262px のまま残る。
+        // ⚠ **`strpos($html, '.gantt-scroll--card')` で探してはいけない** ——
+        //   partial の警告コメント自身が同じ文字列を含むので、コメント側（@media より前）を
+        //   拾って**常に真になる**（実測 2026-09-03: 本物のルールだけを @media の後ろへ
+        //   移す変異が 41 本すべて緑だった。Bug #42 ②）。宣言 `.gantt-scroll--card {` に限定する。
+        $this->assertMatchesRegularExpression('/\.gantt-scroll--card\s*\{/', $html, '.gantt-scroll--card の実ルールが無い');
+        preg_match('/\.gantt-scroll--card\s*\{/', $html, $cardMatch, PREG_OFFSET_CAPTURE);
+        $card  = $cardMatch[0][1];
+        $media = strpos($html, '@media (max-width: 640px)');
+        $this->assertNotFalse($media, '@media (max-width: 640px) が見つからない');
+        $this->assertGreaterThan($card, $media, 'メディアクエリが .gantt-scroll--card の実ルールより前にある');
+        $this->assertMatchesRegularExpression('/@media \(max-width: 640px\)\s*\{[^}]*\.gantt-scroll\s*\{[^}]*--gantt-label-w:\s*140px;/', $html, 'モバイル用の --gantt-label-w(140px) が無い');
+    }
+
+    /**
+     * ⚠ **`gantt-scroll` は `--gantt-label-w` のスコープそのもの。**
+     *   このクラスが外れると子孫の `calc(var(--gantt-label-w) + Npx)` と
+     *   `flex: 0 0 var(--gantt-label-w)` が**未定義のカスタムプロパティ参照で丸ごと無効**になり、
+     *   固定幅も横スクロールも効かなくなる（＝ D4 が壊れる）。
+     *   ⚠ **「文字列がページのどこかに在るか」では守れない** ——
+     *   CSS ルール `.gantt-scroll { … }` は `<style>` の中に残るので、
+     *   **id と class が同じタグに共起すること**を見る必要がある
+     *   （実測 2026-09-03: class だけ落とす変異が 119 本すべて緑だった）。
+     */
+    public function test_the_scroller_div_carries_the_css_variable_scoping_class(): void
+    {
+        $prop = $this->makeParent('property');
+        $prop->scheduleSteps()->create(['name' => '基礎工事', 'category' => 'work', 'planned_start' => '2026-08-01', 'planned_end' => '2026-09-30', 'sort_order' => 1]);
+
+        $html = $this->actingAs($this->manager())->get('/housing/schedules')->assertOk()->getContent();
+
+        $this->assertStringContainsString(
+            '<div id="schedule-board-scroller" class="gantt-scroll" style="overflow-x: auto;">',
+            $html,
+            'gantt-scroll クラスが外れると --gantt-label-w が未定義になり calc() が丸ごと無効化される'
+        );
+    }
+
+    /**
+     * トラックの幅は「ラベル幅 + 月数 × 150px」（設計書 §3）。
+     *
+     * ⚠ **`min-width` が残っていないことも見る。** 残ると狭い画面で意図しない下限ができる。
+     */
+    public function test_the_track_is_as_wide_as_the_months_it_spans(): void
+    {
+        $proc = $this->makeParent('procurement');
+        $proc->scheduleSteps()->create(['name' => '測量', 'category' => 'survey', 'planned_start' => '2026-05-11', 'planned_end' => '2026-07-20', 'sort_order' => 1]);
+
+        $response = $this->actingAs($this->manager())->get('/realestate/schedules?status=all')->assertOk();
+
+        $this->assertSame(450, $response->viewData('board')['axis']['trackWidthPx']);
+
+        $html = $response->getContent();
+        $this->assertStringContainsString('width: calc(var(--gantt-label-w) + 450px)', $html);
+        $this->assertStringNotContainsString('min-width: 1000px', $html, '旧い固定 min-width が残っている');
+    }
+
+    /**
+     * 案件名の列が固定表示になっていること。
+     *
+     * ⚠ **件数の下限も固定する**（走査が空振りして緑になる事故を防ぐ。Bug #45）。
+     *   このフィクスチャ（案件 1 件）ではヘッダ 1 + 行 1 の 2 個。
+     *
+     * ⚠ **`flex: 0 0 320px` のような px 直書きが残っていないことも見る。**
+     *   残ると CSS 変数が効かず、モバイルで 140px にならない。
+     *
+     * ⚠ **`min-width: 0` と `overflow: hidden` を落とさない**（Bug #29）。
+     *   flex の min-width は既定が auto なので、案件名・種別バッジ・遅延バッジという
+     *   可変長の中身に押し広げられ、**その行の棒だけ右へずれる**（月ヘッダは
+     *   var(--gantt-label-w) のままなので月境界とも合わなくなる）。
+     *   ⚠ HTML では位置ズレを測れないので属性で固定する。
+     *   ⚠ 実測（2026-09-03）: この 2 行が無いと、ヘッダ側・行側のどちらから
+     *     `min-width: 0` を落としても 1292 本すべて緑のまま通った。
+     */
+    public function test_the_case_name_column_is_sticky_and_sized_by_the_css_variable(): void
+    {
+        $prop = $this->makeParent('property');
+        $prop->scheduleSteps()->create(['name' => '基礎工事', 'category' => 'work', 'planned_start' => '2026-08-01', 'planned_end' => '2026-09-30', 'sort_order' => 1]);
+
+        $html = $this->actingAs($this->manager())->get('/housing/schedules')->assertOk()->getContent();
+
+        $this->assertStringContainsString('class="gantt-label gantt-label--head"', $html, 'ヘッダのラベル欄にクラスが無い');
+        $this->assertStringContainsString('class="gantt-label"', $html, '行のラベル欄にクラスが無い');
+        $this->assertStringNotContainsString('flex: 0 0 320px', $html, 'px 直書きが残っている');
+
+        preg_match_all('/flex: 0 0 var\(--gantt-label-w\);([^"]*)"/', $html, $styles);
+        $this->assertCount(2, $styles[1], 'ラベル欄の style を 2 つ拾えていない（ヘッダ 1 + 行 1）');
+
+        foreach ($styles[1] as $style) {
+            $this->assertStringContainsString('min-width: 0', $style);
+            $this->assertStringContainsString('overflow: hidden', $style);
+        }
+    }
+
+    // ============================================================
     // 段の振り分け（設計書 §5.3）
     // ============================================================
 
