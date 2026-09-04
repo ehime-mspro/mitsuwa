@@ -61,9 +61,13 @@
                     <div class="gantt-label gantt-label--head" style="flex: 0 0 var(--gantt-label-w); min-width: 0; overflow: hidden; border-right: 1px solid #E5E7EB; display: flex; align-items: center; padding: 0 12px; font-size: 11.5px; font-weight: 700; color: #6B7280;">案件</div>
                     <div style="flex: 1 1 auto; min-width: 0; position: relative; display: flex;">
                         {{-- ⚠ 年 span と月名の間に**改行も空白も入れない**（設計書 §12.4）。
-                             Blade の出力がそのまま HTML になるので、改行を挟むと
-                             `2026 3月` の間隔が margin-right: 3px より広がるうえ、
-                             テストの隣接チェックも落ちる。 --}}
+                             ⚠ **見た目は変わらない** —— このセルは display: flex なので、改行込みの
+                                テキスト実行は匿名ブロックの flex アイテムになり行頭の空白が除去される
+                                （2026-09-04 実ブラウザ実測: 改行あり／なしとも間隔 3.000px で完全一致）。
+                                変わるのは HTML の形だけで、テストの隣接チェック
+                                （<span class="gantt-year">2025</span>6月）が落ちる。
+                             ⚠ ただし将来このセルの display: flex を外すと本当に空白が入る
+                                （同実測で block 化すると内容が 3.66px 広がる）。 --}}
                         @foreach($axis['headers'] as $h)
                             <div style="width: {{ $h['widthPct'] }}%; border-right: 1px solid {{ $h['strong'] ? '#D1D5DB' : '#E5E7EB' }}; font-size: 11px; color: #6B7280; display: flex; align-items: center; justify-content: center; box-sizing: border-box; overflow: hidden;"><span class="gantt-year">{{ $h['year'] }}</span>{{ $h['label'] }}</div>
                         @endforeach

@@ -675,9 +675,10 @@ class ScheduleBoardTest extends ScheduleTestCase
         $this->assertCount(14, $headers, 'このテストが前提にしている軸が変わっている');
 
         $this->assertSame(
-            14,
+            count($headers),
             substr_count($html, 'class="gantt-year"'),
-            '年を出していない月セルがある（月セル数と .gantt-year の数が合わない）'
+            '月セルの年 span の形が変わっている（class="gantt-year" の数が月セル数と一致しない。'
+            . '属性の書式を変えただけでもここは落ちる —— 意図した変更なら needle 側も更新すること）'
         );
 
         // 年 → 月名の順で、間に何も挟まないこと
@@ -693,6 +694,10 @@ class ScheduleBoardTest extends ScheduleTestCase
         $this->assertCount(14, $cells[1], '月セルの構造が変わっている（年 span が div の直後に無い）');
         foreach ($cells[1] as $style) {
             $this->assertStringNotContainsString('flex-direction: column', $style, '月セルが 2 段になっている');
+            // ⚠ flex の min-width は既定 auto ＝ 中身の min-content が下限を作る。年を足したことで
+            //    min-content が 12px → 40.6px に増えた（2026-09-04 実ブラウザ実測）。overflow が
+            //    visible 以外のときだけ自動最小サイズが 0 になるので、これは外せない（Bug #29）。
+            $this->assertStringContainsString('overflow: hidden', $style, '月セルの overflow: hidden が無い（Bug #29）');
         }
     }
 

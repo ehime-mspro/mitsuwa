@@ -622,9 +622,10 @@ Task 3 で足したテストの直後に足す:
         $this->assertCount(14, $headers, 'このテストが前提にしている軸が変わっている');
 
         $this->assertSame(
-            14,
+            count($headers),
             substr_count($html, 'class="gantt-year"'),
-            '年を出していない月セルがある（月セル数と .gantt-year の数が合わない）'
+            '月セルの年 span の形が変わっている（class="gantt-year" の数が月セル数と一致しない。'
+            . '属性の書式を変えただけでもここは落ちる —— 意図した変更なら needle 側も更新すること）'
         );
 
         // 年 → 月名の順で、間に何も挟まないこと
@@ -640,6 +641,10 @@ Task 3 で足したテストの直後に足す:
         $this->assertCount(14, $cells[1], '月セルの構造が変わっている（年 span が div の直後に無い）');
         foreach ($cells[1] as $style) {
             $this->assertStringNotContainsString('flex-direction: column', $style, '月セルが 2 段になっている');
+            // ⚠ flex の min-width は既定 auto ＝ 中身の min-content が下限を作る。年を足したことで
+            //    min-content が 12px → 40.6px に増えた（2026-09-04 実ブラウザ実測）。overflow が
+            //    visible 以外のときだけ自動最小サイズが 0 になるので、これは外せない（Bug #29）。
+            $this->assertStringContainsString('overflow: hidden', $style, '月セルの overflow: hidden が無い（Bug #29）');
         }
     }
 ```
@@ -669,9 +674,13 @@ APP_KEY="base64:$(head -c 32 /dev/urandom | base64)" ./vendor/bin/phpunit \
 
 ```blade
                         {{-- ⚠ 年 span と月名の間に**改行も空白も入れない**（設計書 §12.4）。
-                             Blade の出力がそのまま HTML になるので、改行を挟むと
-                             `2026 3月` の間隔が margin-right: 3px より広がるうえ、
-                             テストの隣接チェックも落ちる。 --}}
+                             ⚠ **見た目は変わらない** —— このセルは display: flex なので、改行込みの
+                                テキスト実行は匿名ブロックの flex アイテムになり行頭の空白が除去される
+                                （2026-09-04 実ブラウザ実測: 改行あり／なしとも間隔 3.000px で完全一致）。
+                                変わるのは HTML の形だけで、テストの隣接チェック
+                                （<span class="gantt-year">2025</span>6月）が落ちる。
+                             ⚠ ただし将来このセルの display: flex を外すと本当に空白が入る
+                                （同実測で block 化すると内容が 3.66px 広がる）。 --}}
                         @foreach($axis['headers'] as $h)
                             <div style="width: {{ $h['widthPct'] }}%; border-right: 1px solid {{ $h['strong'] ? '#D1D5DB' : '#E5E7EB' }}; font-size: 11px; color: #6B7280; display: flex; align-items: center; justify-content: center; box-sizing: border-box; overflow: hidden;"><span class="gantt-year">{{ $h['year'] }}</span>{{ $h['label'] }}</div>
                         @endforeach
@@ -752,9 +761,10 @@ Task 3 で `ScheduleCardAxisTest` に足したテストの直後に足す:
         $this->assertCount(4, $months, 'このテストが前提にしているカードの軸が変わっている');
 
         $this->assertSame(
-            4,
+            count($months),
             substr_count($html, 'class="gantt-year"'),
-            'カードの月セルが共有クラスを使っていない（インライン style に戻っている可能性）'
+            '月セルの年 span の形が変わっている（class="gantt-year" の数が月セル数と一致しない。'
+            . '属性の書式を変えただけでもここは落ちる —— 意図した変更なら needle 側も更新すること）'
         );
 
         $this->assertStringContainsString('<span class="gantt-year">2026</span>7月', $html, '年 → 月名の順で 1 行になっていない');
@@ -766,6 +776,10 @@ Task 3 で `ScheduleCardAxisTest` に足したテストの直後に足す:
             $this->assertStringNotContainsString('flex-direction: column', $style, 'カードの月セルが 2 段のまま');
             $this->assertStringNotContainsString('line-height: 1.35', $style, '2 段時代の line-height が残っている');
             $this->assertStringNotContainsString('font-size: 9.5px', $style, '年の見た目がインライン style に残っている');
+            // ⚠ flex の min-width は既定 auto ＝ 中身の min-content が下限を作る。年を足したことで
+            //    min-content が 12px → 40.6px に増えた（2026-09-04 実ブラウザ実測。ボード側と同じ計測）。
+            //    overflow が visible 以外のときだけ自動最小サイズが 0 になるので、これは外せない（Bug #29）。
+            $this->assertStringContainsString('overflow: hidden', $style, 'カードの月セルの overflow: hidden が無い（Bug #29）');
         }
     }
 ```
@@ -803,6 +817,9 @@ APP_KEY="base64:$(head -c 32 /dev/urandom | base64)" ./vendor/bin/phpunit \
 ```blade
                         {{-- ⚠ ボード（_schedule_board）の月セルと**同じ形**にすること（設計書 §12.2 D14）。
                              年 span と月名の間に改行も空白も入れない。
+                             ⚠ **見た目は変わらない** —— このセルは display: flex なので、改行込みの
+                                テキスト実行は匿名ブロックの flex アイテムになり行頭の空白が除去される
+                                （2026-09-04 実ブラウザ実測: 改行あり／なしとも間隔 3.000px で完全一致）。
                              ⚠ `overflow: hidden` はボードと揃えてある。flex の min-width は既定 auto で
                                 中身の min-content 幅が下限を作るため、これが無いと将来
                                 月初・月末に揃っていない軸（部分月）でヘッダだけ広がる（Bug #29 と同型）。 --}}
@@ -1481,3 +1498,5 @@ git checkout 13.x && git merge --ff-only schedule-board-year-header
 | 10 | サブエージェントの `preview_start` が main repo の実 MySQL に到達 | `artisan serve` を Bash の `run_in_background` で ＋ `navigate` |
 | 11 | `User::create([... 'role' => …])` が黙って捨てられ 403 | 作成後に明示代入 |
 | 12 | worktree に `public/build` が無く Vite manifest 未検出の 500 | main repo の `node_modules/.bin/vite build` を cwd=worktree で |
+| 13 | Blade の改行が見た目を変えると思い込んで注記を書く | **flex コンテナでは変わらない**（2026-09-04 実ブラウザ実測: 改行あり/なしとも間隔 3.000px。block 化すると 3.66px 広がる）。落ちるのは**テストの隣接チェック**だけ。誤った理由の注記は次の読み手を誤らせる（Bug #42②） |
+| 14 | 年を足して min-content を増やしたのに `overflow: hidden` を無防備のまま置く | flex の `min-width` 既定 auto の床が 12px → **40.6px** に増える（同実測）。`overflow` が visible 以外のときだけ自動最小サイズが 0（Bug #29）。**ボードとカードの両方**でアサートする |
