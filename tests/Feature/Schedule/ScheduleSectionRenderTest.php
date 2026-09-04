@@ -401,4 +401,53 @@ class ScheduleSectionRenderTest extends ScheduleTestCase
 
         $this->assertStringContainsString('+16日', $html, '遅延日数が画面に出ていない');
     }
+
+    /**
+     * Ajax 保存でガントを差し替えたあと、**横スクロール位置を引き継ぐ**こと。
+     *
+     * ⚠ `apply()` は `#schedule-gantt` を `outerHTML` で丸ごと置き換えるので、
+     *   新しいスクローラーの `scrollLeft` は必ず 0 になる。1 ヶ月 150px の固定幅に
+     *   してからは PC でも常に横スクロールが出るため、右を見ながら保存すると
+     *   **毎回左端へ戻る**（2026-09-04 に Codex の独立レビューが検出）。
+     *
+     * ⚠ **順序まで見ること。** 「退避」「差し替え」「復元」の 3 つが揃っていても、
+     *   退避が差し替えより**後**に来ると常に 0 を読むし、復元が**前**だと
+     *   置き換えで消える。文字列が在るかだけでは守れない（Bug #28 / #47）。
+     *
+     * ⚠ **クランプも見ること。** 保存で軸の月数が変わると新しいトラックは短くなりうる。
+     *   クランプが無いと、範囲外の `scrollLeft` を代入してブラウザ任せの丸めに依存する。
+     *
+     * ⚠ この JS は PHP のテストから実行できないので、ここで測れるのは**構造**まで。
+     *   振る舞いは実ブラウザと node の実駆動で確認する（コミットメッセージに実測を残した）。
+     */
+    public function test_the_ajax_redraw_carries_the_horizontal_scroll_position_over(): void
+    {
+        $owner = $this->makeParent('procurement');
+        $owner->scheduleSteps()->create([
+            'name' => '測量', 'category' => 'survey',
+            'planned_start' => '2026-05-11', 'planned_end' => '2026-06-05',
+            'sort_order' => 1,
+        ]);
+
+        $html = $this->actingAs($this->manager())
+            ->get(route($owner->scheduleRoutePrefix() . '.show', $owner))
+            ->assertOk()->getContent();
+
+        $capture = strpos($html, "var keep = old ? old.scrollLeft : 0;");
+        $swap    = strpos($html, "document.getElementById('schedule-gantt').outerHTML = data.gantt_html;");
+        $restore = strpos($html, "next.scrollLeft = Math.min(keep, Math.max(0, next.scrollWidth - next.clientWidth));");
+
+        $this->assertNotFalse($capture, '差し替え前に scrollLeft を退避していない');
+        $this->assertNotFalse($swap, 'ガントの差し替えが無い');
+        $this->assertNotFalse($restore, '差し替え後に scrollLeft を復元していない（クランプ込み）');
+
+        // ⚠ 退避 → 差し替え → 復元 の順であること
+        $this->assertLessThan($swap, $capture, '退避が差し替えより後にある（常に 0 を読む）');
+        $this->assertLessThan($restore, $swap, '復元が差し替えより前にある（置き換えで消える）');
+
+        // ⚠ 退避も復元も **#schedule-gantt の内側の .gantt-scroll** を掴むこと。
+        //   ボードの #schedule-board-scroller を掴むと別の画面を壊す。
+        $this->assertStringContainsString("document.querySelector('#schedule-gantt .gantt-scroll')", $html);
+        $this->assertStringNotContainsString('schedule-board-scroller', $html, 'カードがボードのスクローラーを掴んでいる');
+    }
 }

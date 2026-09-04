@@ -130,7 +130,21 @@
                 apply: function (data, fn) {
                     if (!data) { return; }
                     if (data.gantt_html) {
+                        // outerHTML で丸ごと置き換えるので、新しいスクローラーの scrollLeft は
+                        // 必ず 0 になる。1 ヶ月 150px の固定幅にしてからは PC でも常に横スクロールが
+                        // 出るため、右を見ながら保存すると毎回左端へ戻ってしまう
+                        // （2026-09-04 に Codex の独立レビューが検出）。差し替えの前後で引き継ぐ。
+                        var old = document.querySelector('#schedule-gantt .gantt-scroll');
+                        var keep = old ? old.scrollLeft : 0;
+
                         document.getElementById('schedule-gantt').outerHTML = data.gantt_html;
+
+                        // 保存で軸の月数が変わるとトラックは短くなりうるので、新しい最大値へ丸める。
+                        // 工程が 0 件になるとスクローラーごと消えるので存在を確かめてから触る。
+                        var next = document.querySelector('#schedule-gantt .gantt-scroll');
+                        if (next) {
+                            next.scrollLeft = Math.min(keep, Math.max(0, next.scrollWidth - next.clientWidth));
+                        }
                     }
                     if (fn) { fn(data); }
                     this.notify();
