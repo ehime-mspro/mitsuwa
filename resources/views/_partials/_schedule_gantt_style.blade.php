@@ -32,6 +32,12 @@
                                   box-shadow: 6px 0 6px -6px rgba(0, 0, 0, 0.18); }
             .gantt-label--head  { z-index: 6; background: #F9FAFB; }
 
+            /* 月ヘッダの年（設計書 §12.2 D13）。**毎月**、月名の前に 1 行で出す。
+               ⚠ ここが年のスタイルの唯一の定義。ボード・カードのどちらにも
+                  インライン style で複製しない（同じ値が 2 箇所に散る）。
+               ⚠ margin-right が無いと年と月名がくっついて `20263月` に見える。 */
+            .gantt-year         { font-size: 9.5px; color: #9CA3AF; margin-right: 3px; }
+
             /* ⚠ **この @media は .gantt-scroll--card より後ろでなければならない。**
                   詳細度はどちらも (0,1,0) なので後勝ち。前に置くとカードだけ 262px のまま残り、
                   375px で軸が 81px しか見えなくなる（PHP もテストも素通りする型。Bug #29）。

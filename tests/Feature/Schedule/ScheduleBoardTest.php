@@ -618,6 +618,32 @@ class ScheduleBoardTest extends ScheduleTestCase
     }
 
     /**
+     * 年の見た目は共有 partial が**唯一の定義**として持つ（設計書 §12.4）。
+     *
+     * ⚠ **`font-size: 9.5px` を needle にしない。** 今日のピル（`今日 8/31`）が
+     *   ボード・カードとも同じ 9.5px をインラインで持っており、部分一致で false-pass する
+     *   （実測 2026-09-04: `_schedule_board:67` と `_schedule_gantt:48`。Bug #43）。
+     *
+     * ⚠ **宣言がちょうど 1 つであることまで見る。** 片方の Blade へインラインで複製する
+     *   変更（`_map_style.blade.php` の AREA_MAP_STYLES で実際に踏んだ型）を止める。
+     */
+    public function test_the_year_style_is_declared_exactly_once_on_the_board(): void
+    {
+        $this->caseWithSteps('PRC-STYLE', [['planned_start' => '2026-08-01', 'planned_end' => '2026-09-30']]);
+
+        $html = $this->actingAs($this->manager())->get('/realestate/schedules?status=all')->assertOk()->getContent();
+
+        preg_match_all('/\.gantt-year\s*\{/', $html, $m);
+        $this->assertCount(1, $m[0], '年のスタイル宣言が 1 つでない（共有 partial 以外にも定義がある）');
+
+        $this->assertMatchesRegularExpression(
+            '/\.gantt-year\s*\{[^}]*font-size:\s*9\.5px;[^}]*color:\s*#9CA3AF;[^}]*margin-right:\s*3px;[^}]*\}/',
+            $html,
+            '年のスタイル（9.5px / #9CA3AF / margin-right 3px）が設計書 §12.2 D13 と違う'
+        );
+    }
+
+    /**
      * ⚠ **`gantt-scroll` は `--gantt-label-w` のスコープそのもの。**
      *   このクラスが外れると子孫の `calc(var(--gantt-label-w) + Npx)` と
      *   `flex: 0 0 var(--gantt-label-w)` が**未定義のカスタムプロパティ参照で丸ごと無効**になり、

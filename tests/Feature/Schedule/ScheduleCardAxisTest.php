@@ -308,6 +308,34 @@ class ScheduleCardAxisTest extends ScheduleTestCase
     }
 
     /**
+     * ⚠ **ボード側（`ScheduleBoardTest::test_the_year_style_is_declared_exactly_once_on_the_board`）と
+     *   対で置く。** カードは `_schedule_gantt_style` を別の画面から @include するので、
+     *   片方だけ測ると「守られている」と誤読する（Bug #44）。
+     */
+    public function test_the_year_style_is_declared_exactly_once_on_the_card(): void
+    {
+        $owner = $this->makeParent('procurement');
+        $owner->scheduleSteps()->create([
+            'name' => '測量', 'category' => 'survey',
+            'planned_start' => '2026-08-01', 'planned_end' => '2026-09-30',
+            'sort_order' => 1,
+        ]);
+
+        $html = $this->actingAs($this->manager())
+            ->get(route($owner->scheduleRoutePrefix() . '.show', $owner))
+            ->assertOk()->getContent();
+
+        preg_match_all('/\.gantt-year\s*\{/', $html, $m);
+        $this->assertCount(1, $m[0], '年のスタイル宣言が 1 つでない（共有 partial 以外にも定義がある）');
+
+        $this->assertMatchesRegularExpression(
+            '/\.gantt-year\s*\{[^}]*font-size:\s*9\.5px;[^}]*color:\s*#9CA3AF;[^}]*margin-right:\s*3px;[^}]*\}/',
+            $html,
+            '年のスタイル（9.5px / #9CA3AF / margin-right 3px）が設計書 §12.2 D13 と違う'
+        );
+    }
+
+    /**
      * ⚠ **節目（◆）の行のラベル欄も押し広げられないこと**（Bug #29）。
      *   既存の `ScheduleDateStateTest::test_the_label_column_cannot_be_pushed_wider_than_its_track` と
      *   `test_the_step_name_column_is_sticky` は**どちらも自動 ◆ が 0 件のフィクスチャ**を使っており、
