@@ -229,7 +229,7 @@ class ScheduleCardAxisTest extends ScheduleTestCase
             ->get(route($owner->scheduleRoutePrefix() . '.show', $owner))
             ->assertOk()->getContent();
 
-        $this->assertStringNotContainsString('scheduleBoardScrollToToday', $html);
+        $this->assertStringNotContainsString('scheduleBoardSetInitialScroll', $html);
     }
 
     /**

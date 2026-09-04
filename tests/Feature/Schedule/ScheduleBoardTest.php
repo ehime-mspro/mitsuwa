@@ -398,7 +398,7 @@ class ScheduleBoardTest extends ScheduleTestCase
         $html = $response->getContent();
         $this->assertStringContainsString('該当する案件がありません。', $html);
         $this->assertStringNotContainsString('schedule-board-scroller', $html, 'rows が空なのにスクローラーの要素が出ている');
-        $this->assertStringNotContainsString('scheduleBoardScrollToToday(', $html, 'rows が空なのにスクロールのスクリプトが出ている');
+        $this->assertStringNotContainsString('scheduleBoardSetInitialScroll(', $html, 'rows が空なのにスクロールのスクリプトが出ている');
     }
 
     /**
@@ -788,15 +788,17 @@ class ScheduleBoardTest extends ScheduleTestCase
     }
 
     /**
-     * 開いた直後に今日が見える位置までスクロールしておく（設計書 §2 D9 / §7.1）。
+     * 開いた直後に「今日の前月」が軸の左端に来る位置までスクロールしておく
+     * （設計書 §2 D15 / §12.4）。⚠ **旧 D9（今日を中央）から変わった。**
      *
      * ⚠ **定義側と呼び出し側を対で見る。** 片方だけ消えても HTML としては妥当なので、
      *   呼び出しだけ見ると「関数が無いのに緑」になる（Bug #28）。
      *
-     * ⚠ **`@push('scripts')` が実際に出ていることまで見る。** `@stack` が無い時代は
-     *   push した中身が黙って捨てられていた（Bug #28）。
+     * ⚠ **`--gantt-label-w` を読む式に戻っていないことも見る。** 左端に置くなら
+     *   案件名の列の幅を引く必要が無い（設計書 §12.4 の座標系の導出）。
+     *   引き算が残っていると前月より左（＝前々月あたり）が左端に来る。
      */
-    public function test_the_board_scrolls_to_today_on_open(): void
+    public function test_the_board_opens_scrolled_to_the_first_day_of_last_month(): void
     {
         $proc = $this->makeParent('procurement');
         $proc->scheduleSteps()->create(['name' => '測量', 'category' => 'survey', 'planned_start' => '2026-05-11', 'planned_end' => '2026-09-30', 'sort_order' => 1]);
@@ -805,17 +807,39 @@ class ScheduleBoardTest extends ScheduleTestCase
         $html     = $response->getContent();
         $axis     = $response->viewData('board')['axis'];
 
-        $this->assertNotNull($axis['todayPct'], 'このフィクスチャでは今日が軸の中にあるはず');
-
         // 定義側
-        $this->assertStringContainsString('function scheduleBoardScrollToToday(id, pct, trackPx)', $html);
-        // 呼び出し側(引数は実際の値で出ていること)
+        $this->assertStringContainsString('function scheduleBoardSetInitialScroll(id, pct, trackPx)', $html);
+        // 呼び出し側（引数は実際の値で出ていること）
         $this->assertStringContainsString(
-            "scheduleBoardScrollToToday('schedule-board-scroller', {$axis['todayPct']}, {$axis['trackWidthPx']});",
+            "scheduleBoardSetInitialScroll('schedule-board-scroller', {$axis['initialPct']}, {$axis['trackWidthPx']});",
             $html
         );
         // スクロール先の要素
         $this->assertStringContainsString('id="schedule-board-scroller"', $html);
+
+        // 式そのもの。⚠ 左端に置くだけなので引き算もラベル幅の読み取りも要らない。
+        // ⚠ **固定長の窓で切らない**（Bug #45 ④）。定義側と呼び出し側の**両端で挟んで**
+        //    関数の中身だけを取り出す。`--gantt-label-w` は共有 CSS にも出るので、
+        //    ページ全体を見ると必ず一致して false-pass する（Bug #43）。
+        preg_match(
+            '/function scheduleBoardSetInitialScroll\(id, pct, trackPx\)(.*?)scheduleBoardSetInitialScroll\(\'schedule-board-scroller\'/s',
+            $html,
+            $fn
+        );
+        $this->assertNotEmpty($fn, 'スクロール関数の定義と呼び出しが揃っていない');
+        $this->assertStringContainsString('el.scrollLeft = trackPx * pct / 100;', $fn[1], 'スクロール量の式が変わっている');
+        $this->assertStringNotContainsString('--gantt-label-w', $fn[1], 'スクロール関数がラベル幅を読んでいる（設計書 §12.4 で不要になった）');
+        $this->assertStringNotContainsString('clientWidth', $fn[1], 'スクロール関数が可視幅を使っている（中央寄せの式に戻っている）');
+
+        // ⚠ 今日基準の値を渡していないこと。todayPct と initialPct が偶然一致する
+        //    フィクスチャだとこのアサートは意味を失うので、両者が違う値であることも見る。
+        $this->assertNotNull($axis['todayPct'], 'このフィクスチャでは今日が軸の中にあるはず');
+        $this->assertNotEqualsWithDelta(
+            $axis['todayPct'],
+            $axis['initialPct'],
+            0.0001,
+            'todayPct と initialPct が同値のフィクスチャでは「今日基準へ戻す」変異を検出できない'
+        );
 
         // ⚠ **スクリプトはスクローラーの HTML より後ろに出ていなければならない**（Bug #28）。
         //   @push('scripts') を @push('styles') に押し間違えると <head> 側に出るため、
@@ -824,7 +848,7 @@ class ScheduleBoardTest extends ScheduleTestCase
         //   ⚠ **文字列の存在を見るだけでは検出できない** —— 内容は消えず場所が変わるだけなので、
         //     実測（2026-09-03）では styles へ押し間違える変異が 2 本とも緑のまま通った。
         $scrollerPos = strpos($html, 'id="schedule-board-scroller"');
-        $scriptPos   = strpos($html, 'function scheduleBoardScrollToToday');
+        $scriptPos   = strpos($html, 'function scheduleBoardSetInitialScroll');
         $this->assertNotFalse($scrollerPos, 'スクローラーの要素が無い');
         $this->assertNotFalse($scriptPos, 'スクロールの関数定義が無い');
         $this->assertGreaterThan(
@@ -835,10 +859,16 @@ class ScheduleBoardTest extends ScheduleTestCase
     }
 
     /**
-     * ⚠ 今日が軸の外なら**スクロールのスクリプトごと出さない**（設計書 §7.1）。
-     *   `pct` が null のまま出すと `scrollLeft = NaN` になる。
+     * ⚠ **今日が軸の外でも必ずスクロールする**（設計書 §12.4）。**旧実装から挙動が変わった。**
+     *   従来（D9）は `todayPct` が null になるのでスクリプトごと出さず、
+     *   一番古い月が左端に残っていた。D15 は 0 / 100 にクランプした値を必ず渡すので、
+     *   **完了済みの案件では一番新しい月（右端）が見える。**
+     *
+     * ⚠ `initialPct` は 0〜100 にクランプ済みで **null にならない**ので、
+     *   `scrollLeft = NaN` を避けるための分岐（§7.1 の理由）は不要になった。
+     *   **理由が消えた分岐を残さない。**
      */
-    public function test_no_scroll_script_when_today_is_outside_the_axis(): void
+    public function test_the_board_still_scrolls_when_today_is_outside_the_axis(): void
     {
         $proc = $this->makeParent('procurement');
         $proc->scheduleSteps()->create([
@@ -848,9 +878,20 @@ class ScheduleBoardTest extends ScheduleTestCase
             'sort_order' => 1,
         ]);
 
-        $html = $this->actingAs($this->manager())->get('/realestate/schedules?status=all')->assertOk()->getContent();
+        $response = $this->actingAs($this->manager())->get('/realestate/schedules?status=all')->assertOk();
+        $html     = $response->getContent();
+        $axis     = $response->viewData('board')['axis'];
 
-        $this->assertStringNotContainsString('scheduleBoardScrollToToday', $html);
+        $this->assertNull($axis['todayPct'], 'このフィクスチャでは今日が軸の外のはず');
+        $this->assertSame(100.0, $axis['initialPct'], '軸より後の今日が右端（100）にクランプされていない');
+
+        // ⚠ **「スクリプトが出ないこと」を見る旧テストから逆転している。**
+        $this->assertStringContainsString('function scheduleBoardSetInitialScroll(id, pct, trackPx)', $html);
+        $this->assertStringContainsString(
+            "scheduleBoardSetInitialScroll('schedule-board-scroller', 100, {$axis['trackWidthPx']});",
+            $html,
+            '今日が軸の外でもクランプ値でスクロールするはず'
+        );
     }
 
     // ============================================================

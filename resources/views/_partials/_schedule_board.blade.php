@@ -128,27 +128,33 @@
         </div>
     </div>
 
-    @if($axis['todayPct'] !== null)
-        {{-- 開いた直後に今日が見える位置まで横スクロールしておく（設計書 §7.1）。
+    {{-- 開いた直後に「今日の前月の 1 日」が軸の左端に来る位置まで横スクロールしておく
+         （設計書 §2 D15 / §12.4）。
 
-             ⚠ **アロー関数を属性にも <script> にも書かない。** Blade の属性内では
-                `=>` の `>` が HTML 終了タグとして解釈される（Top trap #4）。
-                x-init ではなく名前付き関数にしているのはこのため。
+         ⚠ **アロー関数を属性にも <script> にも書かない。** Blade の属性内では
+            `=>` の `>` が HTML 終了タグとして解釈される（Top trap #4）。
+            x-init ではなく名前付き関数にしているのはこのため。
 
-             ⚠ **位置(%) は PHP が出す。** ここが計算するのはスクロール量だけで、
-                日付 → % の計算は持たない（Bug #41 の二重実装を避ける）。
+         ⚠ **位置(%) は PHP が出す。** ここが計算するのはスクロール量だけで、
+            日付 → % の計算は持たない（Bug #41 の二重実装を避ける）。
 
-             ⚠ ラベル欄の幅は画面幅で変わるので CSS 変数から実行時に読む。 --}}
-        @push('scripts')
-            <script>
-                function scheduleBoardScrollToToday(id, pct, trackPx) {
-                    var el = document.getElementById(id);
-                    if (! el) { return; }
-                    var labelW = parseFloat(getComputedStyle(el).getPropertyValue('--gantt-label-w')) || 0;
-                    el.scrollLeft = Math.max(0, trackPx * pct / 100 - (el.clientWidth - labelW) / 2);
-                }
-                scheduleBoardScrollToToday('schedule-board-scroller', {{ $axis['todayPct'] }}, {{ $axis['trackWidthPx'] }});
-            </script>
-        @endpush
-    @endif
+         ⚠ **`--gantt-label-w` は読まない。** 案件名の列は position: sticky; left: 0 なので、
+            scrollLeft = S のとき軸の見えている範囲は月エリア座標で
+            [S, S + (clientWidth − labelW)] ＝ **左端はちょうど S**。
+            左端に置くだけなら引き算そのものが要らない（設計書 §12.4）。
+            旧実装（D9）は今日を「見えている幅の中央」に置くために引いていた。
+
+         ⚠ **今日が軸の外でも必ずスクロールする。** initialPct は 0〜100 に
+            クランプ済みで null にならないので、`pct` の null 分岐を作らない。
+            §7.1 が挙げた「null だと scrollLeft = NaN」という理由は D15 で消えている。 --}}
+    @push('scripts')
+        <script>
+            function scheduleBoardSetInitialScroll(id, pct, trackPx) {
+                var el = document.getElementById(id);
+                if (! el) { return; }
+                el.scrollLeft = trackPx * pct / 100;
+            }
+            scheduleBoardSetInitialScroll('schedule-board-scroller', {{ $axis['initialPct'] }}, {{ $axis['trackWidthPx'] }});
+        </script>
+    @endpush
 @endif
