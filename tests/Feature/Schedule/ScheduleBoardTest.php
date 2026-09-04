@@ -444,6 +444,46 @@ class ScheduleBoardTest extends ScheduleTestCase
         $this->assertEqualsWithDelta(100.0, $sum, 0.01, 'widthPct の合計が軸の全長（100%）と一致しない');
     }
 
+    /**
+     * 軸が 12 ヶ月を超えると同じ月名が複数出るので、月ごとに年を持たせる
+     * （Codex レビュー Minor 4 / 設計書 §12.2 D13）。
+     *
+     * ⚠ **既存の `test_the_axis_headers_are_month_labels_with_quarter_emphasis` は
+     *   単年 6 ヶ月の軸**なので、年またぎのケースを一度も通らない。ここは別に置く。
+     *
+     * ⚠ **フィクスチャは 6月 / 7月 が 2 回ずつ出る軸にする。** これが Minor 4 の再現で、
+     *   年が無ければ利用者が区別できない状態そのもの。単年の軸で測ると
+     *   「年を落としても月名だけで読める」ので、欠陥の再現になっていない。
+     */
+    public function test_the_axis_headers_carry_the_year_of_every_month(): void
+    {
+        // 工程 2025-06-15〜2026-07-10 → 軸 2025-06-01〜2026-07-31 ＝ 14 ヶ月
+        $this->caseWithSteps('PRC-CROSS', [['planned_start' => '2025-06-15', 'planned_end' => '2026-07-10']]);
+
+        $axis = $this->actingAs($this->manager())
+            ->get('/realestate/schedules?status=all')
+            ->viewData('board')['axis'];
+
+        $headers = $axis['headers'];
+
+        $this->assertSame('2025-06-01', $axis['from'], '軸の始まりが変わっている');
+        $this->assertSame('2026-07-31', $axis['to'], '軸の終わりが変わっている');
+        $this->assertCount(14, $headers, '年をまたぐ 14 ヶ月の軸になっていない');
+
+        $this->assertSame(
+            ['6月', '7月', '8月', '9月', '10月', '11月', '12月', '1月', '2月', '3月', '4月', '5月', '6月', '7月'],
+            array_column($headers, 'label'),
+            '同じ月名が 2 回出る軸になっていない（このテストの前提が崩れている）'
+        );
+
+        $this->assertSame(
+            ['2025', '2025', '2025', '2025', '2025', '2025', '2025',
+             '2026', '2026', '2026', '2026', '2026', '2026', '2026'],
+            array_column($headers, 'year'),
+            '月ごとの年が出ていない（6月 / 7月 が 2 回ずつ出るのに区別できない）'
+        );
+    }
+
     // ============================================================
     // トラックの幅と案件名の固定表示（設計書 §3 / §4）
     // ============================================================

@@ -410,7 +410,15 @@ class ScheduleBoardService
     /**
      * 月の見出し。⚠ 粒度の切り替え（週 / 四半期）は 2026-09-03 に削除した（設計書 §5）。
      *
-     * @return list<array{label: string, widthPct: float, strong: bool}>
+     * ⚠ **`year` を落とさないこと**（設計書 §12.2 D13）。軸が 12 ヶ月を超えると
+     *   同じ月名が複数出て、年が無いと区別できない（Codex レビュー Minor 4）。
+     *   ⚠ **12 ヶ月以下の軸でも落とさない。** 1 ヶ月 = 150px の固定なので画面に入るのは
+     *     数ヶ月ぶんで、先頭セルは初期スクロールで左に隠れる。現在の本番データ
+     *     （軸 2026-02〜09 ＝ 8 ヶ月）でも「先頭と 1 月だけ」案は ❌ だった（設計書 §12.3 の実測）。
+     *   ⚠ **出し分けの真偽値（`showYear` の類）を作らない。** 毎月出すので判定そのものが無い。
+     *     判定を持つとボードとカードの 2 箇所に同じ式が並び、片方だけ直る余地ができる（Bug #41）。
+     *
+     * @return list<array{label: string, year: string, widthPct: float, strong: bool}>
      */
     private function headers(GanttScale $scale): array
     {
@@ -429,6 +437,7 @@ class ScheduleBoardService
 
             $headers[] = [
                 'label'    => $cursor->format('n') . '月',
+                'year'     => $cursor->format('Y'),
                 'widthPct' => $days / $scale->totalDays() * 100,
                 'strong'   => in_array($cursor->month, [1, 4, 7, 10], true),
             ];
