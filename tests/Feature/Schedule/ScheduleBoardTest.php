@@ -655,6 +655,48 @@ class ScheduleBoardTest extends ScheduleTestCase
     }
 
     /**
+     * 描画された月セルが**全部**年を出していること（設計書 §12.2 D13）。
+     *
+     * ⚠ **`assertSee('2026')` のような素の年で数えない。** 工程の日付テキストや
+     *   案件名に一致して false-pass する（Bug #43）。**タグ込みか件数で見る。**
+     *
+     * ⚠ **件数はサービスの月セル数と突き合わせる。** 固定値で書くと、軸の月数が変わる
+     *   変異と年が落ちる変異の区別が付かない。
+     */
+    public function test_every_month_cell_on_the_board_shows_its_year_before_the_month(): void
+    {
+        // 年をまたぐ 14 ヶ月（6月 / 7月 が 2 回ずつ出る）
+        $this->caseWithSteps('PRC-CROSS', [['planned_start' => '2025-06-15', 'planned_end' => '2026-07-10']]);
+
+        $response = $this->actingAs($this->manager())->get('/realestate/schedules?status=all')->assertOk();
+        $html     = $response->getContent();
+        $headers  = $response->viewData('board')['axis']['headers'];
+
+        $this->assertCount(14, $headers, 'このテストが前提にしている軸が変わっている');
+
+        $this->assertSame(
+            14,
+            substr_count($html, 'class="gantt-year"'),
+            '年を出していない月セルがある（月セル数と .gantt-year の数が合わない）'
+        );
+
+        // 年 → 月名の順で、間に何も挟まないこと
+        $this->assertStringContainsString('<span class="gantt-year">2025</span>6月', $html, '2025 年の 6月 が出ていない（順序が逆か、間に要素がある）');
+        $this->assertStringContainsString('<span class="gantt-year">2026</span>6月', $html, '2026 年の 6月 が出ていない（2 つの 6月 が区別されていない）');
+        $this->assertStringContainsString('<span class="gantt-year">2026</span>1月', $html, '年の切り替わり（1月）が出ていない');
+
+        // ⚠ **月セルは 1 行**（カードと同じ形。設計書 §12.2 D14）。
+        //   `<div style="…"><span class="gantt-year">` の style を切り出して直接見る。
+        //   ページ全体を `assertStringNotContainsString('flex-direction: column')` で見ると、
+        //   無関係な要素が縦積みになっただけで落ちる脆いテストになる。
+        preg_match_all('/<div style="([^"]*)"><span class="gantt-year">/', $html, $cells);
+        $this->assertCount(14, $cells[1], '月セルの構造が変わっている（年 span が div の直後に無い）');
+        foreach ($cells[1] as $style) {
+            $this->assertStringNotContainsString('flex-direction: column', $style, '月セルが 2 段になっている');
+        }
+    }
+
+    /**
      * ⚠ **`gantt-scroll` は `--gantt-label-w` のスコープそのもの。**
      *   このクラスが外れると子孫の `calc(var(--gantt-label-w) + Npx)` と
      *   `flex: 0 0 var(--gantt-label-w)` が**未定義のカスタムプロパティ参照で丸ごと無効**になり、

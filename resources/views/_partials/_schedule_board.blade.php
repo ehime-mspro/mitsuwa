@@ -60,8 +60,12 @@
                 <div style="display: flex; height: 42px; background: #F9FAFB; border-bottom: 1px solid #E5E7EB;">
                     <div class="gantt-label gantt-label--head" style="flex: 0 0 var(--gantt-label-w); min-width: 0; overflow: hidden; border-right: 1px solid #E5E7EB; display: flex; align-items: center; padding: 0 12px; font-size: 11.5px; font-weight: 700; color: #6B7280;">案件</div>
                     <div style="flex: 1 1 auto; min-width: 0; position: relative; display: flex;">
+                        {{-- ⚠ 年 span と月名の間に**改行も空白も入れない**（設計書 §12.4）。
+                             Blade の出力がそのまま HTML になるので、改行を挟むと
+                             `2026 3月` の間隔が margin-right: 3px より広がるうえ、
+                             テストの隣接チェックも落ちる。 --}}
                         @foreach($axis['headers'] as $h)
-                            <div style="width: {{ $h['widthPct'] }}%; border-right: 1px solid {{ $h['strong'] ? '#D1D5DB' : '#E5E7EB' }}; font-size: 11px; color: #6B7280; display: flex; align-items: center; justify-content: center; box-sizing: border-box; overflow: hidden;">{{ $h['label'] }}</div>
+                            <div style="width: {{ $h['widthPct'] }}%; border-right: 1px solid {{ $h['strong'] ? '#D1D5DB' : '#E5E7EB' }}; font-size: 11px; color: #6B7280; display: flex; align-items: center; justify-content: center; box-sizing: border-box; overflow: hidden;"><span class="gantt-year">{{ $h['year'] }}</span>{{ $h['label'] }}</div>
                         @endforeach
                         @if($axis['todayPct'] !== null)
                             <div style="position: absolute; top: 2px; left: {{ $axis['todayPct'] }}%; transform: translateX(-50%); background: #EF4444; color: white; font-size: 9.5px; font-weight: 700; padding: 1px 6px; border-radius: 999px; white-space: nowrap; z-index: 4;">今日 {{ $axis['todayLabel'] }}</div>
