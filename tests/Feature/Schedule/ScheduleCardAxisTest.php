@@ -325,14 +325,25 @@ class ScheduleCardAxisTest extends ScheduleTestCase
             ->get(route($owner->scheduleRoutePrefix() . '.show', $owner))
             ->assertOk()->getContent();
 
-        preg_match_all('/\.gantt-year\s*\{/', $html, $m);
+        // 宣言の個数は**セレクタ**で数える。
+        // ⚠ `{` をアンカーにしない —— セレクタリスト（`.gantt-year, .x { … }`）を取りこぼす
+        //    （RULES「Tailwind 監査の落とし穴 3」）。実測 2026-09-04: その形の複製を
+        //    _schedule_gantt.blade.php へ足すと全 61 本が緑のまま通り、しかも後勝ちで
+        //    実行時にはその複製が勝つ。
+        // ⚠ `(?![\w-])` は `.gantt-year-foo` への前方一致を防ぐ。`class="gantt-year"` は
+        //    先頭のドットが無いので元から当たらない。
+        // ⚠ **この形にすると、注意書きの中で `.gantt-year` と書いた瞬間に個数が狂う**
+        //    （設計書 §9.5 の自己参照の罠が「値」から「個数」へ移る）。共有 partial の
+        //    コメントにクラス名を書かないこと。
+        preg_match_all('/\.gantt-year(?![\w-])/', $html, $m);
         $this->assertCount(1, $m[0], '年のスタイル宣言が 1 つでない（共有 partial 以外にも定義がある）');
 
-        $this->assertMatchesRegularExpression(
-            '/\.gantt-year\s*\{[^}]*font-size:\s*9\.5px;[^}]*color:\s*#9CA3AF;[^}]*margin-right:\s*3px;[^}]*\}/',
-            $html,
-            '年のスタイル（9.5px / #9CA3AF / margin-right 3px）が設計書 §12.2 D13 と違う'
-        );
+        // ⚠ 3 宣言を 1 本の正規表現で連結して見ない —— CSS の宣言順に意味は無いので、
+        //    並べ替えただけで「D13 と違う」と嘘の理由で赤くなる（実測）。役割ごとに分ける。
+        $this->assertSame(1, preg_match('/\.gantt-year[^{]*\{([^}]*)\}/', $html, $r), '年のスタイルのブロックを切り出せない');
+        $this->assertMatchesRegularExpression('/font-size:\s*9\.5px;/', $r[1], '年の文字サイズが D13 と違う');
+        $this->assertMatchesRegularExpression('/color:\s*#9CA3AF;/', $r[1], '年の色が D13 と違う');
+        $this->assertMatchesRegularExpression('/margin-right:\s*3px;/', $r[1], '年と月名の間隔が D13 と違う');
     }
 
     /**

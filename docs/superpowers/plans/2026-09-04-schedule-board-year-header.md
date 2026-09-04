@@ -444,6 +444,14 @@ partial に書く注意書きの中で `.gantt-year {` と**波括弧まで**書
 コメントが一致して緑のまま通る（設計書 §9.5 / Bug #42 ② / Bug #30 と同型）。
 以下の実装では注意書きに `` `.gantt-year` `` としか書かない。
 
+⚠ **needle は `セレクタ + {` にしない。** `\{` をアンカーにするとセレクタリスト
+（`.gantt-year, .x { … }`）を取りこぼす（`docs/RULES.md`「Tailwind 監査の落とし穴 3」）。
+2026-09-04 実測: その形の複製をカードの Blade へ足すと**全 61 本が緑のまま通り**、しかも
+body 側の `<style>` は `@push('styles')` の `<head>` より後ろに出るので**後勝ちで実行時には
+複製が勝つ**。**§9.5（自己参照）と落とし穴 3（セレクタリスト）の両方を同時に満たす needle**が
+要る —— `/\.gantt-year(?![\w-])/` がその両立解で、代わりに「コメントにクラス名を書けない」
+という制約を負う（罠が「値」から「個数」へ移る）。
+
 - [ ] **Step 1: 失敗するテストを書く**
 
 `tests/Feature/Schedule/ScheduleBoardTest.php` の
@@ -467,14 +475,25 @@ partial に書く注意書きの中で `.gantt-year {` と**波括弧まで**書
 
         $html = $this->actingAs($this->manager())->get('/realestate/schedules?status=all')->assertOk()->getContent();
 
-        preg_match_all('/\.gantt-year\s*\{/', $html, $m);
+        // 宣言の個数は**セレクタ**で数える。
+        // ⚠ `{` をアンカーにしない —— セレクタリスト（`.gantt-year, .x { … }`）を取りこぼす
+        //    （RULES「Tailwind 監査の落とし穴 3」）。実測 2026-09-04: その形の複製を
+        //    _schedule_gantt.blade.php へ足すと全 61 本が緑のまま通り、しかも後勝ちで
+        //    実行時にはその複製が勝つ。
+        // ⚠ `(?![\w-])` は `.gantt-year-foo` への前方一致を防ぐ。`class="gantt-year"` は
+        //    先頭のドットが無いので元から当たらない。
+        // ⚠ **この形にすると、注意書きの中で `.gantt-year` と書いた瞬間に個数が狂う**
+        //    （設計書 §9.5 の自己参照の罠が「値」から「個数」へ移る）。共有 partial の
+        //    コメントにクラス名を書かないこと。
+        preg_match_all('/\.gantt-year(?![\w-])/', $html, $m);
         $this->assertCount(1, $m[0], '年のスタイル宣言が 1 つでない（共有 partial 以外にも定義がある）');
 
-        $this->assertMatchesRegularExpression(
-            '/\.gantt-year\s*\{[^}]*font-size:\s*9\.5px;[^}]*color:\s*#9CA3AF;[^}]*margin-right:\s*3px;[^}]*\}/',
-            $html,
-            '年のスタイル（9.5px / #9CA3AF / margin-right 3px）が設計書 §12.2 D13 と違う'
-        );
+        // ⚠ 3 宣言を 1 本の正規表現で連結して見ない —— CSS の宣言順に意味は無いので、
+        //    並べ替えただけで「D13 と違う」と嘘の理由で赤くなる（実測）。役割ごとに分ける。
+        $this->assertSame(1, preg_match('/\.gantt-year[^{]*\{([^}]*)\}/', $html, $r), '年のスタイルのブロックを切り出せない');
+        $this->assertMatchesRegularExpression('/font-size:\s*9\.5px;/', $r[1], '年の文字サイズが D13 と違う');
+        $this->assertMatchesRegularExpression('/color:\s*#9CA3AF;/', $r[1], '年の色が D13 と違う');
+        $this->assertMatchesRegularExpression('/margin-right:\s*3px;/', $r[1], '年と月名の間隔が D13 と違う');
     }
 ```
 
@@ -500,14 +519,25 @@ partial に書く注意書きの中で `.gantt-year {` と**波括弧まで**書
             ->get(route($owner->scheduleRoutePrefix() . '.show', $owner))
             ->assertOk()->getContent();
 
-        preg_match_all('/\.gantt-year\s*\{/', $html, $m);
+        // 宣言の個数は**セレクタ**で数える。
+        // ⚠ `{` をアンカーにしない —— セレクタリスト（`.gantt-year, .x { … }`）を取りこぼす
+        //    （RULES「Tailwind 監査の落とし穴 3」）。実測 2026-09-04: その形の複製を
+        //    _schedule_gantt.blade.php へ足すと全 61 本が緑のまま通り、しかも後勝ちで
+        //    実行時にはその複製が勝つ。
+        // ⚠ `(?![\w-])` は `.gantt-year-foo` への前方一致を防ぐ。`class="gantt-year"` は
+        //    先頭のドットが無いので元から当たらない。
+        // ⚠ **この形にすると、注意書きの中で `.gantt-year` と書いた瞬間に個数が狂う**
+        //    （設計書 §9.5 の自己参照の罠が「値」から「個数」へ移る）。共有 partial の
+        //    コメントにクラス名を書かないこと。
+        preg_match_all('/\.gantt-year(?![\w-])/', $html, $m);
         $this->assertCount(1, $m[0], '年のスタイル宣言が 1 つでない（共有 partial 以外にも定義がある）');
 
-        $this->assertMatchesRegularExpression(
-            '/\.gantt-year\s*\{[^}]*font-size:\s*9\.5px;[^}]*color:\s*#9CA3AF;[^}]*margin-right:\s*3px;[^}]*\}/',
-            $html,
-            '年のスタイル（9.5px / #9CA3AF / margin-right 3px）が設計書 §12.2 D13 と違う'
-        );
+        // ⚠ 3 宣言を 1 本の正規表現で連結して見ない —— CSS の宣言順に意味は無いので、
+        //    並べ替えただけで「D13 と違う」と嘘の理由で赤くなる（実測）。役割ごとに分ける。
+        $this->assertSame(1, preg_match('/\.gantt-year[^{]*\{([^}]*)\}/', $html, $r), '年のスタイルのブロックを切り出せない');
+        $this->assertMatchesRegularExpression('/font-size:\s*9\.5px;/', $r[1], '年の文字サイズが D13 と違う');
+        $this->assertMatchesRegularExpression('/color:\s*#9CA3AF;/', $r[1], '年の色が D13 と違う');
+        $this->assertMatchesRegularExpression('/margin-right:\s*3px;/', $r[1], '年と月名の間隔が D13 と違う');
     }
 ```
 
@@ -1443,6 +1473,7 @@ git checkout 13.x && git merge --ff-only schedule-board-year-header
 | 3 | `font-size: 9.5px` が今日のピルにも出る | `.gantt-year` の**宣言の形**で見る（Bug #43） |
 | 4 | `@push('scripts')` → `styles` の押し間違い | **内容は消えず場所だけ変わる**ので、スクローラーとの**位置**を比較する（Bug #28） |
 | 5 | 警告コメント自身がテストの needle に一致 | needle は**宣言の形**（`.gantt-year` + `{`）に限り、コメントに波括弧まで書かない（設計書 §9.5） |
+| 5.5 | needle を `セレクタ + {` にしてセレクタリスト形の複製を取りこぼす | `/\.gantt-year(?![\w-])/` のように**セレクタで数える**（RULES「Tailwind 監査の落とし穴 3」。2026-09-04 に実測で発見） |
 | 6 | 片方（ボード or カード）だけ測って「守られている」と誤読 | **両方に当てる**（Bug #44） |
 | 7 | 固定長の窓でブロックを切って隣のハンドラを拾う | **両端で挟んで**切り出す（Bug #45 ④） |
 | 8 | 変異が着弾していないのに「検出しない」と誤読 | `git diff --stat` が非空であることを毎回確認（Bug #55） |
