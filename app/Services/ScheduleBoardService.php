@@ -128,6 +128,8 @@ class ScheduleBoardService
                 'trackWidthPx' => $scale->trackWidthPx(),
                 'todayPct'     => $scale->contains($today) ? $scale->left($today) : null,
                 'todayLabel'   => $today->format('n/j'),
+                // ⚠ initialPct は null を返さない（軸の外でも 0 / 100 に定まる。設計書 §12.4）。
+                //   すぐ上の todayPct の null 分岐を真似ないこと。
                 'initialPct'   => $this->initialScrollPct($scale, $today),
             ],
         ];

@@ -501,6 +501,17 @@ class ScheduleBoardTest extends ScheduleTestCase
         \Carbon\CarbonImmutable::setTestNow('2026-03-31');
         \Carbon\Carbon::setTestNow('2026-03-31');
 
+        // ⚠ この「今日」が月末（＝前月に存在しない日）でないと §12.5 の順序ミスが素通りする。
+        //   日付を差し替えた瞬間にここで落ちる ＝ 上の docblock の警告を実行可能にするための自己防衛。
+        //   （軸は工程の日付だけで決まり「今日」に依存しないので、日を変えても期待値 20.53% は
+        //     正しいまま残る。だから検出力だけが無音で消える。実測済み: 2026-03-15 では M1 が緑）
+        $t = \Carbon\CarbonImmutable::now();
+        $this->assertNotSame(
+            $t->subMonth()->startOfMonth()->toDateString(),
+            $t->startOfMonth()->subMonth()->toDateString(),
+            'この「今日」では 2 通りの順序が同じ値になる＝順序ミスの変異が素通りする（設計書 §12.5）'
+        );
+
         // 工程 2026-01-15〜2026-05-20 → 軸 2026-01-01〜2026-05-31（151 日 / 5 ヶ月）
         $this->caseWithSteps('PRC-MONTHEND', [['planned_start' => '2026-01-15', 'planned_end' => '2026-05-20']]);
 
@@ -518,7 +529,7 @@ class ScheduleBoardTest extends ScheduleTestCase
             20.529801324503,
             $axis['initialPct'],
             0.0001,
-            '初期スクロールが「前月の 1 日」でない（39.07 なら subMonth() の順序ミス。設計書 §12.5）'
+            '初期スクロールが「前月の 1 日」でない（39.07 なら前月になっていない＝順序ミスか subMonth() の欠落。設計書 §12.5）'
         );
     }
 
@@ -548,7 +559,7 @@ class ScheduleBoardTest extends ScheduleTestCase
     /** ⚠ 今日が軸より前なら 0%（＝左端。従来と同じ見え方）。上の 100 と**対で**置く。 */
     public function test_the_initial_scroll_clamps_to_the_left_edge_when_today_is_before_the_axis(): void
     {
-        // 工程は 2026-10〜12。今日（2026-08-31）の前月 2026-08-01 は軸より前。
+        // 工程は 2026-10〜12。今日（2026-08-31）の前月 2026-07-01 は軸より前。
         $this->caseWithSteps('PRC-FUTURE', [['planned_start' => '2026-10-05', 'planned_end' => '2026-12-20']]);
 
         $axis = $this->actingAs($this->manager())
