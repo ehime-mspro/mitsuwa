@@ -645,6 +645,12 @@ Task 3 で足したテストの直後に足す:
             //    min-content が 12px → 40.6px に増えた（2026-09-04 実ブラウザ実測）。overflow が
             //    visible 以外のときだけ自動最小サイズが 0 になるので、これは外せない（Bug #29）。
             $this->assertStringContainsString('overflow: hidden', $style, '月セルの overflow: hidden が無い（Bug #29）');
+            // ⚠ **肯定的に固定する。** `flex-direction: column` を外したことで
+            //    justify-content と align-items の役割が入れ替わった（column では縦/横、
+            //    row では横/縦）。値はどちらも center なので見た目は同じだが、旧コードの記憶で
+            //    片方だけ触ると 42px の中で上寄せ／左寄せに無音で寄る（2026-09-04 実測: どちらを
+            //    flex-start にしてもフルスイート緑だった）。
+            $this->assertStringContainsString('display: flex; align-items: center; justify-content: center;', $style, '月セルの中央揃えが崩れている');
         }
     }
 ```
@@ -746,7 +752,7 @@ Task 3 で `ScheduleCardAxisTest` に足したテストの直後に足す:
         $owner = $this->makeParent('procurement');
         $owner->scheduleSteps()->create([
             'name' => '測量', 'category' => 'survey',
-            'planned_start' => '2026-08-01', 'planned_end' => '2026-09-30',
+            'planned_start' => '2025-12-15', 'planned_end' => '2026-01-20',
             'sort_order' => 1,
         ]);
 
@@ -757,8 +763,15 @@ Task 3 で `ScheduleCardAxisTest` に足したテストの直後に足す:
         $html   = $response->getContent();
         $months = $response->viewData('schedule')['gantt']['months'];
 
-        // 余白 ±1 ヶ月込みで 2026-07-01〜2026-10-31 ＝ 4 ヶ月
+        // 余白 ±1 ヶ月込みで 2025-11-01〜2026-02-28 ＝ 4 ヶ月（年またぎ）
+        // ⚠ **単年の軸にしない。** 4 ヶ月すべてが同じ年だと、年を定数に固定する変異が
+        //   フルスイート 1315 本すべて緑のまま通る（2026-09-04 実測）。ボード側は
+        //   年またぎ 14 ヶ月なので落ちる ＝ 設計書 §12.6 が禁じた「片方だけ守られている」形になる。
         $this->assertCount(4, $months, 'このテストが前提にしているカードの軸が変わっている');
+
+        // ⚠ ついでに「今日が軸の外」も通る（工程が過去なので todayPct が null）。
+        //   カードで年を見ているテストは従来この経路を一度も通っていなかった。
+        $this->assertNull($response->viewData('schedule')['gantt']['todayPct'], '今日が軸の外である前提が崩れている');
 
         $this->assertSame(
             count($months),
@@ -767,7 +780,8 @@ Task 3 で `ScheduleCardAxisTest` に足したテストの直後に足す:
             . '属性の書式を変えただけでもここは落ちる —— 意図した変更なら needle 側も更新すること）'
         );
 
-        $this->assertStringContainsString('<span class="gantt-year">2026</span>7月', $html, '年 → 月名の順で 1 行になっていない');
+        $this->assertStringContainsString('<span class="gantt-year">2025</span>11月', $html, '年 → 月名の順で 1 行になっていない');
+        $this->assertStringContainsString('<span class="gantt-year">2026</span>1月', $html, '年またぎで年が切り替わっていない（年を固定値にしていないか）');
 
         // ⚠ 月セルの style を切り出して 2 段でないことを見る（ページ全体を見ない）
         preg_match_all('/<div style="([^"]*)"><span class="gantt-year">/', $html, $cells);
@@ -776,16 +790,26 @@ Task 3 で `ScheduleCardAxisTest` に足したテストの直後に足す:
             $this->assertStringNotContainsString('flex-direction: column', $style, 'カードの月セルが 2 段のまま');
             $this->assertStringNotContainsString('line-height: 1.35', $style, '2 段時代の line-height が残っている');
             $this->assertStringNotContainsString('font-size: 9.5px', $style, '年の見た目がインライン style に残っている');
-            // ⚠ flex の min-width は既定 auto ＝ 中身の min-content が下限を作る。年を足したことで
-            //    min-content が 12px → 40.6px に増えた（2026-09-04 実ブラウザ実測。ボード側と同じ計測）。
-            //    overflow が visible 以外のときだけ自動最小サイズが 0 になるので、これは外せない（Bug #29）。
-            $this->assertStringContainsString('overflow: hidden', $style, 'カードの月セルの overflow: hidden が無い（Bug #29）');
+            // ⚠ D14（ボードと同じ形）の固定。⚠ **カードでは現状 load-bearing ではない** ——
+            //    months() は daysInMonth をクランプしないので収縮後のセルは常に約 138〜153px で
+            //    min-content の床（実測 40.6px）に届かない（2026-09-04 実測）。床に当たり得るのは
+            //    クランプ済みの headers() を持つボードのほう。形を揃えるために固定する。
+            // ⚠ literal で見ているので `overflow: clip`（自動最小サイズの効果は同じ）でも赤くなる。
+            //    意図した変更なら needle 側も更新すること。
+            $this->assertStringContainsString('overflow: hidden', $style, 'カードの月セルの overflow: hidden が無い（D14: ボードと同じ形）');
+            // ⚠ **肯定的に固定する。** `flex-direction: column` を外したことで
+            //    justify-content と align-items の役割が入れ替わった（column では縦/横、
+            //    row では横/縦）。値はどちらも center なので見た目は同じだが、旧コードの記憶で
+            //    片方だけ触ると 42px の中で上寄せ／左寄せに無音で寄る（2026-09-04 実測: どちらを
+            //    flex-start にしてもフルスイート緑だった）。
+            $this->assertStringContainsString('display: flex; align-items: center; justify-content: center;', $style, '月セルの中央揃えが崩れている');
         }
     }
 ```
 
 ⚠ 期待値 4 の根拠: `ScheduleCardService` は前後に 1 ヶ月ずつ余白を足す（`PADDING_MONTHS`）。
-工程 2026-08-01〜2026-09-30 → 軸 2026-07-01〜2026-10-31 ＝ 7 / 8 / 9 / 10 月の 4 ヶ月。
+工程 2025-12-15〜2026-01-20 → 軸 2025-11-01〜2026-02-28 ＝ 11 / 12 / 1 / 2 月の 4 ヶ月（年またぎ）。
+**2026 は閏年でないので 2 月は 28 日。**
 
 - [ ] **Step 2: 失敗することを確認する**
 
@@ -815,14 +839,16 @@ APP_KEY="base64:$(head -c 32 /dev/urandom | base64)" ./vendor/bin/phpunit \
 インライン style の年 span を `.gantt-year` に置き換え、**1 行**にする）:
 
 ```blade
-                        {{-- ⚠ ボード（_schedule_board）の月セルと**同じ形**にすること（設計書 §12.2 D14）。
-                             年 span と月名の間に改行も空白も入れない。
-                             ⚠ **見た目は変わらない** —— このセルは display: flex なので、改行込みの
-                                テキスト実行は匿名ブロックの flex アイテムになり行頭の空白が除去される
-                                （2026-09-04 実ブラウザ実測: 改行あり／なしとも間隔 3.000px で完全一致）。
-                             ⚠ `overflow: hidden` はボードと揃えてある。flex の min-width は既定 auto で
-                                中身の min-content 幅が下限を作るため、これが無いと将来
-                                月初・月末に揃っていない軸（部分月）でヘッダだけ広がる（Bug #29 と同型）。 --}}
+                        {{-- ⚠ **形の正本はボード**（_schedule_board.blade.php の月セル）。同じ形にすること（設計書 §12.2 D14）。
+                             年 span と月名の間に改行も空白も入れない。flex と改行まわりの実測は
+                             ボード側のコメントに 1 箇所だけ置いてある（2 箇所に書くと食い違う）。
+                             ⚠ `overflow: hidden` は D14（ボードと同じ形）のために置いてある。
+                                ⚠ **カードでは現状 load-bearing ではない** —— months() は daysInMonth を
+                                   クランプせず使うので、部分月があっても収縮後のセルは常に約 138〜153px で
+                                   min-content の床（実測 40.6px）に届かない（2026-09-04 実測）。
+                                   床に当たり得るのはクランプ済みの headers() を持つボードのほう（同実測 7.5px）。
+                                ⚠ カードで部分月が来たときの本当の症状は「widthPct の合計が 100% を超えて
+                                   月グリッドが棒とズレる」ほうで、これは overflow では直らない。 --}}
                         @foreach($g['months'] as $m)
                             <div style="width: {{ $m['widthPct'] }}%; border-right: 1px solid #E5E7EB; {{ $m['quarterStart'] ? 'border-left: 1px solid #D1D5DB;' : '' }} font-size: 11px; color: #6B7280; display: flex; align-items: center; justify-content: center; box-sizing: border-box; overflow: hidden;"><span class="gantt-year">{{ $m['year'] }}</span>{{ $m['label'] }}</div>
                         @endforeach
@@ -1099,7 +1125,7 @@ MSG
 
 ---
 
-## Task 7: 変異テスト（21 通り）
+## Task 7: 変異テスト（25 通り）
 
 **Files:** なし（測るだけ。穴が見つかったらテストを足してコミットする）
 
@@ -1162,8 +1188,12 @@ git status --porcelain            # 空
 | M19 | `@push('scripts')` を `@push('styles')` に | `_schedule_board.blade.php` | 同上（**位置**の比較。⚠ 文字列の存在では検出できない。Bug #28） |
 | M20 | 呼び出しの `{{ $axis['initialPct'] }}` を `{{ $axis['todayPct'] }}` に | `_schedule_board.blade.php` | 同上（引数の実値が一致しない） |
 | M21 | JS の式を `trackPx * pct / 100` から `trackPx * pct` に | `_schedule_board.blade.php` | 同上（式の文字列） |
+| M22 | **カード**の `{{ $m['year'] }}` を literal `2026` に固定 | `_schedule_gantt.blade.php` | `test_the_card_month_cells_are_a_single_line_with_the_shared_year_class`（⚠ **カードの軸が単年だと素通りする。2026-09-04 実測でフルスイート 1315 本が緑だった**） |
+| M23 | カードの `$m['quarterStart']` の三項演算子を削除（四半期の `border-left` が消える） | `_schedule_gantt.blade.php` | ⚠ **2026-09-04 実測で未検出**（§12.7 が対象外と宣言した領域。守り手を足すかどうかを Task 7 で判断する） |
+| M24 | ボードの `$h['strong']` の三項を `false` に潰す（四半期の濃い罫線が消える） | `_schedule_board.blade.php` | ⚠ **2026-09-04 実測で未検出**（同上） |
+| M25 | 月セルの `justify-content: center` を `flex-start` に（ボード / カードの両方） | 両 Blade | `..._shows_its_year_before_the_month` / `..._single_line_with_the_shared_year_class`（Fix 3 で足した肯定的な固定） |
 
-- [ ] **Step 1: M1〜M21 を 1 つずつ当てて、赤になることと落ちた理由を記録する**
+- [ ] **Step 1: M1〜M25 を 1 つずつ当てて、赤になることと落ちた理由を記録する**
 
 - [ ] **Step 2: 検出されなかった変異があればテストを足す**
 
@@ -1480,6 +1510,13 @@ git checkout 13.x && git merge --ff-only schedule-board-year-header
 - 軸の月数・`MONTH_WIDTH_PX = 150`・案件名の列の幅（D3 / D4 / D6 のまま）
 - Codex の **Minor 3**（`GanttScale` の逆転区間の契約。現行経路には到達しない）
 - Codex の **Minor 5**（軸の最大期間。業務仕様の判断が要る）
+- **`ScheduleCardService::months()` の `widthPct` をクランプすること。** ボードの `headers()` は
+  `$scale->to()` で日数を打ち切る三項を「将来の防御」として持つが、カードには無い。2026-09-04 実測で、
+  部分月のある軸ではカードの `widthPct` 合計が **121.6%〜300%** になり（`daysInMonth` をそのまま使うため）、
+  flex の shrink で全セルが比例縮小して**月グリッドが棒と静かにズレる**。⚠ **現行経路では到達しない**
+  （両サービスとも軸を `startOfMonth()`〜`endOfMonth()` で作る）。`GanttScale` の構築元が増えた日に
+  ボードの三項と対で揃えること。**今回 `overflow: hidden` という「防御の片割れ」だけをカードへ持ち込んだ**
+  ので、揃えなかったこと自体を記録に残す（Bug #48「安全網を入れない判断にも理由を書く」）。
 
 ## 付録 B: 踏みやすい罠のまとめ
 
@@ -1500,3 +1537,4 @@ git checkout 13.x && git merge --ff-only schedule-board-year-header
 | 12 | worktree に `public/build` が無く Vite manifest 未検出の 500 | main repo の `node_modules/.bin/vite build` を cwd=worktree で |
 | 13 | Blade の改行が見た目を変えると思い込んで注記を書く | **flex コンテナでは変わらない**（2026-09-04 実ブラウザ実測: 改行あり/なしとも間隔 3.000px。block 化すると 3.66px 広がる）。落ちるのは**テストの隣接チェック**だけ。誤った理由の注記は次の読み手を誤らせる（Bug #42②） |
 | 14 | 年を足して min-content を増やしたのに `overflow: hidden` を無防備のまま置く | flex の `min-width` 既定 auto の床が 12px → **40.6px** に増える（同実測）。`overflow` が visible 以外のときだけ自動最小サイズが 0（Bug #29）。**ボードとカードの両方**でアサートする |
+| 15 | 片方のフィクスチャが単年で、年の値の変異が素通りする | **カードとボードの両方を年またぎの軸にする**（2026-09-04 実測: カードの軸が 2026-07〜10 の単年だったため、年を定数に固定してもフルスイート 1315 本が緑だった。設計書 §12.6 が名指しした非対称） |

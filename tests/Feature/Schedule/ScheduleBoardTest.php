@@ -698,6 +698,12 @@ class ScheduleBoardTest extends ScheduleTestCase
             //    min-content が 12px → 40.6px に増えた（2026-09-04 実ブラウザ実測）。overflow が
             //    visible 以外のときだけ自動最小サイズが 0 になるので、これは外せない（Bug #29）。
             $this->assertStringContainsString('overflow: hidden', $style, '月セルの overflow: hidden が無い（Bug #29）');
+            // ⚠ **肯定的に固定する。** `flex-direction: column` を外したことで
+            //    justify-content と align-items の役割が入れ替わった（column では縦/横、
+            //    row では横/縦）。値はどちらも center なので見た目は同じだが、旧コードの記憶で
+            //    片方だけ触ると 42px の中で上寄せ／左寄せに無音で寄る（2026-09-04 実測: どちらを
+            //    flex-start にしてもフルスイート緑だった）。
+            $this->assertStringContainsString('display: flex; align-items: center; justify-content: center;', $style, '月セルの中央揃えが崩れている');
         }
     }
 

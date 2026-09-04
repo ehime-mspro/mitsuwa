@@ -38,14 +38,16 @@
                 <div style="display: flex; height: 42px; background: #F9FAFB; border-bottom: 1px solid #E5E7EB;">
                     <div class="gantt-label gantt-label--head" style="flex: 0 0 var(--gantt-label-w); min-width: 0; overflow: hidden; border-right: 1px solid #E5E7EB; display: flex; align-items: center; padding: 0 12px; font-size: 11.5px; font-weight: 700; color: #6B7280;">工程</div>
                     <div style="flex: 1 1 auto; min-width: 0; position: relative; display: flex;">
-                        {{-- ⚠ ボード（_schedule_board）の月セルと**同じ形**にすること（設計書 §12.2 D14）。
-                             年 span と月名の間に改行も空白も入れない。
-                             ⚠ **見た目は変わらない** —— このセルは display: flex なので、改行込みの
-                                テキスト実行は匿名ブロックの flex アイテムになり行頭の空白が除去される
-                                （2026-09-04 実ブラウザ実測: 改行あり／なしとも間隔 3.000px で完全一致）。
-                             ⚠ `overflow: hidden` はボードと揃えてある。flex の min-width は既定 auto で
-                                中身の min-content 幅が下限を作るため、これが無いと将来
-                                月初・月末に揃っていない軸（部分月）でヘッダだけ広がる（Bug #29 と同型）。 --}}
+                        {{-- ⚠ **形の正本はボード**（_schedule_board.blade.php の月セル）。同じ形にすること（設計書 §12.2 D14）。
+                             年 span と月名の間に改行も空白も入れない。flex と改行まわりの実測は
+                             ボード側のコメントに 1 箇所だけ置いてある（2 箇所に書くと食い違う）。
+                             ⚠ `overflow: hidden` は D14（ボードと同じ形）のために置いてある。
+                                ⚠ **カードでは現状 load-bearing ではない** —— months() は daysInMonth を
+                                   クランプせず使うので、部分月があっても収縮後のセルは常に約 138〜153px で
+                                   min-content の床（実測 40.6px）に届かない（2026-09-04 実測）。
+                                   床に当たり得るのはクランプ済みの headers() を持つボードのほう（同実測 7.5px）。
+                                ⚠ カードで部分月が来たときの本当の症状は「widthPct の合計が 100% を超えて
+                                   月グリッドが棒とズレる」ほうで、これは overflow では直らない。 --}}
                         @foreach($g['months'] as $m)
                             <div style="width: {{ $m['widthPct'] }}%; border-right: 1px solid #E5E7EB; {{ $m['quarterStart'] ? 'border-left: 1px solid #D1D5DB;' : '' }} font-size: 11px; color: #6B7280; display: flex; align-items: center; justify-content: center; box-sizing: border-box; overflow: hidden;"><span class="gantt-year">{{ $m['year'] }}</span>{{ $m['label'] }}</div>
                         @endforeach

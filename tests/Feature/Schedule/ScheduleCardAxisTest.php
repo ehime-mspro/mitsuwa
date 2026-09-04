@@ -359,7 +359,7 @@ class ScheduleCardAxisTest extends ScheduleTestCase
         $owner = $this->makeParent('procurement');
         $owner->scheduleSteps()->create([
             'name' => '測量', 'category' => 'survey',
-            'planned_start' => '2026-08-01', 'planned_end' => '2026-09-30',
+            'planned_start' => '2025-12-15', 'planned_end' => '2026-01-20',
             'sort_order' => 1,
         ]);
 
@@ -370,8 +370,15 @@ class ScheduleCardAxisTest extends ScheduleTestCase
         $html   = $response->getContent();
         $months = $response->viewData('schedule')['gantt']['months'];
 
-        // 余白 ±1 ヶ月込みで 2026-07-01〜2026-10-31 ＝ 4 ヶ月
+        // 余白 ±1 ヶ月込みで 2025-11-01〜2026-02-28 ＝ 4 ヶ月（年またぎ）
+        // ⚠ **単年の軸にしない。** 4 ヶ月すべてが同じ年だと、年を定数に固定する変異が
+        //   フルスイート 1315 本すべて緑のまま通る（2026-09-04 実測）。ボード側は
+        //   年またぎ 14 ヶ月なので落ちる ＝ 設計書 §12.6 が禁じた「片方だけ守られている」形になる。
         $this->assertCount(4, $months, 'このテストが前提にしているカードの軸が変わっている');
+
+        // ⚠ ついでに「今日が軸の外」も通る（工程が過去なので todayPct が null）。
+        //   カードで年を見ているテストは従来この経路を一度も通っていなかった。
+        $this->assertNull($response->viewData('schedule')['gantt']['todayPct'], '今日が軸の外である前提が崩れている');
 
         $this->assertSame(
             count($months),
@@ -380,7 +387,8 @@ class ScheduleCardAxisTest extends ScheduleTestCase
             . '属性の書式を変えただけでもここは落ちる —— 意図した変更なら needle 側も更新すること）'
         );
 
-        $this->assertStringContainsString('<span class="gantt-year">2026</span>7月', $html, '年 → 月名の順で 1 行になっていない');
+        $this->assertStringContainsString('<span class="gantt-year">2025</span>11月', $html, '年 → 月名の順で 1 行になっていない');
+        $this->assertStringContainsString('<span class="gantt-year">2026</span>1月', $html, '年またぎで年が切り替わっていない（年を固定値にしていないか）');
 
         // ⚠ 月セルの style を切り出して 2 段でないことを見る（ページ全体を見ない）
         preg_match_all('/<div style="([^"]*)"><span class="gantt-year">/', $html, $cells);
@@ -389,10 +397,19 @@ class ScheduleCardAxisTest extends ScheduleTestCase
             $this->assertStringNotContainsString('flex-direction: column', $style, 'カードの月セルが 2 段のまま');
             $this->assertStringNotContainsString('line-height: 1.35', $style, '2 段時代の line-height が残っている');
             $this->assertStringNotContainsString('font-size: 9.5px', $style, '年の見た目がインライン style に残っている');
-            // ⚠ flex の min-width は既定 auto ＝ 中身の min-content が下限を作る。年を足したことで
-            //    min-content が 12px → 40.6px に増えた（2026-09-04 実ブラウザ実測。ボード側と同じ計測）。
-            //    overflow が visible 以外のときだけ自動最小サイズが 0 になるので、これは外せない（Bug #29）。
-            $this->assertStringContainsString('overflow: hidden', $style, 'カードの月セルの overflow: hidden が無い（Bug #29）');
+            // ⚠ D14（ボードと同じ形）の固定。⚠ **カードでは現状 load-bearing ではない** ——
+            //    months() は daysInMonth をクランプしないので収縮後のセルは常に約 138〜153px で
+            //    min-content の床（実測 40.6px）に届かない（2026-09-04 実測）。床に当たり得るのは
+            //    クランプ済みの headers() を持つボードのほう。形を揃えるために固定する。
+            // ⚠ literal で見ているので `overflow: clip`（自動最小サイズの効果は同じ）でも赤くなる。
+            //    意図した変更なら needle 側も更新すること。
+            $this->assertStringContainsString('overflow: hidden', $style, 'カードの月セルの overflow: hidden が無い（D14: ボードと同じ形）');
+            // ⚠ **肯定的に固定する。** `flex-direction: column` を外したことで
+            //    justify-content と align-items の役割が入れ替わった（column では縦/横、
+            //    row では横/縦）。値はどちらも center なので見た目は同じだが、旧コードの記憶で
+            //    片方だけ触ると 42px の中で上寄せ／左寄せに無音で寄る（2026-09-04 実測: どちらを
+            //    flex-start にしてもフルスイート緑だった）。
+            $this->assertStringContainsString('display: flex; align-items: center; justify-content: center;', $style, '月セルの中央揃えが崩れている');
         }
     }
 
