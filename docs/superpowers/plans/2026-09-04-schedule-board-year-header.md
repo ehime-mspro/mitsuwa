@@ -1619,25 +1619,46 @@ styleSheets.length: 2 / aside の inline style: null / それでも getComputedS
 → 直後には display: "flex" / 220px
 ```
 
-**⚠ これは「隠れたペインでは Chrome がスタイルとレイアウトを遅延する」ためである可能性が高く、
-この環境からは実ブラウザの挙動と区別できない。** 判断の材料:
+**原因は `x-cloak` と Alpine の起動順（2026-09-04 の最終レビューで判明。⚠ 下記のとおり
+当初の診断は誤っていた）。実ブラウザでも起きる。**
 
-- **エミュレーション幅のせいではない**（呼び出し時点で `innerWidth: 1800` / `mqLg: true` と実測）
-- **Alpine のせいでもない**（`x-data` は `<body>` の `sidebarExpanded: true` で、
-  呼び出し時点の aside に inline style は無い）
-- `document.hidden` は最初から最後まで `true`。本リポジトリは
-  「自動操作のタブは `document.hidden` で Google がタイルを描かない」を BACKLOG に繰り返し記録している
-- ⚠ **この改修が持ち込んだものではない。** 旧実装（D9）は
-  `Math.max(0, trackPx * pct / 100 - (el.clientWidth - labelW) / 2)` と**同じ瞬間に `clientWidth` を直接読んで**
-  おり、同じ露出を持っていた（しかも中央寄せなので影響は常時）。新実装はブラウザのクランプに
-  当たるときだけ露出する
-- **式そのものは正しい**（上表のとおり、クランプに当たらない条件では厳密に一致）
+```
+resources/views/layouts/partials/sidebar.blade.php:30   <aside x-show="sidebarExpanded" x-cloak class="hidden lg:flex … w-[220px] …">
+resources/css/app.css:19                                 [x-cloak] { display: none !important; }
+resources/views/layouts/app.blade.php:8                  @vite(...)          ← module ＝ defer
+resources/views/layouts/app.blade.php:164                @stack('scripts')   ← 同期のインライン script
+```
 
-**→ 本番反映後の目視（Task 9 の手順）で、`pct` が右端に当たる案件を 1 件開いて
-`scrollLeft === scrollWidth - clientWidth` を確認すること。** そこでズレるなら
-「レイアウト確定後にスクロールする」形（`requestAnimationFrame` 等）への変更を別途検討する。
-⚠ **ここで先回りして直さない** —— 実ブラウザで再現しない可能性があり、
-直せばテストが固定している式（`el.scrollLeft = trackPx * pct / 100;`）も変わるため。
+1. `@stack('scripts')` のインライン `<script>` は**同期実行**なので **Alpine の起動より前**に走る
+   （app.blade.php:160 のコメント自身が「`@vite` は module（defer）で Alpine の起動が DOM パース後になる」と書いている）
+2. その瞬間、サイドバーは `x-cloak` により `display: none !important` ＝ **幅 0px**
+3. よってスクローラーの `clientWidth` が最終値より **220px 大きく**、ブラウザが `scrollLeft` を
+   `scrollWidth − clientWidth` にクランプする際の**上限が 220px 小さい**
+4. Alpine が `x-cloak` を外して 220px を占めても、**`scrollLeft` は上方向へ再クランプされない**
+   ＝ 着地が 220px 手前で確定する
+
+上の実測表と完全に一致する（900px は `hidden lg:flex` でサイドバーが元から非表示 ⇒ ズレ 0）。
+
+⚠ **当初「隠れたペイン（`document.hidden`）で Chrome がスタイルを遅延するため」と診断したのは誤り。**
+根拠にした「呼び出し時点で aside に inline style が無いのに `display: none`」は、
+**`x-cloak` は属性であって inline style ではない**ので `x-cloak` 説と矛盾しない。
+また「`hasAttribute('x-cloak')` が false」も測ったが、**それはロード後の観測で、
+その時点では Alpine が既に属性を外している**（＝ 測定タイミングの誤り）。**棄却根拠にならなかった。**
+
+⚠ **この改修が持ち込んだものではない。** 旧実装（D9）は
+`Math.max(0, trackPx * pct / 100 - (el.clientWidth - labelW) / 2)` と**同じ瞬間に `clientWidth` を直接読んで**
+おり、露出は**常時**だった（220 ÷ 2 = 110px ぶん常に左へずれる）。新実装はブラウザのクランプに
+当たるときだけ露出する ＝ **共通ケースでは改善し、右端のケースだけ悪い。**
+
+⚠ **式そのものは正しい**（上表のとおり、クランプに当たらない条件では厳密に一致）。
+
+**→ このブランチでは直さない**（本番反映後の目視で実害を確認してから判断する）。
+**本番確認の手順**: **`initialPct = 100` になる案件（工程が全部過去 ＝ 今日が軸より後）を
+幅 1200px 以上で開き、`scrollLeft === scrollWidth - clientWidth` を測る。**
+ズレたら直す。**直し方は 1 行で、テストが固定している式は変えなくてよい** ——
+`scheduleBoardSetInitialScroll(...)` の**呼び出しを `requestAnimationFrame(...)` で包む**だけ
+（関数の中身 `el.scrollLeft = trackPx * pct / 100;` は不変なので
+`ScheduleBoardTest` の式のアサートはそのまま通る）。
 
 #### コンソール
 
