@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>工程表ボード — 軸ヘッダの年表示 比較（Codex Minor 4）</title>
+<style>
+  :root { --label-w: 320px; --month-w: 150px; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px; background: #F3F4F6;
+         font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif;
+         color: #111827; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .lead { font-size: 13px; color: #6B7280; margin: 0 0 20px; line-height: 1.7; }
+  .ctl { display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
+         background: white; border: 1px solid #E5E7EB; border-radius: 8px; padding: 12px 16px; margin-bottom: 24px; }
+  .ctl label { font-size: 12.5px; color: #374151; display: flex; align-items: center; gap: 6px; }
+  select { height: 32px; padding: 0 8px; border: 1px solid #D1D5DB; border-radius: 6px; font-size: 13px; background: white; }
+  .scen-note { font-size: 12px; color: #6B7280; }
+
+  .card { margin-bottom: 26px; }
+  .card > h2 { font-size: 14px; margin: 0 0 2px; display: flex; align-items: baseline; gap: 8px; }
+  .tag { font-size: 10.5px; font-weight: 700; border-radius: 4px; padding: 2px 7px; }
+  .tag.bad  { background: #FEF2F2; color: #B91C1C; }
+  .tag.rec  { background: #ECFDF5; color: #047857; }
+  .tag.alt  { background: #F3F4F6; color: #4B5563; }
+  .card > p { font-size: 12px; color: #6B7280; margin: 0 0 8px; line-height: 1.65; }
+
+  /* ---- 実装と同じ寸法・色 ---- */
+  .board { border: 1px solid #E5E7EB; border-radius: 8px; overflow: hidden; background: white; }
+  .scroll { overflow-x: auto; }
+  .track { }
+  .hrow { display: flex; height: 42px; background: #F9FAFB; border-bottom: 1px solid #E5E7EB; }
+  .brow { display: flex; height: 46px; border-bottom: 1px solid #F3F4F6; }
+  .lbl  { flex: 0 0 var(--label-w); min-width: 0; overflow: hidden; border-right: 1px solid #E5E7EB;
+          display: flex; align-items: center; gap: 6px; padding: 0 12px; font-size: 12.5px;
+          position: sticky; left: 0; z-index: 5; background: white; }
+  .hrow .lbl { font-size: 11.5px; font-weight: 700; color: #6B7280; background: #F9FAFB; }
+  .kind { font-size: 10px; font-weight: 700; color: #6B7280; background: #F3F4F6; border-radius: 4px; padding: 1px 6px; white-space: nowrap; }
+  .lbl a { color: #111827; text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .axis { flex: 1 1 auto; min-width: 0; position: relative; display: flex; }
+  .arow { flex: 1 1 auto; min-width: 0; position: relative; }
+
+  .mcell { border-right: 1px solid #E5E7EB; font-size: 11px; color: #6B7280;
+           display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .mcell.q { border-right-color: #D1D5DB; }
+  /* 案①③: 年を小さくインラインで前置き */
+  .mcell i { font-style: normal; font-size: 9.5px; color: #9CA3AF; margin-right: 3px; }
+  /* 案②: 2 段 */
+  .mcell.stack { flex-direction: column; line-height: 1.35; }
+  .mcell.stack span.y { font-size: 9.5px; color: #9CA3AF; }
+
+  .bar { position: absolute; height: 13px; border-radius: 3px; }
+  .today-line { position: absolute; top: 0; bottom: 0; width: 0; border-left: 2px dashed #EF4444; z-index: 3; }
+  .today-pill { position: absolute; top: 2px; transform: translateX(-50%); background: #EF4444; color: white;
+                font-size: 9.5px; font-weight: 700; padding: 1px 6px; border-radius: 999px; white-space: nowrap; z-index: 4; }
+  .hint { font-size: 11.5px; color: #9CA3AF; margin-top: 6px; }
+</style>
+</head>
+<body>
+
+<h1>工程表ボード — 軸ヘッダの年表示（Codex Minor 4）</h1>
+<p class="lead">
+  ズームセレクタを消したので、軸が 12 ヶ月を超えると <b>同じ月名が複数出て年が分からない</b>。<br>
+  ⚠ 寸法・色は実装そのまま（1 ヶ月 150px / ヘッダ 42px / 案件列 320px、年は 9.5px #9CA3AF）。<b>横スクロールして 1 月の前後を見てください。</b>
+</p>
+
+<div class="ctl">
+  <label>軸のシナリオ
+    <select id="scen">
+      <option value="A">A: 2025-01 〜 2026-02（14 ヶ月・Codex の実測）</option>
+      <option value="B">B: 2025-06 〜 2026-03（10 ヶ月・年の途中から始まる）</option>
+      <option value="C">C: 2026-02 〜 2026-09（8 ヶ月・現在の本番データ）</option>
+    </select>
+  </label>
+  <span class="scen-note" id="note"></span>
+</div>
+
+<div id="out"></div>
+
+<script>
+const SCEN = {
+  A: { from: '2025-01-01', to: '2026-02-28', today: '2025-09-03',
+       note: '年をまたぐので 1月 が 2 回出る。現状ではどちらが 2025 か分からない。' },
+  B: { from: '2025-06-01', to: '2026-03-31', today: '2025-11-20',
+       note: '先頭が 1 月ではない。案③（1月だけ）だと 2025-06〜12 の年が最後まで出ない。' },
+  C: { from: '2026-02-01', to: '2026-09-30', today: '2026-09-04',
+       note: '年をまたがない。この場合は 3 案とも先頭にだけ年が出る／案②は毎月出る。' },
+};
+
+const CASES = [
+  { kind: '建売', name: 'JG保免中3号地', bars: [['s0','s35','#059669'],['s30','s55','#2563EB'],['s60','s95','#059669']] },
+  { kind: '分譲地', name: '大可賀プロジェクト（全 12 区画）', bars: [['s10','s70','#7C3AED'],['s50','s88','#059669']] },
+];
+
+const d = s => new Date(s + 'T00:00:00Z');
+const days = (a, b) => Math.round((d(b) - d(a)) / 86400000);
+const pad = n => String(n).padStart(2, '0');
+
+function monthsIn(from, to) {
+  const out = [];
+  let y = +from.slice(0, 4), m = +from.slice(5, 7);
+  const endY = +to.slice(0, 4), endM = +to.slice(5, 7);
+  while (y < endY || (y === endY && m <= endM)) {
+    const dim = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    out.push({ y, m, dim, label: m + '月', year: String(y), strong: [1, 4, 7, 10].includes(m) });
+    m++; if (m > 12) { m = 1; y++; }
+  }
+  return out;
+}
+
+// mode: none / sparse / stacked / changeonly
+function board(sc, months, total, mode) {
+  const trackW = 320 + months.length * 150;
+  const todayPct = (d(sc.today) >= d(sc.from) && d(sc.today) <= d(sc.to))
+    ? days(sc.from, sc.today) / total * 100 : null;
+
+  let h = '<div class="hrow"><div class="lbl">案件</div><div class="axis">';
+  months.forEach((mo, i) => {
+    const w = mo.dim / total * 100;
+    let inner;
+    if (mode === 'stacked') {
+      inner = '<span class="y">' + mo.year + '</span><span>' + mo.label + '</span>';
+    } else {
+      const show = mode === 'sparse' ? (i === 0 || mo.m === 1)
+                 : mode === 'changeonly' ? (mo.m === 1) : false;
+      inner = (show ? '<i>' + mo.year + '</i>' : '') + mo.label;
+    }
+    h += '<div class="mcell' + (mo.strong ? ' q' : '') + (mode === 'stacked' ? ' stack' : '')
+       + '" style="width:' + w + '%">' + inner + '</div>';
+  });
+  if (todayPct !== null) h += '<div class="today-pill" style="left:' + todayPct + '%">今日 '
+    + (+sc.today.slice(5,7)) + '/' + (+sc.today.slice(8,10)) + '</div>';
+  h += '</div></div>';
+
+  CASES.forEach(c => {
+    h += '<div class="brow"><div class="lbl"><span style="color:#6B7280;font-size:12px;">▸</span>'
+       + '<span class="kind">' + c.kind + '</span><a href="#">' + c.name + '</a></div><div class="arow">';
+    if (todayPct !== null) h += '<div class="today-line" style="left:' + todayPct + '%"></div>';
+    c.bars.forEach((b, i) => {
+      const l = +b[0].slice(1), r = +b[1].slice(1);
+      h += '<div class="bar" style="left:' + l + '%; width:' + (r - l) + '%; top:' + (8 + i * 17)
+         + 'px; background:' + b[2] + '"></div>';
+    });
+    h += '</div></div>';
+  });
+
+  return '<div class="board"><div class="scroll"><div class="track" style="width:' + trackW + 'px">'
+       + h + '</div></div></div>';
+}
+
+function render() {
+  const sc = SCEN[document.getElementById('scen').value];
+  document.getElementById('note').textContent = sc.note;
+  const months = monthsIn(sc.from, sc.to);
+  const total = days(sc.from, sc.to) + 1;
+
+  const defs = [
+    ['現状（実装されているもの）', 'bad', 'none',
+     '年がどこにも無い。' + (months.length > 12 ? '同じ月名が 2 回出るのに区別できない。' : '軸が 12 ヶ月以内なら実害は出ない。')],
+    ['案① 先頭セルと 1月セルだけに年を前置き', 'rec', 'sparse',
+     '⭐ 承認済みモック <code>schedule-board-gantt.html</code> がこの形（実装が落としていた）。年が変わる境目に必ず出て、それ以外の月は今までどおり静か。'],
+    ['案② 毎月 2 段（＝いまの詳細カードと同じ形）', 'alt', 'stacked',
+     '詳細カード <code>_schedule_gantt.blade.php</code> は本番でこの形。ボードもこれに揃えれば 2 画面が同じ見た目になるが、同じ年が 14 回並ぶ。'],
+    ['案③ 年が切り替わるセル（1月）だけ', 'alt', 'changeonly',
+     '案①から先頭セルを外したもの。'],
+  ];
+
+  document.getElementById('out').innerHTML = defs.map(([t, tag, mode, desc]) =>
+    '<div class="card"><h2>' + t + ' <span class="tag ' + tag + '">'
+    + (tag === 'bad' ? '欠陥' : tag === 'rec' ? 'モック準拠' : '対案') + '</span></h2>'
+    + '<p>' + desc + '</p>' + board(sc, months, total, mode) + '</div>'
+  ).join('');
+}
+
+document.getElementById('scen').addEventListener('change', render);
+render();
+</script>
+</body>
+</html>
