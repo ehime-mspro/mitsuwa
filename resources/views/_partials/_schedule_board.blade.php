@@ -146,7 +146,19 @@
 
          ⚠ **今日が軸の外でも必ずスクロールする。** initialPct は 0〜100 に
             クランプ済みで null にならないので、`pct` の null 分岐を作らない。
-            §7.1 が挙げた「null だと scrollLeft = NaN」という理由は D15 で消えている。 --}}
+            §7.1 が挙げた「null だと scrollLeft = NaN」という理由は D15 で消えている。
+
+         ⚠ **pct = 100 は trackPx をそのまま代入する（意図的な過大値）。** ブラウザが
+            scrollWidth − clientWidth にクランプするので右端で止まる（設計書 §12.4 の表）。
+            Math.min で自前に丸め直さない —— 丸めるなら labelW を引く誘惑が生まれるが、
+            それは中央寄せの式（旧 D9）へ戻る道である。
+
+         ⚠ **`if (! el) { return; }` は失敗を無音にする**（@push の宛先を押し間違えたときの
+            TypeError を握り潰す。Bug #48）。**スクローラーより後ろに出ることを見る位置比較の
+            テストと対で成立している**ので、片方だけ消さないこと。
+            ⚠ `pct` は素通しでよい —— サーバ側が 0〜100 にクランプ済みで、仮に異常値が来ても
+               scrollLeft のセッタが非有限値を 0 に正規化し範囲外をクランプするため、
+               どの入力でも「スクロールしない」に縮退するだけ（例外は起きない）。 --}}
     @push('scripts')
         <script>
             function scheduleBoardSetInitialScroll(id, pct, trackPx) {

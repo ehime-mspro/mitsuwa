@@ -562,14 +562,24 @@ class ScheduleBoardTest extends ScheduleTestCase
         // 工程は 2026-10〜12。今日（2026-08-31）の前月 2026-07-01 は軸より前。
         $this->caseWithSteps('PRC-FUTURE', [['planned_start' => '2026-10-05', 'planned_end' => '2026-12-20']]);
 
-        $axis = $this->actingAs($this->manager())
-            ->get('/realestate/schedules?status=all')
-            ->viewData('board')['axis'];
+        $response = $this->actingAs($this->manager())->get('/realestate/schedules?status=all')->assertOk();
+        $axis     = $response->viewData('board')['axis'];
 
         $this->assertSame('2026-10-01', $axis['from']);
         $this->assertSame('2026-12-31', $axis['to']);
         $this->assertNull($axis['todayPct'], 'このフィクスチャでは今日が軸の外のはず');
         $this->assertSame(0.0, $axis['initialPct'], '軸より前の今日が左端（0）にクランプされていない');
+
+        // ⚠ **描画まで見る。** サービス層だけ見ていると、Blade で 0 を別の値へ潰す変異が
+        //    素通りする（2026-09-04 実測: `{{ $axis['initialPct'] ?: 100 }}` で全 216 本が緑だった）。
+        //    100 側（test_the_board_still_scrolls_when_today_is_outside_the_axis）は
+        //    描画まで固定してあるので、**0 側だけ抜けている非対称**を塞ぐ。
+        //    ⚠ `{{ 0.0 }}` は `"0"` になる（科学記法にならないことを 2026-09-04 に実測）。
+        $this->assertStringContainsString(
+            "scheduleBoardSetInitialScroll('schedule-board-scroller', 0, {$axis['trackWidthPx']});",
+            $response->getContent(),
+            '今日が軸より前でも左端（0）でスクロール指示が出るはず'
+        );
     }
 
     // ============================================================
@@ -838,7 +848,8 @@ class ScheduleBoardTest extends ScheduleTestCase
             $axis['todayPct'],
             $axis['initialPct'],
             0.0001,
-            'todayPct と initialPct が同値のフィクスチャでは「今日基準へ戻す」変異を検出できない'
+            'initialPct が todayPct と同値になっている（実装が今日基準へ戻ったか、'
+                . 'フィクスチャで両者が一致してこのテストの検出力が消えている）'
         );
 
         // ⚠ **スクリプトはスクローラーの HTML より後ろに出ていなければならない**（Bug #28）。
@@ -851,6 +862,18 @@ class ScheduleBoardTest extends ScheduleTestCase
         $scriptPos   = strpos($html, 'function scheduleBoardSetInitialScroll');
         $this->assertNotFalse($scrollerPos, 'スクローラーの要素が無い');
         $this->assertNotFalse($scriptPos, 'スクロールの関数定義が無い');
+
+        // ⚠ **タグが実行されるかまで見る。** 文字列の存在・順序だけでは、
+        //    `<script type="text/template">` にするだけでスクロールが丸ごと不活性になる変異が
+        //    素通りする（2026-09-04 実測でフルスイート 1315 本が緑だった）。
+        //    ⚠ 2026-08-31 の周辺ビル調査の改修で名指しして塞いだのと同一の型（BACKLOG）。
+        $this->assertSame(
+            1,
+            preg_match('/<script([^>]*)>\s*function scheduleBoardSetInitialScroll/', $html, $tag),
+            'スクロールの関数が <script> の直下に無い'
+        );
+        $this->assertSame('', $tag[1], 'script タグに属性が付いている（type="module" / "text/template" だと実行されない）');
+
         $this->assertGreaterThan(
             $scrollerPos,
             $scriptPos,

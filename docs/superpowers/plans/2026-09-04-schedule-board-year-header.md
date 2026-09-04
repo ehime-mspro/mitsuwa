@@ -131,6 +131,13 @@ tests/Feature/Schedule/ScheduleCardAxisTest.php:232
 
 （`docs/superpowers/` 配下の旧プラン・設計書にも出てくるが、**過去の記録なので触らない**。）
 
+⚠ **この表は「触るファイル」であって「守るべき不変条件」の一覧ではない。**
+2026-09-04 のレビューで、表に無い 2 つの不変条件が無防備だと実測で分かった ——
+①**`<script>` タグに属性が付いていないこと**（`type="text/template"` にすると内容は残るのに
+実行だけ止まり、当初フルスイート 1315 本が緑だった）②**`initialPct = 0` の経路の描画**
+（`{{ … ?: 100 }}` が 216 本すべて素通りした）。**同型の改修では「触る場所」でなく
+「壊れうる形」を先に数えること。**
+
 ---
 
 ## Task 1: `headers()` に `year` を足す
@@ -340,17 +347,27 @@ Task 1 で足したテストの直後に 3 本足す。
     /** ⚠ 今日が軸より前なら 0%（＝左端。従来と同じ見え方）。上の 100 と**対で**置く。 */
     public function test_the_initial_scroll_clamps_to_the_left_edge_when_today_is_before_the_axis(): void
     {
-        // 工程は 2026-10〜12。今日（2026-08-31）の前月 2026-08-01 は軸より前。
+        // 工程は 2026-10〜12。今日（2026-08-31）の前月 2026-07-01 は軸より前。
         $this->caseWithSteps('PRC-FUTURE', [['planned_start' => '2026-10-05', 'planned_end' => '2026-12-20']]);
 
-        $axis = $this->actingAs($this->manager())
-            ->get('/realestate/schedules?status=all')
-            ->viewData('board')['axis'];
+        $response = $this->actingAs($this->manager())->get('/realestate/schedules?status=all')->assertOk();
+        $axis     = $response->viewData('board')['axis'];
 
         $this->assertSame('2026-10-01', $axis['from']);
         $this->assertSame('2026-12-31', $axis['to']);
         $this->assertNull($axis['todayPct'], 'このフィクスチャでは今日が軸の外のはず');
         $this->assertSame(0.0, $axis['initialPct'], '軸より前の今日が左端（0）にクランプされていない');
+
+        // ⚠ **描画まで見る。** サービス層だけ見ていると、Blade で 0 を別の値へ潰す変異が
+        //    素通りする（2026-09-04 実測: `{{ $axis['initialPct'] ?: 100 }}` で全 216 本が緑だった）。
+        //    100 側（test_the_board_still_scrolls_when_today_is_outside_the_axis）は
+        //    描画まで固定してあるので、**0 側だけ抜けている非対称**を塞ぐ。
+        //    ⚠ `{{ 0.0 }}` は `"0"` になる（科学記法にならないことを 2026-09-04 に実測）。
+        $this->assertStringContainsString(
+            "scheduleBoardSetInitialScroll('schedule-board-scroller', 0, {$axis['trackWidthPx']});",
+            $response->getContent(),
+            '今日が軸より前でも左端（0）でスクロール指示が出るはず'
+        );
     }
 ```
 
@@ -953,7 +970,8 @@ MSG
             $axis['todayPct'],
             $axis['initialPct'],
             0.0001,
-            'todayPct と initialPct が同値のフィクスチャでは「今日基準へ戻す」変異を検出できない'
+            'initialPct が todayPct と同値になっている（実装が今日基準へ戻ったか、'
+                . 'フィクスチャで両者が一致してこのテストの検出力が消えている）'
         );
 
         // ⚠ **スクリプトはスクローラーの HTML より後ろに出ていなければならない**（Bug #28）。
@@ -966,6 +984,18 @@ MSG
         $scriptPos   = strpos($html, 'function scheduleBoardSetInitialScroll');
         $this->assertNotFalse($scrollerPos, 'スクローラーの要素が無い');
         $this->assertNotFalse($scriptPos, 'スクロールの関数定義が無い');
+
+        // ⚠ **タグが実行されるかまで見る。** 文字列の存在・順序だけでは、
+        //    `<script type="text/template">` にするだけでスクロールが丸ごと不活性になる変異が
+        //    素通りする（2026-09-04 実測でフルスイート 1315 本が緑だった）。
+        //    ⚠ 2026-08-31 の周辺ビル調査の改修で名指しして塞いだのと同一の型（BACKLOG）。
+        $this->assertSame(
+            1,
+            preg_match('/<script([^>]*)>\s*function scheduleBoardSetInitialScroll/', $html, $tag),
+            'スクロールの関数が <script> の直下に無い'
+        );
+        $this->assertSame('', $tag[1], 'script タグに属性が付いている（type="module" / "text/template" だと実行されない）');
+
         $this->assertGreaterThan(
             $scrollerPos,
             $scriptPos,
@@ -1088,7 +1118,19 @@ APP_KEY="base64:$(head -c 32 /dev/urandom | base64)" ./vendor/bin/phpunit \
 
          ⚠ **今日が軸の外でも必ずスクロールする。** initialPct は 0〜100 に
             クランプ済みで null にならないので、`pct` の null 分岐を作らない。
-            §7.1 が挙げた「null だと scrollLeft = NaN」という理由は D15 で消えている。 --}}
+            §7.1 が挙げた「null だと scrollLeft = NaN」という理由は D15 で消えている。
+
+         ⚠ **pct = 100 は trackPx をそのまま代入する（意図的な過大値）。** ブラウザが
+            scrollWidth − clientWidth にクランプするので右端で止まる（設計書 §12.4 の表）。
+            Math.min で自前に丸め直さない —— 丸めるなら labelW を引く誘惑が生まれるが、
+            それは中央寄せの式（旧 D9）へ戻る道である。
+
+         ⚠ **`if (! el) { return; }` は失敗を無音にする**（@push の宛先を押し間違えたときの
+            TypeError を握り潰す。Bug #48）。**スクローラーより後ろに出ることを見る位置比較の
+            テストと対で成立している**ので、片方だけ消さないこと。
+            ⚠ `pct` は素通しでよい —— サーバ側が 0〜100 にクランプ済みで、仮に異常値が来ても
+               scrollLeft のセッタが非有限値を 0 に正規化し範囲外をクランプするため、
+               どの入力でも「スクロールしない」に縮退するだけ（例外は起きない）。 --}}
     @push('scripts')
         <script>
             function scheduleBoardSetInitialScroll(id, pct, trackPx) {
@@ -1131,7 +1173,7 @@ MSG
 
 ---
 
-## Task 7: 変異テスト（25 通り）
+## Task 7: 変異テスト（27 通り）
 
 **Files:** なし（測るだけ。穴が見つかったらテストを足してコミットする）
 
@@ -1198,8 +1240,10 @@ git status --porcelain            # 空
 | M23 | カードの `$m['quarterStart']` の三項演算子を削除（四半期の `border-left` が消える） | `_schedule_gantt.blade.php` | ⚠ **2026-09-04 実測で未検出**（§12.7 が対象外と宣言した領域。守り手を足すかどうかを Task 7 で判断する） |
 | M24 | ボードの `$h['strong']` の三項を `false` に潰す（四半期の濃い罫線が消える） | `_schedule_board.blade.php` | ⚠ **2026-09-04 実測で未検出**（同上） |
 | M25 | 月セルの `justify-content: center` を `flex-start` に（ボード / カードの両方） | 両 Blade | `..._shows_its_year_before_the_month` / `..._single_line_with_the_shared_year_class`（Fix 3 で足した肯定的な固定） |
+| M26 | `<script>` を `<script type="text/template">` に（**内容は変わらず実行だけ止まる**） | `_schedule_board.blade.php` | `test_the_board_opens_scrolled_to_the_first_day_of_last_month`（⚠ **2026-09-04 実測では当初フルスイート 1315 本すべて緑だった**。Fix で塞いだ。2026-08-31 の POI 改修で名指しした型と同一） |
+| M27 | 呼び出しの `{{ $axis['initialPct'] }}` を `{{ $axis['initialPct'] ?: 100 }}` に（**0 の経路だけ壊す**） | `_schedule_board.blade.php` | `test_the_initial_scroll_clamps_to_the_left_edge_when_today_is_before_the_axis`（⚠ **当初 216 本すべて緑**。0 側だけ描画層のアサートが無かった） |
 
-- [ ] **Step 1: M1〜M25 を 1 つずつ当てて、赤になることと落ちた理由を記録する**
+- [ ] **Step 1: M1〜M27 を 1 つずつ当てて、赤になることと落ちた理由を記録する**
 
 - [ ] **Step 2: 検出されなかった変異があればテストを足す**
 
@@ -1544,3 +1588,4 @@ git checkout 13.x && git merge --ff-only schedule-board-year-header
 | 13 | Blade の改行が見た目を変えると思い込んで注記を書く | **flex コンテナでは変わらない**（2026-09-04 実ブラウザ実測: 改行あり/なしとも間隔 3.000px。block 化すると 3.66px 広がる）。落ちるのは**テストの隣接チェック**だけ。誤った理由の注記は次の読み手を誤らせる（Bug #42②） |
 | 14 | 年を足して min-content を増やしたのに `overflow: hidden` を無防備のまま置く | flex の `min-width` 既定 auto の床が 12px → **40.6px** に増える（同実測）。`overflow` が visible 以外のときだけ自動最小サイズが 0（Bug #29）。**ボードとカードの両方**でアサートする |
 | 15 | 片方のフィクスチャが単年で、年の値の変異が素通りする | **カードとボードの両方を年またぎの軸にする**（2026-09-04 実測: カードの軸が 2026-07〜10 の単年だったため、年を定数に固定してもフルスイート 1315 本が緑だった。設計書 §12.6 が名指しした非対称） |
+| 16 | `<script>` の**内容**だけ見て**実行されるか**を見ない | `type` 属性が空であることまで見る（`type="module"` / `"text/template"` は内容が残るのに実行されない。2026-08-31 の POI 改修と 2026-09-04 の本改修で 2 回踏んだ） |
