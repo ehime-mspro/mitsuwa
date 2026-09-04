@@ -484,6 +484,83 @@ class ScheduleBoardTest extends ScheduleTestCase
         );
     }
 
+    /**
+     * 開いた直後の横スクロール位置は「今日の前月の 1 日」（設計書 §2 D15 / §12.4）。
+     *
+     * ⚠ **「今日」をクラス既定（2026-08-31）から `2026-03-31` に上書きするのが load-bearing。**
+     *   Carbon の `subMonth()` は月末日で溢れるので、月初へ正規化する**前**に引くと
+     *   前月ではなく当月が返る（設計書 §12.5）。8/31 や 9/4 では**どちらの順序でも同じ値**に
+     *   なるため、月末以外の日で測るとこの変異は素通りする。
+     *   実測（2026-09-04）: 2026-03-31 → 正 2026-02-01 / 誤 2026-03-01。
+     *
+     * ⚠ **クランプの端（0 / 100）でない値で測る。** 0 や 100 だと「常に 0 を返す」
+     *   「常に 100 を返す」変異と区別が付かない。
+     */
+    public function test_the_initial_scroll_puts_the_first_day_of_last_month_at_the_left_edge(): void
+    {
+        \Carbon\CarbonImmutable::setTestNow('2026-03-31');
+        \Carbon\Carbon::setTestNow('2026-03-31');
+
+        // 工程 2026-01-15〜2026-05-20 → 軸 2026-01-01〜2026-05-31（151 日 / 5 ヶ月）
+        $this->caseWithSteps('PRC-MONTHEND', [['planned_start' => '2026-01-15', 'planned_end' => '2026-05-20']]);
+
+        $axis = $this->actingAs($this->manager())
+            ->get('/realestate/schedules?status=all')
+            ->viewData('board')['axis'];
+
+        $this->assertSame('2026-01-01', $axis['from'], 'このテストが前提にしている軸が変わっている');
+        $this->assertSame('2026-05-31', $axis['to'], 'このテストが前提にしている軸が変わっている');
+        $this->assertSame(750, $axis['trackWidthPx'], '5 ヶ月 × 150px でない');
+
+        // 2026-02-01 は軸の 31 日目 → 31 / 151 * 100 = 20.529801324503%
+        // ⚠ 順序を逆にすると 2026-03-01（59 日目）= 39.072847682119% になる
+        $this->assertEqualsWithDelta(
+            20.529801324503,
+            $axis['initialPct'],
+            0.0001,
+            '初期スクロールが「前月の 1 日」でない（39.07 なら subMonth() の順序ミス。設計書 §12.5）'
+        );
+    }
+
+    /**
+     * ⚠ **今日が軸より後でもスクロールする**（設計書 §12.4）。
+     *   従来（D9）は今日が軸の外ならスクリプトごと出さず左端＝一番古い月に留まっていた。
+     *   工程表は「現状の工程を確認するもの」なので、直近の月が見えるほうが妥当。
+     */
+    public function test_the_initial_scroll_clamps_to_the_right_edge_when_today_is_after_the_axis(): void
+    {
+        // 工程は 2026-01 で終わり。今日（2026-08-31）は軸の外。
+        $this->caseWithSteps('PRC-PAST', [[
+            'planned_start' => '2026-01-05', 'planned_end' => '2026-01-20',
+            'actual_start'  => '2026-01-05', 'actual_end'   => '2026-01-20',
+        ]]);
+
+        $axis = $this->actingAs($this->manager())
+            ->get('/realestate/schedules?status=all')
+            ->viewData('board')['axis'];
+
+        $this->assertSame('2026-01-01', $axis['from']);
+        $this->assertSame('2026-01-31', $axis['to']);
+        $this->assertNull($axis['todayPct'], 'このフィクスチャでは今日が軸の外のはず');
+        $this->assertSame(100.0, $axis['initialPct'], '軸より後の今日が右端（100）にクランプされていない');
+    }
+
+    /** ⚠ 今日が軸より前なら 0%（＝左端。従来と同じ見え方）。上の 100 と**対で**置く。 */
+    public function test_the_initial_scroll_clamps_to_the_left_edge_when_today_is_before_the_axis(): void
+    {
+        // 工程は 2026-10〜12。今日（2026-08-31）の前月 2026-08-01 は軸より前。
+        $this->caseWithSteps('PRC-FUTURE', [['planned_start' => '2026-10-05', 'planned_end' => '2026-12-20']]);
+
+        $axis = $this->actingAs($this->manager())
+            ->get('/realestate/schedules?status=all')
+            ->viewData('board')['axis'];
+
+        $this->assertSame('2026-10-01', $axis['from']);
+        $this->assertSame('2026-12-31', $axis['to']);
+        $this->assertNull($axis['todayPct'], 'このフィクスチャでは今日が軸の外のはず');
+        $this->assertSame(0.0, $axis['initialPct'], '軸より前の今日が左端（0）にクランプされていない');
+    }
+
     // ============================================================
     // トラックの幅と案件名の固定表示（設計書 §3 / §4）
     // ============================================================

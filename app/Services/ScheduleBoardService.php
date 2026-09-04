@@ -128,8 +128,28 @@ class ScheduleBoardService
                 'trackWidthPx' => $scale->trackWidthPx(),
                 'todayPct'     => $scale->contains($today) ? $scale->left($today) : null,
                 'todayLabel'   => $today->format('n/j'),
+                'initialPct'   => $this->initialScrollPct($scale, $today),
             ],
         ];
+    }
+
+    /**
+     * 開いた直後に軸の**左端**へ置く位置(%)（設計書 §2 D15 / §12.4）。
+     * 「今日の前月の 1 日」を 0〜100 にクランプして返す。
+     *
+     * ⚠ **`null` を返さない。** 今日が軸の外でも前月は必ず計算できるので、Blade 側に
+     *   分岐を作らない（今日が軸より前なら 0 ＝ 左端、後なら 100 ＝ 右端で止まる）。
+     *   旧 D9 が `todayPct` の null 分岐を持っていたのは `scrollLeft = NaN` を避けるためで、
+     *   **その理由は D15 で消えている。理由が消えた分岐を残さない。**
+     *
+     * ⚠ **`startOfMonth()` を先に通してから `subMonth()` する。順序を逆にしてはいけない。**
+     *   Carbon の `subMonth()` は月末日で溢れるので、逆順だと**前月ではなく当月**が返る
+     *   （実測 2026-09-04: 2026-03-31 → 正 2026-02-01 / 誤 2026-03-01。設計書 §12.5）。
+     *   ⚠ **設計書 §6.1 で軸の月が 1 ヶ月ずれた件とまったく同じ罠。同じ機能で 2 回目。**
+     */
+    private function initialScrollPct(GanttScale $scale, CarbonImmutable $today): float
+    {
+        return GanttScale::clamp($scale->left($today->startOfMonth()->subMonth()), 0.0, 100.0);
     }
 
     /**
