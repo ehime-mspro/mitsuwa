@@ -702,7 +702,41 @@ class ScheduleBoardTest extends ScheduleTestCase
         //   無関係な要素が縦積みになっただけで落ちる脆いテストになる。
         preg_match_all('/<div style="([^"]*)"><span class="gantt-year">/', $html, $cells);
         $this->assertCount(14, $cells[1], '月セルの構造が変わっている（年 span が div の直後に無い）');
-        foreach ($cells[1] as $style) {
+
+        // ⚠ **このフィクスチャに四半期の月とそれ以外が両方あること**を先に固定する（Bug #45）。
+        //   片方しか無い軸に変わると、下の突き合わせが**片側しか測っていないのに緑**になる。
+        $strongFlags = array_column($headers, 'strong');
+        $this->assertContains(true, $strongFlags, '四半期の月（1/4/7/10）が 1 つも無い軸になっている');
+        $this->assertContains(false, $strongFlags, '四半期でない月が 1 つも無い軸になっている');
+
+        // ⚠ 幅も **1 種類しか無い軸だと定数へ潰す変異が素通りする**ので、値がばらけていることを見る。
+        $this->assertGreaterThan(1, count(array_unique(array_column($headers, 'widthPct'))), '月の幅が全部同じ軸になっている');
+
+        foreach ($cells[1] as $i => $style) {
+            // ⚠ **`strong` が実際に罫線として描かれていること。**
+            //   `test_the_axis_headers_are_month_labels_with_quarter_emphasis` は
+            //   `headers()` の `strong` **だけ**を見ており、Blade がその値を使っているかは
+            //   一度も見ていなかった（Bug #47 の「配線の半分しか押さえていない」型）。
+            //   実測 2026-09-04（変異 M24）: 三項を `'#E5E7EB'` に潰しても**フルスイート 1315 本が緑**。
+            //   ⚠ セルごとに切り出した style の中だけで見る —— ページ全体で `#D1D5DB` を探すと
+            //     共有 CSS（`.gantt-label--head` 等）や他のセルに一致して false-pass する（Bug #43）。
+            $this->assertStringContainsString(
+                $headers[$i]['strong'] ? 'border-right: 1px solid #D1D5DB;' : 'border-right: 1px solid #E5E7EB;',
+                $style,
+                ($i + 1) . ' 番目の月セル（' . $headers[$i]['year'] . $headers[$i]['label'] . '）の'
+                    . '四半期罫線が headers() の strong と食い違っている'
+            );
+
+            // ⚠ **幅も headers() の値がそのまま出ていること。** これも `strong` と同じく
+            //   サービス側だけが固定されていて、Blade が使っているかは無防備だった
+            //   （実測 2026-09-04: 定数 `width: 10%` に潰してもフルスイート 1315 本が緑）。
+            //   幅が崩れると月グリッドと棒がズレる（棒の位置は別途 % で置くため）。
+            $this->assertStringContainsString(
+                'width: ' . $headers[$i]['widthPct'] . '%;',
+                $style,
+                ($i + 1) . ' 番目の月セルの幅が headers() の widthPct と食い違っている'
+            );
+
             $this->assertStringNotContainsString('flex-direction: column', $style, '月セルが 2 段になっている');
             // ⚠ flex の min-width は既定 auto ＝ 中身の min-content が下限を作る。年を足したことで
             //    min-content が 12px → 40.6px に増えた（2026-09-04 実ブラウザ実測）。overflow が

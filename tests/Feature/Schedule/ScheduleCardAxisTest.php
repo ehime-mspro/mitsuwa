@@ -393,7 +393,45 @@ class ScheduleCardAxisTest extends ScheduleTestCase
         // ⚠ 月セルの style を切り出して 2 段でないことを見る（ページ全体を見ない）
         preg_match_all('/<div style="([^"]*)"><span class="gantt-year">/', $html, $cells);
         $this->assertCount(4, $cells[1], '月セルの構造が変わっている（年 span が div の直後に無い）');
-        foreach ($cells[1] as $style) {
+
+        // ⚠ **このフィクスチャに四半期の月とそれ以外が両方あること**を先に固定する（Bug #45）。
+        //   片方しか無い軸に変わると、下の突き合わせが**片側しか測っていないのに緑**になる。
+        $quarterFlags = array_column($months, 'quarterStart');
+        $this->assertContains(true, $quarterFlags, '四半期の月（1/4/7/10）が 1 つも無い軸になっている');
+        $this->assertContains(false, $quarterFlags, '四半期でない月が 1 つも無い軸になっている');
+
+        // ⚠ 幅も **1 種類しか無い軸だと定数へ潰す変異が素通りする**ので、値がばらけていることを見る。
+        $this->assertGreaterThan(1, count(array_unique(array_column($months, 'widthPct'))), '月の幅が全部同じ軸になっている');
+
+        foreach ($cells[1] as $i => $style) {
+            // ⚠ **`quarterStart` が実際に罫線として描かれていること。**
+            //   ボードは `border-right` / カードは `border-left` に `#D1D5DB` を置く
+            //   （非対称は設計書 §12.7 で「揃えない」と決めてある。揃えるのではなく**両方守る**）。
+            //   実測 2026-09-04（変異 M23）: 三項ごと削っても**フルスイート 1315 本が緑**だった。
+            //   ⚠ セルごとに切り出した style の中だけで見る（ページ全体だと board 用の
+            //     `#D1D5DB` や共有 CSS に一致して false-pass する。Bug #43）。
+            if ($months[$i]['quarterStart']) {
+                $this->assertStringContainsString(
+                    'border-left: 1px solid #D1D5DB;',
+                    $style,
+                    ($i + 1) . ' 番目の月セル（' . $months[$i]['year'] . $months[$i]['label'] . '）に四半期の罫線が無い'
+                );
+            } else {
+                $this->assertStringNotContainsString(
+                    'border-left',
+                    $style,
+                    ($i + 1) . ' 番目の月セル（' . $months[$i]['year'] . $months[$i]['label'] . '）は四半期の頭でないのに罫線が出ている'
+                );
+            }
+
+            // ⚠ **幅も months() の値がそのまま出ていること**（ボードと同じ理由。実測 2026-09-04:
+            //   定数 `width: 10%` に潰してもフルスイート 1315 本が緑だった）。
+            $this->assertStringContainsString(
+                'width: ' . $months[$i]['widthPct'] . '%;',
+                $style,
+                ($i + 1) . ' 番目の月セルの幅が months() の widthPct と食い違っている'
+            );
+
             $this->assertStringNotContainsString('flex-direction: column', $style, 'カードの月セルが 2 段のまま');
             $this->assertStringNotContainsString('line-height: 1.35', $style, '2 段時代の line-height が残っている');
             $this->assertStringNotContainsString('font-size: 9.5px', $style, '年の見た目がインライン style に残っている');

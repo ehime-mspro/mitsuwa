@@ -1199,6 +1199,18 @@ MSG
 **ボードとカードの両方に当てる** —— 片方だけ測ると、もう片方に当てたとき
 「守られている」と誤読する（設計書 §12.6）。
 
+⚠ **2026-09-04 に実際に起きた事故 —— 手順 6 の「戻したことを自分の目で確認する」を省くと、
+次の変異の測定が丸ごと無効になる。** Task 7 に着手する直前、作業ツリーに
+`_schedule_gantt.blade.php` へ足した `<style>.gantt-year { … }</style>` の 1 行（= M10 の変異）が
+**残ったまま**になっていた。直前のレビューエージェントは「`git checkout --` で戻して
+`git status --porcelain` が空であることを確認した」と報告していたが、実際には残っていた
+（報告と実態が食い違っていた）。**これは Bug #44 が名指ししている「前の変異の残骸が測定を汚す」
+状態そのもの**で、そのまま次の変異を当てれば赤にも緑にも化ける。
+**対策は「戻したつもり」を信用しないこと** —— 手順 6 の `git status --porcelain` を
+**毎回コマンドとして実行し、出力が空であることを目で見る**（1 行でも出たら止まって報告する）。
+Task 7 ではこれをシェルの定型に組み込み、`git checkout -- .` の**直後**に再確認して
+空でなければ非ゼロ終了する形にした（27 + 6 回の測定すべてで空を確認済み）。
+
 コマンド:
 
 ```bash
@@ -1243,20 +1255,20 @@ git status --porcelain            # 空
 | M26 | `<script>` を `<script type="text/template">` に（**内容は変わらず実行だけ止まる**） | `_schedule_board.blade.php` | `test_the_board_opens_scrolled_to_the_first_day_of_last_month`（⚠ **2026-09-04 実測では当初フルスイート 1315 本すべて緑だった**。Fix で塞いだ。2026-08-31 の POI 改修で名指しした型と同一） |
 | M27 | 呼び出しの `{{ $axis['initialPct'] }}` を `{{ $axis['initialPct'] ?: 100 }}` に（**0 の経路だけ壊す**） | `_schedule_board.blade.php` | `test_the_initial_scroll_clamps_to_the_left_edge_when_today_is_before_the_axis`（⚠ **当初 216 本すべて緑**。0 側だけ描画層のアサートが無かった） |
 
-- [ ] **Step 1: M1〜M27 を 1 つずつ当てて、赤になることと落ちた理由を記録する**
+- [x] **Step 1: M1〜M27 を 1 つずつ当てて、赤になることと落ちた理由を記録する**
 
-- [ ] **Step 2: 検出されなかった変異があればテストを足す**
+- [x] **Step 2: 検出されなかった変異があればテストを足す**
 
 ⚠ **穴が見つかったら「テストを足してから赤になること」まで確認する。**
 前回（2026-09-03）は 46 通り中 21 通りが**当初は検出漏れ**で、そのすべてがテスト設計の欠落だった。
 検出漏れがゼロなら、それ自体が疑わしい（測り方が甘い可能性）ので手順 7.1 を見直す。
 
-- [ ] **Step 3: 実測結果をこのプランに書き足す**
+- [x] **Step 3: 実測結果をこのプランに書き足す**
 
 下の「### 7.3 変異テストの実測結果」に、**検出 / 当初検出漏れ→追加で検出 / 等価変異**を
 区別して書く。表の列は `# / 変異 / ファイル / 着弾(git diff) / 落ちた本数 / 守り手 / 落ちた理由の文言 / 判定`。
 
-- [ ] **Step 4: コミットする**（テストを足した場合のみ）
+- [x] **Step 4: コミットする**（テストを足した場合のみ）
 
 ```bash
 git add tests/ docs/superpowers/plans/2026-09-04-schedule-board-year-header.md
@@ -1270,7 +1282,100 @@ MSG
 
 ### 7.3 変異テストの実測結果
 
-（Task 7 の実行時に埋める）
+**2026-09-04 に M1〜M27（M25 はボード / カードへ別々に当てたので実質 28 通り）＋
+追加で見つけた 2 通り＝計 30 通りを実測した。**
+
+**ベースライン**（変異を当てる前・`c365d50e` の clean な木で実測）:
+
+| 測り方 | 結果 |
+|---|---|
+| `./vendor/bin/phpunit --filter 'Schedule'` | **OK (216 tests, 1781 assertions)** |
+| `./vendor/bin/phpunit`（フルスイート） | **OK (1315 tests, 8639 assertions)** |
+
+⚠ **緑になった変異はフルスイートで測り直した**（`--filter 'Schedule'` の 216 本の外に
+守り手がいる可能性を潰すため）。赤は `--filter 'Schedule'` の結果で判定している。
+
+#### 結果（30 通り）
+
+| # | 変異 | ファイル | 着弾(git diff) | 落ちた本数 | 守り手 | 落ちた理由の文言 | 判定 |
+|---|---|---|---|---|---|---|---|
+| M1 | `'year' => …` の行を削除 | `ScheduleBoardService.php:462` | 1 deletion | **40** | `..._carry_the_year_of_every_month` ほか（ボードを描く全テスト） | `ErrorException: Undefined array key "year"`（compiled view :54）→ 500 | 検出 |
+| M2 | `'year' => '2026'` に固定 | 同上 `:462` | 1 ins / 1 del | 2 | `..._carry_the_year_of_every_month` ＋ `..._shows_its_year_before_the_month` | 「月ごとの年が出ていない（6月 / 7月 が 2 回ずつ出るのに区別できない）」／「2025 年の 6月 が出ていない（順序が逆か、間に要素がある）」 | 検出 |
+| M3 | `subMonth()->startOfMonth()` の逆順 | 同上 `:154` | 1 ins / 1 del | 1 | `..._puts_the_first_day_of_last_month_at_the_left_edge` | 「初期スクロールが「前月の 1 日」でない…」`Failed asserting that 39.0728476821192 matches expected 20.529801324503` | 検出（§0.4 の予測値と一致） |
+| M4 | `GanttScale::clamp(…)` を外す | 同上 `:154` | 1 ins / 1 del | 3 | `..._clamps_to_the_right_edge` / `..._clamps_to_the_left_edge` / `..._still_scrolls_when_today_is_outside_the_axis` | `583.8709677419355 is identical to 100.0` ／ `-100.0 is identical to 0.0` | 検出（0 / 100 の**両側**） |
+| M5 | `$scale->left($today)`（今日基準）に | 同上 `:154` | 1 ins / 1 del | 2 | `..._puts_the_first_day_of_last_month…` ＋ `..._board_opens_scrolled_to_the_first_day_of_last_month` | `58.94039735099338 matches expected 20.529801324503` ／「initialPct が todayPct と同値になっている（実装が今日基準へ戻ったか…）」 | 検出 |
+| M6 | `subMonths(2)`（前々月）に | 同上 `:154` | 1 ins / 1 del | 1 | `..._puts_the_first_day_of_last_month…` | `0.0 matches expected 20.529801324503` | 検出 |
+| M7 | `'initialPct' => …` の行を削除 | 同上 `:133` | 1 deletion | **40** | `initialPct` を見る全テスト | `ErrorException: Undefined array key "initialPct"`（compiled view :121）→ 500 | 検出 |
+| M8 | `.gantt-year` の宣言行を削除 | `_schedule_gantt_style.blade.php:39` | 1 deletion | 2 | `..._declared_exactly_once_on_the_board` ＋ `..._on_the_card` | 「年のスタイル宣言が 1 つでない（共有 partial 以外にも定義がある）」`actual size 0 matches expected size 1` | 検出（**ボード・カード 2 本とも**） |
+| M9 | `margin-right: 3px;` を削除 | 同上 `:39` | 1 ins / 1 del | 2 | 同上 2 本 | 「年と月名の間隔が D13 と違う」`' font-size: 9.5px; color: #9CA3AF; ' matches PCRE pattern "/margin-right:\s*3px;/"` | 検出 |
+| M10 | `.gantt-year` をカードの Blade へインライン複製 | `_schedule_gantt.blade.php:33`（挿入） | 1 insertion | 1 | `..._declared_exactly_once_on_the_card` | `actual size 2 matches expected size 1` | 検出（件数 2） |
+| M11 | ボードの年 span を削除 | `_schedule_board.blade.php:72` | 1 ins / 1 del | 1 | `..._shows_its_year_before_the_month` | 「月セルの年 span の形が変わっている…」`0 is identical to 14` | 検出 |
+| M12 | ボードの年 span を月名の後ろへ | 同上 `:72` | 1 ins / 1 del | 1 | 同上 | 「2025 年の 6月 が出ていない（順序が逆か、間に要素がある）」 | 検出（隣接チェック） |
+| M13 | 年 span と月名の間に改行 | 同上 `:72` | 2 ins / 1 del | 1 | 同上 | 同上 | 検出（⚠ 付録 B #13 のとおり**見た目は変わらない**。落ちるのは隣接チェックだけ） |
+| M14 | `class="gantt-year"` をインライン style に | 同上 `:72` | 1 ins / 1 del | 1 | 同上 | `0 is identical to 14` | 検出 |
+| M15 | カードの年 span を削除 | `_schedule_gantt.blade.php:52` | 1 ins / 1 del | 1 | `..._single_line_with_the_shared_year_class` | `0 is identical to 4` | 検出 |
+| M16 | カードに `flex-direction: column;` を戻す | 同上 `:52` | 1 ins / 1 del | 1 | 同上 | 「カードの月セルが 2 段のまま」 | 検出 |
+| M17 | スクロール関数の**定義だけ**削除 | `_schedule_board.blade.php:164-168` | 5 deletions | 2 | `..._board_opens_scrolled…` ＋ `..._still_scrolls_when_today_is_outside_the_axis` | `assertStringContainsString('function scheduleBoardSetInitialScroll(id, pct, trackPx)')` の不一致（メッセージ無しの素の失敗） | 検出 |
+| M18 | スクロール関数の**呼び出しだけ**削除 | 同上 `:169` | 1 deletion | 3 | 上記 2 本 ＋ `..._clamps_to_the_left_edge…` | 「今日が軸より前でも左端（0）でスクロール指示が出るはず」／「今日が軸の外でもクランプ値でスクロールするはず」 | 検出 |
+| M19 | `@push('scripts')` → `@push('styles')` | 同上 `:162` | 1 ins / 1 del | 1 | `..._board_opens_scrolled…` | 「スクロールのスクリプトがスクローラーより前に出ている（@push の宛先が scripts でない可能性）」`Failed asserting that 2543 is greater than 27146` | 検出（⚠ **位置の比較だけが捕まえた**。文字列の存在は全部残っている。Bug #28） |
+| M20 | 呼び出しの引数を `$axis['todayPct']` に | 同上 `:169` | 1 ins / 1 del | 3 | `..._clamps_to_the_left_edge…` / `..._board_opens_scrolled…` / `..._still_scrolls…` | 「今日が軸より前でも左端（0）でスクロール指示が出るはず」ほか | 検出 |
+| M21 | JS の式から `/ 100` を落とす | 同上 `:167` | 1 ins / 1 del | 1 | `..._board_opens_scrolled…` | 「スクロール量の式が変わっている」 | 検出 |
+| M22 | **カード**の `{{ $m['year'] }}` を literal `2026` に | `_schedule_gantt.blade.php:52` | 1 ins / 1 del | 1 | `..._single_line_with_the_shared_year_class` | 「年 → 月名の順で 1 行になっていない」 | 検出（**Task 5 `1b738ba7` の年またぎフィクスチャが効いている**。付録 B #15） |
+| M23 | カードの `$m['quarterStart']` の三項を削除 | 同上 `:52` | 1 ins / 1 del | **0 → 1** | （当初なし）→ `..._single_line_with_the_shared_year_class` | （当初: **フルスイート 1315 本すべて緑**）→「3 番目の月セル（20261月）に四半期の罫線が無い」 | **当初検出漏れ → 追加で検出** |
+| M24 | ボードの `$h['strong']` の三項を `#E5E7EB` に潰す | `_schedule_board.blade.php:72` | 1 ins / 1 del | **0 → 1** | （当初なし）→ `..._shows_its_year_before_the_month` | （当初: **フルスイート 1315 本すべて緑**）→「2 番目の月セル（20257月）の四半期罫線が headers() の strong と食い違っている」 | **当初検出漏れ → 追加で検出** |
+| M25a | **ボード**の `justify-content: center` → `flex-start` | 同上 `:72` | 1 ins / 1 del | 1 | `..._shows_its_year_before_the_month` | 「月セルの中央揃えが崩れている」 | 検出 |
+| M25b | **カード**の `justify-content: center` → `flex-start` | `_schedule_gantt.blade.php:52` | 1 ins / 1 del | 1 | `..._single_line_with_the_shared_year_class` | 「月セルの中央揃えが崩れている」 | 検出 |
+| M26 | `<script>` → `<script type="text/template">` | `_schedule_board.blade.php:163` | 1 ins / 1 del | 1 | `..._board_opens_scrolled…` | 「script タグに属性が付いている（type="module" / "text/template" だと実行されない）」 | 検出（**Task 6 `c365d50e` の穴埋めが効いている**。付録 B #16） |
+| M27 | 呼び出しを `{{ $axis['initialPct'] ?: 100 }}` に（0 の経路だけ壊す） | 同上 `:169` | 1 ins / 1 del | 1 | `..._clamps_to_the_left_edge_when_today_is_before_the_axis` | 「今日が軸より前でも左端（0）でスクロール指示が出るはず」 | 検出（**Task 6 の穴埋めが効いている**） |
+| **X1** | ボードの `width: {{ $h['widthPct'] }}%` を `width: 10%` に | `_schedule_board.blade.php:72` | 1 ins / 1 del | **0 → 1** | （当初なし）→ `..._shows_its_year_before_the_month` | （当初: **フルスイート 1315 本すべて緑**）→「1 番目の月セルの幅が headers() の widthPct と食い違っている」 | **表に無かった穴。追加で発見 → 検出** |
+| **X2** | カードの `width: {{ $m['widthPct'] }}%` を `width: 10%` に | `_schedule_gantt.blade.php:52` | 1 ins / 1 del | **0 → 1** | （当初なし）→ `..._single_line_with_the_shared_year_class` | （当初: **フルスイート 1315 本すべて緑**）→「1 番目の月セルの幅が months() の widthPct と食い違っている」 | **表に無かった穴。追加で発見 → 検出** |
+
+**内訳: 検出 26 通り / 当初検出漏れ→追加で検出 4 通り（M23 / M24 / X1 / X2）/ 等価変異 0 通り。**
+
+#### 当初検出漏れの正体（4 通りとも同じ型）
+
+**サービス側の値は固定されているのに、Blade がその値を使っているかを誰も見ていなかった** ——
+Bug #47 の「配線の半分しか押さえていない」型そのもの。
+
+- `test_the_axis_headers_are_month_labels_with_quarter_emphasis` は `headers()` の
+  **`strong` / `widthPct` の配列**を見ている。`ScheduleCardService::months()` の
+  `quarterStart` も同様。**どちらも「Blade がその値を出しているか」は一度も見ていなかった。**
+- ⚠ これは **2026-09-03 の振り返りが「`headers()` の出力 3 フィールド（label / strong / widthPct）も
+  すべて無防備だった」と名指しした穴の残り**である。当時 `label` だけが
+  （年の隣接チェック `<span class="gantt-year">2025</span>6月` によって）塞がり、
+  **`strong` と `widthPct` は塞がらないまま残っていた。**
+- ⚠ **X1 / X2 は 7.2 の表に無い。** 表の 27 通りを終えた時点で検出漏れが M23 / M24 の 2 件しか
+  無く、「測り方が甘いのではないか」と疑って**同じ行の隣接する不変条件**を追加で当てて見つけた。
+  **表を消化しただけで終えないこと。**
+
+#### 塞いだ穴（テストを足した箇所）
+
+新規テストファイルは作らず、**既に月セルの style を切り出しているループの中**へ追加した
+（`preg_match_all('/<div style="([^"]*)"><span class="gantt-year">/', …)` の結果を
+サービス側の配列と**添字で突き合わせる**形）。
+
+| ファイル | 足したもの |
+|---|---|
+| `tests/Feature/Schedule/ScheduleBoardTest.php`<br>`test_every_month_cell_on_the_board_shows_its_year_before_the_month` | ①`$headers[$i]['strong']` に応じた `border-right: 1px solid #D1D5DB;` / `#E5E7EB;` の突き合わせ ②`width: {$headers[$i]['widthPct']}%;` の突き合わせ ③**空振り防止**（`strong` に true / false が両方在ること・`widthPct` が 2 種類以上在ること） |
+| `tests/Feature/Schedule/ScheduleCardAxisTest.php`<br>`test_the_card_month_cells_are_a_single_line_with_the_shared_year_class` | ①`$months[$i]['quarterStart']` が true なら `border-left: 1px solid #D1D5DB;` が在り、false なら `border-left` が**無い**こと ②`width: {$months[$i]['widthPct']}%;` の突き合わせ ③同じ空振り防止 |
+
+⚠ **セルごとに切り出した style の中だけで見る。** ページ全体で `#D1D5DB` を探すと
+共有 CSS（`.gantt-label--head` 等）や他のセルに一致して false-pass する（Bug #43）。
+
+⚠ **空振り防止を対で置く**（Bug #45）。フィクスチャの軸が「全部四半期」/「全部同じ幅」に
+変わると、突き合わせのループが**片側しか測っていないのに緑**になる。
+
+⚠ **四半期強調の非対称は揃えない**（設計書 §12.7）。ボードは `border-right` /
+カードは `border-left` に `#D1D5DB` を置いている。**揃えるのではなく両方を別々に守る。**
+
+#### 事後のテスト本数
+
+| 測り方 | ベースライン | Task 7 後 |
+|---|---|---|
+| `--filter 'Schedule'` | 216 tests / 1781 assertions | **216 tests / 1823 assertions** |
+| フルスイート | 1315 tests / 8639 assertions | **1315 tests / 8681 assertions** |
+
+**テストの本数は増えていない**（既存 2 本のループにアサートを足したので +42 assertions のみ）。
 
 ---
 
