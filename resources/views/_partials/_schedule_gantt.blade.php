@@ -38,11 +38,16 @@
                 <div style="display: flex; height: 42px; background: #F9FAFB; border-bottom: 1px solid #E5E7EB;">
                     <div class="gantt-label gantt-label--head" style="flex: 0 0 var(--gantt-label-w); min-width: 0; overflow: hidden; border-right: 1px solid #E5E7EB; display: flex; align-items: center; padding: 0 12px; font-size: 11.5px; font-weight: 700; color: #6B7280;">工程</div>
                     <div style="flex: 1 1 auto; min-width: 0; position: relative; display: flex;">
+                        {{-- ⚠ ボード（_schedule_board）の月セルと**同じ形**にすること（設計書 §12.2 D14）。
+                             年 span と月名の間に改行も空白も入れない。
+                             ⚠ **見た目は変わらない** —— このセルは display: flex なので、改行込みの
+                                テキスト実行は匿名ブロックの flex アイテムになり行頭の空白が除去される
+                                （2026-09-04 実ブラウザ実測: 改行あり／なしとも間隔 3.000px で完全一致）。
+                             ⚠ `overflow: hidden` はボードと揃えてある。flex の min-width は既定 auto で
+                                中身の min-content 幅が下限を作るため、これが無いと将来
+                                月初・月末に揃っていない軸（部分月）でヘッダだけ広がる（Bug #29 と同型）。 --}}
                         @foreach($g['months'] as $m)
-                            <div style="width: {{ $m['widthPct'] }}%; border-right: 1px solid #E5E7EB; {{ $m['quarterStart'] ? 'border-left: 1px solid #D1D5DB;' : '' }} font-size: 11px; color: #6B7280; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.35; box-sizing: border-box;">
-                                <span style="font-size: 9.5px; color: #9CA3AF;">{{ $m['year'] }}</span>
-                                <span>{{ $m['label'] }}</span>
-                            </div>
+                            <div style="width: {{ $m['widthPct'] }}%; border-right: 1px solid #E5E7EB; {{ $m['quarterStart'] ? 'border-left: 1px solid #D1D5DB;' : '' }} font-size: 11px; color: #6B7280; display: flex; align-items: center; justify-content: center; box-sizing: border-box; overflow: hidden;"><span class="gantt-year">{{ $m['year'] }}</span>{{ $m['label'] }}</div>
                         @endforeach
                         @if($g['todayPct'] !== null)
                             <div style="position: absolute; top: 2px; left: {{ $g['todayPct'] }}%; transform: translateX(-50%); background: #EF4444; color: white; font-size: 9.5px; font-weight: 700; padding: 1px 6px; border-radius: 999px; white-space: nowrap; z-index: 4;">今日 {{ $g['todayLabel'] }}</div>

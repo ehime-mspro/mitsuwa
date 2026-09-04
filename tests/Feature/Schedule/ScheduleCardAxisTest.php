@@ -347,6 +347,56 @@ class ScheduleCardAxisTest extends ScheduleTestCase
     }
 
     /**
+     * 詳細カードの月セルもボードと**同じ形**にする（設計書 §12.2 D14）。
+     * 年 → 月名の 1 行で、見た目は共有 CSS の `.gantt-year` が持つ。
+     *
+     * ⚠ **「年が出ているか」だけを見ない。** カードは改修前から年を出していたので、
+     *   それだけでは 2 段のまま・インライン style のままの状態と区別が付かない。
+     *   **1 行であること**と **`class="gantt-year"` を使っていること**を対で見る。
+     */
+    public function test_the_card_month_cells_are_a_single_line_with_the_shared_year_class(): void
+    {
+        $owner = $this->makeParent('procurement');
+        $owner->scheduleSteps()->create([
+            'name' => '測量', 'category' => 'survey',
+            'planned_start' => '2026-08-01', 'planned_end' => '2026-09-30',
+            'sort_order' => 1,
+        ]);
+
+        $response = $this->actingAs($this->manager())
+            ->get(route($owner->scheduleRoutePrefix() . '.show', $owner))
+            ->assertOk();
+
+        $html   = $response->getContent();
+        $months = $response->viewData('schedule')['gantt']['months'];
+
+        // 余白 ±1 ヶ月込みで 2026-07-01〜2026-10-31 ＝ 4 ヶ月
+        $this->assertCount(4, $months, 'このテストが前提にしているカードの軸が変わっている');
+
+        $this->assertSame(
+            count($months),
+            substr_count($html, 'class="gantt-year"'),
+            '月セルの年 span の形が変わっている（class="gantt-year" の数が月セル数と一致しない。'
+            . '属性の書式を変えただけでもここは落ちる —— 意図した変更なら needle 側も更新すること）'
+        );
+
+        $this->assertStringContainsString('<span class="gantt-year">2026</span>7月', $html, '年 → 月名の順で 1 行になっていない');
+
+        // ⚠ 月セルの style を切り出して 2 段でないことを見る（ページ全体を見ない）
+        preg_match_all('/<div style="([^"]*)"><span class="gantt-year">/', $html, $cells);
+        $this->assertCount(4, $cells[1], '月セルの構造が変わっている（年 span が div の直後に無い）');
+        foreach ($cells[1] as $style) {
+            $this->assertStringNotContainsString('flex-direction: column', $style, 'カードの月セルが 2 段のまま');
+            $this->assertStringNotContainsString('line-height: 1.35', $style, '2 段時代の line-height が残っている');
+            $this->assertStringNotContainsString('font-size: 9.5px', $style, '年の見た目がインライン style に残っている');
+            // ⚠ flex の min-width は既定 auto ＝ 中身の min-content が下限を作る。年を足したことで
+            //    min-content が 12px → 40.6px に増えた（2026-09-04 実ブラウザ実測。ボード側と同じ計測）。
+            //    overflow が visible 以外のときだけ自動最小サイズが 0 になるので、これは外せない（Bug #29）。
+            $this->assertStringContainsString('overflow: hidden', $style, 'カードの月セルの overflow: hidden が無い（Bug #29）');
+        }
+    }
+
+    /**
      * ⚠ **節目（◆）の行のラベル欄も押し広げられないこと**（Bug #29）。
      *   既存の `ScheduleDateStateTest::test_the_label_column_cannot_be_pushed_wider_than_its_track` と
      *   `test_the_step_name_column_is_sticky` は**どちらも自動 ◆ が 0 件のフィクスチャ**を使っており、
