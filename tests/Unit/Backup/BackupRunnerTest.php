@@ -8,7 +8,9 @@ use App\Support\Backup\BackupStorage;
 use App\Support\Backup\DatabaseDumper;
 use App\Support\Backup\FileSyncPlanner;
 use App\Support\Backup\LocalDirectoryBackupStorage;
+use App\Support\Backup\RetentionPolicy;
 use Carbon\CarbonImmutable;
+use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 
@@ -172,6 +174,303 @@ class BackupRunnerTest extends TestCase
 
         $this->expectExceptionMessage('backup-work');
         $runner->run($this->at(2026, 9, 12));
+    }
+
+    public function test_gzip_output_decompresses_and_is_created_with_mode_0600(): void
+    {
+        $this->put('plain.sql', "CREATE TABLE t (id INT);\n");
+        $destination = $this->root.'/plain.sql.gz';
+
+        $method = new \ReflectionMethod(BackupRunner::class, 'gzip');
+        $method->setAccessible(true);
+        $method->invoke($this->runner(), $this->root.'/plain.sql', $destination);
+
+        $this->assertSame("CREATE TABLE t (id INT);\n", gzdecode(file_get_contents($destination)));
+        $this->assertSame('0600', substr(sprintf('%o', fileperms($destination)), -4));
+    }
+
+    public function test_leftovers_from_a_killed_run_are_removed_by_a_successful_run(): void
+    {
+        $workDir = $this->root.'/backup-work';
+        mkdir($workDir, 0700, true);
+        file_put_contents($workDir.'/dump.sql', 'partial plain dump');
+        file_put_contents($workDir.'/mysqldump-deadbeefcafe.cnf', "[client]\npassword=\"x\"\n");
+        file_put_contents($workDir.'/file.enc.abcdef123456.part', 'partial encrypted attachment');
+
+        $this->runner()->run($this->at(2026, 9, 12));
+
+        $this->assertSame([], glob($workDir.'/*'));
+    }
+
+    public function test_work_dir_is_0700_after_a_run(): void
+    {
+        $this->runner()->run($this->at(2026, 9, 12));
+
+        $this->assertSame('0700', substr(sprintf('%o', fileperms($this->root.'/backup-work')), -4));
+    }
+
+    public function test_a_failed_database_upload_leaves_no_plain_or_encrypted_dump_behind(): void
+    {
+        $storage = new class($this->root.'/remote') implements BackupStorage
+        {
+            private LocalDirectoryBackupStorage $inner;
+
+            public function __construct(string $root)
+            {
+                $this->inner = new LocalDirectoryBackupStorage($root);
+            }
+
+            public function put(string $key, string $localPath): void
+            {
+                if (str_starts_with($key, RetentionPolicy::DB_PREFIX)) {
+                    throw new RuntimeException('保管先への送信に失敗しました: test');
+                }
+                $this->inner->put($key, $localPath);
+            }
+
+            public function get(string $key, string $localPath): void
+            {
+                $this->inner->get($key, $localPath);
+            }
+
+            public function list(string $prefix): array
+            {
+                return $this->inner->list($prefix);
+            }
+
+            public function delete(string $key): void
+            {
+                $this->inner->delete($key);
+            }
+        };
+
+        $caught = null;
+        try {
+            (new BackupRunner($this->fakeDumper(), $storage, new BackupCipher($this->key), $this->root.'/backup-work', $this->root.'/app', ['public', 'private'], 30))
+                ->run($this->at(2026, 9, 12));
+        } catch (RuntimeException $e) {
+            $caught = $e;
+        }
+
+        $this->assertNotNull($caught, '例外が出なかった');
+        $this->assertSame([], glob($this->root.'/backup-work/*'));
+    }
+
+    public function test_run_refuses_to_start_while_another_process_holds_the_lock(): void
+    {
+        $workDir = $this->root.'/backup-work';
+        mkdir($workDir, 0700, true);
+        file_put_contents($workDir.'/sentinel.txt', 'left behind');
+
+        $lockHandle = fopen($workDir.'/.lock', 'c');
+        flock($lockHandle, LOCK_EX);
+
+        $caught = null;
+        try {
+            $this->runner()->run($this->at(2026, 9, 12));
+        } catch (RuntimeException $e) {
+            $caught = $e;
+        }
+
+        flock($lockHandle, LOCK_UN);
+        fclose($lockHandle);
+
+        $this->assertNotNull($caught, '例外が出なかった');
+        $this->assertStringContainsString('実行中', $caught->getMessage());
+        $this->assertStringEqualsFile($workDir.'/sentinel.txt', 'left behind');
+    }
+
+    public function test_expired_database_backup_is_not_deleted_when_a_file_upload_fails(): void
+    {
+        $this->put('remote/db/manage-20260801-030000.sql.gz.enc', 'old');
+
+        $storage = new class($this->root.'/remote') implements BackupStorage
+        {
+            private LocalDirectoryBackupStorage $inner;
+
+            public function __construct(string $root)
+            {
+                $this->inner = new LocalDirectoryBackupStorage($root);
+            }
+
+            public function put(string $key, string $localPath): void
+            {
+                if (str_starts_with($key, FileSyncPlanner::PREFIX)) {
+                    throw new RuntimeException('保管先への送信に失敗しました: test');
+                }
+                $this->inner->put($key, $localPath);
+            }
+
+            public function get(string $key, string $localPath): void
+            {
+                $this->inner->get($key, $localPath);
+            }
+
+            public function list(string $prefix): array
+            {
+                return $this->inner->list($prefix);
+            }
+
+            public function delete(string $key): void
+            {
+                $this->inner->delete($key);
+            }
+        };
+
+        $caught = null;
+        try {
+            (new BackupRunner($this->fakeDumper(), $storage, new BackupCipher($this->key), $this->root.'/backup-work', $this->root.'/app', ['public', 'private'], 30))
+                ->run($this->at(2026, 9, 12));
+        } catch (RuntimeException $e) {
+            $caught = $e;
+        }
+
+        $this->assertNotNull($caught, '例外が出なかった');
+        $this->assertArrayHasKey(
+            'db/manage-20260801-030000.sql.gz.enc',
+            (new LocalDirectoryBackupStorage($this->root.'/remote'))->list(RetentionPolicy::DB_PREFIX),
+        );
+    }
+
+    public function test_a_symlinked_work_dir_is_rejected(): void
+    {
+        symlink($this->root.'/app/public', $this->root.'/backup-work');
+
+        $caught = null;
+        try {
+            $this->runner()->run($this->at(2026, 9, 12));
+        } catch (RuntimeException $e) {
+            $caught = $e;
+        }
+
+        $this->assertNotNull($caught, '例外が出なかった');
+        $this->assertStringContainsString('リンク', $caught->getMessage());
+        $this->assertStringEqualsFile($this->root.'/app/public/attachments/1/a.pdf', 'AAA');
+    }
+
+    public function test_a_work_dir_nested_inside_a_backed_up_root_is_rejected(): void
+    {
+        $runner = new BackupRunner(
+            $this->fakeDumper(),
+            new LocalDirectoryBackupStorage($this->root.'/remote'),
+            new BackupCipher($this->key),
+            $this->root.'/app/public/backup-work',
+            $this->root.'/app',
+            ['public', 'private'],
+            30,
+        );
+
+        $caught = null;
+        try {
+            $runner->run($this->at(2026, 9, 12));
+        } catch (RuntimeException $e) {
+            $caught = $e;
+        }
+
+        $this->assertNotNull($caught, '例外が出なかった');
+        $this->assertStringContainsString('リンク', $caught->getMessage());
+    }
+
+    public function test_one_failed_upload_does_not_stop_the_others_but_run_still_fails_and_skips_pruning(): void
+    {
+        $this->put('remote/db/manage-20260801-030000.sql.gz.enc', 'old');
+        $keyId = (new BackupCipher($this->key))->keyId();
+        $failingKey = FileSyncPlanner::keyFor('public/attachments/1/a.pdf', $keyId);
+
+        $storage = new class($this->root.'/remote', $failingKey) implements BackupStorage
+        {
+            private LocalDirectoryBackupStorage $inner;
+
+            public function __construct(string $root, private string $failingKey)
+            {
+                $this->inner = new LocalDirectoryBackupStorage($root);
+            }
+
+            public function put(string $key, string $localPath): void
+            {
+                if ($key === $this->failingKey) {
+                    throw new RuntimeException('保管先への送信に失敗しました: test');
+                }
+                $this->inner->put($key, $localPath);
+            }
+
+            public function get(string $key, string $localPath): void
+            {
+                $this->inner->get($key, $localPath);
+            }
+
+            public function list(string $prefix): array
+            {
+                return $this->inner->list($prefix);
+            }
+
+            public function delete(string $key): void
+            {
+                $this->inner->delete($key);
+            }
+        };
+
+        $caught = null;
+        try {
+            (new BackupRunner($this->fakeDumper(), $storage, new BackupCipher($this->key), $this->root.'/backup-work', $this->root.'/app', ['public', 'private'], 30))
+                ->run($this->at(2026, 9, 12));
+        } catch (RuntimeException $e) {
+            $caught = $e;
+        }
+
+        $this->assertNotNull($caught, '例外が出なかった');
+        $this->assertStringContainsString('a.pdf', $caught->getMessage());
+
+        $uploadedKey = FileSyncPlanner::keyFor('private/approvals/2/b.xlsx', $keyId);
+        $this->assertArrayHasKey($uploadedKey, (new LocalDirectoryBackupStorage($this->root.'/remote'))->list(FileSyncPlanner::prefixFor($keyId)));
+        $this->assertArrayHasKey(
+            'db/manage-20260801-030000.sql.gz.enc',
+            (new LocalDirectoryBackupStorage($this->root.'/remote'))->list(RetentionPolicy::DB_PREFIX),
+        );
+    }
+
+    public function test_constructor_rejects_a_retention_days_below_one(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        new BackupRunner($this->fakeDumper(), new LocalDirectoryBackupStorage($this->root.'/remote'), new BackupCipher($this->key), $this->root.'/backup-work', $this->root.'/app', ['public'], 0);
+    }
+
+    public function test_constructor_rejects_empty_file_roots(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        new BackupRunner($this->fakeDumper(), new LocalDirectoryBackupStorage($this->root.'/remote'), new BackupCipher($this->key), $this->root.'/backup-work', $this->root.'/app', [], 30);
+    }
+
+    public function test_run_fails_when_none_of_the_configured_roots_exist(): void
+    {
+        $runner = new BackupRunner(
+            $this->fakeDumper(),
+            new LocalDirectoryBackupStorage($this->root.'/remote'),
+            new BackupCipher($this->key),
+            $this->root.'/backup-work',
+            $this->root.'/app',
+            ['does-not-exist', 'also-missing'],
+            30,
+        );
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('バックアップ対象のフォルダが 1 つもありません');
+        $runner->run($this->at(2026, 9, 12));
+    }
+
+    public function test_run_succeeds_when_only_one_configured_root_exists(): void
+    {
+        $summary = (new BackupRunner(
+            $this->fakeDumper(),
+            new LocalDirectoryBackupStorage($this->root.'/remote'),
+            new BackupCipher($this->key),
+            $this->root.'/backup-work',
+            $this->root.'/app',
+            ['public', 'does-not-exist'],
+            30,
+        ))->run($this->at(2026, 9, 12));
+
+        $this->assertSame(1, $summary->filesScanned);
     }
 
     private function runner(?DatabaseDumper $dumper = null): BackupRunner
