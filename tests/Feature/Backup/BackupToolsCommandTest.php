@@ -21,7 +21,8 @@ class BackupToolsCommandTest extends TestCase
 
     private const AVAILABLE_DB_HEADING = '使えるデータベースのバックアップ（新しい順）:';
 
-    private const OTHER_LOCATION_TEMPLATE = '今のキーの置き場所に無い添付が、ほかの暗号化キーの置き場所に %d 件あります（キーを変える前に消した添付も含まれます）。取り出すには、空の取り出し先を指定して php artisan ops:backup-restore <取り出し先> --without-db --ask-key を実行し、そのときのキーを入力してください。';
+    // さくらでは `php` とだけ打つと既定の PHP 7.4 が動いてしまうため、案内は実装と同じく PHP_BINARY から組み立てる
+    private const OTHER_LOCATION_TEMPLATE = '今のキーの置き場所に無い添付が、ほかの暗号化キーの置き場所に %d 件あります（キーを変える前に消した添付も含まれます）。取り出すには、空の取り出し先を指定して '.PHP_BINARY.' artisan ops:backup-restore <取り出し先> --without-db --ask-key を実行し、そのときのキーを入力してください。';
 
     private const ABORT_TEMPLATE = '保管先から続けて %d 件取り出せなかったため、打ち切りました（保管先の不調の可能性があります）。';
 

@@ -6,9 +6,11 @@ use App\Mail\OpsTestMail;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Queue\Console\WorkCommand;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use ReflectionProperty;
 use Symfony\Component\Mailer\Exception\TransportException;
 use Symfony\Component\Mailer\SentMessage;
@@ -19,22 +21,15 @@ class MailTestCommandTest extends TestCase
 {
     use RefreshDatabase;
 
-    protected function setUp(): void
-    {
-        parent::setUp();
-
-        // WorkCommand は同じ PHP プロセスの中で 2 回目以降リスナーを登録し直さない（private static フラグ）。
-        // テストのたびに queue:work を正しく動かすため、ここでリセットする
-        (new ReflectionProperty(WorkCommand::class, 'hasRegisteredListeners'))->setValue(null, false);
-    }
-
     public function test_test_mail_is_queued_for_the_address(): void
     {
         Mail::fake();
         config(['mail.default' => 'smtp', 'queue.default' => 'database']);
 
         $this->artisan('ops:mail-test', ['to' => 'kessai@example.com'])
-            ->expectsOutputToContain('送信待ちに入れました')
+            ->expectsOutputToContain('テストメールを送信待ちに入れました（宛先: kessai@example.com）。')
+            ->expectsOutputToContain('定期実行（5 分おき）で送られます。CRON を登録する前は '.$this->phpArtisan('queue:work --stop-when-empty').' で送れます。')
+            ->expectsOutputToContain('5 分たっても届かないときは storage/logs/laravel.log を確かめるか、開発担当へ連絡してください。')
             ->assertExitCode(0);
 
         // 送信待ち（キュー）に積むことで、定期実行によるキュー処理まで一緒に確かめられる
@@ -75,9 +70,9 @@ class MailTestCommandTest extends TestCase
         Mail::fake();
         config(['backup.notify_to' => '']);
 
-        // (c) 手順書が引用するため、文言を完全一致で固定する
+        // (c) 手順書が引用するため、文言を完全一致で固定する（複数行になったため、この行を含むことで確かめる）
         $this->artisan('ops:mail-test')
-            ->expectsOutput('BACKUP_NOTIFY_TO に有効な宛先がありません。宛先を指定するか、.env の BACKUP_NOTIFY_TO を直して php artisan config:cache をやり直してください。')
+            ->expectsOutputToContain('BACKUP_NOTIFY_TO に有効な宛先がありません。宛先を指定するか、.env の BACKUP_NOTIFY_TO を直して '.$this->phpArtisan('config:cache').' をやり直してください。')
             ->assertExitCode(1);
 
         Mail::assertNothingQueued();
@@ -124,7 +119,7 @@ class MailTestCommandTest extends TestCase
         ]);
 
         $this->artisan('ops:mail-test')
-            ->expectsOutputToContain('BACKUP_NOTIFY_TO に形式の誤ったアドレスがあります: bad-address（.env を直したら php artisan config:cache をやり直してください）')
+            ->expectsOutputToContain('BACKUP_NOTIFY_TO に形式の誤ったアドレスがあります: bad-address（.env を直したら '.$this->phpArtisan('config:cache').' をやり直してください）')
             ->assertExitCode(0);
 
         Mail::assertQueued(OpsTestMail::class, 1);
@@ -162,9 +157,26 @@ class MailTestCommandTest extends TestCase
         Mail::assertNothingQueued();
     }
 
+    // Minor 5: 空文字・空白だけの宛先を指定したとき専用の文言で断る
+    public function test_d3_empty_or_whitespace_only_address_is_refused(): void
+    {
+        Mail::fake();
+        config(['mail.default' => 'smtp', 'queue.default' => 'database']);
+
+        foreach (['', '   ', '、'] as $blank) {
+            $this->artisan('ops:mail-test', ['to' => $blank])
+                ->expectsOutputToContain('宛先が空です。メールアドレスを指定するか、宛先を省略して BACKUP_NOTIFY_TO の全員へ送ってください。')
+                ->assertExitCode(1);
+        }
+
+        Mail::assertNothingQueued();
+        Mail::assertNothingSent();
+    }
+
     // (e) database の送信待ちに積み、queue:work --stop-when-empty で実際に送る（array mailer に届く）ところまで通す
     public function test_e_database_queue_delivers_end_to_end_via_queue_work(): void
     {
+        $this->resetWorkCommandListeners();
         config([
             'queue.default' => 'database',
             'mail.default' => 'smtp',
@@ -195,7 +207,7 @@ class MailTestCommandTest extends TestCase
         config(['mail.default' => 'log', 'queue.default' => 'database']);
 
         $this->artisan('ops:mail-test', ['to' => 'a@example.com'])
-            ->expectsOutputToContain('送信方式（MAIL_MAILER）が log のため、メールは実際には送られません。')
+            ->expectsOutputToContain('送信方式（MAIL_MAILER）が log のため、メールは実際には送られません。.env の MAIL_MAILER を smtp にして '.$this->phpArtisan('config:cache').' をやり直してから、もう一度実行してください。')
             ->assertExitCode(1);
 
         Mail::assertNothingQueued();
@@ -209,7 +221,7 @@ class MailTestCommandTest extends TestCase
         config(['mail.default' => 'smtp', 'queue.default' => 'sync']);
 
         $this->artisan('ops:mail-test', ['to' => 'a@example.com'])
-            ->expectsOutputToContain('送信待ち（キュー）が sync のため、送信待ちを通さずにその場で送ります')
+            ->expectsOutputToContain('送信待ち（キュー）が sync のため、送信待ちを通さずにその場で送ります（定期実行の確かめにはなりません）。本番では .env の QUEUE_CONNECTION を database にして '.$this->phpArtisan('config:cache').' をやり直してください。')
             ->expectsOutputToContain('テストメールを送りました（宛先: a@example.com）。')
             ->assertExitCode(0);
 
@@ -249,6 +261,8 @@ class MailTestCommandTest extends TestCase
 
         $this->artisan('ops:mail-test')
             ->expectsOutputToContain('テストメールを送れませんでした（宛先: typo@example.com）')
+            // 失敗した宛先は完了の表示に含まれない
+            ->expectsOutputToContain('テストメールを送りました（宛先: admin@example.com）。')
             ->assertExitCode(1);
 
         $delivered = app('mailer')->getSymfonyTransport()->delivered;
@@ -266,6 +280,105 @@ class MailTestCommandTest extends TestCase
         Log::shouldHaveReceived('error')
             ->withArgs(fn (string $message) => str_contains($message, 'テストメールを送れませんでした（宛先: admin@example.com）')
                 && str_contains($message, 'User unknown'));
+    }
+
+    // (i) 本番の経路: database に積む → 拒否する transport → queue:work → failed() が 1 回だけ記録される（Q2 の形）
+    public function test_i2_failed_hook_is_reached_through_the_real_queue_work_path(): void
+    {
+        $this->resetWorkCommandListeners();
+        $this->useRejectTypoTransport();
+        config(['queue.default' => 'database', 'backup.notify_to' => 'typo@example.com, admin@example.com']);
+        Log::spy();
+
+        $this->artisan('ops:mail-test')->assertExitCode(0);
+        $this->artisan('queue:work', ['--stop-when-empty' => true, '--tries' => 1, '--memory' => 1024])->assertExitCode(0);
+
+        // OpsTestMail::$tries = 1 のため、1 回目の失敗でそのまま failed_jobs に落ちる（再試行を待たない）
+        Log::shouldHaveReceived('error')
+            ->withArgs(fn (string $message) => str_contains($message, 'テストメールを送れませんでした（宛先: typo@example.com）')
+                && str_contains($message, 'User unknown'))
+            ->once();
+        $this->assertSame(1, DB::table('failed_jobs')->count());
+        $this->assertCount(1, app('mailer')->getSymfonyTransport()->delivered);
+    }
+
+    // Minor 4: 送信待ちに書き込めない・送れないときの画面表示は 300 文字で切る（全文は report() で laravel.log へ）
+    public function test_screen_error_is_truncated_to_300_characters(): void
+    {
+        Mail::extend('long-failure', fn () => new class extends AbstractTransport
+        {
+            protected function doSend(SentMessage $message): void
+            {
+                throw new TransportException(str_repeat('X', 500));
+            }
+
+            public function __toString(): string
+            {
+                return 'long-failure://';
+            }
+        });
+        config([
+            'mail.mailers.long-failure' => ['transport' => 'long-failure'],
+            'mail.default' => 'long-failure',
+            'queue.default' => 'sync',
+        ]);
+
+        $this->artisan('ops:mail-test', ['to' => 'a@example.com'])
+            ->expectsOutputToContain('テストメールを送れませんでした（宛先: a@example.com）: '.str_repeat('X', 300).'...')
+            ->doesntExpectOutputToContain(str_repeat('X', 301))
+            ->assertExitCode(1);
+    }
+
+    // Minor 3 / 7: 送信待ちに書き込めない場合（jobs 表が無い）も宛先ごとの失敗として捕まえる
+    public function test_push_failure_when_jobs_table_is_missing_is_caught_per_recipient(): void
+    {
+        config([
+            'mail.default' => 'smtp',
+            'queue.default' => 'database',
+            'backup.notify_to' => 'a@example.com、b@example.com',
+        ]);
+        Schema::drop('jobs');
+
+        $this->artisan('ops:mail-test')
+            ->expectsOutputToContain('テストメールを送れませんでした（宛先: a@example.com）')
+            ->expectsOutputToContain('テストメールを送れませんでした（宛先: b@example.com）')
+            ->assertExitCode(1);
+    }
+
+    // Minor 3: QUEUE_CONNECTION が database でも sync でもない（設定に無い名前を含む）→ 断る。設定の行にも表れる
+    public function test_undefined_queue_connection_shows_the_name_and_refuses(): void
+    {
+        Mail::fake();
+        config(['mail.default' => 'smtp', 'queue.default' => 'totally-undefined-connection']);
+
+        $this->artisan('ops:mail-test', ['to' => 'a@example.com'])
+            ->expectsOutputToContain('今の設定: 送信待ち（キュー）= totally-undefined-connection（設定にありません）')
+            ->expectsOutputToContain('送信待ち（キュー）の設定（QUEUE_CONNECTION = totally-undefined-connection）が database ではありません。.env の QUEUE_CONNECTION を database にして '.$this->phpArtisan('config:cache').' をやり直してください。')
+            ->assertExitCode(1);
+
+        Mail::assertNothingQueued();
+        Mail::assertNothingSent();
+    }
+
+    // Minor 2: 表示の順番は「今の設定: …」→ 宛先の問題 → 送信方式の問題、の順に全部出てから終了コード 1
+    public function test_all_problems_are_shown_in_order_before_failing(): void
+    {
+        config(['mail.default' => 'log', 'queue.default' => 'database']);
+        $this->withoutMockingConsoleOutput();
+
+        $exit = Artisan::call('ops:mail-test', ['to' => 'not-an-address']);
+        $output = Artisan::output();
+
+        $this->assertSame(1, $exit);
+        $summaryPos = strpos($output, '今の設定:');
+        $recipientPos = strpos($output, 'メールアドレスの形式が正しくありません');
+        $mailerPos = strpos($output, '送信方式（MAIL_MAILER）が');
+
+        $this->assertNotFalse($summaryPos, '設定の行が出ていること');
+        $this->assertNotFalse($recipientPos, '宛先の問題が出ていること');
+        $this->assertNotFalse($mailerPos, '送信方式の問題が出ていること');
+        $this->assertTrue($summaryPos < $recipientPos, '設定の行が最初に出ること');
+        $this->assertTrue($recipientPos < $mailerPos, '宛先の問題が送信方式の問題より先に出ること');
     }
 
     private function useRejectTypoTransport(): void
@@ -290,5 +403,23 @@ class MailTestCommandTest extends TestCase
             }
         });
         config(['mail.mailers.reject-typo' => ['transport' => 'reject-typo'], 'mail.default' => 'reject-typo']);
+    }
+
+    /**
+     * 画面の案内の期待値を、実装と同じく PHP_BINARY から組み立てる
+     * （さくらでは `php` だけだと既定の PHP 7.4 が動いてしまうため、案内は必ず PHP_BINARY で組み立てる）。
+     */
+    private function phpArtisan(string $arguments): string
+    {
+        return PHP_BINARY.' artisan '.$arguments;
+    }
+
+    /**
+     * WorkCommand は同じ PHP プロセスの中で 2 回目以降リスナーを登録し直さない（private static フラグ）。
+     * queue:work を実行するテストの中でだけ、実行前にリセットする。
+     */
+    private function resetWorkCommandListeners(): void
+    {
+        (new ReflectionProperty(WorkCommand::class, 'hasRegisteredListeners'))->setValue(null, false);
     }
 }

@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Console\Commands\Concerns\ResolvesBackupCipher;
+use App\Console\Commands\Concerns\SuggestsArtisanCommands;
 use App\Support\Backup\AttachmentGetFailedException;
 use App\Support\Backup\AttachmentRestoreResult;
 use App\Support\Backup\BackedUpRootGuard;
@@ -19,7 +20,7 @@ use UnexpectedValueException;
 
 class BackupRestoreCommand extends Command
 {
-    use ResolvesBackupCipher;
+    use ResolvesBackupCipher, SuggestsArtisanCommands;
 
     protected $signature = 'ops:backup-restore
         {destination : 取り出し先のフォルダ（空、またはまだ無いフォルダ）}
@@ -253,7 +254,7 @@ class BackupRestoreCommand extends Command
         }
 
         if ($files !== null && $files->otherLocationOnly > 0) {
-            $this->warn(sprintf('今のキーの置き場所に無い添付が、ほかの暗号化キーの置き場所に %d 件あります（キーを変える前に消した添付も含まれます）。取り出すには、空の取り出し先を指定して php artisan ops:backup-restore <取り出し先> --without-db --ask-key を実行し、そのときのキーを入力してください。', $files->otherLocationOnly));
+            $this->warn(sprintf('今のキーの置き場所に無い添付が、ほかの暗号化キーの置き場所に %d 件あります（キーを変える前に消した添付も含まれます）。取り出すには、空の取り出し先を指定して '.$this->artisanCommand('ops:backup-restore <取り出し先> --without-db --ask-key').' を実行し、そのときのキーを入力してください。', $files->otherLocationOnly));
         }
 
         if (! $withoutDb) {
