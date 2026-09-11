@@ -99,8 +99,7 @@
                                 {{-- 物件 / 区画 --}}
                                 <td class="px-4 py-3 lg:px-5 lg:py-3.5 border-b border-gray-200 text-center text-sm font-semibold text-gray-900 whitespace-nowrap">
                                     @php
-                                        $dn = $contract->unit->display_name;
-                                        $unitLabel = ($contract->unit->floor !== null && !preg_match('/^\d/', $dn)) ? $contract->unit->floor . $dn : $dn;
+                                        $unitLabel = $contract->unit->display_name;
                                     @endphp
                                     {{ $contract->property->name }} / {{ $unitLabel }}
                                 </td>

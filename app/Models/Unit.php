@@ -111,6 +111,11 @@ class Unit extends Model
     /**
      * display_nameを自動生成する（階数 + 号室名）
      * 例: 階数3, 号室A → 「3A」 / 階数-1, 号室A → 「B1A」（地下1階）/ 階数null, 号室A → 「A」
+     *
+     * ⚠ 表示名は保存時点で階を含む。画面では表示名をそのまま出し、階を前に付けない。
+     *   2026-09-11 まで 11 か所が「数字で始まらなければ階を前に付ける」をしていて、
+     *   地下だけ「-1B1A」になっていた（docs/RULES.md Bug #57）。
+     *   本番の区画 158 件は表示名が全件この関数の結果と一致していた（2026-09-11 実測）。
      */
     public static function generateDisplayName(?int $floor, string $roomNumber): string
     {

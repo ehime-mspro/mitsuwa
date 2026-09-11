@@ -65,8 +65,7 @@
                         // unit / property / customer のいずれかが force delete されているか
                         // 外部キーが NULL の壊れた契約でも 500 にならないよう防御
                         $unit = $contract->unit;
-                        $dn = $unit?->display_name ?? '';
-                        $unitLabel = ($unit && $unit->floor !== null && !preg_match('/^\d/', $dn)) ? $unit->floor . $dn : $dn;
+                        $unitLabel = $unit?->display_name ?? '';
                     @endphp
                     {{ $contract->property?->name ?? '（物件データなし）' }} / {{ $unitLabel !== '' ? $unitLabel : '（区画データなし）' }}
                 </div>

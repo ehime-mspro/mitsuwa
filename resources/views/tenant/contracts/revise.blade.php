@@ -66,8 +66,7 @@
                 <div class="text-xs text-gray-500 mb-0.5">物件 / 区画</div>
                 <div class="text-sm font-medium text-gray-900">
                     @php
-                        $dn = $contract->unit->display_name;
-                        $unitLabel = ($contract->unit->floor !== null && !preg_match('/^\d/', $dn)) ? $contract->unit->floor . $dn : $dn;
+                        $unitLabel = $contract->unit->display_name;
                     @endphp
                     {{ $contract->property->name }} / {{ $unitLabel }}
                 </div>

@@ -377,7 +377,7 @@ class InvestmentController extends Controller
     }
 
     /**
-     * 区画セレクト用の選択肢を構築する（floor + display_name の重複防止）
+     * 区画セレクト用の選択肢を構築する（ラベルは表示名＋坪数。表示名は階を含むので階を前に付けない）
      */
     private function buildUnitOptions($properties)
     {
@@ -386,12 +386,7 @@ class InvestmentController extends Controller
             ->get(['id', 'property_id', 'display_name', 'floor', 'area_tsubo'])
             ->map(function ($u) {
                 $tsubo = $u->area_tsubo ? number_format((float) $u->area_tsubo, 2) . '坪' : '';
-                $displayName = $u->display_name;
-                // floor と display_name の重複防止（display_nameが数字始まりなら階数を付与しない）
-                $label = ($u->floor !== null && ! preg_match('/^\d/', $displayName))
-                    ? $u->floor . $displayName
-                    : $displayName;
-                $label .= $tsubo ? "（{$tsubo}）" : '';
+                $label = $u->display_name . ($tsubo ? "（{$tsubo}）" : '');
                 return [
                     'id'          => $u->id,
                     'property_id' => $u->property_id,

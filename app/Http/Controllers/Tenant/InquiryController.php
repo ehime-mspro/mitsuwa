@@ -464,11 +464,7 @@ class InquiryController extends Controller
             ->get(['id', 'property_id', 'display_name', 'floor', 'area_tsubo', 'status'])
             ->map(function ($u) {
                 $tsubo = $u->area_tsubo ? number_format((float) $u->area_tsubo, 2) . '坪' : '';
-                $displayName = $u->display_name;
-                $label = ($u->floor !== null && ! preg_match('/^\d/', $displayName))
-                    ? $u->floor . $displayName
-                    : $displayName;
-                $label .= $tsubo ? "（{$tsubo}）" : '';
+                $label = $u->display_name . ($tsubo ? "（{$tsubo}）" : '');
                 return [
                     'id'          => $u->id,
                     'property_id' => $u->property_id,

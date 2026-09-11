@@ -66,8 +66,7 @@
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1">区画</label>
                     @php
-                        $dn = $contract->unit ? $contract->unit->display_name : '—';
-                        $unitLabel = ($contract->unit && $contract->unit->floor !== null && !preg_match('/^\d/', $dn)) ? $contract->unit->floor . $dn : $dn;
+                        $unitLabel = $contract->unit ? $contract->unit->display_name : '—';
                         $areaTsubo = $contract->unit ? number_format($contract->unit->area_tsubo, 2) : '—';
                     @endphp
                     <input type="text" value="{{ $unitLabel }}（{{ $areaTsubo }}坪）" readonly

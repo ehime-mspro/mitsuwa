@@ -52,8 +52,7 @@
                 <div class="text-xs text-gray-500 mb-0.5">区画</div>
                 <div class="text-sm font-semibold text-gray-900">
                     @php
-                        $dn = $contract->unit->display_name;
-                        $unitLabel = ($contract->unit->floor !== null && !preg_match('/^\d/', $dn)) ? $contract->unit->floor . $dn : $dn;
+                        $unitLabel = $contract->unit->display_name;
                     @endphp
                     {{ $unitLabel }}
                     <span class="font-normal text-gray-600">（{{ number_format($contract->unit->area_tsubo, 2) }}坪）</span>

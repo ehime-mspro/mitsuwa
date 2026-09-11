@@ -43,8 +43,7 @@
     @php
         $monthlyTotal = $contract->rent + ($contract->common_fee ?? 0) + ($contract->garbage_fee ?? 0) + ($contract->pest_control_fee ?? 0);
         $unit = $contract->unit;
-        $dn = $unit?->display_name ?? '';
-        $unitLabel = ($unit && $unit->floor !== null && !preg_match('/^\d/', $dn)) ? $unit->floor . $dn : $dn;
+        $unitLabel = $unit?->display_name ?? '';
     @endphp
     <div class="bg-white border border-gray-200 rounded-lg px-4 py-4 lg:px-5 lg:py-4 mb-4">
         <div class="text-sm font-bold text-gray-800 pb-2 mb-3 border-b border-gray-200">対象契約</div>

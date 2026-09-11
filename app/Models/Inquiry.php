@@ -125,12 +125,7 @@ class Inquiry extends Model
             return '未定';
         }
 
-        return $this->units->map(function ($unit) {
-            $dn = $unit->display_name;
-            return ($unit->floor !== null && ! preg_match('/^\d/', $dn))
-                ? $unit->floor . $dn
-                : $dn;
-        })->implode(', ');
+        return $this->units->pluck('display_name')->implode(', ');
     }
 
     /**
