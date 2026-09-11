@@ -14,6 +14,12 @@ use RuntimeException;
  */
 final class S3BackupStorage implements BackupStorage
 {
+    /** 接続できるまで待つ上限（秒） */
+    private const CONNECT_TIMEOUT_SECONDS = 10;
+
+    /** 1 回の送受信の上限（秒）。SDK は最大 3 回試すので、最悪でも約 90 分で失敗として終わる */
+    private const REQUEST_TIMEOUT_SECONDS = 1800;
+
     public function __construct(private S3Client $client, private string $bucket) {}
 
     /**
@@ -37,6 +43,7 @@ final class S3BackupStorage implements BackupStorage
             'request_checksum_calculation' => 'when_required',
             'response_checksum_validation' => 'when_required',
         ];
+        $options['http'] = ['connect_timeout' => self::CONNECT_TIMEOUT_SECONDS, 'timeout' => self::REQUEST_TIMEOUT_SECONDS];
         if ($handler !== null) {
             $options['handler'] = $handler;
         }
@@ -64,6 +71,10 @@ final class S3BackupStorage implements BackupStorage
                     continue; // 管理画面でフォルダを作るとできる「フォルダの目印」（中身の無いオブジェクト）は含めない
                 }
                 $objects[$key] = (int) $object['Size'];
+            }
+            if (($page['IsTruncated'] ?? false) && empty($page['NextContinuationToken'])) {
+                // 「まだ続きがある」のに続きを取る目印が無いと、SDK は気づかず一覧を打ち切ってしまう
+                throw new RuntimeException('保管先の一覧を最後まで取得できませんでした（続きの目印がありません）。');
             }
         }
         ksort($objects, SORT_STRING);
