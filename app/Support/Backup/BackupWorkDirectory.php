@@ -2,7 +2,9 @@
 
 namespace App\Support\Backup;
 
+use InvalidArgumentException;
 use RuntimeException;
+use Throwable;
 
 /**
  * バックアップの作業フォルダ（平文のダンプや、暗号化前後の一時ファイルを置く場所）。
@@ -39,6 +41,7 @@ final class BackupWorkDirectory
      */
     public function acquire(): void
     {
+        $this->guardNoDotSegments();
         if (basename($this->path) !== self::WORK_DIR_NAME) {
             throw new RuntimeException('作業フォルダの名前は backup-work にしてください（設定の誤りで別のフォルダの中身を消さないため）: '.$this->path);
         }
@@ -61,7 +64,14 @@ final class BackupWorkDirectory
         }
 
         $this->acquireLock();
-        $this->empty();
+
+        try {
+            $this->empty();
+        } catch (Throwable $e) {
+            // ここで例外を握りつぶさず外へ伝えるので、取ったロックは自分で外してから投げ直す
+            $this->release();
+            throw $e;
+        }
     }
 
     public function path(string $name): string
@@ -103,19 +113,42 @@ final class BackupWorkDirectory
     }
 
     /**
+     * "." や ".." を含むパスは realpath() が無い区間をまたぐと正しく畳み込めない
+     * （例: ".../missing/../public/backup-work" で missing が無いと、OS はそもそも
+     * その道のりを解決できない）。この種のパスは組み立てて正規化しようとせず、最初から拒む。
+     */
+    private function guardNoDotSegments(): void
+    {
+        foreach (explode('/', $this->path) as $segment) {
+            if ($segment === '.' || $segment === '..') {
+                throw new InvalidArgumentException('作業フォルダのパスに "." や ".." を含めることはできません: '.$this->path);
+            }
+        }
+    }
+
+    /**
      * 作業フォルダが、バックアップ対象のフォルダの中に置かれていないかを確かめる。
      * まだ作られていないパスでも判定できるよう、実在する一番近い親までの realpath() に
      * 残りの区切りをそのまま継ぎ足して、見なし上の実パスを作る（symlink はここより前の
      * 呼び出し元のチェックで弾いているので、途中の実在しない区間に symlink は無い）。
+     *
+     * 対象フォルダ（$root）自体がまだ存在しない場合は realpath() できないので、
+     * storageAppPath の realpath() に区切りを継ぎ足した見なしパスと比べる
+     * （storage/app/private は本番でまだ無いことがあるが、その中を作業フォルダにはできない）。
      */
     private function guardNotInsideBackedUpRoots(): void
     {
         $resolved = $this->resolveIntendedRealpath($this->path);
+        $storageAppReal = realpath($this->storageAppPath);
 
         foreach ($this->fileRoots as $root) {
-            $rootReal = realpath($this->storageAppPath.'/'.trim($root, '/'));
+            $trimmedRoot = trim($root, '/');
+            $rootReal = realpath($this->storageAppPath.'/'.$trimmedRoot);
             if ($rootReal === false) {
-                continue; // まだ存在しないフォルダは対象外（storage/app/private は本番でまだ無いことがある）
+                $rootReal = $storageAppReal !== false ? $storageAppReal.'/'.$trimmedRoot : false;
+            }
+            if ($rootReal === false) {
+                continue; // storageAppPath 自体が確認できなければ比較のしようがない（通常は起こらない）
             }
             if ($resolved === $rootReal || str_starts_with($resolved, $rootReal.'/')) {
                 throw new RuntimeException($this->locationErrorMessage());

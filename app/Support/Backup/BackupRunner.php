@@ -22,11 +22,13 @@ use Throwable;
 final class BackupRunner
 {
     // 保管先への送信がこの回数だけ連続で失敗したら、それ以上は試さずに打ち切る。
-    // 障害中に全件試すと 1 回の走行が何十分もかかり、失敗ごとに情報を溜め続けるとメモリも尽きるため
+    // 障害中に全件試すと 1 回の走行が何十分もかかり、失敗ごとに情報を溜め続けるとメモリも尽きるため。
+    // ローカル側（読み込み・暗号化）の失敗はここに数えない。保管先の不調とは別物で、
+    // 数えてしまうと「読めない添付が 5 件並んでいる」だけで以降の夜間バックアップが毎回止まる
     private const MAX_CONSECUTIVE_FAILURES = 5;
 
     // 通知に載せる失敗の例（相対パス: メッセージ）の最大件数。これ以上はメモリを増やさない
-    private const MAX_SAMPLE_FAILURES = 5;
+    private const MAX_FAILURE_SAMPLES = 5;
 
     private BackupWorkDirectory $workDirectory;
 
@@ -121,9 +123,9 @@ final class BackupRunner
 
         $uploaded = 0;
         $failureCount = 0;
-        $consecutiveFailures = 0;
+        $consecutiveStorageFailures = 0;
         $firstFailure = null; // Throwable|null（previous 用に 1 件だけ持つ。最初の失敗のまま変えない）
-        /** @var list<string> $sampleFailures 「相対パス: メッセージ」を最大 self::MAX_SAMPLE_FAILURES 件だけ保持する */
+        /** @var list<string> $sampleFailures 「相対パス: メッセージ」を最大 self::MAX_FAILURE_SAMPLES 件だけ保持する */
         $sampleFailures = [];
 
         foreach (FileSyncPlanner::filesToUpload($local, $remote, $keyId) as $relativePath) {
@@ -132,30 +134,44 @@ final class BackupRunner
                 // 一覧を作った後に消されたファイル（削除された添付など）は飛ばし、その夜の処理全体は止めない
                 continue;
             }
+
             try {
                 $this->cipher->encryptFile($source, $encrypted);
-                $this->storage->put(FileSyncPlanner::keyFor($relativePath, $keyId), $encrypted);
-                $uploaded++;
-                $consecutiveFailures = 0;
             } catch (Throwable $e) {
                 if (! is_file($source)) {
-                    // 上の判定から暗号化までの間に消えたファイル。これも失敗として数えない
+                    // 上の判定から暗号化までの間に消えたファイル。失敗として数えない
                     continue;
                 }
 
+                // ローカル側（読めない・壊れている添付など）の失敗。保管先の不調ではないので
+                // 連続失敗の数には入れない（$consecutiveStorageFailures はここでは変えない）
                 $failureCount++;
-                $consecutiveFailures++;
                 $firstFailure ??= $e;
-                if (count($sampleFailures) < self::MAX_SAMPLE_FAILURES) {
+                if (count($sampleFailures) < self::MAX_FAILURE_SAMPLES) {
                     $sampleFailures[] = $relativePath.': '.$e->getMessage();
                 }
 
-                if ($consecutiveFailures >= self::MAX_CONSECUTIVE_FAILURES) {
+                continue;
+            }
+
+            try {
+                $this->storage->put(FileSyncPlanner::keyFor($relativePath, $keyId), $encrypted);
+                $uploaded++;
+                $consecutiveStorageFailures = 0;
+            } catch (Throwable $e) {
+                $failureCount++;
+                $consecutiveStorageFailures++;
+                $firstFailure ??= $e;
+                if (count($sampleFailures) < self::MAX_FAILURE_SAMPLES) {
+                    $sampleFailures[] = $relativePath.': '.$e->getMessage();
+                }
+
+                if ($consecutiveStorageFailures >= self::MAX_CONSECUTIVE_FAILURES) {
                     throw new BackupFilesFailedException(sprintf(
                         'データベースは保存済みです（%s）。保管先への添付の送信が %d 件続けて失敗したため中断しました（%s）。',
                         $databaseKey,
                         self::MAX_CONSECUTIVE_FAILURES,
-                        $sampleFailures[0],
+                        implode('、', $sampleFailures),
                     ), previous: $firstFailure);
                 }
             } finally {
@@ -170,7 +186,7 @@ final class BackupRunner
                 'データベースは保存済みです（%s）。添付 %d 件の送信に失敗しました（%s）。',
                 $databaseKey,
                 $failureCount,
-                $sampleFailures[0],
+                implode('、', $sampleFailures),
             ), previous: $firstFailure);
         }
 

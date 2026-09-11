@@ -531,6 +531,94 @@ class BackupRunnerTest extends TestCase
         $this->assertStringContainsString('26 件', $caught->getMessage());
     }
 
+    public function test_local_failures_count_toward_the_total_but_never_trigger_the_consecutive_abort(): void
+    {
+        // 保管先は健全なまま、ローカルで読めない添付が 5 件連続する（例: 権限のおかしいフォルダを取り込んだ）
+        for ($i = 1; $i <= 5; $i++) {
+            $path = $this->root."/app/public/attachments/1/bad{$i}.pdf";
+            file_put_contents($path, 'x');
+            chmod($path, 0000);
+        }
+        for ($i = 1; $i <= 3; $i++) {
+            $this->put("app/public/attachments/2/good{$i}.pdf", "content-{$i}");
+        }
+
+        $caught = null;
+        try {
+            $this->runner()->run($this->at(2026, 9, 12));
+        } catch (RuntimeException $e) {
+            $caught = $e;
+        }
+
+        try {
+            $this->assertNotNull($caught, '例外が出なかった');
+            // ローカルの失敗は合計には数えるが、「保管先への送信が続けて失敗」の中断にはしない
+            $this->assertStringContainsString('5 件の送信に失敗', $caught->getMessage());
+            $this->assertStringNotContainsString('続けて失敗したため中断', $caught->getMessage());
+
+            $keyId = (new BackupCipher($this->key))->keyId();
+            $uploaded = (new LocalDirectoryBackupStorage($this->root.'/remote'))->list(FileSyncPlanner::prefixFor($keyId));
+            for ($i = 1; $i <= 3; $i++) {
+                $this->assertArrayHasKey(FileSyncPlanner::keyFor("public/attachments/2/good{$i}.pdf", $keyId), $uploaded, "good{$i}.pdf が送られていない");
+            }
+        } finally {
+            // rm -rf は親フォルダの書き込み権限があれば読めないファイルも消せるが、念のため戻しておく
+            for ($i = 1; $i <= 5; $i++) {
+                @chmod($this->root."/app/public/attachments/1/bad{$i}.pdf", 0600);
+            }
+        }
+    }
+
+    public function test_the_aggregate_message_lists_multiple_failure_samples_joined_by_a_japanese_comma(): void
+    {
+        // setUp の 2 件（b.xlsx, a.pdf）がどちらも保管先への送信に失敗する
+        $storage = new class($this->root.'/remote') implements BackupStorage
+        {
+            private LocalDirectoryBackupStorage $inner;
+
+            public function __construct(string $root)
+            {
+                $this->inner = new LocalDirectoryBackupStorage($root);
+            }
+
+            public function put(string $key, string $localPath): void
+            {
+                if (str_starts_with($key, FileSyncPlanner::PREFIX)) {
+                    throw new RuntimeException('保管先への送信に失敗しました: test');
+                }
+                $this->inner->put($key, $localPath);
+            }
+
+            public function get(string $key, string $localPath): void
+            {
+                $this->inner->get($key, $localPath);
+            }
+
+            public function list(string $prefix): array
+            {
+                return $this->inner->list($prefix);
+            }
+
+            public function delete(string $key): void
+            {
+                $this->inner->delete($key);
+            }
+        };
+
+        $caught = null;
+        try {
+            (new BackupRunner($this->fakeDumper(), $storage, new BackupCipher($this->key), $this->root.'/backup-work', $this->root.'/app', ['public', 'private'], 30))
+                ->run($this->at(2026, 9, 12));
+        } catch (RuntimeException $e) {
+            $caught = $e;
+        }
+
+        $this->assertNotNull($caught, '例外が出なかった');
+        $this->assertStringContainsString('private/approvals/2/b.xlsx', $caught->getMessage());
+        $this->assertStringContainsString('public/attachments/1/a.pdf', $caught->getMessage());
+        $this->assertStringContainsString('、', $caught->getMessage());
+    }
+
     public function test_a_files_stage_setup_failure_before_the_per_file_loop_gets_database_saved_context(): void
     {
         $storage = new class($this->root.'/remote') implements BackupStorage

@@ -3,6 +3,7 @@
 namespace Tests\Unit\Backup;
 
 use App\Support\Backup\BackupWorkDirectory;
+use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 
@@ -92,6 +93,42 @@ class BackupWorkDirectoryTest extends TestCase
         $this->assertNotNull($caught, '例外が出なかった');
         $this->assertStringContainsString('リンク', $caught->getMessage());
         $this->assertDirectoryDoesNotExist($nested);
+    }
+
+    public function test_a_path_containing_dot_or_dot_dot_segments_is_rejected(): void
+    {
+        // "missing" は存在しないので、OS はこの道のりをそもそも解決できない（symlink 判定を素通りしうる）
+        $path = $this->root.'/app/missing/../public/backup-work';
+        $dir = new BackupWorkDirectory($path, $this->root.'/app', ['public', 'private']);
+
+        $caught = null;
+        try {
+            $dir->acquire();
+        } catch (InvalidArgumentException $e) {
+            $caught = $e;
+        }
+
+        $this->assertNotNull($caught, '例外が出なかった（InvalidArgumentException を期待）');
+        $this->assertStringContainsString($path, $caught->getMessage());
+        $this->assertDirectoryDoesNotExist($this->root.'/app/public/backup-work');
+    }
+
+    public function test_a_work_dir_inside_a_root_that_does_not_exist_yet_is_rejected(): void
+    {
+        // 'archive' は setUp で作っていない（本番の storage/app/private がまだ無い状況を模す）
+        $path = $this->root.'/app/archive/backup-work';
+        $dir = new BackupWorkDirectory($path, $this->root.'/app', ['public', 'archive']);
+
+        $caught = null;
+        try {
+            $dir->acquire();
+        } catch (RuntimeException $e) {
+            $caught = $e;
+        }
+
+        $this->assertNotNull($caught, '例外が出なかった');
+        $this->assertStringContainsString('リンク', $caught->getMessage());
+        $this->assertDirectoryDoesNotExist($path);
     }
 
     public function test_the_location_error_message_includes_the_configured_path(): void
