@@ -57,16 +57,21 @@
     <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
         <div class="scroll-hint at-start">
             <div class="scroll-hint-inner">
-                <table class="w-full border-collapse min-w-[640px]" style="table-layout:fixed">
+                {{-- ⚠ 列幅と最小幅は実ブラウザで測って決める値（設計書 §4.7: 375 / 1200 / 1800px のどれでも
+                     どのセルも中身が枠からはみ出さない）。列を足し引きしたら測り直すこと。
+                     ⚠ min-w-[…] は消さない（MobileLayoutTest が table-layout: fixed の表に最小幅を要求する） --}}
+                <table class="w-full border-collapse min-w-[900px]" style="table-layout:fixed">
                     <colgroup>
-                        <col style="width:25%">
-                        <col style="width:25%">
-                        <col style="width:20%">
-                        <col style="width:10%">
-                        <col style="width:20%">
+                        <col style="width:14%">{{-- 契約日 --}}
+                        <col style="width:20%">{{-- 物件 / 区画 --}}
+                        <col style="width:20%">{{-- 店舗名 --}}
+                        <col style="width:16%">{{-- 賃料収入 --}}
+                        <col style="width:12%">{{-- 状態 --}}
+                        <col style="width:18%">{{-- 操作 --}}
                     </colgroup>
                     <thead>
                         <tr>
+                            <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">契約日</th>
                             <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">物件 / 区画</th>
                             <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">店舗名</th>
                             <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">賃料収入</th>
@@ -77,6 +82,10 @@
                     <tbody>
                         @forelse($contracts as $contract)
                             <tr class="{{ $contract->isTerminated() ? 'contract-row-terminated' : '' }} hover:bg-gray-50 transition-colors">
+                                {{-- 契約日（テナント画面の日付は Y/m/d。契約詳細・区画詳細と同じ） --}}
+                                <td class="px-4 py-3 lg:px-5 lg:py-3.5 border-b border-gray-200 text-center text-sm font-semibold text-gray-900 whitespace-nowrap">
+                                    {{ $contract->contract_date->format('Y/m/d') }}
+                                </td>
                                 {{-- 物件 / 区画 --}}
                                 <td class="px-4 py-3 lg:px-5 lg:py-3.5 border-b border-gray-200 text-center text-sm font-semibold text-gray-900 whitespace-nowrap">
                                     @php
@@ -118,7 +127,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="5" class="px-5 py-10 text-center text-sm text-gray-400">
+                                <td colspan="6" class="px-5 py-10 text-center text-sm text-gray-400">
                                     契約データがありません。
                                 </td>
                             </tr>

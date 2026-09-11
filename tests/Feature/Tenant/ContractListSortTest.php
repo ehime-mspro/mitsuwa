@@ -545,4 +545,90 @@ class ContractListSortTest extends TestCase
             $this->assertSame($expected, $values, "{$label}: ページをまたいで並んでいない（1 ページ目の中だけで並んでいる）");
         }
     }
+
+    /**
+     * 表の見出しの文字列（左から順に。タグと空白の揺れを落とす）。
+     *
+     * ⚠ このページの表は 1 つだけ（最初の <thead>）。並び替え見出しはリンクと矢印の SVG を含むが、
+     *   strip_tags で文字だけになる。
+     */
+    private function headerTexts(string $html): array
+    {
+        $this->assertMatchesRegularExpression('/<thead\b[^>]*>(.*?)<\/thead>/su', $html, '表の見出し行が見つからない');
+        preg_match('/<thead\b[^>]*>(.*?)<\/thead>/su', $html, $thead);
+        preg_match_all('/<th\b[^>]*>(.*?)<\/th>/su', $thead[1], $cells);
+
+        return array_map(fn (string $cell) => $this->plainText($cell), $cells[1]);
+    }
+
+    /**
+     * 表の本体の各行のセルの文字列（上から順に。各行は左から順に）。
+     *
+     * @return list<list<string>>
+     */
+    private function bodyRows(string $html): array
+    {
+        $this->assertMatchesRegularExpression('/<tbody\b[^>]*>(.*?)<\/tbody>/su', $html, '表の本体が見つからない');
+        preg_match('/<tbody\b[^>]*>(.*?)<\/tbody>/su', $html, $tbody);
+        preg_match_all('/<tr\b[^>]*>(.*?)<\/tr>/su', $tbody[1], $rows);
+
+        return array_map(function (string $row) {
+            preg_match_all('/<td\b[^>]*>(.*?)<\/td>/su', $row, $cells);
+
+            return array_map(fn (string $cell) => $this->plainText($cell), $cells[1]);
+        }, $rows[1]);
+    }
+
+    private function plainText(string $html): string
+    {
+        return trim(preg_replace('/\s+/u', ' ', html_entity_decode(strip_tags($html), ENT_QUOTES, 'UTF-8')));
+    }
+
+    /**
+     * 契約日が**各行の先頭セル**に Y/m/d で出る（設計書 §4.1 / §7.1）。
+     *
+     * ⚠ ページ全体の文字列一致で見てはいけない。同じ文字が別の場所に出ても通ってしまう。
+     *   行ごとに先頭の <td> を見る。
+     * ⚠ 期待値は**リテラルで書く**（viewData から組み立てると、表示と並びが一緒に壊れても一致しうる）。
+     * ⚠ 見出しの並びも固定する。セルだけ動かす／見出しだけ動かす、のどちらも落とす。
+     */
+    public function test_each_row_starts_with_its_contract_date(): void
+    {
+        $this->threeContractsWhoseNameOrderIsTheReverseOfTheDateOrder();
+
+        $html = $this->actingAs($this->executive())->get(route('tenant.contracts.index'))->getContent();
+
+        $this->assertSame(
+            ['契約日', '物件 / 区画', '店舗名', '賃料収入', '状態', '操作'],
+            $this->headerTexts($html),
+            '見出しの並びが設計書 §4.1 と違う（契約日が先頭でない）'
+        );
+
+        $rows = $this->bodyRows($html);
+
+        $this->assertSame(
+            ['2026/04/01', '2025/04/01', '2024/04/01'],
+            array_map(fn (array $cells) => $cells[0] ?? null, $rows),
+            '各行の先頭セルが契約日（Y/m/d）になっていない'
+        );
+
+        foreach ($rows as $i => $cells) {
+            $this->assertCount(6, $cells, ($i + 1) . ' 行目のセルの数が見出しの数と違う');
+        }
+
+        // 2 列目は物件 / 区画のまま（契約日の列を足しただけで、既存の列の中身は変えない）
+        $this->assertSame('C館 / 1A', $rows[0][1], '2 列目が物件 / 区画でない');
+    }
+
+    /** 契約が 0 件のときの行が全列にまたがる（列を足したら colspan も揃える） */
+    public function test_the_empty_row_spans_every_column(): void
+    {
+        $html = $this->actingAs($this->executive())->get(route('tenant.contracts.index'))->getContent();
+
+        $pattern = '/<td colspan="(\d+)"[^>]*>\s*契約データがありません。/u';
+        $this->assertMatchesRegularExpression($pattern, $html, '0 件の行が見つからない');
+        preg_match($pattern, $html, $matches);
+
+        $this->assertSame(count($this->headerTexts($html)), (int) $matches[1], '0 件の行の colspan が見出しの数と違う');
+    }
 }
