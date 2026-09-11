@@ -153,12 +153,28 @@
             Math.min で自前に丸め直さない —— 丸めるなら labelW を引く誘惑が生まれるが、
             それは中央寄せの式（旧 D9）へ戻る道である。
 
-         ⚠ **`if (! el) { return; }` は失敗を無音にする**（@push の宛先を押し間違えたときの
-            TypeError を握り潰す。Bug #48）。**スクローラーより後ろに出ることを見る位置比較の
-            テストと対で成立している**ので、片方だけ消さないこと。
+         ⚠ **`if (! el) { return; }` は失敗を無音にする**（Bug #48）。呼び出しは下のとおり
+            DOMContentLoaded の後なので、@@push の宛先を押し間違えて <head> に出ても要素は見つかる。
+            null になるのは id を書き換えたときだけで、それは id="schedule-board-scroller" と呼び出しの
+            引数を対で見るテスト（test_the_board_opens_scrolled_to_the_first_day_of_last_month）が止める。
             ⚠ `pct` は素通しでよい —— サーバ側が 0〜100 にクランプ済みで、仮に異常値が来ても
                scrollLeft のセッタが非有限値を 0 に正規化し範囲外をクランプするため、
-               どの入力でも「スクロールしない」に縮退するだけ（例外は起きない）。 --}}
+               どの入力でも「スクロールしない」に縮退するだけ（例外は起きない）。
+
+         ⚠ **呼び出しは DOMContentLoaded まで待つ**（2026-09-11。本番の住宅ボードで実害を確認して修正）。
+            この <script> はパース中に同期で走り、Alpine（@@vite の module ＝ defer）より前に動く。
+            その瞬間は PC サイドバー（layouts/partials/sidebar.blade.php の x-cloak）が display: none で、
+            スクローラーが 220px 広い ＝ **右端が 220px 手前にある**。ブラウザは目標をそこで丸め、
+            Alpine が x-cloak を外して右端が伸びても**上方向へは丸め直さない**
+            （実測 1440px: 実行時の右端 146 → 146 に丸め ／ DOMContentLoaded 時点の右端 366。本番も 146 / 366）。
+            DOMContentLoaded は defer / module のスクリプトと、そのあとのマイクロタスク（x-cloak の除去）が
+            済んでから発火する（resources/js/app.js のスクロールヒントも同じ理由で DOMContentLoaded で測る）。
+            ⚠ requestAnimationFrame では直らない —— 非表示のタブでは止まり（実測: 読み込みから 31 秒後に
+               初めて発火）、defer の Alpine より後に走る保証も無い。
+            ⚠ readyState の分岐は置かない —— この <script> は初回のパース中にしか走らない
+               （ボードは Ajax で差し込まれない。Ajax で描き直すのはスクリプトを持たない詳細カードだけ ＝ D11）。
+            ⚠ 説明は JS コメントに書かない —— テストが「関数の定義から呼び出しまでの間」を検査しており、
+               説明文の語に一致して落ちる（または false-pass する）。 --}}
     @push('scripts')
         <script>
             function scheduleBoardSetInitialScroll(id, pct, trackPx) {
@@ -166,7 +182,9 @@
                 if (! el) { return; }
                 el.scrollLeft = trackPx * pct / 100;
             }
-            scheduleBoardSetInitialScroll('schedule-board-scroller', {{ $axis['initialPct'] }}, {{ $axis['trackWidthPx'] }});
+            document.addEventListener('DOMContentLoaded', function () {
+                scheduleBoardSetInitialScroll('schedule-board-scroller', {{ $axis['initialPct'] }}, {{ $axis['trackWidthPx'] }});
+            });
         </script>
     @endpush
 @endif

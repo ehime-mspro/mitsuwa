@@ -887,9 +887,10 @@ class ScheduleBoardTest extends ScheduleTestCase
         );
 
         // ⚠ **スクリプトはスクローラーの HTML より後ろに出ていなければならない**（Bug #28）。
-        //   @push('scripts') を @push('styles') に押し間違えると <head> 側に出るため、
-        //   body の描画前に走って document.getElementById() が null を返し、
-        //   if (! el) return; のガードで**無音でスクロールが起きない**（コンソールエラーも出ない）。
+        //   ページ固有のスクリプトは body 末尾の @stack('scripts') に出すというレイアウトの規約を守らせる。
+        //   ⚠ 2026-09-11 以前は「@push('styles') に押し間違えると <head> で走って getElementById() が null を返し、
+        //     無音でスクロールが起きない」ことがこの位置の理由だった。いまは呼び出しが DOMContentLoaded を待つので
+        //     <head> に出ても要素は見つかる（test_the_initial_scroll_waits_for_dom_content_loaded）。
         //   ⚠ **文字列の存在を見るだけでは検出できない** —— 内容は消えず場所が変わるだけなので、
         //     実測（2026-09-03）では styles へ押し間違える変異が 2 本とも緑のまま通った。
         $scrollerPos = strpos($html, 'id="schedule-board-scroller"');
@@ -949,6 +950,87 @@ class ScheduleBoardTest extends ScheduleTestCase
             $html,
             '今日が軸の外でもクランプ値でスクロールするはず'
         );
+    }
+
+    /**
+     * ⚠ **初期スクロールは DOMContentLoaded まで待つ**（2026-09-11。本番の住宅ボードで実害を確認して修正）。
+     *
+     *   `@stack('scripts')` のインライン `<script>` はパース中に同期で走り、Alpine（`@vite` の module ＝ defer）
+     *   より前に動く。その瞬間は PC サイドバー（sidebar.blade.php の `x-cloak`）が `display: none` で、
+     *   スクローラーが 220px 広い ＝ **右端が 220px 手前にある**。ブラウザは目標をそこで丸め、
+     *   Alpine が `x-cloak` を外して右端が伸びても**上方向へは丸め直さない**。
+     *   実測（1440px・住宅ボード）: 実行時の右端 146 → 146 に丸め ／ DOMContentLoaded 時点の右端 366。
+     *   本番でも `scrollLeft` 146 ／ 右端 366 で、当月が右にはみ出して見えなかった。
+     *
+     * ⚠ **`requestAnimationFrame` では直らない。** 非表示のタブでは止まり（実測: 読み込みから 31 秒後に
+     *   初めて発火）、defer の Alpine より後に走る保証も無い。DOMContentLoaded は defer / module の
+     *   スクリプトと、そのあとのマイクロタスク（`x-cloak` の除去）が済んでから発火する。
+     *
+     * ⚠ **構造しか見られない。** 実際に右端で止まることはブラウザでしか測れない。ここで固定するのは
+     *   「呼び出しがリスナーの本体の中にだけあり、パース中に即時に呼んでいない」こと。
+     * ⚠ JS コメントを落としてから測る（コメントの説明文に一致して false-pass しないように。Bug #42 ②）。
+     */
+    public function test_the_initial_scroll_waits_for_dom_content_loaded(): void
+    {
+        $proc = $this->makeParent('procurement');
+        $proc->scheduleSteps()->create(['name' => '測量', 'category' => 'survey', 'planned_start' => '2026-05-11', 'planned_end' => '2026-09-30', 'sort_order' => 1]);
+
+        $response = $this->actingAs($this->manager())->get('/realestate/schedules?status=all')->assertOk();
+        $axis     = $response->viewData('board')['axis'];
+
+        $this->assertSame(
+            1,
+            preg_match('/<script>\s*(function scheduleBoardSetInitialScroll.*?)<\/script>/s', $response->getContent(), $m),
+            'スクロールのスクリプトが見つからない'
+        );
+        $script = $this->withoutJsComments($m[1]);
+        $needle = "scheduleBoardSetInitialScroll('schedule-board-scroller'";
+
+        // document でも window でもよい（DOMContentLoaded は window まで伝わる）
+        $this->assertSame(
+            1,
+            preg_match('/(?:document|window)\.addEventListener\(\s*[\'"]DOMContentLoaded[\'"]\s*,\s*function\s*\(\s*\)\s*\{/', $script, $listener, PREG_OFFSET_CAPTURE),
+            '初期スクロールが DOMContentLoaded を待っていない'
+                . '（パース中に走ると x-cloak で隠れたサイドバーの分だけ右端が手前にあり、220px 手前で止まる）'
+        );
+        $body = $this->braceBody($script, $listener[0][1] + strlen($listener[0][0]) - 1);
+
+        $this->assertStringContainsString(
+            "{$needle}, {$axis['initialPct']}, {$axis['trackWidthPx']});",
+            $body,
+            'DOMContentLoaded のリスナーの中で初期スクロールを呼んでいない'
+        );
+        $this->assertSame(
+            substr_count($script, $needle),
+            substr_count($body, $needle),
+            'リスナーの外（パース中）でも初期スクロールを呼んでいる'
+        );
+    }
+
+    /** JS の `/* *&#47;` と行頭 `//` コメントを落とす（GoogleMapsCallbackWiringTest と同じ方式）。 */
+    private function withoutJsComments(string $source): string
+    {
+        $source = preg_replace('#/\*.*?\*/#s', '', $source);
+
+        // ⚠ 行頭アンカーを外さないこと。URL の `https://` まで消える。
+        return preg_replace('#^[ \t]*//.*$#m', '', $source);
+    }
+
+    /** `$source[$open]` の `{` に対応する `}` までの中身（波括弧の対応で切り出す。固定長で切らない。Bug #45 ④）。 */
+    private function braceBody(string $source, int $open): string
+    {
+        $this->assertSame('{', $source[$open] ?? null, '切り出しの起点が { でない');
+
+        $depth = 0;
+        for ($i = $open, $n = strlen($source); $i < $n; $i++) {
+            if ($source[$i] === '{') {
+                $depth++;
+            } elseif ($source[$i] === '}' && --$depth === 0) {
+                return substr($source, $open + 1, $i - $open - 1);
+            }
+        }
+
+        $this->fail('波括弧が閉じていない');
     }
 
     // ============================================================
