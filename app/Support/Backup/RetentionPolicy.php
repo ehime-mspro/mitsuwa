@@ -4,6 +4,7 @@ namespace App\Support\Backup;
 
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
+use InvalidArgumentException;
 
 /**
  * データベースのバックアップのキー名と保存期間（要件定義書 14.6: 30 日分。最新の 1 件は必ず残す）。
@@ -16,11 +17,15 @@ final class RetentionPolicy
 
     private const TIMEZONE = 'Asia/Tokyo';
 
-    private const KEY_PATTERN = '#^db/manage-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})\.sql\.gz\.enc$#';
+    private const NAME_PREFIX = 'manage-';
+
+    private const DATE_FORMAT = 'Ymd-His';
+
+    private const SUFFIX = '.sql.gz.enc';
 
     public static function databaseKey(CarbonInterface $at): string
     {
-        return self::DB_PREFIX.'manage-'.CarbonImmutable::instance($at)->setTimezone(self::TIMEZONE)->format('Ymd-His').'.sql.gz.enc';
+        return self::DB_PREFIX.self::NAME_PREFIX.CarbonImmutable::instance($at)->setTimezone(self::TIMEZONE)->format(self::DATE_FORMAT).self::SUFFIX;
     }
 
     /**
@@ -31,6 +36,10 @@ final class RetentionPolicy
      */
     public static function expiredDatabaseKeys(array $keys, CarbonInterface $now, int $days): array
     {
+        if ($days < 1) {
+            throw new InvalidArgumentException('保存日数は 1 以上にしてください。');
+        }
+
         $dated = self::datedKeys($keys);
         if ($dated === []) {
             return [];
@@ -65,9 +74,11 @@ final class RetentionPolicy
      */
     private static function datedKeys(array $keys): array
     {
+        $pattern = self::keyPattern();
+
         $dated = [];
         foreach ($keys as $key) {
-            if (preg_match(self::KEY_PATTERN, $key, $m) !== 1) {
+            if (preg_match($pattern, $key, $m) !== 1) {
                 continue;
             }
             [, $year, $month, $day, $hour, $minute, $second] = array_map('intval', $m);
@@ -80,5 +91,18 @@ final class RetentionPolicy
         uasort($dated, fn (CarbonImmutable $a, CarbonImmutable $b) => $a <=> $b);
 
         return $dated;
+    }
+
+    /**
+     * databaseKey() が作る形式からパターンを組み立てる（表記の重複を避ける）。
+     * 前後は \A・\z で固定し、"$" が末尾の改行の前にもマッチしてしまう問題を避ける。
+     */
+    private static function keyPattern(): string
+    {
+        return '#\A'
+            .preg_quote(self::DB_PREFIX.self::NAME_PREFIX, '#')
+            .'(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})'
+            .preg_quote(self::SUFFIX, '#')
+            .'\z#';
     }
 }
