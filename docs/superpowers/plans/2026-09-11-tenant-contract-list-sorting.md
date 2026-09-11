@@ -2315,34 +2315,34 @@ needle / replacement の中身は Step 4 のスクリプトで作る。表の「
 
 | # | 変異する場所 | 変異の内容 | 赤になるはずのテスト（落ちる理由の文言） | 結果 |
 |---|---|---|---|---|
-| 1 | `ContractController::applySort()` の既定順 | 契約日のキーを外す（＝旧既定の 物件名 → 階数 → 号室） | `test_the_default_order_is_the_contract_date_newest_first`（既定順が契約日の新しい順になっていない）／ `SortBarTest::test_the_contracts_bar_names_the_real_default_order`（バーの文言と実際の並びが食い違っている） | |
-| 2 | 同 | 契約日を昇順にする | 同上 | |
-| 3 | 同 | 物件名のキーを消す | `test_contracts_on_the_same_date_…`（同じ契約日の中が 物件名 → 階数 → 号室 → 契約 ID の新しい順になっていない） | |
-| 4 | 同 | 階のキーを消す | 同上 | |
-| 5 | 同 | 号室のキーを消す | 同上 | |
-| 6 | 同 | 最後の `contracts.id DESC` を消す | 同上（`$old` と `$new` が入れ替わる） | |
-| 7 | 同 | 並び替え中は既定順を付けない（既定順の文全体を `if ($sort === null)` にする） | `test_rows_tied_on_the_sorted_column_keep_the_whole_default_order` | |
-| 8 | `applySort()` の `property_unit` | 号室を常に昇順にする | `test_property_unit_sorts_all_three_keys_in_the_same_direction`（降順が昇順の完全な逆順になっていない）＋ 見出しの往復 | |
-| 9 | 同 | 階を常に昇順にする | 同上 | |
-| 10 | `Contract::MONTHLY_TOTAL_SQL` | 駆除代を式から落とす | `test_the_income_sql_agrees_with_the_php_accessor`（SQL 式と PHP アクセサで食い違う）＋ `test_income_sorts_…` | |
-| 11 | 同 | 共益費の `COALESCE` を外す | `test_the_income_sql_agrees_…`（COALESCE が外れて式が NULL になっている） | |
-| 12 | `index.blade.php` | 契約日のセルを消す | `test_each_row_starts_with_its_contract_date`（各行の先頭セルが契約日（Y/m/d）になっていない） | |
-| 13 | 同 | 契約日のセルを 2 列目へ動かす | 同上 | |
-| 14 | 同 | 書式を `Y-m-d` にする | 同上 | |
-| 15 | 同 | 0 件の行の `colspan` を 5 に戻す | `test_the_empty_row_spans_every_column` | |
-| 16 | `ContractController::SORT_COLUMNS` | 契約日の `'default' => true` を消す | `test_only_the_contract_date_header_is_lit…`（初期表示で契約日の見出しが点灯していない）／ 契約日の往復（既定から押したら古い順へ進むべき）／ 配線（default を使う列が 1 本も無い） | |
-| 17 | 同 | 物件 / 区画の `'first' => ListSort::ASC` を消す | 物件 / 区画の往復（1 回目が昇順…になっていない）／ 配線（first を使う列が 1 本も無い） | |
-| 18 | 同 | `'first'` を `'frist'` に打ち間違える | 配線（知らないキーがある）／ 物件 / 区画の往復 | |
-| 19 | 同 | 物件 / 区画の `desc` / `asc` の言い方を入れ替える | `SortBarTest::test_the_contracts_bar_names_each_column_and_direction`（ピルに列名と向きが出ていない） | |
-| 20 | `ListSort::next()` | 既定順の列の分岐を消す（`return $isDefault ? null : $first;` → `return $first;`） | `ListSortTest`（別の列から押したら既定へ戻す）／ `test_clicking_the_contract_date_header_while_another_column_is_sorted…`（契約日を押したら既定へ戻すべき） | |
-| 21 | `ListSort::stateOf()` | 既定点灯を消す（`return $isDefault ? $first : null;` → `return null;`） | `ListSortTest`（既定順の列が初期表示で点灯していない）／ 初期表示の点灯 | |
-| 22 | 同 | `self::assertDirection($first);` を消す | `ListSortTest::test_an_unknown_first_direction_is_rejected`（stateOf() が first='ASC' を黙って受け入れた） | |
-| 23 | `sortable-th.blade.php` | `stateOf()` に `first` / `default` を渡さない | 初期表示の点灯 ／ 往復で既定に戻ったときの点灯 | |
-| 24 | 同 | `url()` に `first` / `default` を渡さない | 契約日・物件 / 区画の往復（1 回目の向き） | |
-| 25 | 同 | `$spec['default'] ?? false` を `?? true` にする | 初期表示の点灯（並び替えていない列に aria-sort が載っている）＋ 前例 3 画面の aria-sort のテスト | |
-| 26 | `index.blade.php` | `<x-sort-hidden>` を消す | `test_changing_a_filter_keeps_the_current_sort`（フィルターフォームが sort=… を持ち回していない）／ 配線（並び順を持ち回す hidden が無い） | |
-| 27 | 同 | バーの `default-label` を「物件・階・部屋番号順」にする | `SortBarTest`（自分の既定順を名乗っていない／別の画面の既定順が出ている） | |
-| 28 | `ContractController::index()` | `withQueryString()` を外す | `test_paging_through_a_sorted_list_…`（ページをまたいで並んでいない） | |
+| 1 | `ContractController::applySort()` の既定順 | 契約日のキーを外す（＝旧既定の 物件名 → 階数 → 号室） | `test_the_default_order_is_the_contract_date_newest_first`（既定順が契約日の新しい順になっていない）／ `SortBarTest::test_the_contracts_bar_names_the_real_default_order`（バーの文言と実際の並びが食い違っている） | ✅ 赤 10 本（`既定順が契約日の新しい順になっていない` ／ `バーの文言と実際の並びが食い違っている` ほか、同点・不正な sort・ページ送り・先頭セル・往復の 8 本） |
+| 2 | 同 | 契約日を昇順にする | 同上 | ✅ 赤 10 本（#1 と同じ 10 本・同じ文言） |
+| 3 | 同 | 物件名のキーを消す | `test_contracts_on_the_same_date_…`（同じ契約日の中が 物件名 → 階数 → 号室 → 契約 ID の新しい順になっていない） | ✅ 赤 1 本（表どおりの文言） |
+| 4 | 同 | 階のキーを消す | 同上 | ✅ 赤 1 本（同上） |
+| 5 | 同 | 号室のキーを消す | 同上 | ✅ 赤 1 本（同上） |
+| 6 | 同 | 最後の `contracts.id DESC` を消す | 同上（`$old` と `$new` が入れ替わる） | ✅ 赤 1 本（同上。SQLite が同点を id の昇順で返す前提どおり） |
+| 7 | 同 | 並び替え中は既定順を付けない（既定順の文全体を `if ($sort === null)` にする） | `test_rows_tied_on_the_sorted_column_keep_the_whole_default_order` | ✅ 赤 1 本（`賃料収入が同点の行が既定順になっていない（desc）`） |
+| 8 | `applySort()` の `property_unit` | 号室を常に昇順にする | `test_property_unit_sorts_all_three_keys_in_the_same_direction`（降順が昇順の完全な逆順になっていない）＋ 見出しの往復 | ✅ 赤 2 本（`物件 / 区画の降順が昇順の完全な逆順になっていない（3 キーのどれかが昇順のまま）` ／ `2 回目が降順になっていない`） |
+| 9 | 同 | 階を常に昇順にする | 同上 | ✅ 赤 3 本（#8 の 2 本 ＋ `フィルタを変えたら並び順が既定に戻った（property_unit の desc のままであるべき）`） |
+| 10 | `Contract::MONTHLY_TOTAL_SQL` | 駆除代を式から落とす | `test_the_income_sql_agrees_with_the_php_accessor`（SQL 式と PHP アクセサで食い違う）＋ `test_income_sorts_…` | ✅ 赤 4 本（`契約 C-CS-002 の月額合計が SQL 式と PHP アクセサで食い違う` ／ `賃料収入の多い順になっていない（4 項目の合計で並べていない）` ／ `1 回目が多い順になっていない` ほか 1 本） |
+| 11 | 同 | 共益費の `COALESCE` を外す | `test_the_income_sql_agrees_…`（COALESCE が外れて式が NULL になっている） | ✅ 赤 1 本（表どおりの文言） |
+| 12 | `index.blade.php` | 契約日のセルを消す | `test_each_row_starts_with_its_contract_date`（各行の先頭セルが契約日（Y/m/d）になっていない） | ✅ 赤 1 本（表どおりの文言） |
+| 13 | 同 | 契約日のセルを 2 列目へ動かす | 同上 | ✅ 赤 1 本（同上） |
+| 14 | 同 | 書式を `Y-m-d` にする | 同上 | ✅ 赤 1 本（同上） |
+| 15 | 同 | 0 件の行の `colspan` を 5 に戻す | `test_the_empty_row_spans_every_column` | ✅ 赤 1 本（`0 件の行の colspan が見出しの数と違う`） |
+| 16 | `ContractController::SORT_COLUMNS` | 契約日の `'default' => true` を消す | `test_only_the_contract_date_header_is_lit…`（初期表示で契約日の見出しが点灯していない）／ 契約日の往復（既定から押したら古い順へ進むべき）／ 配線（default を使う列が 1 本も無い） | ✅ 赤 4 本（表の 3 つ ＋ `契約日を押したら既定へ戻すべき（並び替えを載せない）`） |
+| 17 | 同 | 物件 / 区画の `'first' => ListSort::ASC` を消す | 物件 / 区画の往復（1 回目が昇順…になっていない）／ 配線（first を使う列が 1 本も無い） | ✅ 赤 2 本（表どおりの文言） |
+| 18 | 同 | `'first'` を `'frist'` に打ち間違える | 配線（知らないキーがある）／ 物件 / 区画の往復 | ✅ 赤 2 本（`…['property_unit'] に知らないキーがある（打ち間違いは黙って無視される）` ／ `1 回目が昇順…になっていない`） |
+| 19 | 同 | 物件 / 区画の `desc` / `asc` の言い方を入れ替える | `SortBarTest::test_the_contracts_bar_names_each_column_and_direction`（ピルに列名と向きが出ていない） | ✅ 赤 1 本（`?sort=property_unit&dir=asc のピルに列名と向きが出ていない`） |
+| 20 | `ListSort::next()` | 既定順の列の分岐を消す（`return $isDefault ? null : $first;` → `return $first;`） | `ListSortTest`（別の列から押したら既定へ戻す）／ `test_clicking_the_contract_date_header_while_another_column_is_sorted…`（契約日を押したら既定へ戻すべき） | ✅ 赤 3 本（表の 2 つ ＋ `ListSortTest`: `既定順の列を押したのに並び替えが残っている`） |
+| 21 | `ListSort::stateOf()` | 既定点灯を消す（`return $isDefault ? $first : null;` → `return null;`） | `ListSortTest`（既定順の列が初期表示で点灯していない）／ 初期表示の点灯 | ✅ 赤 5 本（表の 2 つ ＋ url の周期・契約日の往復 2 本） |
+| 22 | 同 | `self::assertDirection($first);` を消す | `ListSortTest::test_an_unknown_first_direction_is_rejected`（stateOf() が first='ASC' を黙って受け入れた） | ✅ 赤 1 本（表どおりの文言） |
+| 23 | `sortable-th.blade.php` | `stateOf()` に `first` / `default` を渡さない | 初期表示の点灯 ／ 往復で既定に戻ったときの点灯 | ✅ 赤 3 本（`初期表示で契約日の見出しが点灯していない` ／ `既定に戻ったのに契約日の見出しが点灯していない` ほか 1 本） |
+| 24 | 同 | `url()` に `first` / `default` を渡さない | 契約日・物件 / 区画の往復（1 回目の向き） | ✅ 赤 3 本（`既定から押したら古い順へ進むべき` ／ `契約日を押したら既定へ戻すべき` ／ `1 回目が昇順…になっていない`） |
+| 25 | 同 | `$spec['default'] ?? false` を `?? true` にする | 初期表示の点灯（並び替えていない列に aria-sort が載っている）＋ 前例 3 画面の aria-sort のテスト | ✅ 赤 11 本（契約一覧 4 本 ＋ 前例 3 画面 7 本: 周辺ビル 2・物件 3・部屋 2） |
+| 26 | `index.blade.php` | `<x-sort-hidden>` を消す | `test_changing_a_filter_keeps_the_current_sort`（フィルターフォームが sort=… を持ち回していない）／ 配線（並び順を持ち回す hidden が無い） | ✅ 赤 2 本（表どおりの文言） |
+| 27 | 同 | バーの `default-label` を「物件・階・部屋番号順」にする | `SortBarTest`（自分の既定順を名乗っていない／別の画面の既定順が出ている） | ✅ 赤 2 本（`http://localhost/tenant/contracts が自分の既定順を名乗っていない` ＋ 文言と並びの対のテスト） |
+| 28 | `ContractController::index()` | `withQueryString()` を外す | `test_paging_through_a_sorted_list_…`（ページをまたいで並んでいない） | ✅ 赤 1 本（`賃料収入 多い順: ページ送りで行が重複している`）⚠ 文言は表と違う（下の実測メモ ③） |
 
 ⚠ #6 は「SQLite が同点を id の昇順で返す」ことに依存している（プラン作成時に実測済み）。緑だったら**測定を疑う前にその前提を測り直す**。
 
@@ -2683,6 +2683,31 @@ Expected: `---clean---` ／ `OK (1346 tests, …)`（Step 6 でテストを足�
 ② `exit=0`（緑）だった変異と、その後の処置（足したテストのコミット、または既知の穴としての記録）
 ③ 赤だが理由が表と違った変異と、その原因
 ④ 測り方で踏んだ罠（needle が当たらなかった・理由の読み違い など）
+
+**2026-09-11 実施（`dd14abd3` の上で測定。変異の前後とも `git status --porcelain` は空）**
+
+**結論: 28 通りすべて赤・緑（検出漏れ）0。** 実施後の全テストは `OK (1346 tests, 9015 assertions)`。
+
+① **カナリア**: 契約一覧 24 本中 **23 本が赤**。理由は `ErrorException: Undefined variable $undefinedCanaryVariable`
+（`…/worktrees/contract-list-sorting/storage/framework/views/…` ＝ **worktree のコンパイル済みビュー**）。
+測定装置が worktree のコードを読んでいることを確認した。緑の 1 本はビューを描画しない一致のテストで、想定どおり。
+
+② **緑だった変異: 無し**（28 / 28 が赤）。テストの追加は不要だった。
+
+③ **理由が表と違った変異: #28 だけ。** 表の想定は「ページをまたいで並んでいない」だが、実際は
+`賃料収入 多い順: ページ送りで行が重複している`。同じテストの中で、**並びの検査より前に置いた件数・重複の検査が先に落ちた**ため。
+`withQueryString()` が外れると 2 ページ目以降の URL から `sort` が消え、既定順（契約日）の 2 ページ目が混ざる
+＝**意図した機構そのもの**で、別の機構が落としているわけではない。
+なお「既定」のケースは素通りする（既定の画面は URL にクエリを持たないので、落ちるものが無い）。
+
+④ **測り方で踏んだ罠**:
+- カナリアの理由を `grep -c "Undefined variable \$undefinedCanaryVariable"` で数えたら **0 件**になった。
+  正規表現の中で `$` が**行末アンカー**として解釈されたため（ログには実際に出ていた）。**固定文字列は `grep -F` で探す**こと。
+  0 件を「カナリアが別の理由で落ちた」と読み違えないよう、ログを目で読んで理由を確かめた
+- 変異の実行中、ハーネスが「ファイルが変わった」と差分を通知してきた（#1 / #20 / #25 の最中）。
+  **戻すのは `run.sh` の役目なので手を出さず**、完了まで worktree に一切触らなかった（親の編集が変異の手順を壊すレースの予防）
+- 観察: #3〜#6（既定順の 物件名 / 階 / 号室 / 契約 ID）は**それぞれ 1 本のテスト**（同じ契約日の中の並び）だけが検出する。
+  4 キーの検出力はそのテストのデータ（キーを 1 つ消すと必ず並びが変わる形）に集中しているので、**データを簡単にしないこと**
 
 ```bash
 git add docs/superpowers/plans/2026-09-11-tenant-contract-list-sorting.md
