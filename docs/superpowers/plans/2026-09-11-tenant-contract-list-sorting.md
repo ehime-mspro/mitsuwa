@@ -2930,6 +2930,9 @@ cd /Users/masanori/site/manage/.claude/worktrees/contract-list-sorting && /Users
 画面: **`/tenant/contracts` ／ `?status=all` ／ `?status=all&sort=income&dir=desc`**
 ⚠ **各画面で、読み込み直すたびに Step 5 と同じ ⚠ の差し込みをしてから**測る（読み込み直すと消える）:
 
+⚠ **実施時に判明: 下の検出器は余白の内側への食い込みを検出できない**（`scrollWidth` は文字がセルの外枠を越えたときしか増えない）。
+実際に 1200px で 3 列が食い込んでいたのに `offenders: []` と出た。**測り直しには「Task 8 の実測結果」の検出器を使うこと。**
+
 ```js
 (() => {
   const main = document.querySelector('main');
@@ -3012,17 +3015,87 @@ Expected: どちらも OK（テストの本数は Task 7 の終わりと同じ�
 
 下の表と `need` の実測値・決めた `W` と割合を書く。
 
-### Task 8 の実測結果（実施時に書く）
+### Task 8 の実測結果（2026-09-11 実施）
+
+⚠ **Step 7 の検出器（`scrollWidth > clientWidth`）には欠陥があった。** td の `scrollWidth` が `clientWidth` を
+超えるのは、文字が**セルの外枠（パディングの外）**まで出たときだけで、**余白の内側への食い込みは原理的に現れない**。
+実測（物件 / 区画の `千舟町スクエア / -1B1A` のセル）:
+
+| 列の割合 | 内容幅を越えた量 | 外枠を越えた量 | `clientWidth` | `scrollWidth` |
+|---|---|---|---|---|
+| 20%（当時の値） | 17.2px | −2.8px（越えていない） | 183 | **183**（検出されない） |
+| 15%（一時的に） | 55.7px | 35.7px | 144 | 180（＝ 左余白 20 ＋ 文字 160） |
+| 12%（一時的に） | 80.8px | 60.8px | 119 | 180 |
+
+旧検出器は 9 通りすべて `offenders: []` と報告したが、実際には 1200px で 3 列が食い込んでいた
+（契約日 3.4px ・物件 / 区画 17.2px ・賃料収入＋⚠ 5.3px）。**設計書 §4.7 の判定式（`scrollWidth <= clientWidth`）も
+同じ理由で「隣の列に重なる」ことしか測れない。**
+→ 文字の範囲を取り、セルの**内容幅**（余白への食い込み）と**外枠**（隣の列への越境）の両方と比べる検出器に差し替えた:
+
+```js
+(() => {
+  const main = document.querySelector('main');
+  const table = main.querySelector('table');
+  const px = (v) => parseFloat(v) || 0;
+  // Step 5 と同じ ⚠ の差し込み（本番の最悪ケース）
+  const incomeCells = [...table.querySelectorAll('tbody tr')].map(tr => tr.cells[3]).filter(Boolean);
+  const widest = incomeCells.slice().sort((a, b) => b.innerText.length - a.innerText.length)[0];
+  if (widest && !widest.innerText.includes('⚠')) {
+    const warn = document.createElement('span');
+    warn.className = 'ml-1 text-amber-600 cursor-help';
+    warn.textContent = '⚠';
+    widest.append(warn);
+  }
+  // 並び替えできる見出しは <th> でなく中の <a> が余白を持つ
+  const owner = (cell) => cell.querySelector(':scope > a.sortable-th-link') || cell;
+  // 文字（Range）と、インライン要素・フレックス項目・SVG の外形の和集合
+  const ink = (root) => {
+    let L = Infinity, R = -Infinity;
+    const range = document.createRange();
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+      if (!walker.currentNode.textContent.trim()) continue;
+      range.selectNodeContents(walker.currentNode);
+      for (const rc of range.getClientRects()) if (rc.width > 0) { L = Math.min(L, rc.left); R = Math.max(R, rc.right); }
+    }
+    for (const el of root.querySelectorAll('*')) {
+      const d = getComputedStyle(el).display;
+      const pd = getComputedStyle(el.parentElement).display;
+      if (!(d.startsWith('inline') || /flex|grid/.test(pd) || el instanceof SVGElement)) continue;
+      const rc = el.getBoundingClientRect();
+      if (rc.width > 0) { L = Math.min(L, rc.left); R = Math.max(R, rc.right); }
+    }
+    return { L, R };
+  };
+  const into = Array(6).fill(-Infinity), beyond = Array(6).fill(-Infinity);
+  for (const tr of table.rows) for (const cell of tr.cells) {
+    const o = owner(cell), cs = getComputedStyle(o), r = o.getBoundingClientRect(), { L, R } = ink(o);
+    if (!isFinite(L)) continue;
+    const c = cell.cellIndex;
+    into[c] = Math.max(into[c], r.left + px(cs.paddingLeft) - L, R - (r.right - px(cs.paddingRight)));
+    beyond[c] = Math.max(beyond[c], r.left - L, R - r.right);
+  }
+  const f = (a) => a.map(v => +v.toFixed(1));
+  // maxIntoPadding > 0 ＝ 余白へ食い込む ／ maxBeyondCell > 0 ＝ 隣の列へ越境する
+  return { viewport: innerWidth, mainOverflow: main.scrollWidth - main.clientWidth, maxIntoPadding: f(into), maxBeyondCell: f(beyond) };
+})()
+```
 
 | # | 確かめたこと | 結果 |
 |---|---|---|
-| 幅 | `need`（1200px・列ごと）／ 決めた `W` と割合 | |
-| 1 | 9 通りで `mainOverflow: 0` ・ `offenders: []` | |
-| 2 | 見出しの実クリックで 3 列とも周期どおり | |
-| 3 | 初期表示の点灯（緑 ▼ ／ 灰色 ⇅） | |
-| 4 | フォーカスリングが上下で切れない | |
-| 5 | ホバーで緑の下線が保たれる（2 か所） | |
-| 6 | コンソール出力 0 件 | |
+| 幅 | `need`（1200px・列ごと・⚠ 差し込み後） | **132 / 200 / 180 / 152 / 108 / 154 ＝ 926px**（Step 5 の自動レイアウト法と上の Range 法で一致。並び替えた画面でも同じ）。⚠ 無しなら賃料収入 129（計 903）、6 桁＋⚠ は 138。物件 / 区画の 200 は `-1B1A`（既存の表示の癖。`-1` のぶん約 9px） |
+| 幅 | 決めた `W` と割合 | Step 6 の規則だと **W = 950**（整数 % への切り上げで、930・940 は合計が 103 になり成立しない）＞ 914 → **規則 4 で止めて利用者に確認した**。3 案（割合だけ配り直す ／ 最小幅 930px ／ この表だけ余白 16px）から **「割合だけ配り直す」に決定**: 最小幅 **900px 据え置き**・割合 **14.3 / 21.6 / 19.4 / 16.4 / 11.7 / 16.6 %**（`need` に比例、小数第 1 位。`3a8d57ec`） |
+| 1 | 9 通りで `mainOverflow: 0`・隣の列への越境 0 | ✅ 9 通りとも。**余白への食い込み（列ごとの最大）**: 1200px ＝ 0.6 / 2.6 / 2.7 / 1.6 / 1.1 / 1.1px（許容と決めた範囲。3 画面とも同じ）／ 1800px ＝ なし（余裕 34.6px 以上）／ 375px ＝ なし（余裕 1.2px 以上。表は 900px でカード内スクロール） |
+| 2 | 見出しの実クリックで 3 列とも周期どおり | ✅ 見出しセルの**左端から 8px**（文字の無い余白）をクリック。契約日: 古い順 → 既定 ／ 物件 / 区画: 昇順 → 降順 → 既定（物件名・階・号室がそろって向きを変える）／ 賃料収入: 多い順 → 少ない順（同額は既定順のまま）→ 既定。各段で URL・`aria-sort`・バーの文言も一致 |
+| 3 | 初期表示の点灯（緑 ▼ ／ 灰色 ⇅） | ✅ 契約日 `aria-sort="descending"`・矢印 `rgb(5, 150, 105)`、物件 / 区画・賃料収入 `none`・`rgb(107, 114, 128)` |
+| 4 | フォーカスリングが上下で切れない | ✅ 「クリア」から Tab 1 回で契約日の見出しへ。`:focus-visible`・1 秒後に `solid 2px rgb(5, 150, 105)`・offset −2px。スクリーンショットで緑の枠が 4 辺とも見える |
+| 5 | ホバーで緑の下線が保たれる（2 か所） | ✅ 初期表示の契約日・多い順の賃料収入とも、1 秒後 `rgb(5, 150, 105)`。対照として並び替えていない物件 / 区画はホバーで `rgb(75, 85, 99)` に変わる（＝ホバーが効いた状態での結果） |
+| 6 | コンソール出力 0 件 | ✅ 既定 ／ 賃料収入で並び替え ／ `?status=all&page=2` で 0 件 |
+
+⚠ **フォントは Mac の Hiragino Sans で測った値。** `--font-sans` の先頭の Noto Sans JP は Web フォントとして読み込まれておらず
+（`<link>` も `FontFace` も無い）、Windows では Meiryo に落ちて字幅が変わりうる。ここでは測れない。
+
+⚠ ブラウザペインでは、**ページ遷移のたびにスクリーンショットを撮り直さないと座標クリックが拒否される**（座標の基準がリセットされる）。
 
 ```bash
 git add docs/superpowers/plans/2026-09-11-tenant-contract-list-sorting.md
