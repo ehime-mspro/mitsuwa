@@ -87,7 +87,7 @@ class RepairController extends Controller
                 return [
                     'id'          => $u->id,
                     'property_id' => $u->property_id,
-                    'label'       => ($u->floor ?? '') . $u->display_name,
+                    'label'       => $u->display_name,
                 ];
             })
             ->values();
@@ -173,7 +173,7 @@ class RepairController extends Controller
                 return [
                     'id'          => $u->id,
                     'property_id' => $u->property_id,
-                    'label'       => ($u->floor ?? '') . $u->display_name,
+                    'label'       => $u->display_name,
                 ];
             })
             ->values();

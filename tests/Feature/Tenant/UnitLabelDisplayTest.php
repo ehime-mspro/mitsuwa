@@ -3,11 +3,13 @@
 namespace Tests\Feature\Tenant;
 
 use App\Enums\InquiryStatus;
+use App\Enums\RepairStatus;
 use App\Enums\UserRole;
 use App\Models\Contract;
 use App\Models\Customer;
 use App\Models\Inquiry;
 use App\Models\Property;
+use App\Models\Repair;
 use App\Models\Unit;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -270,5 +272,36 @@ class UnitLabelDisplayTest extends TestCase
             array_map(fn ($label) => "{$label}（" . self::TSUBO . '坪）', ['B1A', 'B1B', '1A', '3A', 'A']),
             $labels
         );
+    }
+
+    // ============================================================
+    // 修繕の区画選択（登録・編集。コントローラに同じ組み立てが 2 か所あるので別々に見る）
+    // ⚠ こちらは条件なしで階を前に付けていたので、地下（-1B1A）だけでなく地上も 11A / 33A になっていた
+    // ============================================================
+
+    public function test_repair_create_unit_options_are_the_display_names(): void
+    {
+        $labels = collect($this->actingAs($this->executive())
+            ->get(route('tenant.repairs.create'))
+            ->assertOk()
+            ->viewData('allUnits'))->pluck('label')->all();
+
+        $this->assertEqualsCanonicalizing(['B1A', 'B1B', '1A', '3A', 'A'], $labels);
+    }
+
+    public function test_repair_edit_unit_options_are_the_display_names(): void
+    {
+        $repair = Repair::create([
+            'property_id' => $this->building->id,
+            'status' => RepairStatus::Planned->value,
+            'description' => '表記テストの修繕',
+        ]);
+
+        $labels = collect($this->actingAs($this->executive())
+            ->get(route('tenant.repairs.edit', $repair))
+            ->assertOk()
+            ->viewData('allUnits'))->pluck('label')->all();
+
+        $this->assertEqualsCanonicalizing(['B1A', 'B1B', '1A', '3A', 'A'], $labels);
     }
 }
