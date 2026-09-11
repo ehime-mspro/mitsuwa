@@ -1660,6 +1660,12 @@ resources/views/layouts/app.blade.php:164                @stack('scripts')   ←
 （関数の中身 `el.scrollLeft = trackPx * pct / 100;` は不変なので
 `ScheduleBoardTest` の式のアサートはそのまま通る）。
 
+⚠ **追記（2026-09-11）: 本番の住宅ボードで実害が出たので直した。ただし上の「`requestAnimationFrame` で包む」は誤りで、
+採らなかった。** 非表示のタブでは止まり（実測: 読み込みから 31 秒後に初めて発火）、defer の Alpine より後に走る
+保証も仕様上無い。実際の修正は **呼び出しを `DOMContentLoaded` まで待たせる**（`36b86b80`）。
+DOMContentLoaded は defer / module のスクリプトと、そのあとのマイクロタスク（`x-cloak` の除去）が済んでから発火する。
+実測・テスト・変異・実ブラウザの結果は BACKLOG の「初期スクロールのズレの修正（2026-09-11）」。
+
 #### コンソール
 
 **対象 4 画面はいずれもエラー 0 件。**
