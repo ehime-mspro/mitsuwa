@@ -29,6 +29,7 @@ class RetentionPolicyTest extends TestCase
             'db/manage-20260901-240000.sql.gz.enc', // 24 時（繰り上げると 9/2 0:00）→ 触らない
             'db/manage-20260901-030000.sql.gz.enc.bak', // 後ろに続きがある → 触らない
             'db/old/db/manage-20260901-030000.sql.gz.enc', // 別の階層 → 触らない
+            'db/manage-20260901-030000_sql_gz_enc', // . を別の文字にしたもの → 触らない
         ];
 
         $this->assertSame(
