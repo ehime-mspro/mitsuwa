@@ -63,20 +63,21 @@
         <div class="scroll-hint at-start">
             <div class="scroll-hint-inner">
                 {{-- ⚠ 列幅は実ブラウザで測って決めた値（設計書 §4.7。手順と実測値は計画 2026-09-11 の Task 8）。
-                     割合は各列の「中身に要る幅」（1200px・余白込み・最悪ケース 132 / 200 / 180 / 152 / 108 / 154px、
-                     計 926px）に比例させてある。1200px 幅の表は 914px なので、1200〜1211px の画面でだけ
-                     最悪ケースの行の文字が余白に最大 2.7px 食い込む（隣の列とは 17px 以上離れる。2026-09-11 に許容と決定）。
-                     列や中身を変えたら測り直すこと。
+                     割合は各列の「中身に要る幅」（1200px・余白込み）に比例させてある。本番の実データ 127 件の最大
+                     （132 / 212 / 207 / 139 / 108 / 154px）と 7 桁の賃料＋⚠（152px）の大きいほうで、計 965px。
+                     1200px 幅の表は 914px なので、その幅では最悪ケースの行の文字が余白に最大 10.7px、
+                     スマホ・タブレット（表 900px・余白 16px）では最大 5.7px 食い込む（どちらも隣の列へははみ出さない。
+                     2026-09-11 に許容と決定）。約 1255px 以上の画面なら食い込みなし。列や中身を変えたら測り直すこと。
                      ⚠ 余白の内側への食い込みは td の scrollWidth に現れない。文字の範囲を Range で取って内容幅と比べる。
                      ⚠ min-w-[…] は消さない（MobileLayoutTest が table-layout: fixed の表に最小幅を要求する） --}}
                 <table class="w-full border-collapse min-w-[900px]" style="table-layout:fixed">
                     <colgroup>
-                        <col style="width:14.3%">{{-- 契約日 --}}
-                        <col style="width:21.6%">{{-- 物件 / 区画 --}}
-                        <col style="width:19.4%">{{-- 店舗名 --}}
-                        <col style="width:16.4%">{{-- 賃料収入 --}}
-                        <col style="width:11.7%">{{-- 状態 --}}
-                        <col style="width:16.6%">{{-- 操作 --}}
+                        <col style="width:13.7%">{{-- 契約日 --}}
+                        <col style="width:22.0%">{{-- 物件 / 区画 --}}
+                        <col style="width:21.4%">{{-- 店舗名 --}}
+                        <col style="width:15.8%">{{-- 賃料収入 --}}
+                        <col style="width:11.2%">{{-- 状態 --}}
+                        <col style="width:15.9%">{{-- 操作 --}}
                     </colgroup>
                     <thead>
                         <tr>
