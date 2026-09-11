@@ -1089,7 +1089,7 @@ git checkout 13.x && git merge --ff-only schedule-board-gantt
 `initialPct` 74.8%（軸 1200px の 897px 地点。右端の 366 で止まるはず）に対し、実際の `scrollLeft` は **146 ＝ 366 − 220**
 （サイドバーの幅ちょうど）。初期表示で当月（9 月）が右にはみ出して見えない。→ **同日に修正した**（下の節）。
 
-### 初期スクロールのズレの修正（2026-09-11）— 本番未反映
+### 初期スクロールのズレの修正（2026-09-11）— 本番反映済み
 
 **呼び出しを `DOMContentLoaded` まで待たせた**（`36b86b80`。`resources/views/_partials/_schedule_board.blade.php`）。
 関数 `scheduleBoardSetInitialScroll` とスクロール量の式（`el.scrollLeft = trackPx * pct / 100;`）は変えていない。
@@ -1124,7 +1124,11 @@ git checkout 13.x && git merge --ff-only schedule-board-gantt
 | 375px | 897.5（右端に届かない＝式どおり）| 1899 / 1899 |
 
   `main` の横スクロール 0・コンソール出力 0 件
-- ⚠ **本番未反映**。反映後に住宅ボード（1440px）で `scrollLeft === scrollWidth - clientWidth` を確かめること
+- ✅ **2026-09-11 に本番反映**（`13.x` = `60ea80cb`。FF マージ → `./deploy.sh`。DB 変更なし）。
+  本番のコンパイル済みビュー **267 本 / INVALID 0 件**（ssh・読み取りのみ）。ログイン済みの実 Chrome（1440px 幅・前面のタブ）で
+  住宅の工程表ボードが **`scrollLeft` 366 ＝ 右端 366**（修正前 146。目標 897.5 が右端で止まる）、
+  「今日 9/11」の印が初期表示の見える範囲に入り、見えている月は 2026 年 4〜9 月（修正前は 9 月が右にはみ出していた）。
+  `main` の横スクロール 0・コンソールエラー 0 件
 
 ---
 
@@ -1237,7 +1241,7 @@ DB の ALTER → `composer install --no-dev` → `./deploy.sh` の順で流し�
 2026-09-11 に一緒に本番反映済み**（上記の 2 節。最終 `13.x` = `e9a899d7`）。本番でコンパイル済みビュー 267 本の
 lint（INVALID 0）と、ログイン済みの実 Chrome での目視まで確認した。
 ⚠ **ガント改修の既知の未修正（初期スクロールが 220px 手前に着地する）が本番の住宅の工程表ボードで出ていた。**
-同日に修正した（呼び出しを DOMContentLoaded まで待たせる。`36b86b80`）が、**本番未反映**。
+同日に修正して**本番反映済み**（呼び出しを DOMContentLoaded まで待たせる。`13.x` = `60ea80cb`。本番で右端に止まることを実測）。
 
 その他の新規要件は別途追記する。
 
