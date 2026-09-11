@@ -2,6 +2,7 @@
 
 namespace App\Support\Backup;
 
+use InvalidArgumentException;
 use RuntimeException;
 use Throwable;
 
@@ -11,8 +12,12 @@ use Throwable;
  * 本番の PHP には sodium が無いため OpenSSL を使う（2026-09-11 実測）。
  * ファイルごとにランダムな salt から鍵を派生させ（HKDF-SHA256）、かたまりの番号を IV にする。
  *
- * 形式: "MTWBK1"(6) + salt(32) + { 長さ(4, big-endian) + 最終フラグ(1) + 暗号文 + タグ(16) } の繰り返し。
- * かたまりの番号と最終フラグを AAD に含めるので、書き換え・並べ替え・途中で切れたファイルは必ず復号エラーになる。
+ * 形式: MAGIC "MTWBK1"(6) + keyId(8) + salt(32) + { 長さ(4, big-endian) + 最終フラグ(1) + 暗号文 + タグ(16) } の繰り返し。
+ * keyId はマスターキーから HMAC-SHA256 で作る固定の識別子で、秘密情報ではない。復号時に鍵違いとファイルの破損を区別するためだけに使う。
+ * MAGIC・keyId・salt・かたまりの番号・最終フラグをすべて AAD に含めるので、ヘッダーやかたまりの書き換え・並べ替え、
+ * 他のファイルからのかたまりの差し替え、途中で切れたファイルは必ず復号エラーになる。
+ * 出力は同じフォルダに 0600(umask 0077)の一時ファイル(拡張子 .part)として書き、成功したときだけ rename で本来の名前に置き換える。
+ * 失敗したときは一時ファイルを消すだけで、本来の名前のファイルには触れない。
  */
 final class BackupCipher
 {
@@ -24,16 +29,32 @@ final class BackupCipher
 
     private const KEY_BYTES = 32;
 
+    private const KEY_ID_BYTES = 8;
+
     private const SALT_BYTES = 32;
 
     private const TAG_BYTES = 16;
+
+    // かたまりの先頭にある長さ(4 バイト)と最終フラグ(1 バイト)を合わせた大きさ
+    private const CHUNK_HEADER_BYTES = 5;
+
+    private const FLAG_MORE = "\x00";
+
+    private const FLAG_FINAL = "\x01";
+
+    private const HKDF_INFO = 'mtw-backup-v1';
+
+    private const KEY_ID_INFO = 'mtw-backup-key-id';
+
+    // pack('N', ...) で表せる最大のかたまり番号。IV の使い回しを防ぐための上限
+    private const MAX_CHUNK_INDEX = 0xFFFFFFFF;
 
     // 壊れた長さの値で巨大なメモリを取らないための上限
     private const MAX_CHUNK_BYTES = 16777216;
 
     private string $masterKey;
 
-    public function __construct(string $base64Key, private int $chunkBytes = self::DEFAULT_CHUNK_BYTES)
+    public function __construct(#[\SensitiveParameter] string $base64Key, private int $chunkBytes = self::DEFAULT_CHUNK_BYTES)
     {
         if (! in_array(self::CIPHER, openssl_get_cipher_methods(), true)) {
             throw new RuntimeException('この PHP の OpenSSL は AES-256-GCM に対応していません。');
@@ -61,24 +82,33 @@ final class BackupCipher
      */
     public static function encryptedSize(int $plainBytes, int $chunkBytes = self::DEFAULT_CHUNK_BYTES): int
     {
+        if ($plainBytes < 0) {
+            throw new InvalidArgumentException('平文のバイト数は 0 以上を指定してください。');
+        }
+        if ($chunkBytes < 1) {
+            throw new InvalidArgumentException('かたまりの大きさは 1 以上を指定してください。');
+        }
+
         $chunks = max(1, intdiv($plainBytes + $chunkBytes - 1, $chunkBytes));
 
-        return strlen(self::MAGIC) + self::SALT_BYTES + $chunks * (4 + 1 + self::TAG_BYTES) + $plainBytes;
+        return strlen(self::MAGIC) + self::KEY_ID_BYTES + self::SALT_BYTES + $chunks * (self::CHUNK_HEADER_BYTES + self::TAG_BYTES) + $plainBytes;
     }
 
     public function encryptFile(string $sourcePath, string $destinationPath): void
     {
         $this->transform($sourcePath, $destinationPath, function ($in, $out): void {
             $salt = random_bytes(self::SALT_BYTES);
+            $keyId = $this->expectedKeyId();
             $fileKey = $this->fileKey($salt);
-            $this->write($out, self::MAGIC.$salt);
+            $this->write($out, self::MAGIC.$keyId.$salt);
 
             $index = 0;
             $current = $this->readUpTo($in, $this->chunkBytes);
             while (true) {
+                $this->guardChunkIndex($index);
                 $next = $this->readUpTo($in, $this->chunkBytes);
                 $final = $next === '';
-                $this->write($out, $this->sealChunk($fileKey, $salt, $index, $final, $current));
+                $this->write($out, $this->sealChunk($fileKey, $keyId, $salt, $index, $final, $current));
                 if ($final) {
                     return;
                 }
@@ -94,6 +124,15 @@ final class BackupCipher
             if ($this->readUpTo($in, strlen(self::MAGIC)) !== self::MAGIC) {
                 throw $this->unreadable();
             }
+
+            $keyId = $this->readUpTo($in, self::KEY_ID_BYTES);
+            if (strlen($keyId) !== self::KEY_ID_BYTES) {
+                throw $this->unreadable();
+            }
+            if (! hash_equals($this->expectedKeyId(), $keyId)) {
+                throw $this->wrongKey();
+            }
+
             $salt = $this->readUpTo($in, self::SALT_BYTES);
             if (strlen($salt) !== self::SALT_BYTES) {
                 throw $this->unreadable();
@@ -101,12 +140,14 @@ final class BackupCipher
             $fileKey = $this->fileKey($salt);
 
             for ($index = 0; ; $index++) {
-                $head = $this->readUpTo($in, 5);
-                if (strlen($head) !== 5 || ($head[4] !== "\x00" && $head[4] !== "\x01")) {
+                $this->guardChunkIndex($index);
+
+                $head = $this->readUpTo($in, self::CHUNK_HEADER_BYTES);
+                if (strlen($head) !== self::CHUNK_HEADER_BYTES || ($head[4] !== self::FLAG_MORE && $head[4] !== self::FLAG_FINAL)) {
                     throw $this->unreadable();
                 }
                 $length = unpack('N', substr($head, 0, 4))[1];
-                $final = $head[4] === "\x01";
+                $final = $head[4] === self::FLAG_FINAL;
                 if ($length > self::MAX_CHUNK_BYTES) {
                     throw $this->unreadable();
                 }
@@ -117,7 +158,7 @@ final class BackupCipher
                     throw $this->unreadable();
                 }
 
-                $plain = openssl_decrypt($cipherText, self::CIPHER, $fileKey, OPENSSL_RAW_DATA, $this->iv($index), $tag, $this->aad($salt, $index, $final));
+                $plain = openssl_decrypt($cipherText, self::CIPHER, $fileKey, OPENSSL_RAW_DATA, $this->iv($index), $tag, $this->aad($keyId, $salt, $index, $final));
                 if ($plain === false) {
                     throw $this->unreadable();
                 }
@@ -134,20 +175,25 @@ final class BackupCipher
         });
     }
 
-    private function sealChunk(string $fileKey, string $salt, int $index, bool $final, string $plain): string
+    private function sealChunk(#[\SensitiveParameter] string $fileKey, string $keyId, string $salt, int $index, bool $final, #[\SensitiveParameter] string $plain): string
     {
         $tag = '';
-        $cipherText = openssl_encrypt($plain, self::CIPHER, $fileKey, OPENSSL_RAW_DATA, $this->iv($index), $tag, $this->aad($salt, $index, $final), self::TAG_BYTES);
+        $cipherText = openssl_encrypt($plain, self::CIPHER, $fileKey, OPENSSL_RAW_DATA, $this->iv($index), $tag, $this->aad($keyId, $salt, $index, $final), self::TAG_BYTES);
         if ($cipherText === false) {
             throw new RuntimeException('暗号化に失敗しました。');
         }
 
-        return pack('N', strlen($cipherText)).($final ? "\x01" : "\x00").$cipherText.$tag;
+        return pack('N', strlen($cipherText)).($final ? self::FLAG_FINAL : self::FLAG_MORE).$cipherText.$tag;
     }
 
     private function fileKey(string $salt): string
     {
-        return hash_hkdf('sha256', $this->masterKey, self::KEY_BYTES, 'mtw-backup-v1', $salt);
+        return hash_hkdf('sha256', $this->masterKey, self::KEY_BYTES, self::HKDF_INFO, $salt);
+    }
+
+    private function expectedKeyId(): string
+    {
+        return substr(hash_hmac('sha256', self::KEY_ID_INFO, $this->masterKey, true), 0, self::KEY_ID_BYTES);
     }
 
     private function iv(int $index): string
@@ -155,36 +201,56 @@ final class BackupCipher
         return str_repeat("\0", 8).pack('N', $index);
     }
 
-    private function aad(string $salt, int $index, bool $final): string
+    private function aad(string $keyId, string $salt, int $index, bool $final): string
     {
-        return self::MAGIC.$salt.pack('N', $index).($final ? "\x01" : "\x00");
+        return self::MAGIC.$keyId.$salt.pack('N', $index).($final ? self::FLAG_FINAL : self::FLAG_MORE);
+    }
+
+    private function guardChunkIndex(int $index): void
+    {
+        if ($index > self::MAX_CHUNK_INDEX) {
+            throw new RuntimeException('ファイルが大きすぎます。');
+        }
     }
 
     /**
-     * 失敗したら書きかけの出力ファイルを消す。
+     * 読み込み元と保存先が同じファイルなら何もせずに拒否する。出力はまず同じフォルダの一時ファイルへ
+     * 0600(umask 0077)で書き、成功したときだけ rename で本来の名前に置き換える。失敗したら一時ファイルを消す。
      *
      * @param  callable(resource, resource): void  $body
      */
     private function transform(string $sourcePath, string $destinationPath, callable $body): void
     {
+        if (file_exists($destinationPath) && realpath($sourcePath) === realpath($destinationPath)) {
+            throw new RuntimeException('読み込み元と保存先に同じファイルは指定できません。');
+        }
+
         $in = $this->open($sourcePath, 'rb');
+        $temp = $destinationPath.'.'.bin2hex(random_bytes(6)).'.part';
         $out = null;
 
         try {
-            $out = $this->open($destinationPath, 'wb');
-            $body($in, $out);
+            $previousUmask = umask(0077);
+            try {
+                $out = $this->open($temp, 'xb');
+                $body($in, $out);
+                fclose($out);
+                $out = null;
+            } finally {
+                umask($previousUmask);
+            }
+
+            if (! rename($temp, $destinationPath)) {
+                throw new RuntimeException('出力ファイルを置き換えられません: '.$destinationPath);
+            }
         } catch (Throwable $e) {
             if (is_resource($out)) {
                 fclose($out);
-                $out = null;
-                @unlink($destinationPath);
             }
+            @unlink($temp);
             throw $e;
         } finally {
             fclose($in);
-            if (is_resource($out)) {
-                fclose($out);
-            }
         }
     }
 
@@ -208,7 +274,7 @@ final class BackupCipher
     {
         $data = '';
         while (strlen($data) < $bytes && ! feof($handle)) {
-            $chunk = fread($handle, $bytes - strlen($data));
+            $chunk = @fread($handle, $bytes - strlen($data));
             if ($chunk === false) {
                 throw new RuntimeException('ファイルの読み込みに失敗しました。');
             }
@@ -229,7 +295,7 @@ final class BackupCipher
         $length = strlen($data);
         $written = 0;
         while ($written < $length) {
-            $result = fwrite($handle, substr($data, $written));
+            $result = @fwrite($handle, substr($data, $written));
             if ($result === false || $result === 0) {
                 throw new RuntimeException('ファイルの書き込みに失敗しました（空き容量を確認してください）。');
             }
@@ -240,5 +306,10 @@ final class BackupCipher
     private function unreadable(): RuntimeException
     {
         return new RuntimeException('バックアップファイルを復号できません（鍵が違う・ファイルが壊れている・途中で切れている可能性があります）。');
+    }
+
+    private function wrongKey(): RuntimeException
+    {
+        return new RuntimeException('バックアップの暗号化キーが違います（このファイルは別のキーで暗号化されています。以前のキーを試してください）。');
     }
 }

@@ -141,6 +141,8 @@ git commit -m "chore: バックアップ送信用に aws-sdk-php を追加する
 
 ## Task 1: 暗号化（BackupCipher）
 
+※ レビューにより強化済み（鍵の識別子をヘッダーに追加・出力は 0600 の一時ファイル経由で置き換え・防御のテストを追加）。最新のコードは `app/Support/Backup/BackupCipher.php` を正とする。
+
 **Files:**
 - Create: `app/Support/Backup/BackupCipher.php`
 - Test: `tests/Unit/Backup/BackupCipherTest.php`
