@@ -13,6 +13,7 @@ use App\Models\Repair;
 use App\Models\Unit;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\File;
 use Tests\TestCase;
 
 /**
@@ -340,5 +341,57 @@ class UnitLabelDisplayTest extends TestCase
 
         // 階なしの「F」は従来どおり（本番のビル型物件に階なしの区画は 0 件。今回は変えない）
         $this->assertSame(['3F', '1F', 'B1F', 'F'], array_column($response->viewData('floorMap')['floors'], 'label'));
+    }
+
+    // ============================================================
+    // 走査（再発防止の補助）
+    // ⚠ 守るのは既知の書き方だけで、変数名が違えば素通りする。本体は上の画面ごとの挙動テスト。
+    // ============================================================
+
+    /**
+     * 表示名の前に階を連結する書き方（表示名は既に階を含む）。
+     * 修正前は app/ と resources/views/ に 13 か所あった（ビュー 8・Inquiry・問合せ／投資の選択肢・修繕の 2 か所）。
+     */
+    private const FLOOR_PREFIX_PATTERN = '/floor\s*(?:\?\?\s*\'\'\s*\)|\))?\s*\.\s*\$(?:dn\b|displayName\b|[\w>\-]*display_name)/';
+
+    /** 「表示名が数字で始まらなければ」の判定（上の前置きのためだけにあった。修正前は 11 か所） */
+    private const DIGIT_GUARD = "preg_match('/^\\d/'";
+
+    public function test_no_code_prefixes_the_floor_to_a_display_name(): void
+    {
+        // 空振り防止 ①: パターンが修正前の 3 つの形に当たること
+        $knownBad = [
+            '$unitLabel = ($contract->unit->floor !== null && !preg_match(\'/^\d/\', $dn)) ? $contract->unit->floor . $dn : $dn;',
+            '? $u->floor . $displayName',
+            "'label'       => (\$u->floor ?? '') . \$u->display_name,",
+        ];
+        foreach ($knownBad as $bad) {
+            $this->assertSame(1, preg_match(self::FLOOR_PREFIX_PATTERN, $bad), "パターンが既知の書き方に当たらない: {$bad}");
+        }
+        $this->assertStringContainsString(self::DIGIT_GUARD, $knownBad[0]);
+
+        $files = collect(File::allFiles(app_path()))
+            ->merge(File::allFiles(resource_path('views')))
+            ->filter(fn ($file) => str_ends_with($file->getFilename(), '.php'));
+
+        // 空振り防止 ②: 走査したファイル数の下限（2026-09-11 時点で 472）
+        $this->assertGreaterThan(400, $files->count(), '走査の対象が少なすぎる（パスの指定が壊れていないか）');
+
+        $hits = [];
+        foreach ($files as $file) {
+            $source = file_get_contents($file->getPathname());
+            $where = str_replace(base_path() . '/', '', $file->getPathname());
+
+            if (preg_match_all(self::FLOOR_PREFIX_PATTERN, $source, $matches, PREG_OFFSET_CAPTURE)) {
+                foreach ($matches[0] as [$text, $offset]) {
+                    $hits[] = $where . ':' . (substr_count($source, "\n", 0, $offset) + 1) . '  ' . $text;
+                }
+            }
+            if (str_contains($source, self::DIGIT_GUARD)) {
+                $hits[] = $where . '  ' . self::DIGIT_GUARD;
+            }
+        }
+
+        $this->assertSame([], $hits, "表示名の前に階を付ける書き方が残っている（表示名は既に階を含む。Bug #57）:\n" . implode("\n", $hits));
     }
 }
