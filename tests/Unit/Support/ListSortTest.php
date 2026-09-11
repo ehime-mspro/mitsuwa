@@ -211,4 +211,105 @@ class ListSortTest extends TestCase
 
         $this->assertSame('http://localhost/tenant/area-buildings', ListSort::clearUrl($request));
     }
+
+    // ================================================================
+    // 列ごとの周期（設計書 2026-09-11 §5）
+    // ⚠ ここより上の既存テストは 1 本も書き換えない。省略時の挙動が
+    //   従来と同一であることの証明になる（設計書 §7.2）。
+    // ================================================================
+
+    /** 1 回目が昇順の列: 既定 → 昇順 → 降順 → 既定（契約一覧の「物件 / 区画」） */
+    public function test_a_column_whose_first_click_is_ascending_cycles_asc_desc_then_default(): void
+    {
+        $this->assertSame(ListSort::ASC, ListSort::next(null, 'rent', ListSort::ASC), '1 回目が昇順になっていない');
+
+        $asc = ListSort::fromRequest($this->request('/x?sort=rent&dir=asc'), self::ALLOWED);
+        $this->assertSame(ListSort::DESC, ListSort::next($asc, 'rent', ListSort::ASC), '2 回目が降順になっていない');
+
+        $desc = ListSort::fromRequest($this->request('/x?sort=rent&dir=desc'), self::ALLOWED);
+        $this->assertNull(ListSort::next($desc, 'rent', ListSort::ASC), '3 回目は並び替え解除');
+
+        // 別の列で並び替え中に押しても、1 回目は昇順から
+        $this->assertSame(ListSort::ASC, ListSort::next($desc, 'area', ListSort::ASC));
+
+        // first は「押したときの向き」であって「今の状態」ではない。並び替えていなければ消灯のまま
+        $this->assertNull(ListSort::stateOf(null, 'rent', ListSort::ASC));
+    }
+
+    /**
+     * 既定順の列: 既定（＝その列の first 向きが点灯）→ 逆向き → 既定（契約一覧の「契約日」）。
+     *
+     * ⚠ 並び替え指定が無いときに null を返すと、契約日で並んでいるのに見出しは ⇅ のまま・
+     *   aria-sort="none" になり、読み上げにも嘘をつく（設計書 §3.1）。
+     */
+    public function test_the_default_column_is_lit_without_a_sort_and_steps_to_the_opposite_then_back(): void
+    {
+        $this->assertSame(ListSort::DESC, ListSort::stateOf(null, 'area', ListSort::DESC, isDefault: true), '既定順の列が初期表示で点灯していない');
+        $this->assertSame(ListSort::ASC, ListSort::next(null, 'area', ListSort::DESC, isDefault: true), '既定から押すと逆向きへ進むべき');
+
+        $asc = ListSort::fromRequest($this->request('/x?sort=area&dir=asc'), self::ALLOWED);
+        $this->assertSame(ListSort::ASC, ListSort::stateOf($asc, 'area', ListSort::DESC, isDefault: true));
+        $this->assertNull(ListSort::next($asc, 'area', ListSort::DESC, isDefault: true), '逆向きの次は既定へ戻す');
+
+        // 別の列で並び替え中 → この列は消灯し、押すと既定へ戻す（sort を載せない）
+        $rent = ListSort::fromRequest($this->request('/x?sort=rent&dir=desc'), self::ALLOWED);
+        $this->assertNull(ListSort::stateOf($rent, 'area', ListSort::DESC, isDefault: true), '別の列で並び替え中なのに既定順の列が点灯している');
+        $this->assertNull(ListSort::next($rent, 'area', ListSort::DESC, isDefault: true), '別の列から押したら既定へ戻す（既定と同じ並びを別の状態として作らない）');
+
+        // 手入力の「既定と同じ向き」は正規化しない。押すと逆向きへ進む（設計書 §4.3）
+        $desc = ListSort::fromRequest($this->request('/x?sort=area&dir=desc'), self::ALLOWED);
+        $this->assertSame(ListSort::DESC, ListSort::stateOf($desc, 'area', ListSort::DESC, isDefault: true));
+        $this->assertSame(ListSort::ASC, ListSort::next($desc, 'area', ListSort::DESC, isDefault: true));
+    }
+
+    /** url() が first / isDefault を反映すること（見出しの href はここから出る） */
+    public function test_url_follows_the_first_direction_and_the_default_column(): void
+    {
+        // 1 回目が昇順の列: 並び替え無しから押すと dir=asc（page は落とす）
+        $url = ListSort::url($this->request('/tenant/contracts?page=2'), 'rent', null, ListSort::ASC);
+        $this->assertStringContainsString('sort=rent', $url);
+        $this->assertStringContainsString('dir=asc', $url, '1 回目が昇順の列なのに dir=asc になっていない');
+        $this->assertStringNotContainsString('page=', $url);
+
+        // 既定順の列: 並び替え無しから押すと逆向き
+        $url = ListSort::url($this->request('/tenant/contracts'), 'area', null, ListSort::DESC, isDefault: true);
+        $this->assertStringContainsString('sort=area', $url);
+        $this->assertStringContainsString('dir=asc', $url, '既定順の列を押したら逆向きへ進むべき');
+
+        // 既定順の列: 別の列で並び替え中に押すと既定へ（sort も dir も載せない・絞り込みは残す）
+        $rent = ListSort::fromRequest($this->request('/x?sort=rent&dir=desc'), self::ALLOWED);
+        $url = ListSort::url($this->request('/tenant/contracts?sort=rent&dir=desc&status=all'), 'area', $rent, ListSort::DESC, isDefault: true);
+        $this->assertStringNotContainsString('sort=', $url, '既定順の列を押したのに並び替えが残っている');
+        $this->assertStringNotContainsString('dir=', $url);
+        $this->assertStringContainsString('status=all', $url, '絞り込みまで消えている');
+    }
+
+    /**
+     * $first が asc / desc 以外なら例外（設計書 §5）。
+     *
+     * ⚠ 黙って変な周期で回るより、配線テストで 500 として見つかるほうが良い
+     *   （x-sortable-th の column 打ち間違いと同じ方針）。
+     * ⚠ **3 つの入口をそれぞれ叩く。** 検査は stateOf() に 1 箇所だけ置き、next() と url() は
+     *   そこを経由する作りだが、誰かが経由をやめても落ちるように入口ごとに固定する。
+     * ⚠ 'ASC'（大文字）も不正。ListSort::ASC は小文字の 'asc'。
+     */
+    public function test_an_unknown_first_direction_is_rejected(): void
+    {
+        $calls = [
+            'stateOf' => fn (string $first) => ListSort::stateOf(null, 'rent', $first),
+            'next'    => fn (string $first) => ListSort::next(null, 'rent', $first),
+            'url'     => fn (string $first) => ListSort::url($this->request('/x'), 'rent', null, $first),
+        ];
+
+        foreach ($calls as $name => $call) {
+            foreach (['ASC', 'up', ''] as $bad) {
+                try {
+                    $call($bad);
+                    $this->fail("{$name}() が first='{$bad}' を黙って受け入れた");
+                } catch (\InvalidArgumentException $e) {
+                    $this->assertStringContainsString("'{$bad}'", $e->getMessage(), '例外の文言に不正な値が出ていない');
+                }
+            }
+        }
+    }
 }

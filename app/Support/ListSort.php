@@ -9,6 +9,7 @@ use Illuminate\Support\Arr;
  * 一覧の並び替え指定（?sort=xxx&dir=asc|desc）の解釈と、見出しリンクの URL 生成。
  *
  * 設計書: docs/superpowers/specs/2026-08-25-tenant-list-sorting-design.md
+ *         docs/superpowers/specs/2026-09-11-tenant-contract-list-sorting-design.md（列ごとの周期）
  *
  * ⚠ ここは「指定をどう読むか」だけを持ち、**実際の並べ替えはしない**。
  *   物件一覧は PHP・部屋一覧は SQL と方法が違うため（設計書 §3.2）。
@@ -66,23 +67,49 @@ class ListSort
 
     /**
      * その列を今押したときの次の向き。null は「並び替え解除（既定順へ戻す）」。
-     * 既定 → 降順 → 昇順 → 既定 の 3 状態（設計書 §4.2）。
      *
-     * ⚠ 1 回目が降順なのは、金額と率なので「多い順」を先に見たいため。
+     * 周期は列ごとの 2 つの指定で決まる（設計書 2026-09-11 §5）:
+     *   $first     … その列を初めて押したときの向き。省略時 DESC
+     *                （金額と率なので「多い順」を先に見たい、という前例の判断）
+     *   $isDefault … その列が画面の既定順か。既定順は「その列の $first 向き」とみなす
+     *
+     *   通常の列:   既定 → $first → 逆向き → 既定（3 状態）
+     *   既定順の列: 既定（＝ $first が点灯）→ 逆向き → 既定（2 状態）
+     *
+     * ⚠ **省略時は従来と 1 行も変わらない**（既定 → 降順 → 昇順 → 既定）。
+     * ⚠ 既定順の列に「既定と逆向きの 1 回目」は定義しない。既定から押した先が
+     *   既定と同じ並びになり、押しても何も変わらない状態が生まれる（設計書 §5）。
      */
-    public static function next(?self $current, string $key): ?string
+    public static function next(?self $current, string $key, string $first = self::DESC, bool $isDefault = false): ?string
     {
-        if ($current === null || $current->key !== $key) {
-            return self::DESC;
+        $state = self::stateOf($current, $key, $first, $isDefault);
+
+        if ($state === null) {
+            // ⚠ 既定順の列は「既定へ戻す」＝ sort を載せない。既定と同じ並びを
+            //   「契約日 新しい順」という別の状態として作らない（設計書 §4.3）
+            return $isDefault ? null : $first;
         }
 
-        return $current->isAscending() ? null : self::ASC;
+        return $state === $first ? self::opposite($first) : null;
     }
 
-    /** その列の現在の向き。並び替えに使っていなければ null */
-    public static function stateOf(?self $current, string $key): ?string
+    /**
+     * その列の現在の向き。並び替えに使っていなければ null。
+     *
+     * ⚠ 既定順の列（$isDefault）は、並び替え指定が無ければ $first を返す＝初期表示で見出しが点灯する。
+     *   null を返すと、契約日で並んでいるのに見出しは ⇅ のまま・aria-sort="none" になり、
+     *   読み上げにも嘘をつく（設計書 2026-09-11 §3.1）。
+     * ⚠ $first の検査はここ 1 箇所。next() と url() はここを経由する。
+     */
+    public static function stateOf(?self $current, string $key, string $first = self::DESC, bool $isDefault = false): ?string
     {
-        return $current !== null && $current->key === $key ? $current->direction : null;
+        self::assertDirection($first);
+
+        if ($current === null) {
+            return $isDefault ? $first : null;
+        }
+
+        return $current->key === $key ? $current->direction : null;
     }
 
     /**
@@ -93,12 +120,12 @@ class ListSort
      *   `?operation_status=` のような空の絞り込みが**リンクから丸ごと消える**
      *   （実測: Arr::query(['a'=>null,'b'=>'','c'=>'x']) === 'b=&c=x'。Bug #31）。
      */
-    public static function url(Request $request, string $key, ?self $current): string
+    public static function url(Request $request, string $key, ?self $current, string $first = self::DESC, bool $isDefault = false): string
     {
         $query = $request->query();
         unset($query['page']);
 
-        $next = self::next($current, $key);
+        $next = self::next($current, $key, $first, $isDefault);
 
         if ($next === null) {
             unset($query['sort'], $query['dir']);
@@ -141,5 +168,22 @@ class ListSort
         $queryString = Arr::query(array_map(fn ($value) => $value ?? '', $query));
 
         return $request->url() . ($queryString === '' ? '' : '?' . $queryString);
+    }
+
+    private static function opposite(string $direction): string
+    {
+        return $direction === self::ASC ? self::DESC : self::ASC;
+    }
+
+    /**
+     * ⚠ 黙って変な周期で回るより、配線テストで 500 として見つかるほうが良い
+     *   （x-sortable-th の column 打ち間違いと同じ方針。設計書 2026-09-11 §5）。
+     *   SORT_COLUMNS に 'first' => 'ASC'（大文字）と書くと、ここで止まる。
+     */
+    private static function assertDirection(string $direction): void
+    {
+        if ($direction !== self::ASC && $direction !== self::DESC) {
+            throw new \InvalidArgumentException("並び替えの向きは asc か desc のどちらか: '{$direction}'");
+        }
     }
 }
