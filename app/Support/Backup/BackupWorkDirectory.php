@@ -128,53 +128,14 @@ final class BackupWorkDirectory
 
     /**
      * 作業フォルダが、バックアップ対象のフォルダの中に置かれていないかを確かめる。
-     * まだ作られていないパスでも判定できるよう、実在する一番近い親までの realpath() に
-     * 残りの区切りをそのまま継ぎ足して、見なし上の実パスを作る（symlink はここより前の
-     * 呼び出し元のチェックで弾いているので、途中の実在しない区間に symlink は無い）。
-     *
-     * 対象フォルダ（$root）自体がまだ存在しない場合は realpath() できないので、
-     * storageAppPath の realpath() に区切りを継ぎ足した見なしパスと比べる
-     * （storage/app/private は本番でまだ無いことがあるが、その中を作業フォルダにはできない）。
+     * 実際の判定(symlink や、まだ無いフォルダを含めて実際の場所で比べる)は BackedUpRootGuard に
+     * 共通化してある(ops:backup-restore の取り出し先も同じ判定を使う)。
      */
     private function guardNotInsideBackedUpRoots(): void
     {
-        $resolved = $this->resolveIntendedRealpath($this->path);
-        $storageAppReal = realpath($this->storageAppPath);
-
-        foreach ($this->fileRoots as $root) {
-            $trimmedRoot = trim($root, '/');
-            $rootReal = realpath($this->storageAppPath.'/'.$trimmedRoot);
-            if ($rootReal === false) {
-                $rootReal = $storageAppReal !== false ? $storageAppReal.'/'.$trimmedRoot : false;
-            }
-            if ($rootReal === false) {
-                continue; // storageAppPath 自体が確認できなければ比較のしようがない（通常は起こらない）
-            }
-            if ($resolved === $rootReal || str_starts_with($resolved, $rootReal.'/')) {
-                throw new RuntimeException($this->locationErrorMessage());
-            }
+        if (BackedUpRootGuard::isInside($this->path, $this->storageAppPath, $this->fileRoots)) {
+            throw new RuntimeException($this->locationErrorMessage());
         }
-    }
-
-    private function resolveIntendedRealpath(string $path): string
-    {
-        $existing = $path;
-        $remainder = [];
-        while (! is_dir($existing)) {
-            $remainder[] = basename($existing);
-            $parent = dirname($existing);
-            if ($parent === $existing) {
-                break; // ルートまで来た（通常は起こらない）
-            }
-            $existing = $parent;
-        }
-
-        $real = realpath($existing);
-        if ($real === false) {
-            return $path;
-        }
-
-        return $remainder === [] ? $real : $real.'/'.implode('/', array_reverse($remainder));
     }
 
     private function locationErrorMessage(): string
