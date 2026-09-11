@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Support\Backup\BackupCipher;
+use App\Support\Backup\BackupFailureNotifier;
 use App\Support\Backup\BackupRunner;
 use App\Support\Backup\BackupStorage;
 use App\Support\Backup\DatabaseDumper;
@@ -43,6 +44,10 @@ class AppServiceProvider extends ServiceProvider
             (array) config('backup.file_roots'),
             (int) config('backup.retention_days'),
         ));
+
+        // bind にしているのは singleton ではなく、テスト実行中に config('backup.notify_to') を
+        // 変えたときにも反映されるようにするため
+        $this->app->bind(BackupFailureNotifier::class, fn () => new BackupFailureNotifier((string) config('backup.notify_to')));
     }
 
     /**
