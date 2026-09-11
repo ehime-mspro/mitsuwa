@@ -232,7 +232,7 @@ final class BackupCipher
         try {
             $previousUmask = umask(0077);
             try {
-                $out = $this->open($temp, 'xb');
+                $out = $this->openDestination($temp, $destinationPath);
                 $body($in, $out);
                 fclose($out);
                 $out = null;
@@ -240,7 +240,7 @@ final class BackupCipher
                 umask($previousUmask);
             }
 
-            if (! rename($temp, $destinationPath)) {
+            if (! @rename($temp, $destinationPath)) {
                 throw new RuntimeException('出力ファイルを置き換えられません: '.$destinationPath);
             }
         } catch (Throwable $e) {
@@ -262,6 +262,22 @@ final class BackupCipher
         $handle = @fopen($path, $mode);
         if ($handle === false) {
             throw new RuntimeException('ファイルを開けません: '.$path);
+        }
+
+        return $handle;
+    }
+
+    /**
+     * 保存先の一時ファイルを作る。失敗したときのメッセージには内部の一時ファイル名ではなく、
+     * 呼び出し元が指定した保存先のパスを出す。
+     *
+     * @return resource
+     */
+    private function openDestination(string $tempPath, string $destinationPath)
+    {
+        $handle = @fopen($tempPath, 'xb');
+        if ($handle === false) {
+            throw new RuntimeException('保存先に書き込めません: '.$destinationPath);
         }
 
         return $handle;
@@ -290,7 +306,7 @@ final class BackupCipher
     /**
      * @param  resource  $handle
      */
-    private function write($handle, string $data): void
+    private function write($handle, #[\SensitiveParameter] string $data): void
     {
         $length = strlen($data);
         $written = 0;
@@ -310,6 +326,6 @@ final class BackupCipher
 
     private function wrongKey(): RuntimeException
     {
-        return new RuntimeException('バックアップの暗号化キーが違います（このファイルは別のキーで暗号化されています。以前のキーを試してください）。');
+        return new RuntimeException('バックアップの暗号化キーが違います（別のキーで暗号化されたか、ファイルの先頭が壊れています。以前のキーも試してください）。');
     }
 }

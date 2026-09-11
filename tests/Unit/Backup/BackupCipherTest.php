@@ -76,12 +76,14 @@ class BackupCipherTest extends TestCase
         $plain = $this->put('plain.bin', 'secret data');
         (new BackupCipher(BackupCipher::generateKey(), 64))->encryptFile($plain, $this->dir.'/data.enc');
 
+        $caught = null;
         try {
             (new BackupCipher(BackupCipher::generateKey(), 64))->decryptFile($this->dir.'/data.enc', $this->dir.'/restored.bin');
-            $this->fail('別の鍵で復号できてしまった');
         } catch (RuntimeException $e) {
-            $this->assertStringContainsString('キーが違います', $e->getMessage());
+            $caught = $e;
         }
+        $this->assertNotNull($caught, '別の鍵で復号できてしまった');
+        $this->assertStringContainsString('キーが違います', $caught->getMessage());
         $this->assertFileDoesNotExist($this->dir.'/restored.bin');
         $this->assertSame([], $this->partFilesRemaining());
     }
@@ -94,12 +96,14 @@ class BackupCipherTest extends TestCase
         $bytes[60] = chr(ord($bytes[60]) ^ 1); // 1 つ目のかたまりの暗号文の中を 1 ビット変える
         file_put_contents($this->dir.'/data.enc', $bytes);
 
+        $caught = null;
         try {
             (new BackupCipher($key, 64))->decryptFile($this->dir.'/data.enc', $this->dir.'/restored.bin');
-            $this->fail('改ざんしたファイルを復号できてしまった');
         } catch (RuntimeException $e) {
-            $this->assertStringContainsString('復号できません', $e->getMessage());
+            $caught = $e;
         }
+        $this->assertNotNull($caught, '改ざんしたファイルを復号できてしまった');
+        $this->assertStringContainsString('復号できません', $caught->getMessage());
         $this->assertFileDoesNotExist($this->dir.'/restored.bin');
         $this->assertSame([], $this->partFilesRemaining());
     }
@@ -162,12 +166,13 @@ class BackupCipherTest extends TestCase
         $chunk1[4] = "\x01"; // 2 つ目(本来は最終ではない)のかたまりの最終フラグを偽装する
         file_put_contents($this->dir.'/data.enc', substr($enc, 0, $header).$chunk0.$chunk1);
 
+        $caught = null;
         try {
             (new BackupCipher($key, 64))->decryptFile($this->dir.'/data.enc', $this->dir.'/restored.bin');
-            $this->fail('偽装した最終フラグで復号できてしまった');
         } catch (RuntimeException $e) {
-            // 復号エラーになることを期待する
+            $caught = $e;
         }
+        $this->assertNotNull($caught, '偽装した最終フラグで復号できてしまった');
         $this->assertFileDoesNotExist($this->dir.'/restored.bin');
     }
 
@@ -238,12 +243,14 @@ class BackupCipherTest extends TestCase
         $cipher = new BackupCipher(BackupCipher::generateKey(), 64);
         $path = $this->put('same.bin', 'precious data');
 
+        $caught = null;
         try {
             $cipher->encryptFile($path, $path);
-            $this->fail('読み込み元と保存先が同じでも暗号化できてしまった');
         } catch (RuntimeException $e) {
-            $this->assertStringContainsString('同じファイル', $e->getMessage());
+            $caught = $e;
         }
+        $this->assertNotNull($caught, '読み込み元と保存先が同じでも暗号化できてしまった');
+        $this->assertStringContainsString('同じファイル', $caught->getMessage());
         $this->assertSame('precious data', file_get_contents($path));
         $this->assertSame([], $this->partFilesRemaining());
     }
@@ -299,6 +306,62 @@ class BackupCipherTest extends TestCase
     {
         $this->expectException(InvalidArgumentException::class);
         BackupCipher::encryptedSize(10, 0);
+    }
+
+    public function test_atomic_replace_preserves_existing_destination_on_failure(): void
+    {
+        $key = BackupCipher::generateKey();
+        $cipher = new BackupCipher($key, 64);
+        $cipher->encryptFile($this->put('plain.bin', $this->bytes(200)), $this->dir.'/data.enc');
+        $bytes = file_get_contents($this->dir.'/data.enc');
+        $bytes[60] = chr(ord($bytes[60]) ^ 1); // 改ざんして復号を失敗させる
+        file_put_contents($this->dir.'/data.enc', $bytes);
+
+        file_put_contents($this->dir.'/restored.bin', 'previous backup contents'); // 保存先に既存の内容がある状態にする
+
+        $caught = null;
+        try {
+            $cipher->decryptFile($this->dir.'/data.enc', $this->dir.'/restored.bin');
+        } catch (RuntimeException $e) {
+            $caught = $e;
+        }
+
+        $this->assertNotNull($caught, '改ざんしたファイルの復号が例外を投げなかった');
+        $this->assertSame('previous backup contents', file_get_contents($this->dir.'/restored.bin'));
+        $this->assertSame([], $this->partFilesRemaining());
+    }
+
+    public function test_umask_is_restored_after_encrypt_and_after_a_failed_decrypt(): void
+    {
+        $cipher = new BackupCipher(BackupCipher::generateKey(), 64);
+        $plain = $this->put('plain.bin', $this->bytes(200));
+
+        $beforeEncrypt = umask();
+        $cipher->encryptFile($plain, $this->dir.'/data.enc');
+        $this->assertSame($beforeEncrypt, umask(), '暗号化の前後で umask が変わっている');
+
+        $bytes = file_get_contents($this->dir.'/data.enc');
+        $bytes[60] = chr(ord($bytes[60]) ^ 1); // 改ざんして復号を失敗させる
+        file_put_contents($this->dir.'/data.enc', $bytes);
+
+        $beforeDecrypt = umask();
+        try {
+            $cipher->decryptFile($this->dir.'/data.enc', $this->dir.'/restored.bin');
+        } catch (RuntimeException $e) {
+            // 失敗するのが正しい。ここでは umask が復元されているかだけを見る
+        }
+        $this->assertSame($beforeDecrypt, umask(), '失敗した復号の前後で umask が変わっている');
+    }
+
+    public function test_maximum_possible_chunk_length_is_rejected(): void
+    {
+        $cipher = new BackupCipher(BackupCipher::generateKey(), 64);
+        $cipher->encryptFile($this->put('plain.bin', $this->bytes(10)), $this->dir.'/data.enc');
+        $header = substr(file_get_contents($this->dir.'/data.enc'), 0, 46);
+        file_put_contents($this->dir.'/data.enc', $header."\xFF\xFF\xFF\xFF\x00".str_repeat('A', 100));
+
+        $this->expectException(RuntimeException::class);
+        $cipher->decryptFile($this->dir.'/data.enc', $this->dir.'/restored.bin');
     }
 
     private function partFilesRemaining(): array
