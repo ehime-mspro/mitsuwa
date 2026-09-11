@@ -13,6 +13,7 @@ use App\Models\Property;
 use App\Models\Unit;
 use App\Models\User;
 use App\Services\Tenant\AreaBuildingListService;
+use App\Support\ListSort;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -242,6 +243,61 @@ class SortableListWiringTest extends TestCase
                 }
             }
         }
+    }
+
+    /**
+     * SORT_COLUMNS の任意キー（first / default）の形（設計書 2026-09-11 §7.3）。
+     *
+     * ⚠ x-sortable-th は `$spec['first'] ?? DESC` / `$spec['default'] ?? false` で読むので、
+     *   **打ち間違えたキー（'frist'）は黙って無視され、従来の周期で回る**（落ちない）。
+     *   既知のキー以外を置かないことをここで固定する。
+     * ⚠ `first` は asc / desc だけ（ListSort::assertDirection() と同じ規則を静的にも見る。
+     *   実行時の例外は、その列の見出しを描画するまで起きないため）。
+     * ⚠ `default` は true だけ（false を書くくらいなら書かない。「既定順の列ではない」のか
+     *   「書き忘れ」なのか読み手が区別できなくなる）。既定順の列は画面に高々 1 本。
+     * ⚠ 走査の空振り防止（Bug #45）: 少なくとも 1 画面は first / default を実際に使っていること。
+     *   使っている画面が無いと、上の検査は全部「対象ゼロで緑」になる。
+     */
+    public function test_sort_column_options_are_well_formed(): void
+    {
+        // label / desc / asc は全画面共通。first / default は周期の指定（契約一覧）。
+        // expr / nullsLast（部屋一覧）と attribute（物件一覧）は各画面の並べ替えが読む
+        $known = ['label', 'desc', 'asc', 'first', 'default', 'expr', 'nullsLast', 'attribute'];
+
+        $usesFirst = false;
+        $usesDefault = false;
+
+        foreach (array_keys(self::SORT_ENDPOINTS) as $class) {
+            $defaults = 0;
+
+            foreach ($class::SORT_COLUMNS as $key => $spec) {
+                $this->assertSame(
+                    [],
+                    array_values(array_diff(array_keys($spec), $known)),
+                    "{$class}::SORT_COLUMNS['{$key}'] に知らないキーがある（打ち間違いは黙って無視される）"
+                );
+
+                if (array_key_exists('first', $spec)) {
+                    $this->assertContains(
+                        $spec['first'],
+                        [ListSort::ASC, ListSort::DESC],
+                        "{$class}::SORT_COLUMNS['{$key}']['first'] が asc / desc でない"
+                    );
+                    $usesFirst = true;
+                }
+
+                if (array_key_exists('default', $spec)) {
+                    $this->assertTrue($spec['default'], "{$class}::SORT_COLUMNS['{$key}']['default'] は true だけ（false なら書かない）");
+                    $defaults++;
+                    $usesDefault = true;
+                }
+            }
+
+            $this->assertLessThanOrEqual(1, $defaults, "{$class} に既定順の列が 2 本以上ある");
+        }
+
+        $this->assertTrue($usesFirst, 'first を使う列が 1 本も無い（走査が空振りしている。契約一覧の物件 / 区画が持つはず）');
+        $this->assertTrue($usesDefault, 'default を使う列が 1 本も無い（走査が空振りしている。契約一覧の契約日が持つはず）');
     }
 
     /**
