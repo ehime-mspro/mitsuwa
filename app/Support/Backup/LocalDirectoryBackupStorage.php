@@ -3,6 +3,7 @@
 namespace App\Support\Backup;
 
 use FilesystemIterator;
+use InvalidArgumentException;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use RuntimeException;
@@ -17,6 +18,10 @@ final class LocalDirectoryBackupStorage implements BackupStorage
 
     public function __construct(string $root)
     {
+        if ($root === '' || $root === '/' || ! str_starts_with($root, '/')) {
+            throw new InvalidArgumentException('ローカルの保管フォルダは絶対パスで指定してください。');
+        }
+
         $this->root = rtrim($root, '/');
     }
 
@@ -27,7 +32,12 @@ final class LocalDirectoryBackupStorage implements BackupStorage
         if (! is_dir($directory) && ! mkdir($directory, 0700, true) && ! is_dir($directory)) {
             throw new RuntimeException('保管フォルダを作れません: '.$directory);
         }
-        if (! copy($localPath, $path)) {
+
+        $temporaryPath = $path.'.'.bin2hex(random_bytes(6)).'.part';
+        if (! copy($localPath, $temporaryPath) || ! rename($temporaryPath, $path)) {
+            if (is_file($temporaryPath)) {
+                unlink($temporaryPath);
+            }
             throw new RuntimeException('保管に失敗しました: '.$key);
         }
     }
@@ -51,7 +61,7 @@ final class LocalDirectoryBackupStorage implements BackupStorage
 
         /** @var SplFileInfo $file */
         foreach ($iterator as $file) {
-            if (! $file->isFile()) {
+            if (! $file->isFile() || str_ends_with($file->getFilename(), '.part')) {
                 continue;
             }
             $key = str_replace(DIRECTORY_SEPARATOR, '/', substr($file->getPathname(), strlen($this->root) + 1));
