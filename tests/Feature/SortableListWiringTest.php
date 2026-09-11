@@ -41,6 +41,7 @@ class SortableListWiringTest extends TestCase
         'tenant/area-buildings/index.blade.php' => [AreaBuildingListService::class, 7],
         'tenant/properties/index.blade.php'     => [PropertyController::class, 2],
         'tenant/units/index.blade.php'          => [UnitController::class, 3],
+        'tenant/contracts/index.blade.php'      => [ContractController::class, 3],
     ];
 
     /**

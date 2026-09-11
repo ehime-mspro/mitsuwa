@@ -631,4 +631,268 @@ class ContractListSortTest extends TestCase
 
         $this->assertSame(count($this->headerTexts($html)), (int) $matches[1], '0 件の行の colspan が見出しの数と違う');
     }
+
+    /**
+     * 初期表示では契約日の見出しだけが点灯する（▼・緑・aria-sort="descending"。設計書 §4.3 / §7.1）。
+     *
+     * ⚠ 列ごとに切り出して見る（ParsesSortLinks::ariaSortFor()）。ページ全体の
+     *   assertStringContainsString('aria-sort="descending"') は、全列に descending を出す変異でも通る。
+     * ⚠ 並び替え指定が無いのに点灯させるのは既定順の列だけ。ListSort::stateOf() の既定点灯を
+     *   外すと、契約日で並んでいるのに ⇅ のまま・aria-sort="none" になる（設計書 §3.1）。
+     */
+    public function test_only_the_contract_date_header_is_lit_on_the_default_screen(): void
+    {
+        $this->threeContractsWhoseNameOrderIsTheReverseOfTheDateOrder();
+
+        $html = $this->actingAs($this->executive())->get(route('tenant.contracts.index'))->getContent();
+
+        $this->assertSame('descending', $this->ariaSortFor($html, '契約日'), '初期表示で契約日の見出しが点灯していない');
+        $this->assertSame('none', $this->ariaSortFor($html, '物件 / 区画'), '並び替えていない列に aria-sort が載っている');
+        $this->assertSame('none', $this->ariaSortFor($html, '賃料収入'), '並び替えていない列に aria-sort が載っている');
+        $this->assertSame('none', $this->ariaSortFor($html, '店舗名'), '並び替えない列に aria-sort が載っている');
+
+        $dateHeader = $this->thInnerFor($html, '契約日');
+        $this->assertStringContainsString('points="6 9 12 16 18 9"', $dateHeader, '契約日の見出しに ▼ が出ていない');
+        $this->assertStringContainsString('color: #059669;', $dateHeader, '契約日の見出しの矢印が緑でない');
+
+        foreach (['物件 / 区画', '賃料収入'] as $label) {
+            $this->assertStringContainsString('points="7 15 12 20 17 15"', $this->thInnerFor($html, $label), "{$label} の見出しが ⇅ でない");
+        }
+    }
+
+    /**
+     * 契約日の見出し: 既定（▼ 新しい順）→ 古い順 ▲ → 既定（2 状態。設計書 §4.3）。
+     *
+     * ⚠ 1 回目の href が dir=asc であることを先に見る。'default' => true を落とすと契約日が
+     *   ふつうの列に戻り、1 回目が dir=desc（＝既定と同じ並び）になって**押しても何も変わらない**。
+     */
+    public function test_the_contract_date_header_goes_oldest_first_then_back_to_the_default(): void
+    {
+        [$a1, $a2, $a3, $b1] = $this->fourContractsForThePropertyUnitColumn();
+        $user = $this->executive();
+
+        $html = $this->actingAs($user)->get(route('tenant.contracts.index'))->getContent();
+        $firstUrl = $this->sortLinkFor($html, '契約日');
+        $this->assertStringContainsString('sort=contract_date', $firstUrl);
+        $this->assertStringContainsString('dir=asc', $firstUrl, '既定から押したら古い順へ進むべき');
+
+        $first = $this->actingAs($user)->get($firstUrl);
+        $this->assertSame($this->ids($a2, $b1, $a3, $a1), $this->listedIds($first), '古い順になっていない');
+        $this->assertSame('ascending', $this->ariaSortFor($first->getContent(), '契約日'));
+
+        $secondUrl = $this->sortLinkFor($first->getContent(), '契約日');
+        $this->assertStringNotContainsString('sort=', $secondUrl, '古い順の次は既定へ戻す（2 状態）');
+        $this->assertStringNotContainsString('dir=', $secondUrl);
+
+        $second = $this->actingAs($user)->get($secondUrl);
+        $this->assertSame($this->ids($a1, $a3, $b1, $a2), $this->listedIds($second), '既定順に戻っていない');
+        $this->assertSame('descending', $this->ariaSortFor($second->getContent(), '契約日'), '既定に戻ったのに契約日の見出しが点灯していない');
+    }
+
+    /**
+     * 他の列で並び替え中に「契約日」を押すと既定へ戻る（URL に sort を載せない。設計書 §4.3）。
+     *
+     * ⚠ 既定と同じ並びを「契約日 新しい順」という別の状態として作らない。ListSort::next() の
+     *   既定順の列の分岐を外すと、ここで dir=desc 付きのリンクになる。
+     */
+    public function test_clicking_the_contract_date_header_while_another_column_is_sorted_returns_to_the_default(): void
+    {
+        [$x, $w, $z, $y] = $this->fourContractsForTheIncomeColumn();
+        $user = $this->executive();
+
+        $html = $this->actingAs($user)->get(route('tenant.contracts.index'))->getContent();
+        $byIncome = $this->actingAs($user)->get($this->sortLinkFor($html, '賃料収入'));
+        $this->assertSame($this->ids($x, $w, $z, $y), $this->listedIds($byIncome));
+        $this->assertSame('none', $this->ariaSortFor($byIncome->getContent(), '契約日'), '別の列で並び替え中なのに契約日の見出しが点灯している');
+
+        $url = $this->sortLinkFor($byIncome->getContent(), '契約日');
+        $this->assertStringNotContainsString('sort=', $url, '契約日を押したら既定へ戻すべき（並び替えを載せない）');
+        $this->assertStringNotContainsString('dir=', $url);
+
+        $back = $this->actingAs($user)->get($url);
+        $this->assertSame($this->ids($y, $z, $x, $w), $this->listedIds($back), '既定順（契約日の新しい順）に戻っていない');
+        $this->assertSame('descending', $this->ariaSortFor($back->getContent(), '契約日'));
+    }
+
+    /** 手入力の ?sort=contract_date&dir=desc は既定と同じ並びになり、押すと古い順へ進む（正規化はしない。設計書 §4.3） */
+    public function test_a_hand_typed_newest_first_shows_the_default_order_and_moves_on_to_oldest(): void
+    {
+        [$a, $b, $c] = $this->threeContractsWhoseNameOrderIsTheReverseOfTheDateOrder();
+        $user = $this->executive();
+
+        $response = $this->actingAs($user)->get(route('tenant.contracts.index', ['sort' => 'contract_date', 'dir' => 'desc']));
+        $this->assertSame($this->ids($c, $b, $a), $this->listedIds($response));
+        $this->assertSame('descending', $this->ariaSortFor($response->getContent(), '契約日'));
+
+        $this->assertStringContainsString('dir=asc', $this->sortLinkFor($response->getContent(), '契約日'), '押したら古い順へ進むべき');
+    }
+
+    /**
+     * 物件 / 区画の見出し: 既定 → **昇順** ▲ → 降順 ▼ → 既定（設計書 §4.3）。
+     *
+     * ⚠ 1 回目が昇順（2026-05-11〜09-11 の既定順を 1 回で呼び出す）。'first' => ListSort::ASC を
+     *   落とすと 1 回目が物件名の逆順になる。
+     */
+    public function test_the_property_unit_header_starts_ascending_then_descending_then_default(): void
+    {
+        [$a1, $a2, $a3, $b1] = $this->fourContractsForThePropertyUnitColumn();
+        $user = $this->executive();
+
+        $html = $this->actingAs($user)->get(route('tenant.contracts.index'))->getContent();
+        $first = $this->actingAs($user)->get($this->sortLinkFor($html, '物件 / 区画'));
+        $this->assertSame($this->ids($a1, $a2, $a3, $b1), $this->listedIds($first), '1 回目が昇順（物件名 → 階数 → 号室）になっていない');
+        $this->assertSame('ascending', $this->ariaSortFor($first->getContent(), '物件 / 区画'));
+
+        $second = $this->actingAs($user)->get($this->sortLinkFor($first->getContent(), '物件 / 区画'));
+        $this->assertSame($this->ids($b1, $a3, $a2, $a1), $this->listedIds($second), '2 回目が降順になっていない');
+        $this->assertSame('descending', $this->ariaSortFor($second->getContent(), '物件 / 区画'));
+
+        $thirdUrl = $this->sortLinkFor($second->getContent(), '物件 / 区画');
+        $this->assertStringNotContainsString('sort=', $thirdUrl, '3 回目は並び替えを解除する');
+        $this->assertSame($this->ids($a1, $a3, $b1, $a2), $this->listedIds($this->actingAs($user)->get($thirdUrl)));
+    }
+
+    /** 賃料収入の見出し: 既定 → 多い順 ▼ → 少ない順 ▲ → 既定（前例の金額列と同じ） */
+    public function test_the_income_header_cycles_most_then_least_then_default(): void
+    {
+        [$x, $w, $z, $y] = $this->fourContractsForTheIncomeColumn();
+        $user = $this->executive();
+
+        $html = $this->actingAs($user)->get(route('tenant.contracts.index'))->getContent();
+        $first = $this->actingAs($user)->get($this->sortLinkFor($html, '賃料収入'));
+        $this->assertSame($this->ids($x, $w, $z, $y), $this->listedIds($first), '1 回目が多い順になっていない');
+        $this->assertSame('descending', $this->ariaSortFor($first->getContent(), '賃料収入'));
+
+        $second = $this->actingAs($user)->get($this->sortLinkFor($first->getContent(), '賃料収入'));
+        $this->assertSame($this->ids($y, $z, $w, $x), $this->listedIds($second), '2 回目が少ない順になっていない');
+        $this->assertSame('ascending', $this->ariaSortFor($second->getContent(), '賃料収入'));
+
+        $thirdUrl = $this->sortLinkFor($second->getContent(), '賃料収入');
+        $this->assertStringNotContainsString('sort=', $thirdUrl, '3 回目は並び替えを解除する');
+        $this->assertSame($this->ids($y, $z, $x, $w), $this->listedIds($this->actingAs($user)->get($thirdUrl)));
+    }
+
+    /** 並び替えない見出し（店舗名・状態・操作）は素の <th>（リンクも矢印も無い） */
+    public function test_non_sortable_headers_stay_plain(): void
+    {
+        $html = $this->actingAs($this->executive())->get(route('tenant.contracts.index'))->getContent();
+
+        foreach (['店舗名', '状態', '操作'] as $label) {
+            $this->assertStringContainsString(">{$label}</th>", $html, "{$label} の見出しが素の <th> でなくなっている");
+        }
+    }
+
+    /**
+     * 並び替え中にフィルタを変えても並び順が消えない（設計書 §4.5-3）。
+     *
+     * ⚠ hidden があることを見るだけでは足りない。**画面が描画したフォームを解析して
+     *   そのまま送り返す**（Bug #47）。フォームは GET なので fields をクエリ文字列に組み直す。
+     * ⚠ **2 組（賃料収入の少ない順 ／ 物件 / 区画の降順）を通す。** キーも向きも変えることで、
+     *   hidden の値をハードコードする変異がどちらでも落ちる。
+     * ⚠ 絞り込み後に 3 件残し、既定順・賃料収入の少ない順・物件 / 区画の降順がすべて食い違う:
+     *   既定 [$a1, $a3, $a2] ／ 賃料収入の少ない順 [$a2, $a3, $a1] ／ 物件 / 区画の降順 [$a3, $a2, $a1]
+     */
+    public function test_changing_a_filter_keeps_the_current_sort(): void
+    {
+        $a = $this->makeProperty('A館');
+        $b = $this->makeProperty('B館');
+
+        $a1 = $this->makeContract($this->makeUnit($a, 1, 'A'), '2026-01-01', ['rent' => 150000]);
+        $a2 = $this->makeContract($this->makeUnit($a, 2, 'A'), '2024-01-01', ['rent' => 120000]);
+        $a3 = $this->makeContract($this->makeUnit($a, 3, 'A'), '2025-01-01', ['rent' => 130000]);
+        $excluded = $this->makeContract($this->makeUnit($b, 1, 'A'), '2027-01-01', ['rent' => 100000]);
+
+        $user = $this->executive();
+
+        $this->assertFilterRoundTripKeepsOrder($user, $a, 'income', 'asc', $this->ids($a2, $a3, $a1), $excluded);
+        $this->assertFilterRoundTripKeepsOrder($user, $a, 'property_unit', 'desc', $this->ids($a3, $a2, $a1), $excluded);
+    }
+
+    /** 並び替え中の画面のフィルターフォームを解析し、物件だけ変えて送り返して並び順が保たれることを見る */
+    private function assertFilterRoundTripKeepsOrder(
+        User $user,
+        Property $property,
+        string $key,
+        string $direction,
+        array $expected,
+        Contract $excluded,
+    ): void {
+        $html = $this->actingAs($user)
+            ->get(route('tenant.contracts.index', ['sort' => $key, 'dir' => $direction]))
+            ->getContent();
+
+        $form = $this->parseForm($html, 'action="' . route('tenant.contracts.index') . '"');
+
+        $this->assertSame($key, $form['fields']['sort'] ?? null, "フィルターフォームが sort={$key} を持ち回していない");
+        $this->assertSame($direction, $form['fields']['dir'] ?? null, "フィルターフォームが dir={$direction} を持ち回していない");
+        $this->assertArrayNotHasKey('page', $form['fields'], 'フィルタを変えたら 1 ページ目に戻るべき');
+
+        // ブラウザと同じように、物件だけ変えて送り返す
+        $fields = $form['fields'];
+        $fields['property_id'] = (string) $property->id;
+
+        $ids = $this->listedIds($this->actingAs($user)->get($form['action'] . '?' . http_build_query($fields)));
+
+        $this->assertSame($expected, $ids, "フィルタを変えたら並び順が既定に戻った（{$key} の {$direction} のままであるべき）");
+        $this->assertNotContains($excluded->id, $ids, '物件の絞り込みが効いていない');
+    }
+
+    /** 並び替えていないときは余計な hidden を出さない（?sort= が URL に現れて汚れる） */
+    public function test_no_sort_hidden_fields_when_not_sorting(): void
+    {
+        $html = $this->actingAs($this->executive())->get(route('tenant.contracts.index'))->getContent();
+        $form = $this->parseForm($html, 'action="' . route('tenant.contracts.index') . '"');
+
+        $this->assertArrayNotHasKey('sort', $form['fields']);
+        $this->assertArrayNotHasKey('dir', $form['fields']);
+    }
+
+    /** 2 ページ目で見出しを押したら 1 ページ目へ戻る（設計書 §4.5-4）。3 列とも見る */
+    public function test_clicking_a_header_from_page_two_returns_to_page_one(): void
+    {
+        $property = $this->makeProperty('A館');
+        for ($i = 1; $i <= 11; $i++) {
+            $this->makeContract($this->makeUnit($property, $i, 'A'), sprintf('2025-%02d-01', $i), ['rent' => 100000 + $i]);
+        }
+
+        $user = $this->executive();
+
+        $page1 = $this->actingAs($user)->get(route('tenant.contracts.index'));
+        $page2 = $this->actingAs($user)->get($page1->viewData('contracts')->nextPageUrl());
+        $this->assertSame(2, $page2->viewData('contracts')->currentPage());
+
+        foreach (['契約日', '物件 / 区画', '賃料収入'] as $label) {
+            $url = $this->sortLinkFor($page2->getContent(), $label);
+            $this->assertStringNotContainsString('page=', $url, "{$label} の見出しリンクが page を持ち越している");
+            $this->assertSame(1, $this->actingAs($user)->get($url)->viewData('contracts')->currentPage());
+        }
+    }
+
+    /**
+     * 「クリア」は並び順も初期化する（設計書 §4.5-5「クリアは全部」）。
+     *
+     * ⚠ サイドバーの「契約一覧」メニューも同じ素の URL を指すので、href="…" の部分一致では
+     *   クリアの href を見ずに常に緑になる（前例 UnitListSortTest の実測）。ラベルで取り出す。
+     */
+    public function test_the_clear_link_drops_the_sort(): void
+    {
+        $html = $this->actingAs($this->executive())
+            ->get(route('tenant.contracts.index', ['sort' => 'income', 'dir' => 'desc', 'status' => 'all']))
+            ->getContent();
+
+        $this->assertSame(route('tenant.contracts.index'), $this->sortLinkFor($html, 'クリア'), 'クリアがクエリ付きのリンクになっている（並び順が残る）');
+    }
+
+    /** バーの「解除」は並び順だけを消し、絞り込みは残す（設計書 §4.5-5「解除は並び順だけ」） */
+    public function test_the_bar_clear_link_keeps_the_filters(): void
+    {
+        $html = $this->actingAs($this->executive())
+            ->get(route('tenant.contracts.index', ['sort' => 'income', 'dir' => 'desc', 'status' => 'all']))
+            ->getContent();
+
+        $url = $this->sortLinkFor($html, '解除');
+        $this->assertStringNotContainsString('sort=', $url, '解除リンクが並び順を残している');
+        $this->assertStringNotContainsString('dir=', $url);
+        $this->assertStringContainsString('status=all', $url, '解除リンクが絞り込みまで消している（「クリア」と区別が無い）');
+    }
 }

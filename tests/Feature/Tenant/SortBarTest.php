@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Tenant;
 
+use App\Models\Contract;
+use App\Models\Customer;
 use App\Models\Property;
 use App\Models\Unit;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -12,8 +14,8 @@ use Tests\Concerns\ParsesSortLinks;
  *
  * ⚠ **ヒント文とピルは役割が違うので別々にアサートする。** まとめて見ると片方が消えても
  *   緑になる（Bug #43 / #46 / #49 と同型）。
- * ⚠ 経営層は department.access を素通りするので、1 人で 3 画面とも見られる。
- * ⚠ 行は要らない画面が多いが、周辺ビル調査・物件一覧・部屋一覧は**文言と実際の並びを対で**見るので
+ * ⚠ 経営層は department.access を素通りするので、1 人で 4 画面とも見られる。
+ * ⚠ 行は要らない画面が多いが、周辺ビル調査・物件一覧・部屋一覧・契約一覧は**文言と実際の並びを対で**見るので
  *   データを作る（バーの文言だけを固定すると、defaultLabel が実際の既定順と食い違っていても
  *   検出できない。設計書 §6 が最も嫌う形の嘘）。
  */
@@ -21,6 +23,8 @@ class SortBarTest extends AreaBuildingTestCase
 {
     use ParsesSortLinks;
     use RefreshDatabase;
+
+    private int $contractSeq = 0;
 
     /**
      * 物件を 1 つ作る（`UnitListSortTest::makeProperty()` / `PropertyListSortTest::makeProperty()` と
@@ -60,19 +64,59 @@ class SortBarTest extends AreaBuildingTestCase
         ]);
     }
 
-    /** 3 画面それぞれが**自分の**既定順を名乗ること */
+    /**
+     * テナント契約を 1 件作る（`ContractListSortTest::makeContract()` と同じ最小フィールド構成）。
+     *
+     * ⚠ テストの SQLite では customer_id / rent_start_date が NOT NULL。
+     */
+    private function makeTenantContract(string $propertyName, string $contractDate): Contract
+    {
+        $n = ++$this->contractSeq;
+
+        $property = Property::create([
+            'code'             => sprintf('T-BARC%02d', $n),
+            'name'             => $propertyName,
+            'property_type'    => 'tenant',
+            'department'       => 'tenant',
+            'operation_status' => 'active',
+            'address'          => '愛媛県松山市本町1-1',
+        ]);
+
+        $unit = Unit::create([
+            'property_id'  => $property->id,
+            'floor'        => 1,
+            'room_number'  => 'A',
+            'display_name' => '1A',
+            'status'       => 'occupied',
+        ]);
+
+        return Contract::create([
+            'contract_number' => sprintf('C-BAR-%03d', $n),
+            'department'      => 'tenant',
+            'property_id'     => $property->id,
+            'unit_id'         => $unit->id,
+            'customer_id'     => Customer::create(['code' => sprintf('CUST-BAR%02d', $n), 'name' => 'テスト商事', 'customer_type' => 'corporation'])->id,
+            'status'          => 'active',
+            'contract_date'   => $contractDate,
+            'rent_start_date' => $contractDate,
+            'rent'            => 100000,
+        ]);
+    }
+
+    /** 各画面が**自分の**既定順を名乗ること */
     public function test_each_list_names_its_own_default_order(): void
     {
         $user = $this->executive();
 
-        // ⚠ 3 画面を 1 つの表から回す。個別に書くと**片側だけの除外**になり、
+        // ⚠ 全画面を 1 つの表から回す。個別に書くと**片側だけの除外**になり、
         //   「別の画面のラベルが漏れて出ている」が無音で通る（2026-08-28 実測: units へ
         //   properties のラベルを持つバーをもう 1 本足しても 1039 本すべて緑だった）。
-        //   4 画面目を足したらこの表を直さないと網羅が崩れる形にしてある。
+        //   画面を足したらこの表を直さないと網羅が崩れる形にしてある。
         $screens = [
             '/tenant/area-buildings'              => 'ビル名順',
             route('tenant.properties.index')      => '稼働中が先・コード順',
             route('tenant.units.index')           => '物件・階・部屋番号順',
+            route('tenant.contracts.index')       => '契約日の新しい順',
         ];
 
         foreach ($screens as $url => $own) {
@@ -222,6 +266,65 @@ class SortBarTest extends AreaBuildingTestCase
             $response->viewData('units')->pluck('id')->all(),
             'バーの文言と実際の並びが食い違っている'
         );
+    }
+
+    /**
+     * テナント契約一覧の既定順の**文言と実際の並びが揃っている**こと（設計書 2026-09-11 §4.6）。
+     *
+     * ⚠ 物件名の順と契約日の順を逆にしてある（旧既定＝物件名順に戻す変異を赤くする）。
+     *   作成順も両方と食い違わせてある（id の降順で並べる変異も赤くする）。
+     */
+    public function test_the_contracts_bar_names_the_real_default_order(): void
+    {
+        $b = $this->makeTenantContract('B館', '2025-04-01');
+        $c = $this->makeTenantContract('C館', '2026-04-01');
+        $a = $this->makeTenantContract('A館', '2024-04-01');
+
+        $response = $this->actingAs($this->staff())->get(route('tenant.contracts.index'));
+
+        $this->assertStringContainsString('並び替え: 既定（契約日の新しい順）', $response->getContent());
+        $this->assertSame(
+            [$c->id, $b->id, $a->id],
+            $response->viewData('contracts')->pluck('id')->all(),
+            'バーの文言と実際の並びが食い違っている'
+        );
+    }
+
+    /**
+     * テナント契約一覧の並び替え中は列名と**向きの言い方**が出ること（設計書 2026-09-11 §6.2）。
+     *
+     * ⚠ `sort=contract_date&dir=desc` は手入力の「既定と同じ並び」。正規化しないので、
+     *   バーは素直に「契約日 新しい順」と名乗る（計画で決めた。設計書 §4.3）。
+     *   この経路でしか 'desc' => '新しい順' は画面に出ない。
+     * ⚠ ピルは aria-label を落としてから見る（test_the_bar_names_the_column_and_the_direction と同じ理由）。
+     */
+    public function test_the_contracts_bar_names_each_column_and_direction(): void
+    {
+        $staff = $this->staff();
+
+        $cases = [
+            'sort=contract_date&dir=asc'  => '契約日 古い順',
+            'sort=contract_date&dir=desc' => '契約日 新しい順',
+            'sort=property_unit&dir=asc'  => '物件 / 区画 昇順',
+            'sort=property_unit&dir=desc' => '物件 / 区画 降順',
+            'sort=income&dir=desc'        => '賃料収入 多い順',
+            'sort=income&dir=asc'         => '賃料収入 少ない順',
+        ];
+
+        foreach ($cases as $query => $phrase) {
+            $html = $this->actingAs($staff)->get(route('tenant.contracts.index') . '?' . $query)->getContent();
+
+            $this->assertStringContainsString(
+                "並び替え: {$phrase}",
+                $this->withoutAriaLabels($html),
+                "?{$query} のピルに列名と向きが出ていない（画面に見える文字が消えている）"
+            );
+            $this->assertStringContainsString(
+                'aria-label="並び替え: ' . $phrase . ' を解除"',
+                $html,
+                "?{$query} の解除リンクが何を解除するのか名乗っていない"
+            );
+        }
     }
 
     /**

@@ -6,7 +6,9 @@
 
 props:
   column     … ?sort に載るキー（コントローラの許可リストと揃える）
-  columns    … その画面の SORT_COLUMNS（日本語ラベルと「向きの言い方」）
+  columns    … その画面の SORT_COLUMNS（日本語ラベルと「向きの言い方」）。
+               列ごとに任意で 'first'（1 回目の向き。省略時 desc）と
+               'default'（画面の既定順の列なら true）を持てる（設計書 2026-09-11 §6.3）
   sort       … App\Support\ListSort|null（コントローラから渡す）
   align      … left | center | right（既定 center）。<th> の text-align と <a> の justify-content
   linkClass  … <a> に足すクラス。**パディングはここ**（Tailwind の responsive を使いたい画面用）
@@ -23,6 +25,8 @@ props:
 ⚠ **<a> の中は「ラベル → 矢印」の順にする。** テストの sortLinkFor() が
    <a …> の直後（span 1 つは可）にラベルが来ることを要求しているので、矢印を先に置くと
    リンクを見つけられない。
+⚠ 'default' => true の列は、並び替え指定が無くても点灯する（初期表示で ▼ ・aria-sort="descending"）。
+   押すと逆向き → 既定の 2 状態で回る。周期の決まりは ListSort::next() の docblock が正本。
 ⚠ JS は 1 行も使わない。ただのリンク。
 ⚠ `color` は inline style なので `hover:text-*` / `focus:text-*` は**効かない**（inline が勝つ）。
    文字色を状態で変えたいなら inline 側を CSS 変数にするか app.css へ逃がすこと。
@@ -38,8 +42,12 @@ props:
     'linkStyle' => '',
 ])
 @php
-    $label = $columns[$column]['label'];
-    $state = \App\Support\ListSort::stateOf($sort, $column);
+    $spec  = $columns[$column];
+    $label = $spec['label'];
+    // 列ごとの周期（設計書 2026-09-11 §6.3）。省略時は従来どおり（1 回目は降順・既定順の列ではない）
+    $first     = $spec['first'] ?? \App\Support\ListSort::DESC;
+    $isDefault = $spec['default'] ?? false;
+    $state = \App\Support\ListSort::stateOf($sort, $column, $first, $isDefault);
 
     $ariaSort = match ($state) {
         \App\Support\ListSort::ASC => 'ascending',
@@ -63,7 +71,7 @@ props:
         'class' => 'text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap',
         'style' => 'padding: 0; text-align: ' . $align . ';',
     ]) }} aria-sort="{{ $ariaSort }}">
-    <a href="{{ \App\Support\ListSort::url(request(), $column, $sort) }}"
+    <a href="{{ \App\Support\ListSort::url(request(), $column, $sort, $first, $isDefault) }}"
        class="{{ trim('sortable-th-link hover:bg-gray-100 transition-colors ' . $linkClass) }}"
        style="display: flex; align-items: center; justify-content: {{ $justify }}; gap: 5px; text-decoration: none; cursor: pointer; user-select: none; color: {{ $labelColor }}; {{ $linkStyle }}">
         <span class="sortable-th-label">{{ $label }}</span>

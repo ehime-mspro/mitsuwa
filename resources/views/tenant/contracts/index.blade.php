@@ -29,6 +29,8 @@
     @endphp
     <form id="filter-form" method="GET" action="{{ route('tenant.contracts.index') }}"
           class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mb-4 bg-white border border-gray-200 rounded-lg px-3.5 py-2.5">
+
+        <x-sort-hidden :sort="$sort" />
         <select onchange="document.getElementById('filter-form').submit()" name="property_id"
                 class="h-9 px-3 border border-gray-300 rounded-md text-sm text-gray-700 bg-white focus:border-emerald-500 focus:outline-none cursor-pointer w-full sm:w-auto">
             <option value="">物件: すべて</option>
@@ -53,6 +55,9 @@
         </a>
     </form>
 
+    {{-- ⚠ default-label は ContractController::applySort() の既定順と必ず揃える（SortBarTest が文言と並びを対で見ている） --}}
+    <x-sort-bar :sort="$sort" :columns="$sortColumns" default-label="契約日の新しい順" />
+
     {{-- テーブル --}}
     <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
         <div class="scroll-hint at-start">
@@ -71,10 +76,10 @@
                     </colgroup>
                     <thead>
                         <tr>
-                            <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">契約日</th>
-                            <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">物件 / 区画</th>
+                            <x-sortable-th column="contract_date" :sort="$sort" :columns="$sortColumns" align="center" link-class="px-4 py-3 lg:px-5 lg:py-3.5" />
+                            <x-sortable-th column="property_unit" :sort="$sort" :columns="$sortColumns" align="center" link-class="px-4 py-3 lg:px-5 lg:py-3.5" />
                             <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">店舗名</th>
-                            <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">賃料収入</th>
+                            <x-sortable-th column="income" :sort="$sort" :columns="$sortColumns" align="center" link-class="px-4 py-3 lg:px-5 lg:py-3.5" />
                             <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">状態</th>
                             <th class="px-4 py-3 lg:px-5 lg:py-3.5 text-center text-xs font-bold text-gray-600 bg-gray-50 border-b border-gray-200 whitespace-nowrap">操作</th>
                         </tr>
