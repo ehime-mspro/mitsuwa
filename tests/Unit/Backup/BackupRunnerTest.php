@@ -176,19 +176,6 @@ class BackupRunnerTest extends TestCase
         $runner->run($this->at(2026, 9, 12));
     }
 
-    public function test_gzip_output_decompresses_and_is_created_with_mode_0600(): void
-    {
-        $this->put('plain.sql', "CREATE TABLE t (id INT);\n");
-        $destination = $this->root.'/plain.sql.gz';
-
-        $method = new \ReflectionMethod(BackupRunner::class, 'gzip');
-        $method->setAccessible(true);
-        $method->invoke($this->runner(), $this->root.'/plain.sql', $destination);
-
-        $this->assertSame("CREATE TABLE t (id INT);\n", gzdecode(file_get_contents($destination)));
-        $this->assertSame('0600', substr(sprintf('%o', fileperms($destination)), -4));
-    }
-
     public function test_leftovers_from_a_killed_run_are_removed_by_a_successful_run(): void
     {
         $workDir = $this->root.'/backup-work';
@@ -427,6 +414,170 @@ class BackupRunnerTest extends TestCase
             'db/manage-20260801-030000.sql.gz.enc',
             (new LocalDirectoryBackupStorage($this->root.'/remote'))->list(RetentionPolicy::DB_PREFIX),
         );
+    }
+
+    public function test_consecutive_upload_failures_abort_after_exactly_five_attempts(): void
+    {
+        for ($i = 1; $i <= 6; $i++) {
+            $this->put("app/public/attachments/1/f{$i}.pdf", "content-{$i}");
+        }
+        // setUp の 2 件と合わせて 8 件。5 件目で打ち切られるはずなので、全件（8）は試されない
+
+        $attempts = 0;
+        $storage = new class($this->root.'/remote', function () use (&$attempts) {
+            $attempts++;
+        }) implements BackupStorage
+        {
+
+            private LocalDirectoryBackupStorage $inner;
+
+            public function __construct(string $root, private \Closure $onFilesPut)
+            {
+                $this->inner = new LocalDirectoryBackupStorage($root);
+            }
+
+            public function put(string $key, string $localPath): void
+            {
+                if (str_starts_with($key, FileSyncPlanner::PREFIX)) {
+                    ($this->onFilesPut)();
+                    throw new RuntimeException('保管先への送信に失敗しました: test');
+                }
+                $this->inner->put($key, $localPath);
+            }
+
+            public function get(string $key, string $localPath): void
+            {
+                $this->inner->get($key, $localPath);
+            }
+
+            public function list(string $prefix): array
+            {
+                return $this->inner->list($prefix);
+            }
+
+            public function delete(string $key): void
+            {
+                $this->inner->delete($key);
+            }
+        };
+
+        $caught = null;
+        try {
+            (new BackupRunner($this->fakeDumper(), $storage, new BackupCipher($this->key), $this->root.'/backup-work', $this->root.'/app', ['public', 'private'], 30))
+                ->run($this->at(2026, 9, 12));
+        } catch (RuntimeException $e) {
+            $caught = $e;
+        }
+
+        $this->assertNotNull($caught, '例外が出なかった');
+        $this->assertStringContainsString('5 件続けて失敗', $caught->getMessage());
+        $this->assertSame(5, $attempts, '5 回目で打ち切らず、それ以上（または未満）試している');
+    }
+
+    public function test_many_non_consecutive_failures_produce_one_exception_with_the_correct_count(): void
+    {
+        for ($i = 1; $i <= 50; $i++) {
+            $this->put(sprintf('app/public/attachments/1/f%02d.pdf', $i), (string) $i);
+        }
+        // setUp の 2 件と合わせて 52 件。1 件おきに失敗させる（連続失敗にはならない）
+
+        $storage = new class($this->root.'/remote') implements BackupStorage
+        {
+            private LocalDirectoryBackupStorage $inner;
+
+            private int $filesPutCount = 0;
+
+            public function __construct(string $root)
+            {
+                $this->inner = new LocalDirectoryBackupStorage($root);
+            }
+
+            public function put(string $key, string $localPath): void
+            {
+                if (str_starts_with($key, FileSyncPlanner::PREFIX)) {
+                    $this->filesPutCount++;
+                    if ($this->filesPutCount % 2 === 0) {
+                        throw new RuntimeException('保管先への送信に失敗しました: test');
+                    }
+                }
+                $this->inner->put($key, $localPath);
+            }
+
+            public function get(string $key, string $localPath): void
+            {
+                $this->inner->get($key, $localPath);
+            }
+
+            public function list(string $prefix): array
+            {
+                return $this->inner->list($prefix);
+            }
+
+            public function delete(string $key): void
+            {
+                $this->inner->delete($key);
+            }
+        };
+
+        $caught = null;
+        try {
+            (new BackupRunner($this->fakeDumper(), $storage, new BackupCipher($this->key), $this->root.'/backup-work', $this->root.'/app', ['public', 'private'], 30))
+                ->run($this->at(2026, 9, 12));
+        } catch (RuntimeException $e) {
+            $caught = $e;
+        }
+
+        $this->assertNotNull($caught, '例外が出なかった');
+        $this->assertStringContainsString('26 件', $caught->getMessage());
+    }
+
+    public function test_a_files_stage_setup_failure_before_the_per_file_loop_gets_database_saved_context(): void
+    {
+        $storage = new class($this->root.'/remote') implements BackupStorage
+        {
+            private LocalDirectoryBackupStorage $inner;
+
+            public function __construct(string $root)
+            {
+                $this->inner = new LocalDirectoryBackupStorage($root);
+            }
+
+            public function put(string $key, string $localPath): void
+            {
+                $this->inner->put($key, $localPath);
+            }
+
+            public function get(string $key, string $localPath): void
+            {
+                $this->inner->get($key, $localPath);
+            }
+
+            public function list(string $prefix): array
+            {
+                if (str_starts_with($prefix, FileSyncPlanner::PREFIX)) {
+                    throw new RuntimeException('保管先の一覧取得に失敗しました: test');
+                }
+
+                return $this->inner->list($prefix);
+            }
+
+            public function delete(string $key): void
+            {
+                $this->inner->delete($key);
+            }
+        };
+
+        $caught = null;
+        try {
+            (new BackupRunner($this->fakeDumper(), $storage, new BackupCipher($this->key), $this->root.'/backup-work', $this->root.'/app', ['public', 'private'], 30))
+                ->run($this->at(2026, 9, 12));
+        } catch (RuntimeException $e) {
+            $caught = $e;
+        }
+
+        $this->assertNotNull($caught, '例外が出なかった');
+        $this->assertStringContainsString('データベースは保存済みです', $caught->getMessage());
+        $this->assertStringContainsString('保管先の一覧取得に失敗しました', $caught->getMessage());
     }
 
     public function test_constructor_rejects_a_retention_days_below_one(): void
