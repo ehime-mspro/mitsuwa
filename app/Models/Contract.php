@@ -152,6 +152,20 @@ class Contract extends Model
     // ============================================================
 
     /**
+     * 月額合計の SQL 式。**下の getMonthlyTotalAttribute() と同じ計算をする。**
+     *
+     * ⚠ 片方だけ直すと、画面の数字は正しいのに**並び順だけが別の値で並ぶ**（Bug #41）。
+     *   画面から気づけないので、ContractListSortTest が両者の一致を固定している。
+     * ⚠ 列は必ず `contracts.` で修飾する。契約一覧は units を JOIN しており、units にも
+     *   rent / common_fee / garbage_fee / pest_control_fee があるので、無修飾だと
+     *   ambiguous column で落ちる。
+     * ⚠ COALESCE 済みなので**この式は NULL にならない**（Unit::MONTHLY_TOTAL_SQL と同じ形）。
+     *   並び替えで `(… IS NULL)` を前置しても常に false ＝ 死んだ SQL になるので書かないこと。
+     */
+    public const MONTHLY_TOTAL_SQL = '(COALESCE(contracts.rent, 0) + COALESCE(contracts.common_fee, 0)'
+        . ' + COALESCE(contracts.garbage_fee, 0) + COALESCE(contracts.pest_control_fee, 0))';
+
+    /**
      * 契約条件の月額合計（家賃 + 共益費 + ゴミ代 + 駆除代）
      * ※敷金は月額ではないため含めない
      */
