@@ -230,6 +230,10 @@
     @endif
 </div>{{-- /.scroll-wrap --}}
 
+{{-- 初回の判定は DOMContentLoaded まで待つ（2026-09-11）。このスクリプトはパース中に同期で走り、
+     Alpine（Vite の module ＝ defer）より前に動く。その瞬間は PC サイドバーが x-cloak で隠れていて
+     表示領域が 220px 広く測れ、1024px 以上のある幅で「スクロールできるのにヒントが出ない」になっていた。
+     docs/RULES.md Bug #56 ／ 回帰テスト tests/Feature/LayoutMeasuringScriptTest.php --}}
 <script>
     // 右端 fade をスクロール余地があるときだけ表示
     (function () {
@@ -246,7 +250,7 @@
         }
         area.addEventListener('scroll', update, { passive: true });
         window.addEventListener('resize', update);
-        update();
+        document.addEventListener('DOMContentLoaded', update);
     })();
 </script>
 
