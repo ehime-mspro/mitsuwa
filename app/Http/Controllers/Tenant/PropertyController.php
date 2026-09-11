@@ -485,7 +485,9 @@ class PropertyController extends Controller
             foreach ($grouped as $floor => $floorUnits) {
                 $sorted = $floorUnits->sortBy('room_number')->values();
                 $floors[] = [
-                    'label' => $floor . 'F',
+                    // 地下は負数で持つ（-1 → B1F。表示名の B1A と同じ書き方）。
+                    // ⚠ 階なしの区画は groupBy で '' のキーになり、PHP 8 では '' < 0 が true になるので整数に限る
+                    'label' => (is_int($floor) && $floor < 0 ? 'B' . abs($floor) : $floor) . 'F',
                     'units' => $sorted,
                 ];
                 $maxUnitsPerFloor = max($maxUnitsPerFloor, $sorted->count());

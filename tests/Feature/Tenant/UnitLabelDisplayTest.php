@@ -304,4 +304,41 @@ class UnitLabelDisplayTest extends TestCase
 
         $this->assertEqualsCanonicalizing(['B1A', 'B1B', '1A', '3A', 'A'], $labels);
     }
+
+    // ============================================================
+    // フロアマップの階ラベル（地下は B1F。周辺ビル調査の AreaBuildingTenant::floorLabel() と同じ書き方）
+    // ============================================================
+
+    public function test_floor_map_labels_basement_floors_as_b1f(): void
+    {
+        $response = $this->actingAs($this->executive())
+            ->get(route('tenant.properties.show', $this->building))
+            ->assertOk()
+            ->assertDontSee('-1F');
+
+        $this->assertSame(['3F', '1F', 'B1F'], array_column($response->viewData('floorMap')['floors'], 'label'));
+
+        // PC の左端の階ラベルとモバイルの緑のバーの 2 か所に出る
+        $this->assertSame(2, preg_match_all('#>\s*B1F\s*</div>#', $response->getContent()), '画面に B1F の階ラベルが出ていない');
+    }
+
+    public function test_floor_map_survives_a_unit_without_a_floor_in_a_building(): void
+    {
+        // ⚠ groupBy('floor') は階なしを '' のキーにする。PHP 8 では '' < 0 が true なので、
+        //   「負なら B を付ける」を整数に限らないと abs('') が TypeError になり物件詳細が 500 になる
+        Unit::create([
+            'property_id' => $this->building->id,
+            'floor' => null,
+            'room_number' => 'Z',
+            'display_name' => Unit::generateDisplayName(null, 'Z'),
+            'status' => 'vacant',
+        ]);
+
+        $response = $this->actingAs($this->executive())
+            ->get(route('tenant.properties.show', $this->building))
+            ->assertOk();
+
+        // 階なしの「F」は従来どおり（本番のビル型物件に階なしの区画は 0 件。今回は変えない）
+        $this->assertSame(['3F', '1F', 'B1F', 'F'], array_column($response->viewData('floorMap')['floors'], 'label'));
+    }
 }
