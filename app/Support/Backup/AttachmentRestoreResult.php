@@ -3,7 +3,7 @@
 namespace App\Support\Backup;
 
 /**
- * 添付の取り出し（BackupRestoreCommand::restoreFiles()）の結果。
+ * 添付の取り出しの結果。
  */
 final class AttachmentRestoreResult
 {

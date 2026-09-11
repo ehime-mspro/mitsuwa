@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Commands\Concerns\ResolvesBackupCipher;
 use App\Support\Backup\AttachmentGetFailedException;
 use App\Support\Backup\AttachmentRestoreResult;
 use App\Support\Backup\BackedUpRootGuard;
@@ -12,11 +13,14 @@ use App\Support\Backup\RetentionPolicy;
 use FilesystemIterator;
 use Illuminate\Console\Command;
 use RuntimeException;
+use Symfony\Component\Console\Formatter\OutputFormatter;
 use Throwable;
 use UnexpectedValueException;
 
 class BackupRestoreCommand extends Command
 {
+    use ResolvesBackupCipher;
+
     protected $signature = 'ops:backup-restore
         {destination : 取り出し先のフォルダ（空、またはまだ無いフォルダ）}
         {--db=latest : 取り出すデータベースのバックアップ（db/ から始まるキー、または latest）}
@@ -58,8 +62,13 @@ class BackupRestoreCommand extends Command
         }
 
         $destination = $this->normalizeDestination((string) $this->argument('destination'));
-        if ($this->containsDotSegment($destination)) {
-            $this->error(sprintf('取り出し先に「.」や「..」を含めないでください: %s', $destination));
+        if ($destination === null) {
+            $this->error('今いるフォルダを確認できません。取り出し先は絶対パスで指定してください。');
+
+            return self::FAILURE;
+        }
+        if ($this->containsDotDotSegment($destination)) {
+            $this->error(sprintf('取り出し先に「..」を含めないでください: %s', $this->escapeForDisplay($destination)));
 
             return self::FAILURE;
         }
@@ -83,26 +92,36 @@ class BackupRestoreCommand extends Command
 
     /**
      * 取り出し先を絶対パスへ整える（相対パスなら getcwd() を前に付ける。連続する "/" は 1 つにし、
-     * 末尾の "/" は除く）。ロケールに依存しない引用（quoteForShell()）を使う前提のため、
-     * ここでは escapeshellarg() は使わない。
+     * "." の区切りは害が無いので取り除く。末尾の "/" も除く）。getcwd() が false のとき（今いる
+     * フォルダが消えている等）は null を返す。".." の区切りを断るかどうかは呼び出し側の役目
+     * （ここでは整えるだけで、判断はしない）。
      */
-    private function normalizeDestination(string $raw): string
+    private function normalizeDestination(string $raw): ?string
     {
-        $absolute = str_starts_with($raw, '/') ? $raw : getcwd().'/'.$raw;
-        $collapsed = (string) preg_replace('#/+#', '/', $absolute);
-
-        return $collapsed === '/' ? $collapsed : rtrim($collapsed, '/');
-    }
-
-    private function containsDotSegment(string $path): bool
-    {
-        foreach (explode('/', $path) as $segment) {
-            if ($segment === '.' || $segment === '..') {
-                return true;
+        if (! str_starts_with($raw, '/')) {
+            $cwd = getcwd();
+            if ($cwd === false) {
+                return null;
             }
+            $raw = $cwd.'/'.$raw;
         }
 
-        return false;
+        $collapsed = (string) preg_replace('#/+#', '/', $raw);
+
+        $segments = [];
+        foreach (explode('/', $collapsed) as $segment) {
+            if ($segment === '' || $segment === '.') {
+                continue;
+            }
+            $segments[] = $segment;
+        }
+
+        return '/'.implode('/', $segments);
+    }
+
+    private function containsDotDotSegment(string $path): bool
+    {
+        return in_array('..', explode('/', $path), true);
     }
 
     /**
@@ -115,22 +134,36 @@ class BackupRestoreCommand extends Command
     }
 
     /**
+     * 取り出し先など、外から決まる文字列を画面に出す前にかける。Symfony の画面出力は
+     * <comment> などを色付けの印として取り除くため、これをかけないと取り出し先の名前に
+     * よっては rm -rf の案内から一部が消え、親フォルダを指してしまう。
+     */
+    private function escapeForDisplay(string $text): string
+    {
+        return OutputFormatter::escape($text);
+    }
+
+    /**
      * 取り出し先の検査（問題が無ければ null を返す）。
      */
     private function validateDestination(string $destination): ?string
     {
+        if (is_link($destination)) {
+            return '取り出し先にシンボリックリンクは使えません: '.$this->escapeForDisplay($destination);
+        }
+
         if (file_exists($destination) && ! is_dir($destination)) {
-            return '取り出し先がフォルダではありません: '.$destination;
+            return '取り出し先がフォルダではありません: '.$this->escapeForDisplay($destination);
         }
 
         if (is_dir($destination)) {
             try {
                 $nonEmpty = (new FilesystemIterator($destination))->valid();
             } catch (UnexpectedValueException) {
-                return '取り出し先のフォルダを読めません: '.$destination;
+                return '取り出し先のフォルダを読めません: '.$this->escapeForDisplay($destination);
             }
             if ($nonEmpty) {
-                return '取り出し先のフォルダが空ではありません: '.$destination;
+                return '取り出し先のフォルダが空ではありません: '.$this->escapeForDisplay($destination);
             }
         }
 
@@ -157,49 +190,21 @@ class BackupRestoreCommand extends Command
         }
     }
 
-    /**
-     * --ask-key が無ければ設定済みのキーを使う。あれば secret(..., false) でその場で入力させる
-     * （表示されない入力を作れない環境でも、見える入力へは切り替えない）。空の入力なら
-     * BACKUP_ENCRYPTION_KEY の案内を出さずに専用の理由を表示する。
-     */
-    private function resolveKey(): ?string
-    {
-        if (! $this->option('ask-key')) {
-            return (string) config('backup.encryption_key');
-        }
-
-        $key = (string) $this->secret('暗号化キーを入力してください（画面には表示されません）', false);
-        if ($key === '') {
-            $this->error('暗号化キーが入力されませんでした。');
-
-            return null;
-        }
-
-        $keyId = $this->tryKeyId($key);
-        if ($keyId !== null) {
-            $this->line('入力したキーの識別番号: '.$keyId);
-        }
-
-        return $key;
-    }
-
-    private function tryKeyId(string $key): ?string
-    {
-        try {
-            return (new BackupCipher($key))->keyId();
-        } catch (RuntimeException) {
-            return null;
-        }
-    }
-
     private function announceDestination(string $destination): void
     {
-        $this->info(sprintf('取り出し先: %s（取り出したファイルにはお客様の個人情報が含まれます。確認が済んだら rm -rf %s で消してください。途中で止まった場合も同じです）', $destination, $this->quoteForShell($destination)));
+        $this->info(sprintf(
+            '取り出し先: %s（取り出したファイルにはお客様の個人情報が含まれます。確認が済んだら rm -rf %s で消してください。途中で止まった場合も同じです）',
+            $this->escapeForDisplay($destination),
+            $this->escapeForDisplay($this->quoteForShell($destination)),
+        ));
     }
 
     private function announceRestartCleanup(string $destination): void
     {
-        $this->line(sprintf('やり直すときは、先に rm -rf %s で取り出し先を消してください（途中のファイルに個人情報が含まれます）。', $this->quoteForShell($destination)));
+        $this->line(sprintf(
+            'やり直すときは、先に rm -rf %s で取り出し先を消してください（途中のファイルに個人情報が含まれます）。',
+            $this->escapeForDisplay($this->quoteForShell($destination)),
+        ));
     }
 
     /**
@@ -252,7 +257,7 @@ class BackupRestoreCommand extends Command
         }
 
         if (! $withoutDb) {
-            $this->info('データベース: '.$destination.'/db/'.basename((string) $databaseKey, '.enc'));
+            $this->info('データベース: '.$this->escapeForDisplay($destination).'/db/'.basename((string) $databaseKey, '.enc'));
         }
 
         if ($files !== null) {
@@ -278,7 +283,12 @@ class BackupRestoreCommand extends Command
 
     private function printFilesSummary(string $destination, AttachmentRestoreResult $files): void
     {
-        $this->info(sprintf('添付ファイル: %d 件を取り出しました（%s/files/ 以下。今のキーの置き場所には %d 件）', $files->restored, $destination, $files->total));
+        $this->info(sprintf(
+            '添付ファイル: %d 件を取り出しました（%s/files/ 以下。今のキーの置き場所には %d 件）',
+            $files->restored,
+            $this->escapeForDisplay($destination),
+            $files->total,
+        ));
 
         if ($files->failures !== []) {
             $this->error(sprintf('取り出せなかった添付: %d 件', count($files->failures)));
