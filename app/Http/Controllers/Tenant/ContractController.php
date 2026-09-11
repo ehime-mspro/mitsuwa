@@ -18,7 +18,9 @@ use App\Models\Investment;
 use App\Models\Property;
 use App\Models\RentRevision;
 use App\Models\Unit;
+use App\Support\ListSort;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -30,11 +32,34 @@ class ContractController extends Controller
     private const AUTO_CONVERT_REASON = '契約登録に伴い成約';
 
     /**
+     * 契約一覧で並び替えを許す列（設計書 2026-09-11 §6.2）。
+     *
+     * ⚠ **許可リスト・ラベル・向きの言い方・周期の指定はここ 1 箇所だけ。** ListSort::fromRequest() には
+     *   array_keys() を渡し、ビュー（見出しとバー）にはこの配列そのものを渡す（前例 §7.1。Bug #41 / #46）。
+     * ⚠ `desc` / `asc` はバーに出る「向きの言い方」。
+     * ⚠ `'default' => true` は**画面の既定順の列**。初期表示で見出しが点灯し、押すと逆向き → 既定の
+     *   2 状態で回る。既定順を変えるときは applySort() の末尾の既定順と、ビューの x-sort-bar の
+     *   default-label も揃えること（片方だけ直すと画面が嘘をつく）。
+     * ⚠ `first` は 1 回目の向き（省略時 desc）。`first` / `default` を読むのは x-sortable-th だけ。
+     * ⚠ 並べ替えの式は applySort() の match にある（3 列とも形が違う: 1 列 / 3 列 / 式）。
+     */
+    public const SORT_COLUMNS = [
+        // 既定順の列。初期表示が新しい順なので、押すと古い順 → もう一度で既定（2 状態）
+        'contract_date' => ['label' => '契約日',      'desc' => '新しい順', 'asc' => '古い順',   'default' => true],
+        // 1 回目は昇順（物件名 → 階数 → 号室 ＝ 2026-05-11〜09-11 の既定順）
+        'property_unit' => ['label' => '物件 / 区画', 'desc' => '降順',     'asc' => '昇順',     'first' => ListSort::ASC],
+        // 金額なので 1 回目は多い順（物件一覧の「賃料収入」と同じ言い方）
+        'income'        => ['label' => '賃料収入',    'desc' => '多い順',   'asc' => '少ない順'],
+    ];
+
+    /**
      * 契約一覧
      * Route: GET /tenant/contracts
      */
     public function index(Request $request)
     {
+        $sort = ListSort::fromRequest($request, array_keys(self::SORT_COLUMNS));
+
         // JOIN するためカラム名にテーブルプレフィックスを付与する
         // （department と status が contracts/properties/units で重複しており、無指定だと SQL ambiguous エラー）
         $query = Contract::where('contracts.department', DepartmentCode::Tenant)
@@ -60,16 +85,14 @@ class ContractController extends Controller
             });
         }
 
-        // 物件名 → 階数 → 号室 の順で並べる（テナント契約一覧）
-        $contracts = $query
-            ->join('properties', 'contracts.property_id', '=', 'properties.id')
+        // properties / units は並び替え（物件 / 区画・既定順）のために JOIN する
+        $query->join('properties', 'contracts.property_id', '=', 'properties.id')
             ->join('units', 'contracts.unit_id', '=', 'units.id')
-            ->orderBy('properties.name')
-            ->orderBy('units.floor')
-            ->orderBy('units.room_number')
-            ->select('contracts.*')
-            ->paginate(10)
-            ->withQueryString();
+            ->select('contracts.*');
+
+        $this->applySort($query, $sort);
+
+        $contracts = $query->paginate(10)->withQueryString();
 
         // 物件セレクトボックス用
         $properties = Property::where('department', DepartmentCode::Tenant)
@@ -77,7 +100,47 @@ class ContractController extends Controller
             ->orderBy('id')
             ->get(['id', 'name', 'operation_status']);
 
-        return view('tenant.contracts.index', compact('contracts', 'properties'));
+        $sortColumns = self::SORT_COLUMNS;
+
+        return view('tenant.contracts.index', compact('contracts', 'properties', 'sort', 'sortColumns'));
+    }
+
+    /**
+     * 契約一覧の並び替えを適用する。**既定順は必ず最後に丸ごと付ける**（設計書 2026-09-11 §4.4）。
+     *
+     * 既定順: 契約日の新しい順 → 物件名 → 階数 → 号室 → 契約 ID の新しい順
+     *
+     * ⚠ 最後の contracts.id DESC が並びを一意にする。同じ区画の旧契約と新契約は
+     *   物件名・階数・号室が全部同点になり、MySQL は同点の順序を保証しないので、
+     *   「ステータス: すべて」でページをまたぐと同じ契約が 2 ページに出たり消えたりしうる（設計書 §2.3）。
+     * ⚠ 並び替え中も既定順を丸ごと後ろに付ける（同点は既定順。前例 §4.3-3）。
+     * ⚠ 物件 / 区画の降順は 3 キーとも同じ向き（＝昇順の完全な逆順）。
+     * ⚠ units.floor の NULL（平屋型）は MySQL・SQLite とも昇順で先頭・降順で末尾。画面に「—」は
+     *   出ないので末尾送りはしない（旧既定と同じ挙動。設計書 §4.4）。
+     * ⚠ match に default アームを書かないのは意図。$sort->key は fromRequest() の許可リストを通った
+     *   値しか来ない。SORT_COLUMNS にキーを足して並べ替えを書き忘れると UnhandledMatchError で 500 に
+     *   なり、SortableListWiringTest が拾う（黙って既定順に落ちるより良い）。
+     * ⚠ 式はコード内の定数だけ。利用者の入力が SQL に混ざる経路は無い。
+     */
+    private function applySort(Builder $query, ?ListSort $sort): void
+    {
+        if ($sort !== null) {
+            $direction = $sort->isAscending() ? 'asc' : 'desc';
+
+            match ($sort->key) {
+                'contract_date' => $query->orderBy('contracts.contract_date', $direction),
+                'property_unit' => $query->orderBy('properties.name', $direction)
+                    ->orderBy('units.floor', $direction)
+                    ->orderBy('units.room_number', $direction),
+                'income' => $query->orderByRaw(Contract::MONTHLY_TOTAL_SQL . ' ' . $direction),
+            };
+        }
+
+        $query->orderByDesc('contracts.contract_date')
+            ->orderBy('properties.name')
+            ->orderBy('units.floor')
+            ->orderBy('units.room_number')
+            ->orderByDesc('contracts.id');
     }
 
     /**

@@ -169,4 +169,380 @@ class ContractListSortTest extends TestCase
         $this->assertContains(95000, $values, 'NULL の項目を 0 として足していない');
         $this->assertContains(120700, $values, '駆除代を足していない（120000+0+NULL+700）');
     }
+
+    /**
+     * ページ送りのリンクを実際に辿って、全ページの契約 ID を順に集める。
+     *
+     * ⚠ **`?page=2` を自分で組み立ててはいけない。** リンクが壊れていても sort が付いた
+     *   状態で届くので**必ず緑**になる（Bug #31）。$paginator->nextPageUrl() を辿ること。
+     */
+    private function collectIdsAcrossPages(User $user, string $url): array
+    {
+        $ids = [];
+        $guard = 0;
+
+        while ($url !== null) {
+            $response = $this->actingAs($user)->get($url);
+            $response->assertOk();
+
+            $paginator = $response->viewData('contracts');
+            foreach ($paginator as $contract) {
+                $ids[] = $contract->id;
+            }
+
+            $url = $paginator->nextPageUrl();
+
+            $this->assertLessThan(20, ++$guard, 'ページ送りが終わらない');
+        }
+
+        return $ids;
+    }
+
+    /**
+     * 物件名の順と契約日の順が逆になる 3 件（B館 → C館 → A館 の順に作る）。
+     *
+     *   | 返り値 | 物件 | 契約日     | 作成順 |
+     *   | [0] $a | A館  | 2024-04-01 | 3 |
+     *   | [1] $b | B館  | 2025-04-01 | 1 |
+     *   | [2] $c | C館  | 2026-04-01 | 2 |
+     *
+     *   既定（契約日の新しい順）: [$c, $b, $a]
+     *   旧既定（物件名順）・契約日の古い順: [$a, $b, $c]   id の降順: [$a, $c, $b]
+     *
+     * @return array{0: Contract, 1: Contract, 2: Contract} [$a, $b, $c]
+     */
+    private function threeContractsWhoseNameOrderIsTheReverseOfTheDateOrder(): array
+    {
+        $b = $this->makeContract($this->makeUnit($this->makeProperty('B館'), 1, 'A'), '2025-04-01');
+        $c = $this->makeContract($this->makeUnit($this->makeProperty('C館'), 1, 'A'), '2026-04-01');
+        $a = $this->makeContract($this->makeUnit($this->makeProperty('A館'), 1, 'A'), '2024-04-01');
+
+        $this->assertCreatedInOrder([$b, $c, $a]);
+
+        return [$a, $b, $c];
+    }
+
+    /**
+     * 既定順は契約日の新しい順（設計書 §4.4）。
+     *
+     * ⚠ **物件名の順と契約日の順を逆にしてある。** 旧既定（物件名 → 階数 → 号室）に戻す
+     *   変異を確実に赤くする（設計書 §7.1）。作成順も両方と食い違わせてあるので、
+     *   「新しい契約 ＝ id が大きい」と取り違えて id の降順だけで並べる変異も赤くなる。
+     */
+    public function test_the_default_order_is_the_contract_date_newest_first(): void
+    {
+        [$a, $b, $c] = $this->threeContractsWhoseNameOrderIsTheReverseOfTheDateOrder();
+
+        $this->assertSame(
+            $this->ids($c, $b, $a),
+            $this->listedIds($this->actingAs($this->executive())->get(route('tenant.contracts.index'))),
+            '既定順が契約日の新しい順になっていない'
+        );
+    }
+
+    /**
+     * 契約日の古い順（?sort=contract_date&dir=asc）。
+     *
+     * ⚠ 上の 3 件は使わない。あのデータの「契約日の古い順」は旧既定（物件名順）と同じ並びになり、
+     *   **実装前から緑**になる（＝このテストが何も測らない）。物件 / 区画用の 4 件なら
+     *   古い順 [$a2, $b1, $a3, $a1] ／ 旧既定 [$a1, $a2, $a3, $b1] ／ 既定 [$a1, $a3, $b1, $a2] ／
+     *   id 順 [$b1, $a3, $a1, $a2] がすべて食い違う。
+     */
+    public function test_contract_date_can_be_sorted_oldest_first(): void
+    {
+        [$a1, $a2, $a3, $b1] = $this->fourContractsForThePropertyUnitColumn();
+
+        $response = $this->actingAs($this->executive())
+            ->get(route('tenant.contracts.index', ['sort' => 'contract_date', 'dir' => 'asc']));
+
+        $this->assertSame($this->ids($a2, $b1, $a3, $a1), $this->listedIds($response), '契約日の古い順になっていない');
+    }
+
+    /**
+     * 同じ契約日の中は 物件名 → 階数 → 号室 → 契約 ID の新しい順（設計書 §4.4）。
+     *
+     * ⚠ **4 つのキーそれぞれが単独で検出力を持つ**ように組んである（SortBarTest の
+     *   既定順テストと同じ流儀。キーを 1 つ消すと必ず並びが変わる）:
+     *
+     *   | 変数  | 物件 | 階 | 号室 | 状態     | 作成順 |
+     *   | $old  | A館  | 5  | B    | 解約済み | 1 | ← $new と同じ区画（旧契約）
+     *   | $u5a  | A館  | 5  | A    | 契約中   | 2 |
+     *   | $new  | A館  | 5  | B    | 契約中   | 3 | ← $old と同じ区画（新契約）
+     *   | $u2c  | A館  | 2  | C    | 契約中   | 4 |
+     *   | $b1a  | B館  | 1  | A    | 契約中   | 5 |
+     *
+     *   期待: [$u2c, $u5a, $new, $old, $b1a]
+     *   - 物件名を消すと: 階の昇順で B館 1A が先頭 → [$b1a, $u2c, $u5a, $new, $old]
+     *   - 階を消すと:     A館の中が号室順 → [$u5a, $new, $old, $u2c, $b1a]
+     *   - 号室を消すと:   5 階の中が id の降順 → [$u2c, $new, $u5a, $old, $b1a]
+     *   - id DESC を消すと: 同点の $old / $new を SQLite が id の昇順で返す → [$u2c, $u5a, $old, $new, $b1a]
+     *     （2026-09-11 に同じ形の SQL で実測）
+     *
+     * ⚠ 同じ区画の旧契約と新契約は物件名・階数・号室が全部同点になる。これが並びを一意にする
+     *   最後のキー（contracts.id DESC）が要る理由（設計書 §2.3）。解約済みを含めるので ?status=all。
+     */
+    public function test_contracts_on_the_same_date_follow_property_floor_room_then_the_newer_contract(): void
+    {
+        $a = $this->makeProperty('A館');
+        $b = $this->makeProperty('B館');
+        $unit5b = $this->makeUnit($a, 5, 'B');
+
+        $old = $this->makeContract($unit5b, '2026-04-01', ['status' => 'terminated', 'contract_end_date' => '2026-06-30']);
+        $u5a = $this->makeContract($this->makeUnit($a, 5, 'A'), '2026-04-01');
+        $new = $this->makeContract($unit5b, '2026-04-01');
+        $u2c = $this->makeContract($this->makeUnit($a, 2, 'C'), '2026-04-01');
+        $b1a = $this->makeContract($this->makeUnit($b, 1, 'A'), '2026-04-01');
+
+        $this->assertCreatedInOrder([$old, $u5a, $new, $u2c, $b1a]);
+
+        $response = $this->actingAs($this->executive())->get(route('tenant.contracts.index', ['status' => 'all']));
+
+        $this->assertSame(
+            $this->ids($u2c, $u5a, $new, $old, $b1a),
+            $this->listedIds($response),
+            '同じ契約日の中が 物件名 → 階数 → 号室 → 契約 ID の新しい順になっていない'
+        );
+    }
+
+    /**
+     * 物件 / 区画で並べる 4 件（B館 1A → A館 2B → A館 1C → A館 2A の順に作る）。
+     *
+     *   | 返り値  | 物件 | 階 | 号室 | 契約日     | 作成順 |
+     *   | [0] $a1 | A館  | 1  | C    | 2026-01-01 | 3 |
+     *   | [1] $a2 | A館  | 2  | A    | 2024-01-01 | 4 |
+     *   | [2] $a3 | A館  | 2  | B    | 2025-06-01 | 2 |
+     *   | [3] $b1 | B館  | 1  | A    | 2025-01-01 | 1 |
+     *
+     *   昇順 [$a1, $a2, $a3, $b1] ／ 降順 [$b1, $a3, $a2, $a1] ／ 既定 [$a1, $a3, $b1, $a2]
+     *   昇順でキーを 1 つ消すと:  物件名→[$b1, $a1, $a2, $a3]  階→[$a2, $a3, $a1, $b1]  号室→[$a1, $a3, $a2, $b1]
+     *   降順で 1 キーだけ昇順に残すと: 階→[$b1, $a1, $a3, $a2]  号室→[$b1, $a2, $a3, $a1]
+     *   ⚠ 号室の違いが階の違いと逆向き（1C / 2A）なので、階と号室を取り違えても赤くなる。
+     *
+     * @return array{0: Contract, 1: Contract, 2: Contract, 3: Contract} [$a1, $a2, $a3, $b1]
+     */
+    private function fourContractsForThePropertyUnitColumn(): array
+    {
+        $a = $this->makeProperty('A館');
+        $b = $this->makeProperty('B館');
+
+        $b1 = $this->makeContract($this->makeUnit($b, 1, 'A'), '2025-01-01');
+        $a3 = $this->makeContract($this->makeUnit($a, 2, 'B'), '2025-06-01');
+        $a1 = $this->makeContract($this->makeUnit($a, 1, 'C'), '2026-01-01');
+        $a2 = $this->makeContract($this->makeUnit($a, 2, 'A'), '2024-01-01');
+
+        $this->assertCreatedInOrder([$b1, $a3, $a1, $a2]);
+
+        return [$a1, $a2, $a3, $b1];
+    }
+
+    /** 物件 / 区画は 物件名 → 階数 → 号室 の 3 キーとも同じ向きで並ぶ（降順は昇順の完全な逆順。設計書 §4.4） */
+    public function test_property_unit_sorts_all_three_keys_in_the_same_direction(): void
+    {
+        [$a1, $a2, $a3, $b1] = $this->fourContractsForThePropertyUnitColumn();
+        $user = $this->executive();
+
+        $asc = $this->actingAs($user)->get(route('tenant.contracts.index', ['sort' => 'property_unit', 'dir' => 'asc']));
+        $this->assertSame($this->ids($a1, $a2, $a3, $b1), $this->listedIds($asc), '物件 / 区画の昇順（物件名 → 階数 → 号室）になっていない');
+
+        $desc = $this->actingAs($user)->get(route('tenant.contracts.index', ['sort' => 'property_unit', 'dir' => 'desc']));
+        $this->assertSame($this->ids($b1, $a3, $a2, $a1), $this->listedIds($desc), '物件 / 区画の降順が昇順の完全な逆順になっていない（3 キーのどれかが昇順のまま）');
+    }
+
+    /**
+     * 賃料収入で並べる 4 件。**4 項目のどれを式から落としても並びが変わる**ように組んである。
+     *
+     *   | 返り値 | 家賃   | 共益費 | ゴミ代 | 駆除代 | 合計   | 契約日     | 作成順 |
+     *   | [0] $x | 100000 | 50000  | 0      | 0      | 150000 | 2024-04-01 | 2 |
+     *   | [1] $w | 80000  | 0      | 0      | 60000  | 140000 | 2023-04-01 | 3 |
+     *   | [2] $z | 90000  | 0      | 40000  | 0      | 130000 | 2025-04-01 | 1 |
+     *   | [3] $y | 120000 | 0      | 0      | 0      | 120000 | 2026-04-01 | 4 |
+     *
+     *   多い順 [$x, $w, $z, $y] ／ 少ない順 [$y, $z, $w, $x] ／ 既定 [$y, $z, $x, $w]
+     *   家賃だけで並べると [$y, $x, $z, $w]、共益費を落とすと [$w, $z, $y, $x]、
+     *   ゴミ代を落とすと [$x, $w, $y, $z]、駆除代を落とすと [$x, $z, $y, $w]
+     *
+     * @return array{0: Contract, 1: Contract, 2: Contract, 3: Contract} [$x, $w, $z, $y]
+     */
+    private function fourContractsForTheIncomeColumn(): array
+    {
+        $property = $this->makeProperty('A館');
+
+        $z = $this->makeContract($this->makeUnit($property, 1, 'A'), '2025-04-01', ['rent' => 90000,  'garbage_fee' => 40000]);
+        $x = $this->makeContract($this->makeUnit($property, 1, 'B'), '2024-04-01', ['rent' => 100000, 'common_fee' => 50000]);
+        $w = $this->makeContract($this->makeUnit($property, 2, 'A'), '2023-04-01', ['rent' => 80000,  'pest_control_fee' => 60000]);
+        $y = $this->makeContract($this->makeUnit($property, 2, 'B'), '2026-04-01', ['rent' => 120000]);
+
+        $this->assertCreatedInOrder([$z, $x, $w, $y]);
+
+        return [$x, $w, $z, $y];
+    }
+
+    /** 賃料収入は 4 項目の合計で並ぶ（設計書 §4.4） */
+    public function test_income_sorts_by_the_monthly_total_in_both_directions(): void
+    {
+        [$x, $w, $z, $y] = $this->fourContractsForTheIncomeColumn();
+        $user = $this->executive();
+
+        $desc = $this->actingAs($user)->get(route('tenant.contracts.index', ['sort' => 'income', 'dir' => 'desc']));
+        $this->assertSame($this->ids($x, $w, $z, $y), $this->listedIds($desc), '賃料収入の多い順になっていない（4 項目の合計で並べていない）');
+        $this->assertSame(
+            [150000, 140000, 130000, 120000],
+            $desc->viewData('contracts')->map(fn (Contract $c) => $c->monthly_total)->all(),
+            '賃料収入の実値が想定と違う'
+        );
+
+        $asc = $this->actingAs($user)->get(route('tenant.contracts.index', ['sort' => 'income', 'dir' => 'asc']));
+        $this->assertSame($this->ids($y, $z, $w, $x), $this->listedIds($asc), '賃料収入の少ない順になっていない');
+    }
+
+    /**
+     * 並び替え中に値が同じ行は、既定順を丸ごと後ろに付けて並べる（設計書 §4.4 / 前例 §4.3-3）。
+     *
+     *   | 変数 | 物件 | 階 | 契約日     | 賃料収入 | 作成順 |
+     *   | $r1  | B館  | 1  | 2025-01-01 | 100000   | 1 |
+     *   | $r2  | A館  | 1  | 2025-01-01 | 100000   | 2 |
+     *   | $r3  | A館  | 2  | 2026-01-01 | 100000   | 3 |
+     *
+     *   賃料収入は 3 件とも同点 → **多い順でも少ない順でも**既定順 [$r3, $r2, $r1]
+     *   - 後ろの既定順を丸ごと落とすと id 順 [$r1, $r2, $r3]
+     *   - 後ろに契約日しか付けないと 2025 年の 2 件が id 順 [$r3, $r1, $r2]
+     *   契約日の古い順は 2025 年の 2 件が同点 → 物件名順 [$r2, $r1, $r3]（後ろを落とすと [$r1, $r2, $r3]）
+     */
+    public function test_rows_tied_on_the_sorted_column_keep_the_whole_default_order(): void
+    {
+        $a = $this->makeProperty('A館');
+        $b = $this->makeProperty('B館');
+
+        $r1 = $this->makeContract($this->makeUnit($b, 1, 'A'), '2025-01-01');
+        $r2 = $this->makeContract($this->makeUnit($a, 1, 'A'), '2025-01-01');
+        $r3 = $this->makeContract($this->makeUnit($a, 2, 'A'), '2026-01-01');
+
+        $this->assertCreatedInOrder([$r1, $r2, $r3]);
+
+        $user = $this->executive();
+
+        foreach (['desc', 'asc'] as $dir) {
+            $response = $this->actingAs($user)->get(route('tenant.contracts.index', ['sort' => 'income', 'dir' => $dir]));
+            $this->assertSame($this->ids($r3, $r2, $r1), $this->listedIds($response), "賃料収入が同点の行が既定順になっていない（{$dir}）");
+        }
+
+        $byDate = $this->actingAs($user)->get(route('tenant.contracts.index', ['sort' => 'contract_date', 'dir' => 'asc']));
+        $this->assertSame($this->ids($r2, $r1, $r3), $this->listedIds($byDate), '契約日が同点の行が既定順（物件名順）になっていない');
+    }
+
+    /** 不正な sort は 500 にせず既定順、不正な dir は降順（設計書 §4.2 / ListSort::fromRequest() の既存仕様） */
+    public function test_invalid_sort_parameters_fall_back_to_the_default_order(): void
+    {
+        $property = $this->makeProperty('A館');
+        $y = $this->makeContract($this->makeUnit($property, 1, 'A'), '2025-04-01', ['rent' => 300000]);
+        $x = $this->makeContract($this->makeUnit($property, 1, 'B'), '2026-04-01', ['rent' => 100000]);
+        $z = $this->makeContract($this->makeUnit($property, 1, 'C'), '2024-04-01', ['rent' => 200000]);
+
+        $this->assertCreatedInOrder([$y, $x, $z]);
+
+        $user = $this->executive();
+
+        foreach ([
+            '?sort=name',            // 許可リストに無い（店舗名・状態は並び替えない）
+            '?sort[]=income',        // 配列で来る
+            '?sort=%3Cscript%3E',    // 手入力・古いブックマーク
+            '?sort=',                // 空
+        ] as $queryString) {
+            $this->assertSame(
+                $this->ids($x, $y, $z),
+                $this->listedIds($this->actingAs($user)->get(route('tenant.contracts.index') . $queryString)),
+                "{$queryString} で既定順に落ちていない"
+            );
+        }
+
+        // dir だけ不正なら降順（多い順）
+        $this->assertSame(
+            $this->ids($y, $z, $x),
+            $this->listedIds($this->actingAs($user)->get(route('tenant.contracts.index') . '?sort=income&dir=up')),
+            '不正な dir が降順として扱われていない'
+        );
+    }
+
+    /** 絞り込み（ステータス・物件・キーワード）は並び替え中も効く（設計書 §7.1） */
+    public function test_filters_still_apply_while_sorted(): void
+    {
+        $a = $this->makeProperty('A館');
+        $b = $this->makeProperty('B館');
+
+        $a1 = $this->makeContract($this->makeUnit($a, 1, 'A'), '2024-01-01', ['rent' => 150000, 'store_name' => 'カフェ本町']);
+        $a2 = $this->makeContract($this->makeUnit($a, 2, 'A'), '2023-01-01', ['rent' => 120000, 'store_name' => '本町書店', 'status' => 'terminated', 'contract_end_date' => '2025-12-31']);
+        $a3 = $this->makeContract($this->makeUnit($a, 3, 'A'), '2025-01-01', ['rent' => 130000, 'store_name' => '本町薬局']);
+        $b1 = $this->makeContract($this->makeUnit($b, 1, 'A'), '2026-01-01', ['rent' => 110000, 'store_name' => 'カフェ湊町']);
+        $b2 = $this->makeContract($this->makeUnit($b, 2, 'A'), '2022-01-01', ['rent' => 140000, 'store_name' => '湊町書店', 'status' => 'terminated', 'contract_end_date' => '2025-12-31']);
+
+        $user = $this->executive();
+
+        // ステータス: 解約済みだけを多い順（既定順なら [$a2, $b2]）
+        $this->assertSame(
+            $this->ids($b2, $a2),
+            $this->listedIds($this->actingAs($user)->get(route('tenant.contracts.index', ['status' => 'terminated', 'sort' => 'income', 'dir' => 'desc']))),
+            'ステータスの絞り込みと賃料収入の並び替えが両立していない'
+        );
+
+        // 物件: A館の契約中だけを物件 / 区画の昇順（既定順なら [$a3, $a1]）
+        $this->assertSame(
+            $this->ids($a1, $a3),
+            $this->listedIds($this->actingAs($user)->get(route('tenant.contracts.index', ['property_id' => $a->id, 'sort' => 'property_unit', 'dir' => 'asc']))),
+            '物件の絞り込みと物件 / 区画の並び替えが両立していない'
+        );
+
+        // キーワード: 「カフェ」の契約中だけを契約日の古い順（既定順なら [$b1, $a1]）
+        $this->assertSame(
+            $this->ids($a1, $b1),
+            $this->listedIds($this->actingAs($user)->get(route('tenant.contracts.index', ['keyword' => 'カフェ', 'sort' => 'contract_date', 'dir' => 'asc']))),
+            'キーワードの絞り込みと契約日の並び替えが両立していない'
+        );
+    }
+
+    /**
+     * ページをまたいでも行が重複せず・消えず・全体を通して並んでいること（設計書 §7.1）。
+     *
+     * ⚠ **1 ページ目だけでは測れない。** 1 ページ目の 10 件が並ぶことは
+     *   「ページを切ってから並べ替える」壊れ方でも成立する（前例 §3.1）。
+     * ⚠ 23 件 ＝ 3 ページ。日付 12 通り・賃料 4 通りで**同点だらけ**にしてある。
+     * ⚠ withQueryString() を外すと 2 ページ目以降で sort が落ち、並びが途中で既定に戻る。
+     */
+    public function test_paging_through_a_sorted_list_yields_every_contract_exactly_once(): void
+    {
+        $properties = [$this->makeProperty('A館'), $this->makeProperty('B館'), $this->makeProperty('C館')];
+        $incomeById = [];
+        $dateById = [];
+
+        for ($i = 1; $i <= 23; $i++) {
+            // 物件ごとに階が重ならない（UNIQUE(property_id, display_name)）
+            $unit = $this->makeUnit($properties[$i % 3], intdiv($i, 3) + 1, 'A');
+            $date = sprintf('2025-%02d-01', ($i * 5) % 12 + 1);
+            $rent = 100000 + ($i % 4) * 10000;
+
+            $contract = $this->makeContract($unit, $date, ['rent' => $rent]);
+            $incomeById[$contract->id] = $rent;
+            $dateById[$contract->id] = $date;
+        }
+
+        $user = $this->executive();
+
+        $cases = [
+            '既定'             => [route('tenant.contracts.index'), fn (int $id) => $dateById[$id], 'desc'],
+            '賃料収入 多い順'   => [route('tenant.contracts.index', ['sort' => 'income', 'dir' => 'desc']), fn (int $id) => $incomeById[$id], 'desc'],
+            '賃料収入 少ない順' => [route('tenant.contracts.index', ['sort' => 'income', 'dir' => 'asc']), fn (int $id) => $incomeById[$id], 'asc'],
+        ];
+
+        foreach ($cases as $label => [$url, $valueOf, $direction]) {
+            $ids = $this->collectIdsAcrossPages($user, $url);
+
+            $this->assertCount(23, $ids, "{$label}: ページ送りで行が消えている");
+            $this->assertCount(23, array_unique($ids), "{$label}: ページ送りで行が重複している");
+            $this->assertEqualsCanonicalizing(Contract::pluck('id')->all(), $ids, "{$label}: 全件が出ていない");
+
+            $values = array_map($valueOf, $ids);
+            $expected = $values;
+            $direction === 'desc' ? rsort($expected) : sort($expected);
+            $this->assertSame($expected, $values, "{$label}: ページをまたいで並んでいない（1 ページ目の中だけで並んでいる）");
+        }
+    }
 }

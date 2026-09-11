@@ -3,9 +3,12 @@
 namespace Tests\Feature;
 
 use App\Enums\UserRole;
+use App\Http\Controllers\Tenant\ContractController;
 use App\Http\Controllers\Tenant\PropertyController;
 use App\Http\Controllers\Tenant\UnitController;
 use App\Models\AreaBuilding;
+use App\Models\Contract;
+use App\Models\Customer;
 use App\Models\Property;
 use App\Models\Unit;
 use App\Models\User;
@@ -55,6 +58,7 @@ class SortableListWiringTest extends TestCase
         AreaBuildingListService::class => ['/tenant/area-buildings', 7],
         UnitController::class          => ['/tenant/units', 3],
         PropertyController::class      => ['/tenant/properties', 2],
+        ContractController::class      => ['/tenant/contracts', 3],
     ];
 
     public function test_every_sortable_list_carries_the_sort_in_its_filter_form(): void
@@ -188,7 +192,7 @@ class SortableListWiringTest extends TestCase
      *   機械的に拾い、SORT_ENDPOINTS に登録されていなければ落とす。
      *
      * ⚠ 経営層ユーザーは department.access ミドルウェアを素通りする
-     *   （CheckDepartmentAccess::handle()）ので、3 画面とも部門の紐付けは要らない
+     *   （CheckDepartmentAccess::handle()）ので、4 画面とも部門の紐付けは要らない
      *   （UnitListSortTest / PropertyListSortTest と同じ流儀）。
      *
      * ⚠ **各画面に最低 1 行のデータが要る**（Bug #22/#25/#26/#27 と同型の実測済みの罠）。
@@ -198,7 +202,7 @@ class SortableListWiringTest extends TestCase
      *   叩いても UnhandledMatchError は発火せず静かに 200 が返る（実測: 8 番目のキーを
      *   match アーム無しで追加する変異が、行を作らないままだと検出できなかった）。
      *   部屋一覧・物件一覧の欠落検出はクエリ組み立て時（SORT_COLUMNS[$key] の配列アクセス）
-     *   に起きるため行数に依存しないが、**3 画面とも同じ流儀で最低 1 行作る**
+     *   に起きるため行数に依存しないが、**4 画面とも同じ流儀で最低 1 行作る**
      *   （どの画面が将来 per-row 化されても素通りしないため）。
      */
     public function test_every_sort_column_can_be_requested_without_erroring(): void
@@ -214,7 +218,7 @@ class SortableListWiringTest extends TestCase
 
         // ⚠ 走査が空振りして緑になる事故を防ぐ（Bug #45）
         $this->assertCount(
-            3,
+            4,
             $definingClasses,
             'SORT_COLUMNS を定義するクラスの数が変わった（走査漏れ、または画面の増減）'
         );
@@ -240,11 +244,11 @@ class SortableListWiringTest extends TestCase
     }
 
     /**
-     * 3 画面それぞれに最低 1 行を作る。
+     * 4 画面それぞれに最低 1 行を作る。
      *
      * ⚠ **これが無いと周辺ビル調査の match アーム欠落を検出できない**（実測。
      *   test_every_sort_column_can_be_requested_without_erroring() の docblock を参照）。
-     *   部屋一覧・物件一覧は行数に依存しない欠落検出だが、3 画面とも同じ流儀で揃える。
+     *   部屋一覧・物件一覧は行数に依存しない欠落検出だが、4 画面とも同じ流儀で揃える。
      */
     private function seedOneRowPerScreen(): void
     {
@@ -271,6 +275,27 @@ class SortableListWiringTest extends TestCase
             'garbage_fee'      => 2000,
             'pest_control_fee' => 1000,
             'deposit'          => 200000,
+        ]);
+
+        // テナント契約一覧（設計書 2026-09-11 §7.3）。⚠ テストの SQLite では customer_id が NOT NULL
+        $occupied = Unit::create([
+            'property_id'  => $property->id,
+            'floor'        => 1,
+            'room_number'  => '102',
+            'display_name' => '102',
+            'status'       => 'occupied',
+        ]);
+
+        Contract::create([
+            'contract_number' => 'C-WIRE-001',
+            'department'      => 'tenant',
+            'property_id'     => $property->id,
+            'unit_id'         => $occupied->id,
+            'customer_id'     => Customer::create(['code' => 'CUST-WIRE01', 'name' => '配線検査用テナント', 'customer_type' => 'corporation'])->id,
+            'status'          => 'active',
+            'contract_date'   => '2026-04-01',
+            'rent_start_date' => '2026-04-01',
+            'rent'            => 100000,
         ]);
     }
 
