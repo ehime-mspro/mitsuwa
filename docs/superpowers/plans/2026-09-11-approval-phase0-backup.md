@@ -4,6 +4,24 @@
 
 ---
 
+## 実装中の変更（レビュー反映）
+
+Task 1・Task 2 の実装後、コードレビューを反映して以下より前の章の記述から変更した点。以降のタスクを進めるときは、この章とリポジトリのコード（`app/Support/Backup/BackupCipher.php`・`app/Support/Backup/FileSyncPlanner.php`）を正としてください。
+
+- **BackupCipher**: ファイルのヘッダーに 8 バイトの鍵の識別子（keyId）を含む（復号時に「鍵が違う」と「ファイルが壊れている」を区別するためで、秘密情報ではない）。出力は同じフォルダの一時ファイルへ 0600 で書き、成功したときだけ rename で本来の名前に置き換える（失敗時は一時ファイルだけを消す）。この識別子を取り出す `keyId(): string`（16 桁の小文字16進数）を追加した。
+- **添付の保管キー**: `files/<keyId の 16 桁16進数>/<パスの base64url>.enc` の形にし、暗号化キーごとにフォルダを分けた（キーを変えた直後は新しいキーのフォルダが空なので、最初のバックアップで全添付を送り直す。古いキーのフォルダは残したままにして、そのキーが使える限り復元できるようにする）。これに伴い `FileSyncPlanner` の API は次の形になった。
+  - `prefixFor(string $keyId): string`
+  - `keyFor(string $relativePath, string $keyId): string`
+  - `pathFor(string $key): ?string`
+  - `filesToUpload(array $localFiles, array $remoteObjects, string $keyId): array`
+- **以降のタスクで対応予定**（このコミットの時点では未実装）:
+  - `BackupSummary` に `filesScanned`（走査した添付の総数）を追加する。
+  - `BackupRunner` は、実行の途中で手元から消えたファイルがあっても送信対象から外すだけにして、失敗にしない。
+  - `ops:backup` の出力は「添付 N 件を追加（対象 M 件）」の形式で表示する。
+  - `ops:backup-restore` は現在の鍵の識別子のフォルダだけを読み、`.work` という一時フォルダを使い、ファイルごとの失敗を集めて最後にまとめて報告し、1 件でも失敗したら 0 以外で終了する。
+
+---
+
 ## この計画でやること（ご確認用の要約）
 
 **なぜ**: 要件定義書 v1.0（`docs/決裁申請_要件定義書_v1.md`）14.6・15.3・16.1 段階0。基幹システムのデータベースは今どこにも自動でバックアップされていない。決裁機能の土台（メール送信・定期実行）と一緒に、毎晩の暗号化バックアップを先に作って本番で動かす。
@@ -577,6 +595,8 @@ git commit -m "feat(backup): バックアップファイルを AES-256-GCM で�
 ---
 
 ## Task 2: 添付の一覧と「送る必要があるファイル」の判定
+
+> レビューで API・キーの形式に変更が入りました。「実装中の変更（レビュー反映）」を参照してください（最終的にはリポジトリのコードが正）。
 
 **Files:**
 - Create: `app/Support/Backup/FileSyncPlanner.php`, `app/Support/Backup/StorageFileScanner.php`

@@ -10,6 +10,9 @@ use RuntimeException;
 
 class BackupCipherTest extends TestCase
 {
+    // ヘッダーの MAGIC の直後にある、鍵の識別子のバイト数(BackupCipher::KEY_ID_BYTES に相当。private なためここで別に持つ)
+    private const KEY_ID_BYTES = 8;
+
     private string $dir;
 
     protected function setUp(): void
@@ -183,7 +186,7 @@ class BackupCipherTest extends TestCase
 
         $header = file_get_contents($this->dir.'/data.enc');
 
-        $this->assertSame(bin2hex(substr($header, 6, 8)), $cipher->keyId());
+        $this->assertSame(bin2hex(substr($header, strlen(BackupCipher::MAGIC), self::KEY_ID_BYTES)), $cipher->keyId());
     }
 
     public function test_forged_final_flag_is_rejected(): void
