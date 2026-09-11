@@ -23,7 +23,7 @@ return [
     // 暗号化キー（base64 の 32 バイト）。`php artisan ops:backup-key` で作り、紙にも控える
     'encryption_key' => env('BACKUP_ENCRYPTION_KEY'),
 
-    // 失敗を知らせる宛先（カンマ区切りで複数可）
+    // 失敗を知らせる宛先（複数なら区切って書く。カンマ・読点・セミコロン・空白のどれでもよい）
     'notify_to' => env('BACKUP_NOTIFY_TO'),
 
     // データベースのバックアップを残す日数（最新の 1 件は日数に関係なく残す）

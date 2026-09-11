@@ -15,6 +15,13 @@ class BackupCommand extends Command
 
     protected $description = 'データベースと添付ファイルを暗号化して、オブジェクトストレージへバックアップする（毎晩 3:00 に自動実行）';
 
+    /**
+     * コマンドが自分で失敗を扱い、知らせを送った（試みた）ときの終了コード。
+     * 定期実行の失敗フックは、これ以外の 0 でない終了コード＝捕まえきれなかった例外の 1・
+     * 致命的エラーの 255・強制終了の 137 など、のときだけ代わりに知らせる。
+     */
+    public const HANDLED_FAILURE = 3;
+
     public function handle(): int
     {
         $now = CarbonImmutable::now('Asia/Tokyo');
@@ -24,14 +31,17 @@ class BackupCommand extends Command
             // 設定の誤り（鍵が無い等）もここで捕まえて知らせるため、組み立ても try の中で行う
             $summary = $this->laravel->make(BackupRunner::class)->run($now);
         } catch (Throwable $e) {
-            // ログの書き込みが壊れていても通知は出るよう、先に送ってから記録する
-            foreach ($notifier->send($e->getMessage(), $now) as $warning) {
+            // 画面では本題のエラーを先に見せる
+            $this->error('バックアップに失敗しました: '.$e->getMessage());
+
+            // 通知は Log::error より先に送る（ログの書き込みが壊れていても知らせは出ているようにする）。
+            // 日時は開始時刻の $now ではなく、失敗を捕まえたこの時刻を使う
+            foreach ($notifier->send($e->getMessage(), CarbonImmutable::now('Asia/Tokyo')) as $warning) {
                 $this->warn($warning);
             }
             Log::error('バックアップに失敗しました', ['exception' => $e]);
-            $this->error('バックアップに失敗しました: '.$e->getMessage());
 
-            return self::FAILURE;
+            return self::HANDLED_FAILURE;
         }
 
         // BACKUP_NOTIFY_TO の設定ミスは、手動実行のこの画面でも気づけるようにする

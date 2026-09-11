@@ -27,7 +27,7 @@ class BackupFailedMail extends Mailable
     {
         return new Content(text: 'mail.backup-failed', with: [
             // 「（日本時間）」の表示が常に正しくなるよう、ここで Asia/Tokyo に変換してから整形する
-            // ($this->failedAt 自体は書き換えない)
+            // （$this->failedAt 自体は書き換えない）
             'failedAtText' => CarbonImmutable::instance($this->failedAt)->setTimezone('Asia/Tokyo')->format('Y/m/d H:i'),
         ]);
     }

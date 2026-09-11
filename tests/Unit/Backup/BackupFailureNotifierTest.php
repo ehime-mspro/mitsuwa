@@ -93,4 +93,17 @@ class BackupFailureNotifierTest extends TestCase
 
         $this->assertSame([], $notifier->problems());
     }
+
+    public function test_invalid_utf8_bytes_are_scrubbed_instead_of_raising_an_error(): void
+    {
+        // \xFF は不正な UTF-8 バイト列。mb_scrub で置換文字（既定は '?'）に置き換えてから分割するため、
+        // 何も対策しなければ preg_split(/u) が false を返して例外になっていたのを防げる。
+        // なお '?' は RFC 5322 の atext として許可される文字のため、'?@example.com' は
+        // filter_var(FILTER_VALIDATE_EMAIL) では有効と判定される（実機で確認済み）。
+        // ここで確かめたいのは「不正な UTF-8 を渡しても例外にならず処理が終わる」こと。
+        [$valid, $invalid] = BackupFailureNotifier::recipients("a@example.com,\xff@example.com");
+
+        $this->assertSame(['a@example.com', '?@example.com'], $valid);
+        $this->assertSame([], $invalid);
+    }
 }

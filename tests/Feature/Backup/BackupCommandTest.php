@@ -2,16 +2,23 @@
 
 namespace Tests\Feature\Backup;
 
+use App\Console\Commands\BackupCommand;
 use App\Mail\BackupFailedMail;
 use App\Support\Backup\BackupCipher;
+use App\Support\Backup\BackupFailureNotifier;
 use App\Support\Backup\BackupStorage;
 use App\Support\Backup\DatabaseDumper;
 use App\Support\Backup\LocalDirectoryBackupStorage;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use RuntimeException;
 use Symfony\Component\Mailer\Exception\TransportException;
+use Symfony\Component\Mailer\SentMessage;
+use Symfony\Component\Mailer\Transport\AbstractTransport;
 use Tests\TestCase;
+use Throwable;
+use UnexpectedValueException;
 
 class BackupCommandTest extends TestCase
 {
@@ -75,10 +82,13 @@ class BackupCommandTest extends TestCase
 
         $this->artisan('ops:backup')
             ->expectsOutputToContain('バックアップに失敗しました')
-            ->assertExitCode(1);
+            ->assertExitCode(BackupCommand::HANDLED_FAILURE);
 
+        // 宛先ごとに 1 通ずつ送るので、2 人には 2 通の別々のメールが届く
+        Mail::assertSent(BackupFailedMail::class, 2);
         Mail::assertSent(BackupFailedMail::class, fn (BackupFailedMail $mail) => $mail->hasTo('admin@example.com')
-            && $mail->hasTo('it@example.com')
+            && str_contains($mail->reason, 'Access denied'));
+        Mail::assertSent(BackupFailedMail::class, fn (BackupFailedMail $mail) => $mail->hasTo('it@example.com')
             && str_contains($mail->reason, 'Access denied'));
     }
 
@@ -87,7 +97,7 @@ class BackupCommandTest extends TestCase
         Mail::fake();
         config(['backup.encryption_key' => null]);
 
-        $this->artisan('ops:backup')->assertExitCode(1);
+        $this->artisan('ops:backup')->assertExitCode(BackupCommand::HANDLED_FAILURE);
 
         Mail::assertSent(BackupFailedMail::class, fn (BackupFailedMail $mail) => str_contains($mail->reason, 'BACKUP_ENCRYPTION_KEY'));
     }
@@ -108,20 +118,31 @@ class BackupCommandTest extends TestCase
         $mail->assertSeeInText('2026/09/12 03:00');
     }
 
+    public function test_notice_renders_the_reason_verbatim_without_html_escaping(): void
+    {
+        // 理由の表示は {!! !!}（生のまま）である必要がある。{{ }} に戻すと ' < & がエンティティ化されて
+        // このテストは落ちる
+        $reason = "mysqldump が失敗しました: Access denied for user 'backup'@'localhost' <x> & y";
+        $mail = new BackupFailedMail($reason, CarbonImmutable::create(2026, 9, 12, 3, 0, 5, 'Asia/Tokyo'));
+
+        $mail->assertSeeInText($reason);
+    }
+
     public function test_failure_notifies_every_recipient_split_by_mixed_separators(): void
     {
         config(['mail.default' => 'array']);
         config(['backup.notify_to' => 'a@example.com; b@example.com、c@example.com']);
         $this->useFailingDatabaseDumper();
 
-        $this->artisan('ops:backup')->assertExitCode(1);
+        $this->artisan('ops:backup')->assertExitCode(BackupCommand::HANDLED_FAILURE);
 
+        // 宛先ごとに別々の 1 通なので、3 人には 3 通（それぞれ 1 人だけ宛て）が届く
         $messages = app('mailer')->getSymfonyTransport()->messages();
-        $this->assertCount(1, $messages);
-        $to = collect($messages->first()->getEnvelope()->getRecipients())
-            ->map(fn ($address) => $address->getAddress())
+        $this->assertCount(3, $messages);
+        $to = $messages
+            ->map(fn (SentMessage $sent) => collect($sent->getEnvelope()->getRecipients())->map(fn ($address) => $address->getAddress())->all())
             ->all();
-        $this->assertSame(['a@example.com', 'b@example.com', 'c@example.com'], $to);
+        $this->assertSame([['a@example.com'], ['b@example.com'], ['c@example.com']], $to);
     }
 
     public function test_failure_notifies_only_valid_recipients_and_warns_about_malformed_ones(): void
@@ -132,7 +153,7 @@ class BackupCommandTest extends TestCase
 
         $this->artisan('ops:backup')
             ->expectsOutputToContain('形式の誤ったアドレス')
-            ->assertExitCode(1);
+            ->assertExitCode(BackupCommand::HANDLED_FAILURE);
 
         $messages = app('mailer')->getSymfonyTransport()->messages();
         $this->assertCount(1, $messages);
@@ -150,22 +171,99 @@ class BackupCommandTest extends TestCase
 
         $this->artisan('ops:backup')
             ->expectsOutputToContain('有効な宛先がありません')
-            ->assertExitCode(1);
+            ->assertExitCode(BackupCommand::HANDLED_FAILURE);
 
         $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
     }
 
     public function test_failure_notice_send_error_is_warned_and_does_not_leak(): void
     {
+        $this->useAlwaysFailingMailTransport();
         config(['backup.notify_to' => 'admin@example.com']);
         $this->useFailingDatabaseDumper();
-        Mail::shouldReceive('to')
-            ->once()
-            ->andThrow(new TransportException('SMTP に接続できません'));
 
         $this->artisan('ops:backup')
-            ->expectsOutputToContain('通知メールを送れませんでした')
-            ->assertExitCode(1);
+            ->expectsOutputToContain('通知メールを送れませんでした（admin@example.com）')
+            ->assertExitCode(BackupCommand::HANDLED_FAILURE);
+    }
+
+    public function test_failure_notice_to_one_rejected_recipient_does_not_block_the_others(): void
+    {
+        // SmtpTransport::doSend() を模した transport: 1 件でも RCPT TO が拒否されると、
+        // まとめて 1 通で送っていた場合は宛先全員に届かなくなる(vendor/symfony/mailer/Transport/Smtp/SmtpTransport.php:205-207)。
+        // 宛先ごとに 1 通ずつ送るよう直したことで、typo@example.com が拒否されても admin@example.com には届くはず
+        Mail::extend('reject-typo', fn () => new class extends AbstractTransport
+        {
+            public array $delivered = [];
+
+            protected function doSend(SentMessage $message): void
+            {
+                foreach ($message->getEnvelope()->getRecipients() as $recipient) {
+                    if ($recipient->getAddress() === 'typo@example.com') {
+                        throw new TransportException('550 5.1.1 <typo@example.com>... User unknown');
+                    }
+                }
+                $this->delivered[] = $message;
+            }
+
+            public function __toString(): string
+            {
+                return 'reject-typo://';
+            }
+        });
+        config([
+            'mail.mailers.reject-typo' => ['transport' => 'reject-typo'],
+            'mail.default' => 'reject-typo',
+            'backup.notify_to' => 'admin@example.com, typo@example.com',
+        ]);
+        $this->useFailingDatabaseDumper();
+
+        $this->artisan('ops:backup')
+            ->expectsOutputToContain('通知メールを送れませんでした（typo@example.com）')
+            ->assertExitCode(BackupCommand::HANDLED_FAILURE);
+
+        $delivered = app('mailer')->getSymfonyTransport()->delivered;
+        $this->assertCount(1, $delivered);
+        $to = collect($delivered[0]->getEnvelope()->getRecipients())->map(fn ($address) => $address->getAddress())->all();
+        $this->assertSame(['admin@example.com'], $to);
+    }
+
+    public function test_send_does_not_leak_a_logging_failure_after_the_mail_is_sent(): void
+    {
+        config(['mail.default' => 'array']);
+        Log::shouldReceive('warning')->andThrow(new UnexpectedValueException('ログ基盤の不調'));
+
+        // BackupFailureNotifier::send() は例外を外に出してはいけない。ここで例外が飛べばテストがエラーになる
+        $warnings = (new BackupFailureNotifier('a@example.com, bad'))->send('reason', CarbonImmutable::now('Asia/Tokyo'));
+
+        $this->assertSame(['BACKUP_NOTIFY_TO に形式の誤ったアドレスがあります: bad'], $warnings);
+        $this->assertCount(1, app('mailer')->getSymfonyTransport()->messages());
+    }
+
+    public function test_failure_logs_notify_problems_as_warnings(): void
+    {
+        Log::spy();
+        config(['backup.notify_to' => 'admin@example.com, it@example,com']);
+        $this->useFailingDatabaseDumper();
+
+        $this->artisan('ops:backup')->assertExitCode(BackupCommand::HANDLED_FAILURE);
+
+        Log::shouldHaveReceived('warning')
+            ->withArgs(fn (string $message) => str_contains($message, 'BACKUP_NOTIFY_TO に形式の誤ったアドレスがあります'));
+    }
+
+    public function test_failure_logs_send_errors_with_the_exception(): void
+    {
+        Log::spy();
+        $this->useAlwaysFailingMailTransport();
+        config(['backup.notify_to' => 'admin@example.com']);
+        $this->useFailingDatabaseDumper();
+
+        $this->artisan('ops:backup')->assertExitCode(BackupCommand::HANDLED_FAILURE);
+
+        Log::shouldHaveReceived('error')
+            ->withArgs(fn (string $message, array $context) => str_contains($message, '通知メールを送れませんでした（admin@example.com）')
+                && $context['exception'] instanceof Throwable);
     }
 
     public function test_success_with_empty_notify_to_still_warns_about_missing_recipients(): void
@@ -185,7 +283,7 @@ class BackupCommandTest extends TestCase
         $this->app['env'] = 'production';
         config(['backup.storage' => 'local']);
 
-        $this->artisan('ops:backup')->assertExitCode(1);
+        $this->artisan('ops:backup')->assertExitCode(BackupCommand::HANDLED_FAILURE);
 
         Mail::assertSent(BackupFailedMail::class, fn (BackupFailedMail $mail) => str_contains($mail->reason, 'BACKUP_STORAGE'));
     }
@@ -199,5 +297,25 @@ class BackupCommandTest extends TestCase
                 throw new RuntimeException('mysqldump が失敗しました: Access denied');
             }
         });
+    }
+
+    private function useAlwaysFailingMailTransport(): void
+    {
+        Mail::extend('always-fails', fn () => new class extends AbstractTransport
+        {
+            protected function doSend(SentMessage $message): void
+            {
+                throw new TransportException('SMTP に接続できません');
+            }
+
+            public function __toString(): string
+            {
+                return 'always-fails://';
+            }
+        });
+        config([
+            'mail.mailers.always-fails' => ['transport' => 'always-fails'],
+            'mail.default' => 'always-fails',
+        ]);
     }
 }
