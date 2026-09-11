@@ -98,12 +98,24 @@ class BackupFailureNotifierTest extends TestCase
     {
         // \xFF は不正な UTF-8 バイト列。mb_scrub で置換文字（既定は '?'）に置き換えてから分割するため、
         // 何も対策しなければ preg_split(/u) が false を返して例外になっていたのを防げる。
-        // なお '?' は RFC 5322 の atext として許可される文字のため、'?@example.com' は
-        // filter_var(FILTER_VALIDATE_EMAIL) では有効と判定される（実機で確認済み）。
+        // 置換文字 '?' が残った宛先は文字化けの跡とみなして無効に分類する
+        // （下の test_addresses_containing_the_scrub_placeholder_are_treated_as_invalid を参照）。
         // ここで確かめたいのは「不正な UTF-8 を渡しても例外にならず処理が終わる」こと。
         [$valid, $invalid] = BackupFailureNotifier::recipients("a@example.com,\xff@example.com");
 
-        $this->assertSame(['a@example.com', '?@example.com'], $valid);
-        $this->assertSame([], $invalid);
+        $this->assertSame(['a@example.com'], $valid);
+        $this->assertSame(['?@example.com'], $invalid);
+    }
+
+    public function test_addresses_containing_the_scrub_placeholder_are_treated_as_invalid(): void
+    {
+        // phpdotenv も mb_scrub も、不正なバイト列を '?' に置き換える。Shift_JIS で保存された
+        // 「ｙａ@example.com」のようなアドレスは "????@example.com" になり、'?' は RFC 5322 の
+        // atext として許可される文字のため filter_var(FILTER_VALIDATE_EMAIL) は素通りしてしまう。
+        // 実在のアドレスで '?' はまず使われないため、ここで無効として弾く
+        [$valid, $invalid] = BackupFailureNotifier::recipients('????@example.com, admin@example.com');
+
+        $this->assertSame(['admin@example.com'], $valid);
+        $this->assertSame(['????@example.com'], $invalid);
     }
 }

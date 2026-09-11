@@ -39,7 +39,7 @@ class BackupCommand extends Command
             foreach ($notifier->send($e->getMessage(), CarbonImmutable::now('Asia/Tokyo')) as $warning) {
                 $this->warn($warning);
             }
-            Log::error('バックアップに失敗しました', ['exception' => $e]);
+            $this->logQuietly(fn () => Log::error('バックアップに失敗しました', ['exception' => $e]));
 
             return self::HANDLED_FAILURE;
         }
@@ -47,7 +47,7 @@ class BackupCommand extends Command
         // BACKUP_NOTIFY_TO の設定ミスは、手動実行のこの画面でも気づけるようにする
         foreach ($notifier->problems() as $problem) {
             $this->warn($problem);
-            Log::warning($problem);
+            $this->logQuietly(fn () => Log::warning($problem));
         }
 
         // 対象の件数も出す（0 件なら保存場所の設定の誤りに気づける）
@@ -58,9 +58,24 @@ class BackupCommand extends Command
             $summary->filesScanned,
             $summary->databaseBackupsDeleted,
         );
-        Log::info($message);
+        $this->logQuietly(fn () => Log::info($message));
         $this->info($message);
 
         return self::SUCCESS;
+    }
+
+    /**
+     * ログの書き込み 1 件を試みる。Monolog はディスク満杯などで書き込みに失敗すると例外を出すが、
+     * それがコマンドの外まで漏れると終了コードが 1（捕まえきれなかった例外）になり、
+     * 定期実行の失敗フックが「通知済みの失敗」や「成功」を誤って再判定してしまう。
+     * そのためログの不調はここで止め、コマンド自身の結果には影響させない。
+     */
+    private function logQuietly(callable $write): void
+    {
+        try {
+            $write();
+        } catch (Throwable) {
+            // ログ基盤の不調はここで止める（画面表示やメール通知はすでに済んでいる）
+        }
     }
 }

@@ -35,6 +35,10 @@ final class BackupFailureNotifier
      * 不正な UTF-8 バイトは mb_scrub で置換文字に変えてから分割する
      * （そのまま preg_split(/u) に渡すと false が返り、呼び出し側で例外になる）。
      * 有効な宛先（filter_var の FILTER_VALIDATE_EMAIL を通るもの）は重複を除き、最初に現れた順番を保つ。
+     * ただし置換文字 '?' を含む宛先は、mb_scrub（や .env を読む phpdotenv 自身）が
+     * 文字化けを置き換えた跡とみなし、filter_var を通っても無効として扱う
+     * （'?' は RFC 5322 の atext として許可される文字のため素通りしてしまうが、
+     * 実在のアドレスで '?' はまず使われない）。
      *
      * @return array{0: list<string>, 1: list<string>} [有効な宛先, 無効な宛先]
      */
@@ -46,7 +50,8 @@ final class BackupFailureNotifier
         $valid = [];
         $invalid = [];
         foreach ($tokens as $token) {
-            if (filter_var($token, FILTER_VALIDATE_EMAIL) === false) {
+            $looksScrubbed = str_contains($token, '?');
+            if ($looksScrubbed || filter_var($token, FILTER_VALIDATE_EMAIL) === false) {
                 $invalid[] = $token;
 
                 continue;
@@ -109,22 +114,32 @@ final class BackupFailureNotifier
             }
         }
 
-        try {
-            // ログの書き込みが壊れていても、すでに確定した警告の一覧（$warnings）は返せるようにする。
-            // ログはメールの送信をすべて試みた後にだけ書く
-            foreach ($problems as $problem) {
-                Log::warning($problem);
-            }
-            foreach ($sendFailures as $failure) {
-                Log::error(
-                    'バックアップ失敗の通知メールを送れませんでした（'.$failure['address'].'）',
-                    ['exception' => $failure['exception']],
-                );
-            }
-        } catch (Throwable) {
-            // ログ基盤自体の不調で通知の成否（$warnings）まで失われないよう、ここで止める
+        // ログはメールの送信をすべて試みた後にだけ書く。1 件ずつ包むのは、最初の Log::warning が
+        // 失敗しても、送信失敗を伝える Log::error はそれとは別に書こうと試みるため
+        // （すでに確定した警告の一覧 $warnings は、ログの書き込みが壊れていても返せるようにする）
+        foreach ($problems as $problem) {
+            $this->logQuietly(fn () => Log::warning($problem));
+        }
+        foreach ($sendFailures as $failure) {
+            $this->logQuietly(fn () => Log::error(
+                'バックアップ失敗の通知メールを送れませんでした（'.$failure['address'].'）',
+                ['exception' => $failure['exception']],
+            ));
         }
 
         return $warnings;
+    }
+
+    /**
+     * ログの書き込み 1 件を試みる。ログ基盤の不調（ディスク満杯など）で例外が出ても、
+     * すでに確定している通知の成否（$warnings の内容）には影響させない。
+     */
+    private function logQuietly(callable $write): void
+    {
+        try {
+            $write();
+        } catch (Throwable) {
+            // ログ基盤の不調はここで止める（メールはすでに送信を試み終えている）
+        }
     }
 }

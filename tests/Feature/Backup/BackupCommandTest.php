@@ -190,7 +190,7 @@ class BackupCommandTest extends TestCase
     public function test_failure_notice_to_one_rejected_recipient_does_not_block_the_others(): void
     {
         // SmtpTransport::doSend() を模した transport: 1 件でも RCPT TO が拒否されると、
-        // まとめて 1 通で送っていた場合は宛先全員に届かなくなる(vendor/symfony/mailer/Transport/Smtp/SmtpTransport.php:205-207)。
+        // まとめて 1 通で送っていた場合は宛先全員に届かなくなる（SmtpTransport::doSend()）。
         // 宛先ごとに 1 通ずつ送るよう直したことで、typo@example.com が拒否されても admin@example.com には届くはず
         Mail::extend('reject-typo', fn () => new class extends AbstractTransport
         {
@@ -238,6 +238,30 @@ class BackupCommandTest extends TestCase
 
         $this->assertSame(['BACKUP_NOTIFY_TO に形式の誤ったアドレスがあります: bad'], $warnings);
         $this->assertCount(1, app('mailer')->getSymfonyTransport()->messages());
+    }
+
+    public function test_failure_command_log_error_does_not_change_the_exit_code_or_skip_the_notice(): void
+    {
+        // Monolog 3 はディスク満杯などで書き込みに失敗すると例外を出す。それが Log::error から
+        // 外へ漏れると、Task 11 の失敗フックが「HANDLED_FAILURE 以外＝捕まえきれなかった例外」と見なし、
+        // 通知済みなのに 2 通目の誤報を送ってしまう
+        config(['mail.default' => 'array']);
+        $this->useFailingDatabaseDumper();
+        Log::shouldReceive('error')->atLeast()->once()->andThrow(new UnexpectedValueException('ディスクの空き容量がありません'));
+
+        $this->artisan('ops:backup')->assertExitCode(BackupCommand::HANDLED_FAILURE);
+
+        // ログが書けなくても、宛先ごとの通知はすでに送信済みのはず
+        $this->assertCount(2, app('mailer')->getSymfonyTransport()->messages());
+    }
+
+    public function test_success_command_log_info_does_not_change_the_exit_code(): void
+    {
+        // 成功時も同様に、ログの書き込み失敗が終了コードを変えてしまうと、
+        // 失敗フックが「捕まえきれなかった例外」と誤認して不要な知らせを送ってしまう
+        Log::shouldReceive('info')->atLeast()->once()->andThrow(new UnexpectedValueException('ディスクの空き容量がありません'));
+
+        $this->artisan('ops:backup')->assertExitCode(0);
     }
 
     public function test_failure_logs_notify_problems_as_warnings(): void
