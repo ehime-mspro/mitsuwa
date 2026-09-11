@@ -62,17 +62,21 @@
     <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
         <div class="scroll-hint at-start">
             <div class="scroll-hint-inner">
-                {{-- ⚠ 列幅と最小幅は実ブラウザで測って決める値（設計書 §4.7: 375 / 1200 / 1800px のどれでも
-                     どのセルも中身が枠からはみ出さない）。列を足し引きしたら測り直すこと。
+                {{-- ⚠ 列幅は実ブラウザで測って決めた値（設計書 §4.7。手順と実測値は計画 2026-09-11 の Task 8）。
+                     割合は各列の「中身に要る幅」（1200px・余白込み・最悪ケース 132 / 200 / 180 / 152 / 108 / 154px、
+                     計 926px）に比例させてある。1200px 幅の表は 914px なので、1200〜1211px の画面でだけ
+                     最悪ケースの行の文字が余白に最大 2.7px 食い込む（隣の列とは 17px 以上離れる。2026-09-11 に許容と決定）。
+                     列や中身を変えたら測り直すこと。
+                     ⚠ 余白の内側への食い込みは td の scrollWidth に現れない。文字の範囲を Range で取って内容幅と比べる。
                      ⚠ min-w-[…] は消さない（MobileLayoutTest が table-layout: fixed の表に最小幅を要求する） --}}
                 <table class="w-full border-collapse min-w-[900px]" style="table-layout:fixed">
                     <colgroup>
-                        <col style="width:14%">{{-- 契約日 --}}
-                        <col style="width:20%">{{-- 物件 / 区画 --}}
-                        <col style="width:20%">{{-- 店舗名 --}}
-                        <col style="width:16%">{{-- 賃料収入 --}}
-                        <col style="width:12%">{{-- 状態 --}}
-                        <col style="width:18%">{{-- 操作 --}}
+                        <col style="width:14.3%">{{-- 契約日 --}}
+                        <col style="width:21.6%">{{-- 物件 / 区画 --}}
+                        <col style="width:19.4%">{{-- 店舗名 --}}
+                        <col style="width:16.4%">{{-- 賃料収入 --}}
+                        <col style="width:11.7%">{{-- 状態 --}}
+                        <col style="width:16.6%">{{-- 操作 --}}
                     </colgroup>
                     <thead>
                         <tr>
