@@ -78,6 +78,15 @@ final class BackupCipher
     }
 
     /**
+     * この鍵の識別子（ファイルのヘッダーに書き込まれるのと同じ 8 バイトを 16 桁の16進数にしたもの）。
+     * 秘密情報ではない。保管先のキーを暗号化キーごとのフォルダへ分けるのに使う。
+     */
+    public function keyId(): string
+    {
+        return bin2hex($this->expectedKeyId());
+    }
+
+    /**
      * 平文のバイト数から暗号化後のバイト数を求める（保管先にあるファイルが最新かの判定に使う）。
      */
     public static function encryptedSize(int $plainBytes, int $chunkBytes = self::DEFAULT_CHUNK_BYTES): int

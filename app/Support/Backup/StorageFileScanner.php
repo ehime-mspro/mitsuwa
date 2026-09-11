@@ -12,6 +12,8 @@ use SplFileInfo;
  */
 final class StorageFileScanner
 {
+    private const IGNORED_FILENAME = '.gitignore';
+
     /**
      * @param  list<string>  $roots  $basePath からの相対フォルダ（例: public, private）
      * @return array<string, int> 相対パス（/ 区切り） => バイト数
@@ -33,7 +35,7 @@ final class StorageFileScanner
 
             /** @var SplFileInfo $file */
             foreach ($iterator as $file) {
-                if (! $file->isFile() || $file->isLink() || $file->getFilename() === '.gitignore') {
+                if (! $file->isFile() || $file->isLink() || $file->getFilename() === self::IGNORED_FILENAME) {
                     continue;
                 }
                 $relative = substr($file->getPathname(), strlen($basePath) + 1);

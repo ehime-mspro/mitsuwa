@@ -154,6 +154,38 @@ class BackupCipherTest extends TestCase
         $this->assertNotSame($key, BackupCipher::generateKey());
     }
 
+    public function test_key_id_is_16_lowercase_hex_characters(): void
+    {
+        $keyId = (new BackupCipher(BackupCipher::generateKey()))->keyId();
+
+        $this->assertMatchesRegularExpression('/\A[0-9a-f]{16}\z/', $keyId);
+    }
+
+    public function test_key_id_is_the_same_for_the_same_key(): void
+    {
+        $key = BackupCipher::generateKey();
+
+        $this->assertSame((new BackupCipher($key))->keyId(), (new BackupCipher($key))->keyId());
+    }
+
+    public function test_key_id_differs_for_different_keys(): void
+    {
+        $this->assertNotSame(
+            (new BackupCipher(BackupCipher::generateKey()))->keyId(),
+            (new BackupCipher(BackupCipher::generateKey()))->keyId(),
+        );
+    }
+
+    public function test_key_id_matches_the_bytes_written_into_the_file_header(): void
+    {
+        $cipher = new BackupCipher(BackupCipher::generateKey(), 64);
+        $cipher->encryptFile($this->put('plain.bin', $this->bytes(10)), $this->dir.'/data.enc');
+
+        $header = file_get_contents($this->dir.'/data.enc');
+
+        $this->assertSame(bin2hex(substr($header, 6, 8)), $cipher->keyId());
+    }
+
     public function test_forged_final_flag_is_rejected(): void
     {
         $key = BackupCipher::generateKey();
