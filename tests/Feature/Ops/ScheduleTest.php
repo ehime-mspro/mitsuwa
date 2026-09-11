@@ -20,6 +20,7 @@ class ScheduleTest extends TestCase
         $this->assertStringContainsString('--stop-when-empty', $event->command);
         $this->assertStringContainsString('--max-time=240', $event->command);
         $this->assertStringContainsString('--tries=3', $event->command);
+        $this->assertStringContainsString('--backoff=60', $event->command);
         $this->assertTrue($event->withoutOverlapping);
     }
 
@@ -75,6 +76,84 @@ class ScheduleTest extends TestCase
             $this->assertCount($i + 1, $messages);
             $this->assertStringContainsString('終了コード '.$exitCode, (string) $messages->last()->getOriginalMessage()->getTextBody());
         }
+    }
+
+    public function test_lock_expiry_lets_the_next_meaningful_run_go_ahead(): void
+    {
+        // 目印（ロック）が残っても、queue は次の 1〜2 回の起動で復帰し、backup は翌晩を止めない。
+        // 引数なしの withoutOverlapping() は既定で 1440 分（24 時間）残るため、
+        // 残った目印だけでメールが約 1 日、バックアップが翌晩も無言で止まってしまう。
+        $this->assertSame(10, $this->event('queue:work')->expiresAt);
+        $this->assertSame(180, $this->event('ops:backup')->expiresAt);
+    }
+
+    public function test_backup_runs_even_in_maintenance_mode_and_appends_its_output_to_a_log_file(): void
+    {
+        // メンテナンスモード中は予定が既定では動かず、知らせもなく抜けてしまう。
+        // メンテナンス中こそバックアップが要るため、backup だけ evenInMaintenanceMode を付ける
+        $backup = $this->event('ops:backup');
+        $this->assertTrue($backup->evenInMaintenanceMode);
+        $this->assertSame(storage_path('logs/backup-command.log'), $backup->output);
+        $this->assertTrue($backup->shouldAppendOutput);
+
+        // キュー処理には付けない（メンテナンス中に無理に送信を試みない）
+        $this->assertFalse($this->event('queue:work')->evenInMaintenanceMode);
+    }
+
+    public function test_backup_is_scheduled_before_the_queue_worker(): void
+    {
+        // schedule:run は予定を上から順に、前の予定の終了を待って次へ進む。
+        // キュー処理より後ろだと、3:00 の回のバックアップの開始が遅れたり、
+        // キュー処理が止まったときにその夜のバックアップが知らせなく抜けたりするため、必ず先に置く。
+        $commands = array_values(array_map(
+            fn (Event $event) => (string) $event->command,
+            $this->app->make(Schedule::class)->events(),
+        ));
+
+        $backupIndex = null;
+        $queueIndex = null;
+        foreach ($commands as $index => $command) {
+            if (str_contains($command, 'ops:backup')) {
+                $backupIndex = $index;
+            }
+            if (str_contains($command, 'queue:work')) {
+                $queueIndex = $index;
+            }
+        }
+
+        $this->assertNotNull($backupIndex);
+        $this->assertNotNull($queueIndex);
+        $this->assertLessThan($queueIndex, $backupIndex, 'ops:backup は queue:work より前に登録されていること');
+    }
+
+    public function test_backup_process_exit_codes_map_to_the_right_notification_and_always_release_the_lock(): void
+    {
+        // レビュー担当の探り（$event->run() を通して本物のプロセス終了コードで確かめる形）に合わせる。
+        // 出力は一時ファイルへ逃がし、worktree の storage/logs には書かない。
+        config(['mail.default' => 'array', 'backup.notify_to' => 'admin@example.com']);
+        $event = $this->event('ops:backup');
+        $event->output = tempnam(sys_get_temp_dir(), 'schedule-test-backup-output-');
+
+        // [コマンド, 期待する終了コード, 増えるメールの数]
+        $cases = [
+            'success' => ["sh -c 'exit 0'", 0, 0],
+            'handled failure' => ["sh -c 'exit 3'", 3, 0],
+            'uncaught failure' => ["sh -c 'exit 1'", 1, 1],
+            'killed' => ["sh -c 'kill -9 \$\$'", 137, 1],
+        ];
+
+        $expectedMails = 0;
+        foreach ($cases as $label => [$command, $expectedExitCode, $mailDelta]) {
+            $event->command = $command;
+            $event->run($this->app);
+
+            $expectedMails += $mailDelta;
+            $this->assertSame($expectedExitCode, $event->exitCode, $label);
+            $this->assertSame($expectedMails, count(app('mailer')->getSymfonyTransport()->messages()), $label);
+            $this->assertFalse($event->mutex->exists($event), $label.': ロックが外れていること');
+        }
+
+        @unlink($event->output);
     }
 
     private function event(string $needle): Event
