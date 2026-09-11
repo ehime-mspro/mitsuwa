@@ -221,7 +221,7 @@ class MailTestCommandTest extends TestCase
         config(['mail.default' => 'smtp', 'queue.default' => 'sync']);
 
         $this->artisan('ops:mail-test', ['to' => 'a@example.com'])
-            ->expectsOutputToContain('送信待ち（キュー）が sync のため、送信待ちを通さずにその場で送ります（定期実行の確かめにはなりません）。本番では .env の QUEUE_CONNECTION を database にして '.$this->phpArtisan('config:cache').' をやり直してください。')
+            ->expectsOutputToContain('送信待ち（キュー）が sync です。この設定ではメールを送信待ちに入れずにその場で送るため、定期実行の確かめになりません。本番では .env の QUEUE_CONNECTION を database にして '.$this->phpArtisan('config:cache').' をやり直してください。')
             ->expectsOutputToContain('テストメールを送りました（宛先: a@example.com）。')
             ->assertExitCode(0);
 
@@ -230,6 +230,22 @@ class MailTestCommandTest extends TestCase
 
             return $mail->hasTo('a@example.com') && $mail->viaQueue === false;
         });
+    }
+
+    // sync（その場で送る設定）と log（実際には送られない設定）が重なる、config:cache 忘れでいちばん起きる
+    // 組み合わせ。sync の警告が「その場で送ります」と言い切らず、log の断りと食い違わないことを確かめる
+    public function test_sync_and_log_together_show_consistent_messages(): void
+    {
+        Mail::fake();
+        config(['mail.default' => 'log', 'queue.default' => 'sync']);
+
+        $this->artisan('ops:mail-test', ['to' => 'a@example.com'])
+            ->expectsOutputToContain('送信方式（MAIL_MAILER）が log のため、メールは実際には送られません。')
+            ->expectsOutputToContain('送信待ち（キュー）が sync です。この設定ではメールを送信待ちに入れずにその場で送るため、定期実行の確かめになりません。')
+            ->assertExitCode(1);
+
+        Mail::assertNothingQueued();
+        Mail::assertNothingSent();
     }
 
     // (g) 設定の 1 行にホスト・ポート・差出人が出て、パスワードやユーザー名は出ない
@@ -291,14 +307,17 @@ class MailTestCommandTest extends TestCase
         Log::spy();
 
         $this->artisan('ops:mail-test')->assertExitCode(0);
-        $this->artisan('queue:work', ['--stop-when-empty' => true, '--tries' => 1, '--memory' => 1024])->assertExitCode(0);
+        // 本番の定期実行と同じ設定（--tries=3 --backoff=60）で実行する。OpsTestMail::$tries = 1 が無ければ、
+        // 1 回目の失敗は再試行待ちのまま jobs に残り、failed_jobs へは移らない（1 回の queue:work では再試行の
+        // 60 秒後には呼ばれないため）。jobs が 0 件・failed_jobs が 1 件になることで $tries = 1 を固定する
+        $this->artisan('queue:work', ['--stop-when-empty' => true, '--tries' => 3, '--backoff' => 60, '--memory' => 1024])->assertExitCode(0);
 
-        // OpsTestMail::$tries = 1 のため、1 回目の失敗でそのまま failed_jobs に落ちる（再試行を待たない）
+        $this->assertSame(0, DB::table('jobs')->count());
+        $this->assertSame(1, DB::table('failed_jobs')->count());
         Log::shouldHaveReceived('error')
             ->withArgs(fn (string $message) => str_contains($message, 'テストメールを送れませんでした（宛先: typo@example.com）')
                 && str_contains($message, 'User unknown'))
             ->once();
-        $this->assertSame(1, DB::table('failed_jobs')->count());
         $this->assertCount(1, app('mailer')->getSymfonyTransport()->delivered);
     }
 
@@ -338,11 +357,17 @@ class MailTestCommandTest extends TestCase
             'backup.notify_to' => 'a@example.com、b@example.com',
         ]);
         Schema::drop('jobs');
+        $this->withoutMockingConsoleOutput();
 
-        $this->artisan('ops:mail-test')
-            ->expectsOutputToContain('テストメールを送れませんでした（宛先: a@example.com）')
-            ->expectsOutputToContain('テストメールを送れませんでした（宛先: b@example.com）')
-            ->assertExitCode(1);
+        $exit = Artisan::call('ops:mail-test');
+        $output = Artisan::output();
+
+        $this->assertSame(1, $exit);
+        $this->assertStringContainsString('テストメールを送れませんでした（宛先: a@example.com）', $output);
+        $this->assertStringContainsString('テストメールを送れませんでした（宛先: b@example.com）', $output);
+        // レビュー担当の確認では実際の例外は 339 文字あり、300 文字への切り詰め（Str::limit の末尾 "..."）が
+        // 効いていた。ここでも、画面の行が「300 文字 + ...」で終わっていることを確かめる
+        $this->assertMatchesRegularExpression('/テストメールを送れませんでした（宛先: a@example\.com）: .{300}\.\.\./us', $output);
     }
 
     // Minor 3: QUEUE_CONNECTION が database でも sync でもない（設定に無い名前を含む）→ 断る。設定の行にも表れる

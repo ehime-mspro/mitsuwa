@@ -113,7 +113,7 @@ class MailTestCommand extends Command
         }
 
         if ($queueDriver === 'sync') {
-            $this->warn('送信待ち（キュー）が sync のため、送信待ちを通さずにその場で送ります（定期実行の確かめにはなりません）。本番では .env の QUEUE_CONNECTION を database にして '.$this->artisanCommand('config:cache').' をやり直してください。');
+            $this->warn('送信待ち（キュー）が sync です。この設定ではメールを送信待ちに入れずにその場で送るため、定期実行の確かめになりません。本番では .env の QUEUE_CONNECTION を database にして '.$this->artisanCommand('config:cache').' をやり直してください。');
 
             return false;
         }
