@@ -26,7 +26,7 @@ final class S3BackupStorage implements BackupStorage
      * @param  array{endpoint?: string|null, region?: string|null, bucket?: string|null, key?: string|null, secret?: string|null}  $config
      * @param  callable|null  $handler  テストで通信を差し替えるときだけ渡す
      */
-    public static function fromConfig(array $config, ?callable $handler = null): self
+    public static function fromConfig(#[\SensitiveParameter] array $config, ?callable $handler = null): self
     {
         foreach (['endpoint', 'region', 'bucket', 'key', 'secret'] as $name) {
             if (empty($config[$name])) {

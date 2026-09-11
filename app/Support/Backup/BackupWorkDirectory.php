@@ -128,8 +128,8 @@ final class BackupWorkDirectory
 
     /**
      * 作業フォルダが、バックアップ対象のフォルダの中に置かれていないかを確かめる。
-     * 実際の判定(symlink や、まだ無いフォルダを含めて実際の場所で比べる)は BackedUpRootGuard に
-     * 共通化してある(ops:backup-restore の取り出し先も同じ判定を使う)。
+     * 実際の判定（symlink や、まだ無いフォルダを含めて実際の場所で比べる）は BackedUpRootGuard に
+     * 共通化してある（ops:backup-restore の取り出し先も同じ判定を使う）。
      */
     private function guardNotInsideBackedUpRoots(): void
     {

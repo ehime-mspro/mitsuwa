@@ -17,13 +17,13 @@ class BackupToolsCommandTest extends TestCase
 {
     private const ASK_KEY_QUESTION = '暗号化キーを入力してください（画面には表示されません）';
 
-    private const WITHOUT_DB_HINT = '添付だけを取り出すときは --without-db を付けてください。';
+    private const WITHOUT_DB_HINT = '添付だけを取り出すときは --without-db を、別のキーを使うときは --ask-key を付けてください。';
 
     private const AVAILABLE_DB_HEADING = '使えるデータベースのバックアップ（新しい順）:';
 
-    private const OTHER_LOCATION_TEMPLATE = 'ほかの暗号化キー（キーを変える前のキー）で作った添付が、別の置き場所に %d 件あります。取り出すには、空の取り出し先を指定して php artisan ops:backup-restore <取り出し先> --without-db --ask-key を実行し、以前のキーを入力してください。';
+    private const OTHER_LOCATION_TEMPLATE = '今のキーの置き場所に無い添付が、ほかの暗号化キーの置き場所に %d 件あります（キーを変える前に消した添付も含まれます）。取り出すには、空の取り出し先を指定して php artisan ops:backup-restore <取り出し先> --without-db --ask-key を実行し、そのときのキーを入力してください。';
 
-    private const ABORT_TEMPLATE = '保管先から続けて 5 件取り出せなかったため、残り %d 件を試さずに打ち切りました（保管先の不調の可能性があります）。';
+    private const ABORT_TEMPLATE = '保管先から続けて %d 件取り出せなかったため、打ち切りました（保管先の不調の可能性があります）。';
 
     private const INSIDE_BACKUP_ROOT = '取り出し先を、バックアップの対象フォルダ（storage/app/public・private）の中にはできません（翌晩のバックアップに、取り出したファイルが入ってしまうため）。';
 
@@ -32,6 +32,14 @@ class BackupToolsCommandTest extends TestCase
     private const KEY_ID_PREFIX = 'キーの識別番号: ';
 
     private const ALREADY_CONFIGURED_WARNING = 'すでに BACKUP_ENCRYPTION_KEY が設定されています。キーを変えると、次のバックアップで添付をすべて送り直します（手順書の「7. 注意」を見てください）。';
+
+    private const DOT_SEGMENTS_REFUSAL_PREFIX = '取り出し先に「.」や「..」を含めないでください: ';
+
+    private const FAILURE_HEADING_LONG_TEMPLATE = '取り出せなかった添付（先頭 %d 件）:';
+
+    private const UNTRIED_COUNT_TEMPLATE = '打ち切りで試していない添付: %d 件';
+
+    private const FAILED_COUNT_TEMPLATE = '取り出せなかった添付: %d 件';
 
     private string $root;
 
@@ -179,6 +187,30 @@ class BackupToolsCommandTest extends TestCase
         $this->assertStringEqualsFile($this->root.'/restore/files/public/attachments/1/契約書.pdf', 'PDF');
     }
 
+    public function test_ask_key_shows_the_entered_keys_id(): void
+    {
+        $this->makeTwoDaysOfBackups();
+        $previousKey = $this->key;
+        $previousKeyId = (new BackupCipher($previousKey))->keyId();
+        config(['backup.encryption_key' => BackupCipher::generateKey()]);
+
+        $this->artisan('ops:backup-restore', ['destination' => $this->root.'/restore', '--ask-key' => true])
+            ->expectsQuestion(self::ASK_KEY_QUESTION, $previousKey)
+            ->expectsOutputToContain('入力したキーの識別番号: '.$previousKeyId)
+            ->assertExitCode(0);
+    }
+
+    public function test_ask_key_with_empty_input_is_reported_without_mentioning_the_env_variable(): void
+    {
+        $this->artisan('ops:backup-restore', ['destination' => $this->root.'/restore', '--ask-key' => true])
+            ->expectsQuestion(self::ASK_KEY_QUESTION, '')
+            ->expectsOutputToContain('暗号化キーが入力されませんでした。')
+            ->doesntExpectOutputToContain('BACKUP_ENCRYPTION_KEY')
+            ->assertExitCode(1);
+
+        $this->assertDirectoryDoesNotExist($this->root.'/restore');
+    }
+
     public function test_decrypt_ask_key_uses_the_provided_key(): void
     {
         $this->putFile('plain.txt', '中身');
@@ -229,6 +261,79 @@ class BackupToolsCommandTest extends TestCase
         $this->assertStringContainsString('rm -rf '.escapeshellarg($this->root.'/restore'), $output);
     }
 
+    public function test_destination_announcement_appears_before_the_database_stage(): void
+    {
+        $this->makeTwoDaysOfBackups();
+
+        $this->assertSame(0, Artisan::call('ops:backup-restore', ['destination' => $this->root.'/restore']));
+        $output = Artisan::output();
+
+        $announcedAt = strpos($output, '取り出し先: ');
+        $databaseStartedAt = strpos($output, 'データベースを取り出しています');
+
+        $this->assertIsInt($announcedAt);
+        $this->assertIsInt($databaseStartedAt);
+        $this->assertLessThan($databaseStartedAt, $announcedAt);
+    }
+
+    public function test_restore_quotes_a_japanese_destination_correctly_regardless_of_locale(): void
+    {
+        $this->makeTwoDaysOfBackups();
+        $destination = $this->root.'/復元チェック';
+        $previousLocale = setlocale(LC_CTYPE, '0');
+
+        try {
+            // escapeshellarg() はロケールが UTF-8 でないと非 ASCII の文字を黙って捨てるため、
+            // C ロケールでも自前の引用が正しいことを確かめる
+            setlocale(LC_CTYPE, 'C');
+
+            $this->assertSame(0, Artisan::call('ops:backup-restore', ['destination' => $destination]));
+            $output = Artisan::output();
+
+            $this->assertStringContainsString('取り出し先: '.$destination, $output);
+            $this->assertStringContainsString("rm -rf '{$destination}'", $output);
+        } finally {
+            setlocale(LC_CTYPE, (string) $previousLocale);
+        }
+    }
+
+    public function test_restore_normalizes_a_relative_destination_to_an_absolute_path(): void
+    {
+        $this->makeTwoDaysOfBackups();
+        $previousCwd = getcwd();
+        chdir($this->root);
+        $cwd = (string) getcwd();
+
+        try {
+            $this->assertSame(0, Artisan::call('ops:backup-restore', ['destination' => 'restore']));
+            $output = Artisan::output();
+
+            $this->assertStringContainsString('取り出し先: '.$cwd.'/restore', $output);
+        } finally {
+            chdir((string) $previousCwd);
+        }
+    }
+
+    public function test_restore_refuses_a_destination_containing_dot_dot_segments(): void
+    {
+        $destination = $this->root.'/nested/../restore';
+
+        $this->assertSame(1, Artisan::call('ops:backup-restore', ['destination' => $destination]));
+        $this->assertStringContainsString(self::DOT_SEGMENTS_REFUSAL_PREFIX, Artisan::output());
+
+        $this->assertDirectoryDoesNotExist($this->root.'/restore');
+        $this->assertDirectoryDoesNotExist($this->root.'/nested');
+    }
+
+    public function test_storage_construction_failure_is_reported_and_does_not_leak(): void
+    {
+        $this->app->bind(BackupStorage::class, fn () => throw new RuntimeException('S3 に接続できません'));
+
+        $this->artisan('ops:backup-restore', ['destination' => $this->root.'/restore'])
+            ->expectsOutputToContain('取り出しに失敗しました')
+            ->assertExitCode(1);
+    }
+
     public function test_files_restore_after_key_rotation_gives_guidance_and_fails(): void
     {
         $this->makeTwoDaysOfBackups();
@@ -241,6 +346,42 @@ class BackupToolsCommandTest extends TestCase
             '--without-db' => true,
         ]));
         $this->assertStringContainsString(sprintf(self::OTHER_LOCATION_TEMPLATE, 2), Artisan::output());
+    }
+
+    public function test_no_guidance_when_everything_was_reuploaded_under_the_new_key(): void
+    {
+        $this->makeTwoDaysOfBackups();
+        $newKey = BackupCipher::generateKey();
+        $newCipher = new BackupCipher($newKey);
+        $storage = new LocalDirectoryBackupStorage($this->root.'/remote');
+        $this->uploadEncrypted($storage, $newCipher, 'public/attachments/1/契約書.pdf', 'PDF');
+        $this->uploadEncrypted($storage, $newCipher, 'private/approvals/2/x.xlsx', 'XLSX');
+        config(['backup.encryption_key' => $newKey]);
+
+        $this->assertSame(0, Artisan::call('ops:backup-restore', [
+            'destination' => $this->root.'/restore',
+            '--without-db' => true,
+        ]));
+
+        $this->assertStringNotContainsString('ほかの暗号化キーの置き場所に', Artisan::output());
+    }
+
+    public function test_other_location_guidance_counts_only_files_missing_from_the_current_location(): void
+    {
+        $this->makeTwoDaysOfBackups();
+        $newKey = BackupCipher::generateKey();
+        $newCipher = new BackupCipher($newKey);
+        $storage = new LocalDirectoryBackupStorage($this->root.'/remote');
+        // 2 件のうち 1 件だけを新しいキーで送り直す(もう 1 件だけが「ほかの置き場所」に残る)
+        $this->uploadEncrypted($storage, $newCipher, 'public/attachments/1/契約書.pdf', 'PDF');
+        config(['backup.encryption_key' => $newKey]);
+
+        $this->assertSame(0, Artisan::call('ops:backup-restore', [
+            'destination' => $this->root.'/restore',
+            '--without-db' => true,
+        ]));
+
+        $this->assertStringContainsString(sprintf(self::OTHER_LOCATION_TEMPLATE, 1), Artisan::output());
     }
 
     public function test_db_option_with_unknown_key_lists_available_backups(): void
@@ -264,10 +405,54 @@ class BackupToolsCommandTest extends TestCase
             $this->putFile("source{$i}.enc", 'dummy');
             $real->put(FileSyncPlanner::keyFor("attachments/{$i}.pdf", $keyId), $this->root."/source{$i}.enc");
         }
+        $this->bindAlwaysFailingGet($real);
 
-        $this->app->instance(BackupStorage::class, new class($real) implements BackupStorage
+        $this->artisan('ops:backup-restore', ['destination' => $this->root.'/restore', '--without-db' => true])
+            ->expectsOutputToContain(sprintf(self::ABORT_TEMPLATE, 5))
+            ->expectsOutputToContain(sprintf(self::UNTRIED_COUNT_TEMPLATE, 1))
+            ->assertExitCode(1);
+    }
+
+    public function test_the_last_items_fifth_failure_is_not_treated_as_an_abort(): void
+    {
+        $real = new LocalDirectoryBackupStorage($this->root.'/remote');
+        $keyId = (new BackupCipher($this->key))->keyId();
+        for ($i = 0; $i < 5; $i++) {
+            $this->putFile("source{$i}.enc", 'dummy');
+            $real->put(FileSyncPlanner::keyFor("attachments/{$i}.pdf", $keyId), $this->root."/source{$i}.enc");
+        }
+        $this->bindAlwaysFailingGet($real);
+
+        $this->assertSame(1, Artisan::call('ops:backup-restore', ['destination' => $this->root.'/restore', '--without-db' => true]));
+        $output = Artisan::output();
+
+        $this->assertStringNotContainsString('打ち切りました', $output);
+        $this->assertStringNotContainsString('試していない', $output);
+        $this->assertStringContainsString(sprintf(self::FAILED_COUNT_TEMPLATE, 5), $output);
+    }
+
+    public function test_a_successful_retrieval_resets_the_consecutive_failure_count(): void
+    {
+        $real = new LocalDirectoryBackupStorage($this->root.'/remote');
+        $keyId = (new BackupCipher($this->key))->keyId();
+        for ($i = 0; $i < 9; $i++) {
+            // 成功させる 1 件(index 4)は復号も通るよう、本物の暗号化ファイルにしておく
+            if ($i === 4) {
+                $this->uploadEncrypted($real, new BackupCipher($this->key), "attachments/{$i}.pdf", 'ok');
+
+                continue;
+            }
+            $this->putFile("source{$i}.enc", 'dummy');
+            $real->put(FileSyncPlanner::keyFor("attachments/{$i}.pdf", $keyId), $this->root."/source{$i}.enc");
+        }
+
+        // 4 件失敗・1 件成功・4 件失敗(5 件連続にはならないので打ち切られない)
+        $shouldFail = [true, true, true, true, false, true, true, true, true];
+        $this->app->instance(BackupStorage::class, new class($real, $shouldFail) implements BackupStorage
         {
-            public function __construct(private BackupStorage $real) {}
+            private int $calls = 0;
+
+            public function __construct(private BackupStorage $real, private array $shouldFail) {}
 
             public function put(string $key, string $localPath): void
             {
@@ -276,7 +461,12 @@ class BackupToolsCommandTest extends TestCase
 
             public function get(string $key, string $localPath): void
             {
-                throw new RuntimeException('保管先に接続できません');
+                $fail = $this->shouldFail[$this->calls] ?? false;
+                $this->calls++;
+                if ($fail) {
+                    throw new RuntimeException('保管先に接続できません');
+                }
+                $this->real->get($key, $localPath);
             }
 
             public function list(string $prefix): array
@@ -290,9 +480,28 @@ class BackupToolsCommandTest extends TestCase
             }
         });
 
-        $this->artisan('ops:backup-restore', ['destination' => $this->root.'/restore', '--without-db' => true])
-            ->expectsOutputToContain(sprintf(self::ABORT_TEMPLATE, 1))
-            ->assertExitCode(1);
+        $this->assertSame(1, Artisan::call('ops:backup-restore', ['destination' => $this->root.'/restore', '--without-db' => true]));
+        $output = Artisan::output();
+
+        $this->assertStringNotContainsString('打ち切りました', $output);
+        $this->assertStringContainsString(sprintf(self::FAILED_COUNT_TEMPLATE, 8), $output);
+    }
+
+    public function test_failure_list_shows_first_twenty_and_a_count_of_the_rest(): void
+    {
+        $storage = new LocalDirectoryBackupStorage($this->root.'/remote');
+        $keyId = (new BackupCipher($this->key))->keyId();
+        for ($i = 0; $i < 21; $i++) {
+            $this->putFile("broken{$i}.enc", 'broken');
+            $storage->put(FileSyncPlanner::keyFor(sprintf('attachments/%02d.pdf', $i), $keyId), $this->root."/broken{$i}.enc");
+        }
+
+        $this->assertSame(1, Artisan::call('ops:backup-restore', ['destination' => $this->root.'/restore', '--without-db' => true]));
+        $output = Artisan::output();
+
+        $this->assertStringContainsString(sprintf(self::FAILURE_HEADING_LONG_TEMPLATE, 20), $output);
+        $this->assertStringContainsString('ほか 1 件', $output);
+        $this->assertStringContainsString(sprintf(self::FAILED_COUNT_TEMPLATE, 21), $output);
     }
 
     public function test_restore_destination_that_is_a_file_fails(): void
@@ -311,6 +520,8 @@ class BackupToolsCommandTest extends TestCase
         $this->artisan('ops:backup-restore', ['destination' => $this->root.'/storage/app/public/evil'])
             ->expectsOutputToContain(self::INSIDE_BACKUP_ROOT)
             ->assertExitCode(1);
+
+        $this->assertDirectoryDoesNotExist($this->root.'/storage/app/public/evil');
     }
 
     public function test_restore_reports_an_unreadable_destination_folder(): void
@@ -361,6 +572,45 @@ class BackupToolsCommandTest extends TestCase
         $this->assertSame(0, Artisan::call('ops:backup-key'));
 
         $this->assertStringContainsString(self::ALREADY_CONFIGURED_WARNING, Artisan::output());
+    }
+
+    private function bindAlwaysFailingGet(BackupStorage $real): void
+    {
+        $this->app->instance(BackupStorage::class, new class($real) implements BackupStorage
+        {
+            public function __construct(private BackupStorage $real) {}
+
+            public function put(string $key, string $localPath): void
+            {
+                $this->real->put($key, $localPath);
+            }
+
+            public function get(string $key, string $localPath): void
+            {
+                throw new RuntimeException('保管先に接続できません');
+            }
+
+            public function list(string $prefix): array
+            {
+                return $this->real->list($prefix);
+            }
+
+            public function delete(string $key): void
+            {
+                $this->real->delete($key);
+            }
+        });
+    }
+
+    private function uploadEncrypted(LocalDirectoryBackupStorage $storage, BackupCipher $cipher, string $relative, string $contents): void
+    {
+        $plain = $this->root.'/upload-plain-'.bin2hex(random_bytes(4)).'.tmp';
+        $encrypted = $plain.'.enc';
+        file_put_contents($plain, $contents);
+        $cipher->encryptFile($plain, $encrypted);
+        $storage->put(FileSyncPlanner::keyFor($relative, $cipher->keyId()), $encrypted);
+        unlink($plain);
+        unlink($encrypted);
     }
 
     private function makeTwoDaysOfBackups(): void

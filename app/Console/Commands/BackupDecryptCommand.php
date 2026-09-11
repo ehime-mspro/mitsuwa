@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Support\Backup\BackupCipher;
 use Illuminate\Console\Command;
+use RuntimeException;
 use Throwable;
 
 class BackupDecryptCommand extends Command
@@ -14,10 +15,6 @@ class BackupDecryptCommand extends Command
         {--ask-key : BACKUP_ENCRYPTION_KEY の代わりに、その場で暗号化キーを入力する}';
 
     protected $description = 'バックアップファイルを 1 つ復号する（BACKUP_ENCRYPTION_KEY を使う）';
-
-    private const ASK_KEY_QUESTION = '暗号化キーを入力してください（画面には表示されません）';
-
-    private const ALREADY_EXISTS_PREFIX = '保存先にすでにファイルかフォルダがあります（上書きしません）: ';
 
     public function handle(): int
     {
@@ -30,14 +27,15 @@ class BackupDecryptCommand extends Command
             return self::FAILURE;
         }
         if (file_exists($destination)) {
-            $this->error(self::ALREADY_EXISTS_PREFIX.$destination);
+            $this->error('保存先にすでにファイルかフォルダがあります（上書きしません）: '.$destination);
 
             return self::FAILURE;
         }
 
-        $key = $this->option('ask-key')
-            ? (string) $this->secret(self::ASK_KEY_QUESTION)
-            : (string) config('backup.encryption_key');
+        $key = $this->resolveKey();
+        if ($key === null) {
+            return self::FAILURE;
+        }
 
         try {
             (new BackupCipher($key))->decryptFile($source, $destination);
@@ -50,5 +48,40 @@ class BackupDecryptCommand extends Command
         $this->info('復号しました: '.$destination);
 
         return self::SUCCESS;
+    }
+
+    /**
+     * --ask-key が無ければ設定済みのキーを使う。あれば secret(..., false) でその場で入力させる
+     * （表示されない入力を作れない環境でも、見える入力へは切り替えない）。空の入力なら
+     * BACKUP_ENCRYPTION_KEY の案内を出さずに専用の理由を表示する。
+     */
+    private function resolveKey(): ?string
+    {
+        if (! $this->option('ask-key')) {
+            return (string) config('backup.encryption_key');
+        }
+
+        $key = (string) $this->secret('暗号化キーを入力してください（画面には表示されません）', false);
+        if ($key === '') {
+            $this->error('暗号化キーが入力されませんでした。');
+
+            return null;
+        }
+
+        $keyId = $this->tryKeyId($key);
+        if ($keyId !== null) {
+            $this->line('入力したキーの識別番号: '.$keyId);
+        }
+
+        return $key;
+    }
+
+    private function tryKeyId(string $key): ?string
+    {
+        try {
+            return (new BackupCipher($key))->keyId();
+        } catch (RuntimeException) {
+            return null;
+        }
     }
 }

@@ -2,6 +2,8 @@
 
 namespace App\Console\Commands;
 
+use App\Support\Backup\AttachmentGetFailedException;
+use App\Support\Backup\AttachmentRestoreResult;
 use App\Support\Backup\BackedUpRootGuard;
 use App\Support\Backup\BackupCipher;
 use App\Support\Backup\BackupStorage;
@@ -16,13 +18,13 @@ use UnexpectedValueException;
 class BackupRestoreCommand extends Command
 {
     protected $signature = 'ops:backup-restore
-        {destination : 取り出し先のフォルダ(空、またはまだ無いフォルダ)}
-        {--db=latest : 取り出すデータベースのバックアップ(db/ から始まるキー、または latest)}
+        {destination : 取り出し先のフォルダ（空、またはまだ無いフォルダ）}
+        {--db=latest : 取り出すデータベースのバックアップ（db/ から始まるキー、または latest）}
         {--without-db : データベースは取り出さない}
         {--without-files : 添付ファイルは取り出さない}
         {--ask-key : BACKUP_ENCRYPTION_KEY の代わりに、その場で暗号化キーを入力する}';
 
-    protected $description = 'バックアップを保管先から取り出して復号する(本番のデータベースやファイルには触れない)';
+    protected $description = 'バックアップを保管先から取り出して復号する（本番のデータベースやファイルには触れない）';
 
     private const WORK_DIR_NAME = '.work';
 
@@ -32,58 +34,32 @@ class BackupRestoreCommand extends Command
 
     private const FILE_TEMP_FILE = 'file.enc';
 
-    // 保管先からの取得(get())がこの回数だけ連続で失敗したら、残りは試さずに打ち切る。復号の失敗はここに数えない
+    // 保管先からの取得（get()）がこの回数だけ連続で失敗したら、残りは試さずに打ち切る。復号の失敗はここに数えない
     private const MAX_CONSECUTIVE_GET_FAILURES = 5;
 
     // 添付の進み具合を表示する間隔
     private const PROGRESS_INTERVAL = 100;
 
-    // 失敗の一覧に出す最大件数(超えた分は「ほか N 件」にまとめる)
+    // 失敗の一覧に出す最大件数（超えた分は「ほか N 件」にまとめる）
     private const MAX_FAILURE_LIST = 20;
 
     // 「使えるデータベースのバックアップ」に出す最大件数
     private const MAX_DATABASE_BACKUP_LIST = 10;
 
-    private const ASK_KEY_QUESTION = '暗号化キーを入力してください（画面には表示されません）';
-
-    private const WITHOUT_DB_HINT = '添付だけを取り出すときは --without-db を付けてください。';
-
-    private const OTHER_LOCATION_TEMPLATE = 'ほかの暗号化キー（キーを変える前のキー）で作った添付が、別の置き場所に %d 件あります。取り出すには、空の取り出し先を指定して php artisan ops:backup-restore <取り出し先> --without-db --ask-key を実行し、以前のキーを入力してください。';
-
-    private const ABORT_TEMPLATE = '保管先から続けて 5 件取り出せなかったため、残り %d 件を試さずに打ち切りました（保管先の不調の可能性があります）。';
-
-    private const PROGRESS_TEMPLATE = '添付: %d / %d 件';
-
-    private const MORE_FAILURES_TEMPLATE = 'ほか %d 件';
-
-    private const INSIDE_BACKUP_ROOT = '取り出し先を、バックアップの対象フォルダ（storage/app/public・private）の中にはできません（翌晩のバックアップに、取り出したファイルが入ってしまうため）。';
-
-    private const UNREADABLE_DESTINATION_PREFIX = '取り出し先のフォルダを読めません: ';
-
-    private const DB_NOT_FOUND_PREFIX = '指定されたデータベースのバックアップがありません: ';
-
-    private const DB_NONE_AT_ALL = 'データベースのバックアップが見つかりません。';
-
-    private const AVAILABLE_DB_HEADING = '使えるデータベースのバックアップ（新しい順）:';
-
-    private const DESTINATION_ANNOUNCE_PREFIX = '取り出し先: ';
-
-    private const DESTINATION_ANNOUNCE_MID = '（取り出したファイルにはお客様の個人情報が含まれます。確認が済んだら rm -rf ';
-
-    private const DESTINATION_ANNOUNCE_SUFFIX = ' で消してください。途中で止まった場合も同じです）';
-
-    private const RESTART_CLEANUP_PREFIX = 'やり直すときは、先に rm -rf ';
-
-    private const RESTART_CLEANUP_SUFFIX = ' で取り出し先を消してください（途中のファイルに個人情報が含まれます）。';
-
     public function handle(): int
     {
-        $destination = rtrim((string) $this->argument('destination'), '/');
         $withoutDb = (bool) $this->option('without-db');
         $withoutFiles = (bool) $this->option('without-files');
 
         if ($withoutDb && $withoutFiles) {
             $this->error('取り出すものがありません。');
+
+            return self::FAILURE;
+        }
+
+        $destination = $this->normalizeDestination((string) $this->argument('destination'));
+        if ($this->containsDotSegment($destination)) {
+            $this->error(sprintf('取り出し先に「.」や「..」を含めないでください: %s', $destination));
 
             return self::FAILURE;
         }
@@ -106,7 +82,40 @@ class BackupRestoreCommand extends Command
     }
 
     /**
-     * 取り出し先の検査(問題が無ければ null を返す)。
+     * 取り出し先を絶対パスへ整える（相対パスなら getcwd() を前に付ける。連続する "/" は 1 つにし、
+     * 末尾の "/" は除く）。ロケールに依存しない引用（quoteForShell()）を使う前提のため、
+     * ここでは escapeshellarg() は使わない。
+     */
+    private function normalizeDestination(string $raw): string
+    {
+        $absolute = str_starts_with($raw, '/') ? $raw : getcwd().'/'.$raw;
+        $collapsed = (string) preg_replace('#/+#', '/', $absolute);
+
+        return $collapsed === '/' ? $collapsed : rtrim($collapsed, '/');
+    }
+
+    private function containsDotSegment(string $path): bool
+    {
+        foreach (explode('/', $path) as $segment) {
+            if ($segment === '.' || $segment === '..') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * シェルの引用をロケールに依存しない自前の関数で行う（escapeshellarg() はロケールが
+     * UTF-8 でないと非 ASCII の文字を黙って捨て、案内の rm -rf が親フォルダを指してしまうため）。
+     */
+    private function quoteForShell(string $path): string
+    {
+        return "'".str_replace("'", "'\\''", $path)."'";
+    }
+
+    /**
+     * 取り出し先の検査（問題が無ければ null を返す）。
      */
     private function validateDestination(string $destination): ?string
     {
@@ -118,7 +127,7 @@ class BackupRestoreCommand extends Command
             try {
                 $nonEmpty = (new FilesystemIterator($destination))->valid();
             } catch (UnexpectedValueException) {
-                return self::UNREADABLE_DESTINATION_PREFIX.$destination;
+                return '取り出し先のフォルダを読めません: '.$destination;
             }
             if ($nonEmpty) {
                 return '取り出し先のフォルダが空ではありません: '.$destination;
@@ -126,7 +135,7 @@ class BackupRestoreCommand extends Command
         }
 
         if (BackedUpRootGuard::isInside($destination, storage_path('app'), (array) config('backup.file_roots'))) {
-            return self::INSIDE_BACKUP_ROOT;
+            return '取り出し先を、バックアップの対象フォルダ（storage/app/public・private）の中にはできません（翌晩のバックアップに、取り出したファイルが入ってしまうため）。';
         }
 
         return null;
@@ -134,9 +143,10 @@ class BackupRestoreCommand extends Command
 
     private function resolveCipher(): ?BackupCipher
     {
-        $key = $this->option('ask-key')
-            ? (string) $this->secret(self::ASK_KEY_QUESTION)
-            : (string) config('backup.encryption_key');
+        $key = $this->resolveKey();
+        if ($key === null) {
+            return null;
+        }
 
         try {
             return new BackupCipher($key);
@@ -147,43 +157,71 @@ class BackupRestoreCommand extends Command
         }
     }
 
+    /**
+     * --ask-key が無ければ設定済みのキーを使う。あれば secret(..., false) でその場で入力させる
+     * （表示されない入力を作れない環境でも、見える入力へは切り替えない）。空の入力なら
+     * BACKUP_ENCRYPTION_KEY の案内を出さずに専用の理由を表示する。
+     */
+    private function resolveKey(): ?string
+    {
+        if (! $this->option('ask-key')) {
+            return (string) config('backup.encryption_key');
+        }
+
+        $key = (string) $this->secret('暗号化キーを入力してください（画面には表示されません）', false);
+        if ($key === '') {
+            $this->error('暗号化キーが入力されませんでした。');
+
+            return null;
+        }
+
+        $keyId = $this->tryKeyId($key);
+        if ($keyId !== null) {
+            $this->line('入力したキーの識別番号: '.$keyId);
+        }
+
+        return $key;
+    }
+
+    private function tryKeyId(string $key): ?string
+    {
+        try {
+            return (new BackupCipher($key))->keyId();
+        } catch (RuntimeException) {
+            return null;
+        }
+    }
+
     private function announceDestination(string $destination): void
     {
-        $this->info(
-            self::DESTINATION_ANNOUNCE_PREFIX.$destination
-            .self::DESTINATION_ANNOUNCE_MID.escapeshellarg($destination)
-            .self::DESTINATION_ANNOUNCE_SUFFIX
-        );
+        $this->info(sprintf('取り出し先: %s（取り出したファイルにはお客様の個人情報が含まれます。確認が済んだら rm -rf %s で消してください。途中で止まった場合も同じです）', $destination, $this->quoteForShell($destination)));
     }
 
     private function announceRestartCleanup(string $destination): void
     {
-        $this->line(self::RESTART_CLEANUP_PREFIX.escapeshellarg($destination).self::RESTART_CLEANUP_SUFFIX);
+        $this->line(sprintf('やり直すときは、先に rm -rf %s で取り出し先を消してください（途中のファイルに個人情報が含まれます）。', $this->quoteForShell($destination)));
     }
 
+    /**
+     * 保管先の組み立てもキーの用意と同じく try の中で行う（設定の誤りが生の例外として
+     * 外へ漏れないように。原因の表示に接続情報が出ないよう、S3BackupStorage::fromConfig() の
+     * 引数には SensitiveParameter を付けてある）。
+     */
     private function performRestore(string $destination, bool $withoutDb, bool $withoutFiles, BackupCipher $cipher): int
     {
-        $storage = $this->laravel->make(BackupStorage::class);
         $work = $destination.'/'.self::WORK_DIR_NAME;
 
         try {
+            $storage = $this->laravel->make(BackupStorage::class);
             $this->makeDirectory($work);
-        } catch (Throwable $e) {
-            $this->error('取り出しに失敗しました: '.$e->getMessage());
 
-            return $this->giveUp($work, $destination);
-        }
-
-        try {
             $databaseKey = $withoutDb ? null : $this->restoreDatabase($storage, $cipher, $destination, $work);
             if (! $withoutDb && $databaseKey === null) {
                 // restoreDatabase() がすでに理由を表示している
                 return $this->giveUp($work, $destination);
             }
 
-            [$filesRestored, $failures, $otherLocationCount] = $withoutFiles
-                ? [0, [], 0]
-                : $this->restoreFiles($storage, $cipher, $destination, $work);
+            $files = $withoutFiles ? null : $this->restoreFiles($storage, $cipher, $destination, $work);
         } catch (Throwable $e) {
             $this->error('取り出しに失敗しました: '.$e->getMessage());
 
@@ -192,7 +230,7 @@ class BackupRestoreCommand extends Command
 
         $this->cleanupWorkDirectory($work);
 
-        return $this->reportOutcome($destination, $withoutDb, $withoutFiles, $databaseKey, $filesRestored, $failures, $otherLocationCount);
+        return $this->reportOutcome($destination, $withoutDb, $databaseKey, $files);
     }
 
     private function giveUp(string $work, string $destination): int
@@ -203,40 +241,34 @@ class BackupRestoreCommand extends Command
         return self::FAILURE;
     }
 
-    /**
-     * @param  array<string, string>  $failures  ラベル(元の相対パス。戻せなければキーそのもの) => 理由
-     */
-    private function reportOutcome(
-        string $destination,
-        bool $withoutDb,
-        bool $withoutFiles,
-        ?string $databaseKey,
-        int $filesRestored,
-        array $failures,
-        int $otherLocationCount,
-    ): int {
-        $this->printFailureList($failures);
+    private function reportOutcome(string $destination, bool $withoutDb, ?string $databaseKey, ?AttachmentRestoreResult $files): int
+    {
+        if ($files !== null) {
+            $this->printFailureList($files->failures);
+        }
 
-        if ($otherLocationCount > 0) {
-            $this->warn(sprintf(self::OTHER_LOCATION_TEMPLATE, $otherLocationCount));
+        if ($files !== null && $files->otherLocationOnly > 0) {
+            $this->warn(sprintf('今のキーの置き場所に無い添付が、ほかの暗号化キーの置き場所に %d 件あります（キーを変える前に消した添付も含まれます）。取り出すには、空の取り出し先を指定して php artisan ops:backup-restore <取り出し先> --without-db --ask-key を実行し、そのときのキーを入力してください。', $files->otherLocationOnly));
         }
 
         if (! $withoutDb) {
             $this->info('データベース: '.$destination.'/db/'.basename((string) $databaseKey, '.enc'));
         }
 
-        $noCurrentKeyFiles = false;
-        if (! $withoutFiles) {
-            $this->info("添付ファイル: {$filesRestored} 件(".$destination.'/files/ 以下)');
-            $noCurrentKeyFiles = $filesRestored === 0 && $failures === [] && $otherLocationCount > 0;
+        if ($files !== null) {
+            $this->printFilesSummary($destination, $files);
         }
 
-        if ($failures !== []) {
-            $this->error('取り出せなかった添付: '.count($failures).' 件');
-        }
-
-        if ($failures !== [] || $noCurrentKeyFiles) {
+        if ($files !== null && ($files->failures !== [] || $files->untried > 0)) {
             $this->announceRestartCleanup($destination);
+
+            return self::FAILURE;
+        }
+
+        if ($files !== null && $files->total === 0 && $files->otherLocationOnly > 0) {
+            if (! $withoutDb) {
+                $this->line('データベースは取り出せています。添付は、上の案内のとおり別の空の取り出し先へ取り出してください。');
+            }
 
             return self::FAILURE;
         }
@@ -244,11 +276,33 @@ class BackupRestoreCommand extends Command
         return self::SUCCESS;
     }
 
+    private function printFilesSummary(string $destination, AttachmentRestoreResult $files): void
+    {
+        $this->info(sprintf('添付ファイル: %d 件を取り出しました（%s/files/ 以下。今のキーの置き場所には %d 件）', $files->restored, $destination, $files->total));
+
+        if ($files->failures !== []) {
+            $this->error(sprintf('取り出せなかった添付: %d 件', count($files->failures)));
+        }
+        if ($files->untried > 0) {
+            $this->error(sprintf('打ち切りで試していない添付: %d 件', $files->untried));
+        }
+    }
+
     /**
      * @param  array<string, string>  $failures
      */
     private function printFailureList(array $failures): void
     {
+        if ($failures === []) {
+            return;
+        }
+
+        ksort($failures, SORT_STRING);
+
+        $this->line(count($failures) <= self::MAX_FAILURE_LIST
+            ? '取り出せなかった添付:'
+            : sprintf('取り出せなかった添付（先頭 %d 件）:', self::MAX_FAILURE_LIST));
+
         $shown = 0;
         foreach ($failures as $label => $reason) {
             if ($shown >= self::MAX_FAILURE_LIST) {
@@ -260,13 +314,13 @@ class BackupRestoreCommand extends Command
 
         $remaining = count($failures) - $shown;
         if ($remaining > 0) {
-            $this->line('  '.sprintf(self::MORE_FAILURES_TEMPLATE, $remaining));
+            $this->line('  '.sprintf('ほか %d 件', $remaining));
         }
     }
 
     /**
-     * $option(--db)を保管先の一覧と照らし合わせて、実在するキーへ解決する。無ければ理由と
-     * 使えるバックアップの一覧を表示して null を返す(latest で 1 件も無いときだけ、より単純な文言にする)。
+     * $option（--db）を保管先の一覧と照らし合わせて、実在するキーへ解決する。無ければ理由と
+     * 使えるバックアップの一覧を表示して null を返す（latest で 1 件も無いときだけ、より単純な文言にする）。
      */
     private function restoreDatabase(BackupStorage $storage, BackupCipher $cipher, string $destination, string $work): ?string
     {
@@ -276,13 +330,15 @@ class BackupRestoreCommand extends Command
 
         if ($key === null || ! in_array($key, $keys, true)) {
             if ($option === 'latest') {
-                $this->error(self::DB_NONE_AT_ALL);
+                $this->error('データベースのバックアップが見つかりません。');
             } else {
-                $this->reportDatabaseFailure(self::DB_NOT_FOUND_PREFIX.$option, $keys);
+                $this->reportDatabaseFailure(sprintf('指定されたデータベースのバックアップがありません: %s', $option), $keys);
             }
 
             return null;
         }
+
+        $this->line(sprintf('データベースを取り出しています: %s', $key));
 
         $this->makeDirectory($destination.'/db');
         $encrypted = $work.'/'.self::DATABASE_TEMP_FILE;
@@ -309,7 +365,7 @@ class BackupRestoreCommand extends Command
     private function reportDatabaseFailure(string $reason, array $availableKeys): void
     {
         $this->error($reason);
-        $this->line(self::WITHOUT_DB_HINT);
+        $this->line('添付だけを取り出すときは --without-db を、別のキーを使うときは --ask-key を付けてください。');
         $this->printAvailableDatabaseBackups($availableKeys);
     }
 
@@ -322,7 +378,7 @@ class BackupRestoreCommand extends Command
             return;
         }
 
-        $this->line(self::AVAILABLE_DB_HEADING);
+        $this->line('使えるデータベースのバックアップ（新しい順）:');
         foreach (array_slice(array_reverse($keys), 0, self::MAX_DATABASE_BACKUP_LIST) as $key) {
             $this->line('  '.$key);
         }
@@ -330,77 +386,77 @@ class BackupRestoreCommand extends Command
 
     /**
      * 今の暗号化キーのフォルダにある添付を取り出す。1 件が失敗しても残りは続けるが、保管先からの
-     * 取得(get())が MAX_CONSECUTIVE_GET_FAILURES 回続けて失敗したら、残りは試さずに打ち切る。
-     *
-     * @return array{0: int, 1: array<string, string>, 2: int} [取り出した数, ラベル => 失敗の理由, ほかの置き場所にある件数]
+     * 取得（get()）が MAX_CONSECUTIVE_GET_FAILURES 回続けて失敗したら、残りは試さずに打ち切る
+     * （最後の 1 件がちょうど 5 件目の失敗になったときは、試していない件数が 0 のため打ち切り扱いにしない）。
      */
-    private function restoreFiles(BackupStorage $storage, BackupCipher $cipher, string $destination, string $work): array
+    private function restoreFiles(BackupStorage $storage, BackupCipher $cipher, string $destination, string $work): AttachmentRestoreResult
     {
         $keyId = $cipher->keyId();
-        $keys = array_keys($storage->list(FileSyncPlanner::prefixFor($keyId)));
-        $otherLocationCount = $this->countOtherLocationFiles($storage, count($keys));
+        $prefix = FileSyncPlanner::prefixFor($keyId);
+        $keys = array_keys($storage->list($prefix));
+        $currentPathSet = $this->currentPathSet($keys);
+        $otherLocationOnly = $this->countOtherLocationOnlyFiles($storage, $prefix, $currentPathSet);
 
         $total = count($keys);
+        $this->line(sprintf('添付 %d 件を取り出します。', $total));
+
         $encrypted = $work.'/'.self::FILE_TEMP_FILE;
         $restored = 0;
         $failures = [];
+        $untried = 0;
         $consecutiveGetFailures = 0;
 
         foreach ($keys as $index => $key) {
-            $processed = $index + 1;
-            [$success, $reason, $wasGetFailure, $label] = $this->restoreOneFile($storage, $cipher, $destination, $key, $encrypted);
+            $label = FileSyncPlanner::pathFor($key) ?? $key;
+            $remaining = $total - $index - 1;
 
-            if ($success) {
+            try {
+                $this->restoreOneFile($storage, $cipher, $destination, $key, $encrypted);
                 $restored++;
                 $consecutiveGetFailures = 0;
-            } else {
-                $failures[$label] = $reason;
-                $consecutiveGetFailures = $wasGetFailure ? $consecutiveGetFailures + 1 : 0;
+            } catch (AttachmentGetFailedException $e) {
+                $failures[$label] = $e->getMessage();
+                $consecutiveGetFailures++;
 
-                if ($consecutiveGetFailures >= self::MAX_CONSECUTIVE_GET_FAILURES) {
-                    $this->error(sprintf(self::ABORT_TEMPLATE, $total - $processed));
+                if ($consecutiveGetFailures >= self::MAX_CONSECUTIVE_GET_FAILURES && $remaining > 0) {
+                    $this->error(sprintf('保管先から続けて %d 件取り出せなかったため、打ち切りました（保管先の不調の可能性があります）。', self::MAX_CONSECUTIVE_GET_FAILURES));
+                    $untried = $remaining;
                     break;
                 }
+            } catch (Throwable $e) {
+                $failures[$label] = $e->getMessage();
+                $consecutiveGetFailures = 0;
             }
 
-            if ($processed % self::PROGRESS_INTERVAL === 0) {
-                $this->line(sprintf(self::PROGRESS_TEMPLATE, $processed, $total));
+            if (($index + 1) % self::PROGRESS_INTERVAL === 0) {
+                $this->line(sprintf('添付: %d / %d 件', $index + 1, $total));
             }
         }
 
-        return [$restored, $failures, $otherLocationCount];
+        return new AttachmentRestoreResult($total, $restored, $failures, $untried, $otherLocationOnly);
     }
 
     /**
-     * @return array{0: bool, 1: string|null, 2: bool, 3: string} [成功したか, 失敗の理由, 取得(get())の失敗か, 表示用のラベル]
+     * 1 件取り出す。形式の違うキーや復号の失敗は通常の RuntimeException、保管先からの取得（get()）の
+     * 失敗だけは AttachmentGetFailedException で投げ分ける（連続失敗の数え方を呼び出し側で変えるため）。
      */
-    private function restoreOneFile(BackupStorage $storage, BackupCipher $cipher, string $destination, string $key, string $encrypted): array
+    private function restoreOneFile(BackupStorage $storage, BackupCipher $cipher, string $destination, string $key, string $encrypted): void
     {
         $path = FileSyncPlanner::pathFor($key);
-        $label = $path ?? $key;
-
         if ($path === null) {
-            return [false, '形式の違うキーです', false, $label];
+            throw new RuntimeException('形式の違うキーです');
         }
 
         try {
-            $storage->get($key, $encrypted);
-        } catch (Throwable $e) {
-            if (is_file($encrypted)) {
-                unlink($encrypted);
+            try {
+                $storage->get($key, $encrypted);
+            } catch (Throwable $e) {
+                throw new AttachmentGetFailedException($e->getMessage(), previous: $e);
             }
 
-            return [false, $e->getMessage(), true, $label];
-        }
-
-        try {
             $target = $destination.'/files/'.$path;
             $this->makeDirectory(dirname($target));
             $cipher->decryptFile($encrypted, $target);
-
-            return [true, null, false, $label];
-        } catch (Throwable $e) {
-            return [false, $e->getMessage(), false, $label];
         } finally {
             if (is_file($encrypted)) {
                 unlink($encrypted);
@@ -409,18 +465,49 @@ class BackupRestoreCommand extends Command
     }
 
     /**
-     * 今のキー以外の置き場所(files/ の下で、今のキーのフォルダ以外)にある添付の数。
+     * 今のキーの置き場所にある添付を、元の相対パスの集合にする（無効なキーは除く）。
+     *
+     * @param  list<string>  $keys
+     * @return array<string, true>
      */
-    private function countOtherLocationFiles(BackupStorage $storage, int $currentKeyCount): int
+    private function currentPathSet(array $keys): array
     {
-        $all = count($storage->list(FileSyncPlanner::PREFIX));
+        $paths = [];
+        foreach ($keys as $key) {
+            $path = FileSyncPlanner::pathFor($key);
+            if ($path !== null) {
+                $paths[$path] = true;
+            }
+        }
 
-        return max(0, $all - $currentKeyCount);
+        return $paths;
     }
 
     /**
-     * 一時ファイルを名前で 1 つずつ消してから .work を消す(glob は使わない。取り出し先の名前に
-     * [ * ? が入っていても壊れない)。rmdir の警告(すでに空でない等)は、それより前に表示した
+     * 今のキーの置き場所には無く、ほかの置き場所（files/ の下で今のキーのフォルダ以外）だけに
+     * ある添付の数（元の相対パスで重複を除く）。
+     *
+     * @param  array<string, true>  $currentPathSet
+     */
+    private function countOtherLocationOnlyFiles(BackupStorage $storage, string $currentPrefix, array $currentPathSet): int
+    {
+        $otherPaths = [];
+        foreach (array_keys($storage->list(FileSyncPlanner::PREFIX)) as $key) {
+            if (str_starts_with($key, $currentPrefix)) {
+                continue;
+            }
+            $path = FileSyncPlanner::pathFor($key);
+            if ($path !== null && ! isset($currentPathSet[$path])) {
+                $otherPaths[$path] = true;
+            }
+        }
+
+        return count($otherPaths);
+    }
+
+    /**
+     * 一時ファイルを名前で 1 つずつ消してから .work を消す（glob は使わない。取り出し先の名前に
+     * [ * ? が入っていても壊れない）。rmdir の警告（すでに空でない等）は、それより前に表示した
      * 本当の失敗理由を隠さないよう @ で抑える。
      */
     private function cleanupWorkDirectory(string $work): void
