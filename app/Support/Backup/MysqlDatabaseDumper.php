@@ -2,13 +2,14 @@
 
 namespace App\Support\Backup;
 
+use Illuminate\Process\Exceptions\ProcessTimedOutException;
 use Illuminate\Support\Facades\Process;
 use RuntimeException;
 
 /**
  * mysqldump でデータベース全体を書き出す。
  *
- * パスワードはコマンドライン（ps で他人に見える）ではなく、0600 の一時設定ファイル（--defaults-extra-file）で渡し、
+ * パスワードはコマンドライン（ps で他人に見える）ではなく、0600 の一時設定ファイル（--defaults-file）で渡し、
  * 終わったら必ず消す。本番のテーブルは SQL ファイルで作られているため、定義も含めて丸ごと書き出す。
  */
 final class MysqlDatabaseDumper implements DatabaseDumper
@@ -46,14 +47,29 @@ final class MysqlDatabaseDumper implements DatabaseDumper
         $optionsFile = $this->writeOptionsFile();
 
         try {
-            $result = Process::timeout($this->timeout)->run($this->command($optionsFile, $path));
+            $previousUmask = umask(0077); // mysqldump が作るダンプを 0600 で作る
+            try {
+                $result = Process::timeout($this->timeout)->run($this->command($optionsFile, $path));
+            } catch (ProcessTimedOutException $e) {
+                throw new RuntimeException('mysqldump が時間内に終わりませんでした（'.$this->timeout.' 秒）。', previous: $e);
+            } finally {
+                umask($previousUmask);
+            }
 
             if ($result->failed()) {
-                throw new RuntimeException('mysqldump が失敗しました: '.trim($result->errorOutput()));
+                $stderr = trim($result->errorOutput());
+                $detail = $stderr !== '' ? ': '.$stderr : '';
+                throw new RuntimeException('mysqldump が失敗しました（終了コード '.$result->exitCode().'）'.$detail);
             }
             if (! is_file($path) || filesize($path) === 0) {
                 throw new RuntimeException('ダンプファイルが作られませんでした。');
             }
+        } catch (RuntimeException $e) {
+            if (is_file($path)) {
+                unlink($path);
+            }
+
+            throw $e;
         } finally {
             if (is_file($optionsFile)) {
                 unlink($optionsFile);
@@ -70,7 +86,7 @@ final class MysqlDatabaseDumper implements DatabaseDumper
 
         return [
             $this->binary,
-            '--defaults-extra-file='.$optionsFile, // mysqldump の決まりで、最初のオプションに置く
+            '--defaults-file='.$optionsFile, // mysqldump の決まりで、最初のオプションに置く
             '--single-transaction',
             '--quick',
             '--routines',
@@ -110,21 +126,28 @@ final class MysqlDatabaseDumper implements DatabaseDumper
         }
 
         $file = $this->workDir.'/mysqldump-'.bin2hex(random_bytes(8)).'.cnf';
-        $previousUmask = umask(0077); // 作った瞬間から本人しか読めないようにする
+        $previousUmask = umask(0077); // 作った瞬間から本人しか読めないようにする(x モードなので作成時のパーミッションがそのまま 0600 になる)
+
         try {
-            $written = file_put_contents($file, $this->optionsFileContents(), LOCK_EX);
+            $handle = @fopen($file, 'xb');
+
+            if ($handle === false || fwrite($handle, $this->optionsFileContents()) === false || ! fclose($handle)) {
+                throw new RuntimeException('一時の設定ファイルを書けません。');
+            }
+        } catch (RuntimeException $e) {
+            if (is_file($file)) {
+                unlink($file);
+            }
+
+            throw $e;
         } finally {
             umask($previousUmask);
-        }
-
-        if ($written === false) {
-            throw new RuntimeException('一時の設定ファイルを書けません。');
         }
 
         return $file;
     }
 
-    private function quote(string $value): string
+    private function quote(#[\SensitiveParameter] string $value): string
     {
         if (str_contains($value, '"') || str_contains($value, "\n") || str_contains($value, "\r")) {
             throw new RuntimeException('データベースの接続設定に、設定ファイルで扱えない文字（" や改行）が含まれています。');
