@@ -345,53 +345,80 @@ class UnitLabelDisplayTest extends TestCase
 
     // ============================================================
     // 走査（再発防止の補助）
-    // ⚠ 守るのは既知の書き方だけで、変数名が違えば素通りする。本体は上の画面ごとの挙動テスト。
+    // ⚠ 本体は上の画面ごとの挙動テスト。走査は同じ形の書き方が戻ってくるのを止める補助。
     // ============================================================
 
     /**
-     * 表示名の前に階を連結する書き方（表示名は既に階を含む）。
+     * 表示名（既に階を含む）の前に階を連結する書き方。**右辺の変数名に依存しない**（Top trap #13 ②）。
      * 修正前は app/ と resources/views/ に 13 か所あった（ビュー 8・Inquiry・問合せ／投資の選択肢・修繕の 2 か所）。
+     *   ① `->floor` の直後の連結（`$u->floor . $x` ／ `($u->floor ?? '') . $x` ／ `$u?->floor . $x`）。
+     *      階ラベルの `->floor . 'F'` は正当なので除く（賃貸マンションの物件詳細・周辺ビル調査の階表記）
+     *   ② Blade で 2 つ並べる `{{ $u->floor }}{{ … }}`
+     *   ③ 文字列展開で 2 つ並べる `"{$u->floor}{$…}"`
+     * ⚠ 2026-09-12 までの版は右辺を `$dn` / `$displayName` / `…display_name` に決め打ちしていて、
+     *   `$u->floor . $name`・`?->`・Blade の並べ書き・文字列展開を素通りさせた（レビューで実測）。
+     *   「数字で始まらなければ」の判定（`preg_match('/^\d/'`）も見ていたが、表示名と無関係な正当なコードを落とすので外した。
      */
-    private const FLOOR_PREFIX_PATTERN = '/floor\s*(?:\?\?\s*\'\'\s*\)|\))?\s*\.\s*\$(?:dn\b|displayName\b|[\w>\-]*display_name)/';
-
-    /** 「表示名が数字で始まらなければ」の判定（上の前置きのためだけにあった。修正前は 11 か所） */
-    private const DIGIT_GUARD = "preg_match('/^\\d/'";
+    private const FLOOR_PREFIX_PATTERNS = [
+        '/->floor\s*(?:\?\?[^)]*\)\s*)?\.(?!\s*[\'"]F[\'"])/',
+        '/\{\{\s*\$[\w>?\-]*->floor\s*\}\}\s*\{\{/',
+        '/\{\$[\w>?\-]*->floor\}\s*\{\$/',
+    ];
 
     public function test_no_code_prefixes_the_floor_to_a_display_name(): void
     {
-        // 空振り防止 ①: パターンが修正前の 3 つの形に当たること
+        // 空振り防止 ①: 既知の悪い形（修正前の 3 形 ＋ 変数名・書き方を変えた形）に当たり、正当な階ラベルには当たらない
         $knownBad = [
             '$unitLabel = ($contract->unit->floor !== null && !preg_match(\'/^\d/\', $dn)) ? $contract->unit->floor . $dn : $dn;',
             '? $u->floor . $displayName',
             "'label'       => (\$u->floor ?? '') . \$u->display_name,",
+            '$label = $u->floor . $name;',
+            '$label = $unit?->floor . $unit?->display_name;',
+            '{{ $unit->floor }}{{ $unit->display_name }}',
+            '"{$u->floor}{$u->display_name}"',
+        ];
+        $knownGood = [
+            "{{ \$room->floor ? \$room->floor . 'F' : '—' }}",
+            "return \$this->floor < 0 ? 'B' . abs(\$this->floor) . 'F' : \$this->floor . 'F';",
+            'return $floor . $roomNumber;',
         ];
         foreach ($knownBad as $bad) {
-            $this->assertSame(1, preg_match(self::FLOOR_PREFIX_PATTERN, $bad), "パターンが既知の書き方に当たらない: {$bad}");
+            $this->assertTrue($this->prefixesFloor($bad), "走査が既知の悪い書き方に当たらない: {$bad}");
         }
-        $this->assertStringContainsString(self::DIGIT_GUARD, $knownBad[0]);
+        foreach ($knownGood as $good) {
+            $this->assertFalse($this->prefixesFloor($good), "走査が正当な階ラベルに当たる: {$good}");
+        }
 
         $files = collect(File::allFiles(app_path()))
             ->merge(File::allFiles(resource_path('views')))
             ->filter(fn ($file) => str_ends_with($file->getFilename(), '.php'));
 
-        // 空振り防止 ②: 走査したファイル数の下限（2026-09-11 時点で 472）
+        // 空振り防止 ②: 走査したファイル数の下限（2026-09-13 時点で 472）
         $this->assertGreaterThan(400, $files->count(), '走査の対象が少なすぎる（パスの指定が壊れていないか）');
 
         $hits = [];
         foreach ($files as $file) {
             $source = file_get_contents($file->getPathname());
             $where = str_replace(base_path() . '/', '', $file->getPathname());
-
-            if (preg_match_all(self::FLOOR_PREFIX_PATTERN, $source, $matches, PREG_OFFSET_CAPTURE)) {
+            foreach (self::FLOOR_PREFIX_PATTERNS as $pattern) {
+                preg_match_all($pattern, $source, $matches, PREG_OFFSET_CAPTURE);
                 foreach ($matches[0] as [$text, $offset]) {
-                    $hits[] = $where . ':' . (substr_count($source, "\n", 0, $offset) + 1) . '  ' . $text;
+                    $hits[] = $where . ':' . (substr_count($source, "\n", 0, $offset) + 1) . '  ' . trim(strtok(substr($source, max(0, $offset - 30), 70), "\n"));
                 }
-            }
-            if (str_contains($source, self::DIGIT_GUARD)) {
-                $hits[] = $where . '  ' . self::DIGIT_GUARD;
             }
         }
 
         $this->assertSame([], $hits, "表示名の前に階を付ける書き方が残っている（表示名は既に階を含む。Bug #57）:\n" . implode("\n", $hits));
+    }
+
+    private function prefixesFloor(string $code): bool
+    {
+        foreach (self::FLOOR_PREFIX_PATTERNS as $pattern) {
+            if (preg_match($pattern, $code) === 1) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
