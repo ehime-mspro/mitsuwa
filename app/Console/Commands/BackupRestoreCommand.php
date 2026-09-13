@@ -229,7 +229,7 @@ class BackupRestoreCommand extends Command
 
             $files = $withoutFiles ? null : $this->restoreFiles($storage, $cipher, $destination, $work);
         } catch (Throwable $e) {
-            $this->error('取り出しに失敗しました: '.$e->getMessage());
+            $this->error('取り出しに失敗しました: '.$this->escapeForDisplay($e->getMessage()));
 
             return $this->giveUp($work, $destination);
         }

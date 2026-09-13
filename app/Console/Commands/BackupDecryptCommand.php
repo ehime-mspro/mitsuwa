@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Console\Commands\Concerns\ResolvesBackupCipher;
 use App\Support\Backup\BackupCipher;
 use Illuminate\Console\Command;
+use Symfony\Component\Console\Formatter\OutputFormatter;
 use Throwable;
 
 class BackupDecryptCommand extends Command
@@ -24,12 +25,12 @@ class BackupDecryptCommand extends Command
         $destination = (string) $this->argument('destination');
 
         if (! is_file($source)) {
-            $this->error('ファイルが見つかりません: '.$source);
+            $this->error('ファイルが見つかりません: '.OutputFormatter::escape($source));
 
             return self::FAILURE;
         }
         if (file_exists($destination)) {
-            $this->error('保存先にすでにファイルかフォルダがあります（上書きしません）: '.$destination);
+            $this->error('保存先にすでにファイルかフォルダがあります（上書きしません）: '.OutputFormatter::escape($destination));
 
             return self::FAILURE;
         }
@@ -42,12 +43,12 @@ class BackupDecryptCommand extends Command
         try {
             (new BackupCipher($key))->decryptFile($source, $destination);
         } catch (Throwable $e) {
-            $this->error($e->getMessage());
+            $this->error(OutputFormatter::escape($e->getMessage()));
 
             return self::FAILURE;
         }
 
-        $this->info('復号しました: '.$destination);
+        $this->info('復号しました: '.OutputFormatter::escape($destination));
 
         return self::SUCCESS;
     }

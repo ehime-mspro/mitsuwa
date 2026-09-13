@@ -7,6 +7,7 @@ use App\Support\Backup\BackupRunner;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
+use Symfony\Component\Console\Formatter\OutputFormatter;
 use Throwable;
 
 class BackupCommand extends Command
@@ -32,12 +33,12 @@ class BackupCommand extends Command
             $summary = $this->laravel->make(BackupRunner::class)->run($now);
         } catch (Throwable $e) {
             // 画面では本題のエラーを先に見せる
-            $this->error('バックアップに失敗しました: '.$e->getMessage());
+            $this->error('バックアップに失敗しました: '.OutputFormatter::escape($e->getMessage()));
 
             // 通知は Log::error より先に送る（ログの書き込みが壊れていても知らせは出ているようにする）。
             // 日時は開始時刻の $now ではなく、失敗を捕まえたこの時刻を使う
             foreach ($notifier->send($e->getMessage(), CarbonImmutable::now('Asia/Tokyo')) as $warning) {
-                $this->warn($warning);
+                $this->warn(OutputFormatter::escape($warning));
             }
             $this->logQuietly(fn () => Log::error('バックアップに失敗しました', ['exception' => $e]));
 
@@ -46,7 +47,7 @@ class BackupCommand extends Command
 
         // BACKUP_NOTIFY_TO の設定ミスは、手動実行のこの画面でも気づけるようにする
         foreach ($notifier->problems() as $problem) {
-            $this->warn($problem);
+            $this->warn(OutputFormatter::escape($problem));
             $this->logQuietly(fn () => Log::warning($problem));
         }
 

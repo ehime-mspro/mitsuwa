@@ -92,6 +92,27 @@ class BackupCommandTest extends TestCase
             && str_contains($mail->reason, 'Access denied'));
     }
 
+    public function test_failure_reason_containing_a_console_format_like_tag_does_not_crash_and_is_shown_verbatim(): void
+    {
+        Mail::fake();
+        config(['backup.notify_to' => 'admin@example.com']);
+        $this->app->instance(DatabaseDumper::class, new class implements DatabaseDumper
+        {
+            public function dumpTo(string $path): void
+            {
+                throw new RuntimeException('mysqldump が失敗しました: <fg=nope>Access denied</>');
+            }
+        });
+
+        $this->artisan('ops:backup')
+            ->expectsOutputToContain('<fg=nope>Access denied</>')
+            ->assertExitCode(BackupCommand::HANDLED_FAILURE);
+
+        Mail::assertSent(BackupFailedMail::class, 1);
+        Mail::assertSent(BackupFailedMail::class, fn (BackupFailedMail $mail) => $mail->hasTo('admin@example.com')
+            && str_contains($mail->reason, '<fg=nope>Access denied</>'));
+    }
+
     public function test_missing_encryption_key_is_reported_as_a_failure(): void
     {
         Mail::fake();
