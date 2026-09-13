@@ -961,6 +961,8 @@ class ScheduleBoardTest extends ScheduleTestCase
      *   Alpine が `x-cloak` を外して右端が伸びても**上方向へは丸め直さない**。
      *   実測（1440px・住宅ボード）: 実行時の右端 146 → 146 に丸め ／ DOMContentLoaded 時点の右端 366。
      *   本番でも `scrollLeft` 146 ／ 右端 366 で、当月が右にはみ出して見えなかった。
+     *   ⚠ 2026-09-13 に PC 展開サイドバーの `x-cloak` を外した（LayoutSidebarCloakTest）ので、今はパース中も幅は同じ。
+     *   それでも DOMContentLoaded まで待つのは安全側（起動後に幅が変わる要因は他にもあり、スクロール位置の丸めは戻らない）。
      *
      * ⚠ **`requestAnimationFrame` では直らない。** 非表示のタブでは止まり（実測: 読み込みから 31 秒後に
      *   初めて発火）、defer の Alpine より後に走る保証も無い。DOMContentLoaded は defer / module の
@@ -991,7 +993,8 @@ class ScheduleBoardTest extends ScheduleTestCase
             1,
             preg_match('/(?:document|window)\.addEventListener\(\s*[\'"]DOMContentLoaded[\'"]\s*,\s*function\s*\(\s*\)\s*\{/', $script, $listener, PREG_OFFSET_CAPTURE),
             '初期スクロールが DOMContentLoaded を待っていない'
-                . '（パース中に走ると x-cloak で隠れたサイドバーの分だけ右端が手前にあり、220px 手前で止まる）'
+                . '（パース中に走ると、Alpine の起動後に幅が変わったとき右端が手前で丸められたまま戻らない。'
+                . '2026-09-11 はサイドバーの x-cloak で 220px 手前に止まった）'
         );
         $body = $this->braceBody($script, $listener[0][1] + strlen($listener[0][0]) - 1);
 

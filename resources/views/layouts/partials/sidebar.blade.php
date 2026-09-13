@@ -25,9 +25,13 @@
 @endphp
 
 {{-- ========== PC用: 展開サイドバー ========== --}}
+{{-- ⚠ x-cloak を付けない（2026-09-13 に外した）。sidebarExpanded は body の x-data で true 固定（永続化なし）なので
+     起動後は必ず表示される。x-cloak があると Alpine の起動前だけ display: none になり、パース中に走るスクリプトが
+     表示領域を 220px 広く測っていた（工程表ボードの初期スクロール・一覧の横スクロールのヒント。docs/RULES.md Bug #56）。
+     起動前に隠れている必要がある折りたたみ版・モバイルのドロワー・グループの中身（sidebar-group）は x-cloak を残す。
+     回帰テスト tests/Feature/LayoutSidebarCloakTest.php --}}
 <aside
     x-show="sidebarExpanded"
-    x-cloak
     class="hidden lg:flex flex-col w-[220px] min-w-[220px] bg-white border-r border-gray-200 overflow-y-auto pt-4 pb-6 transition-all duration-200"
 >
     {{-- 最初のグループ: ダッシュボード + 閉じるボタン --}}

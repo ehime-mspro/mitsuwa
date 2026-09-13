@@ -167,6 +167,8 @@
             スクローラーが 220px 広い ＝ **右端が 220px 手前にある**。ブラウザは目標をそこで丸め、
             Alpine が x-cloak を外して右端が伸びても**上方向へは丸め直さない**
             （実測 1440px: 実行時の右端 146 → 146 に丸め ／ DOMContentLoaded 時点の右端 366。本番も 146 / 366）。
+            ⚠ 2026-09-13 に展開サイドバーの x-cloak を外したので、今はパース中も幅は同じ。それでも DOMContentLoaded
+               まで待つ（Alpine の起動後に幅が変わる要因は他にもあり、スクロール位置の丸めは戻らない）。
             DOMContentLoaded は defer / module のスクリプトと、そのあとのマイクロタスク（x-cloak の除去）が
             済んでから発火する（resources/js/app.js のスクロールヒントも同じ理由で DOMContentLoaded で測る）。
             ⚠ requestAnimationFrame では直らない —— 非表示のタブでは止まり（実測: 読み込みから 31 秒後に
