@@ -137,7 +137,7 @@
                                     <td class="px-4 py-2.5 border-b border-gray-200">
                                         <a href="{{ route('tenant.properties.show', $contract->property) }}" class="text-sm text-emerald-600 hover:underline">{{ $contract->property->name }}</a>
                                     </td>
-                                    <td class="px-4 py-2.5 border-b border-gray-200 text-sm text-gray-700">{{ $contract->unit->display_name ?? '—' }}</td>
+                                    <td class="px-4 py-2.5 border-b border-gray-200 text-sm text-gray-700">{{ $contract->unit->display_label ?? '—' }}</td>
                                     <td class="px-4 py-2.5 border-b border-gray-200 text-sm text-gray-700">{{ $contract->store_name ?? '—' }}</td>
                                     <td class="px-4 py-2.5 border-b border-gray-200 text-sm text-gray-700">{{ $contract->contract_date->format('Y/m/d') }}</td>
                                     <td class="px-4 py-2.5 border-b border-gray-200 text-sm text-right font-semibold text-gray-900">{{ number_format($contract->monthly_total) }}円</td>
@@ -172,7 +172,7 @@
                                         <a href="{{ route('tenant.contracts.show', $contract) }}" class="text-sm font-semibold text-emerald-600 hover:underline">{{ $contract->contract_number }}</a>
                                     </td>
                                     <td class="px-4 py-2.5 border-b border-gray-200 text-sm text-gray-700">{{ $contract->property->name }}</td>
-                                    <td class="px-4 py-2.5 border-b border-gray-200 text-sm text-gray-700">{{ $contract->unit->display_name ?? '—' }}</td>
+                                    <td class="px-4 py-2.5 border-b border-gray-200 text-sm text-gray-700">{{ $contract->unit->display_label ?? '—' }}</td>
                                     <td class="px-4 py-2.5 border-b border-gray-200 text-sm text-gray-700">{{ $contract->contract_date->format('Y/m/d') }}</td>
                                     <td class="px-4 py-2.5 border-b border-gray-200 text-sm text-gray-700">{{ $contract->contract_end_date ? $contract->contract_end_date->format('Y/m/d') : '—' }}</td>
                                 </tr>

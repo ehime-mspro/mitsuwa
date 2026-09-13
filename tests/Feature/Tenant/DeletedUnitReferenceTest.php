@@ -5,6 +5,8 @@ namespace Tests\Feature\Tenant;
 use App\Enums\InquiryStatus;
 use App\Enums\RepairStatus;
 use App\Enums\UserRole;
+use App\Models\Contract;
+use App\Models\Customer;
 use App\Models\Inquiry;
 use App\Models\Investment;
 use App\Models\Property;
@@ -710,5 +712,107 @@ class DeletedUnitReferenceTest extends TestCase
             ->assertSessionHasErrors(['unit_ids.0' => '選択された区画は存在しません。']);
 
         $this->assertSame(0, Inquiry::count());
+    }
+
+    // ============================================================
+    // 契約（Contract::unit は元から削除済みを読む。印だけ付ける）
+    // 契約中の契約がある区画は削除できないので、削除済みの区画の契約は必ず解約済み。
+    // 編集・賃料改定・解約の画面は解約済みの契約を詳細へ戻すので、開ける画面だけを見る。
+    // ============================================================
+
+    private function terminatedContractOn(Unit $unit): Contract
+    {
+        $customer = Customer::create(['code' => 'CU-DEL', 'name' => '削除テスト商事', 'customer_type' => 'corporation']);
+
+        return Contract::create([
+            'contract_number' => 'C-DEL-001',
+            'department' => 'tenant',
+            'property_id' => $unit->property_id,
+            'unit_id' => $unit->id,
+            'customer_id' => $customer->id,
+            'status' => 'terminated',
+            'contract_date' => '2025-04-01',
+            'rent_start_date' => '2025-04-01',
+            'contract_end_date' => '2026-06-30',
+            'rent' => 100000,
+            'common_fee' => 10000,
+            'garbage_fee' => 2000,
+            'pest_control_fee' => 1000,
+        ]);
+    }
+
+    public function test_contract_list_shows_a_deleted_unit_with_the_marker(): void
+    {
+        $this->terminatedContractOn($this->deleted);
+        $this->deleteUnit();
+
+        $this->actingAs($this->executive())
+            ->get(route('tenant.contracts.index', ['status' => 'all']))
+            ->assertOk()
+            ->assertSee('テストビル / B1A（削除済み）');
+    }
+
+    public function test_contract_detail_shows_a_deleted_unit_with_the_marker(): void
+    {
+        $contract = $this->terminatedContractOn($this->deleted);
+        $this->deleteUnit();
+
+        $html = $this->actingAs($this->executive())
+            ->get(route('tenant.contracts.show', $contract))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertMatchesRegularExpression(
+            '#区画</div>\s*<div class="text-sm font-semibold text-gray-900">\s*B1A（削除済み）\s*<span class="font-normal text-gray-600">（12\.50坪）</span>#u',
+            $html,
+            '契約詳細の区画に削除済みの印が無い'
+        );
+    }
+
+    public function test_contract_delete_confirmation_shows_a_deleted_unit_with_the_marker(): void
+    {
+        $contract = $this->terminatedContractOn($this->deleted);
+        $this->deleteUnit();
+
+        $this->actingAs($this->executive())
+            ->get(route('tenant.contracts.delete', $contract))
+            ->assertOk()
+            ->assertSee('テストビル / B1A（削除済み）');
+    }
+
+    public function test_property_detail_terminated_tab_shows_a_deleted_unit(): void
+    {
+        $this->terminatedContractOn($this->deleted);
+        $this->deleteUnit();
+
+        $html = $this->actingAs($this->executive())
+            ->get(route('tenant.properties.show', $this->building))
+            ->assertOk()
+            ->getContent();
+
+        // 解約タブの行: 契約番号のリンク → 解約日のセル → 区画のセル
+        $this->assertMatchesRegularExpression(
+            '#C-DEL-001</a>\s*</td>\s*<td[^>]*>[^<]*</td>\s*<td[^>]*>\s*B1A（削除済み）\s*</td>#u',
+            $html,
+            '物件詳細の解約タブに削除済みの印が無い'
+        );
+    }
+
+    public function test_customer_detail_shows_a_deleted_unit_with_the_marker(): void
+    {
+        $contract = $this->terminatedContractOn($this->deleted);
+        $this->deleteUnit();
+
+        $html = $this->actingAs($this->executive())
+            ->get(route('tenant.customers.show', $contract->customer_id))
+            ->assertOk()
+            ->getContent();
+
+        // 解約済みの表の行: 契約番号のリンク → 物件のセル → 区画のセル
+        $this->assertMatchesRegularExpression(
+            '#C-DEL-001</a>\s*</td>\s*<td[^>]*>テストビル</td>\s*<td[^>]*>B1A（削除済み）</td>#u',
+            $html,
+            '顧客詳細の解約済みの表に削除済みの印が無い'
+        );
     }
 }

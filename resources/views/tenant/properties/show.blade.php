@@ -289,7 +289,7 @@
                                             <td class="px-4 py-2.5 border-b border-gray-200 whitespace-nowrap text-gray-900">{{ $contract->contract_date->format('Y/m/d') }}</td>
                                             <td class="px-4 py-2.5 border-b border-gray-200 whitespace-nowrap text-gray-900">
                                                 @php
-                                                    $unitLabel = $contract->unit->display_name;
+                                                    $unitLabel = $contract->unit->display_label;
                                                 @endphp
                                                 {{ $unitLabel }}
                                             </td>
@@ -334,7 +334,7 @@
                                             <td class="px-4 py-2.5 border-b border-gray-200 whitespace-nowrap text-gray-900">{{ $contract->contract_end_date?->format('Y/m/d') ?? '—' }}</td>
                                             <td class="px-4 py-2.5 border-b border-gray-200 whitespace-nowrap text-gray-900">
                                                 @php
-                                                    $unitLabel = $contract->unit->display_name;
+                                                    $unitLabel = $contract->unit->display_label;
                                                 @endphp
                                                 {{ $unitLabel }}
                                             </td>

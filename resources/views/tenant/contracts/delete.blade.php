@@ -32,7 +32,7 @@
             <strong>この契約を削除します。削除すると以下が実行されます:</strong><br>
             ・契約は論理削除され、一覧・詳細から見えなくなります（データはDBに残ります。復元が必要な場合は管理者に連絡してください）。
             @if($contract->isActive())
-                <br>・契約中のため、区画「{{ $contract->unit?->display_name ?? '—' }}」は<strong>空室に戻ります</strong>。
+                <br>・契約中のため、区画「{{ $contract->unit?->display_label ?? '—' }}」は<strong>空室に戻ります</strong>。
             @endif
             <br>・紐づく問合せは<strong>未成約（フォロー）に差し戻され</strong>ます。
             <br>・紐づく投資案件は区画に残り、この契約との紐付けのみ解除されます。
@@ -43,7 +43,7 @@
     @php
         $monthlyTotal = $contract->rent + ($contract->common_fee ?? 0) + ($contract->garbage_fee ?? 0) + ($contract->pest_control_fee ?? 0);
         $unit = $contract->unit;
-        $unitLabel = $unit?->display_name ?? '';
+        $unitLabel = $unit?->display_label ?? '';
     @endphp
     <div class="bg-white border border-gray-200 rounded-lg px-4 py-4 lg:px-5 lg:py-4 mb-4">
         <div class="text-sm font-bold text-gray-800 pb-2 mb-3 border-b border-gray-200">対象契約</div>

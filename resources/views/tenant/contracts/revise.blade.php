@@ -9,7 +9,7 @@
     @if(($returnTo ?? 'contract') === 'unit')
         <a href="{{ route('tenant.properties.show', $contract->property) }}" class="hover:text-emerald-600 transition-colors">{{ $contract->property->name }}</a>
         <span class="mx-1.5">›</span>
-        <a href="{{ route('tenant.units.show', $contract->unit) }}" class="hover:text-emerald-600 transition-colors">区画: {{ $contract->unit->display_name }}</a>
+        <a href="{{ route('tenant.units.show', $contract->unit) }}" class="hover:text-emerald-600 transition-colors">区画: {{ $contract->unit->display_label }}</a>
     @else
         <a href="{{ route('tenant.contracts.index') }}" class="hover:text-emerald-600 transition-colors">契約一覧</a>
         <span class="mx-1.5">›</span>
@@ -66,7 +66,7 @@
                 <div class="text-xs text-gray-500 mb-0.5">物件 / 区画</div>
                 <div class="text-sm font-medium text-gray-900">
                     @php
-                        $unitLabel = $contract->unit->display_name;
+                        $unitLabel = $contract->unit->display_label;
                     @endphp
                     {{ $contract->property->name }} / {{ $unitLabel }}
                 </div>
