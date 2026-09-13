@@ -7,6 +7,7 @@ use Carbon\CarbonImmutable;
 use DateTimeZone;
 use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Support\Facades\Artisan;
 use Tests\TestCase;
 
 class ScheduleTest extends TestCase
@@ -134,26 +135,73 @@ class ScheduleTest extends TestCase
         $event = $this->event('ops:backup');
         $event->output = tempnam(sys_get_temp_dir(), 'schedule-test-backup-output-');
 
-        // [コマンド, 期待する終了コード, 増えるメールの数]
-        $cases = [
-            'success' => ["sh -c 'exit 0'", 0, 0],
-            'handled failure' => ["sh -c 'exit 3'", 3, 0],
-            'uncaught failure' => ["sh -c 'exit 1'", 1, 1],
-            'killed' => ["sh -c 'kill -9 \$\$'", 137, 1],
-        ];
+        try {
+            // [コマンド, 期待する終了コード, 増えるメールの数]
+            $cases = [
+                'success' => ["sh -c 'exit 0'", 0, 0],
+                'handled failure' => ["sh -c 'exit 3'", 3, 0],
+                'uncaught failure' => ["sh -c 'exit 1'", 1, 1],
+            ];
 
-        $expectedMails = 0;
-        foreach ($cases as $label => [$command, $expectedExitCode, $mailDelta]) {
-            $event->command = $command;
-            $event->run($this->app);
+            $expectedMails = 0;
+            foreach ($cases as $label => [$command, $expectedExitCode, $mailDelta]) {
+                $event->command = $command;
+                $event->run($this->app);
 
-            $expectedMails += $mailDelta;
-            $this->assertSame($expectedExitCode, $event->exitCode, $label);
-            $this->assertSame($expectedMails, count(app('mailer')->getSymfonyTransport()->messages()), $label);
-            $this->assertFalse($event->mutex->exists($event), $label.': ロックが外れていること');
+                $expectedMails += $mailDelta;
+                $this->assertSame($expectedExitCode, $event->exitCode, $label);
+                $this->assertSame($expectedMails, count(app('mailer')->getSymfonyTransport()->messages()), $label);
+                $this->assertFalse($event->mutex->exists($event), $label.': ロックが外れていること');
+            }
+        } finally {
+            @unlink($event->output);
         }
+    }
 
-        @unlink($event->output);
+    public function test_a_backup_stopped_by_a_signal_is_reported_through_schedule_run_without_double_notices(): void
+    {
+        // 本番（FreeBSD）の sh は予定のコマンドを直接実行するため、kill されると終了コードではなく例外になり、onFailure まで進まない。
+        // 手元の macOS の sh（bash）はリダイレクトがあると間に残って 137 を返すので、exec を付けて本番の形を再現する。
+        // schedule:run を通して、ScheduledTaskFailed の listener と onFailure とコマンド自身の知らせが二重にならないことも確かめる
+        config([
+            'mail.default' => 'array',
+            'backup.notify_to' => 'admin@example.com',
+            'logging.default' => 'null',
+        ]);
+        $this->travelTo(CarbonImmutable::parse('2026-09-14 03:00:00', 'Asia/Tokyo'));
+
+        $backup = $this->event('ops:backup');
+        $backup->output = tempnam(sys_get_temp_dir(), 'schedule-test-backup-output-');
+        $this->event('queue:work')->command = "sh -c 'exit 0'";
+
+        try {
+            // [コマンド, 増えるメールの数, 本文に含まれる文言（正規表現）]
+            $cases = [
+                'success' => ["sh -c 'exit 0'", 0, null],
+                'uncaught failure' => ["sh -c 'exit 1'", 1, '/終了コード 1）/u'],
+                // 前の回の終了コード（1）が残っていても、終了コードなしの停止として知らせること
+                'killed, the process itself' => ["exec sh -c 'kill -9 \$\$'", 1, '/シグナル 9 で強制終了/u'],
+                // sh が間に残るか（bash: 137）直接実行するか（dash・FreeBSD: シグナル）は sh しだい。どちらでも 1 通だけ
+                'killed, the shell may stay in between' => ["sh -c 'kill -9 \$\$'", 1, '/終了コード 137|シグナル 9 で強制終了/u'],
+                'handled failure' => ["sh -c 'exit 3'", 0, null],
+            ];
+
+            $expectedMails = 0;
+            foreach ($cases as $label => [$command, $mailDelta, $expectedText]) {
+                $backup->command = $command;
+                $this->assertSame(0, Artisan::call('schedule:run'), $label);
+
+                $expectedMails += $mailDelta;
+                $messages = app('mailer')->getSymfonyTransport()->messages();
+                $this->assertCount($expectedMails, $messages, $label);
+                if ($expectedText !== null) {
+                    $this->assertMatchesRegularExpression($expectedText, (string) $messages->last()->getOriginalMessage()->getTextBody(), $label);
+                }
+                $this->assertFalse($backup->mutex->exists($backup), $label.': ロックが外れていること');
+            }
+        } finally {
+            @unlink($backup->output);
+        }
     }
 
     private function event(string $needle): Event

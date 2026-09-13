@@ -3,9 +3,12 @@
 use App\Console\Commands\BackupCommand;
 use App\Support\Backup\BackupFailureNotifier;
 use Carbon\CarbonImmutable;
+use Illuminate\Console\Events\ScheduledTaskFailed;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Schedule;
+use Symfony\Component\Process\Exception\ProcessSignaledException;
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
@@ -39,15 +42,41 @@ $backup = Schedule::command('ops:backup')
     ->appendOutputTo(storage_path('logs/backup-command.log'))
     ->withoutOverlapping(180);
 
-// コマンド自身が知らせられなかった終わり方（捕まえきれなかった例外・メモリ不足・強制終了など）だけを、スケジューラー側で知らせる。
+// コマンド自身が知らせられなかった終わり方を、スケジューラー側で知らせる。
+$reportBackupStopped = function (string $detail): void {
+    app(BackupFailureNotifier::class)->send(
+        '夜間バックアップの処理が途中で止まりました（'.$detail.'）。サーバーのメモリ不足・強制終了・予期しないエラーの可能性があります。',
+        CarbonImmutable::now('Asia/Tokyo'),
+    );
+};
+
+// 実行のたびに前の回の終了コードを消しておく（下の listener が「今回は終了コードなしで止まった」と見分けるため。
+// 本番は schedule:run ごとに新しいプロセスなので最初から空だが、同じプロセスで何度も動かしたときも正しく働くように）。
+$backup->before(function () use ($backup) {
+    $backup->exitCode = null;
+});
+
+// 終了コードがある終わり方（捕まえきれなかった例外・メモリ不足など）。
 // 終了コード BackupCommand::HANDLED_FAILURE は、コマンドが自分で失敗を扱って知らせを送った印なので、二重には送らない。
-$backup->onFailure(function () use ($backup) {
+$backup->onFailure(function () use ($backup, $reportBackupStopped) {
     if ($backup->exitCode !== BackupCommand::HANDLED_FAILURE) {
-        app(BackupFailureNotifier::class)->send(
-            '夜間バックアップの処理が途中で止まりました（終了コード '.$backup->exitCode.'）。サーバーのメモリ不足・強制終了・予期しないエラーの可能性があります。',
-            CarbonImmutable::now('Asia/Tokyo'),
-        );
+        $reportBackupStopped('終了コード '.$backup->exitCode);
     }
+});
+
+// 終了コードが得られないまま止まった終わり方（kill などのシグナルで PHP が止まった・起動できなかった）。
+// 本番（FreeBSD）の sh は予定のコマンドを sh を挟まずに直接実行するため、kill されると終了コードではなく
+// Symfony の ProcessSignaledException になり、Event::run() が finish()（onFailure）まで進まない。
+// schedule:run はこの例外で ScheduledTaskFailed を出して laravel.log に残すだけなので、知らせはここで送る。
+// 終了コードがある失敗は上の onFailure（終了コード 3 ならコマンド自身）が知らせているので、ここでは送らない。
+Event::listen(function (ScheduledTaskFailed $failed) use ($backup, $reportBackupStopped) {
+    if ($failed->task !== $backup || $backup->exitCode !== null) {
+        return;
+    }
+
+    $reportBackupStopped($failed->exception instanceof ProcessSignaledException
+        ? 'シグナル '.$failed->exception->getSignal().' で強制終了'
+        : '終了コードなし: '.$failed->exception->getMessage());
 });
 
 // 送信待ちのメールなどを、空になるまで処理して終わる（常駐させない）。
