@@ -77,4 +77,23 @@ class LayoutSidebarCloakTest extends TestCase
             );
         }
     }
+
+    /**
+     * サイドバーの開閉は window の resize を起こさないので、開閉して描き換えたあとに resize を送って幅を測り直させる。
+     * 送らないと「1100px で右端までスクロール → 閉じる → 開く」で、スクロールできるのに横スクロールのヒントが消えたままになる
+     * （閉じたときにスクロール位置が丸められて scroll が起き、広い状態でヒントを消す → 開いても何も起きない）。
+     *
+     * ⚠ 構造しか見られない（Alpine が評価する属性なので PHP からは実行できない）。実際の動きはブラウザで確かめる。
+     * ⚠ `$nextTick` を外さないこと。x-show が表示を切り替える前に測ると、開閉前の幅で判定する。
+     */
+    public function test_toggling_the_sidebar_makes_pages_measure_again(): void
+    {
+        $this->assertSame(1, preg_match('#<body\b[^>]*>#s', $this->layoutHtml(), $body), '<body> が見つからない');
+
+        $this->assertMatchesRegularExpression(
+            '#\bx-init="[^"]*\$watch\(\s*\'sidebarExpanded\'[^"]*\$nextTick\([^"]*window\.dispatchEvent\(\s*new Event\(\s*\'resize\'\s*\)\s*\)#',
+            $body[0],
+            'サイドバーの開閉のあとに resize を送っていない（開閉で幅が変わっても横スクロールのヒントが測り直されない）'
+        );
+    }
 }

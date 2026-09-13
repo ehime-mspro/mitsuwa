@@ -32,7 +32,13 @@
         default                                                                                    => 'dashboard',
     };
 @endphp
-<body class="antialiased overflow-hidden" style="height: 100vh;" x-data="{ sidebarOpen: false, sidebarExpanded: true }">
+{{-- x-init: サイドバーの開閉は window の resize を起こさないので、開閉して描き換えたあとに resize を送り、
+     幅に応じた表示を測り直させる（横スクロールのヒント。resize を聞いているのは 4 一覧・区画一覧・resources/js/app.js）。
+     送らないと、右端までスクロールしてから閉じて開くと、スクロールできるのにヒントが消えたままになる（2026-09-13）。
+     ⚠ $nextTick を外さない（x-show が表示を切り替える前に測ると開閉前の幅で判定する）。
+     ⚠ 属性にアロー関数を書かない（Top trap #4）。docs/RULES.md Bug #56 ／ tests/Feature/LayoutSidebarCloakTest.php --}}
+<body class="antialiased overflow-hidden" style="height: 100vh;" x-data="{ sidebarOpen: false, sidebarExpanded: true }"
+      x-init="$watch('sidebarExpanded', function () { $nextTick(function () { window.dispatchEvent(new Event('resize')); }); })">
     <div class="flex flex-col h-full">
         {{-- ヘッダー --}}
         @include('layouts.partials.header')
