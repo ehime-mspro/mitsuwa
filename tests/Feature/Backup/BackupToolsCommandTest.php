@@ -28,6 +28,8 @@ class BackupToolsCommandTest extends TestCase
 
     private const INSIDE_BACKUP_ROOT = '取り出し先を、バックアップの対象フォルダ（storage/app/public・private）の中にはできません（翌晩のバックアップに、取り出したファイルが入ってしまうため）。';
 
+    private const DECRYPT_INSIDE_BACKUP_ROOT = '保存先を、バックアップの対象フォルダ（storage/app/public・private）の中にはできません（復号した中身が公開のフォルダに置かれたり、翌晩のバックアップに入ったりするため）。';
+
     private const DB_NOT_FOUND_PREFIX = '指定されたデータベースのバックアップがありません: ';
 
     private const KEY_ID_PREFIX = 'キーの識別番号: ';
@@ -677,6 +679,20 @@ class BackupToolsCommandTest extends TestCase
     {
         $this->artisan('ops:backup-decrypt', ['source' => $this->root.'/missing.enc', 'destination' => $this->root.'/out.txt'])
             ->assertExitCode(1);
+    }
+
+    public function test_decrypt_refuses_a_destination_inside_a_backed_up_root(): void
+    {
+        mkdir($this->root.'/storage/app/public', 0700, true);
+        $this->putFile('plain.txt', '中身');
+        (new BackupCipher($this->key))->encryptFile($this->root.'/plain.txt', $this->root.'/plain.txt.enc');
+        $destination = $this->root.'/storage/app/public/x.sql.gz';
+
+        $this->artisan('ops:backup-decrypt', ['source' => $this->root.'/plain.txt.enc', 'destination' => $destination])
+            ->expectsOutputToContain(self::DECRYPT_INSIDE_BACKUP_ROOT)
+            ->assertExitCode(1);
+
+        $this->assertFileDoesNotExist($destination);
     }
 
     public function test_backup_key_prints_the_key_id(): void

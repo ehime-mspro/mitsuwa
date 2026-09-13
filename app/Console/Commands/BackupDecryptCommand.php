@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Console\Commands\Concerns\ResolvesBackupCipher;
+use App\Support\Backup\BackedUpRootGuard;
 use App\Support\Backup\BackupCipher;
 use Illuminate\Console\Command;
 use Symfony\Component\Console\Formatter\OutputFormatter;
@@ -31,6 +32,12 @@ class BackupDecryptCommand extends Command
         }
         if (file_exists($destination)) {
             $this->error('保存先にすでにファイルかフォルダがあります（上書きしません）: '.OutputFormatter::escape($destination));
+
+            return self::FAILURE;
+        }
+
+        if (BackedUpRootGuard::isInside($destination, storage_path('app'), (array) config('backup.file_roots'))) {
+            $this->error('保存先を、バックアップの対象フォルダ（storage/app/public・private）の中にはできません（復号した中身が公開のフォルダに置かれたり、翌晩のバックアップに入ったりするため）。');
 
             return self::FAILURE;
         }
