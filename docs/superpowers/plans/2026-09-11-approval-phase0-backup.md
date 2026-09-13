@@ -3302,7 +3302,7 @@ git commit -m "docs(ops): バックアップとメール送信の手順書と設
 ```bash
 ./vendor/bin/phpunit 2>&1 | tail -3
 ```
-Expected: `OK`。件数は Task 0 の基準値＋ 265（`tests/Unit/Backup`・`tests/Feature/Backup`・`tests/Feature/Ops` の合計。G・H の後の値、2026-09-13 時点）。既存テストが 1 件でも落ちたら原因を調べる（消したり飛ばしたりしない）。当初の案の内訳（暗号化 18・添付 11・保存期間 4・ローカル保管 3・S3 4・ダンプ 8・本体 5・ops:backup 4・道具 6・テストメール 3・予定 3＝69）は、その後のレビューでの手直し（Task 1〜13）で件数が増えている。
+Expected: `OK`。件数は Task 0 の基準値＋ 265（`tests/Unit/Backup`・`tests/Feature/Backup`・`tests/Feature/Ops` の合計。Task 13 の手直しの後の値、2026-09-13 時点）。既存テストが 1 件でも落ちたら原因を調べる（消したり飛ばしたりしない）。当初の案の内訳（暗号化 18・添付 11・保存期間 4・ローカル保管 3・S3 4・ダンプ 8・本体 5・ops:backup 4・道具 6・テストメール 3・予定 3＝69）は、その後のレビューでの手直し（Task 1〜13）で件数が増えている。
 
 - [ ] **Step 2: 書式（新しく触ったファイルだけ）**
 
