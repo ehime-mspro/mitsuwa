@@ -41,8 +41,11 @@
             <div>
                 <div class="text-xs text-gray-500 mb-0.5">区画</div>
                 <div class="text-sm font-semibold {{ !$repair->unit_id ? 'text-gray-400 italic' : '' }}">
-                    @if($repair->unit)
-                        <a href="{{ route('tenant.units.show', $repair->unit) }}" class="text-emerald-600 hover:underline">{{ $repair->unit->display_name }}</a>
+                    {{-- 削除済みの区画は区画ページが 404 になるのでリンクを張らない --}}
+                    @if($repair->unit?->trashed())
+                        {{ $repair->unit->display_label }}
+                    @elseif($repair->unit)
+                        <a href="{{ route('tenant.units.show', $repair->unit) }}" class="text-emerald-600 hover:underline">{{ $repair->unit->display_label }}</a>
                     @else
                         共用部
                     @endif

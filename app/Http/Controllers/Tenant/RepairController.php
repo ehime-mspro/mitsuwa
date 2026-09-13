@@ -12,6 +12,7 @@ use App\Models\Repair;
 use App\Models\Unit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\Rule;
 
 class RepairController extends Controller
 {
@@ -92,7 +93,8 @@ class RepairController extends Controller
     {
         $validated = $request->validate([
             'property_id'      => 'required|exists:properties,id',
-            'unit_id'          => 'nullable|exists:units,id',
+            // 削除済みの区画は選べない（exists は論理削除を見ないので明示する）
+            'unit_id'          => ['nullable', Rule::exists('units', 'id')->withoutTrashed()],
             'status'           => 'required|in:' . implode(',', array_column(RepairStatus::cases(), 'value')),
             'category'         => 'nullable|string|max:50',
             'description'      => 'required|string|max:5000',
@@ -156,7 +158,8 @@ class RepairController extends Controller
             ->orderBy('operation_status')->orderBy('id')
             ->get(['id', 'name', 'code', 'operation_status']);
 
-        $allUnits = $this->buildUnitOptions($properties);
+        // 今の区画は削除済みでも残す（残さないと先頭の「共用部」が選ばれ、保存で共用部に書き換わる）
+        $allUnits = $this->buildUnitOptions($properties, [$repair->unit_id]);
 
         return view('tenant.repairs.edit', compact('repair', 'properties', 'allUnits'));
     }
@@ -168,7 +171,11 @@ class RepairController extends Controller
     {
         $validated = $request->validate([
             'property_id'      => 'required|exists:properties,id',
-            'unit_id'          => 'nullable|exists:units,id',
+            // 削除済みの区画は選べない。ただし今の区画は削除済みでもそのまま保存できる（編集画面の選択肢に残してある）。
+            // 今が共用部（unit_id が null）なら orWhere は「id is null」になり何にも当たらない
+            'unit_id'          => ['nullable', Rule::exists('units', 'id')->where(
+                fn ($q) => $q->whereNull('deleted_at')->orWhere('id', $repair->unit_id)
+            )],
             'status'           => 'required|in:' . implode(',', array_column(RepairStatus::cases(), 'value')),
             'category'         => 'nullable|string|max:50',
             'description'      => 'required|string|max:5000',
@@ -185,8 +192,9 @@ class RepairController extends Controller
             'contractor_name' => '業者名',
         ]);
 
+        // 区画が指定物件に属しているか（今の区画は削除済みのことがある）
         if ($validated['unit_id']) {
-            $unit = Unit::findOrFail($validated['unit_id']);
+            $unit = Unit::withTrashed()->findOrFail($validated['unit_id']);
             if ($unit->property_id !== (int) $validated['property_id']) {
                 return back()->withInput()->withErrors(['unit_id' => '選択された区画は指定物件に属していません。']);
             }
@@ -215,17 +223,21 @@ class RepairController extends Controller
 
     /**
      * 区画セレクト用の選択肢を構築する（ラベルは表示名。表示名は階を含むので階を前に付けない）
+     *
+     * $keepIds: 削除済みでも選択肢に残す区画（編集画面で今の区画を残す）。
+     * ⚠ deleted_at を取らないと display_label の「（削除済み）」が黙って消える。
      */
-    private function buildUnitOptions($properties)
+    private function buildUnitOptions($properties, array $keepIds = [])
     {
-        return Unit::whereIn('property_id', $properties->pluck('id'))
+        return Unit::includingTrashed($keepIds)
+            ->whereIn('property_id', $properties->pluck('id'))
             ->orderBy('property_id')->orderBy('floor')->orderBy('display_name')
-            ->get(['id', 'property_id', 'display_name', 'floor'])
+            ->get(['id', 'property_id', 'display_name', 'floor', 'deleted_at'])
             ->map(function ($u) {
                 return [
                     'id'          => $u->id,
                     'property_id' => $u->property_id,
-                    'label'       => $u->display_name,
+                    'label'       => $u->display_label,
                 ];
             })
             ->values();

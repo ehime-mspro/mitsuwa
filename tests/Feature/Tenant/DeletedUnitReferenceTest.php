@@ -2,9 +2,11 @@
 
 namespace Tests\Feature\Tenant;
 
+use App\Enums\RepairStatus;
 use App\Enums\UserRole;
 use App\Models\Investment;
 use App\Models\Property;
+use App\Models\Repair;
 use App\Models\Unit;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -292,5 +294,199 @@ class DeletedUnitReferenceTest extends TestCase
             ->assertSessionHasErrors(['unit_id' => '選択された区画は存在しません。']);
 
         $this->assertSame(0, Investment::count());
+    }
+
+    // ============================================================
+    // 修繕（区画は任意。空＝共用部）
+    // ============================================================
+
+    private function repairOn(?Unit $unit): Repair
+    {
+        return Repair::create([
+            'property_id' => $this->building->id,
+            'unit_id' => $unit?->id,
+            'status' => RepairStatus::Planned->value,
+            'description' => '削除済み区画の修繕',
+        ]);
+    }
+
+    /** 画面が送る修繕のフォーム値（区画・物件は画面のデータから組む。Bug #54 ②） */
+    private function repairFormFrom(\Illuminate\Testing\TestResponse $edit, array $overrides = []): array
+    {
+        $repair = $edit->viewData('repair');
+        $option = collect($edit->viewData('allUnits'))
+            ->where('property_id', $repair->property_id)
+            ->firstWhere('id', $repair->unit_id);
+        $this->assertNotNull($option, '編集画面の区画の選択肢に今の区画が無い（ブラウザでは先頭の「共用部」が選ばれ、保存で共用部に書き換わる）');
+
+        return array_merge([
+            'property_id' => $repair->property_id,
+            'unit_id' => $option['id'],
+            'status' => RepairStatus::InProgress->value,
+            'description' => $repair->description,
+        ], $overrides);
+    }
+
+    public function test_repair_detail_shows_a_deleted_unit_without_a_link(): void
+    {
+        $repair = $this->repairOn($this->deleted);
+        $this->deleteUnit();
+
+        $this->actingAs($this->executive())
+            ->get(route('tenant.repairs.show', $repair))
+            ->assertOk()
+            ->assertSee('B1A（削除済み）')
+            ->assertDontSee($this->unitLink($this->deleted), false)
+            // 区画が読めないと「共用部」と誤表示していた
+            ->assertDontSee('共用部')
+            // 削除確認モーダルの対象の表記
+            ->assertSee('テストビル / B1A（削除済み） — 削除済み区画の修繕');
+    }
+
+    public function test_repair_detail_keeps_the_link_for_a_live_unit(): void
+    {
+        $repair = $this->repairOn($this->live);
+        $this->deleteUnit();
+
+        $this->actingAs($this->executive())
+            ->get(route('tenant.repairs.show', $repair))
+            ->assertOk()
+            ->assertSee($this->unitLink($this->live) . ' class="text-emerald-600 hover:underline">1A</a>', false);
+    }
+
+    public function test_repair_detail_still_shows_the_common_area(): void
+    {
+        $repair = $this->repairOn(null);
+        $this->deleteUnit();
+
+        $this->actingAs($this->executive())
+            ->get(route('tenant.repairs.show', $repair))
+            ->assertOk()
+            ->assertSee('共用部')
+            ->assertSee('テストビル / 共用部 — 削除済み区画の修繕');
+    }
+
+    public function test_repair_list_shows_a_deleted_unit_with_the_marker(): void
+    {
+        $this->repairOn($this->deleted);
+        $this->deleteUnit();
+
+        $html = $this->actingAs($this->executive())
+            ->get(route('tenant.repairs.index'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertMatchesRegularExpression('#<td[^>]*>\s*B1A（削除済み）\s*</td>#u', $html, '修繕一覧に削除済みの区画が出ていない');
+        $this->assertStringNotContainsString('共用部', $html, '削除済みの区画を共用部と誤表示している');
+    }
+
+    public function test_property_detail_repair_tab_shows_a_deleted_unit(): void
+    {
+        $this->repairOn($this->deleted);
+        $this->deleteUnit();
+
+        $html = $this->actingAs($this->executive())
+            ->get(route('tenant.properties.show', $this->building))
+            ->assertOk()
+            ->getContent();
+
+        // 修繕タブの行: 区画のセル → 分類のセル → 内容のリンク
+        $this->assertMatchesRegularExpression(
+            '#>B1A（削除済み）</td>\s*<td[^>]*>[^<]*</td>\s*<td[^>]*>\s*<a [^>]*>削除済み区画の修繕</a>#u',
+            $html,
+            '物件詳細の修繕タブに削除済みの区画が出ていない'
+        );
+        $this->assertStringNotContainsString('共用部', $html, '削除済みの区画を共用部と誤表示している');
+    }
+
+    public function test_repair_create_form_does_not_offer_deleted_units(): void
+    {
+        $this->repairOn($this->deleted);
+        $this->deleteUnit();
+
+        $options = $this->actingAs($this->executive())
+            ->get(route('tenant.repairs.create'))
+            ->assertOk()
+            ->viewData('allUnits');
+
+        $this->assertSame(['1A'], $this->optionLabels($options));
+    }
+
+    public function test_repair_edit_form_offers_only_its_own_deleted_unit(): void
+    {
+        $repair = $this->repairOn($this->deleted);
+        $this->deleteUnit();
+
+        $options = $this->actingAs($this->executive())
+            ->get(route('tenant.repairs.edit', $repair))
+            ->assertOk()
+            ->viewData('allUnits');
+
+        // 今の区画は削除済みでも残り、ほかの削除済み（3A）は出ない
+        $this->assertEqualsCanonicalizing(['B1A（削除済み）', '1A'], $this->optionLabels($options));
+    }
+
+    public function test_repair_edit_round_trip_keeps_the_deleted_unit(): void
+    {
+        $repair = $this->repairOn($this->deleted);
+        $this->deleteUnit();
+
+        $user = $this->executive();
+        $edit = $this->actingAs($user)->get(route('tenant.repairs.edit', $repair))->assertOk();
+
+        $this->actingAs($user)
+            ->put(route('tenant.repairs.update', $repair), $this->repairFormFrom($edit))
+            ->assertSessionHasNoErrors()
+            ->assertRedirect(route('tenant.repairs.show', $repair));
+
+        $repair->refresh();
+        $this->assertSame($this->deleted->id, $repair->unit_id, '保存で区画が共用部に書き換わった');
+        $this->assertSame(RepairStatus::InProgress, $repair->status, 'ほかの項目の変更が保存されていない');
+    }
+
+    public function test_repair_update_can_move_to_the_common_area(): void
+    {
+        $repair = $this->repairOn($this->deleted);
+        $this->deleteUnit();
+
+        $user = $this->executive();
+        $edit = $this->actingAs($user)->get(route('tenant.repairs.edit', $repair))->assertOk();
+
+        $this->actingAs($user)
+            ->put(route('tenant.repairs.update', $repair), $this->repairFormFrom($edit, ['unit_id' => '']))
+            ->assertSessionHasNoErrors();
+
+        $this->assertNull($repair->refresh()->unit_id);
+    }
+
+    public function test_repair_update_rejects_another_deleted_unit(): void
+    {
+        $repair = $this->repairOn($this->deleted);
+        $this->deleteUnit();
+
+        $user = $this->executive();
+        $edit = $this->actingAs($user)->get(route('tenant.repairs.edit', $repair))->assertOk();
+
+        $this->actingAs($user)
+            ->put(route('tenant.repairs.update', $repair), $this->repairFormFrom($edit, ['unit_id' => $this->otherDeleted->id]))
+            ->assertSessionHasErrors(['unit_id' => '選択された区画は存在しません。']);
+
+        $this->assertSame($this->deleted->id, $repair->refresh()->unit_id);
+    }
+
+    public function test_repair_store_rejects_a_deleted_unit(): void
+    {
+        $this->deleteUnit();
+
+        $this->actingAs($this->executive())
+            ->post(route('tenant.repairs.store'), [
+                'property_id' => $this->building->id,
+                'unit_id' => $this->deleted->id,
+                'status' => RepairStatus::Planned->value,
+                'description' => '削除済み区画の修繕',
+            ])
+            ->assertSessionHasErrors(['unit_id' => '選択された区画は存在しません。']);
+
+        $this->assertSame(0, Repair::count());
     }
 }
