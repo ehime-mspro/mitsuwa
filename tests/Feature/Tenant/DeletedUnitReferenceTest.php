@@ -140,14 +140,21 @@ class DeletedUnitReferenceTest extends TestCase
         $investment = $this->investmentOn($this->deleted, 'INV-DEL-B1A');
         $this->deleteUnit();
 
-        $this->actingAs($this->executive())
+        $html = $this->actingAs($this->executive())
             ->get(route('tenant.investments.show', $investment))
             ->assertOk()
-            ->assertSee('B1A（削除済み）')
             // 区画ページは削除済みだと 404 なのでリンクを張らない
             ->assertDontSee($this->unitLink($this->deleted), false)
             // 削除確認モーダルの対象の表記
-            ->assertSee('INV-DEL-B1A — テストビル / B1A（削除済み）');
+            ->assertSee('INV-DEL-B1A — テストビル / B1A（削除済み）')
+            ->getContent();
+
+        // 区画の欄そのもの。⚠ 「B1A（削除済み）」はモーダルの対象にも出るので、素の assertSee だと欄から消えても緑になる
+        $this->assertMatchesRegularExpression(
+            '#>区画</div>\s*<div class="text-sm font-semibold text-gray-900">B1A（削除済み）</div>#u',
+            $html,
+            '投資詳細の区画の欄に削除済みの印が無い'
+        );
     }
 
     public function test_investment_detail_keeps_the_link_for_a_live_unit(): void
@@ -340,15 +347,22 @@ class DeletedUnitReferenceTest extends TestCase
         $repair = $this->repairOn($this->deleted);
         $this->deleteUnit();
 
-        $this->actingAs($this->executive())
+        $html = $this->actingAs($this->executive())
             ->get(route('tenant.repairs.show', $repair))
             ->assertOk()
-            ->assertSee('B1A（削除済み）')
             ->assertDontSee($this->unitLink($this->deleted), false)
             // 区画が読めないと「共用部」と誤表示していた
             ->assertDontSee('共用部')
             // 削除確認モーダルの対象の表記
-            ->assertSee('テストビル / B1A（削除済み） — 削除済み区画の修繕');
+            ->assertSee('テストビル / B1A（削除済み） — 削除済み区画の修繕')
+            ->getContent();
+
+        // 区画の欄そのもの。⚠ 「B1A（削除済み）」はモーダルの対象にも出るので、素の assertSee だと欄から消えても緑になる
+        $this->assertMatchesRegularExpression(
+            '#>区画</div>\s*<div class="text-sm font-semibold\s*">\s*B1A（削除済み）\s*</div>#u',
+            $html,
+            '修繕詳細の区画の欄に削除済みの印が無い'
+        );
     }
 
     public function test_repair_detail_keeps_the_link_for_a_live_unit(): void
