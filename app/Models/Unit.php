@@ -108,6 +108,30 @@ class Unit extends Model
     }
 
     // ============================================================
+    // スコープ
+    // ============================================================
+
+    /**
+     * 削除済みでない区画 ＋ 指定した区画（削除済みでも）。
+     * 編集画面の選択肢に「そのレコードが今持っている区画」を残すのに使う（User::assignableWith() と同じ考え方）。
+     * 残さないと選択が外れ、保存で区画が消える・変わる（docs/RULES.md Bug #58）。
+     *
+     * ⚠ withTrashed() はクエリ全体から論理削除の除外を外すので、条件はここで括弧にくくる
+     *   （呼び出し側の物件・状態などの条件とは AND でつながる）。
+     */
+    public function scopeIncludingTrashed($query, array $keepIds)
+    {
+        $keepIds = array_values(array_filter($keepIds, fn ($id) => $id !== null));
+
+        return $query->withTrashed()->where(function ($q) use ($keepIds) {
+            $q->whereNull($this->getQualifiedDeletedAtColumn());
+            if ($keepIds !== []) {
+                $q->orWhereIn($this->getQualifiedKeyName(), $keepIds);
+            }
+        });
+    }
+
+    // ============================================================
     // アクセサ / ヘルパー
     // ============================================================
 

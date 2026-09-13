@@ -36,6 +36,9 @@ class DeletedUnitReferenceTest extends TestCase
     /** 生きている区画 */
     private Unit $live;
 
+    /** どこからも参照されていない削除済みの区画（編集画面の選択肢に出てはいけない） */
+    private Unit $otherDeleted;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -47,7 +50,13 @@ class DeletedUnitReferenceTest extends TestCase
 
         $this->deleted = $this->makeUnit(-1, 'A');
         $this->live = $this->makeUnit(1, 'A');
-        $this->assertSame(['B1A', '1A'], [$this->deleted->display_name, $this->live->display_name], '表示名の前提が崩れている');
+        $this->otherDeleted = $this->makeUnit(3, 'A');
+        $this->otherDeleted->delete();
+        $this->assertSame(
+            ['B1A', '1A', '3A'],
+            [$this->deleted->display_name, $this->live->display_name, $this->otherDeleted->display_name],
+            '表示名の前提が崩れている'
+        );
     }
 
     private function makeUnit(?int $floor, string $room): Unit
@@ -159,5 +168,129 @@ class DeletedUnitReferenceTest extends TestCase
             $html,
             '物件詳細の投資タブに削除済みの区画が出ていない'
         );
+    }
+
+    // ------------------------------------------------------------
+    // 投資の登録・編集（選択肢は Alpine が描くので HTML でなく viewData で見る。@json は日本語を \uXXXX にする）
+    // ------------------------------------------------------------
+
+    /** @return list<string> この物件の区画の選択肢のラベル */
+    private function optionLabels(array|\Illuminate\Support\Collection $options): array
+    {
+        return collect($options)->where('property_id', $this->building->id)->pluck('label')->values()->all();
+    }
+
+    /** 画面が送る投資のフォーム値（区画・物件・明細は画面のデータから組む。Bug #54 ②） */
+    private function investmentFormFrom(\Illuminate\Testing\TestResponse $edit, array $overrides = []): array
+    {
+        $investment = $edit->viewData('investment');
+        $option = collect($edit->viewData('allUnits'))
+            ->where('property_id', $investment->property_id)
+            ->firstWhere('id', $investment->unit_id);
+        $this->assertNotNull($option, '編集画面の区画の選択肢に今の区画が無い（ブラウザでは選択が外れて「区画は必須」になる）');
+
+        return array_merge([
+            'property_id' => $investment->property_id,
+            'unit_id' => $option['id'],
+            'pattern' => $investment->pattern->value,
+            'status' => 'in_progress',
+            'description' => $investment->description,
+            'details' => $edit->viewData('investmentDetails')->all(),
+        ], $overrides);
+    }
+
+    public function test_investment_create_form_does_not_offer_deleted_units(): void
+    {
+        $this->investmentOn($this->deleted, 'INV-DEL-B1A');
+        $this->deleteUnit();
+
+        $options = $this->actingAs($this->executive())
+            ->get(route('tenant.investments.create'))
+            ->assertOk()
+            ->viewData('allUnits');
+
+        $this->assertSame(['1A（12.50坪）'], $this->optionLabels($options));
+    }
+
+    public function test_investment_edit_form_offers_only_its_own_deleted_unit(): void
+    {
+        $investment = $this->investmentOn($this->deleted, 'INV-DEL-B1A');
+        $this->deleteUnit();
+
+        $options = $this->actingAs($this->executive())
+            ->get(route('tenant.investments.edit', $investment))
+            ->assertOk()
+            ->viewData('allUnits');
+
+        // 今の区画は削除済みでも残り、ほかの削除済み（3A）は出ない
+        $this->assertEqualsCanonicalizing(['B1A（削除済み）（12.50坪）', '1A（12.50坪）'], $this->optionLabels($options));
+    }
+
+    public function test_investment_edit_round_trip_keeps_the_deleted_unit(): void
+    {
+        $investment = $this->investmentOn($this->deleted, 'INV-DEL-B1A');
+        $investment->details()->create(['cost_item' => 'interior', 'amount' => 1000000]);
+        $this->deleteUnit();
+
+        $user = $this->executive();
+        $edit = $this->actingAs($user)->get(route('tenant.investments.edit', $investment))->assertOk();
+
+        $this->actingAs($user)
+            ->put(route('tenant.investments.update', $investment), $this->investmentFormFrom($edit))
+            ->assertSessionHasNoErrors()
+            ->assertRedirect(route('tenant.investments.show', $investment));
+
+        $investment->refresh();
+        $this->assertSame($this->deleted->id, $investment->unit_id, '削除済みの区画が保存で外れた');
+        $this->assertSame('in_progress', $investment->status->value, 'ほかの項目の変更が保存されていない');
+    }
+
+    public function test_investment_update_can_move_off_the_deleted_unit(): void
+    {
+        $investment = $this->investmentOn($this->deleted, 'INV-DEL-B1A');
+        $investment->details()->create(['cost_item' => 'interior', 'amount' => 1000000]);
+        $this->deleteUnit();
+
+        $user = $this->executive();
+        $edit = $this->actingAs($user)->get(route('tenant.investments.edit', $investment))->assertOk();
+
+        $this->actingAs($user)
+            ->put(route('tenant.investments.update', $investment), $this->investmentFormFrom($edit, ['unit_id' => $this->live->id]))
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame($this->live->id, $investment->refresh()->unit_id);
+    }
+
+    public function test_investment_update_rejects_another_deleted_unit(): void
+    {
+        $investment = $this->investmentOn($this->deleted, 'INV-DEL-B1A');
+        $investment->details()->create(['cost_item' => 'interior', 'amount' => 1000000]);
+        $this->deleteUnit();
+
+        $user = $this->executive();
+        $edit = $this->actingAs($user)->get(route('tenant.investments.edit', $investment))->assertOk();
+
+        $this->actingAs($user)
+            ->put(route('tenant.investments.update', $investment), $this->investmentFormFrom($edit, ['unit_id' => $this->otherDeleted->id]))
+            ->assertSessionHasErrors(['unit_id' => '選択された区画は存在しません。']);
+
+        $this->assertSame($this->deleted->id, $investment->refresh()->unit_id);
+    }
+
+    public function test_investment_store_rejects_a_deleted_unit(): void
+    {
+        $this->deleteUnit();
+
+        $this->actingAs($this->executive())
+            ->post(route('tenant.investments.store'), [
+                'property_id' => $this->building->id,
+                'unit_id' => $this->deleted->id,
+                'pattern' => 'renovation',
+                'status' => 'planning',
+                'details' => [['cost_item' => 'interior', 'amount' => 1000000]],
+            ])
+            ->assertSessionHasErrors(['unit_id' => '選択された区画は存在しません。']);
+
+        $this->assertSame(0, Investment::count());
     }
 }

@@ -15,6 +15,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Database\QueryException;
+use Illuminate\Validation\Rule;
 
 class InvestmentController extends Controller
 {
@@ -118,7 +119,8 @@ class InvestmentController extends Controller
     {
         $validated = $request->validate([
             'property_id'      => 'required|exists:properties,id',
-            'unit_id'          => 'required|exists:units,id',
+            // 削除済みの区画は選べない（exists は論理削除を見ないので明示する）
+            'unit_id'          => ['required', Rule::exists('units', 'id')->withoutTrashed()],
             'pattern'          => 'required|in:' . implode(',', array_column(InvestmentPattern::cases(), 'value')),
             'status'           => 'required|in:planning,in_progress,completed',
             'description'      => 'nullable|string|max:5000',
@@ -226,7 +228,8 @@ class InvestmentController extends Controller
             ->orderBy('operation_status')->orderBy('id')
             ->get(['id', 'name', 'code', 'operation_status']);
 
-        $allUnits = $this->buildUnitOptions($properties);
+        // 今の区画は削除済みでも残す
+        $allUnits = $this->buildUnitOptions($properties, [$investment->unit_id]);
 
         // 明細データをJS用に整形
         $investmentDetails = $investment->details->map(function ($d) {
@@ -249,7 +252,10 @@ class InvestmentController extends Controller
     {
         $validated = $request->validate([
             'property_id'      => 'required|exists:properties,id',
-            'unit_id'          => 'required|exists:units,id',
+            // 削除済みの区画は選べない。ただし今の区画は削除済みでもそのまま保存できる（編集画面の選択肢に残してある）
+            'unit_id'          => ['required', Rule::exists('units', 'id')->where(
+                fn ($q) => $q->whereNull('deleted_at')->orWhere('id', $investment->unit_id)
+            )],
             'pattern'          => 'required|in:' . implode(',', array_column(InvestmentPattern::cases(), 'value')),
             'status'           => 'required|in:planning,in_progress,completed',
             'description'      => 'nullable|string|max:5000',
@@ -272,8 +278,8 @@ class InvestmentController extends Controller
             'end_date'    => '工事完了日',
         ]);
 
-        // 区画が指定物件に属しているか
-        $unit = Unit::findOrFail($validated['unit_id']);
+        // 区画が指定物件に属しているか（今の区画は削除済みのことがある）
+        $unit = Unit::withTrashed()->findOrFail($validated['unit_id']);
         if ($unit->property_id !== (int) $validated['property_id']) {
             return back()->withInput()->withErrors(['unit_id' => '選択された区画は指定物件に属していません。']);
         }
@@ -378,15 +384,19 @@ class InvestmentController extends Controller
 
     /**
      * 区画セレクト用の選択肢を構築する（ラベルは表示名＋坪数。表示名は階を含むので階を前に付けない）
+     *
+     * $keepIds: 削除済みでも選択肢に残す区画（編集画面で今の区画を残す。残さないと選択が外れて保存できない）。
+     * ⚠ deleted_at を取らないと display_label の「（削除済み）」が黙って消える。
      */
-    private function buildUnitOptions($properties)
+    private function buildUnitOptions($properties, array $keepIds = [])
     {
-        return Unit::whereIn('property_id', $properties->pluck('id'))
+        return Unit::includingTrashed($keepIds)
+            ->whereIn('property_id', $properties->pluck('id'))
             ->orderBy('property_id')->orderBy('floor')->orderBy('display_name')
-            ->get(['id', 'property_id', 'display_name', 'floor', 'area_tsubo'])
+            ->get(['id', 'property_id', 'display_name', 'floor', 'area_tsubo', 'deleted_at'])
             ->map(function ($u) {
                 $tsubo = $u->area_tsubo ? number_format((float) $u->area_tsubo, 2) . '坪' : '';
-                $label = $u->display_name . ($tsubo ? "（{$tsubo}）" : '');
+                $label = $u->display_label . ($tsubo ? "（{$tsubo}）" : '');
                 return [
                     'id'          => $u->id,
                     'property_id' => $u->property_id,
