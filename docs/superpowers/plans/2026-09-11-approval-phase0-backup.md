@@ -6,7 +6,7 @@
 
 ## 実装中の変更（レビュー反映）
 
-Task 1・Task 2 の実装後、コードレビューを反映して以下より前の章の記述から変更した点。以降のタスクを進めるときは、この章とリポジトリのコード（`app/Support/Backup/BackupCipher.php`・`app/Support/Backup/FileSyncPlanner.php`）を正としてください。
+各タスクの実装後のコードレビュー（仕様の突き合わせ・品質の点検・ブランチ全体の点検）を反映して、以下の章（Task 1〜15 の本文）から変わった点。以下の章のコードや文面は当初の案のままで、実際とは違う所がある。正はリポジトリのコードとテスト、手順は `docs/運用_バックアップとメール.md`。
 
 - **BackupCipher**: ファイルのヘッダーに 8 バイトの鍵の識別子（keyId）を含む（復号時に「鍵が違う」と「ファイルが壊れている」を区別するためで、秘密情報ではない）。出力は同じフォルダの一時ファイルへ 0600 で書き、成功したときだけ rename で本来の名前に置き換える（失敗時は一時ファイルだけを消す）。この識別子を取り出す `keyId(): string`（16 桁の小文字16進数）を追加した。
 - **添付の保管キー**: `files/<keyId の 16 桁16進数>/<パスの base64url>.enc` の形にし、暗号化キーごとにフォルダを分けた（キーを変えた直後は新しいキーのフォルダが空なので、最初のバックアップで全添付を送り直す。古いキーのフォルダは残したままにして、そのキーが使える限り復元できるようにする）。これに伴い `FileSyncPlanner` の API は次の形になった。
@@ -14,11 +14,32 @@ Task 1・Task 2 の実装後、コードレビューを反映して以下より�
   - `keyFor(string $relativePath, string $keyId): string`
   - `pathFor(string $key): ?string`
   - `filesToUpload(array $localFiles, array $remoteObjects, string $keyId): array`
-- **以降のタスクで対応予定**（このコミットの時点では未実装）:
-  - `BackupSummary` に `filesScanned`（走査した添付の総数）を追加する。
-  - `BackupRunner` は、実行の途中で手元から消えたファイルがあっても送信対象から外すだけにして、失敗にしない。
-  - `ops:backup` の出力は「添付 N 件を追加（対象 M 件）」の形式で表示する。
-  - `ops:backup-restore` は現在の鍵の識別子のフォルダだけを読み、`.work` という一時フォルダを使い、ファイルごとの失敗を集めて最後にまとめて報告し、1 件でも失敗したら 0 以外で終了する。
+- **以降のタスクで対応した点**:
+  - `BackupSummary` に `filesScanned`（走査した添付の総数）を追加した（Task 7）。
+  - `BackupRunner` は、実行の途中で手元から消えたファイルがあっても送信対象から外すだけにして、失敗にしないようにした（Task 7）。
+  - `ops:backup` の出力を「添付 N 件を追加（対象 M 件）」の形式で表示するようにした（Task 8）。
+  - `ops:backup-restore` は現在の鍵の識別子のフォルダだけを読み、`.work` という一時フォルダを使い、ファイルごとの失敗を集めて最後にまとめて報告し、1 件でも失敗したら 0 以外で終了するようにした（Task 9）。
+
+- **Task 3（RetentionPolicy）**: `RetentionPolicy::databaseKey()` が `db/manage-YYYYMMDD-HHMMSS.sql.gz.enc`（日本時間）を組み立て、`expiredDatabaseKeys()`・`latestDatabaseKey()` で保存期間切れ・最新の判定を行う。一覧の絞り込みは前後を固定した形式チェックで、最新の 1 件は日数によらず残す。
+- **Task 4（BackupStorage・LocalDirectoryBackupStorage）**: 保管先のインターフェース（put/get/list/delete）を定義し、テスト・手元の通し確認用にローカルフォルダ実装を追加した。削除は空のキー・末尾が `/` のキーを断るなど、保管先の約束事を明文化した。
+- **Task 5（S3BackupStorage）**: `S3BackupStorage::fromConfig()` が接続 10 秒・送受信 1800 秒の上限、パス形式、`when_required` のチェックサムで `S3Client` を組み立てる。一覧は続きの目印（`NextContinuationToken`）が無いまま打ち切られたら例外にする。
+- **Task 6（MysqlDatabaseDumper）**: パスワードは 0600 の一時 `--defaults-file` で渡し、`umask(0077)` でダンプを本人だけが読める権限にする。定期実行は PATH が短いため `BACKUP_MYSQLDUMP_BINARY` が必須、時間切れは `ProcessTimedOutException` を専用の文言で包む。
+- **Task 7（BackupRunner・BackupWorkDirectory・DumpCompressor・config/backup.php）**: 作業フォルダは `BackupWorkDirectory`（名前は `backup-work` 固定・symlink 不可・対象フォルダの外・`flock` で同時実行を防ぐ）、圧縮は `DumpCompressor`（`gzwrite` の書き込み確認）に部品を分けた。保管先への送信が `BackupRunner::MAX_CONSECUTIVE_FAILURES`（5）件続けて失敗したら、「データベースは保存済みです（…）」の文脈を保ったまま中断する。
+- **Task 8（BackupCommand・BackupFailureNotifier・BackupFailedMail）**: `BackupFailureNotifier` が宛先の区切り（カンマ・読点・セミコロン・全角・空白）と誤り・文字化けの警告を担い、宛先ごとに 1 通ずつ送る。自分で扱った失敗は終了コード `BackupCommand::HANDLED_FAILURE`（3）。
+- **Task 9（BackupKeyCommand・BackupDecryptCommand・BackupRestoreCommand）**: `ops:backup-key` はキーの識別番号（`keyId()`）も表示する。`ops:backup-restore` は `--without-db`・`--without-files`・`--ask-key` を持ち、現在の鍵のフォルダだけを読んで `.work` の一時フォルダを使う。保管先からの取得が `MAX_CONSECUTIVE_GET_FAILURES`（5）件連続で失敗したら打ち切り、ファイルごとの失敗をまとめて報告する。
+- **Task 10（MailTestCommand・OpsTestMail）**: `ops:mail-test` は今の設定を 1 行で表示し、`log`・`array` の送信方式や `sync` のキューを断る・警告する。宛先ごとに 1 通ずつ送り、案内は `PHP_BINARY` から組み立てる（`SuggestsArtisanCommands`）。`OpsTestMail::$tries = 1` により `failed()` が 1 回の失敗ですぐ記録される。
+- **Task 11（routes/console.php の定期実行）**: `queue:work` は `schedule:run` の起動ごと（`everyMinute()`）、`ops:backup` は `0-4 3 * * *`（日本時間）・キュー処理より先・`evenInMaintenanceMode()`、出力は `storage/logs/backup-command.log`、`withoutOverlapping(180)`/`(10)`。
+- **Task 12（設定のひな形・deploy の保険・手順書）**: `.env.example` に `BACKUP_*` のプレースホルダーを足し、`deploy.sh` の rsync に `--exclude='storage/app/backup-work'` を足した。`docs/運用_バックアップとメール.md` と `CLAUDE.md` に運用の要点を記録した。
+- **Task 13（ブランチ全体の点検を受けた手直し）**: 夜間バックアップが kill などのシグナルで強制終了されたときも、`routes/console.php` の `ScheduledTaskFailed` の listener が失敗を知らせるようにした（`before()` で前回の終了コードをリセットし、二重通知はしない）。画面に出す失敗の理由は `OutputFormatter::escape()` で書式の印から守り、`ops:backup-decrypt` の保存先はバックアップ対象フォルダの中にできないようにした。定期実行のテストをふるまい（実際の `isDue()` や `schedule:run`）で補強した。
+
+### 段階1 以降への申し送り
+- メール送信の失敗（SMTP）は `storage/logs/laravel.log` と `failed_jobs` テーブルにしか残らない。`failed_jobs` が増えたら知らせる仕組みを検討する。
+- Laravel 12.55 の `schedule:run` の画面表示は、失敗しても DONE と出る（`ScheduleRunCommand::runEvent()` が bool を返し、`Illuminate\Console\View\Components\Task` の表示側は `TaskResult`（int）と厳密に比較するため、bool は常に default 側＝DONE に落ちる）。成否の判定には使わない。
+- 本番（FreeBSD）の sh は予定のコマンドを直接実行するため、kill などのシグナルで止まると `onFailure` が呼ばれない。失敗を知らせたい予定を新しく足すときは、`routes/console.php` の `ScheduledTaskFailed` の listener と同じ形にする。
+- 見送った軽微な点（実害がほぼ無いため。詳しくは `task-13-fix.md` の「見送る」を参照）:
+  - Task 9-1（取り出し先の名前の `\<` の表示。起きる見込みがほぼ無い）
+  - Task 9-3（mkdir の失敗が英語の「mkdir(): Permission denied」になる。Laravel のエラーハンドラーは戻り値 null なので error_get_last() に理由が残らず、@ を付けると理由が消える。手順書 5 章の「どの行にも当てはまらなければ開発担当へ転送」で拾える）
+  - Task 9-4（trait の名前・説明文・シンボリックリンクのテスト。実害なし）
 
 ---
 
@@ -3279,7 +3300,7 @@ git commit -m "docs(ops): バックアップとメール送信の手順書と設
 ```bash
 ./vendor/bin/phpunit 2>&1 | tail -3
 ```
-Expected: `OK`。件数は Task 0 の基準値＋ 69（暗号化 18・添付 11・保存期間 4・ローカル保管 3・S3 4・ダンプ 8・本体 5・ops:backup 4・道具 6・テストメール 3・予定 3）。既存テストが 1 件でも落ちたら原因を調べる（消したり飛ばしたりしない）。
+Expected: `OK`。件数は Task 0 の基準値＋ 264（`tests/Unit/Backup`・`tests/Feature/Backup`・`tests/Feature/Ops` の合計。G・H の後の値、2026-09-13 時点）。既存テストが 1 件でも落ちたら原因を調べる（消したり飛ばしたりしない）。当初の案の内訳（暗号化 18・添付 11・保存期間 4・ローカル保管 3・S3 4・ダンプ 8・本体 5・ops:backup 4・道具 6・テストメール 3・予定 3＝69）は、その後のレビューでの手直し（Task 8〜13）で件数が増えている。
 
 - [ ] **Step 2: 書式（新しく触ったファイルだけ）**
 
@@ -3352,7 +3373,7 @@ SH
 | 段階 | 何で確かめるか |
 |------|--------------|
 | 部品ごと | Task 1〜11 の自動テスト（暗号の改ざん・切断・鍵違いの検出、保存期間の境目、パスワードがコマンドに出ないこと、失敗時の通知、予定の時刻が日本時間） |
-| 全体 | 全テスト（既存 1315 件＋新規 69 件）が通ること、書式、セルフレビュー |
+| 全体 | 全テスト（既存 1315 件＋新規 264 件＝1579 件）が通ること、書式、セルフレビュー |
 | 手元の実物 | 本物の mysqldump で手元の DB を暗号化 → 取り出し → gzip の検査とファイルの一致（Task 14） |
 | 本番 | テストメールの到着と DKIM、手動バックアップ、取り出しの検査、翌朝の自動実行（Task 15） |
 
