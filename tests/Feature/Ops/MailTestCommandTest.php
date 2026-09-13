@@ -322,6 +322,19 @@ class MailTestCommandTest extends TestCase
         $this->assertCount(1, $delivered);
     }
 
+    public function test_completion_message_containing_a_console_format_like_tag_does_not_crash_and_is_shown_verbatim(): void
+    {
+        // FILTER_VALIDATE_EMAIL は RFC 5321/5322 の quoted local-part を通すため、こういう宛先が実際に有効になる
+        Mail::fake();
+        config(['mail.default' => 'smtp', 'queue.default' => 'database']);
+
+        $this->artisan('ops:mail-test', ['to' => '"<fg=nope>"@example.com'])
+            ->expectsOutputToContain('テストメールを送信待ちに入れました（宛先: "<fg=nope>"@example.com）。')
+            ->assertExitCode(0);
+
+        Mail::assertQueued(OpsTestMail::class, fn (OpsTestMail $mail) => $mail->hasTo('"<fg=nope>"@example.com'));
+    }
+
     // (i) OpsTestMail::failed() が宛先つきの日本語をログに残す
     public function test_i_failed_hook_logs_the_recipient_and_reason_in_japanese(): void
     {

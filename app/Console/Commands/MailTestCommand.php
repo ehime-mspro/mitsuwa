@@ -64,11 +64,11 @@ class MailTestCommand extends Command
 
         if ($sent !== []) {
             if ($viaQueue) {
-                $this->info('テストメールを送信待ちに入れました（宛先: '.implode('、', $sent).'）。');
+                $this->info('テストメールを送信待ちに入れました（宛先: '.OutputFormatter::escape(implode('、', $sent)).'）。');
                 $this->info('・定期実行（5 分おき）で送られます。CRON を登録する前は '.$this->artisanCommand('queue:work --stop-when-empty').' で送れます。');
                 $this->info('・5 分たっても届かないときは storage/logs/laravel.log を確かめるか、開発担当へ連絡してください。');
             } else {
-                $this->info('テストメールを送りました（宛先: '.implode('、', $sent).'）。');
+                $this->info('テストメールを送りました（宛先: '.OutputFormatter::escape(implode('、', $sent)).'）。');
             }
         }
 
