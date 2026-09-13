@@ -84,16 +84,25 @@ class LayoutSidebarCloakTest extends TestCase
      * （閉じたときにスクロール位置が丸められて scroll が起き、広い状態でヒントを消す → 開いても何も起きない）。
      *
      * ⚠ 構造しか見られない（Alpine が評価する属性なので PHP からは実行できない）。実際の動きはブラウザで確かめる。
-     * ⚠ `$nextTick` を外さないこと。x-show が表示を切り替える前に測ると、開閉前の幅で判定する。
+     * ⚠ `$nextTick` だけでは足りない（2026-09-13 にブラウザで実測）。Alpine 3.15 の x-show は、起動後の切り替えを
+     *   画面が見えているとき requestAnimationFrame まで遅らせる（`_x_toggleAndCascadeWithTransitions`）。
+     *   `$nextTick` は setTimeout なので先に走り、開閉前の幅で測っていた（「閉じる」を押すと resize が 2.6ms・
+     *   サイドバーの切り替えが次のフレームの 8〜9ms。閉じる → 開くだけで、スクロールできるのにヒントが消えた）。
+     *   `$nextTick` で x-show の予約が済むのを待ち、requestAnimationFrame でその切り替えより後に送る。
+     * ⚠ 入れ子まで見る — `$nextTick` のコールバックの最初の文が requestAnimationFrame で、resize はその
+     *   コールバックの中で送ること（`requestAnimationFrame(function () {})` の外で送ると、また切り替えの前に測る）。
      */
     public function test_toggling_the_sidebar_makes_pages_measure_again(): void
     {
         $this->assertSame(1, preg_match('#<body\b[^>]*>#s', $this->layoutHtml(), $body), '<body> が見つからない');
 
         $this->assertMatchesRegularExpression(
-            '#\bx-init="[^"]*\$watch\(\s*\'sidebarExpanded\'[^"]*\$nextTick\([^"]*window\.dispatchEvent\(\s*new Event\(\s*\'resize\'\s*\)\s*\)#',
+            '#\bx-init="[^"]*\$watch\(\s*\'sidebarExpanded\'\s*,\s*function\s*\([^)]*\)\s*\{[^"]*'
+                . '\$nextTick\(\s*function\s*\([^)]*\)\s*\{\s*(?:window\.)?requestAnimationFrame\(\s*function\s*\([^)]*\)\s*\{'
+                . '[^}"]*window\.dispatchEvent\(\s*new Event\(\s*\'resize\'\s*\)\s*\)#',
             $body[0],
-            'サイドバーの開閉のあとに resize を送っていない（開閉で幅が変わっても横スクロールのヒントが測り直されない）'
+            'サイドバーの開閉のあと、x-show の切り替え（次のアニメーションフレーム）より後に resize を送っていない'
+                . '（$nextTick だけだと開閉前の幅で測り、閉じる → 開くでスクロールできるのにヒントが消える）'
         );
     }
 }
