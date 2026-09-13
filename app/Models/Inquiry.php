@@ -62,9 +62,13 @@ class Inquiry extends Model
         return $this->belongsTo(Customer::class);
     }
 
+    /**
+     * 希望区画。区画は論理削除なので削除済みも読む（読まないと表示から黙って消え、
+     * 編集画面で選択済みから抜けて保存で中間テーブルからも消える。docs/RULES.md Bug #58）。
+     */
     public function units(): BelongsToMany
     {
-        return $this->belongsToMany(Unit::class, 'inquiry_units');
+        return $this->belongsToMany(Unit::class, 'inquiry_units')->withTrashed();
     }
 
     public function desiredUsageType(): BelongsTo
@@ -117,7 +121,7 @@ class Inquiry extends Model
     }
 
     /**
-     * 希望区画のカンマ区切り表示
+     * 希望区画のカンマ区切り表示（削除済みの区画には「（削除済み）」が付く）
      */
     public function getUnitLabelsAttribute(): string
     {
@@ -125,7 +129,7 @@ class Inquiry extends Model
             return '未定';
         }
 
-        return $this->units->pluck('display_name')->implode(', ');
+        return $this->units->pluck('display_label')->implode(', ');
     }
 
     /**

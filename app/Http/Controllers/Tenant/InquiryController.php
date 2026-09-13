@@ -18,6 +18,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Database\QueryException;
+use Illuminate\Validation\Rule;
 
 class InquiryController extends Controller
 {
@@ -129,7 +130,8 @@ class InquiryController extends Controller
             'property_id'      => 'required|exists:properties,id',
             'customer_id'      => 'nullable|exists:customers,id',
             'unit_ids'         => 'nullable|array',
-            'unit_ids.*'       => 'exists:units,id',
+            // 削除済みの区画は選べない（exists は論理削除を見ないので明示する）
+            'unit_ids.*'       => [Rule::exists('units', 'id')->withoutTrashed()],
             'inquiry_date'     => 'required|date',
             'source'           => 'nullable|string|in:website,phone,referral,signage,other,unknown',
             'assigned_to'      => 'nullable|exists:users,id',
@@ -150,10 +152,10 @@ class InquiryController extends Controller
             'company_name' => '会社名・屋号',
         ]);
 
-        // 区画の物件所属チェック
+        // 区画の物件所属チェック（更新と同じく削除済みも読む）
         if (! empty($validated['unit_ids'])) {
             $propertyId = (int) $validated['property_id'];
-            $invalidUnits = Unit::whereIn('id', $validated['unit_ids'])
+            $invalidUnits = Unit::withTrashed()->whereIn('id', $validated['unit_ids'])
                 ->where('property_id', '!=', $propertyId)
                 ->exists();
             if ($invalidUnits) {
@@ -274,11 +276,17 @@ class InquiryController extends Controller
      */
     public function update(Request $request, Inquiry $inquiry)
     {
+        // 今の希望区画（削除済みも含む。編集画面の選択肢に残してある）
+        $currentUnitIds = $inquiry->units()->pluck('units.id')->all();
+
         $validated = $request->validate([
             'property_id'      => 'required|exists:properties,id',
             'customer_id'      => 'nullable|exists:customers,id',
             'unit_ids'         => 'nullable|array',
-            'unit_ids.*'       => 'exists:units,id',
+            // 削除済みの区画は選べない。ただし今の希望区画は削除済みでもそのまま保存できる
+            'unit_ids.*'       => [Rule::exists('units', 'id')->where(
+                fn ($q) => $q->whereNull('deleted_at')->orWhereIn('id', $currentUnitIds)
+            )],
             'inquiry_date'     => 'required|date',
             'source'           => 'nullable|string|in:website,phone,referral,signage,other,unknown',
             'assigned_to'      => 'nullable|exists:users,id',
@@ -299,10 +307,11 @@ class InquiryController extends Controller
             'company_name' => '会社名・屋号',
         ]);
 
-        // 区画の物件所属チェック
+        // 区画の物件所属チェック。⚠ 削除済みも読む — 読まないと、今の希望区画（削除済み）を通す入力チェックと
+        // 組み合わさり、物件を変えた問合せに旧物件の区画が付く
         if (! empty($validated['unit_ids'])) {
             $propertyId = (int) $validated['property_id'];
-            $invalidUnits = Unit::whereIn('id', $validated['unit_ids'])
+            $invalidUnits = Unit::withTrashed()->whereIn('id', $validated['unit_ids'])
                 ->where('property_id', '!=', $propertyId)
                 ->exists();
             if ($invalidUnits) {
@@ -447,13 +456,17 @@ class InquiryController extends Controller
 
     /**
      * 空室・商談中の区画オプションを構築
-     * 編集時は、既に選択済みの区画も含める（入居中でも）
+     * 編集時は、既に選択済みの区画も含める（入居中でも。削除済みでも「（削除済み）」を付けて残す）
+     *
+     * ⚠ includingTrashed() と「空室・商談中 OR 選択済み」は AND でつながる（登録画面に削除済みは出ない）。
+     * ⚠ deleted_at を取らないと display_label の「（削除済み）」が黙って消える。
      */
     private function buildVacantUnitOptions($properties, ?Inquiry $inquiry = null)
     {
         $selectedUnitIds = $inquiry ? $inquiry->units->pluck('id')->toArray() : [];
 
-        return Unit::whereIn('property_id', $properties->pluck('id'))
+        return Unit::includingTrashed($selectedUnitIds)
+            ->whereIn('property_id', $properties->pluck('id'))
             ->where(function ($q) use ($selectedUnitIds) {
                 $q->whereIn('status', [UnitStatus::Vacant, UnitStatus::Negotiating]);
                 if (! empty($selectedUnitIds)) {
@@ -461,15 +474,16 @@ class InquiryController extends Controller
                 }
             })
             ->orderBy('property_id')->orderBy('floor')->orderBy('display_name')
-            ->get(['id', 'property_id', 'display_name', 'floor', 'area_tsubo', 'status'])
+            ->get(['id', 'property_id', 'display_name', 'floor', 'area_tsubo', 'status', 'deleted_at'])
             ->map(function ($u) {
                 $tsubo = $u->area_tsubo ? number_format((float) $u->area_tsubo, 2) . '坪' : '';
-                $label = $u->display_name . ($tsubo ? "（{$tsubo}）" : '');
+                $label = $u->display_label . ($tsubo ? "（{$tsubo}）" : '');
                 return [
                     'id'          => $u->id,
                     'property_id' => $u->property_id,
                     'label'       => $label,
-                    'status'      => (string) $u->getRawOriginal('status') === 'negotiating' ? '商談中' : '',
+                    // 削除済みの区画には「商談中」を付けない（もう募集していない）
+                    'status'      => ! $u->trashed() && (string) $u->getRawOriginal('status') === 'negotiating' ? '商談中' : '',
                 ];
             })
             ->values();

@@ -2,14 +2,17 @@
 
 namespace Tests\Feature\Tenant;
 
+use App\Enums\InquiryStatus;
 use App\Enums\RepairStatus;
 use App\Enums\UserRole;
+use App\Models\Inquiry;
 use App\Models\Investment;
 use App\Models\Property;
 use App\Models\Repair;
 use App\Models\Unit;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -488,5 +491,224 @@ class DeletedUnitReferenceTest extends TestCase
             ->assertSessionHasErrors(['unit_id' => '選択された区画は存在しません。']);
 
         $this->assertSame(0, Repair::count());
+    }
+
+    // ============================================================
+    // 問合せ（希望区画は複数。中間テーブル inquiry_units）
+    // ============================================================
+
+    /** 希望区画を付けた順に並ぶ（既存の UnitLabelDisplayTest と同じ前提） */
+    private function inquiryOn(Unit ...$units): Inquiry
+    {
+        $inquiry = Inquiry::create([
+            'inquiry_number' => 'INQ-DEL-001',
+            'property_id' => $this->building->id,
+            'contact_name' => '削除 太郎',
+            'inquiry_date' => '2026-09-01',
+            'status' => InquiryStatus::Follow->value,
+        ]);
+        $inquiry->units()->attach(array_map(fn (Unit $unit) => $unit->id, $units));
+
+        return $inquiry;
+    }
+
+    /** @return list<int> 中間テーブルに残っている区画（リレーションを通さず直接見る） */
+    private function pivotUnitIds(Inquiry $inquiry): array
+    {
+        return DB::table('inquiry_units')->where('inquiry_id', $inquiry->id)
+            ->orderBy('unit_id')->pluck('unit_id')->map(fn ($id) => (int) $id)->all();
+    }
+
+    /** 画面が送る問合せのフォーム値（希望区画は画面が選択済みとして hidden で送るもの。Bug #54 ②） */
+    private function inquiryFormFrom(\Illuminate\Testing\TestResponse $edit, array $overrides = []): array
+    {
+        $inquiry = $edit->viewData('inquiry');
+
+        return array_merge([
+            'property_id' => $inquiry->property_id,
+            'unit_ids' => $edit->viewData('selectedUnitIds'),
+            'inquiry_date' => $inquiry->inquiry_date->format('Y-m-d'),
+            'contact_name' => $inquiry->contact_name,
+        ], $overrides);
+    }
+
+    public function test_inquiry_list_shows_a_deleted_unit_with_the_marker(): void
+    {
+        $this->inquiryOn($this->deleted, $this->live);
+        $this->deleteUnit();
+
+        // 以前は削除済みの区画が黙って消え「1A」だけになっていた（全部消えると「未定」）
+        $this->actingAs($this->executive())
+            ->get(route('tenant.inquiries.index'))
+            ->assertOk()
+            ->assertSee('<span class="text-gray-700">B1A（削除済み）, 1A</span>', false);
+    }
+
+    public function test_inquiry_detail_shows_a_deleted_unit(): void
+    {
+        $inquiry = $this->inquiryOn($this->deleted, $this->live);
+        $this->deleteUnit();
+
+        $this->actingAs($this->executive())
+            ->get(route('tenant.inquiries.show', $inquiry))
+            ->assertOk()
+            ->assertSee('<div class="text-sm font-semibold text-gray-900">B1A（削除済み）, 1A</div>', false);
+    }
+
+    public function test_property_detail_inquiry_tab_shows_a_deleted_unit(): void
+    {
+        $this->inquiryOn($this->deleted, $this->live);
+        $this->deleteUnit();
+
+        $html = $this->actingAs($this->executive())
+            ->get(route('tenant.properties.show', $this->building))
+            ->assertOk()
+            ->getContent();
+
+        // 問合せタブの行: 問合せ番号のリンク → 日付のセル → 希望区画のセル
+        $this->assertMatchesRegularExpression(
+            '#INQ-DEL-001</a>\s*</td>\s*<td[^>]*>[^<]*</td>\s*<td[^>]*>B1A（削除済み）, 1A</td>#u',
+            $html,
+            '物件詳細の問合せタブに削除済みの区画が出ていない'
+        );
+    }
+
+    public function test_inquiry_create_form_does_not_offer_deleted_units(): void
+    {
+        $this->inquiryOn($this->deleted);
+        $this->deleteUnit();
+
+        $options = $this->actingAs($this->executive())
+            ->get(route('tenant.inquiries.create'))
+            ->assertOk()
+            ->viewData('allUnits');
+
+        $this->assertSame(['1A（12.50坪）'], $this->optionLabels($options));
+    }
+
+    public function test_inquiry_edit_form_offers_only_its_own_deleted_unit(): void
+    {
+        // 商談中のまま削除された区画にも「商談中」は付けない（生きている商談中の区画には付く）
+        $this->deleted->update(['status' => 'negotiating']);
+        $this->live->update(['status' => 'negotiating']);
+        $inquiry = $this->inquiryOn($this->deleted);
+        $this->deleteUnit();
+
+        $options = $this->actingAs($this->executive())
+            ->get(route('tenant.inquiries.edit', $inquiry))
+            ->assertOk()
+            ->viewData('allUnits');
+
+        // 今の希望区画は削除済みでも残り、ほかの削除済み（3A）は出ない
+        $actual = collect($options)->where('property_id', $this->building->id)
+            ->mapWithKeys(fn ($option) => [$option['label'] => $option['status']])->all();
+        ksort($actual);
+        $expected = ['B1A（削除済み）（12.50坪）' => '', '1A（12.50坪）' => '商談中'];
+        ksort($expected);
+        $this->assertSame($expected, $actual);
+    }
+
+    public function test_inquiry_edit_round_trip_keeps_the_deleted_unit(): void
+    {
+        $inquiry = $this->inquiryOn($this->deleted, $this->live);
+        $this->deleteUnit();
+
+        $user = $this->executive();
+        $edit = $this->actingAs($user)->get(route('tenant.inquiries.edit', $inquiry))->assertOk();
+
+        // 画面は今の希望区画を選択済みとして持ち（hidden で送る）、チップにも出す（出ないと画面で外せない）
+        $this->assertEqualsCanonicalizing(
+            [$this->deleted->id, $this->live->id],
+            $edit->viewData('selectedUnitIds'),
+            '編集画面が削除済みの希望区画を選択済みとして持っていない（保存で中間テーブルから消える）'
+        );
+        $this->assertNotNull(
+            collect($edit->viewData('allUnits'))->where('property_id', $this->building->id)->firstWhere('id', $this->deleted->id),
+            '編集画面のチップに削除済みの希望区画が無い（画面で外せない）'
+        );
+
+        $this->actingAs($user)
+            ->put(route('tenant.inquiries.update', $inquiry), $this->inquiryFormFrom($edit))
+            ->assertSessionHasNoErrors()
+            ->assertRedirect(route('tenant.inquiries.show', $inquiry));
+
+        $this->assertSame([$this->deleted->id, $this->live->id], $this->pivotUnitIds($inquiry), '保存で削除済みの希望区画が消えた');
+    }
+
+    public function test_inquiry_edit_can_remove_the_deleted_unit(): void
+    {
+        $inquiry = $this->inquiryOn($this->deleted, $this->live);
+        $this->deleteUnit();
+
+        $user = $this->executive();
+        $edit = $this->actingAs($user)->get(route('tenant.inquiries.edit', $inquiry))->assertOk();
+
+        // 削除済みの区画のチップだけを外して送る
+        $remaining = array_values(array_diff($edit->viewData('selectedUnitIds'), [$this->deleted->id]));
+        $this->actingAs($user)
+            ->put(route('tenant.inquiries.update', $inquiry), $this->inquiryFormFrom($edit, ['unit_ids' => $remaining]))
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame([$this->live->id], $this->pivotUnitIds($inquiry));
+    }
+
+    public function test_inquiry_update_rejects_another_deleted_unit(): void
+    {
+        $inquiry = $this->inquiryOn($this->deleted);
+        $this->deleteUnit();
+
+        $user = $this->executive();
+        $edit = $this->actingAs($user)->get(route('tenant.inquiries.edit', $inquiry))->assertOk();
+
+        $this->actingAs($user)
+            ->put(route('tenant.inquiries.update', $inquiry), $this->inquiryFormFrom($edit, [
+                'unit_ids' => [$this->deleted->id, $this->otherDeleted->id],
+            ]))
+            // 今の希望区画（0 番目）は削除済みでも通り、ほかの削除済み（1 番目）は通らない
+            ->assertSessionDoesntHaveErrors('unit_ids.0')
+            ->assertSessionHasErrors(['unit_ids.1' => '選択された区画は存在しません。']);
+
+        $this->assertSame([$this->deleted->id], $this->pivotUnitIds($inquiry));
+    }
+
+    public function test_inquiry_update_rejects_the_deleted_unit_of_the_previous_property(): void
+    {
+        $other = Property::create([
+            'code' => 'T-DEL-2', 'name' => '別のビル', 'property_type' => 'tenant', 'department' => 'tenant',
+            'address' => '愛媛県松山市', 'total_floors' => 2,
+        ]);
+        $inquiry = $this->inquiryOn($this->deleted);
+        $this->deleteUnit();
+
+        $user = $this->executive();
+        $edit = $this->actingAs($user)->get(route('tenant.inquiries.edit', $inquiry))->assertOk();
+
+        // 画面では物件を変えると選択が空になる。所属チェックが削除済みを読まないと、
+        // 「今の区画なら削除済みでも通す」入力チェックと組み合わさって別の物件に旧物件の区画が付く
+        $this->actingAs($user)
+            ->put(route('tenant.inquiries.update', $inquiry), $this->inquiryFormFrom($edit, [
+                'property_id' => $other->id,
+                'unit_ids' => [$this->deleted->id],
+            ]))
+            ->assertSessionHasErrors(['unit_ids' => '選択された区画に指定物件に属さないものがあります。']);
+
+        $this->assertSame($this->building->id, $inquiry->refresh()->property_id);
+        $this->assertSame([$this->deleted->id], $this->pivotUnitIds($inquiry));
+    }
+
+    public function test_inquiry_store_rejects_a_deleted_unit(): void
+    {
+        $this->deleteUnit();
+
+        $this->actingAs($this->executive())
+            ->post(route('tenant.inquiries.store'), [
+                'property_id' => $this->building->id,
+                'unit_ids' => [$this->deleted->id],
+                'inquiry_date' => '2026-09-01',
+                'contact_name' => '削除 太郎',
+            ])
+            ->assertSessionHasErrors(['unit_ids.0' => '選択された区画は存在しません。']);
+
+        $this->assertSame(0, Inquiry::count());
     }
 }
