@@ -80,17 +80,7 @@ class RepairController extends Controller
             ->orderBy('operation_status')->orderBy('id')
             ->get(['id', 'name', 'code', 'operation_status']);
 
-        $allUnits = Unit::whereIn('property_id', $properties->pluck('id'))
-            ->orderBy('property_id')->orderBy('floor')->orderBy('display_name')
-            ->get(['id', 'property_id', 'display_name', 'floor'])
-            ->map(function ($u) {
-                return [
-                    'id'          => $u->id,
-                    'property_id' => $u->property_id,
-                    'label'       => $u->display_name,
-                ];
-            })
-            ->values();
+        $allUnits = $this->buildUnitOptions($properties);
 
         return view('tenant.repairs.create', compact('properties', 'allUnits'));
     }
@@ -166,17 +156,7 @@ class RepairController extends Controller
             ->orderBy('operation_status')->orderBy('id')
             ->get(['id', 'name', 'code', 'operation_status']);
 
-        $allUnits = Unit::whereIn('property_id', $properties->pluck('id'))
-            ->orderBy('property_id')->orderBy('floor')->orderBy('display_name')
-            ->get(['id', 'property_id', 'display_name', 'floor'])
-            ->map(function ($u) {
-                return [
-                    'id'          => $u->id,
-                    'property_id' => $u->property_id,
-                    'label'       => $u->display_name,
-                ];
-            })
-            ->values();
+        $allUnits = $this->buildUnitOptions($properties);
 
         return view('tenant.repairs.edit', compact('repair', 'properties', 'allUnits'));
     }
@@ -231,6 +211,24 @@ class RepairController extends Controller
 
         return redirect()->route('tenant.repairs.index')
             ->with('success', '修繕を削除しました。');
+    }
+
+    /**
+     * 区画セレクト用の選択肢を構築する（ラベルは表示名。表示名は階を含むので階を前に付けない）
+     */
+    private function buildUnitOptions($properties)
+    {
+        return Unit::whereIn('property_id', $properties->pluck('id'))
+            ->orderBy('property_id')->orderBy('floor')->orderBy('display_name')
+            ->get(['id', 'property_id', 'display_name', 'floor'])
+            ->map(function ($u) {
+                return [
+                    'id'          => $u->id,
+                    'property_id' => $u->property_id,
+                    'label'       => $u->display_name,
+                ];
+            })
+            ->values();
     }
 
     /**
