@@ -13,8 +13,11 @@ use App\Models\Property;
 use App\Models\Repair;
 use App\Models\Unit;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletingScope;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 use Tests\TestCase;
 
 /**
@@ -814,5 +817,102 @@ class DeletedUnitReferenceTest extends TestCase
             $html,
             '顧客詳細の解約済みの表に削除済みの印が無い'
         );
+    }
+
+    // ============================================================
+    // 構造: 区画を指すリレーションを全件分類する（Top trap #13。直した分を並べる形にしない）
+    // ============================================================
+
+    /**
+     * app/Models のリレーションで区画（Unit::class）を指すものを機械的に拾い、種類ごとに方針を課す。
+     * - 子から区画を読む（belongsTo / belongsToMany）→ 削除済みも読む（読まないと区画を消した瞬間に 500・誤表示・保存で消える）
+     * - 物件から区画を並べる（hasMany / hasOne）→ 削除済みを読まない（フロアマップ・区画数・入居率に混ざる）
+     * 新しいリレーションが増えたら自動で検査対象に入る。種類が分からないものは落とす。
+     */
+    public function test_every_relation_to_units_is_classified(): void
+    {
+        $found = [];
+        foreach ($this->modelClasses() as $class) {
+            foreach ((new \ReflectionClass($class))->getMethods(\ReflectionMethod::IS_PUBLIC) as $method) {
+                $file = $method->getFileName();
+                if ($method->isStatic() || $method->getNumberOfRequiredParameters() > 0
+                    || $file === false || ! str_starts_with($file, app_path('Models'))) {
+                    continue;
+                }
+                $source = $this->methodSourceWithoutComments($method);
+                if (! preg_match('/(?:\\\\App\\\\Models\\\\|(?<![\w\\\\]))Unit::class/', $source)) {
+                    continue;
+                }
+                $key = $class . '::' . $method->getName();
+                $this->assertMatchesRegularExpression(
+                    '/\$this->(belongsTo|belongsToMany|hasMany|hasOne)\(\s*(?:\\\\?App\\\\Models\\\\)?Unit::class/',
+                    $source,
+                    "{$key} は区画を指しているが、どの種類のリレーションか分類できない（このテストに方針を足すこと）"
+                );
+                preg_match('/\$this->(belongsTo|belongsToMany|hasMany|hasOne)\(/', $source, $m);
+                $found[$key] = $m[1];
+            }
+        }
+
+        foreach ($found as $key => $kind) {
+            [$class, $method] = explode('::', $key);
+            $readsTrashed = in_array(SoftDeletingScope::class, (new $class)->{$method}()->getQuery()->removedScopes(), true);
+            if (in_array($kind, ['belongsTo', 'belongsToMany'], true)) {
+                $this->assertTrue($readsTrashed, "{$key}（{$kind}）が削除済みの区画を読まない（withTrashed() が要る）");
+            } else {
+                $this->assertFalse($readsTrashed, "{$key}（{$kind}）が削除済みの区画まで並べる");
+            }
+        }
+
+        // 走査が空振りして緑になる事故を防ぐ（2026-09-13 時点で子から読む 5 本 ＋ 物件から並べる 1 本）
+        $childRelations = array_keys(array_filter($found, fn ($kind) => in_array($kind, ['belongsTo', 'belongsToMany'], true)));
+        $this->assertGreaterThanOrEqual(5, count($childRelations), '区画を読むリレーションを拾えていない: ' . implode(', ', $childRelations));
+        $this->assertSame('hasMany', $found[Property::class . '::units'] ?? null, 'Property::units を拾えていない');
+    }
+
+    public function test_floor_map_does_not_show_deleted_units(): void
+    {
+        $this->terminatedContractOn($this->deleted);
+        $this->deleteUnit();
+
+        $floorMap = $this->actingAs($this->executive())
+            ->get(route('tenant.properties.show', $this->building))
+            ->assertOk()
+            ->viewData('floorMap');
+
+        // 削除済みの B1A・3A は並ばない（Property::units に withTrashed() を付けていないことの固定）
+        $ids = collect($floorMap['floors'])->flatMap(fn ($floor) => $floor['units']->pluck('id'))->all();
+        $this->assertSame([$this->live->id], $ids);
+    }
+
+    /** @return list<class-string<Model>> */
+    private function modelClasses(): array
+    {
+        $classes = [];
+        foreach (File::allFiles(app_path('Models')) as $file) {
+            $class = 'App\\Models\\' . str_replace(['/', '.php'], ['\\', ''], $file->getRelativePathname());
+            if (class_exists($class) && is_subclass_of($class, Model::class) && ! (new \ReflectionClass($class))->isAbstract()) {
+                $classes[] = $class;
+            }
+        }
+
+        return $classes;
+    }
+
+    /** メソッドの本体（docblock を含まない）からコメントを落とした文字列（注意書きの Unit::class に反応しないように。Bug #42 ②） */
+    private function methodSourceWithoutComments(\ReflectionMethod $method): string
+    {
+        $lines = file($method->getFileName());
+        $source = implode('', array_slice($lines, $method->getStartLine() - 1, $method->getEndLine() - $method->getStartLine() + 1));
+
+        $code = '';
+        foreach (token_get_all('<?php ' . $source) as $token) {
+            if (is_array($token) && in_array($token[0], [T_OPEN_TAG, T_COMMENT, T_DOC_COMMENT], true)) {
+                continue;
+            }
+            $code .= is_array($token) ? $token[1] : $token;
+        }
+
+        return $code;
     }
 }

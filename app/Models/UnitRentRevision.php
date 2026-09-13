@@ -54,11 +54,12 @@ class UnitRentRevision extends Model
     // ============================================================
 
     /**
-     * 対象区画
+     * 対象区画（区画は論理削除なので削除済みも読む。子から区画を読むリレーションはすべてそうする。
+     * DeletedUnitReferenceTest が全件分類で固定している。docs/RULES.md Bug #58）
      */
     public function unit(): BelongsTo
     {
-        return $this->belongsTo(Unit::class);
+        return $this->belongsTo(Unit::class)->withTrashed();
     }
 
     /**
