@@ -88,6 +88,12 @@ sudo rm -f storage/framework/views/*.php && brew services restart httpd
 - BSD sed: `sed -i ''`（GNU 構文 NG）
 - DB migration は raw SQL: `sudo mysql manage < file.sql`（Laravel migration ファイル管理ではない）
 
+### 定期実行とバックアップ（本番）
+- 定期実行: さくらの CRON（5 分おき・1 件）が `schedule:run` を起動（予定は `routes/console.php`、時刻は `config/app.php` の `schedule_timezone`=Asia/Tokyo）。キューは database で、`queue:work --stop-when-empty` を `schedule:run` の起動ごと（＝5 分おき）に回す（常駐禁止のため）。予定は「その分に一致したら実行」なので、決まった時刻の仕事は `0-4 3 * * *` のように 5 分の幅を持たせる（CRON の起動のずれで無言で飛ばないように）
+- 夜間バックアップ: `ops:backup`（3:00〜3:04 の回・キュー処理より先・メンテナンス中も実行。画面の出力は `storage/logs/backup-command.log`）→ DB 全体と `storage/app/{public,private}` を AES-256-GCM で暗号化してさくらのオブジェクトストレージへ（添付は `files/<キー識別子>/` に差分だけ送る）。自分で扱った失敗は終了コード 3（`BackupCommand::HANDLED_FAILURE`）で自分で通知し、それ以外の 0 でない終了は `routes/console.php` の onFailure が、終了コードが得られない停止（kill などのシグナル）は同じファイルの ScheduledTaskFailed の listener が通知する（本番 FreeBSD の sh は予定のコマンドを sh を挟まずに直接実行するため、kill されると終了コードではなく ProcessSignaledException になり onFailure まで進まない。手元の macOS の sh＝bash では 137 になるので、テストは `exec` を付けて再現する）。本番に sodium は無い。記録の時刻は UTC。手順は @docs/運用_バックアップとメール.md
+- ⚠ `storage/app/{public,private}` のファイルは**上書き保存しない**（新しい内容は新しい名前で保存する）。バックアップは「同じパス・同じ大きさなら送り直さない」判定のため、上書きすると変更がバックアップに入らない
+- ⚠ コマンドの画面に「このコマンドを打ってください」と案内するときは、`php artisan …` と書かずに `PHP_BINARY` で組み立てる（`app/Console/Commands/Concerns/SuggestsArtisanCommands.php`）。さくらで `php` とだけ打つと既定の PHP 7.4 が動き、英語のエラーで止まる
+
 ## 📋 Conventions
 
 ### Form
