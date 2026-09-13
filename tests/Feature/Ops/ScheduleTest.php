@@ -111,7 +111,7 @@ class ScheduleTest extends TestCase
         $backup = $this->event('ops:backup');
         $queue = $this->event('queue:work');
         $this->assertFalse($this->app->isDownForMaintenance());
-        $this->assertDirectoryDoesNotExist(storage_path('framework/down'));
+        $this->assertFileDoesNotExist(storage_path('framework/down'));
 
         $this->app->maintenanceMode()->activate([]);
 
@@ -119,13 +119,13 @@ class ScheduleTest extends TestCase
             $this->assertTrue($this->app->isDownForMaintenance());
             $this->assertTrue($backup->isDue($this->app));
             $this->assertFalse($queue->isDue($this->app));
-            $this->assertDirectoryDoesNotExist(storage_path('framework/down'));
+            $this->assertFileDoesNotExist(storage_path('framework/down'));
         } finally {
             $this->app->maintenanceMode()->deactivate();
         }
 
         $this->assertFalse($this->app->isDownForMaintenance());
-        $this->assertDirectoryDoesNotExist(storage_path('framework/down'));
+        $this->assertFileDoesNotExist(storage_path('framework/down'));
     }
 
     public function test_backup_is_scheduled_before_the_queue_worker(): void
@@ -229,6 +229,30 @@ class ScheduleTest extends TestCase
         } finally {
             @unlink($backup->output);
         }
+    }
+
+    public function test_the_signal_stop_listener_ignores_failures_from_other_scheduled_tasks(): void
+    {
+        // listener の「バックアップの予定だけ」の絞り込みのテストを足す。
+        // 3:00 の回では確かめられない（同じ回でバックアップが先に終わって終了コードが入るため、絞り込みを消しても listener は exitCode で見送ってしまう）。
+        config([
+            'mail.default' => 'array',
+            'backup.notify_to' => 'admin@example.com',
+            'logging.default' => 'null',
+        ]);
+        $this->travelTo(CarbonImmutable::parse('2026-09-14 12:00:00', 'Asia/Tokyo'));
+
+        $backup = $this->event('ops:backup');
+        $queue = $this->event('queue:work');
+        $this->assertNull($backup->exitCode, '新しいプロセスと同じく、この回ではまだ一度も backup が動いていないこと');
+
+        $queue->command = "sh -c 'exit 1'";
+        $this->assertSame(0, Artisan::call('schedule:run'));
+        $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
+
+        $queue->command = "exec sh -c 'kill -9 \$\$'";
+        $this->assertSame(0, Artisan::call('schedule:run'));
+        $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
     }
 
     private function event(string $needle): Event
