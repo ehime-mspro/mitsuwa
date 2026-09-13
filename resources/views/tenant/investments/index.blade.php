@@ -83,7 +83,7 @@
                         @forelse($investments as $inv)
                             <tr class="hover:bg-gray-50 transition-colors">
                                 <td class="px-4 py-3 border-b border-gray-200 text-center text-sm font-semibold text-gray-900 whitespace-nowrap">
-                                    {{ $inv->property->name }} / {{ $inv->unit->display_name }}
+                                    {{ $inv->property->name }} / {{ $inv->unit->display_label }}
                                 </td>
                                 <td class="px-4 py-3 border-b border-gray-200 text-right text-sm font-semibold text-gray-900 whitespace-nowrap">
                                     {{ number_format($inv->total_amount) }}円

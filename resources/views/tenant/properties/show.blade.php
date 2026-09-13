@@ -437,7 +437,7 @@
                                             <td class="px-4 py-2.5 border-b border-gray-200 whitespace-nowrap">
                                                 <a href="{{ route('tenant.investments.show', $inv) }}" class="text-emerald-600 font-semibold hover:underline">{{ $inv->investment_number }}</a>
                                             </td>
-                                            <td class="px-4 py-2.5 border-b border-gray-200 text-center whitespace-nowrap text-gray-900">{{ $inv->unit->display_name }}</td>
+                                            <td class="px-4 py-2.5 border-b border-gray-200 text-center whitespace-nowrap text-gray-900">{{ $inv->unit->display_label }}</td>
                                             <td class="px-4 py-2.5 border-b border-gray-200 text-center whitespace-nowrap text-gray-900">{{ $inv->pattern->label() }}</td>
                                             <td class="px-4 py-2.5 border-b border-gray-200 text-right font-semibold whitespace-nowrap text-gray-900">{{ number_format($inv->total_amount) }}円</td>
                                             <td class="px-4 py-2.5 border-b border-gray-200 text-center whitespace-nowrap">

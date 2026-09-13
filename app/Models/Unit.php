@@ -14,6 +14,9 @@ class Unit extends Model
 {
     use HasFactory, SoftDeletes;
 
+    /** 論理削除済みの区画の表示名に付ける印（担当者の選択肢と同じ書き方） */
+    private const DELETED_SUFFIX = '（削除済み）';
+
     protected $fillable = [
         'property_id',
         'floor',
@@ -126,6 +129,20 @@ class Unit extends Model
             return $floor . $roomNumber;
         }
         return $roomNumber;
+    }
+
+    /**
+     * 画面に出す区画名（表示名 ＋ 論理削除済みなら「（削除済み）」）。
+     * 投資・修繕・問合せ・契約の画面は削除済みの区画も読むので、区画名はこれで出す（docs/RULES.md Bug #58）。
+     *
+     * ⚠ 印は DB に保存せず毎回 trashed() で決める。同じ表示名で登録し直すと UnitController::store が
+     *   削除済みの行を復元するので、保存すると復元後も印が残る。
+     * ⚠ 列を絞って読む（get([...])）ときは deleted_at も取ること。取らないと trashed() が黙って false になり
+     *   印が消える（Eloquent の厳格モードは有効にしていない）。
+     */
+    public function getDisplayLabelAttribute(): string
+    {
+        return $this->display_name . ($this->trashed() ? self::DELETED_SUFFIX : '');
     }
 
     /**

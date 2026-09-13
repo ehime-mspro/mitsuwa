@@ -53,7 +53,12 @@
             </div>
             <div>
                 <div class="text-xs text-gray-500 mb-0.5">区画</div>
-                <div class="text-sm font-semibold"><a href="{{ route('tenant.units.show', $investment->unit) }}" class="text-emerald-600 hover:underline">{{ $investment->unit->display_name }}</a></div>
+                {{-- 削除済みの区画は区画ページが 404 になるのでリンクを張らない --}}
+                @if($investment->unit->trashed())
+                    <div class="text-sm font-semibold text-gray-900">{{ $investment->unit->display_label }}</div>
+                @else
+                    <div class="text-sm font-semibold"><a href="{{ route('tenant.units.show', $investment->unit) }}" class="text-emerald-600 hover:underline">{{ $investment->unit->display_label }}</a></div>
+                @endif
             </div>
             <div>
                 <div class="text-xs text-gray-500 mb-0.5">ステータス</div>
@@ -209,7 +214,7 @@
         <x-delete-confirm-modal
             title="投資案件を削除しますか？"
             :action="route('tenant.investments.destroy', $investment)"
-            :target="$investment->investment_number . ' — ' . $investment->property->name . ' / ' . $investment->unit->display_name"
+            :target="$investment->investment_number . ' — ' . $investment->property->name . ' / ' . $investment->unit->display_label"
         />
     @endif
 

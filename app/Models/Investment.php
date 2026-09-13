@@ -63,9 +63,13 @@ class Investment extends Model
         return $this->belongsTo(Property::class);
     }
 
+    /**
+     * 区画は論理削除なので削除済みも読む（読まないと null になり一覧・詳細・物件詳細が 500。docs/RULES.md Bug #58）。
+     * 画面の区画名は display_label（削除済みなら「（削除済み）」が付く）で出す。
+     */
     public function unit(): BelongsTo
     {
-        return $this->belongsTo(Unit::class);
+        return $this->belongsTo(Unit::class)->withTrashed();
     }
 
     public function contract(): BelongsTo
