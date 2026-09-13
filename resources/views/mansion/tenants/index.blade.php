@@ -152,6 +152,7 @@
             @endforelse
         </tbody>
     </table>
+    </div>{{-- /.scroll-area --}}
 
     {{-- ページネーション --}}
     @if($tenants->hasPages())
@@ -184,5 +185,30 @@
 <div style="margin-top: 16px; padding: 12px 16px; background: #f9fafb; border-radius: 8px; font-size: 12px; color: #6b7280;">
     <strong style="color: #374151;">※表示ルール</strong>：「駐車場利用のみ」は部屋契約を持たず、駐車場だけを利用する外部利用者。紐付け列は「マンション名 / 号室」または「マンション名 / 駐車場番号」を表示。
 </div>
+
+{{-- 判定はパース中と DOMContentLoaded の 2 回（部屋契約一覧と同じ。2026-09-13 に追加）。
+     それまではこのスクリプトが無く、表が収まる幅でもヒントと右端のフェードが常に出ていた。
+     パース中だけ・DOMContentLoaded だけにしない理由は、部屋契約一覧（mansion/contracts/index.blade.php）の同じ位置の注記を参照。
+     docs/RULES.md Bug #56 ／ 回帰テスト tests/Feature/LayoutMeasuringScriptTest.php --}}
+<script>
+    // 右端 fade をスクロール余地があるときだけ表示
+    (function () {
+        var area = document.getElementById('mansion-tenants-scroll-area');
+        var fade = document.getElementById('mansion-tenants-scroll-fade');
+        var hint = document.getElementById('mansion-tenants-scroll-hint');
+        if (!area || !fade) return;
+        function update() {
+            var hasMore = area.scrollWidth - area.clientWidth > 2;
+            var atEnd   = area.scrollLeft + area.clientWidth >= area.scrollWidth - 2;
+            fade.style.display = hasMore ? '' : 'none';
+            fade.classList.toggle('is-end', atEnd);
+            if (hint) hint.style.display = hasMore ? '' : 'none';
+        }
+        area.addEventListener('scroll', update, { passive: true });
+        window.addEventListener('resize', update);
+        update();
+        document.addEventListener('DOMContentLoaded', update);
+    })();
+</script>
 
 @endsection

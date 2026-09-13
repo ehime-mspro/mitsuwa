@@ -9,11 +9,11 @@ use Tests\TestCase;
  * 幅・スクロール位置に触るページの `<script>` が、Alpine の起動前後で幅が変わっても正しく動くこと（docs/RULES.md Bug #56）。
  *
  * ページの `<script>` はパース中に同期で走り、Alpine（`@vite` の module ＝ defer）より前に動く。
- * 2026-09-13 まで PC 展開サイドバーに `x-cloak` が付いていて、その瞬間だけ表示領域が 220px 広かった。
- * 1024px 以上のある幅で ①工程表ボードの初期スクロールが 220px 手前で止まる ②4 一覧でスクロールできるのに
- * 「横にスクロールして全項目を表示」と右端のフェードが出ない、になっていた。
- * 根本原因の `x-cloak` は外した（LayoutSidebarCloakTest が固定）が、起動後に幅が変わる要因は他にもある
- * （縦スクロールバーの出入り等）ので、各画面の方針もここで固定する。
+ * その瞬間は PC 展開サイドバーが `x-cloak` で隠れていて、表示領域が 220px 広く測れる。
+ * 1024px 以上のある幅で ①工程表ボードの初期スクロールが 220px 手前で止まる ②3 一覧でスクロールできるのに
+ * 「横にスクロールして全項目を表示」と右端のフェードが出ない、になっていた（2026-09-11）。
+ * 入居者一覧は制御する script 自体が無く、表が収まる幅でもヒントとフェードが常に出ていた（2026-09-13 に追加）。
+ * Alpine の起動後に幅が変わる要因はほかにもある（縦スクロールバーの出入り等）ので、各画面の方針をここで固定する。
  *
  * 方針（LAYOUT_SCRIPT_VIEWS）:
  *   DCL_ONLY      … 初回の計測を DOMContentLoaded（DCL）まで待ち、パース中には呼ばない（スクロール位置は丸めが戻らない）
@@ -46,6 +46,7 @@ class LayoutMeasuringScriptTest extends TestCase
         '_partials/_schedule_board.blade.php' => ['scheduleBoardSetInitialScroll', self::DCL_ONLY],
         'tenant/units/index.blade.php' => ['checkScroll', self::DCL_ONLY],
         'mansion/contracts/index.blade.php' => ['update', self::PARSE_AND_DCL],
+        'mansion/tenants/index.blade.php' => ['update', self::PARSE_AND_DCL],
         'zeal/inquiries/index.blade.php' => ['update', self::PARSE_AND_DCL],
         'zeal/members/index.blade.php' => ['update', self::PARSE_AND_DCL],
 
@@ -160,6 +161,41 @@ class LayoutMeasuringScriptTest extends TestCase
         }
 
         $this->assertSame([], $problems, "幅・スクロール位置の初回の計測が方針どおりでない:\n" . implode("\n", $problems));
+    }
+
+    /**
+     * 右端のフェード（`class="scroll-fade-right"`）を持つビューは、制御する script を持ち PARSE_AND_DCL に分類されていること。
+     *
+     * 2026-09-13 まで賃貸マンション入居者一覧は script が無く、表が収まる幅でもヒントとフェードが常に出ていた。
+     * 幅を読む script が無い画面は上の分類テストの走査に原理的に入らないので、見た目の側（フェードの要素）から数える。
+     */
+    public function test_every_scroll_fade_has_a_controlling_script(): void
+    {
+        $root = resource_path('views') . '/';
+        $views = [];
+        foreach (File::allFiles(resource_path('views')) as $file) {
+            if (! str_ends_with($file->getFilename(), '.blade.php')) {
+                continue;
+            }
+            $source = preg_replace('/\{\{--.*?--\}\}/s', '', file_get_contents($file->getPathname()));
+            if (preg_match('/class="[^"]*\bscroll-fade-right\b[^"]*"/', $source) === 1) {
+                $views[] = str_replace($root, '', $file->getPathname());
+            }
+        }
+        sort($views);
+
+        $this->assertNotEmpty($views, '右端のフェードを持つビューが 1 本も見つからない（走査が壊れていないか）');
+
+        $controlled = array_keys(array_filter(
+            self::LAYOUT_SCRIPT_VIEWS,
+            fn ($entry) => $entry !== null && $entry[1] === self::PARSE_AND_DCL
+        ));
+        $this->assertSame(
+            [],
+            array_values(array_diff($views, $controlled)),
+            '右端のフェードを持つのに、制御する script（パース中と DOMContentLoaded の両方で判定）が無い。'
+            . 'ヒントとフェードが幅に関係なく常に出る'
+        );
     }
 
     // ============================================================
