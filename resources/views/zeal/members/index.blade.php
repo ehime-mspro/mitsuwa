@@ -230,9 +230,12 @@
     @endif
 </div>{{-- /.scroll-wrap --}}
 
-{{-- 初回の判定は DOMContentLoaded まで待つ（2026-09-11）。このスクリプトはパース中に同期で走り、
-     Alpine（Vite の module ＝ defer）より前に動く。その瞬間は PC サイドバーが x-cloak で隠れていて
-     表示領域が 220px 広く測れ、1024px 以上のある幅で「スクロールできるのにヒントが出ない」になっていた。
+{{-- 判定はパース中と DOMContentLoaded の 2 回（2026-09-13）。パース中の判定で最初の描画を決め、
+     Alpine の起動後にもう一度測って直す。
+     ⚠ DOMContentLoaded だけにすると、JS の取得が遅いとき DCL までヒントとフェードが既定の「表示」のまま描かれ、
+       表が収まる幅でも一瞬出て消える（300ms 遅延で 51〜345ms の全描画に出た）。
+     ⚠ パース中だけにすると、Alpine の起動後に幅が変わったとき判定が古いまま残る
+       （2026-09-11 に見つかった「スクロールできるのにヒントが出ない」。当時は PC サイドバーの x-cloak で起動前だけ 220px 広かった）。
      docs/RULES.md Bug #56 ／ 回帰テスト tests/Feature/LayoutMeasuringScriptTest.php --}}
 <script>
     // 右端 fade をスクロール余地があるときだけ表示
@@ -250,6 +253,7 @@
         }
         area.addEventListener('scroll', update, { passive: true });
         window.addEventListener('resize', update);
+        update();
         document.addEventListener('DOMContentLoaded', update);
     })();
 </script>
