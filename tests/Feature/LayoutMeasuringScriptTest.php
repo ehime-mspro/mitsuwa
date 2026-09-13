@@ -225,6 +225,11 @@ class LayoutMeasuringScriptTest extends TestCase
                 if (preg_match('/\bsrc\s*=/', $attributes) === 1) {
                     continue;
                 }
+                // 実行されない script（type="text/plain" や text/template 等）は数えない。
+                // 数えると、スクリプトを不活性にしても「制御する script がある」と判定してしまう
+                if (preg_match('/\btype\s*=\s*["\']?(?!(?:text|application)\/javascript\b|module\b)[\w\/+-]+/i', $attributes) === 1) {
+                    continue;
+                }
                 $count++;
                 if (preg_match(self::LAYOUT_ACCESS, $this->scan($body)['shape']) === 1) {
                     $found[str_replace($root, '', $file->getPathname())][] = $body;
