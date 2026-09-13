@@ -48,6 +48,7 @@ rsync -avz \
   --exclude='README*' \
   --exclude='phpunit.xml' \
   --exclude='*.log' \
+  --exclude='storage/app/backup-work' \
   --exclude='.playwright-mcp' \
   --exclude='prod-login.png' \
   --exclude='*.png' \
