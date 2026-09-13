@@ -101,6 +101,33 @@ class ScheduleTest extends TestCase
         $this->assertFalse($this->event('queue:work')->evenInMaintenanceMode);
     }
 
+    public function test_only_the_backup_schedule_stays_active_while_the_application_is_in_maintenance_mode(): void
+    {
+        // 今のテストは `evenInMaintenanceMode` の値を見るだけ（Task 11 の持ち越し）。実際にメンテナンスモードにして、3:00（日本時間）に backup の `isDue()` が true・queue:work が false になることを確かめる。
+        // 記録先はキャッシュ（`config(['app.maintenance.driver' => 'cache', 'app.maintenance.store' => 'array'])`）にして、worktree に storage/framework/down を作らない。
+        config(['app.maintenance.driver' => 'cache', 'app.maintenance.store' => 'array']);
+        $this->travelTo(CarbonImmutable::parse('2026-09-14 03:00:00', 'Asia/Tokyo'));
+
+        $backup = $this->event('ops:backup');
+        $queue = $this->event('queue:work');
+        $this->assertFalse($this->app->isDownForMaintenance());
+        $this->assertDirectoryDoesNotExist(storage_path('framework/down'));
+
+        $this->app->maintenanceMode()->activate([]);
+
+        try {
+            $this->assertTrue($this->app->isDownForMaintenance());
+            $this->assertTrue($backup->isDue($this->app));
+            $this->assertFalse($queue->isDue($this->app));
+            $this->assertDirectoryDoesNotExist(storage_path('framework/down'));
+        } finally {
+            $this->app->maintenanceMode()->deactivate();
+        }
+
+        $this->assertFalse($this->app->isDownForMaintenance());
+        $this->assertDirectoryDoesNotExist(storage_path('framework/down'));
+    }
+
     public function test_backup_is_scheduled_before_the_queue_worker(): void
     {
         // schedule:run は予定を上から順に、前の予定の終了を待って次へ進む。
