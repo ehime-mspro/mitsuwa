@@ -262,7 +262,7 @@ class BackupRestoreCommand extends Command
         }
 
         if (! $withoutDb) {
-            $this->info('データベース: '.$this->escapeForDisplay($destination).'/db/'.basename((string) $databaseKey, '.enc'));
+            $this->info('データベース: '.$this->escapeForDisplay($destination).'/db/'.$this->escapeForDisplay(basename((string) $databaseKey, '.enc')));
         }
 
         if ($files !== null) {
@@ -323,7 +323,7 @@ class BackupRestoreCommand extends Command
             if ($shown >= self::MAX_FAILURE_LIST) {
                 break;
             }
-            $this->line("  {$label}: {$reason}");
+            $this->line('  '.$this->escapeForDisplay($label).': '.$this->escapeForDisplay($reason));
             $shown++;
         }
 
@@ -353,7 +353,7 @@ class BackupRestoreCommand extends Command
             return null;
         }
 
-        $this->line(sprintf('データベースを取り出しています: %s', $key));
+        $this->line(sprintf('データベースを取り出しています: %s', $this->escapeForDisplay($key)));
 
         $this->makeDirectory($destination.'/db');
         $encrypted = $work.'/'.self::DATABASE_TEMP_FILE;
@@ -379,7 +379,7 @@ class BackupRestoreCommand extends Command
      */
     private function reportDatabaseFailure(string $reason, array $availableKeys): void
     {
-        $this->error($reason);
+        $this->error($this->escapeForDisplay($reason));
         $this->line('添付だけを取り出すときは --without-db を、別のキーを使うときは --ask-key を付けてください。');
         $this->printAvailableDatabaseBackups($availableKeys);
     }
@@ -395,7 +395,7 @@ class BackupRestoreCommand extends Command
 
         $this->line('使えるデータベースのバックアップ（新しい順）:');
         foreach (array_slice(array_reverse($keys), 0, self::MAX_DATABASE_BACKUP_LIST) as $key) {
-            $this->line('  '.$key);
+            $this->line('  '.$this->escapeForDisplay($key));
         }
     }
 

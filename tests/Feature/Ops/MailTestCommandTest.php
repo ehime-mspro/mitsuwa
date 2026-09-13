@@ -285,6 +285,43 @@ class MailTestCommandTest extends TestCase
         $this->assertCount(1, $delivered);
     }
 
+    public function test_send_failure_reason_containing_a_console_format_like_tag_does_not_crash_and_is_shown_verbatim(): void
+    {
+        Mail::extend('reject-typo-format-tag', fn () => new class extends AbstractTransport
+        {
+            public array $delivered = [];
+
+            protected function doSend(SentMessage $message): void
+            {
+                foreach ($message->getEnvelope()->getRecipients() as $recipient) {
+                    if ($recipient->getAddress() === 'typo@example.com') {
+                        throw new TransportException('550 5.1.1 <fg=nope> User unknown');
+                    }
+                }
+                $this->delivered[] = $message;
+            }
+
+            public function __toString(): string
+            {
+                return 'reject-typo-format-tag://';
+            }
+        });
+        config([
+            'mail.mailers.reject-typo-format-tag' => ['transport' => 'reject-typo-format-tag'],
+            'mail.default' => 'reject-typo-format-tag',
+            'queue.default' => 'sync',
+            'backup.notify_to' => 'typo@example.com, admin@example.com',
+        ]);
+
+        $this->artisan('ops:mail-test')
+            ->expectsOutputToContain('テストメールを送れませんでした（宛先: typo@example.com）: 550 5.1.1 <fg=nope> User unknown')
+            ->expectsOutputToContain('テストメールを送りました（宛先: admin@example.com）。')
+            ->assertExitCode(1);
+
+        $delivered = app('mailer')->getSymfonyTransport()->delivered;
+        $this->assertCount(1, $delivered);
+    }
+
     // (i) OpsTestMail::failed() が宛先つきの日本語をログに残す
     public function test_i_failed_hook_logs_the_recipient_and_reason_in_japanese(): void
     {

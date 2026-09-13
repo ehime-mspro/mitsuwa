@@ -9,6 +9,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
+use Symfony\Component\Console\Formatter\OutputFormatter;
 use Throwable;
 
 class MailTestCommand extends Command
@@ -55,7 +56,7 @@ class MailTestCommand extends Command
                 }
                 $sent[] = $recipient;
             } catch (Throwable $e) {
-                $this->error('テストメールを送れませんでした（宛先: '.$recipient.'）: '.Str::limit($e->getMessage(), 300));
+                $this->error('テストメールを送れませんでした（宛先: '.OutputFormatter::escape($recipient).'）: '.OutputFormatter::escape(Str::limit($e->getMessage(), 300)));
                 report($e);
                 $hasFailure = true;
             }
@@ -136,7 +137,7 @@ class MailTestCommand extends Command
             // 失敗通知と同じ宛先の解釈で確かめる
             [$recipients, $invalid] = BackupFailureNotifier::recipients((string) config('backup.notify_to'));
             if ($invalid !== []) {
-                $this->warn('BACKUP_NOTIFY_TO に形式の誤ったアドレスがあります: '.implode('、', $invalid).'（.env を直したら '.$this->artisanCommand('config:cache').' をやり直してください）');
+                $this->warn('BACKUP_NOTIFY_TO に形式の誤ったアドレスがあります: '.OutputFormatter::escape(implode('、', $invalid)).'（.env を直したら '.$this->artisanCommand('config:cache').' をやり直してください）');
             }
             if ($recipients === []) {
                 $this->error('BACKUP_NOTIFY_TO に有効な宛先がありません。宛先を指定するか、.env の BACKUP_NOTIFY_TO を直して '.$this->artisanCommand('config:cache').' をやり直してください。');
@@ -156,7 +157,7 @@ class MailTestCommand extends Command
             return null;
         }
         if ($invalid !== []) {
-            $this->error('メールアドレスの形式が正しくありません: '.implode('、', $invalid));
+            $this->error('メールアドレスの形式が正しくありません: '.OutputFormatter::escape(implode('、', $invalid)));
 
             return null;
         }

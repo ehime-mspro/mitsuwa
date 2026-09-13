@@ -526,6 +526,21 @@ class BackupToolsCommandTest extends TestCase
             ->assertExitCode(1);
     }
 
+    public function test_restore_db_option_containing_a_console_format_like_tag_does_not_crash_and_is_shown_verbatim(): void
+    {
+        $this->makeTwoDaysOfBackups();
+
+        $this->assertSame(1, Artisan::call('ops:backup-restore', [
+            'destination' => $this->root.'/restore',
+            '--db' => 'db/<fg=nope>',
+        ]));
+        $output = Artisan::output();
+
+        $this->assertStringContainsString(self::DB_NOT_FOUND_PREFIX.'db/<fg=nope>', $output);
+        $this->assertStringContainsString(self::AVAILABLE_DB_HEADING, $output);
+        $this->assertStringContainsString('db/manage-20260912-030000.sql.gz.enc', $output);
+    }
+
     public function test_storage_get_failures_abort_after_five_in_a_row(): void
     {
         $real = new LocalDirectoryBackupStorage($this->root.'/remote');
