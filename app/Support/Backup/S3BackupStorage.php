@@ -17,7 +17,7 @@ final class S3BackupStorage implements BackupStorage
     /** 接続できるまで待つ上限（秒） */
     private const CONNECT_TIMEOUT_SECONDS = 10;
 
-    /** 1 回の送受信の上限（秒）。SDK は最大 3 回試すので、最悪でも約 90 分で失敗として終わる */
+    /** 1 回の送受信の上限（秒）。SDK は既定で最初の 1 回＋再試行 2 回（計 3 回）試すので、最悪でも約 90 分で失敗として終わる */
     private const REQUEST_TIMEOUT_SECONDS = 1800;
 
     public function __construct(private S3Client $client, private string $bucket) {}
