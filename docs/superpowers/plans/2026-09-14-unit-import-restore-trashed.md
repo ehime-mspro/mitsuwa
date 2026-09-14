@@ -111,13 +111,16 @@ Bug #58（削除した区画の参照）の範囲外として残した件。区�
 | `9d037c34` | test(tenant): 区画の取込で階の検査が重複チェックより先にあることを固定する（変異 M12 が緑のまま通ったため）|
 | `2d2dde58` | chore: 物件の削除の歯止め（`deleted-property-references`）をこのブランチへマージ（競合なし）|
 | `3817cb27` | chore: 13.x（`471ce08f` deploy.sh の umask・`e105d517` 手順書の追記）をこのブランチへマージ（競合なし。CLAUDE.md は自動で統合）|
-| （この docs） | docs: RULES Bug #60・CLAUDE.md（Top trap #18・「全 60 件」）・BACKLOG・この結果 |
+| `b607ea85` | docs: RULES Bug #60・CLAUDE.md（Top trap #18・「全 60 件」）・BACKLOG・この結果 |
+| `52b66dcc` | test(tenant): テスト用スキーマの契約の初月・最終月の列を本番の定義に揃える（反映前の読み取りで、最初に置いた「NULL 可の enum」が本番と違うと分かったため）|
+| （この docs） | docs: 本番の定義を読み取りで確かめた結果を記録に反映 |
 
-- 全テスト: 物件の削除の歯止めと 13.x を取り込んだ状態で **1710 tests / 10532 assertions green**（`TenantUnitImportTest` 18 本・`PropertyDeletionGuardTest` 20 本を含む）
+- 全テスト: 物件の削除の歯止めと 13.x を取り込んだ状態で **1711 tests / 10534 assertions green**（`TenantUnitImportTest` 19 本・`PropertyDeletionGuardTest` 20 本を含む）
 - コンパイル済みビュー **269 本**を `php -l` → INVALID 0 件
 - 各ステップは TDD（失敗を先に見てから実装）。例: 過去契約の RED は「`validCount` が 0（削除済みの区画が見つからずエラー行）」と
   「誤りのある行のエラーが『見つかりません』（解約日の誤りまで届かない）」。本当に無い区画の対照は最初から緑
-- ⚠ テスト用スキーマの `contracts.customer_id` / `rent_start_date` は NOT NULL で、アプリはどちらも空のまま契約を作る経路を持つ（範囲外。テストは両方を埋めた）
+- ⚠ テスト用スキーマの `contracts.customer_id` / `rent_start_date` は NOT NULL で、アプリはどちらも空のまま契約を作る経路を持つ（範囲外。テストは両方を埋めた）。
+  反映前の読み取り（下）で、**本番はどちらも NULL 可**＝テスト用スキーマのほうが漂流していると分かった
 
 ### 変異テスト（Bug #44 の作法）
 
@@ -156,6 +159,7 @@ Bug #58（削除した区画の参照）の範囲外として残した件。区�
   使い捨ての探り（テストの形でフラッシュの `error` を出すだけ。コミットしない・当てたら戻して空を確認）で理由まで確かめた:
   M01・M17 = `UNIQUE constraint failed: units.property_id, units.display_name` ／ M19 = `No query results for model [App\Models\Unit] 1` ／ M26 = `no such column: usage_type_id`
 - 失敗文を 3 行で切ると差分の本体（`-期待` / `+実際`）が落ちるので、実行役は 16 行まで残すようにした
+- スキーマを本番の定義に揃えたあと（`52b66dcc`）に 3 通りを追加で当てた: MX1 初月の種類を NULL 可・既定値なしに戻す（既定値が null）／ MX2 最終月の種類に既定値 full（最終月が full）／ MX3 既定値 full のまま NULL 可（「初月の種類に null が書けてしまった（本番は NOT NULL）」）。3 通りとも足したカナリアの 1 本だけが、期待どおりの文言で落ちた
 
 ### ローカル実ブラウザ（2026-09-14。使い捨て SQLite ＋ `artisan serve`・Playwright）
 
@@ -176,3 +180,13 @@ Bug #58（削除した区画の参照）の範囲外として残した件。区�
 ⚠ 後片付け: サーバ停止・使い捨てルートを戻す・`public/build` の symlink を外す・使い捨て DB を削除・本体の `.playwright-mcp/` に今回できたファイル（スナップショット 17 件・アップロード用の CSV 3 件・スクショ 3 件）を削除（スクショは scratchpad へ写した）。本体・worktree とも作業ツリーは空。
 ⚠ Playwright のアップロードは本体（`/Users/masanori/site/manage`）の下のファイルしか受け付けない（scratchpad は拒否）。アップロード用の CSV は本体の `.playwright-mcp/`（gitignore 済み）へ写して使い、あとで消した。
 ⚠ ファイル選択はラベル（`<label>` の中の非表示 `<input type="file">`）を押すと開く。見た目の「ファイルを選択」の文字の親 `div` を押しても開かない。
+
+### 反映前の本番の読み取り（2026-09-14。利用者の承認のうえ・ssh で `artisan tinker`・書き込みなし）
+
+| 見たこと | 結果 |
+|---|---|
+| 削除済みの物件と、その生きている関連データ | 物件 17 件中 削除済み 1 件（T-009 No.20ミツワビル）。区画・契約・投資・修繕・問合せとも **0 件**（物件の削除の歯止めの前提が保たれている）|
+| 契約の列の定義（`information_schema.columns`）| `customer_id` bigint unsigned **NULL 可** ／ `rent_start_date` date **NULL 可** ／ `initial_month_type` varchar(10) **NOT NULL DEFAULT 'full'** ／ `initial_month_amount` int NULL 可 ／ `final_month_type` varchar(10) NULL 可 ／ `final_month_amount` int NULL 可 |
+| 削除済みの区画 | 物件 12 の 2A 3A 4A 4B 5A 5B 5C（id 119〜125）。調査時と同じ |
+
+⚠ この結果で、テスト用に置いた契約の初月・最終月の列（NULL 可の enum）が本番と違うと分かり、`52b66dcc` で本番の定義に合わせた（アプリのコードは変えていない）。

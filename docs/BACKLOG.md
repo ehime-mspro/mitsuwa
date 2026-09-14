@@ -1447,8 +1447,8 @@ git checkout 13.x && git merge --ff-only schedule-board-gantt
 |------|---------|
 | Controller | `Admin\TenantImportController` — 区画の取込（同名を `Unit::withTrashed()` で引く・削除済みは確定で `fill()` → `restore()`・予告は採用時にだけ積む・要約と完了メッセージに復元の件数・CSV 内の重複を表示名で見る）／ 契約の取込（削除済みの区画は理由つきのエラー行）／ 過去契約の取込（削除済みの区画のまま紐づけ、注意を出す）|
 | Blade | `admin/tenant-import/index.blade.php` の区画タブの説明に 1 行 |
-| テスト用スキーマ | `database/migrations/2026_09_14_000001_…`（`units.usage_type_id`。外部キーなし）／ `2026_09_14_000002_…`（契約の初月・最終月の 4 列）|
-| テスト | `tests/Feature/Admin/TenantUnitImportTest.php`（18 本）＋ `tests/Concerns/SubmitsImportPreview.php`（`MansionImportTest` の往復ヘルパを切り出して共用）。物件の削除の歯止めと 13.x を取り込んだ状態で **1710 tests / 10532 assertions green** |
+| テスト用スキーマ | `database/migrations/2026_09_14_000001_…`（`units.usage_type_id`。外部キーなし）／ `2026_09_14_000002_…`（契約の初月・最終月の 4 列。反映前の読み取りで本番の定義に合わせた）|
+| テスト | `tests/Feature/Admin/TenantUnitImportTest.php`（19 本）＋ `tests/Concerns/SubmitsImportPreview.php`（`MansionImportTest` の往復ヘルパを切り出して共用）。物件の削除の歯止めと 13.x を取り込んだ状態で **1711 tests / 10534 assertions green** |
 | ルート / 本番の DB | **どちらも変更なし** |
 
 ### 要点
@@ -1461,15 +1461,15 @@ git checkout 13.x && git merge --ff-only schedule-board-gantt
 
 ### 範囲外（気づいたが直していない）
 
-- テスト用スキーマの `contracts.customer_id` / `rent_start_date` は NOT NULL だが、アプリはどちらも空のまま契約を作る経路を持つ
-  （テナント名が空の契約の取込・賃料開始日が空の過去契約）。本番の定義は未確認で、テストは両方を埋めている
-- 契約の初月・最終月の 4 列の本番の定義（型・NULL 可否・既定値）は未確認（テスト用には NULL 可で置いた）
+- テスト用スキーマの `contracts.customer_id` / `rent_start_date` は NOT NULL だが、本番はどちらも NULL 可（反映前の読み取りで確認）＝テスト用スキーマの漂流。
+  アプリはどちらも空のまま契約を作る経路を持つ（テナント名が空の契約の取込・賃料開始日が空の過去契約）ので、その経路は確定までテストで通せない。テストは両方を埋めている
+  （SQLite で NOT NULL を外すとテーブルの作り直しになり CHECK が消えるので、直すなら別の作業で測りながら）
 - 過去契約の取込の「解約日が今日より未来です」の警告は途中で積むので、その後の検査でエラーになる行にも出る（今回の注意は採用時にだけ積む形にした）
 - 区画タブの説明に足した 1 行はテストしていない（静的な文言。ブラウザで表示を確認した）
 
 ### 検証
 
-- 変異テスト（Bug #44 の作法）**33 通り**すべて、期待どおりの集合のテストが期待どおりの文言で落ちた。
+- 変異テスト（Bug #44 の作法）**33 通り**と、スキーマを本番の定義に揃えたあとの **3 通り**すべて、期待どおりの集合のテストが期待どおりの文言で落ちた。
   初回は 1 通り（階の検査を重複チェックの後ろへ戻す）が緑のまま通った → 不正な階の行のテストを足して赤（TypeError → 500）を確認。
   確定が差し戻しで落ちる 4 通りは、フラッシュの `error` を使い捨ての探りで出して、一意制約違反・行が見つからない・列が無い、と理由まで確かめた
 - コンパイル済みビュー **269 本**を `php -l` → INVALID 0 件
