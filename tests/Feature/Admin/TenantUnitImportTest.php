@@ -161,6 +161,22 @@ class TenantUnitImportTest extends TestCase
         $this->assertEquals(10, Unit::where('property_id', $property->id)->where('display_name', '3A')->value('area_tsubo'));
     }
 
+    public function test_a_row_with_a_non_numeric_floor_is_an_error_row_and_the_others_import(): void
+    {
+        // 重複チェックは表示名（階＋号室）で比べるので、階の検査を先に済ませておく必要がある。
+        // 順番を戻すと、地下を「B1」と書いた行で表示名を組む Unit::generateDisplayName(?int) が TypeError になり、
+        // プレビューが丸ごと 500 になる（ほかの正しい行も取り込めない）
+        $property = $this->property();
+        $csv = self::UNIT_HEADER . "\n取込ビル,B1,A,10,,,,,,,\n取込ビル,3,A,10,,,,,,,\n";
+
+        $preview = $this->preview('unit', $csv)->assertOk();
+        $this->assertSame(1, $preview->viewData('validCount'));
+        $this->assertSame([['row' => 2, 'message' => '階「B1」は不正な値です']], $preview->viewData('rowErrors'));
+
+        $this->confirm('unit', $csv)->assertSessionHas('success', '区画インポート完了: 1件を登録しました');
+        $this->assertSame(['3A'], $this->liveUnitNames($property));
+    }
+
     // ------------------------------------------------------------
     // 削除済みの同名区画は、復元して CSV の行の内容で上書きする（画面の区画登録 UnitController::store と同じ）
     // 以前は重複チェックが削除済みを見ず、確定で一意制約に当たって全行が巻き戻っていた（Bug #60）
