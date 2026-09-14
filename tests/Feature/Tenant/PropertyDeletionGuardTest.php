@@ -476,6 +476,10 @@ class PropertyDeletionGuardTest extends TestCase
             }
         }
 
+        // 走査が空振りして緑になる事故を防ぐ（2026-09-14 時点で止める 5 本 ＋ 止めない 3 本）。
+        // ⚠ 先に見る。後ろに置くと、空振りが「リストに実在しない名前が残っている」という別の理由で報告される
+        $this->assertGreaterThanOrEqual(8, count($found), 'Property のリレーションを拾えていない: ' . implode(', ', $found));
+
         $blocking = array_keys(Property::DELETION_BLOCKING_RELATIONS);
         $ignored = array_keys(Property::DELETION_IGNORED_RELATIONS);
         $this->assertSame([], array_values(array_intersect($blocking, $ignored)), '削除を「止める」と「止めない」の両方に入っているリレーションがある');
@@ -485,9 +489,6 @@ class PropertyDeletionGuardTest extends TestCase
             'Property のリレーションに、削除を止めるか止めないかの分類が無いものがある（DELETION_BLOCKING_RELATIONS か DELETION_IGNORED_RELATIONS に足すこと）'
         );
         $this->assertSame([], array_values(array_diff($this->classifiedRelations(), $found)), '分類のリストに、Property に無いリレーションの名前が残っている');
-
-        // 走査が空振りして緑になる事故を防ぐ（2026-09-14 時点で止める 5 本 ＋ 止めない 3 本）
-        $this->assertGreaterThanOrEqual(8, count($found), 'Property のリレーションを拾えていない: ' . implode(', ', $found));
     }
 
     /**
