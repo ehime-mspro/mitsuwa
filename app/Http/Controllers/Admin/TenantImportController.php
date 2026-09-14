@@ -932,8 +932,11 @@ class TenantImportController extends Controller
             }
 
             // 区画の存在チェック
+            // ⚠ 削除済みの区画も引いて、そのまま紐づける（取り壊した区画の昔の契約を移行するため。区画は復元しない。
+            //   復元すると「空室」として生き返りフロアマップや入居率に混ざる）。画面では「5A（削除済み）」と出る（Bug #58 / #60）
             $displayName = Unit::generateDisplayName($floor, $row['room_number']);
-            $unit = Unit::where('property_id', $property->id)
+            $unit = Unit::withTrashed()
+                ->where('property_id', $property->id)
                 ->where('display_name', $displayName)
                 ->first();
             if (!$unit) {
@@ -1030,6 +1033,11 @@ class TenantImportController extends Controller
             }
             if ($numericError) {
                 continue;
+            }
+
+            // 注意はこの行を取り込むと決めた位置で積む（途中で積むと、エラーになる行にも出てしまう）
+            if ($unit->trashed()) {
+                $warnings[] = ['row' => $rowNum, 'message' => "物件「{$propName}」の区画「{$displayName}」は削除済みです。削除済みの区画のまま過去契約として取り込みます"];
             }
 
             $row['_property_id'] = $property->id;

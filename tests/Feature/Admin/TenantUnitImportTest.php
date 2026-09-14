@@ -306,4 +306,59 @@ class TenantUnitImportTest extends TestCase
 
         $this->assertSame(1, \App\Models\Contract::where('unit_id', $deleted->id)->where('status', 'active')->count());
     }
+
+    // ============================================================
+    // 過去契約の取込: 削除済みの区画にもそのまま取り込む（利用者の判断。区画の取込で復元すると、取り壊した区画が
+    // 「空室」として生き返りフロアマップや入居率に混ざるため）。画面では「5A（削除済み）」で出る（Bug #58）
+    // ============================================================
+
+    private const PAST_CONTRACT_HEADER = '物件名,階,部屋番号,テナント名,契約日,賃料開始日,解約日,家賃,共益費,敷金,ゴミ代,駆除代,屋号,備考';
+
+    private const PAST_NOTICE = '物件「取込ビル」の区画「5A」は削除済みです。削除済みの区画のまま過去契約として取り込みます';
+
+    public function test_a_past_contract_row_for_a_deleted_unit_is_attached_to_the_deleted_unit(): void
+    {
+        $property = $this->property();
+        $deleted = $this->deletedUnit($property, 5, 'A');
+        // ⚠ 賃料開始日を埋める（テスト用スキーマの contracts.rent_start_date が NOT NULL のため）
+        $csv = self::PAST_CONTRACT_HEADER . "\n取込ビル,5,A,過去商事,2020-04-01,2020-04-01,2023-03-31,90000,,,,,,\n";
+
+        $preview = $this->preview('past-contract', $csv)->assertOk();
+        $this->assertSame(1, $preview->viewData('validCount'));
+        $this->assertSame([], $preview->viewData('rowErrors'));
+        // 役割（警告であってエラーではない）と表示を別々に見る（Bug #54 ④）
+        $this->assertSame([['row' => 2, 'message' => self::PAST_NOTICE]], $preview->viewData('warnings'));
+        $this->assertSame(1, substr_count($preview->getContent(), '⚠ 行2: ' . self::PAST_NOTICE), '注意が警告の行として画面に出ていない');
+
+        $this->confirm('past-contract', $csv)
+            ->assertSessionHas('success', '過去契約インポート完了: 契約 1件を登録、顧客 1件を自動作成');
+
+        $contract = \App\Models\Contract::where('unit_id', $deleted->id)->sole();
+        $this->assertSame('terminated', $contract->status->value);
+        $this->assertSoftDeleted($deleted);   // 区画は復元しない
+    }
+
+    public function test_a_past_contract_row_with_an_error_does_not_mention_the_deleted_unit(): void
+    {
+        // 注意は、その行を取り込むと決めたときにだけ積む
+        $property = $this->property();
+        $this->deletedUnit($property, 5, 'A');
+        $csv = self::PAST_CONTRACT_HEADER . "\n取込ビル,5,A,過去商事,2020-04-01,2020-04-01,2023-02-30,90000,,,,,,\n";
+
+        $preview = $this->assertPreviewOffersNoImport('past-contract', $csv);
+        $this->assertSame([['row' => 2, 'message' => '解約日「2023-02-30」の形式が不正です（YYYY-MM-DD）']], $preview->viewData('rowErrors'));
+        $this->assertSame([], $preview->viewData('warnings'));
+    }
+
+    public function test_a_past_contract_row_for_a_missing_unit_keeps_the_old_message(): void
+    {
+        $this->property();
+        $csv = self::PAST_CONTRACT_HEADER . "\n取込ビル,9,Z,過去商事,2020-04-01,2020-04-01,2023-03-31,90000,,,,,,\n";
+
+        $preview = $this->assertPreviewOffersNoImport('past-contract', $csv);
+        $this->assertSame(
+            [['row' => 2, 'message' => '物件「取込ビル」に9階の部屋番号「Z」（区画名「9Z」）が見つかりません。先に区画インポートを実行してください']],
+            $preview->viewData('rowErrors')
+        );
+    }
 }
