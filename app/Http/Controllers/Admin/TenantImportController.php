@@ -341,19 +341,35 @@ class TenantImportController extends Controller
                 continue;
             }
 
-            // CSV内重複チェック（物件名+階数+部屋番号）
-            $unitKey = $propName . '|' . $row['floor'] . '|' . $row['room_number'];
+            // 階チェック（地下-3〜-1、地上1〜99。0は不可）
+            // ⚠ 重複チェックより先に見る。表示名（階＋号室）を正しく組むのに、検査済みの階が要る
+            if ($row['floor'] !== '') {
+                $floorVal = $row['floor'];
+                if (!preg_match('/^-?\d+$/', $floorVal)) {
+                    $errors[] = ['row' => $rowNum, 'message' => "階「{$floorVal}」は不正な値です"];
+                    continue;
+                }
+                $floorInt = (int) $floorVal;
+                if ($floorInt === 0 || $floorInt < -3 || $floorInt > 99) {
+                    $errors[] = ['row' => $rowNum, 'message' => "階「{$floorVal}」は-3〜-1または1〜99の範囲で入力してください"];
+                    continue;
+                }
+                $row['floor'] = $floorInt;
+            }
+
+            // CSV内重複チェック（物件＋表示名）
+            // ⚠ 生の「階|号室」で比べると、(3, A)・(空欄, 3A)・(03, A) が同じ区画 3A なのに素通りし、
+            //   確定で一意制約（物件＋表示名）に当たって全行が巻き戻る
+            $property = $propertyCache[$propName];
+            $displayName = Unit::generateDisplayName($row['floor'] !== '' ? $row['floor'] : null, $row['room_number']);
+            $unitKey = $property->id . '|' . $displayName;
             if (isset($unitTracker[$unitKey])) {
-                $floorLabel = $row['floor'] !== '' ? "（{$row['floor']}階）" : '';
-                $errors[] = ['row' => $rowNum, 'message' => "物件「{$propName}」の部屋番号「{$row['room_number']}」{$floorLabel}がCSV内で重複しています（行{$unitTracker[$unitKey]}）"];
+                $errors[] = ['row' => $rowNum, 'message' => "物件「{$propName}」の区画「{$displayName}」がCSV内で重複しています（行{$unitTracker[$unitKey]}）"];
                 continue;
             }
             $unitTracker[$unitKey] = $rowNum;
 
-            // DB重複チェック（同一物件+部屋番号）
-            $property = $propertyCache[$propName];
-            $floor = $row['floor'] !== '' ? (int) $row['floor'] : null;
-            $displayName = Unit::generateDisplayName($floor, $row['room_number']);
+            // DB重複チェック（同一物件＋表示名）
             $existingUnit = Unit::where('property_id', $property->id)
                 ->where('display_name', $displayName)
                 ->first();
@@ -381,21 +397,6 @@ class TenantImportController extends Controller
                     continue;
                 }
                 $row['area_tsubo'] = (float) $val;
-            }
-
-            // 階チェック（地下-3〜-1、地上1〜99。0は不可）
-            if ($row['floor'] !== '') {
-                $floorVal = $row['floor'];
-                if (!preg_match('/^-?\d+$/', $floorVal)) {
-                    $errors[] = ['row' => $rowNum, 'message' => "階「{$floorVal}」は不正な値です"];
-                    continue;
-                }
-                $floorInt = (int) $floorVal;
-                if ($floorInt === 0 || $floorInt < -3 || $floorInt > 99) {
-                    $errors[] = ['row' => $rowNum, 'message' => "階「{$floorVal}」は-3〜-1または1〜99の範囲で入力してください"];
-                    continue;
-                }
-                $row['floor'] = $floorInt;
             }
 
             // 金額フィールドチェック

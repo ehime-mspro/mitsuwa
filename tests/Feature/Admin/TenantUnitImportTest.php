@@ -9,6 +9,8 @@ use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Tests\Concerns\ParsesForms;
+use Tests\Concerns\SubmitsImportPreview;
 use Tests\TestCase;
 
 /**
@@ -20,6 +22,16 @@ use Tests\TestCase;
 class TenantUnitImportTest extends TestCase
 {
     use RefreshDatabase;
+    use ParsesForms;
+    use SubmitsImportPreview;
+
+    private const UNIT_HEADER = '物件名,階,部屋番号,面積(坪),用途,状態,募集家賃,募集共益費,募集敷金,募集ゴミ代,募集駆除代';
+
+    /** 取込画面の URL の前半（SubmitsImportPreview が使う） */
+    private function importBasePath(): string
+    {
+        return '/admin/tenant-import';
+    }
 
     private function property(): Property
     {
@@ -78,5 +90,48 @@ class TenantUnitImportTest extends TestCase
         } catch (QueryException $e) {
             $this->assertStringContainsString('CHECK constraint failed', $e->getMessage());
         }
+    }
+
+    // ============================================================
+    // 区画の取込（プレビュー → 描画された「インポート実行」フォームをそのまま確定。Bug #54 ②）
+    // ============================================================
+
+    /** @return list<string> その物件の生きている区画の表示名 */
+    private function liveUnitNames(Property $property): array
+    {
+        return Unit::where('property_id', $property->id)->orderBy('display_name')->pluck('display_name')->all();
+    }
+
+    public function test_unit_round_trip_creates_the_rows(): void
+    {
+        $property = $this->property();
+        $csv = self::UNIT_HEADER . "\n取込ビル,1,A,10.5,,空室,100000,10000,200000,1000,500\n取込ビル,2,A,,,,,,,,\n";
+
+        $this->confirm('unit', $csv)
+            ->assertRedirect(route('admin.tenant-import', ['tab' => 'unit']))
+            ->assertSessionHas('success', '区画インポート完了: 2件を登録しました');
+
+        $this->assertSame(['1A', '2A'], $this->liveUnitNames($property));
+        $this->assertSame(2, $property->fresh()->total_units);
+    }
+
+    public function test_rows_with_the_same_display_name_inside_the_csv_keep_only_the_first(): void
+    {
+        $property = $this->property();
+        // (3, A) と (空欄, 3A) はどちらも表示名 3A。以前は生の「階|号室」で比べていたので素通りし、
+        // 確定で一意制約に当たって全行が巻き戻っていた（残りの 4A も入らない）
+        $csv = self::UNIT_HEADER . "\n取込ビル,3,A,10,,,,,,,\n取込ビル,,3A,12,,,,,,,\n取込ビル,4,A,10,,,,,,,\n";
+
+        $preview = $this->preview('unit', $csv)->assertOk();
+        $this->assertSame(2, $preview->viewData('validCount'));
+        $this->assertSame(
+            [['row' => 3, 'message' => '物件「取込ビル」の区画「3A」がCSV内で重複しています（行2）']],
+            $preview->viewData('rowErrors')
+        );
+
+        $this->confirm('unit', $csv)->assertSessionHas('success', '区画インポート完了: 2件を登録しました');
+        $this->assertSame(['3A', '4A'], $this->liveUnitNames($property));
+        // 先の行が入る（面積 10 の行）
+        $this->assertEquals(10, Unit::where('property_id', $property->id)->where('display_name', '3A')->value('area_tsubo'));
     }
 }
