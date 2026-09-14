@@ -78,6 +78,32 @@ class TenantUnitImportTest extends TestCase
         }
     }
 
+    /**
+     * 契約の初月・最終月の列（契約・過去契約の取込が必ず書く）。
+     * ⚠ 本番にはあるのにリポジトリに DDL が無く、テスト用スキーマに無かった（契約の取込の確定がテストで通せなかった）
+     */
+    public function test_the_contracts_table_has_the_first_and_last_month_columns(): void
+    {
+        $property = $this->property();
+        $unit = Unit::create($this->unitAttributes($property, 1, 'A'));
+        // ⚠ テスト用スキーマの contracts.customer_id と rent_start_date は NOT NULL（アプリはどちらも空のまま契約を作る経路を持つ。
+        //   本番の定義は未確認で、この変更の範囲外）。ここではどちらも埋めて、初月・最終月の列だけを見る
+        $customer = \App\Models\Customer::create(['code' => 'CU-IMP-1', 'name' => '取込商事', 'customer_type' => 'corporation']);
+
+        $contract = \App\Models\Contract::create([
+            'contract_number' => 'C-2026-901', 'department' => 'tenant', 'property_id' => $property->id, 'unit_id' => $unit->id,
+            'customer_id' => $customer->id,
+            'status' => 'active', 'contract_date' => '2026-09-01', 'rent_start_date' => '2026-09-01', 'rent' => 100000,
+            'initial_month_type' => 'prorated', 'initial_month_amount' => 55000,
+            'final_month_type' => 'half', 'final_month_amount' => 60000,
+        ])->fresh();
+
+        $this->assertSame(
+            ['prorated', 55000, 'half', 60000],
+            [$contract->initial_month_type->value, $contract->initial_month_amount, $contract->final_month_type->value, $contract->final_month_amount]
+        );
+    }
+
     /** カナリア: 状態の CHECK（enum）が残っている（migration でテーブルを作り直すと消える） */
     public function test_unit_status_is_still_checked(): void
     {
