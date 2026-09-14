@@ -92,7 +92,8 @@ class RepairController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'property_id'      => 'required|exists:properties,id',
+            // 削除済みの物件は受け付けない（exists は論理削除を見ない。削除済みの物件に子を付けない。Bug #59）
+            'property_id'      => ['required', Rule::exists('properties', 'id')->withoutTrashed()],
             // 削除済みの区画は選べない（exists は論理削除を見ないので明示する）
             'unit_id'          => ['nullable', Rule::exists('units', 'id')->withoutTrashed()],
             'status'           => 'required|in:' . implode(',', array_column(RepairStatus::cases(), 'value')),
@@ -170,7 +171,8 @@ class RepairController extends Controller
     public function update(Request $request, Repair $repair)
     {
         $validated = $request->validate([
-            'property_id'      => 'required|exists:properties,id',
+            // 削除済みの物件は受け付けない（exists は論理削除を見ない。削除済みの物件に子を付けない。Bug #59）
+            'property_id'      => ['required', Rule::exists('properties', 'id')->withoutTrashed()],
             // 削除済みの区画は選べない。ただし今の区画は削除済みでもそのまま保存できる（編集画面の選択肢に残してある）。
             // 今が共用部（unit_id が null）なら orWhere は「id is null」になり何にも当たらない
             'unit_id'          => ['nullable', Rule::exists('units', 'id')->where(

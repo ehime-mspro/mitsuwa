@@ -127,7 +127,8 @@ class InquiryController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'property_id'      => 'required|exists:properties,id',
+            // 削除済みの物件は受け付けない（exists は論理削除を見ない。削除済みの物件に子を付けない。Bug #59）
+            'property_id'      => ['required', Rule::exists('properties', 'id')->withoutTrashed()],
             'customer_id'      => 'nullable|exists:customers,id',
             'unit_ids'         => 'nullable|array',
             // 削除済みの区画は選べない（exists は論理削除を見ないので明示する）
@@ -280,7 +281,8 @@ class InquiryController extends Controller
         $currentUnitIds = $inquiry->units()->pluck('units.id')->all();
 
         $validated = $request->validate([
-            'property_id'      => 'required|exists:properties,id',
+            // 削除済みの物件は受け付けない（exists は論理削除を見ない。削除済みの物件に子を付けない。Bug #59）
+            'property_id'      => ['required', Rule::exists('properties', 'id')->withoutTrashed()],
             'customer_id'      => 'nullable|exists:customers,id',
             'unit_ids'         => 'nullable|array',
             // 削除済みの区画は選べない。ただし今の希望区画は削除済みでもそのまま保存できる

@@ -12,9 +12,44 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
+/**
+ * テナントの物件。
+ *
+ * ⚠ **関連データ（区画・契約・投資・修繕・問合せ）が残る物件は削除させない**（docs/RULES.md Bug #59）。
+ *   守る不変条件は「削除済みの物件は、生きている区画・契約・投資・修繕・問合せを持たない」。
+ *   削除の歯止め（deletionBlockers()）と、登録・更新の入力チェック（property_id の exists に withoutTrashed()）の 2 つで守る。
+ *   使わなくなった物件は、稼働状態を「非稼働」にして残す。
+ *
+ * ⚠ そのため、子から物件を読むリレーション（Unit / Investment / Repair / Inquiry などの property()）には
+ *   **withTrashed() を付けていない**（区画 Unit の Bug #58 とは別の方式）。削除済みの物件を指す子は作られないので、
+ *   画面側で削除済みの物件を扱う必要が無い。付けると whereHas('property') が削除済みの物件まで拾い、
+ *   一覧・ダッシュボードの集計の意味が変わる。Contract::property() だけは以前から withTrashed() を持つ。
+ */
 class Property extends Model
 {
     use HasFactory, SoftDeletes;
+
+    /**
+     * 物件の削除を止める関連データ（リレーション名 => 画面での呼び名）。並びは断りの文言の並び。
+     * 論理削除済みの子は数えない（それぞれの count() が既定のスコープで除く）。
+     */
+    public const DELETION_BLOCKING_RELATIONS = [
+        'units'       => '区画',
+        'contracts'   => '契約',
+        'investments' => '投資',
+        'repairs'     => '修繕',
+        'inquiries'   => '問合せ',
+    ];
+
+    /**
+     * 物件の削除を止めないリレーション（リレーション名 => 止めない理由）。
+     * 新しいリレーションを足したら、上か下のどちらかに必ず入れる（PropertyDeletionGuardTest が全件分類で守る）。
+     */
+    public const DELETION_IGNORED_RELATIONS = [
+        'changeLogs'   => '物件ページでしか出ない（削除した物件のページは開けない）',
+        'transactions' => '見る画面が無い（TransactionController にルートが無い）',
+        'attachments'  => '物件に添付する経路が無い（AttachmentController の TYPE_MAP に物件が無い）',
+    ];
 
     protected $fillable = [
         'code',
@@ -134,5 +169,23 @@ class Property extends Model
     public function isBuildingType(): bool
     {
         return $this->total_floors !== null && $this->total_floors > 0;
+    }
+
+    /**
+     * 削除を止める関連データを「区画 2 件」の形で返す（0 件の種類は出さない）。空なら削除してよい。
+     *
+     * @return list<string>
+     */
+    public function deletionBlockers(): array
+    {
+        $blockers = [];
+        foreach (self::DELETION_BLOCKING_RELATIONS as $relation => $label) {
+            $count = $this->{$relation}()->count();
+            if ($count > 0) {
+                $blockers[] = "{$label} {$count} 件";
+            }
+        }
+
+        return $blockers;
     }
 }

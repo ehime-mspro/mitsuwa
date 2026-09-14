@@ -398,13 +398,15 @@ class PropertyController extends Controller
     {
         $name = $property->name;
 
-        // 契約中のデータがある場合は削除不可
-        $activeContracts = $property->contracts()
-            ->where('status', ContractStatus::Active)
-            ->count();
-
-        if ($activeContracts > 0) {
-            return back()->with('error', '契約中のデータがあるため削除できません。');
+        // 関連データ（区画・契約・投資・修繕・問合せ）が残る物件は削除しない（docs/RULES.md Bug #59）。
+        // 消すと物件ページ（404）を失ったまま子だけが残り、子から物件を読む画面が 500 になる。
+        // ⚠ ロックはかけない。子を書く側（登録・更新の入力チェックと CSV 取込）はロックなしで確かめるので、
+        //   ここだけ固めても競合は閉じない。物件の削除は経営層だけで件数も少ないため、入力チェック側の
+        //   withoutTrashed() と合わせて「削除済みの物件に子が付かない」を守る。
+        $blockers = $property->deletionBlockers();
+        if ($blockers !== []) {
+            return back()->with('error', 'この物件には' . implode('・', $blockers) . 'があるため削除できません。'
+                . '使わなくなった物件は、編集画面で稼働状態を「' . OperationStatus::Inactive->label() . '」にしてください。');
         }
 
         $property->delete();
