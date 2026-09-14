@@ -17,6 +17,7 @@ use App\Models\Unit;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\ParsesForms;
+use Tests\Concerns\ScansModelRelations;
 use Tests\TestCase;
 
 /**
@@ -34,6 +35,7 @@ class PropertyDeletionGuardTest extends TestCase
 {
     use RefreshDatabase;
     use ParsesForms;
+    use ScansModelRelations;
 
     private const ADVICE = '使わなくなった物件は、編集画面で稼働状態を「非稼働」にしてください。';
 
@@ -292,5 +294,84 @@ class PropertyDeletionGuardTest extends TestCase
         // ページ全体への assertSee にしない（Bug #43 / #46）。レイアウトの赤帯の要素の中にちょうど 1 回
         $banner = '<span class="text-sm text-red-800">' . e($this->refusal('区画 1 件・投資 1 件')) . '</span>';
         $this->assertSame(1, substr_count($html, $banner), '赤帯に削除できない理由が出ていない');
+    }
+
+    // ============================================================
+    // 構造: 物件のリレーションを両側から全件分類する（Top trap #13。数え漏れを「リレーションを足した日」に止める）
+    // ============================================================
+
+    private const RELATION_CALL = '/\$this->(belongsTo|belongsToMany|hasMany|hasOne|hasManyThrough|hasOneThrough|morphMany|morphOne|morphTo|morphToMany|morphedByMany)\(/';
+
+    /** 分類済みのリレーション名（止める ＋ 止めない） */
+    private function classifiedRelations(): array
+    {
+        return array_merge(array_keys(Property::DELETION_BLOCKING_RELATIONS), array_keys(Property::DELETION_IGNORED_RELATIONS));
+    }
+
+    /**
+     * 物件の側: app/Models/Property.php に書かれたリレーションが、削除を「止める」「止めない」のちょうど 1 つに入っていること。
+     * 新しいリレーションを足した日にここで落ち、分類を求められる（止める側に入れれば deletionBlockers() が数える）。
+     */
+    public function test_every_relation_of_property_is_classified_for_deletion(): void
+    {
+        $found = [];
+        foreach ((new \ReflectionClass(Property::class))->getMethods(\ReflectionMethod::IS_PUBLIC) as $method) {
+            // trait のメソッド（SoftDeletes など）を除くため、宣言元のクラスでなくファイルで判定する
+            // （getDeclaringClass() は trait のメソッドでも使う側のクラスを返す）
+            if ($method->isStatic() || $method->getNumberOfRequiredParameters() > 0
+                || $method->getFileName() !== app_path('Models/Property.php')) {
+                continue;
+            }
+            if (preg_match(self::RELATION_CALL, $this->methodSourceWithoutComments($method))) {
+                $found[] = $method->getName();
+            }
+        }
+
+        $blocking = array_keys(Property::DELETION_BLOCKING_RELATIONS);
+        $ignored = array_keys(Property::DELETION_IGNORED_RELATIONS);
+        $this->assertSame([], array_values(array_intersect($blocking, $ignored)), '削除を「止める」と「止めない」の両方に入っているリレーションがある');
+        $this->assertSame(
+            [],
+            array_values(array_diff($found, $this->classifiedRelations())),
+            'Property のリレーションに、削除を止めるか止めないかの分類が無いものがある（DELETION_BLOCKING_RELATIONS か DELETION_IGNORED_RELATIONS に足すこと）'
+        );
+        $this->assertSame([], array_values(array_diff($this->classifiedRelations(), $found)), '分類のリストに、Property に無いリレーションの名前が残っている');
+
+        // 走査が空振りして緑になる事故を防ぐ（2026-09-14 時点で止める 5 本 ＋ 止めない 3 本）
+        $this->assertGreaterThanOrEqual(8, count($found), 'Property のリレーションを拾えていない: ' . implode(', ', $found));
+    }
+
+    /**
+     * 子の側: 物件を指すリレーションを持つモデルが、どれも分類済みのリレーションの相手であること。
+     * 子モデルに property() だけ足して物件の側に hasMany を足さないと、上の走査には現れず、削除の歯止めが数え漏らす。
+     */
+    public function test_every_model_pointing_at_property_is_covered_by_a_classified_relation(): void
+    {
+        $covered = array_map(fn (string $relation) => get_class((new Property)->{$relation}()->getRelated()), $this->classifiedRelations());
+
+        $children = [];
+        foreach ($this->modelClasses() as $class) {
+            foreach ((new \ReflectionClass($class))->getMethods(\ReflectionMethod::IS_PUBLIC) as $method) {
+                $file = $method->getFileName();
+                if ($class === Property::class || $method->isStatic() || $file === false || ! str_starts_with($file, app_path('Models'))) {
+                    continue;
+                }
+                $source = $this->methodSourceWithoutComments($method);
+                // HsProperty::class / MsProperty::class には当てない（直前が語の文字なら別のクラス）
+                if (preg_match('/(?:\\\\App\\\\Models\\\\|(?<![\w\\\\]))Property::class/', $source) && preg_match(self::RELATION_CALL, $source)) {
+                    $children[$class] = true;
+                }
+            }
+        }
+        $children = array_keys($children);
+
+        $this->assertSame(
+            [],
+            array_values(array_diff($children, $covered)),
+            '物件を指すのに、物件の側で削除を止めるか止めないかを分類していないモデルがある（Property にリレーションを足して分類すること）'
+        );
+
+        // 走査が空振りして緑になる事故を防ぐ（2026-09-14 時点で Unit / Contract / Investment / Repair / Inquiry / Transaction / PropertyChangeLog）
+        $this->assertGreaterThanOrEqual(7, count($children), '物件を指すモデルを拾えていない: ' . implode(', ', $children));
     }
 }

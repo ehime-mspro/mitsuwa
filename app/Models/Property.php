@@ -41,6 +41,16 @@ class Property extends Model
         'inquiries'   => '問合せ',
     ];
 
+    /**
+     * 物件の削除を止めないリレーション（リレーション名 => 止めない理由）。
+     * 新しいリレーションを足したら、上か下のどちらかに必ず入れる（PropertyDeletionGuardTest が全件分類で守る）。
+     */
+    public const DELETION_IGNORED_RELATIONS = [
+        'changeLogs'   => '物件ページでしか出ない（削除した物件のページは開けない）',
+        'transactions' => '見る画面が無い（TransactionController にルートが無い）',
+        'attachments'  => '物件に添付する経路が無い（AttachmentController の TYPE_MAP に物件が無い）',
+    ];
+
     protected $fillable = [
         'code',
         'name',
