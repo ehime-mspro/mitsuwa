@@ -703,10 +703,17 @@ class TenantImportController extends Controller
             }
 
             // 区画の存在チェック（display_name で完全一致。区画インポートと同じ規約）
+            // ⚠ 削除済みの区画も引く — 「見つかりません。先に区画インポートを」と案内すると、削除済みの区画には当てはまらない
+            //   （区画の取込で同じ区画を取り込むと復元される。docs/RULES.md Bug #60）。契約中の契約は削除済みの区画には入れない
             $displayName = Unit::generateDisplayName($floor, $row['room_number']);
-            $unit = Unit::where('property_id', $property->id)
+            $unit = Unit::withTrashed()
+                ->where('property_id', $property->id)
                 ->where('display_name', $displayName)
                 ->first();
+            if ($unit?->trashed()) {
+                $errors[] = ['row' => $rowNum, 'message' => "物件「{$propName}」の区画「{$displayName}」は削除済みです。使う場合は、区画の取込で同じ区画を取り込むか、区画の画面から登録し直すと復元されます"];
+                continue;
+            }
             if (!$unit) {
                 $floorLabel = $floor !== null ? "{$floor}階の" : '';
                 $errors[] = ['row' => $rowNum, 'message' => "物件「{$propName}」に{$floorLabel}部屋番号「{$row['room_number']}」（区画名「{$displayName}」）が見つかりません。先に区画インポートを実行してください"];

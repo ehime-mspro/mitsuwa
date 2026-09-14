@@ -255,4 +255,55 @@ class TenantUnitImportTest extends TestCase
         // 生きている 1A と、復元した 2A。CSV に無い削除済みの 5C は数えない
         $this->assertSame(2, $property->fresh()->total_units);
     }
+
+    // ============================================================
+    // 契約の取込: 削除済みの区画には入れず、削除済みだと分かる理由を出す
+    // 以前は「見つかりません。先に区画インポートを実行してください」と案内し、案内どおり区画の取込を流すと
+    // 一意制約で全行が巻き戻る行き止まりだった（Bug #60）
+    // ============================================================
+
+    private const CONTRACT_HEADER = '物件名,階,部屋番号,テナント名,契約日,賃料開始日,家賃,共益費,敷金,ゴミ代,駆除代,屋号,備考';
+
+    public function test_a_contract_row_for_a_deleted_unit_says_the_unit_is_deleted(): void
+    {
+        $property = $this->property();
+        $this->deletedUnit($property, 2, 'A');
+        $csv = self::CONTRACT_HEADER . "\n取込ビル,2,A,,2026-09-01,,100000,,,,,,\n";
+
+        $preview = $this->assertPreviewOffersNoImport('contract', $csv);
+
+        $this->assertSame(
+            [['row' => 2, 'message' => '物件「取込ビル」の区画「2A」は削除済みです。使う場合は、区画の取込で同じ区画を取り込むか、区画の画面から登録し直すと復元されます']],
+            $preview->viewData('rowErrors')
+        );
+    }
+
+    public function test_a_contract_row_for_a_missing_unit_keeps_the_old_message(): void
+    {
+        $this->property();
+        $csv = self::CONTRACT_HEADER . "\n取込ビル,9,Z,,2026-09-01,,100000,,,,,,\n";
+
+        $preview = $this->assertPreviewOffersNoImport('contract', $csv);
+
+        $this->assertSame(
+            [['row' => 2, 'message' => '物件「取込ビル」に9階の部屋番号「Z」（区画名「9Z」）が見つかりません。先に区画インポートを実行してください']],
+            $preview->viewData('rowErrors')
+        );
+    }
+
+    public function test_restoring_the_unit_by_the_unit_import_lets_the_contract_import_through(): void
+    {
+        // 行き止まりの解消: 案内どおり区画の取込で同じ区画を取り込むと復元され、その区画への契約の取込が通る
+        $property = $this->property();
+        $deleted = $this->deletedUnit($property, 2, 'A');
+        \App\Models\Customer::create(['code' => 'CU-IMP-1', 'name' => '取込商事', 'customer_type' => 'corporation']);
+
+        $this->confirm('unit', self::UNIT_HEADER . "\n取込ビル,2,A,15,,,,,,,\n")
+            ->assertSessionHas('success', '区画インポート完了: 1件を登録しました（うち削除済みから復元 1件）');
+        // ⚠ テナント名と賃料開始日を埋める（テスト用スキーマの contracts.customer_id / rent_start_date が NOT NULL のため）
+        $this->confirm('contract', self::CONTRACT_HEADER . "\n取込ビル,2,A,取込商事,2026-09-01,2026-09-01,100000,,,,,,\n")
+            ->assertRedirect(route('admin.tenant-import', ['tab' => 'contract']));
+
+        $this->assertSame(1, \App\Models\Contract::where('unit_id', $deleted->id)->where('status', 'active')->count());
+    }
 }
