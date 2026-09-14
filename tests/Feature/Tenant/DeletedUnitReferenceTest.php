@@ -13,11 +13,10 @@ use App\Models\Property;
 use App\Models\Repair;
 use App\Models\Unit;
 use App\Models\User;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\File;
+use Tests\Concerns\ScansModelRelations;
 use Tests\TestCase;
 
 /**
@@ -37,6 +36,7 @@ use Tests\TestCase;
 class DeletedUnitReferenceTest extends TestCase
 {
     use RefreshDatabase;
+    use ScansModelRelations;
 
     private Property $building;
 
@@ -899,34 +899,4 @@ class DeletedUnitReferenceTest extends TestCase
         $this->assertSame([$this->live->id], $ids);
     }
 
-    /** @return list<class-string<Model>> */
-    private function modelClasses(): array
-    {
-        $classes = [];
-        foreach (File::allFiles(app_path('Models')) as $file) {
-            $class = 'App\\Models\\' . str_replace(['/', '.php'], ['\\', ''], $file->getRelativePathname());
-            if (class_exists($class) && is_subclass_of($class, Model::class) && ! (new \ReflectionClass($class))->isAbstract()) {
-                $classes[] = $class;
-            }
-        }
-
-        return $classes;
-    }
-
-    /** メソッドの本体（docblock を含まない）からコメントを落とした文字列（注意書きの Unit::class に反応しないように。Bug #42 ②） */
-    private function methodSourceWithoutComments(\ReflectionMethod $method): string
-    {
-        $lines = file($method->getFileName());
-        $source = implode('', array_slice($lines, $method->getStartLine() - 1, $method->getEndLine() - $method->getStartLine() + 1));
-
-        $code = '';
-        foreach (token_get_all('<?php ' . $source) as $token) {
-            if (is_array($token) && in_array($token[0], [T_OPEN_TAG, T_COMMENT, T_DOC_COMMENT], true)) {
-                continue;
-            }
-            $code .= is_array($token) ? $token[1] : $token;
-        }
-
-        return $code;
-    }
 }
