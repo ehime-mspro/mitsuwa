@@ -140,6 +140,7 @@ worktree: `.claude/worktrees/deleted-unit-references`（ブランチ `deleted-un
 | `bf0f52ee` | fix(tenant): 契約の画面で削除済みの区画に（削除済み）を付ける |
 | `63c7d002` | test(tenant): 区画への参照がすべて削除済みを読むことを固定する |
 | `3458462c` | test(tenant): 投資・修繕の詳細で区画の欄そのものに（削除済み）が出ることを見る（変異テストで見つけた穴） |
+| `2dad69ee` | docs: 論理削除した区画を参照する画面の修正を記録する（RULES の Bug #58・CLAUDE.md の Top trap #18・BACKLOG・この結果） |
 
 - 全テスト 1634 → **1672 tests / 10292 assertions green**（`DeletedUnitReferenceTest` 38 本）
 - コンパイル済みビュー **269 本**を `php -l` → INVALID 0 件
@@ -208,3 +209,20 @@ worktree: `.claude/worktrees/deleted-unit-references`（ブランチ `deleted-un
 | コンソール | エラー 0 件・警告 0 件（セッション全体）|
 
 ⚠ 後片付け: サーバ停止・使い捨てルートを戻す・`public/build` の symlink を外す・使い捨て DB を削除・本体の `.playwright-mcp/` に今回できた写し 24 件を削除（本体・worktree とも作業ツリーは空）。
+
+### 本番反映（2026-09-14）
+
+利用者の承認（「反映して本番確認まで」）のあと、main repo で `13.x` へ FF マージ（`2dad69ee`）→ `./deploy.sh`（exit 0）。
+DB 変更・ルート変更・新規 PHP クラス・新規依存は無し。本番の確認は ssh・ブラウザとも**読み取りだけ**（本番のデータは変えていない）。
+
+| 見たこと | 結果 |
+|---|---|
+| 転送されたアプリのファイル（`deploy.sh` の出力）| この変更の 19 本だけ（コントローラ 3・モデル 5・ビュー 11）|
+| コンパイル済みビューの `php -l`（ssh）| **269 本 / INVALID 0 件** |
+| 本番に置かれたファイル（ssh で grep）| `Unit.php` の `getDisplayLabelAttribute` / `scopeIncludingTrashed` ／ `Investment` / `Repair` / `UnitRentRevision` の `belongsTo(Unit::class)->withTrashed()` ／ `Inquiry` の `belongsToMany(Unit::class, 'inquiry_units')->withTrashed()` ／ 契約詳細・物件詳細・顧客詳細のビューの `display_label` |
+| 解約済み契約 C-1991-001（ログイン済みの実 Chrome）| 契約詳細「5A（削除済み） （13.76坪）」／ 契約一覧（すべて・物件 12）「No.25ミツワビル / 5A（削除済み）」／ 物件 12 の解約タブ「5A（削除済み）」／ 顧客詳細の「解約済み（1件）」タブ「5A（削除済み）」|
+| 物件 12 のフロアマップ | 削除されていない 1A・1B だけ |
+| コンソール | 4 画面ともエラー 0 件 |
+
+⚠ 契約一覧は 1 行ごとに契約番号を出さないので、行は「詳細」リンクの行き先（契約の id）で特定した（契約番号の文字では見つからない）。
+⚠ 顧客詳細の解約済みの表は既定で閉じたタブ（`x-show`）の中にあり、`innerText` には出ない。タブを開いて表示されることまで確かめた。
