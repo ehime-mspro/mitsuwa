@@ -86,8 +86,8 @@ class TenantUnitImportTest extends TestCase
     {
         $property = $this->property();
         $unit = Unit::create($this->unitAttributes($property, 1, 'A'));
-        // ⚠ テスト用スキーマの contracts.customer_id と rent_start_date は NOT NULL（アプリはどちらも空のまま契約を作る経路を持つ。
-        //   本番の定義は未確認で、この変更の範囲外）。ここではどちらも埋めて、初月・最終月の列だけを見る
+        // ⚠ テスト用スキーマの contracts.customer_id と rent_start_date は NOT NULL だが、本番はどちらも NULL 可（2026-09-14 に読み取りで確認）。
+        //   アプリはどちらも空のまま契約を作る経路を持つ。テスト用スキーマの漂流を直すのはこの変更の範囲外なので、ここではどちらも埋めて、初月・最終月の列だけを見る
         $customer = \App\Models\Customer::create(['code' => 'CU-IMP-1', 'name' => '取込商事', 'customer_type' => 'corporation']);
 
         $contract = \App\Models\Contract::create([
@@ -102,6 +102,30 @@ class TenantUnitImportTest extends TestCase
             ['prorated', 55000, 'half', 60000],
             [$contract->initial_month_type->value, $contract->initial_month_amount, $contract->final_month_type->value, $contract->final_month_amount]
         );
+    }
+
+    /** 本番の定義（2026-09-14 に読み取りで確認）: 初月の種類は NOT NULL DEFAULT 'full'、最終月の種類は NULL 可 */
+    public function test_the_first_month_type_is_not_null_and_defaults_to_full_like_production(): void
+    {
+        $property = $this->property();
+        $unit = Unit::create($this->unitAttributes($property, 1, 'A'));
+        $customer = \App\Models\Customer::create(['code' => 'CU-IMP-1', 'name' => '取込商事', 'customer_type' => 'corporation']);
+        $row = [
+            'contract_number' => 'C-2026-902', 'department' => 'tenant', 'property_id' => $property->id, 'unit_id' => $unit->id,
+            'customer_id' => $customer->id, 'status' => 'active', 'contract_date' => '2026-09-01', 'rent_start_date' => '2026-09-01', 'rent' => 100000,
+        ];
+
+        DB::table('contracts')->insert($row);
+        $saved = DB::table('contracts')->where('contract_number', 'C-2026-902')->first(['initial_month_type', 'final_month_type']);
+        $this->assertSame(['full', null], [$saved->initial_month_type, $saved->final_month_type]);
+
+        try {
+            // ⚠ 配列の + は左の値を残すので、上書きしたい値を左に置く
+            DB::table('contracts')->insert(['contract_number' => 'C-2026-903', 'initial_month_type' => null] + $row);
+            $this->fail('初月の種類に null が書けてしまった（本番は NOT NULL）');
+        } catch (QueryException $e) {
+            $this->assertStringContainsString('NOT NULL constraint failed: contracts.initial_month_type', $e->getMessage());
+        }
     }
 
     /** カナリア: 状態の CHECK（enum）が残っている（migration でテーブルを作り直すと消える） */

@@ -12,19 +12,20 @@ use Illuminate\Support\Facades\Schema;
  * リポジトリには DDL が 1 本も無い（本番で直接作られたまま。survey_questions / hs_property_files と同じ状況）。
  * そのため契約の CSV 取込の確定がテストで一度も通せなかった（`no column named initial_month_type`）。
  *
- * ⚠ 本番の列定義（型・NULL 可否・既定値）は未確認。モデルの扱い（種類は InitialMonthType、読むときは null を「1ヶ月分」とみなす・
- *   金額は null なら月額合計）に合わせ、NULL 可・既定値なしにしてある。本番と突き合わせたらここを直すこと。
+ * 本番の列定義（2026-09-14 に読み取りで確認）に合わせてある:
+ *   initial_month_type varchar(10) NOT NULL DEFAULT 'full' ／ initial_month_amount int NULL ／
+ *   final_month_type varchar(10) NULL ／ final_month_amount int NULL。
+ * ⚠ 初月の種類は NOT NULL。null を書くと本番では落ちるので、テストでも落ちるようにしてある（NULL 可にしない）。
+ *   種類の値（InitialMonthType）は本番でも CHECK されていない（varchar）ので、ここでも enum にしない。
  */
 return new class extends Migration
 {
     public function up(): void
     {
-        $types = array_column(InitialMonthType::cases(), 'value');
-
-        Schema::table('contracts', function (Blueprint $table) use ($types) {
-            $table->enum('initial_month_type', $types)->nullable()->comment('初月の賃料の扱い');
+        Schema::table('contracts', function (Blueprint $table) {
+            $table->string('initial_month_type', 10)->default(InitialMonthType::Full->value)->comment('初月の賃料の扱い');
             $table->integer('initial_month_amount')->nullable()->comment('初月の金額（手動入力のとき）');
-            $table->enum('final_month_type', $types)->nullable()->comment('最終月の賃料の扱い');
+            $table->string('final_month_type', 10)->nullable()->comment('最終月の賃料の扱い');
             $table->integer('final_month_amount')->nullable()->comment('最終月の金額（手動入力のとき）');
         });
     }
