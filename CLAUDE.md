@@ -30,8 +30,9 @@ Laravel 12 / PHP 8.5.4 (local) + 8.3 (prod) / MySQL 8 / Blade + Alpine.js 3 + Ta
 | 15 | 日付の検証を `strtotime()` でやる（**存在しない日付を繰り上げて通す**。`2026-02-30` は 3/2 と解釈されるのに入力文字列がそのまま返り、本番 MySQL の strict mode が `Incorrect date value` で落ちて `rollBack()` ＝ **1 行の打ち間違いで数百行の取込が丸ごと消える**。逆に `strtotime('1970-01-01')` は `0` ＝ falsy で epoch だけ理由なく拒否される）| **`checkdate()` で存在を判定する**（`App\Support\CsvDate::normalize()` に集約済み）。`preg_match` は**書式**しか見ていないので存在判定の代わりにならない。⚠ **テストの SQLite は `'2026-02-30'` をそのまま格納する**ので DB には守ってもらえない。⚠ 併せて「テストが緑でも測っていない」7 通りの実測（Laravel を起動しない Unit テストは `config/app.php` でなく `php.ini` の timezone に支配される / 手組みリクエストの往復テストは手書き部分を守らない / `assertSee` は警告とエラーを区別しない 等）も同項に。Bug #54 |
 | 16 | 取込の**列名自動判定**を「語の部分一致」だけで書く（実運用の見出しは `階` `空` の**1 文字**で当たらず、総階数が空・空き 0 件で入って**空室率が全棟 0%**。プレビューは警告 0 行・結果も「新規 187 件」で**完全成功に見える**）| 1 文字の見出しを `^階$` `^空$` で明示する（判定は空白除去後に当てるので `^…$` は 1 文字にだけ効く）。⚠ **取込前に列マッピングの画面を必ず読む** — 件数列が「使わない」だと台帳が 0 で埋まる。⚠ **同一年月スキップがあるので取り直しても直らない**（調査回を手で消すか編集するしかない）。⚠ **同名のビルは無音で 1 棟に畳まれる**（理由は結果メッセージに出ない）→ 流す前に重複名を数える。Bug #55 |
 | 17 | 起動後は必ず表示される要素（PC 展開サイドバー）に `x-cloak` を付ける ／ ページの `<script>` で幅を測るのに、Alpine による表示の切り替えの**前後どちらか一方でしか**測らない（パース中の script は Alpine（defer）より前に走る。`x-cloak` で起動前だけサイドバーが消えて表示領域が **220px 広く**、1024px 以上のある幅でだけ「スクロールできるのにヒントが出ない」「初期スクロールが 220px 手前で止まる」。テストも `view:cache` も HTML も全部正しい）| **展開サイドバーに `x-cloak` を戻さない**（2026-09-13 に外した。折りたたみ版・ドロワー・グループの中身は残す）。横スクロールのヒントは**パース中に判定し DOMContentLoaded でも測り直す**（DCL だけだと JS が遅いとき DCL まで既定の「表示」が描かれる。300ms 遅延で実測）。サイドバーの開閉は `body` の `x-init` が `$nextTick` → `requestAnimationFrame` → `resize` を送る（⚠ `$nextTick` だけだと Alpine の x-show がまだ切り替えておらず開閉前の幅で測る）。⚠ `requestAnimationFrame` を**初回**の計測に使うのは不可（非表示のタブで止まる）。⚠ **Alpine のタイミングは画面が見えているブラウザで測る**（非表示のタブでは x-show が setTimeout 経由になり、壊れた形でも正しく動いて見えた）。⚠ **1024px 未満では再現しない**。走査テスト `LayoutMeasuringScriptTest`（全件分類・方針つき）と `LayoutSidebarCloakTest` が構造を守る（Chart.js・Alpine の `init()` の中の計測は見えない）。Bug #56 |
+| 18 | 論理削除するモデル（区画・買主など）を**子から読むリレーションに `withTrashed()` を付けない** ／ 編集画面の選択肢を削除済みを除いて組む（区画を 1 つ消した瞬間に、投資の画面が 500・修繕が「共用部」と誤表示し保存で共用部に書き換わる・問合せの希望区画が黙って消え保存で中間テーブルからも消える。`exists:units,id` も論理削除を見ない）| 子から読むリレーション（belongsTo / belongsToMany）は `withTrashed()`、並べるリレーション（`Property::units` などの hasMany）には付けない。表示は `Unit::display_label`（削除済みなら「（削除済み）」・区画ページへのリンクを張らない。印は DB に保存しない）。編集画面の選択肢は `Unit::includingTrashed($今の区画)`（⚠ 列を絞る `get([...])` に `deleted_at` を入れる。忘れると印が黙って消える）。入力チェックは登録 `Rule::exists('units', 'id')->withoutTrashed()`・更新は今の区画だけ削除済みでも通す。所属チェックも `Unit::withTrashed()`。走査テスト `DeletedUnitReferenceTest::test_every_relation_to_units_is_classified` が全件分類で守る。⚠ 物件の論理削除は同じ型が未対応。Bug #58 |
 
-全 57 件の詳細バグカタログ + 各種パターン: @docs/RULES.md
+全 58 件の詳細バグカタログ + 各種パターン: @docs/RULES.md
 
 ## 🔌 利用可能なプラグイン
 
@@ -125,7 +126,7 @@ sudo rm -f storage/framework/views/*.php && brew services restart httpd
 
 - Department 判定: `resolveDepartment()`（`request()->segment(1)` ベース）— `defaults()` は Laravel 12 で URL パラメータ無しだと効かない
 - `User` モデルに `deleted_at` 列なし → `User::orderBy('name')` のみ、`whereNull('deleted_at')` 禁止
-- `Buyer` は SoftDeletes → リレーション側で常に `->withTrashed()` + edit 画面では現在の buyer を必ず含める
+- `Buyer`・`Unit`（テナントの区画）は SoftDeletes → 参照する側のリレーションで常に `->withTrashed()` + edit 画面では現在の値を必ず含める（区画は `Unit::includingTrashed()`、表示は `display_label`。Bug #12 / #58）
 - `re_projects` のカラムは `project_name`（`name` ではない）
 - 既定都道府県: 愛媛県
 - 外部 CDN: `cdn.jsdelivr.net` のみ許可（`cdnjs.cloudflare.com` は本番でブロック）
@@ -153,5 +154,5 @@ sudo rm -f storage/framework/views/*.php && brew services restart httpd
 ## 📚 Detailed docs
 
 - @docs/ARCHITECTURE.md — ディレクトリ構成、モデル一覧、認可マトリクス
-- @docs/RULES.md — Bug #1–57 + Tailwind 不可クラス/監査の落とし穴 + Excel/SheetJS + 全角→半角自動変換 + 郵便番号 API
+- @docs/RULES.md — Bug #1–58 + Tailwind 不可クラス/監査の落とし穴 + Excel/SheetJS + 全角→半角自動変換 + 郵便番号 API
 - @docs/BACKLOG.md — 完了済み機能の優先度別一覧（優先度 1〜5 全て本番稼働中）
