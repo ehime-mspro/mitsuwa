@@ -297,6 +297,155 @@ class PropertyDeletionGuardTest extends TestCase
     }
 
     // ============================================================
+    // 登録・更新で削除済みの物件を受け付けない（exists は論理削除を見ないので withoutTrashed() を明示する）
+    //
+    // 画面は削除済みの物件を選択肢に出さないので、届くのは「画面を開いたあとに物件が削除された」送信か手組みの送信。
+    // ⚠ 投資・契約は区画の所属チェックが後ろにあり、ふつうの状態（削除済みの物件は区画を持たない）だと
+    //   そちらが弾いてしまい、入力チェックを外しても緑のまま通る（Bug #48）。そこで歯止めを通さずに
+    //   物件を直接 delete() して、その下に生きている区画を残した状態を作り、新しいルールだけが止める形にする。
+    // ============================================================
+
+    private const MISSING_PROPERTY = '選択された物件は存在しません。';
+
+    /** @return array{0: Property, 1: Unit} 削除済みの物件と、その下に残した生きている区画 */
+    private function deletedPropertyWithLiveUnit(): array
+    {
+        $gone = Property::create([
+            'code' => 'T-GUARD-9', 'name' => '削除済みビル', 'property_type' => 'tenant', 'department' => 'tenant',
+            'address' => '愛媛県松山市', 'total_floors' => 2,
+        ]);
+        $unit = Unit::create([
+            'property_id' => $gone->id, 'floor' => 1, 'room_number' => 'A', 'display_name' => '1A',
+            'status' => 'vacant', 'area_tsubo' => 10,
+        ]);
+        $gone->delete();
+
+        return [$gone, $unit];
+    }
+
+    public function test_contract_store_rejects_a_deleted_property(): void
+    {
+        [$gone, $unit] = $this->deletedPropertyWithLiveUnit();
+        $customer = Customer::create(['code' => 'CU-GUARD-9', 'name' => '手組み商事', 'customer_type' => 'corporation']);
+
+        $this->actingAs($this->executive())
+            ->post(route('tenant.contracts.store'), [
+                'property_id' => $gone->id,
+                'unit_id' => $unit->id,
+                'customer_id' => $customer->id,
+                'contract_date' => '2026-09-01',
+                'rent' => 100000,
+                'initial_month_type' => 'full',
+            ])
+            ->assertSessionHasErrors(['property_id' => self::MISSING_PROPERTY]);
+
+        $this->assertSame(0, Contract::count());
+    }
+
+    public function test_investment_store_rejects_a_deleted_property(): void
+    {
+        [$gone, $unit] = $this->deletedPropertyWithLiveUnit();
+
+        $this->actingAs($this->executive())
+            ->post(route('tenant.investments.store'), [
+                'property_id' => $gone->id,
+                'unit_id' => $unit->id,
+                'pattern' => 'renovation',
+                'status' => 'planning',
+                'details' => [['cost_item' => 'interior', 'amount' => 1000000]],
+            ])
+            ->assertSessionHasErrors(['property_id' => self::MISSING_PROPERTY]);
+
+        $this->assertSame(0, Investment::count());
+    }
+
+    public function test_investment_update_rejects_a_deleted_property(): void
+    {
+        [$gone, $unit] = $this->deletedPropertyWithLiveUnit();
+        $investment = $this->investment();
+
+        $this->actingAs($this->executive())
+            ->put(route('tenant.investments.update', $investment), [
+                'property_id' => $gone->id,
+                'unit_id' => $unit->id,
+                'pattern' => 'renovation',
+                'status' => 'in_progress',
+                'details' => [['cost_item' => 'interior', 'amount' => 1000000]],
+            ])
+            ->assertSessionHasErrors(['property_id' => self::MISSING_PROPERTY]);
+
+        $investment->refresh();
+        $this->assertSame([$this->building->id, 'planning'], [$investment->property_id, $investment->status->value]);
+    }
+
+    public function test_repair_store_rejects_a_deleted_property(): void
+    {
+        [$gone] = $this->deletedPropertyWithLiveUnit();
+
+        $this->actingAs($this->executive())
+            ->post(route('tenant.repairs.store'), [
+                'property_id' => $gone->id,
+                'unit_id' => '',
+                'status' => RepairStatus::Planned->value,
+                'description' => '手組みの修繕',
+            ])
+            ->assertSessionHasErrors(['property_id' => self::MISSING_PROPERTY]);
+
+        $this->assertSame(0, Repair::count());
+    }
+
+    public function test_repair_update_rejects_a_deleted_property(): void
+    {
+        [$gone] = $this->deletedPropertyWithLiveUnit();
+        $repair = $this->repair();
+
+        $this->actingAs($this->executive())
+            ->put(route('tenant.repairs.update', $repair), [
+                'property_id' => $gone->id,
+                'unit_id' => '',
+                'status' => RepairStatus::InProgress->value,
+                'description' => '手組みの修繕',
+            ])
+            ->assertSessionHasErrors(['property_id' => self::MISSING_PROPERTY]);
+
+        $repair->refresh();
+        $this->assertSame([$this->building->id, RepairStatus::Planned], [$repair->property_id, $repair->status]);
+    }
+
+    public function test_inquiry_store_rejects_a_deleted_property(): void
+    {
+        [$gone] = $this->deletedPropertyWithLiveUnit();
+
+        $this->actingAs($this->executive())
+            ->post(route('tenant.inquiries.store'), [
+                'property_id' => $gone->id,
+                'inquiry_date' => '2026-09-02',
+                'contact_name' => '手組み 太郎',
+            ])
+            ->assertSessionHasErrors(['property_id' => self::MISSING_PROPERTY]);
+
+        $this->assertSame(0, Inquiry::count());
+    }
+
+    public function test_inquiry_update_rejects_a_deleted_property(): void
+    {
+        [$gone] = $this->deletedPropertyWithLiveUnit();
+        $inquiry = $this->inquiry();
+
+        $this->actingAs($this->executive())
+            ->put(route('tenant.inquiries.update', $inquiry), [
+                'property_id' => $gone->id,
+                'unit_ids' => [],
+                'inquiry_date' => '2026-09-02',
+                'contact_name' => '手組み 太郎',
+            ])
+            ->assertSessionHasErrors(['property_id' => self::MISSING_PROPERTY]);
+
+        $inquiry->refresh();
+        $this->assertSame([$this->building->id, '削除 花子'], [$inquiry->property_id, $inquiry->contact_name]);
+    }
+
+    // ============================================================
     // 構造: 物件のリレーションを両側から全件分類する（Top trap #13。数え漏れを「リレーションを足した日」に止める）
     // ============================================================
 

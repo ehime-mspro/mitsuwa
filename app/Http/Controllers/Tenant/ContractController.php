@@ -25,6 +25,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Database\QueryException;
+use Illuminate\Validation\Rule;
 
 class ContractController extends Controller
 {
@@ -188,7 +189,8 @@ class ContractController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'property_id'      => 'required|exists:properties,id',
+            // 削除済みの物件は受け付けない（exists は論理削除を見ない。削除済みの物件に子を付けない。Bug #59）
+            'property_id'      => ['required', Rule::exists('properties', 'id')->withoutTrashed()],
             'unit_id'          => 'required|exists:units,id',
             'customer_id'      => 'nullable|exists:customers,id',
             'store_name'       => 'nullable|string|max:200',

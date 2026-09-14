@@ -118,7 +118,8 @@ class InvestmentController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'property_id'      => 'required|exists:properties,id',
+            // 削除済みの物件は受け付けない（exists は論理削除を見ない。削除済みの物件に子を付けない。Bug #59）
+            'property_id'      => ['required', Rule::exists('properties', 'id')->withoutTrashed()],
             // 削除済みの区画は選べない（exists は論理削除を見ないので明示する）
             'unit_id'          => ['required', Rule::exists('units', 'id')->withoutTrashed()],
             'pattern'          => 'required|in:' . implode(',', array_column(InvestmentPattern::cases(), 'value')),
@@ -251,7 +252,8 @@ class InvestmentController extends Controller
     public function update(Request $request, Investment $investment)
     {
         $validated = $request->validate([
-            'property_id'      => 'required|exists:properties,id',
+            // 削除済みの物件は受け付けない（exists は論理削除を見ない。削除済みの物件に子を付けない。Bug #59）
+            'property_id'      => ['required', Rule::exists('properties', 'id')->withoutTrashed()],
             // 削除済みの区画は選べない。ただし今の区画は削除済みでもそのまま保存できる（編集画面の選択肢に残してある）
             'unit_id'          => ['required', Rule::exists('units', 'id')->where(
                 fn ($q) => $q->whereNull('deleted_at')->orWhere('id', $investment->unit_id)
