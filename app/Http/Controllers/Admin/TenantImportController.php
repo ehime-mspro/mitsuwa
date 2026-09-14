@@ -306,6 +306,7 @@ class TenantImportController extends Controller
 
         // 行バリデーション
         $errors = [];
+        $warnings = [];
         $validRows = [];
         $unitTracker = [];
 
@@ -369,11 +370,14 @@ class TenantImportController extends Controller
             }
             $unitTracker[$unitKey] = $rowNum;
 
-            // DB重複チェック（同一物件＋表示名）
-            $existingUnit = Unit::where('property_id', $property->id)
+            // DB重複チェック（同一物件＋表示名）。⚠ 削除済みの区画も引く — 一意制約（物件＋表示名）は削除済みの行も含むので、
+            //   見ないと確定で一意制約に当たって全行が巻き戻る。削除済みの同名区画は、取り込むと復元して上書きする
+            //   （画面の区画登録 UnitController::store と同じ。docs/RULES.md Bug #60）
+            $existingUnit = Unit::withTrashed()
+                ->where('property_id', $property->id)
                 ->where('display_name', $displayName)
                 ->first();
-            if ($existingUnit) {
+            if ($existingUnit && ! $existingUnit->trashed()) {
                 $errors[] = ['row' => $rowNum, 'message' => "物件「{$propName}」の区画「{$displayName}」は既に登録されています"];
                 continue;
             }
@@ -421,9 +425,18 @@ class TenantImportController extends Controller
             }
 
             $row['_property_id'] = $property->id;
+            // 削除済みの同名区画（取り込むと復元する）。確定のリクエストでも検査をやり直すので、id はサーバで決め直す
+            $row['_restore_unit_id'] = $existingUnit?->id;
             $row['_row'] = $rowNum;
             $validRows[] = $row;
+
+            // ⚠ 予告は、この行を取り込むと決めたここでだけ積む（途中の検査の前に積むと、同じ行に予告とエラーが並ぶ）
+            if ($existingUnit) {
+                $warnings[] = ['row' => $rowNum, 'message' => "物件「{$propName}」の区画「{$displayName}」は削除済みです。取り込むと復元して、この行の内容で上書きします（過去の契約・投資などもこの区画に戻ります）"];
+            }
         }
+
+        $restoreCount = count(array_filter($validRows, fn (array $row) => $row['_restore_unit_id'] !== null));
 
         // プレビューモード
         if (!$request->boolean('confirmed')) {
@@ -433,8 +446,10 @@ class TenantImportController extends Controller
                 'totalRows'    => count($rows),
                 'validCount'   => count($validRows),
                 'rowErrors'    => $errors,
+                'warnings'     => $warnings,
                 'skippedRows'  => [],
-                'summary'      => '区画 ' . count($validRows) . '件を新規作成',
+                'summary'      => '区画 ' . (count($validRows) - $restoreCount) . '件を新規作成'
+                    . ($restoreCount > 0 ? '・' . $restoreCount . '件を削除済みから復元' : ''),
                 'csvData'      => base64_encode($content),
             ]);
         }
@@ -443,13 +458,14 @@ class TenantImportController extends Controller
         DB::beginTransaction();
         try {
             $created = 0;
+            $restored = 0;
             $updatedProperties = [];
 
             foreach ($validRows as $row) {
                 $floor = $row['floor'] !== '' ? $row['floor'] : null;
                 $displayName = Unit::generateDisplayName($floor, $row['room_number']);
 
-                Unit::create([
+                $attributes = [
                     'property_id'      => $row['_property_id'],
                     'floor'            => $floor,
                     'room_number'      => $row['room_number'],
@@ -462,8 +478,18 @@ class TenantImportController extends Controller
                     'deposit'          => $row['deposit'] !== '' ? $row['deposit'] : null,
                     'garbage_fee'      => $row['garbage_fee'] !== '' ? $row['garbage_fee'] : null,
                     'pest_control_fee' => $row['pest_control_fee'] !== '' ? $row['pest_control_fee'] : null,
-                ]);
-                $created++;
+                ];
+
+                if ($row['_restore_unit_id'] !== null) {
+                    // 削除済みの同名区画を、この行の内容で上書きして復元する（1 回の UPDATE。CSV に無い notes は残す）
+                    $unit = Unit::withTrashed()->findOrFail($row['_restore_unit_id']);
+                    $unit->fill($attributes);
+                    $unit->restore();
+                    $restored++;
+                } else {
+                    Unit::create($attributes);
+                    $created++;
+                }
                 $updatedProperties[$row['_property_id']] = true;
             }
 
@@ -476,7 +502,8 @@ class TenantImportController extends Controller
             DB::commit();
 
             return redirect()->route('admin.tenant-import', ['tab' => $tab])
-                ->with('success', "区画インポート完了: {$created}件を登録しました");
+                ->with('success', '区画インポート完了: ' . ($created + $restored) . '件を登録しました'
+                    . ($restored > 0 ? "（うち削除済みから復元 {$restored}件）" : ''));
 
         } catch (\Exception $e) {
             DB::rollBack();

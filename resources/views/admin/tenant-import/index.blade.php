@@ -94,6 +94,7 @@
                     <ul style="font-size: 12px; color: #1d4ed8; margin: 0; padding-left: 18px; line-height: 1.8;">
                         <li>1行＝1区画として登録します</li>
                         <li>CSVの「物件名」で既存の物件を検索し紐づけます</li>
+                        <li>削除済みの区画と同じ区画（階＋部屋番号）の行は、その区画を復元してCSVの内容で上書きします（プレビューで予告します）</li>
                         <li style="font-weight: 600;">※ 物件が先に登録されている必要があります</li>
                     </ul>
                 </div>

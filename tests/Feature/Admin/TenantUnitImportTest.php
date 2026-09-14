@@ -134,4 +134,99 @@ class TenantUnitImportTest extends TestCase
         // 先の行が入る（面積 10 の行）
         $this->assertEquals(10, Unit::where('property_id', $property->id)->where('display_name', '3A')->value('area_tsubo'));
     }
+
+    // ------------------------------------------------------------
+    // 削除済みの同名区画は、復元して CSV の行の内容で上書きする（画面の区画登録 UnitController::store と同じ）
+    // 以前は重複チェックが削除済みを見ず、確定で一意制約に当たって全行が巻き戻っていた（Bug #60）
+    // ------------------------------------------------------------
+
+    private const RESTORE_NOTICE = '物件「取込ビル」の区画「2A」は削除済みです。取り込むと復元して、この行の内容で上書きします（過去の契約・投資などもこの区画に戻ります）';
+
+    private function deletedUnit(Property $property, int $floor, string $room, array $overrides = []): Unit
+    {
+        $unit = Unit::create(array_merge($this->unitAttributes($property, $floor, $room), $overrides));
+        $unit->delete();
+
+        return $unit;
+    }
+
+    public function test_the_preview_announces_that_a_deleted_unit_will_be_restored(): void
+    {
+        $property = $this->property();
+        $this->deletedUnit($property, 2, 'A');
+        $csv = self::UNIT_HEADER . "\n取込ビル,2,A,15,,空室,120000,,,,\n取込ビル,3,A,10,,,,,,,\n";
+
+        $preview = $this->preview('unit', $csv)->assertOk();
+        $html = $preview->getContent();
+
+        $this->assertSame(2, $preview->viewData('validCount'), '削除済みと同名の行も取り込む行に入る');
+        $this->assertSame([], $preview->viewData('rowErrors'));
+        // 役割（警告であってエラーではない）と表示を別々に見る（Bug #54 ④。要約にも「復元」が出るので素の assertSee は不可）
+        $this->assertSame([['row' => 2, 'message' => self::RESTORE_NOTICE]], $preview->viewData('warnings'));
+        $this->assertSame(1, substr_count($html, '⚠ 行2: ' . self::RESTORE_NOTICE), '予告が警告の行として画面に出ていない');
+        $this->assertSame('区画 1件を新規作成・1件を削除済みから復元', $preview->viewData('summary'));
+        $this->assertStringContainsString('>区画 1件を新規作成・1件を削除済みから復元</div>', $html);
+    }
+
+    public function test_confirming_restores_the_deleted_unit_and_overwrites_it_with_the_row(): void
+    {
+        $property = $this->property();
+        $deleted = $this->deletedUnit($property, 2, 'A', ['status' => 'negotiating', 'rent' => 50000, 'notes' => '以前のメモ']);
+        $csv = self::UNIT_HEADER . "\n取込ビル,2,A,15,,空室,120000,,,,\n取込ビル,3,A,10,,,,,,,\n";
+
+        $this->confirm('unit', $csv)
+            ->assertRedirect(route('admin.tenant-import', ['tab' => 'unit']))
+            ->assertSessionHas('success', '区画インポート完了: 2件を登録しました（うち削除済みから復元 1件）');
+
+        $restored = Unit::find($deleted->id);
+        $this->assertNotNull($restored, '削除済みの区画が復元されていない（同じ id のまま戻す）');
+        $this->assertSame(
+            ['area_tsubo' => '15.00', 'status' => 'vacant', 'rent' => 120000, 'notes' => '以前のメモ'],
+            ['area_tsubo' => (string) $restored->area_tsubo, 'status' => $restored->status->value, 'rent' => $restored->rent, 'notes' => $restored->notes],
+            'CSV の行の内容で上書きされていない（notes は CSV に無いので残す）'
+        );
+        $this->assertSame(['2A', '3A'], $this->liveUnitNames($property));
+        $this->assertSame(2, Unit::withTrashed()->where('property_id', $property->id)->count(), '復元せずに新しい行を作った');
+    }
+
+    public function test_a_row_matching_a_live_unit_is_still_an_error_row(): void
+    {
+        $property = $this->property();
+        Unit::create($this->unitAttributes($property, 2, 'A'));
+        $csv = self::UNIT_HEADER . "\n取込ビル,2,A,15,,,,,,,\n取込ビル,3,A,10,,,,,,,\n";
+
+        $preview = $this->preview('unit', $csv)->assertOk();
+        $this->assertSame([['row' => 2, 'message' => '物件「取込ビル」の区画「2A」は既に登録されています']], $preview->viewData('rowErrors'));
+        $this->assertSame([], $preview->viewData('warnings') ?? []);
+
+        $this->confirm('unit', $csv)->assertSessionHas('success', '区画インポート完了: 1件を登録しました');
+        $this->assertSame(['2A', '3A'], $this->liveUnitNames($property));
+    }
+
+    public function test_a_row_with_an_error_does_not_announce_a_restore(): void
+    {
+        // 予告は、その行をすべての検査に通して取り込むと決めたときにだけ積む（途中で積むと同じ行に予告とエラーが並ぶ）
+        $property = $this->property();
+        $this->deletedUnit($property, 2, 'A');
+        $csv = self::UNIT_HEADER . "\n取込ビル,2,A,abc,,,,,,,\n";
+
+        $preview = $this->preview('unit', $csv)->assertOk();
+        $this->assertSame([['row' => 2, 'message' => '面積「abc」は不正な値です']], $preview->viewData('rowErrors'));
+        $this->assertSame([], $preview->viewData('warnings') ?? []);
+        $this->assertStringNotContainsString('は削除済みです。取り込むと復元して', $preview->getContent());
+    }
+
+    public function test_total_units_counts_the_restored_unit_but_not_other_deleted_units(): void
+    {
+        $property = $this->property();
+        Unit::create($this->unitAttributes($property, 1, 'A'));
+        $this->deletedUnit($property, 2, 'A');
+        $this->deletedUnit($property, 5, 'C');
+        $csv = self::UNIT_HEADER . "\n取込ビル,2,A,15,,,,,,,\n";
+
+        $this->confirm('unit', $csv)->assertSessionHas('success', '区画インポート完了: 1件を登録しました（うち削除済みから復元 1件）');
+
+        // 生きている 1A と、復元した 2A。CSV に無い削除済みの 5C は数えない
+        $this->assertSame(2, $property->fresh()->total_units);
+    }
 }
