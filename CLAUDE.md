@@ -78,7 +78,7 @@ sudo rm -f storage/framework/views/*.php && brew services restart httpd
 ### deploy.sh の動作
 - **`npm run build` を実行してから** rsync する（2026-07-15 に組み込み）。ビルド失敗時は本番へ何も転送せず中断
 - rsync で本番（さくらレンタル `mitsuwa-ud@www3586.sakura.ne.jp`）にアプリ + vendor + public を転送
-- ssh で `php artisan config:cache && route:cache && view:cache` を実行
+- ssh で `umask 077` のうえ `php artisan config:cache && route:cache && view:cache` を実行（本番の `.env` と `bootstrap/cache/config.php` は秘密入りなので 600 を保つ。PHP は本人の権限で動くので 600 で読める。2026-09-14）
 - `composer install` は走らない → 新規依存は **ローカルで `composer install` → vendor 同期で本番反映**
 - `CLAUDE.md` `docs/` `.claude/` `tests/` 等は rsync 除外（開発用ファイルは本番に送らない）
 - 旧バンドルの掃除: `public/build/` だけ `--delete` 付きで再同期（2026-07-15 に追加）。転送先が 2 つあるのは APP_PATH = Laravel が manifest を読む側 / WEB_PATH = ブラウザが実ファイルを取る側の両方に配るため
@@ -91,7 +91,7 @@ sudo rm -f storage/framework/views/*.php && brew services restart httpd
 
 ### 定期実行とバックアップ（本番）
 - 定期実行: さくらの CRON（5 分おき・1 件）が `schedule:run` を起動（予定は `routes/console.php`、時刻は `config/app.php` の `schedule_timezone`=Asia/Tokyo）。キューは database で、`queue:work --stop-when-empty` を `schedule:run` の起動ごと（＝5 分おき）に回す（常駐禁止のため）。予定は「その分に一致したら実行」なので、決まった時刻の仕事は `0-4 3 * * *` のように 5 分の幅を持たせる（CRON の起動のずれで無言で飛ばないように）
-- 夜間バックアップ: `ops:backup`（3:00〜3:04 の回・キュー処理より先・メンテナンス中も実行。画面の出力は `storage/logs/backup-command.log`）→ DB 全体と `storage/app/{public,private}` を AES-256-GCM で暗号化してさくらのオブジェクトストレージへ（添付は `files/<キー識別子>/` に差分だけ送る）。自分で扱った失敗は終了コード 3（`BackupCommand::HANDLED_FAILURE`）で自分で通知し、それ以外の 0 でない終了は `routes/console.php` の onFailure が、終了コードが得られない停止（kill などのシグナル）は同じファイルの ScheduledTaskFailed の listener が通知する（本番 FreeBSD の sh は予定のコマンドを sh を挟まずに直接実行するため、kill されると終了コードではなく ProcessSignaledException になり onFailure まで進まない。手元の macOS の sh＝bash では 137 になるので、テストは `exec` を付けて再現する）。本番に sodium は無い。記録の時刻は UTC。手順は @docs/運用_バックアップとメール.md
+- 夜間バックアップ: `ops:backup`（3:00〜3:04 の回・キュー処理より先・メンテナンス中も実行。画面の出力は `storage/logs/backup-command.log`）→ DB 全体と `storage/app/{public,private}` を AES-256-GCM で暗号化してさくらのオブジェクトストレージへ（添付は `files/<キー識別子>/` に差分だけ送る）。自分で扱った失敗は終了コード 3（`BackupCommand::HANDLED_FAILURE`）で自分で通知し、それ以外の 0 でない終了は `routes/console.php` の onFailure が、終了コードが得られない停止（kill などのシグナル）は同じファイルの ScheduledTaskFailed の listener が通知する（本番 FreeBSD の sh は予定のコマンドを sh を挟まずに直接実行するため、kill されると終了コードではなく ProcessSignaledException になり onFailure まで進まない。手元の macOS の sh＝bash では 137 になるので、テストは `exec` を付けて再現する）。本番に sodium は無い。記録の時刻は UTC。本番の `LOG_LEVEL` は `error`（2026-09-14 ユーザー判断）なので、完了（info）と注意（warning）は laravel.log に残らず `backup-command.log` にだけ出る。成否はこれと失敗メールで見る（`scheduler.log` の DONE は失敗でも出るので使わない）。手順は @docs/運用_バックアップとメール.md
 - ⚠ `storage/app/{public,private}` のファイルは**上書き保存しない**（新しい内容は新しい名前で保存する）。バックアップは「同じパス・同じ大きさなら送り直さない」判定のため、上書きすると変更がバックアップに入らない
 - ⚠ コマンドの画面に「このコマンドを打ってください」と案内するときは、`php artisan …` と書かずに `PHP_BINARY` で組み立てる（`app/Console/Commands/Concerns/SuggestsArtisanCommands.php`）。さくらで `php` とだけ打つと既定の PHP 7.4 が動き、英語のエラーで止まる
 
