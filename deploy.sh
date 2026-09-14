@@ -74,7 +74,9 @@ rsync -avz --delete ./public/build/ ${SERVER}:${WEB_PATH}/build/
 rsync -avz --delete ./public/build/ ${SERVER}:${APP_PATH}/public/build/
 
 echo "=== [5/6] キャッシュ更新 ==="
-ssh ${SERVER} "cd ${APP_PATH} && \
+# umask 077: 本番の .env と、それを写した bootstrap/cache/config.php には秘密（S3 の鍵・暗号化キー・
+# メールのパスワード）が入るため、作り直すキャッシュも本人だけ読める 600 にする（PHP は本人の権限で動く）。
+ssh ${SERVER} "umask 077 && cd ${APP_PATH} && \
   /usr/local/php/8.3/bin/php artisan config:cache && \
   /usr/local/php/8.3/bin/php artisan route:cache && \
   /usr/local/php/8.3/bin/php artisan view:cache"

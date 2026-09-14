@@ -78,7 +78,7 @@ sudo rm -f storage/framework/views/*.php && brew services restart httpd
 ### deploy.sh の動作
 - **`npm run build` を実行してから** rsync する（2026-07-15 に組み込み）。ビルド失敗時は本番へ何も転送せず中断
 - rsync で本番（さくらレンタル `mitsuwa-ud@www3586.sakura.ne.jp`）にアプリ + vendor + public を転送
-- ssh で `php artisan config:cache && route:cache && view:cache` を実行
+- ssh で `umask 077` のうえ `php artisan config:cache && route:cache && view:cache` を実行（本番の `.env` と `bootstrap/cache/config.php` は秘密入りなので 600 を保つ。PHP は本人の権限で動くので 600 で読める。2026-09-14）
 - `composer install` は走らない → 新規依存は **ローカルで `composer install` → vendor 同期で本番反映**
 - `CLAUDE.md` `docs/` `.claude/` `tests/` 等は rsync 除外（開発用ファイルは本番に送らない）
 - 旧バンドルの掃除: `public/build/` だけ `--delete` 付きで再同期（2026-07-15 に追加）。転送先が 2 つあるのは APP_PATH = Laravel が manifest を読む側 / WEB_PATH = ブラウザが実ファイルを取る側の両方に配るため
