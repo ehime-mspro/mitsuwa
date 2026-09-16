@@ -235,7 +235,7 @@ class CustomerImportController extends Controller
                         $staffName = trim($cols[$colMap['staff_name'] ?? -1] ?? '');
                         if ($staffName) {
                             $surveyData['staff_name'] = $staffName;
-                            $staffUser = User::where('name', 'like', '%' . $staffName . '%')->first();
+                            $staffUser = User::baseUsers()->where('name', 'like', '%' . $staffName . '%')->first();
                             if ($staffUser) {
                                 $surveyData['staff_user_id'] = $staffUser->id;
                             }

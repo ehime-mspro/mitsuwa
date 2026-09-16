@@ -885,7 +885,7 @@ class MansionImportController extends Controller
             // 担当者解決（不一致は null + 警告）
             $staffUserId = null;
             if ($row['staff_user_name'] !== '') {
-                $staff = User::where('name', $row['staff_user_name'])->first();
+                $staff = User::baseUsers()->where('name', $row['staff_user_name'])->first();
                 if ($staff) {
                     $staffUserId = $staff->id;
                 } else {
@@ -1130,7 +1130,7 @@ class MansionImportController extends Controller
             // 担当者解決（不一致は null + 警告）
             $staffUserId = null;
             if ($row['staff_user_name'] !== '') {
-                $staff = User::where('name', $row['staff_user_name'])->first();
+                $staff = User::baseUsers()->where('name', $row['staff_user_name'])->first();
                 if ($staff) {
                     $staffUserId = $staff->id;
                 } else {

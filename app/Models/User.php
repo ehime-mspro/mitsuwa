@@ -25,6 +25,7 @@ class User extends Authenticatable
      */
     protected $fillable = [
         'name',
+        'employee_number',
         'email',
         'password',
         'must_change_password',
@@ -57,6 +58,27 @@ class User extends Authenticatable
             'last_login_at' => 'datetime',
             'deleted_at' => 'datetime',
         ];
+    }
+
+    /**
+     * ログイン ID を保存する直前に正規化する（設計書 §5.6）。
+     *
+     * ⚠ 画面・CSV・コマンドのどの経路から来ても同じ値になるよう、モデル側で行う。
+     *   一意の検査は**正規化した値**で行うこと（検証の前に正規化する。大文字小文字の違いを
+     *   本番の MySQL は同じとみなし、テストの SQLite は別とみなすので、順番を間違えると
+     *   テストだけ通って本番の一意索引に当たる）。
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (self $user): void {
+            foreach (['employee_number', 'email'] as $column) {
+                if (! $user->isDirty($column)) {
+                    continue;
+                }
+                $value = \App\Support\LoginId::normalize($user->{$column});
+                $user->{$column} = $value === '' ? null : $value;
+            }
+        });
     }
 
     // ============================================================
@@ -108,6 +130,23 @@ class User extends Authenticatable
         return $this->status === UserStatus::Active;
     }
 
+    /** 決裁のみ利用者か（設計書 D6） */
+    public function isApprovalOnly(): bool
+    {
+        return $this->role === UserRole::ApprovalOnly;
+    }
+
+    /**
+     * ログイン直後と `/dashboard` の振り分けの行き先（設計書 §5.3）。
+     *
+     * ⚠ 規則をここ 1 箇所に置く。2 箇所に書くと、決裁のみ利用者が基幹のダッシュボードへ送られ
+     *   門番に跳ね返されて往復する。
+     */
+    public function homeRouteName(): string
+    {
+        return $this->isApprovalOnly() ? 'approvals.home' : ($this->isExecutive() ? 'dashboard.executive' : 'dashboard.tenant');
+    }
+
     /**
      * 指定した部門に所属しているか
      */
@@ -121,12 +160,26 @@ class User extends Authenticatable
     // ============================================================
 
     /**
-     * 担当者として選択可能なユーザー = 有効かつ未削除。
+     * 基幹を使う利用者（決裁のみを除く）。状態は見ない。
+     *
+     * 取込の担当者の氏名照合など「有効でなくても引きたい」場面で使う。
+     */
+    public function scopeBaseUsers($query)
+    {
+        return $query->where('role', '!=', UserRole::ApprovalOnly->value);
+    }
+
+    /**
+     * 担当者として選択可能なユーザー = 有効かつ未削除かつ基幹を使う人。
      * 削除済みは SoftDeletes のグローバルスコープが自動的に除外する。
+     *
+     * ⚠ 決裁のみ利用者を除くのはここ 1 箇所で、基幹の担当者セレクト 19 か所すべてが
+     *   このスコープ（と assignableWith）を通る（設計書 §5.6）。
      */
     public function scopeAssignable($query)
     {
-        return $query->where('status', UserStatus::Active->value);
+        return $query->where('status', UserStatus::Active->value)
+                     ->where('role', '!=', UserRole::ApprovalOnly->value);
     }
 
     /**

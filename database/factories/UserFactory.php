@@ -42,4 +42,19 @@ class UserFactory extends Factory
             'email_verified_at' => null,
         ]);
     }
+
+    /**
+     * 決裁のみ利用者（設計書 D6）。
+     *
+     * ⚠ `must_change_password` は明示する側の責任（この state では触らない。
+     *   既定に頼るとメモリ上は null・DB から引くと true になり経路で結果が変わる）。
+     */
+    public function approvalOnly(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'role'             => \App\Enums\UserRole::ApprovalOnly->value,
+            'email'            => null,
+            'employee_number'  => 'A' . fake()->unique()->numberBetween(1000, 9999),
+        ]);
+    }
 }
