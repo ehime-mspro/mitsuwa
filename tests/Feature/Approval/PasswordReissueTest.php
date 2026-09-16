@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Support\Approval\PasswordReissuer;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
@@ -167,6 +168,128 @@ class PasswordReissueTest extends TestCase
         ));
     }
 
+    /**
+     * 案内の画面へ渡すときに、**送る人数と送らない人数が入れ替わらない**こと。
+     *
+     * ⚠ `ReissueResult::toGuide()` は `LoginGuide` の**位置引数**に詰め替えるので、
+     *   2 つを取り違えても型では気づけない。**必ず非対称な値**（ここでは 2 と 1）で見ること。
+     *   1 対 1 だと入れ替えが原理的に見えない。
+     */
+    public function test_the_guide_does_not_swap_the_notified_and_skipped_counts(): void
+    {
+        $this->actingAs($this->admin());
+
+        $users = collect([
+            User::factory()->create(['email' => 'a@mitsuwat.co.jp', 'must_change_password' => false]),
+            User::factory()->create(['email' => 'b@mitsuwat.co.jp', 'must_change_password' => false]),
+            User::factory()->create(['email' => null, 'employee_number' => 'M001', 'must_change_password' => false]),
+        ]);
+
+        $result = (new PasswordReissuer())->reissue($users);
+
+        $this->assertSame(2, $result->notifiedCount);
+        $this->assertSame(1, $result->skippedCount);
+
+        $html = $result->toGuide()->toResponse(request())->getContent();
+
+        $this->assertStringContainsString('通知メール: 送る 2 人／送らない 1 人', $html, '送る人数と送らない人数が入れ替わっている');
+    }
+
+    /**
+     * 1 回の失敗でそのまま `failed()` を呼ばせる（`$tries = 1`）。
+     *
+     * ⚠ これは**実挙動**を決めている。`routes/console.php` の worker は
+     *   `--tries=3 --backoff=60` なので、この行が消えると 3 回・60 秒待ちに変わる
+     *   （`SendQueuedMailable` が `property_exists($mailable, 'tries')` でペイロードに載せ、
+     *   `Job::maxTries()` が worker の指定を上書きする。vendor で確認済み）。
+     */
+    public function test_it_gives_up_after_one_attempt(): void
+    {
+        $mail = new PasswordReissuedMail(
+            User::factory()->create(['must_change_password' => false]),
+            '管理 花子',
+            now(),
+            'https://example.com/login',
+        );
+
+        $this->assertSame(1, $mail->tries);
+    }
+
+    /**
+     * 送れなかったら**宛先つきで** `laravel.log` に残す。
+     *
+     * ⚠ 本番の `LOG_LEVEL` は `error` なので、この `Log::error` が唯一の手がかり。
+     *   運用手順書が「5 分たっても届かないときは laravel.log の行に理由が出ている」と
+     *   案内しているので、中身が空になると**無音で死ぬ**。
+     */
+    public function test_a_failure_is_logged_with_the_recipient(): void
+    {
+        Log::spy();
+
+        $mail = new PasswordReissuedMail(
+            User::factory()->create(['must_change_password' => false]),
+            '管理 花子',
+            now(),
+            'https://example.com/login',
+        );
+        $mail->to('a@mitsuwat.co.jp');
+
+        $mail->failed(new \RuntimeException('SMTP がつながりません'));
+
+        Log::shouldHaveReceived('error')->withArgs(function (string $message) {
+            $this->assertStringContainsString('a@mitsuwat.co.jp', $message, '宛先が記録に無い');
+            $this->assertStringContainsString('SMTP がつながりません', $message, '理由が記録に無い');
+
+            return true;
+        })->once();
+    }
+
+    /** 件名（利用者が受信箱で見分ける唯一の手がかり） */
+    public function test_the_subject_says_what_happened(): void
+    {
+        $mail = new PasswordReissuedMail(
+            User::factory()->create(['must_change_password' => false]),
+            '管理 花子',
+            now(),
+            'https://example.com/login',
+        );
+
+        $this->assertSame('【経営管理システム】パスワードを再発行しました', $mail->envelope()->subject);
+    }
+
+    /**
+     * ログイン画面の URL は**呼び出し側から渡す**（Mailable の中で `route()` を呼ばない）。
+     *
+     * ⚠ **振る舞いでは測れない。** テストの `APP_URL` は `http://localhost` なので、
+     *   `route('login')` でも `config('app.url').'/login'` でも同じ文字列になる（実測で全緑）。
+     *   本番は `/index.php` を挟むので、キューの中で組み立てると壊れる（要件 15.1）。
+     *   よって**ソースの構造**で固定する。
+     * ⚠ コメントを落としてから測る（docblock 自身が `route(` と書いているので、
+     *   そのままだと実体を消しても緑のまま通る。Bug #42 ②）。
+     */
+    public function test_the_mailable_never_builds_the_url_itself(): void
+    {
+        $source = $this->sourceWithoutComments(app_path('Mail/PasswordReissuedMail.php'));
+
+        $this->assertStringNotContainsString('route(', $source, 'Mailable の中で URL を組み立てている（キューの中では APP_URL に頼ることになる）');
+        $this->assertStringNotContainsString("config('app.url')", $source);
+    }
+
+    /** コメントと docblock を落としたソース（注意書きに反応しないように。Bug #42 ②） */
+    private function sourceWithoutComments(string $path): string
+    {
+        $code = '';
+
+        foreach (token_get_all(file_get_contents($path)) as $token) {
+            if (is_array($token) && in_array($token[0], [T_COMMENT, T_DOC_COMMENT], true)) {
+                continue;
+            }
+            $code .= is_array($token) ? $token[1] : $token;
+        }
+
+        return $code;
+    }
+
     /** 記録が 1 人 1 行残る（パスワードそのものは残さない） */
     public function test_it_records_each_reissue_without_the_password(): void
     {
@@ -177,7 +300,12 @@ class PasswordReissueTest extends TestCase
 
         $result = (new PasswordReissuer())->reissue(collect([$a, $b]));
 
-        $this->assertSame(2, ApprovalSettingLog::where('action', 'user.password_reissued')->count());
+        // ⚠ 件数だけ見ると、対象が誰か（target_type / target_id）が消えても緑のまま通る（実測）
+        $logs = ApprovalSettingLog::where('action', 'user.password_reissued')->get();
+
+        $this->assertSame(2, $logs->count());
+        $this->assertSame(['user', 'user'], $logs->pluck('target_type')->all());
+        $this->assertEqualsCanonicalizing([$a->id, $b->id], $logs->pluck('target_id')->all(), '誰の再発行かが記録に残っていない');
 
         $dumped = ApprovalSettingLog::all()->toJson();
         foreach ($result->entries as $entry) {

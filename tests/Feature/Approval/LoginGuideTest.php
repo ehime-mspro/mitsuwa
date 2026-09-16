@@ -28,7 +28,9 @@ class LoginGuideTest extends TestCase
         return new LoginGuide([
             ['user' => $a, 'password' => 'abcde23456'],
             ['user' => $b, 'password' => 'fghij78923'],
-        ], notifiedCount: 1, skippedCount: 1);
+            // ⚠ **わざと非対称**にしてある（人数は載せる値であって行数とは別物）。
+            //    1 対 1 にすると、帯の 2 つの数字が入れ替わっても原理的に見えない。
+        ], notifiedCount: 2, skippedCount: 1);
     }
 
     private function render(): \Illuminate\Testing\TestResponse
@@ -100,7 +102,7 @@ class LoginGuideTest extends TestCase
         $this->assertStringContainsString('この画面を閉じると初期パスワードは二度と表示されません。', $html);
         $this->assertStringContainsString('印刷する', $html);
         $this->assertStringContainsString('2 人分', $html);
-        $this->assertStringContainsString('通知メール: 送る 1 人／送らない 1 人', $html);
+        $this->assertStringContainsString('通知メール: 送る 2 人／送らない 1 人', $html);
         $this->assertStringContainsString('beforeunload', $html, '閉じる前の確認が無い');
     }
 
