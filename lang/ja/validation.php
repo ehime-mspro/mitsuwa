@@ -561,6 +561,10 @@ return [
         //    ANDPAD 取込の確定 2 段目が hidden で送る、読み取り済みの工程一覧。
         'rows_json' => '取り込む工程',
 
+        // --- 決裁申請 段階1 ---
+        'login_id'             => 'ログインID',
+        'employee_number'      => '社員番号',
+
     ],
 
 ];

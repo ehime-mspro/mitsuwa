@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\LoginHistory;
+use App\Support\LoginId;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -21,24 +22,33 @@ class AuthController extends Controller
     /**
      * ログイン処理
      * Route: POST /login
+     *
+     * 社員番号またはメールアドレスで照合する（設計書 §5.3）。`@` の有無だけで引く列を決め、
+     * 形式が社員番号の規則に合わなくてもそのまま照合して失敗させる（どちらの種類の ID かを画面に出さない）。
      */
     public function login(Request $request)
     {
-        $credentials = $request->validate([
-            'email' => ['required', 'email'],
+        $request->validate([
+            'login_id' => ['required', 'string', 'max:255'],
             'password' => ['required'],
         ], [
-            'email.required' => 'メールアドレスを入力してください。',
-            'email.email' => '正しいメールアドレスを入力してください。',
+            'login_id.required' => '社員番号またはメールアドレスを入力してください。',
+            'login_id.max'      => '社員番号またはメールアドレスは255文字以内で入力してください。',
             'password.required' => 'パスワードを入力してください。',
         ]);
 
+        $loginId  = LoginId::normalize($request->input('login_id'));
         $remember = $request->boolean('remember');
 
-        if (!Auth::attempt($credentials, $remember)) {
+        $credentials = [
+            LoginId::column($loginId) => $loginId,
+            'password'                => $request->input('password'),
+        ];
+
+        if (! Auth::attempt($credentials, $remember)) {
             return back()
-                ->withInput($request->only('email', 'remember'))
-                ->withErrors(['login' => 'メールアドレスまたはパスワードが正しくありません。']);
+                ->withInput($request->only('login_id', 'remember'))
+                ->withErrors(['login' => '社員番号・メールアドレスまたはパスワードが正しくありません。']);
         }
 
         $user = Auth::user();
@@ -50,7 +60,7 @@ class AuthController extends Controller
             $request->session()->regenerateToken();
 
             return back()
-                ->withInput($request->only('email'))
+                ->withInput($request->only('login_id'))
                 ->withErrors(['login' => 'このアカウントは無効になっています。管理者にお問い合わせください。']);
         }
 
@@ -73,12 +83,8 @@ class AuthController extends Controller
             return redirect()->route('password.change');
         }
 
-        // ロールに応じてダッシュボードへリダイレクト
-        if ($user->role->isExecutive()) {
-            return redirect()->route('dashboard.executive');
-        }
-
-        return redirect()->route('dashboard.tenant');
+        // ロールに応じた行き先（規則は User::homeRouteName() の 1 箇所だけ）
+        return redirect()->route($user->homeRouteName());
     }
 
     /**

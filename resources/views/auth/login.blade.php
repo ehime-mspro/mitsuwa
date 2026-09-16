@@ -24,26 +24,30 @@
             <form method="POST" action="{{ route('login') }}">
                 @csrf
 
-                {{-- メールアドレス --}}
+                {{-- 社員番号またはメールアドレス --}}
                 <div class="mb-4">
-                    <label for="email" class="block text-xs font-semibold text-gray-700 mb-2 tracking-wide">メールアドレス</label>
-                    <div class="flex items-center gap-2.5 px-3.5 h-[46px] rounded-[10px] border-[1.5px] bg-gray-50 transition-all duration-200 focus-within:border-emerald-500 focus-within:bg-white focus-within:shadow-[0_0_0_3px_rgba(16,163,127,0.08)] {{ $errors->has('email') ? 'border-red-300' : 'border-gray-200' }}">
+                    <label for="login_id" class="block text-xs font-semibold text-gray-700 mb-2 tracking-wide">社員番号またはメールアドレス</label>
+                    <div class="flex items-center gap-2.5 px-3.5 h-[46px] rounded-[10px] border-[1.5px] bg-gray-50 transition-all duration-200 focus-within:border-emerald-500 focus-within:bg-white focus-within:shadow-[0_0_0_3px_rgba(16,163,127,0.08)] {{ $errors->has('login_id') ? 'border-red-300' : 'border-gray-200' }}">
                         <svg class="w-[18px] h-[18px] text-gray-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                            <rect x="2" y="4" width="20" height="16" rx="2" />
-                            <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                            <circle cx="12" cy="7" r="4" />
                         </svg>
                         <input
-                            id="email"
-                            name="email"
-                            type="email"
-                            value="{{ old('email') }}"
-                            placeholder="user@example.com"
+                            id="login_id"
+                            name="login_id"
+                            type="text"
+                            value="{{ old('login_id') }}"
+                            placeholder="例: M001 または user@mitsuwat.co.jp"
+                            autocomplete="username"
+                            autocapitalize="none"
+                            autocorrect="off"
+                            spellcheck="false"
                             required
                             autofocus
                             class="flex-1 bg-transparent border-none outline-none text-sm text-gray-900 placeholder-gray-400"
                         >
                     </div>
-                    @error('email')
+                    @error('login_id')
                         <p class="mt-1 text-xs text-red-600">{{ $message }}</p>
                     @enderror
                 </div>

@@ -51,18 +51,18 @@ class AuthenticationTest extends TestCase
      *
      * ⚠ 値を直接 POST すると、`action` や `name` が壊れても緑のまま通る。
      */
-    private function submitLoginForm(string $email, string $password): TestResponse
+    private function submitLoginForm(string $loginId, string $password): TestResponse
     {
         $html = $this->get('/login')->assertOk()->getContent();
         $form = $this->parseForm($html, 'action="' . route('login') . '"');
 
         $this->assertSame('POST', $form['method'], 'ログインフォームが POST でない');
         $this->assertArrayHasKey('_token', $form['fields'], '@csrf が描画されていない');
-        $this->assertArrayHasKey('email', $form['fields'], 'メールアドレス欄が無い');
+        $this->assertArrayHasKey('login_id', $form['fields'], 'ログイン ID の入力欄が無い');
         $this->assertArrayHasKey('password', $form['fields'], 'パスワード欄が無い');
 
         return $this->post($form['action'], array_merge($form['fields'], [
-            'email'    => $email,
+            'login_id' => $loginId,
             'password' => $password,
         ]));
     }
@@ -81,7 +81,7 @@ class AuthenticationTest extends TestCase
         $user = $this->makeUser();
 
         $this->post('/login', [
-            'email'    => $user->email,
+            'login_id' => $user->email,
             'password' => 'wrong-password',
         ]);
 
@@ -194,7 +194,7 @@ class AuthenticationTest extends TestCase
 
         $this->get('/login')
             ->assertOk()
-            ->assertSee('メールアドレスまたはパスワードが正しくありません。');
+            ->assertSee('社員番号・メールアドレスまたはパスワードが正しくありません。');
     }
 
     /** 無効アカウントは、資格情報の誤りとは別の文言で理由が出る */
@@ -233,7 +233,7 @@ class AuthenticationTest extends TestCase
         $this->get('/login');
         $before = session()->getId();
 
-        $this->post('/login', ['email' => $user->email, 'password' => 'password']);
+        $this->post('/login', ['login_id' => $user->email, 'password' => 'password']);
 
         $this->assertNotSame(
             $before,

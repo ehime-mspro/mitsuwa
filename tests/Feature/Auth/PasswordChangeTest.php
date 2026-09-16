@@ -201,10 +201,10 @@ class PasswordChangeTest extends TestCase
 
         // 実際に新パスワードでログインできる（旧パスワードでは入れない）
         $this->post('/logout');
-        $this->post('/login', ['email' => $user->email, 'password' => self::CURRENT]);
+        $this->post('/login', ['login_id' => $user->email, 'password' => self::CURRENT]);
         $this->assertGuest();   // ⚠ 第1引数は guard 名。メッセージを渡すと guard 未定義エラーになる
 
-        $this->post('/login', ['email' => $user->email, 'password' => 'newpassword1']);
+        $this->post('/login', ['login_id' => $user->email, 'password' => 'newpassword1']);
         $this->assertAuthenticatedAs($user->fresh());
     }
 }

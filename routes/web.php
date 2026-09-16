@@ -52,10 +52,8 @@ Route::middleware(['auth', 'password.change'])->group(function () {
     });
 
     Route::get('/dashboard', function () {
-        if (auth()->user()->role->isExecutive()) {
-            return redirect()->route('dashboard.executive');
-        }
-        return redirect()->route('dashboard.tenant');
+        // 行き先の規則は User::homeRouteName() の 1 箇所（ログイン直後とここが同じものを使う）
+        return redirect()->route(auth()->user()->homeRouteName());
     })->name('dashboard');
 
     // 経営ダッシュボード（経営層のみ）
