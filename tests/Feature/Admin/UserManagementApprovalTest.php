@@ -184,6 +184,9 @@ class UserManagementApprovalTest extends TestCase
 
         $response = $this->actingAs($this->executive())->post($form['action'], $fields);
 
+        // ⚠ 先にこれを通す。`assertOk()` だけだと検証エラーのとき Laravel が
+        //    `Call to a member function all() on array` という読めない理由で落ちる（実測）
+        $response->assertSessionHasNoErrors();
         $response->assertOk();
         $html = $response->getContent();
 
@@ -222,7 +225,8 @@ class UserManagementApprovalTest extends TestCase
             'role' => UserRole::Staff->value, 'departments' => [$this->department->id],
         ]);
 
-        $this->actingAs($this->executive())->post($form['action'], $fields)->assertOk();
+        $this->actingAs($this->executive())->post($form['action'], $fields)
+            ->assertSessionHasNoErrors()->assertOk();
 
         $this->assertNull(User::where('email', 'b@example.com')->sole()->employee_number);
     }
@@ -247,9 +251,10 @@ class UserManagementApprovalTest extends TestCase
      * ⚠ **社員番号だけで測ると、検証の前の正規化が load-bearing でなくなる**（実測）—
      *   社員番号は `regex` が大文字と半角しか通さないので、正規化を外しても
      *   「書式が違う」という別の理由で赤になり、テストが緑のままにならない。
-     *   メールアドレスには書式の縛りが無いので、正規化を外すと**そのまま登録できてしまう**
-     *   （テストの SQLite は大文字小文字を別物として扱うので DB にも守ってもらえない。
-     *   本番の MySQL はここで一意索引に当たって 500 になる）。
+     *   メールアドレスには書式の縛りが無いので、正規化を外すと**検証を素通りする**。
+     *   実測: そのあと `User` の `saving` フックが小文字に正規化して INSERT するので、
+     *   一意索引に当たって **PDOException（本番では 500）**になる — 画面には
+     *   「このメールアドレスは既に登録されています。」が出るべき場面。
      */
     public function test_duplicate_email_detection_ignores_letter_case(): void
     {
@@ -274,7 +279,8 @@ class UserManagementApprovalTest extends TestCase
             'role' => UserRole::Staff->value, 'departments' => [$this->department->id],
         ]);
 
-        $this->actingAs($this->executive())->post($form['action'], $fields)->assertOk();
+        $this->actingAs($this->executive())->post($form['action'], $fields)
+            ->assertSessionHasNoErrors()->assertOk();
 
         $this->assertSame('M002', User::where('name', '丁 四郎')->sole()->employee_number);
     }
