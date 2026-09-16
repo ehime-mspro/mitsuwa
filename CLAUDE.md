@@ -83,6 +83,9 @@ sudo rm -f storage/framework/views/*.php && brew services restart httpd
 - `CLAUDE.md` `docs/` `.claude/` `tests/` 等は rsync 除外（開発用ファイルは本番に送らない）
 - 旧バンドルの掃除: `public/build/` だけ `--delete` 付きで再同期（2026-07-15 に追加）。転送先が 2 つあるのは APP_PATH = Laravel が manifest を読む側 / WEB_PATH = ブラウザが実ファイルを取る側の両方に配るため
 - ⚠ **`public/` 全体に `--delete` を付けるのは厳禁**（`public/storage` は `storage/app/public` への symlink ＝ 本番のアップロード物を消しうる）。`--delete` してよいのは Vite 出力しか入らない `public/build/` のみ
+- ⚠ **`storage/` は rsync 除外**（2026-09-16 に追加）。本番の添付を手元の中身で上書きすると、「同じパス・同じ大きさなら送り直さない」判定のバックアップが変更を拾わず、控えと本番が静かに食い違う。除外は `--exclude='/storage/'` と**先頭スラッシュ付き**で書く（付けないと `public/storage` の symlink まで巻き添えになる）。以前の `storage/app/backup-work` はこれに含まれるので置き換えた
+- png の除外は `.gitignore` の `/*.png` と同じ**先頭スラッシュ付き**に揃える（2026-09-16 に修正）。手元のスクリーンショットはリポジトリの一番上に置く決まりなので一番上だけ止めれば足り、以前の `*.png` は `public/images/` のロゴまで APP_PATH 側に届かなくしていた（WEB_PATH 側は [3/6] が送るので画面は壊れていなかった）
+- ⚠ **`bootstrap/cache/` も rsync 除外**（2026-09-16 に追加）。手元で `config:cache` を打つと手元の `.env` を写した `config.php`（接続情報・暗号化キー入り）ができ、それが本番の `config.php` を上書きする。[5/6] が作り直すまでの間は本番が手元の設定で動き、[5/6] が失敗すれば残る。`packages.php`・`services.php` は本番が最初のアクセス時に自分で作り直すので外して支障ない（本番に 755 で残っていた 2 つは、この除外を足す前に手元から送られたもの）
 
 ### Server environment
 - macOS Apple Silicon, zsh, Homebrew httpd（`brew services restart httpd`）

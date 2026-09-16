@@ -28,6 +28,18 @@ if [ ! -f public/build/manifest.json ]; then
   exit 1
 fi
 
+# storage は本番が自分で育てる場所（添付・キャッシュ・記録）。手元から送ると本番の添付を
+# 上書きしうる。上書きすると「同じパス・同じ大きさなら送り直さない」判定のバックアップが
+# 変更を拾わず、控えと本番が静かに食い違う（2026-09-16 に除外）。
+# 先頭の / は転送の一番上だけを指す指定。付けないと public/storage
+# （storage/app/public への symlink）まで巻き添えになる。
+# ※ 本番をゼロから作り直すときの storage のフォルダ作成は初期構築の仕事で、ここではやらない。
+# png も先頭スラッシュ付き。手元のスクリーンショットは .gitignore の /*.png と同じく
+# リポジトリの一番上に置く決まりで、public/images/ のロゴは本番に要る。
+# bootstrap/cache も本番が自分で育てる場所。手元で config:cache を打つと、手元の .env を写した
+# config.php（接続情報・暗号化キー入り）ができ、それが本番の config.php を上書きしてしまう。
+# [5/6] が本番の .env から作り直すまでの間、本番が手元の設定で動く（[5/6] が失敗すれば残る）。
+# packages.php と services.php は本番が最初のアクセス時に自分で作り直すので、外して支障ない。
 echo "=== [2/6] アプリケーション転送 ==="
 rsync -avz \
   --exclude='.env' \
@@ -48,10 +60,11 @@ rsync -avz \
   --exclude='README*' \
   --exclude='phpunit.xml' \
   --exclude='*.log' \
-  --exclude='storage/app/backup-work' \
+  --exclude='/storage/' \
+  --exclude='/bootstrap/cache/' \
   --exclude='.playwright-mcp' \
   --exclude='prod-login.png' \
-  --exclude='*.png' \
+  --exclude='/*.png' \
   --exclude='deploy.sh' \
   ./ ${SERVER}:${APP_PATH}/
 
