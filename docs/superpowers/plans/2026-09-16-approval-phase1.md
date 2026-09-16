@@ -160,6 +160,7 @@ csv_data              取り込むデータ
 | P4 | 記録の表は `const UPDATED_AT = null` ＋ `updating` / `deleting` で例外 | 追記のみ（設計書 §5.14）をモデルで強制する |
 | P5 | **CSV は 1 ファイル 50 行・まとめて再発行は 1 回 50 人**（設計書の仮の 200 から下げる） | §0.4 の実測。本番は 50 人で **15.3 秒**（200 人なら 61 秒で待ち時間に収まらない恐れ）。利用者は 100〜200 人なので、稼働前の一括登録は 2〜4 ファイルに分ける。数は `config/approval.php` の 1 か所 |
 | P7 | データプロバイダは **`#[DataProvider('name')]` 属性**（docblock の `@@dataProvider` は使わない） | このプロジェクトの既存 6 本がすでに属性形式。PHPUnit 11 は docblock 形式を非推奨にしていて、使うと `PHPUnit Deprecations: 1` が出る（Task 1 の実装で実測） |
+| P8 | `followingRedirects()` は**中で別のリクエストを出すヘルパと組み合わせない** | 一発フラグで、`submit()` の中の `get('/login')`（フォームの取得）に消費され、本命の POST の転送が辿られない（Task 3 の実装で実測）。`submit()` → 別途 `get('/login')` の 2 段にする。⚠ しかも失敗すると Laravel の診断が `session('errors')->all()` を叩いて `Call to a member function all() on array` に化け、落ちた理由が読めなくなる（Bug #49 の関連） |
 | P6 | 変異テストは Task 15 にまとめる | Bug #44 の作法（先にコミット → `git status --porcelain` が空 → `git diff --stat` が非空 → 落ちた**理由の文言**まで照合）を 1 か所で回す |
 
 ---
@@ -1350,14 +1351,19 @@ class LoginIdentifierTest extends TestCase
     {
         User::factory()->create(['employee_number' => 'M001', 'email' => null, 'must_change_password' => false]);
 
-        $html = $this->followingRedirects()->submit('M001', 'wrong')->assertOk()->getContent();
+        // ⚠ followingRedirects() は 1 回だけ効く一発フラグで、submit() 内の最初の
+        //   $this->get('/login')（フォーム取得）に消費されてしまい、本命の POST の
+        //   リダイレクトが辿られない（実測）。submit() → 別途 get() で確実に辿る。
+        $this->submit('M001', 'wrong');
+        $html = $this->get('/login')->assertOk()->getContent();
 
         $this->assertStringContainsString('社員番号・メールアドレスまたはパスワードが正しくありません。', $html);
     }
 
     public function test_unknown_identifier_gets_the_same_message(): void
     {
-        $html = $this->followingRedirects()->submit('M999', 'whatever')->assertOk()->getContent();
+        $this->submit('M999', 'whatever');
+        $html = $this->get('/login')->assertOk()->getContent();
 
         $this->assertStringContainsString('社員番号・メールアドレスまたはパスワードが正しくありません。', $html);
         $this->assertGuest();
@@ -1365,7 +1371,8 @@ class LoginIdentifierTest extends TestCase
 
     public function test_blank_identifier_is_rejected_in_japanese(): void
     {
-        $html = $this->followingRedirects()->submit('', 'password')->assertOk()->getContent();
+        $this->submit('', 'password');
+        $html = $this->get('/login')->assertOk()->getContent();
 
         $this->assertStringContainsString('社員番号またはメールアドレスを入力してください。', $html);
     }
@@ -1373,7 +1380,8 @@ class LoginIdentifierTest extends TestCase
     /** 入力は残す（打ち直させない） */
     public function test_the_typed_identifier_is_kept_on_failure(): void
     {
-        $html = $this->followingRedirects()->submit('M001', 'wrong')->assertOk()->getContent();
+        $this->submit('M001', 'wrong');
+        $html = $this->get('/login')->assertOk()->getContent();
 
         $this->assertMatchesRegularExpression('/name="login_id"[^>]*value="M001"/', $html, '入力したログイン ID が残っていない');
     }
