@@ -124,6 +124,38 @@ class PasswordReissueTest extends TestCase
         });
     }
 
+    /**
+     * 日時は**日本時間**で出す（段階0 のメール 2 本と同じ）。
+     *
+     * ⚠ `config/app.php` の `timezone` は **`'UTC'` の直書き**で、`env()` を通さないので
+     *   `.env` の `APP_TIMEZONE` では変わらない（実測）。`now()` をそのまま整形すると
+     *   **9 時間前**の時刻が本文に出る。このメールは「身に覚えのない再発行に気づく」ための
+     *   ものなので（要件 12.5）、本人が自分のその日と突き合わせられないと目的を果たさない。
+     *
+     * ⚠ **期待値は直書きする。** 実装と同じ式で組み立てると、実装が UTC のままでも緑になる。
+     * ⚠ **JST にすると日付も変わる時刻**を選ぶ（UTC のままなら「2026年9月16日 15:30」と出て
+     *   はっきり区別できる。同じ日の中で時だけずれる時刻を選ぶと読み違えやすい）。
+     */
+    public function test_the_mail_shows_the_time_in_japan_time(): void
+    {
+        $this->travelTo(\Carbon\CarbonImmutable::parse('2026-09-16 15:30:00', 'UTC'));
+
+        $this->actingAs($this->admin());
+        $user = User::factory()->create(['name' => '甲 一郎', 'email' => 'a@mitsuwat.co.jp', 'must_change_password' => false]);
+
+        (new PasswordReissuer())->reissue(collect([$user]));
+
+        Mail::assertQueued(PasswordReissuedMail::class, function (PasswordReissuedMail $mail) {
+            $body = $mail->render();
+
+            $this->assertStringContainsString('2026年9月17日 00:30', $body, '再発行の日時が日本時間で出ていない');
+            $this->assertStringNotContainsString('2026年9月16日 15:30', $body, 'UTC のまま出ている');
+            $this->assertStringContainsString('（日本時間）', $body, 'どの時間帯か書かれていない');
+
+            return true;
+        });
+    }
+
     /** キューに積む（5 分おきの定期実行で送る。段階0 の土台） */
     public function test_the_mail_is_queued(): void
     {

@@ -3,6 +3,7 @@
 namespace App\Mail;
 
 use App\Models\User;
+use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -42,7 +43,14 @@ class PasswordReissuedMail extends Mailable implements ShouldQueue
 
     public function content(): Content
     {
-        return new Content(text: 'mail.password-reissued');
+        return new Content(text: 'mail.password-reissued', with: [
+            // ⚠ `config/app.php` の timezone は 'UTC' の直書き（`env()` を通さないので
+            //    `.env` の APP_TIMEZONE では変わらない）。そのまま整形すると 9 時間前の時刻が出る。
+            //    このメールは「身に覚えのない再発行に気づく」ためのものなので、本人が自分のその日と
+            //    突き合わせられないと目的を果たさない（要件 12.5）。段階0 の BackupFailedMail と同じ形。
+            //    （$this->reissuedAt 自体は書き換えない）
+            'reissuedAtText' => CarbonImmutable::instance($this->reissuedAt)->setTimezone('Asia/Tokyo')->format('Y年n月j日 H:i'),
+        ]);
     }
 
     public function failed(Throwable $e): void
