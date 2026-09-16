@@ -21,7 +21,8 @@ class InactiveUserLockoutTest extends TestCase
 {
     use RefreshDatabase;
 
-    private const MESSAGE = 'このアカウントは無効になっています。管理者にお問い合わせください。';
+    /** ⚠ 文言は 1 か所（門番の定数）だけに置く。テストに写すと片方だけ直す事故が起きる */
+    private const MESSAGE = \App\Http\Middleware\EnsureUserIsActive::MESSAGE;
 
     private function activeUser(): User
     {
@@ -141,5 +142,31 @@ class InactiveUserLockoutTest extends TestCase
     public function test_guests_are_untouched(): void
     {
         $this->get('/login')->assertOk();
+    }
+
+    /**
+     * 門番は**ルートモデル結合より前**で止めること（`bootstrap/app.php` の優先順）。
+     *
+     * ⚠ 後ろだと、無効化された人が「存在しない ID」を叩いたときだけ 404 が返り、
+     *   404（無い）と転送（有る）の違いで**そのデータがあるかどうかが漏れる**。
+     * ⚠ **この不変条件を守るテストがこれ 1 本**。`appendToPriorityList(...)` の呼び出しを
+     *   丸ごと消しても、2026-09-16 時点の 1782 本は**すべて緑のまま**だった（実測）。
+     *   優先順は `EnsureUserIsActive` の docblock だけが主張していて、誰も測っていなかった。
+     */
+    public function test_the_gate_runs_before_route_model_binding(): void
+    {
+        $user = User::factory()->create([
+            'role'                 => UserRole::Executive->value,
+            'status'               => UserStatus::Active->value,
+            'must_change_password' => false,
+        ]);
+
+        // 有効なうちは、存在しない ID が 404 になる（＝このルートがモデル結合を使っている証拠）
+        $this->actingAs($user)->get('/tenant/properties/999999')->assertNotFound();
+
+        $user->forceFill(['status' => UserStatus::Inactive->value])->save();
+
+        $this->get('/tenant/properties/999999')->assertRedirect(route('login'));
+        $this->assertGuest();
     }
 }

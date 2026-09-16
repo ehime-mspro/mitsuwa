@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Http\Middleware\EnsureUserIsActive;
 use App\Models\LoginHistory;
 use App\Support\LoginId;
 use Illuminate\Http\Request;
@@ -61,7 +62,7 @@ class AuthController extends Controller
 
             return back()
                 ->withInput($request->only('login_id'))
-                ->withErrors(['login' => 'このアカウントは無効になっています。管理者にお問い合わせください。']);
+                ->withErrors(['login' => EnsureUserIsActive::MESSAGE]);
         }
 
         // セッション再生成（セッション固定攻撃対策）
