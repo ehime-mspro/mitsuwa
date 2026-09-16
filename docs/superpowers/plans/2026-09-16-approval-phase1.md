@@ -161,6 +161,7 @@ csv_data              取り込むデータ
 | P5 | **CSV は 1 ファイル 50 行・まとめて再発行は 1 回 50 人**（設計書の仮の 200 から下げる） | §0.4 の実測。本番は 50 人で **15.3 秒**（200 人なら 61 秒で待ち時間に収まらない恐れ）。利用者は 100〜200 人なので、稼働前の一括登録は 2〜4 ファイルに分ける。数は `config/approval.php` の 1 か所 |
 | P7 | データプロバイダは **`#[DataProvider('name')]` 属性**（docblock の `@@dataProvider` は使わない） | このプロジェクトの既存 6 本がすでに属性形式。PHPUnit 11 は docblock 形式を非推奨にしていて、使うと `PHPUnit Deprecations: 1` が出る（Task 1 の実装で実測） |
 | P8 | `followingRedirects()` は**中で別のリクエストを出すヘルパと組み合わせない** | 一発フラグで、`submit()` の中の `get('/login')`（フォームの取得）に消費され、本命の POST の転送が辿られない（Task 3 の実装で実測）。`submit()` → 別途 `get('/login')` の 2 段にする。⚠ しかも失敗すると Laravel の診断が `session('errors')->all()` を叩いて `Call to a member function all() on array` に化け、落ちた理由が読めなくなる（Bug #49 の関連） |
+| P9 | 試行の制限に掛かったかは **`Retry-After` ヘッダーの有無**で見る（ステータスでは見分けられない） | `Limit::response()` を使うと制限超過も `redirect()`（302）になり、通常の失敗（`back()` も 302）と**同じステータス**になる。`ThrottleRequests` は通す側で `addHeaders()` に `$retryAfter` を渡さない（173 行）ので、`Retry-After` は**止まったときにしか付かない**（246 行。Task 4 の実装で実測）。⚠ `X-RateLimit-Remaining` は**両方に付く**ので使えない |
 | P6 | 変異テストは Task 15 にまとめる | Bug #44 の作法（先にコミット → `git status --porcelain` が空 → `git diff --stat` が非空 → 落ちた**理由の文言**まで照合）を 1 か所で回す |
 
 ---
@@ -1666,6 +1667,12 @@ use Tests\TestCase;
  * ⚠ **`assertStatus()` ではなく生のステータスコードで見る。** 差し戻し（302）に対して `assertStatus()` が
  *   失敗すると、Laravel がメッセージを組み立てる際にセッションの `errors` を読もうとして
  *   `Call to a member function all() on array` で落ちた理由が読めなくなる（Bug #49 の関連）。
+ *
+ * ⚠ **「止まったか」は HTTP ステータスでは判定できない。** `AppServiceProvider::loginThrottleResponse()` が
+ *   制限超過時も `redirect()->route('login')`（302）を返すため（英語の素の 429 画面を避けるため。D3）、
+ *   通常の失敗（`back()`、これも 302）と制限超過（同じく 302）は**ステータスコードが同じ**になる。
+ *   見分けは `Retry-After` ヘッダーの有無で行う（`ThrottleRequests::getHeaders()` は制限超過時にしか
+ *   このヘッダーを付けない。`X-RateLimit-Remaining` は両方に付くので使えない）。実測で確認済み。
  */
 class LoginThrottleTest extends TestCase
 {
@@ -1677,15 +1684,29 @@ class LoginThrottleTest extends TestCase
             ->post('/login', ['login_id' => $loginId, 'password' => $password]);
     }
 
+    /** まだ制限に掛かっていないこと（302 かつ Retry-After ヘッダー無し） */
+    private function assertNotBlocked(\Illuminate\Testing\TestResponse $response, string $message): void
+    {
+        $this->assertSame(302, $response->getStatusCode(), $message);
+        $this->assertFalse($response->headers->has('Retry-After'), $message);
+    }
+
+    /** 制限に掛かっていること（302 かつ Retry-After ヘッダー有り） */
+    private function assertBlocked(\Illuminate\Testing\TestResponse $response, string $message): void
+    {
+        $this->assertSame(302, $response->getStatusCode(), $message);
+        $this->assertTrue($response->headers->has('Retry-After'), $message);
+    }
+
     public function test_five_failures_for_the_same_id_and_ip_are_allowed(): void
     {
         User::factory()->create(['employee_number' => 'M001', 'email' => null, 'must_change_password' => false]);
 
         for ($i = 1; $i <= 5; $i++) {
-            $this->assertSame(302, $this->attempt('M001', 'wrong')->getStatusCode(), "{$i} 回目で止まっている（早すぎる）");
+            $this->assertNotBlocked($this->attempt('M001', 'wrong'), "{$i} 回目で止まっている（早すぎる）");
         }
 
-        $this->assertSame(429, $this->attempt('M001', 'wrong')->getStatusCode(), '6 回目が通っている');
+        $this->assertBlocked($this->attempt('M001', 'wrong'), '6 回目が通っている');
     }
 
     /**
@@ -1696,10 +1717,10 @@ class LoginThrottleTest extends TestCase
         User::factory()->create(['employee_number' => 'M001', 'email' => null, 'must_change_password' => false]);
 
         foreach (['M001', 'm001', 'Ｍ００１', ' M001 ', 'm001'] as $typed) {
-            $this->assertSame(302, $this->attempt($typed, 'wrong')->getStatusCode());
+            $this->assertNotBlocked($this->attempt($typed, 'wrong'), "「{$typed}」で止まっている");
         }
 
-        $this->assertSame(429, $this->attempt('M001', 'wrong')->getStatusCode(), '綴りを変えると別の鍵になっている');
+        $this->assertBlocked($this->attempt('M001', 'wrong'), '綴りを変えると別の鍵になっている');
     }
 
     /**
@@ -1729,10 +1750,10 @@ class LoginThrottleTest extends TestCase
         ]);
 
         for ($i = 1; $i <= 5; $i++) {
-            $this->assertSame(302, $this->attempt('M001', 'password')->getStatusCode());
+            $this->assertNotBlocked($this->attempt('M001', 'password'), "{$i} 回目で止まっている（早すぎる）");
         }
 
-        $this->assertSame(429, $this->attempt('M001', 'password')->getStatusCode());
+        $this->assertBlocked($this->attempt('M001', 'password'), '6 回目が通っている');
     }
 
     /** 別々の ID なら 5 回では止まらない（同じ IP の上限 30 回までは通る） */
@@ -1747,10 +1768,10 @@ class LoginThrottleTest extends TestCase
     public function test_thirty_failures_from_the_same_ip_stop_regardless_of_the_id(): void
     {
         for ($i = 1; $i <= 30; $i++) {
-            $this->assertSame(302, $this->attempt("M{$i}", 'wrong')->getStatusCode(), "{$i} 回目で止まっている（早すぎる）");
+            $this->assertNotBlocked($this->attempt("M{$i}", 'wrong'), "{$i} 回目で止まっている（早すぎる）");
         }
 
-        $this->assertSame(429, $this->attempt('M999', 'wrong')->getStatusCode(), 'IP 全体の上限が効いていない');
+        $this->assertBlocked($this->attempt('M999', 'wrong'), 'IP 全体の上限が効いていない');
     }
 
     /** 別の IP は巻き込まれない */
@@ -1934,7 +1955,7 @@ Route::middleware('guest')->group(function () {
 APP_KEY="base64:$(php -r 'echo base64_encode(random_bytes(32));')" ./vendor/bin/phpunit --filter LoginThrottleTest
 ```
 
-期待: OK (10 tests)
+期待: OK (9 tests)
 
 - [ ] **Step 7: 全テスト**
 
