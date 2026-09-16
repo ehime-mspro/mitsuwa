@@ -6,6 +6,7 @@ use App\Enums\UserRole;
 use App\Enums\UserStatus;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\File;
 use Tests\TestCase;
 
 /**
@@ -99,25 +100,64 @@ class UserIdentityTest extends TestCase
         $this->assertFalse($ids->contains($approval->id));
     }
 
-    /** 取込の担当者の氏名照合も決裁のみ利用者を拾わない（設計書 §5.6） */
-    public function test_import_name_lookups_are_scoped_to_base_users(): void
+    /**
+     * 氏名で担当者を引く箇所は、すべて `baseUsers()` を通ること（設計書 §5.6）。
+     *
+     * ⚠ **全件分類**（Top trap #13 / Bug #45 ①）。「直した 2 ファイルを並べる」形だと、
+     *   新しいコントローラに素の `User::where('name', …)` を書いても検査対象に入らず永遠に緑。
+     *   `app/Http/Controllers` 全体を走査し、`User::` から次の `;` までの文が氏名で引いていたら
+     *   `baseUsers()` を通っていることを要求する。
+     * ⚠ **コメントを落としてから走査する**（注意書きの中の `User::where('name'` に反応しないように。Bug #42 ②）。
+     */
+    public function test_every_name_lookup_on_users_is_scoped_to_base_users(): void
     {
-        $sources = [
-            app_path('Http/Controllers/Admin/CustomerImportController.php'),
-            app_path('Http/Controllers/Admin/MansionImportController.php'),
-        ];
-
+        $offenders = [];
         $found = 0;
-        foreach ($sources as $path) {
-            $src = file_get_contents($path);
-            preg_match_all("/User::(\w+)\(\)?[^;]*?->where\('name'/s", $src, $m);
-            foreach ($m[1] as $scope) {
+
+        foreach (File::allFiles(app_path('Http/Controllers')) as $file) {
+            if ($file->getExtension() !== 'php') {
+                continue;
+            }
+
+            $source = $this->sourceWithoutComments($file->getPathname());
+
+            preg_match_all('/\bUser::.*?;/s', $source, $matches);
+
+            foreach ($matches[0] as $statement) {
+                if (! preg_match("/->where\(\s*'name'|User::where\(\s*'name'/", $statement)) {
+                    continue;
+                }
+
                 $found++;
-                $this->assertSame('baseUsers', $scope, "{$path} の氏名照合が baseUsers() を通っていない");
+
+                if (! str_contains($statement, 'baseUsers()')) {
+                    $offenders[] = $file->getRelativePathname() . ': ' . trim(preg_replace('/\s+/', ' ', $statement));
+                }
             }
         }
 
         // 走査が空振りして緑になる事故を防ぐ（2026-09-16 時点で 3 箇所）
-        $this->assertSame(3, $found, '担当者の氏名照合の走査に失敗している');
+        $this->assertGreaterThanOrEqual(3, $found, '担当者の氏名照合の走査に失敗している');
+
+        $this->assertSame(
+            [],
+            $offenders,
+            "氏名で担当者を引くのに baseUsers() を通っていない箇所があります（決裁のみ利用者を拾ってしまいます）:\n" . implode("\n", $offenders)
+        );
+    }
+
+    /** コメントと docblock を落としたソース（注意書きに反応しないように。Bug #42 ②） */
+    private function sourceWithoutComments(string $path): string
+    {
+        $code = '';
+
+        foreach (token_get_all(file_get_contents($path)) as $token) {
+            if (is_array($token) && in_array($token[0], [T_COMMENT, T_DOC_COMMENT], true)) {
+                continue;
+            }
+            $code .= is_array($token) ? $token[1] : $token;
+        }
+
+        return $code;
     }
 }

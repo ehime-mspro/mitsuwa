@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\UserRole;
 use App\Enums\UserStatus;
+use App\Support\LoginId;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -75,7 +76,7 @@ class User extends Authenticatable
                 if (! $user->isDirty($column)) {
                     continue;
                 }
-                $value = \App\Support\LoginId::normalize($user->{$column});
+                $value = LoginId::normalize($user->{$column});
                 $user->{$column} = $value === '' ? null : $value;
             }
         });
@@ -178,8 +179,7 @@ class User extends Authenticatable
      */
     public function scopeAssignable($query)
     {
-        return $query->where('status', UserStatus::Active->value)
-                     ->where('role', '!=', UserRole::ApprovalOnly->value);
+        return $query->baseUsers()->where('status', UserStatus::Active->value);
     }
 
     /**

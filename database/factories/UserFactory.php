@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Enums\UserRole;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Hash;
@@ -52,7 +53,7 @@ class UserFactory extends Factory
     public function approvalOnly(): static
     {
         return $this->state(fn (array $attributes) => [
-            'role'             => \App\Enums\UserRole::ApprovalOnly->value,
+            'role'             => UserRole::ApprovalOnly->value,
             'email'            => null,
             'employee_number'  => 'A' . fake()->unique()->numberBetween(1000, 9999),
         ]);
