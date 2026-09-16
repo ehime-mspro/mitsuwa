@@ -185,6 +185,44 @@ class PasswordReissueTest extends TestCase
         }
     }
 
+    /**
+     * 途中で落ちたら**丸ごと巻き戻る**（1 回のトランザクション）。
+     *
+     * ⚠ 平文は戻り値にしか無く DB には残さないので、囲わないと
+     *   「もう変わっているのに誰も新しいパスワードを知らない人」が残る。その人はログインできず、
+     *   管理者は誰が該当するかも画面から分からない。
+     *   本番の bcrypt は 0.305 秒/件でまとめて 50 人 ＝ 約 15 秒なので、実行時間切れは絵空事ではない。
+     *
+     * ⚠ 応答ではなく **DB に何が書かれたか**を見る（例外は呼び出し側まで上がるので、
+     *   「例外が出たこと」だけを見ても巻き戻ったかは分からない）。
+     */
+    public function test_a_failure_partway_through_rolls_everything_back(): void
+    {
+        $this->actingAs($this->admin());
+
+        $first = User::factory()->create(['name' => '甲 一郎', 'email' => 'a@mitsuwat.co.jp', 'must_change_password' => false]);
+        $boom  = User::factory()->create(['name' => '爆 二郎', 'email' => 'b@mitsuwat.co.jp', 'must_change_password' => false]);
+
+        $before = $first->password;
+
+        User::saving(function (User $user) {
+            if ($user->name === '爆 二郎') {
+                throw new \RuntimeException('boom');
+            }
+        });
+
+        try {
+            (new PasswordReissuer())->reissue(collect([$first, $boom]));
+            $this->fail('例外が出ていない（この検査そのものが成立していない）');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('boom', $e->getMessage());
+        }
+
+        $this->assertSame($before, $first->fresh()->password, '1 人目のパスワードが変わったまま残っている（誰も新しい値を知らない）');
+        $this->assertFalse($first->fresh()->must_change_password);
+        $this->assertSame(0, ApprovalSettingLog::where('action', 'user.password_reissued')->count(), '起きなかった再発行の記録が残っている');
+    }
+
     /** ドメインが 1 件も登録されていなければ誰にも送らない */
     public function test_no_mail_is_sent_when_no_domain_is_registered(): void
     {
