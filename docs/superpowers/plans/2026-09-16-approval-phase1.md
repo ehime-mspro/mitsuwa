@@ -4062,6 +4062,20 @@ APP_KEY="base64:$(php -r 'echo base64_encode(random_bytes(32));')" ./vendor/bin/
 
 - [ ] **Step 9: 全テスト → コミット**
 
+> ### ⚠ 実装後のレビューで直したこと（`4cd6a6b5`。上のコードはこの修正込みが正）
+>
+> どれも**テストが 1 本も無かった**ので、併せて 15 本足した。5 通りの変異で赤を実測済み。
+>
+> | # | 直したこと | なぜ |
+> |---|---|---|
+> | C | `ApprovalSetting::president()` に `withTrashed()` | 社長に指定された人を**論理削除**すると `president` が null になり、社長名を出す画面が `Attempt to read property "name" on null` で 500。外部キーの `ON DELETE SET NULL` は論理削除では**発火しない**（Top trap #18） |
+> | I | `ApprovalMember::user()` に `withTrashed()` | 同じ理由（決裁の権限を持つ人の一覧が 500） |
+> | I | `ApprovalSetting::current()` をリクエストの間 1 回だけに | `User::isApprovalPresident()` が呼ぶので、**20 人の一覧で 41 クエリ**（実測）。`forget()` も併せて用意 |
+> | I | `SettingLogger` の比較を型にまたがる形に | 素の `!==` は DB の `'5'` と画面の `5` を**常に「変わった」**と数える（実測）。`null` と `''` は別物のまま |
+> | I | `ApprovalMailDomain::allows()` は `@` が**ちょうど 1 つ**のときだけ | `foo@bar@mitsuwat.co.jp` が許可を通っていた（実測）。CSV の取込という未検証のデータが通る経路 |
+> | M | 一意索引の名前を migration と `database/sql` でそろえた | 本番は手で SQL を流すので、migration の名前を借りて `DROP INDEX` を書くと失敗する |
+
+
 ```bash
 APP_KEY="base64:$(php -r 'echo base64_encode(random_bytes(32));')" ./vendor/bin/phpunit 2>&1 | tail -5
 git add database/migrations/2026_09_16_000001_create_approval_tables.php database/sql/2026-09-16-approval-phase1.sql app/Models/ app/Support/Approval/ tests/Feature/Approval/
