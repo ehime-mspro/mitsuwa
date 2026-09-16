@@ -77,8 +77,10 @@ Route::middleware(['auth', 'password.change'])->group(function () {
             ->name('admin.users.index');
         Route::post('/users', [\App\Http\Controllers\Admin\UserController::class, 'store'])
             ->name('admin.users.store');
-        // ⚠ `/users/{user}` より**前**に置く。`route:list` の並びは URI の辞書順だが、
-        //    マッチの優先順は**登録順**なので、後ろに置くと president が {user} として解決される
+        // ⚠ `/users/{user}` より**前**に置く。マッチの優先順は（`route:list` の URI 辞書順でなく）
+        //    **登録順**なので、後ろに置くと president が {user} として解決されうる。
+        //    ⚠ 今は `POST /users/{user}` が無いので**順序を入れ替えても挙動は変わらない**（変異で実測）。
+        //    これは将来 `POST /users/{user}` を足したときの保険で、テストでは守れない
         Route::post('/users/president', [\App\Http\Controllers\Admin\UserController::class, 'setPresident'])
             ->name('admin.users.president');
         Route::put('/users/{user}', [\App\Http\Controllers\Admin\UserController::class, 'update'])

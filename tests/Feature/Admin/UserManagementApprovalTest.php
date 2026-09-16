@@ -10,6 +10,7 @@ use App\Models\ApprovalSetting;
 use App\Models\ApprovalSettingLog;
 use App\Models\Department;
 use App\Models\User;
+use App\Support\InitialPassword;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Tests\Concerns\ParsesForms;
@@ -95,6 +96,24 @@ class UserManagementApprovalTest extends TestCase
         return substr($html, $open, $close - $open);
     }
 
+    /** フォームの中の `<select name="…">` だけを切り出す（同じ語がページの別の場所に出るため。Bug #43） */
+    private function selectHtml(string $formHtml, string $name): string
+    {
+        $pos = strpos($formHtml, '<select name="' . $name . '"');
+        $this->assertNotFalse($pos, "選択肢が見つからない: {$name}");
+
+        $close = strpos($formHtml, '</select>', $pos);
+        $this->assertNotFalse($close, "{$name} の <select> が閉じていない");
+
+        return substr($formHtml, $pos, $close - $pos);
+    }
+
+    /** 絞り込みフォームの HTML（新規登録フォームと **action が同じ URL** なので method まで含めて探す） */
+    private function filterFormHtml(string $html): string
+    {
+        return $this->formHtml($html, 'method="GET" action="' . route('admin.users.index') . '"');
+    }
+
     /** コメントを落としたソース（自分が書いた注意書きに一致して false-pass するのを防ぐ。Bug #42 ②） */
     private function sourceWithoutComments(string $path): string
     {
@@ -140,10 +159,52 @@ class UserManagementApprovalTest extends TestCase
         $this->assertFalse($ids->contains($miss->id));
     }
 
-    /** ロールの絞り込みに「決裁のみ」が出る */
+    /**
+     * ロールの絞り込みに「決裁のみ」が出る。
+     *
+     * ⚠ 素の `assertSee('決裁のみ')` は false-pass する（Bug #43）— **編集モーダルの `<option>`**
+     *   と、その下の説明文（「『決裁のみ』にすると、基幹の所属部門は外れます。」）にも一致するので、
+     *   絞り込みから決裁のみを消しても緑のまま通る（実測）。**絞り込みの `<select>` の中だけ**を見る。
+     */
     public function test_the_role_filter_includes_approval_only(): void
     {
-        $this->actingAs($this->executive())->get('/admin/users')->assertOk()->assertSee('決裁のみ');
+        $html   = $this->actingAs($this->executive())->get('/admin/users')->assertOk()->getContent();
+        $select = $this->selectHtml($this->filterFormHtml($html), 'role');
+
+        foreach (UserRole::cases() as $role) {
+            $this->assertStringContainsString('value="' . $role->value . '"', $select, "{$role->value} が絞り込みに無い");
+            $this->assertStringContainsString($role->label(), $select, "{$role->label()} が絞り込みに無い");
+        }
+    }
+
+    /** ロールの絞り込みが実際に絞る（I7: この diff が触ったブロック） */
+    public function test_the_role_filter_narrows_the_list(): void
+    {
+        $manager = User::factory()->create(['role' => UserRole::Manager->value, 'must_change_password' => false]);
+        $staff   = User::factory()->create(['role' => UserRole::Staff->value, 'must_change_password' => false]);
+
+        $ids = $this->actingAs($this->executive())->get('/admin/users?role=' . UserRole::Manager->value)
+            ->assertOk()->viewData('users')->pluck('id');
+
+        $this->assertTrue($ids->contains($manager->id));
+        $this->assertFalse($ids->contains($staff->id), 'ロールで絞り込めていない');
+    }
+
+    /** 検索は氏名とメールアドレスも見る（placeholder が 3 つ約束している） */
+    public function test_search_covers_the_name_and_the_email(): void
+    {
+        $byName  = User::factory()->create(['name' => '検索 太郎', 'email' => 'zzz@example.com', 'must_change_password' => false]);
+        $byMail  = User::factory()->create(['name' => '別 次郎', 'email' => 'needle@example.com', 'must_change_password' => false]);
+
+        $names = $this->actingAs($this->executive())->get('/admin/users?search=' . urlencode('検索 太郎'))
+            ->assertOk()->viewData('users')->pluck('id');
+        $this->assertTrue($names->contains($byName->id), '氏名で検索できない');
+        $this->assertFalse($names->contains($byMail->id));
+
+        $mails = $this->actingAs($this->executive())->get('/admin/users?search=needle@example.com')
+            ->assertOk()->viewData('users')->pluck('id');
+        $this->assertTrue($mails->contains($byMail->id), 'メールアドレスで検索できない');
+        $this->assertFalse($mails->contains($byName->id));
     }
 
     /** 新規登録: 初期パスワードの入力欄と JS の生成をやめる（D12） */
@@ -205,7 +266,51 @@ class UserManagementApprovalTest extends TestCase
 
         // 平文はどこにも残さない（D12）
         $this->assertNull(session('reset_password'));
-        $this->assertSame(1, ApprovalSettingLog::where('action', 'user.created')->count());
+
+        $log = ApprovalSettingLog::where('action', 'user.created')->sole();
+        $this->assertSame('user', $log->target_type);
+        $this->assertSame($user->id, $log->target_id);
+        $this->assertSame([], $log->old_values);
+        $this->assertSame([
+            'name' => '甲 一郎', 'employee_number' => 'M001',
+            'email' => 'a@example.com', 'role' => UserRole::Staff->value,
+        ], $log->new_values);
+    }
+
+    /**
+     * **案内の紙に出た初期パスワードで、実際にログインできる。**
+     *
+     * ⚠ `store()` は平文とハッシュを**手で組にしている唯一の経路**（再発行は `PasswordReissuer` を通り、
+     *   `PasswordReissueTest` の `Hash::check` が組を守っている）。ここが無いと、
+     *   **別の値をハッシュしても・新規利用者を無効で作っても全部緑**のまま通り、
+     *   「印刷して渡した紙でログインできないアカウント」が本番に出る。
+     */
+    public function test_the_printed_password_actually_logs_in(): void
+    {
+        [$form, $fields] = $this->createForm([
+            'name' => '甲 一郎', 'employee_number' => 'M001', 'email' => '',
+            'role' => UserRole::Staff->value, 'departments' => [$this->department->id],
+        ]);
+
+        $guide = $this->actingAs($this->executive())->post($form['action'], $fields)
+            ->assertSessionHasNoErrors()->assertOk()->getContent();
+
+        $this->assertSame(
+            1,
+            preg_match('/<dt>初期パスワード<\/dt>\s*<dd[^>]*>([^<]+)<\/dd>/u', $guide, $m),
+            '案内に初期パスワードが出ていない'
+        );
+        $password = trim($m[1]);
+        $this->assertSame(InitialPassword::LENGTH, mb_strlen($password));
+
+        // 管理者からログアウトして、紙のとおりに入る
+        $this->post(route('logout'));
+        $this->assertGuest();
+
+        $this->post(route('login'), ['login_id' => 'M001', 'password' => $password])
+            ->assertSessionHasNoErrors();
+
+        $this->assertAuthenticatedAs(User::where('employee_number', 'M001')->sole());
     }
 
     /**
@@ -489,7 +594,11 @@ class UserManagementApprovalTest extends TestCase
         ]))->assertRedirect(route('admin.users.index'));
 
         $this->assertSame($candidate->id, ApprovalSetting::current()->president_user_id);
-        $this->assertSame(1, ApprovalSettingLog::where('action', 'president.changed')->count());
+
+        $log = ApprovalSettingLog::where('action', 'president.changed')->sole();
+        $this->assertSame('approval_setting', $log->target_type);
+        $this->assertSame(['president_user_id' => null], $log->old_values, '変更前が読めない記録になっている');
+        $this->assertSame(['president_user_id' => $candidate->id], $log->new_values);
 
         // 指定した人が一覧の「決裁の社長」に出る（印も付く）
         $html = $this->actingAs($this->executive())->get('/admin/users')->assertOk()->getContent();
@@ -513,6 +622,61 @@ class UserManagementApprovalTest extends TestCase
         $this->assertTrue($candidates->contains('id', $ok->id));
         $this->assertFalse($candidates->contains('id', $noMail->id), 'メールアドレスの無い人が候補に出ている');
         $this->assertFalse($candidates->contains('id', $inactive->id), '無効な人が候補に出ている');
+    }
+
+    /** 社長の指定は経営層だけ（ルートの門番。I3） */
+    public function test_only_executives_can_designate_the_president(): void
+    {
+        $candidate = User::factory()->create(['email' => 'p@example.com', 'must_change_password' => false]);
+
+        foreach ([UserRole::Manager, UserRole::Staff] as $role) {
+            $actor = User::factory()->create(['role' => $role->value, 'must_change_password' => false]);
+
+            $this->actingAs($actor)
+                ->post(route('admin.users.president'), ['president_user_id' => $candidate->id])
+                ->assertForbidden();
+        }
+
+        $this->assertNull(ApprovalSetting::current()->president_user_id);
+    }
+
+    /**
+     * 削除済みの利用者は社長にできない。
+     *
+     * ⚠ `Rule::exists` は SoftDeletes の全域スコープを見ないので、`whereNull('deleted_at')` の
+     *   1 行だけがこれを止めている（この人は状態も有効・メールアドレスもあるため、ほかの条件は通る）。
+     */
+    public function test_a_deleted_user_cannot_be_the_president(): void
+    {
+        $candidate = User::factory()->create(['email' => 'p@example.com', 'must_change_password' => false]);
+        $candidate->delete();
+
+        $this->actingAs($this->executive())
+            ->post(route('admin.users.president'), ['president_user_id' => $candidate->id])
+            ->assertSessionHasErrors('president_user_id');
+
+        $this->assertNull(ApprovalSetting::current()->president_user_id);
+    }
+
+    /**
+     * 候補が 1 人もいないときは、選択肢ゼロの `<select required>` を出さない（行き止まりになる）。
+     *
+     * 社員番号だけで運用していて、メールアドレスが 1 件も無い組織で起こりうる。
+     */
+    public function test_the_president_modal_says_so_when_there_are_no_candidates(): void
+    {
+        // 操作者自身も候補にならないよう、メールアドレスを持たない経営層で開く
+        $actor = User::factory()->create([
+            'role' => UserRole::Executive->value, 'email' => null, 'employee_number' => 'E001',
+            'must_change_password' => false,
+        ]);
+
+        $html = $this->actingAs($actor)->get('/admin/users')->assertOk()->getContent();
+        $form = $this->formHtml($html, 'action="' . route('admin.users.president') . '"');
+
+        $this->assertStringContainsString('候補がいません。先に利用者にメールアドレスを登録してください。', $form);
+        $this->assertStringNotContainsString('name="president_user_id"', $form, '選択肢ゼロの欄が出ている');
+        $this->assertStringNotContainsString('>設定する<', $form, '押しても何も起きないボタンが出ている');
     }
 
     public function test_a_user_without_an_email_cannot_be_the_president(): void
@@ -561,6 +725,38 @@ class UserManagementApprovalTest extends TestCase
             'departments' => [$this->department->id],
         ])->assertSessionHas('error');
         $this->assertSame('p@example.com', $president->fresh()->email);
+
+        // ④ **編集画面からの無効化**（入口が 4 つあるのに守りが 3 つしか無かった。Bug #44）
+        $expected = "{$president->name}さんは決裁の社長に指定されています。先に社長の指定を変えてください。";
+
+        $this->actingAs($this->executive())->put(route('admin.users.update', $president), [
+            'name' => $president->name, 'employee_number' => 'M001', 'email' => 'p@example.com',
+            'role' => $president->role->value, 'status' => UserStatus::Inactive->value,
+            'departments' => [$this->department->id],
+        ])->assertSessionHas('error', $expected);
+
+        $this->assertTrue($president->fresh()->isActive(), '編集画面から社長を無効化できてしまう');
+
+        // ⚠ 状態の切り替えと**同じ文言**（入口ごとに案内が違うと、利用者は別の不具合だと思う）
+        $this->actingAs($this->executive())
+            ->patch(route('admin.users.toggleStatus', $president), ['status' => UserStatus::Inactive->value])
+            ->assertSessionHas('error', $expected);
+    }
+
+    /**
+     * 編集画面が実際に「無効」を選べること（上の ④ の**呼び出し側**）。
+     *
+     * ⚠ 上は値を直接 PUT するので、画面から状態の欄が消えても緑のまま通る（Bug #47）。
+     *   編集モーダルは Alpine が `:action` を組み立てるので `parseForm` では拾えない。
+     */
+    public function test_the_edit_form_offers_the_inactive_status(): void
+    {
+        $html = $this->actingAs($this->executive())->get('/admin/users')->assertOk()->getContent();
+        $select = $this->selectHtml($this->editModalHtml($html), 'status');
+
+        foreach (UserStatus::cases() as $status) {
+            $this->assertStringContainsString('value="' . $status->value . '"', $select, "{$status->value} が選べない");
+        }
     }
 
     /** 社長でも「有効化」は止めない（無効化だけを止める） */
@@ -627,7 +823,77 @@ class UserManagementApprovalTest extends TestCase
 
         $this->assertTrue($target->fresh()->isApprovalAdmin());
         $this->assertTrue($target->fresh()->canViewAllApprovals());
-        $this->assertSame(1, ApprovalSettingLog::where('action', 'member.flags_changed')->count());
+
+        $log = ApprovalSettingLog::where('action', 'member.flags_changed')->sole();
+        $this->assertSame('user', $log->target_type);
+        $this->assertSame($target->id, $log->target_id);
+        $this->assertSame(['can_view_all' => false, 'is_admin' => false], $log->old_values);
+        $this->assertSame(['can_view_all' => true, 'is_admin' => true], $log->new_values);
+    }
+
+    /**
+     * **片方だけ**付ける（2 本）。
+     *
+     * ⚠ 両方 ON / 両方 OFF しか作らないと、`syncApprovalFlags($user, can_view_all, is_admin)` の
+     *   **引数を入れ替えても緑**のまま通る。入れ替わると「全件閲覧者」のつもりが
+     *   **決裁の管理者**（会社・部門・利用者を管理でき、パスワードも再発行できる）になる。
+     */
+    public function test_only_the_approval_admin_flag_is_granted(): void
+    {
+        $target = $this->memberTarget();
+
+        $this->actingAs($this->executive())->put(route('admin.users.update', $target), $this->memberPayload($target, [
+            'is_admin' => '1',
+        ]))->assertRedirect(route('admin.users.index'));
+
+        $fresh = $target->fresh();
+        $this->assertTrue($fresh->isApprovalAdmin(), '決裁の管理者が付いていない');
+        $this->assertFalse($fresh->canViewAllApprovals(), '頼んでいない全件閲覧者が付いた');
+
+        $this->assertSame(
+            ['can_view_all' => false, 'is_admin' => true],
+            ApprovalSettingLog::where('action', 'member.flags_changed')->sole()->new_values
+        );
+    }
+
+    public function test_only_the_view_all_flag_is_granted(): void
+    {
+        $target = $this->memberTarget();
+
+        $this->actingAs($this->executive())->put(route('admin.users.update', $target), $this->memberPayload($target, [
+            'can_view_all' => '1',
+        ]))->assertRedirect(route('admin.users.index'));
+
+        $fresh = $target->fresh();
+        $this->assertTrue($fresh->canViewAllApprovals(), '全件閲覧者が付いていない');
+        $this->assertFalse($fresh->isApprovalAdmin(), '頼んでいない決裁の管理者が付いた');
+
+        $this->assertSame(
+            ['can_view_all' => true, 'is_admin' => false],
+            ApprovalSettingLog::where('action', 'member.flags_changed')->sole()->new_values
+        );
+    }
+
+    /** 決裁の指定を試す相手（所属部門を 1 つ持つ一般担当者） */
+    private function memberTarget(): User
+    {
+        $target = User::factory()->create([
+            'role' => UserRole::Staff->value, 'employee_number' => 'M001', 'email' => 'a@example.com',
+            'must_change_password' => false,
+        ]);
+        $target->departments()->attach($this->department->id);
+
+        return $target;
+    }
+
+    /** 編集画面がそのまま送る形（変えたい項目だけ上書きする） */
+    private function memberPayload(User $target, array $overrides = []): array
+    {
+        return array_merge([
+            'name' => $target->name, 'employee_number' => 'M001', 'email' => 'a@example.com',
+            'role' => $target->role->value, 'status' => UserStatus::Active->value,
+            'departments' => [$this->department->id],
+        ], $overrides);
     }
 
     /** 外すほうも動く（付けるだけのテストでは「解除できない」に気づけない） */
@@ -748,12 +1014,40 @@ class UserManagementApprovalTest extends TestCase
     public function test_deletion_and_restore_are_recorded(): void
     {
         $target = User::factory()->create(['must_change_password' => false]);
+        $actor  = $this->executive();
 
-        $this->actingAs($this->executive())->delete(route('admin.users.destroy', $target));
-        $this->assertSame(1, ApprovalSettingLog::where('action', 'user.deleted')->count());
+        $this->actingAs($actor)->delete(route('admin.users.destroy', $target));
 
-        $this->actingAs($this->executive())->patch(route('admin.users.restore', $target->id));
-        $this->assertSame(1, ApprovalSettingLog::where('action', 'user.restored')->count());
+        $deleted = ApprovalSettingLog::where('action', 'user.deleted')->sole();
+        $this->assertSame('user', $deleted->target_type);
+        $this->assertSame($target->id, $deleted->target_id);
+        $this->assertSame($actor->id, $deleted->actor_user_id, '誰が消したのか読めない記録になっている');
+        $this->assertSame(['deleted_at' => null], $deleted->old_values);
+        // ⚠ old と new が入れ替わると「消えていたものが消えた」と逆向きに読める
+        $this->assertSame(
+            ['deleted_at' => $target->fresh()->deleted_at->toDateTimeString()],
+            $deleted->new_values
+        );
+
+        $this->actingAs($actor)->patch(route('admin.users.restore', $target->id));
+
+        $restored = ApprovalSettingLog::where('action', 'user.restored')->sole();
+        $this->assertSame('user', $restored->target_type);
+        $this->assertSame($target->id, $restored->target_id);
+        $this->assertSame($actor->id, $restored->actor_user_id);
+    }
+
+    /** 社員番号を空に戻せる（メールアドレスが残っていれば） */
+    public function test_the_employee_number_can_be_cleared(): void
+    {
+        $target = $this->memberTarget();
+
+        $this->actingAs($this->executive())->put(route('admin.users.update', $target), $this->memberPayload($target, [
+            'employee_number' => '',
+        ]))->assertRedirect(route('admin.users.index'));
+
+        $this->assertNull($target->fresh()->employee_number, '社員番号を空に戻せない');
+        $this->assertSame('a@example.com', $target->fresh()->email);
     }
 
     /** 変更は記録に残る */

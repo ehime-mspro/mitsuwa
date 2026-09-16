@@ -396,24 +396,33 @@
                 @csrf
                 <div class="px-6 pt-5 text-[15px] font-bold text-gray-900">決裁の社長</div>
                 <div class="px-6 py-4">
-                    <label class="block text-[12px] font-semibold text-gray-700 mb-1">社長に指定する利用者<span class="text-red-600 ml-0.5">*</span></label>
-                    {{-- ⚠ <option> は @foreach で静的に出す（x-for は x-model の同期より後に描画されて値がズレる。Bug #16） --}}
-                    <select name="president_user_id" required
-                            class="w-full h-[38px] px-2.5 border border-gray-300 rounded-md text-[13px] text-gray-700 bg-white focus:border-emerald-500 focus:outline-none cursor-pointer">
-                        @foreach($presidentCandidates as $candidate)
-                            <option value="{{ $candidate->id }}" {{ $settings->president_user_id === $candidate->id ? 'selected' : '' }}>{{ $candidate->name }}（{{ $candidate->email }}）</option>
-                        @endforeach
-                    </select>
-                    <p class="text-[11px] text-gray-400 mt-1.5 leading-relaxed">
-                        ※ 候補は「有効でメールアドレスのある利用者」です（決裁の通知メールを受け取るため）。<br>
-                        ※ 社長に指定された利用者は、無効化・削除・メールアドレスを空にする操作ができなくなります。
-                    </p>
+                    {{-- ⚠ 候補が 0 件のとき、選択肢ゼロの <select required> を出すと行き止まりになる
+                         （社員番号だけで運用していてメールアドレスが 1 件も無い組織で起こりうる） --}}
+                    @if($presidentCandidates->isEmpty())
+                        <p class="text-[13px] text-gray-700">候補がいません。先に利用者にメールアドレスを登録してください。</p>
+                        <p class="text-[11px] text-gray-400 mt-1.5">※ 候補は「有効でメールアドレスのある利用者」です（決裁の通知メールを受け取るため）。</p>
+                    @else
+                        <label class="block text-[12px] font-semibold text-gray-700 mb-1">社長に指定する利用者<span class="text-red-600 ml-0.5">*</span></label>
+                        {{-- ⚠ <option> は @foreach で静的に出す（x-for は x-model の同期より後に描画されて値がズレる。Bug #16） --}}
+                        <select name="president_user_id" required
+                                class="w-full h-[38px] px-2.5 border border-gray-300 rounded-md text-[13px] text-gray-700 bg-white focus:border-emerald-500 focus:outline-none cursor-pointer">
+                            @foreach($presidentCandidates as $candidate)
+                                <option value="{{ $candidate->id }}" {{ $settings->president_user_id === $candidate->id ? 'selected' : '' }}>{{ $candidate->name }}（{{ $candidate->email }}）</option>
+                            @endforeach
+                        </select>
+                        <p class="text-[11px] text-gray-400 mt-1.5 leading-relaxed">
+                            ※ 候補は「有効でメールアドレスのある利用者」です（決裁の通知メールを受け取るため）。<br>
+                            ※ 社長に指定された利用者は、無効化・削除・メールアドレスを空にする操作ができなくなります。
+                        </p>
+                    @endif
                 </div>
                 <div class="px-6 pb-5 flex justify-end gap-2">
                     <button type="button" @click="presidentModal = false"
                             class="px-3.5 py-2 bg-white border border-gray-300 rounded-md text-[13px] text-gray-700 hover:bg-gray-50 cursor-pointer transition-colors">キャンセル</button>
-                    <button type="submit"
-                            class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-[13px] font-semibold cursor-pointer transition-colors">設定する</button>
+                    @if($presidentCandidates->isNotEmpty())
+                        <button type="submit"
+                                class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-[13px] font-semibold cursor-pointer transition-colors">設定する</button>
+                    @endif
                 </div>
             </form>
         </div>

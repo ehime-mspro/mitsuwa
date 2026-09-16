@@ -16,6 +16,7 @@ use App\Support\InitialPassword;
 use App\Support\LoginId;
 use App\Support\OneTimeAction;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class UserController extends Controller
@@ -130,24 +131,30 @@ class UserController extends Controller
 
         $password = InitialPassword::generate();
 
-        // role / status は $fillable 対象外のため明示代入する（マスアサインメント対策）
-        $user = new User();
-        $user->name = $validated['name'];
-        $user->employee_number = $validated['employee_number'] ?? null;
-        $user->email = $validated['email'] ?? null;
-        $user->role = $validated['role'];
-        $user->status = UserStatus::Active->value;
-        // ⚠ 強度 10 のハッシュは hashed キャストとぶつかるので、必ず User::setInitialPassword() を通す
-        //    （must_change_password もその中で立つ。理由はそのメソッドの docblock）
-        $user->setInitialPassword($password);
-        $user->save();
+        // ⚠ 3 つの書き込みを 1 つのトランザクションで囲う。途中（所属部門の attach）で落ちると
+        //    **所属部門ゼロの利用者**が残り、案内の紙だけが印刷されて出る（PasswordReissuer と同じ理由）
+        $user = DB::transaction(function () use ($validated, $password) {
+            // role / status は $fillable 対象外のため明示代入する（マスアサインメント対策）
+            $user = new User();
+            $user->name = $validated['name'];
+            $user->employee_number = $validated['employee_number'] ?? null;
+            $user->email = $validated['email'] ?? null;
+            $user->role = $validated['role'];
+            $user->status = UserStatus::Active->value;
+            // ⚠ 強度 10 のハッシュは hashed キャストとぶつかるので、必ず User::setInitialPassword() を通す
+            //    （must_change_password もその中で立つ。理由はそのメソッドの docblock）
+            $user->setInitialPassword($password);
+            $user->save();
 
-        $user->departments()->attach($validated['departments']);
+            $user->departments()->attach($validated['departments']);
 
-        SettingLogger::record('user.created', 'user', $user->id, [], [
-            'name' => $user->name, 'employee_number' => $user->employee_number,
-            'email' => $user->email, 'role' => $user->role->value,
-        ]);
+            SettingLogger::record('user.created', 'user', $user->id, [], [
+                'name' => $user->name, 'employee_number' => $user->employee_number,
+                'email' => $user->email, 'role' => $user->role->value,
+            ]);
+
+            return $user;
+        });
 
         // ⚠ リダイレクトしない。初期パスワードをセッションに入れないため（D12）
         return (new LoginGuide([['user' => $user, 'password' => $password]]))->toResponse($request);
@@ -217,9 +224,15 @@ class UserController extends Controller
             }
         }
 
-        // 社長に指定されている人はメールアドレスを空にできない（§5.7）
-        // ⚠ 通知メール（要件 8.1）の宛先が消えると、決裁が回っていることに気づけなくなる
-        if ($user->isApprovalPresident() && ($validated['email'] ?? null) === null) {
+        // 社長に指定されている人は無効化できない・メールアドレスを空にできない（§5.7）
+        // ⚠ **入口は 4 つ**（この編集画面・状態の切り替え・削除・社長の指定の変更）。守りを 3 つしか
+        //    置かないと、残った 1 つから同じことができる（Bug #44 の「入口 × 守り」）。
+        //    ⚠ 無効化された社長は `EnsureUserIsActive` でログインできないのに通知メールだけ届き続ける
+        //    ＝ 決裁が止まる。⚠ メールアドレスが消えると通知（要件 8.1）の宛先が無くなる。
+        //    文言は `toggleStatus()` / `destroy()` と同じにする（どの入口から来ても同じ案内になるように）
+        if ($user->isApprovalPresident()
+            && ($validated['status'] === UserStatus::Inactive->value || ($validated['email'] ?? null) === null)
+        ) {
             return redirect()->route('admin.users.index')
                 ->with('error', "{$user->name}さんは決裁の社長に指定されています。先に社長の指定を変えてください。");
         }
@@ -229,27 +242,31 @@ class UserController extends Controller
             'email' => $user->email, 'role' => $user->role->value, 'status' => $user->status->value,
         ];
 
-        // role / status は $fillable 対象外のため明示代入する（マスアサインメント対策）
-        $user->name = $validated['name'];
-        $user->employee_number = $validated['employee_number'] ?? null;
-        $user->email = $validated['email'] ?? null;
-        $user->role = $validated['role'];
-        $user->status = $validated['status'];
-        $user->save();
+        // ⚠ store() と同じ理由で囲う。途中（所属部門の sync）で落ちると、ロールだけ変わって
+        //    所属部門が古いままの利用者が残る
+        DB::transaction(function () use ($request, $user, $validated, $before) {
+            // role / status は $fillable 対象外のため明示代入する（マスアサインメント対策）
+            $user->name = $validated['name'];
+            $user->employee_number = $validated['employee_number'] ?? null;
+            $user->email = $validated['email'] ?? null;
+            $user->role = $validated['role'];
+            $user->status = $validated['status'];
+            $user->save();
 
-        // 決裁のみ利用者は基幹の所属部門を持たない（§5.7）
-        if ($user->isApprovalOnly()) {
-            $user->departments()->detach();
-        } else {
-            $user->departments()->sync($validated['departments']);
-        }
+            // 決裁のみ利用者は基幹の所属部門を持たない（§5.7）
+            if ($user->isApprovalOnly()) {
+                $user->departments()->detach();
+            } else {
+                $user->departments()->sync($validated['departments']);
+            }
 
-        SettingLogger::recordChange('user.updated', 'user', $user->id, $before, [
-            'name' => $user->name, 'employee_number' => $user->employee_number,
-            'email' => $user->email, 'role' => $user->role->value, 'status' => $user->status->value,
-        ]);
+            SettingLogger::recordChange('user.updated', 'user', $user->id, $before, [
+                'name' => $user->name, 'employee_number' => $user->employee_number,
+                'email' => $user->email, 'role' => $user->role->value, 'status' => $user->status->value,
+            ]);
 
-        $this->syncApprovalFlags($user, $request->boolean('can_view_all'), $request->boolean('is_admin'));
+            $this->syncApprovalFlags($user, $request->boolean('can_view_all'), $request->boolean('is_admin'));
+        });
 
         return redirect()->route('admin.users.index')
             ->with('success', "ユーザー「{$user->name}」の情報を更新しました。");
