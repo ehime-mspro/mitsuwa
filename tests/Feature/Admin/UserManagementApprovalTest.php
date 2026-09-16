@@ -711,24 +711,31 @@ class UserManagementApprovalTest extends TestCase
         ]);
         ApprovalSetting::current()->update(['president_user_id' => $president->id]);
 
+        // ⚠ **4 つの入口すべてで文言まで見る。** `assertSessionHas('error')` だけだと、
+        //    その入口の文言を変える変異が緑のまま通る（実測で ②③ が素通りしていた）。
+        //    入口ごとに案内が違うと、利用者は別の不具合だと思う。
+        $expected = "{$president->name}さんは決裁の社長に指定されています。先に社長の指定を変えてください。";
+
+        // ① 行の無効化
         $this->actingAs($this->executive())
             ->patch(route('admin.users.toggleStatus', $president), ['status' => UserStatus::Inactive->value])
-            ->assertSessionHas('error');
+            ->assertSessionHas('error', $expected);
         $this->assertTrue($president->fresh()->isActive());
 
-        $this->actingAs($this->executive())->delete(route('admin.users.destroy', $president))->assertSessionHas('error');
+        // ② 削除
+        $this->actingAs($this->executive())->delete(route('admin.users.destroy', $president))
+            ->assertSessionHas('error', $expected);
         $this->assertFalse($president->fresh()->trashed());
 
+        // ③ 編集画面でメールアドレスを空に
         $this->actingAs($this->executive())->put(route('admin.users.update', $president), [
             'name' => $president->name, 'employee_number' => 'M001', 'email' => '',
             'role' => $president->role->value, 'status' => UserStatus::Active->value,
             'departments' => [$this->department->id],
-        ])->assertSessionHas('error');
+        ])->assertSessionHas('error', $expected);
         $this->assertSame('p@example.com', $president->fresh()->email);
 
         // ④ **編集画面からの無効化**（入口が 4 つあるのに守りが 3 つしか無かった。Bug #44）
-        $expected = "{$president->name}さんは決裁の社長に指定されています。先に社長の指定を変えてください。";
-
         $this->actingAs($this->executive())->put(route('admin.users.update', $president), [
             'name' => $president->name, 'employee_number' => 'M001', 'email' => 'p@example.com',
             'role' => $president->role->value, 'status' => UserStatus::Inactive->value,
@@ -737,10 +744,67 @@ class UserManagementApprovalTest extends TestCase
 
         $this->assertTrue($president->fresh()->isActive(), '編集画面から社長を無効化できてしまう');
 
-        // ⚠ 状態の切り替えと**同じ文言**（入口ごとに案内が違うと、利用者は別の不具合だと思う）
-        $this->actingAs($this->executive())
-            ->patch(route('admin.users.toggleStatus', $president), ['status' => UserStatus::Inactive->value])
-            ->assertSessionHas('error', $expected);
+    }
+
+    /**
+     * 途中で落ちたら**丸ごと巻き戻る**（新規登録）。
+     *
+     * ⚠ 囲わないと、利用者は作られたのに `attach()` が落ちて**所属部門ゼロの利用者**が残り、
+     *   部門で絞った一覧から消えるのにログインはできる状態になる。案内の紙だけが出ている。
+     * ⚠ 落とす位置は**利用者の保存と所属部門の attach のあと**（記録を書く瞬間）。
+     *   ここより前で落とすと、囲っていなくても何も残らないので検査が成立しない。
+     */
+    public function test_a_failure_partway_through_creating_rolls_everything_back(): void
+    {
+        [$form, $fields] = $this->createForm([
+            'name' => '甲 一郎', 'employee_number' => 'M001', 'email' => '',
+            'role' => UserRole::Staff->value, 'departments' => [$this->department->id],
+        ]);
+
+        ApprovalSettingLog::creating(function () {
+            throw new \RuntimeException('boom');
+        });
+
+        try {
+            $this->actingAs($this->executive())->withoutExceptionHandling()->post($form['action'], $fields);
+            $this->fail('例外が出ていない（この検査そのものが成立していない）');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('boom', $e->getMessage());
+        }
+
+        $this->assertSame(0, User::where('name', '甲 一郎')->count(), '所属部門ゼロの利用者が残った');
+        $this->assertSame(0, \Illuminate\Support\Facades\DB::table('department_user')->count(), '所属部門の行が残った');
+    }
+
+    /** 途中で落ちたら**丸ごと巻き戻る**（編集）。所属部門の付け替えだけが残らないこと */
+    public function test_a_failure_partway_through_updating_rolls_everything_back(): void
+    {
+        $user = User::factory()->create([
+            'name' => '旧 名前', 'role' => UserRole::Staff->value, 'employee_number' => 'M001',
+            'email' => 'a@example.com', 'must_change_password' => false,
+        ]);
+        $user->departments()->attach($this->department->id);
+
+        $other = Department::create(['name' => '不動産', 'code' => 'realestate', 'display_order' => 2]);
+
+        ApprovalSettingLog::creating(function () {
+            throw new \RuntimeException('boom');
+        });
+
+        try {
+            $this->actingAs($this->executive())->withoutExceptionHandling()
+                ->put(route('admin.users.update', $user), [
+                    'name' => '新 名前', 'employee_number' => 'M001', 'email' => 'a@example.com',
+                    'role' => UserRole::Staff->value, 'status' => UserStatus::Active->value,
+                    'departments' => [$other->id],
+                ]);
+            $this->fail('例外が出ていない（この検査そのものが成立していない）');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('boom', $e->getMessage());
+        }
+
+        $this->assertSame('旧 名前', $user->fresh()->name, '氏名だけ変わって残った');
+        $this->assertSame([$this->department->id], $user->fresh()->departments->pluck('id')->all(), '所属部門が付け替わったまま残った');
     }
 
     /**
