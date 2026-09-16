@@ -8562,6 +8562,24 @@ APP_KEY="base64:$(php -r 'echo base64_encode(random_bytes(32));')" ./vendor/bin/
 | M48 | サイドバーの出し分けを基幹固定に | `ApprovalSidebarTest` の 2 本 |
 | M49 | `sidebar_approval` の展開サイドバーに `x-cloak` を足す | `..._follows_the_cloak_rules` |
 | M50 | 基幹のサイドバーの「決裁の管理」を無条件に出す | `..._nothing_changes_for_everyone_else` |
+| M51 | `PasswordReissuedMail::content()` の `setTimezone('Asia/Tokyo')` を外す | `PasswordReissueTest::test_the_mail_shows_the_time_in_japan_time`（実測済み・検出） |
+| M52 | 同上の「（日本時間）」の表記を消す | 同上（実測済み・検出） |
+| M53 | `bootstrap/app.php` から `AuthenticateSession` を外す | `OtherDeviceLogoutTest` の 2 本 |
+
+⚠ **M53 は「再発行と結び付いているか」を測るためのもの。** 設計書 §4.2 は
+`AuthenticateSession` を入れる理由として**再発行**を名指ししている（「乗っ取られたアカウントも
+再発行で取り戻せる」）のに、ほかの端末が落ちることを見ているテストは
+`OtherDeviceLogoutTest:43` の 1 本だけで、そこは `Hash::make()` を直接書き込む汎用の経路。
+**vendor を読んで確かめた結論は「守れている」** — `AuthenticateSession` は
+`getAuthPassword()` とセッションの `password_hash_web` を比べるだけなので
+（`Session/Middleware/AuthenticateSession.php:66`）、**どう書いたかに関係なく**
+`password` 列が変われば落ちる ＝ 再発行の経路はこの守りを自動的に受け継ぐ。
+よって「再発行 → ほかの端末が落ちる」の通しテストは**守りではなく記録**にしかならないので足していない。
+M53 で `OtherDeviceLogoutTest` だけが落ちるなら、この判断が正しいことの裏取りになる
+（もし落ちないテストが出たら、そのとき初めて通しテストを足す）。
+
+⚠ **等価変異として記録**: `Asia/Tokyo` を `Asia/Seoul` にする変異は**緑**（実測）。
+どちらも UTC+9 なので、描画された時刻からは原理的に区別できない。
 
 - [ ] **Step 3: 検出できなかった変異にテストを足す**
 
