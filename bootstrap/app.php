@@ -20,18 +20,25 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // 決裁申請 段階1（設計書 §5.2・§5.5）
         //
-        // ⚠ web グループ（全画面の入口）に置く。ルートごとに付ける方式は付け忘れが効かない。
+        // ⚠ 3 本とも **web グループ**（全画面の入口）に置く。ルートごとに付ける方式は付け忘れが効かない。
+        // ⚠ 順番は「パスワードの控えの確認 → 無効化 → 決裁のみの締め出し」。
+        //    下の appendToPriorityList でこの順に並べ、SubstituteBindings（ルートモデル結合）より
+        //    前で止める（存在しない ID でも 404 にならず、データの有無が漏れない）。
         $middleware->web(append: [
             \Illuminate\Session\Middleware\AuthenticateSession::class,
             \App\Http\Middleware\EnsureUserIsActive::class,
+            \App\Http\Middleware\RestrictApprovalOnlyUsers::class,
         ]);
 
         // 既定の優先順は … AuthenticatesSessions → SubstituteBindings → Authorize
-        // （`Foundation/Http/Kernel::$middlewarePriority`）。その間に割り込ませる
-        // （存在しない ID でも 404 にならず、データの有無が漏れない）。
+        // （`Foundation/Http/Kernel::$middlewarePriority`）。その間に 2 本を割り込ませる。
         $middleware->appendToPriorityList(
             \Illuminate\Contracts\Session\Middleware\AuthenticatesSessions::class,
             \App\Http\Middleware\EnsureUserIsActive::class,
+        );
+        $middleware->appendToPriorityList(
+            \App\Http\Middleware\EnsureUserIsActive::class,
+            \App\Http\Middleware\RestrictApprovalOnlyUsers::class,
         );
     })
     ->withExceptions(function (Exceptions $exceptions) {
