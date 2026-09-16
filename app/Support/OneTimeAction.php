@@ -27,11 +27,15 @@ final class OneTimeAction
             return false;
         }
 
-        return Cache::add(
-            self::cacheKey($token),
-            true,
-            now()->addHours((int) config('approval.guide_token_ttl_hours'))
-        );
+        // ⚠ `max(1, …)` が要る。`Repository::add()` は秒数が 0 以下だと**キーの存在も見ずに**
+        //    false を返すので、`.env` の書き間違い（`APPROVAL_GUIDE_TOKEN_TTL_HOURS=` や `=0`）で
+        //    **新規登録も再発行も 1 回目から無言で止まる**（実測）。クラッシュより気づきにくい。
+        $hours = max(1, (int) config('approval.guide_token_ttl_hours'));
+
+        // ⚠ `Cache::add` は「無ければ入れる」を**一度に**行う（本番の database ドライバは
+        //    key の主キー制約で本当に排他的）。`has()` してから `put()` に書き換えると、
+        //    二重送信が両方通る余地ができる。下の構造テストがこれを守る。
+        return Cache::add(self::cacheKey($token), true, now()->addHours($hours));
     }
 
     public static function cacheKey(string $token): string

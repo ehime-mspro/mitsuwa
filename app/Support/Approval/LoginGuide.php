@@ -5,7 +5,6 @@ namespace App\Support\Approval;
 use App\Models\User;
 use App\Support\LoginQrCode;
 use Illuminate\Contracts\Support\Responsable;
-use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 /**

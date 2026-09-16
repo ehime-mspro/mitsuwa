@@ -104,6 +104,96 @@ class LoginGuideTest extends TestCase
         $this->assertStringContainsString('beforeunload', $html, '閉じる前の確認が無い');
     }
 
+    /**
+     * 閉じる前の確認が、**印刷したあとも外れない**こと。
+     *
+     * ⚠ `afterprint` は「印刷ダイアログを閉じたとき」に発火し、実際に印刷したのか
+     *   キャンセルしたのかを JS から区別できない（主要ブラウザ共通）。
+     *   「印刷したら確認しない」にすると、プリンタの不調で一度キャンセルしただけで
+     *   確認が外れ、そのまま閉じて初期パスワードが二度と表示されなくなる（実駆動で確認）。
+     */
+    public function test_the_close_confirmation_is_never_disabled(): void
+    {
+        $html = $this->render()->getContent();
+
+        $this->assertMatchesRegularExpression(
+            "/addEventListener\(\s*'beforeunload'/",
+            $html,
+            '閉じる前の確認が無い'
+        );
+
+        // ⚠ **語ではなく「登録しているか」で見る。** ビューの注意書き自身に `afterprint` と
+        //    書いてあるので、素の `assertStringNotContainsString('afterprint', …)` は
+        //    実体を消しても赤のまま通らない（Bug #42 ② / #30 と同型。実際に踏んだ）。
+        $this->assertDoesNotMatchRegularExpression(
+            "/addEventListener\(\s*'afterprint'/",
+            $html,
+            '印刷したら確認を外す作りになっている（キャンセルでも外れるので紙を配り直す事故になる）'
+        );
+    }
+
+    /** 空白の無い長い氏名が用紙の外へ切れないこと（実測: 160 文字で完全に切れた） */
+    public function test_a_long_name_is_allowed_to_wrap(): void
+    {
+        $html = $this->render()->getContent();
+
+        $this->assertMatchesRegularExpression(
+            '/\.guide-name\s*\{[^}]*overflow-wrap:\s*anywhere/',
+            $html,
+            '氏名の折り返し指定が無い（空白の無い長い名前が紙からはみ出して切れる）'
+        );
+    }
+
+    /**
+     * 1 回限りの鍵は「無ければ入れる」を**一度に**行うこと（`Cache::add`）。
+     *
+     * ⚠ **これは構造テスト。** 排他性そのものは 1 プロセスの逐次のテストでは原理的に測れず、
+     *   しかも `phpunit.xml` の `CACHE_STORE=array` は `add()` の独自実装を持たず
+     *   「`get()` して null なら `put()`」という**非排他的な**既定に落ちる。
+     *   実測: `Cache::add` を `has()` ＋ `put()` に書き換えても 14 本すべて緑のまま通った。
+     *   本番の `database` ドライバは `key` の主キー制約で本当に排他的なので、
+     *   「`add` を使っていること」だけを構造で固定する（Bug #41 / #42 と同じ流儀）。
+     */
+    public function test_the_token_is_claimed_atomically(): void
+    {
+        $source = $this->sourceWithoutComments(app_path('Support/OneTimeAction.php'));
+
+        $this->assertStringContainsString('Cache::add(', $source, '1 回限りの鍵が Cache::add を使っていない');
+        $this->assertStringNotContainsString('Cache::has(', $source, 'has() してから put() する形は二重送信が両方通る余地がある');
+        $this->assertStringNotContainsString('Cache::put(', $source);
+    }
+
+    /**
+     * 有効時間が 0 でも「1 回目から false」にならないこと。
+     *
+     * ⚠ `Repository::add()` は秒数が 0 以下だとキーの存在も見ずに false を返すので、
+     *   `.env` の書き間違いで**新規登録も再発行も無言で止まる**（実測）。
+     */
+    public function test_a_zero_ttl_does_not_break_everything(): void
+    {
+        config(['approval.guide_token_ttl_hours' => 0]);
+
+        $token = OneTimeAction::issue();
+
+        $this->assertTrue(OneTimeAction::claim($token), '有効時間 0 で 1 回目から弾かれている');
+        $this->assertFalse(OneTimeAction::claim($token), '2 回目が通っている');
+    }
+
+    /** コメントと docblock を落としたソース（注意書きに反応しないように。Bug #42 ②） */
+    private function sourceWithoutComments(string $path): string
+    {
+        $code = '';
+
+        foreach (token_get_all(file_get_contents($path)) as $token) {
+            if (is_array($token) && in_array($token[0], [T_COMMENT, T_DOC_COMMENT], true)) {
+                continue;
+            }
+            $code .= is_array($token) ? $token[1] : $token;
+        }
+
+        return $code;
+    }
+
     /** セッションにパスワードが入らない（sessions テーブルに平文が残らない） */
     public function test_the_password_never_touches_the_session(): void
     {

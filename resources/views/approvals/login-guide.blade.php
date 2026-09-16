@@ -30,7 +30,9 @@
 
         .guide-title { font-size: 22px; font-weight: 700; margin: 0 0 4px; }
         .guide-system { font-size: 13px; color: #6B7280; margin: 0 0 24px; }
-        .guide-name { font-size: 16px; margin: 0 0 20px; }
+        /* ⚠ 空白の無い長い氏名（ローマ字・入力の連結）が用紙の外へ無警告で切れるのを防ぐ。
+           実測: 66 文字で右余白へ 54px 食い込み、160 文字で完全に切れた */
+        .guide-name { font-size: 16px; margin: 0 0 20px; overflow-wrap: anywhere; }
 
         .guide-creds { display: flex; gap: 20mm; align-items: flex-start; border: 1px solid #D1D5DB; border-radius: 8px; padding: 16px 20px; margin-bottom: 20px; }
         .guide-creds dl { margin: 0; flex: 1; }
@@ -106,11 +108,15 @@
 @endforeach
 
 <script>
-    // 印刷せずに閉じようとしたら確認する（D9）。印刷したあとは確認しない
-    var guidePrinted = false;
-    window.addEventListener('afterprint', function () { guidePrinted = true; });
+    // 閉じようとしたら必ず確認する（設計書 §5.12・D9）。
+    //
+    // ⚠ 「印刷したら確認しない」にしてはいけない。afterprint は**印刷ダイアログを閉じたとき**に
+    //    発火し、実際に印刷したのかキャンセルしたのかを JS から区別する手段が無い（主要ブラウザ共通）。
+    //    プリンタの不調や用紙の選び直しで一度キャンセルしただけで確認が外れ、そのまま閉じると
+    //    初期パスワードが二度と表示されない（実駆動で確認: afterprint のあと beforeunload は
+    //    preventDefault を呼ばなくなった）。
+    //    確認が 1 回増える煩わしさより、100〜200 人ぶんの紙を配り直す事故のほうが重い。
     window.addEventListener('beforeunload', function (e) {
-        if (guidePrinted) { return; }
         e.preventDefault();
         e.returnValue = '';
     });

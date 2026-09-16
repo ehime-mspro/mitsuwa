@@ -42,6 +42,19 @@ class LoginQrCodeTest extends TestCase
         $this->assertNotSame($a['inner'], $b['inner']);
     }
 
+    /**
+     * 誤り訂正は M（15%）。
+     *
+     * ⚠ `<symbol>` ＋ `<use>` にしたので QR の実体はページ全体で 1 回しか出ない
+     *   ＝ 訂正レベルを上げても 200 人ぶんの大きさはほとんど変わらない。紙は折れる。
+     */
+    public function test_it_uses_medium_error_correction(): void
+    {
+        $source = file_get_contents(dirname(__DIR__, 3) . '/app/Support/LoginQrCode.php');
+
+        $this->assertStringContainsString('EccLevel::M', $source, '訂正レベルが M でない（紙のかすれ・折れに弱くなる）');
+    }
+
     /** 長い URL でも通る（バージョンが自動で上がる） */
     public function test_a_long_url_still_works(): void
     {
