@@ -159,6 +159,7 @@ csv_data              取り込むデータ
 | P3 | ログイン案内は**独立した HTML**（レイアウトを継承せず `<style>` を直書き） | 「サイドバー・ヘッダーを出さない」が構造で保証される。`@vite` に依存しないので `withoutVite()` のテストでも本番でも同じものが出る |
 | P4 | 記録の表は `const UPDATED_AT = null` ＋ `updating` / `deleting` で例外 | 追記のみ（設計書 §5.14）をモデルで強制する |
 | P5 | **CSV は 1 ファイル 50 行・まとめて再発行は 1 回 50 人**（設計書の仮の 200 から下げる） | §0.4 の実測。本番は 50 人で **15.3 秒**（200 人なら 61 秒で待ち時間に収まらない恐れ）。利用者は 100〜200 人なので、稼働前の一括登録は 2〜4 ファイルに分ける。数は `config/approval.php` の 1 か所 |
+| P7 | データプロバイダは **`#[DataProvider('name')]` 属性**（docblock の `@@dataProvider` は使わない） | このプロジェクトの既存 6 本がすでに属性形式。PHPUnit 11 は docblock 形式を非推奨にしていて、使うと `PHPUnit Deprecations: 1` が出る（Task 1 の実装で実測） |
 | P6 | 変異テストは Task 15 にまとめる | Bug #44 の作法（先にコミット → `git status --porcelain` が空 → `git diff --stat` が非空 → 落ちた**理由の文言**まで照合）を 1 か所で回す |
 
 ---
@@ -304,6 +305,7 @@ EOF
 namespace Tests\Unit\Support;
 
 use App\Support\LoginId;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -333,7 +335,7 @@ class LoginIdTest extends TestCase
         ];
     }
 
-    /** @dataProvider normalizeCases */
+    #[DataProvider('normalizeCases')]
     public function test_normalize(?string $input, string $expected): void
     {
         $this->assertSame($expected, LoginId::normalize($input));
@@ -1174,6 +1176,7 @@ use App\Enums\UserRole;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\ParsesForms;
 use Tests\TestCase;
 
@@ -1230,7 +1233,7 @@ class LoginIdentifierTest extends TestCase
         ];
     }
 
-    /** @dataProvider identifierCases */
+    #[DataProvider('identifierCases')]
     public function test_login_with_an_employee_number(string $typed): void
     {
         $user = User::factory()->create([
@@ -1253,7 +1256,7 @@ class LoginIdentifierTest extends TestCase
         ];
     }
 
-    /** @dataProvider emailCases */
+    #[DataProvider('emailCases')]
     public function test_login_with_an_email(string $typed): void
     {
         $user = User::factory()->create([
@@ -1329,7 +1332,7 @@ class LoginIdentifierTest extends TestCase
         ];
     }
 
-    /** @dataProvider roleCases */
+    #[DataProvider('roleCases')]
     public function test_where_each_role_lands(string $role, string $expected): void
     {
         User::factory()->create([
@@ -6283,6 +6286,7 @@ use App\Models\ApprovalSetting;
 use App\Models\ApprovalSettingLog;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\ParsesForms;
 use Tests\TestCase;
 
@@ -6600,7 +6604,7 @@ class ApprovalUserManagementTest extends TestCase
         return $user->fresh();
     }
 
-    /** @dataProvider privilegedCases */
+    #[DataProvider('privilegedCases')]
     public function test_a_privileged_user_cannot_be_reissued(string $kind): void
     {
         $target = $this->privileged($kind);
@@ -6612,7 +6616,7 @@ class ApprovalUserManagementTest extends TestCase
         $this->assertSame($old, $target->fresh()->password);
     }
 
-    /** @dataProvider privilegedCases */
+    #[DataProvider('privilegedCases')]
     public function test_a_privileged_user_cannot_be_disabled(string $kind): void
     {
         $target = $this->privileged($kind);
@@ -6623,7 +6627,7 @@ class ApprovalUserManagementTest extends TestCase
         $this->assertTrue($target->fresh()->isActive());
     }
 
-    /** @dataProvider privilegedCases */
+    #[DataProvider('privilegedCases')]
     public function test_a_privileged_users_name_and_number_are_read_only(string $kind): void
     {
         $target = $this->privileged($kind);
@@ -6640,7 +6644,7 @@ class ApprovalUserManagementTest extends TestCase
         $this->assertCount(1, $target->approvalDepartments);
     }
 
-    /** @dataProvider privilegedCases */
+    #[DataProvider('privilegedCases')]
     public function test_a_privileged_user_is_skipped_by_the_filtered_bulk_reissue(string $kind): void
     {
         $target  = $this->privileged($kind);
@@ -6657,7 +6661,7 @@ class ApprovalUserManagementTest extends TestCase
     }
 
     /** ⚠ 選んで送っても 403（画面で選べないだけでなくサーバーでも拒む） */
-    /** @dataProvider privilegedCases */
+    #[DataProvider('privilegedCases')]
     public function test_a_privileged_user_cannot_be_selected_for_a_bulk_reissue(string $kind): void
     {
         $target = $this->privileged($kind);
@@ -7090,6 +7094,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Testing\TestResponse;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\ParsesForms;
 use Tests\TestCase;
 
@@ -7207,7 +7212,7 @@ class ApprovalUserImportTest extends TestCase
         return [['RE,SA'], ['RE/SA'], ['RE SA'], ['RE、SA'], ['RE・SA'], ['RE　SA']];
     }
 
-    /** @dataProvider separatorCases */
+    #[DataProvider('separatorCases')]
     public function test_departments_can_be_separated_in_many_ways(string $value): void
     {
         // ⚠ CSV のカンマと衝突するので、値は引用符で囲む

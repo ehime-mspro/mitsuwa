@@ -3,6 +3,7 @@
 namespace Tests\Unit\Support;
 
 use App\Support\LoginId;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -32,7 +33,7 @@ class LoginIdTest extends TestCase
         ];
     }
 
-    /** @dataProvider normalizeCases */
+    #[DataProvider('normalizeCases')]
     public function test_normalize(?string $input, string $expected): void
     {
         $this->assertSame($expected, LoginId::normalize($input));
