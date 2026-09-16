@@ -45,7 +45,7 @@ class AuthController extends Controller
             'password'                => $request->input('password'),
         ];
 
-        if (! Auth::attempt($credentials, $remember)) {
+        if (!Auth::attempt($credentials, $remember)) {
             return back()
                 ->withInput($request->only('login_id', 'remember'))
                 ->withErrors(['login' => '社員番号・メールアドレスまたはパスワードが正しくありません。']);
