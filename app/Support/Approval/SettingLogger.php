@@ -40,7 +40,7 @@ final class SettingLogger
         $changedNew = [];
 
         foreach ($new as $key => $value) {
-            if (! array_key_exists($key, $old) || $old[$key] !== $value) {
+            if (! array_key_exists($key, $old) || ! self::isSame($old[$key], $value)) {
                 $changedOld[$key] = $old[$key] ?? null;
                 $changedNew[$key] = $value;
             }
@@ -51,5 +51,25 @@ final class SettingLogger
         }
 
         return self::record($action, $targetType, $targetId, $changedOld, $changedNew);
+    }
+
+    /**
+     * 同じ値か。
+     *
+     * ⚠ 素の `!==` だと、DB から来た `'5'`（文字列）と画面から来た `5`（整数）が
+     *   **常に「変わった」**になり、変わっていないのに記録が増える（実測）。
+     *   数と文字は文字列にそろえて比べる。
+     * ⚠ `null` と `''` は**別物**として扱う（消したのか、もともと無いのかを取り違えない）。
+     *   真偽値も数・文字とは混ぜない（`true` と `'1'` を同じにしない）。
+     */
+    private static function isSame(mixed $a, mixed $b): bool
+    {
+        $numeric = static fn (mixed $v): bool => is_int($v) || is_float($v) || is_string($v);
+
+        if ($numeric($a) && $numeric($b)) {
+            return (string) $a === (string) $b;
+        }
+
+        return $a === $b;
     }
 }

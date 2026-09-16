@@ -11,6 +11,7 @@ use App\Models\User;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
@@ -149,6 +150,86 @@ class ApprovalTablesTest extends TestCase
         DB::table('approval_settings')->insert(['id' => 5, 'president_user_id' => null]);
 
         $this->assertSame(1, ApprovalSetting::current()->id, '設定の行が id=1 で作られていない（自動採番に頼っている）');
+    }
+
+    /**
+     * 社長に指定された人を削除しても、社長の欄が読めること（Top trap #18）。
+     *
+     * ⚠ 利用者は SoftDeletes なので、外部キーの `ON DELETE SET NULL` は**発火しない**
+     *   （`deleted_at` を立てる UPDATE だから）。`withTrashed()` が無いと `president` が
+     *   null になり、社長名を出す画面が `Attempt to read property "name" on null` で 500 になる。
+     */
+    public function test_a_deleted_president_is_still_readable(): void
+    {
+        $user = User::factory()->create(['name' => '社長 三郎', 'must_change_password' => false]);
+        ApprovalSetting::current()->update(['president_user_id' => $user->id]);
+
+        $user->delete();
+        ApprovalSetting::forget();
+
+        $president = ApprovalSetting::current()->president;
+
+        $this->assertNotNull($president, '削除した社長が読めない（画面が 500 になる）');
+        $this->assertSame('社長 三郎', $president->name);
+        $this->assertTrue($president->trashed());
+    }
+
+    /** 決裁の印の相手を削除しても読めること（同じ理由） */
+    public function test_a_deleted_member_is_still_readable(): void
+    {
+        $user = User::factory()->create(['name' => '管理 花子', 'must_change_password' => false]);
+        $member = ApprovalMember::create(['user_id' => $user->id, 'is_admin' => true]);
+
+        $user->delete();
+
+        $this->assertSame('管理 花子', $member->fresh()->user?->name, '削除した利用者が読めない');
+    }
+
+    /**
+     * 設定はリクエストの間に 1 回しか引かないこと。
+     *
+     * ⚠ `User::isApprovalPresident()` がこれを呼ぶので、覚えておかないと一覧で
+     *   1 人につき 1 回ずつクエリが増える（20 人で 41 クエリになることを実測）。
+     */
+    public function test_the_settings_are_read_once_per_request(): void
+    {
+        ApprovalSetting::current();   // 1 回目で読み込ませる
+
+        $queries = 0;
+        DB::listen(function () use (&$queries): void { $queries++; });
+
+        $users = User::factory()->count(20)->create(['must_change_password' => false]);
+        $before = $queries;
+        foreach ($users as $user) {
+            $user->isApprovalPresident();
+        }
+
+        $this->assertSame(0, $queries - $before, '社長の判定のたびに設定を引き直している（一覧で N+1 になる）');
+    }
+
+    /** 許可するドメインの判定は `@` がちょうど 1 つのときだけ通す */
+    #[DataProvider('mailDomainCases')]
+    public function test_allows_only_accepts_a_single_at_sign(?string $email, bool $expected): void
+    {
+        ApprovalMailDomain::create(['domain' => 'mitsuwat.co.jp']);
+
+        $this->assertSame($expected, ApprovalMailDomain::allows($email), "判定が違う: " . var_export($email, true));
+    }
+
+    public static function mailDomainCases(): array
+    {
+        return [
+            '正しいアドレス'     => ['taro@mitsuwat.co.jp', true],
+            '大文字'             => ['Taro@MITSUWAT.CO.JP', true],
+            '別のドメイン'       => ['taro@example.com', false],
+            'サブドメインは別物' => ['taro@mail.mitsuwat.co.jp', false],
+            // ⚠ `strrpos` で最後の `@` を取ると、これが通ってしまう（実測）
+            '＠ が 2 つ'         => ['foo@bar@mitsuwat.co.jp', false],
+            '＠ が無い'          => ['mitsuwat.co.jp', false],
+            '＠ で終わる'        => ['taro@', false],
+            '空文字'             => ['', false],
+            'null'               => [null, false],
+        ];
     }
 
     /** 決裁の権限を 1 つでも持っているか（D16 の判定） */

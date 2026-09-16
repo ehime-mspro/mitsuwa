@@ -19,10 +19,13 @@ return new class extends Migration
     {
         Schema::create('approval_companies', function (Blueprint $table) {
             $table->id();
-            $table->string('name', 50)->unique();
+            $table->string('name', 50);
             $table->unsignedTinyInteger('fiscal_start_month')->default(1)->comment('期の始まりの月（1〜12）');
             $table->unsignedInteger('sort_order')->default(0);
             $table->timestamps();
+
+            // ⚠ 索引名は database/sql/2026-09-16-approval-phase1.sql と同じにする（本番に手で流すため）
+            $table->unique('name', 'uq_approval_companies_name');
         });
 
         Schema::create('approval_departments', function (Blueprint $table) {
@@ -30,10 +33,11 @@ return new class extends Migration
             $table->foreignId('company_id')->constrained('approval_companies')->restrictOnDelete();
             $table->string('name', 50);
             $table->string('short_name', 6)->comment('データ印の上段に入るので 6 文字まで');
-            $table->string('code', 3)->unique()->comment('英大文字 1〜3 文字。申請番号に使う');
+            $table->string('code', 3)->comment('英大文字 1〜3 文字。申請番号に使う');
             $table->unsignedInteger('sort_order')->default(0);
             $table->timestamps();
 
+            $table->unique('code', 'uq_approval_departments_code');
             $table->unique(['company_id', 'name'], 'uq_approval_departments_company_name');
         });
 
@@ -48,10 +52,12 @@ return new class extends Migration
 
         Schema::create('approval_members', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->unique()->constrained('users')->cascadeOnDelete();
+            $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
             $table->boolean('can_view_all')->default(false)->comment('全件閲覧者（段階2 で使う）');
             $table->boolean('is_admin')->default(false)->comment('決裁の管理者');
             $table->timestamps();
+
+            $table->unique('user_id', 'uq_approval_members_user');
         });
 
         Schema::create('approval_settings', function (Blueprint $table) {
@@ -63,8 +69,10 @@ return new class extends Migration
 
         Schema::create('approval_mail_domains', function (Blueprint $table) {
             $table->id();
-            $table->string('domain', 255)->unique();
+            $table->string('domain', 255);
             $table->timestamps();
+
+            $table->unique('domain', 'uq_approval_mail_domains_domain');
         });
 
         Schema::create('approval_setting_logs', function (Blueprint $table) {

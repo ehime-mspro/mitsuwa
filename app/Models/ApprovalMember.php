@@ -19,8 +19,12 @@ class ApprovalMember extends Model
         return ['can_view_all' => 'boolean', 'is_admin' => 'boolean'];
     }
 
+    /**
+     * ⚠ **`withTrashed()` が要る。** 利用者は SoftDeletes なので、指定された人を削除すると
+     *   これが null になり、決裁の権限を持つ人の一覧が 500 になる（Top trap #18）。
+     */
     public function user(): BelongsTo
     {
-        return $this->belongsTo(User::class);
+        return $this->belongsTo(User::class)->withTrashed();
     }
 }

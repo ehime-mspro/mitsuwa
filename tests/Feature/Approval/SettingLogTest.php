@@ -66,6 +66,44 @@ class SettingLogTest extends TestCase
         $this->assertSame(0, ApprovalSettingLog::count());
     }
 
+    /**
+     * 型が違うだけの値を「変わった」と数えないこと。
+     *
+     * ⚠ 素の `!==` だと、DB から来た `'5'`（文字列）と画面から来た `5`（整数）が
+     *   常に「変わった」になり、変わっていないのに記録が増える（実測で確認した欠陥）。
+     */
+    public function test_a_type_only_difference_is_not_a_change(): void
+    {
+        $this->actingAs(User::factory()->create(['must_change_password' => false]));
+
+        SettingLogger::recordChange('company.updated', 'approval_company', 1, ['fiscal_start_month' => '5'], ['fiscal_start_month' => 5]);
+
+        $this->assertSame(0, ApprovalSettingLog::count(), '型が違うだけで記録が増えている');
+    }
+
+    /** ⚠ null と空文字は別物として扱う（消したのか、もともと無いのかを取り違えない） */
+    public function test_null_and_empty_string_are_different(): void
+    {
+        $this->actingAs(User::factory()->create(['must_change_password' => false]));
+
+        SettingLogger::recordChange('user.updated', 'user', 1, ['employee_number' => null], ['employee_number' => '']);
+
+        $this->assertSame(1, ApprovalSettingLog::count(), 'null から空文字への変化が記録されていない');
+    }
+
+    /** 記録した人が後から削除されても、記録から引けること */
+    public function test_the_actor_is_readable_after_deletion(): void
+    {
+        $actor = User::factory()->create(['name' => '管理 花子', 'must_change_password' => false]);
+        $this->actingAs($actor);
+
+        SettingLogger::record('user.updated', 'user', 1, [], []);
+
+        $actor->delete();
+
+        $this->assertSame('管理 花子', ApprovalSettingLog::sole()->actor?->name, '削除した実施者が記録から引けない');
+    }
+
     /** あとから書き換えられない（設計書 §5.14） */
     public function test_a_log_cannot_be_updated(): void
     {
