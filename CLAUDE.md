@@ -83,6 +83,7 @@ sudo rm -f storage/framework/views/*.php && brew services restart httpd
 - `CLAUDE.md` `docs/` `.claude/` `tests/` 等は rsync 除外（開発用ファイルは本番に送らない）
 - 旧バンドルの掃除: `public/build/` だけ `--delete` 付きで再同期（2026-07-15 に追加）。転送先が 2 つあるのは APP_PATH = Laravel が manifest を読む側 / WEB_PATH = ブラウザが実ファイルを取る側の両方に配るため
 - ⚠ **`public/` 全体に `--delete` を付けるのは厳禁**（`public/storage` は `storage/app/public` への symlink ＝ 本番のアップロード物を消しうる）。`--delete` してよいのは Vite 出力しか入らない `public/build/` のみ
+- ⚠ **`storage/` は rsync 除外**（2026-09-16 に追加）。本番の添付を手元の中身で上書きすると、「同じパス・同じ大きさなら送り直さない」判定のバックアップが変更を拾わず、控えと本番が静かに食い違う。除外は `--exclude='/storage/'` と**先頭スラッシュ付き**で書く（付けないと `public/storage` の symlink まで巻き添えになる）。以前の `storage/app/backup-work` はこれに含まれるので置き換えた
 
 ### Server environment
 - macOS Apple Silicon, zsh, Homebrew httpd（`brew services restart httpd`）

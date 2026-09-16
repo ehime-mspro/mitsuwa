@@ -28,6 +28,12 @@ if [ ! -f public/build/manifest.json ]; then
   exit 1
 fi
 
+# storage は本番が自分で育てる場所（添付・キャッシュ・記録）。手元から送ると本番の添付を
+# 上書きしうる。上書きすると「同じパス・同じ大きさなら送り直さない」判定のバックアップが
+# 変更を拾わず、控えと本番が静かに食い違う（2026-09-16 に除外）。
+# 先頭の / は転送の一番上だけを指す指定。付けないと public/storage
+# （storage/app/public への symlink）まで巻き添えになる。
+# ※ 本番をゼロから作り直すときの storage のフォルダ作成は初期構築の仕事で、ここではやらない。
 echo "=== [2/6] アプリケーション転送 ==="
 rsync -avz \
   --exclude='.env' \
@@ -48,7 +54,7 @@ rsync -avz \
   --exclude='README*' \
   --exclude='phpunit.xml' \
   --exclude='*.log' \
-  --exclude='storage/app/backup-work' \
+  --exclude='/storage/' \
   --exclude='.playwright-mcp' \
   --exclude='prod-login.png' \
   --exclude='*.png' \
