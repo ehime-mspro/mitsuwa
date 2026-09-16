@@ -5801,6 +5801,54 @@ EOF
 )"
 ```
 
+> ### ⚠ 実装後のレビューで直したこと（`46416988`〜`e0d0f069`。上のコードはこの修正込みが正）
+>
+> 実装コードの欠陥は 0 件。出たのは**すべてテスト設計**で、**変異 37 通りのうち 2 通りが緑**だった。
+>
+> 1. **計画のテストは新規登録フォームを一度も掴んでいなかった。** `route('admin.users.store')` と
+>    `route('admin.users.index')` は**同じ URL**（`POST /admin/users` と `GET /admin/users`）なので、
+>    `action="…"` だけを needle にすると**先に出てくる絞り込みフォーム**（GET）を掴む。しかも
+>    `$this->post($form['action'], …)` は store に届くので**全部緑のまま通り**、配線は無検査になる
+>    （Bug #47 の型をテスト自身が踏む）。needle に `method="POST"` を含めて解決
+> 2. **計画のテストは `$target->role->value` で fatal になる。** `UserFactory::definition()` は
+>    `role` を持たないので `create()` 直後の**メモリ上は null**（DB は既定の `staff`）。
+>    factory の `status` の注意書きと同じ罠。テスト側で `role` を明示した（factory は触っていない）
+> 3. **`assertSee('M001')` が false-pass する**（Bug #43）— 編集ボタンの
+>    `openEditModal(…, {{ Js::from($u->employee_number) }}, …)` に同じ文字列が出るので、
+>    社員番号の列を丸ごと消しても緑。セル（`>M001</td>`）と見出しで見る
+> 4. **`name="employee_number"` をページ全体で見ると編集モーダルに一致する。** 新規登録フォームの
+>    中だけを切り出して見る（`createFormHtml()`）
+> 5. **値を上書きして送るテストは、画面の欄の name が変わっても緑**（Bug #47）。上書きの前に
+>    `role` / `employee_number` / `email` / `departments[]` / `president_user_id` を対で見る
+> 6. **変異 M07（検証の前の正規化を外す）が緑だった。** 社員番号だけで測ると、正規化を外しても
+>    `regex`（大文字・半角のみ）が**別の理由で**赤にするので load-bearing にならない。書式の縛りが
+>    無いメールアドレス（`a@example.com` と `A@Example.com`）で測ると素通りし、`User` の `saving`
+>    フックが小文字にしてから INSERT するので**一意索引に当たって 500**になる。通す側
+>    （`' m002 '` → `M002` で登録できる）も対で足した
+> 7. **変異 M28（決裁のみでも所属部門を sync する）が緑だった。** テストが `departments` を送って
+>    いなかったため。実際のブラウザは `x-show` で隠れたチェックボックスも送る（Top trap の
+>    「同一 name ＋ x-show」）ので、送る形に直し、送らない場合も別に固定した
+> 8. 計画に無かったものを 5 本足した: サーバー側も「決裁のみ」を拒む（画面の選択肢だけ見ると
+>    手組みの送信が素通りする）／社長の候補が無効・メールなしを含まない／`toggleStatus` の
+>    状態の変更も記録に残す（設計書 §5.14 の表「ロール・**状態**…の変更」。編集モーダル経由の
+>    `user.updated` とは別の入口）／決裁の指定を**外す**側／再発行の 1 回限りの鍵の 2 回目
+> 9. **落ちた理由が読めない形だった** — 検証エラーで `assertOk()` が落ちると Laravel は
+>    `Call to a member function all() on array` を出す（`session('errors')` が生の配列。Bug #49 の型）。
+>    先に `assertSessionHasNoErrors()` を通して実際のエラー文を出させる
+>
+> ⚠ **計画から変えたもの**: 再発行の `guide_token` は `Str::random(40)` でなく
+> `OneTimeAction::issue()`（長さと文字種を 1 か所に保つ）。`toggleStatus()` に
+> `user.status_changed` の記録を足した。`lang/ja/validation.php` に `president_user_id` の和名
+> （Bug #37 の走査テストが拾う）。`store()` には 1 回限りの鍵を**付けていない**
+> （社員番号もメールも一意なので、ブラウザの再送信は必ず `unique` で差し戻る）。
+>
+> ⚠ **測れないと分かったもの**: ① Alpine の `x-model` / `x-show` の実挙動（編集モーダルの
+> 決裁の指定のチェックと、決裁のみを選んだときの所属部門の出し分け）② 再発行の `onsubmit` の
+> `confirm()` ③ 本番の `cache` テーブル（`OneTimeAction` は `CACHE_STORE` 既定の `database` を使う）。
+>
+> テストは **33 本**（全体 1867 → **1900 tests / 12497 assertions green**）。
+> コンパイル済みビュー **272 本を `php -l`** → INVALID 0 件。
+
 ---
 ## Task 11: 部門の管理（決裁の管理者）
 
