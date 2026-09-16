@@ -233,6 +233,8 @@
         <div @click.outside="createModal = false" class="bg-white rounded-xl w-full max-w-[480px] max-h-[90vh] overflow-y-auto shadow-xl mx-4">
             <form method="POST" action="{{ route('admin.users.store') }}">
                 @csrf
+                {{-- 1 回限りの鍵。ブラウザの再送信では同じ鍵になり 2 回目が止まる（設計書 §5.12） --}}
+                <input type="hidden" name="guide_token" value="{{ \App\Support\OneTimeAction::issue() }}">
                 <div class="px-6 pt-5 text-[15px] font-bold text-gray-900">ユーザー新規登録</div>
                 <div class="px-6 py-4 space-y-3.5">
                     {{-- 氏名 --}}

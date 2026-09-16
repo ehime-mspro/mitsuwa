@@ -4,11 +4,14 @@ namespace Tests\Feature\Admin;
 
 use App\Enums\UserRole;
 use App\Enums\UserStatus;
+use App\Mail\PasswordReissuedMail;
+use App\Models\ApprovalMailDomain;
 use App\Models\ApprovalSetting;
 use App\Models\ApprovalSettingLog;
 use App\Models\Department;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Mail;
 use Tests\Concerns\ParsesForms;
 use Tests\TestCase;
 
@@ -64,6 +67,7 @@ class UserManagementApprovalTest extends TestCase
         // ⚠ 下の各テストは値を上書きして送るので、**画面の欄の name が変わっても緑のまま通る**（Bug #47）。
         //    上書きの前に、画面が実際にその名前で描いていることを対で見る
         $this->assertArrayHasKey('role', $form['fields'], '新規登録にロールの選択肢が無い');
+        $this->assertArrayHasKey('guide_token', $form['fields'], '新規登録に 1 回限りの鍵が描かれていない');
         $this->assertStringContainsString('name="employee_number"', $this->createFormHtml($html), '新規登録に社員番号の欄が無い');
         $this->assertStringContainsString('name="email"', $this->createFormHtml($html), '新規登録にメールアドレスの欄が無い');
         $this->assertStringContainsString('name="departments[]"', $this->createFormHtml($html), '新規登録に所属部門の欄が無い');
@@ -202,6 +206,57 @@ class UserManagementApprovalTest extends TestCase
         // 平文はどこにも残さない（D12）
         $this->assertNull(session('reset_password'));
         $this->assertSame(1, ApprovalSettingLog::where('action', 'user.created')->count());
+    }
+
+    /**
+     * 同じ鍵で 2 回目は通さない（ブラウザの「フォームを再送信しますか」対策。設計書 §5.12）。
+     *
+     * ⚠ 「社員番号もメールも一意だから `unique` で差し戻る」では**塞ぎきれない** —
+     *   登録したあとにその人の社員番号やメールアドレスを編集で変えると `unique` が当たらず、
+     *   古いタブの再送信で**同じ人の重複アカウントが黙って 1 つ増える**。
+     */
+    public function test_the_create_form_can_only_be_submitted_once(): void
+    {
+        [$form, $fields] = $this->createForm([
+            'name' => '甲 一郎', 'employee_number' => 'M001', 'email' => '',
+            'role' => UserRole::Staff->value, 'departments' => [$this->department->id],
+        ]);
+
+        $this->actingAs($this->executive())->post($form['action'], $fields)
+            ->assertSessionHasNoErrors()->assertOk();
+
+        // 登録後に社員番号を変える（unique では止まらなくなる状態を作る）
+        $created = User::where('name', '甲 一郎')->sole();
+        $created->forceFill(['employee_number' => 'M900'])->save();
+
+        $this->actingAs($this->executive())->post($form['action'], $fields)
+            ->assertRedirect(route('admin.users.index'))
+            ->assertSessionHas('error');
+
+        $this->assertSame(1, User::where('name', '甲 一郎')->count(), '重複アカウントができた');
+    }
+
+    /**
+     * 入力エラーで差し戻されたら、同じ鍵でもう一度送れる。
+     *
+     * ⚠ 鍵を `validate()` の**前**で使うと、氏名の入れ忘れのようなただの入力エラーで鍵が焼け、
+     *   admin が直して送り直せなくなる（差し戻したフォームは同じ鍵を持ったまま再描画される）。
+     */
+    public function test_a_validation_error_does_not_burn_the_guide_token(): void
+    {
+        [$form, $fields] = $this->createForm([
+            'name' => '', 'employee_number' => 'M001', 'email' => '',
+            'role' => UserRole::Staff->value, 'departments' => [$this->department->id],
+        ]);
+
+        $this->actingAs($this->executive())->post($form['action'], $fields)
+            ->assertSessionHasErrors('name');
+
+        // 氏名だけ直して、同じ鍵のまま送り直す
+        $this->actingAs($this->executive())->post($form['action'], array_merge($fields, ['name' => '甲 一郎']))
+            ->assertSessionHasNoErrors()->assertOk();
+
+        $this->assertSame(1, User::where('name', '甲 一郎')->count());
     }
 
     /** メールアドレスは任意。ただし社員番号と両方空は拒む */
@@ -346,6 +401,39 @@ class UserManagementApprovalTest extends TestCase
 
         $this->assertSame($after, $target->fresh()->password, '2 回目の再送信でパスワードが作り直された');
         $this->assertSame(1, ApprovalSettingLog::where('action', 'user.password_reissued')->count());
+    }
+
+    /**
+     * 画面から再発行すると、許可するドメインの人には通知メールがキューに積まれる（設計書 §5.13）。
+     *
+     * ⚠ 部品の層の `PasswordReissueTest` は**画面を通らない**ので、`resetPassword()` が
+     *   `PasswordReissuer` を通らない形（自前でハッシュを書く等）に変わっても緑のまま通る。
+     *   ほかの再発行のテストは `email => null` の人で測っているのでメールが 0 通になり、
+     *   ここが唯一の守り手になる。
+     */
+    public function test_reissue_from_the_screen_queues_the_notification_mail(): void
+    {
+        Mail::fake();
+        ApprovalMailDomain::create(['domain' => 'mitsuwat.co.jp']);
+
+        $target = User::factory()->create([
+            'name' => '甲 一郎', 'email' => 'a@mitsuwat.co.jp', 'employee_number' => 'M001', 'must_change_password' => false,
+        ]);
+
+        $html = $this->actingAs($this->executive())->get('/admin/users')->assertOk()->getContent();
+        $form = $this->parseForm($html, 'action="' . route('admin.users.resetPassword', $target) . '"');
+
+        $response = $this->actingAs($this->executive())->post($form['action'], $form['fields']);
+        $response->assertOk();
+
+        Mail::assertQueued(PasswordReissuedMail::class, 1);
+        Mail::assertQueued(
+            PasswordReissuedMail::class,
+            fn (PasswordReissuedMail $mail) => $mail->hasTo('a@mitsuwat.co.jp')
+        );
+
+        // 案内の帯の件数も画面から出ている（`ReissueResult::toGuide()` の配線）
+        $this->assertStringContainsString('通知メール: 送る 1 人／送らない 0 人', $response->getContent());
     }
 
     /** 一覧から「再発行結果」の表示が消えている */

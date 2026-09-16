@@ -116,6 +116,16 @@ class UserController extends Controller
             'name' => '氏名',
         ]);
 
+        // ⚠ **検証が通ってから**鍵を使う（設計書 §5.12）。先頭で使うと、氏名の入れ忘れのような
+        //    ただの入力エラーで鍵が焼け、直して送り直せなくなる（差し戻したフォームは同じ鍵のまま再描画される）。
+        //    ⚠ `is_string` で受ける。配列で送られると `(string)` が "Array" に化けて、鍵が効かなくなる
+        $token = $request->input('guide_token');
+
+        if (! is_string($token) || ! OneTimeAction::claim($token)) {
+            return redirect()->route('admin.users.index')
+                ->with('error', 'この操作はすでに実行されました。案内を印刷し直すには、対象の利用者からパスワードを再発行してください。');
+        }
+
         $password = InitialPassword::generate();
 
         // role / status は $fillable 対象外のため明示代入する（マスアサインメント対策）
@@ -137,9 +147,7 @@ class UserController extends Controller
             'email' => $user->email, 'role' => $user->role->value,
         ]);
 
-        // ⚠ リダイレクトしない。初期パスワードをセッションに入れないため（D12）。
-        //    ⚠ 1 回限りの鍵は付けていない — 社員番号もメールも一意なので、ブラウザの再送信は
-        //      必ず `unique` で差し戻り、印刷済みの案内を無効にする経路が作れない（再発行とは違う）。
+        // ⚠ リダイレクトしない。初期パスワードをセッションに入れないため（D12）
         return (new LoginGuide([['user' => $user, 'password' => $password]]))->toResponse($request);
     }
 
