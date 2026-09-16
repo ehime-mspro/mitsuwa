@@ -4662,6 +4662,7 @@ EOF
 - Create: `app/Mail/PasswordReissuedMail.php`
 - Create: `resources/views/mail/password-reissued.blade.php`
 - Create: `app/Support/Approval/PasswordReissuer.php`
+- Modify: `app/Models/User.php`（`setInitialPassword()` を足す。Task 10・13 も同じ入口を通る）
 - Test: `tests/Feature/Approval/PasswordReissueTest.php`
 
 - [ ] **Step 1: 失敗するテストを書く**
@@ -4899,7 +4900,40 @@ class PasswordReissuedMail extends Mailable implements ShouldQueue
 ※ このメールはシステムから自動で送っています。
 ```
 
-- [ ] **Step 4: `PasswordReissuer` を書く**
+- [ ] **Step 4: 初期パスワードの入口を `User` に 1 本化する**
+
+`app/Models/User.php` に足す（`use App\Support\InitialPassword;` も）:
+
+```php
+    /**
+     * 初期パスワードを入れる（保存はしない。呼び出し側が `save()` する）。
+     *
+     * 再発行・基幹の新規登録・CSV の一括登録が**すべてここを通る**。
+     *
+     * ⚠ Laravel の `hashed` キャストは「**今の設定より高いコストの済ハッシュ**」を弾く
+     *   （`castAttributeAsHashedString` → `Hash::verifyConfiguration()` → `$options['cost'] > $this->rounds`）。
+     *   本番は `BCRYPT_ROUNDS=12` なので強度 10 は素通りするが、テストは高速化のため
+     *   `phpunit.xml` で 4 にしているので **10 > 4 で `RuntimeException`** になる
+     *   （実測: 「Could not verify the hashed value's configuration.」）。
+     *   その 1 回だけキャストを外して済ハッシュをそのまま入れる。
+     *
+     * ⚠ **必ず戻す。** 戻さないと、そのインスタンスにあとから平文を代入したとき
+     *   ハッシュされずに**そのまま保存される**（実測。`mergeCasts` はインスタンスの `$casts` を書き換える）。
+     */
+    public function setInitialPassword(string $plain): void
+    {
+        $this->mergeCasts(['password' => 'string']);
+        $this->password = InitialPassword::hash($plain);
+        $this->mergeCasts(['password' => 'hashed']);
+
+        $this->must_change_password = true;
+    }
+```
+
+⚠ キャストを戻す行を消すと「パスワードが平文のまま保存されている」で赤になる
+（`PasswordReissueTest::test_the_hashed_cast_is_restored_afterwards`。変異で実測済み）。
+
+- [ ] **Step 5: `PasswordReissuer` を書く**
 
 `app/Support/Approval/PasswordReissuer.php`:
 
@@ -4939,12 +4973,10 @@ final class PasswordReissuer
         foreach ($users as $user) {
             $password = InitialPassword::generate();
 
-            // ⚠ password は $fillable にあるが hashed キャストが掛かるので、強度 10 の
-            //    ハッシュを直接入れるために forceFill で属性ごと差し替える
-            $user->forceFill([
-                'password'             => InitialPassword::hash($password),
-                'must_change_password' => true,
-            ])->save();
+            // 強度 10 のハッシュを入れる手順は User::setInitialPassword() に 1 本化してある
+            // （hashed キャストとの衝突の理由はそちらの docblock。再発行・新規登録・CSV が同じ道を通る）
+            $user->setInitialPassword($password);
+            $user->save();
 
             $entries[] = ['user' => $user, 'password' => $password];
 
@@ -4990,7 +5022,7 @@ final class ReissueResult
 }
 ```
 
-- [ ] **Step 5: 通ることを確かめる → コミット**
+- [ ] **Step 6: 通ることを確かめる → コミット**
 
 ```bash
 APP_KEY="base64:$(php -r 'echo base64_encode(random_bytes(32));')" ./vendor/bin/phpunit --filter PasswordReissueTest
@@ -5456,8 +5488,9 @@ APP_KEY="base64:$(php -r 'echo base64_encode(random_bytes(32));')" ./vendor/bin/
         $user->email = $validated['email'] ?? null;
         $user->role = $validated['role'];
         $user->status = UserStatus::Active->value;
-        $user->must_change_password = true;
-        $user->forceFill(['password' => InitialPassword::hash($password)]);
+        // ⚠ 強度 10 のハッシュは hashed キャストとぶつかるので、必ず User::setInitialPassword() を通す
+        //    （must_change_password もその中で立つ。理由はそのメソッドの docblock）
+        $user->setInitialPassword($password);
         $user->save();
 
         $user->departments()->attach($validated['departments']);
@@ -8098,8 +8131,9 @@ class UserImportController extends Controller
             $user->email = $row['email'];
             $user->role = UserRole::ApprovalOnly->value;
             $user->status = UserStatus::Active->value;
-            $user->must_change_password = true;
-            $user->forceFill(['password' => InitialPassword::hash($password)]);
+            // ⚠ 強度 10 のハッシュは hashed キャストとぶつかるので、必ず User::setInitialPassword() を通す
+            //    （must_change_password もその中で立つ。理由はそのメソッドの docblock）
+            $user->setInitialPassword($password);
             $user->save();
 
             $user->approvalDepartments()->sync($row['department_ids']);
