@@ -80,12 +80,38 @@ Context7 は v7 のドキュメント（`php ^8.4` ／ 名前空間 `chillerlan\
 ⚠ そのうえで**カナリアのテスト**を置く（§Task 2）: `sqlite_master` の `CREATE TABLE` 文に
 `role` の CHECK が 4 値・`status` の CHECK が 2 値あること。将来だれかが `->change()` を足したら赤くなる。
 
-### 0.3 本番の `users` に合わせた SQL → **Task 0 で読み取ってから書く**
+### 0.3 本番の `users` の定義（2026-09-16 に利用者の承認のうえ読み取り）
 
-索引名・照合順序・`role` の enum の並び・`email` の型は本番でしか分からない。
-**利用者の承認を得て読み取る Task 0 を先頭に置く**（読み取りだけ・データは変えない）。
+```
+`email`  varchar(255) utf8mb4_unicode_ci NOT NULL,  UNIQUE KEY `users_email_unique` (`email`)
+`role`   enum('executive','manager','staff') NOT NULL DEFAULT 'staff'
+`status` enum('active','inactive')           NOT NULL DEFAULT 'active'
+KEY `idx_users_role_status` (`role`,`status`)
+ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+rows=6 / null_email=0 / 削除済み=3 / approval_* の表=0
+```
 
-### 0.4 締め出しのテストで `where` 付きのルートに入れる値
+- **索引名は Laravel の既定の形**（`users_email_unique`）。新しい一意索引も
+  **`users_employee_number_unique`** にする ＝ テスト用 migration の `->unique()` が
+  自動で付ける名前と一致し、本番とテストで索引名が食い違わない
+- **照合順序は `utf8mb4_unicode_ci`（大文字小文字を区別しない）。** テストの SQLite は区別するので、
+  **一意の検査は必ず正規化したあとの値で行う**（§Task 2 の `User::booted()`）。順番を間違えると
+  テストだけ通って本番の一意索引に当たる
+- `email` は NOT NULL → `MODIFY COLUMN ... NULL` が要る（既存 6 行はすべてメールアドレスあり＝移行は不要）
+
+### 0.4 本番のパスワードの暗号化にかかる時間（同日 実測・PHP 8.3.32）
+
+```
+cost=10   0.305 秒/件   → 200 人で  61.0 秒
+cost=12   1.270 秒/件   → 200 人で 254.1 秒
+max_execution_time=0（CLI）/ memory_limit=128M / mbstring=yes
+```
+
+⚠ **手元（Apple Silicon・cost 10 で 0.065 秒）の 4.7 倍遅い。** 設計書 §5.10 が仮に置いていた
+「1 ファイル 200 行」は、本番では 1 リクエストに **61 秒**かかる計算で、Apache / FastCGI の
+待ち時間に収まらない恐れがある。
+
+### 0.5 締め出しのテストで `where` 付きのルートに入れる値
 
 実測（430 ルート）: `where` を持つのは **3 本だけ**。
 
@@ -101,7 +127,7 @@ storage/{path}           {"path":".*"}   ← 同上
 `auth` の付かないルートも 5 本しかない（`GET up` / `GET login` / `POST login` / `storage` 2 本）。
 `guest` を持つのは `login` の 2 本。**分類の 4 バケツはこの実測と一致する。**
 
-### 0.5 `lang/ja/validation.php` に足す和名
+### 0.6 `lang/ja/validation.php` に足す和名
 
 ```
 login_id              ログインID
@@ -124,7 +150,7 @@ csv_data              取り込むデータ
 ⚠ `name` `email` `status` `role` `departments` は**すでにある**（画面ごとに語が変わるキーなので、
 必要な画面では `validate()` の**第 3 引数**で上書きする。Bug #37）。
 
-### 0.6 そのほか計画時に決めたこと
+### 0.7 そのほか計画時に決めたこと
 
 | # | 決定 | 理由 |
 |---|---|---|
@@ -132,7 +158,8 @@ csv_data              取り込むデータ
 | P2 | 決裁のルートのパラメータ名は `{approvalCompany}` `{approvalDepartment}` `{mailDomain}` | `{department}` は基幹で意味が別（`CheckDepartmentAccess` が `$request->route('department')` を読む）。名前を分けて取り違えを構造的に防ぐ |
 | P3 | ログイン案内は**独立した HTML**（レイアウトを継承せず `<style>` を直書き） | 「サイドバー・ヘッダーを出さない」が構造で保証される。`@vite` に依存しないので `withoutVite()` のテストでも本番でも同じものが出る |
 | P4 | 記録の表は `const UPDATED_AT = null` ＋ `updating` / `deleting` で例外 | 追記のみ（設計書 §5.14）をモデルで強制する |
-| P5 | 変異テストは Task 16 にまとめる | Bug #44 の作法（先にコミット → `git status --porcelain` が空 → `git diff --stat` が非空 → 落ちた**理由の文言**まで照合）を 1 か所で回す |
+| P5 | **CSV は 1 ファイル 50 行・まとめて再発行は 1 回 50 人**（設計書の仮の 200 から下げる） | §0.4 の実測。本番は 50 人で **15.3 秒**（200 人なら 61 秒で待ち時間に収まらない恐れ）。利用者は 100〜200 人なので、稼働前の一括登録は 2〜4 ファイルに分ける。数は `config/approval.php` の 1 か所 |
+| P6 | 変異テストは Task 15 にまとめる | Bug #44 の作法（先にコミット → `git status --porcelain` が空 → `git diff --stat` が非空 → 落ちた**理由の文言**まで照合）を 1 か所で回す |
 
 ---
 
@@ -187,19 +214,26 @@ csv_data              取り込むデータ
 | `CLAUDE.md` / `docs/ARCHITECTURE.md` / `docs/BACKLOG.md` | 記述の更新 |
 
 ---
-## Task 0: 本番の読み取り（承認を得てから・親セッションが行う）
+## Task 0: 本番の読み取り（✅ 2026-09-16 実施済み）
+
+> **結果は §0.3・§0.4 に記録した。** 以下は手順の記録（もう一度測るとき用）。
+> 分かったこと: 一意索引は Laravel 既定の名前 ／ 照合順序は大文字小文字を区別しない ／
+> `email` は NOT NULL で既存 6 行すべて値あり（移行不要）／ `approval_*` の表は 0 ／
+> **本番の暗号化は手元の 4.7 倍遅く、CSV とまとめて再発行の上限を 200 → 50 に下げた**。
+
+## Task 0（原文）: 本番の読み取り（承認を得てから・親セッションが行う）
 
 > ⚠ **この作業だけはサブエージェントに任せない。** 本番の ssh は利用者の承認が要る。
 > 読み取りだけで、**データも設定も一切変えない**。
 
 **Files:** なし（結果を Task 2 / Task 7 の SQL に反映する）
 
-- [ ] **Step 1: 利用者に承認を求める**
+- [x] **Step 1: 利用者に承認を求める**
 
 `AskUserQuestion` で「本番の `users` の定義と、パスワードの暗号化にかかる時間を、読み取りだけで確かめてよいか」を聞く。
 断られたら Task 1 へ進み、**Task 17 の直前に必ずもう一度聞く**（SQL を確定できないまま反映してはいけない）。
 
-- [ ] **Step 2: `users` の定義を読む**
+- [x] **Step 2: `users` の定義を読む**
 
 本番のシェルは csh なので `/bin/sh` の heredoc を ssh に流す（memory の作法）。
 
@@ -217,7 +251,7 @@ SH
 記録すること: `email` の型と照合順序・一意索引の**名前**・`role` の enum の値と並び・`status` の enum・
 `deleted_at` の有無・既存の索引名（`idx_users_role_status` など）・行数。
 
-- [ ] **Step 3: パスワードの暗号化にかかる時間を測る**
+- [x] **Step 3: パスワードの暗号化にかかる時間を測る**
 
 ```bash
 ssh mitsuwa-ud@www3586.sakura.ne.jp /bin/sh <<'SH'
@@ -231,13 +265,13 @@ foreach ([10, 12] as $cost) {
 SH
 ```
 
-- [ ] **Step 4: 上限を決めて記録する**
+- [x] **Step 4: 上限を決めて記録する**
 
-`0.065 秒`（手元・強度 10）に対する本番の比で、`config/approval.php` の 200 を決め直す。
-**目安: 200 人 × 1 件の秒数が 30 秒を超えるなら 100 へ下げる**（PHP の `max_execution_time` と
-さくらの共有サーバの余裕を考えて）。決めた数と根拠をこの計画の §0.6 に追記する。
+実測は本番 0.305 秒/件（手元の 4.7 倍）。**200 人 = 61 秒**では Apache / FastCGI の待ち時間に
+収まらない恐れがあるため、`config/approval.php` の既定を **50**（＝ 約 15 秒）にした。
+根拠は §0.4・§0.7 の P5。
 
-- [ ] **Step 5: 結果をこの計画に追記してコミット**
+- [x] **Step 5: 結果をこの計画に追記してコミット**
 
 ```bash
 git add docs/superpowers/plans/2026-09-16-approval-phase1.md
@@ -571,15 +605,18 @@ return [
     | 決裁申請の上限（設計書 §5.10 の「処理時間」）
     |--------------------------------------------------------------------------
     |
-    | 新しい人ごとにパスワードを暗号化するので時間がかかる。手元（Apple Silicon）の実測は
-    | 強度 10 で 1 件 0.065 秒 ＝ 200 人で約 13 秒。本番（さくらの共有サーバ）の速さは
-    | Task 0 で測って決め直す。
+    | 新しい人ごとにパスワードを暗号化するので時間がかかる。
+    |
+    | 実測（2026-09-16・強度 10）: 手元（Apple Silicon）0.065 秒/件 ／ **本番 0.305 秒/件**。
+    | 本番は 50 人で約 15 秒・200 人だと約 61 秒で、Apache / FastCGI の待ち時間に収まらない
+    | 恐れがあるため **50** にしている（利用者は 100〜200 人なので、稼働前の一括登録は
+    | 2〜4 ファイルに分ける）。増やすときは本番で測り直すこと。
     |
     */
 
-    'csv_max_rows' => env('APPROVAL_CSV_MAX_ROWS', 200),
+    'csv_max_rows' => env('APPROVAL_CSV_MAX_ROWS', 50),
 
-    'bulk_reissue_max' => env('APPROVAL_BULK_REISSUE_MAX', 200),
+    'bulk_reissue_max' => env('APPROVAL_BULK_REISSUE_MAX', 50),
 
     /*
     |--------------------------------------------------------------------------
@@ -3609,7 +3646,9 @@ final class SettingLogger
 -- ⚠ **この DDL が先・./deploy.sh が後。** ログインが employee_number を読むので、
 --   コードを先に送るとログインが Unknown column で 500 になる。
 --
--- ⚠ 型・照合順序・索引名は Task 0 で本番の SHOW CREATE TABLE を読んで確かめたものに合わせる。
+-- ⚠ 型・照合順序・索引名は 2026-09-16 に本番の SHOW CREATE TABLE を読んで合わせてある
+--   （`users` は utf8mb4_unicode_ci・一意索引は Laravel 既定の `users_email_unique` の形）。
+--   `users_employee_number_unique` はテスト用 migration の `->unique()` が付ける名前と同じ。
 --
 -- 適用: php artisan tinker --execute で DB::statement() に **1 文ずつ**流す
 --   （sudo mysql は非対話でパスワードを渡せない。PDO::MYSQL_ATTR_MULTI_STATEMENTS も未設定）
@@ -3617,7 +3656,7 @@ final class SettingLogger
 -- 1. 利用者に社員番号を足し、メールアドレスを任意にする
 ALTER TABLE `users`
   ADD COLUMN `employee_number` VARCHAR(20) NULL COMMENT '社員番号（ログインID）' AFTER `name`,
-  ADD UNIQUE KEY `uq_users_employee_number` (`employee_number`);
+  ADD UNIQUE KEY `users_employee_number_unique` (`employee_number`);
 
 ALTER TABLE `users`
   MODIFY COLUMN `email` VARCHAR(255) NULL;
