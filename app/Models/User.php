@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\UserRole;
 use App\Enums\UserStatus;
+use App\Support\InitialPassword;
 use App\Support\LoginId;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -147,6 +148,30 @@ class User extends Authenticatable
     public function isActive(): bool
     {
         return $this->status === UserStatus::Active;
+    }
+
+    /**
+     * 初期パスワードを入れる（保存はしない。呼び出し側が `save()` する）。
+     *
+     * 再発行・基幹の新規登録・CSV の一括登録が**すべてここを通る**。
+     *
+     * ⚠ Laravel の `hashed` キャストは「**今の設定より高いコストの済ハッシュ**」を弾く
+     *   （`castAttributeAsHashedString` → `Hash::verifyConfiguration()` → `$options['cost'] > $this->rounds`）。
+     *   本番は `BCRYPT_ROUNDS=12` なので強度 10 は素通りするが、テストは高速化のため
+     *   `phpunit.xml` で 4 にしているので **10 > 4 で `RuntimeException`** になる
+     *   （実測: 「Could not verify the hashed value's configuration.」）。
+     *   その 1 回だけキャストを外して済ハッシュをそのまま入れる。
+     *
+     * ⚠ **必ず戻す。** 戻さないと、そのインスタンスにあとから平文を代入したとき
+     *   ハッシュされずに**そのまま保存される**（実測。`mergeCasts` はインスタンスの `$casts` を書き換える）。
+     */
+    public function setInitialPassword(string $plain): void
+    {
+        $this->mergeCasts(['password' => 'string']);
+        $this->password = InitialPassword::hash($plain);
+        $this->mergeCasts(['password' => 'hashed']);
+
+        $this->must_change_password = true;
     }
 
     /** 決裁のみ利用者か（設計書 D6） */

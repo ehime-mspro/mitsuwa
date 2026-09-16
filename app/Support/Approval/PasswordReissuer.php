@@ -33,19 +33,10 @@ final class PasswordReissuer
         foreach ($users as $user) {
             $password = InitialPassword::generate();
 
-            // ⚠ password は $fillable にあるが hashed キャストが掛かるので、強度 10 の
-            //    ハッシュを直接入れるために forceFill で属性ごと差し替える
-            // ⚠ Laravel の hashed キャストは「今の設定より高いコストの済ハッシュ」を弾く安全策を持つ
-            //    （HasAttributes::castAttributeAsHashedString → Hash::verifyConfiguration()）。
-            //    本番は BCRYPT_ROUNDS=12 なので強度 10 は素通りするが、テストは高速化のため
-            //    phpunit.xml で BCRYPT_ROUNDS=4 にしており、10 > 4 で RuntimeException になる
-            //    （実測: 「Could not verify the hashed value's configuration.」）。
-            //    この 1 回だけ password のキャストを外し、強度 10 のハッシュ文字列をそのまま保存する
-            $user->mergeCasts(['password' => 'string']);
-            $user->forceFill([
-                'password'             => InitialPassword::hash($password),
-                'must_change_password' => true,
-            ])->save();
+            // 強度 10 のハッシュを入れる手順は User::setInitialPassword() に 1 本化してある
+            // （hashed キャストとの衝突の理由はそちらの docblock。再発行・新規登録・CSV が同じ道を通る）
+            $user->setInitialPassword($password);
+            $user->save();
 
             $entries[] = ['user' => $user, 'password' => $password];
 

@@ -60,6 +60,31 @@ class PasswordReissueTest extends TestCase
         $this->assertSame(10, password_get_info($user->fresh()->password)['options']['cost']);
     }
 
+    /**
+     * 初期パスワードを入れたあと、**`hashed` キャストが戻っている**こと。
+     *
+     * ⚠ 強度 10 の済ハッシュを入れるには、その 1 回だけキャストを外す必要がある
+     *   （`hashed` は「今の設定より高いコストの済ハッシュ」を弾き、テストは
+     *   `BCRYPT_ROUNDS=4` なので 10 > 4 で例外になる）。戻し忘れると、そのインスタンスに
+     *   あとから平文を代入したとき**ハッシュされずにそのまま保存される**。
+     */
+    public function test_the_hashed_cast_is_restored_afterwards(): void
+    {
+        $this->actingAs($this->admin());
+        $user = User::factory()->create(['email' => 'a@mitsuwat.co.jp', 'must_change_password' => false]);
+
+        (new PasswordReissuer())->reissue(collect([$user]));
+
+        // 同じインスタンスに平文を代入する（本人のパスワード変更と同じ経路）
+        $user->password = 'plain-text-password';
+        $user->save();
+
+        $stored = $user->fresh()->password;
+
+        $this->assertNotSame('plain-text-password', $stored, 'パスワードが平文のまま保存されている');
+        $this->assertTrue(Hash::check('plain-text-password', $stored));
+    }
+
     public function test_it_notifies_only_allowed_domains(): void
     {
         $this->actingAs($this->admin());
