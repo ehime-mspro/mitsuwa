@@ -23,20 +23,6 @@
 
 <div x-data="userManagement()" x-cloak>
 
-    {{-- パスワードリセット結果の表示 --}}
-    @if(session('reset_password'))
-        <div class="mb-5 rounded-lg border border-amber-200 bg-amber-50 p-4">
-            <p class="text-sm font-semibold text-amber-800 mb-2">
-                「{{ session('reset_user_name') }}」さんのパスワードをリセットしました。
-            </p>
-            <div class="bg-white border border-amber-300 rounded-md p-3 text-center">
-                <p class="text-[11px] text-amber-700 mb-1">新しい初期パスワード</p>
-                <p class="font-mono text-xl font-bold text-amber-900 tracking-widest">{{ session('reset_password') }}</p>
-                <p class="text-[11px] text-amber-600 mt-1">※ 本人にお伝えください。初回ログイン時にパスワード変更が求められます。</p>
-            </div>
-        </div>
-    @endif
-
     {{-- バリデーションエラー --}}
     @if($errors->any())
         <div class="mb-5 rounded-lg border border-red-200 bg-red-50 p-4">
@@ -53,12 +39,19 @@
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
         <h1 class="text-lg font-bold text-gray-900">ユーザー管理</h1>
         <button
-            @click="createModal = true; resetCreateForm()"
+            @click="createModal = true"
             class="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-[13px] font-semibold rounded-md transition-colors cursor-pointer w-full sm:w-auto"
         >
             <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             ユーザーを登録
         </button>
+    </div>
+
+    {{-- 決裁の社長（設計書 §5.7） --}}
+    <div class="flex flex-wrap items-center gap-2 mb-5 bg-white border border-gray-200 rounded-lg px-3.5 py-2.5 text-[13px]">
+        <span class="text-gray-500">決裁の社長:</span>
+        <span class="font-medium text-gray-900">{{ $settings->president?->name ?? '未設定' }}</span>
+        <button type="button" @click="presidentModal = true" class="text-[12px] text-emerald-600 hover:underline cursor-pointer bg-transparent border-none p-0">変更</button>
     </div>
 
     {{-- フィルターバー --}}
@@ -83,7 +76,7 @@
             @endforeach
                 <option value="deleted" {{ request('status') === 'deleted' ? 'selected' : '' }}>削除済み</option>
         </select>
-        <input type="text" name="search" value="{{ request('search') }}" placeholder="氏名・メールで検索"
+        <input type="text" name="search" value="{{ request('search') }}" placeholder="氏名・社員番号・メールで検索"
                class="h-8 px-2.5 border border-gray-300 rounded-md text-[12px] text-gray-700 bg-white focus:border-emerald-500 focus:outline-none w-full sm:flex-1 sm:min-w-[140px]">
         <button type="submit"
                 class="h-8 px-3.5 bg-gray-50 border border-gray-300 rounded-md text-[12px] text-gray-700 hover:bg-gray-100 cursor-pointer transition-colors w-full sm:w-auto">検索</button>
@@ -96,9 +89,10 @@
     <div class="bg-white rounded-lg border border-gray-200">
         <div class="scroll-hint at-start">
             <div class="scroll-hint-inner">
-                <table class="w-full min-w-[640px] border-collapse">
+                <table class="w-full min-w-[760px] border-collapse">
             <thead>
                 <tr>
+                    <th class="px-3.5 py-2.5 lg:px-5 lg:py-3.5 text-left text-[11px] font-semibold text-gray-500 bg-gray-50 border-b border-gray-200 whitespace-nowrap w-[1%]">社員番号</th>
                     <th class="px-3.5 py-2.5 lg:px-5 lg:py-3.5 text-left text-[11px] font-semibold text-gray-500 bg-gray-50 border-b border-gray-200 whitespace-nowrap">氏名</th>
                     <th class="px-3.5 py-2.5 lg:px-5 lg:py-3.5 text-center text-[11px] font-semibold text-gray-500 bg-gray-50 border-b border-gray-200 whitespace-nowrap w-[1%]">ロール</th>
                     <th class="px-3.5 py-2.5 lg:px-5 lg:py-3.5 text-left text-[11px] font-semibold text-gray-500 bg-gray-50 border-b border-gray-200 whitespace-nowrap">所属部門</th>
@@ -110,8 +104,12 @@
             <tbody>
                 @forelse($users as $u)
                     <tr class="{{ $u->status === App\Enums\UserStatus::Inactive ? 'opacity-50' : '' }} hover:bg-gray-50">
+                        <td class="px-3.5 py-2.5 lg:px-5 lg:py-3.5 border-b border-gray-100 whitespace-nowrap font-mono text-[12px] text-gray-700">{{ $u->employee_number ?? '—' }}</td>
                         <td class="px-3.5 py-2.5 lg:px-5 lg:py-3.5 border-b border-gray-100 whitespace-nowrap">
                             <span class="text-[13px] font-medium text-gray-900">{{ $u->name }}</span>
+                            @if($u->isApprovalPresident())<span class="ml-1.5 inline-block px-1.5 rounded bg-purple-100 text-purple-800 text-[10px]">社長</span>@endif
+                            @if($u->isApprovalAdmin())<span class="ml-1 inline-block px-1.5 rounded bg-emerald-100 text-emerald-800 text-[10px]">決裁管理</span>@endif
+                            @if($u->canViewAllApprovals())<span class="ml-1 inline-block px-1.5 rounded bg-sky-100 text-sky-800 text-[10px]">全件閲覧</span>@endif
                         </td>
                         <td class="px-3.5 py-2.5 lg:px-5 lg:py-3.5 border-b border-gray-100 whitespace-nowrap text-center">
                             <span class="inline-block px-2 rounded text-[11px] font-medium
@@ -119,6 +117,7 @@
                                     @case(App\Enums\UserRole::Executive) bg-amber-100 text-amber-800 @break
                                     @case(App\Enums\UserRole::Manager) bg-blue-100 text-blue-800 @break
                                     @case(App\Enums\UserRole::Staff) bg-gray-100 text-gray-600 @break
+                                    @case(App\Enums\UserRole::ApprovalOnly) bg-purple-100 text-purple-800 @break
                                 @endswitch
                             " style="padding-top:2px; padding-bottom:2px;">{{ $u->role->label() }}</span>
                         </td>
@@ -148,17 +147,20 @@
                             @else
                                 {{-- 編集 --}}
                                 <button
-                                    @click="openEditModal({{ $u->id }}, {{ \Illuminate\Support\Js::from($u->name) }}, {{ \Illuminate\Support\Js::from($u->email) }}, '{{ $u->role->value }}', {{ \Illuminate\Support\Js::from($u->departments->pluck('id')->values()) }}, '{{ $u->status->value }}')"
+                                    @click="openEditModal({{ $u->id }}, {{ \Illuminate\Support\Js::from($u->name) }}, {{ \Illuminate\Support\Js::from($u->employee_number ?? '') }}, {{ \Illuminate\Support\Js::from($u->email ?? '') }}, '{{ $u->role->value }}', {{ \Illuminate\Support\Js::from($u->departments->pluck('id')->values()) }}, '{{ $u->status->value }}', {{ \Illuminate\Support\Js::from($u->isApprovalAdmin()) }}, {{ \Illuminate\Support\Js::from($u->canViewAllApprovals()) }})"
                                     class="text-[12px] text-blue-600 hover:underline cursor-pointer bg-transparent border-none p-0 font-normal"
                                 >編集</button>
 
                                 @if($u->id !== auth()->id())
-                                    {{-- PW再発行 --}}
+                                    {{-- PW再発行。案内の画面をその場で返すので、モーダルでなく行ごとの素のフォームにする --}}
                                     <span class="text-gray-200 mx-1">|</span>
-                                    <button
-                                        @click="openResetModal({{ $u->id }}, {{ \Illuminate\Support\Js::from($u->name) }})"
-                                        class="text-[12px] text-amber-600 hover:underline cursor-pointer bg-transparent border-none p-0 font-normal"
-                                    >PW再発行</button>
+                                    <form method="POST" action="{{ route('admin.users.resetPassword', $u) }}" class="inline"
+                                          onsubmit="return confirm({{ \Illuminate\Support\Js::from($u->name . 'さんのパスワードを再発行します。印刷用の案内が開きます。よろしいですか。') }});">
+                                        @csrf
+                                        {{-- 1 回限りの鍵。行ごとに違う値をサーバーで描くので、ブラウザの再送信では同じ鍵になり 2 回目が止まる --}}
+                                        <input type="hidden" name="guide_token" value="{{ \App\Support\OneTimeAction::issue() }}">
+                                        <button type="submit" class="text-[12px] text-amber-600 hover:underline cursor-pointer bg-transparent border-none p-0 font-normal">PW再発行</button>
+                                    </form>
 
                                     {{-- 無効化/有効化 --}}
                                     <span class="text-gray-200 mx-1">|</span>
@@ -186,7 +188,7 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="6" class="px-3.5 py-8 text-center text-[13px] text-gray-400">
+                        <td colspan="7" class="px-3.5 py-8 text-center text-[13px] text-gray-400">
                             該当するユーザーが見つかりません。
                         </td>
                     </tr>
@@ -240,12 +242,20 @@
                                class="w-full h-[38px] px-2.5 border border-gray-300 rounded-md text-[13px] text-gray-700 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none"
                                placeholder="例: 山田太郎">
                     </div>
+                    {{-- 社員番号 --}}
+                    <div>
+                        <label class="block text-[12px] font-semibold text-gray-700 mb-1">社員番号</label>
+                        <input type="text" name="employee_number" maxlength="20"
+                               class="w-full h-[38px] px-2.5 border border-gray-300 rounded-md text-[13px] text-gray-700 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none"
+                               placeholder="例: M001">
+                    </div>
                     {{-- メール --}}
                     <div>
-                        <label class="block text-[12px] font-semibold text-gray-700 mb-1">メールアドレス<span class="text-red-600 ml-0.5">*</span></label>
-                        <input type="email" name="email" required maxlength="255"
+                        <label class="block text-[12px] font-semibold text-gray-700 mb-1">メールアドレス</label>
+                        <input type="email" name="email" maxlength="255"
                                class="w-full h-[38px] px-2.5 border border-gray-300 rounded-md text-[13px] text-gray-700 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none"
                                placeholder="例: yamada@mitsuwa.co.jp">
+                        <p class="text-[11px] text-gray-400 mt-1.5">※ 社員番号とメールアドレスは、どちらか一方は必ず入力してください（どちらもログインIDになります）。</p>
                     </div>
                     {{-- ロール --}}
                     <div>
@@ -270,19 +280,9 @@
                             @endforeach
                         </div>
                     </div>
-                    {{-- 初期パスワード --}}
-                    <div>
-                        <label class="block text-[12px] font-semibold text-gray-700 mb-1">初期パスワード<span class="text-red-600 ml-0.5">*</span></label>
-                        <div class="flex gap-1.5">
-                            <input type="text" name="password" x-model="generatedPassword" readonly
-                                   class="flex-1 h-[38px] px-2.5 border border-gray-300 rounded-md text-[14px] font-mono tracking-wider text-gray-700 bg-gray-50 focus:outline-none">
-                            <button type="button" @click="regeneratePassword()"
-                                    class="h-[38px] px-3 bg-gray-50 border border-gray-300 rounded-md text-[12px] text-gray-700 hover:bg-gray-100 cursor-pointer transition-colors whitespace-nowrap">再生成</button>
-                        </div>
-                        <p class="text-[11px] text-gray-400 mt-1.5 leading-relaxed">
-                            ※ 登録後、このパスワードを本人にお伝えください。初回ログイン時にパスワード変更が求められます。
-                        </p>
-                    </div>
+                    <p class="text-[11px] text-gray-400 leading-relaxed">
+                        ※ 初期パスワードは登録時にシステムが作ります。登録すると印刷用の「ログインのご案内」が開くので、印刷して本人にお渡しください。
+                    </p>
                 </div>
                 <div class="px-6 pb-5 flex justify-end gap-2">
                     <button type="button" @click="createModal = false"
@@ -310,11 +310,18 @@
                         <input type="text" name="name" x-model="editName" required maxlength="100"
                                class="w-full h-[38px] px-2.5 border border-gray-300 rounded-md text-[13px] text-gray-700 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none">
                     </div>
+                    {{-- 社員番号 --}}
+                    <div>
+                        <label class="block text-[12px] font-semibold text-gray-700 mb-1">社員番号</label>
+                        <input type="text" name="employee_number" x-model="editEmployeeNumber" maxlength="20"
+                               class="w-full h-[38px] px-2.5 border border-gray-300 rounded-md text-[13px] text-gray-700 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none">
+                    </div>
                     {{-- メール --}}
                     <div>
-                        <label class="block text-[12px] font-semibold text-gray-700 mb-1">メールアドレス<span class="text-red-600 ml-0.5">*</span></label>
-                        <input type="email" name="email" x-model="editEmail" required maxlength="255"
+                        <label class="block text-[12px] font-semibold text-gray-700 mb-1">メールアドレス</label>
+                        <input type="email" name="email" x-model="editEmail" maxlength="255"
                                class="w-full h-[38px] px-2.5 border border-gray-300 rounded-md text-[13px] text-gray-700 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none">
+                        <p class="text-[11px] text-gray-400 mt-1.5">※ 社員番号とメールアドレスは、どちらか一方は必ず入力してください。</p>
                     </div>
                     {{-- ロール --}}
                     <div>
@@ -324,10 +331,11 @@
                             <option value="staff">一般担当者</option>
                             <option value="manager">部門管理者</option>
                             <option value="executive">経営層</option>
+                            <option value="approval_only">決裁のみ</option>
                         </select>
                     </div>
-                    {{-- 所属部門 --}}
-                    <div>
+                    {{-- 所属部門（決裁のみ利用者は基幹の所属部門を持たない。設計書 §5.7） --}}
+                    <div x-show="editRole !== 'approval_only'">
                         <label class="block text-[12px] font-semibold text-gray-700 mb-1">所属部門<span class="text-red-600 ml-0.5">*</span>（複数選択可）</label>
                         <div class="border border-gray-300 rounded-md p-2.5 grid grid-cols-2 sm:grid-cols-3 gap-1">
                             @foreach($departments as $dept)
@@ -338,6 +346,23 @@
                                     {{ $dept->name }}
                                 </label>
                             @endforeach
+                        </div>
+                        <p class="text-[11px] text-gray-400 mt-1.5">※ 「決裁のみ」にすると、基幹の所属部門は外れます。</p>
+                    </div>
+                    {{-- 決裁の指定（設計書 §5.7） --}}
+                    <div>
+                        <label class="block text-[12px] font-semibold text-gray-700 mb-1">決裁の指定</label>
+                        <div class="border border-gray-300 rounded-md p-2.5 space-y-1">
+                            <label class="flex items-center gap-1.5 text-[12px] text-gray-700 cursor-pointer px-1.5 py-1 rounded hover:bg-gray-50">
+                                <input type="checkbox" name="is_admin" value="1" x-model="editIsAdmin"
+                                       class="w-[15px] h-[15px] accent-emerald-600 cursor-pointer">
+                                決裁の管理者（会社・部門・利用者を管理できる）
+                            </label>
+                            <label class="flex items-center gap-1.5 text-[12px] text-gray-700 cursor-pointer px-1.5 py-1 rounded hover:bg-gray-50">
+                                <input type="checkbox" name="can_view_all" value="1" x-model="editCanViewAll"
+                                       class="w-[15px] h-[15px] accent-emerald-600 cursor-pointer">
+                                全件閲覧者（すべての決裁を見られる）
+                            </label>
                         </div>
                     </div>
                     {{-- ステータス --}}
@@ -360,26 +385,33 @@
         </div>
     </div>
 
-    {{-- ========== PWリセット確認モーダル ========== --}}
-    <div x-show="resetModal" class="fixed inset-0 bg-black/35 z-50 flex items-center justify-center" style="display:none;"
+    {{-- ========== 決裁の社長の変更モーダル ========== --}}
+    <div x-show="presidentModal" class="fixed inset-0 bg-black/35 z-50 flex items-center justify-center" style="display:none;"
          x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
          x-transition:leave="transition ease-in duration-100" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0">
-        <div @click.outside="resetModal = false" class="bg-white rounded-xl w-full max-w-[400px] shadow-xl mx-4">
-            <form :action="'{{ url('admin/users') }}/' + resetUserId + '/reset-password'" method="POST">
+        <div @click.outside="presidentModal = false" class="bg-white rounded-xl w-full max-w-[440px] shadow-xl mx-4">
+            <form method="POST" action="{{ route('admin.users.president') }}">
                 @csrf
-                @method('PUT')
-                <div class="px-6 py-6 text-center">
-                    <div class="w-11 h-11 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-3">
-                        <svg class="w-[22px] h-[22px] text-amber-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
-                    </div>
-                    <p class="text-[14px] text-gray-700 mb-1"><strong x-text="resetUserName"></strong> さんのパスワードをリセットしますか？</p>
-                    <p class="text-[12px] text-gray-400 mb-4 leading-relaxed">新しい初期パスワードが自動生成されます。</p>
-                    <div class="flex justify-center gap-2">
-                        <button type="button" @click="resetModal = false"
-                                class="px-3.5 py-2 bg-white border border-gray-300 rounded-md text-[13px] text-gray-700 hover:bg-gray-50 cursor-pointer transition-colors">キャンセル</button>
-                        <button type="submit"
-                                class="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-md text-[13px] font-semibold cursor-pointer transition-colors">リセットする</button>
-                    </div>
+                <div class="px-6 pt-5 text-[15px] font-bold text-gray-900">決裁の社長</div>
+                <div class="px-6 py-4">
+                    <label class="block text-[12px] font-semibold text-gray-700 mb-1">社長に指定する利用者<span class="text-red-600 ml-0.5">*</span></label>
+                    {{-- ⚠ <option> は @foreach で静的に出す（x-for は x-model の同期より後に描画されて値がズレる。Bug #16） --}}
+                    <select name="president_user_id" required
+                            class="w-full h-[38px] px-2.5 border border-gray-300 rounded-md text-[13px] text-gray-700 bg-white focus:border-emerald-500 focus:outline-none cursor-pointer">
+                        @foreach($presidentCandidates as $candidate)
+                            <option value="{{ $candidate->id }}" {{ $settings->president_user_id === $candidate->id ? 'selected' : '' }}>{{ $candidate->name }}（{{ $candidate->email }}）</option>
+                        @endforeach
+                    </select>
+                    <p class="text-[11px] text-gray-400 mt-1.5 leading-relaxed">
+                        ※ 候補は「有効でメールアドレスのある利用者」です（決裁の通知メールを受け取るため）。<br>
+                        ※ 社長に指定された利用者は、無効化・削除・メールアドレスを空にする操作ができなくなります。
+                    </p>
+                </div>
+                <div class="px-6 pb-5 flex justify-end gap-2">
+                    <button type="button" @click="presidentModal = false"
+                            class="px-3.5 py-2 bg-white border border-gray-300 rounded-md text-[13px] text-gray-700 hover:bg-gray-50 cursor-pointer transition-colors">キャンセル</button>
+                    <button type="submit"
+                            class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-[13px] font-semibold cursor-pointer transition-colors">設定する</button>
                 </div>
             </form>
         </div>
@@ -470,25 +502,21 @@ function userManagement() {
         // モーダル状態
         createModal: false,
         editModal: false,
-        resetModal: false,
+        presidentModal: false,
         disableModal: false,
         enableModal: false,
         deleteModal: false,
 
-        // 新規登録
-        generatedPassword: '',
-
         // 編集
         editUserId: null,
         editName: '',
+        editEmployeeNumber: '',
         editEmail: '',
         editRole: 'staff',
         editDepartments: [],
         editStatus: 'active',
-
-        // PWリセット
-        resetUserId: null,
-        resetUserName: '',
+        editIsAdmin: false,
+        editCanViewAll: false,
 
         // 無効化/有効化
         toggleUserId: null,
@@ -498,47 +526,18 @@ function userManagement() {
         deleteUserId: null,
         deleteUserName: '',
 
-        init() {
-            this.regeneratePassword();
-        },
-
-        // パスワード生成
-        regeneratePassword() {
-            const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
-            const lower = 'abcdefghjkmnpqrstuvwxyz';
-            const digits = '23456789';
-            const symbols = '#$%&';
-            let pw = upper[Math.floor(Math.random() * upper.length)]
-                   + lower[Math.floor(Math.random() * lower.length)]
-                   + digits[Math.floor(Math.random() * digits.length)]
-                   + symbols[Math.floor(Math.random() * symbols.length)];
-            const all = upper + lower + digits + symbols;
-            for (let i = 0; i < 4; i++) {
-                pw += all[Math.floor(Math.random() * all.length)];
-            }
-            this.generatedPassword = pw.split('').sort(() => Math.random() - 0.5).join('');
-        },
-
-        resetCreateForm() {
-            this.regeneratePassword();
-        },
-
         // 編集モーダル
-        openEditModal(id, name, email, role, departments, status) {
+        openEditModal(id, name, employeeNumber, email, role, departments, status, isAdmin, canViewAll) {
             this.editUserId = id;
             this.editName = name;
+            this.editEmployeeNumber = employeeNumber;
             this.editEmail = email;
             this.editRole = role;
             this.editDepartments = departments;
             this.editStatus = status;
+            this.editIsAdmin = isAdmin;
+            this.editCanViewAll = canViewAll;
             this.editModal = true;
-        },
-
-        // PWリセットモーダル
-        openResetModal(id, name) {
-            this.resetUserId = id;
-            this.resetUserName = name;
-            this.resetModal = true;
         },
 
         // 無効化モーダル

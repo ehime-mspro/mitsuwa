@@ -77,9 +77,15 @@ Route::middleware(['auth', 'password.change'])->group(function () {
             ->name('admin.users.index');
         Route::post('/users', [\App\Http\Controllers\Admin\UserController::class, 'store'])
             ->name('admin.users.store');
+        // ⚠ `/users/{user}` より**前**に置く。`route:list` の並びは URI の辞書順だが、
+        //    マッチの優先順は**登録順**なので、後ろに置くと president が {user} として解決される
+        Route::post('/users/president', [\App\Http\Controllers\Admin\UserController::class, 'setPresident'])
+            ->name('admin.users.president');
         Route::put('/users/{user}', [\App\Http\Controllers\Admin\UserController::class, 'update'])
             ->name('admin.users.update');
-        Route::put('/users/{user}/reset-password', [\App\Http\Controllers\Admin\UserController::class, 'resetPassword'])
+        // ⚠ POST（PUT ではない）。ログイン案内の画面をその場で返すので、ブラウザの再送信の確認が
+        //    出る経路になる（1 回限りの鍵 `guide_token` で 2 回目を止める。設計書 §5.12）
+        Route::post('/users/{user}/reset-password', [\App\Http\Controllers\Admin\UserController::class, 'resetPassword'])
             ->name('admin.users.resetPassword');
         Route::patch('/users/{user}/toggle-status', [\App\Http\Controllers\Admin\UserController::class, 'toggleStatus'])
             ->name('admin.users.toggleStatus');

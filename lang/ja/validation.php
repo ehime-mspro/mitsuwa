@@ -287,7 +287,7 @@ return [
         'qualifications' => '保有資格',
 
         // --- 認証・ユーザー・従業員 ---
-        'password' => 'パスワード',                    // 上書き: Admin/User は「初期パスワード」
+        'password' => 'パスワード',
         'password_confirmation' => 'パスワード（確認）',
         'current_password' => '現在のパスワード',
         'role' => 'ロール',
@@ -564,6 +564,7 @@ return [
         // --- 決裁申請 段階1 ---
         'login_id'             => 'ログインID',
         'employee_number'      => '社員番号',
+        'president_user_id'    => '決裁の社長',
 
     ],
 
