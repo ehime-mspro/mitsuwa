@@ -3159,6 +3159,7 @@ use App\Models\ApprovalSetting;
 use App\Models\User;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -3282,6 +3283,21 @@ class ApprovalTablesTest extends TestCase
 
         $this->assertTrue($user->fresh()->isApprovalPresident());
         $this->assertSame($user->id, ApprovalSetting::current()->president->id);
+    }
+
+    /**
+     * 設定の行は**必ず id=1**（表が空でなくても）。
+     *
+     * ⚠ これが無いと `firstOrCreate(['id' => 1])` に戻す変異を検出できない（実測で緑のまま通った）。
+     *   `RefreshDatabase` は毎回空の表から始まるので、`id` が `$fillable` に無くて作成時に
+     *   落ちても、自動採番の 1 件目がたまたま id=1 になり区別が付かない。
+     *   先に別の id の行を入れて、自動採番に頼っていたら 1 にならない状況を作る。
+     */
+    public function test_the_settings_row_is_always_id_one_even_when_the_table_is_not_empty(): void
+    {
+        DB::table('approval_settings')->insert(['id' => 5, 'president_user_id' => null]);
+
+        $this->assertSame(1, ApprovalSetting::current()->id, '設定の行が id=1 で作られていない（自動採番に頼っている）');
     }
 
     /** 決裁の権限を 1 つでも持っているか（D16 の判定） */
