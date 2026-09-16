@@ -7,14 +7,12 @@ use Illuminate\Support\Facades\Hash;
 /**
  * 初期パスワードの生成と暗号化（設計書 §5.11・D13）。
  *
- * 今ここを通るのは**再発行だけ**（`App\Support\Approval\PasswordReissuer`）。
+ * 基幹の新規登録・基幹の再発行・決裁の管理者の再発行が**ここを通る**（CSV の取込は Task 13 で寄せる）。
  *
- * ⚠ **基幹の利用者管理（`App\Http\Controllers\Admin\UserController`）はまだ移行していない。**
- *   新規登録は画面の JS（`Math.random` ＋ `sort(() => Math.random() - 0.5)` の偏るシャッフル）が
- *   作った値をそのまま受け取り、再発行は `generatePassword()`（`str_shuffle` ＝ 暗号用の乱数でない）で
- *   作って**平文をセッションのフラッシュ（`reset_password`）に入れている** —— 設計書 D12 が
- *   名指しして禁じている形で、sessions テーブルに平文が残る。**Task 10 でここへ寄せる。**
- *   CSV の取込（Task 13）も同じ。
+ * 以前は 2 系統あった: 画面の JS（`Math.random` ＋ `sort(() => Math.random() - 0.5)` の偏るシャッフル）と、
+ * コントローラの `generatePassword()`（`str_shuffle` ＝ 暗号用の乱数でない）。後者は作った平文を
+ * **セッションのフラッシュ（`reset_password`）に入れて**おり、sessions テーブルに残っていた
+ * （設計書 D12 が名指しして禁じた形）。どちらも Task 10 で消した。
  *
  * ⚠ 生成した平文は画面に 1 度出すだけ（ログイン案内）。DB・セッション・ログ・記録に残さない。
  */

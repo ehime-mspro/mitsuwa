@@ -153,10 +153,9 @@ class User extends Authenticatable
     /**
      * 初期パスワードを入れる（保存はしない。呼び出し側が `save()` する）。
      *
-     * 今ここを通るのは**再発行だけ**（`PasswordReissuer`）。
-     * 基幹の新規登録（Task 10）と CSV の一括登録（Task 13）も**ここに寄せる予定**だが、
-     * まだ `Admin\UserController` が独自に書いている。
-     * ⚠ 「すべてここを通る」と現在形で書かないこと — 次の読み手が grep して
+     * 再発行（`PasswordReissuer`）と基幹の新規登録（`Admin\UserController::store`）がここを通る。
+     * CSV の一括登録（Task 13）も**ここに寄せる予定**だが、まだ通っていない。
+     * ⚠ 移した／移していないを**現在形で正しく保つこと** — 次の読み手が grep して
      *   「守られている」と誤読する（Bug #42 ② と同型）。
      *
      * ⚠ Laravel の `hashed` キャストは「**今の設定より高いコストの済ハッシュ**」を弾く
