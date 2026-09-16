@@ -34,6 +34,8 @@ fi
 # 先頭の / は転送の一番上だけを指す指定。付けないと public/storage
 # （storage/app/public への symlink）まで巻き添えになる。
 # ※ 本番をゼロから作り直すときの storage のフォルダ作成は初期構築の仕事で、ここではやらない。
+# png も先頭スラッシュ付き。手元のスクリーンショットは .gitignore の /*.png と同じく
+# リポジトリの一番上に置く決まりで、public/images/ のロゴは本番に要る。
 echo "=== [2/6] アプリケーション転送 ==="
 rsync -avz \
   --exclude='.env' \
@@ -57,7 +59,7 @@ rsync -avz \
   --exclude='/storage/' \
   --exclude='.playwright-mcp' \
   --exclude='prod-login.png' \
-  --exclude='*.png' \
+  --exclude='/*.png' \
   --exclude='deploy.sh' \
   ./ ${SERVER}:${APP_PATH}/
 
