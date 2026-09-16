@@ -6,6 +6,7 @@ use App\Enums\UserRole;
 use App\Enums\UserStatus;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Auth;
 use Tests\TestCase;
 
 /**
@@ -77,6 +78,15 @@ class InactiveUserLockoutTest extends TestCase
      *
      * ⚠ ここが D7 の本体。セッションを捨てても、鍵（remember_token）の Cookie があると
      *   `SessionGuard` が自動で入り直す。門番が無いとそのまま通ってしまう。
+     *
+     * ⚠ **鍵の Cookie を手で送り直すこと。** Laravel のテスト用の `$this->get()` は、
+     *   前の応答の `Set-Cookie` を次のリクエストへ**自動では引き継がない**（BrowserKit と違う）。
+     *   引き継がないまま書くと「セッションが無いからゲスト」になるだけで、**無効化してもしなくても
+     *   同じ結果**になり、このテストは何も測らない（2026-09-16 に対照実験で実測。
+     *   無効化を消しても緑のまま通った）。
+     *
+     * ⚠ **先に「鍵だけで入り直せること」を確かめる**（下の対照）。ここが通らないと、
+     *   そのあとの「入り直せない」は鍵の仕組みが動いていないだけかもしれず、区別が付かない。
      */
     public function test_a_remembered_device_is_locked_out_too(): void
     {
@@ -87,16 +97,28 @@ class InactiveUserLockoutTest extends TestCase
             'must_change_password' => false,
         ]);
 
-        $this->post('/login', ['login_id' => 'M001', 'password' => 'password', 'remember' => '1']);
+        $login = $this->post('/login', ['login_id' => 'M001', 'password' => 'password', 'remember' => '1']);
         $this->assertAuthenticatedAs($user);
 
-        // セッションだけ捨てる（ブラウザを閉じた状態）。鍵の Cookie は残る
-        $this->app['session']->flush();
+        $recallerName = Auth::guard()->getRecallerName();
+        $recaller     = $login->getCookie($recallerName);
+        $this->assertNotNull($recaller, '「ログイン状態を保持」の鍵が発行されていない');
+
+        // 対照: セッションを捨てても、鍵だけで入り直せること（有効なうちは通る）
+        $this->flushSession();
         $this->app['auth']->forgetGuards();
 
+        $this->withCookie($recallerName, $recaller->getValue())
+            ->get('/dashboard/tenant')->assertOk();
+        $this->assertAuthenticatedAs($user);
+
+        // 本命: 無効化したら、同じ鍵では入り直せないこと
+        $this->flushSession();
+        $this->app['auth']->forgetGuards();
         $user->forceFill(['status' => UserStatus::Inactive->value])->save();
 
-        $this->get('/dashboard/tenant')->assertRedirect(route('login'));
+        $this->withCookie($recallerName, $recaller->getValue())
+            ->get('/dashboard/tenant')->assertRedirect(route('login'));
         $this->assertGuest();
     }
 
