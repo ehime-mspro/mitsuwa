@@ -211,8 +211,48 @@ class LoginIdentifierTest extends TestCase
         $this->submit('M001', 'password')->assertRedirect(route('password.change'));
     }
 
-    /** パスワード変更のあとも同じ規則で振り分ける（`/dashboard` のクロージャ） */
-    public function test_the_dashboard_route_uses_the_same_rule(): void
+    /**
+     * パスワード変更のあとも同じ規則で振り分ける（`/dashboard` のクロージャ）。
+     *
+     * ⚠ **決裁のみ利用者では、このクロージャを測れない。** `/dashboard` は
+     *   `RestrictApprovalOnlyUsers`（web グループの門番）に**先に**捕まり、門番が
+     *   `approvals.home` を決め打ちで返すので、クロージャの `homeRouteName()` に到達しない
+     *   （Task 6 の実装で実測: `homeRouteName()` を旧ロジックに戻す変異を当てても
+     *   このケースは緑のまま通った。Bug #48「安全網が主機構の変異を隠す」型）。
+     *   行き先は同じなので**利用者の体験は正しい**が、**測っている機構が違う**。
+     *   よってクロージャ自体は門番を通らないロールで測る。
+     */
+    #[DataProvider('dashboardClosureCases')]
+    public function test_the_dashboard_route_uses_the_same_rule(string $role, string $expected): void
+    {
+        $user = User::factory()->create([
+            'role'                 => $role,
+            'employee_number'      => 'M001',
+            'email'                => null,
+            'must_change_password' => false,
+        ]);
+
+        $this->actingAs($user)->get('/dashboard')->assertRedirect(route($expected));
+    }
+
+    public static function dashboardClosureCases(): array
+    {
+        return [
+            // 門番を通らないロール ＝ クロージャの homeRouteName() を実際に通る
+            '経営層'       => [UserRole::Executive->value, 'dashboard.executive'],
+            '部門管理者'   => [UserRole::Manager->value, 'dashboard.tenant'],
+            '一般担当者'   => [UserRole::Staff->value, 'dashboard.tenant'],
+        ];
+    }
+
+    /**
+     * 決裁のみ利用者が `/dashboard` を開いても決裁のホームに着くこと。
+     *
+     * ⚠ 上の注記のとおり、これを満たしているのは**クロージャではなく門番**。
+     *   行き先が同じなので、どちらの機構が効いていても利用者の体験は変わらない。
+     *   「門番が先に捕まえる」こと自体は `ApprovalOnlyLockoutTest` が全件分類で守っている。
+     */
+    public function test_an_approval_only_user_still_lands_on_the_approval_home(): void
     {
         $user = User::factory()->create([
             'role'                 => UserRole::ApprovalOnly->value,
