@@ -8,6 +8,7 @@ use App\Support\LoginId;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -103,6 +104,23 @@ class User extends Authenticatable
         return $this->hasMany(LoginHistory::class);
     }
 
+    /** 決裁の印（全件閲覧者・決裁の管理者） */
+    public function approvalMember(): HasOne
+    {
+        return $this->hasOne(ApprovalMember::class);
+    }
+
+    /**
+     * 決裁の所属部門（兼務可。設計書 §5.8）。
+     *
+     * ⚠ 基幹の `departments()` とは**別の表**（D1）。片方を変えてももう片方は変わらない。
+     */
+    public function approvalDepartments(): BelongsToMany
+    {
+        return $this->belongsToMany(ApprovalDepartment::class, 'approval_department_user', 'user_id', 'department_id')
+                    ->withPivot('created_at');
+    }
+
     // ============================================================
     // アクセサ / ヘルパー
     // ============================================================
@@ -135,6 +153,46 @@ class User extends Authenticatable
     public function isApprovalOnly(): bool
     {
         return $this->role === UserRole::ApprovalOnly;
+    }
+
+    /** 決裁の管理者に指定されているか（`approvals.admin.*` の門番が見る） */
+    public function isApprovalAdmin(): bool
+    {
+        return (bool) $this->approvalMember?->is_admin;
+    }
+
+    /** 全件閲覧者か（段階2 で使う） */
+    public function canViewAllApprovals(): bool
+    {
+        return (bool) $this->approvalMember?->can_view_all;
+    }
+
+    /** 決裁の社長に指定されているか */
+    public function isApprovalPresident(): bool
+    {
+        return ApprovalSetting::current()->president_user_id === $this->id;
+    }
+
+    /**
+     * 決裁の権限（社長・全件閲覧者・決裁の管理者）を 1 つでも持っているか。
+     *
+     * ⚠ D16 の判定。ここに該当する人への「再発行・無効化と有効化・氏名と社員番号の修正」は
+     *   基幹の管理者だけができる（決裁の管理者が指定された人になりすますのを防ぐ）。
+     */
+    public function hasApprovalPrivileges(): bool
+    {
+        return $this->isApprovalPresident() || $this->isApprovalAdmin() || $this->canViewAllApprovals();
+    }
+
+    /** D16 に当たるとき、画面に出す理由 */
+    public function approvalPrivilegeLabel(): ?string
+    {
+        return match (true) {
+            $this->isApprovalPresident() => '社長',
+            $this->isApprovalAdmin()     => '決裁の管理者',
+            $this->canViewAllApprovals() => '全件閲覧者',
+            default                      => null,
+        };
     }
 
     /**
