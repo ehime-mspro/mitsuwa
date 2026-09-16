@@ -16,8 +16,20 @@ final class LoginId
     /** 社員番号として認める形（D5。`-` は文字クラスの末尾に置いて範囲にしない） */
     public const EMPLOYEE_NUMBER_PATTERN = '/\A[A-Z0-9-]{1,20}\z/';
 
-    public static function normalize(?string $value): string
+    /**
+     * ⚠ 引数は `mixed`。**検証の前に呼ばれる経路がある**ので、配列や数値がそのまま届く:
+     *   試行の制限の鍵（`AppServiceProvider` のリミッタは `validate()` より前に走る）と、
+     *   フォームの正規化（`$request->merge()` で検証の前に整える）。
+     *   `?string` で受けると `login_id[]=a&login_id[]=b` を送るだけで TypeError の 500 になり、
+     *   しかもその 500 は**どちらの上限にも数えられない**ので無制限に叩ける（実測で再現）。
+     *   文字列にできない値は空として扱い、形式の誤りは呼び出し側の `validate()` に任せる。
+     */
+    public static function normalize(mixed $value): string
     {
+        if (! is_scalar($value) && $value !== null) {
+            return '';
+        }
+
         // 'a' = 全角の英数字と記号を半角へ / 's' = 全角の空白を半角へ
         $value = trim(mb_convert_kana((string) $value, 'as'));
 
@@ -44,13 +56,13 @@ final class LoginId
      *   忘れて生の値を渡すと、全角の `＠` を含む文字列が `employee_number` に化けて
      *   「正しいのにログインできない」になる。呼び出し側の規律に頼らない。
      */
-    public static function column(string $value): string
+    public static function column(mixed $value): string
     {
         return self::isEmail(self::normalize($value)) ? 'email' : 'employee_number';
     }
 
     /** ログイン試行を数える鍵（設計書 §5.4）。正規化してから組むので綴りの違いで回避できない */
-    public static function throttleKey(?string $loginId, string $ip): string
+    public static function throttleKey(mixed $loginId, string $ip): string
     {
         return self::normalize($loginId) . '|' . $ip;
     }

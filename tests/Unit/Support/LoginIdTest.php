@@ -39,6 +39,25 @@ class LoginIdTest extends TestCase
         $this->assertSame($expected, LoginId::normalize($input));
     }
 
+    /**
+     * ⚠ **検証の前に呼ばれる経路がある**ので、文字列でない値が届いても落ちないこと。
+     *   `?string` で受けていたころは `login_id[]=a` を送るだけでリミッタの中が
+     *   TypeError になり、生の 500 が返っていた（しかもどちらの上限にも数えられない）。
+     */
+    public function test_normalize_tolerates_non_string_input(): void
+    {
+        $this->assertSame('', LoginId::normalize(['a', 'b']));
+        $this->assertSame('', LoginId::normalize(new \stdClass()));
+        $this->assertSame('M001', LoginId::normalize('M001'));
+        // 数値は文字列として扱う（社員番号が数字だけのことがある）
+        $this->assertSame('123', LoginId::normalize(123));
+    }
+
+    public function test_throttle_key_tolerates_non_string_input(): void
+    {
+        $this->assertSame('|198.51.100.1', LoginId::throttleKey(['a'], '198.51.100.1'));
+    }
+
     public function test_is_email_looks_only_at_the_at_sign(): void
     {
         $this->assertTrue(LoginId::isEmail('a@b'));

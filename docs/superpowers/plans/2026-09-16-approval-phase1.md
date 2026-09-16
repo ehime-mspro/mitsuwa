@@ -343,6 +343,25 @@ class LoginIdTest extends TestCase
         $this->assertSame($expected, LoginId::normalize($input));
     }
 
+    /**
+     * ⚠ **検証の前に呼ばれる経路がある**ので、文字列でない値が届いても落ちないこと。
+     *   `?string` で受けていたころは `login_id[]=a` を送るだけでリミッタの中が
+     *   TypeError になり、生の 500 が返っていた（しかもどちらの上限にも数えられない）。
+     */
+    public function test_normalize_tolerates_non_string_input(): void
+    {
+        $this->assertSame('', LoginId::normalize(['a', 'b']));
+        $this->assertSame('', LoginId::normalize(new \stdClass()));
+        $this->assertSame('M001', LoginId::normalize('M001'));
+        // 数値は文字列として扱う（社員番号が数字だけのことがある）
+        $this->assertSame('123', LoginId::normalize(123));
+    }
+
+    public function test_throttle_key_tolerates_non_string_input(): void
+    {
+        $this->assertSame('|198.51.100.1', LoginId::throttleKey(['a'], '198.51.100.1'));
+    }
+
     public function test_is_email_looks_only_at_the_at_sign(): void
     {
         $this->assertTrue(LoginId::isEmail('a@b'));
@@ -414,8 +433,20 @@ final class LoginId
     /** 社員番号として認める形（D5。`-` は文字クラスの末尾に置いて範囲にしない） */
     public const EMPLOYEE_NUMBER_PATTERN = '/\A[A-Z0-9-]{1,20}\z/';
 
-    public static function normalize(?string $value): string
+    /**
+     * ⚠ 引数は `mixed`。**検証の前に呼ばれる経路がある**ので、配列や数値がそのまま届く:
+     *   試行の制限の鍵（`AppServiceProvider` のリミッタは `validate()` より前に走る）と、
+     *   フォームの正規化（`$request->merge()` で検証の前に整える）。
+     *   `?string` で受けると `login_id[]=a&login_id[]=b` を送るだけで TypeError の 500 になり、
+     *   しかもその 500 は**どちらの上限にも数えられない**ので無制限に叩ける（実測で再現）。
+     *   文字列にできない値は空として扱い、形式の誤りは呼び出し側の `validate()` に任せる。
+     */
+    public static function normalize(mixed $value): string
     {
+        if (! is_scalar($value) && $value !== null) {
+            return '';
+        }
+
         // 'a' = 全角の英数字と記号を半角へ / 's' = 全角の空白を半角へ
         $value = trim(mb_convert_kana((string) $value, 'as'));
 
@@ -442,13 +473,13 @@ final class LoginId
      *   忘れて生の値を渡すと、全角の `＠` を含む文字列が `employee_number` に化けて
      *   「正しいのにログインできない」になる。呼び出し側の規律に頼らない。
      */
-    public static function column(string $value): string
+    public static function column(mixed $value): string
     {
         return self::isEmail(self::normalize($value)) ? 'email' : 'employee_number';
     }
 
     /** ログイン試行を数える鍵（設計書 §5.4）。正規化してから組むので綴りの違いで回避できない */
-    public static function throttleKey(?string $loginId, string $ip): string
+    public static function throttleKey(mixed $loginId, string $ip): string
     {
         return self::normalize($loginId) . '|' . $ip;
     }
@@ -1367,6 +1398,22 @@ class LoginIdentifierTest extends TestCase
         $html = $this->get('/login')->assertOk()->getContent();
 
         $this->assertStringContainsString('社員番号・メールアドレスまたはパスワードが正しくありません。', $html);
+        $this->assertGuest();
+    }
+
+    /**
+     * 配列を送っても 500 にならないこと。
+     *
+     * ⚠ 試行の制限のリミッタは `validate()` より**前**に走り、`login_id` を生のまま読む。
+     *   `LoginId::normalize()` が文字列しか受けなかったころは、`login_id[]=a&login_id[]=b` を
+     *   送るだけで TypeError の 500 になり、**しかもどちらの上限にも数えられない**ので
+     *   未ログインのまま無制限に叩けた（Task 4 のコード品質レビューが実測して発見）。
+     */
+    public function test_an_array_identifier_does_not_crash(): void
+    {
+        $response = $this->post('/login', ['login_id' => ['a', 'b'], 'password' => 'whatever']);
+
+        $this->assertSame(302, $response->getStatusCode(), '配列を送ると 500 になっている');
         $this->assertGuest();
     }
 

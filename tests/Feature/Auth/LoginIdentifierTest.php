@@ -142,6 +142,22 @@ class LoginIdentifierTest extends TestCase
         $this->assertGuest();
     }
 
+    /**
+     * 配列を送っても 500 にならないこと。
+     *
+     * ⚠ 試行の制限のリミッタは `validate()` より**前**に走り、`login_id` を生のまま読む。
+     *   `LoginId::normalize()` が文字列しか受けなかったころは、`login_id[]=a&login_id[]=b` を
+     *   送るだけで TypeError の 500 になり、**しかもどちらの上限にも数えられない**ので
+     *   未ログインのまま無制限に叩けた（Task 4 のコード品質レビューが実測して発見）。
+     */
+    public function test_an_array_identifier_does_not_crash(): void
+    {
+        $response = $this->post('/login', ['login_id' => ['a', 'b'], 'password' => 'whatever']);
+
+        $this->assertSame(302, $response->getStatusCode(), '配列を送ると 500 になっている');
+        $this->assertGuest();
+    }
+
     public function test_blank_identifier_is_rejected_in_japanese(): void
     {
         $this->submit('', 'password');
