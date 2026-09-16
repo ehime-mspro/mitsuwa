@@ -8768,7 +8768,20 @@ Task 0 をまだ行っていなければここで行う。加えて:
 - users の行数と、employee_number 列がまだ無いこと
 - approval_* の 7 表がまだ無いこと
 - role の enum に approval_only がまだ無いこと
+- cache / cache_locks の 2 表が**あること**（下記）
 ```
+
+⚠ **`cache` テーブルが無いと、パスワード再発行とログインが両方止まる。**
+`config/cache.php` の既定は `env('CACHE_STORE', 'database')` で `.env.example` も `database`。
+これに乗っているものが 2 つある:
+
+- `App\Support\OneTimeAction`（`Cache::add`）— 無いと**ログイン案内の 1 回限りの鍵が作れず、
+  新規登録も再発行も無言で止まる**
+- ログイン試行の制限（`RateLimiter` → 同じキャッシュ）
+
+**ログイン制限は段階1 より前から動いている**（以前の `throttle:5,1` も同じ土台）ので、
+本番に `cache` 表は**すでにあるはず**だが、**無かった場合に壊れるものが大きい**ので必ず目で確かめる。
+無ければ `database/migrations/0001_01_01_000001_create_cache_table.php` の内容を先に流す。
 
 - [ ] **Step 3: DB を先に変える**
 
