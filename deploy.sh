@@ -36,6 +36,10 @@ fi
 # ※ 本番をゼロから作り直すときの storage のフォルダ作成は初期構築の仕事で、ここではやらない。
 # png も先頭スラッシュ付き。手元のスクリーンショットは .gitignore の /*.png と同じく
 # リポジトリの一番上に置く決まりで、public/images/ のロゴは本番に要る。
+# bootstrap/cache も本番が自分で育てる場所。手元で config:cache を打つと、手元の .env を写した
+# config.php（接続情報・暗号化キー入り）ができ、それが本番の config.php を上書きしてしまう。
+# [5/6] が本番の .env から作り直すまでの間、本番が手元の設定で動く（[5/6] が失敗すれば残る）。
+# packages.php と services.php は本番が最初のアクセス時に自分で作り直すので、外して支障ない。
 echo "=== [2/6] アプリケーション転送 ==="
 rsync -avz \
   --exclude='.env' \
@@ -57,6 +61,7 @@ rsync -avz \
   --exclude='phpunit.xml' \
   --exclude='*.log' \
   --exclude='/storage/' \
+  --exclude='/bootstrap/cache/' \
   --exclude='.playwright-mcp' \
   --exclude='prod-login.png' \
   --exclude='/*.png' \
