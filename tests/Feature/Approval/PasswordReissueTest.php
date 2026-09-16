@@ -266,13 +266,24 @@ class PasswordReissueTest extends TestCase
      *   よって**ソースの構造**で固定する。
      * ⚠ コメントを落としてから測る（docblock 自身が `route(` と書いているので、
      *   そのままだと実体を消しても緑のまま通る。Bug #42 ②）。
+     * ⚠ **両側を見る。** Mailable が `route()` を呼ばないことだけを固定しても、
+     *   呼び出し側が `config('app.url')` で組み立てたら同じ壊れ方をする
+     *   （最初この 1 本を Mailable だけに当てていて、呼び出し側への変異が緑のまま通った。
+     *   Bug #44 の「当たり先が正しいか」）。
      */
-    public function test_the_mailable_never_builds_the_url_itself(): void
+    public function test_the_login_url_comes_from_the_request_not_from_config(): void
     {
-        $source = $this->sourceWithoutComments(app_path('Mail/PasswordReissuedMail.php'));
+        // 受け取る側: 自分では組み立てない（キューの中で走るため）
+        $mailable = $this->sourceWithoutComments(app_path('Mail/PasswordReissuedMail.php'));
 
-        $this->assertStringNotContainsString('route(', $source, 'Mailable の中で URL を組み立てている（キューの中では APP_URL に頼ることになる）');
-        $this->assertStringNotContainsString("config('app.url')", $source);
+        $this->assertStringNotContainsString('route(', $mailable, 'Mailable の中で URL を組み立てている（キューの中では APP_URL に頼ることになる）');
+        $this->assertStringNotContainsString("config('app.url')", $mailable);
+
+        // 渡す側: その場のリクエストから作る（`config('app.url')` は本番の `/index.php` を含まない）
+        $caller = $this->sourceWithoutComments(app_path('Support/Approval/PasswordReissuer.php'));
+
+        $this->assertStringContainsString("route('login')", $caller, 'ログイン画面の URL をリクエストから作っていない');
+        $this->assertStringNotContainsString("config('app.url')", $caller, '設定から組み立てている（本番で /index.php が抜ける）');
     }
 
     /** コメントと docblock を落としたソース（注意書きに反応しないように。Bug #42 ②） */
