@@ -356,6 +356,16 @@ class LoginIdTest extends TestCase
     }
 
     /**
+     * ⚠ 正規化を忘れて生の値を渡されても取り違えないこと。
+     *   全角の `＠` は半角にしてから見ないと、メールアドレスが社員番号として引かれる。
+     */
+    public function test_column_normalizes_before_deciding(): void
+    {
+        $this->assertSame('email', LoginId::column(' Ｕｓｅｒ＠ｅｘａｍｐｌｅ.ｃｏｍ '));
+        $this->assertSame('employee_number', LoginId::column('　ｍ００１　'));
+    }
+
+    /**
      * 試行の制限の鍵。⚠ 大文字小文字・全角・前後の空白を変えても同じ鍵になること
      * （違う鍵になると、1 文字変えるだけで制限を回避できる）。
      */
@@ -423,10 +433,16 @@ final class LoginId
         return str_contains($value, '@');
     }
 
-    /** 正規化済みの値を引く列 */
-    public static function column(string $normalized): string
+    /**
+     * その値を引く列。
+     *
+     * ⚠ 中でもう一度 normalize() を通す（normalize() は冪等）。呼び出し側が正規化を
+     *   忘れて生の値を渡すと、全角の `＠` を含む文字列が `employee_number` に化けて
+     *   「正しいのにログインできない」になる。呼び出し側の規律に頼らない。
+     */
+    public static function column(string $value): string
     {
-        return self::isEmail($normalized) ? 'email' : 'employee_number';
+        return self::isEmail(self::normalize($value)) ? 'email' : 'employee_number';
     }
 
     /** ログイン試行を数える鍵（設計書 §5.4）。正規化してから組むので綴りの違いで回避できない */

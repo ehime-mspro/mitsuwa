@@ -37,10 +37,16 @@ final class LoginId
         return str_contains($value, '@');
     }
 
-    /** 正規化済みの値を引く列 */
-    public static function column(string $normalized): string
+    /**
+     * その値を引く列。
+     *
+     * ⚠ 中でもう一度 normalize() を通す（normalize() は冪等）。呼び出し側が正規化を
+     *   忘れて生の値を渡すと、全角の `＠` を含む文字列が `employee_number` に化けて
+     *   「正しいのにログインできない」になる。呼び出し側の規律に頼らない。
+     */
+    public static function column(string $value): string
     {
-        return self::isEmail($normalized) ? 'email' : 'employee_number';
+        return self::isEmail(self::normalize($value)) ? 'email' : 'employee_number';
     }
 
     /** ログイン試行を数える鍵（設計書 §5.4）。正規化してから組むので綴りの違いで回避できない */

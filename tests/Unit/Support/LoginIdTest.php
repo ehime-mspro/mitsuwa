@@ -54,6 +54,16 @@ class LoginIdTest extends TestCase
     }
 
     /**
+     * ⚠ 正規化を忘れて生の値を渡されても取り違えないこと。
+     *   全角の `＠` は半角にしてから見ないと、メールアドレスが社員番号として引かれる。
+     */
+    public function test_column_normalizes_before_deciding(): void
+    {
+        $this->assertSame('email', LoginId::column(' Ｕｓｅｒ＠ｅｘａｍｐｌｅ.ｃｏｍ '));
+        $this->assertSame('employee_number', LoginId::column('　ｍ００１　'));
+    }
+
+    /**
      * 試行の制限の鍵。⚠ 大文字小文字・全角・前後の空白を変えても同じ鍵になること
      * （違う鍵になると、1 文字変えるだけで制限を回避できる）。
      */
