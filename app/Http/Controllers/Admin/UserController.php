@@ -233,8 +233,7 @@ class UserController extends Controller
         if ($user->isApprovalPresident()
             && ($validated['status'] === UserStatus::Inactive->value || ($validated['email'] ?? null) === null)
         ) {
-            return redirect()->route('admin.users.index')
-                ->with('error', "{$user->name}さんは決裁の社長に指定されています。先に社長の指定を変えてください。");
+            return $this->refuseToTouchThePresident($user);
         }
 
         $before = [
@@ -290,8 +289,7 @@ class UserController extends Controller
         // 社長に指定されている人は無効化できない（§5.7）
         // ⚠ 「有効化」は止めない（社長を有効に戻すのは問題ない）
         if ($newStatus === UserStatus::Inactive->value && $user->isApprovalPresident()) {
-            return redirect()->route('admin.users.index')
-                ->with('error', "{$user->name}さんは決裁の社長に指定されています。先に社長の指定を変えてください。");
+            return $this->refuseToTouchThePresident($user);
         }
 
         // 自分自身の無効化を防止
@@ -330,6 +328,19 @@ class UserController extends Controller
     }
 
     /**
+     * 社長を守る断り（設計書 §5.7）。
+     *
+     * ⚠ **入口が 4 つある**（編集モーダルの無効化・編集モーダルのメール空・行の無効化・削除）。
+     *   逐語コピーにすると、片方だけ文言を直したときに同じ規則が 2 通りに割れる
+     *   （`EnsureUserIsActive::MESSAGE` と同じ理由で 1 か所に持つ）。
+     */
+    private function refuseToTouchThePresident(User $user): \Illuminate\Http\RedirectResponse
+    {
+        return redirect()->route('admin.users.index')
+            ->with('error', "{$user->name}さんは決裁の社長に指定されています。先に社長の指定を変えてください。");
+    }
+
+    /**
      * パスワードリセット（初期パスワード再発行）
      * Route: POST /admin/users/{user}/reset-password
      *
@@ -357,8 +368,7 @@ class UserController extends Controller
     {
         // 社長に指定されている人は削除できない（§5.7）
         if ($user->isApprovalPresident()) {
-            return redirect()->route('admin.users.index')
-                ->with('error', "{$user->name}さんは決裁の社長に指定されています。先に社長の指定を変えてください。");
+            return $this->refuseToTouchThePresident($user);
         }
 
         // 自分自身は削除不可
