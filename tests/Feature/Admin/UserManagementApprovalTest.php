@@ -241,6 +241,44 @@ class UserManagementApprovalTest extends TestCase
             ->assertSessionHasErrors('employee_number');
     }
 
+    /**
+     * メールアドレスの重複は大文字小文字を畳んで見る。
+     *
+     * ⚠ **社員番号だけで測ると、検証の前の正規化が load-bearing でなくなる**（実測）—
+     *   社員番号は `regex` が大文字と半角しか通さないので、正規化を外しても
+     *   「書式が違う」という別の理由で赤になり、テストが緑のままにならない。
+     *   メールアドレスには書式の縛りが無いので、正規化を外すと**そのまま登録できてしまう**
+     *   （テストの SQLite は大文字小文字を別物として扱うので DB にも守ってもらえない。
+     *   本番の MySQL はここで一意索引に当たって 500 になる）。
+     */
+    public function test_duplicate_email_detection_ignores_letter_case(): void
+    {
+        User::factory()->create(['email' => 'a@example.com', 'must_change_password' => false]);
+
+        [$form, $fields] = $this->createForm([
+            'name' => '乙 二郎', 'employee_number' => '', 'email' => 'A@Example.com',
+            'role' => UserRole::Staff->value, 'departments' => [$this->department->id],
+        ]);
+
+        $this->actingAs($this->executive())->post($form['action'], $fields)
+            ->assertSessionHasErrors('email');
+
+        $this->assertSame(0, User::where('name', '乙 二郎')->count());
+    }
+
+    /** 正規化は「拒む」だけでなく「通す」側にも効く（小文字・全角で入力しても登録できる） */
+    public function test_the_employee_number_is_normalized_before_validation(): void
+    {
+        [$form, $fields] = $this->createForm([
+            'name' => '丁 四郎', 'employee_number' => ' m002 ', 'email' => '',
+            'role' => UserRole::Staff->value, 'departments' => [$this->department->id],
+        ]);
+
+        $this->actingAs($this->executive())->post($form['action'], $fields)->assertOk();
+
+        $this->assertSame('M002', User::where('name', '丁 四郎')->sole()->employee_number);
+    }
+
     /** 新規登録のロールの選択肢に「決裁のみ」は出さない（CSV で作る） */
     public function test_the_create_form_does_not_offer_approval_only(): void
     {
@@ -556,8 +594,31 @@ class UserManagementApprovalTest extends TestCase
         return $this->formHtml($html, 'x-model="editName"');
     }
 
-    /** 決裁のみへ変えると基幹の所属部門が外れる（設計書 §5.7） */
+    /**
+     * 決裁のみへ変えると基幹の所属部門が外れる（設計書 §5.7）。
+     *
+     * ⚠ **チェックの付いた所属部門も一緒に送る。** 編集モーダルは `x-show` で欄を隠すだけなので、
+     *   実際のブラウザは隠れたチェックボックスも送ってくる（Top trap「同一 name ＋ x-show は
+     *   片方が hidden でも送信される」）。送らない形で測ると、`sync($validated['departments'] ?? [])`
+     *   に変えた変異が**緑のまま通る**（実測）— 何も送られなければ結果が同じになるため。
+     */
     public function test_switching_to_approval_only_drops_the_base_departments(): void
+    {
+        $target = User::factory()->create(['employee_number' => 'M001', 'email' => null, 'must_change_password' => false]);
+        $target->departments()->attach($this->department->id);
+
+        $this->actingAs($this->executive())->put(route('admin.users.update', $target), [
+            'name' => $target->name, 'employee_number' => 'M001', 'email' => '',
+            'role' => UserRole::ApprovalOnly->value, 'status' => UserStatus::Active->value,
+            'departments' => [$this->department->id],
+        ])->assertRedirect(route('admin.users.index'));
+
+        $this->assertCount(0, $target->fresh()->departments);
+        $this->assertTrue($target->fresh()->isApprovalOnly());
+    }
+
+    /** 所属部門を送らずに決裁のみへ変えるときも外れる（チェックが 1 つも無い状態の送信） */
+    public function test_switching_to_approval_only_without_any_department_field(): void
     {
         $target = User::factory()->create(['employee_number' => 'M001', 'email' => null, 'must_change_password' => false]);
         $target->departments()->attach($this->department->id);
@@ -568,7 +629,6 @@ class UserManagementApprovalTest extends TestCase
         ])->assertRedirect(route('admin.users.index'));
 
         $this->assertCount(0, $target->fresh()->departments);
-        $this->assertTrue($target->fresh()->isApprovalOnly());
     }
 
     /** 決裁のみから基幹のロールへ戻すときは所属部門が必須 */
