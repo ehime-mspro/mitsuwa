@@ -114,4 +114,21 @@ return [
 
     'password_timeout' => env('AUTH_PASSWORD_TIMEOUT', 10800),
 
+    /*
+    |--------------------------------------------------------------------------
+    | ログイン試行の制限（決裁申請 段階1・設計書 §5.4）
+    |--------------------------------------------------------------------------
+    |
+    | 失敗だけを数える。同じログイン ID と IP の組で per_login_id 回、同じ IP 全体で per_ip 回。
+    | per_ip が大きいのは、会社の PC が外から同じ IP になりやすく、説明会で一斉にログインして
+    | 初期パスワードの打ち間違いが重なっても止まらないようにするため。
+    |
+    */
+
+    'login_throttle' => [
+        'per_login_id'   => (int) env('LOGIN_THROTTLE_PER_LOGIN_ID', 5),
+        'per_ip'         => (int) env('LOGIN_THROTTLE_PER_IP', 30),
+        'decay_minutes'  => (int) env('LOGIN_THROTTLE_DECAY_MINUTES', 1),
+    ],
+
 ];

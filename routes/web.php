@@ -14,9 +14,10 @@ use Illuminate\Support\Facades\Route;
 // ゲスト（未認証）ユーザーのみアクセス可能
 Route::middleware('guest')->group(function () {
     Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
-    // ブルートフォース対策: ログイン試行を 1 分あたり 5 回に制限
+    // ブルートフォース対策（設計書 §5.4）: 失敗だけを「ID+IP」「IP」の 2 本で数える。
+    // 定義は AppServiceProvider::registerLoginRateLimiter()
     Route::post('/login', [AuthController::class, 'login'])
-        ->middleware('throttle:5,1');
+        ->middleware('throttle:login');
 });
 
 // 認証済みユーザー
