@@ -4970,8 +4970,17 @@ final class PasswordReissuer
         $notified = 0;
         $skipped  = 0;
 
-        foreach ($users as $user) {
-            $password = InitialPassword::generate();
+        // ⚠ 全体を 1 つのトランザクションで囲む。平文は戻り値にしか無いので、途中で落ちると
+        //    「もう変わっているのに誰も新しいパスワードを知らない人」が残る（実測で再現）。
+        //    ⚠ 再試行回数を足すなら、閉包の先頭の初期化を消さないこと（閉包が呼び直され、
+        //    参照で束ねた 3 つは試行をまたいで残る）。
+        DB::transaction(function () use ($users, $actorName, $loginUrl, $now, &$entries, &$notified, &$skipped) {
+            $entries  = [];
+            $notified = 0;
+            $skipped  = 0;
+
+            foreach ($users as $user) {
+                $password = InitialPassword::generate();
 
             // 強度 10 のハッシュを入れる手順は User::setInitialPassword() に 1 本化してある
             // （hashed キャストとの衝突の理由はそちらの docblock。再発行・新規登録・CSV が同じ道を通る）
@@ -5021,6 +5030,33 @@ final class ReissueResult
     }
 }
 ```
+
+> ### ⚠ 実装後のレビューで直したこと（`d3c3b686`〜`31f2ff31`。上のコードはこの修正込みが正）
+>
+> spec 適合で 1 件、コード品質で Critical 1・Important 6・Minor 3。**変異 19 通りのうち 9 通りが緑**で、
+> うち 7 通りが本物の穴だった（どれも実装でなくテスト設計の欠落）。
+>
+> 1. **通知メールの日時が UTC**（`config/app.php` の timezone は `'UTC'` の直書きで `env()` を通さない）。
+>    JST 20:32 の再発行が本文では「11:32」。段階0 の 2 本と同じ `setTimezone('Asia/Tokyo')` ＋「（日本時間）」に揃えた
+> 2. **Critical: トランザクションが無かった。** 途中で落ちると「もう変わっているのに誰も新しい
+>    パスワードを知らない人」が残る。同じ計画の Task 13 は囲っているのに、ここだけ囲っていなかった
+> 3. `ReissueResult::toGuide()` の**引数の順序が完全に無検査**。呼び出し元が 0 件（Task 10/12 でしか使わない）
+>    うえに `LoginGuideTest` の人数が **1 対 1** で、入れ替えが原理的に見えなかった
+>    → 実データで 2/1 になる往復テストに変え、`LoginGuideTest` の値も非対称にした
+> 4. `$tries = 1` / `failed()` の中身 / 記録の `target_id` / 件名 が無検査
+>    （`$tries` は消すと worker の `--tries=3 --backoff=60` に戻る**実挙動の変化**）
+> 5. **ログイン URL の構造テストを片側にしか当てていなかった** — Mailable だけを見ていたので、
+>    呼び出し側を `config('app.url')` に変える変異が緑のまま通った（Bug #44 の「当たり先が正しいか」）
+> 6. **docblock が現在形で嘘をついていた** — 「すべてここを通る」と書いてあるのに
+>    `Admin\UserController` は今も独自に書いている（Task 10 で寄せる）
+> 7. `DB::transaction` に**再試行を足すと**参照で束ねた累積変数が積み増され、巻き戻って使えない
+>    平文が紙に混ざる。今は発火しないが、閉包の先頭で初期化して理由を残した
+>
+> ⚠ **測れないと分かったもの**: ① `jobs` 行が一緒に巻き戻ること（`Mail::fake()` がキューの挿入を短絡する）
+> ② 再試行の積み増し（`RefreshDatabase` の入れ子では再試行の道に入らない）
+> ③ `Asia/Tokyo` → `Asia/Seoul`（どちらも UTC+9 ＝ 等価変異）
+>
+> テストは 8 本 → **15 本**（全体 1867 tests / 12197 assertions green）。
 
 - [ ] **Step 6: 通ることを確かめる → コミット**
 
