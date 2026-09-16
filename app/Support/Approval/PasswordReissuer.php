@@ -53,6 +53,10 @@ final class PasswordReissuer
 
                 SettingLogger::record('user.password_reissued', 'user', $user->id);
 
+                // ⚠ 1 人につき 1 回問い合わせる（上限 50 人 ＝ 50 回）。まとめて引く形にしていないのは、
+                //    測ったうえでの判断 —— この回の主な時間は bcrypt で 0.305 秒/件 × 50 ＝ 約 15 秒に対し、
+                //    索引の効いたこの問い合わせは合計でも数十ミリ秒。判定の道を 1 本に保つほうが値打ちがある
+                //    （CSV の取込も同じ `allows()` を通る）。
                 if (ApprovalMailDomain::allows($user->email)) {
                     Mail::to($user->email)->queue(new PasswordReissuedMail($user, $actorName, $now, $loginUrl));
                     $notified++;

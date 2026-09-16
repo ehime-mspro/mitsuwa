@@ -4,11 +4,10 @@ namespace App\Support\Approval;
 
 /**
  * 再発行の結果（設計書 §5.12 の案内の画面に渡す）。
- *
- * @property-read list<array{user: \App\Models\User, password: string}> $entries
  */
 final class ReissueResult
 {
+    /** @param  list<array{user: \App\Models\User, password: string}>  $entries */
     public function __construct(
         public readonly array $entries,
         public readonly int $notifiedCount,
