@@ -7,6 +7,7 @@ use App\Http\Middleware\EnsureUserIsActive;
 use App\Http\Middleware\RestrictApprovalOnlyUsers;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Route as RoutingRoute;
 use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
@@ -103,7 +104,19 @@ class ApprovalOnlyLockoutTest extends TestCase
 
             // ④ それ以外 — 実際に要求して止まることを見る
             $checked++;
-            $response = $this->actingAs($user)->call($method, $this->urlFor($route));
+            $url = $this->urlFor($route);
+
+            // ⚠ 組み立てた URL が**そのルート自身**に当たることを確かめる。`where` の条件を
+            //   満たさない値を入れると、ルーターが別のルートへ落ちるか 404 になり、
+            //   「検査したつもりで別のものを見ていた」になる（Bug #45 の型）。
+            //   いまは数字でない値を要求する `where` は無いが、足した人がここで気づける。
+            if (! $route->matches(Request::create($url, $method), includingMethod: false)) {
+                $problems[] = "{$label}: 組み立てた URL ({$url}) がこのルートに当たらない（where の条件を見直すこと）";
+
+                continue;
+            }
+
+            $response = $this->actingAs($user)->call($method, $url);
             $status   = $response->getStatusCode();
 
             if ($method === 'GET') {
@@ -125,6 +138,43 @@ class ApprovalOnlyLockoutTest extends TestCase
         // 走査が空振りして緑になる事故を防ぐ（2026-09-15 実測で全 430 本）
         $this->assertGreaterThan(400, $checked, 'ルートの走査に失敗している');
         $this->assertSame([], $problems, "決裁のみ利用者を止められていないルート:\n" . implode("\n", $problems));
+    }
+
+    /**
+     * `approvals.` の名前を名乗れるのは**決裁のコントローラだけ**であること。
+     *
+     * ⚠ 門番（`RestrictApprovalOnlyUsers`）も上の全件分類も、「ルート名が `approvals.` で
+     *   始まるか」という**同じ基準**で「安全」と判断している。だから誰かが機微なルートの名前を
+     *   `approvals.` に付け替えると、**門番は通し、分類のテストも検査対象から外す**
+     *   ＝ 二重に見落とす（Bug #45 の型）。名前の付け先を別の軸（コントローラの名前空間）で
+     *   縛って、その共犯関係を断つ。
+     */
+    public function test_only_approval_controllers_may_claim_the_approvals_name(): void
+    {
+        $offenders = [];
+        $found = 0;
+
+        foreach (Route::getRoutes() as $route) {
+            if (! str_starts_with((string) $route->getName(), 'approvals.')) {
+                continue;
+            }
+
+            $found++;
+            $controller = (string) $route->getAction('controller');
+
+            if (! str_starts_with($controller, 'App\\Http\\Controllers\\Approval\\')) {
+                $offenders[] = $route->getName() . ' => ' . ($controller ?: '(クロージャ)');
+            }
+        }
+
+        // 走査が空振りして緑になる事故を防ぐ
+        $this->assertGreaterThan(0, $found, 'approvals. のルートが 1 本も見つからない');
+
+        $this->assertSame(
+            [],
+            $offenders,
+            "決裁のコントローラ以外が approvals. の名前を名乗っています（門番が素通しします）:\n" . implode("\n", $offenders)
+        );
     }
 
     /** 決裁の画面には入れる */
@@ -202,11 +252,10 @@ class ApprovalOnlyLockoutTest extends TestCase
      */
     public function test_the_gates_run_before_route_model_binding(): void
     {
-        // ⚠ Illuminate\Routing\Router::$middlewarePriority は既定で空配列で、
-        //   Illuminate\Contracts\Http\Kernel が解決されて初めて（ApplicationBuilder::withMiddleware()
-        //   の afterResolving フックで）appendToPriorityList の内容が同期される。このテストは
-        //   HTTP リクエストを発行しないので、先にカーネルを解決しないと実装の正誤に関わらず
-        //   必ず空配列を読んでしまい「優先順のリストに無い」で落ちる（2026-09-16 実測）。
+        // ⚠ `Router::$middlewarePriority` は既定で空。`Illuminate\Contracts\Http\Kernel` が
+        //    解決されて初めて `appendToPriorityList` の内容が同期される（`ApplicationBuilder` の
+        //    afterResolving フック）。このテストは HTTP を出さないので、この 1 行が無いと
+        //    **実装の正誤に関係なく必ず**「優先順のリストに無い」で落ちる（実測）。
         $this->app->make(\Illuminate\Contracts\Http\Kernel::class);
 
         $priority = array_values(app('router')->middlewarePriority ?? []);
