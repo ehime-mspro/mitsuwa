@@ -237,10 +237,16 @@ class UserManagementApprovalTest extends TestCase
     }
 
     /**
-     * 入力エラーで差し戻されたら、同じ鍵でもう一度送れる。
+     * 入力エラーで差し戻されたら、同じ鍵でもう一度送れる
+     *   ＝ **起きなかった処理で鍵を焼かない**（設計書 §5.12）。
      *
-     * ⚠ 鍵を `validate()` の**前**で使うと、氏名の入れ忘れのようなただの入力エラーで鍵が焼け、
-     *   admin が直して送り直せなくなる（差し戻したフォームは同じ鍵を持ったまま再描画される）。
+     * ⚠ **このテストが守っているのは順序の規則そのものであって、画面の筋書きではない。**
+     *   実ブラウザでは同じ鍵を 2 回送る形にならない — hidden は描画のたびに
+     *   `OneTimeAction::issue()` を呼び、検証エラーは `back()`（＝一覧を GET し直す）なので
+     *   **毎回あたらしい鍵**になる（実測。`index.blade.php` に `old()` は 0 件）。
+     *   順序が本当に効くのは、確認画面を POST の応答として描き直す **CSV の確定（Task 13）**のような経路。
+     *   ⚠ ここに「差し戻したフォームは同じ鍵を持ったまま再描画される」と書いていたのは**誤り**だった。
+     *   誤った理由の注記は次の読み手を誤らせる（Bug #42 ②）。
      */
     public function test_a_validation_error_does_not_burn_the_guide_token(): void
     {
@@ -252,7 +258,7 @@ class UserManagementApprovalTest extends TestCase
         $this->actingAs($this->executive())->post($form['action'], $fields)
             ->assertSessionHasErrors('name');
 
-        // 氏名だけ直して、同じ鍵のまま送り直す
+        // 氏名だけ直して、同じ鍵のまま送り直す（＝ claim が検証の前なら、ここで焼けた鍵に当たって落ちる）
         $this->actingAs($this->executive())->post($form['action'], array_merge($fields, ['name' => '甲 一郎']))
             ->assertSessionHasNoErrors()->assertOk();
 
