@@ -61,8 +61,34 @@ class UserManagementApprovalTest extends TestCase
 
         $this->assertSame('POST', $form['method'], '新規登録フォームが POST でない');
         $this->assertArrayHasKey('_token', $form['fields'], '新規登録フォームに @csrf が無い');
+        // ⚠ 下の各テストは値を上書きして送るので、**画面の欄の name が変わっても緑のまま通る**（Bug #47）。
+        //    上書きの前に、画面が実際にその名前で描いていることを対で見る
+        $this->assertArrayHasKey('role', $form['fields'], '新規登録にロールの選択肢が無い');
+        $this->assertStringContainsString('name="employee_number"', $this->createFormHtml($html), '新規登録に社員番号の欄が無い');
+        $this->assertStringContainsString('name="email"', $this->createFormHtml($html), '新規登録にメールアドレスの欄が無い');
+        $this->assertStringContainsString('name="departments[]"', $this->createFormHtml($html), '新規登録に所属部門の欄が無い');
 
         return [$form, array_merge($form['fields'], $overrides)];
+    }
+
+    /** 新規登録フォームの HTML（編集モーダルの同名の欄に一致して false-pass するのを防ぐ） */
+    private function createFormHtml(string $html): string
+    {
+        return $this->formHtml($html, $this->createFormNeedle());
+    }
+
+    /** needle を含むフォームの HTML だけを切り出す（ページ全体で見ると別のフォームに一致する） */
+    private function formHtml(string $html, string $needle): string
+    {
+        $pos = strpos($html, $needle);
+        $this->assertNotFalse($pos, "フォームが見つからない: {$needle}");
+
+        $open  = strrpos(substr($html, 0, $pos), '<form');
+        $close = strpos($html, '</form>', $pos);
+        $this->assertNotFalse($open, "{$needle} を含む <form> の開始タグが見つからない");
+        $this->assertNotFalse($close, "{$needle} を含む <form> が閉じていない");
+
+        return substr($html, $open, $close - $open);
     }
 
     /** コメントを落としたソース（自分が書いた注意書きに一致して false-pass するのを防ぐ。Bug #42 ②） */
@@ -79,13 +105,23 @@ class UserManagementApprovalTest extends TestCase
         return $out;
     }
 
-    /** 一覧に社員番号の列がある */
+    /**
+     * 一覧に社員番号の列がある。
+     *
+     * ⚠ 素の `assertSee('M001')` は false-pass する（Bug #43）— 編集ボタンの
+     *   `openEditModal(…, {{ Js::from($u->employee_number) }}, …)` にも同じ文字列が出るので、
+     *   列を丸ごと消しても緑のまま通る（実測）。**セルごと**見る。
+     */
     public function test_the_list_shows_the_employee_number(): void
     {
         User::factory()->create(['name' => '甲 一郎', 'employee_number' => 'M001', 'must_change_password' => false]);
 
-        $this->actingAs($this->executive())->get('/admin/users')->assertOk()->assertSee('M001');
+        $html = $this->actingAs($this->executive())->get('/admin/users')->assertOk()->getContent();
+
+        $this->assertStringContainsString('>社員番号</th>', $html, '社員番号の見出しが無い');
+        $this->assertStringContainsString('>M001</td>', $html, '社員番号のセルが無い');
     }
+
 
     /** 検索は氏名・社員番号・メールを見る */
     public function test_search_covers_the_employee_number(): void
@@ -113,7 +149,26 @@ class UserManagementApprovalTest extends TestCase
 
         $this->assertStringNotContainsString('name="password"', $html, '初期パスワードの入力欄が残っている');
         $this->assertStringNotContainsString('Math.random', $html, '画面の JS がパスワードを作っている');
-        $this->assertStringContainsString('name="employee_number"', $html, '社員番号の入力欄が無い');
+        // ⚠ ページ全体で見ると**編集モーダル**の欄に一致するので、新規登録フォームの中だけを見る
+        $this->assertStringContainsString('name="employee_number"', $this->createFormHtml($html), '社員番号の入力欄が無い');
+    }
+
+    /**
+     * 「決裁のみ」は画面に出さないだけでなく、サーバーでも拒む。
+     *
+     * ⚠ 選択肢が無いことだけを見ると、手で組んだ送信が素通りする（Bug #47 の受け側）。
+     */
+    public function test_creating_an_approval_only_user_is_rejected(): void
+    {
+        [$form, $fields] = $this->createForm([
+            'name' => '丙 三郎', 'employee_number' => 'M900', 'email' => '',
+            'role' => UserRole::ApprovalOnly->value, 'departments' => [$this->department->id],
+        ]);
+
+        $this->actingAs($this->executive())->post($form['action'], $fields)
+            ->assertSessionHasErrors('role');
+
+        $this->assertSame(0, User::where('employee_number', 'M900')->count());
     }
 
     /** 新規登録すると案内の画面がその場で返る */
@@ -191,9 +246,7 @@ class UserManagementApprovalTest extends TestCase
     {
         $html = $this->actingAs($this->executive())->get('/admin/users')->assertOk()->getContent();
 
-        $pos    = strpos($html, $this->createFormNeedle());
-        $this->assertNotFalse($pos, '新規登録フォームが見つからない');
-        $create = substr($html, $pos, strpos($html, '</form>', $pos) - $pos);
+        $create = $this->createFormHtml($html);
 
         $this->assertStringNotContainsString(UserRole::ApprovalOnly->value, $create, '新規登録で決裁のみを選べてしまう');
         foreach (UserRole::baseCases() as $role) {
@@ -285,9 +338,11 @@ class UserManagementApprovalTest extends TestCase
 
         $this->assertSame('POST', $form['method']);
         $this->assertArrayHasKey('_token', $form['fields'], '社長の指定フォームに @csrf が無い');
+        // ⚠ 下で値を上書きするので、**欄の name が変わっても緑のまま通る**（Bug #47）。先に対で見る
+        $this->assertArrayHasKey('president_user_id', $form['fields'], '社長の候補の選択肢が無い');
         $this->assertStringContainsString(
-            'value="' . $candidate->id . '"',
-            $html,
+            '<option value="' . $candidate->id . '"',
+            $this->formHtml($html, 'action="' . route('admin.users.president') . '"'),
             '有効でメールアドレスのある人が候補に出ていない'
         );
 
@@ -297,6 +352,29 @@ class UserManagementApprovalTest extends TestCase
 
         $this->assertSame($candidate->id, ApprovalSetting::current()->president_user_id);
         $this->assertSame(1, ApprovalSettingLog::where('action', 'president.changed')->count());
+
+        // 指定した人が一覧の「決裁の社長」に出る（印も付く）
+        $html = $this->actingAs($this->executive())->get('/admin/users')->assertOk()->getContent();
+        $this->assertMatchesRegularExpression('/決裁の社長:.{0,200}社長 三郎/su', $html, '一覧に社長の氏名が出ていない');
+        $this->assertStringContainsString('>社長</span>', $html, '一覧の行に社長の印が無い');
+    }
+
+    /**
+     * 社長の候補は「有効でメールアドレスのある人」だけ（選択肢そのものを固定する）。
+     *
+     * ⚠ 受け側（`Rule::exists`）だけを見ると、**画面が候補を広げても**緑のまま通る。
+     */
+    public function test_the_president_candidates_exclude_inactive_and_mailless_users(): void
+    {
+        $ok       = User::factory()->create(['name' => 'アア 適格', 'email' => 'ok@example.com', 'must_change_password' => false]);
+        $noMail   = User::factory()->create(['name' => 'イイ 無メール', 'email' => null, 'employee_number' => 'M001', 'must_change_password' => false]);
+        $inactive = User::factory()->create(['name' => 'ウウ 無効', 'email' => 'ng@example.com', 'status' => UserStatus::Inactive->value, 'must_change_password' => false]);
+
+        $candidates = $this->actingAs($this->executive())->get('/admin/users')->assertOk()->viewData('presidentCandidates');
+
+        $this->assertTrue($candidates->contains('id', $ok->id));
+        $this->assertFalse($candidates->contains('id', $noMail->id), 'メールアドレスの無い人が候補に出ている');
+        $this->assertFalse($candidates->contains('id', $inactive->id), '無効な人が候補に出ている');
     }
 
     public function test_a_user_without_an_email_cannot_be_the_president(): void
@@ -361,6 +439,37 @@ class UserManagementApprovalTest extends TestCase
             ->assertSessionHas('success');
 
         $this->assertTrue($president->fresh()->isActive());
+    }
+
+    /**
+     * 状態の変更も記録に残る（設計書 §5.14 の表「ロール・状態…の変更」）。
+     *
+     * ⚠ 編集モーダル経由（`user.updated`）とは別の入口なので、そちらのテストでは守れない。
+     */
+    public function test_status_changes_from_the_row_action_are_recorded(): void
+    {
+        $target = User::factory()->create(['role' => UserRole::Staff->value, 'must_change_password' => false]);
+
+        $this->actingAs($this->executive())
+            ->patch(route('admin.users.toggleStatus', $target), ['status' => UserStatus::Inactive->value])
+            ->assertSessionHas('success');
+
+        $log = ApprovalSettingLog::where('action', 'user.status_changed')->sole();
+        $this->assertSame(['status' => 'active'], $log->old_values);
+        $this->assertSame(['status' => 'inactive'], $log->new_values);
+        $this->assertSame($target->id, $log->target_id);
+    }
+
+    /** 同じ状態を送り直しても記録を増やさない */
+    public function test_an_unchanged_status_is_not_recorded(): void
+    {
+        $target = User::factory()->create(['role' => UserRole::Staff->value, 'must_change_password' => false]);
+
+        $this->actingAs($this->executive())
+            ->patch(route('admin.users.toggleStatus', $target), ['status' => UserStatus::Active->value])
+            ->assertSessionHas('success');
+
+        $this->assertSame(0, ApprovalSettingLog::where('action', 'user.status_changed')->count());
     }
 
     /** 全件閲覧者・決裁の管理者の指定 */
@@ -441,16 +550,10 @@ class UserManagementApprovalTest extends TestCase
         $this->assertStringContainsString('name="_method" value="PUT"', $edit, '編集が PUT で送られない');
     }
 
-    /** 編集モーダルの HTML（`x-model="editName"` を持つフォーム） */
+    /** 編集モーダルの HTML（Alpine が `:action` を組み立てるので氏名の `x-model` を目印にする） */
     private function editModalHtml(string $html): string
     {
-        $pos = strpos($html, 'x-model="editName"');
-        $this->assertNotFalse($pos, '編集モーダルが見つからない');
-
-        $open  = strrpos(substr($html, 0, $pos), '<form');
-        $close = strpos($html, '</form>', $pos);
-
-        return substr($html, $open, $close - $open);
+        return $this->formHtml($html, 'x-model="editName"');
     }
 
     /** 決裁のみへ変えると基幹の所属部門が外れる（設計書 §5.7） */
