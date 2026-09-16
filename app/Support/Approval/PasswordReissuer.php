@@ -26,6 +26,13 @@ use Illuminate\Support\Facades\Mail;
  *   通知メールの `jobs` 行と記録も同じ DB なので一緒に巻き戻り、
  *   「起きなかった再発行の通知だけが届く」ことも防げる。
  *   CSV の一括登録（Task 13）も同じ理由で囲う。
+ *
+ * ⚠ 通知が一緒に巻き戻るのは **`QUEUE_CONNECTION=database` だから**（`config/queue.php` の
+ *   `'connection' => env('DB_QUEUE_CONNECTION')` が未設定＝既定の DB 接続なので、
+ *   `jobs` への挿入が同じトランザクションに乗る）。redis や sqs に替えると
+ *   **「起きなかった再発行の通知だけが届く」が無音で戻る**。
+ *   ⚠ **テストでは測れない** — `Mail::fake()` がキューの挿入そのものを短絡するので、
+ *   `jobs` 行が巻き戻ることを見ているテストは 1 本も無い（設定を読んで確かめるしかない）。
  */
 final class PasswordReissuer
 {
@@ -40,7 +47,19 @@ final class PasswordReissuer
         $notified = 0;
         $skipped  = 0;
 
+        // ⚠ 第 2 引数（再試行回数）を足すなら、下の 3 行の初期化を消さないこと。
+        //    `ManagesTransactions::transaction()` は失敗すると**閉包を丸ごと呼び直す**のに、
+        //    参照で束ねたこの 3 つは試行をまたいで残る（vendor で確認）。初期化しないと、
+        //    巻き戻って**もう使えない**平文が案内の紙に混ざり、人数も積み増される
+        //    ＝ このトランザクションで防いだはずの「誰も知らないパスワード」を別の道で作り直す。
+        //    ⚠ `RefreshDatabase` の入れ子の下では再試行の道に一度も入らないので、
+        //    **テストでは原理的に捕まえられない**（`handleTransactionException()` が
+        //    `$this->transactions > 1` のとき再試行せず投げる）。
         DB::transaction(function () use ($users, $actorName, $loginUrl, $now, &$entries, &$notified, &$skipped) {
+            $entries  = [];
+            $notified = 0;
+            $skipped  = 0;
+
             foreach ($users as $user) {
                 $password = InitialPassword::generate();
 

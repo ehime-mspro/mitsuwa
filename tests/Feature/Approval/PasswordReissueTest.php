@@ -212,6 +212,8 @@ class PasswordReissueTest extends TestCase
             'https://example.com/login',
         );
 
+        // ⚠ 先に存在を見る（消されたときの赤が「Undefined property」になって理由が読めないため）
+        $this->assertTrue(property_exists($mail, 'tries'), '$tries が無い（worker の --tries=3 に従うようになる）');
         $this->assertSame(1, $mail->tries);
     }
 
@@ -277,13 +279,14 @@ class PasswordReissueTest extends TestCase
         $mailable = $this->sourceWithoutComments(app_path('Mail/PasswordReissuedMail.php'));
 
         $this->assertStringNotContainsString('route(', $mailable, 'Mailable の中で URL を組み立てている（キューの中では APP_URL に頼ることになる）');
-        $this->assertStringNotContainsString("config('app.url')", $mailable);
+        $this->assertDoesNotMatchRegularExpression('/config\(\s*[\'"]app\.url/', $mailable);
 
         // 渡す側: その場のリクエストから作る（`config('app.url')` は本番の `/index.php` を含まない）
         $caller = $this->sourceWithoutComments(app_path('Support/Approval/PasswordReissuer.php'));
 
         $this->assertStringContainsString("route('login')", $caller, 'ログイン画面の URL をリクエストから作っていない');
-        $this->assertStringNotContainsString("config('app.url')", $caller, '設定から組み立てている（本番で /index.php が抜ける）');
+        // ⚠ 素の文字列一致だと `config("app.url")` が素通りする
+        $this->assertDoesNotMatchRegularExpression('/config\(\s*[\'"]app\.url/', $caller, '設定から組み立てている（本番で /index.php が抜ける）');
     }
 
     /** コメントと docblock を落としたソース（注意書きに反応しないように。Bug #42 ②） */
