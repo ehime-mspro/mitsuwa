@@ -72,6 +72,14 @@ class ApprovalSidebarTest extends TestCase
      *   接尾辞を足す改名を素通りさせる（実測。Bug #43 の型）。
      * ⚠ 行き先（href）と文字の**両方**を見る。片方だけだと、リンクは在るのに
      *   文字が変わった／文字は在るのに別の画面へ飛ぶ、のどちらかを見逃す。
+     * ⚠ **同じ `<a>` に載っていること**まで見る（3 つ目）。2026-09-18 のレビューまでは
+     *   href と文字を**独立に** 2 回見ているだけで、管理リンク 2 本の `:href` を
+     *   **入れ替えても緑**だった（「利用者の管理」を押すと部門の管理へ飛ぶ）。
+     *   docblock が謳う「文字は在るのに別の画面へ飛ぶ」を、まさに見逃していた。
+     * ⚠ 3 つに分けてあるのは**落ちた理由を区別するため**（Bug #44 の「理由の文言まで照合」）。
+     *   1 本にまとめると「行き先が無い」「文字が無い」「対応していない」が同じ赤になる。
+     * ⚠ `x-sidebar-item` の `<a>` の中はテキストのラベルだけ（`<span>` も `<svg>` も入らない）
+     *   なので、`<a>` タグごと 1 本の正規表現で当てられる。
      */
     private function assertHasLink(string $aside, string $href, string $label, string $where): void
     {
@@ -81,6 +89,26 @@ class ApprovalSidebarTest extends TestCase
             $aside,
             "{$where} に「{$label}」の文字が無い"
         );
+        $this->assertMatchesRegularExpression(
+            '#<a\b[^>]*\bhref="' . preg_quote($href, '#') . '"[^>]*>\s*' . preg_quote($label, '#') . '\s*</a>#u',
+            $aside,
+            "{$where}: 「{$label}」の文字と行き先が同じ <a> に載っていない（別の画面へ飛ぶ）"
+        );
+    }
+
+    /**
+     * その画面のどこにも「決裁」の文字が無いこと（D2 のラチェット）。
+     *
+     * ⚠ **段階2 でここは必ず落ちる。** 設計書の「先送りした項目 7」が
+     *   「基幹の左メニューに『決裁』と対応待ちの件数・ベルマークを出す」と決めているので、
+     *   そのときは**サイドバーの塊に狭める**（`sidebars()` で切り出してから見る）。
+     *   「無関係なテストが壊れた」と読んで消さないこと。
+     * ⚠ ページ**全体**を見る広さなので、本文にたまたま「決裁」が入っただけでも落ちる。
+     *   緑になる方向（見落とし）には振れないので、広いままにしてある。
+     */
+    private function assertNoApprovalMenu(string $html, string $message): void
+    {
+        $this->assertStringNotContainsString('決裁', $html, $message);
     }
 
     /**
@@ -205,7 +233,7 @@ class ApprovalSidebarTest extends TestCase
         // 基幹を使う人: 基幹サイドバーに「決裁の管理」が増えない
         $html = $this->actingAs($this->approvalViewer())->get('/dashboard/tenant')->assertOk()->getContent();
         $this->assertStringContainsString('テナントダッシュボード', $html, '基幹のサイドバーが消えている');
-        $this->assertStringNotContainsString('決裁', $html, '全件閲覧者に決裁の管理が出ている');
+        $this->assertNoApprovalMenu($html, '全件閲覧者に決裁の管理が出ている');
 
         // 決裁のみ利用者: 決裁サイドバーにホームだけが出る
         $sidebars = $this->sidebars(
@@ -229,7 +257,7 @@ class ApprovalSidebarTest extends TestCase
 
         $html = $this->actingAs($user)->get('/dashboard/tenant')->assertOk()->getContent();
 
-        $this->assertStringNotContainsString('決裁', $html, '一般の利用者の画面に決裁の文字が出ている');
+        $this->assertNoApprovalMenu($html, '一般の利用者の画面に決裁の文字が出ている');
     }
 
     /** 経営層（システム管理が見える人）でも、指定されていなければ決裁は出ない */
@@ -243,7 +271,7 @@ class ApprovalSidebarTest extends TestCase
         $html = $this->actingAs($user)->get('/dashboard/tenant')->assertOk()->getContent();
 
         $this->assertStringContainsString('システム管理', $html, '経営層なのにシステム管理が出ていない（前提が崩れている）');
-        $this->assertStringNotContainsString('決裁', $html, '決裁の管理者でない経営層に決裁が出ている');
+        $this->assertNoApprovalMenu($html, '決裁の管理者でない経営層に決裁が出ている');
     }
 
     /** ヘッダーのロール表示は自動で「決裁のみ」になる */
