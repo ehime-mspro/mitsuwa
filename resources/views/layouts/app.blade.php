@@ -48,7 +48,10 @@
 
         <div class="flex flex-1 overflow-hidden" style="min-height: 0;">
             {{-- サイドバー --}}
-            @include('layouts.partials.sidebar')
+            {{-- 決裁のみ利用者には決裁用のサイドバーを出す（設計書 §5.15）。
+                 基幹を使う人の画面は変えない（D2。決裁の管理へのリンクだけは、決裁の管理者に
+                 指定された人の基幹サイドバーに sidebar.blade.php が足す）。 --}}
+            @include(Auth::user()->isApprovalOnly() ? 'layouts.partials.sidebar_approval' : 'layouts.partials.sidebar')
 
             {{-- メインコンテンツ --}}
             <main class="flex-1 overflow-y-auto bg-gray-100" style="min-height: 0;">

@@ -19,6 +19,9 @@ use Tests\TestCase;
  *   グループの中身）は `x-cloak` を残す。外枠の `x-cloak` が無くなったので、グループの中身は自前の `x-cloak` だけが頼り
  *   （無いと Alpine の起動前に全グループが開いた状態で描かれる）。
  * ⚠ 描画した HTML で見る（コンポーネント `x-sidebar-group` の中身はビューのソースに現れない）。
+ * ⚠ 決裁のみ利用者に出る `sidebar_approval.blade.php` は
+ *   `tests/Feature/Approval/ApprovalSidebarTest.php` が同じ決まりを見る。**両方を対で維持すること。**
+ *   （このテストは基幹のサイドバーしか描画しないので、決裁側の `x-cloak` は原理的に見えない。）
  */
 class LayoutSidebarCloakTest extends TestCase
 {

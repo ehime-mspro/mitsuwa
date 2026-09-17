@@ -22,6 +22,9 @@
     $hasMansionAccess = $isExecutive || $user->belongsToDepartment('mansion');
     $hasDadAccess  = $isExecutive || $user->belongsToDepartment('dad');
     $hasZealAccess = $isExecutive || $user->belongsToDepartment('zeal');
+    // 決裁の管理者に指定された人だけ「決裁の管理」を出す（設計書 §5.15・D2）。
+    // 指定されていない人の画面は変わらない（段階1 で一般の利用者に見える変化はログイン画面だけ）。
+    $isApprovalAdmin = $user->isApprovalAdmin();
 @endphp
 
 {{-- ========== PC用: 展開サイドバー ========== --}}
@@ -140,6 +143,14 @@
             <x-sidebar-item :href="url('/zeal/simulations')" label="経営試算表" :active="request()->is('zeal/simulations*')" />
             <x-sidebar-item :href="url('/zeal/members')" label="会員管理" :active="request()->is('zeal/members*')" />
             <x-sidebar-item :href="url('/zeal/inquiries')" label="体験予約" :active="request()->is('zeal/inquiries*')" />
+        </x-sidebar-group>
+    @endif
+
+    {{-- 決裁の管理（決裁の管理者に指定された人だけ。設計書 §5.15・D2） --}}
+    @if($isApprovalAdmin)
+        <x-sidebar-group label="決裁の管理" section="approval">
+            <x-sidebar-item :href="route('approvals.admin.users.index')" label="利用者の管理" :active="request()->routeIs('approvals.admin.users.*')" />
+            <x-sidebar-item :href="route('approvals.admin.organization.index')" label="部門の管理" :active="request()->routeIs('approvals.admin.organization.*')" />
         </x-sidebar-group>
     @endif
 
@@ -294,6 +305,18 @@
         </a>
     @endif
 
+    {{-- 決裁の管理（決裁の管理者に指定された人だけ。設計書 §5.15・D2） --}}
+    @if($isApprovalAdmin)
+        <a href="{{ route('approvals.admin.users.index') }}" title="決裁の管理" class="w-9 h-9 mb-1 rounded-lg flex items-center justify-center {{ request()->routeIs('approvals.admin.*') ? 'bg-emerald-50' : 'hover:bg-gray-100' }} transition-colors">
+            <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="{{ request()->routeIs('approvals.admin.*') ? '#059669' : '#6B7280' }}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                {{-- クリップボード＋チェック（決裁） --}}
+                <path d="M9 2h6a1 1 0 0 1 1 1v2H8V3a1 1 0 0 1 1-1z" />
+                <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+                <polyline points="9 14 11 16 15 12" />
+            </svg>
+        </a>
+    @endif
+
     {{-- システム管理（経営層のみ。テナント / 不動産 / 住宅 / マスター サブ見出しを内包） --}}
     @if($isExecutive)
         <a href="{{ url('/admin/master/usage-types') }}" title="システム管理" class="w-9 h-9 mb-1 rounded-lg flex items-center justify-center {{ request()->is('admin/*') ? 'bg-emerald-50' : 'hover:bg-gray-100' }} transition-colors">
@@ -415,6 +438,14 @@
             <x-sidebar-item :href="url('/zeal/simulations')" label="経営試算表" :active="request()->is('zeal/simulations*')" />
             <x-sidebar-item :href="url('/zeal/members')" label="会員管理" :active="request()->is('zeal/members*')" />
             <x-sidebar-item :href="url('/zeal/inquiries')" label="体験予約" :active="request()->is('zeal/inquiries*')" />
+        </x-sidebar-group>
+    @endif
+
+    {{-- 決裁の管理（決裁の管理者に指定された人だけ。設計書 §5.15・D2） --}}
+    @if($isApprovalAdmin)
+        <x-sidebar-group label="決裁の管理" section="approval">
+            <x-sidebar-item :href="route('approvals.admin.users.index')" label="利用者の管理" :active="request()->routeIs('approvals.admin.users.*')" />
+            <x-sidebar-item :href="route('approvals.admin.organization.index')" label="部門の管理" :active="request()->routeIs('approvals.admin.organization.*')" />
         </x-sidebar-group>
     @endif
 

@@ -344,6 +344,12 @@ class PropertyListSortTest extends TestCase
      *   本数を決め打ちすると、無関係な変更で落ちる脆いテストになる。
      * ⚠ **定数分の増加（常に +5 本など）は原理的に検出しない。** 意図的なトレードオフで、
      *   絶対本数を決め打ちすると無関係な変更で落ちる脆いテストになるため。
+     * ⚠ **2 回の計測は必ず `fresh()` した別インスタンスで行う。** 同じ User オブジェクトを
+     *   `actingAs()` に渡すと、1 回目の描画で遅延ロードされたリレーションが 2 回目では
+     *   キャッシュ済みになり、**定数分の増加が 1 回目にだけ乗って「増えた」ように見える**
+     *   （2026-09-17 実測: サイドバーが `isApprovalAdmin()` で `approvalMember` を引くようになり
+     *   5 件で 4 本 / 25 件で 3 本になった。本番は毎リクエスト別インスタンスなので +1 が常に乗る）。
+     *   `fresh()` で揃えると本番の経路にも忠実になる（Bug #39 と同じ理由）。
      */
     public function test_the_query_count_does_not_grow_with_the_number_of_properties(): void
     {
@@ -357,14 +363,14 @@ class PropertyListSortTest extends TestCase
             $this->makeProperty($i, units: 1, contracted: 1, rentEach: $i * 10000);
         }
         $queries = 0;
-        $this->actingAs($user)->get(route('tenant.properties.index', ['sort' => 'income', 'dir' => 'desc']))->assertOk();
+        $this->actingAs($user->fresh())->get(route('tenant.properties.index', ['sort' => 'income', 'dir' => 'desc']))->assertOk();
         $withFive = $queries;
 
         for ($i = 6; $i <= 25; $i++) {
             $this->makeProperty($i, units: 1, contracted: 1, rentEach: $i * 10000);
         }
         $queries = 0;
-        $this->actingAs($user)->get(route('tenant.properties.index', ['sort' => 'income', 'dir' => 'desc']))->assertOk();
+        $this->actingAs($user->fresh())->get(route('tenant.properties.index', ['sort' => 'income', 'dir' => 'desc']))->assertOk();
         $withTwentyFive = $queries;
 
         $this->assertSame(
