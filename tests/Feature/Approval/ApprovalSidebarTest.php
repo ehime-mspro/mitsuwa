@@ -68,9 +68,15 @@ class ApprovalSidebarTest extends TestCase
             $this->assertStringContainsString(route('approvals.home'), $aside, "{$key} に決裁のホームへのリンクが無い");
         }
 
-        // 折りたたみ版はアイコンだけなので、ラベルは展開版とドロワーで見る
+        // 折りたたみ版はアイコンだけなので、ラベルは展開版とドロワーで見る。
+        // ⚠ 素の部分一致で見てはいけない — 「決裁のホームZZZ」に改名しても緑のまま通る（実測。Bug #43 の型）。
+        //   タグの境目ごと見る。
         foreach (['expanded', 'drawer'] as $key) {
-            $this->assertStringContainsString('決裁のホーム', $this->sidebars($html)[$key], "{$key} に「決裁のホーム」の文字が無い");
+            $this->assertMatchesRegularExpression(
+                '/>\s*決裁のホーム\s*</u',
+                $this->sidebars($html)[$key],
+                "{$key} に「決裁のホーム」のリンクが無い"
+            );
         }
     }
 
@@ -107,7 +113,8 @@ class ApprovalSidebarTest extends TestCase
         $sidebars = $this->sidebars($html);
 
         foreach (['expanded', 'drawer'] as $key) {
-            $this->assertStringContainsString('決裁の管理', $sidebars[$key], "{$key} に「決裁の管理」が無い");
+            // ⚠ タグの境目ごと見る（素の部分一致は接尾辞を足す改名を素通りさせる。Bug #43）
+            $this->assertMatchesRegularExpression('/>\s*決裁の管理\s*</u', $sidebars[$key], "{$key} に「決裁の管理」の見出しが無い");
             $this->assertStringContainsString(route('approvals.admin.users.index'), $sidebars[$key], "{$key} に利用者の管理が無い");
             $this->assertStringContainsString(route('approvals.admin.organization.index'), $sidebars[$key], "{$key} に部門の管理が無い");
         }
