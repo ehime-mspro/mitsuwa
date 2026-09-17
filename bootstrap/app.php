@@ -42,6 +42,16 @@ return Application::configure(basePath: dirname(__DIR__))
             \App\Http\Middleware\EnsureUserIsActive::class,
             \App\Http\Middleware\RestrictApprovalOnlyUsers::class,
         );
+
+        // 決裁の管理の 2 段目（`approval.admin`）も **SubstituteBindings より前**に出す。
+        //
+        // ⚠ ルートに付けた別名は既定では SubstituteBindings の後ろに並ぶので、権限の無い人が
+        //    存在しない ID を叩くと 403 でなく **404** が返り、「その会社・部門・ドメインが
+        //    実在するか」を数えられてしまう（実測）。上の 3 本と同じ理由・同じ流儀で前へ出す。
+        $middleware->appendToPriorityList(
+            \App\Http\Middleware\RestrictApprovalOnlyUsers::class,
+            \App\Http\Middleware\EnsureApprovalAdmin::class,
+        );
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //

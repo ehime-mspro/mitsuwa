@@ -126,6 +126,15 @@ class OrganizationController extends Controller
         return $this->back('部門を更新しました。');
     }
 
+    /**
+     * ⚠ **Task 12（利用者の管理）で所属を書けるようにする人へ。**
+     *   `users()` は既定のスコープなので、所属者が**論理削除された利用者だけ**の部門は
+     *   ここが 0 件と数え、中間テーブルの行ごと黙って消える。今は
+     *   `approval_department_user` に書き込む経路がアプリに 1 本も無いので到達しないが、
+     *   所属を編集できるようにした時点で実在する状態になる。そのとき
+     *   `users()->withTrashed()->count()` で止めるか、「削除済み N 人ぶんの所属も消える」と
+     *   画面で断るかを決めること。
+     */
     public function destroyDepartment(ApprovalDepartment $approvalDepartment)
     {
         $count = $approvalDepartment->users()->count();

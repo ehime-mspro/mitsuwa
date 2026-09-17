@@ -12,12 +12,7 @@
 @section('content')
 <div x-data="approvalOrganization()" x-cloak>
 
-    @if(session('success'))
-        <div class="mb-5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-[13px] text-emerald-800">{{ session('success') }}</div>
-    @endif
-    @if(session('error'))
-        <div class="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-800">{{ session('error') }}</div>
-    @endif
+    {{-- 成功・失敗の帯はレイアウトが出す（ここで出すと画面に 2 回出る）。$errors だけ各ビューの責任 --}}
     @if($errors->any())
         <div class="mb-5 rounded-lg border border-red-200 bg-red-50 p-4">
             <p class="text-[13px] font-semibold text-red-800 mb-1">入力内容にエラーがあります。</p>
@@ -153,7 +148,7 @@
 
     {{-- 会社の追加（追加と編集でフォームを分ける。基幹の利用者管理と同じ形）--}}
     <div x-show="companyCreateModal" class="fixed inset-0 bg-black/35 z-50 flex items-center justify-center" style="display:none;">
-        <div @click.outside="companyCreateModal = false" class="bg-white rounded-xl w-full max-w-[420px] shadow-xl mx-4">
+        <div @click.outside="companyCreateModal = false" class="bg-white rounded-xl w-full max-w-[420px] max-h-[90vh] overflow-y-auto shadow-xl mx-4">
             <form method="POST" action="{{ route('approvals.admin.organization.companies.store') }}">
                 @csrf
                 <div class="px-6 pt-5 text-[15px] font-bold text-gray-900">会社の追加</div>
@@ -185,7 +180,7 @@
 
     {{-- 会社の編集 --}}
     <div x-show="companyEditModal" class="fixed inset-0 bg-black/35 z-50 flex items-center justify-center" style="display:none;">
-        <div @click.outside="companyEditModal = false" class="bg-white rounded-xl w-full max-w-[420px] shadow-xl mx-4">
+        <div @click.outside="companyEditModal = false" class="bg-white rounded-xl w-full max-w-[420px] max-h-[90vh] overflow-y-auto shadow-xl mx-4">
             <form method="POST" :action="'{{ url('approvals/admin/organization/companies') }}/' + editCompanyId">
                 @csrf
                 @method('PUT')
@@ -219,7 +214,7 @@
 
     {{-- 部門の追加 --}}
     <div x-show="departmentCreateModal" class="fixed inset-0 bg-black/35 z-50 flex items-center justify-center" style="display:none;">
-        <div @click.outside="departmentCreateModal = false" class="bg-white rounded-xl w-full max-w-[420px] shadow-xl mx-4">
+        <div @click.outside="departmentCreateModal = false" class="bg-white rounded-xl w-full max-w-[420px] max-h-[90vh] overflow-y-auto shadow-xl mx-4">
             <form method="POST" action="{{ route('approvals.admin.organization.departments.store') }}">
                 @csrf
                 <div class="px-6 pt-5 text-[15px] font-bold text-gray-900">部門の追加</div>
@@ -261,7 +256,7 @@
 
     {{-- 部門の編集 --}}
     <div x-show="departmentEditModal" class="fixed inset-0 bg-black/35 z-50 flex items-center justify-center" style="display:none;">
-        <div @click.outside="departmentEditModal = false" class="bg-white rounded-xl w-full max-w-[420px] shadow-xl mx-4">
+        <div @click.outside="departmentEditModal = false" class="bg-white rounded-xl w-full max-w-[420px] max-h-[90vh] overflow-y-auto shadow-xl mx-4">
             <form method="POST" :action="'{{ url('approvals/admin/organization/departments') }}/' + editDepartmentId">
                 @csrf
                 @method('PUT')
