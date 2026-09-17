@@ -40,33 +40,33 @@
           class="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 mb-4 bg-white border border-gray-200 rounded-lg px-3.5 py-2.5">
         <select name="kind" class="h-8 px-2.5 border border-gray-300 rounded-md text-[12px] text-gray-700 bg-white focus:border-emerald-500 focus:outline-none cursor-pointer w-full sm:w-auto">
             <option value="">区分: すべて</option>
-            <option value="approval" {{ request('kind') === 'approval' ? 'selected' : '' }}>決裁のみ</option>
-            <option value="base" {{ request('kind') === 'base' ? 'selected' : '' }}>基幹も使う</option>
+            <option value="approval" {{ $filters['kind'] === 'approval' ? 'selected' : '' }}>決裁のみ</option>
+            <option value="base" {{ $filters['kind'] === 'base' ? 'selected' : '' }}>基幹も使う</option>
         </select>
         <select name="department" class="h-8 px-2.5 border border-gray-300 rounded-md text-[12px] text-gray-700 bg-white focus:border-emerald-500 focus:outline-none cursor-pointer w-full sm:w-auto">
             <option value="">決裁の所属部門: すべて</option>
-            <option value="none" {{ request('department') === 'none' ? 'selected' : '' }}>所属なし</option>
+            <option value="none" {{ $filters['department'] === 'none' ? 'selected' : '' }}>所属なし</option>
             @foreach($companies as $company)
                 @foreach($company->departments as $department)
-                    <option value="{{ $department->id }}" {{ (string) request('department') === (string) $department->id ? 'selected' : '' }}>{{ $company->name }} / {{ $department->name }}</option>
+                    <option value="{{ $department->id }}" {{ $filters['department'] === (string) $department->id ? 'selected' : '' }}>{{ $company->name }} / {{ $department->name }}</option>
                 @endforeach
             @endforeach
         </select>
         <select name="status" class="h-8 px-2.5 border border-gray-300 rounded-md text-[12px] text-gray-700 bg-white focus:border-emerald-500 focus:outline-none cursor-pointer w-full sm:w-auto">
             <option value="">状態: すべて</option>
             @foreach(App\Enums\UserStatus::cases() as $case)
-                <option value="{{ $case->value }}" {{ request('status') === $case->value ? 'selected' : '' }}>{{ $case->label() }}</option>
+                <option value="{{ $case->value }}" {{ $filters['status'] === $case->value ? 'selected' : '' }}>{{ $case->label() }}</option>
             @endforeach
         </select>
         <label class="flex items-center gap-1.5 text-[12px] text-gray-700 cursor-pointer">
-            <input type="checkbox" name="never_logged_in" value="1" {{ request()->boolean('never_logged_in') ? 'checked' : '' }}
+            <input type="checkbox" name="never_logged_in" value="1" {{ $filters['never_logged_in'] === '1' ? 'checked' : '' }}
                    class="w-[15px] h-[15px] accent-emerald-600 cursor-pointer">
             一度もログインしていない人だけ
         </label>
-        <input type="text" name="search" value="{{ request('search') }}" placeholder="氏名・社員番号・メールで検索"
+        <input type="text" name="search" value="{{ $filters['search'] }}" placeholder="氏名・社員番号・メールで検索"
                class="h-8 px-2.5 border border-gray-300 rounded-md text-[12px] text-gray-700 bg-white focus:border-emerald-500 focus:outline-none w-full sm:flex-1 sm:min-w-[140px]">
         <button type="submit" class="h-8 px-3.5 bg-gray-50 border border-gray-300 rounded-md text-[12px] text-gray-700 hover:bg-gray-100 cursor-pointer transition-colors w-full sm:w-auto">検索</button>
-        @if(request()->anyFilled(['kind', 'department', 'status', 'never_logged_in', 'search']))
+        @if(collect($filters)->contains(fn ($value) => $value !== ''))
             <a href="{{ route('approvals.admin.users.index') }}" class="text-[12px] text-gray-500 hover:text-emerald-600 transition-colors text-center sm:text-left">クリア</a>
         @endif
     </form>
@@ -80,26 +80,65 @@
         {{-- 1 回限りの鍵はサーバーで描く（:value にすると往復テストが拾えず配線が無防備になる。Bug #47）。
              1 ページの読み込みにつき 1 つ ＝ ブラウザの再送信では同じ鍵になり 2 回目が止まる --}}
         <input type="hidden" name="guide_token" value="{{ \App\Support\OneTimeAction::issue() }}">
-        @foreach(['kind', 'department', 'status', 'never_logged_in', 'search'] as $key)
-            <input type="hidden" name="{{ $key }}" value="{{ request($key) }}">
+        {{-- ⚠ `request($key)` を素で出さない。配列（`?search[]=a`）で 500 になる。
+             コントローラが正規化した $filters を使う（`filteredQuery()` と同じ値）--}}
+        @foreach($filters as $key => $value)
+            <input type="hidden" name="{{ $key }}" value="{{ $value }}">
         @endforeach
 
         <div class="flex flex-wrap items-center gap-2 mb-3">
             {{-- ⚠ 押せない理由はボタン自身の title では出ない（ホバーを受ける span で包む。Bug #43）。
-                 ⚠ 確認は素の onclick で行う。Alpine の @@click は式の戻り値を見ないうえ、評価器が
-                   `__self.result = <式>` に埋め込むので `return confirm(…)` は構文エラーになり、
-                   確認が出ないまま送信される（evaluator.js:96 を実測） --}}
+                 ⚠ この 2 つは `type="button"` で、押すと確認のモーダルを開くだけ（設計書 §5.9 は
+                   「確認のモーダルに人数と氏名を出す」と定めている）。実際に送るのはモーダルの中の
+                   submit ボタンで、`name="mode"` の値はサーバーが描く（`:value` にすると往復テストが
+                   拾えず配線が無防備になる。Bug #47）。
+                 ⚠ 素の `onclick="return confirm(…)"` には戻せない — 人数も氏名も出せない。
+                   Alpine の `@@click` も不可で、評価器が `__self.result = <式>` に埋め込むため
+                   `return confirm(…)` は構文エラーになり、確認が出ないまま送信される（evaluator.js:96 を実測）--}}
             <span :title="selected.length === 0 ? '再発行する利用者を、表の左端の選択欄で選んでください。' : null" style="display: inline-flex;">
-                <button type="submit" name="mode" value="selected" :disabled="selected.length === 0"
-                        onclick="return confirm('選んだ利用者のパスワードを再発行します。印刷用の案内が開きます。よろしいですか。');"
+                <button type="button" @click="openConfirm('selected')" :disabled="selected.length === 0"
                         class="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-[12px] font-semibold rounded-md cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">選んだ <span x-text="selected.length">0</span> 人を再発行</button>
             </span>
             <span @if($reissuableCount === 0) title="この絞り込みには、再発行できる利用者がいません。" @endif style="display: inline-flex;">
-                <button type="submit" name="mode" value="filtered" @if($reissuableCount === 0) disabled @endif
-                        onclick="return confirm('絞り込んだ全員のパスワードを再発行します。印刷用の案内が開きます。よろしいですか。');"
+                <button type="button" @click="openConfirm('filtered')" @if($reissuableCount === 0) disabled @endif
                         class="px-3 py-1.5 bg-white border border-amber-300 text-amber-700 text-[12px] font-semibold rounded-md cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">絞り込んだ全員（{{ $reissuableCount }} 人）を再発行</button>
             </span>
             <span class="text-[12px] text-gray-500">一度に再発行できるのは {{ config('approval.bulk_reissue_max') }} 人までです。決裁だけを使う有効な利用者のうち、決裁の権限に指定されていない人が対象です。</span>
+        </div>
+
+        {{-- 再発行の確認（設計書 §5.9）。一度に何十人ものパスワードが変わるので、
+             人数と氏名を出してから確定させる。このモーダルは**まとめて再発行のフォームの中**に置く
+             （外に出すと submit ボタンがどのフォームにも属さなくなる）--}}
+        <div x-show="confirmOpen" class="fixed inset-0 bg-black/35 z-50 flex items-center justify-center" style="display:none;">
+            <div @click.outside="confirmOpen = false" class="bg-white rounded-xl w-full max-w-[520px] max-h-[90vh] overflow-y-auto shadow-xl mx-4">
+                <div class="px-6 pt-5 text-[15px] font-bold text-gray-900">パスワードの再発行</div>
+                <div class="px-6 py-4 space-y-3">
+                    <p class="text-[13px] text-gray-700">
+                        次の <span class="font-bold text-amber-700" x-text="confirmCount">0</span> 人のパスワードを再発行します。
+                        いまのパスワードは使えなくなり、印刷用の案内が開きます。
+                    </p>
+                    <ul class="border border-gray-200 rounded-md px-3 py-2 max-h-[220px] overflow-y-auto text-[13px] text-gray-700 space-y-0.5">
+                        {{-- ⚠ :key は付けない。同姓同名が居ると重複キーになる（並びは固定なので添字で足りる）--}}
+                        <template x-for="person in confirmNames">
+                            <li x-text="person"></li>
+                        </template>
+                    </ul>
+                    <p class="text-[12px] text-gray-500" x-show="confirmCount > confirmNames.length" style="display:none;">
+                        ほか <span x-text="confirmCount - confirmNames.length"></span> 人（全員が対象です）
+                    </p>
+                    <p class="text-[12px] text-gray-500" x-show="confirmMode === 'filtered'" style="display:none;">
+                        対象は確定のときにもう一度絞り込み直すので、いま表示している氏名と入れ替わることがあります。
+                    </p>
+                </div>
+                <div class="px-6 pb-5 flex justify-end gap-2">
+                    <button type="button" @click="confirmOpen = false" class="px-3.5 py-2 bg-white border border-gray-300 rounded-md text-[13px] cursor-pointer">やめる</button>
+                    {{-- ⚠ `mode` の値はサーバーが描く。2 本を x-show で出し分け、Alpine のバインドにしない --}}
+                    <button type="submit" name="mode" value="selected" x-show="confirmMode === 'selected'" style="display:none;"
+                            class="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-md text-[13px] font-semibold cursor-pointer">再発行する</button>
+                    <button type="submit" name="mode" value="filtered" x-show="confirmMode === 'filtered'" style="display:none;"
+                            class="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-md text-[13px] font-semibold cursor-pointer">再発行する</button>
+                </div>
+            </div>
         </div>
     </form>
 
@@ -133,7 +172,10 @@
                     <tr class="{{ $u->status === App\Enums\UserStatus::Inactive ? 'opacity-60' : '' }} hover:bg-gray-50">
                         <td class="px-3.5 py-2.5 border-b border-gray-100 w-[1%]">
                             @if($manageable && $u->status === App\Enums\UserStatus::Active)
+                                {{-- ⚠ form 属性でまとめて再発行のフォームへ結び付ける（表を <form> で囲むと入れ子になる）。
+                                     data-name は確認のモーダルが氏名を出すために読む --}}
                                 <input type="checkbox" name="user_ids[]" value="{{ $u->id }}" form="approvalBulkReissue" x-model="selected"
+                                       data-name="{{ $u->name }}"
                                        aria-label="{{ $u->name }}さんを選ぶ" class="w-[15px] h-[15px] accent-emerald-600 cursor-pointer">
                             @elseif($privilegeLabel !== null)
                                 <span title="{{ $refusal }}" class="text-[11px] text-gray-400">—</span>
@@ -293,9 +335,42 @@
 
 @push('scripts')
 <script>
+// 「絞り込んだ全員」の確認に出す氏名と人数。サーバーが数え直した値で、画面の人数表示と同じ出どころ。
+// ⚠ Js::from を使う（@@json は属性でも <script> でも構造の " を素のまま出す。Bug #23）
+var APPROVAL_FILTERED_NAMES = {{ \Illuminate\Support\Js::from($reissuableNames) }};
+var APPROVAL_FILTERED_COUNT = {{ (int) $reissuableCount }};
+
 function approvalUsers() {
     return {
         selected: [],
+
+        confirmOpen: false,
+        confirmMode: 'selected',
+        confirmNames: [],
+        confirmCount: 0,
+
+        // 選んだ人の氏名は、選択欄そのものが持つ data-name から引く
+        // （サーバーが描いた行と 1 対 1 なので、別に一覧を持たなくてよい）
+        selectedNames() {
+            return this.selected.map(function (id) {
+                var box = document.querySelector('input[name="user_ids[]"][value="' + id + '"]');
+                return box ? box.getAttribute('data-name') : '';
+            }).filter(function (name) { return name !== ''; });
+        },
+
+        openConfirm(mode) {
+            this.confirmMode = mode;
+
+            if (mode === 'selected') {
+                this.confirmNames = this.selectedNames();
+                this.confirmCount = this.selected.length;
+            } else {
+                this.confirmNames = APPROVAL_FILTERED_NAMES.slice();
+                this.confirmCount = APPROVAL_FILTERED_COUNT;
+            }
+
+            this.confirmOpen = true;
+        },
 
         editModal: false,
         editUserId: null,

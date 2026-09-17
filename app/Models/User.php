@@ -118,8 +118,11 @@ class User extends Authenticatable
      */
     public function approvalDepartments(): BelongsToMany
     {
+        // ⚠ `withPivot` だけだと `created_at` を**読む**宣言にしかならず、`sync()` は書かないので
+        //   いつ所属になったかが永久に NULL のままになる。第 2 引数の `false` で `updated_at` を
+        //   外す（この中間表は `created_at` しか持たない）。
         return $this->belongsToMany(ApprovalDepartment::class, 'approval_department_user', 'user_id', 'department_id')
-                    ->withPivot('created_at');
+                    ->withTimestamps('created_at', false);
     }
 
     // ============================================================
@@ -215,10 +218,12 @@ class User extends Authenticatable
     /** D16 に当たるとき、画面に出す理由 */
     public function approvalPrivilegeLabel(): ?string
     {
+        // ⚠ すべて「決裁の」から始める（設計書 §5.9 の断りの文言は §5.7 と同じ形）。
+        //   呼ぶ側で前に「決裁の」を足すと「決裁の決裁の管理者」になるので、ここで完成させる。
         return match (true) {
-            $this->isApprovalPresident() => '社長',
+            $this->isApprovalPresident() => '決裁の社長',
             $this->isApprovalAdmin()     => '決裁の管理者',
-            $this->canViewAllApprovals() => '全件閲覧者',
+            $this->canViewAllApprovals() => '決裁の全件閲覧者',
             default                      => null,
         };
     }

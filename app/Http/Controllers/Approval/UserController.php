@@ -14,6 +14,7 @@ use App\Support\LoginId;
 use App\Support\OneTimeAction;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 /**
@@ -32,11 +33,14 @@ use Illuminate\Validation\Rule;
  */
 class UserController extends Controller
 {
+    /** 確認のモーダルに並べる氏名の上限（超えた分は「ほか N 人」にまとめる） */
+    private const CONFIRM_NAME_LIMIT = 30;
+
     public function index(Request $request)
     {
         $users = $this->filteredQuery($request)
             ->with(['approvalDepartments', 'approvalMember'])
-            ->orderByRaw("CASE WHEN status = 'active' THEN 0 ELSE 1 END")
+            ->orderByRaw('CASE WHEN status = ? THEN 0 ELSE 1 END', [UserStatus::Active->value])
             ->orderBy('name')
             ->paginate(20)
             ->withQueryString();
@@ -46,10 +50,21 @@ class UserController extends Controller
         //   押した結果と食い違う）。確定のときと同じ問い合わせを通す。
         $reissuableCount = $this->manageableQuery($this->filteredQuery($request))->count();
 
+        // 確認のモーダルに出す氏名（設計書 §5.9「確認のモーダルに人数と氏名を出す」）。
+        // ⚠ 人数は上の `$reissuableCount` が正本で、こちらは**表示のために頭から数人**だけ引く。
+        //   氏名は押した時点の見込みで、確定のときサーバーがもう一度引き直す。
+        $reissuableNames = $this->manageableQuery($this->filteredQuery($request))
+            ->orderBy('name')->limit(self::CONFIRM_NAME_LIMIT)->pluck('name')->all();
+
         $companies = ApprovalCompany::with(['departments' => fn ($q) => $q->orderBy('sort_order')->orderBy('id')])
             ->orderBy('sort_order')->orderBy('id')->get();
 
-        return view('approvals.admin.users.index', compact('users', 'companies', 'reissuableCount'));
+        // ⚠ 画面は `request(...)` を素で出さない。配列（`?search[]=a`）が来ると
+        //   `{{ }}` の `e()` が `Array to string conversion` で**画面ごと 500** になる
+        //   （コントローラ側だけ直しても防げない。実測でテストが検出した）。
+        $filters = $this->filterValues($request);
+
+        return view('approvals.admin.users.index', compact('users', 'companies', 'reissuableCount', 'reissuableNames', 'filters'));
     }
 
     /**
@@ -60,28 +75,32 @@ class UserController extends Controller
     {
         $query = User::query();
 
-        if ($request->input('kind') === 'approval') {
+        $kind       = $this->scalarInput($request, 'kind');
+        $department = $this->scalarInput($request, 'department');
+        $status     = $this->scalarInput($request, 'status');
+        $search     = $this->scalarInput($request, 'search');
+
+        if ($kind === 'approval') {
             $query->where('role', UserRole::ApprovalOnly->value);
-        } elseif ($request->input('kind') === 'base') {
+        } elseif ($kind === 'base') {
             $query->baseUsers();
         }
 
-        if ($request->input('department') === 'none') {
+        if ($department === 'none') {
             $query->whereDoesntHave('approvalDepartments');
-        } elseif ($request->filled('department')) {
-            $query->whereHas('approvalDepartments', fn ($q) => $q->where('approval_departments.id', $request->input('department')));
+        } elseif ($department !== '') {
+            $query->whereHas('approvalDepartments', fn ($q) => $q->where('approval_departments.id', $department));
         }
 
-        if (in_array($request->input('status'), [UserStatus::Active->value, UserStatus::Inactive->value], true)) {
-            $query->where('status', $request->input('status'));
+        if (in_array($status, [UserStatus::Active->value, UserStatus::Inactive->value], true)) {
+            $query->where('status', $status);
         }
 
         if ($request->boolean('never_logged_in')) {
             $query->whereNull('last_login_at');
         }
 
-        if ($request->filled('search')) {
-            $search = $request->input('search');
+        if ($search !== '') {
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
                   ->orWhere('employee_number', 'like', "%{$search}%")
@@ -90,6 +109,39 @@ class UserController extends Controller
         }
 
         return $query;
+    }
+
+    /**
+     * 画面が使う絞り込みの値。`filteredQuery()` と同じ正規化を通し、素の文字列だけにそろえる。
+     *
+     * @return array<string, string>
+     */
+    private function filterValues(Request $request): array
+    {
+        return [
+            'kind'            => $this->scalarInput($request, 'kind'),
+            'department'      => $this->scalarInput($request, 'department'),
+            'status'          => $this->scalarInput($request, 'status'),
+            // 判定は `boolean()` に任せる（'1' / 'on' / 'true' を同じに扱う）
+            'never_logged_in' => $request->boolean('never_logged_in') ? '1' : '',
+            'search'          => $this->scalarInput($request, 'search'),
+        ];
+    }
+
+    /**
+     * クエリ文字列は配列でも届く（`?search[]=a`）。素の値として使う前に単一の値だけを通す。
+     *
+     * ⚠ 配列のまま使うと `"%{$search}%"` が `Array to string conversion` で 500 になり、
+     *   `where('...id', ['a','b'])` は束縛に失敗して 500 になる。
+     * ⚠ **`is_string` で絞ってはいけない。** 実 HTTP は必ず文字列で届くが、テストや内部の
+     *   呼び出しは整数の id をそのまま渡せる。文字列だけ通すと `department` が黙って
+     *   落ちて**絞り込みが効かず、まとめて再発行の対象が広がる**（実測でテストが検出した）。
+     */
+    private function scalarInput(Request $request, string $key): string
+    {
+        $value = $request->input($key);
+
+        return is_scalar($value) ? (string) $value : '';
     }
 
     /**
@@ -102,22 +154,15 @@ class UserController extends Controller
 
         if ($editable) {
             // ⚠ 検証の前に正規化する（保存する値で一意を検査するため。設計書 §5.6）
-            $request->merge([
-                'employee_number' => LoginId::normalize($request->input('employee_number')) ?: null,
-            ]);
+            // ⚠ **`?: null` にしない。** 社員番号 `0` は形式として有効なのに PHP では falsy なので、
+            //   1 文字の `0` だけが黙って消える（メールのある人はログイン ID を失い、
+            //   メールの無い人は「社員番号を入力してください。」で保存できなくなる）。
+            //   基幹の `Admin\UserController::normalizedIdentifiers()` と同じ形にそろえる。
+            $normalized = LoginId::normalize($request->input('employee_number'));
+            $request->merge(['employee_number' => $normalized === '' ? null : $normalized]);
         }
 
-        $validated = $request->validate([
-            'approval_departments'   => ['array'],
-            'approval_departments.*' => [Rule::exists('approval_departments', 'id')],
-            'name'                   => [Rule::requiredIf($editable), 'string', 'max:100'],
-            'employee_number'        => [
-                Rule::requiredIf(fn () => $editable && $user->email === null),
-                'nullable', 'string', 'max:20',
-                'regex:' . LoginId::EMPLOYEE_NUMBER_PATTERN,
-                Rule::unique('users', 'employee_number')->ignore($user->id),
-            ],
-        ], [
+        $validated = $request->validate($this->updateRules($user, $editable), [
             'name.required' => '氏名を入力してください。',
             'employee_number.regex' => '社員番号は英数字とハイフンで入力してください。',
             'employee_number.unique' => 'この社員番号は既に登録されています。',
@@ -127,28 +172,66 @@ class UserController extends Controller
             'approval_departments' => '決裁の所属部門',
         ]);
 
-        // 所属部門は全員について編集できる（要件 3.2・D16 の例外）
-        $before = $user->approvalDepartments->pluck('id')->sort()->values()->all();
-        $after  = collect($validated['approval_departments'] ?? [])->map(fn ($id) => (int) $id)->sort()->values()->all();
+        // ⚠ 所属の付け替えと氏名・社員番号の保存、その記録をまとめて 1 つにする。
+        //   囲まないと、`save()` が DB 側の一意制約に当たったときに**所属だけ変わった状態**が
+        //   残り、画面には「更新しました」も出ない（`PasswordReissuer` も同じ理由で囲っている）。
+        DB::transaction(function () use ($user, $validated, $editable) {
+            // 所属部門は全員について編集できる（要件 3.2・D16 の例外）
+            $before = $user->approvalDepartments->pluck('id')->sort()->values()->all();
+            $after  = collect($validated['approval_departments'] ?? [])->map(fn ($id) => (int) $id)->sort()->values()->all();
 
-        if ($before !== $after) {
-            $user->approvalDepartments()->sync($after);
-            SettingLogger::record('user.departments_changed', 'user', $user->id, ['departments' => $before], ['departments' => $after]);
-        }
+            if ($before !== $after) {
+                $user->approvalDepartments()->sync($after);
+                SettingLogger::record('user.departments_changed', 'user', $user->id, ['departments' => $before], ['departments' => $after]);
+            }
 
-        if ($editable) {
-            $identityBefore = ['name' => $user->name, 'employee_number' => $user->employee_number];
+            if ($editable) {
+                $identityBefore = ['name' => $user->name, 'employee_number' => $user->employee_number];
 
-            $user->name = $validated['name'];
-            $user->employee_number = $validated['employee_number'] ?? null;
-            $user->save();
+                $user->name = $validated['name'];
+                $user->employee_number = $validated['employee_number'] ?? null;
+                $user->save();
 
-            SettingLogger::recordChange('user.updated', 'user', $user->id, $identityBefore, [
-                'name' => $user->name, 'employee_number' => $user->employee_number,
-            ]);
-        }
+                SettingLogger::recordChange('user.updated', 'user', $user->id, $identityBefore, [
+                    'name' => $user->name, 'employee_number' => $user->employee_number,
+                ]);
+            }
+        });
 
         return redirect()->route('approvals.admin.users.index')->with('success', "「{$user->name}」さんの情報を更新しました。");
+    }
+
+    /**
+     * 編集の検証ルール。
+     *
+     * ⚠ 編集できない相手のときは、氏名・社員番号の**ルールごと外す**。
+     *   `readonly` な入力欄は値を送る（送らないのは `disabled`）ので、ルールを残すと
+     *   移行や直の SQL で入った古い形の社員番号を持つ人が検証に落ち、
+     *   **唯一許されている所属部門の変更までできなくなる**。しかもエラー文は
+     *   編集できない欄を指すので、画面を見ても理由が分からない。
+     *
+     * @return array<string, array<int, mixed>>
+     */
+    private function updateRules(User $user, bool $editable): array
+    {
+        $rules = [
+            // ⚠ 上限は業務の決まりでなく、手で組んだ巨大な送信を止めるためのもの
+            //   （`approval_departments.*` の `exists` は要素ごとに 1 回問い合わせる）
+            'approval_departments'   => ['array', 'max:100'],
+            'approval_departments.*' => [Rule::exists('approval_departments', 'id')],
+        ];
+
+        if ($editable) {
+            $rules['name'] = ['required', 'string', 'max:100'];
+            $rules['employee_number'] = [
+                $user->email === null ? 'required' : 'nullable',
+                'string', 'max:20',
+                'regex:' . LoginId::EMPLOYEE_NUMBER_PATTERN,
+                Rule::unique('users', 'employee_number')->ignore($user->id),
+            ];
+        }
+
+        return $rules;
     }
 
     /** Route: PATCH /approvals/admin/users/{user}/toggle-status */
@@ -203,7 +286,10 @@ class UserController extends Controller
     {
         $request->validate([
             'mode'       => ['required', Rule::in(['selected', 'filtered'])],
-            'user_ids'   => ['required_if:mode,selected', 'array'],
+            // ⚠ 上限は業務の決まり（下の bulk_reissue_max）でなく、手で組んだ巨大な送信で
+            //   `whereIn` が壊れるのを止めるためのもの。業務の上限は件数を数えてから
+            //   理由の分かる文言で断る（検証で落とすと素っ気ない 422 になる）。
+            'user_ids'   => ['required_if:mode,selected', 'array', 'max:1000'],
             'user_ids.*' => ['integer'],
         ], [], [
             'mode'     => '再発行の対象',

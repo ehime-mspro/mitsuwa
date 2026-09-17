@@ -235,12 +235,22 @@ class ApprovalUserManagementTest extends TestCase
         $this->assertTrue($base->fresh()->isActive());
     }
 
-    public function test_the_admin_cannot_disable_themselves(): void
+    /**
+     * 決裁の管理者は自分自身も無効化できない。
+     *
+     * ⚠ **止めているのは `assertManageable`** のほう（自分は必ず決裁の管理者に指定されており、
+     *   そもそも基幹を使う利用者でもある）。`UserController` の「自分自身」の判定は
+     *   その手前で断られるので**到達しない** — この 1 本が緑でも、あちらが守られている
+     *   証明にはならない（Bug #48）。
+     */
+    public function test_the_admin_is_refused_like_any_privileged_user(): void
     {
         $admin = $this->admin();
 
         $this->actingAs($admin)->patch(route('approvals.admin.users.toggleStatus', $admin), ['status' => UserStatus::Inactive->value])
             ->assertStatus(403);
+
+        $this->assertTrue($admin->fresh()->isActive());
     }
 
     // --- 再発行 ---
@@ -297,17 +307,17 @@ class ApprovalUserManagementTest extends TestCase
 
     public function test_selected_users_can_be_reissued_together(): void
     {
-        $a = $this->member(['name' => '甲']);
-        $b = $this->member(['name' => '乙']);
-        $c = $this->member(['name' => '丙']);
+        $a = $this->member(['name' => '選択 甲一']);
+        $b = $this->member(['name' => '選択 乙二']);
+        $c = $this->member(['name' => '非選択 丙三']);
 
         $html = $this->actingAs($this->admin())->post(route('approvals.admin.users.reissueBulk'), [
             'mode' => 'selected', 'user_ids' => [$a->id, $b->id], 'guide_token' => 'token-b',
         ])->assertOk()->getContent();
 
-        $this->assertStringContainsString('甲', $html);
-        $this->assertStringContainsString('乙', $html);
-        $this->assertStringNotContainsString('丙', $html);
+        $this->assertStringContainsString('選択 甲一', $html);
+        $this->assertStringContainsString('選択 乙二', $html);
+        $this->assertStringNotContainsString('非選択 丙三', $html);
         $this->assertTrue($a->fresh()->must_change_password);
         $this->assertFalse($c->fresh()->must_change_password);
     }
@@ -454,17 +464,29 @@ class ApprovalUserManagementTest extends TestCase
 
         $html = $this->actingAs($this->admin())->get(route('approvals.admin.users.index'))->assertOk()->getContent();
 
-        $this->assertMatchesRegularExpression(
-            '/<input[^>]*name="user_ids\[\]"[^>]*value="' . $ordinary->id . '"/',
-            $html,
-            '普通の決裁のみ利用者に選択欄が出ていない'
-        );
-        $this->assertDoesNotMatchRegularExpression(
-            '/<input[^>]*name="user_ids\[\]"[^>]*value="' . $privileged->id . '"/',
-            $html,
+        preg_match_all('/<input\b[^>]*name="user_ids\[\]"[^>]*>/', $html, $boxes);
+
+        $forOrdinary = collect($boxes[0])->first(fn ($tag) => str_contains($tag, 'value="' . $ordinary->id . '"'));
+        $this->assertNotNull($forOrdinary, '普通の決裁のみ利用者に選択欄が出ていない');
+
+        // ⚠ 表を <form> で囲めない（行の操作が入れ子になる）ので、選択欄は form 属性で結び付ける。
+        //   外すとチェックがどのフォームにも属さず、「選んだ N 人」が user_ids 無しで飛ぶ
+        $this->assertStringContainsString('form="approvalBulkReissue"', $forOrdinary, '選択欄がまとめて再発行のフォームに結び付いていない');
+        // 確認のモーダルはこの data-name から氏名を出す（設計書 §5.9）
+        $this->assertStringContainsString('data-name="' . $ordinary->name . '"', $forOrdinary, '確認に出す氏名が選択欄に無い');
+
+        $this->assertNull(
+            collect($boxes[0])->first(fn ($tag) => str_contains($tag, 'value="' . $privileged->id . '"')),
             '決裁の権限を持つ人に選択欄が出ている'
         );
-        $this->assertStringContainsString('決裁の管理者に指定されています', $html, '選べない理由が画面に無い');
+
+        // ⚠ 同じ文言が選択欄と操作欄の `title` にも出るので、**画面に見える本文**をタグごと見る。
+        //   素の部分一致だと、本文の行を消しても title に当たって緑のまま通る（Bug #43 / #46）
+        $this->assertMatchesRegularExpression(
+            '/<span class="block[^"]*">決裁の管理者に指定されています<\/span>/',
+            $html,
+            '選べない理由が画面の本文に出ていない（title だけではキーボード・読み上げに届かない）'
+        );
     }
 
     /**
@@ -498,5 +520,354 @@ class ApprovalUserManagementTest extends TestCase
         $html = $this->actingAs($admin)->get(route('approvals.home'))->assertOk()->getContent();
         $this->assertStringContainsString('href="' . route('approvals.admin.users.index') . '"', $html);
         $this->assertStringContainsString('href="' . route('approvals.admin.organization.index') . '"', $html);
+    }
+
+    // ============================================================
+    // 画面の配線（Bug #47）— 描画されたフォームをそのまま送り返す
+    // ============================================================
+
+    /**
+     * まとめて再発行を、**画面が描いたフォームのまま**送り返す。
+     *
+     * ⚠ これが無いと 2 つの重大な壊れ方が緑のまま通る:
+     *   ① 絞り込みの hidden を落とす → 「絞り込んだ全員（3 人）」が上限いっぱいの人を再発行する
+     *   ② `guide_token` の hidden を落とす → まとめて再発行が 1 回目から
+     *      「すでに実行されました」で止まる（`claimGuideToken` の `is_string(null)` が false）
+     * ⚠ `mode` は `<button name="mode">` なので `parseForm`（`<input>` だけを見る）には入らない。
+     *   ブラウザは押したボタンの名前と値を送るので、ここでも手で足す。
+     */
+    public function test_the_filtered_bulk_reissue_submits_the_form_the_page_rendered(): void
+    {
+        $hit  = $this->member(['name' => '田中 一郎']);
+        $miss = $this->member(['name' => '鈴木 二郎']);
+        $missPassword = $miss->password;
+
+        $html = $this->actingAs($this->admin())
+            ->get(route('approvals.admin.users.index', ['search' => '田中']))
+            ->assertOk()->getContent();
+
+        $form = $this->parseForm($html, 'action="' . route('approvals.admin.users.reissueBulk') . '"');
+
+        $this->assertSame('POST', $form['method']);
+        $this->assertArrayHasKey('_token', $form['fields'], '@csrf が描画されていない');
+        $this->assertNotSame('', $form['fields']['guide_token'] ?? '', '1 回限りの鍵が描画されていない');
+        $this->assertSame('田中', $form['fields']['search'] ?? '', '絞り込みの条件が hidden で運ばれていない');
+
+        $guide = $this->actingAs($this->admin())
+            ->post($form['action'], $form['fields'] + ['mode' => 'filtered'])
+            ->assertOk()->getContent();
+
+        $this->assertStringContainsString('田中 一郎', $guide);
+        $this->assertStringNotContainsString('鈴木 二郎', $guide, '絞り込みに当たらない人まで再発行されている');
+
+        $this->assertTrue($hit->fresh()->must_change_password);
+        $this->assertSame($missPassword, $miss->fresh()->password, '絞り込みの外の人のパスワードが変わっている');
+    }
+
+    /**
+     * 無効化・有効化も**描画されたフォームのまま**送り返す。
+     *
+     * ⚠ `@method('PATCH')` を落とすとブラウザでは 405 ＝ ボタンが無反応、`name="status"` を
+     *   落とすと「状態は必須です」で差し戻る。どちらも `route()` を直に叩くテストでは緑のまま通る。
+     */
+    public function test_the_status_button_submits_the_form_the_page_rendered(): void
+    {
+        $member = $this->member(['name' => '田中 一郎']);
+
+        // 有効 → 無効
+        $html = $this->actingAs($this->admin())->get(route('approvals.admin.users.index'))->assertOk()->getContent();
+        $form = $this->parseForm($html, 'action="' . route('approvals.admin.users.toggleStatus', $member) . '"');
+
+        $this->assertSame('PATCH', $form['method'], "@method('PATCH') が描画されていない");
+        $this->assertArrayHasKey('_token', $form['fields'], '@csrf が描画されていない');
+        $this->assertSame(UserStatus::Inactive->value, $form['fields']['status'] ?? null, '有効な人のボタンが「無効化」を送っていない');
+
+        $this->actingAs($this->admin())->post($form['action'], $form['fields'])
+            ->assertRedirect(route('approvals.admin.users.index'));
+        $this->assertFalse($member->fresh()->isActive());
+
+        // 無効 → 有効（同じ行のボタンが逆を送る）
+        $html = $this->actingAs($this->admin())->get(route('approvals.admin.users.index'))->assertOk()->getContent();
+        $form = $this->parseForm($html, 'action="' . route('approvals.admin.users.toggleStatus', $member) . '"');
+
+        $this->assertSame(UserStatus::Active->value, $form['fields']['status'] ?? null, '無効な人のボタンが「有効化」を送っていない');
+
+        $this->actingAs($this->admin())->post($form['action'], $form['fields']);
+        $this->assertTrue($member->fresh()->isActive());
+    }
+
+    /**
+     * 編集モーダルが**何を送るか**を固定する。
+     *
+     * ⚠ 送信先は Alpine が組み立てるので `parseForm` では往復できない
+     *   （`ParsesForms::htmlAttr` が `:` の直後を除外する）。代わりに、その `<form>` の中に
+     *   入力欄が描かれていることを見る。`name="approval_departments[]"` が消えると
+     *   **保存のたびに所属部門が全部消える**（`$validated[...] ?? []` が `sync([])` になる）のに、
+     *   画面は「更新しました」と出る。
+     */
+    public function test_the_edit_form_carries_the_fields_it_must_send(): void
+    {
+        $this->member(['name' => '田中 一郎', 'employee_number' => 'A0001']);
+
+        $form = $this->editFormMarkup(
+            $this->actingAs($this->admin())->get(route('approvals.admin.users.index'))->assertOk()->getContent()
+        );
+
+        $this->assertStringContainsString('name="name"', $form, '編集モーダルに氏名の入力欄が無い');
+        $this->assertStringContainsString('name="employee_number"', $form, '編集モーダルに社員番号の入力欄が無い');
+
+        // 登録済みの部門 2 つとも選べる
+        $this->assertSame(2, substr_count($form, 'name="approval_departments[]"'), '所属部門の選択欄が描かれていない');
+
+        // ⚠ メールアドレスは基幹の管理者だけが変えられる（D8）ので、入力欄そのものを置かない
+        $this->assertStringNotContainsString('name="email"', $form, 'メールアドレスの入力欄が描かれている');
+    }
+
+    /** 編集モーダルの `<form>` だけを切り出す（送信先が Alpine のバインドで `parseForm` が使えないため） */
+    private function editFormMarkup(string $html): string
+    {
+        $anchor = strpos($html, 'name="_method" value="PUT"');
+        $this->assertNotFalse($anchor, "編集モーダルの @method('PUT') が描画されていない");
+
+        $open  = strrpos(substr($html, 0, $anchor), '<form');
+        $close = strpos($html, '</form>', $anchor);
+        $this->assertNotFalse($open, '編集モーダルの <form> の開始タグが見つからない');
+        $this->assertNotFalse($close, '編集モーダルの <form> が閉じていない');
+
+        return substr($html, $open, $close - $open);
+    }
+
+    // ============================================================
+    // 人数・氏名・絞り込み
+    // ============================================================
+
+    /**
+     * 「絞り込んだ全員（N 人）」の N は**実際に再発行される人数**（`UserController::index` の ⚠）。
+     *
+     * ⚠ `$users->total()` に戻すと基幹を使う人・無効な人・指定されている人まで数え、押した結果と
+     *   食い違う。**人数と実際の対象を 1 本で突き合わせる**（片方だけ見ると定義がずれても緑になる）。
+     */
+    public function test_the_filtered_button_counts_only_the_people_it_will_actually_reissue(): void
+    {
+        User::factory()->create(['name' => '基幹 太郎', 'must_change_password' => false]);
+        $this->member(['name' => '無効 花子', 'status' => UserStatus::Inactive->value]);
+        $this->privileged('admin');
+        $this->member(['name' => '田中 一郎']);
+        $this->member(['name' => '鈴木 二郎']);
+
+        $response = $this->actingAs($this->admin())->get(route('approvals.admin.users.index'))->assertOk();
+
+        $this->assertSame(2, $response->viewData('reissuableCount'));
+        $this->assertStringContainsString('絞り込んだ全員（2 人）を再発行', $response->getContent());
+
+        $guide = $this->actingAs($this->admin())->post(route('approvals.admin.users.reissueBulk'), [
+            'mode' => 'filtered', 'guide_token' => 'token-count',
+        ])->assertOk()->getContent();
+
+        // 画面に出した人数 == 実際に再発行された人数
+        $this->assertSame(2, User::where('must_change_password', true)->count(), 'ボタンの人数と実際の対象が食い違う');
+        $this->assertStringContainsString('田中 一郎', $guide);
+        $this->assertStringContainsString('鈴木 二郎', $guide);
+        $this->assertStringNotContainsString('基幹 太郎', $guide);
+        $this->assertStringNotContainsString('無効 花子', $guide);
+        $this->assertStringNotContainsString('要 保護', $guide);
+    }
+
+    /**
+     * まとめて再発行の確認（設計書 §5.9「確認のモーダルに人数と氏名を出す」）。
+     *
+     * ⚠ 実際に開くのは Alpine なので PHP からは**形しか見られない**。人数と氏名の出どころと、
+     *   確定のボタンが `name="mode"` を**サーバーが描いた値**で持つことを固定する
+     *   （`:value` にすると往復テストが拾えず配線が無防備になる。Bug #47）。
+     */
+    public function test_the_bulk_reissue_asks_for_confirmation_with_the_count_and_the_names(): void
+    {
+        $this->member(['name' => '田中 一郎']);
+        $this->member(['name' => '鈴木 二郎']);
+
+        $response = $this->actingAs($this->admin())->get(route('approvals.admin.users.index'))->assertOk();
+        $html     = $response->getContent();
+
+        $this->assertEqualsCanonicalizing(['田中 一郎', '鈴木 二郎'], $response->viewData('reissuableNames'));
+        $this->assertStringContainsString('var APPROVAL_FILTERED_COUNT = 2;', $html, '確認に出す人数がサーバーから渡っていない');
+        $this->assertStringContainsString('田中 一郎', $html);
+
+        // 確定のボタンは 2 本（選んだ人 / 絞り込んだ全員）で、値はサーバーが描く
+        $this->assertSame(1, substr_count($html, 'name="mode" value="selected"'), '「選んだ人」を送るボタンが 1 本でない');
+        $this->assertSame(1, substr_count($html, 'name="mode" value="filtered"'), '「絞り込んだ全員」を送るボタンが 1 本でない');
+
+        // 開く側は submit ではない（押しただけでは送信されず、確認を経る）
+        $this->assertStringContainsString("openConfirm('selected')", $html);
+        $this->assertStringContainsString("openConfirm('filtered')", $html);
+
+        // ⚠ 素の confirm() へ戻すと人数も氏名も出せない（§5.9 に反する）
+        $this->assertStringNotContainsString('onclick="return confirm(', $html);
+    }
+
+    public function test_it_can_filter_by_kind(): void
+    {
+        $base     = User::factory()->create(['name' => '基幹 太郎', 'must_change_password' => false]);
+        $approval = $this->member(['name' => '決裁 次郎']);
+
+        $ids = $this->actingAs($this->admin())->get(route('approvals.admin.users.index', ['kind' => 'approval']))
+            ->assertOk()->viewData('users')->pluck('id');
+        $this->assertTrue($ids->contains($approval->id));
+        $this->assertFalse($ids->contains($base->id));
+
+        $ids = $this->actingAs($this->admin())->get(route('approvals.admin.users.index', ['kind' => 'base']))
+            ->assertOk()->viewData('users')->pluck('id');
+        $this->assertTrue($ids->contains($base->id));
+        $this->assertFalse($ids->contains($approval->id));
+    }
+
+    public function test_it_can_filter_by_status(): void
+    {
+        $active   = $this->member(['name' => '有効 太郎']);
+        $inactive = $this->member(['name' => '無効 花子', 'status' => UserStatus::Inactive->value]);
+
+        $ids = $this->actingAs($this->admin())->get(route('approvals.admin.users.index', ['status' => UserStatus::Inactive->value]))
+            ->assertOk()->viewData('users')->pluck('id');
+
+        $this->assertTrue($ids->contains($inactive->id));
+        $this->assertFalse($ids->contains($active->id));
+    }
+
+    /**
+     * 検索は氏名・社員番号・メールの 3 列すべてに当たる。
+     *
+     * ⚠ `filteredQuery()` は一覧と「絞り込んだ全員」で**共用**なので、ここが壊れると
+     *   表示だけでなく**再発行の対象が静かに広がる**。
+     */
+    public function test_the_search_box_looks_at_the_name_the_number_and_the_email(): void
+    {
+        $byName   = $this->member(['name' => '検索 太郎', 'employee_number' => 'AAA1']);
+        $byNumber = $this->member(['name' => '無関係 一', 'employee_number' => 'ZZZ9']);
+        $byEmail  = $this->member(['name' => '無関係 二', 'employee_number' => 'BBB2', 'email' => 'needle@example.com']);
+
+        $find = fn (string $query) => $this->actingAs($this->admin())
+            ->get(route('approvals.admin.users.index', ['search' => $query]))
+            ->assertOk()->viewData('users')->pluck('id');
+
+        $this->assertTrue($find('検索 太郎')->contains($byName->id));
+        $this->assertFalse($find('検索 太郎')->contains($byNumber->id));
+        $this->assertTrue($find('ZZZ9')->contains($byNumber->id), '社員番号で検索できない');
+        $this->assertTrue($find('needle@')->contains($byEmail->id), 'メールアドレスで検索できない');
+    }
+
+    /** 検索語が配列で届いても落とさない（`"%{$search}%"` が `Array to string conversion` で 500 になる） */
+    public function test_an_array_shaped_filter_does_not_break_the_page(): void
+    {
+        $this->member(['name' => '田中 一郎']);
+
+        $this->actingAs($this->admin())
+            ->get(route('approvals.admin.users.index') . '?search[]=a&department[]=1&kind[]=x&status[]=y')
+            ->assertOk();
+    }
+
+    // ============================================================
+    // 値の扱いと記録
+    // ============================================================
+
+    /**
+     * 社員番号 `0` は形式として有効な値（英数字 1 文字）。
+     *
+     * ⚠ 正規化を `?: null` で書くと PHP では `'0'` が falsy なので**この 1 文字だけ黙って消える**。
+     *   メールを持つ人はログイン ID を失い、持たない人は保存すらできなくなる。
+     */
+    public function test_an_employee_number_of_zero_is_kept(): void
+    {
+        $member = $this->member(['name' => '田中 一郎', 'employee_number' => 'A0001', 'email' => 'zero@example.com']);
+
+        $this->actingAs($this->admin())->put(route('approvals.admin.users.update', $member), [
+            'name' => '田中 一郎', 'employee_number' => '0', 'approval_departments' => [],
+        ])->assertRedirect(route('approvals.admin.users.index'));
+
+        $this->assertSame('0', $member->fresh()->employee_number, '社員番号「0」が黙って消えている');
+    }
+
+    /**
+     * 編集できない相手でも、**所属部門の変更だけは通る**（要件 3.2・D16 の例外）。
+     *
+     * ⚠ `readonly` な入力欄は値を送る（送らないのは `disabled`）ので、氏名・社員番号のルールを
+     *   残したままにすると、移行や直の SQL で入った古い形の社員番号を持つ人がここで弾かれ、
+     *   **唯一許された操作までできなくなる**。しかもエラー文は編集できない欄を指す。
+     */
+    public function test_the_departments_of_a_user_with_a_legacy_number_can_still_be_edited(): void
+    {
+        $base = User::factory()->create(['name' => '基幹 太郎', 'must_change_password' => false]);
+        // 画面からは作れない形（小文字・記号入り）を直に入れる
+        $base->forceFill(['employee_number' => 'old#001'])->saveQuietly();
+
+        $this->actingAs($this->admin())->put(route('approvals.admin.users.update', $base), [
+            'name' => '書き換え', 'employee_number' => 'old#001',
+            'approval_departments' => [$this->dept->id],
+        ])->assertRedirect(route('approvals.admin.users.index'));
+
+        $base->refresh();
+        $this->assertCount(1, $base->approvalDepartments, '所属部門の変更が通っていない');
+        $this->assertSame('基幹 太郎', $base->name, '編集できない欄が書き換わっている');
+        $this->assertSame('old#001', $base->employee_number, '編集できない欄が書き換わっている');
+    }
+
+    /** 所属になった日を残す（`withPivot` だけだと読む宣言にしかならず `sync()` は書かない） */
+    public function test_the_moment_someone_joins_a_department_is_recorded(): void
+    {
+        $member = $this->member();
+
+        $this->actingAs($this->admin())->put(route('approvals.admin.users.update', $member), [
+            'name' => $member->name, 'employee_number' => $member->employee_number,
+            'approval_departments' => [$this->dept->id],
+        ]);
+
+        $this->assertNotNull(
+            $member->fresh()->approvalDepartments->first()->pivot->created_at,
+            '所属になった日時が記録されていない'
+        );
+    }
+
+    /** 変更はすべて記録する（設計書 §5.9 の末尾）。氏名・社員番号の修正と状態の変更も残す */
+    public function test_the_identity_and_status_changes_are_recorded(): void
+    {
+        $member = $this->member(['name' => '旧 名前', 'employee_number' => 'A0001']);
+
+        $this->actingAs($this->admin())->put(route('approvals.admin.users.update', $member), [
+            'name' => '新 名前', 'employee_number' => 'A0002', 'approval_departments' => [],
+        ]);
+        $this->assertSame(1, ApprovalSettingLog::where('action', 'user.updated')->count(), '氏名・社員番号の変更が記録されていない');
+
+        $this->actingAs($this->admin())->patch(route('approvals.admin.users.toggleStatus', $member), [
+            'status' => UserStatus::Inactive->value,
+        ]);
+        $this->assertSame(2, ApprovalSettingLog::where('action', 'user.updated')->count(), '状態の変更が記録されていない');
+    }
+
+    // ============================================================
+    // 断りの文言（設計書 §5.9 は §5.7 と同じ形を求める）
+    // ============================================================
+
+    public static function privilegeLabelCases(): array
+    {
+        return [
+            '社長'         => ['president', '決裁の社長'],
+            '決裁の管理者' => ['admin', '決裁の管理者'],
+            '全件閲覧者'   => ['viewer', '決裁の全件閲覧者'],
+        ];
+    }
+
+    /**
+     * ⚠ 呼び名は基幹の §5.7（`Admin\UserController` の「決裁の社長に指定されています」）と
+     *   そろえる。`approvalPrivilegeLabel()` が「社長」「全件閲覧者」を返していると、
+     *   **同じ人の同じ状態が画面によって別の呼び方**になる。
+     * ⚠ 呼ぶ側で「決裁の」を前に足すと「決裁の決裁の管理者」になるので、ラベル側で完成させる。
+     */
+    #[DataProvider('privilegeLabelCases')]
+    public function test_the_refusal_names_the_privilege_the_way_the_base_screens_do(string $kind, string $label): void
+    {
+        $target = $this->privileged($kind);
+
+        $this->assertSame($label, $target->approvalPrivilegeLabel());
+
+        $html = $this->actingAs($this->admin())->get(route('approvals.admin.users.index'))->assertOk()->getContent();
+        $this->assertStringContainsString("要 保護さんは{$label}に指定されています。", $html);
     }
 }
