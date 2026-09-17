@@ -122,10 +122,12 @@ class UserImportController extends Controller
 
         // ⚠ `is_string` で受ける。配列（`guide_token[]=x`）で送られると `(string)` が
         //    `Array to string conversion` の ErrorException になり **500** で落ちる（実測）。
-        //    `Approval\UserController::claimGuideToken()` と `Admin\UserController::resetPassword`
-        //    が同じ理由で同じ形をしている。
-        //    ⚠ **これで 3 箇所目の複製。** 共通化（と、新しい入口が素の `claim()` を呼んでいない
+        //    `Approval\UserController::claimGuideToken()`・`Admin\UserController::store`・
+        //    `Admin\UserController::resetPassword` が同じ理由で同じ形をしている。
+        //    ⚠ **これで 4 箇所目の複製。** 共通化（と、新しい入口が素の `claim()` を呼んでいない
         //      ことを見る走査テスト）は Task 15 で扱う。それまでは、この形を**逐語で**書くこと。
+        //    ⚠ 寄せるときは `grep -rn 'OneTimeAction::claim' app/` で**数え直す**こと。
+        //      ここに書いた名前だけを寄せると、列挙漏れが無音で残る（Bug #45 ①）。
         $token = $request->input('guide_token');
 
         if (! is_string($token) || ! OneTimeAction::claim($token)) {
