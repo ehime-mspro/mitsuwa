@@ -696,6 +696,16 @@ class ApprovalUserManagementTest extends TestCase
         $this->assertSame(1, substr_count($html, 'name="mode" value="selected"'), '「選んだ人」を送るボタンが 1 本でない');
         $this->assertSame(1, substr_count($html, 'name="mode" value="filtered"'), '「絞り込んだ全員」を送るボタンが 1 本でない');
 
+        // ⚠ 値と出し分けの条件が対になっていること。**入れ替えても本数は 2 本のまま**なので、
+        //   数えるだけでは「選んだ 2 人」が絞り込んだ全員を再発行する事故を検出できない
+        foreach (['selected', 'filtered'] as $mode) {
+            $this->assertMatchesRegularExpression(
+                '/name="mode" value="' . $mode . '"[^>]*x-show="confirmMode === \'' . $mode . '\'"/',
+                $html,
+                "確定のボタンの mode と出し分けの条件が食い違っている（{$mode}）"
+            );
+        }
+
         // 開く側は submit ではない（押しただけでは送信されず、確認を経る）
         $this->assertStringContainsString("openConfirm('selected')", $html);
         $this->assertStringContainsString("openConfirm('filtered')", $html);
