@@ -51,6 +51,24 @@ class ApprovalSidebarTest extends TestCase
         return $found;
     }
 
+    /**
+     * サイドバーの塊の中に、その行き先とその文字を持つリンクが在ること。
+     *
+     * ⚠ ラベルは **タグの境目ごと** 見る — 素の部分一致は「利用者の管理ZZZ」のような
+     *   接尾辞を足す改名を素通りさせる（実測。Bug #43 の型）。
+     * ⚠ 行き先（href）と文字の**両方**を見る。片方だけだと、リンクは在るのに
+     *   文字が変わった／文字は在るのに別の画面へ飛ぶ、のどちらかを見逃す。
+     */
+    private function assertHasLink(string $aside, string $href, string $label, string $where): void
+    {
+        $this->assertStringContainsString($href, $aside, "{$where} に「{$label}」の行き先が無い");
+        $this->assertMatchesRegularExpression(
+            '/>\s*' . preg_quote($label, '/') . '\s*</u',
+            $aside,
+            "{$where} に「{$label}」の文字が無い"
+        );
+    }
+
     /** 決裁のみ利用者には決裁用のサイドバーだけが出る */
     public function test_an_approval_only_user_gets_the_approval_sidebar(): void
     {
@@ -64,19 +82,15 @@ class ApprovalSidebarTest extends TestCase
         $this->assertStringNotContainsString(route('approvals.admin.users.index'), $html);
 
         // 3 か所すべてが決裁のホームへのリンクを持つ（1 か所でも欠けるとその画面幅で行き場が無くなる）
-        foreach ($this->sidebars($html) as $key => $aside) {
+        $sidebars = $this->sidebars($html);
+
+        foreach ($sidebars as $key => $aside) {
             $this->assertStringContainsString(route('approvals.home'), $aside, "{$key} に決裁のホームへのリンクが無い");
         }
 
         // 折りたたみ版はアイコンだけなので、ラベルは展開版とドロワーで見る。
-        // ⚠ 素の部分一致で見てはいけない — 「決裁のホームZZZ」に改名しても緑のまま通る（実測。Bug #43 の型）。
-        //   タグの境目ごと見る。
         foreach (['expanded', 'drawer'] as $key) {
-            $this->assertMatchesRegularExpression(
-                '/>\s*決裁のホーム\s*</u',
-                $this->sidebars($html)[$key],
-                "{$key} に「決裁のホーム」のリンクが無い"
-            );
+            $this->assertHasLink($sidebars[$key], route('approvals.home'), '決裁のホーム', $key);
         }
     }
 
@@ -91,8 +105,8 @@ class ApprovalSidebarTest extends TestCase
         $sidebars = $this->sidebars($html);
 
         foreach (['expanded', 'drawer'] as $key) {
-            $this->assertStringContainsString(route('approvals.admin.users.index'), $sidebars[$key], "{$key} に利用者の管理が無い");
-            $this->assertStringContainsString(route('approvals.admin.organization.index'), $sidebars[$key], "{$key} に部門の管理が無い");
+            $this->assertHasLink($sidebars[$key], route('approvals.admin.users.index'), '利用者の管理', $key);
+            $this->assertHasLink($sidebars[$key], route('approvals.admin.organization.index'), '部門の管理', $key);
         }
 
         // 折りたたみ版は 1 本のアイコンリンクだけ（既存の「システム管理」と同じ形）
@@ -113,10 +127,10 @@ class ApprovalSidebarTest extends TestCase
         $sidebars = $this->sidebars($html);
 
         foreach (['expanded', 'drawer'] as $key) {
-            // ⚠ タグの境目ごと見る（素の部分一致は接尾辞を足す改名を素通りさせる。Bug #43）
+            // ⚠ グループの見出しもタグの境目ごと見る（`x-sidebar-group` の label なのでリンクではない）
             $this->assertMatchesRegularExpression('/>\s*決裁の管理\s*</u', $sidebars[$key], "{$key} に「決裁の管理」の見出しが無い");
-            $this->assertStringContainsString(route('approvals.admin.users.index'), $sidebars[$key], "{$key} に利用者の管理が無い");
-            $this->assertStringContainsString(route('approvals.admin.organization.index'), $sidebars[$key], "{$key} に部門の管理が無い");
+            $this->assertHasLink($sidebars[$key], route('approvals.admin.users.index'), '利用者の管理', $key);
+            $this->assertHasLink($sidebars[$key], route('approvals.admin.organization.index'), '部門の管理', $key);
         }
 
         // 折りたたみ版はアイコン 1 本（title に「決裁の管理」）
