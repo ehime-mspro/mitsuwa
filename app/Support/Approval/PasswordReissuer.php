@@ -25,7 +25,7 @@ use Illuminate\Support\Facades\Mail;
  *   実行時間切れで途中終了する現実味がある。
  *   通知メールの `jobs` 行と記録も同じ DB なので一緒に巻き戻り、
  *   「起きなかった再発行の通知だけが届く」ことも防げる。
- *   CSV の一括登録（Task 13）も同じ理由で囲う。
+ *   CSV の一括登録（`Approval\UserImportController::execute`）も同じ理由で囲っている。
  *
  * ⚠ 通知が一緒に巻き戻るのは **`QUEUE_CONNECTION=database` だから**（`config/queue.php` の
  *   `'connection' => env('DB_QUEUE_CONNECTION')` が未設定＝既定の DB 接続なので、

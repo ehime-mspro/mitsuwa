@@ -1,0 +1,364 @@
+<?php
+
+namespace App\Http\Controllers\Approval;
+
+use App\Enums\UserRole;
+use App\Enums\UserStatus;
+use App\Http\Controllers\Controller;
+use App\Models\ApprovalDepartment;
+use App\Models\ApprovalMailDomain;
+use App\Models\User;
+use App\Support\Approval\LoginGuide;
+use App\Support\Approval\SettingLogger;
+use App\Support\CsvImportException;
+use App\Support\CsvImportReader;
+use App\Support\CsvImportTemplate;
+use App\Support\InitialPassword;
+use App\Support\LoginId;
+use App\Support\OneTimeAction;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+
+/**
+ * 社員の CSV 一括登録（設計書 §5.10）。
+ *
+ * 流れ: アップロード → 確認画面 → 描画された「取り込む」フォーム（hidden の CSV と 1 回限りの鍵）で確定
+ *   → **確定時にサーバーで検査をやり直す**（hidden を信用しない）→ 結果＝ログイン案内の画面
+ *
+ * ⚠ 行エラーの view のキーは `rowErrors`。`errors` にすると Blade の `$errors`（ViewErrorBag）を
+ *   上書きして `Call to a member function any() on array` で 500 する（Bug #53）。
+ * ⚠ エラー（`rowErrors`）と注意（`warnings`）は別の入れ物にする（Bug #54 ④）。
+ */
+class UserImportController extends Controller
+{
+    private const COLUMN_MAP = [
+        '社員番号'       => 'employee_number',
+        '氏名'           => 'name',
+        'メールアドレス' => 'email',
+        '所属部門'       => 'departments',
+    ];
+
+    public function form()
+    {
+        return view('approvals.admin.users.import');
+    }
+
+    public function template()
+    {
+        return CsvImportTemplate::response(
+            array_keys(self::COLUMN_MAP),
+            [
+                ['A0001', '甲 一郎', 'ichiro@mitsuwat.co.jp', 'RE'],
+                ['A0002', '乙 二郎', '', 'RE,SA'],
+            ],
+            'approval_users_template.csv',
+        );
+    }
+
+    public function preview(Request $request)
+    {
+        // ⚠ `max:10240`（10MB）は既存の取込 4 本すべてと同じ。無いと、行数の上限
+        //    （`csv_max_rows`）を見る前に `parse()` がファイル全体を丸ごと配列へ広げる。
+        // ⚠ ルールの配列は**行を分けて閉じる**（`validate([` … 改行 `],`）。
+        //    `JapaneseValidationMessagesTest` の走査が `validate(\s*\[(.*?)\n\s*\]\s*[,)]` で
+        //    切り出すので、1 行に畳むと**次の配列まで飲み込み**、メッセージの `csv_file.required`
+        //    まで「和名の無い項目」として報告される（実測）。既存の取込 4 本も同じ書き方。
+        $request->validate([
+            'csv_file' => ['required', 'file', 'mimes:csv,txt', 'max:10240'],
+        ], [
+            'csv_file.required' => 'CSVファイルを選択してください。',
+            'csv_file.mimes'    => 'CSVファイルを選択してください。',
+        ], [
+            'csv_file' => 'CSVファイル',
+        ]);
+
+        $content = CsvImportReader::decode($request->file('csv_file')->get());
+
+        try {
+            $analysis = $this->analyze($content);
+        } catch (CsvImportException $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        return view('approvals.admin.users.import', array_merge($analysis, [
+            'csvData'     => base64_encode($content),
+            'guideToken'  => OneTimeAction::issue(),
+        ]));
+    }
+
+    public function execute(Request $request)
+    {
+        $request->validate([
+            'csv_data' => ['required', 'string'],
+        ]);
+
+        $content = base64_decode((string) $request->input('csv_data'), true);
+
+        if ($content === false) {
+            return redirect()->route('approvals.admin.users.import')->with('error', '取り込むデータを読み取れませんでした。もう一度アップロードしてください。');
+        }
+
+        try {
+            // ⚠ 確定でも検査をやり直す（画面が送ってきた hidden を信用しない）
+            $analysis = $this->analyze($content);
+        } catch (CsvImportException $e) {
+            return redirect()->route('approvals.admin.users.import')->with('error', $e->getMessage());
+        }
+
+        if ($analysis['rowErrors'] !== []) {
+            return redirect()->route('approvals.admin.users.import')
+                ->with('error', '取り込めない行があります。もう一度アップロードして内容を確認してください。');
+        }
+
+        if ($analysis['validCount'] === 0) {
+            return redirect()->route('approvals.admin.users.import')->with('error', '取り込む行がありません。');
+        }
+
+        // ⚠ `is_string` で受ける。配列（`guide_token[]=x`）で送られると `(string)` が
+        //    `Array to string conversion` の ErrorException になり **500** で落ちる（実測）。
+        //    `Approval\UserController::claimGuideToken()` と `Admin\UserController::resetPassword`
+        //    が同じ理由で同じ形をしている。
+        $token = $request->input('guide_token');
+
+        if (! is_string($token) || ! OneTimeAction::claim($token)) {
+            return redirect()->route('approvals.admin.users.import')
+                ->with('error', 'この操作はすでに実行されました。案内を印刷し直すには、もう一度アップロードしてください。');
+        }
+
+        $entries = DB::transaction(fn () => $this->apply($analysis['rows']));
+
+        // 新規登録では通知メールを送らない（紙で渡す。要件 8.1 に無い）
+        return (new LoginGuide($entries, notifiedCount: 0, skippedCount: 0))->toResponse($request);
+    }
+
+    /**
+     * 行ごとに検査して、取り込む行・エラー・注意に分ける。
+     *
+     * @return array{rows: list<array>, rowErrors: list<array>, warnings: list<array>, validCount: int, createCount: int, updateCount: int, totalRows: int}
+     */
+    private function analyze(string $content): array
+    {
+        $raw = CsvImportReader::parse($content, self::COLUMN_MAP, array_values(self::COLUMN_MAP));
+
+        $max = (int) config('approval.csv_max_rows');
+        if (count($raw) > $max) {
+            throw new CsvImportException("1 回に取り込めるのは {$max} 行までです（今回は " . count($raw) . ' 行）。分けてから取り込んでください。');
+        }
+
+        $departments  = ApprovalDepartment::pluck('id', 'code');
+        $hasDomain    = ApprovalMailDomain::exists();
+        $seenNumbers  = [];
+        $seenEmails   = [];
+
+        // 同じファイルの中の重複を先に数える（重なった行は両方エラーにする）
+        foreach ($raw as $row) {
+            $number = LoginId::normalize($row['employee_number']);
+            $email  = LoginId::normalize($row['email']);
+            if ($number !== '') { $seenNumbers[$number] = ($seenNumbers[$number] ?? 0) + 1; }
+            if ($email !== '')  { $seenEmails[$email] = ($seenEmails[$email] ?? 0) + 1; }
+        }
+
+        $digitWidths = $this->numericWidths(array_keys($seenNumbers));
+
+        $rows = $rowErrors = $warnings = [];
+        $createCount = $updateCount = 0;
+
+        foreach ($raw as $index => $row) {
+            $line   = $index + 2; // 1 行目は見出し
+            $number = LoginId::normalize($row['employee_number']);
+            $email  = LoginId::normalize($row['email']);
+            $name   = trim($row['name']);
+
+            if ($number === '') {
+                $rowErrors[] = ['row' => $line, 'message' => '社員番号が空です'];
+                continue;
+            }
+            if (! preg_match(LoginId::EMPLOYEE_NUMBER_PATTERN, $number)) {
+                $rowErrors[] = ['row' => $line, 'message' => "社員番号「{$row['employee_number']}」は英数字とハイフン 20 文字までで入力してください"];
+                continue;
+            }
+            if ($name === '' || mb_strlen($name) > 100) {
+                $rowErrors[] = ['row' => $line, 'message' => '氏名が空、または 100 文字を超えています'];
+                continue;
+            }
+            if (($seenNumbers[$number] ?? 0) > 1) {
+                $rowErrors[] = ['row' => $line, 'message' => "社員番号「{$number}」が同じファイルの中で重複しています"];
+                continue;
+            }
+            if ($email !== '' && ($seenEmails[$email] ?? 0) > 1) {
+                $rowErrors[] = ['row' => $line, 'message' => "メールアドレス「{$email}」が同じファイルの中で重複しています"];
+                continue;
+            }
+            if ($email !== '') {
+                if (! $hasDomain) {
+                    $rowErrors[] = ['row' => $line, 'message' => '許可するメールのドメインが登録されていません（部門の管理で登録してください）'];
+                    continue;
+                }
+                if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                    $rowErrors[] = ['row' => $line, 'message' => "メールアドレス「{$email}」の形式が正しくありません"];
+                    continue;
+                }
+                if (! ApprovalMailDomain::allows($email)) {
+                    $rowErrors[] = ['row' => $line, 'message' => "メールアドレス「{$email}」は許可されていないドメインです"];
+                    continue;
+                }
+            }
+
+            $codes = $this->splitDepartmentCodes($row['departments']);
+            if ($codes === []) {
+                $rowErrors[] = ['row' => $line, 'message' => '所属部門を 1 つ以上入力してください'];
+                continue;
+            }
+            $unknown = array_values(array_diff($codes, $departments->keys()->all()));
+            if ($unknown !== []) {
+                $rowErrors[] = ['row' => $line, 'message' => '登録されていない部門です: ' . implode('、', $unknown)];
+                continue;
+            }
+
+            // 既存との照合（削除済みも含めて引く）
+            $byNumber = User::withTrashed()->where('employee_number', $number)->first();
+            $byEmail  = $email === '' ? null : User::withTrashed()->where('email', $email)->first();
+
+            if ($byNumber && $byEmail && $byNumber->id !== $byEmail->id) {
+                $rowErrors[] = ['row' => $line, 'message' => "社員番号は {$byNumber->name} さん、メールアドレスは {$byEmail->name} さんと一致します"];
+                continue;
+            }
+
+            $existing = $byNumber ?? $byEmail;
+
+            if ($existing && $existing->trashed()) {
+                $rowErrors[] = ['row' => $line, 'message' => "削除済みの利用者（{$existing->name}さん）と一致します。基幹の管理者に復元を依頼してください"];
+                continue;
+            }
+
+            // ここから先は取り込むと決めた行。注意はこの位置でだけ積む
+            if ($existing) {
+                $updateCount++;
+
+                if ($existing->employee_number !== $number) {
+                    $warnings[] = ['row' => $line, 'message' => "ログインIDが {$existing->employee_number} から {$number} に変わります"];
+                }
+                if ($existing->name !== $name) {
+                    $warnings[] = ['row' => $line, 'message' => "氏名が登録と違います（変えません）: 登録「{$existing->name}」/ CSV「{$name}」"];
+                }
+                if ($email !== '' && $existing->email !== $email) {
+                    $warnings[] = ['row' => $line, 'message' => 'メールアドレスは変えません（変更は基幹の管理者に依頼してください）'];
+                }
+                if (! $existing->isActive()) {
+                    $warnings[] = ['row' => $line, 'message' => '無効の利用者です（有効化は利用者の管理で行ってください）'];
+                }
+            } else {
+                $createCount++;
+
+                if (isset($digitWidths['max'], $digitWidths['widths'][$number]) && $digitWidths['widths'][$number] < $digitWidths['max']) {
+                    $warnings[] = ['row' => $line, 'message' => "社員番号 {$number} は、ほかの行より桁が少ないです。Excel で先頭の 0 が落ちていませんか"];
+                }
+            }
+
+            $rows[] = [
+                'line'            => $line,
+                'existing_id'     => $existing?->id,
+                'employee_number' => $number,
+                'name'            => $name,
+                'email'           => $email === '' ? null : $email,
+                'department_ids'  => $departments->only($codes)->values()->all(),
+                'department_codes'=> $codes,
+            ];
+        }
+
+        return [
+            'rows'        => $rows,
+            'rowErrors'   => $rowErrors,
+            'warnings'    => $warnings,
+            'validCount'  => count($rows),
+            'createCount' => $createCount,
+            'updateCount' => $updateCount,
+            'totalRows'   => count($raw),
+        ];
+    }
+
+    /** 取り込む（新規は作り、既存は社員番号と所属部門だけ書き換える） */
+    private function apply(array $rows): array
+    {
+        $entries = [];
+
+        foreach ($rows as $row) {
+            if ($row['existing_id'] !== null) {
+                $user   = User::findOrFail($row['existing_id']);
+                $before = ['employee_number' => $user->employee_number];
+
+                $user->employee_number = $row['employee_number'];
+                $user->save();
+
+                $user->approvalDepartments()->sync($row['department_ids']);
+
+                SettingLogger::record('user.imported_updated', 'user', $user->id, $before, [
+                    'employee_number' => $user->employee_number, 'departments' => $row['department_codes'],
+                ]);
+
+                continue;
+            }
+
+            $password = InitialPassword::generate();
+
+            $user = new User();
+            $user->name = $row['name'];
+            $user->employee_number = $row['employee_number'];
+            $user->email = $row['email'];
+            $user->role = UserRole::ApprovalOnly->value;
+            $user->status = UserStatus::Active->value;
+            // ⚠ 強度 10 のハッシュは hashed キャストとぶつかるので、必ず User::setInitialPassword() を通す
+            //    （must_change_password もその中で立つ。理由はそのメソッドの docblock）
+            $user->setInitialPassword($password);
+            $user->save();
+
+            $user->approvalDepartments()->sync($row['department_ids']);
+
+            SettingLogger::record('user.imported_created', 'user', $user->id, [], [
+                'name' => $user->name, 'employee_number' => $user->employee_number,
+                'email' => $user->email, 'departments' => $row['department_codes'],
+            ]);
+
+            $entries[] = ['user' => $user, 'password' => $password];
+        }
+
+        return $entries;
+    }
+
+    /**
+     * 所属部門の並びを分ける。**英字以外はすべて区切りとみなす**
+     * （カンマ・スラッシュ・空白・読点・中黒。全角も可）。
+     */
+    private function splitDepartmentCodes(string $value): array
+    {
+        $value = mb_strtoupper(mb_convert_kana($value, 'as'), 'UTF-8');
+        $parts = preg_split('/[^A-Z]+/u', $value, -1, PREG_SPLIT_NO_EMPTY);
+
+        return array_values(array_unique($parts ?: []));
+    }
+
+    /**
+     * 数字だけの社員番号の桁数（Excel が先頭の 0 を落とした行を見つけるため）。
+     *
+     * @return array{max: int|null, widths: array<string, int>}
+     */
+    private function numericWidths(array $numbers): array
+    {
+        $widths = [];
+        foreach ($numbers as $number) {
+            // ⚠ **必ず文字列に戻す。** 呼び出し側は `$seenNumbers` のキーを渡すが、PHP は
+            //    「整数として書ける」文字列のキーを**整数へ勝手に変える**（`'125'` → `int 125`。
+            //    `'00123'` は先頭の 0 があるので文字列のまま）。整数のまま `ctype_digit()` に
+            //    渡すと、PHP はそれを ASCII の符号位置とみなして判定する（125 は `}` ＝ false）。
+            //    つまり**先頭の 0 が落ちた行だけが桁数の一覧から漏れ、この注意が永久に出ない**
+            //    （この機能が見つけたい行そのもの）。実測で確認済み。
+            $number = (string) $number;
+
+            if (ctype_digit($number)) {
+                $widths[$number] = strlen($number);
+            }
+        }
+
+        return ['max' => $widths === [] ? null : max($widths), 'widths' => $widths];
+    }
+}

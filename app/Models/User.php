@@ -161,8 +161,8 @@ class User extends Authenticatable
     /**
      * 初期パスワードを入れる（保存はしない。呼び出し側が `save()` する）。
      *
-     * 再発行（`PasswordReissuer`）と基幹の新規登録（`Admin\UserController::store`）がここを通る。
-     * CSV の一括登録（Task 13）も**ここに寄せる予定**だが、まだ通っていない。
+     * 再発行（`PasswordReissuer`）・基幹の新規登録（`Admin\UserController::store`）・
+     * CSV の一括登録（`Approval\UserImportController`）が**すべてここを通る**（2026-09-17 に寄せ終えた）。
      * ⚠ 移した／移していないを**現在形で正しく保つこと** — 次の読み手が grep して
      *   「守られている」と誤読する（Bug #42 ② と同型）。
      *

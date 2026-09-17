@@ -3,6 +3,7 @@
 use App\Http\Controllers\Approval\HomeController;
 use App\Http\Controllers\Approval\OrganizationController;
 use App\Http\Controllers\Approval\UserController;
+use App\Http\Controllers\Approval\UserImportController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -37,11 +38,18 @@ Route::middleware('approval.admin')->prefix('approvals/admin')->name('approvals.
 
     // 利用者の管理
     //
-    // ⚠ `/users/reissue-bulk` を `/users/{user}` より前に置く（登録順がマッチの優先順）。
-    //   今は HTTP メソッドが違うので当たらないが、あとで POST /users/{user} を足した人が
-    //   気づけない形で壊れる。
+    // ⚠ `/users/reissue-bulk` と `/users/import*` を `/users/{user}` より前に置く
+    //   （登録順がマッチの優先順）。今は HTTP メソッドが違うので当たらないが、
+    //   あとで POST /users/{user} を足した人が気づけない形で壊れる。
     Route::get('/users', [UserController::class, 'index'])->name('users.index');
     Route::post('/users/reissue-bulk', [UserController::class, 'reissueBulk'])->name('users.reissueBulk');
+
+    // 社員の CSV 一括登録（設計書 §5.10）
+    Route::get('/users/import', [UserImportController::class, 'form'])->name('users.import');
+    Route::get('/users/import/template', [UserImportController::class, 'template'])->name('users.import.template');
+    Route::post('/users/import/preview', [UserImportController::class, 'preview'])->name('users.import.preview');
+    Route::post('/users/import/execute', [UserImportController::class, 'execute'])->name('users.import.execute');
+
     Route::put('/users/{user}', [UserController::class, 'update'])->name('users.update');
     Route::patch('/users/{user}/toggle-status', [UserController::class, 'toggleStatus'])->name('users.toggleStatus');
     Route::post('/users/{user}/reissue', [UserController::class, 'reissue'])->name('users.reissue');
