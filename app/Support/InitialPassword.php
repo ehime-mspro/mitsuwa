@@ -15,6 +15,15 @@ use Illuminate\Support\Facades\Hash;
  * （設計書 D12 が名指しして禁じた形）。どちらも Task 10 で消した。
  *
  * ⚠ 生成した平文は画面に 1 度出すだけ（ログイン案内）。DB・セッション・ログ・記録に残さない。
+ *
+ * ⚠ **例外のスタックトレースが平文を載せうる（php.ini 依存。既存の 4 経路すべてに共通）。**
+ *   `zend.exception_ignore_args` が `Off` だと、PHP は例外のトレースに**引数の値**を載せる。
+ *   文字列は 15 文字で切られるが、初期パスワードは 10 文字なので**全部載る**。よって
+ *   `hash($plain)` や `User::setInitialPassword($plain)` の**フレームが積まれている最中に**
+ *   例外が出ると、平文が `laravel.log` に残る経路が理論上ある（手元の php.ini は `Off` を実測）。
+ *   ⚠ これは特定の呼び出し元の欠陥ではなく、**基幹の新規登録・基幹の再発行・決裁の再発行・
+ *   CSV の一括登録の 4 経路すべてに等しく当てはまる**。塞ぐ場所はアプリではなく php.ini。
+ *   本番では `zend.exception_ignore_args=1` を確かめる（設計書 §5.11・要件定義書 16.3 の 15）。
  */
 final class InitialPassword
 {
