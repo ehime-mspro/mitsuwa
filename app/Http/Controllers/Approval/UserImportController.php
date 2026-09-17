@@ -127,6 +127,14 @@ class UserImportController extends Controller
 
         $entries = DB::transaction(fn () => $this->apply($analysis['rows']));
 
+        // ⚠ 新しく登録した人が 1 人もいないなら、ログイン案内を返さない。印刷する初期
+        //   パスワードが 1 つも無いのに「この画面を閉じると初期パスワードは二度と表示
+        //   されません」だけが出て、誤解を招くため。更新は済んでいるので成功として戻す。
+        if ($analysis['createCount'] === 0) {
+            return redirect()->route('approvals.admin.users.import')
+                ->with('success', "{$analysis['updateCount']} 件の社員番号と所属部門を更新しました。新しく登録した人がいないため、ログイン案内はありません。");
+        }
+
         // 新規登録では通知メールを送らない（紙で渡す。要件 8.1 に無い）
         return (new LoginGuide($entries, notifiedCount: 0, skippedCount: 0))->toResponse($request);
     }
@@ -149,13 +157,30 @@ class UserImportController extends Controller
         $hasDomain    = ApprovalMailDomain::exists();
         $seenNumbers  = [];
         $seenEmails   = [];
+        $seenExisting = [];
+        $matches      = [];
 
         // 同じファイルの中の重複を先に数える（重なった行は両方エラーにする）
-        foreach ($raw as $row) {
+        //
+        // ⚠ **既存の利用者に当たった回数もここで数える。** 社員番号どうし・メールアドレス
+        //   どうしの重複だけを見ていると、「行1 が社員番号で X さん・行2 がメールアドレスで
+        //   同じ X さん」に当たる 2 行が**どちらも取り込む行**として通り、`apply()` が順に
+        //   適用して**後の行が前の行を無音で上書きする**（更新の件数も実人数と食い違う）。
+        //   一意の索引には当たらないので DB も止めてくれない。
+        foreach ($raw as $index => $row) {
             $number = LoginId::normalize($row['employee_number']);
             $email  = LoginId::normalize($row['email']);
             if ($number !== '') { $seenNumbers[$number] = ($seenNumbers[$number] ?? 0) + 1; }
             if ($email !== '')  { $seenEmails[$email] = ($seenEmails[$email] ?? 0) + 1; }
+
+            // 既存との照合（削除済みも含めて引く）。1 行につき 1 回だけ引き、下の本体で使い回す
+            $byNumber = $number === '' ? null : User::withTrashed()->where('employee_number', $number)->first();
+            $byEmail  = $email === ''  ? null : User::withTrashed()->where('email', $email)->first();
+            $matches[$index] = [$byNumber, $byEmail];
+
+            // 別人に当たる行はそれ自体がエラーになるので、ここでは数えない
+            $existing = ($byNumber && $byEmail && $byNumber->id !== $byEmail->id) ? null : ($byNumber ?? $byEmail);
+            if ($existing !== null) { $seenExisting[$existing->id] = ($seenExisting[$existing->id] ?? 0) + 1; }
         }
 
         $digitWidths = $this->numericWidths(array_keys($seenNumbers));
@@ -215,9 +240,8 @@ class UserImportController extends Controller
                 continue;
             }
 
-            // 既存との照合（削除済みも含めて引く）
-            $byNumber = User::withTrashed()->where('employee_number', $number)->first();
-            $byEmail  = $email === '' ? null : User::withTrashed()->where('email', $email)->first();
+            // 既存との照合（先回りで引いた結果を使う）
+            [$byNumber, $byEmail] = $matches[$index];
 
             if ($byNumber && $byEmail && $byNumber->id !== $byEmail->id) {
                 $rowErrors[] = ['row' => $line, 'message' => "社員番号は {$byNumber->name} さん、メールアドレスは {$byEmail->name} さんと一致します"];
@@ -231,12 +255,24 @@ class UserImportController extends Controller
                 continue;
             }
 
+            // 1 行 1 人。同じ人に当たる行が 2 つ以上あれば、どちらもエラーにする
+            if ($existing && ($seenExisting[$existing->id] ?? 0) > 1) {
+                $rowErrors[] = ['row' => $line, 'message' => "ほかの行と同じ利用者（{$existing->name}さん）に一致します"];
+                continue;
+            }
+
             // ここから先は取り込むと決めた行。注意はこの位置でだけ積む
             if ($existing) {
                 $updateCount++;
 
-                if ($existing->employee_number !== $number) {
-                    $warnings[] = ['row' => $line, 'message' => "ログインIDが {$existing->employee_number} から {$number} に変わります"];
+                // ⚠ 社員番号が**まだ無い人**（メールアドレスでログインしていた人）に
+                //   メールアドレスで当たった行では `employee_number` が null になる。
+                //   同じ文を使うと「ログインIDが  から A0001 に変わります」と空白が出る。
+                $currentNumber = (string) $existing->employee_number;
+                if ($currentNumber !== $number) {
+                    $warnings[] = ['row' => $line, 'message' => $currentNumber === ''
+                        ? "ログインIDに社員番号 {$number} を設定します"
+                        : "ログインIDが {$currentNumber} から {$number} に変わります"];
                 }
                 if ($existing->name !== $name) {
                     $warnings[] = ['row' => $line, 'message' => "氏名が登録と違います（変えません）: 登録「{$existing->name}」/ CSV「{$name}」"];

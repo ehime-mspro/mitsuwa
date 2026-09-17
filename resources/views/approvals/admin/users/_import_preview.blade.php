@@ -84,20 +84,22 @@
                     @endforelse
                 </tbody>
             </table>
-        </div>
-    </div>
+        </div>{{-- /scroll-hint-inner --}}
+        <div class="scroll-hint-text">← スクロールできます →</div>
+    </div>{{-- /scroll-hint --}}
 
     {{-- 確定 --}}
     <div class="px-4 py-4 border-t border-gray-200">
         @if($validCount > 0 && $rowErrors === [])
-            <p class="text-[12px] text-gray-600 mb-2.5">
-                この {{ $validCount }} 行を取り込みます。新しく登録する {{ $createCount }} 人の初期パスワードを作り、印刷用の案内を開きます。
-                @if($createCount === 0)
-                    今回は新しく登録する人がいないので、案内に印刷する人はいません。
-                @endif
-            </p>
+            @if($createCount > 0)
+                <p class="text-[12px] text-gray-600 mb-2.5">この {{ $validCount }} 行を取り込みます。新しく登録する {{ $createCount }} 人の初期パスワードを作り、印刷用の案内を開きます。</p>
+            @else
+                {{-- 新規が 0 人なら案内に印刷する人がいないので、案内そのものを開かない
+                     （`UserImportController::execute()` はこの画面へ戻して成功を知らせる）--}}
+                <p class="text-[12px] text-gray-600 mb-2.5">この {{ $validCount }} 行を取り込みます。今回は新しく登録する人がいないので、ログイン案内は開きません。</p>
+            @endif
             <form method="POST" action="{{ route('approvals.admin.users.import.execute') }}"
-                  onsubmit="return confirm('{{ $validCount }} 件を取り込みます。印刷用の案内が開きます。よろしいですか。');">
+                  onsubmit="return confirm('{{ $validCount }} 件を取り込みます。{{ $createCount > 0 ? '印刷用の案内が開きます。' : 'ログイン案内は開きません。' }}よろしいですか。');">
                 @csrf
                 <input type="hidden" name="csv_data" value="{{ $csvData }}">
                 <input type="hidden" name="guide_token" value="{{ $guideToken }}">

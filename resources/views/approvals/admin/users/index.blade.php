@@ -29,10 +29,18 @@
         </div>
     @endif
 
-    <h1 class="text-lg font-bold text-gray-900 mb-1">利用者の管理</h1>
+    {{-- ⚠ 取込画面へのリンクは**アプリ内でここ 1 つだけ**にする。同じ URL を指す要素を 2 つ置くと、
+         片方を消しても素朴なアサートが必ず false-pass する（Bug #43 / #47）。下の説明文は
+         リンクを重ねず言葉で案内するだけにしてある。サイドバーの項目は別タスク --}}
+    <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+        <h1 class="text-lg font-bold text-gray-900">利用者の管理</h1>
+        <a href="{{ route('approvals.admin.users.import') }}"
+           class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[12px] font-semibold rounded-md cursor-pointer whitespace-nowrap">社員の一括登録（CSV）</a>
+    </div>
     <p class="text-[12px] text-gray-500 mb-5">
         決裁の所属部門は全員について変えられます。氏名・社員番号の修正、無効化・有効化、パスワードの再発行は、決裁だけを使う利用者に対してのみ行えます。
         メールアドレスの変更と利用者の削除は、基幹の管理者に依頼してください。
+        決裁だけを使う利用者を新しく登録するときは「社員の一括登録（CSV）」を使ってください（1 人だけでも使えます）。
     </p>
 
     {{-- 絞り込み --}}
@@ -269,7 +277,7 @@
         @endif
     </div>
 
-    {{-- 利用者の編集（追加のモーダルは無い。決裁のみ利用者の登録は CSV 取込と基幹の利用者管理から） --}}
+    {{-- 利用者の編集（追加のモーダルは無い。決裁のみ利用者の登録は上の「社員の一括登録（CSV）」と基幹の利用者管理から） --}}
     <div x-show="editModal" class="fixed inset-0 bg-black/35 z-50 flex items-center justify-center" style="display:none;">
         <div @click.outside="editModal = false" class="bg-white rounded-xl w-full max-w-[520px] max-h-[90vh] overflow-y-auto shadow-xl mx-4">
             <form method="POST" :action="'{{ url('approvals/admin/users') }}/' + editUserId">

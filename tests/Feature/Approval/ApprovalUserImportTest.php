@@ -80,6 +80,20 @@ class ApprovalUserImportTest extends TestCase
         $this->actingAs($this->admin())->get(route('approvals.admin.users.import'))->assertOk();
     }
 
+    /**
+     * 利用者の管理から取込画面へ行ける（Bug #47 — 入口と受け側を対で固定する）。
+     *
+     * ⚠ これが無いと、URL を直打ちする人にしか届かない機能になる（実測でアプリ内の
+     *   リンクは 0 件だった）。⚠ リンクは**アプリ内で 1 つだけ**にしてある。同じ URL を
+     *   指す要素が 2 つあると、片方を消しても このアサートが素通りする（Bug #43 / #47）。
+     */
+    public function test_the_user_list_links_to_the_import_screen(): void
+    {
+        $html = $this->actingAs($this->admin())->get(route('approvals.admin.users.index'))->assertOk()->getContent();
+
+        $this->assertStringContainsString('href="' . route('approvals.admin.users.import') . '"', $html);
+    }
+
     public function test_the_template_can_be_downloaded(): void
     {
         $response = $this->actingAs($this->admin())->get(route('approvals.admin.users.import.template'))->assertOk();
@@ -202,6 +216,33 @@ class ApprovalUserImportTest extends TestCase
         $this->assertCount(2, $preview->viewData('rowErrors'));
     }
 
+    /**
+     * 別のキーで**同じ既存利用者**に当たる 2 行は、どちらもエラー（1 行 1 人）。
+     *
+     * ⚠ 社員番号どうし・メールアドレスどうしの重複しか見ていないと、この形は両方 valid に
+     *   なって `apply()` が順に適用し、**後の行が前の行を無音で上書きする**（更新の件数も
+     *   実人数と食い違う）。⚠ **一意の索引には当たらない**ので DB も止めてくれない
+     *   ＝「確定が落ちること」ではなく「取り込む行が 0 で、両方がエラーに出ること」を見る。
+     */
+    public function test_two_rows_matching_the_same_existing_user_both_fail(): void
+    {
+        User::factory()->create([
+            'name' => '登録済み 太郎', 'employee_number' => 'A0001', 'email' => 'x@mitsuwat.co.jp',
+            'must_change_password' => false,
+        ]);
+
+        $preview = $this->preview("A0001,甲,,RE\nA0002,乙,x@mitsuwat.co.jp,SA\n")->assertOk();
+
+        $this->assertSame(0, $preview->viewData('validCount'), 'どちらか一方が取り込まれる（後の行が前の行を上書きする）');
+        $this->assertSame(0, $preview->viewData('updateCount'));
+        $this->assertCount(2, $preview->viewData('rowErrors'));
+        $this->assertSame([2, 3], array_column($preview->viewData('rowErrors'), 'row'));
+
+        $html = $preview->getContent();
+        $this->assertStringContainsString('エラー 行2: ほかの行と同じ利用者（登録済み 太郎さん）に一致します', $html);
+        $this->assertStringContainsString('エラー 行3: ほかの行と同じ利用者（登録済み 太郎さん）に一致します', $html);
+    }
+
     // --- 既存の利用者との照合 ---
 
     public function test_matching_an_existing_user_updates_only_the_number_and_departments(): void
@@ -211,7 +252,8 @@ class ApprovalUserImportTest extends TestCase
             'role' => UserRole::Staff->value, 'must_change_password' => false,
         ]);
 
-        $this->confirm("A0001,CSV の氏名,a@mitsuwat.co.jp,RE\n")->assertOk();
+        // ⚠ 新規が 0 人なので案内は返らず取込画面へ戻る（下の 2 本が役割を分けて固定している）
+        $this->confirm("A0001,CSV の氏名,a@mitsuwat.co.jp,RE\n")->assertRedirect(route('approvals.admin.users.import'));
 
         $existing->refresh();
         $this->assertSame('登録済み 太郎', $existing->name, '氏名が書き換わっている');
@@ -230,7 +272,13 @@ class ApprovalUserImportTest extends TestCase
         $this->assertStringContainsString('氏名が登録と違います', $preview->getContent());
     }
 
-    /** 社員番号が変わるときは予告する */
+    /**
+     * 社員番号が変わるときは予告する。
+     *
+     * ⚠ **役割（`viewData`）と表示を別々に見る。** ビューはエラーも注意も同じ `['message']` を
+     *   出すので、`assertStringContainsString` だけだと `$warnings[] =` を `$rowErrors[] =` に
+     *   変える変異が緑のまま通る（この push には `continue` が無いので件数も動かない。Bug #54 ④）。
+     */
     public function test_a_changed_login_id_is_announced(): void
     {
         User::factory()->create(['employee_number' => 'OLD1', 'email' => 'a@mitsuwat.co.jp', 'must_change_password' => false]);
@@ -238,7 +286,30 @@ class ApprovalUserImportTest extends TestCase
         $preview = $this->preview("A0001,甲 一郎,a@mitsuwat.co.jp,RE\n")->assertOk();
 
         $this->assertSame(1, $preview->viewData('validCount'));
+        $this->assertNotEmpty($preview->viewData('warnings'), '注意ではなくエラーに積まれている');
+        $this->assertSame([], $preview->viewData('rowErrors'));
         $this->assertStringContainsString('ログインIDが OLD1 から A0001 に変わります', $preview->getContent());
+    }
+
+    /**
+     * 社員番号がまだ無い人（メールアドレスでログインしていた人）に当たったときの予告。
+     *
+     * ⚠ 「X から Y に変わります」の形を使うと `{$existing->employee_number}` が null で
+     *   **「ログインIDが  から A0001 に変わります」**（空白）になる。
+     */
+    public function test_setting_a_first_login_id_is_announced_without_a_blank(): void
+    {
+        User::factory()->create(['employee_number' => null, 'email' => 'a@mitsuwat.co.jp', 'must_change_password' => false]);
+
+        $preview = $this->preview("A0001,甲 一郎,a@mitsuwat.co.jp,RE\n")->assertOk();
+
+        $this->assertSame(1, $preview->viewData('validCount'));
+        $this->assertNotEmpty($preview->viewData('warnings'));
+        $this->assertSame([], $preview->viewData('rowErrors'));
+
+        $html = $preview->getContent();
+        $this->assertStringContainsString('ログインIDに社員番号 A0001 を設定します', $html);
+        $this->assertStringNotContainsString('ログインIDが  から', $html);
     }
 
     /** 社員番号とメールアドレスが別人に当たる行はエラー */
@@ -266,6 +337,7 @@ class ApprovalUserImportTest extends TestCase
         $this->assertStringContainsString('基幹の管理者に復元を依頼してください', $preview->getContent());
     }
 
+    /** ⚠ 役割と表示を別々に見る（同上。Bug #54 ④）*/
     public function test_an_inactive_match_is_a_warning(): void
     {
         User::factory()->create(['employee_number' => 'A0001', 'email' => null, 'status' => UserStatus::Inactive->value, 'must_change_password' => false]);
@@ -273,6 +345,8 @@ class ApprovalUserImportTest extends TestCase
         $preview = $this->preview("A0001,甲 一郎,,RE\n")->assertOk();
 
         $this->assertSame(1, $preview->viewData('validCount'));
+        $this->assertNotEmpty($preview->viewData('warnings'), '注意ではなくエラーに積まれている');
+        $this->assertSame([], $preview->viewData('rowErrors'));
         $this->assertStringContainsString('無効の利用者です', $preview->getContent());
     }
 
@@ -309,7 +383,51 @@ class ApprovalUserImportTest extends TestCase
         $this->assertStringNotContainsString('name="csv_data"', $html);
     }
 
+    /**
+     * 取り込む行の表は横スクロールする（`min-w-[720px]`）ので、共通のヒント文を持つ。
+     *
+     * ⚠ `resources/js/app.js` の共通ヒントは `.scroll-hint` / `.scroll-hint-inner` /
+     *   `.scroll-hint-text` の 3 つが揃って初めて成立する。`-text` が無いと
+     *   「スクロールできます」が永久に出ない（Bug #56 と同じ「HTML は妥当なのに実行時に無音」型）。
+     */
+    public function test_the_preview_table_carries_the_scroll_hint_text(): void
+    {
+        $html = $this->preview("A0001,甲 一郎,,RE\n")->assertOk()->getContent();
+
+        $this->assertStringContainsString('<div class="scroll-hint-text">← スクロールできます →</div>', $html);
+    }
+
     // --- 確定 ---
+
+    /**
+     * 新規が 1 人もいないファイルはログイン案内を返さず、取込画面へ戻して成功を知らせる。
+     *
+     * ⚠ 案内を返すと「0 人分」＋「この画面を閉じると初期パスワードは二度と表示されません」
+     *   だけが出る。印刷するパスワードが 1 つも無いので誤解を招く。
+     * ⚠ 成功の帯はレイアウトが出す（画面側で二重に出さない）ので、ここではフラッシュを見る。
+     */
+    public function test_an_update_only_file_returns_to_the_form_instead_of_the_guide(): void
+    {
+        $existing = User::factory()->create(['employee_number' => 'A0001', 'email' => null, 'must_change_password' => false]);
+
+        $this->confirm("A0001,甲 一郎,,RE\n")
+            ->assertRedirect(route('approvals.admin.users.import'))
+            ->assertSessionHas('success', '1 件の社員番号と所属部門を更新しました。新しく登録した人がいないため、ログイン案内はありません。');
+
+        // 取り込み自体は済んでいる
+        $this->assertSame(['RE'], $existing->fresh()->approvalDepartments->pluck('code')->all());
+    }
+
+    /** ⚠ 対で固定する — 新規が 1 人でもいれば従来どおり案内を返す（更新と混ざっていても）*/
+    public function test_a_file_with_at_least_one_new_user_still_returns_the_guide(): void
+    {
+        User::factory()->create(['employee_number' => 'A0001', 'email' => null, 'must_change_password' => false]);
+
+        $response = $this->confirm("A0001,甲,,RE\nA0002,乙,,SA\n")->assertOk();
+
+        $this->assertStringContainsString('ログインのご案内', $response->getContent());
+        $this->assertStringContainsString('乙', $response->getContent());
+    }
 
     public function test_the_server_revalidates_on_confirm(): void
     {
@@ -393,7 +511,11 @@ class ApprovalUserImportTest extends TestCase
     {
         $preview = $this->preview("00123,甲,,RE\n00124,乙,,RE\n125,丙,,RE\n")->assertOk();
 
+        // ⚠ 役割と表示を別々に見る。`validCount` は `continue` の無い push では動かないので、
+        //   これだけだと `$rowErrors[] =` への変異が緑のまま通る（Bug #54 ④）。
         $this->assertSame(3, $preview->viewData('validCount'), '注意であってエラーではない');
+        $this->assertNotEmpty($preview->viewData('warnings'), '注意ではなくエラーに積まれている');
+        $this->assertSame([], $preview->viewData('rowErrors'));
         $this->assertStringContainsString('ほかの行より桁が少ないです', $preview->getContent());
         $this->assertStringContainsString('先頭の 0 が落ちていませんか', $preview->getContent());
     }
