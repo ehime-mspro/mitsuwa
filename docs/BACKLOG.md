@@ -1529,7 +1529,7 @@ git checkout 13.x && git merge --ff-only schedule-board-gantt
 | Controller | `Approval\{Home,User,UserImport,Organization}Controller` |
 | Blade | `approvals/home`・`login-guide`・`admin/organization`・`admin/users/{index,import,_import_preview}` ＋ **`layouts/partials/sidebar_approval.blade.php`** を新設 |
 | ルート | **19 本**（`routes/approval.php`。`web.php` の末尾が require する）|
-| テスト | 1711 → **2050 tests / 13499 assertions green**（+339）|
+| テスト | 1711 → **2050 tests / 13503 assertions green**（+339）|
 
 ### 要点
 
@@ -1560,11 +1560,17 @@ git checkout 13.x && git merge --ff-only schedule-board-gantt
 
 ### 検証
 
-- 全テスト **2050 tests / 13499 assertions green**
+- 全テスト **2050 tests / 13503 assertions green**
 - コンパイル済みビュー **277 本**を `php -l` → INVALID 0 件（⚠ `view:cache` の成功表示だけでは足りない。Bug #21 / #26 / #30）
-- 変異テストは各タスクで実測（記録は実装計画）。サイドバー（Task 14）は **11 通り**で、
-  1 通り（ラベルに接尾辞を足す改名）が緑のまま通ったのでアサートをタグの境目ごと見る形に直して赤にした（Bug #43 の型）。
-  ⚠ **3 か所のうち 1 か所を消す変異**は、ページ全体を 1 回見る素朴なテストでは**全部緑だった**（実測）
+- 変異テストは各タスクで実測（**記録は実装計画**。末尾に「Task 12 の実測記録」「Task 14 の実測記録」）。
+  サイドバー（Task 14）は最終コードに対して **17 通り ＋ カナリア 1** を全件（2050 本）で流し、
+  **検出 17 / 未検出 0 / 等価変異 0**。⚠ ただし**テストを書いている最中は 4 つの穴が緑のまま通っていた**:
+  ①**3 か所のうち 1 か所だけ消す**（6 通り）— ページ全体を 1 回見る形ではドロワーの塊を丸ごと消しても緑（Bug #41）
+  ②**ラベルの改名**（「決裁のホームZZZ」）— 素の部分一致は素通り（Bug #43）
+  ③**管理リンクをページ全体で見る** — 決裁のホームの本文自身が同じ 2 本のリンクを持つので、
+  サイドバーが 1 本も出さなくても緑（Bug #46）④**②の対策が見出し 2 つにしか入っていなかった** —
+  「利用者の管理」「部門の管理」は `route()` の一致だけで、改名しても緑（2026-09-17 のレビューで発覚・`3bb393ce`。
+  **テストだけを 1 つ前へ戻して当て直し、旧テストでは緑・今のテストでは赤**まで確かめた）
 - ⚠ **実ブラウザでの目視は未了**（下記）
 
 ### ⚠ 本番反映の手順（未実施。設計書 §7）

@@ -8781,9 +8781,11 @@ APP_KEY="base64:$(php -r 'echo base64_encode(random_bytes(32));')" ./vendor/bin/
 | M45 | 取込で既存の `name` も書き換える | `..._updates_only_the_number_and_departments` |
 | M46 | 取込の注意を採用位置でなく先頭で積む | 新しく 1 本足す（エラー行に注意が並ばないこと） |
 | M47 | `splitDepartmentCodes()` の区切りをカンマだけに | `..._departments_can_be_separated_in_many_ways`（5 通り） |
-| M48 | サイドバーの出し分けを基幹固定に | `ApprovalSidebarTest` の 2 本 |
+| M48 | サイドバーの出し分けを基幹固定に | `..._an_approval_only_user_gets_the_approval_sidebar`（**実測 1 本**。当初この表は「2 本」と書いていたが誤り）|
 | M49 | `sidebar_approval` の展開サイドバーに `x-cloak` を足す | `..._follows_the_cloak_rules` |
-| M50 | 基幹のサイドバーの「決裁の管理」を無条件に出す | `..._nothing_changes_for_everyone_else` |
+| M50 | 基幹のサイドバーの「決裁の管理」を無条件に出す | `..._nothing_changes_for_everyone_else` ＋ `..._an_executive_without_the_flag_gets_nothing_either`（**実測 2 本**）|
+| M50a | **サイドバーは 3 か所ある**（PC 展開版 / PC 折りたたみ版 / モバイルのドロワー）。決裁のホームのリンクと基幹の「決裁の管理」を、**3 か所のうち 1 か所だけ**消す（各 3 通り＝計 6 通り）| 決裁側 `..._an_approval_only_user_gets_the_approval_sidebar`（`expanded に…` / `rail に…` / `drawer に…` と**場所を名指しして**落ちる）／ 基幹側 `..._a_base_user_with_the_flag_gets_an_extra_group`。⚠ **ページ全体を 1 回見る素朴なテストでは 6 通りとも緑だった**（Task 14 で実測。Bug #41 の型）|
+| M50b | サイドバーのラベルに**接尾辞を足す改名**（「決裁のホームZZZ」「利用者の管理ZZZ」。決裁の展開版 / 決裁のドロワー / 基幹の展開版 の 3 通り）| 決裁側 `..._an_approval_only_user_gets_the_approval_sidebar` / `..._an_approval_only_admin_sees_the_management_links`、基幹側 `..._a_base_user_with_the_flag_gets_an_extra_group`（いずれも `…の文字が無い`）。⚠ **素の部分一致で見ていた頃は緑だった**（Bug #43 の型。`route()` の一致だけを見ていた 2 本は 2026-09-17 のレビューで発覚し `3bb393ce` で塞いだ）|
 | M51 | `PasswordReissuedMail::content()` の `setTimezone('Asia/Tokyo')` を外す | `PasswordReissueTest::test_the_mail_shows_the_time_in_japan_time`（実測済み・検出） |
 | M52 | 同上の「（日本時間）」の表記を消す | 同上（実測済み・検出） |
 | M53 | `bootstrap/app.php` から `AuthenticateSession` を外す | `OtherDeviceLogoutTest` の 2 本 |
@@ -8802,6 +8804,11 @@ M53 で `OtherDeviceLogoutTest` だけが落ちるなら、この判断が正し
 
 ⚠ **等価変異として記録**: `Asia/Tokyo` を `Asia/Seoul` にする変異は**緑**（実測）。
 どちらも UTC+9 なので、描画された時刻からは原理的に区別できない。
+
+⚠ **M48〜M50b（サイドバー）は Task 14 で最終コードに対して測り終えている**（17 通り ＋ カナリア 1・検出 17 / 未検出 0 / 等価変異 0）。
+表と落ちた理由の文言は末尾の「**Task 14 の実測記録（2026-09-17）**」にある。
+Task 15 では**測り直しでなく、ほかの変異と同じ作法で 1 度は流す**（前の変異の残骸で
+測定が汚れていないことの確認を兼ねる）。
 
 - [ ] **Step 3: 検出できなかった変異にテストを足す**
 
@@ -9043,3 +9050,89 @@ composer dump-autoload --no-dev --optimize
 - **`UserController::toggleStatus` の「自分自身」の判定は到達しない**（`assertManageable` が
   先に断る）。コメントに明記済み。テスト名も実態に合わせて改名した（Bug #48）
 
+
+---
+
+## Task 14 の実測記録（2026-09-17）
+
+### レビューで出た指摘と、その扱い
+
+仕様適合レビューの結果は**実装の欠陥 0 件**。サイドバーの出し分け・D2・Bug #56・
+ドキュメントの記述と実態の一致（ルート数 19・`approval_*` 7 表・Roles・門番の並び）は
+すべて実測で裏が取れている。出たのは**記録の不一致 2 件 ＋ 観察 1 件**:
+
+| # | 指摘 | 扱い |
+|---|---|---|
+| 1 | `routes/web.php` の `require __DIR__ . '/approval.php';` の真上の見出しが「決裁申請（**10ルート**）」のまま | **19 に直した**（`d2ccb15e`）。実測 `route:list --name=approvals` が `Showing [19] routes`、`routes/approval.php` の `Route::` の登録数も 19。`docs/ARCHITECTURE.md` には 19 と書いてあり、このリポジトリは「`routes/web.php` の見出しと揃える」を規約にしている（`docs/BACKLOG.md` の周辺ビル調査の節）|
+| 2 | Task 14 の変異の記録が計画に無い ／ Task 15 の表に今回見つけた穴を当てる行が無い | **この節**と、Task 15 の表の **M50a / M50b** を足した。無いままだと Task 15 を回す人が同じ穴を測らずに「守られている」と読む（Bug #45 ①）|
+| 3 | 「利用者の管理」「部門の管理」は `route(...)` の一致だけを見ており、**改名を素通りさせる** | **`assertHasLink()` に寄せた**（`3bb393ce`）。行き先と文字を対で見て、文字は `>…<` のタグの境目ごと当てる |
+
+⚠ **触らないと決めたもの**（記録だけ）: `components/app-layout.blade.php:17` が
+`layouts.partials.sidebar` を無条件 `@include` している件は**参照 0 件の死にコード**で今回の差分が
+作ったものでもないため別タスクへ切り出した ／ 決裁のドロワー幅 `w-[240px]`（基幹は 260）は
+**展開 220px・折りたたみ 56px が基幹と一致**していて Bug #56 の前提は保たれているので変更不要 ／
+`docs/ARCHITECTURE.md` の「Completed Modules (~185 routes)」に決裁の行が無いのは賃貸マンション・
+DAD・ZEAL・周辺ビル調査・工程表も無い長年の stale で、この計画も要求していない。
+
+### テストを書いている最中に見つかった穴 4 つ（どれも実装ではなくテスト設計）
+
+**計画の Step 1 に書いたテストをそのまま書いたら、3 つが緑のまま通った。** 4 つ目は上の指摘 3。
+
+| 穴 | 症状（実測） | 直し方 |
+|---|---|---|
+| ① **サイドバーは 3 か所ある**（PC 展開版 / PC 折りたたみ版 / モバイルのドロワー）のに、ページ全体を 1 回見ていた | `assertStringContainsString` は 1 か所でも在れば緑になるので、**ドロワーの塊を丸ごと消しても 6 本すべて緑**（Bug #41 の型）| `sidebars()` で `<aside>` を `x-show` の式（`sidebarExpanded` / `!sidebarExpanded` / `sidebarOpen`）で 3 つに切り分け、**それぞれに対して**アサートする。⚠ 切り出しは **1 本に定まること**も併せて固定する（走査が空振りして緑になる事故を防ぐ。Bug #45）|
+| ② **ラベルを素の部分一致で見ていた** | 「決裁のホーム」を **「決裁のホームZZZ」に改名しても緑**（Bug #43 の型）| `/>\s*決裁のホーム\s*</u` と**タグの境目ごと**当てる |
+| ③ **管理リンクをページ全体で見ていた** | **決裁のホームの本文自身が同じ 2 本のリンクを持つ**ので、サイドバーが 1 本も出さなくても緑（Bug #43 / #46 の型）| 先に `sidebars()` で切り出し、**サイドバーの塊の中だけ**を見る |
+| ④ **②を「決裁のホーム」「決裁の管理」の見出し 2 つにしか適用していなかった** | 「利用者の管理」「部門の管理」は `route(...)` の一致だけ ＝ **改名しても緑**（下の反例で実測）| `assertHasLink($aside, $href, $label, $where)` に寄せ、決裁側 2 か所・基幹側 1 か所の**全部**を同じ形にした |
+
+### 変異の実測（最終コードに対して 17 通り ＋ カナリア 1）
+
+作法は Bug #44 どおり: ①**先にコミット**（`3bb393ce`）②各変異の前に `git status --porcelain` が空
+③`git diff --stat` が**非空**で着弾を確認 ④全件（2050 本）を流す ⑤`git checkout --` で戻して空を再確認
+⑥**赤/緑でなく「落ちたテストの集合」と「落ちた理由の文言」**を突き合わせる。
+
+基準: **OK (2050 tests, 13503 assertions)**。**検出 17 / 未検出 0 / 等価変異 0。**
+
+| # | 変異 | 落ちたテストと理由（実測） |
+|---|---|---|
+| C1 | カナリア: `approvals/home.blade.php` に `{{ $canaryUndefinedVariable }}` | **10 本**（`ApprovalHomeTest` 3 / `ApprovalOnlyLockoutTest` 2 / `ApprovalSidebarTest` ほか）が `received 500` ＝ 測定装置が worktree のコードを読んでいる |
+| M01 | `app.blade.php` の出し分けを**基幹固定**に | 1 本 `..._an_approval_only_user_gets_the_approval_sidebar` ／ `expanded に決裁のホームへのリンクが無い` |
+| M02 | 同じく**決裁固定**に | 5 本 — `..._a_base_user_with_the_flag_gets_an_extra_group` / `..._nothing_changes_for_everyone_else` / `..._an_executive_without_the_flag_gets_nothing_either` ＋ **`LayoutSidebarCloakTest`**（`サイドバーのグループの中身が見つからない`）＋ **`ScheduleBoardTest::test_both_sidebar_blocks_link_to_each_board`** |
+| M03 | 決裁の**展開**サイドバーに `x-cloak` を足す | 1 本 `..._follows_the_cloak_rules` ／ `展開サイドバーに x-cloak が付いている（Bug #56）` |
+| M04 | 決裁の**折りたたみ**から `x-cloak` を外す | 1 本 同上 ／ `!sidebarExpanded の x-cloak が無い` |
+| M05 | 決裁の**ドロワー**から `x-cloak` を外す | 1 本 同上 ／ `sidebarOpen の x-cloak が無い` |
+| M06 | 決裁のホームのリンクを**展開版だけ**消す | 1 本 ／ `expanded に決裁のホームへのリンクが無い` |
+| M07 | 同じく**折りたたみ版だけ** | 1 本 ／ `rail に決裁のホームへのリンクが無い` |
+| M08 | 同じく**ドロワーだけ** | 1 本 ／ `drawer に決裁のホームへのリンクが無い` |
+| M09 | 決裁サイドバーの `$isApprovalAdmin` を `true` 固定（管理リンクを無条件に） | 2 本 — `..._an_approval_only_user_gets_the_approval_sidebar` ＋ `ApprovalUserManagementTest::test_the_approval_home_links_to_the_admin_screens`（`管理者でない人にリンクが出ている`）|
+| M10 | 展開版のラベルを「決裁のホーム**ZZZ**」に | 1 本 ／ `expanded に「決裁のホーム」の文字が無い` |
+| M11 | 決裁の**ドロワー**のラベルを「利用者の管理**ZZZ**」に | 1 本 `..._an_approval_only_admin_sees_the_management_links` ／ `drawer に「利用者の管理」の文字が無い` ＝ **上の穴④を塞いだ分** |
+| M12 | 基幹サイドバーの `$isApprovalAdmin` を `true` 固定 | 2 本 — `..._nothing_changes_for_everyone_else`（`一般の利用者の画面に決裁の文字が出ている`）＋ `..._an_executive_without_the_flag_gets_nothing_either`（D2 の核）|
+| M13 | 基幹の「決裁の管理」を**展開版だけ**消す | 1 本 `..._a_base_user_with_the_flag_gets_an_extra_group` ／ `expanded に「決裁の管理」の見出しが無い` |
+| M14 | 同じく**折りたたみ版だけ** | 1 本 同上 ／ `rail に決裁の管理のアイコンリンクが無い` |
+| M15 | 同じく**ドロワーだけ** | 1 本 同上 ／ `drawer に「決裁の管理」の見出しが無い` |
+| M16 | 基幹の展開版のラベルを「利用者の管理**ZZZ**」に | 1 本 同上 ／ `expanded に「利用者の管理」の文字が無い` ＝ **穴④を塞いだ分** |
+| M17 | 基幹の折りたたみ版のアイコンから `title="決裁の管理"` を外す | 1 本 同上 ／ `rail のアイコンに title が無い` |
+
+⚠ **M06〜M08・M13〜M15（3 か所のうち 1 か所だけ消す）は、穴①を塞ぐ前は 6 通りとも緑だった。**
+⚠ **M10・M11・M16（ラベルの改名）は、穴②④を塞ぐ前は緑だった。**
+
+### 反例（「元から検出できていた」の誤読を排除する。Bug #45 の流儀）
+
+穴④を塞いだ分が **load-bearing であることの証明**として、**テストだけを 1 つ前（`2a31c294`）へ戻して**
+同じ変異を当て直した:
+
+| 変異 | 旧テスト（`route()` の一致だけ） | 今のテスト |
+|---|---|---|
+| M11（決裁のドロワーのラベルに接尾辞） | **OK (2050 tests, 13499 assertions) ＝ 緑** | 赤（`drawer に「利用者の管理」の文字が無い`）|
+| M16（基幹の展開版のラベルに接尾辞） | **OK (2050 tests, 13499 assertions) ＝ 緑** | 赤（`expanded に「利用者の管理」の文字が無い`）|
+
+⚠ **`git checkout <rev> -- <path>` は index も書き換える**ので、後始末の `git checkout -- <path>` では
+**戻らない**（index から取り直すため）。実測でこれを踏み、変異の残骸が作業ツリーに残った
+（`git status --porcelain` を毎回見る作法が拾った）。戻すなら
+**`git restore --source=HEAD --staged --worktree <path>`**。
+
+### そのほか
+
+- **和名の走査**（`JapaneseValidationMessagesTest`）は緑。決裁で足した `validate()` のキーに和名の漏れなし
+- **コンパイル済みビュー 277 本を `php -l`** → INVALID 0 件（⚠ `view:cache` の成功表示だけでは足りない。Bug #21 / #26 / #30）
