@@ -35,7 +35,22 @@ class ImportPreviewRenderTest extends TestCase
     use CreatesMansionSchema;
     use CreatesSurveyQuestionSchema;
 
-    /** 取込を持つコントローラ。新しい取込画面が増えたらここに足す。 */
+    /**
+     * 取込を持つコントローラ。新しい取込画面が増えたらここに足す。
+     *
+     * ⚠ **`Approval\UserImportController`（社員の CSV 一括登録）は、意図的にここへ入れていない**
+     *   （「足し忘れ」ではない。2026-09-17）。下の往復は 2 つの前提に乗っており、決裁の取込は
+     *   そのどちらも満たさないため、載せると**この機能とは無関係な理由で赤くなる**:
+     *   ① テンプレート配信のメソッド名が `template` で、`execute{X}` ↔ `download{X}Template` の
+     *      規則に乗らない（`__MISSING_TEMPLATE__` として報告されるだけになる）
+     *   ② ルートが `approval.admin` の門番の中にあるので、下の `executive()` では **403**
+     *      （決裁の管理者に指定された利用者でないと通れない）
+     *   ⚠ **無検査になっているわけではない。** 決裁の取込の往復（プレビュー → 描画された
+     *     「取り込む」フォームをそのまま確定）は `Approval\ApprovalUserImportTest::confirm()` が
+     *     全テストで通しており、下の**構造テスト**（view へ `'errors'` を渡していないこと）は
+     *     `app/Http/Controllers` 配下を丸ごと走査するので決裁のコントローラも自動で入る。
+     *   ⚠ この列挙自体を「全件分類」へ置き換えるのは Task 15 の予定。**中身をここで変えない。**
+     */
     private const IMPORT_CONTROLLERS = [
         \App\Http\Controllers\Admin\CustomerImportController::class,
         \App\Http\Controllers\Admin\TenantImportController::class,

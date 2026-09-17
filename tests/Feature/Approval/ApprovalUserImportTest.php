@@ -4,6 +4,7 @@ namespace Tests\Feature\Approval;
 
 use App\Enums\UserRole;
 use App\Enums\UserStatus;
+use App\Http\Controllers\Approval\UserImportController;
 use App\Models\ApprovalCompany;
 use App\Models\ApprovalDepartment;
 use App\Models\ApprovalMailDomain;
@@ -12,6 +13,7 @@ use App\Models\ApprovalSettingLog;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\ParsesForms;
@@ -78,6 +80,49 @@ class ApprovalUserImportTest extends TestCase
             ->get(route('approvals.admin.users.import'))->assertStatus(403);
 
         $this->actingAs($this->admin())->get(route('approvals.admin.users.import'))->assertOk();
+    }
+
+    /**
+     * 取込の **4 ルートすべて**が決裁の管理者の門番の中にあること。
+     *
+     * ⚠ 上のテストは `GET users/import` しか見ていないので、`routes/approval.php` の 4 行の
+     *   どれかが `approval.admin` のグループの**外へ出た事故が無音**になる。とりわけ
+     *   `execute` は**利用者を作る**経路なので、漏れると誰でも社員を一括登録できる。
+     * ⚠ 列挙は**コントローラのクラス名**で機械的に行う（新しいルートが増えたら自動で
+     *   検査対象に入る＝全件分類。Bug #45 ①）。件数の下限ではなく**ちょうど 4 本**で見るのは、
+     *   ルートを 1 本消す変異も同時に捕まえるため。
+     * ⚠ 列挙を**データプロバイダに置いてはいけない** — プロバイダは Laravel 起動前に
+     *   評価されるので `Route::getRoutes()` が `A facade root has not been set.` で落ちる
+     *   （`ImportPreviewRenderTest` で実測済み）。
+     */
+    public function test_every_import_route_is_behind_the_approval_admin_gate(): void
+    {
+        $routes = [];
+
+        foreach (Route::getRoutes() as $route) {
+            if (! str_starts_with($route->getActionName(), UserImportController::class . '@')) {
+                continue;
+            }
+
+            $method = in_array('GET', $route->methods(), true) ? 'GET' : 'POST';
+            $routes[$method . ' /' . $route->uri()] = [$method, '/' . $route->uri()];
+        }
+
+        $this->assertCount(4, $routes, '取込のルートの列挙が痩せている（form / template / preview / execute の 4 本）');
+
+        // 決裁の管理者に指定されていない人（基幹の経営層でも通さない）
+        $outsider = User::factory()->create(['role' => UserRole::Executive->value, 'must_change_password' => false]);
+        $results  = [];
+
+        foreach ($routes as $label => [$method, $uri]) {
+            $results[$label] = $this->actingAs($outsider)->call($method, $uri)->getStatusCode();
+        }
+
+        $this->assertSame(
+            array_fill_keys(array_keys($results), 403),
+            $results,
+            '決裁の管理者でない人が通れる取込のルートがある'
+        );
     }
 
     /**
@@ -207,6 +252,60 @@ class ApprovalUserImportTest extends TestCase
         $this->assertSame(0, $this->preview("A@001,甲 一郎,,RE\n")->assertOk()->viewData('validCount'));
     }
 
+    /** 社員番号はログイン ID なので必須（設計書 §5.10） */
+    public function test_a_row_without_an_employee_number_is_an_error(): void
+    {
+        $preview = $this->preview(",甲 一郎,a@mitsuwat.co.jp,RE\n")->assertOk();
+
+        $this->assertSame(0, $preview->viewData('validCount'));
+        $this->assertCount(1, $preview->viewData('rowErrors'));
+        $this->assertStringContainsString('エラー 行2: 社員番号が空です', $preview->getContent());
+    }
+
+    /**
+     * 氏名は必須で 100 文字まで（`users.name` は `varchar(100)`）。
+     *
+     * ⚠ **この分岐が唯一の歯止め。** テストの SQLite は長さを切り詰めも拒否もしないので
+     *   （Bug #40 と同型）、消しても DB は守ってくれず、**本番 MySQL でだけ**
+     *   `Data too long` で取込全体が巻き戻る。
+     * ⚠ **上限ちょうど（100 文字）が通ることも対で見る** — 「常にエラー」に潰す変異と
+     *   区別できない形にしないため。
+     */
+    public function test_a_blank_or_too_long_name_is_an_error(): void
+    {
+        $tooLong = str_repeat('あ', 101);
+        $atLimit = str_repeat('い', 100);
+
+        $preview = $this->preview("A0001,,,RE\nA0002,{$tooLong},,RE\nA0003,{$atLimit},,SA\n")->assertOk();
+
+        $this->assertSame(1, $preview->viewData('validCount'), '100 文字ちょうどの氏名が取り込めない');
+        $this->assertSame([2, 3], array_column($preview->viewData('rowErrors'), 'row'));
+
+        $html = $preview->getContent();
+        $this->assertStringContainsString('エラー 行2: 氏名が空、または 100 文字を超えています', $html);
+        $this->assertStringContainsString('エラー 行3: 氏名が空、または 100 文字を超えています', $html);
+    }
+
+    /**
+     * メールアドレスの形式が壊れている行はエラー。
+     *
+     * ⚠ 値は**許可したドメインのまま**にする（`a..b@mitsuwat.co.jp` は `filter_var` が
+     *   落とすが `ApprovalMailDomain::allows()` は通す）。ドメイン違いの値で書くと、
+     *   形式の判定を消しても**ドメインの判定が代わりに落として緑のまま通る**
+     *   （Bug #48 の「安全網が主機構の変異を隠す」型）。
+     */
+    public function test_a_malformed_email_is_an_error(): void
+    {
+        $preview = $this->preview("A0001,甲 一郎,a..b@mitsuwat.co.jp,RE\n")->assertOk();
+
+        $this->assertSame(0, $preview->viewData('validCount'));
+        $this->assertCount(1, $preview->viewData('rowErrors'));
+        $this->assertStringContainsString(
+            'エラー 行2: メールアドレス「a..b@mitsuwat.co.jp」の形式が正しくありません',
+            $preview->getContent()
+        );
+    }
+
     /** 同じファイルの中で重なる行は、どちらもエラー（設計書 §5.10） */
     public function test_duplicates_within_the_file_fail_both_rows(): void
     {
@@ -214,6 +313,41 @@ class ApprovalUserImportTest extends TestCase
 
         $this->assertSame(0, $preview->viewData('validCount'), '重複した 2 行のどちらかが取り込まれる');
         $this->assertCount(2, $preview->viewData('rowErrors'));
+    }
+
+    /**
+     * 同じメールアドレスが 2 行にあるファイルは、どちらもエラー（設計書 §5.10）。
+     *
+     * ⚠ **`$seenEmails` の判定はこの形の唯一の歯止め。** 消すと `$byEmail` はどちらの行でも
+     *   null（＝新規）なので両方 valid になり、`apply()` の 2 件目の INSERT が
+     *   `users.email` の UNIQUE 索引に当たって `DB::transaction` が巻き戻る
+     *   ＝ **1 行のコピペミスで 50 行の取込が丸ごと消える**（Bug #54 / #60 の型）。
+     * ⚠ **社員番号はわざと別にする** — 同じにすると社員番号側の重複判定が先に当たり、
+     *   メール側を消しても緑のまま通る（Bug #48 の型）。
+     * ⚠ 「確定が落ちること」ではなく「取り込む行が 0 で、両方がエラーに出ること」を見る
+     *   （画面が決して送らない POST を作らない。Bug #54 ③）。
+     */
+    public function test_the_same_email_twice_in_the_file_fails_both_rows(): void
+    {
+        $preview = $this->preview("A0001,甲,dup@mitsuwat.co.jp,RE\nA0002,乙,dup@mitsuwat.co.jp,SA\n")->assertOk();
+
+        $this->assertSame(0, $preview->viewData('validCount'), '重複したメールアドレスの行が取り込まれる');
+        $this->assertSame(0, $preview->viewData('createCount'));
+        $this->assertCount(2, $preview->viewData('rowErrors'));
+        $this->assertSame([2, 3], array_column($preview->viewData('rowErrors'), 'row'));
+
+        $html = $preview->getContent();
+        $this->assertStringContainsString('エラー 行2: メールアドレス「dup@mitsuwat.co.jp」が同じファイルの中で重複しています', $html);
+        $this->assertStringContainsString('エラー 行3: メールアドレス「dup@mitsuwat.co.jp」が同じファイルの中で重複しています', $html);
+    }
+
+    /** ⚠ 対で固定する — メールアドレスは任意なので、空欄は何行あっても重複ではない */
+    public function test_blank_emails_are_not_treated_as_duplicates(): void
+    {
+        $preview = $this->preview("A0001,甲,,RE\nA0002,乙,,SA\n")->assertOk();
+
+        $this->assertSame(2, $preview->viewData('validCount'));
+        $this->assertSame([], $preview->viewData('rowErrors'));
     }
 
     /**
@@ -310,6 +444,38 @@ class ApprovalUserImportTest extends TestCase
         $html = $preview->getContent();
         $this->assertStringContainsString('ログインIDに社員番号 A0001 を設定します', $html);
         $this->assertStringNotContainsString('ログインIDが  から', $html);
+    }
+
+    /**
+     * CSV に別のメールアドレスを書いても**書き換えない**ことを注意で伝える（設計書 §5.10）。
+     *
+     * ⚠ **管理者が入力した値が黙って捨てられることを伝える唯一の告知。** 無いと、
+     *   CSV で連絡先を直したつもりの管理者が「変わった」と思い込む。
+     * ⚠ 役割（`viewData`）と表示を別々に見る（Bug #54 ④）。
+     * ⚠ **告知と実際の振る舞いを対で固定する** — 確定しても旧アドレスのままであることまで見る
+     *   （告知だけ残して実は書き換える、の逆も止まる）。
+     */
+    public function test_a_different_email_is_announced_as_not_changed(): void
+    {
+        $existing = User::factory()->create([
+            'name' => '甲 一郎', 'employee_number' => 'A0001', 'email' => 'old@mitsuwat.co.jp',
+            'must_change_password' => false,
+        ]);
+
+        // ⚠ 氏名は登録と揃える（揃えないと氏名の不一致の注意が混ざり、件数で役割を見られない）
+        $preview = $this->preview("A0001,甲 一郎,new@mitsuwat.co.jp,RE\n")->assertOk();
+
+        $this->assertSame(1, $preview->viewData('validCount'));
+        $this->assertCount(1, $preview->viewData('warnings'), '注意ではなくエラーに積まれている');
+        $this->assertSame([], $preview->viewData('rowErrors'));
+        $this->assertStringContainsString(
+            '⚠ 行2: メールアドレスは変えません（変更は基幹の管理者に依頼してください）',
+            $preview->getContent()
+        );
+
+        // 告知どおり、確定してもメールアドレスは変わらない
+        $this->confirm("A0001,甲 一郎,new@mitsuwat.co.jp,RE\n")->assertRedirect(route('approvals.admin.users.import'));
+        $this->assertSame('old@mitsuwat.co.jp', $existing->fresh()->email);
     }
 
     /** 社員番号とメールアドレスが別人に当たる行はエラー */
@@ -418,15 +584,37 @@ class ApprovalUserImportTest extends TestCase
         $this->assertSame(['RE'], $existing->fresh()->approvalDepartments->pluck('code')->all());
     }
 
-    /** ⚠ 対で固定する — 新規が 1 人でもいれば従来どおり案内を返す（更新と混ざっていても）*/
+    /**
+     * ⚠ 対で固定する — 新規が 1 人でもいれば従来どおり案内を返す（更新と混ざっていても）。
+     *
+     * ⚠ **更新した人が案内に混ざっていないことも見る。** `apply()` の `continue` の位置が
+     *   ずれて更新行が `$entries` に入ると、**パスワードを一度も変えていない人の
+     *   「初期パスワード」を印刷して手渡す**ことになる（本人はその紙ではログインできず、
+     *   管理者はどの紙が嘘なのか分からない）。
+     * ⚠ 見るのは **DB 側の氏名**（`登録済み 太郎`）であって CSV の氏名（`甲`）ではない ——
+     *   更新では氏名を書き換えないので、案内に漏れたときに出るのは登録側の氏名。
+     * ⚠ 人数（`N 人分`）も**別のアサートで**見る（氏名は将来の文言変更で当たらなくなりうるが、
+     *   件数は `count($entries)` を直接写す）。役割ごとに分ける（Bug #43 / #46 / #49）。
+     */
     public function test_a_file_with_at_least_one_new_user_still_returns_the_guide(): void
     {
-        User::factory()->create(['employee_number' => 'A0001', 'email' => null, 'must_change_password' => false]);
+        User::factory()->create([
+            'name' => '登録済み 太郎', 'employee_number' => 'A0001', 'email' => null,
+            'must_change_password' => false,
+        ]);
 
-        $response = $this->confirm("A0001,甲,,RE\nA0002,乙,,SA\n")->assertOk();
+        $response = $this->confirm("A0001,甲,,RE\nA0002,乙 二郎,,SA\n")->assertOk();
 
-        $this->assertStringContainsString('ログインのご案内', $response->getContent());
-        $this->assertStringContainsString('乙', $response->getContent());
+        $html = $response->getContent();
+        $this->assertStringContainsString('ログインのご案内', $html);
+        $this->assertStringContainsString('乙 二郎 様', $html);
+
+        $this->assertStringNotContainsString(
+            '登録済み 太郎',
+            $html,
+            '更新しただけの人が案内に出ている（嘘の初期パスワードを印刷して手渡すことになる）'
+        );
+        $this->assertStringContainsString('>1 人分</span>', $html, '案内の人数が新規の人数（1 人）と合っていない');
     }
 
     public function test_the_server_revalidates_on_confirm(): void
