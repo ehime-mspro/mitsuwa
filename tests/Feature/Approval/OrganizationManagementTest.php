@@ -476,16 +476,40 @@ class OrganizationManagementTest extends TestCase
         }
     }
 
-    /** 成功・失敗の帯はレイアウトが出す（ビューでも出すと画面に 2 回出る） */
+    /**
+     * 成功・失敗の帯はレイアウトが出す（ビューでも出すと画面に 2 回出る）。
+     *
+     * ⚠ **成功と失敗を両方数える。** 片方だけ見ると、もう片方の帯がビューへ戻っても緑のまま通る
+     *   （Bug #43 / #46 / #49 の「役割ごとに分けてアサートする」の鏡像。実測で `error` 側が
+     *   無防備だった）。⚠ **文言そのものを数える**（`assertErrorBanner` はレイアウトの markup を
+     *   数えるので、別の markup で戻された重複は見えない）。
+     * ⚠ セッションに触らない（`assertSessionHas*()` を挟むと次の描画から帯が消える。Bug #49）。
+     */
     public function test_the_flash_banner_is_not_rendered_twice(): void
     {
         $admin = $this->approvalAdmin();
 
+        // 成功（空の会社は消せる）
         $this->submitDeleteForm($admin, route('approvals.admin.organization.companies.destroy', $this->company()))
             ->assertRedirect(route('approvals.admin.organization.index'));
 
-        $html = $this->indexHtml($admin);
+        $this->assertSame(
+            1,
+            substr_count($this->indexHtml($admin), e('会社を削除しました。')),
+            '成功の文言が 2 回出ている'
+        );
 
-        $this->assertSame(1, substr_count($html, '会社を削除しました。'), '成功の文言が 2 回出ている');
+        // 失敗（部門を持つ会社は断られる）
+        $blocked = $this->company(['name' => 'DAD', 'fiscal_start_month' => 6]);
+        $this->department($blocked);
+
+        $this->submitDeleteForm($admin, route('approvals.admin.organization.companies.destroy', $blocked))
+            ->assertRedirect(route('approvals.admin.organization.index'));
+
+        $this->assertSame(
+            1,
+            substr_count($this->indexHtml($admin), e('この会社には部門が 1 件あるため削除できません。先に部門を削除してください。')),
+            '失敗の文言が 2 回出ている'
+        );
     }
 }
