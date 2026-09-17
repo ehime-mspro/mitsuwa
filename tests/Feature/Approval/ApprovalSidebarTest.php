@@ -69,6 +69,47 @@ class ApprovalSidebarTest extends TestCase
         );
     }
 
+    /**
+     * 決裁側の partial が出ていること（基幹の sidebar.blade.php でないこと）を名指しする。
+     *
+     * ⚠ これが無いと「決裁のみ利用者の**管理者**にだけ基幹サイドバーが出る」変異を見逃す。
+     *   その人は `$isExecutive` も各 `$has*Access` も false なので、基幹サイドバーには
+     *   「決裁の管理」グループだけが残る ＝ 管理リンク 2 本のアサートは全部通るのに、
+     *   `/approvals` へ戻る唯一のリンクが消える（2026-09-18 のコード品質レビューで発覚。
+     *   計画の実測で M01 が 1 本しか落としていなかったのがその証拠）。
+     */
+    private function assertIsTheApprovalSidebar(array $sidebars): void
+    {
+        foreach (['expanded', 'drawer'] as $key) {
+            $this->assertMatchesRegularExpression(
+                '/>\s*決裁申請\s*</u',
+                $sidebars[$key],
+                "{$key} が決裁のサイドバーでない（基幹の sidebar.blade.php が出ている）"
+            );
+        }
+    }
+
+    /**
+     * 3 か所すべてが決裁のホームへ戻れること（1 か所でも欠けるとその画面幅で行き場が無くなる）。
+     *
+     * ⚠ 折りたたみ版は `title` で見る — 素の href だと `…/approvals` が
+     *   `…/approvals/admin/users` に**前方一致**するので、管理者の画面では
+     *   ホームのリンクが無くても緑になる。
+     */
+    private function assertHasHomeLink(array $sidebars): void
+    {
+        // 折りたたみ版はアイコンだけなので、ラベルは展開版とドロワーで見る。
+        foreach (['expanded', 'drawer'] as $key) {
+            $this->assertHasLink($sidebars[$key], route('approvals.home'), '決裁のホーム', $key);
+        }
+
+        $this->assertStringContainsString(
+            'title="決裁のホーム"',
+            $sidebars['rail'],
+            'rail に決裁のホームへのリンクが無い'
+        );
+    }
+
     /** 決裁のみ利用者には決裁用のサイドバーだけが出る */
     public function test_an_approval_only_user_gets_the_approval_sidebar(): void
     {
@@ -81,17 +122,10 @@ class ApprovalSidebarTest extends TestCase
         // 管理者でなければ管理のリンクは出ない
         $this->assertStringNotContainsString(route('approvals.admin.users.index'), $html);
 
-        // 3 か所すべてが決裁のホームへのリンクを持つ（1 か所でも欠けるとその画面幅で行き場が無くなる）
         $sidebars = $this->sidebars($html);
 
-        foreach ($sidebars as $key => $aside) {
-            $this->assertStringContainsString(route('approvals.home'), $aside, "{$key} に決裁のホームへのリンクが無い");
-        }
-
-        // 折りたたみ版はアイコンだけなので、ラベルは展開版とドロワーで見る。
-        foreach (['expanded', 'drawer'] as $key) {
-            $this->assertHasLink($sidebars[$key], route('approvals.home'), '決裁のホーム', $key);
-        }
+        $this->assertIsTheApprovalSidebar($sidebars);
+        $this->assertHasHomeLink($sidebars);
     }
 
     public function test_an_approval_only_admin_sees_the_management_links(): void
@@ -103,6 +137,11 @@ class ApprovalSidebarTest extends TestCase
         // ⚠ ページ全体で見てはいけない — 決裁のホームの本文自身が同じ 2 本のリンクを持つので、
         //   サイドバーが 1 本も出さなくても緑になる（実測。Bug #43 / #46 の型）。
         $sidebars = $this->sidebars($html);
+
+        // ⚠ 管理リンクだけを見てはいけない — 基幹サイドバーも「決裁の管理」グループで同じ 2 本を出す。
+        //   どちらの partial が出たかと、ホームへ戻れるかを対で見る。
+        $this->assertIsTheApprovalSidebar($sidebars);
+        $this->assertHasHomeLink($sidebars);
 
         foreach (['expanded', 'drawer'] as $key) {
             $this->assertHasLink($sidebars[$key], route('approvals.admin.users.index'), '利用者の管理', $key);
