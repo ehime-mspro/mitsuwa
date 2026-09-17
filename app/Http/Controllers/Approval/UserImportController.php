@@ -110,6 +110,12 @@ class UserImportController extends Controller
                 ->with('error', '取り込めない行があります。もう一度アップロードして内容を確認してください。');
         }
 
+        // ⚠ ここは**到達しない**。`parse()` が 2 行未満のファイルを断り、`analyze()` のループは
+        //   どの経路でも必ず `rows` か `rowErrors` に 1 つ積むので、`validCount === 0` なら
+        //   `rowErrors !== []` になって 1 つ上の `if` が先に断る。それでも残すのは、行の検査を
+        //   変えたときにここが最後の歯止めになるため。
+        //   ⚠ **到達しないのでテストでは赤にできない**（「ここも守られている」と読み違えない
+        //     こと。Bug #48。`Approval\UserController::toggleStatus()` に同じ形の注記がある）。
         if ($analysis['validCount'] === 0) {
             return redirect()->route('approvals.admin.users.import')->with('error', '取り込む行がありません。');
         }
@@ -118,6 +124,8 @@ class UserImportController extends Controller
         //    `Array to string conversion` の ErrorException になり **500** で落ちる（実測）。
         //    `Approval\UserController::claimGuideToken()` と `Admin\UserController::resetPassword`
         //    が同じ理由で同じ形をしている。
+        //    ⚠ **これで 3 箇所目の複製。** 共通化（と、新しい入口が素の `claim()` を呼んでいない
+        //      ことを見る走査テスト）は Task 15 で扱う。それまでは、この形を**逐語で**書くこと。
         $token = $request->input('guide_token');
 
         if (! is_string($token) || ! OneTimeAction::claim($token)) {
@@ -141,6 +149,16 @@ class UserImportController extends Controller
 
     /**
      * 行ごとに検査して、取り込む行・エラー・注意に分ける。
+     *
+     * ⚠ **エラー文の「行N」は、空行を挟んだ CSV では実ファイルの行番号と一致しない。**
+     *   `CsvImportReader::parse()` が空行を**先に捨てる**ので、`$index + 2` は「空行を除いた
+     *   何行目か」になる。既存の取込 4 本（顧客・テナント・賃貸マンション・工程表）も
+     *   まったく同じ振る舞いなので、ここだけ直すと画面ごとに数え方が変わる。よって直さない。
+     *
+     * ⚠ **このメソッドは `CLAUDE.md` の目安（50 行）を超えている。** 分けるなら
+     *   `validateRow()`（エラーにする行の判定）と `warningsFor()`（取り込むと決めた行に積む注意）
+     *   が候補。⚠ ただし**先に挙動をテストで固定してから**割ること（分割そのものが
+     *   `continue` の位置を動かす変更なので、守り手がいない状態で割ると無音で壊れる）。
      *
      * @return array{rows: list<array>, rowErrors: list<array>, warnings: list<array>, validCount: int, createCount: int, updateCount: int, totalRows: int}
      */
@@ -179,7 +197,7 @@ class UserImportController extends Controller
             $matches[$index] = [$byNumber, $byEmail];
 
             // 別人に当たる行はそれ自体がエラーになるので、ここでは数えない
-            $existing = ($byNumber && $byEmail && $byNumber->id !== $byEmail->id) ? null : ($byNumber ?? $byEmail);
+            $existing = $this->existingFor($byNumber, $byEmail);
             if ($existing !== null) { $seenExisting[$existing->id] = ($seenExisting[$existing->id] ?? 0) + 1; }
         }
 
@@ -243,12 +261,12 @@ class UserImportController extends Controller
             // 既存との照合（先回りで引いた結果を使う）
             [$byNumber, $byEmail] = $matches[$index];
 
-            if ($byNumber && $byEmail && $byNumber->id !== $byEmail->id) {
+            if ($this->matchesTwoPeople($byNumber, $byEmail)) {
                 $rowErrors[] = ['row' => $line, 'message' => "社員番号は {$byNumber->name} さん、メールアドレスは {$byEmail->name} さんと一致します"];
                 continue;
             }
 
-            $existing = $byNumber ?? $byEmail;
+            $existing = $this->existingFor($byNumber, $byEmail);
 
             if ($existing && $existing->trashed()) {
                 $rowErrors[] = ['row' => $line, 'message' => "削除済みの利用者（{$existing->name}さん）と一致します。基幹の管理者に復元を依頼してください"];
@@ -359,6 +377,24 @@ class UserImportController extends Controller
         }
 
         return $entries;
+    }
+
+    /**
+     * 社員番号とメールアドレスが**別人**に当たる行か。
+     *
+     * ⚠ **この規則はここにしか書かない。** 前処理（`$seenExisting` を数える側）と本体
+     *   （エラーを出す側）が同じ判断をする必要があり、別々に書くと片方だけ直したときに
+     *   **件数と実際の判定が無音でずれる**（Bug #41）。
+     */
+    private function matchesTwoPeople(?User $byNumber, ?User $byEmail): bool
+    {
+        return $byNumber !== null && $byEmail !== null && $byNumber->id !== $byEmail->id;
+    }
+
+    /** その行が当たる既存の利用者（別人に当たる行は、それ自体がエラーなので null を返す） */
+    private function existingFor(?User $byNumber, ?User $byEmail): ?User
+    {
+        return $this->matchesTwoPeople($byNumber, $byEmail) ? null : ($byNumber ?? $byEmail);
     }
 
     /**
