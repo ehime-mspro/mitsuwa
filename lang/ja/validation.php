@@ -572,6 +572,12 @@ return [
         'sort_order'           => '表示順',
         'domain'               => 'ドメイン',
         'company_id'           => '会社',
+        // 利用者の管理（§5.9）。mode は「表示モード」が既定なので
+        // Approval\UserController の validate() 第 3 引数で「再発行の対象」に上書きする
+        'approval_departments'   => '決裁の所属部門',
+        'approval_departments.*' => '決裁の所属部門',
+        'user_ids'               => '選んだ利用者',
+        'user_ids.*'             => '選んだ利用者',
 
     ],
 

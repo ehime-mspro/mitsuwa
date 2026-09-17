@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Approval\HomeController;
 use App\Http\Controllers\Approval\OrganizationController;
+use App\Http\Controllers\Approval\UserController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -33,6 +34,17 @@ Route::get('/approvals', [HomeController::class, 'index'])->name('approvals.home
 |
 */
 Route::middleware('approval.admin')->prefix('approvals/admin')->name('approvals.admin.')->group(function () {
+
+    // 利用者の管理
+    //
+    // ⚠ `/users/reissue-bulk` を `/users/{user}` より前に置く（登録順がマッチの優先順）。
+    //   今は HTTP メソッドが違うので当たらないが、あとで POST /users/{user} を足した人が
+    //   気づけない形で壊れる。
+    Route::get('/users', [UserController::class, 'index'])->name('users.index');
+    Route::post('/users/reissue-bulk', [UserController::class, 'reissueBulk'])->name('users.reissueBulk');
+    Route::put('/users/{user}', [UserController::class, 'update'])->name('users.update');
+    Route::patch('/users/{user}/toggle-status', [UserController::class, 'toggleStatus'])->name('users.toggleStatus');
+    Route::post('/users/{user}/reissue', [UserController::class, 'reissue'])->name('users.reissue');
 
     // 部門の管理
     Route::get('/organization', [OrganizationController::class, 'index'])->name('organization.index');
