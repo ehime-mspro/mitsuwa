@@ -46,7 +46,19 @@
 <aside x-show="sidebarOpen" x-cloak class="fixed inset-y-0 left-0 w-[240px] bg-white border-r border-gray-200 overflow-y-auto pt-4 pb-6 z-30 lg:hidden"
        x-transition:enter="transition ease-out duration-200" x-transition:enter-start="-translate-x-full" x-transition:enter-end="translate-x-0"
        x-transition:leave="transition ease-in duration-150" x-transition:leave-start="translate-x-0" x-transition:leave-end="-translate-x-full">
-    <div class="px-5 py-2 text-[13px] font-bold text-emerald-600 tracking-wide">決裁申請</div>
+    {{-- ⚠ 閉じるボタンを消さない。オーバーレイのタップだけが閉じる手段になると、
+         ドロワーを開いた利用者が行き詰まる（基幹のドロワー sidebar.blade.php も同じ位置に持つ）。
+         回帰テスト tests/Feature/LayoutSidebarDrawerTest.php が両方の partial に課す。 --}}
+    <div class="flex items-center justify-between px-5 py-2">
+        <span class="text-[13px] font-bold text-emerald-600 tracking-wide">決裁申請</span>
+        <button @click="sidebarOpen = false" title="メニューを閉じる"
+                class="p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+        </button>
+    </div>
     <x-sidebar-item :href="route('approvals.home')" label="決裁のホーム" :active="request()->routeIs('approvals.home')" />
     @if($isApprovalAdmin)
         <x-sidebar-item :href="route('approvals.admin.users.index')" label="利用者の管理" :active="request()->routeIs('approvals.admin.users.*')" />
