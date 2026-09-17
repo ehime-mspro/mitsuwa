@@ -128,7 +128,7 @@ sudo rm -f storage/framework/views/*.php && brew services restart httpd
 ## Laravel-specific quirks
 
 - Department 判定: `resolveDepartment()`（`request()->segment(1)` ベース）— `defaults()` は Laravel 12 で URL パラメータ無しだと効かない
-- `User` モデルに `deleted_at` 列なし → `User::orderBy('name')` のみ、`whereNull('deleted_at')` 禁止
+- `User` は SoftDeletes。ログイン ID は社員番号（`employee_number`）とメールアドレスの**どちらか**（`App\Support\LoginId` で正規化）。`role` の 4 つ目は `approval_only`（決裁のみ）で、web グループの門番が決裁以外の全画面から締め出す
 - `Buyer`・`Unit`（テナントの区画）は SoftDeletes → 参照する側のリレーションで常に `->withTrashed()` + edit 画面では現在の値を必ず含める（区画は `Unit::includingTrashed()`、表示は `display_label`。Bug #12 / #58）
 - `Property`（テナントの物件）も SoftDeletes だが、関連データ（区画・契約・投資・修繕・問合せ）が残る物件は削除できない（`Property::deletionBlockers()`。Bug #59）＝削除済みの物件を指す子は作られない前提なので、子→物件のリレーションに `withTrashed()` を足さない。物件にリレーションを足したら `DELETION_BLOCKING_RELATIONS` / `DELETION_IGNORED_RELATIONS` のどちらかに分類する（`PropertyDeletionGuardTest` が両側から全件分類で守る）
 - `re_projects` のカラムは `project_name`（`name` ではない）
@@ -152,6 +152,7 @@ sudo rm -f storage/framework/views/*.php && brew services restart httpd
 | 経営ダッシュボード | `/dashboard/executive` | `DashboardController::executive`（5事業横断）|
 | 買主マスタ（部署横断）| `/buyers` | `CustomerController`、SoftDeletes、CSV import |
 | 添付ファイル | ポリモーフィック | `AttachmentController`（TYPE_MAP と routes/web.php の `where` 正規表現を同期。Bug #20）|
+| 決裁申請 段階1 | `/approvals/*` | `Approval\*Controller`（門番 2 本・CSV 一括登録・ログイン案内）|
 
 詳細構成: @docs/ARCHITECTURE.md / 実装履歴・優先度: @docs/BACKLOG.md
 

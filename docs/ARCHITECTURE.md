@@ -20,6 +20,7 @@ manage/
 │   │   └── InquiryStatus.php, InitialMonthType.php, SurveyQuestionType.php
 │   ├── Http/Controllers/
 │   │   ├── Admin/                   # UserController, UsageTypeController, ReCostItemController, SurveyQuestionController, CustomerImportController
+│   │   ├── Approval/                # HomeController, UserController, UserImportController (CSV), OrganizationController
 │   │   ├── Housing/                 # PropertyController (建売), ContractController (建売契約), CustomOrderController (注文住宅)
 │   │   ├── RealEstate/              # ProcurementController (仕入れ), ProjectController (分譲地PJ), SupplierController (仕入れ先), ReContractController (契約)
 │   │   ├── Tenant/                  # PropertyController, ContractController, CustomerController, InvestmentController, RepairController, InquiryController, UnitController
@@ -62,7 +63,9 @@ manage/
 │   ├── tenant/                      # テナント管理 (properties/contracts/customers/investments/repairs/inquiries)
 │   └── components/                  # attachment-section, attachment-upload
 ├── routes/
-│   └── web.php                      # 全ルート定義 (buyer_routes.php, housing_routes.php 等インクルード)
+│   ├── web.php                      # 全ルート定義 (末尾で approval.php を require)
+│   ├── approval.php                 # 決裁申請 段階1 (19 ルート。門番 approval.admin の中に管理系)
+│   └── console.php                  # 定期実行の予定 (schedule:run が読む)
 └── database/sql/                    # 直接実行用SQL
 ```
 
@@ -102,11 +105,19 @@ manage/
 | `properties` | テナント物件 |
 | `units` | テナント区画 (floor + room_number → display_name自動生成) |
 | `contracts` | テナント契約 |
-| `users` | ユーザー (role: executive/manager/staff) |
+| `users` | ユーザー (role: executive/manager/staff/approval_only、SoftDeletes) |
 | `settings` | システム設定 (消費税率等) |
+| `approval_companies` | 決裁: 会社（期の始まりの月）|
+| `approval_departments` | 決裁: 部門（略称・英大文字 1〜3 文字のコード。申請番号に使う）|
+| `approval_department_user` | 決裁: 所属部門（兼務可。複合主キー）|
+| `approval_members` | 決裁: 利用者ごとの印（`is_admin` = 決裁の管理者 / `can_view_all` = 全件閲覧者）|
+| `approval_settings` | 決裁: 社長の指定（1 行）|
+| `approval_mail_domains` | 決裁: 許可するメールドメイン |
+| `approval_setting_logs` | 決裁: 設定の変更の記録（**追記のみ**。`updated_at` を持たない）|
 
 ## Authentication & Authorization
 
-- Roles: `executive` (経営層), `manager` (管理者), `staff` (一般担当)
+- Roles: `executive` (経営層), `manager` (管理者), `staff` (一般担当), `approval_only` (決裁のみ)
 - Middleware: `role:executive`, `role:executive,manager`
+- 決裁: `approval_only` は `RestrictApprovalOnlyUsers` が決裁以外の全画面から締め出す（web グループ・`SubstituteBindings` より前）。決裁の管理系は 2 段目の `approval.admin`（`EnsureApprovalAdmin`）が守る。**ロールとは独立**で、基幹を使う人（executive / manager / staff）も `approval_members.is_admin` で決裁の管理者になれる
 - Department access: `$user->belongsToDepartment('realestate')` / `('housing')` / `('tenant')`

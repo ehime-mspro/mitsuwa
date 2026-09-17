@@ -1507,6 +1507,87 @@ git checkout 13.x && git merge --ff-only schedule-board-gantt
 
 ---
 
+## ✅ 決裁申請 段階1（基幹の改修）— 本番未反映
+
+詳細仕様: @docs/superpowers/specs/2026-09-16-approval-phase1-design.md
+実装計画: @docs/superpowers/plans/2026-09-16-approval-phase1.md
+要件定義書: @docs/決裁申請_要件定義書_v1.md（16.1 の段階1）
+前段: 段階0（定期実行・メール送信の土台・暗号化バックアップ）は本番稼働中 — @docs/運用_バックアップとメール.md
+
+社員番号でログインでき、決裁のみ利用者を決裁以外の全画面から締め出し、決裁の管理者が部門と利用者を
+設定して CSV で一括登録し、初期パスワードを紙の案内で配れる状態にする。
+**決裁の機能そのもの（申請・承認）は段階2 以降。** 段階1 の決裁のホームは「準備中です」と出すだけの仮。
+
+| 区分 | 実装内容 |
+|------|---------|
+| 依存 | **`chillerlan/php-qrcode ^6.0` を新規導入**（ログイン案内の QR。⚠ `ext-mbstring` だけで動く版を選んだ。v7 は PHP 8.4 必須で本番の 8.3 に乗らない）|
+| DB | `users` の改修（`employee_number`・`role` に `approval_only`・SoftDeletes ほか）＋ **`approval_*` の 7 表**。本番は `database/sql/2026-09-16-approval-phase1.sql`、テストは同じ構造の migration |
+| Enum | `UserRole` に 4 つ目の値 `approval_only`（決裁のみ。D6。1 人 1 ロールなので矛盾した状態を作れない）|
+| Middleware | `RestrictApprovalOnlyUsers`（決裁以外の全画面から締め出す）／ `EnsureApprovalAdmin`（`approval.admin`。管理系の 2 段目）。⚠ どちらも **`SubstituteBindings` より前** |
+| Support | `LoginId`（社員番号とメールの正規化）／ `InitialPassword`／ `LoginQrCode`／ `Support\Approval\*` |
+| Model | `ApprovalCompany` / `ApprovalDepartment` / `ApprovalMember` / `ApprovalSetting` / `ApprovalMailDomain` / `ApprovalSettingLog` |
+| Controller | `Approval\{Home,User,UserImport,Organization}Controller` |
+| Blade | `approvals/home`・`login-guide`・`admin/organization`・`admin/users/{index,import,_import_preview}` ＋ **`layouts/partials/sidebar_approval.blade.php`** を新設 |
+| ルート | **19 本**（`routes/approval.php`。`web.php` の末尾が require する）|
+| テスト | 1711 → **2050 tests / 13499 assertions green**（+339）|
+
+### 要点
+
+- **ログイン ID は社員番号とメールアドレスのどちらか**（基幹を使う人も同じ）。社員番号は英数字とハイフン 20 文字まで・
+  文字列で保存（先頭の 0 を保つ）・全角→半角・英字を大文字にそろえてから照合。`@` は使えない（メールと区別するため。D5）
+- **決裁のみ利用者はロールの 4 つ目の値**（D6）。`approval_only` は決裁以外の全画面から締め出す
+- ⚠ **決裁の管理者はロールとは独立**（`approval_members.is_admin`）。基幹を使う人（経営層・管理者・一般担当）も
+  指定されれば決裁の管理者になれるし、決裁のみ利用者が管理者になることもある
+- **サイドバーは 3 か所ある**（PC 展開版・PC 折りたたみ版・モバイルのドロワー）。決裁のみ利用者には
+  決裁用の partial を `layouts/app.blade.php` が出し分け、基幹を使う決裁の管理者には基幹のサイドバーに
+  「決裁の管理」グループが増える。⚠ **1 か所でも漏れるとその画面幅でだけリンクが消える**（Bug #41 の型）
+- ⚠ **決裁用サイドバーも Bug #56 の決まりを守る** — 展開版に `x-cloak` を付けず、折りたたみ版とドロワーには付ける。
+  `LayoutSidebarCloakTest` は基幹のサイドバーしか描画しないので、決裁側は `ApprovalSidebarTest` が見る。**両方を対で維持する**
+- **一般の利用者に見える変化は、ログイン画面の「社員番号またはメールアドレス」だけ**（D2）。
+  部門の管理・利用者の管理は、決裁の管理者に指定するまで誰にも出ない
+- CSV 一括登録の導線は**利用者の管理の画面のリンク**（サイドバーには出さない。取込はその下位の画面）
+- 初期パスワードは**確定・再発行の直後の画面にだけ**出す。どこにも保存しない（D4）
+
+### 範囲外（気づいたが直していない）
+
+- **サイドバーが毎リクエスト `approval_members` を 1 本引く**（`isApprovalAdmin()` の遅延ロード）。
+  索引つきの 1 件引きで、認証済みの全画面（約 200 ルート）に定数で +1 本乗る。機能に必要な問い合わせなので許容した。
+  ⚠ `PropertyListSortTest` の N+1 計測は、同じ User オブジェクトを使い回すと 1 回目にだけこの +1 が乗って
+  「増えた」ように見えるので、2 回とも `fresh()` した別インスタンスで測る（Bug #39 と同じ理由）
+- 設定の変更の記録（`approval_setting_logs`）を**見る画面**は作っていない（D14。必要になったら）
+- 段階2 以降へ回すもの（設計書 §8）: 部門長・審査担当者・今年度の開始番号 ／ 社長の交代で社長決裁待ちを移す ／
+  基幹の左メニューの「決裁」と対応待ちの件数・ベルマーク ／ 印に使う文字（段階4）
+
+### 検証
+
+- 全テスト **2050 tests / 13499 assertions green**
+- コンパイル済みビュー **277 本**を `php -l` → INVALID 0 件（⚠ `view:cache` の成功表示だけでは足りない。Bug #21 / #26 / #30）
+- 変異テストは各タスクで実測（記録は実装計画）。サイドバー（Task 14）は **11 通り**で、
+  1 通り（ラベルに接尾辞を足す改名）が緑のまま通ったのでアサートをタグの境目ごと見る形に直して赤にした（Bug #43 の型）。
+  ⚠ **3 か所のうち 1 か所を消す変異**は、ページ全体を 1 回見る素朴なテストでは**全部緑だった**（実測）
+- ⚠ **実ブラウザでの目視は未了**（下記）
+
+### ⚠ 本番反映の手順（未実施。設計書 §7）
+
+**DB が先・`deploy.sh` が後。** 新しい列をログインが読むので、コードを先に送るとログインが 500 になる。
+
+1. **反映前の読み取り**（利用者の承認をいただいてから）: 本番の `users` の定義（索引名・照合順序・`role` の enum・`email` の型）
+2. `database/sql/2026-09-16-approval-phase1.sql` を流す（`users` の ALTER ＋ 7 表の作成 ＋ 会社と社長の設定行）
+3. main repo で `composer install --no-dev`（**chillerlan/php-qrcode が新規**）→ **main repo の cwd で** `composer dump-autoload`
+   （⚠ worktree から実行すると autoloader に worktree パスが焼き込まれる）
+4. `./deploy.sh`
+5. 本番で確かめる: **コンパイル済みビューの `php -l`**（Bug #21 / #26）／ ログイン画面 ／ メールアドレスでログインできること ／
+   基幹の利用者管理が開けること ／ **決裁の画面が誰にも見えないこと**（管理者を指定する前）
+6. ⚠ **社員の一括登録とログイン案内の配布は、稼働の直前まで行わない**（D2・要件定義書 16.2 の 4）
+
+### ⚠ 未了
+
+- **実ブラウザでの目視**（ローカル・本番とも）。サイドバー 3 か所 × 画面幅・ログイン・案内の印刷（A4 1 人 1 ページ）・
+  CSV 取込の往復は、テストが原理的に測れない領域が残る
+- **本番反映そのもの**（上記の手順）
+
+---
+
 ## バックログ完了状況
 
 優先度 1〜5 のすべてのバックログ項目が本番稼働中。周辺ビル調査は第1段（2026-08-17）・
@@ -1539,6 +1620,11 @@ lint（INVALID 0）と、ログイン済みの実 Chrome での目視まで確�
 **論理削除した区画を参照する画面の修正（2026-09-14）も同日に本番反映済み**（上記の節。本番の解約済み契約 C-1991-001 が契約詳細・契約一覧・物件詳細・顧客詳細で「5A（削除済み）」と出ることまで確認）。
 
 **削除した物件を参照する画面（物件の削除の歯止め）と、区画の CSV 取込の削除済み同名区画（2026-09-14）も同日に一緒に本番反映済み**（上記の 2 節。`13.x` = `3e9647f2`。本番のコンパイル済みビュー 269 本の lint（INVALID 0）と、読み取りだけの画面確認まで）。
+
+⚠ **決裁申請 段階1（基幹の改修）は実装が終わり、本番未反映**（上記の節）。段階0（定期実行・メール送信の土台・
+暗号化バックアップ）は本番稼働中。反映は **DB が先・`deploy.sh` が後**で、`composer install --no-dev`
+（chillerlan/php-qrcode が新規）と main repo の cwd での `composer dump-autoload` が要る。
+**実ブラウザでの目視は未了。**
 
 その他の新規要件は別途追記する。
 
