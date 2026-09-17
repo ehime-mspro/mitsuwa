@@ -565,6 +565,13 @@ return [
         'login_id'             => 'ログインID',
         'employee_number'      => '社員番号',
         'president_user_id'    => '決裁の社長',
+        // 部門の管理（name / code は画面ごとに語が変わるので OrganizationController の
+        // validate() 第 3 引数で「会社名」「部門名」「アルファベット」に上書きする）
+        'fiscal_start_month'   => '期の始まりの月',
+        'short_name'           => '略称',
+        'sort_order'           => '表示順',
+        'domain'               => 'ドメイン',
+        'company_id'           => '会社',
 
     ],
 

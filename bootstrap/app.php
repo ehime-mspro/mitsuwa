@@ -16,6 +16,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'role' => \App\Http\Middleware\CheckRole::class,
             'department.access' => \App\Http\Middleware\CheckDepartmentAccess::class,
             'password.change' => \App\Http\Middleware\ForcePasswordChange::class,
+            // 決裁の管理者に指定された人だけを通す（設計書 §5.2・§5.17）
+            'approval.admin' => \App\Http\Middleware\EnsureApprovalAdmin::class,
         ]);
 
         // 決裁申請 段階1（設計書 §5.2・§5.5）
