@@ -118,9 +118,14 @@ class User extends Authenticatable
      */
     public function approvalDepartments(): BelongsToMany
     {
-        // ⚠ `withPivot` だけだと `created_at` を**読む**宣言にしかならず、`sync()` は書かないので
-        //   いつ所属になったかが永久に NULL のままになる。第 2 引数の `false` で `updated_at` を
-        //   外す（この中間表は `created_at` しか持たない）。
+        // 所属になった日時を残す。第 2 引数の `false` で `updated_at` を外す
+        // （この中間表は `created_at` しか持たない）。
+        //
+        // ⚠ **`withPivot('created_at')` だけでも書き込まれる**（実測）。`createAttachRecords()` が
+        //   `$hasTimestamps = hasPivotColumn(createdAt()) || hasPivotColumn(updatedAt())` で決めるため、
+        //   列を挙げた時点で `attach` / `sync` が時刻を入れる。ここを `withTimestamps` にしてあるのは
+        //   **意図を明示するため**で、挙動は同じ（＝この 1 行を書き換える変異はテストで赤にならない）。
+        //   守られているのは「時刻が入ること」のほうで、列の宣言ごと落とせばテストが落ちる。
         return $this->belongsToMany(ApprovalDepartment::class, 'approval_department_user', 'user_id', 'department_id')
                     ->withTimestamps('created_at', false);
     }
