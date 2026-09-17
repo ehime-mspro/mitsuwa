@@ -33,6 +33,20 @@ class ApprovalSidebarTest extends TestCase
     }
 
     /**
+     * 決裁の印の行は在るが、決裁の管理者ではない人（全件閲覧者）。
+     *
+     * ⚠ これが「**3 状態目**」。2026-09-18 のレビューまで、この状態で画面を描いたテストが
+     *   アプリ全体で 1 本も無かった（行が在る/無いの 2 状態しか作っていなかった）。
+     */
+    private function approvalViewer(string $role = UserRole::Staff->value): User
+    {
+        $user = User::factory()->create(['role' => $role, 'must_change_password' => false]);
+        ApprovalMember::create(['user_id' => $user->id, 'can_view_all' => true]);
+
+        return $user->fresh();
+    }
+
+    /**
      * サイドバーの 3 か所を切り出す（`expanded` / `rail` / `drawer`）。
      *
      * ⚠ `<aside>` は入れ子にならないので非貪欲に `</aside>` まで取れば足りる。
@@ -175,6 +189,37 @@ class ApprovalSidebarTest extends TestCase
         // 折りたたみ版はアイコン 1 本（title に「決裁の管理」）
         $this->assertStringContainsString(route('approvals.admin.users.index'), $sidebars['rail'], 'rail に決裁の管理のアイコンリンクが無い');
         $this->assertStringContainsString('title="決裁の管理"', $sidebars['rail'], 'rail のアイコンに title が無い');
+    }
+
+    /**
+     * 全件閲覧者には「決裁の管理」が出ない（D2・§5.17）。
+     *
+     * ⚠ 判定を `isApprovalAdmin()` から `(bool) $this->approvalMember` や
+     *   `canViewAllApprovals()` に取り違える変異を、これが無いとサイドバー 6 か所とも
+     *   見逃す（`can_view_all` と `is_admin` は `Admin\UserController` が独立に保存するので、
+     *   この人は段階1 の本番で普通に作れる）。門番側は
+     *   `OrganizationManagementTest` / `ApprovalUserManagementTest` が対で見る。
+     */
+    public function test_a_view_all_member_does_not_get_the_management_links(): void
+    {
+        // 基幹を使う人: 基幹サイドバーに「決裁の管理」が増えない
+        $html = $this->actingAs($this->approvalViewer())->get('/dashboard/tenant')->assertOk()->getContent();
+        $this->assertStringContainsString('テナントダッシュボード', $html, '基幹のサイドバーが消えている');
+        $this->assertStringNotContainsString('決裁', $html, '全件閲覧者に決裁の管理が出ている');
+
+        // 決裁のみ利用者: 決裁サイドバーにホームだけが出る
+        $sidebars = $this->sidebars(
+            $this->actingAs($this->approvalViewer(UserRole::ApprovalOnly->value))
+                ->get(route('approvals.home'))->assertOk()->getContent()
+        );
+
+        $this->assertIsTheApprovalSidebar($sidebars);
+        $this->assertHasHomeLink($sidebars);
+
+        foreach ($sidebars as $key => $aside) {
+            $this->assertStringNotContainsString(route('approvals.admin.users.index'), $aside, "{$key} に利用者の管理が出ている");
+            $this->assertStringNotContainsString(route('approvals.admin.organization.index'), $aside, "{$key} に部門の管理が出ている");
+        }
     }
 
     /** 指定されていない人には何も増えない（D2） */

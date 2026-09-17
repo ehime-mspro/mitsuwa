@@ -63,6 +63,25 @@ class ApprovalUserManagementTest extends TestCase
         $this->actingAs($executive)->get(route('approvals.admin.users.index'))->assertStatus(403);
     }
 
+    /**
+     * 全件閲覧者は決裁の管理者ではないので 403（設計書 §5.17）。
+     *
+     * ⚠ これが「**3 状態目**」— 決裁の印の行が**在って** `is_admin` が false の人。
+     *   2026-09-18 のレビューまで、この状態で画面を描いたり門番を叩いたりしたテストが
+     *   アプリ全体で 1 本も無かった（棄却テストはどれも「行が無い」人だけ）。
+     *   そのため門番の判定を `isApprovalAdmin()` から `(bool) $this->approvalMember` に
+     *   取り違える変異が全件緑のまま通り、**全件閲覧者が利用者管理・部門管理を操作できる**
+     *   ＝ 権限昇格になっても検出できなかった。
+     * ⚠ `can_view_all` と `is_admin` は `Admin\UserController` が**独立に**保存するので、
+     *   この人は段階1 の本番で普通に作れる。
+     */
+    public function test_a_view_all_member_is_rejected(): void
+    {
+        // 「守られる側」を作る privileged('viewer') と作るものは同じ。acting 側でも 1 度使う。
+        $this->actingAs($this->privileged('viewer'))
+            ->get(route('approvals.admin.users.index'))->assertStatus(403);
+    }
+
     // --- 一覧 ---
 
     public function test_the_list_shows_base_users_and_approval_only_users(): void
