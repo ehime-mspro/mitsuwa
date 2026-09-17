@@ -252,7 +252,14 @@ class ApprovalUserImportTest extends TestCase
         $this->assertSame(0, $this->preview("A@001,甲 一郎,,RE\n")->assertOk()->viewData('validCount'));
     }
 
-    /** 社員番号はログイン ID なので必須（設計書 §5.10） */
+    /**
+     * 社員番号はログイン ID なので必須（設計書 §5.10）。
+     *
+     * ⚠ **件数では測れない。文言で見るしかない。** この分岐を消しても行は
+     *   次の書式の判定に落ちるので `validCount` は 0・`rowErrors` は 1 件のまま変わらず、
+     *   画面の文言だけが「社員番号「」は英数字とハイフン 20 文字までで入力してください」
+     *   という**意味の通らないもの**に化ける（2026-09-17 に変異で実測）。
+     */
     public function test_a_row_without_an_employee_number_is_an_error(): void
     {
         $preview = $this->preview(",甲 一郎,a@mitsuwat.co.jp,RE\n")->assertOk();
@@ -292,7 +299,8 @@ class ApprovalUserImportTest extends TestCase
      * ⚠ 値は**許可したドメインのまま**にする（`a..b@mitsuwat.co.jp` は `filter_var` が
      *   落とすが `ApprovalMailDomain::allows()` は通す）。ドメイン違いの値で書くと、
      *   形式の判定を消しても**ドメインの判定が代わりに落として緑のまま通る**
-     *   （Bug #48 の「安全網が主機構の変異を隠す」型）。
+     *   （Bug #48 の「安全網が主機構の変異を隠す」型）。実測（2026-09-17）: この値なら
+     *   判定を消すと `validCount` が 0 → **1** になる ＝ ドメインの判定は肩代わりしない。
      */
     public function test_a_malformed_email_is_an_error(): void
     {

@@ -8406,6 +8406,50 @@ EOF
 )"
 ```
 
+### Task 13 のレビューと変異の実測（2026-09-17）
+
+> **実装コードの欠陥は 0 件。出たのはすべてテスト設計とドキュメント。**
+> レビューの言い方: 「この機能がいちばん怖い壊れ方をする箇所ほど守りが薄い」。
+> **変異 13 通りを実測して 12 通りが赤・1 通りは等価変異**（下記）。さらに
+> **レビュー前のテスト（`46e88ee4` の版）でも同じ変異を測り直し、9 通りが緑だった**
+> ＝ 足したテストが load-bearing であることの裏取り（Bug #45 の流儀）。
+>
+> | # | 変異 | 46e88ee4 のテスト | 今のテスト（落ちたテストと理由） |
+> |---|---|:--:|---|
+> | M0 | プレビューのエラー行の接頭辞を変える（カナリア） | — | 赤 5 本（測定装置が worktree のビューを読んでいる確認） |
+> | M1 | ファイル内のメール重複の**判定**を消す | **緑** | 赤 `test_the_same_email_twice_in_the_file_fails_both_rows` /「重複したメールアドレスの行が取り込まれる」 |
+> | M9 | ファイル内のメール重複を**数える行**を消す | **緑** | 赤 同上（同じ欠陥のもう半分） |
+> | M2 | `apply()` の更新行を `$entries` へ混ぜる | **緑** | 赤 `test_a_file_with_at_least_one_new_user_still_returns_the_guide` /「更新しただけの人が案内に出ている」 |
+> | M2b | `apply()` の更新行の `continue` を消す | 赤 4 本 | 赤 5 本（**理由は 500** ＝ 社員番号の一意索引に当たる。M2 と別の機構で落ちるので M2 と対で測る） |
+> | M3 | 「メールアドレスは変えません」の告知を消す | **緑** | 赤 `test_a_different_email_is_announced_as_not_changed` /「注意ではなくエラーに積まれている」 |
+> | M4 | 「社員番号が空です」の分岐を消す | **緑** | 赤 `test_a_row_without_an_employee_number_is_an_error` / 文言のアサート |
+> | M5 | 「氏名が空、または 100 文字超」の分岐を消す | **緑** | 赤 `test_a_blank_or_too_long_name_is_an_error` /「100 文字ちょうどの氏名が取り込めない」 |
+> | M11 | 氏名の上限を `> 100` → `> 99`（境界） | **緑** | 赤 同上 |
+> | M6 | メールアドレスの形式の判定を消す | **緑** | 赤 `test_a_malformed_email_is_an_error` /「1 is identical to 0」 |
+> | M8 | `execute` を `approval.admin` の門番の外へ出す | **緑** | 赤 `test_every_import_route_is_behind_the_approval_admin_gate` /「決裁の管理者でない人が通れる取込のルートがある」 |
+> | M10 | `matchesTwoPeople()` を常に false（Minor 4 の共通化先） | — | 赤 `test_a_row_matching_two_different_people_is_an_error` |
+> | M12 | `execute()` の `validCount === 0` を消す | — | **緑（等価変異・全 2043 本）** |
+>
+> ⚠ **M12 は「守られていない」ではなく「到達しない」。** `parse()` が 2 行未満を断り、
+> `analyze()` のループはどの経路でも `rows` か `rowErrors` に 1 つ積むので、
+> `validCount === 0` なら `rowErrors !== []` が先に断る。保険として残すのは正しいが、
+> **テストでは赤にできない**ことをコードに注記した（Bug #48。`UserController::toggleStatus()` に同型）。
+>
+> ⚠ **M4 は件数では測れない。** この分岐を消しても行は次の書式の判定に落ちるので
+> `validCount` は 0・`rowErrors` は 1 件のまま変わらず、**文言だけ**が
+> 「社員番号「」は英数字とハイフン 20 文字までで入力してください」に化ける（使い捨ての探りで実測）。
+> 件数だけを見るテストにしていたら緑のまま通っていた（Bug #54 ④ の型）。
+>
+> ⚠ **M6 の値は「許可したドメインのまま」でないと測れない。** `a..b@mitsuwat.co.jp` は
+> `filter_var` が落とすが `ApprovalMailDomain::allows()` は通すので、形式の判定が唯一の歯止めになる。
+> ドメイン違いの値で書くと**ドメインの判定が肩代わりして緑**になる（Bug #48 の型）。
+>
+> **そのほか記録だけ**: 手元の `php.ini` は `zend.exception_ignore_args` が `Off` で、
+> 10 文字の引数が例外のトレースに丸ごと載ることを実測した。初期パスワードは 10 文字なので、
+> `InitialPassword::hash($plain)` のフレームが積まれている最中の例外で平文が `laravel.log` に
+> 残る経路が理論上ある。**本変更が作った穴ではなく既存の 4 経路すべてに共通**で、塞ぐ場所は
+> php.ini。設計書 §5.11 と `InitialPassword` の docblock に書いた。
+
 ---
 ## Task 14: サイドバー・和名の確認・ドキュメント
 
