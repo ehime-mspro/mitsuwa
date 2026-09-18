@@ -29,9 +29,14 @@ final class OneTimeAction
      * 初めての鍵なら true。2 回目以降は false。
      *
      * ⚠ private。呼び出しは必ず `claimFrom()` を経由させる（配列トークンの防御を 1 か所に
-     *   集めるため）。private にすることで、動的呼び出し（`call_user_func` 等）やクラスの
-     *   エイリアス経由でも外から呼べなくなる——**言語仕様そのものが強制する**ので、走査テストより
-     *   確実（Commit 1。走査テストは private化の前から使えたので静的な早期警告として残す）。
+     *   集めるため）。private にすることで、**通常の呼び出し**（静的呼び出し・`call_user_func`
+     *   等の動的呼び出し・クラスのエイリアス経由）では外から呼べなくなる。
+     *   ⚠ **言語仕様そのものが強制するわけではない** —— `ReflectionMethod::invoke()`
+     *   （PHP 8.1+ は `setAccessible()` すら要らない）や `Closure::bind` は private でも
+     *   呼び出せる。それでも private 化を残すのは、通常の呼び出しはこれで確実に防げるうえ、
+     *   走査テストが private 化の前から使えていたので静的な早期警告としても残るため
+     *   （そうした迂回はわざわざ書かないと起きない一方、うっかり
+     *   `OneTimeAction::claim(...)` と直書きする誤用は private 化だけで確実に防げる）。
      */
     private static function claim(string $token): bool
     {
@@ -57,8 +62,9 @@ final class OneTimeAction
 
     /**
      * リクエストの hidden `guide_token` を受け取って鍵を使う。**入口はここを通す。**
-     * `claim()` は private なので、外から直接呼ぶコードはそもそも書けない
-     * （動的呼び出し・エイリアス経由も含め、言語仕様で強制される。Commit 1 で private 化）。
+     * `claim()` は private なので、通常の呼び出し（静的呼び出し・動的呼び出し・エイリアス経由）
+     * では外から直接呼ぶコードはそもそも書けない（`ReflectionMethod::invoke()` のような
+     * 迂回は別——上の `claim()` docblock 参照）。
      *
      * ⚠ `guide_token` は配列で送られることがある（`guide_token[]=x` のような**手組みの送信**。
      *   すべての画面が `name="guide_token"` の hidden を**単一の値でしか描画しない**ので、

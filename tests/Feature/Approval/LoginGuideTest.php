@@ -22,7 +22,7 @@ class LoginGuideTest extends TestCase
     use RefreshDatabase;
 
     /**
-     * 走査に使う正規表現をここへ集約する（Commit 4）。
+     * 走査に使う正規表現をここへ集約する。
      *
      * ⚠ PHP はクラス名・メソッド名の大小文字を区別しないので、素の部分一致（`str_contains`）
      *   ではなく大小文字・空白の揺れを許す正規表現で見る。`test_the_scan_regexes_match_only_what_they_should`
@@ -39,6 +39,34 @@ class LoginGuideTest extends TestCase
     private const TO_GUIDE_CALL_PATTERN = '/(?:->|\?->)\s*toGuide\s*\(/i';
 
     private const NEW_PASSWORD_REISSUER_PATTERN = '/\bnew\s+PasswordReissuer\b/i';
+
+    /**
+     * 案内を描く入口を**拾う**ための広い判定（`LoginGuide` / `PasswordReissuer` の単語か
+     * `->toGuide(` のいずれか）。「拾う」専用——実際にその場で生成しているかまでは
+     * 見ない（それは上の `NEW_LOGIN_GUIDE_PATTERN` 等 ＋ 下の副作用 3 定数が個別に見る）。
+     *
+     * ⚠ 以前は `new LoginGuide(` のような狭い形しか拾っていなかったため、FQCN 経由の生成
+     *   （`new \App\Support\Approval\LoginGuide(`）・import のエイリアス（`use … as Guide`）・
+     *   コンテナ経由の解決（`app(PasswordReissuer::class)`）を素通りさせる余地があった。
+     * ⚠ それでも拾えない書き方がある —— 変数に入れたクラス名からの動的生成（`new $class(...)`）は
+     *   この正規表現走査では検出できない。
+     */
+    private const ENTRY_POINT_PICK_PATTERN = '/\bLoginGuide\b|\bPasswordReissuer\b|->\s*toGuide\s*\(/i';
+
+    /**
+     * 「呼んでいる」ではなく「守っている」ことを見る —— `if (! OneTimeAction::claimFrom($x)) { return …`
+     * という**防御の形そのもの**。`claimFrom(` を呼ぶだけで戻り値を捨てる・早期 return が無い、
+     * という書き方は「呼んでいるが守っていない」ので、`CLAIM_FROM_PATTERN` の単純な有無では
+     * 区別できない。
+     */
+    private const CLAIM_GUARD_SHAPE_PATTERN = '/\bif\s*\(\s*!\s*OneTimeAction\s*::\s*claimFrom\s*\(\s*\$\w+\s*\)\s*\)\s*\{\s*return\b/i';
+
+    /** 副作用の起点 3 種（`NEW_LOGIN_GUIDE_PATTERN` 等と合わせ claimFrom() の防御より後にあってはいけない） */
+    private const DB_TRANSACTION_PATTERN = '/\bDB\s*::\s*transaction\s*\(/i';
+
+    private const INITIAL_PASSWORD_STATIC_PATTERN = '/\bInitialPassword\s*::/i';
+
+    private const SET_INITIAL_PASSWORD_CALL_PATTERN = '/(?:->|\?->)\s*setInitialPassword\s*\(/i';
 
     private function guide(): LoginGuide
     {
@@ -202,7 +230,7 @@ class LoginGuideTest extends TestCase
     }
 
     /**
-     * `claim()` は private（Commit 1）なので、テストからも `claimFrom()` を経由して呼ぶ。
+     * `claim()` は private なので、テストからも `claimFrom()` を経由して呼ぶ。
      * 「hidden `guide_token` に文字列トークンを 1 つ乗せた POST」を組み立てるだけの薄いラッパー。
      */
     private function claimToken(string $token): bool
@@ -241,12 +269,14 @@ class LoginGuideTest extends TestCase
      * ⚠ **列挙リスト方式にしない** — 「直したファイル」を配列で並べる形だと、未修正・将来追加の
      *   ファイルが検査対象に入らず永遠に緑になる（Bug #45 ①）。`app/` と `routes/`（ルートの
      *   クロージャも入口になりうる）配下の全 PHP ファイルを機械的に列挙する。
-     * ⚠ **`claim()` は Commit 1 で private 化済み** —— 外から `OneTimeAction::claim(...)` と
+     * ⚠ **`claim()` は private 化済み** —— 外から `OneTimeAction::claim(...)` と
      *   書けば PHP の `Error`（private method へのアクセス）になるので、この走査は**もう
      *   唯一の防御ではない**。それでも残すのは、**実行して初めて分かる private 違反より前**に
-     *   静的に気づける早期警告として（`phpunit` を走らせるだけで分かる。動的呼び出しや
-     *   エイリアス経由は private でも同じクラスの外からは呼べないので、ここが守るのは
-     *   その形の誤用が**書かれていないこと**の確認）。
+     *   静的に気づける早期警告として（`phpunit` を走らせるだけで分かる。**通常の呼び出し**——
+     *   静的呼び出し・`call_user_func` のような動的呼び出し・エイリアス経由——は private なら
+     *   同じクラスの外から書けないので、ここが守るのはその形の誤用が**書かれていないこと**の
+     *   確認。`ReflectionMethod::invoke()` のような迂回まではこの走査も private 化も防がない
+     *   ——`OneTimeAction.php` の `claim()` docblock 参照）。
      * ⚠ コメントを落としてから走査する（Bug #42 ②）。**理由はこの docblock 自身の話ではない**
      *   —— この試験ファイルは `tests/` にあり、走査対象（`app/` + `routes/`）にそもそも入らない。
      *   本当の理由は `Approval\UserImportController::execute()` の**コメント**に
@@ -261,11 +291,13 @@ class LoginGuideTest extends TestCase
      * ⚠ 走査が空振りして緑になる事故を防ぐため、拾えたファイル数・`claimFrom(` 呼び出し数の
      *   下限も併せて固定する（Bug #45 ①・Bug #32 と同じ流儀。2026-09-18 実測で app/ 273 + routes/ 3 = 276 件）。
      *   **ここでは問題リストのアサートを下限より先に置く**（Bug #59 は逆に下限を先に置いた）。
-     *   理由: この走査対象が空振り（0 件）でも `$problems` はただ空になるだけで紛らわしくない
-     *   （0 件を「問題無し」と読んでもそのとおりの状態）。すぐ後ろの件数の下限アサートが
-     *   「0 件しか拾えていない」と正しい理由で落ちる。Bug #59 が下限を先に置いたのは、
-     *   **個別の名前の有無**を見るアサートが先にあると、走査が空でも「名前 X が分類されていない」
-     *   という**別の・紛らわしい**理由の失敗に化けるためで、この走査にはその形の個別チェックが無い。
+     *   Bug #59 の教訓は「**空振りの走査結果を、的外れな理由（個別の名前が見つからない等）で
+     *   誤診断させない**」こと——個別の名前の有無を見るアサートが先にあると、走査が空でも
+     *   「名前 X が分類されていない」という**別の・紛らわしい**理由の失敗に化ける。この走査には
+     *   その形の個別チェックが無いので、問題リスト（`$problems`）を先に置いても空振りは
+     *   紛らわしい理由では報告されない——空振り（0 件）でも `$problems` はただ空になるだけ
+     *   （0 件を「問題無し」と読んでもそのとおりの状態）で、すぐ後ろの件数の下限アサートが
+     *   「0 件しか拾えていない」と**正しい理由**で落ちる。
      * ⚠ **ファイルの列挙順は `sort()` で固定する** —— OS やファイルシステムの列挙順に頼ると、
      *   失敗メッセージに出るファイルの並びが実行ごとに変わる。
      * ⚠ **`OneTimeAction.php` 自身の除外は、今のコードでは何も除外していない** —— `claimFrom()`
@@ -320,6 +352,40 @@ class LoginGuideTest extends TestCase
     }
 
     /**
+     * 全件分類の走査そのものが健全であること（Reflection 抽出の自己テスト。Bug #57 と同じ流儀）。
+     *
+     * ⚠ ここが壊れていると、次のテスト（入口が先に鍵を使うか）は**何かを見ているつもりで
+     *   何も見ていない**——以前の手書きトークナイザは `X::class` を宣言と誤認し・予約語の
+     *   メソッド名（`list` / `empty` / `print`）を落とし・`enum case Function` を誤認し・
+     *   文字列展開の波括弧（`"${x}"` / `"$x{"`）で対応が崩れていたのに、たまたま対象の
+     *   6 メソッドは生き残っていたため、読み取り専用の Reflection プロトタイプで実測するまで
+     *   気づかれなかった（誤カウントされた偽クラス 320/1599 件・無音の key 衝突 71 件）。
+     * ⚠ 件数はこのテストの環境で実測した値（app/ 配下の PHP ファイルすべてが
+     *   PSR-4（`App\` ⇒ `app/`）で class / interface / trait / enum のいずれかに解決でき、
+     *   同じ `"Class::method"` キーが 2 か所以上から生成されることも無い ＝ 非クラスファイル
+     *   0 件・メソッド 1602 件・キー衝突 0 件）。ファイルが増減すれば数は動くので、
+     *   ここでは「0 件であること」だけを固定し、メソッド総数の下限は次のテストに任せる。
+     */
+    public function test_the_app_method_body_scan_has_no_gaps_or_collisions(): void
+    {
+        $scan = $this->scanAppMethodBodies();
+
+        $this->assertSame(
+            [],
+            $scan['nonClassFiles'],
+            "app/ 配下に PSR-4 で class / interface / trait / enum のいずれにも解決できないファイルがある:\n"
+                . implode("\n", $scan['nonClassFiles'])
+        );
+
+        $this->assertSame(
+            [],
+            $scan['duplicateKeys'],
+            '同じ "Class::method" キーが複数ファイルから生成されている（走査の前提が崩れている）: '
+                . implode(', ', $scan['duplicateKeys'])
+        );
+    }
+
+    /**
      * ログイン案内を描く／再発行する入口は、すべて**先に** `OneTimeAction::claimFrom()` を
      * 使う（全件分類。設計書 §5.12。Top trap #13 / Bug #45 ①）。
      *
@@ -328,38 +394,58 @@ class LoginGuideTest extends TestCase
      *   新しい入口が鍵を一度も使わずに案内を描いても・鍵を使った結果を捨てても・
      *   案内を描いた**あとで**鍵を使っても、この下限は気づかず素通りする（Bug #45 ①と同型の
      *   「対象を全件分類していない」欠陥）。
-     * ⚠ 対象の見つけ方: `app/` 配下の全 PHP ファイルをトークン化し（コメントを落として。
-     *   Bug #42 ②）、**メソッド本体**を波括弧の対応で 1 つずつ切り出す（`methodBodiesIn()`）。
-     *   本体が `new LoginGuide(` / `->toGuide(` / `new PasswordReissuer` のいずれかを含む
-     *   メソッドを「拾う」。
+     * ⚠ 対象の見つけ方: `app/` 配下の全 PHP ファイルを `ReflectionClass` で読み、**そのファイルが
+     *   実際に定義しているメソッド**の本体（コメント除去済み。Bug #42 ②）を 1 つずつ切り出す
+     *   （`scanAppMethodBodies()` → `methodBodiesIn()`）。走査そのものの健全性は
+     *   `test_the_app_method_body_scan_has_no_gaps_or_collisions()` が別に守るので、ここでは
+     *   その結果を使うだけ。本体が `ENTRY_POINT_PICK_PATTERN`（`LoginGuide` / `PasswordReissuer`
+     *   の単語か `->toGuide(` のいずれか）を含むメソッドを「拾う」。
      * ⚠ 拾ったメソッドのうち、**案内を作る仕組みそのもの**（`ReissueResult::toGuide()` ——
      *   `PasswordReissuer::reissue()` の結果から `LoginGuide` を組み立てるだけの部品で、
      *   `$request` も鍵も持たない）は入口ではないので、理由つきの除外リストに明示する。
      *   **除外名は実在チェックする** —— 拾った集合に無い名前が除外リストに残っていたら
      *   （リファクタで消えた・typo 等）、それ自体を stale entry として報告する。
-     * ⚠ 除外されなかった拾いものは**すべて入口**で、`OneTimeAction::claimFrom(`
-     *   （大小文字・空白の揺れを許す正規表現）を、案内を描く 3 パターンのうち**最初に現れる位置**
-     *   より**前**に持つことを要求する（§5.12「起きなかった処理に鍵を焼かない」の順序そのもの）。
-     * ⚠ **問題リストのアサートを `assertSame(5, …)` より先に置く**（stale-exclusion の
-     *   チェックはそれよりさらに先）。理由は直前のテストの docblock と同じ——ここでの走査対象が
-     *   空振りでも `$problems` は紛らわしくない空になるだけで、すぐ後ろの `assertSame(5, …)` が
-     *   「5 のはずが 0 だった」と名前つきで真の原因を報せる。
+     * ⚠ 除外されなかった拾いものは**すべて入口**で、**次の 2 つ**を要求する。
+     *   ① `if (! OneTimeAction::claimFrom($x)) { return …` という**防御の形そのもの**
+     *   （`CLAIM_GUARD_SHAPE_PATTERN`）を持つこと —— `claimFrom(` を呼ぶだけで戻り値を捨てる・
+     *   早期 return が無い、という書き方は「呼んでいるが守っていない」ので弾く。
+     *   ② その防御が、案内を描く 3 パターン（`new LoginGuide(` / `->toGuide(` /
+     *   `new PasswordReissuer`）**と**副作用の 3 パターン（`DB::transaction(` /
+     *   `InitialPassword::` / `->setInitialPassword(`）の**最初に現れる位置**より**前**にあること。
+     *   ⚠ **副作用の 3 パターンを足したのは「防御が案内を描く式の直前にあれば十分」という思い込みを
+     *   崩すため** —— `resetPassword()` / `reissue()` / `reissueBulk()` は自分の本体に副作用を
+     *   持たず `PasswordReissuer::reissue()` に委ねているので影響しないが、`execute()` は自分の
+     *   本体で直接 `DB::transaction(` を呼ぶ。副作用パターンを見ていなければ、`execute()` が
+     *   `DB::transaction(...)` を `claimFrom()` より前へ動かしても（案内を描く `new LoginGuide(`
+     *   は末尾のままなので）この走査は気づけなかった。
+     * ⚠ **この順序が守るのは §5.12「起きなかった処理に鍵を焼かない」ではない**（それは逆方向の
+     *   話——検証エラーで**なにも起きなかった**ときに鍵を無駄に使わないための順序で、
+     *   `Admin\UserController::store()` のコメントが説明している）。**このテストが守るのは、
+     *   鍵の防御が副作用・描画より後にあると、二重送信が再発行／新規登録を実際に実行してしまって
+     *   から初めて拒否される**——**その時点で印刷済みの案内はもう無効**になっている、という危険
+     *   （Bug #42 ②。誤った理由の注記は次の読み手を誤らせるので、以前ここに書いていた
+     *   「起きなかった処理に鍵を焼く危険」は誤りだった）。
+     * ⚠ **問題リストのアサートを `assertSame(5, …)` より先に置く**（stale-exclusion のチェックは
+     *   それよりさらに先・**走査したメソッド本体の件数の下限はそれよりもさらに先**）。Bug #59 の
+     *   教訓（前のテストの docblock 参照）と同じ理由で、件数の下限をこの一連のアサートの先頭に
+     *   置く——`$problems` や stale-exclusion のチェックは、走査対象が空振り（0 件）でもそれぞれ
+     *   紛らわしくない空のまま素通りしてしまい、その形で落ちるのは最後の `assertSame(5, …)` だけ
+     *   になる。件数の下限を先頭に置けば、空振りは「1500 件のはずが 0 件だった」と**正しい理由**で
+     *   最初に報告される。
      */
     public function test_every_guide_rendering_entry_point_claims_the_token_first(): void
     {
-        $bodies = [];
-        foreach ($this->phpFilesUnder(app_path()) as $file) {
-            foreach ($this->methodBodiesIn($file) as $key => $body) {
-                $bodies[$key] = $body;
-            }
-        }
+        $bodies = $this->scanAppMethodBodies()['bodies'];
+
+        $this->assertGreaterThanOrEqual(
+            1500,
+            count($bodies),
+            '走査が app/ 配下のメソッド本体を十分に拾えていない（空振りして緑になる事故を防ぐ下限。2026-09-18 実測 1602 件）'
+        );
 
         $picked = [];
         foreach ($bodies as $key => $body) {
-            if (preg_match(self::NEW_LOGIN_GUIDE_PATTERN, $body)
-                || preg_match(self::TO_GUIDE_CALL_PATTERN, $body)
-                || preg_match(self::NEW_PASSWORD_REISSUER_PATTERN, $body)
-            ) {
+            if (preg_match(self::ENTRY_POINT_PICK_PATTERN, $body)) {
                 $picked[$key] = $body;
             }
         }
@@ -368,7 +454,8 @@ class LoginGuideTest extends TestCase
         $excluded = [
             'App\Support\Approval\ReissueResult::toGuide' => 'toGuide() の定義自体。PasswordReissuer::reissue()'
                 . ' の結果から LoginGuide を組み立てるだけで $request も鍵も持たない。'
-                . '呼び出し側（reissue / reissueBulk / execute）がすでに claimFrom() を済ませてから呼ぶ。',
+                . '呼び出し側（resetPassword / reissue / reissueBulk）がすでに claimFrom() を済ませてから呼ぶ'
+                . '（execute() は new LoginGuide( を直接使い toGuide() を経由しない）。',
         ];
 
         $staleExclusions = array_diff(array_keys($excluded), array_keys($picked));
@@ -381,22 +468,39 @@ class LoginGuideTest extends TestCase
 
         $entryPoints = array_diff_key($picked, $excluded);
 
+        $triggerPatterns = [
+            self::NEW_LOGIN_GUIDE_PATTERN,
+            self::TO_GUIDE_CALL_PATTERN,
+            self::NEW_PASSWORD_REISSUER_PATTERN,
+            self::DB_TRANSACTION_PATTERN,
+            self::INITIAL_PASSWORD_STATIC_PATTERN,
+            self::SET_INITIAL_PASSWORD_CALL_PATTERN,
+        ];
+
         $problems = [];
         foreach ($entryPoints as $key => $body) {
-            if (! preg_match(self::CLAIM_FROM_PATTERN, $body, $claimMatch, PREG_OFFSET_CAPTURE)) {
-                $problems[] = "{$key}（案内を描く／再発行する式を持つのに claimFrom() を呼んでいない）";
+            if (! preg_match(self::CLAIM_GUARD_SHAPE_PATTERN, $body, $claimMatch, PREG_OFFSET_CAPTURE)) {
+                $problems[] = "{$key}（`if (! OneTimeAction::claimFrom(\$x)) { return …` の防御の形を"
+                    . '持たない——呼んでいても結果を捨てている・早期 return が無い等の可能性）';
                 continue;
             }
 
-            $renderOffsets = [];
-            foreach ([self::NEW_LOGIN_GUIDE_PATTERN, self::TO_GUIDE_CALL_PATTERN, self::NEW_PASSWORD_REISSUER_PATTERN] as $pattern) {
+            $triggerOffsets = [];
+            foreach ($triggerPatterns as $pattern) {
                 if (preg_match($pattern, $body, $m, PREG_OFFSET_CAPTURE)) {
-                    $renderOffsets[] = $m[0][1];
+                    $triggerOffsets[] = $m[0][1];
                 }
             }
 
-            if ($claimMatch[0][1] > min($renderOffsets)) {
-                $problems[] = "{$key}（claimFrom() が案内を描く式より後にある。起きなかった処理に鍵を焼く危険）";
+            if ($triggerOffsets === []) {
+                $problems[] = "{$key}（LoginGuide / PasswordReissuer / toGuide を含むと判定されたのに、"
+                    . '副作用・案内を描く起点を 1 つも検出できない。除外リストへの追加か判定パターンの見直しが必要）';
+                continue;
+            }
+
+            if ($claimMatch[0][1] > min($triggerOffsets)) {
+                $problems[] = "{$key}（claimFrom() の防御が、副作用・案内を描く式より後にある。"
+                    . '二重送信が処理を実行してから初めて拒否される危険）';
             }
         }
 
@@ -484,6 +588,81 @@ class LoginGuideTest extends TestCase
             'new PasswordReissuedMail($user)',
             '別クラス（PasswordReissuedMail）を誤検出している'
         );
+
+        foreach ([
+            'new LoginGuide($x)',
+            'PasswordReissuer::class',
+            '$x->toGuide()',
+            '$x?->toGuide()',
+            'LOGINGUIDE',
+        ] as $sample) {
+            $this->assertMatchesRegularExpression(self::ENTRY_POINT_PICK_PATTERN, $sample, "見逃している: {$sample}");
+        }
+        foreach ([
+            'new LoginGuideline()',
+            '->toGuideline()',
+            '$x->save();',
+        ] as $sample) {
+            $this->assertDoesNotMatchRegularExpression(self::ENTRY_POINT_PICK_PATTERN, $sample, "誤検出している: {$sample}");
+        }
+
+        foreach ([
+            "if (! OneTimeAction::claimFrom(\$request)) { return redirect()->route('x'); }",
+            'if(!OneTimeAction::claimFrom($r)){return null;}',
+            'IF ( ! OneTimeAction :: CLAIMFROM ( $req ) ) { RETURN foo(); }',
+            "if (! OneTimeAction::claimFrom(\$request)) {\n    return \$this->refuseRepeatedGuide();\n}",
+        ] as $sample) {
+            $this->assertMatchesRegularExpression(self::CLAIM_GUARD_SHAPE_PATTERN, $sample, "見逃している: {$sample}");
+        }
+        foreach ([
+            'if (! OneTimeAction::claimFrom($request)) { $x = 1; return $x; }', // { の直後が return でない
+            'if (OneTimeAction::claimFrom($request)) { return $x; }', // ! が無い（逆の分岐）
+            'OneTimeAction::claimFrom($request);', // 防御の形を持たず呼ぶだけ
+            'if (! OneTimeAction::claim($token)) { return null; }', // claimFrom でなく生の claim
+        ] as $sample) {
+            $this->assertDoesNotMatchRegularExpression(self::CLAIM_GUARD_SHAPE_PATTERN, $sample, "誤検出している: {$sample}");
+        }
+
+        foreach ([
+            'DB::transaction(function () {',
+            'DB :: TRANSACTION ( fn () =>',
+            '\Illuminate\Support\Facades\DB::transaction(fn () =>',
+        ] as $sample) {
+            $this->assertMatchesRegularExpression(self::DB_TRANSACTION_PATTERN, $sample, "見逃している: {$sample}");
+        }
+        foreach ([
+            'MyDB::transaction($x)',
+            'DB::transactionally($x)',
+        ] as $sample) {
+            $this->assertDoesNotMatchRegularExpression(self::DB_TRANSACTION_PATTERN, $sample, "誤検出している: {$sample}");
+        }
+
+        foreach ([
+            'InitialPassword::generate()',
+            'InitialPassword :: generate()',
+        ] as $sample) {
+            $this->assertMatchesRegularExpression(self::INITIAL_PASSWORD_STATIC_PATTERN, $sample, "見逃している: {$sample}");
+        }
+        foreach ([
+            'MyInitialPassword::generate()',
+            'InitialPasswordHelper::generate()',
+        ] as $sample) {
+            $this->assertDoesNotMatchRegularExpression(self::INITIAL_PASSWORD_STATIC_PATTERN, $sample, "誤検出している: {$sample}");
+        }
+
+        foreach ([
+            '$user->setInitialPassword($password)',
+            '$user?->setInitialPassword($password)',
+            '$user -> SETINITIALPASSWORD ( $x )',
+        ] as $sample) {
+            $this->assertMatchesRegularExpression(self::SET_INITIAL_PASSWORD_CALL_PATTERN, $sample, "見逃している: {$sample}");
+        }
+        foreach ([
+            '$user->setInitialPasswordHash($x)',
+            '$user->initialPassword()',
+        ] as $sample) {
+            $this->assertDoesNotMatchRegularExpression(self::SET_INITIAL_PASSWORD_CALL_PATTERN, $sample, "誤検出している: {$sample}");
+        }
     }
 
     /** `$dir` 配下の `*.php` を再帰的に列挙する（全件分類の対象を機械的に決めるため） */
@@ -505,131 +684,136 @@ class LoginGuideTest extends TestCase
     }
 
     /**
-     * `$file` の中の「メソッド名 → 本体（コメント除去済みソース文字列）」を、
-     * `"Namespace\Class::method"` 形式のキーで返す。
+     * `app/` 配下の全 PHP ファイルを `methodBodiesIn()` で読み、1 つの本体マップに束ねながら
+     * 「class-like にマッピングできないファイル」と「キーの重複（2 か所以上から同じ
+     * `"Class::method"` が出た）」を集計する。走査そのものの健全性は
+     * `test_the_app_method_body_scan_has_no_gaps_or_collisions()` が守り、
+     * `test_every_guide_rendering_entry_point_claims_the_token_first()` は
+     * `['bodies']` を使うだけ（同じ走査を二重に作らないため、この 1 か所に集約する）。
      *
-     * ⚠ 対象は具象メソッドのみ（本体 `{ }` を持たないインターフェース宣言・抽象メソッドは
-     *   `{` が来る前に `;` に当たるので自然に除外される）。
-     * ⚠ 本プロジェクトの `app/` 配下は 1 ファイル 1 クラス（trait・interface・enum 含めても）
-     *   なので、クラス名は「直近に見た `class` / `trait` / `interface` / `enum` の宣言」を
-     *   使えば足りる（2026-09-18 実測: `app/` に複数クラス宣言を持つファイルは 0 件）。
-     * ⚠ メソッド本体の中の入れ子クロージャ（`function () use (...) { ... }`）は、外側の
-     *   メソッドを収集中（`$collecting !== null`）は新しい収集を開始しない——中の `{`/`}` も
-     *   外側の収集にそのまま数えられ、波括弧の対応は保たれる。
-     *
-     * @return array<string, string>
+     * @return array{bodies: array<string, string>, nonClassFiles: array<string>, duplicateKeys: array<string>}
      */
-    private function methodBodiesIn(string $file): array
+    private function scanAppMethodBodies(): array
     {
-        $tokens = array_values(token_get_all($this->sourceWithoutComments($file)));
-        $count = count($tokens);
+        $bodies = [];
+        $nonClassFiles = [];
+        $duplicateKeys = [];
 
-        $namespace = '';
-        $classStack = []; // ['name' => string, 'depth' => int|null]
-        $depth = 0;
-        $collecting = null; // ['key' => string, 'startDepth' => int, 'body' => string]
-        $methods = [];
+        foreach ($this->phpFilesUnder(app_path()) as $file) {
+            $found = $this->methodBodiesIn($file);
 
-        for ($i = 0; $i < $count; $i++) {
-            $token = $tokens[$i];
-            $text = is_array($token) ? $token[1] : $token;
-            $id = is_array($token) ? $token[0] : null;
-
-            if ($id === T_NAMESPACE) {
-                $namespace = '';
-                for ($j = $i + 1; $j < $count; $j++) {
-                    $t = $tokens[$j];
-                    if ($t === ';' || $t === '{') {
-                        break;
-                    }
-                    if (is_array($t) && in_array($t[0], [T_STRING, T_NS_SEPARATOR, T_NAME_QUALIFIED], true)) {
-                        $namespace .= $t[1];
-                    }
-                }
+            if ($found === null) {
+                $nonClassFiles[] = $file;
+                continue;
             }
 
-            if ($id !== null && in_array($id, [T_CLASS, T_TRAIT, T_INTERFACE, T_ENUM], true)) {
-                $prevIsNew = false;
-                for ($p = $i - 1; $p >= 0; $p--) {
-                    $pt = $tokens[$p];
-                    if (is_array($pt) && $pt[0] === T_WHITESPACE) {
-                        continue;
-                    }
-                    $prevIsNew = is_array($pt) && $pt[0] === T_NEW;
-                    break;
+            foreach ($found as $key => $body) {
+                if (array_key_exists($key, $bodies)) {
+                    $duplicateKeys[] = $key;
                 }
-                if (! $prevIsNew) { // 匿名クラス（`new class`）は名前を持たないので対象外
-                    for ($j = $i + 1; $j < $count; $j++) {
-                        if (is_array($tokens[$j]) && $tokens[$j][0] === T_STRING) {
-                            $classStack[] = ['name' => $tokens[$j][1], 'depth' => null];
-                            break;
-                        }
-                        if ($tokens[$j] === '{') {
-                            break;
-                        }
-                    }
-                }
-            }
-
-            if ($text === '{') {
-                $depth++;
-                if ($classStack !== [] && $classStack[array_key_last($classStack)]['depth'] === null) {
-                    $classStack[array_key_last($classStack)]['depth'] = $depth;
-                }
-                if ($collecting !== null) {
-                    $collecting['body'] .= $text;
-                }
-            } elseif ($text === '}') {
-                if ($collecting !== null) {
-                    $collecting['body'] .= $text;
-                    if ($depth === $collecting['startDepth']) {
-                        $methods[$collecting['key']] = $collecting['body'];
-                        $collecting = null;
-                    }
-                }
-                if ($classStack !== [] && $classStack[array_key_last($classStack)]['depth'] === $depth) {
-                    array_pop($classStack);
-                }
-                $depth--;
-            } elseif ($collecting !== null) {
-                $collecting['body'] .= $text;
-            }
-
-            if ($id === T_FUNCTION && $collecting === null) {
-                $methodName = null;
-                for ($j = $i + 1; $j < $count; $j++) {
-                    if (is_array($tokens[$j]) && $tokens[$j][0] === T_STRING) {
-                        $methodName = $tokens[$j][1];
-                        break;
-                    }
-                    if ($tokens[$j] === '(') {
-                        break;
-                    }
-                }
-                if ($methodName !== null) {
-                    $className = $classStack === [] ? null : $classStack[array_key_last($classStack)]['name'];
-                    if ($className !== null) {
-                        $fqcn = $namespace !== '' ? "{$namespace}\\{$className}" : $className;
-                        $paramDepth = 0;
-                        $sawOpenParen = false;
-                        for ($k = $j; $k < $count; $k++) {
-                            $tk = $tokens[$k];
-                            if ($tk === '(') { $paramDepth++; $sawOpenParen = true; continue; }
-                            if ($tk === ')') { $paramDepth--; continue; }
-                            if ($paramDepth > 0) { continue; }
-                            if (! $sawOpenParen) { continue; }
-                            if ($tk === ';') { break; } // 抽象 / インターフェースのメソッド宣言
-                            if ($tk === '{') {
-                                $collecting = ['key' => "{$fqcn}::{$methodName}", 'startDepth' => $depth + 1, 'body' => ''];
-                                break;
-                            }
-                        }
-                    }
-                }
+                $bodies[$key] = $body;
             }
         }
 
-        return $methods;
+        sort($nonClassFiles);
+        sort($duplicateKeys);
+
+        return ['bodies' => $bodies, 'nonClassFiles' => $nonClassFiles, 'duplicateKeys' => $duplicateKeys];
+    }
+
+    /**
+     * `$file` の中の「メソッド名 → 本体（コメント除去済みソース文字列）」を、
+     * `"Namespace\Class::method"` 形式のキーで返す。`$file` が PSR-4（`App\` ⇒ `app/`）で
+     * class / interface / trait / enum のいずれにも解決できないときは **null** を返す
+     * （呼び出し側の `scanAppMethodBodies()` が「非クラスファイル」として集計する。ここで
+     * 例外を投げると 1 件目で止まり、全件分類にならない。Bug #45 ①）。
+     *
+     * ⚠ 2026-09-18 に手書きの `token_get_all()` ＋ 波括弧対応（このメソッドの旧実装）から
+     *   `ReflectionClass` へ置き換えた。旧実装は `X::class` を宣言と誤認する・予約語の
+     *   メソッド名（`list` / `empty` / `print`）を落とす・`enum case Function` を誤認する・
+     *   文字列展開の波括弧（`"${x}"` / `"$x{"`）で対応が崩れる、という壊れ方を実測で確認した
+     *   （読み取り専用の Reflection プロトタイプで実測: 誤カウントされた偽クラス 320/1599 件・
+     *   無音の key 衝突 71 件）。**6 つの対象メソッドはたまたま生き残っていたため、
+     *   このテストは壊れた走査のまま緑を返し続けていた**——Top trap #13 / Bug #45 ① /
+     *   Bug #59 が繰り返し警告する「走査テストが自分自身の健全性を守っていない」型そのもの。
+     * ⚠ 対象は「その `$file` が実際に定義しているメソッドだけ」——`getFileName()` が
+     *   `$file` と一致するものに絞る。これにより、trait を using するクラス側では trait の
+     *   メソッドを二重に数えず（trait 自身のファイルを処理するときに 1 回だけ数える）、
+     *   親クラスのメソッドも子クラスの側では数えない。
+     * ⚠ 抽象メソッド（本体を持たない）は `getFileName()` が `false` になるので自然に除外される。
+     *
+     * @return array<string, string>|null
+     */
+    private function methodBodiesIn(string $file): ?array
+    {
+        $fqcn = $this->fqcnForAppFile($file);
+
+        if ($fqcn === null
+            || ! (class_exists($fqcn) || interface_exists($fqcn) || trait_exists($fqcn) || enum_exists($fqcn))
+        ) {
+            return null;
+        }
+
+        $reflection = new \ReflectionClass($fqcn);
+        $realFile = realpath($file);
+        $lines = file($file);
+
+        $bodies = [];
+        foreach ($reflection->getMethods() as $method) {
+            $methodFile = $method->getFileName();
+            if ($methodFile === false || realpath($methodFile) !== $realFile) {
+                continue; // 抽象メソッド・継承・trait 由来（定義元のファイルを処理する時にだけ数える）
+            }
+
+            $start = $method->getStartLine();
+            $end = $method->getEndLine();
+            if ($start === false || $end === false) {
+                continue;
+            }
+
+            $slice = implode('', array_slice($lines, $start - 1, $end - $start + 1));
+            $key = "{$reflection->getName()}::{$method->getName()}";
+            $bodies[$key] = $this->stripCommentsFromSnippet($slice);
+        }
+
+        return $bodies;
+    }
+
+    /** `$file`（`app_path()` 配下）を PSR-4（`App\` ⇒ `app/`）で FQCN に変換する。解決できなければ null */
+    private function fqcnForAppFile(string $file): ?string
+    {
+        $real = realpath($file);
+        $base = realpath(app_path());
+
+        if ($real === false || $base === false || ! str_starts_with($real, $base . \DIRECTORY_SEPARATOR)) {
+            return null;
+        }
+
+        $relative = substr($real, strlen($base) + 1);
+        if (! str_ends_with($relative, '.php')) {
+            return null;
+        }
+
+        return 'App\\' . str_replace(\DIRECTORY_SEPARATOR, '\\', substr($relative, 0, -4));
+    }
+
+    /**
+     * 行スライスで切り出した断片（`<?php` を持たない）からコメントを落とす。
+     * `sourceWithoutComments()` はファイル全体（`<?php` から始まる）が対象なのでここでは
+     * 使えない——先頭に `<?php\n` を補ってから `token_get_all()` に通す。
+     */
+    private function stripCommentsFromSnippet(string $snippet): string
+    {
+        $code = '';
+
+        foreach (token_get_all("<?php\n" . $snippet) as $token) {
+            if (is_array($token) && in_array($token[0], [T_COMMENT, T_DOC_COMMENT], true)) {
+                continue;
+            }
+            $code .= is_array($token) ? $token[1] : $token;
+        }
+
+        return $code;
     }
 
     /** コメントと docblock を落としたソース（注意書きに反応しないように。Bug #42 ②） */
