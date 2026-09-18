@@ -584,6 +584,38 @@ class ApprovalUserManagementTest extends TestCase
     }
 
     /**
+     * まとめて再発行の**二重送信**を、画面が描いたフォームのまま確かめる（設計書 §5.12）。
+     *
+     * ⚠ これまでの「まとめて再発行」の POST は 8 本とも別々のトークンを発行していて、
+     *   **同じトークンで 2 回送る**テストが 1 本も無かった。
+     * ⚠ 素の `assertSessionHas('error')` では足りない — このコントローラは
+     *   `$targets->isEmpty()`（「対象の利用者がいません」）でも同じ `'error'` キーに文言を積む
+     *   ので、**文言の一致まで**見て初めて「この操作はすでに実行されました」の断り（鍵の
+     *   二重送信）であることを確かめられる（Bug #44「落ちた理由の文言まで突き合わせる」と同じ流儀）。
+     */
+    public function test_the_filtered_bulk_reissue_rejects_a_resubmitted_token(): void
+    {
+        $hit = $this->member(['name' => '田中 一郎']);
+
+        $html = $this->actingAs($this->admin())
+            ->get(route('approvals.admin.users.index', ['search' => '田中']))
+            ->assertOk()->getContent();
+
+        $form   = $this->parseForm($html, 'action="' . route('approvals.admin.users.reissueBulk') . '"');
+        $fields = $form['fields'] + ['mode' => 'filtered'];
+
+        $this->actingAs($this->admin())->post($form['action'], $fields)->assertOk();
+
+        $reissuedPassword = $hit->fresh()->password;
+
+        $this->actingAs($this->admin())->post($form['action'], $fields)
+            ->assertRedirect(route('approvals.admin.users.index'))
+            ->assertSessionHas('error', 'この操作はすでに実行されました。案内を印刷し直すには、もう一度再発行してください。');
+
+        $this->assertSame($reissuedPassword, $hit->fresh()->password, '2 回目の再送信でパスワードが作り直された');
+    }
+
+    /**
      * 無効化・有効化も**描画されたフォームのまま**送り返す。
      *
      * ⚠ `@method('PATCH')` を落とすとブラウザでは 405 ＝ ボタンが無反応、`name="status"` を
