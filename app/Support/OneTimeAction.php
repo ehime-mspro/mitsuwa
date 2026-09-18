@@ -25,8 +25,15 @@ final class OneTimeAction
         return Str::random(40);
     }
 
-    /** 初めての鍵なら true。2 回目以降は false */
-    public static function claim(string $token): bool
+    /**
+     * 初めての鍵なら true。2 回目以降は false。
+     *
+     * ⚠ private。呼び出しは必ず `claimFrom()` を経由させる（配列トークンの防御を 1 か所に
+     *   集めるため）。private にすることで、動的呼び出し（`call_user_func` 等）やクラスの
+     *   エイリアス経由でも外から呼べなくなる——**言語仕様そのものが強制する**ので、走査テストより
+     *   確実（Commit 1。走査テストは private化の前から使えたので静的な早期警告として残す）。
+     */
+    private static function claim(string $token): bool
     {
         if ($token === '') {
             return false;
@@ -49,9 +56,9 @@ final class OneTimeAction
     }
 
     /**
-     * リクエストの hidden `guide_token` を受け取って鍵を使う。**入口はここを通す。生の `claim()` を
-     * 直接呼ばない**（走査テスト `LoginGuideTest::test_every_entry_point_uses_claim_from_not_the_raw_claim`
-     * が守る）。
+     * リクエストの hidden `guide_token` を受け取って鍵を使う。**入口はここを通す。**
+     * `claim()` は private なので、外から直接呼ぶコードはそもそも書けない
+     * （動的呼び出し・エイリアス経由も含め、言語仕様で強制される。Commit 1 で private 化）。
      *
      * ⚠ `guide_token` は配列で送られることがある（`guide_token[]=x` のような手組みの送信・
      *   ブラウザの拡張機能など）。配列を `claim(string $token)` にそのまま渡すと `TypeError`、

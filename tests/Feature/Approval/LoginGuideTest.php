@@ -178,8 +178,17 @@ class LoginGuideTest extends TestCase
 
         $token = OneTimeAction::issue();
 
-        $this->assertTrue(OneTimeAction::claim($token), '有効時間 0 で 1 回目から弾かれている');
-        $this->assertFalse(OneTimeAction::claim($token), '2 回目が通っている');
+        $this->assertTrue($this->claimToken($token), '有効時間 0 で 1 回目から弾かれている');
+        $this->assertFalse($this->claimToken($token), '2 回目が通っている');
+    }
+
+    /**
+     * `claim()` は private（Commit 1）なので、テストからも `claimFrom()` を経由して呼ぶ。
+     * 「hidden `guide_token` に文字列トークンを 1 つ乗せた POST」を組み立てるだけの薄いラッパー。
+     */
+    private function claimToken(string $token): bool
+    {
+        return OneTimeAction::claimFrom(Request::create('/x', 'POST', ['guide_token' => $token]));
     }
 
     /**
@@ -323,21 +332,21 @@ class LoginGuideTest extends TestCase
     {
         $token = OneTimeAction::issue();
 
-        $this->assertTrue(OneTimeAction::claim($token));
-        $this->assertFalse(OneTimeAction::claim($token), '同じ鍵で 2 回目が通った');
+        $this->assertTrue($this->claimToken($token));
+        $this->assertFalse($this->claimToken($token), '同じ鍵で 2 回目が通った');
     }
 
     public function test_different_tokens_are_independent(): void
     {
-        $this->assertTrue(OneTimeAction::claim(OneTimeAction::issue()));
-        $this->assertTrue(OneTimeAction::claim(OneTimeAction::issue()));
+        $this->assertTrue($this->claimToken(OneTimeAction::issue()));
+        $this->assertTrue($this->claimToken(OneTimeAction::issue()));
     }
 
     /** 鍵そのものは保存しない（ハッシュだけ） */
     public function test_the_raw_token_is_not_stored(): void
     {
         $token = OneTimeAction::issue();
-        OneTimeAction::claim($token);
+        $this->claimToken($token);
 
         $this->assertFalse(Cache::has($token), '鍵がそのままキャッシュのキーになっている');
         $this->assertTrue(Cache::has(OneTimeAction::cacheKey($token)));
