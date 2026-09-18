@@ -8786,6 +8786,11 @@ APP_KEY="base64:$(php -r 'echo base64_encode(random_bytes(32));')" ./vendor/bin/
 | M50 | 基幹のサイドバーの「決裁の管理」を無条件に出す | `..._nothing_changes_for_everyone_else` ＋ `..._an_executive_without_the_flag_gets_nothing_either`（**実測 2 本**）|
 | M50a | **サイドバーは 3 か所ある**（PC 展開版 / PC 折りたたみ版 / モバイルのドロワー）。決裁のホームのリンクと基幹の「決裁の管理」を、**3 か所のうち 1 か所だけ**消す（各 3 通り＝計 6 通り）| 決裁側 `..._an_approval_only_user_gets_the_approval_sidebar`（`expanded に…` / `rail に…` / `drawer に…` と**場所を名指しして**落ちる）／ 基幹側 `..._a_base_user_with_the_flag_gets_an_extra_group`。⚠ **ページ全体を 1 回見る素朴なテストでは 6 通りとも緑だった**（Task 14 で実測。Bug #41 の型）|
 | M50b | サイドバーのラベルに**接尾辞を足す改名**（「決裁のホームZZZ」「利用者の管理ZZZ」。決裁の展開版 / 決裁のドロワー / 基幹の展開版 の 3 通り）| 決裁側 `..._an_approval_only_user_gets_the_approval_sidebar` / `..._an_approval_only_admin_sees_the_management_links`、基幹側 `..._a_base_user_with_the_flag_gets_an_extra_group`（いずれも `…の文字が無い`）。⚠ **素の部分一致で見ていた頃は緑だった**（Bug #43 の型。`route()` の一致だけを見ていた 2 本は 2026-09-17 のレビューで発覚し `3bb393ce` で塞いだ）|
+| M50c | **出し分けを `isApprovalOnly() && ! isApprovalAdmin()` に**（管理者の枝だけ基幹サイドバーへ）| `..._an_approval_only_admin_sees_the_management_links`（`expanded が決裁のサイドバーでない（基幹の sidebar.blade.php が出ている）`）。⚠ **2026-09-18 のレビューで塞ぐまで緑だった** — 管理リンク 2 本しか見ておらず、基幹サイドバーも「決裁の管理」グループで同じ 2 本を出すため。その人は `$isExecutive` も各 `$has*Access` も false なので **`/approvals` へ戻る唯一のリンクが消える**。反例も実測（下記）|
+| M50d | **決裁のドロワーの閉じるボタンを消す** | `LayoutSidebarDrawerTest::test_the_drawer_has_its_own_close_button`（`sidebar_approval.blade.php: ドロワーの中に閉じるボタンが無い…`）|
+| M50e | **基幹のオーバーレイの `@click` を消す** | `LayoutSidebarDrawerTest::test_the_overlay_closes_the_drawer`（`sidebar.blade.php: オーバーレイを押しても閉じない`）＝ **全件分類が両方の partial に効いている**ことの確認 |
+| M50f | **門番 `EnsureApprovalAdmin` の `isApprovalAdmin()` を `(bool) $request->user()?->approvalMember` に**（行の有無で判定）| `ApprovalUserManagementTest::test_a_view_all_member_is_rejected` と `OrganizationManagementTest::test_a_view_all_member_is_rejected` の **2 本だけ**（`Expected response status code [403] but received 200.`）。⚠ **2026-09-18 に足すまで、この変異は全 2050 本が緑だった** — 棄却テストがどれも「決裁の印の行が**無い**」人しか作っておらず、**3 状態目**（行が在って `is_admin` が false ＝ 全件閲覧者）が一度も `actingAs` されていなかった。**全件閲覧者が利用者管理・部門管理を操作できる＝権限昇格の形** |
+| M50g | **決裁の展開版の管理リンク 2 本の `:href` を入れ替える** | `..._an_approval_only_admin_sees_the_management_links`（`expanded: 「利用者の管理」の文字と行き先が同じ <a> に載っていない（別の画面へ飛ぶ）`）。⚠ **`assertHasLink()` が href と文字を独立に 2 回見ていた頃は緑だった** — docblock は「文字は在るのに別の画面へ飛ぶ、を見逃さない」と謳っていたのに、まさにそれを見逃していた（Bug #42 ② / #47）|
 | M51 | `PasswordReissuedMail::content()` の `setTimezone('Asia/Tokyo')` を外す | `PasswordReissueTest::test_the_mail_shows_the_time_in_japan_time`（実測済み・検出） |
 | M52 | 同上の「（日本時間）」の表記を消す | 同上（実測済み・検出） |
 | M53 | `bootstrap/app.php` から `AuthenticateSession` を外す | `OtherDeviceLogoutTest` の 2 本 |
@@ -8805,8 +8810,13 @@ M53 で `OtherDeviceLogoutTest` だけが落ちるなら、この判断が正し
 ⚠ **等価変異として記録**: `Asia/Tokyo` を `Asia/Seoul` にする変異は**緑**（実測）。
 どちらも UTC+9 なので、描画された時刻からは原理的に区別できない。
 
-⚠ **M48〜M50b（サイドバー）は Task 14 で最終コードに対して測り終えている**（17 通り ＋ カナリア 1・検出 17 / 未検出 0 / 等価変異 0）。
-表と落ちた理由の文言は末尾の「**Task 14 の実測記録（2026-09-17）**」にある。
+⚠ **M48〜M50g（サイドバー）は Task 14 で最終コードに対して測り終えている** —
+2026-09-17 に 17 通り ＋ カナリア 1（検出 17 / 未検出 0 / 等価変異 0）、
+**2026-09-18 のコード品質レビューの修正について 5 通り ＋ 反例 1**（検出 5 / 未検出 0）。
+表と落ちた理由の文言は末尾の「**Task 14 の実測記録（2026-09-17）**」と
+「**Task 14 コード品質レビューの実測記録（2026-09-18）**」にある。
+⚠ **基準の本数が動いた** — 2050 tests / 13503 assertions → **2057 tests / 14348 assertions**。
+末尾の 2026-09-17 の記録に出てくる 2050 / 13503 は**その時点の値**なので書き換えていない。
 Task 15 では**測り直しでなく、ほかの変異と同じ作法で 1 度は流す**（前の変異の残骸で
 測定が汚れていないことの確認を兼ねる）。
 
@@ -9136,3 +9146,67 @@ DAD・ZEAL・周辺ビル調査・工程表も無い長年の stale で、この
 
 - **和名の走査**（`JapaneseValidationMessagesTest`）は緑。決裁で足した `validate()` のキーに和名の漏れなし
 - **コンパイル済みビュー 277 本を `php -l`** → INVALID 0 件（⚠ `view:cache` の成功表示だけでは足りない。Bug #21 / #26 / #30）
+
+---
+
+## Task 14 コード品質レビューの実測記録（2026-09-18）
+
+仕様適合レビューのあとに実施したコード品質レビュー。**実装の欠陥は 1 件**（決裁のドロワーに
+閉じるボタンが無い）で、残りは**テスト設計の穴**だった。親が全件を独立に検証し、
+利用者の判断で **Major 3 件 ＋ Minor 2 件**を直した（`f15de466`〜`0e4f3e5d`）。
+
+### 直したもの
+
+| # | 症状 | 直し方 |
+|---|---|---|
+| **M1** | 管理者のテストが管理リンク 2 本しか見ておらず、**決裁のみ利用者の管理者にだけ基幹サイドバーを出す**変異を見逃す。その人は `$isExecutive` も各 `$has*Access` も false なので基幹側にも「決裁の管理」グループだけが残り、2 本のアサートは通る一方で **`/approvals` へ戻る唯一のリンクが消える**。⚠ 2026-09-17 の **M01 が 1 本しか落としていなかったのがその証拠**（落ちたのは非管理者のテスト）| `assertIsTheApprovalSidebar()` で見出し「決裁申請」を名指し ＋ `assertHasHomeLink()` を両テストに。⚠ **折りたたみ版のホームは `title` で見る** — 素の href だと `…/approvals` が `…/approvals/admin/users` に**前方一致**して、管理者の画面ではホームが無くても緑になる |
+| **M2** | **実装の欠陥。** 決裁のドロワーに閉じるボタンが無く（基幹は持つ）、閉じる手段がオーバーレイのタップだけ。しかも**オーバーレイを見るテストがアプリ全体で 0 件**で、丸ごと消しても全件緑 | ドロワーに×を足す（`f15de466`）＋ `LayoutSidebarDrawerTest` を新設。**列挙でなく全件分類**（Bug #45 ①）で 2 つの partial 両方に課す |
+| **M3** | 「決裁の印の行は**在って** `is_admin` が false」の**3 状態目**（全件閲覧者）が一度も `actingAs` されていない。棄却テストはどれも「行が無い」人だけ。判定を `(bool) $this->approvalMember` に取り違える変異が、サイドバー 6 か所でも**門番でも**全件緑 ＝ **全件閲覧者が利用者管理・部門管理を操作できる権限昇格の形** | サイドバー 1 本 ＋ 門番 2 本を新設。⚠ `can_view_all` と `is_admin` は `Admin\UserController` が**独立に**保存するので、この人は段階1 の本番で普通に作れる |
+| **m5** | `assertHasLink()` が href と文字を**独立に** 2 回見ているだけで、管理リンク 2 本の `:href` を**入れ替えても緑**。docblock は「文字は在るのに別の画面へ飛ぶ、を見逃さない」と謳っており**主張と実装が食い違っていた**（Bug #42 ② / #47）| `<a>` タグごと 1 本の正規表現を**3 つ目**として足す。⚠ **3 つに分けたまま**にしたのは落ちた理由を区別するため（Bug #44）|
+| **m7** | `assertStringNotContainsString('決裁', $html)` は設計書の先送り項目 7（段階2 で基幹の左メニューに「決裁」を出す）で**必ず落ちる**のに注記が無い | `assertNoApprovalMenu()` に寄せ、「段階2 でサイドバーの塊に狭める」注記を 1 か所に |
+
+### ⚠ 全件分類が初回の実行でいきなり 3 本目を拾った
+
+`LayoutSidebarDrawerTest` を「`partials/sidebar*.blade.php` を機械的に走査する」形で書いたところ、
+**初回の実行で `sidebar_buyer_snippet` / `sidebar_contract_snippet` / `sidebar_housing_snippet` の 3 本**が
+「分類されていない」で落ちた。中身は Blade ではなく**過去のセッションが人間向けに残した作業手順**で、
+どこからも `@include` されていない死にファイル（実測 0 件）。**列挙で書いていたら気づかないままだった。**
+`NOT_A_SIDEBAR` に理由つきで分類し、**そこに入れたものが本当に読み込まれていないことも対で固定**した
+（でないと分類がただの逃げ道になる）。⚠ 3 本の削除は別タスクへ切り出した。
+
+### 変異の実測（5 通り ＋ 反例 1）
+
+基準: **OK (2057 tests, 14348 assertions)**。**検出 5 / 未検出 0。**
+作法は Bug #44 どおり（先にコミット → 各変異の前に `git status --porcelain` が空 →
+`git diff --stat` が**非空**で着弾を確認 → 全件を流す → **落ちたテストの集合と理由の文言**を照合 →
+**`git restore --source=HEAD --staged --worktree`** で戻して空を再確認）。
+
+| # | 変異 | 落ちたテストと理由（実測） |
+|---|---|---|
+| M50c | 出し分けを `isApprovalOnly() && ! isApprovalAdmin()` に | **1 本** `..._an_approval_only_admin_sees_the_management_links` ／ `expanded が決裁のサイドバーでない（基幹の sidebar.blade.php が出ている）` |
+| M50d | 決裁のドロワーの閉じるボタンを消す | **1 本** `LayoutSidebarDrawerTest::test_the_drawer_has_its_own_close_button` ／ `sidebar_approval.blade.php: ドロワーの中に閉じるボタンが無い…` |
+| M50e | **基幹**のオーバーレイの `@click` を消す | **1 本** `LayoutSidebarDrawerTest::test_the_overlay_closes_the_drawer` ／ `sidebar.blade.php: オーバーレイを押しても閉じない` ＝ 分類が**両方の partial** に効いている |
+| M50f | 門番の `isApprovalAdmin()` を `(bool) approvalMember` に | **2 本だけ** `ApprovalUserManagementTest::test_a_view_all_member_is_rejected` ／ `OrganizationManagementTest::test_a_view_all_member_is_rejected`（ともに `Expected response status code [403] but received 200.`）。⚠ **既存テストは 1 本も落ちていない** ＝ 穴が実在した証拠 |
+| M50g | 決裁の展開版の管理リンク 2 本の `:href` を入れ替える | **1 本** `..._an_approval_only_admin_sees_the_management_links` ／ `expanded: 「利用者の管理」の文字と行き先が同じ <a> に載っていない（別の画面へ飛ぶ）` |
+
+**反例**（改善が load-bearing であることの証明。Bug #45 の流儀）:
+
+| 変異 | 旧テスト（`3fa113d1` に戻す） | 今のテスト |
+|---|---|---|
+| M50c | **OK (2056 tests, 14307 assertions) ＝ 緑** | 赤（`expanded が決裁のサイドバーでない`）|
+
+⚠ これを測らないと「元から検出できていた」と誤読する。⚠ 旧テストで本数が 1 本少ないのは、
+戻した `ApprovalSidebarTest` に M3 の 3 状態目のテストがまだ無いため。
+
+### そのほか（レビュー時点）
+
+- **コンパイル済みビュー 277 本を `php -l`** → INVALID 0 件（`@include(<三項演算子>)` は Bug #26 の
+  「Blade の引数パーサ」族に触れる書き方なので必ず通す）
+- **範囲外として別タスクへ切り出したもの**: ①**パンくずの「ホーム」が決裁のみ利用者を警告つきで
+  跳ね返す**（`app.blade.php:62` が `route('dashboard')` 固定。決裁 4 画面すべてで
+  「決裁以外の画面は使えません。」が出る**実害**。共有レイアウト＝約 200 ルートに影響するため）
+  ②サイドバーの死にファイル 3 本の削除 ③x-cloak の担保を全件分類に寄せる
+  ④Nit 5 件（`fresh()` の位置・2 partial の意匠差・`app-layout.blade.php` の死にコード・
+  `$currentSection` の死に変数・`test_the_header_shows_the_role_label` がヘッダーに限定していない）
+  ⚠ **①②は `13.x` 単独では実装できない**（`homeRouteName()` も門番も段階1 で入るもの ／
+  `LayoutSidebarDrawerTest` も段階1 のもの）。`approval-phase1` の上に積むこと

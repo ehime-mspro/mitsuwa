@@ -1529,7 +1529,7 @@ git checkout 13.x && git merge --ff-only schedule-board-gantt
 | Controller | `Approval\{Home,User,UserImport,Organization}Controller` |
 | Blade | `approvals/home`・`login-guide`・`admin/organization`・`admin/users/{index,import,_import_preview}` ＋ **`layouts/partials/sidebar_approval.blade.php`** を新設 |
 | ルート | **19 本**（`routes/approval.php`。`web.php` の末尾が require する）|
-| テスト | 1711 → **2050 tests / 13503 assertions green**（+339）|
+| テスト | 1711 → **2057 tests / 14348 assertions green**（+346）|
 
 ### 要点
 
@@ -1560,7 +1560,7 @@ git checkout 13.x && git merge --ff-only schedule-board-gantt
 
 ### 検証
 
-- 全テスト **2050 tests / 13503 assertions green**
+- 全テスト **2057 tests / 14348 assertions green**
 - コンパイル済みビュー **277 本**を `php -l` → INVALID 0 件（⚠ `view:cache` の成功表示だけでは足りない。Bug #21 / #26 / #30）
 - 変異テストは各タスクで実測（**記録は実装計画**。末尾に「Task 12 の実測記録」「Task 14 の実測記録」）。
   サイドバー（Task 14）は最終コードに対して **17 通り ＋ カナリア 1** を全件（2050 本）で流し、
@@ -1571,7 +1571,22 @@ git checkout 13.x && git merge --ff-only schedule-board-gantt
   サイドバーが 1 本も出さなくても緑（Bug #46）④**②の対策が見出し 2 つにしか入っていなかった** —
   「利用者の管理」「部門の管理」は `route()` の一致だけで、改名しても緑（2026-09-17 のレビューで発覚・`3bb393ce`。
   **テストだけを 1 つ前へ戻して当て直し、旧テストでは緑・今のテストでは赤**まで確かめた）
-- ⚠ **実ブラウザでの目視は未了**（下記）
+- **2026-09-18 のコード品質レビュー**で Major 3 件・Minor 2 件を直した（記録は実装計画の
+  「Task 14 コード品質レビューの実測記録」）。**実装の欠陥は 1 件**（決裁のドロワーに閉じるボタンが無く、
+  閉じる手段がオーバーレイのタップだけだった）で、残りは**テスト設計の穴**:
+  ①**どちらのサイドバーが出たかを誰も見ていない** — 決裁のみ利用者の**管理者**にだけ基幹サイドバーを出す変異が
+  全件緑（基幹側も「決裁の管理」グループで同じ 2 本を出すため。その人には `/approvals` へ戻るリンクが無くなる）
+  ②**オーバーレイと閉じるボタンを見るテストがアプリ全体で 0 件** — どちらを消しても全件緑
+  ③**決裁の権限の「3 状態目」**（行は在るが `is_admin` が false ＝ 全件閲覧者）が一度も `actingAs` されていない —
+  門番の判定を「行の有無」に取り違える変異が全件緑 ＝ **全件閲覧者が利用者管理・部門管理を操作できる権限昇格の形**
+  ④`assertHasLink()` が href と文字を独立に見ており、**リンク 2 本の行き先を入れ替えても緑**。
+  修正後に **5 通り ＋ 反例 1 を実測し検出 5 / 未検出 0**（落ちたテストの集合と理由の文言まで照合）
+- ⚠ **ドロワーの閉じるボタンは「全件分類」のテストで守る**（`LayoutSidebarDrawerTest`）。
+  `partials/sidebar*.blade.php` を機械的に走査するので**3 本目の partial が無検査のまま増えない**。
+  ⚠ この分類は**初回の実行でいきなり `sidebar_*_snippet.blade.php` 3 本を拾った**（過去のセッションが
+  人間向けに残した作業手順で、どこからも `@include` されていない死にファイル）。削除は別タスク
+- ⚠ **実ブラウザでの目視は未了**（下記）。とくに**決裁のドロワーの×は今回足した唯一の見た目の変更**なので、
+  375px で押せること・オーバーレイのタップでも閉じることを必ず見る
 
 ### ⚠ 本番反映の手順（未実施。設計書 §7）
 
