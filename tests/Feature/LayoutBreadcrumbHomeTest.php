@@ -68,15 +68,27 @@ class LayoutBreadcrumbHomeTest extends TestCase
     }
 
     /**
-     * 決裁のみ利用者がパンくずの行き先を実際に開いても、警告が出ないこと。
+     * 決裁のみ利用者が、**画面が描いたパンくずのリンクを実際に辿っても**警告が出ないこと。
      *
-     * ⚠ 構造（href）だけでは足りない — 門番を**実際に通す**ところまで見る。
+     * ⚠ 行き先を手で書いて叩いてはいけない（Bug #47）— それだと画面のリンクが壊れても緑のまま。
+     *   **描画された href を取り出してそのまま GET する**（往復）。
      */
-    public function test_following_that_link_does_not_warn(): void
+    public function test_following_the_rendered_link_does_not_warn(): void
     {
         $user = User::factory()->approvalOnly()->create(['must_change_password' => false]);
 
-        $this->actingAs($user)->get(route('approvals.home'))
+        $nav = $this->breadcrumb(
+            $this->actingAs($user)->get(route('approvals.home'))->assertOk()->getContent()
+        );
+
+        $this->assertSame(
+            1,
+            preg_match('#<a\b[^>]*\bhref="([^"]+)"[^>]*>\s*ホーム\s*</a>#u', $nav, $m),
+            'パンくずの「ホーム」のリンクが取り出せない'
+        );
+
+        // ⚠ 門番は GET を警告つきで転送する。302 になった時点で「叱られている」
+        $this->actingAs($user)->get($m[1])
             ->assertOk()
             ->assertSessionMissing('warning');
     }
