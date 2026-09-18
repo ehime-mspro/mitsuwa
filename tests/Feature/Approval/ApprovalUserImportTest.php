@@ -94,6 +94,11 @@ class ApprovalUserImportTest extends TestCase
      * ⚠ 列挙を**データプロバイダに置いてはいけない** — プロバイダは Laravel 起動前に
      *   評価されるので `Route::getRoutes()` が `A facade root has not been set.` で落ちる
      *   （`ImportPreviewRenderTest` で実測済み）。
+     *
+     * ⚠ **`approvals.admin.*` 全ルートの門番は `ApprovalAdminGateTest` が見る**（2026-09-18〜。
+     *   全ルート × 権限の無い 6 人 × ID の有無）。このテストはそれとは役割が違い、
+     *   「取込のルートがちょうど 4 本であること」自体を守る（1 本増減する変異を検出するのは
+     *   `assertCount(4, ...)` を持つこのテストだけ）。
      */
     public function test_every_import_route_is_behind_the_approval_admin_gate(): void
     {

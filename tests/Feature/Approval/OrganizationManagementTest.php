@@ -404,7 +404,10 @@ class OrganizationManagementTest extends TestCase
         $this->assertSame(1, ApprovalSettingLog::where('action', 'mail_domain.deleted')->count());
     }
 
-    // --- 権限と画面の作り ---
+    // --- 画面の作り ---
+    //
+    // ⚠ 権限（門番）の全件分類は `ApprovalAdminGateTest` に一本化した（2026-09-18）。
+    //   このファイルに残るのは画面の組み立てそのものの検査だけ。
 
     /**
      * 押せない理由は、ボタン自身ではなくホバーを受けられるラッパーの span に載せる（Bug #43）。
