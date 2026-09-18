@@ -8774,7 +8774,7 @@ APP_KEY="base64:$(php -r 'echo base64_encode(random_bytes(32));')" ./vendor/bin/
 | M38 | `manageableQuery()` の `whereNotIn(president)` を外す | 同上（社長のケース） |
 | M39 | 一覧の選択欄の `hasApprovalPrivileges()` の分岐を外す | `..._does_not_offer_a_checkbox_for_privileged_users` |
 | M40 | `reissueBulk()` の `filtered` を「画面が送った `user_ids`」に | `..._filtered_mode_re_runs_the_query_on_the_server` |
-| M41 | `execute()` の `analyze()` のやり直しを消して hidden を信用する | `..._the_server_revalidates_on_confirm` |
+| M41 | `execute()` の `analyze()` のやり直しを消して hidden を信用する（⚠ 実測で使った形は「確定時の `rowErrors` の差し戻し（`if ($analysis['rowErrors'] !== []) { return …'取り込めない行があります。…' }`）を消す」。確定は hidden の CSV を解析しないと行を得られないので、`analyze()` の呼び出しそのものは消せない）| `..._the_server_revalidates_on_confirm`（⚠ 2026-09-18 の測定で**当初は検出できなかった**。末尾の「Task 15 の実測記録」）|
 | M42 | 取込の削除済みの照合（`withTrashed()`）を外す | `..._a_row_matching_a_deleted_user_is_an_error` |
 | M43 | 取込の重複の事前カウントを外す | `..._duplicates_within_the_file_fail_both_rows` |
 | M44 | 取込の view のキーを `rowErrors` → `errors` に | `ApprovalUserImportTest` ＋ `ImportPreviewRenderTest` |
@@ -8793,7 +8793,10 @@ APP_KEY="base64:$(php -r 'echo base64_encode(random_bytes(32));')" ./vendor/bin/
 | M50g | **決裁の展開版の管理リンク 2 本の `:href` を入れ替える** | `..._an_approval_only_admin_sees_the_management_links`（`expanded: 「利用者の管理」の文字と行き先が同じ <a> に載っていない（別の画面へ飛ぶ）`）。⚠ **`assertHasLink()` が href と文字を独立に 2 回見ていた頃は緑だった** — docblock は「文字は在るのに別の画面へ飛ぶ、を見逃さない」と謳っていたのに、まさにそれを見逃していた（Bug #42 ② / #47）|
 | M51 | `PasswordReissuedMail::content()` の `setTimezone('Asia/Tokyo')` を外す | `PasswordReissueTest::test_the_mail_shows_the_time_in_japan_time`（実測済み・検出） |
 | M52 | 同上の「（日本時間）」の表記を消す | 同上（実測済み・検出） |
-| M53 | `bootstrap/app.php` から `AuthenticateSession` を外す | `OtherDeviceLogoutTest` の 2 本 |
+| M53 | `bootstrap/app.php` から `AuthenticateSession` を外す | `OtherDeviceLogoutTest` の 2 本（⚠ **M09 と同じ変異**。2026-09-18 は M09 として 1 回だけ測った）|
+| M08c | （2026-09-18 に足した隣の不変条件）`EnsureUserIsActive` から `if ($request->hasSession()) { …->invalidate(); …->regenerateToken(); }` だけを消す（`Auth::logout()` は残す）| `InactiveUserLockoutTest::test_disabling_mid_session_invalidates_the_session_and_rotates_the_csrf_token`（⚠ **当初は全件緑**。テストを足して塞いだ）|
+| M12b | （同）M12 と同じ入れ替えを **IP 単位**の `Limit::perMinutes($decay, per_ip)` に | `LoginThrottleTest` の 4 本 ＋ `PasswordChangeTest` 1 本 |
+| M13b | （同）M13 と同じく **IP 単位**の `->response()` を外す | `LoginThrottleTest::test_thirty_failures_from_the_same_ip_stop_regardless_of_the_id` |
 
 ⚠ **M53 は「再発行と結び付いているか」を測るためのもの。** 設計書 §4.2 は
 `AuthenticateSession` を入れる理由として**再発行**を名指ししている（「乗っ取られたアカウントも
@@ -9210,3 +9213,225 @@ DAD・ZEAL・周辺ビル調査・工程表も無い長年の stale で、この
   `$currentSection` の死に変数・`test_the_header_shows_the_role_label` がヘッダーに限定していない）
   ⚠ **①②は `13.x` 単独では実装できない**（`homeRouteName()` も門番も段階1 で入るもの ／
   `LayoutSidebarDrawerTest` も段階1 のもの）。`approval-phase1` の上に積むこと
+
+---
+
+## Task 15 の実測記録（2026-09-18）
+
+Task 15 の本体（変異テスト）と、Task 12 / 13 のレビューが Task 15 へ回した**宿題 2 件**を片づけた。
+**宿題を先に片づけ、最終のコードに対して変異を測った**（宿題はテストと鍵の受け取りの形を変えるので、
+先に測ると M03 / M26 / M27 / M32 / M40 / M50f などの「落ちたテストの集合」を測り直すことになる）。
+各段は subagent-driven（実装役 → 仕様適合レビュー → コード品質レビュー → 直して再レビュー）。
+
+### 結果の要約
+
+- **最終コミット `4528a17f`**（`OK (2068 tests, 14499 assertions)`）で **91 通りの変異をすべて検出**:
+  表の 74 通り（枝分かれを 1 通りずつ数える。M09 と M53 は同じなので 1 回）＋ 隣の不変条件 1（M08c）＋
+  宿題で足したテスト用の 16（H1 系 8・H2 系 8）
+- **当初検出漏れ → 追加で検出: 3 件**（M41・M46・M08c）。1 回目の測定（`1f13fc2c`）ではどれも**全件緑**で、
+  テストを足して赤になることを最終コミットで確かめた（下の「反例」）
+- **等価変異: 0 件**（表の範囲）
+- 測定の前提: 3 つの複製それぞれで**カナリアが赤**（`approvals/home.blade.php` に未定義変数 →
+  `ApprovalHomeTest` 3 本が `received 500`・`Undefined variable $canaryUndefinedVariable`）＝ 複製が自分のコードを読んでいる
+- コンパイル済みビュー **277 本を `php -l` → INVALID 0 件**
+
+### 宿題 1 — 決裁の管理の門番を全件分類で守る（`ApprovalAdminGateTest`）
+
+コミット `4038336a` `231ea244` `ccc79570` `fe2b1ddd` `2750d24c` `9941b80b` `fc94b692`。
+`OrganizationManagementTest` の手書き 6 URL（列挙方式。Top trap #13 / Bug #45 ①）を置き換えた。
+
+- (a) `approvals.` の全ルートを分類: `approvals.admin.` なら **`Router::gatherRouteMiddleware()`（解決後・
+  `withoutMiddleware()` を差し引いた・優先順で並べた実際の一覧）** に `EnsureApprovalAdmin` が在り
+  `SubstituteBindings` より前 ／ それ以外は理由つきの `OPEN_TO_EVERY_USER`（今は `approvals.home` だけ）。
+  **逆方向**（URI が `approvals` 配下・コントローラが `Approval` 名前空間 ⇒ 名前が `approvals.`）も見る
+- (b) `approvals.admin.` の全ルート × 全メソッド × 実在する ID ／ 実在しない ID（999999）× 権限の無い **6 人**
+  （`UserRole::cases()` の 4 ロールそれぞれ印なし ＋ 全件閲覧者（3 状態目）＋ **社長だが管理者でない人**）→
+  156 件すべて **403**、しかも **門番の文言**（`EnsureApprovalAdmin::MESSAGE`）であること（403 の出どころの確認）。
+  最後に DB の行数が変わっていないこと
+- ⚠ レビューで直したもの: `must_change_password` を false にする理由のコメントが**実測と逆**だった
+  （門番は `ForcePasswordChange` より先に走るので true でも 403）／ 社長の枝が無く
+  `isApprovalAdmin() || isApprovalPresident()` の取り違えを検出できなかった ／ 名前の無い `/approvals/…` の
+  ルートが両テストから漏れていた ／ 行数比較が「利用者の更新まで見ている」と読めるコメント（行数は更新を原理的に見ない）
+- `tests/Concerns/BuildsRouteUrls.php` に URL の組み立てを切り出し `ApprovalOnlyLockoutTest` と共用（挙動は不変）
+
+### 宿題 2 — 1 回限りの鍵の受け取りを 1 か所にまとめる（`OneTimeAction::claimFrom()`）
+
+コミット `789e3667` `8bb919e4` `1f13fc2c` `a9f83ed5` `77af0f0e` `adadb19b` `c051aaa7` `85c18928` `ccd25e2a` `c7cc450d`。
+
+- 4 か所の `is_string($token) && OneTimeAction::claim($token)` を `OneTimeAction::claimFrom($request)` へ。
+  断りの行き先と文言は画面ごとに違うので呼び出し側に残した。**`claim()` は private**（通常の呼び出しでは
+  入口が素の `claim()` を呼べない）
+- テスト: `claimFrom()` の振る舞い（配列・欠落・空文字は例外なしに false）／ 素の `claim(` と別名の禁止の走査 ／
+  **まとめて再発行の二重送信の往復テスト**（それまで reissueBulk に二重送信のテストが無く、結果を捨てる・
+  再発行の後ろへ動かす壊し方が全部緑だった）／ **案内を描く入口の全件分類**（`app/` の全メソッドを
+  **Reflection で**切り出し、`LoginGuide` / `PasswordReissuer` / `->toGuide(` を含むものを拾う。入口は
+  ちょうど 5 本で、どれも `if (! OneTimeAction::claimFrom($x)) { return` の形が、描画・`DB::transaction(`・
+  `InitialPassword::`・`->setInitialPassword(`・`->reissue(` のどれよりも前にあること）
+- ⚠ **最初の入口の分類は手書きのトークン解析で、今の `app/` ですでに無音で壊れていた**（`X::class` の
+  `class` をクラス宣言と誤認して 1599 本中 320 本が偽の名前・キーの衝突で 71 本が消える・`list` / `empty` /
+  `print` のような予約語の名前のメソッドを落とす）。緑だったのは、既知の 6 本がたまたま無事だったから。
+  レビューが見つけ、Reflection に作り直した（1602 本・重複 0・クラスでないファイル 0。抽象メソッドは除く）
+- ⚠ レビューで直したコメントの事実誤り: 「順序が本当に効くのは CSV の確定」（設計書 §5.12 の 2026-09-17 の実測と逆）／
+  「配列は "Array" に化ける」（Laravel が警告をその場で `ErrorException` にするので "Array" は `claim()` まで届かない）／
+  「起きなかった処理に鍵を焼かない」をこのテストの理由にしていた（それは鍵を**検査の後**に置く理由。このテストが
+  守るのは鍵を**副作用の前**に置く規則）
+
+### 変異の測り方
+
+- **測定の場所**: 対象のコミットを `git archive` で scratchpad に 3 つ展開し、vendor は worktree の実体を
+  APFS の複製（`cp -Rc`）で置き、それぞれ独立の `git init`（元の worktree の index に触れない。Bug #50 の
+  symlink の罠も避ける）。**各複製でカナリアを先に通した**
+- **実行役**（scratchpad の Python。コミットしない）: 1 変異ごとに `git status --porcelain` が空 → 置換
+  （**見つかる回数が指定どおりでなければその変異を無効として止める**）→ `git diff --stat` が非空 →
+  **全件**を `--log-junit` で流す → 落ちたテストと理由を集める → `finally` で
+  `git restore --source=HEAD --staged --worktree` → 空を再確認
+- 変異の中身は読み取り専用のサブエージェント 3 本に下書きを頼み、全件を目で確かめて直した
+  （⚠ 直したもの: **M07** が門番でなくモデルの `User::isActive()` を変えていた＝ログインまで巻き込む別の変異 ／
+  **M34** が変異と一緒にテスト側のデータまで書き換えていた＝「既存のテストで捕まるか」が測れない ／
+  **M43** が番号とメールの 2 か所を一度に外していた＝1 か所ずつに分けた（M43a / M43b）／
+  **M32** の置換前の文字列が門番の文言の定数化でずれていた＝実行役の回数の検査が「無効」で止めた）
+- 1 回目は `1f13fc2c`（宿題 2 の最初の形）で流して穴を見つけ、最終の測定は `4528a17f` で**全件を流し直した**
+  （宿題とテストの追加で落ちるテストの集合が変わったため。記録はすべて最終コミットの値）
+
+### 反例（当初の漏れ 3 件。旧テストでは全件緑だった）
+
+| 変異 | 1 回目（`1f13fc2c`・旧テスト） | 最終（`4528a17f`） | 足したテスト |
+|---|---|---|---|
+| M41（確定時の `rowErrors` の差し戻しを消す）| **0 本** — 1 行だけの改ざんでは、到達しないはずの `validCount === 0` の歯止めが別の文言で代わりに断り、`assertSessionHas('error')` が値を見ていなかった | 2 本 — `test_the_server_revalidates_on_confirm`（文言を厳密に）／ `test_the_server_refuses_a_mixed_file_and_imports_neither_row`（正しい行と不正な行を混ぜる → 正しい行だけが黙って登録される実害を DB で見る）| `b934fe2b` `4dc065fc` `4528a17f` |
+| M46（桁数の注意を全エラー判定の前へ動かす）| **0 本** — 「エラー行」と「注意の対象になりうる行」が同時に成り立つデータが無かった | 1 本 — `test_the_digit_width_warning_does_not_fire_for_an_error_row`（役割と表示を分けて見る。陽性の対照に 255 以下の番号を使う — 整数のキーを `ctype_digit()` が ASCII とみなす経路を行3 と揃えるため）| 同上 |
+| M08c（ロックアウト時のセッションの破棄だけを消す）| **0 本** — セッションの中身を見るテストが無かった | 1 本 — `test_disabling_mid_session_invalidates_the_session_and_rotates_the_csrf_token`（クッキーを持ち回る対照つき。トークンは「消えた」でなく「作り直された」ことを見る）| 同上 |
+
+### M08 の注記（全件では測れない変異）
+
+`Auth::logout()` を外すと、無効な利用者が認証されたまま `/login` と門番の転送が**循環**し、転送をたどる
+`test_the_reason_is_shown_on_the_login_screen` が無限ループしてメモリを使い切る（PHPUnit ごと落ちて JUnit が空）。
+⚠ 1 回目はこれで実行役が止まり、しかもパイプの `tail` のせいで終了コードが 0 に見えた（**結果の件数を数えて気づいた**）。
+`InactiveUserLockoutTest` をテスト 1 本ずつに分けて測ると、狙いの `test_the_remember_token_is_cycled` が
+「鍵が作り直されていない（ほかの端末が入り直せてしまう）」で落ち、ほかに 3 本（`…_logged_out` /
+`…_locked_out_too` / `…_before_route_model_binding`）が「The user is authenticated」で落ちる（**検出**）。
+
+### 表の「期待して落ちるテスト」との食い違い（表は最低限の名指し）
+
+- **広く落ちた**: M01 / M02 / M04（ロックアウトの 2 本も）・M03（門番の新テストと `InactiveUserLockoutTest` も —
+  3 本目の `appendToPriorityList` が錨を失って末尾に落ちるため）・M05（`LoginIdentifierTest` も）・M07（7 本）・
+  M11〜M15・M19（90 本）・M26（9 本）・M27（8 本。入口の全件分類が「入口の数が想定と違う」でも落ちる）・
+  M32（116 本）・M36（9 本）・M40（8 本）・M44（43 本）・M50f（門番の新テストも）
+- **表の前提が誤っていた**: M34 は「新しく 1 本足す」が不要だった — 既存の `mailDomainCases` の
+  「サブドメインは別物」（`taro@mail.mitsuwat.co.jp`）が後方一致の変異で落ちる
+- **落ち方が違った（検出はしている）**: M33a はアプリの歯止めより先に DB の外部キー（`restrictOnDelete`）が
+  `Integrity constraint` で 500 を返す（テストは断りの文言を見ているので赤）／ M47 は部門が未登録の
+  エラー行になって確定フォームが描かれず「フォームが見つからない」で落ちる
+
+### 宿題のテストに当てた変異（H 系）
+
+- **H1a** 3 本目の `appendToPriorityList` を消す → (a) 解決後の並び ＋ (b) 実在しない ID で 404 ／
+  **H1b** 1 本に `withoutMiddleware('approval.admin')` → (a) ＋ (b) ／ **H1d** 分類表に無いパラメータのルート → (b) ／
+  **H1e** 名前の無い `/approvals/probe` → (a) の逆方向 ／ **H1f** 社長を通す取り違え → (b) の社長 ／
+  **H1g** `isManagerOrAbove()` で通す → (b) ＋ 既存の棄却テスト ／ **H1h** 門番の文言を外す → (b) の出どころの確認だけ ／
+  **H1i** 判定を `$next()` の後ろへ → (b) の **DB の行数比較だけ**（部門とドメインが実際に消える）
+- **H2a** 取込の入口を素の `claim()` に（`is_string` は手で挟む）→ `claim()` が private なので 500 ＋ 走査 2 本 ／
+  **H2b** `claimFrom()` から `is_string` を外す → 振る舞いのテスト ＋ 配列の鍵のテスト ／
+  **H2d** `use … as Once` → 走査 2 本 ／ **H2e** 結果を捨てる → 入口の分類（ガードの形）＋ まとめて再発行の二重送信 ／
+  **H2f** 鍵の確認を再発行の後ろへ → 入口の分類（順序）＋ 二重送信（「2 回目の再送信でパスワードが作り直された」）／
+  **H2g** 鍵を使わない入口を 1 本足す → 入口の分類だけ ／ **H2h・H2j** 走査の正規表現を壊す → 正規表現の自己テスト
+
+### 最終の測定の全表（`4528a17f`）
+
+| # | 変異 | 落ちたテスト（本数と代表の理由） |
+|---|---|---|
+| M01 | RestrictApprovalOnlyUsers::ALLOWED_NAMES に 'dashboard.tenant' を足し、決裁のみ利用者にテナントダッシュボードを開放する | 3 本 — `ApprovalOnlyLockoutTest::test_every_route_is_classified_and_blocked` ／ `ApprovalOnlyLockoutTest::test_the_reason_is_shown_after_the_redirect` ／ `ApprovalOnlyLockoutTest::test_ajax_requests_get_403` ／ 「決裁のみ利用者を止められていないルート: ⏎ GET dashboard/tenant: 決裁のホームへ転送されない（status=200 location=)」 |
+| M02 | RestrictApprovalOnlyUsers::isAllowed() の str_starts_with($name, 'approvals.') を true に変え、名前を持つルートを丸ごと素通りさせる | 3 本 — `ApprovalOnlyLockoutTest::test_every_route_is_classified_and_blocked` ／ `ApprovalOnlyLockoutTest::test_the_reason_is_shown_after_the_redirect` ／ `ApprovalOnlyLockoutTest::test_ajax_requests_get_403` ／ 「決裁のみ利用者を止められていないルート: ⏎ GET dashboard/executive: 決裁のホームへ転送されない（status=403 location=) ⏎ GET dashboard/tenant: 決裁のホームへ転送されな」 |
+| M03 | bootstrap/app.php の appendToPriorityList 呼び出し(AuthenticatesSessions→EnsureUserIsActive、EnsureUserIsActive→RestrictApprovalOnlyUsers)の2本を削除し、3本目(RestrictApprovalOnlyUsers→EnsureApprovalAdmin)はそのまま残す | 5 本 — `ApprovalAdminGateTest`×2・`ApprovalOnlyLockoutTest`×2・`InactiveUserLockoutTest`×1 ／ 例「分類漏れ・門番の欠落・逆方向の見落とし: ⏎ approvals.admin.users.index (approvals/admin/users): EnsureApprovalAdmin が SubstituteBindings より後」 |
+| M04 | bootstrap/app.php の $middleware->web(append: [...]) から RestrictApprovalOnlyUsers::class を外し、門番自体を web グループに載せない | 3 本 — `ApprovalOnlyLockoutTest::test_every_route_is_classified_and_blocked` ／ `ApprovalOnlyLockoutTest::test_the_reason_is_shown_after_the_redirect` ／ `ApprovalOnlyLockoutTest::test_ajax_requests_get_403` ／ 「決裁のみ利用者を止められていないルート: ⏎ GET /: 決裁のホームへ転送されない（status=302 location=http://localhost/dashboard) ⏎ GET dashboard/executive: 決」 |
+| M05 | RestrictApprovalOnlyUsers::handle() の GET 分岐を消し、ブロック時は常に abort(403) にする(redirect は行わない) | 3 本 — `ApprovalOnlyLockoutTest::test_every_route_is_classified_and_blocked` ／ `ApprovalOnlyLockoutTest::test_the_reason_is_shown_after_the_redirect` ／ `LoginIdentifierTest::test_an_approval_only_user_still_lands_on_the_approval_home` ／ 「決裁のみ利用者を止められていないルート: ⏎ GET /: 決裁のホームへ転送されない（status=403 location=) ⏎ GET dashboard: 決裁のホームへ転送されない（status=403 location=) ⏎」 |
+| M06 | RestrictApprovalOnlyUsers::handle() の Ajax 判定(expectsJson()/ajax())を条件から外し、GET かどうかだけで403/redirectを分ける | 1 本 — `ApprovalOnlyLockoutTest::test_ajax_requests_get_403` ／ 「Expected response status code [403] but received 302.」 |
+| M07 | EnsureUserIsActive::handle() の isActive() の判定を true に（門番だけ無効化。ログイン処理の isActive() は残す） | 7 本 — `InactiveUserLockoutTest`×7 ／ 例「Expected response status code [201, 301, 302, 303, 307, 308] but received 200.」 |
+| M08 | EnsureUserIsActive::handle() から Auth::logout() の呼び出しを外し、セッションの invalidate/regenerateToken だけを残す | **全件では PHPUnit がメモリを使い切って落ちる**（下の M08 の注記。テスト別に測った） |
+| M09 | bootstrap/app.php の $middleware->web(append: [...]) から AuthenticateSession::class を外す | 2 本 — `OtherDeviceLogoutTest::test_a_password_change_elsewhere_logs_this_session_out` ／ `OtherDeviceLogoutTest::test_the_middleware_is_registered_in_the_web_group` ／ 「Expected response status code [201, 301, 302, 303, 307, 308] but received 200.」 |
+| M10 | AppServiceProvider::registerLoginRateLimiter() の Limit::after($stillGuest) を2本とも外す(成功したログインも回数として数えるようになる) | 1 本 — `LoginThrottleTest::test_successful_logins_are_not_counted` ／ 「The current user is not authenticated.」 |
+| M11 | LoginId::throttleKey() から normalize() の呼び出しを外し、生の $loginId をそのまま鍵に使う | 4 本 — `LoginIdTest`×2・`LoginIdentifierTest`×1・`LoginThrottleTest`×1 ／ 例「Failed asserting that two strings are identical.」 |
+| M12 | per_login_id 用の Limit::perMinutes($decay, per_login_id) の2引数を入れ替える(decayMinutes と maxAttempts が反転する) | 4 本 — `LoginThrottleTest`×3・`PasswordChangeTest`×1 ／ 例「2 回目で止まっている（早すぎる）」 |
+| M13 | per_login_id 用の Limit チェーンから ->response(self::loginThrottleResponse(...)) を外す(ブロック時に既定の英語429画面になる) | 4 本 — `LoginThrottleTest`×4 ／ 例「6 回目が通っている」 |
+| M12b | IP 単位の Limit::perMinutes($decay, per_ip) の 2 引数を入れ替える | 5 本 — `LoginThrottleTest`×4・`PasswordChangeTest`×1 ／ 例「2 回目で止まっている（早すぎる）」 |
+| M13b | IP 単位の Limit から ->response() を外す（止まったときに英語の 429 になる） | 1 本 — `LoginThrottleTest::test_thirty_failures_from_the_same_ip_stop_regardless_of_the_id` ／ 「IP 全体の上限が効いていない」 |
+| M14 | LoginId::normalize() から mb_convert_kana(..., 'as') の呼び出しを外す(全角→半角変換が行われなくなる) | 9 本 — `LoginIdTest`×5・`UserIdentityTest`×1・`LoginIdentifierTest`×2・`LoginThrottleTest`×1 ／ 例「Failed asserting that two strings are identical.」 |
+| M15 | LoginId::isEmail() を str_contains($value, '@') から filter_var($value, FILTER_VALIDATE_EMAIL) !== false に変える | 2 本 — `LoginIdTest::test_is_email_looks_only_at_the_at_sign` ／ `ApprovalUserImportTest::test_a_malformed_email_is_an_error` ／ 「Failed asserting that false is true.」 |
+| M16 | User::homeRouteName() から決裁のみ(isApprovalOnly())の分岐を消し、経営層/その他の2値だけに単純化する | 2 本 — `UserIdentityTest::test_home_route_name_depends_on_the_role` ／ `LoginIdentifierTest::test_where_each_role_lands with data set #3` ／ 「approval_only の行き先が違う」 |
+| M17 | User::scopeAssignable() から baseUsers() の呼び出しを外し、status=Active だけで絞り込む(role != approval_only の除外が外れる) | 1 本 — `UserIdentityTest::test_assignable_excludes_approval_only_users` ／ 「決裁のみ利用者が担当者の選択肢に出ている」 |
+| M18a | MansionImportController::executeRoomContract() の担当者名検索から baseUsers() を外す(3箇所ある import の名前検索のうち1箇所目) | 1 本 — `UserIdentityTest::test_every_name_lookup_on_users_is_scoped_to_base_users` ／ 「氏名で担当者を引くのに baseUsers() を通っていない箇所があります（決裁のみ利用者を拾ってしまいます）: ⏎ Admin/MansionImportController.php: User::where('name', $row[」 |
+| M18b | MansionImportController::executeParkingContract() の担当者名検索から baseUsers() を外す(3箇所ある import の名前検索のうち2箇所目) | 1 本 — `UserIdentityTest::test_every_name_lookup_on_users_is_scoped_to_base_users` ／ 「氏名で担当者を引くのに baseUsers() を通っていない箇所があります（決裁のみ利用者を拾ってしまいます）: ⏎ Admin/MansionImportController.php: User::where('name', $row[」 |
+| M18c | CustomerImportController の担当者名検索(アンケート取込)から baseUsers() を外す(3箇所ある import の名前検索のうち3箇所目) | 1 本 — `UserIdentityTest::test_every_name_lookup_on_users_is_scoped_to_base_users` ／ 「氏名で担当者を引くのに baseUsers() を通っていない箇所があります（決裁のみ利用者を拾ってしまいます）: ⏎ Admin/CustomerImportController.php: User::where('name', 'lik」 |
+| M19 | users の作成 migration の role enum から 'approval_only' を外す(4値→3値) | 90 本 — `UserManagementApprovalTest`×3・`ApprovalAdminGateTest`×1・`ApprovalHomeTest`×3・`ApprovalOnlyLockoutTest`×6・`ApprovalSidebarTest`×5・`ApprovalTablesTest`×1・`ApprovalUserImportTest`×12・`ApprovalUserManagementTest`×49・`OrganizationManagementTest`×1・`UserIdentityTest`×3・`UsersSchemaTest`×1・`LoginIdentifierTest`×3・`LayoutSidebarDrawerTest`×2 ／ 例「Expected response status code [201, 301, 302, 303, 307, 308] but received 500.」 |
+| M20 | role enum の追加を、元の create migration への直接編集ではなく Schema::table(...)->enum(...)->change() 方式の別 migration に置き換える(素朴な実装への後退) | 1 本 — `UsersSchemaTest::test_status_check_survives` ／ 「users.status の CHECK が消えている（enum を ->change() で変えると SQLite が作り直して落とす。Bug #60）」 |
+| M21 | User::booted() の saving フック内の正規化処理（employee_number/email）を空にする | 3 本 — `UserIdentityTest::test_employee_number_is_normalized_on_save` ／ `UserIdentityTest::test_email_is_normalized_on_save` ／ `UserIdentityTest::test_blank_identifiers_become_null` ／ 「Failed asserting that two strings are identical.」 |
+| M22 | InitialPassword::HASH_ROUNDS を 10 から 12 に変える | 3 本 — `InitialPasswordTest::test_hash_uses_cost_10` ／ `UserManagementApprovalTest::test_creating_a_user_renders_the_login_guide` ／ `PasswordReissueTest::test_the_new_password_uses_cost_10` ／ 「初期パスワードの暗号化の強度が 10 でない」 |
+| M23 | InitialPassword::generate() の「数字を必ず1文字入れる」保証を外す（文字は必ず1文字のまま） | 1 本 — `InitialPasswordTest::test_generated_password_has_the_specified_shape` ／ 「数字が無い: tmtuxmvkfx」 |
+| M24 | LoginGuide::toResponse() の Cache-Control: no-store ヘッダーを外す（Pragma は残す） | 3 本 — `UserManagementApprovalTest::test_creating_a_user_renders_the_login_guide` ／ `ApprovalUserImportTest::test_a_new_user_is_created_as_an_approval_only_user` ／ `LoginGuideTest::test_the_page_is_not_cached` ／ 「Failed asserting that 'no-cache, private' [ASCII](length: 17) contains "no-store" [ASCII](length: 8).」 |
+| M25 | login-guide.blade.php の共有 <symbol id="login-qr"> + 各ページ <use> 参照を、ページごとに QR の <svg> をそのまま複製する形に変える | 1 本 — `LoginGuideTest::test_it_embeds_the_qr_once_and_uses_it_per_page` ／ 「QR の定義が 1 つでない」 |
+| M26 | OneTimeAction::claim() の排他的な Cache::add() 呼び出しを、無条件に Cache::put() してから true を返す形に変える（先頭の空文字ガードは変えない） | 9 本 — `UserManagementApprovalTest`×2・`ApprovalUserImportTest`×1・`ApprovalUserManagementTest`×2・`LoginGuideTest`×4 ／ 例「Expected response status code [201, 301, 302, 303, 307, 308] but received 200.」 |
+| M27 | Admin\UserController::store() の成功時の戻り値を、LoginGuide 応答から旧来の redirect()+セッションフラッシュ（reset_password）に戻す（guide_token のガードはそのまま残す） | 8 本 — `UserManagementApprovalTest`×7・`LoginGuideTest`×1 ／ 例「Expected response status code [200] but received 302.」 |
+| M28 | Admin\UserController::resetPassword() の成功時の戻り値を、LoginGuide 応答から旧来の redirect()+セッションフラッシュ（reset_password）に戻す（guide_token のガードはそのまま残す） | 4 本 — `UserManagementApprovalTest`×4 ／ 例「Expected response status code [200] but received 302.」 |
+| M29a | Admin\UserController::toggleStatus() の社長保護（無効化を拒む分岐）を外す | 1 本 — `UserManagementApprovalTest::test_the_president_is_protected` ／ 「Failed asserting that null matches expected 'Elza Raynor MDさんは決裁の社長に指定されています。先に社長の指定を変えてください。'.」 |
+| M29b | Admin\UserController::destroy() の社長保護（削除を拒む分岐）を外す | 1 本 — `UserManagementApprovalTest::test_the_president_is_protected` ／ 「Failed asserting that null matches expected 'Erna Hettinger Iさんは決裁の社長に指定されています。先に社長の指定を変えてください。'.」 |
+| M29c | Admin\UserController::update() の社長保護（メール空/無効化を拒む分岐）を外す | 1 本 — `UserManagementApprovalTest::test_the_president_is_protected` ／ 「Failed asserting that null matches expected 'Bartholome O'Keefeさんは決裁の社長に指定されています。先に社長の指定を変えてください。'.」 |
+| M30 | Admin\UserController::setPresident() の Rule::exists チェーンから whereNotNull('email') を外す | 1 本 — `UserManagementApprovalTest::test_a_user_without_an_email_cannot_be_the_president` ／ 「Session is missing expected key [errors].」 |
+| M31 | Admin\UserController::update() で決裁のみへ変更したときの departments()->detach() を外す（何もしない） | 2 本 — `UserManagementApprovalTest::test_switching_to_approval_only_drops_the_base_departments` ／ `UserManagementApprovalTest::test_switching_to_approval_only_without_any_department_field` ／ 「Failed asserting that actual size 1 matches expected size 0.」 |
+| M32 | EnsureApprovalAdmin::handle() の判定を isApprovalAdmin() から isExecutive() に変える | 116 本 — `ApprovalAdminGateTest`×1・`ApprovalUserImportTest`×48・`ApprovalUserManagementTest`×41・`OrganizationManagementTest`×26 ／ 例「権限の無い利用者を止められていないルート: ⏎ GET approvals/admin/users [パラメータなし] (指定の無い経営層): 403 で拒否されない（status=200） ⏎ POST approvals/admin/u」 |
+| M33a | Approval\OrganizationController::destroyCompany() の「部門が残っていたら削除できない」歯止めを外す | 3 本 — `OrganizationManagementTest::test_a_company_with_departments_cannot_be_deleted` ／ `OrganizationManagementTest::test_the_reason_a_company_cannot_be_deleted_is_shown_in_the_red_banner` ／ `OrganizationManagementTest::test_the_flash_banner_is_not_rendered_twice` ／ 「Session is missing expected key [error].」 |
+| M33b | Approval\OrganizationController::destroyDepartment() の「所属者が残っていたら削除できない」歯止めを外す | 2 本 — `OrganizationManagementTest::test_a_department_with_members_cannot_be_deleted` ／ `OrganizationManagementTest::test_the_reason_a_department_cannot_be_deleted_is_shown_in_the_red_banner` ／ 「Session is missing expected key [error].」 |
+| M34 | ApprovalMailDomain::allows() の完全一致を、登録済みドメインへの str_ends_with（後方一致）に変える | 1 本 — `ApprovalTablesTest::test_allows_only_accepts_a_single_at_sign with data set "サブドメインは別物"` ／ 「判定が違う: 'taro@mail.mitsuwat.co.jp'」 |
+| M35 | Approval\UserController::canEditIdentity() から hasApprovalPrivileges() の除外を外す（isApprovalOnly() だけで編集可否を決める） | 3 本 — `ApprovalUserManagementTest::test_a_privileged_users_name_and_number_are_read_only with data set "社長"` ／ `ApprovalUserManagementTest::test_a_privileged_users_name_and_number_are_read_only with data set "決裁の管理者"` ／ `ApprovalUserManagementTest::test_a_privileged_users_name_and_number_are_read_only with data set "全件閲覧者"` ／ 「Failed asserting that two strings are identical.」 |
+| M36 | Approval\UserController::assertManageable() から D16 の分岐（決裁の権限を持つ人を断る if）を外す（基幹を使う人を断る最初の if は残す） | 9 本 — `ApprovalUserManagementTest`×9 ／ 例「Expected response status code [403] but received 200.」 |
+| M37 | Approval\UserController::manageableQuery() から whereDoesntHave('approvalMember', ...) （決裁の管理者・全件閲覧者の除外）を外す（whereNotIn(president) は残す） | 3 本 — `ApprovalUserManagementTest::test_a_privileged_user_is_skipped_by_the_filtered_bulk_reissue with data set "決裁の管理者"` ／ `ApprovalUserManagementTest::test_a_privileged_user_is_skipped_by_the_filtered_bulk_reissue with data set "全件閲覧者"` ／ `ApprovalUserManagementTest::test_the_filtered_button_counts_only_the_people_it_will_actually_reissue` ／ 「Failed asserting that '<!DOCTYPE html>\n ⏎ <html lang="ja">\n ⏎ <head>\n ⏎ <meta charset="utf-8">\n」 |
+| M38 | Approval\UserController::manageableQuery() から whereNotIn('id', [社長のID]) の除外を外す（whereDoesntHave('approvalMember', ...) は残す） | 1 本 — `ApprovalUserManagementTest::test_a_privileged_user_is_skipped_by_the_filtered_bulk_reissue with data set "社長"` ／ 「Failed asserting that '<!DOCTYPE html>\n ⏎ <html lang="ja">\n ⏎ <head>\n ⏎ <meta charset="utf-8">\n」 |
+| M39 | approvals/admin/users/index.blade.php の $manageable の算出から特権チェック（$privilegeLabel === null）を外す（isApprovalOnly() だけにする） | 5 本 — `ApprovalUserManagementTest`×5 ／ 例「決裁の権限を持つ人に選択欄が出ている」 |
+| M40 | Approval\UserController::reissueBulk() の mode=filtered の対象取得を、サーバー側の再クエリでなく画面が送った user_ids で決める形に変える | 8 本 — `ApprovalUserManagementTest`×8 ／ 例「Expected response status code [200] but received 302.」 |
+| M41 | Approval\UserImportController::execute() の rowErrors 再検査ガード（確定時にエラーへ差し戻す分岐）を外す | 2 本 — `ApprovalUserImportTest::test_the_server_revalidates_on_confirm` ／ `ApprovalUserImportTest::test_the_server_refuses_a_mixed_file_and_imports_neither_row` ／ 「Failed asserting that two strings are equal.」 |
+| H1a | bootstrap/app.php の 3 本目の appendToPriorityList（門番を SubstituteBindings より前へ出す）を消す | 2 本 — `ApprovalAdminGateTest::test_every_approvals_route_is_classified` ／ `ApprovalAdminGateTest::test_every_admin_route_refuses_outsiders_without_revealing_ids` ／ 「分類漏れ・門番の欠落・逆方向の見落とし: ⏎ approvals.admin.users.index (approvals/admin/users): EnsureApprovalAdmin が SubstituteBindings より後」 |
+| H1b | mailDomains.destroy に ->withoutMiddleware('approval.admin') を付ける（1 本だけ門番が外れる） | 2 本 — `ApprovalAdminGateTest::test_every_approvals_route_is_classified` ／ `ApprovalAdminGateTest::test_every_admin_route_refuses_outsiders_without_revealing_ids` ／ 「分類漏れ・門番の欠落・逆方向の見落とし: ⏎ approvals.admin.organization.mailDomains.destroy (approvals/admin/organization/mail-domains/{mail」 |
+| H1d | 門番のグループの中に、分類表に無いパラメータ {approvalProbe} のルートを足す | 1 本 — `ApprovalAdminGateTest::test_every_admin_route_refuses_outsiders_without_revealing_ids` ／ 「権限の無い利用者を止められていないルート: ⏎ approvals/admin/organization/probe/{approvalProbe}: パラメータ approvalProbe の実在する ID の作り方が分類されていない（既」 |
+| H1e | /approvals の下に名前の無いルートを足す（分類から漏れる形） | 1 本 — `ApprovalAdminGateTest::test_every_approvals_route_is_classified` ／ 「分類漏れ・門番の欠落・逆方向の見落とし: ⏎ GET approvals/probe: URI が approvals 配下・コントローラが Approval 名前空間なのに名前が approvals. で始まらない（実際の名前: (名前な」 |
+| H1f | 門番の判定を isApprovalAdmin() ／／ isApprovalPresident() に（社長を通す取り違え） | 1 本 — `ApprovalAdminGateTest::test_every_admin_route_refuses_outsiders_without_revealing_ids` ／ 「権限の無い利用者を止められていないルート: ⏎ GET approvals/admin/users [パラメータなし] (社長（管理者でない）): 403 で拒否されない（status=200） ⏎ POST approvals/admin」 |
+| H1g | 門番の判定を isApprovalAdmin() ／／ isManagerOrAbove() に（基幹のロールで通す取り違え） | 6 本 — `ApprovalAdminGateTest`×1・`ApprovalUserImportTest`×2・`ApprovalUserManagementTest`×1・`OrganizationManagementTest`×2 ／ 例「権限の無い利用者を止められていないルート: ⏎ GET approvals/admin/users [パラメータなし] (指定の無い経営層): 403 で拒否されない（status=200） ⏎ GET approvals/admin/us」 |
+| H1h | 門番の断りの文言を外す（abort(403) だけにする）＝ 403 の出どころの確認が効いているか | 1 本 — `ApprovalAdminGateTest::test_every_admin_route_refuses_outsiders_without_revealing_ids` ／ 「権限の無い利用者を止められていないルート: ⏎ GET approvals/admin/users [パラメータなし] (指定の無い経営層): 403 だが門番の文言でない（実際: ） ⏎ GET approvals/admin/users」 |
+| H1i | 門番の判定を $next() の後ろへ回す（処理を走らせてから 403） | 1 本 — `ApprovalAdminGateTest::test_every_admin_route_refuses_outsiders_without_revealing_ids` ／ 「権限の無い要求で DB の行数が変化した」 |
+| M42 | 取込の削除済み利用者との照合から withTrashed() を外す（既存の照合が論理削除済みの利用者を無視するようになる） | 1 本 — `ApprovalUserImportTest::test_a_row_matching_a_deleted_user_is_an_error` ／ 「Failed asserting that 1 is identical to 0.」 |
+| M43a | 取込の社員番号の重複の事前カウント（$seenNumbers の増分）だけを外す | 3 本 — `ApprovalUserImportTest::test_duplicates_within_the_file_fail_both_rows` ／ `ApprovalUserImportTest::test_a_shorter_numeric_number_is_warned_about` ／ `ApprovalUserImportTest::test_the_digit_width_warning_does_not_fire_for_an_error_row` ／ 「重複した 2 行のどちらかが取り込まれる」 |
+| M43b | 取込のメールアドレスの重複の事前カウント（$seenEmails の増分）だけを外す | 1 本 — `ApprovalUserImportTest::test_the_same_email_twice_in_the_file_fails_both_rows` ／ 「重複したメールアドレスの行が取り込まれる」 |
+| M44 | 取込の view のキーを rowErrors から errors に（Bug #53 の再現: 予約変数 $errors を上書きする） | 43 本 — `ImportPreviewRenderTest`×1・`ApprovalUserImportTest`×42 ／ 例「view() に予約変数 'errors' を渡している箇所がある。 ⏎ Blade の '$errors' は ShareErrorsFromSession が共有する ViewErrorBag で、 ⏎ 同名のキーを渡すと上書きされ '」 |
+| M45 | 取込の apply() が既存利用者の更新時に氏名（$row['name']）も書き換えるようにする | 1 本 — `ApprovalUserImportTest::test_matching_an_existing_user_updates_only_the_number_and_departments` ／ 「氏名が書き換わっている」 |
+| M46 | 取込の桁数の注意（社員番号がほかの行より桁が少ない、の警告）を「採用位置」より前、行ループの先頭（$number/$name 計算直後・全エラー判定より前）に移す | 1 本 — `ApprovalUserImportTest::test_the_digit_width_warning_does_not_fire_for_an_error_row` ／ 「桁数の注意が想定の行に付いていない（エラー行に付く／正当な行に付かない、のどちらも異常）」 |
+| M47 | splitDepartmentCodes() の区切り文字をカンマだけに絞る（preg_split のパターンを [^A-Z]+ から ,+ に変更） | 5 本 — `ApprovalUserImportTest`×5 ／ 例「フォームが見つからない: action="http://localhost/approvals/admin/users/import/execute"」 |
+| M48 | app.blade.php のサイドバー出し分けを isApprovalOnly() に関わらず常に基幹 sidebar.blade.php 固定にする | 3 本 — `ApprovalSidebarTest::test_an_approval_only_user_gets_the_approval_sidebar` ／ `ApprovalSidebarTest::test_an_approval_only_admin_sees_the_management_links` ／ `ApprovalSidebarTest::test_a_view_all_member_does_not_get_the_management_links` ／ 「expanded が決裁のサイドバーでない（基幹の sidebar.blade.php が出ている）」 |
+| M49 | sidebar_approval.blade.php の展開サイドバー（PC 展開版）の <aside> に x-cloak を足す（Bug #56 の決まりに反する） | 1 本 — `ApprovalSidebarTest::test_the_approval_sidebar_follows_the_cloak_rules` ／ 「展開サイドバーに x-cloak が付いている（Bug #56）」 |
+| M50 | sidebar.blade.php（基幹）の $isApprovalAdmin を常に true に固定し、「決裁の管理」グループを無条件に出す | 3 本 — `ApprovalSidebarTest::test_a_view_all_member_does_not_get_the_management_links` ／ `ApprovalSidebarTest::test_nothing_changes_for_everyone_else` ／ `ApprovalSidebarTest::test_an_executive_without_the_flag_gets_nothing_either` ／ 「全件閲覧者に決裁の管理が出ている」 |
+| M50a1 | sidebar_approval.blade.php の展開版（expanded）から「決裁のホーム」リンクだけを消す | 3 本 — `ApprovalSidebarTest::test_an_approval_only_user_gets_the_approval_sidebar` ／ `ApprovalSidebarTest::test_an_approval_only_admin_sees_the_management_links` ／ `ApprovalSidebarTest::test_a_view_all_member_does_not_get_the_management_links` ／ 「expanded に「決裁のホーム」の行き先が無い」 |
+| M50a2 | sidebar_approval.blade.php の折りたたみ版（rail）から「決裁のホーム」リンクだけを消す | 3 本 — `ApprovalSidebarTest::test_an_approval_only_user_gets_the_approval_sidebar` ／ `ApprovalSidebarTest::test_an_approval_only_admin_sees_the_management_links` ／ `ApprovalSidebarTest::test_a_view_all_member_does_not_get_the_management_links` ／ 「rail に決裁のホームへのリンクが無い」 |
+| M50a3 | sidebar_approval.blade.php のモバイルドロワー（drawer）から「決裁のホーム」リンクだけを消す | 3 本 — `ApprovalSidebarTest::test_an_approval_only_user_gets_the_approval_sidebar` ／ `ApprovalSidebarTest::test_an_approval_only_admin_sees_the_management_links` ／ `ApprovalSidebarTest::test_a_view_all_member_does_not_get_the_management_links` ／ 「drawer に「決裁のホーム」の行き先が無い」 |
+| M50a4 | sidebar.blade.php（基幹）の展開版（expanded）から「決裁の管理」グループだけを消す（DAD/ZEAL は残す） | 1 本 — `ApprovalSidebarTest::test_a_base_user_with_the_flag_gets_an_extra_group` ／ 「expanded に「決裁の管理」の見出しが無い」 |
+| M50a5 | sidebar.blade.php（基幹）の折りたたみ版（rail）から「決裁の管理」アイコンリンクだけを消す | 1 本 — `ApprovalSidebarTest::test_a_base_user_with_the_flag_gets_an_extra_group` ／ 「rail に決裁の管理のアイコンリンクが無い」 |
+| M50a6 | sidebar.blade.php（基幹）のモバイルドロワー（drawer）から「決裁の管理」グループだけを消す（DAD/ZEAL は残す） | 1 本 — `ApprovalSidebarTest::test_a_base_user_with_the_flag_gets_an_extra_group` ／ 「drawer に「決裁の管理」の見出しが無い」 |
+| M50b1 | sidebar_approval.blade.php の展開版（expanded）の「決裁のホーム」ラベルを「決裁のホームZZZ」に改名する | 3 本 — `ApprovalSidebarTest::test_an_approval_only_user_gets_the_approval_sidebar` ／ `ApprovalSidebarTest::test_an_approval_only_admin_sees_the_management_links` ／ `ApprovalSidebarTest::test_a_view_all_member_does_not_get_the_management_links` ／ 「expanded に「決裁のホーム」の文字が無い」 |
+| M50b2 | sidebar_approval.blade.php のモバイルドロワー（drawer）の「利用者の管理」ラベルを「利用者の管理ZZZ」に改名する | 1 本 — `ApprovalSidebarTest::test_an_approval_only_admin_sees_the_management_links` ／ 「drawer に「利用者の管理」の文字が無い」 |
+| M50b3 | sidebar.blade.php（基幹）の展開版（expanded）の「利用者の管理」ラベルを「利用者の管理ZZZ」に改名する | 1 本 — `ApprovalSidebarTest::test_a_base_user_with_the_flag_gets_an_extra_group` ／ 「expanded に「利用者の管理」の文字が無い」 |
+| M50c | app.blade.php の出し分けを isApprovalOnly() && ! isApprovalAdmin() に（決裁のみ利用者の管理者にだけ基幹サイドバーが出るようになる） | 1 本 — `ApprovalSidebarTest::test_an_approval_only_admin_sees_the_management_links` ／ 「expanded が決裁のサイドバーでない（基幹の sidebar.blade.php が出ている）」 |
+| M50d | sidebar_approval.blade.php のモバイルドロワーの閉じるボタン（×）を消す | 1 本 — `LayoutSidebarDrawerTest::test_the_drawer_has_its_own_close_button` ／ 「sidebar_approval.blade.php: ドロワーの中に閉じるボタンが無い（オーバーレイのタップだけが閉じる手段になる）」 |
+| M50e | sidebar.blade.php（基幹）のモバイル用オーバーレイの @click（タップで閉じる動作）を消す | 1 本 — `LayoutSidebarDrawerTest::test_the_overlay_closes_the_drawer` ／ 「sidebar.blade.php: オーバーレイを押しても閉じない」 |
+| M50f | EnsureApprovalAdmin の判定を isApprovalAdmin()（is_admin フラグ）から (bool) approvalMember（決裁の印の行の有無）に取り違える | 3 本 — `ApprovalAdminGateTest::test_every_admin_route_refuses_outsiders_without_revealing_ids` ／ `ApprovalUserManagementTest::test_a_view_all_member_is_rejected` ／ `OrganizationManagementTest::test_a_view_all_member_is_rejected` ／ 「権限の無い利用者を止められていないルート: ⏎ GET approvals/admin/users [パラメータなし] (全件閲覧者（3状態目）): 403 で拒否されない（status=200） ⏎ POST approvals/admi」 |
+| M50g | sidebar_approval.blade.php の展開版（expanded）の管理リンク2本の :href を入れ替える（ラベルと :active はそのまま） | 1 本 — `ApprovalSidebarTest::test_an_approval_only_admin_sees_the_management_links` ／ 「expanded: 「利用者の管理」の文字と行き先が同じ <a> に載っていない（別の画面へ飛ぶ）」 |
+| M51 | PasswordReissuedMail::content() の setTimezone('Asia/Tokyo') を外す（config/app.php の timezone=UTC のまま整形される） | 1 本 — `PasswordReissueTest::test_the_mail_shows_the_time_in_japan_time` ／ 「再発行の日時が日本時間で出ていない」 |
+| M52 | resources/views/mail/password-reissued.blade.php から「（日本時間）」の表記を消す | 1 本 — `PasswordReissueTest::test_the_mail_shows_the_time_in_japan_time` ／ 「どの時間帯か書かれていない」 |
+| H2a | 取込の確定の入口を、素の claim() を呼ぶ形に戻す（is_string は手で挟む＝振る舞いは同じ） | 17 本 — `ApprovalUserImportTest`×15・`LoginGuideTest`×2 ／ 例「Expected response status code [200] but received 500.」 |
+| H2b | claimFrom() から is_string を外す（配列・欠落の鍵が claim(string) へ渡って TypeError） | 2 本 — `ApprovalUserImportTest::test_an_array_guide_token_is_refused_without_a_500` ／ `LoginGuideTest::test_claim_from_accepts_only_a_string_token` ／ 「Expected response status code [201, 301, 302, 303, 307, 308] but received 500.」 |
+| H2d | 取込のコントローラで OneTimeAction を別名で読み込む（use … as Once） | 2 本 — `LoginGuideTest::test_nothing_outside_one_time_action_calls_the_raw_claim` ／ `LoginGuideTest::test_every_guide_rendering_entry_point_claims_the_token_first` ／ 「鍵の受け取りが OneTimeAction::claimFrom() を経由していない箇所がある: ⏎  をエイリアスしていて走査から逃れられる）」 |
+| H2e | まとめて再発行で claimFrom() の結果を捨てる（鍵を使うが断らない） | 2 本 — `ApprovalUserManagementTest::test_the_filtered_bulk_reissue_rejects_a_resubmitted_token` ／ `LoginGuideTest::test_every_guide_rendering_entry_point_claims_the_token_first` ／ 「Expected response status code [201, 301, 302, 303, 307, 308] but received 200.」 |
+| H2f | まとめて再発行で鍵の確認を再発行の後ろへ動かす（作り直してから断る） | 2 本 — `ApprovalUserManagementTest::test_the_filtered_bulk_reissue_rejects_a_resubmitted_token` ／ `LoginGuideTest::test_every_guide_rendering_entry_point_claims_the_token_first` ／ 「2 回目の再送信でパスワードが作り直された」 |
+| H2g | 鍵を使わずに案内を描く入口を 1 本足す（ルートは足さない） | 1 本 — `LoginGuideTest::test_every_guide_rendering_entry_point_claims_the_token_first` ／ 「鍵を先に使っていない入口がある: ⏎ App\Http\Controllers\Approval\UserController::reissueWithoutToken（'if (! OneTimeAction::claimFrom($x)」 |
+| M08c | EnsureUserIsActive からセッションの破棄（invalidate / regenerateToken）だけを外す（Auth::logout() は残す） | 1 本 — `InactiveUserLockoutTest::test_disabling_mid_session_invalidates_the_session_and_rotates_the_csrf_token` ／ 「無効化後もセッションの印が残っている（invalidate() が呼ばれていない）」 |
+| H2h | 走査の正規表現（素の claim の検出）を壊す：`claim\s*\(` を `claim\s*\(\)` に（引数のある呼び出しに当たらなくなる） | 1 本 — `LoginGuideTest::test_the_scan_regexes_match_only_what_they_should` ／ 「見逃している: OneTimeAction::claim($t)」 |
+| H2j | 走査の正規表現（副作用の起点 ->reissue( ）を壊す：`reissue` を `reissued` に | 1 本 — `LoginGuideTest::test_the_scan_regexes_match_only_what_they_should` ／ 「見逃している: $reissuer->reissue($targets)」 |
+
+⚠ 表の「代表の理由」は落ちたテストの 1 本目の文言。M19・M32・M44 のように本数の多い行は、テストのクラスごとの本数を書いた。
+⚠ **測っていない形**（記録だけ）: `regenerateToken()` だけを消す変異は、`invalidate()` の `flush()` が `_token` を消し、
+次の要求の `start()` がトークンを作り直すので実害がほぼ無い（M08c のテストは「作り直された 40 文字の文字列」を見るので、
+この形でも赤になる見込み。推測）。

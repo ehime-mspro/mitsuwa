@@ -1529,7 +1529,7 @@ git checkout 13.x && git merge --ff-only schedule-board-gantt
 | Controller | `Approval\{Home,User,UserImport,Organization}Controller` |
 | Blade | `approvals/home`・`login-guide`・`admin/organization`・`admin/users/{index,import,_import_preview}` ＋ **`layouts/partials/sidebar_approval.blade.php`** を新設 |
 | ルート | **19 本**（`routes/approval.php`。`web.php` の末尾が require する）|
-| テスト | 1711 → **2057 tests / 14348 assertions green**（+346）|
+| テスト | 1711 → **2068 tests / 14499 assertions green**（+357。Task 15 までの値）|
 
 ### 要点
 
@@ -1560,8 +1560,20 @@ git checkout 13.x && git merge --ff-only schedule-board-gantt
 
 ### 検証
 
-- 全テスト **2057 tests / 14348 assertions green**
+- 全テスト **2068 tests / 14499 assertions green**（2026-09-18・Task 15 の後）
 - コンパイル済みビュー **277 本**を `php -l` → INVALID 0 件（⚠ `view:cache` の成功表示だけでは足りない。Bug #21 / #26 / #30）
+- **Task 15（変異テスト本体・2026-09-18）**: 最終コミット（`4528a17f`）で **91 通りを全件で流し、すべて検出**
+  （表の 74 通り ＋ 隣の不変条件 1 ＋ 宿題で足したテスト用 16）。記録は実装計画の末尾の「Task 15 の実測記録」。
+  ⚠ **1 回目の測定で 3 件が全件緑だった**（テストを足して塞いだ）: ①確定時の `rowErrors` の差し戻しを消す —
+  1 行だけの改ざんでは到達しないはずの `validCount === 0` の歯止めが別の文言で代わりに断っていた ②桁数の注意を
+  全エラー判定の前へ動かす — エラーと注意が同じ行で成り立つデータが無かった ③ロックアウト時のセッションの破棄だけを消す
+  — セッションの中身を見るテストが無かった。
+  併せて Task 12 / 13 の宿題 2 件も片づけた: **門番の全件分類**（`ApprovalAdminGateTest`。`approvals.admin.` の全ルート ×
+  権限の無い 6 人 × 実在する / しない ID で 403・門番の文言・解決後のミドルウェアの位置）と
+  **1 回限りの鍵の受け取りの 1 本化**（`OneTimeAction::claimFrom()`・`claim()` は private・案内を描く入口の
+  全件分類は Reflection で `app/` の全メソッドを切り出す）。
+  ⚠ 入口の分類は最初、手書きのトークン解析で書かれ、**今の `app/` ですでに無音で壊れていた**
+  （`X::class` をクラス宣言と誤認して 320 本が偽の名前・71 本が消える）。レビューが見つけて Reflection に直した
 - 変異テストは各タスクで実測（**記録は実装計画**。末尾に「Task 12 の実測記録」「Task 14 の実測記録」）。
   サイドバー（Task 14）は最終コードに対して **17 通り ＋ カナリア 1** を全件（2050 本）で流し、
   **検出 17 / 未検出 0 / 等価変異 0**。⚠ ただし**テストを書いている最中は 4 つの穴が緑のまま通っていた**:
