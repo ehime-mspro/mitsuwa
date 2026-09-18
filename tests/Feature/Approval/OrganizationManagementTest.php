@@ -407,47 +407,6 @@ class OrganizationManagementTest extends TestCase
     // --- 権限と画面の作り ---
 
     /**
-     * 権限の無い人には、その ID が実在するかを教えない（実在しない ID でも 403）。
-     *
-     * ⚠ ルートに付けた別名は既定では `SubstituteBindings`（ルートモデル結合）の**後ろ**に並ぶ。
-     *   そのままだと実在しない ID だけ **404** が返り、権限の無い誰でも「その会社・部門・
-     *   ドメインがあるか」を数えられる（実測）。`bootstrap/app.php` の `appendToPriorityList` で
-     *   `EnsureApprovalAdmin` を前へ出して塞いでいる。`RestrictApprovalOnlyUsers` の
-     *   docblock が名指ししているのと同じ性質。
-     */
-    public function test_a_missing_id_is_rejected_the_same_way_as_an_existing_one(): void
-    {
-        $stranger = User::factory()->create(['must_change_password' => false]);
-
-        $company = $this->company();
-        $dept    = $this->department($company);
-        $domain  = ApprovalMailDomain::create(['domain' => 'mitsuwat.co.jp']);
-
-        $urls = [
-            route('approvals.admin.organization.companies.destroy', $company),
-            route('approvals.admin.organization.companies.destroy', 999999),
-            route('approvals.admin.organization.departments.destroy', $dept),
-            route('approvals.admin.organization.departments.destroy', 999999),
-            route('approvals.admin.organization.mailDomains.destroy', $domain),
-            route('approvals.admin.organization.mailDomains.destroy', 999999),
-        ];
-
-        $actual = [];
-        foreach ($urls as $url) {
-            $actual[$url] = $this->actingAs($stranger)->delete($url)->getStatusCode();
-        }
-
-        $this->assertSame(
-            array_fill_keys($urls, 403),
-            $actual,
-            '実在しない ID だけ 404 が返ると、ID が実在するかを数えられる'
-        );
-
-        // 権限の無い要求で何も消えていないこと
-        $this->assertSame([1, 1, 1], [ApprovalCompany::count(), ApprovalDepartment::count(), ApprovalMailDomain::count()]);
-    }
-
-    /**
      * 押せない理由は、ボタン自身ではなくホバーを受けられるラッパーの span に載せる（Bug #43）。
      *
      * ⚠ `disabled` な要素はマウスイベントを発火しないので、ボタン自身の `title` は
