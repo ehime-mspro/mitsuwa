@@ -59,7 +59,13 @@
                     {{-- パンくずリスト --}}
                     @hasSection('breadcrumb')
                         <nav class="text-xs text-gray-400 mb-5">
-                            <a href="{{ route('dashboard') }}" class="hover:text-emerald-600 transition-colors">ホーム</a>
+                            {{-- ⚠ route('dashboard') 固定にしない。決裁のみ利用者は門番
+                                 （RestrictApprovalOnlyUsers）に跳ね返され、行き先は正しいのに
+                                 「決裁以外の画面は使えません。」が毎回出る（決裁の 4 画面すべて）。
+                                 /dashboard 自身が homeRouteName() へ転送するだけなので、基幹を使う人の
+                                 行き先は変わらない（転送が 1 回減るだけ）。
+                                 回帰テスト tests/Feature/LayoutBreadcrumbHomeTest.php --}}
+                            <a href="{{ route(Auth::user()->homeRouteName()) }}" class="hover:text-emerald-600 transition-colors">ホーム</a>
                             @yield('breadcrumb')
                         </nav>
                     @endif
