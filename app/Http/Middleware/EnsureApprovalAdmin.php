@@ -15,10 +15,13 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class EnsureApprovalAdmin
 {
+    /** `RestrictApprovalOnlyUsers::MESSAGE` / `EnsureUserIsActive::MESSAGE` と同じ形で定数化する */
+    public const MESSAGE = 'この画面を使う権限がありません。';
+
     public function handle(Request $request, Closure $next): Response
     {
         if (! $request->user()?->isApprovalAdmin()) {
-            abort(403, 'この画面を使う権限がありません。');
+            abort(403, self::MESSAGE);
         }
 
         return $next($request);
