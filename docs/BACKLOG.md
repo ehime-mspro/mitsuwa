@@ -1603,7 +1603,7 @@ git checkout 13.x && git merge --ff-only schedule-board-gantt
   `route('dashboard')` は**ちょうど 1 箇所**
 - 削除の前後で `vite build` した CSS は**ハッシュまで同一**（`app-wzJ6Tjji.css` / 51,168 bytes）
   ＝ スニペットが持っていた Tailwind クラスはすべて実サイドバーでも使われていた
-- 全テスト **2061 tests / 13572 assertions green** ／ コンパイル済みビュー **274 本**を `php -l` → INVALID 0 件
+- 全テスト **2061 tests / 13575 assertions green** ／ コンパイル済みビュー **274 本**を `php -l` → INVALID 0 件
 - **変異 5 通りすべて RED**（検出 5 / 未検出 0。落ちたテストの集合と理由の文言まで照合）:
 
 | # | 変異 | 落ちたテストと理由 |
