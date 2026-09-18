@@ -38,8 +38,8 @@ class LoginGuideTest extends TestCase
      * ⚠ **FQCN 経由の生成も拾う**（2026-09-18 の再レビューで指摘）—— `\\?(?:[A-Za-z_]\w*\\)*`
      *   が任意個の名前空間セグメントを許すので、`new LoginGuide(` だけでなく
      *   `new \App\Support\Approval\LoginGuide(` も拾える。それでも import のエイリアス
-     *   （`use … as Guide;` の後の `new Guide(`）は**拾えない**——別名になった後はソースに
-     *   「LoginGuide」という文字列が一度も現れないため。これは検出せず**禁止する**
+     *   （`use … as Guide;` の後の `new Guide(`）は**拾えない**——別名になった後はメソッド本体に
+     *   「LoginGuide」という文字列が一度も現れないため（`use` の行には現れる）。これは検出せず**禁止する**
      *   （`ENTRY_POINT_ALIAS_PATTERN` と `test_login_guide_and_friends_are_not_aliased()` 参照）。
      */
     private const NEW_LOGIN_GUIDE_PATTERN = '/\bnew\s+\\\\?(?:[A-Za-z_]\w*\\\\)*LoginGuide\s*\(/i';
@@ -95,7 +95,8 @@ class LoginGuideTest extends TestCase
     /**
      * `LoginGuide` / `PasswordReissuer` / `ReissueResult` を import でエイリアスすると、
      * `ENTRY_POINT_PICK_PATTERN` のバレワード判定を素通りできる（`use … as Guide;` の後は
-     * ソース中に「LoginGuide」という文字列が一度も現れなくなる）。**検出するのではなく
+     * メソッド本体に「LoginGuide」という文字列が一度も現れなくなる。`use` の行には現れるので、
+     * エイリアスの禁止はそこを見る）。**検出するのではなく
      * 禁止する**——`test_login_guide_and_friends_are_not_aliased()` が app/ + routes/ を
      * 全件分類で走査し、エイリアスそのものを許さない（`ALIAS_PATTERN` が `OneTimeAction` に
      * しているのと同じ流儀）。
@@ -392,7 +393,7 @@ class LoginGuideTest extends TestCase
      * ⚠ **検出でなく禁止。** `ENTRY_POINT_PICK_PATTERN`（バレワード判定）は
      *   `new \App\Support\Approval\LoginGuide(` のような FQCN 経由の生成は拾えるが、
      *   `use App\Support\Approval\LoginGuide as Guide;` のようにエイリアスされた後は
-     *   ソースに「LoginGuide」という文字列が一度も現れなくなるため、原理的に拾えない
+     *   メソッド本体に「LoginGuide」という文字列が一度も現れなくなるため、原理的に拾えない
      *   （2026-09-18 の再レビューで指摘。それまでの docblock は「素通りさせる余地があった」
      *   と書いていたが、実際は「今も素通りしうる」が正確だった）。ここでは「拾えない
      *   ケースを検出する」のではなく、**そのケース自体を書かせない**ことで全件分類を保つ
@@ -987,13 +988,14 @@ class LoginGuideTest extends TestCase
      * `$file` の中で**実際に宣言されている** class / interface / trait / enum の短い名前を
      * すべて返す（匿名クラス `new class {...}` と `X::class` は除く）。
      * `test_the_app_method_body_scan_has_no_gaps_or_collisions()` が、この結果が
-     * 「ちょうど 1 つ」で「PSR-4 の名前と一致する」ことを確かめる（item 4・2026-09-18 の
+     * 「ちょうど 1 つ」で「PSR-4 の名前と一致する」ことを確かめる（2026-09-18 の
      * 再レビューで指摘: 2 つ目の class-like があると `methodBodiesIn()` は PSR-4 の名前で
      * 解決した 1 つだけしか reflect せず、2 つ目のメソッドが無音で走査から消える）。
      *
-     * ⚠ ネストしたトップレベル宣言は PHP が許さないので、メソッド本体の中まで踏み込む必要は
-     *   無い——`methodBodiesIn()` のような波括弧の深さ追跡は不要（それが必要になるほど
-     *   複雑な走査ではないので、旧実装が踏んだ罠を再現する余地が小さい）。
+     * ⚠ トークンを先頭から平らに数えるので、**メソッド本体の中の条件付きの宣言も数える**
+     *   （PHP は関数・メソッドの中でのクラス宣言を許す。「トップレベルだけ見れば足りる」と
+     *   直すと、そこに書かれた 2 つ目のクラスが無音で抜ける穴が戻る）。波括弧の深さは
+     *   追わない——宣言の数と名前だけを見るので要らない。
      *
      * @return list<string>
      */
