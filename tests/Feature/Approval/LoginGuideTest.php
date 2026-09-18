@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Support\Approval\LoginGuide;
 use App\Support\OneTimeAction;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
 
@@ -179,6 +180,106 @@ class LoginGuideTest extends TestCase
 
         $this->assertTrue(OneTimeAction::claim($token), '有効時間 0 で 1 回目から弾かれている');
         $this->assertFalse(OneTimeAction::claim($token), '2 回目が通っている');
+    }
+
+    /**
+     * `OneTimeAction::claimFrom()` はリクエストの `guide_token` を防御的に読む（設計書 §5.12）。
+     *
+     * ⚠ 配列で送られても例外にしない・無い/空文字なら false・文字列トークンなら 1 回目だけ true、
+     *   という `claim()` の既存の振る舞いを `Request` から読む経路でも保つことを確かめる。
+     */
+    public function test_claim_from_accepts_only_a_string_token(): void
+    {
+        $arrayToken = Request::create('/x', 'POST', ['guide_token' => ['a', 'b']]);
+        $this->assertFalse(OneTimeAction::claimFrom($arrayToken), '配列のトークンで例外にならず false を返すべき');
+
+        $missing = Request::create('/x', 'POST', []);
+        $this->assertFalse(OneTimeAction::claimFrom($missing), 'トークンが無いのに通っている');
+
+        $empty = Request::create('/x', 'POST', ['guide_token' => '']);
+        $this->assertFalse(OneTimeAction::claimFrom($empty), '空文字のトークンが通っている');
+
+        $token  = OneTimeAction::issue();
+        $first  = Request::create('/x', 'POST', ['guide_token' => $token]);
+        $second = Request::create('/x', 'POST', ['guide_token' => $token]);
+        $this->assertTrue(OneTimeAction::claimFrom($first), '正しい文字列トークンの 1 回目が通っていない');
+        $this->assertFalse(OneTimeAction::claimFrom($second), '同じトークンの 2 回目が通っている');
+    }
+
+    /**
+     * 鍵の受け取りの入口はすべて `OneTimeAction::claimFrom()` を経由する（全件分類。Top trap #13 / Bug #45 ①）。
+     *
+     * ⚠ **列挙リスト方式にしない** — 「直したファイル」を配列で並べる形だと、未修正・将来追加の
+     *   入口が検査対象に入らず永遠に緑になる（Bug #45 ①）。`app/` 配下の全 PHP ファイルを機械的に
+     *   列挙し、生の `OneTimeAction::claim(`（`claimFrom(` は対象外）を直接呼ぶファイルと、
+     *   `OneTimeAction` をエイリアスして走査から逃れられる書き方をしているファイルを全部拾う。
+     *   これにより、新しい入口が（配列トークンを検査しないまま）素の `claim()` を呼ぶように
+     *   なっても検出できる。配列トークンの防御は `claimFrom()` の 1 か所だけに置くという決定を守る。
+     * ⚠ コメントを落としてから走査する（Bug #42 ②。この docblock 自身に `OneTimeAction::claim(`
+     *   と書いているので、コメントを落とさない走査だと自分自身に引っかかって false-fail する）。
+     * ⚠ 走査が空振りして緑になる事故を防ぐため、拾えたファイル数・`claimFrom(` 呼び出し数の
+     *   下限も併せて固定する（Bug #45 ①・Bug #32 と同じ流儀）。
+     */
+    public function test_every_entry_point_uses_claim_from_not_the_raw_claim(): void
+    {
+        $files = $this->phpFilesUnder(app_path());
+
+        $this->assertGreaterThanOrEqual(
+            250,
+            count($files),
+            '走査が app/ 配下の PHP ファイルを十分に拾えていない（空振りして緑になる事故を防ぐ下限）'
+        );
+
+        $oneTimeActionPath = realpath(app_path('Support/OneTimeAction.php'));
+        $problems = [];
+        $claimFromCallSites = 0;
+
+        foreach ($files as $file) {
+            $source = $this->sourceWithoutComments($file);
+
+            $claimFromCallSites += substr_count($source, 'OneTimeAction::claimFrom(');
+
+            if (realpath($file) === $oneTimeActionPath) {
+                continue; // 正本自身（claim() の定義）は対象外
+            }
+
+            if (str_contains($source, 'OneTimeAction::claim(')) {
+                $problems[] = "{$file}（生の OneTimeAction::claim() を直接呼んでいる）";
+            }
+            if (str_contains($source, 'OneTimeAction as ')) {
+                $problems[] = "{$file}（OneTimeAction をエイリアスしていて走査から逃れられる）";
+            }
+        }
+
+        $this->assertSame(
+            [],
+            $problems,
+            "鍵の受け取りが OneTimeAction::claimFrom() を経由していない箇所がある:\n" . implode("\n", $problems)
+        );
+
+        $this->assertGreaterThanOrEqual(
+            5,
+            $claimFromCallSites,
+            'claimFrom() の呼び出しが減っている（store / resetPassword / execute / reissue / reissueBulk の 5 箇所が既定）'
+        );
+    }
+
+    /** `$dir` 配下の `*.php` を再帰的に列挙する（全件分類の対象を機械的に決めるため） */
+    private function phpFilesUnder(string $dir): array
+    {
+        $files = [];
+
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS)
+        );
+
+        foreach ($iterator as $fileInfo) {
+            if ($fileInfo->isFile() && $fileInfo->getExtension() === 'php') {
+                $files[] = $fileInfo->getPathname();
+            }
+        }
+
+        return $files;
     }
 
     /** コメントと docblock を落としたソース（注意書きに反応しないように。Bug #42 ②） */
