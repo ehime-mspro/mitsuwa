@@ -173,13 +173,13 @@ class InactiveUserLockoutTest extends TestCase
     /**
      * 無効化のその場でセッションを作り直し、CSRF トークンも作り直す。
      *
-     * ⚠ M08c が塞ぐ穴 — `EnsureUserIsActive::handle()` の
+     * ⚠ Task 15 の変異表の M08c（`EnsureUserIsActive::handle()` の
      *   `if ($request->hasSession()) { $request->session()->invalidate(); $request->session()->regenerateToken(); }`
-     *   を消し `Auth::logout()` だけ残しても、このファイルの既存テストは全部緑のまま通る。
-     *   既存テストが確認しているのは「次の画面でログアウトする（ゲストになる）」ことだけで、
-     *   `Auth::logout()` はガードの `login_web_…` キーしか消さないため、**セッションに残っている
-     *   ほかのデータ（本人が入力しかけていたもの）や CSRF トークン**が生き残っていないかは
-     *   どのテストも見ていなかった。
+     *   を消し `Auth::logout()` だけ残す変異）が塞ぐ穴 —— このファイルの既存テストは全部緑の
+     *   まま通る。`Auth::logout()` はガードの `login_web_…` キーしか消さないので、セッションに
+     *   残っているほかのデータ（本人が入力しかけていたもの）や CSRF トークンが生き残っていない
+     *   かを見るテストが無かった（既存テストが確認しているのは「次の画面でログアウトする
+     *   （ゲストになる）」ことまでで、セッションの中身までは見ていない）。
      *
      * ⚠ **検証の組み立て（実測で確かめた挙動）**: このプロジェクトのテストは
      *   `SESSION_DRIVER=array`（`phpunit.xml`）で、`$this->app['session']` は
@@ -197,33 +197,61 @@ class InactiveUserLockoutTest extends TestCase
      *   新しい `_token` を書くため。**上のブロックを削る変異では、この 3 つがいずれも
      *   変化しない**（`setId()` は渡した有効な ID をそのまま受け入れ、`Auth::logout()` は
      *   `probe` にも `_token` にも触れないため）。
+     * ⚠ **`AuthenticateSession`（`web` グループに `EnsureUserIsActive` より先に登録済み）にも
+     *   `flush()` する経路がある**（セッションに保存したパスワードのハッシュが現在のパスワードと
+     *   食い違うとき。`logout()` 内で `$request->session()->flush()` を呼ぶ）。本テストではパス
+     *   ワードを一切変えていないため、1 回目のリクエストの末尾で保存したハッシュが 2 回目でも
+     *   一致し、この経路は発火しない——観測している invalidate/regenerateToken は
+     *   `EnsureUserIsActive` 単独の効果である。
      */
     public function test_disabling_mid_session_invalidates_the_session_and_rotates_the_csrf_token(): void
     {
         $user = $this->activeUser();
 
         // 1 回目: 有効なうちにログインし、セッションに印を残す。ここで発行された
-        // セッションクッキーの値を、2 回目のリクエストへそのまま持ち回る
+        // セッションクッキーの値を、後続のリクエストへそのまま持ち回る
         $first = $this->actingAs($user)
             ->withSession(['probe' => 'still-here'])
             ->get('/dashboard/tenant')
             ->assertOk();
 
         $cookieName = config('session.cookie');
-        $sessionIdBefore = $first->getCookie($cookieName)->getValue();
+        $cookie = $first->getCookie($cookieName);
+        $this->assertNotNull($cookie, 'セッションクッキーが発行されていない');
+        $sessionIdBefore = $cookie->getValue();
         $tokenBefore = $this->app['session']->token();
         $this->assertSame('still-here', $this->app['session']->get('probe'), '前提: 印がセッションに残っていない');
 
+        // 対照: 無効化する前に同じクッキーで叩いても、ID はそのまま使われ続けること。
+        // これが崩れていると（＝ invalidate() が無くても毎回 ID が変わるなら）、
+        // 下の「本命」で ID が変わったことを invalidate() の証拠にできない
+        $this->withCookie($cookieName, $sessionIdBefore)->get('/dashboard/tenant')->assertOk();
+        $this->assertSame(
+            $sessionIdBefore,
+            $this->app['session']->getId(),
+            '対照: 同じクッキーを渡しても ID が変わってしまう（この後の比較が invalidate() の証拠にならない）'
+        );
+
         $user->forceFill(['status' => UserStatus::Inactive->value])->save();
 
-        // 2 回目: 1 回目と同じセッションクッキーを明示的に持ち回る。invalidate() が
-        // 呼ばれなければ、この ID がそのまま使われ続けるはず
+        // 本命: 1 回目と同じセッションクッキーを明示的に持ち回る。invalidate() が
+        // 呼ばれなければ、上の対照と同じくこの ID がそのまま使われ続けるはず
         $this->withCookie($cookieName, $sessionIdBefore)
             ->get('/dashboard/tenant')
             ->assertRedirect(route('login'));
 
         $this->assertNull($this->app['session']->get('probe'), '無効化後もセッションの印が残っている（invalidate() が呼ばれていない）');
         $this->assertNotSame($sessionIdBefore, $this->app['session']->getId(), 'セッション ID が作り直されていない（invalidate() が呼ばれていない）');
-        $this->assertNotSame($tokenBefore, $this->app['session']->token(), 'CSRF トークンが作り直されていない（regenerateToken() が呼ばれていない）');
+
+        // ⚠ `assertNotSame($tokenBefore, $tokenAfter)` だけでは、トークンが「作り直された」ことと
+        //   「消えた」ことを区別できない（invalidate() の flush() は _token も含めて attributes を
+        //   空にするので、regenerateToken() を呼ばなければ token() は null になり、それも
+        //   $tokenBefore とは非同一）。まず新しいトークンが存在する（regenerateToken() は
+        //   Str::random(Store::SESSION_ID_LENGTH = 40) を書く）ことを見てから、旧トークンと
+        //   違うことを見る
+        $tokenAfter = $this->app['session']->token();
+        $this->assertIsString($tokenAfter, 'CSRF トークンが作り直されず消えたままになっている（regenerateToken() が呼ばれていない）');
+        $this->assertSame(40, strlen($tokenAfter), 'CSRF トークンの形が regenerateToken()（Str::random(40)）の生成物と異なる');
+        $this->assertNotSame($tokenBefore, $tokenAfter, 'CSRF トークンが作り直されていない（regenerateToken() が呼ばれていない）');
     }
 }

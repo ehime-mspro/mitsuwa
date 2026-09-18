@@ -634,14 +634,17 @@ class ApprovalUserImportTest extends TestCase
     }
 
     /**
-     * ⚠ M41 が塞ぐ穴（その1） — `execute()` の
-     *   `if ($analysis['rowErrors'] !== []) { return ...->with('error', '取り込めない行が…'); }`
-     *   を消しても、この行 1 本だけの改ざんでは `rowErrors` が 1 件・`rows`（＝取り込む行）が
-     *   0 件になるため、直後の「到達しないはずの」歯止め
+     * ⚠ Task 15 の変異表の M41（`execute()` の
+     *   `if ($analysis['rowErrors'] !== []) { return ...->with('error', '取り込めない行が…'); }` を
+     *   消す変異）が塞ぐ穴（その1・文言）—— この行 1 本だけの改ざんでは `rowErrors` が 1 件・
+     *   `rows`（＝取り込む行）が 0 件になるため、直後の「到達しないはずの」歯止め
      *   `if ($analysis['validCount'] === 0) { return ...->with('error', '取り込む行がありません。'); }`
      *   が代わりに発火し、**別の文言で**同じ「`error` セッションへリダイレクト」が返る。
      *   旧テストは `assertSessionHas('error')`（値を見ない）だけだったので、文言が入れ替わっても
      *   検出できなかった。ここで**正確な文言**を固定し、この置き換わりを検出できるようにする。
+     * ⚠ **ただしこの検出は文言の違いに頼っている** —— 2 つの歯止めの文言をたまたま同じにする
+     *   ような編集が入れば、M41 自体は直っていないのにこのテストは緑に戻ってしまう。文言に
+     *   依存しない検出は下の `test_the_server_refuses_a_mixed_file_and_imports_neither_row` が担う。
      */
     public function test_the_server_revalidates_on_confirm(): void
     {
@@ -660,16 +663,20 @@ class ApprovalUserImportTest extends TestCase
     }
 
     /**
-     * ⚠ M41 が塞ぐ穴（その2、本体） — 上のテストは改ざん後の CSV が**1 行だけ**で、
-     *   その 1 行がエラーになるため `validCount` が 0 になり、「到達しないはずの」歯止め
-     *   （`validCount === 0`）が代わりに発火してしまい、`rowErrors` を見る本来の歯止めを
-     *   1 本消しても検出できなかった（上のテストで文言を固定してもまだ埋まらない穴）。
-     *   ここでは改ざん後の CSV に**正当な行 1 つ（A0001）と不正な行 1 つ（A0002）**を混ぜる。
-     *   これで `rowErrors !== []`（A0002 がエラー） かつ `validCount === 1`（A0001 は正当）
-     *   になり、`rowErrors` を見る歯止めが削られると
-     *   ①「到達しないはずの」歯止めも発火しない（validCount が 0 でないため）
-     *   ② `OneTimeAction::claimFrom()` を素通りしてトランザクションへ進み、
-     *     A0001 が**黙って登録され**、A0002 だけが（$analysis['rows'] に入っていないので）
+     * ⚠ Task 15 の変異表の M41（同上）が塞ぐ穴（その2・文言に依存しない検出、本体）。
+     *
+     *   上のテスト（改ざん後の CSV が 1 行だけ）は、文言を厳密化した今は M41 を検出できている。
+     *   ただしそれは「歯止めが無いと `validCount === 0` の別の歯止めが代わりに発火し、
+     *   **文言が変わる**」という間接的な効果に頼った検出でしかない。もし将来 2 つの歯止めの
+     *   文言をそろえる編集が入れば、M41 自体は直っていないのに上のテストは緑に戻ってしまう。
+     *
+     *   このテストは文言に頼らず、**実際の実害**（rowErrors の歯止めが無いと正当な行が黙って
+     *   登録される）を DB で確かめる。改ざん後の CSV に正当な行 1 つ（A0001）と不正な行 1 つ
+     *   （A0002。許可していないドメイン）を混ぜると、`rowErrors !== []`（A0002 がエラー）かつ
+     *   `validCount === 1`（A0001 は正当）になるため、`validCount === 0` の歯止めは
+     *   （2 つの文言をどうそろえても）発火しない。この状態で `rowErrors` を見る歯止めを消すと
+     *   ① 検査が最後まで通り `OneTimeAction::claimFrom()` を素通りしてトランザクションへ進み、
+     *     A0001 が**黙って登録され**、A0002 だけが（`$analysis['rows']` に入っていないので）
      *     無言で捨てられる。つまり歯止めが削られると「一部だけ取り込まれて成功扱いになる」。
      */
     public function test_the_server_refuses_a_mixed_file_and_imports_neither_row(): void
@@ -769,40 +776,56 @@ class ApprovalUserImportTest extends TestCase
     /**
      * 桁数の注意は、エラーになる行では出さない。
      *
-     * ⚠ M46 が塞ぐ穴 — `analyze()` のコメント「ここから先は取り込むと決めた行。注意はこの
-     *   位置でだけ積む」のとおり、桁数の注意（$warnings[] への push）は全エラー判定を
-     *   通り抜けた `else` 節（＝既存利用者に当たらない新規行）の中でだけ評価される。
-     *   この push をループの先頭（全エラー判定より前）へ移す変異を当てると、エラーになる行
-     *   でも桁数の条件（この社員番号が、ファイル内の最大桁数より少ない）を満たせば
+     * ⚠ Task 15 の変異表の M46（`analyze()` の docblock「ここから先は取り込むと決めた行。
+     *   注意はこの位置でだけ積む」のとおり、桁数の注意（`$warnings[] への push`）は全エラー
+     *   判定を通り抜けた `else` 節（＝既存利用者に当たらない新規行）の中でだけ評価されている
+     *   のを、ループの先頭（全エラー判定より前）へ移す変異）が塞ぐ穴 —— 移すと、エラーになる
+     *   行でも桁数の条件（この社員番号が、ファイル内の最大桁数より少ない）を満たせば
      *   `$warnings` に積まれてから `$rowErrors` にも積まれる——つまり同じ行が両方の入れ物に
      *   入る。既存のテストは「エラーになる行」と「桁数の注意の対象になりうる行」が
      *   同時に成立するデータを 1 つも持っていなかったため、この変異はどのテストにも
      *   引っかからず全緑で通る。
      * ⚠ 役割（`viewData`）と表示を別々に見る（Bug #54 ④）。表示は部分一致
      *   （`assertStringContainsString('桁が少ない', ...)`）ではなく、エラー行・注意行それぞれの
-     *   `_import_preview.blade.php` の描画そのもの（`エラー 行N: …` / `⚠ 行N: …`）で見る。
-     *   部分一致だと、注意文の一部（「桁が少ない」等）がどこかに残っただけで
-     *   assertStringNotContainsString が誤って赤くなったり、逆に別の行の注意と混同して
-     *   見逃したりする（Bug #43 の型）。
+     *   `_import_preview.blade.php` の描画そのもの（`エラー 行N: …` / `⚠ 行N: …`）を全文一致で見る。
+     *   ⚠ **全文一致の needle にも別の弱点がある** —— 文言や書式（`⚠ 行N: …` の形そのもの）が
+     *   将来変わると、`assertStringNotContainsString` は「その文字列が無い」ことを何の意味も
+     *   なく証明し続け、検出力が無音で消える（needle がドリフトして空振りし続ける型）。
+     *   これを防ぐため、同じ CSV に**陽性対照**（行4。基準より桁が少ないが、部門は正しく
+     *   エラーにはならない行）を混ぜ、その行では同じ形の文言が実際に描画されることを先に
+     *   確かめてから、エラー行（行3）にはそれが出ていないことを見る。
      */
     public function test_the_digit_width_warning_does_not_fire_for_an_error_row(): void
     {
         // 行2: 社員番号 10001（5 桁）で桁数の基準（ファイル内の最大幅）を作る正当な行
         // 行3: 社員番号 123（3 桁。基準より少ない＝桁数の注意の対象になりうる）だが
         //      所属部門が未登録（ZZ）のため必ずエラーになる行
-        $preview = $this->preview("10001,甲,,RE\n123,乙,,ZZ\n")->assertOk();
+        // 行4: 社員番号 456（3 桁。行3 と同じく基準より少ない）で所属部門は正しい RE
+        //      ＝桁数の注意が実際に付くはずの陽性対照
+        $preview = $this->preview("10001,甲,,RE\n123,乙,,ZZ\n456,丙 三郎,,RE\n")->assertOk();
 
-        $this->assertSame(1, $preview->viewData('validCount'));
+        $this->assertSame(2, $preview->viewData('validCount'));
         $this->assertCount(1, $preview->viewData('rowErrors'), 'エラー行が想定と異なる');
         $this->assertSame(3, $preview->viewData('rowErrors')[0]['row']);
+
+        // 完全一致（contains ではない）で見ているので、行4の注意が抜けている・
+        // 行3に注意が紛れ込んでいる、のどちらも検出できる
         $this->assertSame(
-            [],
-            $preview->viewData('warnings'),
-            'エラーになる行に桁数の注意が積まれている（本来は取り込むと決めた行にしか注意を積まない）'
+            [4],
+            array_column($preview->viewData('warnings'), 'row'),
+            '桁数の注意が想定の行に付いていない（エラー行に付く／正当な行に付かない、のどちらも異常）'
         );
 
         $html = $preview->getContent();
         $this->assertStringContainsString('エラー 行3: 登録されていない部門です: ZZ', $html);
+
+        // 陽性対照: この文言の形が実際に描画されることを、「行3には出ていない」と
+        // 主張する直前に確かめる（上記の「全文一致の needle の弱点」への対策）
+        $this->assertStringContainsString(
+            '⚠ 行4: 社員番号 456 は、ほかの行より桁が少ないです。Excel で先頭の 0 が落ちていませんか',
+            $html,
+            '陽性対照が失敗している（この文言の形はそもそも描画されていない）'
+        );
         $this->assertStringNotContainsString(
             '⚠ 行3: 社員番号 123 は、ほかの行より桁が少ないです。Excel で先頭の 0 が落ちていませんか',
             $html,
