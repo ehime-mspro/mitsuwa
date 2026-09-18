@@ -14,6 +14,7 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Route as RoutingRoute;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
+use Tests\Concerns\BuildsRouteUrls;
 use Tests\TestCase;
 
 /**
@@ -64,6 +65,7 @@ use Tests\TestCase;
 class ApprovalAdminGateTest extends TestCase
 {
     use RefreshDatabase;
+    use BuildsRouteUrls;
 
     /**
      * `approvals.admin.` 以外で `approvals.` を名乗ってよいルート（名前 => 理由）。
@@ -87,18 +89,6 @@ class ApprovalAdminGateTest extends TestCase
     private function httpMethodOf(RoutingRoute $route): string
     {
         return collect($route->methods())->reject(fn ($m) => $m === 'HEAD')->first();
-    }
-
-    /** `where` の条件は今のところ無いので `{name}` / `{name?}` を渡された値へそのまま置き換える */
-    private function urlFor(RoutingRoute $route, array $values): string
-    {
-        $uri = $route->uri();
-
-        foreach ($route->parameterNames() as $name) {
-            $uri = str_replace(['{' . $name . '}', '{' . $name . '?}'], (string) $values[$name], $uri);
-        }
-
-        return '/' . ltrim($uri, '/');
     }
 
     public function test_every_approvals_route_is_classified(): void
@@ -304,7 +294,7 @@ class ApprovalAdminGateTest extends TestCase
                 : ['実在する ID' => $existingValues, '実在しない ID' => array_fill_keys($parameterNames, '999999')];
 
             foreach ($variants as $variantLabel => $paramValues) {
-                $url = $this->urlFor($route, $paramValues);
+                $url = $this->urlForRoute($route, fn (string $name): string => $paramValues[$name]);
 
                 // 組み立てた URL がこのルート自身に当たることを確かめる（Bug #45 の型）
                 if (! $route->matches(Request::create($url, $method), includingMethod: false)) {

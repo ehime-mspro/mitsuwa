@@ -10,6 +10,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route as RoutingRoute;
 use Illuminate\Support\Facades\Route;
+use Tests\Concerns\BuildsRouteUrls;
 use Tests\TestCase;
 
 /**
@@ -24,6 +25,7 @@ use Tests\TestCase;
 class ApprovalOnlyLockoutTest extends TestCase
 {
     use RefreshDatabase;
+    use BuildsRouteUrls;
 
     /** 門番を通す（決裁の画面・パスワード変更・ログアウト） */
     private const ALLOWED_NAMES = ['password.change', 'password.update', 'logout'];
@@ -56,17 +58,6 @@ class ApprovalOnlyLockoutTest extends TestCase
 
         // 存在しない ID。ルートモデル結合より前で止まっていれば 404 にならない
         return '999999';
-    }
-
-    private function urlFor(RoutingRoute $route): string
-    {
-        $uri = $route->uri();
-
-        foreach ($route->parameterNames() as $name) {
-            $uri = str_replace(['{' . $name . '}', '{' . $name . '?}'], $this->parameterValue($route, $name), $uri);
-        }
-
-        return '/' . ltrim($uri, '/');
     }
 
     public function test_every_route_is_classified_and_blocked(): void
@@ -104,7 +95,7 @@ class ApprovalOnlyLockoutTest extends TestCase
 
             // ④ それ以外 — 実際に要求して止まることを見る
             $checked++;
-            $url = $this->urlFor($route);
+            $url = $this->urlForRoute($route, fn (string $name): string => $this->parameterValue($route, $name));
 
             // ⚠ 組み立てた URL が**そのルート自身**に当たることを確かめる。`where` の条件を
             //   満たさない値を入れると、ルーターが別のルートへ落ちるか 404 になり、
