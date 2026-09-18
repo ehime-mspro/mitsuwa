@@ -169,4 +169,61 @@ class InactiveUserLockoutTest extends TestCase
         $this->get('/tenant/properties/999999')->assertRedirect(route('login'));
         $this->assertGuest();
     }
+
+    /**
+     * 無効化のその場でセッションを作り直し、CSRF トークンも作り直す。
+     *
+     * ⚠ M08c が塞ぐ穴 — `EnsureUserIsActive::handle()` の
+     *   `if ($request->hasSession()) { $request->session()->invalidate(); $request->session()->regenerateToken(); }`
+     *   を消し `Auth::logout()` だけ残しても、このファイルの既存テストは全部緑のまま通る。
+     *   既存テストが確認しているのは「次の画面でログアウトする（ゲストになる）」ことだけで、
+     *   `Auth::logout()` はガードの `login_web_…` キーしか消さないため、**セッションに残っている
+     *   ほかのデータ（本人が入力しかけていたもの）や CSRF トークン**が生き残っていないかは
+     *   どのテストも見ていなかった。
+     *
+     * ⚠ **検証の組み立て（実測で確かめた挙動）**: このプロジェクトのテストは
+     *   `SESSION_DRIVER=array`（`phpunit.xml`）で、`$this->app['session']` は
+     *   `StartSession` ミドルウェアが使うのと**同じ `SessionManager` が返す同じ Store**
+     *   （`Manager::driver()` が最初の 1 回だけ生成してキャッシュする）。ただし `StartSession`
+     *   は毎リクエスト `setId($request->cookies->get(...))` を呼ぶため、**クッキーを明示的に
+     *   持ち回らない限り毎回新しい ID が生成され**、invalidate() の有無にかかわらず ID が
+     *   変わって見えてしまう（それでは検出力が無い）。そこで 1 回目のリクエストで実際に
+     *   発行されたセッションクッキーの値を `getCookie()` で取り出し、2 回目のリクエストへ
+     *   `withCookie()` で明示的に渡した。これで「invalidate() が呼ばれなければ、渡した ID が
+     *   そのまま使われ続ける」という対照が成立し、ID の変化が invalidate() の有無を正しく
+     *   反映するようになる。実測（本テストの実行）で、正しい実装では ID・トークンが変わり、
+     *   セッションの印（`probe`）が消えることを確認済み——`invalidate()`＝`flush()`（属性を
+     *   空にする）+ `migrate(true)`（新しい ID を生成し旧 ID を破棄）、`regenerateToken()` が
+     *   新しい `_token` を書くため。**上のブロックを削る変異では、この 3 つがいずれも
+     *   変化しない**（`setId()` は渡した有効な ID をそのまま受け入れ、`Auth::logout()` は
+     *   `probe` にも `_token` にも触れないため）。
+     */
+    public function test_disabling_mid_session_invalidates_the_session_and_rotates_the_csrf_token(): void
+    {
+        $user = $this->activeUser();
+
+        // 1 回目: 有効なうちにログインし、セッションに印を残す。ここで発行された
+        // セッションクッキーの値を、2 回目のリクエストへそのまま持ち回る
+        $first = $this->actingAs($user)
+            ->withSession(['probe' => 'still-here'])
+            ->get('/dashboard/tenant')
+            ->assertOk();
+
+        $cookieName = config('session.cookie');
+        $sessionIdBefore = $first->getCookie($cookieName)->getValue();
+        $tokenBefore = $this->app['session']->token();
+        $this->assertSame('still-here', $this->app['session']->get('probe'), '前提: 印がセッションに残っていない');
+
+        $user->forceFill(['status' => UserStatus::Inactive->value])->save();
+
+        // 2 回目: 1 回目と同じセッションクッキーを明示的に持ち回る。invalidate() が
+        // 呼ばれなければ、この ID がそのまま使われ続けるはず
+        $this->withCookie($cookieName, $sessionIdBefore)
+            ->get('/dashboard/tenant')
+            ->assertRedirect(route('login'));
+
+        $this->assertNull($this->app['session']->get('probe'), '無効化後もセッションの印が残っている（invalidate() が呼ばれていない）');
+        $this->assertNotSame($sessionIdBefore, $this->app['session']->getId(), 'セッション ID が作り直されていない（invalidate() が呼ばれていない）');
+        $this->assertNotSame($tokenBefore, $this->app['session']->token(), 'CSRF トークンが作り直されていない（regenerateToken() が呼ばれていない）');
+    }
 }

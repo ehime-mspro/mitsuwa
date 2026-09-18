@@ -633,6 +633,16 @@ class ApprovalUserImportTest extends TestCase
         $this->assertStringContainsString('>1 人分</span>', $html, '案内の人数が新規の人数（1 人）と合っていない');
     }
 
+    /**
+     * ⚠ M41 が塞ぐ穴（その1） — `execute()` の
+     *   `if ($analysis['rowErrors'] !== []) { return ...->with('error', '取り込めない行が…'); }`
+     *   を消しても、この行 1 本だけの改ざんでは `rowErrors` が 1 件・`rows`（＝取り込む行）が
+     *   0 件になるため、直後の「到達しないはずの」歯止め
+     *   `if ($analysis['validCount'] === 0) { return ...->with('error', '取り込む行がありません。'); }`
+     *   が代わりに発火し、**別の文言で**同じ「`error` セッションへリダイレクト」が返る。
+     *   旧テストは `assertSessionHas('error')`（値を見ない）だけだったので、文言が入れ替わっても
+     *   検出できなかった。ここで**正確な文言**を固定し、この置き換わりを検出できるようにする。
+     */
     public function test_the_server_revalidates_on_confirm(): void
     {
         $preview = $this->preview("A0001,甲 一郎,,RE\n")->assertOk();
@@ -644,9 +654,41 @@ class ApprovalUserImportTest extends TestCase
 
         $this->actingAs($this->admin())->post($form['action'], $tampered)
             ->assertRedirect(route('approvals.admin.users.import'))
-            ->assertSessionHas('error');
+            ->assertSessionHas('error', '取り込めない行があります。もう一度アップロードして内容を確認してください。');
 
         $this->assertSame(0, User::where('employee_number', 'A0001')->count());
+    }
+
+    /**
+     * ⚠ M41 が塞ぐ穴（その2、本体） — 上のテストは改ざん後の CSV が**1 行だけ**で、
+     *   その 1 行がエラーになるため `validCount` が 0 になり、「到達しないはずの」歯止め
+     *   （`validCount === 0`）が代わりに発火してしまい、`rowErrors` を見る本来の歯止めを
+     *   1 本消しても検出できなかった（上のテストで文言を固定してもまだ埋まらない穴）。
+     *   ここでは改ざん後の CSV に**正当な行 1 つ（A0001）と不正な行 1 つ（A0002）**を混ぜる。
+     *   これで `rowErrors !== []`（A0002 がエラー） かつ `validCount === 1`（A0001 は正当）
+     *   になり、`rowErrors` を見る歯止めが削られると
+     *   ①「到達しないはずの」歯止めも発火しない（validCount が 0 でないため）
+     *   ② `OneTimeAction::claimFrom()` を素通りしてトランザクションへ進み、
+     *     A0001 が**黙って登録され**、A0002 だけが（$analysis['rows'] に入っていないので）
+     *     無言で捨てられる。つまり歯止めが削られると「一部だけ取り込まれて成功扱いになる」。
+     */
+    public function test_the_server_refuses_a_mixed_file_and_imports_neither_row(): void
+    {
+        $preview = $this->preview("A0001,甲 一郎,,RE\n")->assertOk();
+        $form    = $this->parseForm($preview->getContent(), 'action="' . route('approvals.admin.users.import.execute') . '"');
+
+        // hidden を、正当な行（A0001）と不正な行（A0002。許可していないドメイン）が
+        // 混在する CSV に差し替える
+        $tampered = $form['fields'];
+        $tampered['csv_data'] = base64_encode(self::HEADER . "A0001,甲 一郎,,RE\nA0002,乙 二郎,evil@gmail.com,RE\n");
+
+        $this->actingAs($this->admin())->post($form['action'], $tampered)
+            ->assertRedirect(route('approvals.admin.users.import'))
+            ->assertSessionHas('error', '取り込めない行があります。もう一度アップロードして内容を確認してください。');
+
+        // 正当な行（A0001）も、不正な行（A0002）も、どちらも取り込まれていない
+        $this->assertSame(0, User::where('employee_number', 'A0001')->count(), '正当な行が黙って取り込まれている');
+        $this->assertSame(0, User::where('employee_number', 'A0002')->count());
     }
 
     public function test_the_same_token_cannot_confirm_twice(): void
@@ -722,5 +764,49 @@ class ApprovalUserImportTest extends TestCase
         $this->assertSame([], $preview->viewData('rowErrors'));
         $this->assertStringContainsString('ほかの行より桁が少ないです', $preview->getContent());
         $this->assertStringContainsString('先頭の 0 が落ちていませんか', $preview->getContent());
+    }
+
+    /**
+     * 桁数の注意は、エラーになる行では出さない。
+     *
+     * ⚠ M46 が塞ぐ穴 — `analyze()` のコメント「ここから先は取り込むと決めた行。注意はこの
+     *   位置でだけ積む」のとおり、桁数の注意（$warnings[] への push）は全エラー判定を
+     *   通り抜けた `else` 節（＝既存利用者に当たらない新規行）の中でだけ評価される。
+     *   この push をループの先頭（全エラー判定より前）へ移す変異を当てると、エラーになる行
+     *   でも桁数の条件（この社員番号が、ファイル内の最大桁数より少ない）を満たせば
+     *   `$warnings` に積まれてから `$rowErrors` にも積まれる——つまり同じ行が両方の入れ物に
+     *   入る。既存のテストは「エラーになる行」と「桁数の注意の対象になりうる行」が
+     *   同時に成立するデータを 1 つも持っていなかったため、この変異はどのテストにも
+     *   引っかからず全緑で通る。
+     * ⚠ 役割（`viewData`）と表示を別々に見る（Bug #54 ④）。表示は部分一致
+     *   （`assertStringContainsString('桁が少ない', ...)`）ではなく、エラー行・注意行それぞれの
+     *   `_import_preview.blade.php` の描画そのもの（`エラー 行N: …` / `⚠ 行N: …`）で見る。
+     *   部分一致だと、注意文の一部（「桁が少ない」等）がどこかに残っただけで
+     *   assertStringNotContainsString が誤って赤くなったり、逆に別の行の注意と混同して
+     *   見逃したりする（Bug #43 の型）。
+     */
+    public function test_the_digit_width_warning_does_not_fire_for_an_error_row(): void
+    {
+        // 行2: 社員番号 10001（5 桁）で桁数の基準（ファイル内の最大幅）を作る正当な行
+        // 行3: 社員番号 123（3 桁。基準より少ない＝桁数の注意の対象になりうる）だが
+        //      所属部門が未登録（ZZ）のため必ずエラーになる行
+        $preview = $this->preview("10001,甲,,RE\n123,乙,,ZZ\n")->assertOk();
+
+        $this->assertSame(1, $preview->viewData('validCount'));
+        $this->assertCount(1, $preview->viewData('rowErrors'), 'エラー行が想定と異なる');
+        $this->assertSame(3, $preview->viewData('rowErrors')[0]['row']);
+        $this->assertSame(
+            [],
+            $preview->viewData('warnings'),
+            'エラーになる行に桁数の注意が積まれている（本来は取り込むと決めた行にしか注意を積まない）'
+        );
+
+        $html = $preview->getContent();
+        $this->assertStringContainsString('エラー 行3: 登録されていない部門です: ZZ', $html);
+        $this->assertStringNotContainsString(
+            '⚠ 行3: 社員番号 123 は、ほかの行より桁が少ないです。Excel で先頭の 0 が落ちていませんか',
+            $html,
+            'エラー行にまで桁数の注意が表示されている'
+        );
     }
 }
