@@ -1588,6 +1588,42 @@ git checkout 13.x && git merge --ff-only schedule-board-gantt
 - ⚠ **実ブラウザでの目視は未了**（下記）。とくに**決裁のドロワーの×は今回足した唯一の見た目の変更**なので、
   375px で押せること・オーバーレイのタップでも閉じることを必ず見る
 
+### 後続（`approval-followups`。`approval-phase1` から分岐・2026-09-18）
+
+コード品質レビューで**範囲外として切り出した 2 件**。⚠ **どちらも `13.x` 単独では実装できない**
+（`homeRouteName()` も門番も `LayoutSidebarDrawerTest` も段階1 で入るもの）ので、
+`approval-phase1` の上に積んで**その後ろにマージする**。
+
+| # | 内容 |
+|---|---|
+| 1 | **パンくずの「ホーム」を利用者ごとの行き先にする**（`layouts/app.blade.php`）。`route('dashboard')` 固定だったので、決裁のみ利用者が押すと門番に跳ね返され**行き先は正しいのに「決裁以外の画面は使えません。」が毎回出て**いた（決裁 4 画面すべて）。`/dashboard` 自身が `User::homeRouteName()` へ転送するだけなので**基幹を使う人の行き先は不変**（転送が 1 回減るだけ）。⚠ 門番の `ALLOWED_NAMES` を広げる案は採らない |
+| 2 | **サイドバーの死にファイル 3 本を削除**（`sidebar_{buyer,contract,housing}_snippet.blade.php`）。中身は Blade ではなく過去のセッションが人間向けに残した作業手順で、どこからも `@include` されていなかった。`resources/views/` なので `deploy.sh` が本番へ配り、Tailwind の走査対象にも入っていた |
+
+- 着手前の実測: **パンくずの `/dashboard` を見ている既存テストは 0 件**、`app.blade.php` の
+  `route('dashboard')` は**ちょうど 1 箇所**
+- 削除の前後で `vite build` した CSS は**ハッシュまで同一**（`app-wzJ6Tjji.css` / 51,168 bytes）
+  ＝ スニペットが持っていた Tailwind クラスはすべて実サイドバーでも使われていた
+- 全テスト **2061 tests / 13572 assertions green** ／ コンパイル済みビュー **274 本**を `php -l` → INVALID 0 件
+- **変異 5 通りすべて RED**（検出 5 / 未検出 0。落ちたテストの集合と理由の文言まで照合）:
+
+| # | 変異 | 落ちたテストと理由 |
+|---|---|---|
+| F01 | パンくずを `route('dashboard')` に戻す（元の不具合）| **4 本**。`..._goes_to_the_approval_home`（`approvals.home を指していない`）／ `test_following_the_rendered_link_does_not_warn`（`Expected [200] but received 302.` ＝ **門番に跳ね返されている**）／ 経営層・それ以外の 2 本も行き先違いで落ちる |
+| F02 | パンくずを `route('dashboard.tenant')` 固定に | **3 本**（決裁のみ利用者 2 本 ＋ 経営層）|
+| F03 | 新しい `sidebar_dummy.blade.php` を置く | `test_every_sidebar_partial_is_classified`（`…が分類されていない`）＝ **無検査の partial が増えない** |
+| F04 | `NOT_A_SIDEBAR` に実在しない名前を足す | 同上（`分類に書いた … が実在しない`）＝ 逆向きも効く |
+| F05 | `NOT_A_SIDEBAR` に**本物のサイドバー**を逃がす | **2 本**（`両方のリストに入っている` ＋ `app.blade.php が … を読み込んでいる`）＝ **分類が逃げ道になっていない** |
+
+⚠ **書いた直後の見直しで 1 本直した** — リンクを辿るはずのテストが `approvals.home` を**手で叩いて**
+おり、画面のリンクが壊れても緑のままだった（Bug #47）。**描画された href を取り出してそのまま GET する**
+往復に直した（`aa5783cc`）。F01 の `302` はその往復が拾っている。
+
+⚠ **本番側に残る死にファイル 3 本は rsync では消えない**（`deploy.sh` は `public/build/` 以外に
+`--delete` を付けない）。本番の掃除が要るかは利用者に確認する。
+
+⚠ **実ブラウザでの目視は未了**（決裁のパンくずを実際に押して警告が出ないこと ／
+基幹の画面のパンくずが従来どおり動くこと）。Task 16 でまとめて行う。
+
 ### ⚠ 本番反映の手順（未実施。設計書 §7）
 
 **DB が先・`deploy.sh` が後。** 新しい列をログインが読むので、コードを先に送るとログインが 500 になる。

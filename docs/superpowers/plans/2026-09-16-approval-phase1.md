@@ -9210,3 +9210,5 @@ DAD・ZEAL・周辺ビル調査・工程表も無い長年の stale で、この
   `$currentSection` の死に変数・`test_the_header_shows_the_role_label` がヘッダーに限定していない）
   ⚠ **①②は `13.x` 単独では実装できない**（`homeRouteName()` も門番も段階1 で入るもの ／
   `LayoutSidebarDrawerTest` も段階1 のもの）。`approval-phase1` の上に積むこと
+  → **①②は 2026-09-18 に `approval-followups`（`approval-phase1` から分岐）で対応済み。**
+  記録は `docs/BACKLOG.md` の「決裁申請 段階1 の後続」。③④は未着手
