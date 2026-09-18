@@ -97,8 +97,11 @@ class ApprovalUserImportTest extends TestCase
      *
      * ⚠ **`approvals.admin.*` 全ルートの門番は `ApprovalAdminGateTest` が見る**（2026-09-18〜。
      *   全ルート × 権限の無い 6 人 × ID の有無）。このテストはそれとは役割が違い、
-     *   「取込のルートがちょうど 4 本であること」自体を守る（1 本増減する変異を検出するのは
-     *   `assertCount(4, ...)` を持つこのテストだけ）。
+     *   「取込のルートがちょうど 4 本であること」自体を守る。⚠ **増えたこと**（5 本目が紛れ込む
+     *   変異）**を検出するのはこのテストだけ**（`assertCount(4, ...)` が働く）。減ったこと
+     *   （4 本のどれかが消える変異）は `ApprovalAdminGateTest` の下限のアサートでも、
+     *   このファイル自身に散らばる残り 17 箇所の `route('approvals.admin.users.import…')`
+     *   呼び出し（ルートが無ければ即座に例外）でも拾える。
      */
     public function test_every_import_route_is_behind_the_approval_admin_gate(): void
     {

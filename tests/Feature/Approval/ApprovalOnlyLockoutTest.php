@@ -95,7 +95,7 @@ class ApprovalOnlyLockoutTest extends TestCase
 
             // ④ それ以外 — 実際に要求して止まることを見る
             $checked++;
-            $url = $this->urlForRoute($route, fn (string $name): string => $this->parameterValue($route, $name));
+            $url = $this->urlForRoute($route, fn (string $param): string => $this->parameterValue($route, $param));
 
             // ⚠ 組み立てた URL が**そのルート自身**に当たることを確かめる。`where` の条件を
             //   満たさない値を入れると、ルーターが別のルートへ落ちるか 404 になり、

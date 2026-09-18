@@ -63,9 +63,11 @@ use Tests\TestCase;
  *   「`EnsureApprovalAdmin` が居るか・`SubstituteBindings` より前か」を**HTTP を出さずに**
  *   確かめる。だが (a) は配線（どのミドルウェアが・どの順で立つか）しか見ないので、
  *   `isApprovalAdmin()` の判定ロジックそのもの（社長も通してしまうような取り違え）は見えない。
- *   (b) はその判定ロジックまで実際に叩いて確かめるが、(b) だけだと優先順の登録を消しても
- *   「たまたま別の理由で 403 になって緑」になりうる（`ApprovalOnlyLockoutTest.php` の
- *   「門番の位置」テストと同じ構図）。**どちらか片方では足りない。**
+ *   (b) はその判定ロジックまで実際に叩いて確かめる。**どちらか片方では足りない**理由は 3 つ ——
+ *   ① (b) は実在しない ID の変種（404）で優先順の崩れを暴くが、**パラメータの無いルートには
+ *   その変種が存在しない**ので、そういうルートの配線を見られるのは (a) だけ ② (a) は崩れを
+ *   1 ルート 1 行で報告するが、(b) はルート × 変種 × 6 人の掛け算で報告が積み上がる ③ (a) は
+ *   HTTP を**1 本も出さずに**確かめられる。
  */
 class ApprovalAdminGateTest extends TestCase
 {
@@ -96,9 +98,12 @@ class ApprovalAdminGateTest extends TestCase
 
     public function test_every_approvals_route_is_classified(): void
     {
-        // 優先順のリストを同期させる（HTTP kernel が解決されて初めて appendToPriorityList
-        // の内容が効く。`ApprovalOnlyLockoutTest::test_the_gates_run_before_route_model_binding`
-        // と同じ理由。この 1 行が無いと gatherRouteMiddleware() の並びが必ず崩れて見える）
+        // 優先順のリストだけでなく alias・グループの解決表も、HTTP kernel が解決されて
+        // 初めて appendToPriorityList や alias 登録の内容が効く（`Router.php` は既定でどちらも
+        // 空。`ApprovalOnlyLockoutTest::test_the_gates_run_before_route_model_binding` と同じ理由）。
+        // この 1 行が無いと `approval.admin` という alias 自体が解決されず、
+        // gatherRouteMiddleware() の結果に `EnsureApprovalAdmin::class` が現れなくなる ＝
+        // 18 ルート全部で「門番が居ない」と誤って報告される（優先順が崩れて見えるのではない）。
         $this->app->make(\Illuminate\Contracts\Http\Kernel::class);
 
         $found         = 0;
@@ -197,11 +202,13 @@ class ApprovalAdminGateTest extends TestCase
      * 実在する会社・部門・メールドメインを 1 回だけ作る。
      *
      * ⚠ **部門に所属者を付けない。** 付けると `OrganizationController::destroyDepartment()`
-     *   自身の「所属者がいれば削除できない」というガードが先に立ち、門番の判定を `$next()`
-     *   の後ろへ動かす変異（クライアントには 403 のまま返るが、コントローラの副作用は
-     *   既に実行済み）があっても部門はどちらの理由でも消えず、DB の行数比較
-     *   （`test_every_admin_route_refuses_outsiders_without_revealing_ids` 末尾）が
-     *   その変異を検出できなくなる（Bug #48 と同じ「安全網が主機構の変異を隠す」型）。
+     *   自身の「所属者がいれば削除できない」というガードが先に立ち、**部門の削除経路では**
+     *   門番の判定を `$next()` の後ろへ動かす変異（クライアントには 403 のまま返るが、
+     *   コントローラの副作用は既に実行済み）を検出できなくなる。⚠ ただし検出が丸ごと消える
+     *   わけではない —— メールドメインの削除にはこの種のガードが無いので、DB の行数比較
+     *   （`test_every_admin_route_refuses_outsiders_without_revealing_ids` 末尾）は依然として
+     *   そちら経由で同じ変異を検出する（**網が部門とドメインの 2 本から 1 本に細るだけ**。
+     *   Bug #48 と同じ「安全網が主機構の変異の一部を隠す」型）。
      *
      * @return array{0: ApprovalCompany, 1: ApprovalDepartment, 2: ApprovalMailDomain}
      */
@@ -222,13 +229,14 @@ class ApprovalAdminGateTest extends TestCase
      *
      * ⚠ 理由は「本人だから通る」ではない —— `Approval\UserController::assertManageable()` が
      *   `toggleStatus` / `reissue` で「基幹を使う人」「決裁の権限を持つ人」を独自に 403 で
-     *   断る（D8・D16）。相手がそちらに当たると、`approval.admin` の門番を丸ごと外しても
-     *   assertManageable() の 403 に紛れて「守られている」ように見え、門番自身の欠落を
-     *   検出できなくなる（Bug #48 と同じ「安全網が検出力を奪う」型。実測で確認 ——
-     *   決裁の管理者が決裁のみ・無権限の相手に `toggleStatus` すると成功（302）、基幹を使う
-     *   相手だと assertManageable() の 403（文言が門番と違う）になった）。この人を実在する ID
-     *   に使うことで、既存 ID の要求が「門番」由来の 403 になることを
-     *   `assertRefusedByGate()`（下記）で例外の文言まで見て保証する。
+     *   断る（D8・D16）。この相手を選ぶのは、**門番が消えたときの壊れ方を紛れの無い形にする**
+     *   ため —— 相手が基幹を使う人・決裁の権限を持つ人だと、門番を丸ごと外しても
+     *   assertManageable() の別の 403 に化けるだけで、`gateRefusalProblem()`（下記。例外の
+     *   文言まで見る）は依然としてそれを捉えるが、**成功（302 等）という最もはっきりした
+     *   壊れ方より遠回りな検出**になる（実測で確認 —— 決裁の管理者が決裁のみ・無権限の相手に
+     *   `toggleStatus` すると成功（302）、基幹を使う相手だと assertManageable() の 403
+     *   （文言が門番と違う）になった）。この人を実在する ID に使うことで、門番が消えたときに
+     *   要求がまっすぐ通り抜けることを保証する。
      */
     private function makeManageableUser(): User
     {
@@ -237,7 +245,7 @@ class ApprovalAdminGateTest extends TestCase
         $this->assertTrue($user->isApprovalOnly(), '実在する ID に使う相手が決裁のみ利用者になっていない');
         $this->assertFalse(
             $user->hasApprovalPrivileges(),
-            '実在する ID に使う相手が決裁の権限を持っている（assertManageable() の 403 と門番の 403 が区別できなくなる）'
+            '実在する ID に使う相手が決裁の権限を持っている（門番が消えたときの壊れ方が assertManageable() の 403 に紛れ、成功で気づけなくなる）'
         );
 
         return $user;
@@ -248,11 +256,13 @@ class ApprovalAdminGateTest extends TestCase
      *
      * ⚠ **理由は「true だと転送されて 403 を測れなくなるから」ではない。** `ForcePasswordChange`
      *   （`password.change`）は優先順のリストに載っていない。`EnsureApprovalAdmin` が
-     *   `SubstituteBindings` より前で実行されるのは、① `appendToPriorityList` で
-     *   `SubstituteBindings` より前に置かれているため、② 優先順に無いミドルウェアは
-     *   `SortedMiddleware` が相対順を変えないため、宣言順で `SubstituteBindings`（web
-     *   グループ既定）が `password.change`（`routes/web.php` の個別グループ。`routes/approval.php`
-     *   はその中で読まれる）より先に積まれているため。実測（このテスト作成時）:
+     *   `ForcePasswordChange` より前で実行されるのは、① `EnsureApprovalAdmin` が
+     *   `appendToPriorityList` で `SubstituteBindings` より前に置かれているため、② 優先順に
+     *   無いミドルウェアは `SortedMiddleware` が相対順を変えないため、宣言順で
+     *   `SubstituteBindings`（web グループ既定）が `password.change`（`routes/web.php` の
+     *   個別グループ。`routes/approval.php` はその中で読まれる）より先に積まれ、①②を繋げると
+     *   `EnsureApprovalAdmin` < `SubstituteBindings` < `password.change` になるため。
+     *   実測（このテスト作成時）:
      *   `approvals.admin.*` は `must_change_password` の値に関わらず 403 のまま
      *   （factory はこの属性を明示しない限り in-memory では null になり、`fresh()` した
      *   モデルで初めて真偽値が確定する。ここでは全員に明示的に false を渡す）。false にするのは、
@@ -302,6 +312,14 @@ class ApprovalAdminGateTest extends TestCase
         $this->assertFalse($president->isApprovalAdmin(), 'fixture: 社長が決裁の管理者になっている');
         $outsiders['社長（管理者でない）'] = $president;
 
+        // 走査が空振りして緑になる事故を防ぐ（ロール数 + 全件閲覧者 + 社長 = 6 人）。
+        // ルート側の件数が増減する変異とは独立に、この 6 人のうち 1 人でも欠けたら気づける。
+        $this->assertCount(
+            count(UserRole::cases()) + 2,
+            $outsiders,
+            '権限の無い人が 6 人（ロール数 + 全件閲覧者 + 社長）に足りない'
+        );
+
         return $outsiders;
     }
 
@@ -343,8 +361,11 @@ class ApprovalAdminGateTest extends TestCase
     }
 
     /**
-     * 403 が「この門番」由来であることを見る。`assertManageable()`（`Approval\UserController`）
-     * も別の理由で 403 を返すため、状態コードだけでは区別できない。
+     * 403 が「この門番」由来でなければ、その問題を文言で返す（問題が無ければ null。
+     * `matchedRouteProblem()` / `gateWiringProblems()` と同じ命名規約 —— "assert" を名乗らないのは、
+     * この関数自身は何も assert せず、呼び出し側が返り値を見て初めて assert するため）。
+     * `assertManageable()`（`Approval\UserController`）も別の理由で 403 を返すため、
+     * 状態コードだけでは区別できない。
      *
      * `TestResponse::__get()` が未知のプロパティを `baseResponse` へ委譲し、
      * `Illuminate\Foundation\Exceptions\Handler::render()` が `$response->withException($e)` で
@@ -352,7 +373,7 @@ class ApprovalAdminGateTest extends TestCase
      * 門番の 403 は `$response->exception->getMessage() === EnsureApprovalAdmin::MESSAGE`、
      * assertManageable() の 403 は別の文言になった）。
      */
-    private function assertRefusedByGate(TestResponse $response, string $context): ?string
+    private function gateRefusalProblem(TestResponse $response, string $context): ?string
     {
         $status = $response->getStatusCode();
 
@@ -417,13 +438,13 @@ class ApprovalAdminGateTest extends TestCase
                 foreach ($outsiders as $outsiderLabel => $outsider) {
                     $requests++;
 
-                    // セッションが前の相手のログイン状態を持ち越さないようにする（下記 outsiders() の
-                    // docblock と対。全員 factory の同じハッシュ済みパスワードを共有しているので
-                    // 今は無くても通るが、それに依存しない）
+                    // セッションが前の相手のログイン状態を持ち越さないようにする（全員 factory の
+                    // 同じハッシュ済みパスワードを共有しているので今は無くても通るが、それに
+                    // 依存しない）
                     $this->flushSession();
 
                     $response = $this->actingAs($outsider)->call($method, $url);
-                    $problem  = $this->assertRefusedByGate($response, "{$label} ({$outsiderLabel})");
+                    $problem  = $this->gateRefusalProblem($response, "{$label} ({$outsiderLabel})");
 
                     if ($problem !== null) {
                         $problems[] = $problem;
@@ -480,8 +501,15 @@ class ApprovalAdminGateTest extends TestCase
         $this->assertGreaterThanOrEqual(156, $requestsMade, '要求した件数が想定より少ない（走査が空振りしている）');
 
         // ⚠ これが唯一、門番の判定を $next() の後ろへ動かす変異（クライアントには 403 の
-        //   まま返るが、コントローラの副作用は既に実行済み）を検出できる（会社・部門・
-        //   ドメインが実際に消え、利用者が実際に更新される）。この歯止めが働くのは
+        //   まま返るが、コントローラの副作用は既に実行済み）を検出できる。⚠ ただし検出できる
+        //   範囲はこれだけ ——「部門とメールドメインが実際に消え、approval_setting_logs に
+        //   行が増える」。**会社は消えない** —— ルート走査の順で `companies.destroy` が
+        //   `departments.destroy` より先に叩かれ、その時点ではまだ部門が残っているため
+        //   `OrganizationController` 自身の「部門があれば削除できない」ガードに阻まれる。
+        //   **利用者も更新されない** —— この 6 人への要求は本物の送信内容やワンタイムの
+        //   案内用トークンを持たないので、`users.*` の各アクションはバリデーションか
+        //   使い捨てトークンの検査のどちらかで止まる（`tableCounts()` は行数しか見ないので、
+        //   仮に更新が起きても元々検出できない）。この歯止めが働くのは
         //   `makeOrganizationFixtures()` が部門に所属者を付けていないから（同メソッドの docblock）。
         $this->assertSame($before, $this->tableCounts(), '権限の無い要求で DB の行数が変化した');
     }
