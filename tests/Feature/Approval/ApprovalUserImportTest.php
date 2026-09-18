@@ -643,7 +643,7 @@ class ApprovalUserImportTest extends TestCase
      *   旧テストは `assertSessionHas('error')`（値を見ない）だけだったので、文言が入れ替わっても
      *   検出できなかった。ここで**正確な文言**を固定し、この置き換わりを検出できるようにする。
      * ⚠ **ただしこの検出は文言の違いに頼っている** —— 2 つの歯止めの文言をたまたま同じにする
-     *   ような編集が入れば、M41 自体は直っていないのにこのテストは緑に戻ってしまう。文言に
+     *   ような編集が入れば、歯止めが消えたままなのにこのテストは緑に戻ってしまう。文言に
      *   依存しない検出は下の `test_the_server_refuses_a_mixed_file_and_imports_neither_row` が担う。
      */
     public function test_the_server_revalidates_on_confirm(): void
@@ -668,16 +668,16 @@ class ApprovalUserImportTest extends TestCase
      *   上のテスト（改ざん後の CSV が 1 行だけ）は、文言を厳密化した今は M41 を検出できている。
      *   ただしそれは「歯止めが無いと `validCount === 0` の別の歯止めが代わりに発火し、
      *   **文言が変わる**」という間接的な効果に頼った検出でしかない。もし将来 2 つの歯止めの
-     *   文言をそろえる編集が入れば、M41 自体は直っていないのに上のテストは緑に戻ってしまう。
+     *   文言をそろえる編集が入れば、歯止めが消えたままなのに上のテストは緑に戻ってしまう。
      *
      *   このテストは文言に頼らず、**実際の実害**（rowErrors の歯止めが無いと正当な行が黙って
      *   登録される）を DB で確かめる。改ざん後の CSV に正当な行 1 つ（A0001）と不正な行 1 つ
      *   （A0002。許可していないドメイン）を混ぜると、`rowErrors !== []`（A0002 がエラー）かつ
      *   `validCount === 1`（A0001 は正当）になるため、`validCount === 0` の歯止めは
-     *   （2 つの文言をどうそろえても）発火しない。この状態で `rowErrors` を見る歯止めを消すと
-     *   ① 検査が最後まで通り `OneTimeAction::claimFrom()` を素通りしてトランザクションへ進み、
-     *     A0001 が**黙って登録され**、A0002 だけが（`$analysis['rows']` に入っていないので）
-     *     無言で捨てられる。つまり歯止めが削られると「一部だけ取り込まれて成功扱いになる」。
+     *   （2 つの文言をどうそろえても）発火しない。この状態で `rowErrors` を見る歯止めを消すと、
+     *   検査が最後まで通り `OneTimeAction::claimFrom()` を素通りしてトランザクションへ進み、
+     *   A0001 が**黙って登録され**、A0002 だけが（`$analysis['rows']` に入っていないので）
+     *   無言で捨てられる。つまり歯止めが削られると「一部だけ取り込まれて成功扱いになる」。
      */
     public function test_the_server_refuses_a_mixed_file_and_imports_neither_row(): void
     {
@@ -776,7 +776,7 @@ class ApprovalUserImportTest extends TestCase
     /**
      * 桁数の注意は、エラーになる行では出さない。
      *
-     * ⚠ Task 15 の変異表の M46（`analyze()` の docblock「ここから先は取り込むと決めた行。
+     * ⚠ Task 15 の変異表の M46（`analyze()` の中のコメント「ここから先は取り込むと決めた行。
      *   注意はこの位置でだけ積む」のとおり、桁数の注意（`$warnings[] への push`）は全エラー
      *   判定を通り抜けた `else` 節（＝既存利用者に当たらない新規行）の中でだけ評価されている
      *   のを、ループの先頭（全エラー判定より前）へ移す変異）が塞ぐ穴 —— 移すと、エラーになる
@@ -800,9 +800,13 @@ class ApprovalUserImportTest extends TestCase
         // 行2: 社員番号 10001（5 桁）で桁数の基準（ファイル内の最大幅）を作る正当な行
         // 行3: 社員番号 123（3 桁。基準より少ない＝桁数の注意の対象になりうる）だが
         //      所属部門が未登録（ZZ）のため必ずエラーになる行
-        // 行4: 社員番号 456（3 桁。行3 と同じく基準より少ない）で所属部門は正しい RE
+        // 行4: 社員番号 124（3 桁。行3 と同じく基準より少ない）で所属部門は正しい RE
         //      ＝桁数の注意が実際に付くはずの陽性対照
-        $preview = $this->preview("10001,甲,,RE\n123,乙,,ZZ\n456,丙 三郎,,RE\n")->assertOk();
+        //      ⚠ 番号は行3 と同じく 255 以下にする。配列のキーになると整数へ変わり、
+        //        `ctype_digit()` は 255 以下の整数を ASCII の符号位置とみなす（`numericWidths()` の
+        //        `(string)` の変換がそれを防いでいる）。256 以上を使うと、その変換が失われたとき
+        //        行3 だけが注意の対象から外れ、この対照は緑のまま検出力が消える
+        $preview = $this->preview("10001,甲,,RE\n123,乙,,ZZ\n124,丙 三郎,,RE\n")->assertOk();
 
         $this->assertSame(2, $preview->viewData('validCount'));
         $this->assertCount(1, $preview->viewData('rowErrors'), 'エラー行が想定と異なる');
@@ -820,14 +824,18 @@ class ApprovalUserImportTest extends TestCase
         $this->assertStringContainsString('エラー 行3: 登録されていない部門です: ZZ', $html);
 
         // 陽性対照: この文言の形が実際に描画されることを、「行3には出ていない」と
-        // 主張する直前に確かめる（上記の「全文一致の needle の弱点」への対策）
+        // 主張する直前に確かめる（上記の「全文一致の needle の弱点」への対策）。
+        // 陽性と陰性の needle は同じ組み立てから作る（書式を片方だけ直して陰性が空振りしないように）
+        $digitWarningLine = fn (int $row, string $number): string =>
+            "⚠ 行{$row}: 社員番号 {$number} は、ほかの行より桁が少ないです。Excel で先頭の 0 が落ちていませんか";
+
         $this->assertStringContainsString(
-            '⚠ 行4: 社員番号 456 は、ほかの行より桁が少ないです。Excel で先頭の 0 が落ちていませんか',
+            $digitWarningLine(4, '124'),
             $html,
             '陽性対照が失敗している（この文言の形はそもそも描画されていない）'
         );
         $this->assertStringNotContainsString(
-            '⚠ 行3: 社員番号 123 は、ほかの行より桁が少ないです。Excel で先頭の 0 が落ちていませんか',
+            $digitWarningLine(3, '123'),
             $html,
             'エラー行にまで桁数の注意が表示されている'
         );

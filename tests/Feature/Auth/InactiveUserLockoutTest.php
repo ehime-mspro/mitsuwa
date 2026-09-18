@@ -188,8 +188,8 @@ class InactiveUserLockoutTest extends TestCase
      *   は毎リクエスト `setId($request->cookies->get(...))` を呼ぶため、**クッキーを明示的に
      *   持ち回らない限り毎回新しい ID が生成され**、invalidate() の有無にかかわらず ID が
      *   変わって見えてしまう（それでは検出力が無い）。そこで 1 回目のリクエストで実際に
-     *   発行されたセッションクッキーの値を `getCookie()` で取り出し、2 回目のリクエストへ
-     *   `withCookie()` で明示的に渡した。これで「invalidate() が呼ばれなければ、渡した ID が
+     *   発行されたセッションクッキーの値を `getCookie()` で取り出し、後続の（対照と本命の）
+     *   リクエストへ `withCookie()` で明示的に渡した。これで「invalidate() が呼ばれなければ、渡した ID が
      *   そのまま使われ続ける」という対照が成立し、ID の変化が invalidate() の有無を正しく
      *   反映するようになる。実測（本テストの実行）で、正しい実装では ID・トークンが変わり、
      *   セッションの印（`probe`）が消えることを確認済み——`invalidate()`＝`flush()`（属性を
@@ -200,8 +200,8 @@ class InactiveUserLockoutTest extends TestCase
      * ⚠ **`AuthenticateSession`（`web` グループに `EnsureUserIsActive` より先に登録済み）にも
      *   `flush()` する経路がある**（セッションに保存したパスワードのハッシュが現在のパスワードと
      *   食い違うとき。`logout()` 内で `$request->session()->flush()` を呼ぶ）。本テストではパス
-     *   ワードを一切変えていないため、1 回目のリクエストの末尾で保存したハッシュが 2 回目でも
-     *   一致し、この経路は発火しない——観測している invalidate/regenerateToken は
+     *   ワードを一切変えていないため、1 回目のリクエストの末尾で保存したハッシュが後続の
+     *   リクエストでも一致し、この経路は発火しない——観測している invalidate/regenerateToken は
      *   `EnsureUserIsActive` 単独の効果である。
      */
     public function test_disabling_mid_session_invalidates_the_session_and_rotates_the_csrf_token(): void
