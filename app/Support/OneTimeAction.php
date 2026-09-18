@@ -60,11 +60,17 @@ final class OneTimeAction
      * `claim()` は private なので、外から直接呼ぶコードはそもそも書けない
      * （動的呼び出し・エイリアス経由も含め、言語仕様で強制される。Commit 1 で private 化）。
      *
-     * ⚠ `guide_token` は配列で送られることがある（`guide_token[]=x` のような手組みの送信・
-     *   ブラウザの拡張機能など）。配列を `claim(string $token)` にそのまま渡すと `TypeError`、
-     *   `(string) $token` へ緩めても配列の文字列化は "Array" になり `Array to string conversion` の
-     *   ErrorException（500）になる（実測）。ここで `is_string()` を通してから渡すことで、
-     *   どちらも静かに「鍵が違う（false）」として扱う。
+     * ⚠ `guide_token` は配列で送られることがある（`guide_token[]=x` のような**手組みの送信**。
+     *   すべての画面が `name="guide_token"` の hidden を**単一の値でしか描画しない**ので、
+     *   通常のブラウザ操作では配列にならない——実測 5 箇所とも `name="guide_token"` の単数形）。
+     *   配列を `claim(string $token)` にそのまま渡すと型宣言と合わず `TypeError` になる。
+     *   `(string) $token` へキャストしてから渡そうとしても、配列のキャストが起こす PHP の
+     *   `Array to string conversion` 警告は、Laravel の `HandleExceptions`
+     *   （`vendor/laravel/framework/src/Illuminate/Foundation/Bootstrap/HandleExceptions.php`
+     *   の `handleError()`）が**その場で** `ErrorException`（500）に変えるため、"Array" という
+     *   文字列が実際に作られて `claim()` まで届くことはない（キャストの時点で例外になる。実測）。
+     *   ここで `is_string()` を通してから渡すことで、どちらの経路も静かに
+     *   「鍵が違う（false）」として扱う。
      */
     public static function claimFrom(Request $request): bool
     {
