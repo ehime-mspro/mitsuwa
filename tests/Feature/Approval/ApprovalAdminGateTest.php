@@ -65,7 +65,7 @@ use Tests\TestCase;
  *   `isApprovalAdmin()` の判定ロジックそのもの（社長も通してしまうような取り違え）は見えない。
  *   (b) はその判定ロジックまで実際に叩いて確かめる。**どちらか片方では足りない**理由は 3 つ ——
  *   ① (b) は実在しない ID の変種（404）で優先順の崩れを暴くが、**パラメータの無いルートには
- *   その変種が存在しない**ので、そういうルートの配線を見られるのは (a) だけ ② (a) は崩れを
+ *   その変種が存在しない**ので、そういうルートで門番の位置を見られるのは (a) だけ ② (a) は崩れを
  *   1 ルート 1 行で報告するが、(b) はルート × 変種 × 6 人の掛け算で報告が積み上がる ③ (a) は
  *   HTTP を**1 本も出さずに**確かめられる。
  */
@@ -314,10 +314,11 @@ class ApprovalAdminGateTest extends TestCase
 
         // 走査が空振りして緑になる事故を防ぐ（ロール数 + 全件閲覧者 + 社長 = 6 人）。
         // ルート側の件数が増減する変異とは独立に、この 6 人のうち 1 人でも欠けたら気づける。
+        $expectedOutsiders = count(UserRole::cases()) + 2;
         $this->assertCount(
-            count(UserRole::cases()) + 2,
+            $expectedOutsiders,
             $outsiders,
-            '権限の無い人が 6 人（ロール数 + 全件閲覧者 + 社長）に足りない'
+            "権限の無い人が {$expectedOutsiders} 人（ロール数 + 全件閲覧者 + 社長）に足りない"
         );
 
         return $outsiders;
@@ -507,10 +508,11 @@ class ApprovalAdminGateTest extends TestCase
         //   `departments.destroy` より先に叩かれ、その時点ではまだ部門が残っているため
         //   `OrganizationController` 自身の「部門があれば削除できない」ガードに阻まれる。
         //   **利用者も更新されない** —— この 6 人への要求は本物の送信内容やワンタイムの
-        //   案内用トークンを持たないので、`users.*` の各アクションはバリデーションか
+        //   案内用トークンを持たないので、`users.*` のうち書き込みを伴うアクションはバリデーションか
         //   使い捨てトークンの検査のどちらかで止まる（`tableCounts()` は行数しか見ないので、
-        //   仮に更新が起きても元々検出できない）。この歯止めが働くのは
-        //   `makeOrganizationFixtures()` が部門に所属者を付けていないから（同メソッドの docblock）。
+        //   仮に更新が起きても元々検出できない）。部門側の網が働くのは
+        //   `makeOrganizationFixtures()` が部門に所属者を付けていないから（所属者を付けても
+        //   ドメイン側の網は残る。同メソッドの docblock）。
         $this->assertSame($before, $this->tableCounts(), '権限の無い要求で DB の行数が変化した');
     }
 }
