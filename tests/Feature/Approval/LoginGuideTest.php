@@ -34,11 +34,29 @@ class LoginGuideTest extends TestCase
 
     private const ALIAS_PATTERN = '/\bOneTimeAction\s+as\s/i';
 
-    private const NEW_LOGIN_GUIDE_PATTERN = '/\bnew\s+LoginGuide\s*\(/i';
+    /**
+     * ⚠ **FQCN 経由の生成も拾う**（2026-09-18 の再レビューで指摘）—— `\\?(?:[A-Za-z_]\w*\\)*`
+     *   が任意個の名前空間セグメントを許すので、`new LoginGuide(` だけでなく
+     *   `new \App\Support\Approval\LoginGuide(` も拾える。それでも import のエイリアス
+     *   （`use … as Guide;` の後の `new Guide(`）は**拾えない**——別名になった後はソースに
+     *   「LoginGuide」という文字列が一度も現れないため。これは検出せず**禁止する**
+     *   （`ENTRY_POINT_ALIAS_PATTERN` と `test_login_guide_and_friends_are_not_aliased()` 参照）。
+     */
+    private const NEW_LOGIN_GUIDE_PATTERN = '/\bnew\s+\\\\?(?:[A-Za-z_]\w*\\\\)*LoginGuide\s*\(/i';
 
     private const TO_GUIDE_CALL_PATTERN = '/(?:->|\?->)\s*toGuide\s*\(/i';
 
-    private const NEW_PASSWORD_REISSUER_PATTERN = '/\bnew\s+PasswordReissuer\b/i';
+    /** ⚠ 上と同じ理由で FQCN 経由の生成も拾う（`NEW_LOGIN_GUIDE_PATTERN` の docblock 参照） */
+    private const NEW_PASSWORD_REISSUER_PATTERN = '/\bnew\s+\\\\?(?:[A-Za-z_]\w*\\\\)*PasswordReissuer\b/i';
+
+    /**
+     * `PasswordReissuer` を `new` で作らず、コンテナ解決や DI で受け取って `->reissue(` を
+     * 呼ぶ経路も「再発行を実行した」印として拾う。`new PasswordReissuer` だけを見ていると、
+     * `app(PasswordReissuer::class)->reissue($targets)` や、注入された
+     * `PasswordReissuer $reissuer` からの呼び出しが `claimFrom()` より前に動かされても
+     * 気づけない（2026-09-18 の再レビューで指摘）。
+     */
+    private const REISSUE_CALL_PATTERN = '/(?:->|\?->)\s*reissue\s*\(/i';
 
     /**
      * 案内を描く入口を**拾う**ための広い判定（`LoginGuide` / `PasswordReissuer` の単語か
@@ -46,9 +64,10 @@ class LoginGuideTest extends TestCase
      * 見ない（それは上の `NEW_LOGIN_GUIDE_PATTERN` 等 ＋ 下の副作用 3 定数が個別に見る）。
      *
      * ⚠ 以前は `new LoginGuide(` のような狭い形しか拾っていなかったため、FQCN 経由の生成
-     *   （`new \App\Support\Approval\LoginGuide(`）・import のエイリアス（`use … as Guide`）・
-     *   コンテナ経由の解決（`app(PasswordReissuer::class)`）を素通りさせる余地があった。
-     * ⚠ それでも拾えない書き方がある —— 変数に入れたクラス名からの動的生成（`new $class(...)`）は
+     *   （`new \App\Support\Approval\LoginGuide(`）・コンテナ経由の解決
+     *   （`app(PasswordReissuer::class)`）を素通りさせる余地があった。
+     * ⚠ それでも拾えない書き方がある —— 変数に入れたクラス名からの動的生成（`new $class(...)`）・
+     *   import のエイリアス（後者は検出でなく**禁止**する。`ENTRY_POINT_ALIAS_PATTERN` 参照）は
      *   この正規表現走査では検出できない。
      */
     private const ENTRY_POINT_PICK_PATTERN = '/\bLoginGuide\b|\bPasswordReissuer\b|->\s*toGuide\s*\(/i';
@@ -61,12 +80,27 @@ class LoginGuideTest extends TestCase
      */
     private const CLAIM_GUARD_SHAPE_PATTERN = '/\bif\s*\(\s*!\s*OneTimeAction\s*::\s*claimFrom\s*\(\s*\$\w+\s*\)\s*\)\s*\{\s*return\b/i';
 
-    /** 副作用の起点 3 種（`NEW_LOGIN_GUIDE_PATTERN` 等と合わせ claimFrom() の防御より後にあってはいけない） */
+    /**
+     * 副作用の起点 3 種。上の 4 パターン（render / 再発行の実行）と合わせて、
+     * **claimFrom() の防御より前にあってはいけない**——防御は必ずこれらより先に来る
+     * （2026-09-18 の再レビューで訂正: 以前この docblock は主語が逆で
+     * 「防御より後にあってはいけない」と書いていた）。
+     */
     private const DB_TRANSACTION_PATTERN = '/\bDB\s*::\s*transaction\s*\(/i';
 
     private const INITIAL_PASSWORD_STATIC_PATTERN = '/\bInitialPassword\s*::/i';
 
     private const SET_INITIAL_PASSWORD_CALL_PATTERN = '/(?:->|\?->)\s*setInitialPassword\s*\(/i';
+
+    /**
+     * `LoginGuide` / `PasswordReissuer` / `ReissueResult` を import でエイリアスすると、
+     * `ENTRY_POINT_PICK_PATTERN` のバレワード判定を素通りできる（`use … as Guide;` の後は
+     * ソース中に「LoginGuide」という文字列が一度も現れなくなる）。**検出するのではなく
+     * 禁止する**——`test_login_guide_and_friends_are_not_aliased()` が app/ + routes/ を
+     * 全件分類で走査し、エイリアスそのものを許さない（`ALIAS_PATTERN` が `OneTimeAction` に
+     * しているのと同じ流儀）。
+     */
+    private const ENTRY_POINT_ALIAS_PATTERN = '/\b(?:LoginGuide|PasswordReissuer|ReissueResult)\s+as\s/i';
 
     private function guide(): LoginGuide
     {
@@ -291,11 +325,11 @@ class LoginGuideTest extends TestCase
      * ⚠ 走査が空振りして緑になる事故を防ぐため、拾えたファイル数・`claimFrom(` 呼び出し数の
      *   下限も併せて固定する（Bug #45 ①・Bug #32 と同じ流儀。2026-09-18 実測で app/ 273 + routes/ 3 = 276 件）。
      *   **ここでは問題リストのアサートを下限より先に置く**（Bug #59 は逆に下限を先に置いた）。
-     *   Bug #59 の教訓は「**空振りの走査結果を、的外れな理由（個別の名前が見つからない等）で
-     *   誤診断させない**」こと——個別の名前の有無を見るアサートが先にあると、走査が空でも
-     *   「名前 X が分類されていない」という**別の・紛らわしい**理由の失敗に化ける。この走査には
-     *   その形の個別チェックが無いので、問題リスト（`$problems`）を先に置いても空振りは
-     *   紛らわしい理由では報告されない——空振り（0 件）でも `$problems` はただ空になるだけ
+     *   Bug #59 の教訓（RULES.md の原文）は「下限を後ろに置くと、空振りが**『実在しない名前』**
+     *   という別の理由で報告される」こと——個別の名前の有無を見るアサートが先にあると、
+     *   走査が空でもその名前が「実在しない」という**別の・紛らわしい**理由の失敗に化ける。
+     *   この走査には**その形の個別チェックが無い**ので、問題リスト（`$problems`）を先に置いても
+     *   空振りは紛らわしい理由では報告されない——空振り（0 件）でも `$problems` はただ空になるだけ
      *   （0 件を「問題無し」と読んでもそのとおりの状態）で、すぐ後ろの件数の下限アサートが
      *   「0 件しか拾えていない」と**正しい理由**で落ちる。
      * ⚠ **ファイルの列挙順は `sort()` で固定する** —— OS やファイルシステムの列挙順に頼ると、
@@ -352,6 +386,52 @@ class LoginGuideTest extends TestCase
     }
 
     /**
+     * `LoginGuide` / `PasswordReissuer` / `ReissueResult` を import でエイリアスしていない
+     * （全件分類。Top trap #13 / Bug #45 ①）。
+     *
+     * ⚠ **検出でなく禁止。** `ENTRY_POINT_PICK_PATTERN`（バレワード判定）は
+     *   `new \App\Support\Approval\LoginGuide(` のような FQCN 経由の生成は拾えるが、
+     *   `use App\Support\Approval\LoginGuide as Guide;` のようにエイリアスされた後は
+     *   ソースに「LoginGuide」という文字列が一度も現れなくなるため、原理的に拾えない
+     *   （2026-09-18 の再レビューで指摘。それまでの docblock は「素通りさせる余地があった」
+     *   と書いていたが、実際は「今も素通りしうる」が正確だった）。ここでは「拾えない
+     *   ケースを検出する」のではなく、**そのケース自体を書かせない**ことで全件分類を保つ
+     *   （`OneTimeAction` のエイリアス禁止と同じ流儀。直前のテスト参照）。
+     * ⚠ コメントを落としてから走査する（Bug #42 ②）。
+     * ⚠ **ファイルの列挙順は `sort()` で固定する** —— 失敗メッセージの並びを決定的にする。
+     * ⚠ 走査が空振りして緑になる事故を防ぐため、拾えたファイル数の下限も併せて固定する
+     *   （Bug #45 ①・Bug #32 と同じ流儀）。**ここでは問題リストのアサートを下限より先に置く**
+     *   ——直前のテストと同じ理由（この走査にも個別の名前チェックが無いので、空振りは
+     *   RULES.md の言う「実在しない名前」という紛らわしい理由では報告されない）。
+     */
+    public function test_login_guide_and_friends_are_not_aliased(): void
+    {
+        $files = array_merge($this->phpFilesUnder(app_path()), $this->phpFilesUnder(base_path('routes')));
+        sort($files);
+
+        $problems = [];
+        foreach ($files as $file) {
+            $source = $this->sourceWithoutComments($file);
+
+            if (preg_match(self::ENTRY_POINT_ALIAS_PATTERN, $source, $m)) {
+                $problems[] = "{$file}（`{$m[0]}` のようにエイリアスしていて全件分類の走査から逃れられる）";
+            }
+        }
+
+        $this->assertSame(
+            [],
+            $problems,
+            "LoginGuide / PasswordReissuer / ReissueResult をエイリアスしている箇所がある:\n" . implode("\n", $problems)
+        );
+
+        $this->assertGreaterThanOrEqual(
+            270,
+            count($files),
+            '走査が app/ + routes/ 配下の PHP ファイルを十分に拾えていない（空振りして緑になる事故を防ぐ下限）'
+        );
+    }
+
+    /**
      * 全件分類の走査そのものが健全であること（Reflection 抽出の自己テスト。Bug #57 と同じ流儀）。
      *
      * ⚠ ここが壊れていると、次のテスト（入口が先に鍵を使うか）は**何かを見ているつもりで
@@ -359,11 +439,19 @@ class LoginGuideTest extends TestCase
      *   メソッド名（`list` / `empty` / `print`）を落とし・`enum case Function` を誤認し・
      *   文字列展開の波括弧（`"${x}"` / `"$x{"`）で対応が崩れていたのに、たまたま対象の
      *   6 メソッドは生き残っていたため、読み取り専用の Reflection プロトタイプで実測するまで
-     *   気づかれなかった（誤カウントされた偽クラス 320/1599 件・無音の key 衝突 71 件）。
+     *   気づかれなかった（誤カウントされた偽クラス 320/1599 件・**衝突したキー 34 個による
+     *   上書き 71 件**）。
+     * ⚠ **もう 1 つの前提**: `app/` は 1 ファイル 1 クラス（PSR-4）——2 つ目の class-like が
+     *   ファイルに紛れ込むと、`methodBodiesIn()` は PSR-4 の名前で解決した**1 つだけ**を
+     *   reflect するので、その 2 つ目は**無音で**走査から消える（`nonClassFiles` にも載らない
+     *   ——`fqcnForAppFile()` は解決できる 1 つの名前を返すだけで、他に何かあるかは見ない。
+     *   2026-09-18 の再レビューで指摘）。ここでは `app/` の全ファイルについて「宣言されている
+     *   class-like がちょうど 1 つ」「その名前が PSR-4 の名前と一致する」の両方を確かめる。
      * ⚠ 件数はこのテストの環境で実測した値（app/ 配下の PHP ファイルすべてが
      *   PSR-4（`App\` ⇒ `app/`）で class / interface / trait / enum のいずれかに解決でき、
      *   同じ `"Class::method"` キーが 2 か所以上から生成されることも無い ＝ 非クラスファイル
-     *   0 件・メソッド 1602 件・キー衝突 0 件）。ファイルが増減すれば数は動くので、
+     *   0 件・メソッド 1602 件・キー衝突 0 件・宣言が 1 つでないファイル 0 件・PSR-4 と
+     *   名前が食い違うファイル 0 件）。ファイルが増減すれば数は動くので、
      *   ここでは「0 件であること」だけを固定し、メソッド総数の下限は次のテストに任せる。
      */
     public function test_the_app_method_body_scan_has_no_gaps_or_collisions(): void
@@ -375,6 +463,39 @@ class LoginGuideTest extends TestCase
             $scan['nonClassFiles'],
             "app/ 配下に PSR-4 で class / interface / trait / enum のいずれにも解決できないファイルがある:\n"
                 . implode("\n", $scan['nonClassFiles'])
+        );
+
+        $multiClassFiles = [];
+        $mismatchedNames = [];
+        foreach ($this->phpFilesUnder(app_path()) as $file) {
+            $fqcn = $this->fqcnForAppFile($file);
+            if ($fqcn === null) {
+                continue; // 上のアサートがすでに報告している
+            }
+
+            $declared = $this->declaredClassLikeNamesIn($file);
+            if (count($declared) !== 1) {
+                $multiClassFiles[] = "{$file}（宣言されている class-like が " . count($declared) . ' 件）';
+                continue;
+            }
+
+            $expectedShortName = substr($fqcn, strrpos($fqcn, '\\') + 1);
+            if ($declared[0] !== $expectedShortName) {
+                $mismatchedNames[] = "{$file}（宣言名 {$declared[0]} が PSR-4 の名前 {$expectedShortName} と一致しない）";
+            }
+        }
+
+        $this->assertSame(
+            [],
+            $multiClassFiles,
+            "app/ のファイルに class-like の宣言がちょうど 1 つでない（2 つ目が methodBodiesIn() から無音で漂う）:\n"
+                . implode("\n", $multiClassFiles)
+        );
+
+        $this->assertSame(
+            [],
+            $mismatchedNames,
+            "宣言されている名前が PSR-4 のファイル名と一致しない:\n" . implode("\n", $mismatchedNames)
         );
 
         $this->assertSame(
@@ -409,29 +530,54 @@ class LoginGuideTest extends TestCase
      *   ① `if (! OneTimeAction::claimFrom($x)) { return …` という**防御の形そのもの**
      *   （`CLAIM_GUARD_SHAPE_PATTERN`）を持つこと —— `claimFrom(` を呼ぶだけで戻り値を捨てる・
      *   早期 return が無い、という書き方は「呼んでいるが守っていない」ので弾く。
-     *   ② その防御が、案内を描く 3 パターン（`new LoginGuide(` / `->toGuide(` /
-     *   `new PasswordReissuer`）**と**副作用の 3 パターン（`DB::transaction(` /
+     *   ② その防御が、案内を描く／再発行を実行する 4 パターン（`new LoginGuide(` / `->toGuide(` /
+     *   `new PasswordReissuer` / `->reissue(`）**と**副作用の 3 パターン（`DB::transaction(` /
      *   `InitialPassword::` / `->setInitialPassword(`）の**最初に現れる位置**より**前**にあること。
+     *   ⚠ **`new LoginGuide` / `new PasswordReissuer` は FQCN を許す**
+     *   （`\bnew\s+\\?(?:[A-Za-z_]\w*\\)*ClassName`）——`new \App\Support\Approval\LoginGuide(`
+     *   のような完全修飾での生成も拾う（2026-09-18 の再レビューで指摘。以前は `new LoginGuide(`
+     *   のような狭い形しか拾えなかった）。**`->reissue(` を足したのは** `PasswordReissuer` を
+     *   `new` で作らず、コンテナ解決や DI で受け取って呼ぶ経路（`app(PasswordReissuer::class)
+     *   ->reissue($targets)` や、注入された `PasswordReissuer $reissuer` からの呼び出し）が
+     *   `new PasswordReissuer` だけでは拾えなかったため。
      *   ⚠ **副作用の 3 パターンを足したのは「防御が案内を描く式の直前にあれば十分」という思い込みを
      *   崩すため** —— `resetPassword()` / `reissue()` / `reissueBulk()` は自分の本体に副作用を
      *   持たず `PasswordReissuer::reissue()` に委ねているので影響しないが、`execute()` は自分の
      *   本体で直接 `DB::transaction(` を呼ぶ。副作用パターンを見ていなければ、`execute()` が
      *   `DB::transaction(...)` を `claimFrom()` より前へ動かしても（案内を描く `new LoginGuide(`
      *   は末尾のままなので）この走査は気づけなかった。
+     * ⚠ **それでも拾えない書き方が残る**（2026-09-18 の再レビューで指摘）——
+     *   ① 副作用を持つが名前の付いた 7 パターンのいずれにも当たらない**汎用の書き込み**
+     *   （例: `$user->save();` を防御より前に書く）、
+     *   ② `if` の**片方の分岐にだけ**防御があり、もう片方の分岐から副作用に到達する形
+     *   （この走査は本体全体の中でのオフセットしか見ないので、分岐構造は認識できない）、
+     *   ③ `new $class(...)` のような**変数に入れたクラス名からの動的生成**。
+     *   import のエイリアス（`use … as Guide;`）は以前ここに「拾えない」と書いていたが、
+     *   `test_login_guide_and_friends_are_not_aliased()` が禁止するので**もう起こらない**。
      * ⚠ **この順序が守るのは §5.12「起きなかった処理に鍵を焼かない」ではない**（それは逆方向の
      *   話——検証エラーで**なにも起きなかった**ときに鍵を無駄に使わないための順序で、
      *   `Admin\UserController::store()` のコメントが説明している）。**このテストが守るのは、
-     *   鍵の防御が副作用・描画より後にあると、二重送信が再発行／新規登録を実際に実行してしまって
-     *   から初めて拒否される**——**その時点で印刷済みの案内はもう無効**になっている、という危険
+     *   鍵の防御が副作用・描画より後にあると、二重送信が処理を実際に実行してしまってから
+     *   初めて拒否される、という危険——起きる実害は入口ごとに違う**:
+     *   `resetPassword` / `reissue` / `reissueBulk`（再発行系）は**既に印刷済みの案内が
+     *   無効になる**（新しいパスワードが古いものを上書きする）。`store`（新規登録）は
+     *   **重複したアカウントが作られる**。`execute`（CSV の確定）は**既存行を再更新し、
+     *   記録（ログ）が重複する**。
      *   （Bug #42 ②。誤った理由の注記は次の読み手を誤らせるので、以前ここに書いていた
-     *   「起きなかった処理に鍵を焼く危険」は誤りだった）。
+     *   「起きなかった処理に鍵を焼く危険」「その時点で印刷済みの案内はもう無効になっている」
+     *   という**入口を区別しない**説明は不正確だった）。
      * ⚠ **問題リストのアサートを `assertSame(5, …)` より先に置く**（stale-exclusion のチェックは
-     *   それよりさらに先・**走査したメソッド本体の件数の下限はそれよりもさらに先**）。Bug #59 の
-     *   教訓（前のテストの docblock 参照）と同じ理由で、件数の下限をこの一連のアサートの先頭に
-     *   置く——`$problems` や stale-exclusion のチェックは、走査対象が空振り（0 件）でもそれぞれ
-     *   紛らわしくない空のまま素通りしてしまい、その形で落ちるのは最後の `assertSame(5, …)` だけ
-     *   になる。件数の下限を先頭に置けば、空振りは「1500 件のはずが 0 件だった」と**正しい理由**で
-     *   最初に報告される。
+     *   それよりさらに先・**走査したメソッド本体の件数の下限はそれよりもさらに先**）。
+     *   ⚠ **stale-exclusion のチェックは、走査が空振りでも紛らわしくなく素通りするわけではない**
+     *   ——以前ここにそう書いていたのは誤り（2026-09-18 の再レビューで指摘）。`$excluded` は
+     *   `$picked` から動的に作る集合ではなく**ハードコードされた配列**なので、走査が空振りで
+     *   `$picked === []` になっても `array_diff(array_keys($excluded), [])` は
+     *   `['App\Support\Approval\ReissueResult::toGuide']` のまま——空にならず、
+     *   「除外リストに、走査で拾えなくなった名前が残っている」という**まさに RULES.md の言う
+     *   『実在しない名前』の紛らわしい理由**でこの assert が先に落ちる。だからこそ件数の下限を
+     *   さらに先へ置き、空振りは「1500 件のはずが 0 件だった」と**正しい理由**で最初に報告させる
+     *   （`$problems` のほうは `$entryPoints`（`array_diff_key($picked, …)`）が空なら
+     *   ループが 1 回も回らず紛らわしくなく空になるので、この心配は無い）。
      */
     public function test_every_guide_rendering_entry_point_claims_the_token_first(): void
     {
@@ -472,6 +618,7 @@ class LoginGuideTest extends TestCase
             self::NEW_LOGIN_GUIDE_PATTERN,
             self::TO_GUIDE_CALL_PATTERN,
             self::NEW_PASSWORD_REISSUER_PATTERN,
+            self::REISSUE_CALL_PATTERN,
             self::DB_TRANSACTION_PATTERN,
             self::INITIAL_PASSWORD_STATIC_PATTERN,
             self::SET_INITIAL_PASSWORD_CALL_PATTERN,
@@ -568,6 +715,18 @@ class LoginGuideTest extends TestCase
 
         $this->assertMatchesRegularExpression(self::NEW_LOGIN_GUIDE_PATTERN, 'new LoginGuide($entries)');
         $this->assertMatchesRegularExpression(self::NEW_LOGIN_GUIDE_PATTERN, 'NEW   loginguide(...)');
+        // ⚠ 2026-09-18 に FQCN 経由の生成も拾えるよう widen した——docblock 自身が挙げている
+        //    例をそのまま自己テストにする（Bug #57 と同じ流儀）。
+        $this->assertMatchesRegularExpression(
+            self::NEW_LOGIN_GUIDE_PATTERN,
+            'new \App\Support\Approval\LoginGuide($entries)',
+            'FQCN 経由の生成を見逃している'
+        );
+        $this->assertMatchesRegularExpression(
+            self::NEW_LOGIN_GUIDE_PATTERN,
+            'new App\Support\Approval\LoginGuide($entries)',
+            '先頭 \ 無しの FQCN を見逃している'
+        );
         $this->assertDoesNotMatchRegularExpression(
             self::NEW_LOGIN_GUIDE_PATTERN,
             'new MyLoginGuide()',
@@ -583,11 +742,44 @@ class LoginGuideTest extends TestCase
         );
 
         $this->assertMatchesRegularExpression(self::NEW_PASSWORD_REISSUER_PATTERN, 'new PasswordReissuer()');
+        $this->assertMatchesRegularExpression(
+            self::NEW_PASSWORD_REISSUER_PATTERN,
+            'new \App\Support\Approval\PasswordReissuer()',
+            'FQCN 経由の生成を見逃している'
+        );
         $this->assertDoesNotMatchRegularExpression(
             self::NEW_PASSWORD_REISSUER_PATTERN,
             'new PasswordReissuedMail($user)',
             '別クラス（PasswordReissuedMail）を誤検出している'
         );
+
+        foreach ([
+            '$reissuer->reissue($targets)',
+            '$reissuer?->reissue($targets)',
+            'app(PasswordReissuer::class)->reissue($targets)',
+        ] as $sample) {
+            $this->assertMatchesRegularExpression(self::REISSUE_CALL_PATTERN, $sample, "見逃している: {$sample}");
+        }
+        foreach ([
+            '$this->reissueBulk($request)',
+            '$x->reissue;',
+        ] as $sample) {
+            $this->assertDoesNotMatchRegularExpression(self::REISSUE_CALL_PATTERN, $sample, "誤検出している: {$sample}");
+        }
+
+        foreach ([
+            'use App\Support\Approval\LoginGuide as Guide;',
+            'use App\Support\Approval\{PasswordReissuer as Reissuer};',
+            'use App\Support\Approval\ReissueResult as Result;',
+        ] as $sample) {
+            $this->assertMatchesRegularExpression(self::ENTRY_POINT_ALIAS_PATTERN, $sample, "見逃している: {$sample}");
+        }
+        foreach ([
+            'use App\Support\OneTimeAction as Once;', // 別のクラス（OneTimeAction は別パターンで守る）
+            'use App\Support\Approval\LoginGuideHelper as X;', // 語の一部が LoginGuide なだけの別クラス
+        ] as $sample) {
+            $this->assertDoesNotMatchRegularExpression(self::ENTRY_POINT_ALIAS_PATTERN, $sample, "誤検出している: {$sample}");
+        }
 
         foreach ([
             'new LoginGuide($x)',
@@ -733,14 +925,21 @@ class LoginGuideTest extends TestCase
      *   メソッド名（`list` / `empty` / `print`）を落とす・`enum case Function` を誤認する・
      *   文字列展開の波括弧（`"${x}"` / `"$x{"`）で対応が崩れる、という壊れ方を実測で確認した
      *   （読み取り専用の Reflection プロトタイプで実測: 誤カウントされた偽クラス 320/1599 件・
-     *   無音の key 衝突 71 件）。**6 つの対象メソッドはたまたま生き残っていたため、
+     *   衝突したキー 34 個による上書き 71 件）。**6 つの対象メソッドはたまたま生き残っていたため、
      *   このテストは壊れた走査のまま緑を返し続けていた**——Top trap #13 / Bug #45 ① /
      *   Bug #59 が繰り返し警告する「走査テストが自分自身の健全性を守っていない」型そのもの。
      * ⚠ 対象は「その `$file` が実際に定義しているメソッドだけ」——`getFileName()` が
      *   `$file` と一致するものに絞る。これにより、trait を using するクラス側では trait の
      *   メソッドを二重に数えず（trait 自身のファイルを処理するときに 1 回だけ数える）、
      *   親クラスのメソッドも子クラスの側では数えない。
-     * ⚠ 抽象メソッド（本体を持たない）は `getFileName()` が `false` になるので自然に除外される。
+     * ⚠ **抽象メソッド（本体を持たない）は `isAbstract()` で明示的に除外する。**
+     *   以前ここに「`getFileName()` が `false` になるので自然に除外される」と書いていたのは
+     *   **誤り**（2026-09-18 の再レビューで指摘・実測で確認）——`getFileName()` が `false` に
+     *   なるのは**内部（拡張が提供する）メソッドだけ**で、抽象メソッドは自分の宣言元の
+     *   ファイルを正しく返す。実際にこの `isAbstract()` チェックを外して測ると、
+     *   `HasScheduleSteps` の抽象メソッド 5 件・`BackupStorage` の 4 件・
+     *   `DatabaseDumper::dumpTo` の計 10 件が `$bodies` に紛れ込み、
+     *   件数が 1602 → 1612 になった（実測）。
      *
      * @return array<string, string>|null
      */
@@ -760,9 +959,14 @@ class LoginGuideTest extends TestCase
 
         $bodies = [];
         foreach ($reflection->getMethods() as $method) {
+            if ($method->isAbstract()) {
+                continue; // 本体を持たない。getFileName() は抽象メソッドでも宣言元のファイルを
+                //     正しく返すので、下の「定義元のファイル」チェックでは除外できない
+            }
+
             $methodFile = $method->getFileName();
             if ($methodFile === false || realpath($methodFile) !== $realFile) {
-                continue; // 抽象メソッド・継承・trait 由来（定義元のファイルを処理する時にだけ数える）
+                continue; // 継承・trait 由来（定義元のファイルを処理する時にだけ数える）
             }
 
             $start = $method->getStartLine();
@@ -777,6 +981,64 @@ class LoginGuideTest extends TestCase
         }
 
         return $bodies;
+    }
+
+    /**
+     * `$file` の中で**実際に宣言されている** class / interface / trait / enum の短い名前を
+     * すべて返す（匿名クラス `new class {...}` と `X::class` は除く）。
+     * `test_the_app_method_body_scan_has_no_gaps_or_collisions()` が、この結果が
+     * 「ちょうど 1 つ」で「PSR-4 の名前と一致する」ことを確かめる（item 4・2026-09-18 の
+     * 再レビューで指摘: 2 つ目の class-like があると `methodBodiesIn()` は PSR-4 の名前で
+     * 解決した 1 つだけしか reflect せず、2 つ目のメソッドが無音で走査から消える）。
+     *
+     * ⚠ ネストしたトップレベル宣言は PHP が許さないので、メソッド本体の中まで踏み込む必要は
+     *   無い——`methodBodiesIn()` のような波括弧の深さ追跡は不要（それが必要になるほど
+     *   複雑な走査ではないので、旧実装が踏んだ罠を再現する余地が小さい）。
+     *
+     * @return list<string>
+     */
+    private function declaredClassLikeNamesIn(string $file): array
+    {
+        $tokens = array_values(token_get_all($this->sourceWithoutComments($file)));
+        $count = count($tokens);
+        $names = [];
+
+        for ($i = 0; $i < $count; $i++) {
+            $token = $tokens[$i];
+            $id = is_array($token) ? $token[0] : null;
+
+            if ($id === null || ! in_array($id, [T_CLASS, T_INTERFACE, T_TRAIT, T_ENUM], true)) {
+                continue;
+            }
+
+            // 直前の非空白トークンを見て、`new class`（匿名クラス）と `X::class` を除外する
+            $prevId = null;
+            for ($p = $i - 1; $p >= 0; $p--) {
+                $pt = $tokens[$p];
+                if (is_array($pt) && $pt[0] === T_WHITESPACE) {
+                    continue;
+                }
+                $prevId = is_array($pt) ? $pt[0] : null;
+                break;
+            }
+            if ($prevId === T_NEW || $prevId === T_DOUBLE_COLON) {
+                continue;
+            }
+
+            // 次に現れる T_STRING を名前として採る（`{` に先に当たったら該当しない）
+            for ($j = $i + 1; $j < $count; $j++) {
+                $t = $tokens[$j];
+                if (is_array($t) && $t[0] === T_STRING) {
+                    $names[] = $t[1];
+                    break;
+                }
+                if ($t === '{') {
+                    break;
+                }
+            }
+        }
+
+        return $names;
     }
 
     /** `$file`（`app_path()` 配下）を PSR-4（`App\` ⇒ `app/`）で FQCN に変換する。解決できなければ null */
