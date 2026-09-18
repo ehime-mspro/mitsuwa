@@ -210,25 +210,32 @@ class LoginGuideTest extends TestCase
      * 鍵の受け取りの入口はすべて `OneTimeAction::claimFrom()` を経由する（全件分類。Top trap #13 / Bug #45 ①）。
      *
      * ⚠ **列挙リスト方式にしない** — 「直したファイル」を配列で並べる形だと、未修正・将来追加の
-     *   入口が検査対象に入らず永遠に緑になる（Bug #45 ①）。`app/` 配下の全 PHP ファイルを機械的に
-     *   列挙し、生の `OneTimeAction::claim(`（`claimFrom(` は対象外）を直接呼ぶファイルと、
-     *   `OneTimeAction` をエイリアスして走査から逃れられる書き方をしているファイルを全部拾う。
-     *   これにより、新しい入口が（配列トークンを検査しないまま）素の `claim()` を呼ぶように
-     *   なっても検出できる。配列トークンの防御は `claimFrom()` の 1 か所だけに置くという決定を守る。
-     * ⚠ コメントを落としてから走査する（Bug #42 ②。この docblock 自身に `OneTimeAction::claim(`
-     *   と書いているので、コメントを落とさない走査だと自分自身に引っかかって false-fail する）。
+     *   入口が検査対象に入らず永遠に緑になる（Bug #45 ①）。`app/` と `routes/`（ルートのクロージャも
+     *   入口になりうる）配下の全 PHP ファイルを機械的に列挙し、生の `OneTimeAction::claim(`
+     *   （`claimFrom(` は対象外）を直接呼ぶファイルと、`OneTimeAction` をエイリアスして
+     *   走査から逃れられる書き方をしているファイルを全部拾う。
+     * ⚠ **PHP のクラス名・メソッド名は大小文字を区別しない**ため、`onetimeaction::CLAIM(` や
+     *   `OneTimeAction :: claim (` のような書き方でも同じメソッドを呼べる。素の部分一致
+     *   （`str_contains`）はこれを見逃すので、大小文字を無視し空白の揺れも許す正規表現で見る
+     *   （`/\bOneTimeAction\s*::\s*claim\s*\(/i` は `claim` の直後が `F`（`claimFrom(`）だと
+     *   `\s*\(` が続かず一致しない）。
+     * ⚠ コメントを落としてから走査する（Bug #42 ②）。**理由はこの docblock 自身の話ではない**
+     *   —— この試験ファイルは `tests/` にあり、走査対象（`app/` + `routes/`）にそもそも入らない。
+     *   本当の理由は `app/Http/Controllers/Approval/UserImportController.php:123` の**コメント**に
+     *   `OneTimeAction::claimFrom()` という文字列があること。コメントを落とさずに数えると、
+     *   実測で呼び出し数が **6**（本物の呼び出し 5 ＋ このコメント 1）になる。もし本物の呼び出しを
+     *   1 か所消す変異が起きても、コメントの 1 件が残るので合計は 5 のまま —— `>= 5` の下限が
+     *   すり抜けに気づけない（実測で確認済み）。コメントを落として初めて実測が **5** になり、
+     *   下限が本物の検出力を持つ。
+     * ⚠ **これでも捕まえられない書き方がある** —— `[OneTimeAction::class, 'claim']` や
+     *   `call_user_func` 経由の動的呼び出し、`app/` `routes/` の外（Blade・DB に保存された文字列など）
+     *   から呼ぶ経路は、この正規表現走査では検出できない。
      * ⚠ 走査が空振りして緑になる事故を防ぐため、拾えたファイル数・`claimFrom(` 呼び出し数の
-     *   下限も併せて固定する（Bug #45 ①・Bug #32 と同じ流儀）。
+     *   下限も併せて固定する（Bug #45 ①・Bug #32 と同じ流儀。2026-09-18 実測で app/ 273 + routes/ 3 = 276 件）。
      */
     public function test_every_entry_point_uses_claim_from_not_the_raw_claim(): void
     {
-        $files = $this->phpFilesUnder(app_path());
-
-        $this->assertGreaterThanOrEqual(
-            250,
-            count($files),
-            '走査が app/ 配下の PHP ファイルを十分に拾えていない（空振りして緑になる事故を防ぐ下限）'
-        );
+        $files = array_merge($this->phpFilesUnder(app_path()), $this->phpFilesUnder(base_path('routes')));
 
         $oneTimeActionPath = realpath(app_path('Support/OneTimeAction.php'));
         $problems = [];
@@ -237,16 +244,16 @@ class LoginGuideTest extends TestCase
         foreach ($files as $file) {
             $source = $this->sourceWithoutComments($file);
 
-            $claimFromCallSites += substr_count($source, 'OneTimeAction::claimFrom(');
+            $claimFromCallSites += preg_match_all('/\bOneTimeAction\s*::\s*claimFrom\s*\(/i', $source);
 
             if (realpath($file) === $oneTimeActionPath) {
                 continue; // 正本自身（claim() の定義）は対象外
             }
 
-            if (str_contains($source, 'OneTimeAction::claim(')) {
+            if (preg_match('/\bOneTimeAction\s*::\s*claim\s*\(/i', $source)) {
                 $problems[] = "{$file}（生の OneTimeAction::claim() を直接呼んでいる）";
             }
-            if (str_contains($source, 'OneTimeAction as ')) {
+            if (preg_match('/\bOneTimeAction\s+as\s/i', $source)) {
                 $problems[] = "{$file}（OneTimeAction をエイリアスしていて走査から逃れられる）";
             }
         }
@@ -255,6 +262,12 @@ class LoginGuideTest extends TestCase
             [],
             $problems,
             "鍵の受け取りが OneTimeAction::claimFrom() を経由していない箇所がある:\n" . implode("\n", $problems)
+        );
+
+        $this->assertGreaterThanOrEqual(
+            270,
+            count($files),
+            '走査が app/ + routes/ 配下の PHP ファイルを十分に拾えていない（空振りして緑になる事故を防ぐ下限。2026-09-18 実測 276 件）'
         );
 
         $this->assertGreaterThanOrEqual(
