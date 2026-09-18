@@ -121,10 +121,7 @@ class UserController extends Controller
         //    ⚠ この画面では順序を誤っても送り直せる（hidden が描画のたびに `issue()` を呼び、
         //    検証エラーは `back()` ＝ 一覧を GET し直すので毎回あたらしい鍵になる。実測）。
         //    順序が本当に効くのは、確認画面を POST の応答として描き直す CSV の確定のような経路。
-        //    ⚠ `is_string` で受ける。配列で送られると `(string)` が "Array" に化けて、鍵が効かなくなる
-        $token = $request->input('guide_token');
-
-        if (! is_string($token) || ! OneTimeAction::claim($token)) {
+        if (! OneTimeAction::claimFrom($request)) {
             return redirect()->route('admin.users.index')
                 ->with('error', 'この操作はすでに実行されました。案内を印刷し直すには、対象の利用者からパスワードを再発行してください。');
         }
@@ -349,10 +346,7 @@ class UserController extends Controller
      */
     public function resetPassword(Request $request, User $user)
     {
-        $token = $request->input('guide_token');
-
-        // ⚠ `is_string` で受ける。配列で送られると `(string)` が "Array" に化けて、鍵が効かなくなる
-        if (! is_string($token) || ! OneTimeAction::claim($token)) {
+        if (! OneTimeAction::claimFrom($request)) {
             return redirect()->route('admin.users.index')
                 ->with('error', 'この操作はすでに実行されました。案内を印刷し直すには、もう一度再発行してください。');
         }

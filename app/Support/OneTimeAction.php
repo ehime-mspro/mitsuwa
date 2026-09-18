@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
@@ -45,5 +46,23 @@ final class OneTimeAction
     public static function cacheKey(string $token): string
     {
         return 'once:' . hash('sha256', $token);
+    }
+
+    /**
+     * リクエストの hidden `guide_token` を受け取って鍵を使う。**入口はここを通す。生の `claim()` を
+     * 直接呼ばない**（走査テスト `LoginGuideTest::test_every_entry_point_uses_claim_from_not_the_raw_claim`
+     * が守る）。
+     *
+     * ⚠ `guide_token` は配列で送られることがある（`guide_token[]=x` のような手組みの送信・
+     *   ブラウザの拡張機能など）。配列を `claim(string $token)` にそのまま渡すと `TypeError`、
+     *   `(string) $token` へ緩めても配列の文字列化は "Array" になり `Array to string conversion` の
+     *   ErrorException（500）になる（実測）。ここで `is_string()` を通してから渡すことで、
+     *   どちらも静かに「鍵が違う（false）」として扱う。
+     */
+    public static function claimFrom(Request $request): bool
+    {
+        $token = $request->input('guide_token');
+
+        return is_string($token) && self::claim($token);
     }
 }

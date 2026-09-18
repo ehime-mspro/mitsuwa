@@ -667,7 +667,7 @@ class ApprovalUserImportTest extends TestCase
      * 1 回限りの鍵を配列で送られても 500 にしない。
      *
      * ⚠ `(string) ['a']` は `Array to string conversion` の ErrorException になり **500** で落ちる
-     *   （実測。`Approval\UserController::claimGuideToken()` が同じ理由で `is_string` を挟んでいる）。
+     *   （実測。`OneTimeAction::claimFrom()` が同じ理由で `is_string` を挟んでいる）。
      */
     public function test_an_array_guide_token_is_refused_without_a_500(): void
     {

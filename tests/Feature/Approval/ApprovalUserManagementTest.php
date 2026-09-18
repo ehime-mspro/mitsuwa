@@ -551,7 +551,7 @@ class ApprovalUserManagementTest extends TestCase
      * ⚠ これが無いと 2 つの重大な壊れ方が緑のまま通る:
      *   ① 絞り込みの hidden を落とす → 「絞り込んだ全員（3 人）」が上限いっぱいの人を再発行する
      *   ② `guide_token` の hidden を落とす → まとめて再発行が 1 回目から
-     *      「すでに実行されました」で止まる（`claimGuideToken` の `is_string(null)` が false）
+     *      「すでに実行されました」で止まる（`OneTimeAction::claimFrom()` が `is_string(null)` を false にする）
      * ⚠ `mode` は `<button name="mode">` なので `parseForm`（`<input>` だけを見る）には入らない。
      *   ブラウザは押したボタンの名前と値を送るので、ここでも手で足す。
      */

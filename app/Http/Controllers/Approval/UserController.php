@@ -268,7 +268,7 @@ class UserController extends Controller
     {
         $this->assertManageable($user, 'パスワードの再発行');
 
-        if (! $this->claimGuideToken($request)) {
+        if (! OneTimeAction::claimFrom($request)) {
             return $this->refuseRepeatedGuide();
         }
 
@@ -316,24 +316,11 @@ class UserController extends Controller
                 ->with('error', "一度に再発行できるのは {$max} 人までです（今回は {$targets->count()} 人）。絞り込んでからやり直してください。");
         }
 
-        if (! $this->claimGuideToken($request)) {
+        if (! OneTimeAction::claimFrom($request)) {
             return $this->refuseRepeatedGuide();
         }
 
         return (new PasswordReissuer())->reissue($targets)->toGuide()->toResponse($request);
-    }
-
-    /**
-     * 1 回限りの鍵を使う（設計書 §5.12）。
-     *
-     * ⚠ `is_string` で受ける。配列で送られると `(string)` が "Array" に化けて、鍵が効かなくなる
-     *   （基幹の `Admin\UserController::resetPassword` と同じ理由・同じ形）。
-     */
-    private function claimGuideToken(Request $request): bool
-    {
-        $token = $request->input('guide_token');
-
-        return is_string($token) && OneTimeAction::claim($token);
     }
 
     private function refuseRepeatedGuide(): \Illuminate\Http\RedirectResponse
