@@ -155,7 +155,9 @@ class ClockReadScanTest extends TestCase
 
         if (str_ends_with($path, '.blade.php')) {
             $source = preg_replace_callback('/\{\{--.*?--\}\}/s', $keepNewlines, $source);
-            $source = preg_replace_callback('#/\*.*?\*/#s', $keepNewlines, $source);
+            // ⚠ 文字列の中の `/*`（`request()->is('tenant/*')` など実測 14 箇所）から始めない。
+            //    始めると次の `*/`（<style> の普通のコメントで十分）まで実コードを飲み込み、走査が無音で止まる。
+            $source = preg_replace_callback('#(?<![\w\x27"])/\*.*?\*/#s', $keepNewlines, $source);
 
             return preg_replace('#^([ \t]*)//[^\n]*#m', '$1', $source); // 行頭の // だけ（https:// を残す）
         }

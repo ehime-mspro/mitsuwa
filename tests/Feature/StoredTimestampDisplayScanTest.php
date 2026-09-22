@@ -81,7 +81,9 @@ class StoredTimestampDisplayScanTest extends TestCase
 
         if (str_ends_with($path, '.blade.php')) {
             $source = preg_replace_callback('/\{\{--.*?--\}\}/s', $keepNewlines, $source);
-            $source = preg_replace_callback('#/\*.*?\*/#s', $keepNewlines, $source);
+            // ⚠ 文字列の中の `/*`（`request()->is('tenant/*')` など実測 14 箇所）から始めない。
+            //    始めると次の `*/`（<style> の普通のコメントで十分）まで実コードを飲み込み、走査が無音で止まる。
+            $source = preg_replace_callback('#(?<![\w\x27"])/\*.*?\*/#s', $keepNewlines, $source);
 
             return preg_replace('#^([ \t]*)//[^\n]*#m', '$1', $source); // 行頭の // だけ（https:// を残す）
         }
@@ -98,12 +100,23 @@ class StoredTimestampDisplayScanTest extends TestCase
         return $code;
     }
 
+    /**
+     * @return list<string> 走査するディレクトリ。
+     *
+     * ⚠ 2 か所で別々に持つと、本体の走査と「件数の下限」のテストが別のものを見るようになり、
+     *   片方だけ書き換えたときに下限の守りが静かに外れる。
+     */
+    private function scanDirs(): array
+    {
+        return [app_path(), resource_path('views')];
+    }
+
     /** @return array<string, list<array{int, string}>> 相対パス => 一致 */
     private function scan(): array
     {
         $names = $this->timestampAttributes();
         $hits = [];
-        foreach ([app_path(), resource_path('views')] as $dir) {
+        foreach ($this->scanDirs() as $dir) {
             foreach (File::allFiles($dir) as $file) {
                 if ($file->getExtension() !== 'php') {
                     continue;
@@ -156,7 +169,7 @@ class StoredTimestampDisplayScanTest extends TestCase
     public function test_japan_time_format_is_used_where_timestamps_are_shown(): void
     {
         $count = 0;
-        foreach ([app_path(), resource_path('views')] as $dir) {
+        foreach ($this->scanDirs() as $dir) {
             foreach (File::allFiles($dir) as $file) {
                 if ($file->getExtension() === 'php') {
                     $count += preg_match_all('/JapanTime::format\(/', $this->withoutComments($file->getPathname()));
