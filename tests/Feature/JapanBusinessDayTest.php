@@ -91,8 +91,9 @@ class JapanBusinessDayTest extends TestCase
     }
 
     /**
-     * ⚠ 振る舞いが変わる唯一の箇所: 以前は now()（その日の途中の瞬間）を終了日の 0:00 と比べていたため、
+     * ⚠ 振る舞いが変わる 2 か所のうちの 1 つ: 以前は now()（その日の途中の瞬間）を終了日の 0:00 と比べていたため、
      *   終了日の当日（UTC で 0:00 を過ぎた時点＝日本時間の 9:00 以降）が対象外だった。日付で比べるので終了日も適用中になる。
+     * ⚠ もう 1 つは ZealMember::age()（未来の誕生日でだけ旧実装と 1 つ違う。理由と実測はそのメソッドの注記）。
      */
     public function test_a_campaign_runs_from_japan_midnight_of_the_start_day_through_the_end_day(): void
     {

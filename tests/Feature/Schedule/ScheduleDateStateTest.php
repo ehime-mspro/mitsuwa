@@ -24,7 +24,7 @@ class ScheduleDateStateTest extends ScheduleTestCase
 
     /**
      * ⚠ **「今日」を固定する。** HTTP 経由の描画は `ScheduleCardService` が
-     *   `CarbonImmutable::today()` に落ちるので、凍結しないと**実行日に依存**する
+     *   `JapanTime::today()->toImmutable()` に落ちるので、凍結しないと**実行日に依存**する
      *   （このクラスの注意書きと同じ失敗を、テスト側で作らないこと）。
      */
     protected function setUp(): void
