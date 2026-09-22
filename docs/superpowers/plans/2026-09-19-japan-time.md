@@ -1702,3 +1702,81 @@ Expected: INVALID 0 件
 
 - [ ] **Step 3: 本番反映は利用者の明示の承認を得てから**（DB 変更なし・`./deploy.sh` のみ）。
 反映後、基幹の利用者一覧の自分の最終ログインが今の日本時間で出ることを見る。
+
+---
+
+## 実測記録（Task 6 の変異テスト。2026-09-23。docs/RULES.md Bug #44 の作法）
+
+作法: ① `git status --porcelain` が空 → ② 変異を当てる（**出現がちょうど 1 回でなければ中止**）→
+③ 着弾を確認（非空）→ ④ 全件を `--log-junit` で流す → ⑤ 落ちたテストと**理由の 1 行目**を記録 →
+⑥ `git restore` で復元 → ⑦ 空を再確認。**32 通りすべて ①〜⑦ を通し、復元後の清浄も全件で確認した。**
+
+基準: `OK (1752 tests, 10775 assertions)`
+
+| # | 変異 | 結果 | 落ちたテスト（理由の 1 行目） |
+|---|---|---|---|
+| M00 | カナリア: 建売詳細に未定義変数を置く | 赤 19 | `Housing\HousingConstructionStartDateTest::test_the_property_show_page_pairs_the_label_with_its_own_value`<br>Expected response status code [200] but received 500.<br>`Housing\HousingTimestampDisplayTest::test_registered_and_updated_times_are_shown_in_japan_time`<br>Expected response status code [200] but received 500.<br>`Housing\HousingTimestampDisplayTest::test_file_upload_dates_are_japanese_dates`<br>Expected response status code [200] but received 500.<br>…ほか 16 本 |
+| M01 | format() から ->setTimezone(self::ZONE) を外す | 赤 11 | `Admin\UserLastLoginDisplayTest::test_last_login_is_shown_in_japan_time`<br>最終ログインが日本時間になっていない<br>`AttachmentTimestampDisplayTest::test_the_section_shows_upload_and_deletion_times_in_japan_time`<br>登録の日時が日本時間になっていない<br>`AttachmentTimestampDisplayTest::test_the_delete_response_carries_the_japan_time`<br>Failed asserting that two strings are identical.<br>…ほか 8 本 |
+| J-a | format() の setTimezone を addHours(9) に（Task 1 レビューが見つけた死角） | 赤 1 | `Support\JapanTimeTest::test_format_shifts_the_zone_rather_than_adding_nine_hours`<br>Failed asserting that two strings are identical. |
+| J-b | CarbonImmutable::instance を Carbon::instance に | **緑** | （緑） |
+| J-c | format() の引数の型を ?DateTimeInterface から ?Carbon に狭める | 赤 2 | `Support\JapanTimeTest::test_format_accepts_immutable_values_and_leaves_the_argument_alone`<br>TypeError: App\Support\JapanTime::format(): Argument #1 ($at) must be of type ?I<br>`Support\JapanTimeTest::test_format_accepts_plain_php_date_objects`<br>TypeError: App\Support\JapanTime::format(): Argument #1 ($at) must be of type ?I |
+| M02 | today() の Carbon::now(self::ZONE) を Carbon::now() に | 赤 15 | `JapanBusinessDayTest::test_the_may_fiscal_year_turns_over_at_japan_midnight`<br>App\Http\Controllers\DashboardController::getCurrentFiscalYear: 5/1 の朝は新しい年度<br>`JapanBusinessDayTest::test_the_dashboard_half_turns_over_at_japan_midnight`<br>Failed asserting that two strings are identical.<br>`JapanBusinessDayTest::test_zeal_months_turn_over_at_japan_midnight`<br>6/1 の朝は新しい年度<br>…ほか 12 本 |
+| M03 | today() を日本時間の 0:00 にする | 赤 13 | `Tests\Unit\Tenant\InvestmentRecoveryTest::test_counts_from_completion_date`<br>Failed asserting that 200000 matches expected 300000.<br>`Tests\Unit\Tenant\InvestmentRecoveryTest::test_existing_tenant_straddling_completion_uses_full_rent`<br>Failed asserting that 200000 matches expected 300000.<br>`Tests\Unit\Tenant\InvestmentRecoveryTest::test_prorated_first_month_counts_daily_rent`<br>Failed asserting that 170000 matches expected 270000.<br>…ほか 10 本 |
+| M04 | 建売詳細の登録日時を直接 format に戻す | 赤 3 | `Housing\HousingTimestampDisplayTest::test_registered_and_updated_times_are_shown_in_japan_time`<br>property: 登録の日時が日本時間になっていない<br>`StoredTimestampDisplayScanTest::test_stored_timestamps_are_never_formatted_directly`<br>保存された日時を直接整形している（9 時間ずれる。JapanTime::format() を通す）:<br>`StoredTimestampDisplayScanTest::test_japan_time_format_is_used_where_timestamps_are_shown`<br>JapanTime::format() の呼び出しが 24 件を下回った。走査の空振りか、検出器に見えない形（変数に入れる・配列の添字・{{ }} の素出し・- |
+| M26 | 建売詳細を『死角の形』（変数に入れてから整形）にする | 赤 2 | `Housing\HousingTimestampDisplayTest::test_registered_and_updated_times_are_shown_in_japan_time`<br>property: 登録の日時が日本時間になっていない<br>`StoredTimestampDisplayScanTest::test_japan_time_format_is_used_where_timestamps_are_shown`<br>JapanTime::format() の呼び出しが 24 件を下回った。走査の空振りか、検出器に見えない形（変数に入れる・配列の添字・{{ }} の素出し・- |
+| M05 | 不動産契約詳細の登録日時を戻す（振る舞いのテストが無い箇所） | 赤 2 | `StoredTimestampDisplayScanTest::test_stored_timestamps_are_never_formatted_directly`<br>保存された日時を直接整形している（9 時間ずれる。JapanTime::format() を通す）:<br>`StoredTimestampDisplayScanTest::test_japan_time_format_is_used_where_timestamps_are_shown`<br>JapanTime::format() の呼び出しが 24 件を下回った。走査の空振りか、検出器に見えない形（変数に入れる・配列の添字・{{ }} の素出し・- |
+| M06 | 問合せ登録の既定の日付を now() に戻す | 赤 2 | `ClockReadScanTest::test_views_never_read_the_clock`<br>ビューで時計を読んでいる（日本時間の 0:00〜8:59 に前日になる。\App\Support\JapanTime::today() を使う）。<br>`Tenant\InquiryJapanDateTest::test_the_create_form_uses_the_japanese_date_on_new_years_morning`<br>問合せ日の既定が日本の今日でない |
+| M07 | 不動産契約の年度を now() に戻す | 赤 2 | `ClockReadScanTest::test_php_clock_reads_are_classified`<br>時計の読み取りが分類と合わない:<br>`JapanBusinessDayTest::test_the_may_fiscal_year_turns_over_at_japan_midnight`<br>App\Http\Controllers\RealEstate\ReContractController::getCurrentFiscalYear: 5/1  |
+| M08 | キャンペーン判定を now() に戻す | 赤 2 | `ClockReadScanTest::test_php_clock_reads_are_classified`<br>時計の読み取りが分類と合わない:<br>`JapanBusinessDayTest::test_a_campaign_runs_from_japan_midnight_of_the_start_day_through_the_end_day`<br>開始日の 0:00（日本時間 9/1 0:00） |
+| M09 | 年齢を $this->birthday->age に戻す | 赤 2 | `ClockReadScanTest::test_php_clock_reads_are_classified`<br>時計の読み取りが分類と合わない:<br>`JapanBusinessDayTest::test_a_zeal_members_age_goes_up_at_japan_midnight_on_the_birthday`<br>誕生日の朝なのに年齢が上がっていない |
+| M10 | 時計を読む新しいファイルを足す | 赤 1 | `ClockReadScanTest::test_php_clock_reads_are_classified`<br>時計の読み取りが分類と合わない: |
+| M11 | ALLOWED の AuthController の件数を 3 に | 赤 1 | `ClockReadScanTest::test_php_clock_reads_are_classified`<br>時計の読み取りが分類と合わない: |
+| M12 | ALLOWED に時計を読まないファイルを足す | 赤 1 | `ClockReadScanTest::test_php_clock_reads_are_classified`<br>時計の読み取りが分類と合わない: |
+| M13 | ClockReadScanTest の withoutComments から T_COMMENT を外す | 赤 2 | `ClockReadScanTest::test_php_clock_reads_are_classified`<br>時計の読み取りが分類と合わない:<br>`ClockReadScanTest::test_comments_are_dropped_before_scanning`<br>Failed asserting that two arrays are identical. |
+| M14 | 表示の走査の正規表現から \?? を外す | 赤 1 | `StoredTimestampDisplayScanTest::test_the_detector_catches_what_it_should_and_ignores_the_rest`<br>拾えていない: $c->created_at?->format('Y') |
+| M15 | 表示の走査から SoftDeletes の分岐を外す | **緑** | （緑） |
+| M27 | コメント除去の /* */ を直す前の形に戻し、sidebar に CSS コメントを足す（2 ファイル + ビュー） | 赤 2 | `ClockReadScanTest::test_comments_are_dropped_before_scanning`<br>Failed asserting that two arrays are not identical.<br>`StoredTimestampDisplayScanTest::test_comments_are_dropped_before_scanning`<br>Failed asserting that two arrays are not identical. |
+| M16 | ZEAL 体験予約の月ラベルを createFromFormat('Y-m') に戻す | 赤 1 | `ClockReadScanTest::test_views_never_read_the_clock`<br>ビューで時計を読んでいる（日本時間の 0:00〜8:59 に前日になる。\App\Support\JapanTime::today() を使う）。 |
+| M17 | 添付セクションの登録日時を戻す | 赤 3 | `AttachmentTimestampDisplayTest::test_the_section_shows_upload_and_deletion_times_in_japan_time`<br>登録の日時が日本時間になっていない<br>`StoredTimestampDisplayScanTest::test_stored_timestamps_are_never_formatted_directly`<br>保存された日時を直接整形している（9 時間ずれる。JapanTime::format() を通す）:<br>`StoredTimestampDisplayScanTest::test_japan_time_format_is_used_where_timestamps_are_shown`<br>JapanTime::format() の呼び出しが 24 件を下回った。走査の空振りか、検出器に見えない形（変数に入れる・配列の添字・{{ }} の素出し・- |
+| M18 | 添付削除の応答の日時を戻す | 赤 3 | `AttachmentTimestampDisplayTest::test_the_delete_response_carries_the_japan_time`<br>Failed asserting that two strings are identical.<br>`StoredTimestampDisplayScanTest::test_stored_timestamps_are_never_formatted_directly`<br>保存された日時を直接整形している（9 時間ずれる。JapanTime::format() を通す）:<br>`StoredTimestampDisplayScanTest::test_japan_time_format_is_used_where_timestamps_are_shown`<br>JapanTime::format() の呼び出しが 24 件を下回った。走査の空振りか、検出器に見えない形（変数に入れる・配列の添字・{{ }} の素出し・- |
+| M19 | 工程表カードの今日を CarbonImmutable::today() に戻す | 赤 2 | `ClockReadScanTest::test_php_clock_reads_are_classified`<br>時計の読み取りが分類と合わない:<br>`Schedule\ScheduleTodayJapanTimeTest::test_the_schedule_card_uses_the_japanese_today`<br>工程表の今日が日本の日付でない |
+| M20 | 問合せの自動履歴の日付を now() に戻す | 赤 2 | `ClockReadScanTest::test_php_clock_reads_are_classified`<br>時計の読み取りが分類と合わない:<br>`Tenant\InquiryJapanDateTest::test_the_automatic_history_of_a_status_change_is_dated_in_japan`<br>自動の対応履歴の日付が日本の日付でない |
+| M21 | 問合せ番号の年を date('Y') に戻す | 赤 2 | `ClockReadScanTest::test_php_clock_reads_are_classified`<br>時計の読み取りが分類と合わない:<br>`Tenant\InquiryJapanDateTest::test_the_create_form_uses_the_japanese_date_on_new_years_morning`<br>問合せ番号の年が日本の年でない |
+| M22 | 賃貸マンションのダッシュボードの時点を now() に戻す | 赤 2 | `ClockReadScanTest::test_views_never_read_the_clock`<br>ビューで時計を読んでいる（日本時間の 0:00〜8:59 に前日になる。\App\Support\JapanTime::today() を使う）。<br>`Mansion\DashboardJapanDateTest::test_the_snapshot_date_is_the_japanese_date`<br>Failed asserting that '<!DOCTYPE html>\n |
+| M24 | ファイルの登録日から第 2 引数 'Y/m/d' を落とす（建売） | 赤 1 | `Housing\HousingTimestampDisplayTest::test_file_upload_dates_are_japanese_dates`<br>ファイルの登録日が日本の日付になっていない |
+| M25 | 図面の登録日から第 2 引数 'Y/m/d' を落とす（分譲地） | **緑** | （緑） |
+| M23 | 等価変異: 引数 2 つの date() を足す | **緑** | （緑） |
+| M28 | 網の外に 5 月始まりの年度の複製を 1 つ増やす | 赤 1 | `JapanBusinessDayTest::test_every_may_fiscal_year_expression_is_classified`<br>5 月始まりの年度の式の在処が変わった。 |
+
+### 期待と違ったもの: **M15 の 1 件だけ**（調べた結果 真の等価変異）
+
+`timestampAttributes()` の SoftDeletes の分岐を消しても全件が緑だった。調べると Laravel の
+`SoftDeletes::initializeSoftDeletes()` が `deleted_at` を `datetime` キャストへ足すので、
+下の casts のループと**重なっている**（Buyer / Unit / Attachment / Property の 4 モデルで実測）。
+→ **穴ではない**。次の測定で誤読されないよう、その 3 行に理由を書き添えた（`17348e1c`）。
+
+### 意図して緑にしたもの（死角・等価変異の実測）
+- **M25**: 第 2 引数 `'Y/m/d'` を落としても緑。走査はソースの**形**しか見ないので**書式の誤りは拾えない**。
+  同じ形の M24（建売）は振る舞いのテストがあるので赤 ＝ 守り手の有無がそのまま出た
+- **M23**: 引数 2 つの `date()` を足しても緑 ＝ 走査が**過剰に拾わない**ことの証明
+- **J-b**: `CarbonImmutable::instance` → `Carbon::instance` は緑。`Carbon::instance()` も clone するので**真の等価変異**
+
+### この測定で裏が取れた重要な事実
+- **M26**: 表示を「死角の形」（変数に入れてから整形）に書き換えると、**件数の下限 `MIN_FORMAT_CALLS = 24` だけ**が赤になる
+  （走査本体は緑）＝ 下限が死角を捕まえる**唯一の守り手**であることの実測。失敗メッセージもその趣旨を伝えている
+- **M27**: コメント除去の `/* */` を直す前の形に戻すと、新しく入れた固定資産が**2 ファイルとも**赤 ＝ 修正が load-bearing
+- **M05**: 振る舞いのテストが無い箇所は**走査だけ**が赤になる（設計どおり）
+- **J-a**: `setTimezone` → `addHours(9)` は、Task 1 のレビューで足したテスト **1 本だけ**が捕まえる
+  （足す前は出力が完全に一致するので原理的に検出不能だった）
+- **M00**（カナリア）: 19 本が赤 ＝ 測定装置が worktree のコードを読んでいることの確認
+
+### 実測で分かった計画の誤り（⚠ 本文は直していない）
+
+計画どおりだったかを後から確かめられるよう、**Task 1〜8 の本文はそのまま残す**。実測と食い違った 4 件をここに書き留める。
+
+| 場所 | 計画の記述 | 実測 |
+|---|---|---|
+| Task 3 の `Files:`（558 行） | `- Modify（ビュー 18）: 下の表` | **19 ファイル / 20 行** |
+| Task 4 の Step 4（1028 行） | `上と同じ --filter（7 tests PASS）` | **6**（`JapanBusinessDayTest` 5 ＋ `ScheduleTodayJapanTimeTest` 1）|
+| Task 5 の ALLOWED（1302 行） | `'app/Support/JapanTime.php' => [1, …]` | **`[2, …]`**（検出器が `public static function today(): Carbon` の宣言にも自己一致する。**検出器を弱めず件数で吸収**した）|
+| `ZealPlan` の docblock（899 行）| `⚠ 振る舞いが変わる唯一の箇所` | **2 か所**（キャンペーン期間 ＋ `ZealMember::age()`。どちらも BACKLOG と docs/RULES.md Bug #61 に記録）|
