@@ -968,7 +968,7 @@ class TenantImportController extends Controller
             }
 
             // 解約日が今日より未来 → 警告（過去契約のはず）
-            if ($endDate > now()->format('Y-m-d')) {
+            if ($endDate > JapanTime::today()->format('Y-m-d')) {
                 $warnings[] = ['row' => $rowNum, 'message' => "解約日（{$endDate}）が今日より未来です（過去契約として登録します）"];
             }
 

@@ -63,7 +63,7 @@ class TransactionController extends Controller
 
         // 年度の12ヶ月を構築
         $months = $this->getFiscalYearMonths($fiscalYear);
-        $now = now();
+        $now = JapanTime::today();
 
         $monthlyData = [];
         $yearTotalRent = 0;
@@ -256,7 +256,7 @@ class TransactionController extends Controller
      */
     private function getCurrentFiscalYear(): int
     {
-        $now = now();
+        $now = JapanTime::today();
         return $now->month >= self::FISCAL_YEAR_START_MONTH ? $now->year : $now->year - 1;
     }
 

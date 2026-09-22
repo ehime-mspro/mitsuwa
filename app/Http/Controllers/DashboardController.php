@@ -193,7 +193,7 @@ class DashboardController extends Controller
      */
     private function getCurrentFiscalYear(): int
     {
-        $now = now();
+        $now = JapanTime::today();
         return $now->month >= 5 ? $now->year : $now->year - 1;
     }
 
@@ -202,7 +202,7 @@ class DashboardController extends Controller
      */
     private function getCurrentPeriod(): string
     {
-        $month = now()->month;
+        $month = JapanTime::today()->month;
         return ($month >= 5 && $month <= 10) ? 'h1' : 'h2';
     }
 
@@ -755,7 +755,7 @@ class DashboardController extends Controller
     {
         $fyStart = Carbon::create($fy, 5, 1)->startOfDay();
         $fyEnd   = Carbon::create($fy + 1, 4, 30)->endOfDay();
-        $today   = now();
+        $today   = JapanTime::today();
 
         // 当月 1 日（実績/予想の境界）
         $currentMonthStart = $today->copy()->startOfMonth();
@@ -852,7 +852,7 @@ class DashboardController extends Controller
      */
     private function aggregateBuildingStats(): Collection
     {
-        $prevMonth      = now()->subMonth();
+        $prevMonth      = JapanTime::today()->subMonth();
         $prevMonthStart = $prevMonth->copy()->startOfMonth();
         $prevMonthEnd   = $prevMonth->copy()->endOfMonth();
 

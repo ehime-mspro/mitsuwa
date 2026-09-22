@@ -14,6 +14,7 @@ use App\Models\ReProcurement;
 use App\Models\ReProject;
 use App\Models\ReProjectLot;
 use App\Models\User;
+use App\Support\JapanTime;
 use App\Support\Settings;
 use Illuminate\Http\Request;
 
@@ -590,7 +591,7 @@ class ReContractController extends Controller
 
     private function getCurrentFiscalYear(): int
     {
-        $now   = now();
+        $now   = JapanTime::today();
         $month = $now->month;
         $year  = $now->year;
         return $month >= 5 ? $year : $year - 1;

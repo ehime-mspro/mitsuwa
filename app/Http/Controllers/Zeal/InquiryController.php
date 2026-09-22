@@ -6,6 +6,7 @@ use App\Enums\ZealGymInquiryStatus;
 use App\Http\Controllers\Controller;
 use App\Models\GymInquiry;
 use App\Models\ZealMember;
+use App\Support\JapanTime;
 use Illuminate\Http\Request;
 
 /**
@@ -52,7 +53,7 @@ class InquiryController extends Controller
         // 月選択肢（過去18か月分）
         $months = collect();
         for ($i = 0; $i < 18; $i++) {
-            $months->push(now()->subMonths($i)->format('Y-m'));
+            $months->push(JapanTime::today()->subMonths($i)->format('Y-m'));
         }
 
         return view('zeal.inquiries.index', compact('inquiries', 'statuses', 'months'));

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\InvestmentPattern;
 use App\Enums\InvestmentStatus;
+use App\Support\JapanTime;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -125,7 +126,7 @@ class Investment extends Model
         $pivotMonth = $this->end_date->copy()->startOfMonth();
         $totalRecovered = 0;
         $recoveryStartedAt = null;
-        $now = now();
+        $now = JapanTime::today();
 
         foreach ($contracts as $contract) {
             if (! $contract->rent_start_date || $contract->rent <= 0) {

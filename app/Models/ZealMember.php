@@ -6,6 +6,7 @@ use App\Enums\ZealAcquisitionSource;
 use App\Enums\ZealGender;
 use App\Enums\ZealPurpose;
 use App\Enums\ZealWithdrawReason;
+use App\Support\JapanTime;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -105,6 +106,6 @@ class ZealMember extends Model
         if ($this->birthday === null) {
             return null;
         }
-        return $this->birthday->age;
+        return (int) $this->birthday->diffInYears(JapanTime::today());
     }
 }

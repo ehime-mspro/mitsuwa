@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\ScheduleStepCategory;
 use App\Models\ScheduleStep;
 use App\Support\GanttScale;
+use App\Support\JapanTime;
 use App\Support\ScheduleStepStatus;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
@@ -36,7 +37,7 @@ class ScheduleCardService
      */
     public function build(Model $owner, ?CarbonImmutable $today = null): array
     {
-        $today = ($today ?? CarbonImmutable::today())->startOfDay();
+        $today = ($today ?? JapanTime::today()->toImmutable())->startOfDay();
         $steps = $owner->scheduleSteps()->get();
 
         return [

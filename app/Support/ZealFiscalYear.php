@@ -28,7 +28,7 @@ class ZealFiscalYear
      */
     public static function current(): int
     {
-        $now = Carbon::now();
+        $now = JapanTime::today();
         return $now->month >= self::START_MONTH ? $now->year : $now->year - 1;
     }
 
@@ -95,7 +95,7 @@ class ZealFiscalYear
      */
     public static function currentMonthYm(): string
     {
-        return Carbon::now()->format('Y-m');
+        return JapanTime::today()->format('Y-m');
     }
 
     /**
@@ -105,7 +105,7 @@ class ZealFiscalYear
     public static function isPastMonth(string $yearMonth): bool
     {
         $targetStart = Carbon::createFromFormat('Y-m-d', $yearMonth . '-01')->startOfMonth();
-        $currentStart = Carbon::now()->startOfMonth();
+        $currentStart = JapanTime::today()->startOfMonth();
         return $targetStart->lt($currentStart);
     }
 
@@ -123,7 +123,7 @@ class ZealFiscalYear
     public static function isFutureMonth(string $yearMonth): bool
     {
         $targetStart = Carbon::createFromFormat('Y-m-d', $yearMonth . '-01')->startOfMonth();
-        $currentStart = Carbon::now()->startOfMonth();
+        $currentStart = JapanTime::today()->startOfMonth();
         return $targetStart->gt($currentStart);
     }
 
