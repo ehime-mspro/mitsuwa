@@ -765,13 +765,6 @@ class SimulationController extends Controller
      */
     private function buildComparisonSummary($categories, array $matrix, array $budgetMatrix, array $months): array
     {
-        $pastMonths = ZealFiscalYear::completedMonths(
-            (int) date('Y', strtotime(($months[0] ?? JapanTime::today()->format('Y-m')) . '-01'))
-            >= \App\Support\ZealFiscalYear::START_MONTH
-                ? (int) substr($months[0] ?? JapanTime::today()->format('Y-m'), 0, 4)
-                : (int) substr($months[0] ?? JapanTime::today()->format('Y-m'), 0, 4)
-        );
-        // 上記は冗長なので、$months[0] から FY を逆算するシンプル版に置き換え:
         $startYm    = $months[0] ?? null;
         $fy         = $startYm ? (int) substr($startYm, 0, 4) : JapanTime::today()->year;
         $pastMonths = ZealFiscalYear::completedMonths($fy);
