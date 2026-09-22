@@ -308,9 +308,9 @@
     {{-- 登録情報 --}}
     <div class="bg-white border border-gray-200 rounded-lg px-5 py-3">
         <div class="flex gap-6 text-xs text-gray-500">
-            <span>登録: {{ $property->createdBy->name ?? '—' }} {{ $property->created_at->format('Y/m/d H:i') }}</span>
+            <span>登録: {{ $property->createdBy->name ?? '—' }} {{ \App\Support\JapanTime::format($property->created_at) }}</span>
             @if($property->updatedBy)
-                <span>更新: {{ $property->updatedBy->name }} {{ $property->updated_at->format('Y/m/d H:i') }}</span>
+                <span>更新: {{ $property->updatedBy->name }} {{ \App\Support\JapanTime::format($property->updated_at) }}</span>
             @endif
         </div>
     </div>

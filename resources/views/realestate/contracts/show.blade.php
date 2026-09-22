@@ -291,11 +291,11 @@
             <dt class="bg-gray-50 px-3.5 py-2.5 text-sm text-gray-600 font-medium border-b border-r border-gray-200">登録者</dt>
             <dd class="px-3.5 py-2.5 text-sm text-gray-900 border-b border-gray-200">{{ $contract->createdBy->name ?? '—' }}</dd>
             <dt class="bg-gray-50 px-3.5 py-2.5 text-sm text-gray-600 font-medium border-b border-r border-gray-200">登録日時</dt>
-            <dd class="px-3.5 py-2.5 text-sm text-gray-900 border-b border-gray-200">{{ $contract->created_at?->format('Y/m/d H:i') }}</dd>
+            <dd class="px-3.5 py-2.5 text-sm text-gray-900 border-b border-gray-200">{{ \App\Support\JapanTime::format($contract->created_at) }}</dd>
             <dt class="bg-gray-50 px-3.5 py-2.5 text-sm text-gray-600 font-medium border-r border-gray-200">更新者</dt>
             <dd class="px-3.5 py-2.5 text-sm text-gray-900">{{ $contract->updatedBy->name ?? '—' }}</dd>
             <dt class="bg-gray-50 px-3.5 py-2.5 text-sm text-gray-600 font-medium border-r border-gray-200">更新日時</dt>
-            <dd class="px-3.5 py-2.5 text-sm text-gray-900">{{ $contract->updated_at?->format('Y/m/d H:i') }}</dd>
+            <dd class="px-3.5 py-2.5 text-sm text-gray-900">{{ \App\Support\JapanTime::format($contract->updated_at) }}</dd>
         </div>
     </div>
 

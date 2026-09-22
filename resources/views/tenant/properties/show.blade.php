@@ -529,7 +529,7 @@
                                 <tbody>
                                     @foreach($changeLogs as $log)
                                         <tr class="hover:bg-gray-50">
-                                            <td class="px-4 py-2.5 border-b border-gray-200 whitespace-nowrap text-gray-900">{{ $log->changed_at->format('Y/m/d H:i') }}</td>
+                                            <td class="px-4 py-2.5 border-b border-gray-200 whitespace-nowrap text-gray-900">{{ \App\Support\JapanTime::format($log->changed_at) }}</td>
                                             <td class="px-4 py-2.5 border-b border-gray-200 whitespace-nowrap text-gray-900">{{ $log->changedByUser->name ?? '—' }}</td>
                                             <td class="px-4 py-2.5 border-b border-gray-200 whitespace-nowrap text-gray-900">{{ $log->field_name }}</td>
                                             <td class="px-4 py-2.5 border-b border-gray-200 whitespace-nowrap text-gray-700">{{ $log->old_value ?? '—' }}</td>

@@ -679,11 +679,11 @@
                 <div style="background:#F9FAFB; padding:10px 14px; color:#6B7280; font-weight:500; border-right:1px solid #E5E7EB; border-bottom:1px solid #E5E7EB;">登録者</div>
                 <div style="padding:10px 14px; color:#111827; border-bottom:1px solid #E5E7EB;">{{ $hsCustomOrder->createdBy->name ?? '—' }}</div>
                 <div style="background:#F9FAFB; padding:10px 14px; color:#6B7280; font-weight:500; border-right:1px solid #E5E7EB; border-bottom:1px solid #E5E7EB;">登録日時</div>
-                <div style="padding:10px 14px; color:#111827; border-bottom:1px solid #E5E7EB;">{{ $hsCustomOrder->created_at?->format('Y/m/d H:i') ?? '—' }}</div>
+                <div style="padding:10px 14px; color:#111827; border-bottom:1px solid #E5E7EB;">{{ \App\Support\JapanTime::format($hsCustomOrder->created_at) ?? '—' }}</div>
                 <div style="background:#F9FAFB; padding:10px 14px; color:#6B7280; font-weight:500; border-right:1px solid #E5E7EB;">更新者</div>
                 <div style="padding:10px 14px; color:#111827;">{{ $hsCustomOrder->updatedBy->name ?? '—' }}</div>
                 <div style="background:#F9FAFB; padding:10px 14px; color:#6B7280; font-weight:500; border-right:1px solid #E5E7EB;">更新日時</div>
-                <div style="padding:10px 14px; color:#111827;">{{ $hsCustomOrder->updated_at?->format('Y/m/d H:i') ?? '—' }}</div>
+                <div style="padding:10px 14px; color:#111827;">{{ \App\Support\JapanTime::format($hsCustomOrder->updated_at) ?? '—' }}</div>
             </div>
         </div>
 

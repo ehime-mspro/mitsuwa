@@ -13,6 +13,7 @@ use App\Models\ReProjectLot;
 use App\Models\ZoningType;
 use App\Support\AttachmentDelivery;
 use App\Support\DeletionBlockers;
+use App\Support\JapanTime;
 use App\Support\TsuboPrice;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -401,7 +402,7 @@ class ProjectController extends Controller
                 'mime_type'   => $d->mime_type,
                 'is_image'    => $d->isImage(),
                 'uploaded_by' => $d->uploadedByUser->name ?? '',
-                'created_at'  => $d->created_at->format('Y/m/d'),
+                'created_at'  => JapanTime::format($d->created_at, 'Y/m/d'),
             ];
         }
 
@@ -717,7 +718,7 @@ class ProjectController extends Controller
                 'mime_type'     => $drawing->mime_type,
                 'is_image'      => $drawing->isImage(),
                 'uploaded_by'   => $drawing->uploadedByUser->name ?? '',
-                'created_at'    => $drawing->created_at->format('Y/m/d'),
+                'created_at'    => JapanTime::format($drawing->created_at, 'Y/m/d'),
             ],
         ]);
     }

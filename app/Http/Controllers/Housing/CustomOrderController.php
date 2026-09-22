@@ -13,6 +13,7 @@ use App\Models\HsCustomOrderFile;
 use App\Models\ReProcurement;
 use App\Models\ReProject;
 use App\Support\AttachmentDelivery;
+use App\Support\JapanTime;
 use App\Support\Settings;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -134,7 +135,7 @@ class CustomOrderController extends Controller
                 'mime_type'   => $file->mime_type,
                 'is_image'    => $file->isImage(),
                 'uploaded_by' => $file->uploadedByUser->name ?? '',
-                'created_at'  => $file->created_at->format('Y/m/d'),
+                'created_at'  => JapanTime::format($file->created_at, 'Y/m/d'),
             ];
         }
 
@@ -291,7 +292,7 @@ class CustomOrderController extends Controller
                 'mime_type'   => $record->mime_type,
                 'is_image'    => $record->isImage(),
                 'uploaded_by' => $record->uploadedByUser->name ?? '',
-                'created_at'  => $record->created_at->format('Y/m/d'),
+                'created_at'  => JapanTime::format($record->created_at, 'Y/m/d'),
             ],
         ]);
     }
