@@ -69,6 +69,11 @@ class StoredTimestampDisplayScanTest extends TestCase
                     }
                 }
             }
+            // ⚠ Laravel の SoftDeletes は initializeSoftDeletes() で deleted_at を datetime キャストへ
+            //    足すので、この分岐は今のところ下の casts のループと重なっている（2026-09-23 に
+            //    Buyer / Unit / Attachment / Property で実測）。この 3 行を消す変異は**等価変異**で緑になる
+            //    ＝「検出しない＝穴」と誤読しないこと。列名を変えたモデルや、将来 Laravel が自動キャストを
+            //    やめた場合の備えとして残す。
             if (in_array(SoftDeletes::class, class_uses_recursive($class), true)) {
                 $names[$model->getDeletedAtColumn()] = true;
             }
