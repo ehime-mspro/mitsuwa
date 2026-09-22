@@ -11,6 +11,7 @@ use App\Models\Investment;
 use App\Models\InvestmentDetail;
 use App\Models\Property;
 use App\Models\Unit;
+use App\Support\JapanTime;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -367,7 +368,7 @@ class InvestmentController extends Controller
      */
     private function generateInvestmentNumber(): string
     {
-        $year = date('Y');
+        $year = JapanTime::today()->year;
         $prefix = "INV-{$year}-";
 
         $lastNumber = Investment::withTrashed()

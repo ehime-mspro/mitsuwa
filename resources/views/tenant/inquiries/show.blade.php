@@ -62,7 +62,7 @@
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
                     <div>
                         <label class="block text-xs font-semibold text-gray-700 mb-1">対応日<span class="text-red-600 ml-0.5">*</span></label>
-                        <input type="date" name="action_date" value="{{ old('action_date', now()->format('Y-m-d')) }}"
+                        <input type="date" name="action_date" value="{{ old('action_date', \App\Support\JapanTime::today()->format('Y-m-d')) }}"
                                class="form-input w-full h-9 px-3 border border-gray-300 rounded-md text-sm focus:border-emerald-500 focus:outline-none">
                     </div>
                     <div>

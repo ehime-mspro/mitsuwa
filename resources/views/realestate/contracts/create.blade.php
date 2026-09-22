@@ -165,7 +165,7 @@
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 26px;">
                     <div class="fg">
                         <label>契約日 <span class="req">*</span></label>
-                        <input type="date" name="contract_date" value="{{ old('contract_date', date('Y-m-d')) }}"
+                        <input type="date" name="contract_date" value="{{ old('contract_date', \App\Support\JapanTime::today()->format('Y-m-d')) }}"
                                :disabled="isBrokerage()">
                     </div>
                     <div class="fg">

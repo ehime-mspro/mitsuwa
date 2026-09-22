@@ -17,7 +17,7 @@
 
 @php
     // 初期値（old() 優先）
-    $oldEndDate = old('end_date', now()->format('Y-m-d'));
+    $oldEndDate = old('end_date', \App\Support\JapanTime::today()->format('Y-m-d'));
 @endphp
 
 {{-- 解約画面用スタイル（Vite 未ビルドにつき inline） --}}

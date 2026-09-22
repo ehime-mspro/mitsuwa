@@ -6,6 +6,7 @@ use App\Enums\DepartmentCode;
 use App\Enums\OperationStatus;
 use App\Models\Contract;
 use App\Models\Property;
+use App\Support\JapanTime;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -23,7 +24,7 @@ class TransactionController extends Controller
      */
     public function index(Request $request)
     {
-        $yearMonth = $request->input('ym', now()->format('Y-m'));
+        $yearMonth = $request->input('ym', JapanTime::today()->format('Y-m'));
 
         // 物件別収入を計算
         $revenues = $this->calculateMonthlyRevenue($yearMonth);

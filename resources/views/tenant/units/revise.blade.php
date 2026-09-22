@@ -123,7 +123,7 @@
             {{-- 改定適用日（初期値=本日） --}}
             <div style="margin-bottom:26px;">
                 <label class="block text-sm font-semibold text-gray-700 mb-1">改定適用日<span class="text-red-600 ml-0.5">*</span></label>
-                <input type="date" name="revision_date" value="{{ old('revision_date', now()->format('Y-m-d')) }}"
+                <input type="date" name="revision_date" value="{{ old('revision_date', \App\Support\JapanTime::today()->format('Y-m-d')) }}"
                        class="calc-input" style="max-width:240px; padding:0 12px;">
                 <p class="text-xs text-gray-500 mt-1">初期値は本日。カレンダーから変更できます。</p>
             </div>

@@ -304,7 +304,7 @@ function areaImportForm() {
         selectedSheet: '',
         // ⚠ 既定を当月にする。空のまま送ると required_if で差し戻され、back() の
         //   フルリロードで解析済みのファイル・マッピング・プレビューが全部消える
-        surveyedMonth: '{{ now()->format('Y-m') }}',
+        surveyedMonth: '{{ \App\Support\JapanTime::today()->format('Y-m') }}',
         allRows: [],
         headerRowIndex: 0,
         columns: [],

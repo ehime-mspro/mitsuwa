@@ -21,7 +21,7 @@
     // old() 優先で初期値を解決
     $oldNewFee = old('new_monthly_fee', '');
     $oldReason = old('reason', '');
-    $oldRevisionDate = old('revision_date', now()->format('Y-m-d'));
+    $oldRevisionDate = old('revision_date', \App\Support\JapanTime::today()->format('Y-m-d'));
 @endphp
 
 {{-- 改定フォーム + 日付ピッカー用スタイル（Vite 未ビルドにつき inline） --}}

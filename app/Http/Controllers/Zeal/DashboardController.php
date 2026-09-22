@@ -8,6 +8,7 @@ use App\Models\GymInquiry;
 use App\Models\ZealMember;
 use App\Models\ZealMemberContract;
 use App\Models\ZealPlan;
+use App\Support\JapanTime;
 use App\Support\Settings;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -35,7 +36,7 @@ class DashboardController extends Controller
      */
     public function index(Request $request)
     {
-        $now          = Carbon::now();
+        $now          = JapanTime::today();
         $currentYear  = $now->year;
         $currentMonth = $now->month;
         $lastMonth    = $now->copy()->subMonth();

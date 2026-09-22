@@ -24,6 +24,7 @@ use App\Models\Property;
 use App\Models\ReContract;
 use App\Models\ReProcurement;
 use App\Models\Unit;
+use App\Support\JapanTime;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -102,7 +103,7 @@ class DashboardController extends Controller
         $labels = $this->buildProjectionLabels($fy);
 
         // ビル別カードのサブタイトル（例: 「3月実績」）。当月は集計未確定のため前月を表示する。
-        $previousMonthLabel = now()->subMonth()->month . '月実績';
+        $previousMonthLabel = JapanTime::today()->subMonth()->month . '月実績';
 
         return view('dashboard.tenant', [
             'fiscalYear'         => $fy,
@@ -125,7 +126,7 @@ class DashboardController extends Controller
      */
     private function buildProjectionLabels(int $fy): array
     {
-        $now      = now();
+        $now      = JapanTime::today();
         $fyStart  = Carbon::create($fy, 5, 1);
         $fyEnd    = Carbon::create($fy + 1, 4, 30)->endOfDay();
         $current  = $now->copy()->startOfMonth();

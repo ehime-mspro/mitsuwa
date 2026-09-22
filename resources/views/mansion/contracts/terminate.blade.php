@@ -23,7 +23,7 @@
     // 預かり敷金（金額情報カードで参照）
     $depositAmount = (int) ($contract->deposit ?? 0);
     // 初期値（old() 優先）
-    $oldMoveOutDate = old('move_out_date', now()->format('Y-m-d'));
+    $oldMoveOutDate = old('move_out_date', \App\Support\JapanTime::today()->format('Y-m-d'));
     $oldRestoration = (int) old('restoration_cost', 0);
     $oldCleaning = (int) old('cleaning_cost', 0);
     $oldReason = old('termination_reason', '');

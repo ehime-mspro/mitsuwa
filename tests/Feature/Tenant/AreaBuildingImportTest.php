@@ -1184,7 +1184,7 @@ class AreaBuildingImportTest extends AreaBuildingTestCase
         $html = $this->actingAs($this->manager())->get(self::IMPORT_URL)->getContent();
 
         $this->assertStringContainsString(
-            "surveyedMonth: '" . now()->format('Y-m') . "'",
+            "surveyedMonth: '" . \App\Support\JapanTime::today()->format('Y-m') . "'",
             $html,
             '調査年月の既定が当月になっていない'
         );

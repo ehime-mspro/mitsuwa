@@ -23,7 +23,7 @@
     $oldNewRent = old('new_rent', '');
     $oldNewCommon = old('new_common_fee', '');
     $oldReason = old('reason', '');
-    $oldRevisionDate = old('revision_date', now()->format('Y-m-d'));
+    $oldRevisionDate = old('revision_date', \App\Support\JapanTime::today()->format('Y-m-d'));
 @endphp
 
 {{-- 改定フォーム + 日付ピッカー用スタイル（いずれも Vite 未ビルドなので inline） --}}

@@ -310,7 +310,7 @@
 
                     <div class="fg" style="margin-bottom: 20px;">
                         <label>成約日 <span class="req">*</span></label>
-                        <input type="date" name="contract_date" value="{{ old('contract_date', date('Y-m-d')) }}" required>
+                        <input type="date" name="contract_date" value="{{ old('contract_date', \App\Support\JapanTime::today()->format('Y-m-d')) }}" required>
                     </div>
 
                     <div class="fg" style="margin-bottom: 20px;">

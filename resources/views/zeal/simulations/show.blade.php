@@ -29,7 +29,7 @@
         $compareUrl = route('zeal.simulations.show', ['simulation' => $simulation, 'mode' => 'compare']);
 
         // 基準日表示
-        $today = now()->format('Y-m-d');
+        $today = \App\Support\JapanTime::today()->format('Y-m-d');
         $currentYm = \App\Support\ZealFiscalYear::currentMonthYm();
     @endphp
 

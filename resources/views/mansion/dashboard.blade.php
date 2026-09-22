@@ -208,7 +208,7 @@
 <div style="display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 24px;">
     <div>
         <h1 style="font-size: 22px; font-weight: 700; margin: 0 0 4px;">賃貸マンションダッシュボード</h1>
-        <div style="font-size: 12px; color: #6b7280;">{{ now()->format('Y年n月j日') }} 時点のスナップショット</div>
+        <div style="font-size: 12px; color: #6b7280;">{{ \App\Support\JapanTime::today()->format('Y年n月j日') }} 時点のスナップショット</div>
     </div>
     <div style="display: flex; gap: 8px;">
         <a href="{{ route('mansion.properties.index') }}"
