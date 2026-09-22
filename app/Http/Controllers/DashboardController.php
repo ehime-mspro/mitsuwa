@@ -126,10 +126,10 @@ class DashboardController extends Controller
      */
     private function buildProjectionLabels(int $fy): array
     {
-        $now      = JapanTime::today();
+        $today    = JapanTime::today();
         $fyStart  = Carbon::create($fy, 5, 1);
         $fyEnd    = Carbon::create($fy + 1, 4, 30)->endOfDay();
-        $current  = $now->copy()->startOfMonth();
+        $current  = $today->copy()->startOfMonth();
 
         // 実績月数（5月から前月まで）
         $actualMonths = ($current->year - $fyStart->year) * 12 + ($current->month - $fyStart->month);
