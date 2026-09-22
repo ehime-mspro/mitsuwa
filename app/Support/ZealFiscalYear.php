@@ -28,8 +28,8 @@ class ZealFiscalYear
      */
     public static function current(): int
     {
-        $now = JapanTime::today();
-        return $now->month >= self::START_MONTH ? $now->year : $now->year - 1;
+        $today = JapanTime::today();
+        return $today->month >= self::START_MONTH ? $today->year : $today->year - 1;
     }
 
     /**

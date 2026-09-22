@@ -591,9 +591,9 @@ class ReContractController extends Controller
 
     private function getCurrentFiscalYear(): int
     {
-        $now   = JapanTime::today();
-        $month = $now->month;
-        $year  = $now->year;
+        $today = JapanTime::today();
+        $month = $today->month;
+        $year  = $today->year;
         return $month >= 5 ? $year : $year - 1;
     }
 

@@ -63,7 +63,7 @@ class TransactionController extends Controller
 
         // 年度の12ヶ月を構築
         $months = $this->getFiscalYearMonths($fiscalYear);
-        $now = JapanTime::today();
+        $today = JapanTime::today();
 
         $monthlyData = [];
         $yearTotalRent = 0;
@@ -74,7 +74,7 @@ class TransactionController extends Controller
 
         foreach ($months as $ym) {
             $monthDate = Carbon::parse($ym . '-01');
-            $isFuture = $monthDate->copy()->startOfMonth()->gt($now->copy()->startOfMonth());
+            $isFuture = $monthDate->copy()->startOfMonth()->gt($today->copy()->startOfMonth());
 
             if ($isFuture) {
                 $monthlyData[] = [
@@ -256,8 +256,8 @@ class TransactionController extends Controller
      */
     private function getCurrentFiscalYear(): int
     {
-        $now = JapanTime::today();
-        return $now->month >= self::FISCAL_YEAR_START_MONTH ? $now->year : $now->year - 1;
+        $today = JapanTime::today();
+        return $today->month >= self::FISCAL_YEAR_START_MONTH ? $today->year : $today->year - 1;
     }
 
     /**

@@ -383,7 +383,7 @@ class ProjectController extends Controller
      */
     private function currentFiscalYear(): int
     {
-        $now = JapanTime::today();
-        return $now->month >= 5 ? $now->year : $now->year - 1;
+        $today = JapanTime::today();
+        return $today->month >= 5 ? $today->year : $today->year - 1;
     }
 }
