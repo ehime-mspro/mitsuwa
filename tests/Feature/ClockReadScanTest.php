@@ -11,11 +11,31 @@ use Tests\TestCase;
  * アプリの timezone は UTC なので、now() / today() / date('Y') などで作る「今日」「今月」「今年度」は
  * 日本時間の 0:00〜8:59 に前日になる。暦の日付が要る所は App\Support\JapanTime::today() を使う。
  *
- * ⚠ ビューは 0 件（ビューで時計を読む用途は表示と既定値＝どれも日本の暦の日付）。
+ * ⚠ ビューは 0 件。これは **PHP の時計の読み取りが 0 件**という意味で、JS は見ていない——
+ *   ビューの `new Date(` は 2026-09-23 実測で 79 箇所 / 11 ファイル（日付ピッカーなど）あるが、
+ *   ブラウザのローカル時刻＝日本時間なので対象外。
  * ⚠ PHP は ALLOWED（ファイルごとの件数と理由）に載っているものだけ許す。件数が合わない・載っていない・
  *   古い項目は落とす。瞬間を保存する（TIMESTAMP 列）・期限・運用のように UTC の瞬間でよい所だけ、理由を書いて載せる。
- * ⚠ 見えないもの: 変数に入れた Carbon をあとで暦として使う形（`$t = now(); … $t->year`）は、呼び出しとしては
- *   拾うがその使い道は見ない（載せるときに理由で説明する）。
+ *
+ * ⚠ ビューの注意書きは必ず {{-- --}} に書く。行中の // は落とさないので、
+ *   `{{ $x }} // now() を使うな` のように書くとこのテストが赤くなる
+ *   （行頭の // だけ落とす。https:// を残すため）。検出器を弱めて通さないこと——
+ *   行中の // を落とすと `<p>x</p> // {{ now() }}` の形で本物の時計の読み取りを隠せてしまう
+ *   （Blade では // はコメントではなくただの文字で、<script> や @php の外では後ろも描画される）。
+ *   2026-09-23 実測でビューの行中 // は 21 行 / 9 ファイル。near-miss は
+ *   admin/master/zeal-simulation-categories/_form.blade.php:112 の `… // デフォルト: 来月`。
+ *
+ * ⚠ 見えないもの（2026-09-23 実測。断りの無いものはリポジトリに 0 件）:
+ *   - 変数に入れた Carbon をあとで暦として使う形（`$t = now(); … $t->year`）は、呼び出しとしては
+ *     拾うがその使い道は見ない（載せるときに理由で説明する）
+ *   - 先頭 \ 付きのグローバル呼び出し（`\now()` / `\date('Y')`）——lookbehind が \ を除くため
+ *   - `Carbon::parse('now')` / `new DateTime('+1 day')`——4 番の枝は引数が空 / 'now' / 'today' のときだけ当たる
+ *   - 一覧に無い判定（`isCurrentWeek()` など。5 番の枝は名前を並べているだけ）
+ * ⚠ 過剰に拾うもの（2026-09-23 実測。いずれもリポジトリに 0 件）:
+ *   - 絶対日付のリテラル `strtotime('2026-01-01')`・補間文字列 `strtotime("{$y}-04-01")`
+ *     （3 番の枝は「引数 1 つの文字列リテラル」で当てるので中身を見ない）
+ *   - PHP の文字列リテラルの中の `now()`（`DB::raw('now()')` など。走査はトークンを見ない）
+ *   出てきたら ALLOWED に理由つきで載せる（検出器を緩めない）。
  * ⚠ 「今」を使わない呼び出しは数えない: 引数 2 つの date()（保存された日付の整形）・文字列の変数を渡す strtotime()・
  *   日まで書式にある createFromFormat()。
  */
@@ -216,7 +236,9 @@ class ClockReadScanTest extends TestCase
             }
         }
 
-        $this->assertSame([], $problems, "ビューで時計を読んでいる（日本時間の 0:00〜8:59 に前日になる。\\App\\Support\\JapanTime::today() を使う）:\n" . implode("\n", $problems));
+        $this->assertSame([], $problems, "ビューで時計を読んでいる（日本時間の 0:00〜8:59 に前日になる。\\App\\Support\\JapanTime::today() を使う）。\n"
+            . "注意書きの中の now() に一致した場合は、その注意書きを {{-- --}} に移すこと（行中の // は落とさない）:\n"
+            . implode("\n", $problems));
     }
 
     public function test_php_clock_reads_are_classified(): void
@@ -250,16 +272,26 @@ class ClockReadScanTest extends TestCase
 
     public function test_the_detector_catches_what_it_should_and_ignores_the_rest(): void
     {
+        // ⚠ 正規表現の枝は 1 つずつサンプルを通す。サンプルの無い枝は消しても全テストが緑になる（Bug #45）
         $caught = [
             'now()', 'now(\'Asia/Tokyo\')', 'today()', 'Carbon::now()', '\Carbon\CarbonImmutable::today()',
-            'Date::now()', 'date(\'Y-m-d\')', 'time()', 'strtotime(\'today\')', 'new DateTime()',
-            'new \DateTimeImmutable(\'now\')', '$m->birthday->age', '$d->isPast()', '$d->diffInDays()',
+            'Date::now()', 'Carbon::yesterday()', 'CarbonImmutable::tomorrow()',
+            'date(\'Y-m-d\')', 'gmdate(\'Y\')', 'idate(\'Y\')', 'time()', 'mktime(0, 0, 0)', 'strtotime(\'today\')',
+            'new DateTime()', 'new \DateTimeImmutable(\'now\')', 'new Carbon()', 'new CarbonImmutable()',
+            '$m->birthday->age', '$m->contract_date->age',
+            '$d->isToday()', '$d->isPast()', '$d->isFuture()', '$d->isYesterday()', '$d->isTomorrow()',
+            '$d->isCurrentDay()', '$d->isCurrentMonth()', '$d->isCurrentYear()',
+            '$d->isNextMonth()', '$d->isLastMonth()', '$d->isNextYear()', '$d->isLastYear()',
+            '$d->diffInDays()', '$d->diffForHumans()',
             'createFromFormat(\'Y-m\', $m)',
         ];
+        // ⚠ 後半は「拾わない」＝死角の記録（docblock の ⚠ と対）。同語反復でない値なので、
+        //    検出器を広げたときにここが赤くなって「広げた」と分かる
         $ignored = [
             'JapanTime::today()', '$x->now()', '$this->today()', 'date(\'Y\', $ts)', 'date(\'Y\', strtotime($stored))',
             'strtotime($stored)', '$inquiry->age', '$d->diffInDays($other)', 'createFromFormat(\'Y-m-d\', $s)',
             'createFromFormat(\'H:i:s\', $t)', 'Date.now()', 'new Date()', '$q->update($a)', '$todayLabel',
+            '\now()', '\date(\'Y\')', 'Carbon::parse(\'now\')', 'new DateTime(\'+1 day\')', '$d->isCurrentWeek()',
         ];
 
         foreach ($caught as $sample) {
@@ -282,6 +314,28 @@ class ClockReadScanTest extends TestCase
             $this->assertSame([], $this->clockReads($this->withoutComments($blade)));
         } finally {
             File::delete([$php, $blade]);
+        }
+
+        // ⚠ 行中の // は落とさない（仕様）。落とすと `<p>x</p> // {{ now() }}` のような形で
+        //    本物の時計の読み取りを隠してしまう。ビューの注意書きは {{-- --}} に書くこと
+        $midline = sys_get_temp_dir() . '/clock-mid-' . uniqid('', true) . '.blade.php';
+        File::put($midline, "{{ \$x }} // now() は使わない\n");
+        try {
+            $this->assertNotSame([], $this->clockReads($this->withoutComments($midline)));
+        } finally {
+            File::delete($midline);
+        }
+
+        // ⚠ 文字列の中の `/*`（`request()->is('tenant/*')`）からブロックコメントを始めない。
+        //    始めると次の `*/`（<style> の普通のコメントで十分）まで実コードを飲み込み、走査が無音で止まる
+        $inString = sys_get_temp_dir() . '/clock-str-' . uniqid('', true) . '.blade.php';
+        File::put($inString, "<a class=\"{{ request()->is('tenant/*') ? 'a' : 'b' }}\">x</a>\n"
+            . "@php(\$z = now()->year)\n"
+            . "<style>\n/* 折りたたみ時の幅 */\n.x { width: 64px; }\n</style>\n");
+        try {
+            $this->assertNotSame([], $this->clockReads($this->withoutComments($inString)));
+        } finally {
+            File::delete($inString);
         }
     }
 }
