@@ -39,7 +39,10 @@ class DashboardController extends Controller
         $now          = JapanTime::today();
         $currentYear  = $now->year;
         $currentMonth = $now->month;
-        $lastMonth    = $now->copy()->subMonth();
+        // 月初へ寄せてから引くのは、月末日（31日など）に subMonth() が翌月へ溢れて
+        // 先月が当月と同じ月になり、先月比が 0 になるのを防ぐため（3/31 → 2/31 → 3/3）。
+        // $now は画面の「〇年〇月〇日 時点」に出るので書き換えない（必ず copy() が先）
+        $lastMonth    = $now->copy()->startOfMonth()->subMonth();
 
         // ---- 消費税率（settings テーブル / 不在時は 10% フォールバック）----
         $taxRate = Settings::taxRate();

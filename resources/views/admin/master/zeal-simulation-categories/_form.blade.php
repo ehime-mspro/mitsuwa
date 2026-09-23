@@ -109,7 +109,7 @@
     {{-- 既存試算表への自動反映設定（編集時 + 固定額の場合のみ表示） --}}
     @if($isEdit && $category->calc_type === \App\Enums\ZealSimulationCalcType::Fixed)
         @php
-            $defaultApplyFrom = \App\Support\JapanTime::today()->addMonth()->format('Y-m'); // デフォルト: 来月
+            $defaultApplyFrom = \App\Support\JapanTime::today()->startOfMonth()->addMonth()->format('Y-m'); // デフォルト: 来月
         @endphp
         <div style="margin-bottom: 18px; padding: 14px; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 6px;">
             <label style="display: block; font-size: 13px; font-weight: 600; color: #075985; margin-bottom: 6px;">

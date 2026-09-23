@@ -103,7 +103,10 @@ class DashboardController extends Controller
         $labels = $this->buildProjectionLabels($fy);
 
         // ビル別カードのサブタイトル（例: 「3月実績」）。当月は集計未確定のため前月を表示する。
-        $previousMonthLabel = JapanTime::today()->subMonth()->month . '月実績';
+        // 月初へ寄せてから引くのは、月末日（31日など）に subMonth() が翌月へ溢れて
+        // 当月を前月と取り違えるのを防ぐため（3/31 → 2/31 → 3/3）。
+        // ビル別カードのラベルと集計（aggregateBuildingStats()）が同じ前月を指す。片方だけ直さない。
+        $previousMonthLabel = JapanTime::today()->startOfMonth()->subMonth()->month . '月実績';
 
         return view('dashboard.tenant', [
             'fiscalYear'         => $fy,
@@ -852,7 +855,10 @@ class DashboardController extends Controller
      */
     private function aggregateBuildingStats(): Collection
     {
-        $prevMonth      = JapanTime::today()->subMonth();
+        // 月初へ寄せてから引くのは、月末日（31日など）に subMonth() が翌月へ溢れて
+        // 当月を前月として集計するのを防ぐため（3/31 → 2/31 → 3/3）。
+        // ビル別カードのラベル（tenant() の「〇月実績」）と同じ前月を指す。片方だけ直さない。
+        $prevMonth      = JapanTime::today()->startOfMonth()->subMonth();
         $prevMonthStart = $prevMonth->copy()->startOfMonth();
         $prevMonthEnd   = $prevMonth->copy()->endOfMonth();
 

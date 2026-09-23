@@ -51,9 +51,12 @@ class InquiryController extends Controller
         $statuses = ZealGymInquiryStatus::cases();
 
         // 月選択肢（過去18か月分）
+        // 起点を月初に寄せてループの外で 1 回だけ作るのは、月末日（31日など）に subMonths() が
+        // 翌月へ溢れて月が重複・欠落するのを防ぐため（Zeal\DashboardController の月次グラフと同じ）
         $months = collect();
+        $base   = JapanTime::today()->startOfMonth();
         for ($i = 0; $i < 18; $i++) {
-            $months->push(JapanTime::today()->subMonths($i)->format('Y-m'));
+            $months->push($base->copy()->subMonths($i)->format('Y-m'));
         }
 
         return view('zeal.inquiries.index', compact('inquiries', 'statuses', 'months'));
