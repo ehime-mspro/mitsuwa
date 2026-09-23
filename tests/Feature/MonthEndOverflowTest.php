@@ -64,6 +64,8 @@ class MonthEndOverflowTest extends TestCase
      *
      * ラベル（tenant() の previousMonthLabel）と集計（aggregateBuildingStats()）は同じ前月を
      * 別々に計算している。片方だけ直すとラベルと数字が食い違うので、1 本で両方を見る。
+     * 同じ画面の 3 つ目の前月が、全体カードの実績期間（buildProjectionLabels() の「5〜2月」）。
+     * 起点が元から月初なので今は安全だが、3 つが揃っていることをこの 1 本で見る（Bug #41）。
      *
      * 契約（前月 = 2 月なら K1 だけが入る）:
      *   K1 区画 A 1/10 契約・3/15 解約 家賃 100,000 円 → 2 月は有効・2 月末も入居中
@@ -119,6 +121,7 @@ class MonthEndOverflowTest extends TestCase
             $response->viewData('buildings')->all(),
             '集計が前月（2 月）になっていない（3 月を集計すると 150,000 円・66.7%）'
         );
+        $this->assertSame('5〜2月', $response->viewData('actualLabel'), '全体カードの実績期間の終わりが前月（2 月）になっていない');
     }
 
     /**
@@ -161,6 +164,7 @@ class MonthEndOverflowTest extends TestCase
         $response = $this->actingAs($actor)->get('/zeal');
 
         $response->assertOk();
+        $this->assertSame(0, $response->viewData('trialCount'), '体験予約の件数が向け直した先（空の表）の 0 になっていない（null なら向け直しが効かず、接続の失敗が握りつぶされた）');
         $this->assertSame(1, $response->viewData('joinedThisMonth'), '今月（3 月）の入会');
         $this->assertSame(2, $response->viewData('joinedLastMonth'), '先月（2 月）の入会になっていない');
         $this->assertSame(-1, $response->viewData('joinDiff'), '入会の先月比');
@@ -198,6 +202,9 @@ class MonthEndOverflowTest extends TestCase
      * ZEAL 体験予約一覧の月の絞り込みが、当月から過去へ 18 か月を 1 か月ずつ並べる。
      *
      * 誤った順序（3/31 から毎回 subMonths($i)）だと、18 か月のうち重複 7 件・欠落 7 件（出る月は 11 種）になる。
+     *
+     * value とラベルは別の式で作っているので両方見る（ラベルを日の無い createFromFormat('Y-m', …) に変えると、
+     * 3/31 には 2 月が「2026年3月」と出る）。
      */
     public function test_the_inquiry_month_filter_lists_18_consecutive_months(): void
     {
@@ -213,6 +220,7 @@ class MonthEndOverflowTest extends TestCase
             '月の <select> がちょうど 1 つ見つからない'
         );
         preg_match_all('/<option\b[^>]*\svalue="([^"]*)"/', $selects[1][0], $values);
+        preg_match_all('/<option\b[^>]*>\s*([^<]*?)\s*<\/option>/u', $selects[1][0], $labels);
 
         $this->assertSame(
             [
@@ -222,6 +230,15 @@ class MonthEndOverflowTest extends TestCase
             ],
             $values[1],
             '月の選択肢が当月から 18 か月連続になっていない（先頭の空は「月: すべて」）'
+        );
+        $this->assertSame(
+            [
+                '月: すべて',
+                '2026年3月', '2026年2月', '2026年1月', '2025年12月', '2025年11月', '2025年10月', '2025年9月', '2025年8月', '2025年7月',
+                '2025年6月', '2025年5月', '2025年4月', '2025年3月', '2025年2月', '2025年1月', '2024年12月', '2024年11月', '2024年10月',
+            ],
+            $labels[1],
+            '月の選択肢のラベルが当月から 18 か月連続になっていない（ラベルは value と別の式で作っている）'
         );
     }
 
@@ -253,7 +270,8 @@ class MonthEndOverflowTest extends TestCase
      *
      * GymInquiry は外部 DB（本番は MySQL）を読む。ダッシュボードは件数を try/catch で、一覧は paginate で読む。
      * ⚠ 向け直さないと、テストが手元の MySQL（127.0.0.1:3306）へ接続しに行く
-     *   （ダッシュボードは例外を握りつぶすので、落ちずに通ってしまい気づけない）。
+     *   （ダッシュボードは例外を握りつぶすので落ちずに通ってしまう。ダッシュボードのテストが
+     *   trialCount = 0 を見て、向け直しが効いたことを確かめている）。
      * ⚠ gym_inquiries の正本の DDL はリポジトリに無い（外部の同期側が持つ）。ここに作るのは
      *   一覧の絞り込み・並び替えが使う列だけ。
      */
