@@ -122,6 +122,18 @@ class ApprovalUserManagementTest extends TestCase
         $this->assertFalse($ids->contains($once->id));
     }
 
+    /** 最終ログインは日本時間で出す（F6）。保存は UTC なので、そのまま整形すると 9 時間ずれる */
+    public function test_the_last_login_is_shown_in_japan_time(): void
+    {
+        $member = $this->member(['name' => '決裁 次郎']);
+        $member->forceFill(['last_login_at' => \Carbon\CarbonImmutable::parse('2026-09-18 17:30:00', 'UTC')])->save();
+
+        $this->actingAs($this->admin())->get(route('approvals.admin.users.index'))
+            ->assertOk()
+            ->assertSee('2026/09/19 02:30')
+            ->assertDontSee('2026/09/18 17:30');
+    }
+
     // --- 編集 ---
 
     public function test_the_departments_of_anyone_can_be_edited(): void

@@ -207,7 +207,7 @@
                         </td>
                         <td class="px-3.5 py-2.5 border-b border-gray-100 text-[12px] text-gray-700">{{ $u->email ?? '—' }}</td>
                         <td class="px-3.5 py-2.5 border-b border-gray-100 text-[12px] text-gray-400 whitespace-nowrap">
-                            {{ $u->last_login_at ? $u->last_login_at->format('Y/m/d H:i') : '未ログイン' }}
+                            {{ \App\Support\JapanTime::format($u->last_login_at) ?? '未ログイン' }}
                         </td>
                         <td class="px-3.5 py-2.5 border-b border-gray-100 text-center whitespace-nowrap">
                             <span class="inline-block px-2 rounded text-[11px] font-medium {{ $u->status === App\Enums\UserStatus::Active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800' }}" style="padding-top:2px; padding-bottom:2px;">{{ $u->status->label() }}</span>
