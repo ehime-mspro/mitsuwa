@@ -67,6 +67,7 @@ class ApprovalOnlyLockoutTest extends TestCase
 
         $checked = 0;
         $problems = [];
+        $silent = [];   // 警告を出さずに決裁のホームへ送った GET（＝ホームの別名）
 
         foreach (Route::getRoutes() as $route) {
             $method = collect($route->methods())->reject(fn ($m) => $m === 'HEAD')->first();
@@ -115,6 +116,10 @@ class ApprovalOnlyLockoutTest extends TestCase
                 if ($status !== 302 || $response->headers->get('Location') !== route('approvals.home')) {
                     $problems[] = "{$label}: 決裁のホームへ転送されない（status={$status} location=" . $response->headers->get('Location') . ')';
                 }
+                // 警告の有無も分類する（この要求が積んだフラッシュ。1 つ前の要求の分は、この要求の終わりに消えている）
+                if ($this->app['session.store']->get('warning') === null) {
+                    $silent[] = $route->uri();
+                }
             } elseif ($status !== 403) {
                 $problems[] = "{$label}: 403 で拒否されない（status={$status}）";
             }
@@ -130,6 +135,11 @@ class ApprovalOnlyLockoutTest extends TestCase
         // 走査が空振りして緑になる事故を防ぐ（2026-09-15 実測で全 430 本）
         $this->assertGreaterThan(400, $checked, 'ルートの走査に失敗している');
         $this->assertSame([], $problems, "決裁のみ利用者を止められていないルート:\n" . implode("\n", $problems));
+
+        // 警告なしで送るのは「ホームの別名」（`/` と `/dashboard`）だけ（Bug #63・F1 と同じ形）。
+        // ⚠ 上から固定する。別名に何か足しても（`dashboard.executive` など）ここで落ちる
+        sort($silent);
+        $this->assertSame(['/', 'dashboard'], $silent, '警告を出さずに決裁のホームへ送る GET が、ホームの別名とちょうど一致しない');
     }
 
     /**
@@ -220,12 +230,21 @@ class ApprovalOnlyLockoutTest extends TestCase
         $this->assertStringNotContainsString(RestrictApprovalOnlyUsers::MESSAGE, $html, 'ホームを開いただけなのに警告が出ている');
     }
 
-    /** Ajax は転送でなく 403（画面の JS が HTML を読まされないように） */
+    /**
+     * Ajax は転送でなく 403（画面の JS が HTML を読まされないように）。
+     *
+     * ⚠ ホームの別名（`/`・`/dashboard`）も同じ。別名の判定は 403 の判定の**後ろ**に置く
+     *   （前へ動かすと Ajax が 302 で HTML を読まされる。Bug #63）
+     */
     public function test_ajax_requests_get_403(): void
     {
-        $this->actingAs($this->approvalOnlyUser())
-            ->get('/dashboard/tenant', ['X-Requested-With' => 'XMLHttpRequest', 'Accept' => 'application/json'])
-            ->assertStatus(403);
+        foreach (['/dashboard/tenant', '/dashboard', '/'] as $uri) {
+            $status = $this->actingAs($this->approvalOnlyUser())
+                ->get($uri, ['X-Requested-With' => 'XMLHttpRequest', 'Accept' => 'application/json'])
+                ->getStatusCode();
+
+            $this->assertSame(403, $status, "Ajax の {$uri} が 403 で拒否されない");
+        }
     }
 
     /** 基幹を使う人は今までどおり */
