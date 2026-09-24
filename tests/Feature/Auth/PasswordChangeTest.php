@@ -279,6 +279,27 @@ class PasswordChangeTest extends TestCase
         $this->assertSame(route($home), html_entity_decode($m[1], ENT_QUOTES, 'UTF-8'));
     }
 
+    /**
+     * キャンセルの戻り先はリファラーでなく、直前の GET の画面（セッションの記録）（docs/RULES.md Bug #64）。
+     *
+     * ⚠ POST の応答の画面（CSV 取込の確認画面など）から開くと、リファラーは POST 専用の URL になり、そこへ戻ると 405
+     *   （レビューで実測）。`url()->previous()` はリファラーを優先する。
+     * ⚠ ここでは `from()` を使わない。`from()` はリファラーと一緒にセッションの記録まで書き換えるので、
+     *   「リファラーだけが POST 専用の URL」というブラウザの状態を作れない。
+     */
+    public function test_the_cancel_link_ignores_a_post_only_referer(): void
+    {
+        $user = $this->actor();
+        $this->actingAs($user)->get(route('dashboard.tenant'))->assertOk();   // 直前の GET の画面（セッションに記録される）
+
+        $html = $this->actingAs($user)
+            ->withHeader('referer', route('approvals.admin.users.import.preview'))   // POST 専用の URL
+            ->get(route('password.change'))->assertOk()->getContent();
+
+        $this->assertSame(1, preg_match('/<a\s+href="([^"]*)"[^>]*>\s*キャンセル\s*<\/a>/u', $html, $m), 'キャンセルのリンクが見つからない');
+        $this->assertSame(route('dashboard.tenant'), html_entity_decode($m[1], ENT_QUOTES, 'UTF-8'), 'リファラー（POST 専用の URL）へ戻そうとしている');
+    }
+
     /** 基幹の人も、着いた画面で「パスワードを変更しました。」を見る（以前は 2 回の転送で消えていた） */
     public function test_a_base_user_sees_the_success_message_on_their_dashboard(): void
     {

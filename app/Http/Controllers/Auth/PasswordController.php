@@ -16,8 +16,17 @@ class PasswordController extends Controller
      */
     public function showChange()
     {
+        $user     = Auth::user();
+        $previous = session()->previousUrl();
+
         return view('auth.change-password', [
-            'isForced' => Auth::user()->must_change_password,
+            'isForced'  => $user->must_change_password,
+            // キャンセルの戻り先は、直前の GET の画面（セッションの記録。GET かつ Ajax でない要求だけが記録される）。
+            // ⚠ url()->previous() はリファラーを優先するので、POST の応答の画面（CSV 取込の確認画面など）から
+            //   開くと POST 専用の URL になり、戻ると 405 だった（docs/RULES.md Bug #64）。
+            // ⚠ 直前の画面が無い・この画面自身（差し戻された直後）ならその人のホーム。`route('dashboard')` にしない
+            //   （決裁のみ利用者は門番に跳ね返されて警告を見る。Bug #63）
+            'cancelUrl' => $previous !== null && $previous !== url()->current() ? $previous : route($user->homeRouteName()),
         ]);
     }
 

@@ -124,10 +124,10 @@
                     {{-- ボタン --}}
                     <div class="flex gap-3 justify-end">
                         @unless($isForced)
-                            {{-- ⚠ 直前の画面が無いとき（差し戻された直後など）の戻り先を `route('dashboard')` にしない。
-                                 決裁のみ利用者は門番に跳ね返されて警告を見る（F1 と同じ形）。行き先の規則は User::homeRouteName() --}}
+                            {{-- 戻り先はコントローラが決める（直前の GET の画面か、その人のホーム）。ここで url()->previous() を
+                                 呼ばない（リファラーが優先され、POST の応答の画面から開くと 405。Bug #64） --}}
                             <a
-                                href="{{ url()->previous() !== url()->current() ? url()->previous() : route(auth()->user()->homeRouteName()) }}"
+                                href="{{ $cancelUrl }}"
                                 class="inline-flex items-center px-6 py-2.5 text-[13px] font-medium text-gray-500 bg-white border-[1.5px] border-gray-200 rounded-[10px] hover:bg-gray-50 hover:border-gray-300 transition-all duration-150"
                             >
                                 キャンセル
