@@ -20,9 +20,9 @@ use Tests\TestCase;
  *   走査し、`RENDERED_BY` に無い partial があれば落とす ＝ **3 本目が無検査のまま増えない**。
  *   逆向き（表に在るのにファイルが無い）も見る。
  *
- * ⚠ この分類は**初回の実行でいきなり 3 本目を拾った** — `layouts/partials/` には
+ * ⚠ この分類は**初回の実行でいきなり 3 本目を拾った** — `layouts/partials/` に
  *   `sidebar_*_snippet.blade.php` が 3 本あり、どれも過去の実装セッションが残した手順書で
- *   参照 0 件だった。列挙で書いていたら気づかないままだった（Bug #45 ① の実例）。
+ *   参照 0 件だった（2026-09-18 に削除）。列挙で書いていたら気づかないままだった（Bug #45 ① の実例）。
  *
  * ⚠ 描画した HTML で見る（partial のソースを読むだけでは、その partial が本当に
  *   `layouts/app.blade.php` から出るのかを確かめられない）。
@@ -40,18 +40,17 @@ class LayoutSidebarDrawerTest extends TestCase
     ];
 
     /**
-     * サイドバーではないもの（ファイル名 => 何か）。
+     * サイドバーではないもの（ファイル名 => 何か）。**いまは空**。
      *
      * ⚠ これは**逃げ道ではない** — 下の `test_the_snippets_are_not_included_anywhere` が
      *   「どこからも @include されていない」ことを対で固定する。include した瞬間に落ちる。
-     * ⚠ 3 本とも過去の実装セッションが残した手順書で、参照 0 件の死にファイル
-     *   （2026-09-18 実測）。消すかどうかは別タスク。
+     * ⚠ 2026-09-18 にこの分類を入れた初回の実行で、`sidebar_{buyer,contract,housing}_snippet.blade.php`
+     *   の 3 本が「分類されていない」で落ちた。中身は Blade ではなく**過去のセッションが人間向けに
+     *   残した作業手順**で、どこからも `@include` されていない死にファイルだった（実測）。
+     *   **3 本は同日に削除した**ので、ここは空のまま。サイドバーでない `sidebar*` を置くなら
+     *   理由つきでここへ。
      */
-    private const NOT_A_SIDEBAR = [
-        'sidebar_buyer_snippet.blade.php'    => '買主マスタを足すときの手順書',
-        'sidebar_contract_snippet.blade.php' => '契約管理を足すときの手順書',
-        'sidebar_housing_snippet.blade.php'  => '住宅事業を足すときの手順書',
-    ];
+    private const NOT_A_SIDEBAR = [];
 
     private function html(string $kind): string
     {
