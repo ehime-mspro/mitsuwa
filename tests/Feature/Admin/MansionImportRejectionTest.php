@@ -71,20 +71,31 @@ class MansionImportRejectionTest extends TestCase
         ];
     }
 
-    /** 確認画面からアップロードし直して断られても、取込の画面のそのタブへ戻る（既定でない「部屋」タブで見る） */
+    /**
+     * 確認画面から、別のタブでアップロードし直して断られても、取込の画面の**送ったタブ**へ戻る。
+     *
+     * ⚠ 確認画面では開いているタブの枠だけが確認に置き換わり、ほかのタブのアップロードのフォームが残る（テナントと同じ）。
+     *   物件タブの確認画面を描画し、そこに載っている部屋タブのフォームを分解して送る（Bug #47 の往復）。
+     * ⚠ 行き先は送ったタブ（部屋）で見る。既定の物件タブでも確認画面のタブでもないので、タブを既定やリファラーから決める
+     *   誤りも落ちる。
+     */
     #[DataProvider('reuploadFailureCases')]
-    public function test_a_failed_reupload_from_the_preview_goes_back_to_the_same_tab(bool $headerOnly, string $message): void
+    public function test_a_failed_reupload_from_another_tab_on_the_preview_goes_back_to_that_tab(bool $headerOnly, string $message): void
     {
         $actor   = $this->executive();
-        $preview = url($this->importBasePath() . '/room');   // 部屋タブの確認画面の URL（POST 専用）
+        $preview = $this->preview('property', $this->template($actor, 'property'));
+        $preview->assertOk();
+        $form = $this->parseForm($preview->getContent(), 'action="' . url($this->importBasePath() . '/room') . '"');
 
-        $fields = [];
+        $fields = $form['fields'];
         if ($headerOnly) {
             $header = strtok($this->template($actor, 'room'), "\n");
-            $fields = ['csv_file' => UploadedFile::fake()->createWithContent('rooms.csv', "\xEF\xBB\xBF{$header}\n")];
+            $fields['csv_file'] = UploadedFile::fake()->createWithContent('rooms.csv', "\xEF\xBB\xBF{$header}\n");
         }
 
-        $response = $this->actingAs($actor)->from($preview)->post($preview, $fields);
+        $response = $this->actingAs($actor)
+            ->from(url($this->importBasePath() . '/property'))   // 物件タブの確認画面の URL（POST 専用）
+            ->post($form['action'], $fields);
 
         $this->assertBackOnTheTab($response, $actor, 'room', $message);
     }
@@ -92,16 +103,26 @@ class MansionImportRejectionTest extends TestCase
     /**
      * 「インポート実行」を押して書き込みに失敗しても、取込の画面のそのタブへ戻り、何も書かれていない。
      * 書き込みの失敗は `MsProperty::creating()` で例外を投げて起こす。
+     *
+     * ⚠ 失敗させるのは **2 行目**（テンプレートの見本は 1 行だけ。1 行目で失敗させると最初の INSERT より前に落ち、
+     *   巻き戻さなくても 0 件になる。テナントと同じ）。
      */
     public function test_a_failed_import_after_confirming_goes_back_to_the_same_tab(): void
     {
         $actor   = $this->executive();
-        $preview = $this->preview('property', $this->template($actor, 'property'));
+        $csv     = $this->template($actor, 'property');
+        [, $sample] = explode("\n", rtrim($csv, "\n"));
+        $csv    .= str_replace('"サンプルマンション"', '"サンプルマンション2"', $sample) . "\n";   // 名前だけ変えた 2 行目
+
+        $preview = $this->preview('property', $csv);
         $preview->assertOk();
         $form = $this->parseImportForm($preview->getContent(), 'property');
 
-        MsProperty::creating(function (): void {
-            throw new \RuntimeException('テスト用の失敗');
+        $created = 0;
+        MsProperty::creating(function () use (&$created): void {
+            if (++$created === 2) {
+                throw new \RuntimeException('テスト用の失敗');
+            }
         });
 
         $response = $this->actingAs($actor)
@@ -109,6 +130,7 @@ class MansionImportRejectionTest extends TestCase
             ->post($form['action'], $form['fields']);
 
         $this->assertBackOnTheTab($response, $actor, 'property', 'インポートに失敗しました: テスト用の失敗');
-        $this->assertSame(0, MsProperty::count(), '失敗した取込が巻き戻っていない');
+        $this->assertSame(2, $created, '2 行目の作成まで進んでいない（1 行目が入ってから失敗する形になっていない）');
+        $this->assertSame(0, MsProperty::count(), '失敗した取込が巻き戻っていない（1 行目が残っている）');
     }
 }
