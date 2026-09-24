@@ -1315,7 +1315,7 @@ git checkout 13.x && git merge --ff-only schedule-board-gantt
 | 契約一覧（すべて・全 13 ページ・127 行）／ 問合せ一覧 | `-1B1` 0 件（地下区画の契約は本番に 0 件なので、一覧での地下表記は実データでは現れない）|
 | コンソール | エラー 0 件（4 一覧＋物件 13 の詳細）|
 
-⚠ **サイドバーの開閉の動きは本番では測っていない。** 自動操作したタブが裏（`visibility: hidden`）で、Alpine の x-show の切り替えが setTimeout 経由になり順序が変わるため（Bug #56）。本番に置かれたコードが修正後であることだけ確かめた（動きはローカルの Playwright で確認済み）。⚠ `origin/13.x` への push はしていない（利用者の指示があったときに行う）。
+⚠ **サイドバーの開閉の動きは本番では測っていない。** 自動操作したタブが裏（`visibility: hidden`）で、Alpine の x-show の切り替えが setTimeout 経由になり順序が変わるため（Bug #56）。本番に置かれたコードが修正後であることだけ確かめた（動きはローカルの Playwright で確認済み）。⚠ `origin/13.x` への push はしていない（利用者の指示があったときに行う）。→ 2026-09-16 に push 済み（`e17718e0` に含まれる）。
 
 ---
 
@@ -1390,7 +1390,7 @@ git checkout 13.x && git merge --ff-only schedule-board-gantt
 | コンソール | 上の 4 画面ともエラー 0 件 |
 
 ⚠ 投資・修繕・問合せの画面は本番では見ていない（本番に削除済みの区画を参照するデータが 0 件で、症状が出る画面が無いため。動きはローカルのテストとブラウザで確認済み）。
-⚠ `origin/13.x` への push はしていない（利用者の指示があったときに行う）。
+⚠ `origin/13.x` への push はしていない（利用者の指示があったときに行う）。→ 2026-09-16 に push 済み（`e17718e0` に含まれる）。
 
 ---
 
@@ -1503,7 +1503,7 @@ git checkout 13.x && git merge --ff-only schedule-board-gantt
 | コンソール ／ `main` の横スクロール | 上の画面ともエラー 0 件 ／ 0 |
 
 ⚠ 物件の削除の歯止め（断る文言）・区画の取込の復元・契約／過去契約の取込は、本番では動かしていない（データを変える操作のため。動きはローカルのテストとブラウザで確認済み）。
-⚠ `origin/13.x` への push はしていない（利用者の指示があったときに行う）。
+⚠ `origin/13.x` への push はしていない（利用者の指示があったときに行う）。→ 2026-09-16 に push 済み（`e17718e0` に含まれる）。
 
 ---
 
@@ -1646,7 +1646,7 @@ composer dump-autoload          # main repo の cwd で（新規 PHP クラス�
 
 反映後の手元の状態: `13.x` = **`3dfad648`**（FF マージ済み）／ `JapanTime` が
 `vendor/composer/autoload_classmap.php` に載っている（＝ 新規クラスの autoload が通る）／
-両 worktree とも作業ツリー清浄。⚠ `origin/13.x` への push はしていない。
+両 worktree とも作業ツリー清浄。⚠ `origin/13.x` への push はしていない。→ 2026-09-24 に push 済み（`4fa0911e` に含まれる）。
 
 ### ✅ 本番の実ブラウザ確認（2026-09-23 08:52〜08:56。ログイン済みの実 Chrome・読み取りのみ）
 
@@ -1780,7 +1780,7 @@ git checkout 13.x && git merge --ff-only date-picker-month-ago
 - 反映前: main repo の作業ツリーが空・13.x が `e6787c20` のまま（別の作業で進んでいない）・早送りできる・本番へ送る `vendor` に dev 依存（`vendor/bin/phpunit`）が無いことを確かめ、worktree で全件を流して **OK (1761 tests, 10979 assertions)**
 - 早送りで `13.x` = **`999729f2`**（テストを流したコミットと同じ中身）。`./deploy.sh` は exit 0 で、本番の config / route / view のキャッシュ作り直しも 3 つとも成功
 - 本番へ送られたアプリのファイルは、コントローラ 3 本（`DashboardController` / `Zeal\DashboardController` / `Zeal\InquiryController`）・ビュー 8 本とビルド成果物だけ。CSS / JS のバンドル名は本番と同じで、旧バンドルの掃除で消えたファイルは 0（CSS の元ファイルは変えていない）。ビルドが出す警告 1 件（Google Fonts の `@import` の位置）は以前からある
-- ⚠ `origin/13.x` への push はしていない
+- ⚠ `origin/13.x` への push はしていない → 2026-09-24 に push 済み（`4fa0911e` に含まれる）
 
 ### ✅ 本番の確認（2026-09-24 13:44〜13:50。ログイン済みの実 Chrome・読み取りのみ）
 
