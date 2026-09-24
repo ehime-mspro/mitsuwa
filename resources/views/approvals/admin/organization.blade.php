@@ -132,9 +132,17 @@
         <ul>
             @forelse($mailDomains as $domain)
                 <li class="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b border-gray-100 text-[13px]">
+                    @php
+                        // 削除の確認に、通知メールが届かなくなる人数を出す（設計書 §5.8・F4）。
+                        // ⚠ 行には中立な人数だけ。「届かなくなります」を行に常に出すと「今届いていない」と読める
+                        $deleteConfirm = 'このドメインを削除しますか。';
+                        if ($domain->affected_user_count > 0) {
+                            $deleteConfirm .= "\n\nこのドメインのメールアドレスを持つ利用者: {$domain->affected_user_count} 人（この人たちには通知メールが届かなくなります）";
+                        }
+                    @endphp
                     <span class="font-mono text-gray-900">{{ $domain->domain }}</span>
-                    <span class="text-[12px] text-gray-500">このドメインのメールアドレスを持つ利用者: {{ $domain->affected_user_count }} 人（この人たちには通知メールが届かなくなります）</span>
-                    <form method="POST" action="{{ route('approvals.admin.organization.mailDomains.destroy', $domain) }}" class="ml-auto" onsubmit="return confirm('このドメインを削除しますか。');">
+                    <span class="text-[12px] text-gray-500">このドメインのメールアドレスを持つ利用者: {{ $domain->affected_user_count }} 人</span>
+                    <form method="POST" action="{{ route('approvals.admin.organization.mailDomains.destroy', $domain) }}" class="ml-auto" onsubmit="return confirm({{ \Illuminate\Support\Js::from($deleteConfirm) }});">
                         @csrf
                         @method('DELETE')
                         <button type="submit" class="text-[12px] text-red-600 hover:underline cursor-pointer bg-transparent border-none p-0">削除</button>

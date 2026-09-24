@@ -10,6 +10,7 @@ use App\Models\ApprovalMember;
 use App\Models\ApprovalSettingLog;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Js;
 use Illuminate\Support\Str;
 use Tests\Concerns\ParsesForms;
 use Tests\TestCase;
@@ -399,17 +400,44 @@ class OrganizationManagementTest extends TestCase
             ->assertSessionHasErrors('domain');
     }
 
-    /** 削除の確認に、影響する人数を出す（設計書 §5.8） */
-    public function test_deleting_a_domain_shows_how_many_people_lose_notifications(): void
+    /**
+     * 削除の確認に、通知メールが届かなくなる人数を出す（設計書 §5.8・F4）。行には中立な人数だけ。
+     *
+     * ⚠ 「届かなくなります」を行に常に出すと「今届いていない」と読める（旧実装）。
+     * ⚠ 確認の文言は `Js::from()` が日本語を `\u` でエスケープするので、行の文言とは混ざらない。
+     *   期待値は決め打ちの文字列に同じ変換をかけて突き合わせる。
+     * ⚠ 人数の違うドメインを 3 つ並べる（別の行の人数を使う・0 人でも注意を出す、の取り違えを見分けるため）。
+     */
+    public function test_the_delete_confirmation_warns_how_many_people_lose_notifications(): void
     {
-        ApprovalMailDomain::create(['domain' => 'mitsuwat.co.jp']);
+        $two  = ApprovalMailDomain::create(['domain' => 'mitsuwat.co.jp']);
+        $one  = ApprovalMailDomain::create(['domain' => 'dad-mitsuwa.jp']);
+        $none = ApprovalMailDomain::create(['domain' => 'zeal-mitsuwa.jp']);
         User::factory()->create(['email' => 'a@mitsuwat.co.jp', 'must_change_password' => false]);
         User::factory()->create(['email' => 'b@mitsuwat.co.jp', 'must_change_password' => false]);
-        User::factory()->create(['email' => 'c@example.com', 'must_change_password' => false]);
+        User::factory()->create(['email' => 'c@dad-mitsuwa.jp', 'must_change_password' => false]);
+        User::factory()->create(['email' => 'd@example.com', 'must_change_password' => false]);
 
-        $this->actingAs($this->approvalAdmin())->get(route('approvals.admin.organization.index'))
-            ->assertOk()
-            ->assertSee('このドメインのメールアドレスを持つ利用者: 2 人');
+        $html = $this->indexHtml($this->approvalAdmin());
+
+        $this->assertStringContainsString('このドメインのメールアドレスを持つ利用者: 2 人', $html);
+        $this->assertStringNotContainsString('届かなくなります', $html, '行に「届かなくなります」が常に出ている');
+
+        $expected = [
+            [$two, "このドメインを削除しますか。\n\nこのドメインのメールアドレスを持つ利用者: 2 人（この人たちには通知メールが届かなくなります）"],
+            [$one, "このドメインを削除しますか。\n\nこのドメインのメールアドレスを持つ利用者: 1 人（この人たちには通知メールが届かなくなります）"],
+            [$none, 'このドメインを削除しますか。'],
+        ];
+
+        foreach ($expected as [$domain, $message]) {
+            $action = route('approvals.admin.organization.mailDomains.destroy', $domain);
+            $pos    = strpos($html, 'action="' . $action . '"');
+            $this->assertNotFalse($pos, "{$domain->domain} の削除フォームが無い");
+            $open    = strrpos(substr($html, 0, $pos), '<form');
+            $openTag = substr($html, $open, strpos($html, '>', $pos) - $open + 1);
+
+            $this->assertSame('return confirm(' . Js::from($message) . ');', $this->htmlAttr($openTag, 'onsubmit'), "{$domain->domain} の削除の確認が違う");
+        }
     }
 
     public function test_a_domain_can_be_deleted(): void
