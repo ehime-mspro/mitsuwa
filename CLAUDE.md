@@ -132,7 +132,7 @@ sudo rm -f storage/framework/views/*.php && brew services restart httpd
 ## Laravel-specific quirks
 
 - Department 判定: `resolveDepartment()`（`request()->segment(1)` ベース）— `defaults()` は Laravel 12 で URL パラメータ無しだと効かない
-- `User` は SoftDeletes。ログイン ID は社員番号（`employee_number`）とメールアドレスの**どちらか**（`App\Support\LoginId` で正規化）。`role` の 4 つ目は `approval_only`（決裁のみ）で、web グループの門番が決裁以外の全画面から締め出す。「ホーム」へ戻す行き先は `route($user->homeRouteName())`（`route('dashboard')` に固定しない。決裁のみ利用者は門番に跳ね返されて警告を見るうえ、2 段の転送でフラッシュが消える。Bug #63）。戻り先をビューの `url()->previous()` で決めない（リファラーが優先され、POST の応答の画面から開くと POST 専用の URL へ戻って 405。Bug #64）
+- `User` は SoftDeletes。ログイン ID は社員番号（`employee_number`）とメールアドレスの**どちらか**（`App\Support\LoginId` で正規化）。`role` の 4 つ目は `approval_only`（決裁のみ）で、web グループの門番が決裁以外の全画面から締め出す。「ホーム」へ戻す行き先は `route($user->homeRouteName())`（`route('dashboard')` に固定しない。決裁のみ利用者は門番に跳ね返されて警告を見るうえ、2 段の転送でフラッシュが消える。Bug #63）。戻り先をビューの `url()->previous()` で決めない（リファラーが優先され、POST の応答の画面から開くと POST 専用の URL へ戻って 405。コントローラの `back()` と、try で包まない入力チェックの既定の戻り先も同じ。取込は `ImportControllerReturnPathScanTest` が止める。Bug #64）
 - `Buyer`・`Unit`（テナントの区画）は SoftDeletes → 参照する側のリレーションで常に `->withTrashed()` + edit 画面では現在の値を必ず含める（区画は `Unit::includingTrashed()`、表示は `display_label`。Bug #12 / #58）
 - `Property`（テナントの物件）も SoftDeletes だが、関連データ（区画・契約・投資・修繕・問合せ）が残る物件は削除できない（`Property::deletionBlockers()`。Bug #59）＝削除済みの物件を指す子は作られない前提なので、子→物件のリレーションに `withTrashed()` を足さない。物件にリレーションを足したら `DELETION_BLOCKING_RELATIONS` / `DELETION_IGNORED_RELATIONS` のどちらかに分類する（`PropertyDeletionGuardTest` が両側から全件分類で守る）
 - `re_projects` のカラムは `project_name`（`name` ではない）
