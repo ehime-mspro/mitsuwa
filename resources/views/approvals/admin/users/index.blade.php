@@ -350,6 +350,15 @@
 var APPROVAL_FILTERED_NAMES = {{ \Illuminate\Support\Js::from($reissuableNames) }};
 var APPROVAL_FILTERED_COUNT = {{ (int) $reissuableCount }};
 
+// 画面をもう一度見せたとき（ブラウザの「戻る」など）は、絞り込みの入力をサーバーが描いた状態＝適用済みの条件へ戻す
+// （F8 の続き）。ブラウザは戻った先の入力欄の値を戻すので、変えた後のプルダウンと、前の条件のままの表・
+// まとめて再発行の対象が食い違っていた。
+// ⚠ event.persisted で絞らない — bfcache から戻したときだけでなく、読み込み直して入力欄の値を戻したときも
+//   食い違う（どちらでも pageshow が来る。load の後なので、戻された値はもう入っている）
+window.addEventListener('pageshow', function () {
+    document.getElementById('filter-form').reset();
+});
+
 function approvalUsers() {
     return {
         selected: [],

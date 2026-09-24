@@ -171,6 +171,79 @@ class ApprovalUserManagementTest extends TestCase
         $this->assertStringContainsString('>検索</button>', $form[0]);
     }
 
+    /**
+     * 画面をもう一度見せたとき（ブラウザの「戻る」など）は、絞り込みの入力を適用済みの条件へ戻す（F8 の続き）。
+     *
+     * ⚠ ブラウザは「戻る」で前の画面の入力欄の値を戻す。絞り込みは変えた瞬間に送るので、戻った先では
+     *   プルダウンだけが変えた後の値を見せ、表とまとめて再発行の hidden は前の条件のまま＝表示と対象が食い違う
+     *   （2026-09-24 に実測: 区分を「決裁のみ」にして戻ると、プルダウンは「決裁のみ」・表は 7 行・hidden は空）。
+     *   form.reset() は、サーバーが描いた選択状態（＝適用済みの条件）へ戻す。
+     * ⚠ event.persisted で絞らない。bfcache から戻したとき（persisted）だけでなく、読み込み直して
+     *   入力欄の値を戻したときも食い違う（Playwright の Chromium は bfcache を使わず、こちらで再現した）。
+     * ⚠ 構造しか見られない（実際に戻して揃うかはブラウザでしか測れない）。
+     */
+    public function test_the_filter_form_is_reset_whenever_the_page_is_shown(): void
+    {
+        $html = $this->actingAs($this->admin())->get(route('approvals.admin.users.index'))->assertOk()->getContent();
+
+        preg_match_all('/<script\b([^>]*)>(.*?)<\/script>/s', $html, $scripts, PREG_SET_ORDER);
+        $this->assertNotEmpty($scripts, 'script を拾えていない（走査の空振り）');
+
+        $bodies = [];
+        foreach ($scripts as [, $attributes, $source]) {
+            // 実行されない script（text/template など）は数えない
+            if (preg_match('/\btype\s*=\s*"([^"]*)"/i', $attributes, $type)
+                && ! in_array(strtolower(trim($type[1])), ['', 'text/javascript', 'module'], true)) {
+                continue;
+            }
+
+            $code = $this->withoutJsComments($source);
+            // pageshow は window にだけ届く（document へは伝わらない）
+            preg_match_all('/(?<![\w.$])(?:window\.)?addEventListener\(\s*[\'"]pageshow[\'"]\s*,\s*function\s*\([^)]*\)\s*\{/', $code, $heads, PREG_OFFSET_CAPTURE);
+            foreach ($heads[0] as [$head, $offset]) {
+                $bodies[] = $this->braceBody($code, $offset + strlen($head) - 1);
+            }
+        }
+
+        $this->assertCount(1, $bodies, 'pageshow のリスナーがちょうど 1 つでない（戻ったときに絞り込みの表示が食い違う）');
+        $this->assertStringContainsString(
+            "document.getElementById('filter-form').reset();",
+            $bodies[0],
+            'pageshow のリスナーが絞り込みのフォームを元に戻していない'
+        );
+        $this->assertStringNotContainsString(
+            'persisted',
+            $bodies[0],
+            'bfcache から戻したときだけに絞っている（読み込み直して入力欄の値を戻したときに食い違いが残る）'
+        );
+    }
+
+    /** JS の `/* *&#47;` と行頭 `//` コメントを落とす（ScheduleBoardTest と同じ方式）。 */
+    private function withoutJsComments(string $source): string
+    {
+        $source = preg_replace('#/\*.*?\*/#s', '', $source);
+
+        // ⚠ 行頭アンカーを外さないこと。URL の `https://` まで消える。
+        return preg_replace('#^[ \t]*//.*$#m', '', $source);
+    }
+
+    /** `$source[$open]` の `{` に対応する `}` までの中身（波括弧の対応で切り出す。固定長で切らない。Bug #45 ④）。 */
+    private function braceBody(string $source, int $open): string
+    {
+        $this->assertSame('{', $source[$open] ?? null, '切り出しの起点が { でない');
+
+        $depth = 0;
+        for ($i = $open, $n = strlen($source); $i < $n; $i++) {
+            if ($source[$i] === '{') {
+                $depth++;
+            } elseif ($source[$i] === '}' && --$depth === 0) {
+                return substr($source, $open + 1, $i - $open - 1);
+            }
+        }
+
+        $this->fail('波括弧が閉じていない');
+    }
+
     // --- 編集 ---
 
     public function test_the_departments_of_anyone_can_be_edited(): void
