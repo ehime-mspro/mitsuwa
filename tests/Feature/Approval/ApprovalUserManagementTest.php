@@ -141,24 +141,33 @@ class ApprovalUserManagementTest extends TestCase
      *
      * ⚠ まとめて再発行の hidden は**適用済みの**条件を運ぶ。「検索」を押さずに変えたままだと、
      *   画面の表示と再発行の対象が食い違っていた。
-     * ⚠ 全件分類: フォームの中の select と checkbox を機械的に拾い、1 つでも即時に送らなければ落とす
-     *   （あとで足した絞り込みが無検査にならないように。Top trap #13）。
+     * ⚠ 全件分類: フォームの中の**名前を持つ入力をすべて**機械的に拾い、検索欄以外は即時に送ること、
+     *   検索欄は入力のたびに送らないこと、の 2 つに分ける（select と checkbox だけを拾っていると、あとで足した
+     *   日付・ラジオなどが無検査になり、検索欄に oninput を足しても緑だった。レビューで指摘。Top trap #13）。
      */
     public function test_every_filter_control_submits_on_change(): void
     {
         $html = $this->actingAs($this->admin())->get(route('approvals.admin.users.index'))->assertOk()->getContent();
 
         $this->assertSame(1, preg_match('/<form\b[^>]*\bid="filter-form"[^>]*>.*?<\/form>/s', $html, $form), '絞り込みのフォーム（id="filter-form"）が無い');
-        preg_match_all('/<select\b[^>]*>|<input\b[^>]*\btype="checkbox"[^>]*>/i', $form[0], $controls);
+        preg_match_all('/<(select|input|textarea)\b[^>]*\bname="([^"]+)"[^>]*>/i', $form[0], $controls, PREG_SET_ORDER);
 
-        $this->assertGreaterThanOrEqual(4, count($controls[0]), '絞り込みの select / checkbox を拾えていない（走査の空振り）');
-        foreach ($controls[0] as $tag) {
+        $this->assertGreaterThanOrEqual(5, count($controls), '絞り込みの入力を拾えていない（走査の空振り）');
+
+        $searchSeen = false;
+        foreach ($controls as [$tag, $element, $name]) {
+            if ($name === 'search') {
+                // 検索語は打鍵ごとに送らない（「検索」ボタン／Enter で送る）。イベントの属性を 1 つも持たないこと
+                $searchSeen = true;
+                $this->assertDoesNotMatchRegularExpression('/\s(?:on[a-z]+|@[\w.:-]+|x-on:[\w.:-]+)=/i', $tag, "検索欄が入力のたびに送る形になっている: {$tag}");
+
+                continue;
+            }
+
             $this->assertSame("document.getElementById('filter-form').submit()", $this->htmlAttr($tag, 'onchange'), "即時に送らない絞り込みがある: {$tag}");
         }
 
-        // 検索語は打鍵ごとに送らない（「検索」ボタン／Enter で送る）
-        $this->assertSame(1, preg_match('/<input\b[^>]*\bname="search"[^>]*>/i', $form[0], $search));
-        $this->assertNull($this->htmlAttr($search[0], 'onchange'));
+        $this->assertTrue($searchSeen, '検索欄（name="search"）が見つからない');
         $this->assertStringContainsString('>検索</button>', $form[0]);
     }
 
