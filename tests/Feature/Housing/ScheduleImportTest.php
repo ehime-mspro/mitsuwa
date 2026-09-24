@@ -225,10 +225,10 @@ class ScheduleImportTest extends ScheduleTestCase
     {
         return [
             '送り直し: ファイルを選ばなかった' => ['reupload-without-file', '<li>工程表の書き出しファイルは必須です。</li>'],
-            '送り直し: ガント形式'             => ['reupload-gantt', '「一覧」形式で書き出したファイルを選んでください'],
+            '送り直し: ガント形式'             => ['reupload-gantt', '<li>このファイルは取り込めません。「一覧」形式で書き出したファイルを選んでください（工程表（ガント）形式には施工完了日が入っていないため取り込めません）。</li>'],
             '確定: 取り込む工程が無い'         => ['confirm-without-rows', '<li>取り込む工程は必須です。</li>'],
-            '確定: 取り込む工程が空'           => ['confirm-empty-rows', '取り込む工程を読み取れませんでした。'],
-            '確定: 壊れた行'                   => ['confirm-broken-rows', '取り込めない行があります'],
+            '確定: 取り込む工程が空'           => ['confirm-empty-rows', '<li>取り込む工程を読み取れませんでした。もう一度ファイルを選んでください。</li>'],
+            '確定: 壊れた行'                   => ['confirm-broken-rows', '<li>取り込めない行があります: '],
         ];
     }
 
@@ -242,6 +242,9 @@ class ScheduleImportTest extends ScheduleTestCase
      *   hidden は確認画面が描くので、ここへ来るのは書き換えたときだけ。
      * ⚠ 行き先は `Location` を assertSame で見る（assertRedirect() は検証エラーの応答で外れると失敗文の組み立て中に fatal に
      *   なり理由が読めない）。たどって理由が画面に出ることまで見る（セッションには触らない。Bug #49）。
+     * ⚠ 理由は `<li>` 込みの全文で見る。「「一覧」形式で書き出したファイルを選んでください」は取込の画面のアップロード欄の
+     *   案内文にも常に出ているので、部分一致だと理由の帯が消えても緑になる（2026-09-24 に、断りの文言を差し替える変異で
+     *   5 ケースとも緑を実測。Bug #43）。
      */
     #[DataProvider('rejectionFromThePreviewCases')]
     public function test_a_rejection_from_the_preview_goes_back_to_the_import_form(string $how, string $message): void
