@@ -38,37 +38,45 @@ class ImportValidationFeedbackTest extends TestCase
     /**
      * 取込の入口ごとに「不正なファイル → 差し戻し先で理由が見える」ことを見る。
      *
-     * @return array<string, array{0: string, 1: string, 2: array<string, string>}>
+     * 送り元（リファラー）は取込の画面。差し戻し先は、テナントの取込では**送ったタブ**を開いた取込の画面
+     * （確認画面から送っても 405 にならないよう戻り先を固定した。docs/RULES.md Bug #64）。
+     *
+     * @return array<string, array{0: string, 1: string, 2: array<string, string>, 3: string}>
+     *         [送り先, 送り元（取込の画面）, 追加の項目, 差し戻し先]
      */
     public static function importEndpoints(): array
     {
         return [
-            '顧客CSV'            => ['/admin/customers/import',        '/admin/customers/import', ['department' => 'housing']],
-            'テナントCSV'        => ['/admin/tenant-import/property',   '/admin/tenant-import',    []],
-            '賃貸マンションCSV'  => ['/admin/mansion-import/property',  '/admin/mansion-import',   []],
+            '顧客CSV'            => ['/admin/customers/import',        '/admin/customers/import', ['department' => 'housing'], '/admin/customers/import'],
+            'テナントCSV'        => ['/admin/tenant-import/property',   '/admin/tenant-import',    [],                          '/admin/tenant-import?tab=property'],
+            '賃貸マンションCSV'  => ['/admin/mansion-import/property',  '/admin/mansion-import',   [],                          '/admin/mansion-import'],
         ];
     }
 
     #[\PHPUnit\Framework\Attributes\DataProvider('importEndpoints')]
-    public function test_an_invalid_file_shows_the_reason_on_screen(string $post, string $back, array $extra): void
+    public function test_an_invalid_file_shows_the_reason_on_screen(string $post, string $back, array $extra, string $returnTo): void
     {
         $actor = $this->executive();
 
         // mimes:csv,txt に落ちるファイル
         $bad = UploadedFile::fake()->create('sample.pdf', 10, 'application/pdf');
 
-        $this->actingAs($actor)
+        $response = $this->actingAs($actor)
             ->from($back)
-            ->post($post, ['csv_file' => $bad] + $extra)
-            ->assertRedirect($back);
+            ->post($post, ['csv_file' => $bad] + $extra);
+
+        // ⚠ assertRedirect() は使わない。検証エラーを持つ応答で外れると、失敗文を組み立てる途中で
+        //   「Call to a member function all() on array」で落ち、理由が読めない（2026-09-24 実測）
+        $this->assertSame(302, $response->getStatusCode());
+        $this->assertSame(url($returnTo), $response->headers->get('Location'), "{$post} の差し戻し先が違う");
 
         // 差し戻された画面を実際に描画して見る（セッションには触らない。Bug #49）
-        $html = $this->actingAs($actor)->get($back)->getContent();
+        $html = $this->actingAs($actor)->get($returnTo)->getContent();
 
         $this->assertStringContainsString(
             '入力内容にエラーがあります',
             $html,
-            "{$post} に不正なファイルを投げたのに、差し戻し先 {$back} に理由が出ていない"
+            "{$post} に不正なファイルを投げたのに、差し戻し先 {$returnTo} に理由が出ていない"
         );
 
         // 具体的な理由まで出ていること（見出しだけ出して中身が空なら意味が無い）
