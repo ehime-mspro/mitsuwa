@@ -190,6 +190,21 @@ class LoginGuideTest extends TestCase
     }
 
     /**
+     * 発行日は**日本の今日**（F5）。アプリの時刻は UTC なので、日本時間の 0:00〜8:59 は UTC ではまだ前日。
+     *
+     * ⚠ 期待値は決め打ちで書く（JapanTime::today() で組み立てると同義反復になる。Bug #61 ②）。
+     */
+    public function test_the_issue_date_is_the_date_in_japan(): void
+    {
+        $this->travelTo(\Carbon\CarbonImmutable::parse('2026-09-18 17:30:00', 'UTC'));   // 日本時間 9/19 2:30
+
+        $html = $this->render()->assertOk()->getContent();
+
+        $this->assertStringContainsString('発行日: 2026年9月19日', $html);
+        $this->assertStringNotContainsString('2026年9月18日', $html, 'UTC の日付のまま出ている');
+    }
+
+    /**
      * 閉じる前の確認が、**印刷したあとも外れない**こと。
      *
      * ⚠ `afterprint` は「印刷ダイアログを閉じたとき」に発火し、実際に印刷したのか

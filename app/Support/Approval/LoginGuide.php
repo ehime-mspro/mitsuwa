@@ -3,6 +3,7 @@
 namespace App\Support\Approval;
 
 use App\Models\User;
+use App\Support\JapanTime;
 use App\Support\LoginQrCode;
 use Illuminate\Contracts\Support\Responsable;
 use Symfony\Component\HttpFoundation\Response;
@@ -41,7 +42,8 @@ final class LoginGuide implements Responsable
                 'qr'            => LoginQrCode::symbolParts($loginUrl),
                 'notifiedCount' => $this->notifiedCount,
                 'skippedCount'  => $this->skippedCount,
-                'issuedAt'      => now()->format('Y年n月j日'),
+                // 発行日は日本の今日（アプリの時刻は UTC。now() だと日本時間の 0:00〜8:59 に前日が出る。F5）
+                'issuedAt'      => JapanTime::today()->format('Y年n月j日'),
             ])
             ->header('Cache-Control', 'no-store, no-cache, must-revalidate, private')
             ->header('Pragma', 'no-cache');
