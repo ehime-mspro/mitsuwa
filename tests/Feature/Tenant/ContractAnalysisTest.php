@@ -19,7 +19,7 @@ use Tests\TestCase;
  * 集計は DB非依存（PHP/Carbon）のため SQLite in-memory でも YEAR()/MONTH() 問題なし。
  * Contract は HasFactory だが ContractFactory 未定義 → create() 直接で組み立てる。
  * byMonth.values は index0=1月 … index11=12月 のリスト。
- * 直近N年は now()->year 基準のため setUp() で「現在」を固定している（凍結しないと年跨ぎで落ちる）。
+ * 直近N年は JapanTime::today()->year 基準のため setUp() で「現在」を固定している（凍結しないと年跨ぎで落ちる）。
  * 設計の正: docs/superpowers/specs/2026-07-15-tenant-analysis-period-selector-design.md
  */
 class ContractAnalysisTest extends TestCase
@@ -31,7 +31,7 @@ class ContractAnalysisTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        // 「現在」を 2026-07-15 に固定（直近N年は now()->year 基準＝実時刻だと年跨ぎでテストが落ちるため）
+        // 「現在」を 2026-07-15 に固定（直近N年は JapanTime::today()->year 基準＝実時刻だと年跨ぎでテストが落ちるため）
         Carbon::setTestNow(Carbon::parse('2026-07-15'));
     }
 

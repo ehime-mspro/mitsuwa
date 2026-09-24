@@ -679,11 +679,11 @@
                 <div style="background:#F9FAFB; padding:10px 14px; color:#6B7280; font-weight:500; border-right:1px solid #E5E7EB; border-bottom:1px solid #E5E7EB;">登録者</div>
                 <div style="padding:10px 14px; color:#111827; border-bottom:1px solid #E5E7EB;">{{ $hsCustomOrder->createdBy->name ?? '—' }}</div>
                 <div style="background:#F9FAFB; padding:10px 14px; color:#6B7280; font-weight:500; border-right:1px solid #E5E7EB; border-bottom:1px solid #E5E7EB;">登録日時</div>
-                <div style="padding:10px 14px; color:#111827; border-bottom:1px solid #E5E7EB;">{{ $hsCustomOrder->created_at?->format('Y/m/d H:i') ?? '—' }}</div>
+                <div style="padding:10px 14px; color:#111827; border-bottom:1px solid #E5E7EB;">{{ \App\Support\JapanTime::format($hsCustomOrder->created_at) ?? '—' }}</div>
                 <div style="background:#F9FAFB; padding:10px 14px; color:#6B7280; font-weight:500; border-right:1px solid #E5E7EB;">更新者</div>
                 <div style="padding:10px 14px; color:#111827;">{{ $hsCustomOrder->updatedBy->name ?? '—' }}</div>
                 <div style="background:#F9FAFB; padding:10px 14px; color:#6B7280; font-weight:500; border-right:1px solid #E5E7EB;">更新日時</div>
-                <div style="padding:10px 14px; color:#111827;">{{ $hsCustomOrder->updated_at?->format('Y/m/d H:i') ?? '—' }}</div>
+                <div style="padding:10px 14px; color:#111827;">{{ \App\Support\JapanTime::format($hsCustomOrder->updated_at) ?? '—' }}</div>
             </div>
         </div>
 
@@ -839,8 +839,10 @@ function datePicker(initial) {
             this.open = false;
         },
         setMonthAgo: function () {
-            var d = new Date(this.todayYear, this.todayMonth, this.todayDate);
-            d.setMonth(d.getMonth() - 1);
+            // 前月に同じ日が無いとき（3/31 など）は前月の末日で止める（Excel の EDATE と同じ）。
+            // 月だけを 1 つ戻すと 2/31 → 3/3 のように当月へ溢れる（docs/RULES.md Bug #62）
+            var lastDay = new Date(this.todayYear, this.todayMonth, 0).getDate();
+            var d = new Date(this.todayYear, this.todayMonth - 1, Math.min(this.todayDate, lastDay));
             this.selected = d;
             this.viewYear = d.getFullYear();
             this.viewMonth = d.getMonth();

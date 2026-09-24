@@ -6,6 +6,7 @@ use App\Enums\ContractStatus;
 use App\Models\Contract;
 use App\Models\Property;
 use App\Models\Unit;
+use App\Support\JapanTime;
 use Illuminate\Support\Collection;
 
 class RentalIncomeService
@@ -97,7 +98,7 @@ class RentalIncomeService
         $startMonth = $start->copy()->startOfMonth();
 
         // 終了月: min(contract_end_date ?? 当月, 当月) — 未来は計上しない
-        $thisMonth = now()->startOfMonth();
+        $thisMonth = JapanTime::today()->startOfMonth();
         $endMonth = $contract->contract_end_date
             ? $contract->contract_end_date->copy()->startOfMonth()
             : $thisMonth->copy();

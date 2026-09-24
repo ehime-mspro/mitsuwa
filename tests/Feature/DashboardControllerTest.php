@@ -215,7 +215,8 @@ class DashboardControllerTest extends TestCase
         $method->setAccessible(true);
 
         // 当年度を渡して戻り値の整合性を確認（データなしでも total = actual + projected）
-        $fy = (int) date('n') >= 5 ? (int) date('Y') : (int) date('Y') - 1;
+        $today = \App\Support\JapanTime::today();
+        $fy = $today->month >= 5 ? $today->year : $today->year - 1;
         $result = $method->invoke($controller, $fy);
 
         $this->assertArrayHasKey('actual', $result);
@@ -235,7 +236,8 @@ class DashboardControllerTest extends TestCase
         $method = $reflect->getMethod('buildProjectionLabels');
         $method->setAccessible(true);
 
-        $fy = (int) date('n') >= 5 ? (int) date('Y') : (int) date('Y') - 1;
+        $today = \App\Support\JapanTime::today();
+        $fy = $today->month >= 5 ? $today->year : $today->year - 1;
         $result = $method->invoke($controller, $fy);
 
         $this->assertArrayHasKey('actual', $result);

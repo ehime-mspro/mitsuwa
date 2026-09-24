@@ -14,6 +14,7 @@ use App\Models\Customer;
 use App\Models\Property;
 use App\Models\Unit;
 use App\Models\User;
+use App\Support\JapanTime;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -409,7 +410,7 @@ class InquiryController extends Controller
             InquiryHistory::create([
                 'inquiry_id'  => $inquiry->id,
                 'action_type' => 'other',
-                'action_date' => now()->toDateString(),
+                'action_date' => JapanTime::today()->toDateString(),
                 'content'     => 'ステータスを「' . $newStatus->label() . '」に変更',
                 'created_by'  => Auth::id(),
             ]);
@@ -439,7 +440,7 @@ class InquiryController extends Controller
      */
     private function generateInquiryNumber(): string
     {
-        $year = date('Y');
+        $year = JapanTime::today()->year;
         $prefix = "INQ-{$year}-";
 
         $lastNumber = Inquiry::withTrashed()

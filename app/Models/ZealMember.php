@@ -6,6 +6,7 @@ use App\Enums\ZealAcquisitionSource;
 use App\Enums\ZealGender;
 use App\Enums\ZealPurpose;
 use App\Enums\ZealWithdrawReason;
+use App\Support\JapanTime;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -99,12 +100,25 @@ class ZealMember extends Model
         return $this->withdrew_on === null;
     }
 
-    /** 年齢を生年月日から算出 */
+    /**
+     * 年齢を生年月日から算出
+     *
+     * ⚠ **未来の誕生日（入力ミス）では負の数を返す。** diffInYears() は符号付きの float を返し、
+     *   (int) は 0 方向へ切り捨てるため。旧実装の `$birthday->age` も中身は `(int) $this->diffInYears()`
+     *   （vendor/nesbot/carbon/src/Carbon/Traits/Date.php:1242）なので負になること自体は前からだが、
+     *   **差がちょうど整数年になるときだけ旧実装と値が 1 つ違う**（今日 2025-12-31・誕生日 2026-12-31 →
+     *   旧 0 / 新 -1）。旧は「その日の途中の瞬間」と比べるので差が N 年より僅かに小さく 0 方向へ丸まっていた。
+     *   2026-09-22 の実測（688,128 通り）: 食い違うのは未来の誕生日 243 件だけで全件が整数年
+     *   （Carbon が 2/29 → 3/1 を 1 年ちょうどと数える 24 件を含む）。過去の誕生日で食い違うのは
+     *   日本時間 0:00〜8:59 の帯だけ ＝ この改修が直した時差そのもの（JapanBusinessDayTest が固定）。
+     * ⚠ `birthday` の入力チェックは `nullable|date` だけで、アプリ全体で `before_or_equal` は 0 件。
+     *   足すかどうかは別の判断。
+     */
     public function age(): ?int
     {
         if ($this->birthday === null) {
             return null;
         }
-        return $this->birthday->age;
+        return (int) $this->birthday->diffInYears(JapanTime::today());
     }
 }

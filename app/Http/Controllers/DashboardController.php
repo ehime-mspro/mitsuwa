@@ -24,6 +24,7 @@ use App\Models\Property;
 use App\Models\ReContract;
 use App\Models\ReProcurement;
 use App\Models\Unit;
+use App\Support\JapanTime;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -102,7 +103,10 @@ class DashboardController extends Controller
         $labels = $this->buildProjectionLabels($fy);
 
         // ビル別カードのサブタイトル（例: 「3月実績」）。当月は集計未確定のため前月を表示する。
-        $previousMonthLabel = now()->subMonth()->month . '月実績';
+        // 月初へ寄せてから引くのは、月末日（31日など）に subMonth() が翌月へ溢れて
+        // 当月を前月と取り違えるのを防ぐため（3/31 → 2/31 → 3/3）。
+        // ビル別カードのラベルと集計（aggregateBuildingStats()）が同じ前月を指す。片方だけ直さない。
+        $previousMonthLabel = JapanTime::today()->startOfMonth()->subMonth()->month . '月実績';
 
         return view('dashboard.tenant', [
             'fiscalYear'         => $fy,
@@ -125,10 +129,10 @@ class DashboardController extends Controller
      */
     private function buildProjectionLabels(int $fy): array
     {
-        $now      = now();
+        $today    = JapanTime::today();
         $fyStart  = Carbon::create($fy, 5, 1);
         $fyEnd    = Carbon::create($fy + 1, 4, 30)->endOfDay();
-        $current  = $now->copy()->startOfMonth();
+        $current  = $today->copy()->startOfMonth();
 
         // 実績月数（5月から前月まで）
         $actualMonths = ($current->year - $fyStart->year) * 12 + ($current->month - $fyStart->month);
@@ -192,8 +196,8 @@ class DashboardController extends Controller
      */
     private function getCurrentFiscalYear(): int
     {
-        $now = now();
-        return $now->month >= 5 ? $now->year : $now->year - 1;
+        $today = JapanTime::today();
+        return $today->month >= 5 ? $today->year : $today->year - 1;
     }
 
     /**
@@ -201,7 +205,7 @@ class DashboardController extends Controller
      */
     private function getCurrentPeriod(): string
     {
-        $month = now()->month;
+        $month = JapanTime::today()->month;
         return ($month >= 5 && $month <= 10) ? 'h1' : 'h2';
     }
 
@@ -754,7 +758,7 @@ class DashboardController extends Controller
     {
         $fyStart = Carbon::create($fy, 5, 1)->startOfDay();
         $fyEnd   = Carbon::create($fy + 1, 4, 30)->endOfDay();
-        $today   = now();
+        $today   = JapanTime::today();
 
         // 当月 1 日（実績/予想の境界）
         $currentMonthStart = $today->copy()->startOfMonth();
@@ -851,7 +855,10 @@ class DashboardController extends Controller
      */
     private function aggregateBuildingStats(): Collection
     {
-        $prevMonth      = now()->subMonth();
+        // 月初へ寄せてから引くのは、月末日（31日など）に subMonth() が翌月へ溢れて
+        // 当月を前月として集計するのを防ぐため（3/31 → 2/31 → 3/3）。
+        // ビル別カードのラベル（tenant() の「〇月実績」）と同じ前月を指す。片方だけ直さない。
+        $prevMonth      = JapanTime::today()->startOfMonth()->subMonth();
         $prevMonthStart = $prevMonth->copy()->startOfMonth();
         $prevMonthEnd   = $prevMonth->copy()->endOfMonth();
 

@@ -17,6 +17,7 @@ use App\Support\CsvDate;
 use App\Support\CsvImportException;
 use App\Support\CsvImportReader;
 use App\Support\CsvImportTemplate;
+use App\Support\JapanTime;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -810,7 +811,7 @@ class TenantImportController extends Controller
             $created = 0;
 
             foreach ($validRows as $row) {
-                $year = now()->year;
+                $year = JapanTime::today()->year;
                 $contractNumber = "C-{$year}-" . str_pad($contractCodeNum, 3, '0', STR_PAD_LEFT);
                 $contractCodeNum++;
 
@@ -967,7 +968,7 @@ class TenantImportController extends Controller
             }
 
             // 解約日が今日より未来 → 警告（過去契約のはず）
-            if ($endDate > now()->format('Y-m-d')) {
+            if ($endDate > JapanTime::today()->format('Y-m-d')) {
                 $warnings[] = ['row' => $rowNum, 'message' => "解約日（{$endDate}）が今日より未来です（過去契約として登録します）"];
             }
 
@@ -1304,7 +1305,7 @@ class TenantImportController extends Controller
      */
     private function getNextContractCodeNum(): int
     {
-        return $this->getNextContractCodeNumForYear((int) now()->year);
+        return $this->getNextContractCodeNumForYear(JapanTime::today()->year);
     }
 
     /**

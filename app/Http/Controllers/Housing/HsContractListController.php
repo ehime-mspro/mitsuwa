@@ -12,6 +12,7 @@ use App\Models\HsProperty;
 use App\Models\ReProcurement;
 use App\Models\ReProjectLot;
 use App\Models\User;
+use App\Support\JapanTime;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -583,8 +584,8 @@ class HsContractListController extends Controller
      */
     private function getCurrentFiscalYear(): int
     {
-        $now = now();
-        return $now->month >= 5 ? $now->year : $now->year - 1;
+        $today = JapanTime::today();
+        return $today->month >= 5 ? $today->year : $today->year - 1;
     }
 
     /**

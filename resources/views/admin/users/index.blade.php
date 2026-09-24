@@ -134,7 +134,7 @@
                             @endif
                         </td>
                         <td class="px-3.5 py-2.5 lg:px-5 lg:py-3.5 border-b border-gray-100 text-[12px] text-gray-400 whitespace-nowrap">
-                            {{ $u->last_login_at ? $u->last_login_at->format('m/d H:i') : '—' }}
+                            {{ \App\Support\JapanTime::format($u->last_login_at, 'm/d H:i') ?? '—' }}
                         </td>
                         <td class="px-3.5 py-2.5 lg:px-5 lg:py-3.5 border-b border-gray-100 text-right whitespace-nowrap">
                             @if($u->trashed())

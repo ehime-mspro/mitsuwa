@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\InvestmentPattern;
 use App\Enums\InvestmentStatus;
+use App\Support\JapanTime;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -125,7 +126,7 @@ class Investment extends Model
         $pivotMonth = $this->end_date->copy()->startOfMonth();
         $totalRecovered = 0;
         $recoveryStartedAt = null;
-        $now = now();
+        $today = JapanTime::today();
 
         foreach ($contracts as $contract) {
             if (! $contract->rent_start_date || $contract->rent <= 0) {
@@ -136,7 +137,7 @@ class Investment extends Model
             // 回収対象期間の起点月 = max(賃料開始日, 完成日) の月初
             $startMonth = $rentStartMonth->gt($pivotMonth) ? $rentStartMonth : $pivotMonth->copy();
 
-            $endDate = $contract->isTerminated() ? $contract->contract_end_date : $now;
+            $endDate = $contract->isTerminated() ? $contract->contract_end_date : $today;
             $endMonth = $endDate->copy()->startOfMonth();
 
             if ($startMonth->gt($endMonth)) {

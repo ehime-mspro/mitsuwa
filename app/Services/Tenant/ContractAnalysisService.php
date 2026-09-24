@@ -5,6 +5,7 @@ namespace App\Services\Tenant;
 use App\Enums\ContractStatus;
 use App\Enums\DepartmentCode;
 use App\Models\Contract;
+use App\Support\JapanTime;
 use Illuminate\Support\Collection;
 
 class ContractAnalysisService
@@ -139,7 +140,7 @@ class ContractAnalysisService
      */
     private function byMonthByPeriod(array $byMonthByYear): array
     {
-        $thisYear = (int) now()->year;
+        $thisYear = JapanTime::today()->year;
         $periods  = [];
 
         foreach (self::PERIOD_YEARS as $n) {

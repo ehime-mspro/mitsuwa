@@ -48,7 +48,7 @@
         </div>
         <div style="color: #6b7280;">
             基準日<br>
-            <strong style="color: #111827; font-size: 13px;">{{ now()->format('Y-m-d') }}</strong>
+            <strong style="color: #111827; font-size: 13px;">{{ \App\Support\JapanTime::today()->format('Y-m-d') }}</strong>
         </div>
         <div style="color: #6b7280;">
             確定月<br>

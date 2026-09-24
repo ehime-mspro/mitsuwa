@@ -11,6 +11,7 @@ use App\Models\Repair;
 use App\Models\ReProject;
 use App\Models\ReProcurement;
 use App\Support\AttachmentDelivery;
+use App\Support\JapanTime;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
@@ -96,7 +97,7 @@ class AttachmentController extends Controller
                 'file_path'   => route('attachments.show', $attachment->id),
                 'file_size'   => $attachment->file_size_formatted,
                 'uploaded_by' => $attachment->uploadedByUser->name ?? '—',
-                'uploaded_at' => $attachment->created_at->format('Y/m/d H:i'),
+                'uploaded_at' => JapanTime::format($attachment->created_at),
                 'can_delete'  => true,
             ];
         }
@@ -166,7 +167,7 @@ class AttachmentController extends Controller
                 'id'         => $attachment->id,
                 'file_name'  => $attachment->file_name,
                 'deleted_by' => $user->name,
-                'deleted_at' => $attachment->deleted_at->format('Y/m/d H:i'),
+                'deleted_at' => JapanTime::format($attachment->deleted_at),
             ],
         ]);
     }

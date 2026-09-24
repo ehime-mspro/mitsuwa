@@ -187,7 +187,7 @@
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1">契約日<span class="text-red-600 ml-0.5">*</span></label>
-                    <input type="date" name="contract_date" value="{{ old('contract_date', date('Y-m-d')) }}"
+                    <input type="date" name="contract_date" value="{{ old('contract_date', \App\Support\JapanTime::today()->format('Y-m-d')) }}"
                            class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none">
                 </div>
                 <div>

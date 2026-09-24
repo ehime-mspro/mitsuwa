@@ -10,6 +10,7 @@ use App\Models\AreaBuildingTenant;
 use App\Support\FloorNumber;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -28,6 +29,12 @@ use Illuminate\Support\Facades\DB;
 class AreaBuildingImportTest extends AreaBuildingTestCase
 {
     use RefreshDatabase;
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
+    }
 
     /**
      * SheetJS の SRI ハッシュ（2026-08-17 実測）。
@@ -1181,13 +1188,19 @@ class AreaBuildingImportTest extends AreaBuildingTestCase
      */
     public function test_the_month_defaults_to_the_current_month_and_blocks_submission(): void
     {
+        // ⚠ 期待値を JapanTime::today() で組み立てると同義反復になり、ビューを now() に戻しても
+        //    JST 9:00 以降は緑のまま通る（UTC と日本の暦日が一致するため）。日本時間の朝に凍結して
+        //    literal で見る（docs/RULES.md Bug #61）。
+        Carbon::setTestNow(Carbon::parse('2026-12-31 15:30:00', 'UTC')); // 日本時間 2027/1/1 0:30
+
         $html = $this->actingAs($this->manager())->get(self::IMPORT_URL)->getContent();
 
         $this->assertStringContainsString(
-            "surveyedMonth: '" . now()->format('Y-m') . "'",
+            "surveyedMonth: '2027-01'",
             $html,
-            '調査年月の既定が当月になっていない'
+            '調査年月の既定が日本の当月になっていない'
         );
+        $this->assertStringNotContainsString("surveyedMonth: '2026-12'", $html, '調査年月が UTC の当月のまま');
 
         $this->assertStringContainsString('<span :title="submitBlockedReason()"', $html, 'ラッパー span に理由が無い');
         $this->assertStringContainsString(':disabled="submitBlockedReason() !== null"', $html);

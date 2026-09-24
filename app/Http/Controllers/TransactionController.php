@@ -6,6 +6,7 @@ use App\Enums\DepartmentCode;
 use App\Enums\OperationStatus;
 use App\Models\Contract;
 use App\Models\Property;
+use App\Support\JapanTime;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -23,7 +24,7 @@ class TransactionController extends Controller
      */
     public function index(Request $request)
     {
-        $yearMonth = $request->input('ym', now()->format('Y-m'));
+        $yearMonth = $request->input('ym', JapanTime::today()->format('Y-m'));
 
         // 物件別収入を計算
         $revenues = $this->calculateMonthlyRevenue($yearMonth);
@@ -62,7 +63,7 @@ class TransactionController extends Controller
 
         // 年度の12ヶ月を構築
         $months = $this->getFiscalYearMonths($fiscalYear);
-        $now = now();
+        $today = JapanTime::today();
 
         $monthlyData = [];
         $yearTotalRent = 0;
@@ -73,7 +74,7 @@ class TransactionController extends Controller
 
         foreach ($months as $ym) {
             $monthDate = Carbon::parse($ym . '-01');
-            $isFuture = $monthDate->copy()->startOfMonth()->gt($now->copy()->startOfMonth());
+            $isFuture = $monthDate->copy()->startOfMonth()->gt($today->copy()->startOfMonth());
 
             if ($isFuture) {
                 $monthlyData[] = [
@@ -255,8 +256,8 @@ class TransactionController extends Controller
      */
     private function getCurrentFiscalYear(): int
     {
-        $now = now();
-        return $now->month >= self::FISCAL_YEAR_START_MONTH ? $now->year : $now->year - 1;
+        $today = JapanTime::today();
+        return $today->month >= self::FISCAL_YEAR_START_MONTH ? $today->year : $today->year - 1;
     }
 
     /**

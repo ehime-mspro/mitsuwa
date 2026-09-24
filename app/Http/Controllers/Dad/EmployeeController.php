@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Dad;
 use App\Enums\DadEmployeeStatus;
 use App\Http\Controllers\Controller;
 use App\Models\DadEmployee;
+use App\Support\JapanTime;
 use Illuminate\Http\Request;
 
 /**
@@ -24,7 +25,7 @@ class EmployeeController extends Controller
         $query = DadEmployee::query()
             ->with(['assignments' => function ($q) {
                 $q->whereNull('end_date')
-                  ->orWhere('end_date', '>=', now()->toDateString());
+                  ->orWhere('end_date', '>=', JapanTime::today()->toDateString());
             }, 'assignments.project']);
 
         if ($statusFilter !== 'all' && in_array($statusFilter, ['active', 'retired'], true)) {
@@ -45,7 +46,7 @@ class EmployeeController extends Controller
         // 集計
         $countActive = DadEmployee::where('status', 'active')->count();
         $countAssigned = DadEmployee::whereHas('assignments', function ($q) {
-            $q->whereNull('end_date')->orWhere('end_date', '>=', now()->toDateString());
+            $q->whereNull('end_date')->orWhere('end_date', '>=', JapanTime::today()->toDateString());
         })->where('status', 'active')->count();
         $countQualified = DadEmployee::where('status', 'active')
             ->whereNotNull('qualifications')

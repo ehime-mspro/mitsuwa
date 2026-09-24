@@ -316,9 +316,9 @@
     {{-- 登録情報 --}}
     <div class="bg-white border border-gray-200 rounded-lg px-5 py-3">
         <div class="flex gap-6 text-xs text-gray-500">
-            <span>登録: {{ $o->createdBy->name ?? '—' }} {{ $o->created_at->format('Y/m/d H:i') }}</span>
+            <span>登録: {{ $o->createdBy->name ?? '—' }} {{ \App\Support\JapanTime::format($o->created_at) }}</span>
             @if($o->updatedBy)
-                <span>更新: {{ $o->updatedBy->name }} {{ $o->updated_at->format('Y/m/d H:i') }}</span>
+                <span>更新: {{ $o->updatedBy->name }} {{ \App\Support\JapanTime::format($o->updated_at) }}</span>
             @endif
         </div>
     </div>

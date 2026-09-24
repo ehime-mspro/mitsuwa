@@ -6,6 +6,7 @@ use App\Enums\ZealGymInquiryStatus;
 use App\Http\Controllers\Controller;
 use App\Models\GymInquiry;
 use App\Models\ZealMember;
+use App\Support\JapanTime;
 use Illuminate\Http\Request;
 
 /**
@@ -50,9 +51,12 @@ class InquiryController extends Controller
         $statuses = ZealGymInquiryStatus::cases();
 
         // 月選択肢（過去18か月分）
+        // 起点を月初に寄せるのは、月末日（31日など）に subMonths() が翌月へ溢れて
+        // 月が重複・欠落するのを防ぐため（Zeal\DashboardController の月次グラフと同じ）。起点はループの外で 1 回だけ作る。
         $months = collect();
+        $base   = JapanTime::today()->startOfMonth();
         for ($i = 0; $i < 18; $i++) {
-            $months->push(now()->subMonths($i)->format('Y-m'));
+            $months->push($base->copy()->subMonths($i)->format('Y-m'));
         }
 
         return view('zeal.inquiries.index', compact('inquiries', 'statuses', 'months'));

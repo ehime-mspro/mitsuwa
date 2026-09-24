@@ -15,7 +15,7 @@
             <div>
                 <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">取得日（来場日）<span class="text-red-600" style="margin-left: 2px;">*</span></label>
                 <input type="date" name="acquired_date"
-                       value="{{ old('acquired_date', ($isEdit && $pivot) ? $pivot->acquired_date->format('Y-m-d') : date('Y-m-d')) }}"
+                       value="{{ old('acquired_date', ($isEdit && $pivot) ? $pivot->acquired_date->format('Y-m-d') : \App\Support\JapanTime::today()->format('Y-m-d')) }}"
                        class="form-input w-full" style="height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
             </div>
             <div>
@@ -48,7 +48,7 @@
             <div style="max-width: 250px;">
                 <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">取得日<span class="text-red-600" style="margin-left: 2px;">*</span></label>
                 <input type="date" name="acquired_date"
-                       value="{{ old('acquired_date', ($isEdit && $pivot) ? $pivot->acquired_date->format('Y-m-d') : date('Y-m-d')) }}"
+                       value="{{ old('acquired_date', ($isEdit && $pivot) ? $pivot->acquired_date->format('Y-m-d') : \App\Support\JapanTime::today()->format('Y-m-d')) }}"
                        class="form-input w-full" style="height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
             </div>
         </div>

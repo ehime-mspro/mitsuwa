@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\BuyerRank;
+use App\Support\JapanTime;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
@@ -215,7 +216,7 @@ class Buyer extends Model
         if ($pivot === null) {
             $this->addToDepartment(
                 $department,
-                $acquiredDate ?: now()->toDateString(),
+                $acquiredDate ?: JapanTime::today()->toDateString(),
                 BuyerRank::Contracted->value,
             );
             return;

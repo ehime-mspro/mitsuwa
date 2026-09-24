@@ -90,7 +90,7 @@
         <option value="">月: すべて</option>
         @foreach($months as $m)
             <option value="{{ $m }}" {{ request('month') === $m ? 'selected' : '' }}>
-                {{ \Carbon\Carbon::createFromFormat('Y-m', $m)->format('Y年n月') }}
+                {{ \Carbon\Carbon::createFromFormat('Y-m-d', $m . '-01')->format('Y年n月') }}
             </option>
         @endforeach
     </select>

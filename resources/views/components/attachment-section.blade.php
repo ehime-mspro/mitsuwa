@@ -24,7 +24,7 @@
             'file_path'   => route('attachments.show', $a->id),
             'file_size'   => $a->file_size_formatted,
             'uploaded_by' => $a->uploadedByUser->name ?? '—',
-            'uploaded_at' => $a->created_at->format('Y/m/d H:i'),
+            'uploaded_at' => \App\Support\JapanTime::format($a->created_at),
             'can_delete'  => $isExecutive || $a->uploaded_by === $userId,
             'confirming'  => false,
         ];
@@ -35,7 +35,7 @@
         $deletedData[] = [
             'file_name'  => $a->file_name,
             'deleted_by' => $a->deletedByUser->name ?? '—',
-            'deleted_at' => $a->deleted_at->format('Y/m/d H:i'),
+            'deleted_at' => \App\Support\JapanTime::format($a->deleted_at),
         ];
     }
 @endphp

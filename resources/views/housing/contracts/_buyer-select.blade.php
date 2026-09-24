@@ -162,7 +162,7 @@ function buyerSelect(initialName) {
         duplicates: [],
         f: {
             last_name: '', first_name: '', last_name_kana: '', first_name_kana: '',
-            acquired_date: '{{ now()->format('Y-m-d') }}',
+            acquired_date: '{{ \App\Support\JapanTime::today()->format('Y-m-d') }}',
             postal_code: '', prefecture: '', city: '', address_detail: '', phone: ''
         },
 

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\JapanTime;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
@@ -66,7 +67,7 @@ class ZealPlan extends Model
         if ($this->campaign_price_excl === null) {
             return false;
         }
-        $date ??= now();
+        $date ??= JapanTime::today();
         if ($this->campaign_starts_on !== null && $date < $this->campaign_starts_on) {
             return false;
         }

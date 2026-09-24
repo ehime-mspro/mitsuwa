@@ -385,12 +385,12 @@
                 <dt>登録者</dt>
                 <dd>{{ $hsCustomOrder->createdBy->name ?? '—' }}</dd>
                 <dt>登録日時</dt>
-                <dd>{{ $hsCustomOrder->created_at?->format('Y/m/d H:i') ?? '—' }}</dd>
+                <dd>{{ \App\Support\JapanTime::format($hsCustomOrder->created_at) ?? '—' }}</dd>
 
                 <dt class="no-border-bottom">更新者</dt>
                 <dd class="no-border-bottom">{{ $hsCustomOrder->updatedBy->name ?? '—' }}</dd>
                 <dt class="no-border-bottom">更新日時</dt>
-                <dd class="no-border-bottom">{{ $hsCustomOrder->updated_at?->format('Y/m/d H:i') ?? '—' }}</dd>
+                <dd class="no-border-bottom">{{ \App\Support\JapanTime::format($hsCustomOrder->updated_at) ?? '—' }}</dd>
             </dl>
         </div>
     </div>

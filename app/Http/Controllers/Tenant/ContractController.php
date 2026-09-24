@@ -18,6 +18,7 @@ use App\Models\Investment;
 use App\Models\Property;
 use App\Models\RentRevision;
 use App\Models\Unit;
+use App\Support\JapanTime;
 use App\Support\ListSort;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
@@ -640,7 +641,7 @@ class ContractController extends Controller
                 InquiryHistory::create([
                     'inquiry_id'  => $inquiry->id,
                     'action_type' => 'other',
-                    'action_date' => now()->toDateString(),
+                    'action_date' => JapanTime::today()->toDateString(),
                     'content'     => '契約 ' . $contract->contract_number . ' の削除に伴い連携解除（未成約に差し戻し）',
                     'created_by'  => Auth::id(),
                 ]);
@@ -734,7 +735,7 @@ class ContractController extends Controller
      */
     private function generateContractNumber(): string
     {
-        $year = now()->year;
+        $year = JapanTime::today()->year;
         $prefix = "C-{$year}-";
 
         $lastNumber = Contract::withTrashed()
@@ -867,7 +868,7 @@ class ContractController extends Controller
         InquiryHistory::create([
             'inquiry_id'  => $inquiry->id,
             'action_type' => 'other',
-            'action_date' => now()->toDateString(),
+            'action_date' => JapanTime::today()->toDateString(),
             'content'     => '契約 ' . $contract->contract_number . ' の登録に伴い成約',
             'created_by'  => Auth::id(),
         ]);

@@ -19,7 +19,8 @@
 
 @php
     // 現在の会計年度（5月始まり）と過去5年分を選択肢として生成
-    $currentFiscalYear = now()->month >= 5 ? now()->year : now()->year - 1;
+    $jpToday = \App\Support\JapanTime::today();
+    $currentFiscalYear = $jpToday->month >= 5 ? $jpToday->year : $jpToday->year - 1;
     $fiscalYears = [];
     for ($i = 0; $i < 5; $i++) {
         $fiscalYears[] = $currentFiscalYear - $i;

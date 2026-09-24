@@ -23,7 +23,7 @@
     // 預かり敷金（金額情報カードで参照）
     $depositAmount = (int) ($contract->deposit ?? 0);
     // 初期値（old() 優先）
-    $oldMoveOutDate = old('move_out_date', now()->format('Y-m-d'));
+    $oldMoveOutDate = old('move_out_date', \App\Support\JapanTime::today()->format('Y-m-d'));
     $oldRestoration = (int) old('restoration_cost', 0);
     $oldCleaning = (int) old('cleaning_cost', 0);
     $oldReason = old('termination_reason', '');
@@ -274,8 +274,10 @@
                 this.open = false;
             },
             setMonthAgo: function () {
-                var d = new Date(this.todayYear, this.todayMonth, this.todayDate);
-                d.setMonth(d.getMonth() - 1);
+                // 前月に同じ日が無いとき（3/31 など）は前月の末日で止める（Excel の EDATE と同じ）。
+                // 月だけを 1 つ戻すと 2/31 → 3/3 のように当月へ溢れる（docs/RULES.md Bug #62）
+                var lastDay = new Date(this.todayYear, this.todayMonth, 0).getDate();
+                var d = new Date(this.todayYear, this.todayMonth - 1, Math.min(this.todayDate, lastDay));
                 this.selected = d;
                 this.viewYear = d.getFullYear();
                 this.viewMonth = d.getMonth();

@@ -11,6 +11,7 @@ use App\Models\DadEmployee;
 use App\Models\DadProject;
 use App\Models\DadSubcontractor;
 use App\Models\User;
+use App\Support\JapanTime;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
@@ -382,7 +383,7 @@ class ProjectController extends Controller
      */
     private function currentFiscalYear(): int
     {
-        $now = now();
-        return $now->month >= 5 ? $now->year : $now->year - 1;
+        $today = JapanTime::today();
+        return $today->month >= 5 ? $today->year : $today->year - 1;
     }
 }

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\ScheduleStep;
 use App\Support\GanttScale;
+use App\Support\JapanTime;
 use App\Support\LanePacker;
 use App\Support\ScheduleStepStatus;
 use Carbon\CarbonImmutable;
@@ -65,7 +66,7 @@ class ScheduleBoardService
      */
     public function build(array $kinds, Request $request, ?CarbonImmutable $today = null): array
     {
-        $today = ($today ?? CarbonImmutable::today())->startOfDay();
+        $today = ($today ?? JapanTime::today()->toImmutable())->startOfDay();
 
         // ⚠ **1 枚のボードで親の方針が混ざらないことを先に確かめる**（決定 P4）。
         //   混ざったまま進むと、案件ごとに遅延の有無が食い違う画面になる。

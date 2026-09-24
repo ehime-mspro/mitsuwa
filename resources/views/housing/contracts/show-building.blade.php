@@ -346,12 +346,12 @@
                 <dt>登録者</dt>
                 <dd>{{ $contract->createdBy->name ?? '—' }}</dd>
                 <dt>登録日時</dt>
-                <dd>{{ $contract->created_at?->format('Y/m/d H:i') ?? '—' }}</dd>
+                <dd>{{ \App\Support\JapanTime::format($contract->created_at) ?? '—' }}</dd>
 
                 <dt class="no-border-bottom">更新者</dt>
                 <dd class="no-border-bottom">{{ $contract->updatedBy->name ?? '—' }}</dd>
                 <dt class="no-border-bottom">更新日時</dt>
-                <dd class="no-border-bottom">{{ $contract->updated_at?->format('Y/m/d H:i') ?? '—' }}</dd>
+                <dd class="no-border-bottom">{{ \App\Support\JapanTime::format($contract->updated_at) ?? '—' }}</dd>
             </dl>
         </div>
     </div>
