@@ -6,12 +6,13 @@ use Illuminate\Support\Facades\File;
 use Tests\TestCase;
 
 /**
- * 取込のコントローラが、断るときにリファラー（「元の画面」）へ戻していないことを全件分類で守る
+ * 取込のコントローラが、断るときにリファラー（「元の画面」）や今の URL へ戻していないことを全件分類で守る
  * （docs/RULES.md Bug #64・Top trap #13）。
  *
  * 取込の確認画面は POST の応答で、その URL は多くが POST 専用（`…/preview` など）。確認画面に載ったフォームから
  * 送って `back()` や `url()->previous()` で戻すと、リファラー＝その URL へ GET で戻り 405 になる
- * （2026-09-24 実測: テナント・賃貸マンション・ZEAL 会員・工程表）。戻り先は取込の画面に固定する。
+ * （2026-09-24 実測: テナント・賃貸マンション・ZEAL 会員・工程表）。今の URL へ戻す形（`redirect()->refresh()`・
+ * `redirect($request->url())`）も、POST 専用の URL を GET で開くので同じ 405 になる。戻り先は取込の画面に固定する。
  *
  * ⚠ `app/Http/Controllers` 配下の `*ImportController.php` を機械的に列挙する（新しい取込は自動で検査対象に入る）。
  *   許すのは ALLOWED に載せたもの（件数と理由つき）だけ。ほかは 0 件でないと落ちる。件数が合わない・
@@ -19,21 +20,28 @@ use Tests\TestCase;
  * ⚠ コメントを落としてから数える。docblock に「`back()` を使わない」と書いてあるため（Bug #42 ②）。
  *
  * ⚠ 見えないもの:
- *   - **入力チェックの既定の戻り先。** `$request->validate([...])` を try で包まずに書くと、失敗したときの
- *     戻り先はリファラーになるが、コードに `back(` が現れないので走査では拾えない（FormRequest の既定の戻り先も
- *     同じ）。ここは挙動のテスト（確認画面の URL をリファラーにして送る）が守る:
+ *   - **入力チェックの既定の戻り先。** `$request->validate([...])`・`Validator::make(...)->validate()`・
+ *     `throw ValidationException::withMessages(...)` を `redirectTo()` 無しで書くと、失敗したときの戻り先は
+ *     リファラーになるが、コードに `back(` が現れないので走査では拾えない（FormRequest の既定の戻り先も同じ）。
+ *     今の 4 本は挙動のテスト（確認画面の URL をリファラーにして送る）が守る:
  *     `Admin\TenantImportRejectionTest` / `Admin\MansionImportRejectionTest` /
- *     `Admin\ZealMemberImportControllerTest` / `Housing\ScheduleImportTest`
+ *     `Admin\ZealMemberImportControllerTest` / `Housing\ScheduleImportTest`。**新しい取込には守り手がいない**
+ *     （try で包んで `redirectTo()` を渡しているかを機械的に見る形は未実装。2026-09-24 のレビューの提案）
+ *   - 走査するのは `*ImportController.php` の本文だけ。トレイト・親クラス・サービスへ切り出した `back()`
+ *     （たとえばテナントと賃貸マンションでほぼ同じ `loadCsv()` をトレイトへ移す）は見えない
  *   - `*ImportController.php` という名前でない取込（ほかのコントローラに内蔵された確認画面）
- *   - 戻り先の URL を変数に入れて渡す形（`$to = $request->headers->get('referer')` は字面で拾うが、
- *     別のメソッドやクラスで作った URL を受け取る形は見えない）
+ *   - 戻り先の URL を変数に入れて渡す形（`$to = $request->headers->get('referer')` や `$request->url()` は
+ *     字面で拾うが、別のメソッドやクラスで作った URL を受け取る形は見えない）
  * ⚠ 過剰に拾うもの: 文字列リテラルの中の `back(`・`referer`（走査はトークンを見ない）・
  *   Carbon の `->previous(` のように別の意味の `previous()`。出てきたら ALLOWED に理由つきで載せる
  *   （検出器を緩めない）。
  */
 class ImportControllerReturnPathScanTest extends TestCase
 {
-    /** `*ImportController.php` の本数の下限（2026-09-24 実測 8 本）。下回ったら列挙が空振りしている */
+    /**
+     * `*ImportController.php` の本数の下限（2026-09-24 実測 8 本）。下回ったら列挙が空振りしている。
+     * ⚠ 8 本には approval-phase1 で入った `Approval/UserImportController` を含む（このブランチはその上に積んである）
+     */
     private const MIN_IMPORT_CONTROLLERS = 8;
 
     /** @var array<string, array{0: int, 1: string}> 相対パス => [件数, 理由] */
@@ -55,12 +63,16 @@ class ImportControllerReturnPathScanTest extends TestCase
     {
         $found = [];
         $patterns = [
-            // 1. back()（ヘルパー・\back()・redirect()->back()・Redirect::back()）
-            '/(?<![\w$])\\\\?back\s*\(/',
+            // 1. back()（ヘルパー・\back()・redirect()->back()・Redirect::back()。後読みは \ を除かないので \back( も当たる）
+            '/(?<![\w$])back\s*\(/',
             // 2. url()->previous()・URL::previous()・app('url')->previous()
             '/(?:->|::)\s*previous\s*\(/',
             // 3. リファラーのヘッダーを直接読む（headers->get('referer')・HTTP_REFERER・綴りの違う referrer）
             '/referr?er/i',
+            // 4. 今の URL へ戻す redirect()->refresh()・Redirect::refresh()（Eloquent の $model->refresh() は拾わない）
+            '/(?:redirect\s*\(\s*\)\s*->|Redirect\s*::)\s*refresh\s*\(/',
+            // 5. 今の URL（$request->url()・request()->fullUrl() など。POST 専用の URL を GET で開くことになる）
+            '/(?:\$request|request\s*\(\s*\))\s*->\s*(?:url|fullUrl|fullUrlWithQuery|fullUrlWithoutQuery)\s*\(/',
         ];
 
         foreach ($patterns as $pattern) {
@@ -140,7 +152,7 @@ class ImportControllerReturnPathScanTest extends TestCase
             }
         }
 
-        $this->assertSame([], $problems, "取込のコントローラがリファラーへ戻している（確認画面の URL が POST 専用だと 405。"
+        $this->assertSame([], $problems, "取込のコントローラがリファラーか今の URL へ戻している（確認画面の URL が POST 専用だと 405。"
             . "戻り先は取込の画面に固定する。docs/RULES.md Bug #64）:\n" . implode("\n", $problems));
     }
 
@@ -151,9 +163,13 @@ class ImportControllerReturnPathScanTest extends TestCase
             'return back();', 'return \back()->withErrors($e);', 'return redirect()->back();',
             'return Redirect::back();', 'return redirect() -> back ();',
             'return redirect(url()->previous());', 'return redirect(URL::previous());',
-            'return redirect(app(\'url\')->previous());',
+            'return redirect(app(\'url\')->previous());', 'return redirect(url() -> previous ());',
             'return redirect($request->headers->get(\'referer\'));', '$to = $_SERVER[\'HTTP_REFERER\'];',
             '$to = $request->header(\'Referrer\');',
+            'return redirect()->refresh();', 'return Redirect::refresh();', 'return redirect( ) -> refresh ( );',
+            'return redirect($request->url());', 'return redirect()->to(request()->fullUrl());',
+            'return redirect($request -> fullUrlWithQuery([\'a\' => 1]));',
+            'return redirect(request( )->fullUrlWithoutQuery(\'page\'));',
         ];
         $ignored = [
             'return redirect()->route(\'admin.tenant-import\', [\'tab\' => $tab]);',
@@ -161,6 +177,8 @@ class ImportControllerReturnPathScanTest extends TestCase
             'return redirect()->to(route(\'x\'));', '$url = session()->previousUrl();',
             '$next = $paginator->previousPageUrl();', 'return $this->fallback();', '$back();',
             'feedback($x);', 'goBack();', 'backup($db);',
+            '$property->refresh();', '$this->refreshToken();', 'if ($request->fullUrlIs(\'x\')) {}',
+            '$u = Storage::url($path);', '$u = $paginator->url(2);', '$u = $request->root();',
         ];
 
         foreach ($caught as $sample) {
