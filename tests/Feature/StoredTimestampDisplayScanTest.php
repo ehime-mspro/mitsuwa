@@ -34,19 +34,22 @@ class StoredTimestampDisplayScanTest extends TestCase
     use ScansModelRelations;
 
     /**
-     * 理由つきで許す直接の整形: 相対パス => [件数, 理由]（今は無い）。
+     * 理由つきで許す直接の整形: 相対パス => [件数, 理由]。
      *
      * ⚠ 載せてよいのは **画面に出す文字列でない用途**だけ（並び替えキー・CSV の列・ファイル名・ログ）。
      *   画面に出るものは絶対に載せない——UTC のままだと日本時間の 0:00〜8:59 に前日が出る。
      */
-    private const ALLOWED = [];
+    private const ALLOWED = [
+        'app/Http/Controllers/Admin/UserController.php' => [1, '設定の変更の記録（approval_setting_logs.new_values）に削除の瞬間を UTC のまま残す（記録。画面に出さない。設計書 D14）'],
+    ];
 
     private const CALENDAR = 'format|isoFormat|translatedFormat|to\w*String|diffForHumans|toJSON|toISOString';
 
     private const FIELDS = 'year|month|day|hour|minute|second|dayOfWeek|dayOfYear|weekOfYear|quarter';
 
     /**
-     * JapanTime::format() の呼び出し件数の下限。2026-09-23 の実測 = 24（＝下限ちょうど）。
+     * JapanTime::format() の呼び出し件数の下限。2026-09-24 の実測 = 26（＝下限ちょうど。決裁 段階1 の取り込みで
+     * 決裁の利用者の管理の最終ログインと再発行の通知メールの 2 件を足した。2026-09-23 は 24）。
      *
      * ⚠ 空振り防止だけでなく、directFormats() から見えない書き換え（変数に入れる・配列の添字・
      *   {{ }} の素出し・->setTimezone() を挟む等。クラスの docblock 参照）を件数の低下で捕まえる
@@ -54,7 +57,7 @@ class StoredTimestampDisplayScanTest extends TestCase
      *   「見えない形に化けた」のかを必ず確かめる。
      * ⚠ 合計しか見ないので、別の画面で 1 件増えると 1 件が死角へ化けても緑になる。
      */
-    private const MIN_FORMAT_CALLS = 24;
+    private const MIN_FORMAT_CALLS = 26;
 
     /** @return list<string> */
     private function timestampAttributes(): array
