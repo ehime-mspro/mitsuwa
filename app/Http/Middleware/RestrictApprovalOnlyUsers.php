@@ -21,6 +21,9 @@ use Symfony\Component\HttpFoundation\Response;
  *   - `password.change` / `password.update` / `logout`
  *   - `guest` ミドルウェアを持つルート（未ログイン専用。ログイン済みの人は RedirectIfAuthenticated が追い返す）
  *
+ * 「ホーム」を意味するだけの入口（`/`・`/dashboard`）は**通さずに**、警告なしで決裁のホームへ送る
+ * （決裁のみ利用者にとってのホームは決裁のホーム。F1 と同じ形。docs/RULES.md Bug #63）。
+ *
  * 全ルートを 4 つに分類して検査する `ApprovalOnlyLockoutTest` が、新しいルートを自動で検査対象にする。
  */
 class RestrictApprovalOnlyUsers
@@ -45,7 +48,22 @@ class RestrictApprovalOnlyUsers
             abort(403, self::MESSAGE);
         }
 
+        // 「ホーム」を意味するだけの入口は、警告を付けずに決裁のホームへ送る（F1 と同じ形）。
+        // 決裁のみ利用者にとってのホームは決裁のホームなので、「使えない画面を開いた」わけではない。
+        // ⚠ 通す（ALLOWED_NAMES に足す）のではない。行き先は今までどおり門番が決める
+        if ($this->isHomeAlias($request)) {
+            return redirect()->route('approvals.home');
+        }
+
         return redirect()->route('approvals.home')->with('warning', self::MESSAGE);
+    }
+
+    /** `/`（名前の無いルート）と `/dashboard`。ログイン中の `/login` は RedirectIfAuthenticated が `/dashboard` へ送る */
+    private function isHomeAlias(Request $request): bool
+    {
+        $route = $request->route();
+
+        return $route !== null && ($route->getName() === 'dashboard' || $route->uri() === '/');
     }
 
     private function isAllowed(Request $request): bool

@@ -10,6 +10,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route as RoutingRoute;
 use Illuminate\Support\Facades\Route;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\BuildsRouteUrls;
 use Tests\TestCase;
 
@@ -190,6 +191,33 @@ class ApprovalOnlyLockoutTest extends TestCase
             ->followingRedirects()->get('/dashboard/tenant')->assertOk()->getContent();
 
         $this->assertStringContainsString('決裁以外の画面は使えません。', $html);
+    }
+
+    /** @return array<string, array{string}> */
+    public static function homeAliasCases(): array
+    {
+        return [
+            'サイトの入口 /'           => ['/'],
+            'ダッシュボード /dashboard' => ['/dashboard'],
+            'ログイン中のログイン画面'   => ['/login'],
+        ];
+    }
+
+    /**
+     * 「ホーム」の意味の入口は、警告なしで決裁のホームへ（F1 と同じ形）。
+     *
+     * ⚠ 案内の QR はログイン画面の URL。ログインしたまま QR やブックマークから開くと
+     *   `/login` → `/dashboard` → 門番、と転送される。旧実装はそのたびに警告を出していた。
+     * ⚠ 本物の基幹の画面では今までどおり警告が出る（`test_the_reason_is_shown_after_the_redirect` が固定する）。
+     */
+    #[DataProvider('homeAliasCases')]
+    public function test_home_aliases_land_on_the_approval_home_without_the_warning(string $uri): void
+    {
+        $html = $this->actingAs($this->approvalOnlyUser())
+            ->followingRedirects()->get($uri)->assertOk()->getContent();
+
+        $this->assertStringContainsString('決裁の機能は準備中です。', $html, '決裁のホームに着いていない');
+        $this->assertStringNotContainsString(RestrictApprovalOnlyUsers::MESSAGE, $html, 'ホームを開いただけなのに警告が出ている');
     }
 
     /** Ajax は転送でなく 403（画面の JS が HTML を読まされないように） */
