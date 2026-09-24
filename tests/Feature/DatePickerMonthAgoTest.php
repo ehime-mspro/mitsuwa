@@ -339,6 +339,7 @@ class DatePickerMonthAgoTest extends TestCase
                     '{{ $x }}',                             // 表示
                     '{!! $x !!}',                           // 生の表示
                     '@json($x)',                            // ディレクティブ
+                    '@If($x)',                              // 大文字も展開される（Blade は 'compile'.ucfirst(名前) を method_exists で探し、PHP のメソッド名は大文字小文字を区別しない）
                     '// @if 注意',                          // JS のコメントの中でも展開される（Bug #30）
                     '<x-foo>',                              // コンポーネント
                     '</x-foo>',                             // コンポーネントの閉じタグ
@@ -563,6 +564,27 @@ class DatePickerMonthAgoTest extends TestCase
     }
 
     /**
+     * node のエラー（e.stack）を失敗文の 1 行にまとめる。
+     *
+     * 先頭 2 行（実行時のエラーなら「種類: 内容」と場所、構文エラーなら「ファイル:行」とその行のソース）を出し、
+     * そこに誤りの種類の行（SyntaxError: … など）が無ければ添える。vm の構文エラーは先頭が「ファイル:行」
+     * 「その行のソース」「^」で、種類の行は 4 行目以降に来るので、先頭 2 行だけでは何の誤りかが落ちる。
+     */
+    private function nodeErrorSummary(string $stack): string
+    {
+        $lines = explode("\n", $stack);
+        $picked = array_slice($lines, 0, 2);
+        if (preg_grep('/^\w*Error\b/', $picked) === []) {
+            $type = preg_grep('/^\w*Error\b/', $lines);
+            if ($type !== []) {
+                $picked[] = reset($type);
+            }
+        }
+
+        return implode(' / ', array_map('trim', $picked));
+    }
+
+    /**
      * datePicker() の各コピーを node の vm で実際に動かし、結果を 1 つの JSON で受け取る（アサートは PHP 側で行う）。
      *
      * ⚠ ハーネスはブラウザより寛容であってはいけない（AreaBuildingMapTabTest::runMapScript() と同じ方針）。
@@ -620,7 +642,7 @@ class DatePickerMonthAgoTest extends TestCase
                 0,
                 count($errors),
                 "node で datePicker() を動かせなかったコピーがある:\n" . implode("\n", array_map(
-                    fn (string $view, string $error) => "{$view}: " . implode(' / ', array_slice(explode("\n", $error), 0, 2)),
+                    fn (string $view, string $error) => "{$view}: " . $this->nodeErrorSummary($error),
                     array_keys($errors),
                     $errors
                 ))
