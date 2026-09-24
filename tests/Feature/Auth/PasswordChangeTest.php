@@ -3,10 +3,12 @@
 namespace Tests\Feature\Auth;
 
 use App\Enums\UserRole;
+use App\Http\Middleware\RestrictApprovalOnlyUsers;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Testing\TestResponse;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\ParsesForms;
 use Tests\TestCase;
 
@@ -180,7 +182,7 @@ class PasswordChangeTest extends TestCase
     // ============================================================
 
     /**
-     * 成功したら ①実際に新パスワードでログインできる ②強制フラグが下りる ③ダッシュボードへ。
+     * 成功したら ①実際に新パスワードでログインできる ②強制フラグが下りる ③その人のホーム（一般担当はテナントのダッシュボード）へ。
      *
      * ⚠ ハッシュの比較だけでなく**実ログインまで通す** — 保存経路（`hashed` キャスト）が
      *   壊れて二重ハッシュ等になっても、`Hash::check` だけでは気づけない場合がある。
@@ -193,7 +195,7 @@ class PasswordChangeTest extends TestCase
             'current_password'      => self::CURRENT,
             'password'              => 'newpassword1',
             'password_confirmation' => 'newpassword1',
-        ])->assertRedirect(route('dashboard'));
+        ])->assertRedirect(route('dashboard.tenant'));
 
         $fresh = $user->fresh();
         $this->assertTrue(Hash::check('newpassword1', $fresh->password), 'パスワードが更新されていない');
@@ -206,5 +208,68 @@ class PasswordChangeTest extends TestCase
 
         $this->post('/login', ['login_id' => $user->email, 'password' => 'newpassword1']);
         $this->assertAuthenticatedAs($user->fresh());
+    }
+
+    // ============================================================
+    // 変更のあとの行き先（F1）
+    // ============================================================
+
+    /** @return array<string, array{UserRole, string}> */
+    public static function homeCases(): array
+    {
+        return [
+            '経営層'   => [UserRole::Executive, 'dashboard.executive'],
+            '管理者'   => [UserRole::Manager, 'dashboard.tenant'],
+            '一般担当' => [UserRole::Staff, 'dashboard.tenant'],
+            '決裁のみ' => [UserRole::ApprovalOnly, 'approvals.home'],
+        ];
+    }
+
+    /** 変更のあとは、その人のホームへ**直接**戻る（F1。`/dashboard` を経由させない） */
+    #[DataProvider('homeCases')]
+    public function test_a_successful_change_goes_straight_to_the_users_home(UserRole $role, string $home): void
+    {
+        $user = User::factory()->create(['role' => $role->value, 'must_change_password' => true, 'password' => self::CURRENT]);
+
+        $this->submitChangeForm($user, [
+            'current_password'      => self::CURRENT,
+            'password'              => 'newpassword1',
+            'password_confirmation' => 'newpassword1',
+        ])->assertRedirect(route($home));
+    }
+
+    /**
+     * 決裁のみ利用者は、決裁のホームで「パスワードを変更しました。」を見て、門番の警告は見ない（F1）。
+     *
+     * ⚠ 転送をたどって**着いた画面**で見る。行き先の URL だけでは、フラッシュが途中で消えるのを捕まえられない
+     *   （旧実装は 302 → 302 → 200 で、着いた先に警告だけが出ていた）。
+     * ⚠ `followingRedirects()` は**次の 1 回の要求**にしか効かない（`submitChangeForm()` は先に画面を GET するので、
+     *   POST の転送をたどらないまま 302 が返った。実測）。POST の応答を `followRedirects()` に渡してたどる。
+     */
+    public function test_an_approval_only_user_sees_the_success_message_on_the_approval_home(): void
+    {
+        $user = User::factory()->approvalOnly()->create(['must_change_password' => true, 'password' => self::CURRENT]);
+
+        $html = $this->followRedirects($this->submitChangeForm($user, [
+            'current_password'      => self::CURRENT,
+            'password'              => 'newpassword1',
+            'password_confirmation' => 'newpassword1',
+        ]))->assertOk()->getContent();
+
+        $this->assertStringContainsString('決裁の機能は準備中です。', $html, '決裁のホームに着いていない');
+        $this->assertStringContainsString('パスワードを変更しました。', $html, '変更の完了が出ていない（転送の途中で消えた）');
+        $this->assertStringNotContainsString(RestrictApprovalOnlyUsers::MESSAGE, $html, '門番に跳ね返されている');
+    }
+
+    /** 基幹の人も、着いた画面で「パスワードを変更しました。」を見る（以前は 2 回の転送で消えていた） */
+    public function test_a_base_user_sees_the_success_message_on_their_dashboard(): void
+    {
+        $html = $this->followRedirects($this->submitChangeForm($this->actor(mustChange: true), [
+            'current_password'      => self::CURRENT,
+            'password'              => 'newpassword1',
+            'password_confirmation' => 'newpassword1',
+        ]))->assertOk()->getContent();
+
+        $this->assertStringContainsString('パスワードを変更しました。', $html);
     }
 }

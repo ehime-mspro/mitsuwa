@@ -65,6 +65,10 @@ class PasswordController extends Controller
             'must_change_password' => false,
         ]);
 
-        return redirect()->route('dashboard')->with('success', 'パスワードを変更しました。');
+        // ⚠ その人のホームへ直接戻す（`/dashboard` を経由させない）。決裁のみ利用者は門番に跳ね返されて
+        //   「決裁以外の画面は使えません。」が出るうえ、2 回目の転送でこのフラッシュが消える
+        //   （F1。実測: 302 → 302 → 200。基幹の人も /dashboard → /dashboard/tenant の 2 段で消えていた）。
+        //   行き先の規則は User::homeRouteName() の 1 箇所（ログイン直後と同じ）
+        return redirect()->route($user->homeRouteName())->with('success', 'パスワードを変更しました。');
     }
 }

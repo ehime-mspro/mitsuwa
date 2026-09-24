@@ -68,7 +68,7 @@ class OtherDeviceLogoutTest extends TestCase
             'current_password'      => 'password',
             'password'              => 'newpassword1',
             'password_confirmation' => 'newpassword1',
-        ])->assertRedirect(route('dashboard'));
+        ])->assertRedirect(route('dashboard.tenant'));   // その人のホームへ直接（F1）
 
         $this->get('/dashboard/tenant')->assertOk();
         $this->assertAuthenticatedAs($user);
