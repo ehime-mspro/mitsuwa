@@ -80,8 +80,11 @@ class ImportValidationFeedbackTest extends TestCase
         );
 
         // 具体的な理由まで出ていること（見出しだけ出して中身が空なら意味が無い）
-        $this->assertMatchesRegularExpression(
-            '/<li>[^<]*(ファイル|csv)[^<]*<\/li>/ui',
+        // ⚠ 理由は `<li>` 込みの全文で見る。以前の `/<li>[^<]*(ファイル|csv)[^<]*<\/li>/ui` は、取込の画面の案内文
+        //   （`<li>CSVの「物件名」で既存の物件を検索し紐づけます</li>` など）にも一致し、理由の一覧を消しても緑だった
+        //   （2026-09-24 のレビューで実測。Bug #43）
+        $this->assertStringContainsString(
+            '<li>' . trans('validation.mimes', ['attribute' => trans('validation.attributes.csv_file'), 'values' => 'csv, txt']) . '</li>',
             $html,
             'サマリの見出しだけで、具体的な理由が並んでいない'
         );
