@@ -420,16 +420,24 @@ class OrganizationManagementTest extends TestCase
 
         $html = $this->indexHtml($this->approvalAdmin());
 
-        $this->assertStringContainsString('このドメインのメールアドレスを持つ利用者: 2 人', $html);
         $this->assertStringNotContainsString('届かなくなります', $html, '行に「届かなくなります」が常に出ている');
 
         $expected = [
-            [$two, "このドメインを削除しますか。\n\nこのドメインのメールアドレスを持つ利用者: 2 人（この人たちには通知メールが届かなくなります）"],
-            [$one, "このドメインを削除しますか。\n\nこのドメインのメールアドレスを持つ利用者: 1 人（この人たちには通知メールが届かなくなります）"],
-            [$none, 'このドメインを削除しますか。'],
+            [$two, 2, "このドメインを削除しますか。\n\nこのドメインのメールアドレスを持つ利用者: 2 人（この人たちには通知メールが届かなくなります）"],
+            [$one, 1, "このドメインを削除しますか。\n\nこのドメインのメールアドレスを持つ利用者: 1 人（この人たちには通知メールが届かなくなります）"],
+            [$none, 0, 'このドメインを削除しますか。'],
         ];
 
-        foreach ($expected as [$domain, $message]) {
+        foreach ($expected as [$domain, $count, $message]) {
+            // 行: そのドメインの中立な人数（行ごとに見る。1 行だけ見ると、全行に同じ数を出す誤りを通す。レビューで指摘）
+            $this->assertMatchesRegularExpression(
+                '/<span class="font-mono text-gray-900">' . preg_quote($domain->domain, '/') . '<\/span>\s*'
+                . '<span class="text-\[12px\] text-gray-500">このドメインのメールアドレスを持つ利用者: ' . $count . ' 人<\/span>/u',
+                $html,
+                "{$domain->domain} の行の人数が違う"
+            );
+
+            // 削除の確認: そのドメインの人数と「届かなくなります」（0 人なら質問だけ）
             $action = route('approvals.admin.organization.mailDomains.destroy', $domain);
             $pos    = strpos($html, 'action="' . $action . '"');
             $this->assertNotFalse($pos, "{$domain->domain} の削除フォームが無い");
