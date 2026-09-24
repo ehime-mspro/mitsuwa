@@ -124,8 +124,10 @@
                     {{-- ボタン --}}
                     <div class="flex gap-3 justify-end">
                         @unless($isForced)
+                            {{-- ⚠ 直前の画面が無いとき（差し戻された直後など）の戻り先を `route('dashboard')` にしない。
+                                 決裁のみ利用者は門番に跳ね返されて警告を見る（F1 と同じ形）。行き先の規則は User::homeRouteName() --}}
                             <a
-                                href="{{ url()->previous() !== url()->current() ? url()->previous() : route('dashboard') }}"
+                                href="{{ url()->previous() !== url()->current() ? url()->previous() : route(auth()->user()->homeRouteName()) }}"
                                 class="inline-flex items-center px-6 py-2.5 text-[13px] font-medium text-gray-500 bg-white border-[1.5px] border-gray-200 rounded-[10px] hover:bg-gray-50 hover:border-gray-300 transition-all duration-150"
                             >
                                 キャンセル

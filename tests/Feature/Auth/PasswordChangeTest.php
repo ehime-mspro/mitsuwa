@@ -261,6 +261,24 @@ class PasswordChangeTest extends TestCase
         $this->assertStringNotContainsString(RestrictApprovalOnlyUsers::MESSAGE, $html, '門番に跳ね返されている');
     }
 
+    /**
+     * キャンセルの戻り先は、直前の画面が無いとき（＝検証エラーで差し戻された直後）もその人のホーム（F1 と同じ形）。
+     *
+     * ⚠ 旧実装は `route('dashboard')` へ戻し、決裁のみ利用者は門番に跳ね返されて警告を見た。
+     * ⚠ リンクを要素ごと切り出して見る。`approvals.home` はパンくずとサイドバーにも出るので、ページ全体では false-pass する。
+     */
+    #[DataProvider('homeCases')]
+    public function test_the_cancel_link_falls_back_to_the_users_home(UserRole $role, string $home): void
+    {
+        $user = User::factory()->create(['role' => $role->value, 'must_change_password' => false]);
+
+        // 差し戻された直後と同じ（直前の画面＝この画面自身）
+        $html = $this->actingAs($user)->from(route('password.change'))->get(route('password.change'))->assertOk()->getContent();
+
+        $this->assertSame(1, preg_match('/<a\s+href="([^"]*)"[^>]*>\s*キャンセル\s*<\/a>/u', $html, $m), 'キャンセルのリンクが見つからない');
+        $this->assertSame(route($home), html_entity_decode($m[1], ENT_QUOTES, 'UTF-8'));
+    }
+
     /** 基幹の人も、着いた画面で「パスワードを変更しました。」を見る（以前は 2 回の転送で消えていた） */
     public function test_a_base_user_sees_the_success_message_on_their_dashboard(): void
     {
