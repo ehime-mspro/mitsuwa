@@ -347,6 +347,25 @@ class OrganizationManagementTest extends TestCase
             ->assertOk()->assertSee('1 人');
     }
 
+    /**
+     * 略称とアルファベットは 1 行で出す（F3）。見出しは `w-[1%] whitespace-nowrap` なので、
+     * 中身が折り返せると列が見出しの幅まで縮み、1 文字ずつ縦に並ぶ（1440px でも「不／動／産」）。
+     */
+    public function test_the_short_name_and_code_cells_do_not_wrap(): void
+    {
+        $this->department($this->company(), ['short_name' => '不動産', 'code' => 'RE']);
+
+        $html = $this->indexHtml($this->approvalAdmin());
+
+        foreach (['不動産', 'RE'] as $value) {
+            $this->assertMatchesRegularExpression(
+                '/<td class="[^"]*\bwhitespace-nowrap\b[^"]*">' . preg_quote($value, '/') . '<\/td>/u',
+                $html,
+                "「{$value}」のセルが折り返せる（whitespace-nowrap が無い）"
+            );
+        }
+    }
+
     // --- 許可するドメイン ---
 
     public function test_a_domain_is_stored_without_the_at_sign(): void

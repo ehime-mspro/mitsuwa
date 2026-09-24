@@ -94,8 +94,8 @@
                     <tr class="hover:bg-gray-50">
                         <td class="px-4 py-2.5 border-b border-gray-100 text-[13px] text-gray-700">{{ $dept->company->name }}</td>
                         <td class="px-4 py-2.5 border-b border-gray-100 text-[13px] text-gray-900">{{ $dept->name }}</td>
-                        <td class="px-4 py-2.5 border-b border-gray-100 text-[13px] text-gray-700">{{ $dept->short_name }}</td>
-                        <td class="px-4 py-2.5 border-b border-gray-100 text-[13px] font-mono text-gray-700">{{ $dept->code }}</td>
+                        <td class="px-4 py-2.5 border-b border-gray-100 text-[13px] text-gray-700 whitespace-nowrap">{{ $dept->short_name }}</td>
+                        <td class="px-4 py-2.5 border-b border-gray-100 text-[13px] font-mono text-gray-700 whitespace-nowrap">{{ $dept->code }}</td>
                         <td class="px-4 py-2.5 border-b border-gray-100 text-[13px] text-gray-700 whitespace-nowrap">{{ $dept->users_count }} 人</td>
                         <td class="px-4 py-2.5 border-b border-gray-100 text-right whitespace-nowrap">
                             <button type="button" @click="openDepartmentEdit({{ \Illuminate\Support\Js::from($dept->only(['id', 'company_id', 'name', 'short_name', 'code', 'sort_order'])) }})" class="text-[12px] text-blue-600 hover:underline cursor-pointer bg-transparent border-none p-0">編集</button>
