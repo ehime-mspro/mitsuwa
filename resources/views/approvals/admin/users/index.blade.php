@@ -43,15 +43,17 @@
         決裁だけを使う利用者を新しく登録するときは「社員の一括登録（CSV）」を使ってください（1 人だけでも使えます）。
     </p>
 
-    {{-- 絞り込み --}}
-    <form method="GET" action="{{ route('approvals.admin.users.index') }}"
+    {{-- 絞り込み。プルダウンとチェックは、変えた瞬間に送る（F8・CLAUDE.md の即時フィルタ）。
+         まとめて再発行の hidden は適用済みの条件を運ぶので、画面の表示と再発行の対象を一致させる。
+         検索語は「検索」ボタン／Enter で送る（打鍵ごとに送らない） --}}
+    <form id="filter-form" method="GET" action="{{ route('approvals.admin.users.index') }}"
           class="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 mb-4 bg-white border border-gray-200 rounded-lg px-3.5 py-2.5">
-        <select name="kind" class="h-8 px-2.5 border border-gray-300 rounded-md text-[12px] text-gray-700 bg-white focus:border-emerald-500 focus:outline-none cursor-pointer w-full sm:w-auto">
+        <select name="kind" onchange="document.getElementById('filter-form').submit()" class="h-8 px-2.5 border border-gray-300 rounded-md text-[12px] text-gray-700 bg-white focus:border-emerald-500 focus:outline-none cursor-pointer w-full sm:w-auto">
             <option value="">区分: すべて</option>
             <option value="approval" {{ $filters['kind'] === 'approval' ? 'selected' : '' }}>決裁のみ</option>
             <option value="base" {{ $filters['kind'] === 'base' ? 'selected' : '' }}>基幹も使う</option>
         </select>
-        <select name="department" class="h-8 px-2.5 border border-gray-300 rounded-md text-[12px] text-gray-700 bg-white focus:border-emerald-500 focus:outline-none cursor-pointer w-full sm:w-auto">
+        <select name="department" onchange="document.getElementById('filter-form').submit()" class="h-8 px-2.5 border border-gray-300 rounded-md text-[12px] text-gray-700 bg-white focus:border-emerald-500 focus:outline-none cursor-pointer w-full sm:w-auto">
             <option value="">決裁の所属部門: すべて</option>
             <option value="none" {{ $filters['department'] === 'none' ? 'selected' : '' }}>所属なし</option>
             @foreach($companies as $company)
@@ -60,14 +62,14 @@
                 @endforeach
             @endforeach
         </select>
-        <select name="status" class="h-8 px-2.5 border border-gray-300 rounded-md text-[12px] text-gray-700 bg-white focus:border-emerald-500 focus:outline-none cursor-pointer w-full sm:w-auto">
+        <select name="status" onchange="document.getElementById('filter-form').submit()" class="h-8 px-2.5 border border-gray-300 rounded-md text-[12px] text-gray-700 bg-white focus:border-emerald-500 focus:outline-none cursor-pointer w-full sm:w-auto">
             <option value="">状態: すべて</option>
             @foreach(App\Enums\UserStatus::cases() as $case)
                 <option value="{{ $case->value }}" {{ $filters['status'] === $case->value ? 'selected' : '' }}>{{ $case->label() }}</option>
             @endforeach
         </select>
         <label class="flex items-center gap-1.5 text-[12px] text-gray-700 cursor-pointer">
-            <input type="checkbox" name="never_logged_in" value="1" {{ $filters['never_logged_in'] === '1' ? 'checked' : '' }}
+            <input type="checkbox" name="never_logged_in" value="1" onchange="document.getElementById('filter-form').submit()" {{ $filters['never_logged_in'] === '1' ? 'checked' : '' }}
                    class="w-[15px] h-[15px] accent-emerald-600 cursor-pointer">
             一度もログインしていない人だけ
         </label>
