@@ -176,6 +176,54 @@ class ApprovalUserImportTest extends TestCase
         ])->assertRedirect()->assertSessionHas('error');
     }
 
+    /** @return array<string, array{?string, string}> */
+    public static function reuploadFailureCases(): array
+    {
+        return [
+            'ファイルを選び忘れた' => [null, 'CSVファイルを選択してください。'],
+            '見出しだけで行が無い' => ["\xEF\xBB\xBF社員番号,氏名,メールアドレス,所属部門\n", 'CSVファイルにデータがありません。'],
+        ];
+    }
+
+    /**
+     * 確認画面からアップロードし直して断られても、取込の画面へ戻る（F2 と同じ形。docs/RULES.md Bug #64）。
+     *
+     * ⚠ 確認画面（preview の POST の応答）にもアップロードのフォームがあり、その画面の URL は POST 専用の preview。
+     *   ブラウザのリファラーはその URL なので、`back()` や検証エラーの既定の戻り先では 405 になっていた（実測）。
+     * ⚠ 断られた理由が、戻った画面に出ることまで見る（セッションには触らない。Bug #49）。
+     */
+    #[DataProvider('reuploadFailureCases')]
+    public function test_a_failed_reupload_from_the_preview_goes_back_to_the_import_screen(?string $csv, string $message): void
+    {
+        $admin = $this->admin();
+        $this->actingAs($admin)->get(route('approvals.admin.users.import'))->assertOk();
+
+        $fields   = $csv === null ? [] : ['csv_file' => UploadedFile::fake()->createWithContent('users.csv', $csv)];
+        $response = $this->actingAs($admin)
+            ->from(route('approvals.admin.users.import.preview'))
+            ->post(route('approvals.admin.users.import.preview'), $fields);
+
+        // ⚠ assertRedirect() は使わない。検証エラーを持つ応答で外れると、Laravel が失敗文を組み立てる途中で
+        //   「Call to a member function all() on array」で落ち、理由が読めない（実測）
+        $this->assertSame(302, $response->getStatusCode());
+        $this->assertSame(route('approvals.admin.users.import'), $response->headers->get('Location'), '取込の画面へ戻っていない（preview へ戻ると GET で 405）');
+        $this->actingAs($admin)->get(route('approvals.admin.users.import'))->assertOk()->assertSee($message);
+    }
+
+    /** 確定の送信が壊れていて断られても、取込の画面へ戻る（確定のフォームも確認画面＝ POST の応答に載っている。Bug #64） */
+    public function test_a_broken_confirmation_goes_back_to_the_import_screen(): void
+    {
+        $admin = $this->admin();
+
+        $response = $this->actingAs($admin)
+            ->from(route('approvals.admin.users.import.preview'))
+            ->post(route('approvals.admin.users.import.execute'), []);   // csv_data が無い（壊れた・書き換えた送信）
+
+        $this->assertSame(302, $response->getStatusCode());
+        $this->assertSame(route('approvals.admin.users.import'), $response->headers->get('Location'), '取込の画面へ戻っていない（preview へ戻ると GET で 405）');
+        $this->actingAs($admin)->get(route('approvals.admin.users.import'))->assertOk();
+    }
+
     /** 列の順番は問わない */
     public function test_the_column_order_does_not_matter(): void
     {

@@ -18,12 +18,18 @@ use App\Support\LoginId;
 use App\Support\OneTimeAction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 /**
  * 社員の CSV 一括登録（設計書 §5.10）。
  *
  * 流れ: アップロード → 確認画面 → 描画された「取り込む」フォーム（hidden の CSV と 1 回限りの鍵）で確定
  *   → **確定時にサーバーで検査をやり直す**（hidden を信用しない）→ 結果＝ログイン案内の画面
+ *
+ * ⚠ 断るときの戻り先は**取込の画面に固定する**（`back()` や検証エラーの既定の戻り先を使わない）。
+ *   確認画面は POST の応答で、その URL は POST 専用の preview。そこに載ったフォーム（アップロードし直し・確定）から
+ *   送るとリファラーが preview になり、`url()->previous()` はリファラーを優先するので GET で 405 になる
+ *   （docs/RULES.md Bug #64）。
  *
  * ⚠ 行エラーの view のキーは `rowErrors`。`errors` にすると Blade の `$errors`（ViewErrorBag）を
  *   上書きして `Call to a member function any() on array` で 500 する（Bug #53）。
@@ -63,21 +69,26 @@ class UserImportController extends Controller
         //    `JapaneseValidationMessagesTest` の走査が `validate(\s*\[(.*?)\n\s*\]\s*[,)]` で
         //    切り出すので、1 行に畳むと**次の配列まで飲み込み**、メッセージの `csv_file.required`
         //    まで「和名の無い項目」として報告される（実測）。既存の取込 4 本も同じ書き方。
-        $request->validate([
-            'csv_file' => ['required', 'file', 'mimes:csv,txt', 'max:10240'],
-        ], [
-            'csv_file.required' => 'CSVファイルを選択してください。',
-            'csv_file.mimes'    => 'CSVファイルを選択してください。',
-        ], [
-            'csv_file' => 'CSVファイル',
-        ]);
+        try {
+            $request->validate([
+                'csv_file' => ['required', 'file', 'mimes:csv,txt', 'max:10240'],
+            ], [
+                'csv_file.required' => 'CSVファイルを選択してください。',
+                'csv_file.mimes'    => 'CSVファイルを選択してください。',
+            ], [
+                'csv_file' => 'CSVファイル',
+            ]);
+        } catch (ValidationException $e) {
+            // 確認画面からアップロードし直したときも取込の画面へ戻す（クラスの docblock。Bug #64）
+            throw $e->redirectTo(route('approvals.admin.users.import'));
+        }
 
         $content = CsvImportReader::decode($request->file('csv_file')->get());
 
         try {
             $analysis = $this->analyze($content);
         } catch (CsvImportException $e) {
-            return back()->with('error', $e->getMessage());
+            return redirect()->route('approvals.admin.users.import')->with('error', $e->getMessage());
         }
 
         return view('approvals.admin.users.import', array_merge($analysis, [
@@ -88,9 +99,14 @@ class UserImportController extends Controller
 
     public function execute(Request $request)
     {
-        $request->validate([
-            'csv_data' => ['required', 'string'],
-        ]);
+        try {
+            $request->validate([
+                'csv_data' => ['required', 'string'],
+            ]);
+        } catch (ValidationException $e) {
+            // 確定のフォームも確認画面（POST の応答）に載っている。取込の画面へ戻す（クラスの docblock。Bug #64）
+            throw $e->redirectTo(route('approvals.admin.users.import'));
+        }
 
         $content = base64_decode((string) $request->input('csv_data'), true);
 
