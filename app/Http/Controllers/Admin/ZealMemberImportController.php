@@ -13,6 +13,7 @@ use App\Support\Zeal\HacomonoMemberMapper;
 use App\Support\Zeal\MappedMember;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 /**
  * ZEAL 会員 CSV インポートコントローラ
@@ -26,6 +27,11 @@ use Illuminate\Support\Facades\DB;
  *   2. execute(): base64 で持ち回った CSV を再パース → DB 登録（会員 + 契約）
  *
  * 取込対象外(ビジター)は除外、エラー行はスキップ、同名+同入会日は重複スキップ。
+ *
+ * ⚠ 断るときの戻り先は**取込の画面に固定する**（`back()` や入力チェックの既定の戻り先を使わない）。
+ *   確認画面は POST の応答で、その URL は POST 専用の `/admin/zeal/member-import/preview`。そこに載った
+ *   確定のフォームから送るとリファラーがその URL になり、`url()->previous()` はリファラーを優先するので
+ *   GET で 405 になる（docs/RULES.md Bug #64）。
  */
 class ZealMemberImportController extends Controller
 {
@@ -187,7 +193,8 @@ class ZealMemberImportController extends Controller
             ->orderBy('id')
             ->first();
         if (!$defaultStore) {
-            return back()->with('error', '有効な店舗が登録されていません。先に店舗マスタを登録してください。');
+            return redirect()->route('admin.zeal.member-import')
+                ->with('error', '有効な店舗が登録されていません。先に店舗マスタを登録してください。');
         }
 
         return new HacomonoMemberMapper(
@@ -223,9 +230,14 @@ class ZealMemberImportController extends Controller
             // 不正 base64 は false を返すため空文字へ明示キャスト（後続で「データなし」エラーに落ちる）
             $content = (string) base64_decode($request->input('csv_data', ''));
         } else {
-            $request->validate([
-                'csv_file' => 'required|file|mimes:csv,txt|max:10240',
-            ]);
+            try {
+                $request->validate([
+                    'csv_file' => 'required|file|mimes:csv,txt|max:10240',
+                ]);
+            } catch (ValidationException $e) {
+                // 確定の送信から confirmed が抜けたときも、確認画面からここへ来る（クラスの docblock。Bug #64）
+                throw $e->redirectTo(route('admin.zeal.member-import'));
+            }
 
             $content = file_get_contents($request->file('csv_file')->getRealPath());
 
@@ -240,14 +252,15 @@ class ZealMemberImportController extends Controller
         // 引用フィールド内改行（顧客内部カルテの複数行）に対応するため readContent を使う
         $rows = HacomonoCsvReader::readContent($content);
         if (count($rows) === 0) {
-            return back()->with('error', 'CSVファイルにデータがありません。');
+            return redirect()->route('admin.zeal.member-import')->with('error', 'CSVファイルにデータがありません。');
         }
 
         // 新フォーマットの主要列が無ければ「形式違い」として弾く
         $first = $rows[0];
         foreach (['名前', '入会日', '状態'] as $required) {
             if (!array_key_exists($required, $first)) {
-                return back()->with('error', "CSVの形式が異なります（必須列「{$required}」が見つかりません）。会員管理システムからエクスポートしたCSVをアップロードしてください。");
+                return redirect()->route('admin.zeal.member-import')
+                    ->with('error', "CSVの形式が異なります（必須列「{$required}」が見つかりません）。会員管理システムからエクスポートしたCSVをアップロードしてください。");
             }
         }
 

@@ -7,7 +7,9 @@ use App\Models\ZealMemberContract;
 use App\Models\ZealPlan;
 use App\Models\ZealStore;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\CreatesZealSchema;
+use Tests\Concerns\ParsesForms;
 use Tests\TestCase;
 
 /**
@@ -18,6 +20,7 @@ class ZealMemberImportControllerTest extends TestCase
 {
     use RefreshDatabase;
     use CreatesZealSchema;
+    use ParsesForms;
 
     protected function setUp(): void
     {
@@ -249,6 +252,99 @@ class ZealMemberImportControllerTest extends TestCase
             ->assertRedirect(route('admin.zeal.member-import'))
             ->assertSessionHas('error');
 
+        $this->assertDatabaseCount('zeal_members', 0);
+    }
+
+    /** 断られたあと、取込の画面へ戻り、理由が画面に出ること（Location は assertSame で見る。Bug #49 に触れない） */
+    private function assertBackOnTheImportScreen(\Illuminate\Testing\TestResponse $response, string $message): void
+    {
+        $this->assertSame(302, $response->getStatusCode());
+        $this->assertSame(
+            route('admin.zeal.member-import'),
+            $response->headers->get('Location'),
+            '取込の画面へ戻っていない（確認画面の URL へ戻ると GET で 405）'
+        );
+
+        $screen = $this->actingAs($this->executive())->get($response->headers->get('Location'))->assertOk();
+
+        $this->assertStringContainsString($message, $screen->getContent(), '断られた理由が画面に出ていない');
+    }
+
+    /** @return array<string, array{0: string, 1: string}> csv_data に入れる CSV（'' は空）／ 画面に出るはずの文言 */
+    public static function brokenConfirmationCases(): array
+    {
+        return [
+            '取り込むデータが空'   => ['', 'CSVファイルにデータがありません。'],
+            '必須の列が無い'       => ["ID,状態,名前\nCL1,会員,甲 太郎\n", 'CSVの形式が異なります（必須列「入会日」が見つかりません）'],
+        ];
+    }
+
+    /**
+     * 確定の送信が壊れていて断られても、取込の画面へ戻る（docs/RULES.md Bug #64）。
+     *
+     * ⚠ 確定のフォームは確認画面（POST の応答）に載っており、その URL は POST 専用の preview。ブラウザはリファラーに
+     *   その URL を付けるので、`back()` はそこへ GET で戻って 405 だった（2026-09-24 実測）。
+     *   hidden の `csv_data` は確認画面が描くので、ここへ来るのは書き換えたときだけ。
+     */
+    #[DataProvider('brokenConfirmationCases')]
+    public function test_a_broken_confirmation_goes_back_to_the_import_screen(string $csv, string $message): void
+    {
+        $this->seedMasters();
+
+        $response = $this->actingAs($this->executive())
+            ->from(route('admin.zeal.member-import.preview'))   // 確定のフォームが載っている確認画面の URL
+            ->post(route('admin.zeal.member-import.execute'), [
+                'confirmed' => '1',
+                'csv_data'  => $csv === '' ? '' : base64_encode($csv),
+            ]);
+
+        $this->assertBackOnTheImportScreen($response, $message);
+        $this->assertDatabaseCount('zeal_members', 0);
+    }
+
+    /**
+     * 確認画面を見ている間に店舗が止められ、「インポート実行」で断られても、取込の画面へ戻る（Bug #64）。
+     * 描画された確定のフォームを分解してそのまま送る（Bug #47 の往復）。
+     */
+    public function test_a_store_stopped_before_confirming_sends_the_user_back_to_the_import_screen(): void
+    {
+        $this->seedMasters();
+
+        $preview = $this->actingAs($this->executive())->post(route('admin.zeal.member-import.preview'), [
+            'csv_file' => $this->uploadFrom($this->csvContent($this->fixtureRows())),
+        ])->assertOk();
+        $form = $this->parseForm($preview->getContent(), 'action="' . route('admin.zeal.member-import.execute') . '"');
+
+        ZealStore::query()->update(['active' => false]);
+
+        $response = $this->actingAs($this->executive())
+            ->from(route('admin.zeal.member-import.preview'))
+            ->post($form['action'], $form['fields']);
+
+        $this->assertBackOnTheImportScreen($response, '有効な店舗が登録されていません。先に店舗マスタを登録してください。');
+        $this->assertDatabaseCount('zeal_members', 0);
+    }
+
+    /**
+     * 確定の送信から `confirmed` が抜けていると、確定なのに入力チェック（ファイル必須）に落ちる。
+     * その戻り先も取込の画面にする（入力チェックの既定の戻り先はリファラー＝確認画面の URL で 405。Bug #64）。
+     * 描画された確定のフォームから `confirmed` だけを抜いて送る（Bug #47 の往復）。
+     */
+    public function test_a_confirmation_without_the_confirmed_flag_goes_back_to_the_import_screen(): void
+    {
+        $this->seedMasters();
+
+        $preview = $this->actingAs($this->executive())->post(route('admin.zeal.member-import.preview'), [
+            'csv_file' => $this->uploadFrom($this->csvContent($this->fixtureRows())),
+        ])->assertOk();
+        $form = $this->parseForm($preview->getContent(), 'action="' . route('admin.zeal.member-import.execute') . '"');
+        $this->assertArrayHasKey('confirmed', $form['fields'], '確定のフォームが confirmed を持っていない（前提が崩れている）');
+
+        $response = $this->actingAs($this->executive())
+            ->from(route('admin.zeal.member-import.preview'))
+            ->post($form['action'], array_diff_key($form['fields'], ['confirmed' => true]));
+
+        $this->assertBackOnTheImportScreen($response, '<li>CSVファイルは必須です。</li>');
         $this->assertDatabaseCount('zeal_members', 0);
     }
 
