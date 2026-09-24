@@ -22,6 +22,7 @@ use App\Support\CsvImportTemplate;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 /**
  * 賃貸マンション CSVインポートコントローラ
@@ -33,6 +34,11 @@ use Illuminate\Support\Facades\DB;
  * テナントCSVインポートと同じ UX パターン（プレビュー → 確認実行）。
  * 各エンティティは1トランザクションでコミット。エラー行はスキップ、
  * 正常行のみインポート続行。Enum は日本語ラベル → DB 値で受付。
+ *
+ * ⚠ 断るときの戻り先は**取込の画面のそのタブに固定する**（`back()` や入力チェックの既定の戻り先を使わない）。
+ *   確認画面は POST の応答で、その URL は POST 専用の `/admin/mansion-import/{tab}`。そこに載ったフォーム
+ *   （アップロードし直し・インポート実行）から送るとリファラーがその URL になり、`url()->previous()` は
+ *   リファラーを優先するので GET で 405 になる（docs/RULES.md Bug #64）。
  */
 class MansionImportController extends Controller
 {
@@ -199,7 +205,7 @@ class MansionImportController extends Controller
         $tab = 'property';
 
         // CSV読み込み
-        $result = $this->loadCsv($request, $columnMap, $requiredKeys);
+        $result = $this->loadCsv($request, $columnMap, $requiredKeys, $tab);
         if ($result instanceof \Illuminate\Http\RedirectResponse) {
             return $result;
         }
@@ -339,7 +345,8 @@ class MansionImportController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return back()->with('error', 'インポートに失敗しました: ' . $e->getMessage());
+            return redirect()->route('admin.mansion-import', ['selected_tab' => $tab])
+                ->with('error', 'インポートに失敗しました: ' . $e->getMessage());
         }
     }
 
@@ -358,7 +365,7 @@ class MansionImportController extends Controller
         $tab = 'room';
 
         // CSV読み込み
-        $result = $this->loadCsv($request, $columnMap, $requiredKeys);
+        $result = $this->loadCsv($request, $columnMap, $requiredKeys, $tab);
         if ($result instanceof \Illuminate\Http\RedirectResponse) {
             return $result;
         }
@@ -523,7 +530,8 @@ class MansionImportController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return back()->with('error', 'インポートに失敗しました: ' . $e->getMessage());
+            return redirect()->route('admin.mansion-import', ['selected_tab' => $tab])
+                ->with('error', 'インポートに失敗しました: ' . $e->getMessage());
         }
     }
 
@@ -542,7 +550,7 @@ class MansionImportController extends Controller
         $tab = 'parking';
 
         // CSV読み込み
-        $result = $this->loadCsv($request, $columnMap, $requiredKeys);
+        $result = $this->loadCsv($request, $columnMap, $requiredKeys, $tab);
         if ($result instanceof \Illuminate\Http\RedirectResponse) {
             return $result;
         }
@@ -672,7 +680,8 @@ class MansionImportController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return back()->with('error', 'インポートに失敗しました: ' . $e->getMessage());
+            return redirect()->route('admin.mansion-import', ['selected_tab' => $tab])
+                ->with('error', 'インポートに失敗しました: ' . $e->getMessage());
         }
     }
 
@@ -691,7 +700,7 @@ class MansionImportController extends Controller
         $tab = 'tenant';
 
         // CSV読み込み
-        $result = $this->loadCsv($request, $columnMap, $requiredKeys);
+        $result = $this->loadCsv($request, $columnMap, $requiredKeys, $tab);
         if ($result instanceof \Illuminate\Http\RedirectResponse) {
             return $result;
         }
@@ -799,7 +808,8 @@ class MansionImportController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return back()->with('error', 'インポートに失敗しました: ' . $e->getMessage());
+            return redirect()->route('admin.mansion-import', ['selected_tab' => $tab])
+                ->with('error', 'インポートに失敗しました: ' . $e->getMessage());
         }
     }
 
@@ -820,7 +830,7 @@ class MansionImportController extends Controller
         $tab = 'room_contract';
 
         // CSV読み込み
-        $result = $this->loadCsv($request, $columnMap, $requiredKeys);
+        $result = $this->loadCsv($request, $columnMap, $requiredKeys, $tab);
         if ($result instanceof \Illuminate\Http\RedirectResponse) {
             return $result;
         }
@@ -1019,7 +1029,8 @@ class MansionImportController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return back()->with('error', 'インポートに失敗しました: ' . $e->getMessage());
+            return redirect()->route('admin.mansion-import', ['selected_tab' => $tab])
+                ->with('error', 'インポートに失敗しました: ' . $e->getMessage());
         }
     }
 
@@ -1041,7 +1052,7 @@ class MansionImportController extends Controller
         $tab = 'parking_contract';
 
         // CSV読み込み
-        $result = $this->loadCsv($request, $columnMap, $requiredKeys);
+        $result = $this->loadCsv($request, $columnMap, $requiredKeys, $tab);
         if ($result instanceof \Illuminate\Http\RedirectResponse) {
             return $result;
         }
@@ -1259,7 +1270,8 @@ class MansionImportController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return back()->with('error', 'インポートに失敗しました: ' . $e->getMessage());
+            return redirect()->route('admin.mansion-import', ['selected_tab' => $tab])
+                ->with('error', 'インポートに失敗しました: ' . $e->getMessage());
         }
     }
 
@@ -1367,17 +1379,23 @@ class MansionImportController extends Controller
      * 純粋な読み取りは [[\App\Support\CsvImportReader]] にある。ここに残るのは
      * HTTP 依存の 3 つだけ: ファイル取得 / 確定時の base64 復元 / 差し戻し。
      *
+     * @param  string  $tab  断ったときに戻す取込の画面のタブ（クラスの docblock。Bug #64）
      * @return array{0: list<array<string, string>>, 1: string}|\Illuminate\Http\RedirectResponse
      */
-    private function loadCsv(Request $request, array $columnMap, array $requiredKeys)
+    private function loadCsv(Request $request, array $columnMap, array $requiredKeys, string $tab)
     {
         if ($request->boolean('confirmed')) {
             // 確認画面が持ち回った base64 から復元（既に UTF-8・BOM 除去済み）
             $content = base64_decode($request->input('csv_data', ''));
         } else {
-            $request->validate([
-                'csv_file' => 'required|file|mimes:csv,txt|max:10240',
-            ]);
+            try {
+                $request->validate([
+                    'csv_file' => 'required|file|mimes:csv,txt|max:10240',
+                ]);
+            } catch (ValidationException $e) {
+                // 確認画面からアップロードし直したときも取込の画面へ戻す（クラスの docblock。Bug #64）
+                throw $e->redirectTo(route('admin.mansion-import', ['selected_tab' => $tab]));
+            }
 
             $content = CsvImportReader::decode(
                 file_get_contents($request->file('csv_file')->getRealPath())
@@ -1387,7 +1405,7 @@ class MansionImportController extends Controller
         try {
             $rows = CsvImportReader::parse($content, $columnMap, $requiredKeys);
         } catch (CsvImportException $e) {
-            return back()->with('error', $e->getMessage());
+            return redirect()->route('admin.mansion-import', ['selected_tab' => $tab])->with('error', $e->getMessage());
         }
 
         return [$rows, $content];

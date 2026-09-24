@@ -38,7 +38,7 @@ class ImportValidationFeedbackTest extends TestCase
     /**
      * 取込の入口ごとに「不正なファイル → 差し戻し先で理由が見える」ことを見る。
      *
-     * 送り元（リファラー）は取込の画面。差し戻し先は、テナントの取込では**送ったタブ**を開いた取込の画面
+     * 送り元（リファラー）は取込の画面。差し戻し先は、テナント・賃貸マンションの取込では**送ったタブ**を開いた取込の画面
      * （確認画面から送っても 405 にならないよう戻り先を固定した。docs/RULES.md Bug #64）。
      *
      * @return array<string, array{0: string, 1: string, 2: array<string, string>, 3: string}>
@@ -49,7 +49,7 @@ class ImportValidationFeedbackTest extends TestCase
         return [
             '顧客CSV'            => ['/admin/customers/import',        '/admin/customers/import', ['department' => 'housing'], '/admin/customers/import'],
             'テナントCSV'        => ['/admin/tenant-import/property',   '/admin/tenant-import',    [],                          '/admin/tenant-import?tab=property'],
-            '賃貸マンションCSV'  => ['/admin/mansion-import/property',  '/admin/mansion-import',   [],                          '/admin/mansion-import'],
+            '賃貸マンションCSV'  => ['/admin/mansion-import/property',  '/admin/mansion-import',   [],                          '/admin/mansion-import?selected_tab=property'],
         ];
     }
 
