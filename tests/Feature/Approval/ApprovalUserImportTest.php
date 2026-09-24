@@ -200,6 +200,7 @@ class ApprovalUserImportTest extends TestCase
         $this->assertStringContainsString('ログインのご案内', $response->getContent());
         $this->assertStringContainsString('甲 一郎', $response->getContent());
         $this->assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
+        $this->assertStringNotContainsString('通知メール: 送る', $response->getContent(), '新規登録なのに通知メールの件数が出ている（F7）');
     }
 
     /** 案内の「元の画面へ戻る」は取込の画面へ（F2。旧実装はリファラー＝ POST 専用の preview へ戻し、押すと 405） */

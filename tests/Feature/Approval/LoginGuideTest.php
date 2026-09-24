@@ -113,7 +113,7 @@ class LoginGuideTest extends TestCase
             ['user' => $b, 'password' => 'fghij78923'],
             // ⚠ **わざと非対称**にしてある（人数は載せる値であって行数とは別物）。
             //    1 対 1 にすると、帯の 2 つの数字が入れ替わっても原理的に見えない。
-        ], backUrl: 'http://localhost/_test/back', notifiedCount: 2, skippedCount: 1);
+        ], backUrl: 'http://localhost/_test/back', mailCounts: ['notified' => 2, 'skipped' => 1]);
     }
 
     private function render(): \Illuminate\Testing\TestResponse
@@ -187,6 +187,20 @@ class LoginGuideTest extends TestCase
         $this->assertStringContainsString('2 人分', $html);
         $this->assertStringContainsString('通知メール: 送る 2 人／送らない 1 人', $html);
         $this->assertStringContainsString('beforeunload', $html, '閉じる前の確認が無い');
+    }
+
+    /** 通知メールの件数は、渡されたとき（＝再発行）だけ出す（F7。新規登録と CSV の確定では送らない） */
+    public function test_the_mail_counts_are_left_out_when_no_mail_is_sent(): void
+    {
+        $user = User::factory()->create(['name' => '丙 三郎', 'employee_number' => 'M003', 'must_change_password' => true]);
+        \Illuminate\Support\Facades\Route::middleware(['web', 'auth'])->get('/_test/login-guide-new', fn () =>
+            (new LoginGuide([['user' => $user, 'password' => 'klmno45678']], backUrl: url('/_test/back')))->toResponse(request()));
+
+        $html = $this->actingAs(User::factory()->create(['must_change_password' => false]))
+            ->get('/_test/login-guide-new')->assertOk()->getContent();
+
+        $this->assertStringContainsString('1 人分', $html);
+        $this->assertStringNotContainsString('通知メール: 送る', $html, '通知メールを送らないのに件数の帯が出ている');
     }
 
     /**

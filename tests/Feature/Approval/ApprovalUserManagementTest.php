@@ -308,6 +308,9 @@ class ApprovalUserManagementTest extends TestCase
         $this->assertStringContainsString('ログインのご案内', $html);
         $this->assertStringContainsString('決裁 次郎', $html);
         $this->assertTrue($member->fresh()->must_change_password);
+
+        // 再発行の案内にだけ通知メールの件数が出る（F7。決裁のみの人はメールアドレスが無い＝送らない 1 人）
+        $this->assertStringContainsString('通知メール: 送る 0 人／送らない 1 人', $html);
     }
 
     /**
@@ -627,6 +630,8 @@ class ApprovalUserManagementTest extends TestCase
 
         $this->assertStringContainsString('田中 一郎', $guide);
         $this->assertStringNotContainsString('鈴木 二郎', $guide, '絞り込みに当たらない人まで再発行されている');
+        // まとめて再発行の案内にも通知メールの件数が出る（F7）
+        $this->assertStringContainsString('通知メール: 送る 0 人／送らない 1 人', $guide);
 
         $this->assertTrue($hit->fresh()->must_change_password);
         $this->assertSame($missPassword, $miss->fresh()->password, '絞り込みの外の人のパスワードが変わっている');

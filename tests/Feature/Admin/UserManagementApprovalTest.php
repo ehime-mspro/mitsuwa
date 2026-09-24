@@ -261,6 +261,7 @@ class UserManagementApprovalTest extends TestCase
         $this->assertStringContainsString('甲 一郎', $html);
         $this->assertStringContainsString('M001', $html);
         $this->assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
+        $this->assertStringNotContainsString('通知メール: 送る', $html, '新規登録なのに通知メールの件数が出ている（F7）');
 
         $user = User::where('employee_number', 'M001')->sole();
         $this->assertTrue($user->must_change_password);

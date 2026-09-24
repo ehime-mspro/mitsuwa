@@ -17,6 +17,6 @@ final class ReissueResult
     /** @param  string  $backUrl  「元の画面へ戻る」の行き先（入口が決める。LoginGuide の docblock 参照） */
     public function toGuide(string $backUrl): LoginGuide
     {
-        return new LoginGuide($this->entries, $backUrl, $this->notifiedCount, $this->skippedCount);
+        return new LoginGuide($this->entries, $backUrl, ['notified' => $this->notifiedCount, 'skipped' => $this->skippedCount]);
     }
 }

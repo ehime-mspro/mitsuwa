@@ -137,10 +137,10 @@ class UserImportController extends Controller
                 ->with('success', "{$analysis['updateCount']} 件の社員番号と所属部門を更新しました。新しく登録した人がいないため、ログイン案内はありません。");
         }
 
-        // 新規登録では通知メールを送らない（紙で渡す。要件 8.1 に無い）
+        // 新規登録では通知メールを送らない（紙で渡す。要件 8.1 に無い）ので、件数も渡さない（帯に出さない。F7）
         // 戻り先: 確定のフォームは確認画面（preview の POST の応答）に載っている＝リファラーは POST 専用の URL
         //   （押すと 405 だった。F2）。元の画面＝取込の画面を明示する
-        return (new LoginGuide($entries, backUrl: route('approvals.admin.users.import'), notifiedCount: 0, skippedCount: 0))->toResponse($request);
+        return (new LoginGuide($entries, backUrl: route('approvals.admin.users.import')))->toResponse($request);
     }
 
     /**

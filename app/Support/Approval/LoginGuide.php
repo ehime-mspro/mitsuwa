@@ -27,14 +27,14 @@ final class LoginGuide implements Responsable
      *   確認画面（POST の応答）から送る CSV の確定は取込の画面。
      *   ⚠ ビューで `url()->previous()` を呼ばない。リファラーが優先されるので、CSV の確定では
      *   POST 専用の URL になり、押すと 405 だった（docs/RULES.md Bug #64）
-     * @param  int  $notifiedCount  通知メールを送る人数
-     * @param  int  $skippedCount   送らない人数（メールアドレスなし・許可していないドメイン）
+     * @param  array{notified: int, skipped: int}|null  $mailCounts  通知メールを送る人数・送らない人数
+     *   （メールアドレスなし・許可していないドメイン）。**再発行のときだけ**渡す（F7。新規登録と CSV の確定では
+     *   通知メールを送らないので、帯にも出さない。設計書 §5.10・§5.13）。2 つを 1 つの配列にして、片方だけ渡す誤りを防ぐ
      */
     public function __construct(
         private readonly array $entries,
         private readonly string $backUrl,
-        private readonly int $notifiedCount = 0,
-        private readonly int $skippedCount = 0,
+        private readonly ?array $mailCounts = null,
     ) {}
 
     public function toResponse($request): Response
@@ -47,8 +47,7 @@ final class LoginGuide implements Responsable
                 'backUrl'       => $this->backUrl,
                 'loginUrl'      => $loginUrl,
                 'qr'            => LoginQrCode::symbolParts($loginUrl),
-                'notifiedCount' => $this->notifiedCount,
-                'skippedCount'  => $this->skippedCount,
+                'mailCounts'    => $this->mailCounts,
                 // 発行日は日本の今日（アプリの時刻は UTC。now() だと日本時間の 0:00〜8:59 に前日が出る。F5）
                 'issuedAt'      => JapanTime::today()->format('Y年n月j日'),
             ])
