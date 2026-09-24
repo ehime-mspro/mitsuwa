@@ -33,8 +33,9 @@ use Tests\TestCase;
  * ⚠ 期待値はリテラルで書き、掃引の答えは月の日数の表と閏年の規則で求める。実装と同じ式
  *   （new Date(年, 月, 0) や Math.min(…, lastDay)）で作ると同義反復になり、実装を壊しても緑になる。
  *
- * ⚠ 見えないもの（検出器の「死角」「過剰」は test_the_detectors_catch_what_they_should_and_ignore_the_rest に
- *   サンプルとして並べてあり、この一覧と対。見えるようにしたら、その行を「拾う」へ移す）:
+ * ⚠ 見えないもの（検出器の「死角」は test_the_detectors_catch_what_they_should_and_ignore_the_rest に
+ *   サンプルとして並べてあり、この一覧と対。「過剰」は安全側（赤に倒れる）なのでサンプルだけに置く。
+ *   見えるようにしたら、その行を「拾う」へ移す）:
  *   - ハーネスは関数を Blade の**ソース**から切り出すので、それを含む <script> が実際に描画・実行されるかは見えない
  *     （@if の中に入る・type="text/template" になる・@push に対応する @stack が無い。Bug #28 の型）
  *   - ボタンの配線（@click="setMonthAgo"。DAD は partial の _date-picker / _date-picker-row）と、Alpine の描画・
@@ -203,7 +204,7 @@ class DatePickerMonthAgoTest extends TestCase
             }
             if ($sweep['count'] !== self::SWEEP_DAYS) {
                 $problems[] = "{$view}: 掃引した日数が {$sweep['count']} 日（2026-01-01〜2028-12-31 の "
-                    . self::SWEEP_DAYS . ' 日と合わない。ハーネスの暦が壊れている）';
+                    . self::SWEEP_DAYS . ' 日と合わない。掃引の範囲と SWEEP_DAYS がずれているか、ハーネスの暦が壊れている）';
             }
             if ($sweep['mismatches'] !== []) {
                 $problems[] = "{$view}: 前月の答えと食い違う日が " . count($sweep['mismatches']) . ' 日ある（最初の 5 日）:';
@@ -276,8 +277,8 @@ class DatePickerMonthAgoTest extends TestCase
      *
      * ⚠ 正規表現の枝は 1 つずつサンプルを通す。サンプルも実出現も無い枝は、消しても全テストが緑になる
      *   （Bug #45 / #61 ③。前例: ClockReadScanTest::test_the_detector_catches_what_it_should_and_ignores_the_rest）。
-     * ⚠ 「死角」は拾うべきなのに拾わないもの、「過剰」は拾わなくてよいのに拾うもの（安全側＝赤に倒れる）の記録で、
-     *   クラスの docblock の「見えないもの」と対。見えないこと・拾い過ぎることをここで固定する。
+     * ⚠ 「死角」は拾うべきなのに拾わないもの、「過剰」は拾わなくてよいのに拾うもの（安全側＝赤に倒れる）の記録。
+     *   死角はクラスの docblock の「見えないもの」と対（過剰はここにだけ置く）。見えないこと・拾い過ぎることをここで固定する。
      *   検出器を広げて死角が見えるようになったら（ここが赤くなって気づける）、その行を「拾う」へ移す。
      */
     public function test_the_detectors_catch_what_they_should_and_ignore_the_rest(): void
