@@ -9,6 +9,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx as XlsxWriter;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\CreatesRealEstateSchema;
 use Tests\Feature\Schedule\ScheduleTestCase;
 
@@ -217,6 +218,67 @@ class ScheduleImportTest extends ScheduleTestCase
         );
 
         $this->assertSame(0, ScheduleStep::count());
+    }
+
+    /** @return array<string, array{0: string, 1: string}> 送り方 ／ 画面に出るはずの文言 */
+    public static function rejectionFromThePreviewCases(): array
+    {
+        return [
+            '送り直し: ファイルを選ばなかった' => ['reupload-without-file', '<li>工程表の書き出しファイルは必須です。</li>'],
+            '送り直し: ガント形式'             => ['reupload-gantt', '「一覧」形式で書き出したファイルを選んでください'],
+            '確定: 取り込む工程が無い'         => ['confirm-without-rows', '<li>取り込む工程は必須です。</li>'],
+            '確定: 取り込む工程が空'           => ['confirm-empty-rows', '取り込む工程を読み取れませんでした。'],
+            '確定: 壊れた行'                   => ['confirm-broken-rows', '取り込めない行があります'],
+        ];
+    }
+
+    /**
+     * 確認画面から送って断られても、取込の画面へ戻る（docs/RULES.md Bug #64）。
+     *
+     * ⚠ 確認画面の URL は POST 専用（`…/schedule-import/preview`）。確認画面にはアップロードし直しのフォームと確定のフォームの
+     *   両方が載っており、ブラウザはどちらから送ってもリファラーにその URL を付ける。`back()` と入力チェックの既定の戻り先は
+     *   そこへ GET で戻って 405 だった（2026-09-24 実測: 5 経路とも）。ガント形式の選び間違いは普通の操作で起きる。
+     * ⚠ 確定の 3 ケースは、描画された確定のフォームの `rows_json` だけを書き換えて送る（Bug #47 の往復）。
+     *   hidden は確認画面が描くので、ここへ来るのは書き換えたときだけ。
+     * ⚠ 行き先は `Location` を assertSame で見る（assertRedirect() は検証エラーの応答で外れると失敗文の組み立て中に fatal に
+     *   なり理由が読めない）。たどって理由が画面に出ることまで見る（セッションには触らない。Bug #49）。
+     */
+    #[DataProvider('rejectionFromThePreviewCases')]
+    public function test_a_rejection_from_the_preview_goes_back_to_the_import_form(string $how, string $message): void
+    {
+        $property = $this->makeParent('property');
+        $preview  = route('housing.properties.schedule-import.preview', $property);   // 確認画面の URL（POST 専用）
+
+        if (str_starts_with($how, 'reupload-')) {
+            $url    = $preview;
+            $fields = $how === 'reupload-gantt'
+                ? ['file' => new UploadedFile($this->ganttFile(), 'gantt.xlsx', null, null, true)]
+                : [];
+        } else {
+            $form   = $this->confirmForm($this->previewFixture($property)->assertOk()->getContent(), $property);
+            $url    = $form['action'];
+            $fields = $form['fields'];
+
+            match ($how) {
+                'confirm-without-rows' => $fields = array_diff_key($fields, ['rows_json' => true]),
+                'confirm-empty-rows'   => $fields['rows_json'] = '[]',
+                'confirm-broken-rows'  => $fields['rows_json'] = '[{"name":""}]',
+            };
+        }
+
+        $response = $this->actingAs($this->manager())->from($preview)->post($url, $fields);
+
+        $this->assertSame(302, $response->getStatusCode());
+        $this->assertSame(
+            route('housing.properties.schedule-import.form', $property),
+            $response->headers->get('Location'),
+            '取込の画面へ戻っていない（確認画面の URL へ戻ると GET で 405）'
+        );
+
+        $screen = $this->actingAs($this->manager())->get($response->headers->get('Location'))->assertOk();
+
+        $this->assertStringContainsString($message, $screen->getContent(), '断られた理由が画面に出ていない');
+        $this->assertSame(0, ScheduleStep::count(), '断られたのに工程が書かれている');
     }
 
     public function test_the_confirm_form_carries_a_csrf_token(): void
@@ -470,6 +532,16 @@ class ScheduleImportTest extends ScheduleTestCase
         $step->save();
 
         return $step;
+    }
+
+    /** 見出しが「一覧」形式に揃わない xlsx（ガント形式の代わり。test_a_file_that_is_not_the_list_format_is_rejected と同じ中身） */
+    private function ganttFile(): string
+    {
+        $book = new Spreadsheet();
+        $book->getActiveSheet()->setCellValue('A1', '工程表');
+        $book->getActiveSheet()->setCellValue('B5', '2026/07/01');
+
+        return $this->save($book);
     }
 
     private function save(Spreadsheet $book): string

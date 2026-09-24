@@ -9,6 +9,7 @@ use App\Support\ScheduleImportSheet;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 /**
  * 建売物件の工程表の取込（設計書 §5）。
@@ -19,6 +20,12 @@ use Illuminate\Support\Facades\DB;
  *
  * ⚠ **親は型宣言してよい。** ScheduleStepController は 4 親を 1 本で受けるため
  *   暗黙のモデルバインドが使えないが、こちらは建売専用なので普通にバインドできる。
+ *
+ * ⚠ 断るときの戻り先は**取込の画面に固定する**（`back()` や入力チェックの既定の戻り先を使わない）。
+ *   確認画面は POST の応答で、その URL は POST 専用の `…/schedule-import/preview`。確認画面には
+ *   アップロードし直しのフォームと確定のフォームの両方が載っており、どちらから送ってもリファラーが
+ *   その URL になる。`url()->previous()` はリファラーを優先するので GET で 405 になる
+ *   （ガント形式の選び間違いは普通の操作で踏む。docs/RULES.md Bug #64）。
  */
 class ScheduleImportController extends Controller
 {
@@ -45,16 +52,21 @@ class ScheduleImportController extends Controller
     {
         // ⚠ ルールは literal 配列で直書きする。$this->rules() のような間接参照にすると
         //   JapaneseValidationMessagesTest の走査正規表現にマッチせず、和名チェックから外れる。
-        $request->validate([
-            'file' => 'required|file|mimes:xlsx|max:5120',
-        ], [], ['file' => '工程表の書き出しファイル']);
+        try {
+            $request->validate([
+                'file' => 'required|file|mimes:xlsx|max:5120',
+            ], [], ['file' => '工程表の書き出しファイル']);
+        } catch (ValidationException $e) {
+            // 確認画面からアップロードし直したときも取込の画面へ戻す（クラスの docblock。Bug #64）
+            throw $e->redirectTo(route('housing.properties.schedule-import.form', $property));
+        }
 
         $result = ScheduleImportSheet::read($request->file('file')->getRealPath());
 
         // ⚠ **黙って 0 件で成功に見せない**（設計書 §6 が名指しで警戒している失敗）。
         //   ガント形式は見出しが揃わないのでここへ落ちる。
         if ($result['format'] !== ScheduleImportSheet::FORMAT_LIST) {
-            return back()->withErrors([
+            return redirect()->route('housing.properties.schedule-import.form', $property)->withErrors([
                 'file' => 'このファイルは取り込めません。「一覧」形式で書き出したファイルを選んでください'
                     . '（工程表（ガント）形式には施工完了日が入っていないため取り込めません）。',
             ]);
@@ -74,14 +86,20 @@ class ScheduleImportController extends Controller
     /** POST /housing/properties/{property}/schedule-import */
     public function execute(Request $request, HsProperty $property)
     {
-        $validated = $request->validate([
-            'rows_json' => 'required|string',
-        ], [], ['rows_json' => '取り込む工程']);
+        // 確定のフォームは確認画面に載っているので、断るときは取込の画面へ戻す（クラスの docblock。Bug #64）
+        try {
+            $validated = $request->validate([
+                'rows_json' => 'required|string',
+            ], [], ['rows_json' => '取り込む工程']);
+        } catch (ValidationException $e) {
+            throw $e->redirectTo(route('housing.properties.schedule-import.form', $property));
+        }
 
         $decoded = json_decode($validated['rows_json'], true);
 
         if (! is_array($decoded) || $decoded === []) {
-            return back()->withErrors(['rows_json' => '取り込む工程を読み取れませんでした。もう一度ファイルを選んでください。']);
+            return redirect()->route('housing.properties.schedule-import.form', $property)
+                ->withErrors(['rows_json' => '取り込む工程を読み取れませんでした。もう一度ファイルを選んでください。']);
         }
 
         // ⚠ **プレビューが返した値をそのまま信じない。** hidden は書き換えられるので、
@@ -92,7 +110,7 @@ class ScheduleImportController extends Controller
         //   一部だけ取り込むと工程表が中途半端な状態で残る。プレビューが弾いた後なので、
         //   ここでエラーが出るのは改竄か不具合であって、通常の運用では起きない。
         if ($sanitized['rowErrors'] !== [] || $sanitized['rows'] === []) {
-            return back()->withErrors([
+            return redirect()->route('housing.properties.schedule-import.form', $property)->withErrors([
                 'rows_json' => '取り込めない行があります: '
                     . implode(' / ', array_slice($sanitized['rowErrors'], 0, 3)),
             ]);
