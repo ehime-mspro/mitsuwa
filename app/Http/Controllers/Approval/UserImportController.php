@@ -138,7 +138,9 @@ class UserImportController extends Controller
         }
 
         // 新規登録では通知メールを送らない（紙で渡す。要件 8.1 に無い）
-        return (new LoginGuide($entries, notifiedCount: 0, skippedCount: 0))->toResponse($request);
+        // 戻り先: 確定のフォームは確認画面（preview の POST の応答）に載っている＝リファラーは POST 専用の URL
+        //   （押すと 405 だった。F2）。元の画面＝取込の画面を明示する
+        return (new LoginGuide($entries, backUrl: route('approvals.admin.users.import'), notifiedCount: 0, skippedCount: 0))->toResponse($request);
     }
 
     /**

@@ -113,7 +113,7 @@ class LoginGuideTest extends TestCase
             ['user' => $b, 'password' => 'fghij78923'],
             // ⚠ **わざと非対称**にしてある（人数は載せる値であって行数とは別物）。
             //    1 対 1 にすると、帯の 2 つの数字が入れ替わっても原理的に見えない。
-        ], notifiedCount: 2, skippedCount: 1);
+        ], backUrl: 'http://localhost/_test/back', notifiedCount: 2, skippedCount: 1);
     }
 
     private function render(): \Illuminate\Testing\TestResponse

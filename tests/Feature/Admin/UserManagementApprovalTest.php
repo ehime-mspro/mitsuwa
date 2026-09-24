@@ -14,6 +14,7 @@ use App\Support\InitialPassword;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Tests\Concerns\ParsesForms;
+use Tests\Concerns\ReadsLoginGuide;
 use Tests\TestCase;
 
 /**
@@ -27,6 +28,7 @@ class UserManagementApprovalTest extends TestCase
 {
     use RefreshDatabase;
     use ParsesForms;
+    use ReadsLoginGuide;
 
     private Department $department;
 
@@ -498,6 +500,43 @@ class UserManagementApprovalTest extends TestCase
         $this->assertNotSame($before, $target->password);
         $this->assertTrue($target->must_change_password);
         $this->assertSame(1, ApprovalSettingLog::where('action', 'user.password_reissued')->count());
+    }
+
+    /**
+     * 案内の「元の画面へ戻る」は、登録したときの一覧へ（絞り込みを保ったまま）戻る（F2）。
+     *
+     * ⚠ ブラウザと同じくリファラーを付けて送る（テストの既定はリファラー無し。ReadsLoginGuide 参照）。
+     */
+    public function test_the_guide_after_creating_goes_back_to_the_list(): void
+    {
+        $executive = $this->executive();
+        $list      = route('admin.users.index', ['search' => '甲']);
+        [$form, $fields] = $this->createForm([
+            'name'            => '甲 一郎',
+            'employee_number' => 'M001',
+            'email'           => 'a@example.com',
+            'role'            => UserRole::Staff->value,
+            'departments'     => [$this->department->id],
+        ]);
+
+        $guide = $this->actingAs($executive)->from($list)->post($form['action'], $fields)->assertOk();
+
+        $this->assertGuideGoesBackTo($guide, $list, $executive);
+    }
+
+    /** 再発行も、絞り込みを保った一覧へ戻る（F2） */
+    public function test_the_guide_after_a_reissue_goes_back_to_the_filtered_list(): void
+    {
+        $executive = $this->executive();
+        $target    = User::factory()->create(['name' => '甲 一郎', 'must_change_password' => false]);
+        $list      = route('admin.users.index', ['search' => '甲']);
+
+        $html = $this->actingAs($executive)->get($list)->assertOk()->getContent();
+        $form = $this->parseForm($html, 'action="' . route('admin.users.resetPassword', $target) . '"');
+
+        $guide = $this->actingAs($executive)->from($list)->post($form['action'], $form['fields'])->assertOk();
+
+        $this->assertGuideGoesBackTo($guide, $list, $executive);
     }
 
     /**

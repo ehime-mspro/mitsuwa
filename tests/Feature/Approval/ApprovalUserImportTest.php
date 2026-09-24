@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\ParsesForms;
+use Tests\Concerns\ReadsLoginGuide;
 use Tests\TestCase;
 
 /**
@@ -31,6 +32,7 @@ class ApprovalUserImportTest extends TestCase
 {
     use RefreshDatabase;
     use ParsesForms;
+    use ReadsLoginGuide;
 
     private const HEADER = "社員番号,氏名,メールアドレス,所属部門\n";
 
@@ -69,7 +71,11 @@ class ApprovalUserImportTest extends TestCase
         $this->assertArrayHasKey('guide_token', $form['fields'], '確定フォームに 1 回限りの鍵が無い');
         $this->assertArrayHasKey('_token', $form['fields'], '@csrf が無い');
 
-        return $this->actingAs($this->admin())->post($form['action'], $form['fields']);
+        // ⚠ ブラウザと同じくリファラーを付ける。確定のフォームは確認画面＝ preview の POST の応答に
+        //   載っているので、リファラーは POST 専用のこの URL になる（F2。ReadsLoginGuide 参照）
+        return $this->actingAs($this->admin())
+            ->from(route('approvals.admin.users.import.preview'))
+            ->post($form['action'], $form['fields']);
     }
 
     // --- 入口 ---
@@ -194,6 +200,14 @@ class ApprovalUserImportTest extends TestCase
         $this->assertStringContainsString('ログインのご案内', $response->getContent());
         $this->assertStringContainsString('甲 一郎', $response->getContent());
         $this->assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
+    }
+
+    /** 案内の「元の画面へ戻る」は取込の画面へ（F2。旧実装はリファラー＝ POST 専用の preview へ戻し、押すと 405） */
+    public function test_the_guide_after_an_import_goes_back_to_the_import_screen(): void
+    {
+        $guide = $this->confirm("A0001,甲 一郎,a@mitsuwat.co.jp,RE\n")->assertOk();
+
+        $this->assertGuideGoesBackTo($guide, route('approvals.admin.users.import'), $this->admin());
     }
 
     /** 所属部門の区切りは何でもよい（設計書 §5.10） */

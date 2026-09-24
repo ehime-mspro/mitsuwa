@@ -62,7 +62,8 @@
     <button type="button" class="guide-print-btn" onclick="window.print()">印刷する</button>
     <span style="margin-left: 12px;">{{ count($entries) }} 人分</span>
     <span style="margin-left: 12px;">通知メール: 送る {{ $notifiedCount }} 人／送らない {{ $skippedCount }} 人（メールアドレスなし・許可していないドメイン）</span>
-    <a href="{{ url()->previous() }}" class="guide-back">元の画面へ戻る</a>
+    {{-- 戻り先は入口が決めて渡す（ここで url()->previous() を呼ばない。リファラーが優先され、CSV の確定では POST 専用の URL になる。F2） --}}
+    <a href="{{ $backUrl }}" class="guide-back">元の画面へ戻る</a>
     <div><strong>この画面を閉じると初期パスワードは二度と表示されません。印刷してから閉じてください。</strong></div>
 </div>
 

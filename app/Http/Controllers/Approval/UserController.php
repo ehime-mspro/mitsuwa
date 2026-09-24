@@ -272,7 +272,8 @@ class UserController extends Controller
             return $this->refuseRepeatedGuide();
         }
 
-        return (new PasswordReissuer())->reissue(collect([$user]))->toGuide()->toResponse($request);
+        // 戻り先: 再発行のフォームは一覧（GET の画面）に載っているので、リファラー＝絞り込み込みの一覧（F2）
+        return (new PasswordReissuer())->reissue(collect([$user]))->toGuide(url()->previous())->toResponse($request);
     }
 
     /**
@@ -320,7 +321,8 @@ class UserController extends Controller
             return $this->refuseRepeatedGuide();
         }
 
-        return (new PasswordReissuer())->reissue($targets)->toGuide()->toResponse($request);
+        // 戻り先: まとめて再発行のフォームも一覧（GET の画面）に載っている（F2）
+        return (new PasswordReissuer())->reissue($targets)->toGuide(url()->previous())->toResponse($request);
     }
 
     private function refuseRepeatedGuide(): \Illuminate\Http\RedirectResponse

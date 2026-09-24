@@ -22,11 +22,17 @@ final class LoginGuide implements Responsable
 {
     /**
      * @param  list<array{user: User, password: string}>  $entries
+     * @param  string  $backUrl  「元の画面へ戻る」の行き先（F2）。**入口ごとに決める**:
+     *   フォームが GET の画面に載っている入口はリファラー（`url()->previous()`。絞り込み・ページ番号が残る）、
+     *   確認画面（POST の応答）から送る CSV の確定は取込の画面。
+     *   ⚠ ビューで `url()->previous()` を呼ばない。リファラーが優先されるので、CSV の確定では
+     *   POST 専用の URL になり、押すと 405 だった（docs/RULES.md Bug #64）
      * @param  int  $notifiedCount  通知メールを送る人数
      * @param  int  $skippedCount   送らない人数（メールアドレスなし・許可していないドメイン）
      */
     public function __construct(
         private readonly array $entries,
+        private readonly string $backUrl,
         private readonly int $notifiedCount = 0,
         private readonly int $skippedCount = 0,
     ) {}
@@ -38,6 +44,7 @@ final class LoginGuide implements Responsable
         return response()
             ->view('approvals.login-guide', [
                 'entries'       => $this->entries,
+                'backUrl'       => $this->backUrl,
                 'loginUrl'      => $loginUrl,
                 'qr'            => LoginQrCode::symbolParts($loginUrl),
                 'notifiedCount' => $this->notifiedCount,

@@ -14,6 +14,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\ParsesForms;
+use Tests\Concerns\ReadsLoginGuide;
 use Tests\TestCase;
 
 /**
@@ -28,6 +29,7 @@ class ApprovalUserManagementTest extends TestCase
 {
     use RefreshDatabase;
     use ParsesForms;
+    use ReadsLoginGuide;
 
     private ApprovalDepartment $dept;
     private ApprovalDepartment $other;
@@ -306,6 +308,41 @@ class ApprovalUserManagementTest extends TestCase
         $this->assertStringContainsString('ログインのご案内', $html);
         $this->assertStringContainsString('決裁 次郎', $html);
         $this->assertTrue($member->fresh()->must_change_password);
+    }
+
+    /**
+     * 案内の「元の画面へ戻る」は、再発行したときの一覧へ絞り込みを保ったまま戻る（F2）。
+     *
+     * ⚠ ブラウザと同じくリファラーを付けて送る（テストの既定はリファラー無し。ReadsLoginGuide 参照）。
+     */
+    public function test_the_guide_after_a_reissue_goes_back_to_the_filtered_list(): void
+    {
+        $admin  = $this->admin();
+        $member = $this->member(['name' => '決裁 次郎']);
+        $list   = route('approvals.admin.users.index', ['kind' => 'approval', 'search' => '次郎']);
+
+        $html = $this->actingAs($admin)->get($list)->assertOk()->getContent();
+        $form = $this->parseForm($html, 'action="' . route('approvals.admin.users.reissue', $member) . '"');
+
+        $guide = $this->actingAs($admin)->from($list)->post($form['action'], $form['fields'])->assertOk();
+
+        $this->assertGuideGoesBackTo($guide, $list, $admin);
+    }
+
+    /** まとめて再発行も、絞り込みを保った一覧へ戻る（F2） */
+    public function test_the_guide_after_a_bulk_reissue_goes_back_to_the_filtered_list(): void
+    {
+        $admin = $this->admin();
+        $this->member(['name' => '田中 一郎']);
+        $list  = route('approvals.admin.users.index', ['search' => '田中']);
+
+        $html = $this->actingAs($admin)->get($list)->assertOk()->getContent();
+        $form = $this->parseForm($html, 'action="' . route('approvals.admin.users.reissueBulk') . '"');
+
+        // ⚠ `mode` は押したボタンの name/value（parseForm は <input> だけを見るので手で足す）
+        $guide = $this->actingAs($admin)->from($list)->post($form['action'], $form['fields'] + ['mode' => 'filtered'])->assertOk();
+
+        $this->assertGuideGoesBackTo($guide, $list, $admin);
     }
 
     public function test_a_base_user_cannot_be_reissued_here(): void

@@ -190,7 +190,7 @@ class PasswordReissueTest extends TestCase
         $this->assertSame(2, $result->notifiedCount);
         $this->assertSame(1, $result->skippedCount);
 
-        $html = $result->toGuide()->toResponse(request())->getContent();
+        $html = $result->toGuide('http://localhost/_test/back')->toResponse(request())->getContent();
 
         $this->assertStringContainsString('通知メール: 送る 2 人／送らない 1 人', $html, '送る人数と送らない人数が入れ替わっている');
     }

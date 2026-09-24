@@ -14,8 +14,9 @@ final class ReissueResult
         public readonly int $skippedCount,
     ) {}
 
-    public function toGuide(): LoginGuide
+    /** @param  string  $backUrl  「元の画面へ戻る」の行き先（入口が決める。LoginGuide の docblock 参照） */
+    public function toGuide(string $backUrl): LoginGuide
     {
-        return new LoginGuide($this->entries, $this->notifiedCount, $this->skippedCount);
+        return new LoginGuide($this->entries, $backUrl, $this->notifiedCount, $this->skippedCount);
     }
 }

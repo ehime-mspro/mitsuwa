@@ -162,7 +162,8 @@ class UserController extends Controller
         });
 
         // ⚠ リダイレクトしない。初期パスワードをセッションに入れないため（D12）
-        return (new LoginGuide([['user' => $user, 'password' => $password]]))->toResponse($request);
+        // 戻り先: 登録のフォームは一覧（GET の画面）に載っているので、リファラー＝絞り込み込みの一覧へ戻る（F2）
+        return (new LoginGuide([['user' => $user, 'password' => $password]], backUrl: url()->previous()))->toResponse($request);
     }
 
     /**
@@ -359,7 +360,8 @@ class UserController extends Controller
                 ->with('error', 'この操作はすでに実行されました。案内を印刷し直すには、もう一度再発行してください。');
         }
 
-        return (new PasswordReissuer())->reissue(collect([$user]))->toGuide()->toResponse($request);
+        // 戻り先: 再発行のフォームは一覧（GET の画面）に載っているので、リファラー＝絞り込み込みの一覧（F2）
+        return (new PasswordReissuer())->reissue(collect([$user]))->toGuide(url()->previous())->toResponse($request);
     }
 
     /**
