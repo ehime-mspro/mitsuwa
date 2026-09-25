@@ -216,12 +216,12 @@ class ImportControllerValidationRedirectScanTest extends TestCase
     public static function wrappedSamples(): array
     {
         return [
-            '今の書き方（catch の中の // コメント）' => [self::sample(<<<'PHP'
+            '今の書き方（catch の中の // コメント・引数の中の [ ]）' => [self::sample(<<<'PHP'
                 try {
                     $request->validate(['a' => 'required']);
                 } catch (ValidationException $e) {
                     // 取込の画面へ戻す
-                    throw $e->redirectTo(route('admin.sample-import'));
+                    throw $e->redirectTo(route('admin.sample-import', ['tab' => 'unit']));
                 }
                 PHP)],
             '完全な名前で書いた catch' => [self::sample(<<<'PHP'
@@ -330,6 +330,13 @@ class ImportControllerValidationRedirectScanTest extends TestCase
                     $request->validate([]);
                 } catch (ValidationException $e) {
                     throw $e->redirectTo(value(function () { return '/sample'; }));
+                }
+                PHP)],
+            'redirectTo の引数の中の属性つきクロージャ（#[…] の ] で深さをずらさない）' => [self::sample(<<<'PHP'
+                try {
+                    $request->validate([]);
+                } catch (ValidationException $e) {
+                    throw $e->redirectTo(value(function (#[\SensitiveParameter] $secret = null) { return '/sample'; }));
                 }
                 PHP)],
             'B: 連鎖の途中の呼び出しをはさむ（->errorBag(…)->redirectTo(…)）' => [self::sample(<<<'PHP'
@@ -495,7 +502,21 @@ class ImportControllerValidationRedirectScanTest extends TestCase
                 } catch (ValidationException $e) {
                     throw $e->redirectTo('/sample');
                 }
-                PHP, ''), '（use の無い ValidationException を受けている）'],
+                PHP, ''), '（Illuminate\\Validation\\ValidationException でない ValidationException を受けている）'],
+            '別の ValidationException を use した catch' => [self::sample(<<<'PHP'
+                try {
+                    $request->validate([]);
+                } catch (ValidationException $e) {
+                    throw $e->redirectTo('/sample');
+                }
+                PHP, "use App\\Exceptions\\ValidationException;\n"), '（Illuminate\\Validation\\ValidationException でない ValidationException を受けている）'],
+            '別の ValidationException を別名で use した catch（書いた名前でなく解決した名前で見る）' => [self::sample(<<<'PHP'
+                try {
+                    $request->validate([]);
+                } catch (AppValidationException $e) {
+                    throw $e->redirectTo('/sample');
+                }
+                PHP, "use App\\Exceptions\\ValidationException as AppValidationException;\n"), '（Illuminate\\Validation\\ValidationException でない ValidationException を受けている）'],
             'redirectTo の無い withMessages()（次の文の ->redirectTo( は続いたことにしない）' => [self::sample(<<<'PHP'
                 throw ValidationException::withMessages(['a' => 'x']);
                 $next->redirectTo('/sample');
@@ -607,6 +628,10 @@ class ImportControllerValidationRedirectScanTest extends TestCase
 
             public function union(EmailVerificationRequest|Request $request): void {}
 
+            public function intersection(EmailVerificationRequest&\Countable $request): void {}
+
+            public function dnf((EmailVerificationRequest&\Countable)|Request $request): void {}
+
             public function notAFormRequest(Request $request, int $id): void {}
 
             private function hidden(EmailVerificationRequest $request): void {}
@@ -616,6 +641,8 @@ class ImportControllerValidationRedirectScanTest extends TestCase
             'plain($request: ' . EmailVerificationRequest::class . ')',
             'nullable($request: ' . EmailVerificationRequest::class . ')',
             'union($request: ' . EmailVerificationRequest::class . ')',
+            'intersection($request: ' . EmailVerificationRequest::class . ')',
+            'dnf($request: ' . EmailVerificationRequest::class . ')',
         ], $this->formRequestParameters($sample));
     }
 
@@ -712,10 +739,10 @@ class ImportControllerValidationRedirectScanTest extends TestCase
         return $this->is($token, '{') || in_array($token[0], [T_CURLY_OPEN, T_DOLLAR_OPEN_CURLY_BRACES], true);
     }
 
-    /** 括弧を開くか（`(`・`[`・波括弧） */
+    /** 括弧を開くか（`(`・`[`・属性の `#[`・波括弧。`#[` は 1 つのトークンで、`]` で閉じる） */
     private function opens(array $token): bool
     {
-        return $this->is($token, '(') || $this->is($token, '[') || $this->opensBrace($token);
+        return $this->is($token, '(') || $this->is($token, '[') || $token[0] === T_ATTRIBUTE || $this->opensBrace($token);
     }
 
     /** 括弧を閉じるか */
@@ -885,7 +912,7 @@ class ImportControllerValidationRedirectScanTest extends TestCase
                     }
                 }
 
-                $catches[] =['types' => $types, 'var' => $var, 'open' => $k + 1, 'close' => $braces[$k + 1]];
+                $catches[] = ['types' => $types, 'var' => $var, 'open' => $k + 1, 'close' => $braces[$k + 1]];
                 $j = $braces[$k + 1] + 1;
             }
 
@@ -981,8 +1008,8 @@ class ImportControllerValidationRedirectScanTest extends TestCase
 
                     if ($resolved === self::VALIDATION_EXCEPTION) {
                         $catchesIt = true;
-                    } elseif (strcasecmp(substr((string) strrchr('\\' . $type, '\\'), 1), 'ValidationException') === 0) {
-                        $hint = '（use の無い ValidationException を受けている）';
+                    } elseif (str_ends_with('\\' . $resolved, '\\validationexception')) {   // 書いた名前でなく解決した名前で見る
+                        $hint = '（Illuminate\\Validation\\ValidationException でない ValidationException を受けている）';
                     }
                 }
 
