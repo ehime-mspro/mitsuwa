@@ -21,7 +21,10 @@ use Tests\TestCase;
  *
  *   A. 囲む try の catch のうち ValidationException を受け止める最初のものが、ValidationException を名指しし
  *      （`\Exception`・`\Throwable` が先に受け止めるなら不合格）、本体が `throw $<catch の変数>->redirectTo(…);` の 1 文だけ
- *   B. 投げる文そのものに `->redirectTo(` が続く（`throw ValidationException::withMessages([...])->redirectTo(…);`）
+ *   B. 例外を作る呼び出し（`::withMessages(`・`new ValidationException`）が throw の直後（括弧で括ってもよい）にあり、
+ *      その後ろのメソッドの連鎖に `->redirectTo(` がある（`throw ValidationException::withMessages([...])->redirectTo(…);`）。
+ *      `->validate(` などは例外を返さないので B では見ない（`withMessages()` の引数の中に書いた入力チェックは A で判定する）。
+ *      連鎖の外（`,`・`??`・`:` など）の後ろの `->redirectTo(` は、投げる式のものではないので数えない
  *
  * ⚠ A は内側の try から順に見て、受け止める最初の catch で決める（外側の try は見ない）。内側の catch が `throw $e;` と
  *   投げ直し、外側の catch がそれを受けて `redirectTo()` する形も不合格にする（厳しめの規則。設計書 §4.4）。
@@ -324,6 +327,12 @@ class ImportControllerValidationRedirectScanTest extends TestCase
                     throw $e->redirectTo(value(function () { return '/sample'; }));
                 }
                 PHP)],
+            'B: 連鎖の途中の呼び出しをはさむ（->errorBag(…)->redirectTo(…)）' => [self::sample(<<<'PHP'
+                throw ValidationException::withMessages(['a' => 'x'])->errorBag(strtolower('Import'))->redirectTo(route('admin.sample-import'));
+                PHP)],
+            'B: 引数の無い new ValidationException' => [self::sample(<<<'PHP'
+                throw (new ValidationException)->redirectTo('/sample');
+                PHP)],
         ];
     }
 
@@ -496,7 +505,42 @@ class ImportControllerValidationRedirectScanTest extends TestCase
             '引数の中の ->redirectTo( は続いたことにしない' => [self::sample(<<<'PHP'
                 throw ValidationException::withMessages(['a' => $x->redirectTo('/sample')]);
                 PHP), '（try の外）'],
+            'B: throw の無い withMessages()->redirectTo()' => [self::sample(<<<'PHP'
+                $e = ValidationException::withMessages(['a' => 'x'])->redirectTo('/sample');
+                PHP), '（try の外）'],
+            'B: match の腕の throw（, の後ろの ->redirectTo( は続いたことにしない）' => [self::sample(<<<'PHP'
+                $v = match (true) { $bad => throw ValidationException::withMessages(['a' => 'x']), default => $other->redirectTo('/sample'), };
+                PHP), '（try の外）'],
+            'B: ?? の後ろの throw（隣の引数の ->redirectTo( は続いたことにしない）' => [self::sample(<<<'PHP'
+                foo($x ?? throw ValidationException::withMessages(['a' => 'x']), $y->redirectTo('/sample'));
+                PHP), '（try の外）'],
+            'B: throw を括った括弧の外の ->redirectTo(' => [self::sample(<<<'PHP'
+                $x = (throw ValidationException::withMessages(['a' => 'x']))->redirectTo('/sample');
+                PHP), '（try の外）'],
+            'B: ?->redirectTo(' => [self::sample(<<<'PHP'
+                throw ValidationException::withMessages(['a' => 'x'])?->redirectTo('/sample');
+                PHP), '（try の外）'],
         ];
+    }
+
+    /** @return array<string, array{0: string, 1: list<array{0: string, 1: ?string}>}> 投げる呼び出しが 2 つある見本 => [形, 理由（包んであれば null）] */
+    public static function nestedCallSamples(): array
+    {
+        return [
+            'B: withMessages() の引数の中の入力チェックは包まれない' => [self::sample(<<<'PHP'
+                throw ValidationException::withMessages($request->validate(['a' => 'required']))->redirectTo(route('admin.sample-import'));
+                PHP), [['::withMessages(', null], ['->validate(', '（try の外）']]],
+            'B: new ValidationException() の引数の中の入力チェックは包まれない' => [self::sample(<<<'PHP'
+                throw (new ValidationException(Validator::make($data, [])->validate()))->redirectTo('/sample');
+                PHP), [['new ValidationException', null], ['->validate(', '（try の外）']]],
+        ];
+    }
+
+    /** B は例外を作る呼び出し（`::withMessages(`・`new ValidationException`）だけを見る。その引数の中の入力チェックは別に判定する */
+    #[DataProvider('nestedCallSamples')]
+    public function test_the_judge_judges_each_call_on_its_own(string $source, array $expected): void
+    {
+        $this->assertSame($expected, array_map(fn (array $call) => [$call['form'], $call['reason']], $this->analyze($source)));
     }
 
     #[DataProvider('unwrappedSamples')]
@@ -617,7 +661,7 @@ class ImportControllerValidationRedirectScanTest extends TestCase
         return array_map(fn (array $call) => [
             'line'   => $call['line'],
             'form'   => $call['form'],
-            'reason' => $this->unwrappedReason($tokens, $call['index'], $tries, $namespace, $imports),
+            'reason' => $this->unwrappedReason($tokens, $call, $tries, $namespace, $imports),
         ], $this->throwingCalls($tokens, $namespace, $imports));
     }
 
@@ -847,10 +891,12 @@ class ImportControllerValidationRedirectScanTest extends TestCase
     }
 
     /**
-     * 入力チェックの例外を投げる呼び出し（設計書 §4.3 の 7 形）。index は判定に使うトークンの位置。
+     * 入力チェックの例外を投げる呼び出し（設計書 §4.3 の形）。index は判定に使うトークンの位置。
+     * 例外を作る呼び出し（`::withMessages(`・`new ValidationException`）だけは、B の判定に使う
+     * 式の頭（head）と呼び出しの後ろの位置（after）も返す（ほかは null）。
      *
      * @param  array<string, string>  $imports
-     * @return list<array{index: int, line: int, form: string}>
+     * @return list<array{index: int, line: int, form: string, head: ?int, after: ?int}>
      */
     private function throwingCalls(array $tokens, string $namespace, array $imports): array
     {
@@ -865,18 +911,27 @@ class ImportControllerValidationRedirectScanTest extends TestCase
             if (in_array($token[0], [T_OBJECT_OPERATOR, T_NULLSAFE_OBJECT_OPERATOR], true)
                 && in_array($calledName, ['validate', 'validatewithbag', 'validated'], true)) {
                 // ->validate(・?->validate(・->validateWithBag(・->validated(
-                $calls[] = ['index' => $i + 1, 'line' => $next[2], 'form' => $token[1] . $next[1] . '('];
+                $calls[] = ['index' => $i + 1, 'line' => $next[2], 'form' => $token[1] . $next[1] . '(', 'head' => null, 'after' => null];
             } elseif ($token[0] === T_DOUBLE_COLON && in_array($calledName, ['validate', 'withmessages'], true)) {
-                // ::validate(・::withMessages(
-                $calls[] = ['index' => $i + 1, 'line' => $next[2], 'form' => '::' . $next[1] . '('];
+                // ::validate(・::withMessages(（withMessages() は例外を作る。頭は :: の前のクラス名）
+                $constructs = $calledName === 'withmessages';
+                $calls[] = [
+                    'index' => $i + 1, 'line' => $next[2], 'form' => '::' . $next[1] . '(',
+                    'head'  => $constructs ? $i - 1 : null,
+                    'after' => $constructs ? $this->afterParens($tokens, $i + 2) : null,
+                ];
             } elseif ($token[0] === T_NEW && $this->isName($next)
                 && $this->resolve($next[1], $namespace, $imports) === self::VALIDATION_EXCEPTION) {
-                // new ValidationException
-                $calls[] = ['index' => $i, 'line' => $token[2], 'form' => 'new ' . $next[1]];
+                // new ValidationException（引数の括弧は省けるので、無ければクラス名の次から）
+                $calls[] = [
+                    'index' => $i, 'line' => $token[2], 'form' => 'new ' . $next[1],
+                    'head'  => $i,
+                    'after' => $this->is($after, '(') ? $this->afterParens($tokens, $i + 2) : $i + 2,
+                ];
             } elseif ($this->isName($token) && $next[0] === T_DOUBLE_COLON && $after[0] === T_CLASS
                 && $this->resolve($token[1], $namespace, $imports) === self::VALIDATION_EXCEPTION) {
                 // ValidationException::class（throw_if() などに渡す）
-                $calls[] = ['index' => $i, 'line' => $token[2], 'form' => $token[1] . '::class'];
+                $calls[] = ['index' => $i, 'line' => $token[2], 'form' => $token[1] . '::class', 'head' => null, 'after' => null];
             }
         }
 
@@ -886,18 +941,20 @@ class ImportControllerValidationRedirectScanTest extends TestCase
     /**
      * 呼び出しが包んであれば null、包んでいなければ理由（設計書 §4.4 の A・B）。
      *
+     * @param  array{index: int, line: int, form: string, head: ?int, after: ?int}  $call
      * @param  list<array{open: int, close: int, catches: list<array{types: list<string>, var: ?string, open: int, close: int}>}>  $tries
      * @param  array<string, string>  $imports
      */
-    private function unwrappedReason(array $tokens, int $call, array $tries, string $namespace, array $imports): ?string
+    private function unwrappedReason(array $tokens, array $call, array $tries, string $namespace, array $imports): ?string
     {
-        // B. 投げる文そのものに ->redirectTo( が続く
-        if ($this->throwBefore($tokens, $call) && $this->redirectToAfter($tokens, $call)) {
+        // B. 例外を作る呼び出しが throw の直後にあり、その後ろのメソッドの連鎖に ->redirectTo( がある
+        if ($call['head'] !== null && $this->thrownWithRedirectTo($tokens, $call['head'], $call['after'])) {
             return null;
         }
 
         // A. 囲む try を内側から外へたどり、ValidationException を受け止める最初の catch で決める
-        $enclosing = array_values(array_filter($tries, fn (array $try) => $try['open'] < $call && $call < $try['close']));
+        $index = $call['index'];
+        $enclosing = array_values(array_filter($tries, fn (array $try) => $try['open'] < $index && $index < $try['close']));
         usort($enclosing, fn (array $a, array $b) => $b['open'] <=> $a['open']);
 
         if ($enclosing === []) {
@@ -972,66 +1029,67 @@ class ImportControllerValidationRedirectScanTest extends TestCase
         return false;
     }
 
-    /** 同じ文の中で、呼び出しより前に throw があるか（呼び出しを囲む ( [ の外へは出る。{ } ; で止まる） */
-    private function throwBefore(array $tokens, int $call): bool
+    /**
+     * 例外を作る式（頭が $head）が throw の直後（括弧で括ってもよい）にあり、その後ろ（$after から）が
+     * 括りの閉じとメソッドの連鎖だけで、連鎖の中に `->redirectTo(` があるか（設計書 §4.4 の B）。
+     * 連鎖の外（`,`・`;`・`??`・`:` など）に出たら、そこから後ろの `->redirectTo(` は投げる式のものではない。
+     */
+    private function thrownWithRedirectTo(array $tokens, int $head, int $after): bool
     {
-        $depth = 0;
+        $none = [null, '', 0];
+        $groups = 0;
+        $j = $head - 1;
 
-        for ($j = $call - 1; $j >= 0; $j--) {
-            $token = $tokens[$j];
+        while ($this->is($tokens[$j] ?? $none, '(')) {   // throw (new ValidationException(…)) の括り
+            $groups++;
+            $j--;
+        }
 
-            if ($this->closes($token)) {
-                if ($depth === 0 && $this->is($token, '}')) {
-                    return false;   // 前のブロックの終わり
-                }
+        if (($tokens[$j][0] ?? null) !== T_THROW) {
+            return false;
+        }
 
-                $depth++;
-            } elseif ($this->opens($token)) {
-                if ($depth === 0 && $this->opensBrace($token)) {
-                    return false;   // この文を囲むブロックの始まり
-                }
+        for ($k = $after; isset($tokens[$k]);) {
+            $token = $tokens[$k];
 
-                $depth = max(0, $depth - 1);   // 入れ子を閉じる（0 のときは呼び出しを囲む ( [ の外へ出る）
-            } elseif ($depth === 0 && $this->is($token, ';')) {
-                return false;
-            } elseif ($depth === 0 && $token[0] === T_THROW) {
+            if ($this->is($token, ')') && $groups > 0) {   // 括りを閉じる
+                $groups--;
+                $k++;
+
+                continue;
+            }
+
+            $method = $tokens[$k + 1] ?? $none;
+
+            if (! in_array($token[0], [T_OBJECT_OPERATOR, T_NULLSAFE_OBJECT_OPERATOR], true)
+                || $method[0] !== T_STRING || ! $this->is($tokens[$k + 2] ?? $none, '(')) {
+                return false;   // 連鎖の外に出た
+            }
+
+            if ($token[0] === T_OBJECT_OPERATOR && strcasecmp($method[1], 'redirectTo') === 0) {
                 return true;
             }
+
+            $k = $this->afterParens($tokens, $k + 2);   // 連鎖の途中の呼び出し（->errorBag(…) など）を飛ばす
         }
 
         return false;
     }
 
-    /** 同じ文の中で、呼び出しより後ろ（入れ子の外）に ->redirectTo( が続くか */
-    private function redirectToAfter(array $tokens, int $call): bool
+    /** $open の `(` と対応する `)` の次の位置（対応が無ければ末尾） */
+    private function afterParens(array $tokens, int $open): int
     {
-        $none = [null, '', 0];
         $depth = 0;
-        $count = count($tokens);
 
-        for ($j = $call + 1; $j < $count; $j++) {
-            $token = $tokens[$j];
-
-            if ($this->opens($token)) {
+        for ($k = $open; isset($tokens[$k]); $k++) {
+            if ($this->is($tokens[$k], '(')) {
                 $depth++;
-            } elseif ($this->closes($token)) {
-                if ($depth === 0 && $this->is($token, '}')) {
-                    return false;   // この文を囲むブロックの終わり
-                }
-
-                $depth = max(0, $depth - 1);   // 入れ子を閉じる（0 のときは呼び出しを囲む ) ] の外へ出る）
-            } elseif ($depth === 0 && $this->is($token, ';')) {
-                return false;
-            } elseif ($depth === 0 && $token[0] === T_OBJECT_OPERATOR) {
-                $method = $tokens[$j + 1] ?? $none;
-
-                if ($method[0] === T_STRING && strcasecmp($method[1], 'redirectTo') === 0 && $this->is($tokens[$j + 2] ?? $none, '(')) {
-                    return true;
-                }
+            } elseif ($this->is($tokens[$k], ')') && --$depth === 0) {
+                return $k + 1;
             }
         }
 
-        return false;
+        return $k;
     }
 
     /**
