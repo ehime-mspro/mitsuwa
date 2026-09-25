@@ -49,8 +49,10 @@ final class OneTimeAction
         //    **新規登録も再発行も 1 回目から無言で止まる**（実測）。クラッシュより気づきにくい。
         $hours = max(1, (int) config('approval.guide_token_ttl_hours'));
 
-        // ⚠ `Cache::add` は「無ければ入れる」を**一度に**行う（本番の database ドライバは
-        //    key の主キー制約で本当に排他的）。`has()` してから `put()` に書き換えると、
+        // ⚠ `Cache::add` は「無ければ入れる」を**一度に**行う（本番のキャッシュは file ドライバで、
+        //    `FileStore::add()` がファイルの排他ロックを取ってから書くので本当に排他的。
+        //    2026-09-25 に本番の `config('cache.default')` で確かめた。database ドライバでも
+        //    key の主キー制約で排他的）。`has()` してから `put()` に書き換えると、
         //    二重送信が両方通る余地ができる。下の構造テストがこれを守る。
         return Cache::add(self::cacheKey($token), true, now()->addHours($hours));
     }
