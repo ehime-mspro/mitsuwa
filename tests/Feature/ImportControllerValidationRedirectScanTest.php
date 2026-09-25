@@ -557,6 +557,9 @@ class ImportControllerValidationRedirectScanTest extends TestCase
             'B: ?->redirectTo(' => [self::sample(<<<'PHP'
                 throw ValidationException::withMessages(['a' => 'x'])?->redirectTo('/sample');
                 PHP), '（try の外）'],
+            'B: 例外を作らない ::validate( に続く ->redirectTo(（B で見るのは例外を作る呼び出しだけ）' => [self::sample(<<<'PHP'
+                throw Validator::validate($data, ['a' => 'required'])->redirectTo('/sample');
+                PHP), '（try の外）'],
         ];
     }
 
