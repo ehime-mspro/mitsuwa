@@ -49,8 +49,19 @@ use Tests\TestCase;
  *   - 見本に無い書き方（検出する形 ＝ `->validate(`・`?->validate(`・`->validateWithBag(`・`->validated(`・`->safe(`・
  *     `->validateWith(`・`::validate(`・`::withMessages(`・`::validateWithBag(`・`new ValidationException`・
  *     `ValidationException::class` のほかの投げ方。`namespace\ValidationException` のような相対名も含む）
+ *   - `redirectTo()` に渡す値が null になりうる形（`redirectTo(session('…'))` など）。null なら既定の戻り先
+ *     （`redirectTo ?? url()->previous()`。Foundation の例外ハンドラの invalid()）へ戻る。渡す値の中身は見ない
+ *   - 内側の catch が `redirectTo()` して投げ直した例外を、外側の try の catch（`\Exception`・`\Throwable` など）が
+ *     受け止めて別の応答にする形（受け止める最初の catch で決めるので、外側は見ない。その catch が `back()` を
+ *     返すなら `ImportControllerReturnPathScanTest` が拾う）
+ *   - FormRequest をメソッドの中でコンテナから作る形（`app(XxxRequest::class)`。作った時点で入力チェックが走り、
+ *     戻り先はリファラー。Reflection は public メソッドの引数の型しか見ない。続けて `->validated(` を呼べば
+ *     そちらは包んでいない呼び出しとして拾う）
+ *   - ALLOWED は件数で見るので、載せたファイルの中で包んでいない呼び出しを 1 つ直し、別の 1 つを包まずに足すと
+ *     緑のまま（行番号で見ると、関係のない編集で行がずれるたびに落ちるので件数にした）
  * ⚠ 拾いすぎるもの: 呼び出し元のメソッドで包んだ形（メソッドをまたぐと見えない）・`fails()` を確かめた後の
- *   `validated()`・別の物の `validate()`。呼び出しのすぐ外で包む形に直すか、ALLOWED に理由つきで載せる
+ *   `validated()`・別の物の `validate()`・`throw ($e->redirectTo(…));` のように投げ直しを括弧で括った形。
+ *   呼び出しのすぐ外で包む形・`throw $e->redirectTo(…);` の形に直すか、ALLOWED に理由つきで載せる
  *   （検出を緩めない）。
  */
 class ImportControllerValidationRedirectScanTest extends TestCase
