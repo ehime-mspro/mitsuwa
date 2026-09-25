@@ -46,7 +46,9 @@ use Tests\TestCase;
  *   - `*ImportController.php` という名前でない取込（仕入れ案件・分譲地の原価の一括取込。詳細画面（GET）から
  *     JS で送るので 405 の形ではない。設計書 §2.5）
  *   - try の中で作って、try の外で呼ばれるクロージャ（字面では包まれて見える）
- *   - 見本に無い書き方（検出する 7 形のほかの投げ方。`namespace\ValidationException` のような相対名も含む）
+ *   - 見本に無い書き方（検出する形 ＝ `->validate(`・`?->validate(`・`->validateWithBag(`・`->validated(`・`->safe(`・
+ *     `->validateWith(`・`::validate(`・`::withMessages(`・`::validateWithBag(`・`new ValidationException`・
+ *     `ValidationException::class` のほかの投げ方。`namespace\ValidationException` のような相対名も含む）
  * ⚠ 拾いすぎるもの: 呼び出し元のメソッドで包んだ形（メソッドをまたぐと見えない）・`fails()` を確かめた後の
  *   `validated()`・別の物の `validate()`。呼び出しのすぐ外で包む形に直すか、ALLOWED に理由つきで載せる
  *   （検出を緩めない）。
@@ -174,6 +176,9 @@ class ImportControllerValidationRedirectScanTest extends TestCase
             'as の別名の new'              => [self::sample('throw new InvalidInput($v);', "use Illuminate\\Validation\\ValidationException as InvalidInput;\n"), ['new InvalidInput']],
             '小文字のクラス名の new'       => [self::sample('throw new validationexception($v);'), ['new validationexception']],
             '先頭に \ のある use'           => [self::sample('throw new ValidationException($v);', "use \\Illuminate\\Validation\\ValidationException;\n"), ['new ValidationException']],
+            '->safe(（中で validated() を呼ぶ）' => [self::sample('$ok = Validator::make($data, [])->safe()->only([\'a\']);'), ['->safe(']],
+            '->validateWith('               => [self::sample('$this->validateWith($validator, $request);'), ['->validateWith(']],
+            '::validateWithBag(（ファサード）' => [self::sample('Request::validateWithBag(\'import\', [\'a\' => \'required\']);'), ['::validateWithBag(']],
         ];
     }
 
@@ -909,11 +914,11 @@ class ImportControllerValidationRedirectScanTest extends TestCase
             $calledName = $next[0] === T_STRING && $this->is($after, '(') ? strtolower($next[1]) : null;
 
             if (in_array($token[0], [T_OBJECT_OPERATOR, T_NULLSAFE_OBJECT_OPERATOR], true)
-                && in_array($calledName, ['validate', 'validatewithbag', 'validated'], true)) {
-                // ->validate(・?->validate(・->validateWithBag(・->validated(
+                && in_array($calledName, ['validate', 'validatewithbag', 'validated', 'safe', 'validatewith'], true)) {
+                // ->validate(・?->validate(・->validateWithBag(・->validated(・->safe(（中で validated() を呼ぶ）・->validateWith(
                 $calls[] = ['index' => $i + 1, 'line' => $next[2], 'form' => $token[1] . $next[1] . '(', 'head' => null, 'after' => null];
-            } elseif ($token[0] === T_DOUBLE_COLON && in_array($calledName, ['validate', 'withmessages'], true)) {
-                // ::validate(・::withMessages(（withMessages() は例外を作る。頭は :: の前のクラス名）
+            } elseif ($token[0] === T_DOUBLE_COLON && in_array($calledName, ['validate', 'withmessages', 'validatewithbag'], true)) {
+                // ::validate(・::withMessages(・::validateWithBag(（withMessages() は例外を作る。頭は :: の前のクラス名）
                 $constructs = $calledName === 'withmessages';
                 $calls[] = [
                     'index' => $i + 1, 'line' => $next[2], 'form' => '::' . $next[1] . '(',
