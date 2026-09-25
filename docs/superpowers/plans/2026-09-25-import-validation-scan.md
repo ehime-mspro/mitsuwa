@@ -40,12 +40,17 @@
 
 | # | 事柄 | 決めたこと | 理由 |
 |---|---|---|---|
-| 1 | 「まとめた use」の範囲 | `use A\{B, C};` と `use A\B, C\D;` の**両方**を解析できないとする | どちらも 1 文で 2 つ以上を読み込み、名前の解決を推測することになる |
+| 1 | 「まとめた use」の範囲 | `use A\{B, C};` と `use A\B, C\D;` の**両方**を解析できないとする | どちらも 1 文で 2 つ以上を読み込む。決まった手順で解決はできるが（ここに「推測することになる」と書いていたのは不正確。レビュー M-8）、走査はその読み方を持たないので、読み違えて包み方を誤判定するより落とす（安全側）|
 | 2 | 解析できない書き方を 1 つ足す | 冒頭（波括弧の外）の `use` の後に名前が続かない（冒頭に書いたクロージャなど）→「読めない use」 | 推測しない方針（設計書 §4.3）。実物には無い |
 | 3 | クラス名の大文字小文字 | メソッド名と同じく**区別しない**（`catch (\illuminate\validation\validationexception $e)` も受け止めるとみなす）| PHP と同じ規則 |
 | 4 | 設計書 §4.8 に無い見本を 12 足した | 本体が `return $e->redirectTo(…)`／別のメソッドで投げ直す／`redirectTo` が呼び出しでない／内側の catch で決める／クロージャの `use`／`use function`・`use const`／先頭に `\` のある `use`／修飾名の catch（`Validation\ValidationException`）／`redirectTo` の引数の中の `;`／次の文の `->redirectTo(` は続いたことにしない／冒頭のクロージャの `use`／`new` の見本に `use \…` | 試作に変異を当てて、見本の無い分かれ目を見つけたため（Bug #61 ③「見本の無い分かれ目は消しても緑」）|
-| 5 | 届かない守りを持たない | try・catch の後の `{` の有無の確認・`as` の後の確認・属性 `#[` の括弧の数え方は書かない | 正しい PHP では必ず成り立つ／文の中に現れず、どの見本でも確かめられない（見本の無い分かれ目を作らない）|
-| 6 | 変異の数 | 本番のコード 18＋カナリア 1（全件で流す）・テスト 46（走査の 2 本だけで流す）＝ **65 通り**（設計書 §5.2 の見込み 30〜40 より多い）| テスト側は分かれ目ごとに 1 つずつ当てるため。テスト側は 1 通り数秒で済む（下の「テスト側の変異を 2 本だけで流す理由」）|
+| 5 | 届かない守りを持たない | try・catch の後の `{` の有無の確認・`as` の後の確認は書かない | 正しい PHP では必ず成り立つ（見本の無い分かれ目を作らない）。⚠ ここには「属性 `#[` は文の中に現れず、括弧の数え方は書かない」とも書いていたが誤りだった（レビュー M-8。クロージャ・アロー関数・無名クラスとその引数に付けられる）。`redirectTo` の引数の中の属性つきクロージャで深さがずれて不合格になったので、`#[` を括弧の開きとして数え、見本を置いた（`7ee185aa`）|
+| 6 | 変異の数 | 本番のコード 18＋カナリア 1（全件で流す）・テスト 46（走査の 2 本だけで流す）＝ **65 通り**（設計書 §5.2 の見込み 30〜40 より多い）。レビューの後に最後のコードへ当て直した 2 回目は、本番のコード 18＋カナリア・テスト 73＋カナリア | テスト側は分かれ目ごとに 1 つずつ当てるため。テスト側は 1 通り数秒で済む（下の「テスト側の変異を 2 本だけで流す理由」）|
+| 7 | B（投げる文に `->redirectTo(` が続く）の範囲 | 例外を作る呼び出し（`::withMessages(`・`new ValidationException`）が `throw` の直後（括弧で括ってもよい）にあり、その後ろの**メソッドの連鎖**に `->redirectTo(` がある形に限る（`?->redirectTo(` は数えない）。`->validate(`・`::validate(` などは B では見ない（`b3529b06`・`4b605a0b`）| 設計書 §4.4 の「同じ文の中で呼び出しより後ろに `->redirectTo(` が続く」では、`withMessages()` の引数の中の入力チェックや、`match` の腕・`??` の隣の式の `->redirectTo(` まで包んであるとみなした（レビュー M-1。直す前と後の実測は下の「独立レビュー」）|
+| 8 | 検出する形 | 設計書 §4.3 の 7 形に `->safe(`・`->validateWith(`・`::validateWithBag(` を足した（`25fadf7e`）| どれも既定の戻り先がリファラーの例外を投げる（レビュー M-4）|
+| 9 | 別の ValidationException を受けたときの理由 | 「（use の無い ValidationException を受けている）」をやめ、書いた名前でなく解決した名前で判定して「（Illuminate\Validation\ValidationException でない ValidationException を受けている）」にした（`7ee185aa`）| `use App\Exceptions\ValidationException;` のように use があっても「use の無い」と出ていた（レビュー M-8）|
+| 10 | 既存の走査の「リファラー」 | `url()->previousPath()`・`URL::previousPath()` も拾う（`d8da2211`）| `previousPath()` もリファラーから作る。2 本の走査とも緑のまま 405 になる形だった（レビュー I-1）|
+| 11 | 見えないもの・拾いすぎるもの | 設計書 §4.9 に加えて、`redirectTo()` に渡す値が null になりうる形・外側の総称の catch が投げ直しを受け止める形・コンテナから作る FormRequest・例外リストを件数で見ること、拾いすぎとして投げ直しを括弧で括った形を docblock に書いた（`2485e6b3`・`b61f6995`）。既存の走査にも、呼び出し元が `$request` でない形・大文字小文字の違い・別名やコンテナから取る形・`REQUEST_URI`・今のルート名へ戻す形と、記録やビューに渡す `path()`・`current()` の拾いすぎを書いた（`251dae2c`）| レビュー M-2・M-3・M-4・M-5・M-6・M-8 で、直さずに記録すると決めたもの（理由は下の「独立レビュー」）|
 
 ⚠ **内側の catch で決める規則は厳しめ**（設計書 §4.4 のとおり）。内側の catch が `throw $e;` と投げ直し、外側の catch がそれを受けて `redirectTo()` する形は、実行すると取込の画面へ戻るが、走査は不合格にする（見本「内側の try の catch で決める（外側の catch は見ない）」で固定）。直すときは内側の catch を 1 文の形にする。
 
@@ -54,7 +59,7 @@
 | 区分 | ファイル | 中身 |
 |---|---|---|
 | テスト（新規）| `tests/Concerns/ScansImportControllers.php` | `*ImportController.php` の列挙と下限 8 本（2 本の走査で共用）|
-| テスト（新規）| `tests/Feature/ImportControllerValidationRedirectScanTest.php` | 本体（78 本）|
+| テスト（新規）| `tests/Feature/ImportControllerValidationRedirectScanTest.php` | 本体（78 本。レビューの後に 94 本）|
 | テスト（変更）| `tests/Feature/ImportControllerReturnPathScanTest.php` | 列挙をトレイトへ・「今の URL」の検出・docblock |
 | 記録 | この計画 ／ `docs/RULES.md`（Bug #64 の 1 段落）／ `docs/BACKLOG.md`（節を 1 つ・既存の節の 2 行）／ `CLAUDE.md`（1 行）| — |
 
@@ -2305,27 +2310,302 @@ git -C /Users/masanori/site/manage status --porcelain && git -C /Users/masanori/
 
 ---
 
-## 実測記録（実装のときに書く）
+## 実測記録
 
 ### 全件テスト
 
 | 時点 | 結果 |
 |---|---|
-| 着手前（Task 0）| |
-| Task 6 の後 | |
-| Task 8 の後（最後）| |
+| 着手前（Task 0）| OK (2169 tests, 14567 assertions) |
+| Task 6 の後（`2f226d04`）| OK (2247 tests, 14735 assertions)（見込みどおり）|
+| レビューの後（`4b605a0b`）| OK (2263 tests, 14765 assertions)（+16 本＝レビューの後に足した見本）|
+| 最後（Task 10。`b61f6995` ＋ 文書）| OK (2263 tests, 14765 assertions) |
 
-### 変異テスト（本番のコード・全件）
+### 変異テスト（1 回目・レビューの前のコード `2f226d04`）
 
-| ID | 着弾（`git diff --stat`）| 落ちたテスト | 理由（1 行目）| 期待どおりか |
+隔離した worktree 3 つ（`git worktree add --detach`・vendor は `cp -Rc` で実体コピー）で、どれもカナリアから流した。
+実行役 `mutate.py`（scratchpad）が 1 通りごとに、作業ツリーが空・置き換えがちょうど 1 か所・`git diff --stat` の着弾・`--log-junit`・戻して空、を確かめる。
+**65 通り＋カナリアがすべて期待どおり。** 走査の理由の詳細の行は、変異を 1 つずつ当てて走査 2 本だけを流して取った（`detail_lines.py`）。
+
+#### 本番のコード（全件）
+
+| ID | 着弾（`git diff --stat`）| 落ちたテスト | 理由（走査は詳細の行・挙動のテストは 1 行目）| 期待どおりか |
 |---|---|---|---|---|
+| C0（a・b・c）| 1 file changed, 1 insertion(+), 1 deletion(-) | 3 つのコピーとも `ImportValidationFeedbackTest`（顧客CSV） だけ | テスト自身の文言「差し戻し先 /admin/customers/import に理由が出ていない」。原因は画面の 500（`View [admin.customers.import-canary] not found.`。使い捨てのテストで確認）| ✅ 落ちたテストと原因は期待どおり（計画書の期待は理由の書き方が不正確だった）|
+| M01 | 1 file changed, 3 insertions(+), 8 deletions(-) | `ImportValidationFeedbackTest`（テナントCSV） ＋ `TenantImportRejectionTest`（ファイルを選ばずに送った） ＋ `ImportControllerValidationRedirectScanTest` | 「/admin/tenant-import/property の差し戻し先が違う」 ／ 「取込の画面（unit タブ）へ戻っていない（確認画面の URL へ戻ると GET で 405）」 ／ 走査「`Admin/TenantImportController.php: 包んでいない呼び出しが 1 件（分類は 0）: :1264 ->validate(（try の外）`」 | ✅ |
+| M02 | 1 file changed, 3 insertions(+), 8 deletions(-) | `ImportValidationFeedbackTest`（賃貸マンションCSV） ＋ `MansionImportRejectionTest`（ファイルを選ばずに送った） ＋ `ImportControllerValidationRedirectScanTest` | 「/admin/mansion-import/property の差し戻し先が違う」 ／ 「取込の画面（room タブ）へ戻っていない（確認画面の URL へ戻ると GET で 405）」 ／ 走査「`Admin/MansionImportController.php: 包んでいない呼び出しが 1 件（分類は 0）: :1391 ->validate(（try の外）`」 | ✅ |
+| M03 | 1 file changed, 3 insertions(+), 8 deletions(-) | `ZealMemberImportControllerTest` ＋ `ImportControllerValidationRedirectScanTest` | 「取込の画面へ戻っていない（確認画面の URL へ戻ると GET で 405）」 ／ 走査「`Admin/ZealMemberImportController.php: 包んでいない呼び出しが 1 件（分類は 0）: :233 ->validate(（try の外）`」 | ✅ |
+| M04 | 1 file changed, 8 insertions(+), 13 deletions(-) | `ApprovalUserImportTest`（ファイルを選び忘れた） ＋ `ImportControllerValidationRedirectScanTest` | 「取込の画面へ戻っていない（preview へ戻ると GET で 405）」 ／ 走査「`Approval/UserImportController.php: 包んでいない呼び出しが 1 件（分類は 0）: :72 ->validate(（try の外）`」 | ✅ |
+| M05 | 1 file changed, 3 insertions(+), 8 deletions(-) | `ApprovalUserImportTest` ＋ `ImportControllerValidationRedirectScanTest` | 「取込の画面へ戻っていない（preview へ戻ると GET で 405）」 ／ 走査「`Approval/UserImportController.php: 包んでいない呼び出しが 1 件（分類は 0）: :102 ->validate(（try の外）`」 | ✅ |
+| M06 | 1 file changed, 3 insertions(+), 8 deletions(-) | `ScheduleImportTest`（送り直し: ファイルを選ばなかった） ＋ `ImportControllerValidationRedirectScanTest` | 「取込の画面へ戻っていない（確認画面の URL へ戻ると GET で 405）」 ／ 走査「`Housing/ScheduleImportController.php: 包んでいない呼び出しが 1 件（分類は 0）: :55 ->validate(（try の外）`」 | ✅ |
+| M07 | 1 file changed, 3 insertions(+), 7 deletions(-) | `ScheduleImportTest`（確定: 取り込む工程が無い） ＋ `ImportControllerValidationRedirectScanTest` | 「取込の画面へ戻っていない（確認画面の URL へ戻ると GET で 405）」 ／ 走査「`Housing/ScheduleImportController.php: 包んでいない呼び出しが 1 件（分類は 0）: :90 ->validate(（try の外）`」 | ✅ |
+| M08 | 1 file changed, 1 insertion(+), 1 deletion(-) | `ImportControllerValidationRedirectScanTest` | 走査「`Admin/TenantImportController.php: 包んでいない呼び出しが 1 件（分類は 0）: :1265 ->validate(（\Exception の catch が先に受け止める）`」 | ✅ |
+| M09 | 1 file changed, 1 insertion(+), 1 deletion(-) | `ImportControllerValidationRedirectScanTest` | 走査「`Admin/MansionImportController.php: 包んでいない呼び出しが 1 件（分類は 0）: :1392 ->validate(（\Throwable の catch が先に受け止める）`」 | ✅ |
+| M10 | 1 file changed, 2 insertions(+) | `ZealMemberImportControllerTest` ＋ `ImportControllerValidationRedirectScanTest` | 「取込の画面へ戻っていない（確認画面の URL へ戻ると GET で 405）」 ／ 走査「`Admin/ZealMemberImportController.php: 包んでいない呼び出しが 1 件（分類は 0）: :234 ->validate(（\Exception の catch が先に受け止める）`」 | ✅ |
+| M11 | 1 file changed, 1 insertion(+), 1 deletion(-) | `ApprovalUserImportTest`（ファイルを選び忘れた） ＋ `ImportControllerValidationRedirectScanTest` | 「取込の画面へ戻っていない（preview へ戻ると GET で 405）」 ／ 走査「`Approval/UserImportController.php: 包んでいない呼び出しが 1 件（分類は 0）: :73 ->validate(（catch の本体が throw $e->redirectTo(…) の 1 文でない）`」 | ✅ |
+| M12 | 1 file changed, 3 insertions(+) | `ImportControllerValidationRedirectScanTest` | 走査「`Housing/ScheduleImportController.php: 包んでいない呼び出しが 1 件（分類は 0）: :91 ->validate(（catch の本体が throw $e->redirectTo(…) の 1 文でない）`」 | ✅ |
+| M13 | 1 file changed, 1 deletion(-) | `ImportValidationFeedbackTest`（テナントCSV） ＋ `TenantImportRejectionTest`（ファイルを選ばずに送った） ＋ `ImportControllerValidationRedirectScanTest` | 「/admin/tenant-import/property の差し戻し先が違う」 ／ 「取込の画面（unit タブ）へ戻っていない（確認画面の URL へ戻ると GET で 405）」 ／ 走査「`Admin/TenantImportController.php: 包んでいない呼び出しが 1 件（分類は 0）: :1264 ->validate(（use の無い ValidationException を受けている）`」 | ✅ |
+| M14 | 1 file changed, 1 insertion(+), 1 deletion(-) | `ImportValidationFeedbackTest`（賃貸マンションCSV） ＋ `MansionImportRejectionTest`（ファイルを選ばずに送った） ＋ `ImportControllerReturnPathScanTest` | 「/admin/mansion-import/property の差し戻し先が違う」 ／ 「取込の画面（room タブ）へ戻っていない（確認画面の URL へ戻ると GET で 405）」 ／ 走査「`Admin/MansionImportController.php: 件数が 1（分類は 0）: :1397 url()->current(`」 | ✅ |
+| M15 | 1 file changed, 1 insertion(+), 1 deletion(-) | `ScheduleImportTest`（送り直し: ファイルを選ばなかった） ＋ `ImportControllerReturnPathScanTest` | 「取込の画面へ戻っていない（確認画面の URL へ戻ると GET で 405）」 ／ 走査「`Housing/ScheduleImportController.php: 件数が 1（分類は 0）: :61 $request->path(`」 | ✅ |
+| M16 | 1 file changed, 11 insertions(+), 7 deletions(-) | `ImportControllerValidationRedirectScanTest` | 走査「`Admin/CustomerImportController.php: 包んでいない呼び出しが 0 件（分類は 1）: `」 | ✅ |
+| M17 | ?? app/Http/Controllers/Admin/SampleImportController.php | `ImportControllerValidationRedirectScanTest` | 走査「`Admin/SampleImportController.php: 包んでいない呼び出しが 1 件（分類は 0）: :12 ->validate(（try の外）`」 | ✅ |
+| M18 | 1 file changed, 4 insertions(+) | `ImportControllerValidationRedirectScanTest` | 走査「`Zeal/SheetImportController.php: sampleFormRequest($request: Illuminate\Foundation\Auth\EmailVerificationRequest)`」 | ✅ |
 
-### 変異テスト（テスト・走査の 2 本）
+#### テスト（走査の 2 本）
 
-| ID | 落ちたテスト | 期待どおりか |
-|---|---|---|
+試作に当てた 46 通りと同じ定義を、worktree の本物のコードに当てた（試作の実測と同じ集合・同じ理由かを突き合わせた）。
 
-### 独立レビュー
-
-| # | 指摘 | 実測 | 対応 |
+| ID | 着弾 | 落ちたテスト（本数）| 期待どおりか |
 |---|---|---|---|
+| X01 | 1 file changed, 1 insertion(+), 1 deletion(-) | 1 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X02 | 1 file changed, 1 insertion(+), 1 deletion(-) | 1 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X03 | 1 file changed, 1 insertion(+), 1 deletion(-) | 1 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X04 | 1 file changed, 1 insertion(+), 1 deletion(-) | 4 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X05 | 1 file changed, 1 insertion(+), 1 deletion(-) | 6 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X06 | 1 file changed, 1 insertion(+), 1 deletion(-) | 1 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X07 | 1 file changed, 1 insertion(+), 1 deletion(-) | 6 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X08 | 1 file changed, 1 insertion(+), 1 deletion(-) | 3 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X09 | 1 file changed, 1 insertion(+), 1 deletion(-) | 1 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X10 | 1 file changed, 3 deletions(-) | 4 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X11 | 1 file changed, 1 insertion(+), 1 deletion(-) | 1 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X12 | 1 file changed, 1 insertion(+), 1 deletion(-) | 1 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X13 | 1 file changed, 1 deletion(-) | 1 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X14 | 1 file changed, 1 insertion(+), 1 deletion(-) | 1 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X15 | 1 file changed, 1 insertion(+), 1 deletion(-) | 1 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X16 | 1 file changed, 1 insertion(+), 1 deletion(-) | 1 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X17 | 1 file changed, 1 insertion(+), 1 deletion(-) | 2 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X18 | 1 file changed, 1 deletion(-) | 1 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X19 | 1 file changed, 1 insertion(+), 1 deletion(-) | 1 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X20 | 1 file changed, 1 insertion(+), 1 deletion(-) | 1 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X21 | 1 file changed, 1 insertion(+), 1 deletion(-) | 2 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X22 | 1 file changed, 1 insertion(+), 1 deletion(-) | 1 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X23 | 1 file changed, 2 deletions(-) | 1 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X24 | 1 file changed, 1 insertion(+), 1 deletion(-) | 31 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X25 | 1 file changed, 1 insertion(+), 1 deletion(-) | 1 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X26 | 1 file changed, 1 insertion(+), 1 deletion(-) | 1 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X27 | 1 file changed, 1 insertion(+), 1 deletion(-) | 1 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X28 | 1 file changed, 2 insertions(+), 2 deletions(-) | 3 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X29 | 1 file changed, 1 insertion(+), 1 deletion(-) | 2 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X30 | 1 file changed, 3 deletions(-) | 1 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X31 | 1 file changed, 1 insertion(+), 1 deletion(-) | 1 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X32 | 1 file changed, 1 insertion(+), 1 deletion(-) | 1 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X33 | 1 file changed, 1 insertion(+), 1 deletion(-) | 1 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X34 | 1 file changed, 1 insertion(+), 1 deletion(-) | 1 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X35 | 1 file changed, 1 insertion(+), 1 deletion(-) | 3 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X36 | 1 file changed, 1 insertion(+), 1 deletion(-) | 1 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X37 | 1 file changed, 1 insertion(+), 1 deletion(-) | 1 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X38 | 1 file changed, 1 insertion(+), 1 deletion(-) | 1 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X39 | 1 file changed, 1 insertion(+), 1 deletion(-) | 1 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X40 | 1 file changed, 1 insertion(+) | 1 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X41 | 1 file changed, 1 insertion(+), 1 deletion(-) | 5 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X42 | 1 file changed, 1 deletion(-) | 1 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X43 | 1 file changed, 1 insertion(+), 1 deletion(-) | 1 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X44 | 1 file changed, 1 insertion(+), 1 deletion(-) | 1 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X45 | 1 file changed, 1 insertion(+), 1 deletion(-) | 1 本（試作の実測と同じ集合・同じ理由）| ✅ |
+| X46 | 1 file changed, 1 insertion(+), 1 deletion(-) | 1 本（試作の実測と同じ集合・同じ理由）| ✅ |
+
+### 変異テスト（2 回目・レビューの後の最後のコード `4b605a0b`）
+
+レビューで直した後の最後のコードに当て直した（`b61f6995` はコメントだけの差）。実行役は `mutate2.py`（`mutate.py` の手順をそのまま使い、定義だけを差し替える）。
+隔離した worktree 4 つ（本番のコード 3・走査 1。どれもカナリアから）。**本番のコード 18 通り＋カナリア（3 つのコピー）・テスト 73 通り＋カナリアがすべて期待どおり。**
+走査の理由の詳細の行は、1 回目と比べて M13 の理由の文言（レビューで直したもの）だけが変わり、ほかは同じだった。
+
+#### 本番のコード（全件。隔離した worktree 3 つ・それぞれカナリアから）
+
+| ID | 着弾（`git diff --stat`）| 落ちたテスト | 1 回目（`2f226d04`）と比べて | 期待どおりか |
+|---|---|---|---|---|
+| C0（コピー a） | 1 file changed, 1 insertion(+), 1 deletion(-) | 1 本: `ImportValidationFeedbackTest`  | 同じ集合 | ✅ |
+| C0（コピー b） | 1 file changed, 1 insertion(+), 1 deletion(-) | 1 本: `ImportValidationFeedbackTest`  | 同じ集合 | ✅ |
+| C0（コピー c） | 1 file changed, 1 insertion(+), 1 deletion(-) | 1 本: `ImportValidationFeedbackTest`  | 同じ集合 | ✅ |
+| M01 | 1 file changed, 3 insertions(+), 8 deletions(-) | 3 本: `ImportControllerValidationRedirectScanTest` ＋ `ImportValidationFeedbackTest` ＋ `TenantImportRejectionTest` ／ 走査「`app/Http/Controllers/Admin/TenantImportController.php: 包んでいない呼び出しが 1 件（分類は 0）: :1264 ->validate(（try の外）`」 | 同じ集合 | ✅ |
+| M02 | 1 file changed, 3 insertions(+), 8 deletions(-) | 3 本: `ImportControllerValidationRedirectScanTest` ＋ `ImportValidationFeedbackTest` ＋ `MansionImportRejectionTest` ／ 走査「`app/Http/Controllers/Admin/MansionImportController.php: 包んでいない呼び出しが 1 件（分類は 0）: :1391 ->validate(（try の外）`」 | 同じ集合 | ✅ |
+| M03 | 1 file changed, 3 insertions(+), 8 deletions(-) | 2 本: `ImportControllerValidationRedirectScanTest` ＋ `ZealMemberImportControllerTest` ／ 走査「`app/Http/Controllers/Admin/ZealMemberImportController.php: 包んでいない呼び出しが 1 件（分類は 0）: :233 ->validate(（try の外）`」 | 同じ集合 | ✅ |
+| M04 | 1 file changed, 8 insertions(+), 13 deletions(-) | 2 本: `ApprovalUserImportTest` ＋ `ImportControllerValidationRedirectScanTest` ／ 走査「`app/Http/Controllers/Approval/UserImportController.php: 包んでいない呼び出しが 1 件（分類は 0）: :72 ->validate(（try の外）`」 | 同じ集合 | ✅ |
+| M05 | 1 file changed, 3 insertions(+), 8 deletions(-) | 2 本: `ApprovalUserImportTest` ＋ `ImportControllerValidationRedirectScanTest` ／ 走査「`app/Http/Controllers/Approval/UserImportController.php: 包んでいない呼び出しが 1 件（分類は 0）: :102 ->validate(（try の外）`」 | 同じ集合 | ✅ |
+| M06 | 1 file changed, 3 insertions(+), 8 deletions(-) | 2 本: `ImportControllerValidationRedirectScanTest` ＋ `ScheduleImportTest` ／ 走査「`app/Http/Controllers/Housing/ScheduleImportController.php: 包んでいない呼び出しが 1 件（分類は 0）: :55 ->validate(（try の外）`」 | 同じ集合 | ✅ |
+| M07 | 1 file changed, 3 insertions(+), 7 deletions(-) | 2 本: `ImportControllerValidationRedirectScanTest` ＋ `ScheduleImportTest` ／ 走査「`app/Http/Controllers/Housing/ScheduleImportController.php: 包んでいない呼び出しが 1 件（分類は 0）: :90 ->validate(（try の外）`」 | 同じ集合 | ✅ |
+| M08 | 1 file changed, 1 insertion(+), 1 deletion(-) | 1 本: `ImportControllerValidationRedirectScanTest` ／ 走査「`app/Http/Controllers/Admin/TenantImportController.php: 包んでいない呼び出しが 1 件（分類は 0）: :1265 ->validate(（\Exception の catch が先に受け止める）`」 | 同じ集合 | ✅ |
+| M09 | 1 file changed, 1 insertion(+), 1 deletion(-) | 1 本: `ImportControllerValidationRedirectScanTest` ／ 走査「`app/Http/Controllers/Admin/MansionImportController.php: 包んでいない呼び出しが 1 件（分類は 0）: :1392 ->validate(（\Throwable の catch が先に受け止める）`」 | 同じ集合 | ✅ |
+| M10 | 1 file changed, 2 insertions(+) | 2 本: `ImportControllerValidationRedirectScanTest` ＋ `ZealMemberImportControllerTest` ／ 走査「`app/Http/Controllers/Admin/ZealMemberImportController.php: 包んでいない呼び出しが 1 件（分類は 0）: :234 ->validate(（\Exception の catch が先に受け止める）`」 | 同じ集合 | ✅ |
+| M11 | 1 file changed, 1 insertion(+), 1 deletion(-) | 2 本: `ApprovalUserImportTest` ＋ `ImportControllerValidationRedirectScanTest` ／ 走査「`app/Http/Controllers/Approval/UserImportController.php: 包んでいない呼び出しが 1 件（分類は 0）: :73 ->validate(（catch の本体が throw $e->redirectTo(…) の 1 文でない）`」 | 同じ集合 | ✅ |
+| M12 | 1 file changed, 3 insertions(+) | 1 本: `ImportControllerValidationRedirectScanTest` ／ 走査「`app/Http/Controllers/Housing/ScheduleImportController.php: 包んでいない呼び出しが 1 件（分類は 0）: :91 ->validate(（catch の本体が throw $e->redirectTo(…) の 1 文でない）`」 | 同じ集合 | ✅ |
+| M13 | 1 file changed, 1 deletion(-) | 3 本: `ImportControllerValidationRedirectScanTest` ＋ `ImportValidationFeedbackTest` ＋ `TenantImportRejectionTest` ／ 走査「`app/Http/Controllers/Admin/TenantImportController.php: 包んでいない呼び出しが 1 件（分類は 0）: :1264 ->validate(（Illuminate\Validation\ValidationException でない ValidationException を受けている）`」 | 同じ集合（走査の理由の文言だけが新しい文言に変わった） | ✅ |
+| M14 | 1 file changed, 1 insertion(+), 1 deletion(-) | 3 本: `ImportControllerReturnPathScanTest` ＋ `ImportValidationFeedbackTest` ＋ `MansionImportRejectionTest` ／ 走査「`app/Http/Controllers/Admin/MansionImportController.php: 件数が 1（分類は 0）: :1397 url()->current(`」 | 同じ集合 | ✅ |
+| M15 | 1 file changed, 1 insertion(+), 1 deletion(-) | 2 本: `ImportControllerReturnPathScanTest` ＋ `ScheduleImportTest` ／ 走査「`app/Http/Controllers/Housing/ScheduleImportController.php: 件数が 1（分類は 0）: :61 $request->path(`」 | 同じ集合 | ✅ |
+| M16 | 1 file changed, 11 insertions(+), 7 deletions(-) | 1 本: `ImportControllerValidationRedirectScanTest` ／ 走査「`app/Http/Controllers/Admin/CustomerImportController.php: 包んでいない呼び出しが 0 件（分類は 1）: `」 | 同じ集合 | ✅ |
+| M17 | ?? app/Http/Controllers/Admin/SampleImportController.php | 1 本: `ImportControllerValidationRedirectScanTest` ／ 走査「`app/Http/Controllers/Admin/SampleImportController.php: 包んでいない呼び出しが 1 件（分類は 0）: :12 ->validate(（try の外）`」 | 同じ集合 | ✅ |
+| M18 | 1 file changed, 4 insertions(+) | 1 本: `ImportControllerValidationRedirectScanTest` ／ 走査「`app/Http/Controllers/Zeal/SheetImportController.php: sampleFormRequest($request: Illuminate\Foundation\Auth\EmailVerificationRequest)`」 | 同じ集合 | ✅ |
+
+#### テスト（走査の 2 本。隔離した worktree 1 つ・カナリア C1 から）
+
+レビューで足した・変えた分岐（R）とカナリア:
+
+| ID | 変異 | 落ちたテスト | 期待どおりか |
+|---|---|---|---|
+| C1 | カナリア: 投げる呼び出しの総数の下限を 99 に | 1 本: `ImportControllerValidationRedirectScanTest::test_the_scan_finds_the_calls_that_throw_validation_exceptions` | ✅ |
+| R01 | `->` の一覧から `safe` を外す | 1 本: `ImportControllerValidationRedirectScanTest::test_the_detector_finds_each_form_of_call_that_throws`「->safe(（中で validated() を呼ぶ）」 | ✅ |
+| R02 | `->` の一覧から `validatewith` を外す | 1 本: `ImportControllerValidationRedirectScanTest::test_the_detector_finds_each_form_of_call_that_throws`「->validateWith(」 | ✅ |
+| R03 | `::` の一覧から `validatewithbag` を外す | 1 本: `ImportControllerValidationRedirectScanTest::test_the_detector_finds_each_form_of_call_that_throws`「::validateWithBag(（ファサード）」 | ✅ |
+| R04 | `::` の一覧から `validate` を外す | 2 本: `ImportControllerValidationRedirectScanTest::test_the_detector_finds_each_form_of_call_that_throws`「::validate(」 ／ `ImportControllerValidationRedirectScanTest::test_the_judge_rejects_the_unwrapped_forms`「B: 例外を作らない ::validate( に続く ->redirectTo(（B で見るのは例外を作る呼び出しだけ）」 | ✅ |
+| R05 | 理由の文言を、解決した名前でなく書いた名前で判定する（直す前の形） | 1 本: `ImportControllerValidationRedirectScanTest::test_the_judge_rejects_the_unwrapped_forms`「別の ValidationException を別名で use した catch（書いた名前でなく解決した名前で見る）」 | ✅ |
+| R06 | B を丸ごと外す | 6 本: `ImportControllerValidationRedirectScanTest::test_the_judge_accepts_the_wrapped_forms`「withMessages() に続く ->redirectTo(」 ／ `ImportControllerValidationRedirectScanTest::test_the_judge_accepts_the_wrapped_forms`「(new ValidationException()) に続く ->redirectTo(」 ／ `ImportControllerValidationRedirectScanTest::test_the_judge_accepts_the_wrapped_forms`「B: 連鎖の途中の呼び出しをはさむ（->errorBag(…)->redirectTo(…)）」 ／ `ImportControllerValidationRedirectScanTest::test_the_judge_accepts_the_wrapped_forms`「B: 引数の無い new ValidationException」 ／ `ImportControllerValidationRedirectScanTest::test_the_judge_judges_each_call_on_its_own`「B: withMessages() の引数の中の入力チェックは包まれない」 ／ `ImportControllerValidationRedirectScanTest::test_the_judge_judges_each_call_on_its_own`「B: new ValidationException() の引数の中の入力チェックは包まれない」 | ✅ |
+| R07 | B で throw を括った括弧をたどらない | 3 本: `ImportControllerValidationRedirectScanTest::test_the_judge_accepts_the_wrapped_forms`「(new ValidationException()) に続く ->redirectTo(」 ／ `ImportControllerValidationRedirectScanTest::test_the_judge_accepts_the_wrapped_forms`「B: 引数の無い new ValidationException」 ／ `ImportControllerValidationRedirectScanTest::test_the_judge_judges_each_call_on_its_own`「B: new ValidationException() の引数の中の入力チェックは包まれない」 | ✅ |
+| R08 | B で「throw の直後」を確かめない | 1 本: `ImportControllerValidationRedirectScanTest::test_the_judge_rejects_the_unwrapped_forms`「B: throw の無い withMessages()->redirectTo()」 | ✅ |
+| R09 | B の連鎖で括りの `)` を閉じない | 3 本: `ImportControllerValidationRedirectScanTest::test_the_judge_accepts_the_wrapped_forms`「(new ValidationException()) に続く ->redirectTo(」 ／ `ImportControllerValidationRedirectScanTest::test_the_judge_accepts_the_wrapped_forms`「B: 引数の無い new ValidationException」 ／ `ImportControllerValidationRedirectScanTest::test_the_judge_judges_each_call_on_its_own`「B: new ValidationException() の引数の中の入力チェックは包まれない」 | ✅ |
+| R10 | B の連鎖で、括りの無い `)` も閉じたことにする | 1 本: `ImportControllerValidationRedirectScanTest::test_the_judge_rejects_the_unwrapped_forms`「B: throw を括った括弧の外の ->redirectTo(」 | ✅ |
+| R11 | B の連鎖の外に出ても探し続ける | 4 本: `ImportControllerValidationRedirectScanTest::test_the_judge_rejects_the_unwrapped_forms`「redirectTo の無い withMessages()（次の文の ->redirectTo( は続いたことにしない）」 ／ `ImportControllerValidationRedirectScanTest::test_the_judge_rejects_the_unwrapped_forms`「B: match の腕の throw（, の後ろの ->redirectTo( は続いたことにしない）」 ／ `ImportControllerValidationRedirectScanTest::test_the_judge_rejects_the_unwrapped_forms`「B: ?? の後ろの throw（隣の引数の ->redirectTo( は続いたことにしない）」 ／ `ImportControllerValidationRedirectScanTest::test_the_judge_rejects_the_unwrapped_forms`「B: throw を括った括弧の外の ->redirectTo(」 | ✅ |
+| R12 | B で `?->redirectTo(` も数える | 1 本: `ImportControllerValidationRedirectScanTest::test_the_judge_rejects_the_unwrapped_forms`「B: ?->redirectTo(」 | ✅ |
+| R13 | B の連鎖の途中の呼び出しを飛ばさない | 1 本: `ImportControllerValidationRedirectScanTest::test_the_judge_accepts_the_wrapped_forms`「B: 連鎖の途中の呼び出しをはさむ（->errorBag(…)->redirectTo(…)）」 | ✅ |
+| R14 | 括弧の対応（`afterParens`）で入れ子を数えない | 3 本: `ImportControllerValidationRedirectScanTest::test_the_judge_accepts_the_wrapped_forms`「B: 連鎖の途中の呼び出しをはさむ（->errorBag(…)->redirectTo(…)）」 ／ `ImportControllerValidationRedirectScanTest::test_the_judge_judges_each_call_on_its_own`「B: withMessages() の引数の中の入力チェックは包まれない」 ／ `ImportControllerValidationRedirectScanTest::test_the_judge_judges_each_call_on_its_own`「B: new ValidationException() の引数の中の入力チェックは包まれない」 | ✅ |
+| R15 | 引数の無い `new ValidationException` の後ろを、括弧があるものとして読む | 1 本: `ImportControllerValidationRedirectScanTest::test_the_judge_accepts_the_wrapped_forms`「B: 引数の無い new ValidationException」 | ✅ |
+| R16 | B を例外を作らない呼び出し（`::validate(`・`::validateWithBag(`）にも当てる | 1 本: `ImportControllerValidationRedirectScanTest::test_the_judge_rejects_the_unwrapped_forms`「B: 例外を作らない ::validate( に続く ->redirectTo(（B で見るのは例外を作る呼び出しだけ）」 | ✅ |
+| R18 | 括弧の開きから属性の `#[` を外す | 1 本: `ImportControllerValidationRedirectScanTest::test_the_judge_accepts_the_wrapped_forms`「redirectTo の引数の中の属性つきクロージャ（#[…] の ] で深さをずらさない）」 | ✅ |
+| R19 | 括弧の開きから `[` を外す | 2 本: `ImportControllerValidationRedirectScanTest::test_import_controllers_send_every_validation_failure_to_a_fixed_page` ／ `ImportControllerValidationRedirectScanTest::test_the_judge_accepts_the_wrapped_forms`「今の書き方（catch の中の // コメント・引数の中の [ ]）」 | ✅ |
+| R21 | FormRequest の型から交差型を外す | 1 本: `ImportControllerValidationRedirectScanTest::test_the_form_request_detector_sees_every_shape_of_type` | ✅ |
+| R22 | FormRequest の DNF 型の中の交差型をたどらない | 1 本: `ImportControllerValidationRedirectScanTest::test_the_form_request_detector_sees_every_shape_of_type` | ✅ |
+| R23 | 既存の走査: `URL::` の後読みを外す | 1 本: 既存の走査の自己テスト「拾うべきでない: $u = ShortURL::current();」 | ✅ |
+| R24 | 既存の走査: `previousPath(` を外す | 1 本: 既存の走査の自己テスト「拾えていない: throw $e->redirectTo(url()->previousPath());」 | ✅ |
+| R25 | 既存の走査: `app('url')->` を外す | 1 本: 既存の走査の自己テスト「拾えていない: return redirect(app('url')->current());」 | ✅ |
+| R26 | 既存の走査: `full(` を外す（`current(` だけ） | 1 本: 既存の走査の自己テスト「拾えていない: return redirect(url()->full());」 | ✅ |
+| R27 | 既存の走査: `getUri(`・`getRequestUri(` を外す | 1 本: 既存の走査の自己テスト「拾えていない: return redirect($request->getUri());」 | ✅ |
+| R28 | 既存の走査: `url()` の後読みから `>` を外す | 1 本: 既存の走査の自己テスト「拾うべきでない: $u = $menu->url()->current();」 | ✅ |
+| R29 | 既存の走査: `url()` の後読みから `:` を外す | 1 本: 既存の走査の自己テスト「拾うべきでない: $u = Menu::url()->current();」 | ✅ |
+| R30 | 既存の走査: `url()` の後読みから `$` を外す | 1 本: 既存の走査の自己テスト「拾うべきでない: $u = $url()->current();」 | ✅ |
+| R31 | 既存の走査: `url()` の後読みから `\w` を外す | 1 本: 既存の走査の自己テスト「拾うべきでない: $u = shorturl()->current();」 | ✅ |
+| R32 | 既存の走査: `$request` と `->` の間の空白を許さない（レビューの探り R-M4） | 1 本: 既存の走査の自己テスト「拾えていない: return redirect($request -> fullUrlWithQuery(['a' => 1]));」 | ✅ |
+
+1 回目の X（43 通り。X21〜X23 は投げる式の判定を書き直したので捨てた。X01〜X04・X19・X20・X42・X43・X45 は今のコードに合わせて置き換えた）はすべて赤。落ちた本数が 1 回目と変わったのは、レビューの後に足した見本の分だけ: X04 4 → 11 本・X05 6 → 8 本・X07 6 → 15 本・X15 1 → 2 本・X20 1 → 3 本・X24 31 → 35 本。ほかは 1 回目と同じ本数。
+
+⚠ **R16 は見本を足す前のコミット（`2485e6b3`）では緑のまま通った**（落ちたテスト 0。同じ定義を隔離した worktree で当てた）。
+B を例外を作る呼び出しだけに限る分かれ目（`$constructs`）に見本が無かったので、`4b605a0b` で見本「B: 例外を作らない `::validate(` に続く `->redirectTo(`」を足して赤にした。
+レビューの探りにあった R-M4（`$request` と `->` の間の空白）も R32 として当て、以前からある見本 `return redirect($request -> fullUrlWithQuery(['a' => 1]));` で赤になることを確かめた。
+
+### 独立レビュー（1 回・`2b7b5bad..2f226d04`）
+
+Important 1・Minor 8。どれも実測で再現してから、直すか docblock に書いた。
+「実測」の列は、直す前（`2f226d04`）と最後（`4b605a0b`）の両方に同じ探りを当てた結果（`analyze()` の `[形, 理由]`。既存の走査は `returnsToReferer()` の件数と形。null＝合格）。
+
+| # | 指摘 | 実測（直す前 → 最後）| 対応 |
+|---|---|---|---|
+| I-1 | 既存の走査が `url()->previousPath()`・`URL::previousPath()`（リファラーから作る）を拾わない。新しい走査は包み方だけを見るので、2 本とも緑のまま 405 になる | どちらも `[]`（拾わない）→ `->previousPath(`・`::previousPath(` を 1 件ずつ拾う | 直した（`d8da2211`。`previous(?:Path)?`・見本 2 つ）。変異 R24 で赤 |
+| M-1 | B の判定が緩い: 投げる式の引数の中の入力チェック（a `withMessages($request->validate(…))`・b `new ValidationException(Validator::make(…)->validate())`）や、`match` の腕（c）・`??` の隣の引数（d）の `->redirectTo(` まで包んであるとみなす | a・b の内側の `->validate(` と c・d の `::withMessages(` が null → どれも「（try の外）」（a・b の外側の投げる式は null のまま）| 直した（`b3529b06`。B を「例外を作る呼び出しが throw の直後にあり、その後ろのメソッドの連鎖に `->redirectTo(`」に限る）。見本 9 つ（包んである 2・包んでいない 5・1 つずつ判定する 2）。変異 R06〜R15 で赤 |
+| M-2 | `redirectTo()` に null（null になりうる式）を渡す形が、どちらの走査にも見えない（null なら例外ハンドラの `redirectTo ?? url()->previous()` でリファラーへ戻る）| `redirectTo(session('x'))` は null → null（変わらず）| docblock の「見えないもの」に書いた（`2485e6b3`）。リテラルの `null` だけを落としても、null になりうる式は見えないままなので、判定は足さなかった |
+| M-3 | 内側で `redirectTo()` した例外を外側の総称の catch が受け止める形を合格にする（405 にはならないが、入力チェックのエラーが一般のエラーに化ける）| null → null（変わらず）| docblock に書いた（`2485e6b3`）。外側の catch が `back()` を返すなら既存の走査が拾う |
+| M-4 | 検出の漏れ: `->safe(`（中で `validated()` を呼ぶ）・`Request::validateWithBag(`・`$this->validateWith(`・コンテナから作る FormRequest | 3 つとも `[]` → `->safe(`・`::validateWithBag(`・`->validateWith(` を拾う | 3 つを検出に足した（`25fadf7e`・見本 3 つ）。変異 R01〜R03 で赤。コンテナから作る FormRequest は docblock に書いた（続けて `->validated(` を呼べばそちらを拾う＝実測）|
+| M-5 | 例外リストが件数だけで、どの呼び出しを許したかを固定していない（`updateUrls` を包み、`apply()` に包まない入力チェックを足しても緑）| 件数で見るまま | docblock に書いた（`2485e6b3`・`b61f6995`）。呼び出しを囲むメソッドの名前で固定する形（提案）は、メソッドを探す解析とその見本が要るので見送った |
+| M-6 | 既存の走査の見落とし（`$request` の決め打ち・大文字小文字・別名やコンテナ・`REQUEST_URI`・今のルート名）と拾いすぎ（記録やビューに渡す `path()`・`current()`・`Foo\Request::url()`）| 実物 8 本には 0 件 | docblock に書いた（`251dae2c`）|
+| M-7 | 見本の無い分かれ目: B の門番（throw の前をたどる判定の呼び出しと、その `;`・`}`・`{` の止まり）・`opens()` の `[`・交差型・理由の文言の大文字小文字・既存の走査の後読みの `$` | レビューの変異でそれぞれ緑 | B は書き直したので、新しい分かれ目ごとに見本を置いた（R06〜R16 で赤）。`[`・`#[`・交差型・DNF 型の見本を足した（`7ee185aa`。R18・R19・R21・R22 で赤）。理由は解決した（小文字の）名前で判定するので、大文字小文字の分かれ目は無くなった。後読みは `Request::`・`URL::` の前の `$` を外し（変数のクラス名の呼び出しは拾いすぎても害が小さい）、`url()` の前の `$` は見本で押さえた（`251dae2c`。R23・R28〜R31・X45・X46 で赤）|
+| M-8 | 誤報: 別の ValidationException を use した catch に「use の無い」と出る・`throw ($e->redirectTo(…));` が「1 文でない」・属性 `#[` で深さがずれて「1 文でない」・計画書の #1 #5 の記述・空白の抜け | 「（use の無い…）」→「（Illuminate\Validation\ValidationException でない…）」／「1 文でない」→ 変わらず ／「1 文でない」→ null | 理由の文言・`#[`・空白を直した（`7ee185aa`。R05・R18 で赤）。括弧で括った投げ直しは「拾いすぎるもの」に書いた（`2485e6b3`）。計画書の #1 #5 を直した（上の「設計書との違い」）|
+
+レビューの後に自分で見つけたもの: 変異を組み直す途中で、B を例外を作る呼び出しだけに限る分かれ目（`$constructs`）に見本が無いことに気づいた（上の R16。`4b605a0b`）。
+
+### 付録: 2 回目の実行役 `mutate2.py`
+
+Task 7 の `mutate.py` と同じ scratchpad に置き、`python3 mutate2.py --iso <隔離した worktree> [ID ...]` で流す（`--list` で定義の一覧）。
+
+```python
+#!/usr/bin/env python3
+"""取込の入力チェックの走査（2026-09-25）の変異テスト — レビュー後の最終コード用の定義。
+
+手順（作業ツリーが空・置き換えがちょうど 1 か所・着弾の確認・--log-junit・戻して空の確認）は mutate.py の main をそのまま使う。
+ここでは定義だけを差し替える:
+  - C0・M01〜M18 は mutate.py のまま（本番のコードは変えていない）
+  - X01〜X46 のうち、レビューで書き換えたコードを指すものは今のコードに合わせて置き換える
+    （X21〜X23 は投げる式の判定を書き直したので捨て、R06〜R16 に置き換える）
+  - R01〜R31 はレビュー後に足した・変えた分岐。C1 は走査 2 本だけを流す隔離 worktree のカナリア
+"""
+import importlib.util, os, sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+spec = importlib.util.spec_from_file_location("mutate", os.path.join(HERE, "mutate.py"))
+base = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(base)
+V, R = base.V, base.R
+
+ARROW_LIST = "['validate', 'validatewithbag', 'validated', 'safe', 'validatewith']"
+COLON_LIST = "['validate', 'withmessages', 'validatewithbag']"
+OPENS = "return $this->is($token, '(') || $this->is($token, '[') || $token[0] === T_ATTRIBUTE || $this->opensBrace($token);"
+HINT = r"$hint = '（Illuminate\\Validation\\ValidationException でない ValidationException を受けている）';"
+URL_LOOKBEHIND = r"(?<![\w$>:])url\s*\("
+
+OVERRIDES = {
+    "X01": ("scan", V, ARROW_LIST, "['validate', 'validated', 'safe', 'validatewith']"),
+    "X02": ("scan", V, ARROW_LIST, "['validate', 'validatewithbag', 'safe', 'validatewith']"),
+    "X03": ("scan", V,
+            "if (in_array($token[0], [T_OBJECT_OPERATOR, T_NULLSAFE_OBJECT_OPERATOR], true)\n                && in_array($calledName",
+            "if (in_array($token[0], [T_OBJECT_OPERATOR], true)\n                && in_array($calledName"),
+    "X04": ("scan", V, COLON_LIST, "['validate', 'validatewithbag']"),
+    "X19": ("scan", V,
+            "fn (array $try) => $try['open'] < $index && $index < $try['close']",
+            "fn (array $try) => $try['open'] < $index && $index < ($try['catches'] === [] ? $try['close'] : $try['catches'][array_key_last($try['catches'])]['close'])"),
+    "X20": ("scan", V, HINT, "$hint = null;"),
+    "X42": ("scan", R,
+            "            '/(?:(?<![\\w$>:])url\\s*\\(\\s*\\)\\s*->|(?<!\\w)URL\\s*::|app\\s*\\(\\s*[\\'\"]url[\\'\"]\\s*\\)\\s*->)\\s*(?:current|full)\\s*\\(/',\n",
+            ""),
+    "X43": ("scan", R, r"|(?<!\w)Request\s*::)", ")"),
+    "X45": ("scan", R, r"|(?<!\w)Request\s*::)", r"|Request\s*::)"),
+}
+DROPPED = {"X21", "X22", "X23"}
+
+ADDED = [
+    # ---- 隔離 worktree（走査だけを流す側）のカナリア ----
+    ("C1", "scan", V, "private const MIN_THROWING_CALLS = 10;", "private const MIN_THROWING_CALLS = 99;"),
+    # ---- 検出する形（レビューの M-4 で足した分と ::validate( ）----
+    ("R01", "scan", V, ARROW_LIST, "['validate', 'validatewithbag', 'validated', 'validatewith']"),
+    ("R02", "scan", V, ARROW_LIST, "['validate', 'validatewithbag', 'validated', 'safe']"),
+    ("R03", "scan", V, COLON_LIST, "['validate', 'withmessages']"),
+    ("R04", "scan", V, COLON_LIST, "['withmessages', 'validatewithbag']"),
+    # ---- 理由の文言（書いた名前でなく解決した名前で見る）----
+    ("R05", "scan", V,
+        r"str_ends_with('\\' . $resolved, '\\validationexception')",
+        r"strcasecmp(substr((string) strrchr('\\' . $type, '\\'), 1), 'ValidationException') === 0"),
+    # ---- B（投げる式に ->redirectTo( が続く。レビューの M-1 で書き直した）----
+    ("R06", "scan", V, "if ($call['head'] !== null && $this->thrownWithRedirectTo($tokens, $call['head'], $call['after'])) {", "if (false) {"),
+    ("R07", "scan", V, "while ($this->is($tokens[$j] ?? $none, '(')) {", "while (false) {"),
+    ("R08", "scan", V, "        if (($tokens[$j][0] ?? null) !== T_THROW) {\n            return false;\n        }\n", ""),
+    ("R09", "scan", V, "if ($this->is($token, ')') && $groups > 0) {", "if (false) {"),
+    ("R10", "scan", V, "if ($this->is($token, ')') && $groups > 0) {", "if ($this->is($token, ')')) {"),
+    ("R11", "scan", V, "                return false;   // 連鎖の外に出た", "                $k++;\n\n                continue;   // 連鎖の外に出た"),
+    ("R12", "scan", V, "if ($token[0] === T_OBJECT_OPERATOR && strcasecmp($method[1], 'redirectTo') === 0) {", "if (strcasecmp($method[1], 'redirectTo') === 0) {"),
+    ("R13", "scan", V, "$k = $this->afterParens($tokens, $k + 2);   // 連鎖の途中の呼び出し（->errorBag(…) など）を飛ばす", "return false;"),
+    ("R14", "scan", V, "} elseif ($this->is($tokens[$k], ')') && --$depth === 0) {", "} elseif ($this->is($tokens[$k], ')')) {"),
+    ("R15", "scan", V, "'after' => $this->is($after, '(') ? $this->afterParens($tokens, $i + 2) : $i + 2,", "'after' => $this->afterParens($tokens, $i + 2),"),
+    ("R16", "scan", V,
+        "'head'  => $constructs ? $i - 1 : null,\n                    'after' => $constructs ? $this->afterParens($tokens, $i + 2) : null,",
+        "'head'  => $i - 1,\n                    'after' => $this->afterParens($tokens, $i + 2),"),
+    # ---- 括弧の深さ（レビューの M-7・M-8）----
+    ("R18", "scan", V, OPENS, "return $this->is($token, '(') || $this->is($token, '[') || $this->opensBrace($token);"),
+    ("R19", "scan", V, OPENS, "return $this->is($token, '(') || $token[0] === T_ATTRIBUTE || $this->opensBrace($token);"),
+    # ---- FormRequest の型（交差型・DNF 型）----
+    ("R21", "scan", V,
+        r"if ($type instanceof \ReflectionUnionType || $type instanceof \ReflectionIntersectionType) {",
+        r"if ($type instanceof \ReflectionUnionType) {"),
+    ("R22", "scan", V,
+        r"return array_merge(...array_map(fn (\ReflectionType $inner) => $this->classNamesIn($inner), $type->getTypes()));",
+        r"return array_merge(...array_map(fn (\ReflectionType $inner) => $inner instanceof \ReflectionNamedType ? [$inner->getName()] : [], $type->getTypes()));"),
+    # ---- 既存の走査に足した分岐 ----
+    ("R23", "scan", R, r"|(?<!\w)URL\s*::|", r"|URL\s*::|"),
+    ("R24", "scan", R, r"previous(?:Path)?\s*\(", r"previous\s*\("),
+    ("R25", "scan", R, r"|app\s*\(\s*[\'" + '"' + r"]url[\'" + '"' + r"]\s*\)\s*->)", ")"),
+    ("R26", "scan", R, r"\s*(?:current|full)\s*\(/'", r"\s*(?:current)\s*\(/'"),
+    ("R27", "scan", R, "|getUri|getRequestUri|path|", "|path|"),
+    ("R28", "scan", R, URL_LOOKBEHIND, r"(?<![\w$:])url\s*\("),
+    ("R29", "scan", R, URL_LOOKBEHIND, r"(?<![\w$>])url\s*\("),
+    ("R30", "scan", R, URL_LOOKBEHIND, r"(?<![\w>:])url\s*\("),
+    ("R31", "scan", R, URL_LOOKBEHIND, r"(?<![$>:])url\s*\("),
+    # ---- レビューの探り（R-M4）: $request と -> の間の空白 ----
+    ("R32", "scan", R, r"'/(?:\$request\s*->|", r"'/(?:\$request->|"),
+]
+
+mutations = []
+for mid, scope, path, old, new in base.MUTATIONS:
+    if mid in DROPPED:
+        continue
+    if mid in OVERRIDES:
+        scope, path, old, new = OVERRIDES[mid]
+    mutations.append((mid, scope, path, old, new))
+base.MUTATIONS = mutations + ADDED
+
+if __name__ == "__main__":
+    base.main()
+```

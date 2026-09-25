@@ -2070,7 +2070,7 @@ git checkout 13.x && git merge --ff-only date-picker-month-ago
 - ⚠ 計画に無かった経路を 1 つ直した: ZEAL 会員の確定の送信から hidden の `confirmed` が抜けると、確定なのにファイル必須の入力チェックに落ち、
   その既定の戻り先も確認画面の URL になる（テストで再現してから直した）
 - 走査テスト `ImportControllerReturnPathScanTest`: `*ImportController.php`（8 本）を全件分類する。許すのは顧客・周辺ビルの 2 本だけ（件数と理由つき）。
-  ⚠ try で包まない入力チェックは字面に `back(` が現れないので**走査に見えない** → 挙動のテスト（`from(確認画面の URL)` で送る）が守る
+  ⚠ try で包まない入力チェックは字面に `back(` が現れないので**走査に見えない** → 挙動のテスト（`from(確認画面の URL)` で送る）が守る（→ 2026-09-25 から `ImportControllerValidationRedirectScanTest` が包み方を全件分類で見る。下の「取込の入力チェックの包み忘れを走査テストで止める」の節）
 
 ### 検証
 
@@ -2093,7 +2093,7 @@ git checkout 13.x && git merge --ff-only date-picker-month-ago
 
 ### 範囲外（気づいたが直していない）
 
-- 入力チェック（`validate()`・`Validator::make()`・`ValidationException::withMessages()`）を try で包んで `redirectTo()` を渡しているかを、走査で機械的に見る形（新しい取込の入力チェックには守り手がいない。レビューの提案）
+- 入力チェック（`validate()`・`Validator::make()`・`ValidationException::withMessages()`）を try で包んで `redirectTo()` を渡しているかを、走査で機械的に見る形（新しい取込の入力チェックには守り手がいない。レビューの提案） → **2026-09-25 に対応**（下の「取込の入力チェックの包み忘れを走査テストで止める」の節）
 - ZEAL 会員の確定で DB の例外が出ると 500（`DB::transaction()` の外で受け止めていない。戻り先の問題ではない）
 - 顧客の取込は、断られると確認画面の内容が消えて取込の画面に戻る（今と同じ）
 
@@ -2119,6 +2119,49 @@ git checkout 13.x && git merge --ff-only date-picker-month-ago
 
 ⚠ 断られたあと取込の画面へ戻ることそのものは、本番ではフォームを送らないと確かめられないので見ていない（上の「検証」のテストと
 ローカルの実ブラウザで確認済み）。⚠ `origin/13.x` への push はしていない。
+
+---
+
+## ✅ 取込の入力チェックの包み忘れを走査テストで止める — テストと文書だけ（本番への反映は不要）
+
+詳細仕様: @docs/superpowers/specs/2026-09-25-import-validation-scan-design.md
+実装計画（試作・変異テスト・レビューの記録つき）: @docs/superpowers/plans/2026-09-25-import-validation-scan.md
+
+上の「CSV 取込の確認画面から断られると 405 になる件（基幹の取込）」の範囲外として残した件（2026-09-24 のレビューの M4 の提案）。
+入力チェックの既定の戻り先はリファラーで、コードに `back(` が現れないので `ImportControllerReturnPathScanTest` に見えず、
+新しい取込には守り手がいなかった（今の 4 本は挙動のテストが守る）。
+利用者の判断（2026-09-25）: **取込のコントローラだけをテストで守る**（本番のコードは 1 行も変えない。アプリ全体の安全網は別の作業）・
+既存の走査の穴（今の URL へ戻す形）も塞ぐ・確かめ方は**ソースを読む**（実際に送って確かめる案は採らない）。
+**`app/`・`resources/`・`routes/`・DB・依存の変更は無し。**
+
+| 区分 | 実装内容 |
+|------|---------|
+| テスト（新規）| `tests/Feature/ImportControllerValidationRedirectScanTest.php`（94 本）／ `tests/Concerns/ScansImportControllers.php`（`*ImportController.php` の列挙と下限 8 本。2 本の走査で共用）|
+| テスト（変更）| `tests/Feature/ImportControllerReturnPathScanTest.php`（列挙をトレイトへ・今の URL を作る書き方と `previousPath()` の検出）|
+| 全件テスト | 2169 → **2263 tests / 14765 assertions green** |
+
+### 要点
+
+- 入力チェックの例外を投げる呼び出し（`->validate(`・`?->validate(`・`->validateWithBag(`・`->validated(`・`->safe(`・`->validateWith(`・`::validate(`・`::withMessages(`・`::validateWithBag(`・`new ValidationException`・`ValidationException::class`）を `token_get_all()` のトークンで探し、1 つずつ判定する: ①囲む try の catch のうち ValidationException を受け止める最初のもの（内側の try から）が ValidationException を名指しし（`\Exception`・`\Throwable` が先なら不合格）、本体が `throw $e->redirectTo(…);` の 1 文だけ ②例外を作る呼び出し（`::withMessages(`・`new ValidationException`）が throw の直後にあり、その後ろのメソッドの連鎖に `->redirectTo(` がある
+- 実物: 10 か所（包んである 7・包んでいない 3＝顧客 `:28`・周辺ビル `:85`・経営試算表の URL 保存 `updateUrls` `:58`。3 か所は例外リストに件数と理由つきで載せた）
+- FormRequest（既定の戻り先がリファラー）を受ける public メソッドは Reflection で探して落とす（今は 0 件。交差型・DNF 型も見る）
+- まとめた use（`use A\{B, C};` と `use A\B, C\D;`）・名前の続かない冒頭の use・namespace が 2 つ・`namespace X { … }`・波括弧の対応が取れない書き方は、推測せずに「解析できない」として落とす
+- 既存の走査に、今の URL を作る書き方（`url()->current()`・`url()->full()`・`URL::current()`・`URL::full()`・`app('url')->current()`・ファサードの `Request::url()` など・`$request->getUri()`・`getRequestUri()`・`path()`・`decodedPath()`・`getPathInfo()`）と、リファラーから作る `url()->previousPath()` の検出を足した（実物は 0 件）。`throw $e->redirectTo(url()->current())` は、包み方だけを見る新しい走査ではなく、こちらが拾う（分担）
+- ⚠ 内側の try の catch で判定を決める（外側の catch が投げ直しを受け止める形も不合格にする厳しめの規則）
+- ⚠ 見えないもの・拾いすぎるものは 2 本の走査の docblock に列挙した（`redirectTo()` に渡す値が null になりうる形・外側の総称の catch が投げ直しを受け止める形・コンテナから作る FormRequest・例外リストを件数で見ること・投げ直しを括弧で括った形 など）
+
+### 検証
+
+- 計画のコードは先に scratchpad で試作して実物に当て、段階ごとの赤と緑を測ってから書いた。**試作にテスト側の変異を当てたら 1 通り（catch の本体が `throw` で始まるかの判定を外す）が緑のまま通った**（見本が `return $e->redirectTo(…)` を持っていなかった）→ 同じ目で分かれ目を洗い直し、見本を 12 足した
+- 変異（1 回目・レビュー前）: 65 通り（本番のコード 18＋カナリア 1 を全件で・テスト 46 を走査の 2 本で）がすべて期待どおり
+- 独立レビュー 1 回: Important 1・Minor 8。**2 本の走査とも緑のまま 405 になる形が 1 つ残っていた**（`url()->previousPath()`。リファラーから作る）ほか、投げる式の判定が緩い・`->safe(` など 3 形の検出漏れ・見本の無い分かれ目・理由の文言 など。すべて実測で再現してから、直すか docblock に書いた（直す前と後に同じ探りを当てた表は計画書）
+- 変異（2 回目・レビュー後の最後のコード）: 本番のコード 18 通り＋カナリア（全件）・テスト 73 通り＋カナリア（走査の 2 本）がすべて期待どおり。変異を組み直す途中で、見本の無い分かれ目をもう 1 つ見つけた（例外を作らない `::validate(` に続く `->redirectTo(` を投げる式として数えない）→ 見本を足す前のコミットでは緑のまま通ることを実測し、見本を足して赤にした
+
+### 範囲外（気づいたが直していない）
+
+- アプリ全体の安全網（入力チェックで断られたとき、リファラーが POST 専用の URL なら直前の GET の画面へ戻す）／実際に送って確かめる走査／包んでいない 3 か所を包み直すこと
+- 例外リストをメソッド名で固定する形（レビューの提案。今は件数で見る）／既存の走査の `$request` 決め打ち・大文字小文字・別名・`REQUEST_URI`・今のルート名へ戻す形（レビューの指摘。docblock に書いた）
+- BACKLOG の範囲外にあるほかの 2 件（ZEAL 会員の確定で DB の例外が出ると 500・顧客の取込は断られると確認画面の内容が消える）
 
 ---
 
@@ -2169,6 +2212,8 @@ lint（INVALID 0）と、ログイン済みの実 Chrome での目視まで確�
 
 **CSV 取込の確認画面から断られると 405 になる件（基幹の取込 4 本）も同日に本番反映済み**（上記の節。`13.x` = `b06f89ac`。
 本番の 4 本が手元と md5 まで一致・取込の 6 画面が 200）。
+
+**取込の入力チェックの包み忘れを止める走査テスト（2026-09-25）**はテストと文書だけの変更で、本番への反映は要らない（上の節。`13.x` へ早送りするだけ）。
 
 その他の新規要件は別途追記する。
 
