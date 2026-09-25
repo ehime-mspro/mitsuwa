@@ -65,7 +65,7 @@ sudo rm -f storage/framework/views/*.php && brew services restart httpd
 2. **main repo (`/Users/masanori/site/manage`) で** `git checkout 13.x && git merge --ff-only <worktree-branch>`
 3. **新規 PHP クラスを追加した場合のみ**: main repo の cwd で `composer dump-autoload`
    - ⚠ worktree から実行すると autoloader の `$baseDir` に worktree パスが焼き込まれ、main repo の Apache が worktree を参照する事故になる。必ず main repo の cwd で実行
-4. `./deploy.sh`（`npm run build` → rsync → 本番で `config:cache && route:cache && view:cache`）
+4. `./deploy.sh`（`npm run build` → rsync → 本番で部品の名簿を作り直し → `config:cache && route:cache && view:cache`）
 5. push to origin/13.x はユーザー明示指示があった時のみ
 6. （オプション）Playwright で本番動作確認
 
@@ -80,14 +80,14 @@ sudo rm -f storage/framework/views/*.php && brew services restart httpd
 ### deploy.sh の動作
 - **`npm run build` を実行してから** rsync する（2026-07-15 に組み込み）。ビルド失敗時は本番へ何も転送せず中断
 - rsync で本番（さくらレンタル `mitsuwa-ud@www3586.sakura.ne.jp`）にアプリ + vendor + public を転送
-- ssh で `umask 077` のうえ `php artisan config:cache && route:cache && view:cache` を実行（本番の `.env` と `bootstrap/cache/config.php` は秘密入りなので 600 を保つ。PHP は本人の権限で動くので 600 で読める。2026-09-14）
+- ssh で `umask 077` のうえ、部品の名簿（`bootstrap/cache/packages.php`・`services.php`）を消して `php artisan package:discover` で作り直してから `config:cache && route:cache && view:cache` を実行（本番の `.env` と `bootstrap/cache/config.php` は秘密入りなので 600 を保つ。PHP は本人の権限で動くので 600 で読める。2026-09-14。名簿の作り直しは 2026-09-25）
 - `composer install` は走らない → 新規依存は **ローカルで `composer install` → vendor 同期で本番反映**
 - `CLAUDE.md` `docs/` `.claude/` `tests/` 等は rsync 除外（開発用ファイルは本番に送らない）
 - 旧バンドルの掃除: `public/build/` だけ `--delete` 付きで再同期（2026-07-15 に追加）。転送先が 2 つあるのは APP_PATH = Laravel が manifest を読む側 / WEB_PATH = ブラウザが実ファイルを取る側の両方に配るため
 - ⚠ **`public/` 全体に `--delete` を付けるのは厳禁**（`public/storage` は `storage/app/public` への symlink ＝ 本番のアップロード物を消しうる）。`--delete` してよいのは Vite 出力しか入らない `public/build/` のみ
 - ⚠ **`storage/` は rsync 除外**（2026-09-16 に追加）。本番の添付を手元の中身で上書きすると、「同じパス・同じ大きさなら送り直さない」判定のバックアップが変更を拾わず、控えと本番が静かに食い違う。除外は `--exclude='/storage/'` と**先頭スラッシュ付き**で書く（付けないと `public/storage` の symlink まで巻き添えになる）。以前の `storage/app/backup-work` はこれに含まれるので置き換えた
 - png の除外は `.gitignore` の `/*.png` と同じ**先頭スラッシュ付き**に揃える（2026-09-16 に修正）。手元のスクリーンショットはリポジトリの一番上に置く決まりなので一番上だけ止めれば足り、以前の `*.png` は `public/images/` のロゴまで APP_PATH 側に届かなくしていた（WEB_PATH 側は [3/6] が送るので画面は壊れていなかった）
-- ⚠ **`bootstrap/cache/` も rsync 除外**（2026-09-16 に追加）。手元で `config:cache` を打つと手元の `.env` を写した `config.php`（接続情報・暗号化キー入り）ができ、それが本番の `config.php` を上書きする。[5/6] が作り直すまでの間は本番が手元の設定で動き、[5/6] が失敗すれば残る。`packages.php`・`services.php` は本番が最初のアクセス時に自分で作り直すので外して支障ない（本番に 755 で残っていた 2 つは、この除外を足す前に手元から送られたもの）
+- ⚠ **`bootstrap/cache/` も rsync 除外**（2026-09-16 に追加）。手元で `config:cache` を打つと手元の `.env` を写した `config.php`（接続情報・暗号化キー入り）ができ、それが本番の `config.php` を上書きする。[5/6] が作り直すまでの間は本番が手元の設定で動き、[5/6] が失敗すれば残る。部品の名簿（`packages.php`・`services.php`）も送らず、**[5/6] が毎回消してから `package:discover` で作り直す**（2026-09-25）。⚠ **`packages.php` は Laravel が「無いときだけ」作る**（`PackageManifest::getManifest()`）。送らないだけでは本番の名簿が古いまま固まり（2026-09-25 に本番を読んだときも、9/13 に手元から送られた 755 のまま残っていた）、名簿に載った部品を vendor から外すと、画面も artisan も起動の時点で止まる。`package:discover` 自身も同じところで止まるので、作り直す前に消す（手元で実測）。`services.php` は部品の一覧が変わると自分で作り直すが、揃えて消す
 
 ### Server environment
 - macOS Apple Silicon, zsh, Homebrew httpd（`brew services restart httpd`）
