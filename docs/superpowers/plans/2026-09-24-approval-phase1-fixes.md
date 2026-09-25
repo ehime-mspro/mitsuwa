@@ -1405,3 +1405,19 @@ SH
 | — | コンソール | エラーは、使い捨て DB に `ms_*` が無いことによる `/dashboard/executive` の 500 だけ（経営層でログインしたとき。記録済みの事象でこの計画とは無関係）。ほかはパスワード欄の `autocomplete` の VERBOSE のみ |
 
 コンパイル済みビュー: **274 本 / INVALID 0 件**（`view:cache` → 1 本ずつ `php -l` → `view:clear`）。死にファイル 3 本を消した分、段階1 の 277 本から 3 本減った。
+
+## 本番反映の実測記録（2026-09-25）
+
+Task 16・17 を行った（利用者の承認は ①〜④ すべて）。結果の表は `docs/BACKLOG.md` の「決裁申請 段階1」の
+「本番反映（2026-09-25 実施）」。本番の DB 名・`.env` は読んでいない（DB の変更は tinker の `--execute` でアプリの接続から流した）。
+
+この計画の書き方と違ったのは 2 つ:
+
+- **Task 16 Step 1 の期待「`cache` / `cache_locks` が『あり』（無いと 1 回限りの鍵とログイン制限が止まる）」** — 表はあったが、
+  本番のキャッシュは `file`（`config('cache.default')`。セッションも `file`）で、表は使われていない。
+  `Illuminate\Cache\FileStore::add()` もファイルの排他ロックを取ってから書くので、1 回限りの鍵の排他性は変わらない。
+  `OneTimeAction` のコメントを実際に合わせた（`e5d59dc1`）
+- **Task 17 の期待「`route:list --name=approvals. | grep -c "approvals\."` が 19」** — テキストの出力は長い行で名前を省略するので
+  **15** と出る（手元も同じ）。`route:list --name=approvals. --json` で数えると **19**（本番・手元とも、名前まで一致）
+
+Task 17 の後片付け（`approval-followups` の worktree とブランチを消す）は、利用者に確かめてから行う。
