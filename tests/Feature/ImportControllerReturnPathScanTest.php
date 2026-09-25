@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use Illuminate\Support\Facades\File;
+use Tests\Concerns\ScansImportControllers;
 use Tests\TestCase;
 
 /**
@@ -38,11 +39,7 @@ use Tests\TestCase;
  */
 class ImportControllerReturnPathScanTest extends TestCase
 {
-    /**
-     * `*ImportController.php` の本数の下限（2026-09-24 実測 8 本）。下回ったら列挙が空振りしている。
-     * ⚠ 8 本には approval-phase1 で入った `Approval/UserImportController` を含む（このブランチはその上に積んである）
-     */
-    private const MIN_IMPORT_CONTROLLERS = 8;
+    use ScansImportControllers;
 
     /** @var array<string, array{0: int, 1: string}> 相対パス => [件数, 理由] */
     private const ALLOWED = [
@@ -107,20 +104,10 @@ class ImportControllerReturnPathScanTest extends TestCase
     /** @return array<string, list<array{int, string}>> 相対パス => 一致（0 件のファイルも入れる） */
     private function scan(): array
     {
-        $hits = [];
-
-        foreach (File::allFiles(app_path('Http/Controllers')) as $file) {
-            if (! str_ends_with($file->getFilename(), 'ImportController.php')) {
-                continue;
-            }
-
-            $hits[str_replace(base_path() . '/', '', $file->getPathname())] =
-                $this->returnsToReferer($this->withoutComments($file->getPathname()));
-        }
-
-        ksort($hits);
-
-        return $hits;
+        return array_map(
+            fn (string $absolute) => $this->returnsToReferer($this->withoutComments($absolute)),
+            $this->importControllerFiles()
+        );
     }
 
     public function test_the_scan_sees_every_import_controller(): void
