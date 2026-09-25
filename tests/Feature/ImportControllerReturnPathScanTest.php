@@ -61,8 +61,8 @@ class ImportControllerReturnPathScanTest extends TestCase
         $patterns = [
             // 1. back()（ヘルパー・\back()・redirect()->back()・Redirect::back()。後読みは \ を除かないので \back( も当たる）
             '/(?<![\w$])back\s*\(/',
-            // 2. url()->previous()・URL::previous()・app('url')->previous()
-            '/(?:->|::)\s*previous\s*\(/',
+            // 2. url()->previous()・URL::previous()・app('url')->previous()・url()->previousPath()（previousPath() もリファラーから作る）
+            '/(?:->|::)\s*previous(?:Path)?\s*\(/',
             // 3. リファラーのヘッダーを直接読む（headers->get('referer')・HTTP_REFERER・綴りの違う referrer）
             '/referr?er/i',
             // 4. 今の URL へ戻す redirect()->refresh()・Redirect::refresh()（Eloquent の $model->refresh() は拾わない）
@@ -156,6 +156,7 @@ class ImportControllerReturnPathScanTest extends TestCase
             'return Redirect::back();', 'return redirect() -> back ();',
             'return redirect(url()->previous());', 'return redirect(URL::previous());',
             'return redirect(app(\'url\')->previous());', 'return redirect(url() -> previous ());',
+            'throw $e->redirectTo(url()->previousPath());', 'return redirect(URL::previousPath());',
             'return redirect($request->headers->get(\'referer\'));', '$to = $_SERVER[\'HTTP_REFERER\'];',
             '$to = $request->header(\'Referrer\');',
             'return redirect()->refresh();', 'return Redirect::refresh();', 'return redirect( ) -> refresh ( );',
