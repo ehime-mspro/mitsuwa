@@ -31,10 +31,16 @@ use Tests\TestCase;
  *   - `*ImportController.php` という名前でない取込（ほかのコントローラに内蔵された確認画面）
  *   - 戻り先の URL を変数に入れて渡す形（`$to = $request->headers->get('referer')` や `$request->url()` は
  *     字面で拾うが、別のメソッドやクラスで作った URL を受け取る形は見えない）
- *   - 今の URL を読む呼び出し元を変数に入れた形（`$req = $request; $req->url()`・`$this->request->url()`）
+ *   - 今の URL を読む呼び出し元が `$request`・`request()`・`Request::` 以外の形（引数名が違う `$req->url()`・
+ *     変数に入れた形・`$this->request->url()`。2026-09-25 時点で取込のコントローラの引数名はすべて `$request`）
+ *   - 大文字小文字の違う書き方（`->Back(`・`url()->Current()`。PHP では同じ呼び出しだが、正規表現は区別する）
+ *   - 別名やコンテナから取った形（`use …\URL as Link;` の `Link::current()`・`app(UrlGenerator::class)->current()`）
+ *   - `REQUEST_URI` を読む形・今のルート名へ戻す形（`redirect()->route(Route::currentRouteName())`。POST 専用の
+ *     ルートなら GET で 405）
  * ⚠ 過剰に拾うもの: 文字列リテラルの中の `back(`・`referer`（走査はトークンを見ない）・
- *   Carbon の `->previous(` のように別の意味の `previous()`。出てきたら ALLOWED に理由つきで載せる
- *   （検出器を緩めない）。
+ *   Carbon の `->previous(` のように別の意味の `previous()`・戻り先でない場面の `$request->path()` や
+ *   `url()->current()`（ログやビューへ渡すなど）・`Foo\Request::url()` のような別のクラス。出てきたら ALLOWED に
+ *   理由つきで載せる（検出器を緩めない）。
  */
 class ImportControllerReturnPathScanTest extends TestCase
 {
@@ -70,11 +76,11 @@ class ImportControllerReturnPathScanTest extends TestCase
             // 5. リクエストから今の URL を読む（$request->url()・request()->fullUrl()・Request::url()・$request->path() など。
             //    相対パスの path() も、redirect() が今のホストの URL に組み直す。Request:: の前は語の途中でないこと
             //    ＝ FormRequest::url( は拾わない）
-            '/(?:\$request\s*->|request\s*\(\s*\)\s*->|(?<![\w$])Request\s*::)\s*'
+            '/(?:\$request\s*->|request\s*\(\s*\)\s*->|(?<!\w)Request\s*::)\s*'
                 . '(?:url|fullUrl|fullUrlWithQuery|fullUrlWithoutQuery|getUri|getRequestUri|path|decodedPath|getPathInfo)\s*\(/',
             // 6. 今の URL を作る（url()->current()・url()->full()・URL::current()・URL::full()・app('url')->current()。
             //    ->url() や ::url() のようなほかのメソッドの url() は拾わない）
-            '/(?:(?<![\w$>:])url\s*\(\s*\)\s*->|(?<![\w$])URL\s*::|app\s*\(\s*[\'"]url[\'"]\s*\)\s*->)\s*(?:current|full)\s*\(/',
+            '/(?:(?<![\w$>:])url\s*\(\s*\)\s*->|(?<!\w)URL\s*::|app\s*\(\s*[\'"]url[\'"]\s*\)\s*->)\s*(?:current|full)\s*\(/',
         ];
 
         foreach ($patterns as $pattern) {
@@ -187,7 +193,7 @@ class ImportControllerReturnPathScanTest extends TestCase
             // 5. と 6. が名前だけ同じ別の呼び出しを拾わないこと
             '$item = $iterator->current();', '$p = Storage::path($path);', '$p = $request->file(\'csv\')->path();',
             '$u = FormRequest::url();', '$u = $menu->url()->current();', '$u = Menu::url()->current();',
-            '$u = shorturl()->current();', '$u = ShortURL::current();',
+            '$u = shorturl()->current();', '$u = ShortURL::current();', '$u = $url()->current();',
         ];
 
         foreach ($caught as $sample) {
