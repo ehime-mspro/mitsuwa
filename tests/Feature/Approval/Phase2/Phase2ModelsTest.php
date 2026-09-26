@@ -4,12 +4,15 @@ namespace Tests\Feature\Approval\Phase2;
 
 use App\Enums\ApprovalDecision;
 use App\Enums\ApprovalStatus;
+use App\Enums\ApprovalStepKind;
+use App\Enums\ApprovalStepStatus;
 use App\Models\ApprovalAttachment;
 use App\Models\ApprovalDownloadLog;
 use App\Models\ApprovalHistory;
 use App\Models\ApprovalRequest;
 use App\Models\ApprovalRevision;
 use App\Models\ApprovalSetting;
+use App\Models\ApprovalStep;
 use App\Models\ApprovalType;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -155,5 +158,31 @@ class Phase2ModelsTest extends TestCase
         foreach (['status', 'decision', 'number', 'round', 'lock_version', 'finished_at'] as $column) {
             $this->assertNotContains($column, $fillable);
         }
+    }
+
+    /**
+     * 退職などで利用者を削除（論理削除）しても、申請・段階・記録・部門から読めること（Top trap #18）。
+     * 審査担当者の並び（reviewers）だけは削除した人を出さない（今判断できる人の並び。提出の条件が使う）。
+     */
+    public function test_people_are_still_readable_after_they_are_deleted(): void
+    {
+        $world   = $this->approvalWorld();
+        $request = $this->draftFor($world);
+        $step    = ApprovalStep::create([
+            'request_id' => $request->id, 'round' => 1, 'kind' => ApprovalStepKind::Head, 'department_id' => $world['dept']->id,
+            'assignee_user_id' => $world['head']->id, 'status' => ApprovalStepStatus::Done, 'actor_user_id' => $world['head']->id,
+        ]);
+        $history = ApprovalHistory::create(['request_id' => $request->id, 'round' => 1, 'action' => 'head_approved', 'actor_user_id' => $world['head']->id, 'step_id' => $step->id]);
+
+        foreach (['applicant', 'head', 'reviewer'] as $key) {
+            $world[$key]->delete();
+        }
+
+        $this->assertSame($world['applicant']->id, $request->fresh()->applicant?->id, '申請者');
+        $this->assertSame($world['head']->id, $world['dept']->fresh()->head?->id, '部門長');
+        $this->assertSame($world['head']->id, $step->fresh()->actor?->id, '段階の判断した人');
+        $this->assertSame($world['head']->id, $step->fresh()->assignee?->id, '段階の付け替えた担当');
+        $this->assertSame($world['head']->id, $history->fresh()->actor?->id, '記録の操作した人');
+        $this->assertSame([], $world['reviewDept']->fresh()->reviewers->pluck('id')->all(), '削除した審査担当者は並びに出さない');
     }
 }
