@@ -60,7 +60,8 @@ return new class extends Migration
             $table->string('subject', 100)->nullable();
             $table->unsignedBigInteger('amount')->nullable()->comment('円・税抜');
             $table->string('schedule', 50)->nullable()->comment('実施時期');
-            $table->text('body')->nullable()->comment('重点ポイント（5W2H）');
+            // ⚠ MEDIUMTEXT（20000 文字は 4 バイトの文字だと TEXT の 65535 バイトに入らない。SQL の注意書き）
+            $table->mediumText('body')->nullable()->comment('重点ポイント（5W2H）');
             $table->json('related_numbers')->nullable();
             $table->unsignedSmallInteger('round')->default(0)->comment('提出の回数');
             $table->string('number', 20)->nullable()->comment('決裁No');

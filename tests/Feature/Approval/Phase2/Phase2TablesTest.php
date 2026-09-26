@@ -29,7 +29,7 @@ class Phase2TablesTest extends TestCase
     /** 段階1 から在る表。2a の SQL は列を足すだけなので、段階1 の CREATE の列と足した列を合わせたものが全体 */
     private const ALTERED = ['approval_departments', 'approval_settings'];
 
-    private const TYPES = 'BIGINT|INT|SMALLINT|TINYINT|VARCHAR|TEXT|JSON|TIMESTAMP';
+    private const TYPES = 'BIGINT|INT|SMALLINT|TINYINT|VARCHAR|MEDIUMTEXT|TEXT|JSON|TIMESTAMP';
 
     /** @return list<array{string, string, bool}> [表, CREATE の括弧の中か ALTER の中身, ALTER か] */
     private function statements(string $path): array

@@ -15,6 +15,9 @@
 -- ⚠ 状態などの値は ENUM にせず VARCHAR（設計書 §5.3。値を足すたびの ALTER と、
 --   SQLite で enum を変えると CHECK が消える落とし穴（Bug #60）を避ける）。
 --
+-- ⚠ approval_requests.body は MEDIUMTEXT。本文の上限は 20000 文字だが、TEXT は 65535 バイトまでなので
+--   4 バイトの文字（絵文字・𠮷 など）だと入りきらず、本番だけ 1406 で落ちる（SQLite のテストでは見えない）。
+--
 -- 適用: 段階1 と同じく php artisan tinker --execute で DB::statement() に **1 文ずつ**流す。
 --   先頭で「approval_types がすでにあれば 1 文も流さずに止まる」確認をする（計画 Task 21）。
 
@@ -62,7 +65,7 @@ CREATE TABLE `approval_requests` (
   `subject` VARCHAR(100) NULL,
   `amount` BIGINT UNSIGNED NULL COMMENT '円・税抜',
   `schedule` VARCHAR(50) NULL COMMENT '実施時期',
-  `body` TEXT NULL COMMENT '重点ポイント（5W2H）',
+  `body` MEDIUMTEXT NULL COMMENT '重点ポイント（5W2H）',
   `related_numbers` JSON NULL COMMENT '関連する決裁No（10 個まで）',
   `round` SMALLINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '提出の回数',
   `number` VARCHAR(20) NULL COMMENT '決裁No（R8-J-001）',
