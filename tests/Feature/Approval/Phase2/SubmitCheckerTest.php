@@ -148,4 +148,25 @@ class SubmitCheckerTest extends TestCase
             '重点ポイント（5W2H）が見出しのままです。中身を書いてください。',
         ], $reasons);
     }
+
+    /** 停止した種類の下書きは「選び直し」だけを出す（選び直せば変わる審査部門の理由は並べない） */
+    public function test_a_stopped_type_shows_only_the_reason_to_choose_again(): void
+    {
+        $world = $this->approvalWorld();
+        $world['type']->update(['is_active' => false]);
+        $world['reviewer']->delete();
+
+        $this->assertSame(
+            ['申請の種類「' . $world['type']->name . '」は使えなくなりました。種類を選び直してください。'],
+            SubmitChecker::reasons($this->draftFor($world), $world['applicant'])
+        );
+    }
+
+    /** 件名が全角の空白だけのときも「件名を入力してください」（trim() は全角の空白を落とさない） */
+    public function test_a_subject_of_ideographic_spaces_is_empty(): void
+    {
+        $world = $this->approvalWorld();
+
+        $this->assertSame(['件名を入力してください。'], SubmitChecker::reasons($this->draftFor($world, ['subject' => "\u{3000}\u{3000}"]), $world['applicant']));
+    }
 }

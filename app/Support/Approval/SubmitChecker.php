@@ -13,6 +13,8 @@ use App\Models\User;
  * 提出（出し直し）の条件（要件 4.3 のケース 4・5.1・設計書 D4・D10・D12・§5.8）。
  *
  * 理由をすべて集めて返す（1 つずつ直して出し直させない）。画面は編集画面の上にまとめて出す。
+ * 形の検査（長さ・金額の範囲・関連する決裁No の形と数）は、保存のときに RequestController の入力の検査が見る
+ * （提出は必ず保存を経る）。状態と申請者本人かどうかは RequestPermissions が先に見る。
  */
 final class SubmitChecker
 {
@@ -42,12 +44,11 @@ final class SubmitChecker
         if ($type === null) {
             $reasons[] = '申請の種類を選んでください。';
         } else {
-            // 停止した種類: 下書きは選び直し、差戻し中はそのまま出し直せる（D10）
+            // 停止した種類: 下書きは選び直し、差戻し中はそのまま出し直せる（D10）。
+            // 選び直せば変わる審査部門の理由は並べない（要らない連絡をさせない）
             if (! $type->is_active && $request->status === ApprovalStatus::Draft) {
                 $reasons[] = "申請の種類「{$type->name}」は使えなくなりました。種類を選び直してください。";
-            }
-
-            if (! self::hasOtherReviewer($type, $user)) {
+            } elseif (! self::hasOtherReviewer($type, $user)) {
                 $reasons[] = "審査部門「{$type->reviewDepartment->name}」に、申請者本人以外の審査担当者がいません。管理者に連絡してください。";
             }
         }
@@ -56,7 +57,8 @@ final class SubmitChecker
             $reasons[] = '社長が未設定です。管理者に連絡してください。';
         }
 
-        if (trim((string) $request->subject) === '') {
+        // ⚠ 全角の空白も落とす（trim() は落とさない。画面からの値はミドルウェアが先に落とすが、ここはそれに頼らない）
+        if (preg_replace('/^[\s\x{3000}]+|[\s\x{3000}]+$/u', '', (string) $request->subject) === '') {
             $reasons[] = '件名を入力してください。';
         }
 
