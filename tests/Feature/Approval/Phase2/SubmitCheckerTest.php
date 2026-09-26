@@ -88,6 +88,39 @@ class SubmitCheckerTest extends TestCase
         );
     }
 
+    /** 所属が 2 つ以上ある人が、申請部門を選ばずに提出したとき */
+    public function test_the_department_must_be_chosen(): void
+    {
+        $world = $this->approvalWorld();
+
+        $this->assertSame(['申請部門を選んでください。'], SubmitChecker::reasons($this->draftFor($world, ['department_id' => null]), $world['applicant']));
+    }
+
+    /**
+     * 削除した審査担当者は数えない（削除しても status は active のまま。ApprovalDepartment::reviewers() に
+     * withTrashed() を付けると、誰も判断できない審査部門へ申請が通ってしまう）
+     */
+    public function test_a_deleted_reviewer_is_not_counted(): void
+    {
+        $world = $this->approvalWorld();
+        $world['reviewer']->delete();
+
+        $this->assertSame(
+            ['審査部門「総務部」に、申請者本人以外の審査担当者がいません。管理者に連絡してください。'],
+            SubmitChecker::reasons($this->draftFor($world), $world['applicant'])
+        );
+    }
+
+    /** 申請者本人や無効な人が審査担当者に混ざっていても、ほかに有効な人がいれば出せる（4.3 のケース 3） */
+    public function test_another_active_reviewer_is_enough(): void
+    {
+        $world    = $this->approvalWorld();
+        $inactive = $this->baseUser(['status' => UserStatus::Inactive->value]);
+        $world['reviewDept']->reviewers()->attach([$world['applicant']->id, $inactive->id]);
+
+        $this->assertSame([], SubmitChecker::reasons($this->draftFor($world), $world['applicant']));
+    }
+
     /** 停止した種類: 下書きは選び直し、差戻し中はそのまま出し直せる（D10） */
     public function test_a_stopped_type_blocks_drafts_but_not_returned_requests(): void
     {
