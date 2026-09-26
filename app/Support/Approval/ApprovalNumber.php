@@ -12,9 +12,10 @@ use InvalidArgumentException;
 /**
  * 決裁No の採番（要件 6・設計書 §5.9・計画 §0.4）。
  *
- * ⚠ **社長の判断と同じトランザクションの中で呼ぶ**（判断が断られたら番号も戻る）。
- * ⚠ 連番の行は `insertOrIgnore` で用意してから `lockForUpdate()` で読む。行が無いときに 2 人が
- *   同時に作っても、一意の索引（部門・年度）で 1 行になる。
+ * ⚠ **社長の判断と同じトランザクションの中で呼ぶ**（判断が断られたら番号も戻る）。`issue()` も自分で
+ *   トランザクションに包む（外から呼ばれても行のロックが効くように。入れ子なら savepoint になるだけ）。
+ * ⚠ 連番の行は `upsert` で用意してから `lockForUpdate()` で読む。行が無いときに 2 人が同時に作っても、
+ *   一意の索引（部門・年度）で 1 行になる。
  */
 final class ApprovalNumber
 {
@@ -25,18 +26,20 @@ final class ApprovalNumber
      */
     public static function issue(ApprovalDepartment $department, DateTimeInterface $decidedAt): array
     {
-        $startMonth = $department->company->fiscal_start_month;
-        $fiscalYear = ApprovalFiscalYear::ofMoment($decidedAt, $startMonth);
+        return DB::transaction(function () use ($department, $decidedAt): array {
+            $startMonth = $department->company->fiscal_start_month;
+            $fiscalYear = ApprovalFiscalYear::ofMoment($decidedAt, $startMonth);
 
-        $row = self::lockedRow($department, $fiscalYear);
-        $seq = $row->next_number;
-        $row->update(['next_number' => $seq + 1, 'last_issued' => $seq]);
+            $row = self::lockedRow($department, $fiscalYear);
+            $seq = $row->next_number;
+            $row->update(['next_number' => $seq + 1, 'last_issued' => $seq]);
 
-        return [
-            'number'      => self::format(ApprovalFiscalYear::eraLabel($fiscalYear, $startMonth), $department->code, $seq),
-            'fiscal_year' => $fiscalYear,
-            'seq'         => $seq,
-        ];
+            return [
+                'number'      => self::format(ApprovalFiscalYear::eraLabel($fiscalYear, $startMonth), $department->code, $seq),
+                'fiscal_year' => $fiscalYear,
+                'seq'         => $seq,
+            ];
+        });
     }
 
     /** `R8-J-001`（999 の次は `R8-J-1000`。要件 6.1） */
@@ -97,14 +100,19 @@ final class ApprovalNumber
         // ⚠ 時計は 1 回だけ読む（ClockReadScanTest はファイルごとの件数を見る）
         $now = now();
 
-        DB::table('approval_number_sequences')->insertOrIgnore([
+        // ⚠ insertOrIgnore にしない。行がすでにあるとき、MySQL の INSERT IGNORE は重複した行に**共有ロック**を取るので、
+        //   2 つのトランザクションが共有ロックを持ったまま次の FOR UPDATE（排他ロック）を待ち合い、デッドロックで
+        //   片方が巻き戻されうる（社長の判断と開始番号の設定が重なったときなど。その人の画面は 500）。
+        //   upsert（MySQL では INSERT … ON DUPLICATE KEY UPDATE）は重複した行に**排他ロック**を取るので、後の方は待つだけ。
+        //   SQLite のテストではロックの違いは見えない（MySQL 8.0 のロックの資料による）。
+        DB::table('approval_number_sequences')->upsert([
             'department_id' => $department->id,
             'fiscal_year'   => $fiscalYear,
             'next_number'   => 1,
             'last_issued'   => 0,
             'created_at'    => $now,
             'updated_at'    => $now,
-        ]);
+        ], ['department_id', 'fiscal_year'], ['updated_at']);
 
         return ApprovalNumberSequence::where('department_id', $department->id)
             ->where('fiscal_year', $fiscalYear)
