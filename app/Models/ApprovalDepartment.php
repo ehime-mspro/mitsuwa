@@ -28,7 +28,13 @@ class ApprovalDepartment extends Model
         return $this->belongsTo(User::class, 'head_user_id')->withTrashed();
     }
 
-    /** 審査担当者（設計書 §5.4。所属は問わない。D6） */
+    /**
+     * 審査担当者（設計書 §5.4。所属は問わない。D6）。
+     *
+     * ⚠ `withTrashed()` を付けない（Top trap #18 の例外）。今判断できる人の並びで、提出の条件（SubmitChecker）と
+     *   「いま誰の番か」（CurrentHandler）が使う。利用者を削除しても status は active のままなので、付けると
+     *   削除した人を審査担当者に数え、誰も判断できない審査部門へ申請が通ってしまう。
+     */
     public function reviewers(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'approval_reviewers', 'department_id', 'user_id')

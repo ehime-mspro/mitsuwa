@@ -10,6 +10,8 @@ use RuntimeException;
  * 段階1 の `ApprovalSettingLog` と同じ守りを、段階2 の記録（操作の記録・提出ごとの控え・
  * ダウンロードの記録）に使う。⚠ `ApprovalSettingLog` は今のまま（この trait に寄せない。範囲外）。
  * ⚠ 使うモデルは `const UPDATED_AT = null;` も書く（更新日時の列を持たない）。
+ * ⚠ 守るのはモデルのイベント（save・update・delete など）だけ。クエリビルダーや関係を通した一括の
+ *   update()/delete()・*Quietly()・upsert() は素通りする。記録は create() でだけ書く（取り消しも新しい記録で表す）。
  */
 trait AppendOnly
 {

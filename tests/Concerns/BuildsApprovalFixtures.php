@@ -19,6 +19,9 @@ use App\Support\Approval\Workflow;
  * ⚠ 段階1 のテストは各クラスの private メソッドで作っている（ここへ寄せない。範囲外）。
  * ⚠ 利用者は必ず `must_change_password => false`（既定の true だと ForcePasswordChange が転送する）。
  * ⚠ `role` は明示する（ファクトリは入れない）。決裁の印を付けたら `fresh()` を返す。
+ * ⚠ `draftFor()`・`submittedFor()` の `$attributes` に状態の列（status・round・number など）を渡しても、
+ *   `$fillable` に無いので黙って捨てられる。状態の列は `DB::table('approval_requests')->update()` で書く。
+ * ⚠ `approvalWorld()` は 1 本のテストで 1 回まで（部門のアルファベット J・S が一意）。
  */
 trait BuildsApprovalFixtures
 {
