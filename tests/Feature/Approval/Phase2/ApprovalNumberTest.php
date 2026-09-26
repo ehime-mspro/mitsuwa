@@ -6,6 +6,7 @@ use App\Models\ApprovalNumberSequence;
 use App\Support\Approval\ApprovalNumber;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 use Tests\Concerns\BuildsApprovalFixtures;
 use Tests\TestCase;
@@ -105,5 +106,73 @@ class ApprovalNumberTest extends TestCase
 
         $this->assertSame(['fiscal_year' => 2026, 'era' => 'R8', 'next' => 1, 'last_issued' => 0], ApprovalNumber::currentState($world['dept']));
         $this->assertFalse(ApprovalNumber::departmentHasNumbers($world['dept']));
+    }
+
+    /**
+     * 開始番号・今年度の状態・採番は、その部門の**会社の期**の年度の行を使う（6 月始まりの会社の 5 月は前の年度）。
+     * ⚠ 今年度を 5 月始まりや暦の年で決めてしまうと、紙の番号の続き（ここでは 21）が黙って無視されて 001 から付く。
+     *   ずれが表に出るのは「6 月始まりの会社の 5 月」と「1〜4 月」だけなので、その日付で見る。
+     */
+    public function test_the_start_number_goes_to_this_fiscal_year_of_the_company(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-05-15 01:00:00', 'UTC'));   // 日本時間 5/15 10:00
+        $dad  = $this->approvalCompany(['name' => 'DAD', 'fiscal_start_month' => 6]);
+        $dept = $this->approvalDepartment($dad, ['code' => 'D']);
+
+        ApprovalNumber::setNext($dept, 21);
+
+        $this->assertSame(['fiscal_year' => 2025, 'era' => 'R7', 'next' => 21, 'last_issued' => 0], ApprovalNumber::currentState($dept));
+        $this->assertSame('R7-D-021', ApprovalNumber::issue($dept, now())['number']);
+    }
+
+    /** 1〜4 月（暦の年と年度が違う月）のミツワ */
+    public function test_the_start_number_in_january_belongs_to_the_previous_calendar_year(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2027-01-15 01:00:00', 'UTC'));   // 日本時間 2027/1/15 → 2026 年度（R8）
+        $world = $this->approvalWorld();
+
+        ApprovalNumber::setNext($world['dept'], 40);
+
+        $this->assertSame(['fiscal_year' => 2026, 'era' => 'R8', 'next' => 40, 'last_issued' => 0], ApprovalNumber::currentState($world['dept']));
+        $this->assertSame('R8-J-040', ApprovalNumber::issue($world['dept'], now())['number']);
+    }
+
+    /** まだ 1 つも使っていない年度は 1 を入れられる（D9 の境目） */
+    public function test_one_is_accepted_before_any_number_is_used(): void
+    {
+        $world = $this->approvalWorld();
+
+        ApprovalNumber::setNext($world['dept'], 1);
+
+        $this->assertSame(['fiscal_year' => 2026, 'era' => 'R8', 'next' => 1, 'last_issued' => 0], ApprovalNumber::currentState($world['dept']));
+    }
+
+    /** 断りの文言の 2 つの数は「使った番号」から作る（入れた数からではない） */
+    public function test_the_refusal_names_the_last_used_number(): void
+    {
+        $world = $this->approvalWorld();
+        ApprovalNumber::setNext($world['dept'], 5);
+        ApprovalNumber::issue($world['dept'], now());   // R8-J-005
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('今年度はすでに R8-J-005 まで使っています。6 以上を入れてください。');
+
+        ApprovalNumber::setNext($world['dept'], 3);
+    }
+
+    /** D8 の判定は「番号を付けた部門」で見る（申請の今の部門ではない） */
+    public function test_department_has_numbers_looks_at_the_numbered_department(): void
+    {
+        $world = $this->approvalWorld();
+        $other = $this->approvalDepartment($world['company'], ['code' => 'M']);
+
+        $this->draftFor($world);   // 番号の無い下書き
+        $this->assertFalse(ApprovalNumber::departmentHasNumbers($world['dept']), '下書きしか無いのに番号ありになった');
+
+        $moved = $this->draftFor($world, ['department_id' => $other->id]);
+        DB::table('approval_requests')->where('id', $moved->id)->update(['number' => 'R8-J-001', 'number_department_id' => $world['dept']->id]);
+
+        $this->assertTrue(ApprovalNumber::departmentHasNumbers($world['dept']));
+        $this->assertFalse(ApprovalNumber::departmentHasNumbers($other));
     }
 }
