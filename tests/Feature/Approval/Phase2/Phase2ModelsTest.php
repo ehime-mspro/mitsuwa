@@ -44,6 +44,15 @@ class Phase2ModelsTest extends TestCase
         $this->assertNull($world['applicant']->approvalAssignmentLabel());
     }
 
+    /** 部門長と審査担当者の両方に指定されていれば、部門長の理由を出す（部門長が先） */
+    public function test_the_head_label_wins_when_the_user_is_also_a_reviewer(): void
+    {
+        $world = $this->approvalWorld();
+        $world['reviewDept']->reviewers()->attach($world['head']->id);
+
+        $this->assertSame('決裁の部門「住宅事業部」の部門長', $world['head']->fresh()->approvalAssignmentLabel());
+    }
+
     public function test_the_settings_know_whether_approvals_are_launched(): void
     {
         $this->assertFalse(ApprovalSetting::current()->isLaunched());
@@ -150,14 +159,13 @@ class Phase2ModelsTest extends TestCase
         $this->assertSame('293 KB', $heic->sizeLabel());
     }
 
-    /** 画面から来ない列（状態・番号・回数）は fillable に入れない（Workflow だけが書く） */
+    /** 一括代入できるのは画面の入力の列と持ち主だけ（状態・番号・回数・日時は Workflow だけが書く） */
     public function test_state_columns_are_not_mass_assignable(): void
     {
-        $fillable = (new ApprovalRequest())->getFillable();
-
-        foreach (['status', 'decision', 'number', 'round', 'lock_version', 'finished_at'] as $column) {
-            $this->assertNotContains($column, $fillable);
-        }
+        $this->assertSame(
+            ['user_id', 'department_id', 'type_id', 'subject', 'amount', 'schedule', 'body', 'related_numbers'],
+            (new ApprovalRequest())->getFillable()
+        );
     }
 
     /**
