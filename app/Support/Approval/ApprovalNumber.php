@@ -100,11 +100,12 @@ final class ApprovalNumber
         // ⚠ 時計は 1 回だけ読む（ClockReadScanTest はファイルごとの件数を見る）
         $now = now();
 
-        // ⚠ insertOrIgnore にしない。行がすでにあるとき、MySQL の INSERT IGNORE は重複した行に**共有ロック**を取るので、
-        //   2 つのトランザクションが共有ロックを持ったまま次の FOR UPDATE（排他ロック）を待ち合い、デッドロックで
-        //   片方が巻き戻されうる（社長の判断と開始番号の設定が重なったときなど。その人の画面は 500）。
-        //   upsert（MySQL では INSERT … ON DUPLICATE KEY UPDATE）は重複した行に**排他ロック**を取るので、後の方は待つだけ。
-        //   SQLite のテストではロックの違いは見えない（MySQL 8.0 のロックの資料による）。
+        // ⚠ insertOrIgnore にしない。行がすでにあるとき、MySQL の INSERT IGNORE は重複した行（一意の索引）に**共有ロック**を取る。
+        //   READ COMMITTED では 2 つのトランザクションが共有ロックを持ったまま次の FOR UPDATE（排他ロック）を待ち合い、
+        //   デッドロック（1213）で片方が巻き戻される（社長の判断と開始番号の設定が重なったときなど。その人の画面は 500）。
+        //   既定の REPEATABLE READ では 2 本目の INSERT IGNORE が主キーの末尾のすき間のロックで先に待つので起きにくいが、
+        //   分離レベルに頼らない。upsert（INSERT … ON DUPLICATE KEY UPDATE）は重複した行に**排他ロック**を取るので、後の方は待つだけ。
+        //   （2026-09-27 に MySQL 8.4.8 で実測。SQLite のテストではロックの違いは見えない）
         DB::table('approval_number_sequences')->upsert([
             'department_id' => $department->id,
             'fiscal_year'   => $fiscalYear,
