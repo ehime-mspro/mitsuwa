@@ -18,6 +18,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'password.change' => \App\Http\Middleware\ForcePasswordChange::class,
             // 決裁の管理者に指定された人だけを通す（設計書 §5.2・§5.17）
             'approval.admin' => \App\Http\Middleware\EnsureApprovalAdmin::class,
+            // 使い始める前は申請を回す画面を誰にも見せない（段階2 設計書 §5.2・D1）
+            'approval.launched' => \App\Http\Middleware\EnsureApprovalLaunched::class,
         ]);
 
         // 決裁申請 段階1（設計書 §5.2・§5.5）
@@ -51,6 +53,14 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->appendToPriorityList(
             \App\Http\Middleware\RestrictApprovalOnlyUsers::class,
             \App\Http\Middleware\EnsureApprovalAdmin::class,
+        );
+
+        // 使い始める前の門番（段階2 設計書 §5.2）も SubstituteBindings より前に出す（存在しない ID でも同じ応答）。
+        // ⚠ EnsureApprovalAdmin の**後ろ**に置く。前に置くと、管理の画面を権限の無い人が開いたときに
+        //    403 より先に転送・404 が返り、ApprovalAdminGateTest（403 と文言を見る）が落ちる。
+        $middleware->appendToPriorityList(
+            \App\Http\Middleware\EnsureApprovalAdmin::class,
+            \App\Http\Middleware\EnsureApprovalLaunched::class,
         );
     })
     ->withExceptions(function (Exceptions $exceptions) {
