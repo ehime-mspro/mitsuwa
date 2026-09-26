@@ -2196,7 +2196,7 @@ git checkout 13.x && git merge --ff-only date-picker-month-ago
   反映のあと名簿 2 つが 700 で作り直され（部品は同じ 3 つ）、ログイン画面は 200、`laravel.log` に反映のあとのエラーは無かった
 - ⚠ [2/6] で vendor を送ってから [5/6] で作り直すまでの数秒は、古い名簿のまま動く（部品を外した回は、この間だけ画面が止まりうる）
 
-⚠ `origin/13.x` への push はしていない。
+⚠ `origin/13.x` への push はしていない。→ 2026-09-27 に push 済み（`f98dc15e` に含まれる）。
 
 ---
 
@@ -2285,7 +2285,7 @@ git checkout 13.x && git merge --ff-only date-picker-month-ago
 
 ⚠ 本番で実際に取り込む（確定まで）のは利用者（こちらはファイルを上げていない・フォームを送っていない）。確定まで通ることは、テスト（`CustomerImportTest` 20 本）とローカルの実ブラウザで確かめてある。
 
-⚠ `origin/13.x` への push はしていない。
+⚠ `origin/13.x` への push はしていない。→ 2026-09-27 に push 済み（`f98dc15e` に含まれる）。
 
 ---
 
