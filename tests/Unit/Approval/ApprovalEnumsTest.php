@@ -97,4 +97,33 @@ class ApprovalEnumsTest extends TestCase
             array_map(fn (ApprovalStatus $status) => $status->label(), ApprovalStatus::cases())
         );
     }
+
+    /** バッジの文字と背景のコントラストは 4.5:1 以上（WCAG AA。要件 14.4「色のコントラストに配慮する」） */
+    public function test_every_status_badge_has_enough_contrast(): void
+    {
+        foreach (ApprovalStatus::cases() as $status) {
+            $this->assertSame(1, preg_match('/background: (#[0-9a-f]{6}); color: (#[0-9a-f]{6});/', $status->badgeStyle(), $colors), "{$status->value} のバッジの色を読めない");
+            $this->assertGreaterThanOrEqual(4.5, self::contrast($colors[1], $colors[2]), "{$status->value} のバッジの文字が背景に対して薄い");
+        }
+    }
+
+    /** WCAG 2 のコントラスト比（明るい方の相対輝度 + 0.05）÷（暗い方 + 0.05） */
+    private static function contrast(string $background, string $text): float
+    {
+        $a = self::luminance($background);
+        $b = self::luminance($text);
+
+        return (max($a, $b) + 0.05) / (min($a, $b) + 0.05);
+    }
+
+    private static function luminance(string $hex): float
+    {
+        [$r, $g, $b] = array_map(function (string $pair): float {
+            $c = hexdec($pair) / 255;
+
+            return $c <= 0.03928 ? $c / 12.92 : (($c + 0.055) / 1.055) ** 2.4;
+        }, str_split(ltrim($hex, '#'), 2));
+
+        return 0.2126 * $r + 0.7152 * $g + 0.0722 * $b;
+    }
 }

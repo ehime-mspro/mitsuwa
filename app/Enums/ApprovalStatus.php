@@ -44,7 +44,7 @@ enum ApprovalStatus: string
             self::Returned, self::Condition                 => 'background: #fef3c7; color: #92400e;',
             self::Approved                                  => 'background: #d1fae5; color: #065f46;',
             self::Rejected                                  => 'background: #fee2e2; color: #991b1b;',
-            self::Withdrawn                                 => 'background: #f3f4f6; color: #6b7280;',
+            self::Withdrawn                                 => 'background: #f3f4f6; color: #4b5563;',
         };
     }
 
