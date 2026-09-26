@@ -20,11 +20,17 @@ class ApprovalSetting extends Model
     public $timestamps = true;
     public const CREATED_AT = null;
 
-    protected $fillable = ['president_user_id'];
+    protected $fillable = ['president_user_id', 'launched_at'];
 
     protected function casts(): array
     {
-        return ['president_user_id' => 'integer'];
+        return ['president_user_id' => 'integer', 'launched_at' => 'datetime'];
+    }
+
+    /** 使い始めたか（設計書 §5.2・D1）。空のあいだは申請を回す画面を誰にも見せない */
+    public function isLaunched(): bool
+    {
+        return $this->launched_at !== null;
     }
 
     /**
