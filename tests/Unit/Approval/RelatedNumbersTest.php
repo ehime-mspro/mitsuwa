@@ -14,12 +14,16 @@ class RelatedNumbersTest extends TestCase
         $this->assertSame('R8-J-001', RelatedNumbers::normalize('ｒ８－ｊ－００１'));
         $this->assertSame('R8-J-015', RelatedNumbers::normalize(' r8ーj―015 '));
         $this->assertSame('H30-JB-120', RelatedNumbers::normalize("\u{3000}h30-jb-120"));
+        $this->assertSame('R8-J-001', RelatedNumbers::normalize("R8\u{FF70}J\u{FF70}001"), '半角の長音');
+        $this->assertSame('R8-J-001', RelatedNumbers::normalize("R8\u{2011}J\u{FE63}001"), '改行しないハイフン・小さいハイフン');
+        $this->assertSame('R8-J-001', RelatedNumbers::normalize('R8 - J - 001'), '途中の空白');
     }
 
     public function test_clean_drops_empties_and_duplicates_in_order(): void
     {
         $this->assertSame(['R8-J-002', 'R8-J-001'], RelatedNumbers::clean(['r8-j-002', '', 'R8-J-001', 'Ｒ８－Ｊ－００２', null]));
         $this->assertSame([], RelatedNumbers::clean(null));
+        $this->assertSame(['123'], RelatedNumbers::clean(['123', '１２３']), '数字だけの文字列も文字列のまま（配列のキーにしない）');
     }
 
     public static function shapes(): array
@@ -32,6 +36,12 @@ class RelatedNumbersTest extends TestCase
             ['8-J-001', false],
             ['R8-JABC-001', false],
             ['R8J001', false],
+            ['R08-J-001', false],     // 年の先頭の 0（本物は R8。リンクにならない）
+            ['R0-J-001', false],      // 年は 1 から
+            ['S63-J-001', false],     // 昭和は受け付けない
+            ['R100-J-001', false],    // 年は 2 桁まで
+            ['R8-J-12345', true],     // 連番は 5 桁まで（次の番号の上限 99999）
+            ['R8-J-123456', false],
         ];
     }
 

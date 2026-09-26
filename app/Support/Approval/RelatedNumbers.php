@@ -11,16 +11,24 @@ final class RelatedNumbers
 {
     public const MAX = 10;
 
-    /** 和暦（令和 R・平成 H）-部門のアルファベット-3 桁以上の連番 */
-    public const PATTERN = '/\A[RH][0-9]{1,2}-[A-Z]{1,3}-[0-9]{3,}\z/';
+    /**
+     * 和暦（令和 R・平成 H。年は 1 から・先頭に 0 を付けない）-部門のアルファベット-3〜5 桁の連番
+     * （連番の上限は「次の番号」の上限 99999 に合わせる）。
+     * ⚠ 申請書の画面の JS（addNumber）にも同じ形の正規表現がある。変えるときは両方そろえる。
+     */
+    public const PATTERN = '/\A[RH][1-9][0-9]?-[A-Z]{1,3}-[0-9]{3,5}\z/';
 
-    /** 1 つの番号を正規化する（全角→半角・大文字・前後の空白・長音やダッシュ類をハイフンに） */
+    /**
+     * 1 つの番号を正規化する（全角→半角・大文字・空白を除く・長音やダッシュ類をハイフンに）。
+     * 番号に空白は無いので、途中の空白（`R8 - J - 001`）も除く。
+     * ⚠ 申請書の画面の JS（normalizeNumber）も同じ一覧でそろえる。変えるときは両方そろえる。
+     */
     public static function normalize(?string $value): string
     {
         $value = mb_convert_kana((string) $value, 'as');
-        $value = str_replace(['ー', '―', '‐', '−', '–', '—'], '-', $value);
+        $value = str_replace(['ー', '―', '‐', '−', '–', '—', "\u{FF70}", "\u{2011}", "\u{FE63}"], '-', $value);
 
-        return mb_strtoupper(preg_replace('/^[\s\x{3000}]+|[\s\x{3000}]+$/u', '', $value), 'UTF-8');
+        return mb_strtoupper(preg_replace('/[\s\x{3000}]+/u', '', $value), 'UTF-8');
     }
 
     /**
@@ -31,12 +39,14 @@ final class RelatedNumbers
      */
     public static function clean(?array $values): array
     {
-        $out = [];
+        $out  = [];
+        $seen = [];   // ⚠ 重複は配列のキーで見る（in_array を繰り返すと個数の 2 乗で遅くなる。JSON の本文なら数に上限が無い）
 
         foreach ($values ?? [] as $value) {
             $n = self::normalize(is_string($value) ? $value : '');
-            if ($n !== '' && ! in_array($n, $out, true)) {
-                $out[] = $n;
+            if ($n !== '' && ! isset($seen[$n])) {
+                $seen[$n] = true;
+                $out[]    = $n;   // 返すのは文字列のまま（キーにすると数字だけの文字列が int になる）
             }
         }
 
