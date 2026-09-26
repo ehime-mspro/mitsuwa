@@ -2,6 +2,8 @@
 
 namespace App\Support;
 
+use Illuminate\Support\Str;
+
 /**
  * 顧客 CSV 取込の 1 行の検査と変換（DB に触らない）。
  *
@@ -83,7 +85,8 @@ final class BuyerCsvRow
         $errors = [];
 
         foreach (self::COLUMNS as $label => $key) {
-            $cell = trim((string) ($values[$key] ?? ''));
+            // 画面の登録は TrimStrings（Str::trim()）が全角スペースも落とすので、CSV も同じ扱いにする
+            $cell = Str::trim((string) ($values[$key] ?? ''));
 
             if ($cell === '') {
                 if (in_array($key, self::REQUIRED, true)) {

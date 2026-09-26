@@ -66,6 +66,25 @@ class BuyerCsvRowTest extends TestCase
         $this->assertSame('田中', $row->staffName);
     }
 
+    // 直す前: trim() は ASCII の空白しか落とさない。画面の登録は TrimStrings（Str::trim()）が全角スペースも落とす
+    public function test_a_cell_of_only_full_width_spaces_is_blank(): void
+    {
+        $row = BuyerCsvRow::from(['last_name' => '　', 'first_name' => '太郎', 'acquired_date' => '2026-09-01']);
+
+        $this->assertSame(['姓が未入力です'], $row->errors);
+    }
+
+    public function test_full_width_spaces_around_a_cell_are_trimmed(): void
+    {
+        $row = $this->row(['last_name' => '　山田　', 'birth_era' => '昭和　', 'family_adults' => '２　', 'acquired_date' => '2026/9/1　']);
+
+        $this->assertSame([], $row->errors);
+        $this->assertSame('山田', $row->buyer['last_name']);
+        $this->assertSame('S', $row->buyer['birth_era']);
+        $this->assertSame(2, $row->buyer['family_adults']);
+        $this->assertSame('2026-09-01', $row->acquiredDate);
+    }
+
     public function test_every_column_goes_to_the_right_place(): void
     {
         $row = BuyerCsvRow::from([
