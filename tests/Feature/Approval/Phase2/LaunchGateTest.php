@@ -44,8 +44,24 @@ class LaunchGateTest extends TestCase
         return false;
     }
 
+    /**
+     * `bootstrap/app.php` の別名・グループ・優先順は、HTTP の Kernel が解決されて初めて Router に同期される
+     * （ApplicationBuilder の afterResolving フック。Router は既定でどれも空）。HTTP を出さずに
+     * `gatherRouteMiddleware()` を呼ぶテストは、その前に必ずこれを呼ぶ。呼ばないと別名 `approval.launched` が
+     * 解決されず、門番が 1 本も見つからない（実装の正誤に関係なく、分類は空振りし、並びのテストは落ちる。実測。
+     * `ApprovalAdminGateTest::test_every_approvals_route_is_classified` と同じ理由・同じ直し方）。
+     */
+    private function resolveHttpKernel(): void
+    {
+        $this->app->make(\Illuminate\Contracts\Http\Kernel::class);
+
+        $this->assertArrayHasKey('approval.launched', app('router')->getMiddleware(), '門番の別名が解決されていない（Kernel を解決していない）');
+    }
+
     public function test_every_approval_route_is_classified(): void
     {
+        $this->resolveHttpKernel();
+
         $problems = [];
         $gated    = 0;
 
@@ -83,29 +99,52 @@ class LaunchGateTest extends TestCase
         });
     }
 
-    /** 準備中に画面を開くと、ホーム（「準備中」を出す）へ送る。存在しない ID でも 404 にしない */
+    /** @return array<string, \App\Models\User> 決裁のみ利用者・決裁の管理者・基幹の利用者（D1「誰にも見せない。決裁の管理者にも」） */
+    private function everyKindOfUser(): array
+    {
+        return [
+            '決裁のみ利用者' => $this->approvalOnlyUser(),
+            '決裁の管理者'   => $this->approvalAdmin(),
+            '基幹の利用者'   => $this->baseUser(),
+        ];
+    }
+
+    /** 準備中に画面を開くと、ホーム（「準備中」を出す）へ送る。誰が開いても同じ（D1）。存在しない ID でも 404 にしない */
     public function test_before_launch_a_page_goes_to_the_home(): void
     {
         $this->probeRoutes();
-        $user = $this->approvalOnlyUser();
 
-        $this->actingAs($user)->get('/approvals/_probe/999999')->assertRedirect(route('approvals.home'));
+        foreach ($this->everyKindOfUser() as $label => $user) {
+            $response = $this->actingAs($user)->get('/approvals/_probe/999999');
+
+            $this->assertSame(302, $response->getStatusCode(), "{$label}: 転送されていない");
+            $this->assertSame(route('approvals.home'), $response->headers->get('Location'), "{$label}: ホームへ送られていない");
+        }
     }
 
     public function test_before_launch_a_post_is_not_found(): void
     {
         $this->probeRoutes();
 
-        $this->actingAs($this->approvalOnlyUser())->post('/approvals/_probe')->assertNotFound();
+        foreach ($this->everyKindOfUser() as $label => $user) {
+            $this->assertSame(404, $this->actingAs($user)->post('/approvals/_probe')->getStatusCode(), "{$label}: 404 になっていない");
+        }
     }
 
+    /**
+     * Ajax・JSON は転送せず 404。合図は 1 つずつ分けて送る（X-Requested-With だけ・Accept: application/json だけ）。
+     * ⚠ 実在する ID でも試す（存在しない ID だけだと、門番が素通しでもルートモデル結合が 404 を返して緑になる）。
+     */
     public function test_before_launch_an_ajax_request_is_not_found(): void
     {
         $this->probeRoutes();
+        $request = $this->draftFor($this->approvalWorld());   // 結合が通る ID。404 を返せるのは門番だけ
+        $user    = $this->approvalOnlyUser();
 
-        $this->actingAs($this->approvalOnlyUser())
-            ->getJson('/approvals/_probe/999999', ['X-Requested-With' => 'XMLHttpRequest'])
-            ->assertNotFound();
+        foreach ([$request->id, 999999] as $id) {
+            $this->actingAs($user)->get("/approvals/_probe/{$id}", ['X-Requested-With' => 'XMLHttpRequest', 'Accept' => 'text/html'])->assertNotFound();
+            $this->actingAs($user)->get("/approvals/_probe/{$id}", ['Accept' => 'application/json'])->assertNotFound();
+        }
     }
 
     public function test_after_launch_the_page_opens(): void
@@ -120,11 +159,7 @@ class LaunchGateTest extends TestCase
     /** 門番はルートモデル結合より前（データの有無を漏らさない）・決裁の管理の門番より後（管理の画面は 403 が先） */
     public function test_the_gate_runs_after_the_admin_gate_and_before_bindings(): void
     {
-        // ⚠ 計画からの変更: `Router::$middlewarePriority` と別名は、`Illuminate\Contracts\Http\Kernel` が
-        //    解決されて初めて bootstrap/app.php の設定が同期される（ApplicationBuilder の afterResolving
-        //    フック）。この 1 行が無いと、HTTP を出さないこのテストは実装の正誤に関係なく必ず失敗する
-        //    （実測。tests/Feature/Approval/ApprovalOnlyLockoutTest.php:297 と同じ理由・同じ直し方）。
-        $this->app->make(\Illuminate\Contracts\Http\Kernel::class);
+        $this->resolveHttpKernel();
 
         $route  = Route::middleware(['web', 'approval.admin', 'approval.launched'])->get('/approvals/_probe_order', fn () => 'ok');
         $sorted = array_values(app('router')->gatherRouteMiddleware($route));
