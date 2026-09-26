@@ -11,7 +11,9 @@ use PHPUnit\Framework\TestCase;
  *
  * ⚠ 下の「誤り」の値は、どれも直す前の取込を素通りして、壊れた値を書くか全行を巻き戻していたもの（設計書 §2.2）。
  *   消さないこと。
- * ⚠ 上限の数は本番の列の大きさ（設計書 §2.6）。クラスの定数を読まずに数を書く（読むと同じ式で確かめることになる）。
+ * ⚠ 上限の数は本番の列の大きさ（2026-09-26 の読み取り。計画 docs/superpowers/plans/2026-09-26-customer-import-confirm.md の
+ *   実測記録「Task 1」。設計書 §2.6 は担当者名を 50 としているが、本番は 100）。
+ *   クラスの定数を読まずに数を書く（読むと同じ式で確かめることになる）。
  * ⚠ Laravel を起動しないテスト。`BuyerCsvRow` は時刻も timezone も使わないので、固定は要らない（Bug #54 ①）。
  */
 class BuyerCsvRowTest extends TestCase

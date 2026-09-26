@@ -413,7 +413,8 @@ class CustomerImportTest extends TestCase
         $this->existingBuyer('山田', '太郎');
         $preview = $this->preview($this->csv([$this->person('山田', '太郎')]));
 
-        // 画面はボタンを隠すが、JavaScript が動かずボタンが出たままでも、サーバが 0 件の確定を断る
+        // 画面はボタンを隠すが、隠れたフォームがそのまま送られてきても（二重送信・細工した送信と同じ形）、
+        // サーバが 0 件の確定を断る
         $landed = $this->submit($this->confirmForm($preview));
 
         $landed->assertSee('取り込む行がありません。重複候補を取り込むときは「重複候補もインポートする」にチェックを入れてください。');

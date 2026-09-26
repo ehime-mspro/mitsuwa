@@ -108,7 +108,9 @@
 `tests/Concerns/CreatesRealEstateSchema.php` の `buyers`（コメントには `db:table` の実測に合わせたとある）:
 姓・名・セイ・メイ 50 ／ 元号 10 ／ 郵便番号 10 ／ 都道府県 10 ／ 市区町村 50 ／ 住所詳細・建物名 255 ／
 電話番号 20 ／ メールアドレス 255 ／ 職業 50 ／ 勤務先 100 ／ 大人人数・子供人数 `tinyint unsigned` ／
-勤続年数 `smallint unsigned`。`buyer_surveys.staff_name` は 50。`buyer_departments` は `UNIQUE(buyer_id, department)`。
+勤続年数 `smallint unsigned`。`buyer_surveys.staff_name` は 50（2026-09-26 追記: 本番の読み取りで `buyer_surveys.staff_name` は
+varchar(100)。コードとテストは本番に合わせて 100 で実装した。実測記録は計画 docs/superpowers/plans/2026-09-26-customer-import-confirm.md
+の「Task 1」）。`buyer_departments` は `UNIQUE(buyer_id, department)`。
 
 - **リポジトリに DDL の正本は無い**（`database/` に `buyers` の定義が無い）。数字は実装の前に本番の読み取りで確かめる（§7）
 - `buyer_survey_answers` はテスト用スキーマに無い（trait のコメントは「show が触らないので作らない」）。
@@ -154,6 +156,8 @@ DB・ルート・テンプレート（`downloadTemplate`）・設問の列（Q1:
 2. **CSV を読む**（private の `loadCsv()`。テナント・ZEAL と同じ形）:
    - 確定（`confirmed`）: `(string) base64_decode($request->input('csv_data', ''))`。
      プレビューが渡すのは UTF-8 にそろえ BOM を除いた後の内容なので、変換し直さない。壊れていても無くても空文字になり、3 で止まる
+     （2026-09-26 追記: 一部だけ壊れている場合は空文字にならない —— `base64_decode()`（strict でない）は壊れる手前まで
+     読めた分をそのまま返す。行は 5 で必ず検査し直すので、プレビューで通らない行はこの経路でも取り込まれない）
    - プレビュー: `validate(['csv_file' => 'required|file|mimes:csv,txt|max:10240'])` を 1 と同じ形で包み、
      `CsvImportReader::decode(file_get_contents(...))`
 3. **データの行が無ければ**、`redirect()->route('admin.customers.import')->with('error', 'CSVファイルにデータがありません。')`
@@ -199,7 +203,7 @@ DB・ルート・テンプレート（`downloadTemplate`）・設問の列（Q1:
 | 勤続年数 | 空欄は可。0〜65535 の整数（人数と同じ扱い）| 整数 |
 | 取得日 | 必須（「取得日が未入力です」は今の文言のまま）。`CsvDate::normalize()` で読めなければ誤り（`2026-02-30`）。`2026/9/1`・`1970-01-01` は通る | `Y-m-d`（アンケートの日付にも使う）|
 | 来場分譲地名 | 検査しない（保存せず、分譲地を探すのに使うだけ）| — |
-| 担当者名 | 50 文字以内（`buyer_surveys.staff_name` の大きさ）。回答が空欄でアンケートを作らない行でも見る（行によって規則が変わらないように）| そのまま |
+| 担当者名 | 50 文字以内（`buyer_surveys.staff_name` の大きさ。2026-09-26 追記: 本番の読み取りで `buyer_surveys.staff_name` は varchar(100)。コードとテストは 100 で実装した。実測記録は §2.6 の追記）。回答が空欄でアンケートを作らない行でも見る（行によって規則が変わらないように）| そのまま |
 
 **文言**（列の名前は `COLUMNS` の見出しから取る）:
 
@@ -232,6 +236,8 @@ DB・ルート・テンプレート（`downloadTemplate`）・設問の列（Q1:
 
 - 押せないボタンは `disabled` にせず隠す（`disabled` の要素の `title` はホバーで出ない。Top trap #12）。理由は文字で出す
 - サーバにも同じ歯止めがある（§4.2 の 7）。JavaScript が動かずボタンが出たままでも、0 件の確定は断る
+  （2026-09-26 追記: JS が無くても V＝0 のボタンはサーバが描いた display: none で隠れたまま（V＞0 なら 0 件にならない）ので、
+  実際にこの歯止めに着くのは、プレビューのあと DB が変わったとき（二重送信・別のタブで先に確定・細工した送信）だけ）
 - Alpine は今の `csvImport()` を広げる: `validCount`・`dupeCount`（サーバが埋める）・`includeDupes`・`importCount()`。
   関数は `<script>` の中に書く（属性にアロー関数を書かない。Top trap #4）。チェックボックスに `x-model="includeDupes"`
 - ボタンとその説明は、それぞれを包む要素に `x-show` を付けて出し分ける（ボタン自身の `style=` に触らない。Top trap #5・Bug #32）。

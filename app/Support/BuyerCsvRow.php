@@ -13,7 +13,8 @@ use Illuminate\Support\Str;
  * ⚠ 1 行の誤りはすべて集め、CSV の列の順に並べる（直して上げ直すたびに次の誤りが出る、を避ける）。
  * ⚠ 日付は `CsvDate::normalize()`（`checkdate()`）で読む。モデルの date キャストに任せると `19800102` は
  *   Unix 時刻として読まれ、`2026-02-30` は 3/2 に繰り上がる（docs/RULES.md Bug #54・#66）。
- * ⚠ 上限は本番の列の大きさ（設計書 docs/superpowers/specs/2026-09-25-customer-import-confirm-design.md §2.6）。
+ * ⚠ 上限は本番の列の大きさ（2026-09-26 の読み取り。計画 docs/superpowers/plans/2026-09-26-customer-import-confirm.md の
+ *   実測記録「Task 1」。設計書 §2.6 は担当者名を 50 としているが、本番は 100）。
  *   超えると本番の MySQL（strict モード）が 1 行の誤りで取込の全行を巻き戻す。
  * ⚠ Laravel を起動しない Unit テストで使うので、時刻や timezone に頼る処理を入れない（Bug #54 ①）。
  */
