@@ -80,11 +80,6 @@ class ImportControllerValidationRedirectScanTest extends TestCase
 
     /** @var array<string, array{0: int, 1: string}> 相対パス => [包んでいない呼び出しの件数, 理由] */
     private const ALLOWED = [
-        'app/Http/Controllers/Admin/CustomerImportController.php' => [
-            1,
-            '確認画面の URL が取込の画面と同じ（GET と POST がどちらも /admin/customers/import）。'
-                . 'リファラーへ戻ると取込の画面が GET で開く（2026-09-24 実測 200）',
-        ],
         'app/Http/Controllers/Tenant/AreaBuildingImportController.php' => [
             1,
             '確認は画面の中（SheetJS）で行い、確定の送信元は GET の取込の画面。'

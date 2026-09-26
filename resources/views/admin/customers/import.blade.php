@@ -129,30 +129,46 @@
             </div>
         </div>
 
-        {{-- STEP 4: 実行確認 --}}
+        {{-- STEP 4: 実行確認
+             ⚠ 出し分け（V＝取り込める行の数・D＝重複候補の数。設計書 2026-09-25-customer-import-confirm-design.md §4.4）:
+               V＝0 かつ D＝0 は確定のフォームを出さない ／ D がある間はボタンの件数をチェックに合わせて変える ／
+               V＝0 かつ D がある間は、チェックを入れるまでボタンを隠して理由を出す
+             ⚠ 押せないボタンは disabled にせず隠す（disabled の要素の title はホバーで出ない。Top trap #12）
+             ⚠ x-show はボタンを包む要素に付け、ボタン自身の style に触らない（Top trap #5・Bug #32）。
+               最初の状態はサーバが描く（V＝0 なら display: none）ので、開いた直後に一瞬出て消えない
+             ⚠ サーバにも同じ歯止めがある（0 件の確定は断る。CustomerImportController::execute()） --}}
         <div style="display: flex; align-items: flex-start; gap: 14px; margin-bottom: 20px;">
             <div style="width: 28px; height: 28px; border-radius: 50%; background: #059669; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0;">4</div>
             <div style="flex: 1;">
                 <div style="font-weight: 600; margin-bottom: 8px;">インポート実行</div>
-                <form method="POST" action="{{ route('admin.customers.import.execute') }}">
-                    @csrf
-                    <input type="hidden" name="department" value="{{ $department }}">
-                    <input type="hidden" name="confirmed" value="1">
-                    <input type="hidden" name="csv_data" value="{{ $csvData }}">
+                @if($validCount > 0 || count($dupeRows ?? []) > 0)
+                    <form method="POST" action="{{ route('admin.customers.import.execute') }}">
+                        @csrf
+                        <input type="hidden" name="department" value="{{ $department }}">
+                        <input type="hidden" name="confirmed" value="1">
+                        <input type="hidden" name="csv_data" value="{{ $csvData }}">
 
-                    @if(count($dupeRows ?? []) > 0)
-                        <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 12px; cursor: pointer;">
-                            <input type="checkbox" name="include_duplicates" value="1" style="accent-color: #059669; width: 16px; height: 16px;">
-                            重複候補もインポートする（別人として新規登録）
-                        </label>
-                    @endif
+                        @if(count($dupeRows ?? []) > 0)
+                            <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 12px; cursor: pointer;">
+                                <input type="checkbox" name="include_duplicates" value="1" x-model="includeDupes" style="accent-color: #059669; width: 16px; height: 16px;">
+                                重複候補もインポートする（別人として新規登録）
+                            </label>
+                        @endif
 
-                    <button type="submit"
-                            style="background: #059669; color: #fff; padding: 10px 28px; border-radius: 6px; font-size: 15px; font-weight: 600; border: none; cursor: pointer;">
-                        インポート実行（{{ $validCount }}件）
-                    </button>
-                    <div style="font-size: 12px; color: #6b7280; margin-top: 6px;">※ エラー行（{{ count($rowErrors ?? []) }}件）はスキップされます</div>
-                </form>
+                        <div x-show="importCount() > 0" style="{{ $validCount === 0 ? 'display: none;' : '' }}">
+                            <button type="submit"
+                                    style="background: #059669; color: #fff; padding: 10px 28px; border-radius: 6px; font-size: 15px; font-weight: 600; border: none; cursor: pointer;">
+                                インポート実行（<span x-text="importCount()">{{ $validCount }}</span>件）
+                            </button>
+                        </div>
+                        @if($validCount === 0)
+                            <div x-show="importCount() === 0" style="font-size: 13px; color: #d97706;">重複候補だけです。取り込むときは、上のチェックを入れてください。</div>
+                        @endif
+                        <div style="font-size: 12px; color: #6b7280; margin-top: 6px;">※ エラー行（{{ count($rowErrors ?? []) }}件）はスキップされます</div>
+                    </form>
+                @else
+                    <div style="font-size: 13px; color: #dc2626;">インポート可能なデータがありません。CSVを修正してください。</div>
+                @endif
 
                 <a href="{{ route('admin.customers.import') }}" style="display: inline-block; margin-top: 12px; font-size: 13px; color: #6b7280; text-decoration: underline;">← やり直す</a>
             </div>
@@ -165,6 +181,13 @@ function csvImport() {
     return {
         selectedDept: '{{ $department ?? "housing" }}',
         fileName: '',
+        // 確定の欄: 取り込める行の数と重複候補の数（サーバが数えた値）。チェックを入れると重複候補も数える
+        validCount: {{ (int) ($validCount ?? 0) }},
+        dupeCount: {{ count($dupeRows ?? []) }},
+        includeDupes: false,
+        importCount: function() {
+            return this.validCount + (this.includeDupes ? this.dupeCount : 0);
+        },
         onFileSelect: function(event) {
             var file = event.target.files[0];
             if (file) {
