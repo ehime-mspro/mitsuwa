@@ -50,6 +50,9 @@ scratchpad に `git archive 698d74c2` で作ったコピー（vendor は `cp -Rc
 | 6 | §5.1 の場面 1〜12 | ＋「部署はプレビューで選んだもの」「0 件の確定をサーバが断る」「件数の JS を node で動かす」の 3 本と、構造のアサート 2 つ | 上の「テストの穴」。設計書 §4.4 の出し分けを守るテストが無かった |
 | 7 | — | 部署の検査をファイルの検査より先に行う（両方が誤りなら部署の誤りだけが出る）| 設計書 §4.2 の 1・2 の順どおり。直す前は 1 回の `validate()` で両方の誤りが出ていた（振る舞いの小さな違いとして記録する）|
 | 8 | — | アンケートの書き込み（分譲地の前方一致・担当者の部分一致・`if ($row->projectName)` の真偽判定）と `catch (\Exception $e)` は今のまま | 設計書 §4.2 の 7「今の探し方のまま」。ほかの取込もすべて `catch (\Exception $e)`（最小差分）|
+| 9 | §2.6 `buyer_surveys.staff_name` は 50 | 100（`BuyerCsvRow::MAX_LENGTH`・Unit テストの `textColumns()`・テスト用スキーマ・変異 B21）| 本番の定義が `varchar(100)`（Task 1 で読み取り）。上限は列の大きさに合わせる（設計書 §4.3）|
+| 10 | §2.6 `buyer_survey_answers.question_snapshot` は text | `json` で NULL 不可（テスト用スキーマは `$t->json('question_snapshot')`。SQLite では TEXT NOT NULL になる）| 本番の定義（Task 1）。取込は `SurveyQuestion::toSnapshot()`（配列）を必ず書くので、NULL 不可で困る経路は無い |
+| 11 | — | テスト用スキーマの `buyer_survey_answers` に `UNIQUE(survey_id, question_id)`（名前 `uq_survey_answer`）を張る | 本番の定義（Task 1）。テスト用スキーマに本番の一意制約が無いと、本番だけで取込全体が巻き戻る失敗をテストが隠す（Bug #60）。FK は trait の方針どおり張らない |
 
 ## 変えるファイル
 
@@ -58,7 +61,7 @@ scratchpad に `git archive 698d74c2` で作ったコピー（vendor は `cp -Rc
 | `app/Support/BuyerCsvRow.php` | **新規**（1 行の検査と変換。DB に触らない）|
 | `app/Http/Controllers/Admin/CustomerImportController.php` | 確定は `csv_data` から読み直す・戻り先を取込の画面に固定・1 行の検査を `BuyerCsvRow` へ・0 件の確定を断る |
 | `resources/views/admin/customers/import.blade.php` | 確定の欄の出し分け（0 件・重複候補）と、件数をチェックに合わせる Alpine |
-| `tests/Concerns/CreatesRealEstateSchema.php` | `buyer_survey_answers` を足す（Task 1 で読んだ本番の定義で）|
+| `tests/Concerns/CreatesRealEstateSchema.php` | `buyer_survey_answers` を足し、`buyer_surveys.staff_name` を 100 にする（Task 1 で読んだ本番の定義で）|
 | `tests/Unit/Support/BuyerCsvRowTest.php` | **新規**（61 本）|
 | `tests/Feature/Admin/CustomerImportTest.php` | **新規**（20 本）|
 | `tests/Feature/ImportControllerReturnPathScanTest.php`・`tests/Feature/ImportControllerValidationRedirectScanTest.php` | 例外リストから顧客を外す |
@@ -172,9 +175,9 @@ SH
 ## Task 2: テスト用スキーマに buyer_survey_answers を足す
 
 **Files:**
-- Modify: `tests/Concerns/CreatesRealEstateSchema.php`（`buyer_surveys` の注記と、その直後）
+- Modify: `tests/Concerns/CreatesRealEstateSchema.php`（`buyer_surveys` の注記と `staff_name`、その直後）
 
-- [ ] **Step 1: 置き換える**（Edit。`buyer_surveys` の「作らない」の注記を消し、直後に回答の表を足す。列は Task 1 で読んだ本番の定義に合わせる）
+- [ ] **Step 1: 置き換える**（Edit。`buyer_surveys` の「作らない」の注記を消して `staff_name` を本番の 100 にし、直後に回答の表を足す。列は Task 1 で読んだ本番の定義に合わせる）
 
 置き換える前:
 
@@ -207,20 +210,25 @@ SH
             $t->date('survey_date');
             $t->unsignedBigInteger('project_id')->nullable();
             $t->unsignedInteger('staff_user_id')->nullable();
-            $t->string('staff_name', 50)->nullable();
+            $t->string('staff_name', 100)->nullable();
             $t->text('memo')->nullable();
             $t->timestamps();
         });
 
         // アンケートの回答。本番も raw SQL 管理でマイグレーションに無い。
-        // 顧客 CSV 取込の確定が書く（Admin\CustomerImportController）。列は本番の定義に合わせる（2026-09-26 に読み取り）。
+        // 顧客 CSV 取込の確定が書く（Admin\CustomerImportController）。
+        // 実 DB（2026-09-26 に読み取り）:
+        //   id / survey_id / question_id / answer_value text / question_snapshot json NOT NULL
+        //   / created_at・updated_at（CURRENT_TIMESTAMP 既定値）+ UNIQUE (survey_id, question_id)
+        // ⚠ 一意制約も張る（無いと、本番だけで取込全体が巻き戻る失敗をテストが隠す。Bug #60）
         Schema::create('buyer_survey_answers', function (Blueprint $t) {
             $t->id();
             $t->unsignedBigInteger('survey_id');
             $t->unsignedBigInteger('question_id');
             $t->text('answer_value')->nullable();
-            $t->text('question_snapshot')->nullable();
+            $t->json('question_snapshot');
             $t->timestamps();
+            $t->unique(['survey_id', 'question_id'], 'uq_survey_answer');
         });
 ```
 
@@ -240,7 +248,8 @@ test: テスト用スキーマにアンケートの回答の表を足す
 
 buyer_survey_answers は本番も raw SQL 管理でマイグレーションに無い。顧客 CSV 取込の
 確定がアンケートの回答を書くので、確定まで往復するテストに要る。列は本番の定義
-（2026-09-26 に読み取り）に合わせた。
+（2026-09-26 に読み取り）に合わせた（question_snapshot は json で NULL 不可・
+UNIQUE(survey_id, question_id) も張る）。buyer_surveys.staff_name も本番の 100 に直す。
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 EOF
@@ -527,7 +536,7 @@ class BuyerCsvRowTest extends TestCase
             'メールアドレス' => ['email', 'メールアドレス', 255],
             '職業'           => ['occupation', '職業', 50],
             '勤務先'         => ['employer', '勤務先', 100],
-            '担当者名'       => ['staff_name', '担当者名', 50],
+            '担当者名'       => ['staff_name', '担当者名', 100],
         ];
     }
 
@@ -652,7 +661,7 @@ final class BuyerCsvRow
         'postal_code' => 10, 'prefecture' => 10, 'city' => 50,
         'address_detail' => 255, 'building_name' => 255,
         'phone' => 20, 'email' => 255, 'occupation' => 50, 'employer' => 100,
-        'staff_name' => 50,
+        'staff_name' => 100,
     ];
 
     /** 整数の列の上限（大人人数・子供人数は tinyint unsigned、勤続年数は smallint unsigned） */
@@ -2151,7 +2160,7 @@ MUTATIONS = [
     ("B18", B, INTEGER_CHECK, "        if (preg_match('/^[0-9]+$/', $digits) !== 1 || (int) $digits >= $max) {\n"),
     ("B19", B, INTEGER_LIMITS, "        'family_adults' => 256, 'family_children' => 255, 'years_employed' => 65535,\n"),
     ("B20", B, INTEGER_LIMITS, "        'family_adults' => 255, 'family_children' => 255, 'years_employed' => 65534,\n"),
-    ("B21", B, "        'staff_name' => 50,\n", "        'staff_name' => 51,\n"),
+    ("B21", B, "        'staff_name' => 100,\n", "        'staff_name' => 101,\n"),
     ("B22", B, "        $length = mb_strlen($cell);\n", "        $length = strlen($cell);\n"),
     ("B23", B, "        if ($length > $max) {\n", "        if ($length >= $max) {\n"),
     ("B24", B, "            $cell = trim((string) ($values[$key] ?? ''));\n", "            $cell = (string) ($values[$key] ?? '');\n"),
@@ -2362,7 +2371,7 @@ SP=<Scratchpad directory>; C=$(cat "$SP/cic-mut-commit"); NEW=$(git -C /Users/ma
 | B18 | 整数の上限の比較を `>=` に | Unit 3 ケース: `大人人数 255`・`子供人数 255`・`勤続年数 65535` |
 | B19 | 大人人数の上限を 256 に | 3 本: Feature `…invalid_rows…`（文言の「0〜255」）＋ Unit `大人人数 256`・`…every_error…` |
 | B20 | 勤続年数の上限を 65534 に | Unit 2 ケース: `勤続年数 65535`・`勤続年数 65536`（文言）|
-| B21 | 担当者名の上限を 51 に | Unit 1 ケース: 文字数の上限を超える「担当者名」|
+| B21 | 担当者名の上限を 101 に | Unit 1 ケース: 文字数の上限を超える「担当者名」|
 | B22 | 文字数を `strlen()` で数える | Unit 29: 上限まで 14 ケース・上限を超える 14 ケース・`…every_error…` |
 | B23 | 文字数の境目の比較を `>=` に | Unit 14: 上限まで の 14 ケース |
 | B24 | 前後の空白を除かない | Unit 2 本: `…blank_cells…`・`…cells_are_trimmed` |
@@ -2740,6 +2749,7 @@ Bug #1–65                    →   Bug #1–66
 - 複数選択の回答の保存形式（画面は JSON の配列・取込は `A,B`）
 - 分譲地名（前方一致）・担当者名（部分一致）のあいまいな照合
 - 設問の列（Q1:…）が並び順で設問と結びつくこと
+- 同じ設問番号の列が 2 つある CSV（`Q1:…` を 2 列など）は、2 列とも同じ設問の回答になり、本番では回答の一意制約（`uq_survey_answer`）に当たって取込全体が巻き戻る可能性が高い（テンプレートどおりなら起きない。コードと本番の定義からの推測で未実測。Task 1 で気づいた）
 - 引用符の中の改行（行を `explode("\n")` で分けるので壊れる）
 - テンプレートに記入例が無いこと
 - 断られると確認画面の内容が消えて取込の画面に戻ること（今と同じ）
@@ -2866,6 +2876,7 @@ EOF
 - 複数選択の回答の保存形式（画面は JSON の配列・取込は `A,B`）
 - 分譲地名（前方一致）・担当者名（部分一致）のあいまいな照合
 - 設問の列（Q1:…）が並び順で設問と結びつくこと
+- 同じ設問番号の列が 2 つある CSV（`Q1:…` を 2 列など）は、2 列とも同じ設問の回答になり、本番では回答の一意制約（`uq_survey_answer`）に当たって取込全体が巻き戻る可能性が高い（テンプレートどおりなら起きない。コードと本番の定義からの推測で未実測。Task 1 で気づいた）
 - 引用符の中の改行（行を `explode("\n")` で分けるので壊れる）
 - テンプレートに記入例が無いこと
 - 断られると確認画面の内容が消えて取込の画面に戻ること（今と同じ）
@@ -2893,9 +2904,27 @@ EOF
 - 足す前のテスト（設計書 §5.1 の場面だけ・19 本）では V06・V07・V08 が 3 通りとも「落ちたテスト 0 件」だった（Task 4 のテストで足した構造のアサート 2 つと node のテスト 1 本で塞いだ）
 - M13 は最初「取得日の引数を落とす」形で当てたら `ArgumentCountError` で 500 になり、開いたままのトランザクションが後続のテストへ連鎖した。「違う取得日を入れる」形に変えて、落ちるテストが 2 本に絞れることを確かめた
 
+### Task 0: 前提の確認（2026-09-26）
+
+- `13.x` の `a162957b`（文書だけ: 決裁 段階2a の計画・BACKLOG の 3 行）をマージした（`f566d818`）。アプリのコードとテストは変わらない
+- 全件テスト **OK (2263 tests, 14765 assertions)**（期待どおり）・node v24.11.1
+
 ### Task 1: 本番の列の定義
 
-（未記入）
+2026-09-26 に利用者の承認のうえ `SHOW CREATE TABLE` で読み取った（書き込みなし）。4 表とも InnoDB・`utf8mb4_unicode_ci`。
+
+| 表 | 本番の定義の要点 | 設計書 §2.6・この計画との違い |
+|---|---|---|
+| buyers | 姓・名 `varchar(50) NOT NULL` ／ セイ・メイ 50・元号 10・郵便番号 10・都道府県 10・市区町村 50・住所詳細 255・建物名 255・電話番号 20・メール 255・職業 50・勤務先 100（どれも NULL 可）／ 大人人数・子供人数 `tinyint unsigned`・勤続年数 `smallint unsigned`・生年月日 `date`（NULL 可）／ `memo text`・`deleted_at` ／ 索引 `idx_buyers_name_pref_city (last_name, first_name, prefecture, city)`（一意でない）| 無し（§2.6 どおり）。一意でない索引はテスト用スキーマに無いが、振る舞いに関わらない |
+| buyer_departments | `department enum('housing','realestate') NOT NULL` ／ `acquired_date date NOT NULL` ／ `rank enum(…) NOT NULL DEFAULT 'C'` ／ `created_at` だけ（`updated_at` 無し）／ `UNIQUE uq_buyer_department (buyer_id, department)` ／ FK buyer_id → buyers（CASCADE）| 無し（テスト用スキーマの注記どおり）|
+| buyer_surveys | `department enum NOT NULL` ／ `survey_date date NOT NULL` ／ `project_id`・`staff_user_id` `bigint unsigned` NULL 可 ／ **`staff_name varchar(100)`** NULL 可 ／ `memo text` ／ FK 3 本（buyers CASCADE・re_projects SET NULL・users SET NULL）| **`staff_name` は 100**（§2.6 とテスト用スキーマは 50）→ 直した（下）。`staff_user_id` はテスト用スキーマが `int unsigned` だが、SQLite ではどちらも INTEGER で振る舞いが同じなので変えない |
+| buyer_survey_answers | `survey_id`・`question_id` `bigint unsigned NOT NULL` ／ `answer_value text` NULL 可 ／ **`question_snapshot json NOT NULL`** ／ `created_at`・`updated_at`（CURRENT_TIMESTAMP 既定値）／ **`UNIQUE uq_survey_answer (survey_id, question_id)`** ／ FK 2 本（survey_questions CASCADE・buyer_surveys CASCADE）| **`question_snapshot` は json で NULL 不可**（計画は text・NULL 可）／ **一意制約がある**（計画に無かった）→ 直した（下）|
+
+直したもの（Task 1 Step 3。「設計書との違い」の 9〜11）:
+
+- `buyer_surveys.staff_name` の上限 50 → 100: Task 2 のテスト用スキーマ・Task 3 の `MAX_LENGTH` と Unit テストの `textColumns()`・Task 6 の変異 B21（100 → 101）。テストの本数とアサートの数は変わらない見込み（データプロバイダの値と、文言の数字が変わるだけ）。Task 3・5 で測って確かめる
+- Task 2 の `buyer_survey_answers`: `question_snapshot` を `$t->json('question_snapshot')`（NULL 不可）にし、`UNIQUE(survey_id, question_id)` を足した。⚠ Step 3 の例は `->nullable()` を付けていたが、本番は NULL 不可なので付けない。FK は trait の方針どおり張らない
+- 範囲外に 1 つ足した: 同じ設問番号の列が 2 つある CSV は、本番では一意制約に当たって取込全体が巻き戻る可能性が高い（`$questionMap` は見出しの位置ごとに設問を引くので、`Q1:` の列が 2 つあると同じ設問の回答を 2 つ書く。テンプレートどおりなら起きない。未実測）
 
 ### Task 5: 全件テストと lint
 
