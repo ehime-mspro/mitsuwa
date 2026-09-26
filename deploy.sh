@@ -39,7 +39,7 @@ fi
 # bootstrap/cache も本番が自分で育てる場所。手元で config:cache を打つと、手元の .env を写した
 # config.php（接続情報・暗号化キー入り）ができ、それが本番の config.php を上書きしてしまう。
 # [5/6] が本番の .env から作り直すまでの間、本番が手元の設定で動く（[5/6] が失敗すれば残る）。
-# packages.php と services.php は本番が最初のアクセス時に自分で作り直すので、外して支障ない。
+# 部品の名簿（packages.php・services.php）も送らない。本番で毎回作り直すのは [5/6]（理由はそこに書く）。
 echo "=== [2/6] アプリケーション転送 ==="
 rsync -avz \
   --exclude='.env' \
@@ -89,7 +89,16 @@ rsync -avz --delete ./public/build/ ${SERVER}:${APP_PATH}/public/build/
 echo "=== [5/6] キャッシュ更新 ==="
 # umask 077: 本番の .env と、それを写した bootstrap/cache/config.php には秘密（S3 の鍵・暗号化キー・
 # メールのパスワード）が入るため、作り直すキャッシュも本人だけ読める 600 にする（PHP は本人の権限で動く）。
+# 部品の名簿（packages.php・services.php）は、キャッシュを作る前に毎回消して作り直す（2026-09-25）。
+# packages.php は Laravel が「無いときだけ」作る（PackageManifest::getManifest()）ので、[2/6] で送らない
+# ままだと古いまま固まる。名簿に載った部品が vendor から消えると、画面も artisan も起動の時点で
+# 止まり、package:discover 自身も同じところで止まる（手元で実測）。だから作り直す前に消す。
+# services.php は部品の一覧が変わると自分で作り直すが、揃えて消す。消したあとは次の起動が作り直す
+# （一時ファイルからの rename で置き換えるので、作りかけを読まれることはない。umask 077 なので 700）。
+# ⚠ [2/6] で vendor を送ってから、ここで作り直すまでの数秒は古い名簿のまま動く。
 ssh ${SERVER} "umask 077 && cd ${APP_PATH} && \
+  rm -f bootstrap/cache/packages.php bootstrap/cache/services.php && \
+  /usr/local/php/8.3/bin/php artisan package:discover && \
   /usr/local/php/8.3/bin/php artisan config:cache && \
   /usr/local/php/8.3/bin/php artisan route:cache && \
   /usr/local/php/8.3/bin/php artisan view:cache"
