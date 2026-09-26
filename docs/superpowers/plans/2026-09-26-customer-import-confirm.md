@@ -2932,9 +2932,86 @@ EOF
 
 ### Task 6: 変異テスト
 
-（未記入）
+対象コミット `5ca383ae`。隔離した worktree 3 つ（`cic-mut-5ca383ae-{a,b,c}`）で計測。
 
-3 つの表の結果（ID・落ちたテストの数と名前・理由の 1 行目）と、期待と違ったもの・その対応を書く。
+カナリア（`showForm()` のビュー名を無いものにする）は 3 コピーとも同一の **16 本**が落ちた（`CustomerImportTest` 15 本＋`ImportValidationFeedbackTest` の「顧客CSV」ケース 1 本。いずれも差し戻し先にエラーの画面が出ている型の失敗）＝ 隔離が効いている証拠。
+
+58 通りの変異（コントローラ 16・`BuyerCsvRow` 27・プレビューの画面 15）＋カナリアの計 **59 通りすべてが期待どおり（MATCH）**。落ちたテストの集合（データセット名まで）と理由の 1 行目が、計画（Task 6 のブリーフ）の期待表とすべて一致し、GREEN（検出漏れ）は 0 件。
+
+**コントローラ（`app/Http/Controllers/Admin/CustomerImportController.php`）**
+
+| ID | 変異 | 落ちたテスト・理由 | 判定 |
+|---|---|---|---|
+| M01 | 確定でも `csv_file` から読む（元の不具合） | 14 本（C0 の 15 本から部署書き換えテストを除く全部）。エラーの画面に着く | MATCH |
+| M02 | 0 件の歯止めを消す | 2 本（`confirming_only_duplicates_without_the_check_imports_nothing` / `a_confirmation_with_no_importable_rows_is_turned_back`）。エラーの画面 | MATCH |
+| M03 | 歯止めの文言の分岐を逆に | M02 と同一の 2 本 | MATCH |
+| M04 | データが無いときの戻り先を `back()` に | 1 本（`ImportControllerReturnPathScanTest`：戻り先がリファラー／今の URL） | MATCH |
+| M05 | 書き込みの失敗の戻り先を `back()` に | 同上 1 本 | MATCH |
+| M06 | 完了の戻り先を `back()` に | 同上 1 本 | MATCH |
+| M07 | 部署の検査の try を外す | 1 本（`ImportControllerValidationRedirectScanTest`：入力チェックの例外を包んでいない） | MATCH |
+| M08 | ファイルの検査の try を外す | 同上 1 本 | MATCH |
+| M09 | `DB::rollBack()` を消す | 主因 1 本（`test_a_failure_while_writing_rolls_back_every_row`：1 行目が巻き戻っていない）＋連鎖 1555 件（`There is already an active transaction`） | MATCH |
+| M10 | 重複候補を飛ばさない | 5 本（件数・配列の不一致） | MATCH |
+| M11 | 重複の確認を常に「無し」に | 7 本（M10 の 5 本＋チェックボックスが無い 2 本） | MATCH |
+| M12 | チェックを無視して常に飛ばす | 2 本。エラーの画面 | MATCH |
+| M13 | 部署に違う取得日（2000-01-01）を入れる | 2 本。文字列不一致 | MATCH |
+| M14 | アンケートの日付を取得日にしない | 1 本。文字列不一致 | MATCH |
+| M15 | 確定で行の検査を飛ばす | 主因 1 本（`test_invalid_rows_are_reported_in_the_preview_and_left_out_of_the_import`：確定の応答が転送になっていない）＋連鎖 1570 件 | MATCH |
+| M16 | 確定で重複の確認を飛ばす | 2 本。エラーの画面 | MATCH |
+
+**1 行の検査（`app/Support/BuyerCsvRow.php`）**
+
+| ID | 変異 | 落ちたテスト | 判定 |
+|---|---|---|---|
+| B01 | 日付の検査を `strtotime()` に戻す | 10 本（Unit 7・Feature 3） | MATCH |
+| B02 | 変換前の生の値を保存 | 8 本 | MATCH |
+| B03 | 最初の誤りで検査を止める | 1 本 | MATCH |
+| B04 | つなぎ方を最初の 1 件だけに | 1 本 | MATCH |
+| B05 | 昭和の最初の年を 1927 に | Unit 4 ケース | MATCH |
+| B06 | 昭和の最後の年を 1988 に | Unit 4 ケース | MATCH |
+| B07 | 平成の最初の年を 1990 に | Unit 3 ケース | MATCH |
+| B08 | 平成の最後の年を 2020 に | Unit 2 ケース | MATCH |
+| B09 | 令和の最初の年を 2018 に | Unit 1 ケース | MATCH |
+| B10 | 範囲下限の比較を `<=` に | Unit 3 ケース | MATCH |
+| B11 | 範囲上限の比較を `>=` に | Unit 2 ケース | MATCH |
+| B12 | 令和に上限が無いことを忘れる | Unit 1 ケース | MATCH |
+| B13 | 元号の範囲を見ない | Unit 6 ケース | MATCH |
+| B14 | 元号の全角・小文字を受けない | Unit 1 本 | MATCH |
+| B15 | 元号の名前（昭和・平成・令和）を受けない | 4 本 | MATCH |
+| B16 | 全角の数字を半角にしない | 5 本 | MATCH |
+| B17 | 整数の形を見ない | 5 本 | MATCH |
+| B18 | 整数の上限の比較を `>=` に | Unit 3 ケース | MATCH |
+| B19 | 大人人数の上限を 256 に | 3 本 | MATCH |
+| B20 | 勤続年数の上限を 65534 に | Unit 2 ケース | MATCH |
+| B21 | 担当者名の上限を 101 に | Unit 1 ケース | MATCH |
+| B22 | 文字数を `strlen()` で数える | Unit 29 件 | MATCH |
+| B23 | 文字数の境目の比較を `>=` に | Unit 14 件 | MATCH |
+| B24 | 前後の空白を除かない | Unit 2 本 | MATCH |
+| B25 | buyers に入れない列を除かない | Unit 4 本 | MATCH |
+| B26 | 取得日を必須にしない | Unit 1 本 | MATCH |
+| B27 | 分譲地名も 50 文字で検査する | Unit 1 本 | MATCH |
+
+**プレビューの画面（`resources/views/admin/customers/import.blade.php`）**
+
+| ID | 変異 | 落ちたテスト | 判定 |
+|---|---|---|---|
+| V01 | 確定の欄を V > 0 のときだけ出す | 3 本 | MATCH |
+| V02 | 0 件でも確定の欄を出す | 1 本 | MATCH |
+| V03 | ボタンを包む要素を最初から隠さない | 1 本 | MATCH |
+| V04 | 常に隠して描く | 1 本 | MATCH |
+| V05 | ボタンを包む要素の `x-show` を外す | 2 本 | MATCH |
+| V06 | チェックボックスの `x-model` を外す | 1 本 | MATCH |
+| V07 | 理由の `x-show` を外す | 1 本 | MATCH |
+| V08 | 件数の JS をチェックに合わせない | 1 本 | MATCH |
+| V09 | 重複候補の数を Alpine に渡さない | 3 本 | MATCH |
+| V10 | 取り込める行の数を Alpine に渡さない | 2 本 | MATCH |
+| V11 | ボタンの件数を `x-text` で入れ替えない | 2 本 | MATCH |
+| V12 | 確定の印（`confirmed`）を落とす | 15 本（確定のフォームに `confirmed` が無い） | MATCH |
+| V13 | `csv_data` を落とす | 10 本。エラーの画面 | MATCH |
+| V14 | `department` を落とす | 14 本。エラーの画面 | MATCH |
+| V15 | `@csrf` を落とす | 15 本（確定のフォームに `@csrf` が無い） | MATCH |
+
+期待と違ったもの: なし。M09・M15 は主因のテストが期待どおりの理由で落ち、残り（M09: 1555 件・M15: 1570 件）はすべて `PDOException: There is already an active transaction` という単一の連鎖効果だった。
 
 ### Task 7: ローカルの実ブラウザ
 
