@@ -56,8 +56,9 @@ return Application::configure(basePath: dirname(__DIR__))
         );
 
         // 使い始める前の門番（段階2 設計書 §5.2）も SubstituteBindings より前に出す（存在しない ID でも同じ応答）。
-        // ⚠ EnsureApprovalAdmin の**後ろ**に置く。前に置くと、管理の画面を権限の無い人が開いたときに
-        //    403 より先に転送・404 が返り、ApprovalAdminGateTest（403 と文言を見る）が落ちる。
+        // ⚠ EnsureApprovalAdmin の**後ろ**に置く。前に置くと、管理と稼働の両方の門番を持つ画面（2b の
+        //    approvals.admin.requests.*）を権限の無い人が開いたときに、403 より先に転送・404 が返る。
+        //    LaunchGateTest の並びのテストが止める（2b からは ApprovalAdminGateTest の 403 も止める）。
         $middleware->appendToPriorityList(
             \App\Http\Middleware\EnsureApprovalAdmin::class,
             \App\Http\Middleware\EnsureApprovalLaunched::class,
