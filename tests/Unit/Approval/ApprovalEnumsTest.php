@@ -76,4 +76,25 @@ class ApprovalEnumsTest extends TestCase
             $required
         );
     }
+
+    /** 一覧の絞り込みの組み分け（設計書 §5.12）。すべての状態が 1 回ずつ入ることに加えて、入る先も固定する */
+    public function test_the_list_filters_follow_the_design(): void
+    {
+        $this->assertSame([
+            'draft'     => [ApprovalStatus::Draft],
+            'progress'  => [ApprovalStatus::HeadReview, ApprovalStatus::Review, ApprovalStatus::President],
+            'returned'  => [ApprovalStatus::Returned],
+            'done'      => [ApprovalStatus::Condition, ApprovalStatus::Approved, ApprovalStatus::Rejected],
+            'withdrawn' => [ApprovalStatus::Withdrawn],
+        ], array_map(fn (array $filter) => $filter['statuses'], ApprovalStatus::listFilters()));
+    }
+
+    /** 状態の表示名（要件定義書 4.8・設計書 §5.8 の表）。一覧・詳細・ホームのバッジにそのまま出る */
+    public function test_the_status_labels_follow_the_requirements(): void
+    {
+        $this->assertSame(
+            ['下書き', '部門長確認中', '審査中', '社長決裁待ち', '差戻し中', '条件確認待ち', '決裁済み', '否決', '取り下げ'],
+            array_map(fn (ApprovalStatus $status) => $status->label(), ApprovalStatus::cases())
+        );
+    }
 }
