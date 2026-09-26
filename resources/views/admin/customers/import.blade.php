@@ -162,7 +162,7 @@
                             </button>
                         </div>
                         @if($validCount === 0)
-                            <div x-show="importCount() === 0" style="font-size: 13px; color: #d97706;">重複候補だけです。取り込むときは、上のチェックを入れてください。</div>
+                            <div x-show="importCount() === 0" style="font-size: 13px; color: #b45309;">重複候補だけです。取り込むときは、上のチェックを入れてください。</div>
                         @endif
                         <div style="font-size: 12px; color: #6b7280; margin-top: 6px;">※ エラー行（{{ count($rowErrors ?? []) }}件）はスキップされます</div>
                     </form>
