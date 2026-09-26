@@ -34,7 +34,7 @@ Laravel 12 / PHP 8.5.4 (local) + 8.3 (prod) / MySQL 8 / Blade + Alpine.js 3 + Ta
 | 19 | 保存された日時を `->format()` で直接出す ／ 「今日」「今月」「今年度」を `now()` `today()` `date('Y')` `CarbonImmutable::today()` で作る（アプリの timezone は **UTC のまま**。表示は一日中 9 時間ずれ、「今日」は**日本時間の 0:00〜8:59 だけ**前日になる ＝ 日中に画面を開いても分からない）| 保存された日時は `\App\Support\JapanTime::format($x->created_at)`、日本の今日は `JapanTime::today()`（**日本の日付の「UTC の 0:00」**。date キャストの属性・`Carbon::create()` とそのまま比べられる。日本時間の 0:00 で返すと 9 時間ずれる）。⚠ **date キャストの列（日付だけの列）には第 2 引数で `'Y/m/d'` を渡す** — 既定の書式だと UTC の 0:00 が日本時間の 9:00 になり**存在しない時刻**が出るうえ、走査は date キャストを対象から外すので**原理的に止まらない**。⚠ **TIMESTAMP 列への保存・期限・運用は `now()` のまま**（`JapanTime::today()` を使わない）。⚠ `today()` は**可変の `Carbon`** を返す（不変にすると `$x->startOfMonth()` のような戻り値を捨てる書き方が無音の no-op になる）。走査テスト `StoredTimestampDisplayScanTest`（死角は件数の下限 `MIN_FORMAT_CALLS = 26` **だけ**が捕まえる。下げる前に「消した」のか「化けた」のか確かめる）・`ClockReadScanTest`（ビューは 0 件・PHP は全件分類）・`JapanBusinessDayTest`（5 月始まりの年度の式を全件分類）が止める。Bug #61 |
 | 20 | 「前月」「来月」「過去 N か月」を**今日から直接**足し引きする（`JapanTime::today()->subMonth()`。Carbon は移った先の月にその日が無いと翌月へ溢れ、3/31 の 1 か月前が 3/3 になる。**月の 29〜31 日にだけ**起き、月の途中の画面もテストも正しい）| **月初へ寄せてから**: `JapanTime::today()->startOfMonth()->subMonth()`（逆順の `subMonth()->startOfMonth()` は直らない）。並べるなら起点をループの外で 1 回作り `->copy()->subMonths($i)`。ビューへ渡す `$now` からは必ず `copy()` が先。回帰テストの「今日」は **2026-03-31**（前月・来月とも溢れる日）に固定し、その日が溢れる日であることをテスト自身が確かめる（3/15 では前月・来月とも、8/31 では前月側が、修正を戻しても緑。`MonthEndOverflowTest::assertTodayOverflows()`）。⚠ PHP（Carbon）の足し引きを新しく足したときに止める走査テストは無い。⚠ JS の `setMonth(getMonth() - 1)` も同じ形に溢れる — 日付ピッカーの「1ヶ月前」は、前月に同じ日が無ければ前月の末日で止める（`new Date(年, 月, 0).getDate()` と `Math.min`。月は JS の 0 始まり＝`getMonth()` の値）。JS はビューの `.setMonth(` を 0 件に保つラチェットがある（`DatePickerMonthAgoTest`）。Bug #62 |
 
-全 65 件の詳細バグカタログ + 各種パターン: @docs/RULES.md
+全 66 件の詳細バグカタログ + 各種パターン: @docs/RULES.md
 
 ## 🔌 利用可能なプラグイン
 
@@ -163,5 +163,5 @@ sudo rm -f storage/framework/views/*.php && brew services restart httpd
 ## 📚 Detailed docs
 
 - @docs/ARCHITECTURE.md — ディレクトリ構成、モデル一覧、認可マトリクス
-- @docs/RULES.md — Bug #1–65 + Tailwind 不可クラス/監査の落とし穴 + Excel/SheetJS + 全角→半角自動変換 + 郵便番号 API
+- @docs/RULES.md — Bug #1–66 + Tailwind 不可クラス/監査の落とし穴 + Excel/SheetJS + 全角→半角自動変換 + 郵便番号 API
 - @docs/BACKLOG.md — 完了済み機能の優先度別一覧（優先度 1〜5 全て本番稼働中）
