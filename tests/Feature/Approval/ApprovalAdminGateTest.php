@@ -86,6 +86,12 @@ class ApprovalAdminGateTest extends TestCase
         'approvals.home' => '決裁のホーム（全ログイン利用者が入れる。設計書 §5.1・§5.15）',
         // 段階2（使い始めてから。門番 approval.launched は LaunchGateTest が見る）
         'approvals.numbers.search' => '関連する決裁No の候補（見られる範囲だけを返す。段階2 設計書 §5.6）',
+        'approvals.requests.create'  => '申請書の作成（誰でも申請できる。社長は提出で断る。段階2 設計書 §5.6）',
+        'approvals.requests.store'   => '下書きの保存・提出（本人の申請として作る）',
+        'approvals.requests.show'    => '申請の詳細（見られる範囲だけ。RequestVisibility）',
+        'approvals.requests.edit'    => '下書き・差戻し中の編集（申請者だけ。RequestPermissions）',
+        'approvals.requests.update'  => '同じく保存・提出',
+        'approvals.requests.destroy' => '一度も提出していない下書きの削除（申請者だけ）',
     ];
 
     /** ラベル用: HEAD を除いた先頭の HTTP メソッド（1 つで十分な場所） */

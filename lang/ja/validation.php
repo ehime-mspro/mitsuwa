@@ -594,6 +594,17 @@ return [
         'review_department_id' => '審査部門',
         'is_active'            => '利用中',
 
+        // 申請書（§5.6）。type_id / department_id / body は RequestController の validate() 第 3 引数で
+        // 「申請の種類」「申請部門」「重点ポイント（5W2H）」に上書きする（ほかの画面で同じ名前を使うときのため一般の語にする）
+        'type_id'           => '種類',
+        'department_id'     => '部門',
+        'subject'           => '件名',
+        'amount'            => '金額',
+        'schedule'          => '実施時期',
+        'body'              => '本文',
+        'related_numbers'   => '関連する決裁No',
+        'related_numbers.*' => '関連する決裁No',
+
     ],
 
 ];

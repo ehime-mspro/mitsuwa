@@ -1,0 +1,72 @@
+@extends('layouts.app')
+
+@section('title', $approvalRequest->number ?? '申請の詳細')
+
+@section('breadcrumb')
+    <span class="mx-1.5">›</span>
+    <a href="{{ route('approvals.home') }}" class="hover:text-emerald-600 transition-colors">決裁申請</a>
+    <span class="mx-1.5">›</span>
+    <span class="text-gray-600">申請の詳細</span>
+@endsection
+
+@section('content')
+<div class="max-w-[880px]">
+
+    <div class="flex flex-wrap items-center gap-2 mb-1">
+        <span class="inline-block px-2 py-0.5 rounded text-[11px] font-semibold" style="{{ $approvalRequest->status->badgeStyle() }}">{{ $approvalRequest->statusLabel() }}</span>
+        @if($approvalRequest->number)
+            <span class="text-[13px] font-mono font-semibold text-gray-800">{{ $approvalRequest->number }}</span>
+        @else
+            <span class="text-[12px] text-gray-400">決裁No は社長の判断のときに付きます</span>
+        @endif
+    </div>
+    <h1 class="text-lg font-bold text-gray-900 mb-4 break-words">{{ $content->subject ?? '（件名なし）' }}</h1>
+
+    {{-- 中身は RequestContent（申請者以外には最後に提出した控え。差戻し中の直しかけは出し直すまで申請者だけ。利用者の決定 2026-09-27） --}}
+    @if($content->isLastSubmission && $approvalRequest->status === \App\Enums\ApprovalStatus::Returned)
+        <div class="mb-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-800">
+            申請者が直しています。ここには最後に提出した中身（{{ $approvalRequest->round }} 回目の提出）を出しています。
+        </div>
+    @endif
+
+    @include('approvals.requests._actions')
+
+    <section class="bg-white rounded-lg border border-gray-200 mb-5">
+        <h2 class="px-5 py-3 border-b border-gray-200 text-[14px] font-bold text-gray-900">申請の中身</h2>
+        <dl class="px-5 py-4 grid grid-cols-1 sm:grid-cols-[9em_1fr] gap-x-4 gap-y-2 text-[13px]">
+            <dt class="text-gray-500">申請者</dt>
+            <dd class="text-gray-900">{{ $approvalRequest->applicant->name }}</dd>
+            <dt class="text-gray-500">申請部門</dt>
+            <dd class="text-gray-900">{{ $content->departmentName ?? '—' }}</dd>
+            <dt class="text-gray-500">申請の種類</dt>
+            <dd class="text-gray-900">{{ $content->typeName ?? '—' }}</dd>
+            <dt class="text-gray-500">発信日</dt>
+            <dd class="text-gray-900">{{ \App\Support\JapanTime::format($approvalRequest->last_submitted_at, 'Y/m/d') ?? '—' }}</dd>
+            <dt class="text-gray-500">決裁日</dt>
+            <dd class="text-gray-900">{{ \App\Support\JapanTime::format($approvalRequest->decided_at, 'Y/m/d') ?? '—' }}</dd>
+            <dt class="text-gray-500">金額（税抜）</dt>
+            <dd class="text-gray-900">{{ $content->amountLabel() ?? '—' }}</dd>
+            <dt class="text-gray-500">実施時期</dt>
+            <dd class="text-gray-900 break-words">{{ $content->schedule ?? '—' }}</dd>
+            <dt class="text-gray-500">関連する決裁No</dt>
+            <dd class="text-gray-900">
+                @forelse($content->relatedNumbers as $number)
+                    {{-- 見られる申請はリンクにする（紙の時代の番号・見られない申請は文字だけ。設計書 §5.6） --}}
+                    @if(isset($relatedLinks[$number]))
+                        <a href="{{ route('approvals.requests.show', $relatedLinks[$number]) }}" class="font-mono text-emerald-600 hover:underline mr-2">{{ $number }}</a>
+                    @else
+                        <span class="font-mono mr-2">{{ $number }}</span>
+                    @endif
+                @empty
+                    —
+                @endforelse
+            </dd>
+        </dl>
+        <div class="px-5 pb-5">
+            <p class="text-[12px] font-semibold text-gray-500 mb-1.5">重点ポイント（5W2H）</p>
+            <div class="rounded-md border border-gray-200 bg-gray-50 px-4 py-3 text-[13px] text-gray-900 leading-relaxed whitespace-pre-wrap break-words">{{ $content->body }}</div>
+        </div>
+    </section>
+
+</div>
+@endsection

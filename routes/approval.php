@@ -3,6 +3,7 @@
 use App\Http\Controllers\Approval\HomeController;
 use App\Http\Controllers\Approval\OrganizationController;
 use App\Http\Controllers\Approval\RelatedNumberController;
+use App\Http\Controllers\Approval\RequestController;
 use App\Http\Controllers\Approval\TypeController;
 use App\Http\Controllers\Approval\UserController;
 use App\Http\Controllers\Approval\UserImportController;
@@ -94,4 +95,14 @@ Route::middleware('approval.launched')->prefix('approvals')->name('approvals.')-
 
     // 関連する決裁No の候補（Ajax・JSON。設計書 §5.6）
     Route::get('/numbers', [RelatedNumberController::class, 'search'])->name('numbers.search');
+
+    // 申請書（画面②）と詳細（画面③）。段階2 設計書 §5.6・§5.12
+    // ⚠ 提出は別のルートにしない（保存のフォームに intent=submit を付けて送る。計画 §0.8 の 2）
+    // ⚠ create を {approvalRequest} より前に置く
+    Route::get('/requests/create', [RequestController::class, 'create'])->name('requests.create');
+    Route::post('/requests', [RequestController::class, 'store'])->name('requests.store');
+    Route::get('/requests/{approvalRequest}', [RequestController::class, 'show'])->name('requests.show');
+    Route::get('/requests/{approvalRequest}/edit', [RequestController::class, 'edit'])->name('requests.edit');
+    Route::put('/requests/{approvalRequest}', [RequestController::class, 'update'])->name('requests.update');
+    Route::delete('/requests/{approvalRequest}', [RequestController::class, 'destroy'])->name('requests.destroy');
 });
