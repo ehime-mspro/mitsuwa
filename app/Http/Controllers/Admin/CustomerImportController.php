@@ -29,8 +29,9 @@ use Illuminate\Validation\ValidationException;
  * ⚠ 確定は確認画面 1 つにつき 1 回だけ（hidden の `import_token`・`OneTimeAction`。
  *   設計書 2026-09-27-customer-import-double-submit-design.md §4.3）。
  *   鍵は部署の検査の直後・CSV を読み直す前に使う。書き込みの直前（決裁の取込と同じ位置）に置くと、
- *   1 回目のあとに届いた 2 回目は、1 回目で入った人を重複候補と数えて 0 件の歯止めに着き、
- *   チェックを勧める誤った案内が出る（入れると全員がもう一度入る）。
+ *   1 回目のあとに届いたチェックなしの 2 回目は、1 回目で入った人を重複候補と数えて、鍵より先に
+ *   0 件の歯止めに着く（同じ確認画面の 2 回目なのに「プレビューのあとに、同じ人が登録された可能性」の
+ *   案内が出る。改修前の文言はチェックを勧めていて、従うと全員がもう一度入った）。
  */
 class CustomerImportController extends Controller
 {

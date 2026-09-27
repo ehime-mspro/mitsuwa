@@ -66,7 +66,9 @@
 ### 2.4 既存の走査テストとの関係
 
 - `LoginGuideTest::test_nothing_outside_one_time_action_calls_the_raw_claim()` は、`claimFrom(` の呼び出しが **5 か所以上**あること、
-  生の `claim()` を呼んでいないこと、`OneTimeAction` をエイリアスしていないことを見る → 6 か所目を足しても通る
+  生の `claim()` を呼んでいないこと、`OneTimeAction` をエイリアスしていないことを見る → 6 か所目を足しても通る。
+  ⚠ ただし下限（5）と実測（6）がずれると、決裁の 1 か所を消してもこのテストは緑のままになる（2026-09-27 のレビューで実測）
+  → 下限を 6 に上げた（計画の実測記録 Task 6）
 - `test_every_guide_rendering_entry_point_claims_the_token_first()` が拾う入口は、`LoginGuide` / `PasswordReissuer` / `->toGuide(` を
   含むメソッドだけ → 顧客の取込は対象にならない
 - `approval-phase2a`（別の会話が作業中）の差分は、`OneTimeAction.php`・`LoginGuideTest.php`・`config/approval.php`・
@@ -206,7 +208,8 @@ resetSubmit: function() {
 - 押せない間の理由はボタン横の文字で出し、`title` は使わない → Top trap #12 に当たらない。
   今の Blade コメントの「押せないボタンは disabled にせず隠す」は「件数が 0 のとき」の話なので残し、送信中だけ `disabled` にする旨を書き足す
 - `role="status"` の要素は、ボタンを包む要素の中に**いつも置いて**文字だけ変える（`display: none` から出すと読み上げが届かないことがある）。
-  空の `span` は幅を取らないので、送信前の見た目は変わらない。包む要素が隠れている間（V＝0 でチェック前）はボタンも出ないので送信できない
+  空の `span` は文字の幅を取らないので、送信前の見た目は変わらない（実装は計画の「設計書との違い 1」で `display: inline-block` を足したので、
+  左の余白 12px だけは取る。押す前の高さ 43px は変わらない＝試作で実測。2026-09-27 のレビューの指摘で追記）。包む要素が隠れている間（V＝0 でチェック前）はボタンも出ないので送信できない
 - 「戻る」で戻った確認画面で押すと、§4.3 の鍵でサーバが断り、鍵の案内が出る（ボタンが押せないまま固まるより、理由が分かる）
 - JS が動かないとき・Alpine の起動前に押されたときは画面の歯止めが効かないが、サーバの鍵が止める
 - ボタンを包む要素の出し分けとサーバが描く最初の状態（`x-show="importCount() > 0"`・V＝0 なら `display: none`）は今のまま
