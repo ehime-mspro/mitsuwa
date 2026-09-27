@@ -304,6 +304,10 @@ class RequestController extends Controller
                     ->where('result', ApprovalStepResult::Return->value)
                     ->first()
                 : null,
+            // 今の添付（外したものを除く）。添付は 1 回保存したあとに足せる（D14）
+            'attachmentList'  => $approvalRequest->exists
+                ? $approvalRequest->attachments()->get()->map->listItem()->all()
+                : [],
         ];
     }
 

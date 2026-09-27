@@ -92,6 +92,9 @@ class ApprovalAdminGateTest extends TestCase
         'approvals.requests.edit'    => '下書き・差戻し中の編集（申請者だけ。RequestPermissions）',
         'approvals.requests.update'  => '同じく保存・提出',
         'approvals.requests.destroy' => '一度も提出していない下書きの削除（申請者だけ）',
+        'approvals.requests.attachments.store' => '添付の追加（申請者だけ。下書き・差戻し中。段階2 設計書 §5.7）',
+        'approvals.attachments.show'           => '添付を開く（見られる範囲を毎回確かめ、記録する）',
+        'approvals.attachments.destroy'        => '添付を外す（申請者だけ。下書き・差戻し中）',
     ];
 
     /** ラベル用: HEAD を除いた先頭の HTTP メソッド（1 つで十分な場所） */

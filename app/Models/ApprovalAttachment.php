@@ -73,4 +73,20 @@ class ApprovalAttachment extends Model
             ? number_format($this->size / 1048576, 1) . ' MB'
             : max(1, (int) ceil($this->size / 1024)) . ' KB';
     }
+
+    /**
+     * 申請書の添付の一覧（画面の JS）に渡す形。
+     *
+     * @return array{id: int, name: string, size: string, url: string, delete_url: string}
+     */
+    public function listItem(): array
+    {
+        return [
+            'id'         => $this->id,
+            'name'       => $this->original_name,
+            'size'       => $this->sizeLabel(),
+            'url'        => route('approvals.attachments.show', $this),
+            'delete_url' => route('approvals.attachments.destroy', $this),
+        ];
+    }
 }

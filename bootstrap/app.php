@@ -65,6 +65,12 @@ return Application::configure(basePath: dirname(__DIR__))
         );
     })
     ->withExceptions(function (Exceptions $exceptions) {
-        //
+        // 決裁の添付（Ajax）が PHP の送信の上限（post_max_size）を超えたとき、英語の既定文ではなく
+        // 日本語の理由を JSON で返す（段階2 設計書 §5.7）。⚠ 決裁の URL だけ（基幹の画面の応答は変えない）
+        $exceptions->render(function (\Illuminate\Http\Exceptions\PostTooLargeException $e, \Illuminate\Http\Request $request) {
+            if ($request->is('approvals/*') && $request->expectsJson()) {
+                return response()->json(['message' => 'ファイルが大きすぎて受け取れませんでした。1 ファイル 10MB までです。'], 413);
+            }
+        });
     })
     ->create();

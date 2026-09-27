@@ -68,5 +68,21 @@
         </div>
     </section>
 
+    <section class="bg-white rounded-lg border border-gray-200 mb-5">
+        <h2 class="px-5 py-3 border-b border-gray-200 text-[14px] font-bold text-gray-900">添付</h2>
+        <ul class="px-5 py-3 space-y-1.5 text-[13px]">
+            {{-- 中身と同じ版の添付（申請者以外には最後に提出した控えの添付。RequestContent） --}}
+            @forelse($content->attachments as $attachment)
+                <li class="flex flex-wrap items-center gap-x-2">
+                    {{-- 開くたびに見られる範囲を確かめ、記録する（§5.7） --}}
+                    <a href="{{ route('approvals.attachments.show', $attachment) }}" target="_blank" rel="noopener" class="text-emerald-600 hover:underline break-all">{{ $attachment->original_name }}</a>
+                    <span class="text-[11px] text-gray-400">{{ $attachment->sizeLabel() }}{{ $attachment->opensInline() ? '' : '・ダウンロード' }}</span>
+                </li>
+            @empty
+                <li class="text-gray-400">添付はありません。</li>
+            @endforelse
+        </ul>
+    </section>
+
 </div>
 @endsection

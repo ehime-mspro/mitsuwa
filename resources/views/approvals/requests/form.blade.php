@@ -194,6 +194,46 @@
         </div>
     </form>
 
+    {{-- 添付（下書きを 1 回保存したあとに追加する。何枚かまとめて選べ、1 つずつ順に送る。D14・設計書 §5.7） --}}
+    @if($editing)
+        <section class="bg-white rounded-lg border border-gray-200 px-5 py-5 mt-5" x-data="approvalAttachments()">
+            <h2 class="text-[14px] font-bold text-gray-900 mb-1">添付</h2>
+            <p class="text-[11px] text-gray-400 mb-3">画像・PDF・Word・Excel・CSV・テキスト。1 ファイル 10MB まで、1 件の申請に {{ \App\Models\ApprovalAttachment::MAX_COUNT }} ファイルまで。何枚かまとめて選べます。</p>
+
+            <div class="border-2 border-dashed rounded-lg p-4 text-center mb-3 transition-colors"
+                 :class="dragOver ? 'border-emerald-400 bg-emerald-50' : 'border-gray-300 bg-gray-50'"
+                 @dragover.prevent="dragOver = true" @dragleave.prevent="dragOver = false" @drop.prevent="drop($event)">
+                <label class="inline-flex items-center gap-1.5 px-4 py-2 bg-white border border-gray-300 rounded-md text-[13px] font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer">
+                    ファイルを選ぶ
+                    <input type="file" multiple class="hidden" accept="{{ '.' . implode(',.', array_keys(\App\Models\ApprovalAttachment::TYPES)) }}"
+                           @change="choose($event)" :disabled="uploading">
+                </label>
+                <p class="text-[11px] text-gray-400 mt-2">ここへドラッグしても追加できます</p>
+            </div>
+
+            <p x-show="progress" x-cloak class="text-[12px] text-emerald-700 mb-2" x-text="progress"></p>
+            <p x-show="successMessage" x-cloak class="text-[12px] text-emerald-700 mb-2" x-text="successMessage"></p>
+            <p x-show="errorMessage" x-cloak class="text-[12px] text-red-600 mb-2 whitespace-pre-line" x-text="errorMessage"></p>
+
+            <ul x-show="files.length > 0" class="divide-y divide-gray-100 border border-gray-200 rounded-md">
+                <template x-for="file in files" :key="file.id">
+                    <li class="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2 text-[13px]">
+                        <a :href="file.url" target="_blank" rel="noopener" class="text-emerald-600 hover:underline break-all" x-text="file.name"></a>
+                        <span class="text-[11px] text-gray-400" x-text="file.size"></span>
+                        <span class="ml-auto inline-flex items-center gap-3">
+                            <button type="button" x-show="confirmingId !== file.id" @click="confirmingId = file.id" class="text-[12px] text-red-600 hover:underline cursor-pointer">外す</button>
+                            <button type="button" x-show="confirmingId === file.id" @click="remove(file)" class="text-[12px] font-semibold text-red-600 hover:underline cursor-pointer">外す（確定）</button>
+                            <button type="button" x-show="confirmingId === file.id" @click="confirmingId = null" class="text-[12px] text-gray-500 hover:underline cursor-pointer">やめる</button>
+                        </span>
+                    </li>
+                </template>
+            </ul>
+            <p x-show="files.length === 0" x-cloak class="text-[12px] text-gray-400">添付はまだありません。</p>
+        </section>
+    @else
+        <p class="mt-5 text-[12px] text-gray-500">下書きを 1 回保存すると、ここで添付を追加できます。</p>
+    @endif
+
 </div>
 @endsection
 
@@ -312,5 +352,140 @@ function approvalRequestForm() {
         }
     };
 }
+
+@if($editing)
+// 添付を 1 ファイルずつ順に送る（D14）。⚠ fetch の `.ok` の分岐と `!data` のガードは同じ数（AjaxErrorFeedbackTest）
+function approvalAttachments() {
+    return {
+        files: {{ \Illuminate\Support\Js::from($attachmentList) }},
+        storeUrl: '{{ route('approvals.requests.attachments.store', $approvalRequest) }}',
+        csrfToken: '{{ csrf_token() }}',
+        maxCount: {{ \App\Models\ApprovalAttachment::MAX_COUNT }},
+        maxBytes: {{ \App\Models\ApprovalAttachment::MAX_KB }} * 1024,
+        dragOver: false,
+        uploading: false,
+        progress: '',
+        successMessage: '',
+        errorMessage: '',
+        confirmingId: null,
+
+        choose: function (event) {
+            var picked = Array.prototype.slice.call(event.target.files || []);
+            event.target.value = '';
+            this.enqueue(picked);
+        },
+
+        drop: function (event) {
+            this.dragOver = false;
+            this.enqueue(Array.prototype.slice.call(event.dataTransfer.files || []));
+        },
+
+        // 送る前に、10MB を超えるものと 20 ファイルを超える分を断る（理由を出す）
+        enqueue: function (picked) {
+            var self = this;
+            var accepted = [];
+            var refused = [];
+            var room = self.maxCount - self.files.length;
+            if (self.uploading || picked.length === 0) {
+                return;
+            }
+            picked.forEach(function (file) {
+                if (file.size > self.maxBytes) {
+                    refused.push(file.name + '（10MB を超えています）');
+                } else if (accepted.length >= room) {
+                    refused.push(file.name + '（1 件の申請に ' + self.maxCount + ' ファイルまで）');
+                } else {
+                    accepted.push(file);
+                }
+            });
+            self.successMessage = '';
+            self.errorMessage = refused.length > 0 ? '次のファイルは送りませんでした: ' + refused.join('、') : '';
+            self.uploadNext(accepted, 0, accepted.length);
+        },
+
+        uploadNext: function (queue, done, total) {
+            var self = this;
+            if (queue.length === 0) {
+                self.uploading = false;
+                self.progress = '';
+                return;
+            }
+            var file = queue.shift();
+            var body = new FormData();
+            body.append('file', file);
+            self.uploading = true;
+            self.progress = (done + 1) + ' / ' + total + '：' + file.name + ' を送っています…';
+
+            fetch(self.storeUrl, {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': self.csrfToken, 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                body: body
+            })
+            .then(function (res) {
+                if (!res.ok) {
+                    return res.json().then(function (err) {
+                        self.errorMessage = self.appendLine(self.errorMessage, file.name + '：' + (err.message || '添付できませんでした。'));
+                        return null;
+                    }).catch(function () {
+                        self.errorMessage = self.appendLine(self.errorMessage, file.name + '：添付できませんでした（' + res.status + '）。');
+                        return null;
+                    });
+                }
+                return res.json();
+            })
+            .then(function (data) {
+                if (!data) {
+                    self.uploadNext(queue, done + 1, total);
+                    return;
+                }
+                self.files.push(data.attachment);
+                self.successMessage = data.message;
+                self.uploadNext(queue, done + 1, total);
+            })
+            .catch(function () {
+                self.errorMessage = self.appendLine(self.errorMessage, file.name + '：通信に失敗しました。もう一度選んでください。');
+                self.uploadNext(queue, done + 1, total);
+            });
+        },
+
+        appendLine: function (text, line) {
+            return text === '' ? line : text + '\n' + line;
+        },
+
+        remove: function (file) {
+            var self = this;
+            self.successMessage = '';
+            self.errorMessage = '';
+
+            fetch(file.delete_url, {
+                method: 'DELETE',
+                headers: { 'X-CSRF-TOKEN': self.csrfToken, 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+            })
+            .then(function (res) {
+                if (!res.ok) {
+                    return res.json().then(function (err) {
+                        self.errorMessage = err.message || '外せませんでした。';
+                        return null;
+                    }).catch(function () {
+                        self.errorMessage = '外せませんでした（' + res.status + '）。';
+                        return null;
+                    });
+                }
+                return res.json();
+            })
+            .then(function (data) {
+                self.confirmingId = null;
+                if (!data) return;
+                self.files = self.files.filter(function (f) { return f.id !== file.id; });
+                self.successMessage = data.message;
+            })
+            .catch(function () {
+                self.confirmingId = null;
+                self.errorMessage = '通信に失敗しました。もう一度お試しください。';
+            });
+        }
+    };
+}
+@endif
 </script>
 @endpush
