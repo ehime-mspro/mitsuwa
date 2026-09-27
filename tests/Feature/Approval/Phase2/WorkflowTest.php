@@ -908,4 +908,16 @@ class WorkflowTest extends TestCase
         $this->expectException(WorkflowConflict::class);
         $this->workflow->withdraw($r, $w['applicant'], $stale, null);
     }
+
+    /** 部門長の交代の記録は、部門長を変えた管理者の操作として残す（要件 14.2 の「誰が」。IP と端末もその管理者のもの。省略は空） */
+    public function test_the_head_change_is_recorded_as_the_admin(): void
+    {
+        $w     = $this->approvalWorld();
+        $r     = $this->submittedFor($w);
+        $admin = $this->approvalAdmin();
+
+        $this->workflow->headChanged($w['dept'], $w['head']->id, $this->baseUser(['name' => '新 部門長'])->id, $admin);
+
+        $this->assertSame($admin->id, ApprovalHistory::where('request_id', $r->id)->where('action', 'head_changed')->sole()->actor_user_id);
+    }
 }
