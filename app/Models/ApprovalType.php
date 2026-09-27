@@ -41,4 +41,21 @@ class ApprovalType extends Model
     {
         return $query->orderBy('sort_order')->orderBy('id');
     }
+
+    /** 状態のバッジの色（CLAUDE.md: ステータスバッジはモデルの badgeStyle() 経由。コントラストは ApprovalEnumsTest が見る） */
+    public function badgeStyle(): string
+    {
+        return self::badgeStyleFor($this->is_active);
+    }
+
+    /** 利用中・停止のバッジの色（停止の文字は #4b5563＝背景 #f3f4f6 に対して 6.87:1。#6b7280 だと 4.39:1 で届かない） */
+    public static function badgeStyleFor(bool $active): string
+    {
+        return $active ? 'background: #d1fae5; color: #065f46;' : 'background: #f3f4f6; color: #4b5563;';
+    }
+
+    public function statusLabel(): string
+    {
+        return $this->is_active ? '利用中' : '停止';
+    }
 }

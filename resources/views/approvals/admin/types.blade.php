@@ -61,7 +61,7 @@
                             @endif
                         </td>
                         <td class="px-4 py-2.5 border-b border-gray-100 whitespace-nowrap">
-                            <span class="inline-block px-2 py-0.5 rounded text-[11px] font-semibold" style="{{ $type->is_active ? 'background: #d1fae5; color: #065f46;' : 'background: #f3f4f6; color: #4b5563;' }}">{{ $type->is_active ? '利用中' : '停止' }}</span>
+                            <span class="inline-block px-2 py-0.5 rounded text-[11px] font-semibold" style="{{ $type->badgeStyle() }}">{{ $type->statusLabel() }}</span>
                         </td>
                         <td class="px-4 py-2.5 border-b border-gray-100 text-[13px] text-gray-700 whitespace-nowrap">{{ $type->requests_count }} 件</td>
                         <td class="px-4 py-2.5 border-b border-gray-100 text-[13px] text-gray-700">{{ $type->sort_order }}</td>
