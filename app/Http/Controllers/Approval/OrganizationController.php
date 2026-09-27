@@ -170,6 +170,11 @@ class OrganizationController extends Controller
             return $this->back(null, "この部門には部門長の確認を待っている申請が {$waiting} 件あるため、部門長を空にできません。後任を選んでください。");
         }
 
+        // 審査を待っている申請があるうちは、審査担当者を 0 人にできない（後任を選ぶ。部門長と同じ。Task 9 の点検の軽微）
+        if ($reviewerIds === [] && ($waitingReviews = $this->waitingReviewSteps($approvalDepartment)) > 0) {
+            return $this->back(null, "この部門には審査を待っている申請が {$waitingReviews} 件あるため、審査担当者を 0 人にできません。後任を選んでください。");
+        }
+
         try {
             DB::transaction(function () use ($request, $approvalDepartment, $base, $headId, $reviewerIds, $next, $shown, $oldHeadId): void {
                 $before = $approvalDepartment->only(array_keys($base)) + ['head_user_id' => $oldHeadId];
@@ -334,6 +339,14 @@ class OrganizationController extends Controller
     private function waitingHeadSteps(ApprovalDepartment $department): int
     {
         return ApprovalStep::where('kind', ApprovalStepKind::Head->value)
+            ->where('status', ApprovalStepStatus::Waiting->value)
+            ->where('department_id', $department->id)
+            ->count();
+    }
+
+    private function waitingReviewSteps(ApprovalDepartment $department): int
+    {
+        return ApprovalStep::where('kind', ApprovalStepKind::Review->value)
             ->where('status', ApprovalStepStatus::Waiting->value)
             ->where('department_id', $department->id)
             ->count();

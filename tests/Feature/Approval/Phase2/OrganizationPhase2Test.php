@@ -580,4 +580,23 @@ class OrganizationPhase2Test extends TestCase
 
         $this->assertNotNull($dept->fresh());
     }
+
+    /** 審査を待っている申請があるうちは、審査担当者を 0 人にできない（部門長の歯止めと同じ。Task 9 の点検の軽微） */
+    public function test_the_reviewers_cannot_all_be_removed_while_reviews_wait(): void
+    {
+        $w     = $this->approvalWorld();
+        $admin = $this->approvalAdmin();
+        $r     = $this->submittedFor($w);
+        app(Workflow::class)->judgeHead($r, $w['head'], $r->lock_version, ApprovalStepResult::Approve, null);   // 審査を待っている
+
+        $this->update($admin, $w['reviewDept'], ['reviewer_ids' => []])
+            ->assertSessionHas('error', 'この部門には審査を待っている申請が 1 件あるため、審査担当者を 0 人にできません。後任を選んでください。');
+        $this->assertSame([$w['reviewer']->id], $w['reviewDept']->reviewers()->pluck('users.id')->all());
+
+        // 入れ替える（0 人にしない）のは通る
+        $next = $this->baseUser(['name' => '後任 審査']);
+        $this->update($admin, $w['reviewDept'], ['reviewer_ids' => [(string) $next->id]])
+            ->assertSessionHas('success', '部門を更新しました。');
+        $this->assertSame([$next->id], $w['reviewDept']->reviewers()->pluck('users.id')->all());
+    }
 }
