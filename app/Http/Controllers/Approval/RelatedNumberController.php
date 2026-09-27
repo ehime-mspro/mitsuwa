@@ -26,8 +26,10 @@ class RelatedNumberController extends Controller
     public function search(Request $request): JsonResponse
     {
         // ⚠ ?q[]=… のように配列で来ても 500 にしない（文字列でなければ空として扱う）
+        // ⚠ 壊れた文字（不正な UTF-8）だと preg_replace は null を返す。null のまま進むと LIKE '%%' で
+        //   見られる申請すべてに当たるので、空として扱う
         $raw  = $request->query('q');
-        $text = is_string($raw) ? preg_replace('/^[\s\x{3000}]+|[\s\x{3000}]+$/u', '', $raw) : '';
+        $text = is_string($raw) ? (preg_replace('/^[\s\x{3000}]+|[\s\x{3000}]+$/u', '', $raw) ?? '') : '';
 
         if ($text === '') {
             return response()->json(['items' => []]);

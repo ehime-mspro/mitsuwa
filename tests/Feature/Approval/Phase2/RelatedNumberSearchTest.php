@@ -82,6 +82,11 @@ class RelatedNumberSearchTest extends TestCase
         $this->actingAs($w['applicant'])
             ->getJson(route('approvals.numbers.search') . '?q[]=R8', ['X-Requested-With' => 'XMLHttpRequest'])
             ->assertOk()->assertExactJson(['items' => []]);
+
+        // 壊れた文字（不正な UTF-8）でも全件にしない
+        $this->actingAs($w['applicant'])
+            ->getJson(route('approvals.numbers.search') . '?q=%FF', ['X-Requested-With' => 'XMLHttpRequest'])
+            ->assertOk()->assertExactJson(['items' => []]);
     }
 
     public function test_at_most_ten_candidates_come_back_newest_first(): void
