@@ -9,7 +9,9 @@ use App\Models\ApprovalDepartment;
 use App\Models\ApprovalMailDomain;
 use App\Models\ApprovalMember;
 use App\Models\ApprovalSetting;
+use App\Models\ApprovalType;
 use App\Models\User;
+use App\Support\Approval\BodyTemplate;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route as RoutingRoute;
@@ -336,6 +338,9 @@ class ApprovalAdminGateTest extends TestCase
             'approval_department_user' => DB::table('approval_department_user')->count(),
             'approval_setting_logs' => DB::table('approval_setting_logs')->count(),
             'approval_settings' => DB::table('approval_settings')->count(),
+            'approval_types' => DB::table('approval_types')->count(),
+            'approval_reviewers' => DB::table('approval_reviewers')->count(),
+            'approval_number_sequences' => DB::table('approval_number_sequences')->count(),
         ];
     }
 
@@ -462,11 +467,17 @@ class ApprovalAdminGateTest extends TestCase
         [$company, $department, $mailDomain] = $this->makeOrganizationFixtures();
         $manageableUser = $this->makeManageableUser();
 
+        $type = ApprovalType::create([
+            'name' => '購入・発注', 'headings' => BodyTemplate::DEFAULT,
+            'review_department_id' => $department->id, 'sort_order' => 1, 'is_active' => true,
+        ]);
+
         $existingValues = [
             'user' => (string) $manageableUser->id,
             'approvalCompany' => (string) $company->id,
             'approvalDepartment' => (string) $department->id,
             'mailDomain' => (string) $mailDomain->id,
+            'approvalType' => (string) $type->id,
         ];
 
         $outsiders = $this->outsiders();

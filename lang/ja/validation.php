@@ -589,6 +589,11 @@ return [
         'next_number'    => '今年度の次の番号',
         'next_number_shown' => '開いたときの次の番号',
 
+        // 申請種類の管理（§5.5）。name は TypeController の validate() 第 3 引数で「種類名」に上書きする
+        'headings'             => '見出し',
+        'review_department_id' => '審査部門',
+        'is_active'            => '利用中',
+
     ],
 
 ];

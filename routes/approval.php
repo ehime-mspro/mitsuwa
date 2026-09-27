@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Approval\HomeController;
 use App\Http\Controllers\Approval\OrganizationController;
+use App\Http\Controllers\Approval\TypeController;
 use App\Http\Controllers\Approval\UserController;
 use App\Http\Controllers\Approval\UserImportController;
 use Illuminate\Support\Facades\Route;
@@ -67,4 +68,11 @@ Route::middleware('approval.admin')->prefix('approvals/admin')->name('approvals.
 
     Route::post('/organization/mail-domains', [OrganizationController::class, 'storeMailDomain'])->name('organization.mailDomains.store');
     Route::delete('/organization/mail-domains/{mailDomain}', [OrganizationController::class, 'destroyMailDomain'])->name('organization.mailDomains.destroy');
+
+    // 申請種類の管理（段階2 設計書 §5.5）。使い始める前から使える（準備の画面。D1）
+    // ⚠ パラメータ名は `{approvalType}`（`{type}` は基幹で別の意味に使われうるので避ける）
+    Route::get('/types', [TypeController::class, 'index'])->name('types.index');
+    Route::post('/types', [TypeController::class, 'store'])->name('types.store');
+    Route::put('/types/{approvalType}', [TypeController::class, 'update'])->name('types.update');
+    Route::delete('/types/{approvalType}', [TypeController::class, 'destroy'])->name('types.destroy');
 });
