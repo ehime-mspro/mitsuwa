@@ -451,6 +451,33 @@ class WorkflowTest extends TestCase
         $this->assertSame($waitVersion + 1, $wait->refresh()->lock_version);
     }
 
+    /** 交代で動かすのはその部門の「部門長の段階」だけ（ほかの部門の部門長の段階・その部門が審査部門の審査の段階は動かさない） */
+    public function test_the_head_change_moves_only_the_head_steps_of_that_department(): void
+    {
+        $w = $this->approvalWorld();
+        $r = $this->submittedFor($w);
+
+        // ほかの部門（部門長あり）で部門長の確認を待っている申請
+        $other     = $this->approvalDepartment($w['company'], ['name' => '賃貸事業部', 'head_user_id' => $this->baseUser(['name' => '賃貸 部門長'])->id]);
+        $applicant = $this->approvalOnlyUser(['name' => '賃貸 申請']);
+        $applicant->approvalDepartments()->attach($other->id);
+        $elsewhere = $this->submittedFor(array_merge($w, ['dept' => $other->fresh(), 'applicant' => $applicant->fresh()]));
+
+        // この部門（住宅事業部）が審査部門の種類で、審査を待っている申請
+        $reviewer = $this->baseUser(['name' => '住宅 審査']);
+        $w['dept']->reviewers()->attach($reviewer->id);
+        $type = $this->approvalType($w['dept']);
+        $rev  = $this->submittedFor(array_merge($w, ['type' => $type]));
+        $this->workflow->judgeHead($rev, $w['head'], $rev->lock_version, ApprovalStepResult::Approve, null);
+
+        $before = [$elsewhere->fresh()->lock_version, $rev->fresh()->lock_version];
+        $this->workflow->headChanged($w['dept'], $w['head']->id, $this->baseUser(['name' => '新 部門長'])->id, $this->approvalAdmin());
+
+        $this->assertSame(1, ApprovalHistory::where('request_id', $r->id)->where('action', 'head_changed')->count());
+        $this->assertSame(0, ApprovalHistory::whereIn('request_id', [$elsewhere->id, $rev->id])->where('action', 'head_changed')->count(), 'ほかの申請に交代の記録を付けた');
+        $this->assertSame($before, [$elsewhere->fresh()->lock_version, $rev->fresh()->lock_version], 'ほかの申請の lock_version を進めた');
+    }
+
     /**
      * 交代の候補を読んだあと、ロックを取るまでに判断が済んだ申請は動かさない（MySQL ではロックを待つあいだに先を越される）。
      *
