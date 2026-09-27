@@ -302,7 +302,7 @@
                         <label class="block text-[12px] font-semibold text-gray-700 mb-1">今年度の次の番号</label>
                         <input type="number" name="next_number" value="1" inputmode="numeric" min="1" max="99999" class="w-full h-[38px] px-2.5 border border-gray-300 rounded-md text-[13px]">
                         <input type="hidden" name="next_number_shown" value="1">
-                        <p class="text-[11px] text-gray-400 mt-1">紙で 20 番まで使っていたら 21 を入れる（要件 6.4）</p>
+                        <p class="text-[11px] text-gray-400 mt-1">紙で 20 番まで使っていたら 21 を入れる</p>
                     </div>
                 </div>
                 <div class="px-6 pb-5 flex justify-end gap-2">
@@ -342,7 +342,7 @@
                         <label class="block text-[12px] font-semibold text-gray-700 mb-1">アルファベット<span class="text-red-600 ml-0.5">*</span></label>
                         <input type="text" name="code" x-model="editDepartmentCode" required maxlength="3" autocapitalize="characters" spellcheck="false" class="w-full h-[38px] px-2.5 border border-gray-300 rounded-md text-[13px] font-mono uppercase">
                         <p class="text-[11px] text-gray-400 mt-1">申請番号に使う英大文字1〜3文字（グループ全体で重複不可）</p>
-                        <p x-show="editDepartmentHasNumbers" class="text-[11px] text-amber-700 mt-1">決裁No を付けた申請があるため、会社とアルファベットは変えられません（D8）。</p>
+                        <p x-show="editDepartmentHasNumbers" class="text-[11px] text-amber-700 mt-1">決裁No を付けた申請があるため、会社とアルファベットは変えられません。</p>
                     </div>
                     <div>
                         <label class="block text-[12px] font-semibold text-gray-700 mb-1">表示順<span class="text-red-600 ml-0.5">*</span></label>

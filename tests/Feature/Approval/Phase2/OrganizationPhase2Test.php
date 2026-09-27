@@ -617,4 +617,16 @@ class OrganizationPhase2Test extends TestCase
         $this->assertSame(collect([$r1->id, $r2->id])->sort()->values()->all(), $old['reviewer_ids']);
         $this->assertSame([2026 => 21], $old['next_numbers']);
     }
+
+    /** 画面の文言に設計の記号（「要件 6.4」「D8」）を出さない（決裁の管理者には意味が分からない。Task 9 の点検の軽微） */
+    public function test_the_screen_does_not_show_design_references(): void
+    {
+        $this->approvalWorld();
+        $html = $this->indexHtml($this->approvalAdmin());
+
+        $this->assertStringContainsString('紙で 20 番まで使っていたら 21 を入れる</p>', $html);
+        $this->assertStringContainsString('決裁No を付けた申請があるため、会社とアルファベットは変えられません。</p>', $html);
+        $this->assertStringNotContainsString('要件 6.4', $html);
+        $this->assertStringNotContainsString('（D8）', $html);
+    }
 }
