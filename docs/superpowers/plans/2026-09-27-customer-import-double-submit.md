@@ -1964,15 +1964,30 @@ EOF
 
 ### Task 0: 前提の確認
 
-（未記入）
+2026-09-27 18:48（日本時間）。方法 A（このセッションで直接・superpowers:executing-plans）で実行した。
+
+- Step 1: `status` は空・`customer-import-double-submit`・`97d2257a`（この計画のコミット）・`ahead-of-13.x`（`13.x` = `origin/13.x` = `f61290be`。取り込むものは無し）
+- Step 2: `OK (2346 tests, 15196 assertions)`（1 分 40 秒）
+- Step 3: node `v24.11.1`
+- 別の会話の `approval-phase2a` は作業中で、この作業の間に `eea70599` → `df795036` → `b60c50ee` と進んだ。`13.x` には未マージで、この作業で触るファイル（`LoginGuideTest.php` を含む）とは重ならない（Task 6 の前にも確かめた）
 
 ### Task 1: サーバの 1 回限りの鍵
 
-（未記入）
+- Step 2（T2 だけを書いて直す前のコードで流す）: `2 回目の送信で、重複候補がもう一度入った` ／ `Failed asserting that 3 is identical to 2.` ／ `Tests: 21, Assertions: 273, Failures: 1.`（計画の期待と同じ）
+- Step 4: `Tests: 27, Assertions: 246, Failures: 22.`・22 本とも `確定のフォームに 1 回限りの鍵（import_token）が無い`
+- Step 8: `OK (27 tests, 388 assertions)` ／ Step 9（決裁のテスト）: `OK (185 tests, 1308 assertions)`
+- 置き換え前はどれもちょうど 1 か所に当たった。コミット `9fd85f0b`
+
+### Task 2: 画面の二度押し止め
+
+- Step 1（node の部品の一般化の後）: `OK (27 tests, 388 assertions)`
+- Step 3: `Tests: 29, Assertions: 392, Failures: 2.`（T6: フォームの開始タグに `x-on:submit="onSubmit($event)"` が無い ／ T7: `TypeError: data.onSubmit is not a function`・`Failed asserting that null is of type array.`）
+- Step 5: `OK (29 tests, 406 assertions)` ／ Step 6: `AlpineXShowDisplayConflictTest` `OK (2 tests, 2 assertions)`・`ImportPreviewRenderTest` `OK (2 tests, 6 assertions)`・`ImportValidationFeedbackTest` `OK (3 tests, 12 assertions)`
+- コミット `0df5c0f2`
 
 ### Task 3: 全件テストと lint
 
-（未記入）
+- `OK (2355 tests, 15346 assertions)`（1 分 32 秒。着手前から +9 本・+150）／ `views=274 invalid=0` ／ `status` は空
 
 ### Task 4: 変異テスト
 
@@ -2011,11 +2026,43 @@ EOF
 
 ### Task 5: ローカルの実ブラウザ
 
-（未記入）
+2026-09-27 19:02〜19:07（日本時間）。Playwright の Chromium・画面が見えている状態・`CACHE_STORE=file`。Task 4 の変異の実行と並行した（変異は隔離したコピーの中だけで動く）。
+
+- Step 1: `bootstrap/cache/` には部品の名簿（`packages.php`・`services.php`）だけがあり、設定のキャッシュ（`config.php`）は無かった＝計画の「何も無い」の趣旨（環境変数が効く）どおり。seed は `user id: 1 / cache: file`。CSS は `app-D-wd4D2y.css`（試作と同じ名前）で、`.disabled\:opacity-60:disabled{opacity:.6}`・`.disabled\:cursor-not-allowed:disabled{cursor:not-allowed}`・`.cursor-pointer{cursor:pointer}` が入った
+
+| # | 結果 |
+|---|---|
+| 1 | 取込の画面が開く |
+| 2 | ボタン「インポート実行（2件）」が見えて押せる・`cursor: pointer`・`opacity: 1`・送信中の文字は空・鍵 40 文字・`submitting: false` |
+| 3 | ダブルクリック: 確定の POST は 1 回（`confirmed: true`）・「2件のインポートが完了しました。」・鍵の案内なし ／ `buyers` は 2 行（佐藤・鈴木）|
+| 4 | 確定の応答を 3 秒遅らせて押す: `click-listener` の直後の記録が `disabled: true`・`not-allowed`・`0.6`・「取り込んでいます…」／ 確定の POST は 1 回 ／ 「1件のインポートが完了しました。」|
+| 5 | 「戻る」: `navType: back_forward`・押せる・`submitting: false`。戻った時刻（19:04:03）の開発サーバの行は `/favicon.ico` だけ＝控えから描き直し、POST は送り直していない |
+| 6 | そのまま押す: 確定の POST は 1 回・「この確認画面からは取り込めません（すでに送信したか、画面が古くなっています）。…」・完了の文は無い ／ `buyers` は 3 行のまま（高橋は 1 人）|
+| 7 | 合成の `pageshow`: `afterPress` は `disabled: true`・`not-allowed`・`0.6`・「取り込んでいます…」・`true` → `afterPageshow` は `false`・`pointer`・`1`・空・`false` → `afterSecondPress` はまた `true` の側 ／ `submits: 2` |
+| 8 | 1440px: `main` 1220/1220 ／ 375px: 375/375 ／ どちらもボタンが見える |
+| 9 | 375px で押す: `lines: 1`・文字の上端 386 がボタンの下端 383 より下・`main` 375/375 ／ 画像でも「取り込んでいます…」は割れずに 1 行で、薄くなったボタンの下 |
+| 10 | コンソールのエラー 0・警告 0 |
+
+- 片づけ: 開発サーバとブラウザを止め、`routes/web.php` を戻し、`public/build`・file キャッシュ・使い捨ての SQLite を消した。`.playwright-mcp/` は今回増えた 10 個（CSV 4・画像 1・スナップショット 5）だけを消して、始める前の一覧と同じに戻した。作業ツリーは空・8767 番は空き
+- 観察（範囲外・以前から）: 375px でプレビューの件数の帯が「全 / 1 / 件」「重複候 / 補:」と文字の途中で折れる（今回は変えていない部分）
 
 ### Task 6: 独立レビュー
 
-（未記入）
+2026-09-27 19:26〜19:48（日本時間）。Agent（general-purpose・モデル fable。一覧の先頭のモデル）に、計画の依頼文・Review Focus・判断の記録（`progress.md` の `Ruling:`）を渡した。worktree は変えさせず、探りは scratchpad の別名のコピー（`review-899984cc-probe`・vendor は `cp -Rc`）に限った。
+
+- 判定: **はい（マージしてよい）**。Critical・Important は 0 件、Minor 3 件
+- レビュー役の実測: カナリア（断りの文言を変える）で 5 本が赤＝コピーのコードが読まれている ／ **本番と同じ file キャッシュで同じ鍵を 24 プロセスが一斉に使う ×3 回 → 3 回とも通るのは 1 本**（`FileStore::add()` の `LOCK_EX|LOCK_NB`。Review Focus ① を実測で裏づけ）／ コンパイル済みビュー 274 INVALID 0 ／ 模擬ページ（同じ Alpine の配線）を Chromium で「Alpine 起動後・`load` 前に押す」→ 送信中に `load` も `pageshow` も来ずに遷移した（初回の `pageshow` で印が下りる窓は Chromium では起きない）
+
+| 指摘 | 直す前（実測）| 対応 | 直した後（実測）|
+|---|---|---|---|
+| 1 `LoginGuideTest::test_nothing_outside_one_time_action_calls_the_raw_claim` の `claimFrom()` 件数の下限が 5 のまま（今回 6 か所目を足した）| 変異 M1（`Approval\UserImportController` の `claimFrom` を消す）で `OK (1 test, 5 assertions)`＝緑 | 下限を 6 に・失敗文に顧客の 1 か所を足し・docblock の数を直した（コメントを含めた数え方は 7＝本物 6 ＋ コメント 1 を実測）| M1 で「claimFrom() の呼び出しが減っている（…）」の 1 本が赤 |
+| 2 T3 が別の CSV で 2 回プレビューしていて、鍵を CSV の中身から作る書き換えを見逃す | 変異 M2（鍵を `hash('sha256', $content)` に）で `OK (29 tests, 406 assertions)`＝全部緑 | T3 を「書き込みに失敗したあと同じ CSV を上げ直すと新しい鍵で取り込める」に直した（案内どおりの回復の道で、鍵を中身から作ると 12 時間断られる場面そのもの）| M2 で T3 だけが「プレビューごとに鍵が変わっていない」で赤（`Tests: 29, Assertions: 402, Failures: 1.`）。T3 が検出役の K05 は同じ文言で 1 本・K06 は T3 を含む 18 本（Task 4 の表と同じ）|
+| 3 文書の誤り | — | コントローラの注記（鍵を書き込みの直前に置くと誤った案内に着くのはチェックなしの 2 回目・今の文言）／ 設計書 §4.5（送信中の文字の span は `inline-block` で左の余白 12px を取る）／ 設計書 §2.4（下限を 6 に上げた）| 注記だけなので変異の置き換え文字列には当たらない |
+
+- ⚠ レビュー役の指摘 2 の直し方の案（2 回とも先にプレビューして、両方の確定が「1 件」）は採らなかった — 2 回目の確定は、1 回目で入った人を重複候補と数えて 0 件の案内に着くため（直す前と同じ流れ）
+- ⚠ 計画は「`LoginGuideTest` は変えない」としていたが、指摘 1 で下限を上げた（`progress.md` の Ruling。`approval-phase2a` はこのファイルに触れていない）
+- コミット: `aa1f139e`（テスト）・`4cc4c2c4`（注記と設計書）。直した後に全件 `OK (2355 tests, 15346 assertions)`（1 分 32 秒）・`views=274 invalid=0`
+- 判断を控えたもの（レビュー役の 5 件）の扱い: ①Firefox・Safari で `load` 前に押すと初回の `pageshow` で印が下りうる → 起きても 2 回目はサーバの鍵が断るのでそのまま（BACKLOG の範囲外に記録）②別々のプレビュー（2 つのタブ）で同じ CSV をほぼ同時に確定すると両方通る → 案 A の性質（閉じるのは DB の一意制約だけ）で、BACKLOG の範囲外に足した ③送信中にチェックを外すと「取り込んでいます…」が消える → 見た目だけ（範囲外に記録）④失敗のあと鍵が使用済み・12 時間より古い画面 → 設計書 §6 どおり ⑤実ブラウザの結果は Task 5 の記録に依拠 → そのまま
 
 ### Task 8: 本番反映
 
