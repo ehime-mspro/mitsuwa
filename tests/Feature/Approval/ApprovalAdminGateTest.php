@@ -478,9 +478,14 @@ class ApprovalAdminGateTest extends TestCase
         [$company, $department, $mailDomain] = $this->makeOrganizationFixtures();
         $manageableUser = $this->makeManageableUser();
 
+        // 種類の審査部門は、走査で消す部門とは別にする（同じにすると部門が「種類の審査部門」の歯止めで消えなくなり、
+        // 門番をコントローラの後ろへ回す変異を部門の削除で捕まえる網が細る。Task 11 の点検の軽微）
+        $reviewDepartment = ApprovalDepartment::create([
+            'company_id' => $company->id, 'name' => '総務部', 'short_name' => '総務', 'code' => 'SO', 'sort_order' => 2,
+        ]);
         $type = ApprovalType::create([
             'name' => '購入・発注', 'headings' => BodyTemplate::DEFAULT,
-            'review_department_id' => $department->id, 'sort_order' => 1, 'is_active' => true,
+            'review_department_id' => $reviewDepartment->id, 'sort_order' => 1, 'is_active' => true,
         ]);
 
         $existingValues = [
