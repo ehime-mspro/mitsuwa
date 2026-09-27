@@ -358,12 +358,13 @@ class RequestVisibilityTest extends TestCase
             $listed = $this->visibleIds($user);
             $member = ApprovalMember::where('user_id', $user->id)->first();
             foreach ($r as $name => $req) {
+                $headDept = ApprovalStep::where('request_id', $req->id)->where('round', $req->round)->where('kind', 'head')->value('department_id');   // 最後に提出した回の申請部門
                 $want = match (true) {
                     $req->user_id === $user->id                                  => true,
                     $req->status === ApprovalStatus::Draft                        => false,
                     $member !== null && ($member->is_admin || $member->can_view_all) => true,
-                    $req->department_id !== null
-                        && ApprovalDepartment::whereKey($req->department_id)->value('head_user_id') === $user->id => true,
+                    $headDept !== null
+                        && ApprovalDepartment::whereKey($headDept)->value('head_user_id') === $user->id => true,
                     default => ApprovalStep::where('request_id', $req->id)->get()->contains(
                         fn (ApprovalStep $s) => $s->actor_user_id === $user->id
                             || ($s->arrived_at !== null && $s->assignee_user_id === $user->id)
@@ -426,10 +427,11 @@ class RequestVisibilityTest extends TestCase
     }
 
     /**
-     * 境目: 差戻し中に申請者が申請部門を変え、出し直す。設計書 §5.10 の字義（「申請部門の今の部門長」）どおり、
-     * 申請は今の申請部門について回る（利用者にまだ確かめていない境目。README の申し送り）。
+     * 境目: 差戻し中に申請者が申請部門を変え、出し直す。申請部門は**最後に提出した回**のもので判定する
+     * （利用者の決定 2026-09-27「差戻し中は、申請者以外には最後に提出した中身を見せる」にそろえる）。
+     * 出し直すまでは前の部門の今の部門長が見て、新しい部門の部門長は出し直してから見る。
      */
-    public function test_a_request_moved_to_another_department_follows_its_current_department(): void
+    public function test_a_request_moved_to_another_department_follows_the_submitted_department(): void
     {
         $w = $this->approvalWorld();
         $hk = $this->baseUser(['name' => '部門長 K']);
@@ -444,13 +446,18 @@ class RequestVisibilityTest extends TestCase
         $h2 = $this->baseUser(['name' => '新 部門長 J']);
         $w['dept']->update(['head_user_id' => $h2->id]);
 
-        $this->assertTrue(RequestVisibility::canView($hk, $r), '新しい部門の部門長');
-        $this->assertTrue(RequestVisibility::canView($w['head'], $r), '判断した前の部門長');
-        $this->assertFalse(RequestVisibility::canView($h2, $r), '判断していない、前の部門の今の部門長');
+        // 出し直す前: 最後に提出した回の申請部門（J）の今の部門長が見る
+        $this->assertFalse($this->sees($hk, $r), '出し直す前から新しい部門の部門長に見える');
+        $this->assertTrue($this->sees($h2, $r), '前の部門の今の部門長に見えない');
+        $this->assertTrue($this->sees($w['head'], $r), '判断した前の部門長に見えない');
 
+        // 出し直したあと: 新しい部門（K）の部門長が見て、判断できる
         $this->workflow->submit($r->refresh(), $a);
-        $this->assertNotNull(RequestPermissions::for($hk, $r->refresh())->judgeableStep());
-        $this->assertTrue(RequestVisibility::canView($hk, $r));
+        $r->refresh();
+        $this->assertNotNull(RequestPermissions::for($hk, $r)->judgeableStep());
+        $this->assertTrue($this->sees($hk, $r), '出し直したのに新しい部門の部門長に見えない');
+        $this->assertFalse($this->sees($h2, $r), '判断していない前の部門の部門長に、出し直したあとも見える');
+        $this->assertTrue($this->sees($w['head'], $r), '判断した前の部門長に見えない');
     }
 
     /**

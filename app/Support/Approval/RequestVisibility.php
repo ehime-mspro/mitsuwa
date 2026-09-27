@@ -70,8 +70,16 @@ final class RequestVisibility
             return;
         }
 
-        // 申請部門の今の部門長
-        $q->whereIn('approval_requests.department_id', ApprovalDepartment::query()->select('id')->where('head_user_id', $user->id));
+        // 申請部門の今の部門長。申請部門は**最後に提出した回**のもの（その回の部門長の段階の department_id。
+        // 部門長の段階を省いた回も行はある。判断の権限〈RequestPermissions〉と同じ部門）。差戻し中に申請者が
+        // 申請部門を変えても、出し直すまでは前の部門の部門長が見る（利用者の決定 2026-09-27: 差戻し中は、
+        // 申請者以外には最後に提出した中身を見せる）
+        $q->whereExists(function (QueryBuilder $s) use ($user): void {
+            self::stepsOfThisRequest($s)
+                ->where('approval_steps.kind', ApprovalStepKind::Head->value)
+                ->whereColumn('approval_steps.round', 'approval_requests.round')
+                ->whereIn('approval_steps.department_id', ApprovalDepartment::query()->select('id')->where('head_user_id', $user->id));
+        });
 
         // 審査部門の今の審査担当者（審査の段階が一度でも届いた。D19）
         $q->orWhereExists(function (QueryBuilder $s) use ($user): void {
