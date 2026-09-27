@@ -4,6 +4,8 @@ namespace App\Models;
 
 use App\Enums\ApprovalDecision;
 use App\Enums\ApprovalStatus;
+use App\Support\Approval\RequestVisibility;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -108,5 +110,16 @@ class ApprovalRequest extends Model
     public function amountLabel(): ?string
     {
         return $this->amount === null ? null : number_format($this->amount) . '円';
+    }
+
+    /**
+     * 見られる申請に絞る（要件 7 章・設計書 §5.10）。規則は `RequestVisibility` の 1 か所で、ここはその入口。
+     *
+     * ⚠ 呼ぶときは `RequestVisibility::apply($query, $user)` か `$query->visibleTo($user)`。ローカルスコープなので、
+     *   呼ぶ側が先に書いた最上位の OR を Laravel が括弧に入れる（見られる範囲の外へ漏れない）。
+     */
+    public function scopeVisibleTo(Builder $query, User $user): void
+    {
+        RequestVisibility::constrain($query, $user);
     }
 }

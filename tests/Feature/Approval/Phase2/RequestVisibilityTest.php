@@ -452,4 +452,19 @@ class RequestVisibilityTest extends TestCase
         $this->assertNotNull(RequestPermissions::for($hk, $r->refresh())->judgeableStep());
         $this->assertTrue(RequestVisibility::canView($hk, $r));
     }
+
+    /**
+     * 呼ぶ側が apply() より前に最上位の OR を書いても、見られる範囲の外へ漏れない（Task 8 の点検の軽微。
+     * ローカルスコープを通すので、前の条件を Laravel が括弧に入れる）。
+     */
+    public function test_an_or_written_before_apply_does_not_leak(): void
+    {
+        $w        = $this->approvalWorld();
+        $r        = $this->submittedFor($w);
+        $outsider = $this->baseUser(['name' => '部外者']);
+        $search   = fn () => ApprovalRequest::query()->where('approval_requests.id', $r->id)->orWhere('subject', 'like', '%該当なし%');
+
+        $this->assertSame([], RequestVisibility::apply($search(), $outsider)->pluck('id')->all(), '前に書いた OR から部外者に漏れた');
+        $this->assertSame([$r->id], RequestVisibility::apply($search(), $w['head'])->pluck('id')->all(), '前提: 部門長には見える');
+    }
 }

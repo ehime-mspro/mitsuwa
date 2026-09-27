@@ -27,10 +27,22 @@ final class RequestVisibility
         return self::apply(ApprovalRequest::query()->whereKey($request->getKey()), $user)->exists();
     }
 
-    /** 見られる申請に絞る（`approval_requests` を主にしたクエリに使う） */
+    /**
+     * 見られる申請に絞る（`approval_requests` を主にしたクエリに使う）。
+     *
+     * ローカルスコープ `ApprovalRequest::scopeVisibleTo()` を通す（設計書 §5.10）。スコープを通すと、呼ぶ側が
+     * 先に書いた最上位の OR を Laravel が括弧に入れる（`Builder::callScope()`）。直接 where を足すと
+     * `… or … and (見られる範囲)` になり、OR の側から他人の申請が漏れる（Task 8 の点検で実測）。
+     */
     public static function apply(Builder $query, User $user): Builder
     {
-        return $query->where(function (Builder $q) use ($user): void {
+        return $query->visibleTo($user);
+    }
+
+    /** 規則の本体。`ApprovalRequest::scopeVisibleTo()` だけが呼ぶ（ほかから直接呼ぶと、前の OR が括弧に入らない） */
+    public static function constrain(Builder $query, User $user): void
+    {
+        $query->where(function (Builder $q) use ($user): void {
             // 申請者は自分の申請（下書きを含む）
             $q->where('approval_requests.user_id', $user->id)
               // ほかの人は下書きを見られない
