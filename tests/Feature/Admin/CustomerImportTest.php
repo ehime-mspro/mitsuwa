@@ -177,38 +177,37 @@ class CustomerImportTest extends TestCase
     }
 
     /**
-     * 確定の欄の件数（`csvImport()` の `importCount()`）を node の vm で実際に動かす。
+     * 画面が描いた `csvImport()` を node の vm で作り、$steps（JavaScript）を走らせて、`result` に入れた値を返す。
      *
      * ⚠ PHP のテストからブラウザの JavaScript は動かせないので、画面が描いた `<script>` をそのまま node で読み込む
      *   （AreaBuildingMapTabTest・DatePickerMonthAgoTest と同じ流儀。Bug #47 の「振る舞いの正本は実駆動」）。
-     *   文脈には何も渡さない（ブラウザより寛容にしない）。チェックとの結びつき（x-model）とボタンの出し分け（x-show）は
-     *   構造で見る（test_a_preview_of_only_duplicates_hides_the_button_until_the_check）
+     *   文脈には何も渡さない（ブラウザより寛容にしない）。Alpine との結びつき（x-model・x-show・x-on・:disabled）は
+     *   構造で見る（test_a_preview_of_only_duplicates_hides_the_button_until_the_check・
+     *   test_the_confirmation_form_guards_against_a_second_press）
      *
-     * @return list<int>  [チェックなしの件数, チェックありの件数]
+     * @param  string  $steps  `data`（csvImport() が返したもの）を使い、返したい値を `result` に入れる
      */
-    private function importCountsInNode(string $html): array
+    private function csvImportInNode(string $html, string $steps): array
     {
         $node = trim((string) shell_exec('command -v node 2>/dev/null'));
         if ($node === '') {
-            $this->markTestSkipped('node が無いので確定の欄の件数の実駆動を飛ばす');
+            $this->markTestSkipped('node が無いので確定の欄の JavaScript の実駆動を飛ばす');
         }
 
         $found = preg_match('/<script>\s*(function csvImport\(\) \{.*?)<\/script>/su', $html, $m);
         $this->assertSame(1, $found, 'csvImport() の <script> が無い');
 
-        $harness = <<<'JS'
+        $prelude = <<<'JS'
             const fs = require('fs');
             const vm = require('vm');
             const context = vm.createContext({});
             vm.runInContext(fs.readFileSync(process.argv[1], 'utf8'), context, { filename: 'admin/customers/import.blade.php' });
             const data = vm.runInContext('csvImport()', context);
-            const counts = [data.importCount()];
-            data.includeDupes = true;
-            counts.push(data.importCount());
-            process.stdout.write(JSON.stringify(counts));
+            let result;
             JS;
+        $harness = $prelude . "\n" . $steps . "\nprocess.stdout.write(JSON.stringify(result));\n";
 
-        $file = tempnam(sys_get_temp_dir(), 'csv-import-count-');
+        $file = tempnam(sys_get_temp_dir(), 'csv-import-js-');
         try {
             file_put_contents($file, $m[1]);
             $output = shell_exec(sprintf('%s -e %s %s 2>&1', escapeshellarg($node), escapeshellarg($harness), escapeshellarg($file)));
@@ -216,10 +215,24 @@ class CustomerImportTest extends TestCase
             unlink($file);
         }
 
-        $counts = json_decode((string) $output, true);
-        $this->assertIsArray($counts, "node で csvImport() を動かせなかった:\n" . $output);
+        $result = json_decode((string) $output, true);
+        $this->assertIsArray($result, "node で csvImport() を動かせなかった:\n" . $output);
 
-        return $counts;
+        return $result;
+    }
+
+    /**
+     * 確定の欄の件数（`csvImport()` の `importCount()`）。
+     *
+     * @return list<int>  [チェックなしの件数, チェックありの件数]
+     */
+    private function importCountsInNode(string $html): array
+    {
+        return $this->csvImportInNode($html, <<<'JS'
+            result = [data.importCount()];
+            data.includeDupes = true;
+            result.push(data.importCount());
+            JS);
     }
 
     /** 確定のフォームを送り、転送をたどって着いた画面を返す */
@@ -674,6 +687,62 @@ class CustomerImportTest extends TestCase
         // この場面でチェックを入れると、先に登録された人がもう一度入るので勧めない（設計書 2026-09-27 §4.4）
         $landed->assertDontSee('チェックを入れてください');
         $this->assertSame(1, Buyer::count());
+    }
+
+    public function test_the_confirmation_form_guards_against_a_second_press(): void
+    {
+        $html = $this->preview($this->csv([$this->person('山田', '太郎')]))->getContent();
+
+        // 送信の印は確定のフォームそのものに付ける（ページのどこかに在るだけでは足りない。Bug #47）
+        $form    = $this->confirmFormHtml($html);
+        $formTag = substr($form, 0, strpos($form, '>') + 1);
+        $this->assertStringContainsString('x-on:submit="onSubmit($event)"', $formTag);
+        // 「戻る」で戻った確認画面の印を下ろす。pageshow は window にしか届かない（Bug #65）
+        $this->assertStringContainsString('x-on:pageshow.window="resetSubmit()"', $formTag);
+
+        // 送信中はボタンを押せなくする。見た目は Tailwind の disabled: で切り替える
+        $this->assertSame(1, preg_match('/<button\b[^>]*>(?=\s*インポート実行)/u', $html, $m), '「インポート実行」ボタンが無い');
+        $button = $m[0];
+        $this->assertStringContainsString(':disabled="submitting"', $button);
+        $classes = preg_split('/\s+/', (string) $this->htmlAttr($button, 'class'));
+        foreach (['cursor-pointer', 'disabled:cursor-not-allowed', 'disabled:opacity-60'] as $class) {
+            $this->assertContains($class, $classes, "「インポート実行」ボタンに {$class} が無い");
+        }
+        // style に cursor があると disabled:cursor-not-allowed に勝つ（style はクラスより強い）
+        $this->assertStringNotContainsString('cursor', (string) $this->htmlAttr($button, 'style'));
+
+        // 押したことを知らせる文字は、ボタンを包む要素の中にいつも置いて、文字だけ変える（設計書 2026-09-27 §4.5）
+        $wrapper = $this->buttonWrapper($html);
+        $start   = strpos($html, $wrapper) + strlen($wrapper);
+        $inside  = substr($html, $start, strpos($html, '</div>', $start) - $start);
+        $this->assertSame(1, preg_match('/<span\b[^>]*\brole="status"[^>]*>/u', $inside, $status), 'ボタンを包む要素の中に role="status" が無い');
+        $this->assertStringContainsString('x-text="submitting ? \'取り込んでいます…\' : \'\'"', $status[0]);
+        // 幅が狭いとき（375px）に文字の途中で折り返さず、まとまって次の行へ移る
+        $this->assertStringContainsString('display: inline-block', (string) $this->htmlAttr($status[0], 'style'));
+    }
+
+    public function test_a_second_submit_is_cancelled_until_the_page_is_shown_again(): void
+    {
+        $html = $this->preview($this->csv([$this->person('山田', '太郎')]))->getContent();
+
+        // 1 回目は通して印を立て、2 回目は取り消す。「戻る」で戻った画面（pageshow → resetSubmit()）では、また 1 回通す
+        $this->assertSame(
+            ['before' => false, 'first' => false, 'afterFirst' => true, 'second' => true, 'afterShown' => false, 'third' => false],
+            $this->csvImportInNode($html, <<<'JS'
+                const press = () => {
+                    const event = { cancelled: false, preventDefault() { this.cancelled = true; } };
+                    data.onSubmit(event);
+                    return event.cancelled;
+                };
+                result = { before: data.submitting };
+                result.first = press();
+                result.afterFirst = data.submitting;
+                result.second = press();
+                data.resetSubmit();
+                result.afterShown = data.submitting;
+                result.third = press();
+                JS)
+        );
     }
 
     // ================================================================
