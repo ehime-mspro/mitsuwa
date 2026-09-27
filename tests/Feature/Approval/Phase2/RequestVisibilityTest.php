@@ -2,13 +2,20 @@
 
 namespace Tests\Feature\Approval\Phase2;
 
+use App\Enums\ApprovalStatus;
+use App\Enums\ApprovalStepKind;
 use App\Enums\ApprovalStepResult;
+use App\Models\ApprovalDepartment;
+use App\Models\ApprovalMember;
 use App\Models\ApprovalRequest;
+use App\Models\ApprovalSetting;
 use App\Models\ApprovalStep;
 use App\Models\User;
+use App\Support\Approval\RequestPermissions;
 use App\Support\Approval\RequestVisibility;
 use App\Support\Approval\Workflow;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\Concerns\BuildsApprovalFixtures;
 use Tests\TestCase;
 
@@ -167,5 +174,282 @@ class RequestVisibilityTest extends TestCase
         ApprovalStep::where('request_id', $r->id)->where('kind', 'head')->update(['assignee_user_id' => $stand->id]);
 
         $this->assertTrue($this->sees($stand, $r));
+    }
+
+    /** 今の lock_version で判断する（段階の種類ごとに Workflow のルートを選ぶ） */
+    private function judge(string $kind, ApprovalRequest $r, User $u, ApprovalStepResult $res, ?string $c = null): void
+    {
+        $r->refresh();
+        match ($kind) {
+            'head'      => $this->workflow->judgeHead($r, $u, $r->lock_version, $res, $c),
+            'review'    => $this->workflow->judgeReview($r, $u, $r->lock_version, $res, $c),
+            'president' => $this->workflow->judgePresident($r, $u, $r->lock_version, $res, $c),
+        };
+    }
+
+    /**
+     * 18 人 × 18 件の世界（どの状態の申請もある）。J の部門長・社長・S の審査担当者 1 人を、あとから交代させてある。
+     *
+     * @return array{0: array<string, User>, 1: array<string, ApprovalRequest>, 2: array<string, ApprovalDepartment>}
+     */
+    private function matrixWorld(): array
+    {
+        $w  = $this->approvalWorld();
+        $co = $w['company'];
+        $J  = $w['dept'];
+        $S  = $w['reviewDept'];
+
+        $u = [
+            'A'   => $w['applicant'],
+            'H'   => $w['head'],
+            'R'   => $w['reviewer'],
+            'P'   => $w['president'],
+            'H2'  => $this->baseUser(['name' => '新 部門長 J']),
+            'HK'  => $this->baseUser(['name' => '部門長 K']),
+            'HT'  => $this->baseUser(['name' => '部門長 T']),
+            'R1b' => $this->baseUser(['name' => '審査 S 2人目']),
+            'R2'  => $this->baseUser(['name' => '審査 S2']),
+            'RT'  => $this->baseUser(['name' => '審査 T']),
+            'P2'  => $this->baseUser(['name' => '新 社長']),
+            'AD'  => $this->approvalAdmin(),
+            'VA'  => $this->viewAllUser(),
+            'X'   => $this->baseUser(['name' => '部外者']),
+            'Y'   => $this->baseUser(['name' => '代理 J']),
+            'Y2'  => $this->baseUser(['name' => '代理 K']),
+            'C'   => $this->approvalOnlyUser(['name' => '同僚 J']),
+            'B'   => $this->approvalOnlyUser(['name' => '申請者 T']),
+        ];
+
+        $K  = $this->approvalDepartment($co, ['name' => 'K 部', 'head_user_id' => $u['HK']->id]);
+        $S2 = $this->approvalDepartment($co, ['name' => 'S2 部']);
+        // T 部は申請もし、審査部門でもある（総務部が自分の部門の申請を出すような形）
+        $T  = $this->approvalDepartment($co, ['name' => 'T 部', 'head_user_id' => $u['HT']->id]);
+        $S->reviewers()->attach($u['R1b']->id);
+        $S2->reviewers()->attach($u['R2']->id);
+        $T->reviewers()->attach($u['RT']->id);
+        $type2 = $this->approvalType($S2);
+        $typeT = $this->approvalType($T);
+        $u['A']->approvalDepartments()->attach($K->id);
+        $u['C']->approvalDepartments()->attach($J->id);
+        $u['B']->approvalDepartments()->attach($T->id);
+        $u['H']->approvalDepartments()->attach($J->id);
+        foreach ($u as $k => $user) {
+            $u[$k] = $user->fresh();
+        }
+
+        $wJ = array_merge($w, ['applicant' => $u['A']]);
+        $wK = array_merge($wJ, ['dept' => $K, 'type' => $type2]);
+        $wT = array_merge($w, ['dept' => $T, 'type' => $typeT, 'applicant' => $u['B']]);
+        $wH = array_merge($w, ['applicant' => $u['H']]);
+
+        $r = [];
+        $r['dDraft'] = $this->draftFor($wJ);
+        $r['dNull']  = $this->draftFor($wJ, ['department_id' => null, 'type_id' => null]);
+        $r['rHead']  = $this->submittedFor($wJ);
+
+        $r['rReview'] = $this->submittedFor($wJ);
+        $this->judge('head', $r['rReview'], $u['H'], ApprovalStepResult::Approve);
+
+        foreach (['rPres', 'rApproved', 'rCond', 'rRejected', 'rRetPres', 'rResub'] as $name) {
+            $r[$name] = $this->submittedFor($wJ);
+            $this->judge('head', $r[$name], $u['H'], ApprovalStepResult::Approve);
+            $this->judge('review', $r[$name], $u['R'], ApprovalStepResult::Ok);
+        }
+        $this->judge('president', $r['rApproved'], $u['P'], ApprovalStepResult::Approve);
+        $this->judge('president', $r['rCond'], $u['P'], ApprovalStepResult::Conditional, '条件');
+        $this->judge('president', $r['rRejected'], $u['P'], ApprovalStepResult::Reject, '否');
+        $this->judge('president', $r['rRetPres'], $u['P'], ApprovalStepResult::Return, '直して');
+        $this->judge('president', $r['rResub'], $u['P'], ApprovalStepResult::Return, '直して');
+        $this->workflow->submit($r['rResub']->refresh(), $u['A']);   // 2 回目の提出。部門長の確認待ち（審査にはまだ届いていない）
+
+        $r['rRetHead'] = $this->submittedFor($wJ);
+        $this->judge('head', $r['rRetHead'], $u['H'], ApprovalStepResult::Return, '直して');
+
+        $r['rWithdrawn'] = $this->submittedFor($wJ);
+        $this->judge('head', $r['rWithdrawn'], $u['H'], ApprovalStepResult::Approve);
+        $r['rWithdrawn']->refresh();
+        $this->workflow->withdraw($r['rWithdrawn'], $u['A'], $r['rWithdrawn']->lock_version, null);
+
+        $r['rT']  = $this->submittedFor($wT);                 // T 部の部門長の確認待ち（T 部の審査はまだ）
+        $r['rT2'] = $this->submittedFor($wT);
+        $this->judge('head', $r['rT2'], $u['HT'], ApprovalStepResult::Approve);
+
+        $r['rK'] = $this->submittedFor($wK);
+        $this->judge('head', $r['rK'], $u['HK'], ApprovalStepResult::Approve);
+
+        $r['rAssigned'] = $this->submittedFor($wJ);
+        ApprovalStep::where('request_id', $r['rAssigned']->id)->where('kind', 'head')->update(['assignee_user_id' => $u['Y']->id]);
+        $r['rAssignedK'] = $this->submittedFor($wK);
+        ApprovalStep::where('request_id', $r['rAssignedK']->id)->where('kind', 'head')->update(['assignee_user_id' => $u['Y2']->id]);
+
+        $r['rByHead'] = $this->submittedFor($wH);             // 部門長が申請者（部門長の段階は省略）
+
+        // あとからの交代（4.3 のケース 5〜7）
+        $this->workflow->headChanged($J, $u['H']->id, $u['H2']->id, $u['AD']);   // rAssigned の付け替え（Y）は空に戻る
+        $J->update(['head_user_id' => $u['H2']->id]);
+        ApprovalSetting::current()->update(['president_user_id' => $u['P2']->id]);
+        $S->reviewers()->detach($u['R']->id);
+
+        foreach ($r as $k => $req) {
+            $r[$k] = $req->fresh();
+        }
+        foreach ($u as $k => $user) {
+            $u[$k] = $user->fresh();
+        }
+
+        return [$u, $r, ['J' => $J->fresh(), 'K' => $K->fresh(), 'T' => $T->fresh(), 'S' => $S->fresh()]];
+    }
+
+    /** 要件 7 章・設計書 §5.10 から手で書いた答え（コードから作らない） */
+    private function expected(): array
+    {
+        $nonDraft = ['rHead', 'rReview', 'rPres', 'rApproved', 'rCond', 'rRejected', 'rRetPres', 'rResub', 'rRetHead', 'rWithdrawn', 'rT', 'rT2', 'rK', 'rAssigned', 'rAssignedK', 'rByHead'];
+
+        return [
+            'A'   => ['dDraft', 'dNull', 'rHead', 'rReview', 'rPres', 'rApproved', 'rCond', 'rRejected', 'rRetPres', 'rResub', 'rRetHead', 'rWithdrawn', 'rK', 'rAssigned', 'rAssignedK'],
+            'B'   => ['rT', 'rT2'],
+            'C'   => [],
+            'X'   => [],
+            // J の前の部門長: 自分が判断したもの（と自分の申請）だけ
+            'H'   => ['rReview', 'rPres', 'rApproved', 'rCond', 'rRejected', 'rRetPres', 'rResub', 'rRetHead', 'rWithdrawn', 'rByHead'],
+            // J の今の部門長: J の下書き以外すべて（過去分・部門長の段階を省いたものも）
+            'H2'  => ['rHead', 'rReview', 'rPres', 'rApproved', 'rCond', 'rRejected', 'rRetPres', 'rResub', 'rRetHead', 'rWithdrawn', 'rAssigned', 'rByHead'],
+            'HK'  => ['rK', 'rAssignedK'],
+            'HT'  => ['rT', 'rT2'],
+            // S から外れた審査担当者: 自分が判断したものだけ
+            'R'   => ['rPres', 'rApproved', 'rCond', 'rRejected', 'rRetPres', 'rResub'],
+            // S の今の審査担当者: S の審査に一度でも届いた申請すべて（D19）。届いていないものは見えない
+            'R1b' => ['rReview', 'rPres', 'rApproved', 'rCond', 'rRejected', 'rRetPres', 'rResub', 'rWithdrawn', 'rByHead'],
+            'R2'  => ['rK'],
+            // T 部の審査担当者は、T 部の申請でも審査に届いてから
+            'RT'  => ['rT2'],
+            // 前の社長: 自分が判断したものだけ
+            'P'   => ['rApproved', 'rCond', 'rRejected', 'rRetPres', 'rResub'],
+            // 今の社長: 社長の段階に一度でも届いた申請すべて（D19）
+            'P2'  => ['rPres', 'rApproved', 'rCond', 'rRejected', 'rRetPres', 'rResub'],
+            'Y'   => [],
+            'Y2'  => ['rAssignedK'],
+            'AD'  => $nonDraft,
+            'VA'  => $nonDraft,
+        ];
+    }
+
+    public function test_every_person_sees_exactly_the_table_of_chapter_7(): void
+    {
+        [$u, $r] = $this->matrixWorld();
+
+        foreach ($this->expected() as $who => $names) {
+            $listed = $this->visibleIds($u[$who]);
+            foreach ($r as $name => $req) {
+                $want = in_array($name, $names, true);
+                $this->assertSame($want, in_array($req->id, $listed, true), "{$who} / {$name}: 一覧（apply）");
+                $this->assertSame($want, RequestVisibility::canView($u[$who], $req), "{$who} / {$name}: canView");
+            }
+        }
+    }
+
+    /** 同じ規則を PHP で独立に書き直した答えと、すべての組で一致する */
+    public function test_apply_and_can_view_agree_with_a_restatement_of_the_rules(): void
+    {
+        [$u, $r] = $this->matrixWorld();
+        $president = DB::table('approval_settings')->value('president_user_id');
+
+        foreach ($u as $who => $user) {
+            $listed = $this->visibleIds($user);
+            $member = ApprovalMember::where('user_id', $user->id)->first();
+            foreach ($r as $name => $req) {
+                $want = match (true) {
+                    $req->user_id === $user->id                                  => true,
+                    $req->status === ApprovalStatus::Draft                        => false,
+                    $member !== null && ($member->is_admin || $member->can_view_all) => true,
+                    $req->department_id !== null
+                        && ApprovalDepartment::whereKey($req->department_id)->value('head_user_id') === $user->id => true,
+                    default => ApprovalStep::where('request_id', $req->id)->get()->contains(
+                        fn (ApprovalStep $s) => $s->actor_user_id === $user->id
+                            || ($s->arrived_at !== null && $s->assignee_user_id === $user->id)
+                            || ($s->arrived_at !== null && $s->kind === ApprovalStepKind::President && $president === $user->id)
+                            || ($s->arrived_at !== null && $s->kind === ApprovalStepKind::Review
+                                && DB::table('approval_reviewers')->where('department_id', $s->department_id)->where('user_id', $user->id)->exists())
+                    ),
+                };
+                $this->assertSame($want, in_array($req->id, $listed, true), "{$who} / {$name}: 一覧");
+                $this->assertSame($want, RequestVisibility::canView($user, $req), "{$who} / {$name}: canView");
+            }
+        }
+    }
+
+    /** 操作できる人は必ず見られる（Task 15 の画面は Workflow より先に canView を見て 404 を返すため） */
+    public function test_whoever_can_act_can_see(): void
+    {
+        [$u, $r] = $this->matrixWorld();
+        $seen = [];
+
+        foreach ($u as $who => $user) {
+            foreach ($r as $name => $req) {
+                $p    = RequestPermissions::for($user, $req->fresh());
+                $step = $p->judgeableStep();
+                $acts = array_filter([
+                    'judge:' . $step?->kind->value => $step !== null,
+                    'refusal'  => $p->judgeRefusal() !== null,
+                    'edit'     => $p->canEdit(),
+                    'delete'   => $p->canDelete(),
+                    'withdraw' => $p->canWithdraw(),
+                    'confirm'  => $p->canConfirmCondition(),
+                ]);
+                if ($acts !== []) {
+                    $seen += $acts;
+                    $this->assertTrue(RequestVisibility::canView($user, $req), "{$who} は {$name} に " . implode(',', array_keys($acts)) . " ができるのに見られない");
+                }
+            }
+        }
+
+        // 空振りしていないこと: どの操作も 1 回は起きている
+        foreach (['judge:head', 'judge:review', 'judge:president', 'edit', 'delete', 'withdraw', 'confirm'] as $kind) {
+            $this->assertArrayHasKey($kind, $seen, "{$kind} ができる組が 1 つも無い（空振り）");
+        }
+    }
+
+    /** 呼ぶ側が apply() の前後に足した条件は、規則と AND でつながる（apply() の OR は括弧の中にとどまる） */
+    public function test_conditions_added_before_or_after_apply_do_not_widen_the_result(): void
+    {
+        [$u, $r] = $this->matrixWorld();
+        $visible = $this->visibleIds($u['R1b']);
+
+        $after  = RequestVisibility::apply(ApprovalRequest::query(), $u['R1b'])->where('status', 'approved')->pluck('id')->all();
+        $before = RequestVisibility::apply(ApprovalRequest::query()->where('status', 'approved'), $u['R1b'])->pluck('id')->all();
+        $truth  = ApprovalRequest::whereIn('id', $visible)->where('status', 'approved')->pluck('id')->all();
+
+        $this->assertSame([$r['rApproved']->id], $truth);
+        $this->assertEqualsCanonicalizing($truth, $after);
+        $this->assertEqualsCanonicalizing($truth, $before);
+        $this->assertSame([], RequestVisibility::apply(ApprovalRequest::query()->whereKey($r['rHead']->id), $u['R1b'])->pluck('id')->all());
+    }
+
+    /**
+     * 境目: 差戻し中に申請者が申請部門を変え、出し直す。設計書 §5.10 の字義（「申請部門の今の部門長」）どおり、
+     * 申請は今の申請部門について回る（利用者にまだ確かめていない境目。README の申し送り）。
+     */
+    public function test_a_request_moved_to_another_department_follows_its_current_department(): void
+    {
+        $w = $this->approvalWorld();
+        $hk = $this->baseUser(['name' => '部門長 K']);
+        $K = $this->approvalDepartment($w['company'], ['name' => 'K 部', 'head_user_id' => $hk->id]);
+        $w['applicant']->approvalDepartments()->attach($K->id);
+        $a = $w['applicant']->fresh();
+
+        $r = $this->submittedFor($w);
+        $this->judge('head', $r, $w['head'], ApprovalStepResult::Return, '部門が違う');
+        ApprovalRequest::whereKey($r->id)->update(['department_id' => $K->id]);   // 編集の画面が保存するもの
+
+        $h2 = $this->baseUser(['name' => '新 部門長 J']);
+        $w['dept']->update(['head_user_id' => $h2->id]);
+
+        $this->assertTrue(RequestVisibility::canView($hk, $r), '新しい部門の部門長');
+        $this->assertTrue(RequestVisibility::canView($w['head'], $r), '判断した前の部門長');
+        $this->assertFalse(RequestVisibility::canView($h2, $r), '判断していない、前の部門の今の部門長');
+
+        $this->workflow->submit($r->refresh(), $a);
+        $this->assertNotNull(RequestPermissions::for($hk, $r->refresh())->judgeableStep());
+        $this->assertTrue(RequestVisibility::canView($hk, $r));
     }
 }
