@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Approval\HomeController;
 use App\Http\Controllers\Approval\OrganizationController;
+use App\Http\Controllers\Approval\RelatedNumberController;
 use App\Http\Controllers\Approval\TypeController;
 use App\Http\Controllers\Approval\UserController;
 use App\Http\Controllers\Approval\UserImportController;
@@ -75,4 +76,22 @@ Route::middleware('approval.admin')->prefix('approvals/admin')->name('approvals.
     Route::post('/types', [TypeController::class, 'store'])->name('types.store');
     Route::put('/types/{approvalType}', [TypeController::class, 'update'])->name('types.update');
     Route::delete('/types/{approvalType}', [TypeController::class, 'destroy'])->name('types.destroy');
+});
+
+/*
+|--------------------------------------------------------------------------
+| 申請を回す画面（段階2。使い始めるまで誰にも見せない）
+|--------------------------------------------------------------------------
+|
+| ⚠ 門番 `approval.launched` は、使い始める前（approval_settings.launched_at が空）は
+|   画面を開く GET をホームへ送り、それ以外を 404 にする（段階2 設計書 §5.2・D1）。
+|   このグループの外に申請の画面を足さないこと（LaunchGateTest が全件分類で止める）。
+| ⚠ パラメータ名は `{approvalRequest}` / `{approvalAttachment}`（モデル名の camelCase）。
+| ⚠ `/requests/create` を `/requests/{approvalRequest}` より前に置く（登録順がマッチの優先順）。
+|
+*/
+Route::middleware('approval.launched')->prefix('approvals')->name('approvals.')->group(function () {
+
+    // 関連する決裁No の候補（Ajax・JSON。設計書 §5.6）
+    Route::get('/numbers', [RelatedNumberController::class, 'search'])->name('numbers.search');
 });
