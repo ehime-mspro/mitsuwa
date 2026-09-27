@@ -87,7 +87,15 @@ class OrganizationController extends Controller
     public function updateCompany(Request $request, ApprovalCompany $approvalCompany)
     {
         $validated = $this->validateCompany($request, $approvalCompany);
-        $before    = $approvalCompany->only(array_keys($validated));
+
+        // 決裁No を付けた申請がある部門を持つ会社は、期の始まりの月を変えられない（年度の区切りが変わり、同じ年度の
+        // 番号の続きが崩れる〈R8-J-001 のあとに R7-J-121〉。部門の会社とアルファベットの歯止め〈D8〉と同じ理由）
+        if ((int) $validated['fiscal_start_month'] !== $approvalCompany->fiscal_start_month
+            && ApprovalRequest::whereIn('number_department_id', ApprovalDepartment::where('company_id', $approvalCompany->id)->select('id'))->exists()) {
+            return $this->back(null, 'この会社には決裁No を付けた申請がある部門があるため、期の始まりの月は変えられません。');
+        }
+
+        $before = $approvalCompany->only(array_keys($validated));
 
         $approvalCompany->update($validated);
         SettingLogger::recordChange('company.updated', 'approval_company', $approvalCompany->id, $before, $validated);

@@ -629,4 +629,30 @@ class OrganizationPhase2Test extends TestCase
         $this->assertStringNotContainsString('要件 6.4', $html);
         $this->assertStringNotContainsString('（D8）', $html);
     }
+
+    /** 決裁No を付けた申請がある部門を持つ会社は、期の始まりの月を変えられない（D8 と同じ理由。Task 9 の点検の申し送り） */
+    public function test_the_fiscal_start_month_is_locked_once_numbers_exist(): void
+    {
+        $w     = $this->approvalWorld();
+        $admin = $this->approvalAdmin();
+        $month = $w['company']->fiscal_start_month;
+        $other = $month === 6 ? 5 : 6;
+        $route = route('approvals.admin.organization.companies.update', $w['company']);
+        $send  = fn (int $m, ?string $name = null) => ['name' => $name ?? $w['company']->name, 'fiscal_start_month' => (string) $m, 'sort_order' => (string) $w['company']->sort_order];
+
+        // 番号が無いうちは変えられる
+        $this->actingAs($admin)->put($route, $send($other))->assertSessionHas('success', '会社を更新しました。');
+        $this->actingAs($admin)->put($route, $send($month))->assertSessionHas('success', '会社を更新しました。');
+
+        $draft = $this->draftFor($w);
+        DB::table('approval_requests')->where('id', $draft->id)->update(['number' => 'R8-J-001', 'number_department_id' => $w['dept']->id]);
+
+        $this->actingAs($admin)->put($route, $send($other))
+            ->assertSessionHas('error', 'この会社には決裁No を付けた申請がある部門があるため、期の始まりの月は変えられません。');
+        $this->assertSame($month, $w['company']->fresh()->fiscal_start_month);
+
+        // 名前や並びは変えられる
+        $this->actingAs($admin)->put($route, $send($month, '名前を直した会社'))->assertSessionHas('success', '会社を更新しました。');
+        $this->assertSame('名前を直した会社', $w['company']->fresh()->name);
+    }
 }
