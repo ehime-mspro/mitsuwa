@@ -5,8 +5,11 @@ namespace Tests\Feature\Approval\Phase2;
 use App\Enums\ApprovalStatus;
 use App\Enums\ApprovalStepResult;
 use App\Models\ApprovalRequest;
+use App\Models\ApprovalRevision;
 use App\Support\Approval\BodyTemplate;
 use App\Support\Approval\Workflow;
+use App\Support\Approval\WorkflowConflict;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Js;
@@ -565,5 +568,139 @@ class RequestFormTest extends TestCase
 
         $this->actingAs($w['president'])->get(route('approvals.requests.create'))->assertOk()
             ->assertSee('社長に指定されている人は申請できません');
+    }
+
+    /**
+     * 見られるが申請者でない人（部門長・管理者・全件閲覧者）は、差戻し中の申請の編集の画面を開けず（直しかけを見せない）、
+     * 保存もできない（Task 13 の点検。RequestPermissions::canEdit() の「申請者本人」を画面の経路で固定する）
+     */
+    public function test_others_who_can_see_a_returned_request_cannot_open_or_save_its_edit_form(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $request = $this->submittedFor($w);
+        app(Workflow::class)->judgeHead($request, $w['head'], $request->lock_version, ApprovalStepResult::Return, '直してください');
+        $form = $this->editFormOf($w, $request);
+        $this->actingAs($w['applicant'])->post($form['action'], array_merge($form['fields'], ['subject' => '直しかけの件名', 'intent' => 'save']))
+            ->assertRedirect(route('approvals.requests.edit', $request));
+
+        foreach (['部門長' => $w['head'], '管理者' => $this->approvalAdmin(), '全件閲覧者' => $this->viewAllUser()] as $who => $other) {
+            $this->actingAs($other)->get(route('approvals.requests.show', $request))->assertOk();   // 前提: 詳細は見られる
+            $response = $this->actingAs($other)->get(route('approvals.requests.edit', $request));
+            $this->assertStringNotContainsString('直しかけの件名', (string) $response->getContent(), "{$who}に編集の画面で直しかけが見えた");
+            $response->assertRedirect(route('approvals.requests.show', $request));
+            $this->actingAs($other)->put(route('approvals.requests.update', $request), [
+                'subject' => "{$who}が書き換え", 'lock_version' => (string) $request->fresh()->lock_version, 'intent' => 'save',
+            ])->assertRedirect(route('approvals.requests.show', $request));
+        }
+
+        $this->assertSame('直しかけの件名', $request->fresh()->subject);
+    }
+
+    /** 控えの無い提出済みの申請は、申請者以外には 404（今の行に落とさない。分からないときは見せない。仕様の 1.3） */
+    public function test_others_get_not_found_when_the_last_submission_is_missing(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $request = $this->submittedFor($w);
+        DB::table('approval_revisions')->where('request_id', $request->id)->delete();
+
+        $this->actingAs($this->approvalAdmin())->get(route('approvals.requests.show', $request))->assertNotFound();
+        $this->actingAs($w['head'])->get(route('approvals.requests.show', $request))->assertNotFound();
+        $this->actingAs($w['applicant'])->get(route('approvals.requests.show', $request))->assertOk()->assertSee('社用車の購入');
+    }
+
+    /** 金額・実施時期・本文の上限と下限（設計書 §5.6。負の金額・長すぎる実施時期は本番の MySQL の strict で 500 になる） */
+    public function test_the_limits_of_amount_schedule_and_body(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+
+        foreach ([
+            [['amount' => '-1'], 'amount', '金額は 0 以上で入力してください。'],
+            [['amount' => '1,000,000,000,000'], 'amount', '金額は 999,999,999,999 円以下で入力してください。'],
+            [['schedule' => str_repeat('あ', 51)], 'schedule', '実施時期は50文字以下で入力してください。'],
+            [['body' => str_repeat('あ', 20001)], 'body', '重点ポイント（5W2H）は20000文字以下で入力してください。'],
+        ] as [$input, $key, $message]) {
+            $this->actingAs($w['applicant'])->post(route('approvals.requests.store'), $input + ['intent' => 'save'])
+                ->assertRedirect(route('approvals.requests.create'))
+                ->assertSessionHasErrors([$key => $message]);
+        }
+
+        $this->assertSame(0, ApprovalRequest::count());
+    }
+
+    /** 今は所属していない部門の下書きも保存はできる（提出のときに理由を出して選び直してもらう） */
+    public function test_a_draft_in_a_department_the_applicant_left_can_still_be_saved(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $draft = $this->draftFor($w);
+        $other = $this->approvalDepartment($w['company'], ['name' => '賃貸事業部', 'code' => 'K']);
+        $w['applicant']->approvalDepartments()->sync([$other->id]);
+
+        $form = $this->editFormOf($w, $draft);
+        $this->assertSame((string) $w['dept']->id, $form['fields']['department_id']);
+        $this->actingAs($w['applicant'])->post($form['action'], array_merge($form['fields'], ['subject' => '直した件名', 'intent' => 'submit']))
+            ->assertRedirect(route('approvals.requests.edit', $draft))
+            ->assertSessionHasErrors(['submit' => '申請部門「住宅事業部」に所属していません。申請部門を選び直してください。']);
+
+        $this->assertSame('直した件名', $draft->fresh()->subject);
+    }
+
+    /** 利用者が書く文字列（件名・本文・実施時期・差戻しの理由）は、詳細（申請者・部門長）と編集の画面でエスケープする */
+    public function test_user_written_strings_are_escaped(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $request = $this->submittedFor($w, [
+            'subject'  => '<script>alert(1)</script>',
+            'schedule' => '"><b>x</b>',
+            'body'     => "■ なぜ\n<img src=x onerror=alert(2)>",
+        ]);
+
+        foreach (['申請者' => $w['applicant'], '部門長' => $w['head']] as $who => $viewer) {
+            $html = $this->actingAs($viewer)->get(route('approvals.requests.show', $request))->assertOk()->getContent();
+            $this->assertStringNotContainsString('<script>alert(1)</script>', $html, $who);
+            $this->assertStringNotContainsString('<img src=x onerror=alert(2)>', $html, $who);
+            $this->assertStringNotContainsString('"><b>x</b>', $html, $who);
+            $this->assertStringContainsString('&lt;script&gt;alert(1)&lt;/script&gt;', $html, $who);
+            $this->assertStringContainsString('&lt;img src=x onerror=alert(2)&gt;', $html, $who);
+        }
+
+        app(Workflow::class)->judgeHead($request, $w['head'], $request->lock_version, ApprovalStepResult::Return, '<b>理由</b>');
+        $html = $this->actingAs($w['applicant'])->get(route('approvals.requests.edit', $request->refresh()))->assertOk()->getContent();
+        $this->assertStringNotContainsString('<script>alert(1)</script>', $html);
+        $this->assertStringNotContainsString('<b>理由</b>', $html);
+        $this->assertStringContainsString('&lt;b&gt;理由&lt;/b&gt;', $html);
+    }
+
+    /**
+     * 保存と提出のあいだに別の画面の保存が入ったら、提出しない（画面から出す提出は保存した直後の版を渡す。計画 §0.3）。
+     * ⚠ 1 本の接続でも作れる: DB::listen で、この画面の保存の UPDATE の直後に別の画面の保存を差し込む
+     */
+    public function test_a_save_between_this_save_and_the_submission_stops_the_submission(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $draft = $this->draftFor($w);
+        $form  = $this->editFormOf($w, $draft);
+
+        $armed = true;
+        DB::listen(function (QueryExecuted $query) use (&$armed, $draft): void {
+            if ($armed && str_starts_with(strtolower($query->sql), 'update') && str_contains($query->sql, 'approval_requests') && str_contains($query->sql, 'lock_version')) {
+                $armed = false;
+                // 別の画面の保存（RequestController::update() は lock_version を 1 進める）
+                DB::table('approval_requests')->where('id', $draft->id)->update(['subject' => '別の画面の件名', 'lock_version' => DB::raw('lock_version + 1')]);
+            }
+        });
+
+        $this->actingAs($w['applicant'])->post($form['action'], array_merge($form['fields'], ['subject' => 'この画面の件名', 'intent' => 'submit']))
+            ->assertRedirect(route('approvals.requests.show', $draft))
+            ->assertSessionHas('error', WorkflowConflict::MESSAGE);
+
+        $this->assertFalse($armed, '前提: 別の画面の保存が間に入っていない');
+        $this->assertSame(ApprovalStatus::Draft, $draft->fresh()->status);
+        $this->assertSame(0, ApprovalRevision::where('request_id', $draft->id)->count(), 'この画面に出ていない中身で提出した');
     }
 }
