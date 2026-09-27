@@ -460,6 +460,60 @@ class RequestVisibilityTest extends TestCase
         $this->assertTrue($this->sees($w['head'], $r), '判断した前の部門長に見えない');
     }
 
+    /** 審査部門の部門長は審査担当者ではない。自分の部門が審査する申請も見えない（部門長の行の「部門長の段階」の条件） */
+    public function test_the_head_of_the_review_department_does_not_see(): void
+    {
+        $w  = $this->approvalWorld();
+        $hs = $this->baseUser(['name' => '総務部長']);
+        $w['reviewDept']->update(['head_user_id' => $hs->id]);
+        $r  = $this->submittedFor($w);
+
+        $this->assertFalse($this->sees($hs, $r), '部門長の確認中に見える');
+        $this->judge('head', $r, $w['head'], ApprovalStepResult::Approve);
+        $this->assertFalse($this->sees($hs, $r->refresh()), '審査中に見える');
+        $this->judge('review', $r, $w['reviewer'], ApprovalStepResult::Ok);
+        $this->judge('president', $r, $w['president'], ApprovalStepResult::Approve);
+        $this->assertFalse($this->sees($hs, $r->refresh()), '決裁のあとに見える');
+    }
+
+    /** 差戻し中に申請部門を K に変えてから取り下げても、最後に提出した申請部門（J）の部門長が見る（K の部門長は見ない） */
+    public function test_withdrawn_after_switching_the_department_stays_with_the_submitted_department(): void
+    {
+        $w  = $this->approvalWorld();
+        $hk = $this->baseUser(['name' => '部門長 K']);
+        $K  = $this->approvalDepartment($w['company'], ['name' => 'K 部', 'head_user_id' => $hk->id]);
+        $w['applicant']->approvalDepartments()->attach($K->id);
+        $w['applicant'] = $w['applicant']->fresh();
+
+        $r = $this->submittedFor($w);
+        $this->judge('head', $r, $w['head'], ApprovalStepResult::Return, '直して');
+        ApprovalRequest::whereKey($r->id)->update(['department_id' => $K->id]);   // 編集の画面が保存するもの
+        $r->refresh();
+        $this->workflow->withdraw($r, $w['applicant'], $r->lock_version, null);
+        $h2 = $this->baseUser(['name' => '新 部門長 J']);
+        $w['dept']->update(['head_user_id' => $h2->id]);
+
+        $this->assertTrue($this->sees($h2, $r->refresh()), '最後に提出した申請部門（J）の今の部門長に見えない');
+        $this->assertFalse($this->sees($hk, $r), '一度も提出していない K の部門長に見える');
+        $this->assertTrue($this->sees($w['head'], $r), '判断した前の部門長に見えない');
+        $this->assertTrue($this->sees($this->approvalAdmin(), $r), '決裁の管理者に見えない');
+    }
+
+    /** 差戻し中に申請部門を空にして保存しても、最後に提出した申請部門の部門長が見る（前は部門長の行からは誰にも見えなかった） */
+    public function test_a_returned_request_saved_without_a_department_stays_with_the_submitted_department(): void
+    {
+        $w = $this->approvalWorld();
+        $r = $this->submittedFor($w);
+        $this->judge('head', $r, $w['head'], ApprovalStepResult::Return, '直して');
+        ApprovalRequest::whereKey($r->id)->update(['department_id' => null]);
+        $h2 = $this->baseUser(['name' => '新 部門長 J']);
+        $w['dept']->update(['head_user_id' => $h2->id]);
+
+        $this->assertTrue($this->sees($h2, $r->refresh()), '最後に提出した申請部門の今の部門長に見えない');
+        $this->assertFalse($this->sees($w['reviewer'], $r), '審査に届いていないのに審査担当者に見える');
+        $this->assertTrue($this->sees($w['applicant'], $r), '申請者に見えない');
+    }
+
     /**
      * 呼ぶ側が apply() より前に最上位の OR を書いても、見られる範囲の外へ漏れない（Task 8 の点検の軽微。
      * ローカルスコープを通すので、前の条件を Laravel が括弧に入れる）。
