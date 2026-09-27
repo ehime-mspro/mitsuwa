@@ -484,4 +484,32 @@ class RequestVisibilityTest extends TestCase
         $this->assertFalse(RequestVisibility::canView(new User(), $r));
         $this->assertSame([], $this->visibleIds(new User()));
     }
+
+    /**
+     * 規則の本体 `RequestVisibility::constrain()` を呼んでよいのは、モデルのローカルスコープだけ
+     * （直接呼ぶと、呼ぶ側が先に書いた OR が括弧に入らず漏れる。Task 8 の再点検の軽微）。
+     */
+    public function test_only_the_model_scope_calls_the_rule_body(): void
+    {
+        $callers = [];
+        foreach (['app', 'resources/views', 'routes'] as $dir) {
+            $files = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator(base_path($dir), \FilesystemIterator::SKIP_DOTS));
+            foreach ($files as $file) {
+                if (! str_ends_with($file->getFilename(), '.php')) {
+                    continue;
+                }
+                $count = substr_count((string) file_get_contents($file->getPathname()), 'constrain(');
+                if ($count > 0) {
+                    $callers[str_replace(base_path() . '/', '', $file->getPathname())] = $count;
+                }
+            }
+        }
+        ksort($callers);
+
+        // 定義（RequestVisibility.php）と、スコープからの呼び出し（ApprovalRequest.php）の 1 つずつだけ
+        $this->assertSame([
+            'app/Models/ApprovalRequest.php'             => 1,
+            'app/Support/Approval/RequestVisibility.php' => 1,
+        ], $callers);
+    }
 }
