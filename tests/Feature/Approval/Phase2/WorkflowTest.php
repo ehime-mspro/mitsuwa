@@ -65,6 +65,23 @@ class WorkflowTest extends TestCase
         return $r->refresh();
     }
 
+    /** @param callable(): void $action */
+    private function assertRefused(callable $action, string $message, ApprovalRequest $r, string $why): void
+    {
+        $before = $r->fresh();
+
+        try {
+            $action();
+            $this->fail("通った: {$why}");
+        } catch (WorkflowRefused $e) {
+            $this->assertSame($message, $e->getMessage(), $why);
+        }
+
+        $after = $r->fresh();
+        $this->assertSame($before->status, $after->status, "状態が動いた: {$why}");
+        $this->assertSame($before->lock_version, $after->lock_version, "lock_version が動いた: {$why}");
+    }
+
     public function test_submitting_starts_with_the_head(): void
     {
         $w = $this->approvalWorld();
@@ -380,7 +397,10 @@ class WorkflowTest extends TestCase
 
         $this->assertNull(ApprovalStep::where('request_id', $r->id)->where('kind', 'head')->value('assignee_user_id'));
         $history = ApprovalHistory::where('request_id', $r->id)->where('action', 'head_changed')->sole();
-        $this->assertSame(['from_user_id' => $stand->id, 'to_user_id' => $newHead->id], $history->meta);
+        // MySQL の JSON はオブジェクトのキーを並べ替えて返す（キーの長さの順）ので、並べてから比べる
+        $meta = $history->meta;
+        ksort($meta);
+        $this->assertSame(['from_user_id' => $stand->id, 'to_user_id' => $newHead->id], $meta);
 
         $this->workflow->judgeHead($r->refresh(), $newHead, $r->lock_version, ApprovalStepResult::Approve, null);
         $this->assertSame(ApprovalStatus::Review, $r->refresh()->status);
@@ -625,5 +645,267 @@ class WorkflowTest extends TestCase
         }
 
         $this->assertSame([], $problems, implode("\n", $problems));
+    }
+
+    /** 担当の段階と違う判断のルートは断る（部門長が審査・社長のルートで審査を飛ばさない） */
+    public function test_a_judge_of_another_stage_is_refused(): void
+    {
+        $w = $this->approvalWorld();
+        $r = $this->submittedFor($w);
+
+        $this->assertRefused(fn () => $this->workflow->judgeReview($r, $w['head'], $r->lock_version, ApprovalStepResult::Ok, null),
+            'この申請を判断する権限がありません。', $r, '部門長が審査のルート');
+        $this->assertRefused(fn () => $this->workflow->judgePresident($r, $w['head'], $r->lock_version, ApprovalStepResult::Approve, null),
+            'この申請を判断する権限がありません。', $r, '部門長が社長のルート');
+        // 担当でない申請者には D16 の理由を出さない（担当でないので「権限がありません」）
+        $this->assertRefused(fn () => $this->workflow->judgeHead($r, $w['applicant'], $r->lock_version, ApprovalStepResult::Approve, null),
+            'この申請を判断する権限がありません。', $r, '担当でない申請者');
+        $this->assertSame('waiting', ApprovalStep::where('request_id', $r->id)->where('kind', 'head')->first()->status->value);
+    }
+
+    /** その段階で選べない判断は断る（部門長の「可（審査）」で、コメントなしの差戻しにしない） */
+    public function test_a_result_of_another_stage_is_refused(): void
+    {
+        $w = $this->approvalWorld();
+        $r = $this->submittedFor($w);
+
+        foreach ([ApprovalStepResult::Ok, ApprovalStepResult::Hold, ApprovalStepResult::Conditional, ApprovalStepResult::Reject] as $result) {
+            $this->assertRefused(fn () => $this->workflow->judgeHead($r, $w['head'], $r->lock_version, $result, 'x'),
+                '選べない判断です。', $r, "部門長が {$result->value}");
+        }
+    }
+
+    /** 審査担当者でない人（部門長・管理者を含む）は審査の意見を入れられない */
+    public function test_someone_who_is_not_a_reviewer_cannot_review(): void
+    {
+        $w = $this->approvalWorld();
+        $r = $this->submittedFor($w);
+        $this->workflow->judgeHead($r, $w['head'], $r->lock_version, ApprovalStepResult::Approve, null);
+        $r->refresh();
+
+        foreach (['head' => $w['head'], 'admin' => $this->approvalAdmin(), 'president' => $w['president']] as $who => $user) {
+            $this->assertRefused(fn () => $this->workflow->judgeReview($r, $user, $r->lock_version, ApprovalStepResult::Ok, null),
+                'この申請を判断する権限がありません。', $r, "審査担当者でない {$who}");
+        }
+    }
+
+    /** D11: 回覧中に種類の審査部門を変えても、提出したときの審査部門の担当者が判断する */
+    public function test_a_circulating_request_stays_with_its_review_department(): void
+    {
+        $w = $this->approvalWorld();
+        $r = $this->submittedFor($w);
+        $this->workflow->judgeHead($r, $w['head'], $r->lock_version, ApprovalStepResult::Approve, null);
+
+        $newDept = $this->approvalDepartment($w['company'], ['name' => '経理部']);
+        $other   = $this->baseUser(['name' => '経理 担当']);
+        $newDept->reviewers()->attach($other->id);
+        $w['type']->update(['review_department_id' => $newDept->id]);
+        $r->refresh();
+
+        $this->assertRefused(fn () => $this->workflow->judgeReview($r, $other, $r->lock_version, ApprovalStepResult::Ok, null),
+            'この申請を判断する権限がありません。', $r, '新しい審査部門の担当者');
+        $this->workflow->judgeReview($r, $w['reviewer'], $r->lock_version, ApprovalStepResult::Ok, null);
+        $this->assertSame(ApprovalStatus::President, $r->refresh()->status);
+    }
+
+    /** 取り下げ・条件確認・出し直しは申請者本人だけ（部門長・社長は申請を見られるので、ここが唯一の守り） */
+    public function test_only_the_applicant_withdraws_confirms_and_resubmits(): void
+    {
+        $w = $this->approvalWorld();
+
+        $r = $this->submittedFor($w);
+        $this->assertRefused(fn () => $this->workflow->withdraw($r, $w['head'], $r->lock_version, null),
+            'この申請は取り下げられる状態ではありません。', $r, '部門長が取り下げ');
+
+        $this->workflow->judgeHead($r, $w['head'], $r->lock_version, ApprovalStepResult::Return, '直して');
+        $r->refresh();
+        $this->assertRefused(fn () => $this->workflow->submit($r, $w['head']),
+            'この申請は提出できる状態ではありません。', $r, '部門長が出し直し');
+
+        $c = $this->toPresident($w);
+        $this->workflow->judgePresident($c, $w['president'], $c->lock_version, ApprovalStepResult::Conditional, '条件');
+        $c->refresh();
+        $this->assertRefused(fn () => $this->workflow->confirmCondition($c, $w['president'], $c->lock_version, null),
+            '条件を確認できる状態ではありません。', $c, '社長が条件確認');
+    }
+
+    /** 付け替えた担当（2b の形）がいれば、その人だけが判断する（部門長は判断できない） */
+    public function test_an_assignee_judges_instead_of_the_head(): void
+    {
+        $w     = $this->approvalWorld();
+        $r     = $this->submittedFor($w);
+        $stand = $this->baseUser(['name' => '代理 担当']);
+        ApprovalStep::where('request_id', $r->id)->where('kind', 'head')->update(['assignee_user_id' => $stand->id]);
+
+        $this->assertRefused(fn () => $this->workflow->judgeHead($r, $w['head'], $r->lock_version, ApprovalStepResult::Approve, null),
+            'この申請を判断する権限がありません。', $r, '付け替えたあとの部門長');
+        $this->workflow->judgeHead($r, $stand, $r->lock_version, ApprovalStepResult::Approve, null);
+        $this->assertSame(ApprovalStatus::Review, $r->refresh()->status);
+    }
+
+    /** 記録の中身: 誰が・どの状態からどの状態へ・段階・判断・コメント・回・IP・端末（要件 14.2） */
+    public function test_the_history_rows_carry_the_details(): void
+    {
+        $w = $this->approvalWorld();
+        $this->app['request']->server->set('REMOTE_ADDR', '203.0.113.7');
+        $this->app['request']->headers->set('User-Agent', 'ProbeAgent/1.0');
+        $r = $this->submittedFor($w);
+        $this->workflow->judgeHead($r, $w['head'], $r->lock_version, ApprovalStepResult::Return, '見積りを');
+        $r->refresh();
+        $this->workflow->submit($r, $w['applicant']);
+        $r->refresh();
+
+        $rows      = ApprovalHistory::where('request_id', $r->id)->orderBy('id')->get();
+        $headStep1 = ApprovalStep::where('request_id', $r->id)->where('round', 1)->where('kind', 'head')->value('id');
+
+        $this->assertSame(
+            [
+                ['submitted', $w['applicant']->id, 'draft', 'head_review', null, null, null, 1],
+                ['head_returned', $w['head']->id, 'head_review', 'returned', $headStep1, 'return', '見積りを', 1],
+                ['resubmitted', $w['applicant']->id, 'returned', 'head_review', null, null, null, 2],
+            ],
+            $rows->map(fn ($h) => [$h->action, $h->actor_user_id, $h->from_status, $h->to_status, $h->step_id, $h->result, $h->comment, $h->round])->all()
+        );
+        $this->assertSame(['203.0.113.7'], $rows->pluck('ip_address')->unique()->values()->all());
+        $this->assertSame(['ProbeAgent/1.0'], $rows->pluck('user_agent')->unique()->values()->all());
+    }
+
+    /** 省略の記録は人の操作ではない（actor は空） */
+    public function test_the_skip_is_not_a_person(): void
+    {
+        $w = $this->approvalWorld();
+        $w['head']->approvalDepartments()->attach($w['dept']->id);
+        $w['applicant'] = $w['head']->fresh();
+        $r = $this->submittedFor($w);
+
+        $this->assertNull(ApprovalHistory::where('request_id', $r->id)->where('action', 'head_skipped')->sole()->actor_user_id);
+    }
+
+    /** 出し直しでも最初の提出日時は変えず、発信日と状態の変わった日時は新しくする。審査・社長の段階に届いた日時も入る（D20 の待ち日数の起点） */
+    public function test_resubmission_and_arrival_times(): void
+    {
+        $w = $this->approvalWorld();
+        $r = $this->submittedFor($w);
+        $first = $r->first_submitted_at;
+        $this->workflow->judgeHead($r, $w['head'], $r->lock_version, ApprovalStepResult::Return, '直して');
+
+        Carbon::setTestNow(Carbon::parse('2026-09-28 02:00:00', 'UTC'));
+        $this->workflow->submit($r->refresh(), $w['applicant']);
+        $r->refresh();
+
+        $this->assertSame($first->toIso8601String(), $r->first_submitted_at->toIso8601String());
+        $this->assertSame('2026-09-28T02:00:00+00:00', $r->last_submitted_at->toIso8601String());
+        $this->assertSame('2026-09-28T02:00:00+00:00', $r->status_changed_at->toIso8601String());
+        $this->assertSame('2026-09-28T02:00:00+00:00', ApprovalStep::where('request_id', $r->id)->where('round', 2)->where('kind', 'head')->first()->arrived_at->toIso8601String());
+
+        Carbon::setTestNow(Carbon::parse('2026-09-29 03:00:00', 'UTC'));
+        $this->workflow->judgeHead($r, $w['head'], $r->lock_version, ApprovalStepResult::Approve, null);
+        $review = ApprovalStep::where('request_id', $r->id)->where('round', 2)->where('kind', 'review')->first();
+        $this->assertSame('2026-09-29T03:00:00+00:00', $review->arrived_at?->toIso8601String(), '審査の段階に届いた日時');
+
+        // 前の回の段階は打ち切りのまま（今の回だけを動かす）
+        $this->assertSame(['head' => 'done', 'review' => 'cancelled', 'president' => 'cancelled'],
+            ApprovalStep::where('request_id', $r->id)->where('round', 1)->orderBy('id')->get()->mapWithKeys(fn ($s) => [$s->kind->value => $s->status->value])->all());
+    }
+
+    /** 否の判断・日時（decision・decided_at・finished_at） */
+    public function test_a_rejection_records_the_decision(): void
+    {
+        $w = $this->approvalWorld();
+        $r = $this->toPresident($w);
+        $this->workflow->judgePresident($r, $w['president'], $r->lock_version, ApprovalStepResult::Reject, '見送り');
+        $r->refresh();
+
+        $this->assertSame('reject', $r->decision?->value);
+        $this->assertNotNull($r->decided_at);
+        $this->assertNotNull($r->finished_at);
+    }
+
+    /** 控えには外した添付を入れず、中身をすべて残す（設計書 §5.11） */
+    public function test_the_snapshot_has_the_whole_content_but_not_removed_files(): void
+    {
+        $w     = $this->approvalWorld();
+        $draft = $this->draftFor($w, ['related_numbers' => ['R7-J-015']]);
+        ApprovalAttachment::create([
+            'request_id' => $draft->id, 'original_name' => '外した.pdf', 'stored_path' => 'approvals/' . $draft->id . '/b.pdf',
+            'mime' => 'application/pdf', 'size' => 1, 'uploaded_by' => $w['applicant']->id, 'added_round' => 1,
+            'removed_round' => 1, 'removed_at' => now(),
+        ]);
+
+        $this->workflow->submit($draft, $w['applicant']);
+        $s = ApprovalRevision::where('request_id', $draft->id)->sole()->snapshot;
+
+        $this->assertSame([], $s['attachments']);
+        $this->assertSame(2850000, $s['amount']);
+        $this->assertSame('2026年10月', $s['schedule']);
+        $this->assertSame("■ なぜ（目的・理由）\n・老朽化のため\n", $s['body']);
+        $this->assertSame(['R7-J-015'], $s['related_numbers']);
+        $this->assertSame('社用車の購入', $s['subject']);
+    }
+
+    /** 条可の「条件」は社長の段階のコメント（設計書 §5.3。台帳・詳細はここから引く）。判断した人と日時も段階に残る */
+    public function test_the_condition_stays_on_the_president_step(): void
+    {
+        $w = $this->approvalWorld();
+        $r = $this->toPresident($w);
+        $this->workflow->judgePresident($r, $w['president'], $r->lock_version, ApprovalStepResult::Conditional, '予算内に収めること');
+
+        $step = ApprovalStep::where('request_id', $r->id)->where('kind', 'president')->sole();
+        $this->assertSame(['done', 'conditional', '予算内に収めること', $w['president']->id],
+            [$step->status->value, $step->result?->value, $step->comment, $step->actor_user_id]);
+        $this->assertNotNull($step->acted_at);
+        $this->assertSame('予算内に収めること', ApprovalHistory::where('request_id', $r->id)->where('action', 'president_conditional')->sole()->comment);
+    }
+
+    /** 番号は文字列と部門・年度・連番を分けて持つ（設計書 §5.9。D8 の歯止めは number_department_id を見る） */
+    public function test_a_number_records_its_department_year_and_sequence(): void
+    {
+        $w = $this->approvalWorld();
+        $r = $this->toPresident($w);
+        $this->workflow->judgePresident($r, $w['president'], $r->lock_version, ApprovalStepResult::Approve, null);
+        $r->refresh();
+
+        $this->assertSame(['R8-J-001', $w['dept']->id, 2026, 1], [$r->number, $r->number_department_id, $r->number_fiscal_year, $r->number_seq]);
+    }
+
+    /** 年度は社長が判断した瞬間の日本の日付で決める（提出の日ではない。Top trap #19・設計書 §5.9） */
+    public function test_the_fiscal_year_is_the_japanese_date_of_the_decision(): void
+    {
+        $w = $this->approvalWorld();   // 5 月始まりの会社
+        Carbon::setTestNow(Carbon::parse('2026-04-30 14:00:00', 'UTC'));   // 日本時間 4/30 23:00（R7 年度）
+        $r = $this->toPresident($w);
+
+        Carbon::setTestNow(Carbon::parse('2026-04-30 15:30:00', 'UTC'));   // 日本時間 5/1 0:30（R8 年度）
+        $this->workflow->judgePresident($r, $w['president'], $r->lock_version, ApprovalStepResult::Approve, null);
+
+        $this->assertSame('R8-J-001', $r->refresh()->number);
+        $this->assertSame(2026, $r->number_fiscal_year);
+    }
+
+    /** 取り下げ（D17）と条件確認のコメントは任意だが、書けば記録に残る */
+    public function test_optional_comments_are_recorded(): void
+    {
+        $w = $this->approvalWorld();
+        $a = $this->submittedFor($w);
+        $this->workflow->withdraw($a, $w['applicant'], $a->lock_version, "　予定が変わりました\n");
+        $this->assertSame('予定が変わりました', ApprovalHistory::where('request_id', $a->id)->where('action', 'withdrawn')->sole()->comment);
+
+        $c = $this->toPresident($w);
+        $this->workflow->judgePresident($c, $w['president'], $c->lock_version, ApprovalStepResult::Conditional, '条件');
+        $c->refresh();
+        $this->workflow->confirmCondition($c, $w['applicant'], $c->lock_version, '承知しました');
+        $this->assertSame('承知しました', ApprovalHistory::where('request_id', $c->id)->where('action', 'condition_confirmed')->sole()->comment);
+    }
+
+    /** 古い画面からの取り下げも「すでに処理されています」（社長が判断したあとの古い画面。計画 §0.3） */
+    public function test_a_stale_withdrawal_is_a_conflict(): void
+    {
+        $w     = $this->approvalWorld();
+        $r     = $this->toPresident($w);
+        $stale = $r->lock_version;
+        $this->workflow->judgePresident($r, $w['president'], $stale, ApprovalStepResult::Conditional, '条件');
+
+        $this->expectException(WorkflowConflict::class);
+        $this->workflow->withdraw($r, $w['applicant'], $stale, null);
     }
 }
