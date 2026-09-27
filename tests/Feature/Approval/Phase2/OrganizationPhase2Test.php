@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Approval\Phase2;
 
+use App\Enums\ApprovalStepResult;
 use App\Enums\UserStatus;
 use App\Models\ApprovalDepartment;
 use App\Models\ApprovalHistory;
@@ -10,6 +11,7 @@ use App\Models\ApprovalNumberSequence;
 use App\Models\ApprovalSettingLog;
 use App\Models\User;
 use App\Support\Approval\ApprovalNumber;
+use App\Support\Approval\Workflow;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -66,6 +68,19 @@ class OrganizationPhase2Test extends TestCase
     }
 
     /** レイアウトの赤帯に、ちょうど 1 回だけ出ていること（段階1 の OrganizationManagementTest と同じ見方） */
+    /** 各「編集」ボタンが openDepartmentEdit() に渡すデータ（部門の id ごと） */
+    private function editRows(string $html): array
+    {
+        preg_match_all("/openDepartmentEdit\\(JSON\\.parse\\('([^']*)'\\)\\)/", $html, $m);
+        $rows = [];
+        foreach ($m[1] as $inner) {
+            $row = json_decode(json_decode('"' . $inner . '"'), true);
+            $rows[$row['id']] = $row;
+        }
+
+        return $rows;
+    }
+
     private function assertErrorBanner(string $html, string $message): void
     {
         $this->assertSame(1, substr_count($html, '<span class="text-sm text-red-800">' . e($message) . '</span>'), "赤帯に理由が出ていない: {$message}");
@@ -274,5 +289,281 @@ class OrganizationPhase2Test extends TestCase
 
         $this->assertNull($dept->fresh());
         $this->assertSame(0, ApprovalNumberSequence::count());
+    }
+
+    /** D6: 1 人が複数の部門の部門長を兼ねられる（例: J と JB） */
+    public function test_one_person_can_head_two_departments(): void
+    {
+        $w     = $this->approvalWorld();
+        $other = $this->approvalDepartment($w['company'], ['name' => '住宅（少額・追加工事）', 'short_name' => '住宅少', 'code' => 'JB']);
+
+        $this->update($this->approvalAdmin(), $other, ['head_user_id' => (string) $w['head']->id])
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('success', '部門を更新しました。');
+
+        $this->assertSame($w['head']->id, $other->fresh()->head_user_id);
+        $this->assertSame($w['head']->id, $w['dept']->fresh()->head_user_id);
+    }
+
+    /** 編集で変えた審査担当者が保存され、記録は 1 回だけ（同じ人を別の順で送っても変えない・記録しない） */
+    public function test_reviewers_changed_on_edit_are_saved_and_logged_once(): void
+    {
+        $w     = $this->approvalWorld();
+        $admin = $this->approvalAdmin();
+        $r2    = $this->baseUser(['name' => '審査 二']);
+        $r3    = $this->baseUser(['name' => '審査 三']);
+        $want  = collect([$r2->id, $r3->id])->sort()->values()->all();
+
+        $this->update($admin, $w['reviewDept'], ['reviewer_ids' => [(string) $r3->id, (string) $r2->id]])
+            ->assertSessionHas('success', '部門を更新しました。');
+
+        $this->assertSame($want, $w['reviewDept']->reviewers()->pluck('users.id')->sort()->values()->all());
+        $log = ApprovalSettingLog::where('action', 'department.reviewers_changed')->sole();
+        $this->assertSame($w['reviewDept']->id, $log->target_id);
+        $this->assertSame(['reviewer_ids' => [$w['reviewer']->id]], $log->old_values);
+        $this->assertSame(['reviewer_ids' => $want], $log->new_values);
+
+        // 同じ人を別の順で送っても、何も変わらず記録も付かない
+        $this->update($admin, $w['reviewDept'], ['reviewer_ids' => [(string) $r2->id, (string) $r3->id]]);
+        $this->assertSame(1, ApprovalSettingLog::where('action', 'department.reviewers_changed')->count());
+    }
+
+    /** ほかの項目だけの保存では、待ちの申請に触らない（交代の記録も lock_version の繰り上げも無い） */
+    public function test_saving_other_fields_leaves_waiting_requests_alone(): void
+    {
+        $w  = $this->approvalWorld();
+        $r  = $this->submittedFor($w);
+        $lv = $r->lock_version;
+
+        $this->update($this->approvalAdmin(), $w['dept'], ['short_name' => '住宅2'])
+            ->assertSessionHas('success', '部門を更新しました。');
+
+        $this->assertSame(0, ApprovalHistory::where('action', 'head_changed')->count());
+        $this->assertSame($lv, $r->fresh()->lock_version);
+        $this->assertSame(['short_name' => '住宅2'], ApprovalSettingLog::where('action', 'department.updated')->sole()->new_values);
+        $this->assertSame(0, ApprovalSettingLog::whereIn('action', ['department.reviewers_changed', 'department.next_number_set'])->count());
+    }
+
+    /** 部門長の交代は、前の部門長とともに記録する（申請の記録と設定の記録） */
+    public function test_the_head_change_records_the_previous_head(): void
+    {
+        $w     = $this->approvalWorld();
+        $r     = $this->submittedFor($w);
+        $new   = $this->baseUser(['name' => '新 部門長']);
+        $admin = $this->approvalAdmin();
+
+        $this->update($admin, $w['dept'], ['head_user_id' => (string) $new->id])->assertSessionHas('success', '部門を更新しました。');
+
+        $h = ApprovalHistory::where('request_id', $r->id)->where('action', 'head_changed')->sole();
+        $this->assertSame($w['head']->id, $h->meta['from_user_id']);
+        $this->assertSame($new->id, $h->meta['to_user_id']);
+        $this->assertSame($admin->id, $h->actor_user_id);
+
+        $log = ApprovalSettingLog::where('action', 'department.updated')->sole();
+        $this->assertSame(['head_user_id' => $w['head']->id], $log->old_values);
+        $this->assertSame(['head_user_id' => $new->id], $log->new_values);
+    }
+
+    /** 部門長を空にできないのは、この部門の「部門長の段階」が待っているときだけ（ほかの部門・審査の段階・済んだ段階は数えない） */
+    public function test_the_head_can_be_cleared_when_no_head_step_of_this_department_waits(): void
+    {
+        $w     = $this->approvalWorld();
+        $admin = $this->approvalAdmin();
+        $wf    = app(Workflow::class);
+
+        $this->submittedFor($w);                                                   // J: 部門長の段階が待っている（別の部門）
+        $sHead = $this->baseUser(['name' => '総務 部長']);
+        $w['reviewDept']->update(['head_user_id' => $sHead->id]);
+        $reviewed = $this->submittedFor($w, ['subject' => '審査中の申請']);
+        $wf->judgeHead($reviewed, $w['head'], $reviewed->lock_version, ApprovalStepResult::Approve, null);   // S: 審査の段階が待っている
+
+        $kHead = $this->baseUser(['name' => '賃貸 部長']);
+        $k     = $this->approvalDepartment($w['company'], ['name' => '賃貸事業部', 'short_name' => '賃貸', 'code' => 'K', 'head_user_id' => $kHead->id]);
+        $w['applicant']->approvalDepartments()->attach($k->id);
+        $done = $this->submittedFor($w, ['department_id' => $k->id, 'subject' => '賃貸の申請']);
+        $wf->judgeHead($done->refresh(), $kHead, $done->lock_version, ApprovalStepResult::Approve, null); // K: 部門長の段階は済んだ
+
+        $this->update($admin, $w['reviewDept'], ['head_user_id' => ''])->assertSessionHas('success', '部門を更新しました。');
+        $this->assertNull($w['reviewDept']->fresh()->head_user_id);
+
+        $this->update($admin, $k, ['head_user_id' => ''])->assertSessionHas('success', '部門を更新しました。');
+        $this->assertNull($k->fresh()->head_user_id);
+    }
+
+    /** D8: 番号を付けた申請がある部門は、会社も変えられない（ほかの項目は直せる） */
+    public function test_the_company_is_locked_once_numbers_exist(): void
+    {
+        $w     = $this->approvalWorld();
+        $admin = $this->approvalAdmin();
+        $draft = $this->draftFor($w);
+        DB::table('approval_requests')->where('id', $draft->id)->update(['number' => 'R8-J-001', 'number_department_id' => $w['dept']->id]);
+        $dad = $this->approvalCompany(['name' => 'DAD', 'fiscal_start_month' => 6]);
+
+        $this->update($admin, $w['dept'], ['company_id' => (string) $dad->id])
+            ->assertSessionHas('error', 'この部門には決裁No を付けた申請があるため、会社とアルファベットは変えられません。');
+        $this->assertSame($w['company']->id, $w['dept']->fresh()->company_id);
+
+        $this->update($admin, $w['dept'], ['short_name' => '住宅2'])->assertSessionHas('success', '部門を更新しました。');
+        $this->assertSame('住宅2', $w['dept']->fresh()->short_name);
+    }
+
+    /** D8: 番号が無ければ、会社もアルファベットも変えられる（アルファベットは全角でも半角の大文字にそろう） */
+    public function test_company_and_code_can_change_while_no_number_exists(): void
+    {
+        $w   = $this->approvalWorld();
+        $dad = $this->approvalCompany(['name' => 'DAD', 'fiscal_start_month' => 6]);
+
+        $this->update($this->approvalAdmin(), $w['dept'], ['company_id' => (string) $dad->id, 'code' => 'ｊｘ'])
+            ->assertSessionHas('success', '部門を更新しました。');
+
+        $fresh = $w['dept']->fresh();
+        $this->assertSame($dad->id, $fresh->company_id);
+        $this->assertSame('JX', $fresh->code);
+    }
+
+    /** 審査の段階だけが指している部門（種類の審査部門を別の部門へ移したあと）も削除できない（外部キーで 500 にしない） */
+    public function test_a_department_used_only_by_review_steps_cannot_be_deleted(): void
+    {
+        $w  = $this->approvalWorld();
+        $this->submittedFor($w);                                                   // 審査の段階は S を指す
+        $s2 = $this->approvalDepartment($w['company'], ['name' => '経理部', 'short_name' => '経理', 'code' => 'KR']);
+        $w['type']->update(['review_department_id' => $s2->id]);                  // S を使う種類は無くなる（D11: 申請は S のまま）
+
+        $this->actingAs($this->approvalAdmin())->delete(route('approvals.admin.organization.departments.destroy', $w['reviewDept']))
+            ->assertSessionHas('error', 'この部門は申請 1 件に使われているため削除できません。');
+
+        $this->assertNotNull($w['reviewDept']->fresh());
+    }
+
+    /** D7: 論理削除した人（状態は有効・メールも残る）は、部門長にも審査担当者にも選べない */
+    public function test_a_deleted_user_cannot_be_chosen(): void
+    {
+        $w    = $this->approvalWorld();
+        $gone = $this->baseUser(['name' => '削除 済み']);
+        $gone->delete();
+
+        $this->update($this->approvalAdmin(), $w['dept'], [
+            'head_user_id' => (string) $gone->id,
+            'reviewer_ids' => [(string) $gone->id],
+        ])->assertSessionHasErrors([
+            'head_user_id'   => '部門長には、有効でメールアドレスのある人を選んでください。',
+            'reviewer_ids.0' => '審査担当者には、有効でメールアドレスのある人を選んでください。',
+        ]);
+
+        $this->assertSame($w['head']->id, $w['dept']->fresh()->head_user_id);
+    }
+
+    /** 選択肢に出るのは、有効でメールアドレスのある、削除していない人だけ */
+    public function test_only_assignable_people_are_offered(): void
+    {
+        $this->approvalWorld();
+        $this->baseUser(['name' => '無効 の人', 'status' => UserStatus::Inactive->value]);
+        $this->approvalOnlyUser(['name' => 'メール なし']);
+        $this->baseUser(['name' => '削除 済み'])->delete();
+
+        $html = $this->indexHtml($this->approvalAdmin());
+
+        $this->assertStringContainsString('>審査 担当</span>', $html);
+        $this->assertStringNotContainsString('無効 の人', $html);
+        $this->assertStringNotContainsString('メール なし', $html);
+        $this->assertStringNotContainsString('削除 済み', $html);
+    }
+
+    /** 編集のモーダルは今の設定で埋まる（部門長・審査担当者・番号・古い画面の対策）。フォームの x-model・hidden と JS の代入も固定する（Alpine が動くかはブラウザで見る＝Task 19） */
+    public function test_the_edit_modal_is_filled_from_the_current_settings(): void
+    {
+        $w = $this->approvalWorld();
+        ApprovalNumber::setNext($w['dept'], 5);
+        ApprovalNumber::issue($w['dept'], now());                                  // R8-J-005 まで使った
+        $draft = $this->draftFor($w);
+        DB::table('approval_requests')->where('id', $draft->id)->update(['number' => 'R8-J-005', 'number_department_id' => $w['dept']->id]);
+
+        $html = $this->indexHtml($this->approvalAdmin());
+        $rows = $this->editRows($html);
+
+        $j = $rows[$w['dept']->id];
+        $this->assertSame($w['head']->id, $j['head_user_id']);
+        $this->assertSame([], $j['reviewer_ids']);
+        $this->assertSame(6, $j['next_number']);
+        $this->assertTrue($j['has_numbers']);
+        $this->assertSame('今年度（R8）は R8-J-005 まで使っています。', $j['number_hint']);
+
+        $s = $rows[$w['reviewDept']->id];
+        $this->assertNull($s['head_user_id']);
+        $this->assertSame([$w['reviewer']->id], $s['reviewer_ids']);
+        $this->assertSame(1, $s['next_number']);
+        $this->assertFalse($s['has_numbers']);
+        $this->assertSame('今年度（R8）はまだ番号を使っていません。', $s['number_hint']);
+
+        // 編集のフォームはその値を読む（開いたときの番号も送り返す）
+        $this->assertStringContainsString('<select name="head_user_id" x-model="editDepartmentHeadId"', $html);
+        $this->assertStringContainsString('name="reviewer_ids[]" value="' . $w['reviewer']->id . '" x-model="editDepartmentReviewerIds"', $html);
+        $this->assertStringContainsString('<input type="number" name="next_number" x-model="editDepartmentNext"', $html);
+        $this->assertStringContainsString('<input type="hidden" name="next_number_shown" :value="editDepartmentNextShown">', $html);
+        $this->assertStringContainsString("this.editDepartmentHeadId = row.head_user_id === null ? '' : String(row.head_user_id);", $html);
+        $this->assertStringContainsString('this.editDepartmentReviewerIds = row.reviewer_ids.map(String);', $html);
+        $this->assertStringContainsString('this.editDepartmentNext = String(row.next_number);', $html);
+        $this->assertStringContainsString('this.editDepartmentNextShown = String(row.next_number);', $html);
+    }
+
+    /** 表のセルそのものに部門長と審査担当者が出る（氏名は選択肢にも出るので <td> を見る） */
+    public function test_the_table_cells_show_the_head_and_the_reviewers(): void
+    {
+        $this->approvalWorld();
+        $html = $this->indexHtml($this->approvalAdmin());
+
+        $this->assertStringContainsString('whitespace-nowrap text-gray-900">部門 長</td>', $html);    // J: 部門長
+        $this->assertStringContainsString('whitespace-nowrap text-red-700">未設定</td>', $html);      // S: 部門長なし（赤）
+        $this->assertStringContainsString('text-[13px] text-gray-700">審査 担当</td>', $html);        // S: 審査担当者
+        $this->assertStringContainsString('text-[13px] text-gray-700">—</td>', $html);                // J: 審査担当者なし
+    }
+
+    /** 開始番号の記録は前後の番号を持ち、すでにその番号なら 2 回目の記録を付けない */
+    public function test_the_start_number_is_recorded_once_with_before_and_after(): void
+    {
+        $w     = $this->approvalWorld();
+        $admin = $this->approvalAdmin();
+
+        $this->update($admin, $w['dept'], ['next_number' => '21', 'next_number_shown' => '1'])->assertSessionHas('success', '部門を更新しました。');
+        $log = ApprovalSettingLog::where('action', 'department.next_number_set')->sole();
+        $this->assertSame(['next_number' => 1], $log->old_values);
+        $this->assertSame(['next_number' => 21], $log->new_values);
+
+        // 2 人目の管理者の画面も 1 を出していて 21 を入れた: もう 21 なので記録しない
+        $this->update($admin, $w['dept'], ['next_number' => '21', 'next_number_shown' => '1'])->assertSessionHas('success', '部門を更新しました。');
+        $this->assertSame(1, ApprovalSettingLog::where('action', 'department.next_number_set')->count());
+    }
+
+    /** MySQL のデッドロック（1213）を避ける順は SQLite でも見える: 部門の行を更新する前に、申請の行をロック付きで読む */
+    public function test_the_waiting_requests_are_locked_before_the_department_row_is_updated(): void
+    {
+        $w     = $this->approvalWorld();
+        $this->submittedFor($w);
+        $new   = $this->baseUser(['name' => '新 部門長']);
+        $first = [];
+        DB::listen(function ($q) use (&$first): void {
+            foreach (['requests' => '/^select \* from "approval_requests" where "approval_requests"\."id" in/', 'dept' => '/^update "approval_departments"/'] as $k => $re) {
+                if (! isset($first[$k]) && preg_match($re, $q->sql)) {
+                    $first[$k] = count($first);
+                }
+            }
+        });
+
+        $this->update($this->approvalAdmin(), $w['dept'], ['head_user_id' => (string) $new->id])->assertSessionHas('success', '部門を更新しました。');
+
+        $this->assertSame(['requests' => 0, 'dept' => 1], $first, '部門の行を更新する前に申請の行をロックしていない（逆だと MySQL で 1213）');
+    }
+
+    /** 削除の記録に部門長が残る */
+    public function test_the_deletion_record_keeps_the_head(): void
+    {
+        $company = $this->approvalCompany();
+        $head    = $this->baseUser(['name' => '部門 長']);
+        $dept    = $this->approvalDepartment($company, ['head_user_id' => $head->id]);
+
+        $this->actingAs($this->approvalAdmin())->delete(route('approvals.admin.organization.departments.destroy', $dept))
+            ->assertSessionHas('success', '部門を削除しました。');
+
+        $this->assertSame($head->id, ApprovalSettingLog::where('action', 'department.deleted')->sole()->old_values['head_user_id']);
     }
 }
