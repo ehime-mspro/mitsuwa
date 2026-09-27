@@ -67,7 +67,6 @@ class OrganizationPhase2Test extends TestCase
         return $this->actingAs($admin)->put(route('approvals.admin.organization.departments.update', $dept), $this->payload($dept, $overrides));
     }
 
-    /** レイアウトの赤帯に、ちょうど 1 回だけ出ていること（段階1 の OrganizationManagementTest と同じ見方） */
     /** 各「編集」ボタンが openDepartmentEdit() に渡すデータ（部門の id ごと） */
     private function editRows(string $html): array
     {
@@ -81,6 +80,7 @@ class OrganizationPhase2Test extends TestCase
         return $rows;
     }
 
+    /** レイアウトの赤帯に、ちょうど 1 回だけ出ていること（段階1 の OrganizationManagementTest と同じ見方） */
     private function assertErrorBanner(string $html, string $message): void
     {
         $this->assertSame(1, substr_count($html, '<span class="text-sm text-red-800">' . e($message) . '</span>'), "赤帯に理由が出ていない: {$message}");
@@ -542,7 +542,7 @@ class OrganizationPhase2Test extends TestCase
         $new   = $this->baseUser(['name' => '新 部門長']);
         $first = [];
         DB::listen(function ($q) use (&$first): void {
-            foreach (['requests' => '/^select \* from "approval_requests" where "approval_requests"\."id" in/', 'dept' => '/^update "approval_departments"/'] as $k => $re) {
+            foreach (['requests' => '/^select \* from [`"]approval_requests[`"] where [`"]approval_requests[`"]\.[`"]id[`"] in/', 'dept' => '/^update [`"]approval_departments[`"]/'] as $k => $re) {
                 if (! isset($first[$k]) && preg_match($re, $q->sql)) {
                     $first[$k] = count($first);
                 }
@@ -686,5 +686,39 @@ class OrganizationPhase2Test extends TestCase
 
         $this->update($admin, $w['reviewDept'], ['reviewer_ids' => []])->assertSessionHas('success', '部門を更新しました。');
         $this->assertSame(0, $w['reviewDept']->reviewers()->count());
+    }
+
+    /** 期の始まりの月の歯止めは、この会社の部門だけを見る（ほかの会社の部門に番号があっても、この会社の月は変えられる） */
+    public function test_the_fiscal_month_lock_looks_only_at_this_companys_departments(): void
+    {
+        $w     = $this->approvalWorld();                                           // 会社 A（5 月始まり）: J・S
+        $admin = $this->approvalAdmin();
+        $dad   = $this->approvalCompany(['name' => 'DAD', 'fiscal_start_month' => 6]);
+        $x     = $this->approvalDepartment($dad, ['name' => 'DAD の部門', 'short_name' => 'DAD', 'code' => 'DX']);
+        $draft = $this->draftFor($w);
+        DB::table('approval_requests')->where('id', $draft->id)->update(['number' => 'R8-DX-001', 'number_department_id' => $x->id]);
+
+        $this->actingAs($admin)->put(route('approvals.admin.organization.companies.update', $w['company']), [
+            'name' => $w['company']->name, 'fiscal_start_month' => '6', 'sort_order' => (string) $w['company']->sort_order,
+        ])->assertSessionHas('success', '会社を更新しました。');
+        $this->assertSame(6, $w['company']->fresh()->fiscal_start_month);
+
+        $this->actingAs($admin)->put(route('approvals.admin.organization.companies.update', $dad), [
+            'name' => 'DAD', 'fiscal_start_month' => '5', 'sort_order' => (string) $dad->sort_order,
+        ])->assertSessionHas('error', 'この会社には決裁No を付けた申請がある部門があるため、期の始まりの月は変えられません。');
+        $this->assertSame(6, $dad->fresh()->fiscal_start_month);
+    }
+
+    /** 番号の無い申請（下書き・回覧中）は、期の始まりの月を止めない */
+    public function test_requests_without_a_number_do_not_lock_the_fiscal_month(): void
+    {
+        $w = $this->approvalWorld();
+        $this->draftFor($w);
+        $this->submittedFor($w, ['subject' => '回覧中']);
+
+        $this->actingAs($this->approvalAdmin())->put(route('approvals.admin.organization.companies.update', $w['company']), [
+            'name' => $w['company']->name, 'fiscal_start_month' => '6', 'sort_order' => (string) $w['company']->sort_order,
+        ])->assertSessionHas('success', '会社を更新しました。');
+        $this->assertSame(6, $w['company']->fresh()->fiscal_start_month);
     }
 }
