@@ -174,7 +174,7 @@ class TypeManagementTest extends TestCase
         $rows = $this->tableRows($this->indexHtml($this->approvalAdmin()));
 
         $this->assertSame([
-            ['R&D <試行>', "{$company}・住宅事業部", '停止', '0 件', '0', '編集 | 削除'],
+            ['R&D <試行>', "{$company}・住宅事業部 審査担当者がいません", '停止', '0 件', '0', '編集 | 削除'],
             [$w['type']->name, "{$company}・総務部", '利用中', '1 件', '7', '編集 | 削除'],
         ], array_column($rows, 'cells'));
 
@@ -429,5 +429,16 @@ class TypeManagementTest extends TestCase
 
         $this->assertStringContainsString('この種類の下書きは、提出の前に種類を選び直してもらいます（差戻し中の申請はそのまま出し直せます。過去の申請もそのまま）。', $html);
         $this->assertStringContainsString('利用中（外すと停止。新しい申請で選べなくなり、この種類の下書きは提出の前に種類を選び直してもらう）', $html);
+    }
+
+    /** 審査担当者のいない審査部門は、一覧に「審査担当者がいません」と出す（申請者の提出が断られて初めて気づく、にしない。Task 11 の点検の軽微） */
+    public function test_a_review_department_without_reviewers_is_flagged(): void
+    {
+        $w = $this->approvalWorld();
+        $w['reviewDept']->reviewers()->detach();
+
+        $html = $this->indexHtml($this->approvalAdmin());
+
+        $this->assertStringContainsString('<span class="ml-1 text-[11px] font-semibold text-red-700">審査担当者がいません</span>', $html);
     }
 }

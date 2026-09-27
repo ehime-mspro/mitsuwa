@@ -21,7 +21,9 @@ class TypeController extends Controller
 {
     public function index()
     {
-        $types = ApprovalType::with('reviewDepartment.company')->withCount('requests')->ordered()->get();
+        // 審査部門の審査担当者の人数も読む（いない部門は一覧で知らせる。Task 11 の点検の軽微）
+        $types = ApprovalType::with(['reviewDepartment' => fn ($q) => $q->withCount('reviewers')->with('company')])
+            ->withCount('requests')->ordered()->get();
 
         $departments = ApprovalDepartment::with('company')->get()
             ->sortBy(fn (ApprovalDepartment $d) => [$d->company->sort_order, $d->company_id, $d->sort_order, $d->id])

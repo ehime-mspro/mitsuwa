@@ -53,7 +53,13 @@
                 @forelse($types as $type)
                     <tr class="hover:bg-gray-50">
                         <td class="px-4 py-2.5 border-b border-gray-100 text-[13px] text-gray-900">{{ $type->name }}</td>
-                        <td class="px-4 py-2.5 border-b border-gray-100 text-[13px] text-gray-700">{{ $type->reviewDepartment->company->name }}・{{ $type->reviewDepartment->name }}</td>
+                        <td class="px-4 py-2.5 border-b border-gray-100 text-[13px] text-gray-700">
+                            {{ $type->reviewDepartment->company->name }}・{{ $type->reviewDepartment->name }}
+                            {{-- 審査担当者のいない審査部門は、申請者の提出が断られて初めて分かるので、ここで知らせる（Task 11 の点検の軽微） --}}
+                            @if((int) $type->reviewDepartment->reviewers_count === 0)
+                                <span class="ml-1 text-[11px] font-semibold text-red-700">審査担当者がいません</span>
+                            @endif
+                        </td>
                         <td class="px-4 py-2.5 border-b border-gray-100 whitespace-nowrap">
                             <span class="inline-block px-2 py-0.5 rounded text-[11px] font-semibold" style="{{ $type->is_active ? 'background: #d1fae5; color: #065f46;' : 'background: #f3f4f6; color: #4b5563;' }}">{{ $type->is_active ? '利用中' : '停止' }}</span>
                         </td>
