@@ -590,7 +590,7 @@ class OrganizationPhase2Test extends TestCase
         app(Workflow::class)->judgeHead($r, $w['head'], $r->lock_version, ApprovalStepResult::Approve, null);   // 審査を待っている
 
         $this->update($admin, $w['reviewDept'], ['reviewer_ids' => []])
-            ->assertSessionHas('error', 'この部門には審査を待っている申請が 1 件あるため、審査担当者を 0 人にできません。後任を選んでください。');
+            ->assertSessionHas('error', 'この部門には、審査を待っている（これから審査に届くものを含む）申請が 1 件あるため、審査担当者を 0 人にできません。後任を選んでください。');
         $this->assertSame([$w['reviewer']->id], $w['reviewDept']->reviewers()->pluck('users.id')->all());
 
         // 入れ替える（0 人にしない）のは通る
@@ -654,5 +654,37 @@ class OrganizationPhase2Test extends TestCase
         // 名前や並びは変えられる
         $this->actingAs($admin)->put($route, $send($month, '名前を直した会社'))->assertSessionHas('success', '会社を更新しました。');
         $this->assertSame('名前を直した会社', $w['company']->fresh()->name);
+    }
+
+    /** 部門長の確認中で、これから審査に届く申請があるうちも、審査担当者を 0 人にできない（部門長が承認すると審査で止まるため。Task 9 の再点検の軽微） */
+    public function test_the_reviewers_cannot_all_be_removed_while_reviews_are_coming(): void
+    {
+        $w = $this->approvalWorld();
+        $this->submittedFor($w);   // 部門長の確認中（審査の段階はまだ届いていない）
+
+        $this->update($this->approvalAdmin(), $w['reviewDept'], ['reviewer_ids' => []])
+            ->assertSessionHas('error', 'この部門には、審査を待っている（これから審査に届くものを含む）申請が 1 件あるため、審査担当者を 0 人にできません。後任を選んでください。');
+        $this->assertSame([$w['reviewer']->id], $w['reviewDept']->reviewers()->pluck('users.id')->all());
+    }
+
+    /** 審査が済んだ・取り下げで打ち切った審査の段階しか無ければ、審査担当者を 0 人にできる（数えるのは待ち・これから届く段階だけ） */
+    public function test_reviewers_can_be_emptied_once_the_reviews_are_done_or_cancelled(): void
+    {
+        $w     = $this->approvalWorld();
+        $admin = $this->approvalAdmin();
+        $wf    = app(Workflow::class);
+
+        $done = $this->submittedFor($w, ['subject' => '審査が済んだ申請']);
+        $wf->judgeHead($done, $w['head'], $done->lock_version, ApprovalStepResult::Approve, null);
+        $done->refresh();
+        $wf->judgeReview($done, $w['reviewer'], $done->lock_version, ApprovalStepResult::Ok, null);          // S: 審査は済んだ
+
+        $gone = $this->submittedFor($w, ['subject' => '取り下げた申請']);
+        $wf->judgeHead($gone, $w['head'], $gone->lock_version, ApprovalStepResult::Approve, null);
+        $gone->refresh();
+        $wf->withdraw($gone, $w['applicant'], $gone->lock_version, null);                                    // S: 審査は打ち切り
+
+        $this->update($admin, $w['reviewDept'], ['reviewer_ids' => []])->assertSessionHas('success', '部門を更新しました。');
+        $this->assertSame(0, $w['reviewDept']->reviewers()->count());
     }
 }

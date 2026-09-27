@@ -178,9 +178,10 @@ class OrganizationController extends Controller
             return $this->back(null, "この部門には部門長の確認を待っている申請が {$waiting} 件あるため、部門長を空にできません。後任を選んでください。");
         }
 
-        // 審査を待っている申請があるうちは、審査担当者を 0 人にできない（後任を選ぶ。部門長と同じ。Task 9 の点検の軽微）
-        if ($reviewerIds === [] && ($waitingReviews = $this->waitingReviewSteps($approvalDepartment)) > 0) {
-            return $this->back(null, "この部門には審査を待っている申請が {$waitingReviews} 件あるため、審査担当者を 0 人にできません。後任を選んでください。");
+        // 審査を待っている（これから審査に届くものを含む）申請があるうちは、審査担当者を 0 人にできない
+        // （後任を選ぶ。部門長と同じ。Task 9 の点検の軽微。再点検で、部門長の確認中のものも数えるよう広げた）
+        if ($reviewerIds === [] && ($waitingReviews = $this->openReviewSteps($approvalDepartment)) > 0) {
+            return $this->back(null, "この部門には、審査を待っている（これから審査に届くものを含む）申請が {$waitingReviews} 件あるため、審査担当者を 0 人にできません。後任を選んでください。");
         }
 
         try {
@@ -359,10 +360,14 @@ class OrganizationController extends Controller
             ->count();
     }
 
-    private function waitingReviewSteps(ApprovalDepartment $department): int
+    /**
+     * 審査を待っている、またはこれから審査に届く（部門長の確認中の申請の）審査の段階。
+     * 済んだ・打ち切った段階は数えない（`pending` の審査の段階は、今の回で回覧中の申請にしか無い）。
+     */
+    private function openReviewSteps(ApprovalDepartment $department): int
     {
         return ApprovalStep::where('kind', ApprovalStepKind::Review->value)
-            ->where('status', ApprovalStepStatus::Waiting->value)
+            ->whereIn('status', [ApprovalStepStatus::Waiting->value, ApprovalStepStatus::Pending->value])
             ->where('department_id', $department->id)
             ->count();
     }
