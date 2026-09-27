@@ -32,6 +32,10 @@ use Tests\TestCase;
  *   （利用者がチェックを入れるのと同じ）。
  * ⚠ 送信は from(取込の画面) で行い、転送をたどって**着いた画面で**文言を見る（Bug #63）。
  * ⚠ セッションに触らない（`assertSessionHas*()` を呼ぶと、そのあと描いた画面からエラー表示が消える。Bug #49）。
+ * ⚠ 確定は確認画面 1 つにつき 1 回だけ（hidden の `import_token`。設計書 2026-09-27-customer-import-double-submit-design.md）。
+ *   同じフォームを 2 回送るテストは、1 つのテストの中でキャッシュ（phpunit.xml の `CACHE_STORE=array`）が
+ *   使った鍵を覚えていることに頼る。ほぼ同時の 2 回（本番の file ドライバの排他ロック）はここでは測れない
+ *   （`LoginGuideTest::test_the_token_is_claimed_atomically` が `Cache::add` を使っていることを構造で守る）。
  */
 class CustomerImportTest extends TestCase
 {
@@ -51,6 +55,12 @@ class CustomerImportTest extends TestCase
     private const IMPORT_BUTTON = '/<button\b[^>]*>\s*インポート実行/u';
 
     private const NO_IMPORTABLE_ROWS = 'インポート可能なデータがありません。CSVを修正してください。';
+
+    /** 同じ確認画面から 2 回目を送ったとき（1 回限りの鍵が使えないとき）の案内（設計書 2026-09-27 §4.4） */
+    private const USED_TOKEN = 'この確認画面からは取り込めません（すでに送信したか、画面が古くなっています）。取り込まれたかは「顧客管理」で確かめられます。取り込み直すときは、CSVをアップロードし直してください。';
+
+    /** 確定の時点で取り込める行が 0 件・重複候補はあるときの案内（設計書 2026-09-27 §4.4。チェックは勧めない） */
+    private const REGISTERED_AFTER_PREVIEW = '取り込める行がありません。プレビューのあとに、同じ人が登録された可能性があります。CSVをアップロードし直して、重複候補を確かめてください。';
 
     private User $actor;
 
@@ -126,6 +136,8 @@ class CustomerImportTest extends TestCase
         $this->assertArrayHasKey('_token', $form['fields'], '確定のフォームに @csrf が無い');
         // 確定の印が抜けると、押してもプレビューが描き直されるだけになる（Bug #54 ②）
         $this->assertSame('1', $form['fields']['confirmed'] ?? null, '確定のフォームに confirmed が無い');
+        // 確定は確認画面 1 つにつき 1 回だけ。鍵が描かれていないと、どの確定も断られる（設計書 2026-09-27 §4.3）
+        $this->assertNotSame('', $form['fields']['import_token'] ?? '', '確定のフォームに 1 回限りの鍵（import_token）が無い');
 
         return $form;
     }
@@ -413,11 +425,11 @@ class CustomerImportTest extends TestCase
         $this->existingBuyer('山田', '太郎');
         $preview = $this->preview($this->csv([$this->person('山田', '太郎')]));
 
-        // 画面はボタンを隠すが、隠れたフォームがそのまま送られてきても（二重送信・細工した送信と同じ形）、
-        // サーバが 0 件の確定を断る
+        // 画面はボタンを隠すが、隠れたフォームがそのまま送られてきても（細工した送信と同じ形）、サーバが 0 件の確定を断る。
+        // 同じ確認画面からの 2 回目は、この歯止めより先に 1 回限りの鍵が断る（test_sending_the_same_confirmation_twice_imports_once）
         $landed = $this->submit($this->confirmForm($preview));
 
-        $landed->assertSee('取り込む行がありません。重複候補を取り込むときは「重複候補もインポートする」にチェックを入れてください。');
+        $landed->assertSee(self::REGISTERED_AFTER_PREVIEW);
         $landed->assertDontSee('0件のインポートが完了しました。');
         $this->assertSame(1, Buyer::count());
     }
@@ -573,6 +585,95 @@ class CustomerImportTest extends TestCase
 
         $this->assertSame(0, DB::table('buyers')->count(), '1 行目が巻き戻っていない');
         $this->assertSame(0, DB::table('buyer_departments')->count());
+    }
+
+    // ================================================================
+    // 確定は確認画面 1 つにつき 1 回だけ（設計書 2026-09-27-customer-import-double-submit-design.md）
+    // ================================================================
+
+    public function test_sending_the_same_confirmation_twice_imports_once(): void
+    {
+        $form = $this->confirmForm($this->preview($this->csv([$this->person('山田', '太郎'), $this->person('佐藤', '花子')])));
+
+        $this->submit($form)->assertSee('2件のインポートが完了しました。');
+        $second = $this->submit($form);
+
+        $second->assertSee(self::USED_TOKEN);
+        // 鍵をほかの検査より先に使っている（0 件の歯止めより後ろに置くと、2 回目は 1 回目で入った人を重複候補と数えて
+        // 0 件の案内に着く。設計書 2026-09-27 §4.3）
+        $second->assertDontSee(self::REGISTERED_AFTER_PREVIEW);
+        $second->assertDontSee('件のインポートが完了しました。');
+        $this->assertSame(2, Buyer::count());
+    }
+
+    public function test_sending_a_checked_confirmation_twice_imports_once(): void
+    {
+        $this->existingBuyer('山田', '太郎');
+        $preview = $this->preview($this->csv([$this->person('山田', '太郎'), $this->person('佐藤', '花子')]));
+        $form    = $this->tick($preview, $this->confirmForm($preview), 'include_duplicates');
+
+        $this->submit($form)->assertSee('2件のインポートが完了しました。');
+        $second = $this->submit($form);
+
+        // 直す前: チェック済みなので、2 回目は 1 回目で入った人も重複候補として取り込み、「2件のインポートが完了しました。」が
+        // もう一度出て全員がもう一度入った（2026-09-27 の試作で実測: 山田 3 人・佐藤 2 人）
+        $this->assertSame(2, Buyer::where('last_name', '山田')->count(), '2 回目の送信で、重複候補がもう一度入った');
+        $this->assertSame(1, Buyer::where('last_name', '佐藤')->count(), '2 回目の送信で、1 回目に入った人がもう一度入った');
+        $second->assertSee(self::USED_TOKEN);
+    }
+
+    public function test_each_preview_issues_its_own_token(): void
+    {
+        $first  = $this->confirmForm($this->preview($this->csv([$this->person('山田', '太郎')])));
+        $second = $this->confirmForm($this->preview($this->csv([$this->person('佐藤', '花子')])));
+
+        $this->assertNotSame($first['fields']['import_token'], $second['fields']['import_token'], 'プレビューごとに鍵が変わっていない');
+
+        $this->submit($first)->assertSee('1件のインポートが完了しました。');
+        // 別のプレビューの確定は、1 つ目を使ったあとでも取り込める
+        $this->submit($second)->assertSee('1件のインポートが完了しました。');
+        $this->assertSame(['山田', '佐藤'], Buyer::orderBy('id')->pluck('last_name')->all());
+    }
+
+    /** @return array<string, array{0: string|list<string>|null}> [import_token に入れる値（null なら送らない）] */
+    public static function unusableTokens(): array
+    {
+        return [
+            '鍵が無い' => [null],
+            '鍵が空'   => [''],
+            '鍵が配列' => [['a', 'b']],
+        ];
+    }
+
+    #[DataProvider('unusableTokens')]
+    public function test_a_confirmation_without_a_usable_token_imports_nothing(string|array|null $token): void
+    {
+        $form = $this->confirmForm($this->preview($this->csv([$this->person('山田', '太郎')])));
+
+        if ($token === null) {
+            unset($form['fields']['import_token']);
+        } else {
+            $form['fields']['import_token'] = $token;
+        }
+
+        // 500 にならない（配列の鍵は OneTimeAction::claimFrom() が is_string で断る。submit() が 302 と戻り先を見る）
+        $this->submit($form)->assertSee(self::USED_TOKEN);
+        $this->assertSame(0, Buyer::count());
+    }
+
+    public function test_someone_registered_after_the_preview_turns_the_confirmation_back(): void
+    {
+        $form = $this->confirmForm($this->preview($this->csv([$this->person('山田', '太郎')])));
+
+        // プレビューのあとに、別の画面（別のタブ・ほかの人）で同じ人が登録された
+        $this->existingBuyer('山田', '太郎');
+
+        $landed = $this->submit($form);
+
+        $landed->assertSee(self::REGISTERED_AFTER_PREVIEW);
+        // この場面でチェックを入れると、先に登録された人がもう一度入るので勧めない（設計書 2026-09-27 §4.4）
+        $landed->assertDontSee('チェックを入れてください');
+        $this->assertSame(1, Buyer::count());
     }
 
     // ================================================================

@@ -9,6 +9,7 @@ use App\Models\SurveyQuestion;
 use App\Models\User;
 use App\Support\BuyerCsvRow;
 use App\Support\CsvImportReader;
+use App\Support\OneTimeAction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -25,6 +26,11 @@ use Illuminate\Validation\ValidationException;
  *   押すと「CSVファイルは必須です。」で取込の画面へ戻っていた。
  * ⚠ 断るときの戻り先は取込の画面に固定する（`back()` や入力チェックの既定の戻り先＝リファラーを使わない）。
  *   今は確認画面の URL が取込の画面と同じなので 405 にはならないが、ほかの取込と同じ形にそろえる（Bug #64）。
+ * ⚠ 確定は確認画面 1 つにつき 1 回だけ（hidden の `import_token`・`OneTimeAction`。
+ *   設計書 2026-09-27-customer-import-double-submit-design.md §4.3）。
+ *   鍵は部署の検査の直後・CSV を読み直す前に使う。書き込みの直前（決裁の取込と同じ位置）に置くと、
+ *   1 回目のあとに届いた 2 回目は、1 回目で入った人を重複候補と数えて 0 件の歯止めに着き、
+ *   チェックを勧める誤った案内が出る（入れると全員がもう一度入る）。
  */
 class CustomerImportController extends Controller
 {
@@ -56,6 +62,12 @@ class CustomerImportController extends Controller
         $department = $request->input('department');
         $confirmed  = $request->boolean('confirmed');
         $skipDupes  = !$request->boolean('include_duplicates');
+
+        // 確定は確認画面 1 つにつき 1 回だけ（クラスの docblock）。⚠ ほかの検査より先に使う
+        if ($confirmed && ! OneTimeAction::claimFrom($request, 'import_token')) {
+            return redirect()->route('admin.customers.import')
+                ->with('error', 'この確認画面からは取り込めません（すでに送信したか、画面が古くなっています）。取り込まれたかは「顧客管理」で確かめられます。取り込み直すときは、CSVをアップロードし直してください。');
+        }
 
         $content = $this->loadCsv($request, $confirmed);
 
@@ -154,16 +166,18 @@ class CustomerImportController extends Controller
                 'rowErrors'  => $rowErrors,
                 'dupeRows'   => $dupeRows,
                 'csvData'    => base64_encode($content),
+                // 確定を 1 回だけ通す鍵（クラスの docblock）
+                'importToken' => OneTimeAction::issue(),
             ]);
         }
 
         // 画面はプレビューのあと DB が変わっていなければ 0 件の確定を出さない（V＝0 ならボタンを隠す）。
-        // ここに来るのは、二重送信・別のタブで先に確定・細工した送信など、プレビューのあと DB が変わったときだけ。
-        // ⚠ 二重送信は 1 回目で取り込んだ行が既存になるので、2 回目はこの歯止めで
-        //   「重複候補もインポートする」にチェックを入れてください、に着く（1 回だけ送らせる仕組みは範囲外。BACKLOG へ）
+        // ここに来るのは、プレビューのあとに同じ人が登録されたとき（別のタブ・ほかの人）と、細工した送信だけ
+        // （同じ確認画面からの 2 回目は、上の鍵が先に断る）。
+        // ⚠ 重複候補があってもチェックは勧めない（入れると、先に登録された人がもう一度入る）
         if ($validRows === []) {
             $message = $dupeRows !== []
-                ? '取り込む行がありません。重複候補を取り込むときは「重複候補もインポートする」にチェックを入れてください。'
+                ? '取り込める行がありません。プレビューのあとに、同じ人が登録された可能性があります。CSVをアップロードし直して、重複候補を確かめてください。'
                 : 'インポート可能なデータがありません。CSVを修正してください。';
 
             return redirect()->route('admin.customers.import')->with('error', $message);

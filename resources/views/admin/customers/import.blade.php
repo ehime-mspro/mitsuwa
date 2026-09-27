@@ -136,6 +136,7 @@
              ⚠ 押せないボタンは disabled にせず隠す（disabled の要素の title はホバーで出ない。Top trap #12）
              ⚠ x-show はボタンを包む要素に付け、ボタン自身の style に触らない（Top trap #5・Bug #32）。
                最初の状態はサーバが描く（V＝0 なら display: none）ので、開いた直後に一瞬出て消えない
+             ⚠ 確定は確認画面 1 つにつき 1 回だけ（hidden の import_token。JS が動かないときも、サーバが 2 回目を断る）
              ⚠ サーバにも同じ歯止めがある（0 件の確定は断る。CustomerImportController::execute()） --}}
         <div style="display: flex; align-items: flex-start; gap: 14px; margin-bottom: 20px;">
             <div style="width: 28px; height: 28px; border-radius: 50%; background: #059669; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0;">4</div>
@@ -147,6 +148,7 @@
                         <input type="hidden" name="department" value="{{ $department }}">
                         <input type="hidden" name="confirmed" value="1">
                         <input type="hidden" name="csv_data" value="{{ $csvData }}">
+                        <input type="hidden" name="import_token" value="{{ $importToken }}">
 
                         @if(count($dupeRows ?? []) > 0)
                             <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 12px; cursor: pointer;">
