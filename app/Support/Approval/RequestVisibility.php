@@ -42,6 +42,14 @@ final class RequestVisibility
     /** 規則の本体。`ApprovalRequest::scopeVisibleTo()` だけが呼ぶ（ほかから直接呼ぶと、前の OR が括弧に入らない） */
     public static function constrain(Builder $query, User $user): void
     {
+        // 保存していない利用者（id が空）には何も見せない（分からないときは見せない）。`where(列, null)` は
+        // `is null` になり、担当や判断した人が空の段階を持つ申請にすべて当たるため（Task 8 の点検の軽微）
+        if ($user->getKey() === null) {
+            $query->whereRaw('1 = 0');
+
+            return;
+        }
+
         $query->where(function (Builder $q) use ($user): void {
             // 申請者は自分の申請（下書きを含む）
             $q->where('approval_requests.user_id', $user->id)

@@ -467,4 +467,14 @@ class RequestVisibilityTest extends TestCase
         $this->assertSame([], RequestVisibility::apply($search(), $outsider)->pluck('id')->all(), '前に書いた OR から部外者に漏れた');
         $this->assertSame([$r->id], RequestVisibility::apply($search(), $w['head'])->pluck('id')->all(), '前提: 部門長には見える');
     }
+
+    /** 保存していない利用者（id が空）には、提出済みの申請も見せない（分からないときは見せない。Task 8 の点検の軽微） */
+    public function test_an_unsaved_user_sees_nothing(): void
+    {
+        $w = $this->approvalWorld();
+        $r = $this->submittedFor($w);
+
+        $this->assertFalse(RequestVisibility::canView(new User(), $r));
+        $this->assertSame([], $this->visibleIds(new User()));
+    }
 }
