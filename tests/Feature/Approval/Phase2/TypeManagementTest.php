@@ -420,4 +420,14 @@ class TypeManagementTest extends TestCase
         ])->assertSessionHasErrors(['review_department_id' => '審査部門を選択してください。']);
         $this->assertSame(0, ApprovalType::where('name', '選び忘れ')->count());
     }
+
+    /** 停止の説明は、下書きの選び直し（D10）まで言う（進めている下書きに影響しないと読まれないように。Task 11 の点検の軽微） */
+    public function test_the_stop_explains_that_drafts_must_choose_again(): void
+    {
+        $this->approvalWorld();
+        $html = $this->indexHtml($this->approvalAdmin());
+
+        $this->assertStringContainsString('この種類の下書きは、提出の前に種類を選び直してもらいます（差戻し中の申請はそのまま出し直せます。過去の申請もそのまま）。', $html);
+        $this->assertStringContainsString('利用中（外すと停止。新しい申請で選べなくなり、この種類の下書きは提出の前に種類を選び直してもらう）', $html);
+    }
 }

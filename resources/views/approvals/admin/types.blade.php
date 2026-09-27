@@ -25,7 +25,7 @@
     <h1 class="text-lg font-bold text-gray-900 mb-2">申請種類の管理</h1>
     <p class="text-[12px] text-gray-500 mb-5 max-w-[720px]">
         申請の画面で選ぶ種類です。種類ごとに、本文に最初から入る見出しと、回る審査部門を決めます。
-        使わなくなった種類は「停止」にします（新しい申請で選べなくなるだけで、過去の申請はそのまま）。
+        使わなくなった種類は「停止」にします。新しい申請で選べなくなり、この種類の下書きは、提出の前に種類を選び直してもらいます（差戻し中の申請はそのまま出し直せます。過去の申請もそのまま）。
     </p>
 
     <section class="bg-white rounded-lg border border-gray-200">
@@ -154,7 +154,7 @@
                     </div>
                     <label class="flex items-center gap-2 text-[13px] text-gray-800 cursor-pointer">
                         <input type="checkbox" name="is_active" value="1" x-model="editActive">
-                        利用中（外すと停止。新しい申請で選べなくなる）
+                        利用中（外すと停止。新しい申請で選べなくなり、この種類の下書きは提出の前に種類を選び直してもらう）
                     </label>
                 </div>
                 <div class="px-6 pb-5 flex justify-end gap-2">
