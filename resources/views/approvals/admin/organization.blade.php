@@ -78,7 +78,7 @@
         </div>
         <div class="scroll-hint at-start">
             <div class="scroll-hint-inner">
-        <table class="w-full min-w-[760px] border-collapse">
+        <table class="w-full min-w-[1080px] border-collapse">
             <thead>
                 <tr>
                     <th class="px-4 py-2.5 text-left text-[11px] font-semibold text-gray-500 bg-gray-50 border-b border-gray-200">会社</th>
@@ -86,19 +86,38 @@
                     <th class="px-4 py-2.5 text-left text-[11px] font-semibold text-gray-500 bg-gray-50 border-b border-gray-200 w-[1%] whitespace-nowrap">略称</th>
                     <th class="px-4 py-2.5 text-left text-[11px] font-semibold text-gray-500 bg-gray-50 border-b border-gray-200 w-[1%] whitespace-nowrap">アルファベット</th>
                     <th class="px-4 py-2.5 text-left text-[11px] font-semibold text-gray-500 bg-gray-50 border-b border-gray-200 w-[1%] whitespace-nowrap">所属</th>
+                    <th class="px-4 py-2.5 text-left text-[11px] font-semibold text-gray-500 bg-gray-50 border-b border-gray-200 whitespace-nowrap">部門長</th>
+                    <th class="px-4 py-2.5 text-left text-[11px] font-semibold text-gray-500 bg-gray-50 border-b border-gray-200">審査担当者</th>
+                    <th class="px-4 py-2.5 text-left text-[11px] font-semibold text-gray-500 bg-gray-50 border-b border-gray-200 w-[1%] whitespace-nowrap">今年度の次の番号</th>
                     <th class="px-4 py-2.5 text-right text-[11px] font-semibold text-gray-500 bg-gray-50 border-b border-gray-200 w-[1%] whitespace-nowrap">操作</th>
                 </tr>
             </thead>
             <tbody>
                 @forelse($companies->flatMap->departments as $dept)
+                    @php
+                        // 今年度の次の番号（要件 6.4）。編集のモーダルの説明にも使う
+                        $state      = $dept->number_state;
+                        $nextLabel  = \App\Support\Approval\ApprovalNumber::format($state['era'], $dept->code, $state['next']);
+                        $numberHint = $state['last_issued'] > 0
+                            ? "今年度（{$state['era']}）は " . \App\Support\Approval\ApprovalNumber::format($state['era'], $dept->code, $state['last_issued']) . ' まで使っています。'
+                            : "今年度（{$state['era']}）はまだ番号を使っていません。";
+                    @endphp
                     <tr class="hover:bg-gray-50">
                         <td class="px-4 py-2.5 border-b border-gray-100 text-[13px] text-gray-700">{{ $dept->company->name }}</td>
                         <td class="px-4 py-2.5 border-b border-gray-100 text-[13px] text-gray-900">{{ $dept->name }}</td>
                         <td class="px-4 py-2.5 border-b border-gray-100 text-[13px] text-gray-700 whitespace-nowrap">{{ $dept->short_name }}</td>
                         <td class="px-4 py-2.5 border-b border-gray-100 text-[13px] font-mono text-gray-700 whitespace-nowrap">{{ $dept->code }}</td>
                         <td class="px-4 py-2.5 border-b border-gray-100 text-[13px] text-gray-700 whitespace-nowrap">{{ $dept->users_count }} 人</td>
+                        <td class="px-4 py-2.5 border-b border-gray-100 text-[13px] whitespace-nowrap {{ $dept->head ? 'text-gray-900' : 'text-red-700' }}">{{ $dept->head?->name ?? '未設定' }}</td>
+                        <td class="px-4 py-2.5 border-b border-gray-100 text-[13px] text-gray-700">{{ $dept->reviewers->pluck('name')->join('、') ?: '—' }}</td>
+                        <td class="px-4 py-2.5 border-b border-gray-100 text-[13px] font-mono text-gray-700 whitespace-nowrap">{{ $nextLabel }}</td>
                         <td class="px-4 py-2.5 border-b border-gray-100 text-right whitespace-nowrap">
-                            <button type="button" @click="openDepartmentEdit({{ \Illuminate\Support\Js::from($dept->only(['id', 'company_id', 'name', 'short_name', 'code', 'sort_order'])) }})" class="text-[12px] text-blue-600 hover:underline cursor-pointer bg-transparent border-none p-0">編集</button>
+                            <button type="button" @click="openDepartmentEdit({{ \Illuminate\Support\Js::from($dept->only(['id', 'company_id', 'name', 'short_name', 'code', 'sort_order', 'head_user_id']) + [
+                                'reviewer_ids' => $dept->reviewers->pluck('id')->all(),
+                                'next_number'  => $state['next'],
+                                'number_hint'  => $numberHint,
+                                'has_numbers'  => $dept->has_numbers,
+                            ]) }})" class="text-[12px] text-blue-600 hover:underline cursor-pointer bg-transparent border-none p-0">編集</button>
                             <span class="text-gray-200 mx-1">|</span>
                             <form method="POST" action="{{ route('approvals.admin.organization.departments.destroy', $dept) }}" class="inline" onsubmit="return confirm('この部門を削除しますか。');">
                                 @csrf
@@ -108,7 +127,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="6" class="px-4 py-8 text-center text-[13px] text-gray-400">部門が登録されていません。</td></tr>
+                    <tr><td colspan="9" class="px-4 py-8 text-center text-[13px] text-gray-400">部門が登録されていません。</td></tr>
                 @endforelse
             </tbody>
         </table>
@@ -253,6 +272,38 @@
                         <label class="block text-[12px] font-semibold text-gray-700 mb-1">表示順<span class="text-red-600 ml-0.5">*</span></label>
                         <input type="number" name="sort_order" value="0" required inputmode="numeric" min="0" max="9999" class="w-full h-[38px] px-2.5 border border-gray-300 rounded-md text-[13px]">
                     </div>
+                    <div>
+                        <label class="block text-[12px] font-semibold text-gray-700 mb-1">部門長</label>
+                        {{-- ⚠ <option> は @@foreach で静的に出す（Bug #16）。選べるのは有効でメールアドレスのある人（D7）。
+                             今の部門長は必ず選択肢に入る（部門長・審査担当者は無効化・削除・メールを空にできない。12.6） --}}
+                        <select name="head_user_id" class="w-full h-[38px] px-2.5 border border-gray-300 rounded-md text-[13px] bg-white cursor-pointer">
+                            <option value="">（未設定）</option>
+                            @foreach($candidates as $candidate)
+                                <option value="{{ $candidate->id }}">{{ $candidate->name }}{{ $candidate->employee_number ? '（' . $candidate->employee_number . '）' : '' }}{{ $candidate->mail_allowed ? '' : ' ※通知メールが届きません' }}</option>
+                            @endforeach
+                        </select>
+                        <p class="text-[11px] text-gray-400 mt-1">未設定のままだと、この部門では申請を提出できません</p>
+                    </div>
+                    <div>
+                        <label class="block text-[12px] font-semibold text-gray-700 mb-1">審査担当者</label>
+                        <input type="text" x-model="reviewerFilter" @keydown.enter.prevent placeholder="氏名で絞り込む" class="w-full h-8 px-2.5 border border-gray-300 rounded-md text-[12px] mb-1.5">
+                        <div class="max-h-[180px] overflow-y-auto border border-gray-200 rounded-md">
+                            @foreach($candidates as $candidate)
+                                <label class="flex items-center gap-2 px-2.5 py-1.5 text-[12px] border-b border-gray-100 cursor-pointer" x-show="matchesReviewer({{ \Illuminate\Support\Js::from($candidate->name) }})">
+                                    <input type="checkbox" name="reviewer_ids[]" value="{{ $candidate->id }}">
+                                    <span class="text-gray-800">{{ $candidate->name }}</span>
+                                    @unless($candidate->mail_allowed)<span class="text-[11px] text-amber-700">通知メールが届きません</span>@endunless
+                                </label>
+                            @endforeach
+                        </div>
+                        <p class="text-[11px] text-gray-400 mt-1">この部門が審査部門になった申請に、意見を入れる人（何人でも）</p>
+                    </div>
+                    <div>
+                        <label class="block text-[12px] font-semibold text-gray-700 mb-1">今年度の次の番号</label>
+                        <input type="number" name="next_number" value="1" inputmode="numeric" min="1" max="99999" class="w-full h-[38px] px-2.5 border border-gray-300 rounded-md text-[13px]">
+                        <input type="hidden" name="next_number_shown" value="1">
+                        <p class="text-[11px] text-gray-400 mt-1">紙で 20 番まで使っていたら 21 を入れる（要件 6.4）</p>
+                    </div>
                 </div>
                 <div class="px-6 pb-5 flex justify-end gap-2">
                     <button type="button" @click="departmentCreateModal = false" class="px-3.5 py-2 bg-white border border-gray-300 rounded-md text-[13px] cursor-pointer">キャンセル</button>
@@ -291,10 +342,41 @@
                         <label class="block text-[12px] font-semibold text-gray-700 mb-1">アルファベット<span class="text-red-600 ml-0.5">*</span></label>
                         <input type="text" name="code" x-model="editDepartmentCode" required maxlength="3" autocapitalize="characters" spellcheck="false" class="w-full h-[38px] px-2.5 border border-gray-300 rounded-md text-[13px] font-mono uppercase">
                         <p class="text-[11px] text-gray-400 mt-1">申請番号に使う英大文字1〜3文字（グループ全体で重複不可）</p>
+                        <p x-show="editDepartmentHasNumbers" class="text-[11px] text-amber-700 mt-1">決裁No を付けた申請があるため、会社とアルファベットは変えられません（D8）。</p>
                     </div>
                     <div>
                         <label class="block text-[12px] font-semibold text-gray-700 mb-1">表示順<span class="text-red-600 ml-0.5">*</span></label>
                         <input type="number" name="sort_order" x-model="editDepartmentSort" required inputmode="numeric" min="0" max="9999" class="w-full h-[38px] px-2.5 border border-gray-300 rounded-md text-[13px]">
+                    </div>
+                    <div>
+                        <label class="block text-[12px] font-semibold text-gray-700 mb-1">部門長</label>
+                        <select name="head_user_id" x-model="editDepartmentHeadId" class="w-full h-[38px] px-2.5 border border-gray-300 rounded-md text-[13px] bg-white cursor-pointer">
+                            <option value="">（未設定）</option>
+                            @foreach($candidates as $candidate)
+                                <option value="{{ $candidate->id }}">{{ $candidate->name }}{{ $candidate->employee_number ? '（' . $candidate->employee_number . '）' : '' }}{{ $candidate->mail_allowed ? '' : ' ※通知メールが届きません' }}</option>
+                            @endforeach
+                        </select>
+                        <p class="text-[11px] text-gray-400 mt-1">変えると、部門長の確認を待っている申請は新しい部門長へ移ります</p>
+                    </div>
+                    <div>
+                        <label class="block text-[12px] font-semibold text-gray-700 mb-1">審査担当者</label>
+                        <input type="text" x-model="reviewerFilter" @keydown.enter.prevent placeholder="氏名で絞り込む" class="w-full h-8 px-2.5 border border-gray-300 rounded-md text-[12px] mb-1.5">
+                        <div class="max-h-[180px] overflow-y-auto border border-gray-200 rounded-md">
+                            @foreach($candidates as $candidate)
+                                <label class="flex items-center gap-2 px-2.5 py-1.5 text-[12px] border-b border-gray-100 cursor-pointer" x-show="matchesReviewer({{ \Illuminate\Support\Js::from($candidate->name) }})">
+                                    <input type="checkbox" name="reviewer_ids[]" value="{{ $candidate->id }}" x-model="editDepartmentReviewerIds">
+                                    <span class="text-gray-800">{{ $candidate->name }}</span>
+                                    @unless($candidate->mail_allowed)<span class="text-[11px] text-amber-700">通知メールが届きません</span>@endunless
+                                </label>
+                            @endforeach
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-[12px] font-semibold text-gray-700 mb-1">今年度の次の番号</label>
+                        <input type="number" name="next_number" x-model="editDepartmentNext" inputmode="numeric" min="1" max="99999" class="w-full h-[38px] px-2.5 border border-gray-300 rounded-md text-[13px]">
+                        {{-- 開いたときの値。変えていなければ番号に触らない（期の変わる日をまたいだ古い画面の対策） --}}
+                        <input type="hidden" name="next_number_shown" :value="editDepartmentNextShown">
+                        <p class="text-[11px] text-gray-400 mt-1" x-text="editDepartmentNumberHint"></p>
                     </div>
                 </div>
                 <div class="px-6 pb-5 flex justify-end gap-2">
@@ -327,6 +409,13 @@ function approvalOrganization() {
         editDepartmentShortName: '',
         editDepartmentCode: '',
         editDepartmentSort: '0',
+        editDepartmentHeadId: '',
+        editDepartmentReviewerIds: [],
+        editDepartmentNext: '1',
+        editDepartmentNextShown: '1',
+        editDepartmentNumberHint: '',
+        editDepartmentHasNumbers: false,
+        reviewerFilter: '',
 
         openCompanyEdit(row) {
             this.editCompanyId = row.id;
@@ -343,7 +432,21 @@ function approvalOrganization() {
             this.editDepartmentShortName = row.short_name;
             this.editDepartmentCode = row.code;
             this.editDepartmentSort = String(row.sort_order);
+            this.editDepartmentHeadId = row.head_user_id === null ? '' : String(row.head_user_id);
+            // ⚠ チェックボックスの value は文字列なので、x-model の配列も文字列にそろえる
+            this.editDepartmentReviewerIds = row.reviewer_ids.map(String);
+            this.editDepartmentNext = String(row.next_number);
+            this.editDepartmentNextShown = String(row.next_number);
+            this.editDepartmentNumberHint = row.number_hint;
+            this.editDepartmentHasNumbers = row.has_numbers;
+            this.reviewerFilter = '';
             this.departmentEditModal = true;
+        },
+
+        // 審査担当者の一覧を氏名で絞り込む（空白は無視する）
+        matchesReviewer(name) {
+            const q = this.reviewerFilter.replace(/\s/g, '');
+            return q === '' || name.replace(/\s/g, '').includes(q);
         }
     };
 }
