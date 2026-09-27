@@ -637,15 +637,27 @@ class CustomerImportTest extends TestCase
 
     public function test_each_preview_issues_its_own_token(): void
     {
-        $first  = $this->confirmForm($this->preview($this->csv([$this->person('山田', '太郎')])));
-        $second = $this->confirmForm($this->preview($this->csv([$this->person('佐藤', '花子')])));
+        $csv   = $this->csv([$this->person('山田', '太郎')]);
+        $first = $this->confirmForm($this->preview($csv));
 
+        // 1 回目の確定が書き込みの途中で失敗した（巻き戻るが、鍵は使用済みになる）
+        $failing = true;
+        Buyer::creating(function () use (&$failing) {
+            if ($failing) {
+                throw new \RuntimeException('書き込みの失敗（テスト）');
+            }
+        });
+        $this->submit($first)->assertSee('インポートに失敗しました: 書き込みの失敗（テスト）');
+        $failing = false;
+
+        // 案内どおり**同じ CSV** をアップロードし直すと、新しい鍵で取り込める。
+        // ⚠ 別の CSV で 2 回プレビューする形では、鍵を CSV の中身から作る書き換え（上げ直しても同じ鍵になり、
+        //   12 時間断られる）を見逃す（2026-09-27 のレビューで実測: その形では 29 本すべて緑）
+        $second = $this->confirmForm($this->preview($csv));
         $this->assertNotSame($first['fields']['import_token'], $second['fields']['import_token'], 'プレビューごとに鍵が変わっていない');
 
-        $this->submit($first)->assertSee('1件のインポートが完了しました。');
-        // 別のプレビューの確定は、1 つ目を使ったあとでも取り込める
         $this->submit($second)->assertSee('1件のインポートが完了しました。');
-        $this->assertSame(['山田', '佐藤'], Buyer::orderBy('id')->pluck('last_name')->all());
+        $this->assertSame(['山田'], Buyer::pluck('last_name')->all());
     }
 
     /** @return array<string, array{0: string|list<string>|null}> [import_token に入れる値（null なら送らない）] */
