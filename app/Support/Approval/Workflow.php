@@ -25,7 +25,10 @@ use Illuminate\Support\Facades\DB;
  *   5. 段階と記録を書く
  * の順に進む（計画 §0.3）。
  *
- * ⚠ 行のロックは「申請の行 → 連番の行」の順にそろえる（社長の判断で採番するとき）。
+ * ⚠ 行のロックは「申請の行 → 段階の行 → 連番の行」の順にそろえる（社長の判断で採番するとき・部門長の交代）。
+ *   状態の UPDATE は、状態を含む複合索引が外部キーの索引を兼ねるため、申請部門の行と申請者の `users` の行にも
+ *   共有ロックを取る（MySQL 8.4.8 で実測）。部門の行を先に更新してから申請の行に触る取引は、同じ部門の申請への
+ *   操作とデッドロックする（部門長の交代は `headChanged()` の注意書き）。
  */
 final class Workflow
 {
@@ -162,30 +165,57 @@ final class Workflow
     }
 
     /**
-     * 部門長の交代（要件 4.3 のケース 5・D23）。部門の管理が部門長を変えた**あと**に呼ぶ。
+     * 部門長の交代（要件 4.3 のケース 5・D23）。部門の管理が、部門の行を**更新する前**に、同じトランザクションの中で呼ぶ。
      *
      * 部門長の確認を待っている申請は、付け替えていても新しい部門長へ移す（付け替えを空に戻す）。
+     * 移した申請は `lock_version` を 1 進める（交代の前に開いた画面から押した判断・取り下げを
+     * 「すでに処理されています」で断る。計画 §0.3）。
+     *
+     * ⚠ ロックはほかの操作と同じ「申請の行 → 段階の行」の順に、主キーで取る（2026-09-27 の点検で MySQL 8.4.8 を実測）。
+     *   - 段階の行を先にロックすると、同じ申請への判断（申請の行を先に進める）とデッドロックしうる
+     *   - 部門の列を条件にしたロック付きの読み取りは、REPEATABLE READ では隙間もロックし、同じ部門の提出を止める
+     * ⚠ 部門の行を先に更新してから呼ばない。状態の UPDATE は外部キーの確かめで申請部門の行に共有ロックを取るので、
+     *   同じ部門の申請への判断・取り下げとデッドロックし（1213）、画面は 500 になる。
+     *
+     * @param int|null $oldHeadId 交代の前の部門長（記録の「前」。付け替えていればその担当）
+     * @param int|null $newHeadId 交代の後の部門長（記録の「後」）
      */
-    public function headChanged(ApprovalDepartment $department, ?int $oldHeadId, User $admin): void
+    public function headChanged(ApprovalDepartment $department, ?int $oldHeadId, ?int $newHeadId, User $admin): void
     {
-        $steps = ApprovalStep::with('request')
-            ->where('kind', ApprovalStepKind::Head->value)
-            ->where('status', ApprovalStepStatus::Waiting->value)
-            ->where('department_id', $department->id)
-            ->get();
+        DB::transaction(function () use ($department, $oldHeadId, $newHeadId, $admin): void {
+            $candidates = ApprovalStep::query()
+                ->where('kind', ApprovalStepKind::Head->value)
+                ->where('status', ApprovalStepStatus::Waiting->value)
+                ->where('department_id', $department->id)
+                ->get(['id', 'request_id']);
 
-        foreach ($steps as $step) {
-            $before = $step->assignee_user_id ?? $oldHeadId;
-
-            if ($step->assignee_user_id !== null) {
-                $step->update(['assignee_user_id' => null]);
+            if ($candidates->isEmpty()) {
+                return;
             }
 
-            HistoryRecorder::record($step->request, 'head_changed', $admin, [
-                'step_id' => $step->id,
-                'meta'    => ['from_user_id' => $before, 'to_user_id' => $department->head_user_id],
-            ]);
-        }
+            $requests = ApprovalRequest::whereKey($candidates->pluck('request_id')->all())->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+            $steps    = ApprovalStep::whereKey($candidates->pluck('id')->all())->orderBy('id')->lockForUpdate()->get();
+
+            foreach ($steps as $step) {
+                // ロックを待つあいだに判断・取り下げが済んだ段階は動かさない（ロック付きの読み取りは最新の行を読む）
+                if ($step->status !== ApprovalStepStatus::Waiting) {
+                    continue;
+                }
+
+                $before = $step->assignee_user_id ?? $oldHeadId;
+
+                if ($step->assignee_user_id !== null) {
+                    $step->update(['assignee_user_id' => null]);
+                }
+
+                ApprovalRequest::whereKey($step->request_id)->increment('lock_version');
+
+                HistoryRecorder::record($requests[$step->request_id], 'head_changed', $admin, [
+                    'step_id' => $step->id,
+                    'meta'    => ['from_user_id' => $before, 'to_user_id' => $newHeadId],
+                ]);
+            }
+        });
     }
 
     private function judge(ApprovalRequest $request, User $actor, int $lockVersion, ApprovalStepKind $kind, ApprovalStepResult $result, ?string $comment): void

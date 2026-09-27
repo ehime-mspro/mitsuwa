@@ -374,8 +374,9 @@ class WorkflowTest extends TestCase
         $newHead = $this->baseUser(['name' => '新 部門長']);
         ApprovalStep::where('request_id', $r->id)->where('kind', 'head')->update(['assignee_user_id' => $stand->id]);   // 2b の付け替えの形
 
+        // 部門の管理と同じ順（部門の行を更新する前に呼ぶ。Workflow::headChanged() の注意書き）
+        $this->workflow->headChanged($w['dept'], $w['head']->id, $newHead->id, $this->approvalAdmin());
         $w['dept']->update(['head_user_id' => $newHead->id]);
-        $this->workflow->headChanged($w['dept']->fresh(), $w['head']->id, $this->approvalAdmin());
 
         $this->assertNull(ApprovalStep::where('request_id', $r->id)->where('kind', 'head')->value('assignee_user_id'));
         $history = ApprovalHistory::where('request_id', $r->id)->where('action', 'head_changed')->sole();
@@ -383,6 +384,82 @@ class WorkflowTest extends TestCase
 
         $this->workflow->judgeHead($r->refresh(), $newHead, $r->lock_version, ApprovalStepResult::Approve, null);
         $this->assertSame(ApprovalStatus::Review, $r->refresh()->status);
+    }
+
+    /** 交代の前に開いた画面（旧部門長の判断・申請者の取り下げ）は「すでに処理されています」（計画 §0.3・D23） */
+    public function test_a_screen_drawn_before_the_head_change_is_refused(): void
+    {
+        $w       = $this->approvalWorld();
+        $r       = $this->submittedFor($w);
+        $drawn   = $r->lock_version;
+        $newHead = $this->baseUser(['name' => '新 部門長']);
+
+        $this->workflow->headChanged($w['dept'], $w['head']->id, $newHead->id, $this->approvalAdmin());
+        $w['dept']->update(['head_user_id' => $newHead->id]);
+
+        foreach ([
+            '旧部門長の承認'   => fn () => $this->workflow->judgeHead($r, $w['head'], $drawn, ApprovalStepResult::Approve, null),
+            '申請者の取り下げ' => fn () => $this->workflow->withdraw($r, $w['applicant'], $drawn, null),
+        ] as $what => $press) {
+            try {
+                $press();
+                $this->fail("交代の前の画面から通った: {$what}");
+            } catch (WorkflowConflict) {
+            }
+        }
+
+        $this->workflow->judgeHead($r->refresh(), $newHead, $r->lock_version, ApprovalStepResult::Approve, null);
+        $this->assertSame(ApprovalStatus::Review, $r->refresh()->status);
+        $this->assertSame(['submitted', 'head_changed', 'head_approved'], $this->actionsOf($r));
+    }
+
+    /** 交代で動かすのは部門長の確認を待っている段階だけ（済んだ申請には記録を足さず、lock_version も進めない） */
+    public function test_the_head_change_touches_only_waiting_head_steps(): void
+    {
+        $w    = $this->approvalWorld();
+        $done = $this->submittedFor($w);
+        $this->workflow->judgeHead($done, $w['head'], $done->lock_version, ApprovalStepResult::Approve, null);
+        $doneVersion = $done->refresh()->lock_version;
+        $wait        = $this->submittedFor($w);
+        $waitVersion = $wait->lock_version;
+
+        $this->workflow->headChanged($w['dept'], $w['head']->id, $this->baseUser(['name' => '新 部門長'])->id, $this->approvalAdmin());
+
+        $this->assertSame(['submitted', 'head_approved'], $this->actionsOf($done));
+        $this->assertSame($doneVersion, $done->refresh()->lock_version);
+        $this->assertSame(['submitted', 'head_changed'], $this->actionsOf($wait));
+        $this->assertSame($waitVersion + 1, $wait->refresh()->lock_version);
+    }
+
+    /**
+     * 交代の候補を読んだあと、ロックを取るまでに判断が済んだ申請は動かさない（MySQL ではロックを待つあいだに先を越される）。
+     *
+     * ⚠ 候補を読んだ**直後**に部門長の承認が済んだ状況を、retrieved の合図で 1 回だけ起こす。
+     *   ロックのあとで読み直さずに候補をそのまま使うと、済んだ申請に交代の記録が付き、lock_version も進む。
+     */
+    public function test_the_head_change_skips_a_step_judged_while_waiting_for_the_lock(): void
+    {
+        $w          = $this->approvalWorld();
+        $r          = $this->submittedFor($w);
+        $newHead    = $this->baseUser(['name' => '新 部門長']);
+        $fired      = false;
+        $afterJudge = null;
+
+        ApprovalStep::retrieved(function (ApprovalStep $step) use ($r, $w, &$fired, &$afterJudge): void {
+            if (! $fired && $step->request_id === $r->id) {
+                $fired = true;   // 入れ子の呼び出しで 2 回起こさない
+                $this->workflow->judgeHead($r->fresh(), $w['head'], $r->fresh()->lock_version, ApprovalStepResult::Approve, null);
+                $afterJudge = $r->fresh()->lock_version;
+            }
+        });
+
+        $this->workflow->headChanged($w['dept'], $w['head']->id, $newHead->id, $this->approvalAdmin());
+
+        $this->assertNotNull($afterJudge, '前提: 候補を読んだ直後に承認を起こせていない');
+        $r->refresh();
+        $this->assertSame(ApprovalStatus::Review, $r->status);
+        $this->assertSame(['submitted', 'head_approved'], $this->actionsOf($r));
+        $this->assertSame($afterJudge, $r->lock_version, '済んだ申請の lock_version を進めた');
     }
 
     /** 4.3 のケース 6: 社長の指定が変わると、新しい社長が決裁する */
