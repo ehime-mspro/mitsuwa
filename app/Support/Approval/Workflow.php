@@ -32,11 +32,27 @@ use Illuminate\Support\Facades\DB;
  */
 final class Workflow
 {
-    /** 提出・出し直し（要件 4.1・4.3・4.4） */
-    public function submit(ApprovalRequest $request, User $actor): void
+    /**
+     * 提出・出し直し（要件 4.1・4.3・4.4）。
+     *
+     * @param int|null $lockVersion 画面から出すときは、中身を保存した直後の lock_version（保存と提出のあいだに別の画面の
+     *                              保存・提出が入ったら「すでに処理されています」で断る。計画 §0.3）。画面を通らない
+     *                              呼び出し（テストの土台など）は省く
+     */
+    public function submit(ApprovalRequest $request, User $actor, ?int $lockVersion = null): void
     {
-        DB::transaction(function () use ($request, $actor): void {
+        DB::transaction(function () use ($request, $actor, $lockVersion): void {
+            // ⚠ 申請の行をロックしてから読み直す（添付の追加・外すも申請の行をロックしてから書く。Task 14）。
+            //   控え（添付の一覧を含む）と提出の条件は、ロックを取った時点の中身を見る。先に済んだ添付は控えに入り、
+            //   あとから来た添付は提出が済むのを待って断られる（控えに無い添付が回覧中の申請に付かない。Task 7 の点検）。
+            //   MySQL の REPEATABLE READ は、トランザクションで最初に読んだ時点の中身を読み続けるので、ロックより前に
+            //   読まない（呼ぶ側のトランザクションの中で先に読んでから呼ばない）。SQLite のテストでは確かめられない
+            ApprovalRequest::whereKey($request->id)->lockForUpdate()->first();
             $request->refresh();
+
+            if ($lockVersion !== null) {
+                $this->assertFresh($request, $lockVersion);
+            }
 
             if (! RequestPermissions::for($actor, $request)->canEdit()) {
                 throw new WorkflowRefused(['この申請は提出できる状態ではありません。']);

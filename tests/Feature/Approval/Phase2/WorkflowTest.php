@@ -591,6 +591,35 @@ class WorkflowTest extends TestCase
     }
 
     /**
+     * 画面から出す提出は、中身を保存した直後の lock_version と比べる（2026-09-27 の変更。Task 7 の点検の申し送り）。
+     * 保存と提出のあいだに別の画面の保存が入ったら、何も書かずに「すでに処理されています」で断る
+     */
+    public function test_a_submission_after_another_save_is_refused(): void
+    {
+        $w     = $this->approvalWorld();
+        $draft = $this->draftFor($w);
+        $saved = $draft->lock_version;
+        // 別のタブの保存（RequestController::update() は lock_version を 1 進める）
+        ApprovalRequest::whereKey($draft->id)->update(['subject' => '別のタブの件名', 'lock_version' => $saved + 1]);
+
+        try {
+            $this->workflow->submit($draft, $w['applicant'], $saved);
+            $this->fail('別の画面の保存のあとに、古い版で提出できた');
+        } catch (WorkflowConflict $e) {
+            $this->assertSame(WorkflowConflict::MESSAGE, $e->getMessage());
+        }
+
+        $this->assertSame(ApprovalStatus::Draft, $draft->fresh()->status);
+        $this->assertSame(0, ApprovalRevision::where('request_id', $draft->id)->count());
+        $this->assertSame(0, ApprovalHistory::where('request_id', $draft->id)->count());
+
+        // 今の版なら通り、控えは今の中身になる
+        $this->workflow->submit($draft, $w['applicant'], $saved + 1);
+        $this->assertSame(ApprovalStatus::HeadReview, $draft->refresh()->status);
+        $this->assertSame('別のタブの件名', ApprovalRevision::where('request_id', $draft->id)->sole()->snapshot['subject']);
+    }
+
+    /**
      * 4.8 の表（設計書 §5.8）: 状態ごとに、通る操作と断る操作。
      *
      * ⚠ 表から機械的に組み立てる（設計書 §6）。状態か操作を足したら、ここに足すまで下のテストが全件で落ちる。
