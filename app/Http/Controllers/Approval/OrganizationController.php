@@ -227,7 +227,11 @@ class OrganizationController extends Controller
             return $this->back(null, "この部門は申請の種類 {$types} 件の審査部門になっているため削除できません。先に申請種類の管理で審査部門を変えてください。");
         }
 
-        $before = $approvalDepartment->only(['company_id', 'name', 'short_name', 'code', 'sort_order', 'head_user_id']);
+        // 審査担当者（外部キーの CASCADE で消える）と年度ごとの次の番号（連番の行も消す）も記録に残す（設計書 §5.4）
+        $before = $approvalDepartment->only(['company_id', 'name', 'short_name', 'code', 'sort_order', 'head_user_id']) + [
+            'reviewer_ids' => $approvalDepartment->reviewers()->pluck('users.id')->sort()->values()->all(),
+            'next_numbers' => ApprovalNumberSequence::where('department_id', $approvalDepartment->id)->orderBy('fiscal_year')->pluck('next_number', 'fiscal_year')->all(),
+        ];
         $id     = $approvalDepartment->id;
 
         DB::transaction(function () use ($approvalDepartment): void {

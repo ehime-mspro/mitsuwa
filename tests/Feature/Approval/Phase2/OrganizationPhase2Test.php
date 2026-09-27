@@ -599,4 +599,22 @@ class OrganizationPhase2Test extends TestCase
             ->assertSessionHas('success', '部門を更新しました。');
         $this->assertSame([$next->id], $w['reviewDept']->reviewers()->pluck('users.id')->all());
     }
+
+    /** 削除の記録に、審査担当者と年度ごとの次の番号も残す（どちらも部門と一緒に消えるため。Task 9 の点検の軽微） */
+    public function test_the_deletion_record_keeps_the_reviewers_and_the_next_numbers(): void
+    {
+        $company = $this->approvalCompany();
+        $dept    = $this->approvalDepartment($company, ['name' => '審査だけの部門']);
+        $r1      = $this->baseUser(['name' => '審査 一']);
+        $r2      = $this->baseUser(['name' => '審査 二']);
+        $dept->reviewers()->attach([$r2->id, $r1->id]);
+        ApprovalNumber::setNext($dept, 21);
+
+        $this->actingAs($this->approvalAdmin())->delete(route('approvals.admin.organization.departments.destroy', $dept))
+            ->assertSessionHas('success', '部門を削除しました。');
+
+        $old = ApprovalSettingLog::where('action', 'department.deleted')->sole()->old_values;
+        $this->assertSame(collect([$r1->id, $r2->id])->sort()->values()->all(), $old['reviewer_ids']);
+        $this->assertSame([2026 => 21], $old['next_numbers']);
+    }
 }
