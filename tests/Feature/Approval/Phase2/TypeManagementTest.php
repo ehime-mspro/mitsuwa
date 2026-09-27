@@ -406,4 +406,18 @@ class TypeManagementTest extends TestCase
 
         $this->assertNull($unused->fresh());
     }
+
+    /** 追加の小窓の審査部門は「選んでください」から始まり、選ばずに送ると断る（先頭の部門が黙って選ばれない。Task 11 の点検の軽微） */
+    public function test_the_create_form_starts_without_a_review_department(): void
+    {
+        $this->approvalWorld();
+        $admin = $this->approvalAdmin();
+
+        $this->assertMatchesRegularExpression('/<select name="review_department_id" required[^>]*>\s*<option value="">選んでください<\/option>/u', $this->indexHtml($admin));
+
+        $this->actingAs($admin)->post(route('approvals.admin.types.store'), [
+            'name' => '選び忘れ', 'headings' => BodyTemplate::DEFAULT, 'review_department_id' => '', 'sort_order' => '1',
+        ])->assertSessionHasErrors(['review_department_id' => '審査部門を選択してください。']);
+        $this->assertSame(0, ApprovalType::where('name', '選び忘れ')->count());
+    }
 }

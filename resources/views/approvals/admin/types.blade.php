@@ -94,6 +94,7 @@
                         <label class="block text-[12px] font-semibold text-gray-700 mb-1">審査部門<span class="text-red-600 ml-0.5">*</span></label>
                         {{-- ⚠ <option> は @@foreach で静的に出す（Bug #16） --}}
                         <select name="review_department_id" required class="w-full h-[38px] px-2.5 border border-gray-300 rounded-md text-[13px] bg-white cursor-pointer">
+                            <option value="">選んでください</option>
                             @foreach($departments as $department)
                                 <option value="{{ $department->id }}">{{ $department->company->name }}・{{ $department->name }}</option>
                             @endforeach
