@@ -1976,7 +1976,38 @@ EOF
 
 ### Task 4: 変異テスト
 
-（未記入）
+2026-09-27 19:00〜19:25（日本時間）。`0df5c0f2`（Task 2 のコミット）を `git worktree add --detach` した 3 つのコピー（vendor は `cp -Rc` で実体コピー）で、どれも全件テストを流した。
+
+- Step 3: `--check` は「変異 30 通り・当たらないもの 0 件」・3 つのコピーとも作業ツリーは空
+- Step 4 カナリア C0: a・b・c とも 23 本（確定を送る `CustomerImportTest` 22 本「Failed asserting that '<!DOCTYPE html>…」＋ `ImportValidationFeedbackTest`「顧客CSV」「…差し戻し先 /admin/customers/import に理由が…」）。3 つの集合が一致＝コピー側のコードが読まれている
+- Step 5・6: **29 通りすべてが表の期待どおり**（落ちたテストの集合・本数・理由の 1 行目まで）。等価の K04 は 0 本。期待と違ったものは無く、テストは足していない。変異の前後で作業ツリーが空・置き換えがちょうど 1 か所・着弾は実行役がすべて確かめた（止まらずに最後まで流れた）
+
+| ID | 本数 | 落ちたテスト（理由の 1 行目）|
+|---|---|---|
+| C0 | 23 | 上のとおり |
+| K01 | 5 | T1・T4 の 3（`Failed asserting that '<!DOCTYPE html>…`）・T2（`2 回目の送信で、重複候補がもう一度入った`）|
+| K02 | 1 | T1（`Failed asserting that '<!DOCTYPE html>…`＝2 回目が 0 件の案内に着く）|
+| K03 | 5 | T1（`'<!DOCTYPE html>…`）・T2（`もう一度入った`）・T4 の 3（`Failed asserting that 1 is identical to 0.`＝断る前に書いた）|
+| K04 | 0 | （等価）|
+| K05 | 1 | T3（`プレビューごとに鍵が変わっていない`）|
+| K06 | 18 | 確定を送る 22 本から T4 の 3・部署を書き換える 1 本を除く全部（`'<!DOCTYPE html>…`）|
+| K07 | 5 | T1・T2・T4 の 3（`'<!DOCTYPE html>…`）|
+| K08 | 2 | `test_confirming_only_duplicates_without_the_check_imports_nothing`・T5（`'<!DOCTYPE html>…`）|
+| K09 | 18 | K06 と同じ集合 |
+| K10 | 45 | 顧客は 0 本。`LoginGuideTest` 5（`有効時間 0 で 1 回目から弾かれている`・`正しい文字列トークンの 1 回目が通っていない`・`Failed asserting that false is true.` ×3）・`ApprovalUserImportTest` 15・`ApprovalUserManagementTest` 13・`UserManagementApprovalTest` 12（決裁の 40 本のうち 37 本が `Expected response status code [200] but received 302.`）|
+| K11 | 5 | T4 の 3（`確定の応答が転送になっていない`＝500）・`LoginGuideTest::test_claim_from_accepts_only_a_string_token`（`TypeError: App\Support\OneTimeAction::claim(): Argument #1 ($token) must be of type string, array given…`）・`ApprovalUserImportTest::test_an_array_guide_token_is_refused_without_a_500`（`… but received 500.`）|
+| U01 | 22 | 確定のフォームを分解する 22 本（`確定のフォームに 1 回限りの鍵（import_token）が無い`）|
+| U02〜U06 | 各 1 | T6（`Failed asserting that '<form method="POST" action="http://localhost/admin/customers/import"…`。記録は 1 行目だけだが、U05・U06 は `x-on:submit` に触れないので、落ちたのは `x-on:pageshow.window` の contains）|
+| U07・U08 | 各 1 | T6（`Failed asserting that '<button type="submit"…` が `:disabled="submitting"` を含まない）|
+| U09 | 1 | T6（`「インポート実行」ボタンに disabled:opacity-60 が無い`）|
+| U10 | 1 | T6（`Failed asserting that 'background: #059669; …; cursor: pointer;'…`＝style に cursor がある）|
+| U11・U12 | 各 1 | T6（`ボタンを包む要素の中に role="status" が無い`）|
+| U13 | 1 | T6（`'<span role="status" x-text="submitting ? '送信中…' : ''"…` が期待の `x-text` を含まない）|
+| U14 | 1 | T6（`'margin-left: 12px; font-size: 13px; color: #374151;'` が `display: inline-block` を含まない）|
+| J01〜J04 | 各 1 | T7（`Failed asserting that two arrays are identical.`）|
+
+- Task 5（ローカルの実ブラウザ）は、変異の実行と並行して元の worktree と使い捨ての SQLite で行った（変異は隔離したコピーの中だけで動くので干渉しない。Task 5 の一時的なルートは変異のコピーに含まれない）
+- 片づけ: 3 つのコピーを `git worktree remove --force` で消した（一覧は main repo・`approval-phase2a`・この worktree の 3 つ）。記録の jsonl は scratchpad に残した
 
 ### Task 5: ローカルの実ブラウザ
 
