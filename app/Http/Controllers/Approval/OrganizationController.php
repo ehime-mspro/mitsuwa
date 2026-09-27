@@ -208,6 +208,7 @@ class OrganizationController extends Controller
 
         // 申請（下書きを含む）や回った記録に使われている部門は削除できない（段階2 設計書 §5.4）
         $used = ApprovalRequest::where('department_id', $approvalDepartment->id)
+            ->orWhere('number_department_id', $approvalDepartment->id)   // 決裁No の部門（外部キー RESTRICT。段階の行があることに頼らない）
             ->orWhereHas('steps', fn ($q) => $q->where('department_id', $approvalDepartment->id))
             ->count();
 

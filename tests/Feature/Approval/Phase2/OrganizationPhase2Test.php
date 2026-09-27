@@ -566,4 +566,18 @@ class OrganizationPhase2Test extends TestCase
 
         $this->assertSame($head->id, ApprovalSettingLog::where('action', 'department.deleted')->sole()->old_values['head_user_id']);
     }
+
+    /** 決裁No の部門（number_department_id）だけが指している部門も削除できない（外部キーで 500 にしない。Task 9 の点検の軽微） */
+    public function test_a_department_referenced_only_by_a_number_cannot_be_deleted(): void
+    {
+        $w     = $this->approvalWorld();
+        $dept  = $this->approvalDepartment($w['company'], ['name' => '番号だけの部門', 'short_name' => '番号', 'code' => 'NB']);
+        $draft = $this->draftFor($w);
+        DB::table('approval_requests')->where('id', $draft->id)->update(['number' => 'R8-NB-001', 'number_department_id' => $dept->id]);
+
+        $this->actingAs($this->approvalAdmin())->delete(route('approvals.admin.organization.departments.destroy', $dept))
+            ->assertSessionHas('error', 'この部門は申請 1 件に使われているため削除できません。');
+
+        $this->assertNotNull($dept->fresh());
+    }
 }
