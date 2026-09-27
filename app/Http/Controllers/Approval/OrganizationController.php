@@ -201,7 +201,10 @@ class OrganizationController extends Controller
 
     /**
      * ⚠ `users()` は既定のスコープなので、所属者が**論理削除された利用者だけ**の部門は
-     *   ここが 0 件と数え、中間テーブルの行ごと黙って消える（段階1 の注記のまま）。
+     *   ここが 0 件と数え、中間テーブルの行ごと黙って消える。段階1 の Task 12・13 で所属を書く経路
+     *   （決裁の利用者の管理・CSV 取込）ができたので、この状態は今は実際に起こりうる。そのとき
+     *   `users()->withTrashed()->count()` で止めるか、「削除済み N 人ぶんの所属も消える」と
+     *   画面で断るかを決めること（段階1 からの宿題。Task 9 の点検で、消えていた宿題の文を戻した）。
      */
     public function destroyDepartment(ApprovalDepartment $approvalDepartment)
     {
