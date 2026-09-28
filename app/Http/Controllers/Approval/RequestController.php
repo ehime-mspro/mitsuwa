@@ -38,8 +38,32 @@ use Illuminate\View\View;
  */
 class RequestController extends Controller
 {
+    /** 自分の申請一覧の 1 ページの件数（§5.12） */
+    private const PER_PAGE = 20;
+
     public function __construct(private readonly Workflow $workflow)
     {
+    }
+
+    /** 自分の申請一覧（画面④。新しい順。絞り込みは ApprovalStatus::listFilters()。設計書 §5.12） */
+    public function index(Request $request): View
+    {
+        $filters = ApprovalStatus::listFilters();
+        $filter  = $request->query('filter');
+        $filter  = is_string($filter) && isset($filters[$filter]) ? $filter : null;
+
+        // いま誰の番かを出すので、段階の担当を先に読む（CurrentHandler）
+        $requests = ApprovalRequest::with(['type', 'steps.department.head', 'steps.department.reviewers', 'steps.assignee'])
+            ->where('user_id', $request->user()->id)
+            ->when($filter !== null, fn ($query) => $query->whereIn(
+                'status',
+                array_map(fn (ApprovalStatus $status) => $status->value, $filters[$filter]['statuses'])
+            ))
+            ->orderByDesc('id')
+            ->paginate(self::PER_PAGE)
+            ->withQueryString();
+
+        return view('approvals.requests.index', compact('requests', 'filters', 'filter'));
     }
 
     /** 作成（`?copy={id}` で自分の申請を写す。保存するまで下書きはできない） */

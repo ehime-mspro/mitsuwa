@@ -101,6 +101,7 @@ Route::middleware('approval.launched')->prefix('approvals')->name('approvals.')-
     // 申請書（画面②）と詳細（画面③）。段階2 設計書 §5.6・§5.12
     // ⚠ 提出は別のルートにしない（保存のフォームに intent=submit を付けて送る。計画 §0.8 の 2）
     // ⚠ create を {approvalRequest} より前に置く
+    Route::get('/requests', [RequestController::class, 'index'])->name('requests.index');
     Route::get('/requests/create', [RequestController::class, 'create'])->name('requests.create');
     Route::post('/requests', [RequestController::class, 'store'])->name('requests.store');
     Route::get('/requests/{approvalRequest}', [RequestController::class, 'show'])->name('requests.show');
