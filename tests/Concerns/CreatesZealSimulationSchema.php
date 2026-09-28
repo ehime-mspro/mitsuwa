@@ -7,8 +7,9 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * ZEAL 経営試算表の 3 テーブルは本番では raw SQL DDL
- * （database/sql/create_zeal_simulation_tables.sql）で管理され Laravel マイグレーションに無い。
+ * ZEAL 経営試算表の 3 テーブルと本部 Sheet 取込の履歴は本番では raw SQL DDL
+ * （database/sql/create_zeal_simulation_tables.sql・alter_zeal_simulations_add_sheet_urls.sql・
+ * create_zeal_sheet_imports_table.sql）で管理され Laravel マイグレーションに無い。
  * テスト（SQLite in-memory）で使うため DDL に準拠した最小スキーマを構築する。
  *
  * ⚠ **DDL を変えたらこの trait も追従すること。** 片方だけ直すと SQLite テストだけが
@@ -17,6 +18,8 @@ use Illuminate\Support\Facades\Schema;
  *   - FK は SQLite の挙動差・作成順依存を避けるため張らない（挙動テストには不要）
  *   - 列名・NULL 可否・型は DDL に合わせる
  *   - ENUM は SQLite に無いので string で持つ（値の妥当性はアプリ側の責務）
+ *   - 一意の索引は DDL と同じ名前で張る（2026-09-28 に足した。無いと、同じセルの 2 重書きが SQLite では黙って通る）。
+ *     ⚠ 今のテストはどれも頼っていない（変異で実測。将来の偽の緑を止めるために持つ。Bug #54 ⑤）
  */
 trait CreatesZealSimulationSchema
 {
@@ -34,6 +37,7 @@ trait CreatesZealSimulationSchema
             $t->boolean('is_system')->default(false);
             $t->boolean('is_active')->default(true);
             $t->timestamps();
+            $t->unique('code', 'uq_zeal_sim_cat_code');
         });
 
         Schema::create('zeal_simulations', function (Blueprint $t) {
@@ -41,9 +45,13 @@ trait CreatesZealSimulationSchema
             $t->smallInteger('fiscal_year');
             $t->string('name', 100)->nullable();
             $t->text('notes')->nullable();
+            // alter_zeal_simulations_add_sheet_urls.sql
+            $t->string('sales_sheet_url', 500)->nullable();
+            $t->string('expense_sheet_url', 500)->nullable();
             $t->unsignedBigInteger('created_by')->nullable();
             $t->unsignedBigInteger('updated_by')->nullable();
             $t->timestamps();
+            $t->unique('fiscal_year', 'uq_zeal_sim_fiscal_year');
         });
 
         Schema::create('zeal_simulation_values', function (Blueprint $t) {
@@ -55,6 +63,21 @@ trait CreatesZealSimulationSchema
             $t->bigInteger('budget_amount')->nullable();
             $t->boolean('is_manual_override')->default(false);
             $t->timestamps();
+            $t->unique(['simulation_id', 'category_id', 'year_month'], 'uq_zeal_sim_val');
+        });
+
+        // create_zeal_sheet_imports_table.sql（一意の索引は無い）
+        Schema::create('zeal_sheet_imports', function (Blueprint $t) {
+            $t->id();
+            $t->unsignedBigInteger('simulation_id');
+            $t->string('import_type', 10);   // sales / expense
+            $t->char('year_month', 7);
+            $t->mediumText('raw_csv')->nullable();
+            $t->json('parsed_data')->nullable();
+            $t->unsignedBigInteger('imported_by')->nullable();
+            $t->timestamp('created_at')->nullable();
+            $t->index(['simulation_id', 'year_month'], 'idx_zeal_sheet_imports_sim_month');
+            $t->index('import_type', 'idx_zeal_sheet_imports_type');
         });
     }
 
@@ -79,6 +102,32 @@ trait CreatesZealSimulationSchema
                 'is_active'      => 1,
                 'created_at'     => now(),
                 'updated_at'     => now(),
+            ]);
+        }
+    }
+
+    /**
+     * 本部 Sheet 取込が書く経費の項目（ZealExpenseMapper::WRITABLE_CODES。売上 revenue は上の最小限の項目にある）。
+     * 値は DDL の seed（create_zeal_simulation_tables.sql）と insert_zeal_simulation_categories_sheet_import.sql から写した。
+     */
+    protected function seedZealSheetImportCategories(): void
+    {
+        $rows = [
+            ['code' => 'outsourcing',     'name' => '委託費',           'calc_type' => 'fixed',  'default_amount' => 400000, 'sort_order' => 50],
+            ['code' => 'session_fee',     'name' => '時間帯業務委託費', 'calc_type' => 'manual', 'default_amount' => null,   'sort_order' => 65],
+            ['code' => 'training_system', 'name' => '研修システム',     'calc_type' => 'fixed',  'default_amount' => 15000,  'sort_order' => 80],
+            ['code' => 'web_operation',   'name' => 'web運用',          'calc_type' => 'fixed',  'default_amount' => 15000,  'sort_order' => 90],
+            ['code' => 'store_supplies',  'name' => '店舗備品費',       'calc_type' => 'manual', 'default_amount' => null,   'sort_order' => 145],
+        ];
+
+        foreach ($rows as $row) {
+            DB::table('zeal_simulation_categories')->insert($row + [
+                'group_type'   => 'expense',
+                'rate_percent' => null,
+                'is_system'    => 0,
+                'is_active'    => 1,
+                'created_at'   => now(),
+                'updated_at'   => now(),
             ]);
         }
     }
