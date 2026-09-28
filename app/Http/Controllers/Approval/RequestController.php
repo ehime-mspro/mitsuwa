@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Approval;
 use App\Enums\ApprovalStatus;
 use App\Enums\ApprovalStepResult;
 use App\Http\Controllers\Controller;
+use App\Models\ApprovalHistory;
 use App\Models\ApprovalRequest;
 use App\Models\ApprovalStep;
 use App\Models\ApprovalType;
@@ -85,7 +86,11 @@ class RequestController extends Controller
         $user = $request->user();
         $this->assertVisible($user, $approvalRequest);
 
-        $approvalRequest->load(['applicant', 'department', 'type', 'attachments']);
+        // 回る順番の担当は今の設定から引く（CurrentHandler）。部門長・審査担当者・付け替え・判断した人を先に読む
+        $approvalRequest->load([
+            'applicant', 'department', 'type', 'attachments',
+            'steps.department.head', 'steps.department.reviewers', 'steps.assignee', 'steps.actor',
+        ]);
         // 申請者以外には最後に提出した控え（差戻し中の直しかけは出し直すまで申請者だけ。利用者の決定 2026-09-27）
         $content = RequestContent::for($user, $approvalRequest);
 
@@ -94,6 +99,8 @@ class RequestController extends Controller
             'content'         => $content,
             'permissions'     => RequestPermissions::for($user, $approvalRequest),
             'relatedLinks'    => $this->relatedLinks($content->relatedNumbers, $user),
+            // 操作の記録（新しい順。§5.12）
+            'histories'       => ApprovalHistory::with('actor')->where('request_id', $approvalRequest->id)->orderByDesc('id')->get(),
         ]);
     }
 

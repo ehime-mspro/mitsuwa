@@ -3,6 +3,7 @@
 use App\Http\Controllers\Approval\HomeController;
 use App\Http\Controllers\Approval\OrganizationController;
 use App\Http\Controllers\Approval\RelatedNumberController;
+use App\Http\Controllers\Approval\RequestActionController;
 use App\Http\Controllers\Approval\RequestAttachmentController;
 use App\Http\Controllers\Approval\RequestController;
 use App\Http\Controllers\Approval\TypeController;
@@ -111,4 +112,11 @@ Route::middleware('approval.launched')->prefix('approvals')->name('approvals.')-
     Route::post('/requests/{approvalRequest}/attachments', [RequestAttachmentController::class, 'store'])->name('requests.attachments.store');
     Route::get('/attachments/{approvalAttachment}', [RequestAttachmentController::class, 'show'])->name('attachments.show');
     Route::delete('/attachments/{approvalAttachment}', [RequestAttachmentController::class, 'destroy'])->name('attachments.destroy');
+
+    // 判断・条件確認・取り下げ（段階2 設計書 §5.8）。役割ごとに分ける（権限の確かめ方が違うため）
+    Route::post('/requests/{approvalRequest}/head-review', [RequestActionController::class, 'headReview'])->name('requests.headReview');
+    Route::post('/requests/{approvalRequest}/review', [RequestActionController::class, 'review'])->name('requests.review');
+    Route::post('/requests/{approvalRequest}/decide', [RequestActionController::class, 'decide'])->name('requests.decide');
+    Route::post('/requests/{approvalRequest}/confirm-condition', [RequestActionController::class, 'confirmCondition'])->name('requests.confirmCondition');
+    Route::post('/requests/{approvalRequest}/withdraw', [RequestActionController::class, 'withdraw'])->name('requests.withdraw');
 });

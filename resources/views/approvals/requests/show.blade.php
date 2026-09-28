@@ -12,6 +12,16 @@
 @section('content')
 <div class="max-w-[880px]">
 
+    {{-- 成功・失敗の帯はレイアウトが出す。$errors（コメントの長さなど）だけここで出す --}}
+    @if($errors->any())
+        <div class="mb-5 rounded-lg border border-red-200 bg-red-50 p-4">
+            <p class="text-[13px] font-semibold text-red-800 mb-1">入力内容にエラーがあります。</p>
+            <ul class="list-disc list-inside text-[12px] text-red-700 space-y-0.5">
+                @foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach
+            </ul>
+        </div>
+    @endif
+
     <div class="flex flex-wrap items-center gap-2 mb-1">
         <span class="inline-block px-2 py-0.5 rounded text-[11px] font-semibold" style="{{ $approvalRequest->status->badgeStyle() }}">{{ $approvalRequest->statusLabel() }}</span>
         @if($approvalRequest->number)
@@ -82,6 +92,31 @@
                 <li class="text-gray-400">添付はありません。</li>
             @endforelse
         </ul>
+    </section>
+
+    @include('approvals.requests._steps')
+
+    {{-- 操作の記録（新しい順。記録は提出から付く。§5.11・§5.12） --}}
+    <section class="bg-white rounded-lg border border-gray-200 mb-5">
+        <h2 class="px-5 py-3 border-b border-gray-200 text-[14px] font-bold text-gray-900">操作の記録</h2>
+        <ol class="px-5 py-3 space-y-2.5 text-[13px]">
+            @forelse($histories as $history)
+                <li>
+                    <div class="flex flex-wrap items-baseline gap-x-2">
+                        <span class="text-[12px] text-gray-400 tabular-nums">{{ \App\Support\JapanTime::format($history->created_at) }}</span>
+                        <span class="font-semibold text-gray-900">{{ $history->label() }}</span>
+                        @if($history->actor)
+                            <span class="text-gray-600">{{ $history->actor->name }}</span>
+                        @endif
+                    </div>
+                    @if($history->comment)
+                        <p class="mt-0.5 text-gray-700 whitespace-pre-wrap break-words">{{ $history->comment }}</p>
+                    @endif
+                </li>
+            @empty
+                <li class="text-gray-400">まだ記録はありません（提出から記録します）。</li>
+            @endforelse
+        </ol>
     </section>
 
 </div>

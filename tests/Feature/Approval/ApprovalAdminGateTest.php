@@ -95,6 +95,11 @@ class ApprovalAdminGateTest extends TestCase
         'approvals.requests.attachments.store' => '添付の追加（申請者だけ。下書き・差戻し中。段階2 設計書 §5.7）',
         'approvals.attachments.show'           => '添付を開く（見られる範囲を毎回確かめ、記録する）',
         'approvals.attachments.destroy'        => '添付を外す（申請者だけ。下書き・差戻し中）',
+        'approvals.requests.headReview'       => '部門長の承認・差戻し（担当かどうかは Workflow が確かめる。段階2 設計書 §5.8）',
+        'approvals.requests.review'           => '審査の意見（同上）',
+        'approvals.requests.decide'           => '社長の決裁（同上）',
+        'approvals.requests.confirmCondition' => '条件の確認（申請者だけ）',
+        'approvals.requests.withdraw'         => '取り下げ（申請者だけ）',
     ];
 
     /** ラベル用: HEAD を除いた先頭の HTTP メソッド（1 つで十分な場所） */

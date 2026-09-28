@@ -604,6 +604,9 @@ return [
         'body'              => '本文',
         'related_numbers'   => '関連する決裁No',
         'related_numbers.*' => '関連する決裁No',
+        // 判断・条件確認・取り下げ（§5.8）
+        'result'            => '判断',
+        'comment'           => 'コメント',
 
     ],
 

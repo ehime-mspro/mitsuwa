@@ -21,4 +21,14 @@ enum ApprovalStepStatus: string
             self::Cancelled => '打ち切り',
         };
     }
+
+    /** 回る順番のバッジ（inline style を返す。Tailwind クラス指定は規約で NG） */
+    public function badgeStyle(): string
+    {
+        return match ($this) {
+            self::Waiting                                  => 'background: #dbeafe; color: #1e40af;',
+            self::Done                                     => 'background: #d1fae5; color: #065f46;',
+            self::Pending, self::Skipped, self::Cancelled => 'background: #f3f4f6; color: #4b5563;',
+        };
+    }
 }

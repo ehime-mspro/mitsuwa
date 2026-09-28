@@ -5,6 +5,7 @@ namespace Tests\Unit\Approval;
 use App\Enums\ApprovalStatus;
 use App\Enums\ApprovalStepKind;
 use App\Enums\ApprovalStepResult;
+use App\Enums\ApprovalStepStatus;
 use App\Models\ApprovalType;
 use PHPUnit\Framework\TestCase;
 
@@ -114,6 +115,15 @@ class ApprovalEnumsTest extends TestCase
         foreach ([[true, '利用中'], [false, '停止']] as [$active, $label]) {
             $this->assertSame(1, preg_match('/background: (#[0-9a-f]{6}); color: (#[0-9a-f]{6});/', ApprovalType::badgeStyleFor($active), $colors), "{$label} のバッジの色を読めない");
             $this->assertGreaterThanOrEqual(4.5, self::contrast($colors[1], $colors[2]), "申請種類の「{$label}」のバッジの文字が背景に対して 4.5:1 に届かない");
+        }
+    }
+
+    /** 回る順番のバッジも 4.5:1 以上（Task 15 で足した badgeStyle()） */
+    public function test_every_step_status_badge_has_enough_contrast(): void
+    {
+        foreach (ApprovalStepStatus::cases() as $status) {
+            $this->assertSame(1, preg_match('/background: (#[0-9a-f]{6}); color: (#[0-9a-f]{6});/', $status->badgeStyle(), $colors), "{$status->value} のバッジの色を読めない");
+            $this->assertGreaterThanOrEqual(4.5, self::contrast($colors[1], $colors[2]), "{$status->value} のバッジの文字が背景に対して薄い");
         }
     }
 
