@@ -2066,4 +2066,26 @@ EOF
 
 ### Task 8: 本番反映
 
-（未記入）
+2026-09-28 08:53〜09:07（日本時間）。新しいセッションで ledger から再開した。引き継ぎのプロンプトの外に承認の一言が無かったので、手元の読み取り（全件テストを含む）を済ませてから本文で承認を確かめ、利用者の「Aで進めてください」のあとに流した。
+
+- 承認前（08:53〜08:57）: `13.x` = `origin/13.x` = `f61290be`・main repo の作業ツリーは空・`vendor/bin/phpunit` なし・main repo に `.superpowers/sdd` なし ／ worktree は `df213c7b`・作業ツリーは空・`13.x` は祖先（8 コミット先）／ 本番のコード `a7335c27` から変わるアプリのファイルは 3 本だけ（依存・DB・ルート・新しいクラスなし。`CLAUDE.md` は `deploy.sh` が送らない）／ `approval-phase2a`（`f924393a`）は `13.x` に未マージ ／ `df213c7b` で全件 `OK (2355 tests, 15346 assertions)`（1 分 51 秒）／ main repo の無視設定のファイルの一覧（220 行）を控えた
+- Step 1: `f61290be..df213c7b` を早送り（`Fast-forward`）。作業ツリーは空のまま・main repo に `.superpowers/sdd` はできていない
+- Step 2: `ls vendor/bin/phpunit` は何も出さない ／ 無視設定のファイルの一覧は承認前と同一（220 行）・未追跡のファイルなし
+- Step 3: `./deploy.sh` は exit 0（09:00:39〜09:00:50・6 段すべて）。[1/6] は `app-D-wd4D2y.css`（51.21 kB）と `app-NiVQbl_Q.js`（名前は変わらず）を出した（警告 1 件は以前からの Google Fonts の `@import` の位置）／ [2/6] で送ったアプリのファイルは `CustomerImportController.php`・`OneTimeAction.php`・`import.blade.php` と `public/build`（manifest・CSS・JS）だけ ／ [4/6] で旧 CSS `app-wzJ6Tjji.css` を 2 か所（WEB_PATH・APP_PATH）で削除 ／ [5/6] の部品の名簿の作り直し（3 部品）・`config:cache`・`route:cache`・`view:cache` とも成功
+- Step 4（すべて読み取り）:
+
+| 見たこと | 結果 |
+|---|---|
+| 3 本の md5（本番と手元）| 3 つとも一致（`1192b517…`・`48c84294…`・`0af194c5…`）|
+| コンパイル済みビューの `php -l` | `views=274 invalid=0` |
+| `bootstrap/cache` | `config.php`・`routes-v7.php` は 600 ／ `packages.php`・`services.php` は 700（09:00 に作り直し）|
+| `public/build/assets`（APP_PATH・WEB_PATH）| どちらも `app-D-wd4D2y.css`・`app-NiVQbl_Q.js` の 2 つだけ |
+| 本番の CSS（curl・ログイン不要）| `200 text/css`・51,210 バイトで手元のビルドとバイト一致（md5 `6fcaec1c…`）／ `.disabled\:opacity-60:disabled{opacity:.6}`・`.disabled\:cursor-not-allowed:disabled{cursor:not-allowed}`・`.cursor-pointer{cursor:pointer}` が 1 行ずつ |
+| 旧 CSS `app-wzJ6Tjji.css` | `302 text/html`（`text/css` では返らない）|
+| 記録 | 出先は `stack` → `single`（`error` 以上）で、`laravel.log` の最終更新は 6/18 のまま＝反映のあとのエラーは 0 件 |
+| ログイン画面（curl・未ログイン）| `200 text/html`・新しい CSS を読み込む・「社員番号またはメールアドレス」|
+| 取込画面（ログイン済みの実 Chrome・1440px・見るだけ）| 見出し「顧客CSVインポート」・部署のラジオ「住宅事業」（選択済み）「不動産事業」・ファイル欄（`csv_file`・`.csv,.txt`）・「アップロードしてプレビュー」・`_token` あり ／ 読み込んだ CSS は `app-D-wd4D2y.css` で、CSSOM に新しい 2 つのルールがある ／ `<script>` に今回の `onSubmit`・`submitting` が載っている ／ `main` 1220/1220 ／ 開き直したあとのコンソールの出力 0 件 |
+
+- ⚠ 初めは `tabs_context_mcp` が 2 回とも「Claude in Chrome is not connected」、`list_connected_browsers` が空だった → 利用者に Chrome をつないでもらってから確かめた
+- ⚠ 確定の欄（hidden の `import_token`・`x-on:pageshow.window`・「取り込んでいます…」）は、ビューの 150〜172 行＝プレビューのあとにしか描かれないので、初期画面に無いのは想定どおり。二度押し止めと鍵は本番では見ていない（テストとローカルの実ブラウザで確かめてある）。本番で実際に取り込む（確定まで）のは利用者
+- `origin/13.x` への push はしていない
