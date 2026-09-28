@@ -175,7 +175,7 @@ class SheetImportController extends Controller
         if (! is_string($given) || ! hash_equals($this->planDigest($simulation, $yearMonth, $applyPlan), $given)) {
             return redirect()
                 ->route('zeal.simulations.show', $simulation)
-                ->with('error', 'プレビューのあとで反映する内容が変わりました（本部 Sheet か試算表の値が変わっています）。もう一度プレビューしてください。');
+                ->with('error', $this->planChangedMessage($simulation, $sales, $expense));
         }
 
         $appliedCount = 0;
@@ -371,6 +371,27 @@ class SheetImportController extends Controller
         }
 
         return hash('sha256', json_encode([$simulation->id, $yearMonth, $writes]));
+    }
+
+    /**
+     * 指紋が合わなかったときの案内。反映のときに本部 Sheet を読み直せなかったら（URL があるのに読めない）、そう伝える
+     * （「内容が変わりました（…値が変わっています）」だと、誰かが値を変えたと読める。2026-09-28 の独立レビュー）。
+     * ⚠ 読めないこと自体では断らない（プレビューのときも読めなかった Sheet は、見せた内容と同じなので通す。設計書 §4.3）。
+     *   ここは、指紋が合わなかったときの理由の選び方だけ。両方とも読めないときは、この前の「取得できませんでした」が断る
+     */
+    private function planChangedMessage(ZealSimulation $simulation, array $sales, array $expense): string
+    {
+        $sheets = [
+            '売上' => [$simulation->sales_sheet_url, $sales],
+            '経費' => [$simulation->expense_sheet_url, $expense],
+        ];
+        foreach ($sheets as $label => [$url, $sheet]) {
+            if (! empty($url) && $sheet['parsed'] === null) {
+                return "プレビューのあとで{$label} Sheet を読み直せませんでした（{$sheet['error']}）。時間をおいて、もう一度プレビューしてください。";
+            }
+        }
+
+        return 'プレビューのあとで反映する内容が変わりました（本部 Sheet か試算表の値が変わっています）。もう一度プレビューしてください。';
     }
 
     /**

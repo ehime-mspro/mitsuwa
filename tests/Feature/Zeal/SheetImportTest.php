@@ -303,6 +303,58 @@ class SheetImportTest extends TestCase
         $this->assertTurnedBack($this->withField($this->previewForm(), 'plan_digest', $digest));
     }
 
+    /** @return array<string, array{0: string, 1: string}> [反映のときに読み直せない Sheet の URL, 画面での名前] */
+    public static function sheetsThatCannotBeReadAgain(): array
+    {
+        return [
+            '売上' => [self::SALES_URL, '売上'],
+            '経費' => [self::EXPENSE_URL, '経費'],
+        ];
+    }
+
+    /**
+     * プレビューのあとで片方の Sheet だけを読み直せなかった（一時的な障害）: 「内容が変わりました（…値が変わっています）」
+     * ではなく、読み直せなかったと断る。書き込みは 0（2026-09-28 の独立レビューで、事実と違う理由を出していたことを実測）。
+     */
+    #[DataProvider('sheetsThatCannotBeReadAgain')]
+    public function test_a_sheet_that_cannot_be_read_again_turns_the_confirmation_back_with_that_reason(string $url, string $label): void
+    {
+        $form = $this->previewForm();
+
+        // 反映のときだけ読めない（差し替えの fetchCsv() は、用意していない URL で例外を投げる）
+        unset($this->sheets->csv[$url]);
+
+        $cells = $this->cells();
+        [$response, $writes] = $this->countingWrites(fn () => $this->apply($form));
+
+        $this->assertSame(0, $writes, '読み直せなかったのに書き込みが走った');
+        $this->assertSame($cells, $this->cells());
+        $this->assertSame(0, DB::table('zeal_sheet_imports')->count());
+        $this->assertRefused(
+            $response,
+            route('zeal.simulations.show', $this->simulation),
+            "プレビューのあとで{$label} Sheet を読み直せませんでした（テストで用意していない URL: {$url}）。時間をおいて、もう一度プレビューしてください。",
+            $this->user
+        );
+    }
+
+    /**
+     * プレビューのときも読めなかった Sheet があるだけでは断らない（見せた内容と同じものを書く。設計書 §4.3）。
+     * ⚠ 「URL があるのに読めない Sheet があれば断る」形にすると、片方の Sheet が壊れているあいだ、もう片方も反映できなくなる
+     */
+    public function test_a_sheet_that_could_not_be_read_at_the_preview_either_does_not_block_the_other(): void
+    {
+        unset($this->sheets->csv[self::EXPENSE_URL]);
+        $form = $this->previewForm();
+
+        $this->apply($form);
+
+        $this->assertSame('2026-07 の本部 Sheet を取り込みました (1 セル更新)。', session('success'));
+        $this->assertSame(304638, $this->cells()['revenue']);
+        $this->assertSame(400000, $this->cells()['outsourcing'], '読めなかった経費の項目が書かれた');
+        $this->assertSame(['sales'], DB::table('zeal_sheet_imports')->pluck('import_type')->all());
+    }
+
     public function test_the_confirmation_form_guards_against_a_second_press(): void
     {
         $html = $this->preview()->getContent();
