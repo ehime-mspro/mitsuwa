@@ -27,6 +27,9 @@ class AttachmentDeliveryTest extends TestCase
 {
     use RefreshDatabase;
 
+    /** 保存先の名前。store() と同じ形（ランダムな 40 文字＋中身から推測した拡張子）で、名前に拡張子が無くても拡張子がある */
+    private const STORED_PDF = 'Zr8w1Kq0hN5mJ2xY7cV4bT9aL3sD6fG1hP0kQ2uE.pdf';
+
     private User $staff;
 
     protected function setUp(): void
@@ -41,10 +44,10 @@ class AttachmentDeliveryTest extends TestCase
         $this->actingAs($this->staff);
     }
 
-    /** 指定の名前・MIME で添付を1件作る（ファイル実体も fake ディスクに置く） */
-    private function makeAttachment(string $fileName, string $mimeType, string $body = 'FAKEBYTES'): Attachment
+    /** 指定の名前・MIME で添付を1件作る（ファイル実体も fake ディスクに置く。保存先の名前は省略すると表示名と同じ） */
+    private function makeAttachment(string $fileName, string $mimeType, string $body = 'FAKEBYTES', ?string $storedName = null): Attachment
     {
-        $path = 'attachments/contracts/1/' . $fileName;
+        $path = 'attachments/contracts/1/' . ($storedName ?? $fileName);
         Storage::disk('public')->put($path, $body);
 
         return Attachment::create([
@@ -187,5 +190,122 @@ class AttachmentDeliveryTest extends TestCase
         $response->assertOk();
         $this->assertStringStartsWith('inline;', (string) $response->headers->get('Content-Disposition'));
         $this->assertSame('image/jpeg', $response->headers->get('Content-Type'));
+    }
+
+    /**
+     * T10: 日本語だけで拡張子の無い名前も開ける（以前は 500）。
+     *
+     * 古いブラウザ用の ASCII の代わりの名前（filename=）を Laravel に任せると、Str::ascii() が仮名・漢字・絵文字・
+     * 全角の英数字を消して空になり、Symfony の makeDisposition() が例外を投げていた。
+     * 代わりの名前は「attachment.保存先の拡張子」にし、実名は filename* が運ぶ。
+     */
+    public function test_name_without_ascii_letters_opens_inline(): void
+    {
+        foreach (['見積書', '😀', 'Ａ４図面'] as $name) {
+            $attachment = $this->makeAttachment($name, 'application/pdf', 'FAKEBYTES', self::STORED_PDF);
+
+            $response = $this->get(route('attachments.show', $attachment->id));
+
+            $this->assertSame(200, $response->getStatusCode(), $name);
+            $this->assertSame(
+                "inline; filename=attachment.pdf; filename*=utf-8''" . rawurlencode($name),
+                $response->headers->get('Content-Disposition'),
+                $name
+            );
+        }
+    }
+
+    /** T11: 同じ名前をダウンロード（?download=1）しても 500 にならない（以前は 500） */
+    public function test_name_without_ascii_letters_downloads(): void
+    {
+        foreach (['見積書', '😀', 'Ａ４図面'] as $name) {
+            $attachment = $this->makeAttachment($name, 'application/pdf', 'FAKEBYTES', self::STORED_PDF);
+
+            $response = $this->get(route('attachments.show', ['attachment' => $attachment->id, 'download' => 1]));
+
+            $this->assertSame(200, $response->getStatusCode(), $name);
+            $this->assertSame(
+                "attachment; filename=attachment.pdf; filename*=utf-8''" . rawurlencode($name),
+                $response->headers->get('Content-Disposition'),
+                $name
+            );
+        }
+    }
+
+    /**
+     * T12: 今まで開けていた名前（拡張子のある日本語・ASCII）の見出しは 1 文字も変えない。
+     *
+     * 期待値は直す前のコード（Laravel の fallbackName()）で実測した値。代わりの名前の前後の空白も残す
+     * （「見積書 (1).pdf」を trim すると ` (1).pdf` が `(1).pdf` に変わってしまう）。
+     */
+    public function test_names_that_already_opened_keep_the_same_header(): void
+    {
+        $cases = [
+            '見積書.pdf'            => "filename=.pdf; filename*=utf-8''%E8%A6%8B%E7%A9%8D%E6%9B%B8.pdf",
+            '見積書 (1).pdf'        => "filename=\" (1).pdf\"; filename*=utf-8''%E8%A6%8B%E7%A9%8D%E6%9B%B8%20%281%29.pdf",
+            'estimate.pdf'          => 'filename=estimate.pdf',
+            'my report (final).pdf' => 'filename="my report (final).pdf"',
+        ];
+
+        foreach ($cases as $name => $params) {
+            $attachment = $this->makeAttachment($name, 'application/pdf', 'FAKEBYTES', self::STORED_PDF);
+
+            $inline   = $this->get(route('attachments.show', $attachment->id));
+            $download = $this->get(route('attachments.show', ['attachment' => $attachment->id, 'download' => 1]));
+
+            $this->assertSame('inline; ' . $params, $inline->headers->get('Content-Disposition'), $name);
+            $this->assertSame('attachment; ' . $params, $download->headers->get('Content-Disposition'), $name);
+        }
+    }
+
+    /** T13: 保存先に拡張子が無ければ、代わりの名前は「attachment」だけにする（「attachment.」にしない） */
+    public function test_fallback_has_no_extension_when_the_stored_path_has_none(): void
+    {
+        $attachment = $this->makeAttachment('見積書', 'application/pdf');
+
+        $response = $this->get(route('attachments.show', $attachment->id));
+
+        $response->assertOk();
+        $this->assertSame(
+            "inline; filename=attachment; filename*=utf-8''" . rawurlencode('見積書'),
+            $response->headers->get('Content-Disposition')
+        );
+    }
+
+    /**
+     * T14: 代わりの名前が空白だけになる名前（拡張子の無い「見積書 のコピー」）も attachment.拡張子 にする。
+     *
+     * 直す前も 200 で開けてはいたが、代わりの名前が `filename=" "` と空白だけで、古いブラウザでは名前にならなかった。
+     */
+    public function test_fallback_of_only_spaces_is_replaced(): void
+    {
+        $attachment = $this->makeAttachment('見積書 のコピー', 'application/pdf', 'FAKEBYTES', self::STORED_PDF);
+
+        $response = $this->get(route('attachments.show', $attachment->id));
+
+        $response->assertOk();
+        $this->assertSame(
+            "inline; filename=attachment.pdf; filename*=utf-8''" . rawurlencode('見積書 のコピー'),
+            $response->headers->get('Content-Disposition')
+        );
+    }
+
+    /**
+     * T15: 印字できない文字が残る名前も 500 にしない（以前は 500）。
+     *
+     * Str::ascii() は制御文字のうち \x10 と \x13 を消さずに残す（実測）ので、拡張子があっても代わりの名前に使えない。
+     */
+    public function test_fallback_with_a_control_character_is_replaced(): void
+    {
+        $name       = "見積\x10書.pdf";
+        $attachment = $this->makeAttachment($name, 'application/pdf', 'FAKEBYTES', self::STORED_PDF);
+
+        $response = $this->get(route('attachments.show', $attachment->id));
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertSame(
+            "inline; filename=attachment.pdf; filename*=utf-8''" . rawurlencode($name),
+            $response->headers->get('Content-Disposition')
+        );
     }
 }
