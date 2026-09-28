@@ -19,6 +19,7 @@ use App\Support\Approval\WorkflowConflict;
 use App\Support\Approval\WorkflowRefused;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -117,14 +118,16 @@ class RequestController extends Controller
         ]);
         // 申請者以外には最後に提出した控え（差戻し中の直しかけは出し直すまで申請者だけ。利用者の決定 2026-09-27）
         $content = RequestContent::for($user, $approvalRequest);
+        // 操作の記録（新しい順。§5.12）
+        $histories = ApprovalHistory::with('actor')->where('request_id', $approvalRequest->id)->orderByDesc('id')->get();
 
         return view('approvals.requests.show', [
             'approvalRequest' => $approvalRequest,
             'content'         => $content,
             'permissions'     => RequestPermissions::for($user, $approvalRequest),
             'relatedLinks'    => $this->relatedLinks($content->relatedNumbers, $user),
-            // 操作の記録（新しい順。§5.12）
-            'histories'       => ApprovalHistory::with('actor')->where('request_id', $approvalRequest->id)->orderByDesc('id')->get(),
+            'histories'       => $histories,
+            'newHeadNames'    => $this->newHeadNames($histories),
         ]);
     }
 
@@ -372,6 +375,26 @@ class RequestController extends Controller
             ->whereIn('number', $numbers)
             ->pluck('id', 'number')
             ->all();
+    }
+
+    /**
+     * 部門長の交代の記録（head_changed）で担当が移った先の人の名前（id => 名前。Task 19 の C9）。
+     * 記録の横の名前は交代を操作した管理者なので、移った先を別に添える。
+     * ⚠ 論理削除した人も名前を出す（記録は残る）。記録ごとに読まず、1 回の問い合わせで読む
+     *
+     * @param Collection<int, ApprovalHistory> $histories
+     * @return array<int, string>
+     */
+    private function newHeadNames(Collection $histories): array
+    {
+        $ids = $histories->where('action', 'head_changed')
+            ->map(fn (ApprovalHistory $history) => $history->meta['to_user_id'] ?? null)
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        return $ids === [] ? [] : User::withTrashed()->whereKey($ids)->pluck('name', 'id')->all();
     }
 
     /** 見られない申請は 404（在るかどうかを漏らさない。設計書 §5.10） */

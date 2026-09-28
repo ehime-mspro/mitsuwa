@@ -109,6 +109,10 @@
                         @if($history->actor)
                             <span class="text-gray-600">{{ $history->actor->name }}</span>
                         @endif
+                        {{-- 部門長の交代は、担当が移った先の人を添える（横の名前は交代を操作した管理者。Task 19 の C9） --}}
+                        @if($history->action === 'head_changed' && isset($newHeadNames[$history->meta['to_user_id'] ?? 0]))
+                            <span class="text-gray-600">新しい担当: {{ $newHeadNames[$history->meta['to_user_id']] }}</span>
+                        @endif
                     </div>
                     @if($history->comment)
                         <p class="mt-0.5 text-gray-700 whitespace-pre-wrap break-words">{{ $history->comment }}</p>

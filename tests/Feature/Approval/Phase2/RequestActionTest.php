@@ -14,6 +14,7 @@ use App\Support\Approval\Workflow;
 use App\Support\Approval\WorkflowConflict;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
 use Tests\Concerns\BuildsApprovalFixtures;
 use Tests\Concerns\ParsesForms;
@@ -777,5 +778,45 @@ class RequestActionTest extends TestCase
         $html = $this->showHtml($w['applicant'], $request);
         $this->assertStringContainsString('社長の指定を変えられるのは基幹の管理者です。急ぐときは取り下げてください。', $html);
         $this->assertStringNotContainsString('決裁の管理者に相談してください', $html);
+    }
+
+    /**
+     * 部門長の交代の記録には、移った先（新しい担当）の名前を添える（記録の横の名前は、交代を操作した管理者。Task 19 の C9）。
+     * 論理削除した人も名前を出し、名前は記録の数によらず 1 回の問い合わせで読む
+     */
+    public function test_a_head_change_names_the_new_assignee(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $request = $this->submittedFor($w);
+        $admin   = $this->approvalAdmin();
+        $second  = $this->baseUser(['name' => '二代目 部門長']);
+
+        app(Workflow::class)->headChanged($w['dept'], $w['head']->id, $second->id, $admin);
+        $w['dept']->update(['head_user_id' => $second->id]);
+
+        $history = $this->section($this->showHtml($w['applicant'], $request), '操作の記録', '</section>');
+        $this->assertMatchesRegularExpression('/部門長の交代で担当が移った.*決裁 管理者.*新しい担当: 二代目 部門長/su', $history);
+
+        $queries = function () use ($w, $request): int {
+            DB::flushQueryLog();
+            DB::enableQueryLog();
+            $this->showHtml($w['applicant'], $request);
+            DB::disableQueryLog();
+
+            return count(DB::getQueryLog());
+        };
+        $once = $queries();
+
+        // もう一度交代し、前の移った先の人を論理削除した（名前は出す。記録が増えても問い合わせは増やさない）
+        $third = $this->baseUser(['name' => '三代目 部門長']);
+        app(Workflow::class)->headChanged($w['dept'], $second->id, $third->id, $admin);
+        $w['dept']->update(['head_user_id' => $third->id]);
+        $second->delete();
+
+        $history = $this->section($this->showHtml($w['applicant'], $request), '操作の記録', '</section>');
+        $this->assertSame(2, substr_count($history, '新しい担当: '));
+        $this->assertMatchesRegularExpression('/新しい担当: 三代目 部門長.*新しい担当: 二代目 部門長/su', $history);
+        $this->assertSame($once, $queries(), '交代の記録が増えると問い合わせが増える');
     }
 }
