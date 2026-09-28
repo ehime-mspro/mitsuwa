@@ -81,5 +81,20 @@ return Application::configure(basePath: dirname(__DIR__))
                 return response()->json(['message' => '見つかりませんでした。画面を開き直してください。'], 404);
             }
         });
+
+        // 決裁の URL の JSON の 419（画面を開いたまま時間がたち、セッションが切れた。既定は「CSRF token mismatch.」）と
+        // 401（ログアウトした。既定は「Unauthenticated.」）を日本語にする。申請書の添付の欄は、断られた理由としてこの文を
+        // そのまま出す（Task 19 の B5）。⚠ 決裁の URL だけ（基幹の応答は変えない）。
+        // ⚠ 419 は、Laravel が TokenMismatchException を HttpException(419) に置き換えてから render を呼ぶので、HttpException で受けて番号を見る
+        $exceptions->render(function (\Symfony\Component\HttpKernel\Exception\HttpException $e, \Illuminate\Http\Request $request) {
+            if ($e->getStatusCode() === 419 && $request->is('approvals/*') && $request->expectsJson()) {
+                return response()->json(['message' => '画面を開いてから時間がたったため、送れませんでした。画面を開き直して、もう一度やり直してください。'], 419);
+            }
+        });
+        $exceptions->render(function (\Illuminate\Auth\AuthenticationException $e, \Illuminate\Http\Request $request) {
+            if ($request->is('approvals/*') && $request->expectsJson()) {
+                return response()->json(['message' => 'ログインが切れました。ログインし直してから、もう一度やり直してください。'], 401);
+            }
+        });
     })
     ->create();
