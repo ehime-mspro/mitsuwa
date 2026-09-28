@@ -62,8 +62,9 @@ final class SubmitChecker
             $reasons[] = '件名を入力してください。';
         }
 
+        // 「■」の行は後ろに書き足しても見出しとして扱う（D12）ので、どこに書けばよいかを添える（Task 19 の C6）
         if (BodyTemplate::isBlank($request->body)) {
-            $reasons[] = '重点ポイント（5W2H）が見出しのままです。中身を書いてください。';
+            $reasons[] = '重点ポイント（5W2H）が見出しのままです。中身は「■」の行の後ろではなく、下の「・」の行に書いてください。';
         }
 
         return $reasons;

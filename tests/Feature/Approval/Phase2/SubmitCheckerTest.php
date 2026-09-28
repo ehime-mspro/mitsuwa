@@ -145,7 +145,7 @@ class SubmitCheckerTest extends TestCase
         $this->assertSame([
             '申請の種類を選んでください。',
             '件名を入力してください。',
-            '重点ポイント（5W2H）が見出しのままです。中身を書いてください。',
+            '重点ポイント（5W2H）が見出しのままです。中身は「■」の行の後ろではなく、下の「・」の行に書いてください。',
         ], $reasons);
     }
 
@@ -168,5 +168,19 @@ class SubmitCheckerTest extends TestCase
         $world = $this->approvalWorld();
 
         $this->assertSame(['件名を入力してください。'], SubmitChecker::reasons($this->draftFor($world, ['subject' => "\u{3000}\u{3000}"]), $world['applicant']));
+    }
+
+    /**
+     * 「■」の行の後ろに書いた中身は見出しの一部（設計書 §5.6 の定義。D12）なので、どこに書けばよいかを添えて断る
+     * （Task 19 の C6。利用者の決定 2026-09-28）
+     */
+    public function test_content_after_a_heading_mark_is_refused_with_where_to_write(): void
+    {
+        $world = $this->approvalWorld();
+
+        $this->assertSame(
+            ['重点ポイント（5W2H）が見出しのままです。中身は「■」の行の後ろではなく、下の「・」の行に書いてください。'],
+            SubmitChecker::reasons($this->draftFor($world, ['body' => "■ なぜ（目的・理由）老朽化のため\n・"]), $world['applicant'])
+        );
     }
 }

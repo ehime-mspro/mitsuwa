@@ -190,7 +190,7 @@ class RequestFormTest extends TestCase
         $response->assertRedirect(route('approvals.requests.edit', $request))
             ->assertSessionHasErrors(['submit' => '申請の種類を選んでください。'])
             ->assertSessionHasErrors(['submit' => '件名を入力してください。'])
-            ->assertSessionHasErrors(['submit' => '重点ポイント（5W2H）が見出しのままです。中身を書いてください。']);
+            ->assertSessionHasErrors(['submit' => '重点ポイント（5W2H）が見出しのままです。中身は「■」の行の後ろではなく、下の「・」の行に書いてください。']);
         $this->assertSame(ApprovalStatus::Draft, $request->status);
         $this->assertSame(1000, $request->amount);
     }
@@ -209,7 +209,7 @@ class RequestFormTest extends TestCase
         $this->actingAs($w['applicant'])->get(route('approvals.requests.edit', $request))->assertOk()->assertSeeInOrder([
             '提出することができませんでした',
             '件名を入力してください。',
-            '重点ポイント（5W2H）が見出しのままです。中身を書いてください。',
+            '重点ポイント（5W2H）が見出しのままです。中身は「■」の行の後ろではなく、下の「・」の行に書いてください。',
         ]);
     }
 
