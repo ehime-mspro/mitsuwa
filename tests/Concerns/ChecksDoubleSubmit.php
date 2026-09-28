@@ -89,6 +89,11 @@ trait ChecksDoubleSubmit
         string $statusText = '取り込んでいます…',
         string $opacityClass = 'disabled:opacity-60'
     ): void {
+        // 部品の定義（script）がこの画面に描かれていること（呼び出し側の x-data と定義側を対で見る。Bug #28）。
+        // ⚠ 部品の @include がフォームと同じ if の外に出て描かれなくなっても、属性だけを見ると緑のまま
+        //   （2026-09-28 の独立レビューで、@include を @if(false) で包んでも関係するテストが緑のままだったことを実測）
+        $this->assertStringContainsString('function submitOnce(', $html, '確定のフォームを描いた画面に、二度押し止めの部品の script が無い');
+
         $needle = 'action="' . $action . '"';
         $pos    = strpos($html, $needle);
         $this->assertNotFalse($pos, "確定のフォームが無い: {$needle}");
