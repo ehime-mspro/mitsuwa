@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use Illuminate\Support\Facades\Blade;
+use Illuminate\Support\Facades\File;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
@@ -17,6 +18,17 @@ use Tests\TestCase;
  */
 class SubmitOnceTest extends TestCase
 {
+    /**
+     * 1 回限りの鍵（import_token）を描くのに、この部品を使わない画面 => 理由（全件分類。Top trap #13）。
+     * ⚠ 足すときは理由を書く。鍵を描く画面は、ここか部品のどちらかに必ず分類される
+     */
+    private const OWN_GUARD = [
+        'admin/customers/import.blade.php' => '独自の csvImport() が二度押し止めを持つ（2026-09-27。共通の部品へのそろえは範囲外。設計書 §6）',
+    ];
+
+    /** 鍵を描く画面の数の下限（2026-09-28 実測 7。空振りして緑になる事故を防ぐ） */
+    private const MIN_TOKEN_VIEWS = 7;
+
     /** 部品を読み込んで、レイアウトと同じく scripts のスタックを最後に出したページ */
     private function renderedPage(string $includes = "@include('_partials._submit_once')"): string
     {
@@ -145,6 +157,45 @@ class SubmitOnceTest extends TestCase
         );
 
         $this->assertSame(['reloads' => $reloads, 'submitting' => $submittingAfter], $this->runInNode($steps));
+    }
+
+    /**
+     * 1 回限りの鍵（name="import_token"）を描く画面を機械的に列挙し、どれも部品を使っていること。
+     * ⚠ Blade コメントを落としてから見る（注意書きに同じ文字列を書くと、実体を消しても緑になる。Bug #42 ②）
+     */
+    public function test_every_view_that_carries_an_import_token_uses_submit_once(): void
+    {
+        $found    = [];
+        $problems = [];
+
+        foreach (File::allFiles(resource_path('views')) as $file) {
+            if (! str_ends_with($file->getFilename(), '.blade.php')) {
+                continue;
+            }
+            $source = preg_replace('/\{\{--.*?--\}\}/s', '', file_get_contents($file->getPathname()));
+            if (! str_contains($source, 'name="import_token"')) {
+                continue;
+            }
+
+            $relative = str_replace(resource_path('views') . '/', '', $file->getPathname());
+            $found[]  = $relative;
+            if (array_key_exists($relative, self::OWN_GUARD)) {
+                continue;
+            }
+            if (! str_contains($source, "@include('_partials._submit_once')")) {
+                $problems[] = "{$relative}（二度押し止めの部品を読み込んでいない）";
+            }
+            if (preg_match('/\sx-data="submitOnce\(/', $source) !== 1) {
+                $problems[] = "{$relative}（確定のフォームの x-data が submitOnce() でない）";
+            }
+        }
+        sort($found);
+
+        $this->assertSame([], $problems, "鍵を描くのに二度押し止めの部品を使っていない画面がある:\n" . implode("\n", $problems));
+        foreach (array_keys(self::OWN_GUARD) as $view) {
+            $this->assertContains($view, $found, "OWN_GUARD の {$view} が鍵を描いていない（分類が古い）");
+        }
+        $this->assertGreaterThanOrEqual(self::MIN_TOKEN_VIEWS, count($found), '鍵を描く画面の列挙が痩せている（走査の空振り）');
     }
 
     public function test_the_script_is_defined_once_in_the_scripts_stack(): void

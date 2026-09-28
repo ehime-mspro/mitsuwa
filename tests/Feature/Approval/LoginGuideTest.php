@@ -352,6 +352,8 @@ class LoginGuideTest extends TestCase
      * ⚠ **呼び出しを足したら下限も上げる** —— 2026-09-27 に顧客 CSV の取込の確定
      *   （`Admin\CustomerImportController::execute()`）を足して本物が 5 → 6 になった。下限を 5 のままにすると、
      *   決裁の 1 か所を消してもこのテストは緑のままだった（同日のレビューで実測）。
+     *   2026-09-28 にほかの取込の確定 6 か所（テナント・賃貸マンションの `loadCsv()`・ZEAL 会員・工程表・
+     *   ZEAL の本部 Sheet・周辺ビル）を足して 6 → 12 にした（設計書 2026-09-28-import-double-submit-design.md §5.3）。
      * ⚠ **これでも捕まえられない書き方がある** —— `[OneTimeAction::class, 'claim']` や
      *   `call_user_func` 経由の動的呼び出し、`app/` `routes/` の外（Blade・DB に保存された文字列など）
      *   から呼ぶ経路は、この正規表現走査では検出できない。
@@ -412,9 +414,10 @@ class LoginGuideTest extends TestCase
         );
 
         $this->assertGreaterThanOrEqual(
-            6,
+            12,
             $claimFromCallSites,
-            'claimFrom() の呼び出しが減っている（決裁の store / resetPassword / execute / reissue / reissueBulk の 5 箇所と、顧客 CSV の取込の execute の 1 箇所が既定）'
+            'claimFrom() の呼び出しが減っている（決裁の store / resetPassword / execute / reissue / reissueBulk の 5 箇所と、'
+            . '取込の確定 7 箇所（顧客・テナント・賃貸マンション・ZEAL 会員・工程表・ZEAL の本部 Sheet・周辺ビル）が既定）'
         );
     }
 
