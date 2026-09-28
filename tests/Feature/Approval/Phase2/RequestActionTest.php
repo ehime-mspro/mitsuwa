@@ -686,4 +686,16 @@ class RequestActionTest extends TestCase
         $html = $this->showHtml($w['applicant'], $request);
         $this->assertSame(4, substr_count($html, 'disabled aria-describedby="judge-refusal"'));   // 可・条可・差戻し・否
     }
+
+    /** 社長の説明文も、コメントが必要な判断を言う（部門長・審査の説明文と同じ。Task 15 の点検の m-4） */
+    public function test_the_president_hint_names_the_judgements_that_need_a_comment(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $request = $this->submittedFor($w);
+        $this->act($w['head'], $request, 'approvals.requests.headReview', ['result' => 'approve']);
+        $this->act($w['reviewer'], $request, 'approvals.requests.review', ['result' => 'ok']);
+
+        $this->assertStringContainsString('（条可・差戻し・否はコメントが必要）', $this->showHtml($w['president'], $request));
+    }
 }

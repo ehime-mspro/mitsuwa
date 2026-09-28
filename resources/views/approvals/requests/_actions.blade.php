@@ -103,7 +103,7 @@
         $hint = match ($kind) {
             \App\Enums\ApprovalStepKind::Head      => '承認すると審査へ回ります。差し戻すと申請者が直して出し直します（差戻しはコメントが必要）。',
             \App\Enums\ApprovalStepKind::Review    => '可・保留・否のどれでも社長へ回ります（保留・否はコメントが必要）。',
-            \App\Enums\ApprovalStepKind::President => '可・条可・否で決裁No が付きます。条可はコメントに条件を書いてください。差し戻すと申請者が直して出し直します。',
+            \App\Enums\ApprovalStepKind::President => '可・条可・否で決裁No が付きます。条可はコメントに条件を書いてください。差し戻すと申請者が直して出し直します（条可・差戻し・否はコメントが必要）。',
         };
         $choiceData = [];
         foreach ($choices as $choice) {
