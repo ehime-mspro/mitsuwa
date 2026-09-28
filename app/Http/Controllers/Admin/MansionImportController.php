@@ -19,6 +19,7 @@ use App\Support\CsvDate;
 use App\Support\CsvImportException;
 use App\Support\CsvImportReader;
 use App\Support\CsvImportTemplate;
+use App\Support\OneTimeAction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -39,6 +40,10 @@ use Illuminate\Validation\ValidationException;
  *   確認画面は POST の応答で、その URL は POST 専用の `/admin/mansion-import/{tab}`。そこに載ったフォーム
  *   （アップロードし直し・インポート実行）から送るとリファラーがその URL になり、`url()->previous()` は
  *   リファラーを優先するので GET で 405 になる（docs/RULES.md Bug #64）。
+ * ⚠ 確定は確認画面 1 つにつき 1 回だけ（hidden の `import_token`・`OneTimeAction`。
+ *   設計書 2026-09-28-import-double-submit-design.md §4.2）。鍵は 6 タブのプレビューで出し、`loadCsv()` の確定の分岐の
+ *   最初（CSV を読み直す前）で使う。直す前は、同じ確認画面の確定を 2 回送ると部屋契約・駐車場契約が二重に入った
+ *   （物件・部屋・駐車場・入居者は重複の確認で 2 回目が「0件を登録しました」になった）。
  */
 class MansionImportController extends Controller
 {
@@ -176,6 +181,21 @@ class MansionImportController extends Controller
         'メモ'               => 'memo',
     ];
 
+    /**
+     * 同じ確認画面から 2 回目を送ったときの案内の、「確かめられます」の前の句（タブのキー => 句。設計書 §4.4）。
+     * ⚠ タブを足したら、ここにも足す（無いと、そのタブの 2 回目が 500 になる。
+     *   MansionImportDoubleSubmitTest が execute{X} を列挙して、タブごとに 2 回目の断りを確かめる）
+     * ⚠ キーは戻り先のタブ（room_contract。URL の room-contract ではない）
+     */
+    private const WHERE_TO_CHECK = [
+        'property'         => '「物件一覧」で',
+        'room'             => '「物件一覧」から開く物件の詳細で',
+        'parking'          => '「物件一覧」から開く物件の詳細で',
+        'tenant'           => '「入居者管理」で',
+        'room_contract'    => '「部屋契約一覧」で',
+        'parking_contract' => '「駐車場契約一覧」で',
+    ];
+
     // ================================================================
     // 画面表示
     // ================================================================
@@ -304,6 +324,8 @@ class MansionImportController extends Controller
                 'skippedRows' => $skippedRows,
                 'summary'     => '物件 ' . count($validRows) . '件を新規作成',
                 'csvData'     => base64_encode($content),
+                // 確定を 1 回だけ通す鍵（クラスの docblock）
+                'importToken' => OneTimeAction::issue(),
             ]);
         }
 
@@ -488,6 +510,8 @@ class MansionImportController extends Controller
                 'skippedRows' => [],
                 'summary'     => '部屋 ' . count($validRows) . '件を新規作成',
                 'csvData'     => base64_encode($content),
+                // 確定を 1 回だけ通す鍵（クラスの docblock）
+                'importToken' => OneTimeAction::issue(),
             ]);
         }
 
@@ -649,6 +673,8 @@ class MansionImportController extends Controller
                 'skippedRows' => [],
                 'summary'     => '駐車場 ' . count($validRows) . '件を新規作成',
                 'csvData'     => base64_encode($content),
+                // 確定を 1 回だけ通す鍵（クラスの docblock）
+                'importToken' => OneTimeAction::issue(),
             ]);
         }
 
@@ -778,6 +804,8 @@ class MansionImportController extends Controller
                 'skippedRows' => $skippedRows,
                 'summary'     => '入居者 ' . count($validRows) . '件を新規作成',
                 'csvData'     => base64_encode($content),
+                // 確定を 1 回だけ通す鍵（クラスの docblock）
+                'importToken' => OneTimeAction::issue(),
             ]);
         }
 
@@ -988,6 +1016,8 @@ class MansionImportController extends Controller
                 'skippedRows' => [],
                 'summary'     => '部屋契約 ' . count($validRows) . '件を新規作成',
                 'csvData'     => base64_encode($content),
+                // 確定を 1 回だけ通す鍵（クラスの docblock）
+                'importToken' => OneTimeAction::issue(),
             ]);
         }
 
@@ -1230,6 +1260,8 @@ class MansionImportController extends Controller
                 'skippedRows' => [],
                 'summary'     => '駐車場契約 ' . count($validRows) . '件を新規作成',
                 'csvData'     => base64_encode($content),
+                // 確定を 1 回だけ通す鍵（クラスの docblock）
+                'importToken' => OneTimeAction::issue(),
             ]);
         }
 
@@ -1377,7 +1409,7 @@ class MansionImportController extends Controller
      * CSV を読み込んで行配列にする。
      *
      * 純粋な読み取りは [[\App\Support\CsvImportReader]] にある。ここに残るのは
-     * HTTP 依存の 3 つだけ: ファイル取得 / 確定時の base64 復元 / 差し戻し。
+     * HTTP 依存の 4 つだけ: ファイル取得 / 確定時の 1 回限りの鍵 / 確定時の base64 復元 / 差し戻し。
      *
      * @param  string  $tab  断ったときに戻す取込の画面のタブ（クラスの docblock。Bug #64）
      * @return array{0: list<array<string, string>>, 1: string}|\Illuminate\Http\RedirectResponse
@@ -1385,6 +1417,13 @@ class MansionImportController extends Controller
     private function loadCsv(Request $request, array $columnMap, array $requiredKeys, string $tab)
     {
         if ($request->boolean('confirmed')) {
+            // 確定は確認画面 1 つにつき 1 回だけ（クラスの docblock）。⚠ CSV を読み直す前に使う
+            if (! OneTimeAction::claimFrom($request, 'import_token')) {
+                return redirect()->route('admin.mansion-import', ['selected_tab' => $tab])
+                    ->with('error', 'この確認画面からは取り込めません（すでに送信したか、画面が古くなっています）。取り込まれたかは'
+                        . self::WHERE_TO_CHECK[$tab] . '確かめられます。取り込み直すときは、CSVをアップロードし直してください。');
+            }
+
             // 確認画面が持ち回った base64 から復元（既に UTF-8・BOM 除去済み）
             $content = base64_decode($request->input('csv_data', ''));
         } else {
