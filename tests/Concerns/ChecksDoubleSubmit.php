@@ -119,7 +119,9 @@ trait ChecksDoubleSubmit
         // 送信ボタン（1 つ）
         $this->assertSame(1, preg_match_all('/<button\b[^>]*\btype="submit"[^>]*>/u', $form, $buttons), '確定のフォームの送信ボタンが 1 つでない');
         $button = $buttons[0][0];
-        $this->assertMatchesRegularExpression('/\s:disabled="[^"]*\bsubmitting\b[^"]*"/', $button, '送信中にボタンを押せなくしていない');
+        // 式の先頭を submitting に固定する（`!submitting` のような逆の式を通さない。周辺ビルは `submitting || 押せない理由` の形。
+        // 2026-09-28 の独立レビューで、語の有無だけを見ていた形が `:disabled="!submitting"` を通すことを実測）
+        $this->assertMatchesRegularExpression('/\s:disabled="submitting(?: \|\| [^"]+)?"/', $button, '送信中にボタンを押せなくしていない');
         $classes = preg_split('/\s+/', (string) $this->htmlAttr($button, 'class'));
         foreach (['cursor-pointer', 'disabled:cursor-not-allowed', $opacityClass] as $class) {
             $this->assertContains($class, $classes, "送信ボタンに {$class} が無い");
