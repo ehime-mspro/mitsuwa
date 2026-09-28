@@ -154,7 +154,8 @@
                     <input type="hidden" name="result" :value="choice">
                     <div class="px-6 pt-5 text-[15px] font-bold text-gray-900">「<span x-text="label()"></span>」で確定しますか？</div>
                     @if($refusedReason !== '')
-                        <p class="mx-6 mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">{{ $refusedReason }}</p>
+                        {{-- 断られた判断を選んでいるあいだだけ出す（小窓を閉じて別の判断を選び直すと、前の断りの理由は当てはまらない） --}}
+                        <p x-show="choice === {{ \Illuminate\Support\Js::from($reopenChoice) }}" class="mx-6 mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">{{ $refusedReason }}</p>
                     @endif
                     <div class="px-6 py-4">
                         <label for="judge-comment" class="block text-[12px] font-semibold text-gray-700 mb-1">

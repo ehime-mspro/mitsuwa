@@ -1063,4 +1063,18 @@ class RequestActionTest extends TestCase
             $this->assertStringNotContainsString('x-init="open(', $html, $value);
         }
     }
+
+    /** 開き直した判断の小窓の断りの理由は、断られた判断を選んでいるあいだだけ出す（Task 19 の C8 の点検の任意の直し O-1。別の判断を選び直したら当てはまらない） */
+    public function test_the_reason_in_the_reopened_modal_belongs_to_the_refused_choice(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $request = $this->submittedFor($w);
+        $action  = route('approvals.requests.headReview', $request);
+
+        $this->act($w['head'], $request, 'approvals.requests.headReview', ['result' => 'return', 'comment' => ''])
+            ->assertRedirect(route('approvals.requests.show', $request));
+        $form = $this->formOf($this->showHtml($w['head'], $request), $action);
+        $this->assertMatchesRegularExpression('/<p x-show="choice === \'return\'" [^>]*>「差戻し」にはコメントが必要です。<\/p>/u', $form);
+    }
 }
