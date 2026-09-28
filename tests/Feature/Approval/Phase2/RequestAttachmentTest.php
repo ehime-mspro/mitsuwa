@@ -376,4 +376,220 @@ class RequestAttachmentTest extends TestCase
         $this->actingAs($w['head'])->get(route('approvals.attachments.show', $mistake))->assertNotFound();
         $this->actingAs($w['applicant'])->get(route('approvals.attachments.show', $mistake))->assertOk();
     }
+
+    // ------------------------------------------------------------------
+    // Task 14 の点検で足した守り（変異で緑のまま残った穴を塞ぐ。最後の 2 本は直しを前提にする）
+    // ------------------------------------------------------------------
+
+    /** 見られる人でも、申請者でなければ、直せる状態（差戻し中）の申請に足せない・外せない。見られない人は 404 */
+    public function test_others_cannot_attach_or_remove_even_while_the_request_is_editable(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $draft = $this->draftFor($w);
+        $this->upload($w['applicant'], $draft, $this->pdf())->assertOk();
+        $attachment = ApprovalAttachment::sole();
+
+        // 下書き: ほかの人は申請も見られない
+        $this->upload($w['head'], $draft, $this->pdf('部門長の添付.pdf'))->assertNotFound();
+        $this->remove($w['head'], $attachment)->assertNotFound();
+
+        $request = $this->submitAndReturn($draft, $w);
+        foreach ([$w['head'], $this->approvalAdmin()] as $other) {
+            $this->upload($other, $request, $this->pdf('ほかの人の添付.pdf'))
+                ->assertForbidden()
+                ->assertJsonPath('message', '添付を足せるのは、下書きと差戻し中の申請者だけです。');
+            $this->remove($other, $attachment)
+                ->assertForbidden()
+                ->assertJsonPath('message', '添付を外せるのは、下書きと差戻し中の申請者だけです。');
+        }
+        $stranger = $this->approvalOnlyUser();
+        $this->upload($stranger, $request, $this->pdf('ほかの人の添付.pdf'))->assertNotFound();
+        $this->remove($stranger, $attachment)->assertNotFound();
+
+        $this->assertSame(1, ApprovalAttachment::count());
+        $this->assertNull($attachment->fresh()->removed_at);
+    }
+
+    /** 外した添付をもう一度外すと断る（外した日時を書き換えない） */
+    public function test_removing_twice_is_refused(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $draft = $this->draftFor($w);
+        $this->upload($w['applicant'], $draft, $this->pdf())->assertOk();
+        $attachment = ApprovalAttachment::sole();
+        $this->submitAndReturn($draft, $w);
+
+        $this->remove($w['applicant'], $attachment)->assertOk();
+        $removedAt = $attachment->fresh()->removed_at;
+        $this->travel(5)->minutes();
+
+        $this->remove($w['applicant'], $attachment)
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'この添付はもう外してあります。画面を開き直してください。');
+        $this->assertEquals($removedAt, $attachment->fresh()->removed_at);
+    }
+
+    /** 申請書の添付の一覧は、外した添付を出さない */
+    public function test_the_edit_form_lists_only_the_current_attachments(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $draft = $this->draftFor($w);
+        $this->upload($w['applicant'], $draft, $this->pdf('古い図面.pdf'))->assertOk();
+        $this->upload($w['applicant'], $draft, $this->pdf())->assertOk();
+        [$removed, $kept] = ApprovalAttachment::orderBy('id')->get()->all();
+        $request = $this->submitAndReturn($draft, $w);
+        $this->remove($w['applicant'], $removed)->assertOk();
+
+        $html = $this->actingAs($w['applicant'])->get(route('approvals.requests.edit', $request))->assertOk()->getContent();
+        $this->assertStringContainsString('files: ' . Js::from([$kept->listItem()])->toHtml() . ',', $html);
+    }
+
+    /** 開いた記録に、誰が・どれを・いつのほか、IP と端末（255 文字まで）も残す（14.2・設計書 §5.11） */
+    public function test_opening_records_the_address_and_the_device(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $draft = $this->draftFor($w);
+        $this->upload($w['applicant'], $draft, $this->pdf())->assertOk();
+        $attachment = ApprovalAttachment::sole();
+        app(Workflow::class)->submit($draft->refresh(), $w['applicant']);
+
+        $this->actingAs($w['head'])
+            ->withServerVariables(['REMOTE_ADDR' => '203.0.113.9'])
+            ->withHeaders(['User-Agent' => 'Mozilla/5.0 (iPhone) ' . str_repeat('端', 300)])
+            ->get(route('approvals.attachments.show', $attachment))->assertOk();
+
+        $log = ApprovalDownloadLog::sole();
+        $this->assertSame('203.0.113.9', $log->ip_address);
+        $this->assertSame(255, mb_strlen($log->user_agent));
+        $this->assertStringStartsWith('Mozilla/5.0 (iPhone) ', $log->user_agent);
+        $this->assertNotNull($log->created_at);
+    }
+
+    /** 種類は中身から決める（送られてきた名前の拡張子と MIME を信じない。§5.7） */
+    public function test_the_kind_comes_from_the_contents(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $draft = $this->draftFor($w);
+        // 中身は PNG（1 × 1）・名前は .pdf・送られてきた MIME は PDF
+        $path = tempnam(sys_get_temp_dir(), 'approval-attachment-');
+        file_put_contents($path, base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='));
+
+        $this->upload($w['applicant'], $draft, new UploadedFile($path, '見積書.pdf', 'application/pdf', null, true))->assertOk();
+
+        $attachment = ApprovalAttachment::sole();
+        $this->assertStringEndsWith('.png', $attachment->stored_path);
+        $this->assertSame('image/png', $attachment->mime);
+        $this->assertSame(filesize($path), $attachment->size);
+        $response = $this->actingAs($w['applicant'])->get(route('approvals.attachments.show', $attachment))->assertOk();
+        $this->assertSame('image/png', $response->headers->get('Content-Type'));
+        @unlink($path);
+    }
+
+    /** 差戻し中に足した添付は、次の出し直しの回（今の回 + 1）から入る */
+    public function test_a_file_added_while_returned_belongs_to_the_next_round(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $request = $this->submitAndReturn($this->draftFor($w), $w);
+
+        $this->upload($w['applicant'], $request, $this->pdf())->assertOk();
+
+        $this->assertSame(2, ApprovalAttachment::sole()->added_round);
+    }
+
+    /** 元の名前は 255 文字まで（本番の VARCHAR(255)。要件 5.3） */
+    public function test_a_name_longer_than_255_characters_is_refused(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $draft = $this->draftFor($w);
+
+        $this->upload($w['applicant'], $draft, $this->pdf(str_repeat('あ', 251) . '.pdf'))->assertOk();
+        $this->upload($w['applicant'], $draft, $this->pdf(str_repeat('あ', 252) . '.pdf'))
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'ファイル名が長すぎます（255 文字まで）。名前を短くしてから選んでください。');
+        $this->assertSame(1, ApprovalAttachment::count());
+    }
+
+    /** ファイルが見つからなければ 404 で、記録も残さない */
+    public function test_a_missing_file_is_not_found_and_not_logged(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $draft = $this->draftFor($w);
+        $this->upload($w['applicant'], $draft, $this->pdf())->assertOk();
+        $attachment = ApprovalAttachment::sole();
+        app(Workflow::class)->submit($draft->refresh(), $w['applicant']);
+        Storage::disk('local')->delete($attachment->stored_path);
+
+        $this->actingAs($w['head'])->get(route('approvals.attachments.show', $attachment))->assertNotFound();
+        $this->assertSame(0, ApprovalDownloadLog::count());
+    }
+
+    /** 申請書の画面の fetch は、どれも JSON を求めて X-Requested-With を付ける（断る理由が JSON で返る前提。Bug #35） */
+    public function test_every_fetch_on_the_form_asks_for_json(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $draft = $this->draftFor($w);
+
+        $html = $this->actingAs($w['applicant'])->get(route('approvals.requests.edit', $draft))->assertOk()->getContent();
+
+        $this->assertGreaterThanOrEqual(3, substr_count($html, 'fetch('), '候補の検索・添付の追加・外す');
+        $offset = 0;
+        while (($at = strpos($html, 'fetch(', $offset)) !== false) {
+            $call = substr($html, $at, 400);
+            $this->assertStringContainsString("'Accept': 'application/json'", $call);
+            $this->assertStringContainsString("'X-Requested-With': 'XMLHttpRequest'", $call);
+            $offset = $at + 1;
+        }
+    }
+
+    /** 送信の上限の日本語の JSON は、決裁の URL の JSON の要求だけ（基幹の応答は変えない。§5.7） */
+    public function test_the_japanese_reason_is_only_for_approval_json_requests(): void
+    {
+        Route::post('/approvals/_probe_too_large', fn () => throw new PostTooLargeException());
+        Route::post('/_probe_too_large', fn () => throw new PostTooLargeException());
+        $reason = 'ファイルが大きすぎて受け取れませんでした。1 ファイル 10MB までです。';
+
+        // JSON を求めない要求には JSON を返さない（⚠ assertDontSee() では見分けられない。JSON の中の日本語は \uXXXX になる）
+        $page = $this->post('/approvals/_probe_too_large')->assertStatus(413);
+        $this->assertStringStartsWith('text/html', (string) $page->headers->get('Content-Type'));
+        $this->postJson('/_probe_too_large')->assertStatus(413)->assertJsonMissing(['message' => $reason]);
+    }
+
+    /** 20 ファイルは今の添付（外したものを除く）で数える（D14） */
+    public function test_the_limit_counts_only_the_current_attachments(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $draft = $this->draftFor($w);
+        for ($i = 1; $i <= ApprovalAttachment::MAX_COUNT; $i++) {
+            $this->upload($w['applicant'], $draft, $this->pdf("見積書{$i}.pdf"))->assertOk();
+        }
+        $request = $this->submitAndReturn($draft, $w);
+        $this->remove($w['applicant'], ApprovalAttachment::orderBy('id')->first())->assertOk();
+
+        $this->upload($w['applicant'], $request, $this->pdf('差し替え.pdf'))->assertOk();
+        $this->assertSame(ApprovalAttachment::MAX_COUNT, $request->attachments()->count());
+    }
+
+    /** 詳細の添付の欄は大きさを出し、ブラウザで開かない種類（HEIC など）には「ダウンロード」と添える（D14） */
+    public function test_the_detail_shows_the_size_and_marks_the_files_that_download(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $draft = $this->draftFor($w);
+        $this->upload($w['applicant'], $draft, $this->pdf())->assertOk();
+        $this->upload($w['applicant'], $draft, UploadedFile::fake()->create('現場.heic', 50, 'image/heic'))->assertOk();
+
+        $html = $this->actingAs($w['applicant'])->get(route('approvals.requests.show', $draft))->assertOk()->getContent();
+        $this->assertStringContainsString('50 KB・ダウンロード', $html);
+        $this->assertStringContainsString('120 KB</span>', $html);
+    }
 }
