@@ -839,4 +839,46 @@ class RequestFormTest extends TestCase
         $this->assertMatchesRegularExpression('/^\{\s*if \(this\.submitting\) \{\s*event\.preventDefault\(\);\s*return;\s*\}\s*this\.submitting = true;\s*\}$/', $this->jsBlock($html, 'onSubmit: function (event)'));
         $this->assertMatchesRegularExpression('/^\{\s*this\.submitting = false;\s*\}$/', $this->jsBlock($html, 'resetSubmit: function ()'));
     }
+
+    // ---------------------------------------------------------------------------------------------
+    // 以下は Task 19 の直しの点検（2026-09-28）で足したもの
+    // ---------------------------------------------------------------------------------------------
+
+    /**
+     * 申請書の submit のボタンは 2 つで、表示と送る intent の対が合っている（新しい申請・下書き・差戻し中の 3 つの画面）。
+     * C2 で保存か提出かは押したボタンの setIntent が書く形になったので、対は「ボタンの表示 ↔ setIntent('…')」だけで決まる。
+     * 入力欄で Enter を押したときにブラウザが押すのは先頭の submit なので、先頭は保存でなければならない（確認の小窓の
+     * 「提出する」が先頭に来ると、件名の欄の Enter で提出になる。Task 19 の C2 の点検）
+     */
+    public function test_the_submit_buttons_carry_their_own_intent_and_enter_saves(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $draft    = $this->draftFor($w);
+        $returned = $this->submittedFor($w, ['subject' => '差し戻される申請']);
+        app(Workflow::class)->judgeHead($returned, $w['head'], $returned->lock_version, ApprovalStepResult::Return, '直してください');
+
+        foreach ([
+            [route('approvals.requests.create'), route('approvals.requests.store'), [['save', '下書きを保存'], ['submit', '提出する']]],
+            [route('approvals.requests.edit', $draft), route('approvals.requests.update', $draft), [['save', '下書きを保存'], ['submit', '提出する']]],
+            [route('approvals.requests.edit', $returned), route('approvals.requests.update', $returned), [['save', '保存する'], ['submit', '出し直す']]],
+        ] as [$url, $action, $expected]) {
+            $html = $this->actingAs($w['applicant'])->get($url)->assertOk()->getContent();
+            $at   = strpos($html, 'action="' . $action . '"');
+            $this->assertNotFalse($at, "{$action} のフォームが無い");
+            $open = strrpos(substr($html, 0, $at), '<form');
+            $form = substr($html, $open, strpos($html, '</form>', $at) - $open);
+
+            // submit のボタン（type が button・reset でないもの。type の無い button も submit）を並びのまま
+            preg_match_all('/<button\b([^>]*)>(.*?)<\/button>/su', $form, $buttons, PREG_SET_ORDER);
+            $submits = [];
+            foreach ($buttons as $button) {
+                if (! preg_match('/\stype="(button|reset)"/', $button[1])) {
+                    $intent    = preg_match('/@click="setIntent\(\'([a-z]+)\'\)"/', $button[1], $m) ? $m[1] : null;
+                    $submits[] = [$intent, trim($button[2])];
+                }
+            }
+            $this->assertSame($expected, $submits, "{$url}: submit のボタンの並び・表示・intent が違う（先頭は Enter で押される）");
+        }
+    }
 }

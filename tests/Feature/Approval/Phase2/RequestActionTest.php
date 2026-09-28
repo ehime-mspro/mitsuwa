@@ -980,4 +980,87 @@ class RequestActionTest extends TestCase
         $this->assertSame($long, $this->parseForm($html, 'action="' . $action . '"')['fields']['comment']);
         $this->assertStringContainsString('コメントは2000文字以下で入力してください。', $this->formOf($html, $action), '断られた理由が小窓に無い');
     }
+
+    // ---------------------------------------------------------------------------------------------
+    // 以下は Task 19 の直しの点検（2026-09-28）で足したもの
+    // ---------------------------------------------------------------------------------------------
+
+    /**
+     * 選ぶボタンの表示と、選んだときに送る判断の値の対（Bug #47。Task 19 の C2 の点検）。C2 で判断の値は hidden の
+     * :value="choice" が送る形になり、往復テストは result を自分で足すので、どの値が送られるかは「選ぶボタンの open('…')」と
+     * approvalJudge の中身だけで決まる。段階ごとに表示と値の対を見て（承認のボタンが差戻しを選ぶ形を止める）、open() が
+     * 選んだ値をそのまま覚えること・小窓の題と必須の印が同じ choices[choice] から読むことを見る
+     */
+    public function test_each_choice_button_selects_its_own_judgement(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $request = $this->submittedFor($w);
+
+        // 選ぶボタン（type="button" で open('…') を呼ぶもの）の「表示 => 値」（並びも見る）
+        $buttons = function (string $html): array {
+            preg_match_all('/<button type="button" @click="open\(\'([a-z]+)\'\)"[^>]*>([^<]+)<\/button>/u', $html, $m, PREG_SET_ORDER);
+
+            return array_column($m, 1, 2);
+        };
+
+        $html = $this->showHtml($w['head'], $request);
+        $this->assertSame(['承認' => 'approve', '差戻し' => 'return'], $buttons($html));
+        $judge = $this->jsBlock($html, 'function approvalJudge(choices)');
+        $this->assertStringContainsString('open: function (value) { this.choice = value; },', $judge);
+        $this->assertStringContainsString("label: function () { return this.choice ? this.choices[this.choice].label : ''; },", $judge);
+        $this->assertStringContainsString('needsComment: function () { return this.choice ? this.choices[this.choice].comment : false; }', $judge);
+
+        $this->act($w['head'], $request, 'approvals.requests.headReview', ['result' => 'approve']);
+        $this->assertSame(['可' => 'ok', '保留' => 'hold', '否' => 'ng'], $buttons($this->showHtml($w['reviewer'], $request)));
+
+        $this->act($w['reviewer'], $request, 'approvals.requests.review', ['result' => 'ok']);
+        $this->assertSame(['可' => 'approve', '条可' => 'conditional', '差戻し' => 'return', '否' => 'reject'], $buttons($this->showHtml($w['president'], $request)));
+    }
+
+    /**
+     * 断られて開き直した小窓は、断られる前の版のまま（Task 19 の C8 の点検）。古い画面から送って入力の誤りで断られたなら、
+     * 直して送っても「すでに処理されています」で断る（計画 §0.3。開き直すときに今の版を入れると、見ていない状態の上で操作が通る）
+     */
+    public function test_a_reopened_modal_keeps_the_version_of_the_refused_page(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $request = $this->submittedFor($w);
+        $stale   = (string) $request->lock_version;
+        $action  = route('approvals.requests.withdraw', $request);
+
+        // 申請者が取り下げの小窓を開いているあいだに、部門長が承認した（審査中でも取り下げはできる）
+        $this->act($w['head'], $request, 'approvals.requests.headReview', ['result' => 'approve']);
+
+        // 古い画面から長すぎるコメントで送った → 入力の検査で断られて小窓が開き直す。版は古い画面のまま
+        $this->actingAs($w['applicant'])->post($action, ['comment' => str_repeat('う', 2001), 'lock_version' => $stale])
+            ->assertRedirect(route('approvals.requests.show', $request));
+        $html = $this->showHtml($w['applicant'], $request);
+        $this->assertStringContainsString('confirmWithdraw: true', $html);
+        $form = $this->parseForm($html, 'action="' . $action . '"');
+        $this->assertSame($stale, $form['fields']['lock_version']);
+
+        // 直して送り返しても、先を越された画面なので断る（取り下げない）
+        $this->actingAs($w['applicant'])->post($form['action'], array_merge($form['fields'], ['comment' => '取り下げます']))
+            ->assertRedirect(route('approvals.requests.show', $request))
+            ->assertSessionHas('error', WorkflowConflict::MESSAGE);
+        $this->assertSame(ApprovalStatus::Review, $request->fresh()->status);
+    }
+
+    /** 断られて戻っても、この段階で選べない判断では小窓を開き直さない（Task 19 の C8 の点検。x-init に渡す値はサーバーが選べる判断に絞る） */
+    public function test_a_result_that_is_not_offered_does_not_reopen_the_modal(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $request = $this->submittedFor($w);
+
+        foreach (['ok', 'no-such-result'] as $value) {
+            $this->act($w['head'], $request, 'approvals.requests.headReview', ['result' => $value, 'comment' => '打ったコメント'])
+                ->assertRedirect(route('approvals.requests.show', $request));
+            $html = $this->showHtml($w['head'], $request);
+            $this->assertStringContainsString('選べない判断です。', $html);
+            $this->assertStringNotContainsString('x-init="open(', $html, $value);
+        }
+    }
 }

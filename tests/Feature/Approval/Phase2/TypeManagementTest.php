@@ -538,4 +538,22 @@ class TypeManagementTest extends TestCase
         $this->assertStringContainsString('var refused = null;', $html);
         $this->assertStringContainsString('createModal: false,', $html);
     }
+
+    /** 編集の小窓を断られた中身で開き直すのは、画面の JS の init()（Task 19 の C4 の点検。形だけ見る。振る舞いはブラウザで確かめる） */
+    public function test_the_refused_edit_is_reopened_by_init(): void
+    {
+        $w     = $this->approvalWorld();
+        $admin = $this->approvalAdmin();
+
+        $this->actingAs($admin)->from(route('approvals.admin.types.index'))
+            ->put(route('approvals.admin.types.update', $w['type']), [
+                'name' => '', 'headings' => BodyTemplate::DEFAULT, 'review_department_id' => (string) $w['reviewDept']->id,
+                'sort_order' => '1', 'is_active' => '1', 'edit_id' => (string) $w['type']->id,
+            ])->assertRedirect(route('approvals.admin.types.index'));
+
+        $this->assertMatchesRegularExpression(
+            '/init\(\) \{\s*var refused = JSON\.parse\([^\n]*\);\s*if \(refused\) \{\s*this\.openEdit\(refused\);\s*\}\s*\},/',
+            $this->indexHtml($admin)
+        );
+    }
 }

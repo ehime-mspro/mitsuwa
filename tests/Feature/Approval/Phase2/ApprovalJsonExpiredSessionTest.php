@@ -61,4 +61,14 @@ class ApprovalJsonExpiredSessionTest extends TestCase
         $this->assertStringStartsWith('text/html', (string) $page->headers->get('Content-Type'));
         $this->get(route('approvals.requests.index'))->assertRedirect(route('login'));
     }
+
+    /** 決裁の JSON でも、419 でない HttpException（403 など）は番号も文も今までどおり（Task 19 の B5 の点検。419 の文は番号を見て出す） */
+    public function test_other_http_errors_on_approval_urls_keep_their_status(): void
+    {
+        Route::post('/approvals/_probe_forbidden', fn () => abort(403, '見本の断り'));
+        Route::post('/approvals/_probe_conflict', fn () => abort(409, '見本の食い違い'));
+
+        $this->postJson('/approvals/_probe_forbidden')->assertForbidden()->assertJsonPath('message', '見本の断り');
+        $this->postJson('/approvals/_probe_conflict')->assertStatus(409)->assertJsonPath('message', '見本の食い違い');
+    }
 }
