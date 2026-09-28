@@ -182,8 +182,8 @@ class ApprovalAdminGateTest extends TestCase
         //   出ている本当の理由（分類漏れ・門番の欠落・逆方向の見落とし）が隠れる。
         $this->assertSame([], $problems, "分類漏れ・門番の欠落・逆方向の見落とし:\n" . implode("\n", $problems));
 
-        // 走査が空振りして緑になる事故を防ぐ（実測 19 本 = 決裁の管理 18 本 + ホーム 1 本）
-        $this->assertGreaterThanOrEqual(19, $found, 'approvals. のルートの走査に失敗している');
+        // 走査が空振りして緑になる事故を防ぐ（段階2 の 2a で 39 本 = 決裁の管理 22 本 + ホーム 1 本 + 申請を回す画面 16 本）
+        $this->assertGreaterThanOrEqual(39, $found, 'approvals. のルートの走査に失敗している');
     }
 
     /**

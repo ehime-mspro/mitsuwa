@@ -39,6 +39,7 @@
             @if($user->isApprovalAdmin())
                 <a href="{{ route('approvals.admin.users.index') }}" class="text-emerald-600 hover:underline">利用者の管理</a>
                 <a href="{{ route('approvals.admin.organization.index') }}" class="text-emerald-600 hover:underline">部門の管理</a>
+                <a href="{{ route('approvals.admin.types.index') }}" class="text-emerald-600 hover:underline">申請種類の管理</a>
             @endif
         </div>
     </div>

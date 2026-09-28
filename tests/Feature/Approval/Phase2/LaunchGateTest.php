@@ -30,8 +30,11 @@ class LaunchGateTest extends TestCase
         'approvals.admin.types.'        => '申請種類の管理（準備の画面。D1）',
     ];
 
-    /** 門番の付いたルートの数の下限（空振りで緑にならないように。Task 17 で最終の数に上げる） */
-    private const MIN_GATED = 0;
+    /**
+     * 門番の付いたルートの数の下限（空振りで緑にならないように）。
+     * 2a の実数 16 本 = 候補の検索 1・申請書と詳細 7・添付 3・判断など 5（2b で増える）。
+     */
+    private const MIN_GATED = 16;
 
     private function isOpenBeforeLaunch(string $name): bool
     {
