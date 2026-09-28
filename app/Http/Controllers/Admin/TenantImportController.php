@@ -18,6 +18,7 @@ use App\Support\CsvImportException;
 use App\Support\CsvImportReader;
 use App\Support\CsvImportTemplate;
 use App\Support\JapanTime;
+use App\Support\OneTimeAction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -33,6 +34,10 @@ use Illuminate\Validation\ValidationException;
  *   確認画面は POST の応答で、その URL は POST 専用の `/admin/tenant-import/{tab}`。そこに載ったフォーム
  *   （アップロードし直し・インポート実行）から送るとリファラーがその URL になり、`url()->previous()` は
  *   リファラーを優先するので GET で 405 になる（docs/RULES.md Bug #64）。
+ * ⚠ 確定は確認画面 1 つにつき 1 回だけ（hidden の `import_token`・`OneTimeAction`。
+ *   設計書 2026-09-28-import-double-submit-design.md §4.2）。鍵は 5 タブのプレビューで出し、`loadCsv()` の確定の分岐の
+ *   最初（CSV を読み直す前）で使う。直す前は、同じ確認画面の確定を 2 回送ると契約・過去契約が二重に入った
+ *   （物件・区画・顧客は重複の確認で 2 回目が「0件を登録しました」になった）。
  */
 class TenantImportController extends Controller
 {
@@ -129,6 +134,21 @@ class TenantImportController extends Controller
         '駆除代'     => 'pest_control_fee',
         '屋号'       => 'store_name',
         '備考'       => 'notes',
+    ];
+
+    /**
+     * 同じ確認画面から 2 回目を送ったときの案内の、「確かめられます」の前の句（タブのキー => 句。設計書 §4.4）。
+     * ⚠ タブを足したら、ここにも足す（無いと、そのタブの 2 回目が 500 になる。
+     *   TenantImportDoubleSubmitTest が execute{X} を列挙して、タブごとに 2 回目の断りを確かめる）
+     * ⚠ 絞り込みを案内するのは過去契約だけ（「契約一覧」は何も選ばないと契約中だけを出すので、過去契約が見えず
+     *   「入っていない」と読んで上げ直しやすい。過去契約は上げ直すと注意も出ないまま二重になる）
+     */
+    private const WHERE_TO_CHECK = [
+        'property'      => '「物件一覧」で',
+        'unit'          => '「部屋一覧」で',
+        'customer'      => '「顧客一覧」で',
+        'contract'      => '「契約一覧」で',
+        'past-contract' => '「契約一覧」でステータスを「解約済み」にして',
     ];
 
     // ================================================================
@@ -244,6 +264,8 @@ class TenantImportController extends Controller
                 'skippedRows'  => $skippedRows,
                 'summary'      => '物件 ' . count($validRows) . '件を新規作成',
                 'csvData'      => base64_encode($content),
+                // 確定を 1 回だけ通す鍵（クラスの docblock）
+                'importToken'  => OneTimeAction::issue(),
             ]);
         }
 
@@ -459,6 +481,8 @@ class TenantImportController extends Controller
                 'summary'      => '区画 ' . (count($validRows) - $restoreCount) . '件を新規作成'
                     . ($restoreCount > 0 ? '・' . $restoreCount . '件を削除済みから復元' : ''),
                 'csvData'      => base64_encode($content),
+                // 確定を 1 回だけ通す鍵（クラスの docblock）
+                'importToken'  => OneTimeAction::issue(),
             ]);
         }
 
@@ -596,6 +620,8 @@ class TenantImportController extends Controller
                 'skippedRows'  => $skippedRows,
                 'summary'      => '顧客 ' . count($validRows) . '件を新規作成',
                 'csvData'      => base64_encode($content),
+                // 確定を 1 回だけ通す鍵（クラスの docblock）
+                'importToken'  => OneTimeAction::issue(),
             ]);
         }
 
@@ -810,6 +836,8 @@ class TenantImportController extends Controller
                 'skippedRows'  => [],
                 'summary'      => '契約 ' . count($validRows) . '件を新規作成',
                 'csvData'      => base64_encode($content),
+                // 確定を 1 回だけ通す鍵（クラスの docblock）
+                'importToken'  => OneTimeAction::issue(),
             ]);
         }
 
@@ -1072,6 +1100,8 @@ class TenantImportController extends Controller
                 'summary'      => '過去契約 ' . count($validRows) . '件を新規作成'
                     . (count($customerCreateList) > 0 ? '（顧客 ' . count($customerCreateList) . '件を自動作成: ' . implode('、', array_slice($customerCreateList, 0, 5)) . (count($customerCreateList) > 5 ? ' ...' : '') . '）' : ''),
                 'csvData'      => base64_encode($content),
+                // 確定を 1 回だけ通す鍵（クラスの docblock）
+                'importToken'  => OneTimeAction::issue(),
             ]);
         }
 
@@ -1250,7 +1280,7 @@ class TenantImportController extends Controller
      * CSV を読み込んで行配列にする。
      *
      * 純粋な読み取りは [[\App\Support\CsvImportReader]] にある。ここに残るのは
-     * HTTP 依存の 3 つだけ: ファイル取得 / 確定時の base64 復元 / 差し戻し。
+     * HTTP 依存の 4 つだけ: ファイル取得 / 確定時の 1 回限りの鍵 / 確定時の base64 復元 / 差し戻し。
      *
      * @param  string  $tab  断ったときに戻す取込の画面のタブ（クラスの docblock。Bug #64）
      * @return array{0: list<array<string, string>>, 1: string}|\Illuminate\Http\RedirectResponse
@@ -1258,6 +1288,13 @@ class TenantImportController extends Controller
     private function loadCsv(Request $request, array $columnMap, array $requiredKeys, string $tab)
     {
         if ($request->boolean('confirmed')) {
+            // 確定は確認画面 1 つにつき 1 回だけ（クラスの docblock）。⚠ CSV を読み直す前に使う
+            if (! OneTimeAction::claimFrom($request, 'import_token')) {
+                return redirect()->route('admin.tenant-import', ['tab' => $tab])
+                    ->with('error', 'この確認画面からは取り込めません（すでに送信したか、画面が古くなっています）。取り込まれたかは'
+                        . self::WHERE_TO_CHECK[$tab] . '確かめられます。取り込み直すときは、CSVをアップロードし直してください。');
+            }
+
             // 確認画面が持ち回った base64 から復元（既に UTF-8・BOM 除去済み）
             $content = base64_decode($request->input('csv_data', ''));
         } else {
