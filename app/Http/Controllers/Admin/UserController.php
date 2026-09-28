@@ -360,11 +360,12 @@ class UserController extends Controller
      *
      * ⚠ 社長の守りと同じ入口 4 つ（編集の無効化・編集のメール空・行の無効化・削除）に置く。
      *   文言は `User::approvalAssignmentLabel()` が完成させる（前後に言葉を足さない）。
+     *   2 文目の頼み先は操作した人で変わる（`User::approvalSuccessorGuide()`。決裁の利用者管理と同じ文）。
      */
     private function refuseToTouchAnAssignee(User $user, string $label): \Illuminate\Http\RedirectResponse
     {
         return redirect()->route('admin.users.index')
-            ->with('error', "{$user->name}さんは{$label}に指定されています。先に後任を設定してください。");
+            ->with('error', "{$user->name}さんは{$label}に指定されています。" . auth()->user()->approvalSuccessorGuide());
     }
 
     /**

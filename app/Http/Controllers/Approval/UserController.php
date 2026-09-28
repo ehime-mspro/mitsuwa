@@ -244,10 +244,11 @@ class UserController extends Controller
             [],
             ['status' => '状態'],
         );
-        // 部門長・審査担当者に指定されている人は無効化できない（要件 12.6・段階2 設計書 §5.4）
+        // 部門長・審査担当者に指定されている人は無効化できない（要件 12.6・段階2 設計書 §5.4）。
+        // 2 文目は基幹の利用者管理と同じ（この画面は決裁の管理者だけなので、いつも「部門の管理で後任を設定」）
         if ($validated['status'] === UserStatus::Inactive->value && ($label = $user->approvalAssignmentLabel()) !== null) {
             return redirect()->route('approvals.admin.users.index')
-                ->with('error', "{$user->name}さんは{$label}に指定されています。先に部門の管理で後任を設定してください。");
+                ->with('error', "{$user->name}さんは{$label}に指定されています。" . $request->user()->approvalSuccessorGuide());
         }
 
         // ⚠ 今は上の assertManageable が先に断る（自分自身は必ず決裁の管理者に指定されている）。

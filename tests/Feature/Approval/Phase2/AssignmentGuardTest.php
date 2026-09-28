@@ -56,7 +56,7 @@ class AssignmentGuardTest extends TestCase
     public function test_the_base_screens_refuse_to_disable_delete_or_empty_the_mail_of_a_head(): void
     {
         [, $head] = $this->baseHead();
-        $expected = "{$head->name}さんは決裁の部門「住宅事業部」の部門長に指定されています。先に後任を設定してください。";
+        $expected = "{$head->name}さんは決裁の部門「住宅事業部」の部門長に指定されています。先に決裁の管理者に後任の設定を頼んでください。";
         $admin    = $this->executive();
 
         // ① 行の無効化
@@ -83,7 +83,7 @@ class AssignmentGuardTest extends TestCase
         $reviewer = $w['reviewer'];
 
         $this->actingAs($this->executive())->delete(route('admin.users.destroy', $reviewer))
-            ->assertSessionHas('error', "{$reviewer->name}さんは決裁の部門「総務部」の審査担当者に指定されています。先に後任を設定してください。");
+            ->assertSessionHas('error', "{$reviewer->name}さんは決裁の部門「総務部」の審査担当者に指定されています。先に決裁の管理者に後任の設定を頼んでください。");
 
         $this->assertFalse($reviewer->fresh()->trashed());
     }
@@ -157,7 +157,7 @@ class AssignmentGuardTest extends TestCase
         unset($payload['email']);
 
         $this->actingAs($this->executive())->put(route('admin.users.update', $head), $payload)
-            ->assertSessionHas('error', "{$head->name}さんは決裁の部門「住宅事業部」の部門長に指定されています。先に後任を設定してください。");
+            ->assertSessionHas('error', "{$head->name}さんは決裁の部門「住宅事業部」の部門長に指定されています。先に決裁の管理者に後任の設定を頼んでください。");
 
         $this->assertSame('head@example.com', $head->fresh()->email);
     }
@@ -201,7 +201,7 @@ class AssignmentGuardTest extends TestCase
         $this->followingRedirects()->actingAs($this->executive())
             ->delete(route('admin.users.destroy', $head))
             ->assertOk()
-            ->assertSee("{$head->name}さんは決裁の部門「住宅事業部」の部門長に指定されています。先に後任を設定してください。");
+            ->assertSee("{$head->name}さんは決裁の部門「住宅事業部」の部門長に指定されています。先に決裁の管理者に後任の設定を頼んでください。");
 
         $aoHead = $this->approvalOnlyUser(['name' => '決裁 部門長', 'email' => 'h2@example.com']);
         $w['reviewDept']->update(['head_user_id' => $aoHead->id]);
@@ -234,5 +234,31 @@ class AssignmentGuardTest extends TestCase
         $this->approvalDepartment($w['company'], ['name' => '賃貸事業部', 'code' => 'T', 'head_user_id' => $head->id]);
 
         $this->assertSame('決裁の部門「住宅事業部」の部門長', $head->approvalAssignmentLabel());
+    }
+
+    /**
+     * 断りの 2 文目は、操作した人が後任を設定できるかで変える（Task 19 の C3・利用者の決定 2026-09-28）。後任を決める
+     * 「部門の管理」は決裁の管理者だけの画面なので、決裁の管理者でない基幹の管理者には頼み先を言い、決裁の管理者を兼ねる
+     * 基幹の管理者には部門の管理を案内する
+     */
+    public function test_the_refusal_says_who_sets_the_successor(): void
+    {
+        [, $head]  = $this->baseHead();
+        $executive = $this->executive();
+        $both      = $this->approvalAdmin(['role' => UserRole::Executive->value, 'name' => '経営 兼 決裁管理']);
+        $told      = "{$head->name}さんは決裁の部門「住宅事業部」の部門長に指定されています。";
+
+        // 前提: 部門の管理は決裁の管理者だけが開ける
+        $this->actingAs($executive)->get(route('approvals.admin.organization.index'))->assertForbidden();
+
+        $this->actingAs($executive)->delete(route('admin.users.destroy', $head))
+            ->assertSessionHas('error', $told . '先に決裁の管理者に後任の設定を頼んでください。');
+        $this->actingAs($both)->delete(route('admin.users.destroy', $head))
+            ->assertSessionHas('error', $told . '先に部門の管理で後任を設定してください。');
+        $this->actingAs($both)->patch(route('admin.users.toggleStatus', $head), ['status' => UserStatus::Inactive->value])
+            ->assertSessionHas('error', $told . '先に部門の管理で後任を設定してください。');
+
+        $this->assertTrue($head->fresh()->isActive());
+        $this->assertFalse($head->fresh()->trashed());
     }
 }
