@@ -38,6 +38,8 @@ class HomeController extends Controller
         return view('approvals.home-launched', [
             'user'             => $user,
             'pending'          => PendingWork::for($user),
+            // 進み具合に下書きは出さない（§5.12）。下書きだけの人に「まだ申請はありません」と出さないために数える
+            'hasDrafts'        => ApprovalRequest::where('user_id', $user->id)->where('status', ApprovalStatus::Draft->value)->exists(),
             // 自分の申請の進み具合（回覧中・差戻し中・条件確認待ち）と、最近の完了（§5.12）
             'inProgress'       => ApprovalRequest::with($withHandler)
                 ->where('user_id', $user->id)

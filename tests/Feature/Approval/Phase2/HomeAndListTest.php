@@ -435,4 +435,16 @@ class HomeAndListTest extends TestCase
         $withdrawn = $this->submittedFor($w, ['subject' => "取り下げ{$tag}"]);
         $workflow->withdraw($withdrawn, $w['applicant'], $withdrawn->lock_version, null);
     }
+
+    /** 下書きだけの人に「まだ申請はありません」と出さない（下書きは進み具合に出さないので、一覧から開けることを伝える） */
+    public function test_a_user_with_only_drafts_is_pointed_to_the_list(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $this->draftFor($w, ['subject' => '保存した下書き']);
+
+        $this->actingAs($w['applicant'])->get(route('approvals.home'))->assertOk()
+            ->assertDontSee('まだ申請はありません。')
+            ->assertSee('下書きは「自分の申請」から開けます。');
+    }
 }

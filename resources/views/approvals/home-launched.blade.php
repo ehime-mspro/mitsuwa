@@ -52,7 +52,7 @@
     <section class="bg-white rounded-lg border border-gray-200 mb-5">
         <h2 class="px-5 py-3 border-b border-gray-200 text-[14px] font-bold text-gray-900">自分の申請の進み具合</h2>
         @if($inProgress->isEmpty() && $recentlyFinished->isEmpty())
-            <p class="px-5 py-6 text-[13px] text-gray-400">まだ申請はありません。「新しい申請」から始めます。</p>
+            <p class="px-5 py-6 text-[13px] text-gray-400">{{ $hasDrafts ? '進行中の申請はありません。下書きは「自分の申請」から開けます。' : 'まだ申請はありません。「新しい申請」から始めます。' }}</p>
         @else
             <ul class="divide-y divide-gray-100">
                 @foreach($inProgress as $item)
