@@ -748,4 +748,46 @@ class RequestFormTest extends TestCase
 
         $this->assertSame($saved, ApprovalRequest::sole()->body);
     }
+
+    /** 画面の JS の塊（$head の後の最初の { から、対になる } まで。Bug #47 の「中身を切り出して見る」） */
+    private function jsBlock(string $html, string $head): string
+    {
+        $start = strpos($html, $head);
+        $this->assertNotFalse($start, "{$head} が画面に無い");
+        $open  = strpos($html, '{', $start);
+        $depth = 0;
+        for ($i = $open, $len = strlen($html); $i < $len; $i++) {
+            if ($html[$i] === '{') {
+                $depth++;
+            } elseif ($html[$i] === '}' && --$depth === 0) {
+                return substr($html, $open, $i - $open + 1);
+            }
+        }
+        $this->fail("{$head} の波括弧が閉じていない");
+    }
+
+    /**
+     * 関連する決裁No の候補の検索に失敗した文言は、番号の形の誤りと分けて出し、あとで検索できたら消す（Task 19 の B6）。
+     * 古い検索の失敗は出さない（新しい検索の結果と食い違わせない）
+     */
+    public function test_a_search_failure_is_cleared_by_a_later_search(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+
+        $html = $this->actingAs($w['applicant'])->get(route('approvals.requests.create'))->assertOk()->getContent();
+
+        // 番号の形の誤りは numberError、検索の失敗は errorMessage（別の段に出す）
+        $this->assertStringContainsString('<p x-show="numberError" x-cloak class="text-[12px] text-red-600 mt-1" x-text="numberError"></p>', $html);
+        $this->assertStringContainsString('<p x-show="errorMessage" x-cloak class="text-[12px] text-red-600 mt-1" x-text="errorMessage"></p>', $html);
+        $add = $this->jsBlock($html, 'addNumber: function (value)');
+        $this->assertStringNotContainsString('errorMessage', $add);
+        $this->assertStringContainsString("this.numberError = '「' + number + '」は決裁No の形ではありません（例: R8-J-001）。';", $add);
+        $this->assertStringContainsString("this.numberError = '';", $this->jsBlock($html, 'removeNumber: function (index)'));
+
+        // 検索できたら（古い答えを捨てたあとで）前の失敗の文言を消す。失敗の文言は、いちばん新しい検索のときだけ出す
+        $search = $this->jsBlock($html, 'searchNumbers: function ()');
+        $this->assertMatchesRegularExpression("/if \\(!data \\|\\| seq !== self\\.searchSeq\\) return;\\s*self\\.errorMessage = '';/u", $search);
+        $this->assertSame(2, substr_count($search, 'if (seq === self.searchSeq) {'));
+    }
 }

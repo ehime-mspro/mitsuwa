@@ -169,6 +169,8 @@
                 <button type="button" @click="addNumber(numberInput)" class="px-3 py-1.5 text-[12px] font-semibold text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 cursor-pointer">追加</button>
                 <p class="text-[11px] text-gray-400">紙の時代の番号も入れられます（形だけ確かめます）</p>
             </div>
+            <p x-show="numberError" x-cloak class="text-[12px] text-red-600 mt-1" x-text="numberError"></p>
+            {{-- 候補の検索に失敗した文言は、番号の形の誤りと分けて出し、あとで検索できたら消す（Task 19 の B6） --}}
             <p x-show="errorMessage" x-cloak class="text-[12px] text-red-600 mt-1" x-text="errorMessage"></p>
         </div>
 
@@ -250,7 +252,11 @@ function approvalRequestForm() {
         numberInput: '',
         suggestions: [],
         searchSeq: 0,
+        // 候補の検索に失敗した文言（⚠ 番号の形の誤り〈numberError〉と分ける。あとで検索できたら消す。Task 19 の B6。
+        //   AjaxErrorFeedbackTest は !res.ok の中の errorMessage = を表示先として見る）
         errorMessage: '',
+        // 関連する決裁No の形の誤り・数の上限（addNumber）
+        numberError: '',
         pendingTypeId: null,
         confirmSubmit: false,
 
@@ -298,18 +304,18 @@ function approvalRequestForm() {
 
         addNumber: function (value) {
             var number = this.normalizeNumber(value);
-            this.errorMessage = '';
+            this.numberError = '';
             if (number === '') {
                 return;
             }
             // App\Support\Approval\RelatedNumbers::PATTERN と同じ形（年は 1 から・連番は 3〜5 桁）
             if (!/^[RH][1-9][0-9]?-[A-Z]{1,3}-[0-9]{3,5}$/.test(number)) {
-                this.errorMessage = '「' + number + '」は決裁No の形ではありません（例: R8-J-001）。';
+                this.numberError = '「' + number + '」は決裁No の形ではありません（例: R8-J-001）。';
                 return;
             }
             if (this.numbers.indexOf(number) === -1) {
                 if (this.numbers.length >= this.maxNumbers) {
-                    this.errorMessage = '関連する決裁No は ' + this.maxNumbers + ' 個までです。';
+                    this.numberError = '関連する決裁No は ' + this.maxNumbers + ' 個までです。';
                     return;
                 }
                 this.numbers.push(number);
@@ -320,7 +326,7 @@ function approvalRequestForm() {
 
         removeNumber: function (index) {
             this.numbers.splice(index, 1);
-            this.errorMessage = '';
+            this.numberError = '';
         },
 
         // 候補を探す。⚠ GET の fetch には X-Requested-With を付ける（Bug #35）
@@ -338,18 +344,24 @@ function approvalRequestForm() {
             })
             .then(function (res) {
                 if (!res.ok) {
-                    self.errorMessage = '候補を読み込めませんでした（' + res.status + '）。番号はそのまま入れられます。';
+                    // 古い検索の失敗は出さない（新しい検索の結果と食い違わせない）
+                    if (seq === self.searchSeq) {
+                        self.errorMessage = '候補を読み込めませんでした（' + res.status + '）。番号はそのまま入れられます。';
+                    }
                     return null;
                 }
                 return res.json();
             })
             .then(function (data) {
-                // 古い検索の答えが後から届いたら捨てる
+                // 古い検索の答えが後から届いたら捨てる。検索できたら、前に失敗した文言を消す（Task 19 の B6）
                 if (!data || seq !== self.searchSeq) return;
+                self.errorMessage = '';
                 self.suggestions = data.items;
             })
             .catch(function () {
-                self.errorMessage = '候補を読み込めませんでした。番号はそのまま入れられます。';
+                if (seq === self.searchSeq) {
+                    self.errorMessage = '候補を読み込めませんでした。番号はそのまま入れられます。';
+                }
             });
         }
     };
