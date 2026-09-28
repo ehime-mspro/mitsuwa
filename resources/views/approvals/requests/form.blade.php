@@ -203,9 +203,11 @@
             <div class="border-2 border-dashed rounded-lg p-4 text-center mb-3 transition-colors"
                  :class="dragOver ? 'border-emerald-400 bg-emerald-50' : 'border-gray-300 bg-gray-50'"
                  @dragover.prevent="dragOver = true" @dragleave.prevent="dragOver = false" @drop.prevent="drop($event)">
-                <label class="inline-flex items-center gap-1.5 px-4 py-2 bg-white border border-gray-300 rounded-md text-[13px] font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer">
+                {{-- ⚠ 選ぶ欄を hidden にしない（キーボードで届かなくなる。要件 14.4・Task 19 の B2）。見えないがフォーカスできる
+                     sr-only にし、フォーカスしたら包むラベルに枠を出す --}}
+                <label class="inline-flex items-center gap-1.5 px-4 py-2 bg-white border border-gray-300 rounded-md text-[13px] font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer focus-within:ring-2 focus-within:ring-emerald-500 focus-within:ring-offset-2">
                     ファイルを選ぶ
-                    <input type="file" multiple class="hidden" accept="{{ '.' . implode(',.', array_keys(\App\Models\ApprovalAttachment::TYPES)) }}"
+                    <input type="file" multiple class="sr-only" accept="{{ '.' . implode(',.', array_keys(\App\Models\ApprovalAttachment::TYPES)) }}"
                            @change="choose($event)" :disabled="uploading">
                 </label>
                 <p class="text-[11px] text-gray-400 mt-2">ここへドラッグしても追加できます</p>

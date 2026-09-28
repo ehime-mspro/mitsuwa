@@ -634,4 +634,35 @@ class RequestAttachmentTest extends TestCase
             $this->assertStringContainsString("filename*=utf-8''" . rawurlencode($name), $disposition, $name);
         }
     }
+
+    // ---------------------------------------------------------------------------------------------
+    // 以下は Task 19（手元のブラウザでの確認）で直したもの。画面の JS の振る舞いはブラウザでしか動かないので、
+    // 描いた HTML と JS の形を見る（振る舞いは Task 19 の手元のブラウザで確かめる）
+    // ---------------------------------------------------------------------------------------------
+
+    /** 申請書の画面（下書きの編集。添付の欄が出る） */
+    private function formHtml(array $w, ApprovalRequest $draft): string
+    {
+        return $this->actingAs($w['applicant'])->get(route('approvals.requests.edit', $draft))->assertOk()->getContent();
+    }
+
+    /**
+     * 「ファイルを選ぶ」にキーボード（Tab）で届く（要件 14.4・Task 19 の B2）。選ぶ欄は見えないがフォーカスできる形にし
+     * （hidden にしない）、フォーカスしたら包むラベルに枠が出る
+     */
+    public function test_the_file_picker_can_be_reached_with_the_keyboard(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+
+        $html = $this->formHtml($w, $this->draftFor($w));
+
+        $this->assertSame(1, preg_match('/<label\b([^>]*)>\s*ファイルを選ぶ\s*<input type="file"([^>]*)>/u', $html, $m), '「ファイルを選ぶ」のラベルと選ぶ欄が見つからない');
+        $inputClasses = preg_split('/\s+/', preg_match('/\bclass="([^"]*)"/', $m[2], $c) ? $c[1] : '');
+        $this->assertContains('sr-only', $inputClasses, '選ぶ欄が見えないがフォーカスできる形になっていない');
+        $this->assertNotContains('hidden', $inputClasses, 'hidden の選ぶ欄にはキーボードで届かない');
+        foreach (['focus-within:ring-2', 'focus-within:ring-emerald-500'] as $class) {
+            $this->assertStringContainsString($class, $m[1], "フォーカスの枠（{$class}）がラベルに無い");
+        }
+    }
 }
