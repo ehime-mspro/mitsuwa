@@ -1,7 +1,8 @@
 {{-- 申請の詳細の操作（設計書 §5.12）。出すのは RequestPermissions がこの人に「今できる」と判定したものだけ。
      押せないけれど役割のある人（自分の申請の担当に当たる人。D16）には理由を出す（Bug #43）。
      ⚠ 判断・条件確認・取り下げのフォームは、描いたときの lock_version を送る（古い画面から押した操作を断る。計画 §0.3）
-     ⚠ 3 つのフォームの確定のボタンは、1 回押したら押せなくする（approvalSubmitOnce。Task 19 の C2）。送る値は hidden で持ち、
+     ⚠ 4 つのフォーム（判断・取り下げ・条件確認・下書きの削除）の確定のボタンは、1 回押したら押せなくする（approvalSubmitOnce。
+       Task 19 の C2・N-3）。送る値は hidden で持ち、
        ボタンに name・value を持たせない（送る前にボタンを押せなくすると、そのボタンの値は送られない） --}}
 @php
     $judgeable = $permissions->judgeableStep();
@@ -30,7 +31,8 @@
         @endif
 
         @if($permissions->canDelete())
-            <form method="POST" action="{{ route('approvals.requests.destroy', $approvalRequest) }}">
+            <form method="POST" action="{{ route('approvals.requests.destroy', $approvalRequest) }}"
+                  x-data="approvalSubmitOnce()" x-on:submit="onSubmit($event)" x-on:pageshow.window="resetSubmit()">
                 @csrf
                 @method('DELETE')
                 <button type="button" @click="confirmDelete = true" class="px-4 py-2 bg-white border border-red-200 rounded-md text-[13px] font-semibold text-red-600 hover:bg-red-50 cursor-pointer">下書きを削除</button>
@@ -39,9 +41,10 @@
                     <div @click.outside="confirmDelete = false" class="bg-white rounded-xl w-full max-w-[420px] shadow-xl mx-4 px-6 py-5">
                         <p class="text-[15px] font-bold text-gray-900 mb-2">この下書きを削除しますか？</p>
                         <p class="text-[12px] text-gray-500 mb-4">添付したファイルも消えます。元に戻せません。</p>
-                        <div class="flex justify-end gap-2">
+                        <div class="flex flex-wrap items-center justify-end gap-2">
+                            <span role="status" x-text="submitting ? '送っています…' : ''" class="text-[12px] text-gray-600 whitespace-nowrap"></span>
                             <button type="button" @click="confirmDelete = false" class="px-3.5 py-2 bg-white border border-gray-300 rounded-md text-[13px] cursor-pointer">キャンセル</button>
-                            <button type="submit" class="px-5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md text-[13px] font-semibold cursor-pointer">削除する</button>
+                            <button type="submit" :disabled="submitting" class="px-5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md text-[13px] font-semibold cursor-pointer disabled:cursor-not-allowed disabled:opacity-60">削除する</button>
                         </div>
                     </div>
                 </div>
@@ -210,26 +213,6 @@
     </section>
 @endif
 
-@push('scripts')
-<script>
-{{-- 確定の二度押し止め（Task 19 の C2。手本は基幹の顧客取込の確定〈Bug #67〉）。判断・取り下げ・条件確認のフォームに付ける。
-     1 回目は通して印を立て、2 回目からは送信を取り消す。「戻る」で画面がそのまま戻ったとき（bfcache）は pageshow で印を下ろす
-     （Bug #65 と同じく persisted で絞らない。押しても版が古いので「すでに処理されています」で断られる）。
-     ⚠ x-data にアロー関数を書かない（Top trap #4） --}}
-function approvalSubmitOnce() {
-    return {
-        submitting: false,
-        onSubmit: function (event) {
-            if (this.submitting) {
-                event.preventDefault();
-                return;
-            }
-            this.submitting = true;
-        },
-        resetSubmit: function () {
-            this.submitting = false;
-        }
-    };
-}
-</script>
-@endpush
+{{-- 確定の二度押し止めの部品（approvalSubmitOnce。定義は 1 か所）。「戻る」で戻って押し直すと、判断・取り下げ・条件確認は版が古いので
+     「すでに処理されています」で断られる（下書きの削除は、もう消えていれば見つからない＝404。Task 19 の N-3 の残り） --}}
+@include('approvals._submit_once')

@@ -105,7 +105,10 @@
     {{-- 種類の追加（追加と編集でフォームを分ける。部門の管理と同じ形）--}}
     <div x-show="createModal" class="fixed inset-0 bg-black/35 z-50 flex items-center justify-center" style="display:none;">
         <div @click.outside="createModal = false" class="bg-white rounded-xl w-full max-w-[560px] max-h-[90vh] overflow-y-auto shadow-xl mx-4">
-            <form method="POST" action="{{ route('approvals.admin.types.store') }}">
+            {{-- 保存の二度押し止め（approvalSubmitOnce。Task 19 の N-3。2 回押すと 1 回目で登録できたのに、2 回目が同じ名前で断られて
+                 小窓を開き直していた） --}}
+            <form method="POST" action="{{ route('approvals.admin.types.store') }}"
+                  x-data="approvalSubmitOnce()" x-on:submit="onSubmit($event)" x-on:pageshow.window="resetSubmit()">
                 @csrf
                 <div class="px-6 pt-5 text-[15px] font-bold text-gray-900">種類の追加</div>
                 @if($refusedCreate)
@@ -143,9 +146,10 @@
                         利用中（申請の画面で選べる）
                     </label>
                 </div>
-                <div class="px-6 pb-5 flex justify-end gap-2">
+                <div class="px-6 pb-5 flex flex-wrap items-center justify-end gap-2">
+                    <span role="status" x-text="submitting ? '送っています…' : ''" class="text-[12px] text-gray-600 whitespace-nowrap"></span>
                     <button type="button" @click="createModal = false" class="px-3.5 py-2 bg-white border border-gray-300 rounded-md text-[13px] cursor-pointer">キャンセル</button>
-                    <button type="submit" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-[13px] font-semibold cursor-pointer">保存する</button>
+                    <button type="submit" :disabled="submitting" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-[13px] font-semibold cursor-pointer disabled:cursor-not-allowed disabled:opacity-60">保存する</button>
                 </div>
             </form>
         </div>
@@ -154,7 +158,8 @@
     {{-- 種類の編集 --}}
     <div x-show="editModal" class="fixed inset-0 bg-black/35 z-50 flex items-center justify-center" style="display:none;">
         <div @click.outside="editModal = false" class="bg-white rounded-xl w-full max-w-[560px] max-h-[90vh] overflow-y-auto shadow-xl mx-4">
-            <form method="POST" :action="'{{ url('approvals/admin/types') }}/' + editId">
+            <form method="POST" :action="'{{ url('approvals/admin/types') }}/' + editId"
+                  x-data="approvalSubmitOnce()" x-on:submit="onSubmit($event)" x-on:pageshow.window="resetSubmit()">
                 @csrf
                 @method('PUT')
                 {{-- どの種類の小窓か（断られたときに同じ種類の小窓を開き直す。Task 19 の C4） --}}
@@ -195,15 +200,20 @@
                         利用中（外すと停止。新しい申請で選べなくなり、この種類の下書きは提出の前に種類を選び直してもらう）
                     </label>
                 </div>
-                <div class="px-6 pb-5 flex justify-end gap-2">
+                <div class="px-6 pb-5 flex flex-wrap items-center justify-end gap-2">
+                    <span role="status" x-text="submitting ? '送っています…' : ''" class="text-[12px] text-gray-600 whitespace-nowrap"></span>
                     <button type="button" @click="editModal = false" class="px-3.5 py-2 bg-white border border-gray-300 rounded-md text-[13px] cursor-pointer">キャンセル</button>
-                    <button type="submit" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-[13px] font-semibold cursor-pointer">保存する</button>
+                    <button type="submit" :disabled="submitting" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-[13px] font-semibold cursor-pointer disabled:cursor-not-allowed disabled:opacity-60">保存する</button>
                 </div>
             </form>
         </div>
     </div>
 
 </div>
+
+{{-- 保存の二度押し止めの部品（approvalSubmitOnce。定義は 1 か所。「戻る」で戻って押し直すと、追加は同じ名前で断られ、編集は
+     同じ中身をもう一度保存する） --}}
+@include('approvals._submit_once')
 @endsection
 
 @push('scripts')

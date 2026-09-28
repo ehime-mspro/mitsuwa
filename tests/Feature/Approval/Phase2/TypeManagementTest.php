@@ -585,4 +585,33 @@ class TypeManagementTest extends TestCase
             $this->indexHtml($admin)
         );
     }
+
+    /**
+     * 追加・編集の小窓の「保存する」は、1 回押したら押せなくする（Task 19 の N-3。利用者の決定 C2 の趣旨。2 回押すと、1 回目で
+     * 登録できたのに 2 回目が「この種類名は既に登録されています。」で小窓を開き直していた）。押したら印を立てて 2 回目の送信を
+     * 取り消し、「送っています…」を出す。「戻る」で戻った画面（pageshow）は押せるように戻す。形は詳細の判断などと同じ
+     * approvalSubmitOnce()（部品の定義は 1 か所。この画面にも 1 回だけ描く）
+     */
+    public function test_the_save_buttons_are_sent_only_once_until_the_page_is_shown_again(): void
+    {
+        $this->approvalWorld();
+        $html = $this->indexHtml($this->approvalAdmin());
+
+        foreach (['追加' => 'action="' . route('approvals.admin.types.store') . '"', '編集' => 'name="edit_id"'] as $label => $needle) {
+            $form = $this->modalFormHtml($html, $needle);
+            $tag  = substr($form, 0, strpos($form, '>') + 1);
+            // 送信の印はそのフォームそのものに付ける（Bug #47）。pageshow は window にしか届かない（Bug #65）
+            foreach (['x-data="approvalSubmitOnce()"', 'x-on:submit="onSubmit($event)"', 'x-on:pageshow.window="resetSubmit()"'] as $attribute) {
+                $this->assertStringContainsString($attribute, $tag, "{$label}の小窓のフォームに {$attribute} が無い");
+            }
+            $this->assertSame(1, preg_match('/<button type="submit"([^>]*)>保存する<\/button>/u', $form, $m), "{$label}の小窓の「保存する」が 1 つでない");
+            foreach ([':disabled="submitting"', 'disabled:cursor-not-allowed', 'disabled:opacity-60'] as $attribute) {
+                $this->assertStringContainsString($attribute, $m[1], "{$label}の小窓の「保存する」に {$attribute} が無い");
+            }
+            $this->assertDoesNotMatchRegularExpression('/<button\b[^>]*\bname=/', $form, "{$label}の小窓のボタンが値を送っている（押せなくすると送られない）");
+            $this->assertStringContainsString('<span role="status" x-text="submitting ? \'送っています…\' : \'\'"', $form, "{$label}の小窓に「送っています…」が無い");
+        }
+
+        $this->assertSame(1, substr_count($html, 'function approvalSubmitOnce()'), '二度押し止めの部品がこの画面に 1 回だけ描かれていない');
+    }
 }

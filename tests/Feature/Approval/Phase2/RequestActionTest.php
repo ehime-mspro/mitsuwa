@@ -1077,4 +1077,35 @@ class RequestActionTest extends TestCase
         $form = $this->formOf($this->showHtml($w['head'], $request), $action);
         $this->assertMatchesRegularExpression('/<p x-show="choice === \'return\'" [^>]*>「差戻し」にはコメントが必要です。<\/p>/u', $form);
     }
+
+    // ---------------------------------------------------------------------------------------------
+    // 以下は Task 19 の手元のブラウザでの確かめ直し（2026-09-28）で直したもの
+    // ---------------------------------------------------------------------------------------------
+
+    /**
+     * 下書きの「削除する」も、1 回押したら押せなくする（Task 19 の N-3。利用者の決定 C2 の趣旨。2 回押すと 2 回目が英語の
+     * 404 の画面になっていた）。形は判断・取り下げ・条件確認と同じ approvalSubmitOnce()。部品の定義はページに 1 回だけ
+     */
+    public function test_the_draft_delete_is_sent_only_once_until_the_page_is_shown_again(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $draft = $this->draftFor($w);
+
+        $html = $this->showHtml($w['applicant'], $draft);
+        $form = $this->formOf($html, route('approvals.requests.destroy', $draft));
+        $tag  = substr($form, 0, strpos($form, '>') + 1);
+
+        // 送信の印はそのフォームそのものに付ける（Bug #47）。pageshow は window にしか届かない（Bug #65）
+        foreach (['x-data="approvalSubmitOnce()"', 'x-on:submit="onSubmit($event)"', 'x-on:pageshow.window="resetSubmit()"'] as $attribute) {
+            $this->assertStringContainsString($attribute, $tag, "削除のフォームに {$attribute} が無い");
+        }
+        $this->assertSame(1, preg_match('/<button type="submit"([^>]*)>削除する<\/button>/u', $form, $m), '「削除する」のボタンが 1 つでない');
+        foreach ([':disabled="submitting"', 'disabled:cursor-not-allowed', 'disabled:opacity-60'] as $attribute) {
+            $this->assertStringContainsString($attribute, $m[1], "「削除する」のボタンに {$attribute} が無い");
+        }
+        $this->assertDoesNotMatchRegularExpression('/<button\b[^>]*\bname=/', $form, '削除のボタンが値を送っている（押せなくすると送られない）');
+        $this->assertStringContainsString('<span role="status" x-text="submitting ? \'送っています…\' : \'\'"', $form, '削除の「送っています…」が無い');
+        $this->assertSame(1, substr_count($html, 'function approvalSubmitOnce()'), '二度押し止めの部品がページに 1 回だけ描かれていない');
+    }
 }
