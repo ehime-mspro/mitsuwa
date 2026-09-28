@@ -134,7 +134,7 @@ CREATE TABLE `approval_histories` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `request_id` BIGINT UNSIGNED NOT NULL,
   `round` SMALLINT UNSIGNED NOT NULL DEFAULT 0,
-  `actor_user_id` BIGINT UNSIGNED NULL COMMENT '省略・交代による移動など、人の操作でないものは NULL',
+  `actor_user_id` BIGINT UNSIGNED NULL COMMENT '省略は NULL・部門長の交代は変えた管理者',
   `action` VARCHAR(40) NOT NULL,
   `from_status` VARCHAR(20) NULL,
   `to_status` VARCHAR(20) NULL,
