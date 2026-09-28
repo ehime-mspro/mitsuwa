@@ -9,7 +9,9 @@ use App\Models\ApprovalDepartment;
 use App\Models\ApprovalMailDomain;
 use App\Models\ApprovalMember;
 use App\Models\ApprovalSetting;
+use App\Models\ApprovalType;
 use App\Models\User;
+use App\Support\Approval\BodyTemplate;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route as RoutingRoute;
@@ -82,6 +84,23 @@ class ApprovalAdminGateTest extends TestCase
      */
     private const OPEN_TO_EVERY_USER = [
         'approvals.home' => '決裁のホーム（全ログイン利用者が入れる。設計書 §5.1・§5.15）',
+        // 段階2（使い始めてから。門番 approval.launched は LaunchGateTest が見る）
+        'approvals.numbers.search' => '関連する決裁No の候補（見られる範囲だけを返す。段階2 設計書 §5.6）',
+        'approvals.requests.index'   => '自分の申請一覧（本人の申請だけ。段階2 設計書 §5.12）',
+        'approvals.requests.create'  => '申請書の作成（誰でも申請できる。社長は提出で断る。段階2 設計書 §5.6）',
+        'approvals.requests.store'   => '下書きの保存・提出（本人の申請として作る）',
+        'approvals.requests.show'    => '申請の詳細（見られる範囲だけ。RequestVisibility）',
+        'approvals.requests.edit'    => '下書き・差戻し中の編集（申請者だけ。RequestPermissions）',
+        'approvals.requests.update'  => '同じく保存・提出',
+        'approvals.requests.destroy' => '一度も提出していない下書きの削除（申請者だけ）',
+        'approvals.requests.attachments.store' => '添付の追加（申請者だけ。下書き・差戻し中。段階2 設計書 §5.7）',
+        'approvals.attachments.show'           => '添付を開く（見られる範囲を毎回確かめ、記録する）',
+        'approvals.attachments.destroy'        => '添付を外す（申請者だけ。下書き・差戻し中）',
+        'approvals.requests.headReview'       => '部門長の承認・差戻し（担当かどうかは Workflow が確かめる。段階2 設計書 §5.8）',
+        'approvals.requests.review'           => '審査の意見（同上）',
+        'approvals.requests.decide'           => '社長の決裁（同上）',
+        'approvals.requests.confirmCondition' => '条件の確認（申請者だけ）',
+        'approvals.requests.withdraw'         => '取り下げ（申請者だけ）',
     ];
 
     /** ラベル用: HEAD を除いた先頭の HTTP メソッド（1 つで十分な場所） */
@@ -163,8 +182,8 @@ class ApprovalAdminGateTest extends TestCase
         //   出ている本当の理由（分類漏れ・門番の欠落・逆方向の見落とし）が隠れる。
         $this->assertSame([], $problems, "分類漏れ・門番の欠落・逆方向の見落とし:\n" . implode("\n", $problems));
 
-        // 走査が空振りして緑になる事故を防ぐ（実測 19 本 = 決裁の管理 18 本 + ホーム 1 本）
-        $this->assertGreaterThanOrEqual(19, $found, 'approvals. のルートの走査に失敗している');
+        // 走査が空振りして緑になる事故を防ぐ（段階2 の 2a で 39 本 = 決裁の管理 22 本 + ホーム 1 本 + 申請を回す画面 16 本）
+        $this->assertGreaterThanOrEqual(39, $found, 'approvals. のルートの走査に失敗している');
     }
 
     /**
@@ -336,6 +355,9 @@ class ApprovalAdminGateTest extends TestCase
             'approval_department_user' => DB::table('approval_department_user')->count(),
             'approval_setting_logs' => DB::table('approval_setting_logs')->count(),
             'approval_settings' => DB::table('approval_settings')->count(),
+            'approval_types' => DB::table('approval_types')->count(),
+            'approval_reviewers' => DB::table('approval_reviewers')->count(),
+            'approval_number_sequences' => DB::table('approval_number_sequences')->count(),
         ];
     }
 
@@ -462,11 +484,22 @@ class ApprovalAdminGateTest extends TestCase
         [$company, $department, $mailDomain] = $this->makeOrganizationFixtures();
         $manageableUser = $this->makeManageableUser();
 
+        // 種類の審査部門は、走査で消す部門とは別にする（同じにすると部門が「種類の審査部門」の歯止めで消えなくなり、
+        // 門番をコントローラの後ろへ回す変異を部門の削除で捕まえる網が細る。Task 11 の点検の軽微）
+        $reviewDepartment = ApprovalDepartment::create([
+            'company_id' => $company->id, 'name' => '総務部', 'short_name' => '総務', 'code' => 'SO', 'sort_order' => 2,
+        ]);
+        $type = ApprovalType::create([
+            'name' => '購入・発注', 'headings' => BodyTemplate::DEFAULT,
+            'review_department_id' => $reviewDepartment->id, 'sort_order' => 1, 'is_active' => true,
+        ]);
+
         $existingValues = [
             'user' => (string) $manageableUser->id,
             'approvalCompany' => (string) $company->id,
             'approvalDepartment' => (string) $department->id,
             'mailDomain' => (string) $mailDomain->id,
+            'approvalType' => (string) $type->id,
         ];
 
         $outsiders = $this->outsiders();

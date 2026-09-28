@@ -1,0 +1,617 @@
+<?php
+
+namespace Tests\Feature\Approval\Phase2;
+
+use App\Models\ApprovalSettingLog;
+use App\Models\ApprovalType;
+use App\Models\User;
+use App\Support\Approval\BodyTemplate;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Js;
+use Illuminate\Support\Str;
+use Tests\Concerns\BuildsApprovalFixtures;
+use Tests\Concerns\ParsesForms;
+use Tests\TestCase;
+
+/** 申請種類の管理（画面⑨・設計書 §5.5） */
+class TypeManagementTest extends TestCase
+{
+    use RefreshDatabase;
+    use BuildsApprovalFixtures;
+    use ParsesForms;
+
+    private function indexHtml(User $admin): string
+    {
+        return $this->actingAs($admin)->get(route('approvals.admin.types.index'))->assertOk()->getContent();
+    }
+
+    /** 表の行ごとに、セルの文字（タグを除いて空白を詰めたもの）と行の HTML */
+    private function tableRows(string $html): array
+    {
+        preg_match_all('/<tr class="hover:bg-gray-50">(.*?)<\/tr>/s', $html, $rows);
+
+        return array_map(function (string $row): array {
+            preg_match_all('/<td\b[^>]*>(.*?)<\/td>/s', $row, $cells);
+
+            return [
+                'cells' => array_map(
+                    fn (string $c): string => trim(preg_replace('/\s+/u', ' ', html_entity_decode(strip_tags($c), ENT_QUOTES, 'UTF-8'))),
+                    $cells[1]
+                ),
+                'html' => $row,
+            ];
+        }, $rows[1]);
+    }
+
+    /** $needle を含むフォーム（小窓）の HTML（開始タグから </form> まで） */
+    private function modalFormHtml(string $html, string $needle): string
+    {
+        $at = strpos($html, $needle);
+        $this->assertNotFalse($at, "{$needle} が画面に無い");
+        $open = strrpos(substr($html, 0, $at), '<form');
+
+        return substr($html, $open, strpos($html, '</form>', $at) - $open);
+    }
+
+    /** 編集のボタンが小窓へ渡す値（Js::from は日本語を \u で符号化するので、HTML の文字列では探さない） */
+    private function editRows(string $html): array
+    {
+        preg_match_all("/openEdit\\(JSON\\.parse\\('([^']*)'\\)\\)/", $html, $m);
+        $rows = [];
+        foreach ($m[1] as $inner) {
+            $row = json_decode(json_decode('"' . $inner . '"'), true);
+            $rows[$row['id']] = $row;
+        }
+
+        return $rows;
+    }
+
+    public function test_the_list_shows_the_review_department_the_state_and_the_count(): void
+    {
+        $w = $this->approvalWorld();
+        $this->draftFor($w);
+        $w['type']->update(['is_active' => false]);
+
+        $html = $this->indexHtml($this->approvalAdmin());
+
+        $this->assertStringContainsString($w['type']->name, $html);
+        $this->assertStringContainsString('総務部', $html);
+        $this->assertStringContainsString('停止', $html);
+        $this->assertStringContainsString('1 件', $html);
+        // 小窓を動かす部品（@push('scripts') の中身）が描かれていること（LayoutScriptStackTest と同じ見方）
+        $this->assertStringContainsString('function approvalTypes()', $html);
+    }
+
+    /** 描いた追加のフォームをそのまま送り返す（見出しの初期値は標準の 6 つ） */
+    public function test_a_type_can_be_created_from_the_rendered_form(): void
+    {
+        $w     = $this->approvalWorld();
+        $admin = $this->approvalAdmin();
+
+        $form = $this->parseForm($this->indexHtml($admin), 'action="' . route('approvals.admin.types.store') . '"');
+        $this->assertSame('POST', $form['method']);
+        $this->assertArrayHasKey('_token', $form['fields']);
+        $this->assertSame(BodyTemplate::DEFAULT, $form['fields']['headings']);
+        $this->assertSame('1', $form['fields']['is_active']);
+
+        $this->actingAs($admin)->post($form['action'], array_merge($form['fields'], [
+            'name' => '人事', 'review_department_id' => (string) $w['reviewDept']->id,
+        ]))->assertRedirect(route('approvals.admin.types.index'));
+
+        $type = ApprovalType::where('name', '人事')->sole();
+        $this->assertTrue($type->is_active);
+        $this->assertSame(1, ApprovalSettingLog::where('action', 'type.created')->count());
+    }
+
+    /** チェックを外して保存すると停止（送られないチェックボックス） */
+    public function test_a_type_can_be_stopped(): void
+    {
+        $w = $this->approvalWorld();
+
+        $this->actingAs($this->approvalAdmin())->put(route('approvals.admin.types.update', $w['type']), [
+            'name' => $w['type']->name, 'headings' => BodyTemplate::DEFAULT,
+            'review_department_id' => (string) $w['reviewDept']->id, 'sort_order' => '1',
+        ])->assertRedirect(route('approvals.admin.types.index'));
+
+        $this->assertFalse($w['type']->fresh()->is_active);
+        $this->assertSame(['is_active' => false], ApprovalSettingLog::where('action', 'type.updated')->sole()->new_values);
+    }
+
+    public function test_the_name_is_unique_and_a_review_department_is_required(): void
+    {
+        $w = $this->approvalWorld();
+
+        $this->actingAs($this->approvalAdmin())->post(route('approvals.admin.types.store'), [
+            'name' => $w['type']->name, 'headings' => 'x', 'review_department_id' => '', 'sort_order' => '0', 'is_active' => '1',
+        ])->assertSessionHasErrors([
+            'name' => 'この種類名は既に登録されています。',
+            'review_department_id' => '審査部門を選択してください。',
+        ]);
+    }
+
+    /** 見出しは「■」の行と中身の無い「・」の行だけ（ほかの形だと、本文が見出しのままでも提出できてしまう。D12） */
+    public function test_the_headings_must_be_in_the_heading_form(): void
+    {
+        $w     = $this->approvalWorld();
+        $admin = $this->approvalAdmin();
+
+        foreach (["【なぜ】\n・\n【何を】\n・", "■ なぜ\n- \n■ 何を\n- ", "1. 目的\n・\n2. 内容\n・"] as $headings) {
+            $this->actingAs($admin)->put(route('approvals.admin.types.update', $w['type']), [
+                'name' => $w['type']->name, 'headings' => $headings,
+                'review_department_id' => (string) $w['reviewDept']->id, 'sort_order' => '1', 'is_active' => '1',
+            ])->assertSessionHasErrors(['headings' => '見出しは「■」で始まる行と、中身の無い「・」の行だけで書いてください。']);
+        }
+
+        $this->assertSame(BodyTemplate::DEFAULT, $w['type']->fresh()->headings);
+    }
+
+    public function test_a_type_with_requests_cannot_be_deleted(): void
+    {
+        $w = $this->approvalWorld();
+        $this->draftFor($w);
+
+        $this->actingAs($this->approvalAdmin())->delete(route('approvals.admin.types.destroy', $w['type']))
+            ->assertSessionHas('error', 'この種類の申請が 1 件あるため削除できません。使わなくなった種類は「停止」にしてください。');
+
+        $this->assertNotNull($w['type']->fresh());
+    }
+
+    public function test_an_unused_type_can_be_deleted(): void
+    {
+        $w = $this->approvalWorld();
+
+        $this->actingAs($this->approvalAdmin())->delete(route('approvals.admin.types.destroy', $w['type']))
+            ->assertSessionHas('success', '申請の種類を削除しました。');
+
+        $this->assertNull($w['type']->fresh());
+        $this->assertSame(1, ApprovalSettingLog::where('action', 'type.deleted')->count());
+    }
+
+    /** 決裁の管理者でない人は開けない（管理の門番。全ルートの確かめは ApprovalAdminGateTest） */
+    public function test_someone_who_is_not_an_admin_gets_403(): void
+    {
+        $this->actingAs($this->baseUser())->get(route('approvals.admin.types.index'))->assertForbidden();
+    }
+
+    /** 表のセルそのものを見る（審査部門の名前は選択肢に、「停止」は説明文にも出るので、HTML 全体では探さない） */
+    public function test_the_table_cells_show_each_type_in_display_order(): void
+    {
+        $w = $this->approvalWorld();
+        $this->draftFor($w);
+        $w['type']->update(['sort_order' => 7]);
+        $this->approvalType($w['dept'], ['name' => 'R&D <試行>', 'sort_order' => 0, 'is_active' => false]);
+        $company = $w['company']->name;
+
+        $rows = $this->tableRows($this->indexHtml($this->approvalAdmin()));
+
+        $this->assertSame([
+            ['R&D <試行>', "{$company}・住宅事業部 審査担当者がいません", '停止', '0 件', '0', '編集 | 削除'],
+            [$w['type']->name, "{$company}・総務部", '利用中', '1 件', '7', '編集 | 削除'],
+        ], array_column($rows, 'cells'));
+
+        // バッジの色（停止は 6.87:1。#6b7280 だと 4.39:1 で基準の 4.5:1 に届かない）
+        $this->assertStringContainsString('style="background: #f3f4f6; color: #4b5563;">停止</span>', $rows[0]['html']);
+        $this->assertStringContainsString('style="background: #d1fae5; color: #065f46;">利用中</span>', $rows[1]['html']);
+    }
+
+    /** 編集の送信先は Alpine が組むので、式と PUT を固定する（OrganizationManagementTest と同じ見方） */
+    public function test_the_edit_form_points_at_the_update_route(): void
+    {
+        $this->approvalWorld();
+        $html = $this->indexHtml($this->approvalAdmin());
+
+        $base   = Str::beforeLast(route('approvals.admin.types.update', 1), '/1');
+        $needle = ':action="\'' . $base . '/\' + editId"';
+
+        $form = $this->parseForm($html, $needle);
+        $this->assertSame('PUT', $form['method'], '編集のフォームが PUT で送られない（405 で無反応になる）');
+        $this->assertArrayHasKey('_token', $form['fields'], '編集のフォームに @csrf が無い');
+    }
+
+    /** 編集の小窓は今の値で開く（受け渡しの値・x-model・JS の代入を対で固定。Alpine が動くかはブラウザで見る） */
+    public function test_the_edit_modal_is_filled_from_the_current_values(): void
+    {
+        $w = $this->approvalWorld();
+        $w['type']->update(['is_active' => false, 'sort_order' => 3, 'headings' => "■ 目的\r\n・"]);
+        $html = $this->indexHtml($this->approvalAdmin());
+
+        $this->assertSame([
+            'id' => $w['type']->id, 'name' => $w['type']->name, 'headings' => "■ 目的\r\n・",
+            'review_department_id' => $w['reviewDept']->id, 'sort_order' => 3, 'is_active' => false,
+        ], $this->editRows($html)[$w['type']->id]);
+
+        foreach ([
+            '<input type="text" name="name" x-model="editName"',
+            '<select name="review_department_id" x-model="editDepartmentId"',
+            '<textarea name="headings" x-model="editHeadings"',
+            '<input type="number" name="sort_order" x-model="editSort"',
+            '<input type="checkbox" name="is_active" value="1" x-model="editActive">',
+            'this.editId = row.id;',
+            'this.editName = row.name;',
+            'this.editDepartmentId = String(row.review_department_id);',
+            'this.editHeadings = row.headings;',
+            'this.editSort = String(row.sort_order);',
+            'this.editActive = row.is_active;',
+        ] as $expected) {
+            $this->assertStringContainsString($expected, $html);
+        }
+
+        // 今の審査部門は必ず選択肢にある（無いと先頭の部門が選ばれたまま保存される）
+        $this->assertSame(2, substr_count($html, '<option value="' . $w['reviewDept']->id . '">' . e($w['company']->name) . '・総務部</option>'));
+    }
+
+    /**
+     * 更新は送った項目をすべて保存し、変わった項目だけを前後つきで記録する（見出しは CRLF・全角の空白でも「見出しの形」なら通る。
+     * 改行は \n にそろえて保存する。Task 19 の B1）
+     */
+    public function test_every_field_is_saved_and_logged_by_the_update(): void
+    {
+        $w        = $this->approvalWorld();
+        $headings = "■ 目的\r\n　・　\r\n\r\n■ 内容\r\n・";
+        $saved    = "■ 目的\n　・　\n\n■ 内容\n・";
+
+        $this->actingAs($this->approvalAdmin())->put(route('approvals.admin.types.update', $w['type']), [
+            'name' => '購入・発注（改）', 'headings' => $headings,
+            'review_department_id' => (string) $w['dept']->id, 'sort_order' => '5', 'is_active' => '1',
+        ])->assertRedirect(route('approvals.admin.types.index'));
+
+        $type = $w['type']->fresh();
+        $this->assertSame(['購入・発注（改）', $saved, $w['dept']->id, 5, true], [$type->name, $type->headings, $type->review_department_id, $type->sort_order, $type->is_active]);
+
+        $log = ApprovalSettingLog::where('action', 'type.updated')->sole();
+        $this->assertSame(['name', 'headings', 'review_department_id', 'sort_order'], array_keys($log->new_values));
+        $this->assertEquals(['name' => $w['type']->name, 'headings' => BodyTemplate::DEFAULT, 'review_department_id' => $w['reviewDept']->id, 'sort_order' => 1], $log->old_values);
+        $this->assertEquals(['name' => '購入・発注（改）', 'headings' => $saved, 'review_department_id' => $w['dept']->id, 'sort_order' => 5], $log->new_values);
+    }
+
+    /**
+     * 見出しの改行は 1 文字と数える（ブラウザの maxlength と同じ。Task 19 の B1）。送るときの \r\n で 2,000 文字を
+     * 超えても断らず、\n にそろえて保存する
+     */
+    public function test_line_breaks_in_the_headings_count_as_one_character(): void
+    {
+        $w     = $this->approvalWorld();
+        $lines = [];
+        for ($i = 0; $i < 100; $i++) {
+            $lines[] = '■ ' . str_repeat('見', 14);
+            $lines[] = '・';
+        }
+        // 1,899 文字（改行 199）。ブラウザは改行を \r\n で送るので 2,098 文字で届く
+        $sent  = implode("\r\n", $lines);
+        $saved = implode("\n", $lines);
+        $this->assertSame([2098, 1899], [mb_strlen($sent), mb_strlen($saved)]);
+
+        $this->actingAs($this->approvalAdmin())->put(route('approvals.admin.types.update', $w['type']), [
+            'name' => $w['type']->name, 'headings' => $sent,
+            'review_department_id' => (string) $w['reviewDept']->id, 'sort_order' => '1', 'is_active' => '1',
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame($saved, $w['type']->fresh()->headings);
+    }
+
+    /** 描いた削除のフォームをそのまま送り返す。成功も失敗も、帯はレイアウトの 1 回だけ（Bug #49: セッションに触らずに描く） */
+    public function test_a_type_is_deleted_from_the_rendered_form_and_the_banner_shows_once(): void
+    {
+        $w      = $this->approvalWorld();
+        $this->draftFor($w);
+        $unused = $this->approvalType($w['reviewDept'], ['name' => '人事']);
+        $admin  = $this->approvalAdmin();
+
+        foreach ([
+            [$unused, '<span class="text-sm text-emerald-800">', '申請の種類を削除しました。'],
+            [$w['type'], '<span class="text-sm text-red-800">', 'この種類の申請が 1 件あるため削除できません。使わなくなった種類は「停止」にしてください。'],
+        ] as [$type, $banner, $message]) {
+            $form = $this->parseForm($this->indexHtml($admin), 'action="' . route('approvals.admin.types.destroy', $type) . '"');
+            $this->assertSame('DELETE', $form['method'], '削除のフォームが DELETE で送られない（405 で無反応になる）');
+            $this->assertArrayHasKey('_token', $form['fields'], '削除のフォームに @csrf が無い');
+
+            $this->actingAs($admin)->post($form['action'], $form['fields'])->assertRedirect(route('approvals.admin.types.index'));
+
+            $html = $this->indexHtml($admin);
+            $this->assertSame(1, substr_count($html, $banner . e($message) . '</span>'), "帯に出ていない: {$message}");
+            $this->assertSame(1, substr_count($html, e($message)), "画面に 2 回出ている: {$message}");
+        }
+
+        $this->assertNull($unused->fresh());
+        $this->assertNotNull($w['type']->fresh());
+    }
+
+    /** 押せない理由は、ボタン自身ではなくホバーを受けられる span に載せる（Bug #43。ボタンが持たないこととラッパーが持つことを対で） */
+    public function test_the_reason_the_add_button_is_disabled_sits_on_the_wrapper(): void
+    {
+        $admin   = $this->approvalAdmin();
+        $pattern = '/<span([^>]*)>\s*<button([^>]*)>種類を追加<\/button>/u';
+        $bare    = '/(?<![\w:-])disabled(?![\w:-])/';
+
+        // 部門が 0 件 ＝ 押せない
+        $this->assertSame(1, preg_match($pattern, $this->indexHtml($admin), $m), 'span に包まれた「種類を追加」が見つからない');
+        $this->assertStringContainsString('title="先に部門の管理で部門を登録してください。"', $m[1]);
+        $this->assertSame(1, preg_match($bare, $m[2]), 'ボタンが disabled になっていない');
+        $this->assertStringNotContainsString('title=', $m[2], 'disabled なボタン自身の title は表示されない（Bug #43）');
+
+        // 部門があれば押せる ＝ 理由も出さない
+        $this->approvalDepartment($this->approvalCompany());
+        $this->assertSame(1, preg_match($pattern, $this->indexHtml($admin), $m));
+        $this->assertStringNotContainsString('title=', $m[1], '押せるのに理由が残っている');
+        $this->assertSame(0, preg_match($bare, $m[2]), '部門があるのに押せない');
+    }
+
+    /** 見出しの欄（12 行）があっても「保存する」に届くこと（構造だけ。OrganizationManagementTest と同じ見方） */
+    public function test_every_modal_panel_can_scroll_on_a_short_screen(): void
+    {
+        $this->approvalWorld();
+        $found = preg_match_all('/<div @click\.outside="[^"]*" class="([^"]*)"/', $this->indexHtml($this->approvalAdmin()), $m);
+
+        $this->assertSame(2, $found, 'モーダルの panel が 2 つ見つからない');
+        foreach ($m[1] as $class) {
+            $this->assertStringContainsString('max-h-[90vh]', $class);
+            $this->assertStringContainsString('overflow-y-auto', $class);
+        }
+    }
+
+    /** 断られた理由が画面に出る（Bug #49: 描く前にセッションへ触らない） */
+    public function test_a_rejected_form_shows_why_on_the_page(): void
+    {
+        $w     = $this->approvalWorld();
+        $admin = $this->approvalAdmin();
+
+        $this->actingAs($admin)->from(route('approvals.admin.types.index'))->put(route('approvals.admin.types.update', $w['type']), [
+            'name' => $w['type']->name, 'headings' => "■ なぜ\n※ 見積書を添付",
+            'review_department_id' => (string) $w['reviewDept']->id, 'sort_order' => '1', 'is_active' => '1',
+        ])->assertRedirect(route('approvals.admin.types.index'));
+
+        $this->assertStringContainsString('<li>' . e('見出しは「■」で始まる行と、中身の無い「・」の行だけで書いてください。') . '</li>', $this->indexHtml($admin));
+    }
+
+    /** 追加のフォームの審査部門は全部門から選べ、先頭以外を選んで送り返せる（ParsesForms の「先頭 option 以外で測る」） */
+    public function test_the_create_form_offers_every_department(): void
+    {
+        $w     = $this->approvalWorld();
+        $admin = $this->approvalAdmin();
+        $html  = $this->indexHtml($admin);
+
+        $open  = strpos($html, 'action="' . route('approvals.admin.types.store') . '"');
+        $form  = substr($html, $open, strpos($html, '</form>', $open) - $open);
+        preg_match_all('/<option value="(\d+)">([^<]*)<\/option>/', $form, $m);
+        $this->assertSame([(string) $w['dept']->id, (string) $w['reviewDept']->id], $m[1]);
+        $this->assertSame([e($w['company']->name) . '・住宅事業部', e($w['company']->name) . '・総務部'], $m[2]);
+
+        $fields = $this->parseForm($html, 'action="' . route('approvals.admin.types.store') . '"')['fields'];
+        $this->actingAs($admin)->post(route('approvals.admin.types.store'), array_merge($fields, [
+            'name' => '人事', 'review_department_id' => $m[1][1],
+        ]))->assertRedirect(route('approvals.admin.types.index'));
+
+        $this->assertSame($w['reviewDept']->id, ApprovalType::where('name', '人事')->sole()->review_department_id);
+    }
+
+    /** 上限と存在の検査は日本語で断る（本番の MySQL では、検査が抜けると列の長さ・UNSIGNED・外部キーで 500 になる） */
+    public function test_the_limits_are_refused_in_japanese(): void
+    {
+        $w     = $this->approvalWorld();
+        $admin = $this->approvalAdmin();
+        $base  = [
+            'name' => $w['type']->name, 'headings' => BodyTemplate::DEFAULT,
+            'review_department_id' => (string) $w['reviewDept']->id, 'sort_order' => '1', 'is_active' => '1',
+        ];
+
+        foreach ([
+            ['headings', '', '見出しを入力してください。'],
+            ['headings', '■' . str_repeat('あ', 2000), '見出しは2000文字以内で入力してください。'],
+            ['name', str_repeat('あ', 51), '種類名は50文字以内で入力してください。'],
+            ['review_department_id', '999999', '選択された審査部門は存在しません。'],
+            ['sort_order', '-1', '表示順は0以上の値にしてください。'],
+            ['sort_order', '10000', '表示順は9999以下の値にしてください。'],
+        ] as [$field, $value, $message]) {
+            $this->actingAs($admin)->put(route('approvals.admin.types.update', $w['type']), array_merge($base, [$field => $value]))
+                ->assertSessionHasErrors([$field => $message]);
+        }
+
+        // 断られた送信では何も変わらず、記録も残らない
+        $this->assertSame([$w['type']->name, BodyTemplate::DEFAULT, 1], [$w['type']->fresh()->name, $w['type']->fresh()->headings, $w['type']->fresh()->sort_order]);
+        $this->assertSame(0, ApprovalSettingLog::count());
+
+        // 2000 文字ちょうどは通る
+        $this->actingAs($admin)->put(route('approvals.admin.types.update', $w['type']), array_merge($base, ['headings' => '■' . str_repeat('あ', 1999)]))
+            ->assertSessionHasNoErrors();
+        $this->assertSame('■' . str_repeat('あ', 1999), $w['type']->fresh()->headings);
+    }
+
+    /** 追加と削除の記録は値を持つ（あとで「何を消したか」を読めるように） */
+    public function test_the_logs_keep_the_created_and_deleted_values(): void
+    {
+        $w     = $this->approvalWorld();
+        $admin = $this->approvalAdmin();
+
+        $this->actingAs($admin)->post(route('approvals.admin.types.store'), [
+            'name' => '人事', 'headings' => BodyTemplate::DEFAULT, 'review_department_id' => (string) $w['reviewDept']->id, 'sort_order' => '4', 'is_active' => '1',
+        ])->assertRedirect();
+        $type = ApprovalType::where('name', '人事')->sole();
+
+        $expected = ['name' => '人事', 'headings' => BodyTemplate::DEFAULT, 'review_department_id' => $w['reviewDept']->id, 'sort_order' => 4, 'is_active' => true];
+        $this->assertEquals($expected, ApprovalSettingLog::where('action', 'type.created')->sole()->new_values);
+
+        $this->actingAs($admin)->delete(route('approvals.admin.types.destroy', $type))->assertRedirect();
+        $this->assertEquals($expected, ApprovalSettingLog::where('action', 'type.deleted')->sole()->old_values);
+    }
+
+    /** 削除を止めるのは、その種類の申請だけ（ほかの種類の申請では止めない） */
+    public function test_only_the_requests_of_the_type_block_its_deletion(): void
+    {
+        $w = $this->approvalWorld();
+        $this->draftFor($w);
+        $unused = $this->approvalType($w['reviewDept'], ['name' => '人事']);
+
+        $this->actingAs($this->approvalAdmin())->delete(route('approvals.admin.types.destroy', $unused))
+            ->assertSessionHas('success', '申請の種類を削除しました。');
+
+        $this->assertNull($unused->fresh());
+    }
+
+    /** 追加の小窓の審査部門は「選んでください」から始まり、選ばずに送ると断る（先頭の部門が黙って選ばれない。Task 11 の点検の軽微） */
+    public function test_the_create_form_starts_without_a_review_department(): void
+    {
+        $this->approvalWorld();
+        $admin = $this->approvalAdmin();
+
+        $this->assertMatchesRegularExpression('/<select name="review_department_id" required[^>]*>\s*<option value="">選んでください<\/option>/u', $this->indexHtml($admin));
+
+        $this->actingAs($admin)->post(route('approvals.admin.types.store'), [
+            'name' => '選び忘れ', 'headings' => BodyTemplate::DEFAULT, 'review_department_id' => '', 'sort_order' => '1',
+        ])->assertSessionHasErrors(['review_department_id' => '審査部門を選択してください。']);
+        $this->assertSame(0, ApprovalType::where('name', '選び忘れ')->count());
+    }
+
+    /** 停止の説明は、下書きの選び直し（D10）まで言う（進めている下書きに影響しないと読まれないように。Task 11 の点検の軽微） */
+    public function test_the_stop_explains_that_drafts_must_choose_again(): void
+    {
+        $this->approvalWorld();
+        $html = $this->indexHtml($this->approvalAdmin());
+
+        $this->assertStringContainsString('この種類の下書きは、提出の前に種類を選び直してもらいます（差戻し中の申請はそのまま出し直せます。過去の申請もそのまま）。', $html);
+        $this->assertStringContainsString('利用中（外すと停止。新しい申請で選べなくなり、この種類の下書きは提出の前に種類を選び直してもらう）', $html);
+    }
+
+    /** 審査担当者のいない審査部門は、一覧に「審査担当者がいません」と出す（申請者の提出が断られて初めて気づく、にしない。Task 11 の点検の軽微） */
+    public function test_a_review_department_without_reviewers_is_flagged(): void
+    {
+        $w = $this->approvalWorld();
+        $w['reviewDept']->reviewers()->detach();
+
+        $html = $this->indexHtml($this->approvalAdmin());
+
+        $this->assertStringContainsString('<span class="ml-1 text-[11px] font-semibold text-red-700">審査担当者がいません</span>', $html);
+    }
+
+    /**
+     * 追加の小窓で断られたら、打った中身（種類名・審査部門・見出し・表示順・利用中）で小窓を開き直す（Task 19 の C4。
+     * 利用者の決定 2026-09-28。部門の管理は今のまま）。描き直した追加のフォームを送り返せば、打った中身になる
+     */
+    public function test_a_refused_new_type_reopens_the_add_modal_with_what_was_typed(): void
+    {
+        $w     = $this->approvalWorld();
+        $admin = $this->approvalAdmin();
+        $typed = [
+            'name'                 => $w['type']->name,   // 同じ名前で断られる
+            'review_department_id' => (string) $w['reviewDept']->id,
+            'headings'             => "■ 目的\n・\n■ 費用\n・",
+            'sort_order'           => '7',
+        ];   // 利用中のチェックは外した（送られない）
+
+        $this->actingAs($admin)->from(route('approvals.admin.types.index'))->post(route('approvals.admin.types.store'), $typed)
+            ->assertRedirect(route('approvals.admin.types.index'));
+
+        $html = $this->indexHtml($admin);
+        $this->assertStringContainsString('<li>' . e('この種類名は既に登録されています。') . '</li>', $html);
+        $this->assertStringContainsString('createModal: true,', $html);
+        $this->assertStringContainsString('var refused = null;', $html, '編集の小窓まで開く');
+        $fields = $this->parseForm($html, 'action="' . route('approvals.admin.types.store') . '"')['fields'];
+        $back   = array_intersect_key($fields, $typed);
+        ksort($back);
+        ksort($typed);
+        $this->assertSame($typed, $back);
+        $this->assertArrayNotHasKey('is_active', $fields, '外したチェックが入って戻った');
+
+        // 断られた理由は開き直した小窓の中にも出す（上の帯は小窓に隠れる。375px では見えない。Task 19 の F-1）。編集の小窓には出さない
+        $this->assertMatchesRegularExpression(
+            '/<div class="[^"]*border-red-200[^"]*">\s*<p>' . preg_quote(e('この種類名は既に登録されています。'), '/') . '<\/p>/u',
+            $this->modalFormHtml($html, 'action="' . route('approvals.admin.types.store') . '"'),
+            '断られた理由が追加の小窓に無い'
+        );
+        $this->assertStringNotContainsString(e('この種類名は既に登録されています。'), $this->modalFormHtml($html, 'name="edit_id"'), '編集の小窓にも理由が出る');
+    }
+
+    /**
+     * 編集の小窓で断られたら、その種類の編集の小窓を打った中身で開き直す（Task 19 の C4）。どの種類かは、編集の小窓が送る
+     * edit_id で分かる（今は無い種類なら開かない）。追加の小窓には入れない
+     */
+    public function test_a_refused_edit_reopens_the_edit_modal_with_what_was_typed(): void
+    {
+        $w     = $this->approvalWorld();
+        $admin = $this->approvalAdmin();
+        $this->approvalType($w['reviewDept'], ['name' => '人事']);
+        $typed = [
+            'name' => '購入・発注（改）', 'headings' => "■ なぜ\n※ 見積書を添付",   // 見出しの形でない
+            'review_department_id' => (string) $w['dept']->id, 'sort_order' => '3',
+        ];   // 利用中のチェックは外した
+
+        // 編集の小窓は、どの種類かを hidden の edit_id で送る（Alpine が editId を入れる）
+        $this->assertStringContainsString('<input type="hidden" name="edit_id" :value="editId">', $this->indexHtml($admin));
+
+        $this->actingAs($admin)->from(route('approvals.admin.types.index'))
+            ->put(route('approvals.admin.types.update', $w['type']), $typed + ['edit_id' => (string) $w['type']->id])
+            ->assertRedirect(route('approvals.admin.types.index'));
+
+        $html = $this->indexHtml($admin);
+        $this->assertStringContainsString('<li>' . e('見出しは「■」で始まる行と、中身の無い「・」の行だけで書いてください。') . '</li>', $html);
+        $this->assertStringContainsString('createModal: false,', $html);
+        $this->assertStringContainsString('var refused = ' . Js::from(['id' => $w['type']->id] + $typed + ['is_active' => false])->toHtml() . ';', $html);
+        $fields = $this->parseForm($html, 'action="' . route('approvals.admin.types.store') . '"')['fields'];
+        $this->assertSame(['', BodyTemplate::DEFAULT, '0'], [$fields['name'], $fields['headings'], $fields['sort_order']], '追加の小窓に編集の中身が入った');
+        // 断られた理由は開き直した小窓の中にも出す（Task 19 の F-1）。編集の小窓は種類ごとに使い回すので、断られた種類を
+        // 編集しているあいだだけ出す（別の種類の編集を開いたら当てはまらない。判断の小窓の O-1 と同じ）。追加の小窓には出さない
+        $reason = e('見出しは「■」で始まる行と、中身の無い「・」の行だけで書いてください。');
+        $this->assertMatchesRegularExpression(
+            '/<div x-show="editId === ' . $w['type']->id . '" class="[^"]*border-red-200[^"]*">\s*<p>' . preg_quote($reason, '/') . '<\/p>/u',
+            $this->modalFormHtml($html, 'name="edit_id"'),
+            '断られた理由が編集の小窓に無い'
+        );
+        $this->assertStringNotContainsString($reason, $this->modalFormHtml($html, 'action="' . route('approvals.admin.types.store') . '"'), '追加の小窓にも理由が出る');
+
+        // 今は無い種類の edit_id なら開かない（理由は画面の上に出る）
+        $this->actingAs($admin)->from(route('approvals.admin.types.index'))
+            ->put(route('approvals.admin.types.update', $w['type']), $typed + ['edit_id' => '999999'])
+            ->assertRedirect(route('approvals.admin.types.index'));
+        $html = $this->indexHtml($admin);
+        $this->assertStringContainsString('var refused = null;', $html);
+        $this->assertStringContainsString('createModal: false,', $html);
+        $this->assertStringNotContainsString($reason, $this->modalFormHtml($html, 'name="edit_id"'), '開かない小窓に理由が出る');
+        $this->assertStringNotContainsString($reason, $this->modalFormHtml($html, 'action="' . route('approvals.admin.types.store') . '"'), '開かない小窓に理由が出る');
+    }
+
+    /** 編集の小窓を断られた中身で開き直すのは、画面の JS の init()（Task 19 の C4 の点検。形だけ見る。振る舞いはブラウザで確かめる） */
+    public function test_the_refused_edit_is_reopened_by_init(): void
+    {
+        $w     = $this->approvalWorld();
+        $admin = $this->approvalAdmin();
+
+        $this->actingAs($admin)->from(route('approvals.admin.types.index'))
+            ->put(route('approvals.admin.types.update', $w['type']), [
+                'name' => '', 'headings' => BodyTemplate::DEFAULT, 'review_department_id' => (string) $w['reviewDept']->id,
+                'sort_order' => '1', 'is_active' => '1', 'edit_id' => (string) $w['type']->id,
+            ])->assertRedirect(route('approvals.admin.types.index'));
+
+        $this->assertMatchesRegularExpression(
+            '/init\(\) \{\s*var refused = JSON\.parse\([^\n]*\);\s*if \(refused\) \{\s*this\.openEdit\(refused\);\s*\}\s*\},/',
+            $this->indexHtml($admin)
+        );
+    }
+
+    /**
+     * 追加・編集の小窓の「保存する」は、1 回押したら押せなくする（Task 19 の N-3。利用者の決定 C2 の趣旨。2 回押すと、1 回目で
+     * 登録できたのに 2 回目が「この種類名は既に登録されています。」で小窓を開き直していた）。押したら印を立てて 2 回目の送信を
+     * 取り消し、「送っています…」を出す。「戻る」で戻った画面（pageshow）は押せるように戻す。形は詳細の判断などと同じ
+     * approvalSubmitOnce()（部品の定義は 1 か所。この画面にも 1 回だけ描く）
+     */
+    public function test_the_save_buttons_are_sent_only_once_until_the_page_is_shown_again(): void
+    {
+        $this->approvalWorld();
+        $html = $this->indexHtml($this->approvalAdmin());
+
+        foreach (['追加' => 'action="' . route('approvals.admin.types.store') . '"', '編集' => 'name="edit_id"'] as $label => $needle) {
+            $form = $this->modalFormHtml($html, $needle);
+            $tag  = substr($form, 0, strpos($form, '>') + 1);
+            // 送信の印はそのフォームそのものに付ける（Bug #47）。pageshow は window にしか届かない（Bug #65）
+            foreach (['x-data="approvalSubmitOnce()"', 'x-on:submit="onSubmit($event)"', 'x-on:pageshow.window="resetSubmit()"'] as $attribute) {
+                $this->assertStringContainsString($attribute, $tag, "{$label}の小窓のフォームに {$attribute} が無い");
+            }
+            $this->assertSame(1, preg_match('/<button type="submit"([^>]*)>保存する<\/button>/u', $form, $m), "{$label}の小窓の「保存する」が 1 つでない");
+            foreach ([':disabled="submitting"', 'disabled:cursor-not-allowed', 'disabled:opacity-60'] as $attribute) {
+                $this->assertStringContainsString($attribute, $m[1], "{$label}の小窓の「保存する」に {$attribute} が無い");
+            }
+            $this->assertDoesNotMatchRegularExpression('/<button\b[^>]*\bname=/', $form, "{$label}の小窓のボタンが値を送っている（押せなくすると送られない）");
+            $this->assertStringContainsString('<span role="status" x-text="submitting ? \'送っています…\' : \'\'"', $form, "{$label}の小窓に「送っています…」が無い");
+        }
+
+        $this->assertSame(1, substr_count($html, 'function approvalSubmitOnce()'), '二度押し止めの部品がこの画面に 1 回だけ描かれていない');
+    }
+}

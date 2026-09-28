@@ -130,6 +130,52 @@ class User extends Authenticatable
                     ->withTimestamps('created_at', false);
     }
 
+    /** 部門長を務める決裁の部門（設計書 §5.4） */
+    public function approvalHeadedDepartments(): HasMany
+    {
+        return $this->hasMany(ApprovalDepartment::class, 'head_user_id');
+    }
+
+    /** 審査担当者を務める決裁の部門（設計書 §5.4） */
+    public function approvalReviewerDepartments(): BelongsToMany
+    {
+        return $this->belongsToMany(ApprovalDepartment::class, 'approval_reviewers', 'user_id', 'department_id')
+                    ->withTimestamps('created_at', false);
+    }
+
+    /**
+     * 部門長・審査担当者に指定されているとき、画面に出す理由（要件 12.6・設計書 §5.4）。
+     *
+     * ⚠ 無効化・削除・メールアドレスを空にする操作の歯止めが使う（基幹と決裁の利用者管理の両方）。
+     *   文言はここで完成させる（呼ぶ側で前後を足さない。`approvalPrivilegeLabel()` と同じ流儀）。
+     */
+    public function approvalAssignmentLabel(): ?string
+    {
+        if ($dept = $this->approvalHeadedDepartments()->orderBy('id')->first()) {
+            return "決裁の部門「{$dept->name}」の部門長";
+        }
+
+        if ($dept = $this->approvalReviewerDepartments()->orderBy('approval_departments.id')->first()) {
+            return "決裁の部門「{$dept->name}」の審査担当者";
+        }
+
+        return null;
+    }
+
+    /**
+     * 部門長・審査担当者の守りの断り（`approvalAssignmentLabel()` の文）に続けて、この人（操作した人）に後任の設定の
+     * 頼み先を言う 2 文目（Task 19 の C3・利用者の決定 2026-09-28）。
+     *
+     * ⚠ 後任を決める「部門の管理」は決裁の管理者だけの画面（経営層でも決裁の管理者でなければ 403）。
+     *   基幹と決裁の利用者管理の両方が使う（文言を 2 通りに割らない）
+     */
+    public function approvalSuccessorGuide(): string
+    {
+        return $this->isApprovalAdmin()
+            ? '先に部門の管理で後任を設定してください。'
+            : '先に決裁の管理者に後任の設定を頼んでください。';
+    }
+
     // ============================================================
     // アクセサ / ヘルパー
     // ============================================================

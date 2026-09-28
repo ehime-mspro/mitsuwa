@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * 決裁の部門（設計書 §5.8）。
@@ -14,11 +15,35 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
  */
 class ApprovalDepartment extends Model
 {
-    protected $fillable = ['company_id', 'name', 'short_name', 'code', 'sort_order'];
+    protected $fillable = ['company_id', 'name', 'short_name', 'code', 'sort_order', 'head_user_id'];
 
     protected function casts(): array
     {
-        return ['company_id' => 'integer', 'sort_order' => 'integer'];
+        return ['company_id' => 'integer', 'sort_order' => 'integer', 'head_user_id' => 'integer'];
+    }
+
+    /** 部門長（⚠ 利用者は SoftDeletes。Top trap #18） */
+    public function head(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'head_user_id')->withTrashed();
+    }
+
+    /**
+     * 審査担当者（設計書 §5.4。所属は問わない。D6）。
+     *
+     * ⚠ `withTrashed()` を付けない（Top trap #18 の例外）。今判断できる人の並びで、提出の条件（SubmitChecker）と
+     *   「いま誰の番か」（CurrentHandler）が使う。利用者を削除しても status は active のままなので、付けると
+     *   削除した人を審査担当者に数え、誰も判断できない審査部門へ申請が通ってしまう。
+     */
+    public function reviewers(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'approval_reviewers', 'department_id', 'user_id')
+                    ->withTimestamps('created_at', false);
+    }
+
+    public function requests(): HasMany
+    {
+        return $this->hasMany(ApprovalRequest::class, 'department_id');
     }
 
     public function company(): BelongsTo

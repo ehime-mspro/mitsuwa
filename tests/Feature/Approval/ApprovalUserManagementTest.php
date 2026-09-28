@@ -688,17 +688,19 @@ class ApprovalUserManagementTest extends TestCase
         $this->assertStringNotContainsString('action="' . route('approvals.admin.users.toggleStatus', $privileged) . '"', $html);
     }
 
-    /** 決裁のホームから管理の 2 画面へ行ける（Task 6 で保留していたブロック） */
+    /** 決裁のホームから管理の 3 画面へ行ける（Task 6 で保留していたブロック。申請種類の管理は Task 17） */
     public function test_the_approval_home_links_to_the_admin_screens(): void
     {
         $admin = $this->admin();
 
         $html = $this->actingAs($this->member())->get(route('approvals.home'))->assertOk()->getContent();
         $this->assertStringNotContainsString(route('approvals.admin.users.index'), $html, '管理者でない人にリンクが出ている');
+        $this->assertStringNotContainsString(route('approvals.admin.types.index'), $html, '管理者でない人に申請種類の管理のリンクが出ている');
 
         $html = $this->actingAs($admin)->get(route('approvals.home'))->assertOk()->getContent();
         $this->assertStringContainsString('href="' . route('approvals.admin.users.index') . '"', $html);
         $this->assertStringContainsString('href="' . route('approvals.admin.organization.index') . '"', $html);
+        $this->assertStringContainsString('href="' . route('approvals.admin.types.index') . '"', $html, '管理者に申請種類の管理のリンクが出ていない');
     }
 
     // ============================================================

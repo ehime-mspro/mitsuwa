@@ -40,6 +40,7 @@ fi
 # config.php（接続情報・暗号化キー入り）ができ、それが本番の config.php を上書きしてしまう。
 # [5/6] が本番の .env から作り直すまでの間、本番が手元の設定で動く（[5/6] が失敗すれば残る）。
 # 部品の名簿（packages.php・services.php）も送らない。本番で毎回作り直すのは [5/6]（理由はそこに書く）。
+# .superpowers は手元の作業メモ（skill の作業場所）で、本番には要らない（2026-09-28 に除外）。
 echo "=== [2/6] アプリケーション転送 ==="
 rsync -avz \
   --exclude='.env' \
@@ -50,6 +51,7 @@ rsync -avz \
   --exclude='docs' \
   --exclude='CLAUDE.md' \
   --exclude='.claude' \
+  --exclude='.superpowers' \
   --exclude='.cursor' \
   --exclude='.vscode' \
   --exclude='.idea' \

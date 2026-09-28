@@ -2,6 +2,11 @@
 
 use App\Http\Controllers\Approval\HomeController;
 use App\Http\Controllers\Approval\OrganizationController;
+use App\Http\Controllers\Approval\RelatedNumberController;
+use App\Http\Controllers\Approval\RequestActionController;
+use App\Http\Controllers\Approval\RequestAttachmentController;
+use App\Http\Controllers\Approval\RequestController;
+use App\Http\Controllers\Approval\TypeController;
 use App\Http\Controllers\Approval\UserController;
 use App\Http\Controllers\Approval\UserImportController;
 use Illuminate\Support\Facades\Route;
@@ -67,4 +72,52 @@ Route::middleware('approval.admin')->prefix('approvals/admin')->name('approvals.
 
     Route::post('/organization/mail-domains', [OrganizationController::class, 'storeMailDomain'])->name('organization.mailDomains.store');
     Route::delete('/organization/mail-domains/{mailDomain}', [OrganizationController::class, 'destroyMailDomain'])->name('organization.mailDomains.destroy');
+
+    // 申請種類の管理（段階2 設計書 §5.5）。使い始める前から使える（準備の画面。D1）
+    // ⚠ パラメータ名は `{approvalType}`（`{type}` は基幹で別の意味に使われうるので避ける）
+    Route::get('/types', [TypeController::class, 'index'])->name('types.index');
+    Route::post('/types', [TypeController::class, 'store'])->name('types.store');
+    Route::put('/types/{approvalType}', [TypeController::class, 'update'])->name('types.update');
+    Route::delete('/types/{approvalType}', [TypeController::class, 'destroy'])->name('types.destroy');
+});
+
+/*
+|--------------------------------------------------------------------------
+| 申請を回す画面（段階2。使い始めるまで誰にも見せない）
+|--------------------------------------------------------------------------
+|
+| ⚠ 門番 `approval.launched` は、使い始める前（approval_settings.launched_at が空）は
+|   画面を開く GET をホームへ送り、それ以外を 404 にする（段階2 設計書 §5.2・D1）。
+|   このグループの外に申請の画面を足さないこと（LaunchGateTest が全件分類で止める）。
+| ⚠ パラメータ名は `{approvalRequest}` / `{approvalAttachment}`（モデル名の camelCase）。
+| ⚠ `/requests/create` を `/requests/{approvalRequest}` より前に置く（登録順がマッチの優先順）。
+|
+*/
+Route::middleware('approval.launched')->prefix('approvals')->name('approvals.')->group(function () {
+
+    // 関連する決裁No の候補（Ajax・JSON。設計書 §5.6）
+    Route::get('/numbers', [RelatedNumberController::class, 'search'])->name('numbers.search');
+
+    // 申請書（画面②）と詳細（画面③）。段階2 設計書 §5.6・§5.12
+    // ⚠ 提出は別のルートにしない（保存のフォームに intent=submit を付けて送る。計画 §0.8 の 2）
+    // ⚠ create を {approvalRequest} より前に置く
+    Route::get('/requests', [RequestController::class, 'index'])->name('requests.index');
+    Route::get('/requests/create', [RequestController::class, 'create'])->name('requests.create');
+    Route::post('/requests', [RequestController::class, 'store'])->name('requests.store');
+    Route::get('/requests/{approvalRequest}', [RequestController::class, 'show'])->name('requests.show');
+    Route::get('/requests/{approvalRequest}/edit', [RequestController::class, 'edit'])->name('requests.edit');
+    Route::put('/requests/{approvalRequest}', [RequestController::class, 'update'])->name('requests.update');
+    Route::delete('/requests/{approvalRequest}', [RequestController::class, 'destroy'])->name('requests.destroy');
+
+    // 添付（段階2 設計書 §5.7・計画 §0.5）。追加と外すのは Ajax・JSON
+    Route::post('/requests/{approvalRequest}/attachments', [RequestAttachmentController::class, 'store'])->name('requests.attachments.store');
+    Route::get('/attachments/{approvalAttachment}', [RequestAttachmentController::class, 'show'])->name('attachments.show');
+    Route::delete('/attachments/{approvalAttachment}', [RequestAttachmentController::class, 'destroy'])->name('attachments.destroy');
+
+    // 判断・条件確認・取り下げ（段階2 設計書 §5.8）。役割ごとに分ける（権限の確かめ方が違うため）
+    Route::post('/requests/{approvalRequest}/head-review', [RequestActionController::class, 'headReview'])->name('requests.headReview');
+    Route::post('/requests/{approvalRequest}/review', [RequestActionController::class, 'review'])->name('requests.review');
+    Route::post('/requests/{approvalRequest}/decide', [RequestActionController::class, 'decide'])->name('requests.decide');
+    Route::post('/requests/{approvalRequest}/confirm-condition', [RequestActionController::class, 'confirmCondition'])->name('requests.confirmCondition');
+    Route::post('/requests/{approvalRequest}/withdraw', [RequestActionController::class, 'withdraw'])->name('requests.withdraw');
 });

@@ -157,7 +157,7 @@ sudo rm -f storage/framework/views/*.php && brew services restart httpd
 | 経営ダッシュボード | `/dashboard/executive` | `DashboardController::executive`（5事業横断）|
 | 買主マスタ（部署横断）| `/buyers` | `CustomerController`、SoftDeletes、CSV import |
 | 添付ファイル | ポリモーフィック | `AttachmentController`（TYPE_MAP と routes/web.php の `where` 正規表現を同期。Bug #20）|
-| 決裁申請 段階1 | `/approvals/*` | `Approval\*Controller`（門番 2 本・CSV 一括登録・ログイン案内）|
+| 決裁申請 段階1・2a | `/approvals/*` | `Approval\*Controller`（門番 3 本・CSV 一括登録・ログイン案内・申請の回覧。状態を変えるのは `App\Support\Approval\Workflow` だけ）|
 
 詳細構成: @docs/ARCHITECTURE.md / 実装履歴・優先度: @docs/BACKLOG.md
 

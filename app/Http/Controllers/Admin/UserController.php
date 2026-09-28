@@ -241,6 +241,12 @@ class UserController extends Controller
         ) {
             return $this->refuseToTouchThePresident($user);
         }
+        // 部門長・審査担当者に指定されている人も、無効化・メールアドレスを空にできない（要件 12.6・段階2 設計書 §5.4）
+        if (($validated['status'] === UserStatus::Inactive->value || ($validated['email'] ?? null) === null)
+            && ($label = $user->approvalAssignmentLabel()) !== null
+        ) {
+            return $this->refuseToTouchAnAssignee($user, $label);
+        }
 
         $before = [
             'name' => $user->name, 'employee_number' => $user->employee_number,
@@ -297,6 +303,10 @@ class UserController extends Controller
         if ($newStatus === UserStatus::Inactive->value && $user->isApprovalPresident()) {
             return $this->refuseToTouchThePresident($user);
         }
+        // 部門長・審査担当者も無効化できない（要件 12.6）。有効化は止めない
+        if ($newStatus === UserStatus::Inactive->value && ($label = $user->approvalAssignmentLabel()) !== null) {
+            return $this->refuseToTouchAnAssignee($user, $label);
+        }
 
         // 自分自身の無効化を防止
         if ($user->id === auth()->id() && $newStatus === UserStatus::Inactive->value) {
@@ -345,6 +355,18 @@ class UserController extends Controller
         return redirect()->route('admin.users.index')
             ->with('error', "{$user->name}さんは決裁の社長に指定されています。先に社長の指定を変えてください。");
     }
+    /**
+     * 部門長・審査担当者を守る断り（要件 12.6・段階2 設計書 §5.4）。
+     *
+     * ⚠ 社長の守りと同じ入口 4 つ（編集の無効化・編集のメール空・行の無効化・削除）に置く。
+     *   文言は `User::approvalAssignmentLabel()` が完成させる（前後に言葉を足さない）。
+     *   2 文目の頼み先は操作した人で変わる（`User::approvalSuccessorGuide()`。決裁の利用者管理と同じ文）。
+     */
+    private function refuseToTouchAnAssignee(User $user, string $label): \Illuminate\Http\RedirectResponse
+    {
+        return redirect()->route('admin.users.index')
+            ->with('error', "{$user->name}さんは{$label}に指定されています。" . auth()->user()->approvalSuccessorGuide());
+    }
 
     /**
      * パスワードリセット（初期パスワード再発行）
@@ -373,6 +395,10 @@ class UserController extends Controller
         // 社長に指定されている人は削除できない（§5.7）
         if ($user->isApprovalPresident()) {
             return $this->refuseToTouchThePresident($user);
+        }
+        // 部門長・審査担当者も削除できない（要件 12.6）
+        if (($label = $user->approvalAssignmentLabel()) !== null) {
+            return $this->refuseToTouchAnAssignee($user, $label);
         }
 
         // 自分自身は削除不可

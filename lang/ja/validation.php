@@ -581,6 +581,33 @@ return [
         'user_ids'               => '選んだ利用者',
         'user_ids.*'             => '選んだ利用者',
 
+        // --- 決裁申請 段階2 ---
+        // 部門の管理（部門長・審査担当者・今年度の開始番号。段階2 設計書 §5.4）
+        'head_user_id'   => '部門長',
+        'reviewer_ids'   => '審査担当者',
+        'reviewer_ids.*' => '審査担当者',
+        'next_number'    => '今年度の次の番号',
+        'next_number_shown' => '開いたときの次の番号',
+
+        // 申請種類の管理（§5.5）。name は TypeController の validate() 第 3 引数で「種類名」に上書きする
+        'headings'             => '見出し',
+        'review_department_id' => '審査部門',
+        'is_active'            => '利用中',
+
+        // 申請書（§5.6）。type_id / department_id / body は RequestController の validate() 第 3 引数で
+        // 「申請の種類」「申請部門」「重点ポイント（5W2H）」に上書きする（ほかの画面で同じ名前を使うときのため一般の語にする）
+        'type_id'           => '種類',
+        'department_id'     => '部門',
+        'subject'           => '件名',
+        'amount'            => '金額',
+        'schedule'          => '実施時期',
+        'body'              => '本文',
+        'related_numbers'   => '関連する決裁No',
+        'related_numbers.*' => '関連する決裁No',
+        // 判断・条件確認・取り下げ（§5.8）
+        'result'            => '判断',
+        'comment'           => 'コメント',
+
     ],
 
 ];

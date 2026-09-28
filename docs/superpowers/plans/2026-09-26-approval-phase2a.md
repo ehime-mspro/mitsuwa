@@ -41,7 +41,7 @@
 
 ### 0.4 採番のロック（要件 6・設計書 §5.9）
 
-- `approval_number_sequences` の（部門・年度）の行を `insertOrIgnore` で用意してから `lockForUpdate()` で読み、`next_number` を使って 1 進める。行が無いときに 2 人が同時に作っても一意の索引で 1 行になる（`insertOrIgnore` は MySQL の `INSERT IGNORE`・SQLite の `INSERT OR IGNORE`）
+- `approval_number_sequences` の（部門・年度）の行を `upsert` で用意してから `lockForUpdate()` で読み、`next_number` を使って 1 進める。行が無いときに 2 人が同時に作っても一意の索引で 1 行になる（**2026-09-27 の実装中の変更**: 計画の `insertOrIgnore` は MySQL の READ COMMITTED で共有ロックの待ち合いからデッドロックになりうる〈MySQL 8.4.8 で実測〉ので、重複した行に排他ロックを取る `upsert`〈INSERT … ON DUPLICATE KEY UPDATE〉にした。`issue()` も自分でトランザクションに包む。既定の REPEATABLE READ では起きにくいが、分離レベルに頼らない〈upsert なら後の方は待つだけ〉。§0.12 の 4）
 - 採番は社長の判断と同じトランザクションの中で行う（判断が断られたら番号も戻る）
 
 ### 0.5 添付の消し方とダウンロードの記録（設計書 §5.7 を細かくした）
@@ -74,6 +74,12 @@
 | 1 | §5.3 `approval_requests.completed_at` | **`finished_at`** | 走査テスト `StoredTimestampDisplayScanTest` が `started_at`・`completed_at`・`executed_at` を「datetime にキャストしてはいけない名前」として予約している（既存の `Repair` などが date キャストで使う）。名前だけの違いで意味は同じ（決裁が完了した日時） |
 | 2 | §5.1 `approvals.requests.submit`（提出の別ルート） | **作らない**。保存のフォームに `intent=submit` を付けて送る（`store` / `update` が保存のあと提出する） | 別のルートにすると、入力したばかりの中身を保存せずに提出して入力を失う・古い中身で提出する経路ができる。提出できなかったときも中身は下書きとして残る |
 | 3 | §5.7 添付の消し方 | 計画 §0.5 の表のとおり | 記録の外部キーとぶつからないようにする |
+| 4 | §5.3 `body`（TEXT）・§5.6「MySQL の TEXT に収まる長さ」 | **MEDIUMTEXT**（下の Task 1 のコードは TEXT のまま） | 本文の上限 20,000 文字は、4 バイトの文字（絵文字など）だと TEXT（65,535 バイト）に入らず、本番だけ 1406 で 500 になる（SQLite のテストでは見えない） |
+| 5 | §5.1 `ApprovalStatus` が「次に進める状態」を持つ | 持たせない。状態ごとに何ができるかは `RequestPermissions` が `ApprovalStatus` の `isEditable()`・`isWithdrawable()` などで決め、状態を変えるのは `Workflow` だけ。状態と操作の表は `WorkflowTest` の `ALLOWED` が固定する（Task 7） | 移り変わりを `Workflow` の 1 か所に集める（設計書 §5.1 の `Workflow` の役目）。§5.8 の表と中身の食い違いは無い |
+| 6 | §5.9「`JapanBusinessDayTest` に `ApprovalFiscalYear` を分類して加える」 | **加えない**。境目は `ApprovalFiscalYearTest` と採番のテスト（Task 5 の点検の手直し 0e90edd3）で固定する | 走査は開始月が変数の式（会社ごとの期）を拾えない（§0.9） |
+| 7 | §5.9 連番の行は「無ければ作る」 | `upsert`（INSERT … ON DUPLICATE KEY UPDATE）で用意する（§0.4） | 計画の `insertOrIgnore`（INSERT IGNORE）は重複した行に共有ロックを取るので、READ COMMITTED では社長の判断と開始番号の設定が重なるとデッドロック（1213）になりうる（MySQL 8.4.8 で実測。既定の REPEATABLE READ では起きにくい）。`upsert` は排他ロックを取るので、後の方は待つだけ |
+
+- 4〜7 は 2026-09-26〜27 の点検で分かって足した行（4・7 は実装中に変えたもの＝§0.12 の 1・4。5・6 は計画を書いたときからの違い）
 
 ### 0.9 走査テスト（全件分類）に登録するもの
 
@@ -106,6 +112,78 @@
 
 - レイアウトが出す帯は `success`（緑）と `error`（赤）の 2 つだけ（`warning` はビューごと）。段階2 の画面は**この 2 つだけを使う**（「すでに処理されています」も `error`）
 - 提出できない理由は、編集画面の上に**すべて**並べる（`withErrors(['submit' => $理由の配列])`）。ビューへ `errors` という名前のデータを渡さない（Bug #53）
+
+### 0.12 実装中に計画から変えたこと（2026-09-26〜28）
+
+実装と点検のあいだに、下の各 Task のコードから変えたこと（振る舞い・設計の変更）を並べる。**各 Task のコードの塊は計画を書いたときのまま**にしてある（Task 5 の採番のコードだけ直した形に置き換えた）ので、今の形は各コミットを見る。テストを足しただけ・注意書きを直しただけの手直しは省く（`git log a162957b..` にある）。2026-09-28 の cd6e2c75 まで。C1〜C12・B1〜B7 は Task 19 の記号（C は画面の写真で利用者が決めたこと＝設計書の各節、B は画面で見つけた不具合）。
+
+| # | Task | 何を | なぜ | コミット |
+|---|---|---|---|---|
+| 1 | 1 | `approval_requests.body` を MEDIUMTEXT にした（本番の SQL・migration・見張りのテストの型） | 本文の上限 20,000 文字は、4 バイトの文字だと TEXT（65,535 バイト）に入らず、本番だけ 1406 で 500 になる（§0.8 の 4） | 11b73ca3 |
+| 2 | 2 | 取り下げのバッジの文字を #4b5563 にし、すべての状態のバッジのコントラストをテストで見張る | 文字 #6b7280・背景 #f3f4f6 は 4.39:1 で、4.5:1（要件 14.4）に届かない（#4b5563 は 6.87:1） | b4be5e55 |
+| 3 | 3 | `BodyTemplate` とその単体テストを Task 6 から前倒しした | テストの土台（Task 3）の `approvalType()` が `BodyTemplate::DEFAULT` を使う（計画の順番の食い違い） | f895aae8 |
+| 4 | 5 | 連番の行の用意を `insertOrIgnore` → `upsert` にし、`issue()` も自分でトランザクションに包んだ（下の Task 5 のコードは直した形） | READ COMMITTED で、社長の判断と開始番号の設定が重なるとデッドロック（1213）になりうる（§0.4・§0.8 の 7） | fa88da79・8d4e8586 |
+| 5 | 6 | 停止した種類の下書きには選び直しの理由だけを出す。件名が全角の空白だけのものも空とみなす | 選び直せば消える審査部門の理由まで並び、要らない連絡をさせていた。`trim()` は全角の空白を落とさない | 7505b8da |
+| 6 | 6 | 関連する決裁No の形を締めた（年は 1〜99 で先頭に 0 を付けない・連番は 3〜5 桁・ダッシュ類を足す・途中の空白を除く・重複は配列のキーで見る）。申請書の画面の JS（Task 13 の `normalizeNumber`・`addNumber`）も同じ形にした | `R08`・3 桁の年・桁に上限の無い連番を通していた | 3b2be3bb・87f786ec |
+| 7 | 7 | 部門長の交代 `headChanged()` は、部門の行を**更新する前**に呼び、新しい部門長を引数で受け取る。待っている申請の行 → 段階の行の順に主キーでロックして読み直し、移した申請の `lock_version` を進める。トランザクションも自分で張る | 部門の行を先に更新すると、同じ部門の申請への判断・取り下げと MySQL でデッドロックして 500 になった。`lock_version` を進めないと、交代のあとに旧部門長の承認が通った（Task 7 の点検 I-1。ロックの順は点検の案から変えた＝開発側の判断） | 01117c1c・399fe690 |
+| 8 | 7 | 部門長の交代の記録の `actor_user_id` は、部門長を変えた管理者にする（注意書きとテスト。本番の SQL の列のコメントは Task 20 でそろえた） | 設計書 §5.11 の記録の「誰が」と、記録に残る IP・端末に合わせる（Task 7 の点検 M-1） | bc2df9fd |
+| 9 | 8 | 見られる範囲は、ローカルスコープ `ApprovalRequest::scopeVisibleTo()` を通して掛ける（`RequestVisibility::apply()` は入口のまま） | 直接 where を足すと、呼ぶ側が先に書いた最上位の OR が括弧に入らず、他人の申請が漏れる（Task 8 の点検 M-1） | 19812a07 |
+| 10 | 8 | 保存していない利用者（id が空）には何も見せない | `where(列, null)` が `is null` になり、担当や判断した人が空の段階を持つ申請にすべて当たる | eea70599 |
+| 11 | 8 | 部門長が見られるかは、最後に提出した回の申請部門（その回の部門長の段階の部門）で決める | 利用者の決定 D26（設計書 §2）と判断の権限にそろえる（開発側の判断） | 2c8fd9d0 |
+| 12 | 9 | 部門の編集で、番号の欄を変えていなければ開始番号に触らない（hidden の `next_number_shown`）。`headChanged()` を部門の行の更新の前に呼ぶ | 期の変わる日をまたいだ古い画面から保存すると、前の年度の次の番号が新しい年度に入る（Task 5 の点検）。呼ぶ順は 7 と同じ理由（どちらも task-09 を直してから実装） | b60c50ee |
+| 13 | 9 | 部門の削除の歯止めで、決裁No の部門（`number_department_id`）も直接数える | 番号の付く申請に段階の行があることに頼らない（外部キーの RESTRICT で 500 にしない） | 2dcdd773 |
+| 14 | 9 | 審査を待っている申請（部門長の確認中で、これから審査に届くものを含む）があるうちは、審査担当者を 0 人にできない | 部門長の歯止めと同じ形。止まった申請に管理者が気づく手段が無い（開発側の判断。再点検で `pending` の段階も数えるよう広げた） | 0ab74692・133ea71d |
+| 15 | 9 | 部門を削除したときの記録に、審査担当者と年度ごとの次の番号も残す。画面に設計の記号（要件 6.4・D8）を出さない | 審査担当者と連番の行は部門と一緒に消える（設計書 §5.4 の「変更はすべて記録する」）。管理者には記号が分からない | 5f05a780・1d7a48c3 |
+| 16 | 9 | 決裁No を付けた申請がある部門を持つ会社は、期の始まりの月を変えられない | 年度の区切りが変わり、同じ年度の番号の続きが崩れる（R8-J-001 のあとに R7-J-121。開発側の判断） | 75e5a4c2 |
+| 17 | 11 | 申請種類の「停止」のバッジの文字を #4b5563 にした（色はのちにモデルの `ApprovalType::badgeStyle()` へ移した。画面の出力は同じ）。見出しは、`BodyTemplate::isBlank()` が「見出しのまま」とみなす形だけ受け付ける | 2 と同じ理由。ほかの形の見出しだと、本文が見出しのままでも提出できる（D12 のすり抜け。Task 6 の点検） | 6846f419・f92284e8 |
+| 18 | 11 | 追加の小窓の審査部門を「選んでください」から始める。停止の説明に、下書きは種類を選び直してもらうこと（D10）を書く。審査担当者のいない審査部門を一覧で赤く知らせる | 選ばずに送ると先頭の部門が審査部門になった。停止しても下書きに影響しないと読めた。管理者は申請者の提出が断られて初めて気づいた | 5df4df68・596bd31a・1a874ac3 |
+| 19 | 12 | 関連する決裁No の候補で、壊れた文字（不正な UTF-8）の検索語を空として扱う | `preg_replace` が null を返し、`LIKE '%%'` で見られる申請の新しい 10 件をすべて返していた（見られる範囲は効いていた） | 265842cd |
+| 20 | 13 | `Workflow::submit()` は申請の行をロックしてから読み、画面からは保存した直後の `lock_version` を受け取る（Task 7 のファイル。Task 13 のコミットを 2 つに分けた） | 2 つのタブで編集したときや、保存と提出が重なったときに、提出の条件と控えが見た中身と、保存された中身がずれうる（Task 7 の点検） | 4beb82c4 |
+| 21 | 13 | 申請者以外には、状態を問わず最後に提出した控えを出す（新しい部品 `RequestContent`。控えが無ければ 404）。編集のフォームに `lock_version` を持たせ、保存は版を条件にした 1 回の UPDATE で版を 1 進める。新しい下書きの持ち主は `array_merge` で必ずログイン中の人にする | 利用者の決定 D26。古いタブの保存が新しい中身を上書きしない。`+` だと入力の側の `user_id` が勝つ（Task 3 の点検） | 87f786ec |
+| 22 | 14 | 添付の追加・外すも申請の行をロックしてから書く。申請者以外が開けるのは、提出の控えに入った添付だけ（`RequestContent::mayOpen()`） | 提出と重なると、控えに無い添付が回覧中の申請に付く（Task 7 の点検）。D26 | 85df9615 |
+| 23 | 14 | 開けない添付（差戻し中に足して、まだ出し直していないもの）は、外す要求でも 404 にする | 403 だと、申請を見られるほかの人に在ることが分かった（Task 14 の点検 I-1。D26） | e45255ae |
+| 24 | 14 | 添付を開くときの ASCII の代わりの名前を自分で作り、ASCII で残らなければ `attachment.拡張子` にする | 日本語だけで拡張子の無い名前（「見積書」など）は代わりの名前が空になり、開くと 500 になっていた（Task 14 の点検 I-2） | 58823408 |
+| 25 | 14 | 決裁の URL の JSON の 404 は、無い ID と見られない ID で同じ日本語の文にする（`bootstrap/app.php`） | Laravel の既定では、無い ID にだけモデルの名前の入った英語の文が返り、在るかどうかが分かった（Task 14 の点検） | fabd7abc |
+| 26 | 15 | 段階の状態のバッジ（まだ届いていない・省略・打ち切り）の文字を #4b5563 にし、コントラストのテストを段階の状態にも広げる。詳細の `show()` も `RequestContent` の中身を渡す | 2 と同じ理由（Task 2 の点検の申し送り）。D26 | b2fb943c |
+| 27 | 15 | 判断・条件確認・取り下げの画面の版は、0 以上の整数の形でなければ先を越されたものとして断る | `intval` で読んでいたので、配列や「1abc」を 1 と読んでいた（Task 15 の点検 m-1） | 499316f2 |
+| 28 | 15 | 自分の申請で押せない判断のボタンを、理由の段落に `aria-describedby` で紐づける | 読み上げで理由が伝わる（Bug #43 の後半。Task 15 の点検 m-3） | 30bde2df |
+| 29 | 15 | 社長の判断の説明に、コメントが必要な判断（条可・差戻し・否）を書く | 部門長・審査の説明とそろえる（Task 15 の点検 m-4） | fb9930a1 |
+| 30 | 16 | 下書きだけの人のホームで「まだ申請はありません」と言わず、「進行中の申請はありません。下書きは「自分の申請」から開けます。」と出す | 進み具合に下書きは出さないので、同じ申請を作り直しかねない（Task 16 の点検 m-1。文言は C10 で利用者が今のままを選んだ） | cd68d475 |
+| 31 | 19 | コメント・本文・見出しは、改行を LF にそろえてから字数を検査し、そろえた形で保存する | ブラウザの maxlength は改行を 1 文字と数えるが CR+LF で送るので、改行の多い入力が上限の手前で断られ、打った中身が消えた（B1） | be19f10a |
+| 32 | 19 | 決裁の URL の JSON の 419（セッション切れ）と 401（ログアウト）を日本語の理由で返す（`bootstrap/app.php`。基幹の応答は変えない） | 申請書の添付の欄に「CSRF token mismatch.」「Unauthenticated.」がそのまま出た（B5） | 864b17ae |
+| 33 | 19 | 取り下げた申請の詳細に「決裁No は社長の判断のときに付きます」と出さない | 取り下げた申請には番号が付かない（B7） | fc9ed176 |
+| 34 | 19 | 見出しのままの断りに、中身は「■」の行の後ろではなく下の「・」の行に書くことを添える | 「■」の行は後ろに書き足しても見出しとして扱う（D12。C6） | bc45df84 |
+| 35 | 19 | 押せない判断の理由の 2 行目を、部門長・審査・社長の段階ごとの次の手にする | 社長の段階でも「決裁の管理者に相談」と出ていたが、社長の指定を変えられるのは基幹の管理者（C7。Task 15 の点検 m-2） | 5d0ff766 |
+| 36 | 19 | 部門長・審査担当者の守りの断りの 2 文目を、操作した人で変える（決裁の管理者なら「先に部門の管理で後任を設定してください。」、そうでなければ「先に決裁の管理者に後任の設定を頼んでください。」。`User::approvalSuccessorGuide()`） | 後任を決める部門の管理は決裁の管理者だけの画面（C3） | 77b13040 |
+| 37 | 19 | 部門長の交代の記録に「新しい担当: 〇〇」を添える（論理削除した人も。名前は 1 回の問い合わせで読む） | 記録の横の名前は交代を操作した管理者なのに、移った先と読めた（C9。Task 15 の点検 m-6） | 1c218d88 |
+| 38 | 19 | 添付の「ファイルを選ぶ」を sr-only にして、キーボードで届くようにする（フォーカスしたらラベルに枠） | 選ぶ欄が hidden で Tab で届かなかった（B2・要件 14.4） | 4fcfe681 |
+| 39 | 19 | 添付を送っている途中に落としたファイルは送らず、「送っている途中です。終わってから、もう一度選んでください。」と知らせる | 黙って捨てていた（B3） | 421b23c2 |
+| 40 | 19 | 添付の「外す（確定）」を、返事が来るまで押せなくする | 2 度押しで「外しました」と「見つかりませんでした」が並んだ（B4） | 802c06ae |
+| 41 | 19 | 候補の検索に失敗した文言を番号の形の誤りと分け、あとで検索できたら消す（古い検索の失敗は出さない） | 失敗の文言が残り続けた（B6） | 56880433 |
+| 42 | 19 | 申請書と判断・取り下げ・条件確認の確定のボタンは、押したら押せなくして「送っています…」を出す（「戻る」で戻ったら pageshow で戻す）。保存か提出か（`intent`）と判断（`result`）は hidden で送る | 2 回押すと、済んだ操作に赤い帯だけが出た。押せなくしたボタンの値は送られない（C2。手本は顧客取込の Bug #67） | 74e50866 |
+| 43 | 19 | 判断などが入力の誤り・コメントの不足で断られたら、選んでいた判断と打ったコメントで小窓を開き直し、理由も小窓の中に出す（先を越されたときは戻さない。版は断られる前のまま） | 断られると小窓が閉じ、打ったコメントが消えた（C8。Task 15 の点検 m-5） | 2d416ef8 |
+| 44 | 19 | 申請種類の管理で断られたら、送った小窓を打った中身で開き直す（編集の小窓はどの種類かを `edit_id` で送る。部門の管理は変えない） | 小窓が閉じ、打った見出しが消えた（C4） | b5ab79ca |
+| 45 | 19 | 開き直した判断の小窓の断りの理由は、断られた判断を選んでいるあいだだけ出す | 別の判断に選び直しても前の理由が残った（Task 19 の直しの点検 m-5） | 658a11b8 |
+| 46 | 19 | 申請種類の管理で断られて開き直した小窓（追加・編集）の中に、断られた理由を出す（編集の小窓は、断られた種類を開いているあいだだけ） | 理由がページ上部の帯にしか出ず、開き直した小窓に隠れた（375px では見えない。Task 19 のブラウザでの確かめ直し F-1） | d28de9a1 |
+| 47 | 19 | 申請種類の保存と下書きの削除の確定のボタンも、押したら押せなくする（部品は `approvals/_submit_once.blade.php` の `approvalSubmitOnce()` にまとめた） | 2 回押すと、2 回目が「この種類名は既に登録されています。」で開き直す・英語の 404 の画面になった（同 N-3。C2 の趣旨） | 4725f163 |
+| 48 | 19 | 決裁の URL の JSON の 419 の文を、ほかの画面でログアウトしたときにも合う言い方にする | 別のタブでログアウトしても先に 419 が返り、「時間がたったため」だけでは合わなかった（同 N-2） | cd6e2c75 |
+
+- 表に入れていないコミット（テストだけ・記録だけ・見た目を変えない）: 1caadf87・1b94ad08・04872fbf（点検の案のテスト）・e774029a（ホームのバッジの色を `ApprovalStepStatus::Waiting->badgeStyle()` から取る。見た目は同じ）・c866b529（Task 18。変異の記録を計画書の末尾に足し、見逃しの X17 にテスト 1 本）
+- Task 4・10・17 は、計画のコードから振る舞いを変えていない（658a11b8 の時点。このあと入る手直しは、ここに足す）
+- 利用者の決定 D26 と、2a で決めた見せ方・歯止め・Task 19 の決定（C1〜C12）は、設計書にも書き戻した（Task 20）
+
+### 0.13 受け入れた隙間（2026-09-27〜28 の点検と開発側の判断）
+
+塞ぐ手間やほかの危うさのわりに、起きても判断の誤りやデータの損失にならないので、塞がずに受け入れたもの（点検の担当も同意）。
+
+| # | 隙間 | 起きたとき | 塞ぐなら |
+|---|---|---|---|
+| 1 | 部門長を空にする歯止め（部門長の確認を待つ申請があるうちは空にできない）は、トランザクションの外で数える。同時の提出がすり抜けうる（Task 7 の点検） | 申請が部門長の確認で止まるだけ。管理者が部門長を設定し直せば、`headChanged()` で新しい部門長へ移って進む | 提出の側で、ロック付きで部門長を読み直す（`Workflow::submit()`） |
+| 2 | 管理者が交代の候補を読んだ**あと**に出された申請には、交代の記録も `lock_version` の繰り上げも付かない。確定の前の数 ms に旧部門長の判断が届くと通る（Task 7 の再点検） | 回り方は新しい部門長で正しい。数 ms の重なりは人の操作では起こりえない | — |
+| 3 | D8 の歯止め（番号のある部門は会社とアルファベットを変えられない）もトランザクションの外。その部門の**最初の**番号が付くのと、アルファベットの変更が重なると、番号が付いたあとに部門の記号が変わる（Task 9 の点検。MySQL で再現） | その 1 件の番号の記号がずれるだけ（手で直す）。アルファベットを変えるのは使い始める前の準備なので、実際には起きない見込み | 部門の行を更新したあとに、ロック付きで番号の有無を見直して巻き戻す（部門の行を先にロックすると、交代のロックの順〈§0.12 の 7〉が崩れるので不可） |
+| 4 | 5 月に部門を、5 月始まりと 6 月始まりの会社の間で移すと、開始番号だけ入った連番の行が別の年度に残る（Task 9 の点検） | その年度の最初の番号が飛ぶだけ（D8 で番号のある部門は移せないので、残る行は必ず未使用＝重ならない）。新しい年度の初日から部門の一覧の「今年度の次の番号」に出るので、最初の番号が付く前に直せる（管理者への注意は設計書 §5.4） | — |
+| 5 | 期の変わる日の前に開いた部門の編集の画面で、番号の欄を**変えて**保存すると、その数が新しい年度の次の番号になる（変えていなければ触らない＝§0.12 の 12。Task 9 の点検） | 管理者が入れた数が新しい年度に入る（使った番号以下なら D9 で断る）。画面の説明は開いたときの年度のまま | 表示した年度を hidden で送り、違えば断る |
+| 6 | 判断の操作（`RequestActionController::run()`）は、データベースのデッドロック（1213）を「すでに処理されています」に寄せない（Task 15） | 取引ごと巻き戻って何も書かれないので、押し直せば済む（その人の画面は 500）。Task 7・9・13 の点検の MySQL の負荷の試験では、RR・RC ともデッドロックも待ちの時間切れも 0 件 | `run()` で `QueryException` の 40001/1213 を拾う（コントローラの数行とテスト 1 本） |
 
 ---
 
@@ -338,6 +416,8 @@ Expected: FAIL（SQL のファイルが無い・表が無い）
 
 - [ ] **Step 3: 本番の SQL を書く**
 
+> ⚠ **実装中の変更**（2026-09-26・Task 1 の点検の手直し 11b73ca3）: `approval_requests.body` は **MEDIUMTEXT** にした。下の SQL と migration の `body` は TEXT のまま（見張りのテストの `TYPES` にも MEDIUMTEXT を足した）。本文の上限 20,000 文字は、4 バイトの文字だと TEXT（65,535 バイト）に入らず、本番だけ 1406 で 500 になるため（§0.8 の 4・§0.12 の 1）
+
 `database/sql/2026-09-25-approval-phase2a.sql`
 
 ```sql
@@ -474,7 +554,7 @@ CREATE TABLE `approval_histories` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `request_id` BIGINT UNSIGNED NOT NULL,
   `round` SMALLINT UNSIGNED NOT NULL DEFAULT 0,
-  `actor_user_id` BIGINT UNSIGNED NULL COMMENT '省略・交代による移動など、人の操作でないものは NULL',
+  `actor_user_id` BIGINT UNSIGNED NULL COMMENT '省略は NULL・部門長の交代は変えた管理者',
   `action` VARCHAR(40) NOT NULL,
   `from_status` VARCHAR(20) NULL,
   `to_status` VARCHAR(20) NULL,
@@ -2612,6 +2692,8 @@ final class ApprovalFiscalYear
 }
 ```
 
+> ⚠ **実装中の変更**（2026-09-27・Task 5 の点検の手直し fa88da79・8d4e8586）: 下の `ApprovalNumber.php` は直した形にしてある（連番の行の用意を `insertOrIgnore` → `upsert`、`issue()` も自分でトランザクションに包む。理由は §0.4・§0.8 の 7）。Step 5 の時計の走査の理由も `upsert` に直した
+
 `app/Support/Approval/ApprovalNumber.php`
 
 ```php
@@ -2629,9 +2711,10 @@ use InvalidArgumentException;
 /**
  * 決裁No の採番（要件 6・設計書 §5.9・計画 §0.4）。
  *
- * ⚠ **社長の判断と同じトランザクションの中で呼ぶ**（判断が断られたら番号も戻る）。
- * ⚠ 連番の行は `insertOrIgnore` で用意してから `lockForUpdate()` で読む。行が無いときに 2 人が
- *   同時に作っても、一意の索引（部門・年度）で 1 行になる。
+ * ⚠ **社長の判断と同じトランザクションの中で呼ぶ**（判断が断られたら番号も戻る）。`issue()` も自分で
+ *   トランザクションに包む（外から呼ばれても行のロックが効くように。入れ子なら savepoint になるだけ）。
+ * ⚠ 連番の行は `upsert` で用意してから `lockForUpdate()` で読む。行が無いときに 2 人が同時に作っても、
+ *   一意の索引（部門・年度）で 1 行になる。
  */
 final class ApprovalNumber
 {
@@ -2642,18 +2725,20 @@ final class ApprovalNumber
      */
     public static function issue(ApprovalDepartment $department, DateTimeInterface $decidedAt): array
     {
-        $startMonth = $department->company->fiscal_start_month;
-        $fiscalYear = ApprovalFiscalYear::ofMoment($decidedAt, $startMonth);
+        return DB::transaction(function () use ($department, $decidedAt): array {
+            $startMonth = $department->company->fiscal_start_month;
+            $fiscalYear = ApprovalFiscalYear::ofMoment($decidedAt, $startMonth);
 
-        $row = self::lockedRow($department, $fiscalYear);
-        $seq = $row->next_number;
-        $row->update(['next_number' => $seq + 1, 'last_issued' => $seq]);
+            $row = self::lockedRow($department, $fiscalYear);
+            $seq = $row->next_number;
+            $row->update(['next_number' => $seq + 1, 'last_issued' => $seq]);
 
-        return [
-            'number'      => self::format(ApprovalFiscalYear::eraLabel($fiscalYear, $startMonth), $department->code, $seq),
-            'fiscal_year' => $fiscalYear,
-            'seq'         => $seq,
-        ];
+            return [
+                'number'      => self::format(ApprovalFiscalYear::eraLabel($fiscalYear, $startMonth), $department->code, $seq),
+                'fiscal_year' => $fiscalYear,
+                'seq'         => $seq,
+            ];
+        });
     }
 
     /** `R8-J-001`（999 の次は `R8-J-1000`。要件 6.1） */
@@ -2714,14 +2799,20 @@ final class ApprovalNumber
         // ⚠ 時計は 1 回だけ読む（ClockReadScanTest はファイルごとの件数を見る）
         $now = now();
 
-        DB::table('approval_number_sequences')->insertOrIgnore([
+        // ⚠ insertOrIgnore にしない。行がすでにあるとき、MySQL の INSERT IGNORE は重複した行（一意の索引）に**共有ロック**を取る。
+        //   READ COMMITTED では 2 つのトランザクションが共有ロックを持ったまま次の FOR UPDATE（排他ロック）を待ち合い、
+        //   デッドロック（1213）で片方が巻き戻される（社長の判断と開始番号の設定が重なったときなど。その人の画面は 500）。
+        //   既定の REPEATABLE READ では 2 本目の INSERT IGNORE が主キーの末尾のすき間のロックで先に待つので起きにくいが、
+        //   分離レベルに頼らない。upsert（INSERT … ON DUPLICATE KEY UPDATE）は重複した行に**排他ロック**を取るので、後の方は待つだけ。
+        //   （2026-09-27 に MySQL 8.4.8 で実測。SQLite のテストではロックの違いは見えない）
+        DB::table('approval_number_sequences')->upsert([
             'department_id' => $department->id,
             'fiscal_year'   => $fiscalYear,
             'next_number'   => 1,
             'last_issued'   => 0,
             'created_at'    => $now,
             'updated_at'    => $now,
-        ]);
+        ], ['department_id', 'fiscal_year'], ['updated_at']);
 
         return ApprovalNumberSequence::where('department_id', $department->id)
             ->where('fiscal_year', $fiscalYear)
@@ -2736,7 +2827,7 @@ final class ApprovalNumber
 `tests/Feature/ClockReadScanTest.php` の `ALLOWED` に 1 行足す（件数は `now(` の数。コメントは数えない）:
 
 ```php
-        'app/Support/Approval/ApprovalNumber.php'             => [1, '連番の行を作った瞬間（created_at・updated_at は TIMESTAMP 列。insertOrIgnore は Eloquent を通らないので手で入れる）'],
+        'app/Support/Approval/ApprovalNumber.php'             => [1, '連番の行を作った瞬間（created_at・updated_at は TIMESTAMP 列。upsert は Eloquent を通らないので手で入れる）'],
 ```
 
 - [ ] **Step 6: テストを流して通ることを確かめる**
@@ -3919,7 +4010,8 @@ use App\Models\User;
 /**
  * 操作の記録を 1 行足す（要件 14.2・設計書 §5.11）。IP と端末の情報をそろえるため 1 本化する。
  *
- * ⚠ 省略・交代による移動など、人の操作でないものは `$actor` を null で渡す。
+ * ⚠ `$actor` は操作した人。部門長の省略のように人の操作でないものは null で渡す。
+ *   部門長の交代による移動は、部門長を変えた管理者を渡す（誰の操作で移ったかを残す。IP と端末もその管理者のもの）。
  */
 final class HistoryRecorder
 {
@@ -11154,7 +11246,7 @@ MSG
 
 - [ ] **Step 1: 了承を求める（選択式）**
 
-伝えること: ①**DB が先・`./deploy.sh` が後**（新しいコードが `approval_departments.head_user_id` と `approval_settings.launched_at` を読むので、逆だと部門の管理と決裁のホームが 500 になる）②本番に表が 9 つ増え、既存の 2 表に列が 1 つずつ増える（データは変えない）③**申請を回す画面は誰にも見えない**（`launched_at` は空のまま。使い始めるのは段階6）④決裁の管理者は、部門長・審査担当者・今年度の開始番号・申請の種類を本番で先に登録できるようになる。
+伝えること: ①**DB が先・`./deploy.sh` が後**（新しいコードが `approval_departments.head_user_id` と `approval_settings.launched_at` を読むので、逆だと部門の管理と決裁のホームが 500 になる）②本番に表が 9 つ増え、既存の 2 表に列が 1 つずつ増える（データは変えない）③**申請を回す画面は誰にも見えない**（`launched_at` は空のまま。使い始めるのは段階6）④決裁の管理者は、部門長・審査担当者・今年度の開始番号・申請の種類を本番で先に登録できるようになる（開始番号は、会社の期の始まりの月を確かめたあとに入れる）。
 
 - [ ] **Step 2: 反映前に本番を読み取る**（読み取りだけ）
 
@@ -11168,12 +11260,13 @@ foreach (["approval_departments", "approval_settings"] as $t) {
 foreach (["approval_types", "approval_reviewers", "approval_requests", "approval_steps", "approval_revisions", "approval_histories", "approval_attachments", "approval_download_logs", "approval_number_sequences"] as $t) {
     echo $t, "=", $db->getSchemaBuilder()->hasTable($t) ? "ある" : "ない", PHP_EOL;
 }
+foreach ($db->table("approval_companies")->orderBy("sort_order")->get(["name", "fiscal_start_month"]) as $c) { echo "company ", $c->name, " month=", $c->fiscal_start_month, PHP_EOL; }
 echo "departments=", $db->table("approval_departments")->count(), " settings=", $db->table("approval_settings")->count(), " mysql=", $db->selectOne("SELECT VERSION() AS v")->v, PHP_EOL;
 '
 SH
 ```
 
-Expected: `approval_departments` に `code` の列があり `head_user_id` が無い ／ `approval_settings` に `president_user_id` があり `launched_at` が無い ／ どちらも `ENGINE=InnoDB`・`utf8mb4_unicode_ci` ／ 9 表とも「ない」。**1 つでも違えば止まり、利用者に伝える**（SQL の前提が崩れている）。
+Expected: `approval_departments` に `code` の列があり `head_user_id` が無い ／ `approval_settings` に `president_user_id` があり `launched_at` が無い ／ どちらも `ENGINE=InnoDB`・`utf8mb4_unicode_ci` ／ 9 表とも「ない」／ 会社の期の始まりの月がミツワ 5・DAD 6・ZEAL 6（違えば、開始番号を入れる前に会社の管理で直す。月を直す前に入れた開始番号の行は別の年度に残る）。**表の形が 1 つでも違えば止まり、利用者に伝える**（SQL の前提が崩れている）。
 
 - [ ] **Step 3: `13.x` へ早送りで取り込む**（手元）
 
@@ -11312,3 +11405,265 @@ Expected: `invalid=0`（⚠ `view:cache` の成功表示だけでは足りない
 
 ⚠ `origin/13.x` への push は利用者の明示の指示があったときだけ。⚠ worktree `approval-phase2a` とブランチの片付けは利用者に聞いてから（消さずに残してもよい）。
 
+
+---
+
+## Task 18 の実測記録（2026-09-28）
+
+測ったのは `e774029a`（Task 17 と、Task 14〜16 の点検の手直しまで）。**変異は WT に当てず、HEAD の写しに当てた**（下の「測り方の注意」1）。1 つの変異は Approval の全体と走査のテストで流し、緑のまま残ったものだけ全件で流し直した。道具と出力は、その会話の scratchpad の `review/t18/`（`mutate18.py`・`mutants18.py`・`results-*.jsonl`・`outs/`・`diffs/`）。
+
+### 基準とカナリア
+
+| 項目 | 結果 |
+|---|---|
+| 全件（写し・`--filter` なし） | OK (2635 tests, 18312 assertions)（WT の HEAD の全件と同じ） |
+| 1 つの変異で流した範囲 | `--filter 'Approval\|ScanTest\|AjaxErrorFeedback\|MobileLayout\|ValidationErrorFeedback\|JapaneseValidation\|JapanBusinessDay\|AlpineXShow\|LayoutSidebar\|LayoutBreadcrumb\|LayoutStyleStack\|LayoutMeasuring\|CdnScriptIntegrity\|SortAffordance\|SortableListWiring\|LoginIdentifier\|PasswordChange'`（`tests/Feature/Approval`・`tests/Unit/Approval` と、決裁のファイルを見る走査）→ OK (900 tests, 6865 assertions)・35 秒ほど |
+| カナリア | `home-launched.blade.php` に `{{ $canaryUndefinedVariable }}` → `HomeAndListTest` 17 本中 11 本が 500（`Undefined variable $canaryUndefinedVariable`・写しのビューのパス）。測る仕掛けは写しのコードを読んでいる |
+
+### 結果のまとめ
+
+| 区分 | 通り | 赤 | 緑 |
+|---|---|---|---|
+| 計画の表（M01〜M49。M46 は PC とドロワーに分けた・M47 の測り直し M47b） | 51 | 51 | 0 |
+| README で「加える」とされた変異（Task 3・4・5・8） | 23 | 21 | 2（N14・N15＝SQLite で等価。全件でも緑） |
+| 隣の不変条件（Step 3 の念のため） | 18 | 17 | 1（X17＝検出漏れ → 案のテスト） |
+| 計画が「等価」とした変異の確かめ | 6 | 1（E5＝無効） | 5（E1・E2・E3・E6・E7＝等価。全件でも緑） |
+
+- 計画の表は 51 通りすべて赤で、どれも**計画のテスト**（計画の実装のコミットで入ったテスト）が 1 本以上落とす。落ちたテストの集合と理由の文言を表の期待と突き合わせ、表と違ったのは M06・M33・M42・M47 の 4 つ（下の「計画の表と違ったもの」）。ほかは表どおりか、表のテストに点検で足したテストが加わっただけ
+- 表の名前は今の名前で書いた（`RequestFormTest::test_the_create_page_offers_…` は `test_the_create_page_offers_active_types_and_preselects_the_only_department`、`RequestAttachmentTest::test_someone_who_cannot_see_…` は `test_someone_who_cannot_see_the_request_cannot_open_its_files`、`RequestActionTest::test_the_head_approves_…` は `test_the_head_approves_through_the_rendered_form`）
+
+### 変異ごとの結果
+
+#### 計画の表（M01〜M49。M46 は PC とドロワーの 2 つ・M47 は測り直しの M47b を足した）: 51 通り・赤 51・緑 0
+
+| # | 変異 | 結果 | 落としたテスト（今の名前） |
+|---|---|---|---|
+| M01 | `EnsureApprovalLaunched::handle()` の先頭で `return $next($request);` | 赤 | LaunchGateTest::test_before_launch_a_page_goes_to_the_home<br>LaunchGateTest::test_before_launch_a_post_is_not_found<br>LaunchGateTest::test_before_launch_an_ajax_request_is_not_found<br>ほか 1 本 |
+| M02 | 画面を開く GET の分岐（ホームへ転送）を `abort(404)` に | 赤 | LaunchGateTest::test_before_launch_a_page_goes_to_the_home |
+| M03 | `routes/approval.php` のグループから `approval.launched` を外す | 赤 | LaunchGateTest::test_every_approval_route_is_classified<br>RelatedNumberSearchTest::test_before_launch_the_search_is_not_found |
+| M04 | `bootstrap/app.php` の `EnsureApprovalLaunched` の `appendToPriorityList` を消す | 赤 | LaunchGateTest::test_before_launch_a_page_goes_to_the_home<br>LaunchGateTest::test_the_gate_runs_after_the_admin_gate_and_before_bindings |
+| M05 | サイドバーの `$approvalsLaunched` を `true` 固定 | 赤 | ApprovalSidebarTest::test_the_request_links_appear_only_after_launch |
+| M06 | 見られる範囲の「ほかの人は下書きを見られない」（`status != draft`）を外す（最後の形では `constrain()` の中） | 赤 | RequestFormTest::test_someone_elses_draft_is_not_found_even_for_admins<br>RequestVisibilityTest::test_nobody_else_sees_a_draft<br>RequestVisibilityTest::test_every_person_sees_exactly_the_table_of_chapter_7<br>ほか 1 本 |
+| M07 | 部門長の行（最後に提出した回の部門長の段階の部門）を `1 = 0` に | 赤 | RequestActionTest::test_the_steps_show_only_the_current_round<br>PendingWorkTest::test_pending_work_matches_what_each_person_can_do_now<br>RequestActionTest::test_the_head_approves_through_the_rendered_form<br>ほか 33 本 |
+| M08 | 審査担当者の行の `whereNotNull(arrived_at)` を外す | 赤 | RequestActionTest::test_the_whole_route_ends_with_a_number<br>RequestVisibilityTest::test_reviewers_see_requests_that_reached_review<br>RequestVisibilityTest::test_every_person_sees_exactly_the_table_of_chapter_7<br>ほか 3 本 |
+| M09 | 社長の行の `whereNotNull(arrived_at)` を外す | 赤 | RequestVisibilityTest::test_the_president_sees_requests_that_reached_the_president<br>RequestVisibilityTest::test_every_person_sees_exactly_the_table_of_chapter_7<br>RequestVisibilityTest::test_apply_and_can_view_agree_with_a_restatement_of_the_rules |
+| M10 | 判断した人の行（`actor_user_id`）を消す | 赤 | RequestVisibilityTest::test_people_who_judged_keep_seeing<br>RequestVisibilityTest::test_every_person_sees_exactly_the_table_of_chapter_7<br>RequestVisibilityTest::test_apply_and_can_view_agree_with_a_restatement_of_the_rules<br>ほか 2 本 |
+| M11 | 全件閲覧者・管理者の行を `canViewAllApprovals()` だけに | 赤 | RequestAttachmentTest::test_a_file_added_while_returned_stays_with_the_applicant_until_resubmitted<br>RequestAttachmentTest::test_others_cannot_attach_or_remove_even_while_the_request_is_editable<br>RequestFormTest::test_others_see_the_last_submission_while_the_request_is_returned<br>ほか 5 本 |
+| M12 | 添付の `show()` の `canView` を外す | 赤 | RequestAttachmentTest::test_someone_who_cannot_see_the_request_cannot_open_its_files |
+| M13 | 候補の検索の `RequestVisibility::apply()` を外す | 赤 | RelatedNumberSearchTest::test_it_returns_only_numbered_requests_the_user_can_see |
+| M14 | `relatedLinks()` の `RequestVisibility::apply()` を外す | 赤 | RequestFormTest::test_the_detail_shows_the_content_and_links_related_requests |
+| M15 | `judgeableStep()` の `! isApplicant()` を外す（D16） | 赤 | PendingWorkTest::test_pending_work_matches_what_each_person_can_do_now<br>RequestActionTest::test_nobody_judges_their_own_request<br>RequestActionTest::test_a_reviewer_who_applied_is_told_why_and_cannot_review<br>ほか 3 本 |
+| M16 | `PendingWork::for()` の自分の申請を外す `whereHas` を消す | 赤 | PendingWorkTest::test_your_own_request_is_not_your_judging_work<br>PendingWorkTest::test_pending_work_matches_what_each_person_can_do_now |
+| M17 | `SubmitChecker` の社長の断り（D4）を消す | 赤 | SubmitCheckerTest::test_the_president_cannot_submit<br>WorkflowTest::test_submission_is_refused_with_all_reasons |
+| M18 | `hasOtherReviewer()` の `users.id != 申請者` を外す | 赤 | SubmitCheckerTest::test_there_must_be_another_active_reviewer |
+| M19 | `SubmitChecker` の「見出しのまま」（D12）を消す | 赤 | RequestFormTest::test_a_refused_submission_keeps_the_draft<br>RequestFormTest::test_the_refusal_reasons_are_shown_on_the_edit_page<br>SubmitCheckerTest::test_subject_and_body_are_required_and_reasons_are_collected |
+| M20 | 停止した種類の断りから `status === Draft` を外す（D10） | 赤 | RequestFormTest::test_a_returned_request_keeps_its_stopped_type_and_can_be_resubmitted<br>SubmitCheckerTest::test_a_stopped_type_blocks_drafts_but_not_returned_requests |
+| M21 | `canEdit()` を `isApplicant()` だけに | 赤 | RequestActionTest::test_the_applicant_sees_only_the_operations_of_the_state<br>RequestAttachmentTest::test_only_the_applicant_can_attach_and_only_while_editable<br>RequestAttachmentTest::test_files_cannot_be_removed_while_the_request_is_in_circulation<br>ほか 2 本 |
+| M22 | `validated()` の種類の `Rule::in($typeIds)` を外す | 赤 | RequestFormTest::test_the_shape_of_inputs_is_checked_even_for_a_draft |
+| M23 | 同じく `->push($current?->type_id)` を外す | 赤 | RequestFormTest::test_a_returned_request_keeps_its_stopped_type_and_can_be_resubmitted |
+| M24 | `create()` のコピー元の `where(user_id)` を外す | 赤 | RequestFormTest::test_only_your_own_request_can_be_copied |
+| M25 | `copiedFields()` で停止した種類をそのまま写す | 赤 | RequestFormTest::test_copying_a_request_prefills_a_new_form |
+| M26 | 申請書の確認の小窓の `value="submit"` を `value="save"` に | 赤 | RequestFormTest::test_the_create_page_offers_active_types_and_preselects_the_only_department |
+| M27 | 候補の検索の fetch から `X-Requested-With` を消す | 赤 | RequestAttachmentTest::test_every_fetch_on_the_form_asks_for_json<br>RequestFormTest::test_the_create_page_offers_active_types_and_preselects_the_only_department |
+| M28 | `Workflow::move()` の `where(lock_version)` を外す | 赤 | WorkflowTest::test_a_simultaneous_second_press_is_refused_by_the_conditional_update |
+| M29 | `Workflow::judge()` の `assertFresh()` を消す | 赤 | WorkflowTest::test_a_screen_drawn_before_the_head_change_is_refused<br>RequestActionTest::test_a_stale_screen_is_refused<br>WorkflowTest::test_a_stale_screen_is_refused |
+| M30 | 取り下げのフォームから `lock_version` の hidden を消す | 赤 | RequestActionTest::test_the_applicant_can_withdraw<br>RequestActionTest::test_the_withdrawal_and_the_condition_forms_carry_the_comment |
+| M31 | 判断の確定ボタンの `value` を approve ↔ return に入れ替える（最後の形は `@foreach` なので値だけを入れ替えた） | 赤 | RequestActionTest::test_the_head_approves_through_the_rendered_form |
+| M32 | 部門長の判断のフォームの送り先を `requests.review` に | 赤 | RequestActionTest::test_the_head_approves_through_the_rendered_form<br>RequestActionTest::test_the_head_returns_through_the_rendered_form |
+| M33 | `ApprovalNumber::issue()` で `next_number` を進めない | 赤 | HomeAndListTest::test_the_home_and_the_list_do_not_query_per_request<br>PendingWorkTest::test_pending_work_matches_what_each_person_can_do_now<br>RequestVisibilityTest::test_every_person_sees_exactly_the_table_of_chapter_7<br>ほか 7 本 |
+| M34 | `ApprovalFiscalYear::of()` の `>=` を `>` に | 赤 | ApprovalFiscalYearTest::test_a_moment_is_read_in_japan_time<br>ApprovalFiscalYearTest::test_the_current_fiscal_year_uses_the_japanese_today<br>ApprovalNumberTest::test_a_new_fiscal_year_starts_again_from_one<br>ほか 3 本 |
+| M35 | `setNext()` の `<=` を `<` に | 赤 | ApprovalNumberTest::test_the_start_number_cannot_go_back_over_used_numbers |
+| M36 | `afterPresident()` の `if ($request->number === null)` を外す | 赤 | WorkflowTest::test_an_existing_number_is_reused |
+| M37 | `AppendOnly` の `updating` の守りを消す | 赤 | Phase2ModelsTest::test_append_only_records_cannot_be_updated_or_deleted |
+| M38 | 添付の `show()` の `X-Content-Type-Options` を消す | 赤 | RequestAttachmentTest::test_files_open_inline_or_download_with_safe_headers |
+| M39 | 同じく inline／attachment を `inline` 固定 | 赤 | RequestAttachmentTest::test_files_open_inline_or_download_with_safe_headers |
+| M40 | 同じく記録の `if ($approvalRequest->round >= 1)` を外す | 赤 | RequestAttachmentTest::test_opening_is_logged_once_the_request_was_submitted |
+| M41 | `destroy()` を `round` によらず行ごと消す | 赤 | RequestAttachmentTest::test_removing_from_a_returned_request_keeps_the_record<br>RequestAttachmentTest::test_removing_twice_is_refused<br>RequestAttachmentTest::test_the_detail_lists_the_attachments_of_the_shown_content<br>ほか 1 本 |
+| M42 | `store()` の保存名を元のファイル名に | 赤 | RequestAttachmentTest::test_the_applicant_can_attach_a_file_to_a_draft<br>RequestAttachmentTest::test_the_same_name_never_overwrites<br>RequestAttachmentTest::test_the_kind_comes_from_the_contents<br>ほか 1 本 |
+| M43 | `store()` の 20 ファイルの確かめを消す | 赤 | RequestAttachmentTest::test_twenty_files_is_the_limit |
+| M44 | `waitingDays()` の `$from` の `setTimezone(JapanTime::ZONE)` を外す | 赤 | HomeAndListTest::test_a_request_that_arrived_today_says_today<br>PendingWorkTest::test_waiting_days_count_japanese_calendar_days |
+| M45 | 一覧 `index()` の `where(user_id)` を外す | 赤 | HomeAndListTest::test_the_list_shows_only_my_requests_newest_first |
+| M46 | サイドバー（PC の展開）の「申請種類の管理」を `@if($isApprovalAdmin)` の外へ | 赤 | ApprovalSidebarTest::test_the_type_management_link_is_offered_to_admins_before_launch<br>ApprovalUserManagementTest::test_the_approval_home_links_to_the_admin_screens |
+| M46b | サイドバー（スマホのドロワー）の同じリンクを外へ | 赤 | ApprovalSidebarTest::test_the_type_management_link_is_offered_to_admins_before_launch<br>ApprovalUserManagementTest::test_the_approval_home_links_to_the_admin_screens |
+| M47 | `TypeController::destroy()` の申請の件数の確かめを消す | 赤（外部キーの 500 → M47b で測り直し） | TypeManagementTest::test_a_type_with_requests_cannot_be_deleted<br>TypeManagementTest::test_a_type_is_deleted_from_the_rendered_form_and_the_banner_shows_once |
+| M47b | M47 に加えて、外部キーの確かめを取引の終わりまで遅らせる | 赤 | TypeManagementTest::test_a_type_with_requests_cannot_be_deleted<br>TypeManagementTest::test_a_type_is_deleted_from_the_rendered_form_and_the_banner_shows_once |
+| M48 | 部門長の交代で `Workflow::headChanged()` を呼ばない | 赤 | OrganizationPhase2Test::test_changing_the_head_moves_waiting_requests<br>OrganizationPhase2Test::test_the_head_change_records_the_previous_head<br>OrganizationPhase2Test::test_the_waiting_requests_are_locked_before_the_department_row_is_updated |
+| M49 | 基幹の利用者管理の行の無効化の 12.6 の歯止めを外す | 赤 | AssignmentGuardTest::test_the_base_screens_refuse_to_disable_delete_or_empty_the_mail_of_a_head<br>AssignmentGuardTest::test_refusals_write_nothing_and_return_to_the_list |
+
+#### README で「加える」とされた変異（Task 3・4・5・8）: 23 通り・赤 21・緑 2
+
+| # | 変異 | 結果 | 落としたテスト（今の名前） |
+|---|---|---|---|
+| F5 | `ApprovalFiscalYear::current()` の開始月を 5 固定 | 赤 | ApprovalNumberTest::test_the_start_number_goes_to_this_fiscal_year_of_the_company |
+| N7 | `currentState()` の今年度を 5 月始まりに固定 | 赤 | ApprovalNumberTest::test_the_start_number_goes_to_this_fiscal_year_of_the_company |
+| N8 | `currentState()` の今年度を暦の年に | 赤 | ApprovalNumberTest::test_the_start_number_goes_to_this_fiscal_year_of_the_company<br>ApprovalNumberTest::test_the_start_number_in_january_belongs_to_the_previous_calendar_year |
+| N9 | `setNext()` の今年度を 5 月始まりに固定 | 赤 | ApprovalNumberTest::test_the_start_number_goes_to_this_fiscal_year_of_the_company |
+| N10 | `setNext()` の今年度を暦の年に | 赤 | ApprovalNumberTest::test_the_start_number_goes_to_this_fiscal_year_of_the_company<br>ApprovalNumberTest::test_the_start_number_in_january_belongs_to_the_previous_calendar_year<br>OrganizationPhase2Test::test_a_stale_form_does_not_carry_the_next_number_into_a_new_fiscal_year |
+| N14 | `setNext()` のトランザクションを外す | **緑**（全件も緑） | — |
+| N15 | 連番の行の `lockForUpdate()` を外す | **緑**（全件も緑） | — |
+| N16 | 新しい連番の行の `last_issued` を 1 に | 赤 | ApprovalNumberTest::test_one_is_accepted_before_any_number_is_used<br>ApprovalNumberTest::test_the_start_number_goes_to_this_fiscal_year_of_the_company<br>ApprovalNumberTest::test_the_start_number_in_january_belongs_to_the_previous_calendar_year |
+| N18 | `departmentHasNumbers()` の列を `department_id` に | 赤 | ApprovalNumberTest::test_department_has_numbers_looks_at_the_numbered_department |
+| T3a | 申請者 `applicant()` から `withTrashed()` を外す | 赤 | HomeAndListTest::test_deleted_people_do_not_break_the_home_or_the_list<br>Phase2ModelsTest::test_people_are_still_readable_after_they_are_deleted |
+| T3b | 部門長 `head()` から `withTrashed()` を外す | 赤 | HomeAndListTest::test_deleted_people_do_not_break_the_home_or_the_list<br>Phase2ModelsTest::test_people_are_still_readable_after_they_are_deleted |
+| T3c | 段階の判断した人 `actor()` から `withTrashed()` を外す | 赤 | Phase2ModelsTest::test_people_are_still_readable_after_they_are_deleted |
+| T3d | 段階の付け替えた担当 `assignee()` から `withTrashed()` を外す | 赤 | HomeAndListTest::test_deleted_people_do_not_break_the_home_or_the_list<br>Phase2ModelsTest::test_people_are_still_readable_after_they_are_deleted |
+| T3e | 記録の操作した人 `actor()` から `withTrashed()` を外す | 赤 | Phase2ModelsTest::test_people_are_still_readable_after_they_are_deleted |
+| T3f | 審査担当者 `reviewers()` に `withTrashed()` を足す | 赤 | Phase2ModelsTest::test_people_are_still_readable_after_they_are_deleted<br>SubmitCheckerTest::test_a_deleted_reviewer_is_not_counted |
+| T4a | 門番が決裁の管理者を素通しにする | 赤 | LaunchGateTest::test_before_launch_a_page_goes_to_the_home<br>LaunchGateTest::test_before_launch_a_post_is_not_found |
+| T4b | 門番が Ajax を素通しにする | 赤 | LaunchGateTest::test_before_launch_an_ajax_request_is_not_found<br>RelatedNumberSearchTest::test_before_launch_the_search_is_not_found |
+| T4c | 門番が JSON（`expectsJson()`）を素通しにする | 赤 | LaunchGateTest::test_before_launch_an_ajax_request_is_not_found<br>RelatedNumberSearchTest::test_before_launch_the_search_is_not_found |
+| V11 | 審査担当者の行の `approval_reviewers` を利用者で絞らない | 赤 | RequestVisibilityTest::test_every_person_sees_exactly_the_table_of_chapter_7<br>RequestVisibilityTest::test_apply_and_can_view_agree_with_a_restatement_of_the_rules<br>RequestVisibilityTest::test_the_head_of_the_review_department_does_not_see |
+| V13 | 社長の行の `isApprovalPresident()` を外す（誰にでも） | 赤 | RequestVisibilityTest::test_every_person_sees_exactly_the_table_of_chapter_7<br>RequestVisibilityTest::test_apply_and_can_view_agree_with_a_restatement_of_the_rules<br>RequestVisibilityTest::test_the_head_of_the_review_department_does_not_see |
+| V23 | 1 件の判定 `canView()` の `whereKey` を外す | 赤 | RequestVisibilityTest::test_every_person_sees_exactly_the_table_of_chapter_7<br>RequestVisibilityTest::test_apply_and_can_view_agree_with_a_restatement_of_the_rules |
+| V26 | 外側の括弧を外す（最後の形では、スコープを通さず `constrain()` を直に呼び、`constrain()` の外側の `where(fn)` も外す） | 赤 | RelatedNumberSearchTest::test_it_finds_a_number_typed_in_full_width_and_a_subject<br>RelatedNumberSearchTest::test_it_returns_only_numbered_requests_the_user_can_see<br>RequestVisibilityTest::test_every_person_sees_exactly_the_table_of_chapter_7<br>ほか 3 本 |
+| V28 | 段階の EXISTS を申請に結び付けない | 赤 | RequestVisibilityTest::test_every_person_sees_exactly_the_table_of_chapter_7<br>RequestVisibilityTest::test_apply_and_can_view_agree_with_a_restatement_of_the_rules<br>RequestVisibilityTest::test_conditions_added_before_or_after_apply_do_not_widen_the_result |
+
+#### 隣の不変条件（Step 3 の念のため）: 18 通り・赤 17・緑 1
+
+| # | 変異 | 結果 | 落としたテスト（今の名前） |
+|---|---|---|---|
+| X01 | 取り下げ・条件確認のコメントの上限 2,000 を 20,000 に（M30 の隣） | 赤 | RequestActionTest::test_a_too_long_withdrawal_comment_is_shown_on_the_detail |
+| X02 | 条件確認のフォームから `lock_version` の hidden を消す（M30 の隣） | 赤 | RequestActionTest::test_a_conditional_approval_is_confirmed_by_the_applicant<br>RequestActionTest::test_the_withdrawal_and_the_condition_forms_carry_the_comment<br>RequestActionTest::test_stale_or_repeated_applicant_operations_are_refused |
+| X03 | 判断のフォームから `lock_version` の hidden を消す（M30 の隣） | 赤 | RequestActionTest::test_the_head_approves_through_the_rendered_form<br>RequestActionTest::test_the_reviewer_and_the_president_judge_through_the_rendered_forms<br>RequestActionTest::test_the_head_returns_through_the_rendered_form |
+| X04 | `Workflow::confirmCondition()` の `assertFresh()` を消す（M29 の隣） | 赤 | RequestActionTest::test_stale_or_repeated_applicant_operations_are_refused |
+| X05 | `Workflow::withdraw()` の `assertFresh()` を消す（M29 の隣） | 赤 | WorkflowTest::test_a_stale_withdrawal_is_a_conflict |
+| X06 | `Workflow::submit()` の画面の版の `assertFresh()` を消す（M29 の隣） | 赤 | RequestFormTest::test_a_save_between_this_save_and_the_submission_stops_the_submission<br>WorkflowTest::test_a_submission_after_another_save_is_refused |
+| X07 | `move()` が `lock_version` を進めない（M28 の隣） | 赤 | RequestActionTest::test_a_stale_screen_is_refused<br>RequestActionTest::test_stale_or_repeated_applicant_operations_are_refused<br>RequestActionTest::test_a_lock_version_that_is_not_a_plain_number_is_refused<br>ほか 2 本 |
+| X08 | 中身の保存の条件付き UPDATE（`where(lock_version)`）を外す（M28 の隣） | 赤 | RequestFormTest::test_a_stale_edit_form_does_not_overwrite_a_newer_save |
+| X09 | 申請者としての対応待ちを自分の申請に絞らない（M16 の隣） | 赤 | HomeAndListTest::test_the_home_shows_only_my_own_requests<br>PendingWorkTest::test_each_role_sees_its_own_turn<br>PendingWorkTest::test_a_returned_request_waits_for_the_applicant<br>ほか 1 本 |
+| X10 | 20 件の確かめの `>=` を `>` に（M43 の隣） | 赤 | RequestAttachmentTest::test_twenty_files_is_the_limit |
+| X11 | 開いた記録の利用者を申請者にする（M40 の隣） | 赤 | RequestAttachmentTest::test_opening_is_logged_once_the_request_was_submitted |
+| X12 | 候補の検索を番号の付いた申請に絞らない（M13 の隣） | 赤 | RelatedNumberSearchTest::test_it_returns_only_numbered_requests_the_user_can_see<br>RelatedNumberSearchTest::test_a_request_without_a_number_is_not_a_candidate_even_when_visible |
+| X13 | `AppendOnly` の `deleting` の守りを消す（M37 の隣） | 赤 | Phase2ModelsTest::test_append_only_records_cannot_be_updated_or_deleted |
+| X14 | 部門長が変わらない保存でも `headChanged()` を呼ぶ（M48 の隣） | 赤 | OrganizationPhase2Test::test_saving_other_fields_leaves_waiting_requests_alone |
+| X15 | 基幹の編集（無効化・メール空）の 12.6 の歯止めを外す（M49 の隣） | 赤 | AssignmentGuardTest::test_the_base_screens_refuse_to_disable_delete_or_empty_the_mail_of_a_head<br>AssignmentGuardTest::test_an_edit_without_the_email_field_is_refused<br>AssignmentGuardTest::test_refusals_write_nothing_and_return_to_the_list |
+| X16 | 社長が未設定の断りを消す（M17 の隣） | 赤 | SubmitCheckerTest::test_nothing_can_be_submitted_without_a_president |
+| X17 | 編集の画面の差戻しの理由を今の回に絞らない（M23・M25 の隣。Task 13 の点検の R24 と同じ所） | **緑**（全件も緑） | — |
+| X18 | 申請部門の `Rule::in($departmentIds)` を外す（M22 の隣） | 赤 | RequestFormTest::test_the_shape_of_inputs_is_checked_even_for_a_draft |
+
+#### 計画が「等価」とした変異の確かめ: 6 通り・赤 1・緑 5
+
+| # | 変異 | 結果 | 落としたテスト（今の名前） |
+|---|---|---|---|
+| E1 | `canDelete()` の `round === 0` を外す | **緑**（全件も緑） | — |
+| E2 | `RequestController::destroy()` の `where(round, 0)` を外す | **緑**（全件も緑） | — |
+| E3 | `RequestController::destroy()` の `where(status, draft)` を外す | **緑**（全件も緑） | — |
+| E5 | `Workflow::judge()` の `DB::transaction` を外す | 赤（**無効**。テストの作りによる → E6・E7） | WorkflowTest::test_a_simultaneous_second_press_is_refused_by_the_conditional_update |
+| E6 | `Workflow::withdraw()` の `DB::transaction` を外す | **緑**（全件も緑） | — |
+| E7 | `Workflow::submit()` の `DB::transaction` を外す | **緑**（全件も緑） | — |
+
+#### 計画の表と違ったもの・落ち方を確かめたもの
+
+- **M06**: 表の `RequestAttachmentTest::test_someone_who_cannot_see_the_request_cannot_open_its_files` は落ちない。計画のあとで入った `RequestContent::mayOpen()`（申請者以外には控えに入った添付だけを開かせる）が二重の守りになり、下書きの添付は M06 でも 404 のまま（守りが 2 枚になった。見られる範囲の漏れは `RequestVisibilityTest`・`RequestFormTest` が落とす）
+- **M33**: 表の「`WorkflowTest` の 2 件目の採番」は、`number` の一意の索引（DB）の違反で落ちる（DB の守り）。番号が進まないことを直に見るのは `ApprovalNumberTest` の 2 本と部門の管理の次の番号
+- **M42**: 表の `test_the_same_name_never_overwrites` は `stored_path` の一意の索引（DB）で 500 になって落ちる。保存名の形を直に見る `test_the_applicant_can_attach_a_file_to_a_draft`（40 文字の無作為の名前）と `test_the_kind_comes_from_the_contents` が意図どおりに落とす
+- **M47**: 外部キー（RESTRICT。本番の SQL も同じ）が先に削除を止めて 500（表の注意どおり）→ **M47b**（外部キーの確かめを取引の終わりまで遅らせる `PRAGMA defer_foreign_keys = ON`。RefreshDatabase が巻き戻す）で測り直し、表の 2 本が「断りの文言が無い」「帯に出ていない」で落ちる＝アプリの確かめそのものを見ている
+- **M20・M23**: 落ちたのは Laravel の `assertRedirect` が失敗の説明を組み立てる途中の Error（セッションの `errors` が配列で入っている）。探りのテストで同じ手順の転送先と理由を出し、M20 は「申請の種類「…」は使えなくなりました」、M23 は type_id.in「選んだ申請の種類は使えません」で編集の画面へ戻されたことを確かめた（意図どおりの機構）
+
+### 検出 ／ 当初検出漏れ→追加で検出 ／ 等価
+
+「計画のテスト」は計画の実装のコミットで入ったテスト、「点検のテスト」は点検の手直しで足したテスト（テストのメソッドが入ったコミットを git の履歴で分けた。T4a のように計画のメソッドの中身が手直しで広がったものは手直しの側に数えた。M01・M03 を落とす計画のテストが空振りでなくなったのは Task 4 の手直し 1260dcee から）。
+
+| 区分 | 変異 |
+|---|---|
+| 検出（計画のテストで落ちる） | 計画の表 51 通りすべて・T4b・T4c・N10・V26・X02・X03・X06〜X13・X15・X16・X18 |
+| 当初検出漏れ → 点検のテストで検出 | T3a〜T3f（Task 3 の b7e1f6db・Task 6 の 3a04f42d・Task 16 の 1b94ad08）・T4a（Task 4 の 1260dcee）・F5・N7〜N9・N16・N18（Task 5 の 0e90edd3）・V13・V23・V28・V11（Task 8 の c2e9ff06・c0dd2ca4）・X01・X04（Task 15 の 1caadf87）・X05（Task 7 の 1dceeed0）・X14（Task 9 の 5c8e6f37） |
+| 検出漏れ（等価でない）→ テストを足す | **X17**: 申請書の編集の画面の差戻しの理由を今の回に絞る条件（`RequestController::formData()` の `->where('round', $approvalRequest->round)`）を外しても全件が緑。今のテストは 1 回だけ差し戻す場面しか見ない（Task 13 の点検で任意として見送った R24 と同じ所）。足したテスト `RequestFormTest::test_the_edit_page_shows_only_the_return_reason_of_the_current_round`（2 回差し戻した申請の編集の画面に、今の回の理由だけが出る）は今のコードで緑・X17 で赤（足した形の全件 OK (2636 tests, 18317 assertions)） |
+| 等価（SQLite で等価） | N14（`setNext()` のトランザクション）・N15（連番の行の `lockForUpdate()`）。下の「測り方の注意」4 |
+| 等価（計画のとおり） | E1（`canDelete()` の `round === 0`）・E2・E3（`destroy()` の `round`・`status`＝権限と削除の条件の二重の守り）・E6・E7（`withdraw()`・`submit()` の `DB::transaction`＝正常系では同じ。Bug #48 の型） |
+| 無効にした測定 | E5（`judge()` の `DB::transaction`）: 赤だが、同時押しのテストは Workflow が自分の取引を張っているときだけ別の人の更新を差し込む作りで、取引を外すと差し込みが起きず「2 人目が通った」になる（取引の守りを見たのではない）→ E6・E7 で測り直した／M47 → M47b／写しの汚れで落ちたテストの集合が汚れた M43〜M49 の最初の測定 → 測り直した（「測り方の注意」3） |
+
+### 点検ごとの変異（流し直していない）
+
+各点検の変異は、その点検の時点の HEAD の写しで測り、手直しのあとは再点検で測った。**最後の形では流し直していない**（コントローラの判断: 流し直すと 2〜3 時間かかり道具の当て直しも要る。後の手直しでテストが弱まっていても気づけないが、最後の全体の点検が網になる）。数は各報告と README の進み具合の表から写した。「当時のテストで赤」はその点検の時点のテストで落ちた数、「手直しのあと」は点検の案のテスト・手直しを入れた形で測った数。
+
+道具の在りか: A＝`~/.claude/plans/approval-phase2a-tasks/archive-2026-09-27/review/`（消えない写し）、S＝会話 b4b10819 の scratchpad の `review/`（`/private/tmp`。Mac の再起動で消える）。
+
+| 点検（測った HEAD） | 変異 | 当時のテストで赤 | 手直しのあと | 緑のまま残したもの（理由） | 道具 |
+|---|---|---|---|---|---|
+| Task 1 の点検（手直し e35109c6 のあと） | 5 | 5 | — | — | 残っていない |
+| Task 3 の再点検 | 8 | 8 | — | — | 残っていない（今回 T3a〜T3f で最後の形を測った） |
+| Task 4 の再点検 | 10 | 10 | — | — | 残っていない（今回 T4a〜T4c） |
+| Task 5 の再点検 | 39 | 35 | — | 4（README では「SQLite で等価」。道具の説明ではトランザクション 2・`lockForUpdate` 1・害の無い upsert の更新列 1。結果のファイルは残っていない） | `~/.claude/plans/approval-phase2a-tasks/review-tools/mutate.py`・`mutate2.py`・`t5mysql/` |
+| Task 7 の点検（df35b57c） | 67 | 26 | 63 赤（1dceeed0） | W10（採番を先に＝SQLite で等価・MySQL で実測）・P9（待ちの段階は回覧中だけ）・P14（下書きに戻る道が無い）＝等価。W36 は再点検で赤 | A `t7/`（`ProposedWorkflowBase.php`・`mysql/`。**`mutate7.py` と結果は消えた**） |
+| Task 7 の再点検（bc2df9fd） | 78 | 68 | MA6・MA7 は bd1ea385 のテストで赤 | W10・MA3（ロックの順）・MA5（`headChanged` のトランザクション）・MA11・MA12（ロックしない・ロックせずに読み直す）＝SQLite で等価（MySQL で MA3・MA11 は 1213、MA12 は RR で誤った記録）・MA8（ロックのあとの読み直しが同じ働き）・P9・P14＝等価 | A `t7r/mysql/`（**`mutate7r.py` と結果は消えた**） |
+| Task 8 の点検（d4a7bcf4） | 36 | 20 | 34 赤（c2e9ff06） | V17（付け替えは届いた段階にしか付かない）・V27（下書きには段階が無い）＝等価 | A `t8/mutate8.py` |
+| Task 8 の再点検（eea70599） | 36＋直しの 6 | 38 | — | V17・V27・V26a（スコープを通す限り同じ）・F4（`whereKey` に OR が無い）＝等価 | 消えた（A `t8/recheck/` はテスト 1 本だけ） |
+| Task 8 の 2 回目の再点検（df795036） | 49 | 44 | H02 は c0dd2ca4 のテストで赤 | V17・V27・V26a・F4＝等価 | 消えた（A `t8/recheck2/` はテスト 1 本だけ） |
+| Task 9 の点検（b60c50ee） | 59 | 23 | 58 赤（5c8e6f37） | V12（作成の小窓だけの注意書き＝編集の小窓に同じ文があり見分けられない。見送り）。C16（`headChanged()` を部門の更新の後に）は SQLite では SQL の順の確かめでだけ赤・MySQL で 1213 | A `t9/mutate9.py`・`t9/mysql/` |
+| Task 9 の再点検（75e5a4c2） | 21（N01〜N21） | 17 | N04・N09・N10 は 133ea71d・04a402bb のテストで赤 | N14（記録の審査担当者を並べない＝SQLite ではもともと id の順）＝等価 | A `t9r/mutate9r.py` |
+| Task 9 の 3 回目の再点検（04a402bb） | 13 | 13 | — | — | A `t9r/mutate9r2.py` |
+| Task 10 の点検（794c3df9） | 22 | 14 | 22 赤（cd564861） | — | A `t10/mutate10.py` |
+| Task 11 の点検（6846f419） | 57 | 22 | 57 赤（7565e123） | — | A `t11/mutate11.py` |
+| Task 11 の再点検（3fdcf0e9） | 75（前回の 57＋手直しの形 18） | 74 | — | N07（一覧の注意が削除した審査担当者も数える形。後回しにした軽微 N-1。画面からは起きない） | S `t11r/mutate11r.py`・`results.txt` |
+| Task 12 の点検（e037762c） | 22 | 17 | 21 赤（265842cd・6ff290f0） | C11（前後の空白の削り＝`TrimStrings` が先に削る）＝等価 | A `t12/mutate12.py`・`t12/mysql/` |
+| Task 13 の点検（87f786ec） | 62 | 40 | 51 赤（f924393a） | 13-P（提出の行ロック＝SQLite で等価・MySQL で確かめた）・13-R（持ち主の `array_merge`＝今は同じ）・R08・R09（削除の権限と条件の二重の守り）＝等価。R10 は Task 14 のテストが守る。R36〜R40 は Task 15 の範囲（R36・R38・R39 は Task 15 の案で赤、R37 は計画のテストで赤、R40 は等価）。**R24（差戻しの理由を今の回に絞る条件）は任意として見送り → 今回の X17 と同じ所で、案のテストを足した** | A `t13/tools/mutate13.py`・`t13/mysql/` |
+| Task 14 の点検（85df9615） | 62（＋直しの 5＝67） | 38 | 60 赤（ec3a03c7・e45255ae・58823408） | S18（名前の `/` は届かない）・H10（Content-Type は保存と同じ表）・L01（開くと外すは同じパス）＝等価、S05・S06・D11・D12（行ロック）＝SQLite で等価・MySQL 8.4.11 の本物のルートの場面で赤 | S `t14/mutate14.py`・`mutate14b.py`・`mysql/` |
+| Task 15 の点検（b2fb943c） | 85 | 41 | 81 赤（1caadf87） | M27（段階の先読み＝N+1 だけ）・R40（削除と詳細は同じ URL）＝等価。M33・M33b は Task 16 の範囲（M33 は Task 16 の案で赤、M33b は等価） | S `t15/tools/mutate15.py`・`mutate15-table.md` |
+| Task 16 の点検（f1e8d170） | 71 | 32 | 66 赤（1b94ad08） | P17・W03・W04・W05・C02＝等価（待ちの段階は今の回だけ・`arrived_at` がある・9 時間の差は `round` が消す・0 未満にならない・0 時どうしの差は整数） | S `t16/mutate16.py` |
+| Task 17 の点検（4a23ab1f） | 6 | 5 | 6 赤（0d76d89c） | — | 道具なし（写しに手で当てた） |
+
+- Task 7〜17 の点検で新しく作った変異は約 620 通り（再点検で前回の分を当て直したものを除く。延べでは約 830 通り）
+- 食い違い: README の進み具合の表の Task 7 の行は「変異 78 通り中 68 が赤（残りは SQLite で等価 or MySQL で実測）」だが、再点検の報告では緑の 10 通りのうち MA6・MA7 の 2 つは**テストの穴**（bd1ea385 のテストで赤）、MA8・P9・P14 は SQLite に限らない等価。数は同じで、内訳の言い方だけが違う
+
+### 測り方の注意
+
+1. **写しで測った理由**: この環境の自動の許可の判定は、WT のファイルを一時的に書き換える操作（変異を当てて戻す）を断る（2026-09-27 に実測）。そこで計画の Step 1 の「WT に当てて `git restore`」の代わりに、HEAD の写し（`git archive e774029a` ＋ vendor の APFS 複製 `cp -Rc`）に当てた。手本の写し 1 つと、変異を当てる写し 5 つを並べて流した（WT は読むだけ。最後まで `git status --porcelain` は空）
+2. **1 つの変異の手順**: 写しが手本と同じか（`app`・`bootstrap`・`config`・`database`・`lang`・`resources`・`routes`・`tests` を `diff -rq`）→ 置き換え文がちょうど 1 回当たるか → 当てて差分が空でないか（`diffs/` に保存）→ コンパイル済みのビューと偽のディスク（`Storage::fake`）を消す → 流す → 手本から戻して `cmp` → もう一度 `diff -rq`
+3. **意図と別の機構で落ちたもの（無効にして測り直した）**
+   - 写しの汚れ: M42（保存名を元の名前に）の回に、255 文字の日本語の名前のファイル（757 バイト）が偽のディスクに残った。APFS には作れるが PHP の `lstat` が失敗し、`Storage::fake` も消せない。同じ写しで後に流した M43〜M49 で `RequestAttachmentTest::test_deleting_a_draft_deletes_its_files` が 500（`Lstat failed`）で落ち、落ちたテストの集合が汚れた → 偽のディスクを毎回消す形に直し、M43〜M49 を流し直した（表は流し直した結果。検出の有無は変わらない）
+   - E5・M47: 上の「検出／当初検出漏れ→追加で検出／等価」のとおり
+   - 走査のテストで落ちた変異は無かった（変異に `now()` などを足していない）。V26 は `constrain()` を直に呼ぶと走査 `test_only_the_model_scope_calls_the_rule_body` にも掛かるので、走査に掛からない `call_user_func([self::class, 'constrain'], …)` で当て、振る舞いのテストだけで落ちることを見た
+4. **SQLite で確かめられないロック**: N15（連番の行の `lockForUpdate()`）・N14（`setNext()` のトランザクション）は Approval と走査・全件とも緑。Laravel は SQLite では `FOR UPDATE` を付けず、テストは 1 本の接続なので、行のロックの有無が結果に出ない。**設計書 §6 の「同時の採番で重ならない」は SQLite のテストでは確かめられない**。MySQL では次の点検で確かめた（本番は 8.0.40。ロックの振る舞いは 8.4.8・8.4.11 で測り、8.0 は未確認）
+   - Task 5 の点検（8.4.8）: 連番の行の用意を `insertOrIgnore` のままにすると READ COMMITTED で 1213 → `upsert` にした（後の方は待つだけ）。判断が断られたら番号も戻る
+   - Task 7 の点検（8.4.8）: 6 プロセス・計 3,042 件の負荷の試験で、番号の飛び・重なり 0（`next_number = last_issued + 1`）・1213 は 0 件。再点検（8.4.11）で、ロックの順を入れ替える MA3・申請の行をロックしない MA11 は 1213、段階の行をロックせずに読み直す MA12 は REPEATABLE READ で誤った記録
+   - Task 9 の点検（8.4.11）: `headChanged()` を部門の行の更新の後に回す C16 は 1213（SQLite では発行した SQL の順の確かめでだけ赤）
+   - Task 13・14 の点検（8.4.11）: 提出の行ロックを外す 13-P は、REPEATABLE READ で控えが古くなる（Task 14 の点検の、提出と添付が重なる場面）。Task 13 の点検の 6 プロセスと本物の画面を混ぜた負荷の試験では、食い違い・1213・1205・500 は 0 件
+   - Task 14 の点検（8.4.11）: 添付の行ロックの変異 S05・S06・D11・D12 は、本物のルートの場面ですべて赤
+5. **道具が残っていないもの**: Task 7 の `mutate7.py`・`mutate7r.py`、Task 8 の再点検 2 回の変異の道具、Task 7〜13 の点検の結果のファイル（`results*.txt`。Task 11 の再点検の分は S に残る）は、2026-09-28 朝の Mac の再起動で消え、会話の記録からも戻せなかった（報告の本文と数は残る）。上の表の数は各報告の本文から写した
+
+---
+
+## Task 19 の実測記録（2026-09-28）
+
+### 手元のブラウザでの確認（e774029a の写し）
+
+- 形: WT の HEAD の写し（scratchpad）＋使い捨ての SQLite＋`php artisan serve`＋Playwright（Chromium）。WT は読むだけで、`.env` は作っていない。試しのパスワードは値を出さずに渡した
+- Step 3 の 15 行: すべて期待どおり（1440px と 375px）。15 は `main` のはみ出し 0（1800・1200・375px・のべ 120 回）・決裁の画面のコンソールのエラーと警告 0
+- 不具合 7（このあと直した）: B1 中＝判断・取り下げ・条件確認のコメントで、改行の多い 2,000 字近い文がブラウザを通るのに CR+LF で数えられて断られ、消える／B2 中＝添付の「ファイルを選ぶ」にキーボードで届かない／B3＝送っている途中のドロップを黙って捨てる／B4＝「外す（確定）」の 2 度押しで成功と失敗の文が並ぶ／B5＝419・401 の英語の文が添付の欄に出る／B6＝候補の検索の失敗の文言が、あとで成功しても消えない／B7＝取り下げた申請にも「決裁No は社長の判断のときに付きます」
+- 利用者に確かめたこと 13: 写真 56 枚を 1 枚のページにまとめて見せ、利用者が「すべておすすめ」を選んだ（下の「利用者の決定」）
+- Step 5: `view:cache` のあと 281 件すべて `php -l` OK（INVALID 0）
+- Step 6: `artisan serve` を止めたことを確かめ、写しの sqlite と設定のファイルを消した。WT の `git status --porcelain` は空
+
+### 利用者の決定（2026-09-28・写真のページで「すべておすすめ」）
+
+| # | 決めたこと |
+|---|---|
+| C1 | 種類・部門の名前を変えたあと、申請者以外の詳細は提出したときの名前・申請者の詳細とホームと一覧は今の名前（今のまま） |
+| C2 | 1 回押したらボタンを押せなくする（下書きの保存・提出・判断・取り下げ・条件確認） |
+| C3 | 基幹の利用者管理の断りに、後任の設定の頼み先を言う（操作した人が決裁の管理者なら部門の管理・そうでなければ決裁の管理者） |
+| C4 | 申請種類の管理で断られたら、打った中身で小窓を開き直す（部門の管理は変えない） |
+| C5 | 一覧の絞り込みで「条件確認待ち」は「完了」の組のまま |
+| C6 | 見出しのままの断りに「■ の行の後ろではなく、下の「・」の行に書いてください」を添える |
+| C7 | 押せない判断の理由の 2 行目を段階ごとに（部門長「取り下げて出し直すか、決裁の管理者に相談してください。」・社長「社長の指定を変えられるのは基幹の管理者です。急ぐときは取り下げてください。」） |
+| C8 | 判断・取り下げ・条件確認で入力の誤りやコメントの不足で断られたら、選んだ判断と打ったコメントで小窓を開き直す（先を越されたときは戻さない・版は断られる前のまま） |
+| C9 | 部門長の交代の記録に「新しい担当: 〇〇」を添える |
+| C10 | 下書きだけの人のホームの文言は今のまま |
+| C11 | 待ち日数は段階が届いた日から数える（今のまま） |
+| C12 | iPhone の Safari で HEIC を選べるかは、使い始める前（段階6）に実機で確かめる |
+| D26 | 要件定義書（v1.9）への書き足しは次の版で（今回は設計書に D26 として書いた） |
+
+### 直したこと（c866b529 のあと）
+
+- 14 段（`be19f10a`〜`b5ab79ca`・1 段 1 コミット）: B1 改行を `\n` にそろえてから字数を数え LF で保存／B5 決裁の URL の JSON の 419・401 を日本語に／B7／C6／C7／C3（文は `User::approvalSuccessorGuide()`）／C9（名前は 1 回の問い合わせで読む）／B2 `sr-only`＋フォーカスの枠／B3／B4／B6（失敗の文言と形の誤りを分ける）／C2 確定のボタンは `name`/`value` を持たず、保存か提出か（`intent`）と判断（`result`）は hidden で送る。押したら押せなくし「送っています…」・`pageshow` で戻す（手本は基幹の顧客 CSV 取込の二度押し止め・Bug #67）／C8 入力の検査と `WorkflowRefused` のときだけ入力を戻して開き直す／C4 `old()` で開き直す。直しの全文は別の担当が写しで用意し、どの段も「テストを先に入れると落ち、直しを入れると緑」を確かめてから入れた
+- 点検（opus）: 手直しのうえ合格。重要 2（どちらもテストの穴）＝判断の選ぶボタンの表示と送る値の対（Bug #47。「承認」が差戻しを選ぶ形が全件で緑だった）・断られて開き直した小窓が断られる前の版のまま（今の版にすると、取り下げのつもりで条件確認の小窓から決裁が完了する流れを再現）→ テスト 6 本（`04872fbf`）。軽微のうち、開き直した判断の小窓で別の判断を選ぶと前の理由が残る形 → `658a11b8`。変異 69 通り中 67 通りが赤（残り 2 は等価）
+- 手元のブラウザでの確かめ直し（658a11b8 の写し）: 返事を遅らせた 2 回押しで、申請書（保存・提出・差戻し中の保存と出し直し）・判断・取り下げ・条件確認のどれも POST は 1 回。判断の 9 種のボタンは、小窓の題・送った値・記録された判断がすべて押したボタンどおり。C8・O-1・B1（改行の多い 5 か所。保存された値に CR は無い）・B2〜B7・C3・C6・C7・C9 も期待どおり。はみ出し 0（のべ 156 回）・コンソール 0・view lint 281 件 OK・写真 46 枚
+- 確かめ直しで見つけて直したもの（段 15〜17）: 申請種類の管理で開き直した小窓に断られた理由を出す（上部の帯が小窓に隠れていた）／申請種類の保存と下書きの削除にも同じ二度押し止め（2 回目が重複の断りや英語の 404 の画面になっていた。部品は `approvals/_submit_once.blade.php`）／決裁の JSON の 419 の文を、ほかの画面でログアウトしたときにも合う言い方に
+- 残した軽微（最後の全体の点検で判断する）: 状態が進んだあとに古い画面の取り下げが断られると条件確認の小窓が開く（版が古いので害なし）／`unifyNewlines()` が 3 つのコントローラに同じ中身／送信中の「ファイルを選ぶ」の見た目は変わらない
+
+### 手順の注意（次に同じ確認をするとき）
+
+- 使い捨ての設定に `APP_LOCALE=ja`・`APP_FALLBACK_LOCALE=ja` を入れる（無いと検査の文が英語になる。本番は ja・Bug #36。最初の確認の写真の一部は英語だった可能性がある）
+- 新しい CSS のクラスを足したら、見る前に `vite build`（写しからは main repo の `node_modules` が見えないので、写しの中にシンボリックリンクを並べる）
+- 2 回押しは「サーバーに届けてから返事を遅らせる」形で再現する（送る前に止めると 1 回目がブラウザの中で取り消される）。ページの移動中は Playwright の evaluate と写真が止まるので、ページの中の記録と CDP の screencast で測る
+- Playwright がファイルを扱えるのは会話の作業フォルダ（`/Users/masanori/site/approval`）の下だけ。試しのパスワードの受け渡しに使ったものは最後に消す

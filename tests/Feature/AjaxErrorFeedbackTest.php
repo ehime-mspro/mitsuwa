@@ -83,6 +83,8 @@ class AjaxErrorFeedbackTest extends TestCase
         'admin/master/zoning-types/index.blade.php',
         // 共通コンポーネント
         'components/attachment-section.blade.php',
+        // 決裁申請（段階2）。候補の検索と、Task 14 の添付の追加・削除。`.ok` の分岐と `!data` のガードを同じ数だけ書く
+        'approvals/requests/form.blade.php',
     ];
 
     /**

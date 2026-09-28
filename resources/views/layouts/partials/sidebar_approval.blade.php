@@ -1,6 +1,7 @@
 {{-- 決裁のみ利用者（UserRole::ApprovalOnly）のサイドバー（設計書 §5.15）。
      基幹のサイドバー（sidebar.blade.php）の代わりに layouts/app.blade.php が出し分ける。
-     ⚠ 中身は「決裁のホーム」と、決裁の管理者なら「利用者の管理」「部門の管理」だけ。
+     ⚠ 中身は「決裁のホーム」、使い始めてから「新しい申請」「自分の申請」（段階2 設計書 §5.12）、
+       決裁の管理者なら「利用者の管理」「部門の管理」「申請種類の管理」。
        社員の CSV 一括登録は「利用者の管理」の下位の画面なのでここには出さない。
      回帰テスト tests/Feature/Approval/ApprovalSidebarTest.php --}}
 
@@ -12,6 +13,8 @@
 
 @php
     $isApprovalAdmin = Auth::user()->isApprovalAdmin();
+    // 申請を回す画面へのリンクは使い始めてから（準備中は誰にも見せない。段階2 設計書 §5.2・D1）
+    $approvalsLaunched = \App\Models\ApprovalSetting::current()->isLaunched();
 @endphp
 
 {{-- ========== PC用: 展開サイドバー ========== --}}
@@ -26,9 +29,14 @@
                     class="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-gray-300 bg-gray-50 text-[10px] text-gray-500 hover:bg-gray-100 cursor-pointer">閉じる</button>
         </div>
         <x-sidebar-item :href="route('approvals.home')" label="決裁のホーム" :active="request()->routeIs('approvals.home')" />
+        @if($approvalsLaunched)
+            <x-sidebar-item :href="route('approvals.requests.create')" label="新しい申請" :active="request()->routeIs('approvals.requests.create')" />
+            <x-sidebar-item :href="route('approvals.requests.index')" label="自分の申請" :active="request()->routeIs('approvals.requests.index', 'approvals.requests.show', 'approvals.requests.edit')" />
+        @endif
         @if($isApprovalAdmin)
             <x-sidebar-item :href="route('approvals.admin.users.index')" label="利用者の管理" :active="request()->routeIs('approvals.admin.users.*')" />
             <x-sidebar-item :href="route('approvals.admin.organization.index')" label="部門の管理" :active="request()->routeIs('approvals.admin.organization.*')" />
+            <x-sidebar-item :href="route('approvals.admin.types.index')" label="申請種類の管理" :active="request()->routeIs('approvals.admin.types.*')" />
         @endif
     </div>
 </aside>
@@ -37,6 +45,9 @@
 <aside x-show="!sidebarExpanded" x-cloak class="hidden lg:flex flex-col items-center w-[56px] min-w-[56px] bg-white border-r border-gray-200 overflow-y-auto pt-4 pb-6">
     <button @click="sidebarExpanded = true" title="サイドバーを開く" class="w-9 h-9 mb-3 rounded-lg flex items-center justify-center hover:bg-gray-100 cursor-pointer">›</button>
     <a href="{{ route('approvals.home') }}" title="決裁のホーム" class="w-9 h-9 mb-1 rounded-lg flex items-center justify-center {{ request()->routeIs('approvals.home') ? 'bg-emerald-50' : 'hover:bg-gray-100' }}">決</a>
+    @if($approvalsLaunched)
+        <a href="{{ route('approvals.requests.index') }}" title="自分の申請" class="w-9 h-9 mb-1 rounded-lg flex items-center justify-center {{ request()->routeIs('approvals.requests.*') ? 'bg-emerald-50' : 'hover:bg-gray-100' }}">申</a>
+    @endif
     @if($isApprovalAdmin)
         <a href="{{ route('approvals.admin.users.index') }}" title="利用者の管理" class="w-9 h-9 mb-1 rounded-lg flex items-center justify-center {{ request()->routeIs('approvals.admin.*') ? 'bg-emerald-50' : 'hover:bg-gray-100' }}">設</a>
     @endif
@@ -60,8 +71,13 @@
         </button>
     </div>
     <x-sidebar-item :href="route('approvals.home')" label="決裁のホーム" :active="request()->routeIs('approvals.home')" />
+    @if($approvalsLaunched)
+        <x-sidebar-item :href="route('approvals.requests.create')" label="新しい申請" :active="request()->routeIs('approvals.requests.create')" />
+        <x-sidebar-item :href="route('approvals.requests.index')" label="自分の申請" :active="request()->routeIs('approvals.requests.index', 'approvals.requests.show', 'approvals.requests.edit')" />
+    @endif
     @if($isApprovalAdmin)
         <x-sidebar-item :href="route('approvals.admin.users.index')" label="利用者の管理" :active="request()->routeIs('approvals.admin.users.*')" />
         <x-sidebar-item :href="route('approvals.admin.organization.index')" label="部門の管理" :active="request()->routeIs('approvals.admin.organization.*')" />
+        <x-sidebar-item :href="route('approvals.admin.types.index')" label="申請種類の管理" :active="request()->routeIs('approvals.admin.types.*')" />
     @endif
 </aside>

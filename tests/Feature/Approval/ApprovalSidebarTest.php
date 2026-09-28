@@ -4,6 +4,7 @@ namespace Tests\Feature\Approval;
 
 use App\Enums\UserRole;
 use App\Models\ApprovalMember;
+use App\Models\ApprovalSetting;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -297,5 +298,49 @@ class ApprovalSidebarTest extends TestCase
             $this->assertCount(1, $m[0], "{$xShow} の <aside> が 1 本に定まらない");
             $this->assertStringContainsString('x-cloak', $m[0][0], "{$xShow} の x-cloak が無い");
         }
+    }
+
+    /** 申請種類の管理は、使い始める前から決裁の管理者に出る（段階2 設計書 §5.2・§5.12） */
+    public function test_the_type_management_link_is_offered_to_admins_before_launch(): void
+    {
+        // 決裁のみ利用者の管理者: 決裁のサイドバー
+        $sidebars = $this->sidebars(
+            $this->actingAs($this->approvalAdmin(UserRole::ApprovalOnly->value))->get(route('approvals.home'))->assertOk()->getContent()
+        );
+        foreach (['expanded', 'drawer'] as $key) {
+            $this->assertHasLink($sidebars[$key], route('approvals.admin.types.index'), '申請種類の管理', $key);
+        }
+
+        // 基幹を使う管理者: 基幹のサイドバーの「決裁の管理」
+        $sidebars = $this->sidebars($this->actingAs($this->approvalAdmin())->get('/dashboard/tenant')->assertOk()->getContent());
+        foreach (['expanded', 'drawer'] as $key) {
+            $this->assertHasLink($sidebars[$key], route('approvals.admin.types.index'), '申請種類の管理', $key);
+        }
+
+        // 管理者でない人には出さない（@if の外へ出す取り違えを止める）
+        $plain = User::factory()->approvalOnly()->create(['must_change_password' => false]);
+        foreach ($this->sidebars($this->actingAs($plain)->get(route('approvals.home'))->assertOk()->getContent()) as $key => $aside) {
+            $this->assertStringNotContainsString(route('approvals.admin.types.index'), $aside, "{$key} に管理者でない人の申請種類の管理が出ている");
+        }
+    }
+
+    /** 申請の画面へのリンクは、使い始めてから出す（準備中は誰にも見せない。段階2 設計書 D1） */
+    public function test_the_request_links_appear_only_after_launch(): void
+    {
+        $user = User::factory()->approvalOnly()->create(['must_change_password' => false]);
+
+        $before = $this->sidebars($this->actingAs($user)->get(route('approvals.home'))->assertOk()->getContent());
+        foreach ($before as $key => $aside) {
+            $this->assertStringNotContainsString(route('approvals.requests.index'), $aside, "{$key} に準備中の申請の画面へのリンクが出ている");
+        }
+
+        ApprovalSetting::current()->update(['launched_at' => now()]);
+
+        $after = $this->sidebars($this->actingAs($user)->get(route('approvals.home'))->assertOk()->getContent());
+        foreach (['expanded', 'drawer'] as $key) {
+            $this->assertHasLink($after[$key], route('approvals.requests.create'), '新しい申請', $key);
+            $this->assertHasLink($after[$key], route('approvals.requests.index'), '自分の申請', $key);
+        }
+        $this->assertStringContainsString('title="自分の申請"', $after['rail'], 'rail に自分の申請のアイコンリンクが無い');
     }
 }

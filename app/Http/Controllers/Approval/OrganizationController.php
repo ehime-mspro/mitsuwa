@@ -2,34 +2,51 @@
 
 namespace App\Http\Controllers\Approval;
 
+use App\Enums\ApprovalStepKind;
+use App\Enums\ApprovalStepStatus;
+use App\Enums\UserStatus;
 use App\Http\Controllers\Controller;
 use App\Models\ApprovalCompany;
 use App\Models\ApprovalDepartment;
 use App\Models\ApprovalMailDomain;
+use App\Models\ApprovalNumberSequence;
+use App\Models\ApprovalRequest;
+use App\Models\ApprovalStep;
+use App\Models\ApprovalType;
 use App\Models\User;
+use App\Support\Approval\ApprovalNumber;
 use App\Support\Approval\SettingLogger;
+use App\Support\Approval\Workflow;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Exists;
+use InvalidArgumentException;
 
 /**
- * 会社・部門・許可するメールのドメイン（設計書 §5.8）。
+ * 会社・部門・許可するメールのドメイン（段階1 設計書 §5.8）と、段階2 の部門長・審査担当者・
+ * 今年度の開始番号（段階2 設計書 §5.4）。
  *
  * 画面は 1 枚で 3 つの欄を並べる。追加と編集は基幹の利用者管理と同じくモーダル。
  *
  * ⚠ 決裁の所属部門（`approval_department_user`）は**この画面では編集しない**（人数を出すだけ）。
  *   編集は利用者の管理（§5.9）と CSV（§5.10）で行う。
- * ⚠ 部門長・審査担当者・今年度の開始番号は段階2 でこの画面に足す。
+ * ⚠ 部門長・審査担当者は所属を問わない（D6）。選べるのは有効でメールアドレスのある人（D7）。
  */
 class OrganizationController extends Controller
 {
     public function index()
     {
-        $companies = ApprovalCompany::with(['departments' => fn ($q) => $q->withCount('users')])
+        $companies = ApprovalCompany::with(['departments' => fn ($q) => $q->withCount('users')->with(['head', 'reviewers'])])
             ->orderBy('sort_order')->orderBy('id')->get();
 
-        // 部門の行に会社名を出すので、親を入れておく（1 件ずつ引き直さない）
+        // 部門の行に会社名と今年度の番号を出すので、親を入れておく（1 件ずつ引き直さない）
         $companies->each(fn (ApprovalCompany $company) => $company->departments->each(
-            fn (ApprovalDepartment $department) => $department->setRelation('company', $company)
+            function (ApprovalDepartment $department) use ($company): void {
+                $department->setRelation('company', $company);
+                $department->number_state = ApprovalNumber::currentState($department);
+                $department->has_numbers  = ApprovalNumber::departmentHasNumbers($department);
+            }
         ));
 
         $mailDomains = ApprovalMailDomain::orderBy('domain')->get()
@@ -42,7 +59,17 @@ class OrganizationController extends Controller
                 return $domain;
             });
 
-        return view('approvals.admin.organization', compact('companies', 'mailDomains'));
+        // 部門長・審査担当者の選択肢（D7）。許可していないドメインの人は選べるが注意を出す
+        $allowed    = ApprovalMailDomain::pluck('domain')->all();
+        $candidates = User::where('status', UserStatus::Active->value)->whereNotNull('email')
+            ->orderBy('name')->get(['id', 'name', 'email', 'employee_number'])
+            ->map(function (User $user) use ($allowed) {
+                $user->mail_allowed = in_array(mb_strtolower(substr((string) $user->email, strrpos((string) $user->email, '@') + 1), 'UTF-8'), $allowed, true);
+
+                return $user;
+            });
+
+        return view('approvals.admin.organization', compact('companies', 'mailDomains', 'candidates'));
     }
 
     // --- 会社 ---
@@ -60,7 +87,15 @@ class OrganizationController extends Controller
     public function updateCompany(Request $request, ApprovalCompany $approvalCompany)
     {
         $validated = $this->validateCompany($request, $approvalCompany);
-        $before    = $approvalCompany->only(array_keys($validated));
+
+        // 決裁No を付けた申請がある部門を持つ会社は、期の始まりの月を変えられない（年度の区切りが変わり、同じ年度の
+        // 番号の続きが崩れる〈R8-J-001 のあとに R7-J-121〉。部門の会社とアルファベットの歯止め〈D8〉と同じ理由）
+        if ((int) $validated['fiscal_start_month'] !== $approvalCompany->fiscal_start_month
+            && ApprovalRequest::whereIn('number_department_id', ApprovalDepartment::where('company_id', $approvalCompany->id)->select('id'))->exists()) {
+            return $this->back(null, 'この会社には決裁No を付けた申請がある部門があるため、期の始まりの月は変えられません。');
+        }
+
+        $before = $approvalCompany->only(array_keys($validated));
 
         $approvalCompany->update($validated);
         SettingLogger::recordChange('company.updated', 'approval_company', $approvalCompany->id, $before, $validated);
@@ -108,9 +143,19 @@ class OrganizationController extends Controller
     public function storeDepartment(Request $request)
     {
         $validated = $this->validateDepartment($request);
+        [$base, $headId, $reviewerIds, $next, $shown] = $this->splitDepartmentInput($validated);
 
-        $department = ApprovalDepartment::create($validated);
-        SettingLogger::record('department.created', 'approval_department', $department->id, [], $validated);
+        try {
+            DB::transaction(function () use ($base, $headId, $reviewerIds, $next, $shown): void {
+                $department = ApprovalDepartment::create($base + ['head_user_id' => $headId]);
+                SettingLogger::record('department.created', 'approval_department', $department->id, [], $base + ['head_user_id' => $headId]);
+
+                $this->syncReviewers($department, $reviewerIds);
+                $this->setNextNumber($department, $next, $shown);
+            });
+        } catch (InvalidArgumentException $e) {
+            return $this->back(null, $e->getMessage());
+        }
 
         return $this->back('部門を登録しました。');
     }
@@ -118,22 +163,57 @@ class OrganizationController extends Controller
     public function updateDepartment(Request $request, ApprovalDepartment $approvalDepartment)
     {
         $validated = $this->validateDepartment($request, $approvalDepartment);
-        $before    = $approvalDepartment->only(array_keys($validated));
+        [$base, $headId, $reviewerIds, $next, $shown] = $this->splitDepartmentInput($validated);
 
-        $approvalDepartment->update($validated);
-        SettingLogger::recordChange('department.updated', 'approval_department', $approvalDepartment->id, $before, $validated);
+        // 番号を付けた申請がある部門は、会社とアルファベットを変えられない（D8）
+        if (ApprovalNumber::departmentHasNumbers($approvalDepartment)
+            && ((int) $base['company_id'] !== $approvalDepartment->company_id || $base['code'] !== $approvalDepartment->code)) {
+            return $this->back(null, 'この部門には決裁No を付けた申請があるため、会社とアルファベットは変えられません。');
+        }
+
+        $oldHeadId = $approvalDepartment->head_user_id;
+
+        // 部門長の確認を待っている申請があるうちは、部門長を空にできない（後任を選ぶ）
+        if ($headId === null && $oldHeadId !== null && ($waiting = $this->waitingHeadSteps($approvalDepartment)) > 0) {
+            return $this->back(null, "この部門には部門長の確認を待っている申請が {$waiting} 件あるため、部門長を空にできません。後任を選んでください。");
+        }
+
+        // 審査を待っている（これから審査に届くものを含む）申請があるうちは、審査担当者を 0 人にできない
+        // （後任を選ぶ。部門長と同じ。Task 9 の点検の軽微。再点検で、部門長の確認中のものも数えるよう広げた）
+        if ($reviewerIds === [] && ($waitingReviews = $this->openReviewSteps($approvalDepartment)) > 0) {
+            return $this->back(null, "この部門には、審査を待っている（これから審査に届くものを含む）申請が {$waitingReviews} 件あるため、審査担当者を 0 人にできません。後任を選んでください。");
+        }
+
+        try {
+            DB::transaction(function () use ($request, $approvalDepartment, $base, $headId, $reviewerIds, $next, $shown, $oldHeadId): void {
+                $before = $approvalDepartment->only(array_keys($base)) + ['head_user_id' => $oldHeadId];
+
+                // 部門長の確認を待っている申請を、新しい部門長へ移す（4.3 のケース 5・D23）
+                // ⚠ 部門の行を更新する前に呼ぶ（申請の行を先にロックする。Workflow::headChanged() の注意書き・Task 7 の点検）
+                if ($headId !== $oldHeadId) {
+                    app(Workflow::class)->headChanged($approvalDepartment, $oldHeadId, $headId, $request->user());
+                }
+
+                $approvalDepartment->update($base + ['head_user_id' => $headId]);
+                SettingLogger::recordChange('department.updated', 'approval_department', $approvalDepartment->id, $before, $base + ['head_user_id' => $headId]);
+
+                $this->syncReviewers($approvalDepartment, $reviewerIds);
+                $this->setNextNumber($approvalDepartment->fresh('company'), $next, $shown);
+            });
+        } catch (InvalidArgumentException $e) {
+            // 開始番号が使った番号以下（D9）。ほかの変更もまとめて巻き戻る
+            return $this->back(null, $e->getMessage());
+        }
 
         return $this->back('部門を更新しました。');
     }
 
     /**
-     * ⚠ **Task 12（利用者の管理）で所属を書けるようにする人へ。**
-     *   `users()` は既定のスコープなので、所属者が**論理削除された利用者だけ**の部門は
-     *   ここが 0 件と数え、中間テーブルの行ごと黙って消える。今は
-     *   `approval_department_user` に書き込む経路がアプリに 1 本も無いので到達しないが、
-     *   所属を編集できるようにした時点で実在する状態になる。そのとき
+     * ⚠ `users()` は既定のスコープなので、所属者が**論理削除された利用者だけ**の部門は
+     *   ここが 0 件と数え、中間テーブルの行ごと黙って消える。段階1 の Task 12・13 で所属を書く経路
+     *   （決裁の利用者の管理・CSV 取込）ができたので、この状態は今は実際に起こりうる。そのとき
      *   `users()->withTrashed()->count()` で止めるか、「削除済み N 人ぶんの所属も消える」と
-     *   画面で断るかを決めること。
+     *   画面で断るかを決めること（段階1 からの宿題。Task 9 の点検で、消えていた宿題の文を戻した）。
      */
     public function destroyDepartment(ApprovalDepartment $approvalDepartment)
     {
@@ -143,9 +223,35 @@ class OrganizationController extends Controller
             return $this->back(null, "この部門には所属者が {$count} 人いるため削除できません。先に利用者の管理で所属部門を変えてください。");
         }
 
-        $before = $approvalDepartment->only(['company_id', 'name', 'short_name', 'code', 'sort_order']);
+        // 申請（下書きを含む）や回った記録に使われている部門は削除できない（段階2 設計書 §5.4）
+        $used = ApprovalRequest::where('department_id', $approvalDepartment->id)
+            ->orWhere('number_department_id', $approvalDepartment->id)   // 決裁No の部門（外部キー RESTRICT。段階の行があることに頼らない）
+            ->orWhereHas('steps', fn ($q) => $q->where('department_id', $approvalDepartment->id))
+            ->count();
+
+        if ($used > 0) {
+            return $this->back(null, "この部門は申請 {$used} 件に使われているため削除できません。");
+        }
+
+        $types = ApprovalType::where('review_department_id', $approvalDepartment->id)->count();
+
+        if ($types > 0) {
+            return $this->back(null, "この部門は申請の種類 {$types} 件の審査部門になっているため削除できません。先に申請種類の管理で審査部門を変えてください。");
+        }
+
+        // 審査担当者（外部キーの CASCADE で消える）と年度ごとの次の番号（連番の行も消す）も記録に残す（設計書 §5.4）
+        $before = $approvalDepartment->only(['company_id', 'name', 'short_name', 'code', 'sort_order', 'head_user_id']) + [
+            'reviewer_ids' => $approvalDepartment->reviewers()->pluck('users.id')->sort()->values()->all(),
+            'next_numbers' => ApprovalNumberSequence::where('department_id', $approvalDepartment->id)->orderBy('fiscal_year')->pluck('next_number', 'fiscal_year')->all(),
+        ];
         $id     = $approvalDepartment->id;
-        $approvalDepartment->delete();
+
+        DB::transaction(function () use ($approvalDepartment): void {
+            // 番号を 1 つも使っていない連番の行（開始番号の設定で作られる）は部門と一緒に消す。
+            // 審査担当者の行は外部キーの CASCADE で消える
+            ApprovalNumberSequence::where('department_id', $approvalDepartment->id)->delete();
+            $approvalDepartment->delete();
+        });
 
         SettingLogger::record('department.deleted', 'approval_department', $id, $before, []);
 
@@ -158,11 +264,16 @@ class OrganizationController extends Controller
         $request->merge(['code' => mb_strtoupper(trim(mb_convert_kana((string) $request->input('code'), 'as')), 'UTF-8')]);
 
         return $request->validate([
-            'company_id' => ['required', Rule::exists('approval_companies', 'id')],
-            'name'       => ['required', 'string', 'max:50', Rule::unique('approval_departments', 'name')->where('company_id', $request->input('company_id'))->ignore($current?->id)],
-            'short_name' => ['required', 'string', 'max:6'],
-            'code'       => ['required', 'string', 'regex:/\A[A-Z]{1,3}\z/', Rule::unique('approval_departments', 'code')->ignore($current?->id)],
-            'sort_order' => ['required', 'integer', 'min:0', 'max:9999'],
+            'company_id'     => ['required', Rule::exists('approval_companies', 'id')],
+            'name'           => ['required', 'string', 'max:50', Rule::unique('approval_departments', 'name')->where('company_id', $request->input('company_id'))->ignore($current?->id)],
+            'short_name'     => ['required', 'string', 'max:6'],
+            'code'           => ['required', 'string', 'regex:/\A[A-Z]{1,3}\z/', Rule::unique('approval_departments', 'code')->ignore($current?->id)],
+            'sort_order'     => ['required', 'integer', 'min:0', 'max:9999'],
+            'head_user_id'   => ['nullable', 'integer', $this->assignableRule()],
+            'reviewer_ids'   => ['nullable', 'array', 'max:50'],
+            'reviewer_ids.*' => ['integer', 'distinct', $this->assignableRule()],
+            'next_number'    => ['nullable', 'integer', 'min:1', 'max:99999'],
+            'next_number_shown' => ['nullable', 'integer', 'min:1', 'max:99999'],
         ], [
             'company_id.required' => '会社を選択してください。',
             'name.required' => '部門名を入力してください。',
@@ -173,10 +284,92 @@ class OrganizationController extends Controller
             'code.regex' => 'アルファベットは英大文字1〜3文字で入力してください。',
             'code.unique' => 'このアルファベットは既に使われています。',
             'sort_order.required' => '表示順を入力してください。',
+            'head_user_id.exists' => '部門長には、有効でメールアドレスのある人を選んでください。',
+            'reviewer_ids.*.exists' => '審査担当者には、有効でメールアドレスのある人を選んでください。',
+            'next_number.min' => '今年度の次の番号は1以上で入力してください。',
         ], [
             'name' => '部門名',
             'code' => 'アルファベット',
         ]);
+    }
+
+    /** 部門長・審査担当者に選べる人（有効・メールあり・削除されていない。D7） */
+    private function assignableRule(): Exists
+    {
+        return Rule::exists('users', 'id')
+            ->whereNull('deleted_at')
+            ->where('status', UserStatus::Active->value)
+            ->whereNotNull('email');
+    }
+
+    /** @return array{0: array<string, mixed>, 1: ?int, 2: list<int>, 3: ?int, 4: ?int} */
+    private function splitDepartmentInput(array $validated): array
+    {
+        $base        = array_intersect_key($validated, array_flip(['company_id', 'name', 'short_name', 'code', 'sort_order']));
+        $headId      = isset($validated['head_user_id']) ? (int) $validated['head_user_id'] : null;
+        $reviewerIds = array_values(array_unique(array_map('intval', $validated['reviewer_ids'] ?? [])));
+        $next        = isset($validated['next_number']) ? (int) $validated['next_number'] : null;
+        $shown       = isset($validated['next_number_shown']) ? (int) $validated['next_number_shown'] : null;
+
+        return [$base, $headId, $reviewerIds, $next, $shown];
+    }
+
+    /** 審査担当者を入れ替え、変わったときだけ記録する */
+    private function syncReviewers(ApprovalDepartment $department, array $reviewerIds): void
+    {
+        $before = $department->reviewers()->pluck('users.id')->map(fn ($id) => (int) $id)->sort()->values()->all();
+        $after  = collect($reviewerIds)->sort()->values()->all();
+
+        if ($before === $after) {
+            return;
+        }
+
+        $department->reviewers()->sync($reviewerIds);
+        SettingLogger::record('department.reviewers_changed', 'approval_department', $department->id, ['reviewer_ids' => $before], ['reviewer_ids' => $after]);
+    }
+
+    /**
+     * 今年度の次の番号（要件 6.4・D9）。空なら変えない。変わったときだけ記録する。
+     *
+     * ⚠ 画面を開いたときの値（`next_number_shown`）から変えていなければ触らない。期の変わる日（5/1・6/1）の前に
+     *   開いた画面から保存すると、前の年度の「次の番号」が新しい年度に入ってしまう（例 R9-J-040 から始まる）ため。
+     *
+     * @throws InvalidArgumentException 使った番号以下のとき（呼び出し側がトランザクションごと巻き戻す）
+     */
+    private function setNextNumber(ApprovalDepartment $department, ?int $next, ?int $shown): void
+    {
+        if ($next === null || $next === $shown) {
+            return;
+        }
+
+        $previous = ApprovalNumber::currentState($department)['next'];
+
+        if ($previous === $next) {
+            return;
+        }
+
+        ApprovalNumber::setNext($department, $next);
+        SettingLogger::record('department.next_number_set', 'approval_department', $department->id, ['next_number' => $previous], ['next_number' => $next]);
+    }
+
+    private function waitingHeadSteps(ApprovalDepartment $department): int
+    {
+        return ApprovalStep::where('kind', ApprovalStepKind::Head->value)
+            ->where('status', ApprovalStepStatus::Waiting->value)
+            ->where('department_id', $department->id)
+            ->count();
+    }
+
+    /**
+     * 審査を待っている、またはこれから審査に届く（部門長の確認中の申請の）審査の段階。
+     * 済んだ・打ち切った段階は数えない（`pending` の審査の段階は、今の回で回覧中の申請にしか無い）。
+     */
+    private function openReviewSteps(ApprovalDepartment $department): int
+    {
+        return ApprovalStep::where('kind', ApprovalStepKind::Review->value)
+            ->whereIn('status', [ApprovalStepStatus::Waiting->value, ApprovalStepStatus::Pending->value])
+            ->where('department_id', $department->id)
+            ->count();
     }
 
     // --- 許可するドメイン ---
