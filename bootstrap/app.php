@@ -72,5 +72,14 @@ return Application::configure(basePath: dirname(__DIR__))
                 return response()->json(['message' => 'ファイルが大きすぎて受け取れませんでした。1 ファイル 10MB までです。'], 413);
             }
         });
+
+        // 決裁の URL の JSON の 404 は、無い ID と見られない ID で同じ日本語の文にする。Laravel の既定では、無い ID にだけ
+        // 「No query results for model [App\Models\…] 12」が返り、在るかどうかが分かる（見られない ID は空の文）。
+        // 申請書の添付の欄は、断られた理由としてこの文をそのまま出す。⚠ 決裁の URL だけ（基幹の応答は変えない）
+        $exceptions->render(function (\Symfony\Component\HttpKernel\Exception\NotFoundHttpException $e, \Illuminate\Http\Request $request) {
+            if ($request->is('approvals/*') && $request->expectsJson()) {
+                return response()->json(['message' => '見つかりませんでした。画面を開き直してください。'], 404);
+            }
+        });
     })
     ->create();
