@@ -355,6 +355,20 @@ class SheetImportTest extends TestCase
         $this->assertSame(['sales'], DB::table('zeal_sheet_imports')->pluck('import_type')->all());
     }
 
+    /**
+     * URL が無い Sheet（プレビューのときも「未設定」）は、読み直せなかったとは言わない。内容が変わったときは今までどおりの案内
+     */
+    public function test_a_sheet_without_a_url_is_not_reported_as_unreadable(): void
+    {
+        $this->simulation->forceFill(['expense_sheet_url' => null])->save();
+        $form = $this->previewForm();
+
+        // プレビューのあとで、本部が売上 Sheet を直した
+        $this->sheets->csv[self::SALES_URL] = self::SALES_B;
+
+        $this->assertTurnedBack($form);
+    }
+
     public function test_the_confirmation_form_guards_against_a_second_press(): void
     {
         $html = $this->preview()->getContent();
