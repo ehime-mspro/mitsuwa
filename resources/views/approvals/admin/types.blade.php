@@ -108,6 +108,12 @@
             <form method="POST" action="{{ route('approvals.admin.types.store') }}">
                 @csrf
                 <div class="px-6 pt-5 text-[15px] font-bold text-gray-900">種類の追加</div>
+                @if($refusedCreate)
+                    {{-- 断られた理由を小窓の中にも出す（上の帯は開き直した小窓に隠れる。375px では見えない。Task 19 の F-1。判断の小窓の C8 と同じ形） --}}
+                    <div class="mx-6 mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">
+                        @foreach($errors->all() as $error)<p>{{ $error }}</p>@endforeach
+                    </div>
+                @endif
                 <div class="px-6 py-4 space-y-3.5">
                     <div>
                         <label class="block text-[12px] font-semibold text-gray-700 mb-1">種類名<span class="text-red-600 ml-0.5">*</span></label>
@@ -154,6 +160,13 @@
                 {{-- どの種類の小窓か（断られたときに同じ種類の小窓を開き直す。Task 19 の C4） --}}
                 <input type="hidden" name="edit_id" :value="editId">
                 <div class="px-6 pt-5 text-[15px] font-bold text-gray-900">種類の編集</div>
+                @if($refusedEdit !== null)
+                    {{-- 断られた理由を小窓の中にも出す（Task 19 の F-1）。この小窓は種類ごとに使い回すので、断られた種類を編集しているあいだだけ出す
+                         （別の種類の編集を開いたら当てはまらない。判断の小窓の O-1 と同じ） --}}
+                    <div x-show="editId === {{ $refusedEdit['id'] }}" class="mx-6 mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">
+                        @foreach($errors->all() as $error)<p>{{ $error }}</p>@endforeach
+                    </div>
+                @endif
                 <div class="px-6 py-4 space-y-3.5">
                     <div>
                         <label class="block text-[12px] font-semibold text-gray-700 mb-1">種類名<span class="text-red-600 ml-0.5">*</span></label>

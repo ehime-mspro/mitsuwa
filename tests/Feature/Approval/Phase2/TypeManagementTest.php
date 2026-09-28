@@ -43,6 +43,16 @@ class TypeManagementTest extends TestCase
         }, $rows[1]);
     }
 
+    /** $needle を含むフォーム（小窓）の HTML（開始タグから </form> まで） */
+    private function modalFormHtml(string $html, string $needle): string
+    {
+        $at = strpos($html, $needle);
+        $this->assertNotFalse($at, "{$needle} が画面に無い");
+        $open = strrpos(substr($html, 0, $at), '<form');
+
+        return substr($html, $open, strpos($html, '</form>', $at) - $open);
+    }
+
     /** 編集のボタンが小窓へ渡す値（Js::from は日本語を \u で符号化するので、HTML の文字列では探さない） */
     private function editRows(string $html): array
     {
@@ -500,6 +510,14 @@ class TypeManagementTest extends TestCase
         ksort($typed);
         $this->assertSame($typed, $back);
         $this->assertArrayNotHasKey('is_active', $fields, '外したチェックが入って戻った');
+
+        // 断られた理由は開き直した小窓の中にも出す（上の帯は小窓に隠れる。375px では見えない。Task 19 の F-1）。編集の小窓には出さない
+        $this->assertMatchesRegularExpression(
+            '/<div class="[^"]*border-red-200[^"]*">\s*<p>' . preg_quote(e('この種類名は既に登録されています。'), '/') . '<\/p>/u',
+            $this->modalFormHtml($html, 'action="' . route('approvals.admin.types.store') . '"'),
+            '断られた理由が追加の小窓に無い'
+        );
+        $this->assertStringNotContainsString(e('この種類名は既に登録されています。'), $this->modalFormHtml($html, 'name="edit_id"'), '編集の小窓にも理由が出る');
     }
 
     /**
@@ -529,6 +547,15 @@ class TypeManagementTest extends TestCase
         $this->assertStringContainsString('var refused = ' . Js::from(['id' => $w['type']->id] + $typed + ['is_active' => false])->toHtml() . ';', $html);
         $fields = $this->parseForm($html, 'action="' . route('approvals.admin.types.store') . '"')['fields'];
         $this->assertSame(['', BodyTemplate::DEFAULT, '0'], [$fields['name'], $fields['headings'], $fields['sort_order']], '追加の小窓に編集の中身が入った');
+        // 断られた理由は開き直した小窓の中にも出す（Task 19 の F-1）。編集の小窓は種類ごとに使い回すので、断られた種類を
+        // 編集しているあいだだけ出す（別の種類の編集を開いたら当てはまらない。判断の小窓の O-1 と同じ）。追加の小窓には出さない
+        $reason = e('見出しは「■」で始まる行と、中身の無い「・」の行だけで書いてください。');
+        $this->assertMatchesRegularExpression(
+            '/<div x-show="editId === ' . $w['type']->id . '" class="[^"]*border-red-200[^"]*">\s*<p>' . preg_quote($reason, '/') . '<\/p>/u',
+            $this->modalFormHtml($html, 'name="edit_id"'),
+            '断られた理由が編集の小窓に無い'
+        );
+        $this->assertStringNotContainsString($reason, $this->modalFormHtml($html, 'action="' . route('approvals.admin.types.store') . '"'), '追加の小窓にも理由が出る');
 
         // 今は無い種類の edit_id なら開かない（理由は画面の上に出る）
         $this->actingAs($admin)->from(route('approvals.admin.types.index'))
@@ -537,6 +564,8 @@ class TypeManagementTest extends TestCase
         $html = $this->indexHtml($admin);
         $this->assertStringContainsString('var refused = null;', $html);
         $this->assertStringContainsString('createModal: false,', $html);
+        $this->assertStringNotContainsString($reason, $this->modalFormHtml($html, 'name="edit_id"'), '開かない小窓に理由が出る');
+        $this->assertStringNotContainsString($reason, $this->modalFormHtml($html, 'action="' . route('approvals.admin.types.store') . '"'), '開かない小窓に理由が出る');
     }
 
     /** 編集の小窓を断られた中身で開き直すのは、画面の JS の init()（Task 19 の C4 の点検。形だけ見る。振る舞いはブラウザで確かめる） */
