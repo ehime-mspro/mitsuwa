@@ -37,7 +37,7 @@
                     @php $days = \App\Support\Approval\PendingWork::waitingDays($item['since']); @endphp
                     <li>
                         <a href="{{ route('approvals.requests.show', $item['request']) }}" class="flex flex-wrap items-center gap-x-3 gap-y-1 px-5 py-3 hover:bg-gray-50">
-                            <span class="inline-block px-2 py-0.5 rounded text-[11px] font-semibold" style="background: #dbeafe; color: #1e40af;">{{ $item['role'] }}・{{ $item['action'] }}</span>
+                            <span class="inline-block px-2 py-0.5 rounded text-[11px] font-semibold" style="{{ \App\Enums\ApprovalStepStatus::Waiting->badgeStyle() }}">{{ $item['role'] }}・{{ $item['action'] }}</span>
                             <span class="text-[13px] font-semibold text-gray-900 break-words">{{ $item['request']->subject ?? '（件名なし）' }}</span>
                             <span class="text-[12px] text-gray-500">{{ $item['request']->applicant->name }}・{{ $item['request']->department?->name ?? '—' }}</span>
                             <span class="ml-auto text-[12px] text-gray-600 whitespace-nowrap">{{ $days === 0 ? '今日' : $days . ' 日待ち' }}</span>
