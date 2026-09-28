@@ -11243,7 +11243,7 @@ MSG
 
 - [ ] **Step 1: 了承を求める（選択式）**
 
-伝えること: ①**DB が先・`./deploy.sh` が後**（新しいコードが `approval_departments.head_user_id` と `approval_settings.launched_at` を読むので、逆だと部門の管理と決裁のホームが 500 になる）②本番に表が 9 つ増え、既存の 2 表に列が 1 つずつ増える（データは変えない）③**申請を回す画面は誰にも見えない**（`launched_at` は空のまま。使い始めるのは段階6）④決裁の管理者は、部門長・審査担当者・今年度の開始番号・申請の種類を本番で先に登録できるようになる。
+伝えること: ①**DB が先・`./deploy.sh` が後**（新しいコードが `approval_departments.head_user_id` と `approval_settings.launched_at` を読むので、逆だと部門の管理と決裁のホームが 500 になる）②本番に表が 9 つ増え、既存の 2 表に列が 1 つずつ増える（データは変えない）③**申請を回す画面は誰にも見えない**（`launched_at` は空のまま。使い始めるのは段階6）④決裁の管理者は、部門長・審査担当者・今年度の開始番号・申請の種類を本番で先に登録できるようになる（開始番号は、会社の期の始まりの月を確かめたあとに入れる）。
 
 - [ ] **Step 2: 反映前に本番を読み取る**（読み取りだけ）
 
@@ -11257,12 +11257,13 @@ foreach (["approval_departments", "approval_settings"] as $t) {
 foreach (["approval_types", "approval_reviewers", "approval_requests", "approval_steps", "approval_revisions", "approval_histories", "approval_attachments", "approval_download_logs", "approval_number_sequences"] as $t) {
     echo $t, "=", $db->getSchemaBuilder()->hasTable($t) ? "ある" : "ない", PHP_EOL;
 }
+foreach ($db->table("approval_companies")->orderBy("sort_order")->get(["name", "fiscal_start_month"]) as $c) { echo "company ", $c->name, " month=", $c->fiscal_start_month, PHP_EOL; }
 echo "departments=", $db->table("approval_departments")->count(), " settings=", $db->table("approval_settings")->count(), " mysql=", $db->selectOne("SELECT VERSION() AS v")->v, PHP_EOL;
 '
 SH
 ```
 
-Expected: `approval_departments` に `code` の列があり `head_user_id` が無い ／ `approval_settings` に `president_user_id` があり `launched_at` が無い ／ どちらも `ENGINE=InnoDB`・`utf8mb4_unicode_ci` ／ 9 表とも「ない」。**1 つでも違えば止まり、利用者に伝える**（SQL の前提が崩れている）。
+Expected: `approval_departments` に `code` の列があり `head_user_id` が無い ／ `approval_settings` に `president_user_id` があり `launched_at` が無い ／ どちらも `ENGINE=InnoDB`・`utf8mb4_unicode_ci` ／ 9 表とも「ない」／ 会社の期の始まりの月がミツワ 5・DAD 6・ZEAL 6（違えば、開始番号を入れる前に会社の管理で直す。月を直す前に入れた開始番号の行は別の年度に残る）。**表の形が 1 つでも違えば止まり、利用者に伝える**（SQL の前提が崩れている）。
 
 - [ ] **Step 3: `13.x` へ早送りで取り込む**（手元）
 
