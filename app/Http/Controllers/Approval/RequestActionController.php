@@ -21,7 +21,7 @@ use Illuminate\Validation\ValidationException;
  *
  * ⚠ 権限と状態は Workflow（RequestPermissions）が確かめる。ここは入力の形を見て渡すだけ。
  * ⚠ 画面が描いたときの lock_version を渡す（古い画面から押した操作を「すでに処理されています」で断る。計画 §0.3）。
- *   送られてこなければ 0 になる（提出した申請の lock_version は 1 以上なので必ず断られる）。
+ *   送られてこない・0 以上の整数の形でないときは -1 にする（必ず断られる。lockVersion()）。
  * ⚠ 戻り先はいつも詳細の画面（Bug #64）。
  */
 class RequestActionController extends Controller
@@ -55,7 +55,7 @@ class RequestActionController extends Controller
 
         return $this->run(
             $approvalRequest,
-            fn () => $this->workflow->confirmCondition($approvalRequest, $request->user(), $request->integer('lock_version'), $comment),
+            fn () => $this->workflow->confirmCondition($approvalRequest, $request->user(), self::lockVersion($request), $comment),
             '条件を確認しました。決裁が完了しました。',
         );
     }
@@ -67,7 +67,7 @@ class RequestActionController extends Controller
 
         return $this->run(
             $approvalRequest,
-            fn () => $this->workflow->withdraw($approvalRequest, $request->user(), $request->integer('lock_version'), $comment),
+            fn () => $this->workflow->withdraw($approvalRequest, $request->user(), self::lockVersion($request), $comment),
             '取り下げました。',
         );
     }
@@ -92,7 +92,7 @@ class RequestActionController extends Controller
 
         $result  = ApprovalStepResult::from($validated['result']);
         $comment = $validated['comment'] ?? null;
-        $version = $request->integer('lock_version');
+        $version = self::lockVersion($request);
         $actor   = $request->user();
 
         return $this->run(
@@ -155,6 +155,17 @@ class RequestActionController extends Controller
         }
 
         return $validated['comment'] ?? null;
+    }
+
+    /**
+     * 画面が描いたときの lock_version。送られてこない・0 以上の整数の形でないときは -1（必ず「すでに処理されています」）。
+     * ⚠ `$request->integer()` は intval なので、配列を 1、'1abc' を 1 と読んでしまう（Task 15 の点検）
+     */
+    private static function lockVersion(Request $request): int
+    {
+        $value = $request->input('lock_version');
+
+        return is_string($value) && preg_match('/\A\d{1,9}\z/', $value) === 1 ? (int) $value : -1;
     }
 
     /** 見られない申請は 404（在るかどうかを漏らさない。設計書 §5.10） */

@@ -644,4 +644,24 @@ class RequestActionTest extends TestCase
         $this->assertSame(3, substr_count($html, '&lt;img src=x onerror=alert(2)&gt;'));     // 条件・回る順番・記録
         $this->assertSame(2, substr_count($html, '&lt;b&gt;部門&lt;/b&gt;長'));              // 回る順番・記録
     }
+
+    /** 画面の版は 0 以上の整数の形だけを受け取る（配列・'1abc'・'1.0' は、先を越されたものとして断る。前後の空白は TrimStrings が外す。Task 15 の点検の m-1） */
+    public function test_a_lock_version_that_is_not_a_plain_number_is_refused(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $request = $this->submittedFor($w);
+        $this->assertSame(1, $request->lock_version);
+
+        foreach ([['1'], '1abc', '1.0'] as $version) {
+            $this->actingAs($w['head'])->post(route('approvals.requests.headReview', $request), ['result' => 'approve', 'lock_version' => $version])
+                ->assertRedirect(route('approvals.requests.show', $request))
+                ->assertSessionHas('error', WorkflowConflict::MESSAGE);
+            $this->assertSame(ApprovalStatus::HeadReview, $request->fresh()->status, json_encode($version));
+        }
+
+        $this->actingAs($w['applicant'])->post(route('approvals.requests.withdraw', $request), ['lock_version' => ['1']])
+            ->assertSessionHas('error', WorkflowConflict::MESSAGE);
+        $this->assertSame(ApprovalStatus::HeadReview, $request->fresh()->status);
+    }
 }
