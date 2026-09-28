@@ -7,6 +7,7 @@ use App\Models\ZealMember;
 use App\Models\ZealMemberContract;
 use App\Models\ZealPlan;
 use App\Models\ZealStore;
+use App\Support\OneTimeAction;
 use App\Support\Settings;
 use App\Support\Zeal\HacomonoCsvReader;
 use App\Support\Zeal\HacomonoMemberMapper;
@@ -32,6 +33,10 @@ use Illuminate\Validation\ValidationException;
  *   確認画面は POST の応答で、その URL は POST 専用の `/admin/zeal/member-import/preview`。そこに載った
  *   確定のフォームから送るとリファラーがその URL になり、`url()->previous()` はリファラーを優先するので
  *   GET で 405 になる（docs/RULES.md Bug #64）。
+ * ⚠ 確定は確認画面 1 つにつき 1 回だけ（hidden の `import_token`・`OneTimeAction`。
+ *   設計書 2026-09-28-import-double-submit-design.md §4.2）。鍵は preview() で出し、execute() の最初
+ *   （CSV を読み直す前）で使う。直す前は、同じ確認画面の確定を 2 回送ると、2 回目が氏名＋入会日の重複の確認で
+ *   全員を飛ばし、「登録 0件 / スキップ 5件…」の成功の帯が出て取り込み直したように見えた。
  */
 class ZealMemberImportController extends Controller
 {
@@ -102,7 +107,10 @@ class ZealMemberImportController extends Controller
 
         return view('admin.zeal-member-import.preview', compact(
             'toImport', 'skipped', 'errored', 'excluded', 'content'
-        ));
+        ) + [
+            // 確定を 1 回だけ通す鍵（クラスの docblock）
+            'importToken' => OneTimeAction::issue(),
+        ]);
     }
 
     // ================================================================
@@ -117,6 +125,12 @@ class ZealMemberImportController extends Controller
      */
     public function execute(Request $request)
     {
+        // 確定は確認画面 1 つにつき 1 回だけ（クラスの docblock）。⚠ CSV を読み直す前に使う
+        if (! OneTimeAction::claimFrom($request, 'import_token')) {
+            return redirect()->route('admin.zeal.member-import')
+                ->with('error', 'この確認画面からは取り込めません（すでに送信したか、画面が古くなっています）。取り込まれたかは「会員管理」で確かめられます。取り込み直すときは、CSVをアップロードし直してください。');
+        }
+
         $result = $this->loadCsv($request);
         if ($result instanceof \Illuminate\Http\RedirectResponse) {
             return $result;

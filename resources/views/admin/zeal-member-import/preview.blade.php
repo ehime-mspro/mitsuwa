@@ -159,21 +159,29 @@
 
 {{-- 実行フォーム --}}
 @if(count($toImport) > 0)
-    <form method="POST" action="{{ route('admin.zeal.member-import.execute') }}">
+    {{-- ⚠ 確定は確認画面 1 つにつき 1 回だけ（hidden の import_token。JS が動かないときも、サーバが 2 回目を断る）。
+         送信中はボタンを押せなくする（二度押し止めの部品。設計書 2026-09-28-import-double-submit-design.md §4.5）。
+         ⚠ ボタンの並びは折り返してよい（flex-wrap）。折り返さないと、狭い画面で送信中の文字が縮んで文字の途中で割れる --}}
+    @include('_partials._submit_once')
+    <form method="POST" action="{{ route('admin.zeal.member-import.execute') }}"
+          x-data="submitOnce()" x-on:submit="onSubmit($event)" x-on:pageshow.window="onPageShow($event)">
         @csrf
         <input type="hidden" name="confirmed" value="1">
         <input type="hidden" name="csv_data" value="{{ base64_encode($content) }}">
+        <input type="hidden" name="import_token" value="{{ $importToken }}">
 
-        <div style="display: flex; gap: 12px; align-items: center;">
+        <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center;">
             <a href="{{ route('admin.zeal.member-import') }}"
                style="display: inline-flex; align-items: center; padding: 10px 20px; border: 1px solid #d1d5db; border-radius: 6px; background: white; font-size: 14px; font-weight: 600; color: #374151; text-decoration: none;">
                 キャンセル
             </a>
-            <button type="submit"
-                    style="display: inline-flex; align-items: center; gap: 6px; padding: 10px 28px; background: #059669; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 700; cursor: pointer;">
+            <button type="submit" :disabled="submitting"
+                    class="cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
+                    style="display: inline-flex; align-items: center; gap: 6px; padding: 10px 28px; background: #059669; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 700;">
                 <svg style="width: 16px; height: 16px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                 {{ count($toImport) }}件をインポート実行する
             </button>
+            <span role="status" x-text="submitting ? '取り込んでいます…' : ''" style="display: inline-block; font-size: 13px; color: #374151;"></span>
         </div>
     </form>
 @else
