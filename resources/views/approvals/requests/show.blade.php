@@ -26,7 +26,8 @@
         <span class="inline-block px-2 py-0.5 rounded text-[11px] font-semibold" style="{{ $approvalRequest->status->badgeStyle() }}">{{ $approvalRequest->statusLabel() }}</span>
         @if($approvalRequest->number)
             <span class="text-[13px] font-mono font-semibold text-gray-800">{{ $approvalRequest->number }}</span>
-        @else
+        @elseif($approvalRequest->status !== \App\Enums\ApprovalStatus::Withdrawn)
+            {{-- 取り下げた申請には番号が付かないので言わない（取り下げは社長の判断の前だけ。Task 19 の B7） --}}
             <span class="text-[12px] text-gray-400">決裁No は社長の判断のときに付きます</span>
         @endif
     </div>

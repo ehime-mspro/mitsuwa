@@ -729,4 +729,22 @@ class RequestActionTest extends TestCase
         $this->assertSame(ApprovalStatus::Withdrawn, $other->fresh()->status);
         $this->assertSame($saved, ApprovalHistory::where('request_id', $other->id)->where('action', 'withdrawn')->value('comment'));
     }
+
+    /** 取り下げた申請には番号が付かないので、「決裁No は社長の判断のときに付きます」と言わない（Task 19 の B7）。回っている申請には言う */
+    public function test_a_withdrawn_request_does_not_promise_a_number(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $request = $this->submittedFor($w);
+        $note    = '決裁No は社長の判断のときに付きます';
+
+        $this->assertStringContainsString($note, $this->showHtml($w['applicant'], $request));
+
+        $this->act($w['applicant'], $request, 'approvals.requests.withdraw')->assertRedirect(route('approvals.requests.show', $request));
+        $this->assertSame(ApprovalStatus::Withdrawn, $request->fresh()->status);
+
+        foreach (['申請者' => $w['applicant'], '部門長' => $w['head']] as $who => $viewer) {
+            $this->assertStringNotContainsString($note, $this->showHtml($viewer, $request), $who);
+        }
+    }
 }
