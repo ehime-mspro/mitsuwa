@@ -265,8 +265,9 @@ class LoginGuideTest extends TestCase
      *   しかも `phpunit.xml` の `CACHE_STORE=array` は `add()` の独自実装を持たず
      *   「`get()` して null なら `put()`」という**非排他的な**既定に落ちる。
      *   実測: `Cache::add` を `has()` ＋ `put()` に書き換えても 14 本すべて緑のまま通った。
-     *   本番の `database` ドライバは `key` の主キー制約で本当に排他的なので、
-     *   「`add` を使っていること」だけを構造で固定する（Bug #41 / #42 と同じ流儀）。
+     *   本番のキャッシュは `file` ドライバで、`FileStore::add()` がファイルの排他ロックを取ってから書くので
+     *   本当に排他的（2026-09-25 に本番の `config('cache.default')` で確かめた。`OneTimeAction::claim()` のコメント）。
+     *   よって「`add` を使っていること」だけを構造で固定する（Bug #41 / #42 と同じ流儀）。
      */
     public function test_the_token_is_claimed_atomically(): void
     {
