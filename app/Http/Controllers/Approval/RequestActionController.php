@@ -77,6 +77,7 @@ class RequestActionController extends Controller
         $this->assertVisible($request, $approvalRequest);
 
         $allowed = array_map(fn (ApprovalStepResult $result) => $result->value, ApprovalStepResult::allowedFor($kind));
+        self::unifyNewlines($request, 'comment');
 
         try {
             $validated = $request->validate([
@@ -145,6 +146,7 @@ class RequestActionController extends Controller
     private function optionalComment(Request $request, ApprovalRequest $approvalRequest): ?string
     {
         $this->assertVisible($request, $approvalRequest);
+        self::unifyNewlines($request, 'comment');
 
         try {
             $validated = $request->validate([
@@ -155,6 +157,19 @@ class RequestActionController extends Controller
         }
 
         return $validated['comment'] ?? null;
+    }
+
+    /**
+     * 改行を \n にそろえてから検査する（Task 19 の B1）。ブラウザの maxlength は改行を 1 文字と数えるが、送るときは \r\n にするので、
+     * そろえずに数えると改行の多いコメントが max:2000 で断られる。保存する値もそろえた形になる
+     */
+    private static function unifyNewlines(Request $request, string $key): void
+    {
+        $value = $request->input($key);
+
+        if (is_string($value)) {
+            $request->merge([$key => str_replace(["\r\n", "\r"], "\n", $value)]);
+        }
     }
 
     /**

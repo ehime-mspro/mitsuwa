@@ -724,4 +724,28 @@ class RequestFormTest extends TestCase
         $this->assertStringContainsString('2 回目の差戻しの理由', $html);
         $this->assertStringNotContainsString('1 回目の差戻しの理由', $html, '前の回の差戻しの理由が編集の画面に出ている');
     }
+
+    // ---------------------------------------------------------------------------------------------
+    // 以下は Task 19（手元のブラウザでの確認）で直したもの
+    // ---------------------------------------------------------------------------------------------
+
+    /**
+     * 本文の改行は 1 文字と数える（ブラウザの maxlength と同じ。Task 19 の B1）。送るときの \r\n で 20,000 文字を
+     * 超えても断らず、\n にそろえて保存する
+     */
+    public function test_line_breaks_in_the_body_count_as_one_character(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        // 19,991 文字（改行 999）。ブラウザは改行を \r\n で送るので 20,990 文字で届く
+        $lines = array_merge(['■ なぜ（目的・理由）'], array_fill(0, 999, '・' . str_repeat('あ', 18)));
+        $sent  = implode("\r\n", $lines);
+        $saved = implode("\n", $lines);
+        $this->assertSame([20990, 19991], [mb_strlen($sent), mb_strlen($saved)]);
+
+        $this->actingAs($w['applicant'])->post(route('approvals.requests.store'), $this->filled($w, ['body' => $sent, 'intent' => 'save']))
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame($saved, ApprovalRequest::sole()->body);
+    }
 }

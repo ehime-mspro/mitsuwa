@@ -74,6 +74,7 @@ class TypeController extends Controller
     {
         // チェックボックスは外すと送られない（送られなければ停止）
         $request->merge(['is_active' => $request->boolean('is_active')]);
+        self::unifyNewlines($request, 'headings');
 
         return $request->validate([
             'name'                 => ['required', 'string', 'max:50', Rule::unique('approval_types', 'name')->ignore($current?->id)],
@@ -98,6 +99,19 @@ class TypeController extends Controller
         ], [
             'name' => '種類名',
         ]);
+    }
+
+    /**
+     * 改行を \n にそろえてから検査する（Task 19 の B1）。ブラウザの maxlength は改行を 1 文字と数えるが、送るときは \r\n にするので、
+     * そろえずに数えると改行の多い見出しが max:2000 で断られる。保存する値もそろえた形になる
+     */
+    private static function unifyNewlines(Request $request, string $key): void
+    {
+        $value = $request->input($key);
+
+        if (is_string($value)) {
+            $request->merge([$key => str_replace(["\r\n", "\r"], "\n", $value)]);
+        }
     }
 
     private function back(?string $success, ?string $error = null)

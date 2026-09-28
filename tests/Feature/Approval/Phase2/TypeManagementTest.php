@@ -229,11 +229,15 @@ class TypeManagementTest extends TestCase
         $this->assertSame(2, substr_count($html, '<option value="' . $w['reviewDept']->id . '">' . e($w['company']->name) . '・総務部</option>'));
     }
 
-    /** 更新は送った項目をすべて保存し、変わった項目だけを前後つきで記録する（見出しは CRLF・全角の空白でも「見出しの形」なら通る） */
+    /**
+     * 更新は送った項目をすべて保存し、変わった項目だけを前後つきで記録する（見出しは CRLF・全角の空白でも「見出しの形」なら通る。
+     * 改行は \n にそろえて保存する。Task 19 の B1）
+     */
     public function test_every_field_is_saved_and_logged_by_the_update(): void
     {
         $w        = $this->approvalWorld();
         $headings = "■ 目的\r\n　・　\r\n\r\n■ 内容\r\n・";
+        $saved    = "■ 目的\n　・　\n\n■ 内容\n・";
 
         $this->actingAs($this->approvalAdmin())->put(route('approvals.admin.types.update', $w['type']), [
             'name' => '購入・発注（改）', 'headings' => $headings,
@@ -241,12 +245,37 @@ class TypeManagementTest extends TestCase
         ])->assertRedirect(route('approvals.admin.types.index'));
 
         $type = $w['type']->fresh();
-        $this->assertSame(['購入・発注（改）', $headings, $w['dept']->id, 5, true], [$type->name, $type->headings, $type->review_department_id, $type->sort_order, $type->is_active]);
+        $this->assertSame(['購入・発注（改）', $saved, $w['dept']->id, 5, true], [$type->name, $type->headings, $type->review_department_id, $type->sort_order, $type->is_active]);
 
         $log = ApprovalSettingLog::where('action', 'type.updated')->sole();
         $this->assertSame(['name', 'headings', 'review_department_id', 'sort_order'], array_keys($log->new_values));
         $this->assertEquals(['name' => $w['type']->name, 'headings' => BodyTemplate::DEFAULT, 'review_department_id' => $w['reviewDept']->id, 'sort_order' => 1], $log->old_values);
-        $this->assertEquals(['name' => '購入・発注（改）', 'headings' => $headings, 'review_department_id' => $w['dept']->id, 'sort_order' => 5], $log->new_values);
+        $this->assertEquals(['name' => '購入・発注（改）', 'headings' => $saved, 'review_department_id' => $w['dept']->id, 'sort_order' => 5], $log->new_values);
+    }
+
+    /**
+     * 見出しの改行は 1 文字と数える（ブラウザの maxlength と同じ。Task 19 の B1）。送るときの \r\n で 2,000 文字を
+     * 超えても断らず、\n にそろえて保存する
+     */
+    public function test_line_breaks_in_the_headings_count_as_one_character(): void
+    {
+        $w     = $this->approvalWorld();
+        $lines = [];
+        for ($i = 0; $i < 100; $i++) {
+            $lines[] = '■ ' . str_repeat('見', 14);
+            $lines[] = '・';
+        }
+        // 1,899 文字（改行 199）。ブラウザは改行を \r\n で送るので 2,098 文字で届く
+        $sent  = implode("\r\n", $lines);
+        $saved = implode("\n", $lines);
+        $this->assertSame([2098, 1899], [mb_strlen($sent), mb_strlen($saved)]);
+
+        $this->actingAs($this->approvalAdmin())->put(route('approvals.admin.types.update', $w['type']), [
+            'name' => $w['type']->name, 'headings' => $sent,
+            'review_department_id' => (string) $w['reviewDept']->id, 'sort_order' => '1', 'is_active' => '1',
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame($saved, $w['type']->fresh()->headings);
     }
 
     /** 描いた削除のフォームをそのまま送り返す。成功も失敗も、帯はレイアウトの 1 回だけ（Bug #49: セッションに触らずに描く） */

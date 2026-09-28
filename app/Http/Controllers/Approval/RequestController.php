@@ -241,6 +241,7 @@ class RequestController extends Controller
             'amount'          => self::normalizeAmount($request->input('amount')),
             'related_numbers' => RelatedNumbers::clean(is_array($request->input('related_numbers')) ? $request->input('related_numbers') : []),
         ]);
+        self::unifyNewlines($request, 'body');
 
         // 選べる種類は利用中の種類と、この申請が今使っている種類（停止していても保存はできる。D10）
         $typeIds = ApprovalType::active()->pluck('id')->push($current?->type_id)->filter()->all();
@@ -284,6 +285,19 @@ class RequestController extends Controller
         $digits = str_replace([',', '円', '¥', '￥', ' '], '', mb_convert_kana($value, 'as'));
 
         return $digits === '' ? null : $digits;
+    }
+
+    /**
+     * 改行を \n にそろえてから検査する（Task 19 の B1）。ブラウザの maxlength は改行を 1 文字と数えるが、送るときは \r\n にするので、
+     * そろえずに数えると改行の多い本文が max:20000 で断られる。保存する値もそろえた形になる
+     */
+    private static function unifyNewlines(Request $request, string $key): void
+    {
+        $value = $request->input($key);
+
+        if (is_string($value)) {
+            $request->merge([$key => str_replace(["\r\n", "\r"], "\n", $value)]);
+        }
     }
 
     /** コピーして作成で写す中身（設計書 §5.6。添付は写さない） */

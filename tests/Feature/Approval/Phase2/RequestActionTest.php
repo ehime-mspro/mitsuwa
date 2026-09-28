@@ -698,4 +698,35 @@ class RequestActionTest extends TestCase
 
         $this->assertStringContainsString('（条可・差戻し・否はコメントが必要）', $this->showHtml($w['president'], $request));
     }
+
+    // ---------------------------------------------------------------------------------------------
+    // 以下は Task 19（手元のブラウザでの確認）で直したもの
+    // ---------------------------------------------------------------------------------------------
+
+    /**
+     * コメントの改行は 1 文字と数える（ブラウザの maxlength と同じ。Task 19 の B1）。送るときの \r\n で 2,000 文字を
+     * 超えても断らず、\n にそろえて記録する（判断・取り下げ。条件の確認は取り下げと同じ入力の検査を通る）
+     */
+    public function test_line_breaks_in_a_comment_count_as_one_character(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        // 1,999 文字（改行 55）。ブラウザは改行を \r\n で送るので 2,054 文字で届く
+        $lines = array_merge(array_fill(0, 55, str_repeat('あ', 35)), [str_repeat('い', 19)]);
+        $sent  = implode("\r\n", $lines);
+        $saved = implode("\n", $lines);
+        $this->assertSame([2054, 1999], [mb_strlen($sent), mb_strlen($saved)]);
+
+        $request = $this->submittedFor($w);
+        $this->act($w['head'], $request, 'approvals.requests.headReview', ['result' => 'return', 'comment' => $sent])
+            ->assertRedirect(route('approvals.requests.show', $request));
+        $this->assertSame(ApprovalStatus::Returned, $request->fresh()->status);
+        $this->assertSame($saved, ApprovalStep::where('request_id', $request->id)->where('kind', ApprovalStepKind::Head->value)->value('comment'));
+
+        $other = $this->submittedFor($w, ['subject' => '取り下げる申請']);
+        $this->act($w['applicant'], $other, 'approvals.requests.withdraw', ['comment' => $sent])
+            ->assertRedirect(route('approvals.requests.show', $other));
+        $this->assertSame(ApprovalStatus::Withdrawn, $other->fresh()->status);
+        $this->assertSame($saved, ApprovalHistory::where('request_id', $other->id)->where('action', 'withdrawn')->value('comment'));
+    }
 }
