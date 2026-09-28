@@ -2364,7 +2364,7 @@ git checkout 13.x && git merge --ff-only date-picker-month-ago
 
 ⚠ 確定の欄（hidden の `import_token`・二度押し止め・「取り込んでいます…」）はプレビューのあとにしか描かれないので、本番では見ていない（ファイルを上げていない・フォームを送っていない）。二度押し止めと鍵は、テスト（`CustomerImportTest` 29 本）とローカルの実ブラウザで確かめてある。本番で実際に取り込む（確定まで）のは利用者。
 
-⚠ `origin/13.x` への push はしていない。
+⚠ `origin/13.x` への push はしていない。→ 2026-09-28 に push 済み（`3e8a43aa` に含まれる）。
 
 ---
 

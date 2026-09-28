@@ -2088,4 +2088,4 @@ EOF
 
 - ⚠ 初めは `tabs_context_mcp` が 2 回とも「Claude in Chrome is not connected」、`list_connected_browsers` が空だった → 利用者に Chrome をつないでもらってから確かめた
 - ⚠ 確定の欄（hidden の `import_token`・`x-on:pageshow.window`・「取り込んでいます…」）は、ビューの 150〜172 行＝プレビューのあとにしか描かれないので、初期画面に無いのは想定どおり。二度押し止めと鍵は本番では見ていない（テストとローカルの実ブラウザで確かめてある）。本番で実際に取り込む（確定まで）のは利用者
-- `origin/13.x` への push はしていない
+- `origin/13.x` への push はしていない。→ 2026-09-28 に push 済み（`3e8a43aa` に含まれる）
