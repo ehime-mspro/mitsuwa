@@ -8,10 +8,13 @@ use App\Models\AreaBuilding;
 use App\Models\AreaBuildingSurvey;
 use App\Models\AreaBuildingTenant;
 use App\Support\FloorNumber;
+use App\Support\OneTimeAction;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use PHPUnit\Framework\Attributes\DataProvider;
+use Tests\Concerns\ChecksDoubleSubmit;
 
 /**
  * 周辺ビル調査の Excel 取込（設計 §7 / プラン Task 11）。
@@ -25,10 +28,15 @@ use Illuminate\Support\Facades\DB;
  *   ・階／範囲の語彙が PHP と JS で一致すること（Bug #41）
  *   ・ヘッダー行の選択 UI と自動検出が在ること
  *   を構造で固定し、実挙動はブラウザで確かめる（プラン Step 10）。
+ *
+ * ⚠ 取込は取込の画面 1 つにつき 1 回だけ（hidden の import_token。設計書 2026-09-28-import-double-submit-design.md）。
+ *   importBuildings() / importTenants() は取込の画面を開いて画面が描いた鍵を使う。確定を手で組んで送るテストは、
+ *   1 送信ごとに新しい鍵（OneTimeAction::issue()）を足す（発行を記録しないので、新しい値なら 1 回は通る）。
  */
 class AreaBuildingImportTest extends AreaBuildingTestCase
 {
     use RefreshDatabase;
+    use ChecksDoubleSubmit;
 
     protected function tearDown(): void
     {
@@ -53,21 +61,39 @@ class AreaBuildingImportTest extends AreaBuildingTestCase
 
     private const IMPORT_URL = '/tenant/area-buildings/import';
 
-    private function importBuildings(array $rows, string $month = '2026-08')
+    /** 同じ取込の画面から 2 回目を送ったとき（1 回限りの鍵が使えないとき）の案内（設計書 2026-09-28-import-double-submit-design.md §4.4） */
+    private const USED_TOKEN = 'この取込画面からは取り込めません（すでに送信したか、画面が古くなっています）。取り込まれたかは「周辺ビル調査」で確かめられます。取り込み直すときは、ファイルを選び直してください。';
+
+    /** 取込の画面を開き、画面が描いたフォームを分解する */
+    private function importForm($user): array
     {
-        return $this->actingAs($this->manager())->post(self::IMPORT_URL, [
-            'kind'           => 'buildings',
-            'surveyed_month' => $month,
-            'rows'           => json_encode($rows),
-        ]);
+        $html = $this->actingAs($user)->get(self::IMPORT_URL)->assertOk()->getContent();
+
+        return $this->parseForm($html, 'action="' . route('tenant.area-buildings.import.execute') . '"');
     }
 
+    /**
+     * 取込の画面を開き、画面が描いたフォームに Alpine が入れる 3 つ（kind・surveyed_month・rows）だけを埋めて送る。
+     * ⚠ 鍵（import_token）は画面が描いたものを使う。手で組んで送ると鍵が無くて断られ、断られても戻り先が
+     *   取込の画面なので、戻り先だけを見るテストは緑のまま狙った経路を通らない（設計書 §5.3）
+     */
+    private function sendImport(array $fields)
+    {
+        $manager = $this->manager();
+        $form    = $this->importForm($manager);
+
+        return $this->actingAs($manager)->post($form['action'], array_merge($form['fields'], $fields));
+    }
+
+    private function importBuildings(array $rows, string $month = '2026-08')
+    {
+        return $this->sendImport(['kind' => 'buildings', 'surveyed_month' => $month, 'rows' => json_encode($rows)]);
+    }
+
+    /** テナント明細のとき、画面の surveyed_month の hidden は ''（`kind === 'buildings' ? surveyedMonth : ''`） */
     private function importTenants(array $rows)
     {
-        return $this->actingAs($this->manager())->post(self::IMPORT_URL, [
-            'kind' => 'tenants',
-            'rows' => json_encode($rows),
-        ]);
+        return $this->sendImport(['kind' => 'tenants', 'surveyed_month' => '', 'rows' => json_encode($rows)]);
     }
 
     private function importView(): string
@@ -138,6 +164,7 @@ class AreaBuildingImportTest extends AreaBuildingTestCase
                 'kind'           => 'everything',
                 'surveyed_month' => '2026-08',
                 'rows'           => json_encode([['building_name' => 'X', 'name' => 'Y']]),
+                'import_token'   => OneTimeAction::issue(),
             ])
             ->assertSessionHasErrors('kind');
 
@@ -288,6 +315,7 @@ class AreaBuildingImportTest extends AreaBuildingTestCase
             ->post(self::IMPORT_URL, [
                 'kind' => 'buildings', 'surveyed_month' => '2026-08',
                 'rows' => json_encode([['name' => 'アルファビル', 'operating' => '1']]),
+                'import_token' => OneTimeAction::issue(),
             ]);
     }
 
@@ -443,6 +471,7 @@ class AreaBuildingImportTest extends AreaBuildingTestCase
             ->post(self::IMPORT_URL, [
                 'kind' => 'buildings',
                 'rows' => json_encode([['name' => 'X', 'operating' => '1']]),
+                'import_token' => OneTimeAction::issue(),
             ])
             ->assertSessionHasErrors('surveyed_month');
 
@@ -465,6 +494,7 @@ class AreaBuildingImportTest extends AreaBuildingTestCase
             ->post(self::IMPORT_URL, [
                 'kind' => 'buildings',
                 'rows' => json_encode([['name' => 'X', 'operating' => '1']]),
+                'import_token' => OneTimeAction::issue(),
             ]);
 
         $html = $this->actingAs($manager)->get(self::IMPORT_URL)->getContent();
@@ -500,6 +530,7 @@ class AreaBuildingImportTest extends AreaBuildingTestCase
 
         $this->actingAs($manager)->post(self::IMPORT_URL, [
             'kind' => 'buildings', 'surveyed_month' => '2026-08', 'rows' => json_encode($rows),
+            'import_token' => OneTimeAction::issue(),
         ])->assertRedirect();
 
         $this->assertSame(20, AreaBuildingSurvey::count());
@@ -539,6 +570,7 @@ class AreaBuildingImportTest extends AreaBuildingTestCase
 
         $this->actingAs($manager)->post(self::IMPORT_URL, [
             'kind' => 'tenants', 'rows' => json_encode($rows),
+            'import_token' => OneTimeAction::issue(),
         ])->assertRedirect();
 
         $this->assertSame(20, AreaBuildingTenant::count());
@@ -721,6 +753,7 @@ class AreaBuildingImportTest extends AreaBuildingTestCase
             ->from(self::IMPORT_URL)
             ->post(self::IMPORT_URL, [
                 'kind' => 'buildings', 'surveyed_month' => '2026-08', 'rows' => 'これはJSONではない',
+                'import_token' => OneTimeAction::issue(),
             ])
             ->assertRedirect(self::IMPORT_URL);
 
@@ -739,6 +772,7 @@ class AreaBuildingImportTest extends AreaBuildingTestCase
             ->post(self::IMPORT_URL, [
                 'kind' => 'buildings', 'surveyed_month' => '2026-08',
                 'rows' => str_repeat('a', 3_000_001),
+                'import_token' => OneTimeAction::issue(),
             ])
             ->assertSessionHasErrors('rows');
 
@@ -752,6 +786,7 @@ class AreaBuildingImportTest extends AreaBuildingTestCase
         $this->actingAs($this->manager())
             ->post(self::IMPORT_URL, [
                 'kind' => 'buildings', 'surveyed_month' => '2026-08', 'rows' => json_encode(array_fill(0, 2000, $row)),
+                'import_token' => OneTimeAction::issue(),
             ])
             ->assertRedirect(route('tenant.area-buildings.index'));
         $this->assertSame(1, AreaBuilding::count(), 'ちょうど 2000 行が弾かれている');
@@ -760,6 +795,7 @@ class AreaBuildingImportTest extends AreaBuildingTestCase
             ->from(self::IMPORT_URL)
             ->post(self::IMPORT_URL, [
                 'kind' => 'buildings', 'surveyed_month' => '2026-08', 'rows' => json_encode(array_fill(0, 2001, $row)),
+                'import_token' => OneTimeAction::issue(),
             ])
             ->assertRedirect(self::IMPORT_URL);
 
@@ -1203,7 +1239,7 @@ class AreaBuildingImportTest extends AreaBuildingTestCase
         $this->assertStringNotContainsString("surveyedMonth: '2026-12'", $html, '調査年月が UTC の当月のまま');
 
         $this->assertStringContainsString('<span :title="submitBlockedReason()"', $html, 'ラッパー span に理由が無い');
-        $this->assertStringContainsString(':disabled="submitBlockedReason() !== null"', $html);
+        $this->assertStringContainsString(':disabled="submitting || submitBlockedReason() !== null"', $html);
         $this->assertStringContainsString('調査年月を入力してください。', $html);
 
         // ⚠ ボタン自身の title は効かない（Bug #43）。付いていたら設計意図と食い違う
@@ -1256,6 +1292,123 @@ class AreaBuildingImportTest extends AreaBuildingTestCase
 
         $this->assertSame(['往復ビル'], AreaBuilding::pluck('name')->all());
         $this->assertSame(2, AreaBuildingSurvey::firstOrFail()->operating_count);
+    }
+
+    // ============================================================
+    // 取込は取込の画面 1 つにつき 1 回だけ（設計書 2026-09-28-import-double-submit-design.md）
+    // ============================================================
+
+    /** @return array<string, array{0: string}> */
+    public static function kinds(): array
+    {
+        return ['ビル＋調査' => ['buildings'], 'テナント明細' => ['tenants']];
+    }
+
+    /** @return array<string, array{0: string|list<string>|null}> [import_token に入れる値（null なら送らない）] */
+    public static function unusableTokens(): array
+    {
+        return [
+            '鍵が無い' => [null],
+            '鍵が空'   => [''],
+            '鍵が配列' => [['a', 'b']],
+        ];
+    }
+
+    /**
+     * @return array{0: array<string, string>, 1: string, 2: int} [Alpine が入れる 3 つ, 数える表, 1 回目で増える数]
+     */
+    private function arrangeKind(string $kind): array
+    {
+        if ($kind === 'buildings') {
+            return [[
+                'kind' => 'buildings', 'surveyed_month' => '2026-08',
+                'rows' => json_encode([
+                    ['name' => 'アルファビル', 'address' => '松山市1-1', 'total_floors' => '5', 'operating' => '4', 'vacant' => '1', 'unknown' => '0'],
+                    ['name' => 'ベータビル', 'total_floors' => '3', 'operating' => '3', 'vacant' => '0'],
+                ]),
+            ], 'area_building_surveys', 2];
+        }
+
+        $this->makeBuilding('アルファビル');
+        $this->makeBuilding('ベータビル');
+
+        return [[
+            'kind' => 'tenants', 'surveyed_month' => '',
+            'rows' => json_encode([
+                ['building_name' => 'アルファビル', 'floor' => '3', 'room_number' => '301', 'name' => '大街道珈琲', 'industry' => '飲食', 'status' => '営業中'],
+                ['building_name' => 'アルファビル', 'floor' => 'B1', 'room_number' => 'B101', 'status' => '空室'],
+                ['building_name' => 'ベータビル', 'floor' => '2', 'room_number' => '201', 'name' => '花屋', 'industry' => '小売', 'status' => '営業'],
+            ]),
+        ], 'area_building_tenants', 3];
+    }
+
+    #[DataProvider('kinds')]
+    public function test_sending_the_same_screen_twice_imports_once(string $kind): void
+    {
+        [$fields, $table, $added] = $this->arrangeKind($kind);
+        $manager = $this->manager();
+        $form    = $this->importForm($manager);
+        $send    = fn () => $this->actingAs($manager)->from(self::IMPORT_URL)->post($form['action'], array_merge($form['fields'], $fields));
+
+        $before = DB::table($table)->count();
+        $send();
+        $this->assertSame($before + $added, DB::table($table)->count(), '1 回目で取り込まれていない（測定が無効）');
+
+        // 直す前: テナント明細は 3 件が 6 件になった。ビル＋調査は「同一年月のためスキップ」になり、取り込み直したように見えた
+        [$second, $writes] = $this->countingWrites($send);
+
+        $this->assertSame(0, $writes, '2 回目の送信で書き込みが走った');
+        $this->assertSame($before + $added, DB::table($table)->count(), '2 回目の送信で、もう一度入った');
+        $this->assertRefused($second, route('tenant.area-buildings.import'), self::USED_TOKEN, $manager);
+    }
+
+    #[DataProvider('unusableTokens')]
+    public function test_a_submission_without_a_usable_token_imports_nothing(string|array|null $token): void
+    {
+        [$fields] = $this->arrangeKind('buildings');
+        $manager  = $this->manager();
+        $form     = $this->importForm($manager);
+        $fields   = array_merge($form['fields'], $fields);
+
+        if ($token === null) {
+            unset($fields['import_token']);
+        } else {
+            $fields['import_token'] = $token;
+        }
+
+        // 500 にならない（配列の鍵は OneTimeAction::claimFrom() が is_string で断る）
+        [$response, $writes] = $this->countingWrites(fn () => $this->actingAs($manager)->from(self::IMPORT_URL)->post($form['action'], $fields));
+
+        $this->assertSame(0, $writes, '鍵が使えないのに書き込みが走った');
+        $this->assertSame(0, AreaBuilding::count());
+        $this->assertRefused($response, route('tenant.area-buildings.import'), self::USED_TOKEN, $manager);
+    }
+
+    public function test_opening_the_import_screen_again_issues_a_new_token(): void
+    {
+        [$fields] = $this->arrangeKind('buildings');
+        $manager  = $this->manager();
+        $first    = $this->importForm($manager);
+        $second   = $this->importForm($manager);
+
+        $this->assertNotSame($first['fields']['import_token'], $second['fields']['import_token'], '取込の画面を開くたびに鍵が変わっていない');
+
+        $this->actingAs($manager)->post($second['action'], array_merge($second['fields'], $fields));
+        $this->assertSame(2, AreaBuildingSurvey::count(), '開き直した画面の鍵で取り込めない');
+    }
+
+    public function test_the_import_form_guards_against_a_second_press(): void
+    {
+        $html = $this->actingAs($this->manager())->get(self::IMPORT_URL)->getContent();
+
+        // 周辺ビルは、送ったあと「戻る」で戻ったら読み込み直して新しい鍵にする（設計書 §4.5）。薄さはいまのまま
+        $this->assertSubmitOnceForm(
+            $html,
+            route('tenant.area-buildings.import.execute'),
+            'submitOnce({ reloadOnReturn: true })',
+            '取り込んでいます…',
+            'disabled:opacity-50'
+        );
     }
 
     // ============================================================
