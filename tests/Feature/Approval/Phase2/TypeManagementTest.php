@@ -7,6 +7,7 @@ use App\Models\ApprovalType;
 use App\Models\User;
 use App\Support\Approval\BodyTemplate;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Js;
 use Illuminate\Support\Str;
 use Tests\Concerns\BuildsApprovalFixtures;
 use Tests\Concerns\ParsesForms;
@@ -469,5 +470,72 @@ class TypeManagementTest extends TestCase
         $html = $this->indexHtml($this->approvalAdmin());
 
         $this->assertStringContainsString('<span class="ml-1 text-[11px] font-semibold text-red-700">審査担当者がいません</span>', $html);
+    }
+
+    /**
+     * 追加の小窓で断られたら、打った中身（種類名・審査部門・見出し・表示順・利用中）で小窓を開き直す（Task 19 の C4。
+     * 利用者の決定 2026-09-28。部門の管理は今のまま）。描き直した追加のフォームを送り返せば、打った中身になる
+     */
+    public function test_a_refused_new_type_reopens_the_add_modal_with_what_was_typed(): void
+    {
+        $w     = $this->approvalWorld();
+        $admin = $this->approvalAdmin();
+        $typed = [
+            'name'                 => $w['type']->name,   // 同じ名前で断られる
+            'review_department_id' => (string) $w['reviewDept']->id,
+            'headings'             => "■ 目的\n・\n■ 費用\n・",
+            'sort_order'           => '7',
+        ];   // 利用中のチェックは外した（送られない）
+
+        $this->actingAs($admin)->from(route('approvals.admin.types.index'))->post(route('approvals.admin.types.store'), $typed)
+            ->assertRedirect(route('approvals.admin.types.index'));
+
+        $html = $this->indexHtml($admin);
+        $this->assertStringContainsString('<li>' . e('この種類名は既に登録されています。') . '</li>', $html);
+        $this->assertStringContainsString('createModal: true,', $html);
+        $this->assertStringContainsString('var refused = null;', $html, '編集の小窓まで開く');
+        $fields = $this->parseForm($html, 'action="' . route('approvals.admin.types.store') . '"')['fields'];
+        $back   = array_intersect_key($fields, $typed);
+        ksort($back);
+        ksort($typed);
+        $this->assertSame($typed, $back);
+        $this->assertArrayNotHasKey('is_active', $fields, '外したチェックが入って戻った');
+    }
+
+    /**
+     * 編集の小窓で断られたら、その種類の編集の小窓を打った中身で開き直す（Task 19 の C4）。どの種類かは、編集の小窓が送る
+     * edit_id で分かる（今は無い種類なら開かない）。追加の小窓には入れない
+     */
+    public function test_a_refused_edit_reopens_the_edit_modal_with_what_was_typed(): void
+    {
+        $w     = $this->approvalWorld();
+        $admin = $this->approvalAdmin();
+        $this->approvalType($w['reviewDept'], ['name' => '人事']);
+        $typed = [
+            'name' => '購入・発注（改）', 'headings' => "■ なぜ\n※ 見積書を添付",   // 見出しの形でない
+            'review_department_id' => (string) $w['dept']->id, 'sort_order' => '3',
+        ];   // 利用中のチェックは外した
+
+        // 編集の小窓は、どの種類かを hidden の edit_id で送る（Alpine が editId を入れる）
+        $this->assertStringContainsString('<input type="hidden" name="edit_id" :value="editId">', $this->indexHtml($admin));
+
+        $this->actingAs($admin)->from(route('approvals.admin.types.index'))
+            ->put(route('approvals.admin.types.update', $w['type']), $typed + ['edit_id' => (string) $w['type']->id])
+            ->assertRedirect(route('approvals.admin.types.index'));
+
+        $html = $this->indexHtml($admin);
+        $this->assertStringContainsString('<li>' . e('見出しは「■」で始まる行と、中身の無い「・」の行だけで書いてください。') . '</li>', $html);
+        $this->assertStringContainsString('createModal: false,', $html);
+        $this->assertStringContainsString('var refused = ' . Js::from(['id' => $w['type']->id] + $typed + ['is_active' => false])->toHtml() . ';', $html);
+        $fields = $this->parseForm($html, 'action="' . route('approvals.admin.types.store') . '"')['fields'];
+        $this->assertSame(['', BodyTemplate::DEFAULT, '0'], [$fields['name'], $fields['headings'], $fields['sort_order']], '追加の小窓に編集の中身が入った');
+
+        // 今は無い種類の edit_id なら開かない（理由は画面の上に出る）
+        $this->actingAs($admin)->from(route('approvals.admin.types.index'))
+            ->put(route('approvals.admin.types.update', $w['type']), $typed + ['edit_id' => '999999'])
+            ->assertRedirect(route('approvals.admin.types.index'));
+        $html = $this->indexHtml($admin);
+        $this->assertStringContainsString('var refused = null;', $html);
+        $this->assertStringContainsString('createModal: false,', $html);
     }
 }

@@ -10,6 +10,23 @@
 @endsection
 
 @section('content')
+@php
+    // 断られた入力を、送った小窓に戻して開き直す（Task 19 の C4。利用者の決定 2026-09-28。部門の管理は今のまま）。
+    // どの種類かの edit_id を送るのは編集の小窓だけ（今は無い種類なら開かない）。追加の小窓は edit_id も _method（PUT）も送らない。
+    // ⚠ 手で組んだ送信の配列などは文字として扱わない
+    $oldText = fn (string $key): string => is_string(old($key)) ? old($key) : '';
+    $refused = $errors->any();
+    $editId  = is_string(old('edit_id')) ? (int) old('edit_id') : 0;
+    $refusedEdit = $refused && $types->contains('id', $editId) ? [
+        'id'                   => $editId,
+        'name'                 => $oldText('name'),
+        'headings'             => $oldText('headings'),
+        'review_department_id' => $oldText('review_department_id'),
+        'sort_order'           => $oldText('sort_order'),
+        'is_active'            => (bool) old('is_active'),
+    ] : null;
+    $refusedCreate = $refused && old('edit_id') === null && old('_method') === null;
+@endphp
 <div x-data="approvalTypes()" x-cloak>
 
     {{-- 成功・失敗の帯はレイアウトが出す（ここで出すと画面に 2 回出る）。$errors だけ各ビューの責任 --}}
@@ -94,7 +111,7 @@
                 <div class="px-6 py-4 space-y-3.5">
                     <div>
                         <label class="block text-[12px] font-semibold text-gray-700 mb-1">種類名<span class="text-red-600 ml-0.5">*</span></label>
-                        <input type="text" name="name" required maxlength="50" class="w-full h-[38px] px-2.5 border border-gray-300 rounded-md text-[13px]">
+                        <input type="text" name="name" value="{{ $refusedCreate ? $oldText('name') : '' }}" required maxlength="50" class="w-full h-[38px] px-2.5 border border-gray-300 rounded-md text-[13px]">
                     </div>
                     <div>
                         <label class="block text-[12px] font-semibold text-gray-700 mb-1">審査部門<span class="text-red-600 ml-0.5">*</span></label>
@@ -102,21 +119,21 @@
                         <select name="review_department_id" required class="w-full h-[38px] px-2.5 border border-gray-300 rounded-md text-[13px] bg-white cursor-pointer">
                             <option value="">選んでください</option>
                             @foreach($departments as $department)
-                                <option value="{{ $department->id }}">{{ $department->company->name }}・{{ $department->name }}</option>
+                                <option value="{{ $department->id }}"{{ $refusedCreate && $oldText('review_department_id') === (string) $department->id ? ' selected' : '' }}>{{ $department->company->name }}・{{ $department->name }}</option>
                             @endforeach
                         </select>
                     </div>
                     <div>
                         <label class="block text-[12px] font-semibold text-gray-700 mb-1">5W2H の見出し<span class="text-red-600 ml-0.5">*</span></label>
-                        <textarea name="headings" required maxlength="2000" rows="12" class="w-full px-2.5 py-2 border border-gray-300 rounded-md text-[13px] font-mono leading-relaxed">{{ \App\Support\Approval\BodyTemplate::DEFAULT }}</textarea>
+                        <textarea name="headings" required maxlength="2000" rows="12" class="w-full px-2.5 py-2 border border-gray-300 rounded-md text-[13px] font-mono leading-relaxed">{{ $refusedCreate ? $oldText('headings') : \App\Support\Approval\BodyTemplate::DEFAULT }}</textarea>
                         <p class="text-[11px] text-gray-400 mt-1">申請の本文に最初から入る見出し。見出しは「■」で始まる行に、その下は「・」だけの行にする。「いつ」「いくら」は実施時期・金額の欄で書くので入れない（要件 5.2）</p>
                     </div>
                     <div>
                         <label class="block text-[12px] font-semibold text-gray-700 mb-1">表示順<span class="text-red-600 ml-0.5">*</span></label>
-                        <input type="number" name="sort_order" value="0" required inputmode="numeric" min="0" max="9999" class="w-full h-[38px] px-2.5 border border-gray-300 rounded-md text-[13px]">
+                        <input type="number" name="sort_order" value="{{ $refusedCreate ? $oldText('sort_order') : '0' }}" required inputmode="numeric" min="0" max="9999" class="w-full h-[38px] px-2.5 border border-gray-300 rounded-md text-[13px]">
                     </div>
                     <label class="flex items-center gap-2 text-[13px] text-gray-800 cursor-pointer">
-                        <input type="checkbox" name="is_active" value="1" checked>
+                        <input type="checkbox" name="is_active" value="1"{{ ! $refusedCreate || old('is_active') ? ' checked' : '' }}>
                         利用中（申請の画面で選べる）
                     </label>
                 </div>
@@ -134,6 +151,8 @@
             <form method="POST" :action="'{{ url('approvals/admin/types') }}/' + editId">
                 @csrf
                 @method('PUT')
+                {{-- どの種類の小窓か（断られたときに同じ種類の小窓を開き直す。Task 19 の C4） --}}
+                <input type="hidden" name="edit_id" :value="editId">
                 <div class="px-6 pt-5 text-[15px] font-bold text-gray-900">種類の編集</div>
                 <div class="px-6 py-4 space-y-3.5">
                     <div>
@@ -178,7 +197,8 @@
 <script>
 function approvalTypes() {
     return {
-        createModal: false,
+        // 断られた入力で開き直す（Task 19 の C4）。追加の小窓はサーバーが打った中身を描き、編集の小窓は init で打った中身を入れる
+        createModal: {{ $refusedCreate ? 'true' : 'false' }},
         editModal: false,
         editId: null,
         editName: '',
@@ -186,6 +206,13 @@ function approvalTypes() {
         editHeadings: '',
         editSort: '0',
         editActive: true,
+
+        init() {
+            var refused = {{ \Illuminate\Support\Js::from($refusedEdit) }};
+            if (refused) {
+                this.openEdit(refused);
+            }
+        },
 
         openEdit(row) {
             this.editId = row.id;
