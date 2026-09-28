@@ -11312,3 +11312,219 @@ Expected: `invalid=0`（⚠ `view:cache` の成功表示だけでは足りない
 
 ⚠ `origin/13.x` への push は利用者の明示の指示があったときだけ。⚠ worktree `approval-phase2a` とブランチの片付けは利用者に聞いてから（消さずに残してもよい）。
 
+
+---
+
+## Task 18 の実測記録（2026-09-28）
+
+測ったのは `e774029a`（Task 17 と、Task 14〜16 の点検の手直しまで）。**変異は WT に当てず、HEAD の写しに当てた**（下の「測り方の注意」1）。1 つの変異は Approval の全体と走査のテストで流し、緑のまま残ったものだけ全件で流し直した。道具と出力は、その会話の scratchpad の `review/t18/`（`mutate18.py`・`mutants18.py`・`results-*.jsonl`・`outs/`・`diffs/`）。
+
+### 基準とカナリア
+
+| 項目 | 結果 |
+|---|---|
+| 全件（写し・`--filter` なし） | OK (2635 tests, 18312 assertions)（WT の HEAD の全件と同じ） |
+| 1 つの変異で流した範囲 | `--filter 'Approval\|ScanTest\|AjaxErrorFeedback\|MobileLayout\|ValidationErrorFeedback\|JapaneseValidation\|JapanBusinessDay\|AlpineXShow\|LayoutSidebar\|LayoutBreadcrumb\|LayoutStyleStack\|LayoutMeasuring\|CdnScriptIntegrity\|SortAffordance\|SortableListWiring\|LoginIdentifier\|PasswordChange'`（`tests/Feature/Approval`・`tests/Unit/Approval` と、決裁のファイルを見る走査）→ OK (900 tests, 6865 assertions)・35 秒ほど |
+| カナリア | `home-launched.blade.php` に `{{ $canaryUndefinedVariable }}` → `HomeAndListTest` 17 本中 11 本が 500（`Undefined variable $canaryUndefinedVariable`・写しのビューのパス）。測る仕掛けは写しのコードを読んでいる |
+
+### 結果のまとめ
+
+| 区分 | 通り | 赤 | 緑 |
+|---|---|---|---|
+| 計画の表（M01〜M49。M46 は PC とドロワーに分けた・M47 の測り直し M47b） | 51 | 51 | 0 |
+| README で「加える」とされた変異（Task 3・4・5・8） | 23 | 21 | 2（N14・N15＝SQLite で等価。全件でも緑） |
+| 隣の不変条件（Step 3 の念のため） | 18 | 17 | 1（X17＝検出漏れ → 案のテスト） |
+| 計画が「等価」とした変異の確かめ | 6 | 1（E5＝無効） | 5（E1・E2・E3・E6・E7＝等価。全件でも緑） |
+
+- 計画の表は 51 通りすべて赤で、どれも**計画のテスト**（計画の実装のコミットで入ったテスト）が 1 本以上落とす。落ちたテストの集合と理由の文言を表の期待と突き合わせ、表と違ったのは M06・M33・M42・M47 の 4 つ（下の「計画の表と違ったもの」）。ほかは表どおりか、表のテストに点検で足したテストが加わっただけ
+- 表の名前は今の名前で書いた（`RequestFormTest::test_the_create_page_offers_…` は `test_the_create_page_offers_active_types_and_preselects_the_only_department`、`RequestAttachmentTest::test_someone_who_cannot_see_…` は `test_someone_who_cannot_see_the_request_cannot_open_its_files`、`RequestActionTest::test_the_head_approves_…` は `test_the_head_approves_through_the_rendered_form`）
+
+### 変異ごとの結果
+
+#### 計画の表（M01〜M49。M46 は PC とドロワーの 2 つ・M47 は測り直しの M47b を足した）: 51 通り・赤 51・緑 0
+
+| # | 変異 | 結果 | 落としたテスト（今の名前） |
+|---|---|---|---|
+| M01 | `EnsureApprovalLaunched::handle()` の先頭で `return $next($request);` | 赤 | LaunchGateTest::test_before_launch_a_page_goes_to_the_home<br>LaunchGateTest::test_before_launch_a_post_is_not_found<br>LaunchGateTest::test_before_launch_an_ajax_request_is_not_found<br>ほか 1 本 |
+| M02 | 画面を開く GET の分岐（ホームへ転送）を `abort(404)` に | 赤 | LaunchGateTest::test_before_launch_a_page_goes_to_the_home |
+| M03 | `routes/approval.php` のグループから `approval.launched` を外す | 赤 | LaunchGateTest::test_every_approval_route_is_classified<br>RelatedNumberSearchTest::test_before_launch_the_search_is_not_found |
+| M04 | `bootstrap/app.php` の `EnsureApprovalLaunched` の `appendToPriorityList` を消す | 赤 | LaunchGateTest::test_before_launch_a_page_goes_to_the_home<br>LaunchGateTest::test_the_gate_runs_after_the_admin_gate_and_before_bindings |
+| M05 | サイドバーの `$approvalsLaunched` を `true` 固定 | 赤 | ApprovalSidebarTest::test_the_request_links_appear_only_after_launch |
+| M06 | 見られる範囲の「ほかの人は下書きを見られない」（`status != draft`）を外す（最後の形では `constrain()` の中） | 赤 | RequestFormTest::test_someone_elses_draft_is_not_found_even_for_admins<br>RequestVisibilityTest::test_nobody_else_sees_a_draft<br>RequestVisibilityTest::test_every_person_sees_exactly_the_table_of_chapter_7<br>ほか 1 本 |
+| M07 | 部門長の行（最後に提出した回の部門長の段階の部門）を `1 = 0` に | 赤 | RequestActionTest::test_the_steps_show_only_the_current_round<br>PendingWorkTest::test_pending_work_matches_what_each_person_can_do_now<br>RequestActionTest::test_the_head_approves_through_the_rendered_form<br>ほか 33 本 |
+| M08 | 審査担当者の行の `whereNotNull(arrived_at)` を外す | 赤 | RequestActionTest::test_the_whole_route_ends_with_a_number<br>RequestVisibilityTest::test_reviewers_see_requests_that_reached_review<br>RequestVisibilityTest::test_every_person_sees_exactly_the_table_of_chapter_7<br>ほか 3 本 |
+| M09 | 社長の行の `whereNotNull(arrived_at)` を外す | 赤 | RequestVisibilityTest::test_the_president_sees_requests_that_reached_the_president<br>RequestVisibilityTest::test_every_person_sees_exactly_the_table_of_chapter_7<br>RequestVisibilityTest::test_apply_and_can_view_agree_with_a_restatement_of_the_rules |
+| M10 | 判断した人の行（`actor_user_id`）を消す | 赤 | RequestVisibilityTest::test_people_who_judged_keep_seeing<br>RequestVisibilityTest::test_every_person_sees_exactly_the_table_of_chapter_7<br>RequestVisibilityTest::test_apply_and_can_view_agree_with_a_restatement_of_the_rules<br>ほか 2 本 |
+| M11 | 全件閲覧者・管理者の行を `canViewAllApprovals()` だけに | 赤 | RequestAttachmentTest::test_a_file_added_while_returned_stays_with_the_applicant_until_resubmitted<br>RequestAttachmentTest::test_others_cannot_attach_or_remove_even_while_the_request_is_editable<br>RequestFormTest::test_others_see_the_last_submission_while_the_request_is_returned<br>ほか 5 本 |
+| M12 | 添付の `show()` の `canView` を外す | 赤 | RequestAttachmentTest::test_someone_who_cannot_see_the_request_cannot_open_its_files |
+| M13 | 候補の検索の `RequestVisibility::apply()` を外す | 赤 | RelatedNumberSearchTest::test_it_returns_only_numbered_requests_the_user_can_see |
+| M14 | `relatedLinks()` の `RequestVisibility::apply()` を外す | 赤 | RequestFormTest::test_the_detail_shows_the_content_and_links_related_requests |
+| M15 | `judgeableStep()` の `! isApplicant()` を外す（D16） | 赤 | PendingWorkTest::test_pending_work_matches_what_each_person_can_do_now<br>RequestActionTest::test_nobody_judges_their_own_request<br>RequestActionTest::test_a_reviewer_who_applied_is_told_why_and_cannot_review<br>ほか 3 本 |
+| M16 | `PendingWork::for()` の自分の申請を外す `whereHas` を消す | 赤 | PendingWorkTest::test_your_own_request_is_not_your_judging_work<br>PendingWorkTest::test_pending_work_matches_what_each_person_can_do_now |
+| M17 | `SubmitChecker` の社長の断り（D4）を消す | 赤 | SubmitCheckerTest::test_the_president_cannot_submit<br>WorkflowTest::test_submission_is_refused_with_all_reasons |
+| M18 | `hasOtherReviewer()` の `users.id != 申請者` を外す | 赤 | SubmitCheckerTest::test_there_must_be_another_active_reviewer |
+| M19 | `SubmitChecker` の「見出しのまま」（D12）を消す | 赤 | RequestFormTest::test_a_refused_submission_keeps_the_draft<br>RequestFormTest::test_the_refusal_reasons_are_shown_on_the_edit_page<br>SubmitCheckerTest::test_subject_and_body_are_required_and_reasons_are_collected |
+| M20 | 停止した種類の断りから `status === Draft` を外す（D10） | 赤 | RequestFormTest::test_a_returned_request_keeps_its_stopped_type_and_can_be_resubmitted<br>SubmitCheckerTest::test_a_stopped_type_blocks_drafts_but_not_returned_requests |
+| M21 | `canEdit()` を `isApplicant()` だけに | 赤 | RequestActionTest::test_the_applicant_sees_only_the_operations_of_the_state<br>RequestAttachmentTest::test_only_the_applicant_can_attach_and_only_while_editable<br>RequestAttachmentTest::test_files_cannot_be_removed_while_the_request_is_in_circulation<br>ほか 2 本 |
+| M22 | `validated()` の種類の `Rule::in($typeIds)` を外す | 赤 | RequestFormTest::test_the_shape_of_inputs_is_checked_even_for_a_draft |
+| M23 | 同じく `->push($current?->type_id)` を外す | 赤 | RequestFormTest::test_a_returned_request_keeps_its_stopped_type_and_can_be_resubmitted |
+| M24 | `create()` のコピー元の `where(user_id)` を外す | 赤 | RequestFormTest::test_only_your_own_request_can_be_copied |
+| M25 | `copiedFields()` で停止した種類をそのまま写す | 赤 | RequestFormTest::test_copying_a_request_prefills_a_new_form |
+| M26 | 申請書の確認の小窓の `value="submit"` を `value="save"` に | 赤 | RequestFormTest::test_the_create_page_offers_active_types_and_preselects_the_only_department |
+| M27 | 候補の検索の fetch から `X-Requested-With` を消す | 赤 | RequestAttachmentTest::test_every_fetch_on_the_form_asks_for_json<br>RequestFormTest::test_the_create_page_offers_active_types_and_preselects_the_only_department |
+| M28 | `Workflow::move()` の `where(lock_version)` を外す | 赤 | WorkflowTest::test_a_simultaneous_second_press_is_refused_by_the_conditional_update |
+| M29 | `Workflow::judge()` の `assertFresh()` を消す | 赤 | WorkflowTest::test_a_screen_drawn_before_the_head_change_is_refused<br>RequestActionTest::test_a_stale_screen_is_refused<br>WorkflowTest::test_a_stale_screen_is_refused |
+| M30 | 取り下げのフォームから `lock_version` の hidden を消す | 赤 | RequestActionTest::test_the_applicant_can_withdraw<br>RequestActionTest::test_the_withdrawal_and_the_condition_forms_carry_the_comment |
+| M31 | 判断の確定ボタンの `value` を approve ↔ return に入れ替える（最後の形は `@foreach` なので値だけを入れ替えた） | 赤 | RequestActionTest::test_the_head_approves_through_the_rendered_form |
+| M32 | 部門長の判断のフォームの送り先を `requests.review` に | 赤 | RequestActionTest::test_the_head_approves_through_the_rendered_form<br>RequestActionTest::test_the_head_returns_through_the_rendered_form |
+| M33 | `ApprovalNumber::issue()` で `next_number` を進めない | 赤 | HomeAndListTest::test_the_home_and_the_list_do_not_query_per_request<br>PendingWorkTest::test_pending_work_matches_what_each_person_can_do_now<br>RequestVisibilityTest::test_every_person_sees_exactly_the_table_of_chapter_7<br>ほか 7 本 |
+| M34 | `ApprovalFiscalYear::of()` の `>=` を `>` に | 赤 | ApprovalFiscalYearTest::test_a_moment_is_read_in_japan_time<br>ApprovalFiscalYearTest::test_the_current_fiscal_year_uses_the_japanese_today<br>ApprovalNumberTest::test_a_new_fiscal_year_starts_again_from_one<br>ほか 3 本 |
+| M35 | `setNext()` の `<=` を `<` に | 赤 | ApprovalNumberTest::test_the_start_number_cannot_go_back_over_used_numbers |
+| M36 | `afterPresident()` の `if ($request->number === null)` を外す | 赤 | WorkflowTest::test_an_existing_number_is_reused |
+| M37 | `AppendOnly` の `updating` の守りを消す | 赤 | Phase2ModelsTest::test_append_only_records_cannot_be_updated_or_deleted |
+| M38 | 添付の `show()` の `X-Content-Type-Options` を消す | 赤 | RequestAttachmentTest::test_files_open_inline_or_download_with_safe_headers |
+| M39 | 同じく inline／attachment を `inline` 固定 | 赤 | RequestAttachmentTest::test_files_open_inline_or_download_with_safe_headers |
+| M40 | 同じく記録の `if ($approvalRequest->round >= 1)` を外す | 赤 | RequestAttachmentTest::test_opening_is_logged_once_the_request_was_submitted |
+| M41 | `destroy()` を `round` によらず行ごと消す | 赤 | RequestAttachmentTest::test_removing_from_a_returned_request_keeps_the_record<br>RequestAttachmentTest::test_removing_twice_is_refused<br>RequestAttachmentTest::test_the_detail_lists_the_attachments_of_the_shown_content<br>ほか 1 本 |
+| M42 | `store()` の保存名を元のファイル名に | 赤 | RequestAttachmentTest::test_the_applicant_can_attach_a_file_to_a_draft<br>RequestAttachmentTest::test_the_same_name_never_overwrites<br>RequestAttachmentTest::test_the_kind_comes_from_the_contents<br>ほか 1 本 |
+| M43 | `store()` の 20 ファイルの確かめを消す | 赤 | RequestAttachmentTest::test_twenty_files_is_the_limit |
+| M44 | `waitingDays()` の `$from` の `setTimezone(JapanTime::ZONE)` を外す | 赤 | HomeAndListTest::test_a_request_that_arrived_today_says_today<br>PendingWorkTest::test_waiting_days_count_japanese_calendar_days |
+| M45 | 一覧 `index()` の `where(user_id)` を外す | 赤 | HomeAndListTest::test_the_list_shows_only_my_requests_newest_first |
+| M46 | サイドバー（PC の展開）の「申請種類の管理」を `@if($isApprovalAdmin)` の外へ | 赤 | ApprovalSidebarTest::test_the_type_management_link_is_offered_to_admins_before_launch<br>ApprovalUserManagementTest::test_the_approval_home_links_to_the_admin_screens |
+| M46b | サイドバー（スマホのドロワー）の同じリンクを外へ | 赤 | ApprovalSidebarTest::test_the_type_management_link_is_offered_to_admins_before_launch<br>ApprovalUserManagementTest::test_the_approval_home_links_to_the_admin_screens |
+| M47 | `TypeController::destroy()` の申請の件数の確かめを消す | 赤（外部キーの 500 → M47b で測り直し） | TypeManagementTest::test_a_type_with_requests_cannot_be_deleted<br>TypeManagementTest::test_a_type_is_deleted_from_the_rendered_form_and_the_banner_shows_once |
+| M47b | M47 に加えて、外部キーの確かめを取引の終わりまで遅らせる | 赤 | TypeManagementTest::test_a_type_with_requests_cannot_be_deleted<br>TypeManagementTest::test_a_type_is_deleted_from_the_rendered_form_and_the_banner_shows_once |
+| M48 | 部門長の交代で `Workflow::headChanged()` を呼ばない | 赤 | OrganizationPhase2Test::test_changing_the_head_moves_waiting_requests<br>OrganizationPhase2Test::test_the_head_change_records_the_previous_head<br>OrganizationPhase2Test::test_the_waiting_requests_are_locked_before_the_department_row_is_updated |
+| M49 | 基幹の利用者管理の行の無効化の 12.6 の歯止めを外す | 赤 | AssignmentGuardTest::test_the_base_screens_refuse_to_disable_delete_or_empty_the_mail_of_a_head<br>AssignmentGuardTest::test_refusals_write_nothing_and_return_to_the_list |
+
+#### README で「加える」とされた変異（Task 3・4・5・8）: 23 通り・赤 21・緑 2
+
+| # | 変異 | 結果 | 落としたテスト（今の名前） |
+|---|---|---|---|
+| F5 | `ApprovalFiscalYear::current()` の開始月を 5 固定 | 赤 | ApprovalNumberTest::test_the_start_number_goes_to_this_fiscal_year_of_the_company |
+| N7 | `currentState()` の今年度を 5 月始まりに固定 | 赤 | ApprovalNumberTest::test_the_start_number_goes_to_this_fiscal_year_of_the_company |
+| N8 | `currentState()` の今年度を暦の年に | 赤 | ApprovalNumberTest::test_the_start_number_goes_to_this_fiscal_year_of_the_company<br>ApprovalNumberTest::test_the_start_number_in_january_belongs_to_the_previous_calendar_year |
+| N9 | `setNext()` の今年度を 5 月始まりに固定 | 赤 | ApprovalNumberTest::test_the_start_number_goes_to_this_fiscal_year_of_the_company |
+| N10 | `setNext()` の今年度を暦の年に | 赤 | ApprovalNumberTest::test_the_start_number_goes_to_this_fiscal_year_of_the_company<br>ApprovalNumberTest::test_the_start_number_in_january_belongs_to_the_previous_calendar_year<br>OrganizationPhase2Test::test_a_stale_form_does_not_carry_the_next_number_into_a_new_fiscal_year |
+| N14 | `setNext()` のトランザクションを外す | **緑**（全件も緑） | — |
+| N15 | 連番の行の `lockForUpdate()` を外す | **緑**（全件も緑） | — |
+| N16 | 新しい連番の行の `last_issued` を 1 に | 赤 | ApprovalNumberTest::test_one_is_accepted_before_any_number_is_used<br>ApprovalNumberTest::test_the_start_number_goes_to_this_fiscal_year_of_the_company<br>ApprovalNumberTest::test_the_start_number_in_january_belongs_to_the_previous_calendar_year |
+| N18 | `departmentHasNumbers()` の列を `department_id` に | 赤 | ApprovalNumberTest::test_department_has_numbers_looks_at_the_numbered_department |
+| T3a | 申請者 `applicant()` から `withTrashed()` を外す | 赤 | HomeAndListTest::test_deleted_people_do_not_break_the_home_or_the_list<br>Phase2ModelsTest::test_people_are_still_readable_after_they_are_deleted |
+| T3b | 部門長 `head()` から `withTrashed()` を外す | 赤 | HomeAndListTest::test_deleted_people_do_not_break_the_home_or_the_list<br>Phase2ModelsTest::test_people_are_still_readable_after_they_are_deleted |
+| T3c | 段階の判断した人 `actor()` から `withTrashed()` を外す | 赤 | Phase2ModelsTest::test_people_are_still_readable_after_they_are_deleted |
+| T3d | 段階の付け替えた担当 `assignee()` から `withTrashed()` を外す | 赤 | HomeAndListTest::test_deleted_people_do_not_break_the_home_or_the_list<br>Phase2ModelsTest::test_people_are_still_readable_after_they_are_deleted |
+| T3e | 記録の操作した人 `actor()` から `withTrashed()` を外す | 赤 | Phase2ModelsTest::test_people_are_still_readable_after_they_are_deleted |
+| T3f | 審査担当者 `reviewers()` に `withTrashed()` を足す | 赤 | Phase2ModelsTest::test_people_are_still_readable_after_they_are_deleted<br>SubmitCheckerTest::test_a_deleted_reviewer_is_not_counted |
+| T4a | 門番が決裁の管理者を素通しにする | 赤 | LaunchGateTest::test_before_launch_a_page_goes_to_the_home<br>LaunchGateTest::test_before_launch_a_post_is_not_found |
+| T4b | 門番が Ajax を素通しにする | 赤 | LaunchGateTest::test_before_launch_an_ajax_request_is_not_found<br>RelatedNumberSearchTest::test_before_launch_the_search_is_not_found |
+| T4c | 門番が JSON（`expectsJson()`）を素通しにする | 赤 | LaunchGateTest::test_before_launch_an_ajax_request_is_not_found<br>RelatedNumberSearchTest::test_before_launch_the_search_is_not_found |
+| V11 | 審査担当者の行の `approval_reviewers` を利用者で絞らない | 赤 | RequestVisibilityTest::test_every_person_sees_exactly_the_table_of_chapter_7<br>RequestVisibilityTest::test_apply_and_can_view_agree_with_a_restatement_of_the_rules<br>RequestVisibilityTest::test_the_head_of_the_review_department_does_not_see |
+| V13 | 社長の行の `isApprovalPresident()` を外す（誰にでも） | 赤 | RequestVisibilityTest::test_every_person_sees_exactly_the_table_of_chapter_7<br>RequestVisibilityTest::test_apply_and_can_view_agree_with_a_restatement_of_the_rules<br>RequestVisibilityTest::test_the_head_of_the_review_department_does_not_see |
+| V23 | 1 件の判定 `canView()` の `whereKey` を外す | 赤 | RequestVisibilityTest::test_every_person_sees_exactly_the_table_of_chapter_7<br>RequestVisibilityTest::test_apply_and_can_view_agree_with_a_restatement_of_the_rules |
+| V26 | 外側の括弧を外す（最後の形では、スコープを通さず `constrain()` を直に呼び、`constrain()` の外側の `where(fn)` も外す） | 赤 | RelatedNumberSearchTest::test_it_finds_a_number_typed_in_full_width_and_a_subject<br>RelatedNumberSearchTest::test_it_returns_only_numbered_requests_the_user_can_see<br>RequestVisibilityTest::test_every_person_sees_exactly_the_table_of_chapter_7<br>ほか 3 本 |
+| V28 | 段階の EXISTS を申請に結び付けない | 赤 | RequestVisibilityTest::test_every_person_sees_exactly_the_table_of_chapter_7<br>RequestVisibilityTest::test_apply_and_can_view_agree_with_a_restatement_of_the_rules<br>RequestVisibilityTest::test_conditions_added_before_or_after_apply_do_not_widen_the_result |
+
+#### 隣の不変条件（Step 3 の念のため）: 18 通り・赤 17・緑 1
+
+| # | 変異 | 結果 | 落としたテスト（今の名前） |
+|---|---|---|---|
+| X01 | 取り下げ・条件確認のコメントの上限 2,000 を 20,000 に（M30 の隣） | 赤 | RequestActionTest::test_a_too_long_withdrawal_comment_is_shown_on_the_detail |
+| X02 | 条件確認のフォームから `lock_version` の hidden を消す（M30 の隣） | 赤 | RequestActionTest::test_a_conditional_approval_is_confirmed_by_the_applicant<br>RequestActionTest::test_the_withdrawal_and_the_condition_forms_carry_the_comment<br>RequestActionTest::test_stale_or_repeated_applicant_operations_are_refused |
+| X03 | 判断のフォームから `lock_version` の hidden を消す（M30 の隣） | 赤 | RequestActionTest::test_the_head_approves_through_the_rendered_form<br>RequestActionTest::test_the_reviewer_and_the_president_judge_through_the_rendered_forms<br>RequestActionTest::test_the_head_returns_through_the_rendered_form |
+| X04 | `Workflow::confirmCondition()` の `assertFresh()` を消す（M29 の隣） | 赤 | RequestActionTest::test_stale_or_repeated_applicant_operations_are_refused |
+| X05 | `Workflow::withdraw()` の `assertFresh()` を消す（M29 の隣） | 赤 | WorkflowTest::test_a_stale_withdrawal_is_a_conflict |
+| X06 | `Workflow::submit()` の画面の版の `assertFresh()` を消す（M29 の隣） | 赤 | RequestFormTest::test_a_save_between_this_save_and_the_submission_stops_the_submission<br>WorkflowTest::test_a_submission_after_another_save_is_refused |
+| X07 | `move()` が `lock_version` を進めない（M28 の隣） | 赤 | RequestActionTest::test_a_stale_screen_is_refused<br>RequestActionTest::test_stale_or_repeated_applicant_operations_are_refused<br>RequestActionTest::test_a_lock_version_that_is_not_a_plain_number_is_refused<br>ほか 2 本 |
+| X08 | 中身の保存の条件付き UPDATE（`where(lock_version)`）を外す（M28 の隣） | 赤 | RequestFormTest::test_a_stale_edit_form_does_not_overwrite_a_newer_save |
+| X09 | 申請者としての対応待ちを自分の申請に絞らない（M16 の隣） | 赤 | HomeAndListTest::test_the_home_shows_only_my_own_requests<br>PendingWorkTest::test_each_role_sees_its_own_turn<br>PendingWorkTest::test_a_returned_request_waits_for_the_applicant<br>ほか 1 本 |
+| X10 | 20 件の確かめの `>=` を `>` に（M43 の隣） | 赤 | RequestAttachmentTest::test_twenty_files_is_the_limit |
+| X11 | 開いた記録の利用者を申請者にする（M40 の隣） | 赤 | RequestAttachmentTest::test_opening_is_logged_once_the_request_was_submitted |
+| X12 | 候補の検索を番号の付いた申請に絞らない（M13 の隣） | 赤 | RelatedNumberSearchTest::test_it_returns_only_numbered_requests_the_user_can_see<br>RelatedNumberSearchTest::test_a_request_without_a_number_is_not_a_candidate_even_when_visible |
+| X13 | `AppendOnly` の `deleting` の守りを消す（M37 の隣） | 赤 | Phase2ModelsTest::test_append_only_records_cannot_be_updated_or_deleted |
+| X14 | 部門長が変わらない保存でも `headChanged()` を呼ぶ（M48 の隣） | 赤 | OrganizationPhase2Test::test_saving_other_fields_leaves_waiting_requests_alone |
+| X15 | 基幹の編集（無効化・メール空）の 12.6 の歯止めを外す（M49 の隣） | 赤 | AssignmentGuardTest::test_the_base_screens_refuse_to_disable_delete_or_empty_the_mail_of_a_head<br>AssignmentGuardTest::test_an_edit_without_the_email_field_is_refused<br>AssignmentGuardTest::test_refusals_write_nothing_and_return_to_the_list |
+| X16 | 社長が未設定の断りを消す（M17 の隣） | 赤 | SubmitCheckerTest::test_nothing_can_be_submitted_without_a_president |
+| X17 | 編集の画面の差戻しの理由を今の回に絞らない（M23・M25 の隣。Task 13 の点検の R24 と同じ所） | **緑**（全件も緑） | — |
+| X18 | 申請部門の `Rule::in($departmentIds)` を外す（M22 の隣） | 赤 | RequestFormTest::test_the_shape_of_inputs_is_checked_even_for_a_draft |
+
+#### 計画が「等価」とした変異の確かめ: 6 通り・赤 1・緑 5
+
+| # | 変異 | 結果 | 落としたテスト（今の名前） |
+|---|---|---|---|
+| E1 | `canDelete()` の `round === 0` を外す | **緑**（全件も緑） | — |
+| E2 | `RequestController::destroy()` の `where(round, 0)` を外す | **緑**（全件も緑） | — |
+| E3 | `RequestController::destroy()` の `where(status, draft)` を外す | **緑**（全件も緑） | — |
+| E5 | `Workflow::judge()` の `DB::transaction` を外す | 赤（**無効**。テストの作りによる → E6・E7） | WorkflowTest::test_a_simultaneous_second_press_is_refused_by_the_conditional_update |
+| E6 | `Workflow::withdraw()` の `DB::transaction` を外す | **緑**（全件も緑） | — |
+| E7 | `Workflow::submit()` の `DB::transaction` を外す | **緑**（全件も緑） | — |
+
+#### 計画の表と違ったもの・落ち方を確かめたもの
+
+- **M06**: 表の `RequestAttachmentTest::test_someone_who_cannot_see_the_request_cannot_open_its_files` は落ちない。計画のあとで入った `RequestContent::mayOpen()`（申請者以外には控えに入った添付だけを開かせる）が二重の守りになり、下書きの添付は M06 でも 404 のまま（守りが 2 枚になった。見られる範囲の漏れは `RequestVisibilityTest`・`RequestFormTest` が落とす）
+- **M33**: 表の「`WorkflowTest` の 2 件目の採番」は、`number` の一意の索引（DB）の違反で落ちる（DB の守り）。番号が進まないことを直に見るのは `ApprovalNumberTest` の 2 本と部門の管理の次の番号
+- **M42**: 表の `test_the_same_name_never_overwrites` は `stored_path` の一意の索引（DB）で 500 になって落ちる。保存名の形を直に見る `test_the_applicant_can_attach_a_file_to_a_draft`（40 文字の無作為の名前）と `test_the_kind_comes_from_the_contents` が意図どおりに落とす
+- **M47**: 外部キー（RESTRICT。本番の SQL も同じ）が先に削除を止めて 500（表の注意どおり）→ **M47b**（外部キーの確かめを取引の終わりまで遅らせる `PRAGMA defer_foreign_keys = ON`。RefreshDatabase が巻き戻す）で測り直し、表の 2 本が「断りの文言が無い」「帯に出ていない」で落ちる＝アプリの確かめそのものを見ている
+- **M20・M23**: 落ちたのは Laravel の `assertRedirect` が失敗の説明を組み立てる途中の Error（セッションの `errors` が配列で入っている）。探りのテストで同じ手順の転送先と理由を出し、M20 は「申請の種類「…」は使えなくなりました」、M23 は type_id.in「選んだ申請の種類は使えません」で編集の画面へ戻されたことを確かめた（意図どおりの機構）
+
+### 検出 ／ 当初検出漏れ→追加で検出 ／ 等価
+
+「計画のテスト」は計画の実装のコミットで入ったテスト、「点検のテスト」は点検の手直しで足したテスト（テストのメソッドが入ったコミットを git の履歴で分けた。T4a のように計画のメソッドの中身が手直しで広がったものは手直しの側に数えた。M01・M03 を落とす計画のテストが空振りでなくなったのは Task 4 の手直し 1260dcee から）。
+
+| 区分 | 変異 |
+|---|---|
+| 検出（計画のテストで落ちる） | 計画の表 51 通りすべて・T4b・T4c・N10・V26・X02・X03・X06〜X13・X15・X16・X18 |
+| 当初検出漏れ → 点検のテストで検出 | T3a〜T3f（Task 3 の b7e1f6db・Task 6 の 3a04f42d・Task 16 の 1b94ad08）・T4a（Task 4 の 1260dcee）・F5・N7〜N9・N16・N18（Task 5 の 0e90edd3）・V13・V23・V28・V11（Task 8 の c2e9ff06・c0dd2ca4）・X01・X04（Task 15 の 1caadf87）・X05（Task 7 の 1dceeed0）・X14（Task 9 の 5c8e6f37） |
+| 検出漏れ（等価でない）→ テストを足す | **X17**: 申請書の編集の画面の差戻しの理由を今の回に絞る条件（`RequestController::formData()` の `->where('round', $approvalRequest->round)`）を外しても全件が緑。今のテストは 1 回だけ差し戻す場面しか見ない（Task 13 の点検で任意として見送った R24 と同じ所）。足したテスト `RequestFormTest::test_the_edit_page_shows_only_the_return_reason_of_the_current_round`（2 回差し戻した申請の編集の画面に、今の回の理由だけが出る）は今のコードで緑・X17 で赤（足した形の全件 OK (2636 tests, 18317 assertions)） |
+| 等価（SQLite で等価） | N14（`setNext()` のトランザクション）・N15（連番の行の `lockForUpdate()`）。下の「測り方の注意」4 |
+| 等価（計画のとおり） | E1（`canDelete()` の `round === 0`）・E2・E3（`destroy()` の `round`・`status`＝権限と削除の条件の二重の守り）・E6・E7（`withdraw()`・`submit()` の `DB::transaction`＝正常系では同じ。Bug #48 の型） |
+| 無効にした測定 | E5（`judge()` の `DB::transaction`）: 赤だが、同時押しのテストは Workflow が自分の取引を張っているときだけ別の人の更新を差し込む作りで、取引を外すと差し込みが起きず「2 人目が通った」になる（取引の守りを見たのではない）→ E6・E7 で測り直した／M47 → M47b／写しの汚れで落ちたテストの集合が汚れた M43〜M49 の最初の測定 → 測り直した（「測り方の注意」3） |
+
+### 点検ごとの変異（流し直していない）
+
+各点検の変異は、その点検の時点の HEAD の写しで測り、手直しのあとは再点検で測った。**最後の形では流し直していない**（コントローラの判断: 流し直すと 2〜3 時間かかり道具の当て直しも要る。後の手直しでテストが弱まっていても気づけないが、最後の全体の点検が網になる）。数は各報告と README の進み具合の表から写した。「当時のテストで赤」はその点検の時点のテストで落ちた数、「手直しのあと」は点検の案のテスト・手直しを入れた形で測った数。
+
+道具の在りか: A＝`~/.claude/plans/approval-phase2a-tasks/archive-2026-09-27/review/`（消えない写し）、S＝会話 b4b10819 の scratchpad の `review/`（`/private/tmp`。Mac の再起動で消える）。
+
+| 点検（測った HEAD） | 変異 | 当時のテストで赤 | 手直しのあと | 緑のまま残したもの（理由） | 道具 |
+|---|---|---|---|---|---|
+| Task 1 の点検（手直し e35109c6 のあと） | 5 | 5 | — | — | 残っていない |
+| Task 3 の再点検 | 8 | 8 | — | — | 残っていない（今回 T3a〜T3f で最後の形を測った） |
+| Task 4 の再点検 | 10 | 10 | — | — | 残っていない（今回 T4a〜T4c） |
+| Task 5 の再点検 | 39 | 35 | — | 4（README では「SQLite で等価」。道具の説明ではトランザクション 2・`lockForUpdate` 1・害の無い upsert の更新列 1。結果のファイルは残っていない） | `~/.claude/plans/approval-phase2a-tasks/review-tools/mutate.py`・`mutate2.py`・`t5mysql/` |
+| Task 7 の点検（df35b57c） | 67 | 26 | 63 赤（1dceeed0） | W10（採番を先に＝SQLite で等価・MySQL で実測）・P9（待ちの段階は回覧中だけ）・P14（下書きに戻る道が無い）＝等価。W36 は再点検で赤 | A `t7/`（`ProposedWorkflowBase.php`・`mysql/`。**`mutate7.py` と結果は消えた**） |
+| Task 7 の再点検（bc2df9fd） | 78 | 68 | MA6・MA7 は bd1ea385 のテストで赤 | W10・MA3（ロックの順）・MA5（`headChanged` のトランザクション）・MA11・MA12（ロックしない・ロックせずに読み直す）＝SQLite で等価（MySQL で MA3・MA11 は 1213、MA12 は RR で誤った記録）・MA8（ロックのあとの読み直しが同じ働き）・P9・P14＝等価 | A `t7r/mysql/`（**`mutate7r.py` と結果は消えた**） |
+| Task 8 の点検（d4a7bcf4） | 36 | 20 | 34 赤（c2e9ff06） | V17（付け替えは届いた段階にしか付かない）・V27（下書きには段階が無い）＝等価 | A `t8/mutate8.py` |
+| Task 8 の再点検（eea70599） | 36＋直しの 6 | 38 | — | V17・V27・V26a（スコープを通す限り同じ）・F4（`whereKey` に OR が無い）＝等価 | 消えた（A `t8/recheck/` はテスト 1 本だけ） |
+| Task 8 の 2 回目の再点検（df795036） | 49 | 44 | H02 は c0dd2ca4 のテストで赤 | V17・V27・V26a・F4＝等価 | 消えた（A `t8/recheck2/` はテスト 1 本だけ） |
+| Task 9 の点検（b60c50ee） | 59 | 23 | 58 赤（5c8e6f37） | V12（作成の小窓だけの注意書き＝編集の小窓に同じ文があり見分けられない。見送り）。C16（`headChanged()` を部門の更新の後に）は SQLite では SQL の順の確かめでだけ赤・MySQL で 1213 | A `t9/mutate9.py`・`t9/mysql/` |
+| Task 9 の再点検（75e5a4c2） | 21（N01〜N21） | 17 | N04・N09・N10 は 133ea71d・04a402bb のテストで赤 | N14（記録の審査担当者を並べない＝SQLite ではもともと id の順）＝等価 | A `t9r/mutate9r.py` |
+| Task 9 の 3 回目の再点検（04a402bb） | 13 | 13 | — | — | A `t9r/mutate9r2.py` |
+| Task 10 の点検（794c3df9） | 22 | 14 | 22 赤（cd564861） | — | A `t10/mutate10.py` |
+| Task 11 の点検（6846f419） | 57 | 22 | 57 赤（7565e123） | — | A `t11/mutate11.py` |
+| Task 11 の再点検（3fdcf0e9） | 75（前回の 57＋手直しの形 18） | 74 | — | N07（一覧の注意が削除した審査担当者も数える形。後回しにした軽微 N-1。画面からは起きない） | S `t11r/mutate11r.py`・`results.txt` |
+| Task 12 の点検（e037762c） | 22 | 17 | 21 赤（265842cd・6ff290f0） | C11（前後の空白の削り＝`TrimStrings` が先に削る）＝等価 | A `t12/mutate12.py`・`t12/mysql/` |
+| Task 13 の点検（87f786ec） | 62 | 40 | 51 赤（f924393a） | 13-P（提出の行ロック＝SQLite で等価・MySQL で確かめた）・13-R（持ち主の `array_merge`＝今は同じ）・R08・R09（削除の権限と条件の二重の守り）＝等価。R10 は Task 14 のテストが守る。R36〜R40 は Task 15 の範囲（R36・R38・R39 は Task 15 の案で赤、R37 は計画のテストで赤、R40 は等価）。**R24（差戻しの理由を今の回に絞る条件）は任意として見送り → 今回の X17 と同じ所で、案のテストを足した** | A `t13/tools/mutate13.py`・`t13/mysql/` |
+| Task 14 の点検（85df9615） | 62（＋直しの 5＝67） | 38 | 60 赤（ec3a03c7・e45255ae・58823408） | S18（名前の `/` は届かない）・H10（Content-Type は保存と同じ表）・L01（開くと外すは同じパス）＝等価、S05・S06・D11・D12（行ロック）＝SQLite で等価・MySQL 8.4.11 の本物のルートの場面で赤 | S `t14/mutate14.py`・`mutate14b.py`・`mysql/` |
+| Task 15 の点検（b2fb943c） | 85 | 41 | 81 赤（1caadf87） | M27（段階の先読み＝N+1 だけ）・R40（削除と詳細は同じ URL）＝等価。M33・M33b は Task 16 の範囲（M33 は Task 16 の案で赤、M33b は等価） | S `t15/tools/mutate15.py`・`mutate15-table.md` |
+| Task 16 の点検（f1e8d170） | 71 | 32 | 66 赤（1b94ad08） | P17・W03・W04・W05・C02＝等価（待ちの段階は今の回だけ・`arrived_at` がある・9 時間の差は `round` が消す・0 未満にならない・0 時どうしの差は整数） | S `t16/mutate16.py` |
+| Task 17 の点検（4a23ab1f） | 6 | 5 | 6 赤（0d76d89c） | — | 道具なし（写しに手で当てた） |
+
+- Task 7〜17 の点検で新しく作った変異は約 620 通り（再点検で前回の分を当て直したものを除く。延べでは約 830 通り）
+- 食い違い: README の進み具合の表の Task 7 の行は「変異 78 通り中 68 が赤（残りは SQLite で等価 or MySQL で実測）」だが、再点検の報告では緑の 10 通りのうち MA6・MA7 の 2 つは**テストの穴**（bd1ea385 のテストで赤）、MA8・P9・P14 は SQLite に限らない等価。数は同じで、内訳の言い方だけが違う
+
+### 測り方の注意
+
+1. **写しで測った理由**: この環境の自動の許可の判定は、WT のファイルを一時的に書き換える操作（変異を当てて戻す）を断る（2026-09-27 に実測）。そこで計画の Step 1 の「WT に当てて `git restore`」の代わりに、HEAD の写し（`git archive e774029a` ＋ vendor の APFS 複製 `cp -Rc`）に当てた。手本の写し 1 つと、変異を当てる写し 5 つを並べて流した（WT は読むだけ。最後まで `git status --porcelain` は空）
+2. **1 つの変異の手順**: 写しが手本と同じか（`app`・`bootstrap`・`config`・`database`・`lang`・`resources`・`routes`・`tests` を `diff -rq`）→ 置き換え文がちょうど 1 回当たるか → 当てて差分が空でないか（`diffs/` に保存）→ コンパイル済みのビューと偽のディスク（`Storage::fake`）を消す → 流す → 手本から戻して `cmp` → もう一度 `diff -rq`
+3. **意図と別の機構で落ちたもの（無効にして測り直した）**
+   - 写しの汚れ: M42（保存名を元の名前に）の回に、255 文字の日本語の名前のファイル（757 バイト）が偽のディスクに残った。APFS には作れるが PHP の `lstat` が失敗し、`Storage::fake` も消せない。同じ写しで後に流した M43〜M49 で `RequestAttachmentTest::test_deleting_a_draft_deletes_its_files` が 500（`Lstat failed`）で落ち、落ちたテストの集合が汚れた → 偽のディスクを毎回消す形に直し、M43〜M49 を流し直した（表は流し直した結果。検出の有無は変わらない）
+   - E5・M47: 上の「検出／当初検出漏れ→追加で検出／等価」のとおり
+   - 走査のテストで落ちた変異は無かった（変異に `now()` などを足していない）。V26 は `constrain()` を直に呼ぶと走査 `test_only_the_model_scope_calls_the_rule_body` にも掛かるので、走査に掛からない `call_user_func([self::class, 'constrain'], …)` で当て、振る舞いのテストだけで落ちることを見た
+4. **SQLite で確かめられないロック**: N15（連番の行の `lockForUpdate()`）・N14（`setNext()` のトランザクション）は Approval と走査・全件とも緑。Laravel は SQLite では `FOR UPDATE` を付けず、テストは 1 本の接続なので、行のロックの有無が結果に出ない。**設計書 §6 の「同時の採番で重ならない」は SQLite のテストでは確かめられない**。MySQL では次の点検で確かめた（本番は 8.0.40。ロックの振る舞いは 8.4.8・8.4.11 で測り、8.0 は未確認）
+   - Task 5 の点検（8.4.8）: 連番の行の用意を `insertOrIgnore` のままにすると READ COMMITTED で 1213 → `upsert` にした（後の方は待つだけ）。判断が断られたら番号も戻る
+   - Task 7 の点検（8.4.8）: 6 プロセス・計 3,042 件の負荷の試験で、番号の飛び・重なり 0（`next_number = last_issued + 1`）・1213 は 0 件。再点検（8.4.11）で、ロックの順を入れ替える MA3・申請の行をロックしない MA11 は 1213、段階の行をロックせずに読み直す MA12 は REPEATABLE READ で誤った記録
+   - Task 9 の点検（8.4.11）: `headChanged()` を部門の行の更新の後に回す C16 は 1213（SQLite では発行した SQL の順の確かめでだけ赤）
+   - Task 13・14 の点検（8.4.11）: 提出の行ロックを外す 13-P は、REPEATABLE READ で控えが古くなる（Task 14 の点検の、提出と添付が重なる場面）。Task 13 の点検の 6 プロセスと本物の画面を混ぜた負荷の試験では、食い違い・1213・1205・500 は 0 件
+   - Task 14 の点検（8.4.11）: 添付の行ロックの変異 S05・S06・D11・D12 は、本物のルートの場面ですべて赤
+5. **道具が残っていないもの**: Task 7 の `mutate7.py`・`mutate7r.py`、Task 8 の再点検 2 回の変異の道具、Task 7〜13 の点検の結果のファイル（`results*.txt`。Task 11 の再点検の分は S に残る）は、2026-09-28 朝の Mac の再起動で消え、会話の記録からも戻せなかった（報告の本文と数は残る）。上の表の数は各報告の本文から写した

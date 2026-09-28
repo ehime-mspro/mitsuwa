@@ -703,4 +703,25 @@ class RequestFormTest extends TestCase
         $this->assertSame(ApprovalStatus::Draft, $draft->fresh()->status);
         $this->assertSame(0, ApprovalRevision::where('request_id', $draft->id)->count(), 'この画面に出ていない中身で提出した');
     }
+
+    /**
+     * 2 回差し戻された申請の編集の画面には、今の回の差戻しの理由だけを出す（前の回の理由を出さない）。
+     * ⚠ 1 回だけの差戻しでは、理由を今の回に絞る条件（RequestController::formData() の round）を外しても見分けられない（Task 18 の変異 X17）
+     */
+    public function test_the_edit_page_shows_only_the_return_reason_of_the_current_round(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $request = $this->submittedFor($w);
+        app(Workflow::class)->judgeHead($request, $w['head'], $request->lock_version, ApprovalStepResult::Return, '1 回目の差戻しの理由');
+
+        app(Workflow::class)->submit($request->refresh(), $w['applicant']);
+        app(Workflow::class)->judgeHead($request->refresh(), $w['head'], $request->lock_version, ApprovalStepResult::Return, '2 回目の差戻しの理由');
+        $this->assertSame(ApprovalStatus::Returned, $request->fresh()->status, '前提: 2 回目の提出が差し戻されていない');
+        $this->assertSame(2, $request->fresh()->round, '前提: 2 回目の提出が差し戻されていない');
+
+        $html = $this->actingAs($w['applicant'])->get(route('approvals.requests.edit', $request))->assertOk()->getContent();
+        $this->assertStringContainsString('2 回目の差戻しの理由', $html);
+        $this->assertStringNotContainsString('1 回目の差戻しの理由', $html, '前の回の差戻しの理由が編集の画面に出ている');
+    }
 }
