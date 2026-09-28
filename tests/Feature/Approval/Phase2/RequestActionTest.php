@@ -890,4 +890,94 @@ class RequestActionTest extends TestCase
         $this->act($w['president'], $request, 'approvals.requests.decide', ['result' => 'conditional', 'comment' => '見積りを 2 社から取ること']);
         $check($this->showHtml($w['applicant'], $request), route('approvals.requests.confirmCondition', $request), '確認しました');
     }
+
+    /** 画面が描いたフォームの HTML（開始タグから </form> まで） */
+    private function formOf(string $html, string $action): string
+    {
+        $at = strpos($html, 'action="' . $action . '"');
+        $this->assertNotFalse($at, "{$action} のフォームが無い");
+        $open = strrpos(substr($html, 0, $at), '<form');
+
+        return substr($html, $open, strpos($html, '</form>', $at) - $open);
+    }
+
+    /**
+     * 判断が入力の誤り（長すぎるコメント）かコメントの不足で断られたら、選んでいた判断と打ったコメントで小窓を開き直し、
+     * 断られた理由を小窓の中にも出す（Task 19 の C8。利用者の決定 2026-09-28）。コメントの不足は Workflow が断る（WorkflowRefused）
+     * ので、入力の検査とどちらの経路でも戻す。先を越されたとき（すでに処理されています）は戻さない（今の状態を見てもらう）
+     */
+    public function test_a_refused_judgement_reopens_with_the_choice_and_the_comment(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $request = $this->submittedFor($w);
+        $action  = route('approvals.requests.headReview', $request);
+        $version = (string) $request->lock_version;
+
+        // 入力の検査で断られた（2,001 文字）
+        $long = str_repeat('あ', 2001);
+        $this->act($w['head'], $request, 'approvals.requests.headReview', ['result' => 'return', 'comment' => $long])
+            ->assertRedirect(route('approvals.requests.show', $request));
+        $html = $this->showHtml($w['head'], $request);
+        $this->assertStringContainsString('x-init="open(\'return\')"', $html);
+        $form = $this->parseForm($html, 'action="' . $action . '"');
+        $this->assertSame($long, $form['fields']['comment']);
+        $this->assertSame($version, $form['fields']['lock_version']);
+        $this->assertStringContainsString('コメントは2000文字以下で入力してください。', $this->formOf($html, $action), '断られた理由が小窓に無い');
+
+        // コメントの不足で断られた（Workflow の断り）
+        $this->act($w['head'], $request, 'approvals.requests.headReview', ['result' => 'return', 'comment' => ''])
+            ->assertRedirect(route('approvals.requests.show', $request));
+        $html = $this->showHtml($w['head'], $request);
+        $this->assertStringContainsString('x-init="open(\'return\')"', $html);
+        $this->assertStringContainsString('「差戻し」にはコメントが必要です。', $this->formOf($html, $action), '断られた理由が小窓に無い');
+
+        // 先を越された（開いていたあいだに版が進んだ。部門長の交代で担当が移って戻ったなど）ときは開き直さない。今の版で描く
+        DB::table('approval_requests')->where('id', $request->id)->increment('lock_version');
+        $this->actingAs($w['head'])->post($action, ['result' => 'return', 'comment' => '差し戻します', 'lock_version' => $version])
+            ->assertRedirect(route('approvals.requests.show', $request));
+        $html = $this->showHtml($w['head'], $request);
+        $this->assertStringContainsString('部門長としての判断', $html, '前提: 判断の欄が出ていない');
+        $this->assertStringNotContainsString('x-init="open(', $html);
+        $form = $this->parseForm($html, 'action="' . $action . '"');
+        $this->assertSame('', $form['fields']['comment']);
+        $this->assertSame((string) ($request->lock_version + 1), $form['fields']['lock_version']);
+    }
+
+    /** 取り下げ・条件確認も、入力の誤りで断られたら打ったコメントで小窓を開き直す。先を越されたときは開き直さない（Task 19 の C8） */
+    public function test_a_refused_withdrawal_or_condition_reopens_with_the_comment(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $long = str_repeat('い', 2001);
+
+        $request = $this->submittedFor($w);
+        $action  = route('approvals.requests.withdraw', $request);
+        $this->act($w['applicant'], $request, 'approvals.requests.withdraw', ['comment' => $long])
+            ->assertRedirect(route('approvals.requests.show', $request));
+        $html = $this->showHtml($w['applicant'], $request);
+        $this->assertStringContainsString('confirmWithdraw: true', $html);
+        $this->assertSame($long, $this->parseForm($html, 'action="' . $action . '"')['fields']['comment']);
+        $this->assertStringContainsString('コメントは2000文字以下で入力してください。', $this->formOf($html, $action), '断られた理由が小窓に無い');
+
+        // 先を越された（開いていたあいだに部門長が承認した）ときは開き直さない
+        $stale = (string) $request->fresh()->lock_version;
+        $this->act($w['head'], $request, 'approvals.requests.headReview', ['result' => 'approve']);
+        $this->actingAs($w['applicant'])->post($action, ['comment' => '取り下げます', 'lock_version' => $stale])
+            ->assertRedirect(route('approvals.requests.show', $request));
+        $html = $this->showHtml($w['applicant'], $request);
+        $this->assertStringContainsString('confirmWithdraw: false', $html);
+        $this->assertSame('', $this->parseForm($html, 'action="' . $action . '"')['fields']['comment']);
+
+        // 条件の確認
+        $conditional = $this->toPresident($w);
+        $this->act($w['president'], $conditional, 'approvals.requests.decide', ['result' => 'conditional', 'comment' => '見積りを 2 社から取ること']);
+        $action = route('approvals.requests.confirmCondition', $conditional);
+        $this->act($w['applicant'], $conditional, 'approvals.requests.confirmCondition', ['comment' => $long])
+            ->assertRedirect(route('approvals.requests.show', $conditional));
+        $html = $this->showHtml($w['applicant'], $conditional);
+        $this->assertStringContainsString('confirmCondition: true', $html);
+        $this->assertSame($long, $this->parseForm($html, 'action="' . $action . '"')['fields']['comment']);
+        $this->assertStringContainsString('コメントは2000文字以下で入力してください。', $this->formOf($html, $action), '断られた理由が小窓に無い');
+    }
 }

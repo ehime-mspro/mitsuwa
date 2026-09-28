@@ -109,6 +109,8 @@ class RequestActionController extends Controller
 
     /**
      * Workflow を呼び、詳細の画面へ戻す（断られたら理由、先を越されたら「すでに処理されています」）。
+     * 断られたとき（コメントが要る判断のコメントの不足など）は、選んだ判断と打ったコメントも戻す（画面が小窓を開き直す。
+     * 入力の検査で断られたときと同じ。Task 19 の C8）。先を越されたときは戻さない（今の状態を見てもらう）
      *
      * @param Closure(): void $action
      * @param string|Closure(): string $success
@@ -122,7 +124,7 @@ class RequestActionController extends Controller
         } catch (WorkflowConflict) {
             return $show->with('error', WorkflowConflict::MESSAGE);
         } catch (WorkflowRefused $e) {
-            return $show->with('error', implode(' ', $e->reasons));
+            return $show->withInput()->with('error', implode(' ', $e->reasons));
         }
 
         return $show->with('success', $success instanceof Closure ? $success() : $success);
