@@ -747,4 +747,35 @@ class RequestActionTest extends TestCase
             $this->assertStringNotContainsString($note, $this->showHtml($viewer, $request), $who);
         }
     }
+
+    /**
+     * 押せない判断の理由の 2 行目は、段階ごとに次の手を言う（Task 19 の C7。利用者の決定 2026-09-28。Task 15 の点検の m-2）。
+     * 部門長の段階は取り下げて出し直すか決裁の管理者に相談・審査の段階はほかの審査担当者・社長の段階は社長の指定を変えられる
+     * 基幹の管理者（決裁の管理者には替えられない。要件 3.2・4.7）
+     */
+    public function test_the_refusal_says_how_to_move_on_at_each_stage(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $w['reviewDept']->reviewers()->attach($w['applicant']->id);   // 申請者も審査担当者（ほかにもう 1 人いる）
+        $request = $this->submittedFor($w);
+
+        // 部門長の段階（申請のあとで申請者が部門長になった）
+        $w['dept']->update(['head_user_id' => $w['applicant']->id]);
+        $html = $this->showHtml($w['applicant'], $request);
+        $this->assertStringContainsString('取り下げて出し直すか、決裁の管理者に相談してください。', $html);
+        $this->assertStringNotContainsString('担当を替えるには', $html);
+
+        // 審査の段階
+        $w['dept']->update(['head_user_id' => $w['head']->id]);
+        $this->act($w['head'], $request, 'approvals.requests.headReview', ['result' => 'approve']);
+        $this->assertStringContainsString('ほかの審査担当者が判断します。', $this->showHtml($w['applicant'], $request));
+
+        // 社長の段階（申請のあとで申請者が社長に指定された）
+        $this->act($w['reviewer'], $request, 'approvals.requests.review', ['result' => 'ok']);
+        $this->makePresident($w['applicant']);
+        $html = $this->showHtml($w['applicant'], $request);
+        $this->assertStringContainsString('社長の指定を変えられるのは基幹の管理者です。急ぐときは取り下げてください。', $html);
+        $this->assertStringNotContainsString('決裁の管理者に相談してください', $html);
+    }
 }

@@ -166,7 +166,12 @@
     {{-- 担当に当たるが自分の申請なので判断できない（D16）。押せないボタンは span で包んで理由を付ける（Bug #43） --}}
     <section class="bg-amber-50 rounded-lg border border-amber-200 mb-5 px-5 py-4">
         <p id="judge-refusal" class="text-[13px] font-semibold text-amber-900 mb-1">{{ $refusal }}</p>
-        <p class="text-[12px] text-amber-800 mb-3">{{ $waiting->kind === \App\Enums\ApprovalStepKind::Review ? 'ほかの審査担当者が判断します。' : '担当を替えるには、決裁の管理者に相談してください。' }}</p>
+        {{-- 2 行目は段階ごとの次の手（Task 19 の C7。社長の指定を変えられるのは基幹の管理者だけ。要件 3.2・4.7） --}}
+        <p class="text-[12px] text-amber-800 mb-3">{{ match ($waiting->kind) {
+            \App\Enums\ApprovalStepKind::Review    => 'ほかの審査担当者が判断します。',
+            \App\Enums\ApprovalStepKind::Head      => '取り下げて出し直すか、決裁の管理者に相談してください。',
+            \App\Enums\ApprovalStepKind::President => '社長の指定を変えられるのは基幹の管理者です。急ぐときは取り下げてください。',
+        } }}</p>
         <div class="flex flex-wrap gap-2">
             @foreach(\App\Enums\ApprovalStepResult::allowedFor($waiting->kind) as $choice)
                 <span title="{{ $refusal }}" style="display: inline-flex;">
