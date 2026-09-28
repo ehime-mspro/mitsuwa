@@ -165,12 +165,12 @@
 @elseif($refusal)
     {{-- 担当に当たるが自分の申請なので判断できない（D16）。押せないボタンは span で包んで理由を付ける（Bug #43） --}}
     <section class="bg-amber-50 rounded-lg border border-amber-200 mb-5 px-5 py-4">
-        <p class="text-[13px] font-semibold text-amber-900 mb-1">{{ $refusal }}</p>
+        <p id="judge-refusal" class="text-[13px] font-semibold text-amber-900 mb-1">{{ $refusal }}</p>
         <p class="text-[12px] text-amber-800 mb-3">{{ $waiting->kind === \App\Enums\ApprovalStepKind::Review ? 'ほかの審査担当者が判断します。' : '担当を替えるには、決裁の管理者に相談してください。' }}</p>
         <div class="flex flex-wrap gap-2">
             @foreach(\App\Enums\ApprovalStepResult::allowedFor($waiting->kind) as $choice)
                 <span title="{{ $refusal }}" style="display: inline-flex;">
-                    <button type="button" disabled class="px-4 py-2 rounded-md text-[13px] font-semibold border border-gray-300 bg-white text-gray-400 cursor-not-allowed">{{ $choice->labelFor($waiting->kind) }}</button>
+                    <button type="button" disabled aria-describedby="judge-refusal" class="px-4 py-2 rounded-md text-[13px] font-semibold border border-gray-300 bg-white text-gray-400 cursor-not-allowed">{{ $choice->labelFor($waiting->kind) }}</button>
                 </span>
             @endforeach
         </div>

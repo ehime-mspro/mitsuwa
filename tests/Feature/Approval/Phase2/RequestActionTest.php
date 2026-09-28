@@ -664,4 +664,26 @@ class RequestActionTest extends TestCase
             ->assertSessionHas('error', WorkflowConflict::MESSAGE);
         $this->assertSame(ApprovalStatus::HeadReview, $request->fresh()->status);
     }
+
+    /** 押せない理由の段落に押せないボタンを紐づける（Bug #43 の後半。Task 15 の点検の m-3。次の手の文言〈m-2〉は Task 19 で利用者に確かめる） */
+    public function test_the_refusal_is_tied_to_the_disabled_buttons(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $request = $this->submittedFor($w);
+        $w['dept']->update(['head_user_id' => $w['applicant']->id]);   // 申請のあとで申請者が部門長になった
+
+        $html = $this->showHtml($w['applicant'], $request);
+        $this->assertStringContainsString('<p id="judge-refusal"', $html);
+        $this->assertSame(2, substr_count($html, 'disabled aria-describedby="judge-refusal"'));   // 承認・差戻し
+
+        // 社長の段階（申請のあとで申請者が社長に指定された）
+        $w['dept']->update(['head_user_id' => $w['head']->id]);
+        $this->act($w['head'], $request, 'approvals.requests.headReview', ['result' => 'approve']);
+        $this->act($w['reviewer'], $request, 'approvals.requests.review', ['result' => 'ok']);
+        $this->makePresident($w['applicant']);
+
+        $html = $this->showHtml($w['applicant'], $request);
+        $this->assertSame(4, substr_count($html, 'disabled aria-describedby="judge-refusal"'));   // 可・条可・差戻し・否
+    }
 }
