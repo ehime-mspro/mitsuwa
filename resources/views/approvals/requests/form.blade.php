@@ -224,7 +224,7 @@
                         <span class="text-[11px] text-gray-400" x-text="file.size"></span>
                         <span class="ml-auto inline-flex items-center gap-3">
                             <button type="button" x-show="confirmingId !== file.id" @click="confirmingId = file.id" class="text-[12px] text-red-600 hover:underline cursor-pointer">外す</button>
-                            <button type="button" x-show="confirmingId === file.id" @click="remove(file)" class="text-[12px] font-semibold text-red-600 hover:underline cursor-pointer">外す（確定）</button>
+                            <button type="button" x-show="confirmingId === file.id" @click="remove(file)" :disabled="removing" class="text-[12px] font-semibold text-red-600 hover:underline cursor-pointer disabled:cursor-not-allowed disabled:opacity-50">外す（確定）</button>
                             <button type="button" x-show="confirmingId === file.id" @click="confirmingId = null" class="text-[12px] text-gray-500 hover:underline cursor-pointer">やめる</button>
                         </span>
                     </li>
@@ -370,6 +370,7 @@ function approvalAttachments() {
         successMessage: '',
         errorMessage: '',
         confirmingId: null,
+        removing: false,
         busyMessage: '送っている途中です。終わってから、もう一度選んでください。',
 
         choose: function (event) {
@@ -462,8 +463,13 @@ function approvalAttachments() {
             return text === '' ? line : text + '\n' + line;
         },
 
+        // 外す。⚠ 返事が来るまで印を立てて押せなくする（同じ添付を 2 回外しに行かない。Task 19 の B4）
         remove: function (file) {
             var self = this;
+            if (self.removing) {
+                return;
+            }
+            self.removing = true;
             self.successMessage = '';
             self.errorMessage = '';
 
@@ -484,12 +490,14 @@ function approvalAttachments() {
                 return res.json();
             })
             .then(function (data) {
+                self.removing = false;
                 self.confirmingId = null;
                 if (!data) return;
                 self.files = self.files.filter(function (f) { return f.id !== file.id; });
                 self.successMessage = data.message;
             })
             .catch(function () {
+                self.removing = false;
                 self.confirmingId = null;
                 self.errorMessage = '通信に失敗しました。もう一度お試しください。';
             });

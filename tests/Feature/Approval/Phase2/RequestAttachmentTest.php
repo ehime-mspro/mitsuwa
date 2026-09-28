@@ -698,4 +698,29 @@ class RequestAttachmentTest extends TestCase
         $this->assertStringContainsString('self.errorMessage.indexOf(self.busyMessage) === -1', $busy);
         $this->assertMatchesRegularExpression('/return;\s*\}$/', $busy, '送っている途中に落としたファイルを送る列に足している');
     }
+
+    /**
+     * 「外す（確定）」は返事が来るまで押せない（同じ添付の 2 度押しで「外しました」と「見つかりませんでした」が並ばない。
+     * Task 19 の B4）。送る前に印を立て（立っていれば送らない）、返事（外せた・断られた・通信の失敗）で下ろす
+     */
+    public function test_the_remove_button_waits_for_the_answer(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+
+        $html = $this->formHtml($w, $this->draftFor($w));
+
+        $this->assertSame(1, preg_match('/<button\b[^>]*>外す（確定）<\/button>/u', $html, $m), '「外す（確定）」が見つからない');
+        $this->assertStringContainsString(':disabled="removing"', $m[0]);
+        foreach (['disabled:cursor-not-allowed', 'disabled:opacity-50'] as $class) {
+            $this->assertStringContainsString($class, $m[0], "押せないときの見た目（{$class}）が無い");
+        }
+        $this->assertStringContainsString('removing: false,', $html);
+
+        $remove = $this->jsBlock($html, 'remove: function (file)');
+        $this->assertMatchesRegularExpression('/^\{\s*var self = this;\s*if \(self\.removing\) \{\s*return;\s*\}\s*self\.removing = true;/u', $remove);
+        $this->assertStringContainsString('self.removing = false;', $this->jsBlock($remove, '.then(function (data)'));
+        // 通信の失敗は最後の .catch（手前の .catch は断られた理由が JSON で読めないときで、次の .then へ null を渡す）
+        $this->assertStringContainsString('self.removing = false;', $this->jsBlock(substr($remove, strrpos($remove, '.catch(function ()')), '.catch(function ()'));
+    }
 }
