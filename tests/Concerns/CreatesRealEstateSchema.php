@@ -65,7 +65,6 @@ trait CreatesRealEstateSchema
 
         // 買主アンケート。本番も raw SQL 管理でマイグレーションに無い。
         // CustomerController::show() が eager load するので、顧客詳細を HTTP で叩くには必要。
-        // （回答テーブル buyer_survey_answers は show が触らないので作らない）
         Schema::create('buyer_surveys', function (Blueprint $t) {
             $t->id();
             $t->unsignedBigInteger('buyer_id');
@@ -73,9 +72,25 @@ trait CreatesRealEstateSchema
             $t->date('survey_date');
             $t->unsignedBigInteger('project_id')->nullable();
             $t->unsignedInteger('staff_user_id')->nullable();
-            $t->string('staff_name', 50)->nullable();
+            $t->string('staff_name', 100)->nullable();
             $t->text('memo')->nullable();
             $t->timestamps();
+        });
+
+        // アンケートの回答。本番も raw SQL 管理でマイグレーションに無い。
+        // 顧客 CSV 取込の確定が書く（Admin\CustomerImportController）。
+        // 実 DB（2026-09-26 に読み取り）:
+        //   id / survey_id / question_id / answer_value text / question_snapshot json NOT NULL
+        //   / created_at・updated_at（CURRENT_TIMESTAMP 既定値）+ UNIQUE (survey_id, question_id)
+        // ⚠ 一意制約も張る（無いと、本番だけで取込全体が巻き戻る失敗をテストが隠す。Bug #60）
+        Schema::create('buyer_survey_answers', function (Blueprint $t) {
+            $t->id();
+            $t->unsignedBigInteger('survey_id');
+            $t->unsignedBigInteger('question_id');
+            $t->text('answer_value')->nullable();
+            $t->json('question_snapshot');
+            $t->timestamps();
+            $t->unique(['survey_id', 'question_id'], 'uq_survey_answer');
         });
 
         Schema::create('re_suppliers', function (Blueprint $t) {

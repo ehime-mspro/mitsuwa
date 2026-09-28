@@ -345,10 +345,13 @@ class LoginGuideTest extends TestCase
      *   —— この試験ファイルは `tests/` にあり、走査対象（`app/` + `routes/`）にそもそも入らない。
      *   本当の理由は `Approval\UserImportController::execute()` の**コメント**に
      *   `OneTimeAction::claimFrom()` という文字列があること。コメントを落とさずに数えると、
-     *   実測で呼び出し数が **6**（本物の呼び出し 5 ＋ このコメント 1）になる。もし本物の呼び出しを
-     *   1 か所消す変異が起きても、コメントの 1 件が残るので合計は 5 のまま —— `>= 5` の下限が
-     *   すり抜けに気づけない（実測で確認済み）。コメントを落として初めて実測が **5** になり、
-     *   下限が本物の検出力を持つ。
+     *   実測で呼び出し数が **7**（本物の呼び出し 6 ＋ このコメント 1）になる。もし本物の呼び出しを
+     *   1 か所消す変異が起きても、コメントの 1 件が残るので合計は 6 のまま —— `>= 6` の下限が
+     *   すり抜けに気づけない（2026-09-18 に本物 5 の時点で実測で確認済み）。コメントを落として初めて
+     *   実測が **6** になり、下限が本物の検出力を持つ。
+     * ⚠ **呼び出しを足したら下限も上げる** —— 2026-09-27 に顧客 CSV の取込の確定
+     *   （`Admin\CustomerImportController::execute()`）を足して本物が 5 → 6 になった。下限を 5 のままにすると、
+     *   決裁の 1 か所を消してもこのテストは緑のままだった（同日のレビューで実測）。
      * ⚠ **これでも捕まえられない書き方がある** —— `[OneTimeAction::class, 'claim']` や
      *   `call_user_func` 経由の動的呼び出し、`app/` `routes/` の外（Blade・DB に保存された文字列など）
      *   から呼ぶ経路は、この正規表現走査では検出できない。
@@ -409,9 +412,9 @@ class LoginGuideTest extends TestCase
         );
 
         $this->assertGreaterThanOrEqual(
-            5,
+            6,
             $claimFromCallSites,
-            'claimFrom() の呼び出しが減っている（store / resetPassword / execute / reissue / reissueBulk の 5 箇所が既定）'
+            'claimFrom() の呼び出しが減っている（決裁の store / resetPassword / execute / reissue / reissueBulk の 5 箇所と、顧客 CSV の取込の execute の 1 箇所が既定）'
         );
     }
 
