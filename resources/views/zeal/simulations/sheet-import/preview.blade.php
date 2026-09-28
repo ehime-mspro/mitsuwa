@@ -226,13 +226,21 @@
            style="padding:8px 20px; font-size:13px; font-weight:600; color:#6b7280; border:1px solid #d1d5db; border-radius:6px; text-decoration:none; background:#fff;">キャンセル</a>
 
         @if($hasAnyUpdates)
-            <form method="POST" action="{{ route('zeal.simulations.sheet-import.apply', $simulation) }}" style="display:inline;">
+            {{-- ⚠ 反映は確認画面 1 つにつき 1 回だけ（hidden の import_token）で、見せた内容と同じものだけを書く（hidden の plan_digest）。
+                 送信中はボタンを押せなくする（二度押し止めの部品。設計書 2026-09-28-import-double-submit-design.md §4.3・§4.5） --}}
+            @include('_partials._submit_once')
+            <form method="POST" action="{{ route('zeal.simulations.sheet-import.apply', $simulation) }}" style="display:inline;"
+                  x-data="submitOnce()" x-on:submit="onSubmit($event)" x-on:pageshow.window="onPageShow($event)">
                 @csrf
                 <input type="hidden" name="year_month" value="{{ $yearMonth }}">
-                <button type="submit"
-                        style="padding:8px 20px; font-size:13px; font-weight:700; color:#fff; border:1px solid #7c3aed; border-radius:6px; background:#7c3aed; cursor:pointer;">
+                <input type="hidden" name="plan_digest" value="{{ $planDigest }}">
+                <input type="hidden" name="import_token" value="{{ $importToken }}">
+                <button type="submit" :disabled="submitting"
+                        class="cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
+                        style="padding:8px 20px; font-size:13px; font-weight:700; color:#fff; border:1px solid #7c3aed; border-radius:6px; background:#7c3aed;">
                     試算表に反映する
                 </button>
+                <span role="status" x-text="submitting ? '反映しています…' : ''" style="display: inline-block; margin-left: 12px; font-size: 13px; color: #374151;"></span>
             </form>
         @else
             <button type="button" disabled
