@@ -610,4 +610,28 @@ class RequestAttachmentTest extends TestCase
         }
         $this->assertNull($added->fresh()->removed_at);
     }
+
+    /**
+     * 日本語だけで拡張子の無い名前（例「見積書」）でも開ける。ASCII の代わりの名前が空になっても 500 にしない
+     * （提出したあとは誰も開けず、直すこともできなくなる）。⚠ 直し B を前提にする
+     */
+    public function test_a_name_without_ascii_letters_still_opens(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $draft = $this->draftFor($w);
+        foreach (['見積書', '😀'] as $name) {
+            $this->upload($w['applicant'], $draft, $this->pdf($name))->assertOk();
+        }
+        app(Workflow::class)->submit($draft->refresh(), $w['applicant']);
+
+        foreach (['見積書', '😀'] as $name) {
+            $attachment = ApprovalAttachment::where('original_name', $name)->sole();
+            $response   = $this->actingAs($w['head'])->get(route('approvals.attachments.show', $attachment));
+            $this->assertSame(200, $response->getStatusCode(), $name);
+            $disposition = $response->headers->get('Content-Disposition');
+            $this->assertStringStartsWith('inline; filename=attachment.pdf;', $disposition, $name);
+            $this->assertStringContainsString("filename*=utf-8''" . rawurlencode($name), $disposition, $name);
+        }
+    }
 }

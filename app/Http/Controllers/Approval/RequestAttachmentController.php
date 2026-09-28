@@ -14,6 +14,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Symfony\Component\HttpFoundation\HeaderUtils;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -116,15 +117,24 @@ class RequestAttachmentController extends Controller
             ]);
         }
 
-        // 日本語の名前は filename*（UTF-8）で渡す（Laravel が ASCII の代わりの名前も付ける）
+        // 日本語の名前は filename*（UTF-8）で渡し、古いブラウザ用に ASCII の代わりの名前も付ける。
+        // ⚠ 代わりの名前を Laravel に任せない。Str::ascii() は仮名・漢字を消すので、「見積書」のように日本語だけで拡張子の無い
+        //   名前は代わりの名前が空になり、Symfony が例外を投げて 500 になる（提出したあとは誰も開けず、直すこともできない）。
+        //   ASCII で残らなければ「attachment.拡張子」にする
+        $name     = $approvalAttachment->original_name;
+        $fallback = trim(str_replace(['%', '/', '\\'], '', Str::ascii($name)));
+        if ($fallback === '' || ! preg_match('/^[\x20-\x7e]+$/', $fallback)) {
+            $fallback = 'attachment.' . $approvalAttachment->extension();
+        }
+
         return $disk->response(
             $approvalAttachment->stored_path,
-            $approvalAttachment->original_name,
+            $name,
             [
                 'Content-Type'           => ApprovalAttachment::TYPES[$approvalAttachment->extension()],
                 'X-Content-Type-Options' => 'nosniff',
+                'Content-Disposition'    => HeaderUtils::makeDisposition($approvalAttachment->opensInline() ? 'inline' : 'attachment', $name, $fallback),
             ],
-            $approvalAttachment->opensInline() ? 'inline' : 'attachment',
         );
     }
 
