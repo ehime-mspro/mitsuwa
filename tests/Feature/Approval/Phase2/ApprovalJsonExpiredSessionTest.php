@@ -10,8 +10,11 @@ use Tests\Concerns\BuildsApprovalFixtures;
 use Tests\TestCase;
 
 /**
- * 決裁の URL の JSON の 419（画面を開いたまま時間がたち、セッションが切れた）と 401（ログアウトした）を日本語にする
- * （bootstrap/app.php。Task 19 の B5）。申請書の添付の欄は、断られた理由としてこの文をそのまま出す。
+ * 決裁の URL の JSON の 419 と 401 を日本語にする（bootstrap/app.php。Task 19 の B5・N-2）。申請書の添付の欄は、断られた理由として
+ * この文をそのまま出す。
+ *   419 … 画面の送信の鍵（CSRF）が合わない＝画面を開いたまま時間がたってセッションが切れた・ほかの画面でログアウトした
+ *         （ログアウトは鍵を作り直すので、ログインの確かめより先にこちらで断られる。Task 19 の手元のブラウザで実測）
+ *   401 … 鍵は合うがログインが切れた（ほかの画面でパスワードを変えたなど）
  *
  * ⚠ テストでは CSRF の確かめ（ValidateCsrfToken）が素通りするので、419 は例外そのものを投げる見本のルートで測る
  *   （送信の上限の 413 と同じ見方。RequestAttachmentTest）
@@ -21,7 +24,7 @@ class ApprovalJsonExpiredSessionTest extends TestCase
     use RefreshDatabase;
     use BuildsApprovalFixtures;
 
-    private const EXPIRED = '画面を開いてから時間がたったため、送れませんでした。画面を開き直して、もう一度やり直してください。';
+    private const EXPIRED = '画面を開いてから時間がたったか、ほかの画面でログアウトしたため、送れませんでした。画面を開き直して、もう一度やり直してください。';
 
     private const SIGNED_OUT = 'ログインが切れました。ログインし直してから、もう一度やり直してください。';
 
