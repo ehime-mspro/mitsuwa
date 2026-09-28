@@ -1,6 +1,8 @@
 {{-- 申請の詳細の操作（設計書 §5.12）。出すのは RequestPermissions がこの人に「今できる」と判定したものだけ。
      押せないけれど役割のある人（自分の申請の担当に当たる人。D16）には理由を出す（Bug #43）。
-     ⚠ 判断・条件確認・取り下げのフォームは、描いたときの lock_version を送る（古い画面から押した操作を断る。計画 §0.3） --}}
+     ⚠ 判断・条件確認・取り下げのフォームは、描いたときの lock_version を送る（古い画面から押した操作を断る。計画 §0.3）
+     ⚠ 3 つのフォームの確定のボタンは、1 回押したら押せなくする（approvalSubmitOnce。Task 19 の C2）。送る値は hidden で持ち、
+       ボタンに name・value を持たせない（送る前にボタンを押せなくすると、そのボタンの値は送られない） --}}
 @php
     $judgeable = $permissions->judgeableStep();
     $refusal   = $permissions->judgeRefusal();
@@ -41,7 +43,8 @@
             {{-- 取り下げの確認（コメントは任意。D17） --}}
             <div x-show="confirmWithdraw" x-cloak class="fixed inset-0 bg-black/35 z-50 flex items-center justify-center">
                 <div @click.outside="confirmWithdraw = false" class="bg-white rounded-xl w-full max-w-[480px] shadow-xl mx-4">
-                    <form method="POST" action="{{ route('approvals.requests.withdraw', $approvalRequest) }}">
+                    <form method="POST" action="{{ route('approvals.requests.withdraw', $approvalRequest) }}"
+                          x-data="approvalSubmitOnce()" x-on:submit="onSubmit($event)" x-on:pageshow.window="resetSubmit()">
                         @csrf
                         <input type="hidden" name="lock_version" value="{{ $approvalRequest->lock_version }}">
                         <div class="px-6 pt-5 text-[15px] font-bold text-gray-900">この申請を取り下げますか？</div>
@@ -50,9 +53,10 @@
                             <label for="withdraw-comment" class="block text-[12px] font-semibold text-gray-700 mb-1">コメント<span class="text-gray-400 font-normal ml-1">（任意）</span></label>
                             <textarea id="withdraw-comment" name="comment" rows="3" maxlength="2000" class="w-full px-2.5 py-2 border border-gray-300 rounded-md text-[13px] leading-relaxed"></textarea>
                         </div>
-                        <div class="px-6 pb-5 flex justify-end gap-2">
+                        <div class="px-6 pb-5 flex flex-wrap items-center justify-end gap-2">
+                            <span role="status" x-text="submitting ? '送っています…' : ''" class="text-[12px] text-gray-600 whitespace-nowrap"></span>
                             <button type="button" @click="confirmWithdraw = false" class="px-3.5 py-2 bg-white border border-gray-300 rounded-md text-[13px] cursor-pointer">キャンセル</button>
-                            <button type="submit" class="px-5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md text-[13px] font-semibold cursor-pointer">取り下げる</button>
+                            <button type="submit" :disabled="submitting" class="px-5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md text-[13px] font-semibold cursor-pointer disabled:cursor-not-allowed disabled:opacity-60">取り下げる</button>
                         </div>
                     </form>
                 </div>
@@ -71,7 +75,8 @@
 
         <div x-show="confirmCondition" x-cloak class="fixed inset-0 bg-black/35 z-50 flex items-center justify-center">
             <div @click.outside="confirmCondition = false" class="bg-white rounded-xl w-full max-w-[480px] shadow-xl mx-4">
-                <form method="POST" action="{{ route('approvals.requests.confirmCondition', $approvalRequest) }}">
+                <form method="POST" action="{{ route('approvals.requests.confirmCondition', $approvalRequest) }}"
+                      x-data="approvalSubmitOnce()" x-on:submit="onSubmit($event)" x-on:pageshow.window="resetSubmit()">
                     @csrf
                     <input type="hidden" name="lock_version" value="{{ $approvalRequest->lock_version }}">
                     <div class="px-6 pt-5 text-[15px] font-bold text-gray-900">条件を確認したことを記録しますか？</div>
@@ -80,9 +85,10 @@
                         <label for="condition-comment" class="block text-[12px] font-semibold text-gray-700 mb-1">コメント<span class="text-gray-400 font-normal ml-1">（任意）</span></label>
                         <textarea id="condition-comment" name="comment" rows="3" maxlength="2000" class="w-full px-2.5 py-2 border border-gray-300 rounded-md text-[13px] leading-relaxed"></textarea>
                     </div>
-                    <div class="px-6 pb-5 flex justify-end gap-2">
+                    <div class="px-6 pb-5 flex flex-wrap items-center justify-end gap-2">
+                        <span role="status" x-text="submitting ? '送っています…' : ''" class="text-[12px] text-gray-600 whitespace-nowrap"></span>
                         <button type="button" @click="confirmCondition = false" class="px-3.5 py-2 bg-white border border-gray-300 rounded-md text-[13px] cursor-pointer">キャンセル</button>
-                        <button type="submit" class="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-md text-[13px] font-semibold cursor-pointer">確認しました</button>
+                        <button type="submit" :disabled="submitting" class="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-md text-[13px] font-semibold cursor-pointer disabled:cursor-not-allowed disabled:opacity-60">確認しました</button>
                     </div>
                 </form>
             </div>
@@ -122,9 +128,13 @@
 
         <div x-show="choice !== null" x-cloak class="fixed inset-0 bg-black/35 z-50 flex items-center justify-center">
             <div @click.outside="choice = null" class="bg-white rounded-xl w-full max-w-[480px] shadow-xl mx-4">
-                <form method="POST" action="{{ route($judgeRoute, $approvalRequest) }}">
+                <form method="POST" action="{{ route($judgeRoute, $approvalRequest) }}"
+                      x-data="approvalSubmitOnce()" x-on:submit="onSubmit($event)" x-on:pageshow.window="resetSubmit()">
                     @csrf
                     <input type="hidden" name="lock_version" value="{{ $approvalRequest->lock_version }}">
+                    {{-- 選んだ判断（選ぶボタンの open() が決める）。選べる判断はサーバーが描く（選ぶボタンの open('…') と approvalJudge に
+                         渡す Js::from。Bug #47）。⚠ 確定のボタンに name・value を持たせない（Task 19 の C2） --}}
+                    <input type="hidden" name="result" :value="choice">
                     <div class="px-6 pt-5 text-[15px] font-bold text-gray-900">「<span x-text="label()"></span>」で確定しますか？</div>
                     <div class="px-6 py-4">
                         <label for="judge-comment" class="block text-[12px] font-semibold text-gray-700 mb-1">
@@ -135,13 +145,10 @@
                         <textarea id="judge-comment" name="comment" rows="5" maxlength="2000" :required="needsComment()"
                                   class="w-full px-2.5 py-2 border border-gray-300 rounded-md text-[13px] leading-relaxed"></textarea>
                     </div>
-                    <div class="px-6 pb-5 flex justify-end gap-2">
+                    <div class="px-6 pb-5 flex flex-wrap items-center justify-end gap-2">
+                        <span role="status" x-text="submitting ? '送っています…' : ''" class="text-[12px] text-gray-600 whitespace-nowrap"></span>
                         <button type="button" @click="choice = null" class="px-3.5 py-2 bg-white border border-gray-300 rounded-md text-[13px] cursor-pointer">キャンセル</button>
-                        {{-- ⚠ 判断の値はサーバーが描く（:value にすると往復テストが配線を拾えない。Bug #47）。選んだものだけを見せる --}}
-                        @foreach($choices as $choice)
-                            <button type="submit" name="result" value="{{ $choice->value }}" x-show="choice === '{{ $choice->value }}'"
-                                    class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-[13px] font-semibold cursor-pointer">確定する</button>
-                        @endforeach
+                        <button type="submit" :disabled="submitting" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-[13px] font-semibold cursor-pointer disabled:cursor-not-allowed disabled:opacity-60">確定する</button>
                     </div>
                 </form>
             </div>
@@ -181,3 +188,27 @@
         </div>
     </section>
 @endif
+
+@push('scripts')
+<script>
+{{-- 確定の二度押し止め（Task 19 の C2。手本は基幹の顧客取込の確定〈Bug #67〉）。判断・取り下げ・条件確認のフォームに付ける。
+     1 回目は通して印を立て、2 回目からは送信を取り消す。「戻る」で画面がそのまま戻ったとき（bfcache）は pageshow で印を下ろす
+     （Bug #65 と同じく persisted で絞らない。押しても版が古いので「すでに処理されています」で断られる）。
+     ⚠ x-data にアロー関数を書かない（Top trap #4） --}}
+function approvalSubmitOnce() {
+    return {
+        submitting: false,
+        onSubmit: function (event) {
+            if (this.submitting) {
+                event.preventDefault();
+                return;
+            }
+            this.submitting = true;
+        },
+        resetSubmit: function () {
+            this.submitting = false;
+        }
+    };
+}
+</script>
+@endpush

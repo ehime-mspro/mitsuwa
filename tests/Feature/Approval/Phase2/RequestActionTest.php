@@ -73,12 +73,14 @@ class RequestActionTest extends TestCase
         $form = $this->parseForm($html, 'action="' . route('approvals.requests.headReview', $request) . '"');
         $this->assertSame((string) $request->lock_version, $form['fields']['lock_version']);
         $this->assertArrayHasKey('_token', $form['fields']);
-        // 判断の値は、サーバーが描いた確定のボタンが送る（Bug #47）。押したボタンの result が一緒に送られる
-        //   ⚠ 値と「どの判断を選んだときに見せるか」を対で見る（値を入れ替えても本数は同じなので、数えるだけでは見逃す）
-        $this->assertStringContainsString('name="result" value="approve" x-show="choice === \'approve\'"', $html);
-        $this->assertStringContainsString('name="result" value="return" x-show="choice === \'return\'"', $html);
+        // 判断の値は、選んだ判断（choice）を hidden の result が送る。選べる判断はサーバーが描いた選ぶボタンの open('…')（Bug #47）。
+        //   確定のボタンは値を持たない（二度押し止めで押せなくすると、そのボタンの値は送られない。Task 19 の C2）
+        $this->assertArrayHasKey('result', $form['fields']);
+        $this->assertStringContainsString('<input type="hidden" name="result" :value="choice">', $html);
+        $this->assertStringContainsString('@click="open(\'approve\')"', $html);
+        $this->assertStringContainsString('@click="open(\'return\')"', $html);
 
-        $this->actingAs($w['head'])->post($form['action'], $form['fields'] + ['result' => 'approve'])
+        $this->actingAs($w['head'])->post($form['action'], array_merge($form['fields'], ['result' => 'approve']))
             ->assertRedirect(route('approvals.requests.show', $request))
             ->assertSessionHas('success', '承認しました。審査へ回りました。');
 
@@ -366,7 +368,7 @@ class RequestActionTest extends TestCase
         $this->act($w['head'], $request, 'approvals.requests.headReview', ['result' => 'approve']);
 
         $html = $this->showHtml($w['reviewer'], $request);
-        $this->assertStringContainsString('name="result" value="hold" x-show="choice === \'hold\'"', $html);
+        $this->assertStringContainsString('@click="open(\'hold\')"', $html);
         $form = $this->parseForm($html, 'action="' . route('approvals.requests.review', $request) . '"');
         $this->assertSame((string) $request->fresh()->lock_version, $form['fields']['lock_version']);
         $this->assertArrayHasKey('_token', $form['fields']);
@@ -376,7 +378,7 @@ class RequestActionTest extends TestCase
             ->assertSessionHas('success', '意見（保留）を送りました。社長へ回りました。');
 
         $html = $this->showHtml($w['president'], $request);
-        $this->assertStringContainsString('name="result" value="conditional" x-show="choice === \'conditional\'"', $html);
+        $this->assertStringContainsString('@click="open(\'conditional\')"', $html);
         $form = $this->parseForm($html, 'action="' . route('approvals.requests.decide', $request) . '"');
         $this->assertSame((string) $request->fresh()->lock_version, $form['fields']['lock_version']);
         $this->assertArrayHasKey('_token', $form['fields']);
@@ -818,5 +820,74 @@ class RequestActionTest extends TestCase
         $this->assertSame(2, substr_count($history, '新しい担当: '));
         $this->assertMatchesRegularExpression('/新しい担当: 三代目 部門長.*新しい担当: 二代目 部門長/su', $history);
         $this->assertSame($once, $queries(), '交代の記録が増えると問い合わせが増える');
+    }
+
+    /** 画面の JS の塊（$head の後の最初の { から、対になる } まで。Bug #47 の「中身を切り出して見る」） */
+    private function jsBlock(string $html, string $head): string
+    {
+        $start = strpos($html, $head);
+        $this->assertNotFalse($start, "{$head} が画面に無い");
+        $open  = strpos($html, '{', $start);
+        $depth = 0;
+        for ($i = $open, $len = strlen($html); $i < $len; $i++) {
+            if ($html[$i] === '{') {
+                $depth++;
+            } elseif ($html[$i] === '}' && --$depth === 0) {
+                return substr($html, $open, $i - $open + 1);
+            }
+        }
+        $this->fail("{$head} の波括弧が閉じていない");
+    }
+
+    /**
+     * 判断の「確定する」・取り下げ・条件確認の確定は、1 回押したら押せなくする（Task 19 の C2。利用者の決定 2026-09-28。手本は
+     * 基幹の顧客取込の確定〈Bug #67〉）。押したら印を立てて 2 回目の送信を取り消し、「送っています…」を出す。「戻る」で戻った
+     * 画面（pageshow）は押せるように戻す（押しても版が古いので「すでに処理されています」で断られる）。
+     * ⚠ 送る値は hidden で持つ（送る前にボタンを押せなくすると、そのボタンの name・value は送られない）
+     */
+    public function test_the_action_forms_are_sent_only_once_until_the_page_is_shown_again(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $request = $this->submittedFor($w);
+
+        $check = function (string $html, string $action, string $label): string {
+            $at = strpos($html, 'action="' . $action . '"');
+            $this->assertNotFalse($at, "{$label}のフォームが無い");
+            $open = strrpos(substr($html, 0, $at), '<form');
+            $form = substr($html, $open, strpos($html, '</form>', $at) - $open);
+            $tag  = substr($form, 0, strpos($form, '>') + 1);
+
+            // 送信の印はそのフォームそのものに付ける（Bug #47）。pageshow は window にしか届かない（Bug #65）
+            foreach (['x-data="approvalSubmitOnce()"', 'x-on:submit="onSubmit($event)"', 'x-on:pageshow.window="resetSubmit()"'] as $attribute) {
+                $this->assertStringContainsString($attribute, $tag, "{$label}のフォームに {$attribute} が無い");
+            }
+            $this->assertSame(1, preg_match('/<button type="submit"([^>]*)>' . $label . '<\/button>/u', $form, $m), "{$label}のボタンが 1 つでない");
+            foreach ([':disabled="submitting"', 'disabled:cursor-not-allowed', 'disabled:opacity-60'] as $attribute) {
+                $this->assertStringContainsString($attribute, $m[1], "{$label}のボタンに {$attribute} が無い");
+            }
+            $this->assertDoesNotMatchRegularExpression('/<button\b[^>]*\bname=/', $form, "{$label}のボタンが値を送っている（押せなくすると送られない）");
+            $this->assertStringContainsString('<span role="status" x-text="submitting ? \'送っています…\' : \'\'"', $form, "{$label}の「送っています…」が無い");
+
+            return $form;
+        };
+
+        // 判断（選んだ判断は hidden の result が送る）
+        $judge = $check($this->showHtml($w['head'], $request), route('approvals.requests.headReview', $request), '確定する');
+        $this->assertStringContainsString('<input type="hidden" name="result" :value="choice">', $judge);
+        // 取り下げ
+        $html = $this->showHtml($w['applicant'], $request);
+        $check($html, route('approvals.requests.withdraw', $request), '取り下げる');
+        // 1 回目は通して印を立て、2 回目は取り消す。「戻る」で戻った画面では印を下ろす
+        $script = $this->jsBlock($html, 'function approvalSubmitOnce()');
+        $this->assertStringContainsString('submitting: false,', $script);
+        $this->assertMatchesRegularExpression('/^\{\s*if \(this\.submitting\) \{\s*event\.preventDefault\(\);\s*return;\s*\}\s*this\.submitting = true;\s*\}$/', $this->jsBlock($script, 'onSubmit: function (event)'));
+        $this->assertMatchesRegularExpression('/^\{\s*this\.submitting = false;\s*\}$/', $this->jsBlock($script, 'resetSubmit: function ()'));
+
+        // 条件確認
+        $this->act($w['head'], $request, 'approvals.requests.headReview', ['result' => 'approve']);
+        $this->act($w['reviewer'], $request, 'approvals.requests.review', ['result' => 'ok']);
+        $this->act($w['president'], $request, 'approvals.requests.decide', ['result' => 'conditional', 'comment' => '見積りを 2 社から取ること']);
+        $check($this->showHtml($w['applicant'], $request), route('approvals.requests.confirmCondition', $request), '確認しました');
     }
 }

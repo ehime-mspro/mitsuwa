@@ -62,9 +62,15 @@
         @endif
     </p>
 
+    {{-- 二度押し止め（Task 19 の C2。手本は基幹の顧客取込の確定〈Bug #67〉）: 1 回目は通して印を立て、2 回目からは送信を取り消す。
+         送っている間はボタンを押せなくして「送っています…」を出し、「戻る」で画面がそのまま戻ったとき（bfcache）は pageshow で印を下ろす。
+         ⚠ 保存か提出かは hidden の intent で送る（ボタンに name・value を持たせない。送る前にボタンを押せなくすると、そのボタンの値は送られない） --}}
     <form method="POST" action="{{ $editing ? route('approvals.requests.update', $approvalRequest) : route('approvals.requests.store') }}"
+          x-on:submit="onSubmit($event)" x-on:pageshow.window="resetSubmit()"
           class="bg-white rounded-lg border border-gray-200 px-5 py-5 space-y-5">
         @csrf
+        {{-- 保存か提出か。押したボタンが setIntent で書く（入力欄で Enter を押したときは、先頭の submit ボタン＝保存が押される） --}}
+        <input type="hidden" name="intent" value="save" x-ref="intent">
         @if($editing)
             @method('PUT')
             {{-- 描いたときの版（別の画面で先に保存されていたら、保存を断る。計画 §0.3）。入力の誤りで戻ったときは戻る前の版のまま --}}
@@ -176,21 +182,23 @@
 
         <div class="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-gray-100">
             <a href="{{ $editing ? route('approvals.requests.show', $approvalRequest) : route('approvals.home') }}" class="text-[13px] text-gray-500 hover:underline">やめる</a>
-            <div class="flex flex-wrap gap-2">
+            <div class="flex flex-wrap items-center gap-2">
+                <span role="status" x-text="submitting && !confirmSubmit ? '送っています…' : ''" class="text-[12px] text-gray-600 whitespace-nowrap"></span>
                 {{-- ⚠ 入力欄で Enter を押したときに送られるのは、この「保存」（先頭の submit ボタン）。提出にはならない --}}
-                <button type="submit" name="intent" value="save" class="px-4 py-2 bg-white border border-gray-300 rounded-md text-[13px] font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer">{{ $returned ? '保存する' : '下書きを保存' }}</button>
-                <button type="button" @click="confirmSubmit = true" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-[13px] font-semibold cursor-pointer">{{ $submitLabel }}</button>
+                <button type="submit" @click="setIntent('save')" :disabled="submitting" class="px-4 py-2 bg-white border border-gray-300 rounded-md text-[13px] font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60">{{ $returned ? '保存する' : '下書きを保存' }}</button>
+                <button type="button" @click="confirmSubmit = true" :disabled="submitting" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-[13px] font-semibold cursor-pointer disabled:cursor-not-allowed disabled:opacity-60">{{ $submitLabel }}</button>
             </div>
         </div>
 
-        {{-- 提出の確認（要件 4.1）。ここの submit が intent=submit を送る --}}
+        {{-- 提出の確認（要件 4.1）。ここの submit が hidden の intent を submit にして送る（setIntent） --}}
         <div x-show="confirmSubmit" x-cloak class="fixed inset-0 bg-black/35 z-50 flex items-center justify-center">
             <div @click.outside="confirmSubmit = false" class="bg-white rounded-xl w-full max-w-[440px] shadow-xl mx-4 px-6 py-5">
                 <p class="text-[15px] font-bold text-gray-900 mb-2">この内容で{{ $returned ? '出し直し' : '提出' }}しますか？</p>
                 <p class="text-[12px] text-gray-500 mb-4">部門長（申請者が部門長なら省略）・審査・社長の順に回ります。{{ $returned ? '出し直した' : '提出した' }}あとは、差し戻されるまで中身を直せません。</p>
-                <div class="flex justify-end gap-2">
+                <div class="flex flex-wrap items-center justify-end gap-2">
+                    <span role="status" x-text="submitting && confirmSubmit ? '送っています…' : ''" class="text-[12px] text-gray-600 whitespace-nowrap"></span>
                     <button type="button" @click="confirmSubmit = false" class="px-3.5 py-2 bg-white border border-gray-300 rounded-md text-[13px] cursor-pointer">キャンセル</button>
-                    <button type="submit" name="intent" value="submit" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-[13px] font-semibold cursor-pointer">{{ $submitLabel }}</button>
+                    <button type="submit" @click="setIntent('submit')" :disabled="submitting" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-[13px] font-semibold cursor-pointer disabled:cursor-not-allowed disabled:opacity-60">{{ $submitLabel }}</button>
                 </div>
             </div>
         </div>
@@ -259,6 +267,28 @@ function approvalRequestForm() {
         numberError: '',
         pendingTypeId: null,
         confirmSubmit: false,
+        // 保存・提出の二度押し止め（Task 19 の C2）。1 回目で印を立て、2 回目からは送信を取り消す
+        submitting: false,
+
+        // 保存か提出かを hidden の intent に書く（押したボタンの @click。送信の submit より先に走る）。
+        // ⚠ ボタンに name・value を持たせない（onSubmit で押せなくすると、押したボタンの値は送られない）
+        setIntent: function (intent) {
+            this.$refs.intent.value = intent;
+        },
+
+        onSubmit: function (event) {
+            if (this.submitting) {
+                event.preventDefault();
+                return;
+            }
+            this.submitting = true;
+        },
+
+        // 「戻る」で画面がそのまま戻ったとき（bfcache）に印を下ろす（Bug #65 と同じく persisted で絞らない）。
+        // 編集の画面は画面の版（lock_version）が古くなっているので、押してもサーバーが断る（新しい申請の画面では、もう 1 件の下書きになる）
+        resetSubmit: function () {
+            this.submitting = false;
+        },
 
         // 本文が見出しのままか（App\Support\Approval\BodyTemplate::isBlank() と同じ判定）
         isBlankBody: function (text) {

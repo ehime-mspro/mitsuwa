@@ -79,9 +79,10 @@ class RequestFormTest extends TestCase
         // 見出しは種類を選んだときに JS が入れる。対応表と部品の定義が同じページに載っていること
         $this->assertStringContainsString(Js::from([$w['type']->id => BodyTemplate::DEFAULT])->toHtml(), $html);
         $this->assertStringContainsString('function approvalRequestForm()', $html);
-        // 保存と提出の区別は、サーバーが描いたボタンの値が送る（Bug #47）
-        $this->assertStringContainsString('name="intent" value="save"', $html);
-        $this->assertStringContainsString('name="intent" value="submit"', $html);
+        // 保存と提出の区別は hidden の intent が送る（既定は保存。押したボタンが setIntent で書く。Bug #47・Task 19 の C2）
+        $this->assertSame('save', $form['fields']['intent'] ?? null);
+        $this->assertStringContainsString('@click="setIntent(\'save\')"', $html);
+        $this->assertStringContainsString('@click="setIntent(\'submit\')"', $html);
 
         // 候補の検索は X-Requested-With を付けて呼ぶ（Bug #35。基幹の走査は /api/ しか見ないのでここで見る）
         $fetchAt = strpos($html, "fetch('" . route('approvals.numbers.search'));
@@ -300,7 +301,8 @@ class RequestFormTest extends TestCase
         $form = $this->renderedForm($html, route('approvals.requests.update', $request));
         $this->assertSame((string) $w['type']->id, $form['fields']['type_id']);
 
-        $this->actingAs($w['applicant'])->post($form['action'], $form['fields'] + ['intent' => 'submit'])
+        // 出し直すのボタンは hidden の intent を submit にして送る（setIntent('submit')）
+        $this->actingAs($w['applicant'])->post($form['action'], array_merge($form['fields'], ['intent' => 'submit']))
             ->assertRedirect(route('approvals.requests.show', $request))
             ->assertSessionHas('success', '出し直しました。');
 
@@ -789,5 +791,52 @@ class RequestFormTest extends TestCase
         $search = $this->jsBlock($html, 'searchNumbers: function ()');
         $this->assertMatchesRegularExpression("/if \\(!data \\|\\| seq !== self\\.searchSeq\\) return;\\s*self\\.errorMessage = '';/u", $search);
         $this->assertSame(2, substr_count($search, 'if (seq === self.searchSeq) {'));
+    }
+
+    /**
+     * 「下書きを保存」「提出する」（確認の小窓の「提出する」も）は、1 回押したら押せなくする（Task 19 の C2。利用者の決定
+     * 2026-09-28。手本は基幹の顧客取込の確定〈Bug #67〉）。押したら印を立てて 2 回目の送信を取り消し、「送っています…」を
+     * 出す。「戻る」で戻った画面（pageshow）は押せるように戻す。
+     * ⚠ 保存か提出かは hidden の intent で送る（送る前にボタンを押せなくすると、そのボタンの name・value は送られない）
+     */
+    public function test_the_form_is_sent_only_once_until_the_page_is_shown_again(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $draft = $this->draftFor($w);
+
+        $html = $this->actingAs($w['applicant'])->get(route('approvals.requests.edit', $draft))->assertOk()->getContent();
+        $at   = strpos($html, 'action="' . route('approvals.requests.update', $draft) . '"');
+        $open = strrpos(substr($html, 0, $at), '<form');
+        $form = substr($html, $open, strpos($html, '</form>', $at) - $open);
+        $tag  = substr($form, 0, strpos($form, '>') + 1);
+
+        // 送信の印はこのフォームそのものに付ける（ページのどこかに在るだけでは足りない。Bug #47）。pageshow は window にしか届かない（Bug #65）
+        $this->assertStringContainsString('x-on:submit="onSubmit($event)"', $tag);
+        $this->assertStringContainsString('x-on:pageshow.window="resetSubmit()"', $tag);
+
+        // 保存か提出かは hidden（既定は保存）。ボタンは値を持たず、押したボタンが setIntent で書く
+        $this->assertStringContainsString('<input type="hidden" name="intent" value="save" x-ref="intent">', $form);
+        $this->assertDoesNotMatchRegularExpression('/<button\b[^>]*\bname=/', $form, 'ボタンが値を送っている（押せなくすると送られない）');
+        foreach ([
+            '下書きを保存' => '/<button type="submit" @click="setIntent\(\'save\'\)" :disabled="submitting"([^>]*)>下書きを保存<\/button>/u',
+            '提出する（小窓を開く）' => '/<button type="button" @click="confirmSubmit = true" :disabled="submitting"([^>]*)>提出する<\/button>/u',
+            '提出する（確認の小窓）' => '/<button type="submit" @click="setIntent\(\'submit\'\)" :disabled="submitting"([^>]*)>提出する<\/button>/u',
+        ] as $label => $pattern) {
+            $this->assertSame(1, preg_match($pattern, $form, $m), "{$label}のボタンが押せなくならない");
+            foreach (['disabled:cursor-not-allowed', 'disabled:opacity-60'] as $class) {
+                $this->assertStringContainsString($class, $m[1], "{$label}のボタンに {$class} が無い");
+            }
+        }
+
+        // 押したことを知らせる文字（下の段と確認の小窓。見えている方に出す）
+        $this->assertStringContainsString('<span role="status" x-text="submitting && !confirmSubmit ? \'送っています…\' : \'\'"', $form);
+        $this->assertStringContainsString('<span role="status" x-text="submitting && confirmSubmit ? \'送っています…\' : \'\'"', $form);
+
+        // 1 回目は通して印を立て、2 回目は取り消す。「戻る」で戻った画面では印を下ろす
+        $this->assertStringContainsString('submitting: false,', $html);
+        $this->assertMatchesRegularExpression('/^\{\s*this\.\$refs\.intent\.value = intent;\s*\}$/', $this->jsBlock($html, 'setIntent: function (intent)'));
+        $this->assertMatchesRegularExpression('/^\{\s*if \(this\.submitting\) \{\s*event\.preventDefault\(\);\s*return;\s*\}\s*this\.submitting = true;\s*\}$/', $this->jsBlock($html, 'onSubmit: function (event)'));
+        $this->assertMatchesRegularExpression('/^\{\s*this\.submitting = false;\s*\}$/', $this->jsBlock($html, 'resetSubmit: function ()'));
     }
 }
