@@ -370,6 +370,7 @@ function approvalAttachments() {
         successMessage: '',
         errorMessage: '',
         confirmingId: null,
+        busyMessage: '送っている途中です。終わってから、もう一度選んでください。',
 
         choose: function (event) {
             var picked = Array.prototype.slice.call(event.target.files || []);
@@ -388,7 +389,14 @@ function approvalAttachments() {
             var accepted = [];
             var refused = [];
             var room = self.maxCount - self.files.length;
-            if (self.uploading || picked.length === 0) {
+            if (picked.length === 0) {
+                return;
+            }
+            // 送っている途中に落としたファイルは送らず、黙って捨てずに知らせる（選ぶ欄は送っている間は押せない。Task 19 の B3）
+            if (self.uploading) {
+                if (self.errorMessage.indexOf(self.busyMessage) === -1) {
+                    self.errorMessage = self.appendLine(self.errorMessage, self.busyMessage);
+                }
                 return;
             }
             picked.forEach(function (file) {

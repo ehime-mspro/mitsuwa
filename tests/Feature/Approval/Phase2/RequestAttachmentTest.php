@@ -646,6 +646,23 @@ class RequestAttachmentTest extends TestCase
         return $this->actingAs($w['applicant'])->get(route('approvals.requests.edit', $draft))->assertOk()->getContent();
     }
 
+    /** 画面の JS の塊（$head の後の最初の { から、対になる } まで。Bug #47 の「中身を切り出して見る」） */
+    private function jsBlock(string $html, string $head): string
+    {
+        $start = strpos($html, $head);
+        $this->assertNotFalse($start, "{$head} が画面に無い");
+        $open  = strpos($html, '{', $start);
+        $depth = 0;
+        for ($i = $open, $len = strlen($html); $i < $len; $i++) {
+            if ($html[$i] === '{') {
+                $depth++;
+            } elseif ($html[$i] === '}' && --$depth === 0) {
+                return substr($html, $open, $i - $open + 1);
+            }
+        }
+        $this->fail("{$head} の波括弧が閉じていない");
+    }
+
     /**
      * 「ファイルを選ぶ」にキーボード（Tab）で届く（要件 14.4・Task 19 の B2）。選ぶ欄は見えないがフォーカスできる形にし
      * （hidden にしない）、フォーカスしたら包むラベルに枠が出る
@@ -664,5 +681,21 @@ class RequestAttachmentTest extends TestCase
         foreach (['focus-within:ring-2', 'focus-within:ring-emerald-500'] as $class) {
             $this->assertStringContainsString($class, $m[1], "フォーカスの枠（{$class}）がラベルに無い");
         }
+    }
+
+    /** 送っている途中にドロップしたファイルは送らず、黙って捨てずに知らせる（Task 19 の B3）。同じ知らせは重ねない */
+    public function test_a_drop_while_uploading_is_explained(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+
+        $html    = $this->formHtml($w, $this->draftFor($w));
+        $enqueue = $this->jsBlock($html, 'enqueue: function (picked)');
+        $busy    = $this->jsBlock($enqueue, 'if (self.uploading)');
+
+        $this->assertStringContainsString("busyMessage: '送っている途中です。終わってから、もう一度選んでください。',", $html);
+        $this->assertStringContainsString('self.errorMessage = self.appendLine(self.errorMessage, self.busyMessage);', $busy);
+        $this->assertStringContainsString('self.errorMessage.indexOf(self.busyMessage) === -1', $busy);
+        $this->assertMatchesRegularExpression('/return;\s*\}$/', $busy, '送っている途中に落としたファイルを送る列に足している');
     }
 }
