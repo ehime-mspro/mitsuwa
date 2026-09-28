@@ -20,7 +20,7 @@ manage/
 │   │   └── InquiryStatus.php, InitialMonthType.php, SurveyQuestionType.php
 │   ├── Http/Controllers/
 │   │   ├── Admin/                   # UserController, UsageTypeController, ReCostItemController, SurveyQuestionController, CustomerImportController
-│   │   ├── Approval/                # HomeController, UserController, UserImportController (CSV), OrganizationController
+│   │   ├── Approval/                # HomeController, UserController, UserImportController (CSV), OrganizationController, TypeController, RequestController, RequestActionController, RequestAttachmentController, RelatedNumberController
 │   │   ├── Housing/                 # PropertyController (建売), ContractController (建売契約), CustomOrderController (注文住宅)
 │   │   ├── RealEstate/              # ProcurementController (仕入れ), ProjectController (分譲地PJ), SupplierController (仕入れ先), ReContractController (契約)
 │   │   ├── Tenant/                  # PropertyController, ContractController, CustomerController, InvestmentController, RepairController, InquiryController, UnitController
@@ -64,7 +64,7 @@ manage/
 │   └── components/                  # attachment-section, attachment-upload
 ├── routes/
 │   ├── web.php                      # 全ルート定義 (末尾で approval.php を require)
-│   ├── approval.php                 # 決裁申請 段階1 (19 ルート。門番 approval.admin の中に管理系)
+│   ├── approval.php                 # 決裁申請 段階1・2a (39 ルート。管理系は approval.admin、申請を回す画面は approval.launched)
 │   └── console.php                  # 定期実行の予定 (schedule:run が読む)
 └── database/sql/                    # 直接実行用SQL
 ```
@@ -108,16 +108,26 @@ manage/
 | `users` | ユーザー (role: executive/manager/staff/approval_only、SoftDeletes) |
 | `settings` | システム設定 (消費税率等) |
 | `approval_companies` | 決裁: 会社（期の始まりの月）|
-| `approval_departments` | 決裁: 部門（略称・英大文字 1〜3 文字のコード。申請番号に使う）|
+| `approval_departments` | 決裁: 部門（略称・英大文字 1〜3 文字のコード。申請番号に使う）・部門長（`head_user_id`）|
 | `approval_department_user` | 決裁: 所属部門（兼務可。複合主キー）|
 | `approval_members` | 決裁: 利用者ごとの印（`is_admin` = 決裁の管理者 / `can_view_all` = 全件閲覧者）|
-| `approval_settings` | 決裁: 社長の指定（1 行）|
+| `approval_settings` | 決裁: 社長の指定（1 行）・使い始めた日時（`launched_at`。空のあいだは準備中）|
 | `approval_mail_domains` | 決裁: 許可するメールドメイン |
 | `approval_setting_logs` | 決裁: 設定の変更の記録（**追記のみ**。`updated_at` を持たない）|
+| `approval_types` | 決裁: 申請の種類（5W2H の見出し・審査部門・利用中/停止）|
+| `approval_reviewers` | 決裁: 審査部門の審査担当者（複合主キー）|
+| `approval_requests` | 決裁: 申請（状態は VARCHAR ＋ PHP の enum・`lock_version` で同時操作を見張る・決裁No）|
+| `approval_steps` | 決裁: 回る段階（提出ごとに部門長・審査・社長の 3 行）|
+| `approval_revisions` | 決裁: 提出ごとの中身の控え（**追記のみ**）|
+| `approval_histories` | 決裁: 操作の記録（**追記のみ**）|
+| `approval_attachments` | 決裁: 添付（`local` ディスク＝非公開。上書きしない）|
+| `approval_download_logs` | 決裁: 添付を開いた記録（**追記のみ**）|
+| `approval_number_sequences` | 決裁: 部門・年度ごとの連番（行をロックして採る）|
 
 ## Authentication & Authorization
 
 - Roles: `executive` (経営層), `manager` (管理者), `staff` (一般担当), `approval_only` (決裁のみ)
 - Middleware: `role:executive`, `role:executive,manager`
 - 決裁: `approval_only` は `RestrictApprovalOnlyUsers` が決裁以外の全画面から締め出す（web グループ・`SubstituteBindings` より前）。決裁の管理系は 2 段目の `approval.admin`（`EnsureApprovalAdmin`）が守る。**ロールとは独立**で、基幹を使う人（executive / manager / staff）も `approval_members.is_admin` で決裁の管理者になれる
+- 決裁（段階2）: 申請を回す画面は 3 段目の `approval.launched`（`EnsureApprovalLaunched`）が守る。`approval_settings.launched_at` が空のあいだは、画面を開く GET を決裁のホーム（準備中）へ送り、それ以外を 404 にする（`EnsureApprovalAdmin` の後・`SubstituteBindings` の前）。見られる範囲は `RequestVisibility`、操作できるかは `RequestPermissions` の 1 か所ずつ
 - Department access: `$user->belongsToDepartment('realestate')` / `('housing')` / `('tenant')`

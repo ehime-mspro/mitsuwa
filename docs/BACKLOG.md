@@ -2042,7 +2042,7 @@ git checkout 13.x && git merge --ff-only date-picker-month-ago
 
 ---
 
-## 🚧 決裁申請 段階2（決裁の本体）— 2a の実装計画済み・実装の前（「社内決裁申請」の会話が担当）
+## 🚧 決裁申請 段階2（決裁の本体）— 2a 実装済み・本番反映の前
 
 要件定義書: @docs/決裁申請_要件定義書_v1.md（16.1 の段階2）
 設計書: @docs/superpowers/specs/2026-09-25-approval-phase2-design.md（設計の 4 節は 2026-09-25〜26 に利用者が 1 節ずつ承認）
@@ -2055,6 +2055,15 @@ git checkout 13.x && git merge --ff-only date-picker-month-ago
 - 作り方: 2 回に分ける（**2a** 申請を出して社長の決裁まで一通り回る ／ **2b** 出し直しの変更点と履歴・進行中の申請の管理・基幹のメニューの件数）。
   どちらもできたら本番へ出すが、**申請を回す画面は使い始める日まで誰にも見せない**（`approval_settings.launched_at` が空のあいだ。D1）
 - 要件定義書からの変更（v1.9 に反映する）: 社長決裁の付け替えは作らない（D2）・社長は申請できない（D4）ほか。設計書の §3
+
+### 2a（申請して社長の決裁まで一通り回る）
+
+実装計画: @docs/superpowers/plans/2026-09-26-approval-phase2a.md（Task 0〜21）。worktree `.claude/worktrees/approval-phase2a`（ブランチ `approval-phase2a`）。
+
+- 計画で決めた設計書からの細部（計画 §0.8）: `completed_at` → **`finished_at`**（走査テストの予約語）／提出の別ルートは作らず保存のフォームに `intent=submit` ／添付の消し方は `round` で分ける（計画 §0.5）
+- 本番反映の手順（設計書 §7）: **DB が先・`deploy.sh` が後**（新しいコードが `approval_departments.head_user_id` と `approval_settings.launched_at` を読む）。本番の `launched_at` は空のまま（使い始めるのは段階6）
+- 実装と点検のあいだに決めたこと: 差戻し中は、申請者以外には最後に提出した中身を見せる（利用者の決定 D26。設計書 §2）。計画から変えたことは計画 §0.12、受け入れた隙間は計画 §0.13
+- Task 19 で利用者が画面の写真のページで 13 件を決めた（2026-09-28。C1〜C12 と、D26 を要件定義書に書き足す時期。設計書のあてはまる節に書いた）
 
 ---
 
