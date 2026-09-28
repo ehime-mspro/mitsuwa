@@ -133,6 +133,9 @@ class RequestAttachmentController extends Controller
     {
         $user = $request->user();
         abort_unless(RequestVisibility::canView($user, $approvalAttachment->request), 404);
+        // 開けない添付（差戻し中に足して、まだ出し直していないもの）は、外す要求でも 404（show() と同じ。403 にすると、
+        // ID を知っている人に在ることが分かる。利用者の決定 2026-09-27）
+        abort_unless(RequestContent::mayOpen($user, $approvalAttachment), 404);
 
         $fileToDelete = null;
 

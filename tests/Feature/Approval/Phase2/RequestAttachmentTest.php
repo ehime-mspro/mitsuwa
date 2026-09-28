@@ -592,4 +592,22 @@ class RequestAttachmentTest extends TestCase
         $this->assertStringContainsString('50 KB・ダウンロード', $html);
         $this->assertStringContainsString('120 KB</span>', $html);
     }
+
+    /**
+     * 開けない添付（差戻し中に足して、まだ出し直していないもの）は、外す要求でも 404（403 にすると在ることが分かる。
+     * 開く〈show〉と同じ。利用者の決定 2026-09-27）。⚠ 直し A を前提にする
+     */
+    public function test_removing_a_file_that_others_cannot_open_is_not_found(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $request = $this->submitAndReturn($this->draftFor($w), $w);
+        $this->upload($w['applicant'], $request, $this->pdf('直しかけ.pdf'))->assertOk();
+        $added = ApprovalAttachment::sole();
+
+        foreach ([$w['head'], $this->approvalAdmin()] as $other) {
+            $this->remove($other, $added)->assertNotFound();
+        }
+        $this->assertNull($added->fresh()->removed_at);
+    }
 }
