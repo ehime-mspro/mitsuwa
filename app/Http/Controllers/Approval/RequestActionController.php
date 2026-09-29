@@ -24,6 +24,8 @@ use Illuminate\Validation\ValidationException;
  * ⚠ 画面が描いたときの lock_version を渡す（古い画面から押した操作を「すでに処理されています」で断る。計画 §0.3）。
  *   送られてこない・0 以上の整数の形でないときは -1 にする（必ず断られる。FormInput::lockVersion()）。
  * ⚠ 戻り先はいつも詳細の画面（Bug #64）。
+ * ⚠ 断られたとき詳細の画面が開き直す小窓は、送り先で決めてセッションに残す（approval_reopen。フォームの値で受け取らないので、
+ *   状態が進んだあとに古い画面の小窓が断られても、別の小窓は開かない。2a の Task 19 の点検 m-6・2b 計画 §0.9）。
  */
 class RequestActionController extends Controller
 {
@@ -52,6 +54,7 @@ class RequestActionController extends Controller
     /** 条件の確認（申請者。要件 4.6） */
     public function confirmCondition(Request $request, ApprovalRequest $approvalRequest): RedirectResponse
     {
+        $request->session()->flash('approval_reopen', 'condition');
         $comment = $this->optionalComment($request, $approvalRequest);
 
         return $this->run(
@@ -64,6 +67,7 @@ class RequestActionController extends Controller
     /** 取り下げ（申請者。コメントは任意。D17） */
     public function withdraw(Request $request, ApprovalRequest $approvalRequest): RedirectResponse
     {
+        $request->session()->flash('approval_reopen', 'withdraw');
         $comment = $this->optionalComment($request, $approvalRequest);
 
         return $this->run(
@@ -76,6 +80,7 @@ class RequestActionController extends Controller
     private function judge(Request $request, ApprovalRequest $approvalRequest, ApprovalStepKind $kind): RedirectResponse
     {
         $this->assertVisible($request, $approvalRequest);
+        $request->session()->flash('approval_reopen', 'judge');
 
         $allowed = array_map(fn (ApprovalStepResult $result) => $result->value, ApprovalStepResult::allowedFor($kind));
         FormInput::unifyNewlines($request, 'comment');

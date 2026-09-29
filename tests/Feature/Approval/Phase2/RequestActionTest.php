@@ -944,6 +944,27 @@ class RequestActionTest extends TestCase
         $this->assertSame((string) ($request->lock_version + 1), $form['fields']['lock_version']);
     }
 
+    /**
+     * 断られて開き直すのは、送った小窓だけ（2a の Task 19 の点検 m-6・2b 計画 §0.9）。状態が進んだあと（条件確認待ち）に古い画面の
+     * 取り下げが入力の誤りで断られても、条件確認の小窓は取り下げのコメントで開かない
+     */
+    public function test_only_the_refused_modal_reopens(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $request = $this->toPresident($w);
+        $this->act($w['president'], $request, 'approvals.requests.decide', ['result' => 'conditional', 'comment' => '見積りを 2 社から取ること']);
+
+        // 条件確認待ちになった申請に、社長の判断の前に開いていた画面から、長すぎるコメントで取り下げを送った
+        $this->act($w['applicant'], $request, 'approvals.requests.withdraw', ['comment' => str_repeat('え', 2001)])
+            ->assertRedirect(route('approvals.requests.show', $request));
+
+        $html = $this->showHtml($w['applicant'], $request);
+        $this->assertStringContainsString('社長の条件を確認してください', $html, '前提: 条件確認の欄が出ている');
+        $this->assertStringContainsString('confirmCondition: false', $html);
+        $this->assertSame('', $this->parseForm($html, 'action="' . route('approvals.requests.confirmCondition', $request) . '"')['fields']['comment']);
+    }
+
     /** 取り下げ・条件確認も、入力の誤りで断られたら打ったコメントで小窓を開き直す。先を越されたときは開き直さない（Task 19 の C8） */
     public function test_a_refused_withdrawal_or_condition_reopens_with_the_comment(): void
     {
