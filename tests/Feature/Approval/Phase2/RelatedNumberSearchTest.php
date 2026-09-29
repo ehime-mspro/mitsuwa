@@ -138,6 +138,35 @@ class RelatedNumberSearchTest extends TestCase
         }
     }
 
+    /**
+     * 取り消しで番号を残したまま差戻しに戻った申請は、最後に提出した控えの件名で当て、控えの件名を返す（直しかけを漏らさない。
+     * D26・設計書 §5.16・2b 計画 Task 6）。社長の可 → 管理者の取り消し → 社長の差戻し → 申請者が件名を直す
+     */
+    public function test_a_returned_request_with_a_number_shows_its_submitted_subject(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $workflow = app(Workflow::class);
+        $admin    = $this->approvalAdmin();
+        $r        = $this->submittedFor($w, ['subject' => '提出した件名']);
+        foreach ([[$w['head'], 'judgeHead', ApprovalStepResult::Approve], [$w['reviewer'], 'judgeReview', ApprovalStepResult::Ok], [$w['president'], 'judgePresident', ApprovalStepResult::Approve]] as [$who, $method, $result]) {
+            $r->refresh();
+            $workflow->{$method}($r, $who, $r->lock_version, $result, null);
+        }
+        $r->refresh();
+        $workflow->undo($r, $admin, $r->lock_version, '押し間違い');
+        $r->refresh();
+        $workflow->judgePresident($r, $w['president'], $r->lock_version, ApprovalStepResult::Return, '直してください');
+        DB::table('approval_requests')->where('id', $r->id)->update(['subject' => '直しかけの件名']);   // 申請者が保存した直しかけ
+        $this->assertSame('R8-J-001', $r->fresh()->number, '前提: 番号が残ったまま差戻し中');
+
+        foreach ([$w['head'], $this->viewAllUser(), $admin] as $user) {
+            $this->search($user, '直しかけ')->assertOk()->assertExactJson(['items' => []]);
+            $this->search($user, '提出した')->assertOk()->assertExactJson(['items' => [['number' => 'R8-J-001', 'subject' => '提出した件名']]]);
+            $this->search($user, 'R8-J-001')->assertOk()->assertExactJson(['items' => [['number' => 'R8-J-001', 'subject' => '提出した件名']]]);
+        }
+    }
+
     /** 件名は入力のまま探す（全角・途中の空白を含む件名にも当たる。番号のそろえ方を件名に使わない） */
     public function test_the_subject_is_matched_as_typed(): void
     {
