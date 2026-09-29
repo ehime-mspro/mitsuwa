@@ -64,7 +64,7 @@ manage/
 │   └── components/                  # attachment-section, attachment-upload
 ├── routes/
 │   ├── web.php                      # 全ルート定義 (末尾で approval.php を require)
-│   ├── approval.php                 # 決裁申請 段階1・2a (39 ルート。管理系は approval.admin、申請を回す画面は approval.launched)
+│   ├── approval.php                 # 決裁申請 段階1・2a・2b (43 ルート。管理系は approval.admin、申請を回す画面は approval.launched、進行中の申請の管理は両方)
 │   └── console.php                  # 定期実行の予定 (schedule:run が読む)
 └── database/sql/                    # 直接実行用SQL
 ```
@@ -129,5 +129,5 @@ manage/
 - Roles: `executive` (経営層), `manager` (管理者), `staff` (一般担当), `approval_only` (決裁のみ)
 - Middleware: `role:executive`, `role:executive,manager`
 - 決裁: `approval_only` は `RestrictApprovalOnlyUsers` が決裁以外の全画面から締め出す（web グループ・`SubstituteBindings` より前）。決裁の管理系は 2 段目の `approval.admin`（`EnsureApprovalAdmin`）が守る。**ロールとは独立**で、基幹を使う人（executive / manager / staff）も `approval_members.is_admin` で決裁の管理者になれる
-- 決裁（段階2）: 申請を回す画面は 3 段目の `approval.launched`（`EnsureApprovalLaunched`）が守る。`approval_settings.launched_at` が空のあいだは、画面を開く GET を決裁のホーム（準備中）へ送り、それ以外を 404 にする（`EnsureApprovalAdmin` の後・`SubstituteBindings` の前）。見られる範囲は `RequestVisibility`、操作できるかは `RequestPermissions` の 1 か所ずつ
+- 決裁（段階2）: 申請を回す画面は 3 段目の `approval.launched`（`EnsureApprovalLaunched`）が守る。`approval_settings.launched_at` が空のあいだは、画面を開く GET を決裁のホーム（準備中）へ送り、それ以外を 404 にする（`EnsureApprovalAdmin` の後・`SubstituteBindings` の前）。見られる範囲は `RequestVisibility`、操作できるかは `RequestPermissions` の 1 か所ずつ。進行中の申請の管理（⑩ `approvals.admin.requests.*`）は `approval.admin` と `approval.launched` の両方の門番の内側。付け替え・押し間違いの取り消し・代理の取り下げも `Workflow` が行う
 - Department access: `$user->belongsToDepartment('realestate')` / `('housing')` / `('tenant')`
