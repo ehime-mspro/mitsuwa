@@ -95,6 +95,21 @@ class RequestSnapshotTest extends TestCase
         $this->assertTrue(RequestSnapshot::hasChanges($changes));
     }
 
+    /** 変わったものが 1 種類だけでも「変わった」とする（本文だけ・項目だけ・添付を足すだけ・外すだけ。2b 計画 Task 8 の変異 S07〜S10） */
+    public function test_a_single_kind_of_change_is_a_change(): void
+    {
+        $edits = [
+            '本文だけ'       => ['body' => "■ なぜ（目的・理由）\n・老朽化のため\n・燃費が悪い"],
+            '項目だけ'       => ['subject' => '社用車の購入（2 台）'],
+            '添付を足すだけ' => ['attachments' => [['id' => 5, 'name' => '見積書.pdf', 'size' => 1234], ['id' => 6, 'name' => '写真.jpg', 'size' => 99], ['id' => 7, 'name' => '図面.pdf', 'size' => 10]]],
+            '添付を外すだけ' => ['attachments' => [['id' => 5, 'name' => '見積書.pdf', 'size' => 1234]]],
+        ];
+
+        foreach ($edits as $label => $overrides) {
+            $this->assertTrue(RequestSnapshot::hasChanges(RequestSnapshot::changes(self::snapshot(), self::snapshot($overrides))), "{$label}の出し直しが「変わっていない」になった");
+        }
+    }
+
     public function test_the_fingerprint_ignores_key_order_and_names(): void
     {
         // MySQL は JSON のキーを並べ替えて返す（キーの長さの順）。数も文字列で返ることがある
@@ -126,6 +141,8 @@ class RequestSnapshotTest extends TestCase
             '関連する決裁No の並び' => ['related_numbers' => ['R7-J-015', 'R8-J-001']],
             '添付を足す'       => ['attachments' => [['id' => 5, 'name' => 'a', 'size' => 1], ['id' => 6, 'name' => 'b', 'size' => 1], ['id' => 7, 'name' => 'c', 'size' => 1]]],
             '添付を外す'       => ['attachments' => [['id' => 5, 'name' => 'a', 'size' => 1]]],
+            // 数は同じまま差し替える（数でなく id で比べる。2b 計画 Task 8 の変異 S11）
+            '添付を差し替える' => ['attachments' => [['id' => 5, 'name' => 'a', 'size' => 1], ['id' => 7, 'name' => 'c', 'size' => 1]]],
         ];
 
         foreach ($edits as $label => $overrides) {
