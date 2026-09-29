@@ -34,6 +34,9 @@ class ApprovalHistory extends Model
         'condition_confirmed' => '条件を確認',
         'withdrawn'           => '取り下げ',
         'head_changed'        => '部門長の交代で担当が移った',
+        'reassigned'          => '部門長の確認を付け替え',
+        'undone'              => '押し間違いの取り消し',
+        'withdrawn_by_admin'  => '決裁の管理者が代理で取り下げ',
     ];
 
     protected $fillable = [
@@ -58,6 +61,11 @@ class ApprovalHistory extends Model
         // 審査の意見は可・保留・否を添える（ほかの判断は action の名前に入っている）
         if ($this->action === 'reviewed' && $this->result !== null) {
             $label .= '（' . ApprovalStepResult::from($this->result)->labelFor(ApprovalStepKind::Review) . '）';
+        }
+
+        // 取り消しは、取り消した操作の名前を添える（2b・設計書 §5.14）
+        if ($this->action === 'undone' && isset(self::LABELS[$this->meta['undone_action'] ?? ''])) {
+            $label .= '（' . self::LABELS[$this->meta['undone_action']] . '）';
         }
 
         return $label;

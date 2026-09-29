@@ -631,6 +631,10 @@ class WorkflowTest extends TestCase
         'judgePresident'   => [ApprovalStatus::President],
         'confirmCondition' => [ApprovalStatus::Condition],
         'withdraw'         => [ApprovalStatus::HeadReview, ApprovalStatus::Review, ApprovalStatus::President, ApprovalStatus::Returned],
+        // 決裁の管理者の操作（2b・設計書 §5.14）。取り消しは「今の回に取り消せる判断がある」状態だけ（部門長確認中は提出の直後）
+        'reassignHead'     => [ApprovalStatus::HeadReview],
+        'undo'             => [ApprovalStatus::Review, ApprovalStatus::President, ApprovalStatus::Returned, ApprovalStatus::Condition, ApprovalStatus::Approved, ApprovalStatus::Rejected],
+        'withdrawByAdmin'  => [ApprovalStatus::HeadReview, ApprovalStatus::Review, ApprovalStatus::President, ApprovalStatus::Returned],
     ];
 
     /** その状態の申請を、本物の操作を順にたどって作る（状態を直接書き込まない） */
@@ -669,10 +673,11 @@ class WorkflowTest extends TestCase
         return $r;
     }
 
-    /** 表のすべての組み合わせ（9 状態 × 6 操作）で、通るものは通り、それ以外は WorkflowRefused で断る */
+    /** 表のすべての組み合わせ（9 状態 × 9 操作）で、通るものは通り、それ以外は WorkflowRefused で断る */
     public function test_every_state_accepts_only_the_operations_in_the_table(): void
     {
         $w        = $this->approvalWorld();
+        $admin    = $this->approvalAdmin();
         $problems = [];
 
         foreach (ApprovalStatus::cases() as $status) {
@@ -688,6 +693,9 @@ class WorkflowTest extends TestCase
                         'judgePresident'   => $this->workflow->judgePresident($r, $w['president'], $r->lock_version, ApprovalStepResult::Approve, null),
                         'confirmCondition' => $this->workflow->confirmCondition($r, $w['applicant'], $r->lock_version, null),
                         'withdraw'         => $this->workflow->withdraw($r, $w['applicant'], $r->lock_version, null),
+                        'reassignHead'     => $this->workflow->reassignHead($r, $admin, $r->lock_version, $w['reviewer'], '休職のため'),
+                        'undo'             => $this->workflow->undo($r, $admin, $r->lock_version, '押し間違い'),
+                        'withdrawByAdmin'  => $this->workflow->withdrawByAdmin($r, $admin, $r->lock_version, '退職のため'),
                     };
                     if (! $allowed) {
                         $problems[] = "{$status->value} で {$operation} が通った（表では断る）";

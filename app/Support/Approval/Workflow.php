@@ -7,6 +7,7 @@ use App\Enums\ApprovalStatus;
 use App\Enums\ApprovalStepKind;
 use App\Enums\ApprovalStepResult;
 use App\Enums\ApprovalStepStatus;
+use App\Enums\UserStatus;
 use App\Models\ApprovalDepartment;
 use App\Models\ApprovalRequest;
 use App\Models\ApprovalRevision;
@@ -17,7 +18,8 @@ use Illuminate\Support\Facades\DB;
 /**
  * 状態の移り変わり（要件 4 章・設計書 §5.8）。**申請の状態を変えるのはここだけ。**
  *
- * 流れは 提出 → 部門長 → 審査 → 社長 →（条可なら）条件確認。操作はすべて
+ * 流れは 提出 → 部門長 → 審査 → 社長 →（条可なら）条件確認。決裁の管理者の操作（付け替え・取り消し・代理の取り下げ。
+ * 2b・設計書 §5.14）もここに置く。操作はすべて
  *   1. トランザクションの中で申請を読み直す
  *   2. 画面の `lock_version` と比べる（古い画面から押した操作を断る）
  *   3. `RequestPermissions` で権限を確かめる
@@ -236,6 +238,145 @@ final class Workflow
         });
     }
 
+    /**
+     * 部門長の確認の付け替え（要件 4.7・設計書 §5.14・D2・D22・D25）。部門長確認中の申請の、部門長の段階の担当を別の人にする。
+     *
+     * 付け替えた担当は、部門の設定で部門長を変えると新しい部門長へ移る（D23。headChanged() が担当を空に戻す）。
+     * 状態は変えないが lock_version を進める（付け替えの前に開いた画面から押した判断・取り下げを断る。計画 2a §0.3）。
+     * ⚠ ロックは headChanged() と同じ「申請の行 → 段階の行」の順に主キーで取る（§5.16）。
+     */
+    public function reassignHead(ApprovalRequest $request, User $admin, int $lockVersion, User $to, ?string $reason): void
+    {
+        DB::transaction(function () use ($request, $admin, $lockVersion, $to, $reason): void {
+            ApprovalRequest::whereKey($request->id)->lockForUpdate()->first();
+            $request->refresh();
+            $this->assertFresh($request, $lockVersion);
+
+            $permissions = RequestPermissions::for($admin, $request);
+            if (! $permissions->canReassign()) {
+                throw new WorkflowRefused([$permissions->adminRefusal() ?? '部門長の確認を待っている申請だけ付け替えられます。']);
+            }
+            $reason = self::requireReason($reason);
+
+            $step = ApprovalStep::with('department')->whereKey($permissions->waitingStep()->id)->lockForUpdate()->first();
+            if ($step === null || $step->status !== ApprovalStepStatus::Waiting || $step->kind !== ApprovalStepKind::Head) {
+                throw new WorkflowConflict();
+            }
+
+            $before  = $step->assignee_user_id ?? $step->department?->head_user_id;
+            $refusal = match (true) {
+                $to->id === $request->user_id => '申請者本人には付け替えられません。',
+                $to->trashed() || $to->status !== UserStatus::Active || $to->email === null => '付け替え先は、有効でメールアドレスのある人から選んでください。',
+                $to->id === $before => 'いまの担当と同じ人です。',
+                default => null,
+            };
+            if ($refusal !== null) {
+                throw new WorkflowRefused([$refusal]);
+            }
+
+            $step->update(['assignee_user_id' => $to->id]);
+            $this->bump($request, $lockVersion);
+
+            HistoryRecorder::record($request, 'reassigned', $admin, [
+                'step_id' => $step->id,
+                'reason'  => $reason,
+                'meta'    => ['from_user_id' => $before, 'to_user_id' => $to->id],
+            ]);
+        });
+    }
+
+    /**
+     * 押し間違いの取り消し（要件 4.7・設計書 §5.14・D3・D21・D24・D25）。今の回の最後の操作を 1 つ取り消し、
+     * その操作の直前の状態へ戻す（取り消す操作は UndoTarget。続けて行えば提出の手前までさかのぼれる）。
+     *
+     * - 取り消した判断の段階を「待ち」に戻し（判断した人・結果・コメント・日時を空に。元の判断は記録に残る）、
+     *   後ろの段階を「まだ届いていない」に戻す。段階の行は消さない（記録の step_id が RESTRICT。§5.16）
+     * - 届いた日時（arrived_at）は空にしない（一度届いた人が見られなくならない D19・待ち日数は元の届いた日から C11。§5.16）
+     * - 社長の判断の取り消しは、番号を残して判断・決裁日・完了日を空に戻す（6.5・D21。次の判断で同じ番号を使う）
+     * - 差戻しの取り消しは、差戻しのあと申請者が中身か添付を変えていたら断る（D3）
+     * - 元の記録は消さず、取り消した記録（undone。meta に取り消した記録の id と操作）を足す
+     * ⚠ 申請の行をロックしてから読む（D3 を比べる途中に添付が変わらない。添付の変更は lock_version を進めないため。§5.16）
+     */
+    public function undo(ApprovalRequest $request, User $admin, int $lockVersion, ?string $reason): void
+    {
+        DB::transaction(function () use ($request, $admin, $lockVersion, $reason): void {
+            ApprovalRequest::whereKey($request->id)->lockForUpdate()->first();
+            $request->refresh();
+            $this->assertFresh($request, $lockVersion);
+
+            $permissions = RequestPermissions::for($admin, $request);
+            $target      = $permissions->undoTarget();
+            if (! $permissions->canUndo() || $target === null) {
+                throw new WorkflowRefused([$permissions->adminRefusal() ?? '取り消せる操作がありません（提出の手前まで戻っています）。']);
+            }
+            $reason = self::requireReason($reason);
+
+            $refusal = $permissions->undoRefusal();
+            if ($refusal !== null) {
+                throw new WorkflowRefused([$refusal]);
+            }
+
+            // 記録の「後」の状態が今の状態と食い違うなら取り消さない（ここに来ることは無い見込み。分からないときは動かさない）
+            if ($target->to_status !== $request->status->value) {
+                throw new WorkflowRefused(['記録と今の状態が食い違うため取り消せません。']);
+            }
+
+            [$to, $extra] = match ($target->action) {
+                'head_approved', 'head_returned' => [ApprovalStatus::HeadReview, []],
+                'reviewed'                       => [ApprovalStatus::Review, []],
+                'president_returned'             => [ApprovalStatus::President, []],
+                'president_approved', 'president_conditional', 'president_rejected'
+                                                 => [ApprovalStatus::President, ['decision' => null, 'decided_at' => null, 'finished_at' => null]],
+                'condition_confirmed'            => [ApprovalStatus::Condition, ['finished_at' => null]],
+            };
+
+            // ⚠ 申請の行 → 段階の行の順にロックする（ほかの操作と同じ順）
+            $steps = ApprovalStep::where('request_id', $request->id)->where('round', $request->round)->pluck('id')->all();
+            ApprovalStep::whereKey($steps)->orderBy('id')->lockForUpdate()->get();
+
+            $from = $request->status;
+            $this->move($request, $lockVersion, $to, $extra);
+
+            // 条件確認の取り消しは段階を動かさない（社長の段階は条可のまま）
+            if ($target->action !== 'condition_confirmed') {
+                $this->reopenStep($request, (int) $target->step_id);
+            }
+
+            HistoryRecorder::record($request, 'undone', $admin, [
+                'from_status' => $from->value,
+                'to_status'   => $to->value,
+                'step_id'     => $target->step_id,
+                'reason'      => $reason,
+                'meta'        => ['undone_history_id' => $target->id, 'undone_action' => $target->action],
+            ]);
+        });
+    }
+
+    /** 代理の取り下げ（要件 4.3 のケース 8・4.7・設計書 §5.14・D25）。申請者の取り下げと同じ状態のとき。理由は必須 */
+    public function withdrawByAdmin(ApprovalRequest $request, User $admin, int $lockVersion, ?string $reason): void
+    {
+        DB::transaction(function () use ($request, $admin, $lockVersion, $reason): void {
+            $request->refresh();
+            $this->assertFresh($request, $lockVersion);
+
+            $permissions = RequestPermissions::for($admin, $request);
+            if (! $permissions->canWithdrawByAdmin()) {
+                throw new WorkflowRefused([$permissions->adminRefusal() ?? 'この申請は取り下げられる状態ではありません。']);
+            }
+            $reason = self::requireReason($reason);
+
+            $from = $request->status;
+            $this->move($request, $lockVersion, ApprovalStatus::Withdrawn);
+            $this->cancelRest($request);
+
+            HistoryRecorder::record($request, 'withdrawn_by_admin', $admin, [
+                'from_status' => $from->value,
+                'to_status'   => ApprovalStatus::Withdrawn->value,
+                'reason'      => $reason,
+            ]);
+        });
+    }
+
     private function judge(ApprovalRequest $request, User $actor, int $lockVersion, ApprovalStepKind $kind, ApprovalStepResult $result, ?string $comment): void
     {
         DB::transaction(function () use ($request, $actor, $lockVersion, $kind, $result, $comment): void {
@@ -374,6 +515,48 @@ final class Workflow
         $request->refresh();
     }
 
+    /**
+     * 状態は変えずに lock_version だけを進める（付け替え）。当たらなければ先を越された。
+     * ⚠ 状態が変わった日時（status_changed_at）は変えない（申請者の番の待ち日数に使うため）
+     */
+    private function bump(ApprovalRequest $request, int $lockVersion): void
+    {
+        $affected = ApprovalRequest::whereKey($request->id)
+            ->where('lock_version', $lockVersion)
+            ->update(['lock_version' => $lockVersion + 1, 'updated_at' => now()]);
+
+        if ($affected !== 1) {
+            throw new WorkflowConflict();
+        }
+
+        $request->refresh();
+    }
+
+    /**
+     * 取り消した判断の段階を「待ち」に戻し、今の回のそれより後ろの段階を「まだ届いていない」に戻す（取り消し）。
+     * 届いた日時（arrived_at）は空にしない（§5.16）。担当の付け替え（assignee_user_id）はそのまま
+     */
+    private function reopenStep(ApprovalRequest $request, int $stepId): void
+    {
+        $now = now();
+
+        ApprovalStep::whereKey($stepId)->update([
+            'status'        => ApprovalStepStatus::Waiting->value,
+            'acted_at'      => null,
+            'actor_user_id' => null,
+            'result'        => null,
+            'comment'       => null,
+            'updated_at'    => $now,
+        ]);
+
+        // 段階は部門長 → 審査 → 社長の順に作るので、id が大きいものが後ろの段階
+        ApprovalStep::where('request_id', $request->id)
+            ->where('round', $request->round)
+            ->where('id', '>', $stepId)
+            ->whereIn('status', [ApprovalStepStatus::Waiting->value, ApprovalStepStatus::Cancelled->value])
+            ->update(['status' => ApprovalStepStatus::Pending->value, 'updated_at' => $now]);
+    }
+
     private function finishStep(ApprovalStep $step, User $actor, ApprovalStepResult $result, ?string $comment): void
     {
         $step->update([
@@ -414,6 +597,18 @@ final class Workflow
             'result'      => $result->value,
             'comment'     => $comment,
         ]);
+    }
+
+    /** 管理者の操作の理由（必須。前後の空白〈全角を含む〉を除いて空なら断る。設計書 §5.14・D22） */
+    private static function requireReason(?string $reason): string
+    {
+        $reason = self::cleanComment($reason);
+
+        if ($reason === null) {
+            throw new WorkflowRefused(['理由を入力してください。']);
+        }
+
+        return $reason;
     }
 
     private static function cleanComment(?string $comment): ?string
