@@ -256,6 +256,7 @@ class WorkflowAdminTest extends TestCase
         $arrived = ApprovalStep::where('request_id', $r->id)->pluck('arrived_at', 'kind')->all();
         $number  = $r->number;
         $version = $r->lock_version;
+        $from    = $r->status;
 
         $this->workflow->undo($r, $admin, $version, '押し間違い');
 
@@ -287,6 +288,7 @@ class WorkflowAdminTest extends TestCase
         $undone = ApprovalHistory::where('action', 'undone')->sole();
         $this->assertSame($admin->id, $undone->actor_user_id);
         $this->assertSame('押し間違い', $undone->reason);
+        $this->assertSame($from->value, $undone->from_status, '記録の前の状態は取り消す前の状態（2b 計画 Task 8 の変異 W15）');
         $this->assertSame($to->value, $undone->to_status);
         $this->assertEquals(['undone_history_id' => $target->id, 'undone_action' => $action], $undone->meta);
         $this->assertSame(1, ApprovalHistory::where('id', $target->id)->count(), '元の記録は消さない');
@@ -419,6 +421,41 @@ class WorkflowAdminTest extends TestCase
         $this->assertFalse(RequestVisibility::canView($outsider, $r->fresh()));
     }
 
+    /** @return array<string, array{0: list<string>, 1: string}> 判断まで進める操作と、判断した人（担当を外れる人） */
+    public static function undoneJudgements(): array
+    {
+        return [
+            '部門長の差戻し' => [['submit', 'return'], 'head'],
+            '審査の意見'     => [['submit', 'head', 'review'], 'reviewer'],
+            '社長の可'       => [['submit', 'head', 'review', 'approve'], 'president'],
+            '社長の条可'     => [['submit', 'head', 'review', 'conditional'], 'president'],
+            '社長の否'       => [['submit', 'head', 'review', 'reject'], 'president'],
+            '社長の差戻し'   => [['submit', 'head', 'review', 'preturn'], 'president'],
+        ];
+    }
+
+    /** 審査担当者・社長も、判断を取り消されて担当を外れたあと見続けられる（記録の判断した人。2b 計画 §0.5・Task 8 の変異 V02） */
+    #[DataProvider('undoneJudgements')]
+    public function test_every_judge_whose_judgement_was_undone_can_still_see_the_request(array $path, string $judge): void
+    {
+        $w        = $this->approvalWorld();
+        $admin    = $this->approvalAdmin();
+        $outsider = $this->baseUser();
+        $r        = $this->advance($w, $this->draftFor($w), ...$path);
+        // 判断した人が担当を外れた（部門長の交代・審査部門から外す・社長の交代）
+        match ($judge) {
+            'head'      => $w['dept']->update(['head_user_id' => $this->baseUser()->id]),
+            'reviewer'  => $w['reviewDept']->reviewers()->detach($w['reviewer']->id),
+            'president' => $this->makePresident($this->baseUser()),
+        };
+
+        $this->workflow->undo($r, $admin, $r->lock_version, '押し間違い');
+
+        $this->assertTrue(RequestVisibility::canView($w[$judge], $r->fresh()), '判断を取り消された人が見られない');
+        $this->assertSame([$r->id], ApprovalRequest::query()->visibleTo($w[$judge])->pluck('id')->all(), '一覧の絞り込みも同じ');
+        $this->assertFalse(RequestVisibility::canView($outsider, $r->fresh()));
+    }
+
     /** 部門長が交代したあとに部門長の承認を取り消すと、戻した段階は今の部門長の対応待ちに入る（担当は部門の設定から読む。D23。Review Focus 4） */
     public function test_undoing_the_head_approval_after_a_head_change_goes_to_the_new_head(): void
     {
@@ -522,6 +559,7 @@ class WorkflowAdminTest extends TestCase
         $this->assertSame($admin->id, $history->actor_user_id);
         $this->assertSame('退職のため', $history->reason);
         $this->assertSame('review', $history->from_status);
+        $this->assertSame(ApprovalStatus::Withdrawn->value, $history->to_status, '記録の後の状態は取り下げ（2b 計画 Task 8 の変異 W16）');
         $this->assertNull($history->comment);
         $this->assertSame([], PendingWork::for($w['reviewer'])->all());
     }
@@ -536,6 +574,8 @@ class WorkflowAdminTest extends TestCase
         $own = $this->makeApplicantAdmin($w);
         $this->assertRefused(fn () => $this->workflow->withdrawByAdmin($r, $own, $r->lock_version, '退職のため'),
             '自分が申請者の申請には、付け替え・取り消し・代理の取り下げはできません。', $r, '自分の申請を代理で取り下げた（D25）');
+        $this->assertRefused(fn () => $this->workflow->withdrawByAdmin($r, $w['head'], $r->lock_version, '退職のため'),
+            'この申請は取り下げられる状態ではありません。', $r, '管理者でない人が代理で取り下げた（2b 計画 Task 8 の変異 P04）');
 
         $approved = $this->advance($w, $this->draftFor($w), 'submit', 'head', 'review', 'approve');
         $this->assertRefused(fn () => $this->workflow->withdrawByAdmin($approved, $admin, $approved->lock_version, '退職のため'),
