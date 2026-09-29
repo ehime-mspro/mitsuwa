@@ -643,9 +643,9 @@ class RequestActionTest extends TestCase
         $this->assertStringNotContainsString('<script>alert(1)</script>', $html);
         $this->assertStringNotContainsString('<img src=x', $html);
         $this->assertStringNotContainsString('<b>部門</b>', $html);
-        $this->assertSame(2, substr_count($html, '&lt;script&gt;alert(1)&lt;/script&gt;'));   // 回る順番・記録
-        $this->assertSame(3, substr_count($html, '&lt;img src=x onerror=alert(2)&gt;'));     // 条件・回る順番・記録
-        $this->assertSame(2, substr_count($html, '&lt;b&gt;部門&lt;/b&gt;長'));              // 回る順番・記録
+        $this->assertSame(3, substr_count($html, '&lt;script&gt;alert(1)&lt;/script&gt;'));   // 回る順番・記録・提出の履歴（2b）
+        $this->assertSame(4, substr_count($html, '&lt;img src=x onerror=alert(2)&gt;'));     // 条件・回る順番・記録・提出の履歴（2b）
+        $this->assertSame(3, substr_count($html, '&lt;b&gt;部門&lt;/b&gt;長'));              // 回る順番・記録・提出の履歴（2b）
     }
 
     /** 画面の版は 0 以上の整数の形だけを受け取る（配列・'1abc'・'1.0' は、先を越されたものとして断る。前後の空白は TrimStrings が外す。Task 15 の点検の m-1） */

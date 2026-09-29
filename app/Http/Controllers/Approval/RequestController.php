@@ -7,6 +7,7 @@ use App\Enums\ApprovalStepResult;
 use App\Http\Controllers\Controller;
 use App\Models\ApprovalHistory;
 use App\Models\ApprovalRequest;
+use App\Models\ApprovalRevision;
 use App\Models\ApprovalStep;
 use App\Models\ApprovalType;
 use App\Models\User;
@@ -14,6 +15,7 @@ use App\Support\Approval\FormInput;
 use App\Support\Approval\RelatedNumbers;
 use App\Support\Approval\RequestContent;
 use App\Support\Approval\RequestPermissions;
+use App\Support\Approval\RequestSnapshot;
 use App\Support\Approval\RequestVisibility;
 use App\Support\Approval\Workflow;
 use App\Support\Approval\WorkflowConflict;
@@ -121,6 +123,9 @@ class RequestController extends Controller
         $content = RequestContent::for($user, $approvalRequest);
         // 操作の記録（新しい順。§5.12）
         $histories = ApprovalHistory::with('actor')->where('request_id', $approvalRequest->id)->orderByDesc('id')->get();
+        // 提出の回ごとの控え（履歴）と、直前の回からの変更点（出し直した申請。§5.13）。どちらも提出した控えだけを使う
+        // （差戻し中の直しかけは入らない。申請者以外に最後に提出した中身だけを見せる D26 とそろう）
+        $revisions = ApprovalRevision::where('request_id', $approvalRequest->id)->orderBy('round')->get();
 
         return view('approvals.requests.show', [
             'approvalRequest' => $approvalRequest,
@@ -129,6 +134,8 @@ class RequestController extends Controller
             'relatedLinks'    => $this->relatedLinks($content->relatedNumbers, $user),
             'histories'       => $histories,
             'newHeadNames'    => $this->newHeadNames($histories),
+            'revisions'       => $revisions,
+            'changes'         => $this->changesFromPreviousRound($approvalRequest, $revisions),
         ]);
     }
 
@@ -384,6 +391,22 @@ class RequestController extends Controller
             ->all();
 
         return $ids === [] ? [] : User::withTrashed()->whereKey($ids)->pluck('name', 'id')->all();
+    }
+
+    /**
+     * 直前の回の控えと今の回の控えの違い（出し直した申請＝今の回が 2 以上のときだけ。設計書 §5.13）
+     *
+     * @param Collection<int, ApprovalRevision> $revisions
+     * @return array<string, mixed>|null
+     */
+    private function changesFromPreviousRound(ApprovalRequest $approvalRequest, Collection $revisions): ?array
+    {
+        $current  = $revisions->firstWhere('round', $approvalRequest->round);
+        $previous = $revisions->firstWhere('round', $approvalRequest->round - 1);
+
+        return ($approvalRequest->round >= 2 && $current !== null && $previous !== null)
+            ? RequestSnapshot::changes($previous->snapshot, $current->snapshot)
+            : null;
     }
 
     /** 見られない申請は 404（在るかどうかを漏らさない。設計書 §5.10） */

@@ -514,11 +514,15 @@ class RequestFormTest extends TestCase
         $this->actingAs($w['applicant'])->post($form['action'], array_merge($form['fields'], ['subject' => '直しかけの件名', 'intent' => 'save']))
             ->assertRedirect(route('approvals.requests.edit', $request));
 
-        $this->actingAs($w['head'])->get(route('approvals.requests.show', $request))->assertOk()
-            ->assertSee('2 回目の件名')
-            ->assertSee('最後に提出した中身（2 回目の提出）')
-            ->assertDontSee('1 回目の件名')
-            ->assertDontSee('直しかけの件名');
+        $html = (string) $this->actingAs($w['head'])->get(route('approvals.requests.show', $request))->assertOk()->getContent();
+        // 件名の見出しと申請の中身は最後に提出した回（2 回目）。1 回目の件名は「前回からの変更点」と「提出の履歴」にだけ出る
+        // （2b 計画 Task 3・設計書 §5.13）
+        $top = substr($html, 0, strpos($html, '前回からの変更点'));
+        $this->assertStringContainsString('2 回目の件名', $top);
+        $this->assertStringNotContainsString('1 回目の件名', $top);
+        $this->assertStringContainsString('最後に提出した中身（2 回目の提出）', $html);
+        $this->assertStringContainsString('1 回目の件名', substr($html, strpos($html, '提出の履歴')), '1 回目の件名は履歴から見られる');
+        $this->assertStringNotContainsString('直しかけの件名', $html);
     }
 
     /** 差戻し中に直して保存してから取り下げても、提出していない中身は申請者だけに残る（要件 4.5・4.8） */

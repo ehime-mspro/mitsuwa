@@ -79,6 +79,8 @@
         </div>
     </section>
 
+    @include('approvals.requests._changes')
+
     <section class="bg-white rounded-lg border border-gray-200 mb-5">
         <h2 class="px-5 py-3 border-b border-gray-200 text-[14px] font-bold text-gray-900">添付</h2>
         <ul class="px-5 py-3 space-y-1.5 text-[13px]">
@@ -123,6 +125,8 @@
             @endforelse
         </ol>
     </section>
+
+    @include('approvals.requests._history')
 
 </div>
 @endsection
