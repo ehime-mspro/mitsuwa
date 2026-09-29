@@ -488,6 +488,30 @@ class TenantContractReimportTest extends TestCase
         $this->assertSame(1, $preview->viewData('validCount'));
     }
 
+    /** @return array<string, array{0: string, 1: string}> [1 行目, 2 行目]。見分けのキーが 1 つだけ違う */
+    public static function pastRowsThatDifferInOneKeyElement(): array
+    {
+        return [
+            '区画'               => [self::PAST_ROW_1, '再取込ビル,2,A,再取込商事,2020-04-01,2020-04-01,2023-03-31,90000,,,,,,'],
+            '既存の顧客'         => [self::PAST_ROW_1, '再取込ビル,1,A,別商事,2020-04-01,2020-04-01,2023-03-31,90000,,,,,,'],
+            '契約日'             => [self::PAST_ROW_1, '再取込ビル,1,A,再取込商事,2020-04-02,2020-04-02,2023-03-31,90000,,,,,,'],
+            'まだ無い顧客の名前' => [
+                '再取込ビル,1,A,新しい商事,2020-04-01,2020-04-01,2023-03-31,90000,,,,,,',
+                '再取込ビル,1,A,新しい商店,2020-04-01,2020-04-01,2023-03-31,90000,,,,,,',
+            ],
+        ];
+    }
+
+    #[DataProvider('pastRowsThatDifferInOneKeyElement')]
+    public function test_two_past_contract_rows_that_differ_in_one_key_element_are_both_imported(string $first, string $second): void
+    {
+        // 移行の CSV で普通にある形（同じテナントが同じ日に 2 区画・同じ区画に同じ日に別のテナント）。キーの要素ごとに 1 本（Bug #44）
+        $preview = $this->preview('past-contract', self::PAST_HEADER . "\n{$first}\n{$second}\n")->assertOk();
+
+        $this->assertSame([], $preview->viewData('rowErrors'), '見分けのキーが違う 2 行を CSV 内の重複にした');
+        $this->assertSame(2, $preview->viewData('validCount'));
+    }
+
     public function test_two_past_contract_rows_for_different_new_customers_are_both_imported(): void
     {
         // まだ無い顧客は名前で比べる（同じ区画・同じ契約日でも、名前が違えば別の契約）
