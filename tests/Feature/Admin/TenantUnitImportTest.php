@@ -146,7 +146,7 @@ class TenantUnitImportTest extends TestCase
      * 本番の定義（2026-09-14 に読み取りで確認）: contracts.customer_id は NULL 可（テナント名が空欄の契約）。
      * テスト用スキーマは作成の migration の行で揃えた（2026-09-29。契約の取込の上げ直しのテストが顧客の無い契約を作る）。
      * ⚠ Schema::table(...)->nullable()->change() で揃えてはいけない — SQLite がテーブルを作り直し、状態・部署の CHECK が
-     *   黙って消える（2026-09-29 に実測。下の 2 本のカナリアが止める）
+     *   黙って消える（2026-09-29 に実測。外部キーと索引は作り直しても残るので、止めるのは下の CHECK のカナリアだけ）
      */
     public function test_the_contracts_table_accepts_a_contract_without_a_customer_like_production(): void
     {
@@ -184,7 +184,11 @@ class TenantUnitImportTest extends TestCase
         }
     }
 
-    /** カナリア: 契約の外部キー（顧客は削除を止める）と索引が残っている（テーブルを作り直すと落ちることがある） */
+    /**
+     * カナリア: 契約の外部キー（顧客は削除を止める）と索引が、作成の migration に残っている。
+     * ⚠ ->nullable()->change() の作り直しでは、外部キーも索引も作り直されて残る（2026-09-29 に実測。消えるのは CHECK だけで、
+     *   それは上の CHECK のカナリアが止める）。このカナリアが止めるのは、作成の行から外部キー・索引を落とす書き換え
+     */
     public function test_the_contracts_table_keeps_its_foreign_keys_and_indexes(): void
     {
         $foreignKeys = collect(DB::select('PRAGMA foreign_key_list(contracts)'))
