@@ -200,7 +200,8 @@ trait SubmitsImportPreview
         $this->assertSame(0, $preview->viewData('validCount'), "取り込む行が残っている（tab={$tab}）");
         $this->assertSame([], $preview->viewData('rowErrors'), "エラーの行がある（tab={$tab}）");
 
-        // コントローラが数えたスキップの行が、灰色の一覧にも「行N: 理由」で出ていること（Bug #53: 件数と表示を突き合わせる）
+        // コントローラが数えたスキップの行が、画面にも「行N: 理由」の全文で出ていること（Bug #53: 件数と表示を突き合わせる）。
+        // ⚠ 探すのは画面全体で、灰色の一覧の中かどうかまでは見ない（灰色かどうかは、下の「すべての行が登録済み」の文の色で見る）。
         $skipped = $preview->viewData('skippedRows');
         $this->assertCount($rows, $skipped, "スキップの行の数が CSV の行数と違う（tab={$tab}）");
         foreach ($skipped as $skip) {

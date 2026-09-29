@@ -38,7 +38,7 @@ class PropertyListSortTest extends TestCase
         ]);
     }
 
-    /** 契約に要る顧客（1 件を使い回す） */
+    /** 契約の顧客（1 件を使い回す） */
     private function customer(): Customer
     {
         return $this->customer ??= Customer::create([
