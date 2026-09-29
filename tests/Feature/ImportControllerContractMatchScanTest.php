@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use ReflectionClass;
 use Tests\Concerns\ScansImportControllers;
 use Tests\TestCase;
@@ -18,6 +19,16 @@ use Tests\TestCase;
  * ⚠ 見えないもの（死角）: トレイト・サービスへ切り出した作成 ／ `*ImportController.php` という名前でない取込 ／
  *   照合が行の検査の正しい位置（日付の検査のあと・金額の検査の前）にあるか（これは振る舞いのテスト
  *   TenantContractReimportTest・MansionContractReimportTest が見る）／ `$warnings` という名前でない一覧へ直接積む書き方。
+ * ⚠ 検出器（CREATES_CONTRACT）に見えない作り方（死角。下の自己テストの「死角:」の見本が、当たらないことを固定している）:
+ *   リレーション・クエリビルダ越しの作成（`$unit->contracts()->create(`・`Contract::query()->create(`）／
+ *   `DB::table('contracts')->insert(` ／ 先頭に \ の付いた完全な名前での new（`new \App\Models\Contract(`。
+ *   `\App\Models\Contract::create(` のほうは見える）／ 括弧の無い `new Contract;` ／ `Contract::make(...)->save()` ／
+ *   別名で use したクラス（`use App\Models\Contract as Lease;` の `Lease::create(`）／ クラス名を変数・文字列に入れて呼ぶ形
+ *   （`$model = Contract::class;` や `$model = 'App\Models\Contract';` のあとの `$model::create(`）／ 一覧に無い作成のメソッド
+ *   （`insertGetId`・`insertOrIgnore`・`upsert`・`createQuietly`・`createOrFirst`・`forceCreateQuietly`）。
+ * ⚠ 落とすのはコメントだけで、文字列の中は落とさない: 文字列に `Contract::create(` と書いてあるだけでも、そのメソッドを集める
+ *   （分類を求められるので、うるさいほうに倒れる）。照合のメソッドの名前が文字列の中にあるだけでも「呼んでいる」とみなす
+ *   （test_the_methods_that_need_matching_call_the_matcher の死角。黙って緑になるほう）。
  */
 class ImportControllerContractMatchScanTest extends TestCase
 {
@@ -87,6 +98,66 @@ class ImportControllerContractMatchScanTest extends TestCase
                 "{$method} が、取り込むと決めた行の警告を画面の一覧へ移していない"
             );
         }
+    }
+
+    /**
+     * 検出器（CREATES_CONTRACT）の見本。実物の取込は `::create(` しか使わないので、見本の無い枝は消しても緑になる
+     * （Bug #61 ③ の規約。2026-09-29 のレビューで実測）。枝ごと（作る呼び出し 5 つ・new・名前の前の語の有無・
+     * 括弧の前の空白）に当たる見本と、当たってはいけない見本（契約のモデルでないクラス・読むだけの呼び出し）と、
+     * 死角（クラスの docblock。見えるように直したら、見本を「当たる」へ移し、docblock の一覧からも消す）を通す。
+     *
+     * @return array<string, array{0: string, 1: bool}> [コード, 当たるか]
+     */
+    public static function detectorSamples(): array
+    {
+        return [
+            // 当たる（枝ごとに 1 つ以上）
+            '::create（素の Contract）'                  => ['Contract::create([', true],
+            '::forceCreate（名前の前に語がある）'        => ['MsContract::forceCreate([', true],
+            '::firstOrCreate'                            => ['ZealMemberContract::firstOrCreate([', true],
+            '::updateOrCreate'                           => ['MsParkingContract::updateOrCreate([', true],
+            '::insert'                                   => ['Contract::insert([', true],
+            '::create の括弧の前に空白'                  => ['Contract::create ([', true],
+            '先頭に \\ の付いた完全な名前の ::create'    => ['\\App\\Models\\Contract::create([', true],
+            'new（素の Contract）'                       => ['new Contract([', true],
+            'new（名前の前に語がある）'                  => ['new MsParkingContract([', true],
+            'new の括弧の前に空白'                       => ['new Contract ([', true],
+            // 当たらない（契約のモデルでない・作らない）
+            'ContractRevision'                           => ['ContractRevision::create([', false],
+            'MsContractDeduction'                        => ['MsContractDeduction::create([', false],
+            'ContractService'                            => ['ContractService::create([', false],
+            'DadSubcontractor（小文字の contract）'      => ['DadSubcontractor::create([', false],
+            '読むだけ（::where）'                        => ["Contract::where('unit_id', 1)", false],
+            // 死角（クラスの docblock）
+            '死角: リレーション越しの作成'               => ['$unit->contracts()->create([', false],
+            '死角: クエリビルダ越しの作成'               => ['Contract::query()->create([', false],
+            '死角: DB::table の insert'                  => ["DB::table('contracts')->insert([", false],
+            '死角: 先頭に \\ の付いた完全な名前の new'   => ['new \\App\\Models\\Contract([', false],
+            '死角: 括弧の無い new'                       => ['new Contract;', false],
+            '死角: make して save'                       => ['Contract::make([])->save()', false],
+            '死角: 別名で use したクラス'                => ['use App\\Models\\Contract as Lease; Lease::create([', false],
+            '死角: クラス名を変数に入れる'               => ['$model = Contract::class; $model::create([', false],
+            '死角: クラス名を文字列に入れる'             => ["\$model = 'App\\Models\\Contract'; \$model::create([", false],
+            '死角: insertGetId'                          => ['Contract::insertGetId([', false],
+            '死角: insertOrIgnore'                       => ['Contract::insertOrIgnore([', false],
+            '死角: upsert'                               => ['Contract::upsert([', false],
+            '死角: createQuietly'                        => ['Contract::createQuietly([', false],
+            '死角: createOrFirst'                        => ['Contract::createOrFirst([', false],
+            '死角: forceCreateQuietly'                   => ['Contract::forceCreateQuietly([', false],
+        ];
+    }
+
+    #[DataProvider('detectorSamples')]
+    public function test_the_detector_matches_exactly_its_samples(string $code, bool $matches): void
+    {
+        // 走査と同じ正規表現そのもの（self::CREATES_CONTRACT）を当てる。写しを別に書くと、走査と見本が別々に変わる
+        $this->assertSame(
+            $matches ? 1 : 0,
+            preg_match(self::CREATES_CONTRACT, $code),
+            $matches
+                ? "検出器が「{$code}」を見逃した（この形の枝が効いていない）"
+                : "検出器が「{$code}」を拾った（契約のモデルでない形か、docblock に死角と書いた形。見えるように直したなら、見本と docblock を直す）"
+        );
     }
 
     /**
