@@ -200,7 +200,7 @@
         {{-- 2 行目は段階ごとの次の手（Task 19 の C7。社長の指定を変えられるのは基幹の管理者だけ。要件 3.2・4.7） --}}
         <p class="text-[12px] text-amber-800 mb-3">{{ match ($waiting->kind) {
             \App\Enums\ApprovalStepKind::Review    => 'ほかの審査担当者が判断します。',
-            \App\Enums\ApprovalStepKind::Head      => '取り下げて出し直すか、決裁の管理者に相談してください。',
+            \App\Enums\ApprovalStepKind::Head      => '取り下げて出し直すか、決裁の管理者に部門長の確認の付け替えを頼んでください。',
             \App\Enums\ApprovalStepKind::President => '社長の指定を変えられるのは基幹の管理者です。急ぐときは取り下げてください。',
         } }}</p>
         <div class="flex flex-wrap gap-2">

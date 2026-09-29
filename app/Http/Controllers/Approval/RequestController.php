@@ -11,6 +11,7 @@ use App\Models\ApprovalRevision;
 use App\Models\ApprovalStep;
 use App\Models\ApprovalType;
 use App\Models\User;
+use App\Support\Approval\Assignees;
 use App\Support\Approval\FormInput;
 use App\Support\Approval\RelatedNumbers;
 use App\Support\Approval\RequestContent;
@@ -125,12 +126,17 @@ class RequestController extends Controller
         $histories = ApprovalHistory::with('actor')->where('request_id', $approvalRequest->id)->orderByDesc('id')->get();
         // 提出の回ごとの控え（履歴）と、直前の回からの変更点（出し直した申請。§5.13）。どちらも提出した控えだけを使う
         // （差戻し中の直しかけは入らない。申請者以外に最後に提出した中身だけを見せる D26 とそろう）
-        $revisions = ApprovalRevision::where('request_id', $approvalRequest->id)->orderBy('round')->get();
+        $revisions   = ApprovalRevision::where('request_id', $approvalRequest->id)->orderBy('round')->get();
+        $permissions = RequestPermissions::for($user, $approvalRequest);
 
         return view('approvals.requests.show', [
             'approvalRequest' => $approvalRequest,
             'content'         => $content,
-            'permissions'     => RequestPermissions::for($user, $approvalRequest),
+            'permissions'     => $permissions,
+            // 部門長の確認の付け替え先の選択肢（付け替えられるときだけ読む。申請者本人は選べない。D2・D7。Assignees）
+            'assigneeCandidates' => $permissions->canReassign()
+                ? Assignees::candidates()->reject(fn (User $candidate) => $candidate->id === $approvalRequest->user_id)->values()
+                : collect(),
             'relatedLinks'    => $this->relatedLinks($content->relatedNumbers, $user),
             'histories'       => $histories,
             'newHeadNames'    => $this->newHeadNames($histories),
@@ -374,8 +380,8 @@ class RequestController extends Controller
     }
 
     /**
-     * 部門長の交代の記録（head_changed）で担当が移った先の人の名前（id => 名前。Task 19 の C9）。
-     * 記録の横の名前は交代を操作した管理者なので、移った先を別に添える。
+     * 部門長の交代（head_changed）と付け替え（reassigned。2b）の記録で担当が移った先の人の名前（id => 名前。Task 19 の C9）。
+     * 記録の横の名前は操作した管理者なので、移った先を別に添える。
      * ⚠ 論理削除した人も名前を出す（記録は残る）。記録ごとに読まず、1 回の問い合わせで読む
      *
      * @param Collection<int, ApprovalHistory> $histories
@@ -383,7 +389,7 @@ class RequestController extends Controller
      */
     private function newHeadNames(Collection $histories): array
     {
-        $ids = $histories->where('action', 'head_changed')
+        $ids = $histories->whereIn('action', ['head_changed', 'reassigned'])
             ->map(fn (ApprovalHistory $history) => $history->meta['to_user_id'] ?? null)
             ->filter()
             ->unique()

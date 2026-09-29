@@ -42,6 +42,8 @@
 
     @include('approvals.requests._actions')
 
+    @include('approvals.requests._admin_actions')
+
     <section class="bg-white rounded-lg border border-gray-200 mb-5">
         <h2 class="px-5 py-3 border-b border-gray-200 text-[14px] font-bold text-gray-900">申請の中身</h2>
         <dl class="px-5 py-4 grid grid-cols-1 sm:grid-cols-[9em_1fr] gap-x-4 gap-y-2 text-[13px]">
@@ -111,13 +113,17 @@
                         @if($history->actor)
                             <span class="text-gray-600">{{ $history->actor->name }}</span>
                         @endif
-                        {{-- 部門長の交代は、担当が移った先の人を添える（横の名前は交代を操作した管理者。Task 19 の C9） --}}
-                        @if($history->action === 'head_changed' && isset($newHeadNames[$history->meta['to_user_id'] ?? 0]))
+                        {{-- 部門長の交代・付け替えは、担当が移った先の人を添える（横の名前は操作した管理者。Task 19 の C9・2b） --}}
+                        @if(in_array($history->action, ['head_changed', 'reassigned'], true) && isset($newHeadNames[$history->meta['to_user_id'] ?? 0]))
                             <span class="text-gray-600">新しい担当: {{ $newHeadNames[$history->meta['to_user_id']] }}</span>
                         @endif
                     </div>
                     @if($history->comment)
                         <p class="mt-0.5 text-gray-700 whitespace-pre-wrap break-words">{{ $history->comment }}</p>
+                    @endif
+                    {{-- 決裁の管理者の操作（付け替え・取り消し・代理の取り下げ）の理由（2b・設計書 §5.14） --}}
+                    @if($history->reason)
+                        <p class="mt-0.5 text-gray-700 whitespace-pre-wrap break-words"><span class="text-gray-500">理由:</span> {{ $history->reason }}</p>
                     @endif
                 </li>
             @empty

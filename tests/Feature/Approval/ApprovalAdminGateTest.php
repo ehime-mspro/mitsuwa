@@ -8,6 +8,7 @@ use App\Models\ApprovalCompany;
 use App\Models\ApprovalDepartment;
 use App\Models\ApprovalMailDomain;
 use App\Models\ApprovalMember;
+use App\Models\ApprovalRequest;
 use App\Models\ApprovalSetting;
 use App\Models\ApprovalType;
 use App\Models\User;
@@ -182,8 +183,8 @@ class ApprovalAdminGateTest extends TestCase
         //   出ている本当の理由（分類漏れ・門番の欠落・逆方向の見落とし）が隠れる。
         $this->assertSame([], $problems, "分類漏れ・門番の欠落・逆方向の見落とし:\n" . implode("\n", $problems));
 
-        // 走査が空振りして緑になる事故を防ぐ（段階2 の 2a で 39 本 = 決裁の管理 22 本 + ホーム 1 本 + 申請を回す画面 16 本）
-        $this->assertGreaterThanOrEqual(39, $found, 'approvals. のルートの走査に失敗している');
+        // 走査が空振りして緑になる事故を防ぐ（2b で 43 本 = 決裁の管理 22 本 + 進行中の申請の管理 4 本 + ホーム 1 本 + 申請を回す画面 16 本）
+        $this->assertGreaterThanOrEqual(43, $found, 'approvals. のルートの走査に失敗している');
     }
 
     /**
@@ -358,6 +359,10 @@ class ApprovalAdminGateTest extends TestCase
             'approval_types' => DB::table('approval_types')->count(),
             'approval_reviewers' => DB::table('approval_reviewers')->count(),
             'approval_number_sequences' => DB::table('approval_number_sequences')->count(),
+            // 進行中の申請の管理（2b）。付け替え・取り消し・代理の取り下げは記録と段階を書く
+            'approval_requests' => DB::table('approval_requests')->count(),
+            'approval_steps' => DB::table('approval_steps')->count(),
+            'approval_histories' => DB::table('approval_histories')->count(),
         ];
     }
 
@@ -494,12 +499,19 @@ class ApprovalAdminGateTest extends TestCase
             'review_department_id' => $reviewDepartment->id, 'sort_order' => 1, 'is_active' => true,
         ]);
 
+        // 進行中の申請の管理（2b）の相手の申請。部門は審査部門にする（走査で消す部門に申請を付けると、部門の削除が
+        // 「申請がある部門は削除できない」の歯止めで止まり、網が細る。上の種類と同じ理由）
+        $approvalRequest = ApprovalRequest::create([
+            'user_id' => $manageableUser->id, 'department_id' => $reviewDepartment->id, 'type_id' => $type->id, 'subject' => '門番の確かめ',
+        ]);
+
         $existingValues = [
             'user' => (string) $manageableUser->id,
             'approvalCompany' => (string) $company->id,
             'approvalDepartment' => (string) $department->id,
             'mailDomain' => (string) $mailDomain->id,
             'approvalType' => (string) $type->id,
+            'approvalRequest' => (string) $approvalRequest->id,
         ];
 
         $outsiders = $this->outsiders();
@@ -529,10 +541,10 @@ class ApprovalAdminGateTest extends TestCase
         //   に出ている本当の理由（どのルート・どの変種・どの相手で止まらなかったか）が隠れる。
         $this->assertSame([], $problems, "権限の無い利用者を止められていないルート:\n" . implode("\n", $problems));
 
-        // 走査が空振りして緑になる事故を防ぐ（実測 18 ルート。パラメータなし 10 本 × 1 変種
-        // ＋ パラメータあり 8 本 × 2 変種 ＝ 26 通り、現状はいずれもメソッド 1 つずつ、× 6 人 ＝ 156 件）
-        $this->assertGreaterThanOrEqual(18, $adminRoutesChecked, 'approvals.admin. のルートの走査に失敗している');
-        $this->assertGreaterThanOrEqual(156, $requestsMade, '要求した件数が想定より少ない（走査が空振りしている）');
+        // 走査が空振りして緑になる事故を防ぐ（2b の実測 26 ルート＝2a の 22 本＋進行中の申請の管理 4 本。
+        // パラメータの有無で 1 変種・2 変種、いずれもメソッド 1 つずつ、× 6 人 ＝ 234 件）
+        $this->assertGreaterThanOrEqual(26, $adminRoutesChecked, 'approvals.admin. のルートの走査に失敗している');
+        $this->assertGreaterThanOrEqual(234, $requestsMade, '要求した件数が想定より少ない（走査が空振りしている）');
 
         // ⚠ これが唯一、門番の判定を $next() の後ろへ動かす変異（クライアントには 403 の
         //   まま返るが、コントローラの副作用は既に実行済み）を検出できる。⚠ ただし検出できる

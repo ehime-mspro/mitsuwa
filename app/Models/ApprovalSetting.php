@@ -60,6 +60,22 @@ class ApprovalSetting extends Model
         return $row;
     }
 
+    /**
+     * 使い始めたか（基幹の画面のサイドバー・ダッシュボード用。2b）。覚えた設定があればそれを使い、無ければ行を作らずに読むだけ
+     * （覚えもしない）。
+     *
+     * ⚠ 基幹の画面ではこちらを使う。current() は行が無ければ作ってコンテナに覚えるので、1 本のテストで画面を 2 回開くと
+     *   1 回目だけ問い合わせが増え、「件数によらず問い合わせの本数が同じ」を見るテスト（PropertyListSortTest）が食い違う（2b で実測）
+     */
+    public static function launchedForMenu(): bool
+    {
+        if (app()->bound(self::CONTAINER_KEY)) {
+            return app(self::CONTAINER_KEY)->isLaunched();
+        }
+
+        return static::whereKey(self::SINGLETON_ID)->whereNotNull('launched_at')->exists();
+    }
+
     /** 覚えておいた設定を捨てる（インスタンスを通さずに書き換えたとき用） */
     public static function forget(): void
     {

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Approval\AdminRequestController;
 use App\Http\Controllers\Approval\HomeController;
 use App\Http\Controllers\Approval\OrganizationController;
 use App\Http\Controllers\Approval\RelatedNumberController;
@@ -79,6 +80,23 @@ Route::middleware('approval.admin')->prefix('approvals/admin')->name('approvals.
     Route::post('/types', [TypeController::class, 'store'])->name('types.store');
     Route::put('/types/{approvalType}', [TypeController::class, 'update'])->name('types.update');
     Route::delete('/types/{approvalType}', [TypeController::class, 'destroy'])->name('types.destroy');
+});
+
+/*
+|--------------------------------------------------------------------------
+| 進行中の申請の管理（2b・画面⑩・決裁の管理者。段階2 設計書 §5.14）
+|--------------------------------------------------------------------------
+|
+| ⚠ 管理（approval.admin）と稼働（approval.launched）の両方の門番を持つ。並びは bootstrap/app.php の優先順で
+|   「管理 → 稼働」（権限の無い人には、使い始める前でも 403 が先に返る）。
+| ⚠ 詳細の画面（③）の「決裁の管理者の操作」（付け替え・取り消し・代理の取り下げ）の送り先もここ（戻り先は詳細の画面）。
+|
+*/
+Route::middleware(['approval.admin', 'approval.launched'])->prefix('approvals/admin/requests')->name('approvals.admin.requests.')->group(function () {
+    Route::get('/', [AdminRequestController::class, 'index'])->name('index');
+    Route::post('/{approvalRequest}/reassign', [AdminRequestController::class, 'reassign'])->name('reassign');
+    Route::post('/{approvalRequest}/undo', [AdminRequestController::class, 'undo'])->name('undo');
+    Route::post('/{approvalRequest}/withdraw', [AdminRequestController::class, 'withdraw'])->name('withdraw');
 });
 
 /*

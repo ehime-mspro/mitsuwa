@@ -25,6 +25,9 @@
     // 決裁の管理者に指定された人だけ「決裁の管理」を出す（設計書 §5.15・D2）。
     // 指定されていない人の画面は変わらない（段階1 で一般の利用者に見える変化はログイン画面だけ）。
     $isApprovalAdmin = $user->isApprovalAdmin();
+    // 進行中の申請の管理へのリンクは、決裁の管理者に・使い始めてから（段階2 設計書 §5.2・D1）。
+    // ⚠ 基幹の画面は launchedForMenu()（行を作らず読むだけ。問い合わせは決裁の管理者の画面だけ）
+    $approvalsLaunched = $isApprovalAdmin && \App\Models\ApprovalSetting::launchedForMenu();
 @endphp
 
 {{-- ========== PC用: 展開サイドバー ========== --}}
@@ -152,6 +155,9 @@
             <x-sidebar-item :href="route('approvals.admin.users.index')" label="利用者の管理" :active="request()->routeIs('approvals.admin.users.*')" />
             <x-sidebar-item :href="route('approvals.admin.organization.index')" label="部門の管理" :active="request()->routeIs('approvals.admin.organization.*')" />
             <x-sidebar-item :href="route('approvals.admin.types.index')" label="申請種類の管理" :active="request()->routeIs('approvals.admin.types.*')" />
+            @if($approvalsLaunched)
+                <x-sidebar-item :href="route('approvals.admin.requests.index')" label="進行中の申請の管理" :active="request()->routeIs('approvals.admin.requests.*')" />
+            @endif
         </x-sidebar-group>
     @endif
 
@@ -448,6 +454,9 @@
             <x-sidebar-item :href="route('approvals.admin.users.index')" label="利用者の管理" :active="request()->routeIs('approvals.admin.users.*')" />
             <x-sidebar-item :href="route('approvals.admin.organization.index')" label="部門の管理" :active="request()->routeIs('approvals.admin.organization.*')" />
             <x-sidebar-item :href="route('approvals.admin.types.index')" label="申請種類の管理" :active="request()->routeIs('approvals.admin.types.*')" />
+            @if($approvalsLaunched)
+                <x-sidebar-item :href="route('approvals.admin.requests.index')" label="進行中の申請の管理" :active="request()->routeIs('approvals.admin.requests.*')" />
+            @endif
         </x-sidebar-group>
     @endif
 

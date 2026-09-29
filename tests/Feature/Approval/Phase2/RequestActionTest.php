@@ -753,8 +753,8 @@ class RequestActionTest extends TestCase
 
     /**
      * 押せない判断の理由の 2 行目は、段階ごとに次の手を言う（Task 19 の C7。利用者の決定 2026-09-28。Task 15 の点検の m-2）。
-     * 部門長の段階は取り下げて出し直すか決裁の管理者に相談・審査の段階はほかの審査担当者・社長の段階は社長の指定を変えられる
-     * 基幹の管理者（決裁の管理者には替えられない。要件 3.2・4.7）
+     * 部門長の段階は取り下げて出し直すか決裁の管理者に付け替えを頼む（2b で付け替えができたので案内する。設計書 §5.16）・
+     * 審査の段階はほかの審査担当者・社長の段階は社長の指定を変えられる基幹の管理者（決裁の管理者には替えられない。要件 3.2・4.7）
      */
     public function test_the_refusal_says_how_to_move_on_at_each_stage(): void
     {
@@ -766,7 +766,7 @@ class RequestActionTest extends TestCase
         // 部門長の段階（申請のあとで申請者が部門長になった）
         $w['dept']->update(['head_user_id' => $w['applicant']->id]);
         $html = $this->showHtml($w['applicant'], $request);
-        $this->assertStringContainsString('取り下げて出し直すか、決裁の管理者に相談してください。', $html);
+        $this->assertStringContainsString('取り下げて出し直すか、決裁の管理者に部門長の確認の付け替えを頼んでください。', $html);
         $this->assertStringNotContainsString('担当を替えるには', $html);
 
         // 審査の段階
