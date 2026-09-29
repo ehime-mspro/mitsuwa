@@ -53,6 +53,21 @@ class LineDiffTest extends TestCase
         $this->assertSame(['・', 'A', '・', 'B'], self::reverse($diff));
     }
 
+    public function test_two_edits_keep_the_unchanged_lines_between_them(): void
+    {
+        // 差戻しのあと 2 か所を直した本文（先頭に 2 行足し、最後の行を直した）。
+        // 表を使わずに「一致するまで消す」だけだと、変えていない 3 行まで「消えて増えた」になる
+        $diff = LineDiff::text(
+            "■ なぜ（目的・理由）\n・老朽化のため\n■ いつ\n・2026年10月",
+            "■ 概要\n・社用車 1 台\n■ なぜ（目的・理由）\n・老朽化のため\n■ いつ\n・2026年11月",
+        );
+
+        $this->assertSame(
+            ['+■ 概要', '+・社用車 1 台', ' ■ なぜ（目的・理由）', ' ・老朽化のため', ' ■ いつ', '-・2026年10月', '+・2026年11月'],
+            self::compact($diff),
+        );
+    }
+
     public function test_empty_texts_have_no_lines(): void
     {
         $this->assertSame([], LineDiff::text(null, ''));
