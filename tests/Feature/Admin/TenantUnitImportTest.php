@@ -179,7 +179,8 @@ class TenantUnitImportTest extends TestCase
                 DB::table('contracts')->insert([$column => 'bogus'] + $row);
                 $this->fail("contracts.{$column} の CHECK が無い（本番の enum と食い違う）");
             } catch (QueryException $e) {
-                $this->assertStringContainsString("CHECK constraint failed: {$column}", $e->getMessage());
+                // 列の名前まで出るかは SQLite の版による（test_unit_status_is_still_checked と同じ見方）。どの列の CHECK かは、どの回で落ちたかで分かる
+                $this->assertStringContainsString('CHECK constraint failed', $e->getMessage());
             }
         }
     }
