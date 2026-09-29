@@ -20,7 +20,7 @@ manage/
 │   │   └── InquiryStatus.php, InitialMonthType.php, SurveyQuestionType.php
 │   ├── Http/Controllers/
 │   │   ├── Admin/                   # UserController, UsageTypeController, ReCostItemController, SurveyQuestionController, CustomerImportController
-│   │   ├── Approval/                # HomeController, UserController, UserImportController (CSV), OrganizationController, TypeController, RequestController, RequestActionController, RequestAttachmentController, RelatedNumberController
+│   │   ├── Approval/                # HomeController, UserController, UserImportController (CSV), OrganizationController, TypeController, RequestController, RequestActionController, RequestAttachmentController, RelatedNumberController, AdminRequestController
 │   │   ├── Housing/                 # PropertyController (建売), ContractController (建売契約), CustomOrderController (注文住宅)
 │   │   ├── RealEstate/              # ProcurementController (仕入れ), ProjectController (分譲地PJ), SupplierController (仕入れ先), ReContractController (契約)
 │   │   ├── Tenant/                  # PropertyController, ContractController, CustomerController, InvestmentController, RepairController, InquiryController, UnitController
