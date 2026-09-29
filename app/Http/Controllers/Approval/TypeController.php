@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Approval;
 
+use App\Enums\UserStatus;
 use App\Http\Controllers\Controller;
 use App\Models\ApprovalDepartment;
 use App\Models\ApprovalType;
@@ -22,8 +23,12 @@ class TypeController extends Controller
 {
     public function index()
     {
-        // 審査部門の審査担当者の人数も読む（いない部門は一覧で知らせる。Task 11 の点検の軽微）
-        $types = ApprovalType::with(['reviewDepartment' => fn ($q) => $q->withCount('reviewers')->with('company')])
+        // 審査部門の審査担当者の人数も読む（いない部門は一覧で知らせる。Task 11 の点検の軽微）。
+        // 提出の条件（SubmitChecker）と同じく有効な人だけ数える（無効の人しかいないのに注意が出ない食い違いを無くす。
+        // 削除した人は User の SoftDeletes で数えない。2a の Task 11 の再点検 N-1）
+        $types = ApprovalType::with(['reviewDepartment' => fn ($q) => $q
+                ->withCount(['reviewers' => fn ($q) => $q->where('users.status', UserStatus::Active->value)])
+                ->with('company')])
             ->withCount('requests')->ordered()->get();
 
         $departments = ApprovalDepartment::with('company')->get()
