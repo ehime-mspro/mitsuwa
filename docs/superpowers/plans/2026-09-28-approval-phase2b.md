@@ -6413,3 +6413,191 @@ Expected: `invalid=0`・**`approvals=43`**（`--json` で数える。テキス�
 
 
 ---
+
+## Task 8 の実測記録（2026-09-29）
+
+測ったのは WT の HEAD `136bdc7a`（Task 1〜7 と、点検の手直し〈Task 2・4・6〉まで）。**変異は WT に当てず、HEAD の写しに当てた**（scratchpad の `p2b-mutation`。`git archive` と vendor の複製）。道具は `~/.claude/plans/approval-phase2b-tasks/mutate.py`（W07・R01・R02 はコントローラが手直しのあとのコードに合わせた版。この Task で「点検で見つけた変異」27 通りを後ろに足した。`REVIEW` と書くとそれとカナリアだけを流す）。1 つの変異で流したのは mutate.py の TARGET（`tests/Feature/Approval`・`tests/Unit/Approval`・走査テスト 6 本・`PropertyListSortTest`）。出力（jsonl・ログ）と道具の写しは `~/.claude/plans/approval-phase2b-tasks/work/rf/t08/`。
+
+### 基準とカナリア
+
+| 項目 | 結果 |
+|---|---|
+| 全件（Step 1・WT の `136bdc7a`） | `git status --porcelain` が空・`OK (2866 tests, 20092 assertions)`（計画の 2,860 本に、点検の手直しで足した 6 本〈Task 2 +1・Task 4 +1・Task 6 +4〉） |
+| 1 つの変異で流す範囲（写し・変異なし） | `OK (805 tests, 6189 assertions)`（表の 799 本 + 手直しの 6 本） |
+| カナリア（`_history.blade.php` に未定義の変数） | `Tests: 805, Assertions: 5536, Failures: 67.`（表と同じ 67 本が 500＝未定義の変数。測る仕掛けは写しのコードを読んでいる）。足したあとの写し（`fc67eff8`）では 72 本（足したテストのうち詳細を開く 5 本が加わった） |
+| 変異の文字列 | 98 通りとも、写しで 1 回だけ現れる（`mutate.py --check`） |
+
+### 結果のまとめ
+
+| 区分 | 通り | 変異 |
+|---|---|---|
+| 計画の表: 検出 | 60 | CANARY と、下の 2 行（当初検出漏れ・等価）を除くすべて |
+| 計画の表: 当初検出漏れ→追加で検出 | 4 | S03・C03・A03・A08（計画を書く段階で足したテストが、今の実装でも落とす） |
+| 計画の表: 等価（緑が正しい） | 6 | U01・U04・U06・U08・W04・A04（下の「等価の確かめ」） |
+| 点検で見つけた変異: 検出済みだった（点検が流した範囲の外のテストが落としていた） | 5 | S10・C08・C13・C14・P04（足したテストでも落ちる） |
+| 点検で見つけた変異: 別の機構でだけ検出されていた→追加で検出 | 1 | N08（`PropertyListSortTest` の問い合わせの本数でだけ落ちていた。表の N05 も同じ） |
+| 点検で見つけた変異: 当初検出漏れ（緑）→追加で検出 | 21 | F04・S07・S08・S09・S11・C06・C07・C09・C10・C11・C12・V02・W15・W16・A21・A22・A23・A24・A25・N06・N07 |
+| 点検で見つけた変異: 等価 | 0 | — |
+
+- 計画の表の 71 通りは、区分（検出・等価・カナリア）がすべて表と同じ。落ちたテストの集合は、表のテストがすべて落ち、増えたのは点検の手直しで足したテストだけ（下の「表と違ったもの」）。落ちた理由の文言も 1 つずつ読み、狙いどおりだった。別の機構でだけ落ちていたのは N05 の 1 つ（下の「表と違ったもの」）
+- W07・R01・R02 は、手直しのあとのコード（`reopenStep()` を主キーで書く・控えの件名を差戻し中と取り下げで使う）で測り直した。どれも検出
+
+### 計画の表と違ったもの
+
+区分（検出・等価・カナリア）が表と違う変異は無い。表の「落ちたテスト」は 71 通りとも今回もすべて落ちた。違いは次の 4 通りで、どれも**落ちるテストが増えただけ**（増えたのは点検の手直しで足したテスト）。
+
+| # | 増えたテスト | わけ |
+|---|---|---|
+| L02 | `LineDiffTest::test_two_edits_keep_the_unchanged_lines_between_them` | Task 2 の点検 I-1 の手直し（`96d87e99`）で足した LCS のテスト |
+| W02 | `RelatedNumberSearchTest::test_a_withdrawn_request_with_a_number_shows_its_submitted_subject`（2 データ）・`test_a_resubmitted_request_uses_the_revision_of_the_last_submission` | Task 6 の手直し（`136bdc7a`）で足したテスト。どれも前提「番号が残ったまま」で止まる（番号を消す変異なので狙いどおり） |
+| R01・R02 | 同上の 3 本 | 同上。R01・R02 は手直しのあとのコード（控えの件名を使うのは差戻し中と取り下げ）に合わせた変異で測った |
+
+- W07 は手直しのあとの `reopenStep()`（後ろの段階を主キーだけで書く）に合わせた変異で測り、落ちたテストの集合は表と同じ
+- 落ちた理由の文言も 1 つずつ読んだ。書き残すのは次の 2 つ（別の機構でだけ落ちていたのは N05 だけ）
+  - **A01**（表と同じ `Errors: 1`・`Call to a member function all() on array`）: `assertNotFound()` が失敗したあと、Laravel の `TestResponseAssert::injectResponseContext()` が失敗の文にセッションの `errors` を添えようとして落ちたもの（写しで再現）。失敗そのものは「404 にならない」＝狙いどおりなので、測定は有効
+  - **N05**（表と同じ 1 本）: 落とすのは `PropertyListSortTest` の問い合わせの本数（「物件が増えるとクエリが増える（N+1）: 5 件で 7 本 / 25 件で 5 本」）で、「設定の行を作らない」を見るテストではなかった（Task 7 の点検 Minor 2 と同じ）。この Task で `ApprovalMenuTest::test_a_base_page_does_not_create_the_settings_row` を足し、狙いの文言（「基幹の画面が設定の行を作った」）でも落ちるようにした（下の N08）
+
+### 計画の表の測り直し（71 通り。写しは `136bdc7a`・805 本）
+
+| # | 変異（ファイル） | 今回 | 落ちたテストの集合（表と比べて） | 判定 |
+|---|---|---|---|---|
+| CANARY | カナリア: 履歴の部品に未定義の変数（`_history.blade.php`） | 赤（Failures 67） | 同じ本数（どれも 500＝未定義の変数） | カナリア（赤が正しい） |
+| L01 | 大きすぎる差の出し方を「増えた行→消えた行」に（`LineDiff.php`） | 赤（Failures 1） | 同じ | 検出 |
+| L02 | LCS の同じ長さのとき増えた行を先に（`LineDiff.php`） | 赤（Failures 2） | 同じ＋`test_two_edits_keep_the_unchanged_lines_between_them` | 検出 |
+| L03 | 行に分ける前に改行をそろえない（`LineDiff.php`） | 赤（Failures 1） | 同じ | 検出 |
+| S01 | 種類を名前で比べる（`RequestSnapshot.php`） | 赤（Failures 1） | 同じ | 検出 |
+| S02 | 関連する決裁No を並びも込みで比べる（`RequestSnapshot.php`） | 赤（Failures 1） | 同じ | 検出 |
+| S03 | 変更点の金額で 0 と空を同じにする（`RequestSnapshot.php`） | 赤（Failures 1） | 同じ | 検出（当初検出漏れ→追加で検出） |
+| S04 | 指紋の金額で 0 と空を同じにする（`RequestSnapshot.php`） | 赤（Failures 1） | 同じ | 検出 |
+| S05 | 指紋から添付を外す（`RequestSnapshot.php`） | 赤（Failures 2） | 同じ | 検出 |
+| S06 | 指紋に種類の名前を入れる（`RequestSnapshot.php`） | 赤（Failures 1） | 同じ | 検出 |
+| C01 | 変更点を今の中身（直しかけ）と比べる（`RequestController.php`） | 赤（Failures 2） | 同じ | 検出 |
+| C02 | 履歴の添付を今の添付にする（`_history.blade.php`） | 赤（Failures 3） | 同じ | 検出 |
+| C03 | 履歴の判断を回で絞らない（`_history.blade.php`） | 赤（Failures 1） | 同じ | 検出（当初検出漏れ→追加で検出） |
+| C04 | 変更点の「外した添付」の読み上げを消す（`_changes.blade.php`） | 赤（Failures 2） | 同じ | 検出 |
+| C05 | 付け替えの記録に新しい担当を添えない（`RequestController.php`） | 赤（Failures 1） | 同じ | 検出 |
+| U01 | 省略・交代・付け替えを飛ばさない（`UndoTarget.php`） | 緑 | 同じ（緑） | 等価 |
+| U02 | 取り消し済みの記録を飛ばさない（`UndoTarget.php`） | 赤（Errors 2・Failures 1） | 同じ | 検出 |
+| U03 | 取り消せない操作を越えて探し続ける（`UndoTarget.php`） | 赤（Failures 1） | 同じ | 検出 |
+| U04 | 前の回の記録も探す（`UndoTarget.php`） | 緑 | 同じ（緑） | 等価 |
+| U05 | D3: いつも「変えていない」（`UndoTarget.php`） | 赤（Failures 2） | 同じ | 検出 |
+| U06 | D3: 控えが無ければ「変えていない」（`UndoTarget.php`） | 緑 | 同じ（緑） | 等価（守り） |
+| U07 | D3: 社長の差戻しを確かめない（`UndoTarget.php`） | 赤（Failures 1） | 同じ | 検出 |
+| U08 | D3: 差戻し以外の取り消しでも確かめる（`RequestPermissions.php`） | 緑 | 同じ（緑） | 等価 |
+| W01 | 社長の判断の取り消しで decision を残す（`Workflow.php`） | 赤（Failures 3） | 同じ | 検出 |
+| W02 | 社長の判断の取り消しで番号も消す（`Workflow.php`） | 赤（Failures 8） | 同じ＋`test_a_resubmitted_request_uses_the_revision_of_the_last_submission`、`test_a_withdrawn_request_with_a_number_shows_its_submitted_subject` | 検出 |
+| W03 | 条件の確認の取り消しで finished_at を残す（`Workflow.php`） | 赤（Failures 1） | 同じ | 検出 |
+| W04 | 条件の確認の取り消しでも段階を戻す（`Workflow.php`） | 緑 | 同じ（緑） | 等価 |
+| W05 | 取り消しで arrived_at を空にする（`Workflow.php`） | 赤（Failures 8） | 同じ | 検出 |
+| W06 | 取り消しで段階の判断した人を残す（`Workflow.php`） | 赤（Failures 8） | 同じ | 検出 |
+| W07 | 後ろの待ちの段階を戻さない（`Workflow.php`） | 赤（Failures 5） | 同じ | 検出 |
+| W08 | 取り消しで D3 を確かめない（`Workflow.php`） | 赤（Failures 1） | 同じ | 検出 |
+| W09 | 取り消した記録の id を残さない（`Workflow.php`） | 赤（Errors 2・Failures 9） | 同じ | 検出 |
+| W10 | 申請者本人へ付け替えられる（`Workflow.php`） | 赤（Failures 1） | 同じ | 検出 |
+| W11 | いまの担当へ付け替えられる（`Workflow.php`） | 赤（Failures 2） | 同じ | 検出 |
+| W12 | 付け替えで版を進めない（`Workflow.php`） | 赤（Failures 2） | 同じ | 検出 |
+| W13 | 無効の人へ付け替えられる（`Workflow.php`） | 赤（Failures 1） | 同じ | 検出 |
+| W14 | 代理の取り下げの理由をコメントに入れる（`Workflow.php`） | 赤（Failures 1） | 同じ | 検出 |
+| P01 | D25: 自分の申請にも操作できる（`RequestPermissions.php`） | 赤（Failures 3） | 同じ | 検出 |
+| P02 | 審査中・社長決裁待ちも付け替えられる（`RequestPermissions.php`） | 赤（Errors 2・Failures 1） | 同じ | 検出 |
+| P03 | 決裁済みも代理で取り下げられる（`RequestPermissions.php`） | 赤（Failures 2） | 同じ | 検出 |
+| V01 | 判断を取り消された人が見られない（`RequestVisibility.php`） | 赤（Failures 1） | 同じ | 検出 |
+| A01 | 見られない申請を 404 にしない（`AdminRequestController.php`） | 赤（Errors 1） | 同じ | 検出 |
+| A02 | 理由の改行をそろえない（`AdminRequestController.php`） | 赤（Failures 2） | 同じ | 検出 |
+| A03 | 理由の 2,000 文字の上限を外す（`AdminRequestController.php`） | 赤（Failures 1） | 同じ | 検出（当初検出漏れ→追加で検出） |
+| A04 | 理由の必須を入力の検査から外す（Workflow が断る）（`AdminRequestController.php`） | 緑 | 同じ（緑） | 等価（守りの二重） |
+| A05 | ⑩ の件名を今の件名にする（D26）（`AdminRequestController.php`） | 赤（Failures 1） | 同じ | 検出 |
+| A06 | ⑩ を待ち日数の短い順にする（`AdminRequestController.php`） | 赤（Failures 1） | 同じ | 検出 |
+| A07 | 審査担当者の印で無効の人も数える（`AdminRequestController.php`） | 赤（Failures 1） | 同じ | 検出 |
+| A08 | 部門長の印で付け替えを見ない（`AdminRequestController.php`） | 赤（Failures 1） | 同じ | 検出（当初検出漏れ→追加で検出） |
+| A09 | 決裁済みのページ送りでタブを落とす（`AdminRequestController.php`） | 赤（Failures 1） | 同じ | 検出 |
+| A10 | ⑩ の門番から管理を外す（`approval.php`） | 赤（Failures 2） | 同じ | 検出 |
+| A11 | ⑩ の門番から稼働を外す（`approval.php`） | 赤（Failures 2） | 同じ | 検出 |
+| A12 | 断られたら取り消しの小窓を開く（送り先を見ない）（`_admin_actions.blade.php`） | 赤（Failures 2） | 同じ | 検出 |
+| A13 | 取り消しの小窓が版を送らない（`_admin_actions.blade.php`） | 赤（Failures 3） | 同じ | 検出 |
+| A14 | 付け替え先の選択肢に申請者を出す（`RequestController.php`） | 赤（Failures 1） | 同じ | 検出 |
+| A15 | 取り消しの記録に元の操作の名前を添えない（`ApprovalHistory.php`） | 赤（Failures 1） | 同じ | 検出 |
+| A16 | 届いた日時をどの段階にも出す（`_steps.blade.php`） | 赤（Failures 1） | 同じ | 検出 |
+| A17 | m-2 の文を 2a に戻す（`_actions.blade.php`） | 赤（Failures 1） | 同じ | 検出 |
+| A18 | 取り下げの断りで条件確認の小窓を開く（m-6）（`RequestActionController.php`） | 赤（Failures 3） | 同じ | 検出 |
+| A19 | 判断の断りで小窓を開き直さない（`RequestActionController.php`） | 赤（Failures 2） | 同じ | 検出 |
+| A20 | 担当に選べる人の検査でメールを見ない（`Assignees.php`） | 赤（Failures 1） | 同じ | 検出 |
+| R01 | 差戻し中も今の件名を返す（`RelatedNumberController.php`） | 赤（Failures 4） | 同じ＋`test_a_resubmitted_request_uses_the_revision_of_the_last_submission`、`test_a_withdrawn_request_with_a_number_shows_its_submitted_subject` | 検出 |
+| R02 | 差戻し中も今の件名で当てる（`RelatedNumberController.php`） | 赤（Failures 4） | 同じ＋`test_a_resubmitted_request_uses_the_revision_of_the_last_submission`、`test_a_withdrawn_request_with_a_number_shows_its_submitted_subject` | 検出 |
+| N01 | 件数に申請者の番を数えない（`PendingWork.php`） | 赤（Failures 3） | 同じ | 検出 |
+| N02 | 件数を 1 リクエストで覚えない（`ApprovalMenu.php`） | 赤（Failures 1） | 同じ | 検出 |
+| N03 | 使い始める前も件数を出す（`ApprovalMenu.php`） | 赤（Failures 6） | 同じ | 検出 |
+| N04 | 0 件でも丸を出す（`sidebar-item.blade.php`） | 赤（Failures 1） | 同じ | 検出 |
+| N05 | メニューの読み取りで設定の行を作る（`ApprovalSetting.php`） | 赤（Failures 1） | 同じ | 検出（ただし `PropertyListSortTest` の問い合わせの本数でだけ。Task 8 で直のテストを足した＝下の N08） |
+| F01 | 版の桁の上限を外す（`FormInput.php`） | 赤（Failures 1） | 同じ | 検出 |
+| F02 | 版が無いとき与えた値を使わない（`FormInput.php`） | 赤（Failures 2） | 同じ | 検出 |
+| F03 | N-1: 無効の審査担当者も数える（`TypeController.php`） | 赤（Failures 1） | 同じ | 検出 |
+
+### 等価の確かめ（計画の表が「等価」とした 6 通り。今のコードで 1 行ずつ読み直した）
+
+| # | 緑のままでよい理由（今のコード） |
+|---|---|
+| U01 | 省略（提出のとき）・交代（部門長の段階が待ちのときだけ）・付け替え（部門長確認中で待ちのときだけ）の記録の下には、その回の取り消していない判断が無い。飛ばさなくても `UNDOABLE` でないので null を返し、飛ばしたときと同じく「取り消せる操作なし」になる |
+| U04 | その回は必ず提出・出し直しの記録で始まり、探すのはそこで止まる（取り消せない操作に当たったら null）。回の条件を外しても前の回の記録まで届かない |
+| U06 | 控えは提出と同じ取引で作る（`submit()`）。`round >= 1` の申請に今の回の控えが無いことは起きない（守り） |
+| U08 | 申請者が中身・添付を直せるのは下書きと差戻し中だけ。差戻し以外の取り消しの対象（審査中・社長決裁待ち・決裁済み・否決・条件確認待ちからの取り消し）では今の中身が今の回の控えと同じなので、確かめても断らない |
+| W04 | 条件の確認の記録には段階が付かない（`step_id` が空 → `reopenStep()` の主キー 0 は 0 行）。その回の段階は済みだけで「待ち・打ち切り」が無いので、後ろの段階も書かない（Task 4 の手直しの `reopenStep()` でも同じ） |
+| A04 | 付け替え・取り消し・代理の取り下げの 3 つとも `Workflow::requireReason()` が同じ文（「理由を入力してください。」）で断り、送り先がフラッシュに残した小窓が同じく開き直す（守りの二重） |
+
+### 点検で見つけた変異（Task 8 で足した 27 通り）
+
+各 Task の点検の報告（`task-N-review.md`）で「実装をこう壊してもテストが緑のまま」とされたものを、新しい ID で mutate.py の後ろに足した（既存の 71 通りと表は変えていない）。「足す前」は `136bdc7a` の写し、「足したあと」は下のテストのコミットを積んだ `fc67eff8` の写しで、どちらも TARGET 全体で流した。27 通りとも、足したあとは**足したテストが狙いの文言で落とす**（例: C11 は `エスケープせずに出した: <b>前の件名</b>`・N08 は「基幹の画面が設定の行を作った」）。表の N05 も、足したテストが「基幹の画面が設定の行を作った」で落とすようになった。等価と判断したものは無い。
+
+| # | 点検の指摘 | 変異（ファイル） | 足す前（136bdc7a の写し・805 本） | 判断（1 行） | 足したテスト | 足したあと（fc67eff8 の写し・823 本） |
+|---|---|---|---|---|---|---|
+| F04 | Task 1 M-1 | 版の形の終わりを `\z` でなく `$` で見る（`FormInput.php`） | 緑 | 等価でない: `lockVersion("1\n")` が 1 を返す（部品の約束「整数の形だけ」が崩れる。画面からは TrimStrings が先に落とすので起きない） | `FormInputTest::test_lock_version_is_read_only_in_the_shape_of_a_whole_number` にデータ「末尾の改行」「末尾の空白」 | 赤（Failures 1） `test_lock_version_is_read_only_in_the_shape_of_a_whole_number` |
+| S07 | Task 2 m-1 | 変わったものの有無で本文を見ない（`RequestSnapshot.php`） | 緑 | 等価でない: 本文だけ直した出し直しに「前回の提出から、中身と添付は変わっていません。」と出る | `RequestSnapshotTest::test_a_single_kind_of_change_is_a_change`（本文だけ・項目だけ・添付を足すだけ・外すだけ） | 赤（Failures 2） `test_a_removed_body_line_is_struck_through_and_read_out`、`test_a_single_kind_of_change_is_a_change` |
+| S08 | Task 2 m-1 | 変わったものの有無で項目を見ない（`RequestSnapshot.php`） | 緑 | 等価でない: 項目だけ直した出し直しに「変わっていません」と出る | 同上 | 赤（Failures 2） `test_the_third_round_is_compared_with_the_second`、`test_a_single_kind_of_change_is_a_change` |
+| S09 | Task 2 m-1 | 変わったものの有無で足した添付を見ない（`RequestSnapshot.php`） | 緑 | 等価でない: 添付を足すだけの出し直しに「変わっていません」と出る | 同上 | 赤（Failures 1） `test_a_single_kind_of_change_is_a_change` |
+| S10 | Task 2 m-1 | 変わったものの有無で外した添付を見ない（`RequestSnapshot.php`） | 赤（Failures 1） `test_the_detail_lists_the_attachments_of_the_shown_content` | 検出済み（点検が流した範囲の外の `RequestAttachmentTest` が落とす）。単体でも同上のテストで押さえた | 同上 | 赤（Failures 2） `test_the_detail_lists_the_attachments_of_the_shown_content`、`test_a_single_kind_of_change_is_a_change` |
+| S11 | Task 2 m-2 | 指紋の添付を id でなく数にする（`RequestSnapshot.php`） | 緑 | 等価でない: 同じ数のまま添付を差し替えても D3 が「直していない」とみなし、差戻しを取り消せる | `RequestSnapshotTest::test_the_fingerprint_changes_with_any_editable_value` に「添付を差し替える」 | 赤（Failures 1） `test_the_fingerprint_changes_with_any_editable_value` |
+| C06 | Task 3 m-1 | 変更点をいつも 1 回目と比べる（`RequestController.php`） | 緑 | 等価でない: 3 回目の出し直しの変更点が 1 回目 → 3 回目の差になる（見出しは「2 回目 → 3 回目」のまま） | `RequestChangesTest::test_the_third_round_is_compared_with_the_second` | 赤（Failures 1） `test_the_third_round_is_compared_with_the_second` |
+| C07 | Task 3 m-2 | 全部の回に「最後に提出した中身」の印を付ける（`_history.blade.php`） | 緑 | 等価でない: どの回も最後に提出した中身に見える | 同上（印は 1 つだけ） | 赤（Failures 1） `test_the_third_round_is_compared_with_the_second` |
+| C08 | Task 3 m-3 | 詳細から提出の履歴を外す（`show.blade.php`） | 赤（Failures 3） `test_comments_and_names_are_escaped`、`test_a_first_submission_has_no_changes_section`、`test_the_history_shows_each_round_with_its_own_content` | 検出済み（`RequestChangesTest` ほかが落とす）。ただし `RequestFormTest:524` は履歴が無いとページ全体を見て通っていた | `RequestFormTest::test_others_see_the_latest_round_that_was_submitted` の「提出の履歴」を `assertNotFalse` で確かめてから切り出す | 赤（Failures 6） `test_comments_and_names_are_escaped`、`test_a_first_submission_has_no_changes_section`、`test_the_history_shows_each_round_with_its_own_content`、`test_the_third_round_is_compared_with_the_second`、`test_the_changes_and_the_history_escape_the_submitted_values`、`test_others_see_the_latest_round_that_was_submitted` |
+| C09 | Task 3 m-4 (a) | 変更点の本文の「消えた行:」の読み上げを消す（`_changes.blade.php`） | 緑 | 等価でない: 読み上げで消えた行と分からない（色だけに頼らない。要件 14.4） | `RequestChangesTest::test_a_removed_body_line_is_struck_through_and_read_out` | 赤（Failures 1） `test_a_removed_body_line_is_struck_through_and_read_out` |
+| C10 | Task 3 m-4 (b) | 履歴の添付のリンク先をずらす（`_history.blade.php`） | 緑 | 等価でない: 履歴の添付のリンクが別の添付を開く | `RequestChangesTest::test_the_history_shows_each_round_with_its_own_content` に 1 回目のリンク先 | 赤（Failures 1） `test_the_history_shows_each_round_with_its_own_content` |
+| C11 | Task 3 m-5 | 変更点の項目の「前」をエスケープしない（`_changes.blade.php`） | 緑 | 等価でない: 申請者の打った件名がそのまま HTML になる | `RequestChangesTest::test_the_changes_and_the_history_escape_the_submitted_values` | 赤（Failures 1） `test_the_changes_and_the_history_escape_the_submitted_values` |
+| C12 | Task 3 m-5 | 変更点の本文の増えた行をエスケープしない（`_changes.blade.php`） | 緑 | 等価でない: 同上（本文の行） | 同上 | 赤（Failures 1） `test_the_changes_and_the_history_escape_the_submitted_values` |
+| C13 | Task 3 m-5 | 履歴の件名をエスケープしない（`_history.blade.php`） | 赤（Failures 1） `test_user_written_strings_are_escaped` | 検出済み（`RequestFormTest::test_user_written_strings_are_escaped`）。同上のテストでも押さえた | 同上 | 赤（Failures 2） `test_the_changes_and_the_history_escape_the_submitted_values`、`test_user_written_strings_are_escaped` |
+| C14 | Task 3 m-5 | 履歴の本文をエスケープしない（`_history.blade.php`） | 赤（Failures 1） `test_user_written_strings_are_escaped` | 検出済み（同上） | 同上 | 赤（Failures 2） `test_the_changes_and_the_history_escape_the_submitted_values`、`test_user_written_strings_are_escaped` |
+| P04 | Task 4 m-1 | 代理の取り下げで管理者かを見ない（`RequestPermissions.php`） | 赤（Failures 2） `test_the_detail_offers_the_operations_that_are_possible_now`、`test_a_view_all_user_sees_no_actions` | 検出済み（Task 5 の画面のテスト 2 本。点検は Task 4 の 4 ファイルだけで測った）。`Workflow` の守りを直に確かめる行を足した | `WorkflowAdminTest::test_withdrawal_by_an_admin_refusals` に管理者でない人（部門長） | 赤（Failures 3） `test_the_detail_offers_the_operations_that_are_possible_now`、`test_a_view_all_user_sees_no_actions`、`test_withdrawal_by_an_admin_refusals` |
+| V02 | Task 4 m-3 | 取り消された判断の人の見られる範囲を部門長の判断だけにする（`RequestVisibility.php`） | 緑 | 等価でない: 担当を外れた審査担当者・前の社長が、取り消された自分の判断の申請を開けない（段階3 の通知の先で 404） | `WorkflowAdminTest::test_every_judge_whose_judgement_was_undone_can_still_see_the_request`（部門長の差戻し・審査の意見・社長の可／条可／否／差戻しの 6 通り） | 赤（Failures 5） `test_every_judge_whose_judgement_was_undone_can_still_see_the_request` ×5 |
+| W15 | Task 4 m-4 | 取り消しの記録の「前」の状態を戻り先で書く（`Workflow.php`） | 緑 | 等価でない: 追記のみの記録に誤った状態の前後が残る | `WorkflowAdminTest::test_undo_restores_the_state_before_the_operation` に `from_status` | 赤（Failures 8） `test_undo_restores_the_state_before_the_operation` ×8 |
+| W16 | Task 4 m-4 | 代理の取り下げの記録の「後」の状態を前の状態で書く（`Workflow.php`） | 緑 | 等価でない: 同上 | `WorkflowAdminTest::test_an_admin_withdraws_for_the_applicant` に `to_status` | 赤（Failures 1） `test_an_admin_withdraws_for_the_applicant` |
+| A21 | Task 5 M-2 A | 取り消しの送り先が残す小窓の名前を `reassign` にする（`AdminRequestController.php`） | 緑 | 等価でない: 断られた取り消しの小窓が開き直さない | `AdminRequestsTest::test_a_refused_undo_reopens_its_modal` | 赤（Failures 1） `test_a_refused_undo_reopens_its_modal` |
+| A22 | Task 5 M-2 B | ⑩ の申請部門を今の部門にする（`AdminRequestController.php`） | 緑 | 等価でない: 差戻し中の直しかけの申請部門が ⑩ に出る（D26） | `AdminRequestsTest::test_the_list_shows_the_last_submitted_subject` に申請部門 | 赤（Failures 1） `test_the_list_shows_the_last_submitted_subject` |
+| A23 | Task 5 M-2 C | ⑩ の社長の段階の「担当が申請者本人」の印を出さない（`AdminRequestController.php`） | 緑 | 等価でない: 社長が申請者本人になって止まった申請に印が付かない | `AdminRequestsTest::test_the_list_flags_a_request_whose_president_is_the_applicant` | 赤（Failures 1） `test_the_list_flags_a_request_whose_president_is_the_applicant` |
+| A24 | Task 5 M-2 D | `launchedForMenu()` の読むだけの経路がいつも false（`ApprovalSetting.php`） | 緑 | 等価でない: 本番の基幹の画面（設定を覚えていない）で「決裁」「進行中の申請の管理」が出ない。テストは `launchApprovals()` が設定を覚えるので覚えた経路しか通らなかった | `AdminRequestsTest::test_a_base_page_reads_the_launch_without_the_remembered_setting` | 赤（Failures 1） `test_a_base_page_reads_the_launch_without_the_remembered_setting` |
+| A25 | Task 5 M-2 F | 開き直した管理者の小窓がいつも今の版を送る（`_admin_actions.blade.php`） | 緑 | 等価でない: 古い画面から断られたあと、直して送り直すと先を越されたことに気づかずに通る | `AdminRequestsTest::test_a_reopened_admin_modal_keeps_the_version_of_the_refused_page` | 赤（Failures 1） `test_a_reopened_admin_modal_keeps_the_version_of_the_refused_page` |
+| N06 | Task 7 Minor 1 | 基幹の折りたたみで 0 件でも丸を出す（`sidebar.blade.php`） | 緑 | 等価でない: 0 件の赤い丸が出る | `ApprovalMenuTest::test_no_badge_when_nothing_is_waiting` に折りたたみとドロワー | 赤（Failures 1） `test_no_badge_when_nothing_is_waiting` |
+| N07 | Task 7 Minor 1 | 決裁のみのサイドバーの折りたたみで 0 件でも丸を出す（`sidebar_approval.blade.php`） | 緑 | 等価でない: 同上 | `ApprovalMenuTest::test_the_approval_only_sidebar_has_no_badge_when_nothing_is_waiting` | 赤（Failures 1） `test_the_approval_only_sidebar_has_no_badge_when_nothing_is_waiting` |
+| N08 | Task 7 Minor 2 | メニューの件数で `current()` を使う＝設定の行を作る（`ApprovalMenu.php`） | 赤（Failures 1） `test_the_query_count_does_not_grow_with_the_number_of_properties` | 意図と別の機構でだけ検出（`PropertyListSortTest` が問い合わせの本数の違いで落とす）。計画 §0.10 の「読むだけ」を直に確かめるテストを足した | `ApprovalMenuTest::test_a_base_page_does_not_create_the_settings_row`（表の N05 も落とす） | 赤（Failures 2） `test_a_base_page_does_not_create_the_settings_row`、`test_the_query_count_does_not_grow_with_the_number_of_properties` |
+
+### 足したテスト（持ち主の Task ごとのコミット）
+
+どのテストも、先に写し（`p2b-t08-tests`）で「変異を当てると赤・元に戻すと緑」を確かめてから WT に入れた（道具は `work/rf/t08/t08-redgreen.py`。変異は mutate.py と同じ文字列で当てた。出力は `work/rf/t08/rg-*.txt`）。WT ではコミットの前ごとに、そのファイルと全件を流した。実装（`app/`・`resources/`・`routes/`）は変えていない。
+
+| コミット | 持ち主 | ファイル | 足したもの | 全件（コミットの前） |
+|---|---|---|---|---|
+| `523b1280` | Task 1 | `tests/Unit/Approval/FormInputTest.php` | データ「末尾の改行」「末尾の空白」（F04） | OK (2868 tests, 20094 assertions) |
+| `3b902c8c` | Task 2 | `tests/Unit/Approval/RequestSnapshotTest.php` | `test_a_single_kind_of_change_is_a_change`（S07〜S10）・指紋の「添付を差し替える」（S11） | OK (2869 tests, 20099 assertions) |
+| `55bec696` | Task 3 | `tests/Feature/Approval/Phase2/RequestChangesTest.php`・`RequestFormTest.php` | 3 回の提出（C06・C07）・消えた行（C09）・履歴のリンク先（C10）・エスケープ（C11〜C14）・`RequestFormTest:524` の空振りを直す（C08） | OK (2872 tests, 20129 assertions) |
+| `eee3f744` | Task 4 | `tests/Feature/Approval/Phase2/WorkflowAdminTest.php` | 管理者でない人の代理の取り下げ（P04）・審査と社長の判断を取り消されたあとも見られる（V02・6 通り）・記録の状態の前後（W15・W16） | OK (2878 tests, 20159 assertions) |
+| `44327521` | Task 5 | `tests/Feature/Approval/Phase2/AdminRequestsTest.php` | 断られた取り消しの小窓（A21）・⑩ の申請部門（A22）・社長の段階の印（A23）・読むだけの経路（A24）・開き直した小窓の版（A25） | OK (2882 tests, 20187 assertions) |
+| `fc67eff8` | Task 7 | `tests/Feature/Approval/Phase2/ApprovalMenuTest.php` | 0 件の折りたたみとドロワー（N06）・決裁のみ利用者の 0 件（N07）・設定の行を作らない（N05・N08） | OK (2884 tests, 20203 assertions) |
+
+### 本番と同じ MySQL での確かめ（関連する決裁No の候補）
+
+関連する決裁No の候補（`RelatedNumberController`）は、この基幹で初めて JSON の中身（`approval_revisions.snapshot->subject`）を LIKE で探す。テストは SQLite でしか流していなかったので、使い捨ての MySQL で 1 回流した。
+
+- 立て方: brew の mysql@8.4（**8.4.11**）を scratchpad の別の datadir（`t08-mysql/data`）・**ポート 34418**・`--socket=m.sock`（相対。scratchpad の絶対パスはソケットの長さの上限を超える）で立て、`t08`（utf8mb4・utf8mb4_unicode_ci）を作った。常駐の MySQL（datadir `/opt/homebrew/var/mysql`・3306）には触っていない
+- 流し方: phpunit.xml の `<env>` は `force` が無いので、プロセスの環境変数が勝つ（PHPUnit の `PhpHandler::handleEnvVariables()`）。WT で `DB_CONNECTION=mysql DB_HOST=127.0.0.1 DB_PORT=34418 DB_DATABASE=t08 DB_USERNAME=root DB_PASSWORD= DB_SOCKET= … ./vendor/bin/phpunit tests/Feature/Approval/Phase2/RelatedNumberSearchTest.php`（WT の phpunit.xml は変えていない）
+- 結果: **`OK (13 tests, 104 assertions)`**（SQLite と同じ本数）
+- MySQL で流れたことの証拠: `RefreshDatabase` の migration で `t08` に 46 表（`migrations` 37 行・`approval_revisions.snapshot` は `json` 型・`approval_requests.subject` は `utf8mb4_unicode_ci`）。general log に `` json_unquote(json_extract(`approval_revisions`.`snapshot`, '$."subject"')) like '%提出した%' ``（9 回）・`'%直しかけ%'`（12 回）・`'%二回目%'`・`'%他部門だけの秘密%'` など 15 通りの式が実際に流れていた
+- 計画 §0.14 の 4（受け入れた隙間）も実機で確かめた: JSON から取り出した文字列の照合順序は `utf8mb4_bin`（`'abc'` は `LIKE '%ABC%'` に当たらない。ふだんの件名の列は当たる）
+- 止めた: `kill -TERM`（プロセスの datadir が t08-mysql であることを確かめてから）→ 使い捨ての mysqld は 0 件・ポート 34418 は空き・常駐の mysqld（pid 1062）だけが残っていることを確かめた
