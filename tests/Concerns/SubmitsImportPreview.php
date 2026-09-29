@@ -29,8 +29,14 @@ trait SubmitsImportPreview
      */
     private const IMPORT_BUTTON_PATTERN = '/<button\b[^>]*>\s*インポート実行/u';
 
-    /** 全行がエラーのときにプレビューが出す文言（フォームの代わりに描画される）。 */
+    /** 取り込める行が無く、エラーの行があるときにプレビューが出す文言（フォームの代わりに描画される）。 */
     private const NO_IMPORTABLE_ROWS = 'インポート可能なデータがありません。CSVを修正してください。';
+
+    /**
+     * すべての行が登録済み（スキップ）で、エラーも無いときにプレビューが出す文言（%d はスキップの件数。フォームの代わりに
+     * 灰色で描画される。設計書 2026-09-29-contract-reimport-design.md §4.7 (2)）。
+     */
+    private const ALL_ROWS_REGISTERED = 'すべての行が登録済みです（スキップ %d 件）。取り込む行はありません。';
 
     private function executive(): User
     {
@@ -172,6 +178,49 @@ trait SubmitsImportPreview
             self::IMPORT_BUTTON_PATTERN,
             $html,
             "取込できないはずのプレビューに「インポート実行」ボタンが出ている（tab={$tab}）"
+        );
+
+        return $preview;
+    }
+
+    /**
+     * すべての行が登録済み（スキップ）で、エラーも無い CSV のプレビュー（設計書 2026-09-29-contract-reimport-design.md §4.7 (2)・§5.1）。
+     *
+     * 正常 0・エラー 0・スキップ＝行数・灰色の文がある・赤字の文が無い・確定のフォームが無い、を見る。
+     * 役割（viewData）と表示（画面の文字）は別々に見る（Bug #54 ④）。灰色の文は色まで見る（赤字の枝と取り違えない）。
+     */
+    private function assertPreviewSkipsEveryRow(string $tab, string $csv, int $rows): \Illuminate\Testing\TestResponse
+    {
+        $preview = $this->preview($tab, $csv);
+        $preview->assertStatus(200);
+
+        $html = $preview->getContent();
+
+        $this->assertSame($rows, $preview->viewData('totalRows'), "CSV の行数が違う（tab={$tab}）");
+        $this->assertSame(0, $preview->viewData('validCount'), "取り込む行が残っている（tab={$tab}）");
+        $this->assertSame([], $preview->viewData('rowErrors'), "エラーの行がある（tab={$tab}）");
+
+        // コントローラが数えたスキップの行が、灰色の一覧にも「行N: 理由」で出ていること（Bug #53: 件数と表示を突き合わせる）
+        $skipped = $preview->viewData('skippedRows');
+        $this->assertCount($rows, $skipped, "スキップの行の数が CSV の行数と違う（tab={$tab}）");
+        foreach ($skipped as $skip) {
+            $this->assertStringContainsString(
+                '行' . $skip['row'] . ': ' . e($skip['message']),
+                $html,
+                "スキップの理由が画面に出ていない（tab={$tab}・行{$skip['row']}）"
+            );
+        }
+
+        $this->assertStringContainsString(
+            '<div style="font-size: 13px; color: #6b7280;">' . sprintf(self::ALL_ROWS_REGISTERED, $rows) . '</div>',
+            $html,
+            "灰色の「すべての行が登録済み」の文が出ていない（tab={$tab}）"
+        );
+        $this->assertStringNotContainsString(self::NO_IMPORTABLE_ROWS, $html, "エラーが無いのに赤字の文が出ている（tab={$tab}）");
+        $this->assertDoesNotMatchRegularExpression(
+            self::IMPORT_BUTTON_PATTERN,
+            $html,
+            "取り込む行が無いのに「インポート実行」ボタンが出ている（tab={$tab}）"
         );
 
         return $preview;

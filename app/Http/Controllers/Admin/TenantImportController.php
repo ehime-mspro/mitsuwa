@@ -38,6 +38,12 @@ use Illuminate\Validation\ValidationException;
  *   設計書 2026-09-28-import-double-submit-design.md §4.2）。鍵は 5 タブのプレビューで出し、`loadCsv()` の確定の分岐の
  *   最初（CSV を読み直す前）で使う。直す前は、同じ確認画面の確定を 2 回送ると契約・過去契約が二重に入った
  *   （物件・区画・顧客は重複の確認で 2 回目が「0件を登録しました」になった）。
+ * ⚠ 契約・過去契約は、登録済みの同じ契約の行をスキップする（上げ直しても二重にしない。
+ *   設計書 2026-09-29-contract-reimport-design.md）。見分けのキーは 区画・顧客（テナント名が空欄なら顧客の無い契約）・契約日で、
+ *   賃料・状態・解約日・備考は使わない。削除した契約とは突き合わせず、登録済みの契約は書き換えない。
+ *   照合は findRegisteredContract() の 1 か所。行の検査では、日付の検査のあと・金額の検査の前に
+ *   「CSV 内の重複 → 登録済みの照合」の順で見る（確定でも同じ検査をやり直す）。
+ *   警告は行の中に貯め、取り込むと決めたときだけ画面の一覧へ移す（スキップ・エラーの行には出さない）。
  */
 class TenantImportController extends Controller
 {
@@ -689,11 +695,15 @@ class TenantImportController extends Controller
         $errors = [];
         $warnings = [];
         $validRows = [];
+        $skippedRows = [];
         $propertyCache = [];
         $customerCache = [];
+        $contractKeyTracker = [];   // 見分けのキー => 最初の行（CSV 内の重複）
 
         foreach ($rows as $i => $row) {
             $rowNum = $i + 2;
+            // 警告はいったん行の中に貯め、取り込むと決めたときだけ画面の一覧へ移す（クラスの docblock）
+            $rowWarnings = [];
 
             // 必須チェック
             if ($row['property_name'] === '') {
@@ -776,7 +786,7 @@ class TenantImportController extends Controller
                 ->where('status', ContractStatus::Active->value)
                 ->first();
             if ($activeContract) {
-                $warnings[] = ['row' => $rowNum, 'message' => "区画「{$propName} {$unit->display_name}」には既にアクティブな契約（{$activeContract->contract_number}）が存在します"];
+                $rowWarnings[] = ['row' => $rowNum, 'message' => "区画「{$propName} {$unit->display_name}」には既にアクティブな契約（{$activeContract->contract_number}）が存在します"];
             }
 
             // 日付チェック
@@ -794,6 +804,22 @@ class TenantImportController extends Controller
                     continue;
                 }
                 $row['rent_start_date'] = $rentStartDate;
+            }
+
+            // CSV 内の重複（見分けのキー＝区画・顧客・契約日）。最初の行は、照合の前にここで覚える（クラスの docblock）
+            $contractKey = $unit->id . '|' . ($customer ? 'id:' . $customer->id : 'none') . '|' . $contractDate;
+            if (isset($contractKeyTracker[$contractKey])) {
+                $errors[] = ['row' => $rowNum, 'message' => "CSV内で行{$contractKeyTracker[$contractKey]}と同じ契約が重複しています"];
+                continue;
+            }
+            $contractKeyTracker[$contractKey] = $rowNum;
+
+            // 登録済みの同じ契約はスキップ（書き換えない。金額に誤りがあってもスキップ）
+            $registered = $this->findRegisteredContract($unit->id, $customer?->id, $contractDate);
+            if ($registered) {
+                $customerLabel = $row['customer_name'] !== '' ? $row['customer_name'] : '空欄';
+                $skippedRows[] = ['row' => $rowNum, 'message' => "区画「{$propName} {$unit->display_name}」の契約（契約日 {$contractDate}・顧客 {$customerLabel}）は既に登録済み（{$registered->contract_number}）のためスキップ"];
+                continue;
             }
 
             // 金額フィールドチェック
@@ -817,6 +843,8 @@ class TenantImportController extends Controller
                 continue;
             }
 
+            $warnings = array_merge($warnings, $rowWarnings);
+
             $row['_property_id'] = $property->id;
             $row['_unit_id'] = $unit->id;
             $row['_customer_id'] = $customer?->id;  // customer_name 空欄なら null
@@ -833,7 +861,7 @@ class TenantImportController extends Controller
                 'validCount'   => count($validRows),
                 'rowErrors'    => $errors,
                 'warnings'     => $warnings,
-                'skippedRows'  => [],
+                'skippedRows'  => $skippedRows,
                 'summary'      => '契約 ' . count($validRows) . '件を新規作成',
                 'csvData'      => base64_encode($content),
                 // 確定を 1 回だけ通す鍵（クラスの docblock）
@@ -920,9 +948,13 @@ class TenantImportController extends Controller
         $propertyCache = [];
         $customerCache = [];        // 既存顧客のキャッシュ
         $customerCreateList = [];   // 自動作成予定の顧客名リスト
+        $skippedRows = [];
+        $contractKeyTracker = [];   // 見分けのキー => 最初の行（CSV 内の重複）
 
         foreach ($rows as $i => $row) {
             $rowNum = $i + 2;
+            // 警告はいったん行の中に貯め、取り込むと決めたときだけ画面の一覧へ移す（クラスの docblock）
+            $rowWarnings = [];
 
             // 必須チェック
             if ($row['property_name'] === '') {
@@ -1007,7 +1039,7 @@ class TenantImportController extends Controller
 
             // 解約日が今日より未来 → 警告（過去契約のはず）
             if ($endDate > JapanTime::today()->format('Y-m-d')) {
-                $warnings[] = ['row' => $rowNum, 'message' => "解約日（{$endDate}）が今日より未来です（過去契約として登録します）"];
+                $rowWarnings[] = ['row' => $rowNum, 'message' => "解約日（{$endDate}）が今日より未来です（過去契約として登録します）"];
             }
 
             // 賃料開始日チェック（契約日 〜 解約日 の範囲内）
@@ -1038,6 +1070,25 @@ class TenantImportController extends Controller
                 }
             }
 
+            // CSV 内の重複（見分けのキーは契約タブと同じ。まだ無い顧客は名前で比べる）。最初の行は、照合の前にここで覚える
+            $existingCustomer = $customerCache[$custName];
+            $contractKey = $unit->id . '|' . ($existingCustomer ? 'id:' . $existingCustomer->id : 'name:' . $custName) . '|' . $contractDate;
+            if (isset($contractKeyTracker[$contractKey])) {
+                $errors[] = ['row' => $rowNum, 'message' => "CSV内で行{$contractKeyTracker[$contractKey]}と同じ契約が重複しています"];
+                continue;
+            }
+            $contractKeyTracker[$contractKey] = $rowNum;
+
+            // 登録済みの同じ契約はスキップ（契約タブで入れた契約も同じキーで見る。書き換えない）。
+            // ⚠ まだ無い顧客（取込で自動作成する予定）の行は照合しない。null を渡すと「顧客の無い契約」と取り違える
+            if ($existingCustomer) {
+                $registered = $this->findRegisteredContract($unit->id, $existingCustomer->id, $contractDate);
+                if ($registered) {
+                    $skippedRows[] = ['row' => $rowNum, 'message' => "区画「{$propName} {$unit->display_name}」の契約（契約日 {$contractDate}・顧客 {$custName}）は既に登録済み（{$registered->contract_number}）のためスキップ"];
+                    continue;
+                }
+            }
+
             // 期間重なりチェック（active 契約のみ対象、警告のみで取込は実行）
             // 過去契約同士の重なりは検出しない（データ移行時にノイズになるため）。
             // 同じ区画に「現在も使われている契約」がある場合のみ管理者に通知する。
@@ -1050,7 +1101,7 @@ class TenantImportController extends Controller
                 })
                 ->exists();
             if ($hasActiveOverlap) {
-                $warnings[] = ['row' => $rowNum, 'message' => "区画「{$propName} {$unit->display_name}」に期間が重なるアクティブ契約があります（取込は実行）"];
+                $rowWarnings[] = ['row' => $rowNum, 'message' => "区画「{$propName} {$unit->display_name}」に期間が重なるアクティブ契約があります（取込は実行）"];
             }
 
             // 金額フィールドチェック（過去契約は家賃も任意。データ移行で空欄ありえる）
@@ -1074,10 +1125,11 @@ class TenantImportController extends Controller
                 continue;
             }
 
-            // 注意はこの行を取り込むと決めた位置で積む（途中で積むと、エラーになる行にも出てしまう）
+            // 注意もこの行の警告に貯め、取り込むと決めたここで画面の一覧へ移す（クラスの docblock）
             if ($unit->trashed()) {
-                $warnings[] = ['row' => $rowNum, 'message' => "物件「{$propName}」の区画「{$displayName}」は削除済みです。削除済みの区画のまま過去契約として取り込みます"];
+                $rowWarnings[] = ['row' => $rowNum, 'message' => "物件「{$propName}」の区画「{$displayName}」は削除済みです。削除済みの区画のまま過去契約として取り込みます"];
             }
+            $warnings = array_merge($warnings, $rowWarnings);
 
             $row['_property_id'] = $property->id;
             $row['_unit_id'] = $unit->id;
@@ -1096,7 +1148,7 @@ class TenantImportController extends Controller
                 'validCount'   => count($validRows),
                 'rowErrors'    => $errors,
                 'warnings'     => $warnings,
-                'skippedRows'  => [],
+                'skippedRows'  => $skippedRows,
                 'summary'      => '過去契約 ' . count($validRows) . '件を新規作成'
                     . (count($customerCreateList) > 0 ? '（顧客 ' . count($customerCreateList) . '件を自動作成: ' . implode('、', array_slice($customerCreateList, 0, 5)) . (count($customerCreateList) > 5 ? ' ...' : '') . '）' : ''),
                 'csvData'      => base64_encode($content),
@@ -1319,6 +1371,26 @@ class TenantImportController extends Controller
         }
 
         return [$rows, $content];
+    }
+
+    /**
+     * 登録済みの同じ契約（区画・顧客・契約日。クラスの docblock）。顧客が null なら「顧客の無い契約」と比べる。
+     * 削除した契約とは突き合わせない（Contract の既定の絞り込み）。同じキーの契約が 2 件以上あれば、
+     * id のいちばん小さいもの（最初に登録されたもの）を返す（以前の二重送信の名残。消さない）。
+     * ⚠ 日付は whereDate で比べる（テストの SQLite は date キャストの値を `Y-m-d 00:00:00` で保存するので、素の where は一致しない。
+     *   2026-09-29 に実測）
+     */
+    private function findRegisteredContract(int $unitId, ?int $customerId, string $contractDate): ?Contract
+    {
+        return Contract::where('unit_id', $unitId)
+            ->when(
+                $customerId === null,
+                fn ($query) => $query->whereNull('customer_id'),
+                fn ($query) => $query->where('customer_id', $customerId)
+            )
+            ->whereDate('contract_date', $contractDate)
+            ->orderBy('id')
+            ->first();
     }
 
     /**
