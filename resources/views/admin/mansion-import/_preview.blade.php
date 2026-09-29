@@ -102,6 +102,10 @@
                     <div style="font-size: 12px; color: #b45309; margin-top: 4px;">※ 警告のある行（{{ count($warnings) }}件）もそのまま登録されます</div>
                 @endif
             </form>
+        @elseif(count($rowErrors ?? []) === 0)
+            {{-- すべての行が登録済み（スキップ）で、エラーも無い（設計書 2026-09-29-contract-reimport-design.md §4.7 (2)）。
+                 確認画面に来る CSV は必ず 1 行以上あるので、このときスキップは 1 件以上ある --}}
+            <div style="font-size: 13px; color: #6b7280;">すべての行が登録済みです（スキップ {{ count($skippedRows ?? []) }} 件）。取り込む行はありません。</div>
         @else
             <div style="font-size: 13px; color: #dc2626;">インポート可能なデータがありません。CSVを修正してください。</div>
         @endif

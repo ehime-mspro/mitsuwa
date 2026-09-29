@@ -44,6 +44,13 @@ use Illuminate\Validation\ValidationException;
  *   設計書 2026-09-28-import-double-submit-design.md §4.2）。鍵は 6 タブのプレビューで出し、`loadCsv()` の確定の分岐の
  *   最初（CSV を読み直す前）で使う。直す前は、同じ確認画面の確定を 2 回送ると部屋契約・駐車場契約が二重に入った
  *   （物件・部屋・駐車場・入居者は重複の確認で 2 回目が「0件を登録しました」になった）。
+ * ⚠ 部屋契約・駐車場契約は、登録済みの同じ契約の行をスキップする（上げ直しても二重にしない。
+ *   設計書 2026-09-29-contract-reimport-design.md）。見分けのキーは 部屋（駐車場）・入居者・契約日・入居日（開始日）で、
+ *   日付は空欄どうしを同じ・片方だけ空欄なら違う契約とみなす。賃料・状態・退去日（終了日）・メモは使わず、
+ *   登録済みの契約は書き換えない。照合は findRegisteredRoomContract() / findRegisteredParkingContract() の 1 か所ずつ。
+ *   行の検査では、日付の検査のあと・金額の検査の前に「CSV 内の重複 → 登録済みの照合」の順で見る
+ *   （駐車場契約は日付の検査を金額の前へ移した。確定でも同じ検査をやり直す）。
+ *   警告は行の中に貯め、取り込むと決めたときだけ画面の一覧へ移す（スキップ・エラーの行には出さない）。
  */
 class MansionImportController extends Controller
 {
@@ -868,10 +875,14 @@ class MansionImportController extends Controller
         $errors = [];
         $warnings = [];
         $validRows = [];
+        $skippedRows = [];
         $propertyCache = [];
+        $contractKeyTracker = [];   // 見分けのキー => 最初の行（CSV 内の重複）
 
         foreach ($rows as $i => $row) {
             $rowNum = $i + 2;
+            // 警告はいったん行の中に貯め、取り込むと決めたときだけ画面の一覧へ移す（クラスの docblock）
+            $rowWarnings = [];
 
             // 必須チェック
             if ($row['property_name'] === '') {
@@ -927,7 +938,7 @@ class MansionImportController extends Controller
                 if ($staff) {
                     $staffUserId = $staff->id;
                 } else {
-                    $warnings[] = ['row' => $rowNum, 'message' => "担当者ユーザー名「{$row['staff_user_name']}」がシステムに見つからないため、担当者は未設定でインポートします"];
+                    $rowWarnings[] = ['row' => $rowNum, 'message' => "担当者ユーザー名「{$row['staff_user_name']}」がシステムに見つからないため、担当者は未設定でインポートします"];
                 }
             }
 
@@ -960,13 +971,28 @@ class MansionImportController extends Controller
             // ステータス自動決定
             $status = $moveOutDate ? MsContractStatus::Terminated->value : MsContractStatus::Active->value;
 
+            // CSV 内の重複（見分けのキー＝部屋・入居者・契約日・入居日。空欄の日付は空欄として比べる）。最初の行は、照合の前にここで覚える
+            $contractKey = $room->id . '|' . $tenant->id . '|' . ($contractDate ?? '') . '|' . ($moveInDate ?? '');
+            if (isset($contractKeyTracker[$contractKey])) {
+                $errors[] = ['row' => $rowNum, 'message' => "CSV内で行{$contractKeyTracker[$contractKey]}と同じ契約が重複しています"];
+                continue;
+            }
+            $contractKeyTracker[$contractKey] = $rowNum;
+
+            // 登録済みの同じ契約はスキップ（書き換えない。金額に誤りがあってもスキップ）
+            $registered = $this->findRegisteredRoomContract($room->id, $tenant->id, $contractDate, $moveInDate);
+            if ($registered) {
+                $skippedRows[] = ['row' => $rowNum, 'message' => "部屋「{$propName} {$room->room_number}」の入居者 {$tenantName} の契約（契約日 " . ($contractDate ?? '空欄') . '・入居日 ' . ($moveInDate ?? '空欄') . "）は既に登録済み（既存契約 ID: {$registered->id}）のためスキップ"];
+                continue;
+            }
+
             // 二重契約チェック（active 契約のみ警告。terminated 契約は無視）
             if ($status === MsContractStatus::Active->value) {
                 $existingActive = MsContract::where('room_id', $room->id)
                     ->where('status', MsContractStatus::Active->value)
                     ->first();
                 if ($existingActive) {
-                    $warnings[] = ['row' => $rowNum, 'message' => "部屋「{$propName} {$room->room_number}」には既に契約中の入居者がいます（既存契約 ID: {$existingActive->id}）"];
+                    $rowWarnings[] = ['row' => $rowNum, 'message' => "部屋「{$propName} {$room->room_number}」には既に契約中の入居者がいます（既存契約 ID: {$existingActive->id}）"];
                 }
             }
 
@@ -993,6 +1019,8 @@ class MansionImportController extends Controller
                 continue;
             }
 
+            $warnings = array_merge($warnings, $rowWarnings);
+
             $row['_room_id']      = $room->id;
             $row['_tenant_id']    = $tenant->id;
             $row['_staff_id']     = $staffUserId;
@@ -1013,7 +1041,7 @@ class MansionImportController extends Controller
                 'validCount'  => count($validRows),
                 'rowErrors'   => $errors,
                 'warnings'    => $warnings,
-                'skippedRows' => [],
+                'skippedRows' => $skippedRows,
                 'summary'     => '部屋契約 ' . count($validRows) . '件を新規作成',
                 'csvData'     => base64_encode($content),
                 // 確定を 1 回だけ通す鍵（クラスの docblock）
@@ -1092,10 +1120,14 @@ class MansionImportController extends Controller
         $errors = [];
         $warnings = [];
         $validRows = [];
+        $skippedRows = [];
         $propertyCache = [];
+        $contractKeyTracker = [];   // 見分けのキー => 最初の行（CSV 内の重複）
 
         foreach ($rows as $i => $row) {
             $rowNum = $i + 2;
+            // 警告はいったん行の中に貯め、取り込むと決めたときだけ画面の一覧へ移す（クラスの docblock）
+            $rowWarnings = [];
 
             // 必須チェック
             if ($row['property_name'] === '') {
@@ -1155,7 +1187,7 @@ class MansionImportController extends Controller
                     ->where('room_number', $row['linked_room_number'])
                     ->first();
                 if (!$linkedRoom) {
-                    $warnings[] = ['row' => $rowNum, 'message' => "紐付部屋番号「{$row['linked_room_number']}」が物件「{$propName}」に見つからないため、部屋契約との紐付けはスキップします"];
+                    $rowWarnings[] = ['row' => $rowNum, 'message' => "紐付部屋番号「{$row['linked_room_number']}」が物件「{$propName}」に見つからないため、部屋契約との紐付けはスキップします"];
                 } else {
                     $linkedActive = MsContract::where('room_id', $linkedRoom->id)
                         ->where('status', MsContractStatus::Active->value)
@@ -1163,7 +1195,7 @@ class MansionImportController extends Controller
                     if ($linkedActive) {
                         $linkedContractId = $linkedActive->id;
                     } else {
-                        $warnings[] = ['row' => $rowNum, 'message' => "紐付部屋番号「{$row['linked_room_number']}」に有効な部屋契約が見つからないため、部屋契約との紐付けはスキップします"];
+                        $rowWarnings[] = ['row' => $rowNum, 'message' => "紐付部屋番号「{$row['linked_room_number']}」に有効な部屋契約が見つからないため、部屋契約との紐付けはスキップします"];
                     }
                 }
             }
@@ -1175,29 +1207,11 @@ class MansionImportController extends Controller
                 if ($staff) {
                     $staffUserId = $staff->id;
                 } else {
-                    $warnings[] = ['row' => $rowNum, 'message' => "担当者ユーザー名「{$row['staff_user_name']}」がシステムに見つからないため、担当者は未設定でインポートします"];
+                    $rowWarnings[] = ['row' => $rowNum, 'message' => "担当者ユーザー名「{$row['staff_user_name']}」がシステムに見つからないため、担当者は未設定でインポートします"];
                 }
             }
 
-            // 月額料金チェック
-            $monthlyFeeVal = str_replace(',', '', $row['monthly_fee']);
-            if (!is_numeric($monthlyFeeVal) || (int) $monthlyFeeVal < 0) {
-                $errors[] = ['row' => $rowNum, 'message' => "月額料金「{$row['monthly_fee']}」は0以上の整数で入力してください"];
-                continue;
-            }
-            $row['monthly_fee'] = (int) $monthlyFeeVal;
-
-            // 敷金チェック
-            if ($row['deposit'] !== '') {
-                $val = str_replace(',', '', $row['deposit']);
-                if (!is_numeric($val) || (int) $val < 0) {
-                    $errors[] = ['row' => $rowNum, 'message' => "敷金「{$row['deposit']}」は不正な値です"];
-                    continue;
-                }
-                $row['deposit'] = (int) $val;
-            }
-
-            // 日付チェック
+            // 日付チェック（見分けに使うので、金額より先に見る。クラスの docblock）
             $contractDate = null;
             if ($row['contract_date'] !== '') {
                 $contractDate = CsvDate::normalize($row['contract_date']);
@@ -1226,15 +1240,50 @@ class MansionImportController extends Controller
             // ステータス自動決定
             $status = $endDate ? MsContractStatus::Terminated->value : MsContractStatus::Active->value;
 
+            // CSV 内の重複（見分けのキー＝駐車場・入居者・契約日・開始日。空欄の日付は空欄として比べる）。最初の行は、照合の前にここで覚える
+            $contractKey = $parking->id . '|' . $tenant->id . '|' . ($contractDate ?? '') . '|' . ($startDate ?? '');
+            if (isset($contractKeyTracker[$contractKey])) {
+                $errors[] = ['row' => $rowNum, 'message' => "CSV内で行{$contractKeyTracker[$contractKey]}と同じ契約が重複しています"];
+                continue;
+            }
+            $contractKeyTracker[$contractKey] = $rowNum;
+
+            // 登録済みの同じ契約はスキップ（書き換えない。月額料金・敷金に誤りがあってもスキップ）
+            $registered = $this->findRegisteredParkingContract($parking->id, $tenant->id, $contractDate, $startDate);
+            if ($registered) {
+                $skippedRows[] = ['row' => $rowNum, 'message' => "駐車場「{$propName} {$parking->parking_number}」の入居者 {$tenantName} の契約（契約日 " . ($contractDate ?? '空欄') . '・開始日 ' . ($startDate ?? '空欄') . "）は既に登録済み（既存契約 ID: {$registered->id}）のためスキップ"];
+                continue;
+            }
+
             // 二重契約チェック（active 契約のみ警告）
             if ($status === MsContractStatus::Active->value) {
                 $existingActive = MsParkingContract::where('parking_id', $parking->id)
                     ->where('status', MsContractStatus::Active->value)
                     ->first();
                 if ($existingActive) {
-                    $warnings[] = ['row' => $rowNum, 'message' => "駐車場「{$propName} {$parking->parking_number}」には既に使用中の契約があります（既存契約 ID: {$existingActive->id}）"];
+                    $rowWarnings[] = ['row' => $rowNum, 'message' => "駐車場「{$propName} {$parking->parking_number}」には既に使用中の契約があります（既存契約 ID: {$existingActive->id}）"];
                 }
             }
+
+            // 月額料金チェック（照合の後ろ。登録済みの行は金額に誤りがあってもスキップする）
+            $monthlyFeeVal = str_replace(',', '', $row['monthly_fee']);
+            if (!is_numeric($monthlyFeeVal) || (int) $monthlyFeeVal < 0) {
+                $errors[] = ['row' => $rowNum, 'message' => "月額料金「{$row['monthly_fee']}」は0以上の整数で入力してください"];
+                continue;
+            }
+            $row['monthly_fee'] = (int) $monthlyFeeVal;
+
+            // 敷金チェック
+            if ($row['deposit'] !== '') {
+                $val = str_replace(',', '', $row['deposit']);
+                if (!is_numeric($val) || (int) $val < 0) {
+                    $errors[] = ['row' => $rowNum, 'message' => "敷金「{$row['deposit']}」は不正な値です"];
+                    continue;
+                }
+                $row['deposit'] = (int) $val;
+            }
+
+            $warnings = array_merge($warnings, $rowWarnings);
 
             $row['_parking_id']     = $parking->id;
             $row['_tenant_id']      = $tenant->id;
@@ -1257,7 +1306,7 @@ class MansionImportController extends Controller
                 'validCount'  => count($validRows),
                 'rowErrors'   => $errors,
                 'warnings'    => $warnings,
-                'skippedRows' => [],
+                'skippedRows' => $skippedRows,
                 'summary'     => '駐車場契約 ' . count($validRows) . '件を新規作成',
                 'csvData'     => base64_encode($content),
                 // 確定を 1 回だけ通す鍵（クラスの docblock）
@@ -1404,6 +1453,53 @@ class MansionImportController extends Controller
     // ================================================================
     // プライベートメソッド
     // ================================================================
+
+    /**
+     * 登録済みの同じ部屋契約（部屋・入居者・契約日・入居日。クラスの docblock）。
+     * 日付は空欄どうしを同じ・片方だけ空欄なら違う契約とみなす。同じキーの契約が 2 件以上あれば、
+     * id のいちばん小さいもの（最初に登録されたもの）を返す（以前の二重送信の名残。消さない）。
+     * ⚠ 日付は whereDate で比べる（テストの SQLite は date キャストの値を `Y-m-d 00:00:00` で保存するので、素の where は一致しない。
+     *   2026-09-29 に実測）
+     */
+    private function findRegisteredRoomContract(int $roomId, int $tenantId, ?string $contractDate, ?string $moveInDate): ?MsContract
+    {
+        return MsContract::where('room_id', $roomId)
+            ->where('tenant_id', $tenantId)
+            ->when(
+                $contractDate === null,
+                fn ($query) => $query->whereNull('contract_date'),
+                fn ($query) => $query->whereDate('contract_date', $contractDate)
+            )
+            ->when(
+                $moveInDate === null,
+                fn ($query) => $query->whereNull('move_in_date'),
+                fn ($query) => $query->whereDate('move_in_date', $moveInDate)
+            )
+            ->orderBy('id')
+            ->first();
+    }
+
+    /**
+     * 登録済みの同じ駐車場契約（駐車場・入居者・契約日・開始日。クラスの docblock）。
+     * 日付の比べ方と、同じキーの契約が 2 件以上あるときは、findRegisteredRoomContract() と同じ。
+     */
+    private function findRegisteredParkingContract(int $parkingId, int $tenantId, ?string $contractDate, ?string $startDate): ?MsParkingContract
+    {
+        return MsParkingContract::where('parking_id', $parkingId)
+            ->where('tenant_id', $tenantId)
+            ->when(
+                $contractDate === null,
+                fn ($query) => $query->whereNull('contract_date'),
+                fn ($query) => $query->whereDate('contract_date', $contractDate)
+            )
+            ->when(
+                $startDate === null,
+                fn ($query) => $query->whereNull('start_date'),
+                fn ($query) => $query->whereDate('start_date', $startDate)
+            )
+            ->orderBy('id')
+            ->first();
+    }
 
     /**
      * CSV を読み込んで行配列にする。
