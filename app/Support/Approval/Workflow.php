@@ -13,6 +13,7 @@ use App\Models\ApprovalRequest;
 use App\Models\ApprovalRevision;
 use App\Models\ApprovalStep;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -330,16 +331,16 @@ final class Workflow
                 'condition_confirmed'            => [ApprovalStatus::Condition, ['finished_at' => null]],
             };
 
-            // ⚠ 申請の行 → 段階の行の順にロックする（ほかの操作と同じ順）
-            $steps = ApprovalStep::where('request_id', $request->id)->where('round', $request->round)->pluck('id')->all();
-            ApprovalStep::whereKey($steps)->orderBy('id')->lockForUpdate()->get();
+            // ⚠ 申請の行 → 段階の行の順にロックする（ほかの操作と同じ順）。ロックした行は reopenStep() に渡す
+            $steps  = ApprovalStep::where('request_id', $request->id)->where('round', $request->round)->pluck('id')->all();
+            $locked = ApprovalStep::whereKey($steps)->orderBy('id')->lockForUpdate()->get();
 
             $from = $request->status;
             $this->move($request, $lockVersion, $to, $extra);
 
             // 条件確認の取り消しは段階を動かさない（社長の段階は条可のまま）
             if ($target->action !== 'condition_confirmed') {
-                $this->reopenStep($request, (int) $target->step_id);
+                $this->reopenStep($locked, (int) $target->step_id);
             }
 
             HistoryRecorder::record($request, 'undone', $admin, [
@@ -535,8 +536,14 @@ final class Workflow
     /**
      * 取り消した判断の段階を「待ち」に戻し、今の回のそれより後ろの段階を「まだ届いていない」に戻す（取り消し）。
      * 届いた日時（arrived_at）は空にしない（§5.16）。担当の付け替え（assignee_user_id）はそのまま
+     *
+     * ⚠ 後ろの段階は、ロックした今の回の段階の行から id を選び、主キーだけで書く。`request_id`・`round` と
+     *   `id > ?` の範囲の条件で UPDATE すると、MySQL は索引の次の項目＝隣の申請の段階の行までロックし、
+     *   隣の申請への判断や部門長の交代とデッドロックする（2b Task 4 の点検で MySQL 8.4 で実測）
+     *
+     * @param Collection<int, ApprovalStep> $steps 今の回の段階（呼び出し側がロックしたもの）
      */
-    private function reopenStep(ApprovalRequest $request, int $stepId): void
+    private function reopenStep(Collection $steps, int $stepId): void
     {
         $now = now();
 
@@ -550,11 +557,14 @@ final class Workflow
         ]);
 
         // 段階は部門長 → 審査 → 社長の順に作るので、id が大きいものが後ろの段階
-        ApprovalStep::where('request_id', $request->id)
-            ->where('round', $request->round)
-            ->where('id', '>', $stepId)
-            ->whereIn('status', [ApprovalStepStatus::Waiting->value, ApprovalStepStatus::Cancelled->value])
-            ->update(['status' => ApprovalStepStatus::Pending->value, 'updated_at' => $now]);
+        $later = $steps
+            ->filter(fn (ApprovalStep $step) => $step->id > $stepId
+                && in_array($step->status, [ApprovalStepStatus::Waiting, ApprovalStepStatus::Cancelled], true))
+            ->modelKeys();
+
+        if ($later !== []) {
+            ApprovalStep::whereKey($later)->update(['status' => ApprovalStepStatus::Pending->value, 'updated_at' => $now]);
+        }
     }
 
     private function finishStep(ApprovalStep $step, User $actor, ApprovalStepResult $result, ?string $comment): void

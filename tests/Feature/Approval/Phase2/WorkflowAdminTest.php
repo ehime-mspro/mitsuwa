@@ -478,6 +478,33 @@ class WorkflowAdminTest extends TestCase
         $this->assertSame([], $ids($w['reviewer']));
     }
 
+    /**
+     * 取り消しで段階の行を書く UPDATE は主キーだけで絞る（申請の行 → 段階の行のロックの順を崩さない）。
+     * ⚠ `request_id`・`round` と `id > ?` の範囲の条件で書くと、MySQL は索引の次の項目＝隣の申請の段階の行までロックし、
+     *   隣の申請への判断や部門長の交代とデッドロックする（2b Task 4 の点検で MySQL 8.4 で実測）。
+     *   SQLite ではロックの違いが出ないので、送る SQL の形で守る
+     */
+    public function test_undo_writes_the_steps_by_primary_key_only(): void
+    {
+        $w       = $this->approvalWorld();
+        $admin   = $this->approvalAdmin();
+        $r       = $this->advance($w, $this->draftFor($w), 'submit', 'return');   // 取り消すと部門長を待ちに・審査と社長をまだ届いていないに戻す
+        $updates = [];
+        DB::listen(function ($query) use (&$updates): void {
+            if (preg_match('/^update [`"]approval_steps[`"] /', $query->sql) === 1) {
+                $updates[] = $query->sql;
+            }
+        });
+
+        $this->workflow->undo($r, $admin, $r->lock_version, '押し間違い');
+
+        $this->assertSame(['head' => 'waiting', 'review' => 'pending', 'president' => 'pending'], $this->stepsOf($r->fresh()), '前提: 3 つの段階を書いた');
+        $this->assertCount(2, $updates, '取り消した段階と、後ろの段階の 2 回');
+        foreach ($updates as $sql) {
+            $this->assertMatchesRegularExpression('/ where [`"]approval_steps[`"]\.[`"]id[`"] (= \?|in \((\?|\d+)(, (\?|\d+))*\))$/', $sql, "主キーだけで絞っていない: {$sql}");
+        }
+    }
+
     // ---------------------------------------------------------------- 代理の取り下げ
 
     public function test_an_admin_withdraws_for_the_applicant(): void
