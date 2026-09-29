@@ -521,7 +521,10 @@ class RequestFormTest extends TestCase
         $this->assertStringContainsString('2 回目の件名', $top);
         $this->assertStringNotContainsString('1 回目の件名', $top);
         $this->assertStringContainsString('最後に提出した中身（2 回目の提出）', $html);
-        $this->assertStringContainsString('1 回目の件名', substr($html, strpos($html, '提出の履歴')), '1 回目の件名は履歴から見られる');
+        // 見出しが無いと strpos が false になり、ページ全体を見て通ってしまう（2b 計画 Task 8 の変異 C08）
+        $history = strpos($html, '提出の履歴');
+        $this->assertNotFalse($history, '提出の履歴が無い');
+        $this->assertStringContainsString('1 回目の件名', substr($html, $history), '1 回目の件名は履歴から見られる');
         $this->assertStringNotContainsString('直しかけの件名', $html);
     }
 

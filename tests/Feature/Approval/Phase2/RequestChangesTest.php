@@ -69,6 +69,25 @@ class RequestChangesTest extends TestCase
         return (string) $this->actingAs($user)->get(route('approvals.requests.show', $request))->assertOk()->getContent();
     }
 
+    /** 部門長が差し戻し、申請者が件名だけを直して出し直した申請 */
+    private function returnAndResubmit(array $w, ApprovalRequest $request, string $subject): ApprovalRequest
+    {
+        $request = $this->returnByHead($w, $request);
+        $request->update(['subject' => $subject]);
+        app(Workflow::class)->submit($request->refresh(), $w['applicant']);
+
+        return $request->refresh();
+    }
+
+    /** 見出しから、その節の終わり（</section>）まで。見出しが無ければ落とす（ページ全体を見て空振りしない） */
+    private function section(string $html, string $heading): string
+    {
+        $at = strpos($html, $heading);
+        $this->assertNotFalse($at, "「{$heading}」が無い");
+
+        return substr($html, $at, strpos($html, '</section>', $at) - $at);
+    }
+
     public function test_a_resubmitted_request_shows_what_changed_from_the_previous_round(): void
     {
         $w = $this->approvalWorld();
@@ -148,6 +167,9 @@ class RequestChangesTest extends TestCase
         // その回の判断は、その回の段階だけ（2 回目の部門長の段階〈待ち〉を 1 回目に混ぜない。2b 計画 Task 8 の変異 C03）
         $firstRound = substr($first, 0, strpos($first, '</details>'));
         $this->assertSame(1, substr_count(substr($firstRound, strpos($firstRound, 'この回の判断')), '>部門長</span>'));
+        // 外した添付は、その回の中からその添付を開ける（リンク先。2b 計画 Task 8 の変異 C10）
+        $removed = ApprovalAttachment::where('original_name', '見積書.pdf')->sole();
+        $this->assertStringContainsString('<a href="' . route('approvals.attachments.show', $removed) . '" target="_blank" rel="noopener" class="text-emerald-600 hover:underline break-all">見積書.pdf</a>', $firstRound);
     }
 
     public function test_a_removed_attachment_can_be_opened_from_the_history_by_others(): void
@@ -177,6 +199,65 @@ class RequestChangesTest extends TestCase
                 $this->assertStringNotContainsString($secret, $html, "{$who}に「{$secret}」が見えた");
             }
             $this->assertStringContainsString('（1 回目 → 2 回目の提出）', $html);
+        }
+    }
+
+    /** 3 回目の出し直しは直前の 2 回目と比べる（1 回目とではない）。「最後に提出した中身」の印は 3 回目だけ（2b 計画 Task 8 の変異 C06・C07） */
+    public function test_the_third_round_is_compared_with_the_second(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $request = $this->submittedFor($w, ['subject' => '一回目の件名']);
+        $request = $this->returnAndResubmit($w, $request, '二回目の件名');
+        $request = $this->returnAndResubmit($w, $request, '三回目の件名');
+        $this->assertSame(3, $request->round, '前提: 3 回目の提出');
+
+        $html = $this->showHtml($w['head'], $request);
+
+        $this->assertStringContainsString('（2 回目 → 3 回目の提出）', $html);
+        $changes = $this->section($html, '前回からの変更点');
+        $this->assertStringContainsString('<span class="sr-only">前: </span>二回目の件名</span>', $changes);
+        $this->assertStringContainsString('<span class="sr-only">後: </span>三回目の件名</span>', $changes);
+        $this->assertStringNotContainsString('一回目の件名', $changes);
+        // 履歴は新しい回から並び、印は最後に提出した回だけ
+        $this->assertSame(1, preg_match('/<summary[^>]*>\s*3 回目の提出.*?<summary[^>]*>\s*2 回目の提出.*?<summary[^>]*>\s*1 回目の提出/su', $html));
+        $this->assertSame(1, substr_count($html, '（最後に提出した中身）'), '最後に提出した回でない回にも印が付いた');
+    }
+
+    /** 本文の消えた行は、取り消し線と読み上げの「消えた行:」で出す（色だけに頼らない。要件 14.4・2b 計画 Task 8 の変異 C09） */
+    public function test_a_removed_body_line_is_struck_through_and_read_out(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $request = $this->returnByHead($w, $this->submittedFor($w, ['body' => "■ なぜ（目的・理由）\n・老朽化のため"]));
+        $request->update(['body' => "■ なぜ（目的・理由）\n・燃費が悪いため"]);
+        app(Workflow::class)->submit($request->refresh(), $w['applicant']);
+
+        $changes = $this->section($this->showHtml($w['head'], $request->refresh()), '前回からの変更点');
+
+        $this->assertStringContainsString('<span class="sr-only">消えた行: </span><span class="whitespace-pre-wrap break-words min-w-0 line-through">・老朽化のため</span>', $changes);
+        $this->assertStringContainsString('<span class="sr-only">増えた行: </span><span class="whitespace-pre-wrap break-words min-w-0">・燃費が悪いため</span>', $changes);
+    }
+
+    /** 変更点と履歴は、控えの値（件名・本文の行）をエスケープして出す（2b 計画 Task 8 の変異 C11〜C14） */
+    public function test_the_changes_and_the_history_escape_the_submitted_values(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $request = $this->returnByHead($w, $this->submittedFor($w, ['subject' => '<b>前の件名</b>', 'body' => "■ なぜ（目的・理由）\n<script>alert(1)</script>"]));
+        $request->update(['subject' => '<i>後の件名</i>', 'body' => "■ なぜ（目的・理由）\n<img src=x onerror=alert(2)>"]);
+        app(Workflow::class)->submit($request->refresh(), $w['applicant']);
+
+        $html = $this->showHtml($w['head'], $request->refresh());
+
+        foreach (['<b>前の件名</b>', '<i>後の件名</i>', '<script>alert(1)</script>', '<img src=x'] as $raw) {
+            $this->assertStringNotContainsString($raw, $html, "エスケープせずに出した: {$raw}");
+        }
+        foreach (['前回からの変更点', '提出の履歴'] as $heading) {
+            $section = $this->section($html, $heading);
+            foreach (['&lt;b&gt;前の件名&lt;/b&gt;', '&lt;i&gt;後の件名&lt;/i&gt;', '&lt;script&gt;alert(1)&lt;/script&gt;', '&lt;img src=x onerror=alert(2)&gt;'] as $escaped) {
+                $this->assertStringContainsString($escaped, $section, "{$heading}に {$escaped} が無い");
+            }
         }
     }
 }
