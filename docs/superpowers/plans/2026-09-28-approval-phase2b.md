@@ -6601,3 +6601,13 @@ Expected: `invalid=0`・**`approvals=43`**（`--json` で数える。テキス�
 - MySQL で流れたことの証拠: `RefreshDatabase` の migration で `t08` に 46 表（`migrations` 37 行・`approval_revisions.snapshot` は `json` 型・`approval_requests.subject` は `utf8mb4_unicode_ci`）。general log に `` json_unquote(json_extract(`approval_revisions`.`snapshot`, '$."subject"')) like '%提出した%' ``（9 回）・`'%直しかけ%'`（12 回）・`'%二回目%'`・`'%他部門だけの秘密%'` など 15 通りの式が実際に流れていた
 - 計画 §0.14 の 4（受け入れた隙間）も実機で確かめた: JSON から取り出した文字列の照合順序は `utf8mb4_bin`（`'abc'` は `LIKE '%ABC%'` に当たらない。ふだんの件名の列は当たる）
 - 止めた: `kill -TERM`（プロセスの datadir が t08-mysql であることを確かめてから）→ 使い捨ての mysqld は 0 件・ポート 34418 は空き・常駐の mysqld（pid 1062）だけが残っていることを確かめた
+
+## Task 9 の実測記録（2026-09-29）
+
+- 形: 136bdc7a の写し（scratchpad）＋使い捨ての SQLite＋`php artisan serve`＋Playwright（Chromium）。WT には書いていない。試しのパスワードは値を出さずに渡した
+- Step 3 の 15 行: すべて期待どおり（1440px と 375px）。14 は見られる画面のべ 345 回で `main` のはみ出し 0・見られる画面のコンソールのエラーと警告 0。15 は付け替え・取り消し・代理の取り下げとも、返事を遅らせた 3 回押しで POST 1 回
+- brief の読み替え: #3 の 3 つのボタンは同時には出ない（部門長確認中では取り消しが出ない作り）・#4 の名前は「社長が可」「押し間違いの取り消し（社長が可）」（§0.4 どおり）
+- Step 5: view:cache のあと 287 件すべて php -l OK
+- 点検の指摘の確かめ: m-6・m-7・M-1（500）・M-4・M-5・M-8・Task 7 Minor 5 を画面で再現。⑩ のページ送りは 375px で 22 ページ（421 件）から はみ出し、31 ページで左端が切れる（B1）
+- 利用者に確かめること: C1〜C6（見出し・外した添付・条件の確認の取り消しの文・付け替え先の一覧・ページ番号・折りたたみの絵）
+- 写真 68 枚（scratchpad の review/t09/shots/）。消えない場所に写した: `~/.claude/plans/approval-phase2b-tasks/work/t09/shots/`。利用者に見せたページ: https://claude.ai/artifact/TXHxsTGmrN5CsYaBakfHN7
