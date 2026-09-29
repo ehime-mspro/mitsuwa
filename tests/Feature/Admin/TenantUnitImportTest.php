@@ -86,8 +86,8 @@ class TenantUnitImportTest extends TestCase
     {
         $property = $this->property();
         $unit = Unit::create($this->unitAttributes($property, 1, 'A'));
-        // ⚠ テスト用スキーマの contracts.customer_id と rent_start_date は NOT NULL だが、本番はどちらも NULL 可（2026-09-14 に読み取りで確認）。
-        //   アプリはどちらも空のまま契約を作る経路を持つ。テスト用スキーマの漂流を直すのはこの変更の範囲外なので、ここではどちらも埋めて、初月・最終月の列だけを見る
+        // ⚠ テスト用スキーマの contracts.rent_start_date は NOT NULL だが、本番は NULL 可（2026-09-14 に読み取りで確認。
+        //   customer_id は 2026-09-29 に本番と同じ NULL 可へ揃えた）。ここでは顧客と賃料開始日を埋めて、初月・最終月の列だけを見る
         $customer = \App\Models\Customer::create(['code' => 'CU-IMP-1', 'name' => '取込商事', 'customer_type' => 'corporation']);
 
         $contract = \App\Models\Contract::create([
@@ -140,6 +140,72 @@ class TenantUnitImportTest extends TestCase
         } catch (QueryException $e) {
             $this->assertStringContainsString('CHECK constraint failed', $e->getMessage());
         }
+    }
+
+    /**
+     * 本番の定義（2026-09-14 に読み取りで確認）: contracts.customer_id は NULL 可（テナント名が空欄の契約）。
+     * テスト用スキーマは作成の migration の行で揃えた（2026-09-29。契約の取込の上げ直しのテストが顧客の無い契約を作る）。
+     * ⚠ Schema::table(...)->nullable()->change() で揃えてはいけない — SQLite がテーブルを作り直し、状態・部署の CHECK が
+     *   黙って消える（2026-09-29 に実測。下の 2 本のカナリアが止める）
+     */
+    public function test_the_contracts_table_accepts_a_contract_without_a_customer_like_production(): void
+    {
+        $property = $this->property();
+        $unit = Unit::create($this->unitAttributes($property, 1, 'A'));
+
+        DB::table('contracts')->insert([
+            'contract_number' => 'C-2026-904', 'department' => 'tenant', 'property_id' => $property->id, 'unit_id' => $unit->id,
+            'customer_id' => null, 'status' => 'active', 'contract_date' => '2026-09-01', 'rent_start_date' => '2026-09-01', 'rent' => 100000,
+        ]);
+
+        $this->assertNull(DB::table('contracts')->where('contract_number', 'C-2026-904')->value('customer_id'));
+    }
+
+    /** カナリア: 契約の状態・部署の CHECK（enum）が残っている（migration でテーブルを作り直すと消える） */
+    public function test_contract_status_and_department_are_still_checked(): void
+    {
+        $property = $this->property();
+        $unit = Unit::create($this->unitAttributes($property, 1, 'A'));
+        // 顧客は埋める（customer_id の手当てと切り離して、CHECK だけを見る）
+        $customer = \App\Models\Customer::create(['code' => 'CU-IMP-1', 'name' => '取込商事', 'customer_type' => 'corporation']);
+        $row = [
+            'contract_number' => 'C-2026-905', 'department' => 'tenant', 'property_id' => $property->id, 'unit_id' => $unit->id,
+            'customer_id' => $customer->id, 'status' => 'active', 'contract_date' => '2026-09-01', 'rent_start_date' => '2026-09-01', 'rent' => 100000,
+        ];
+
+        foreach (['status', 'department'] as $column) {
+            try {
+                // ⚠ 配列の + は左の値を残すので、上書きしたい値を左に置く
+                DB::table('contracts')->insert([$column => 'bogus'] + $row);
+                $this->fail("contracts.{$column} の CHECK が無い（本番の enum と食い違う）");
+            } catch (QueryException $e) {
+                $this->assertStringContainsString("CHECK constraint failed: {$column}", $e->getMessage());
+            }
+        }
+    }
+
+    /** カナリア: 契約の外部キー（顧客は削除を止める）と索引が残っている（テーブルを作り直すと落ちることがある） */
+    public function test_the_contracts_table_keeps_its_foreign_keys_and_indexes(): void
+    {
+        $foreignKeys = collect(DB::select('PRAGMA foreign_key_list(contracts)'))
+            ->mapWithKeys(fn ($fk) => [$fk->from => "{$fk->table}.{$fk->to} {$fk->on_delete}"])
+            ->sortKeys()
+            ->all();
+        $this->assertSame([
+            'assigned_to' => 'users.id SET NULL',
+            'customer_id' => 'customers.id RESTRICT',
+            'property_id' => 'properties.id RESTRICT',
+            'unit_id'     => 'units.id RESTRICT',
+        ], $foreignKeys);
+
+        $indexes = collect(DB::select('PRAGMA index_list(contracts)'))->pluck('name')->sort()->values()->all();
+        $this->assertSame([
+            'contracts_contract_number_unique',
+            'idx_contracts_customer',
+            'idx_contracts_property',
+            'idx_contracts_status',
+            'idx_contracts_unit',
+        ], $indexes);
     }
 
     // ============================================================
@@ -340,7 +406,7 @@ class TenantUnitImportTest extends TestCase
 
         $this->confirm('unit', self::UNIT_HEADER . "\n取込ビル,2,A,15,,,,,,,\n")
             ->assertSessionHas('success', '区画インポート完了: 1件を登録しました（うち削除済みから復元 1件）');
-        // ⚠ テナント名と賃料開始日を埋める（テスト用スキーマの contracts.customer_id / rent_start_date が NOT NULL のため）
+        // ⚠ 賃料開始日を埋める（テスト用スキーマの contracts.rent_start_date が NOT NULL のため）
         $this->confirm('contract', self::CONTRACT_HEADER . "\n取込ビル,2,A,取込商事,2026-09-01,2026-09-01,100000,,,,,,\n")
             ->assertRedirect(route('admin.tenant-import', ['tab' => 'contract']));
 

@@ -334,7 +334,7 @@ class SortableListWiringTest extends TestCase
             'deposit'          => 200000,
         ]);
 
-        // テナント契約一覧（設計書 2026-09-11 §7.3）。⚠ テストの SQLite では customer_id が NOT NULL
+        // テナント契約一覧（設計書 2026-09-11 §7.3）
         $occupied = Unit::create([
             'property_id'  => $property->id,
             'floor'        => 1,

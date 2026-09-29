@@ -17,7 +17,10 @@ return new class extends Migration
             $table->enum('department', ['tenant', 'mansion', 'housing', 'realestate', 'welfare', 'dad']);
             $table->foreignId('property_id')->constrained('properties')->restrictOnDelete();
             $table->foreignId('unit_id')->constrained('units')->restrictOnDelete();
-            $table->foreignId('customer_id')->constrained('customers')->restrictOnDelete();
+            // 本番の contracts.customer_id は NULL 可（テナント名が空欄の契約。2026-09-14 に読み取りで確認。Bug #60）。
+            // ⚠ 変えるときはこの行を直す。Schema::table(...)->nullable()->change() は使わない
+            //    （SQLite がテーブルを作り直し、状態・部署の CHECK が黙って消える。2026-09-29 に実測）
+            $table->foreignId('customer_id')->nullable()->constrained('customers')->restrictOnDelete();
             $table->enum('status', ['active', 'terminated'])->default('active');
             $table->date('contract_date')->comment('契約締結日');
             $table->date('rent_start_date')->comment('家賃発生日');

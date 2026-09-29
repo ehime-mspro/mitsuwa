@@ -197,7 +197,7 @@ class TenantImportDoubleSubmitTest extends TestCase
                 Customer::create(['code' => 'CU-DS-1', 'name' => '二重商事', 'customer_type' => 'corporation']);
                 Customer::create(['code' => 'CU-DS-2', 'name' => '二重個人店', 'customer_type' => 'sole_proprietor']);
 
-                // ⚠ テナント名と賃料開始日を埋める（テスト用スキーマの contracts.customer_id / rent_start_date が NOT NULL。Bug #60）
+                // ⚠ 賃料開始日を埋める（テスト用スキーマの contracts.rent_start_date が NOT NULL。Bug #60）
                 return "物件名,階,部屋番号,テナント名,契約日,賃料開始日,家賃,共益費,敷金,ゴミ代,駆除代,屋号,備考\n"
                     . "二重ビル,1,A,二重商事,2026-04-01,2026-04-01,95000,8000,190000,1500,500,二重商事 松山支店,\n"
                     . "二重ビル,2,B,二重個人店,2026-05-01,2026-05-01,100000,,,,,,\n";

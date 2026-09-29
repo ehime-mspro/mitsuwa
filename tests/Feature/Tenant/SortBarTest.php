@@ -67,7 +67,7 @@ class SortBarTest extends AreaBuildingTestCase
     /**
      * テナント契約を 1 件作る（`ContractListSortTest::makeContract()` と同じ最小フィールド構成）。
      *
-     * ⚠ テストの SQLite では customer_id / rent_start_date が NOT NULL。
+     * ⚠ テストの SQLite では rent_start_date が NOT NULL（customer_id は 2026-09-29 に本番と同じ NULL 可へ揃えた）。
      */
     private function makeTenantContract(string $propertyName, string $contractDate): Contract
     {
