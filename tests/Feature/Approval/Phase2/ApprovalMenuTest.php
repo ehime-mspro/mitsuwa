@@ -3,6 +3,7 @@
 namespace Tests\Feature\Approval\Phase2;
 
 use App\Enums\UserRole;
+use App\Models\ApprovalSetting;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -85,6 +86,10 @@ class ApprovalMenuTest extends TestCase
 
         $this->assertMatchesRegularExpression('#<a\s+href="' . preg_quote(route('approvals.home'), '#') . '"[^>]*>\s*決裁\s*</a>#u', $sidebars['expanded'], '件数が 0 でも「決裁」は出す（丸印は出さない）');
         $this->assertStringNotContainsString('対応待ち ', $sidebars['expanded']);
+        // 折りたたみとドロワーも 0 件は丸を出さない（2b 計画 Task 8 の変異 N06）
+        $this->assertSame(1, preg_match('#<a href="' . preg_quote(route('approvals.home'), '#') . '" title="決裁（対応待ち 0 件）"[^>]*>(.*?)</a>#s', $sidebars['rail'], $rail), '折りたたみに「決裁」が無い');
+        $this->assertStringNotContainsString('<span', $rail[1], '折りたたみに 0 件の丸が出た');
+        $this->assertStringNotContainsString('対応待ち ', $sidebars['drawer']);
         $this->assertStringContainsString('決裁の対応待ち</span> <span class="font-bold tabular-nums">0</span> 件', $html, 'ダッシュボードには 0 件と出す');
     }
 
@@ -139,5 +144,32 @@ class ApprovalMenuTest extends TestCase
             $this->assertStringContainsString('<span class="sr-only">対応待ち </span>1<span class="sr-only"> 件</span>', $sidebars[$key], "{$key} に件数が無い（申請者の差戻しの対応）");
         }
         $this->assertMatchesRegularExpression('#title="決裁のホーム"[^>]*>決<span[^>]*aria-hidden="true">1</span></a>#u', $sidebars['rail']);
+    }
+
+    /** 決裁のみ利用者のサイドバーも、0 件は丸を出さない（折りたたみを含む。2b 計画 Task 8 の変異 N07） */
+    public function test_the_approval_only_sidebar_has_no_badge_when_nothing_is_waiting(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+
+        $sidebars = $this->sidebars($this->html($w['applicant'], route('approvals.home')));
+
+        foreach (['expanded', 'drawer'] as $key) {
+            $this->assertStringContainsString('決裁のホーム', $sidebars[$key]);
+            $this->assertStringNotContainsString('対応待ち ', $sidebars[$key], "{$key} に 0 件の丸が出た");
+        }
+        $this->assertMatchesRegularExpression('#title="決裁のホーム"[^>]*>決</a>#u', $sidebars['rail'], '折りたたみに 0 件の丸が出た');
+    }
+
+    /** 基幹の画面は、決裁の設定の行が無くても作らない（読むだけ。計画 §0.10・2b 計画 Task 8 の変異 N05・N08） */
+    public function test_a_base_page_does_not_create_the_settings_row(): void
+    {
+        $user = $this->baseUser();
+        $this->assertSame(0, ApprovalSetting::count(), '前提: 設定の行が無い');
+
+        $html = $this->html($user, '/dashboard/tenant');
+
+        $this->assertStringNotContainsString('決裁', $html);
+        $this->assertSame(0, ApprovalSetting::count(), '基幹の画面が設定の行を作った');
     }
 }
