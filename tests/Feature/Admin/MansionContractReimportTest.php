@@ -437,6 +437,8 @@ class MansionContractReimportTest extends TestCase
         $this->assertStringNotContainsString('⚠ 行2:', $html);
         $this->assertStringNotContainsString('⚠ 行3:', $html);
         $this->assertStringContainsString('警告: <strong>2</strong> 件', $html);
+        // ⚠ 既知の癖を固定している（設計書 §7）: 「警告のある行（N件）」は行の数でなく警告の数（行4 の 1 行に警告が 2 つ＝「2件」）。
+        //   この癖を直すときは、ここを「1件」に変える。
         $this->assertStringContainsString('※ 警告のある行（2件）もそのまま登録されます', $html);
     }
 
@@ -462,6 +464,8 @@ class MansionContractReimportTest extends TestCase
         $this->assertSame([['row' => 3, 'message' => '月額料金「abc」は0以上の整数で入力してください']], $preview->viewData('rowErrors'));
         $this->assertStringNotContainsString('⚠ 行2:', $html);
         $this->assertStringNotContainsString('⚠ 行3:', $html);
+        // 1 行（行4）に警告が 3 つ＝「警告: 3 件」（警告の数）。同じ count が「※ 警告のある行（N件）」にも行の数でなく警告の数として出る癖
+        // （設計書 §7 で既知のまま直さない）は、部屋契約のテストが「（2件）」で固定している。その癖を直すときは、あちらと合わせて見直す。
         $this->assertStringContainsString('警告: <strong>3</strong> 件', $html);
         $this->assertStringNotContainsString('有効な部屋契約が見つからないため', $html);
     }
