@@ -8,6 +8,7 @@ use App\Models\ApprovalHistory;
 use App\Models\ApprovalMailDomain;
 use App\Models\ApprovalMember;
 use App\Models\ApprovalRequest;
+use App\Models\ApprovalSetting;
 use App\Models\User;
 use App\Support\Approval\UndoTarget;
 use App\Support\Approval\Workflow;
@@ -97,14 +98,18 @@ class AdminRequestsTest extends TestCase
         $w     = $this->approvalWorld();
         $admin = $this->approvalAdmin();
         $this->launchApprovals();
+        $other   = $this->approvalDepartment($w['company'], ['name' => '直しかけの部門']);
         $request = $this->submittedFor($w, ['subject' => '提出した件名']);
         $this->workflow->judgeHead($request, $w['head'], $request->lock_version, ApprovalStepResult::Return, '直してください');
-        $request->refresh()->update(['subject' => '直しかけの件名']);
+        $request->refresh()->update(['subject' => '直しかけの件名', 'department_id' => $other->id]);
 
         $html = $this->html($admin, route('approvals.admin.requests.index'));
 
         $this->assertStringContainsString('提出した件名', $html);
         $this->assertStringNotContainsString('直しかけの件名', $html);
+        // 申請部門も提出した控えのもの（2b 計画 Task 8 の変異 A22）
+        $this->assertStringContainsString('>住宅事業部</td>', $html, '提出した申請部門が出ていない');
+        $this->assertStringNotContainsString('直しかけの部門', $html);
         $this->assertStringContainsString('申請者（差戻しの対応）', $html);
     }
 
@@ -132,6 +137,23 @@ class AdminRequestsTest extends TestCase
         $html = $this->html($admin, route('approvals.admin.requests.index'));
         $this->assertSame(1, preg_match('/審査が本人だけ.*?審査担当者が申請者本人しかいない/su', $html));
         $this->assertSame(0, preg_match('/部門長が本人<\/a>.*?担当が申請者本人.*?審査が本人だけ/su', $html), '部門長を戻したのに印が残った');
+    }
+
+    /** 社長の決裁待ちのあいだに申請者が社長になった申請にも「担当が申請者本人」の印を付ける（D16・2b 計画 Task 8 の変異 A23） */
+    public function test_the_list_flags_a_request_whose_president_is_the_applicant(): void
+    {
+        $w     = $this->approvalWorld();
+        $admin = $this->approvalAdmin();
+        $this->launchApprovals();
+        $request = $this->submittedFor($w, ['subject' => '社長が本人']);
+        $this->workflow->judgeHead($request, $w['head'], $request->lock_version, ApprovalStepResult::Approve, null);
+        $this->workflow->judgeReview($request->refresh(), $w['reviewer'], $request->lock_version, ApprovalStepResult::Ok, null);
+        $this->assertStringNotContainsString('担当が申請者本人', $this->html($admin, route('approvals.admin.requests.index')), '前提: 社長が別の人なら印は無い');
+
+        $this->makePresident($w['applicant']);
+        $html = $this->html($admin, route('approvals.admin.requests.index'));
+
+        $this->assertSame(1, preg_match('/社長が本人<\/a>.*?担当が申請者本人/su', substr($html, strpos($html, '<table'))), '社長の段階の印が無い');
     }
 
     public function test_the_decided_tab_lists_approved_and_rejected_requests_newest_first(): void
@@ -213,6 +235,21 @@ class AdminRequestsTest extends TestCase
         $approvalOnlyAdmin = $this->approvalOnlyUser();
         ApprovalMember::create(['user_id' => $approvalOnlyAdmin->id, 'is_admin' => true]);
         $this->assertSame(2, substr_count($this->html($approvalOnlyAdmin->fresh(), route('approvals.home')), $link), '決裁のみ利用者のサイドバーの展開・ドロワーの 2 か所');
+    }
+
+    /**
+     * 基幹の画面は、設定を覚えていない経路（本番の各リクエスト）でも使い始めたかを読んでリンクを出す（2b 計画 Task 8 の変異 A24）。
+     * ⚠ テストでは launchApprovals() が設定をコンテナに覚えるので、捨ててから開く（捨てないと覚えた経路しか通らない）
+     */
+    public function test_a_base_page_reads_the_launch_without_the_remembered_setting(): void
+    {
+        $this->approvalWorld();
+        $admin = $this->approvalAdmin();
+        $link  = 'href="' . route('approvals.admin.requests.index') . '"';
+        $this->launchApprovals();
+        ApprovalSetting::forget();
+
+        $this->assertSame(2, substr_count($this->html($admin, route('password.change')), $link), '基幹のサイドバーの展開・ドロワーの 2 か所');
     }
 
     // ---------------------------------------------------------------- 詳細の「決裁の管理者の操作」
@@ -349,6 +386,53 @@ class AdminRequestsTest extends TestCase
         $this->actingAs($admin)->post($action, ['assignee_user_id' => (string) $deputy->id, 'admin_reason' => '休職のため', 'lock_version' => $version])
             ->assertSessionHas('error', WorkflowConflict::MESSAGE);
         $this->assertStringContainsString('x-data="{ adminModal: null }"', $this->showHtml($admin, $request));
+    }
+
+    /** 断られた取り消しは、取り消しの小窓を開き直す（どの小窓かは送り先で決める。2b 計画 §0.9・Task 8 の変異 A21） */
+    public function test_a_refused_undo_reopens_its_modal(): void
+    {
+        $w     = $this->approvalWorld();
+        $admin = $this->approvalAdmin();
+        $this->launchApprovals();
+        $request = $this->submittedFor($w);
+        $this->workflow->judgeHead($request, $w['head'], $request->lock_version, ApprovalStepResult::Approve, null);
+        $action = route('approvals.admin.requests.undo', $request);
+
+        $this->actingAs($admin)->post($action, ['admin_reason' => '', 'lock_version' => (string) $request->fresh()->lock_version])
+            ->assertRedirect(route('approvals.requests.show', $request));
+
+        $html = $this->showHtml($admin, $request);
+        $this->assertStringContainsString("x-data=\"{ adminModal: 'undo' }\"", $html, '断られた取り消しの小窓を開き直していない');
+        $this->assertStringContainsString('理由を入力してください。', $this->formOf($html, $action));
+        $this->assertSame(ApprovalStatus::Review, $request->fresh()->status);
+    }
+
+    /** 古い画面から送って断られても、開き直した小窓は古い画面の版のまま（直して送り直すと先を越された扱い。2b 計画 §0.9・Task 8 の変異 A25） */
+    public function test_a_reopened_admin_modal_keeps_the_version_of_the_refused_page(): void
+    {
+        $w     = $this->approvalWorld();
+        $admin = $this->approvalAdmin();
+        $this->launchApprovals();
+        $request = $this->submittedFor($w);
+        $stale   = (string) $request->lock_version;
+        $action  = route('approvals.admin.requests.withdraw', $request);
+
+        // 管理者が代理の取り下げの小窓を開いているあいだに、部門長が承認した（審査中でも代理で取り下げられる）
+        $this->workflow->judgeHead($request, $w['head'], $request->lock_version, ApprovalStepResult::Approve, null);
+
+        // 古い画面から理由なしで送った → 入力の検査で断られて小窓が開き直す。版は古い画面のまま
+        $this->actingAs($admin)->post($action, ['admin_reason' => '', 'lock_version' => $stale])
+            ->assertRedirect(route('approvals.requests.show', $request));
+        $html = $this->showHtml($admin, $request);
+        $this->assertStringContainsString("x-data=\"{ adminModal: 'admin_withdraw' }\"", $html);
+        $form = $this->parseForm($html, 'action="' . $action . '"');
+        $this->assertSame($stale, $form['fields']['lock_version'], '開き直した小窓が断られた画面の版を送らない');
+
+        // 理由を入れて送り直しても、先を越された画面なので取り下げない
+        $this->actingAs($admin)->post($form['action'], array_merge($form['fields'], ['admin_reason' => '退職のため']))
+            ->assertRedirect(route('approvals.requests.show', $request))
+            ->assertSessionHas('error', WorkflowConflict::MESSAGE);
+        $this->assertSame(ApprovalStatus::Review, $request->fresh()->status);
     }
 
     public function test_undoing_from_the_detail(): void
