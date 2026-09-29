@@ -25,9 +25,10 @@
     // 決裁の管理者に指定された人だけ「決裁の管理」を出す（設計書 §5.15・D2）。
     // 指定されていない人の画面は変わらない（段階1 で一般の利用者に見える変化はログイン画面だけ）。
     $isApprovalAdmin = $user->isApprovalAdmin();
-    // 進行中の申請の管理へのリンクは、決裁の管理者に・使い始めてから（段階2 設計書 §5.2・D1）。
-    // ⚠ 基幹の画面は launchedForMenu()（行を作らず読むだけ。問い合わせは決裁の管理者の画面だけ）
-    $approvalsLaunched = $isApprovalAdmin && \App\Models\ApprovalSetting::launchedForMenu();
+    // 決裁の対応待ちの件数（使い始める前は null で何も出さない。1 リクエストに 1 回だけ数える。段階2 設計書 §5.15）
+    $approvalPending = \App\Support\Approval\ApprovalMenu::pendingCount($user);
+    // 進行中の申請の管理へのリンクは、決裁の管理者に・使い始めてから（段階2 設計書 §5.2・D1）
+    $approvalsLaunched = $approvalPending !== null;
 @endphp
 
 {{-- ========== PC用: 展開サイドバー ========== --}}
@@ -63,6 +64,10 @@
         @endif
         @if($hasMansionAccess)
             <x-sidebar-item :href="url('/mansion/dashboard')" label="賃貸Mダッシュボード" :active="request()->is('mansion/dashboard')" />
+        @endif
+        {{-- 決裁と対応待ちの件数（使い始めてから。段階2 設計書 §5.15） --}}
+        @if($approvalPending !== null)
+            <x-sidebar-item :href="route('approvals.home')" label="決裁" :badge="$approvalPending" :active="request()->routeIs('approvals.home', 'approvals.requests.*')" />
         @endif
     </div>
 
@@ -244,6 +249,21 @@
         </svg>
     </a>
 
+    {{-- 決裁と対応待ちの件数（使い始めてから。§5.15） --}}
+    @if($approvalPending !== null)
+        <a href="{{ route('approvals.home') }}" title="決裁（対応待ち {{ $approvalPending }} 件）" class="relative w-9 h-9 mb-1 rounded-lg flex items-center justify-center {{ request()->routeIs('approvals.home', 'approvals.requests.*') ? 'bg-emerald-50' : 'hover:bg-gray-100' }} transition-colors">
+            <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="{{ request()->routeIs('approvals.home', 'approvals.requests.*') ? '#059669' : '#6B7280' }}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                {{-- クリップボード＋チェック（決裁の管理と同じ形） --}}
+                <path d="M9 2h6a1 1 0 0 1 1 1v2H8V3a1 1 0 0 1 1-1z" />
+                <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+                <polyline points="9 14 11 16 15 12" />
+            </svg>
+            @if($approvalPending > 0)
+                <span class="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-red-600 text-white text-[10px] font-bold leading-4 text-center tabular-nums" aria-hidden="true">{{ $approvalPending }}</span>
+            @endif
+        </a>
+    @endif
+
     {{-- テナント管理 --}}
     @if($hasTenantAccess)
         <a href="{{ url('/tenant/properties') }}" title="テナント管理" class="w-9 h-9 mb-1 rounded-lg flex items-center justify-center {{ request()->is('tenant/*') ? 'bg-emerald-50' : 'hover:bg-gray-100' }} transition-colors">
@@ -369,6 +389,11 @@
             <x-sidebar-item :href="url('/mansion/dashboard')" label="賃貸Mダッシュボード" :active="request()->is('mansion/dashboard')" />
         @endif
     </x-sidebar-group>
+
+    {{-- 決裁と対応待ちの件数（使い始めてから。§5.15）。開閉するグループの中に入れない（閉じているあいだ件数が見えない） --}}
+    @if($approvalPending !== null)
+        <x-sidebar-item :href="route('approvals.home')" label="決裁" :badge="$approvalPending" :active="request()->routeIs('approvals.home', 'approvals.requests.*')" />
+    @endif
 
     @if($hasTenantAccess)
         <x-sidebar-group label="テナント管理" section="tenant">
