@@ -10,6 +10,7 @@ use App\Models\ApprovalRequest;
 use App\Models\ApprovalStep;
 use App\Models\ApprovalType;
 use App\Models\User;
+use App\Support\Approval\FormInput;
 use App\Support\Approval\RelatedNumbers;
 use App\Support\Approval\RequestContent;
 use App\Support\Approval\RequestPermissions;
@@ -153,8 +154,9 @@ class RequestController extends Controller
         }
 
         $validated = $this->validated($request, $approvalRequest, route('approvals.requests.edit', $approvalRequest));
-        // 編集の画面を描いたときの版（送られてこなければ 0＝作ってから一度も保存し直していない下書きの版）
-        $lockVersion = $request->integer('lock_version');
+        // 編集の画面を描いたときの版（送られてこなければ 0＝作ってから一度も保存し直していない下書きの版。
+        // 0 以上の整数の形でなければ -1 で必ず断る。2a の Task 15 の点検の軽微＝intval で「1abc」を 1 と読んでいた）
+        $lockVersion = FormInput::lockVersion($request, 0);
 
         // ⚠ lock_version を条件にした 1 回の UPDATE で保存し、lock_version を 1 進める（計画 §0.3）。別のタブで先に
         //   保存・提出した申請は lock_version が進んでいるので 0 行になる（状態を変える操作も lock_version を進める）。
@@ -244,7 +246,7 @@ class RequestController extends Controller
             'amount'          => self::normalizeAmount($request->input('amount')),
             'related_numbers' => RelatedNumbers::clean(is_array($request->input('related_numbers')) ? $request->input('related_numbers') : []),
         ]);
-        self::unifyNewlines($request, 'body');
+        FormInput::unifyNewlines($request, 'body');
 
         // 選べる種類は利用中の種類と、この申請が今使っている種類（停止していても保存はできる。D10）
         $typeIds = ApprovalType::active()->pluck('id')->push($current?->type_id)->filter()->all();
@@ -288,19 +290,6 @@ class RequestController extends Controller
         $digits = str_replace([',', '円', '¥', '￥', ' '], '', mb_convert_kana($value, 'as'));
 
         return $digits === '' ? null : $digits;
-    }
-
-    /**
-     * 改行を \n にそろえてから検査する（Task 19 の B1）。ブラウザの maxlength は改行を 1 文字と数えるが、送るときは \r\n にするので、
-     * そろえずに数えると改行の多い本文が max:20000 で断られる。保存する値もそろえた形になる
-     */
-    private static function unifyNewlines(Request $request, string $key): void
-    {
-        $value = $request->input($key);
-
-        if (is_string($value)) {
-            $request->merge([$key => str_replace(["\r\n", "\r"], "\n", $value)]);
-        }
     }
 
     /** コピーして作成で写す中身（設計書 §5.6。添付は写さない） */

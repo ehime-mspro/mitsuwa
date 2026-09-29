@@ -599,6 +599,21 @@ class RequestFormTest extends TestCase
         $this->assertSame('直しかけの件名', $request->fresh()->subject);
     }
 
+    /** 版が 0 以上の整数の形でなければ保存しない（intval で「0abc」を 0 と読まない。2a の Task 15 の点検の軽微。2b 計画 Task 1） */
+    public function test_a_lock_version_that_is_not_a_whole_number_does_not_save(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $draft = $this->draftFor($w);   // 作ってから一度も保存し直していない下書き（版 0）
+
+        $this->actingAs($w['applicant'])->put(route('approvals.requests.update', $draft), $this->filled($w, [
+            'subject' => '書き換え', 'lock_version' => '0abc', 'intent' => 'save',
+        ]))->assertRedirect(route('approvals.requests.edit', $draft));
+
+        $this->assertSame('社用車の購入', $draft->fresh()->subject);
+        $this->assertSame(0, $draft->fresh()->lock_version);
+    }
+
     /** 控えの無い提出済みの申請は、申請者以外には 404（今の行に落とさない。分からないときは見せない。仕様の 1.3） */
     public function test_others_get_not_found_when_the_last_submission_is_missing(): void
     {
