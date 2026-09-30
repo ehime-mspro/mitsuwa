@@ -68,7 +68,7 @@
                                 <select id="reassign-to" name="assignee_user_id" required class="w-full h-9 px-2.5 border border-gray-300 rounded-md text-[13px] bg-white">
                                     <option value="">選んでください</option>
                                     @foreach($assigneeCandidates as $candidate)
-                                        <option value="{{ $candidate->id }}" @selected($reopenAdmin === 'reassign' && (string) old('assignee_user_id') === (string) $candidate->id)>{{ $candidate->name }}{{ $candidate->employee_number ? '（' . $candidate->employee_number . '）' : '' }}{{ $candidate->mail_allowed ? '' : ' ※通知メールが届きません' }}</option>
+                                        <option value="{{ $candidate->id }}" @selected($reopenAdmin === 'reassign' && is_string(old('assignee_user_id')) && old('assignee_user_id') === (string) $candidate->id)>{{ $candidate->name }}{{ $candidate->employee_number ? '（' . $candidate->employee_number . '）' : '' }}{{ $candidate->mail_allowed ? '' : ' ※通知メールが届きません' }}</option>
                                     @endforeach
                                 </select>
                                 <p class="text-[11px] text-gray-400 mt-1">有効でメールアドレスのある人から選びます（申請者本人は選べません）。</p>

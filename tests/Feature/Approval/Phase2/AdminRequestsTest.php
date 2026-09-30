@@ -388,6 +388,27 @@ class AdminRequestsTest extends TestCase
         $this->assertStringContainsString('x-data="{ adminModal: null }"', $this->showHtml($admin, $request));
     }
 
+    /** 付け替え先を配列で送っても（name を assignee_user_id[] に書き換えた送信）、詳細を 500 にせず小窓を開き直して断る（Task 9 の B2・最後の点検 I-1） */
+    public function test_a_reassignment_sent_as_an_array_reopens_its_modal(): void
+    {
+        $w      = $this->approvalWorld();
+        $admin  = $this->approvalAdmin();
+        $deputy = $this->baseUser();
+        $this->launchApprovals();
+        $request = $this->submittedFor($w);
+        $action  = route('approvals.admin.requests.reassign', $request);
+
+        $this->actingAs($admin)->post($action, ['assignee_user_id' => [(string) $deputy->id], 'admin_reason' => '休職のため', 'lock_version' => (string) $request->lock_version])
+            ->assertRedirect(route('approvals.requests.show', $request));
+
+        $html = $this->showHtml($admin, $request);   // 200 であること（old() の配列を文字列にすると 500）
+        $this->assertStringContainsString("x-data=\"{ adminModal: 'reassign' }\"", $html);
+        $form = $this->formOf($html, $action);
+        $this->assertStringContainsString('付け替え先は整数で入力してください。', $form);
+        $this->assertStringContainsString('>休職のため</textarea>', $form, '打った理由が残らない');
+        $this->assertSame(0, ApprovalHistory::where('action', 'reassigned')->count());
+    }
+
     /** 断られた取り消しは、取り消しの小窓を開き直す（どの小窓かは送り先で決める。2b 計画 §0.9・Task 8 の変異 A21） */
     public function test_a_refused_undo_reopens_its_modal(): void
     {
