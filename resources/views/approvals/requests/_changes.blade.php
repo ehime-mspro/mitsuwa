@@ -51,8 +51,9 @@
                                 <li class="text-emerald-800"><span aria-hidden="true">＋ </span><span class="sr-only">足した添付: </span><a href="{{ route('approvals.attachments.show', $attachment['id']) }}" target="_blank" rel="noopener" class="hover:underline break-all">{{ $attachment['name'] }}</a></li>
                             @endforeach
                             @foreach($changes['attachments_removed'] as $attachment)
-                                {{-- 外した添付も控えに入っているので開ける（見られる範囲の確認と記録は §5.7 と同じ） --}}
-                                <li class="text-red-700"><span aria-hidden="true">− </span><span class="sr-only">外した添付: </span><a href="{{ route('approvals.attachments.show', $attachment['id']) }}" target="_blank" rel="noopener" class="line-through hover:underline break-all">{{ $attachment['name'] }}</a></li>
+                                {{-- 外した添付も控えに入っているので開ける（見られる範囲の確認と記録は §5.7 と同じ）。
+                                     マウスを乗せても取り消し線のまま（hover:underline は line-through を上書きするので付けない。利用者の決定 C2） --}}
+                                <li class="text-red-700"><span aria-hidden="true">− </span><span class="sr-only">外した添付: </span><a href="{{ route('approvals.attachments.show', $attachment['id']) }}" target="_blank" rel="noopener" class="line-through break-all">{{ $attachment['name'] }}</a></li>
                             @endforeach
                         </ul>
                     </div>

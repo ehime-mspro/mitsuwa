@@ -254,6 +254,22 @@ class RequestChangesTest extends TestCase
         $this->assertStringContainsString('>■ なぜ（目的・理由）</span></li>', $changes);
     }
 
+    /** 変更点の外した添付は、マウスを乗せても取り消し線のまま（下線に変わる指定を持たない。Task 3 m-6・Task 9 の B5・利用者の決定 C2） */
+    public function test_a_removed_attachment_stays_struck_through_on_hover(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $request = $this->resubmittedWithChanges($w);
+        $removed = ApprovalAttachment::where('original_name', '見積書.pdf')->sole();
+
+        $changes = $this->section($this->showHtml($w['head'], $request), '前回からの変更点');
+
+        $this->assertSame(1, preg_match('#<span class="sr-only">外した添付: </span><a href="' . preg_quote(route('approvals.attachments.show', $removed), '#') . '"[^>]*\bclass="([^"]*)"#', $changes, $m), '外した添付のリンクが無い');
+        $classes = preg_split('/\s+/', trim($m[1]));
+        $this->assertContains('line-through', $classes);
+        $this->assertSame([], array_values(array_filter($classes, fn (string $class) => str_contains($class, 'underline'))), '乗せたときに下線へ変わる（取り消し線が消える）');
+    }
+
     /** 変更点と履歴は、控えの値（件名・本文の行）をエスケープして出す（2b 計画 Task 8 の変異 C11〜C14） */
     public function test_the_changes_and_the_history_escape_the_submitted_values(): void
     {
