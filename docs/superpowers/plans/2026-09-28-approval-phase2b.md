@@ -6578,6 +6578,8 @@ Expected: `invalid=0`・**`approvals=43`**（`--json` で数える。テキス�
 | N07 | Task 7 Minor 1 | 決裁のみのサイドバーの折りたたみで 0 件でも丸を出す（`sidebar_approval.blade.php`） | 緑 | 等価でない: 同上 | `ApprovalMenuTest::test_the_approval_only_sidebar_has_no_badge_when_nothing_is_waiting` | 赤（Failures 1） `test_the_approval_only_sidebar_has_no_badge_when_nothing_is_waiting` |
 | N08 | Task 7 Minor 2 | メニューの件数で `current()` を使う＝設定の行を作る（`ApprovalMenu.php`） | 赤（Failures 1） `test_the_query_count_does_not_grow_with_the_number_of_properties` | 意図と別の機構でだけ検出（`PropertyListSortTest` が問い合わせの本数の違いで落とす）。計画 §0.10 の「読むだけ」を直に確かめるテストを足した | `ApprovalMenuTest::test_a_base_page_does_not_create_the_settings_row`（表の N05 も落とす） | 赤（Failures 2） `test_a_base_page_does_not_create_the_settings_row`、`test_the_query_count_does_not_grow_with_the_number_of_properties` |
 
+- Task 6 の変異（M1・M2・M6 など）は Task 6 の再点検で測り済み（`136bdc7a` の写しで 1 つずつ当て、どれも `RelatedNumberSearchTest` が落とした）なので、mutate.py とこの表には入れていない
+
 ### 足したテスト（持ち主の Task ごとのコミット）
 
 どのテストも、先に写し（`p2b-t08-tests`）で「変異を当てると赤・元に戻すと緑」を確かめてから WT に入れた（道具は `work/rf/t08/t08-redgreen.py`。変異は mutate.py と同じ文字列で当てた。出力は `work/rf/t08/rg-*.txt`）。WT ではコミットの前ごとに、そのファイルと全件を流した。実装（`app/`・`resources/`・`routes/`）は変えていない。
@@ -6609,5 +6611,13 @@ Expected: `invalid=0`・**`approvals=43`**（`--json` で数える。テキス�
 - brief の読み替え: #3 の 3 つのボタンは同時には出ない（部門長確認中では取り消しが出ない作り）・#4 の名前は「社長が可」「押し間違いの取り消し（社長が可）」（§0.4 どおり）
 - Step 5: view:cache のあと 287 件すべて php -l OK
 - 点検の指摘の確かめ: m-6・m-7・M-1（500）・M-4・M-5・M-8・Task 7 Minor 5 を画面で再現。⑩ のページ送りは 375px で 22 ページ（421 件）から はみ出し、31 ページで左端が切れる（B1）
+- 見つけた不具合 B2〜B7（Task 9 の報告 §5。B1 は上の行）: 点検の既知の指摘（Task 3 m-6・Task 5 M-1／M-4／M-5／M-8・Task 7 Minor 5）を画面で確かめたもの。このあと本番の前の最後の手直しで、B2・B7 を直し、B3・B4・B5 と B1 は利用者に確かめて直した（B3＝C3・B4＝C4・B5＝C2・B1＝C5。下の利用者の決定）。B6 は後回し（BACKLOG の 2b の節）
+  - B2 軽微（細工した人に 1 回だけ）・詳細の付け替えの小窓: 付け替え先を選び理由を書く → 開発者の道具で `<select id="reassign-to">` の `name` を `assignee_user_id[]` に書き換える → 「付け替える」。期待＝ほかの入力の誤りと同じく、詳細へ戻って小窓が開き直り断りの文が出る／実際＝詳細が 500。開き直すと 200。写真 08
+  - B3 軽微（文が当たらない）・詳細の取り消しの小窓（条件の確認を取り消すとき）: 条件の確認のあと、管理者が「直前の操作を取り消す」を開く。期待＝条件確認待ちに戻ることを言う／実際＝「次に社長が判断したときにそのまま使います」と出る（社長はもう判断しない）。写真 44
+  - B4 軽微・付け替えの小窓の一覧: いまの担当（部門 長）を選んで送る。期待＝一覧に出ない（計画 §0.6「今の担当でない」）／実際＝一覧に出て、送ると「いまの担当と同じ人です。」で断られる（理由は残る）。写真 06
+  - B5 軽微（見た目・パソコンだけ）・前回からの変更点の外した添付: マウスを乗せる。期待＝取り消し線のまま／実際＝取り消し線が消えて下線になる。写真 18
+  - B6 軽微（アクセシビリティ・既存の型）・3 つの小窓（2a の判断・取り下げの小窓も同じ）: キーボードで開く。期待＝フォーカスが小窓へ移る・Esc で閉じる・`role="dialog"`／実際＝どれも無い
+  - B7 軽微（アクセシビリティ）・決裁のみのサイドバーの折りたたみ: 読み上げで「決」のリンクを聞く。期待＝件数も読む（基幹の折りたたみと同じ）／実際＝「決裁のホーム」だけ。写真 22b
 - 利用者に確かめること: C1〜C6（見出し・外した添付・条件の確認の取り消しの文・付け替え先の一覧・ページ番号・折りたたみの絵）
-- 写真 68 枚（scratchpad の review/t09/shots/）。消えない場所に写した: `~/.claude/plans/approval-phase2b-tasks/work/t09/shots/`。利用者に見せたページ: https://claude.ai/artifact/TXHxsTGmrN5CsYaBakfHN7
+- 利用者の決定（2026-09-29・写真のページで）: C1〜C6 はすべておすすめ（A）を選び、本番の前の最後の手直しで直した。C5 は ⑩ の「決裁済み・否決」だけ（ページ番号を全部並べるほかの一覧は BACKLOG の 2b の節に後回し）
+- 写真 68 枚: `~/.claude/plans/approval-phase2b-tasks/work/t09/shots/`
