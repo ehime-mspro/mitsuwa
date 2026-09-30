@@ -295,6 +295,13 @@ class AdminRequestsTest extends TestCase
         $this->assertStringContainsString('<option value="' . $outside->id . '" >社外 太郎 ※通知メールが届きません</option>', $form);
         $this->assertStringContainsString('<option value="' . $inside->id . '" >社内 花子</option>', $form);
         $this->assertStringNotContainsString('value="' . $w['applicant']->id . '"', $form, '申請者本人を選べた');
+        $this->assertStringNotContainsString('<option value="' . $w['head']->id . '"', $form, 'いまの担当（部門長）を選べた（利用者の決定 C4）');
+
+        // 付け替えたあとは、付け替えた人がいまの担当（一覧に出さない）。元の部門長は選び直せる
+        $this->workflow->reassignHead($request, $admin, $request->lock_version, $inside, '休職のため');
+        $form = $this->formOf($this->showHtml($admin, $request->refresh()), route('approvals.admin.requests.reassign', $request));
+        $this->assertStringNotContainsString('<option value="' . $inside->id . '"', $form, 'いまの担当（付け替えた人）を選べた');
+        $this->assertStringContainsString('<option value="' . $w['head']->id . '" >', $form, '元の部門長を選び直せない');
     }
 
     public function test_an_admin_sees_why_they_cannot_operate_on_their_own_request(): void

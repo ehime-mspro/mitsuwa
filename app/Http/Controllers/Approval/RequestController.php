@@ -133,9 +133,9 @@ class RequestController extends Controller
             'approvalRequest' => $approvalRequest,
             'content'         => $content,
             'permissions'     => $permissions,
-            // 部門長の確認の付け替え先の選択肢（付け替えられるときだけ読む。申請者本人は選べない。D2・D7。Assignees）
+            // 部門長の確認の付け替え先の選択肢（付け替えられるときだけ読む。申請者本人といまの担当は出さない。D2・D7。Assignees）
             'assigneeCandidates' => $permissions->canReassign()
-                ? Assignees::candidates()->reject(fn (User $candidate) => $candidate->id === $approvalRequest->user_id)->values()
+                ? $this->reassignCandidates($approvalRequest, $permissions->waitingStep())
                 : collect(),
             'relatedLinks'    => $this->relatedLinks($content->relatedNumbers, $user),
             'histories'       => $histories,
@@ -377,6 +377,22 @@ class RequestController extends Controller
             ->whereIn('number', $numbers)
             ->pluck('id', 'number')
             ->all();
+    }
+
+    /**
+     * 部門長の確認の付け替え先の選択肢（申請者本人と、いまの担当は出さない。D2・D7・利用者の決定 C4）。
+     * いまの担当は、付け替えた段階なら付け替えた人、そうでなければ部門の今の部門長（Workflow::reassignHead() の
+     * 「いまの担当と同じ人です。」と同じ読み方。そちらの断りは守りとして残す）
+     *
+     * @return Collection<int, User>
+     */
+    private function reassignCandidates(ApprovalRequest $approvalRequest, ApprovalStep $step): Collection
+    {
+        $current = $step->assignee_user_id ?? $step->department?->head_user_id;
+
+        return Assignees::candidates()
+            ->reject(fn (User $candidate) => $candidate->id === $approvalRequest->user_id || $candidate->id === $current)
+            ->values();
     }
 
     /**
