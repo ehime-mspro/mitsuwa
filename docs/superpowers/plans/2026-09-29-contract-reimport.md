@@ -3360,6 +3360,39 @@ ACTIVE_HEAD_K = "            // 二重契約チェック（active 契約のみ�
 SHOW_FORM = "    public function showForm()\n    {\n        return view('admin.customers.import');\n"
 SHOW_FORM_COMMENTED = "    public function showForm()\n    {\n        // ここでは Contract::create( を呼ばない（コメントの中の語は数えない）\n        return view('admin.customers.import');\n"
 
+# ---- 最終レビューの修正（2026-09-30）で足した変異の部品 ----
+# 過去契約タブの見分けに使わない日付の検査を、1 つずつ照合の後ろへ動かす（最終レビュー M2。O06 は日付の検査を丸ごと動かす）
+RENT_START_P = (
+    "            // 賃料開始日チェック（契約日 〜 解約日 の範囲内）\n"
+    "            if ($row['rent_start_date'] !== '') {\n"
+    "                $rentStartDate = CsvDate::normalize($row['rent_start_date']);\n"
+    "                if (!$rentStartDate) {\n"
+    "                    $errors[] = ['row' => $rowNum, 'message' => \"賃料開始日「{$row['rent_start_date']}」の形式が不正です\"];\n"
+    "                    continue;\n"
+    "                }\n"
+    "                if ($rentStartDate < $contractDate || $rentStartDate > $endDate) {\n"
+    "                    $errors[] = ['row' => $rowNum, 'message' => \"賃料開始日（{$rentStartDate}）は契約日〜解約日の範囲内である必要があります\"];\n"
+    "                    continue;\n"
+    "                }\n"
+    "                $row['rent_start_date'] = $rentStartDate;\n"
+    "            }\n"
+    "\n"
+)
+END_BEFORE_START_P = (
+    "            // 解約日 >= 契約日\n"
+    "            if ($endDate < $contractDate) {\n"
+    "                $errors[] = ['row' => $rowNum, 'message' => \"解約日（{$endDate}）が契約日（{$contractDate}）より前です\"];\n"
+    "                continue;\n"
+    "            }\n"
+    "\n"
+)
+END_TODAY_HEAD_P = "            // 解約日が今日より未来 → 警告（過去契約のはず）\n"
+# 走査の正規表現（ImportControllerContractMatchScanTest::CREATES_CONTRACT）の全文。枝ごとに外す（最終レビュー M5）
+CREATES_RE = "'/\\b(?:[A-Z]\\w*)?Contract::(?:create|forceCreate|firstOrCreate|updateOrCreate|insert)\\s*\\(|\\bnew\\s+(?:[A-Z]\\w*)?Contract\\s*\\(/'"
+# 照合したあとのスキップの条件（部屋・駐車場。K05〜K08 が「キーにメモ・担当者を足す」形に書き換える）
+SKIP_IF_R = "            if ($registered) {\n                $skippedRows[] = ['row' => $rowNum, 'message' => \"部屋「"
+SKIP_IF_K = "            if ($registered) {\n                $skippedRows[] = ['row' => $rowNum, 'message' => \"駐車場「"
+
 # (ID, [(ファイル, 置き換える前, 置き換えた後[, 当たる数]), ...])。当たる数の既定は 1
 MUTATIONS = [
     # ---- カナリア（隔離が効いていれば、コピー側のコードが読まれて赤になる）----
@@ -3485,6 +3518,37 @@ MUTATIONS = [
         (MIG, "            $table->foreignId('customer_id')->nullable()->constrained('customers')->restrictOnDelete();\n", "            $table->foreignId('customer_id')->constrained('customers')->restrictOnDelete();\n"),
         (MIG2, "            $table->integer('final_month_amount')->nullable()->comment('最終月の金額（手動入力のとき）');\n        });\n    }\n", "            $table->integer('final_month_amount')->nullable()->comment('最終月の金額（手動入力のとき）');\n        });\n        Schema::table('contracts', function (Blueprint $table) {\n            $table->foreignId('customer_id')->nullable()->change();\n        });\n    }\n"),
     ]),
+
+    # ==== 最終レビューの修正（2026-09-30）で足した変異 ====
+    # ---- 過去契約タブの CSV 内の重複のキーを、要素ごとに外す（M1。これまでは区画・既存の顧客・契約日を外しても緑だった）----
+    ("D21", [(TC, KEY_P, KEY_P.replace("$contractKey = $unit->id . '|' . ", "$contractKey = "))]),
+    ("D22", [(TC, KEY_P, KEY_P.replace("'id:' . $existingCustomer->id", "'id:'"))]),
+    ("D23", [(TC, KEY_P, KEY_P.replace(" . '|' . $contractDate;", ";"))]),
+    # ---- 過去契約の見分けに使わない日付の検査を、1 つずつ照合の後ろへ（M2。O06 は丸ごと動かす）----
+    ("O09", [(TC, RENT_START_P + CUSTOMER_HEAD_P, CUSTOMER_HEAD_P), (TC, MATCH_P + "\n", MATCH_P + "\n" + RENT_START_P)]),
+    ("O10", [(TC, END_BEFORE_START_P + END_TODAY_HEAD_P, END_TODAY_HEAD_P), (TC, MATCH_P + "\n", MATCH_P + "\n" + END_BEFORE_START_P)]),
+    # ---- 走査の正規表現を枝ごとに外す（M5。実物は ::create( しか使わないので、見本の無い枝は消しても緑だった）----
+    ("S07", [(SCAN, CREATES_RE, CREATES_RE.replace("|forceCreate", ""))]),
+    ("S08", [(SCAN, CREATES_RE, CREATES_RE.replace("|firstOrCreate", ""))]),
+    ("S09", [(SCAN, CREATES_RE, CREATES_RE.replace("|updateOrCreate", ""))]),
+    ("S10", [(SCAN, CREATES_RE, CREATES_RE.replace("|insert", ""))]),
+    ("S11", [(SCAN, CREATES_RE, CREATES_RE.replace("|\\bnew\\s+(?:[A-Z]\\w*)?Contract\\s*\\(", ""))]),
+    # 括弧の前の空白（:: の枝・new の枝）と、名前の前の語の有無（:: の枝・new の枝）を、枝ごとに外す
+    ("S12", [(SCAN, CREATES_RE, CREATES_RE.replace("insert)\\s*\\(", "insert)\\("))]),
+    ("S13", [(SCAN, CREATES_RE, CREATES_RE.replace("Contract\\s*\\(/'", "Contract\\(/'"))]),
+    ("S14", [(SCAN, CREATES_RE, CREATES_RE.replace("\\b(?:[A-Z]\\w*)?Contract::", "\\b[A-Z]\\w*Contract::"))]),
+    ("S15", [(SCAN, CREATES_RE, CREATES_RE.replace("\\bnew\\s+(?:[A-Z]\\w*)?Contract", "\\bnew\\s+[A-Z]\\w*Contract"))]),
+    # 情報用（緑が正しい）: 空白の「量」は見本が 0 個・1 個だけなので、\s+ を 1 個の空白に・\s* を 0〜1 個に狭めても落ちない（死角。複数個・改行の見本は無い）
+    ("S16", [(SCAN, CREATES_RE, CREATES_RE.replace("\\bnew\\s+", "\\bnew "))]),
+    ("S17", [(SCAN, CREATES_RE, CREATES_RE.replace("insert)\\s*\\(", "insert) ?\\("))]),
+    # ---- スキップの条件に「メモが同じ」「担当者名が空欄」を足す（キーにキー以外を混ぜる形。M8 の 2 行と、部屋契約の同じ 2 行の確かめ）----
+    ("K05", [(MC, SKIP_IF_K, SKIP_IF_K.replace("if ($registered) {", "if ($registered && (string) $registered->memo === (string) $row['memo']) {"))]),
+    ("K06", [(MC, SKIP_IF_K, SKIP_IF_K.replace("if ($registered) {", "if ($registered && $row['staff_user_name'] === '') {"))]),
+    ("K07", [(MC, SKIP_IF_R, SKIP_IF_R.replace("if ($registered) {", "if ($registered && (string) $registered->memo === (string) $row['memo']) {"))]),
+    ("K08", [(MC, SKIP_IF_R, SKIP_IF_R.replace("if ($registered) {", "if ($registered && $row['staff_user_name'] === '') {"))]),
+    # ---- テスト用スキーマの外部キー・索引を作成の行から落とす（M4 の注記の確かめ。止めるのは外部キー・索引のカナリアのはず）----
+    ("Z03", [(MIG, "            $table->foreignId('customer_id')->nullable()->constrained('customers')->restrictOnDelete();\n", "            $table->unsignedBigInteger('customer_id')->nullable();\n")]),
+    ("Z04", [(MIG, "            $table->index('customer_id', 'idx_contracts_customer');\n", "")]),
 ]
 
 
@@ -3606,7 +3670,7 @@ if __name__ == "__main__":
 SP=<Scratchpad directory>; C=$(cat "$SP/cr-mut-commit"); for s in a b c; do git -C "$SP/cr-mut-$C-$s" status --porcelain | head -3; done; python3 "$SP/cr-mutate.py" --iso "$SP/cr-mut-$C-a" --check
 ```
 
-期待: `status` はどれも何も出さない・`変異 101 通り・当たらないもの 0 件`（カナリア C0 を含めて 101 通り＝変異 100 通り＋カナリア）
+期待: `status` はどれも何も出さない・`変異 123 通り・当たらないもの 0 件`（カナリア C0 を含めて 123 通り＝変異 122 通り＋カナリア。最初に `3b563cf4` で流したときは 101 通り＝変異 100 通り＋カナリアだった。2026-09-30 に最終レビューの修正で 22 通り（D21〜D23・O09・O10・S07〜S17・K05〜K08・Z03・Z04）を足して 123 通りになった）
 
 - [ ] **Step 4: カナリアを 3 つのコピーで通す**（隔離が効いていれば、コピー側のコードが読まれて赤になる。3 つを Bash の `run_in_background` で同時に起動し、終わりの知らせを待つ）
 
@@ -3618,19 +3682,21 @@ SP=<Scratchpad directory>; C=$(cat "$SP/cr-mut-commit"); python3 "$SP/cr-mutate.
 
 期待: 3 つとも `== C0 app/Http/Controllers/Admin/TenantImportController.php  落ちたテスト 13 件`（下の表の C0 の行。試作では関係するテスト 20 本で測った。全件でも同じ 13 本の見込み＝`NARROW` の外に、テナントの取込の画面を描くテストは無い）。**どれか 1 つでも赤にならなければ止める**（コピーでなく元の worktree のコードが読まれている＝ Bug #50）。
 
-- [ ] **Step 5: 変異を流す**（3 つを Bash の `run_in_background` で**同時に**起動し、3 つとも終わりの知らせを待つ。途中で作業ツリーやログを覗いて判断しない＝変異の途中を拾うと偽の赤になる。全件で流すので、それぞれ 33〜34 回・合わせて 1〜2 時間）
+- [ ] **Step 5: 変異を流す**（3 つを Bash の `run_in_background` で**同時に**起動し、3 つとも終わりの知らせを待つ。途中で作業ツリーやログを覗いて判断しない＝変異の途中を拾うと偽の赤になる。全件で流すので、それぞれ 33〜34 回（22 通りを足したあとは 40〜41 回）・合わせて 1〜2 時間）
 
 ```bash
 SP=<Scratchpad directory>; C=$(cat "$SP/cr-mut-commit"); python3 "$SP/cr-mutate.py" --list | cut -f1 | grep -v -e '^C0$' > "$SP/cr-ids.txt"; awk 'NR%3==1' "$SP/cr-ids.txt" | tr '\n' ' ' > "$SP/cr-ids-a.txt"; awk 'NR%3==2' "$SP/cr-ids.txt" | tr '\n' ' ' > "$SP/cr-ids-b.txt"; awk 'NR%3==0' "$SP/cr-ids.txt" | tr '\n' ' ' > "$SP/cr-ids-c.txt"; wc -w "$SP"/cr-ids-a.txt "$SP"/cr-ids-b.txt "$SP"/cr-ids-c.txt
 ```
 
-期待: 34・33・33（計 100）。そのあと 3 本を同時に:
+期待: 41・41・40（計 122）（この実行役は最終レビューの修正のあとの版。最初に `3b563cf4` で流したときは、22 通りを足す前で 34・33・33 の計 100 だった）。そのあと 3 本を同時に:
 
 ```bash
 SP=<Scratchpad directory>; C=$(cat "$SP/cr-mut-commit"); python3 "$SP/cr-mutate.py" --iso "$SP/cr-mut-$C-a" $(cat "$SP/cr-ids-a.txt") > "$SP/cr-mut-$C-a.log" 2>&1
 ```
 
 （`-a` を `-b`・`-c` に替えた 2 本も同時に起動する。⚠ zsh で `$(cat …)` は空白で分かれて渡る＝コマンド置換は単語分割される）
+
+⚠ 2026-09-30 の 2 回目は、上のコマンドに `--narrow` を付けて（関係するテスト 20 本だけで）流した（41・41・40。全件でなく 20 本に絞った理由は「実測記録」の Task 6）。
 
 - [ ] **Step 6: 期待と突き合わせる**（下の表。**落ちたテストの集合・本数・理由の文言まで**。記録は `$SP/cr-mut-$C-{a,b,c}-results.jsonl`）
   - 表の「期待」は、試作で関係するテスト 20 本（実行役の `NARROW`）に絞って測った値。全件で流して表に無いテストが落ちたら、理由を調べて記録する
@@ -3641,7 +3707,9 @@ SP=<Scratchpad directory>; C=$(cat "$SP/cr-mut-commit"); NEW=$(git -C /Users/mas
 ```
 
   - 1 つだけ当て直すときは `--narrow` で流すテストを絞れる（例 `python3 "$SP/cr-mutate.py" --iso "$SP/cr-mut-$C-a" --narrow D18`）。表の記録は全件で取り直す
-  - 緑が正しい変異は 2 通り（表に理由を書いた）: **F25**（SQLite では等価）・**S04**（対照）。これ以外が緑なら穴
+  - 緑が正しい変異は 4 通り（表に理由を書いた）: **F25**（SQLite では等価）・**S04**（対照）と、最終レビューの修正で足した情報用の **S16**・**S17**（走査の正規表現の空白の「量」を狭める変異。見本が 0 個・1 個だけなので固定されておらず、緑が正しい＝既知の死角）。これ以外が緑なら穴
+
+⚠ 下の表の値は、最終レビューの修正のあと（`4491f130`）の **2 回目の測定**（`--narrow`＝関係するテスト 20 本・PHP 8.3.35）。1 回目（`3b563cf4`・全件テスト）は、修正の前の表（101 行）と完全に一致した。D08・F15・K04・O06・R04・S05・W09 の 7 行は、修正で足したテストの行が加わって落ちる本数が増えた（表の値は増えたあと）。新しい 22 行（D21〜D23・O09・O10・S07〜S17・K05〜K08・Z03・Z04）を足した。
 
 **カナリア:**
 
@@ -3649,14 +3717,18 @@ SP=<Scratchpad directory>; C=$(cat "$SP/cr-mut-commit"); NEW=$(git -C /Users/mas
 |---|---|---|
 | C0 | テナントの取込の画面のビュー名を無いものに（カナリア） | 13 本: TenantContractReimportTest::test_the_contract_tabs_explain_that_registered_contracts_are_skipped — `Expected response status code [200] but received 500.`<br>TenantImportDoubleSubmitTest::test_sending_the_same_confirmation_twice_imports_once ×5 — `戻り先の画面の赤帯に、断りの文言が出ていない`（executeProperty・executeUnit・executeCustomer・executeContract・executePastContract）<br>TenantImportDoubleSubmitTest::test_a_confirmation_without_a_usable_token_imports_nothing ×3 — `戻り先の画面の赤帯に、断りの文言が出ていない`（鍵が無い・鍵が空・鍵が配列）<br>TenantImportRejectionTest::test_a_failed_reupload_from_another_tab_on_the_preview_goes_back_to_that_tab ×2 — `Expected response status code [200] but received 500.`（ファイルを選ばずに送った・見出しだけで行が無い）<br>TenantImportRejectionTest::test_a_failed_import_after_confirming_goes_back_to_the_same_tab — `Expected response status code [200] but received 500.`<br>ImportValidationFeedbackTest::test_an_invalid_file_shows_the_reason_on_screen — `/admin/tenant-import/property に不正なファイルを投げたのに、差し戻し先 /admin/tenant-import?tab=property に理由が出ていない`（テナントCSV） |
 
-**照合を外す（経路ごと）:**
+**照合を外す（経路ごと）・スキップの条件にキー以外を混ぜる:**
 
 | ID | 変異 | 期待（落ちるテスト・理由の 1 行目）|
 |---|---|---|
 | K01 | 契約タブの照合を外す（`$registered = null`） | 17 本: TenantContractReimportTest::test_uploading_the_same_csv_again_skips_every_row — `取り込む行が残っている（tab=contract）`（契約）<br>TenantContractReimportTest::test_uploading_a_csv_with_an_added_row_imports_only_the_new_row — `Failed asserting that two arrays are identical.`（契約）<br>TenantContractReimportTest::test_a_row_without_a_tenant_name_skips_the_same_contract_without_a_customer — `Failed asserting that two arrays are identical.`<br>TenantContractReimportTest::test_a_contract_row_that_differs_only_outside_the_key_is_skipped ×6 — `Failed asserting that two arrays are identical.`（家賃を改定した・備考が違う・屋号が違う・賃料開始日が違う・日付の書き方が違う・取り込んだあとで解約した）<br>TenantContractReimportTest::test_a_contract_without_a_tenant_name_is_skipped_when_uploaded_again — `取り込む行が残っている（tab=contract）`<br>TenantContractReimportTest::test_when_the_same_contract_is_already_registered_twice_the_first_one_is_named — `Failed asserting that two arrays are identical.`<br>TenantContractReimportTest::test_a_contract_imported_on_the_past_contract_tab_is_skipped_on_the_contract_tab — `Failed asserting that two arrays are identical.`<br>TenantContractReimportTest::test_a_registered_contract_written_twice_in_the_csv_is_skipped_once_and_then_an_error — `Failed asserting that two arrays are identical.`（契約）<br>TenantContractReimportTest::test_on_the_contract_tab_warnings_are_shown_only_for_rows_that_will_be_imported — `Failed asserting that two arrays are identical.`<br>TenantContractReimportTest::test_a_contract_registered_after_the_preview_is_skipped_at_confirmation — `Failed asserting that two strings are equal.`（契約）<br>TenantContractReimportTest::test_a_registered_row_with_a_bad_amount_is_skipped_but_an_unregistered_one_is_an_error — `Failed asserting that two arrays are identical.`（契約）<br>ImportControllerContractMatchScanTest::test_the_methods_that_need_matching_call_the_matcher — `App\Http\Controllers\Admin\TenantImportController::executeContract が findRegisteredContract() を呼んでいない（同じ CSV を上げ直すと、契約が二重に入る）` |
 | K02 | 過去契約タブの照合を外す | 14 本: TenantContractReimportTest::test_uploading_the_same_csv_again_skips_every_row — `取り込む行が残っている（tab=past-contract）`（過去契約）<br>TenantContractReimportTest::test_uploading_a_csv_with_an_added_row_imports_only_the_new_row — `Failed asserting that two arrays are identical.`（過去契約）<br>TenantContractReimportTest::test_a_past_contract_row_that_differs_only_outside_the_key_is_skipped ×4 — `Failed asserting that two arrays are identical.`（家賃が違う・解約日が違う・備考が違う・日付の書き方が違う）<br>TenantContractReimportTest::test_a_past_contract_for_a_customer_created_by_the_first_import_is_skipped_when_uploaded_again — `取り込む行が残っている（tab=past-contract）`<br>TenantContractReimportTest::test_a_contract_imported_on_the_contract_tab_and_then_terminated_is_skipped_on_the_past_contract_tab — `Failed asserting that two arrays are identical.`<br>TenantContractReimportTest::test_a_registered_contract_written_twice_in_the_csv_is_skipped_once_and_then_an_error — `Failed asserting that two arrays are identical.`（過去契約）<br>TenantContractReimportTest::test_on_the_past_contract_tab_warnings_are_shown_only_for_rows_that_will_be_imported — `Failed asserting that two arrays are identical.`<br>TenantContractReimportTest::test_the_deleted_unit_notice_is_not_shown_for_a_skipped_row — `Failed asserting that two arrays are identical.`<br>TenantContractReimportTest::test_a_contract_registered_after_the_preview_is_skipped_at_confirmation — `Failed asserting that two strings are equal.`（過去契約）<br>TenantContractReimportTest::test_a_registered_row_with_a_bad_amount_is_skipped_but_an_unregistered_one_is_an_error — `Failed asserting that two arrays are identical.`（過去契約）<br>ImportControllerContractMatchScanTest::test_the_methods_that_need_matching_call_the_matcher — `App\Http\Controllers\Admin\TenantImportController::executePastContract が findRegisteredContract() を呼んでいない（同じ CSV を上げ直すと、契約が二重に入る）` |
 | K03 | 部屋契約の照合を外す | 16 本: MansionContractReimportTest::test_uploading_the_same_csv_again_skips_every_row — `取り込む行が残っている（tab=room-contract）`（部屋契約）<br>MansionContractReimportTest::test_uploading_a_csv_with_an_added_row_imports_only_the_new_row — `Failed asserting that two arrays are identical.`（部屋契約）<br>MansionContractReimportTest::test_a_row_that_differs_only_outside_the_key_is_skipped ×5 — `Failed asserting that two arrays are identical.`（部屋契約: 家賃を改定した・部屋契約: 退去した・部屋契約: メモが違う・部屋契約: 担当者が違う・部屋契約: 日付の書き方が違う）<br>MansionContractReimportTest::test_when_the_same_room_contract_is_already_registered_twice_the_first_one_is_named — `Failed asserting that two arrays are identical.`<br>MansionContractReimportTest::test_blank_dates_match_only_blank_dates ×2 — `Failed asserting that two arrays are identical.`（部屋契約: 2 つとも空欄どうし・部屋契約: 契約日は空欄どうし・入居日は同じ）<br>MansionContractReimportTest::test_a_contract_without_dates_is_skipped_when_uploaded_again — `取り込む行が残っている（tab=room-contract）`（部屋契約）<br>MansionContractReimportTest::test_a_registered_room_contract_written_twice_in_the_csv_is_skipped_once_and_then_an_error — `Failed asserting that two arrays are identical.`<br>MansionContractReimportTest::test_room_contract_warnings_are_shown_only_for_rows_that_will_be_imported — `Failed asserting that two arrays are identical.`<br>MansionContractReimportTest::test_a_contract_registered_after_the_preview_is_skipped_at_confirmation — `Failed asserting that two strings are equal.`（部屋契約）<br>MansionContractReimportTest::test_a_registered_row_with_a_bad_amount_is_skipped_but_an_unregistered_one_is_an_error — `Failed asserting that two arrays are identical.`（部屋契約: 家賃）<br>ImportControllerContractMatchScanTest::test_the_methods_that_need_matching_call_the_matcher — `App\Http\Controllers\Admin\MansionImportController::executeRoomContract が findRegisteredRoomContract() を呼んでいない（同じ CSV を上げ直すと、契約が二重に入る）` |
-| K04 | 駐車場契約の照合を外す | 17 本: MansionContractReimportTest::test_uploading_the_same_csv_again_skips_every_row — `取り込む行が残っている（tab=parking-contract）`（駐車場契約）<br>MansionContractReimportTest::test_uploading_a_csv_with_an_added_row_imports_only_the_new_row — `Failed asserting that two arrays are identical.`（駐車場契約）<br>MansionContractReimportTest::test_a_row_that_differs_only_outside_the_key_is_skipped ×5 — `Failed asserting that two arrays are identical.`（駐車場契約: 月額料金を改定した・駐車場契約: 終了した・駐車場契約: 敷金が違う・駐車場契約: 紐付部屋番号が違う・駐車場契約: 日付の書き方が違う）<br>MansionContractReimportTest::test_when_the_same_parking_contract_is_already_registered_twice_the_first_one_is_named — `Failed asserting that two arrays are identical.`<br>MansionContractReimportTest::test_blank_dates_match_only_blank_dates ×2 — `Failed asserting that two arrays are identical.`（駐車場契約: 2 つとも空欄どうし・駐車場契約: 契約日は空欄どうし・開始日は同じ）<br>MansionContractReimportTest::test_a_contract_without_dates_is_skipped_when_uploaded_again — `取り込む行が残っている（tab=parking-contract）`（駐車場契約）<br>MansionContractReimportTest::test_a_registered_parking_contract_written_twice_in_the_csv_is_skipped_once_and_then_an_error — `Failed asserting that two arrays are identical.`<br>MansionContractReimportTest::test_parking_contract_warnings_are_shown_only_for_rows_that_will_be_imported — `Failed asserting that two arrays are identical.`<br>MansionContractReimportTest::test_a_contract_registered_after_the_preview_is_skipped_at_confirmation — `Failed asserting that two strings are equal.`（駐車場契約）<br>MansionContractReimportTest::test_a_registered_row_with_a_bad_amount_is_skipped_but_an_unregistered_one_is_an_error ×2 — `Failed asserting that two arrays are identical.`（駐車場契約: 月額料金・駐車場契約: 敷金）<br>ImportControllerContractMatchScanTest::test_the_methods_that_need_matching_call_the_matcher — `App\Http\Controllers\Admin\MansionImportController::executeParkingContract が findRegisteredParkingContract() を呼んでいない（同じ CSV を上げ直すと、契約が二重に入る）` |
+| K04 | 駐車場契約の照合を外す | 19 本: MansionContractReimportTest::test_uploading_the_same_csv_again_skips_every_row — `取り込む行が残っている（tab=parking-contract）`（駐車場契約）<br>MansionContractReimportTest::test_uploading_a_csv_with_an_added_row_imports_only_the_new_row — `Failed asserting that two arrays are identical.`（駐車場契約）<br>MansionContractReimportTest::test_a_row_that_differs_only_outside_the_key_is_skipped ×7 — `Failed asserting that two arrays are identical.`（駐車場契約: 月額料金を改定した・駐車場契約: 終了した・駐車場契約: 敷金が違う・駐車場契約: 紐付部屋番号が違う・駐車場契約: メモが違う・駐車場契約: 担当者が違う・駐車場契約: 日付の書き方が違う）<br>MansionContractReimportTest::test_when_the_same_parking_contract_is_already_registered_twice_the_first_one_is_named — `Failed asserting that two arrays are identical.`<br>MansionContractReimportTest::test_blank_dates_match_only_blank_dates ×2 — `Failed asserting that two arrays are identical.`（駐車場契約: 2 つとも空欄どうし・駐車場契約: 契約日は空欄どうし・開始日は同じ）<br>MansionContractReimportTest::test_a_contract_without_dates_is_skipped_when_uploaded_again — `取り込む行が残っている（tab=parking-contract）`（駐車場契約）<br>MansionContractReimportTest::test_a_registered_parking_contract_written_twice_in_the_csv_is_skipped_once_and_then_an_error — `Failed asserting that two arrays are identical.`<br>MansionContractReimportTest::test_parking_contract_warnings_are_shown_only_for_rows_that_will_be_imported — `Failed asserting that two arrays are identical.`<br>MansionContractReimportTest::test_a_contract_registered_after_the_preview_is_skipped_at_confirmation — `Failed asserting that two strings are equal.`（駐車場契約）<br>MansionContractReimportTest::test_a_registered_row_with_a_bad_amount_is_skipped_but_an_unregistered_one_is_an_error ×2 — `Failed asserting that two arrays are identical.`（駐車場契約: 月額料金・駐車場契約: 敷金）<br>ImportControllerContractMatchScanTest::test_the_methods_that_need_matching_call_the_matcher — `App\Http\Controllers\Admin\MansionImportController::executeParkingContract が findRegisteredParkingContract() を呼んでいない（同じ CSV を上げ直すと、契約が二重に入る）` |
+| K05 | 駐車場契約のスキップの条件に「登録済みとメモが同じ」を足す（キーにキー以外を混ぜる） | 1 本: MansionContractReimportTest::test_a_row_that_differs_only_outside_the_key_is_skipped — `Failed asserting that two arrays are identical.`（駐車場契約: メモが違う） |
+| K06 | 駐車場契約のスキップの条件に「CSV の担当者名が空欄」を足す | 2 本: MansionContractReimportTest::test_a_row_that_differs_only_outside_the_key_is_skipped — `Failed asserting that two arrays are identical.`（駐車場契約: 担当者が違う）<br>MansionContractReimportTest::test_parking_contract_warnings_are_shown_only_for_rows_that_will_be_imported — `Failed asserting that two arrays are identical.`（もう 1 本は、スキップの行が担当者名を持つため） |
+| K07 | 部屋契約のスキップの条件に「登録済みとメモが同じ」を足す | 1 本: MansionContractReimportTest::test_a_row_that_differs_only_outside_the_key_is_skipped — `Failed asserting that two arrays are identical.`（部屋契約: メモが違う）（部屋契約の同じ形。部屋・駐車場が対称であることの基準） |
+| K08 | 部屋契約のスキップの条件に「CSV の担当者名が空欄」を足す | 2 本: MansionContractReimportTest::test_a_row_that_differs_only_outside_the_key_is_skipped — `Failed asserting that two arrays are identical.`（部屋契約: 担当者が違う）<br>MansionContractReimportTest::test_room_contract_warnings_are_shown_only_for_rows_that_will_be_imported — `Failed asserting that two arrays are identical.`（部屋契約の同じ形。もう 1 本は、スキップの行が担当者名を持つため） |
 
 **照合のメソッド（キーの要素・比べ方・削除・順序・まだ無い顧客）:**
 
@@ -3676,7 +3748,7 @@ SP=<Scratchpad directory>; C=$(cat "$SP/cr-mut-commit"); NEW=$(git -C /Users/mas
 | F12 | 駐車場の照合から開始日の条件を外す | 3 本: MansionContractReimportTest::test_a_row_that_differs_in_one_key_element_is_imported — `見分けのキーが違うのにスキップした`（駐車場契約: 開始日が違う）<br>MansionContractReimportTest::test_blank_dates_match_only_blank_dates ×2 — `片方だけ空欄の日付を同じとみなしてスキップした`（駐車場契約: 開始日だけ登録済みが空欄・駐車場契約: 開始日だけ CSV が空欄） |
 | F13 | テナントの契約日を `whereDate` でなく素の `where` で比べる | 29 本: TenantContractReimportTest::test_uploading_the_same_csv_again_skips_every_row ×2 — `取り込む行が残っている（tab=contract）`（契約） ／ `取り込む行が残っている（tab=past-contract）`（過去契約）<br>TenantContractReimportTest::test_uploading_a_csv_with_an_added_row_imports_only_the_new_row ×2 — `Failed asserting that two arrays are identical.`（契約・過去契約）<br>TenantContractReimportTest::test_a_row_without_a_tenant_name_skips_the_same_contract_without_a_customer — `Failed asserting that two arrays are identical.`<br>TenantContractReimportTest::test_a_contract_row_that_differs_only_outside_the_key_is_skipped ×6 — `Failed asserting that two arrays are identical.`（家賃を改定した・備考が違う・屋号が違う・賃料開始日が違う・日付の書き方が違う・取り込んだあとで解約した）<br>TenantContractReimportTest::test_a_past_contract_row_that_differs_only_outside_the_key_is_skipped ×4 — `Failed asserting that two arrays are identical.`（家賃が違う・解約日が違う・備考が違う・日付の書き方が違う）<br>TenantContractReimportTest::test_a_contract_without_a_tenant_name_is_skipped_when_uploaded_again — `取り込む行が残っている（tab=contract）`<br>TenantContractReimportTest::test_a_past_contract_for_a_customer_created_by_the_first_import_is_skipped_when_uploaded_again — `取り込む行が残っている（tab=past-contract）`<br>TenantContractReimportTest::test_when_the_same_contract_is_already_registered_twice_the_first_one_is_named — `Failed asserting that two arrays are identical.`<br>TenantContractReimportTest::test_a_contract_imported_on_the_contract_tab_and_then_terminated_is_skipped_on_the_past_contract_tab — `Failed asserting that two arrays are identical.`<br>TenantContractReimportTest::test_a_contract_imported_on_the_past_contract_tab_is_skipped_on_the_contract_tab — `Failed asserting that two arrays are identical.`<br>TenantContractReimportTest::test_a_registered_contract_written_twice_in_the_csv_is_skipped_once_and_then_an_error ×2 — `Failed asserting that two arrays are identical.`（契約・過去契約）<br>TenantContractReimportTest::test_on_the_contract_tab_warnings_are_shown_only_for_rows_that_will_be_imported — `Failed asserting that two arrays are identical.`<br>TenantContractReimportTest::test_on_the_past_contract_tab_warnings_are_shown_only_for_rows_that_will_be_imported — `Failed asserting that two arrays are identical.`<br>TenantContractReimportTest::test_the_deleted_unit_notice_is_not_shown_for_a_skipped_row — `Failed asserting that two arrays are identical.`<br>TenantContractReimportTest::test_a_contract_registered_after_the_preview_is_skipped_at_confirmation ×2 — `Failed asserting that two strings are equal.`（契約・過去契約）<br>TenantContractReimportTest::test_a_registered_row_with_a_bad_amount_is_skipped_but_an_unregistered_one_is_an_error ×2 — `Failed asserting that two arrays are identical.`（契約・過去契約） |
 | F14 | 部屋の入居日を素の `where` で比べる | 13 本: MansionContractReimportTest::test_uploading_the_same_csv_again_skips_every_row — `取り込む行が残っている（tab=room-contract）`（部屋契約）<br>MansionContractReimportTest::test_uploading_a_csv_with_an_added_row_imports_only_the_new_row — `Failed asserting that two arrays are identical.`（部屋契約）<br>MansionContractReimportTest::test_a_row_that_differs_only_outside_the_key_is_skipped ×5 — `Failed asserting that two arrays are identical.`（部屋契約: 家賃を改定した・部屋契約: 退去した・部屋契約: メモが違う・部屋契約: 担当者が違う・部屋契約: 日付の書き方が違う）<br>MansionContractReimportTest::test_when_the_same_room_contract_is_already_registered_twice_the_first_one_is_named — `Failed asserting that two arrays are identical.`<br>MansionContractReimportTest::test_blank_dates_match_only_blank_dates — `Failed asserting that two arrays are identical.`（部屋契約: 契約日は空欄どうし・入居日は同じ）<br>MansionContractReimportTest::test_a_registered_room_contract_written_twice_in_the_csv_is_skipped_once_and_then_an_error — `Failed asserting that two arrays are identical.`<br>MansionContractReimportTest::test_room_contract_warnings_are_shown_only_for_rows_that_will_be_imported — `Failed asserting that two arrays are identical.`<br>MansionContractReimportTest::test_a_contract_registered_after_the_preview_is_skipped_at_confirmation — `Failed asserting that two strings are equal.`（部屋契約）<br>MansionContractReimportTest::test_a_registered_row_with_a_bad_amount_is_skipped_but_an_unregistered_one_is_an_error — `Failed asserting that two arrays are identical.`（部屋契約: 家賃） |
-| F15 | 駐車場の開始日を素の `where` で比べる | 14 本: MansionContractReimportTest::test_uploading_the_same_csv_again_skips_every_row — `取り込む行が残っている（tab=parking-contract）`（駐車場契約）<br>MansionContractReimportTest::test_uploading_a_csv_with_an_added_row_imports_only_the_new_row — `Failed asserting that two arrays are identical.`（駐車場契約）<br>MansionContractReimportTest::test_a_row_that_differs_only_outside_the_key_is_skipped ×5 — `Failed asserting that two arrays are identical.`（駐車場契約: 月額料金を改定した・駐車場契約: 終了した・駐車場契約: 敷金が違う・駐車場契約: 紐付部屋番号が違う・駐車場契約: 日付の書き方が違う）<br>MansionContractReimportTest::test_when_the_same_parking_contract_is_already_registered_twice_the_first_one_is_named — `Failed asserting that two arrays are identical.`<br>MansionContractReimportTest::test_blank_dates_match_only_blank_dates — `Failed asserting that two arrays are identical.`（駐車場契約: 契約日は空欄どうし・開始日は同じ）<br>MansionContractReimportTest::test_a_registered_parking_contract_written_twice_in_the_csv_is_skipped_once_and_then_an_error — `Failed asserting that two arrays are identical.`<br>MansionContractReimportTest::test_parking_contract_warnings_are_shown_only_for_rows_that_will_be_imported — `Failed asserting that two arrays are identical.`<br>MansionContractReimportTest::test_a_contract_registered_after_the_preview_is_skipped_at_confirmation — `Failed asserting that two strings are equal.`（駐車場契約）<br>MansionContractReimportTest::test_a_registered_row_with_a_bad_amount_is_skipped_but_an_unregistered_one_is_an_error ×2 — `Failed asserting that two arrays are identical.`（駐車場契約: 月額料金・駐車場契約: 敷金） |
+| F15 | 駐車場の開始日を素の `where` で比べる | 16 本: MansionContractReimportTest::test_uploading_the_same_csv_again_skips_every_row — `取り込む行が残っている（tab=parking-contract）`（駐車場契約）<br>MansionContractReimportTest::test_uploading_a_csv_with_an_added_row_imports_only_the_new_row — `Failed asserting that two arrays are identical.`（駐車場契約）<br>MansionContractReimportTest::test_a_row_that_differs_only_outside_the_key_is_skipped ×7 — `Failed asserting that two arrays are identical.`（駐車場契約: 月額料金を改定した・駐車場契約: 終了した・駐車場契約: 敷金が違う・駐車場契約: 紐付部屋番号が違う・駐車場契約: メモが違う・駐車場契約: 担当者が違う・駐車場契約: 日付の書き方が違う）<br>MansionContractReimportTest::test_when_the_same_parking_contract_is_already_registered_twice_the_first_one_is_named — `Failed asserting that two arrays are identical.`<br>MansionContractReimportTest::test_blank_dates_match_only_blank_dates — `Failed asserting that two arrays are identical.`（駐車場契約: 契約日は空欄どうし・開始日は同じ）<br>MansionContractReimportTest::test_a_registered_parking_contract_written_twice_in_the_csv_is_skipped_once_and_then_an_error — `Failed asserting that two arrays are identical.`<br>MansionContractReimportTest::test_parking_contract_warnings_are_shown_only_for_rows_that_will_be_imported — `Failed asserting that two arrays are identical.`<br>MansionContractReimportTest::test_a_contract_registered_after_the_preview_is_skipped_at_confirmation — `Failed asserting that two strings are equal.`（駐車場契約）<br>MansionContractReimportTest::test_a_registered_row_with_a_bad_amount_is_skipped_but_an_unregistered_one_is_an_error ×2 — `Failed asserting that two arrays are identical.`（駐車場契約: 月額料金・駐車場契約: 敷金） |
 | F16 | 部屋の照合で、契約日が空欄のとき条件を付けない（空欄なら何とでも一致） | 1 本: MansionContractReimportTest::test_blank_dates_match_only_blank_dates — `片方だけ空欄の日付を同じとみなしてスキップした`（部屋契約: 契約日だけ CSV が空欄） |
 | F17 | 部屋の照合で、入居日が空欄のとき条件を付けない | 1 本: MansionContractReimportTest::test_blank_dates_match_only_blank_dates — `片方だけ空欄の日付を同じとみなしてスキップした`（部屋契約: 入居日だけ CSV が空欄） |
 | F18 | 駐車場の照合で、契約日が空欄のとき条件を付けない | 1 本: MansionContractReimportTest::test_blank_dates_match_only_blank_dates — `片方だけ空欄の日付を同じとみなしてスキップした`（駐車場契約: 契約日だけ CSV が空欄） |
@@ -3700,7 +3772,7 @@ SP=<Scratchpad directory>; C=$(cat "$SP/cr-mut-commit"); NEW=$(git -C /Users/mas
 | D05 | 契約タブの重複のキーから区画を外す | 1 本: TenantContractReimportTest::test_two_contract_rows_that_differ_in_one_key_element_are_both_imported — `見分けのキーが違う 2 行を CSV 内の重複にした`（区画） |
 | D06 | 契約タブの重複のキーから顧客を外す | 2 本: TenantContractReimportTest::test_two_contract_rows_that_differ_in_one_key_element_are_both_imported ×2 — `見分けのキーが違う 2 行を CSV 内の重複にした`（顧客・顧客（空欄）） |
 | D07 | 契約タブの重複のキーから契約日を外す | 2 本: TenantContractReimportTest::test_two_contract_rows_that_differ_in_one_key_element_are_both_imported — `見分けのキーが違う 2 行を CSV 内の重複にした`（契約日）<br>TenantContractReimportTest::test_on_the_contract_tab_warnings_are_shown_only_for_rows_that_will_be_imported — `Failed asserting that two arrays are identical.` |
-| D08 | 過去契約タブの重複のキーに、まだ無い顧客の名前を入れない | 1 本: TenantContractReimportTest::test_two_past_contract_rows_for_different_new_customers_are_both_imported — `Failed asserting that two arrays are identical.` |
+| D08 | 過去契約タブの重複のキーに、まだ無い顧客の名前を入れない | 2 本: TenantContractReimportTest::test_two_past_contract_rows_that_differ_in_one_key_element_are_both_imported — `見分けのキーが違う 2 行を CSV 内の重複にした`（まだ無い顧客の名前）<br>TenantContractReimportTest::test_two_past_contract_rows_for_different_new_customers_are_both_imported — `Failed asserting that two arrays are identical.` |
 | D09 | 部屋契約の重複のキーから部屋を外す | 1 本: MansionContractReimportTest::test_two_rows_that_differ_in_one_key_element_are_both_imported — `見分けのキーが違う 2 行を CSV 内の重複にした`（部屋契約: 部屋） |
 | D10 | 部屋契約の重複のキーから入居者を外す | 1 本: MansionContractReimportTest::test_two_rows_that_differ_in_one_key_element_are_both_imported — `見分けのキーが違う 2 行を CSV 内の重複にした`（部屋契約: 入居者） |
 | D11 | 部屋契約の重複のキーから契約日を外す | 3 本: MansionContractReimportTest::test_two_rows_that_differ_in_one_key_element_are_both_imported ×2 — `見分けのキーが違う 2 行を CSV 内の重複にした`（部屋契約: 契約日・部屋契約: 契約日が空欄）<br>MansionContractReimportTest::test_room_contract_warnings_are_shown_only_for_rows_that_will_be_imported — `Failed asserting that two arrays are identical.` |
@@ -3713,6 +3785,9 @@ SP=<Scratchpad directory>; C=$(cat "$SP/cr-mut-commit"); NEW=$(git -C /Users/mas
 | D18 | 過去契約タブで、最初の行を覚える位置を照合の後ろへ | 1 本: TenantContractReimportTest::test_a_registered_contract_written_twice_in_the_csv_is_skipped_once_and_then_an_error — `Failed asserting that two arrays are identical.`（過去契約） |
 | D19 | 部屋契約で、最初の行を覚える位置を照合の後ろへ | 1 本: MansionContractReimportTest::test_a_registered_room_contract_written_twice_in_the_csv_is_skipped_once_and_then_an_error — `Failed asserting that two arrays are identical.` |
 | D20 | 駐車場契約で、最初の行を覚える位置を照合の後ろへ | 1 本: MansionContractReimportTest::test_a_registered_parking_contract_written_twice_in_the_csv_is_skipped_once_and_then_an_error — `Failed asserting that two arrays are identical.` |
+| D21 | 過去契約タブの重複のキーから区画を外す | 1 本: TenantContractReimportTest::test_two_past_contract_rows_that_differ_in_one_key_element_are_both_imported — `見分けのキーが違う 2 行を CSV 内の重複にした`（区画） |
+| D22 | 過去契約タブの重複のキーから既存の顧客の id を外す | 1 本: TenantContractReimportTest::test_two_past_contract_rows_that_differ_in_one_key_element_are_both_imported — `見分けのキーが違う 2 行を CSV 内の重複にした`（既存の顧客） |
+| D23 | 過去契約タブの重複のキーから契約日を外す | 3 本: TenantContractReimportTest::test_two_past_contract_rows_that_differ_in_one_key_element_are_both_imported — `見分けのキーが違う 2 行を CSV 内の重複にした`（契約日）<br>TenantContractReimportTest::test_on_the_past_contract_tab_warnings_are_shown_only_for_rows_that_will_be_imported — `Failed asserting that two arrays are identical.`<br>TenantContractReimportTest::test_the_deleted_unit_notice_is_not_shown_for_a_skipped_row — `Failed asserting that two arrays are identical.`（後ろの 2 本は、別の目的の既存のテストが偶然拾う 2 本。F03 も同じ 2 本を拾う） |
 
 **警告を行ごとに貯める:**
 
@@ -3726,7 +3801,7 @@ SP=<Scratchpad directory>; C=$(cat "$SP/cr-mut-commit"); NEW=$(git -C /Users/mas
 | W06 | 部屋契約の「既に契約中の入居者」の警告を直接積む | 2 本: MansionContractReimportTest::test_room_contract_warnings_are_shown_only_for_rows_that_will_be_imported — `Failed asserting that two arrays are identical.`<br>ImportControllerContractMatchScanTest::test_the_methods_that_match_collect_warnings_per_row — `App\Http\Controllers\Admin\MansionImportController::executeRoomContract が画面の警告の一覧へ直接積んでいる（行の中の $rowWarnings に貯める。直接積むと、スキップ・エラーの行にまた出る）` |
 | W07 | 駐車場契約の「紐付部屋番号が見つからない」警告を直接積む | 2 本: MansionContractReimportTest::test_parking_contract_warnings_are_shown_only_for_rows_that_will_be_imported — `Failed asserting that two arrays are identical.`<br>ImportControllerContractMatchScanTest::test_the_methods_that_match_collect_warnings_per_row — `App\Http\Controllers\Admin\MansionImportController::executeParkingContract が画面の警告の一覧へ直接積んでいる（行の中の $rowWarnings に貯める。直接積むと、スキップ・エラーの行にまた出る）` |
 | W08 | 駐車場契約の「紐付部屋番号に有効な部屋契約が無い」警告を直接積む | 3 本: MansionContractReimportTest::test_a_row_that_differs_only_outside_the_key_is_skipped — `Failed asserting that two arrays are identical.`（駐車場契約: 紐付部屋番号が違う）<br>MansionContractReimportTest::test_parking_contract_warnings_are_shown_only_for_rows_that_will_be_imported — `Failed asserting that two arrays are identical.`<br>ImportControllerContractMatchScanTest::test_the_methods_that_match_collect_warnings_per_row — `App\Http\Controllers\Admin\MansionImportController::executeParkingContract が画面の警告の一覧へ直接積んでいる（行の中の $rowWarnings に貯める。直接積むと、スキップ・エラーの行にまた出る）` |
-| W09 | 駐車場契約の「担当者が見つからない」警告を直接積む | 2 本: MansionContractReimportTest::test_parking_contract_warnings_are_shown_only_for_rows_that_will_be_imported — `Failed asserting that two arrays are identical.`<br>ImportControllerContractMatchScanTest::test_the_methods_that_match_collect_warnings_per_row — `App\Http\Controllers\Admin\MansionImportController::executeParkingContract が画面の警告の一覧へ直接積んでいる（行の中の $rowWarnings に貯める。直接積むと、スキップ・エラーの行にまた出る）` |
+| W09 | 駐車場契約の「担当者が見つからない」警告を直接積む | 3 本: MansionContractReimportTest::test_a_row_that_differs_only_outside_the_key_is_skipped — `Failed asserting that two arrays are identical.`（駐車場契約: 担当者が違う。メモの行は担当者の警告を出さないので落ちない）<br>MansionContractReimportTest::test_parking_contract_warnings_are_shown_only_for_rows_that_will_be_imported — `Failed asserting that two arrays are identical.`<br>ImportControllerContractMatchScanTest::test_the_methods_that_match_collect_warnings_per_row — `App\Http\Controllers\Admin\MansionImportController::executeParkingContract が画面の警告の一覧へ直接積んでいる（行の中の $rowWarnings に貯める。直接積むと、スキップ・エラーの行にまた出る）` |
 | W10 | 駐車場契約の「既に使用中の契約」の警告を直接積む | 2 本: MansionContractReimportTest::test_parking_contract_warnings_are_shown_only_for_rows_that_will_be_imported — `Failed asserting that two arrays are identical.`<br>ImportControllerContractMatchScanTest::test_the_methods_that_match_collect_warnings_per_row — `App\Http\Controllers\Admin\MansionImportController::executeParkingContract が画面の警告の一覧へ直接積んでいる（行の中の $rowWarnings に貯める。直接積むと、スキップ・エラーの行にまた出る）` |
 | W11 | 契約タブで、警告を一覧へ移す位置を金額の検査の前へ | 1 本: TenantContractReimportTest::test_on_the_contract_tab_warnings_are_shown_only_for_rows_that_will_be_imported — `Failed asserting that two arrays are identical.` |
 | W12 | 過去契約タブで、警告を一覧へ移す位置を金額の検査の前へ | 3 本: TenantContractReimportTest::test_on_the_past_contract_tab_warnings_are_shown_only_for_rows_that_will_be_imported — `Failed asserting that two arrays are identical.`<br>TenantContractReimportTest::test_the_deleted_unit_notice_is_not_shown_for_a_skipped_row — `Failed asserting that two arrays are identical.`<br>TenantUnitImportTest::test_a_past_contract_row_for_a_deleted_unit_is_attached_to_the_deleted_unit — `Failed asserting that two arrays are identical.` |
@@ -3752,9 +3827,11 @@ SP=<Scratchpad directory>; C=$(cat "$SP/cr-mut-commit"); NEW=$(git -C /Users/mas
 | O03 | 部屋契約の CSV 内の重複と照合を、金額の検査の後ろへ | 1 本: MansionContractReimportTest::test_a_registered_row_with_a_bad_amount_is_skipped_but_an_unregistered_one_is_an_error — `Failed asserting that two arrays are identical.`（部屋契約: 家賃） |
 | O04 | 駐車場契約の金額の検査を日付の検査の前へ戻す（並べ替えを戻す） | 3 本: MansionContractReimportTest::test_a_registered_row_with_a_bad_amount_is_skipped_but_an_unregistered_one_is_an_error ×2 — `Failed asserting that two arrays are identical.`（駐車場契約: 月額料金・駐車場契約: 敷金）<br>MansionContractReimportTest::test_a_parking_row_with_both_a_bad_date_and_a_bad_fee_reports_the_date — `Failed asserting that two arrays are identical.` |
 | O05 | 契約タブの賃料開始日の検査を照合の後ろへ | 1 本: TenantContractReimportTest::test_a_registered_row_with_a_bad_date_is_an_error_not_skipped — `Failed asserting that two arrays are identical.`（契約: 賃料開始日） |
-| O06 | 過去契約タブの解約日（と解約日に続く検査・賃料開始日）の検査を照合の後ろへ | 1 本: TenantContractReimportTest::test_a_registered_row_with_a_bad_date_is_an_error_not_skipped — `Failed asserting that two arrays are identical.`（過去契約: 解約日） |
+| O06 | 過去契約タブの解約日（と解約日に続く検査・賃料開始日）の検査を照合の後ろへ | 4 本: TenantContractReimportTest::test_a_registered_row_with_a_bad_date_is_an_error_not_skipped ×4 — `Failed asserting that two arrays are identical.`（過去契約: 解約日・過去契約: 賃料開始日の形式・過去契約: 賃料開始日が契約日〜解約日の外・過去契約: 解約日が契約日より前） |
 | O07 | 部屋契約の退去日の検査（と状態）を照合の後ろへ | 1 本: MansionContractReimportTest::test_a_registered_row_with_a_bad_date_is_an_error_not_skipped — `Failed asserting that two arrays are identical.`（部屋契約: 退去日） |
 | O08 | 駐車場契約の終了日の検査（と状態）を照合の後ろへ | 1 本: MansionContractReimportTest::test_a_registered_row_with_a_bad_date_is_an_error_not_skipped — `Failed asserting that two arrays are identical.`（駐車場契約: 終了日） |
+| O09 | 過去契約タブの賃料開始日の検査だけを照合の後ろへ | 2 本: TenantContractReimportTest::test_a_registered_row_with_a_bad_date_is_an_error_not_skipped ×2 — `Failed asserting that two arrays are identical.`（過去契約: 賃料開始日の形式・過去契約: 賃料開始日が契約日〜解約日の外）（「過去契約: 解約日が契約日より前」は緑のまま。O10 が別に捕まえる） |
+| O10 | 過去契約タブの「解約日が契約日より前」の検査だけを照合の後ろへ | 1 本: TenantContractReimportTest::test_a_registered_row_with_a_bad_date_is_an_error_not_skipped — `Failed asserting that two arrays are identical.`（過去契約: 解約日が契約日より前）（賃料開始日の 2 行は緑のまま。O09 が別に捕まえる） |
 
 **画面（灰色の文・理由の文・タブの説明）:**
 
@@ -3768,7 +3845,7 @@ SP=<Scratchpad directory>; C=$(cat "$SP/cr-mut-commit"); NEW=$(git -C /Users/mas
 | R01 | 契約タブの理由の文から「既に」を落とす | 13 本: TenantContractReimportTest::test_uploading_a_csv_with_an_added_row_imports_only_the_new_row — `Failed asserting that two arrays are identical.`（契約）<br>TenantContractReimportTest::test_a_row_without_a_tenant_name_skips_the_same_contract_without_a_customer — `Failed asserting that two arrays are identical.`<br>TenantContractReimportTest::test_a_contract_row_that_differs_only_outside_the_key_is_skipped ×6 — `Failed asserting that two arrays are identical.`（家賃を改定した・備考が違う・屋号が違う・賃料開始日が違う・日付の書き方が違う・取り込んだあとで解約した）<br>TenantContractReimportTest::test_a_contract_without_a_tenant_name_is_skipped_when_uploaded_again — `Failed asserting that two arrays are identical.`<br>TenantContractReimportTest::test_when_the_same_contract_is_already_registered_twice_the_first_one_is_named — `Failed asserting that two arrays are identical.`<br>TenantContractReimportTest::test_a_contract_imported_on_the_past_contract_tab_is_skipped_on_the_contract_tab — `Failed asserting that two arrays are identical.`<br>TenantContractReimportTest::test_a_registered_contract_written_twice_in_the_csv_is_skipped_once_and_then_an_error — `Failed asserting that two arrays are identical.`（契約）<br>TenantContractReimportTest::test_a_registered_row_with_a_bad_amount_is_skipped_but_an_unregistered_one_is_an_error — `Failed asserting that two arrays are identical.`（契約） |
 | R02 | 過去契約タブの理由の文から「既に」を落とす | 10 本: TenantContractReimportTest::test_uploading_a_csv_with_an_added_row_imports_only_the_new_row — `Failed asserting that two arrays are identical.`（過去契約）<br>TenantContractReimportTest::test_a_past_contract_row_that_differs_only_outside_the_key_is_skipped ×4 — `Failed asserting that two arrays are identical.`（家賃が違う・解約日が違う・備考が違う・日付の書き方が違う）<br>TenantContractReimportTest::test_a_past_contract_for_a_customer_created_by_the_first_import_is_skipped_when_uploaded_again — `Failed asserting that two arrays are identical.`<br>TenantContractReimportTest::test_a_contract_imported_on_the_contract_tab_and_then_terminated_is_skipped_on_the_past_contract_tab — `Failed asserting that two arrays are identical.`<br>TenantContractReimportTest::test_a_registered_contract_written_twice_in_the_csv_is_skipped_once_and_then_an_error — `Failed asserting that two arrays are identical.`（過去契約）<br>TenantContractReimportTest::test_the_deleted_unit_notice_is_not_shown_for_a_skipped_row — `Failed asserting that two arrays are identical.`<br>TenantContractReimportTest::test_a_registered_row_with_a_bad_amount_is_skipped_but_an_unregistered_one_is_an_error — `Failed asserting that two arrays are identical.`（過去契約） |
 | R03 | 部屋契約の理由の文から「既に」を落とす | 12 本: MansionContractReimportTest::test_uploading_a_csv_with_an_added_row_imports_only_the_new_row — `Failed asserting that two arrays are identical.`（部屋契約）<br>MansionContractReimportTest::test_a_row_that_differs_only_outside_the_key_is_skipped ×5 — `Failed asserting that two arrays are identical.`（部屋契約: 家賃を改定した・部屋契約: 退去した・部屋契約: メモが違う・部屋契約: 担当者が違う・部屋契約: 日付の書き方が違う）<br>MansionContractReimportTest::test_when_the_same_room_contract_is_already_registered_twice_the_first_one_is_named — `Failed asserting that two arrays are identical.`<br>MansionContractReimportTest::test_blank_dates_match_only_blank_dates ×2 — `Failed asserting that two arrays are identical.`（部屋契約: 2 つとも空欄どうし・部屋契約: 契約日は空欄どうし・入居日は同じ）<br>MansionContractReimportTest::test_a_contract_without_dates_is_skipped_when_uploaded_again — `Failed asserting that two arrays are identical.`（部屋契約）<br>MansionContractReimportTest::test_a_registered_room_contract_written_twice_in_the_csv_is_skipped_once_and_then_an_error — `Failed asserting that two arrays are identical.`<br>MansionContractReimportTest::test_a_registered_row_with_a_bad_amount_is_skipped_but_an_unregistered_one_is_an_error — `Failed asserting that two arrays are identical.`（部屋契約: 家賃） |
-| R04 | 駐車場契約の理由の文から「既に」を落とす | 13 本: MansionContractReimportTest::test_uploading_a_csv_with_an_added_row_imports_only_the_new_row — `Failed asserting that two arrays are identical.`（駐車場契約）<br>MansionContractReimportTest::test_a_row_that_differs_only_outside_the_key_is_skipped ×5 — `Failed asserting that two arrays are identical.`（駐車場契約: 月額料金を改定した・駐車場契約: 終了した・駐車場契約: 敷金が違う・駐車場契約: 紐付部屋番号が違う・駐車場契約: 日付の書き方が違う）<br>MansionContractReimportTest::test_when_the_same_parking_contract_is_already_registered_twice_the_first_one_is_named — `Failed asserting that two arrays are identical.`<br>MansionContractReimportTest::test_blank_dates_match_only_blank_dates ×2 — `Failed asserting that two arrays are identical.`（駐車場契約: 2 つとも空欄どうし・駐車場契約: 契約日は空欄どうし・開始日は同じ）<br>MansionContractReimportTest::test_a_contract_without_dates_is_skipped_when_uploaded_again — `Failed asserting that two arrays are identical.`（駐車場契約）<br>MansionContractReimportTest::test_a_registered_parking_contract_written_twice_in_the_csv_is_skipped_once_and_then_an_error — `Failed asserting that two arrays are identical.`<br>MansionContractReimportTest::test_a_registered_row_with_a_bad_amount_is_skipped_but_an_unregistered_one_is_an_error ×2 — `Failed asserting that two arrays are identical.`（駐車場契約: 月額料金・駐車場契約: 敷金） |
+| R04 | 駐車場契約の理由の文から「既に」を落とす | 15 本: MansionContractReimportTest::test_uploading_a_csv_with_an_added_row_imports_only_the_new_row — `Failed asserting that two arrays are identical.`（駐車場契約）<br>MansionContractReimportTest::test_a_row_that_differs_only_outside_the_key_is_skipped ×7 — `Failed asserting that two arrays are identical.`（駐車場契約: 月額料金を改定した・駐車場契約: 終了した・駐車場契約: 敷金が違う・駐車場契約: 紐付部屋番号が違う・駐車場契約: メモが違う・駐車場契約: 担当者が違う・駐車場契約: 日付の書き方が違う）<br>MansionContractReimportTest::test_when_the_same_parking_contract_is_already_registered_twice_the_first_one_is_named — `Failed asserting that two arrays are identical.`<br>MansionContractReimportTest::test_blank_dates_match_only_blank_dates ×2 — `Failed asserting that two arrays are identical.`（駐車場契約: 2 つとも空欄どうし・駐車場契約: 契約日は空欄どうし・開始日は同じ）<br>MansionContractReimportTest::test_a_contract_without_dates_is_skipped_when_uploaded_again — `Failed asserting that two arrays are identical.`（駐車場契約）<br>MansionContractReimportTest::test_a_registered_parking_contract_written_twice_in_the_csv_is_skipped_once_and_then_an_error — `Failed asserting that two arrays are identical.`<br>MansionContractReimportTest::test_a_registered_row_with_a_bad_amount_is_skipped_but_an_unregistered_one_is_an_error ×2 — `Failed asserting that two arrays are identical.`（駐車場契約: 月額料金・駐車場契約: 敷金） |
 | R05 | 契約タブで、テナント名が空欄のとき「空欄」を書かない | 2 本: TenantContractReimportTest::test_a_row_without_a_tenant_name_skips_the_same_contract_without_a_customer — `Failed asserting that two arrays are identical.`<br>TenantContractReimportTest::test_a_contract_without_a_tenant_name_is_skipped_when_uploaded_again — `Failed asserting that two arrays are identical.` |
 | R06 | 契約タブの CSV 内の重複の文を「と重複しています」に | 5 本: TenantContractReimportTest::test_the_second_row_with_the_same_key_in_a_contract_csv_is_an_error ×4 — `Failed asserting that two arrays are identical.`（同じ行・階を空欄にして部屋番号に書いた・日付の書き方が違う・家賃が違う）<br>TenantContractReimportTest::test_a_registered_contract_written_twice_in_the_csv_is_skipped_once_and_then_an_error — `Failed asserting that two arrays are identical.`（契約） |
 | N01 | テナントの契約タブの説明の 1 行を消す | 1 本: TenantContractReimportTest::test_the_contract_tabs_explain_that_registered_contracts_are_skipped — `契約タブの説明に出ていない` |
@@ -3784,8 +3861,19 @@ SP=<Scratchpad directory>; C=$(cat "$SP/cr-mut-commit"); NEW=$(git -C /Users/mas
 | S02 | 構造のテストの「対象外」表のメソッド名を実在しないものに | 1 本: ImportControllerContractMatchScanTest::test_every_import_method_that_creates_contracts_is_classified — `契約を作る取込のメソッドと分類の表がそろっていない（新しい取込は、照合するか、理由をつけて NOT_MATCHED に足す。表に古い名前を残さない）` |
 | S03 | 顧客の取込に、契約を作る private メソッドを足す（分類されていない作成） | 1 本: ImportControllerContractMatchScanTest::test_every_import_method_that_creates_contracts_is_classified — `契約を作る取込のメソッドと分類の表がそろっていない（新しい取込は、照合するか、理由をつけて NOT_MATCHED に足す。表に古い名前を残さない）` |
 | S04 | 顧客の取込の `showForm()` の中のコメントに `Contract::create(` と書く（対照） | **0 本** — **対照**（コメントの中の語は数えないので、緑が正しい。コメントの除去を外すと S06 で赤） |
-| S05 | 構造のテストの正規表現を最初の形（素の `Contract::` に当たらない）に戻す | 3 本: ImportControllerContractMatchScanTest::test_every_import_method_that_creates_contracts_is_classified — `走査が空振りしている（契約を作る取込のメソッドが少なすぎる）`<br>ImportControllerContractMatchScanTest::test_the_methods_that_need_matching_call_the_matcher — `走査が空振りしている（契約を作る取込のメソッドが少なすぎる）`<br>ImportControllerContractMatchScanTest::test_the_methods_that_match_collect_warnings_per_row — `走査が空振りしている（契約を作る取込のメソッドが少なすぎる）`（下限の確かめが空振りを捕まえる。最初に書いた正規表現の形） |
+| S05 | 構造のテストの正規表現を最初の形（素の `Contract::` に当たらない）に戻す | 9 本: ImportControllerContractMatchScanTest::test_every_import_method_that_creates_contracts_is_classified — `走査が空振りしている（契約を作る取込のメソッドが少なすぎる）`<br>ImportControllerContractMatchScanTest::test_the_methods_that_need_matching_call_the_matcher — `走査が空振りしている（契約を作る取込のメソッドが少なすぎる）`<br>ImportControllerContractMatchScanTest::test_the_methods_that_match_collect_warnings_per_row — `走査が空振りしている（契約を作る取込のメソッドが少なすぎる）`（下限の確かめが空振りを捕まえる。最初に書いた正規表現の形）<br>ImportControllerContractMatchScanTest::test_the_detector_matches_exactly_its_samples ×6 — `検出器が「Contract::create([」を見逃した（この形の枝が効いていない）`（::create（素の Contract）） ／ `検出器が「Contract::insert([」を見逃した（この形の枝が効いていない）`（::insert） ／ `検出器が「Contract::create ([」を見逃した（この形の枝が効いていない）`（::create の括弧の前に空白） ／ `検出器が「\App\Models\Contract::create([」を見逃した（この形の枝が効いていない）`（先頭に \ の付いた完全な名前の ::create） ／ `検出器が「new Contract([」を見逃した（この形の枝が効いていない）`（new（素の Contract）） ／ `検出器が「new Contract ([」を見逃した（この形の枝が効いていない）`（new の括弧の前に空白） |
 | S06 | S04 のコメント＋構造のテストのコメント除去を外す | 1 本: ImportControllerContractMatchScanTest::test_every_import_method_that_creates_contracts_is_classified — `契約を作る取込のメソッドと分類の表がそろっていない（新しい取込は、照合するか、理由をつけて NOT_MATCHED に足す。表に古い名前を残さない）` |
+| S07 | 検出器（走査の正規表現）から `forceCreate` の枝を外す | 1 本: ImportControllerContractMatchScanTest::test_the_detector_matches_exactly_its_samples — `検出器が「MsContract::forceCreate([」を見逃した（この形の枝が効いていない）`（::forceCreate（名前の前に語がある）） |
+| S08 | 検出器から `firstOrCreate` の枝を外す | 1 本: ImportControllerContractMatchScanTest::test_the_detector_matches_exactly_its_samples — `検出器が「ZealMemberContract::firstOrCreate([」を見逃した（この形の枝が効いていない）`（::firstOrCreate） |
+| S09 | 検出器から `updateOrCreate` の枝を外す | 1 本: ImportControllerContractMatchScanTest::test_the_detector_matches_exactly_its_samples — `検出器が「MsParkingContract::updateOrCreate([」を見逃した（この形の枝が効いていない）`（::updateOrCreate） |
+| S10 | 検出器から `insert` の枝を外す | 1 本: ImportControllerContractMatchScanTest::test_the_detector_matches_exactly_its_samples — `検出器が「Contract::insert([」を見逃した（この形の枝が効いていない）`（::insert） |
+| S11 | 検出器から `new` の枝を丸ごと外す | 3 本: ImportControllerContractMatchScanTest::test_the_detector_matches_exactly_its_samples ×3 — `検出器が「new Contract([」を見逃した（この形の枝が効いていない）`（new（素の Contract）） ／ `検出器が「new MsParkingContract([」を見逃した（この形の枝が効いていない）`（new（名前の前に語がある）） ／ `検出器が「new Contract ([」を見逃した（この形の枝が効いていない）`（new の括弧の前に空白） |
+| S12 | 検出器の `::` の枝の、括弧の前の空白（`\s*`）を外す | 1 本: ImportControllerContractMatchScanTest::test_the_detector_matches_exactly_its_samples — `検出器が「Contract::create ([」を見逃した（この形の枝が効いていない）`（::create の括弧の前に空白） |
+| S13 | 検出器の `new` の枝の、括弧の前の空白（`\s*`）を外す | 1 本: ImportControllerContractMatchScanTest::test_the_detector_matches_exactly_its_samples — `検出器が「new Contract ([」を見逃した（この形の枝が効いていない）`（new の括弧の前に空白） |
+| S14 | 検出器の `::` の枝の「名前の前の語は任意」を必須に（素の `Contract::` に当たらなくなる） | 7 本: ImportControllerContractMatchScanTest::test_every_import_method_that_creates_contracts_is_classified — `走査が空振りしている（契約を作る取込のメソッドが少なすぎる）`<br>ImportControllerContractMatchScanTest::test_the_methods_that_need_matching_call_the_matcher — `走査が空振りしている（契約を作る取込のメソッドが少なすぎる）`<br>ImportControllerContractMatchScanTest::test_the_methods_that_match_collect_warnings_per_row — `走査が空振りしている（契約を作る取込のメソッドが少なすぎる）`<br>ImportControllerContractMatchScanTest::test_the_detector_matches_exactly_its_samples ×4 — `検出器が「Contract::create([」を見逃した（この形の枝が効いていない）`（::create（素の Contract）） ／ `検出器が「Contract::insert([」を見逃した（この形の枝が効いていない）`（::insert） ／ `検出器が「Contract::create ([」を見逃した（この形の枝が効いていない）`（::create の括弧の前に空白） ／ `検出器が「\App\Models\Contract::create([」を見逃した（この形の枝が効いていない）`（先頭に \ の付いた完全な名前の ::create）（分類・照合・警告の 3 本は、実物が素の `Contract::create(`（テナントの取込）を使うので走査が空振りする） |
+| S15 | 検出器の `new` の枝の「名前の前の語は任意」を必須に | 2 本: ImportControllerContractMatchScanTest::test_the_detector_matches_exactly_its_samples ×2 — `検出器が「new Contract([」を見逃した（この形の枝が効いていない）`（new（素の Contract）） ／ `検出器が「new Contract ([」を見逃した（この形の枝が効いていない）`（new の括弧の前に空白） |
+| S16 | 情報用: 検出器の `new` の後ろの `\s+` を空白 1 個に狭める（緑が正しい） | **0 本** — **情報用（緑が正しい）**。空白の「量」は見本が 0 個・1 個だけで、複数個・改行の見本が無い（死角）。Python の正規表現では、見本に `new  Contract([`（空白 2 個。改行でも同じ）を足せば S16 が赤になる（PHPUnit では未実測） |
+| S17 | 情報用: 検出器の `::` の枝の `\s*` を「空白 0〜1 個」に狭める（緑が正しい） | **0 本** — **情報用（緑が正しい）**。同じ死角。Python の正規表現では、見本に `Contract::create  ([`（空白 2 個。改行でも同じ）を足せば S17 が赤になる（PHPUnit では未実測）。害は小さい |
 
 **テスト用スキーマ:**
 
@@ -3793,6 +3881,8 @@ SP=<Scratchpad directory>; C=$(cat "$SP/cr-mut-commit"); NEW=$(git -C /Users/mas
 |---|---|---|
 | Z01 | テスト用スキーマの `customer_id` を NOT NULL に戻す | 5 本: TenantContractReimportTest::test_a_row_with_a_tenant_name_is_not_matched_to_a_contract_without_a_customer — `Illuminate\Database\QueryException: SQLSTATE[23000]: Integrity constraint violation: 19 NOT NULL constraint failed: contracts.customer_id (Connection: sqlite, Database: :memory:, SQL: insert into "con`<br>TenantContractReimportTest::test_a_row_without_a_tenant_name_skips_the_same_contract_without_a_customer — `Illuminate\Database\QueryException: SQLSTATE[23000]: Integrity constraint violation: 19 NOT NULL constraint failed: contracts.customer_id (Connection: sqlite, Database: :memory:, SQL: insert into "con`<br>TenantContractReimportTest::test_a_contract_without_a_tenant_name_is_skipped_when_uploaded_again — `Failed asserting that null matches expected '契約インポート完了: 1件を登録しました'.`<br>TenantContractReimportTest::test_a_past_contract_row_for_a_new_customer_is_not_matched_to_a_contract_without_a_customer — `Illuminate\Database\QueryException: SQLSTATE[23000]: Integrity constraint violation: 19 NOT NULL constraint failed: contracts.customer_id (Connection: sqlite, Database: :memory:, SQL: insert into "con`<br>TenantUnitImportTest::test_the_contracts_table_accepts_a_contract_without_a_customer_like_production — `Illuminate\Database\QueryException: SQLSTATE[23000]: Integrity constraint violation: 19 NOT NULL constraint failed: contracts.customer_id (Connection: sqlite, Database: :memory:, SQL: insert into "con` |
 | Z02 | Z01 に加えて、候補 1（新しい migration で `->nullable()->change()`）で空欄可にする | 1 本: TenantUnitImportTest::test_contract_status_and_department_are_still_checked — `contracts.status の CHECK が無い（本番の enum と食い違う）`（候補 1 の形。`customer_id` は空欄可になるので空欄のカナリアは緑のまま。CHECK のカナリアだけが落ちる＝この形を採らない理由） |
+| Z03 | テスト用スキーマの作成の行から顧客の外部キーを落とす | 1 本: TenantUnitImportTest::test_the_contracts_table_keeps_its_foreign_keys_and_indexes — `Failed asserting that two arrays are identical.` |
+| Z04 | テスト用スキーマの作成の行から `idx_contracts_customer` を落とす | 1 本: TenantUnitImportTest::test_the_contracts_table_keeps_its_foreign_keys_and_indexes — `Failed asserting that two arrays are identical.` |
 
 - [ ] **Step 7: 片づけて記録をコミット**
 
@@ -3973,7 +4063,7 @@ SP=<Scratchpad directory>; cd /Users/masanori/site/manage/.claude/worktrees/cont
 | 1 | テナントの契約タブ: `cr-tenant-contract-2.csv` をプレビュー → 「インポート実行」 | 「契約インポート完了: 2件を登録しました」 |
 | 2 | 同じ `cr-tenant-contract-2.csv` をもう一度プレビュー | 「全 2 件」「正常: 0 件」「スキップ: 2 件」・灰色の一覧に「行2: 区画「上げ直しビル 1A」の契約（契約日 2026-04-01・顧客 上げ直し商事）は既に登録済み（C-2026-001）のためスキップ」と行3 の同じ形（契約番号は取込が付けた番号）・灰色（`rgb(107, 114, 128)`）の「すべての行が登録済みです（スキップ 2 件）。取り込む行はありません。」・赤字の文が無い・「インポート実行」のボタンが無い |
 | 3 | `cr-tenant-contract-3.csv` をプレビュー → 「インポート実行」 | プレビューで「インポート実行（1件）」と「※ 既存データ（2件）はスキップされます」→ 「契約インポート完了: 1件を登録しました」・契約一覧（ステータス: すべて）で上げ直しビルの契約が 3 件（1A・2A・3A 各 1 件）|
-| 4 | 賃貸マンションの部屋契約タブ（`/admin/mansion-import?selected_tab=room-contract`）: `cr-mansion-room-2.csv` をプレビュー → 「インポート実行」 | プレビューで「警告: 1 件」（行2 の担当者が見つからない）→ 「部屋契約インポート完了: 2件を登録しました」 |
+| 4 | 賃貸マンションの部屋契約タブ（`/admin/mansion-import?selected_tab=room_contract`。⚠ ハイフンの `room-contract` ではタブが 1 つも選ばれず、パネルが空のまま出る）: `cr-mansion-room-2.csv` をプレビュー → 「インポート実行」 | プレビューで「警告: 1 件」（行2 の担当者が見つからない）→ 「部屋契約インポート完了: 2件を登録しました」 |
 | 5 | 同じ `cr-mansion-room-2.csv` をもう一度プレビュー | 「スキップ: 2 件」・理由の文（「部屋「上げ直しハイツ 101」の入居者 山田太郎 の契約（契約日 2024-04-01・入居日 2024-04-15）は既に登録済み（既存契約 ID: 1）のためスキップ」など）・**「警告」の件数も一覧も出ない**（スキップした行の警告は捨てる）・灰色の文・ボタンが無い |
 | 6 | `cr-mansion-room-3.csv` をプレビュー → 「インポート実行」 | 「インポート実行（1件）」・「※ 既存データ（2件）はスキップされます」・警告なし → 「部屋契約インポート完了: 1件を登録しました」 |
 | 7 | 取込の画面 2 つのタブの説明 | テナントの契約・過去契約タブ、賃貸マンションの部屋契約・駐車場契約タブに、それぞれ足した 1 行が出る（タブを切り替えて目で見る）|
@@ -4350,29 +4440,88 @@ EOF
     **F25 は等価**（SQLite では `orderBy` が無くても id の順に返る）
   - 2 回目（テストを直したあと・101 通り＝カナリア＋100 通り）: カナリアは 3 つとも同じ 13 本が赤。緑は 2 通り（F25・S04）で、どれも理由がある（Task 6 の表）
 
+（下の Task 0〜8 の記録は 2026-09-30 に Task 9 で書いた。元の全文は作業用のメモ `.superpowers/sdd/2026-09-29-contract-reimport/`〔git 管理外〕の `task-6-comparison.md`・`task-6-remeasure.md`・`task-7-report.md`・`task-8-review.md`・`fix-wave-report.md` にある。）
+
 ### Task 0: 前提の確認
 
-（未記入）
+（2026-09-29）`13.x` = `134523fb`（進んでいない）・この worktree は `13970a53`（計画のコミット）で `ahead-of-13.x`・作業ツリーは空。全件 `OK (2838 tests, 20265 assertions)`（計画どおり）。
 
 ### Task 1〜4: 実装
 
-（未記入）
+実行は計画どおりサブエージェント駆動（Task ごとに実装 → 点検（仕様・質）→ 指摘を直す）。Task 1〜4 の点検はどれも「仕様どおり・承認」で、重い指摘（Critical / Important）は 0 件。軽い指摘は最後の独立レビュー（Task 8）へ回した。どの Task も「直す前に落ちる」「直すと通る」が計画の数字と一致した（2026-09-29）:
+
+| Task | コミット | 直す前 | 直した後 |
+|---|---|---|---|
+| 1 テスト用スキーマ | `30a9edf0` | `Tests: 22, Assertions: 165, Errors: 1.`（空欄のカナリアだけ・`NOT NULL constraint failed: contracts.customer_id`）| `OK (72 tests, 833 assertions)` |
+| 2 テナント | `b23605ae` | `Tests: 56, Assertions: 329, Failures: 37.`（赤 37・緑 19。テストごとの赤緑と理由の 1 行目まで計画の一覧と一致）| `OK (56 tests, 484 assertions)` ／ `OK (113 tests, 1356 assertions)` |
+| 3 賃貸マンション | `9dddc134` | `Tests: 68, Assertions: 326, Failures: 39.`（赤 39・緑 29。データセット名まで一致）| `OK (68 tests, 447 assertions)` ／ `OK (104 tests, 1167 assertions)` |
+| 4 構造のテスト | `3b563cf4` | コントローラ 2 本を `046c69c9` に戻して `Tests: 3, Assertions: 17, Failures: 2.`（計画の 2 本・文言まで一致）| `OK (103 tests, 275 assertions)` |
+
+- 計画の文の小さな誤り（実行者が気づいたもの。計画の本文は直していない）: Task 2・3 の Step の `grep -E -A1 … | grep -v` のパイプは、この環境の対話の shell の `grep`（ugrep のラッパー）では何も出さない（`/usr/bin/grep` なら出る）→ 実行者は junit の XML で突き合わせた ／ Task 4 Step 3 の「最初と最後の status は何も出さない」は、新しいテストがまだ未追跡なので `?? tests/Feature/ImportControllerContractMatchScanTest.php` の 1 行が出る
 
 ### Task 5: 全件テストと lint
 
-（未記入）
+（2026-09-29・`3b563cf4`）全件 `OK (2968 tests, 21234 assertions)`（計画どおり）・コンパイル済みビュー `views=283 invalid=0`・作業ツリーは空。
 
 ### Task 6: 変異テスト
 
-（未記入）
+2 回測った（隔離した写し 3 つ・vendor は実体コピー。docs/RULES.md Bug #44 / #50 の作法）。
+
+**1 回目**（2026-09-29・`3b563cf4`・**全件テスト**）:
+- カナリア C0: 3 つの写しとも同じ 13 本が赤（表どおり）＝隔離が効いている
+- 100 通りを 34・33・33 に分けて流した。**101 通り（100 通り＋カナリア）すべて表と一致**（落ちたテストの集合・データセット・理由の 1 行目まで。表に無いクラスのテストは 1 本も落ちなかった）。緑は F25（等価）と S04（対照）だけ
+
+**2 回目**（2026-09-30・`4491f130`＝最終レビューの修正のあと・関係するテスト 20 本＝`--narrow`・PHP 8.3.35）:
+- 修正でテストを足したので取り直した。実行役に 22 通りを足して 123 通り（`--check` は `変異 123 通り・当たらないもの 0 件`）。122 通りを 41・41・40 に分けて流した
+- カナリア C0: 3 つとも 13 本（前と同じ）
+- 元の 101 通り: **94 通り（C0 を含む）は前と同じ・7 通りは修正で足したテストの分だけ増えた・食い違い 0**。増えたのは D08 1→2・F15 14→16・K04 17→19・O06 1→4・R04 13→15・S05 3→9・W09 2→3（増えた 17 件はどれも修正で足したテストの行）
+- 新しい 22 通り: 20 通りは狙ったテストが狙った理由で赤。S16・S17（検出器の正規表現の空白の量）は緑が正しい情報用（死角として記録）
+- 緑は F25・S04・S16・S17 のちょうど 4 つ。着弾しなかったもの 0 件（125 レコードすべてが変えたファイルを報告した）
+- 修正波の担当者が自分の隔離コピーで流した記録（29 通り）と、この測り直しは、29 通りすべて完全に一致した（落ちたテストの集合・理由とも）
+- Ruling（全件でなく 20 本に絞った理由）: 1 回目の全件の結果が 20 本に絞った表と完全に一致した（20 本の外で落ちるテストは無かった）うえ、修正は 20 本の中のテストファイル（と `PropertyListSortTest` の注記）しか変えていないので、20 本の結果がそのまま全件の結果になる
+- この計画の Task 6 の表は 2 回目の値に更新した（7 行を直し、22 行を足した）。実行役（Step 2）も 22 通りを足した最終版に差し替えた
+
+⚠ 作業の中で起きたこと: 2026-09-30 朝、作業用フォルダ（`/private/tmp/…/scratchpad`）が空になっていた（一時フォルダが片づけられた可能性が高い）。変異テストの実行役・隔離した写し・1 回目の結果の jsonl が消えた（突き合わせの記録は worktree の `.superpowers`〔git 管理外〕にあって残った）。実行役はこの計画の Step 2 から取り出し直し、消えた写しの登録は `git worktree prune` で片づけた。
 
 ### Task 7: ローカルの実ブラウザ
 
-（未記入）
+（2026-09-29・使い捨て SQLite ＋ `artisan serve`（8768 番・`CACHE_STORE=file`）＋ Playwright。コードは 1 行も変えていない）**9 項目すべて期待どおり**:
+- 1〜3 テナントの契約タブ: `cr-tenant-contract-2.csv` を取り込み（「契約インポート完了: 2件を登録しました」）→ 同じ CSV をもう一度プレビューすると「全 2 件」「正常: 0 件」「スキップ: 2 件」・理由の文が全文で出る（「行2: 区画「上げ直しビル 1A」の契約（契約日 2026-04-01・顧客 上げ直し商事）は既に登録済み（C-2026-001）のためスキップ」ほか）・灰色（`rgb(107, 114, 128)`）の「すべての行が登録済みです（スキップ 2 件）。取り込む行はありません。」・赤字の文もボタンも無い → 行を足した `cr-tenant-contract-3.csv` は「インポート実行（1件）」と「※ 既存データ（2件）はスキップされます」→「契約インポート完了: 1件を登録しました」・契約一覧（ステータス: すべて）で 1A・2A・3A 各 1 件（使い捨て DB の `contracts` は 3 行＝二重なし）
+- 4〜6 賃貸マンションの部屋契約タブ: 1 回目は「警告: 1 件」（担当者が見つからない）→「部屋契約インポート完了: 2件を登録しました」→ 上げ直しは「スキップ: 2 件」・理由の文・**警告の件数も一覧も出ない**（スキップした行の警告は捨てる）・灰色の文・ボタン無し → 行を足した CSV は「インポート実行（1件）」「※ 既存データ（2件）はスキップされます」・警告なし → 1 件登録（`ms_contracts` は 3 行）
+- 7 契約の 4 タブ（テナントの契約・過去契約・賃貸マンションの部屋契約・駐車場契約）すべてに、足した説明の 1 行が出る
+- 8 375px で 2・5 の確認画面の `main` の横スクロール無し（`scrollWidth` 375 ＝ `clientWidth` 375）・灰色の文は空白の位置で折り返す（はみ出し・切れなし）
+- 9 コンソールの警告・エラー 0 件
+- 気づいたこと: ①**計画の表の 4 行目の URL が誤り**（`?selected_tab=room-contract`〔ハイフン〕ではタブが 1 つも選ばれず、パネルが空のまま出る。正しくは `room_contract`〔アンダースコア〕）→ Task 9 で計画を直した ②375px でスキップの一覧の行は「C-2026-」と「001）」のあいだなど、文字の途中で折れる（灰色の文は空白の位置で折れる）③スキップの一覧は高さ 150px のスクロール枠で、375px では 2 行目が枠で切れて見える（2026-04-13 の `99f281502` からある枠。今回の変更ではない）
 
 ### Task 8: 独立レビュー
 
-（未記入）
+（2026-09-29〜30。レビュー役: fable。対象 `134523fb..3b563cf4`。実測は隔離した写しで行い、コードは 1 行も変えていない。カナリアは過去契約の CSV 内の重複のキーの位置に例外を入れ、`TenantContractReimportTest` 56 本中 22 本が赤）判定「**With fixes**」（マージ可。直すのはテストと文書だけ）。アプリのコード（コントローラ 2・ビュー 4・migration 1）に Critical・Important は 0 件。Minor 9 件（M1〜M9）:
+- 実測で見つかったテストの穴（Bug #44 の型）: **M1** 過去契約タブの CSV 内の重複のキーから区画・既存の顧客を外しても `OK (56 tests)`（キーの要素ごとのテストが無かった）／ **M2** 過去契約の賃料開始日の検査（形式・範囲）を照合の後ろへ動かしても `OK (56 tests)`（登録済みの行の日付の誤りのデータが 2 行だけだった）
+- **M3（直さない・範囲外）**: 同名の顧客が 2 件あると、契約タブ・過去契約タブは `Customer::where('name', …)->first()` が最初の 1 件を黙って選ぶので、2 件目の顧客に紐づく登録済みの契約は照合されず、上げ直すと二重に入る（探りで再現）。今回より前からの引き方で、取込自身は 2 件目の顧客の契約を作れない（画面で 2 件目の顧客に紐づけた契約だけが食い違う）。賃貸マンションは同名の入居者を「特定できません」のエラーにしている → 別の作業でそろえる（少なくとも `orderBy('id')` で決定的に）。BACKLOG の範囲外に書いた
+- そのほか: M4（スキーマのカナリアの注記が実測と食い違う）・M5（検出器の枝に見本が無い）・M6（CHECK のカナリアの文言が SQLite の版に依存する）・M7（文書・注記の誤り）・M8（駐車場契約の「キー以外が違う」にメモ・担当者の行が無い）・M9（「警告のある行（N件）」が警告の数を数える癖を固定しているのに注記が無い）
+
+修正（1 回。2026-09-29〜30）: 8 コミット・テストだけ（アプリ・ビュー・DB・ルート・設定・文書は 0 差分）:
+- `2d79d38d` M1（過去契約の CSV 内の重複をキーの要素ごとに見る。+4）
+- `7b6480ea` M2（登録済みの過去契約の行の日付の誤りを 3 行足す。+3）
+- `7fbc22ab` M4（スキーマのカナリアの注記を実測に合わせる。`->change()` の作り直しで消えるのは CHECK だけ＝止めるのは CHECK のカナリア 1 本）
+- `edda78a2` M6（CHECK のカナリアの文言を SQLite の版に依存しない `CHECK constraint failed` に）
+- `7380ecc9` M5（検出器の正規表現の枝ごとの見本 30 と、死角の一覧。+30）
+- `3634615e` M8（駐車場契約の「メモが違う」「担当者が違う」。+2）
+- `3f83f9a0` M9（「警告のある行（N件）」が警告の数を数える既知の癖を固定している、と注記）
+- `4491f130` M7 のテストの注記 2 か所（`PropertyListSortTest.php:41`・`SubmitsImportPreview.php:203`）
+
+修正の点検（範囲を絞った再レビュー）: 8 件すべて ADDRESSED・新しい重い問題なし。修正のあとの全件: **`OK (3007 tests, 21309 assertions)`**（PHP 8.3.35。`2968 / 21234` から +39 本・+75: M1 +4・M2 +3・M5 +30・M8 +2。着手前 2838 / 20265 から通算 +169 本・+1044）。ビューは変えていない（`views=283 invalid=0` は Task 5 の値のまま）。
+
+Task 9（文書）で直したもの: 計画 Task 7 の表の URL・RULES の Bug #60 と BACKLOG の `customer_id` の記述への矢印・記録の数字（3007 本・123 通り）。M3 と PHP 8.5.11 の件は BACKLOG の範囲外に書いた。
+
+残した軽い指摘（直さない。理由つき）:
+- `TenantContractReimportTest.php:132`・`MansionContractReimportTest.php:135` の注記「灰色の一覧に全文…」は、アサートが画面全体を見ている（M7 の `SubmitsImportPreview` と同じ種類。レビューが必須でないとした）
+- `ImportControllerContractMatchScanTest.php:30` の注記は、照合のメソッドの名前が文字列の中にあるだけで呼んだことになる、と書いているが、実際に見るのは `$this->findRegistered…(` の形（注記の言い過ぎ。向きは合っている）
+- 検出器の正規表現の空白の量は、見本が 0〜1 個だけで固定されていない（S16・S17 が緑。普通の書き方は 0〜1 個なので害は小さい）
+
+⚠ 作業の中で起きたこと:
+- 2026-09-29 夜〜30: 最終レビューの修正の 1 人目のサブエージェント（opus）が、利用上限（週の上限）で途中で止まった。5 コミットまで進んでいた。2 人目（sonnet）が残りを仕上げ、1 人目のコミットも点検した
+- 2026-09-30: 手元の既定の `php`（`/opt/homebrew/bin/php`）が **PHP 8.5.11** を指していた。8.5 では全件が `OK, but there were issues!`（Deprecations: 2。既存の `app/Support/CsvImportReader.php` の `str_getcsv` の `$escape`。今回の変更とは無関係・8.3 では出ない）。本番は 8.3 なので、2 回目の変異テストと修正のあとの全件は `PATH="/opt/homebrew/opt/php@8.3/bin:$PATH"` で 8.3 を明示して流した（2026-09-29 の実行は 8.3 だった可能性が高い＝Task 0・5 の全件の最終行に Deprecation が出ていない）
 
 ### Task 10: 本番反映
 
