@@ -143,7 +143,23 @@ class ApprovalMenuTest extends TestCase
             $this->assertStringContainsString('決裁のホーム', $sidebars[$key]);
             $this->assertStringContainsString('<span class="sr-only">対応待ち </span>1<span class="sr-only"> 件</span>', $sidebars[$key], "{$key} に件数が無い（申請者の差戻しの対応）");
         }
-        $this->assertMatchesRegularExpression('#title="決裁のホーム"[^>]*>決<span[^>]*aria-hidden="true">1</span></a>#u', $sidebars['rail']);
+        $this->assertMatchesRegularExpression('#title="決裁のホーム（対応待ち 1 件）"[^>]*>決<span[^>]*aria-hidden="true">1</span></a>#u', $sidebars['rail']);
+    }
+
+    /** 決裁のみのサイドバーの折りたたみは、件数の丸を読み上げない（aria-hidden）ので、件数を title で読む（基幹の折りたたみと同じ。Task 9 の B7・最後の点検 M-1） */
+    public function test_the_approval_only_rail_reads_the_count_in_the_link_title(): void
+    {
+        $w        = $this->approvalWorld();
+        $workflow = app(\App\Support\Approval\Workflow::class);
+        $this->launchApprovals();
+        foreach ([$this->submittedFor($w), $this->submittedFor($w)] as $request) {
+            $workflow->judgeHead($request, $w['head'], $request->lock_version, \App\Enums\ApprovalStepResult::Return, '直してください');
+        }
+
+        $sidebars = $this->sidebars($this->html($w['applicant'], route('approvals.home')));
+
+        $this->assertSame(1, preg_match('#<a href="' . preg_quote(route('approvals.home'), '#') . '" title="([^"]*)"[^>]*>決<span[^>]*aria-hidden="true">2</span></a>#u', $sidebars['rail'], $rail), '折りたたみに「決」と件数の丸が無い');
+        $this->assertSame('決裁のホーム（対応待ち 2 件）', $rail[1], '丸は読み上げないので、件数は title で読む');
     }
 
     /** 決裁のみ利用者のサイドバーも、0 件は丸を出さない（折りたたみを含む。2b 計画 Task 8 の変異 N07） */

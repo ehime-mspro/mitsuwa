@@ -49,7 +49,8 @@
 {{-- ========== PC用: 折りたたみサイドバー ========== --}}
 <aside x-show="!sidebarExpanded" x-cloak class="hidden lg:flex flex-col items-center w-[56px] min-w-[56px] bg-white border-r border-gray-200 overflow-y-auto pt-4 pb-6">
     <button @click="sidebarExpanded = true" title="サイドバーを開く" class="w-9 h-9 mb-3 rounded-lg flex items-center justify-center hover:bg-gray-100 cursor-pointer">›</button>
-    <a href="{{ route('approvals.home') }}" title="決裁のホーム" class="relative w-9 h-9 mb-1 rounded-lg flex items-center justify-center {{ request()->routeIs('approvals.home') ? 'bg-emerald-50' : 'hover:bg-gray-100' }}">決@if($approvalPending)<span class="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-red-600 text-white text-[10px] font-bold leading-4 text-center tabular-nums" aria-hidden="true">{{ $approvalPending }}</span>@endif</a>
+    {{-- 件数の丸は読み上げない（aria-hidden）ので、丸を出すときは件数を title でも読む（基幹の折りたたみと同じ） --}}
+    <a href="{{ route('approvals.home') }}" title="決裁のホーム{{ $approvalPending ? '（対応待ち ' . $approvalPending . ' 件）' : '' }}" class="relative w-9 h-9 mb-1 rounded-lg flex items-center justify-center {{ request()->routeIs('approvals.home') ? 'bg-emerald-50' : 'hover:bg-gray-100' }}">決@if($approvalPending)<span class="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-red-600 text-white text-[10px] font-bold leading-4 text-center tabular-nums" aria-hidden="true">{{ $approvalPending }}</span>@endif</a>
     @if($approvalsLaunched)
         <a href="{{ route('approvals.requests.index') }}" title="自分の申請" class="w-9 h-9 mb-1 rounded-lg flex items-center justify-center {{ request()->routeIs('approvals.requests.*') ? 'bg-emerald-50' : 'hover:bg-gray-100' }}">申</a>
     @endif
