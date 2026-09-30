@@ -205,6 +205,96 @@ class AdminRequestsTest extends TestCase
         $this->assertMatchesRegularExpression('/aria-current="page"[^>]*>決裁済み・否決</', preg_replace('/\s+/', ' ', $this->formOrNav($second)));
     }
 
+    /** 「決裁済み・否決」に決裁済みの申請を $from〜$to 番まで足す（ページ送りを見るだけなので、行を直に入れる） */
+    private function manyDecided(User $applicant, int $from, int $to): void
+    {
+        $rows = [];
+        for ($i = $from; $i <= $to; $i++) {
+            $at     = Carbon::parse('2026-09-01 01:00:00', 'UTC')->addMinutes($i);
+            $rows[] = ['user_id' => $applicant->id, 'status' => ApprovalStatus::Approved->value, 'subject' => sprintf('決裁%03d', $i), 'round' => 1,
+                'number' => sprintf('T-%03d', $i), 'decided_at' => $at, 'created_at' => $at, 'updated_at' => $at];
+        }
+        foreach (array_chunk($rows, 100) as $chunk) {
+            DB::table('approval_requests')->insert($chunk);
+        }
+    }
+
+    /**
+     * ページ送りの並び（「<」「1」「…」…「>」）・今のページ（aria-current）・番号ごとのリンク先
+     *
+     * @return array{items: list<string>, current: list<string>, links: array<string, string>}
+     */
+    private function pager(string $html): array
+    {
+        $at = strpos($html, 'aria-label="ページ送り"');
+        $this->assertNotFalse($at, 'ページ送りが無い');
+        $nav = substr($html, $at, strpos($html, '</nav>', $at) - $at);
+        preg_match_all('#<(a|span)\b([^>]*)>([^<]*)</\1>#u', $nav, $found, PREG_SET_ORDER);
+        $pager = ['items' => [], 'current' => [], 'links' => []];
+        foreach ($found as [, $tag, $attributes, $text]) {
+            $label            = html_entity_decode(trim($text));
+            $pager['items'][] = $label;
+            if (str_contains($attributes, 'aria-current="page"')) {
+                $pager['current'][] = $label;
+            }
+            if ($tag === 'a' && preg_match('#href="([^"]*)"#', $attributes, $href)) {
+                $pager['links'][$label] = html_entity_decode($href[1]);
+            }
+        }
+
+        return $pager;
+    }
+
+    /** 「決裁済み・否決」のページ番号は、先頭・最後・今のページの前後 1 つだけ（間は「…」）。31 ページでもボタンは 9 個まで＝スマホの幅に収まる（Task 9 の B1・利用者の決定 C5） */
+    public function test_the_decided_tab_numbers_only_the_pages_around_the_current_one(): void
+    {
+        $w     = $this->approvalWorld();
+        $admin = $this->approvalAdmin();
+        $this->launchApprovals();
+        $this->manyDecided($w['applicant'], 1, 620);   // 31 ページ
+        $url = fn (int $page) => route('approvals.admin.requests.index', ['tab' => 'decided', 'page' => $page]);
+
+        $html = $this->html($admin, $url(16));
+        foreach ([2, 14, 18, 30] as $hidden) {
+            $this->assertStringNotContainsString('href="' . e($url($hidden)) . '"', $html, "{$hidden} ページ目の番号を並べた");
+        }
+        $middle = $this->pager($html);
+        $this->assertSame(['<', '1', '…', '15', '16', '17', '…', '31', '>'], $middle['items']);
+        $this->assertSame(['16'], $middle['current'], '今のページに aria-current が無い');
+        $this->assertSame($url(17), $middle['links']['17'], '番号のリンクがタブを落とした');
+        $this->assertSame($url(15), $middle['links']['<']);
+        $this->assertSame($url(17), $middle['links']['>']);
+
+        $items = [];
+        foreach (range(1, 31) as $page) {
+            $items[$page] = $this->pager($this->html($admin, $url($page)))['items'];
+        }
+        $this->assertSame(['<', '1', '2', '…', '31', '>'], $items[1]);
+        $this->assertSame(['<', '1', '2', '3', '4', '5', '…', '31', '>'], $items[4], '1 ページだけの間を「…」にした');
+        $this->assertSame(['<', '1', '…', '30', '31', '>'], $items[31]);
+        $this->assertSame(9, max(array_map('count', $items)), 'ボタンが 9 個を超えた（スマホの幅からはみ出す）');
+    }
+
+    /** ページが少ないときも形が崩れない: 3 ページは全部の番号を「…」なしで、11 ページは前後だけ。今のページに aria-current（利用者の決定 C5） */
+    public function test_the_decided_tab_pager_keeps_its_shape_with_a_few_pages(): void
+    {
+        $w     = $this->approvalWorld();
+        $admin = $this->approvalAdmin();
+        $this->launchApprovals();
+        $this->manyDecided($w['applicant'], 1, 41);   // 3 ページ
+        $url = fn (int $page) => route('approvals.admin.requests.index', ['tab' => 'decided', 'page' => $page]);
+
+        $html = $this->html($admin, $url(2));
+        $this->assertMatchesRegularExpression('#aria-current="page"[^>]*>\s*2\s*</#', $html, '今のページに aria-current が無い');
+        $this->assertSame(['<', '1', '2', '3', '>'], $this->pager($html)['items']);
+
+        $this->manyDecided($w['applicant'], 42, 220);   // 11 ページ
+        $this->assertSame(['<', '1', '2', '…', '11', '>'], $this->pager($this->html($admin, $url(1)))['items']);
+        $this->assertSame(['<', '1', '2', '3', '4', '…', '11', '>'], $this->pager($this->html($admin, $url(3)))['items']);
+        $this->assertSame(['<', '1', '…', '5', '6', '7', '…', '11', '>'], $this->pager($this->html($admin, $url(6)))['items']);
+        $this->assertSame(['<', '1', '…', '10', '11', '>'], $this->pager($this->html($admin, $url(11)))['items']);
+    }
+
     /** 表示の切り替えの部分（aria-current の付いたタブ） */
     private function formOrNav(string $html): string
     {
