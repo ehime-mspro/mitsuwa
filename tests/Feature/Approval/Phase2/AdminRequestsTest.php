@@ -480,6 +480,34 @@ class AdminRequestsTest extends TestCase
         $this->assertSame(1, substr_count($steps, 'に届きました'), '待ちの審査の段階だけに出す');
     }
 
+    /** 条件の確認を取り消す小窓は「条件確認待ちに戻る」と言う（社長はもう判断しない）。社長の判断を取り消す小窓は今の文のまま（Task 5 M-5・Task 9 の B3・利用者の決定 C3） */
+    public function test_the_undo_modal_for_a_condition_confirmation_says_it_goes_back_to_the_condition(): void
+    {
+        $w     = $this->approvalWorld();
+        $admin = $this->approvalAdmin();
+        $this->launchApprovals();
+        $request = $this->submittedFor($w);
+        $this->workflow->judgeHead($request, $w['head'], $request->lock_version, ApprovalStepResult::Approve, null);
+        $this->workflow->judgeReview($request->refresh(), $w['reviewer'], $request->lock_version, ApprovalStepResult::Ok, null);
+        $this->workflow->judgePresident($request->refresh(), $w['president'], $request->lock_version, ApprovalStepResult::Conditional, '条件');
+        $this->workflow->confirmCondition($request->refresh(), $w['applicant'], $request->lock_version, null);
+        $number = $request->refresh()->number;
+        $this->assertNotNull($number, '前提: 社長の条可で番号が付いている');
+        $action = route('approvals.admin.requests.undo', $request);
+
+        $form = $this->formOf($this->showHtml($admin, $request), $action);
+        $this->assertStringContainsString('条件を確認', $form);
+        $this->assertStringContainsString("条件確認待ちに戻ります。決裁No（{$number}）はそのまま残ります。", $form);
+        $this->assertStringNotContainsString('次に社長が判断したとき', $form, '条件の確認を取り消しても、社長はもう判断しない');
+
+        // 条件の確認を取り消すと、次に取り消すのは社長の条可（社長の判断の取り消しの文は今のまま）
+        $this->workflow->undo($request->refresh(), $admin, $request->lock_version, '押し間違い');
+        $form = $this->formOf($this->showHtml($admin, $request->refresh()), $action);
+        $this->assertStringContainsString('社長が条可', $form);
+        $this->assertStringContainsString("決裁No（{$number}）はこの申請に残り、次に社長が判断したときにそのまま使います。", $form);
+        $this->assertStringNotContainsString('条件確認待ちに戻ります。', $form);
+    }
+
     public function test_withdrawing_for_the_applicant_from_the_detail(): void
     {
         $w     = $this->approvalWorld();

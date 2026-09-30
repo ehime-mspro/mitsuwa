@@ -107,7 +107,10 @@
                             </p>
                             <p class="text-[12px] text-gray-500">
                                 その操作の前の状態に戻します。元の記録は消えず、取り消したことが記録に残ります。続けて取り消すと、もう 1 つ前の操作にさかのぼります（提出の手前まで）。
-                                @if($approvalRequest->number)
+                                @if($undoTarget->action === 'condition_confirmed')
+                                    {{-- 条件の確認の取り消しは条件確認待ちに戻るだけで、社長はもう判断しない（利用者の決定 C3） --}}
+                                    条件確認待ちに戻ります。決裁No（{{ $approvalRequest->number }}）はそのまま残ります。
+                                @elseif($approvalRequest->number)
                                     決裁No（{{ $approvalRequest->number }}）はこの申請に残り、次に社長が判断したときにそのまま使います。
                                 @endif
                             </p>
