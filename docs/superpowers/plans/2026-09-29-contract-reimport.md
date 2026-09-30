@@ -4525,4 +4525,10 @@ Task 9（文書）で直したもの: 計画 Task 7 の表の URL・RULES の Bu
 
 ### Task 10: 本番反映
 
-（未記入）
+（2026-09-30。承認は 3 回に分けてもらった: Step 2 の読み取り →「反映に進んでください」で Step 1・3〜6 → 実 Chrome をつないでもらって Step 5 の画面の確認）決裁 段階2b が先に本番に出ていたので、期待する値を 2b のあとの値に読み替えた（Step 4 の CSS の名前は `app-Cz5Vm3yg.css`〔計画の `app-DW1DvPK7.css` は 2b の反映で消えた〕・Step 5 のビューは 288 本〔計画の 283 本は 2b の前〕）:
+- Step 2（反映の前の本番の読み取り・11:23）: `tenant=1 room=0 parking=0`・`rows: contracts=127 ms_contracts=0 ms_parking_contracts=0`。計画のスクリプトから 2 点を変えた（`use Illuminate\Support\Facades\DB;` を外して完全な名前で呼ぶ＝tinker ではこの `use` が「already in use」で落ちた前例がある ／ 3 つの表の件数も出す＝空の表の 0 と区別する）。キーの意味が取込の照合（`findRegisteredContract()` ほか 2 つ）と同じことは、流す前に手元のコードで確かめた。テナントの契約に、見分けのキーが同じ契約が 2 件以上ある組が 1 組ある（以前の二重送信の名残の可能性。消していない。消すかは利用者の判断）
+- Step 1: `merge-base --is-ancestor 13.x contract-reimport` は成功（`13.x` は進んでいなかった）→ `a9732184..e942596d` を早送り・作業ツリーは空
+- Step 3: `vendor/bin/phpunit` は無い。無視設定のファイルの一覧は 220 行（前回と同じ。新しく変わったのは、除外される `bootstrap/cache/` の 2 本だけ）
+- Step 4: `./deploy.sh` 11:29:04〜11:29:13・exit 0・6 段すべて。送ったアプリのファイルは 7 本（コントローラ 2・ビュー 4・migration 1）とビルドだけ。CSS・JS は `app-Cz5Vm3yg.css`・`app-NiVQbl_Q.js` のまま（反映の前に worktree でビルドし、main repo の 10:52 のビルド＝本番とバイトまで同じだと確かめた）＝旧バンドルの削除は 0 件
+- Step 5（ssh・11:30）: md5 は 6/6 一致・`views=288 invalid=0`・`laravel.log` は 6/18 から更新なし・`bootstrap/cache` は 600／700・本番の build は 2 か所とも 2 本だけ。実 Chrome（最初は「not connected」で、つながっているブラウザの一覧も空だった。利用者につないでもらってから）: 2 つの取込の画面とも 200・契約の 4 タブを開くと足した説明の 1 行が出る（テナントの画面に同じ文が 2 回・賃貸マンションの画面に 2 つの文が 1 回ずつ）・`main` の横スクロール 0・読み込み直したときのコンソールのエラー 0 件
+- Step 6: この記録（BACKLOG の節の見出し・本番反映の小節・範囲外の名残の件・完了状況）
