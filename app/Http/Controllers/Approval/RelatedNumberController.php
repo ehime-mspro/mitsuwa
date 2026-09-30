@@ -2,11 +2,14 @@
 
 namespace App\Http\Controllers\Approval;
 
+use App\Enums\ApprovalStatus;
 use App\Http\Controllers\Controller;
 use App\Models\ApprovalRequest;
+use App\Models\ApprovalRevision;
 use App\Support\Approval\RelatedNumbers;
 use App\Support\Approval\RequestVisibility;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -17,6 +20,9 @@ use Illuminate\Http\Request;
  * ⚠ 呼ぶ側の fetch は X-Requested-With を付ける（Bug #35。付けないとセッションの直前 URL が
  *   この JSON で上書きされる）。
  * ⚠ LIKE の % と _ は逃がさない（アプリのほかの検索と同じ。見られる範囲の中で候補が広がるだけ）。
+ * ⚠ 差戻し中の申請と、差戻し中に直して保存してから取り下げた申請は、最後に提出した控えの件名で当て、控えの件名を返す
+ *   （取り消しで番号を残したまま差戻しに戻った申請の直しかけを、ほかの人に漏らさない。D26・設計書 §5.16・2b 計画 Task 6）。
+ *   ほかの状態は中身を直せないので、今の件名が最後に提出した件名と同じ。
  */
 class RelatedNumberController extends Controller
 {
@@ -38,14 +44,36 @@ class RelatedNumberController extends Controller
         // 番号は全角・小文字でも当たるようにそろえる。件名は入力のまま探す
         $number = RelatedNumbers::normalize($text);
 
-        $items = RequestVisibility::apply(ApprovalRequest::query(), $request->user())
+        // 直しかけが今の中身に残りうる状態（差戻し中と、差戻し中に直して保存してから取り下げた申請）
+        $fromRevision = [ApprovalStatus::Returned, ApprovalStatus::Withdrawn];
+        $values       = array_map(fn (ApprovalStatus $status) => $status->value, $fromRevision);
+
+        $found = RequestVisibility::apply(ApprovalRequest::query(), $request->user())
             ->whereNotNull('number')
-            ->where(fn (Builder $q) => $q->where('number', 'like', "%{$number}%")->orWhere('subject', 'like', "%{$text}%"))
+            ->where(fn (Builder $q) => $q
+                ->where('number', 'like', "%{$number}%")
+                ->orWhere(fn (Builder $q) => $q->whereNotIn('status', $values)->where('subject', 'like', "%{$text}%"))
+                ->orWhere(fn (Builder $q) => $q->whereIn('status', $values)->whereExists(fn (QueryBuilder $s) => $s
+                    ->selectRaw('1')->from('approval_revisions')
+                    ->whereColumn('approval_revisions.request_id', 'approval_requests.id')
+                    ->whereColumn('approval_revisions.round', 'approval_requests.round')
+                    ->where('approval_revisions.snapshot->subject', 'like', "%{$text}%"))))
             ->orderByDesc('decided_at')
             ->orderByDesc('id')
             ->limit(self::LIMIT)
-            ->get(['number', 'subject'])
-            ->map(fn (ApprovalRequest $found) => ['number' => $found->number, 'subject' => $found->subject])
+            ->get(['id', 'number', 'subject', 'status', 'round']);
+
+        // 差戻し中と取り下げの申請は、最後に提出した控えの件名を返す（1 回の問い合わせで読む）
+        $submitted = ApprovalRevision::whereIn('request_id', $found->filter(fn (ApprovalRequest $r) => in_array($r->status, $fromRevision, true))->pluck('id')->all())
+            ->get(['request_id', 'round', 'snapshot'])
+            ->mapWithKeys(fn (ApprovalRevision $revision) => ["{$revision->request_id}:{$revision->round}" => $revision->snapshot['subject'] ?? null])
+            ->all();
+
+        $items = $found
+            ->map(fn (ApprovalRequest $r) => [
+                'number'  => $r->number,
+                'subject' => in_array($r->status, $fromRevision, true) ? ($submitted["{$r->id}:{$r->round}"] ?? null) : $r->subject,
+            ])
             ->all();
 
         return response()->json(['items' => $items]);

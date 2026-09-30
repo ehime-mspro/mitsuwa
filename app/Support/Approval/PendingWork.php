@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Support\JapanTime;
 use Carbon\CarbonImmutable;
 use DateTimeInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -27,11 +28,50 @@ final class PendingWork
      */
     public static function for(User $user): Collection
     {
+        $steps = self::waitingSteps($user)->with(['request.applicant', 'request.department', 'request.type'])->get();
+
+        $items = $steps->map(fn (ApprovalStep $step) => [
+            'request' => $step->request,
+            'role'    => $step->kind->label(),
+            'action'  => match ($step->kind) {
+                ApprovalStepKind::Head      => '承認・差戻し',
+                ApprovalStepKind::Review    => '意見',
+                ApprovalStepKind::President => '決裁',
+            },
+            'since'   => $step->arrived_at,
+        ]);
+
+        $own = self::ownTurns($user)->with(['department', 'type', 'applicant'])
+            ->get()
+            ->map(fn (ApprovalRequest $request) => [
+                'request' => $request,
+                'role'    => '申請者',
+                'action'  => $request->status === ApprovalStatus::Returned ? '差戻しの対応' : '条件の確認',
+                'since'   => $request->status_changed_at,
+            ]);
+
+        return $items->concat($own)
+            ->sortBy(fn (array $item) => $item['since']?->getTimestamp() ?? PHP_INT_MAX)
+            ->values();
+    }
+
+    /**
+     * 対応待ちの数（基幹のメニュー・ダッシュボードの件数。設計書 §5.15）。for() と同じ条件を数えるだけ
+     * （中身を読まない）。for() と数が同じことは PendingWorkTest の突き合わせが見る。
+     */
+    public static function countFor(User $user): int
+    {
+        return self::waitingSteps($user)->count() + self::ownTurns($user)->count();
+    }
+
+    /** 自分が判断する番の段階（待ち・自分の申請を除く。D16） */
+    private static function waitingSteps(User $user): Builder
+    {
         $headDeptIds   = ApprovalDepartment::where('head_user_id', $user->id)->pluck('id');
         $reviewDeptIds = DB::table('approval_reviewers')->where('user_id', $user->id)->pluck('department_id');
         $isPresident   = $user->isApprovalPresident();
 
-        $steps = ApprovalStep::with(['request.applicant', 'request.department', 'request.type'])
+        return ApprovalStep::query()
             ->where('status', ApprovalStepStatus::Waiting->value)
             ->whereHas('request', fn ($q) => $q->where('user_id', '!=', $user->id))
             ->where(function ($q) use ($user, $headDeptIds, $reviewDeptIds, $isPresident): void {
@@ -46,34 +86,15 @@ final class PendingWork
                 if ($isPresident) {
                     $q->orWhere('kind', ApprovalStepKind::President->value);
                 }
-            })
-            ->get();
+            });
+    }
 
-        $items = $steps->map(fn (ApprovalStep $step) => [
-            'request' => $step->request,
-            'role'    => $step->kind->label(),
-            'action'  => match ($step->kind) {
-                ApprovalStepKind::Head      => '承認・差戻し',
-                ApprovalStepKind::Review    => '意見',
-                ApprovalStepKind::President => '決裁',
-            },
-            'since'   => $step->arrived_at,
-        ]);
-
-        $own = ApprovalRequest::with(['department', 'type', 'applicant'])
+    /** 申請者の番（自分の申請の差戻し中・条件確認待ち） */
+    private static function ownTurns(User $user): Builder
+    {
+        return ApprovalRequest::query()
             ->where('user_id', $user->id)
-            ->whereIn('status', [ApprovalStatus::Returned->value, ApprovalStatus::Condition->value])
-            ->get()
-            ->map(fn (ApprovalRequest $request) => [
-                'request' => $request,
-                'role'    => '申請者',
-                'action'  => $request->status === ApprovalStatus::Returned ? '差戻しの対応' : '条件の確認',
-                'since'   => $request->status_changed_at,
-            ]);
-
-        return $items->concat($own)
-            ->sortBy(fn (array $item) => $item['since']?->getTimestamp() ?? PHP_INT_MAX)
-            ->values();
+            ->whereIn('status', [ApprovalStatus::Returned->value, ApprovalStatus::Condition->value]);
     }
 
     /** 待ち日数（自分の番が来た日から数えた暦の日数・日本時間。D20） */

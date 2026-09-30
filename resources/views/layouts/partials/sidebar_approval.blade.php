@@ -15,6 +15,8 @@
     $isApprovalAdmin = Auth::user()->isApprovalAdmin();
     // 申請を回す画面へのリンクは使い始めてから（準備中は誰にも見せない。段階2 設計書 §5.2・D1）
     $approvalsLaunched = \App\Models\ApprovalSetting::current()->isLaunched();
+    // 対応待ちの件数（使い始めてから。1 リクエストに 1 回だけ数える。段階2 設計書 §5.15）
+    $approvalPending = \App\Support\Approval\ApprovalMenu::pendingCount(Auth::user());
 @endphp
 
 {{-- ========== PC用: 展開サイドバー ========== --}}
@@ -28,7 +30,7 @@
             <button @click="sidebarExpanded = false" title="サイドバーを閉じる"
                     class="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-gray-300 bg-gray-50 text-[10px] text-gray-500 hover:bg-gray-100 cursor-pointer">閉じる</button>
         </div>
-        <x-sidebar-item :href="route('approvals.home')" label="決裁のホーム" :active="request()->routeIs('approvals.home')" />
+        <x-sidebar-item :href="route('approvals.home')" label="決裁のホーム" :badge="$approvalPending" :active="request()->routeIs('approvals.home')" />
         @if($approvalsLaunched)
             <x-sidebar-item :href="route('approvals.requests.create')" label="新しい申請" :active="request()->routeIs('approvals.requests.create')" />
             <x-sidebar-item :href="route('approvals.requests.index')" label="自分の申請" :active="request()->routeIs('approvals.requests.index', 'approvals.requests.show', 'approvals.requests.edit')" />
@@ -37,6 +39,9 @@
             <x-sidebar-item :href="route('approvals.admin.users.index')" label="利用者の管理" :active="request()->routeIs('approvals.admin.users.*')" />
             <x-sidebar-item :href="route('approvals.admin.organization.index')" label="部門の管理" :active="request()->routeIs('approvals.admin.organization.*')" />
             <x-sidebar-item :href="route('approvals.admin.types.index')" label="申請種類の管理" :active="request()->routeIs('approvals.admin.types.*')" />
+            @if($approvalsLaunched)
+                <x-sidebar-item :href="route('approvals.admin.requests.index')" label="進行中の申請の管理" :active="request()->routeIs('approvals.admin.requests.*')" />
+            @endif
         @endif
     </div>
 </aside>
@@ -44,7 +49,8 @@
 {{-- ========== PC用: 折りたたみサイドバー ========== --}}
 <aside x-show="!sidebarExpanded" x-cloak class="hidden lg:flex flex-col items-center w-[56px] min-w-[56px] bg-white border-r border-gray-200 overflow-y-auto pt-4 pb-6">
     <button @click="sidebarExpanded = true" title="サイドバーを開く" class="w-9 h-9 mb-3 rounded-lg flex items-center justify-center hover:bg-gray-100 cursor-pointer">›</button>
-    <a href="{{ route('approvals.home') }}" title="決裁のホーム" class="w-9 h-9 mb-1 rounded-lg flex items-center justify-center {{ request()->routeIs('approvals.home') ? 'bg-emerald-50' : 'hover:bg-gray-100' }}">決</a>
+    {{-- 件数の丸は読み上げない（aria-hidden）ので、丸を出すときは件数を title でも読む（基幹の折りたたみと同じ） --}}
+    <a href="{{ route('approvals.home') }}" title="決裁のホーム{{ $approvalPending ? '（対応待ち ' . $approvalPending . ' 件）' : '' }}" class="relative w-9 h-9 mb-1 rounded-lg flex items-center justify-center {{ request()->routeIs('approvals.home') ? 'bg-emerald-50' : 'hover:bg-gray-100' }}">決@if($approvalPending)<span class="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-red-600 text-white text-[10px] font-bold leading-4 text-center tabular-nums" aria-hidden="true">{{ $approvalPending }}</span>@endif</a>
     @if($approvalsLaunched)
         <a href="{{ route('approvals.requests.index') }}" title="自分の申請" class="w-9 h-9 mb-1 rounded-lg flex items-center justify-center {{ request()->routeIs('approvals.requests.*') ? 'bg-emerald-50' : 'hover:bg-gray-100' }}">申</a>
     @endif
@@ -70,7 +76,7 @@
             </svg>
         </button>
     </div>
-    <x-sidebar-item :href="route('approvals.home')" label="決裁のホーム" :active="request()->routeIs('approvals.home')" />
+    <x-sidebar-item :href="route('approvals.home')" label="決裁のホーム" :badge="$approvalPending" :active="request()->routeIs('approvals.home')" />
     @if($approvalsLaunched)
         <x-sidebar-item :href="route('approvals.requests.create')" label="新しい申請" :active="request()->routeIs('approvals.requests.create')" />
         <x-sidebar-item :href="route('approvals.requests.index')" label="自分の申請" :active="request()->routeIs('approvals.requests.index', 'approvals.requests.show', 'approvals.requests.edit')" />
@@ -79,5 +85,8 @@
         <x-sidebar-item :href="route('approvals.admin.users.index')" label="利用者の管理" :active="request()->routeIs('approvals.admin.users.*')" />
         <x-sidebar-item :href="route('approvals.admin.organization.index')" label="部門の管理" :active="request()->routeIs('approvals.admin.organization.*')" />
         <x-sidebar-item :href="route('approvals.admin.types.index')" label="申請種類の管理" :active="request()->routeIs('approvals.admin.types.*')" />
+        @if($approvalsLaunched)
+            <x-sidebar-item :href="route('approvals.admin.requests.index')" label="進行中の申請の管理" :active="request()->routeIs('approvals.admin.requests.*')" />
+        @endif
     @endif
 </aside>

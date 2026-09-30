@@ -197,6 +197,7 @@
 </style>
 
 <div class="exec-dashboard">
+    @include('approvals._pending_card')
     @include('dashboard._executive_filter')
     @include('dashboard._executive_tenant')
     @include('dashboard._executive_mansion')

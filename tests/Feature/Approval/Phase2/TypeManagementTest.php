@@ -483,6 +483,31 @@ class TypeManagementTest extends TestCase
     }
 
     /**
+     * 無効にした審査担当者しかいない審査部門も「審査担当者がいません」と出す（提出の条件 SubmitChecker と同じく、有効な人だけ数える。
+     * 2a の Task 11 の再点検 N-1。2b 計画 Task 1）
+     */
+    public function test_a_review_department_whose_only_reviewer_is_inactive_is_flagged(): void
+    {
+        $w = $this->approvalWorld();
+        $w['reviewer']->forceFill(['status' => 'inactive'])->save();   // status は一括代入できない列（User の $fillable の注意）
+
+        $html = $this->indexHtml($this->approvalAdmin());
+
+        $this->assertStringContainsString('<span class="ml-1 text-[11px] font-semibold text-red-700">審査担当者がいません</span>', $html);
+    }
+
+    /** 削除した審査担当者しかいない審査部門も「審査担当者がいません」と出す（削除した人を数えないことを固定する。N-1 の後半・変異 N07） */
+    public function test_a_review_department_whose_only_reviewer_is_deleted_is_flagged(): void
+    {
+        $w = $this->approvalWorld();
+        $w['reviewer']->delete();
+
+        $html = $this->indexHtml($this->approvalAdmin());
+
+        $this->assertStringContainsString('<span class="ml-1 text-[11px] font-semibold text-red-700">審査担当者がいません</span>', $html);
+    }
+
+    /**
      * 追加の小窓で断られたら、打った中身（種類名・審査部門・見出し・表示順・利用中）で小窓を開き直す（Task 19 の C4。
      * 利用者の決定 2026-09-28。部門の管理は今のまま）。描き直した追加のフォームを送り返せば、打った中身になる
      */

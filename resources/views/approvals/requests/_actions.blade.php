@@ -9,19 +9,19 @@
     $refusal   = $permissions->judgeRefusal();
     $waiting   = $permissions->waitingStep();
     // 判断・取り下げ・条件確認が、入力の誤りかコメントの不足で断られて戻ったとき（RequestActionController が入力を戻す）は、
-    // 打った中身で小窓を開き直し、断られた理由を小窓の中にも出す（ページの上の理由は小窓に隠れる。Task 19 の C8）。
-    // 先を越されたとき（すでに処理されています）は入力を戻さないので開かない。
-    // ⚠ 3 つの小窓は同時には出ない（判断は申請者でない担当・取り下げと条件確認は申請者で、状態も重ならない）
-    // ⚠ 版は断られる前の版のまま（古い画面から送って断られたなら、直して送っても「すでに処理されています」で断る）
-    $reopen        = is_string(old('lock_version'));
-    $lockVersion   = $reopen ? old('lock_version') : $approvalRequest->lock_version;
-    $oldComment    = $reopen && is_string(old('comment')) ? old('comment') : '';
-    $refusedReason = $reopen ? ($errors->any() ? implode(' ', $errors->all()) : (string) session('error')) : '';
+    // 送った小窓だけを打った中身で開き直し、断られた理由を小窓の中にも出す（ページの上の理由は小窓に隠れる。Task 19 の C8）。
+    // どの小窓かは送り先がセッションに残す（approval_reopen。状態が進んだあとに古い画面の取り下げが断られても、条件確認の
+    // 小窓は開かない＝2a の Task 19 の点検 m-6。2b 計画 §0.9）。先を越されたとき（すでに処理されています）は入力を戻さないので開かない。
+    // ⚠ 版は断られる前の版のまま（古い画面から送って断られたなら、直して送っても「すでに処理されています」で断る）。開き直す小窓だけ
+    $reopenModal   = is_string(old('lock_version')) && is_string(session('approval_reopen')) ? session('approval_reopen') : null;
+    $versionFor    = fn (string $modal) => $reopenModal === $modal ? old('lock_version') : $approvalRequest->lock_version;
+    $commentFor    = fn (string $modal) => $reopenModal === $modal && is_string(old('comment')) ? old('comment') : '';
+    $refusedReason = $reopenModal !== null ? ($errors->any() ? implode(' ', $errors->all()) : (string) session('error')) : '';
 @endphp
 
 {{-- 申請者の操作 --}}
 @if($permissions->isApplicant())
-    <div class="flex flex-wrap items-center gap-2 mb-5" x-data="{ confirmDelete: false, confirmWithdraw: {{ $reopen && $permissions->canWithdraw() ? 'true' : 'false' }} }">
+    <div class="flex flex-wrap items-center gap-2 mb-5" x-data="{ confirmDelete: false, confirmWithdraw: {{ $reopenModal === 'withdraw' && $permissions->canWithdraw() ? 'true' : 'false' }} }">
         @if($permissions->canEdit())
             <a href="{{ route('approvals.requests.edit', $approvalRequest) }}" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-[13px] font-semibold">{{ $approvalRequest->status === \App\Enums\ApprovalStatus::Returned ? '直して出し直す' : '編集する' }}</a>
         @endif
@@ -58,15 +58,15 @@
                     <form method="POST" action="{{ route('approvals.requests.withdraw', $approvalRequest) }}"
                           x-data="approvalSubmitOnce()" x-on:submit="onSubmit($event)" x-on:pageshow.window="resetSubmit()">
                         @csrf
-                        <input type="hidden" name="lock_version" value="{{ $lockVersion }}">
+                        <input type="hidden" name="lock_version" value="{{ $versionFor('withdraw') }}">
                         <div class="px-6 pt-5 text-[15px] font-bold text-gray-900">この申請を取り下げますか？</div>
-                        @if($refusedReason !== '')
+                        @if($reopenModal === 'withdraw' && $refusedReason !== '')
                             <p class="mx-6 mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">{{ $refusedReason }}</p>
                         @endif
                         <div class="px-6 py-4">
                             <p class="text-[12px] text-gray-500 mb-3">取り下げると回覧が止まり、元に戻せません。{{ $approvalRequest->number ? '決裁No はそのまま残ります。' : '' }}</p>
                             <label for="withdraw-comment" class="block text-[12px] font-semibold text-gray-700 mb-1">コメント<span class="text-gray-400 font-normal ml-1">（任意）</span></label>
-                            <textarea id="withdraw-comment" name="comment" rows="3" maxlength="2000" class="w-full px-2.5 py-2 border border-gray-300 rounded-md text-[13px] leading-relaxed">{{ $oldComment }}</textarea>
+                            <textarea id="withdraw-comment" name="comment" rows="3" maxlength="2000" class="w-full px-2.5 py-2 border border-gray-300 rounded-md text-[13px] leading-relaxed">{{ $commentFor('withdraw') }}</textarea>
                         </div>
                         <div class="px-6 pb-5 flex flex-wrap items-center justify-end gap-2">
                             <span role="status" x-text="submitting ? '送っています…' : ''" class="text-[12px] text-gray-600 whitespace-nowrap"></span>
@@ -83,7 +83,7 @@
 {{-- 条件の確認（申請者。要件 4.6。条件は社長の段階のコメント） --}}
 @if($permissions->canConfirmCondition())
     @php $conditionStep = $approvalRequest->currentSteps()->firstWhere('kind', \App\Enums\ApprovalStepKind::President); @endphp
-    <section class="bg-amber-50 rounded-lg border border-amber-200 mb-5 px-5 py-4" x-data="{ confirmCondition: {{ $reopen ? 'true' : 'false' }} }">
+    <section class="bg-amber-50 rounded-lg border border-amber-200 mb-5 px-5 py-4" x-data="{ confirmCondition: {{ $reopenModal === 'condition' ? 'true' : 'false' }} }">
         <h2 class="text-[14px] font-bold text-amber-900 mb-1">社長の条件を確認してください</h2>
         <p class="text-[13px] text-amber-900 whitespace-pre-wrap break-words mb-3">{{ $conditionStep?->comment }}</p>
         <button type="button" @click="confirmCondition = true" class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-md text-[13px] font-semibold cursor-pointer">条件を確認しました</button>
@@ -93,15 +93,15 @@
                 <form method="POST" action="{{ route('approvals.requests.confirmCondition', $approvalRequest) }}"
                       x-data="approvalSubmitOnce()" x-on:submit="onSubmit($event)" x-on:pageshow.window="resetSubmit()">
                     @csrf
-                    <input type="hidden" name="lock_version" value="{{ $lockVersion }}">
+                    <input type="hidden" name="lock_version" value="{{ $versionFor('condition') }}">
                     <div class="px-6 pt-5 text-[15px] font-bold text-gray-900">条件を確認したことを記録しますか？</div>
-                    @if($refusedReason !== '')
+                    @if($reopenModal === 'condition' && $refusedReason !== '')
                         <p class="mx-6 mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">{{ $refusedReason }}</p>
                     @endif
                     <div class="px-6 py-4">
                         <p class="text-[12px] text-gray-500 mb-3">記録すると決裁済み（条可）になります。</p>
                         <label for="condition-comment" class="block text-[12px] font-semibold text-gray-700 mb-1">コメント<span class="text-gray-400 font-normal ml-1">（任意）</span></label>
-                        <textarea id="condition-comment" name="comment" rows="3" maxlength="2000" class="w-full px-2.5 py-2 border border-gray-300 rounded-md text-[13px] leading-relaxed">{{ $oldComment }}</textarea>
+                        <textarea id="condition-comment" name="comment" rows="3" maxlength="2000" class="w-full px-2.5 py-2 border border-gray-300 rounded-md text-[13px] leading-relaxed">{{ $commentFor('condition') }}</textarea>
                     </div>
                     <div class="px-6 pb-5 flex flex-wrap items-center justify-end gap-2">
                         <span role="status" x-text="submitting ? '送っています…' : ''" class="text-[12px] text-gray-600 whitespace-nowrap"></span>
@@ -134,7 +134,7 @@
             $choiceData[$choice->value] = ['label' => $choice->labelFor($kind), 'comment' => $choice->requiresComment()];
         }
         // 断られて戻ったら、選んでいた判断で小窓を開き直す（C8。この段階で選べる判断のときだけ）
-        $reopenChoice = $reopen && is_string(old('result')) && isset($choiceData[old('result')]) ? old('result') : null;
+        $reopenChoice = $reopenModal === 'judge' && is_string(old('result')) && isset($choiceData[old('result')]) ? old('result') : null;
     @endphp
     <section class="bg-white rounded-lg border-2 border-emerald-200 mb-5 px-5 py-4" x-data="approvalJudge({{ \Illuminate\Support\Js::from($choiceData) }})" @if($reopenChoice !== null) x-init="open({{ \Illuminate\Support\Js::from($reopenChoice) }})" @endif>
         <h2 class="text-[14px] font-bold text-gray-900 mb-1">{{ $kind->label() }}としての判断</h2>
@@ -151,12 +151,12 @@
                 <form method="POST" action="{{ route($judgeRoute, $approvalRequest) }}"
                       x-data="approvalSubmitOnce()" x-on:submit="onSubmit($event)" x-on:pageshow.window="resetSubmit()">
                     @csrf
-                    <input type="hidden" name="lock_version" value="{{ $lockVersion }}">
+                    <input type="hidden" name="lock_version" value="{{ $versionFor('judge') }}">
                     {{-- 選んだ判断（選ぶボタンの open() が決める）。選べる判断はサーバーが描く（選ぶボタンの open('…') と approvalJudge に
                          渡す Js::from。Bug #47）。⚠ 確定のボタンに name・value を持たせない（Task 19 の C2） --}}
                     <input type="hidden" name="result" :value="choice">
                     <div class="px-6 pt-5 text-[15px] font-bold text-gray-900">「<span x-text="label()"></span>」で確定しますか？</div>
-                    @if($refusedReason !== '')
+                    @if($reopenModal === 'judge' && $refusedReason !== '')
                         {{-- 断られた判断を選んでいるあいだだけ出す（小窓を閉じて別の判断を選び直すと、前の断りの理由は当てはまらない） --}}
                         <p x-show="choice === {{ \Illuminate\Support\Js::from($reopenChoice) }}" class="mx-6 mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">{{ $refusedReason }}</p>
                     @endif
@@ -167,7 +167,7 @@
                             <span x-show="!needsComment()" class="text-gray-400 font-normal">（任意）</span>
                         </label>
                         <textarea id="judge-comment" name="comment" rows="5" maxlength="2000" :required="needsComment()"
-                                  class="w-full px-2.5 py-2 border border-gray-300 rounded-md text-[13px] leading-relaxed">{{ $oldComment }}</textarea>
+                                  class="w-full px-2.5 py-2 border border-gray-300 rounded-md text-[13px] leading-relaxed">{{ $commentFor('judge') }}</textarea>
                     </div>
                     <div class="px-6 pb-5 flex flex-wrap items-center justify-end gap-2">
                         <span role="status" x-text="submitting ? '送っています…' : ''" class="text-[12px] text-gray-600 whitespace-nowrap"></span>
@@ -200,7 +200,7 @@
         {{-- 2 行目は段階ごとの次の手（Task 19 の C7。社長の指定を変えられるのは基幹の管理者だけ。要件 3.2・4.7） --}}
         <p class="text-[12px] text-amber-800 mb-3">{{ match ($waiting->kind) {
             \App\Enums\ApprovalStepKind::Review    => 'ほかの審査担当者が判断します。',
-            \App\Enums\ApprovalStepKind::Head      => '取り下げて出し直すか、決裁の管理者に相談してください。',
+            \App\Enums\ApprovalStepKind::Head      => '取り下げて出し直すか、決裁の管理者に部門長の確認の付け替えを頼んでください。',
             \App\Enums\ApprovalStepKind::President => '社長の指定を変えられるのは基幹の管理者です。急ぐときは取り下げてください。',
         } }}</p>
         <div class="flex flex-wrap gap-2">

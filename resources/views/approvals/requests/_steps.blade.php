@@ -31,7 +31,8 @@
                                 @break
                             @default
                                 <span class="text-gray-700">担当: {{ \App\Support\Approval\CurrentHandler::describe($step) }}</span>
-                                @if($step->arrived_at)
+                                {{-- 届いた日時は待ちの段階だけに出す（取り消しで「まだ届いていない」に戻した段階は届いた日時が残る。2b 計画 §0.4） --}}
+                                @if($step->status === \App\Enums\ApprovalStepStatus::Waiting && $step->arrived_at)
                                     <span class="text-[12px] text-gray-400">{{ \App\Support\JapanTime::format($step->arrived_at) }} に届きました</span>
                                 @endif
                         @endswitch

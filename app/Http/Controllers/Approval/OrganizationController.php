@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Approval;
 
 use App\Enums\ApprovalStepKind;
 use App\Enums\ApprovalStepStatus;
-use App\Enums\UserStatus;
 use App\Http\Controllers\Controller;
 use App\Models\ApprovalCompany;
 use App\Models\ApprovalDepartment;
@@ -15,6 +14,7 @@ use App\Models\ApprovalStep;
 use App\Models\ApprovalType;
 use App\Models\User;
 use App\Support\Approval\ApprovalNumber;
+use App\Support\Approval\Assignees;
 use App\Support\Approval\SettingLogger;
 use App\Support\Approval\Workflow;
 use Illuminate\Http\Request;
@@ -59,15 +59,8 @@ class OrganizationController extends Controller
                 return $domain;
             });
 
-        // 部門長・審査担当者の選択肢（D7）。許可していないドメインの人は選べるが注意を出す
-        $allowed    = ApprovalMailDomain::pluck('domain')->all();
-        $candidates = User::where('status', UserStatus::Active->value)->whereNotNull('email')
-            ->orderBy('name')->get(['id', 'name', 'email', 'employee_number'])
-            ->map(function (User $user) use ($allowed) {
-                $user->mail_allowed = in_array(mb_strtolower(substr((string) $user->email, strrpos((string) $user->email, '@') + 1), 'UTF-8'), $allowed, true);
-
-                return $user;
-            });
+        // 部門長・審査担当者の選択肢（D7）。許可していないドメインの人は選べるが注意を出す（付け替えと同じ決まり。Assignees）
+        $candidates = Assignees::candidates();
 
         return view('approvals.admin.organization', compact('companies', 'mailDomains', 'candidates'));
     }
@@ -296,10 +289,7 @@ class OrganizationController extends Controller
     /** 部門長・審査担当者に選べる人（有効・メールあり・削除されていない。D7） */
     private function assignableRule(): Exists
     {
-        return Rule::exists('users', 'id')
-            ->whereNull('deleted_at')
-            ->where('status', UserStatus::Active->value)
-            ->whereNotNull('email');
+        return Assignees::rule();
     }
 
     /** @return array{0: array<string, mixed>, 1: ?int, 2: list<int>, 3: ?int, 4: ?int} */

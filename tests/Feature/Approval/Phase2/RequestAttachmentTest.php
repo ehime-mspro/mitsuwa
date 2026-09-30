@@ -47,6 +47,15 @@ class RequestAttachmentTest extends TestCase
         return UploadedFile::fake()->create($name, 120, 'application/pdf');
     }
 
+    /** 詳細の「添付」の節（今の中身の添付。2b の変更点と提出の履歴には前の回の添付も出るので、節に絞って見る） */
+    private static function attachmentSection(string $html): string
+    {
+        $start = strpos($html, '>添付</h2>');
+        self::assertNotFalse($start, '添付の節が無い');
+
+        return substr($html, $start, strpos($html, '</section>', $start) - $start);
+    }
+
     /** 下書きを提出して、部門長が差し戻す（一度提出した申請にする） */
     private function submitAndReturn(ApprovalRequest $draft, array $w): ApprovalRequest
     {
@@ -321,19 +330,20 @@ class RequestAttachmentTest extends TestCase
         $this->remove($w['applicant'], $removed)->assertOk();
 
         $html = $this->actingAs($w['applicant'])->get(route('approvals.requests.show', $request))->assertOk()->getContent();
-        $this->assertStringContainsString('見積書.pdf', $html);
-        $this->assertStringNotContainsString('古い図面.pdf', $html);
+        $this->assertStringContainsString('見積書.pdf', self::attachmentSection($html));
+        $this->assertStringNotContainsString('古い図面.pdf', self::attachmentSection($html));
 
         // 部門長には、まだ最後に提出した中身（外したことは出し直すまで申請者だけ）
         $html = $this->actingAs($w['head'])->get(route('approvals.requests.show', $request))->assertOk()->getContent();
-        $this->assertStringContainsString('見積書.pdf', $html);
-        $this->assertStringContainsString('古い図面.pdf', $html);
+        $this->assertStringContainsString('見積書.pdf', self::attachmentSection($html));
+        $this->assertStringContainsString('古い図面.pdf', self::attachmentSection($html));
 
-        // 出し直すと一覧から消えるが、1 回目の控えに入っているので開ける（2b の履歴から開く）
+        // 出し直すと今の添付から消えるが、1 回目の控えに入っているので、変更点（外した添付）と提出の履歴から開ける（2b 計画 Task 3）
         app(Workflow::class)->submit($request->refresh(), $w['applicant']);
         $html = $this->actingAs($w['head'])->get(route('approvals.requests.show', $request))->assertOk()->getContent();
-        $this->assertStringContainsString('見積書.pdf', $html);
-        $this->assertStringNotContainsString('古い図面.pdf', $html);
+        $this->assertStringContainsString('見積書.pdf', self::attachmentSection($html));
+        $this->assertStringNotContainsString('古い図面.pdf', self::attachmentSection($html));
+        $this->assertStringContainsString('<span class="sr-only">外した添付: </span><a href="' . route('approvals.attachments.show', $removed) . '"', $html);
         $this->actingAs($w['head'])->get(route('approvals.attachments.show', $removed))->assertOk();
     }
 

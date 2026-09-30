@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers\Approval;
 
+use App\Enums\UserStatus;
 use App\Http\Controllers\Controller;
 use App\Models\ApprovalDepartment;
 use App\Models\ApprovalType;
 use App\Support\Approval\BodyTemplate;
+use App\Support\Approval\FormInput;
 use App\Support\Approval\SettingLogger;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -21,8 +23,12 @@ class TypeController extends Controller
 {
     public function index()
     {
-        // 審査部門の審査担当者の人数も読む（いない部門は一覧で知らせる。Task 11 の点検の軽微）
-        $types = ApprovalType::with(['reviewDepartment' => fn ($q) => $q->withCount('reviewers')->with('company')])
+        // 審査部門の審査担当者の人数も読む（いない部門は一覧で知らせる。Task 11 の点検の軽微）。
+        // 提出の条件（SubmitChecker）と同じく有効な人だけ数える（無効の人しかいないのに注意が出ない食い違いを無くす。
+        // 削除した人は User の SoftDeletes で数えない。2a の Task 11 の再点検 N-1）
+        $types = ApprovalType::with(['reviewDepartment' => fn ($q) => $q
+                ->withCount(['reviewers' => fn ($q) => $q->where('users.status', UserStatus::Active->value)])
+                ->with('company')])
             ->withCount('requests')->ordered()->get();
 
         $departments = ApprovalDepartment::with('company')->get()
@@ -74,7 +80,7 @@ class TypeController extends Controller
     {
         // チェックボックスは外すと送られない（送られなければ停止）
         $request->merge(['is_active' => $request->boolean('is_active')]);
-        self::unifyNewlines($request, 'headings');
+        FormInput::unifyNewlines($request, 'headings');
 
         return $request->validate([
             'name'                 => ['required', 'string', 'max:50', Rule::unique('approval_types', 'name')->ignore($current?->id)],
@@ -99,19 +105,6 @@ class TypeController extends Controller
         ], [
             'name' => '種類名',
         ]);
-    }
-
-    /**
-     * 改行を \n にそろえてから検査する（Task 19 の B1）。ブラウザの maxlength は改行を 1 文字と数えるが、送るときは \r\n にするので、
-     * そろえずに数えると改行の多い見出しが max:2000 で断られる。保存する値もそろえた形になる
-     */
-    private static function unifyNewlines(Request $request, string $key): void
-    {
-        $value = $request->input($key);
-
-        if (is_string($value)) {
-            $request->merge([$key => str_replace(["\r\n", "\r"], "\n", $value)]);
-        }
     }
 
     private function back(?string $success, ?string $error = null)

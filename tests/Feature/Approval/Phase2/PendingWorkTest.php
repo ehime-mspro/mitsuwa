@@ -91,6 +91,8 @@ class PendingWorkTest extends TestCase
 
             // 出るのに押せない・押せるのに出ない、のどちらも止める
             $this->assertSame($expected, $shown, "{$when}: {$label}の対応待ちが、いま判断・対応できる申請と違う");
+            // 基幹のメニューの件数（2b・設計書 §5.15）は、ホームの対応待ちと同じ数（数えるだけの問い合わせでも食い違わない）
+            $this->assertSame(count($shown), PendingWork::countFor($person), "{$when}: {$label}の件数が対応待ちの数と違う");
 
             foreach ($pending as $item) {
                 $this->assertTrue(
@@ -281,6 +283,52 @@ class PendingWorkTest extends TestCase
         $this->assertSame(['社長の番 / 社長'], $shown['新しい社長'], '社長の交代（ケース 6）');
         $this->assertSame([], $shown['社長'], '部門長でも社長でもなくなった人');
         $this->assertSame([], $shown['社長室の申請者'], '自分の申請には部門長としても判断できない（D16）');
+    }
+
+    /**
+     * 決裁の管理者の操作（付け替え・押し間違いの取り消し・代理の取り下げ。2b・設計書 §5.14）のあとも、対応待ちと件数は
+     * 「いま判断・対応できる申請」と一致する（段階を「待ち」に戻す・残すのは今の回だけ。§5.16）
+     */
+    public function test_pending_work_matches_after_the_admin_operations(): void
+    {
+        $w        = $this->approvalWorld();
+        $workflow = app(Workflow::class);
+        $admin    = $this->approvalAdmin();
+        $deputy   = $this->baseUser(['name' => '代理 部長']);
+
+        $reassigned = $this->submittedFor($w, ['subject' => '付け替えた']);
+        $workflow->reassignHead($reassigned, $admin, $reassigned->lock_version, $deputy, '休職のため');
+
+        $undoneReview = $this->atPresident($w, ['subject' => '意見を取り消した']);
+        $workflow->undo($undoneReview, $admin, $undoneReview->lock_version, '押し間違い');
+
+        $undoneReturn = $this->submittedFor($w, ['subject' => '差戻しを取り消した']);
+        $workflow->judgeHead($undoneReturn, $w['head'], $undoneReturn->lock_version, ApprovalStepResult::Return, '直してください');
+        $undoneReturn->refresh();
+        $workflow->undo($undoneReturn, $admin, $undoneReturn->lock_version, '押し間違い');
+
+        $undoneDecision = $this->atPresident($w, ['subject' => '決裁を取り消した']);
+        $workflow->judgePresident($undoneDecision, $w['president'], $undoneDecision->lock_version, ApprovalStepResult::Conditional, '条件');
+        $undoneDecision->refresh();
+        $workflow->confirmCondition($undoneDecision, $w['applicant'], $undoneDecision->lock_version, null);
+        $undoneDecision->refresh();
+        $workflow->undo($undoneDecision, $admin, $undoneDecision->lock_version, '条件確認の押し間違い');
+
+        $withdrawn = $this->atReview($w, ['subject' => '代理で取り下げた']);
+        $workflow->withdrawByAdmin($withdrawn, $admin, $withdrawn->lock_version, '退職のため');
+
+        $requests = [$reassigned, $undoneReview, $undoneReturn, $undoneDecision, $withdrawn];
+        $people   = [
+            '申請者' => $w['applicant'], '部門長' => $w['head'], '審査担当者' => $w['reviewer'], '社長' => $w['president'],
+            '付け替えの担当' => $deputy, '決裁の管理者' => $admin,
+        ];
+
+        $shown = $this->assertPendingWorkMatchesPermissions($people, $requests, '管理者の操作のあと');
+        $this->assertSame(['付け替えた / 部門長'], $shown['付け替えの担当']);
+        $this->assertSame(['差戻しを取り消した / 部門長'], $shown['部門長'], '付け替えた申請は部門長に出ない・差戻しの取り消しで部門長の番に戻る');
+        $this->assertSame(['意見を取り消した / 審査'], $shown['審査担当者']);
+        $this->assertSame([], $shown['社長'], '意見の取り消しで社長の番から外れる');
+        $this->assertSame(['決裁を取り消した / 申請者'], $shown['申請者'], '条件確認の取り消しで申請者の番に戻る');
     }
 
     /**

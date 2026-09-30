@@ -22,6 +22,12 @@ use Illuminate\Support\Facades\DB;
  */
 final class RequestVisibility
 {
+    /** 判断の記録（取り消された判断をした人も見られるように、記録からも「判断した人」を引く。2b・設計書 §5.14） */
+    private const JUDGEMENT_ACTIONS = [
+        'head_approved', 'head_returned', 'reviewed',
+        'president_approved', 'president_conditional', 'president_rejected', 'president_returned',
+    ];
+
     public static function canView(User $user, ApprovalRequest $request): bool
     {
         return self::apply(ApprovalRequest::query()->whereKey($request->getKey()), $user)->exists();
@@ -108,6 +114,15 @@ final class RequestVisibility
         // 判断した人（担当を外れた後も。前の回の判断を含む）
         $q->orWhereExists(function (QueryBuilder $s) use ($user): void {
             self::stepsOfThisRequest($s)->where('approval_steps.actor_user_id', $user->id);
+        });
+
+        // 判断を取り消された人も（取り消しで段階の判断した人は空に戻るが、判断の記録は残る。取り消されたことを知らせる
+        // 段階3 の通知〈要件 4.7〉の先で 404 にしない。2b 計画 §0.5）
+        $q->orWhereExists(function (QueryBuilder $s) use ($user): void {
+            $s->selectRaw('1')->from('approval_histories')
+                ->whereColumn('approval_histories.request_id', 'approval_requests.id')
+                ->where('approval_histories.actor_user_id', $user->id)
+                ->whereIn('approval_histories.action', self::JUDGEMENT_ACTIONS);
         });
     }
 

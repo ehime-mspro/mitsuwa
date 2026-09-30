@@ -7,12 +7,16 @@ use App\Enums\ApprovalStepResult;
 use App\Http\Controllers\Controller;
 use App\Models\ApprovalHistory;
 use App\Models\ApprovalRequest;
+use App\Models\ApprovalRevision;
 use App\Models\ApprovalStep;
 use App\Models\ApprovalType;
 use App\Models\User;
+use App\Support\Approval\Assignees;
+use App\Support\Approval\FormInput;
 use App\Support\Approval\RelatedNumbers;
 use App\Support\Approval\RequestContent;
 use App\Support\Approval\RequestPermissions;
+use App\Support\Approval\RequestSnapshot;
 use App\Support\Approval\RequestVisibility;
 use App\Support\Approval\Workflow;
 use App\Support\Approval\WorkflowConflict;
@@ -120,14 +124,24 @@ class RequestController extends Controller
         $content = RequestContent::for($user, $approvalRequest);
         // 操作の記録（新しい順。§5.12）
         $histories = ApprovalHistory::with('actor')->where('request_id', $approvalRequest->id)->orderByDesc('id')->get();
+        // 提出の回ごとの控え（履歴）と、直前の回からの変更点（出し直した申請。§5.13）。どちらも提出した控えだけを使う
+        // （差戻し中の直しかけは入らない。申請者以外に最後に提出した中身だけを見せる D26 とそろう）
+        $revisions   = ApprovalRevision::where('request_id', $approvalRequest->id)->orderBy('round')->get();
+        $permissions = RequestPermissions::for($user, $approvalRequest);
 
         return view('approvals.requests.show', [
             'approvalRequest' => $approvalRequest,
             'content'         => $content,
-            'permissions'     => RequestPermissions::for($user, $approvalRequest),
+            'permissions'     => $permissions,
+            // 部門長の確認の付け替え先の選択肢（付け替えられるときだけ読む。申請者本人といまの担当は出さない。D2・D7。Assignees）
+            'assigneeCandidates' => $permissions->canReassign()
+                ? $this->reassignCandidates($approvalRequest, $permissions->waitingStep())
+                : collect(),
             'relatedLinks'    => $this->relatedLinks($content->relatedNumbers, $user),
             'histories'       => $histories,
             'newHeadNames'    => $this->newHeadNames($histories),
+            'revisions'       => $revisions,
+            'changes'         => $this->changesFromPreviousRound($approvalRequest, $revisions),
         ]);
     }
 
@@ -153,8 +167,9 @@ class RequestController extends Controller
         }
 
         $validated = $this->validated($request, $approvalRequest, route('approvals.requests.edit', $approvalRequest));
-        // 編集の画面を描いたときの版（送られてこなければ 0＝作ってから一度も保存し直していない下書きの版）
-        $lockVersion = $request->integer('lock_version');
+        // 編集の画面を描いたときの版（送られてこなければ 0＝作ってから一度も保存し直していない下書きの版。
+        // 0 以上の整数の形でなければ -1 で必ず断る。2a の Task 15 の点検の軽微＝intval で「1abc」を 1 と読んでいた）
+        $lockVersion = FormInput::lockVersion($request, 0);
 
         // ⚠ lock_version を条件にした 1 回の UPDATE で保存し、lock_version を 1 進める（計画 §0.3）。別のタブで先に
         //   保存・提出した申請は lock_version が進んでいるので 0 行になる（状態を変える操作も lock_version を進める）。
@@ -244,7 +259,7 @@ class RequestController extends Controller
             'amount'          => self::normalizeAmount($request->input('amount')),
             'related_numbers' => RelatedNumbers::clean(is_array($request->input('related_numbers')) ? $request->input('related_numbers') : []),
         ]);
-        self::unifyNewlines($request, 'body');
+        FormInput::unifyNewlines($request, 'body');
 
         // 選べる種類は利用中の種類と、この申請が今使っている種類（停止していても保存はできる。D10）
         $typeIds = ApprovalType::active()->pluck('id')->push($current?->type_id)->filter()->all();
@@ -288,19 +303,6 @@ class RequestController extends Controller
         $digits = str_replace([',', '円', '¥', '￥', ' '], '', mb_convert_kana($value, 'as'));
 
         return $digits === '' ? null : $digits;
-    }
-
-    /**
-     * 改行を \n にそろえてから検査する（Task 19 の B1）。ブラウザの maxlength は改行を 1 文字と数えるが、送るときは \r\n にするので、
-     * そろえずに数えると改行の多い本文が max:20000 で断られる。保存する値もそろえた形になる
-     */
-    private static function unifyNewlines(Request $request, string $key): void
-    {
-        $value = $request->input($key);
-
-        if (is_string($value)) {
-            $request->merge([$key => str_replace(["\r\n", "\r"], "\n", $value)]);
-        }
     }
 
     /** コピーして作成で写す中身（設計書 §5.6。添付は写さない） */
@@ -378,8 +380,24 @@ class RequestController extends Controller
     }
 
     /**
-     * 部門長の交代の記録（head_changed）で担当が移った先の人の名前（id => 名前。Task 19 の C9）。
-     * 記録の横の名前は交代を操作した管理者なので、移った先を別に添える。
+     * 部門長の確認の付け替え先の選択肢（申請者本人と、いまの担当は出さない。D2・D7・利用者の決定 C4）。
+     * いまの担当は、付け替えた段階なら付け替えた人、そうでなければ部門の今の部門長（Workflow::reassignHead() の
+     * 「いまの担当と同じ人です。」と同じ読み方。そちらの断りは守りとして残す）
+     *
+     * @return Collection<int, User>
+     */
+    private function reassignCandidates(ApprovalRequest $approvalRequest, ApprovalStep $step): Collection
+    {
+        $current = $step->assignee_user_id ?? $step->department?->head_user_id;
+
+        return Assignees::candidates()
+            ->reject(fn (User $candidate) => $candidate->id === $approvalRequest->user_id || $candidate->id === $current)
+            ->values();
+    }
+
+    /**
+     * 部門長の交代（head_changed）と付け替え（reassigned。2b）の記録で担当が移った先の人の名前（id => 名前。Task 19 の C9）。
+     * 記録の横の名前は操作した管理者なので、移った先を別に添える。
      * ⚠ 論理削除した人も名前を出す（記録は残る）。記録ごとに読まず、1 回の問い合わせで読む
      *
      * @param Collection<int, ApprovalHistory> $histories
@@ -387,7 +405,7 @@ class RequestController extends Controller
      */
     private function newHeadNames(Collection $histories): array
     {
-        $ids = $histories->where('action', 'head_changed')
+        $ids = $histories->whereIn('action', ['head_changed', 'reassigned'])
             ->map(fn (ApprovalHistory $history) => $history->meta['to_user_id'] ?? null)
             ->filter()
             ->unique()
@@ -395,6 +413,22 @@ class RequestController extends Controller
             ->all();
 
         return $ids === [] ? [] : User::withTrashed()->whereKey($ids)->pluck('name', 'id')->all();
+    }
+
+    /**
+     * 直前の回の控えと今の回の控えの違い（出し直した申請＝今の回が 2 以上のときだけ。設計書 §5.13）
+     *
+     * @param Collection<int, ApprovalRevision> $revisions
+     * @return array<string, mixed>|null
+     */
+    private function changesFromPreviousRound(ApprovalRequest $approvalRequest, Collection $revisions): ?array
+    {
+        $current  = $revisions->firstWhere('round', $approvalRequest->round);
+        $previous = $revisions->firstWhere('round', $approvalRequest->round - 1);
+
+        return ($approvalRequest->round >= 2 && $current !== null && $previous !== null)
+            ? RequestSnapshot::changes($previous->snapshot, $current->snapshot)
+            : null;
     }
 
     /** 見られない申請は 404（在るかどうかを漏らさない。設計書 §5.10） */

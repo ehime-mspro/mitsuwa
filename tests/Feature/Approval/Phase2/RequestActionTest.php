@@ -643,9 +643,9 @@ class RequestActionTest extends TestCase
         $this->assertStringNotContainsString('<script>alert(1)</script>', $html);
         $this->assertStringNotContainsString('<img src=x', $html);
         $this->assertStringNotContainsString('<b>部門</b>', $html);
-        $this->assertSame(2, substr_count($html, '&lt;script&gt;alert(1)&lt;/script&gt;'));   // 回る順番・記録
-        $this->assertSame(3, substr_count($html, '&lt;img src=x onerror=alert(2)&gt;'));     // 条件・回る順番・記録
-        $this->assertSame(2, substr_count($html, '&lt;b&gt;部門&lt;/b&gt;長'));              // 回る順番・記録
+        $this->assertSame(3, substr_count($html, '&lt;script&gt;alert(1)&lt;/script&gt;'));   // 回る順番・記録・提出の履歴（2b）
+        $this->assertSame(4, substr_count($html, '&lt;img src=x onerror=alert(2)&gt;'));     // 条件・回る順番・記録・提出の履歴（2b）
+        $this->assertSame(3, substr_count($html, '&lt;b&gt;部門&lt;/b&gt;長'));              // 回る順番・記録・提出の履歴（2b）
     }
 
     /** 画面の版は 0 以上の整数の形だけを受け取る（配列・'1abc'・'1.0' は、先を越されたものとして断る。前後の空白は TrimStrings が外す。Task 15 の点検の m-1） */
@@ -753,8 +753,8 @@ class RequestActionTest extends TestCase
 
     /**
      * 押せない判断の理由の 2 行目は、段階ごとに次の手を言う（Task 19 の C7。利用者の決定 2026-09-28。Task 15 の点検の m-2）。
-     * 部門長の段階は取り下げて出し直すか決裁の管理者に相談・審査の段階はほかの審査担当者・社長の段階は社長の指定を変えられる
-     * 基幹の管理者（決裁の管理者には替えられない。要件 3.2・4.7）
+     * 部門長の段階は取り下げて出し直すか決裁の管理者に付け替えを頼む（2b で付け替えができたので案内する。設計書 §5.16）・
+     * 審査の段階はほかの審査担当者・社長の段階は社長の指定を変えられる基幹の管理者（決裁の管理者には替えられない。要件 3.2・4.7）
      */
     public function test_the_refusal_says_how_to_move_on_at_each_stage(): void
     {
@@ -766,7 +766,7 @@ class RequestActionTest extends TestCase
         // 部門長の段階（申請のあとで申請者が部門長になった）
         $w['dept']->update(['head_user_id' => $w['applicant']->id]);
         $html = $this->showHtml($w['applicant'], $request);
-        $this->assertStringContainsString('取り下げて出し直すか、決裁の管理者に相談してください。', $html);
+        $this->assertStringContainsString('取り下げて出し直すか、決裁の管理者に部門長の確認の付け替えを頼んでください。', $html);
         $this->assertStringNotContainsString('担当を替えるには', $html);
 
         // 審査の段階
@@ -942,6 +942,27 @@ class RequestActionTest extends TestCase
         $form = $this->parseForm($html, 'action="' . $action . '"');
         $this->assertSame('', $form['fields']['comment']);
         $this->assertSame((string) ($request->lock_version + 1), $form['fields']['lock_version']);
+    }
+
+    /**
+     * 断られて開き直すのは、送った小窓だけ（2a の Task 19 の点検 m-6・2b 計画 §0.9）。状態が進んだあと（条件確認待ち）に古い画面の
+     * 取り下げが入力の誤りで断られても、条件確認の小窓は取り下げのコメントで開かない
+     */
+    public function test_only_the_refused_modal_reopens(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $request = $this->toPresident($w);
+        $this->act($w['president'], $request, 'approvals.requests.decide', ['result' => 'conditional', 'comment' => '見積りを 2 社から取ること']);
+
+        // 条件確認待ちになった申請に、社長の判断の前に開いていた画面から、長すぎるコメントで取り下げを送った
+        $this->act($w['applicant'], $request, 'approvals.requests.withdraw', ['comment' => str_repeat('え', 2001)])
+            ->assertRedirect(route('approvals.requests.show', $request));
+
+        $html = $this->showHtml($w['applicant'], $request);
+        $this->assertStringContainsString('社長の条件を確認してください', $html, '前提: 条件確認の欄が出ている');
+        $this->assertStringContainsString('confirmCondition: false', $html);
+        $this->assertSame('', $this->parseForm($html, 'action="' . route('approvals.requests.confirmCondition', $request) . '"')['fields']['comment']);
     }
 
     /** 取り下げ・条件確認も、入力の誤りで断られたら打ったコメントで小窓を開き直す。先を越されたときは開き直さない（Task 19 の C8） */

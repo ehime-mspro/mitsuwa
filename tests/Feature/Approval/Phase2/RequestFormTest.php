@@ -514,11 +514,18 @@ class RequestFormTest extends TestCase
         $this->actingAs($w['applicant'])->post($form['action'], array_merge($form['fields'], ['subject' => '直しかけの件名', 'intent' => 'save']))
             ->assertRedirect(route('approvals.requests.edit', $request));
 
-        $this->actingAs($w['head'])->get(route('approvals.requests.show', $request))->assertOk()
-            ->assertSee('2 回目の件名')
-            ->assertSee('最後に提出した中身（2 回目の提出）')
-            ->assertDontSee('1 回目の件名')
-            ->assertDontSee('直しかけの件名');
+        $html = (string) $this->actingAs($w['head'])->get(route('approvals.requests.show', $request))->assertOk()->getContent();
+        // 件名の見出しと申請の中身は最後に提出した回（2 回目）。1 回目の件名は「前回からの変更点」と「提出の履歴」にだけ出る
+        // （2b 計画 Task 3・設計書 §5.13）
+        $top = substr($html, 0, strpos($html, '前回からの変更点'));
+        $this->assertStringContainsString('2 回目の件名', $top);
+        $this->assertStringNotContainsString('1 回目の件名', $top);
+        $this->assertStringContainsString('最後に提出した中身（2 回目の提出）', $html);
+        // 見出しが無いと strpos が false になり、ページ全体を見て通ってしまう（2b 計画 Task 8 の変異 C08）
+        $history = strpos($html, '提出の履歴');
+        $this->assertNotFalse($history, '提出の履歴が無い');
+        $this->assertStringContainsString('1 回目の件名', substr($html, $history), '1 回目の件名は履歴から見られる');
+        $this->assertStringNotContainsString('直しかけの件名', $html);
     }
 
     /** 差戻し中に直して保存してから取り下げても、提出していない中身は申請者だけに残る（要件 4.5・4.8） */
@@ -597,6 +604,21 @@ class RequestFormTest extends TestCase
         }
 
         $this->assertSame('直しかけの件名', $request->fresh()->subject);
+    }
+
+    /** 版が 0 以上の整数の形でなければ保存しない（intval で「0abc」を 0 と読まない。2a の Task 15 の点検の軽微。2b 計画 Task 1） */
+    public function test_a_lock_version_that_is_not_a_whole_number_does_not_save(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $draft = $this->draftFor($w);   // 作ってから一度も保存し直していない下書き（版 0）
+
+        $this->actingAs($w['applicant'])->put(route('approvals.requests.update', $draft), $this->filled($w, [
+            'subject' => '書き換え', 'lock_version' => '0abc', 'intent' => 'save',
+        ]))->assertRedirect(route('approvals.requests.edit', $draft));
+
+        $this->assertSame('社用車の購入', $draft->fresh()->subject);
+        $this->assertSame(0, $draft->fresh()->lock_version);
     }
 
     /** 控えの無い提出済みの申請は、申請者以外には 404（今の行に落とさない。分からないときは見せない。仕様の 1.3） */

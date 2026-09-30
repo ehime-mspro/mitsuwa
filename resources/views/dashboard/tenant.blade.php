@@ -281,6 +281,7 @@
 </style>
 
 <div class="tenant-dashboard">
+    @include('approvals._pending_card')
     <h1 class="page-title">テナントダッシュボード</h1>
 
     <div class="section">

@@ -54,7 +54,7 @@ class ClockReadScanTest extends TestCase
         'app/Support/Approval/PasswordReissuer.php'           => [1, '再発行の瞬間（通知メールへ渡し、PasswordReissuedMail が JapanTime で日本時間に直して出す）'],
         'app/Support/OneTimeAction.php'                       => [1, '期限: 1 回限りの鍵のキャッシュの有効期限（瞬間でよい）'],
         'app/Support/Approval/ApprovalNumber.php'             => [1, '連番の行を作った瞬間（created_at・updated_at は TIMESTAMP 列。upsert は Eloquent を通らないので手で入れる）'],
-        'app/Support/Approval/Workflow.php'                   => [7, '提出・届いた・判断・完了・状態が変わった瞬間と updated_at（すべて TIMESTAMP 列。画面では JapanTime で日本時間に直して出す）'],
+        'app/Support/Approval/Workflow.php'                   => [9, '提出・届いた・判断・完了・状態が変わった瞬間と updated_at（付け替えの版の繰り上げ・取り消しで段階を戻したときを含む。すべて TIMESTAMP 列。画面では JapanTime で日本時間に直して出す）'],
         'app/Http/Controllers/Approval/RequestAttachmentController.php' => [1, 'approval_attachments.removed_at は TIMESTAMP 列（外した瞬間を UTC で保存する）'],
     ];
 
