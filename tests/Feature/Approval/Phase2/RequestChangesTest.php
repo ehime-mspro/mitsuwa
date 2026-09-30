@@ -239,6 +239,21 @@ class RequestChangesTest extends TestCase
         $this->assertStringContainsString('<span class="sr-only">増えた行: </span><span class="whitespace-pre-wrap break-words min-w-0">・燃費が悪いため</span>', $changes);
     }
 
+    /** 本文の差の見出しは「前回との違い」と、印の意味を言う（変わっていない行も前後に並ぶので「変わった行」と言わない。並びは今のまま。Task 3 m-7・利用者の決定 C1） */
+    public function test_the_body_changes_are_headed_as_the_difference_from_the_previous_round(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $request = $this->resubmittedWithChanges($w);
+
+        $changes = $this->section($this->showHtml($w['head'], $request), '前回からの変更点');
+
+        $this->assertStringContainsString('重点ポイント（5W2H）の前回との違い（＋ 増えた行・− 消えた行）', $changes);
+        $this->assertStringNotContainsString('変わった行', $changes);
+        // 並びは今のまま（変わっていない行も前後に並ぶ）
+        $this->assertStringContainsString('>■ なぜ（目的・理由）</span></li>', $changes);
+    }
+
     /** 変更点と履歴は、控えの値（件名・本文の行）をエスケープして出す（2b 計画 Task 8 の変異 C11〜C14） */
     public function test_the_changes_and_the_history_escape_the_submitted_values(): void
     {

@@ -25,7 +25,7 @@
 
                 @if($changes['body'] !== null)
                     <div>
-                        <p class="text-[12px] font-semibold text-gray-500 mb-1.5">重点ポイント（5W2H）の変わった行</p>
+                        <p class="text-[12px] font-semibold text-gray-500 mb-1.5">重点ポイント（5W2H）の前回との違い（＋ 増えた行・− 消えた行）</p>
                         <ol class="rounded-md border border-gray-200 overflow-hidden leading-relaxed">
                             @foreach($changes['body'] as $op)
                                 @switch($op['type'])
