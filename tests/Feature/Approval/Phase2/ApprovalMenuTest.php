@@ -93,6 +93,23 @@ class ApprovalMenuTest extends TestCase
         $this->assertStringContainsString('決裁の対応待ち</span> <span class="font-bold tabular-nums">0</span> 件', $html, 'ダッシュボードには 0 件と出す');
     }
 
+    /** 基幹の折りたたみで「決裁」と「決裁の管理」を同じ絵にしない（見分けが名前のホバーだけになる。Task 7 の点検 Minor 4・利用者の決定 C6） */
+    public function test_the_base_rail_draws_the_approval_home_and_the_admin_group_differently(): void
+    {
+        $this->approvalWorld();
+        $admin = $this->approvalAdmin();
+        $this->launchApprovals();
+
+        $rail = $this->sidebars($this->html($admin, '/dashboard/tenant'))['rail'];
+
+        $icon = function (string $href) use ($rail): string {
+            $this->assertSame(1, preg_match('#<a href="' . preg_quote($href, '#') . '"[^>]*>\s*<svg\b[^>]*>(.*?)</svg>#s', $rail, $m), "{$href} の絵が無い");
+
+            return preg_replace('/\s+/', ' ', trim($m[1]));
+        };
+        $this->assertNotSame($icon(route('approvals.admin.users.index')), $icon(route('approvals.home')), '「決裁」と「決裁の管理」が同じ絵');
+    }
+
     public function test_both_dashboards_link_to_the_approval_home_with_the_count(): void
     {
         // 経営ダッシュボードは賃貸マンション（ms_*）・不動産と住宅（re_*・hs_*）も読む（本番は raw SQL の表）

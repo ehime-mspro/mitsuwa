@@ -253,10 +253,9 @@
     @if($approvalPending !== null)
         <a href="{{ route('approvals.home') }}" title="決裁（対応待ち {{ $approvalPending }} 件）" class="relative w-9 h-9 mb-1 rounded-lg flex items-center justify-center {{ request()->routeIs('approvals.home', 'approvals.requests.*') ? 'bg-emerald-50' : 'hover:bg-gray-100' }} transition-colors">
             <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="{{ request()->routeIs('approvals.home', 'approvals.requests.*') ? '#059669' : '#6B7280' }}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                {{-- クリップボード＋チェック（決裁の管理と同じ形） --}}
-                <path d="M9 2h6a1 1 0 0 1 1 1v2H8V3a1 1 0 0 1 1-1z" />
-                <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
-                <polyline points="9 14 11 16 15 12" />
+                {{-- 受け箱（対応待ちが届く所。決裁の管理のクリップボードと見分ける。利用者の決定 C6） --}}
+                <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
+                <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
             </svg>
             @if($approvalPending > 0)
                 <span class="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-red-600 text-white text-[10px] font-bold leading-4 text-center tabular-nums" aria-hidden="true">{{ $approvalPending }}</span>
