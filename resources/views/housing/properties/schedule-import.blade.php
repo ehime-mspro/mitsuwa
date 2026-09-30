@@ -186,15 +186,21 @@
             </div>
         </div>
 
-        {{-- ⑥ 確定 --}}
+        {{-- ⑥ 確定
+             ⚠ 確認画面 1 つにつき 1 回だけ（hidden の import_token。JS が動かないときも、サーバが 2 回目を断る）。
+             送信中はボタンを押せなくする（二度押し止めの部品。設計書 2026-09-28-import-double-submit-design.md §4.5） --}}
         @if(count($result['rows']) > 0)
-            <form method="POST" action="{{ route('housing.properties.schedule-import.execute', $property) }}">
+            @include('_partials._submit_once')
+            <form method="POST" action="{{ route('housing.properties.schedule-import.execute', $property) }}"
+                  x-data="submitOnce()" x-on:submit="onSubmit($event)" x-on:pageshow.window="onPageShow($event)">
                 @csrf
                 <input type="hidden" name="rows_json" value="{{ json_encode($result['rows'], JSON_UNESCAPED_UNICODE) }}">
-                <button type="submit"
-                        class="h-10 px-5 rounded-md bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition-colors">
+                <input type="hidden" name="import_token" value="{{ $importToken }}">
+                <button type="submit" :disabled="submitting"
+                        class="h-10 px-5 rounded-md bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-60">
                     この内容で取り込む
                 </button>
+                <span role="status" x-text="submitting ? '取り込んでいます…' : ''" style="display: inline-block; margin-left: 12px; font-size: 13px; color: #374151;"></span>
             </form>
         @else
             <p class="text-sm text-gray-500">取り込める工程がありません。ファイルを確認してください。</p>

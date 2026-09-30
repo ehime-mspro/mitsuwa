@@ -8,6 +8,7 @@ use App\Models\AreaBuilding;
 use App\Models\AreaBuildingSurvey;
 use App\Models\AreaBuildingTenant;
 use App\Support\FloorNumber;
+use App\Support\OneTimeAction;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -35,6 +36,13 @@ use Illuminate\Support\Facades\Auth;
  *        同じファイルを流し直せば残りが埋まる
  *     ③ 2000 行ぶんの INSERT を 1 トランザクションに抱えると本番 MySQL でロックが長く残る
  *   ⚠ 逆に「ビル行だけ作られて調査回が入らない」孤児は起こりうる。②の再実行で埋まる。
+ *
+ * ⚠ 取込は取込の画面 1 つにつき 1 回だけ（hidden の `import_token`・`OneTimeAction`。
+ *   設計書 2026-09-28-import-double-submit-design.md §4.2）。確認画面が無いので、鍵は form()（取込の画面を開いたとき）で
+ *   出し、execute() の最初（入力チェックの前）で使う。直す前は、同じ画面から 2 回送るとテナント明細が二重に入った
+ *   （既存の行と突き合わせる手がかりが無い作り。ビル＋調査は同一年月のスキップで 2 回目が「調査追加 0 件」になった）。
+ *   断ったら取込の画面へ戻す（開き直すので新しい鍵が出る）。送ったあと「戻る」で戻った画面は、画面の部品が読み込み直す
+ *   （_partials/_submit_once の reloadOnReturn）。
  */
 class AreaBuildingImportController extends Controller
 {
@@ -73,11 +81,20 @@ class AreaBuildingImportController extends Controller
 
     public function form()
     {
-        return view('tenant.area-buildings.import');
+        return view('tenant.area-buildings.import', [
+            // 取込を 1 回だけ通す鍵（クラスの docblock）
+            'importToken' => OneTimeAction::issue(),
+        ]);
     }
 
     public function execute(Request $request)
     {
+        // 取込は取込の画面 1 つにつき 1 回だけ（クラスの docblock）。⚠ 入力チェックより先に使う
+        if (! OneTimeAction::claimFrom($request, 'import_token')) {
+            return redirect()->route('tenant.area-buildings.import')
+                ->with('error', 'この取込画面からは取り込めません（すでに送信したか、画面が古くなっています）。取り込まれたかは「周辺ビル調査」で確かめられます。取り込み直すときは、ファイルを選び直してください。');
+        }
+
         // ⚠ ルールは literal 配列で直書きする。$this->rules() のような間接参照にすると
         //   JapaneseValidationMessagesTest の走査正規表現
         //   /validate\(\s*\[(.*?)\n\s*\]\s*[,)]/s にマッチせず、このコントローラのキーが

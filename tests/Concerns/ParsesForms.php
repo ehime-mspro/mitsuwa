@@ -136,8 +136,10 @@ trait ParsesForms
      *   **Alpine の式文字列がそのまま「フォームの値」として返る**（2026-08-17 実測で
      *   `kind => 'kind'`、`rows => 'payload()'` が返った）。ブラウザが描画直後に持つ値は
      *   空なので、`:` `.` `@` の直後も除外して空を返させる。
+     * ⚠ protected（2026-09-28）。`Tests\Concerns\ChecksDoubleSubmit` は、このトレイトを使う基底クラス
+     *   （ScheduleTestCase・AreaBuildingTestCase）の子からもこれを呼ぶ。private だと子から呼べない。
      */
-    private function htmlAttr(string $tag, string $name): ?string
+    protected function htmlAttr(string $tag, string $name): ?string
     {
         $pattern = '/(?<![\w:.@-])' . preg_quote($name, '/') . '="([^"]*)"/i';
 

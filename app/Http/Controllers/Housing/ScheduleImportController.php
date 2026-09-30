@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Housing;
 use App\Http\Controllers\Controller;
 use App\Models\HsProperty;
 use App\Models\ScheduleStep;
+use App\Support\OneTimeAction;
 use App\Support\ScheduleImportSheet;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
@@ -26,6 +27,12 @@ use Illuminate\Validation\ValidationException;
  *   アップロードし直しのフォームと確定のフォームの両方が載っており、どちらから送ってもリファラーが
  *   その URL になる。`url()->previous()` はリファラーを優先するので GET で 405 になる
  *   （ガント形式の選び間違いは普通の操作で踏む。docs/RULES.md Bug #64）。
+ *
+ * ⚠ 確定は確認画面 1 つにつき 1 回だけ（hidden の `import_token`・`OneTimeAction`。
+ *   設計書 2026-09-28-import-double-submit-design.md §4.2）。鍵は preview() で出し、execute() の最初（入力チェックの前）
+ *   で使う。直す前は、同じ確認画面の確定を 2 回送ると、取込由来の工程を消して入れ直し（工程の id が作り直される）、
+ *   「既存の N 件を入れ替えて…」の成功の帯が出た。取り込んだ工程を画面で直したあとに古い確認画面から送ると、
+ *   その修正が消えうる。断りは、ほかの取込とそろえてレイアウトの赤帯に出す（いまの差し戻しは画面の中の枠）。
  */
 class ScheduleImportController extends Controller
 {
@@ -80,12 +87,20 @@ class ScheduleImportController extends Controller
             'warnings'  => $result['warnings'],
             // 取り込むと親の日付がどうなるか（設計書 §7.2）。⚠ **変わらない項目は出さない**
             'dateChanges' => $this->dateChanges($property, $result['rows']),
+            // 確定を 1 回だけ通す鍵（クラスの docblock）
+            'importToken' => OneTimeAction::issue(),
         ]);
     }
 
     /** POST /housing/properties/{property}/schedule-import */
     public function execute(Request $request, HsProperty $property)
     {
+        // 確定は確認画面 1 つにつき 1 回だけ（クラスの docblock）。⚠ 入力チェックより先に使う
+        if (! OneTimeAction::claimFrom($request, 'import_token')) {
+            return redirect()->route('housing.properties.schedule-import.form', $property)
+                ->with('error', 'この確認画面からは取り込めません（すでに送信したか、画面が古くなっています）。取り込まれたかは、この物件の詳細の「工程表」で確かめられます。取り込み直すときは、ファイルを選び直してください。');
+        }
+
         // 確定のフォームは確認画面に載っているので、断るときは取込の画面へ戻す（クラスの docblock。Bug #64）
         try {
             $validated = $request->validate([

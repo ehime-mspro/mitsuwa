@@ -4,6 +4,7 @@ namespace Tests\Feature\Housing;
 
 use App\Models\HsCustomOrder;
 use App\Models\HsProperty;
+use App\Support\OneTimeAction;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
 use Tests\Concerns\CreatesRealEstateSchema;
@@ -186,12 +187,16 @@ class HousingConstructionStartDateTest extends ScheduleTestCase
     // 取込による自動入力（設計書 §7）
     // ============================================================
 
-    /** 取込のプレビュー → 確定を、画面が描いたフォームどおりに往復する */
+    /**
+     * 取込の確定を直接送る（プレビューを通さない）。
+     * ⚠ 確定は確認画面 1 つにつき 1 回だけなので、送るたびに新しい鍵を足す（OneTimeAction::issue() は発行を記録しないので、
+     *   新しい値なら 1 回は通る。設計書 2026-09-28-import-double-submit-design.md §5.3）
+     */
     private function importRows(HsProperty $property, array $rows): \Illuminate\Testing\TestResponse
     {
         return $this->actingAs($this->manager())->post(
             route('housing.properties.schedule-import.execute', $property),
-            ['rows_json' => json_encode($rows, JSON_UNESCAPED_UNICODE)]
+            ['rows_json' => json_encode($rows, JSON_UNESCAPED_UNICODE), 'import_token' => OneTimeAction::issue()]
         );
     }
 
@@ -245,7 +250,7 @@ class HousingConstructionStartDateTest extends ScheduleTestCase
 
         $this->actingAs($importer)->post(
             route('housing.properties.schedule-import.execute', $property),
-            ['rows_json' => json_encode($this->importableRows(), JSON_UNESCAPED_UNICODE)]
+            ['rows_json' => json_encode($this->importableRows(), JSON_UNESCAPED_UNICODE), 'import_token' => OneTimeAction::issue()]
         )->assertRedirect();
 
         $this->assertSame($importer->id, $property->fresh()->updated_by, '取込を実行した人が updated_by に入ること');

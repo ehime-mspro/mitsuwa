@@ -11,8 +11,10 @@ use Illuminate\Support\Str;
  *
  * ログイン案内を出す POST（新規登録・再発行・CSV の確定）に鍵を入れておき、処理した鍵を覚えておく。
  * ブラウザの「フォームを再送信しますか」で続けてしまうと、**印刷済みの案内がこっそり無効になる**ため。
- * 顧客 CSV の取込の確定（`Admin\CustomerImportController`）も同じ鍵で 1 回だけにする
- * （2 回目を通すと、チェック済みなら全員がもう一度入る。設計書 2026-09-27-customer-import-double-submit-design.md）。
+ * 取込の確定も同じ鍵で 1 回だけにする（hidden の `import_token`）: 顧客 CSV（`Admin\CustomerImportController`。
+ * 2 回目を通すと、チェック済みなら全員がもう一度入る。設計書 2026-09-27-customer-import-double-submit-design.md）と、
+ * テナント・賃貸マンション・ZEAL 会員・工程表・ZEAL の本部 Sheet・周辺ビルの 6 本（2 回目を通すと契約・テナント明細が
+ * 二重に入り、シート取込は履歴が二重になる。設計書 2026-09-28-import-double-submit-design.md）。
  *
  * ⚠ 鍵そのものをキャッシュのキーにしない（キャッシュの保管先に生の値が残る）。
  *
@@ -46,7 +48,7 @@ final class OneTimeAction
             return false;
         }
 
-        // 覚えておく時間は決裁の設定を顧客の取込でも共用する（既定 12 時間。二度押しと「戻る」には足りる）。
+        // 覚えておく時間は決裁の設定を取込でも共用する（既定 12 時間。二度押しと「戻る」には足りる）。
         // ⚠ `max(1, …)` が要る。`Repository::add()` は秒数が 0 以下だと**キーの存在も見ずに**
         //    false を返すので、`.env` の書き間違い（`APPROVAL_GUIDE_TOKEN_TTL_HOURS=` や `=0`）で
         //    **新規登録も再発行も 1 回目から無言で止まる**（実測）。クラッシュより気づきにくい。
@@ -66,14 +68,14 @@ final class OneTimeAction
     }
 
     /**
-     * リクエストの hidden（既定は `guide_token`。顧客の取込は `import_token`）を受け取って鍵を使う。**入口はここを通す。**
+     * リクエストの hidden（既定は `guide_token`。取込は `import_token`）を受け取って鍵を使う。**入口はここを通す。**
      * `claim()` は private なので、通常の呼び出し（静的呼び出し・動的呼び出し・エイリアス経由）
      * では外から直接呼ぶコードはそもそも書けない（`ReflectionMethod::invoke()` のような
      * 迂回は別——上の `claim()` docblock 参照）。
      *
      * ⚠ 鍵の hidden は配列で送られることがある（`guide_token[]=x` のような**手組みの送信**。
      *   すべての画面が鍵の hidden を**単一の値でしか描画しない**ので、通常のブラウザ操作では
-     *   配列にならない——実測 `name="guide_token"` 5 箇所・`name="import_token"` 1 箇所とも単数形）。
+     *   配列にならない——実測 `name="guide_token"` 5 箇所・`name="import_token"` 7 箇所とも単数形）。
      *   配列を `claim(string $token)` にそのまま渡すと型宣言と合わず `TypeError` になる。
      *   `(string) $token` へキャストしてから渡そうとしても、配列のキャストが起こす PHP の
      *   `Array to string conversion` 警告は、Laravel の `HandleExceptions`

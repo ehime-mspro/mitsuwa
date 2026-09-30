@@ -145,8 +145,16 @@
             <div class="scroll-hint-text">← スクロールできます →</div>
         </div>
 
-        <form method="POST" action="{{ route('tenant.area-buildings.import.execute') }}" class="mt-4">
+        {{-- ⚠ 取込は取込の画面 1 つにつき 1 回だけ（hidden の import_token。JS が動かないときも、サーバが 2 回目を断る）。
+             送信中はボタンを押せなくする（二度押し止めの部品。設計書 2026-09-28-import-double-submit-design.md §4.5）。
+             reloadOnReturn: 送ったあと「戻る」で戻ったら読み込み直して新しい鍵にする（確認画面が無いので、戻った画面の鍵は使用済み）。
+             ⚠ このフォームは areaImportForm() の中に入れ子の x-data を持つ。hidden の :value（kind・surveyedMonth・payload()）と
+               押せない理由（submitBlockedReason()）は、入れ子の中から親の値を読む --}}
+        @include('_partials._submit_once')
+        <form method="POST" action="{{ route('tenant.area-buildings.import.execute') }}" class="mt-4"
+              x-data="submitOnce({ reloadOnReturn: true })" x-on:submit="onSubmit($event)" x-on:pageshow.window="onPageShow($event)">
             @csrf
+            <input type="hidden" name="import_token" value="{{ $importToken }}">
             <input type="hidden" name="kind" :value="kind">
             <input type="hidden" name="surveyed_month" :value="kind === 'buildings' ? surveyedMonth : ''">
             <input type="hidden" name="rows" :value="payload()">
@@ -156,12 +164,13 @@
                 <span :title="submitBlockedReason()" style="display: inline-flex;">
                     {{-- ⚠ tooltip だけでは disabled な要素にフォーカスできない利用者へ届かない。
                          画面に出している理由の段落と aria-describedby で紐づける（Bug #43 の後半） --}}
-                    <button type="submit" :disabled="submitBlockedReason() !== null"
+                    <button type="submit" :disabled="submitting || submitBlockedReason() !== null"
                             aria-describedby="area-import-submit-reason"
-                            class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-md transition-colors disabled:opacity-50">
+                            class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-md transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-50">
                         この内容で取り込む
                     </button>
                 </span>
+                <span role="status" x-text="submitting ? '取り込んでいます…' : ''" style="display: inline-block; font-size: 13px; color: #374151;"></span>
                 <button type="button" @click="step = 2"
                         class="px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-semibold rounded-md hover:bg-gray-50 transition-colors">戻る</button>
             </div>

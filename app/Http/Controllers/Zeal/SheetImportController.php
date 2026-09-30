@@ -7,6 +7,7 @@ use App\Models\ZealSheetImport;
 use App\Models\ZealSimulation;
 use App\Models\ZealSimulationCategory;
 use App\Models\ZealSimulationValue;
+use App\Support\OneTimeAction;
 use App\Support\ZealExpenseMapper;
 use App\Support\ZealFiscalYear;
 use App\Support\ZealSheetClient;
@@ -26,6 +27,13 @@ use Illuminate\Support\Facades\DB;
  *
  * 取り込まれたセルは is_manual_override = true で保護され、syncActuals (会員 DB ベース) で
  * 上書きされない。本部 Sheet を売上の「正」、syncActuals を予測・認識として併存させる設計。
+ *
+ * ⚠ 反映は確認画面 1 つにつき 1 回だけ（hidden の `import_token`・`OneTimeAction`）で、確認画面で見せた内容と
+ *   同じものだけを書く（hidden の `plan_digest`。設計書 2026-09-28-import-double-submit-design.md §4.2・§4.3）。
+ *   apply() は本部 Sheet を読み直して反映の内容を作り直すので、鍵だけでは「見せていない値を書く」余地が残る。
+ *   直す前は、同じ確認画面から 2 回送ると履歴が二重になり、プレビューのあとで本部 Sheet が変わると見せていない値を書いた。
+ *   ⚠ 鍵を先に使ってから指紋を比べる（逆だと、ダブルクリックの 2 回目が、1 回目で値が書かれたあとなので
+ *     「内容が変わりました」という別の理由で断られる）。
  */
 class SheetImportController extends Controller
 {
@@ -118,6 +126,9 @@ class SheetImportController extends Controller
             'current'         => $current,
             'paymentFeeCheck' => $paymentFeeCheck,
             'applyPlan'       => $applyPlan,
+            // 反映を 1 回だけ通す鍵と、見せた内容の指紋（クラスの docblock）
+            'importToken'     => OneTimeAction::issue(),
+            'planDigest'      => $this->planDigest($simulation, $yearMonth, $applyPlan),
         ]);
     }
 
@@ -126,6 +137,13 @@ class SheetImportController extends Controller
      */
     public function apply(Request $request, ZealSimulation $simulation)
     {
+        // 反映は確認画面 1 つにつき 1 回だけ（クラスの docblock）。⚠ 指紋より先に使う
+        if (! OneTimeAction::claimFrom($request, 'import_token')) {
+            return redirect()
+                ->route('zeal.simulations.show', $simulation)
+                ->with('error', 'この確認画面からは反映できません（すでに送信したか、画面が古くなっています）。反映されたかは、この試算表で確かめられます。反映し直すときは、「本部 Sheet を取り込む」からもう一度プレビューしてください。');
+        }
+
         $yearMonth = (string) $request->input('year_month', '');
         $validMonths = ZealFiscalYear::months($simulation->fiscal_year);
         if (!in_array($yearMonth, $validMonths, true)) {
@@ -150,6 +168,15 @@ class SheetImportController extends Controller
             salesParsed: $sales['parsed'],
             expenseAggregate: $expense['aggregate'],
         );
+
+        // 確認画面で見せた内容と同じものだけを書く（クラスの docblock）。
+        // ⚠ 配列が送られると hash_equals() が TypeError（500）になるので、文字列かを先に見る
+        $given = $request->input('plan_digest');
+        if (! is_string($given) || ! hash_equals($this->planDigest($simulation, $yearMonth, $applyPlan), $given)) {
+            return redirect()
+                ->route('zeal.simulations.show', $simulation)
+                ->with('error', $this->planChangedMessage($simulation, $sales, $expense));
+        }
 
         $appliedCount = 0;
         DB::transaction(function () use ($simulation, $yearMonth, $applyPlan, $sales, $expense, $request, &$appliedCount) {
@@ -325,6 +352,46 @@ class SheetImportController extends Controller
 
         // null セルは plan から除外 (該当 category が存在しない場合)
         return array_values(array_filter($plan, fn($p) => $p !== null));
+    }
+
+    /**
+     * 反映の内容の指紋: どの試算表の・どの月に・どの項目を・いくらにするか（書く行だけ。並びは buildApplyPlan() の順）。
+     * プレビューと反映の両方がここだけで作る（設計書 §4.3）。
+     *
+     * ⚠ 古い画面を見分けるためのもので、改ざんを防ぐ署名ではない（書き換えても、本人がもう一度プレビューするのと
+     *   同じことしかできない）。⚠ いまの値は入れない（書く値が同じなら、プレビューし直しても最後に書く値は同じ）。
+     */
+    private function planDigest(ZealSimulation $simulation, string $yearMonth, array $plan): string
+    {
+        $writes = [];
+        foreach ($plan as $row) {
+            if ($row['will_update']) {
+                $writes[] = [$row['category_id'], $row['new_amount']];
+            }
+        }
+
+        return hash('sha256', json_encode([$simulation->id, $yearMonth, $writes]));
+    }
+
+    /**
+     * 指紋が合わなかったときの案内。反映のときに本部 Sheet を読み直せなかったら（URL があるのに読めない）、そう伝える
+     * （「内容が変わりました（…値が変わっています）」だと、誰かが値を変えたと読める。2026-09-28 の独立レビュー）。
+     * ⚠ 読めないこと自体では断らない（プレビューのときも読めなかった Sheet は、見せた内容と同じなので通す。設計書 §4.3）。
+     *   ここは、指紋が合わなかったときの理由の選び方だけ。両方とも読めないときは、この前の「取得できませんでした」が断る
+     */
+    private function planChangedMessage(ZealSimulation $simulation, array $sales, array $expense): string
+    {
+        $sheets = [
+            '売上' => [$simulation->sales_sheet_url, $sales],
+            '経費' => [$simulation->expense_sheet_url, $expense],
+        ];
+        foreach ($sheets as $label => [$url, $sheet]) {
+            if (! empty($url) && $sheet['parsed'] === null) {
+                return "プレビューのあとで{$label} Sheet を読み直せませんでした（{$sheet['error']}）。時間をおいて、もう一度プレビューしてください。";
+            }
+        }
+
+        return 'プレビューのあとで反映する内容が変わりました（本部 Sheet か試算表の値が変わっています）。もう一度プレビューしてください。';
     }
 
     /**

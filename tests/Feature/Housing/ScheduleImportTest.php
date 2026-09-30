@@ -10,6 +10,7 @@ use Illuminate\Http\UploadedFile;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx as XlsxWriter;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Tests\Concerns\ChecksDoubleSubmit;
 use Tests\Concerns\CreatesRealEstateSchema;
 use Tests\Feature\Schedule\ScheduleTestCase;
 
@@ -29,8 +30,12 @@ class ScheduleImportTest extends ScheduleTestCase
 {
     use RefreshDatabase;
     use CreatesRealEstateSchema;
+    use ChecksDoubleSubmit;
 
     private const FIXTURE = __DIR__ . '/../../fixtures/schedule-import/list-format.xlsx';
+
+    /** 同じ確認画面から 2 回目を送ったとき（1 回限りの鍵が使えないとき）の案内（設計書 2026-09-28-import-double-submit-design.md §4.4） */
+    private const USED_TOKEN = 'この確認画面からは取り込めません（すでに送信したか、画面が古くなっています）。取り込まれたかは、この物件の詳細の「工程表」で確かめられます。取り込み直すときは、ファイルを選び直してください。';
 
     /** @var array<int, string> */
     private array $temporary = [];
@@ -492,8 +497,93 @@ class ScheduleImportTest extends ScheduleTestCase
     }
 
     // ============================================================
+    // 確定は確認画面 1 つにつき 1 回だけ（設計書 2026-09-28-import-double-submit-design.md）
+    // ============================================================
+
+    /** @return array<string, array{0: string|list<string>|null}> [import_token に入れる値（null なら送らない）] */
+    public static function unusableTokens(): array
+    {
+        return [
+            '鍵が無い' => [null],
+            '鍵が空'   => [''],
+            '鍵が配列' => [['a', 'b']],
+        ];
+    }
+
+    public function test_sending_the_same_confirmation_twice_imports_once(): void
+    {
+        $property = $this->makeParent('property');
+        $user     = $this->manager();
+        $form     = $this->confirmForm($this->previewFixture($property)->getContent(), $property);
+
+        $this->sendConfirmation($user, $property, $form);
+        $this->assertSame(65, $property->scheduleSteps()->count(), '1 回目で 65 件が入っていない（測定が無効）');
+        $ids = $property->scheduleSteps()->orderBy('id')->pluck('id')->all();
+
+        // 直す前: 2 回目は取込由来の 65 件を消して入れ直し（工程の id が作り直される）、
+        // 「既存の 65 件を入れ替えて 65 件を登録」の成功の帯が出た。件数は変わらないので、書き込みの数と id で見る
+        [$second, $writes] = $this->countingWrites(fn () => $this->sendConfirmation($user, $property, $form));
+
+        $this->assertSame(0, $writes, '2 回目の送信で書き込みが走った（工程の入れ替え）');
+        $this->assertSame($ids, $property->scheduleSteps()->orderBy('id')->pluck('id')->all(), '2 回目の送信で工程が作り直された');
+        $this->assertRefused($second, route('housing.properties.schedule-import.form', $property), self::USED_TOKEN, $user);
+    }
+
+    #[DataProvider('unusableTokens')]
+    public function test_a_confirmation_without_a_usable_token_imports_nothing(string|array|null $token): void
+    {
+        $property = $this->makeParent('property');
+        $user     = $this->manager();
+        $form     = $this->confirmForm($this->previewFixture($property)->getContent(), $property);
+
+        if ($token === null) {
+            unset($form['fields']['import_token']);
+        } else {
+            $form['fields']['import_token'] = $token;
+        }
+
+        // 500 にならない（配列の鍵は OneTimeAction::claimFrom() が is_string で断る）
+        [$response, $writes] = $this->countingWrites(fn () => $this->sendConfirmation($user, $property, $form));
+
+        $this->assertSame(0, $writes, '鍵が使えないのに書き込みが走った');
+        $this->assertSame(0, ScheduleStep::count());
+        $this->assertRefused($response, route('housing.properties.schedule-import.form', $property), self::USED_TOKEN, $user);
+    }
+
+    public function test_choosing_the_same_file_again_issues_a_new_token(): void
+    {
+        $property = $this->makeParent('property');
+        $first    = $this->confirmForm($this->previewFixture($property)->getContent(), $property);
+        $second   = $this->confirmForm($this->previewFixture($property)->getContent(), $property);
+
+        // ⚠ 同じファイルで確かめる（別のファイルだと、鍵をファイルの中身から作る書き換えを見逃す）
+        $this->assertNotSame($first['fields']['import_token'], $second['fields']['import_token'], 'プレビューごとに鍵が変わっていない');
+
+        $this->sendConfirmation($this->manager(), $property, $second);
+        $this->assertSame(65, $property->scheduleSteps()->count(), '選び直したプレビューの鍵で取り込めない');
+    }
+
+    public function test_the_confirmation_form_guards_against_a_second_press(): void
+    {
+        $property = $this->makeParent('property');
+
+        $this->assertSubmitOnceForm(
+            $this->previewFixture($property)->getContent(),
+            route('housing.properties.schedule-import.execute', $property)
+        );
+    }
+
+    // ============================================================
     // ヘルパ
     // ============================================================
+
+    /** 確認画面から確定を送る（ブラウザと同じく、リファラーは確認画面の URL） */
+    private function sendConfirmation($user, HsProperty $property, array $form): \Illuminate\Testing\TestResponse
+    {
+        return $this->actingAs($user)
+            ->from(route('housing.properties.schedule-import.preview', $property))
+            ->post($form['action'], $form['fields']);
+    }
 
     private function previewFixture(HsProperty $property)
     {

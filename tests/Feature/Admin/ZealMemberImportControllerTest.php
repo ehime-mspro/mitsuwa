@@ -6,8 +6,10 @@ use App\Models\ZealMember;
 use App\Models\ZealMemberContract;
 use App\Models\ZealPlan;
 use App\Models\ZealStore;
+use App\Support\OneTimeAction;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Tests\Concerns\ChecksDoubleSubmit;
 use Tests\Concerns\CreatesZealSchema;
 use Tests\Concerns\ParsesForms;
 use Tests\TestCase;
@@ -15,12 +17,17 @@ use Tests\TestCase;
 /**
  * ZEAL 会員 CSV インポート（Admin\ZealMemberImportController）の Feature テスト。
  * zeal_* テーブルは migration 管理外のため CreatesZealSchema trait で構築する。
+ *
+ * ⚠ 確定は確認画面 1 つにつき 1 回だけ（hidden の import_token。設計書 2026-09-28-import-double-submit-design.md）。
+ *   確定を手で組んで送るテストは、1 送信ごとに新しい鍵（OneTimeAction::issue()）を足す（発行を記録しないので、
+ *   新しい値なら 1 回は通る）。
  */
 class ZealMemberImportControllerTest extends TestCase
 {
     use RefreshDatabase;
     use CreatesZealSchema;
     use ParsesForms;
+    use ChecksDoubleSubmit;
 
     protected function setUp(): void
     {
@@ -39,6 +46,9 @@ class ZealMemberImportControllerTest extends TestCase
         '口座種別','口座番号','口座名義','店舗 ID','店舗 名前','支払手段','次回課金予定日','コース ID','コース 名前','コース 名前（内部）',
         'コース 合計金額(初回)','コース 合計金額(2回目以降)','変更後コース ID','変更後コース 名前','変更後コース 名前（内部）','変更後コース 合計金額(初回)','変更後コース 合計金額(2回目以降)',
     ];
+
+    /** 同じ確認画面から 2 回目を送ったとき（1 回限りの鍵が使えないとき）の案内（設計書 §4.4） */
+    private const USED_TOKEN = 'この確認画面からは取り込めません（すでに送信したか、画面が古くなっています）。取り込まれたかは「会員管理」で確かめられます。取り込み直すときは、CSVをアップロードし直してください。';
 
     /** password.change を通過する経営層ユーザー */
     private function executive(): \App\Models\User
@@ -115,8 +125,9 @@ class ZealMemberImportControllerTest extends TestCase
 
         $response = $this->actingAs($this->executive())
             ->post(route('admin.zeal.member-import.execute'), [
-                'confirmed' => '1',
-                'csv_data'  => base64_encode($content),
+                'confirmed'    => '1',
+                'csv_data'     => base64_encode($content),
+                'import_token' => OneTimeAction::issue(),
             ]);
 
         $response->assertRedirect(route('admin.zeal.member-import'));
@@ -191,7 +202,7 @@ class ZealMemberImportControllerTest extends TestCase
 
         $this->actingAs($this->executive())
             ->post(route('admin.zeal.member-import.execute'), [
-                'confirmed' => '1', 'csv_data' => base64_encode($content),
+                'confirmed' => '1', 'csv_data' => base64_encode($content), 'import_token' => OneTimeAction::issue(),
             ])
             // ビジター 1 + テストアカウント 1 = 除外 2
             ->assertSessionHas('success', 'インポート完了: 登録 5件 / スキップ 0件 / エラー 1件 / 除外 2件');
@@ -230,7 +241,7 @@ class ZealMemberImportControllerTest extends TestCase
         $content = $this->csvContent($this->fixtureRows());
         $this->actingAs($this->executive())
             ->post(route('admin.zeal.member-import.execute'), [
-                'confirmed' => '1', 'csv_data' => base64_encode($content),
+                'confirmed' => '1', 'csv_data' => base64_encode($content), 'import_token' => OneTimeAction::issue(),
             ])->assertRedirect(route('admin.zeal.member-import'));
 
         // 事前 1 + 取込 4（在籍は重複スキップ）= 5
@@ -294,8 +305,9 @@ class ZealMemberImportControllerTest extends TestCase
         $response = $this->actingAs($this->executive())
             ->from(route('admin.zeal.member-import.preview'))   // 確定のフォームが載っている確認画面の URL
             ->post(route('admin.zeal.member-import.execute'), [
-                'confirmed' => '1',
-                'csv_data'  => $csv === '' ? '' : base64_encode($csv),
+                'confirmed'    => '1',
+                'csv_data'     => $csv === '' ? '' : base64_encode($csv),
+                'import_token' => OneTimeAction::issue(),
             ]);
 
         $this->assertBackOnTheImportScreen($response, $message);
@@ -346,6 +358,100 @@ class ZealMemberImportControllerTest extends TestCase
 
         $this->assertBackOnTheImportScreen($response, '<li>CSVファイルは必須です。</li>');
         $this->assertDatabaseCount('zeal_members', 0);
+    }
+
+    // ================================================================
+    // 確定は確認画面 1 つにつき 1 回だけ（設計書 2026-09-28-import-double-submit-design.md）
+    // ================================================================
+
+    /** プレビューを描かせて、画面が描いた確定のフォームを分解する */
+    private function previewForm(\App\Models\User $user, string $content): array
+    {
+        $preview = $this->actingAs($user)->post(route('admin.zeal.member-import.preview'), [
+            'csv_file' => $this->uploadFrom($content),
+        ])->assertOk();
+
+        return $this->parseForm($preview->getContent(), 'action="' . route('admin.zeal.member-import.execute') . '"');
+    }
+
+    /** 確認画面から確定を送る（ブラウザと同じく、リファラーは確認画面の URL） */
+    private function sendConfirmation(\App\Models\User $user, array $form): \Illuminate\Testing\TestResponse
+    {
+        return $this->actingAs($user)->from(route('admin.zeal.member-import.preview'))->post($form['action'], $form['fields']);
+    }
+
+    /** @return array<string, array{0: string|list<string>|null}> [import_token に入れる値（null なら送らない）] */
+    public static function unusableTokens(): array
+    {
+        return [
+            '鍵が無い' => [null],
+            '鍵が空'   => [''],
+            '鍵が配列' => [['a', 'b']],
+        ];
+    }
+
+    public function test_sending_the_same_confirmation_twice_imports_once(): void
+    {
+        $this->seedMasters();
+        $user = $this->executive();
+        $form = $this->previewForm($user, $this->csvContent($this->fixtureRows()));
+
+        $this->sendConfirmation($user, $form);
+        $this->assertDatabaseCount('zeal_members', 5);
+
+        // 直す前: 2 回目は氏名＋入会日の重複の確認で全員を飛ばし、「登録 0件 / スキップ 5件…」の成功の帯が出た
+        [$second, $writes] = $this->countingWrites(fn () => $this->sendConfirmation($user, $form));
+
+        $this->assertSame(0, $writes, '2 回目の送信で書き込みが走った');
+        $this->assertDatabaseCount('zeal_members', 5);
+        $this->assertDatabaseCount('zeal_member_contracts', 4);
+        $this->assertRefused($second, route('admin.zeal.member-import'), self::USED_TOKEN, $user);
+    }
+
+    #[DataProvider('unusableTokens')]
+    public function test_a_confirmation_without_a_usable_token_imports_nothing(string|array|null $token): void
+    {
+        $this->seedMasters();
+        $user = $this->executive();
+        $form = $this->previewForm($user, $this->csvContent($this->fixtureRows()));
+
+        if ($token === null) {
+            unset($form['fields']['import_token']);
+        } else {
+            $form['fields']['import_token'] = $token;
+        }
+
+        // 500 にならない（配列の鍵は OneTimeAction::claimFrom() が is_string で断る）
+        [$response, $writes] = $this->countingWrites(fn () => $this->sendConfirmation($user, $form));
+
+        $this->assertSame(0, $writes, '鍵が使えないのに書き込みが走った');
+        $this->assertDatabaseCount('zeal_members', 0);
+        $this->assertRefused($response, route('admin.zeal.member-import'), self::USED_TOKEN, $user);
+    }
+
+    public function test_uploading_the_same_file_again_issues_a_new_token(): void
+    {
+        $this->seedMasters();
+        $user    = $this->executive();
+        $content = $this->csvContent($this->fixtureRows());
+        $first   = $this->previewForm($user, $content);
+        $second  = $this->previewForm($user, $content);
+
+        // ⚠ 同じファイルで確かめる（別のファイルだと、鍵をファイルの中身から作る書き換えを見逃す）
+        $this->assertNotSame($first['fields']['import_token'], $second['fields']['import_token'], 'プレビューごとに鍵が変わっていない');
+
+        $this->sendConfirmation($user, $second);
+        $this->assertDatabaseCount('zeal_members', 5);
+    }
+
+    public function test_the_confirmation_form_guards_against_a_second_press(): void
+    {
+        $this->seedMasters();
+        $html = $this->actingAs($this->executive())->post(route('admin.zeal.member-import.preview'), [
+            'csv_file' => $this->uploadFrom($this->csvContent($this->fixtureRows())),
+        ])->assertOk()->getContent();
+
+        $this->assertSubmitOnceForm($html, route('admin.zeal.member-import.execute'));
     }
 
     public function test_non_executive_is_forbidden(): void

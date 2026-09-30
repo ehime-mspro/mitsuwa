@@ -1,5 +1,5 @@
 {{-- 各タブ共通のプレビュー表示（賃貸マンション） --}}
-{{-- 必要変数: $tab, $actionUrl, $entityLabel, $totalRows, $validCount, $rowErrors, $skippedRows, $warnings(任意), $summary, $csvData --}}
+{{-- 必要変数: $tab, $actionUrl, $entityLabel, $totalRows, $validCount, $rowErrors, $skippedRows, $warnings(任意), $summary, $csvData, $importToken --}}
 
 {{-- プレビュー結果 --}}
 <div style="display: flex; align-items: flex-start; gap: 14px; margin-bottom: 20px;">
@@ -76,15 +76,22 @@
         <div style="font-weight: 600; margin-bottom: 8px;">インポート実行</div>
 
         @if($validCount > 0)
-            <form method="POST" action="{{ $actionUrl }}">
+            {{-- ⚠ 確定は確認画面 1 つにつき 1 回だけ（hidden の import_token。JS が動かないときも、サーバが 2 回目を断る）。
+                 送信中はボタンを押せなくする（二度押し止めの部品。設計書 2026-09-28-import-double-submit-design.md §4.5） --}}
+            @include('_partials._submit_once')
+            <form method="POST" action="{{ $actionUrl }}"
+                  x-data="submitOnce()" x-on:submit="onSubmit($event)" x-on:pageshow.window="onPageShow($event)">
                 @csrf
                 <input type="hidden" name="confirmed" value="1">
                 <input type="hidden" name="csv_data" value="{{ $csvData }}">
+                <input type="hidden" name="import_token" value="{{ $importToken }}">
 
-                <button type="submit"
-                        style="background: #059669; color: #fff; padding: 10px 28px; border-radius: 6px; font-size: 15px; font-weight: 600; border: none; cursor: pointer;">
+                <button type="submit" :disabled="submitting"
+                        class="cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
+                        style="background: #059669; color: #fff; padding: 10px 28px; border-radius: 6px; font-size: 15px; font-weight: 600; border: none;">
                     インポート実行（{{ $validCount }}件）
                 </button>
+                <span role="status" x-text="submitting ? '取り込んでいます…' : ''" style="display: inline-block; margin-left: 12px; font-size: 13px; color: #374151;"></span>
                 @if(count($rowErrors ?? []) > 0)
                     <div style="font-size: 12px; color: #6b7280; margin-top: 6px;">※ エラー行（{{ count($rowErrors) }}件）はスキップされます</div>
                 @endif

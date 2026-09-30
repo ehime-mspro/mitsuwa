@@ -265,8 +265,9 @@ class LoginGuideTest extends TestCase
      *   しかも `phpunit.xml` の `CACHE_STORE=array` は `add()` の独自実装を持たず
      *   「`get()` して null なら `put()`」という**非排他的な**既定に落ちる。
      *   実測: `Cache::add` を `has()` ＋ `put()` に書き換えても 14 本すべて緑のまま通った。
-     *   本番の `database` ドライバは `key` の主キー制約で本当に排他的なので、
-     *   「`add` を使っていること」だけを構造で固定する（Bug #41 / #42 と同じ流儀）。
+     *   本番のキャッシュは `file` ドライバで、`FileStore::add()` がファイルの排他ロックを取ってから書くので
+     *   本当に排他的（2026-09-25 に本番の `config('cache.default')` で確かめた。`OneTimeAction::claim()` のコメント）。
+     *   よって「`add` を使っていること」だけを構造で固定する（Bug #41 / #42 と同じ流儀）。
      */
     public function test_the_token_is_claimed_atomically(): void
     {
@@ -352,6 +353,8 @@ class LoginGuideTest extends TestCase
      * ⚠ **呼び出しを足したら下限も上げる** —— 2026-09-27 に顧客 CSV の取込の確定
      *   （`Admin\CustomerImportController::execute()`）を足して本物が 5 → 6 になった。下限を 5 のままにすると、
      *   決裁の 1 か所を消してもこのテストは緑のままだった（同日のレビューで実測）。
+     *   2026-09-28 にほかの取込の確定 6 か所（テナント・賃貸マンションの `loadCsv()`・ZEAL 会員・工程表・
+     *   ZEAL の本部 Sheet・周辺ビル）を足して 6 → 12 にした（設計書 2026-09-28-import-double-submit-design.md §5.3）。
      * ⚠ **これでも捕まえられない書き方がある** —— `[OneTimeAction::class, 'claim']` や
      *   `call_user_func` 経由の動的呼び出し、`app/` `routes/` の外（Blade・DB に保存された文字列など）
      *   から呼ぶ経路は、この正規表現走査では検出できない。
@@ -412,9 +415,10 @@ class LoginGuideTest extends TestCase
         );
 
         $this->assertGreaterThanOrEqual(
-            6,
+            12,
             $claimFromCallSites,
-            'claimFrom() の呼び出しが減っている（決裁の store / resetPassword / execute / reissue / reissueBulk の 5 箇所と、顧客 CSV の取込の execute の 1 箇所が既定）'
+            'claimFrom() の呼び出しが減っている（決裁の store / resetPassword / execute / reissue / reissueBulk の 5 箇所と、'
+            . '取込の確定 7 箇所（顧客・テナント・賃貸マンション・ZEAL 会員・工程表・ZEAL の本部 Sheet・周辺ビル）が既定）'
         );
     }
 
