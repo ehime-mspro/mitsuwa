@@ -188,6 +188,11 @@ class OrganizationController extends Controller
                     app(Workflow::class)->headChanged($approvalDepartment, $oldHeadId, $headId, $request->user());
                 }
 
+                // 審査担当者を足すなら、知らせを出す申請の行も部門の行を更新する前にロックする（lockWaitingReviews() の注意書き）
+                if (array_diff($reviewerIds, $approvalDepartment->reviewers()->pluck('users.id')->all()) !== []) {
+                    $this->lockWaitingReviews($approvalDepartment);
+                }
+
                 $approvalDepartment->update($base + ['head_user_id' => $headId]);
                 SettingLogger::recordChange('department.updated', 'approval_department', $approvalDepartment->id, $before, $base + ['head_user_id' => $headId]);
 
@@ -322,6 +327,27 @@ class OrganizationController extends Controller
         SettingLogger::record('department.reviewers_changed', 'approval_department', $department->id, ['reviewer_ids' => $before], ['reviewer_ids' => $after]);
 
         Notifier::reviewersAdded($admin, $department, User::whereKey(array_diff($after, $before))->orderBy('id')->get());
+    }
+
+    /**
+     * この部門で審査を待っている申請の行を、主キーの順にロックする（部門の行を更新する前に呼ぶ）。
+     *
+     * ⚠ 足した審査担当者へのお知らせの行（Notifier::reviewersAdded()）は、外部キーの確かめで申請の行に共有ロックを取る。
+     *   部門の行を更新してから取ると、申請部門と審査部門が同じ申請への審査の意見・取り下げ（状態の UPDATE が申請部門の行に
+     *   共有ロックを取る）とデッドロックし（1213）、その人の画面は 500 になる（2026-10-01 に MySQL 8.4.11 の
+     *   REPEATABLE READ・READ COMMITTED で実測）。ロックの順は Workflow::headChanged() と同じ「申請の行 → 部門の行」。
+     *   段階の行は条件でロック付きに読まない（REPEATABLE READ では索引の隙間までロックする。同じ注意書き）
+     */
+    private function lockWaitingReviews(ApprovalDepartment $department): void
+    {
+        $requestIds = ApprovalStep::where('kind', ApprovalStepKind::Review->value)
+            ->where('status', ApprovalStepStatus::Waiting->value)
+            ->where('department_id', $department->id)
+            ->pluck('request_id');
+
+        if ($requestIds->isNotEmpty()) {
+            ApprovalRequest::whereKey($requestIds->all())->orderBy('id')->lockForUpdate()->get(['id']);
+        }
     }
 
     /**

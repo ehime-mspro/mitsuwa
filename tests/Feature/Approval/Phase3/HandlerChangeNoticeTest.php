@@ -14,6 +14,7 @@ use App\Support\Approval\ApprovalNumber;
 use App\Support\Approval\Workflow;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Testing\TestResponse;
 use RuntimeException;
@@ -129,6 +130,35 @@ class HandlerChangeNoticeTest extends TestCase
         ApprovalNotice::query()->delete();
         $this->updateDepartment($this->w['reviewDept'], ['reviewer_ids' => [(string) $added->id]]);
         $this->assertSame(0, ApprovalNotice::count());
+    }
+
+    /**
+     * MySQL のデッドロック（1213）を避ける順は SQLite でも見える: 審査担当者を足すときは、部門の行を更新する前に、
+     * 審査を待っている申請の行をロック付きで読む（お知らせの行が申請の行に共有ロックを取るため。lockWaitingReviews()）
+     */
+    public function test_the_waiting_reviews_are_locked_before_the_department_row_is_updated(): void
+    {
+        $this->launchApprovals();
+        $waiting = $this->judge($this->submittedFor($this->w), $this->w['head'], 'head');
+        $added   = $this->baseUser(['name' => '追加 審査']);
+        $first   = [];
+        DB::listen(function ($q) use (&$first): void {
+            foreach ([
+                'requests' => '/^select .* from [`"]approval_requests[`"] where [`"]approval_requests[`"]\.[`"]id[`"] in/',
+                'dept'     => '/^update [`"]approval_departments[`"]/',
+                'notice'   => '/^insert into [`"]notifications[`"]/',
+            ] as $k => $re) {
+                if (! isset($first[$k]) && preg_match($re, $q->sql)) {
+                    $first[$k] = count($first);
+                }
+            }
+        });
+
+        // 略称も変える（部門の行の UPDATE が走る。審査担当者だけの変更では部門の行を更新しない）
+        $this->updateDepartment($this->w['reviewDept'], ['short_name' => '総務2', 'reviewer_ids' => [(string) $this->w['reviewer']->id, (string) $added->id]]);
+
+        $this->assertSame(['requests' => 0, 'dept' => 1, 'notice' => 2], $first, '部門の行を更新する前に申請の行をロックしていない（逆だと MySQL で 1213）');
+        $this->assertSame([$waiting->id], $this->noticesOf($added)->pluck('approval_request_id')->all());
     }
 
     /** 使い始める前は、部門長や審査担当者を変えても何も出ない（§5.2） */
