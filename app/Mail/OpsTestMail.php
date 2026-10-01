@@ -2,6 +2,7 @@
 
 namespace App\Mail;
 
+use App\Support\Approval\MailDelivery;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Mail\Mailable;
@@ -33,6 +34,22 @@ class OpsTestMail extends Mailable implements ShouldQueue
     public function content(): Content
     {
         return new Content(text: 'mail.ops-test');
+    }
+
+    /**
+     * 送れたら「決裁のメールが送れた」を記録する（決裁の管理者の画面の黄色の帯が消える。段階3 設計書 D2）。
+     * 手順書は「メールの設定を直したら、テストメールで確かめる」と案内しているので、同じ送信の設定を通るテストメールも数える。
+     * ⚠ 送れなかったときの記録は足さない（$tries = 1 と failed() はそのまま。帯を出すのは決裁のメールだけ）
+     */
+    public function send($mailer)
+    {
+        $sent = parent::send($mailer);
+
+        if ($sent !== null) {
+            MailDelivery::recordSent();
+        }
+
+        return $sent;
     }
 
     /**
