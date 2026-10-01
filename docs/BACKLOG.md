@@ -2199,6 +2199,25 @@ git checkout 13.x && git merge --ff-only date-picker-month-ago
 
 ---
 
+## ✅ テストのメモリが 1 本ごとに増え続ける件 — テストだけ（本番への反映は不要）
+
+全件のテストのメモリのピークが 505.50 MB（3144 本・`phpunit.xml` の上限 512M の 98%）になり、あと数十本で
+`Allowed memory size … exhausted` で全件が途中で止まる状態だった（2026-10-01。決裁 段階3a のテストを足すと実際に止まった）。
+**`app/`・`resources/`・`routes/`・DB・依存・`phpunit.xml` の変更は無し。**
+
+| 区分 | 実装内容 |
+|------|---------|
+| テスト（変更）| `tests/TestCase.php`（`tearDown()` で Carbon の共有の翻訳の `resetMessages()`）|
+| テスト（新規）| `tests/Feature/CarbonTranslatorTrimTest.php`（2 本。片付けを消すと 2 本目が赤）|
+| 全件テスト | 3144 → **3146 tests / 22423 assertions green**・ピーク **505.50 MB → 307.50 MB**・約 3 分 |
+
+### 調べて分かったこと（2026-10-01 の実測）
+
+- 増えるのはアプリを起動するテストだけで、1 本あたり約 125 KB（純粋な Unit テストは増えない）。テストごとの `Application` は解放されている（弱い参照で確認）。ゴミ集め（`gc_collect_cycles()`）を毎回呼んでも減らない＝まだ使われている扱いのメモリ
+- **約 65 KB/本: Carbon の Laravel 用のプロバイダ**（`Carbon\Laravel\ServiceProvider::boot()`）。起動のたびに `setFallbackLocale()` が日本語の文の全部（約 13 KB）を共有の翻訳（プロセスに 1 つ）へ `addResource()` で 6 回足し、捨てる仕組みが無い。本番は 1 リクエスト 1 回の起動なので害は無い → テストの `tearDown()` で `resetMessages()`（足した文を最初の 1 つに戻す）
+- **残りの約 44 KB/本: OPcache の無い CLI** が、クロージャを含むファイル（`bootstrap/app.php`・設定・ルート）を起動のたびに読み直して残す分。`php -d opcache.enable_cli=1 ./vendor/bin/phpunit` で流すと 0 になり、全件のピークは **98.50 MB**・約 3 分（測定のみ。テストの流し方を変えるかは未決）
+- 静的な変数・クラスの数・読み込んだファイルの数は増え続けていない（増えるのは上の 2 つだけ）
+
 ## ✅ 取込の入力チェックの包み忘れを走査テストで止める — テストと文書だけ（本番への反映は不要）
 
 詳細仕様: @docs/superpowers/specs/2026-09-25-import-validation-scan-design.md
