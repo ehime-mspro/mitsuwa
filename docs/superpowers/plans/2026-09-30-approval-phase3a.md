@@ -5784,3 +5784,141 @@ Expected: `invalid=0`・**`approvals=46`**（`--json` で数える。テキス�
 
 
 ---
+
+## Task 9 の実測記録（2026-10-01）
+
+実装したコードに、計画の表の 76 通り（カナリア 1 + 変異 75）を `~/.claude/plans/approval-phase3-tasks/mutate.py` で 1 つずつ当てて測った。**WT では当てず、WT の HEAD の写しで当てた**（WT は読むだけ）。
+
+### 測った条件
+
+| 項目 | 内容 |
+|---|---|
+| 測った HEAD | `70cca1cd`（`Merge branch '13.x' into approval-phase3`）。計画の試作に、Task 6 の手直し `2f272bce`（`OrganizationController::lockWaitingReviews()` と `HandlerChangeNoticeTest` の 1 本）と 13.x の取り込み（`tests/TestCase.php` の `tearDown()` で Carbon の翻訳を片付ける・`CarbonTranslatorTrimTest`・テナントの取込の直し）が足されている |
+| 流した範囲 | `mutate.py` の `TARGET`（決裁のテスト〈`tests/Feature/Approval`・`tests/Unit/Approval`〉・`UserManagementApprovalTest`・走査テスト 8 本・`PropertyListSortTest`）= **954 本**（表の 953 本より 1 本多い。下の「表との違い」） |
+| 全件（Step 1） | `OK (3211 tests, 22860 assertions)`（`git status --porcelain` は空）。計画の Expected（3204 / 22817）より多いのは、上の足された分のため |
+| `--check` | `NG` の行は無く `checked 76`（当てる場所はどの変異もちょうど 1 回ずつ見つかった。直しで文字列が変わった変異は無い） |
+| カナリア | 赤になった（`Tests: 954, Assertions: 7299, Errors: 1, Failures: 15.`）。原因が狙いどおりであることも別に確かめた（`_item.blade.php` に未定義の変数を入れて 1 本流すと、写しの `resources/views/approvals/notices/_item.blade.php` から `Undefined variable $canaryUndefinedVariable` が出る）＝測定は写しのコードを読んでいる |
+| 所要 | 76 通りで約 50 分（1 通り 23〜89 秒）。結果の jsonl: `~/.claude/plans/approval-phase3-tasks/work/measure/mutations-wt.jsonl` |
+
+### 結果
+
+**76 通り = 検出 74・カナリア 1（赤が正しい）・等価 1（S04）・SKIP 0・見逃し 0（等価でないのに緑 0）。** 「当初検出漏れ→追加で検出」は無い（テストは 1 本も足していない）。
+
+- **検出（74）**: R01〜R04・A01〜A04・T01〜T03・S01〜S03・N01〜N21・W01〜W14・H01〜H06・V01〜V14・M01〜M05
+- **等価（1）**: **S04**（審査担当者を `activeReviewers()` でなく `reviewers()` で読む）= `OK (954 tests, 7426 assertions)`。計画の見込みどおり。理由: `StepHandlers.php` のすぐ下の `filter(fn (User $user) => $user->status === UserStatus::Active && $user->id !== $request->user_id)` が無効の人を落とし、削除した人は `SoftDeletes` のグローバルスコープで `reviewers()` でも入らない。`activeReviewers()` を使うのは条件を 1 か所に集めるため（Task 1-B）で、振る舞いの差は無い
+- **SKIP（0）**: 無し
+
+### 76 通りの実測（`70cca1cd` の写し）
+
+| # | 変異（ファイル） | 実測（流した 954 本） | 落ちたテストの数（クラス名つきの名前の重複を除く。Errors と Failures の合計と食い違うのは、1 本のテストが複数回落ちるものがあるため） | 判定 |
+|---|---|---|---|---|
+| CANARY | カナリア: お知らせの 1 件の部品に未定義の変数（`_item.blade.php`） | 954 本・7299 assertions・Errors 1・Failures 15 | 16 | カナリア（赤が正しい） |
+| R01 | M-4: フラッシュを 404 の前に戻す（`ReturnsToRequestDetail.php`） | 954 本・7418 assertions・Failures 1 | 1 | 検出 |
+| R02 | 先を越されたときも入力を戻す（`ReturnsToRequestDetail.php`） | 954 本・7404 assertions・Failures 3 | 3 | 検出 |
+| R03 | 断られたとき入力を戻さない（`ReturnsToRequestDetail.php`） | 954 本・7407 assertions・Failures 3 | 3 | 検出 |
+| R04 | 入力の検査で断られたら詳細へ戻さない（`ReturnsToRequestDetail.php`） | 954 本・7284 assertions・Errors 13 | 13 | 検出 |
+| A01 | 有効な審査担当者に無効の人を入れる（`ApprovalDepartment.php`） | 954 本・7423 assertions・Failures 4 | 4 | 検出 |
+| A02 | 提出の条件で申請者本人を審査担当者に数える（`SubmitChecker.php`） | 954 本・7426 assertions・Failures 1 | 1 | 検出 |
+| A03 | 種類の一覧の人数を読み違える（`types.blade.php`） | 954 本・7424 assertions・Failures 1 | 1 | 検出 |
+| A04 | ⑩ の印で無効の審査担当者を数える（`AdminRequestController.php`） | 954 本・7425 assertions・Failures 1 | 1 | 検出 |
+| T01 | SQL の外部キーを CASCADE に（`2026-09-30-approval-phase3a.sql`） | 954 本・7425 assertions・Failures 1 | 1 | 検出 |
+| T02 | migration の列の NULL を許さない（`2026_09_30_000001_create_approval_phase3a_tables.php`） | 954 本・1647 assertions・Errors 497・Failures 107 | 573 | 検出 |
+| T03 | ownedBy で決裁のお知らせに絞らない（`ApprovalNotice.php`） | 954 本・7425 assertions・Failures 1 | 1 | 検出 |
+| S01 | 無効の人を担当に入れる（`StepHandlers.php`） | 954 本・7426 assertions・Failures 1 | 1 | 検出 |
+| S02 | 申請者本人を担当に入れる（`StepHandlers.php`） | 954 本・7347 assertions・Failures 2 | 2 | 検出 |
+| S03 | 付け替えを見ない（`StepHandlers.php`） | 954 本・7299 assertions・Failures 1 | 1 | 検出 |
+| S04 | 審査担当者を activeReviewers() でなく reviewers() で読む（等価の見込み: 下の filter が無効の人を落とす）（`StepHandlers.php`） | OK（954 本・7426 assertions・全部緑） | 0 | 等価 |
+| N01 | 決まり 1: 操作した本人にも出す（`Notifier.php`） | 954 本・7425 assertions・Failures 2 | 2 | 検出 |
+| N02 | 決まり 2: 後に足した知らせで上書きする（`Notifier.php`） | 954 本・7425 assertions・Failures 3 | 3 | 検出 |
+| N03 | 決まり 3: 削除した人にも出す（`Notifier.php`） | 954 本・7424 assertions・Failures 1 | 1 | 検出 |
+| N04 | 決まり 3: 無効の人にも出す（`Notifier.php`） | 954 本・7423 assertions・Failures 1 | 1 | 検出 |
+| N05 | 決まり 4: 許可していないドメインにもメール（`Notifier.php`） | 954 本・7426 assertions・Failures 2 | 2 | 検出 |
+| N06 | 決まり 5: 担当の番の知らせを申請者本人にも（`Notifier.php`） | 954 本・7421 assertions・Failures 2 | 2 | 検出 |
+| N07 | 決まり 6: 件名を今の申請の行から（`Notifier.php`） | 954 本・7426 assertions・Failures 1 | 1 | 検出 |
+| N08 | 決まり 7: 使い始める前も出す（`Notifier.php`） | 954 本・7392 assertions・Errors 3・Failures 8 | 11 | 検出 |
+| N09 | 場面 6 にもメール（`Notifier.php`） | 954 本・7426 assertions・Failures 1 | 1 | 検出 |
+| N10 | 件名の制御文字を残す（`Notifier.php`） | 954 本・7426 assertions・Failures 1 | 1 | 検出 |
+| N11 | リンクを設定から作る（/index.php が抜ける）（`Notifier.php`） | 954 本・7426 assertions・Failures 1 | 1 | 検出 |
+| N12 | 操作した人の名前を宛先の名前に（`Notifier.php`） | 954 本・7420 assertions・Failures 2 | 2 | 検出 |
+| N13 | メールの件名の行をエスケープ（&amp; が出る）（`approval-notice.blade.php`） | 954 本・7416 assertions・Failures 1 | 1 | 検出 |
+| N14 | 差出人の名前を全体の設定のまま（`ApprovalNoticeMail.php`） | 954 本・7425 assertions・Failures 1 | 1 | 検出 |
+| N15 | 送り直しを 1 回に（`ApprovalMailable.php`） | 954 本・7424 assertions・Failures 2 | 2 | 検出 |
+| N16 | 送り直しの間をあけない（`ApprovalMailable.php`） | 954 本・7426 assertions・Failures 2 | 2 | 検出 |
+| N17 | 送れた記録を残さない（`ApprovalMailable.php`） | 954 本・7421 assertions・Failures 2 | 2 | 検出 |
+| N18 | 送れなかった記録を残さない（`ApprovalMailable.php`） | 954 本・7423 assertions・Failures 2 | 2 | 検出 |
+| N19 | 送れなかった記録で設定の updated_at を動かす（`MailDelivery.php`） | 954 本・7426 assertions・Failures 1 | 1 | 検出 |
+| N20 | 場面 4 の見出しを変える（`NoticeText.php`） | 954 本・7424 assertions・Failures 2 | 2 | 検出 |
+| N21 | 部門長の必要な対応を変える（`NoticeText.php`） | 954 本・7422 assertions・Failures 3 | 3 | 検出 |
+| W01 | 提出で知らせない（`Workflow.php`） | 954 本・7417 assertions・Errors 1・Failures 4 | 5 | 検出 |
+| W02 | 部門長の承認で知らせない（`Workflow.php`） | 954 本・7420 assertions・Errors 2・Failures 1 | 3 | 検出 |
+| W03 | 部門長の差戻しで知らせない（`Workflow.php`） | 954 本・7423 assertions・Failures 1 | 1 | 検出 |
+| W04 | 審査の意見で知らせない（`Workflow.php`） | 954 本・7426 assertions・Failures 1 | 1 | 検出 |
+| W05 | 社長の差戻しで知らせない（`Workflow.php`） | 954 本・7426 assertions・Failures 1 | 1 | 検出 |
+| W06 | 社長の判断で知らせない（`Workflow.php`） | 954 本・7425 assertions・Failures 4 | 4 | 検出 |
+| W07 | 条件の確認で知らせない（`Workflow.php`） | 954 本・7425 assertions・Failures 1 | 1 | 検出 |
+| W08 | 取り下げの担当を打ち切ったあとに取る（`Workflow.php`） | 954 本・7426 assertions・Failures 1 | 1 | 検出 |
+| W09 | 代理の取り下げで申請者に知らせない（`Workflow.php`） | 954 本・7425 assertions・Failures 1 | 1 | 検出 |
+| W10 | 取り消しで知らせない（`Workflow.php`） | 954 本・7420 assertions・Failures 4 | 4 | 検出 |
+| W11 | 付け替えで知らせない（`Workflow.php`） | 954 本・7425 assertions・Failures 1 | 1 | 検出 |
+| W12 | 場面 4: 部門長として判断した人に出さない（`Notifier.php`） | 954 本・7425 assertions・Failures 4 | 4 | 検出 |
+| W13 | 場面 6: 部門長に出さない（`Notifier.php`） | 954 本・7425 assertions・Failures 1 | 1 | 検出 |
+| W14 | 場面 8: 条件の確認の取り消しで番が戻ったことを出さない（`Notifier.php`） | 954 本・7426 assertions・Failures 1 | 1 | 検出 |
+| H01 | 部門長の交代で知らせない（`Workflow.php`） | 954 本・7421 assertions・Failures 1 | 1 | 検出 |
+| H02 | 部門長の交代で前の部門長に知らせる（`Workflow.php`） | 954 本・7421 assertions・Failures 2 | 2 | 検出 |
+| H03 | 審査担当者の追加で前からいる人にも知らせる（`OrganizationController.php`） | 954 本・7421 assertions・Failures 1 | 1 | 検出 |
+| H04 | 審査担当者の追加でまだ届いていない審査にも知らせる（`Notifier.php`） | 954 本・7419 assertions・Failures 1 | 1 | 検出 |
+| H05 | 社長の指定をトランザクションで囲まない（`UserController.php`） | 954 本・7425 assertions・Failures 1 | 1 | 検出 |
+| H06 | 同じ社長を選び直しても知らせる（`UserController.php`） | 954 本・7426 assertions・Failures 1 | 1 | 検出 |
+| V01 | D13: 詳細を開いても既読にしない（`RequestController.php`） | 954 本・7424 assertions・Failures 1 | 1 | 検出 |
+| V02 | D13: ほかの申請の未読も既読に（`ApprovalNotice.php`） | 954 本・7425 assertions・Failures 1 | 1 | 検出 |
+| V03 | D13: ほかの人の未読も既読に（`ApprovalNotice.php`） | 954 本・7425 assertions・Failures 2 | 2 | 検出 |
+| V04 | ほかの人のお知らせも開ける（`NoticeController.php`） | 954 本・7423 assertions・Failures 1 | 1 | 検出 |
+| V05 | 見られなくなった申請も詳細へ（404）（`NoticeController.php`） | 954 本・7424 assertions・Failures 1 | 1 | 検出 |
+| V06 | お知らせを押しても既読にしない（`NoticeController.php`） | 954 本・7422 assertions・Failures 2 | 2 | 検出 |
+| V07 | ⑥ を古い順に（`NoticeController.php`） | 954 本・7412 assertions・Failures 2 | 2 | 検出 |
+| V08 | ⑥ を 21 件ずつ（`NoticeController.php`） | 954 本・7418 assertions・Failures 1 | 1 | 検出 |
+| V09 | ベルを使い始める前も出す（`ApprovalMenu.php`） | 954 本・7424 assertions・Failures 1 | 1 | 検出 |
+| V10 | ベルの 99+ の境目を変える（`notice-bell.blade.php`） | 954 本・7425 assertions・Failures 1 | 1 | 検出 |
+| V11 | お知らせの件名をエスケープしない（`_item.blade.php`） | 954 本・7420 assertions・Failures 1 | 1 | 検出 |
+| V12 | ホームのお知らせを 6 件に（`HomeController.php`） | 954 本・7424 assertions・Failures 1 | 1 | 検出 |
+| V13 | ホームに既読も出す（`HomeController.php`） | 954 本・7423 assertions・Failures 1 | 1 | 検出 |
+| V14 | 未読が無くても「すべて既読にする」を出す（`index.blade.php`） | 954 本・7426 assertions・Failures 1 | 1 | 検出 |
+| M01 | 送れたあとも帯を出す（`MailDelivery.php`） | 954 本・7426 assertions・Failures 2 | 2 | 検出 |
+| M02 | 管理者でない人にも帯（`_mail_failure.blade.php`） | 954 本・7426 assertions・Failures 1 | 1 | 検出 |
+| M03 | 帯の宛先をアドレスに（`PasswordReissuedMail.php`） | 954 本・7425 assertions・Failures 1 | 1 | 検出 |
+| M04 | 申請種類の管理に帯を出さない（`types.blade.php`） | 954 本・7422 assertions・Failures 1 | 1 | 検出 |
+| M05 | 送れなかった日時を日時として読まない（`ApprovalSetting.php`） | 954 本・7413 assertions・Failures 3 | 3 | 検出 |
+
+### 表（計画の試作の実測）との違い
+
+1. **本数が 1 本多い（953 → 954）**。足された 1 本は `HandlerChangeNoticeTest::test_the_waiting_reviews_are_locked_before_the_department_row_is_updated`（`2f272bce`）。`mutate.py` の `TARGET` に入っているので、全部の変異で流れる。
+2. **75 通りは「954 本・assertions が表より +5・Errors と Failures の数は表と同じ」**。新しい 1 本は、これらの変異のどれでも緑のまま 5 つの assertion を足すだけ（どの変異でも落ちない）。
+3. **T02 だけは、Errors が表より +1（496 → 497）・assertions は表と同じ（1647）**。新しい 1 本が、設定の行（`approval_settings`）を作れず（`NOT NULL constraint failed`）Error で落ちるため。T02 は「設定の行を作れずに巻き添えで落ちる」変異なので、巻き添えが 1 本増えただけ。狙いの `test_the_sql_and_the_migration_declare_the_same_columns` は落ちている。
+4. 上の 1・2・3 のほかに、**数も落ちたテストの集合も表と同じ**。
+
+### 落ちたテストの集合と理由の文言が狙いと合うか
+
+- 計画の表の「落ちたテスト」の名前は、76 通りの全部が実測と一致する（`CANARY`・`R04`・`T02`・`N08` の「ほか N 本」の部分は、表では名前が省かれているので件数のみ照合）。
+- 名前の省かれた部分も含めて確かめるため、計画を書く段階の試作の実測（`~/.claude/plans/approval-phase3-tasks/work/measure/mutations.jsonl`）と、**（落ちたテスト・理由の文言）の組を 76 通りで突き合わせた: 74 通りは完全に同じ。違うのは 2 通りだけで、いずれも上の 1〜3 で説明がつく**（T02 は新しい 1 本が増えただけ。CANARY は例外の文言の中の scratchpad のパスだけが違う）。
+- 理由の文言は、狙いの機構と合っている（意図と別の機構が落としているものは無かった）。例: R01 `Session has unexpected key [approval_reopen]`／R04 `Call to a member function all() on array`（検査の例外が詳細に戻らず素通り）／T02 `NOT NULL constraint failed: approval_settings...`／S02・S03 `対応待ちと担当が食い違う`／N05 `The following mailables were queued unexpectedly`／N14 `The expected [App\Mail\ApprovalNoticeMail] mailable was not queued`／N15 `1 is identical to 3`・N16 `null is identical to 60`（送り直しの回数と間）／V04 `Expected response status code [404] but received 302`／H03 `前からいる審査担当者には出さない`・H06 `同じ人を選び直しても出さない`／N19 `設定の更新日時は動かさない`（テストに書いた文言そのもの）。
+
+### 測ったあとに HEAD が進んだこと
+
+測っている間に、WT に `7fe4e1a3`（`fix(approval): 帯の文を「決裁のお知らせは画面にも届いています。」にする`）が足された（`_mail_failure.blade.php` の 1 文と `MailFailureBannerTest` の 1 行だけ。本数・assertions は変わらない）。上の 76 通りは `70cca1cd` の写しで測ったので、次を足して確かめた:
+
+- WT の全件（HEAD `7fe4e1a3`）: `OK (3211 tests, 22860 assertions)`（`git status --porcelain` は空）
+- 写しに `7fe4e1a3` の 2 ファイルを写し、`--check`（`checked 76`・NG なし）のあと、**その帯の部品とテストに当たる M01〜M05 だけを測り直した**: M01 `Failures: 2`・M02 `Failures: 1`・M03 `Failures: 1`・M04 `Failures: 1`・M05 `Failures: 3`（いずれも落ちたテストの名前は表と同じ・assertions は +5。結果: `~/.claude/plans/approval-phase3-tasks/work/measure/mutations-wt-after-7fe4e1a3.jsonl`）。M02 の当てる場所は同じファイルの別の行（文の行ではない）で、`--check` でも 1 回ずつ見つかった。ほかの変異は、当てる場所も流れるテストの集合も `7fe4e1a3` で変わらない
+
+### 参考（表の外）: Task 6 の手直しを守るテストが効くか
+
+表の 76 通りには `lockWaitingReviews()` を壊す変異が無い。足された 1 本が本当にその直しを守っているかを、写しで 3 通り当てて `HandlerChangeNoticeTest` を流して確かめた（`mutate.py` は使っていない・当てたあと元に戻した）:
+
+| 変異 | 結果 |
+|---|---|
+| `lockWaitingReviews()` の呼び出しを消す | `Tests: 7, Failures: 1`（`test_the_waiting_reviews_are_locked_before_the_department_row_is_updated` のみ） |
+| 呼び出しを部門の行の `update()` の**あと**に移す（MySQL のデッドロックの順に戻す） | 同じ 1 本のみ落ちる |
+| 呼び出しの条件を常に偽にする | 同じ 1 本のみ落ちる |
+
+### 後始末
+
+写し（`<scratchpad>/p3a-mutation`）は、中身が写しであること（`pwd`・`ls`）を確かめて消した。WT の `git status --porcelain` は空。
