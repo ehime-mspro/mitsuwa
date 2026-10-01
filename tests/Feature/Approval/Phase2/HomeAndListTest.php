@@ -176,9 +176,14 @@ class HomeAndListTest extends TestCase
         foreach (['他人の回覧中の申請', '他人の差戻しの申請', '他人の直しかけの件名', '他人の終わった申請'] as $subject) {
             $mine->assertDontSee($subject);
         }
+        // 部門長のホームの「新しいお知らせ」（段階3）には、提出されたときの知らせ（最後に提出した件名）が残るので、
+        // 対応待ちと進み具合だけを見る。直しかけの件名はお知らせにも出ない（控えから作る。D26）
+        $headSections = strstr($head->getContent(), '新しいお知らせ', true);
+        $this->assertNotFalse($headSections, 'ホームに「新しいお知らせ」の欄が無い');
         foreach (['他人の差戻しの申請', '他人の直しかけの件名', '他人の終わった申請'] as $subject) {
-            $head->assertDontSee($subject);
+            $this->assertStringNotContainsString($subject, $headSections);
         }
+        $head->assertDontSee('他人の直しかけの件名');
     }
 
     /**

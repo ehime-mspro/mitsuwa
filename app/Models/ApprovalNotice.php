@@ -36,4 +36,18 @@ class ApprovalNotice extends DatabaseNotification
     {
         return $this->belongsTo(ApprovalRequest::class, 'approval_request_id');
     }
+
+    /**
+     * その人の未読を既読にする（申請を渡せばその申請の分だけ）。既読になる 3 つの入口のうち 2 つ（段階3 設計書 D13）:
+     * 申請の詳細を開いたとき（申請を渡す）と「すべて既読にする」。1 件を押したときは markAsRead()。
+     * ⚠ ほかの人の未読は変えない（ownedBy で持ち主に絞る）
+     */
+    public static function markReadFor(User $user, ?ApprovalRequest $request = null): void
+    {
+        static::query()
+            ->ownedBy($user)
+            ->unread()
+            ->when($request !== null, fn (Builder $query) => $query->where('approval_request_id', $request->id))
+            ->update(['read_at' => now()]);
+    }
 }

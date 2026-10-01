@@ -35,6 +35,8 @@ class ValidationErrorFeedbackTest extends TestCase
         // 検証そのものが無いフォーム
         'layouts/partials/header.blade.php'
             => 'ログアウトの POST のみ。検証する入力が無い',
+        'approvals/notices/index.blade.php'
+            => '「すべて既読にする」の POST のみ。検証する入力が無い（段階3 のお知らせ一覧）',
 
         // ⚠ 取込画面は「独自の警告 UI があるから除外してよい」ではない。
         //   行単位の警告と `validate()` の失敗は**別物**で、後者は $errors に入る。
