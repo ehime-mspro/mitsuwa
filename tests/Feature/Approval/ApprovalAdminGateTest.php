@@ -363,6 +363,8 @@ class ApprovalAdminGateTest extends TestCase
             'approval_requests' => DB::table('approval_requests')->count(),
             'approval_steps' => DB::table('approval_steps')->count(),
             'approval_histories' => DB::table('approval_histories')->count(),
+            // お知らせ（段階3）。部門長の交代・審査担当者の追加は担当に知らせを作る
+            'notifications' => DB::table('notifications')->count(),
         ];
     }
 

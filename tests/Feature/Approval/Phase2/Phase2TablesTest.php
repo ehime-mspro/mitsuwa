@@ -31,6 +31,11 @@ class Phase2TablesTest extends TestCase
 
     private const TYPES = 'BIGINT|INT|SMALLINT|TINYINT|VARCHAR|MEDIUMTEXT|TEXT|JSON|TIMESTAMP';
 
+    /** あとの段階が 2a の表に足した列（その段階の表のテストが見る。ここでは比べない）。表 => 列 */
+    private const LATER_COLUMNS = [
+        'approval_settings' => ['mail_last_sent_at', 'mail_last_failed_at', 'mail_last_failed_to'],   // 3a（Phase3TablesTest）
+    ];
+
     /** @return list<array{string, string, bool}> [表, CREATE の括弧の中か ALTER の中身, ALTER か] */
     private function statements(string $path): array
     {
@@ -137,6 +142,7 @@ class Phase2TablesTest extends TestCase
             foreach (Schema::getColumns($table) as $column) {
                 $migrated[$column['name']] = (bool) $column['nullable'];
             }
+            $migrated = array_diff_key($migrated, array_flip(self::LATER_COLUMNS[$table] ?? []));
 
             ksort($columns);
             ksort($migrated);
