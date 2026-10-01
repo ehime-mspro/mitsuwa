@@ -64,7 +64,7 @@ manage/
 │   └── components/                  # attachment-section, attachment-upload
 ├── routes/
 │   ├── web.php                      # 全ルート定義 (末尾で approval.php を require)
-│   ├── approval.php                 # 決裁申請 段階1・2a・2b (43 ルート。管理系は approval.admin、申請を回す画面は approval.launched、進行中の申請の管理は両方)
+│   ├── approval.php                 # 決裁申請 段階1・2a・2b・3a (46 ルート。管理系は approval.admin、申請を回す画面とお知らせは approval.launched、進行中の申請の管理は両方)
 │   └── console.php                  # 定期実行の予定 (schedule:run が読む)
 └── database/sql/                    # 直接実行用SQL
 ```
@@ -111,7 +111,7 @@ manage/
 | `approval_departments` | 決裁: 部門（略称・英大文字 1〜3 文字のコード。申請番号に使う）・部門長（`head_user_id`）|
 | `approval_department_user` | 決裁: 所属部門（兼務可。複合主キー）|
 | `approval_members` | 決裁: 利用者ごとの印（`is_admin` = 決裁の管理者 / `can_view_all` = 全件閲覧者）|
-| `approval_settings` | 決裁: 社長の指定（1 行）・使い始めた日時（`launched_at`。空のあいだは準備中）|
+| `approval_settings` | 決裁: 社長の指定（1 行）・使い始めた日時（`launched_at`。空のあいだは準備中）・決裁のメールが最後に送れた／送れなかった日時と宛先（`mail_last_*`。書くのは `MailDelivery` だけ）|
 | `approval_mail_domains` | 決裁: 許可するメールドメイン |
 | `approval_setting_logs` | 決裁: 設定の変更の記録（**追記のみ**。`updated_at` を持たない）|
 | `approval_types` | 決裁: 申請の種類（5W2H の見出し・審査部門・利用中/停止）|
@@ -123,6 +123,7 @@ manage/
 | `approval_attachments` | 決裁: 添付（`local` ディスク＝非公開。上書きしない）|
 | `approval_download_logs` | 決裁: 添付を開いた記録（**追記のみ**）|
 | `approval_number_sequences` | 決裁: 部門・年度ごとの連番（行をロックして採る）|
+| `notifications` | 決裁: お知らせ（Laravel 標準の形 ＋ `approval_request_id`。1 人 1 行・消さない。作るのは `Notifier` だけ・引くときは `ApprovalNotice::ownedBy()`）|
 
 ## Authentication & Authorization
 
@@ -130,4 +131,5 @@ manage/
 - Middleware: `role:executive`, `role:executive,manager`
 - 決裁: `approval_only` は `RestrictApprovalOnlyUsers` が決裁以外の全画面から締め出す（web グループ・`SubstituteBindings` より前）。決裁の管理系は 2 段目の `approval.admin`（`EnsureApprovalAdmin`）が守る。**ロールとは独立**で、基幹を使う人（executive / manager / staff）も `approval_members.is_admin` で決裁の管理者になれる
 - 決裁（段階2）: 申請を回す画面は 3 段目の `approval.launched`（`EnsureApprovalLaunched`）が守る。`approval_settings.launched_at` が空のあいだは、画面を開く GET を決裁のホーム（準備中）へ送り、それ以外を 404 にする（`EnsureApprovalAdmin` の後・`SubstituteBindings` の前）。見られる範囲は `RequestVisibility`、操作できるかは `RequestPermissions` の 1 か所ずつ。進行中の申請の管理（⑩ `approvals.admin.requests.*`）は `approval.admin` と `approval.launched` の両方の門番の内側。付け替え・押し間違いの取り消し・代理の取り下げも `Workflow` が行う
+- 決裁（段階3）: 知らせを出すのは `App\Support\Approval\Notifier` だけで、呼ぶ側（`Workflow`・部門の管理・社長の指定）のトランザクションの中で呼ぶ（お知らせの行もメールの `jobs` の行も操作と一緒に巻き戻る。`QUEUE_CONNECTION=database` が前提）。宛先・文・リンクは操作の時点で決めてメールに持たせる（キューの中で `route()` を呼ばない）。メールは土台 `App\Mail\ApprovalMailable`（送り直し 3 回・送れた／送れなかったの記録）の上に作る。お知らせ一覧（⑥ `approvals.notices.*`）は `approval.launched` の内側
 - Department access: `$user->belongsToDepartment('realestate')` / `('housing')` / `('tenant')`
