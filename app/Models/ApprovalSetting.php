@@ -24,7 +24,13 @@ class ApprovalSetting extends Model
 
     protected function casts(): array
     {
-        return ['president_user_id' => 'integer', 'launched_at' => 'datetime'];
+        return [
+            'president_user_id'   => 'integer',
+            'launched_at'         => 'datetime',
+            // 決裁のメールが送れた・送れなかった（段階3 設計書 D2。書くのは MailDelivery だけ）
+            'mail_last_sent_at'   => 'datetime',
+            'mail_last_failed_at' => 'datetime',
+        ];
     }
 
     /** 使い始めたか（設計書 §5.2・D1）。空のあいだは申請を回す画面を誰にも見せない */

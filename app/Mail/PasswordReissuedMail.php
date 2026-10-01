@@ -5,14 +5,8 @@ namespace App\Mail;
 use App\Models\User;
 use App\Support\JapanTime;
 use Carbon\CarbonInterface;
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
-use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Log;
-use Throwable;
 
 /**
  * パスワードを再発行したことの通知（設計書 §5.13・要件 12.5）。
@@ -21,14 +15,11 @@ use Throwable;
  *   このメールは「身に覚えのない再発行に気づけるように」するためのもの。
  * ⚠ ログイン画面の URL は**呼び出し側から渡す**。キューの中で `route()` を呼ぶと
  *   `APP_URL` に頼ることになり、本番で `/index.php` が抜ける（要件 15.1）。
+ * ⚠ 送り直しは 3 回・60 秒あけ、送れた・送れなかったを記録する（決裁の管理者の画面の帯。段階3 設計書 D6・D2。ApprovalMailable）。
+ *   差出人は全体の設定のまま（「経営管理システム」のメール。決裁の知らせの差出人の名前は使わない）
  */
-class PasswordReissuedMail extends Mailable implements ShouldQueue
+class PasswordReissuedMail extends ApprovalMailable
 {
-    use Queueable, SerializesModels;
-
-    // 段階0 の OpsTestMail と同じ方針: 1 回の失敗でそのまま failed() を呼ばせ、laravel.log に残す
-    public $tries = 1;
-
     public function __construct(
         public User $recipient,
         public string $actorName,
@@ -52,8 +43,13 @@ class PasswordReissuedMail extends Mailable implements ShouldQueue
         ]);
     }
 
-    public function failed(Throwable $e): void
+    protected function failedRecipientName(): string
     {
-        Log::error('パスワード再発行の通知メールを送れませんでした（宛先: ' . implode('、', array_column($this->to, 'address')) . '）: ' . $e->getMessage());
+        return $this->recipient->name;
+    }
+
+    protected function failureLabel(): string
+    {
+        return 'パスワード再発行の通知メールを送れませんでした';
     }
 }

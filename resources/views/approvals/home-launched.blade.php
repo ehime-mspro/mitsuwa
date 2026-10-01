@@ -10,6 +10,8 @@
 @section('content')
 <div class="max-w-[960px]">
 
+    @include('approvals._mail_failure')
+
     @if(session('warning'))
         <div class="mb-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-800">
             {{ session('warning') }}

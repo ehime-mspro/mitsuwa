@@ -29,4 +29,26 @@ final class MailDelivery
             'mail_last_failed_to' => mb_substr($recipientName, 0, 255),
         ]);
     }
+
+    /**
+     * 帯に出す「最後に送れなかった」（そのあとに 1 通も送れていないときだけ）。無ければ null。
+     * ⚠ 設定の行を作らずに読む（管理の画面は使い始める前から開く。行が無ければ帯も無い）
+     *
+     * @return array{at: \Carbon\CarbonInterface, to: string}|null
+     */
+    public static function pendingFailure(): ?array
+    {
+        $row = ApprovalSetting::query()->whereKey(ApprovalSetting::SINGLETON_ID)
+            ->first(['id', 'mail_last_sent_at', 'mail_last_failed_at', 'mail_last_failed_to']);
+
+        if ($row?->mail_last_failed_at === null) {
+            return null;
+        }
+
+        if ($row->mail_last_sent_at !== null && $row->mail_last_sent_at->gt($row->mail_last_failed_at)) {
+            return null;
+        }
+
+        return ['at' => $row->mail_last_failed_at, 'to' => (string) $row->mail_last_failed_to];
+    }
 }

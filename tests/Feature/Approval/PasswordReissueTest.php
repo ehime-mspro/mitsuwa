@@ -196,14 +196,12 @@ class PasswordReissueTest extends TestCase
     }
 
     /**
-     * 1 回の失敗でそのまま `failed()` を呼ばせる（`$tries = 1`）。
+     * 送り直しは 3 回・60 秒あけ（要件 15.3。段階3 設計書 D6 で 1 回から揃えた。決裁の知らせのメールと同じ ApprovalMailable）。
      *
-     * ⚠ これは**実挙動**を決めている。`routes/console.php` の worker は
-     *   `--tries=3 --backoff=60` なので、この行が消えると 3 回・60 秒待ちに変わる
-     *   （`SendQueuedMailable` が `property_exists($mailable, 'tries')` でペイロードに載せ、
-     *   `Job::maxTries()` が worker の指定を上書きする。vendor で確認済み）。
+     * ⚠ これは**実挙動**を決めている（`SendQueuedMailable` が `property_exists($mailable, 'tries')` でペイロードに載せ、
+     *   `Job::maxTries()` が worker の指定を上書きする。vendor で確認済み）。キューのジョブの形で見る。
      */
-    public function test_it_gives_up_after_one_attempt(): void
+    public function test_it_is_tried_three_times_a_minute_apart(): void
     {
         $mail = new PasswordReissuedMail(
             User::factory()->create(['must_change_password' => false]),
@@ -212,9 +210,9 @@ class PasswordReissueTest extends TestCase
             'https://example.com/login',
         );
 
-        // ⚠ 先に存在を見る（消されたときの赤が「Undefined property」になって理由が読めないため）
-        $this->assertTrue(property_exists($mail, 'tries'), '$tries が無い（worker の --tries=3 に従うようになる）');
-        $this->assertSame(1, $mail->tries);
+        $job = new \Illuminate\Mail\SendQueuedMailable($mail);
+        $this->assertSame(3, $job->tries);
+        $this->assertSame(60, $job->backoff());
     }
 
     /**

@@ -14,6 +14,7 @@
      ⚠ 件名・申請部門は最後に提出した控えのもの（差戻し中の直しかけを出さない。D26）。保存した日時は JapanTime::format（Bug #61） --}}
 @section('content')
 <div>
+    @include('approvals._mail_failure')
     <h1 class="text-lg font-bold text-gray-900 mb-2">進行中の申請の管理</h1>
     <p class="text-[12px] text-gray-500 mb-4 max-w-[720px]">止まっている申請を見つけて、詳細の画面で部門長の確認の付け替え・押し間違いの取り消し・申請者に代わっての取り下げを行います。決裁したあとの押し間違いは「決裁済み・否決」から開きます。</p>
 

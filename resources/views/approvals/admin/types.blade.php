@@ -28,6 +28,7 @@
     $refusedCreate = $refused && old('edit_id') === null && old('_method') === null;
 @endphp
 <div x-data="approvalTypes()" x-cloak>
+    @include('approvals._mail_failure')
 
     {{-- 成功・失敗の帯はレイアウトが出す（ここで出すと画面に 2 回出る）。$errors だけ各ビューの責任 --}}
     @if($errors->any())
