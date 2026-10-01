@@ -19,6 +19,7 @@ use Tests\TestCase;
  *   （契約タブは「既にアクティブな契約」の警告だけ、過去契約は契約中の契約と重ならなければ何も出なかった）。
  * ⚠ 見分けのキーは 区画・顧客（テナント名が空欄なら顧客の無い契約）・契約日（設計書 §4.2）。
  *   賃料・状態・解約日・備考は使わない。削除した契約とは突き合わせない。テナントの 2 タブは同じキーで照合する。
+ *   顧客は名前で比べ、同名の顧客が 2 人以上いれば、どの人に紐づく契約でも同じ契約とみなす（2026-09-30 の利用者の決定。15 の節）。
  * ⚠ どれも、プレビューが描いた確定のフォームを分解してそのまま送り返す往復（SubmitsImportPreview。Bug #47 / #54 ②）。
  *   スキップの理由は「行N: …」の全文で見て、役割（viewData）と表示（画面の文字）を別々に見る（Bug #43 / #54 ④）。
  * ⚠ 「入る」を見るテスト（見分けのキーが 1 つ違う・削除した契約・まだ無い顧客）は、直す前のコードでも緑になる。
@@ -710,8 +711,77 @@ class TenantContractReimportTest extends TestCase
     }
 
     // ================================================================
+    // 15: 同名の顧客（2026-09-30 の利用者の決定）
+    //   同名の顧客がいても、区画・契約日・テナント名の完全一致だけを重複にする。
+    //   解約したあとで同じ人が同じ区画を再契約することがあるので、契約日が違えば取り込む。
+    // ================================================================
+
+    /** @return array<string, array{0: string, 1: string, 2: string}> [タブ, CSV, 登録済みの契約日] */
+    public static function sameNameRegisteredCases(): array
+    {
+        return [
+            '契約'     => ['contract', self::CONTRACT_HEADER . "\n" . self::CONTRACT_ROW_1 . "\n", '2026-04-01'],
+            '過去契約' => ['past-contract', self::PAST_HEADER . "\n" . self::PAST_ROW_1 . "\n", '2020-04-01'],
+        ];
+    }
+
+    #[DataProvider('sameNameRegisteredCases')]
+    public function test_a_row_skips_the_same_contract_of_another_customer_with_the_same_name(string $tab, string $csv, string $contractDate): void
+    {
+        // ⚠ 直す前は顧客の id で照合していた。CSV のテナント名は同名の 1 人目に引き当たるので、
+        //   2 人目に紐づく登録済みの契約は見つからず、上げ直すと二重に入った（2026-09-30 の最終レビューの M3）
+        $twin = $this->twin();
+        $registered = $this->registered($this->unit1A, $twin, $contractDate, ['status' => 'terminated', 'contract_end_date' => '2026-08-31']);
+
+        $preview = $this->assertPreviewSkipsEveryRow($tab, $csv, 1);
+
+        $skip = $tab === 'contract' ? self::CONTRACT_SKIP : self::PAST_SKIP;
+        $this->assertSame([['row' => 2, 'message' => sprintf($skip, $registered->contract_number)]], $preview->viewData('skippedRows'));
+    }
+
+    /** @return array<string, array{0: string, 1: string, 2: string, 3: string, 4: string}> [タブ, CSV, 登録済みの区画, 登録済みの契約日, 登録済みの解約日] */
+    public static function sameNameRowsWithAnotherKey(): array
+    {
+        return [
+            '契約: 解約したあとの再契約（契約日が違う）' => ['contract', self::CONTRACT_HEADER . "\n" . self::CONTRACT_ROW_1 . "\n", '1A', '2020-04-01', '2023-03-31'],
+            '契約: 区画が違う'                           => ['contract', self::CONTRACT_HEADER . "\n" . self::CONTRACT_ROW_1 . "\n", '2A', '2026-04-01', '2026-08-31'],
+            '過去契約: 解約したあとの再契約（契約日が違う）' => ['past-contract', self::PAST_HEADER . "\n" . self::PAST_ROW_1 . "\n", '1A', '2017-04-01', '2020-03-31'],
+            '過去契約: 区画が違う'                           => ['past-contract', self::PAST_HEADER . "\n" . self::PAST_ROW_1 . "\n", '2A', '2020-04-01', '2023-03-31'],
+        ];
+    }
+
+    #[DataProvider('sameNameRowsWithAnotherKey')]
+    public function test_a_row_for_a_same_name_customer_is_imported_when_the_unit_or_the_contract_date_differs(
+        string $tab, string $csv, string $unit, string $contractDate, string $endDate
+    ): void {
+        $this->registered($unit === '1A' ? $this->unit1A : $this->unit2A, $this->twin(), $contractDate, ['status' => 'terminated', 'contract_end_date' => $endDate]);
+
+        $preview = $this->preview($tab, $csv)->assertOk();
+
+        $this->assertSame([], $preview->viewData('skippedRows'), '完全一致でない同名の顧客の契約と突き合わせてスキップした');
+        $this->assertSame(1, $preview->viewData('validCount'));
+    }
+
+    // ================================================================
     // 部品
     // ================================================================
+
+    /**
+     * $this->customer と同名の 2 人目の顧客。CSV のテナント名は 1 人目（$this->customer）に引き当たる
+     * （取込の `Customer::where('name', …)->first()`）。その前提をここで確かめる — 崩れて 2 人目に引き当たると、
+     * 同名の顧客のテストが直す前のコードでも緑になる
+     */
+    private function twin(): Customer
+    {
+        $twin = Customer::create(['code' => 'CU-RE-3', 'name' => '再取込商事', 'customer_type' => 'corporation']);
+        $this->assertSame(
+            $this->customer->id,
+            Customer::where('name', '再取込商事')->first()->id,
+            '前提が崩れた: CSV のテナント名が同名の 2 人目に引き当たっている'
+        );
+
+        return $twin;
+    }
 
     private function unit(int $floor, string $room): Unit
     {

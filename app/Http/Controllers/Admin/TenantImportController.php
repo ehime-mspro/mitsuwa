@@ -39,7 +39,8 @@ use Illuminate\Validation\ValidationException;
  *   最初（CSV を読み直す前）で使う。直す前は、同じ確認画面の確定を 2 回送ると契約・過去契約が二重に入った
  *   （物件・区画・顧客は重複の確認で 2 回目が「0件を登録しました」になった）。
  * ⚠ 契約・過去契約は、登録済みの同じ契約の行をスキップする（上げ直しても二重にしない。
- *   設計書 2026-09-29-contract-reimport-design.md）。見分けのキーは 区画・顧客（テナント名が空欄なら顧客の無い契約）・契約日で、
+ *   設計書 2026-09-29-contract-reimport-design.md）。見分けのキーは 区画・テナント名（同名の顧客が 2 人以上いれば、どの人の契約でも
+ *   同じ契約とみなす。空欄なら顧客の無い契約）・契約日で、
  *   賃料・状態・解約日・備考は使わない。削除した契約とは突き合わせず、登録済みの契約は書き換えない。
  *   照合は findRegisteredContract() の 1 か所。行の検査では、日付の検査のあと・金額の検査の前に
  *   「CSV 内の重複 → 登録済みの照合」の順で見る（確定でも同じ検査をやり直す）。
@@ -815,7 +816,7 @@ class TenantImportController extends Controller
             $contractKeyTracker[$contractKey] = $rowNum;
 
             // 登録済みの同じ契約はスキップ（書き換えない。金額に誤りがあってもスキップ）
-            $registered = $this->findRegisteredContract($unit->id, $customer?->id, $contractDate);
+            $registered = $this->findRegisteredContract($unit->id, $customer?->name, $contractDate);
             if ($registered) {
                 $customerLabel = $row['customer_name'] !== '' ? $row['customer_name'] : '空欄';
                 $skippedRows[] = ['row' => $rowNum, 'message' => "区画「{$propName} {$unit->display_name}」の契約（契約日 {$contractDate}・顧客 {$customerLabel}）は既に登録済み（{$registered->contract_number}）のためスキップ"];
@@ -1082,7 +1083,7 @@ class TenantImportController extends Controller
             // 登録済みの同じ契約はスキップ（契約タブで入れた契約も同じキーで見る。書き換えない）。
             // ⚠ まだ無い顧客（取込で自動作成する予定）の行は照合しない。null を渡すと「顧客の無い契約」と取り違える
             if ($existingCustomer) {
-                $registered = $this->findRegisteredContract($unit->id, $existingCustomer->id, $contractDate);
+                $registered = $this->findRegisteredContract($unit->id, $existingCustomer->name, $contractDate);
                 if ($registered) {
                     $skippedRows[] = ['row' => $rowNum, 'message' => "区画「{$propName} {$unit->display_name}」の契約（契約日 {$contractDate}・顧客 {$custName}）は既に登録済み（{$registered->contract_number}）のためスキップ"];
                     continue;
@@ -1374,19 +1375,22 @@ class TenantImportController extends Controller
     }
 
     /**
-     * 登録済みの同じ契約（区画・顧客・契約日。クラスの docblock）。顧客が null なら「顧客の無い契約」と比べる。
+     * 登録済みの同じ契約（区画・テナント名・契約日。クラスの docblock）。テナント名が null なら「顧客の無い契約」と比べる。
+     * 同名の顧客が 2 人以上いれば、どの人に紐づく契約でも同じ契約とみなす（2026-09-30 の利用者の決定。完全一致だけを重複にする。
+     * 顧客の id で比べていたときは、CSV のテナント名が同名の 1 人目に引き当たるので 2 人目の契約を見落とし、上げ直すと二重に入った）。
+     * 名前は、取込が顧客を引き当てるのと同じ比べ方（`Customer::where('name', …)`）。削除した顧客は数えない（顧客の既定の絞り込み）。
      * 削除した契約とは突き合わせない（Contract の既定の絞り込み）。同じキーの契約が 2 件以上あれば、
      * id のいちばん小さいもの（最初に登録されたもの）を返す（以前の二重送信の名残。消さない）。
      * ⚠ 日付は whereDate で比べる（テストの SQLite は date キャストの値を `Y-m-d 00:00:00` で保存するので、素の where は一致しない。
      *   2026-09-29 に実測）
      */
-    private function findRegisteredContract(int $unitId, ?int $customerId, string $contractDate): ?Contract
+    private function findRegisteredContract(int $unitId, ?string $customerName, string $contractDate): ?Contract
     {
         return Contract::where('unit_id', $unitId)
             ->when(
-                $customerId === null,
+                $customerName === null,
                 fn ($query) => $query->whereNull('customer_id'),
-                fn ($query) => $query->where('customer_id', $customerId)
+                fn ($query) => $query->whereIn('customer_id', Customer::where('name', $customerName)->select('id'))
             )
             ->whereDate('contract_date', $contractDate)
             ->orderBy('id')
