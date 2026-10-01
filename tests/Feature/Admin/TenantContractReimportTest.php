@@ -7,6 +7,7 @@ use App\Models\Customer;
 use App\Models\Property;
 use App\Models\Unit;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\ParsesForms;
 use Tests\Concerns\SubmitsImportPreview;
@@ -20,6 +21,7 @@ use Tests\TestCase;
  * ⚠ 見分けのキーは 区画・顧客（テナント名が空欄なら顧客の無い契約）・契約日（設計書 §4.2）。
  *   賃料・状態・解約日・備考は使わない。削除した契約とは突き合わせない。テナントの 2 タブは同じキーで照合する。
  *   顧客は名前で比べ、同名の顧客が 2 人以上いれば、どの人に紐づく契約でも同じ契約とみなす（2026-09-30 の利用者の決定。15 の節）。
+ *   新しく取り込む契約は、同名の顧客のうち最初に登録された顧客に紐づける（2026-10-01 の利用者の決定。16 の節）。
  * ⚠ どれも、プレビューが描いた確定のフォームを分解してそのまま送り返す往復（SubmitsImportPreview。Bug #47 / #54 ②）。
  *   スキップの理由は「行N: …」の全文で見て、役割（viewData）と表示（画面の文字）を別々に見る（Bug #43 / #54 ④）。
  * ⚠ 「入る」を見るテスト（見分けのキーが 1 つ違う・削除した契約・まだ無い顧客）は、直す前のコードでも緑になる。
@@ -763,12 +765,61 @@ class TenantContractReimportTest extends TestCase
     }
 
     // ================================================================
+    // 16: 同名の顧客がいるとき、新しく取り込む契約は最初に登録された顧客に紐づける（2026-10-01 の利用者の決定）
+    //   警告は出さない。本番は同名の組が 0 組（2026-10-01 に読み取りで数えた）。
+    //   ⚠ テストの SQLite は並び順を指定しなくても id の順に返すので、紐づけ先を見るテストだけでは
+    //     `orderBy('id')` を消しても緑のまま（等価変異）。並び順の保証は、流れた SQL を見るテストが受け持つ。
+    // ================================================================
+
+    /** @return array<string, array{0: string, 1: string}> [タブ, 1 行の CSV（テナント名は再取込商事）] */
+    public static function sameNameImportCases(): array
+    {
+        return [
+            '契約'     => ['contract', self::CONTRACT_HEADER . "\n" . self::CONTRACT_ROW_1 . "\n"],
+            '過去契約' => ['past-contract', self::PAST_HEADER . "\n" . self::PAST_ROW_1 . "\n"],
+        ];
+    }
+
+    #[DataProvider('sameNameImportCases')]
+    public function test_a_new_contract_for_a_same_name_customer_belongs_to_the_first_registered_one(string $tab, string $csv): void
+    {
+        $this->twin();
+
+        $this->confirm($tab, $csv)->assertRedirect(route('admin.tenant-import', ['tab' => $tab]));
+
+        $this->assertSame($this->customer->id, Contract::sole()->customer_id, '最初に登録された顧客に紐づいていない');
+        $this->assertSame(3, Customer::count(), '過去契約の取込が同名の顧客を新しく作った');
+    }
+
+    #[DataProvider('sameNameImportCases')]
+    public function test_the_customer_is_looked_up_by_name_in_id_order(string $tab, string $csv): void
+    {
+        $this->twin();
+
+        DB::enableQueryLog();
+        $this->preview($tab, $csv)->assertOk();
+        $queries = DB::getQueryLog();
+        DB::disableQueryLog();
+
+        // 取込が顧客を名前で 1 人引く問い合わせ（照合の `select "id" from "customers"` の副問い合わせは含まない）
+        $lookups = array_values(array_filter(
+            $queries,
+            fn (array $q) => str_starts_with($q['query'], 'select * from "customers" where "name" = ?')
+        ));
+        $this->assertNotEmpty($lookups, '顧客を名前で引く問い合わせが 1 本も無い（測定が無効）');
+        foreach ($lookups as $lookup) {
+            $this->assertSame(['再取込商事'], $lookup['bindings']);
+            $this->assertStringEndsWith('order by "id" asc limit 1', $lookup['query'], '同名の顧客を引く並び順が id の順に決まっていない');
+        }
+    }
+
+    // ================================================================
     // 部品
     // ================================================================
 
     /**
      * $this->customer と同名の 2 人目の顧客。CSV のテナント名は 1 人目（$this->customer）に引き当たる
-     * （取込の `Customer::where('name', …)->first()`）。その前提をここで確かめる — 崩れて 2 人目に引き当たると、
+     * （取込の `Customer::where('name', …)->orderBy('id')->first()`）。その前提をここで確かめる — 崩れて 2 人目に引き当たると、
      * 同名の顧客のテストが直す前のコードでも緑になる
      */
     private function twin(): Customer
@@ -776,7 +827,7 @@ class TenantContractReimportTest extends TestCase
         $twin = Customer::create(['code' => 'CU-RE-3', 'name' => '再取込商事', 'customer_type' => 'corporation']);
         $this->assertSame(
             $this->customer->id,
-            Customer::where('name', '再取込商事')->first()->id,
+            Customer::where('name', '再取込商事')->orderBy('id')->first()->id,
             '前提が崩れた: CSV のテナント名が同名の 2 人目に引き当たっている'
         );
 

@@ -772,7 +772,8 @@ class TenantImportController extends Controller
             if ($row['customer_name'] !== '') {
                 $custName = $row['customer_name'];
                 if (!isset($customerCache[$custName])) {
-                    $cust = Customer::where('name', $custName)->first();
+                    // 同名の顧客が 2 人以上いれば、最初に登録された顧客に紐づける（2026-10-01 の利用者の決定）
+                    $cust = Customer::where('name', $custName)->orderBy('id')->first();
                     $customerCache[$custName] = $cust;
                 }
                 if (!$customerCache[$custName]) {
@@ -1060,7 +1061,8 @@ class TenantImportController extends Controller
             // 顧客の存在チェック（なければ自動作成予定リストに追加）
             $custName = $row['customer_name'];
             if (!isset($customerCache[$custName])) {
-                $cust = Customer::where('name', $custName)->first();
+                // 同名の顧客が 2 人以上いれば、最初に登録された顧客に紐づける（2026-10-01 の利用者の決定）
+                $cust = Customer::where('name', $custName)->orderBy('id')->first();
                 $customerCache[$custName] = $cust;
             }
             $customerWillBeCreated = false;
