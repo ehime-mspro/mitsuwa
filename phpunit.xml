@@ -23,8 +23,11 @@
              （実測: 9 回中 4 回が Fatal error。落ちる場所は毎回フレームワーク側で、
              コンパイル済み Blade や PHPUnit のメタデータパーサだった）。
              テストが増えるほど確実に壊れるので明示的に引き上げる。
-             ⚠ この行を消すと「特定のテストが悪い」ように見える不安定な失敗が戻る。 -->
-        <ini name="memory_limit" value="512M"/>
+             ⚠ この行を消すと「特定のテストが悪い」ように見える不安定な失敗が戻る。
+             2026-10-01: 512M でもピークが 503.50 MB（3140 本。上限の 98%）になり、決裁 段階3a のテストを
+             足すと 515.50 MB（3204 本）で Fatal error になったので 1G にした。テスト 1 本あたり平均 160 KB ほど
+             増えたまま戻らない（フレームワーク側で解放されない分。2026-08-16 から同じ傾向）。 -->
+        <ini name="memory_limit" value="1G"/>
         <env name="APP_ENV" value="testing"/>
         <env name="APP_URL" value="http://localhost"/>
         <!-- 本番は APP_LOCALE=ja / APP_FALLBACK_LOCALE=ja。config/app.php の既定は 'en' なので
