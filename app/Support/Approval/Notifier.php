@@ -5,8 +5,10 @@ namespace App\Support\Approval;
 use App\Enums\ApprovalDecision;
 use App\Enums\ApprovalStatus;
 use App\Enums\ApprovalStepKind;
+use App\Enums\ApprovalStepStatus;
 use App\Enums\UserStatus;
 use App\Mail\ApprovalNoticeMail;
+use App\Models\ApprovalDepartment;
 use App\Models\ApprovalHistory;
 use App\Models\ApprovalMailDomain;
 use App\Models\ApprovalNotice;
@@ -68,6 +70,40 @@ final class Notifier
         }
 
         $notifier->send();
+    }
+
+    /**
+     * 場面 2（審査担当者の追加）: 足した人に、その審査部門で審査を待っている申請ごとに（まだ届いていない審査は、届いたときに
+     * 場面 1 で知らせる）
+     *
+     * @param Collection<int, User> $added 足した審査担当者（前後の差）
+     */
+    public static function reviewersAdded(User $actor, ApprovalDepartment $department, Collection $added): void
+    {
+        if ($added->isEmpty()) {
+            return;
+        }
+
+        $steps = ApprovalStep::with('request')
+            ->where('kind', ApprovalStepKind::Review->value)
+            ->where('status', ApprovalStepStatus::Waiting->value)
+            ->where('department_id', $department->id)
+            ->orderBy('id')
+            ->get();
+
+        self::handlerChanged($actor, $steps, $added, NoticeText::REVIEWER_ADDED);
+    }
+
+    /** 場面 2（社長の交代）: 新しい社長に、社長の決裁を待っているすべての申請ごとに */
+    public static function presidentChanged(User $actor, User $president): void
+    {
+        $steps = ApprovalStep::with('request')
+            ->where('kind', ApprovalStepKind::President->value)
+            ->where('status', ApprovalStepStatus::Waiting->value)
+            ->orderBy('id')
+            ->get();
+
+        self::handlerChanged($actor, $steps, $president, NoticeText::PRESIDENT_CHANGED);
     }
 
     /** 場面 3: 差戻しされた（申請者へ） */

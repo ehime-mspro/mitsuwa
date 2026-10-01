@@ -199,7 +199,8 @@ final class Workflow
      *
      * 部門長の確認を待っている申請は、付け替えていても新しい部門長へ移す（付け替えを空に戻す）。
      * 移した申請は `lock_version` を 1 進める（交代の前に開いた画面から押した判断・取り下げを
-     * 「すでに処理されています」で断る。計画 §0.3）。
+     * 「すでに処理されています」で断る。計画 §0.3）。新しい部門長には、移した申請ごとに「自分の番が来た」を知らせる
+     * （段階3 設計書 D1。前の部門長には出さない D9。部門の行を更新する前なので、新しい部門長は引数から取る）。
      *
      * ⚠ ロックはほかの操作と同じ「申請の行 → 段階の行」の順に、主キーで取る（2026-09-27 の Task 7 の再点検で、
      *   MySQL 8.4.11 の REPEATABLE READ・READ COMMITTED とも 1213 が出ないことを実測）。
@@ -228,6 +229,8 @@ final class Workflow
             $requests = ApprovalRequest::whereKey($candidates->pluck('request_id')->all())->orderBy('id')->lockForUpdate()->get()->keyBy('id');
             $steps    = ApprovalStep::whereKey($candidates->pluck('id')->all())->orderBy('id')->lockForUpdate()->get();
 
+            $moved = [];
+
             foreach ($steps as $step) {
                 // ロックを待つあいだに判断・取り下げが済んだ段階は動かさない（ロック付きの読み取りは最新の行を読む）
                 if ($step->status !== ApprovalStepStatus::Waiting) {
@@ -246,7 +249,11 @@ final class Workflow
                     'step_id' => $step->id,
                     'meta'    => ['from_user_id' => $before, 'to_user_id' => $newHeadId],
                 ]);
+
+                $moved[] = $step->setRelation('request', $requests[$step->request_id]);
             }
+
+            Notifier::handlerChanged($admin, $moved, $newHeadId === null ? null : User::find($newHeadId), NoticeText::HEAD_CHANGED);
         });
     }
 
