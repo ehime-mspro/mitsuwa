@@ -34,6 +34,26 @@ class Phase2ModelsTest extends TestCase
         $this->assertSame([$world['reviewer']->id], $world['reviewDept']->reviewers->pluck('id')->all());
     }
 
+    /**
+     * 有効な審査担当者（段階3 設計書 §5.7）: 無効の人と削除した人を入れない。審査担当者の並び（reviewers）には残る
+     * （「いま誰の番か」の表示と部門の管理はこちらを使う）
+     */
+    public function test_active_reviewers_leave_out_inactive_and_deleted_users(): void
+    {
+        $world    = $this->approvalWorld();
+        $inactive = $this->baseUser(['name' => '無効 審査']);
+        $inactive->forceFill(['status' => 'inactive'])->save();
+        $deleted  = $this->baseUser(['name' => '削除 審査']);
+        $world['reviewDept']->reviewers()->attach([$inactive->id, $deleted->id]);
+        $deleted->delete();
+
+        $department = $world['reviewDept']->fresh();
+
+        $this->assertSame([$world['reviewer']->id], $department->activeReviewers->pluck('id')->all());
+        $this->assertSame(1, $department->activeReviewers()->count());
+        $this->assertEqualsCanonicalizing([$world['reviewer']->id, $inactive->id], $department->reviewers->pluck('id')->all());
+    }
+
     /** 12.6 の歯止めが出す理由（部門長が先・次に審査担当者・どちらでもなければ null） */
     public function test_the_assignment_label_names_the_department(): void
     {

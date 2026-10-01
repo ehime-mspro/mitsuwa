@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Approval;
 use App\Enums\ApprovalStatus;
 use App\Enums\ApprovalStepKind;
 use App\Enums\ApprovalStepStatus;
-use App\Enums\UserStatus;
 use App\Http\Controllers\Approval\Concerns\ReturnsToRequestDetail;
 use App\Http\Controllers\Controller;
 use App\Models\ApprovalRequest;
@@ -70,7 +69,8 @@ class AdminRequestController extends Controller
         }
 
         $presidentId = ApprovalSetting::current()->president_user_id;
-        $rows = ApprovalRequest::with($with)
+        // 印の「審査担当者が申請者本人しかいない」は有効な人で数える（activeReviewers()）
+        $rows = ApprovalRequest::with([...$with, 'steps.department.activeReviewers'])
             ->whereIn('status', array_map(fn (ApprovalStatus $status) => $status->value, self::IN_PROGRESS))
             ->get()
             ->map(fn (ApprovalRequest $r) => $this->row($r, $presidentId))
@@ -172,7 +172,7 @@ class AdminRequestController extends Controller
     private static function onlyApplicantReviews(ApprovalRequest $r, ApprovalStep $step): bool
     {
         /** @var Collection<int, User> $active */
-        $active = ($step->department?->reviewers ?? collect())->filter(fn (User $u) => $u->status === UserStatus::Active);
+        $active = $step->department?->activeReviewers ?? collect();
 
         return $active->contains('id', $r->user_id) && $active->where('id', '!=', $r->user_id)->isEmpty();
     }

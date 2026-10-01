@@ -3,7 +3,6 @@
 namespace App\Support\Approval;
 
 use App\Enums\ApprovalStatus;
-use App\Enums\UserStatus;
 use App\Models\ApprovalRequest;
 use App\Models\ApprovalSetting;
 use App\Models\ApprovalType;
@@ -73,9 +72,8 @@ final class SubmitChecker
     /** 審査部門に、申請者本人以外の有効な審査担当者がいるか（4.3 のケース 4） */
     private static function hasOtherReviewer(ApprovalType $type, User $user): bool
     {
-        return $type->reviewDepartment->reviewers()
+        return $type->reviewDepartment->activeReviewers()
             ->where('users.id', '!=', $user->id)
-            ->where('users.status', UserStatus::Active->value)
             ->exists();
     }
 }
