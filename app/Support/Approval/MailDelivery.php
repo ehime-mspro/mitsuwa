@@ -4,6 +4,8 @@ namespace App\Support\Approval;
 
 use App\Models\ApprovalSetting;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * 決裁のメールが送れたか・送れなかったかの記録（段階3 設計書 D2・§5.5）。決裁の管理者の画面の黄色の帯に使う。
@@ -15,10 +17,18 @@ use Illuminate\Support\Facades\DB;
  */
 final class MailDelivery
 {
-    /** 1 通送れた */
+    /**
+     * 1 通送れた。
+     * ⚠ 記録が書けなくても例外を外へ出さない（メールはもう送れている。記録の失敗でキューが同じメールを送り直すと、
+     *   3 通届いたうえで 3 回目のあとに「送れなかった」の帯まで出て、事実と逆になる。2026-10-01 の最後の点検で実測）
+     */
     public static function recordSent(): void
     {
-        DB::table('approval_settings')->where('id', ApprovalSetting::SINGLETON_ID)->update(['mail_last_sent_at' => now()]);
+        try {
+            DB::table('approval_settings')->where('id', ApprovalSetting::SINGLETON_ID)->update(['mail_last_sent_at' => now()]);
+        } catch (Throwable $e) {
+            Log::warning('メールは送れたが、送れた記録を残せませんでした: ' . $e->getMessage());
+        }
     }
 
     /** 送り直し 3 回のあとも送れなかった（宛先は氏名で残す） */

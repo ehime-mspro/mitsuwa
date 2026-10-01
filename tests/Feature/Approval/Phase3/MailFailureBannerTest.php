@@ -9,7 +9,11 @@ use App\Support\Approval\MailDelivery;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Mail\Factory as MailFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Queue\Console\WorkCommand;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
+use ReflectionProperty;
 use RuntimeException;
 use Tests\Concerns\BuildsApprovalFixtures;
 use Tests\TestCase;
@@ -108,5 +112,49 @@ class MailFailureBannerTest extends TestCase
         $this->travel(1)->minutes();
         $mail->send(app(MailFactory::class));
         $this->actingAs($admin)->get(route('approvals.home'))->assertDontSee(self::BANNER);
+    }
+
+    /**
+     * 送れた記録（recordSent）が書けなくても、メールは 1 通だけ・送れなかった扱いにも帯にもならない。
+     * 記録の失敗でキューが同じメールを送り直すと、3 通届いたうえで事実と逆の帯が出る（2026-10-01 の最後の点検で実測）。
+     * 本番と同じ database のキュー → queue:work の道を通し、記録の UPDATE だけを失敗させる（接続が切れた・列が無い、の代わり）
+     */
+    public function test_a_failure_to_record_a_sent_mail_does_not_make_the_queue_resend_it(): void
+    {
+        $this->resetWorkCommandListeners();
+        config(['queue.default' => 'database']);
+        $admin = $this->approvalAdmin();
+        $user  = User::factory()->create(['name' => '再発行 太郎', 'must_change_password' => false]);
+
+        Mail::to('taro@mitsuwat.co.jp')->queue(new PasswordReissuedMail($user, '管理 花子', now(), 'https://example.com/login'));
+        $this->assertSame(1, DB::table('jobs')->count());
+
+        DB::connection()->beforeExecuting(function (string $query): void {
+            if (str_contains($query, 'set "mail_last_sent_at"')) {
+                throw new RuntimeException('接続が切れました');
+            }
+        });
+        Log::spy();
+
+        // 本番の定期実行と同じ設定。送り直しの間（60 秒）をまたいで 3 回処理する（直す前は 3 回とも送られ、3 回目のあとで failed が呼ばれた）
+        for ($run = 1; $run <= 3; $run++) {
+            $this->artisan('queue:work', ['--stop-when-empty' => true, '--tries' => 3, '--backoff' => 60, '--memory' => 1024])->assertExitCode(0);
+            $this->travel(2)->minutes();
+        }
+
+        $this->assertCount(1, app('mailer')->getSymfonyTransport()->messages());
+        $this->assertSame(0, DB::table('jobs')->count());
+        $this->assertSame(0, DB::table('failed_jobs')->count());
+        Log::shouldNotHaveReceived('error');
+        Log::shouldHaveReceived('warning')
+            ->withArgs(fn (string $message) => str_contains($message, 'メールは送れたが、送れた記録を残せませんでした') && str_contains($message, '接続が切れました'))
+            ->once();
+        $this->actingAs($admin)->get(route('approvals.home'))->assertOk()->assertDontSee(self::BANNER);
+    }
+
+    /** WorkCommand は同じ PHP プロセスの中で 2 回目以降リスナーを登録し直さない（private static フラグ）。queue:work の前にリセットする */
+    private function resetWorkCommandListeners(): void
+    {
+        (new ReflectionProperty(WorkCommand::class, 'hasRegisteredListeners'))->setValue(null, false);
     }
 }
