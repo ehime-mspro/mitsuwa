@@ -60,7 +60,7 @@ class MailFailureBannerTest extends TestCase
 
         foreach ($this->adminPagesBeforeLaunch() as $url) {
             $this->actingAs($admin)->get($url)->assertOk()
-                ->assertSee('通知メールが送れていません。最後に送れなかったのは 9/30 10:05（宛先: 山田 花子さん）です。画面のお知らせは届いています。メールの設定の確認が必要です。');
+                ->assertSee('通知メールが送れていません。最後に送れなかったのは 9/30 10:05（宛先: 山田 花子さん）です。決裁のお知らせは画面にも届いています。メールの設定の確認が必要です。');
         }
 
         $this->launchApprovals();
