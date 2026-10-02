@@ -2,7 +2,10 @@
 
 namespace App\Http\Controllers\Zeal;
 
+use App\Enums\ZealAcquisitionSource;
 use App\Enums\ZealContractChangeReason;
+use App\Enums\ZealPurpose;
+use App\Enums\ZealWithdrawReason;
 use App\Http\Controllers\Controller;
 use App\Models\ZealMember;
 use App\Models\ZealMemberContract;
@@ -13,6 +16,7 @@ use App\Support\Settings;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 /**
  * ZEAL 会員管理コントローラー
@@ -145,6 +149,8 @@ class MemberController extends Controller
      */
     public function update(Request $request, ZealMember $member)
     {
+        // ⚠ 上限は列の大きさに合わせる（database/sql/create_zeal_tables.sql・本番と一致）。列より広いと本番の MySQL が断って 500。
+        //   選択肢の項目はモデルが enum として読むので、選択肢に無い値は保存の前に 500（docs/RULES.md Bug #73）
         $validated = $request->validate([
             'store_id'           => 'required|integer|exists:zeal_stores,id',
             'name'               => 'required|string|max:50',
@@ -152,12 +158,12 @@ class MemberController extends Controller
             'gender'             => 'required|string|in:male,female,other',
             'birthday'           => 'nullable|date',
             'phone'              => 'nullable|string|max:20',
-            'email'              => 'nullable|email|max:200',
+            'email'              => 'nullable|email|max:100',
             'postal_code'        => 'nullable|string|max:8',
             'address'            => 'nullable|string|max:200',
             'trainer_id'         => 'nullable|exists:zeal_trainers,id',
-            'acquisition_source' => 'nullable|string',
-            'purpose'            => 'nullable|string',
+            'acquisition_source' => ['nullable', Rule::enum(ZealAcquisitionSource::class)],
+            'purpose'            => ['nullable', Rule::enum(ZealPurpose::class)],
             'memo'               => 'nullable|string|max:1000',
         ], [], [
             // 画面ラベルに合わせる（lang/ja/validation.php の既定は「名称」「住所」）
@@ -195,12 +201,13 @@ class MemberController extends Controller
      */
     public function changePlan(Request $request, ZealMember $member)
     {
+        // ⚠ 上限は契約の列に合わせる（applied_price_excl は INT UNSIGNED・note は 200 文字。docs/RULES.md Bug #73）
         $validated = $request->validate([
             'plan_id'              => 'required|exists:zeal_plans,id',
             'change_date'          => 'required|date',
-            'applied_price_excl'   => 'required|integer|min:0',
+            'applied_price_excl'   => 'required|integer|min:0|max:4294967295',
             'is_campaign_applied'  => 'boolean',
-            'note'                 => 'nullable|string|max:500',
+            'note'                 => 'nullable|string|max:200',
         ]);
 
         $plan = ZealPlan::findOrFail($validated['plan_id']);
@@ -258,7 +265,7 @@ class MemberController extends Controller
 
         $validated = $request->validate([
             'withdrew_on'     => 'required|date',
-            'withdraw_reason' => 'required|string',
+            'withdraw_reason' => ['required', Rule::enum(ZealWithdrawReason::class)],   // enum として読む（Bug #73）
             'withdraw_note'   => 'nullable|string|max:500',
         ]);
 

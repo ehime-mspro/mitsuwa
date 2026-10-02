@@ -135,7 +135,7 @@
                     メールアドレス<span class="optional">任意</span>
                 </label>
                 <input type="email" id="email" name="email" value="{{ $valEmail }}"
-                       maxlength="200"
+                       maxlength="100"
                        placeholder="例: yamamoto@example.com"
                        class="form-input w-full" style="margin-bottom: 0;">
             </div>

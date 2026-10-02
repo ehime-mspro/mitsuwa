@@ -445,7 +445,7 @@
                 {{-- 備考 --}}
                 <div class="zeal-modal-row">
                     <label class="zeal-modal-label" for="modal_note">備考</label>
-                    <textarea id="modal_note" name="note" rows="3"
+                    <textarea id="modal_note" name="note" rows="3" maxlength="200"
                               placeholder="変更理由・備考など"
                               style="width: 100%; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; resize: vertical; box-sizing: border-box;"></textarea>
                 </div>
