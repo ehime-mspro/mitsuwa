@@ -546,7 +546,8 @@ class AreaBuildingImportTest extends AreaBuildingTestCase
 
         $this->assertSame(20, AreaBuildingTenant::count());
 
-        // 内訳: ビル一覧 1 + INSERT 20 + 現況テナント数の集計 1 = 22
+        // 内訳: ビル一覧 1 + 登録済みの行の先読み 1 + INSERT 20 + 現況テナント数の集計 1 = 23
+        // ⚠ 先読みをビルごと・行ごとにすると 20 本増えて落ちる（設計書 2026-10-01-area-tenant-reimport-design.md §4.3）
         $this->assertLessThanOrEqual(
             25,
             $queries,
@@ -656,9 +657,10 @@ class AreaBuildingImportTest extends AreaBuildingTestCase
     }
 
     /**
-     * 再取込は行を二重にする。突合キーが設計に無いので防げないが、**気づけるようにする**（I-5）。
-     * ⚠ `AreaBuildingController::divergence()` が現況テナント数を見るので、
-     *   二重取込は乖離警告に嘘の数字を出させる。
+     * 取込のあとに現況テナント数を返す（I-5）。⚠ `AreaBuildingController::divergence()` が現況テナント数を見るので、
+     *   二重の行は乖離警告に嘘の数字を出させる。
+     * 上げ直しは登録済みと同じ行をスキップする（2026-10-01。設計書 2026-10-01-area-tenant-reimport-design.md。
+     *   詳しい場面は AreaBuildingTenantReimportTest）。それまでは 2 回で 2 件になっていた。
      */
     public function test_repeated_tenant_import_reports_the_current_total(): void
     {
@@ -669,8 +671,9 @@ class AreaBuildingImportTest extends AreaBuildingTestCase
         $this->assertStringContainsString('取込後の現況テナント数: アルファビル 1 件', session('success'));
 
         $this->importTenants($rows)->assertRedirect();
-        $this->assertSame(2, $building->tenants()->count());
-        $this->assertStringContainsString('取込後の現況テナント数: アルファビル 2 件', session('success'));
+        $this->assertSame(1, $building->tenants()->count());
+        $this->assertStringContainsString('登録済みのためスキップ 1 件', session('success'));
+        $this->assertStringContainsString('取込後の現況テナント数: アルファビル 1 件', session('success'));
     }
 
     /** 画面にも「2 回取り込むと二重になる」注意書きを出す */

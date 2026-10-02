@@ -43,6 +43,10 @@ use Illuminate\Support\Facades\Auth;
  *   （既存の行と突き合わせる手がかりが無い作り。ビル＋調査は同一年月のスキップで 2 回目が「調査追加 0 件」になった）。
  *   断ったら取込の画面へ戻す（開き直すので新しい鍵が出る）。送ったあと「戻る」で戻った画面は、画面の部品が読み込み直す
  *   （_partials/_submit_once の reloadOnReturn）。
+ *
+ * ⚠ 取込の画面を開き直してファイルを選び直す（上げ直す）と新しい鍵になるので、上げ直しは鍵では止まらない。テナント明細は
+ *   登録済みの行（退去済みも含む）と ビル・階・部屋番号・テナント名 で照合し、同じ行は登録済みの行の数までスキップする
+ *   （設計書 2026-10-01-area-tenant-reimport-design.md。importTenants()・tenantKey()）。2026-10-01 までは突き合わせず二重に入っていた。
  */
 class AreaBuildingImportController extends Controller
 {
@@ -269,6 +273,7 @@ class AreaBuildingImportController extends Controller
     private function importTenants(array $rows): string
     {
         $created        = 0;
+        $registered     = 0;
         $blank          = 0;
         $invalid        = 0;
         $unmatchedRows  = 0;
@@ -276,6 +281,9 @@ class AreaBuildingImportController extends Controller
         $touched        = [];
 
         $map = $this->buildingMapByNormalizedName();
+
+        // 登録済みの行の数（見分けのキーごと）。上げ直しても二重にしない（設計書 2026-10-01-area-tenant-reimport-design.md）
+        $remaining = $this->registeredTenantCounts($this->buildingIdsInRows($rows, $map));
 
         foreach ($rows as $row) {
             if (! is_array($row)) {
@@ -303,13 +311,27 @@ class AreaBuildingImportController extends Controller
                 continue;
             }
 
-            $building = $map[$key];
+            $building   = $map[$key];
+            $roomNumber = $this->nullableString($row['room_number'] ?? null, 50);
+            $name       = $this->nullableString($row['name'] ?? null, 255);
+
+            // 登録済みと同じ行（ビル・階・部屋番号・テナント名）は、登録済みの行の数までスキップする（書き換えない）。
+            // ⚠ 階の検査のあとに置く（読めない階の行は「値が不正」に数える）。
+            // ⚠ この取込で入れた行は残りに足さない（ファイルの中で同じ行が並べば、超えた分はすべて入る。空き区画は並ぶのが普通）。
+            $tenantKey = $this->tenantKey($building->id, $floor, $roomNumber, $name);
+            if (($remaining[$tenantKey] ?? 0) > 0) {
+                $remaining[$tenantKey]--;
+                $registered++;
+                // 現況テナント数には並べる（全部スキップしたときも、増えていないことがその場で分かる）
+                $touched[$building->id] = $building;
+                continue;
+            }
 
             AreaBuildingTenant::create([
                 'area_building_id' => $building->id,
                 'floor'            => $floor,
-                'room_number'      => $this->nullableString($row['room_number'] ?? null, 50),
-                'name'             => $this->nullableString($row['name'] ?? null, 255),
+                'room_number'      => $roomNumber,
+                'name'             => $name,
                 'industry'         => $this->nullableString($row['industry'] ?? null, 100),
                 'status'           => AreaTenantStatus::fromRawLabel($this->text($row['status'] ?? null))->value,
             ]);
@@ -318,8 +340,9 @@ class AreaBuildingImportController extends Controller
         }
 
         $message = sprintf(
-            '取込が完了しました。テナント登録 %d 件 / ビル名が空でスキップ %d 件 / 値が不正でスキップ %d 件 / 台帳に無いビルでスキップ %d 行',
+            '取込が完了しました。テナント登録 %d 件 / 登録済みのためスキップ %d 件 / ビル名が空でスキップ %d 件 / 値が不正でスキップ %d 件 / 台帳に無いビルでスキップ %d 行',
             $created,
+            $registered,
             $blank,
             $invalid,
             $unmatchedRows
@@ -329,10 +352,11 @@ class AreaBuildingImportController extends Controller
             $message .= sprintf('（%d 棟: %s）', count($unmatchedNames), $this->joinNames(array_keys($unmatchedNames)));
         }
 
-        // ⚠ 再取込は行を二重にする（突合キーが設計に無いので重複判定ができない）。
-        //   `AreaBuildingController::divergence()` が現況テナント数と調査回の件数を
-        //   突き合わせるため、二重取込は乖離警告に嘘の数字を出させる。
-        //   せめて「今そのビルに何件あるか」を返して、その場で気づけるようにする。
+        // 「今そのビルに何件あるか」を返して、その場で確かめられるようにする。
+        //   `AreaBuildingController::divergence()` が現況テナント数と調査回の件数を突き合わせるため、
+        //   二重の行は乖離警告に嘘の数字を出させる。登録済みと同じ行はスキップする（上の照合）が、
+        //   ファイルの中で同じ行が並べば並んだ分だけ入るので、件数はここで確かめる。
+        //   ⚠ スキップした行のビルも並べる（全部スキップしたときも出る）。
         if ($touched !== []) {
             $message .= ' 取込後の現況テナント数: ' . $this->currentTenantTotals($touched);
         }
@@ -429,6 +453,80 @@ class AreaBuildingImportController extends Controller
         }
 
         return $taken;
+    }
+
+    /**
+     * ファイルの行に出てくるビルのうち、台帳で見つかったものの id（設計書 2026-10-01-area-tenant-reimport-design.md §4.3）。
+     * ⚠ 判定は importTenants() の「ビル名が空」「台帳に無いビル」と同じ（ここで拾わないビルの行は照合まで来ない）。
+     *
+     * @param  array<string, AreaBuilding>  $map
+     * @return list<int>
+     */
+    private function buildingIdsInRows(array $rows, array $map): array
+    {
+        $ids = [];
+
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $key = AreaBuilding::normalizeName($this->text($row['building_name'] ?? null));
+            if ($key !== '' && isset($map[$key])) {
+                $ids[$map[$key]->id] = true;
+            }
+        }
+
+        return array_keys($ids);
+    }
+
+    /**
+     * 登録済みのテナント明細の数（見分けのキーごと）。対象のビルの行を 1 本の問い合わせで読む（設計書 §4.3）。
+     *
+     * ⚠ 退去済みの行も数える（moved_out_on を問わない）。現況の行だけにすると、古いファイルを上げ直したときに
+     *   退去したテナントが現況に戻る。
+     * ⚠ ビルごと・行ごとに引かない（2000 行で 2000 往復になる。test_tenant_import_does_not_scale_queries_per_row）。
+     *
+     * @param  list<int>  $buildingIds
+     * @return array<string, int>
+     */
+    private function registeredTenantCounts(array $buildingIds): array
+    {
+        if ($buildingIds === []) {
+            return [];
+        }
+
+        $counts  = [];
+        $tenants = AreaBuildingTenant::whereIn('area_building_id', $buildingIds)
+            ->get(['area_building_id', 'floor', 'room_number', 'name']);
+
+        foreach ($tenants as $tenant) {
+            $key          = $this->tenantKey($tenant->area_building_id, $tenant->floor, $tenant->room_number, $tenant->name);
+            $counts[$key] = ($counts[$key] ?? 0) + 1;
+        }
+
+        return $counts;
+    }
+
+    /**
+     * テナント明細の見分けのキー（設計書 §4.2）。ビル・階・部屋番号・テナント名。業種・状態・確認日・退去日・備考は見ない。
+     *
+     * ⚠ 部屋番号とテナント名は AreaBuilding::normalizeName() で比べる（全角空白・続く空白・前後の空白の違いは同じ。
+     *   英数字の全角・半角と英字の大文字・小文字は区別する。null と空白だけの値はどちらも空欄）。
+     * ⚠ 区切り文字でつながず JSON にする。`|` などでつなぐと、名前に区切り文字が入ったとき別の行が同じキーになりうる。
+     *   JSON なら階の null（空欄）と 0 も区別できる。
+     * ⚠ ファイル側の値は nullableString() で列の長さに切ってから渡す（保存される値と同じ形で比べる）。
+     * ⚠ 引数の型（int・?int）を外さない。ドライバが数を文字列で返しても、型の宣言が int にそろえる
+     *   （JSON では 1 と "1" が別のキーになる）。
+     */
+    private function tenantKey(int $buildingId, ?int $floor, ?string $roomNumber, ?string $name): string
+    {
+        return json_encode([
+            $buildingId,
+            $floor,
+            AreaBuilding::normalizeName($roomNumber),
+            AreaBuilding::normalizeName($name),
+        ], JSON_THROW_ON_ERROR);
     }
 
     /**
