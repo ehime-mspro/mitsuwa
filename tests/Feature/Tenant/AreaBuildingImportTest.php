@@ -59,41 +59,12 @@ class AreaBuildingImportTest extends AreaBuildingTestCase
      */
     private const SHEETJS_SRI = 'sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw';
 
-    private const IMPORT_URL = '/tenant/area-buildings/import';
-
     /** 同じ取込の画面から 2 回目を送ったとき（1 回限りの鍵が使えないとき）の案内（設計書 2026-09-28-import-double-submit-design.md §4.4） */
     private const USED_TOKEN = 'この取込画面からは取り込めません（すでに送信したか、画面が古くなっています）。取り込まれたかは「周辺ビル調査」で確かめられます。取り込み直すときは、ファイルを選び直してください。';
-
-    /** 取込の画面を開き、画面が描いたフォームを分解する */
-    private function importForm($user): array
-    {
-        $html = $this->actingAs($user)->get(self::IMPORT_URL)->assertOk()->getContent();
-
-        return $this->parseForm($html, 'action="' . route('tenant.area-buildings.import.execute') . '"');
-    }
-
-    /**
-     * 取込の画面を開き、画面が描いたフォームに Alpine が入れる 3 つ（kind・surveyed_month・rows）だけを埋めて送る。
-     * ⚠ 鍵（import_token）は画面が描いたものを使う。手で組んで送ると鍵が無くて断られ、断られても戻り先が
-     *   取込の画面なので、戻り先だけを見るテストは緑のまま狙った経路を通らない（設計書 §5.3）
-     */
-    private function sendImport(array $fields)
-    {
-        $manager = $this->manager();
-        $form    = $this->importForm($manager);
-
-        return $this->actingAs($manager)->post($form['action'], array_merge($form['fields'], $fields));
-    }
 
     private function importBuildings(array $rows, string $month = '2026-08')
     {
         return $this->sendImport(['kind' => 'buildings', 'surveyed_month' => $month, 'rows' => json_encode($rows)]);
-    }
-
-    /** テナント明細のとき、画面の surveyed_month の hidden は ''（`kind === 'buildings' ? surveyedMonth : ''`） */
-    private function importTenants(array $rows)
-    {
-        return $this->sendImport(['kind' => 'tenants', 'surveyed_month' => '', 'rows' => json_encode($rows)]);
     }
 
     private function importView(): string
