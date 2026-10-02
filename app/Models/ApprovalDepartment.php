@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\UserStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -39,6 +40,18 @@ class ApprovalDepartment extends Model
     {
         return $this->belongsToMany(User::class, 'approval_reviewers', 'department_id', 'user_id')
                     ->withTimestamps('created_at', false);
+    }
+
+    /**
+     * 有効な審査担当者（今判断できる人。段階3 設計書 §5.7）。「有効な審査担当者」の条件はここ 1 か所にする。
+     * 提出の条件（SubmitChecker）・申請種類の一覧の人数（TypeController）・⑩ の印（AdminRequestController）・
+     * 知らせの宛先（StepHandlers）が使う。削除した人は reviewers() と同じく SoftDeletes で入らない。
+     *
+     * ⚠ 「いま誰の番か」の名前（CurrentHandler）と部門の管理の一覧は reviewers() のまま（無効の人の名前も出す。振る舞いを変えない）
+     */
+    public function activeReviewers(): BelongsToMany
+    {
+        return $this->reviewers()->where('users.status', UserStatus::Active->value);
     }
 
     public function requests(): HasMany

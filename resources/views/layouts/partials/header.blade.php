@@ -17,7 +17,9 @@
         <img src="{{ asset('images/logo_yoko.png') }}" alt="ミツワ都市開発" class="h-5 w-auto">
     </div>
 
-    {{-- 右側: ユーザーメニュー --}}
+    {{-- 右側: お知らせのベル（段階3）・ユーザーメニュー --}}
+    <div class="flex items-center gap-3">
+    @include('layouts.partials.notice-bell')
     <div class="relative" x-data="{ userMenuOpen: false }">
         <button
             @click="userMenuOpen = !userMenuOpen"
@@ -64,5 +66,6 @@
                 </button>
             </form>
         </div>
+    </div>
     </div>
 </header>

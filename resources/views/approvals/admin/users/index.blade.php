@@ -20,6 +20,8 @@
 --}}
 <div x-data="approvalUsers()" x-cloak>
 
+    @include('approvals._mail_failure')
+
     @if($errors->any())
         <div class="mb-5 rounded-lg border border-red-200 bg-red-50 p-4">
             <p class="text-[13px] font-semibold text-red-800 mb-1">入力内容にエラーがあります。</p>

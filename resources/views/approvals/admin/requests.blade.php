@@ -14,6 +14,7 @@
      ⚠ 件名・申請部門は最後に提出した控えのもの（差戻し中の直しかけを出さない。D26）。保存した日時は JapanTime::format（Bug #61） --}}
 @section('content')
 <div>
+    @include('approvals._mail_failure')
     <h1 class="text-lg font-bold text-gray-900 mb-2">進行中の申請の管理</h1>
     <p class="text-[12px] text-gray-500 mb-4 max-w-[720px]">止まっている申請を見つけて、詳細の画面で部門長の確認の付け替え・押し間違いの取り消し・申請者に代わっての取り下げを行います。決裁したあとの押し間違いは「決裁済み・否決」から開きます。</p>
 
@@ -149,31 +150,7 @@
                     </div>{{-- /scroll-hint --}}
                 </div>
 
-                {{-- ページ送り（->links() は使わない。プロジェクト規約 / Bug #24）。番号は先頭・最後・今のページの前後 1 つだけで、間は「…」
-                     （全部を並べるとスマホの幅からはみ出す。番号はコントローラの pageNumbers()。Task 9 の B1・利用者の決定 C5） --}}
-                @if($requests->hasPages())
-                    <nav aria-label="ページ送り" class="flex justify-center gap-0.5 py-3 border-t border-gray-200">
-                        @if($requests->onFirstPage())
-                            <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-300 bg-white border border-gray-200">&lt;</span>
-                        @else
-                            <a href="{{ $requests->previousPageUrl() }}" class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors">&lt;</a>
-                        @endif
-                        @foreach($pages as $page)
-                            @if($page === null)
-                                <span class="w-8 h-8 flex items-center justify-center text-xs text-gray-400">…</span>
-                            @elseif($page === $requests->currentPage())
-                                <span aria-current="page" class="w-8 h-8 flex items-center justify-center rounded text-xs text-white bg-emerald-600 border border-emerald-600 font-semibold">{{ $page }}</span>
-                            @else
-                                <a href="{{ $requests->url($page) }}" class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors">{{ $page }}</a>
-                            @endif
-                        @endforeach
-                        @if($requests->hasMorePages())
-                            <a href="{{ $requests->nextPageUrl() }}" class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors">&gt;</a>
-                        @else
-                            <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-300 bg-white border border-gray-200">&gt;</span>
-                        @endif
-                    </nav>
-                @endif
+                @include('approvals._pager', ['paginator' => $requests, 'pages' => $pages])
             @endif
         @endif
     </div>

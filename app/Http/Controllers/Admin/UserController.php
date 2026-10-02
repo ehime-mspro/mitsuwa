@@ -10,6 +10,7 @@ use App\Models\ApprovalSetting;
 use App\Models\Department;
 use App\Models\User;
 use App\Support\Approval\LoginGuide;
+use App\Support\Approval\Notifier;
 use App\Support\Approval\PasswordReissuer;
 use App\Support\Approval\SettingLogger;
 use App\Support\InitialPassword;
@@ -464,14 +465,22 @@ class UserController extends Controller
             'president_user_id.exists'   => '有効でメールアドレスのある利用者を選択してください。',
         ]);
 
-        $settings = ApprovalSetting::current();
-        $before   = ['president_user_id' => $settings->president_user_id];
+        // 設定の更新・記録・知らせを 1 つのトランザクションで（段階3 設計書 §5.1。知らせだけが残る・知らせだけが消えるを作らない）
+        DB::transaction(function () use ($request, $validated): void {
+            $settings = ApprovalSetting::current();
+            $before   = ['president_user_id' => $settings->president_user_id];
 
-        $settings->update(['president_user_id' => (int) $validated['president_user_id']]);
+            $settings->update(['president_user_id' => (int) $validated['president_user_id']]);
 
-        SettingLogger::recordChange('president.changed', 'approval_setting', $settings->id, $before, [
-            'president_user_id' => $settings->president_user_id,
-        ]);
+            SettingLogger::recordChange('president.changed', 'approval_setting', $settings->id, $before, [
+                'president_user_id' => $settings->president_user_id,
+            ]);
+
+            // 社長が変わったら、社長の決裁を待っている申請ごとに新しい社長へ知らせる（D1。前の社長には出さない D9）
+            if ($before['president_user_id'] !== $settings->president_user_id) {
+                Notifier::presidentChanged($request->user(), User::findOrFail($settings->president_user_id));
+            }
+        });
 
         return redirect()->route('admin.users.index')->with('success', '決裁の社長を設定しました。');
     }

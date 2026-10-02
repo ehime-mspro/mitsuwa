@@ -102,6 +102,10 @@ class ApprovalAdminGateTest extends TestCase
         'approvals.requests.decide'           => '社長の決裁（同上）',
         'approvals.requests.confirmCondition' => '条件の確認（申請者だけ）',
         'approvals.requests.withdraw'         => '取り下げ（申請者だけ）',
+        // 段階3（使い始めてから）
+        'approvals.notices.index'   => 'お知らせ一覧（自分のお知らせだけ。段階3 設計書 §5.6）',
+        'approvals.notices.open'    => 'お知らせを開く（自分のお知らせだけ。ほかの人のものは 404）',
+        'approvals.notices.readAll' => '自分のお知らせをすべて既読にする',
     ];
 
     /** ラベル用: HEAD を除いた先頭の HTTP メソッド（1 つで十分な場所） */
@@ -183,8 +187,8 @@ class ApprovalAdminGateTest extends TestCase
         //   出ている本当の理由（分類漏れ・門番の欠落・逆方向の見落とし）が隠れる。
         $this->assertSame([], $problems, "分類漏れ・門番の欠落・逆方向の見落とし:\n" . implode("\n", $problems));
 
-        // 走査が空振りして緑になる事故を防ぐ（2b で 43 本 = 決裁の管理 22 本 + 進行中の申請の管理 4 本 + ホーム 1 本 + 申請を回す画面 16 本）
-        $this->assertGreaterThanOrEqual(43, $found, 'approvals. のルートの走査に失敗している');
+        // 走査が空振りして緑になる事故を防ぐ（3a で 46 本 = 決裁の管理 22 本 + 進行中の申請の管理 4 本 + ホーム 1 本 + 申請を回す画面 16 本 + お知らせ 3 本）
+        $this->assertGreaterThanOrEqual(46, $found, 'approvals. のルートの走査に失敗している');
     }
 
     /**
@@ -363,6 +367,8 @@ class ApprovalAdminGateTest extends TestCase
             'approval_requests' => DB::table('approval_requests')->count(),
             'approval_steps' => DB::table('approval_steps')->count(),
             'approval_histories' => DB::table('approval_histories')->count(),
+            // お知らせ（段階3）。部門長の交代・審査担当者の追加は担当に知らせを作る
+            'notifications' => DB::table('notifications')->count(),
         ];
     }
 

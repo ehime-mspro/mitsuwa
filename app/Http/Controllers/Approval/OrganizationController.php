@@ -15,6 +15,7 @@ use App\Models\ApprovalType;
 use App\Models\User;
 use App\Support\Approval\ApprovalNumber;
 use App\Support\Approval\Assignees;
+use App\Support\Approval\Notifier;
 use App\Support\Approval\SettingLogger;
 use App\Support\Approval\Workflow;
 use Illuminate\Http\Request;
@@ -139,11 +140,11 @@ class OrganizationController extends Controller
         [$base, $headId, $reviewerIds, $next, $shown] = $this->splitDepartmentInput($validated);
 
         try {
-            DB::transaction(function () use ($base, $headId, $reviewerIds, $next, $shown): void {
+            DB::transaction(function () use ($request, $base, $headId, $reviewerIds, $next, $shown): void {
                 $department = ApprovalDepartment::create($base + ['head_user_id' => $headId]);
                 SettingLogger::record('department.created', 'approval_department', $department->id, [], $base + ['head_user_id' => $headId]);
 
-                $this->syncReviewers($department, $reviewerIds);
+                $this->syncReviewers($department, $reviewerIds, $request->user());
                 $this->setNextNumber($department, $next, $shown);
             });
         } catch (InvalidArgumentException $e) {
@@ -187,10 +188,15 @@ class OrganizationController extends Controller
                     app(Workflow::class)->headChanged($approvalDepartment, $oldHeadId, $headId, $request->user());
                 }
 
+                // 審査担当者を足すなら、知らせを出す申請の行も部門の行を更新する前にロックする（lockWaitingReviews() の注意書き）
+                if (array_diff($reviewerIds, $approvalDepartment->reviewers()->pluck('users.id')->all()) !== []) {
+                    $this->lockWaitingReviews($approvalDepartment);
+                }
+
                 $approvalDepartment->update($base + ['head_user_id' => $headId]);
                 SettingLogger::recordChange('department.updated', 'approval_department', $approvalDepartment->id, $before, $base + ['head_user_id' => $headId]);
 
-                $this->syncReviewers($approvalDepartment, $reviewerIds);
+                $this->syncReviewers($approvalDepartment, $reviewerIds, $request->user());
                 $this->setNextNumber($approvalDepartment->fresh('company'), $next, $shown);
             });
         } catch (InvalidArgumentException $e) {
@@ -304,8 +310,11 @@ class OrganizationController extends Controller
         return [$base, $headId, $reviewerIds, $next, $shown];
     }
 
-    /** 審査担当者を入れ替え、変わったときだけ記録する */
-    private function syncReviewers(ApprovalDepartment $department, array $reviewerIds): void
+    /**
+     * 審査担当者を入れ替え、変わったときだけ記録する。足した人には、この部門で審査を待っている申請ごとに知らせる
+     * （段階3 設計書 D1。外した人には出さない D9。部門の更新と同じトランザクションの中）
+     */
+    private function syncReviewers(ApprovalDepartment $department, array $reviewerIds, User $admin): void
     {
         $before = $department->reviewers()->pluck('users.id')->map(fn ($id) => (int) $id)->sort()->values()->all();
         $after  = collect($reviewerIds)->sort()->values()->all();
@@ -316,6 +325,29 @@ class OrganizationController extends Controller
 
         $department->reviewers()->sync($reviewerIds);
         SettingLogger::record('department.reviewers_changed', 'approval_department', $department->id, ['reviewer_ids' => $before], ['reviewer_ids' => $after]);
+
+        Notifier::reviewersAdded($admin, $department, User::whereKey(array_diff($after, $before))->orderBy('id')->get());
+    }
+
+    /**
+     * この部門で審査を待っている申請の行を、主キーの順にロックする（部門の行を更新する前に呼ぶ）。
+     *
+     * ⚠ 足した審査担当者へのお知らせの行（Notifier::reviewersAdded()）は、外部キーの確かめで申請の行に共有ロックを取る。
+     *   部門の行を更新してから取ると、申請部門と審査部門が同じ申請への審査の意見・取り下げ（状態の UPDATE が申請部門の行に
+     *   共有ロックを取る）とデッドロックし（1213）、その人の画面は 500 になる（2026-10-01 に MySQL 8.4.11 の
+     *   REPEATABLE READ・READ COMMITTED で実測）。ロックの順は Workflow::headChanged() と同じ「申請の行 → 部門の行」。
+     *   段階の行は条件でロック付きに読まない（REPEATABLE READ では索引の隙間までロックする。同じ注意書き）
+     */
+    private function lockWaitingReviews(ApprovalDepartment $department): void
+    {
+        $requestIds = ApprovalStep::where('kind', ApprovalStepKind::Review->value)
+            ->where('status', ApprovalStepStatus::Waiting->value)
+            ->where('department_id', $department->id)
+            ->pluck('request_id');
+
+        if ($requestIds->isNotEmpty()) {
+            ApprovalRequest::whereKey($requestIds->all())->orderBy('id')->lockForUpdate()->get(['id']);
+        }
     }
 
     /**

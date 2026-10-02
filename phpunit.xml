@@ -23,8 +23,13 @@
              （実測: 9 回中 4 回が Fatal error。落ちる場所は毎回フレームワーク側で、
              コンパイル済み Blade や PHPUnit のメタデータパーサだった）。
              テストが増えるほど確実に壊れるので明示的に引き上げる。
-             ⚠ この行を消すと「特定のテストが悪い」ように見える不安定な失敗が戻る。 -->
-        <ini name="memory_limit" value="512M"/>
+             ⚠ この行を消すと「特定のテストが悪い」ように見える不安定な失敗が戻る。
+             2026-10-01: 512M でもピークが 503.50 MB（3140 本。上限の 98%）になり、決裁 段階3a のテストを
+             足すと 515.50 MB（3204 本）で Fatal error になったので 1G にした。主な原因は Carbon の Laravel 用の
+             プロバイダがアプリの起動のたびに翻訳の文を積むことで、tests/TestCase.php の tearDown() で片付けた
+             （ピーク 505.50 MB → 約 310 MB）。残りは OPcache の無い CLI が、クロージャを含むファイルを読み直すたびに
+             残す分。1G は余裕として残す。 -->
+        <ini name="memory_limit" value="1G"/>
         <env name="APP_ENV" value="testing"/>
         <env name="APP_URL" value="http://localhost"/>
         <!-- 本番は APP_LOCALE=ja / APP_FALLBACK_LOCALE=ja。config/app.php の既定は 'en' なので

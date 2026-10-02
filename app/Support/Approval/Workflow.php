@@ -26,6 +26,8 @@ use Illuminate\Support\Facades\DB;
  *   3. `RequestPermissions` で権限を確かめる
  *   4. `lock_version` を条件にした 1 回の UPDATE で状態を進める（同時に押された 2 人目を断る）
  *   5. 段階と記録を書く
+ *   6. 知らせを出す（Notifier。同じトランザクションの中なので、断られたり先を越されたりした操作の知らせは残らない。
+ *      段階3 設計書 §5.1・§5.5）
  * の順に進む（計画 §0.3）。
  *
  * ⚠ 行のロックは「申請の行 → 段階の行 → 連番の行」の順にそろえる（社長の判断で採番するとき・部門長の交代）。
@@ -121,6 +123,8 @@ final class Workflow
             if ($skipHead) {
                 HistoryRecorder::record($request, 'head_skipped', null, ['step_id' => $head->id]);
             }
+
+            Notifier::turnArrived($request, $actor);
         });
     }
 
@@ -157,6 +161,8 @@ final class Workflow
                 'to_status'   => ApprovalStatus::Approved->value,
                 'comment'     => self::cleanComment($comment),
             ]);
+
+            Notifier::conditionConfirmed($request, $actor);
         });
     }
 
@@ -171,6 +177,9 @@ final class Workflow
                 throw new WorkflowRefused(['この申請は取り下げられる状態ではありません。']);
             }
 
+            // その時点の担当（段階を打ち切る前に取る。差戻し中なら申請者の番なので空）
+            $handlers = StepHandlers::ofWaiting($request);
+
             $from = $request->status;
             $this->move($request, $lockVersion, ApprovalStatus::Withdrawn);
             $this->cancelRest($request);
@@ -180,6 +189,8 @@ final class Workflow
                 'to_status'   => ApprovalStatus::Withdrawn->value,
                 'comment'     => self::cleanComment($comment),
             ]);
+
+            Notifier::withdrawn($request, $actor, $handlers, byAdmin: false);
         });
     }
 
@@ -188,7 +199,8 @@ final class Workflow
      *
      * 部門長の確認を待っている申請は、付け替えていても新しい部門長へ移す（付け替えを空に戻す）。
      * 移した申請は `lock_version` を 1 進める（交代の前に開いた画面から押した判断・取り下げを
-     * 「すでに処理されています」で断る。計画 §0.3）。
+     * 「すでに処理されています」で断る。計画 §0.3）。新しい部門長には、移した申請ごとに「自分の番が来た」を知らせる
+     * （段階3 設計書 D1。前の部門長には出さない D9。部門の行を更新する前なので、新しい部門長は引数から取る）。
      *
      * ⚠ ロックはほかの操作と同じ「申請の行 → 段階の行」の順に、主キーで取る（2026-09-27 の Task 7 の再点検で、
      *   MySQL 8.4.11 の REPEATABLE READ・READ COMMITTED とも 1213 が出ないことを実測）。
@@ -217,6 +229,8 @@ final class Workflow
             $requests = ApprovalRequest::whereKey($candidates->pluck('request_id')->all())->orderBy('id')->lockForUpdate()->get()->keyBy('id');
             $steps    = ApprovalStep::whereKey($candidates->pluck('id')->all())->orderBy('id')->lockForUpdate()->get();
 
+            $moved = [];
+
             foreach ($steps as $step) {
                 // ロックを待つあいだに判断・取り下げが済んだ段階は動かさない（ロック付きの読み取りは最新の行を読む）
                 if ($step->status !== ApprovalStepStatus::Waiting) {
@@ -235,7 +249,11 @@ final class Workflow
                     'step_id' => $step->id,
                     'meta'    => ['from_user_id' => $before, 'to_user_id' => $newHeadId],
                 ]);
+
+                $moved[] = $step->setRelation('request', $requests[$step->request_id]);
             }
+
+            Notifier::handlerChanged($admin, $moved, $newHeadId === null ? null : User::find($newHeadId), NoticeText::HEAD_CHANGED);
         });
     }
 
@@ -283,6 +301,9 @@ final class Workflow
                 'reason'  => $reason,
                 'meta'    => ['from_user_id' => $before, 'to_user_id' => $to->id],
             ]);
+
+            // 新しい担当にだけ知らせる（外れた前の担当には出さない。D9）
+            Notifier::handlerChanged($admin, [$step->setRelation('request', $request)], $to, NoticeText::REASSIGNED);
         });
     }
 
@@ -350,6 +371,8 @@ final class Workflow
                 'reason'      => $reason,
                 'meta'        => ['undone_history_id' => $target->id, 'undone_action' => $target->action],
             ]);
+
+            Notifier::undone($request, $admin, $target);
         });
     }
 
@@ -366,6 +389,9 @@ final class Workflow
             }
             $reason = self::requireReason($reason);
 
+            // その時点の担当（段階を打ち切る前に取る）。代理の取り下げは申請者にも知らせる（D8）
+            $handlers = StepHandlers::ofWaiting($request);
+
             $from = $request->status;
             $this->move($request, $lockVersion, ApprovalStatus::Withdrawn);
             $this->cancelRest($request);
@@ -375,6 +401,8 @@ final class Workflow
                 'to_status'   => ApprovalStatus::Withdrawn->value,
                 'reason'      => $reason,
             ]);
+
+            Notifier::withdrawn($request, $admin, $handlers, byAdmin: true);
         });
     }
 
@@ -419,6 +447,7 @@ final class Workflow
             $this->finishStep($step, $actor, $result, $comment);
             $this->arrive($request, ApprovalStepKind::Review);
             $this->recordJudgement($request, 'head_approved', $actor, $from, $step, $result, $comment);
+            Notifier::turnArrived($request, $actor);
 
             return;
         }
@@ -427,6 +456,7 @@ final class Workflow
         $this->finishStep($step, $actor, $result, $comment);
         $this->cancelRest($request);
         $this->recordJudgement($request, 'head_returned', $actor, $from, $step, $result, $comment);
+        Notifier::returned($request, $actor, ApprovalStepKind::Head);
     }
 
     private function afterReview(ApprovalRequest $request, User $actor, int $lockVersion, ApprovalStep $step, ApprovalStepResult $result, ?string $comment): void
@@ -438,6 +468,8 @@ final class Workflow
         $this->finishStep($step, $actor, $result, $comment);
         $this->arrive($request, ApprovalStepKind::President);
         $this->recordJudgement($request, 'reviewed', $actor, $from, $step, $result, $comment);
+        // ほかの審査担当者には知らせない（ホームの対応待ちから消える。D11）
+        Notifier::turnArrived($request, $actor);
     }
 
     private function afterPresident(ApprovalRequest $request, User $actor, int $lockVersion, ApprovalStep $step, ApprovalStepResult $result, ?string $comment): void
@@ -448,6 +480,7 @@ final class Workflow
             $this->move($request, $lockVersion, ApprovalStatus::Returned);
             $this->finishStep($step, $actor, $result, $comment);
             $this->recordJudgement($request, 'president_returned', $actor, $from, $step, $result, $comment);
+            Notifier::returned($request, $actor, ApprovalStepKind::President);
 
             return;
         }
@@ -482,6 +515,7 @@ final class Workflow
 
         $this->finishStep($step, $actor, $result, $comment);
         $this->recordJudgement($request, $action, $actor, $from, $step, $result, $comment);
+        Notifier::decided($request, $actor, $decision);
     }
 
     private function assertFresh(ApprovalRequest $request, int $lockVersion): void

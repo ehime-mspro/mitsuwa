@@ -28,6 +28,7 @@
     $refusedCreate = $refused && old('edit_id') === null && old('_method') === null;
 @endphp
 <div x-data="approvalTypes()" x-cloak>
+    @include('approvals._mail_failure')
 
     {{-- 成功・失敗の帯はレイアウトが出す（ここで出すと画面に 2 回出る）。$errors だけ各ビューの責任 --}}
     @if($errors->any())
@@ -73,7 +74,7 @@
                         <td class="px-4 py-2.5 border-b border-gray-100 text-[13px] text-gray-700">
                             {{ $type->reviewDepartment->company->name }}・{{ $type->reviewDepartment->name }}
                             {{-- 審査担当者のいない審査部門は、申請者の提出が断られて初めて分かるので、ここで知らせる（Task 11 の点検の軽微） --}}
-                            @if((int) $type->reviewDepartment->reviewers_count === 0)
+                            @if((int) $type->reviewDepartment->active_reviewers_count === 0)
                                 <span class="ml-1 text-[11px] font-semibold text-red-700">審査担当者がいません</span>
                             @endif
                         </td>

@@ -6,6 +6,7 @@ use App\Enums\ApprovalStatus;
 use App\Enums\ApprovalStepResult;
 use App\Http\Controllers\Controller;
 use App\Models\ApprovalHistory;
+use App\Models\ApprovalNotice;
 use App\Models\ApprovalRequest;
 use App\Models\ApprovalRevision;
 use App\Models\ApprovalStep;
@@ -114,6 +115,9 @@ class RequestController extends Controller
     {
         $user = $request->user();
         $this->assertVisible($user, $approvalRequest);
+
+        // 開いた人の、この申請の未読のお知らせを既読にする（メールのリンクから開いたあとにベルの数が残らない。段階3 設計書 D13）
+        ApprovalNotice::markReadFor($user, $approvalRequest);
 
         // 回る順番の担当は今の設定から引く（CurrentHandler）。部門長・審査担当者・付け替え・判断した人を先に読む
         $approvalRequest->load([

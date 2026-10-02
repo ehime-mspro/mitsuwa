@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Approval\AdminRequestController;
 use App\Http\Controllers\Approval\HomeController;
+use App\Http\Controllers\Approval\NoticeController;
 use App\Http\Controllers\Approval\OrganizationController;
 use App\Http\Controllers\Approval\RelatedNumberController;
 use App\Http\Controllers\Approval\RequestActionController;
@@ -138,4 +139,10 @@ Route::middleware('approval.launched')->prefix('approvals')->name('approvals.')-
     Route::post('/requests/{approvalRequest}/decide', [RequestActionController::class, 'decide'])->name('requests.decide');
     Route::post('/requests/{approvalRequest}/confirm-condition', [RequestActionController::class, 'confirmCondition'])->name('requests.confirmCondition');
     Route::post('/requests/{approvalRequest}/withdraw', [RequestActionController::class, 'withdraw'])->name('requests.withdraw');
+
+    // お知らせ（画面⑥。段階3 設計書 §5.6）。自分のお知らせだけ（ほかの人のお知らせの ID は 404）
+    // ⚠ `/notices/read-all` を `/notices/{notice}` より前に置く（今は HTTP メソッドが違うので当たらないが、登録順がマッチの優先順）
+    Route::get('/notices', [NoticeController::class, 'index'])->name('notices.index');
+    Route::post('/notices/read-all', [NoticeController::class, 'readAll'])->name('notices.readAll');
+    Route::get('/notices/{notice}', [NoticeController::class, 'open'])->whereUuid('notice')->name('notices.open');
 });

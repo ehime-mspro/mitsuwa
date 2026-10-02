@@ -491,6 +491,24 @@ class RequestActionTest extends TestCase
         $this->assertSame(ApprovalStatus::HeadReview, $request->fresh()->status);
     }
 
+    /**
+     * 見られない申請への操作は 404 で、開き直す小窓も残さない（フラッシュは 404 の確かめのあと。2b の最後の点検 M-4・
+     * 段階3 設計書 §5.7。前は条件確認と取り下げだけ 404 の前に残していた）
+     */
+    public function test_an_operation_on_a_request_that_cannot_be_seen_leaves_no_modal_to_reopen(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $request  = $this->submittedFor($w);
+        $outsider = $this->approvalOnlyUser();
+
+        foreach (['headReview', 'review', 'decide', 'confirmCondition', 'withdraw'] as $route) {
+            $this->act($outsider, $request, "approvals.requests.{$route}", ['result' => 'approve'])
+                ->assertNotFound()
+                ->assertSessionMissing('approval_reopen');
+        }
+    }
+
     /** その段階で選べない判断は、入力の誤りとして詳細の画面に出す（⚠ assertSessionHas* を呼ばずに描く。Bug #49） */
     public function test_a_result_that_is_not_offered_is_refused_as_an_input_error(): void
     {

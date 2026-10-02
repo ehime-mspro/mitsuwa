@@ -3,6 +3,8 @@
 namespace Tests\Feature\Ops;
 
 use App\Mail\OpsTestMail;
+use App\Models\ApprovalSetting;
+use App\Support\Approval\MailDelivery;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Queue\Console\WorkCommand;
@@ -198,6 +200,29 @@ class MailTestCommandTest extends TestCase
 
         $messages = app('mailer')->getSymfonyTransport()->messages();
         $this->assertCount(2, $messages);
+    }
+
+    // 決裁のメールの黄色の帯（段階3 設計書 D2）: 手順書どおりテストメールで確かめ、送れたら「送れた」が残って帯が消える
+    // （送れなかったときは何も記録しない。帯を出すのは決裁のメールだけ）
+    public function test_k_a_delivered_test_mail_records_success_and_clears_the_approval_mail_banner(): void
+    {
+        $this->resetWorkCommandListeners();
+        config([
+            'queue.default' => 'database',
+            'mail.default' => 'smtp',
+            'mail.mailers.smtp.transport' => 'array',
+        ]);
+        ApprovalSetting::current();   // 本番は SQL が入れた 1 行がある
+        MailDelivery::recordFailed('山田 花子');
+        $this->assertNotNull(MailDelivery::pendingFailure(), '帯が出ている状態から始める');
+        $this->travel(1)->minutes();
+
+        $this->artisan('ops:mail-test', ['to' => 'kessai@example.com'])->assertExitCode(0);
+        $this->artisan('queue:work', ['--stop-when-empty' => true, '--tries' => 3, '--memory' => 1024])->assertExitCode(0);
+
+        $this->assertCount(1, app('mailer')->getSymfonyTransport()->messages());
+        $this->assertNotNull(DB::table('approval_settings')->value('mail_last_sent_at'));
+        $this->assertNull(MailDelivery::pendingFailure());
     }
 
     // (f) 送信方式が log → 断る・何も積まない

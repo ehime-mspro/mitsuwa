@@ -10,6 +10,8 @@
 @section('content')
 <div class="max-w-[960px]">
 
+    @include('approvals._mail_failure')
+
     @if(session('warning'))
         <div class="mb-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-800">
             {{ session('warning') }}
@@ -82,6 +84,23 @@
         @endif
         <div class="px-5 py-3 border-t border-gray-100 text-right">
             <a href="{{ route('approvals.requests.index') }}" class="text-[13px] text-emerald-600 hover:underline">自分の申請をすべて見る</a>
+        </div>
+    </section>
+
+    {{-- 新しいお知らせ（未読の新しい 5 件。段階3 設計書 §5.6） --}}
+    <section class="bg-white rounded-lg border border-gray-200 mb-5">
+        <h2 class="px-5 py-3 border-b border-gray-200 text-[14px] font-bold text-gray-900">新しいお知らせ</h2>
+        @if($notices->isEmpty())
+            <p class="px-5 py-6 text-[13px] text-gray-400">新しいお知らせはありません。</p>
+        @else
+            <ul class="divide-y divide-gray-100">
+                @foreach($notices as $notice)
+                    @include('approvals.notices._item', ['notice' => $notice])
+                @endforeach
+            </ul>
+        @endif
+        <div class="px-5 py-3 border-t border-gray-100 text-right">
+            <a href="{{ route('approvals.notices.index') }}" class="text-[13px] text-emerald-600 hover:underline">お知らせをすべて見る</a>
         </div>
     </section>
 

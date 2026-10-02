@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Approval;
 use App\Enums\ApprovalStatus;
 use App\Enums\ApprovalStepKind;
 use App\Enums\ApprovalStepStatus;
-use App\Enums\UserStatus;
+use App\Http\Controllers\Approval\Concerns\ReturnsToRequestDetail;
 use App\Http\Controllers\Controller;
 use App\Models\ApprovalRequest;
 use App\Models\ApprovalSetting;
@@ -14,17 +14,13 @@ use App\Models\User;
 use App\Support\Approval\Assignees;
 use App\Support\Approval\CurrentHandler;
 use App\Support\Approval\FormInput;
+use App\Support\Approval\PageNumbers;
 use App\Support\Approval\PendingWork;
 use App\Support\Approval\RequestPermissions;
-use App\Support\Approval\RequestVisibility;
 use App\Support\Approval\Workflow;
-use App\Support\Approval\WorkflowConflict;
-use App\Support\Approval\WorkflowRefused;
-use Closure;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
-use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 /**
@@ -35,10 +31,12 @@ use Illuminate\View\View;
  * ⚠ 権限と状態は Workflow（RequestPermissions）が確かめる。ここは入力の形を見て渡すだけ（判断の操作と同じ）。
  * ⚠ 一覧の件名・申請部門は、最後に提出した控えのもの（差戻し中の直しかけを出さない。D26）。
  * ⚠ 操作の戻り先はいつも詳細の画面（Bug #64）。断られたら、送った小窓を打った中身で開き直す（どの小窓かは送り先で決める。
- *   2b 計画 §0.9）。
+ *   2b 計画 §0.9。判断の操作と共通の ReturnsToRequestDetail。段階3 設計書 §5.7）。
  */
 class AdminRequestController extends Controller
 {
+    use ReturnsToRequestDetail;
+
     /** 「決裁済み・否決」の 1 ページの件数 */
     private const DECIDED_PER_PAGE = 20;
 
@@ -68,11 +66,12 @@ class AdminRequestController extends Controller
                 ->paginate(self::DECIDED_PER_PAGE)
                 ->withQueryString();
 
-            return view('approvals.admin.requests', ['tab' => $tab, 'requests' => $requests, 'rows' => null, 'pages' => self::pageNumbers($requests->currentPage(), $requests->lastPage())]);
+            return view('approvals.admin.requests', ['tab' => $tab, 'requests' => $requests, 'rows' => null, 'pages' => PageNumbers::around($requests->currentPage(), $requests->lastPage())]);
         }
 
         $presidentId = ApprovalSetting::current()->president_user_id;
-        $rows = ApprovalRequest::with($with)
+        // 印の「審査担当者が申請者本人しかいない」は有効な人で数える（activeReviewers()）
+        $rows = ApprovalRequest::with([...$with, 'steps.department.activeReviewers'])
             ->whereIn('status', array_map(fn (ApprovalStatus $status) => $status->value, self::IN_PROGRESS))
             ->get()
             ->map(fn (ApprovalRequest $r) => $this->row($r, $presidentId))
@@ -96,7 +95,7 @@ class AdminRequestController extends Controller
         ]);
         $to = User::findOrFail((int) $validated['assignee_user_id']);
 
-        return $this->run(
+        return $this->runOnDetail(
             $approvalRequest,
             fn () => $this->workflow->reassignHead($approvalRequest, $request->user(), FormInput::lockVersion($request), $to, $validated['admin_reason']),
             "部門長の確認を{$to->name}さんに付け替えました。",
@@ -112,7 +111,7 @@ class AdminRequestController extends Controller
         $target = RequestPermissions::for($request->user(), $approvalRequest)->undoTarget();
         $label  = $target?->label() ?? '直前の操作';
 
-        return $this->run(
+        return $this->runOnDetail(
             $approvalRequest,
             fn () => $this->workflow->undo($approvalRequest, $request->user(), FormInput::lockVersion($request), $validated['admin_reason']),
             "「{$label}」を取り消しました。",
@@ -125,7 +124,7 @@ class AdminRequestController extends Controller
         $this->prepare($request, $approvalRequest, 'admin_withdraw');
         $validated = $this->validated($request, $approvalRequest);
 
-        return $this->run(
+        return $this->runOnDetail(
             $approvalRequest,
             fn () => $this->workflow->withdrawByAdmin($approvalRequest, $request->user(), FormInput::lockVersion($request), $validated['admin_reason']),
             '申請者に代わって取り下げました。',
@@ -174,45 +173,15 @@ class AdminRequestController extends Controller
     private static function onlyApplicantReviews(ApprovalRequest $r, ApprovalStep $step): bool
     {
         /** @var Collection<int, User> $active */
-        $active = ($step->department?->reviewers ?? collect())->filter(fn (User $u) => $u->status === UserStatus::Active);
+        $active = $step->department?->activeReviewers ?? collect();
 
         return $active->contains('id', $r->user_id) && $active->where('id', '!=', $r->user_id)->isEmpty();
     }
 
-    /**
-     * 「決裁済み・否決」のページ送りに出す番号（null は「…」）。先頭・最後・今のページの前後 1 つだけにする
-     * （全部を並べるとスマホの幅からはみ出す。Task 9 の B1・利用者の決定 C5）。1 ページだけの間は「…」にせず、その番号を出す。
-     * 番号と「…」は多くて 7 つ（前後の「<」「>」を足して 9 個）
-     *
-     * @return list<int|null>
-     */
-    private static function pageNumbers(int $current, int $last): array
-    {
-        $shown = array_unique(array_filter([1, $current - 1, $current, $current + 1, $last], fn (int $page) => $page >= 1 && $page <= $last));
-        sort($shown);
-
-        $numbers = [];
-        foreach ($shown as $i => $page) {
-            $between = $i === 0 ? 0 : $page - $shown[$i - 1] - 1;   // 前に出した番号との間のページ数
-            if ($between === 1) {
-                $numbers[] = $page - 1;
-            } elseif ($between > 1) {
-                $numbers[] = null;
-            }
-            $numbers[] = $page;
-        }
-
-        return $numbers;
-    }
-
-    /**
-     * 見られない申請は 404（在るかどうかを漏らさない）。断られたら開き直す小窓を、送り先で決めて残す（2b 計画 §0.9。
-     * 小窓の名前をフォームの値で受け取らないので、状態が進んだあとに古い画面の小窓が断られても、別の小窓は開かない）
-     */
+    /** 見られるかの確かめと開き直す小窓（ReturnsToRequestDetail）に、理由の改行をそろえるのを足す */
     private function prepare(Request $request, ApprovalRequest $approvalRequest, string $modal): void
     {
-        abort_unless(RequestVisibility::canView($request->user(), $approvalRequest), 404);
-        $request->session()->flash('approval_reopen', $modal);
+        $this->prepareOnDetail($request, $approvalRequest, $modal);
         FormInput::unifyNewlines($request, 'admin_reason');
     }
 
@@ -225,34 +194,10 @@ class AdminRequestController extends Controller
      */
     private function validated(Request $request, ApprovalRequest $approvalRequest, array $rules = [], array $messages = []): array
     {
-        try {
-            return $request->validate(array_merge([
-                'admin_reason' => ['required', 'string', 'max:2000'],
-            ], $rules), array_merge([
-                'admin_reason.required' => '理由を入力してください。',
-            ], $messages));
-        } catch (ValidationException $e) {
-            throw $e->redirectTo(route('approvals.requests.show', $approvalRequest));
-        }
-    }
-
-    /**
-     * Workflow を呼び、詳細の画面へ戻す（断られたら理由と打った中身、先を越されたら「すでに処理されています」）
-     *
-     * @param Closure(): void $action
-     */
-    private function run(ApprovalRequest $approvalRequest, Closure $action, string $success): RedirectResponse
-    {
-        $show = redirect()->route('approvals.requests.show', $approvalRequest);
-
-        try {
-            $action();
-        } catch (WorkflowConflict) {
-            return $show->with('error', WorkflowConflict::MESSAGE);
-        } catch (WorkflowRefused $e) {
-            return $show->withInput()->with('error', implode(' ', $e->reasons));
-        }
-
-        return $show->with('success', $success);
+        return $this->validateForDetail($request, $approvalRequest, array_merge([
+            'admin_reason' => ['required', 'string', 'max:2000'],
+        ], $rules), array_merge([
+            'admin_reason.required' => '理由を入力してください。',
+        ], $messages));
     }
 }

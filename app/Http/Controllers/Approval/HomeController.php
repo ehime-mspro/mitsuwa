@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Approval;
 
 use App\Enums\ApprovalStatus;
 use App\Http\Controllers\Controller;
+use App\Models\ApprovalNotice;
 use App\Models\ApprovalRequest;
 use App\Models\ApprovalSetting;
 use App\Support\Approval\PendingWork;
@@ -20,6 +21,9 @@ class HomeController extends Controller
 {
     /** 「最近の完了」に出す数 */
     private const RECENT_FINISHED = 5;
+
+    /** 「新しいお知らせ」に出す数（未読の新しいもの。段階3 設計書 §5.6） */
+    private const NEW_NOTICES = 5;
 
     public function index(Request $request): View
     {
@@ -56,6 +60,12 @@ class HomeController extends Controller
                 ]))
                 ->orderByDesc('status_changed_at')
                 ->limit(self::RECENT_FINISHED)
+                ->get(),
+            // 新しいお知らせ（未読の新しい 5 件。中身は控えの data なので関係を読まない）
+            'notices'          => ApprovalNotice::ownedBy($user)->unread()
+                ->orderByDesc('created_at')
+                ->orderByDesc('id')
+                ->limit(self::NEW_NOTICES)
                 ->get(),
         ]);
     }
