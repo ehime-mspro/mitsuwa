@@ -156,6 +156,16 @@ class HolidaySettingsTest extends TestCase
         // 存在しない日付は繰り上げずに断る（Top trap #15）
         $this->store($admin, ['start_date' => '2026-02-30', 'end_date' => '2026-03-02', 'description' => '休み'])
             ->assertSessionHasErrors(['start_date' => '開始日は正しい日付で入力してください。']);
+        // 毎年繰り返すにチェックがあっても、日付の形が崩れていれば 500 にせず同じ文で断る
+        $this->store($admin, ['start_date' => '2026/12/29', 'end_date' => '2027/01/03', 'repeats_yearly' => '1', 'description' => '年末年始'])
+            ->assertSessionHasErrors([
+                'start_date' => '開始日は正しい日付で入力してください。',
+                'end_date' => '終了日は正しい日付で入力してください。',
+            ]);
+        $this->store($admin, ['start_date' => 'abc', 'end_date' => '2027-01-03', 'repeats_yearly' => '1', 'description' => '年末年始'])
+            ->assertSessionHasErrors(['start_date' => '開始日は正しい日付で入力してください。']);
+        $this->store($admin, ['start_date' => '2026-12-29', 'end_date' => 'abc', 'repeats_yearly' => '1', 'description' => '年末年始'])
+            ->assertSessionHasErrors(['end_date' => '終了日は正しい日付で入力してください。']);
         $this->store($admin, ['start_date' => '', 'end_date' => '', 'description' => ''])
             ->assertSessionHasErrors([
                 'start_date' => '開始日を入力してください。',

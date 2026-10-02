@@ -9,6 +9,7 @@ use App\Models\ApprovalSetting;
 use App\Support\Approval\ReminderCalendar;
 use App\Support\Approval\SettingLogger;
 use Carbon\CarbonImmutable;
+use Carbon\Exceptions\InvalidFormatException;
 use Illuminate\Http\Request;
 
 /**
@@ -78,11 +79,16 @@ class HolidayController extends Controller
                     return;
                 }
 
-                $start = CarbonImmutable::createFromFormat('!Y-m-d', $request->input('start_date'));
-                $end   = CarbonImmutable::createFromFormat('!Y-m-d', $value);
+                // 日付の形が崩れていれば何もしない（断るのは date_format。Carbon 3 の createFromFormat は false を返さず例外を投げる）
+                try {
+                    $start = CarbonImmutable::createFromFormat('!Y-m-d', $request->input('start_date'));
+                    $end   = CarbonImmutable::createFromFormat('!Y-m-d', $value);
+                } catch (InvalidFormatException) {
+                    return;
+                }
 
                 // 開始日の 1 年後（2/29 は翌年の 2/28）と同じ日か後なら断る
-                if ($start !== false && $end !== false && $end->gte($start->addYearNoOverflow())) {
+                if ($end->gte($start->addYearNoOverflow())) {
                     $fail('毎年繰り返す期間は 1 年より短くしてください。');
                 }
             }],
