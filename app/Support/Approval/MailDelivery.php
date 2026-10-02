@@ -27,7 +27,7 @@ final class MailDelivery
         try {
             DB::table('approval_settings')->where('id', ApprovalSetting::SINGLETON_ID)->update(['mail_last_sent_at' => now()]);
         } catch (Throwable $e) {
-            Log::warning('メールは送れたが、送れた記録を残せませんでした: ' . $e->getMessage());
+            Log::error('メールは送れたが、送れた記録を残せませんでした: ' . $e->getMessage());
         }
     }
 
