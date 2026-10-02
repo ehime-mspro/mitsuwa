@@ -58,6 +58,7 @@ class ClockReadScanTest extends TestCase
         'app/Http/Controllers/Approval/RequestAttachmentController.php' => [1, 'approval_attachments.removed_at は TIMESTAMP 列（外した瞬間を UTC で保存する）'],
         'app/Models/ApprovalNotice.php'                       => [1, 'notifications.read_at は TIMESTAMP 列（既読にした瞬間を UTC で保存する）'],
         'app/Support/Approval/MailDelivery.php'               => [2, '決裁のメールが送れた・送れなかった瞬間（approval_settings の TIMESTAMP 列。帯では JapanTime で日本時間に直して出す）'],
+        'app/Support/Approval/ReminderCalendar.php'           => [1, '今の瞬間が日本時間の 9:05（催促を送る時刻の終わり）より前か（瞬間どうしを比べる。日付は JapanTime::today()）'],
     ];
 
     /** @return list<array{int, string}> [行, 呼び出し] */
