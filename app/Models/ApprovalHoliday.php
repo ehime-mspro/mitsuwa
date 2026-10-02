@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\JapanTime;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -31,6 +32,27 @@ class ApprovalHoliday extends Model
     public function scopeOrdered(Builder $query): Builder
     {
         return $query->orderBy('start_date')->orderBy('id');
+    }
+
+    /** 画面のフォームと設定の変更の記録に使う形（日付は 'Y-m-d'。画面から来た値とそのまま比べられる） */
+    public function formValues(): array
+    {
+        return [
+            'start_date'     => JapanTime::format($this->start_date, 'Y-m-d'),
+            'end_date'       => JapanTime::format($this->end_date, 'Y-m-d'),
+            'repeats_yearly' => $this->repeats_yearly,
+            'description'    => $this->description,
+        ];
+    }
+
+    /** 一覧の期間（毎年は月と日だけ「12/29〜1/3」、その年だけは「2026/08/13〜2026/08/14」。1 日だけなら 1 つ） */
+    public function periodLabel(): string
+    {
+        $format = $this->repeats_yearly ? 'n/j' : 'Y/m/d';
+        $from   = JapanTime::format($this->start_date, $format);
+        $to     = JapanTime::format($this->end_date, $format);
+
+        return $from === $to ? $from : "{$from}〜{$to}";
     }
 
     /**

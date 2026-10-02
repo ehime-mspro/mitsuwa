@@ -6,6 +6,7 @@ use App\Enums\UserRole;
 use App\Http\Middleware\EnsureApprovalAdmin;
 use App\Models\ApprovalCompany;
 use App\Models\ApprovalDepartment;
+use App\Models\ApprovalHoliday;
 use App\Models\ApprovalMailDomain;
 use App\Models\ApprovalMember;
 use App\Models\ApprovalRequest;
@@ -187,8 +188,9 @@ class ApprovalAdminGateTest extends TestCase
         //   出ている本当の理由（分類漏れ・門番の欠落・逆方向の見落とし）が隠れる。
         $this->assertSame([], $problems, "分類漏れ・門番の欠落・逆方向の見落とし:\n" . implode("\n", $problems));
 
-        // 走査が空振りして緑になる事故を防ぐ（3a で 46 本 = 決裁の管理 22 本 + 進行中の申請の管理 4 本 + ホーム 1 本 + 申請を回す画面 16 本 + お知らせ 3 本）
-        $this->assertGreaterThanOrEqual(46, $found, 'approvals. のルートの走査に失敗している');
+        // 走査が空振りして緑になる事故を防ぐ（3b で 50 本 = 決裁の管理 22 本 + 進行中の申請の管理 4 本 + ホーム 1 本 + 申請を回す画面 16 本 + お知らせ 3 本
+        // + 催促の設定 4 本）
+        $this->assertGreaterThanOrEqual(50, $found, 'approvals. のルートの走査に失敗している');
     }
 
     /**
@@ -369,6 +371,8 @@ class ApprovalAdminGateTest extends TestCase
             'approval_histories' => DB::table('approval_histories')->count(),
             // お知らせ（段階3）。部門長の交代・審査担当者の追加は担当に知らせを作る
             'notifications' => DB::table('notifications')->count(),
+            // 催促の設定（3b）。送らない日の追加・削除
+            'approval_holidays' => DB::table('approval_holidays')->count(),
         ];
     }
 
@@ -511,6 +515,9 @@ class ApprovalAdminGateTest extends TestCase
             'user_id' => $manageableUser->id, 'department_id' => $reviewDepartment->id, 'type_id' => $type->id, 'subject' => '門番の確かめ',
         ]);
 
+        // 催促の設定（3b）の相手の送らない日
+        $holiday = ApprovalHoliday::create(['start_date' => '2026-12-29', 'end_date' => '2027-01-03', 'repeats_yearly' => true, 'description' => '年末年始']);
+
         $existingValues = [
             'user' => (string) $manageableUser->id,
             'approvalCompany' => (string) $company->id,
@@ -518,6 +525,7 @@ class ApprovalAdminGateTest extends TestCase
             'mailDomain' => (string) $mailDomain->id,
             'approvalType' => (string) $type->id,
             'approvalRequest' => (string) $approvalRequest->id,
+            'approvalHoliday' => (string) $holiday->id,
         ];
 
         $outsiders = $this->outsiders();
@@ -547,10 +555,10 @@ class ApprovalAdminGateTest extends TestCase
         //   に出ている本当の理由（どのルート・どの変種・どの相手で止まらなかったか）が隠れる。
         $this->assertSame([], $problems, "権限の無い利用者を止められていないルート:\n" . implode("\n", $problems));
 
-        // 走査が空振りして緑になる事故を防ぐ（2b の実測 26 ルート＝2a の 22 本＋進行中の申請の管理 4 本。
-        // パラメータの有無で 1 変種・2 変種、いずれもメソッド 1 つずつ、× 6 人 ＝ 234 件）
-        $this->assertGreaterThanOrEqual(26, $adminRoutesChecked, 'approvals.admin. のルートの走査に失敗している');
-        $this->assertGreaterThanOrEqual(234, $requestsMade, '要求した件数が想定より少ない（走査が空振りしている）');
+        // 走査が空振りして緑になる事故を防ぐ（3b の実測 30 ルート＝2a の 22 本＋進行中の申請の管理 4 本＋催促の設定 4 本。
+        // パラメータの有無で 1 変種・2 変種、いずれもメソッド 1 つずつ、× 6 人 ＝ 270 件）
+        $this->assertGreaterThanOrEqual(30, $adminRoutesChecked, 'approvals.admin. のルートの走査に失敗している');
+        $this->assertGreaterThanOrEqual(270, $requestsMade, '要求した件数が想定より少ない（走査が空振りしている）');
 
         // ⚠ これが唯一、門番の判定を $next() の後ろへ動かす変異（クライアントには 403 の
         //   まま返るが、コントローラの副作用は既に実行済み）を検出できる。⚠ ただし検出できる

@@ -324,6 +324,30 @@ class ApprovalSidebarTest extends TestCase
         }
     }
 
+    /** 催促の設定は、使い始める前から決裁の管理者に出る（段階3 設計書 §5.9） */
+    public function test_the_reminder_settings_link_is_offered_to_admins_before_launch(): void
+    {
+        // 決裁のみ利用者の管理者: 決裁のサイドバー
+        $sidebars = $this->sidebars(
+            $this->actingAs($this->approvalAdmin(UserRole::ApprovalOnly->value))->get(route('approvals.home'))->assertOk()->getContent()
+        );
+        foreach (['expanded', 'drawer'] as $key) {
+            $this->assertHasLink($sidebars[$key], route('approvals.admin.holidays.index'), '催促の設定', $key);
+        }
+
+        // 基幹を使う管理者: 基幹のサイドバーの「決裁の管理」
+        $sidebars = $this->sidebars($this->actingAs($this->approvalAdmin())->get('/dashboard/tenant')->assertOk()->getContent());
+        foreach (['expanded', 'drawer'] as $key) {
+            $this->assertHasLink($sidebars[$key], route('approvals.admin.holidays.index'), '催促の設定', $key);
+        }
+
+        // 管理者でない人には出さない
+        $plain = User::factory()->approvalOnly()->create(['must_change_password' => false]);
+        foreach ($this->sidebars($this->actingAs($plain)->get(route('approvals.home'))->assertOk()->getContent()) as $key => $aside) {
+            $this->assertStringNotContainsString(route('approvals.admin.holidays.index'), $aside, "{$key} に管理者でない人の催促の設定が出ている");
+        }
+    }
+
     /** 申請の画面へのリンクは、使い始めてから出す（準備中は誰にも見せない。段階2 設計書 D1） */
     public function test_the_request_links_appear_only_after_launch(): void
     {

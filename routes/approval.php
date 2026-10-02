@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Approval\AdminRequestController;
+use App\Http\Controllers\Approval\HolidayController;
 use App\Http\Controllers\Approval\HomeController;
 use App\Http\Controllers\Approval\NoticeController;
 use App\Http\Controllers\Approval\OrganizationController;
@@ -81,6 +82,13 @@ Route::middleware('approval.admin')->prefix('approvals/admin')->name('approvals.
     Route::post('/types', [TypeController::class, 'store'])->name('types.store');
     Route::put('/types/{approvalType}', [TypeController::class, 'update'])->name('types.update');
     Route::delete('/types/{approvalType}', [TypeController::class, 'destroy'])->name('types.destroy');
+
+    // 催促の設定（画面⑫。段階3 設計書 §5.9）。使い始める前から使える（準備の画面）
+    // ⚠ パラメータ名は `{approvalHoliday}`
+    Route::get('/holidays', [HolidayController::class, 'index'])->name('holidays.index');
+    Route::post('/holidays', [HolidayController::class, 'store'])->name('holidays.store');
+    Route::put('/holidays/{approvalHoliday}', [HolidayController::class, 'update'])->name('holidays.update');
+    Route::delete('/holidays/{approvalHoliday}', [HolidayController::class, 'destroy'])->name('holidays.destroy');
 });
 
 /*
