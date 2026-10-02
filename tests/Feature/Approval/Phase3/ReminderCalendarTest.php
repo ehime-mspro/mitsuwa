@@ -142,6 +142,10 @@ class ReminderCalendarTest extends TestCase
         ApprovalReminderRun::create(['sent_on' => '2026-10-06', 'recipient_count' => 1, 'item_count' => 1]);
         $this->assertSame('2026-10-07', (new ReminderCalendar())->nextSendDay()->format('Y-m-d'));
 
+        // 前の日までの行があっても、今日の行が無ければ今日（毎朝の形）
+        $this->travelTo(CarbonImmutable::parse('2026-10-07 08:30:00', 'Asia/Tokyo')->utc());
+        $this->assertSame('2026-10-07', (new ReminderCalendar())->nextSendDay()->format('Y-m-d'));
+
         // 土曜の朝は、次の月曜
         $this->travelTo(CarbonImmutable::parse('2026-10-03 07:00:00', 'Asia/Tokyo')->utc());
         $this->assertSame('2026-10-05', (new ReminderCalendar())->nextSendDay()->format('Y-m-d'));

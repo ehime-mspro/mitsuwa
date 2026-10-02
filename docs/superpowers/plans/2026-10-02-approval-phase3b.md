@@ -3984,3 +3984,149 @@ CREATE TABLE `approval_reminder_runs` (
 - 変異 C06（「次に催促を送る日」の今日を UTC で作る）に、はじめは時刻の読み方の走査テストしか気づかなかった。調べると、振る舞いに違いが出るのは「日本時間の 9:00 より前に、今日の行がもうある」ときだけ（それ以外は 9:05 の締めと「次の送る日」の計算が偶然同じ答えを出す）→ その場面を `ReminderCalendarTest` に足した（2026-10-06 08:30 に 10/6 の行があれば 10/7）
 - **別の会話（同じ 3b を並行して作り始め、利用者の決定で止まった）の測定から取り入れたこと**: 全員分の対応待ちを番が来た順に並べ替えない変異（P08）を、はじめの突き合わせは見逃していた（申請がみな同じ時刻に番が来ていて、並べ替えても並びが変わらなかった）→ `PendingWorkEveryoneTest` に「先に自分の申請が差し戻され（1 日目）、あとから審査の番が来る（2 日目）人」を足した。年をまたぐ期間の断りの文（直し方を添える）も取り入れた（利用者の決定）
 - 社長は申請できない（Workflow が断る）→「社長が申請者の申請」は、社長の段階まで進めてから社長の指定をその申請者に替えて作る（`PendingWorkEveryoneTest`）
+
+
+---
+
+## Task 6 の実測記録（2026-10-02・実装のあと）
+
+実装したコードに、計画の表の 62 通り（カナリア 1 + 変異 61）と、実装の段の Task 2 の点検で足した C09 を合わせた 63 通り（カナリア 1 + 変異 62）を、`~/.claude/plans/approval-phase3-tasks/3b/mutate.py` で 1 つずつ当てて測った。**WT では当てず、WT の HEAD の写しで当てた**（WT は読むだけ）。測ったのは 2 回: 最初は `78540468`（Task 5 の手直しまで）の写し、次に最後の点検の手直しを載せた `3cb8034b` の写し。**下の表は 2 回目（最終のコード）の実測**。1 回目との違いは「測っている間に HEAD が進んだこと」に書いた。
+
+### 測った条件
+
+| 項目 | 内容 |
+|---|---|
+| 測った HEAD | **`3cb8034b`**（`refactor(approval): 祝日の表を作り終えてから覚える`）の写し。載っている手直し: Task 5 の `78540468`、最後の点検の `51b18bf4`（まとめメールの空の件名・部門）・`f547bfa2`（⑫ の説明文の空白）・`3cb8034b`（祝日の表を作り終えてから覚える）。写しの `tests/Feature/Approval/Phase3/ReminderCalendarTest.php` だけは、C09 のために足した 4 行（このコミットで足す）を載せた版 |
+| 流した範囲 | `mutate.py` の `TARGET`（決裁のテスト〈`tests/Feature/Approval`・`tests/Unit/Approval`〉・`ScheduleTest`・走査テスト 8 本）= **938 本**（計画の試作の 937 本より 1 本多い。最後の点検の手直しで足された `ApprovalRemindCommandTest::test_an_empty_subject_and_department_read_as_on_the_home_screen`） |
+| 全件（Step 1・`78540468`） | `OK (3295 tests, 23508 assertions)`（はじめの `git status --porcelain` は空） |
+| 全件（最終・`3cb8034b` + C09 のテスト） | **`OK (3296 tests, 23512 assertions)`**（`ReminderCalendarTest` だけなら `OK (7 tests, 29 assertions)`）。`3296` は `3295` に `an_empty_subject…` の 1 本を足した数。assertions の増え（+4）は、その 1 本・`HolidaySettingsTest` の空白の確かめ 1 つ・C09 の 1 つ |
+| `--check` | `78540468` の写し: `NG` なし・`checked 63`。`3cb8034b` の写し: **M14 だけ `NG`（当てる文字の行が手直し `51b18bf4` で変わった）** → `mutate.py` の M14 の old/new を新しい行（`oneLine($item['request']->subject ?? '（件名なし）')`）に合わせて、`NG` なし・`checked 63` |
+| カナリア | 赤になった: `Tests: 938, Assertions: 7103, Failures: 7.`（`HolidaySettingsTest` 5・`MailFailureBannerTest` 2。7 本とも `Expected response status code [200] but received 500.` ＝ ⑫ の見出しの未定義の変数で画面が 500）。`78540468` の写しでも赤（`Tests: 937, Assertions: 7100, Failures: 7.`・同じ 7 本） |
+| 所要 | 63 通りで約 43 分（1 通り 41〜42 秒）。1 回目は約 46 分（42〜48 秒）。結果の jsonl: `~/.claude/plans/approval-phase3-tasks/3b/measure/mutations-impl.jsonl`（最終）・`mutations-impl-78540468.jsonl`（1 回目）・`mutations-impl-c09-before.jsonl`・`mutations-impl-c09-after.jsonl` |
+
+### 結果
+
+**63 行 = 検出 61・カナリア 1（赤が正しい）・等価 1（P06）・SKIP 0・見逃し 0（等価でないのに緑 0）。** 検出 61 のうち 60 は計画の表と同じ結果、1 つ（C09）は表の外で、はじめは緑（検出漏れ）だったのでテストを足して検出できるようにした（「当初検出漏れ→追加で検出」）。
+
+- **検出（60・表と同じ）**: T01〜T03・H01〜H03・C01〜C08・P01〜P05・P07・P08・M01〜M23・V01〜V16
+- **当初検出漏れ→追加で検出（1）**: **C09**（下の「C09 を足したわけ」）
+- **等価（1）**: **P06**（全員分で id の型をそろえない）= `OK (938 tests, 7140 assertions)`。計画の見込みどおり。理由: `PendingWork.php` の `array_map('intval', …)` と `(int) $step->request->user_id` は、MySQL の接続の設定で id が文字列で来たときの備えで、PHP 8.3 の pdo_sqlite は整数の列を整数で返すので（テストは SQLite）、型をそろえても外しても同じ比べになる（§0.4。「SQLite のテストでは区別がつかない」と計画が書いたとおり）。**緑でも、変異を当てていない写しと同じ数字**（変異なしの写しは 938 本・7139 assertions、C09 のテストを足すと 7140 assertions）
+- **SKIP（0）**: 無し
+
+### 63 通りの実測（`3cb8034b` の写し）
+
+| # | 変異（ファイル） | 結果（流した 938 本） | 落ちたテスト（実測） | 判定 |
+|---|---|---|---|---|
+| CANARY | カナリア: ⑫ の見出しに未定義の変数（`holidays.blade.php`） | Tests: 938, Assertions: 7103, Failures: 7. | 7 本（HolidaySettingsTest 5・MailFailureBannerTest 2） | カナリア（赤が正しい） |
+| T01 | SQL から送った日の一意の索引を消す（`2026-10-02-approval-phase3b.sql`） | Tests: 938, Assertions: 7139, Failures: 1. | `test_the_sent_date_is_unique_in_the_sql_and_the_migration` | 検出 |
+| T02 | migration から送った日の一意の索引を消す（`2026_10_02_000001_create_approval_phase3b_tables.php`） | Tests: 938, Assertions: 7135, Failures: 3. | `test_it_sends_once_a_day_and_again_on_the_next_send_day`、`test_the_same_day_cannot_be_recorded_twice`、`test_the_sent_date_is_unique_in_the_sql_and_the_migration` | 検出 |
+| T03 | migration の説明の列の NULL を許す（`2026_10_02_000001_create_approval_phase3b_tables.php`） | Tests: 938, Assertions: 7138, Failures: 1. | `test_the_sql_and_the_migration_declare_the_same_columns` | 検出 |
+| H01 | 年をまたぐ毎年の期間を比べ損なう（`ApprovalHoliday.php`） | Tests: 938, Assertions: 7133, Failures: 3. | `test_a_yearly_period_can_cross_the_new_year`、`test_the_next_send_day_after_skips_weekends_holidays_and_days_off`、`test_the_registered_days_off_are_not_send_days` | 検出 |
+| H02 | その年だけの期間の終了日を含めない（`ApprovalHoliday.php`） | Tests: 938, Assertions: 7136, Failures: 4. | `test_a_day_off_can_be_added_from_the_rendered_form`、`test_a_one_time_period_covers_its_dates_inclusively`、`test_a_single_day`、`test_nothing_is_sent_on_days_off` | 検出 |
+| H03 | 毎年繰り返すを年月日で比べる（`ApprovalHoliday.php`） | Tests: 938, Assertions: 7135, Failures: 4. | `test_a_yearly_period_can_cross_the_new_year`、`test_a_yearly_period_is_compared_by_month_and_day`、`test_february_the_twenty_ninth_in_a_yearly_period`、`test_the_registered_days_off_are_not_send_days` | 検出 |
+| C01 | 土曜日を送る日にする（`ReminderCalendar.php`） | Tests: 938, Assertions: 7118, Failures: 7. | `test_a_day_off_can_be_added_from_the_rendered_form`、`test_every_day_of_2026_and_2027_matches_the_cabinet_office_list_and_weekends`、`test_nothing_is_sent_on_days_off`、`test_the_next_send_day_after_skips_weekends_holidays_and_days_off`、`test_the_next_send_day_is_today_only_before_five_past_nine_and_before_sending`、`test_the_reasons_name_the_weekday_or_the_holiday`、`test_the_screen_shows_the_next_send_day_the_last_run_and_the_days_off` | 検出 |
+| C02 | 祝日の表を 2026 年だけで引く（`ReminderCalendar.php`） | Tests: 938, Assertions: 7139, Failures: 2. | `test_every_day_of_2026_and_2027_matches_the_cabinet_office_list_and_weekends`、`test_the_registered_days_off_are_not_send_days` | 検出 |
+| C03 | 登録した送らない日を見ない（`ReminderCalendar.php`） | Tests: 938, Assertions: 7129, Failures: 6. | `test_a_day_off_can_be_added_from_the_rendered_form`、`test_nothing_is_sent_on_days_off`、`test_the_next_send_day_after_skips_weekends_holidays_and_days_off`、`test_the_registered_days_off_are_not_send_days`、`test_the_screen_says_so_when_no_send_day_comes_within_a_year`、`test_there_is_no_next_send_day_when_a_year_is_blocked` | 検出 |
+| C04 | 9:05 を過ぎても今日を次に送る日にする（`ReminderCalendar.php`） | Tests: 938, Assertions: 7128, Failures: 4. | `test_a_day_off_can_be_added_from_the_rendered_form`、`test_php_clock_reads_are_classified`、`test_the_next_send_day_is_today_only_before_five_past_nine_and_before_sending`、`test_the_screen_shows_the_next_send_day_the_last_run_and_the_days_off` | 検出 |
+| C05 | 今日の分を送ったあとも今日を次に送る日にする（`ReminderCalendar.php`） | Tests: 938, Assertions: 7137, Failures: 1. | `test_the_next_send_day_is_today_only_before_five_past_nine_and_before_sending` | 検出 |
+| C06 | 次に送る日の今日を UTC で作る（`ReminderCalendar.php`） | Tests: 938, Assertions: 7138, Failures: 2. | `test_php_clock_reads_are_classified`、`test_the_next_send_day_is_today_only_before_five_past_nine_and_before_sending` | 検出 |
+| C07 | その日自身を次に送る日に含める（`ReminderCalendar.php`） | Tests: 938, Assertions: 7126, Failures: 4. | `test_a_day_off_can_be_added_from_the_rendered_form`、`test_the_next_send_day_after_skips_weekends_holidays_and_days_off`、`test_the_next_send_day_is_today_only_before_five_past_nine_and_before_sending`、`test_the_screen_shows_the_next_send_day_the_last_run_and_the_days_off` | 検出 |
+| C08 | 日付の曜日を出さない（`ReminderCalendar.php`） | Tests: 938, Assertions: 7129, Failures: 4. | `test_a_day_off_can_be_added_from_the_rendered_form`、`test_the_label_has_the_japanese_weekday`、`test_the_last_run_says_so_when_there_was_nobody_to_remind`、`test_the_screen_shows_the_next_send_day_the_last_run_and_the_days_off` | 検出 |
+| C09 | 今日の行でなく、どの日の行があっても今日の分を送ったとみなす（`ReminderCalendar.php`） | Tests: 938, Assertions: 7139, Failures: 1. | `test_the_next_send_day_is_today_only_before_five_past_nine_and_before_sending` | 当初検出漏れ→追加で検出（下の「C09 を足したわけ」。足したテストで赤） |
+| P01 | 全員分で自分の申請を除かない（`PendingWork.php`） | Tests: 938, Assertions: 7130, Failures: 1. | `test_everyone_gives_each_person_exactly_what_for_gives` | 検出 |
+| P02 | 全員分で付け替え先を見ない（`PendingWork.php`） | Tests: 938, Assertions: 7127, Failures: 1. | `test_everyone_gives_each_person_exactly_what_for_gives` | 検出 |
+| P03 | 全員分で社長の段階を落とす（`PendingWork.php`） | Tests: 938, Assertions: 7130, Failures: 1. | `test_everyone_gives_each_person_exactly_what_for_gives` | 検出 |
+| P04 | 全員分で条件確認待ちを落とす（`PendingWork.php`） | Tests: 938, Assertions: 7130, Failures: 1. | `test_everyone_gives_each_person_exactly_what_for_gives` | 検出 |
+| P05 | for() の申請者の番を id の順に読まない（`PendingWork.php`） | Tests: 938, Assertions: 7130, Failures: 1. | `test_everyone_gives_each_person_exactly_what_for_gives` | 検出 |
+| P06 | 全員分で id の型をそろえない（SQLite は整数で返すので等価の見込み）（`PendingWork.php`） | OK (938 tests, 7140 assertions) | — | 等価: SQLite のテストは id を整数で返す（MySQL の接続の設定で文字が来たときの備え。§0.4） |
+| P07 | 全員分で申請を前もって読まない（N+1）（`PendingWork.php`） | Tests: 938, Assertions: 7139, Failures: 1. | `test_the_number_of_queries_does_not_grow_with_people_or_requests` | 検出 |
+| P08 | 全員分を番が来た順に並べ替えない（別の会話の測定で見つかった穴。テストを足した）（`PendingWork.php`） | Tests: 938, Assertions: 7135, Failures: 1. | `test_everyone_gives_each_person_exactly_what_for_gives` | 検出 |
+| M01 | 2 日待ちから載せる（`ApprovalRemindCommand.php`） | Tests: 938, Assertions: 7134, Failures: 1. | `test_each_person_gets_one_digest_of_the_requests_waiting_three_days_or_more` | 検出 |
+| M02 | 3 日待ちを載せない（`ApprovalRemindCommand.php`） | Tests: 938, Assertions: 7134, Failures: 1. | `test_each_person_gets_one_digest_of_the_requests_waiting_three_days_or_more` | 検出 |
+| M03 | 使い始める前でも送る（`ApprovalRemindCommand.php`） | Tests: 938, Assertions: 7138, Failures: 1. | `test_nothing_is_sent_before_launch` | 検出 |
+| M04 | 送らない日にも送る（`ApprovalRemindCommand.php`） | Tests: 938, Assertions: 7134, Failures: 1. | `test_nothing_is_sent_on_days_off` | 検出 |
+| M05 | 一意で断られたときに止まらない（`ApprovalRemindCommand.php`） | Tests: 938, Assertions: 7133, Errors: 1. | `test_it_sends_once_a_day_and_again_on_the_next_send_day` | 検出 |
+| M06 | まとめメールをトランザクションの外で積む（`ApprovalRemindCommand.php`） | Tests: 938, Assertions: 7131, Failures: 2. | `test_it_sends_once_a_day_and_again_on_the_next_send_day`、`test_the_run_and_the_queued_mails_roll_back_together` | 検出 |
+| M07 | 無効の人にも送る（`ApprovalRemindCommand.php`） | Tests: 938, Assertions: 7139, Failures: 1. | `test_only_active_people_with_an_allowed_address_get_a_digest` | 検出 |
+| M08 | 許可していないドメインにも送る（`ApprovalRemindCommand.php`） | Tests: 938, Assertions: 7139, Failures: 1. | `test_only_active_people_with_an_allowed_address_get_a_digest` | 検出 |
+| M09 | 1 通に 21 件載せる（`ApprovalRemindCommand.php`） | Tests: 938, Assertions: 7135, Failures: 1. | `test_a_digest_lists_twenty_at_most_and_tells_how_many_more` | 検出 |
+| M10 | 件数を載せた分だけにする（`ApprovalRemindCommand.php`） | Tests: 938, Assertions: 7133, Failures: 1. | `test_a_digest_lists_twenty_at_most_and_tells_how_many_more` | 検出 |
+| M11 | リンクを route() のまま作る（`ApprovalRemindCommand.php`） | Tests: 938, Assertions: 7132, Failures: 3. | `test_each_person_gets_one_digest_of_the_requests_waiting_three_days_or_more`、`test_the_links_do_not_repeat_the_sub_path_of_the_app_url`、`test_the_mail_text_and_links` | 検出 |
+| M12 | リンクの道に元の道を重ねる（`ApprovalRemindCommand.php`） | Tests: 938, Assertions: 7132, Failures: 3. | `test_each_person_gets_one_digest_of_the_requests_waiting_three_days_or_more`、`test_the_links_do_not_repeat_the_sub_path_of_the_app_url`、`test_the_mail_text_and_links` | 検出 |
+| M13 | リンクの元の既定に /index.php を足さない（`approval.php`） | Tests: 938, Assertions: 7138, Failures: 2. | `test_each_person_gets_one_digest_of_the_requests_waiting_three_days_or_more`、`test_the_default_link_root_adds_the_front_controller_to_the_app_url` | 検出 |
+| M14 | 件名の改行を残す（`ApprovalRemindCommand.php`） | Tests: 938, Assertions: 7135, Failures: 1. | `test_the_mail_text_and_links` | 検出 |
+| M15 | 本文の件名をエスケープする（`approval-reminder.blade.php`） | Tests: 938, Assertions: 7135, Failures: 1. | `test_the_mail_text_and_links` | 検出 |
+| M16 | 残りの件数を書かない（`approval-reminder.blade.php`） | Tests: 938, Assertions: 7139, Failures: 1. | `test_a_digest_lists_twenty_at_most_and_tells_how_many_more` | 検出 |
+| M17 | 差出人の名前を全体の設定にする（`ApprovalReminderMail.php`） | Tests: 938, Assertions: 7134, Failures: 1. | `test_the_mail_text_and_links` | 検出 |
+| M18 | 送れなかった宛先の名前を残さない（`ApprovalReminderMail.php`） | Tests: 938, Assertions: 7140, Failures: 1. | `test_the_digest_is_retried_and_a_sent_or_failed_digest_is_recorded` | 検出 |
+| M19 | 催促の予定を 10 時にする（`console.php`） | Tests: 938, Assertions: 7130, Failures: 2. | `test_the_approval_reminder_runs_between_nine_and_nine_oh_four_japan_time`、`test_the_approval_reminder_runs_exactly_once_a_day_whatever_minute_the_cron_starts_at` | 検出 |
+| M20 | 催促の予定をキュー処理の後ろに置く（`console.php`） | Tests: 938, Assertions: 7140, Failures: 1. | `test_the_approval_reminder_is_scheduled_before_the_queue_worker` | 検出 |
+| M21 | 送った人数を記録しない（`ApprovalRemindCommand.php`） | Tests: 938, Assertions: 7140, Failures: 1. | `test_each_person_gets_one_digest_of_the_requests_waiting_three_days_or_more` | 検出 |
+| M22 | 送る相手がいない日を記録しない（`ApprovalRemindCommand.php`） | Tests: 938, Assertions: 7139, Failures: 1. | `test_a_day_with_nobody_to_remind_is_recorded` | 検出 |
+| M23 | 送る相手がいない日も「催促を送りました（0 人・0 件）」と出す（`ApprovalRemindCommand.php`） | Tests: 938, Assertions: 7139, Failures: 1. | `test_a_day_with_nobody_to_remind_is_recorded` | 検出 |
+| V01 | ちょうど 1 年の毎年の期間を通す（`HolidayController.php`） | Tests: 938, Assertions: 7132, Failures: 1. | `test_a_yearly_period_must_be_shorter_than_a_year` | 検出 |
+| V02 | 2/29 の 1 年後を 3/1 にする（`HolidayController.php`） | Tests: 938, Assertions: 7134, Failures: 1. | `test_a_yearly_period_must_be_shorter_than_a_year` | 検出 |
+| V03 | その年だけの期間にも 1 年の決まりを当てる（`HolidayController.php`） | Tests: 938, Assertions: 7139, Failures: 1. | `test_a_yearly_period_must_be_shorter_than_a_year` | 検出 |
+| V04 | 終了日が開始日より前でも通す（`HolidayController.php`） | Tests: 938, Assertions: 7117, Failures: 2. | `test_a_refused_edit_reopens_the_same_dialog`、`test_the_dates_and_the_description_are_checked` | 検出 |
+| V05 | 開始日を date で検査する（`HolidayController.php`） | Tests: 938, Assertions: 7126, Failures: 1. | `test_the_dates_and_the_description_are_checked` | 検出 |
+| V06 | 説明を空でも通す（`HolidayController.php`） | Tests: 938, Assertions: 7137, Failures: 1. | `test_the_dates_and_the_description_are_checked` | 検出 |
+| V07 | 変わっていなくても記録する（`HolidayController.php`） | Tests: 938, Assertions: 7134, Failures: 1. | `test_changes_and_deletions_are_recorded` | 検出 |
+| V08 | 前の値を Carbon のまま比べる（`HolidayController.php`） | Tests: 938, Assertions: 7134, Failures: 1. | `test_changes_and_deletions_are_recorded` | 検出 |
+| V09 | 一覧を開始日の順に並べない（`HolidayController.php`） | Tests: 938, Assertions: 7135, Failures: 1. | `test_the_screen_shows_the_next_send_day_the_last_run_and_the_days_off` | 検出 |
+| V10 | 次に送る日に今日を出す（`holidays.blade.php`） | Tests: 938, Assertions: 7132, Failures: 2. | `test_a_day_off_can_be_added_from_the_rendered_form`、`test_the_screen_shows_the_next_send_day_the_last_run_and_the_days_off` | 検出 |
+| V11 | 使い始める前の添え書きを逆に出す（`holidays.blade.php`） | Tests: 938, Assertions: 7133, Failures: 1. | `test_the_screen_shows_the_next_send_day_the_last_run_and_the_days_off` | 検出 |
+| V12 | 前回の人数に件数を出す（`holidays.blade.php`） | Tests: 938, Assertions: 7139, Failures: 1. | `test_the_screen_shows_the_next_send_day_the_last_run_and_the_days_off` | 検出 |
+| V13 | 毎年の期間に年を出す（`ApprovalHoliday.php`） | Tests: 938, Assertions: 7135, Failures: 1. | `test_the_screen_shows_the_next_send_day_the_last_run_and_the_days_off` | 検出 |
+| V14 | ⑫ に送れないときの帯を出さない（`holidays.blade.php`） | Tests: 938, Assertions: 7136, Failures: 1. | `test_a_failure_shows_the_banner_on_the_admin_pages` | 検出 |
+| V15 | 決裁のサイドバー（PC）から催促の設定を消す（`sidebar_approval.blade.php`） | Tests: 938, Assertions: 7118, Failures: 1. | `test_the_reminder_settings_link_is_offered_to_admins_before_launch` | 検出 |
+| V16 | 送る相手がいなかった朝も「（0 人・0 件）」と出す（`holidays.blade.php`） | Tests: 938, Assertions: 7139, Failures: 1. | `test_the_last_run_says_so_when_there_was_nobody_to_remind` | 検出 |
+
+### 表（計画の試作の実測）との違い
+
+1. **本数が 1 本多い（937 → 938）**。足された 1 本は `ApprovalRemindCommandTest::test_an_empty_subject_and_department_read_as_on_the_home_screen`（最後の点検の手直し `51b18bf4`）。`TARGET` に入っているので、全部の変異で流れる。
+2. **assertions は表より +11（例: T01 の 7128 → 7139）**。内訳は、Task 5 の手直し `78540468` で `HolidaySettingsTest` に増えた断りの確かめ +7（1 回目の写しで +7 だった）、最後の点検の手直しの `an_empty_subject…` +2 と `HolidaySettingsTest` の空白の確かめ +1、C09 の 1 行 +1。新しい assertion はどの変異でも緑のまま増えるだけで、Failures・Errors の数は変わらない（assertions の数は赤/緑の突き合わせの対象外）。
+3. **C09 は表に無い**（上の「結果」）。
+4. 上の 1〜3 のほかに、**61 通り（C09 を除く）は、Failures と Errors の数も、落ちたテストの集合も表と同じ**。表で「ほか N 本」と省かれている C01 の 1 本は `test_the_screen_shows_the_next_send_day_the_last_run_and_the_days_off`、CANARY の 7 本は上の「測った条件」のとおり。等価と書かれた P06 だけが緑で、表の検出 60 は全部赤。
+
+### 落ちたテストの集合と理由の文言が狙いと合うか
+
+- 計画の表の「落ちたテスト」の名前は、62 通り（カナリアを含む）の全部が実測と一致する（`mutate.py` の出力を、表から機械で読んだ集合と照合した。結果: 同じ 62・違い 0）。
+- 理由の文言まで確かめるため、計画を書く段階の試作の実測（`~/.claude/plans/approval-phase3-tasks/3b/measure/mutations-final.jsonl`）と、1 回目の写し（`78540468`）の実測の**（落ちたテスト・理由の文言）の組を、どちらとも 62 通りで突き合わせた: 61 通りは完全に同じ。違うのは C03 の 1 つだけで、`Failed asserting that Illuminate\Support\Carbon Object #N` の PHP のオブジェクト番号 `#N` が実行のたびに違うだけ**（もう 1 つの違い C09 は、表に無いので試作とは突き合わせていない。1 回目の写しでは緑だった）。
+- 理由の文言は、狙いの機構と合っている（意図と別の機構が落としているものは無かった）。例: T01 SQL に一意の索引が無い／T02 `UniqueConstraintViolationException` が投げられない／T03 `approval_holidays の列（名前と NULL を許すか）が SQL と migration で違う`／H01・H03 登録した送らない日が `null`（送らない日と読まれない）／C01 土曜日の理由が `null`／C04・C06 `test_php_clock_reads_are_classified`（時計の読み取りが分類と合わない）／P01〜P05・P08 `…の対応待ちが for() と違う`／P07 `14 is identical to 8`（問い合わせの数が人数で増える）／M05 `UniqueConstraintViolationException`（Errors 1）／M06 `actual size 2 matches expected size 1`・`1 is identical to 0`（巻き戻りで積んだメールが残る）／M09 `actual size 21 matches expected size 20`／M19 `CRON が毎時 0 分から 5 分おきに起動する場合`／M20 `approvals:remind は queue:work より前に登録されていること`／V01・V02・V04 `Session is missing expected key [errors]`（断られない）／V03 `Session has unexpected errors`／V05・V06 検査の文が違う／V15 `expanded に「催促の設定」の行き先が無い`。
+
+### C09 を足したわけ（実装の段の Task 2 の点検の Minor 1）
+
+実装の段の Task 2 の点検（`task-2-review.md`・Minor 1）が、「`ReminderCalendar::nextSendDay()` の `ApprovalReminderRun::whereDate('sent_on', 今日)->exists()` を `ApprovalReminderRun::exists()`（どの日の行でもよい）に壊しても、テストは通る」と指摘した。計画の表の C01〜C08 にこの変異は無かった。`mutate.py` に **C09**（今日の行でなく、どの日の行があっても今日の分を送ったとみなす）を足して測った:
+
+| 場面 | 結果 |
+|---|---|
+| 元のテスト（`78540468`） | `OK (937 tests, 7136 assertions)` ＝ **緑（穴）** |
+| 元のテスト（`3cb8034b`） | `OK (938 tests, 7139 assertions)` ＝ **緑（穴）** |
+| 足したテスト（変異なしの写し） | 緑（`test_the_next_send_day_is_today_only_before_five_past_nine_and_before_sending` は `OK (1 test, 7 assertions)`。変異なしと等価な P06 は全体で `OK (938 tests, 7140 assertions)`） |
+| 足したテスト + C09 | **赤**: `Tests: 938, Assertions: 7139, Failures: 1.`・落ちたのは `test_the_next_send_day_is_today_only_before_five_past_nine_and_before_sending` の 1 本だけ。理由は `Failed asserting that two strings are identical.`（期待 `'2026-10-07'`・実際 `'2026-10-08'`。足した assertion の行 `ReminderCalendarTest.php:147`） |
+
+なぜ元のテストは通ったか: そのテストの assertion は、行が 1 つも無い場面（1〜3 番目）・10/5 の行があって「明日」を期待する場面・10/6 の行があって「明日」を期待する場面（今日の行があるときの答えと、どれかの日の行があるときの答えが同じ）・土曜の朝（行の判定に届かない）だけだった。**本番の毎朝は、昨日までの行がたまっていて今日の行はまだ無い状態で「今日」と答えるのが正しい**。この向きの守りが抜けていた（壊すと、⑫ の「次に催促を送る日」が毎朝 1 日先に出る）。
+
+足したテスト（`tests/Feature/Approval/Phase3/ReminderCalendarTest.php`・既存の `test_the_next_send_day_is_today_only_before_five_past_nine_and_before_sending` の中・4 行）:
+
+```php
+        // 前の日までの行があっても、今日の行が無ければ今日（毎朝の形）
+        $this->travelTo(CarbonImmutable::parse('2026-10-07 08:30:00', 'Asia/Tokyo')->utc());
+        $this->assertSame('2026-10-07', (new ReminderCalendar())->nextSendDay()->format('Y-m-d'));
+```
+
+（直前までのケースで 10/5・10/6 の行が入っているので、10/7 の朝は「前の日までの行はあるが今日の行は無い」になる。）
+
+### 測っている間に HEAD が進んだこと
+
+1 回目（`78540468` の写し）の途中から、WT に次のコミットが足された（コントローラの最後の点検の手直し。`mutate.py` は写しだけを書き換えるので、WT のコミットとは干渉しない）: `48178309`・`5e294d82`（文書）・`51b18bf4`・`f547bfa2`・`3cb8034b`（コード・テスト）。1 回目の 63 通りは `78540468` の上の測定として残し（`mutations-impl-78540468.jsonl`。検出 60・等価 P06・緑の穴 C09・SKIP 0。落ちたテストの集合は表と同じ）、次の手順で `3cb8034b` の上に測り直した。コードが `ApprovalRemindCommand.php`・`ReminderCalendar.php`・`holidays.blade.php` で変わり、`ApprovalRemindCommandTest`・`HolidaySettingsTest` に assertion が増えたので、M14 の 1 通りだけでなく **63 通りの全部**を測り直した（コードが変わったファイルを当てる C01〜C09・M01〜M23・V10〜V16・CANARY はもちろん、そのほかも、テストが増えたので落ちるテストの集合が変わりうるため）。
+
+1. 写しを `git archive HEAD`（`3cb8034b`）で取り直した。**⚠ `git archive` で展開したファイルの更新時刻はコミットの時刻（過去）になる**。写しには 1 回目の流しで作られた**コンパイル済みのビュー**（`storage/framework/views`）が残っていて、ビューのソース（`holidays.blade.php`）の更新時刻より新しいので、Blade は「古くなっていない」と読み、**直す前のビューのまま**流した。取り直した直後の、変異なしの全体が `Failures: 2` で赤になって気づいた（1 本は `HolidaySettingsTest` の、足された空白の確かめ）。写しの `storage/framework/views/*.php` を消して（`pwd`・`ls` で写しであることを確かめた）流し直すと `OK (938 tests, 7139 assertions)`。写しを取り直すときは、コンパイル済みのビューも消す
+2. `--check` で M14 の `NG` を見つけ、`mutate.py` の M14 を合わせた（上の「測った条件」）
+3. C09 の元のテストでの緑を確かめ（上の表）、WT の C09 のテストの 4 行を写しに写して赤を確かめ、63 通りを流した
+
+WT の全件（最終）は `OK (3296 tests, 23512 assertions)`。
+
+### 後始末
+
+写し（`<scratchpad>/p3b-mutation`）は、中身が写しであること（`pwd`・`ls`）を確かめて消した。WT の変更は、C09 のテストの 4 行（`ReminderCalendarTest.php`）とこの節だけ。
