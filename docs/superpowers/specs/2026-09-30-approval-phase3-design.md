@@ -4,7 +4,7 @@
 対象: 要件定義書 16.1 の段階3「通知（システム内のお知らせ・メール・催促）」
 要件: @docs/決裁申請_要件定義書_v1.md（v1.10。8・13 の⑥⑫・15.3・15.5・15.6。この設計で変える点は §3。v1.11 に反映する）
 前段: 段階0（定期実行・メール・暗号化バックアップ。2026-09-14 から本番稼働）／段階1（基幹の改修。2026-09-25 本番反映）／段階2（決裁の本体。2a は 2026-09-28、2b は 2026-09-30 に本番反映・使い始める前）— @docs/superpowers/specs/2026-09-25-approval-phase2-design.md
-実装計画: 3a は @docs/superpowers/plans/2026-09-30-approval-phase3a.md（この設計書から変えた細部は §0.10、受け入れた隙間は §0.11）。3b はまだ無い。計画を書くときは §4（調べて分かった事実）と §9（計画で決めること）を先に読む
+実装計画: 3a は @docs/superpowers/plans/2026-09-30-approval-phase3a.md（この設計書から変えた細部は §0.10、受け入れた隙間は §0.11）。3b は @docs/superpowers/plans/2026-10-02-approval-phase3b.md（同じく §0.10・§0.11）
 
 ---
 
@@ -167,6 +167,7 @@ D1〜D5 は選択式で個別に決めた（すべて推奨の案）。D6〜D20 
 | （3b）催促のコマンド・全員分の対応待ち・送る日の判定・`Approval\HolidayController`（⑫） | §5.8〜§5.10 |
 
 - 3a の計画で決めた名前（計画 §1）: Notifier・StepHandlers・NoticeText・Notice（知らせの中身）・ApprovalMailable（メールの土台）・ApprovalNoticeMail・MailDelivery（送れた・送れなかったの記録と帯の判定）・ApprovalNotice（お知らせのモデル）・ApprovalMenu::unreadNotices()（ベルの数）・PageNumbers と approvals._pager（⑩ から寄せたページ送り）
+- 3b の計画で決めた名前（計画 §1）: ApprovalRemindCommand（approvals:remind）・ApprovalReminderMail・ReminderCalendar（送る日の判定と次に送る日）・PendingWork::everyone()（全員分の対応待ち）・ApprovalHoliday・ApprovalReminderRun・HolidayController（⑫）
 
 **呼ぶ所**（どれも操作のトランザクションの中）
 
@@ -217,6 +218,7 @@ D1〜D5 は選択式で個別に決めた（すべて推奨の案）。D6〜D20 
 - お知らせの `data` は操作の時点の控え（件名・決裁No・申請者・部門・操作した人の名前・必要な対応）。あとで件名が変わっても、お知らせの文は変えない
 - お知らせは消さない（D16）。未読の数と「その申請の未読」を引く問い合わせが速いこと（索引）を計画で確かめる
 - 3a の計画で決めた細部（計画 §0.2）: notifications に approval_request_id（申請への外部キー・NULL 可・RESTRICT・索引）を足し、「その申請の未読」を data の JSON の中から探さずに引く（MySQL と SQLite で JSON の取り出し方と照合順序が違うため）。索引は (notifiable_type, notifiable_id, read_at) と (approval_request_id)。id は Str::orderedUuid()・type は approval。approval_settings の 3 列は mail_last_sent_at・mail_last_failed_at・mail_last_failed_to（氏名）
+- 3b の計画で決めた細部（計画 §0.2）: approval_holidays は start_date・end_date（DATE）・repeats_yearly・description（VARCHAR(50)・必須）。approval_reminder_runs は sent_on（DATE・一意）・recipient_count・item_count（のべ）・created_at。date キャストの列は Eloquent で書き、whereDate() で読む
 
 ### 5.4 知らせる場面と宛先
 
@@ -379,6 +381,8 @@ https://www.mitsuwat.co.jp/system/manage/index.php/approvals
 ・送信専用です。返信しても届きません。
 ```
 
+- 3b の計画で決めた細部（計画 §0.5）: 「今日の分をもう送ったか」は先に読まず、今日の行を入れられるかで決める。送る相手がいない日も 0 人・0 件で記録し、⑫ の「前回の催促」には「10/5（月）送る相手はいませんでした」と出す（利用者の決定 2026-10-02）。1 件の「必要な対応」はホームと同じ「{役割}・{対応}」、件名・申請者・申請部門もホームと同じ今の値。リンクの元は設定 approval.mail_link_root（既定は APP_URL に /index.php を足したもの。本番の APP_URL は https://www.mitsuwat.co.jp/system/manage＝2026-10-02 に読み取り）に route(…, false) の道をつなぐ。予定の画面の出力は storage/logs/approval-reminder.log に足す
+
 ### 5.9 催促の設定（⑫・3b・`approvals.admin.holidays.*`）
 
 - 「決裁の管理」（決裁のみ利用者のサイドバーと、基幹のサイドバー 3 か所）に「催促の設定」を足す。使い始める前から使える
@@ -386,6 +390,7 @@ https://www.mitsuwat.co.jp/system/manage/index.php/approvals
 - 送らない日の一覧（開始日の順）・追加・修正・削除。1 件ごとに開始日・終了日・毎年繰り返すか・説明（例: 年末年始 12/29〜1/3・毎年）
 - 入力の決まり: 終了日は開始日より前にできない。毎年繰り返す期間は 1 年より短く（計画で細部を決める）。説明は必須かどうかも計画で決める
 - 追加・修正・削除は設定の変更の記録（`SettingLogger`）に残す
+- 3b の計画で決めた細部（計画 §0.6）: 毎年繰り返す期間は 1 年より短く（終了日が開始日の 1 年後〈2/29 は翌年の 2/28〉と同じか後なら断る）・説明は必須で 50 文字まで（利用者の決定 2026-10-02）。入口は「決裁の管理」のサイドバー 4 か所とホームのリンクの行
 
 ### 5.10 祝日の判定（3b）
 
@@ -393,6 +398,7 @@ https://www.mitsuwat.co.jp/system/manage/index.php/approvals
 - 期間の比べ方: 毎年繰り返さないものは日付の範囲。毎年繰り返すものは**月と日だけ**で比べ、開始の月日が終了の月日より後なら年をまたぐとみなす（12/29〜1/3。D19）
 - 判定は日本の日付で行う（`JapanTime::today()`）
 - 部品は手元で入れてから `vendor` ごと本番へ送る（段階1 の QR の部品と同じ手順。本番では `composer install` をしない）。**3b の計画で、最新版が PHP 8.3（本番）と手元の PHP で動くこと・日本の祝日の中身を確かめる**（Context7 と実測）
+- 3b の計画で決めた細部（計画 §0.3）: azuyalabs/yasumi ^2.12（2.12.0・php >=8.2）。2025〜2027 年の日本の祝日が内閣府の一覧と一致することを確かめた。isHoliday() は渡した日時のその時刻帯の年月日で比べるので、年ごとの祝日の表を日本の暦の日付の文字で引く
 
 ---
 
@@ -455,12 +461,12 @@ worktree で `./vendor/bin/phpunit`（main repo では流さない）。
 - `StepHandlers` の置き場所と、`CurrentHandler`・`PendingWork` との関係（規則を 4 か所目に書かない形） → 3a の計画 §0.4 で決めた
 - 各 Workflow のメソッドのどこで Notifier を呼ぶか（取り下げは `cancelRest()` の前・部門長の交代は `$newHeadId`）と、`setPresident` をトランザクションで囲む形 → 3a の計画 §0.4 と Task 5・6 で決めた
 - お知らせの文言の全部（§5.5 の表を元に）と、場面 2 のわけの文 → 3a の計画 §0.5 で決めた
-- 全員分の対応待ちをまとめる問い合わせ（3b）と、`PendingWork::for()` との突き合わせの作り方
-- 催促のコマンドの名前・予定の書き方（`ScheduleTest` に足す内容）・`approval_reminder_runs` の列
-- リンクの設定の名前と既定値（本番の `APP_URL` を確かめてから。D20）
-- Yasumi の版（PHP 8.3 と手元の PHP）と、日本の祝日の確かめ方（2026〜2027 年の実際の祝日と突き合わせる）
-- ⑫ の入力の決まりの細部（1 年より短い・説明は必須か）と画面の配置
-- 走査テストへの登録（§4.5）・`lang/ja/validation.php` に足す和名・テスト用の作り方（factory）・変異テストの一覧 → 3a の分は計画 §0.8 と Task 9 で決めた
+- 全員分の対応待ちをまとめる問い合わせ（3b）と、`PendingWork::for()` との突き合わせの作り方 → 3b の計画 §0.4 で決めた（PendingWork::everyone()）
+- 催促のコマンドの名前・予定の書き方（`ScheduleTest` に足す内容）・`approval_reminder_runs` の列 → 3b の計画 §0.2・§0.5 で決めた
+- リンクの設定の名前と既定値（本番の `APP_URL` を確かめてから。D20） → 3b の計画 §0.5 で決めた（approval.mail_link_root）
+- Yasumi の版（PHP 8.3 と手元の PHP）と、日本の祝日の確かめ方（2026〜2027 年の実際の祝日と突き合わせる） → 3b の計画 §0.3 で決めた（^2.12。内閣府の一覧と突き合わせ）
+- ⑫ の入力の決まりの細部（1 年より短い・説明は必須か）と画面の配置 → 3b の計画 §0.6 で決めた（利用者の決定）
+- 走査テストへの登録（§4.5）・`lang/ja/validation.php` に足す和名・テスト用の作り方（factory）・変異テストの一覧 → 3a の分は計画 §0.8 と Task 9 で決めた／3b の分は計画 §0.7 と Task 6
 
 ---
 
