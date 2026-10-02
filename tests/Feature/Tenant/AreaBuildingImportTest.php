@@ -676,12 +676,28 @@ class AreaBuildingImportTest extends AreaBuildingTestCase
         $this->assertStringContainsString('取込後の現況テナント数: アルファビル 1 件', session('success'));
     }
 
-    /** 画面にも「2 回取り込むと二重になる」注意書きを出す */
-    public function test_the_screen_warns_about_duplicate_tenant_imports(): void
+    /**
+     * テナント明細の注意書き（設計書 2026-10-01-area-tenant-reimport-design.md §4.6）。
+     * ⚠ 全文で、テナント明細のときだけ出る <p> の中を見る（部分一致だと、ほかの場所の同じ語に当たる。Bug #43）。
+     * ⚠ 2026-10-01 までの「同じファイルを 2 回取り込むと行が二重になります」は、もう事実でないので出さない。
+     */
+    public function test_the_screen_explains_that_registered_tenant_rows_are_skipped(): void
     {
-        $html = $this->actingAs($this->manager())->get(self::IMPORT_URL)->getContent();
+        $html = $this->actingAs($this->manager())->get(self::IMPORT_URL)->assertOk()->getContent();
 
-        $this->assertStringContainsString('同じファイルを 2 回取り込むと行が二重になります', $html);
+        $this->assertSame(
+            1,
+            preg_match('/<p class="mt-3 text-xs text-gray-500" x-show="kind === \'tenants\'">(.*?)<\/p>/su', $html, $m),
+            'テナント明細の注意書きが見つからない'
+        );
+        $this->assertSame(
+            'テナント明細は、台帳に既にあるビル名の行だけを取り込みます。台帳に無いビルは作成しません。'
+            . '登録済みと同じ行（ビル・階・部屋番号・テナント名が同じ。退去済みの行も含む）は取り込まずにスキップします。'
+            . '業種・状態が違っても書き換えないので、直すときは詳細画面から直してください。'
+            . '取込後に表示される件数と現況テナント数を確認してください。',
+            trim(preg_replace('/\s+/u', ' ', $m[1]))
+        );
+        $this->assertStringNotContainsString('行が二重になります', $html);
     }
 
     /** VARCHAR 長の防波堤。SQLite は長さを強制しないので本番だけ 1406 で落ちる（Bug #40） */
