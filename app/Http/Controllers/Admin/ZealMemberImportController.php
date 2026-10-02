@@ -37,6 +37,9 @@ use Illuminate\Validation\ValidationException;
  *   設計書 2026-09-28-import-double-submit-design.md §4.2）。鍵は preview() で出し、execute() の最初
  *   （CSV を読み直す前）で使う。直す前は、同じ確認画面の確定を 2 回送ると、2 回目が氏名＋入会日の重複の確認で
  *   全員を飛ばし、「登録 0件 / スキップ 5件…」の成功の帯が出て取り込み直したように見えた。
+ * ⚠ 確定の書き込みが DB の例外で止まったら、全員を取り消して（DB::transaction()）取込の画面へ戻し、どの会員で
+ *   止まったかを出す（docs/RULES.md Bug #72）。直す前は受け止めておらず 500 だった。本番の列に入らない値は、
+ *   その前に HacomonoMemberMapper がその行のエラーにする（ここへ来るのは接続の切断などだけ）。
  */
 class ZealMemberImportController extends Controller
 {
@@ -149,43 +152,54 @@ class ZealMemberImportController extends Controller
         $skipped  = 0;
         $errored  = 0;
         $excluded = 0;
+        $current  = '';   // 登録しようとしている会員（書き込みが失敗したとき、どの会員かを出す）
 
-        DB::transaction(function () use (
-            $rows, $mapper, $taxRate, $actorId,
-            &$imported, &$skipped, &$errored, &$excluded
-        ) {
-            foreach ($rows as $row) {
-                if (!HacomonoMemberMapper::isInScope($row)) {
-                    $excluded++;
-                    continue;
-                }
-                $m = $mapper->map($row);
-                if ($m->hasErrors()) {
-                    $errored++;
-                    continue;
-                }
-                if ($this->isDuplicate($m)) {
-                    $skipped++;
-                    continue;
-                }
+        try {
+            DB::transaction(function () use (
+                $rows, $mapper, $taxRate, $actorId,
+                &$imported, &$skipped, &$errored, &$excluded, &$current
+            ) {
+                foreach ($rows as $row) {
+                    if (!HacomonoMemberMapper::isInScope($row)) {
+                        $excluded++;
+                        continue;
+                    }
+                    $m = $mapper->map($row);
+                    if ($m->hasErrors()) {
+                        $errored++;
+                        continue;
+                    }
+                    if ($this->isDuplicate($m)) {
+                        $skipped++;
+                        continue;
+                    }
 
-                $member = ZealMember::create($m->memberAttributes + [
-                    'created_by' => $actorId,
-                    'updated_by' => $actorId,
-                ]);
+                    $current = $m->displayName;
 
-                if ($m->contractAttributes !== null) {
-                    ZealMemberContract::create($m->contractAttributes + [
-                        'member_id'            => $member->id,
-                        'is_campaign_applied'  => false,
-                        'tax_rate_at_contract' => $taxRate,
-                        'created_by'           => $actorId,
+                    $member = ZealMember::create($m->memberAttributes + [
+                        'created_by' => $actorId,
+                        'updated_by' => $actorId,
                     ]);
-                }
 
-                $imported++;
-            }
-        });
+                    if ($m->contractAttributes !== null) {
+                        ZealMemberContract::create($m->contractAttributes + [
+                            'member_id'            => $member->id,
+                            'is_campaign_applied'  => false,
+                            'tax_rate_at_contract' => $taxRate,
+                            'created_by'           => $actorId,
+                        ]);
+                    }
+
+                    $imported++;
+                }
+            });
+        } catch (\Exception $e) {
+            // 巻き戻しは DB::transaction() が済ませている。生の SQL の文（英語・個人情報を含む）は画面に出さずログへ
+            report($e);
+
+            return redirect()->route('admin.zeal.member-import')
+                ->with('error', "取り込めませんでした（「{$current}」の登録中にデータベースのエラーが起きました）。1件も登録していません。CSVを確かめて、アップロードし直してください。理由はシステムの記録（laravel.log）に残しています。");
+        }
 
         return redirect()
             ->route('admin.zeal.member-import')

@@ -7,7 +7,9 @@ use App\Models\ZealMemberContract;
 use App\Models\ZealPlan;
 use App\Models\ZealStore;
 use App\Support\OneTimeAction;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Exceptions;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\ChecksDoubleSubmit;
 use Tests\Concerns\CreatesZealSchema;
@@ -452,6 +454,98 @@ class ZealMemberImportControllerTest extends TestCase
         ])->assertOk()->getContent();
 
         $this->assertSubmitOnceForm($html, route('admin.zeal.member-import.execute'));
+    }
+
+    // ================================================================
+    // 本番の列に入らない値と、確定の書き込みで DB の例外が起きたとき（docs/RULES.md Bug #72）
+    // ================================================================
+
+    /**
+     * 本番の列に入らない値の行は、プレビューでエラーにして、確定ではその行だけ飛ばす（ほかの行は入る）。
+     * 直す前は、そのまま入れて本番の MySQL に断られ、全員が取り消されていた。
+     * ⚠ テストの SQLite は長さを見ないので、行の変換の検査を外すとこの行が入ってしまい、件数で落ちる。
+     */
+    public function test_a_row_that_does_not_fit_the_columns_is_skipped_and_the_others_are_imported(): void
+    {
+        $this->seedMasters();
+        $user = $this->executive();
+        $content = $this->csvContent([
+            $this->baseRow(['ID' => 'CL101', '名前' => '甲 一郎', '入会日' => '2025/4/1']),
+            $this->baseRow(['ID' => 'CL102', '名前' => '乙 二郎', '入会日' => '2025/4/2', '電話番号' => '090-1111-2222/089-123']),
+            $this->baseRow(['ID' => 'CL103', '名前' => '丙 三郎', '入会日' => '2025/4/3']),
+        ]);
+
+        $preview = $this->actingAs($user)->post(route('admin.zeal.member-import.preview'), [
+            'csv_file' => $this->uploadFrom($content),
+        ])->assertOk();
+        $this->assertStringContainsString('<li>電話番号が20文字を超えています（21文字）</li>', $preview->getContent());
+
+        $form = $this->parseForm($preview->getContent(), 'action="' . route('admin.zeal.member-import.execute') . '"');
+        $this->sendConfirmation($user, $form)
+            ->assertSessionHas('success', 'インポート完了: 登録 2件 / スキップ 0件 / エラー 1件 / 除外 0件');
+
+        $this->assertSame(['甲 一郎', '丙 三郎'], ZealMember::orderBy('id')->pluck('name')->all());
+    }
+
+    /** 確定の書き込みが DB の例外で止まったときの案内（$name は登録しようとしていた会員） */
+    private static function writeFailedMessage(string $name): string
+    {
+        return "取り込めませんでした（「{$name}」の登録中にデータベースのエラーが起きました）。1件も登録していません。CSVを確かめて、アップロードし直してください。理由はシステムの記録（laravel.log）に残しています。";
+    }
+
+    /** 本番の MySQL が断るときと同じ例外（テストの SQLite は長さを見ないので、ここで起こす） */
+    private static function databaseRefusal(): QueryException
+    {
+        return new QueryException(
+            'mysql',
+            'insert into `zeal_members` ...',
+            [],
+            new \PDOException("SQLSTATE[22001]: String data, right truncated: 1406 Data too long for column 'phone' at row 1")
+        );
+    }
+
+    /**
+     * 2 人目の会員の登録で DB の例外が起きると、全員を取り消して取込の画面へ戻り、理由を出す。
+     * 直す前は 500（本番は理由の出ない英語のエラー画面）で、何が起きたか分からなかった。
+     * ⚠ 例外は氏名で起こす（行の変換の検査に引っかからない行にする。その検査を外しても、この結果は変わらない）
+     */
+    public function test_a_database_error_while_importing_a_member_rolls_everything_back(): void
+    {
+        $this->seedMasters();
+        Exceptions::fake();
+        ZealMember::creating(function (ZealMember $member) {
+            if ($member->name === '退会 花子') {   // fixtureRows() の 2 人目（1 人目の「在籍 太郎」は先に登録される）
+                throw self::databaseRefusal();
+            }
+        });
+        $user = $this->executive();
+        $form = $this->previewForm($user, $this->csvContent($this->fixtureRows()));
+
+        $response = $this->sendConfirmation($user, $form);
+
+        $this->assertBackOnTheImportScreen($response, self::writeFailedMessage('退会 花子'));
+        $this->assertDatabaseCount('zeal_members', 0);
+        $this->assertDatabaseCount('zeal_member_contracts', 0);
+        Exceptions::assertReported(QueryException::class);
+    }
+
+    /** 1 人目の契約の登録で DB の例外が起きても、その会員まで取り消す（契約の無い会員が残らない） */
+    public function test_a_database_error_while_importing_a_contract_rolls_the_member_back_too(): void
+    {
+        $this->seedMasters();
+        Exceptions::fake();
+        ZealMemberContract::creating(function () {
+            throw self::databaseRefusal();
+        });
+        $user = $this->executive();
+        $form = $this->previewForm($user, $this->csvContent($this->fixtureRows()));
+
+        $response = $this->sendConfirmation($user, $form);
+
+        $this->assertBackOnTheImportScreen($response, self::writeFailedMessage('在籍 太郎'));
+        $this->assertDatabaseCount('zeal_members', 0);
+        $this->assertDatabaseCount('zeal_member_contracts', 0);
+        Exceptions::assertReported(QueryException::class);
     }
 
     public function test_non_executive_is_forbidden(): void
