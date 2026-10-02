@@ -45,7 +45,7 @@ use Illuminate\Support\Facades\Auth;
  *   （_partials/_submit_once の reloadOnReturn）。
  *
  * ⚠ 取込の画面を開き直してファイルを選び直す（上げ直す）と新しい鍵になるので、上げ直しは鍵では止まらない。テナント明細は
- *   登録済みの行（退去済みも含む）と ビル・階・部屋番号・テナント名 で照合し、同じ行は登録済みの行の数までスキップする
+ *   登録済みの行（退去済みも含む。テナント名が空欄の退去済みの行は除く）と ビル・階・部屋番号・テナント名 で照合し、同じ行は登録済みの行の数までスキップする
  *   （設計書 2026-10-01-area-tenant-reimport-design.md。importTenants()・tenantKey()）。2026-10-01 までは突き合わせず二重に入っていた。
  */
 class AreaBuildingImportController extends Controller
@@ -485,6 +485,9 @@ class AreaBuildingImportController extends Controller
      *
      * ⚠ 退去済みの行も数える（moved_out_on を問わない）。現況の行だけにすると、古いファイルを上げ直したときに
      *   退去したテナントが現況に戻る。
+     * ⚠ ただし、テナント名が空欄（normalizeName で ''。空き区画・不明）の退去済みの行は数えない（2026-10-02 の利用者の決定）。
+     *   空き区画には「誰か」という見分けが無いので、退去日を入れて閉じた空き区画を数えると、あとの調査で同じ階・部屋が
+     *   また空いたときに「登録済みのためスキップ」で吸い込み、取込が静かに欠けていく。判定は名前で行う（部屋番号ではない）。
      * ⚠ ビルごと・行ごとに引かない（2000 行で 2000 往復になる。test_tenant_import_does_not_scale_queries_per_row）。
      *
      * @param  list<int>  $buildingIds
@@ -498,9 +501,13 @@ class AreaBuildingImportController extends Controller
 
         $counts  = [];
         $tenants = AreaBuildingTenant::whereIn('area_building_id', $buildingIds)
-            ->get(['area_building_id', 'floor', 'room_number', 'name']);
+            ->get(['area_building_id', 'floor', 'room_number', 'name', 'moved_out_on']);
 
         foreach ($tenants as $tenant) {
+            if ($tenant->moved_out_on !== null && AreaBuilding::normalizeName($tenant->name) === '') {
+                continue;
+            }
+
             $key          = $this->tenantKey($tenant->area_building_id, $tenant->floor, $tenant->room_number, $tenant->name);
             $counts[$key] = ($counts[$key] ?? 0) + 1;
         }

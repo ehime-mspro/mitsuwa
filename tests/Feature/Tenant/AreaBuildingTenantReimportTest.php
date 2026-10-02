@@ -187,6 +187,69 @@ class AreaBuildingTenantReimportTest extends AreaBuildingTestCase
         $this->assertStringContainsString('取込後の現況テナント数: アルファビル 0 件', session('success'));
     }
 
+    /**
+     * 照合は「名前」で見分ける。部屋番号が空欄でも、名前のある退去済みの行とは照合する。
+     * ⚠ 退去済みの行を除く条件を部屋番号で決めると、この行が現況として入る
+     */
+    public function test_a_moved_out_named_row_without_a_room_number_is_still_matched(): void
+    {
+        $building = $this->makeBuilding('アルファビル');
+        $this->makeTenant($building, ['floor' => 1, 'name' => '甲商店', 'moved_out_on' => '2026-03-31']);
+
+        $this->importTenants([
+            ['building_name' => 'アルファビル', 'floor' => '1', 'name' => '甲商店', 'status' => '営業'],
+        ])->assertRedirect();
+
+        $this->assertSame(1, $building->tenants()->count(), '退去済みの行と同じ行が現況として入った');
+        $this->assertStringContainsString($this->summary(0, 1), session('success'));
+    }
+
+    /** @return array<string, array{0: ?string, 1: ?string}> [退去済みの空き区画の部屋番号, テナント名] */
+    public static function movedOutVacancies(): array
+    {
+        return [
+            '部屋番号も名前も空欄'   => [null, null],
+            '部屋番号あり・名前は空欄' => ['301', null],
+            '名前が全角空白だけ'     => ['301', "\u{3000}"],
+        ];
+    }
+
+    /**
+     * 名前が空欄の退去済みの行（閉じた空き区画・不明）とは照合しない（2026-10-02 の利用者の決定。レビューの I-1）。
+     * 空き区画には「誰か」という見分けが無いので、閉じた空き区画と、あとの調査でまた空いた区画は別の事実として入れる。
+     * ⚠ 直す前は、退去日を入れた空き区画の行が、同じ階・部屋のあとの空き区画を「登録済みのためスキップ」で吸い込んだ
+     */
+    #[DataProvider('movedOutVacancies')]
+    public function test_a_moved_out_vacancy_does_not_absorb_a_new_vacancy(?string $room, ?string $name): void
+    {
+        $building = $this->makeBuilding('アルファビル');
+        $this->makeTenant($building, ['floor' => 3, 'room_number' => $room, 'name' => $name, 'status' => 'vacant', 'moved_out_on' => '2026-03-31']);
+
+        $seen = $this->watchCreates();
+        $this->importTenants([
+            ['building_name' => 'アルファビル', 'floor' => '3', 'room_number' => $room ?? '', 'status' => '空室'],
+        ])->assertRedirect();
+
+        $this->assertSame(1, $seen->creates, 'また空いた区画が入らなかった');
+        $this->assertSame(1, $building->tenants()->whereNull('moved_out_on')->count());
+        $this->assertStringContainsString($this->summary(1, 0), session('success'));
+        $this->assertStringContainsString('取込後の現況テナント数: アルファビル 1 件', session('success'));
+    }
+
+    /** 現況の空き区画の行とは今どおり照合し、退去済みの空き区画の行は数えない（数で扱うときも）*/
+    public function test_only_current_vacancies_absorb_identical_vacancy_rows(): void
+    {
+        $building = $this->makeBuilding('アルファビル');
+        $this->makeTenant($building, ['floor' => 3, 'status' => 'vacant', 'moved_out_on' => '2026-03-31']);
+        $this->makeTenant($building, ['floor' => 3, 'status' => 'vacant']);
+        $vacancy = ['building_name' => 'アルファビル', 'floor' => '3', 'status' => '空室'];
+
+        $this->importTenants([$vacancy, $vacancy])->assertRedirect();
+
+        $this->assertSame(2, $building->tenants()->whereNull('moved_out_on')->count());
+        $this->assertStringContainsString($this->summary(1, 1), session('success'));
+    }
+
     public function test_a_skipped_row_does_not_overwrite_the_registered_row(): void
     {
         $building = $this->makeBuilding('アルファビル');
