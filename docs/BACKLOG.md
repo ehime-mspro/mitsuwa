@@ -2119,7 +2119,7 @@ git checkout 13.x && git merge --ff-only date-picker-month-ago
 
 ---
 
-## 🚧 決裁申請 段階3（通知）— 3a 実装済み・本番反映の前
+## 🚧 決裁申請 段階3（通知）— 3a 本番反映済み・使い始める前
 
 要件定義書: @docs/決裁申請_要件定義書_v1.md（v1.11。8 章・13 章の ⑥⑫・15.3・15.5）
 設計書: @docs/superpowers/specs/2026-09-30-approval-phase3-design.md（設計の 5 節は 2026-09-30 に利用者が 1 節ずつ承認）
@@ -2136,6 +2136,26 @@ git checkout 13.x && git merge --ff-only date-picker-month-ago
 - 実装中に決めたこと（計画の末尾）: 審査担当者の追加のデッドロック（1213）を MySQL で再現して順序を直した・帯の文を「決裁のお知らせは画面にも届いています。」に（利用者の決定）・変異 76 通りは等価 1 を除き検出
 - 既存のテストで意味が変わったもの 2 本（計画 §0.9）: 部門長のホームの見る範囲（「新しいお知らせ」に提出のときの知らせが残る）・再発行のメールの送り直し（1 回 → 3 回。D6）
 - 受け入れた隙間（計画 §0.11）: 社長の交代・審査担当者の追加は待っている申請の版を進めない・外れた審査担当者の未読は残る（押すと ⑥ に戻して知らせる）ほか
+- 後回し（最後の点検の Minor）: `MailDelivery::recordSent()` が握りつぶした失敗は `Log::warning` なので、本番（`LOG_LEVEL=error`）の `laravel.log` に残らない。メールは送れていて、影響は帯が消えずに残るだけ。後で `Log::error` に上げる候補（1 語とテスト 2 行）
+
+#### 本番反映（2026-10-02 実施）
+
+利用者の了承のあと、計画の Task 12 の手順どおりに流した（本番の読み取り・`13.x` への早送りと DB・`./deploy.sh`・ログインした画面のそれぞれで了承を取った）。`13.x` は `66a378f2`（テストのメモリの直し）のまま進んでいなかったので、取り込みは早送りだけ。`13.x` = **`832d5dc3`**（`66a378f2` から早送り・27 コミット）。全件は 832d5dc3 で **OK (3213 tests, 22877 assertions)**（2026-10-01）。
+
+| 段 | 見たこと | 結果 |
+|---|---|---|
+| ① 本番の読み取り | ルート・表の形・キュー・表の行数・記録 | `approvals.` のルート 43 本 ／ `approval_settings` に `launched_at` あり・`mail_last_*` なし・InnoDB・`utf8mb4_unicode_ci` ／ `notifications` なし・`jobs` と `failed_jobs` あり ／ `launched_at=NULL` ／ `queue=database`・`queue_db_connection=NULL`（お知らせとメールが操作と一緒に巻き戻る前提） ／ 申請・段階・記録・控えの 4 表とも 0 行・`jobs` 0・`failed_jobs` 0 ／ MySQL 8.0.40 ／ `laravel.log` は 6/18 から更新なし |
+| ② 早送り | `13.x` | `66a378f2` → `832d5dc3`・作業ツリーは空 |
+| ③ DB を先に | SQL 2 文（`ALTER TABLE approval_settings`・`CREATE TABLE notifications`） | 流した形跡なし → **OK 1・OK 2** ／ 流したあと: 設定の表に 3 列（`launched_at` の後・コメントが日本語で読める）・`notifications` の列・索引 2 つ・外部キー（`approval_requests` へ・`ON DELETE RESTRICT`）が SQL どおり・`notifications` 0 行・設定 1 行のまま |
+| ④ 読み込みの表 | `composer dump-autoload --no-dev --optimize`（main repo） | 6,712 クラス（2b の 6,701＋新しい 11）・`vendor/bin/phpunit` は無い・`git status` は空 |
+| ⑤ `./deploy.sh` | 2026-10-02 8:57 ごろ終了（日本時間） | exit 0・6 段すべて。アプリのファイル 42 本（新 19・変更 23・削除 0）とビルドと読み込みの表 2 本。CSS の名前が変わり、旧 CSS `app-Cz5Vm3yg.css` を 2 か所で削除（ビルドの警告 1 件は以前から出ている `@import` の位置のもの） |
+| ⑥ 本番の読み取り | コンパイル済みビューの `php -l` | **294 本 / INVALID 0 件** |
+| | ルートと設定 | `approvals.` のルート **46 本**・`launched_at=NULL`・新しいクラス 8 つとも読める・`MailDelivery::pendingFailure()` は NULL・`notifications` 0 行・`laravel.log` は 6/18 から更新なし＝反映のあとのエラーは 0 件 ／ ログイン画面が開く |
+| | ログインした画面（利用者の Chrome・見るだけ・フォームは送らない。利用者は決裁の管理者） | 基幹の画面（経営ダッシュボード）と決裁の画面のヘッダーにベルが無い ／ 決裁のホームは「決裁の機能は準備中です。」のままで黄色の帯が無い ／ `/approvals/notices` はホーム（準備中）へ送られる ／ 利用者・部門・申請種類の管理が開き、帯が無い（利用者の管理の黄色の箱は、以前からある編集の小窓の注意書き） ／ `main` のはみ出し 0・コンソールのエラー 0 |
+
+⚠ 使い始める前なので、お知らせも決裁の通知メールも作られず、ベルも出ない（`launched_at` が空のあいだ）。今から変わるのはパスワード再発行のメールだけ（送り直しが 1 回から 3 回に。3 回とも送れなかったときは決裁の管理者のホームと管理の画面に黄色の帯）。
+
+⚠ `origin/13.x` への push はしていない。
 
 ---
 
