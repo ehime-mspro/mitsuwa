@@ -147,6 +147,26 @@ class ApprovalRemindCommandTest extends TestCase
 
     }
 
+    /** 差戻し中は件名と申請部門を空のまま保存できる。そのままでも 1 件の行は、ホームの対応待ちと同じ言葉（（件名なし）・—）で出す */
+    public function test_an_empty_subject_and_department_read_as_on_the_home_screen(): void
+    {
+        Mail::fake();
+        $w         = $this->approvalWorld();
+        $head      = $this->mailable($w['head'], 'head');
+        $applicant = $this->mailable($w['applicant'], 'applicant');
+        $this->launchApprovals();
+        $this->at('2026-10-01 10:00:00');
+        $request = $this->submittedFor($w);
+        $this->returnByHead($request, $head);
+        // 申請者が件名と申請部門を空にして保存した形（画面から保存したときと同じ null）
+        $request->update(['subject' => null, 'department_id' => null]);
+
+        $this->at(self::MONDAY_NINE);
+        $this->remind();
+
+        $this->assertStringContainsString("1. （件名なし）（申請 花子・—）\n", $this->reminderTo($applicant)->render());
+    }
+
     /**
      * 本番の定期実行の形（APP_URL に途中の道 /system/manage がある。コマンドのリクエストは SetRequestForConsole がその道を
      * SCRIPT_NAME にして作る）でも、リンクの道は 1 回だけ（/system/manage が二重にならない。/index.php が 1 回入る）

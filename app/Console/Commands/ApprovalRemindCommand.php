@@ -115,9 +115,10 @@ class ApprovalRemindCommand extends Command
     private function digest(User $user, Collection $items): ApprovalReminderMail
     {
         $listed = $items->take(self::MAX_ITEMS)->map(fn (array $item) => [
-            'subject'    => ApprovalMailable::oneLine($item['request']->subject),
+            // 件名・申請部門が空（差戻し中に空で保存できる）なら、ホームの対応待ちと同じ言葉にする
+            'subject'    => ApprovalMailable::oneLine($item['request']->subject ?? '（件名なし）'),
             'applicant'  => ApprovalMailable::oneLine($item['request']->applicant?->name),
-            'department' => ApprovalMailable::oneLine($item['request']->department?->name),
+            'department' => ApprovalMailable::oneLine($item['request']->department?->name ?? '—'),
             'task'       => "{$item['role']}・{$item['action']}",
             'days'       => PendingWork::waitingDays($item['since']),
             'url'        => self::link('approvals.requests.show', $item['request']),
