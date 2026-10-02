@@ -3,9 +3,10 @@
 あなたの対応を待っている申請が {!! $total !!} 件あります（番が来てから 3 日以上たったもの）。
 
 @foreach($items as $i => $item)
+@php($indent = str_repeat(' ', strlen((string) ($i + 1)) + 2))
 {!! $i + 1 !!}. {!! $item['subject'] !!}（{!! $item['applicant'] !!}・{!! $item['department'] !!}）
-   {!! $item['task'] !!} ／ {!! $item['days'] !!} 日待ち
-   {!! $item['url'] !!}
+{!! $indent !!}{!! $item['task'] !!} ／ {!! $item['days'] !!} 日待ち
+{!! $indent !!}{!! $item['url'] !!}
 
 @endforeach
 @if($rest > 0)

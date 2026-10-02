@@ -146,10 +146,12 @@ class MailFailureBannerTest extends TestCase
         $this->assertCount(1, app('mailer')->getSymfonyTransport()->messages());
         $this->assertSame(0, DB::table('jobs')->count());
         $this->assertSame(0, DB::table('failed_jobs')->count());
-        Log::shouldNotHaveReceived('error');
-        Log::shouldHaveReceived('warning')
+        // 記録の失敗は error で残す（本番は LOG_LEVEL=error で、warning は laravel.log に残らない）。ほかの error は出ない（全部で 1 回）
+        Log::shouldHaveReceived('error')->once();
+        Log::shouldHaveReceived('error')
             ->withArgs(fn (string $message) => str_contains($message, 'メールは送れたが、送れた記録を残せませんでした') && str_contains($message, '接続が切れました'))
             ->once();
+        Log::shouldNotHaveReceived('warning');
         $this->actingAs($admin)->get(route('approvals.home'))->assertOk()->assertDontSee(self::BANNER);
     }
 

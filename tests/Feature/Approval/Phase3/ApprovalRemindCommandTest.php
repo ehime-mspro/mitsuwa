@@ -223,6 +223,11 @@ class ApprovalRemindCommandTest extends TestCase
         $this->assertStringNotContainsString("21. ", $mail->render());
         $this->assertStringContainsString("ほか 2 件はホームで確かめてください。\n", $mail->render());
         $this->assertSame(22, ApprovalReminderRun::sole()->item_count);
+
+        // 2 行目・3 行目の字下げは番号の幅に合わせる（「9. 」は 3 字・「10. 」は 4 字）
+        foreach ([9 => 3, 10 => 4, 20 => 4] as $n => $width) {
+            $this->assertMatchesRegularExpression(sprintf('/^%1$d\. 申請 %1$d（[^\n]*）\n {%2$d}\S[^\n]*\n {%2$d}http\S+\n/mu', $n, $width), $mail->render());
+        }
     }
 
     /** 宛先は有効で、許可したドメインのメールアドレスがある人だけ（無効・削除・メールなし・許可外のドメインには送らない） */
