@@ -35,7 +35,7 @@ Laravel 12 / PHP 8.5.4 (local) + 8.3 (prod) / MySQL 8 / Blade + Alpine.js 3 + Ta
 | 20 | 「前月」「来月」「過去 N か月」を**今日から直接**足し引きする（`JapanTime::today()->subMonth()`。Carbon は移った先の月にその日が無いと翌月へ溢れ、3/31 の 1 か月前が 3/3 になる。**月の 29〜31 日にだけ**起き、月の途中の画面もテストも正しい）| **月初へ寄せてから**: `JapanTime::today()->startOfMonth()->subMonth()`（逆順の `subMonth()->startOfMonth()` は直らない）。並べるなら起点をループの外で 1 回作り `->copy()->subMonths($i)`。ビューへ渡す `$now` からは必ず `copy()` が先。回帰テストの「今日」は **2026-03-31**（前月・来月とも溢れる日）に固定し、その日が溢れる日であることをテスト自身が確かめる（3/15 では前月・来月とも、8/31 では前月側が、修正を戻しても緑。`MonthEndOverflowTest::assertTodayOverflows()`）。⚠ PHP（Carbon）の足し引きを新しく足したときに止める走査テストは無い。⚠ JS の `setMonth(getMonth() - 1)` も同じ形に溢れる — 日付ピッカーの「1ヶ月前」は、前月に同じ日が無ければ前月の末日で止める（`new Date(年, 月, 0).getDate()` と `Math.min`。月は JS の 0 始まり＝`getMonth()` の値）。JS はビューの `.setMonth(` を 0 件に保つラチェットがある（`DatePickerMonthAgoTest`）。Bug #62 |
 | 21 | 利用者が付けたファイル名をそのまま `Storage` の `download()` / `response()` や `response()->download()` / `streamDownload()` に渡す（Laravel が作る古いブラウザ用の代わりの名前は `Str::ascii()` 頼みで、仮名・漢字・絵文字・全角の英数字を消す。「見積書」「😀」のような**拡張子の無い日本語だけの名前**で空になり、**開くのもダウンロードも 500**。保存は `mimes` が中身しか見ないので通る＝保存したあとは誰も開けない。基幹の添付と決裁の添付で別々に 2 回作った）| 添付の配信は **`App\Support\AttachmentDelivery::make()` を通す**（`Content-Disposition` を `HeaderUtils::makeDisposition()` で組んで渡し、代わりの名前を作れなければ「attachment.保存先の拡張子」。今まで開けていた名前の見出しは変えない）。新しく配信を書くときも同じ形にする。⚠ **テストで `UploadedFile::fake()` を使うと逆の結論になる** — 偽のファイルは MIME を**名前**から決めるので、拡張子の無い名前は `mimes` に 422 で断られる。本物の `UploadedFile` に本物の中身を渡す。Bug #68 |
 
-全 71 件の詳細バグカタログ + 各種パターン: @docs/RULES.md
+全 72 件の詳細バグカタログ + 各種パターン: @docs/RULES.md
 
 ## 🔌 利用可能なプラグイン
 
@@ -164,5 +164,5 @@ sudo rm -f storage/framework/views/*.php && brew services restart httpd
 ## 📚 Detailed docs
 
 - @docs/ARCHITECTURE.md — ディレクトリ構成、モデル一覧、認可マトリクス
-- @docs/RULES.md — Bug #1–71 + Tailwind 不可クラス/監査の落とし穴 + Excel/SheetJS + 全角→半角自動変換 + 郵便番号 API
+- @docs/RULES.md — Bug #1–72 + Tailwind 不可クラス/監査の落とし穴 + Excel/SheetJS + 全角→半角自動変換 + 郵便番号 API
 - @docs/BACKLOG.md — 完了済み機能の優先度別一覧（優先度 1〜5 全て本番稼働中）
