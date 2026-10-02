@@ -33,6 +33,26 @@ class HacomonoMemberMapper
     public const TEST_NAME_MARKERS = ['テスト', 'ﾃｽﾄ', 'test'];
 
     /**
+     * 会員の列 => [CSV の列, 本番の列の文字数]。超える値はその行のエラーにする。
+     *
+     * ⚠ そのまま入れると本番の MySQL（strict）が「Data too long」で断り、確定の全行が巻き戻る。テストの SQLite は
+     *   長さを見ないので、ここで止めないと原理的に見つからない（docs/RULES.md Bug #72）。上限は
+     *   database/sql/create_zeal_tables.sql と同じで、本番の定義とも一致する（2026-10-02 に読み取りで確認）。
+     *   MySQL の utf8mb4 の VARCHAR は文字数で数えるので mb_strlen で測る。
+     */
+    private const MAX_LENGTH = [
+        'name'        => ['名前', 100],
+        'name_kana'   => ['名前カナ', 100],
+        'phone'       => ['電話番号', 20],
+        'email'       => ['メールアドレス', 100],
+        'postal_code' => ['郵便番号', 8],
+        'address'     => ['住所', 300],
+    ];
+
+    /** 契約の applied_price_excl（INT UNSIGNED）に入る上限。下限は 0 */
+    private const MAX_PRICE = 4294967295;
+
+    /**
      * @param array<string,int> $planIdMap    プラン名 => id
      * @param array<string,int> $planPriceMap プラン名 => 税抜定価
      * @param array<string,int> $storeIdMap   店舗名 => id
@@ -196,7 +216,8 @@ class HacomonoMemberMapper
             }
         }
 
-        $paidIncl       = $this->toInt($get('合計金額(2回目以降)'));
+        $paidRaw        = $get('合計金額(2回目以降)');
+        $paidIncl       = $this->toInt($paidRaw);
         $courseListIncl = $this->toInt($get('コース 合計金額(2回目以降)'));
         $withdrewOn     = $this->normalizeDate($get('退会日'));
         $scheduledOn    = $get('退会予定日');
@@ -276,6 +297,11 @@ class HacomonoMemberMapper
                 'applied_price_excl' => $priceExcl,
                 'change_reason'      => 'new_join', // = ZealContractChangeReason::NewJoin->value（Mapperは DB非依存のため文字列で返す）
             ];
+
+            // 契約の applied_price_excl に入らない月会費（MAX_LENGTH と同じ理由で、ここで止める）
+            if ($priceExcl !== null && ($priceExcl < 0 || $priceExcl > self::MAX_PRICE)) {
+                $errors[] = "月会費(合計金額)'{$paidRaw}'が範囲外です（0〜" . self::MAX_PRICE . '円）';
+            }
         }
 
         $member = [
@@ -298,6 +324,13 @@ class HacomonoMemberMapper
             'withdraw_note'      => $kind === self::KIND_WITHDRAWN ? '別システムより移管（退会済み）' : null,
             'memo'               => $memo,
         ];
+
+        foreach (self::MAX_LENGTH as $key => [$column, $max]) {
+            $length = mb_strlen((string) $member[$key]);
+            if ($length > $max) {
+                $errors[] = "{$column}が{$max}文字を超えています（{$length}文字）";
+            }
+        }
 
         return new MappedMember(
             sourceId: $sourceId,
@@ -328,6 +361,11 @@ class HacomonoMemberMapper
     {
         if ($amount === null) {
             return null;
+        }
+        // 範囲外（マイナス・上限超え）は換算せずに返し、map() の範囲の検査でエラーにする
+        //（23 桁の金額は (int) が PHP_INT_MAX に張り付き、×100 が float に溢れて intdiv() が TypeError になる）
+        if ($amount < 0 || $amount > self::MAX_PRICE) {
+            return $amount;
         }
         $denom = 100 + (int) $this->taxRate; // 税率10% → 110
         return ($amount * 100) % $denom === 0 ? intdiv($amount * 100, $denom) : $amount;

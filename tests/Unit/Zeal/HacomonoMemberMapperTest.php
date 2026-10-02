@@ -3,6 +3,7 @@
 namespace Tests\Unit\Zeal;
 
 use App\Support\Zeal\HacomonoMemberMapper;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 class HacomonoMemberMapperTest extends TestCase
@@ -320,5 +321,101 @@ class HacomonoMemberMapperTest extends TestCase
         $this->assertSame(HacomonoMemberMapper::KIND_WITHDRAWN, $r->kind);
         $this->assertNull($r->memberAttributes['withdrew_on']);
         $this->assertStringContainsString('退会日が空', implode(' ', $r->warnings));
+    }
+
+    // ================================================================
+    // 本番の列に入らない値はその行のエラー（入れると本番の MySQL が断り、確定の全行が巻き戻る）
+    // ================================================================
+
+    /** @return array<string, array{0: string, 1: int}> [CSV の列, 上限（本番の列の文字数。2026-10-02 に読み取りで確認）] */
+    public static function lengthLimitedColumns(): array
+    {
+        return [
+            '名前'           => ['名前', 100],
+            '名前カナ'       => ['名前カナ', 100],
+            '電話番号'       => ['電話番号', 20],
+            'メールアドレス' => ['メールアドレス', 100],
+            '郵便番号'       => ['郵便番号', 8],
+            '住所'           => ['住所', 300],
+        ];
+    }
+
+    /** 全角の文字で埋める（strlen で測ると上限を超える長さ。MySQL の utf8mb4 の VARCHAR は文字数で数える） */
+    #[DataProvider('lengthLimitedColumns')]
+    public function test_a_value_at_the_column_limit_is_accepted(string $column, int $max): void
+    {
+        $r = $this->mapper()->map($this->row([$column => str_repeat('あ', $max)]));
+
+        $this->assertSame([], $r->errors);
+    }
+
+    #[DataProvider('lengthLimitedColumns')]
+    public function test_a_value_over_the_column_limit_is_a_row_error(string $column, int $max): void
+    {
+        $r = $this->mapper()->map($this->row([$column => str_repeat('あ', $max + 1)]));
+
+        $this->assertSame(["{$column}が{$max}文字を超えています（" . ($max + 1) . '文字）'], $r->errors);
+    }
+
+    /** @return array<string, array{0: string}> 合計金額(2回目以降) */
+    public static function outOfRangeMonthlyFees(): array
+    {
+        return [
+            'マイナス（税込として割り切れる）' => ['-9702'],
+            'マイナス 1 円'                   => ['-1'],
+            '上限 + 1（税込として割り切れない）' => ['4294967296'],
+            '23 桁（直す前は intdiv() で TypeError）' => ['99999999999999999999999'],
+        ];
+    }
+
+    /** 契約の applied_price_excl は INT UNSIGNED（0〜4294967295） */
+    #[DataProvider('outOfRangeMonthlyFees')]
+    public function test_an_out_of_range_monthly_fee_is_a_row_error(string $amount): void
+    {
+        $r = $this->mapper()->map($this->row(['合計金額(2回目以降)' => $amount]));
+
+        $this->assertSame(HacomonoMemberMapper::KIND_ACTIVE, $r->kind);
+        $this->assertSame(["月会費(合計金額)'{$amount}'が範囲外です（0〜4294967295円）"], $r->errors);
+    }
+
+    /** @return array<string, array{0: string, 1: int}> [合計金額(2回目以降), 税抜の月会費] */
+    public static function monthlyFeesAtTheEdgeOfTheRange(): array
+    {
+        return [
+            '0 円'                               => ['0', 0],
+            '上限ちょうど（税込として割り切れない）' => ['4294967295', 4294967295],
+        ];
+    }
+
+    #[DataProvider('monthlyFeesAtTheEdgeOfTheRange')]
+    public function test_a_monthly_fee_at_the_edge_of_the_range_is_accepted(string $amount, int $expected): void
+    {
+        $r = $this->mapper()->map($this->row(['合計金額(2回目以降)' => $amount]));
+
+        $this->assertSame([], $r->errors);
+        $this->assertSame($expected, $r->appliedPriceExcl);
+    }
+
+    public function test_a_negative_dormancy_fee_is_a_row_error(): void
+    {
+        $r = $this->mapper()->map($this->row([
+            'カスタム2' => 'セミパーソナル通い放題（松山市駅前）', 'コース 名前' => '休会プラン',
+            '合計金額(2回目以降)' => '-1100',
+        ]));
+
+        $this->assertSame(HacomonoMemberMapper::KIND_DORMANT, $r->kind);
+        $this->assertSame(["月会費(合計金額)'-1100'が範囲外です（0〜4294967295円）"], $r->errors);
+    }
+
+    /** 契約を作らない行（チケット会員）は、金額を列に書かないので見ない */
+    public function test_a_ticket_member_with_a_negative_amount_is_accepted(): void
+    {
+        $r = $this->mapper()->map($this->row([
+            '定期購入' => 'FALSE', 'カスタム2' => '', 'コース 名前' => 'チケット会員', '合計金額(2回目以降)' => '-1',
+        ]));
+
+        $this->assertSame(HacomonoMemberMapper::KIND_TICKET, $r->kind);
+        $this->assertNull($r->contractAttributes);
+        $this->assertSame([], $r->errors);
     }
 }
