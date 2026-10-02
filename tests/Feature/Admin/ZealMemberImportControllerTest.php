@@ -7,8 +7,10 @@ use App\Models\ZealMemberContract;
 use App\Models\ZealPlan;
 use App\Models\ZealStore;
 use App\Support\OneTimeAction;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Exceptions;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\ChecksDoubleSubmit;
@@ -487,10 +489,10 @@ class ZealMemberImportControllerTest extends TestCase
         $this->assertSame(['甲 一郎', '丙 三郎'], ZealMember::orderBy('id')->pluck('name')->all());
     }
 
-    /** 確定の書き込みが DB の例外で止まったときの案内（$name は登録しようとしていた会員） */
+    /** 確定の書き込みが DB の例外で止まったときの案内（$name は止まったときに処理していた会員） */
     private static function writeFailedMessage(string $name): string
     {
-        return "取り込めませんでした（「{$name}」の登録中にデータベースのエラーが起きました）。1件も登録していません。CSVを確かめて、アップロードし直してください。理由はシステムの記録（laravel.log）に残しています。";
+        return "取り込めませんでした（「{$name}」まで進んだところでデータベースのエラーが起きました）。1件も登録していません。CSVを確かめて、アップロードし直してください。理由はシステムの記録（laravel.log）に残しています。";
     }
 
     /** 本番の MySQL が断るときと同じ例外（テストの SQLite は長さを見ないので、ここで起こす） */
@@ -545,6 +547,29 @@ class ZealMemberImportControllerTest extends TestCase
         $this->assertBackOnTheImportScreen($response, self::writeFailedMessage('在籍 太郎'));
         $this->assertDatabaseCount('zeal_members', 0);
         $this->assertDatabaseCount('zeal_member_contracts', 0);
+        Exceptions::assertReported(QueryException::class);
+    }
+
+    /**
+     * 登録の手前（重複の確認の SELECT）で止まっても、その行の会員を出す（1 つ前の会員を出さない）。
+     * ⚠ 例外はプレビューのあとで仕掛ける（プレビューも同じ重複の確認を流す）
+     */
+    public function test_a_database_error_while_checking_for_a_duplicate_names_that_member(): void
+    {
+        $this->seedMasters();
+        Exceptions::fake();
+        $user = $this->executive();
+        $form = $this->previewForm($user, $this->csvContent($this->fixtureRows()));
+        DB::listen(function (QueryExecuted $query) {
+            if (str_contains($query->sql, 'exists') && in_array('退会 花子', $query->bindings, true)) {
+                throw self::databaseRefusal();
+            }
+        });
+
+        $response = $this->sendConfirmation($user, $form);
+
+        $this->assertBackOnTheImportScreen($response, self::writeFailedMessage('退会 花子'));
+        $this->assertDatabaseCount('zeal_members', 0);
         Exceptions::assertReported(QueryException::class);
     }
 

@@ -37,9 +37,11 @@ use Illuminate\Validation\ValidationException;
  *   設計書 2026-09-28-import-double-submit-design.md §4.2）。鍵は preview() で出し、execute() の最初
  *   （CSV を読み直す前）で使う。直す前は、同じ確認画面の確定を 2 回送ると、2 回目が氏名＋入会日の重複の確認で
  *   全員を飛ばし、「登録 0件 / スキップ 5件…」の成功の帯が出て取り込み直したように見えた。
- * ⚠ 確定の書き込みが DB の例外で止まったら、全員を取り消して（DB::transaction()）取込の画面へ戻し、どの会員で
- *   止まったかを出す（docs/RULES.md Bug #72）。直す前は受け止めておらず 500 だった。本番の列に入らない値は、
+ * ⚠ 確定の書き込みが DB の例外で止まったら、全員を取り消して（DB::transaction()）取込の画面へ戻し、どの会員まで
+ *   進んだかを出す（docs/RULES.md Bug #72）。直す前は受け止めておらず 500 だった。本番の列に入らない値は、
  *   その前に HacomonoMemberMapper がその行のエラーにする（ここへ来るのは接続の切断などだけ）。
+ *   「1件も登録していません」と出せるのは、確定のあとで例外を出す仕組み（オブザーバー・afterCommit）が
+ *   ZealMember / ZealMemberContract に無いから（2026-10-02 に確認）。足すときはこの文を見直す。
  */
 class ZealMemberImportController extends Controller
 {
@@ -152,7 +154,7 @@ class ZealMemberImportController extends Controller
         $skipped  = 0;
         $errored  = 0;
         $excluded = 0;
-        $current  = '';   // 登録しようとしている会員（書き込みが失敗したとき、どの会員かを出す）
+        $current  = '';   // 処理している会員（書き込みが失敗したとき、どこまで進んだかを出す）
 
         try {
             DB::transaction(function () use (
@@ -165,6 +167,7 @@ class ZealMemberImportController extends Controller
                         continue;
                     }
                     $m = $mapper->map($row);
+                    $current = $m->displayName;   // ⚠ 重複の確認（SELECT）より前に覚える
                     if ($m->hasErrors()) {
                         $errored++;
                         continue;
@@ -173,8 +176,6 @@ class ZealMemberImportController extends Controller
                         $skipped++;
                         continue;
                     }
-
-                    $current = $m->displayName;
 
                     $member = ZealMember::create($m->memberAttributes + [
                         'created_by' => $actorId,
@@ -198,7 +199,7 @@ class ZealMemberImportController extends Controller
             report($e);
 
             return redirect()->route('admin.zeal.member-import')
-                ->with('error', "取り込めませんでした（「{$current}」の登録中にデータベースのエラーが起きました）。1件も登録していません。CSVを確かめて、アップロードし直してください。理由はシステムの記録（laravel.log）に残しています。");
+                ->with('error', "取り込めませんでした（「{$current}」まで進んだところでデータベースのエラーが起きました）。1件も登録していません。CSVを確かめて、アップロードし直してください。理由はシステムの記録（laravel.log）に残しています。");
         }
 
         return redirect()
