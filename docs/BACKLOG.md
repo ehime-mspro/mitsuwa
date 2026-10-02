@@ -2119,7 +2119,7 @@ git checkout 13.x && git merge --ff-only date-picker-month-ago
 
 ---
 
-## 🚧 決裁申請 段階3（通知）— 3a 本番反映済み・3b 実装済み・使い始める前
+## 🚧 決裁申請 段階3（通知）— 3a・3b 本番反映済み・使い始める前
 
 要件定義書: @docs/決裁申請_要件定義書_v1.md（v1.11。8 章・13 章の ⑥⑫・15.3・15.5）
 設計書: @docs/superpowers/specs/2026-09-30-approval-phase3-design.md（設計の 5 節は 2026-09-30 に利用者が 1 節ずつ承認）
@@ -2166,6 +2166,28 @@ git checkout 13.x && git merge --ff-only date-picker-month-ago
 - 利用者の決定（2026-10-02）: 本番の `APP_URL` を読み取る（`/index.php` が無い → リンクの元は `APP_URL` に `/index.php` を足したもの）・毎年繰り返す送らない日は 1 年より短く・説明は必須・年をまたぐ期間を同じ年で打ったときは直し方を添えて断る・2/29 は毎年の期間にも使える。3b は 2 つの会話が並行して作り始め、この計画の会話が続けた（もう一方の枝 `approval-phase3b`・`approval-phase3b-proto` は残してある）
 - 計画で決めた細部（計画 §0.10）: まとめメールの「必要な対応」と件名はホームの対応待ちと同じ・「今日の分を送ったか」は今日の行を入れられるかで決める・送る相手がいない日も 0 人・0 件で記録し、⑫ には「送る相手はいませんでした」と出す（利用者の決定）
 - 受け入れた隙間（計画 §0.11）: 無効の人・メールの無い人の対応待ちは催促が誰にも届かない（⑩ で見る）・祝日の法改正は部品の更新が要る ほか
+- 実装中に直したこと（計画の末尾の Task 6・7 の記録）: ⑫ で「毎年繰り返す」にチェックがあり日付の形が崩れていると 500 になっていた → 断る文を出す（`78540468`）・最後の点検の手直し 3 つ（まとめメールで件名・申請部門が空の申請をホームと同じ「（件名なし）」「—」で出す `51b18bf4`／⑫ の説明文の文のあいだの空白 `f547bfa2`／祝日の表を作り終えてから覚える `3cb8034b`）・変異 63 通り（C09「昨日の行があっても今朝 9:05 前なら次に送る日は今日」を足し、テストを 1 ケース足して塞いだ）は等価 1（P06）を除き検出
+- 後回し（点検の軽微）: まとめメールの 10 件目以降は字下げが 1 字ずれる（テキストメール・読むには支障なし）／本番の SQL の注意書き「朝の催促も Unknown table で止まる」は使い始めたあとにだけ当たる（正しい順へ導く向きの書き過ぎ）／日付に NUL バイトを入れた手組みの送信は `after_or_equal` の検証で 500（画面からは起きない・フレームワーク側でほかの画面にもありうる）
+- 使い始めるとき: 最初の送る日の朝に、`storage/logs/approval-reminder.log` の 1 行と ⑫ の「前回の催促」を読み取りで見る（最後の点検の勧め）
+
+#### 本番反映（2026-10-02 実施）
+
+利用者の了承のあと、計画の Task 9 の手順どおりに流した（本番の読み取り・`13.x` への早送りと DB・部品と `./deploy.sh` と読み取り・ログインした画面のそれぞれで了承を取った）。`13.x` は `91fe7969` のまま進んでいなかったので、取り込みは早送りだけ。`13.x` = **`dde93832`**（`91fe7969` から早送り・15 コミット）。全件は 3cb8034b＋C09 のテストで **OK (3296 tests, 23512 assertions)**（2026-10-02）。
+
+| 段 | 見たこと | 結果 |
+|---|---|---|
+| ① 本番の読み取り | ルート・予定・表・設定・部品・記録 | `approvals.` のルート 46 本 ／ 予定は `ops:backup`（0-4 3）と `queue:work` の 2 つ ／ `approval_holidays`・`approval_reminder_runs` なし ／ `launched_at=NULL` ／ `queue=database`・`queue_db_connection=NULL`（今日の行とまとめメールが一緒に巻き戻る前提） ／ `app.url=https://www.mitsuwat.co.jp/system/manage`（計画を書いたときと同じ） ／ `jobs` 0・`failed_jobs` 0・`notifications` 0 ／ `vendor/azuyalabs` なし ／ `approval-reminder.log` なし ／ `laravel.log` は 6/18 から更新なし |
+| ② 早送り | `13.x` | `91fe7969` → `dde93832`・作業ツリーは空 |
+| ③ DB を先に | SQL 2 文（`CREATE TABLE approval_holidays`・`CREATE TABLE approval_reminder_runs`） | 流した形跡なし → **OK 1・OK 2** ／ 流したあと: 2 表とも計画の `SHOW CREATE TABLE` と同じ（コメントが日本語で読める・`uq_approval_reminder_runs_sent_on`・InnoDB・`utf8mb4_unicode_ci`）・どちらも 0 行 |
+| ④ 部品と読み込みの表 | main repo で `composer install --no-dev` → `composer dump-autoload --no-dev --optimize` | `1 install, 0 updates, 0 removals`（`azuyalabs/yasumi` 2.12.0）・6,902 クラス・`vendor/bin/phpunit` は無い・`git status` は空 |
+| ⑤ `./deploy.sh` | 2026-10-02 21:40 ごろ終了（日本時間） | exit 0・6 段すべて。アプリのファイル 24 本・ビルド 3 本・読み込みの表 5 本・`vendor/azuyalabs/yasumi` 294 本（削除 0）。旧 CSS `app-C3HUCZpZ.css` を 2 か所で削除（ビルドの警告 1 件は以前から出ている `@import` の位置のもの） |
+| ⑥ 本番の読み取り | コンパイル済みビューの `php -l` | **296 本 / INVALID 0 件** |
+| | ルート・予定・催促のコマンド・設定 | `approvals.` のルート **50 本** ／ 予定に `approvals:remind`（0-4 9・バックアップとキュー処理のあいだ） ／ 手で 1 回流した `approvals:remind` は「2026-10-02 使い始める前なので送りません。」 ／ `launched_at=NULL` ／ 新しいクラス 6 つと `Yasumi\Yasumi` が読める ／ 2026-10-12 は「祝日（スポーツの日）」・次に送る日 10/5（月） ／ `mail_link_root=https://www.mitsuwat.co.jp/system/manage/index.php` ／ `approval_reminder_runs` 0 行・`jobs` 0 ／ `laravel.log` は 6/18 から更新なし＝反映のあとのエラーは 0 件 ／ ログイン画面が開く |
+| | ログインした画面（利用者の Chrome・見るだけ・フォームは送らない。利用者は決裁の管理者） | ⑫ が開き「次に催促を送る日 10/5（月） 9 時」「決裁を使い始める前なので、まだ送りません。」「前回の催促 まだありません」・送らない日の表は空・黄色の帯が無い ／ 決裁のホーム（準備中）のリンクの行と、経営ダッシュボードのサイドバーの「決裁の管理」に「催促の設定」 ／ `main` のはみ出し 0・コンソールのメッセージ 0 |
+
+⚠ 使い始める前なので、催促のメールは 1 通も送られない（毎朝 9 時に `storage/logs/approval-reminder.log` へ「使い始める前なので送りません。」が 1 行増えるだけ。翌朝 9:05 以降に読み取りで確かめる＝定期実行が催促を呼んでいることの確かめ）。決裁の管理者には ⑫ とその入口が見える（使い始める前から送らない日を登録できる）。
+
+⚠ `origin/13.x` への push はしていない。
 
 ---
 
