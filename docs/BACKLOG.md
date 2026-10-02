@@ -2119,7 +2119,7 @@ git checkout 13.x && git merge --ff-only date-picker-month-ago
 
 ---
 
-## 🚧 決裁申請 段階3（通知）— 3a 本番反映済み・使い始める前
+## 🚧 決裁申請 段階3（通知）— 3a 本番反映済み・3b 実装済み・使い始める前
 
 要件定義書: @docs/決裁申請_要件定義書_v1.md（v1.11。8 章・13 章の ⑥⑫・15.3・15.5）
 設計書: @docs/superpowers/specs/2026-09-30-approval-phase3-design.md（設計の 5 節は 2026-09-30 に利用者が 1 節ずつ承認）
@@ -2156,6 +2156,16 @@ git checkout 13.x && git merge --ff-only date-picker-month-ago
 ⚠ 使い始める前なので、お知らせも決裁の通知メールも作られず、ベルも出ない（`launched_at` が空のあいだ）。今から変わるのはパスワード再発行のメールだけ（送り直しが 1 回から 3 回に。3 回とも送れなかったときは決裁の管理者のホームと管理の画面に黄色の帯）。
 
 ⚠ `origin/13.x` への push はしていない。
+
+### 3b（毎朝の催促・祝日の判定・催促の設定 ⑫）
+
+実装計画: @docs/superpowers/plans/2026-10-02-approval-phase3b.md（Task 0〜9）。worktree `.claude/worktrees/approval-phase3`（3a と同じ）。
+
+- 表: `approval_holidays`・`approval_reminder_runs`（新）。本番反映は **DB が先・`./deploy.sh` が後**（新しいコードが 2 表を読む）。新しい部品 `azuyalabs/yasumi`（main repo で `composer install --no-dev` してから `./deploy.sh` が `vendor` ごと送る）
+- 毎朝 9:00〜9:04 の 1 回で `approvals:remind`。使い始める前は何も送らない（画面の出力は `storage/logs/approval-reminder.log` に毎朝 1 行）
+- 利用者の決定（2026-10-02）: 本番の `APP_URL` を読み取る（`/index.php` が無い → リンクの元は `APP_URL` に `/index.php` を足したもの）・毎年繰り返す送らない日は 1 年より短く・説明は必須・年をまたぐ期間を同じ年で打ったときは直し方を添えて断る・2/29 は毎年の期間にも使える。3b は 2 つの会話が並行して作り始め、この計画の会話が続けた（もう一方の枝 `approval-phase3b`・`approval-phase3b-proto` は残してある）
+- 計画で決めた細部（計画 §0.10）: まとめメールの「必要な対応」と件名はホームの対応待ちと同じ・「今日の分を送ったか」は今日の行を入れられるかで決める・送る相手がいない日も 0 人・0 件で記録し、⑫ には「送る相手はいませんでした」と出す（利用者の決定）
+- 受け入れた隙間（計画 §0.11）: 無効の人・メールの無い人の対応待ちは催促が誰にも届かない（⑩ で見る）・祝日の法改正は部品の更新が要る ほか
 
 ---
 

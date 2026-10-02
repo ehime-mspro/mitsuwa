@@ -64,8 +64,8 @@ manage/
 │   └── components/                  # attachment-section, attachment-upload
 ├── routes/
 │   ├── web.php                      # 全ルート定義 (末尾で approval.php を require)
-│   ├── approval.php                 # 決裁申請 段階1・2a・2b・3a (46 ルート。管理系は approval.admin、申請を回す画面とお知らせは approval.launched、進行中の申請の管理は両方)
-│   └── console.php                  # 定期実行の予定 (schedule:run が読む)
+│   ├── approval.php                 # 決裁申請 段階1・2a・2b・3a・3b (50 ルート。管理系は approval.admin、申請を回す画面とお知らせは approval.launched、進行中の申請の管理は両方)
+│   └── console.php                  # 定期実行の予定 (schedule:run が読む。夜間バックアップ 3:00・決裁の催促 9:00・キュー処理 5 分おき)
 └── database/sql/                    # 直接実行用SQL
 ```
 
@@ -124,6 +124,8 @@ manage/
 | `approval_download_logs` | 決裁: 添付を開いた記録（**追記のみ**）|
 | `approval_number_sequences` | 決裁: 部門・年度ごとの連番（行をロックして採る）|
 | `notifications` | 決裁: お知らせ（Laravel 標準の形 ＋ `approval_request_id`。1 人 1 行・消さない。作るのは `Notifier` だけ・引くときは `ApprovalNotice::ownedBy()`）|
+| `approval_holidays` | 決裁: 催促を送らない日（期間・毎年繰り返すか・説明。毎年は月と日だけで比べる。土日と祝日は登録しない）|
+| `approval_reminder_runs` | 決裁: 催促を送った日（1 日 1 行・`sent_on` が一意＝同じ日に 2 回送らない。書くのは `approvals:remind` だけ）|
 
 ## Authentication & Authorization
 
@@ -131,5 +133,5 @@ manage/
 - Middleware: `role:executive`, `role:executive,manager`
 - 決裁: `approval_only` は `RestrictApprovalOnlyUsers` が決裁以外の全画面から締め出す（web グループ・`SubstituteBindings` より前）。決裁の管理系は 2 段目の `approval.admin`（`EnsureApprovalAdmin`）が守る。**ロールとは独立**で、基幹を使う人（executive / manager / staff）も `approval_members.is_admin` で決裁の管理者になれる
 - 決裁（段階2）: 申請を回す画面は 3 段目の `approval.launched`（`EnsureApprovalLaunched`）が守る。`approval_settings.launched_at` が空のあいだは、画面を開く GET を決裁のホーム（準備中）へ送り、それ以外を 404 にする（`EnsureApprovalAdmin` の後・`SubstituteBindings` の前）。見られる範囲は `RequestVisibility`、操作できるかは `RequestPermissions` の 1 か所ずつ。進行中の申請の管理（⑩ `approvals.admin.requests.*`）は `approval.admin` と `approval.launched` の両方の門番の内側。付け替え・押し間違いの取り消し・代理の取り下げも `Workflow` が行う
-- 決裁（段階3）: 知らせを出すのは `App\Support\Approval\Notifier` だけで、呼ぶ側（`Workflow`・部門の管理・社長の指定）のトランザクションの中で呼ぶ（お知らせの行もメールの `jobs` の行も操作と一緒に巻き戻る。`QUEUE_CONNECTION=database` が前提）。宛先・文・リンクは操作の時点で決めてメールに持たせる（キューの中で `route()` を呼ばない）。メールは土台 `App\Mail\ApprovalMailable`（送り直し 3 回・送れた／送れなかったの記録）の上に作る。お知らせ一覧（⑥ `approvals.notices.*`）は `approval.launched` の内側
+- 決裁（段階3）: 知らせを出すのは `App\Support\Approval\Notifier` だけで、呼ぶ側（`Workflow`・部門の管理・社長の指定）のトランザクションの中で呼ぶ（お知らせの行もメールの `jobs` の行も操作と一緒に巻き戻る。`QUEUE_CONNECTION=database` が前提）。宛先・文・リンクは操作の時点で決めてメールに持たせる（キューの中で `route()` を呼ばない）。メールは土台 `App\Mail\ApprovalMailable`（送り直し 3 回・送れた／送れなかったの記録）の上に作る。お知らせ一覧（⑥ `approvals.notices.*`）は `approval.launched` の内側。毎朝の催促は `approvals:remind`（9:00〜9:04 の 1 回・キュー処理より前）が、使い始める前・送らない日（`ReminderCalendar`。祝日は部品 Yasumi）・今日の分を送ったあとは何もせず、今日の行とまとめメールを 1 つのトランザクションで積む。載せる申請は `PendingWork::everyone()`（全員について `for()` と同じ）。催促の設定（⑫ `approvals.admin.holidays.*`）は `approval.admin` だけ（使い始める前から開く）
 - Department access: `$user->belongsToDepartment('realestate')` / `('housing')` / `('tenant')`
