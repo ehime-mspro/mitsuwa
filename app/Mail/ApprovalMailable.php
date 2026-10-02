@@ -31,6 +31,12 @@ abstract class ApprovalMailable extends Mailable implements ShouldQueue
 
     public $backoff = 60;
 
+    /** メールの件名や 1 行の欄に入れる文字の改行などの制御文字を空白にする（細工した送信で件名が 2 行にならないように） */
+    public static function oneLine(?string $text): string
+    {
+        return trim((string) preg_replace('/[\x00-\x1F\x7F]+/u', ' ', (string) $text));
+    }
+
     /** 帯に出す宛先（氏名） */
     abstract protected function failedRecipientName(): string;
 

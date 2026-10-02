@@ -79,6 +79,15 @@ Event::listen(function (ScheduledTaskFailed $failed) use ($backup, $reportBackup
         : '終了コードなし: '.$failed->exception->getMessage());
 });
 
+// 決裁の催促のまとめメール（段階3 設計書 §5.8・要件 8.3）。9:00〜9:04 に起動された 1 回だけ実行する（バックアップと同じく
+// 5 分の幅を持たせる。9:00〜9:04 に動かなかった日は送らない。D17）。送る日か・使い始めたか・今日の分をもう送ったかはコマンドが見る。
+// キュー処理より前に置く: ここで積んだまとめメールを、同じ回のキュー処理がそのまま送る。
+// 画面の出力（送った人数・送らなかったわけ）はログのファイルに足す（本番の laravel.log は error だけ残るため）。
+Schedule::command('approvals:remind')
+    ->cron('0-4 9 * * *')
+    ->appendOutputTo(storage_path('logs/approval-reminder.log'))
+    ->withoutOverlapping(30);
+
 // 送信待ちのメールなどを、空になるまで処理して終わる（常駐させない）。
 // CRON（5 分おき）で schedule:run が起動されるたびに回す（CRON の分の設定がずれていても止まらないように）。
 Schedule::command('queue:work --stop-when-empty --max-time=240 --tries=3 --backoff=60')

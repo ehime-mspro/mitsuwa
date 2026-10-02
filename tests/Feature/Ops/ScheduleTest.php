@@ -52,6 +52,53 @@ class ScheduleTest extends TestCase
         }
     }
 
+    public function test_the_approval_reminder_runs_between_nine_and_nine_oh_four_japan_time(): void
+    {
+        // 決裁の催促（段階3 設計書 §5.8）。送る日か・使い始めたか・今日の分を送ったかはコマンドが見る
+        $event = $this->event('approvals:remind');
+
+        $this->assertSame('0-4 9 * * *', $event->expression);
+        $this->assertSame('Asia/Tokyo', $this->timezoneName($event));
+        $this->assertTrue($event->withoutOverlapping);
+        // 目印（ロック）が残っても、翌朝の催促を止めない
+        $this->assertSame(30, $event->expiresAt);
+        $this->assertSame(storage_path('logs/approval-reminder.log'), $event->output);
+        $this->assertTrue($event->shouldAppendOutput);
+        // メンテナンス中は送らない（バックアップだけが動く）
+        $this->assertFalse($event->evenInMaintenanceMode);
+    }
+
+    public function test_the_approval_reminder_runs_exactly_once_a_day_whatever_minute_the_cron_starts_at(): void
+    {
+        // さくらの CRON が 0・5・10… 分に起動しても、ずれて起動しても、毎日ちょうど 1 回 9 時台に予定に当たること
+        $event = $this->event('approvals:remind');
+
+        foreach (range(0, 4) as $offset) {
+            $due = [];
+            $firstTick = CarbonImmutable::create(2026, 10, 5, 0, $offset, 0, 'Asia/Tokyo');
+            for ($i = 0; $i < 24 * 12; $i++) {
+                $tick = $firstTick->addMinutes(5 * $i);
+                $this->travelTo($tick);
+                if ($event->isDue($this->app)) {
+                    $due[] = $tick->format('H:i');
+                }
+            }
+            $this->assertSame([sprintf('09:%02d', $offset)], $due, "CRON が毎時 {$offset} 分から 5 分おきに起動する場合");
+        }
+    }
+
+    public function test_the_approval_reminder_is_scheduled_before_the_queue_worker(): void
+    {
+        // 9:00 の回に積んだまとめメールを、同じ回のキュー処理が送るように
+        $commands = array_values(array_map(fn (Event $event) => (string) $event->command, $this->app->make(Schedule::class)->events()));
+        $reminder = array_keys(array_filter($commands, fn (string $command) => str_contains($command, 'approvals:remind')));
+        $queue    = array_keys(array_filter($commands, fn (string $command) => str_contains($command, 'queue:work')));
+
+        $this->assertCount(1, $reminder);
+        $this->assertCount(1, $queue);
+        $this->assertLessThan($queue[0], $reminder[0], 'approvals:remind は queue:work より前に登録されていること');
+    }
+
     public function test_application_timezone_stays_utc(): void
     {
         // 予定の時刻だけを日本時間にし、アプリ全体の日時の扱いは変えない

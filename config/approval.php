@@ -32,4 +32,18 @@ return [
 
     'guide_token_ttl_hours' => env('APPROVAL_GUIDE_TOKEN_TTL_HOURS', 12),
 
+    /*
+    |--------------------------------------------------------------------------
+    | 朝の催促のメールのリンクの元（段階3 設計書 §5.8・D20）
+    |--------------------------------------------------------------------------
+    |
+    | 催促は画面の操作が無い定期実行で作るので、操作の画面のリクエストからリンクを作れない。
+    | 本番は mod_rewrite が無く、URL に /index.php が要る（要件 15.1）のに、本番の APP_URL は
+    | https://www.mitsuwat.co.jp/system/manage（/index.php が無い。2026-10-02 に本番で読み取った）。
+    | 既定は APP_URL に /index.php を足したもの。リンクはこれを元に route() で作る（ApprovalRemindCommand）。
+    |
+    */
+
+    'mail_link_root' => env('APPROVAL_MAIL_LINK_ROOT', rtrim((string) env('APP_URL', 'http://localhost'), '/') . '/index.php'),
+
 ];

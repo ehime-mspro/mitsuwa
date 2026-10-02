@@ -7,6 +7,7 @@ use App\Enums\ApprovalStatus;
 use App\Enums\ApprovalStepKind;
 use App\Enums\ApprovalStepStatus;
 use App\Enums\UserStatus;
+use App\Mail\ApprovalMailable;
 use App\Mail\ApprovalNoticeMail;
 use App\Models\ApprovalDepartment;
 use App\Models\ApprovalHistory;
@@ -256,17 +257,11 @@ final class Notifier
         $snapshot = ApprovalRevision::where('request_id', $request->id)->where('round', $request->round)->first()?->snapshot ?? [];
 
         return [
-            'subject'    => self::oneLine($snapshot['subject'] ?? $request->subject),
+            'subject'    => ApprovalMailable::oneLine($snapshot['subject'] ?? $request->subject),
             'number'     => $request->number,
-            'applicant'  => self::oneLine($request->applicant?->name),
-            'department' => self::oneLine($snapshot['department']['name'] ?? null),
+            'applicant'  => ApprovalMailable::oneLine($request->applicant?->name),
+            'department' => ApprovalMailable::oneLine($snapshot['department']['name'] ?? null),
             'url'        => route('approvals.requests.show', $request),
         ];
-    }
-
-    /** メールの件名に入るので、改行などの制御文字を空白にする */
-    private static function oneLine(?string $text): string
-    {
-        return trim((string) preg_replace('/[\x00-\x1F\x7F]+/u', ' ', (string) $text));
     }
 }
