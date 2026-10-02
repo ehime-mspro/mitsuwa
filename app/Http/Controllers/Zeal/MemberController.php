@@ -208,7 +208,8 @@ class MemberController extends Controller
         // 現在の税率を取得（settings テーブル / 不在時は 10% フォールバック）
         $taxRate = Settings::taxRate();
 
-        DB::transaction(function () use ($member, $plan, $validated, $taxRate) {
+        // ⚠ $request も渡す（中で is_campaign_applied を読む）。渡し忘れていた間は、どの値でも 500 だった（docs/RULES.md Bug #74）
+        DB::transaction(function () use ($request, $member, $plan, $validated, $taxRate) {
             $changeDate = Carbon::parse($validated['change_date']);
 
             // 1. 現行契約を締結（period_end = 変更日の前日）
