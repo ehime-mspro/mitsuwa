@@ -111,12 +111,15 @@ final class ReminderCalendar
     private function nationalHolidaysOf(int $year): array
     {
         if (! isset($this->nationalHolidays[$year])) {
-            $this->nationalHolidays[$year] = [];
+            $holidays = [];
 
             foreach (Yasumi::create('Japan', $year, 'ja_JP') as $holiday) {
                 /** @var Holiday $holiday */
-                $this->nationalHolidays[$year][$holiday->format('Y-m-d')] ??= $holiday->getName();
+                $holidays[$holiday->format('Y-m-d')] ??= $holiday->getName();
             }
+
+            // 作り終えてから覚える（部品が例外を投げたとき、その年を「祝日なし」として残さない）
+            $this->nationalHolidays[$year] = $holidays;
         }
 
         return $this->nationalHolidays[$year];
