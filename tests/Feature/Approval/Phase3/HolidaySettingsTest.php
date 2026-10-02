@@ -96,6 +96,8 @@ class HolidaySettingsTest extends TestCase
             ['12/29〜1/3', '毎年', '年末年始', '編集 | 削除'],
         ], $this->tableRows($html));
         $this->assertStringContainsString('function approvalHolidays()', $html);
+        // 説明文の 2 文のあいだはソースで改行しない（改行は画面で半角の空白 1 つになる）。タグを除かずに HTML のまま見る
+        $this->assertStringContainsString('1 通送ります。土曜・日曜と祝日', $html);
 
         ApprovalReminderRun::create(['sent_on' => '2026-10-01', 'recipient_count' => 3, 'item_count' => 5]);
         $this->launchApprovals();
