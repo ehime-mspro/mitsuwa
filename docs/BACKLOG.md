@@ -2113,6 +2113,11 @@ git checkout 13.x && git merge --ff-only date-picker-month-ago
 
 ⚠ `/approvals/admin/requests` を最初に開いたときだけ、送られた先のホームの表示が途中の中継（プロキシ）の「Inactivity Timeout」（データが届かない）になった。2 回目と 3 回目は 1.4〜1.5 秒で正しく出て、`laravel.log` も増えていない（一時的なものの可能性が高い）。
 
+✅ ① で見つけた本番だけにある残りは、2026-10-02 夜に片付けた（利用者の了承のあと読み取りで中身を確かめ、消すのは利用者がターミナルで流した）。
+`LoginRequest.php` と `inquiries` の重複マイグレーション（`0001_01_01_000013_create_inquiries_table.php`）は、git で消す直前の版と md5 が一致し、本番のコードとクラスの一覧のどこからも参照が無かった → md5 が一致するときだけ消し、空になった `app/Http/Requests/Auth` も外した。
+`.DS_Store` は **31 個**（27 個は `app` などのコードの置き場だけの数。`bootstrap`・`public` の 3 個と公開フォルダの `images` の 1 個を足した。どれも 3〜4 月の日付）→ 残り 0。
+消したあと: `approvals.` のルート 50 本・`laravel.log` は 6/18 のまま。`migrations` 表の `0001_01_01_000013_create_inquiries_table` の行（batch 5）は残した（本番は `migrate` を使わず SQL で表を作る）。
+
 ⚠ 使い始める前なので、利用者に見える変化はほぼ無い（変わるのは、申請種類の一覧の「審査担当者がいません」が無効の人を数えなくなることだけ）。⑩・件数・カード・詳細の管理者の操作は `launched_at` が入ってから出る。
 
 ⚠ `origin/13.x` への push はしていない。
