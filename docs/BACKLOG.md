@@ -2297,7 +2297,7 @@ git checkout 13.x && git merge --ff-only date-picker-month-ago
 
 → 2026-10-03: Carbon 3.14（下の「既存の部品の既知の弱点を直す」で上げた）が、起動のたびに文を積み増す不具合を直した。前提のテストが赤になったので、`tests/TestCase.php` の片付けと `CarbonTranslatorTrimTest` を外した（外しても全件 3334 本のピークは 317.50 MB で、片付けありと同じ）。
 
-## 🚧 既存の部品の既知の弱点を直す（今の大きな版の中で更新）— 本番反映待ち
+## ✅ 既存の部品の既知の弱点を直す（今の大きな版の中で更新）— 本番反映済み
 
 決裁 段階4a の計画づくりの途中で `composer audit` を流したら、すでに入っている 12 の部品に既知の弱点の知らせが **42 件**（重いもの 14 件）出た（2026-10-03）。
 `composer.lock` は最初の構築のころのまま（部品を足したときだけ変わっていた）。**`composer.json`・`app/`・`resources/`・`routes/`・DB の変更は無し。**
@@ -2312,6 +2312,23 @@ git checkout 13.x && git merge --ff-only date-picker-month-ago
 - **当たる可能性が高い 2 つ**: ①改行を混ぜたメールアドレスでメールの見出しに細工される（Laravel の `email` の検査〈12.60.0 で直った〉と `symfony/mime` の `Address`。利用者の管理・プロフィール・顧客・問い合わせでアドレスを入れられ、決裁の通知・パスワード再発行のメールに使う）②外へのつなぎ（Guzzle・psr7 のホストの取り違え・クッキー・プロキシ。ZEAL の Google スプレッドシートの取込 `ZealSheetClient` とバックアップの送り先 `S3BackupStorage` で使う）
 - 直接は使っていないもの: `league/commonmark`（Markdown を描く所が無い）・`symfony/http-kernel` の `#[IsGranted]` などの属性・`symfony/mailer` の sendmail（本番は SMTP）・`symfony/yaml`（開発用だけ）・`symfony/routing` の UrlGenerator（Laravel は自前の URL 作り）
 - 4a の計画（`approval-phase3`）の試作も `composer.lock` を変える（mPDF を足す）。この更新を先に `13.x` へ入れ、4a の試作の lock の差分は新しい土台の上で作り直す（利用者の決定 2026-10-03）
+
+### 本番反映（2026-10-03 実施）
+
+利用者の了承のあと（本番の読み取り・早送りと部品と `./deploy.sh` と読み取り・Chrome の画面のそれぞれで了承を取った）、`13.x` を `27635bb0` から `e451262f` へ早送りした。表の変更は無い。
+
+| 段 | 見たこと | 結果 |
+|---|---|---|
+| ① 本番の読み取り | 版・ルート・部品・記録 | `Laravel Framework 12.55.0` ／ ルート 481 本（`approvals.` 50 本）／ `guzzlehttp/guzzle` 7.10.0・`nesbot/carbon` 3.11.3・`symfony/mime` v7.4.7 ／ `laravel.log` は 6/18 から更新なし ／ 本番に `vendor/bin/phpunit` は無い ／ ログイン画面 200 |
+| ② 早送り | `13.x` | `27635bb0` → `e451262f`（2 コミット） |
+| ③ 部品 | main repo で `composer install --no-dev` → `composer dump-autoload --no-dev --optimize` | `52 updates`（53 のうち `symfony/yaml` は開発用なので入らない）・6,962 クラス・`vendor/bin/phpunit` は無いまま・`git status` は空 |
+| ④ `./deploy.sh` | 2026-10-03 22:02 ごろ終了（日本時間） | exit 0・6 段すべて（アプリの転送で `vendor` の部品が送られた。ビルドの警告 1 件は以前から出ている `@import` の位置のもの） |
+| ⑤ 本番の読み取り | ビュー・版・ルート・部品・予定・記録 | コンパイル済みビュー 296 本・INVALID 0 ／ `Laravel Framework 12.69.3` ／ ルート 481 本（`approvals.` 50 本）で同じ ／ `guzzlehttp/guzzle` 7.15.5・`league/commonmark` 2.10.3・`nesbot/carbon` 3.14.2・`symfony/mime` v7.4.19 ／ 予定（バックアップ・朝の催促・キュー処理）はそのまま ／ `laravel.log` は 6/18 のまま＝反映のあとのエラーは 0 件 ／ ログイン画面 200・`/approvals` はログインへ 302 |
+| ⑥ ログインした画面（利用者の Chrome・見るだけ・フォームは送らない） | 経営ダッシュボード・決裁のホーム・利用者の管理 | 3 つとも開く・決裁のホームは「準備中」のまま・`main` のはみ出し 0・コンソールのエラー 0 |
+
+⚠ 戻すときは、`27635bb0` で main repo の `composer install --no-dev` をし直して `./deploy.sh` する（表の変更が無いのでそのまま戻せる）。
+
+⚠ `origin/13.x` への push はしていない。
 
 ## ✅ 取込の入力チェックの包み忘れを走査テストで止める — テストと文書だけ（本番への反映は不要）
 
