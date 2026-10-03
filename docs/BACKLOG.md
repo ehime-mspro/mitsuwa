@@ -2295,6 +2295,24 @@ git checkout 13.x && git merge --ff-only date-picker-month-ago
 - **残りの約 44 KB/本: OPcache の無い CLI** が、クロージャを含むファイル（`bootstrap/app.php`・設定・ルート）を起動のたびに読み直して残す分。`php -d opcache.enable_cli=1 ./vendor/bin/phpunit` で流すと 0 になり、全件のピークは **98.50 MB**・約 3 分（測定のみ。テストの流し方を変えるかは未決）
 - 静的な変数・クラスの数・読み込んだファイルの数は増え続けていない（増えるのは上の 2 つだけ）
 
+→ 2026-10-03: Carbon 3.14（下の「既存の部品の既知の弱点を直す」で上げた）が、起動のたびに文を積み増す不具合を直した。前提のテストが赤になったので、`tests/TestCase.php` の片付けと `CarbonTranslatorTrimTest` を外した（外しても全件 3334 本のピークは 317.50 MB で、片付けありと同じ）。
+
+## 🚧 既存の部品の既知の弱点を直す（今の大きな版の中で更新）— 本番反映待ち
+
+決裁 段階4a の計画づくりの途中で `composer audit` を流したら、すでに入っている 12 の部品に既知の弱点の知らせが **42 件**（重いもの 14 件）出た（2026-10-03）。
+`composer.lock` は最初の構築のころのまま（部品を足したときだけ変わっていた）。**`composer.json`・`app/`・`resources/`・`routes/`・DB の変更は無し。**
+
+| 区分 | 実装内容 |
+|------|---------|
+| 依存 | `composer.lock` の 53 の部品（直す 12 と付いてくる部品）。`laravel/framework` 12.55.0 → **12.69.3**・`guzzlehttp/guzzle` 7.10.0 → 7.15.5・`guzzlehttp/psr7` 2.9.0 → 2.13.1・`league/commonmark` 2.8.1 → 2.10.3・`league/flysystem` 3.32.0 → 3.36.0・Symfony 7.4 系の最新（`http-foundation`・`http-kernel`・`routing` 7.4.20・`mailer`・`mime` 7.4.19 ほか）・`nesbot/carbon` 3.11.3 → 3.14.2 ほか |
+| テスト（変更・削除）| `tests/TestCase.php` の `tearDown()`（Carbon の片付け）を外し、`tests/Feature/CarbonTranslatorTrimTest.php` を削除（上の節の → のとおり） |
+| 全件テスト | 3336 → **3334 tests / 23750 assertions green**・ピーク 317.50 MB・`composer audit` は 0 件 |
+
+- 更新のコマンド（worktree `deps-security` の cwd）: `composer update laravel/framework guzzlehttp/guzzle guzzlehttp/psr7 league/commonmark league/flysystem symfony/http-foundation symfony/http-kernel symfony/mailer symfony/mime symfony/polyfill-intl-idn symfony/routing symfony/yaml --with-dependencies`（大きな版は上げない。Laravel 13・Guzzle 8 は別の機会）
+- **当たる可能性が高い 2 つ**: ①改行を混ぜたメールアドレスでメールの見出しに細工される（Laravel の `email` の検査〈12.60.0 で直った〉と `symfony/mime` の `Address`。利用者の管理・プロフィール・顧客・問い合わせでアドレスを入れられ、決裁の通知・パスワード再発行のメールに使う）②外へのつなぎ（Guzzle・psr7 のホストの取り違え・クッキー・プロキシ。ZEAL の Google スプレッドシートの取込 `ZealSheetClient` とバックアップの送り先 `S3BackupStorage` で使う）
+- 直接は使っていないもの: `league/commonmark`（Markdown を描く所が無い）・`symfony/http-kernel` の `#[IsGranted]` などの属性・`symfony/mailer` の sendmail（本番は SMTP）・`symfony/yaml`（開発用だけ）・`symfony/routing` の UrlGenerator（Laravel は自前の URL 作り）
+- 4a の計画（`approval-phase3`）の試作も `composer.lock` を変える（mPDF を足す）。この更新を先に `13.x` へ入れ、4a の試作の lock の差分は新しい土台の上で作り直す（利用者の決定 2026-10-03）
+
 ## ✅ 取込の入力チェックの包み忘れを走査テストで止める — テストと文書だけ（本番への反映は不要）
 
 詳細仕様: @docs/superpowers/specs/2026-09-25-import-validation-scan-design.md
