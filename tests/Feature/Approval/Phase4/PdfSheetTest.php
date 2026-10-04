@@ -192,6 +192,8 @@ class PdfSheetTest extends TestCase
         }
         $this->assertStringContainsString('決裁者コメント（条件）', $html);
         $this->assertStringContainsString('月次で報告すること', $html);
+        $beforeStamp = strstr($html, 'aria-label="社長 R8.10.5 社長 の印"', true);
+        $this->assertStringNotContainsString('</table>', substr($beforeStamp, strrpos($beforeStamp, '<td')), '社長の印のセルに判断の欄の表を入れ子にしない（mPDF がセルの高さを少なく見積もり、印が枠からはみ出す）');
         $this->assertSame(PdfSheet::MIN_BODY_ROWS, substr_count($html, '<td class="line">'), '本文は罫線の行ごと');
 
         $footer = view('approvals.requests._pdf_footer', ['sheet' => $sheet])->render();

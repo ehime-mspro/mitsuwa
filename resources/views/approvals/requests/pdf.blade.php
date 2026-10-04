@@ -20,6 +20,8 @@
     table.marks { width: auto; border-collapse: separate; border-spacing: 1mm 0; }
     td.mark { border: 0.6pt solid #000; padding: 0.3mm 1.5mm; text-align: center; vertical-align: middle; }
     .on { border: 1.2pt solid {{ \App\Support\Approval\StampSvg::COLOR }}; color: {{ \App\Support\Approval\StampSvg::COLOR }}; }
+    td.upper { border-bottom: none; padding-bottom: 0; vertical-align: middle; }
+    td.lower { border-top: none; padding-top: 0.5mm; }
     .small { font-size: 8.5pt; }
     .note { font-size: 8.5pt; color: #444; }
     td.line { border-top: none; border-bottom: 0.4pt dashed #999; height: 6mm; }
@@ -42,9 +44,12 @@
 </table>
 <div class="gap"></div>
 
-<table>
+{{-- ⚠ 判断の欄（入れ子の小さな表）は上の段に置き、コメント・印と同じセルに入れない。同じセルに入れると、mPDF がセルの高さを
+     少なく見積もり、社長のコメントが 8 行ほどで印が枠からはみ出した（2026-10-04 の点検）。上の段と下の段の間の線は消して 1 つの欄に見せ、
+     表は 1 段だったときと同じく段の間でページを分けない（page-break-inside: avoid） --}}
+<table style="page-break-inside: avoid;">
     <tr>
-        <td style="width: 45%;">
+        <td class="upper" style="width: 45%;">
             <table class="marks">
                 <tr>
                     <td style="border: none; padding: 0 1mm 0 0;" class="mincho">決裁</td>
@@ -53,6 +58,12 @@
                     @endforeach
                 </tr>
             </table>
+        </td>
+        <td class="upper mincho" style="width: 35%;">申請部門</td>
+        <td class="upper mincho" style="width: 20%; text-align: center;">承認</td>
+    </tr>
+    <tr>
+        <td class="lower">
             <div class="mincho" style="margin-top: 2mm;">決裁者コメント{{ $sheet->decisionMark === '条可' ? '（条件）' : '' }}</div>
             <div>{!! nl2br(e($sheet->presidentComment ?? '')) !!}</div>
             @if($sheet->conditionConfirmedAt)
@@ -62,14 +73,12 @@
                 <div>{!! \App\Support\Approval\StampSvg::render($sheet->presidentStamp, \App\Support\Approval\StampSvg::PDF_FONT, '80') !!}</div>
             @endif
         </td>
-        <td style="width: 35%;">
-            <div class="mincho">申請部門</div>
+        <td class="lower">
             <div>{{ $sheet->departmentName ?? '' }}</div>
             <div class="mincho" style="margin-top: 2mm;">申請者名</div>
             <div>{{ $sheet->applicantName ?? '' }}</div>
         </td>
-        <td style="width: 20%; text-align: center;">
-            <div class="mincho">承認</div>
+        <td class="lower" style="text-align: center;">
             @if($sheet->headSkipped)
                 <div class="small" style="margin-top: 4mm;">申請者が部門長のため省略</div>
             @elseif($sheet->headStamp)
