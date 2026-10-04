@@ -113,10 +113,12 @@
                                 <button @click="submitDelete()" class="px-2.5 py-1 bg-red-600 text-white text-xs font-semibold rounded hover:bg-red-700 transition-colors cursor-pointer">削除</button>
                                 <button @click="cancelDelete()" class="px-2.5 py-1 bg-gray-100 text-gray-600 text-xs font-semibold rounded hover:bg-gray-200 transition-colors cursor-pointer">取消</button>
                             </div>
-                            <div x-show="editingId !== item.id && deletingId !== item.id" class="flex justify-center gap-1.5">
+                            <div x-show="editingId !== item.id && deletingId !== item.id && !item.locked" class="flex justify-center gap-1.5">
                                 <button @click="startEdit(item.id, item.name)" class="px-2.5 py-1 bg-gray-100 text-gray-600 text-xs font-semibold rounded hover:bg-gray-200 transition-colors cursor-pointer">編集</button>
                                 <button @click="startDelete(item.id, item.name)" class="px-2.5 py-1 bg-gray-100 text-red-500 text-xs font-semibold rounded hover:bg-red-50 transition-colors cursor-pointer">削除</button>
                             </div>
+                            {{-- 物件購入費は購入価格から自動で計上する（同期が名前で引く）ので、名前の変更・削除をさせない --}}
+                            <span x-show="item.locked" class="text-xs text-gray-500">自動で計上（変更不可）</span>
                         </td>
                     </tr>
                 </template>

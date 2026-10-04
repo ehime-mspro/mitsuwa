@@ -7,6 +7,7 @@ use App\Models\ReCostItem;
 use App\Models\ReProcurementCost;
 use App\Models\ReProjectCost;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class ReCostItemController extends Controller
 {
@@ -21,7 +22,8 @@ class ReCostItemController extends Controller
         // Alpine.js用: @json()内でfn()を使わないよう事前整形
         $costItemsForJs = [];
         foreach ($costItems as $item) {
-            $costItemsForJs[] = ['id' => $item->id, 'name' => $item->name];
+            // locked: 購入価格から自動で計上する項目（物件購入費）。一覧は編集・削除のボタンを出さない
+            $costItemsForJs[] = ['id' => $item->id, 'name' => $item->name, 'locked' => $item->isPropertyPurchase()];
         }
 
         return view('admin.master.re-cost-items.index', compact('costItems', 'costItemsForJs'));
@@ -33,9 +35,7 @@ class ReCostItemController extends Controller
      */
     public function store(Request $request)
     {
-        $validated = $request->validate([
-            'name' => 'required|string|max:50',
-        ]);
+        $validated = $request->validate($this->nameRules(), $this->nameMessages());
 
         $maxOrder = ReCostItem::max('sort_order') ?? 0;
         $validated['sort_order'] = $maxOrder + 1;
@@ -53,9 +53,13 @@ class ReCostItemController extends Controller
      */
     public function update(Request $request, ReCostItem $costItem)
     {
-        $validated = $request->validate([
-            'name' => 'required|string|max:50',
-        ]);
+        if ($costItem->isPropertyPurchase()) {
+            return redirect()
+                ->route('admin.master.re-cost-items.index')
+                ->with('error', '「' . ReCostItem::PROPERTY_PURCHASE . '」は仕入れ案件・分譲地の購入価格から自動で計上する項目のため、名前を変更できません。');
+        }
+
+        $validated = $request->validate($this->nameRules(), $this->nameMessages());
 
         $costItem->update($validated);
 
@@ -70,6 +74,12 @@ class ReCostItemController extends Controller
      */
     public function destroy(ReCostItem $costItem)
     {
+        if ($costItem->isPropertyPurchase()) {
+            return redirect()
+                ->route('admin.master.re-cost-items.index')
+                ->with('error', '「' . ReCostItem::PROPERTY_PURCHASE . '」は仕入れ案件・分譲地の購入価格から自動で計上する項目のため、削除できません。');
+        }
+
         // 使用中チェック（仕入れ案件・分譲地の原価明細）。
         // ⚠ 本番は両方の明細に外部キー（ON DELETE の指定なし）があり、見落とすと削除が 500 になる
         $inUse = ReProcurementCost::where('cost_item_id', $costItem->id)->exists()
@@ -87,6 +97,20 @@ class ReCostItemController extends Controller
         return redirect()
             ->route('admin.master.re-cost-items.index')
             ->with('success', '「' . $name . '」を削除しました。');
+    }
+
+    /**
+     * 名前の入力チェック（追加・変更）。「物件購入費」はほかの項目に使わせない（同期が名前で引くので、
+     * 同じ名前が 2 つあるとどちらに計上するか決まらない）。
+     */
+    private function nameRules(): array
+    {
+        return ['name' => ['required', 'string', 'max:50', Rule::notIn([ReCostItem::PROPERTY_PURCHASE])]];
+    }
+
+    private function nameMessages(): array
+    {
+        return ['name.not_in' => '「' . ReCostItem::PROPERTY_PURCHASE . '」は自動で計上する項目の名前のため、ほかの項目には使えません。'];
     }
 
     /**
