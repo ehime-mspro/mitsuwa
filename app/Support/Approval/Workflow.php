@@ -569,7 +569,7 @@ final class Workflow
 
     /**
      * 取り消した判断の段階を「待ち」に戻し、今の回のそれより後ろの段階を「まだ届いていない」に戻す（取り消し）。
-     * 届いた日時（arrived_at）は空にしない（§5.16）。担当の付け替え（assignee_user_id）はそのまま
+     * 届いた日時（arrived_at）は空にしない（§5.16）。担当の付け替え（assignee_user_id）はそのまま。印の控えは判断と一緒に消す（段階4 D3）
      *
      * ⚠ 後ろの段階は、ロックした今の回の段階の行から id を選び、主キーだけで書く。`request_id`・`round` と
      *   `id > ?` の範囲の条件で UPDATE すると、MySQL は索引の次の項目＝隣の申請の段階の行までロックし、
@@ -587,6 +587,8 @@ final class Workflow
             'actor_user_id' => null,
             'result'        => null,
             'comment'       => null,
+            'stamp_label'   => null,
+            'stamp_text'    => null,
             'updated_at'    => $now,
         ]);
 
@@ -601,6 +603,9 @@ final class Workflow
         }
     }
 
+    /**
+     * 判断を書く。印の上段と下段もここで控える（段階4 設計書 D3。あとで部門の略称や印に使う文字を変えても、押した印は変わらない）
+     */
     private function finishStep(ApprovalStep $step, User $actor, ApprovalStepResult $result, ?string $comment): void
     {
         $step->update([
@@ -609,6 +614,8 @@ final class Workflow
             'actor_user_id' => $actor->id,
             'result'        => $result,
             'comment'       => $comment,
+            'stamp_label'   => StampText::labelFor($step),
+            'stamp_text'    => StampText::for($actor),
         ]);
     }
 
