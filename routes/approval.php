@@ -9,6 +9,7 @@ use App\Http\Controllers\Approval\RelatedNumberController;
 use App\Http\Controllers\Approval\RequestActionController;
 use App\Http\Controllers\Approval\RequestAttachmentController;
 use App\Http\Controllers\Approval\RequestController;
+use App\Http\Controllers\Approval\RequestPdfController;
 use App\Http\Controllers\Approval\TypeController;
 use App\Http\Controllers\Approval\UserController;
 use App\Http\Controllers\Approval\UserImportController;
@@ -135,6 +136,9 @@ Route::middleware('approval.launched')->prefix('approvals')->name('approvals.')-
     Route::get('/requests/{approvalRequest}/edit', [RequestController::class, 'edit'])->name('requests.edit');
     Route::put('/requests/{approvalRequest}', [RequestController::class, 'update'])->name('requests.update');
     Route::delete('/requests/{approvalRequest}', [RequestController::class, 'destroy'])->name('requests.destroy');
+
+    // 決裁申請書の PDF（段階4 設計書 §5.6）。見られる人なら提出したことのある申請をいつでも（下書きは 404）
+    Route::get('/requests/{approvalRequest}/pdf', [RequestPdfController::class, 'show'])->name('requests.pdf');
 
     // 添付（段階2 設計書 §5.7・計画 §0.5）。追加と外すのは Ajax・JSON
     Route::post('/requests/{approvalRequest}/attachments', [RequestAttachmentController::class, 'store'])->name('requests.attachments.store');
