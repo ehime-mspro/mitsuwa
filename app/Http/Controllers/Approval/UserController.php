@@ -6,6 +6,7 @@ use App\Enums\UserRole;
 use App\Enums\UserStatus;
 use App\Http\Controllers\Controller;
 use App\Models\ApprovalCompany;
+use App\Models\ApprovalMember;
 use App\Models\ApprovalSetting;
 use App\Models\User;
 use App\Support\Approval\PasswordReissuer;
@@ -145,7 +146,7 @@ class UserController extends Controller
     }
 
     /**
-     * 所属部門は全員、氏名と社員番号は「決裁のみ かつ 指定されていない人」だけ。
+     * 所属部門と印に使う文字は全員、氏名と社員番号は「決裁のみ かつ 指定されていない人」だけ。
      * Route: PUT /approvals/admin/users/{user}
      */
     public function update(Request $request, User $user)
@@ -170,12 +171,18 @@ class UserController extends Controller
         ], [
             'name' => '氏名',
             'approval_departments' => '決裁の所属部門',
+            'stamp_text' => '印に使う文字',
         ]);
 
         // ⚠ 所属の付け替えと氏名・社員番号の保存、その記録をまとめて 1 つにする。
         //   囲まないと、`save()` が DB 側の一意制約に当たったときに**所属だけ変わった状態**が
         //   残り、画面には「更新しました」も出ない（`PasswordReissuer` も同じ理由で囲っている）。
         DB::transaction(function () use ($user, $validated, $editable) {
+            // 欄が送られてきたときだけ（送られていない更新で印の文字を消さない）
+            if (array_key_exists('stamp_text', $validated)) {
+                $this->saveStampText($user, $validated['stamp_text']);
+            }
+
             // 所属部門は全員について編集できる（要件 3.2・D16 の例外）
             $before = $user->approvalDepartments->pluck('id')->sort()->values()->all();
             $after  = collect($validated['approval_departments'] ?? [])->map(fn ($id) => (int) $id)->sort()->values()->all();
@@ -202,6 +209,25 @@ class UserController extends Controller
     }
 
     /**
+     * 印に使う文字（要件 3.2・9.1・段階4 設計書 D9・D10）。所属部門と同じく、指定された人や基幹を使う人も直せる
+     * （ログインやなりすましに使えず、変えたことは記録に残り、押した印は変わらないため）。空にすると氏名からの既定に戻る。
+     *
+     * 前後の空白（全角を含む）は TrimStrings（Str::trim）が外し、空は ConvertEmptyStringsToNull が null にする
+     * （どちらもアプリ全体の前処理。2026-10-03 に全角の空白でも確かめた）。
+     */
+    private function saveStampText(User $user, ?string $after): void
+    {
+        $before = $user->approvalMember?->stamp_text;
+
+        if ($before === $after) {
+            return;
+        }
+
+        ApprovalMember::updateOrCreate(['user_id' => $user->id], ['stamp_text' => $after]);
+        SettingLogger::record('user.stamp_changed', 'user', $user->id, ['stamp_text' => $before], ['stamp_text' => $after]);
+    }
+
+    /**
      * 編集の検証ルール。
      *
      * ⚠ 編集できない相手のときは、氏名・社員番号の**ルールごと外す**。
@@ -219,6 +245,7 @@ class UserController extends Controller
             //   （`approval_departments.*` の `exists` は要素ごとに 1 回問い合わせる）
             'approval_departments'   => ['array', 'max:100'],
             'approval_departments.*' => [Rule::exists('approval_departments', 'id')],
+            'stamp_text'             => ['nullable', 'string', 'max:4'],
         ];
 
         if ($editable) {

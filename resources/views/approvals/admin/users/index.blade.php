@@ -40,7 +40,7 @@
            class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[12px] font-semibold rounded-md cursor-pointer whitespace-nowrap">社員の一括登録（CSV）</a>
     </div>
     <p class="text-[12px] text-gray-500 mb-5">
-        決裁の所属部門は全員について変えられます。氏名・社員番号の修正、無効化・有効化、パスワードの再発行は、決裁だけを使う利用者に対してのみ行えます。
+        決裁の所属部門と印に使う文字は全員について変えられます。氏名・社員番号の修正、無効化・有効化、パスワードの再発行は、決裁だけを使う利用者に対してのみ行えます。
         メールアドレスの変更と利用者の削除は、基幹の管理者に依頼してください。
         決裁だけを使う利用者を新しく登録するときは「社員の一括登録（CSV）」を使ってください（1 人だけでも使えます）。
     </p>
@@ -197,11 +197,17 @@
                         </td>
                         <td class="px-3.5 py-2.5 border-b border-gray-100 whitespace-nowrap font-mono text-[12px] text-gray-700">{{ $u->employee_number ?? '—' }}</td>
                         <td class="px-3.5 py-2.5 border-b border-gray-100">
-                            <span class="text-[13px] font-medium text-gray-900">{{ $u->name }}</span>
-                            @if($privilegeLabel !== null)
-                                {{-- ⚠ 理由は title だけでなく画面の本文にも出す（tooltip はキーボード・読み上げに届かない。Bug #43） --}}
-                                <span class="block text-[11px] text-gray-500">{{ $privilegeLabel }}に指定されています</span>
-                            @endif
+                            <div class="flex items-center gap-2.5">
+                                {{-- 印の見本（段階4 設計書 D11。日付は今日。StampSvg は文字を e() で包んだ SVG を返す） --}}
+                                <span class="shrink-0" data-stamp-preview>{!! \App\Support\Approval\StampSvg::render(\App\Support\Approval\Stamp::preview($u)) !!}</span>
+                                <div class="min-w-0">
+                                    <span class="text-[13px] font-medium text-gray-900">{{ $u->name }}</span>
+                                    @if($privilegeLabel !== null)
+                                        {{-- ⚠ 理由は title だけでなく画面の本文にも出す（tooltip はキーボード・読み上げに届かない。Bug #43） --}}
+                                        <span class="block text-[11px] text-gray-500">{{ $privilegeLabel }}に指定されています</span>
+                                    @endif
+                                </div>
+                            </div>
                         </td>
                         <td class="px-3.5 py-2.5 border-b border-gray-100 text-center whitespace-nowrap">
                             <span class="inline-block px-2 rounded text-[11px] font-medium {{ $u->isApprovalOnly() ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-600' }}" style="padding-top:2px; padding-bottom:2px;">{{ $u->isApprovalOnly() ? '決裁のみ' : '基幹も使う' }}</span>
@@ -221,6 +227,7 @@
                                         'id'          => $u->id,
                                         'name'        => $u->name,
                                         'number'      => $u->employee_number ?? '',
+                                        'stamp'       => $u->approvalMember?->stamp_text ?? '',
                                         'email'       => $u->email ?? '',
                                         'departments' => $u->approvalDepartments->pluck('id')->map(fn ($id) => (string) $id)->values(),
                                         'editable'    => $manageable,
@@ -290,7 +297,7 @@
                 <div class="px-6 pt-5 text-[15px] font-bold text-gray-900">利用者の編集</div>
                 <div class="px-6 py-4 space-y-3.5">
                     <template x-if="!editEditable">
-                        <p class="rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-[12px] text-amber-800" x-text="editReason + ' 決裁の所属部門だけ変えられます。'"></p>
+                        <p class="rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-[12px] text-amber-800" x-text="editReason + ' 決裁の所属部門と印に使う文字だけ変えられます。'"></p>
                     </template>
 
                     <div>
@@ -306,6 +313,12 @@
                                class="w-full h-[38px] px-2.5 border border-gray-300 rounded-md text-[13px] font-mono"
                                :class="editEditable ? '' : 'bg-gray-50 text-gray-500'">
                         <p class="text-[11px] text-gray-400 mt-1">英数字とハイフン。ログイン ID になります</p>
+                    </div>
+                    <div>
+                        <label for="approval-edit-stamp" class="block text-[12px] font-semibold text-gray-700 mb-1">印に使う文字</label>
+                        <input type="text" id="approval-edit-stamp" name="stamp_text" x-model="editStamp" maxlength="4"
+                               class="w-full h-[38px] px-2.5 border border-gray-300 rounded-md text-[13px]">
+                        <p class="text-[11px] text-gray-400 mt-1">4 文字まで。空なら氏名の最初の空白より前を使います（例: 山田 太郎 → 山田）。すでに押した印は変わりません</p>
                     </div>
                     <div>
                         <label class="block text-[12px] font-semibold text-gray-700 mb-1">メールアドレス</label>
@@ -397,6 +410,7 @@ function approvalUsers() {
         editUserId: null,
         editName: '',
         editNumber: '',
+        editStamp: '',
         editEmail: '',
         editDepartments: [],
         editEditable: false,
@@ -406,6 +420,7 @@ function approvalUsers() {
             this.editUserId = row.id;
             this.editName = row.name;
             this.editNumber = row.number;
+            this.editStamp = row.stamp;
             this.editEmail = row.email;
             this.editDepartments = row.departments.map(String);
             this.editEditable = row.editable;
