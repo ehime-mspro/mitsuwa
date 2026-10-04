@@ -9,7 +9,7 @@
 --   コードを先に送ると、判断の操作と利用者の管理（⑦）が Unknown column で 500 になる。
 --
 -- 適用: 段階1〜3 と同じく php artisan tinker --execute で DB::statement() に **1 文ずつ**流す。
---   先頭で「approval_members に stamp_text があるか、approval_steps に stamp_label があれば 1 文も流さずに止まる」確認をする（計画 Task 8）。
+--   先頭で「approval_members に stamp_text があるか、approval_steps に stamp_label があれば 1 文も流さずに止まる」確認をする（計画 Task 10）。
 
 -- 1. 利用者ごとの「印に使う文字」（D9。空なら氏名の最初の空白より前。D8）
 ALTER TABLE `approval_members`
