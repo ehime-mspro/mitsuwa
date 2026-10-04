@@ -278,10 +278,12 @@
                     self.rows      = null;
                     self.groups    = [];
 
+                    // X-Requested-With が無いと、この JSON の URL がセッションの「直前の画面」になる（Top trap #9）
                     fetch(previewUrl, {
                         method: 'GET',
                         headers: {
                             'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest',
                             'X-CSRF-TOKEN': csrfToken,
                         },
                         credentials: 'same-origin',
