@@ -82,6 +82,45 @@ class ZealSimulationCategoryMasterTest extends MasterScreenTestCase
         $this->assertSame(1, preg_match_all('/href="' . preg_quote(route('admin.master.zeal-simulation-categories.edit', $this->webAd), '/') . '"/', $html));
     }
 
+    /** 登録画面のフォームを、$over の項目だけ差し替えて送る */
+    private function sendCreate(array $over)
+    {
+        $create = route('admin.master.zeal-simulation-categories.create');
+        $form = $this->parseForm($this->htmlOf($create), 'action="' . route('admin.master.zeal-simulation-categories.store') . '"');
+        $this->assertSame('POST', $form['method']);
+
+        return [$form, $this->actingAs($this->user)->from($create)->post($form['action'], array_merge($form['fields'], $over))];
+    }
+
+    /**
+     * G1: 新規登録画面が開き、そこから登録できる。
+     * ⚠ 以前は共通フォームの `use ($category, $isEdit)` が登録画面では未定義の変数を拾い、画面が 500 だった
+     *   （最初の実装 2026-05-12 から）。
+     */
+    public function test_an_item_is_registered_from_the_create_screen(): void
+    {
+        [$form, $response] = $this->sendCreate(['code' => 'cleaning', 'name' => '清掃費', 'calc_type' => 'fixed', 'default_amount' => '30000']);
+
+        $this->assertSame(['expense', 'manual', '1'], [$form['fields']['group_type'], $form['fields']['calc_type'], $form['fields']['is_active']],
+            '登録画面の既定（グループ＝経費・計算タイプ＝手入力・有効）が違う');
+        $response->assertRedirect($this->indexUrl());
+        $row = $this->row('cleaning');
+        $this->assertSame(['清掃費', 'expense', 'fixed', 30000, 220, 0, 1],
+            [$row->name, $row->group_type, $row->calc_type, (int) $row->default_amount, (int) $row->sort_order, (int) $row->is_system, (int) $row->is_active]);
+        $this->assertFlash($this->landed($response), 'success', '「清掃費」を追加しました。');
+    }
+
+    public function test_a_duplicate_or_malformed_code_is_refused_on_the_create_screen(): void
+    {
+        [, $duplicate] = $this->sendCreate(['code' => 'rent', 'name' => '賃料2']);
+        $this->assertStringContainsString('>同じコードが既に登録されています。</p>', $this->landed($duplicate));
+
+        [, $malformed] = $this->sendCreate(['code' => 'Web-Ad', 'name' => 'Web広告2']);
+        $this->assertStringContainsString('>コードは半角小文字英数字とアンダースコアで入力してください（例: rent, web_operation）。</p>', $this->landed($malformed));
+
+        $this->assertSame(6, DB::table('zeal_simulation_categories')->count());
+    }
+
     public function test_an_item_is_updated_from_the_edit_screen(): void
     {
         $response = $this->sendEdit('web_ad', ['name' => 'Web広告・SNS', 'calc_type' => 'revenue_linked', 'rate_percent' => '2.5']);

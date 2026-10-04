@@ -1,6 +1,9 @@
 {{-- ZEAL 試算表 項目マスター 共通フォーム --}}
 @php
-    $isEdit = isset($category);
+    // 登録画面は $category を渡さない。下のクロージャの use ($category) は未定義の変数を拾うと
+    // Warning → ErrorException で画面が 500 になるので、先に null で定義しておく
+    $category = $category ?? null;
+    $isEdit = $category !== null;
     $val = function ($key, $default = '') use ($category, $isEdit) {
         return old($key, $isEdit ? ($category->$key ?? $default) : $default);
     };
