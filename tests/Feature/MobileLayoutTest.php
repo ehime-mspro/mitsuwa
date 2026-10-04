@@ -45,6 +45,16 @@ class MobileLayoutTest extends TestCase
     private const SCROLLABLE_ANCESTOR = '/scroll-hint-inner|scroll-area|overflow-x:\s*auto|overflow-x-auto|overflow-y:\s*auto|overflow:\s*auto/';
 
     /**
+     * 横スクロールの祖先が無くてよい <table> を持つファイル。
+     * 追加するときは「なぜ 375px の画面で崩れないか」を必ず書くこと。
+     */
+    private const TABLE_SCROLL_EXEMPT = [
+        // mPDF に渡す A4 の紙面。ブラウザの画面には出さない（段階4a の PDF）
+        'approvals/requests/pdf.blade.php'         => 'mPDF に渡す紙面で画面に出さない',
+        'approvals/requests/_pdf_footer.blade.php' => 'mPDF に渡す紙面で画面に出さない',
+    ];
+
+    /**
      * インラインの多列グリッドのうち、モバイル用クラスが無くてよいもの。
      * 追加するときは「なぜ 375px で壊れないか」を必ず書くこと。
      */
@@ -113,6 +123,10 @@ class MobileLayoutTest extends TestCase
             $src = file_get_contents($path);
 
             if (! str_contains($src, '<table')) {
+                continue;
+            }
+
+            if (isset(self::TABLE_SCROLL_EXEMPT[$this->relative($path)])) {
                 continue;
             }
 

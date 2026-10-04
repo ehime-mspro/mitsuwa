@@ -9,3 +9,6 @@
 /.github export-ignore
 CHANGELOG.md export-ignore
 .styleci.yml export-ignore
+
+# 同梱のフォントとライセンスの文書は配布元のまま保存する（改行を書き換えない。段階4a）
+/resources/fonts/** -text
