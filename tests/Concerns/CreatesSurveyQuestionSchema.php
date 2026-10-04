@@ -13,6 +13,9 @@ use Illuminate\Support\Facades\Schema;
  *   （2026-08-18 実測。`ms_*` や `zeal_*` は raw SQL が `database/sql/` にあるので事情が違う）。
  *   そのため列構成は `App\Models\SurveyQuestion` の `$fillable` / `$casts` と
  *   `Admin\SurveyQuestionController` の `validate()` から起こしている。
+ *   2026-10-04 に本番の `SHOW CREATE TABLE` と突き合わせた（question_type は 30 文字に直した。本番の
+ *   department は enum('housing','realestate')・options / settings は json 列・created_at / updated_at は
+ *   CURRENT_TIMESTAMP の既定値つき。SQLite に無いものは文字列と nullable で代える）。
  *
  * ⚠ **DDL を変えたらこの trait も追従すること。** 片方だけ直すと SQLite テストだけが
  *   落ちる drift になる（本番と実 DB は正常なので不可視）。
@@ -33,7 +36,7 @@ trait CreatesSurveyQuestionSchema
             $t->id();
             $t->string('department', 20);
             $t->string('label', 255);
-            $t->string('question_type', 20);
+            $t->string('question_type', 30);
             $t->text('options')->nullable();
             $t->text('settings')->nullable();
             $t->unsignedInteger('sort_order')->default(0);
