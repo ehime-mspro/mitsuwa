@@ -1,0 +1,132 @@
+<?php
+
+namespace Tests\Feature\Admin\Master;
+
+use App\Models\SurveyQuestion;
+use Illuminate\Support\Facades\DB;
+use Tests\Concerns\CreatesRealEstateSchema;
+use Tests\Concerns\CreatesSurveyQuestionSchema;
+
+/**
+ * アンケート設問の管理（Admin\SurveyQuestionController）。住宅事業・不動産事業の 2 つのタブ。
+ * 追加と削除は画面の JS（surveyQuestionManager）が XMLHttpRequest で送る（X-Requested-With を付けないので、
+ * サーバは JSON でなく転送を返し、XHR はその先の一覧を読んで 200 になる）。
+ *
+ * ⚠ **設問の編集（PUT）と並び替えには画面が無い**（「編集」ボタンは一覧を開き直すだけ・「ドラッグ＆ドロップで
+ *   並び替えできます」と書いてあるが、ドラッグを受け取る処理が無い）。この 2 つはサーバの約束だけを直接送って確かめる。
+ */
+class SurveyQuestionMasterTest extends MasterScreenTestCase
+{
+    use CreatesRealEstateSchema;
+    use CreatesSurveyQuestionSchema;
+
+    /** @var array<string, int> 設問文 => id */
+    private array $ids = [];
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->createRealEstateSchema();
+        $this->createSurveyQuestionSchema();
+        foreach ([
+            ['housing', '来場のきっかけ', 'single_select', ['チラシ', 'Web'], 1],
+            ['housing', 'ご予算', 'number', null, 2],
+            ['realestate', '希望エリア', 'text', null, 1],
+        ] as [$department, $label, $type, $options, $order]) {
+            $this->ids[$label] = SurveyQuestion::create([
+                'department' => $department, 'label' => $label, 'question_type' => $type, 'options' => $options,
+                'sort_order' => $order, 'is_active' => true,
+            ])->id;
+        }
+    }
+
+    private function indexUrl(?string $department = null): string
+    {
+        return route('admin.survey-questions.index', $department ? ['department' => $department] : []);
+    }
+
+    /** 画面の JS を $steps で操り、組まれた XHR（ちょうど 1 つ）を送り、XHR と同じく転送をたどった結果を JS に返す */
+    private function roundTrip(string $url, string $steps, bool $confirm = true): array
+    {
+        $html = $this->htmlOf($url);
+        $factory = $this->xData($html, 'surveyQuestionManager');
+        $sent = $this->driveAlpine($html, 'surveyQuestionManager', $factory, $steps, [], $confirm);
+        $this->assertCount(1, $sent['requests'], '画面の JS が要求を 1 つ組まなかった');
+        $request = $sent['requests'][0];
+
+        $response = $this->actingAs($this->user)->sendCaptured($request);
+        $final = $response->isRedirect() ? $this->followRedirects($response) : $response;
+        $after = $this->driveAlpine($html, 'surveyQuestionManager', $factory, $steps,
+            [['status' => $final->getStatusCode(), 'body' => (string) $final->getContent()]], $confirm);
+
+        return ['request' => $request, 'response' => $response, 'after' => $after];
+    }
+
+    public function test_the_list_shows_each_departments_questions_and_opens_the_requested_tab(): void
+    {
+        $html = $this->htmlOf($this->indexUrl());
+        $housing = substr($html, strpos($html, 'id="q-list-housing"'), strpos($html, 'id="q-list-realestate"') - strpos($html, 'id="q-list-housing"'));
+        $realestate = substr($html, strpos($html, 'id="q-list-realestate"'));
+
+        $this->assertStringContainsString('1. 来場のきっかけ', $housing);
+        $this->assertStringContainsString('2. ご予算', $housing);
+        $this->assertStringContainsString('選択肢: 2個', $housing);
+        $this->assertStringNotContainsString('希望エリア', $housing);
+        $this->assertStringContainsString('1. 希望エリア', $realestate);
+
+        $factory = $this->xData($html, 'surveyQuestionManager');
+        $this->assertSame('housing', $this->driveAlpine($html, 'surveyQuestionManager', $factory, '')['state']['activeTab']);
+        $realestateHtml = $this->htmlOf($this->indexUrl('realestate'));
+        $this->assertSame('realestate', $this->driveAlpine($realestateHtml, 'surveyQuestionManager', $this->xData($realestateHtml, 'surveyQuestionManager'), '')['state']['activeTab']);
+    }
+
+    public function test_a_question_is_added_from_the_screen(): void
+    {
+        $trip = $this->roundTrip($this->indexUrl('realestate'),
+            "data.showAddModal = true; data.newLabel = '重視する点'; data.newType = 'multi_select'; data.newOptions = '[\"駅近\",\"学区\"]'; data.addQuestion();");
+
+        $request = $trip['request'];
+        $this->assertSame(['POST', route('admin.survey-questions.store')], [$request['method'], $request['url']]);
+        $this->assertSame('application/json', $request['headers']['Content-Type'] ?? null);
+        $this->assertSame(['department' => 'realestate', 'label' => '重視する点', 'question_type' => 'multi_select', 'options' => '["駅近","学区"]'],
+            json_decode((string) $request['body'], true));
+        $question = SurveyQuestion::where('label', '重視する点')->firstOrFail();
+        $this->assertSame(['realestate', 'multi_select', ['駅近', '学区'], 2, true],
+            [$question->department, $question->question_type->value, $question->options, $question->sort_order, $question->is_active]);
+        $this->assertSame([$this->indexUrl() . '?department=realestate'], $trip['after']['navigations'], '追加のあと、その部署のタブの一覧へ移らない');
+        $this->assertSame([], $trip['after']['alerts']);
+    }
+
+    /** 断られたら何も追加せず、知らせを出す（理由は出ない。範囲外として記録） */
+    public function test_a_rejected_question_adds_nothing_and_says_so(): void
+    {
+        $trip = $this->roundTrip($this->indexUrl(), "data.newLabel = ''; data.addQuestion();");
+
+        $trip['response']->assertStatus(422);
+        $this->assertSame(3, SurveyQuestion::count());
+        $this->assertSame(['追加に失敗しました'], $trip['after']['alerts']);
+        $this->assertSame([], $trip['after']['navigations']);
+    }
+
+    /**
+     * 画面が無い 2 つ（設問の編集・並び替え）は、サーバの約束だけを確かめる。
+     * 画面にこの 2 つを呼ぶものが無いことも固定する（作ったら、画面から送る往復に書き換える）。
+     */
+    public function test_the_update_and_reorder_routes_work_though_no_screen_calls_them(): void
+    {
+        $html = $this->htmlOf($this->indexUrl());
+        $this->assertStringNotContainsString('survey-questions/reorder', $html);
+        $this->assertStringNotContainsString("'PUT'", $html);
+
+        $this->actingAs($this->user)->from($this->indexUrl())
+            ->put(route('admin.survey-questions.update', $this->ids['来場のきっかけ']), ['label' => 'ご来場のきっかけ', 'question_type' => 'single_select', 'is_active' => '0'])
+            ->assertRedirect($this->indexUrl() . '?department=housing');
+        $question = SurveyQuestion::find($this->ids['来場のきっかけ']);
+        $this->assertSame(['ご来場のきっかけ', ['チラシ', 'Web'], false], [$question->label, $question->options, $question->is_active],
+            '送らなかった選択肢が消えた／無効にならない');
+
+        $this->actingAs($this->user)->postJson(route('admin.survey-questions.reorder'), ['order' => [$this->ids['ご予算'], $this->ids['来場のきっかけ']]])
+            ->assertOk()->assertJson(['success' => true]);
+        $this->assertSame(['ご予算', 'ご来場のきっかけ'], SurveyQuestion::ofDepartment('housing')->ordered()->pluck('label')->all());
+    }
+}
