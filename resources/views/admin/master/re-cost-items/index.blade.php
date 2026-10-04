@@ -118,7 +118,8 @@
                                 <button @click="startDelete(item.id, item.name)" class="px-2.5 py-1 bg-gray-100 text-red-500 text-xs font-semibold rounded hover:bg-red-50 transition-colors cursor-pointer">削除</button>
                             </div>
                             {{-- 物件購入費は購入価格から自動で計上する（同期が名前で引く）ので、名前の変更・削除をさせない --}}
-                            <span x-show="item.locked" class="text-xs text-gray-500">自動で計上（変更不可）</span>
+                            {{-- ⚠ 操作の列（中身 96px）に収まる長さにする。理由は一覧の下の注記に書く --}}
+                            <span x-show="item.locked" class="text-xs text-gray-500" title="購入価格から自動で計上する項目のため、名前の変更・削除はできません">自動計上</span>
                         </td>
                     </tr>
                 </template>
@@ -157,6 +158,7 @@
     {{-- フッター情報 --}}
     <div class="mt-4 text-xs text-gray-400">
         <p>全 <span x-text="items.length"></span> 件 — 仕入れ案件・分譲地の原価管理で使用されます。</p>
+        <p class="mt-1">「自動計上」の項目（物件購入費）は仕入れ案件・分譲地の購入価格から自動で計上するため、名前の変更・削除はできません。</p>
     </div>
 
     {{-- 非表示フォーム --}}

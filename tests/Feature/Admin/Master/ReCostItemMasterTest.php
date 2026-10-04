@@ -108,7 +108,7 @@ class ReCostItemMasterTest extends InlineNameMasterTestCase
         return (int) DB::table('re_cost_items')->where('name', '物件購入費')->value('id');
     }
 
-    /** 一覧は「物件購入費」に編集・削除のボタンを出さず、自動で計上する項目だと示す（ほかの項目には出す） */
+    /** 一覧は「物件購入費」に編集・削除のボタンを出さず「自動計上」と示し、理由を注記に書く（ほかの項目にはボタンを出す） */
     public function test_the_list_offers_no_edit_or_delete_for_the_property_purchase_item(): void
     {
         $this->procurementWithPurchase();
@@ -116,8 +116,9 @@ class ReCostItemMasterTest extends InlineNameMasterTestCase
 
         $this->assertSame(1, preg_match('/<div x-show="([^"]*)"[^>]*>\s*<button @click="startEdit\(item\.id, item\.name\)"/', $html, $buttons),
             '編集・削除のボタンの塊が見つからない');
-        $this->assertSame(1, preg_match('/<span x-show="([^"]*)"[^>]*>自動で計上（変更不可）<\/span>/u', $html, $note),
+        $this->assertSame(1, preg_match('/<span x-show="([^"]*)"[^>]*>自動計上<\/span>/u', $html, $note),
             '自動で計上する項目だという表示が無い');
+        $this->assertStringContainsString('「自動計上」の項目（物件購入費）は仕入れ案件・分譲地の購入価格から自動で計上するため、名前の変更・削除はできません。', $html);
         $items = $this->driveAlpine($html, $this->jsFunction(), $this->xData($html, $this->jsFunction()), '')['state']['items'];
         $exprs = [];
         foreach (array_keys($items) as $i) {
