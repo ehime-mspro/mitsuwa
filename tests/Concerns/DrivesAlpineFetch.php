@@ -89,6 +89,35 @@ trait DrivesAlpineFetch
     }
 
     /**
+     * sendCaptured() で送り、転送（3xx）が返ったら**ブラウザの fetch / XMLHttpRequest と同じ決まりで**追いかける。
+     * 返るのは最後の応答（XHR の onload が見る status と本文）。
+     *
+     * ⚠ 302 を GET に変えるのは POST のときだけ（301 も同じ）。DELETE や PUT は **同じメソッドのまま**転送先へ送る。
+     *   303 は GET に変える。Laravel の followRedirects() は常に GET で追うので、それを使うと XHR の DELETE が
+     *   転送先（一覧の URL）で 405 になるのを見逃す（2026-10-04 にアンケート設問の削除で実ブラウザで踏んだ）。
+     *
+     * @param  array{url: string, method: string, headers: array<string, string>, body: ?string}  $request
+     */
+    protected function sendCapturedLikeBrowser(array $request): TestResponse
+    {
+        $response = $this->sendCaptured($request);
+        for ($i = 0; $i < 5 && $response->isRedirect(); $i++) {
+            $status = $response->getStatusCode();
+            $toGet = (in_array($status, [301, 302], true) && $request['method'] === 'POST')
+                || ($status === 303 && ! in_array($request['method'], ['GET', 'HEAD'], true));
+            $request['url'] = (string) $response->headers->get('Location');
+            if ($toGet) {
+                $request['method'] = 'GET';
+                $request['body'] = null;
+                $request['headers'] = array_filter($request['headers'], fn ($name) => strtolower($name) !== 'content-type', ARRAY_FILTER_USE_KEY);
+            }
+            $response = $this->sendCaptured($request);
+        }
+
+        return $response;
+    }
+
+    /**
      * driveAlpine() の `submitted` の 1 件（JS が `$refs.….submit()` で送ったフォーム）を、ブラウザと同じように送る
      * （`_method` で PUT / DELETE へ化ける）。
      *

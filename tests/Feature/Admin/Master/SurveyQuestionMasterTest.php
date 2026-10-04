@@ -45,7 +45,10 @@ class SurveyQuestionMasterTest extends MasterScreenTestCase
         return route('admin.survey-questions.index', $department ? ['department' => $department] : []);
     }
 
-    /** 画面の JS を $steps で操り、組まれた XHR（ちょうど 1 つ）を送り、XHR と同じく転送をたどった結果を JS に返す */
+    /**
+     * 画面の JS を $steps で操り、組まれた XHR（ちょうど 1 つ）を送り、XHR と同じ決まりで転送を追った結果を JS に返す。
+     * ⚠ XHR は 302 を GET に変えるのは POST のときだけ。DELETE は DELETE のまま転送先へ送る（sendCapturedLikeBrowser()）。
+     */
     private function roundTrip(string $url, string $steps, bool $confirm = true): array
     {
         $html = $this->htmlOf($url);
@@ -54,10 +57,9 @@ class SurveyQuestionMasterTest extends MasterScreenTestCase
         $this->assertCount(1, $sent['requests'], '画面の JS が要求を 1 つ組まなかった');
         $request = $sent['requests'][0];
 
-        $response = $this->actingAs($this->user)->sendCaptured($request);
-        $final = $response->isRedirect() ? $this->followRedirects($response) : $response;
+        $response = $this->actingAs($this->user)->sendCapturedLikeBrowser($request);
         $after = $this->driveAlpine($html, 'surveyQuestionManager', $factory, $steps,
-            [['status' => $final->getStatusCode(), 'body' => (string) $final->getContent()]], $confirm);
+            [['status' => $response->getStatusCode(), 'body' => (string) $response->getContent()]], $confirm);
 
         return ['request' => $request, 'response' => $response, 'after' => $after];
     }
@@ -139,6 +141,9 @@ class SurveyQuestionMasterTest extends MasterScreenTestCase
         $this->assertSame(['この設問を削除しますか？'], $trip['after']['confirms']);
         $this->assertSame(['DELETE', route('admin.survey-questions.destroy', $this->ids['ご予算'])], [$trip['request']['method'], $trip['request']['url']]);
         $this->assertNotSame('', $trip['request']['headers']['X-CSRF-TOKEN'] ?? '');
+        $this->assertSame('XMLHttpRequest', $trip['request']['headers']['X-Requested-With'] ?? null,
+            '削除の XHR が X-Requested-With を送らない（サーバが 302 を返し、XHR が DELETE のまま追って 405 になる）');
+        $trip['response']->assertOk()->assertJson(['success' => true, 'message' => '設問を削除しました。']);
         $this->assertNull(SurveyQuestion::find($this->ids['ご予算']));
         $this->assertSame(['reload'], $trip['after']['navigations'], '削除のあと一覧を読み込み直さない');
     }
