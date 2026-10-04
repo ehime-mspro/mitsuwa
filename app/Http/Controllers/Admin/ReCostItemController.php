@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\ReCostItem;
 use App\Models\ReProcurementCost;
+use App\Models\ReProjectCost;
 use Illuminate\Http\Request;
 
 class ReCostItemController extends Controller
@@ -69,8 +70,10 @@ class ReCostItemController extends Controller
      */
     public function destroy(ReCostItem $costItem)
     {
-        // 使用中チェック（仕入れ原価明細・将来のプロジェクト原価明細）
-        $inUse = ReProcurementCost::where('cost_item_id', $costItem->id)->exists();
+        // 使用中チェック（仕入れ案件・分譲地の原価明細）。
+        // ⚠ 本番は両方の明細に外部キー（ON DELETE の指定なし）があり、見落とすと削除が 500 になる
+        $inUse = ReProcurementCost::where('cost_item_id', $costItem->id)->exists()
+            || ReProjectCost::where('cost_item_id', $costItem->id)->exists();
 
         if ($inUse) {
             return redirect()
