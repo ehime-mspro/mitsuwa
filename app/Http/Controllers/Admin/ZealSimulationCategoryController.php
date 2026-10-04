@@ -220,7 +220,8 @@ class ZealSimulationCategoryController extends Controller
             'name'           => 'required|string|max:100',
             'group_type'     => 'required|in:revenue,member,expense,summary',
             'calc_type'      => 'required|in:manual,fixed,revenue_linked,calculated',
-            'default_amount' => 'nullable|integer',
+            // 列は INT。範囲外は本番の MySQL（strict）が断り 500 になるので、入力チェックで止める
+            'default_amount' => 'nullable|integer|min:-2147483648|max:2147483647',
             'rate_percent'   => 'nullable|numeric|min:0|max:100',
         ], [
             'code.required' => 'コードは必須です。',

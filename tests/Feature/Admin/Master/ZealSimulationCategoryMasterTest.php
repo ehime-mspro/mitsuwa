@@ -150,6 +150,24 @@ class ZealSimulationCategoryMasterTest extends MasterScreenTestCase
     }
 
     /**
+     * G8: デフォルト額は列（INT）に入る範囲だけ通す。
+     * ⚠ 本番の MySQL（strict）は範囲外の値を断り 500 になる（Bug #73 と同じ形）。テストの SQLite は大きな値も入れてしまう。
+     */
+    public function test_the_default_amount_is_limited_to_the_column_range(): void
+    {
+        foreach (['2147483647', '-2147483648'] as $ok) {
+            $this->sendEdit('web_ad', ['default_amount' => $ok])->assertSessionHasNoErrors();
+            $this->assertSame((int) $ok, (int) $this->row('web_ad')->default_amount);
+        }
+
+        $over = $this->sendEdit('web_ad', ['default_amount' => '2147483648']);
+        $this->assertStringContainsString('>' . trans('validation.max.numeric', ['attribute' => 'デフォルト額', 'max' => 2147483647]) . '</p>', $this->landed($over));
+        $under = $this->sendEdit('web_ad', ['default_amount' => '-2147483649']);
+        $this->assertStringContainsString('>' . trans('validation.min.numeric', ['attribute' => 'デフォルト額', 'min' => -2147483648]) . '</p>', $this->landed($under));
+        $this->assertSame(-2147483648, (int) $this->row('web_ad')->default_amount, '範囲外の値が保存された');
+    }
+
+    /**
      * 固定額を変えると、適用開始月（既定は来月）以降の、手で直していないセルだけが新しい額になる。
      */
     public function test_changing_a_fixed_amount_updates_cells_from_the_apply_month_except_edited_ones(): void
