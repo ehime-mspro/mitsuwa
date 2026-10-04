@@ -63,6 +63,20 @@ class StampDisplayTest extends TestCase
         $this->assertStringContainsString('>&lt;b&gt;</text>', $svg);
     }
 
+    public function test_the_department_short_name_in_the_top_row_is_escaped(): void
+    {
+        $w = $this->approvalWorld();
+        $w['dept']->update(['short_name' => '<i>&"']);
+        $r = $this->submittedFor($w);
+        app(Workflow::class)->judgeHead($r, $w['head'], $r->lock_version, ApprovalStepResult::Approve, null);
+
+        $svg = StampSvg::render(Stamp::forStep(ApprovalStep::where('request_id', $r->id)->where('kind', 'head')->firstOrFail()));
+
+        $this->assertStringNotContainsString('<i>', $svg);
+        $this->assertStringContainsString('>&lt;i&gt;&amp;&quot;</text>', $svg, '上段（部門の略称）は打った文字のまま出す');
+        $this->assertStringContainsString('aria-label="&lt;i&gt;&amp;&quot; R8.10.5 部門 の印"', $svg);
+    }
+
     public function test_longer_text_is_drawn_smaller_to_stay_inside_the_stamp(): void
     {
         $this->assertSame(24, StampSvg::fit('山田', 62, 24));
