@@ -256,8 +256,10 @@ class SimulationController extends Controller
         $fy = $simulation->fiscal_year;
         $simulation->delete(); // FK ON DELETE CASCADE で values も削除
 
+        // 削除ボタンがある一覧へ戻す。⚠ list を付けないと、今年度の試算表があるとき index() がその詳細へもう一度送り、
+        //   2 段の転送で「削除しました」が消える（docs/RULES.md Bug #63 と同じ形）
         return redirect()
-            ->route('zeal.simulations.index')
+            ->route('zeal.simulations.index', ['list' => 1])
             ->with('success', sprintf('%d年度の試算表を削除しました。', $fy));
     }
 
