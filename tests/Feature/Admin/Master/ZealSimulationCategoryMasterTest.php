@@ -6,6 +6,7 @@ use App\Models\ZealSimulation;
 use App\Models\ZealSimulationValue;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\CreatesZealSimulationSchema;
 
 /**
@@ -205,6 +206,39 @@ class ZealSimulationCategoryMasterTest extends MasterScreenTestCase
         $response->assertRedirect($this->indexUrl());
         $this->assertNull($this->row('web_ad'));
         $this->assertFlash($this->landed($response), 'success', '「Web広告費」を削除しました。');
+    }
+
+    /**
+     * G3: 削除の確認（onsubmit の confirm）は、項目名に ' や \ があっても壊れない（Bug #76 と同じ形）。
+     * ⚠ 名前を JS の文字列に生で埋め込むと、ブラウザが属性の実体参照を戻した時点で文字列が閉じ、
+     *   関数が組み立てられない（＝確認を出さずに送信される）。
+     */
+    #[DataProvider('namesThatBreakAJsString')]
+    public function test_the_delete_confirmation_survives_any_item_name(string $name): void
+    {
+        DB::table('zeal_simulation_categories')->where('id', $this->webAd)->update(['name' => $name]);
+        $html = $this->htmlOf($this->indexUrl());
+        $action = 'action="' . route('admin.master.zeal-simulation-categories.destroy', $this->webAd) . '"';
+        $pos = strpos($html, $action);
+        $open = strrpos(substr($html, 0, $pos), '<form');
+        $tag = substr($html, $open, strpos($html, '>', $pos) - $open + 1);
+        $this->assertSame(1, preg_match('/\sonsubmit="([^"]*)"/', $tag, $m), '削除フォームに onsubmit が無い');
+        $handler = html_entity_decode($m[1], ENT_QUOTES, 'UTF-8');
+
+        $declined = $this->runInlineHandler($handler, false);
+        $this->assertTrue($declined['compiled'], "削除の確認の JS が組み立てられない: {$declined['error']}");
+        $this->assertSame(false, $declined['returned'], '確認で「いいえ」を選んでも送信が止まらない');
+        $this->assertSame(['「' . $name . '」を削除しますか？既存試算表のセル値も削除されます。'], $declined['confirms']);
+        $this->assertSame(true, $this->runInlineHandler($handler, true)['returned'], '確認で「はい」を選んでも送信されない');
+    }
+
+    public static function namesThatBreakAJsString(): array
+    {
+        return [
+            'シングルクォート' => ["O'Brien 費"],
+            'バックスラッシュ' => ['広告費\\'],
+            '閉じて続ける'     => ["x');alert(1);('"],
+        ];
     }
 
     /** 画面に削除フォームが無いシステム固定の項目は、手で送っても消えない */

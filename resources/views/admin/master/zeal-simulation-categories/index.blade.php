@@ -127,7 +127,7 @@
                                style="display: inline-block; padding: 4px 12px; font-size: 12px; font-weight: 600; color: #059669; border: 1px solid #059669; border-radius: 4px; text-decoration: none; background: #fff;">編集</a>
                             @if(!$cat->is_system)
                                 <form action="{{ route('admin.master.zeal-simulation-categories.destroy', $cat) }}" method="POST" style="display: inline-block; margin-left: 4px;"
-                                      onsubmit="return confirm('「{{ $cat->name }}」を削除しますか？既存試算表のセル値も削除されます。');">
+                                      onsubmit="return confirm('「' + {{ \Illuminate\Support\Js::from($cat->name) }} + '」を削除しますか？既存試算表のセル値も削除されます。');">
                                     @csrf
                                     @method('DELETE')
                                     <button type="submit"
