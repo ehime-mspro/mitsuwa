@@ -54,6 +54,9 @@ class ZoningTypeController extends Controller
     /**
      * 用途地域名更新
      * Route: PUT /admin/master/zoning-types/{zoningType}
+     *
+     * 仕入れ案件・分譲地は用途地域を id でなく名前（zoning）で持つので、名前を変えたら両方の値も
+     * 同じトランザクションで新しい名前に変える（変えないと編集画面で用途地域が選ばれず、保存で空になる）。
      */
     public function update(Request $request, ZoningType $zoningType)
     {
@@ -61,11 +64,27 @@ class ZoningTypeController extends Controller
             'name' => 'required|string|max:100',
         ]);
 
-        $zoningType->update($validated);
+        $oldName = $zoningType->name;
+        $procurements = 0;
+        $projects = 0;
+
+        DB::transaction(function () use ($zoningType, $validated, $oldName, &$procurements, &$projects) {
+            $zoningType->update($validated);
+
+            if ($zoningType->name !== $oldName) {
+                $procurements = DB::table('re_procurements')->where('zoning', $oldName)->update(['zoning' => $zoningType->name]);
+                $projects = DB::table('re_projects')->where('zoning', $oldName)->update(['zoning' => $zoningType->name]);
+            }
+        });
+
+        $message = '「' . $zoningType->name . '」を更新しました。';
+        if ($procurements + $projects > 0) {
+            $message .= 'この用途地域を使っていた仕入れ案件 ' . $procurements . ' 件・分譲地 ' . $projects . ' 件も新しい名前に変えました。';
+        }
 
         return redirect()
             ->route('admin.master.zoning-types.index')
-            ->with('success', '「' . $zoningType->name . '」を更新しました。');
+            ->with('success', $message);
     }
 
     /**

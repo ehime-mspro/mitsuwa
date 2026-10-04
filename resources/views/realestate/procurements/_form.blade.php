@@ -82,6 +82,11 @@
                 <select name="zoning"
                         class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none cursor-pointer">
                     <option value="">選択してください</option>
+                    {{-- 用途地域は名前で持つので、マスタに無い値（名前を変える前の値など）も選んだまま残す。無いと保存で空になる --}}
+                    @php($currentZoning = old('zoning', $p?->zoning))
+                    @if(filled($currentZoning) && ! $zoningTypes->containsStrict('name', $currentZoning))
+                        <option value="{{ $currentZoning }}" selected>{{ $currentZoning }}（マスタに無い値）</option>
+                    @endif
                     @foreach($zoningTypes as $zt)
                         <option value="{{ $zt->name }}" {{ old('zoning', $p?->zoning) === $zt->name ? 'selected' : '' }}>{{ $zt->name }}</option>
                     @endforeach
