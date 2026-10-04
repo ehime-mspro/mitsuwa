@@ -35,11 +35,11 @@ class PdfSheetTest extends TestCase
     }
 
     /** 部門長・審査を通して社長の決裁待ちまで */
-    private function toPresident(array $w, array $attributes = []): ApprovalRequest
+    private function toPresident(array $w, array $attributes = [], string $headComment = '急ぎでお願いします', string $reviewComment = '見積を 2 社取ってください'): ApprovalRequest
     {
         $r = $this->submittedFor($w, $attributes);
-        $this->workflow->judgeHead($r->fresh(), $w['head'], $r->fresh()->lock_version, ApprovalStepResult::Approve, '急ぎでお願いします');
-        $this->workflow->judgeReview($r->fresh(), $w['reviewer'], $r->fresh()->lock_version, ApprovalStepResult::Hold, '見積を 2 社取ってください');
+        $this->workflow->judgeHead($r->fresh(), $w['head'], $r->fresh()->lock_version, ApprovalStepResult::Approve, $headComment);
+        $this->workflow->judgeReview($r->fresh(), $w['reviewer'], $r->fresh()->lock_version, ApprovalStepResult::Hold, $reviewComment);
 
         return $r->fresh();
     }
@@ -237,7 +237,7 @@ class PdfSheetTest extends TestCase
     {
         $w = $this->approvalWorld();
         $w['head']->update(['name' => '<b>部門</b>長']);
-        $r = $this->toPresident($w, ['subject' => '<img src=x onerror=alert(1)>', 'body' => "<script>alert(2)</script>"]);
+        $r = $this->toPresident($w, ['subject' => '<img src=x onerror=alert(1)>', 'body' => "<script>alert(2)</script>"], "<u>部門長</u>の意見\n2 行目", '<u>審査</u>の意見');
         $this->workflow->judgePresident($r, $w['president'], $r->lock_version, ApprovalStepResult::Return, "<i>見直し</i>\n2 行目");
 
         $html = view('approvals.requests.pdf', ['sheet' => PdfSheet::for($w['applicant'], $r->fresh())])->render();
@@ -246,7 +246,11 @@ class PdfSheetTest extends TestCase
         $this->assertStringNotContainsString('<script>alert(2)', $html);
         $this->assertStringNotContainsString('<b>部門</b>', $html);
         $this->assertStringNotContainsString('<i>見直し</i>', $html);
+        $this->assertStringNotContainsString('<u>部門長</u>', $html);
+        $this->assertStringNotContainsString('<u>審査</u>', $html);
         $this->assertStringContainsString('&lt;img src=x onerror=alert(1)&gt;', $html);
         $this->assertStringContainsString('&lt;i&gt;見直し&lt;/i&gt;<br />', $html, 'コメントはエスケープしてから改行を <br> にする');
+        $this->assertStringContainsString('&lt;u&gt;部門長&lt;/u&gt;の意見<br />', $html, '部門長のコメントも');
+        $this->assertStringContainsString('&lt;u&gt;審査&lt;/u&gt;の意見', $html, '審査のコメントも');
     }
 }
