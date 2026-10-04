@@ -109,6 +109,70 @@ class SurveyQuestionMasterTest extends MasterScreenTestCase
     }
 
     /**
+     * 設問の行の削除ボタンを押したときに動く JS（Alpine の x-on:click の式）。
+     * G2: ⚠ 以前は `onclick="document.querySelector('[x-data]').__x.$data.deleteQuestion(…)"` だった。`__x` は Alpine 2 の
+     *   書き方で Alpine 3 には無く、しかも最初の `[x-data]` はサイドバーの `<body>` なので、押しても何も起きなかった。
+     */
+    private function deleteClick(string $html, string $label): string
+    {
+        $pos = strpos($html, '. ' . $label . '</div>');
+        $this->assertNotFalse($pos, "設問「{$label}」の行が無い");
+        $this->assertSame(1, preg_match('/<button\b([^>]*)>\s*削除\s*<\/button>/u', substr($html, $pos), $button), "設問「{$label}」の削除ボタンが無い");
+        $this->assertStringNotContainsString('__x', $button[1], '削除ボタンが Alpine 2 の __x に頼っている');
+        $this->assertSame(1, preg_match('/(?:x-on:click|@click)="([^"]*)"/', $button[1], $click), '削除ボタンが Alpine のクリックで動かない');
+
+        return html_entity_decode($click[1], ENT_QUOTES, 'UTF-8');
+    }
+
+    /** 削除ボタンを押し、確認に答え、XHR と同じく転送をたどった結果を JS に返す */
+    private function clickDelete(string $label, bool $confirm = true): array
+    {
+        $html = $this->htmlOf($this->indexUrl());
+
+        return $this->roundTrip($this->indexUrl(), 'with (data) { ' . $this->deleteClick($html, $label) . ' }', $confirm);
+    }
+
+    public function test_a_question_without_answers_is_deleted_with_the_delete_button(): void
+    {
+        $trip = $this->clickDelete('ご予算');
+
+        $this->assertSame(['この設問を削除しますか？'], $trip['after']['confirms']);
+        $this->assertSame(['DELETE', route('admin.survey-questions.destroy', $this->ids['ご予算'])], [$trip['request']['method'], $trip['request']['url']]);
+        $this->assertNotSame('', $trip['request']['headers']['X-CSRF-TOKEN'] ?? '');
+        $this->assertNull(SurveyQuestion::find($this->ids['ご予算']));
+        $this->assertSame(['reload'], $trip['after']['navigations'], '削除のあと一覧を読み込み直さない');
+    }
+
+    /** 回答がある設問は消さずに無効にする（過去の回答の控えを残すため） */
+    public function test_a_question_with_answers_is_deactivated_instead(): void
+    {
+        DB::table('buyer_survey_answers')->insert([
+            'survey_id' => 1, 'question_id' => $this->ids['来場のきっかけ'], 'answer_value' => 'Web',
+            'question_snapshot' => json_encode(['label' => '来場のきっかけ']), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $trip = $this->clickDelete('来場のきっかけ');
+
+        $question = SurveyQuestion::find($this->ids['来場のきっかけ']);
+        $this->assertNotNull($question, '回答がある設問が消えた');
+        $this->assertFalse($question->is_active);
+        $this->assertSame(['reload'], $trip['after']['navigations']);
+        $this->assertStringContainsString('無効', $this->htmlOf($this->indexUrl()));
+    }
+
+    public function test_declining_the_confirmation_sends_nothing(): void
+    {
+        $html = $this->htmlOf($this->indexUrl());
+
+        $run = $this->driveAlpine($html, 'surveyQuestionManager', $this->xData($html, 'surveyQuestionManager'),
+            'with (data) { ' . $this->deleteClick($html, 'ご予算') . ' }', [], false);
+
+        $this->assertSame(['この設問を削除しますか？'], $run['confirms']);
+        $this->assertSame([], $run['requests']);
+        $this->assertNotNull(SurveyQuestion::find($this->ids['ご予算']));
+    }
+
+    /**
      * 画面が無い 2 つ（設問の編集・並び替え）は、サーバの約束だけを確かめる。
      * 画面にこの 2 つを呼ぶものが無いことも固定する（作ったら、画面から送る往復に書き換える）。
      */
