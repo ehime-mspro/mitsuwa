@@ -192,4 +192,18 @@ class DadSpecialtyMasterTest extends MasterScreenTestCase
         $this->assertSame(['舗装', '配管', '土工'], $this->namesInOrder());
         $this->assertSame('並び順を更新しました', $after['state']['reorderMessage']);
     }
+
+    /** 末尾の行を先頭へ（末尾へ落とすだけだと、差し込む位置のずれが同じ結果になり捕まらない） */
+    public function test_dragging_the_last_row_to_the_top_saves_the_new_order(): void
+    {
+        $html = $this->htmlOf($this->indexUrl());
+        $ev = $this->dragEventJs();
+
+        $request = $this->driveAlpine($html, 'dadSpecialtyManager', $this->xData($html, 'dadSpecialtyManager'),
+            "data.handleDragStart(2, {$ev}); data.handleDrop(0, {$ev});")['requests'][0];
+        $this->assertSame(['ids' => [$this->ids['配管'], $this->ids['土工'], $this->ids['舗装']]], json_decode((string) $request['body'], true));
+        $this->actingAs($this->user)->sendCaptured($request)->assertOk();
+
+        $this->assertSame(['配管', '土工', '舗装'], $this->namesInOrder());
+    }
 }

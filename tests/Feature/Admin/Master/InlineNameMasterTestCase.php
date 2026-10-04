@@ -10,8 +10,9 @@ use Illuminate\Support\Facades\DB;
  * addForm / editForm / deleteForm の送り先と値を入れて submit() し、並び替えは fetch で JSON を送る）。
  *
  * 子クラスはマスタごとの違い（表・名前の上限・使用中の作り方と文言）だけを持つ。
- * ⚠ 名前は 3 つ入れ、並び替えは「先頭の行を 3 番目へ落とす」で測る（2 つだと前後を入れ替えるだけになり、
- *   splice の向きを間違えても同じ結果になる）。
+ * ⚠ 名前は 3 つ入れ、並び替えは「先頭の行を末尾へ落とす」と「末尾の行を先頭へ落とす」の 2 つで測る。
+ *   末尾へ落とすだけだと、差し込む位置を 1 つ後ろへずらしても（配列の長さを超えた位置は末尾になるので）
+ *   同じ結果になり、変異が緑のまま通った（2026-10-04 実測）。
  */
 abstract class InlineNameMasterTestCase extends MasterScreenTestCase
 {
@@ -191,6 +192,21 @@ abstract class InlineNameMasterTestCase extends MasterScreenTestCase
         $this->assertSame('並び順を更新しました', $after['state']['reorderMessage']);
         $this->assertSame([], $after['alerts']);
         $this->assertSame([$second, $third, $first], array_column($this->screenState()['items'], 'name'), '開き直した一覧が新しい順でない');
+    }
+
+    /** 末尾の行を先頭へドラッグしても、JS が組んだ順のとおりに保存される（差し込む位置のずれを捕まえる） */
+    public function test_dragging_the_last_row_to_the_top_saves_the_new_order(): void
+    {
+        [$first, $second, $third] = $this->names();
+        $html = $this->htmlOf($this->indexUrl());
+        $factory = $this->xData($html, $this->jsFunction());
+        $ev = $this->dragEventJs();
+
+        $request = $this->driveAlpine($html, $this->jsFunction(), $factory, "data.handleDragStart(2, {$ev}); data.handleDrop(0, {$ev});")['requests'][0];
+        $this->assertSame(['ids' => [$this->ids[$third], $this->ids[$first], $this->ids[$second]]], json_decode((string) $request['body'], true));
+        $this->actingAs($this->user)->sendCaptured($request)->assertOk();
+
+        $this->assertSame([$third, $first, $second], $this->namesInOrder());
     }
 
     /** 画面を開いたあとで項目が消えていたら、並び替えは断られ、理由が画面に出る（並びは変わらない） */
