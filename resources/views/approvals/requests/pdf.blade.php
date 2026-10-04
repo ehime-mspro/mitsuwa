@@ -6,6 +6,7 @@
 @php
     // 紙の「可・条可・差戻・否」「可・保留・否」の欄。判断したものだけ朱の枠にする
     // ⚠ 文中の <span> の枠は mPDF が描き損なうことがある（2026-10-03 の試しで一部の枠が消えた）ので、小さな表で組む
+    // ⚠ 朱の枠の CSS は td.mark.on で書く（.on だけだと、詳細度の高い td.mark の黒の細い枠が勝ち、文字だけ朱になる）
     $mark = fn (?string $current, string $label): string => $current === $label ? 'mark on' : 'mark';
 @endphp
 <style>
@@ -19,7 +20,7 @@
     .gap { height: 3mm; }
     table.marks { width: auto; border-collapse: separate; border-spacing: 1mm 0; }
     td.mark { border: 0.6pt solid #000; padding: 0.3mm 1.5mm; text-align: center; vertical-align: middle; }
-    .on { border: 1.2pt solid {{ \App\Support\Approval\StampSvg::COLOR }}; color: {{ \App\Support\Approval\StampSvg::COLOR }}; }
+    td.mark.on { border: 1.2pt solid {{ \App\Support\Approval\StampSvg::COLOR }}; color: {{ \App\Support\Approval\StampSvg::COLOR }}; }
     td.upper { border-bottom: none; padding-bottom: 0; vertical-align: middle; }
     td.lower { border-top: none; padding-top: 0.5mm; }
     .small { font-size: 8.5pt; }

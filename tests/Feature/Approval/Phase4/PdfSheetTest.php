@@ -6,6 +6,7 @@ use App\Enums\ApprovalStepResult;
 use App\Models\ApprovalRequest;
 use App\Support\Approval\ApprovalPdf;
 use App\Support\Approval\PdfSheet;
+use App\Support\Approval\StampSvg;
 use App\Support\Approval\Workflow;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -204,6 +205,7 @@ class PdfSheetTest extends TestCase
         $this->assertStringContainsString('<td class="mark">可</td>', $html);
         $this->assertStringContainsString('<td class="mark on">保留</td>', $html);
         $this->assertSame(2, substr_count($html, 'class="mark on"'));
+        $this->assertStringContainsString('td.mark.on { border: 1.2pt solid ' . StampSvg::COLOR . ';', $html, '朱の枠は td.mark の黒の枠より強い選び方で書く（.on だけだと黒の細い枠のまま）');
         // 3 つの印と、条可の条件
         foreach (['社長 R8.10.5 社長 の印', '住宅 R8.10.5 部門 の印', '総務 R8.10.5 審査 の印'] as $aria) {
             $this->assertStringContainsString('aria-label="' . $aria . '"', $html);
