@@ -43,6 +43,11 @@ class PdfSheetTest extends TestCase
         return $r->fresh();
     }
 
+    private static function pageCount(string $pdf): int
+    {
+        return preg_match_all('#/Type /Page\b#', $pdf);
+    }
+
     public function test_a_decided_request_has_the_number_the_marks_and_the_three_stamps(): void
     {
         $w = $this->approvalWorld();
@@ -169,7 +174,20 @@ class PdfSheetTest extends TestCase
         $this->assertStringStartsWith('%PDF-', $pdf);
         $this->assertStringContainsString('IPAexGothic', $pdf, 'ゴシックを埋め込む');
         $this->assertStringContainsString('IPAexMincho', $pdf, '明朝を埋め込む（題・枠・印）');
-        $this->assertGreaterThan(1, preg_match_all('#/Type /Page\b#', $pdf), '本文が長ければ次のページへ続く（縮めない）');
+        $this->assertGreaterThanOrEqual(4, self::pageCount($pdf), '本文が長ければ次のページへ続く（縮めない。120 行は 10pt で 4 ページ）');
+    }
+
+    public function test_a_long_word_without_spaces_in_the_body_does_not_shrink_the_body(): void
+    {
+        $w       = $this->approvalWorld();
+        $line    = "・決裁申請システムの本文の試しです。\n";
+        $url     = 'https://example.com/' . str_repeat('abcdefghij', 18);   // 空白の無い 200 文字
+        $plain   = $this->toPresident($w, ['body' => str_repeat($line, 120)]);
+        $withUrl = $this->toPresident($w, ['body' => str_repeat($line, 60) . $url . "\n" . str_repeat($line, 60)]);
+
+        $pages = self::pageCount(ApprovalPdf::sheet(PdfSheet::for($w['applicant'], $plain)));
+
+        $this->assertGreaterThanOrEqual($pages, self::pageCount(ApprovalPdf::sheet(PdfSheet::for($w['applicant'], $withUrl))), '長い語はセルの中で折り返し、本文の表全体を縮めない（縮むとページが減る）');
     }
 
     public function test_the_sheet_draws_the_marks_the_stamps_and_the_footer(): void

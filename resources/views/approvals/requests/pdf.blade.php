@@ -25,6 +25,7 @@
     .small { font-size: 8.5pt; }
     .note { font-size: 8.5pt; color: #444; }
     td.line { border-top: none; border-bottom: 0.4pt dashed #999; height: 6mm; }
+    table.body { overflow: wrap; }
 </style>
 
 <div class="title">決裁申請書</div>
@@ -106,7 +107,9 @@
         </td>
     </tr>
 </table>
-<table>
+{{-- ⚠ overflow: wrap は mPDF の表の CSS。空白の無い長い語（URL など）をセルの中で折り返す。無いと、その語が収まるまで
+     本文の表全体を縮めた（200 文字の URL 1 つで全ページの本文が約半分の大きさになった。word-wrap・overflow-wrap は効かない） --}}
+<table class="body">
     @foreach($sheet->bodyRows as $row)
         <tr><td class="line">{{ $row }}</td></tr>
     @endforeach
