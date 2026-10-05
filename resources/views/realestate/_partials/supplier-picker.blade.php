@@ -124,8 +124,11 @@
 <script>
 function supplierPicker() {
     return {
-        supplierId: {{ old('supplier_id', $p?->supplier_id) ?: 'null' }},
-        supplierDisplay: '{{ $p && $p->supplier ? $p->supplier->name : "" }}',
+        // ⚠ 値は Js::from で JS の値にして書く（Blade の二重波括弧の HTML の書き換えだけだと、名前の ' が &#039; のまま出て、
+        //    末尾の \ や入力エラーで戻った値で画面の JS ごと壊れる。Bug #76 と同じ形）
+        // ⚠ このコメントに二重波括弧を書かない（Blade は JS のコメントの中でも式として読む。Bug #30）
+        supplierId: {{ \Illuminate\Support\Js::from(old('supplier_id', $p?->supplier_id) ?: null) }},
+        supplierDisplay: {{ \Illuminate\Support\Js::from($p && $p->supplier ? $p->supplier->name : '') }},
         supplierQuery: '',
         supplierResults: [],
         searchTimer: null,

@@ -139,4 +139,43 @@ class SupplierScreensTest extends RealEstateScreenTestCase
         $after = $this->driveAlpine($html, 'procurementForm', 'procurementForm()', self::QUICK, [$this->asFetchResponse($response)], true, ['quickDuplicates.map(function (d) { return d.code; })', 'supplierId'], $withPicker);
         $this->assertSame([['SUP-001'], null], $after['evaluated'], '同じ名前の候補が出ていない');
     }
+
+    // ============================================================
+    // 仕入れ案件・分譲地の編集画面の「選んでいる仕入れ先」（JS に名前を渡す）
+    // ============================================================
+
+    public static function names(): array
+    {
+        return [
+            'アポストロフィ' => ["O'Neil 不動産"],
+            '末尾の円記号（バックスラッシュ）' => ['松山土地\\'],
+            '引用符' => ['"大街道" 商事'],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('names')]
+    public function test_the_selected_supplier_name_reaches_the_screen_as_it_is(string $name): void
+    {
+        $supplier = $this->supplier($name);
+        $procurement = $this->procurement(['supplier_id' => $supplier->id]);
+        $html = $this->htmlOf(route('realestate.procurements.edit', $procurement));
+
+        $run = $this->driveAlpine($html, 'procurementForm', 'procurementForm()', '', [], true, ['supplierId', 'supplierDisplay'], ['function supplierPicker(']);
+
+        $this->assertSame([$supplier->id, $name], $run['evaluated'], '選んでいる仕入れ先の名前が画面の JS にそのまま届いていない');
+    }
+
+    public function test_a_supplier_id_sent_back_after_an_input_error_is_not_run_as_code(): void
+    {
+        $procurement = $this->procurement();
+        $url = route('realestate.procurements.edit', $procurement);
+        $form = $this->browserForm($this->htmlOf($url), 'action="' . route('realestate.procurements.update', $procurement) . '"', 'procurementForm', '', [], null, ['function supplierPicker(']);
+        // 存在しない仕入れ先の id として JS の式を送る（入力エラーで戻った画面が old('supplier_id') を JS に書く）
+        $form['fields']['supplier_id'] = "1, supplierDisplay: 'injected'";
+
+        $html = $this->landed($this->submit($form, $url));
+
+        $run = $this->driveAlpine($html, 'procurementForm', 'procurementForm()', '', [], true, ['supplierDisplay'], ['function supplierPicker(']);
+        $this->assertSame([''], $run['evaluated'], '戻した値が JS のコードとして動いた');
+    }
 }
