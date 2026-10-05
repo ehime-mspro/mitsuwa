@@ -136,13 +136,14 @@ class ProcurementScreensTest extends RealEstateScreenTestCase
         $steps = 'data.select(data.options.find(function (o) { return o.value === "negotiating"; }));';
         $factory = $this->xData($html, 'realestateStatusCell');
 
-        $run = $this->driveAlpine($html, 'realestateStatusCell', $factory, $steps, [], true, [], ['window.__reStatusOptions']);
+        // 選択肢（window.__reStatusOptions）と送り先は関数と同じ <script> にある
+        $run = $this->driveAlpine($html, 'realestateStatusCell', $factory, $steps);
         $this->assertSame('PATCH', $run['requests'][0]['method']);
         $response = $this->sendCaptured($run['requests'][0]);
         $response->assertOk();
 
         $this->assertSame('negotiating', $procurement->fresh()->status->value);
-        $after = $this->driveAlpine($html, 'realestateStatusCell', $factory, $steps, [$this->asFetchResponse($response)], true, ['value', 'label', 'open'], ['window.__reStatusOptions']);
+        $after = $this->driveAlpine($html, 'realestateStatusCell', $factory, $steps, [$this->asFetchResponse($response)], true, ['value', 'label', 'open']);
         $this->assertSame(['negotiating', '交渉中', false], $after['evaluated']);
     }
 }

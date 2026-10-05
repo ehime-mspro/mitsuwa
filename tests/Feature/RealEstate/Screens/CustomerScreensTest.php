@@ -5,6 +5,7 @@ namespace Tests\Feature\RealEstate\Screens;
 use App\Models\Buyer;
 use App\Models\BuyerSurvey;
 use App\Models\SurveyQuestion;
+use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Exceptions;
 
@@ -230,6 +231,33 @@ class CustomerScreensTest extends RealEstateScreenTestCase
 
         $this->assertErrorItem($html, '元号（昭和）と生年月日（1995-04-01）が合いません（昭和は1926〜1989年）');
         $this->assertSame(0, Buyer::count());
+    }
+
+    public function test_a_future_birth_date_is_refused(): void
+    {
+        // 日本の今日 2026-10-05（UTC 2026-10-04 15:00 ＝ 日本時間 10-05 0:00。Bug #61 の境目）
+        Carbon::setTestNow('2026-10-04 15:00:00');
+        $html = $this->register($this->storeForm(['birth_year' => '2026', 'birth_month' => '10', 'birth_day' => '6']));
+
+        $this->assertErrorItem($html, trans('validation.before_or_equal', ['attribute' => '生年月日', 'date' => '2026-10-05']));
+        $this->assertSame(0, Buyer::count());
+    }
+
+    public function test_a_birth_date_of_today_in_japan_is_accepted(): void
+    {
+        Carbon::setTestNow('2026-10-04 15:00:00');
+        $html = $this->register($this->storeForm(['birth_year' => '2026', 'birth_month' => '10', 'birth_day' => '5']));
+
+        $this->assertFlash($html, 'success', '顧客を登録しました。');
+        $this->assertSame('2026-10-05', Buyer::firstOrFail()->birth_date->toDateString());
+    }
+
+    public function test_the_last_year_of_showa_is_accepted(): void
+    {
+        $html = $this->register($this->storeForm(['birth_era' => 'S', 'birth_year' => '64', 'birth_month' => '1', 'birth_day' => '7']));
+
+        $this->assertFlash($html, 'success', '顧客を登録しました。');
+        $this->assertSame('1989-01-07', Buyer::firstOrFail()->birth_date->toDateString());
     }
 
     public function test_the_first_year_of_heisei_is_accepted(): void
