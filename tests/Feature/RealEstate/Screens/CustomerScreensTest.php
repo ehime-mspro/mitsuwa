@@ -5,6 +5,8 @@ namespace Tests\Feature\RealEstate\Screens;
 use App\Models\Buyer;
 use App\Models\BuyerSurvey;
 use App\Models\SurveyQuestion;
+use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\Exceptions;
 
 /**
  * 不動産の顧客（買主マスタ。住宅事業と共用のコントローラ・画面）の一覧・登録・詳細・編集・削除と、
@@ -132,6 +134,124 @@ class CustomerScreensTest extends RealEstateScreenTestCase
         $html = $this->landed($this->submit($form, $show));
         $this->assertFlash($html, 'success', 'アンケートを削除しました。');
         $this->assertNull($survey->fresh());
+    }
+
+    // ============================================================
+    // 本番の列に入らない値・存在しない生年月日を入力エラーで断る（R3・R4）
+    // ============================================================
+
+    /** 登録画面のフォーム（姓名・取得日は埋める） */
+    private function storeForm(array $values = []): array
+    {
+        $form = $this->parseForm($this->htmlOf(route('realestate.customers.create')), 'action="' . route('realestate.customers.store') . '"');
+
+        return $this->fill($form, array_merge(['acquired_date' => '2026-10-01', 'last_name' => '佐藤', 'first_name' => '一郎'], $values));
+    }
+
+    private function register(array $form): string
+    {
+        $form['fields']['birth_date'] = $this->jsBirthDate($form);
+
+        return $this->landed($this->submit($form, route('realestate.customers.create')));
+    }
+
+    public function test_values_that_fit_the_columns_are_registered(): void
+    {
+        $html = $this->register($this->storeForm([
+            'phone' => str_repeat('0', 20), 'city' => str_repeat('松', 50), 'employer' => str_repeat('商', 100),
+            'family_adults' => '255', 'family_children' => '0', 'years_employed' => '65535',
+        ]));
+
+        $this->assertFlash($html, 'success', '顧客を登録しました。');
+        $buyer = Buyer::firstOrFail();
+        $this->assertSame([20, 50, 100, 255, 0, 65535], [mb_strlen($buyer->phone), mb_strlen($buyer->city), mb_strlen($buyer->employer), $buyer->family_adults, $buyer->family_children, $buyer->years_employed]);
+    }
+
+    public static function tooLarge(): array
+    {
+        return [
+            '電話番号' => ['phone', str_repeat('0', 21), 'max.string', '電話番号', 20],
+            '市区町村' => ['city', str_repeat('松', 51), 'max.string', '市区町村', 50],
+            '勤務先' => ['employer', str_repeat('商', 101), 'max.string', '勤務先', 100],
+            '大人の人数' => ['family_adults', '256', 'max.numeric', '大人の人数', 255],
+            '子供の人数' => ['family_children', '256', 'max.numeric', '子供の人数', 255],
+            '勤続年数' => ['years_employed', '65536', 'max.numeric', '勤続年数', 65535],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('tooLarge')]
+    public function test_a_value_that_does_not_fit_the_column_is_refused(string $field, string $value, string $rule, string $attribute, int $max): void
+    {
+        $html = $this->register($this->storeForm([$field => $value]));
+
+        $this->assertErrorItem($html, trans('validation.' . $rule, ['attribute' => $attribute, 'max' => $max]));
+        $this->assertSame(0, Buyer::count());
+    }
+
+    public function test_a_value_that_does_not_fit_the_column_is_refused_when_editing(): void
+    {
+        $buyer = $this->buyer();
+        $url = route('realestate.customers.edit', $buyer);
+        $form = $this->fill($this->parseForm($this->htmlOf($url), 'action="' . route('realestate.customers.update', $buyer) . '"'), ['phone' => '089-123-4567 / 090-1234-5678']);
+        $form['fields']['birth_date'] = $this->jsBirthDate($form);
+
+        $html = $this->landed($this->submit($form, $url));
+
+        $this->assertErrorItem($html, trans('validation.max.string', ['attribute' => '電話番号', 'max' => 20]));
+        $this->assertNull($buyer->fresh()->phone);
+    }
+
+    public function test_a_birth_date_that_does_not_exist_is_refused(): void
+    {
+        $form = $this->storeForm(['birth_era' => 'S', 'birth_year' => '55', 'birth_month' => '2', 'birth_day' => '30']);
+        $this->assertSame('1980-02-30', $this->jsBirthDate($form));
+
+        $html = $this->register($form);
+
+        $this->assertErrorItem($html, trans('validation.date', ['attribute' => '生年月日']));
+        $this->assertSame(0, Buyer::count(), '2 月 30 日が 3 月 1 日として保存された');
+    }
+
+    public function test_a_birth_year_outside_the_era_is_refused(): void
+    {
+        // 元号を選んだまま西暦（1980）を打つと、画面の JS は昭和 1980 年＝3905 年にする
+        $form = $this->storeForm(['birth_era' => 'S', 'birth_year' => '1980', 'birth_month' => '1', 'birth_day' => '2']);
+        $this->assertSame('3905-01-02', $this->jsBirthDate($form));
+
+        $html = $this->register($form);
+
+        $this->assertErrorItem($html, '元号（昭和）と生年月日（3905-01-02）が合いません（昭和は1926〜1989年）');
+        $this->assertSame(0, Buyer::count());
+    }
+
+    public function test_a_birth_date_after_the_era_ended_is_refused(): void
+    {
+        $html = $this->register($this->storeForm(['birth_era' => 'S', 'birth_year' => '70', 'birth_month' => '4', 'birth_day' => '1']));
+
+        $this->assertErrorItem($html, '元号（昭和）と生年月日（1995-04-01）が合いません（昭和は1926〜1989年）');
+        $this->assertSame(0, Buyer::count());
+    }
+
+    public function test_the_first_year_of_heisei_is_accepted(): void
+    {
+        $html = $this->register($this->storeForm(['birth_era' => 'H', 'birth_year' => '1', 'birth_month' => '1', 'birth_day' => '8']));
+
+        $this->assertFlash($html, 'success', '顧客を登録しました。');
+        $this->assertSame('1989-01-08', Buyer::firstOrFail()->birth_date->toDateString());
+    }
+
+    public function test_a_database_error_is_reported_without_showing_the_sql(): void
+    {
+        Exceptions::fake();
+        Buyer::creating(function () {
+            throw new QueryException('mysql', 'insert into `buyers` (`phone`) values (?)', ['089'], new \PDOException('Data too long for column'));
+        });
+
+        $html = $this->register($this->storeForm(['phone' => '089']));
+
+        $this->assertFlash($html, 'error', '登録に失敗しました。時間をおいてやり直してください。');
+        $this->assertFalse(str_contains($html, 'insert into'), '画面に SQL が出ている');
+        Exceptions::assertReported(QueryException::class);
     }
 
     // ============================================================

@@ -120,7 +120,9 @@ class CustomerSurveyController extends Controller
                 ->with('success', 'アンケートを登録しました。');
         } catch (\Exception $e) {
             DB::rollBack();
-            return back()->withInput()->with('error', '登録に失敗しました: ' . $e->getMessage());
+            // ⚠ 例外の文をそのまま出さない（SQL と入力値がそのまま画面に出る）。理由は記録に残す
+            report($e);
+            return back()->withInput()->with('error', '登録に失敗しました。時間をおいてやり直してください。');
         }
     }
 
@@ -211,7 +213,8 @@ class CustomerSurveyController extends Controller
                 ->with('success', 'アンケートを更新しました。');
         } catch (\Exception $e) {
             DB::rollBack();
-            return back()->withInput()->with('error', '更新に失敗しました: ' . $e->getMessage());
+            report($e);
+            return back()->withInput()->with('error', '更新に失敗しました。時間をおいてやり直してください。');
         }
     }
 

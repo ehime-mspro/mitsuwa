@@ -283,6 +283,13 @@ return [
         'owner_name' => '所有者名',                    // 上書き: Mansion/Property は「オーナー名」
         'gender' => '性別',
         'birthday' => '生年月日',
+        'birth_date' => '生年月日',                    // 顧客（買主）
+        'birth_era' => '元号',
+        'family_adults' => '大人の人数',
+        'family_children' => '子供の人数',
+        'occupation' => '職業',
+        'employer' => '勤務先',
+        'years_employed' => '勤続年数',
         'workplace' => '勤務先',
         'qualifications' => '保有資格',
 

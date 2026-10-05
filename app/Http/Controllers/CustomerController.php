@@ -8,8 +8,12 @@ use App\Models\Buyer;
 use App\Models\BuyerSurvey;
 use App\Models\SurveyQuestion;
 use App\Models\User;
+use App\Support\BuyerCsvRow;
+use App\Support\CsvDate;
+use App\Support\JapanTime;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class CustomerController extends Controller
 {
@@ -121,11 +125,7 @@ class CustomerController extends Controller
     {
         $department = $this->resolveDepartment();
 
-        $request->validate([
-            'last_name'     => 'required|max:50',
-            'first_name'    => 'required|max:50',
-            'acquired_date' => 'required|date',
-        ]);
+        $this->validateBuyer($request);
 
         DB::beginTransaction();
         try {
@@ -150,7 +150,9 @@ class CustomerController extends Controller
                 ->with('success', '顧客を登録しました。');
         } catch (\Exception $e) {
             DB::rollBack();
-            return back()->withInput()->with('error', '登録に失敗しました: ' . $e->getMessage());
+            // ⚠ 例外の文をそのまま出さない（SQL と入力値がそのまま画面に出る）。理由は記録に残す
+            report($e);
+            return back()->withInput()->with('error', '登録に失敗しました。時間をおいてやり直してください。');
         }
     }
 
@@ -207,11 +209,7 @@ class CustomerController extends Controller
         // 部署スコープ外の買主は 404（存在秘匿）で遮断（H-3 IDOR 対策）
         abort_unless($buyer->belongsToDepartment($department), 404);
 
-        $request->validate([
-            'last_name'     => 'required|max:50',
-            'first_name'    => 'required|max:50',
-            'acquired_date' => 'required|date',
-        ]);
+        $this->validateBuyer($request);
 
         DB::beginTransaction();
         try {
@@ -235,7 +233,8 @@ class CustomerController extends Controller
                 ->with('success', '顧客情報を更新しました。');
         } catch (\Exception $e) {
             DB::rollBack();
-            return back()->withInput()->with('error', '更新に失敗しました: ' . $e->getMessage());
+            report($e);
+            return back()->withInput()->with('error', '更新に失敗しました。時間をおいてやり直してください。');
         }
     }
 
@@ -575,6 +574,60 @@ class CustomerController extends Controller
     }
 
     /* ========== Private メソッド ========== */
+
+    /**
+     * 顧客の登録・編集の入力チェック。上限は本番の buyers の列の大きさ（CSV 取込の BuyerCsvRow と同じ値）。
+     *
+     * ⚠ 列に入らない値を通すと、本番の MySQL（strict）は保存の時点で例外を出す（SQLite のテストでは黙って入る）。
+     * ⚠ 生年月日は送信の瞬間に画面の JS が元号・年・月・日の欄から組む。存在しない日（2 月 30 日）は `date` で断る
+     *   （Eloquent の date キャストは 3 月 1 日に繰り上げて黙って保存する。Bug #54 と同じ形）。
+     *   元号を選んだまま西暦を打つと 3905 年のような年になるので、元号の範囲と突き合わせる（CSV 取込と同じ範囲）。
+     * ⚠ メールの形は見ない（CSV 取込・簡易登録も見ていない。画面だけ断ると取込と結果が違う）。
+     */
+    private function validateBuyer(Request $request): void
+    {
+        $text = fn (string $key) => 'nullable|string|max:' . BuyerCsvRow::MAX_LENGTH[$key];
+        $count = fn (string $key) => 'nullable|integer|min:0|max:' . BuyerCsvRow::MAX_INTEGER[$key];
+
+        $request->validate([
+            'last_name'       => 'required|string|max:' . BuyerCsvRow::MAX_LENGTH['last_name'],
+            'first_name'      => 'required|string|max:' . BuyerCsvRow::MAX_LENGTH['first_name'],
+            'last_name_kana'  => $text('last_name_kana'),
+            'first_name_kana' => $text('first_name_kana'),
+            'acquired_date'   => 'required|date',
+            'birth_date'      => 'nullable|date|before_or_equal:' . JapanTime::today()->toDateString(),
+            'birth_era'       => ['nullable', Rule::in(array_keys(BuyerCsvRow::ERAS)), $this->birthEraMatches($request)],
+            'family_adults'   => $count('family_adults'),
+            'family_children' => $count('family_children'),
+            'postal_code'     => $text('postal_code'),
+            'prefecture'      => $text('prefecture'),
+            'city'            => $text('city'),
+            'address_detail'  => $text('address_detail'),
+            'building_name'   => $text('building_name'),
+            'phone'           => $text('phone'),
+            'email'           => $text('email'),
+            'occupation'      => $text('occupation'),
+            'employer'        => $text('employer'),
+            'years_employed'  => $count('years_employed'),
+        ]);
+    }
+
+    /** 元号と生年月日の年が合うか（生年月日が空か読めないときは見ない。読めないことは birth_date の `date` が断る） */
+    private function birthEraMatches(Request $request): \Closure
+    {
+        return function (string $attribute, mixed $value, \Closure $fail) use ($request): void {
+            $birthDate = CsvDate::normalize((string) $request->input('birth_date', ''));
+            if ($birthDate === null || ! isset(BuyerCsvRow::ERAS[$value])) {
+                return;
+            }
+            [$name, $first, $last] = BuyerCsvRow::ERAS[$value];
+            $year = (int) substr($birthDate, 0, 4);
+            if ($year < $first || ($last !== null && $year > $last)) {
+                $range = $last === null ? "{$name}は{$first}年から" : "{$name}は{$first}〜{$last}年";
+                $fail("元号（{$name}）と生年月日（{$birthDate}）が合いません（{$range}）");
+            }
+        };
+    }
 
     /**
      * アンケート保存（顧客登録時の初回アンケート）

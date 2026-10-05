@@ -38,8 +38,8 @@ final class BuyerCsvRow
     /** 空欄なら誤りにする列（文言は「〇〇が未入力です」） */
     private const REQUIRED = ['last_name', 'first_name', 'acquired_date'];
 
-    /** 文字の列の上限（buyers の列の大きさ。担当者名は buyer_surveys.staff_name） */
-    private const MAX_LENGTH = [
+    /** 文字の列の上限（buyers の列の大きさ。担当者名は buyer_surveys.staff_name）。顧客の登録・編集画面の入力チェックも使う */
+    public const MAX_LENGTH = [
         'last_name' => 50, 'first_name' => 50,
         'last_name_kana' => 50, 'first_name_kana' => 50,
         'postal_code' => 10, 'prefecture' => 10, 'city' => 50,
@@ -48,16 +48,17 @@ final class BuyerCsvRow
         'staff_name' => 100,
     ];
 
-    /** 整数の列の上限（大人人数・子供人数は tinyint unsigned、勤続年数は smallint unsigned） */
-    private const MAX_INTEGER = [
+    /** 整数の列の上限（大人人数・子供人数は tinyint unsigned、勤続年数は smallint unsigned）。顧客の画面も使う */
+    public const MAX_INTEGER = [
         'family_adults' => 255, 'family_children' => 255, 'years_employed' => 65535,
     ];
 
     /**
      * 元号の記号 => [名前, 最初の年, 最後の年（令和は null）]。
      * 年は詳細画面（`Buyer::getBirthDateDisplayAttribute()`）の差と同じ（昭和 1〜64 年・平成 1〜31 年・令和 1 年〜）。
+     * 顧客の登録・編集画面の入力チェック（CustomerController）も同じ範囲で元号と生年月日を突き合わせる。
      */
-    private const ERAS = [
+    public const ERAS = [
         'S' => ['昭和', 1926, 1989],
         'H' => ['平成', 1989, 2019],
         'R' => ['令和', 2019, null],
