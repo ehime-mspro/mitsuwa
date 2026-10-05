@@ -168,6 +168,28 @@ class ContractScreensTest extends RealEstateScreenTestCase
         $this->assertSame($lot->id, ReContract::firstOrFail()->lot_id);
     }
 
+    public function test_an_edited_subdivision_contract_keeps_its_sold_lot(): void
+    {
+        $project = $this->project();
+        $lot = $this->lot($project, 3, 12000000, 'sold');
+        $this->lot($project, 4, 11000000);
+        $contract = ReContract::create([
+            'department' => 'realestate', 'contract_type' => 'subdivision_lot', 'status' => 'contracted', 'contract_date' => '2026-09-01',
+            'property_name' => '平井分譲地', 'project_id' => $project->id, 'lot_id' => $lot->id, 'buyer_id' => $this->buyer()->id,
+            'contract_amount_land' => 12000000, 'cost_amount' => 9000000, 'created_by' => $this->user->id,
+        ]);
+        $url = route('realestate.contracts.edit', $contract);
+
+        // 今の区画は販売済みでも選択肢に残り、そのまま保存できる
+        $form = $this->browserForm($this->htmlOf($url), 'action="' . route('realestate.contracts.update', $contract) . '"', 'contractEditForm', 'data.amountLand = "12500000";');
+        $this->assertSame((string) $lot->id, $form['fields']['lot_id']);
+        $html = $this->landed($this->submit($form, $url));
+
+        $this->assertFlash($html, 'success', '契約情報を更新しました。');
+        $this->assertSame([$lot->id, 12500000], [$contract->fresh()->lot_id, $contract->fresh()->contract_amount_land]);
+        $this->assertSame('sold', $lot->fresh()->status->value);
+    }
+
     public function test_an_edited_subdivision_contract_keeps_the_new_lot_after_an_input_error(): void
     {
         $old = $this->project();
