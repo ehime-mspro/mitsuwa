@@ -2263,7 +2263,7 @@ git checkout 13.x && git merge --ff-only date-picker-month-ago
 
 ⚠ 使い始める前なので、利用者に見える変化は ⑦ の「印に使う文字」の欄と印の見本だけ（申請の画面・印・PDF は `launched_at` が入ってから出る）。
 
-⚠ `origin/13.x` への push はしていない（利用者の指示を待つ）。
+⚠ `origin/13.x` への push はしていない（利用者の指示を待つ）。→ 2026-10-05 に利用者の指示で push 済み（`c47306b4..c26be125`。別の会話の `732b9ef1` も含む）。⚠ `b5c68f20` だけ本文と Co-Authored-By の行のあいだの空行が無く、git の trailer として読まれない（中身は正しい。履歴は書き換えない決まりなのでそのまま）。
 
 ### 4b（決裁台帳 ⑤・Excel 出力・Excel の出力の記録）
 
