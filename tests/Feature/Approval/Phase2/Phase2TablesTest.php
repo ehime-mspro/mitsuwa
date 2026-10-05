@@ -34,6 +34,7 @@ class Phase2TablesTest extends TestCase
     /** あとの段階が 2a の表に足した列（その段階の表のテストが見る。ここでは比べない）。表 => 列 */
     private const LATER_COLUMNS = [
         'approval_settings' => ['mail_last_sent_at', 'mail_last_failed_at', 'mail_last_failed_to'],   // 3a（Phase3TablesTest）
+        'approval_steps'    => ['stamp_label', 'stamp_text'],                                         // 4a（Phase4aTablesTest）
     ];
 
     /** @return list<array{string, string, bool}> [表, CREATE の括弧の中か ALTER の中身, ALTER か] */

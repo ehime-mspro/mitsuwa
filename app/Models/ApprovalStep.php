@@ -13,12 +13,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  *
  * ⚠ 担当者の列は「付け替え」のときだけ入る（`assignee_user_id`）。空なら部門長は申請部門の
  *   **今の**部門長、社長は**今の**社長、審査はその部門の**今の**審査担当者（要件 4.3 のケース 5〜7）。
+ * ⚠ 印の控え（`stamp_label`・`stamp_text`）は判断したときに `Workflow::finishStep()` が書き、取り消しで空に戻す（段階4 設計書 D3）。
  */
 class ApprovalStep extends Model
 {
     protected $fillable = [
         'request_id', 'round', 'kind', 'department_id', 'assignee_user_id', 'status',
-        'arrived_at', 'acted_at', 'actor_user_id', 'result', 'comment',
+        'arrived_at', 'acted_at', 'actor_user_id', 'result', 'comment', 'stamp_label', 'stamp_text',
     ];
 
     protected function casts(): array

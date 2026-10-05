@@ -30,6 +30,11 @@
             {{-- 取り下げた申請には番号が付かないので言わない（取り下げは社長の判断の前だけ。Task 19 の B7） --}}
             <span class="text-[12px] text-gray-400">決裁No は社長の判断のときに付きます</span>
         @endif
+        {{-- 決裁申請書の PDF（段階4 設計書 §5.6）。下書きは出さない（D17）。ブラウザの別のタブで開く（D18） --}}
+        @if($approvalRequest->status !== \App\Enums\ApprovalStatus::Draft)
+            <a href="{{ route('approvals.requests.pdf', $approvalRequest) }}" target="_blank" rel="noopener"
+               class="ml-auto inline-flex items-center gap-1 px-3 py-1.5 border border-gray-300 rounded-md bg-white text-[12px] text-gray-700 hover:bg-gray-50">PDF を出力</a>
+        @endif
     </div>
     <h1 class="text-lg font-bold text-gray-900 mb-4 break-words">{{ $content->subject ?? '（件名なし）' }}</h1>
 

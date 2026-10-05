@@ -8,11 +8,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /**
  * 利用者ごとの決裁の印（設計書 §5.16）。
  *
- * ⚠ 印に使う文字の列は段階4 で足す（D17）。
+ * 印に使う文字（`stamp_text`）は段階4 で足した（段階4 設計書 D9）。空なら氏名から決める（`StampText`）。
  */
 class ApprovalMember extends Model
 {
-    protected $fillable = ['user_id', 'can_view_all', 'is_admin'];
+    protected $fillable = ['user_id', 'can_view_all', 'is_admin', 'stamp_text'];
 
     protected function casts(): array
     {
