@@ -568,13 +568,20 @@ function procurementDetail() {
         },
 
         // --- 費用追加 ---
+        // 金額の欄に値があるか。⚠ 0 円も金額として扱う（真偽値で判定すると 0 が「空」になり、
+        //    見込み額 0 は送られず確定額 0 は未定で保存される。登録画面の原価欄と同じ扱い）
+        hasAmount: function(value) {
+            return value !== '' && value !== null && value !== undefined && !isNaN(Number(value));
+        },
+
         addCost: function() {
-            if (!this.newCost.cost_item_id || !this.newCost.estimated_amount) return;
+            if (!this.newCost.cost_item_id) { alert('費用項目を選択してください。'); return; }
+            if (!this.hasAmount(this.newCost.estimated_amount)) { alert('見込み額を入力してください。'); return; }
             var self = this;
             var body = {
                 cost_item_id: Number(self.newCost.cost_item_id),
                 estimated_amount: Number(self.newCost.estimated_amount),
-                actual_amount: self.newCost.actual_amount ? Number(self.newCost.actual_amount) : null,
+                actual_amount: self.hasAmount(self.newCost.actual_amount) ? Number(self.newCost.actual_amount) : null,
                 notes: self.newCost.notes || null
             };
             fetch(self.baseUrl, {
@@ -625,9 +632,11 @@ function procurementDetail() {
         },
         saveCost: function(cost) {
             var self = this;
+            // 見込み額を空にして保存すると 0 で送られていた（Number('') は 0）
+            if (!self.hasAmount(self.editCost.estimated_amount)) { alert('見込み額を入力してください。'); return; }
             var body = {
                 estimated_amount: Number(self.editCost.estimated_amount),
-                actual_amount: self.editCost.actual_amount !== null && self.editCost.actual_amount !== '' ? Number(self.editCost.actual_amount) : null,
+                actual_amount: self.hasAmount(self.editCost.actual_amount) ? Number(self.editCost.actual_amount) : null,
                 notes: self.editCost.notes || null
             };
             fetch(self.baseUrl + '/' + cost.id, {
