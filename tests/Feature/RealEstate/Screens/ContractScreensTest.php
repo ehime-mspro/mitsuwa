@@ -129,6 +129,18 @@ class ContractScreensTest extends RealEstateScreenTestCase
         $this->assertSame('lost', $contract->fresh()->status->value);
     }
 
+    public function test_a_close_request_without_the_buyer_name_field_does_not_fail(): void
+    {
+        $contract = $this->listing();
+
+        // 画面の小窓は買主名の欄を必ず送るが、欄の無い送信（手で組んだもの）で 500 にならない
+        $response = $this->actingAs($this->user)->patch(route('realestate.contracts.close', $contract), ['contract_date' => '2026-10-02', 'brokerage_fee' => '300000']);
+
+        $response->assertRedirect(route('realestate.contracts.show', $contract));
+        $contract->refresh();
+        $this->assertSame(['closed', null], [$contract->status->value, $contract->buyer_name]);
+    }
+
     // ============================================================
     // 入力エラーで戻ったとき、分譲地の区画が選ばれたまま（R1）
     // ============================================================

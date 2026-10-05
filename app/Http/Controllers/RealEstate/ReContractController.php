@@ -413,7 +413,8 @@ class ReContractController extends Controller
         $contract->update([
             'status'        => ReContractStatus::Closed->value,
             'contract_date' => $validated['contract_date'],
-            'buyer_name'    => $validated['buyer_name'],
+            // 欄が無い送信では validated() にキーが無い（画面の小窓は空でも必ず送る）
+            'buyer_name'    => $validated['buyer_name'] ?? null,
             'brokerage_fee' => $validated['brokerage_fee'],
             'gross_profit'  => $validated['brokerage_fee'],
             'updated_by'    => auth()->id(),
