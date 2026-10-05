@@ -12,6 +12,7 @@ use App\Models\InvestmentDetail;
 use App\Models\Property;
 use App\Models\Unit;
 use App\Support\JapanTime;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -133,7 +134,7 @@ class InvestmentController extends Controller
             'details'          => 'required|array|min:1',
             'details.*.cost_item'        => 'required|string|max:100',
             'details.*.contractor_name'  => 'nullable|string|max:200',
-            'details.*.amount'           => 'required|integer|min:0',
+            'details.*.amount'           => 'required|integer|min:0|max:' . self::MAX_INT_COLUMN,
             'details.*.executed_at'      => 'nullable|date',
             'details.*.notes'            => 'nullable|string|max:1000',
             'attachments'                => 'nullable|array',
@@ -144,6 +145,10 @@ class InvestmentController extends Controller
             'start_date'  => '工事開始日',
             'end_date'    => '工事完了日',
         ]);
+
+        if ($tooLarge = $this->refuseTooLargeTotal($validated['details'])) {
+            return $tooLarge;
+        }
 
         // 区画が指定物件に属しているか
         $unit = Unit::findOrFail($validated['unit_id']);
@@ -269,7 +274,7 @@ class InvestmentController extends Controller
             'details'          => 'required|array|min:1',
             'details.*.cost_item'        => 'required|string|max:100',
             'details.*.contractor_name'  => 'nullable|string|max:200',
-            'details.*.amount'           => 'required|integer|min:0',
+            'details.*.amount'           => 'required|integer|min:0|max:' . self::MAX_INT_COLUMN,
             'details.*.executed_at'      => 'nullable|date',
             'details.*.notes'            => 'nullable|string|max:1000',
             'attachments'                => 'nullable|array',
@@ -280,6 +285,10 @@ class InvestmentController extends Controller
             'start_date'  => '工事開始日',
             'end_date'    => '工事完了日',
         ]);
+
+        if ($tooLarge = $this->refuseTooLargeTotal($validated['details'])) {
+            return $tooLarge;
+        }
 
         // 区画が指定物件に属しているか（今の区画は削除済みのことがある）
         $unit = Unit::withTrashed()->findOrFail($validated['unit_id']);
@@ -339,6 +348,21 @@ class InvestmentController extends Controller
 
         return redirect()->route('tenant.investments.index')
             ->with('success', '投資案件を削除しました。');
+    }
+
+    /**
+     * 投資総額（明細の合計）が INT の列に入らないときは入力エラーで戻す（1 行ずつは上限の内側でも、合計で入らないことがある。
+     * 本番の MySQL では保存の時点で 500 になる）。
+     */
+    private function refuseTooLargeTotal(array $details): ?RedirectResponse
+    {
+        if (collect($details)->sum('amount') <= self::MAX_INT_COLUMN) {
+            return null;
+        }
+
+        return back()->withInput()->withErrors([
+            'details' => '明細の金額の合計は' . number_format(self::MAX_INT_COLUMN) . '円以下にしてください。',
+        ]);
     }
 
     /**

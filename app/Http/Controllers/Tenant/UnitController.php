@@ -154,11 +154,11 @@ class UnitController extends Controller
             'area_tsubo'       => 'nullable|numeric|min:0|max:9999.99',
             'usage_type_id'    => 'nullable|exists:inquiry_usage_types,id',
             'status'           => 'required|in:vacant,negotiating',
-            'rent'             => 'nullable|integer|min:0',
-            'common_fee'       => 'nullable|integer|min:0',
-            'deposit'          => 'nullable|integer|min:0',
-            'garbage_fee'      => 'nullable|integer|min:0',
-            'pest_control_fee' => 'nullable|integer|min:0',
+            'rent'             => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'common_fee'       => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'deposit'          => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'garbage_fee'      => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'pest_control_fee' => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
             'notes'            => 'nullable|string|max:5000',
         ], [], [
             // 画面ラベルに合わせる（既定は「賃料」）
@@ -305,7 +305,7 @@ class UnitController extends Controller
             ],
             // 募集家賃の4項目は「賃料改定」フローでのみ変更可能。編集では現値を保持するため
             // validation から除外する（送られても $validated に入らず update で無視される）。
-            'deposit'          => 'nullable|integer|min:0',
+            'deposit'          => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
             'notes'            => 'nullable|string|max:5000',
         ]);
 
@@ -427,11 +427,11 @@ class UnitController extends Controller
 
         $validated = $request->validate([
             'revision_date'        => 'required|date',
-            'new_rent'             => 'required|integer|min:0',
-            'new_common_fee'       => 'nullable|integer|min:0',
-            'new_garbage_fee'      => 'nullable|integer|min:0',
-            'new_pest_control_fee' => 'nullable|integer|min:0',
-            'new_deposit'          => 'nullable|integer|min:0',
+            'new_rent'             => 'required|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'new_common_fee'       => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'new_garbage_fee'      => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'new_pest_control_fee' => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'new_deposit'          => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
             'reason'               => 'nullable|string|max:5000',
         ]);
 
