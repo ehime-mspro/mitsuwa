@@ -3313,3 +3313,169 @@ BACKLOG の 4a の小見出しに「本番反映（日付）」の表（3b と�
 ```
 
 全文は `~/.claude/plans/approval-phase3-tasks/4a/measure/mysql-show-create.txt`。4a のテスト（`tests/Feature/Approval/Phase4`）は MySQL で `OK (44 tests, 170 assertions)`。
+
+## Task 7 の実測記録（2026-10-05・実装のあと）
+
+実装したコードに、計画の表の 60 行（カナリア 1 + 変異 59）と、実装の段の点検で足した 7 通り（V07・U10・P20〜P24）を合わせた 67 通り（カナリア 1 + 変異 66）を、`~/.claude/plans/approval-phase3-tasks/4a/mutate.py` で 1 つずつ当てて測った。変異を当てたのは WT の `HEAD` の写し（`<scratchpad>/p4a-mutation`）だけで、WT のファイルには当てていない。
+
+### 測った条件
+
+| 項目 | 内容 |
+|---|---|
+| 測った HEAD | **`b94ece7d`**（`fix(approval): 決裁申請書の PDF の件名とコメントも長い URL で縮まないようにする`）の写し（`git archive HEAD` + `vendor` の複製）。載っている点検の手直し: Task 3 の `a7220226`、Task 5 の `2a3f941b`・`100bf0c1`・`3a308425`・`013dfc42`・`b94ece7d` |
+| 流した範囲 | `mutate.py` の `TARGET`（決裁のテスト〈`tests/Feature/Approval`・`tests/Unit/Approval`〉・走査テスト 4 本）= **961 本**（計画の試作は 958 本。3 本多い理由は下の「表との違い」の 1）。変異なしの写しで `OK (961 tests, 7172 assertions)`（試作は 7152） |
+| 全件（Step 1・`b94ece7d`） | はじめの `git status --porcelain` は空・**`OK (3383 tests, 23956 assertions)`**（2 分 38 秒） |
+| 全件（最終・U10 のテストを足した `b5c68f20`） | **`OK (3383 tests, 23958 assertions)`**（本数は同じ。既存のテストの中に確かめを足したので assertions だけ +2） |
+| `--check` | `NG` の行なし・**`checked 67`**（計画の「60」より 7 多い。V07・U10・P20〜P24） |
+| カナリア | **赤になった**: `Tests: 961, Assertions: 6441, Failures: 80.`（計画の試作と同じ 80 本。80 本とも `Expected response status code [200] but received 500.`。落ちた理由は、当て直して確かめたところ `Undefined variable $canaryUndefinedVariable`〈`show.blade.php`〉＝測定は写しのコードを読んでいる） |
+| 所要 | 67 通りで約 51 分（1 通り 38〜82 秒。いちばん長いのは P15 の 82 秒）。同じ時に Task 8 の担当の画面の確かめと WT の全件が動いていたので、秒数は目安。結果の jsonl: `~/.claude/plans/approval-phase3-tasks/4a/measure/mutations-impl.jsonl`（U10 のテストを足したあとの再測定は `mutations-impl-u10-after.jsonl`） |
+
+### 結果
+
+**67 行 = 検出 64・カナリア 1（赤が正しい）・等価 1（S15）・当初検出漏れ→追加で検出 1（U10）・SKIP 0・見逃し 0（等価でないのに緑 0）。**
+
+- **検出（64）**: T01〜T04・S01〜S14・V01〜V07・U01・U03・U05〜U09・P01〜P24・R01〜R08。計画の表の 58 通りは、どれも表と同じく赤。表に無かった 6 通り（V07・P20〜P24）も赤
+- **当初検出漏れ→追加で検出（1）**: **U10**（編集の小窓を印に使う文字が空のまま開く）。はじめは緑（`OK (961 tests, 7172 assertions)`）。計画の見込みどおりの穴で、下の「U10 を足したわけ」のとおりテストを 1 か所足して塞いだ
+- **等価（1）**: **S15**（判断していない段階も印を作る）= `OK (961 tests, 7172 assertions)`。計画の見込みどおり。理由は下の「S15 が等価なわけ」
+- **SKIP（0）**: 無し（`mutate.py` は 67 通りの全部で、当てる文字がちょうど 1 回見つかった）
+
+### 67 通りの実測（`b94ece7d` の写し）
+
+「落ちた行」は、落ちたテストだけを当て直して取った、失敗した assertion の行（`テストのファイル:行`。同じ行は 1 つにまとめた）。T02 は落ちた 322 本のうち先頭の 6 本だけ当て直した。
+
+| # | 変異（ファイル） | 結果（流した 961 本） | 落ちたテスト（実測） | 落ちた行 | 判定 |
+|---|---|---|---|---|---|
+| CANARY | カナリア: 申請の詳細の見出しに未定義の変数（`show.blade.php`） | Tests: 961, Assertions: 6441, Failures: 80. | 80 本（RequestActionTest 37・AdminRequestsTest 16・RequestChangesTest 11・RequestFormTest 9・RequestAttachmentTest 3 ほか） | `AdminRequestsTest.php:49 ほか（画面を開く行）` | カナリア（赤が正しい） |
+| T01 | SQL の印に使う文字を 5 文字に（`2026-10-03-approval-phase4a.sql`） | Tests: 961, Assertions: 7172, Failures: 1. | `test_the_sql_and_the_migration_add_the_same_columns` | `Phase4aTablesTest.php:82` | 検出 |
+| T02 | migration の段階の印の下段を NOT NULL に（`2026_10_03_000001_add_approval_phase4a_columns.php`） | Tests: 961, Assertions: 3241, Errors: 342, Failures: 2. | `test_a_circulating_request_stays_with_its_review_department`、`test_a_colleague_in_the_same_department_does_not_see`、`test_a_complete_request_can_be_submitted_from_the_form`、`test_a_conditional_approval_asks_the_applicant_to_confirm`、`test_a_conditional_approval_is_confirmed_by_the_applicant`、`test_a_conditional_approval_shows_the_condition_and_when_it_was_confirmed` ほか 316 本 | `BuildsApprovalFixtures.php:157`・`RequestFormTest.php:172` | 検出 |
+| T03 | 段階の印の控えを書けなくする（fillable から外す）（`ApprovalStep.php`） | Tests: 961, Assertions: 7171, Failures: 3. | `test_changing_the_settings_later_does_not_change_the_stamp`、`test_each_judgement_records_its_stamp`、`test_the_stamp_columns_are_fillable` | `Phase4aTablesTest.php:95`・`StampTest.php:87`・`StampTest.php:110` | 検出 |
+| T04 | 利用者の印に使う文字を書けなくする（fillable から外す）（`ApprovalMember.php`） | Tests: 961, Assertions: 7154, Failures: 13. | `test_an_update_without_the_field_keeps_the_stamp_text`、`test_anyone_can_get_a_stamp_text_even_when_the_name_cannot_be_edited`、`test_clearing_the_text_goes_back_to_the_name`、`test_saving_the_same_text_again_records_nothing`、`test_spaces_around_the_text_are_removed_including_full_width_ones`、`test_the_admin_sets_the_stamp_text_before_launch` ほか 7 本 | `Phase4aTablesTest.php:89`・`StampDisplayTest.php:48`・`StampDisplayTest.php:63` ほか 10 か所 | 検出 |
+| S01 | 全角の空白で区切らない（`StampText.php`） | Tests: 961, Assertions: 7169, Failures: 1. | `test_the_default_text_is_the_name_before_the_first_space` | `StampTest.php:56` | 検出 |
+| S02 | 氏名の前後の空白を外さない（`StampText.php`） | Tests: 961, Assertions: 7170, Failures: 1. | `test_the_default_text_is_the_name_before_the_first_space` | `StampTest.php:57` | 検出 |
+| S03 | 印に使う文字を見ない（`StampText.php`） | Tests: 961, Assertions: 7160, Failures: 6. | `test_the_list_shows_a_preview_of_each_stamp_and_the_edit_form_has_the_field`、`test_the_stamp_has_the_three_rows_in_the_stamp_color`、`test_the_stamp_is_drawn_with_the_fitted_sizes`、`test_the_stamp_uses_the_text_set_at_the_time_of_the_judgement`、`test_the_text_is_escaped`、`test_the_text_set_by_the_admin_wins_over_the_name` | `StampDisplayTest.php:48`・`StampDisplayTest.php:63`・`StampDisplayTest.php:94` ほか 3 か所 | 検出 |
+| S04 | 空の印に使う文字を既定に戻さない（`StampText.php`） | Tests: 961, Assertions: 7172, Failures: 1. | `test_the_text_set_by_the_admin_wins_over_the_name` | `StampTest.php:71` | 検出 |
+| S05 | 社長の上段を「社長」にしない（`StampText.php`） | Tests: 961, Assertions: 7157, Failures: 3. | `test_a_decided_request_has_the_number_the_marks_and_the_three_stamps`、`test_each_judgement_records_its_stamp`、`test_the_sheet_draws_the_marks_the_stamps_and_the_footer` | `PdfSheetTest.php:97`・`PdfSheetTest.php:270`・`StampTest.php:86` | 検出 |
+| S06 | 判断のときに下段を控えない（`Workflow.php`） | Tests: 961, Assertions: 7172, Failures: 2. | `test_changing_the_settings_later_does_not_change_the_stamp`、`test_each_judgement_records_its_stamp` | `StampTest.php:87`・`StampTest.php:110` | 検出 |
+| S07 | 判断のときに上段を控えない（`Workflow.php`） | Tests: 961, Assertions: 7172, Failures: 2. | `test_changing_the_settings_later_does_not_change_the_stamp`、`test_each_judgement_records_its_stamp` | `StampTest.php:87`・`StampTest.php:110` | 検出 |
+| S08 | 取り消しで印の控えを消さない（`Workflow.php`） | Tests: 961, Assertions: 7172, Failures: 1. | `test_undo_removes_the_stamp_with_the_judgement` | `StampTest.php:135` | 検出 |
+| S09 | 控えた上段でなく今の部門の略称を出す（`Stamp.php`） | Tests: 961, Assertions: 7172, Failures: 1. | `test_changing_the_settings_later_does_not_change_the_stamp` | `StampTest.php:110` | 検出 |
+| S10 | 控えた下段でなく今の印に使う文字を出す（`Stamp.php`） | Tests: 961, Assertions: 7172, Failures: 1. | `test_changing_the_settings_later_does_not_change_the_stamp` | `StampTest.php:110` | 検出 |
+| S11 | 和暦の日付を UTC で作る（`Stamp.php`） | Tests: 961, Assertions: 7156, Failures: 7. | `test_a_judgement_without_a_recorded_stamp_is_drawn_from_the_current_settings`、`test_a_return_is_stamped_too`、`test_changing_the_settings_later_does_not_change_the_stamp`、`test_each_judgement_records_its_stamp`、`test_the_date_is_in_the_japanese_era_of_the_calendar_day_in_japan`、`test_the_sheet_draws_the_marks_the_stamps_and_the_footer` ほか 1 本 | `PdfSheetTest.php:270`・`StampTest.php:84`・`StampTest.php:97` ほか 4 か所 | 検出 |
+| S12 | 令和の初日を平成にする（`Stamp.php`） | Tests: 961, Assertions: 7170, Failures: 1. | `test_the_date_is_in_the_japanese_era_of_the_calendar_day_in_japan` | `StampTest.php:161` | 検出 |
+| S13 | 令和の年を 1 つずらす（`Stamp.php`） | Tests: 961, Assertions: 7144, Failures: 11. | `test_a_judgement_without_a_recorded_stamp_is_drawn_from_the_current_settings`、`test_a_return_is_stamped_too`、`test_changing_the_settings_later_does_not_change_the_stamp`、`test_each_judgement_records_its_stamp`、`test_the_date_is_in_the_japanese_era_of_the_calendar_day_in_japan`、`test_the_department_short_name_in_the_top_row_is_escaped` ほか 5 本 | `PdfSheetTest.php:270`・`StampDisplayTest.php:48`・`StampDisplayTest.php:77` ほか 8 か所 | 検出 |
+| S14 | ⑦ の見本の上段を空にする（`Stamp.php`） | Tests: 961, Assertions: 7168, Failures: 1. | `test_the_list_shows_a_preview_of_each_stamp_and_the_edit_form_has_the_field` | `StampTextSettingTest.php:141` | 検出 |
+| S15 | 判断していない段階も印を作る（状態を見ない）（`Stamp.php`） | OK (961 tests, 7172 assertions) | — | — | 等価（下の「S15 が等価なわけ」） |
+| V01 | 下段をエスケープしない（`StampSvg.php`） | Tests: 961, Assertions: 7161, Failures: 3. | `test_comments_and_names_are_escaped`、`test_the_sheet_escapes_what_people_typed`、`test_the_text_is_escaped` | `RequestActionTest.php:663`・`PdfSheetTest.php:306`・`StampDisplayTest.php:62` | 検出 |
+| V02 | 上段を縮めない（`StampSvg.php`） | Tests: 961, Assertions: 7172, Failures: 1. | `test_a_long_department_name_is_drawn_smaller_in_the_top_row` | `StampDisplayTest.php:106` | 検出 |
+| V03 | 下段を縮めない（`StampSvg.php`） | Tests: 961, Assertions: 7172, Failures: 1. | `test_the_stamp_is_drawn_with_the_fitted_sizes` | `StampDisplayTest.php:94` | 検出 |
+| V04 | 文字の大きさの下限を外す（`StampSvg.php`） | Tests: 961, Assertions: 7171, Failures: 1. | `test_longer_text_is_drawn_smaller_to_stay_inside_the_stamp` | `StampDisplayTest.php:85` | 検出 |
+| V05 | 申請の詳細に印を出さない（`_steps.blade.php`） | Tests: 961, Assertions: 7171, Failures: 2. | `test_comments_and_names_are_escaped`、`test_the_detail_shows_the_stamp_beside_each_judged_step` | `RequestActionTest.php:666`・`StampDisplayTest.php:118` | 検出 |
+| V06 | 読み上げの名前をエスケープしない（`StampSvg.php`） | Tests: 961, Assertions: 7159, Failures: 4. | `test_comments_and_names_are_escaped`、`test_the_department_short_name_in_the_top_row_is_escaped`、`test_the_sheet_escapes_what_people_typed`、`test_the_text_is_escaped` | `RequestActionTest.php:663`・`PdfSheetTest.php:306`・`StampDisplayTest.php:62` ほか 1 か所 | 検出 |
+| V07 | 上段（部門の略称）をエスケープしない（Task 3 の点検で足した）（`StampSvg.php`） | Tests: 961, Assertions: 7170, Failures: 1. | `test_the_department_short_name_in_the_top_row_is_escaped` | `StampDisplayTest.php:75` | 検出 |
+| U01 | 5 文字を受け付ける（`UserController.php`） | Tests: 961, Assertions: 7169, Failures: 1. | `test_more_than_four_characters_are_refused` | `StampTextSettingTest.php:101` | 検出 |
+| U03 | 設定の記録に残さない（`UserController.php`） | Tests: 961, Assertions: 7172, Failures: 2. | `test_clearing_the_text_goes_back_to_the_name`、`test_the_admin_sets_the_stamp_text_before_launch` | `StampTextSettingTest.php:56`・`StampTextSettingTest.php:83` | 検出 |
+| U05 | 変わっていなくても記録する（`UserController.php`） | Tests: 961, Assertions: 7172, Failures: 1. | `test_saving_the_same_text_again_records_nothing` | `StampTextSettingTest.php:115` | 検出 |
+| U06 | 氏名を直せる人だけ印に使う文字を直せる（`UserController.php`） | Tests: 961, Assertions: 7169, Errors: 1. | `test_anyone_can_get_a_stamp_text_even_when_the_name_cannot_be_edited` | `StampTextSettingTest.php:69` | 検出 |
+| U09 | 欄が送られていない更新で印に使う文字を消す（`UserController.php`） | Tests: 961, Assertions: 7171, Failures: 1. | `test_an_update_without_the_field_keeps_the_stamp_text` | `StampTextSettingTest.php:128` | 検出 |
+| U07 | ⑦ に印の見本を出さない（`index.blade.php`） | Tests: 961, Assertions: 7168, Failures: 1. | `test_the_list_shows_a_preview_of_each_stamp_and_the_edit_form_has_the_field` | `StampTextSettingTest.php:141` | 検出 |
+| U08 | 編集できない人への案内に印を入れない（`index.blade.php`） | Tests: 961, Assertions: 7171, Failures: 1. | `test_the_list_shows_a_preview_of_each_stamp_and_the_edit_form_has_the_field` | `StampTextSettingTest.php:144` | 検出 |
+| U10 | 編集の小窓を印に使う文字が空のまま開く（保存すると消える。Task 4 の点検で足した）（`index.blade.php`） | OK (961 tests, 7172 assertions) | — | — | 当初検出漏れ→追加で検出（下の「U10 を足したわけ」） |
+| P01 | 条可の欄を可にする（`PdfSheet.php`） | Tests: 961, Assertions: 7158, Failures: 2. | `test_a_conditional_approval_shows_the_condition_and_when_it_was_confirmed`、`test_the_sheet_draws_the_marks_the_stamps_and_the_footer` | `PdfSheetTest.php:139`・`PdfSheetTest.php:263` | 検出 |
+| P02 | 保留の意見を否の欄にする（`PdfSheet.php`） | Tests: 961, Assertions: 7154, Failures: 2. | `test_a_decided_request_has_the_number_the_marks_and_the_three_stamps`、`test_the_sheet_draws_the_marks_the_stamps_and_the_footer` | `PdfSheetTest.php:96`・`PdfSheetTest.php:265` | 検出 |
+| P03 | 受付日を発信日にする（`PdfSheet.php`） | Tests: 961, Assertions: 7170, Failures: 2. | `test_before_the_decision_the_number_date_and_marks_are_blank`、`test_the_issue_date_and_the_receipt_date_come_from_different_moments` | `PdfSheetTest.php:116`・`PdfSheetTest.php:127` | 検出 |
+| P04 | 条件確認の日時を決裁の日時にする（`PdfSheet.php`） | Tests: 961, Assertions: 7172, Failures: 1. | `test_a_conditional_approval_shows_the_condition_and_when_it_was_confirmed` | `PdfSheetTest.php:144` | 検出 |
+| P05 | 件名を申請の今の値から出す（最後に提出した控えを使わない）（`PdfSheet.php`） | Tests: 961, Assertions: 7171, Failures: 1. | `test_others_see_the_last_submitted_content_while_the_applicant_edits` | `PdfSheetTest.php:171` | 検出 |
+| P06 | 長い行を分けない（`PdfSheet.php`） | Tests: 961, Assertions: 7170, Failures: 1. | `test_the_body_is_split_into_ruled_rows` | `PdfSheetTest.php:193` | 検出 |
+| P07 | 紙の行数まで埋めない（`PdfSheet.php`） | Tests: 961, Assertions: 7166, Failures: 2. | `test_the_body_is_split_into_ruled_rows`、`test_the_sheet_draws_the_marks_the_stamps_and_the_footer` | `PdfSheetTest.php:189`・`PdfSheetTest.php:276` | 検出 |
+| P08 | 末尾の空行を落とさない（`PdfSheet.php`） | Tests: 961, Assertions: 7172, Failures: 1. | `test_the_body_is_split_into_ruled_rows` | `PdfSheetTest.php:197` | 検出 |
+| P09 | 部門長確認の省略を出さない（`PdfSheet.php`） | Tests: 961, Assertions: 7170, Failures: 2. | `test_a_skipped_head_step_is_marked_as_skipped`、`test_the_sheet_says_the_head_step_was_skipped` | `PdfSheetTest.php:183`・`PdfSheetTest.php:291` | 検出 |
+| P10 | 出力の日時を UTC で出す（`PdfSheet.php`） | Tests: 961, Assertions: 7169, Failures: 2. | `test_a_decided_request_has_the_number_the_marks_and_the_three_stamps`、`test_the_sheet_draws_the_marks_the_stamps_and_the_footer` | `PdfSheetTest.php:101`・`PdfSheetTest.php:279` | 検出 |
+| P11 | 番号の前のファイル名に申請の番号を入れない（`PdfSheet.php`） | Tests: 961, Assertions: 7172, Failures: 1. | `test_before_the_decision_the_number_date_and_marks_are_blank` | `PdfSheetTest.php:129` | 検出 |
+| P12 | 判断の欄に朱の枠を付けない（`pdf.blade.php`） | Tests: 961, Assertions: 7159, Failures: 1. | `test_the_sheet_draws_the_marks_the_stamps_and_the_footer` | `PdfSheetTest.php:263` | 検出 |
+| P13 | 紙面に社長の印を出さない（`pdf.blade.php`） | Tests: 961, Assertions: 7164, Failures: 1. | `test_the_sheet_draws_the_marks_the_stamps_and_the_footer` | `PdfSheetTest.php:270` | 検出 |
+| P14 | 紙面に部門長確認の省略を出さない（`pdf.blade.php`） | Tests: 961, Assertions: 7171, Failures: 1. | `test_the_sheet_says_the_head_step_was_skipped` | `PdfSheetTest.php:291` | 検出 |
+| P15 | 本文を 1 つの枠に入れる（mPDF が縮める）（`pdf.blade.php`） | Tests: 961, Assertions: 7170, Failures: 2. | `test_the_pdf_is_made_with_the_bundled_fonts_and_flows_onto_more_pages`、`test_the_sheet_draws_the_marks_the_stamps_and_the_footer` | `PdfSheetTest.php:210`・`PdfSheetTest.php:276` | 検出 |
+| P16 | 決裁者コメントをエスケープしない（`pdf.blade.php`） | Tests: 961, Assertions: 7166, Failures: 1. | `test_the_sheet_escapes_what_people_typed` | `PdfSheetTest.php:307` | 検出 |
+| P17 | ページの下に出力者を出さない（`_pdf_footer.blade.php`） | Tests: 961, Assertions: 7171, Failures: 1. | `test_the_sheet_draws_the_marks_the_stamps_and_the_footer` | `PdfSheetTest.php:279` | 検出 |
+| P18 | 同梱のフォントの置き場所を渡さない（`ApprovalPdf.php`） | Tests: 961, Assertions: 7152, Errors: 3, Failures: 1. | `test_a_long_word_without_spaces_does_not_shrink_the_subject_the_comments_or_the_attachments`、`test_a_long_word_without_spaces_in_the_body_does_not_shrink_the_body`、`test_a_viewer_gets_the_pdf_inline_and_it_is_recorded`、`test_the_pdf_is_made_with_the_bundled_fonts_and_flows_onto_more_pages` | `PdfSheetTest.php:205`・`PdfSheetTest.php:221`・`PdfSheetTest.php:230` ほか 1 か所 | 検出 |
+| P19 | 件名をエスケープしない（`pdf.blade.php`） | Tests: 961, Assertions: 7163, Failures: 1. | `test_the_sheet_escapes_what_people_typed` | `PdfSheetTest.php:304` | 検出 |
+| P20 | 部門長のコメントをエスケープしない（Task 5 の点検で足した）（`pdf.blade.php`） | Tests: 961, Assertions: 7167, Failures: 1. | `test_the_sheet_escapes_what_people_typed` | `PdfSheetTest.php:308` | 検出 |
+| P21 | 審査のコメントをエスケープしない（Task 5 の点検で足した）（`pdf.blade.php`） | Tests: 961, Assertions: 7168, Failures: 1. | `test_the_sheet_escapes_what_people_typed` | `PdfSheetTest.php:309` | 検出 |
+| P22 | 人が打つ文字の表の長い語を折り返さない（mPDF が表ごと縮める。Task 5 の点検で足し、手直し 2 回目で table.body から table.wrap に）（`pdf.blade.php`） | Tests: 961, Assertions: 7166, Failures: 2. | `test_a_long_word_without_spaces_does_not_shrink_the_subject_the_comments_or_the_attachments`、`test_a_long_word_without_spaces_in_the_body_does_not_shrink_the_body` | `PdfSheetTest.php:223`・`PdfSheetTest.php:249` | 検出 |
+| P24 | 決裁の欄の表に折り返しを付けない（社長のコメントの長い URL で決裁の欄ごと縮む。Task 5 の手直し 2 回目で足した）（`pdf.blade.php`） | Tests: 961, Assertions: 7166, Failures: 1. | `test_a_long_word_without_spaces_does_not_shrink_the_subject_the_comments_or_the_attachments` | `PdfSheetTest.php:249` | 検出 |
+| P23 | 朱の枠を詳細度の低い .on で書く（黒の枠が勝つ。Task 5 の点検で足した）（`pdf.blade.php`） | Tests: 961, Assertions: 7163, Failures: 1. | `test_the_sheet_draws_the_marks_the_stamps_and_the_footer` | `PdfSheetTest.php:267` | 検出 |
+| R01 | 見られる範囲を確かめない（`RequestPdfController.php`） | Tests: 961, Assertions: 7171, Failures: 1. | `test_someone_who_cannot_see_the_request_gets_404_and_nothing_is_recorded` | `RequestPdfTest.php:75` | 検出 |
+| R02 | 下書きも出す（`RequestPdfController.php`） | Tests: 961, Assertions: 7171, Failures: 1. | `test_a_draft_is_not_printed_even_for_the_applicant` | `RequestPdfTest.php:86` | 検出 |
+| R03 | 記録の種類を添付にする（`RequestPdfController.php`） | Tests: 961, Assertions: 7172, Failures: 1. | `test_a_viewer_gets_the_pdf_inline_and_it_is_recorded` | `RequestPdfTest.php:62` | 検出 |
+| R04 | 作れなかったことを warning で書く（本番の laravel.log に残らない）（`RequestPdfController.php`） | Tests: 961, Assertions: 7171, Errors: 1. | `test_when_the_pdf_cannot_be_made_the_detail_says_so_and_the_log_has_the_error` | `RequestPdfTest.php:129` | 検出 |
+| R05 | ブラウザで開かずダウンロードにする（`RequestPdfController.php`） | Tests: 961, Assertions: 7170, Failures: 1. | `test_a_viewer_gets_the_pdf_inline_and_it_is_recorded` | `RequestPdfTest.php:55` | 検出 |
+| R06 | nosniff を付けない（`RequestPdfController.php`） | Tests: 961, Assertions: 7169, Failures: 1. | `test_a_viewer_gets_the_pdf_inline_and_it_is_recorded` | `RequestPdfTest.php:54` | 検出 |
+| R07 | 下書きの詳細にもボタンを出す（`show.blade.php`） | Tests: 961, Assertions: 7172, Failures: 1. | `test_the_detail_has_the_link_once_the_request_is_submitted` | `RequestPdfTest.php:114` | 検出 |
+| R08 | ASCII の代わりの名前に番号を入れない（`RequestPdfController.php`） | Tests: 961, Assertions: 7170, Failures: 1. | `test_a_viewer_gets_the_pdf_inline_and_it_is_recorded` | `RequestPdfTest.php:55` | 検出 |
+
+### 表（計画の試作の実測）との違い
+
+計画の表の「落ちたテスト」の名前を機械で読み、実測の集合と照合した（60 行）。**55 行は集合も本数も表と同じ**（CANARY の 80 本、緑の S15 を含む）。違う 5 行（T02・S13・V06・P15・P18）は、**表のテストを全部含み、表に無いテストが増えただけ**（表のテストが落ちなくなったものは無い）。増えたのは、試作のあとに点検の手直しで足されたテストのため。
+
+1. **本数が 3 本多い（958 → 961）**。足された 3 本は、Task 3 の `a7220226` の `StampDisplayTest::test_the_department_short_name_in_the_top_row_is_escaped`、Task 5 の `100bf0c1` の `PdfSheetTest::test_a_long_word_without_spaces_in_the_body_does_not_shrink_the_body`、`b94ece7d` の `PdfSheetTest::test_a_long_word_without_spaces_does_not_shrink_the_subject_the_comments_or_the_attachments`。assertions も +20（変異なしの写しで 7152 → 7172）。`TARGET` に入っているので全部の変異で流れる
+2. **T02 は 319 → 322 本**: 増えた 3 本は上の 3 本（どれも段階を作るので、`NOT NULL constraint failed: approval_steps.stamp_text` で落ちる）
+3. **S13 は 10 → 11 本**: 増えたのは `test_the_department_short_name_in_the_top_row_is_escaped`（`aria-label="…… R8.10.5 部門 の印"` の日付を見る）
+4. **V06 は 3 → 4 本**: 増えたのは同じ `test_the_department_short_name_in_the_top_row_is_escaped`（読み上げの名前は `e(trim(上段 日付 下段 の印))` なので、上段の `<i>` がエスケープされないと落ちる。V07 の確かめと重なる）
+5. **P15 は 1 → 2 本**: 増えたのは `test_the_pdf_is_made_with_the_bundled_fonts_and_flows_onto_more_pages`。`100bf0c1` で下限を「2 ページ以上」から「4 ページ以上」にした（`task-5-review.md` の 7）ので、本文を 1 つの枠に入れて mPDF が縮めると 4 ページに届かず落ちる。**守りが強くなった**
+6. **P18 は 2 → 4 本**: 増えたのは、本物の PDF を作る新しい長い語の 2 本（`MpdfException: Cannot find TTF TrueType font file "ipaexg.ttf" in configured font directories.`）。P18 の機構（同梱のフォントの置き場所を渡さない）が、本物の PDF を作るテストの全部に効いている
+7. **表に無い 7 通り**（V07・U10・P20〜P24）は、計画の時点の見込み（コントローラの補足）どおり: V07・P20〜P24 は赤（落ちたのは上の表のとおり）、U10 だけ緑（穴。塞いだ）
+8. 「結果」の列の `Failures`・`Errors` の数も、増えた分だけ表と違う（T02 の Errors 339 → 342 ＝ 上の 3 本、P18 の Errors 1 → 3 ＝ 上の 2 本）。「落ちたテスト」の本数は、計画の表と同じく**クラス名を省いた名前の数**（データセットのあるテストや、別のクラスの同じ名前は 1 本に数える。T02 は 344 件の失敗が 322 本）
+9. P12〜P16 などの紙面（`pdf.blade.php`）の変異は、Task 5 の手直しのあとの形に合わせて `mutate.py` の当てる文字を直してある（`--check` で全部 1 回ずつ当たる）。落ちたテストの集合は、P12・P13・P14・P16 は表と同じ、P15 は表のテストに 1 本増えただけ（上の 5）で、手直しで紙面の形が変わっても守りは弱くなっていない
+
+### 落ちたテストの集合と理由の文言が狙いと合うか
+
+- 上のとおり、計画の表の名前は 60 行の全部が実測に含まれる。
+- 理由の文言まで確かめるため、**変異ごとに、落ちたテストだけを当て直して「落ちた行」を取った**（上の表の列）。意図と別の機構が落としているものは無かった。例: T01 `文字数の上限が SQL と migration で違う`／T02 `NOT NULL constraint failed: approval_steps.stamp_text`（段階を作る行で落ちる）／S01・S02 の全角の空白と前後の空白の確かめ／S11・S13 の日付（`日本時間 10/5 0:00`・`R8.10.5`）／V01・V06・V07 の `<b>`・`<i>` がそのまま出ない確かめ／V02〜V04 の文字の大きさ（`font-size="11"`・`font-size="15"`・下限 8）／U01 `Session is missing expected key [errors]`／U06 `Attempt to read property "stamp_text" on null`（氏名を直せない人の印に使う文字が保存されない）／P01・P02 の `<td class="mark on">条可</td>`・`保留`／P06〜P08 の罫線の行（長い行を分ける・空行を落とす・紙の行数まで埋める）／P12 `<td class="mark on">条可</td>`／P13 3 つの印／P18 `Cannot find TTF TrueType font file "ipaexg.ttf"`／P20・P21・P16 の `<u>部門長</u>`・`<u>審査</u>`・`<i>見直し</i>` がエスケープされる確かめ／P22・P24 `表の文字は縮まない（折り返す）`／P23 `朱の枠は td.mark の黒の枠より強い選び方で書く`／R04 `Log::shouldHaveReceived('error')`（warning で書くと呼ばれない）／R06 `nosniff` が付かない
+- 「落ちた行」は、どの変異でも、その変異が壊す値を見る assertion の行だった。生のメッセージ（`Failed asserting that two arrays are identical.` など）だけでは機構が分からない変異（S05・S09〜S11・T03・T04・U03・U05・P01・P02・P10）は、落ちた行の assertion が狙いの値（印の上段・下段・日付・設定の記録・○の欄・出力の日時）を見ているものだった
+
+### S15 が等価なわけ
+
+`Stamp::forStep()` の `$step->status !== ApprovalStepStatus::Done || $step->acted_at === null` から状態の確かめを外しても、`acted_at` が入っているのは必ず `Done` の段階だけなので、結果が変わらない。`acted_at` を入れるのは `Workflow::finishStep()`（`Done`・`Workflow.php:613`）だけで、`reopenStep()`（待ちに戻す・`Workflow.php:586`）は空に戻し、省略（`Skipped`・`Workflow.php:98` で段階を作るとき）・取り消し（`Cancelled`・`Workflow.php:639` は待ち・まだ届いていない段階だけを取り消す）・まだ届いていない段階は `acted_at` が空のまま。確かめは二重の守りになっていて、片方を外しても振る舞いは変わらない。
+
+### U10 を足したわけ
+
+U10 は、⑦ の一覧の「編集」のボタンが小窓へ渡す値のうち、今の印に使う文字（`'stamp' => $u->approvalMember?->stamp_text ?? ''`）を `''` にする変異。小窓の「印に使う文字」の欄が空のまま開き、そのまま保存すると、設定した印に使う文字が消えて氏名からの既定に戻る（Task 4 の点検で足した変異。計画の時点から、生き残る見込みと分かっていた穴）。既存の `test_the_list_shows_a_preview_of_each_stamp_and_the_edit_form_has_the_field` は、一覧の見本の `aria-label`・欄の名前・案内の文だけを見ていて、`openEdit(…)` に渡る値を見ていなかった。手元の画面の確かめ（Task 8）では見えるが、自動のテストが無かった。
+
+足したテスト（`tests/Feature/Approval/Phase4/StampTextSettingTest.php`・既存のテストの中に確かめ 2 つ + 取り出す補助の関数 1 つ・+20 行。コミット `b5c68f20`）:
+
+```php
+        // 編集の小窓へ渡る値にも今の印に使う文字が入っている（空で開くと、そのまま保存して印に使う文字が消える）
+        $rows = $this->editRows($html);
+        $this->assertSame('花子', $rows[$w['applicant']->id]['stamp'], '編集の小窓は今の印に使う文字を入れて開く');
+        $this->assertSame('', $rows[$w['head']->id]['stamp'], '印に使う文字を決めていない人は空');
+```
+
+`editRows()` は、一覧の HTML の `openEdit(JSON.parse('…'))` を取り出し、`Js::from()` の書き方（引用符は `\u0022`・バックスラッシュは二重）を戻して JSON として読む。
+
+| 場面 | 結果 |
+|---|---|
+| 元のテスト + U10（`b94ece7d` の写し） | `OK (961 tests, 7172 assertions)` ＝ **緑（穴）** |
+| 足したテスト（変異なしの写し・`StampTextSettingTest`） | 緑: `OK (8 tests, 31 assertions)` |
+| 足したテスト + U10（写し・`StampTextSettingTest`） | **赤**: `Tests: 8, Assertions: 30, Failures: 1.`・落ちたのは `test_the_list_shows_a_preview_of_each_stamp_and_the_edit_form_has_the_field` の 1 本だけ。理由は `編集の小窓は今の印に使う文字を入れて開く` `Failed asserting that two strings are identical.`（期待 `'花子'`・実際 `''`・`StampTextSettingTest.php:149`） |
+| 足したテスト + U10（`mutate.py`・`TARGET` の 961 本） | **赤**: `Tests: 961, Assertions: 7173, Failures: 1.`・落ちたのは同じ 1 本だけ（`mutations-impl-u10-after.jsonl`） |
+| 元に戻した写し（`StampTextSettingTest`） | 緑: `OK (8 tests, 31 assertions)`（ビューは元と `cmp` で一致） |
+| WT の全件（足したあと） | `OK (3383 tests, 23958 assertions)` |
+
+### Task 5・Task 3 の点検の手直しで、計画のコードと最後のコードが違うところ
+
+計画（Task 5・Task 3）のコードは、手直しの**前**の形。差分のファイル `~/.claude/plans/approval-phase3-tasks/4a/patches/0005-task05-PDF.patch`（と `0003-task03.patch`）も手直しの前の形のまま。最後のコードは、次の 6 コミットが足した分だけ違う（`git show --stat` で確かめた。コードの変更は `pdf.blade.php` だけで、`PdfSheet.php`・`ApprovalPdf.php` などは計画のまま）:
+
+| コミット | 内容 | ファイル |
+|---|---|---|
+| `a7220226`（Task 3） | 印の上段の部門の略称（`<`・`&` を含む）がエスケープされることを確かめるテスト（V07 の守り）。コードの変更なし | `StampDisplayTest.php` +14 |
+| `2a3f941b`（Task 5） | 社長の印が欄の枠からはみ出さないようにする。決裁の欄を 2 段に分け（上の段: 判断の欄・申請部門・承認、下の段: コメント・印。`td.upper`・`td.lower`・段の間の線は消す）、判断の欄の小さな表を印・コメントと同じセルに入れ子にしない。表に `page-break-inside: avoid` | `pdf.blade.php` +15 −6・`PdfSheetTest.php` +2 |
+| `100bf0c1`（Task 5） | 本文が長い URL で縮まないようにする。本文の表に `overflow: wrap`（CSS `table.wrap { overflow: wrap; }`）。長い語のテストと、120 行の本文が 4 ページ以上になるテスト | `pdf.blade.php` +4 −1・`PdfSheetTest.php` +19 −1 |
+| `3a308425`（Task 5） | 判断した欄の朱の枠。選んだ欄の CSS を `.on` から `td.mark.on` に（詳細度の高い `td.mark` の黒の枠に負けていた） | `pdf.blade.php` +2 −1・`PdfSheetTest.php` +2 |
+| `013dfc42`（Task 5） | 部門長と審査のコメントのエスケープのテスト（P20・P21 の守り）。コードの変更なし | `PdfSheetTest.php` +8 −4 |
+| `b94ece7d`（Task 5） | 件名・コメント・添付・審査の表も、人が打つ文字の入る表すべてに `class="wrap"`（決裁の欄の表を含む）を付け、長い語を折り返す。決裁No・日付の表と、入れ子の判断の欄 `table.marks` には付けない（短い決まった文字だけ） | `pdf.blade.php` +10 −9・`PdfSheetTest.php` +59 |
+
+この 6 つのうち、変異テスト（上の 67 通り）で新しく守りを確かめたのは V07（`a7220226`）・P20・P21（`013dfc42`）・P22・P24（`100bf0c1`・`b94ece7d`）・P23（`3a308425`）。`2a3f941b` の 2 段の組み方は、決裁の欄が長いコメントで枠をはみ出さない見た目の確かめ（Task 8 の PDF）で見る。
+
+### 後始末
+
+写し（`<scratchpad>/p4a-mutation`・`<scratchpad>/impl/t07-u10-copy`）は、この記録のコミットのあとで、中身が写しであること（`pwd`・`ls`）を確かめて消す。結果の jsonl は消す前に `~/.claude/plans/approval-phase3-tasks/4a/measure/` に写す。WT の変更は、U10 のテスト（`b5c68f20`）とこの節だけ。
