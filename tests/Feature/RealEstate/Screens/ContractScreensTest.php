@@ -128,4 +128,64 @@ class ContractScreensTest extends RealEstateScreenTestCase
         $this->assertFlash($html, 'success', '仲介案件を不成約にしました。');
         $this->assertSame('lost', $contract->fresh()->status->value);
     }
+
+    // ============================================================
+    // 入力エラーで戻ったとき、分譲地の区画が選ばれたまま（R1）
+    // ============================================================
+
+    public function test_a_subdivision_contract_keeps_its_lot_after_an_input_error(): void
+    {
+        $project = $this->project();
+        $lot = $this->lot($project, 3, 12000000);
+        $buyer = $this->buyer();
+        $url = route('realestate.contracts.create');
+        $form = $this->subdivisionForm($this->htmlOf($url), $project, $lot);
+
+        // 買主を選び忘れて送る
+        $html = $this->landed($this->submit($form, $url));
+        $this->assertErrorItem($html, trans('validation.required', ['attribute' => '買主']));
+
+        // 戻った画面をそのまま送ると、区画は選ばれたまま（分譲地を選び直さなくてよい）
+        $again = $this->browserForm($html, 'action="' . route('realestate.contracts.store') . '"', 'contractForm');
+        $this->assertSame([(string) $project->id, (string) $lot->id, '12000000'],
+            [$again['fields']['project_id'], $again['fields']['lot_id'], $again['fields']['contract_amount_land']], '戻った画面で区画が選ばれていない');
+        $again = $this->fill($again, ['buyer_id' => (string) $buyer->id]);
+        $html = $this->landed($this->submit($again, $url));
+
+        $this->assertFlash($html, 'success', '契約を登録しました。');
+        $this->assertSame($lot->id, ReContract::firstOrFail()->lot_id);
+    }
+
+    public function test_an_edited_subdivision_contract_keeps_the_new_lot_after_an_input_error(): void
+    {
+        $old = $this->project();
+        $new = $this->project(['project_code' => 'RE-PRJ-002', 'project_name' => '北条分譲地']);
+        $oldLot = $this->lot($old, 1, 12000000, 'sold');
+        $newLot = $this->lot($new, 7, 9000000);
+        $contract = ReContract::create([
+            'department' => 'realestate', 'contract_type' => 'subdivision_lot', 'status' => 'contracted', 'contract_date' => '2026-09-01',
+            'property_name' => '平井分譲地', 'project_id' => $old->id, 'lot_id' => $oldLot->id, 'buyer_id' => $this->buyer()->id,
+            'contract_amount_land' => 12000000, 'cost_amount' => 9000000, 'created_by' => $this->user->id,
+        ]);
+        $url = route('realestate.contracts.edit', $contract);
+        $needle = 'action="' . route('realestate.contracts.update', $contract) . '"';
+        $responses = [
+            $this->apiResponse(route('api.realestate.project-lots', $new)),
+            $this->apiResponse(route('api.realestate.project-lot-cost', $new)),
+        ];
+        $form = $this->browserForm($this->htmlOf($url), $needle, 'contractEditForm',
+            'data.projectId = "' . $new->id . '"; data.onProjectChange(); setImmediate(function () { data.lotId = "' . $newLot->id . '"; });', $responses);
+
+        // 分譲地を変えたあと、契約日を消して送る
+        $html = $this->landed($this->submit($this->fill($form, ['contract_date' => '']), $url));
+        $this->assertErrorItem($html, trans('validation.required', ['attribute' => '契約日']));
+
+        $again = $this->browserForm($html, $needle, 'contractEditForm');
+        $this->assertSame([(string) $new->id, (string) $newLot->id], [$again['fields']['project_id'], $again['fields']['lot_id']], '戻った画面で新しい区画が選ばれていない');
+        $html = $this->landed($this->submit($this->fill($again, ['contract_date' => '2026-09-01']), $url));
+
+        $this->assertFlash($html, 'success', '契約情報を更新しました。');
+        $this->assertSame($newLot->id, $contract->fresh()->lot_id);
+        $this->assertSame(['on_sale', 'sold'], [$oldLot->fresh()->status->value, $newLot->fresh()->status->value]);
+    }
 }

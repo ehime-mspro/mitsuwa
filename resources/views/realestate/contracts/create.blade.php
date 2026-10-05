@@ -91,7 +91,7 @@
                                 :disabled="!isSubdivision()">
                             <option value="">— PJ選択後に表示 —</option>
                             <template x-for="lot in lots" :key="lot.id">
-                                <option :value="lot.id" x-text="'区画' + lot.lot_number + (lot.selling_price ? '（' + Number(lot.selling_price).toLocaleString() + '円）' : '')"></option>
+                                <option :value="lot.id" :selected="String(lot.id) === String(lotId)" x-text="'区画' + lot.lot_number + (lot.selling_price ? '（' + Number(lot.selling_price).toLocaleString() + '円）' : '')"></option>
                             </template>
                         </select>
                         <div class="fg-note">※ 販売中・商談中の区画のみ表示</div>
@@ -432,7 +432,8 @@ function contractForm() {
         profitRate: null,
         procCost: null,
         projCost: null,
-        lots: [],
+        // 入力エラーで戻ったときは、選んでいた分譲地の区画（サーバが描く。<option> は :selected で選び直す。Top trap #3）
+        lots: @json($lots),
 
         isProcurement: function() {
             return this.contractType === 'procurement_land'

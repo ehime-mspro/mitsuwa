@@ -136,8 +136,13 @@ class ReContractController extends Controller
         // 担当者
         $staffUsers = User::assignable()->orderBy('name')->get(['id', 'name']);
 
+        // 入力エラーで戻ったとき、選んでいた分譲地の区画を選択肢に戻す。
+        // ⚠ 区画の一覧は分譲地を選んだときに JS が API から取るので、渡さないと空のまま描かれ、
+        //    選んでいた区画が送られず、分譲地を選び直すまで区画を選べない
+        $lots = $this->lotOptions(old('project_id'));
+
         return view('realestate.contracts.create', compact(
-            'procurements', 'projects', 'buyers', 'staffUsers', 'procurementLandOnly'
+            'procurements', 'projects', 'buyers', 'staffUsers', 'procurementLandOnly', 'lots'
         ));
     }
 
@@ -284,19 +289,8 @@ class ReContractController extends Controller
             }
         })->orderBy('project_code')->get(['id', 'project_code', 'project_name']);
 
-        // 区画リスト（現在のPJ）
-        $lots = collect();
-        if ($contract->project_id) {
-            $lots = ReProjectLot::where('project_id', $contract->project_id)
-                ->where(function ($q) use ($contract) {
-                    $q->whereIn('status', [LotStatus::OnSale->value, LotStatus::Negotiating->value]);
-                    if ($contract->lot_id) {
-                        $q->orWhere('id', $contract->lot_id);
-                    }
-                })
-                ->orderBy('lot_number')
-                ->get(['id', 'lot_number', 'selling_price', 'status']);
-        }
+        // 区画リスト（今の分譲地。入力エラーで戻ったときは選び直していた分譲地。今の区画は販売済みでも含める）
+        $lots = $this->lotOptions(old('project_id', $contract->project_id), $contract->lot_id);
 
         $buyers = Buyer::orderBy('last_name_kana')->orderBy('first_name_kana')
             ->get(['id', 'last_name', 'first_name']);
@@ -484,12 +478,7 @@ class ReContractController extends Controller
      */
     public function getProjectLots(ReProject $project)
     {
-        $lots = $project->lots()
-            ->whereIn('status', [LotStatus::OnSale->value, LotStatus::Negotiating->value])
-            ->orderBy('lot_number')
-            ->get(['id', 'lot_number', 'selling_price', 'status']);
-
-        return response()->json($lots);
+        return response()->json($this->lotOptions($project->id));
     }
 
     /**
@@ -517,6 +506,29 @@ class ReContractController extends Controller
     // ================================================================
     // プライベートメソッド
     // ================================================================
+
+    /**
+     * 契約の画面の区画の選択肢（販売中・商談中。$keepLotId は今の区画で、状態によらず含める）。
+     * 分譲地を選んだときに JS が叩く API と、入力エラーで戻った画面が同じ一覧を使う。
+     *
+     * @return \Illuminate\Support\Collection<int, ReProjectLot>
+     */
+    private function lotOptions(mixed $projectId, ?int $keepLotId = null)
+    {
+        if (! $projectId) {
+            return collect();
+        }
+
+        return ReProjectLot::where('project_id', $projectId)
+            ->where(function ($q) use ($keepLotId) {
+                $q->whereIn('status', [LotStatus::OnSale->value, LotStatus::Negotiating->value]);
+                if ($keepLotId) {
+                    $q->orWhere('id', $keepLotId);
+                }
+            })
+            ->orderBy('lot_number')
+            ->get(['id', 'lot_number', 'selling_price', 'status']);
+    }
 
     /**
      * 仕入れ案件 id => 土地のみか のマップ。
