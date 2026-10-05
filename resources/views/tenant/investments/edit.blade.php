@@ -238,12 +238,15 @@ function investmentEditForm() {
     const allUnits = @json($allUnits);
 
     const existingDetails = @json($investmentDetails);
+    {{-- 入力エラーで戻ったときは直した明細の行を戻す（無いと保存済みの内容に戻り、直した行が消える） --}}
+    const oldDetails = @json(array_values(old('details', [])));
 
     return {
         propertyId: '{{ old('property_id', $investment->property_id) }}',
         unitId: '{{ old('unit_id', $investment->unit_id) }}',
         filteredUnits: [],
-        details: existingDetails.length > 0 ? existingDetails : [{ cost_item: 'interior', contractor_name: '', amount: '', executed_at: '', notes: '' }],
+        details: oldDetails.length > 0 ? oldDetails
+            : (existingDetails.length > 0 ? existingDetails : [{ cost_item: 'interior', contractor_name: '', amount: '', executed_at: '', notes: '' }]),
 
         init() {
             this.filterUnits();

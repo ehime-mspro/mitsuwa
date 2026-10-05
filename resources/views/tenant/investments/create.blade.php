@@ -237,12 +237,14 @@
 <script>
 function investmentForm() {
     const allUnits = @json($allUnits);
+    {{-- 入力エラーで戻ったときは打ち込んだ明細の行を戻す（無いと既定の 1 行に戻り、行が全部消える） --}}
+    const oldDetails = @json(array_values(old('details', [])));
 
     return {
         propertyId: '{{ old('property_id', $presetPropertyId ?? '') }}',
         unitId: '{{ old('unit_id', $presetUnitId ?? '') }}',
         filteredUnits: [],
-        details: [
+        details: oldDetails.length > 0 ? oldDetails : [
             { cost_item: 'interior', contractor_name: '', amount: '', executed_at: '', notes: '' }
         ],
 
