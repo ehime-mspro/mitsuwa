@@ -539,6 +539,8 @@ trait DrivesAlpineFetch
             window: { location: location },
             setTimeout() { return 0; },
             clearTimeout() {},
+            // $steps の中で「fetch の応答が届いたあと」の操作を書くため（届いた区画から選ぶ など）
+            setImmediate,
             confirm(message) { confirms.push(String(message)); return input.confirm; },
             alert(message) { alerts.push(String(message)); },
             document: {
