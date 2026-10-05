@@ -193,7 +193,8 @@ trait DrivesAlpineFetch
         $pos = strpos($html, $needle);
         $open = strrpos(substr($html, 0, $pos), '<form');
         $body = substr($html, $open, strpos($html, '</form>', $pos) - $open);
-        $model = $this->formModel($body);
+        // フォームの中に置かれた <script> の文字列（コメントの `<template x-for>` など）を要素として数えない
+        $model = $this->formModel((string) preg_replace('/<script\b[^>]*>.*?<\/script>/is', '', $body));
 
         $run = $this->runNode([
             'script'     => $this->scriptsContaining($html, $withScripts) . ($function === null ? '' : $this->scriptDefining($html, $function)),

@@ -32,11 +32,17 @@ trait SubmitsScreenForms
         return $form;
     }
 
-    /** 画面から送る（$from は送った画面＝入力エラーで戻る先） */
+    /**
+     * 画面から送る（$from は送った画面＝入力エラーで戻る先）。
+     * ⚠ parseForm() の項目名は描いたままの `survey[3]` なので、ブラウザから届いたときと同じく PHP の入れ子の配列に直してから送る
+     *   （直さないと `survey.3` を読むコントローラに値が届かない）。
+     */
     protected function submit(array $form, string $from): TestResponse
     {
+        parse_str(http_build_query($form['fields']), $fields);
+
         return $this->actingAs($this->user)->from($from)
-            ->call($form['method'] === 'GET' ? 'GET' : 'POST', $form['action'], $form['fields']);
+            ->call($form['method'] === 'GET' ? 'GET' : 'POST', $form['action'], $fields);
     }
 
     /** 転送をたどって着いた画面の HTML（Bug #63: 行き先の URL だけでなく、着いた画面で文言を見る） */
