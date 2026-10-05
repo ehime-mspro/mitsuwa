@@ -2,7 +2,10 @@
      紙の様式（決裁申請書.xls）の枠を使い、使わない欄（決裁区分・項目番号・関連部門）は外す。
      ⚠ mPDF は CSS の一部しか読まない（flex・grid・CSS の変数は使えない）。枠は表で組む。
      ⚠ 本文は罫線の 1 行を表の 1 行にする（mPDF は表の 1 行をページの途中で切れない。PdfSheet::bodyRows()）。
-     ⚠ 文字はすべて {{ }} で包む（印は StampSvg が e() で包んだ SVG を返す）。 --}}
+     ⚠ 文字はすべて {{ }} で包む（印は StampSvg が e() で包んだ SVG を返す）。
+     ⚠ 人が打った文字の入る表（決裁の欄・件名・本文・添付・審査）には class="wrap"（mPDF の表の CSS overflow: wrap）を付ける。
+        空白の無い長い語（URL・ファイル名）をセルの中で折り返す。無いと、その語が収まるまで表全体の文字が縮む（word-wrap・overflow-wrap は効かない）。
+        決裁No・日付の表（付けると列の幅が少し変わる）と入れ子の判断の欄 table.marks は、短い決まった文字だけなので付けない --}}
 @php
     // 紙の「可・条可・差戻・否」「可・保留・否」の欄。判断したものだけ朱の枠にする
     // ⚠ 文中の <span> の枠は mPDF が描き損なうことがある（2026-10-03 の試しで一部の枠が消えた）ので、小さな表で組む
@@ -26,7 +29,7 @@
     .small { font-size: 8.5pt; }
     .note { font-size: 8.5pt; color: #444; }
     td.line { border-top: none; border-bottom: 0.4pt dashed #999; height: 6mm; }
-    table.body { overflow: wrap; }
+    table.wrap { overflow: wrap; }
 </style>
 
 <div class="title">決裁申請書</div>
@@ -49,7 +52,7 @@
 {{-- ⚠ 判断の欄（入れ子の小さな表）は上の段に置き、コメント・印と同じセルに入れない。同じセルに入れると、mPDF がセルの高さを
      少なく見積もり、社長のコメントが 8 行ほどで印が枠からはみ出した（2026-10-04 の点検）。上の段と下の段の間の線は消して 1 つの欄に見せ、
      表は 1 段だったときと同じく段の間でページを分けない（page-break-inside: avoid） --}}
-<table style="page-break-inside: avoid;">
+<table class="wrap" style="page-break-inside: avoid;">
     <tr>
         <td class="upper" style="width: 45%;">
             <table class="marks">
@@ -94,7 +97,7 @@
 </table>
 <div class="gap"></div>
 
-<table>
+<table class="wrap">
     <tr>
         <td class="label" style="width: 18mm;">件名</td>
         <td>{{ $sheet->subject ?? '' }}</td>
@@ -108,14 +111,12 @@
         </td>
     </tr>
 </table>
-{{-- ⚠ overflow: wrap は mPDF の表の CSS。空白の無い長い語（URL など）をセルの中で折り返す。無いと、その語が収まるまで
-     本文の表全体を縮めた（200 文字の URL 1 つで全ページの本文が約半分の大きさになった。word-wrap・overflow-wrap は効かない） --}}
-<table class="body">
+<table class="wrap">
     @foreach($sheet->bodyRows as $row)
         <tr><td class="line">{{ $row }}</td></tr>
     @endforeach
 </table>
-<table>
+<table class="wrap">
     <tr>
         <td style="border-top: none; text-align: right;" class="small">
             （添付ファイル {{ count($sheet->attachmentNames) }} 件{{ $sheet->attachmentNames === [] ? '' : ': ' . implode(' ／ ', $sheet->attachmentNames) }}）
@@ -124,7 +125,7 @@
 </table>
 <div class="gap"></div>
 
-<table>
+<table class="wrap">
     <tr>
         <td class="label" style="width: 22mm;">審査部門</td>
         <td style="width: 60%;">

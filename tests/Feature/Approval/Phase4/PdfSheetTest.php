@@ -3,6 +3,7 @@
 namespace Tests\Feature\Approval\Phase4;
 
 use App\Enums\ApprovalStepResult;
+use App\Models\ApprovalAttachment;
 use App\Models\ApprovalRequest;
 use App\Support\Approval\ApprovalPdf;
 use App\Support\Approval\PdfSheet;
@@ -47,6 +48,37 @@ class PdfSheetTest extends TestCase
     private static function pageCount(string $pdf): int
     {
         return preg_match_all('#/Type /Page\b#', $pdf);
+    }
+
+    /** PDF の中で使われている文字の大きさ（pt。小さい順）。mPDF は表を縮めるとき、その表の文字の大きさを小さくして描く */
+    private static function fontSizes(string $pdf): array
+    {
+        preg_match_all('#stream\r?\n(.*?)\r?\nendstream#s', $pdf, $streams);
+        $sizes = [];
+        foreach ($streams[1] as $stream) {
+            $content = @gzuncompress($stream);   // 文字の流れだけ圧縮されている（フォントなどは別の形）
+            if ($content !== false && preg_match_all('#/F\d+ ([\d.]+) Tf#', $content, $found)) {
+                $sizes = array_merge($sizes, array_map('floatval', $found[1]));
+            }
+        }
+        $sizes = array_values(array_unique($sizes));
+        sort($sizes);
+
+        return $sizes;
+    }
+
+    /** 社長が可と決裁した申請の紙面（コメント・件名・添付のファイル名を変えられる。申請者が開く） */
+    private function decidedSheet(array $w, array $attributes = [], string $headComment = '急ぎでお願いします', string $reviewComment = '見積を 2 社取ってください', string $presidentComment = '了承', ?string $attachmentName = null): PdfSheet
+    {
+        $r = $this->toPresident($w, $attributes, $headComment, $reviewComment);
+        $this->workflow->judgePresident($r, $w['president'], $r->lock_version, ApprovalStepResult::Approve, $presidentComment);
+
+        if ($attachmentName !== null) {
+            ApprovalAttachment::create(['request_id' => $r->id, 'original_name' => $attachmentName, 'stored_path' => "approvals/{$r->id}/x.pdf",
+                'mime' => 'application/pdf', 'size' => 10, 'uploaded_by' => $w['applicant']->id, 'added_round' => $r->round + 1]);
+        }
+
+        return PdfSheet::for($w['applicant'], $r->fresh());
     }
 
     public function test_a_decided_request_has_the_number_the_marks_and_the_three_stamps(): void
@@ -189,6 +221,33 @@ class PdfSheetTest extends TestCase
         $pages = self::pageCount(ApprovalPdf::sheet(PdfSheet::for($w['applicant'], $plain)));
 
         $this->assertGreaterThanOrEqual($pages, self::pageCount(ApprovalPdf::sheet(PdfSheet::for($w['applicant'], $withUrl))), '長い語はセルの中で折り返し、本文の表全体を縮めない（縮むとページが減る）');
+    }
+
+    public function test_a_long_word_without_spaces_does_not_shrink_the_subject_the_comments_or_the_attachments(): void
+    {
+        $w     = $this->approvalWorld();
+        $word  = fn (int $length): string => substr('https://example.com/' . str_repeat('abcdefghij', (int) ceil($length / 10)), 0, $length);   // 空白の無い長い語（共有リンクなど）
+        $plain = self::fontSizes(ApprovalPdf::sheet($this->decidedSheet($w)));
+
+        $this->assertContains(10.0, $plain, '文字の大きさを読み取れている（読み取れないと、下の比べが空振りする）');
+
+        $cases = [
+            '社長のコメント（70 文字）'        => ['presidentComment' => $word(70)],
+            '社長のコメント（150 文字）'       => ['presidentComment' => $word(150)],
+            '部門長のコメント'                 => ['headComment' => $word(150)],
+            '審査のコメント'                   => ['reviewComment' => $word(150)],
+            '件名（100 文字まで）'             => ['attributes' => ['subject' => $word(100)]],
+            '添付のファイル名（255 文字まで）' => ['attachmentName' => substr($word(255), 0, 251) . '.pdf'],
+        ];
+
+        foreach ($cases as $label => $arguments) {
+            $sheet = $this->decidedSheet($w, ...$arguments);
+
+            if (isset($arguments['attachmentName'])) {
+                $this->assertSame([$arguments['attachmentName']], $sheet->attachmentNames, '添付は紙面に載っている（載らないと、この確かめが空振りする）');
+            }
+            $this->assertSame($plain, self::fontSizes(ApprovalPdf::sheet($sheet)), "{$label}に空白の無い長い語があっても、その表の文字は縮まない（折り返す）");
+        }
     }
 
     public function test_the_sheet_draws_the_marks_the_stamps_and_the_footer(): void
