@@ -143,5 +143,25 @@ class StampTextSettingTest extends TestCase
         $this->assertStringContainsString('name="stamp_text"', $html);
         $this->assertStringContainsString('決裁の所属部門と印に使う文字だけ変えられます。', $html);
         $this->assertStringContainsString('決裁の所属部門と印に使う文字は全員について変えられます。', $html, '画面の説明');
+
+        // 編集の小窓へ渡る値にも今の印に使う文字が入っている（空で開くと、そのまま保存して印に使う文字が消える）
+        $rows = $this->editRows($html);
+        $this->assertSame('花子', $rows[$w['applicant']->id]['stamp'], '編集の小窓は今の印に使う文字を入れて開く');
+        $this->assertSame('', $rows[$w['head']->id]['stamp'], '印に使う文字を決めていない人は空');
+    }
+
+    /** 一覧の「編集」が小窓へ渡す値（openEdit の引数）を、利用者の id ごとに取り出す */
+    private function editRows(string $html): array
+    {
+        preg_match_all("/openEdit\\(JSON\\.parse\\('(.*?)'\\)\\)/s", $html, $matches);
+
+        $rows = [];
+        foreach ($matches[1] as $literal) {
+            // Js::from() は JSON を JS の文字列にして渡す（引用符は \u0022・バックスラッシュは二重）
+            $row = json_decode(str_replace(['\\u0022', '\\\\'], ['"', '\\'], $literal), true, 512, JSON_THROW_ON_ERROR);
+            $rows[$row['id']] = $row;
+        }
+
+        return $rows;
     }
 }
