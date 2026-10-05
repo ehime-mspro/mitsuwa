@@ -9,10 +9,10 @@ use App\Models\Property;
 use App\Models\Unit;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Testing\TestResponse;
 use Tests\Concerns\CreatesStructureTypeSchema;
 use Tests\Concerns\DrivesAlpineFetch;
 use Tests\Concerns\ParsesForms;
+use Tests\Concerns\SubmitsScreenForms;
 use Tests\TestCase;
 
 /**
@@ -21,8 +21,7 @@ use Tests\TestCase;
  * ⚠ 送る値は描いた画面から取る（Bug #47）。Alpine が値を入れる欄（`x-model`・`:value`・`<template x-for>` の行・
  *   JS が足す選択肢）は DrivesAlpineFetch::browserForm() が JS の状態で評価する。静的な parseForm() だけで送ると、
  *   画面から値が消えても（`x-model` を外しても）緑のままになる。
- * ⚠ 成功・失敗の文はレイアウトの帯（`text-emerald-800` / `text-red-800` の span）に出る。文言だけで見ると、
- *   同じ名前が画面の別の場所にも出ているので取り違える（Bug #43）。帯の要素ごと見る（assertFlash()）。
+ * ⚠ 送る・着いた画面を見る・帯の文言は SubmitsScreenForms（不動産の画面のテストと共用）。
  * ⚠ 入力エラーは画面の上の箱（「入力内容にエラーがあります。」の下の `<li>`）に出る。項目名だけで見ると
  *   ラベルに一致して素通りする（Bug #49）。`<li>` の全文で見る（assertInputError()）。
  */
@@ -32,6 +31,7 @@ abstract class TenantScreenTestCase extends TestCase
     use ParsesForms;
     use DrivesAlpineFetch;
     use CreatesStructureTypeSchema;
+    use SubmitsScreenForms;
 
     protected User $user;
 
@@ -52,46 +52,6 @@ abstract class TenantScreenTestCase extends TestCase
             'code' => 'T-001', 'name' => '画面テストビル', 'property_type' => 'tenant', 'department' => 'tenant',
             'address' => '愛媛県松山市大街道1-1', 'total_floors' => 5, 'operation_status' => 'active',
         ]);
-    }
-
-    protected function htmlOf(string $url): string
-    {
-        return $this->actingAs($this->user)->get($url)->assertOk()->getContent();
-    }
-
-    /**
-     * 利用者が欄に打ち込む（Alpine の値を持たない素の欄）。画面に無い項目は足さない（足すと、画面から欄が消えても緑になる）。
-     */
-    protected function fill(array $form, array $values): array
-    {
-        foreach ($values as $name => $value) {
-            $this->assertArrayHasKey($name, $form['fields'], "画面のフォームに「{$name}」の欄が無い");
-            $form['fields'][$name] = $value;
-        }
-
-        return $form;
-    }
-
-    /** 画面から送る（$from は送った画面＝入力エラーで戻る先） */
-    protected function submit(array $form, string $from): TestResponse
-    {
-        return $this->actingAs($this->user)->from($from)
-            ->call($form['method'] === 'GET' ? 'GET' : 'POST', $form['action'], $form['fields']);
-    }
-
-    /** 転送をたどって着いた画面の HTML（Bug #63: 行き先の URL だけでなく、着いた画面で文言を見る） */
-    protected function landed(TestResponse $response): string
-    {
-        return $this->followRedirects($response)->assertOk()->getContent();
-    }
-
-    /** レイアウトの帯に $message が出ている（$type は success / error） */
-    protected function assertFlash(string $html, string $type, string $message): void
-    {
-        $class = $type === 'success' ? 'text-emerald-800' : 'text-red-800';
-        // 一致したかだけを見る（失敗したときに画面の HTML を丸ごと出さない）
-        $pattern = '/<span class="text-sm ' . $class . '">\s*' . preg_quote(e($message), '/') . '\s*<\/span>/u';
-        $this->assertSame(1, preg_match($pattern, $html), "帯（{$type}）に「{$message}」が出ていない");
     }
 
     /** 画面の上の入力エラーの箱に $message が出ている */

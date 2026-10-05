@@ -46,12 +46,15 @@ trait DrivesAlpineFetch
      * @param  string  $steps  `data`（コンポーネント）を操る JS。例 `data.startAdd(); data.newName = '新店'; data.submitAdd();`
      * @param  array<int, array{status: int, body: mixed}>  $responses  fetch / XMLHttpRequest に順に返す応答。足りなければ要求は保留のまま
      * @param  array<int, string>  $evaluate  $steps のあとに JS の状態で評価する式（結果は `evaluated` に同じ順で入る）
+     * @param  array<int, string>  $withScripts  一緒に読む `<script>` の目印（その文字列を含む script がちょうど 1 つずつ。
+     *                                            $function の script より先に読む）。コンポーネントが別の script の関数
+     *                                            （`costExcelImporterFactory(`）や `window.…` の値を使う画面のため
      * @return array{requests: array<int, array{url: string, method: string, headers: array<string, string>, body: ?string}>, confirms: array<int, string>, alerts: array<int, string>, navigations: array<int, string>, submitted: array<int, array{ref: string, method: string, action: string, fields: array<string, string>}>, evaluated: array<int, mixed>, state: array<string, mixed>}
      */
-    protected function driveAlpine(string $html, string $function, string $factory, string $steps, array $responses = [], bool $confirm = true, array $evaluate = []): array
+    protected function driveAlpine(string $html, string $function, string $factory, string $steps, array $responses = [], bool $confirm = true, array $evaluate = [], array $withScripts = []): array
     {
         return $this->runNode([
-            'script'    => $this->scriptDefining($html, $function),
+            'script'    => $this->scriptsContaining($html, $withScripts) . $this->scriptDefining($html, $function),
             'csrf'      => preg_match('/<meta name="csrf-token" content="([^"]*)"/', $html, $m) ? $m[1] : null,
             'factory'   => $factory,
             'steps'     => $steps,
@@ -180,9 +183,10 @@ trait DrivesAlpineFetch
      * ⚠ $function が null のときは画面の script を読まず、$factory（インラインの x-data の式）でコンポーネントを作る。
      *
      * @param  array<int, array{status: int, body: mixed}>  $responses
+     * @param  array<int, string>  $withScripts  一緒に読む `<script>` の目印（driveAlpine() と同じ）
      * @return array{method: string, action: string, fields: array<string, mixed>, run: array}
      */
-    protected function browserForm(string $html, string $needle, ?string $function, string $steps = '', array $responses = [], ?string $factory = null): array
+    protected function browserForm(string $html, string $needle, ?string $function, string $steps = '', array $responses = [], ?string $factory = null, array $withScripts = []): array
     {
         $form = $this->parseForm($html, $needle);
 
@@ -192,7 +196,7 @@ trait DrivesAlpineFetch
         $model = $this->formModel($body);
 
         $run = $this->runNode([
-            'script'     => $function === null ? '' : $this->scriptDefining($html, $function),
+            'script'     => $this->scriptsContaining($html, $withScripts) . ($function === null ? '' : $this->scriptDefining($html, $function)),
             'csrf'       => preg_match('/<meta name="csrf-token" content="([^"]*)"/', $html, $m) ? $m[1] : null,
             'factory'    => $factory ?? $this->xData($html, (string) $function),
             'steps'      => $steps,
@@ -471,6 +475,20 @@ trait DrivesAlpineFetch
         $this->assertCount(1, $hits, "function {$function}( を定義する <script> がちょうど 1 つ描かれていない");
 
         return $hits[0];
+    }
+
+    /** $needles の文字列をそれぞれ含む `<script>`（ちょうど 1 つずつ）をつないで返す */
+    private function scriptsContaining(string $html, array $needles): string
+    {
+        preg_match_all('/<script\b[^>]*>(.*?)<\/script>/s', $html, $scripts);
+        $joined = '';
+        foreach ($needles as $needle) {
+            $hits = array_values(array_filter($scripts[1], fn (string $s) => str_contains($s, $needle)));
+            $this->assertCount(1, $hits, "「{$needle}」を含む <script> がちょうど 1 つ描かれていない");
+            $joined .= $hits[0] . "\n";
+        }
+
+        return $joined;
     }
 
     private function runNode(array $input, string $harness): array
