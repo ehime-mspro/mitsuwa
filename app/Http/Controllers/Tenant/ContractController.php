@@ -454,13 +454,21 @@ class ContractController extends Controller
                 ->with('error', 'この契約は既に解約済みです。');
         }
 
+        // 契約終了日は契約日より前にできない（契約日の無い契約は今までどおり日付だけを見る）
+        $endDateRules = ['required', 'date'];
+        $messages = [];
+        if ($contract->contract_date) {
+            $endDateRules[] = 'after_or_equal:' . $contract->contract_date->format('Y-m-d');
+            $messages['contract_end_date.after_or_equal'] = '契約終了日は契約日（' . $contract->contract_date->format('Y/m/d') . '）以降の日付を指定してください。';
+        }
+
         $validated = $request->validate([
-            'contract_end_date'  => 'required|date',
+            'contract_end_date'  => $endDateRules,
             'final_month_type'   => 'required|in:full,prorated,half,free,manual',
             'final_month_amount' => 'nullable|integer|min:0|required_if:final_month_type,manual',
             'termination_reason' => 'nullable|string|max:5000',
             'settlement_file'    => 'nullable|file|mimes:pdf|max:10240',
-        ]);
+        ], $messages);
 
         // 最終月家賃額の自動計算
         $finalMonthAmount = $this->calculateMonthAmount(

@@ -150,6 +150,17 @@ class ContractScreensTest extends TenantScreenTestCase
         $this->assertSame('vacant', $unit->fresh()->status->value);
     }
 
+    public function test_an_end_date_before_the_contract_date_is_refused(): void
+    {
+        $contract = $this->activeContract($this->unit(1, 'A'));
+        $form = $this->terminateForm($contract, "data.contractEndDate = '2025-03-31';");
+
+        $html = $this->landed($this->submit($form, route('tenant.contracts.terminate', $contract)));
+
+        $this->assertInputError($html, '契約終了日は契約日（2025/04/01）以降の日付を指定してください。');
+        $this->assertSame('active', $contract->fresh()->status->value);
+    }
+
     public function test_an_end_date_on_the_contract_date_is_accepted(): void
     {
         $contract = $this->activeContract($this->unit(1, 'A'));
