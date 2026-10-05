@@ -74,11 +74,17 @@ class PdfSheetTest extends TestCase
         $this->workflow->judgePresident($r, $w['president'], $r->lock_version, ApprovalStepResult::Approve, $presidentComment);
 
         if ($attachmentName !== null) {
-            ApprovalAttachment::create(['request_id' => $r->id, 'original_name' => $attachmentName, 'stored_path' => "approvals/{$r->id}/x.pdf",
-                'mime' => 'application/pdf', 'size' => 10, 'uploaded_by' => $w['applicant']->id, 'added_round' => $r->round + 1]);
+            $this->attach($r, $w, $attachmentName);
         }
 
         return PdfSheet::for($w['applicant'], $r->fresh());
+    }
+
+    /** 申請に添付を 1 つ足す（申請者が足した形） */
+    private function attach(ApprovalRequest $r, array $w, string $name): void
+    {
+        ApprovalAttachment::create(['request_id' => $r->id, 'original_name' => $name, 'stored_path' => "approvals/{$r->id}/x.pdf",
+            'mime' => 'application/pdf', 'size' => 10, 'uploaded_by' => $w['applicant']->id, 'added_round' => $r->round + 1]);
     }
 
     public function test_a_decided_request_has_the_number_the_marks_and_the_three_stamps(): void
@@ -296,7 +302,11 @@ class PdfSheetTest extends TestCase
     {
         $w = $this->approvalWorld();
         $w['head']->update(['name' => '<b>部門</b>長']);
+        // 申請部門の名前・申請者の氏名・添付のファイル名も人が打てる文字（申請者が開くので、今の値がそのまま紙面に出る）
+        $w['dept']->update(['name' => '<b>部</b>']);
+        $w['applicant']->update(['name' => '<i>山田</i>']);
         $r = $this->toPresident($w, ['subject' => '<img src=x onerror=alert(1)>', 'body' => "<script>alert(2)</script>"], "<u>部門長</u>の意見\n2 行目", '<u>審査</u>の意見');
+        $this->attach($r, $w, '<img src=y>.pdf');
         $this->workflow->judgePresident($r, $w['president'], $r->lock_version, ApprovalStepResult::Return, "<i>見直し</i>\n2 行目");
 
         $html = view('approvals.requests.pdf', ['sheet' => PdfSheet::for($w['applicant'], $r->fresh())])->render();
@@ -307,9 +317,15 @@ class PdfSheetTest extends TestCase
         $this->assertStringNotContainsString('<i>見直し</i>', $html);
         $this->assertStringNotContainsString('<u>部門長</u>', $html);
         $this->assertStringNotContainsString('<u>審査</u>', $html);
+        $this->assertStringNotContainsString('<img src=y', $html, '添付のファイル名');
+        $this->assertStringNotContainsString('<b>部</b>', $html, '申請部門の名前');
+        $this->assertStringNotContainsString('<i>山田</i>', $html, '申請者の氏名');
         $this->assertStringContainsString('&lt;img src=x onerror=alert(1)&gt;', $html);
         $this->assertStringContainsString('&lt;i&gt;見直し&lt;/i&gt;<br />', $html, 'コメントはエスケープしてから改行を <br> にする');
         $this->assertStringContainsString('&lt;u&gt;部門長&lt;/u&gt;の意見<br />', $html, '部門長のコメントも');
         $this->assertStringContainsString('&lt;u&gt;審査&lt;/u&gt;の意見', $html, '審査のコメントも');
+        $this->assertStringContainsString('&lt;img src=y&gt;.pdf', $html, '添付のファイル名も（mPDF は http・file の読み込みを許すので、外れると紙面がサーバーのファイルを読みに行く）');
+        $this->assertStringContainsString('&lt;b&gt;部&lt;/b&gt;', $html, '申請部門の名前も');
+        $this->assertStringContainsString('&lt;i&gt;山田&lt;/i&gt;', $html, '申請者の氏名も');
     }
 }
