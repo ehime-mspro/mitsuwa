@@ -166,6 +166,239 @@ trait DrivesAlpineFetch
         return $form;
     }
 
+    /**
+     * ブラウザがこのフォームから送る項目を、Alpine が値を入れたあと（$steps のあと）の JS の状態で評価し、
+     * PHP が受け取る形（`details[0][amount]` は入れ子の配列）で返す。
+     * alpineForm() と違い、`<select>` / `<textarea>` / ラジオ / チェックボックスの `x-model`（`.number` などの修飾つきも）、
+     * `:name` / `:value` / `:disabled`、`<template x-for>` の中の入力（行ごとに展開）、`$refs` の選択欄に JS が足した選択肢まで、
+     * ブラウザと同じ決まりで評価する。$responses は fetch に順に返す応答（driveAlpine() と同じ）。
+     *
+     * ⚠ `<template>` の中身はブラウザでは描かれず、送られない。parseForm() は中身の入力も拾うので、ここでは外してから数える。
+     * ⚠ `x-model` の選択欄は、JS の値が選択肢に無いと落とす（ブラウザでは何も選ばれず、画面で選べない値になる）。
+     * ⚠ `:disabled` が真の項目は送らない（ブラウザと同じ。同じ name の欄を出し分ける画面の約束。CLAUDE.md「Form」）。
+     * ⚠ コンポーネントの init() は Alpine と同じく 1 回呼ぶ（`x-init="init()"` を重ねて書いた画面でも 1 回）。
+     * ⚠ $function が null のときは画面の script を読まず、$factory（インラインの x-data の式）でコンポーネントを作る。
+     *
+     * @param  array<int, array{status: int, body: mixed}>  $responses
+     * @return array{method: string, action: string, fields: array<string, mixed>, run: array}
+     */
+    protected function browserForm(string $html, string $needle, ?string $function, string $steps = '', array $responses = [], ?string $factory = null): array
+    {
+        $form = $this->parseForm($html, $needle);
+
+        $pos = strpos($html, $needle);
+        $open = strrpos(substr($html, 0, $pos), '<form');
+        $body = substr($html, $open, strpos($html, '</form>', $pos) - $open);
+        $model = $this->formModel($body);
+
+        $run = $this->runNode([
+            'script'     => $function === null ? '' : $this->scriptDefining($html, $function),
+            'csrf'       => preg_match('/<meta name="csrf-token" content="([^"]*)"/', $html, $m) ? $m[1] : null,
+            'factory'    => $factory ?? $this->xData($html, (string) $function),
+            'steps'      => $steps,
+            'responses'  => $responses,
+            'confirm'    => true,
+            'forms'      => (object) $this->refForms($html),
+            'evaluate'   => [],
+            'refOptions' => (object) $this->refSelectOptions($html),
+            'init'       => true,
+            'formModel'  => $model,
+        ], self::ALPINE_HARNESS);
+
+        $this->assertSame([], $run['formErrors'], 'ブラウザが送るフォームを組めなかった');
+        $query = [];
+        foreach ($run['formPairs'] as [$name, $value]) {
+            $this->assertDoesNotMatchRegularExpression('/[. ]/', $name, "項目名「{$name}」は parse_str で書き換わる");
+            $query[] = rawurlencode($name) . '=' . rawurlencode($value);
+        }
+        parse_str(implode('&', $query), $fields);
+
+        return ['method' => $form['method'], 'action' => $form['action'], 'fields' => $fields, 'run' => $run];
+    }
+
+    /**
+     * 画面のインラインの x-data（`x-data="{ … }"`）のうち、$needle のフォームを囲む直近のものの式を返す（実体参照は戻す）。
+     */
+    protected function inlineXDataAround(string $html, string $needle): string
+    {
+        $pos = strpos($html, $needle);
+        $this->assertNotFalse($pos, "フォームが見つからない: {$needle}");
+        $found = preg_match_all('/\bx-data="(\{[^"]*\})"/', substr($html, 0, $pos), $m);
+        $this->assertGreaterThan(0, $found, "{$needle} の手前にインラインの x-data が無い");
+
+        return html_entity_decode(end($m[1]), ENT_QUOTES, 'UTF-8');
+    }
+
+    /**
+     * フォームの中の入力を、ブラウザが送る単位で集める（`<template>` の中身は外し、x-for のものは行の型として返す）。
+     *
+     * @return array{controls: array<int, array<string, mixed>>, loops: array<int, array{for: string, controls: array<int, array<string, mixed>>}>}
+     */
+    private function formModel(string $html): array
+    {
+        [$plain, $templates] = $this->cutTemplates($html);
+        $controls = $this->formControls($plain, $templates, $usedBySelects);
+        $loops = [];
+        foreach ($templates as $id => $template) {
+            if (in_array($id, $usedBySelects, true)) {
+                continue;
+            }
+            $inner = $this->formModel($template['body']);
+            if ($inner['controls'] === [] && $inner['loops'] === []) {
+                continue;
+            }
+            $this->assertNotNull($template['for'], 'x-for でない <template> の中の入力は扱えない: ' . $template['open']);
+            $this->assertSame([], $inner['loops'], '入れ子の x-for の中の入力は扱えない: ' . $template['open']);
+            $loops[] = ['for' => $template['for'], 'controls' => $inner['controls']];
+        }
+
+        return ['controls' => $controls, 'loops' => $loops];
+    }
+
+    /**
+     * 一番外側の `<template>` を `<!--tpl:N-->` に置き換え、中身を返す（入れ子は中身ごと残す）。
+     *
+     * @return array{0: string, 1: array<int, array{open: string, for: ?string, body: string}>}
+     */
+    private function cutTemplates(string $html): array
+    {
+        preg_match_all('/<template\b[^>]*>|<\/template>/i', $html, $tokens, PREG_OFFSET_CAPTURE);
+        $templates = [];
+        $plain = '';
+        $cursor = 0;
+        $depth = 0;
+        $start = 0;
+        $openTag = '';
+        foreach ($tokens[0] as [$token, $offset]) {
+            if (! str_starts_with($token, '</')) {
+                if ($depth === 0) {
+                    $start = $offset;
+                    $openTag = $token;
+                }
+                $depth++;
+
+                continue;
+            }
+            $depth--;
+            $this->assertGreaterThanOrEqual(0, $depth, '<template> の対応が取れない');
+            if ($depth === 0) {
+                $id = count($templates);
+                $bodyStart = $start + strlen($openTag);
+                $templates[$id] = [
+                    'open' => $openTag,
+                    'for'  => $this->htmlAttr($openTag, 'x-for'),
+                    'body' => substr($html, $bodyStart, $offset - $bodyStart),
+                ];
+                $plain .= substr($html, $cursor, $start - $cursor) . "<!--tpl:{$id}-->";
+                $cursor = $offset + strlen($token);
+            }
+        }
+        $this->assertSame(0, $depth, '<template> が閉じていない');
+
+        return [$plain . substr($html, $cursor), $templates];
+    }
+
+    /**
+     * 入力・選択欄・テキストエリアを文書の順に集める。選択欄の中の `<template x-for>` の選択肢は、その選択欄の選択肢として持つ。
+     *
+     * @param  array<int, array{open: string, for: ?string, body: string}>  $templates
+     * @param  array<int, int>|null  $usedBySelects  選択欄の選択肢として使った <template> の番号（出力）
+     * @return array<int, array<string, mixed>>
+     */
+    private function formControls(string $plain, array $templates, ?array &$usedBySelects = null): array
+    {
+        $usedBySelects = [];
+        $controls = [];
+        preg_match_all('/<input\b[^>]*>|<textarea\b[^>]*>.*?<\/textarea>|<select\b[^>]*>.*?<\/select>/is', $plain, $matches);
+        foreach ($matches[0] as $element) {
+            $openTag = substr($element, 0, strpos($element, '>') + 1);
+            $kind = strtolower(substr($openTag, 1, strcspn($openTag, " \t\r\n>", 1)));
+            $name = $this->htmlAttr($openTag, 'name');
+            $nameExpr = $this->boundAttr($openTag, 'name');
+            if ($name === null && $nameExpr === null) {
+                continue;
+            }
+            $type = $kind === 'input' ? strtolower($this->htmlAttr($openTag, 'type') ?? 'text') : $kind;
+            if (in_array($type, ['submit', 'button', 'reset', 'image', 'file'], true)) {
+                continue;
+            }
+            $control = [
+                'kind'         => $kind,
+                'type'         => $type,
+                'name'         => $name,
+                'nameExpr'     => $nameExpr,
+                'model'        => preg_match('/(?<![\w:.@-])x-model(?:\.[\w-]+)*="([^"]*)"/i', $openTag, $m) ? html_entity_decode($m[1], ENT_QUOTES, 'UTF-8') : null,
+                'valueExpr'    => $this->boundAttr($openTag, 'value'),
+                'value'        => $this->htmlAttr($openTag, 'value') ?? (in_array($type, ['checkbox', 'radio'], true) ? 'on' : ''),
+                'checked'      => (bool) preg_match('/(?<![\w:.@-])checked(?=[\s>=\/])/i', $openTag),
+                'disabled'     => (bool) preg_match('/(?<![\w:.@-])disabled(?=[\s>=\/])/i', $openTag),
+                'disabledExpr' => $this->boundAttr($openTag, 'disabled'),
+                'ref'          => $this->htmlAttr($openTag, 'x-ref'),
+                'options'      => [],
+            ];
+            if ($kind === 'textarea') {
+                $control['value'] = html_entity_decode((string) preg_replace('/^<textarea\b[^>]*>|<\/textarea>$/i', '', $element), ENT_QUOTES, 'UTF-8');
+            }
+            if ($kind === 'select') {
+                preg_match_all('/<option\b[^>]*>|<!--tpl:(\d+)-->/i', $element, $parts, PREG_SET_ORDER);
+                foreach ($parts as $part) {
+                    if (isset($part[1]) && $part[1] !== '') {
+                        $template = $templates[(int) $part[1]];
+                        $usedBySelects[] = (int) $part[1];
+                        $this->assertNotNull($template['for'], '選択欄の中の x-for でない <template> は扱えない');
+                        preg_match_all('/<option\b[^>]*>/i', $template['body'], $loopOptions);
+                        foreach ($loopOptions[0] as $option) {
+                            $control['options'][] = $this->optionModel($option) + ['for' => $template['for']];
+                        }
+
+                        continue;
+                    }
+                    $control['options'][] = $this->optionModel($part[0]) + ['for' => null];
+                }
+            }
+            $controls[] = $control;
+        }
+
+        return $controls;
+    }
+
+    /** @return array{value: string, valueExpr: ?string, selected: bool, selectedExpr: ?string} */
+    private function optionModel(string $option): array
+    {
+        return [
+            'value'        => $this->htmlAttr($option, 'value') ?? '',
+            'valueExpr'    => $this->boundAttr($option, 'value'),
+            'selected'     => (bool) preg_match('/(?<![\w:.@-])selected(?=[\s>=\/])/i', $option),
+            'selectedExpr' => $this->boundAttr($option, 'selected'),
+        ];
+    }
+
+    /**
+     * `x-ref` の付いた選択欄の、描かれた選択肢（JS が `$refs.….options` を足し引きする出発点）。
+     *
+     * @return array<string, array<int, array{text: string, value: string, selected: bool}>>
+     */
+    private function refSelectOptions(string $html): array
+    {
+        $found = [];
+        preg_match_all('/<select\b([^>]*)>(.*?)<\/select>/is', $html, $selects, PREG_SET_ORDER);
+        foreach ($selects as $select) {
+            $ref = $this->htmlAttr('<select' . $select[1] . '>', 'x-ref');
+            if ($ref === null) {
+                continue;
+            }
+            [$plain] = $this->cutTemplates($select[2]);
+            preg_match_all('/<option\b([^>]*)>(.*?)<\/option>/is', $plain, $options, PREG_SET_ORDER);
+            $found[$ref] = array_map(fn (array $option) => [
+                'text'     => html_entity_decode(trim(strip_tags($option[2])), ENT_QUOTES, 'UTF-8'),
+                'value'    => $this->htmlAttr('<option' . $option[1] . '>', 'value') ?? '',
+                'selected' => (bool) preg_match('/(?<![\w:.@-])selected(?=[\s>=\/])/i', $option[1]),
+            ], $options);
+        }
+
+        return $found;
+    }
+
     /** 応答を driveAlpine() の $responses の 1 件にする */
     protected function asFetchResponse(TestResponse $response): array
     {
@@ -293,10 +526,15 @@ trait DrivesAlpineFetch
                 if (xhr.onload) { xhr.onload(); }
             });
         };
+        // `new Option(text, value)`（選択肢を JS で足す画面。契約の登録の区画）
+        function Option(text, value, defaultSelected, selected) {
+            return { text: String(text), value: value === undefined ? String(text) : String(value), selected: !!selected };
+        }
         const context = vm.createContext({
             URLSearchParams,
             console,
             XMLHttpRequest,
+            Option,
             location,
             window: { location: location },
             setTimeout() { return 0; },
@@ -333,15 +571,27 @@ trait DrivesAlpineFetch
             },
         });
         vm.runInContext(input.script, context, { filename: 'page-script.js' });
-        const data = vm.runInContext(input.factory, context);
+        // 括弧で包む: インラインの x-data（`{ … }`）がブロック文として読まれないように
+        const data = vm.runInContext('(' + input.factory + ')', context);
         // Alpine と同じく、属性の式をコンポーネントの状態をスコープにして評価する（式はテストが描いた画面から取り出したものだけ）
         const evaluate = vm.runInContext('(function (data, expr) { return new Function("data", "with (data) { return (" + expr + "); }")(data); })', context);
+        // x-for の行の変数（row・idx など）を状態より優先して見る
+        const evaluateIn = vm.runInContext('(function (data, scope, expr) { return new Function("data", "scope", "with (data) { with (scope) { return (" + expr + "); } }")(data, scope); })', context);
         const asValue = function (value) { return value === null || value === undefined ? '' : String(value); };
         data.$nextTick = function (fn) { fn.call(data); };
+        data.$watch = function () {};
+        data.$dispatch = function () {};
+        const refStore = {};
+        const refOptions = input.refOptions || {};
         data.$refs = new Proxy({}, {
             get(target, name) {
                 if (typeof name !== 'string') { return undefined; }
-                return {
+                if (refStore[name]) { return refStore[name]; }
+                return refStore[name] = {
+                    // 選択欄の ref: 描かれた選択肢から始め、JS の add / remove をそのまま反映する
+                    options: (refOptions[name] || []).map(function (o) { return Object.assign({}, o); }),
+                    add(option) { this.options.push(option); },
+                    remove(index) { this.options.splice(index, 1); },
                     focus() {},
                     blur() {},
                     select() {},
@@ -357,17 +607,91 @@ trait DrivesAlpineFetch
                 };
             },
         });
+        // Alpine はコンポーネントを作ったあと init() を 1 回呼ぶ（browserForm() だけ。既存の呼び出しは今までどおり呼ばない）
+        if (input.init && typeof data.init === 'function') { data.init(); }
         vm.runInContext('(function (data) {\n' + input.steps + '\n})', context)(data);
+
+        // ブラウザがフォームから送る項目（browserForm()）
+        const eachRow = function (forExpr, scope, fn) {
+            const m = String(forExpr).match(/^\s*(?:\(\s*([\w$]+)\s*(?:,\s*([\w$]+)\s*)?\)|([\w$]+))\s+(?:in|of)\s+([\s\S]+)$/);
+            if (!m) { throw new Error('x-for を読めない: ' + forExpr); }
+            let list = evaluateIn(data, scope, m[4]);
+            if (typeof list === 'number') { list = Array.from({ length: list }, function (v, i) { return i + 1; }); }
+            Array.from(list || []).forEach(function (item, i) {
+                const rowScope = Object.assign({}, scope);
+                rowScope[m[1] || m[3]] = item;
+                if (m[2]) { rowScope[m[2]] = i; }
+                fn(rowScope);
+            });
+        };
+        const selectOptions = function (control, scope) {
+            if (control.ref !== null && refStore[control.ref]) {
+                return refStore[control.ref].options.map(function (o) { return { value: String(o.value), selected: !!o.selected }; });
+            }
+            const list = [];
+            const push = function (option, s) {
+                list.push({
+                    value: option.valueExpr !== null ? asValue(evaluateIn(data, s, option.valueExpr)) : option.value,
+                    selected: option.selectedExpr !== null ? !!evaluateIn(data, s, option.selectedExpr) : option.selected,
+                });
+            };
+            for (const option of control.options) {
+                if (option.for !== null) { eachRow(option.for, scope, function (s) { push(option, s); }); } else { push(option, scope); }
+            }
+            return list;
+        };
+        const controlPairs = function (control, scope, out, errors) {
+            if (control.disabled || (control.disabledExpr !== null && evaluateIn(data, scope, control.disabledExpr))) { return; }
+            const name = control.nameExpr !== null ? asValue(evaluateIn(data, scope, control.nameExpr)) : control.name;
+            if (control.type === 'radio' || control.type === 'checkbox') {
+                const own = control.valueExpr !== null ? asValue(evaluateIn(data, scope, control.valueExpr)) : control.value;
+                let on = control.checked;
+                if (control.model !== null) {
+                    const bound = evaluateIn(data, scope, control.model);
+                    on = control.type === 'radio' ? asValue(bound) === own
+                        : (Array.isArray(bound) ? bound.map(String).indexOf(own) !== -1 : !!bound);
+                }
+                if (on) { out.push([name, own]); }
+                return;
+            }
+            if (control.kind === 'select') {
+                const options = selectOptions(control, scope);
+                let value = options.length > 0 ? options[0].value : '';
+                if (control.model !== null) {
+                    value = asValue(evaluateIn(data, scope, control.model));
+                    if (!options.some(function (o) { return o.value === value; })) {
+                        errors.push('選択欄「' + name + '」の x-model の値「' + value + '」が選択肢に無い（' + options.map(function (o) { return o.value; }).join(', ') + '）');
+                        return;
+                    }
+                } else {
+                    for (const o of options) { if (o.selected) { value = o.value; } }
+                }
+                out.push([name, value]);
+                return;
+            }
+            const value = control.model !== null ? evaluateIn(data, scope, control.model)
+                : (control.valueExpr !== null ? evaluateIn(data, scope, control.valueExpr) : control.value);
+            out.push([name, asValue(value)]);
+        };
+
         (async function () {
             for (let i = 0; i < 20; i++) {
                 await new Promise(function (resolve) { setImmediate(resolve); });
             }
             const evaluated = input.evaluate.map(function (expr) { return evaluate(data, expr); });
+            const formPairs = [];
+            const formErrors = [];
+            if (input.formModel) {
+                for (const control of input.formModel.controls) { controlPairs(control, {}, formPairs, formErrors); }
+                for (const loop of input.formModel.loops) {
+                    eachRow(loop.for, {}, function (s) { for (const control of loop.controls) { controlPairs(control, s, formPairs, formErrors); } });
+                }
+            }
             const state = {};
             for (const key of Object.keys(data)) {
-                if (key !== '$refs' && key !== '$nextTick') { state[key] = data[key]; }
+                if (key !== '$refs' && key !== '$nextTick' && key !== '$watch' && key !== '$dispatch') { state[key] = data[key]; }
             }
-            process.stdout.write(JSON.stringify({ requests: requests, confirms: confirms, alerts: alerts, navigations: navigations, submitted: submitted, evaluated: JSON.parse(JSON.stringify(evaluated)), state: JSON.parse(JSON.stringify(state)) }));
+            process.stdout.write(JSON.stringify({ requests: requests, confirms: confirms, alerts: alerts, navigations: navigations, submitted: submitted, evaluated: JSON.parse(JSON.stringify(evaluated)), state: JSON.parse(JSON.stringify(state)), formPairs: formPairs, formErrors: formErrors }));
         })();
         JS;
 
