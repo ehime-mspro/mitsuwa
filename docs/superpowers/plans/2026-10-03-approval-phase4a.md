@@ -3113,7 +3113,7 @@ cd /Users/masanori/site/manage && git status --short && git merge-base --is-ance
 git -C /Users/masanori/site/manage merge --ff-only approval-phase3 && git -C /Users/masanori/site/manage log --oneline -3 && ls -la /Users/masanori/site/manage/resources/fonts/ipaex
 ```
 
-Expected: ttf 2 本（6,099,900 と 7,835,672 バイト）とライセンスの文書・Readme 2 本。「13.x が進んでいる」なら止まり、取り込み方（WT で `git merge 13.x` をしてから全件を流し直す、など。rebase しない）を利用者に選んでもらう（ほかの会話の作業が入っている）。
+Expected: ttf 2 本（6,099,900 と 7,835,672 バイト）とライセンスの文書・Readme 2 本。「13.x が進んでいる」なら、利用者が 2026-10-04 に選んだ取り込み方（台帳の Ruling）に従う: **早送りの前に、WT で `git merge 13.x` をして全件を流し直す**（rebase しない・ほかの会話の作業が入っている）。全件が緑になってから、上の確かめをもう一度流して「FF できる」を見て、早送りへ進む。赤があれば止まって利用者に伝える。
 
 - [ ] **Step 4: DB を先に変える**
 
@@ -3199,7 +3199,7 @@ cd /Users/masanori/site/manage && ./deploy.sh
 
 Expected: exit 0・6 段すべて成功（`vendor/mpdf`・`vendor/setasign` などと `resources/fonts/ipaex` が送られる。初回は数分長い）。
 
-- [ ] **Step 7: 本番で確かめる**（すべて読み取り。PDF は申請が無いので、紙面を作らずにフォントを読めるかだけを試す）
+- [ ] **Step 7: 本番で確かめる**（すべて読み取り。PDF は申請が無いので、紙面は作らず、フォントを読めることと、印の SVG を PDF で描けることだけを試す。試しの PDF は変数のまま捨て、ファイルに残さず、記録もしない）
 
 ```bash
 ssh mitsuwa-ud@www3586.sakura.ne.jp /bin/sh <<'SH'
@@ -3217,6 +3217,16 @@ echo "fonts=", implode(",", array_map("basename", glob(config("approval.pdf.font
 $t = microtime(true);
 $pdf = App\Support\Approval\ApprovalPdf::render("<p style=\"font-family: ipaexm\">決裁申請書の試し</p><p>ゴシックの試し</p>", "", "試し");
 echo "pdf=", substr($pdf, 0, 5), " bytes=", strlen($pdf), " mincho=", str_contains($pdf, "IPAexMincho") ? "ok" : "NG", " gothic=", str_contains($pdf, "IPAexGothic") ? "ok" : "NG", " seconds=", round(microtime(true) - $t, 2), " peak_mb=", round(memory_get_peak_usage(true) / 1048576, 1), PHP_EOL;
+// 印の SVG を PDF で描く（viewBox・scale()・IPAex 明朝の text-anchor の道。本番に申請は無いので、判断した印でなく Stamp::preview() で描く）。使える利用者が 0 人なら飛ばす
+$u = App\Models\User::orderBy("id")->first();
+if ($u === null) {
+    echo "stamp_pdf=SKIP users=0", PHP_EOL;
+} else {
+    $t2 = microtime(true);
+    $stamp = App\Support\Approval\StampSvg::render(App\Support\Approval\Stamp::preview($u), App\Support\Approval\StampSvg::PDF_FONT, "80");
+    $stampPdf = App\Support\Approval\ApprovalPdf::render("<p>" . $stamp . "</p>", "", "印の試し");
+    echo "stamp_pdf=", substr($stampPdf, 0, 5), " bytes=", strlen($stampPdf), " mincho=", str_contains($stampPdf, "IPAexMincho") ? "ok" : "NG", " seconds=", round(microtime(true) - $t2, 2), PHP_EOL;
+}
 echo "download_logs=", app("db")->table("approval_download_logs")->count(), PHP_EOL;
 '
 ls -la storage/logs/laravel.log
@@ -3224,7 +3234,7 @@ ls -d storage/framework/cache/mpdf
 SH
 ```
 
-Expected: `invalid=0` ／ `approvals=51`（PDF の 1 本が増えた）／ `launched_at=NULL` ／ 7 クラスとも `ok` ／ `fonts=ipaexg.ttf,ipaexm.ttf` ／ `pdf=%PDF-`・`mincho=ok`・`gothic=ok`・数秒以内 ／ `download_logs` は Step 2 と同じ（試しの PDF は記録しない）／ `laravel.log` の日付が Step 2 と同じ＝反映のあとのエラーは 0 件 ／ `storage/framework/cache/mpdf` ができている。
+Expected: `invalid=0` ／ `approvals=51`（PDF の 1 本が増えた）／ `launched_at=NULL` ／ 7 クラスとも `ok` ／ `fonts=ipaexg.ttf,ipaexm.ttf` ／ `pdf=%PDF-`・`mincho=ok`・`gothic=ok`・数秒以内 ／ `stamp_pdf=%PDF-`・`mincho=ok`・数秒以内（印の SVG を PDF で描けた。利用者が 0 人なら `stamp_pdf=SKIP users=0` と出る＝飛ばしたことを利用者に伝える）／ `download_logs` は Step 2 と同じ（試しの PDF は記録しない）／ `laravel.log` の日付が Step 2 と同じ＝反映のあとのエラーは 0 件 ／ `storage/framework/cache/mpdf` ができている。
 
 - [ ] **Step 8: 利用者の Chrome で見るだけ**（決裁の管理者でログイン済みの画面。フォームは送らない。URL に `index.php/` が要る）
 
@@ -3435,7 +3445,7 @@ BACKLOG の 4a の小見出しに「本番反映（日付）」の表（3b と�
 
 ### S15 が等価なわけ
 
-`Stamp::forStep()` の `$step->status !== ApprovalStepStatus::Done || $step->acted_at === null` から状態の確かめを外しても、`acted_at` が入っているのは必ず `Done` の段階だけなので、結果が変わらない。`acted_at` を入れるのは `Workflow::finishStep()`（`Done`・`Workflow.php:613`）だけで、`reopenStep()`（待ちに戻す・`Workflow.php:586`）は空に戻し、省略（`Skipped`・`Workflow.php:98` で段階を作るとき）・取り消し（`Cancelled`・`Workflow.php:639` は待ち・まだ届いていない段階だけを取り消す）・まだ届いていない段階は `acted_at` が空のまま。確かめは二重の守りになっていて、片方を外しても振る舞いは変わらない。
+`Stamp::forStep()` の `$step->status !== ApprovalStepStatus::Done || $step->acted_at === null` から状態の確かめを外しても、`acted_at` が入っているのは必ず `Done` の段階だけなので、結果が変わらない。`acted_at` を入れるのは `Workflow::finishStep()`（`Done`・`Workflow.php:613`）だけで、`reopenStep()`（待ちに戻す・`Workflow.php:586`）は空に戻し、省略（`Skipped`・`Workflow.php:98` で段階を作るとき）・打ち切り（`Cancelled`。差戻し・取り下げで残りの段階を止める `cancelRest()`・`Workflow.php:639` は、待ち・まだ届いていない段階だけを打ち切る。判断した段階を戻す `reopenStep()` の「取り消し」とは別）・まだ届いていない段階は `acted_at` が空のまま。確かめは二重の守りになっていて、片方を外しても振る舞いは変わらない。
 
 ### U10 を足したわけ
 
@@ -3463,13 +3473,13 @@ U10 は、⑦ の一覧の「編集」のボタンが小窓へ渡す値のうち
 
 ### Task 5・Task 3 の点検の手直しで、計画のコードと最後のコードが違うところ
 
-計画（Task 5・Task 3）のコードは、手直しの**前**の形。差分のファイル `~/.claude/plans/approval-phase3-tasks/4a/patches/0005-task05-PDF.patch`（と `0003-task03.patch`）も手直しの前の形のまま。最後のコードは、次の 6 コミットが足した分だけ違う（`git show --stat` で確かめた。コードの変更は `pdf.blade.php` だけで、`PdfSheet.php`・`ApprovalPdf.php` などは計画のまま）:
+計画（Task 5・Task 3）のコードは、手直しの**前**の形。差分のファイル `~/.claude/plans/approval-phase3-tasks/4a/patches/0005-task05-PDF.patch`（と `0003-task03.patch`）も手直しの前の形のまま。Task 7 を測った時点（`b94ece7d`）の最後のコードは、次の 6 コミットが足した分だけ違う（`git show --stat` で確かめた。この 6 つのコードの変更は `pdf.blade.php` だけで、`PdfSheet.php`・`ApprovalPdf.php` などは計画のまま）。⚠ **このあとの Task 8 の手直し 2 つで、計画のコードはさらに変わった**: `93615843` が `StampSvg.php`（PDF の印の viewBox と `scale()`）、`8891e101` が ⑦ のビュー `index.blade.php`（氏名・所属部門の列の最小の幅）を変えた（下の「Task 8 で見つけた 2 件の手直し」）:
 
 | コミット | 内容 | ファイル |
 |---|---|---|
 | `a7220226`（Task 3） | 印の上段の部門の略称（`<`・`&` を含む）がエスケープされることを確かめるテスト（V07 の守り）。コードの変更なし | `StampDisplayTest.php` +14 |
-| `2a3f941b`（Task 5） | 社長の印が欄の枠からはみ出さないようにする。決裁の欄を 2 段に分け（上の段: 判断の欄・申請部門・承認、下の段: コメント・印。`td.upper`・`td.lower`・段の間の線は消す）、判断の欄の小さな表を印・コメントと同じセルに入れ子にしない。表に `page-break-inside: avoid` | `pdf.blade.php` +15 −6・`PdfSheetTest.php` +2 |
-| `100bf0c1`（Task 5） | 本文が長い URL で縮まないようにする。本文の表に `overflow: wrap`（CSS `table.wrap { overflow: wrap; }`）。長い語のテストと、120 行の本文が 4 ページ以上になるテスト | `pdf.blade.php` +4 −1・`PdfSheetTest.php` +19 −1 |
+| `2a3f941b`（Task 5） | 社長の印が欄の枠からはみ出さないようにする。決裁の欄を 2 段に分け（上の段: 判断の欄・申請部門・承認、下の段: 社長のコメントと印・申請部門の値と申請者名・承認の印と部門長のコメント。`td.upper`・`td.lower`・段の間の線は消す）、判断の欄の小さな表を印・コメントと同じセルに入れ子にしない。表に `page-break-inside: avoid` | `pdf.blade.php` +15 −6・`PdfSheetTest.php` +2 |
+| `100bf0c1`（Task 5） | 本文が長い URL で縮まないようにする。本文の表に `overflow: wrap`（このコミットの CSS は `table.body { overflow: wrap; }`。`table.wrap` への改名と、人が打つ文字の入る 5 つの表への `class="wrap"` は次の `b94ece7d`）。長い語のテストと、120 行の本文が 4 ページ以上になるテスト | `pdf.blade.php` +4 −1・`PdfSheetTest.php` +19 −1 |
 | `3a308425`（Task 5） | 判断した欄の朱の枠。選んだ欄の CSS を `.on` から `td.mark.on` に（詳細度の高い `td.mark` の黒の枠に負けていた） | `pdf.blade.php` +2 −1・`PdfSheetTest.php` +2 |
 | `013dfc42`（Task 5） | 部門長と審査のコメントのエスケープのテスト（P20・P21 の守り）。コードの変更なし | `PdfSheetTest.php` +8 −4 |
 | `b94ece7d`（Task 5） | 件名・コメント・添付・審査の表も、人が打つ文字の入る表すべてに `class="wrap"`（決裁の欄の表を含む）を付け、長い語を折り返す。決裁No・日付の表と、入れ子の判断の欄 `table.marks` には付けない（短い決まった文字だけ） | `pdf.blade.php` +10 −9・`PdfSheetTest.php` +59 |
@@ -3524,14 +3534,14 @@ U10 は、⑦ の一覧の「編集」のボタンが小窓へ渡す値のうち
 
 - `pdftoppm -r 200 / 300 / 600` で審査の欄を切り出して見た（`pdf-short-review-zoom-1.png`＝300dpi・`pdf-short-review-gap600-1.png`＝600dpi）。**重なっていない**。「可」の枠の下辺と印の円の上端のすき間は約 2〜3pt（600dpi で約 20px）。円の頂点は中央の「保留」の枠の真下にあるので、「保留」の枠とは特に近い。100dpi の画像では 1px 程度に近づいて接して見える（点検の担当が見たのはこれと思われる）。文字（「可」）は枠の中で読める。**直していない**
 
-### 気づいたこと（直していない・どれも軽微）
+### 気づいたこと（この時点では直していない・どれも軽微。**→ どちらも、下の「Task 8 で見つけた 2 件の手直し」で直した**）
 
 1. **PDF の印の文字が円の中心より右に寄っている**（中心から約 3〜4.5pt）。600dpi で、円の中心 x≈278 に対し、日付 R8.10.5 の中心 x≈315・「長谷川」の中心 x≈316・「住宅」の中心 x≈303。そのため 3〜4 文字の名前の最後の字が円の線に触れる（承認の印「長谷川」の「川」・審査の印「高橋一郎」の「郎」。後者は円の線にかかって欠けて見える）。画面の印は中央に収まっている。原因は mPDF が SVG の `text-anchor: middle` を使っていない可能性が高い（未確認）。計画の段の前の紙面（`screenshots-4a/pdf1-1.png`）でも同じで、点検の手直しで起きたものではない。`pdf-short-name-zoom600-1.png`（高橋一郎）・`pdf-short-headstamp-zoom-1.png`（長谷川）・`pdf-short-presstamp-zoom-1.png`・`pdf-short-decision-zoom-1.png`
-   - コントローラが直すと決めた（このあとの手直しのコミット）
+   - コントローラが直すと決め、直した（→ 下の小節で直した）
 2. **375px の利用者の管理（⑦）の表で、氏名の列が 1 文字幅に潰れて縦に 1 文字ずつ並ぶ**。表は `min-w-[980px]` で横にスクロールでき（「← スクロールできます →」の案内あり）、ページ全体のはみ出しは無い（上の 7）。計画の段の写真 `screenshots-4a/users-375.png` でも同じ見え方。印を足す前からの可能性が高い（未確認）。印の見本は氏名の左に残る
-   - コントローラが直すと決めた（このあとの手直しのコミット）
+   - コントローラが直すと決め、直した（→ 下の小節で直した）
 
-不具合（機能が壊れている・計画の約束を満たさない）は **無し**。
+不具合（機能が壊れている・計画の約束を満たさない）は **無し**（上の「気づいたこと」の 2 件は見た目の直しで、下の小節のとおり直した）。
 
 ### Step 5: コンパイル済みビューの lint
 
@@ -3555,3 +3565,27 @@ U10 は、⑦ の一覧の「編集」のボタンが小窓へ渡す値のうち
 
 `git merge-tree --write-tree --name-only approval-phase3 13.x`（作業ツリーは変えない）。`13.x` は `c5d3fdd5`（`origin/13.x` と同じ）・共通の祖先は `f6891312`・`approval-phase3` は `fc3be999`（この節を足す前）。結果は **終了コード 0・衝突のファイル名の出力なし**（マージ後の tree だけが出た）＝衝突なし。この節のコミットは計画書 1 ファイルだけを変えるが、そのファイルは `13.x` に無いので結果は変わらない（コミットのあとにもう一度流して終了コード 0 を確かめた）。
 
+### Task 8 で見つけた 2 件の手直し（2026-10-05）
+
+上の「気づいたこと」の 1・2 を、コントローラが最後の点検の前に直すと決め、新しい担当（sonnet）が 2 コミットで直した。点検（opus）が確かめた。全件 `OK (3386 tests, 23975 assertions)`（直す前の 3383 + 足したテスト 3 つ）。コミット: `93615843` `fix(approval): 決裁申請書の PDF の印の文字を円の中心にそろえる`／`8891e101` `fix(approval): スマホの幅の利用者の管理で氏名の列が潰れないようにする`。
+
+**1. PDF の印の文字が円の中心より右に寄る（`93615843`）**
+
+- 原因: 上の見込み（mPDF が `text-anchor` を使っていない）ではなく、**文字の幅の測り方の単位ずれ**。mPDF は `text-anchor="middle"` を実装しているが、文字の幅を「描く大きさの px」で測って SVG の座標の長さとして使い（`vendor/mpdf/mpdf/src/Image/Svg.php` `:2714-2718`）、左へのずらしに縮尺 `kp`（viewBox 120 を 80px に縮める 80/120 入り）を掛ける（`:4163-4175` 付近）。縮尺が 2 回掛かるので、viewBox が描く大きさと違うと、ずらしが 80/120 の分だけ足りない。実測: 上段「住宅」の左へのずらしが `-6.6709`、あるべき値は `-10.003`（比 0.667）
+- 直し方: **書体が `PDF_FONT` のときだけ**、`viewBox` を描く大きさ（`0 0 80 80`）にして、120 の箱の中身を `<g transform="scale(0.666667)">` で包む（mPDF の縮尺が 1 になる）。印の 3 段・座標・`fit()`・色・`e()`・`aria-label` は変えない。**画面の SVG は変わらない**（前後の出力を比べて同一。担当は 4 つの印 × 3 通りの呼び方、点検は 5 つの印 × 4 通りの呼び方）。呼び出し側の `pdf.blade.php` の 3 か所も変えていない。`StampSvg` の説明に ⚠ を足した（mPDF の幅の測り方は、viewBox と描く大きさが違う SVG すべてに当たる。将来 SVG を足すときは viewBox を描く大きさに合わせる。CLAUDE.md と BACKLOG の「PDF の作り方」の落とし穴 ④）
+- 中心の差（円の中心に対する文字の中心。+ は右）: Task 8 の短い申請の 3 つの印の 9 段で **+3.18〜+4.92pt → −0.42〜0.00pt**。ほかの組み合わせ（上段 6 字・日付 R8.12.31・下段 1〜8 字・12 字など）を含めると **+1.6〜+5.5pt → −0.48〜+0.24pt**（どれも 0.5pt 以内。担当の測定は 600dpi の画像の赤い画素から）。点検の測り直し: 12 通りの印の表で `pdftotext -bbox` の中心が −0.03〜+0.05pt、実際の紙面の 3 つの印で段ごとに −0.48〜+0.24pt。紙面の全体を 200dpi で前後比べると、違う画素は 3 つの印の枠の中だけ（円の位置・大きさ・線の太さは同じ）
+- 足したテスト 2 つ（`StampDisplayTest`）: ① PDF の印は viewBox が描く大きさ・`<g transform="scale(…)">` が 1 つ・`text-anchor="middle"` が 3 つで、中身は書体を入れ替えれば画面と同じ ② 実際に mPDF で描き、上段（住宅）・下段（長谷川）の左へのずらしが「文字の幅の半分」から ±0.2 以内、中段（R8.10.5）が 1.82 字ぶんから ±0.15 以内（形が変わって 3 つ取れなくなったら落ちる）。直す前の形（`3212477b` の写し）で落ちる（`......FF..`・② は `-6.6709` 対 `-10.003`）
+- 受け入れたまま: 下段が 8 文字以上だと文字が円の線にかかる（中心はそろう）。BACKLOG の受け入れた隙間に書いた
+
+**2. 375px の利用者の管理（⑦）で氏名の列が 1 文字幅に潰れる（`8891e101`）**
+
+- 原因: 見込み（氏名のセルの `min-w-0`）は半分だけ当たりだった。表は `w-full min-w-[980px]` だが、メールなど折り返さない列の最小の幅の合計がすでに 980 を超える（375px で 選択 50・社員番号 72・氏名 99・区分 99・決裁の所属部門 39・メール 214・最終ログイン 141・状態 66・操作 233 ＝ 1012.5）ため、折り返せる氏名と所属部門の列だけが 1 文字まで削られる。同じ潰れは 1,100px・1,300px の画面でも出ていた（1,440px は余りが 141px あるので出ない）。画面の幅の条件を付ける案は、1,100・1,300px で潰れが戻るので採らなかった
+- 直し方（`resources/views/approvals/admin/users/index.blade.php`）: 氏名のセルの `min-w-0` を `min-w-[6rem]`（96px）に、見出し「決裁の所属部門」に `min-w-[5.125rem]`（82px＝1,440px の今の幅）を付ける。理由の Blade コメントも付けた
+- 測った値（Playwright）: 375px で氏名の列 99 → 182px・所属部門 39 → 82px・氏名は 1 行・`main.scrollWidth` と `clientWidth` は 375 で一致（ページ全体のはみ出しなし）。1,440px は列の境目が 4px ずれるだけ（所属部門「住宅事業部」はむしろ 1 行に収まる）。足したテスト `StampTextSettingTest::test_the_table_keeps_a_minimum_width_for_the_name_and_department_columns` は、直す前の形で落ちる（`Failed asserting that 0 is identical to 5.`）
+- **受け入れたこと**: 最小の幅の合計が 1012.5 → 1138.5px になったので、表が横スクロールになる画面の幅が約 1,299px → **約 1,425px** に上がった。1,366px のノート PC で約 58px 足りず、新しく横スクロールになる（「← スクロールできます →」の案内は出る。右端の「無効化」が隠れる程度で、375px で氏名が読めないよりずっと軽い）。台帳の Ruling で受け入れ、最後の点検も妥当とした。BACKLOG の受け入れた隙間に書いた。⚠ Windows の実機・太いスクロールバーは測っていない（数値からの判断）
+
+**点検での変異の測り直し**（`task-8-fix1-review.md`。手直しのあとの HEAD の写し・`mutate.py --check` は 67 件すべて 1 回ずつ当たる）: CANARY は赤（80 件）。V01〜V07・U07・U08 はすべて検出で、落ちたテストは前の測定（`mutations-impl.jsonl`）と同じ（V01 は 3・V02〜V04 は 1・V05 は 2・V06 は 4・V07 は 1・U08 は 1）。U07 だけ、足した `test_the_table_keeps_a_minimum_width_for_the_name_and_department_columns` が加わって 2 件（見本が無いと数が合わない）。全件は `Tests: 964`（前 961 + 足した 3）。
+
+**最後の点検のあとのテスト**（`732d7943`。PDF のエスケープのテスト）: 紙面の添付のファイル名・申請部門の名前・申請者の氏名のエスケープを `test_the_sheet_escapes_what_people_typed` に足した（mPDF は `http`・`https`・`file` の読み込みを許すので、添付の名前のエスケープが外れると紙面が読み込みを起こせる）。`{{ }}` を `{!! !!}` にした写しで、それぞれ足した確かめの行で落ち、戻すと `OK (14 tests, 79 assertions)`。`mutate.py` に P25（添付の名前）・P26（申請部門の名前）・P27（申請者の氏名）を足し（`--check` は 70 件）、写しで CANARY と一緒に流した: CANARY は赤（`Tests: 964, Assertions: 6466, Failures: 80.`）・**P25・P26・P27 はどれも検出**（`Tests: 964` のうち `PdfSheetTest::test_the_sheet_escapes_what_people_typed` の 1 本だけが落ちる）。結果は `~/.claude/plans/approval-phase3-tasks/4a/measure/mutations-final.jsonl`。全件は `OK (3386 tests, 23981 assertions)`。
+
+**利用者に見せる PDF の描き直し**: 上の 2 つの手直しの前（`b94ece7d`）に撮った 5 つの PDF は印の文字が右に寄っているので、最後のコードで同じ中身の 5 つ（短い申請・長い本文・社長の 8 行の差戻し・本文の 200 文字の URL・審査の保留）を描き直し、`/Users/masanori/site/approval/screenshots-4a/impl/final/` に置いた（前の画像は残してある）。利用者に了承を求めるときは、この `final/` の PDF と画像を見せる。
