@@ -134,11 +134,11 @@ sudo rm -f storage/framework/views/*.php && brew services restart httpd
 
 - Department 判定: `resolveDepartment()`（`request()->segment(1)` ベース）— `defaults()` は Laravel 12 で URL パラメータ無しだと効かない
 - `User` は SoftDeletes。ログイン ID は社員番号（`employee_number`）とメールアドレスの**どちらか**（`App\Support\LoginId` で正規化）。`role` の 4 つ目は `approval_only`（決裁のみ）で、web グループの門番が決裁以外の全画面から締め出す。「ホーム」へ戻す行き先は `route($user->homeRouteName())`（`route('dashboard')` に固定しない。決裁のみ利用者は門番に跳ね返されて警告を見るうえ、2 段の転送でフラッシュが消える。Bug #63）。戻り先をビューの `url()->previous()` で決めない（リファラーが優先され、POST の応答の画面から開くと POST 専用の URL へ戻って 405。コントローラの `back()` と、try で包まない入力チェックの既定の戻り先も同じ。取込は `ImportControllerReturnPathScanTest`（戻り先の書き方）と `ImportControllerValidationRedirectScanTest`（入力チェックの包み方）が止める。Bug #64）
-- 決裁の PDF（mPDF）は表の 1 行をページの途中で切れない。長い文を 1 つのセルに入れると縮めて 1 ページに押し込むので、罫線の 1 行＝表の 1 行にする（`PdfSheet::bodyRows()`）。文中の `<span>` の枠は描き損なうことがあるので小さな表で組む
-- 決裁の印の文字は判断したときに `approval_steps` に控える（`Workflow::finishStep()`）。表示は `Stamp::forStep()` を通す（今の設定から描かない）
-- 同梱のフォント（`resources/fonts/ipaex`）は `.gitattributes` の `-text` で配布元のまま保存する。ライセンスの文書を消さない
 - `Buyer`・`Unit`（テナントの区画）は SoftDeletes → 参照する側のリレーションで常に `->withTrashed()` + edit 画面では現在の値を必ず含める（区画は `Unit::includingTrashed()`、表示は `display_label`。Bug #12 / #58）
 - `Property`（テナントの物件）も SoftDeletes だが、関連データ（区画・契約・投資・修繕・問合せ）が残る物件は削除できない（`Property::deletionBlockers()`。Bug #59）＝削除済みの物件を指す子は作られない前提なので、子→物件のリレーションに `withTrashed()` を足さない。物件にリレーションを足したら `DELETION_BLOCKING_RELATIONS` / `DELETION_IGNORED_RELATIONS` のどちらかに分類する（`PropertyDeletionGuardTest` が両側から全件分類で守る）
+- 決裁の PDF（mPDF）は表の 1 行をページの途中で切れない。長い文を 1 つのセルに入れると縮めて 1 ページに押し込むので、罫線の 1 行＝表の 1 行にする（`PdfSheet::bodyRows()`）。文中の `<span>` の枠は描き損なうことがあるので小さな表で組む。PDF に表や SVG を足すときの落とし穴 4 つ: ①判断の欄の小さな表を印・コメントと同じセルに入れ子にしない（セルの高さを少なく見積もって印がはみ出す。決裁の欄は 2 段）②人が打つ文字の入る表には `class="wrap"`（`overflow: wrap`。無いと空白の無い長い語で表ごと縮む）③朱の枠は `td.mark.on`（`.on` だけだと黒の枠が勝つ）④SVG は viewBox を描く大きさ（px）にして中身を `scale()` で縮める（mPDF が文字の幅を描く大きさで測るので、viewBox が違うと文字が右に寄る）。詳しくは `resources/views/approvals/requests/pdf.blade.php` の先頭の注記と `StampSvg` の説明
+- 決裁の印の文字は判断したときに `approval_steps` に控える（`Workflow::finishStep()`）。判断した印（申請の詳細・PDF）の表示は `Stamp::forStep()` を通す（今の設定から描かない）。⑦（利用者の管理）の見本だけは判断していないので `Stamp::preview()`。描くのはどれも `StampSvg`
+- 決裁の PDF の同梱のフォント（`resources/fonts/ipaex`）は `.gitattributes` の `-text` で配布元のまま保存する。ライセンスの文書を消さない
 - `re_projects` のカラムは `project_name`（`name` ではない）
 - 既定都道府県: 愛媛県
 - 外部 CDN: `cdn.jsdelivr.net` のみ許可（`cdnjs.cloudflare.com` は本番でブロック）
