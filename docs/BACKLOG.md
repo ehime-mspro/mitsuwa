@@ -2196,7 +2196,7 @@ git checkout 13.x && git merge --ff-only date-picker-month-ago
 
 ---
 
-## 🚧 決裁申請 段階4（電子印・PDF・決裁台帳と Excel）— 4a 実装中・本番未反映・使い始める前
+## 🚧 決裁申請 段階4（電子印・PDF・決裁台帳と Excel）— 4a 本番反映済み・4b 未着手・使い始める前
 
 要件定義書: @docs/決裁申請_要件定義書_v1.md（v1.13。3.2・9 章・13 章の ③⑤⑦・14.2・14.4・14.5・15.4・15.5・15.7）
 設計書: @docs/superpowers/specs/2026-10-03-approval-phase4-design.md（設計の 5 節は 2026-10-03 に利用者が 1 節ずつ承認）
@@ -2245,11 +2245,25 @@ git checkout 13.x && git merge --ff-only date-picker-month-ago
   - 最後の点検の手直し: `732d7943` PDF のエスケープのテスト（添付の名前・部門名・氏名）。文書の 2 本（この節と CLAUDE.md の手直し・計画書の記録）は `git log` で見る
   - 全件・変異・手元のブラウザの確認（計画の Task 7・8）の結果は、計画書の「Task 7 の実測記録」「Task 8 の実測記録」に残した
 
-#### 本番反映
+#### 本番反映（2026-10-05 実施）
 
-未反映（使い始める前・本番反映は計画の Task 10 で、利用者の了承のあと親の会話が行う）。
+利用者の了承のあと、計画の Task 10 の手順どおりに流した（本番の読み取り・DB・早送りと部品と `./deploy.sh` と読み取り・ログインした画面のそれぞれで了承を取った）。`13.x` は別の会話の作業で `732b9ef1` まで進んでいたので、台帳の決まりどおり先に worktree へ取り込んで（`169d41c9`）全件を流し直した。反映のあいだは別の会話に `13.x` の早送りと `./deploy.sh` を待ってもらった。DB は早送りより先に変えた（SQL は worktree の同じコミットのファイルを送った。早送りから反映までのあいだに、列の無い DB へ新しいコードが出ないように）。
+
+| 段 | 見たこと | 結果 |
+|---|---|---|
+| ① 取り込み | worktree に `git merge 13.x`（`732b9ef1`・51 コミット） | 衝突なし（`composer`・`package`・`database`・`routes` の変更なし）→ `169d41c9`・全件 **OK (3565 tests, 26897 assertions)** |
+| ② 本番の読み取り | ルート・列・設定・件数・PHP | `approvals.` のルート 50 本 ／ 3 列とも無い ／ `launched_at=NULL` ／ 申請 0・段階 0・利用者の行 1・出力の記録 0 ／ `memory_limit=128M` ／ `gd mbstring zlib` あり ／ `vendor/mpdf`・`resources/fonts` 無し ／ `laravel.log` は Jun 18 17:41 |
+| ③ DB を先に | SQL 2 文（`ALTER TABLE approval_members`・`ALTER TABLE approval_steps`） | 流した形跡なし → **OK 1・OK 2** ／ 流したあと: `approval_members.stamp_text varchar(4)`・`approval_steps.stamp_label varchar(6)`・`approval_steps.stamp_text varchar(100)`（どれも NULL 可・`utf8mb4_unicode_ci`・日本語の説明つき）／ 行の数は変わらない |
+| ④ 早送り | `13.x` | `732b9ef1` → `169d41c9`・ttf 2 本（6,099,900・7,835,672 バイト） |
+| ⑤ 部品と読み込みの表 | main repo で `composer install --no-dev` → `composer dump-autoload --no-dev --optimize` | `6 installs, 0 updates, 0 removals`（`mpdf/mpdf` 8.3.1・`setasign/fpdi` 2.6.8・`paragonie/random_compat` 9.99.100・`myclabs/deep-copy` 1.13.4・`mpdf/psr-log-aware-trait` 3.0.0・`mpdf/psr-http-message-shim` 2.0.1）・7,291 クラス・`vendor/bin/phpunit` は無い・`git status` は空 |
+| ⑥ `./deploy.sh` | 2026-10-05 12:29 ごろ終了（日本時間） | exit 0・6 段すべて。アプリのファイル 31 本（`resources/fonts/ipaex` を含む）・`vendor` 652 本（送ったのは圧縮で約 58MB）。旧 CSS `app-B-wGZyIE.css` を削除 |
+| ⑦ 本番の読み取り | コンパイル済みビューの `php -l` | **298 本 / INVALID 0 件** |
+| | ルート・設定・クラス・フォント・PDF | `approvals.` のルート **51 本**（PDF の 1 本が増えた）／ `launched_at=NULL` ／ 7 クラスとも読み込める ／ `fonts=ipaexg.ttf,ipaexm.ttf` ／ 試しの PDF `%PDF-`・明朝とゴシックが入る・0.58 秒・ピーク 36MB ／ 印の SVG の PDF `%PDF-`・明朝が入る・0.2 秒 ／ 出力の記録 0 のまま（試しは記録しない）／ `laravel.log` は Jun 18 17:41 のまま（反映のあとのエラー 0 件）／ `storage/framework/cache/mpdf` ができた |
+| | ログインした画面（利用者の Chrome・見るだけ・保存しない。利用者は決裁の管理者） | ⑦ に 3 人とも印の見本（所属部門が無いので上段は空・中段 R8.10.5・下段は氏名の空白より前）／ 編集の小窓に「印に使う文字」の欄と案内「決裁の所属部門と印に使う文字だけ変えられます。」（キャンセルで閉じた）／ `main` のはみ出し 0（1,220 = 1,220）／ コンソールのエラー・警告 0 件 ／ 決裁のホームは「決裁の機能は準備中です。」のまま |
 
 ⚠ 使い始める前なので、利用者に見える変化は ⑦ の「印に使う文字」の欄と印の見本だけ（申請の画面・印・PDF は `launched_at` が入ってから出る）。
+
+⚠ `origin/13.x` への push はしていない（利用者の指示を待つ）。
 
 ### 4b（決裁台帳 ⑤・Excel 出力・Excel の出力の記録）
 
