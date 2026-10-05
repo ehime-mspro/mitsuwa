@@ -166,7 +166,8 @@ class UnitController extends Controller
         ]);
 
         // 階数0は不許可（地下は-1〜-3、地上は1〜99）
-        if (isset($validated['floor']) && $validated['floor'] === 0) {
+        // ⚠ 入力チェックを通った値は文字列（"0"）のままなので、整数にしてから比べる
+        if (isset($validated['floor']) && (int) $validated['floor'] === 0) {
             return back()->withInput()->withErrors(['floor' => '階数に0は入力できません。地下の場合は-1〜-3を入力してください。']);
         }
 
@@ -309,7 +310,8 @@ class UnitController extends Controller
         ]);
 
         // 階数0は不許可（地下は-1〜-3、地上は1〜99）
-        if (isset($validated['floor']) && $validated['floor'] === 0) {
+        // ⚠ 入力チェックを通った値は文字列（"0"）のままなので、整数にしてから比べる
+        if (isset($validated['floor']) && (int) $validated['floor'] === 0) {
             return back()->withInput()->withErrors(['floor' => '階数に0は入力できません。地下の場合は-1〜-3を入力してください。']);
         }
 

@@ -11,6 +11,8 @@ use App\Models\Unit;
  */
 class UnitScreensTest extends TenantScreenTestCase
 {
+    private const FLOOR_ZERO = '階数に0は入力できません。地下の場合は-1〜-3を入力してください。';
+
     private function createForm(): array
     {
         $show = $this->htmlOf(route('tenant.properties.show', $this->building));
@@ -46,6 +48,15 @@ class UnitScreensTest extends TenantScreenTestCase
         $this->assertSame(0, $unit->garbage_fee, '空欄の費用は 0 で保存する');
     }
 
+    public function test_floor_zero_is_refused_when_registering(): void
+    {
+        $form = $this->fill($this->createForm(), ['floor' => '0', 'room_number' => 'Z']);
+
+        $html = $this->landed($this->submit($form, route('tenant.units.create', $this->building)));
+
+        $this->assertInputError($html, self::FLOOR_ZERO);
+        $this->assertFalse(Unit::where('room_number', 'Z')->exists(), '0 階の区画が登録された');
+    }
 
     public function test_the_edit_screen_saves_what_it_shows(): void
     {
@@ -62,6 +73,16 @@ class UnitScreensTest extends TenantScreenTestCase
         $this->assertSame(80000, $unit->rent, '募集家賃は編集では変わらない（賃料改定で変える）');
     }
 
+    public function test_floor_zero_is_refused_when_editing(): void
+    {
+        $unit = $this->unit(2, 'A');
+        $form = $this->fill($this->editForm($unit), ['floor' => '0']);
+
+        $html = $this->landed($this->submit($form, route('tenant.units.edit', $unit)));
+
+        $this->assertInputError($html, self::FLOOR_ZERO);
+        $this->assertSame('2A', $unit->fresh()->display_name);
+    }
 
     public function test_the_status_toggles_from_the_unit_screen(): void
     {
