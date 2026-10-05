@@ -150,6 +150,19 @@ class StampTextSettingTest extends TestCase
         $this->assertSame('', $rows[$w['head']->id]['stamp'], '印に使う文字を決めていない人は空');
     }
 
+    /** 狭い画面で氏名の列が 1 文字幅に削られる（印の見本・氏名・「〜に指定されています」が縦に 1 文字ずつ並ぶ）のを、列の幅の下限で防ぐ（画面の幅は測れないので、下限の書き方を見る） */
+    public function test_the_table_keeps_a_minimum_width_for_the_name_and_department_columns(): void
+    {
+        $this->approvalWorld();
+        $admin = $this->approvalAdmin();
+
+        $html = $this->actingAs($admin)->get(route('approvals.admin.users.index'))->assertOk()->getContent();
+
+        $this->assertStringContainsString('data-stamp-preview', $html);
+        $this->assertSame(substr_count($html, 'data-stamp-preview'), substr_count($html, '<div class="min-w-[6rem]">'), '氏名のセルは 1 行ごとに幅の下限（min-w-0 だと狭い画面で 1 文字幅になる）');
+        $this->assertSame(1, preg_match('#<th class="[^"]*\bmin-w-\[5\.125rem\]">決裁の所属部門</th>#', $html), '見出しの「決裁の所属部門」も縦に並ばない幅の下限');
+    }
+
     /** 一覧の「編集」が小窓へ渡す値（openEdit の引数）を、利用者の id ごとに取り出す */
     private function editRows(string $html): array
     {

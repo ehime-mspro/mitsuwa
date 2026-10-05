@@ -165,7 +165,7 @@
                     <th class="px-3.5 py-2.5 text-left text-[11px] font-semibold text-gray-500 bg-gray-50 border-b border-gray-200 w-[1%] whitespace-nowrap">社員番号</th>
                     <th class="px-3.5 py-2.5 text-left text-[11px] font-semibold text-gray-500 bg-gray-50 border-b border-gray-200">氏名</th>
                     <th class="px-3.5 py-2.5 text-center text-[11px] font-semibold text-gray-500 bg-gray-50 border-b border-gray-200 w-[1%] whitespace-nowrap">区分</th>
-                    <th class="px-3.5 py-2.5 text-left text-[11px] font-semibold text-gray-500 bg-gray-50 border-b border-gray-200">決裁の所属部門</th>
+                    <th class="px-3.5 py-2.5 text-left text-[11px] font-semibold text-gray-500 bg-gray-50 border-b border-gray-200 min-w-[5.125rem]">決裁の所属部門</th>
                     <th class="px-3.5 py-2.5 text-left text-[11px] font-semibold text-gray-500 bg-gray-50 border-b border-gray-200">メールアドレス</th>
                     <th class="px-3.5 py-2.5 text-left text-[11px] font-semibold text-gray-500 bg-gray-50 border-b border-gray-200 w-[1%] whitespace-nowrap">最終ログイン</th>
                     <th class="px-3.5 py-2.5 text-center text-[11px] font-semibold text-gray-500 bg-gray-50 border-b border-gray-200 w-[1%] whitespace-nowrap">状態</th>
@@ -200,7 +200,8 @@
                             <div class="flex items-center gap-2.5">
                                 {{-- 印の見本（段階4 設計書 D11。日付は今日。StampSvg は文字を e() で包んだ SVG を返す） --}}
                                 <span class="shrink-0" data-stamp-preview>{!! \App\Support\Approval\StampSvg::render(\App\Support\Approval\Stamp::preview($u)) !!}</span>
-                                <div class="min-w-0">
+                                {{-- ⚠ 幅の下限（min-w-[6rem]。見出し「決裁の所属部門」の min-w-[5.125rem]＝1440px の今の幅も同じ）を外さない。表の幅は列の最小の幅の合計で決まり、狭い画面では氏名の列が 1 文字幅に削られて縦に 1 文字ずつ並ぶ（2026-10-05 の試し） --}}
+                                <div class="min-w-[6rem]">
                                     <span class="text-[13px] font-medium text-gray-900">{{ $u->name }}</span>
                                     @if($privilegeLabel !== null)
                                         {{-- ⚠ 理由は title だけでなく画面の本文にも出す（tooltip はキーボード・読み上げに届かない。Bug #43） --}}
