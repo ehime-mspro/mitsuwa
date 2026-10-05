@@ -89,22 +89,17 @@ abstract class TenantScreenTestCase extends TestCase
     protected function assertFlash(string $html, string $type, string $message): void
     {
         $class = $type === 'success' ? 'text-emerald-800' : 'text-red-800';
-        $this->assertMatchesRegularExpression(
-            '/<span class="text-sm ' . $class . '">\s*' . preg_quote(e($message), '/') . '\s*<\/span>/u',
-            $html,
-            "帯（{$type}）に「{$message}」が出ていない"
-        );
+        // 一致したかだけを見る（失敗したときに画面の HTML を丸ごと出さない）
+        $pattern = '/<span class="text-sm ' . $class . '">\s*' . preg_quote(e($message), '/') . '\s*<\/span>/u';
+        $this->assertSame(1, preg_match($pattern, $html), "帯（{$type}）に「{$message}」が出ていない");
     }
 
     /** 画面の上の入力エラーの箱に $message が出ている */
     protected function assertInputError(string $html, string $message): void
     {
-        $this->assertStringContainsString('入力内容にエラーがあります。', $html, '入力エラーの箱が出ていない');
-        $this->assertMatchesRegularExpression(
-            '/<li>\s*' . preg_quote(e($message), '/') . '\s*<\/li>/u',
-            $html,
-            "入力エラーに「{$message}」が出ていない"
-        );
+        $this->assertTrue(str_contains($html, '入力内容にエラーがあります。'), '入力エラーの箱が出ていない');
+        $pattern = '/<li>\s*' . preg_quote(e($message), '/') . '\s*<\/li>/u';
+        $this->assertSame(1, preg_match($pattern, $html), "入力エラーに「{$message}」が出ていない");
     }
 
     protected function unit(?int $floor, string $room, string $status = 'vacant', ?Property $property = null): Unit
