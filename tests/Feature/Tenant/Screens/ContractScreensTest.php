@@ -84,6 +84,38 @@ class ContractScreensTest extends TenantScreenTestCase
         $this->assertSame(10000, $contract->common_fee);
     }
 
+    /** 編集画面の JS（contractEditForm）が組み立てられ、家賃などの欄の値が入る */
+    private function editState(string $html): array
+    {
+        return $this->driveAlpine($html, 'contractEditForm', $this->xData($html, 'contractEditForm'), '')['state'];
+    }
+
+    public function test_the_edit_screen_keeps_working_after_an_input_error_with_an_empty_rent(): void
+    {
+        $contract = $this->activeContract($this->unit(1, 'A'));
+        $form = $this->editForm($contract, "data.rent = '';");
+
+        $html = $this->landed($this->submit($form, route('tenant.contracts.edit', $contract)));
+
+        $this->assertInputError($html, '月額家賃は必須です。');
+        $state = $this->editState($html);
+        $this->assertSame(null, $state['rent'], '空にした家賃が戻った画面で空になっていない');
+        $this->assertSame('10000', (string) $state['commonFee'], '戻った画面で共益費が消えた');
+        $this->assertSame('full', $state['initialMonthType']);
+        $this->assertSame(100000, $contract->fresh()->rent);
+    }
+
+    public function test_the_edit_screen_works_for_a_contract_without_a_common_fee(): void
+    {
+        $contract = $this->activeContract($this->unit(1, 'A'));
+        $contract->forceFill(['common_fee' => null, 'garbage_fee' => null, 'pest_control_fee' => null])->save();
+
+        $state = $this->editState($this->htmlOf(route('tenant.contracts.edit', $contract)));
+
+        $this->assertSame(100000, $state['rent']);
+        $this->assertNull($state['commonFee']);
+    }
+
     // ============================================================
     // 解約
     // ============================================================

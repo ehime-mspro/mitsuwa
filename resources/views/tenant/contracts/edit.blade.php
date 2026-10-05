@@ -400,10 +400,12 @@
 function contractEditForm() {
     return {
         // 賃料情報
-        rent: {{ old('rent', $contract->rent) }},
-        commonFee: {{ old('common_fee', $contract->common_fee) }},
-        garbageFee: {{ old('garbage_fee', $contract->garbage_fee) }},
-        pestControlFee: {{ old('pest_control_fee', $contract->pest_control_fee) }},
+        {{-- ⚠ {{ }} で数値を直に書かない。入力エラーで戻ったとき（家賃を空にした・ほかの誤りがあるとき共益費などが空）や、
+             共益費などが空の契約で `rent: ,` になり、この関数ごと構文エラーで消えて欄が空のまま描かれる（登録画面と同じく @@json にする） --}}
+        rent: @json(old('rent', $contract->rent)),
+        commonFee: @json(old('common_fee', $contract->common_fee)),
+        garbageFee: @json(old('garbage_fee', $contract->garbage_fee)),
+        pestControlFee: @json(old('pest_control_fee', $contract->pest_control_fee)),
 
         // 顧客Ajax検索
         customerId: '{{ old('customer_id', $contract->customer_id) }}',
@@ -417,7 +419,7 @@ function contractEditForm() {
         // 初月家賃
         rentStartDate: '{{ old('rent_start_date', $contract->rent_start_date?->format('Y-m-d') ?? '') }}',
         initialMonthType: '{{ old('initial_month_type', $contract->initial_month_type?->value ?? 'full') }}',
-        manualInitialAmount: {{ old('initial_month_amount', $contract->initial_month_amount ?? 0) }},
+        manualInitialAmount: @json(old('initial_month_amount', $contract->initial_month_amount ?? 0)),
 
         // --- 顧客Ajax検索メソッド ---
         searchCustomers: function() {
