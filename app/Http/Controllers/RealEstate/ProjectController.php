@@ -18,6 +18,7 @@ use App\Support\TsuboPrice;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 
 class ProjectController extends Controller
 {
@@ -122,8 +123,8 @@ class ProjectController extends Controller
         $costsData = $request->validate([
             'costs'                    => 'nullable|array|max:500',
             'costs.*.cost_item_id'     => 'required|integer|exists:re_cost_items,id',
-            'costs.*.estimated_amount' => 'required|integer|min:0',
-            'costs.*.actual_amount'    => 'nullable|integer|min:0',
+            'costs.*.estimated_amount' => 'required|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'costs.*.actual_amount'    => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
             'costs.*.notes'            => 'nullable|string|max:200',
         ])['costs'] ?? [];
 
@@ -424,8 +425,8 @@ class ProjectController extends Controller
     {
         $validated = $request->validate([
             'cost_item_id'     => 'required|exists:re_cost_items,id',
-            'estimated_amount' => 'required|integer|min:0',
-            'actual_amount'    => 'nullable|integer|min:0',
+            'estimated_amount' => 'required|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'actual_amount'    => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
             'notes'            => 'nullable|string|max:200',
         ]);
 
@@ -468,8 +469,8 @@ class ProjectController extends Controller
         }
 
         $validated = $request->validate([
-            'estimated_amount' => 'required|integer|min:0',
-            'actual_amount'    => 'nullable|integer|min:0',
+            'estimated_amount' => 'required|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'actual_amount'    => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
             'notes'            => 'nullable|string|max:200',
         ]);
 
@@ -523,8 +524,8 @@ class ProjectController extends Controller
             'mode'                    => 'required|in:overwrite,append',
             'rows'                    => 'required|array|min:1|max:500',
             'rows.*.cost_item_id'     => 'required|integer|exists:re_cost_items,id',
-            'rows.*.estimated_amount' => 'required|integer|min:0',
-            'rows.*.actual_amount'    => 'nullable|integer|min:0',
+            'rows.*.estimated_amount' => 'required|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'rows.*.actual_amount'    => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
             'rows.*.notes'            => 'nullable|string|max:200',
         ]);
 
@@ -563,9 +564,9 @@ class ProjectController extends Controller
         $lotStatuses = implode(',', array_column(LotStatus::cases(), 'value'));
 
         $validated = $request->validate([
-            'lot_number'    => 'required|integer|min:1',
+            'lot_number'    => 'required|integer|min:1|max:' . self::MAX_INT_COLUMN,
             'area_sqm'      => 'required|numeric|min:0.01|max:99999999.99',
-            'selling_price' => 'nullable|integer|min:0',
+            'selling_price' => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
             'status'        => "required|in:{$lotStatuses}",
             'notes'         => 'nullable|string|max:200',
         ]);
@@ -579,6 +580,7 @@ class ProjectController extends Controller
         $validated['selling_price_per_tsubo'] = (! empty($validated['selling_price']) && $validated['area_tsubo'] > 0)
             ? TsuboPrice::perTsuboYen((int) $validated['selling_price'], $validated['area_tsubo'])
             : null;
+        $this->assertPerTsuboFits($validated['selling_price_per_tsubo']);
         $validated['is_price_manual'] = true;
 
         $lot = ReProjectLot::create($validated);
@@ -603,9 +605,9 @@ class ProjectController extends Controller
         $lotStatuses = implode(',', array_column(LotStatus::cases(), 'value'));
 
         $validated = $request->validate([
-            'lot_number'    => 'required|integer|min:1',
+            'lot_number'    => 'required|integer|min:1|max:' . self::MAX_INT_COLUMN,
             'area_sqm'      => 'required|numeric|min:0.01|max:99999999.99',
-            'selling_price' => 'nullable|integer|min:0',
+            'selling_price' => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
             'status'        => "required|in:{$lotStatuses}",
             'notes'         => 'nullable|string|max:200',
         ]);
@@ -618,6 +620,7 @@ class ProjectController extends Controller
         $validated['selling_price_per_tsubo'] = (! empty($validated['selling_price']) && $validated['area_tsubo'] > 0)
             ? TsuboPrice::perTsuboYen((int) $validated['selling_price'], $validated['area_tsubo'])
             : null;
+        $this->assertPerTsuboFits($validated['selling_price_per_tsubo']);
         $validated['is_price_manual'] = true;
 
         $lot->update($validated);
@@ -763,9 +766,9 @@ class ProjectController extends Controller
             'longitude'           => 'nullable|numeric|between:-180,180',
             'supplier_id'         => 'nullable|exists:re_suppliers,id',
             'info_obtained_date'  => 'nullable|date',
-            'assessment_price'    => 'nullable|integer|min:0',
-            'purchase_price'      => 'nullable|integer|min:0',
-            'target_selling_price'=> 'nullable|integer|min:0',
+            'assessment_price'    => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'purchase_price'      => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'target_selling_price'=> 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
             'contract_date'       => 'nullable|date',
             'settlement_date'     => 'nullable|date',
             'notes'               => 'nullable|string|max:5000',
@@ -774,6 +777,20 @@ class ProjectController extends Controller
             'address'              => '所在地',
             'target_selling_price' => '想定総販売価格',
         ]);
+    }
+
+    /**
+     * 求めた坪単価（円。列は符号付き INT）が列に入るか。面積の打ち間違い（0.04㎡ ＝ 0.01 坪 など）で
+     * 販売価格 ÷ 坪数が上限を超えると、本番の MySQL（strict）では保存の時点で 500 になる。
+     * 入力エラー（422）で断り、区画の画面の alert に理由を出す。
+     */
+    private function assertPerTsuboFits(?int $perTsubo): void
+    {
+        if ($perTsubo !== null && $perTsubo > self::MAX_INT_COLUMN) {
+            throw ValidationException::withMessages([
+                'selling_price' => '販売価格と面積から求めた坪単価が大きすぎます。面積を確かめてください。',
+            ]);
+        }
     }
 
     /**

@@ -92,8 +92,8 @@ class ProcurementController extends Controller
         $costsData = $request->validate([
             'costs'                    => 'nullable|array|max:500',
             'costs.*.cost_item_id'     => 'required|integer|exists:re_cost_items,id',
-            'costs.*.estimated_amount' => 'required|integer|min:0',
-            'costs.*.actual_amount'    => 'nullable|integer|min:0',
+            'costs.*.estimated_amount' => 'required|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'costs.*.actual_amount'    => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
             'costs.*.notes'            => 'nullable|string|max:200',
         ])['costs'] ?? [];
 
@@ -298,8 +298,8 @@ class ProcurementController extends Controller
     {
         $validated = $request->validate([
             'cost_item_id'     => 'required|exists:re_cost_items,id',
-            'estimated_amount' => 'required|integer|min:0',
-            'actual_amount'    => 'nullable|integer|min:0',
+            'estimated_amount' => 'required|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'actual_amount'    => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
             'notes'            => 'nullable|string|max:200',
         ]);
 
@@ -342,8 +342,8 @@ class ProcurementController extends Controller
         }
 
         $validated = $request->validate([
-            'estimated_amount' => 'required|integer|min:0',
-            'actual_amount'    => 'nullable|integer|min:0',
+            'estimated_amount' => 'required|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'actual_amount'    => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
             'notes'            => 'nullable|string|max:200',
         ]);
 
@@ -397,8 +397,8 @@ class ProcurementController extends Controller
             'mode'                    => 'required|in:overwrite,append',
             'rows'                    => 'required|array|min:1|max:500',
             'rows.*.cost_item_id'     => 'required|integer|exists:re_cost_items,id',
-            'rows.*.estimated_amount' => 'required|integer|min:0',
-            'rows.*.actual_amount'    => 'nullable|integer|min:0',
+            'rows.*.estimated_amount' => 'required|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'rows.*.actual_amount'    => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
             'rows.*.notes'            => 'nullable|string|max:200',
         ]);
 
@@ -452,12 +452,12 @@ class ProcurementController extends Controller
             'floor_area_ratio'    => 'nullable|numeric|min:0|max:999.99',
             'supplier_id'         => 'nullable|exists:re_suppliers,id',
             'info_obtained_date'  => 'nullable|date',
-            'assessment_price_land'         => 'nullable|integer|min:0',
-            'assessment_price_building'     => 'nullable|integer|min:0',
-            'purchase_price_land'           => 'nullable|integer|min:0',
-            'purchase_price_building'       => 'nullable|integer|min:0',
-            'target_selling_price_land'     => 'nullable|integer|min:0',
-            'target_selling_price_building' => 'nullable|integer|min:0',
+            'assessment_price_land'         => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'assessment_price_building'     => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'purchase_price_land'           => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'purchase_price_building'       => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'target_selling_price_land'     => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'target_selling_price_building' => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
             'tax_rate'                      => 'nullable|numeric|min:0|max:99.99',
             'contract_date'       => 'nullable|date',
             'settlement_date'     => 'nullable|date',

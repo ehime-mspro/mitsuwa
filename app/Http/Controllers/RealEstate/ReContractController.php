@@ -407,7 +407,7 @@ class ReContractController extends Controller
         $validated = $request->validate([
             'contract_date'  => 'required|date',
             'buyer_name'     => 'nullable|string|max:100',
-            'brokerage_fee'  => 'required|integer|min:0',
+            'brokerage_fee'  => 'required|integer|min:0|max:' . self::MAX_INT_COLUMN,
         ]);
 
         $contract->update([
@@ -570,11 +570,11 @@ class ReContractController extends Controller
             $rules['procurement_id']  = 'required|exists:re_procurements,id';
             $rules['contract_date']   = 'required|date';
             $rules['buyer_id']        = 'required|exists:buyers,id';
-            $rules['contract_amount_land']     = 'required|integer|min:0';
-            $rules['contract_amount_building'] = 'nullable|integer|min:0';
+            $rules['contract_amount_land']     = 'required|integer|min:0|max:' . self::MAX_INT_COLUMN;
+            $rules['contract_amount_building'] = 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN;
             $rules['tax_rate']                 = 'nullable|numeric|min:0|max:99.99';
-            $rules['tax_amount']               = 'nullable|integer|min:0';
-            $rules['cost_amount']     = 'required|integer|min:0';
+            $rules['tax_amount']               = 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN;
+            $rules['cost_amount']     = 'required|integer|min:0|max:' . self::MAX_INT_COLUMN;
             $rules['property_name']   = 'required|string|max:200';
             $rules['address']         = 'nullable|string|max:300';
         } elseif ($contractType->isSubdivision()) {
@@ -582,15 +582,15 @@ class ReContractController extends Controller
             $rules['lot_id']          = 'required|exists:re_project_lots,id';
             $rules['contract_date']   = 'required|date';
             $rules['buyer_id']        = 'required|exists:buyers,id';
-            $rules['contract_amount_land'] = 'required|integer|min:0';
-            $rules['cost_amount']     = 'required|integer|min:0';
+            $rules['contract_amount_land'] = 'required|integer|min:0|max:' . self::MAX_INT_COLUMN;
+            $rules['cost_amount']     = 'required|integer|min:0|max:' . self::MAX_INT_COLUMN;
             $rules['property_name']   = 'required|string|max:200';
             $rules['address']         = 'nullable|string|max:300';
         } elseif ($contractType->isBrokerage()) {
             $rules['property_name']           = 'required|string|max:200';
             $rules['address']                 = 'nullable|string|max:300';
-            $rules['brokerage_selling_price']  = 'nullable|integer|min:0';
-            $rules['brokerage_fee']           = 'nullable|integer|min:0';
+            $rules['brokerage_selling_price']  = 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN;
+            $rules['brokerage_fee']           = 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN;
         }
 
         $validated = $request->validate($rules);
