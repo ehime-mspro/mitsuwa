@@ -95,6 +95,11 @@
                     <select name="structure"
                             class="form-select w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none cursor-pointer">
                         <option value="">選択してください</option>
+                        {{-- 構造は名前で持つので、マスタに無い値（名前を変える前の値など）も選んだまま残す。無いと保存で空になる --}}
+                        @php($currentStructure = old('structure', $property->structure))
+                        @if(filled($currentStructure) && ! $structureTypes->containsStrict('name', $currentStructure))
+                            <option value="{{ $currentStructure }}" selected>{{ $currentStructure }}（マスタに無い値）</option>
+                        @endif
                         @foreach($structureTypes as $st)
                             <option value="{{ $st->name }}" {{ old('structure', $property->structure) === $st->name ? 'selected' : '' }}>{{ $st->name }}</option>
                         @endforeach

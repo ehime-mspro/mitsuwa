@@ -23,6 +23,9 @@ use Illuminate\Validation\Rule;
 
 class InquiryController extends Controller
 {
+    /** 希望面積（坪）の上限。本番の列は DECIMAL(8,2)（入らない値は保存の時点で 500 になる） */
+    private const MAX_DESIRED_AREA = '999999.99';
+
     /**
      * 問合せ経路の選択肢
      */
@@ -142,9 +145,9 @@ class InquiryController extends Controller
             'phone'            => 'nullable|string|max:50',
             'email'            => 'nullable|email|max:200',
             'desired_usage_id' => 'nullable|exists:inquiry_usage_types,id',
-            'desired_area_min' => 'nullable|numeric|min:0',
-            'desired_area_max' => 'nullable|numeric|min:0',
-            'budget_max'       => 'nullable|integer|min:0',
+            'desired_area_min' => 'nullable|numeric|min:0|max:' . self::MAX_DESIRED_AREA,
+            'desired_area_max' => 'nullable|numeric|min:0|max:' . self::MAX_DESIRED_AREA,
+            'budget_max'       => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
             'desired_move_date' => ['nullable', 'string', 'max:7', 'regex:/^\d{4}-\d{2}$/'],
             'description'      => 'nullable|string|max:5000',
             'notes'            => 'nullable|string|max:5000',
@@ -298,9 +301,9 @@ class InquiryController extends Controller
             'phone'            => 'nullable|string|max:50',
             'email'            => 'nullable|email|max:200',
             'desired_usage_id' => 'nullable|exists:inquiry_usage_types,id',
-            'desired_area_min' => 'nullable|numeric|min:0',
-            'desired_area_max' => 'nullable|numeric|min:0',
-            'budget_max'       => 'nullable|integer|min:0',
+            'desired_area_min' => 'nullable|numeric|min:0|max:' . self::MAX_DESIRED_AREA,
+            'desired_area_max' => 'nullable|numeric|min:0|max:' . self::MAX_DESIRED_AREA,
+            'budget_max'       => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
             'desired_move_date' => ['nullable', 'string', 'max:7', 'regex:/^\d{4}-\d{2}$/'],
             'description'      => 'nullable|string|max:5000',
             'notes'            => 'nullable|string|max:5000',

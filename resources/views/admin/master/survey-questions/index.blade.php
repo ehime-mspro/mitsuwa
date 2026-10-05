@@ -134,6 +134,9 @@ function surveyQuestionManager() {
             xhr.open('DELETE', '{{ url("/admin/survey-questions") }}/' + id);
             xhr.setRequestHeader('X-CSRF-TOKEN', token);
             xhr.setRequestHeader('Accept', 'application/json');
+            // ⚠ これが無いとサーバは一覧への転送（302）を返し、XHR は DELETE のまま転送先へ送って 405 になる
+            //   （302 を GET に変えるのは POST のときだけ）。onload が 200 を受け取れず、一覧を読み込み直さない
+            xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
             xhr.onload = function() {
                 if (xhr.status === 200) {
                     window.location.reload();

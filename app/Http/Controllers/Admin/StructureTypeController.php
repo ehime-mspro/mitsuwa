@@ -54,6 +54,10 @@ class StructureTypeController extends Controller
     /**
      * 構造名更新
      * Route: PUT /admin/master/structure-types/{structureType}
+     *
+     * テナント物件は構造を id でなく名前（properties.structure）で持つので、名前を変えたら物件の値も
+     * 同じトランザクションで新しい名前に変える（変えないと物件の編集画面で構造が選ばれず、保存で空になる）。
+     * 論理削除した物件も変える（使用中の確かめも論理削除した物件を数えている）。
      */
     public function update(Request $request, StructureType $structureType)
     {
@@ -61,11 +65,27 @@ class StructureTypeController extends Controller
             'name' => 'required|string|max:100',
         ]);
 
-        $structureType->update($validated);
+        $oldName = $structureType->name;
+        $renamed = 0;
+
+        DB::transaction(function () use ($structureType, $validated, $oldName, &$renamed) {
+            $structureType->update($validated);
+
+            if ($structureType->name !== $oldName) {
+                $renamed = DB::table('properties')
+                    ->where('structure', $oldName)
+                    ->update(['structure' => $structureType->name]);
+            }
+        });
+
+        $message = '「' . $structureType->name . '」を更新しました。';
+        if ($renamed > 0) {
+            $message .= 'この構造を使っていたテナント物件 ' . $renamed . ' 件も新しい名前に変えました。';
+        }
 
         return redirect()
             ->route('admin.master.structure-types.index')
-            ->with('success', '「' . $structureType->name . '」を更新しました。');
+            ->with('success', $message);
     }
 
     /**

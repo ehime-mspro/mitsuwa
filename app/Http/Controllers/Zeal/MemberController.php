@@ -56,8 +56,15 @@ class MemberController extends Controller
         }
 
         // 入会月フィルター（YYYY-MM）
+        // ⚠ DATE_FORMAT（MySQL 専用）を使わない。テストの SQLite に無く、この一覧をテストで通せなかった。
+        //   体験予約一覧（InquiryController）と同じ whereYear / whereMonth。形の崩れた値は 0 件（DATE_FORMAT で比べていたときと同じ）
         if ($request->filled('joined_month')) {
-            $query->whereRaw("DATE_FORMAT(joined_on, '%Y-%m') = ?", [$request->input('joined_month')]);
+            $joinedMonth = $request->input('joined_month');
+            if (is_string($joinedMonth) && preg_match('/^(\d{4})-(\d{2})$/', $joinedMonth, $m)) {
+                $query->whereYear('joined_on', (int) $m[1])->whereMonth('joined_on', (int) $m[2]);
+            } else {
+                $query->whereRaw('1 = 0');
+            }
         }
 
         // キーワード検索（氏名・フリガナ・電話・メール）
@@ -75,11 +82,12 @@ class MemberController extends Controller
 
         // フィルター用データ
         $plans    = ZealPlan::orderBy('display_order')->orderBy('id')->get();
-        // 入会月セレクト（過去2年分、月ごとに一意なもの）
-        $joinedMonths = ZealMember::selectRaw("DATE_FORMAT(joined_on, '%Y-%m') AS ym")
-            ->distinct()
-            ->orderBy('ym', 'desc')
-            ->pluck('ym');
+        // 入会月セレクト（入会日のある月を新しい順に重複なく。上と同じ理由で月は PHP で作る）
+        $joinedMonths = ZealMember::orderByDesc('joined_on')
+            ->pluck('joined_on')
+            ->map(fn ($joinedOn) => $joinedOn->format('Y-m'))
+            ->unique()
+            ->values();
 
         return view('zeal.members.index', compact('members', 'plans', 'joinedMonths', 'status'));
     }

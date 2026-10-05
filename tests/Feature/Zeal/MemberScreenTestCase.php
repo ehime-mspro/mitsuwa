@@ -18,9 +18,10 @@ use Tests\Concerns\ParsesForms;
 use Tests\TestCase;
 
 /**
- * ZEAL 会員の画面（編集・プラン変更・退会。Zeal\MemberController）のテストの土台。
+ * ZEAL の画面（会員・体験予約・プラン・店舗・トレーナー・経営試算表）のテストの土台。
+ * 名前は最初に作った会員の画面（編集・プラン変更・退会。Zeal\MemberController）のまま。
  *
- * 在籍の会員 1 人（現契約あり）と、変更先のプランを用意する。
+ * 経営層の利用者・店舗 1 つ・プラン 2 つ・在籍の会員 1 人（現契約あり）を用意する。
  * ⚠ 送る値は、描いた画面のフォームから送り先と項目名を取り、その項目だけ差し替える（Bug #47 の往復）。
  *   プラン変更・退会のフォームは値を Alpine が入れるので、ブラウザで選んだときと同じ値を入れる。
  */
@@ -107,8 +108,10 @@ abstract class MemberScreenTestCase extends TestCase
     }
 
     /**
-     * 体験予約（GymInquiry・'zeal' 接続）を SQLite のメモリ DB へ向け直す（詳細画面が会員の体験予約を読む）。
+     * 体験予約（GymInquiry・'zeal' 接続）を SQLite のメモリ DB へ向け直す（会員の詳細画面・体験予約の画面が読む）。
      * ⚠ 向け直さないと、テストが手元の MySQL へ接続しに行く（MonthEndOverflowTest と同じ理由）。
+     * ⚠ 表は外部の DB（Spreadsheet 同期側）が持ち、リポジトリに DDL が無い。列は体験予約の画面
+     *   （zeal/inquiries/*.blade.php）が読むものだけを置く。trial_time は本番の画面が 'H:i:s' として読むので文字列で持つ。
      */
     private function pointGymInquiriesAtMemory(): void
     {
@@ -119,6 +122,19 @@ abstract class MemberScreenTestCase extends TestCase
         Schema::connection('zeal')->create('gym_inquiries', function (Blueprint $t) {
             $t->id();
             $t->string('name', 100)->nullable();
+            $t->string('status', 20)->nullable();
+            $t->date('inquiry_date')->nullable();
+            $t->date('trial_date')->nullable();
+            $t->string('trial_time', 8)->nullable();
+            $t->string('contract_plan', 100)->nullable();
+            $t->string('gender', 10)->nullable();
+            $t->integer('age')->nullable();
+            $t->string('phone', 20)->nullable();
+            $t->string('email', 100)->nullable();
+            $t->string('purpose', 100)->nullable();
+            $t->text('purpose_detail')->nullable();
+            $t->text('memo')->nullable();
+            $t->text('special_notes')->nullable();
         });
     }
 }

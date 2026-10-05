@@ -197,11 +197,11 @@ class ContractController extends Controller
             'store_name'       => 'nullable|string|max:200',
             'contract_date'    => 'required|date',
             'rent_start_date'  => 'nullable|date',
-            'rent'             => 'required|integer|min:0',
-            'common_fee'       => 'nullable|integer|min:0',
-            'garbage_fee'      => 'nullable|integer|min:0',
-            'pest_control_fee' => 'nullable|integer|min:0',
-            'deposit'          => 'nullable|integer|min:0',
+            'rent'             => 'required|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'common_fee'       => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'garbage_fee'      => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'pest_control_fee' => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'deposit'          => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
             'inquiry_id'       => 'nullable|exists:inquiries,id',
             'notes'            => 'nullable|string|max:5000',
             'guarantor1_name'      => 'nullable|string|max:100',
@@ -213,7 +213,7 @@ class ContractController extends Controller
             'guarantor2_contact'   => 'nullable|string|max:100',
             'guarantor2_workplace' => 'nullable|string|max:200',
             'initial_month_type'   => 'required|in:full,prorated,half,free,manual',
-            'initial_month_amount' => 'nullable|integer|min:0|required_if:initial_month_type,manual',
+            'initial_month_amount' => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN . '|required_if:initial_month_type,manual',
             'attachments'          => 'nullable|array',
             'attachments.*'        => 'file|max:10240',
         ], [], [
@@ -370,11 +370,11 @@ class ContractController extends Controller
             'store_name'       => 'nullable|string|max:200',
             'contract_date'    => 'required|date',
             'rent_start_date'  => 'nullable|date',
-            'rent'             => 'required|integer|min:0',
-            'common_fee'       => 'nullable|integer|min:0',
-            'garbage_fee'      => 'nullable|integer|min:0',
-            'pest_control_fee' => 'nullable|integer|min:0',
-            'deposit'          => 'nullable|integer|min:0',
+            'rent'             => 'required|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'common_fee'       => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'garbage_fee'      => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'pest_control_fee' => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'deposit'          => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
             'notes'            => 'nullable|string|max:5000',
             'guarantor1_name'      => 'nullable|string|max:100',
             'guarantor1_address'   => 'nullable|string|max:500',
@@ -385,7 +385,7 @@ class ContractController extends Controller
             'guarantor2_contact'   => 'nullable|string|max:100',
             'guarantor2_workplace' => 'nullable|string|max:200',
             'initial_month_type'   => 'required|in:full,prorated,half,free,manual',
-            'initial_month_amount' => 'nullable|integer|min:0|required_if:initial_month_type,manual',
+            'initial_month_amount' => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN . '|required_if:initial_month_type,manual',
             'attachments'          => 'nullable|array',
             'attachments.*'        => 'file|max:10240',
         ], [], [
@@ -454,13 +454,21 @@ class ContractController extends Controller
                 ->with('error', 'この契約は既に解約済みです。');
         }
 
+        // 契約終了日は契約日より前にできない（契約日の無い契約は今までどおり日付だけを見る）
+        $endDateRules = ['required', 'date'];
+        $messages = [];
+        if ($contract->contract_date) {
+            $endDateRules[] = 'after_or_equal:' . $contract->contract_date->format('Y-m-d');
+            $messages['contract_end_date.after_or_equal'] = '契約終了日は契約日（' . $contract->contract_date->format('Y/m/d') . '）以降の日付を指定してください。';
+        }
+
         $validated = $request->validate([
-            'contract_end_date'  => 'required|date',
+            'contract_end_date'  => $endDateRules,
             'final_month_type'   => 'required|in:full,prorated,half,free,manual',
-            'final_month_amount' => 'nullable|integer|min:0|required_if:final_month_type,manual',
+            'final_month_amount' => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN . '|required_if:final_month_type,manual',
             'termination_reason' => 'nullable|string|max:5000',
             'settlement_file'    => 'nullable|file|mimes:pdf|max:10240',
-        ]);
+        ], $messages);
 
         // 最終月家賃額の自動計算
         $finalMonthAmount = $this->calculateMonthAmount(
@@ -543,11 +551,11 @@ class ContractController extends Controller
 
         $validated = $request->validate([
             'revision_date'        => 'required|date',
-            'new_rent'             => 'required|integer|min:0',
-            'new_common_fee'       => 'nullable|integer|min:0',
-            'new_garbage_fee'      => 'nullable|integer|min:0',
-            'new_pest_control_fee' => 'nullable|integer|min:0',
-            'new_deposit'          => 'nullable|integer|min:0',
+            'new_rent'             => 'required|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'new_common_fee'       => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'new_garbage_fee'      => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'new_pest_control_fee' => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'new_deposit'          => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
             'reason'               => 'nullable|string|max:5000',
         ]);
 

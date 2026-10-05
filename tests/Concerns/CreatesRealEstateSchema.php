@@ -108,11 +108,13 @@ trait CreatesRealEstateSchema
             $t->softDeletes();
         });
 
+        // 本番の SHOW CREATE TABLE（2026-10-04 読み取り）: sort_order int NOT NULL DEFAULT 0 / is_active tinyint NOT NULL DEFAULT 1。
+        // ⚠ 既定値が無いと、is_active を入れないマスタの追加（Admin\ReCostItemController::store）がテストでだけ 500 になる。
         Schema::create('re_cost_items', function (Blueprint $t) {
             $t->id();
             $t->string('name', 50);
-            $t->integer('sort_order');
-            $t->boolean('is_active');
+            $t->integer('sort_order')->default(0);
+            $t->boolean('is_active')->default(true);
             $t->timestamps();
         });
 

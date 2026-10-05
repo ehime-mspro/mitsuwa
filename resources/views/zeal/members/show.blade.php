@@ -113,7 +113,7 @@
             </a>
             @if(auth()->user()->role->isExecutive())
                 <form method="POST" action="{{ route('zeal.members.destroy', $member) }}"
-                      onsubmit="return confirm('「{{ $member->name }}」を削除します。この操作は取り消せません。よろしいですか？')">
+                      onsubmit="return confirm('「' + {{ \Illuminate\Support\Js::from($member->name) }} + '」を削除します。この操作は取り消せません。よろしいですか？')">
                     @csrf
                     @method('DELETE')
                     <button type="submit"

@@ -32,12 +32,12 @@ class AjaxFetchSessionGuardTest extends TestCase
     /**
      * 走査で拾えるはずの呼び出し箇所の下限。走査が空振りして緑になる事故を防ぐ。
      *
-     * 実数は 22（不動産 7 + テナント 6 + 住宅事業 6 + 賃貸マンション 3）。
+     * 実数は 24（2026-10-04。URL に `/api/` を含む 21 ＋ 含まない 3: 工程表の部品・決裁の申請・ZEAL の試算表の確認）。
      * 下限を実数ちょうどにすると、正当に fetch を 1 つ減らしただけで
      * 「走査が壊れた」という誤った理由で落ちるので余裕を持たせる。
      * 走査ロジックが壊れれば 0 になるため、この値でも検知できる。
      */
-    private const MIN_CALL_SITES = 15;
+    private const MIN_CALL_SITES = 20;
 
     /**
      * `fetch(` の呼び出し全体を括弧の対応で切り出す。
@@ -132,8 +132,8 @@ class AjaxFetchSessionGuardTest extends TestCase
     }
 
     /**
-     * resources/views/ 全体を走査し、**自社 API を GET で叩く** fetch が
-     * すべて X-Requested-With を送っていること。
+     * resources/views/ 全体を走査し、**自社へ GET で送る** fetch が
+     * すべて X-Requested-With を送っていること（URL に `/api/` を含むかどうかを問わない）。
      *
      * ⚠ **GET だけが対象。** `storeCurrentUrl()` は GET のリクエストしか直前 URL を
      *    上書きしないので、POST / PUT / DELETE の fetch は無関係（並び替えや
@@ -143,6 +143,10 @@ class AjaxFetchSessionGuardTest extends TestCase
      * ⚠ 2026-08-03 に `/api/realestate/` 限定から全モジュールへ広げた。
      *    限定していた間、テナント・住宅事業・賃貸マンションの 15 箇所が
      *    **原理的に検出できないまま**残っていた。
+     * ⚠ 2026-10-04 に「URL に `/api/` を含むもの」限定から、自社への GET すべてへ広げた。
+     *    ZEAL の試算表の「実績を反映」の確認（`/zeal/simulations/{id}/sync-actuals/preview`）は
+     *    `/api/` を含まず、URL も変数（`fetch(previewUrl, …)`）なので拾えず、ヘッダーが無いまま残っていた
+     *    （docs/RULES.md Bug #75）。外部かどうかは `://` で見る（zipcloud は URL を直書きしている）。
      */
     public function test_all_same_origin_get_fetches_send_ajax_header(): void
     {
@@ -165,9 +169,6 @@ class AjaxFetchSessionGuardTest extends TestCase
 
                 if (str_contains($ctx, '://')) {
                     continue;   // 外部 API（zipcloud）
-                }
-                if (! preg_match('#/api/|url\([\'"]api/|route\([\'"]api\.#', $ctx)) {
-                    continue;   // 自社 API を叩いていない
                 }
                 if (preg_match('/method:\s*[\'"](?!GET)/', $call)) {
                     continue;   // GET 以外は storeCurrentUrl の対象外

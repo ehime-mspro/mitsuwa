@@ -27,7 +27,9 @@
     <div style="display: flex; gap: 6px;">
         <a href="{{ route('admin.survey-questions.index', ['department' => $q->department]) }}"
            style="display: inline-block; padding: 3px 10px; font-size: 12px; font-weight: 600; color: #059669; border: 1px solid #059669; border-radius: 4px; text-decoration: none; background: #fff;">編集</a>
-        <button type="button" onclick="document.querySelector('[x-data]').__x.$data.deleteQuestion({{ $q->id }})"
+        {{-- この部品は surveyQuestionManager() の x-data の中に描かれるので、Alpine のクリックで直接呼ぶ。
+             以前の onclick は Alpine 2 の __x に頼っていて（Alpine 3 に無い）、しかも最初の [x-data] は <body> だったので押しても何も起きなかった --}}
+        <button type="button" x-on:click="deleteQuestion({{ $q->id }})"
                 style="display: inline-block; padding: 3px 10px; font-size: 12px; font-weight: 600; color: #dc2626; border: 1px solid #dc2626; border-radius: 4px; cursor: pointer; background: #fff;">削除</button>
     </div>
 </div>
