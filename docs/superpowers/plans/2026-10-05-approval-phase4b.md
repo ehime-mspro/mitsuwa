@@ -4258,3 +4258,48 @@ Laravel を通さない試し（`~/.claude/plans/approval-phase3-tasks/4b/spike-
 
 - 4b のテスト（`tests/Feature/Approval/Phase4`・台帳の JSON の中を見る絞り込みを含む）は MySQL で `OK (111 tests, 450 assertions)`（はじめ 2 本が JSON のキーの並びで赤 → 直した。§0.2）。点検の指摘を直した最後のコードでも、Mac の再起動のあとに作り直した使い捨ての MySQL で `tests/Feature/Approval/Phase4` と `RelatedNumberSearchTest` が `OK (133 tests, 575 assertions)`（2026-10-06）
 - 決裁のテスト全体（`tests/Feature/Approval`）を MySQL で流すと、試作も**土台（4b の前）も同じ 4 本だけ**が赤（`UsersSchemaTest` の 2 本〈SQLite の `sqlite_master` を読むテスト〉・`MailFailureBannerTest` の 1 本〈ログの見張りの数〉・`TypeManagementTest` の 1 本〈設定の記録の JSON のキーの並び〉）。4b の前からある、SQLite の前提のテストで、4b で増えた 62 本はすべて緑（`measure/mysql-approval-base.txt`・`mysql-approval-proto.txt`）
+
+## Task 6 の実測記録（2026-10-06・実装のあと）
+
+WT の HEAD `eef97fa8`（Task 1〜4 と、台帳のページ番号を最後のページまでに抑える直し）の `git archive` の写し・使い捨ての SQLite（`migrate` 済み）・`php artisan serve --port=8771`・Playwright（`browser_run_code_unsafe` と `browser_take_screenshot`）。ログインは試しのパスワードを画面にも記録にも出さない流れ（`public/` に一時ファイル → `page.request` で読む → すぐ消す）。決裁の管理者はメールアドレスで、申請者「申請 花子」は社員番号でログインした。試しのデータは `seed.php`（61 件）。写真と Excel は `/Users/masanori/site/approval/screenshots-4b/impl/`。**不具合は無し**（気づいた軽微な点は末尾）。
+
+| # | 見たこと | 結果 |
+|---|---|---|
+| 1 | 台帳（1440px・決裁の管理者・既定） | 58 件・「Excel に出力」・表は 8 列（決裁No・決裁日・判断・件名・申請部門・申請者・金額〈税抜〉・状態。幅は 95・113・58・419・128・88・128・125 で申請部門は潰れない。1200px でも 128）・10/5 は R8-J-038 → R8-J-039・欠番 R8-J-040 は「取り下げ」で決裁日「—」・長い件名（R8-J-037）は 4 行に折り返す・同じ 6/10 は R8-D-001 → R8-J-014・ページ送り「< 1 2 >」（1 ページ目 50 行・2 ページ目 8 行）・`main` のはみ出し 0 |
+| 2 | 台帳（375px） | 絞り込みの欄は 2 列（x=31 と x=194・幅 151。日付の「から・まで」も 2 つ並ぶ）・「58 件」とカードの 1 枚目（2 枚目の頭まで）が 1 画面目（812px）に見える・カードは（状態・番号／件名／部門・申請者／決裁日・判断・金額）・長い件名は折り返す・欠番 R8-J-040 は「決裁日 —・600,000円」・`main` と文書のはみ出し 0 |
+| 3 | 状態「進行中」（管理者） | 2 件。「出した件名：外構工事の追加」700,000円（差戻し中・最後に提出した中身）と「会議室のプロジェクターの購入」180,000円。キーワード「見積」（直しかけの本文にだけある語）は 0 件で、直しかけの中身（650,000円・「直しかけ」）は画面に出ない。「外構」は 1 件（出した件名の行） |
+| 4 | 状態「進行中」（申請者「申請 花子」でログインし直す） | 2 件。「直しかけ：外構工事の追加（見積 2 社）」650,000円（申請者本人は今の中身）。キーワード「見積」は 1 件（その行だけ）。既定の台帳は 40 件（見られる範囲だけ）。Excel も 200（10,332 バイト） |
+| 5 | 絞り込み（管理者・1440px） | 年度・状態・判断・部門・種類のプルダウンは変えるとすぐ絞り込む（部門「DAD / 土木事業部」→ 1 件・さらに状態「すべて」でも 1 件・種類「工事の発注」→ 1 件・さらに年度「R7」を足して 0 件）。キーワード・申請者・決裁日の期間は入れただけでは動かず（800ms 待っても移動なし）、「絞り込む」で絞る（期間 2026-09-01〜10-05 → 4 件・申請者「山田」と 6 月 → 6 件）。選んだ値は欄に残る。「条件を消す」は条件があるときだけ出て、押すと既定（58 件）へ。プルダウンを変えてから「戻る」（A: 部門を変えて戻る・B: 条件のある画面で判断を変えて戻る・C: 文字を入れて年度を変えて戻る）はどれも、欄が表の条件（URL）に戻った |
+| 6 | Excel | `page.request` で `200`・`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`・`attachment; filename=ledger_2026-10-06.xlsx; filename*=utf-8''%E6%B1%BA%E8%A3%81%E5%8F%B0%E5%B8%B3_2026-10-06.xlsx`・`Cache-Control: no-cache, private`・先頭 `504b0304`。同じ写しで `LedgerExcel::build()` をファイルに書き（61 件・11,662 バイト）、`qlmanage -t -s 1600` で見た（下の「Excel」） |
+| 7 | 全画面 | `main.scrollWidth === main.clientWidth` を 1440 / 1200 / 375px で、台帳（既定・進行中・取り下げ・条可・すべて・ページ 2・0 件）・決裁のホーム・申請の詳細（申請者で 6 件・管理者で 2 件）で確かめ、**すべて一致**（1440→1220・1200→980・375→375）。コンソールはエラー 0・警告 0（`/login` の `autocomplete` の verbose 通知だけ。台帳の変更とは関係ない前からのもの） |
+| 8 | ページ番号（レビューの直し） | `?page=99999` は最後（2 ページ目）の 8 行（R8-J-006 〜 R8-J-001）を出し、現在のページは「2」・件数は「58 件」（空の表と件数の食い違いにならない）。`?page=2` も同じ 8 行。`?page=0`・`?page=abc`・`?page=-3` は 1 ページ目（50 行）。375px でも最後のページと「< 1 2 >」が出る |
+
+### Excel（`qlmanage` のクイックルックと読み戻し）
+
+- 見出し 15 列: 決裁No・決裁日・判断・件名・申請の種類・申請部門・申請者・金額（税抜）・実施時期・関連する決裁No・提出日・審査の意見・審査のコメント・条件・状態。見出しは太字・薄い灰色（`F3F4F6`）で 1 行目を固定（`A2`）・オートフィルタ `A1:O62`（`styles.xml` の `cellXfs[1]` が太字のフォントと灰色の塗り）
+- 日付は Excel の日付（`yyyy/mm/dd`・クイックルックでも `2026/10/05` と出る）・金額は数（`#,##0`・`28,500,000`）。文字の欄は文字（読み戻しで、日付の B・K 列と金額の H 列だけが数 `n`・ほかは文字 `s` か空）
+- 長い件名（R8-J-037）は 6 行に折り返す（件名・審査のコメント・条件が折り返す列）
+- 条可の行（R8-J-039）: 審査の意見「保留」・コメント「見積を 2 社取ってください。」・条件「納車の時期を確かめてから契約すること。」・状態「条件確認待ち」。番号の無い行（進行中・取り下げのまま）は決裁No・決裁日・判断が空
+- 関連する決裁No は R8-J-038 の行に「R8-J-003」・実施時期は「2026年11月〜2027年2月」「2027年春」「2026年度」などがそのまま出る
+- 出力の記録（`approval_download_logs`）: 画面から `?status=all` を取り出して 1 行増えた（`kind=excel`・`request_id` と `attachment_id` は空・`request_count=61`・条件 9 項目）。条件つき（部門 3・キーワード「備品」・期間 2026-06-01〜08-31・状態 numbered）は、取り出す前 2 行 → 取り出した後 3 行で、`request_count=12`・`filters` に `department_id=3`・`decided_from`・`decided_to`・`keyword=備品` が入る
+
+### 写真（`/Users/masanori/site/approval/screenshots-4b/impl/`）
+
+- 1440px: `ledger-default-1440.png`（管理者・既定）・`ledger-default-1440-full.png`（同・全体〈高さ 3,100px〉でページ送りまで）・`ledger-progress-1440.png`（管理者・進行中）・`ledger-progress-applicant-1440.png`（申請者・進行中）
+- 375px: `ledger-default-375.png`（既定・1 画面目）・`ledger-default-375-cards.png`（同・カード 7 枚まで）・`ledger-progress-375.png`（管理者・進行中）・`ledger-progress-applicant-375.png`（申請者・進行中）・`ledger-page99999-375.png`（`?page=99999` の最後のページと「< 1 2 >」）
+- Excel: `ledger.xlsx`（写しで `LedgerExcel::build()` を書いたもの）・`ledger-excel-quicklook.png`（クイックルック・左の列〜審査の意見まで。サムネイルが紙の幅で切れる）・`ledger-excel-quicklook-right.png`（右の列〈審査のコメント・条件・状態〉を見るため、**この写真だけ**の写しで申請の種類・申請部門・申請者・金額・提出日などの列を隠して撮った。`ledger.xlsx` そのものではない）
+
+### コンパイル済みビューの lint
+
+`view:cache` のあと `storage/framework/views/*.php` の 299 ファイルすべてに `php -l`: **INVALID 0 件**（`view:clear` で戻した）。
+
+### 気づいたこと（不具合ではない・直さない。判断は利用者へ）
+
+1. 実施時期の列が少し狭い: `LedgerExcel.php:42`（`'実施時期' => 18`）。最も長い形「2026年11月〜2027年2月」は 18 に収まらず、すぐ右の「関連する決裁No」に値があると右端が欠ける（R8-J-038 の行。右が空なら隣へはみ出して読める）。台帳の画面には出ない・Excel を開いて列を広げれば読める。幅を 22 前後にするなら 1 行の直し
+2. 375px で状態のプルダウンの選んだ値「決裁No の付いたもの」の最後の字が、右の矢印の手前で少し欠ける（`resources/views/approvals/ledger/index.blade.php:38`・欄の幅 151px）。押すと一覧は全部読める。部門のプルダウンの長い選択肢（「ミツワ都市開発 / 不動産事業部」158〜170px）も、閉じているときは同じ理由で欠ける（ブラウザの `select` の標準の動き）
+3. 申請の種類が「購入・発注4」と出るのは、試しのデータの土台（`tests/Concerns/BuildsApprovalFixtures.php:97` の連番）の名前で、本番の種類の名前ではない
+4. 絞り込みの URL は空の項目も付く（`?year=&status=numbered&decision=&...`）。GET のフォームの普通の形で、動きには影響しない
+
+### 片付け
+
+`artisan serve`（ポート 8771）を止め（`lsof` で待ち受け 0 を確認）、Playwright のタブを閉じ、scratchpad の写し・使い捨ての SQLite・環境ファイル・一時ファイルを消した。`public/trial-pw.txt` はログインのたびにその場で消した。WT の `git status --porcelain` は、この記録を足す前は空。
