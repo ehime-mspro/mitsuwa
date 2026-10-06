@@ -175,6 +175,8 @@ class CustomerScreensTest extends RealEstateScreenTestCase
     {
         return [
             '電話番号' => ['phone', str_repeat('0', 21), 'max.string', '電話番号', 20],
+            // 都道府県は画面では選択欄だが、送信は列（10 文字）で断る（2026-10-06 の住宅事業の変異で、上限を緩めても緑だった）
+            '都道府県' => ['prefecture', str_repeat('愛', 11), 'max.string', '都道府県', 10],
             '市区町村' => ['city', str_repeat('松', 51), 'max.string', '市区町村', 50],
             '勤務先' => ['employer', str_repeat('商', 101), 'max.string', '勤務先', 100],
             '大人の人数' => ['family_adults', '256', 'max.numeric', '大人の人数', 255],
