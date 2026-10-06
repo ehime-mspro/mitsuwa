@@ -167,5 +167,5 @@ sudo rm -f storage/framework/views/*.php && brew services restart httpd
 ## 📚 Detailed docs
 
 - @docs/ARCHITECTURE.md — ディレクトリ構成、モデル一覧、認可マトリクス
-- @docs/RULES.md — Bug #1–99 + Tailwind 不可クラス/監査の落とし穴 + Excel/SheetJS + 全角→半角自動変換 + 郵便番号 API
+- @docs/RULES.md — Bug #1–100 + Tailwind 不可クラス/監査の落とし穴 + Excel/SheetJS + 全角→半角自動変換 + 郵便番号 API
 - @docs/BACKLOG.md — 完了済み機能の優先度別一覧（優先度 1〜5 全て本番稼働中）
