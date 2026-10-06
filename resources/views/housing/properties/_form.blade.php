@@ -2,6 +2,9 @@
 @php
     $p = $property ?? null;
     $isEdit = $p !== null;
+    // 区画の選択の初期値（コントローラが作る。@json には単一の変数を渡す。Bug #26）
+    $initialProjectId = $lotSelection['projectId'];
+    $initialLots = $lotSelection['lots'];
 @endphp
 
 <div x-data="housingPropertyForm()">
@@ -90,7 +93,7 @@
                                 class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none cursor-pointer">
                             <option value="">— PJを選択 —</option>
                             <template x-for="pj in projects" :key="pj.id">
-                                <option :value="pj.id" x-text="pj.code + ' ' + pj.name"></option>
+                                <option :value="pj.id" :selected="String(pj.id) === String(selectedProjectId)" x-text="pj.code + ' ' + pj.name"></option>
                             </template>
                         </select>
                     </div>
@@ -100,7 +103,7 @@
                                 class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none cursor-pointer">
                             <option value="">— 区画を選択 —</option>
                             <template x-for="lot in lots" :key="lot.id">
-                                <option :value="lot.id" x-text="lot.lot_number + '号地（' + lot.area_sqm + '㎡）— ' + lot.status_label"></option>
+                                <option :value="lot.id" :selected="String(lot.id) === String(selectedLotId)" x-text="lot.lot_number + '号地（' + lot.area_sqm + '㎡）— ' + lot.status_label"></option>
                             </template>
                         </select>
                         @error('re_project_lot_id') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
@@ -117,7 +120,7 @@
                             class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none cursor-pointer">
                         <option value="">— 案件を選択 —</option>
                         <template x-for="pr in procurements" :key="pr.id">
-                            <option :value="pr.id" x-text="pr.code + ' ' + pr.name + '（' + pr.address + '）'"></option>
+                            <option :value="pr.id" :selected="String(pr.id) === String(selectedProcurementId)" x-text="pr.code + ' ' + pr.name + '（' + pr.address + '）'"></option>
                         </template>
                     </select>
                     @error('re_procurement_id') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
@@ -221,24 +224,27 @@
 <script>
 function housingPropertyForm() {
     return {
-        landSourceType: '{{ old('land_source_type', $p?->land_source_type?->value ?? '') }}',
-        selectedProjectId: {{ $isEdit && $p->projectLot ? $p->projectLot->project_id : 'null' }},
-        selectedLotId: {{ old('re_project_lot_id', $p?->re_project_lot_id) ?: 'null' }},
-        selectedProcurementId: {{ old('re_procurement_id', $p?->re_procurement_id) ?: 'null' }},
-        postalCode: '{{ old('postal_code', $p?->postal_code ?? '') }}',
-        address: '{{ old('address', $p?->address ?? '') }}',
-        landAreaSqm: '{{ old('land_area_sqm', $p?->land_area_sqm ?? '') }}',
-        landCost: '{{ old('land_cost', $p?->land_cost ?? '') }}',
+        // ⚠ 値は Js::from で渡す（引用符の中に直に書くと & や ' が実体参照の文字のまま入り、末尾の \ で JS が止まる。H3 / Bug #76）
+        landSourceType: {{ \Illuminate\Support\Js::from((string) old('land_source_type', $p?->land_source_type?->value ?? '')) }},
+        // 選んでいる区画の分譲地と区画の一覧はサーバが描く（入力エラーで戻った画面・編集画面。空から始めると今の区画が選べない。H1 / H2）
+        selectedProjectId: {{ \Illuminate\Support\Js::from($initialProjectId) }},
+        selectedLotId: {{ \Illuminate\Support\Js::from(old('re_project_lot_id', $p?->re_project_lot_id)) }},
+        selectedProcurementId: {{ \Illuminate\Support\Js::from(old('re_procurement_id', $p?->re_procurement_id)) }},
+        postalCode: {{ \Illuminate\Support\Js::from((string) old('postal_code', $p?->postal_code ?? '')) }},
+        address: {{ \Illuminate\Support\Js::from((string) old('address', $p?->address ?? '')) }},
+        landAreaSqm: {{ \Illuminate\Support\Js::from((string) old('land_area_sqm', $p?->land_area_sqm ?? '')) }},
+        landCost: {{ \Illuminate\Support\Js::from((string) old('land_cost', $p?->land_cost ?? '')) }},
         isLandCostManual: {{ old('is_land_cost_manual', $p?->is_land_cost_manual ?? 0) ? 'true' : 'false' }},
         autoFilled: false,
         projects: @json($projectsForJs),
-        lots: [],
+        lots: @json($initialLots),
         procurements: @json($procurementsForJs),
 
         init: function() {
             var self = this;
-            // 編集時: 既存のPJが選択済みなら区画を読み込む
-            if (self.selectedProjectId) {
+            // 区画の一覧はサーバが描いて渡す。取り直すのは、分譲地が選ばれているのに一覧が無いときだけ
+            // （取り直して一覧を描き直すと、選んでいた区画が外れることがある）
+            if (self.selectedProjectId && self.lots.length === 0) {
                 self.fetchLots(self.selectedProjectId);
             }
         },

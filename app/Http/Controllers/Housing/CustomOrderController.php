@@ -12,6 +12,7 @@ use App\Models\HsCustomOrder;
 use App\Models\HsCustomOrderFile;
 use App\Models\ReProcurement;
 use App\Models\ReProject;
+use App\Models\ReProjectLot;
 use App\Support\AttachmentDelivery;
 use App\Support\JapanTime;
 use App\Support\Settings;
@@ -71,7 +72,10 @@ class CustomOrderController extends Controller
         $defaultTaxRate = $this->getDefaultTaxRate();
         $buyers = Buyer::ofDepartment('housing')->orderBy('last_name_kana')->get();
 
-        return view('housing.custom-orders.create', compact('projectsForJs', 'procurementsForJs', 'defaultTaxRate', 'buyers'));
+        // 入力エラーで戻った画面は、選んでいた区画の分譲地と区画の一覧をサーバで描く（H2）
+        $lotSelection = $this->initialLotSelection(old('re_project_lot_id'));
+
+        return view('housing.custom-orders.create', compact('projectsForJs', 'procurementsForJs', 'defaultTaxRate', 'buyers', 'lotSelection'));
     }
 
     /**
@@ -158,7 +162,10 @@ class CustomOrderController extends Controller
         $projectsForJs = $this->getProjectsForJs();
         $procurementsForJs = $this->getProcurementsForJs();
 
-        return view('housing.custom-orders.edit', compact('customOrder', 'projectsForJs', 'procurementsForJs'));
+        // 今の区画（入力エラーで戻ったら選んでいた区画）の分譲地と区画の一覧をサーバで描く（H1: 空から始めると保存で紐付けが消えていた）
+        $lotSelection = $this->initialLotSelection(old('re_project_lot_id', $customOrder->re_project_lot_id));
+
+        return view('housing.custom-orders.edit', compact('customOrder', 'projectsForJs', 'procurementsForJs', 'lotSelection'));
     }
 
     /**
@@ -478,6 +485,23 @@ class CustomOrderController extends Controller
             ];
         }
         return $result;
+    }
+
+    /**
+     * 区画の選択の初期値。選んでいる区画の分譲地と、その分譲地の区画の一覧（API と同じ形）をサーバで作る。
+     * ⚠ 区画の `<option>` は `<template x-for>` なので、一覧を空から始めると今の区画が選べず、空のまま送られる（Top trap #3）。
+     *
+     * @return array{projectId: ?int, lots: array<int, array<string, mixed>>}
+     */
+    private function initialLotSelection(mixed $lotId): array
+    {
+        $lot = is_numeric($lotId) ? ReProjectLot::find($lotId) : null;
+        $project = $lot ? ReProject::with('lots', 'costs')->find($lot->project_id) : null;
+        if (! $project) {
+            return ['projectId' => null, 'lots' => []];
+        }
+
+        return ['projectId' => $project->id, 'lots' => $project->housingLotOptions()];
     }
 
     /**

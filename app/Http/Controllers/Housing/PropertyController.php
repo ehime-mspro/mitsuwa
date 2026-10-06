@@ -95,7 +95,10 @@ class PropertyController extends Controller
             ];
         }
 
-        return view('housing.properties.create', compact('projectsForJs', 'procurementsForJs'));
+        // 入力エラーで戻った画面は、選んでいた区画の分譲地と区画の一覧をサーバで描く（H2）
+        $lotSelection = $this->initialLotSelection(old('re_project_lot_id'), null);
+
+        return view('housing.properties.create', compact('projectsForJs', 'procurementsForJs', 'lotSelection'));
     }
 
     /**
@@ -202,7 +205,9 @@ class PropertyController extends Controller
             ];
         }
 
-        return view('housing.properties.edit', compact('property', 'projectsForJs', 'procurementsForJs'));
+        $lotSelection = $this->initialLotSelection(old('re_project_lot_id', $property->re_project_lot_id), $property->id);
+
+        return view('housing.properties.edit', compact('property', 'projectsForJs', 'procurementsForJs', 'lotSelection'));
     }
 
     /**
@@ -394,50 +399,17 @@ class PropertyController extends Controller
             return response()->json([]);
         }
 
-        // 建売物件に登録済みの区画IDを取得（除外用）
-        $usedLotIds = [];
-        if ($request->boolean('exclude_hs')) {
-            $query = HsProperty::whereNotNull('re_project_lot_id');
-            // 編集時は自分自身の区画を除外対象から外す
-            if ($request->filled('current_property_id')) {
-                $query->where('id', '!=', $request->input('current_property_id'));
-            }
-            $usedLotIds = $query->pluck('re_project_lot_id')->toArray();
-        }
-
-        // 按分原価計算の準備
-        $effectiveCostTotal = $project->getEffectiveCostTotal();
-        $lotSellingTotal = $project->getLotSellingPriceTotal();
-        $allHavePrice = $project->allLotsHaveSellingPrice();
-
-        $results = [];
-        foreach ($project->lots as $lot) {
-            // 建売登録済みの区画はスキップ
-            if (in_array($lot->id, $usedLotIds)) {
-                continue;
-            }
-            $depreciationAmount = null;
-            if ($allHavePrice && $lotSellingTotal > 0) {
-                $depreciationAmount = (int) round($effectiveCostTotal * ($lot->selling_price / $lotSellingTotal));
-            }
-
-            $results[] = [
-                'id'               => $lot->id,
-                'lot_number'       => $lot->lot_number,
-                'area_sqm'         => (float) $lot->area_sqm,
-                'selling_price'    => $lot->selling_price,
-                'land_cost'        => $depreciationAmount,
-                'status'           => $lot->status->value,
-                'status_label'     => $lot->status->label(),
-            ];
-        }
+        // 建売物件に登録済みの区画は外す（編集時は自分自身の区画を残す）
+        $usedLotIds = $request->boolean('exclude_hs')
+            ? $this->lotIdsUsedByProperties($request->filled('current_property_id') ? (int) $request->input('current_property_id') : null)
+            : [];
 
         return response()->json([
             'project' => [
                 'postal_code' => $project->postal_code,
                 'address'     => $project->address,
             ],
-            'lots' => $results,
+            'lots' => $project->housingLotOptions($usedLotIds),
         ]);
     }
 
@@ -511,6 +483,38 @@ class PropertyController extends Controller
             $validated['re_project_lot_id'] = null;
             $validated['re_procurement_id'] = null;
         }
+    }
+
+    /**
+     * 建売物件に使った区画（$exceptPropertyId の物件の区画は残す）
+     *
+     * @return array<int, int>
+     */
+    private function lotIdsUsedByProperties(?int $exceptPropertyId): array
+    {
+        $query = HsProperty::whereNotNull('re_project_lot_id');
+        if ($exceptPropertyId !== null) {
+            $query->where('id', '!=', $exceptPropertyId);
+        }
+
+        return $query->pluck('re_project_lot_id')->toArray();
+    }
+
+    /**
+     * 区画の選択の初期値。選んでいる区画の分譲地と、その分譲地の区画の一覧（API と同じ形）をサーバで作る。
+     * ⚠ 区画の `<option>` は `<template x-for>` なので、一覧を空から始めると今の区画が選べず、空のまま送られる（Top trap #3）。
+     *
+     * @return array{projectId: ?int, lots: array<int, array<string, mixed>>}
+     */
+    private function initialLotSelection(mixed $lotId, ?int $propertyId): array
+    {
+        $lot = is_numeric($lotId) ? ReProjectLot::find($lotId) : null;
+        $project = $lot ? ReProject::with('lots', 'costs')->find($lot->project_id) : null;
+        if (! $project) {
+            return ['projectId' => null, 'lots' => []];
+        }
+
+        return ['projectId' => $project->id, 'lots' => $project->housingLotOptions($this->lotIdsUsedByProperties($propertyId))];
     }
 
     /**

@@ -331,7 +331,7 @@
             <div class="hc-field-row">
                 <div class="hc-field">
                     <label class="field-label">契約日<span class="required">*</span></label>
-                    <div class="date-picker-wrap" x-data="datePicker('{{ $contractDateValue }}')" @click.outside="open = false">
+                    <div class="date-picker-wrap" x-data="datePicker({{ \Illuminate\Support\Js::from((string) $contractDateValue) }})" @click.outside="open = false">
                         <button type="button" class="date-input-trigger" @click="open = !open">
                             <span x-show="selected" x-text="selectedLabel"></span>
                             <span x-show="!selected" class="placeholder">日付を選択</span>
