@@ -239,15 +239,16 @@ class HsContractListController extends Controller
             'created_by'             => 'nullable|integer|exists:users,id',
             'contract_date'          => 'required|date',
             'notes'                  => 'nullable|string|max:5000',
-            'selling_price_land'     => 'required|integer|min:0',
-            'selling_price_building' => 'required|integer|min:0',
-            'tax_rate'               => 'required|numeric|min:0|max:100',
+            // 金額の列は符号付き INT・消費税率は DECIMAL(4,2)（本番の MySQL は範囲外で 500。H4 / Bug #73）
+            'selling_price_land'     => 'required|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'selling_price_building' => 'required|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'tax_rate'               => 'required|numeric|min:0|max:99.99',
             'is_land_cost_manual'    => 'sometimes|boolean',
             'land_cost'              => [
                 Rule::requiredIf(fn() => $request->boolean('is_land_cost_manual')),
-                'nullable', 'integer', 'min:0',
+                'nullable', 'integer', 'min:0', 'max:' . self::MAX_INT_COLUMN,
             ],
-            'building_cost'          => 'required|integer|min:0',
+            'building_cost'          => 'required|integer|min:0|max:' . self::MAX_INT_COLUMN,
         ]);
 
         DB::transaction(function () use ($validated, $request, $hsContract, $property) {
@@ -341,11 +342,13 @@ class HsContractListController extends Controller
                 HousingLandSourceType::Procurement->value,
                 HousingLandSourceType::CustomerLand->value,
             ])],
-            're_project_lot_id'       => 'nullable|integer|exists:re_project_lots,id',
-            're_procurement_id'       => 'nullable|integer|exists:re_procurements,id',
-            'land_selling_price'      => 'nullable|integer|min:0',
-            'building_contract_price' => 'required|integer|min:0',
-            'tax_rate'                => 'required|numeric|min:0|max:100',
+            // 土地の種別を選んだのに紐付け先が空の保存は断る（D1）
+            're_project_lot_id'       => 'nullable|required_if:land_source_type,project_lot|integer|exists:re_project_lots,id',
+            're_procurement_id'       => 'nullable|required_if:land_source_type,procurement|integer|exists:re_procurements,id',
+            // 金額の列は符号付き INT・消費税率は DECIMAL(4,2)（本番の MySQL は範囲外で 500。H4 / Bug #73）
+            'land_selling_price'      => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'building_contract_price' => 'required|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'tax_rate'                => 'required|numeric|min:0|max:99.99',
             'is_land_cost_manual'     => 'sometimes|boolean',
             // 顧客所有地以外 かつ 手動入力ON の場合のみ土地原価必須
             'land_cost'               => [
@@ -353,9 +356,12 @@ class HsContractListController extends Controller
                     $request->input('land_source_type') !== HousingLandSourceType::CustomerLand->value
                     && $request->boolean('is_land_cost_manual')
                 ),
-                'nullable', 'integer', 'min:0',
+                'nullable', 'integer', 'min:0', 'max:' . self::MAX_INT_COLUMN,
             ],
-            'building_cost'           => 'required|integer|min:0',
+            'building_cost'           => 'required|integer|min:0|max:' . self::MAX_INT_COLUMN,
+        ], [
+            're_project_lot_id.required_if' => '土地種別が分譲地のときは、分譲地区画を選んでください。',
+            're_procurement_id.required_if' => '土地種別が仕入れ土地のときは、仕入れ案件を選んでください。',
         ]);
 
         DB::transaction(function () use ($validated, $request, $hsCustomOrder) {

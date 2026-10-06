@@ -363,26 +363,31 @@ class CustomOrderController extends Controller
             'status'                    => "required|in:{$statuses}",
             'customer_name'             => 'required|string|max:100',
             'land_source_type'          => "nullable|in:{$sourceTypes}",
-            're_project_lot_id'         => 'nullable|exists:re_project_lots,id',
-            're_procurement_id'         => 'nullable|exists:re_procurements,id',
+            // 土地の種別を選んだのに紐付け先が空の保存は断る（D1。画面の選択が壊れても空で保存されないように）
+            're_project_lot_id'         => 'nullable|required_if:land_source_type,project_lot|exists:re_project_lots,id',
+            're_procurement_id'         => 'nullable|required_if:land_source_type,procurement|exists:re_procurements,id',
             'postal_code'               => 'nullable|string|max:10',
             'address'                   => 'required|string|max:200',
             'land_area_sqm'             => 'nullable|numeric|min:0|max:99999999.99',
             'building_area_sqm'         => 'nullable|numeric|min:0|max:99999999.99',
             'structure'                 => 'nullable|string|max:50',
             'floors'                    => 'nullable|integer|min:1|max:99',
-            'building_contract_price'   => 'nullable|integer|min:0',
-            'building_cost'             => 'nullable|integer|min:0',
-            'land_selling_price'        => 'nullable|integer|min:0',
-            'land_cost'                 => 'nullable|integer|min:0',
+            // 金額の列は符号付き INT・消費税率は DECIMAL(4,2)（本番の MySQL は範囲外で 500。H4 / Bug #73）
+            'building_contract_price'   => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'building_cost'             => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'land_selling_price'        => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'land_cost'                 => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
             'is_land_cost_manual'       => 'required|in:0,1',
-            'tax_rate'                  => 'required|numeric|min:0|max:100',
+            'tax_rate'                  => 'required|numeric|min:0|max:99.99',
             'contract_date'             => 'nullable|date',
             'construction_start_date'   => 'nullable|date',
             'scheduled_completion_date' => 'nullable|date',
             'delivery_date'             => 'nullable|date',
             'notes'                     => 'nullable|string|max:5000',
-        ], [], [
+        ], [
+            're_project_lot_id.required_if' => '土地種別が分譲地区画のときは、区画を選んでください。',
+            're_procurement_id.required_if' => '土地種別が仕入れ案件のときは、仕入れ案件を選んでください。',
+        ], [
             // 画面ラベルに合わせる（lang/ja/validation.php の既定は「住所」）
             'address' => '所在地',
         ]);

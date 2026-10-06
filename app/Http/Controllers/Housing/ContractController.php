@@ -172,9 +172,10 @@ class ContractController extends Controller
     {
         return $request->validate([
             'customer_name'          => 'required|string|max:100',
-            'selling_price_land'     => 'required|integer|min:0',
-            'selling_price_building' => 'required|integer|min:0',
-            'tax_rate'               => 'required|numeric|min:0|max:100',
+            // 金額の列は符号付き INT・消費税率は DECIMAL(4,2)（本番の MySQL は範囲外で 500。H4 / Bug #73）
+            'selling_price_land'     => 'required|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'selling_price_building' => 'required|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'tax_rate'               => 'required|numeric|min:0|max:99.99',
             'contract_date'          => 'required|date',
             'settlement_date'        => 'nullable|date',
             'notes'                  => 'nullable|string|max:5000',
