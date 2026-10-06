@@ -1,6 +1,6 @@
 {{-- 決裁のみ利用者（UserRole::ApprovalOnly）のサイドバー（設計書 §5.15）。
      基幹のサイドバー（sidebar.blade.php）の代わりに layouts/app.blade.php が出し分ける。
-     ⚠ 中身は「決裁のホーム」、使い始めてから「新しい申請」「自分の申請」（段階2 設計書 §5.12）、
+     ⚠ 中身は「決裁のホーム」、使い始めてから「新しい申請」「自分の申請」（段階2 設計書 §5.12）と「決裁台帳」（段階4 設計書 §5.8）、
        決裁の管理者なら「利用者の管理」「部門の管理」「申請種類の管理」。
        社員の CSV 一括登録は「利用者の管理」の下位の画面なのでここには出さない。
      回帰テスト tests/Feature/Approval/ApprovalSidebarTest.php --}}
@@ -34,6 +34,7 @@
         @if($approvalsLaunched)
             <x-sidebar-item :href="route('approvals.requests.create')" label="新しい申請" :active="request()->routeIs('approvals.requests.create')" />
             <x-sidebar-item :href="route('approvals.requests.index')" label="自分の申請" :active="request()->routeIs('approvals.requests.index', 'approvals.requests.show', 'approvals.requests.edit')" />
+            <x-sidebar-item :href="route('approvals.ledger.index')" label="決裁台帳" :active="request()->routeIs('approvals.ledger.*')" />
         @endif
         @if($isApprovalAdmin)
             <x-sidebar-item :href="route('approvals.admin.users.index')" label="利用者の管理" :active="request()->routeIs('approvals.admin.users.*')" />
@@ -81,6 +82,7 @@
     @if($approvalsLaunched)
         <x-sidebar-item :href="route('approvals.requests.create')" label="新しい申請" :active="request()->routeIs('approvals.requests.create')" />
         <x-sidebar-item :href="route('approvals.requests.index')" label="自分の申請" :active="request()->routeIs('approvals.requests.index', 'approvals.requests.show', 'approvals.requests.edit')" />
+        <x-sidebar-item :href="route('approvals.ledger.index')" label="決裁台帳" :active="request()->routeIs('approvals.ledger.*')" />
     @endif
     @if($isApprovalAdmin)
         <x-sidebar-item :href="route('approvals.admin.users.index')" label="利用者の管理" :active="request()->routeIs('approvals.admin.users.*')" />

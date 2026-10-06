@@ -23,6 +23,7 @@
         <div class="flex flex-wrap gap-2">
             <a href="{{ route('approvals.requests.create') }}" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-[13px] font-semibold">新しい申請</a>
             <a href="{{ route('approvals.requests.index') }}" class="px-4 py-2 bg-white border border-gray-300 rounded-md text-[13px] font-semibold text-gray-700 hover:bg-gray-50">自分の申請</a>
+            <a href="{{ route('approvals.ledger.index') }}" class="px-4 py-2 bg-white border border-gray-300 rounded-md text-[13px] font-semibold text-gray-700 hover:bg-gray-50">決裁台帳</a>
         </div>
     </div>
 
