@@ -143,7 +143,8 @@ class PropertyController extends Controller
      */
     private function paginateCollection(Request $request, Collection $items, int $perPage): LengthAwarePaginator
     {
-        $page = LengthAwarePaginator::resolveCurrentPage();
+        // ページ番号は最後のページまで（手で打った大きな番号で forPage の位置が float になり 500・行の無いページは件数と食い違う）
+        $page = min(LengthAwarePaginator::resolveCurrentPage(), max(1, (int) ceil($items->count() / $perPage)));
 
         return new LengthAwarePaginator(
             $items->forPage($page, $perPage)->values(),
