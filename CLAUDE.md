@@ -139,6 +139,7 @@ sudo rm -f storage/framework/views/*.php && brew services restart httpd
 - 決裁の PDF（mPDF）は表の 1 行をページの途中で切れない。長い文を 1 つのセルに入れると縮めて 1 ページに押し込むので、罫線の 1 行＝表の 1 行にする（`PdfSheet::bodyRows()`）。文中の `<span>` の枠は描き損なうことがあるので小さな表で組む。PDF に表や SVG を足すときの落とし穴 4 つ: ①判断の欄の小さな表を印・コメントと同じセルに入れ子にしない（セルの高さを少なく見積もって印がはみ出す。決裁の欄は 2 段）②人が打つ文字の入る表には `class="wrap"`（`overflow: wrap`。無いと空白の無い長い語で表ごと縮む）③朱の枠は `td.mark.on`（`.on` だけだと黒の枠が勝つ）④SVG は viewBox を描く大きさ（px）にして中身を `scale()` で縮める（mPDF が文字の幅を描く大きさで測るので、viewBox が違うと文字が右に寄る）。詳しくは `resources/views/approvals/requests/pdf.blade.php` の先頭の注記と `StampSvg` の説明
 - 決裁の印の文字は判断したときに `approval_steps` に控える（`Workflow::finishStep()`）。判断した印（申請の詳細・PDF）の表示は `Stamp::forStep()` を通す（今の設定から描かない）。⑦（利用者の管理）の見本だけは判断していないので `Stamp::preview()`。描くのはどれも `StampSvg`
 - 決裁の PDF の同梱のフォント（`resources/fonts/ipaex`）は `.gitattributes` の `-text` で配布元のまま保存する。ライセンスの文書を消さない
+- 決裁台帳（⑤）と Excel は `App\Support\Approval\Ledger` の 1 か所で問い合わせる（見られる範囲は `RequestVisibility`）。中身は申請者本人以外には最後に提出した控えで出し・当てる（`LedgerRow`・`Ledger::whereContent()`）。並びは日本の暦の日で比べるので SQL で並べない（`Ledger::sortedIds()`）。Excel の文字の欄は `setCellValueExplicit(…, TYPE_STRING)` で入れる（式にしない）。出力の記録（添付・PDF・Excel）は `DownloadLogger` だけが書く
 - `re_projects` のカラムは `project_name`（`name` ではない）
 - 既定都道府県: 愛媛県
 - 外部 CDN: `cdn.jsdelivr.net` のみ許可（`cdnjs.cloudflare.com` は本番でブロック）
@@ -160,7 +161,7 @@ sudo rm -f storage/framework/views/*.php && brew services restart httpd
 | 経営ダッシュボード | `/dashboard/executive` | `DashboardController::executive`（5事業横断）|
 | 買主マスタ（部署横断）| `/buyers` | `CustomerController`、SoftDeletes、CSV import |
 | 添付ファイル | ポリモーフィック | `AttachmentController`（TYPE_MAP と routes/web.php の `where` 正規表現を同期。Bug #20）|
-| 決裁申請 段階1・2a・2b・3a・3b | `/approvals/*` | `Approval\*Controller`（門番 3 本・CSV 一括登録・ログイン案内・申請の回覧と進行中の申請の管理・お知らせ〈ベル・⑥〉と通知メール・毎朝の催促〈`approvals:remind`〉と催促の設定〈⑫〉。状態を変えるのは `App\Support\Approval\Workflow` だけ・知らせを出すのは `App\Support\Approval\Notifier` だけ）|
+| 決裁申請 段階1〜4b | `/approvals/*` | `Approval\*Controller`（門番 3 本・CSV 一括登録・ログイン案内・申請の回覧と進行中の申請の管理・決裁台帳と Excel（⑤。問い合わせは `Ledger` だけ・出力の記録は `DownloadLogger` だけ）・お知らせ〈ベル・⑥〉と通知メール・毎朝の催促〈`approvals:remind`〉と催促の設定〈⑫〉。状態を変えるのは `App\Support\Approval\Workflow` だけ・知らせを出すのは `App\Support\Approval\Notifier` だけ）|
 
 詳細構成: @docs/ARCHITECTURE.md / 実装履歴・優先度: @docs/BACKLOG.md
 

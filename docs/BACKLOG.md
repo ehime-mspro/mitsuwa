@@ -2196,7 +2196,7 @@ git checkout 13.x && git merge --ff-only date-picker-month-ago
 
 ---
 
-## 🚧 決裁申請 段階4（電子印・PDF・決裁台帳と Excel）— 4a 本番反映済み・4b 未着手・使い始める前
+## 🚧 決裁申請 段階4（電子印・PDF・決裁台帳と Excel）— 4a 本番反映済み・4b 実装済み・本番反映前・使い始める前
 
 要件定義書: @docs/決裁申請_要件定義書_v1.md（v1.13。3.2・9 章・13 章の ③⑤⑦・14.2・14.4・14.5・15.4・15.5・15.7）
 設計書: @docs/superpowers/specs/2026-10-03-approval-phase4-design.md（設計の 5 節は 2026-10-03 に利用者が 1 節ずつ承認）
@@ -2267,9 +2267,23 @@ git checkout 13.x && git merge --ff-only date-picker-month-ago
 
 ### 4b（決裁台帳 ⑤・Excel 出力・Excel の出力の記録）
 
-未着手。実装計画は 4a とは別に書く（設計書 §5.8〜§5.10）。
+実装計画: @docs/superpowers/plans/2026-10-05-approval-phase4b.md（Task 0〜8）。worktree `.claude/worktrees/approval-phase3`（4a と同じ）。
 
-- 4a から持ち越し: 出力の記録（`approval_download_logs`）の書き方を 1 か所にまとめる。PDF の記録（`RequestPdfController`）は添付の出力の記録（`RequestAttachmentController`）と同じ形の `ApprovalDownloadLog::create()` の写しで、`kind` も `'pdf'`・`'attachment'` の直書き。Excel の記録が 3 つ目になるので、そのとき書き方（`user_agent` を 255 文字で切る所も）を 1 か所にまとめ、`kind` を `KIND_*` の定数にそろえる
+- 表: `approval_download_logs.request_id` を NULL 可に（Excel の行は申請が無い）・`filters`（JSON。絞り込みの条件）・`request_count`（件数）を足した。本番の SQL は `database/sql/2026-10-05-approval-phase4b.sql`（ALTER 1 文）。本番反映は **DB が先・`./deploy.sh` が後**。本番の表は 0 行
+- 出力の記録は、添付・PDF・Excel のどれも `DownloadLogger` だけが書く（`kind` は `ApprovalDownloadLog::KIND_*`。4a からの持ち越しを片付けた）。ほかの場所が直接書かないことを `DownloadLoggerTest` が走査で見る
+- 台帳の問い合わせは `Ledger` の 1 か所（画面と Excel が同じものを使う）。見られる範囲は `RequestVisibility::apply`・下書きは出さない。**中身（部門・種類・件名・本文）は申請者本人以外には最後に提出した控えで出し・当てる**（D19。他人の差戻し中・取り下げの申請だけを `approval_revisions` の今の回の JSON で当てる。この 2 つの状態は `ApprovalStatus::mayDifferFromSubmission()` の 1 か所に置き、関連する決裁No の候補〈`RelatedNumberController`〉も使う）。1 行の中身は `LedgerRow`（`ApprovalRequest::lastRevision()` を先に読む）
+- 並び（D22）は日本の暦の日で比べるので SQL で並べず、`Ledger::sortedIds()` が軽い列を読んで PHP で並べる（同じ日は番号のあるものを部門のアルファベット・連番の順、番号の無いものは発信の新しい順）。5,000 件で画面 0.12 秒
+- 絞り込みは GET。読めない値は断らずに外して画面で知らせる（`LedgerFilter`。`validate()` で前の画面へ戻すと同じ URL を開き直し続ける）。キーワードと申請者は空白で分けた語のどれも含むもの。プルダウンは変えた瞬間に送り、`pageshow` で絞り込みのフォームを元に戻す（Bug #65）
+- Excel は `LedgerExcel`（PhpSpreadsheet の書き出しの初めての例）。文字の欄はすべて `setCellValueExplicit(…, TYPE_STRING)`（式にしない）・日付は日本の暦の日の Excel の日付・金額は数・見出しを固定して絞り込みのボタン。**件数の上限は 1,000**（`config('approval.ledger.excel_limit')`。メモリをいちばん使うのは審査のコメントと条件の長さで、入力の上限の中身〈コメント 2,000 文字〉の 1,000 件は Laravel 込みで 95MB ほど・2,000 件は本番の上限 128M を超える）。超えたら作らず、記録もしない。選択肢に無い年度・部門・種類と壊れた文字（不正な UTF-8）の条件は、画面と Excel の両方で外して知らせる
+- 計画で決めた細部（計画 §0.9）: ホームの入口は上の「新しい申請」「自分の申請」の行／Excel は作れなかったときの知らせを作らない（失敗はメモリの不足くらいで捕まえられない）／設計書 §4.1 の「拡張が無ければ起動時に止まる」は誤り（起動時の確かめは PHP の版だけ。本番を読み取って拡張がそろっていることを確かめた）
+- 受け入れた隙間（計画 §0.10）:
+  - キーワードの探し方が本番の MySQL では当てる列で少し違う（申請の行の列は大文字小文字・かなの違いを区別せず、控えの JSON の中〈他人の差戻し中・取り下げ〉は区別する）— 起きたとき: 他人の差戻し中・取り下げの申請を、大文字小文字やかなを変えた言葉で探すと当たらないことがある ／ 塞ぐなら: 控えの側にも照合順序を付ける
+  - 台帳を開くたびに、当たる申請の軽い列をすべて読んで並べる — 起きたとき: 数万件で遅くなる（5,000 件で 0.12 秒・申請は年に数百件）／ 塞ぐなら: 日本の日付の列を表に持つ
+  - 本番の Web の PHP のメモリの上限は CLI と同じ 128M と見ている（4a と同じ）— 起きたとき: 小さければ、コメントの長い 1,000 件の Excel を作れない（500 と laravel.log）／ 塞ぐなら: 段階6 の受け入れ確認で多めの台帳の Excel を本番で 1 回出す
+  - 番号のあと取り下げた欠番は決裁日が空で、並びは発信日の日・決裁日の期間で絞ると出ない ／ 塞ぐなら: 取り下げた日時を欠番の日にする
+  - 年度の選択肢の和暦は期の始まりの月がいちばん早い会社で数える（今の会社はどれも R1 で同じ）
+  - キーワード・申請者の `%` と `_` を逃がさない（アプリのほかの検索と同じ）
+- 実装のコミット（計画のコミットの次から。古い順）: Task 1〜4 の 4 本と記録（Task 5・6）。`git log` で見る
 
 ---
 
