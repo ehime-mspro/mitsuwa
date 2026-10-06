@@ -34,7 +34,9 @@ class LedgerController extends Controller
         $choices = $this->choices();
         $filter  = $this->filter($request, $choices);
         $ids     = Ledger::sortedIds($viewer, $filter);
-        $page    = LengthAwarePaginator::resolveCurrentPage();
+        // ページ番号は最後のページまで（手で打った大きな番号で array_slice に float が渡ると 500・行の無いページは件数と食い違う）
+        $last    = max(1, (int) ceil(count($ids) / Ledger::PER_PAGE));
+        $page    = min(LengthAwarePaginator::resolveCurrentPage(), $last);
 
         $rows = new LengthAwarePaginator(
             Ledger::rows($viewer, array_slice($ids, ($page - 1) * Ledger::PER_PAGE, Ledger::PER_PAGE)),

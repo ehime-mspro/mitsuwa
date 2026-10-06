@@ -171,6 +171,20 @@ class LedgerScreenTest extends TestCase
         $this->assertStringContainsString('>R8-J-051<', $second, '2 ページ目は 51 番目（同じ日なので番号の順）');
     }
 
+    public function test_a_page_past_the_end_shows_the_last_page(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $this->approved($w, 1, ['subject' => '社用車']);
+        $viewer = $this->viewAllUser();
+
+        foreach (['2', '99999', '9223372036854775807'] as $page) {
+            $html = $this->page($viewer, ['page' => $page]);
+            $this->assertStringContainsString('>R8-J-001<', $html, "page={$page} でも最後のページの行が出る");
+            $this->assertStringNotContainsString('該当する申請はありません。', $html, "page={$page} で件数と食い違う空の画面にしない");
+        }
+    }
+
     public function test_the_page_does_not_query_per_request(): void
     {
         $w = $this->approvalWorld();
