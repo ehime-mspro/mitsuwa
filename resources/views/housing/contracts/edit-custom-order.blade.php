@@ -349,6 +349,10 @@
     @if($errors->any())
         <div class="mb-4 rounded-lg border border-red-200 bg-red-50 p-3">
             <p class="text-sm text-red-800">入力内容にエラーがあります。確認してください。</p>
+            {{-- 理由を 1 件ずつ出す（項目の下に @error が無い欄も多い。H5） --}}
+            <ul class="list-disc list-inside text-xs text-red-700 mt-1 space-y-0.5">
+                @foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach
+            </ul>
         </div>
     @endif
 
