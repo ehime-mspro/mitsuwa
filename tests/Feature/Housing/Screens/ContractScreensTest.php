@@ -86,6 +86,21 @@ class ContractScreensTest extends HousingScreenTestCase
         $this->assertSame([26000000, $lot->id, $this->user->id], [$order->building_contract_price, $order->re_project_lot_id, $order->updated_by]);
     }
 
+    public function test_a_custom_order_contract_on_company_land_without_a_link_is_refused(): void
+    {
+        $order = $this->customOrder(['status' => 'contracted', 'contract_date' => '2026-09-10', 'customer_id' => $this->buyer()->id,
+            'land_source_type' => 'customer_land', 'building_contract_price' => 25000000, 'building_cost' => 20000000]);
+        $url = route('housing.contracts.edit-custom-order', $order);
+        $form = $this->composedForm($this->htmlOf($url), route('housing.contracts.update-custom-order', $order), 'customOrderEditForm', null,
+            ['datePicker' => '', 'buyerSelect' => ''], 'data.landSourceType = "procurement";');
+        $this->assertSame(['procurement', ''], [$form['fields']['land_source_type'], $form['fields']['re_procurement_id']]);
+
+        $html = $this->landed($this->submit($form, $url));
+
+        $this->assertErrorItem($html, '土地種別が仕入れ土地のときは、仕入れ案件を選んでください。');
+        $this->assertSame('customer_land', $order->fresh()->land_source_type->value);
+    }
+
     public function test_a_contract_input_error_lists_the_reasons(): void
     {
         [, $contract] = $this->soldProperty();
