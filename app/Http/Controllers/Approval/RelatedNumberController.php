@@ -45,7 +45,7 @@ class RelatedNumberController extends Controller
         $number = RelatedNumbers::normalize($text);
 
         // 直しかけが今の中身に残りうる状態（差戻し中と、差戻し中に直して保存してから取り下げた申請）
-        $fromRevision = [ApprovalStatus::Returned, ApprovalStatus::Withdrawn];
+        $fromRevision = ApprovalStatus::mayDifferFromSubmission();
         $values       = array_map(fn (ApprovalStatus $status) => $status->value, $fromRevision);
 
         $found = RequestVisibility::apply(ApprovalRequest::query(), $request->user())
