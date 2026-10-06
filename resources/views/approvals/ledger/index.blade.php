@@ -93,6 +93,12 @@
     <div class="bg-white rounded-lg border border-gray-200">
         <div class="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 border-b border-gray-200">
             <p class="text-[13px] text-gray-700"><span class="font-semibold tabular-nums">{{ number_format($rows->total()) }}</span> 件</p>
+            {{-- Excel は表に使った条件で全件（§5.9）。上限を超えたら出さずに理由を書く（押せないボタンには理由を出す。要件 14.4） --}}
+            @if($rows->total() > $excelLimit)
+                <p class="text-[12px] text-gray-500">Excel に出せるのは {{ number_format($excelLimit) }} 件までです。絞り込んでください。</p>
+            @elseif($rows->total() > 0)
+                <a href="{{ route('approvals.ledger.excel', $filter->query()) }}" class="inline-flex items-center h-8 px-3.5 bg-white border border-gray-300 rounded-md text-[12px] font-semibold text-gray-700 hover:bg-gray-50">Excel に出力</a>
+            @endif
         </div>
 
         @if($rows->isEmpty())

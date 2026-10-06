@@ -97,6 +97,7 @@ class ApprovalAdminGateTest extends TestCase
         'approvals.requests.destroy' => '一度も提出していない下書きの削除（申請者だけ）',
         'approvals.requests.pdf'     => '決裁申請書の PDF（見られる範囲を毎回確かめ、記録する。下書きは 404。段階4 設計書 §5.6）',
         'approvals.ledger.index'     => '決裁台帳（見られる申請だけ。下書きは出さない。段階4 設計書 §5.8）',
+        'approvals.ledger.excel'     => '決裁台帳の Excel（台帳と同じ範囲・条件。出力のたびに記録する。段階4 設計書 §5.9・§5.10）',
         'approvals.requests.attachments.store' => '添付の追加（申請者だけ。下書き・差戻し中。段階2 設計書 §5.7）',
         'approvals.attachments.show'           => '添付を開く（見られる範囲を毎回確かめ、記録する）',
         'approvals.attachments.destroy'        => '添付を外す（申請者だけ。下書き・差戻し中）',
@@ -192,7 +193,7 @@ class ApprovalAdminGateTest extends TestCase
 
         // 走査が空振りして緑になる事故を防ぐ（3b で 50 本 = 決裁の管理 22 本 + 進行中の申請の管理 4 本 + ホーム 1 本 + 申請を回す画面 16 本 + お知らせ 3 本
         // + 催促の設定 4 本）
-        $this->assertGreaterThanOrEqual(52, $found, 'approvals. のルートの走査に失敗している');
+        $this->assertGreaterThanOrEqual(53, $found, 'approvals. のルートの走査に失敗している');
     }
 
     /**
