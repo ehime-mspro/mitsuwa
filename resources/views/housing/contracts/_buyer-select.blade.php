@@ -233,6 +233,14 @@ function buyerSelect(initialName) {
                 body: JSON.stringify(self.f)
             })
             .then(function(res) {
+                // 入力エラー（422）は断られた理由を小窓に出す（H6）
+                if (res.status === 422) {
+                    return res.json().then(function(body) {
+                        var reasons = [];
+                        Object.keys((body && body.errors) || {}).forEach(function(key) { reasons = reasons.concat(body.errors[key]); });
+                        throw new Error(reasons.length > 0 ? reasons.join(' ') : '登録に失敗しました（422）');
+                    });
+                }
                 if (!res.ok) { throw new Error('登録に失敗しました（' + res.status + '）'); }
                 return res.json();
             })
