@@ -8,6 +8,7 @@ use App\Models\SurveyQuestion;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Exceptions;
+use Tests\Concerns\RunsBuyerFormScript;
 
 /**
  * 不動産の顧客（買主マスタ。住宅事業と共用のコントローラ・画面）の一覧・登録・詳細・編集・削除と、
@@ -19,6 +20,8 @@ use Illuminate\Support\Facades\Exceptions;
  */
 class CustomerScreensTest extends RealEstateScreenTestCase
 {
+    use RunsBuyerFormScript;
+
     private function question(string $label = 'ご希望のエリア'): SurveyQuestion
     {
         return SurveyQuestion::create(['department' => 'realestate', 'label' => $label, 'question_type' => 'text', 'sort_order' => 1, 'is_active' => true]);
@@ -282,57 +285,9 @@ class CustomerScreensTest extends RealEstateScreenTestCase
         Exceptions::assertReported(QueryException::class);
     }
 
-    // ============================================================
-    // 画面の JS（送信の瞬間に生年月日を組む）
-    // ============================================================
-
-    /**
-     * 顧客の画面の buyerForm() の init() が登録する submit の処理を node で動かし、hidden の birth_date に入る値を返す。
-     * 欄の値は $form（送るフォームの項目）から取る。
-     */
-    protected function jsBirthDate(array $form): string
+    /** 生年月日を組む JS を読む画面（RunsBuyerFormScript） */
+    protected function buyerFormUrl(): string
     {
-        $node = trim((string) shell_exec('command -v node 2>/dev/null'));
-        if ($node === '') {
-            $this->markTestSkipped('node が無いので生年月日を組む JavaScript を動かせない');
-        }
-        $found = preg_match('/<script>\s*(function buyerForm\(\) \{.*?)<\/script>/su', $this->htmlOf(route('realestate.customers.create')), $m);
-        $this->assertSame(1, $found, 'function buyerForm() の script が描かれていない');
-
-        $harness = <<<'JS'
-            const fs = require('fs');
-            const vm = require('vm');
-            const input = JSON.parse(fs.readFileSync(process.argv[1], 'utf8'));
-            const els = {
-                'select[name="birth_era"]': { value: input.era },
-                'input[name="birth_year"]': { value: input.year },
-                'input[name="birth_month"]': { value: input.month },
-                'input[name="birth_day"]': { value: input.day },
-                'input[name="birth_date"]': { value: '' },
-            };
-            let onSubmit = null;
-            const context = vm.createContext({ document: { querySelector(s) { return els[s] || null; } } });
-            vm.runInContext(input.script, context);
-            const data = vm.runInContext('buyerForm()', context);
-            data.$el = { closest() { return { addEventListener(type, fn) { if (type === 'submit') { onSubmit = fn; } } }; } };
-            data.init();
-            if (onSubmit) { onSubmit(); }
-            process.stdout.write(JSON.stringify({ birthDate: els['input[name="birth_date"]'].value, listened: onSubmit !== null }));
-            JS;
-        $file = tempnam(sys_get_temp_dir(), 'buyer-form-');
-        try {
-            file_put_contents($file, json_encode([
-                'script' => $m[1], 'era' => $form['fields']['birth_era'] ?? '', 'year' => $form['fields']['birth_year'] ?? '',
-                'month' => $form['fields']['birth_month'] ?? '', 'day' => $form['fields']['birth_day'] ?? '',
-            ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
-            $output = shell_exec(sprintf('%s -e %s %s 2>&1', escapeshellarg($node), escapeshellarg($harness), escapeshellarg($file)));
-        } finally {
-            unlink($file);
-        }
-        $result = json_decode((string) $output, true);
-        $this->assertIsArray($result, "node で生年月日を組む JavaScript を動かせなかった:\n" . $output);
-        $this->assertTrue($result['listened'], '送信の瞬間に生年月日を組む処理が登録されていない');
-
-        return $result['birthDate'];
+        return route('realestate.customers.create');
     }
 }
