@@ -389,8 +389,9 @@ class PropertyController extends Controller
      */
     public function projectLots(Request $request)
     {
+        // ⚠ 数字でない値（`?project_id[]=1` など。手で組んだ URL）は find() が配列で引いて 500 になっていた（H8）
         $projectId = $request->input('project_id');
-        if (!$projectId) {
+        if (! is_string($projectId) || ! ctype_digit($projectId)) {
             return response()->json([]);
         }
 
