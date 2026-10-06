@@ -246,7 +246,8 @@ class PropertyController extends Controller
             'status' => "required|in:{$statuses}",
         ]);
 
-        $property->update(['status' => $validated['status']]);
+        // 変えた人を更新者に残す（注文住宅のステータスの変更と同じ。H10）
+        $property->update(['status' => $validated['status'], 'updated_by' => auth()->id()]);
         $property->refresh()->loadMissing('contract');
 
         return response()->json([
