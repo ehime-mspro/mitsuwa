@@ -4,8 +4,8 @@ namespace App\Http\Controllers\Approval;
 
 use App\Http\Controllers\Controller;
 use App\Models\ApprovalAttachment;
-use App\Models\ApprovalDownloadLog;
 use App\Models\ApprovalRequest;
+use App\Support\Approval\DownloadLogger;
 use App\Support\Approval\RequestContent;
 use App\Support\Approval\RequestPermissions;
 use App\Support\Approval\RequestVisibility;
@@ -107,14 +107,7 @@ class RequestAttachmentController extends Controller
 
         // 一度でも提出した申請の添付は、開くたびに記録する（ブラウザで開いた場合も。14.2・計画 §0.5）
         if ($approvalRequest->round >= 1) {
-            ApprovalDownloadLog::create([
-                'request_id'    => $approvalRequest->id,
-                'attachment_id' => $approvalAttachment->id,
-                'user_id'       => $user->id,
-                'kind'          => 'attachment',
-                'ip_address'    => $request->ip(),
-                'user_agent'    => mb_substr((string) $request->userAgent(), 0, 255),
-            ]);
+            DownloadLogger::attachment($request, $approvalAttachment);
         }
 
         // 日本語の名前は filename*（UTF-8）で渡し、古いブラウザ用に ASCII の代わりの名前も付ける。

@@ -4,9 +4,9 @@ namespace App\Http\Controllers\Approval;
 
 use App\Enums\ApprovalStatus;
 use App\Http\Controllers\Controller;
-use App\Models\ApprovalDownloadLog;
 use App\Models\ApprovalRequest;
 use App\Support\Approval\ApprovalPdf;
+use App\Support\Approval\DownloadLogger;
 use App\Support\Approval\PdfSheet;
 use App\Support\Approval\RequestVisibility;
 use Illuminate\Http\RedirectResponse;
@@ -43,14 +43,7 @@ class RequestPdfController extends Controller
         }
 
         // 出力のたびに記録する（14.2・§5.7）
-        ApprovalDownloadLog::create([
-            'request_id'    => $approvalRequest->id,
-            'attachment_id' => null,
-            'user_id'       => $user->id,
-            'kind'          => 'pdf',
-            'ip_address'    => $request->ip(),
-            'user_agent'    => mb_substr((string) $request->userAgent(), 0, 255),
-        ]);
+        DownloadLogger::pdf($request, $approvalRequest);
 
         // ブラウザでそのまま開く（D18）。日本語の名前は filename*（UTF-8）、古いブラウザ用の代わりは ASCII だけの名前
         $fallback = 'approval-' . ($approvalRequest->number ?? $approvalRequest->id) . '.pdf';
