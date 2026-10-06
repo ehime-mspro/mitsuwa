@@ -609,6 +609,10 @@ class CustomerController extends Controller
             'occupation'      => $text('occupation'),
             'employer'        => $text('employer'),
             'years_employed'  => $count('years_employed'),
+            // 来場の分譲地・担当者（住宅事業の画面だけが送る）。消えた分譲地・担当者は外部キーで断られ
+            // 「登録に失敗しました」としか出なかったので、理由つきの入力エラーにする（H9）
+            'project_id'      => 'nullable|integer|exists:re_projects,id',
+            'staff_user_id'   => 'nullable|integer|exists:users,id',
         ]);
     }
 

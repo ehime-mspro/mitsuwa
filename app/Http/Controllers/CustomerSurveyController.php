@@ -68,7 +68,10 @@ class CustomerSurveyController extends Controller
         abort_unless($buyer->belongsToDepartment($department), 404);
 
         $request->validate([
-            'survey_date' => 'required|date',
+            'survey_date'   => 'required|date',
+            // 来場の分譲地・担当者（住宅事業の画面だけが送る。消えたものは理由つきで断る。H9）
+            'project_id'    => 'nullable|integer|exists:re_projects,id',
+            'staff_user_id' => 'nullable|integer|exists:users,id',
         ]);
 
         DB::beginTransaction();
@@ -166,7 +169,10 @@ class CustomerSurveyController extends Controller
         $this->assertSurveyScope($buyer, $survey, $department);
 
         $request->validate([
-            'survey_date' => 'required|date',
+            'survey_date'   => 'required|date',
+            // 来場の分譲地・担当者（住宅事業の画面だけが送る。消えたものは理由つきで断る。H9）
+            'project_id'    => 'nullable|integer|exists:re_projects,id',
+            'staff_user_id' => 'nullable|integer|exists:users,id',
         ]);
 
         DB::beginTransaction();
