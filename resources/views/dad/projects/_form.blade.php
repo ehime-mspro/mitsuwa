@@ -34,6 +34,29 @@
         }
     }
 
+    // 入力エラーで戻ったときは、送った行をそのまま描く（空の行も含めて同じ並び＝入力エラーの「N 行目」と画面の行がそろう）。
+    // 行が 1 つも無く送られたとき（全部消した）は old() に何も無いので、前の入力があるかどうかで決める（Bug #104 と同じ）。
+    // 空の欄は ConvertEmptyStringsToNull で null になって戻るので '' に戻す（選択欄の「選択」が選ばれるように）。
+    if (session()->hasOldInput()) {
+        $oldRows = function ($rows, array $keys) {
+            if (! is_array($rows)) {
+                return [];
+            }
+
+            return array_values(array_map(function ($row) use ($keys) {
+                $out = [];
+                foreach ($keys as $key) {
+                    $value = is_array($row) ? ($row[$key] ?? '') : '';
+                    $out[$key] = is_scalar($value) ? (string) $value : '';
+                }
+
+                return $out;
+            }, $rows));
+        };
+        $existingCosts = $oldRows(old('costs'), ['cost_category', 'description', 'estimated_amount', 'actual_amount', 'subcontractor_id', 'notes']);
+        $existingAssignments = $oldRows(old('assignments'), ['employee_id', 'role', 'start_date', 'end_date', 'notes']);
+    }
+
     // 協力業者の id × 会社名 を Excel取込で名前→ID 解決に使う（@json 用に id/company_name のみ抽出）
     $subcontractorJsonList = $subcontractors->map(function ($s) {
         return ['id' => $s->id, 'company_name' => $s->company_name];
