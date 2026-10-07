@@ -20,9 +20,9 @@ use Tests\TestCase;
  * ⚠ `LengthAwarePaginator::resolveCurrentPage()` は 1 以上の整数なら何でも通す。そのまま `forPage()` に渡すと、
  *   手で打った大きな番号（9223372036854775807）で `($page - 1) * 件数` が float になり、`array_slice()` が TypeError で 500。
  *   行の無いページは、件数は出るのに表が空になる。→ 最後のページまでに抑える（決裁台帳と同じ。2026-10-06）。
- * ⚠ 同じ種類の 500 が残っている所（未対応・別の課題。2026-10-07 の最後の点検が確かめた。docs/RULES.md の Bug #100）:
- *   Housing の `HsContractListController`（`?page=abc`・大きな番号）・`HousingDashboardController`（大きな番号）と、
- *   決裁の ⑥ `NoticeController`・⑩ `AdminRequestController`（SQL の `paginate()` でも `PageNumbers::around()` が TypeError）。
+ * ⚠ 同じ種類の 500 がほかに 4 か所あった（2026-10-07 に直した。docs/RULES.md の Bug #100）: Housing の `HsContractListController`・
+ *   `HousingDashboardController`（tests/Feature/Housing/Screens/PageNumberClampTest.php）と、決裁の ⑥ `NoticeController`・
+ *   ⑩ `AdminRequestController`（SQL の `paginate()` でも `PageNumbers::around()` が TypeError。NoticeScreenTest・AdminRequestsTest）。
  */
 class ListPageNumberClampTest extends TestCase
 {

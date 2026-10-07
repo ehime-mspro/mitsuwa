@@ -267,7 +267,8 @@ class HousingDashboardController extends Controller
      */
     protected function paginate(Collection $items, int $perPage, Request $request): LengthAwarePaginator
     {
-        $page = max(1, (int) $request->input('page', 1));
+        // ページ番号は最後のページまで（Bug #100。手で打った大きな番号で slice の位置が float になり 500・行の無いページは件数と食い違う）
+        $page = min(max(1, (int) $request->input('page', 1)), max(1, (int) ceil($items->count() / $perPage)));
         $offset = ($page - 1) * $perPage;
         $sliced = $items->slice($offset, $perPage)->values();
 

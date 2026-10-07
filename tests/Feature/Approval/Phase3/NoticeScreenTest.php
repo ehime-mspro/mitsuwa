@@ -111,7 +111,10 @@ class NoticeScreenTest extends TestCase
         $this->assertSame(1, substr_count($html, '>未読</span>'));
     }
 
-    /** ⑥: 20 件ずつ。範囲の外のページでも 500 にならない（ページ送りは出さない） */
+    /**
+     * ⑥: 20 件ずつ。範囲の外のページ（手で打った URL）は最後のページを出す
+     * （前は行の無いページに「お知らせはありません。」を出し、整数の最大では PageNumbers::around() が TypeError の 500。Bug #100 の残り）
+     */
     public function test_the_list_pages_by_twenty(): void
     {
         $this->launchApprovals();
@@ -125,8 +128,13 @@ class NoticeScreenTest extends TestCase
         $first->assertSee('見出し21番')->assertDontSee('見出し1番：')->assertSee('aria-label="ページ送り"', false);
 
         $this->actingAs($this->w['head'])->get(route('approvals.notices.index', ['page' => 2]))->assertOk()->assertSee('見出し1番：');
-        $this->actingAs($this->w['head'])->get(route('approvals.notices.index', ['page' => 99]))->assertOk()
-            ->assertSee('お知らせはありません。')->assertDontSee('aria-label="ページ送り"', false);
+        foreach (['99', '9223372036854775807'] as $page) {
+            $html = $this->actingAs($this->w['head'])->get(route('approvals.notices.index', ['page' => $page]))->assertOk()->getContent();
+            $this->assertStringContainsString('見出し1番：', $html, "page={$page} でも最後のページ（2 ページ目）の行を出す");
+            $this->assertStringNotContainsString('見出し21番', $html, "page={$page} で 1 ページ目の行を出した");
+            $this->assertStringNotContainsString('お知らせはありません。', $html, "page={$page} で件数と食い違う空の一覧を出した");
+            $this->assertStringContainsString('aria-label="ページ送り"', $html, "page={$page} でページ送りが無い");
+        }
         $this->actingAs($this->w['head'])->get(route('approvals.notices.index', ['page' => 'abc']))->assertOk()->assertSee('見出し21番');
     }
 
