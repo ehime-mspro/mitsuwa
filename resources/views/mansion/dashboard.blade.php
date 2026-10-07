@@ -11,6 +11,11 @@
 
 @section('content')
 
+@php
+    // 契約の登録（部屋契約・駐車場契約）は経営層と管理者だけ（ルートと同じ判定。一般担当が押すと 403。Bug #96 の形）
+    $canRegisterContracts = auth()->user()->role->isManagerOrAbove();
+@endphp
+
 {{-- ダッシュボード専用スタイル（Vite 未ビルドのためインラインで定義） --}}
 <style>
     /* セクション見出し */
@@ -218,6 +223,7 @@
             </svg>
             物件一覧
         </a>
+        @if($canRegisterContracts)
         <a href="{{ route('mansion.contracts.create') }}"
            style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; background: #059669; border: 1px solid #059669; border-radius: 6px; color: white; font-size: 13px; font-weight: 600; text-decoration: none;">
             <svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -226,6 +232,7 @@
             </svg>
             新規契約
         </a>
+        @endif
     </div>
 </div>
 
@@ -398,7 +405,9 @@
                                 </span>
                             </td>
                             <td class="center">
-                                <a href="{{ route('mansion.contracts.create') }}?room_id={{ $room->id }}" class="ms-btn-detail">契約登録</a>
+                                @if($canRegisterContracts)
+                                    <a href="{{ route('mansion.contracts.create') }}?room_id={{ $room->id }}" class="ms-btn-detail">契約登録</a>
+                                @endif
                             </td>
                         </tr>
                     @endforeach
@@ -475,7 +484,9 @@
                                 </span>
                             </td>
                             <td class="center">
-                                <a href="{{ route('mansion.parking-contracts.create') }}?parking_id={{ $parking->id }}" class="ms-btn-detail">契約登録</a>
+                                @if($canRegisterContracts)
+                                    <a href="{{ route('mansion.parking-contracts.create') }}?parking_id={{ $parking->id }}" class="ms-btn-detail">契約登録</a>
+                                @endif
                             </td>
                         </tr>
                     @endforeach
