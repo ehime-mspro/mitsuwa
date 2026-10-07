@@ -514,7 +514,7 @@ class MobileLayoutTest extends TestCase
 
     /**
      * `flex: 1` の入力欄は、中身の幅（size の既定 20 文字ぶん）を下限に持つので縮まない。単位（円・㎡）と並べた 2 列の中で
-     * 21px はみ出した（部屋の登録）。`min-width: 0` を併せて書く。
+     * 21px はみ出した（部屋の登録）。`min-width: 0`（か、意図した最小の幅）を併せて書く。
      */
     public function test_flexible_inputs_can_shrink(): void
     {
@@ -528,14 +528,15 @@ class MobileLayoutTest extends TestCase
                     continue;
                 }
                 $found++;
-                if (! preg_match('/(?<![\w-])min-width:\s*0\s*(;|$)/', $tag[2][0])) {
+                // 最小の幅を明示していれば、書いた人が決めた下限なので通す（検索欄の `min-width: 180px` など）
+                if (! preg_match('/(?<![\w-])min-width:\s*[^;]+/', $tag[2][0])) {
                     $offenders[] = $this->relative($path) . ':' . (substr_count(substr($src, 0, $tag[0][1]), "\n") + 1);
                 }
             }
         }
 
         $this->assertGreaterThanOrEqual(23, $found, '`flex: 1` の入力欄を拾えていない（走査の空振り）');
-        $this->assertSame([], $offenders, '`flex: 1` の入力欄に `min-width: 0` が無い（狭い画面で縮まずにはみ出す）。該当: ' . implode(', ', $offenders));
+        $this->assertSame([], $offenders, '`flex: 1` の入力欄に `min-width` が無い（狭い画面で縮まずにはみ出す）。該当: ' . implode(', ', $offenders));
     }
 
     /**
