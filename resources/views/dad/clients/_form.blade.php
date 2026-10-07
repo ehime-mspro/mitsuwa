@@ -57,8 +57,6 @@
             <div style="display: flex; gap: 6px;">
                 <button type="button" onclick="zipToAddress()"
                         style="height: 38px; display: inline-flex; align-items: center; padding: 0 10px; font-size: 11px; font-weight: 600; color: #059669; border: 1px solid #059669; border-radius: 4px; cursor: pointer; background: #fff; white-space: nowrap;">〒→住所</button>
-                <button type="button" onclick="addressToZip()"
-                        style="height: 38px; display: inline-flex; align-items: center; padding: 0 10px; font-size: 11px; font-weight: 600; color: #059669; border: 1px solid #059669; border-radius: 4px; cursor: pointer; background: #fff; white-space: nowrap;">住所→〒</button>
             </div>
         </div>
         <div></div>
@@ -131,10 +129,5 @@ function zipToAddress() {
             }
         })
         .catch(function() { alert('住所の取得に失敗しました。'); });
-}
-
-// 住所 → 郵便番号（HeartRails GeoAPI 経由でサーバー側ラッパー想定。簡易版は alert のみ）
-function addressToZip() {
-    alert('住所→郵便番号の検索は本番実装で対応します。');
 }
 </script>
