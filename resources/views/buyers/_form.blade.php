@@ -499,6 +499,8 @@ function reverseLookup() {
     var xhr = new XMLHttpRequest();
     xhr.open('GET', '{{ route("api.reverse-zip") }}?prefecture=' + encodeURIComponent(pref) + '&city=' + encodeURIComponent(city));
     xhr.setRequestHeader('Accept', 'application/json');
+    // ⚠ これが無いと、この GET の URL がセッションの「直前の画面」に記録される（パスワード変更の「キャンセル」などが JSON を指す。Top trap #9）
+    xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
     xhr.onload = function() {
         if (xhr.status === 200) {
             var data = JSON.parse(xhr.responseText);
