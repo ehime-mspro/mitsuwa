@@ -18,6 +18,10 @@
     $valBuiltYearMonth = old('built_year_month', $isEdit ? $property->built_year_month : '');
     $valNotes = old('notes', $isEdit ? $property->notes : '');
     $structureOptions = ['RC造', 'S造', 'SRC造', '木造', 'その他'];
+    // ⚠ 下の 2 つは JS の引数に Js::from で渡す（引用符で直に書くと、`'` や末尾の `\` で画面の JS が止まる。Bug #76）。
+    //   入力エラーで戻った値は手で組んだ送信なら配列もありうるので、文字列だけを渡す
+    $jsOwnership = is_string($valOwnership) ? $valOwnership : 'self_owned';
+    $jsBuiltYearMonth = is_string($valBuiltYearMonth) ? $valBuiltYearMonth : '';
 @endphp
 
 <style>
@@ -121,7 +125,7 @@
 </style>
 
 <form method="POST" action="{{ $isEdit ? route('mansion.properties.update', $property) : route('mansion.properties.store') }}"
-      x-data="propertyForm('{{ $valOwnership }}')">
+      x-data="propertyForm({{ \Illuminate\Support\Js::from($jsOwnership) }})">
     @csrf
     @if($isEdit)
         @method('PUT')
@@ -253,7 +257,7 @@
             {{-- 築年月 --}}
             <div>
                 <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">築年月</label>
-                <div class="date-picker-wrap" x-data="monthPicker('{{ $valBuiltYearMonth }}')" @click.outside="open = false">
+                <div class="date-picker-wrap" x-data="monthPicker({{ \Illuminate\Support\Js::from($jsBuiltYearMonth) }})" @click.outside="open = false">
                     <button type="button" class="date-input-trigger" @click="open = !open">
                         <span x-show="selected" x-text="selectedLabel"></span>
                         <span x-show="!selected" class="placeholder">年月を選択</span>

@@ -128,24 +128,36 @@ class PropertyController extends Controller
      */
     private function validateInput(Request $request): array
     {
-        return $request->validate([
+        $validated = $request->validate([
             'property_name' => 'required|string|max:100',
             'ownership_type' => 'required|in:self_owned,managed',
-            'owner_name' => 'nullable|string|max:100',
+            // 画面は管理受託のときだけオーナー名に「*」（必須）を付けて出す
+            'owner_name' => 'nullable|required_if:ownership_type,managed|string|max:100',
             'postal_code' => 'nullable|string|max:10',
             'address' => 'required|string|max:200',
             // 上限は本番の列（総戸数 SMALLINT UNSIGNED・階数 TINYINT UNSIGNED）
             'total_units' => 'nullable|integer|min:0|max:65535',
             'total_floors' => 'nullable|integer|min:0|max:255',
             'structure' => 'nullable|string|max:50',
-            'built_year_month' => 'nullable|string|max:7',
+            // 年月ピッカーが「2015-03」の形で入れる。手で組んだ値（`2020-13`・`2020\`）は保存しない（編集画面の JS が止まる）
+            'built_year_month' => 'nullable|date_format:Y-m',
             'notes' => 'nullable|string',
-        ], [], [
+        ], [
+            'owner_name.required_if' => '所有形態が管理受託のときは、オーナー名を入力してください。',
+            'built_year_month.date_format' => '築年月は「2015-03」のような年-月の形で指定してください。',
+        ], [
             // 画面ラベルに合わせる（lang/ja/validation.php の既定は「住所」「所有者名」「総階数」）
             'address' => '所在地',
             'owner_name' => 'オーナー名',
             'total_floors' => '階数',
         ]);
+
+        // ⚠ 自社所有のときオーナー名の欄は隠れるだけで、前に入れた値が送られる（x-show。CLAUDE.md「Form」）。保存しない
+        if ($validated['ownership_type'] === 'self_owned') {
+            $validated['owner_name'] = null;
+        }
+
+        return $validated;
     }
 
     /**
