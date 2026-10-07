@@ -20,6 +20,7 @@ class TenantController extends Controller
      */
     public function index(Request $request)
     {
+        $this->ignoreMalformedQuery($request, ['tenant_type', 'keyword']);
         $query = MsTenant::query();
 
         // 利用者区分フィルター

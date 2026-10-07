@@ -36,6 +36,7 @@ class ParkingContractController extends Controller
      */
     public function index(Request $request)
     {
+        $this->ignoreMalformedQuery($request, ['link_type', 'status'], ['property_id', 'fiscal_year']);
         $query = MsParkingContract::with(['parking.property', 'tenant', 'contract.room']);
 
         // 物件フィルター（parking.property_id 経由）
@@ -88,6 +89,8 @@ class ParkingContractController extends Controller
      */
     public function create(Request $request)
     {
+        $this->ignoreMalformedQuery($request, [], ['parking_id']);
+
         return view('mansion.parking-contracts.create', [
             'properties'           => MsProperty::orderBy('property_code')->get(),
             'tenants'              => MsTenant::orderBy('name')->get(),

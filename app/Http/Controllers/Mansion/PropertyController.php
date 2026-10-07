@@ -21,6 +21,7 @@ class PropertyController extends Controller
      */
     public function index(Request $request)
     {
+        $this->ignoreMalformedQuery($request, ['ownership_type', 'keyword']);
         $query = MsProperty::query()->withCount('rooms');
 
         // 所有形態フィルター
