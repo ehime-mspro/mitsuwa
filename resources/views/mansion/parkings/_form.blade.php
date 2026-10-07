@@ -63,7 +63,7 @@
                 <div style="display: flex; align-items: center; gap: 6px;">
                     <input type="number" name="monthly_fee" value="{{ $valMonthlyFee }}" min="0" step="500"
                            class="form-input"
-                           style="flex: 1; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px; text-align: right;">
+                           style="flex: 1; min-width: 0; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px; text-align: right;">
                     <span style="font-size: 13px; color: #6b7280;">円</span>
                 </div>
                 <div style="font-size: 11px; color: #6b7280; margin-top: 3px;">※ 税抜</div>

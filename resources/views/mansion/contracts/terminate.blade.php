@@ -504,7 +504,7 @@
             <div style="display: flex; align-items: center; gap: 6px;">
                 <input type="number" name="restoration_cost" min="0" step="1000"
                        x-model.number="restorationCost"
-                       style="flex: 1; height: 36px; border: 1px solid #d1d5db; border-radius: 6px; padding: 6px 12px; font-size: 14px; text-align: right;">
+                       style="flex: 1; min-width: 0; height: 36px; border: 1px solid #d1d5db; border-radius: 6px; padding: 6px 12px; font-size: 14px; text-align: right;">
                 <span class="deposit-unit">円</span>
             </div>
             <div></div>
@@ -516,7 +516,7 @@
             <div style="display: flex; align-items: center; gap: 6px;">
                 <input type="number" name="cleaning_cost" min="0" step="1000"
                        x-model.number="cleaningCost"
-                       style="flex: 1; height: 36px; border: 1px solid #d1d5db; border-radius: 6px; padding: 6px 12px; font-size: 14px; text-align: right;">
+                       style="flex: 1; min-width: 0; height: 36px; border: 1px solid #d1d5db; border-radius: 6px; padding: 6px 12px; font-size: 14px; text-align: right;">
                 <span class="deposit-unit">円</span>
             </div>
             <div></div>
@@ -528,11 +528,11 @@
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <input type="text" name="other_deduction_name[]" x-model="item.name"
                            placeholder="例：短期解約違約金"
-                           style="flex: 1; height: 36px; border: 1px solid #d1d5db; border-radius: 6px; padding: 6px 12px; font-size: 13px;">
+                           style="flex: 1; min-width: 0; height: 36px; border: 1px solid #d1d5db; border-radius: 6px; padding: 6px 12px; font-size: 13px;">
                 </div>
                 <div style="display: flex; align-items: center; gap: 6px;">
                     <input type="number" name="other_deduction_amount[]" x-model.number="item.amount" min="0" step="1000"
-                           style="flex: 1; height: 36px; border: 1px solid #d1d5db; border-radius: 6px; padding: 6px 12px; font-size: 14px; text-align: right;">
+                           style="flex: 1; min-width: 0; height: 36px; border: 1px solid #d1d5db; border-radius: 6px; padding: 6px 12px; font-size: 14px; text-align: right;">
                     <span class="deposit-unit">円</span>
                 </div>
                 <button type="button" @click="otherDeductions.splice(idx, 1)"

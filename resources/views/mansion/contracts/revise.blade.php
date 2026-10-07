@@ -458,7 +458,7 @@
                     <div style="display: flex; align-items: center; gap: 6px;">
                         <input type="number" name="new_rent" min="0" step="500"
                                x-model.number="newRent"
-                               style="flex: 1; height: 38px; border: 1px solid #a7f3d0; border-radius: 6px; padding: 7px 12px; font-size: 16px; font-weight: 700; text-align: right; background: white;">
+                               style="flex: 1; min-width: 0; height: 38px; border: 1px solid #a7f3d0; border-radius: 6px; padding: 7px 12px; font-size: 16px; font-weight: 700; text-align: right; background: white;">
                         <span style="font-size: 13px; color: #047857; font-weight: 600;">円</span>
                     </div>
                 </div>
@@ -488,7 +488,7 @@
                     <div style="display: flex; align-items: center; gap: 6px;">
                         <input type="number" name="new_common_fee" min="0" step="500"
                                x-model.number="newFee"
-                               style="flex: 1; height: 38px; border: 1px solid #a7f3d0; border-radius: 6px; padding: 7px 12px; font-size: 16px; font-weight: 700; text-align: right; background: white;">
+                               style="flex: 1; min-width: 0; height: 38px; border: 1px solid #a7f3d0; border-radius: 6px; padding: 7px 12px; font-size: 16px; font-weight: 700; text-align: right; background: white;">
                         <span style="font-size: 13px; color: #047857; font-weight: 600;">円</span>
                     </div>
                 </div>
