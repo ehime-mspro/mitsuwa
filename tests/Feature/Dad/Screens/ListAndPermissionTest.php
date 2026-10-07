@@ -76,7 +76,8 @@ class ListAndPermissionTest extends DadScreenTestCase
             $this->assertStringContainsString('href="' . route("dad.{$name}.edit", $model) . '"', $html);
 
             $html = $this->actingAs($manager)->get(route("dad.{$name}.edit", $model))->assertOk()->getContent();
-            $this->assertStringNotContainsString('action="' . route("dad.{$name}.destroy", $model) . '">', $html, "{$name} の編集画面に削除のフォームが出ている");
+            // 更新と削除は同じ URL（PUT と DELETE）なので、送り先ではなく DELETE を送る hidden の有無で見る
+            $this->assertStringNotContainsString('name="_method" value="DELETE"', $html, "{$name} の編集画面に削除のフォームが出ている");
             $this->assertStringNotContainsString('confirmDelete = !confirmDelete', $html, "{$name} の編集画面に削除のボタンが出ている");
             $this->actingAs($manager)->delete(route("dad.{$name}.destroy", $model))->assertForbidden();
         }
