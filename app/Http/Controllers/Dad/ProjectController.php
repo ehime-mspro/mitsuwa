@@ -29,6 +29,9 @@ class ProjectController extends Controller
      */
     public function index(Request $request)
     {
+        // 手で組んだ URL（`?keyword[]=a`・数字でない年度や番号）を 500 にしない（Bug #97）
+        $this->ignoreMalformedQuery($request, ['project_type', 'keyword'], ['fiscal_year', 'staff_user_id']);
+
         $type = $request->input('project_type');
         $staffId = $request->input('staff_user_id');
         $fiscalYear = $request->input('fiscal_year');

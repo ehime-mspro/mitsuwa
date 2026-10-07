@@ -18,6 +18,9 @@ class ClientController extends Controller
      */
     public function index(Request $request)
     {
+        // 手で組んだ URL（`?keyword[]=a`・数字でない年度や番号）を 500 にしない（Bug #97）
+        $this->ignoreMalformedQuery($request, ['client_type', 'keyword']);
+
         $query = DadClient::query()->withCount('projects');
 
         if ($request->filled('client_type')) {

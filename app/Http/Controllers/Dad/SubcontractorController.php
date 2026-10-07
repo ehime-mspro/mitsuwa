@@ -20,6 +20,9 @@ class SubcontractorController extends Controller
      */
     public function index(Request $request)
     {
+        // 手で組んだ URL（`?keyword[]=a`・数字でない年度や番号）を 500 にしない（Bug #97）
+        $this->ignoreMalformedQuery($request, ['keyword'], ['specialty_id']);
+
         $query = DadSubcontractor::query()
             ->with('specialty')
             ->withCount('projectCosts')
