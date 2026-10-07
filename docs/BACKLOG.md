@@ -2196,7 +2196,7 @@ git checkout 13.x && git merge --ff-only date-picker-month-ago
 
 ---
 
-## 🚧 決裁申請 段階4（電子印・PDF・決裁台帳と Excel）— 4a 本番反映済み・4b 実装済み・本番反映前・使い始める前
+## 🚧 決裁申請 段階4（電子印・PDF・決裁台帳と Excel）— 4a・4b 本番反映済み・使い始める前
 
 要件定義書: @docs/決裁申請_要件定義書_v1.md（v1.13。3.2・9 章・13 章の ③⑤⑦・14.2・14.4・14.5・15.4・15.5・15.7）
 設計書: @docs/superpowers/specs/2026-10-03-approval-phase4-design.md（設計の 5 節は 2026-10-03 に利用者が 1 節ずつ承認）
@@ -2285,6 +2285,28 @@ git checkout 13.x && git merge --ff-only date-picker-month-ago
   - 年度の選択肢の和暦は期の始まりの月がいちばん早い会社で数える（今の会社はどれも R1 で同じ）
   - キーワード・申請者の `%` と `_` を逃がさない（アプリのほかの検索と同じ）
 - 実装のコミット（計画のコミットの次から。古い順）: Task 1〜4 の 4 本と記録（Task 5・6）。`git log` で見る
+
+#### 本番反映（2026-10-07 実施）
+
+利用者の了承のあと、計画の Task 8 の手順どおりに流した（本番の読み取り・DB・`./deploy.sh`・反映のあとの読み取りのそれぞれで了承を取った）。別件の枝 `page-clamp`（Bug #100。テナントの物件・不動産の仕入れ案件・周辺ビル調査の一覧の大きなページ番号の 500）も、利用者の決定で一緒に出した。反映のあいだは別の会話に `13.x` の早送りと `./deploy.sh` を待ってもらった。最後の点検（opus）の指摘で、申請者の絞り込みが登録名の空白を無視するように直してから出した（`4fff1289`）。
+
+| 段 | 見たこと | 結果 |
+|---|---|---|
+| ① 取り込み | worktree に `git merge 13.x`（`c50a6b3c`・住宅事業のテスト）→ `git merge page-clamp`（`f6a34369`） | 衝突なし（`composer` の変更なし）→ `f46095c6`・`e04c80d2`・全件を **PHP 8.3.35 を名指しして** 流して **OK (3768 tests, 30311 assertions)**（この Mac の `php` は 8.5 なので `/opt/homebrew/opt/php@8.3/bin/php` を使った） |
+| ② 本番の読み取り | ルート・列・設定・件数・PHP | `approvals.` のルート 51 本 ／ `filters`・`request_count` は無い・`request_id` は NULL 不可 ／ `launched_at=NULL` ／ 申請 0・出力の記録 0 ／ `memory_limit=128M` ／ `gd xmlwriter zip` あり ／ `laravel.log` は Jun 18 17:41 |
+| ③ 早送り | `13.x` | `c50a6b3c` → `e04c80d2` |
+| ④ DB を先に | SQL 1 文（`ALTER TABLE approval_download_logs`） | 流した形跡なし → **OK 1** ／ 流したあと: `request_id bigint unsigned`（NULL 可）・`filters json`（NULL 可）・`request_count int unsigned`（NULL 可）・日本語の説明つき ／ 外部キー 3 つ（`attachment`・`request`・`user`）が残る ／ 行は 0 のまま |
+| ⑤ 読み込みの表 | main repo で `composer dump-autoload --no-dev --optimize`（部品の追加は無いので `composer install` は打たない） | 7,297 クラス・台帳の 4 クラスが表に入った・`vendor/bin/phpunit` は無い・`git status` は空 |
+| ⑥ `./deploy.sh` | 2026-10-07 9:58 ごろ終了（日本時間） | exit 0・6 段すべて。アプリのファイル 23 本・`vendor` は読み込みの表の 2 本。旧 CSS `app-F3f4AS97.css` を削除 |
+| ⑦ 本番の読み取り | コンパイル済みビューの `php -l` | **299 本 / INVALID 0 件** |
+| | ルート・設定・クラス・台帳と Excel | `approvals.` のルート **53 本**（台帳と Excel の 2 本が増えた）／ `launched_at=NULL` ／ 6 クラスとも読み込める ／ `excel_limit=1000` ／ 申請 0 件の台帳から試しの Excel（ZIP の頭 `504b0304`・6,719 バイト・0.22 秒・ピーク 32MB）／ 申請者「申請花子」・キーワード・状態「すべて」の問い合わせが本番の MySQL 8.0.40 で通る ／ 出力の記録 0 のまま（試しは記録しない）／ `laravel.log` は Jun 18 17:41 のまま（反映のあとのエラー 0 件） |
+| | ログインした画面（利用者の Chrome・見るだけ。利用者は決裁の管理者） | 決裁のホームは「決裁の機能は準備中です。」のまま・台帳への入口は無い ／ `/approvals/ledger` と `/approvals/ledger/excel` は決裁のホームへ戻る ／ 横のはみ出し 0・コンソールのエラー 0 件 ／ Bug #100 の 3 つの一覧は `?page=9223372036854775807` と `?page=99999` で 200 |
+
+⚠ 使い始める前なので、利用者に見える変化は Bug #100 の 3 つの一覧だけ（台帳・Excel・入口は `launched_at` が入ってから出る）。
+
+⚠ `origin/13.x` への push はしていない（利用者の指示を待つ）。
+
+⚠ 同じ種類の 500 が残る 4 か所（住宅の契約一覧・住宅のダッシュボード・決裁の ⑥・⑩。`docs/RULES.md` の Bug #100）は、利用者の指示で別に直す（2026-10-07）。
 
 ---
 
