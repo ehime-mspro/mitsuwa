@@ -14,7 +14,7 @@
             <select name="specialty_id" style="width: 100%; height: 38px; padding: 0 10px; font-size: 13px; border: 1px solid #d1d5db; border-radius: 4px; background: #fff;">
                 <option value="">選択してください</option>
                 @foreach($specialties as $sp)
-                    <option value="{{ $sp->id }}" {{ old('specialty_id', $subcontractor?->specialty_id) == $sp->id ? 'selected' : '' }}>{{ $sp->name }}</option>
+                    <option value="{{ $sp->id }}" {{ old('specialty_id', $subcontractor?->specialty_id) == $sp->id ? 'selected' : '' }}>{{ $sp->name }}{{ $sp->is_active ? '' : '（無効）' }}</option>
                 @endforeach
             </select>
             <div class="hint">専門分野は「システム管理 → DAD → 専門分野マスター」で追加・編集できます。</div>
@@ -56,8 +56,6 @@
             <div style="display: flex; gap: 6px;">
                 <button type="button" onclick="zipToAddress()"
                         style="height: 38px; display: inline-flex; align-items: center; padding: 0 10px; font-size: 11px; font-weight: 600; color: #059669; border: 1px solid #059669; border-radius: 4px; cursor: pointer; background: #fff; white-space: nowrap;">〒→住所</button>
-                <button type="button" onclick="addressToZip()"
-                        style="height: 38px; display: inline-flex; align-items: center; padding: 0 10px; font-size: 11px; font-weight: 600; color: #059669; border: 1px solid #059669; border-radius: 4px; cursor: pointer; background: #fff; white-space: nowrap;">住所→〒</button>
             </div>
         </div>
         <div></div>
@@ -127,9 +125,5 @@ function zipToAddress() {
             }
         })
         .catch(function() { alert('住所の取得に失敗しました。'); });
-}
-
-function addressToZip() {
-    alert('住所→郵便番号の検索は本番実装で対応します。');
 }
 </script>

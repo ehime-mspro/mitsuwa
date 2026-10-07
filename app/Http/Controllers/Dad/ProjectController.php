@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Dad;
 
 use App\Enums\DadCostCategory;
+use App\Enums\DadEmployeeStatus;
 use App\Enums\DadProjectStatus;
 use App\Enums\DadProjectType;
 use App\Http\Controllers\Controller;
@@ -28,6 +29,9 @@ class ProjectController extends Controller
      */
     public function index(Request $request)
     {
+        // 手で組んだ URL（`?keyword[]=a`・数字でない年度や番号）を 500 にしない（Bug #97）
+        $this->ignoreMalformedQuery($request, ['project_type', 'keyword'], ['fiscal_year', 'staff_user_id']);
+
         $type = $request->input('project_type');
         $staffId = $request->input('staff_user_id');
         $fiscalYear = $request->input('fiscal_year');
@@ -154,8 +158,7 @@ class ProjectController extends Controller
      */
     public function store(Request $request)
     {
-        $validated = $this->validateProject($request);
-        $costs = $this->validateCosts($request);
+        [$validated, $costs] = $this->validateInput($request, null);
 
         $validated['created_by'] = $request->user()->id;
 
@@ -184,7 +187,7 @@ class ProjectController extends Controller
         $clients = DadClient::orderBy('client_type')->orderBy('name')->get();
         $subcontractors = DadSubcontractor::orderBy('company_name')->get();
         $staffUsers = User::assignableWith($project->staff_user_id);
-        $employees = DadEmployee::where('status', 'active')->orderBy('employee_code')->get();
+        $employees = $this->selectableEmployees($project);
 
         // 現在紐付く発注者が論理削除済みなら、編集画面で選択肢が消えないよう
         // そのレコードのみドロップダウンに追加で含める
@@ -215,9 +218,7 @@ class ProjectController extends Controller
      */
     public function update(Request $request, DadProject $project)
     {
-        $validated = $this->validateProject($request);
-        $costs = $this->validateCosts($request);
-        $assignments = $this->validateAssignments($request);
+        [$validated, $costs, $assignments] = $this->validateInput($request, $project);
 
         $validated['updated_by'] = $request->user()->id;
 
@@ -253,12 +254,31 @@ class ProjectController extends Controller
             ->with('success', '工事案件「' . $name . '」を削除しました。');
     }
 
+    /** 原価明細の 1 行の欄（すべて空の行は空の行として捨てる） */
+    private const COST_FIELDS = ['cost_category', 'description', 'estimated_amount', 'actual_amount', 'subcontractor_id', 'notes'];
+
+    /** 人員配置の 1 行の欄 */
+    private const ASSIGNMENT_FIELDS = ['employee_id', 'role', 'start_date', 'end_date', 'notes'];
+
     /**
-     * 案件本体のバリデーション
+     * 案件・原価明細・人員配置を 1 回で検査し、誤りを一度に出す（3 段に分けると、前の段で止まって後ろの誤りが次に送るまで出ない）。
+     *
+     * 原価・人員配置の行は、すべての欄が空の行だけを空の行として捨てる（カテゴリや従業員が空でも、ほかの欄に値があれば断る。
+     * 「カテゴリが空なら空の行」とみなすと、金額を入れた行や Excel 取込でカテゴリを割り当て忘れた行が黙って消えた）。
+     * 捨てたあとも**元の番号のまま**検査する（詰め直すと、入力エラーの「原価明細 N 行目」が画面の行とずれる）。
+     * ⚠ `list` の規則は付けない（番号が飛んだ時点で落ちる）。
+     *
+     * @return array{0: array<string, mixed>, 1: array<int, array<string, mixed>>, 2: array<int, array<string, mixed>>}
      */
-    private function validateProject(Request $request): array
+    private function validateInput(Request $request, ?DadProject $project): array
     {
-        return $request->validate([
+        $data = $request->all();
+        $data['costs'] = $this->filledRows($request->input('costs'), self::COST_FIELDS);
+        if ($project !== null) {
+            $data['assignments'] = $this->filledRows($request->input('assignments'), self::ASSIGNMENT_FIELDS);
+        }
+
+        $validated = Validator::make($data, [
             'project_name' => ['required', 'string', 'max:200'],
             'project_type' => ['required', 'in:public,private'],
             'status' => ['required', 'in:estimate,ordered,in_progress,completed,paid,lost'],
@@ -266,8 +286,8 @@ class ProjectController extends Controller
             'site_address' => ['nullable', 'string', 'max:300'],
             'latitude' => ['nullable', 'numeric', 'between:-90,90'],
             'longitude' => ['nullable', 'numeric', 'between:-180,180'],
-            'estimate_amount' => ['nullable', 'integer', 'min:0'],
-            'contract_amount' => ['nullable', 'integer', 'min:0'],
+            'estimate_amount' => ['nullable', 'integer', 'min:0', 'max:' . self::MAX_UNSIGNED_INT_COLUMN],
+            'contract_amount' => ['nullable', 'integer', 'min:0', 'max:' . self::MAX_UNSIGNED_INT_COLUMN],
             'estimate_date' => ['nullable', 'date'],
             'order_date' => ['nullable', 'date'],
             'start_date' => ['nullable', 'date'],
@@ -277,85 +297,118 @@ class ProjectController extends Controller
             'period_end' => ['nullable', 'date'],
             'staff_user_id' => ['nullable', 'integer', 'exists:users,id'],
             'memo' => ['nullable', 'string'],
+            'costs' => ['nullable', 'array'],
+            'costs.*' => ['array'],
+            'costs.*.cost_category' => ['required', Rule::enum(DadCostCategory::class)],
+            // 列（dad_project_costs.description）は 200 文字。入力欄は maxlength="200" だが、Excel 取込は長さを切らずに行へ入れる
+            'costs.*.description' => ['nullable', 'string', 'max:200'],
+            'costs.*.estimated_amount' => ['nullable', 'integer', 'min:0', 'max:' . self::MAX_UNSIGNED_INT_COLUMN],
+            'costs.*.actual_amount' => ['nullable', 'integer', 'min:0', 'max:' . self::MAX_UNSIGNED_INT_COLUMN],
+            'costs.*.subcontractor_id' => ['nullable', 'integer', 'exists:dad_subcontractors,id'],
+            'costs.*.notes' => ['nullable', 'string'],
+            'assignments' => ['nullable', 'array'],
+            'assignments.*' => ['array'],
+            // 新しく選べるのは在籍者だけ。今この工事案件に配置されている人は退職していても残せる（選択肢と同じ集合）
+            'assignments.*.employee_id' => ['required', 'integer', Rule::in($project === null ? [] : $this->selectableEmployees($project)->pluck('id')->all()), 'distinct'],
+            // 列（dad_project_assignments）は役割 50・備考 200 文字
+            'assignments.*.role' => ['nullable', 'string', 'max:50'],
+            'assignments.*.start_date' => ['nullable', 'date'],
+            // 配置開始が空なら比べない（比べる相手が無いと Laravel は通す）
+            'assignments.*.end_date' => ['nullable', 'date', 'after_or_equal:assignments.*.start_date'],
+            'assignments.*.notes' => ['nullable', 'string', 'max:200'],
         ], [
             'project_name.required' => '工事名は必須です。',
             'project_type.required' => '工事種別を選択してください。',
             'status.required' => 'ステータスを選択してください。',
+            // :position は画面の行の番号（1 から）
+            'costs.*.cost_category.required' => '原価明細 :position 行目のカテゴリを選択してください。',
+            'costs.*.cost_category.enum' => '原価明細 :position 行目のカテゴリが正しくありません。',
+            'costs.*.subcontractor_id.exists' => '原価明細 :position 行目の協力業者が見つかりません。',
+            'assignments.*.employee_id.required' => '人員配置 :position 行目の従業員を選択してください。',
+            // 既定の文の :date には :position が効かない（和名を入れる順が最後）ので、文ごと書く
+            'assignments.*.end_date.after_or_equal' => '人員配置 :position 行目の配置終了は、配置開始以降の日付を指定してください。',
         ], [
-            // 画面ラベルに合わせる（既定は「プロジェクト名」「契約額」「開始日」）
+            // 画面ラベルに合わせる（既定は「プロジェクト名」「契約額」「開始日」、原価の金額は不動産の「見込み額」「確定額」）
             'project_name'    => '工事名',
             'contract_amount' => '受注金額',
             'start_date'      => '着工日',
-        ]);
-    }
+            'costs' => '原価明細',
+            'costs.*' => '原価明細 :position 行目',
+            'costs.*.cost_category' => '原価明細 :position 行目のカテゴリ',
+            'costs.*.description' => '原価明細 :position 行目の内容',
+            'costs.*.estimated_amount' => '原価明細 :position 行目の見積額',
+            'costs.*.actual_amount' => '原価明細 :position 行目の実績額',
+            'costs.*.subcontractor_id' => '原価明細 :position 行目の協力業者',
+            'costs.*.notes' => '原価明細 :position 行目の備考',
+            'assignments' => '人員配置',
+            'assignments.*' => '人員配置 :position 行目',
+            'assignments.*.employee_id' => '人員配置 :position 行目の従業員',
+            'assignments.*.role' => '人員配置 :position 行目の役割',
+            'assignments.*.start_date' => '人員配置 :position 行目の配置開始',
+            'assignments.*.end_date' => '人員配置 :position 行目の配置終了',
+            'assignments.*.notes' => '人員配置 :position 行目の備考',
+        ])->validate();
 
-    /**
-     * 原価明細のバリデーション + 整形
-     */
-    private function validateCosts(Request $request): array
-    {
-        // 空行（カテゴリー未入力）は受領対象外として除外
-        $costs = collect($request->input('costs', []))
-            ->reject(fn ($row) => empty($row['cost_category'] ?? null))
-            ->values()
-            ->all();
-
-        if (empty($costs)) {
-            return [];
-        }
-
-        // Enum・整数・FK を Laravel Validator で宣言的にチェック
-        $validated = Validator::make(
-            ['costs' => $costs],
-            [
-                'costs.*.cost_category'    => ['required', Rule::enum(DadCostCategory::class)],
-                'costs.*.description'      => ['nullable', 'string', 'max:500'],
-                'costs.*.estimated_amount' => ['nullable', 'integer', 'min:0'],
-                'costs.*.actual_amount'    => ['nullable', 'integer', 'min:0'],
-                'costs.*.subcontractor_id' => ['nullable', 'integer', 'exists:dad_subcontractors,id'],
-                'costs.*.notes'            => ['nullable', 'string'],
-            ],
-            [
-                'costs.*.cost_category.required' => '原価カテゴリーを選択してください。',
-                'costs.*.cost_category.enum'     => '原価カテゴリーが不正です。',
-                'costs.*.subcontractor_id.exists' => '指定された協力業者が存在しません。',
-            ]
-        )->validate();
-
-        // 数値正規化（カンマ・全角・通貨記号除去は app.blade.php のグローバルリスナーで処理済み想定）
-        return collect($validated['costs'])->map(fn ($row) => [
+        $costs = collect($validated['costs'] ?? [])->map(fn ($row) => [
             'cost_category'    => $row['cost_category'],
             'description'      => $row['description'] ?? null,
-            'estimated_amount' => isset($row['estimated_amount']) && $row['estimated_amount'] !== ''
-                ? (int) $row['estimated_amount'] : null,
-            'actual_amount'    => isset($row['actual_amount']) && $row['actual_amount'] !== ''
-                ? (int) $row['actual_amount'] : null,
-            'subcontractor_id' => !empty($row['subcontractor_id']) ? (int) $row['subcontractor_id'] : null,
+            'estimated_amount' => isset($row['estimated_amount']) ? (int) $row['estimated_amount'] : null,
+            'actual_amount'    => isset($row['actual_amount']) ? (int) $row['actual_amount'] : null,
+            'subcontractor_id' => isset($row['subcontractor_id']) ? (int) $row['subcontractor_id'] : null,
             'notes'            => $row['notes'] ?? null,
-        ])->all();
+        ])->values()->all();
+
+        $assignments = collect($validated['assignments'] ?? [])->map(fn ($row) => [
+            'employee_id' => (int) $row['employee_id'],
+            'role'        => $row['role'] ?? null,
+            'start_date'  => $row['start_date'] ?? null,
+            'end_date'    => $row['end_date'] ?? null,
+            'notes'       => $row['notes'] ?? null,
+        ])->values()->all();
+
+        $project = collect($validated)->except(['costs', 'assignments'])->all();
+
+        return [$project, $costs, $assignments];
     }
 
     /**
-     * 人員配置のバリデーション + 整形
+     * 人員配置で選べる従業員: 在籍者 ＋ この工事案件に今配置されている人（退職していても。編集画面で「（退職）」つきで出す）。
+     * 在籍者だけにすると、退職した人の配置は選択肢に無く、編集画面をそのまま保存するだけで従業員が空で送られて配置が消えた。
+     * ⚠ 配置は更新前の DB から読む（保存は消して入れ直すので、検査は必ず保存の前に走る）。
      */
-    private function validateAssignments(Request $request): array
+    private function selectableEmployees(DadProject $project): \Illuminate\Database\Eloquent\Collection
     {
-        $assignments = $request->input('assignments', []);
-        $result = [];
+        $assigned = $project->assignments()->pluck('employee_id')->all();
 
-        foreach ($assignments as $a) {
-            if (empty($a['employee_id'])) continue;
+        return DadEmployee::query()
+            ->where(fn ($q) => $q->where('status', DadEmployeeStatus::Active->value)->orWhereIn('id', $assigned))
+            ->orderBy('employee_code')
+            ->get();
+    }
 
-            $result[] = [
-                'employee_id' => (int) $a['employee_id'],
-                'role' => $a['role'] ?? null,
-                'start_date' => !empty($a['start_date']) ? $a['start_date'] : null,
-                'end_date' => !empty($a['end_date']) ? $a['end_date'] : null,
-                'notes' => $a['notes'] ?? null,
-            ];
+    /**
+     * 行の配列から、すべての欄が空の行を捨てる（番号はそのまま）。配列でない値は検査で断るためにそのまま返す。
+     *
+     * @param  array<int, string>  $fields
+     */
+    private function filledRows(mixed $rows, array $fields): mixed
+    {
+        if (! is_array($rows)) {
+            return $rows;
         }
 
-        return $result;
+        return array_filter($rows, function ($row) use ($fields) {
+            if (! is_array($row)) {
+                return true;
+            }
+            foreach ($fields as $field) {
+                if (($row[$field] ?? null) !== null && $row[$field] !== '') {
+                    return true;
+                }
+            }
+
+            return false;
+        });
     }
 
     /**

@@ -89,7 +89,7 @@
                 <div style="display: flex; align-items: center; gap: 6px;">
                     <input type="number" id="regular_price_excl" name="regular_price_excl"
                            value="{{ $valRegularPrice }}" min="0" max="9999999" inputmode="numeric" required
-                           class="form-input" style="flex: 1;">
+                           class="form-input" style="flex: 1; min-width: 0;">
                     <span style="font-size: 13px; color: #6b7280; white-space: nowrap;">円</span>
                 </div>
                 <div class="zeal-form-hint">税込: <span id="regular-incl">{{ $valRegularPrice ? number_format((int)round((int)$valRegularPrice * $taxMul)) . '円' : '—' }}</span></div>
@@ -101,7 +101,7 @@
                 <div style="display: flex; align-items: center; gap: 6px;">
                     <input type="number" id="campaign_price_excl" name="campaign_price_excl"
                            value="{{ $valCampaignPrice }}" min="0" max="9999999" inputmode="numeric"
-                           class="form-input" style="flex: 1;">
+                           class="form-input" style="flex: 1; min-width: 0;">
                     <span style="font-size: 13px; color: #6b7280; white-space: nowrap;">円</span>
                 </div>
                 <div class="zeal-form-hint">税込: <span id="campaign-incl">{{ $valCampaignPrice ? number_format((int)round((int)$valCampaignPrice * $taxMul)) . '円' : '—' }}</span></div>
@@ -144,7 +144,7 @@
                 <div style="display: flex; align-items: center; gap: 6px;">
                     <input type="number" id="max_concurrent_reservations" name="max_concurrent_reservations"
                            value="{{ $valMaxConcurrent }}" min="1" max="99" inputmode="numeric"
-                           class="form-input" style="flex: 1;">
+                           class="form-input" style="flex: 1; min-width: 0;">
                     <span style="font-size: 13px; color: #6b7280; white-space: nowrap;">枠</span>
                 </div>
                 <div class="zeal-form-hint">未設定 = 月回数制など上限なし</div>
@@ -156,7 +156,7 @@
                 <div style="display: flex; align-items: center; gap: 6px;">
                     <input type="number" id="monthly_session_limit" name="monthly_session_limit"
                            value="{{ $valMonthlyLimit }}" min="1" max="999" inputmode="numeric"
-                           class="form-input" style="flex: 1;">
+                           class="form-input" style="flex: 1; min-width: 0;">
                     <span style="font-size: 13px; color: #6b7280; white-space: nowrap;">回</span>
                 </div>
                 <div class="zeal-form-hint">未設定 = 通い放題</div>

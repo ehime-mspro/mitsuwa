@@ -72,7 +72,7 @@
             </div>
 
             {{-- 手動入力 2列 --}}
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div class="grid-stack-sm" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
                 <div class="fld">
                     <label>背景色 <span style="color: #9ca3af; font-weight: 500;">(hex)</span></label>
                     <div class="color-row">
@@ -110,6 +110,8 @@
             </div>
         </form>
     </div>
+    {{-- 画面の下に固定した保存のバー（x-form-actions）がページの一番下に重なる。同じ高さの余白を置かないと、削除の欄がバーの後ろに隠れる --}}
+    <div style="height: 80px;" aria-hidden="true"></div>
 
 </div>
 

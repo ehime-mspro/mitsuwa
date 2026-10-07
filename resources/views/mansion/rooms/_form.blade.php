@@ -69,7 +69,7 @@
                 <div style="display: flex; align-items: center; gap: 6px;">
                     <input type="number" name="floor" value="{{ $valFloor }}" min="1" max="50"
                            class="form-input"
-                           style="flex: 1; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
+                           style="flex: 1; min-width: 0; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
                     <span style="font-size: 13px; color: #6b7280;">階</span>
                 </div>
                 @error('floor')
@@ -96,7 +96,7 @@
                 <div style="display: flex; align-items: center; gap: 6px;">
                     <input type="text" inputmode="decimal" pattern="[0-9.]*" name="area_sqm" value="{{ $valAreaSqm }}"
                            class="form-input"
-                           style="flex: 1; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
+                           style="flex: 1; min-width: 0; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
                     <span style="font-size: 13px; color: #6b7280;">㎡</span>
                 </div>
                 @error('area_sqm')
@@ -138,7 +138,7 @@
                 <div style="display: flex; align-items: center; gap: 6px;">
                     <input type="number" name="rent" value="{{ $valRent }}" min="0" step="1000"
                            class="form-input"
-                           style="flex: 1; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px; text-align: right;">
+                           style="flex: 1; min-width: 0; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px; text-align: right;">
                     <span style="font-size: 13px; color: #6b7280;">円</span>
                 </div>
                 <div style="font-size: 11px; color: #6b7280; margin-top: 3px;">※ 税抜</div>
@@ -152,7 +152,7 @@
                 <div style="display: flex; align-items: center; gap: 6px;">
                     <input type="number" name="common_fee" value="{{ $valCommonFee }}" min="0" step="1000"
                            class="form-input"
-                           style="flex: 1; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px; text-align: right;">
+                           style="flex: 1; min-width: 0; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px; text-align: right;">
                     <span style="font-size: 13px; color: #6b7280;">円</span>
                 </div>
                 @error('common_fee')
@@ -165,7 +165,7 @@
                 <div style="display: flex; align-items: center; gap: 6px;">
                     <input type="number" name="deposit" value="{{ $valDeposit }}" min="0" step="1000"
                            class="form-input"
-                           style="flex: 1; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px; text-align: right;">
+                           style="flex: 1; min-width: 0; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px; text-align: right;">
                     <span style="font-size: 13px; color: #6b7280;">円</span>
                 </div>
                 @error('deposit')
@@ -178,7 +178,7 @@
                 <div style="display: flex; align-items: center; gap: 6px;">
                     <input type="number" name="key_money" value="{{ $valKeyMoney }}" min="0" step="1000"
                            class="form-input"
-                           style="flex: 1; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px; text-align: right;">
+                           style="flex: 1; min-width: 0; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px; text-align: right;">
                     <span style="font-size: 13px; color: #6b7280;">円</span>
                 </div>
                 @error('key_money')

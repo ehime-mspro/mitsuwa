@@ -229,7 +229,7 @@
                 <div style="display: flex; align-items: center; gap: 6px;">
                     <input type="number" name="total_units" value="{{ $valTotalUnits }}" min="0" max="999"
                            class="form-input" placeholder="12"
-                           style="flex: 1; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
+                           style="flex: 1; min-width: 0; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
                     <span style="font-size: 13px; color: #6b7280;">戸</span>
                 </div>
             </div>
@@ -239,7 +239,7 @@
                 <div style="display: flex; align-items: center; gap: 6px;">
                     <input type="number" name="total_floors" value="{{ $valTotalFloors }}" min="0" max="50"
                            class="form-input" placeholder="5"
-                           style="flex: 1; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
+                           style="flex: 1; min-width: 0; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
                     <span style="font-size: 13px; color: #6b7280; white-space: nowrap;">階建て</span>
                 </div>
             </div>

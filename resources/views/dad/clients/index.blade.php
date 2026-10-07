@@ -14,11 +14,13 @@
 {{-- ページヘッダー --}}
 <div class="flex items-center justify-between mb-4">
     <h1 class="text-lg max-lg:text-base font-bold text-gray-900">発注者一覧</h1>
+    @if(auth()->user()->role->isManagerOrAbove())
     <a href="{{ route('dad.clients.create') }}"
        class="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-md text-sm font-semibold hover:bg-emerald-700 transition-colors">
         <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         新規登録
     </a>
+    @endif
 </div>
 
 
@@ -87,7 +89,9 @@
                         {{ $client->projects_count }}件
                     </td>
                     <td class="px-4 py-3 border-b border-gray-200 text-center whitespace-nowrap">
+                        @if(auth()->user()->role->isManagerOrAbove())
                         <a href="{{ route('dad.clients.edit', $client) }}" class="text-xs font-semibold text-blue-700 px-3 py-1 border border-blue-200 rounded bg-blue-50 hover:bg-blue-100">編集</a>
+                        @endif
                     </td>
                 </tr>
             @empty

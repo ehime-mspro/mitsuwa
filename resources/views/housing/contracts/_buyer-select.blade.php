@@ -25,7 +25,7 @@
 
     <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
         <select name="customer_id" x-ref="sel" @change="onSelect()" required
-                style="flex:1; min-width:220px; height:40px; padding:0 12px; border:1px solid #d1d5db; border-radius:6px; font-size:14px; color:#1f2937; background:#fff; cursor:pointer;">
+                style="flex:1; min-width: 0; min-width:220px; height:40px; padding:0 12px; border:1px solid #d1d5db; border-radius:6px; font-size:14px; color:#1f2937; background:#fff; cursor:pointer;">
             <option value="">— 買主を選択してください —</option>
             @foreach($buyers as $buyer)
                 <option value="{{ $buyer->id }}"

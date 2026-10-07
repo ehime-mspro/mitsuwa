@@ -41,6 +41,11 @@
     .revise-cell.next .label { color: #047857; }
     .revise-cell .value { font-size: 18px; font-weight: 700; color: #111827; }
     .revise-arrow { display: flex; align-items: center; justify-content: center; color: #9ca3af; font-size: 22px; font-weight: 700; }
+    /* 狭い画面では「今 → 新」を縦に並べる（3 列のままだと 375px で 100px 以上横にはみ出した） */
+    @media (max-width: 640px) {
+        .revise-compare { grid-template-columns: minmax(0, 1fr); }
+        .revise-arrow { transform: rotate(90deg); }
+    }
 
     .diff-badge { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 700; margin-left: 8px; }
     .diff-badge.diff-up { background: #fef3c7; color: #b45309; }
@@ -276,7 +281,7 @@
         <div style="font-size: 15px; font-weight: 700; color: #111827; margin-bottom: 14px; padding-left: 12px; border-left: 4px solid #10b981;">
             対象契約
         </div>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0 32px;">
+        <div class="grid-stack-sm" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0 32px;">
             <div>
                 <div class="info-row">
                     <div class="info-label">物件</div>
@@ -425,7 +430,7 @@
                     <div style="display: flex; align-items: center; gap: 6px;">
                         <input type="number" name="new_monthly_fee" min="0" step="500"
                                x-model.number="newFee"
-                               style="flex: 1; height: 38px; border: 1px solid #a7f3d0; border-radius: 6px; padding: 7px 12px; font-size: 16px; font-weight: 700; text-align: right; background: white;">
+                               style="flex: 1; min-width: 0; height: 38px; border: 1px solid #a7f3d0; border-radius: 6px; padding: 7px 12px; font-size: 16px; font-weight: 700; text-align: right; background: white;">
                         <span style="font-size: 13px; color: #047857; font-weight: 600;">円</span>
                     </div>
                 </div>

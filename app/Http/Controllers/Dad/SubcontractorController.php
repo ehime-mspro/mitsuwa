@@ -7,6 +7,7 @@ use App\Models\DadSpecialty;
 use App\Models\DadSubcontractor;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 /**
  * DAD 協力業者管理コントローラー
@@ -19,6 +20,9 @@ class SubcontractorController extends Controller
      */
     public function index(Request $request)
     {
+        // 手で組んだ URL（`?keyword[]=a`・数字でない年度や番号）を 500 にしない（Bug #97）
+        $this->ignoreMalformedQuery($request, ['keyword'], ['specialty_id']);
+
         $query = DadSubcontractor::query()
             ->with('specialty')
             ->withCount('projectCosts')
@@ -56,7 +60,7 @@ class SubcontractorController extends Controller
      */
     public function create()
     {
-        $specialties = DadSpecialty::where('is_active', true)->orderBy('sort_order')->get();
+        $specialties = $this->selectableSpecialties(null);
         return view('dad.subcontractors.create', compact('specialties'));
     }
 
@@ -107,7 +111,7 @@ class SubcontractorController extends Controller
      */
     public function edit(DadSubcontractor $subcontractor)
     {
-        $specialties = DadSpecialty::where('is_active', true)->orderBy('sort_order')->get();
+        $specialties = $this->selectableSpecialties($subcontractor);
         return view('dad.subcontractors.edit', compact('subcontractor', 'specialties'));
     }
 
@@ -116,7 +120,7 @@ class SubcontractorController extends Controller
      */
     public function update(Request $request, DadSubcontractor $subcontractor)
     {
-        $validated = $this->validateSubcontractor($request);
+        $validated = $this->validateSubcontractor($request, $subcontractor);
         $subcontractor->update($validated);
 
         return redirect()
@@ -146,12 +150,27 @@ class SubcontractorController extends Controller
     /**
      * バリデーションを共通化
      */
-    private function validateSubcontractor(Request $request): array
+    /**
+     * 選べる専門分野: 有効な分野 ＋ その協力業者の今の分野（無効になっていても。編集画面で「（無効）」つきで出す）。
+     * 有効な分野だけにすると、今の分野を無効にした協力業者の編集画面で何も選ばれず、保存で専門分野が空になった（Bug #82 の形）。
+     */
+    private function selectableSpecialties(?DadSubcontractor $subcontractor): \Illuminate\Database\Eloquent\Collection
+    {
+        $current = $subcontractor?->specialty_id;
+
+        return DadSpecialty::query()
+            ->where(fn ($q) => $q->where('is_active', true)->when($current !== null, fn ($q) => $q->orWhere('id', $current)))
+            ->orderBy('sort_order')
+            ->get();
+    }
+
+    private function validateSubcontractor(Request $request, ?DadSubcontractor $subcontractor = null): array
     {
         return $request->validate([
             'company_name' => ['required', 'string', 'max:100'],
             'representative' => ['nullable', 'string', 'max:50'],
-            'specialty_id' => ['nullable', 'integer', 'exists:dad_specialties,id'],
+            // 新しく選べるのは有効な分野だけ。今の分野は無効でも残せる（選択肢と同じ集合）
+            'specialty_id' => ['nullable', 'integer', Rule::in($this->selectableSpecialties($subcontractor)->pluck('id')->all())],
             'postal_code' => ['nullable', 'string', 'max:10'],
             'address' => ['nullable', 'string', 'max:200'],
             'phone' => ['nullable', 'string', 'max:20'],
@@ -161,7 +180,6 @@ class SubcontractorController extends Controller
         ], [
             'company_name.required' => '会社名は必須です。',
             'company_name.max' => '会社名は100文字以内で入力してください。',
-            'specialty_id.exists' => '選択された専門分野が存在しません。',
             'email.email' => 'メールアドレスの形式が正しくありません。',
         ], [
             // 画面ラベルに合わせる（既定は「代表者名」）

@@ -158,29 +158,30 @@
         </div>
 
         {{-- 区画サマリー --}}
+        {{-- 狭い画面では折り返す（1 行のままだと 375px で 207px 横にはみ出した） --}}
         <div x-show="lots.length > 0">
-            <div style="display: flex; gap: 10px; margin-top: 4px;">
-                <div style="flex: 1; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px 8px; text-align: center; min-height: 78px; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+            <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px;">
+                <div style="flex: 1 1 140px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px 8px; text-align: center; min-height: 78px; display: flex; flex-direction: column; align-items: center; justify-content: center;">
                     <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">区画数</div>
                     <div style="font-size: 20px; font-weight: 700; color: #111827;" x-text="summary.lot_count"></div>
                 </div>
-                <div style="flex: 1; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px 8px; text-align: center; min-height: 78px; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                <div style="flex: 1 1 140px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px 8px; text-align: center; min-height: 78px; display: flex; flex-direction: column; align-items: center; justify-content: center;">
                     <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">面積合計</div>
                     <div style="font-size: 18px; font-weight: 700; color: #111827;" x-text="summary.area_total.toFixed(2) + ' ㎡'"></div>
                 </div>
-                <div style="flex: 1; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px 8px; text-align: center; min-height: 78px; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                <div style="flex: 1 1 140px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px 8px; text-align: center; min-height: 78px; display: flex; flex-direction: column; align-items: center; justify-content: center;">
                     <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">販売価格合計</div>
                     <div style="font-size: 18px; font-weight: 700; color: #111827;" x-text="formatMoney(summary.selling_total) + '円'"></div>
                 </div>
-                <div style="flex: 1; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px 8px; text-align: center; min-height: 78px; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                <div style="flex: 1 1 140px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px 8px; text-align: center; min-height: 78px; display: flex; flex-direction: column; align-items: center; justify-content: center;">
                     <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">原価合計</div>
                     <div style="font-size: 18px; font-weight: 700; color: #111827;" x-text="formatMoney(summary.depreciation_total) + '円'"></div>
                 </div>
-                <div style="flex: 1; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px 8px; text-align: center; min-height: 78px; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                <div style="flex: 1 1 140px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px 8px; text-align: center; min-height: 78px; display: flex; flex-direction: column; align-items: center; justify-content: center;">
                     <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">粗利合計</div>
                     <div :style="'font-size: 18px; font-weight: 700; color: ' + (summary.profit_total >= 0 ? '#059669' : '#dc2626')" x-text="formatMoney(summary.profit_total) + '円'"></div>
                 </div>
-                <div style="flex: 1; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px 8px; text-align: center; min-height: 78px; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                <div style="flex: 1 1 140px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px 8px; text-align: center; min-height: 78px; display: flex; flex-direction: column; align-items: center; justify-content: center;">
                     <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">粗利率</div>
                     <div :style="'font-size: 20px; font-weight: 700; color: ' + (summary.profit_total >= 0 ? '#059669' : '#dc2626')" x-text="summary.profit_rate !== null ? summary.profit_rate + '%' : '—'"></div>
                 </div>

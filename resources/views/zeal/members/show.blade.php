@@ -143,7 +143,7 @@
 
         {{-- ========== Tab 1: 基本情報 ========== --}}
         <div x-show="tab === 'basic'" x-cloak style="padding: 24px;">
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+            <div class="grid-stack-sm" style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
 
                 {{-- 左列: 個人情報 --}}
                 <div>

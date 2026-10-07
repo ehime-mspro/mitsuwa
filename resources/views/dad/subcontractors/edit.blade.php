@@ -36,12 +36,15 @@
 
         @include('dad.subcontractors._form', ['subcontractor' => $subcontractor])
 
+        @if(auth()->user()->role->isExecutive())
         <div style="display: flex; margin-bottom: 12px;">
             <button type="button" @click="confirmDelete = !confirmDelete" style="padding: 10px 20px; background: white; color: #dc2626; border: 1px solid #fecaca; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer;">削除</button>
         </div>
+        @endif
         <x-form-actions submit-label="更新する" :cancel-url="route('dad.subcontractors.index')" />
     </form>
 
+    @if(auth()->user()->role->isExecutive())
     <div x-show="confirmDelete" x-cloak class="mt-4 rounded-lg border border-red-200 bg-red-50 p-4">
         <p class="text-sm text-red-800 font-semibold mb-2">「{{ $subcontractor->company_name }}」を削除しますか？ この操作は取り消せません。</p>
         <p class="text-xs text-red-600 mb-3">※ 工事原価明細で参照中の場合、削除できません。</p>
@@ -54,6 +57,9 @@
             </div>
         </form>
     </div>
+    {{-- 画面の下に固定した保存のバー（x-form-actions）がページの一番下に重なる。同じ高さの余白を置かないと、削除の欄がバーの後ろに隠れる --}}
+    <div style="height: 80px;" aria-hidden="true"></div>
+    @endif
 </div>
 
 @endsection
