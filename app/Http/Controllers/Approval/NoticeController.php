@@ -32,8 +32,9 @@ class NoticeController extends Controller
             ->orderByDesc('created_at')
             ->orderByDesc('id');
         // ページ番号は最後のページまで（Bug #100。手で打った大きな番号で PageNumbers::around() が TypeError の 500・行の無いページは件数と食い違う）
-        $page    = min(LengthAwarePaginator::resolveCurrentPage(), max(1, (int) ceil($query->count() / self::PER_PAGE)));
-        $notices = $query->paginate(self::PER_PAGE, ['*'], 'page', $page);
+        $total   = $query->count();
+        $page    = min(LengthAwarePaginator::resolveCurrentPage(), max(1, (int) ceil($total / self::PER_PAGE)));
+        $notices = $query->paginate(self::PER_PAGE, ['*'], 'page', $page, $total);
 
         return view('approvals.notices.index', [
             'notices'   => $notices,

@@ -65,8 +65,9 @@ class AdminRequestController extends Controller
                 ->orderByDesc('decided_at')
                 ->orderByDesc('id');
             // ページ番号は最後のページまで（Bug #100。手で打った大きな番号で PageNumbers::around() が TypeError の 500・行の無いページは件数と食い違う）
-            $page     = min(LengthAwarePaginator::resolveCurrentPage(), max(1, (int) ceil($query->count() / self::DECIDED_PER_PAGE)));
-            $requests = $query->paginate(self::DECIDED_PER_PAGE, ['*'], 'page', $page)->withQueryString();
+            $total    = $query->count();
+            $page     = min(LengthAwarePaginator::resolveCurrentPage(), max(1, (int) ceil($total / self::DECIDED_PER_PAGE)));
+            $requests = $query->paginate(self::DECIDED_PER_PAGE, ['*'], 'page', $page, $total)->withQueryString();
 
             return view('approvals.admin.requests', ['tab' => $tab, 'requests' => $requests, 'rows' => null, 'pages' => PageNumbers::around($requests->currentPage(), $requests->lastPage())]);
         }
