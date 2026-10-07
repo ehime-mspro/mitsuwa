@@ -89,9 +89,9 @@ class ParkingContractScreensTest extends MansionScreenTestCase
         $this->parking('A-2');
         $tenant = $this->tenant('鈴木 一郎', 'parking_only');
         $url = route('mansion.parking-contracts.create');
-        // 利用者を選び忘れて送る
+        // 利用者を選び忘れて送る（項目名は画面のラベル「利用者」）
         $html = $this->landed($this->submit($this->fill($this->createForm($this->htmlOf($url), $parking), ['monthly_fee' => '5000']), $url));
-        $this->assertErrorItem($html, trans('validation.required', ['attribute' => '入居者']));
+        $this->assertErrorItem($html, trans('validation.required', ['attribute' => '利用者']));
 
         $again = $this->browserForm($html, $this->storeNeedle(), 'parkingContractForm', '', [$this->apiResponse(route('api.mansion.vacant-parkings', $this->building))]);
         $this->assertSame((string) $parking->id, $again['fields']['parking_id'] ?? null, '入力エラーで戻ると選んでいた駐車場が消える');

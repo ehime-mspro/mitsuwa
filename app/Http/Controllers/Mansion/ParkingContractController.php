@@ -189,6 +189,10 @@ class ParkingContractController extends Controller
             'revision_date'   => 'required|date',
             'new_monthly_fee' => 'required|integer|min:0',
             'reason'          => 'nullable|string|max:200',
+        ], [], [
+            // 画面ラベルに合わせる（既定は「改定適用日」「新・月額料金」）
+            'revision_date'   => '改定日',
+            'new_monthly_fee' => '新月額料金',
         ]);
 
         DB::transaction(function () use ($validated, $parkingContract) {
@@ -232,6 +236,9 @@ class ParkingContractController extends Controller
 
         $validated = $request->validate([
             'end_date' => 'required|date',
+        ], [], [
+            // 画面ラベルに合わせる（既定は「終了日」）
+            'end_date' => '利用終了日',
         ]);
 
         DB::transaction(function () use ($validated, $parkingContract) {
@@ -279,8 +286,9 @@ class ParkingContractController extends Controller
         }
 
         return $request->validate($rules, $messages, [
-            // 画面ラベルに合わせる（既定は「開始日」）
+            // 画面ラベルに合わせる（既定は「開始日」「入居者」）
             'start_date' => '利用開始日',
+            'tenant_id'  => '利用者',
         ]);
     }
 }

@@ -206,6 +206,11 @@ class ContractController extends Controller
             'new_rent' => 'nullable|integer|min:0',
             'new_common_fee' => 'nullable|integer|min:0',
             'reason' => 'nullable|string|max:200',
+        ], [], [
+            // 画面ラベルに合わせる（既定は「改定適用日」「新・月額家賃」「新・共益費」）
+            'revision_date' => '改定日',
+            'new_rent' => '新賃料',
+            'new_common_fee' => '新共益費',
         ]);
 
         DB::transaction(function () use ($validated, $contract) {
@@ -263,6 +268,9 @@ class ContractController extends Controller
             'other_deduction_name.*' => 'nullable|string|max:100',
             'other_deduction_amount' => 'nullable|array',
             'other_deduction_amount.*' => 'nullable|integer|min:0',
+        ], [], [
+            // 画面ラベルに合わせる（既定は「退去理由」）
+            'termination_reason' => '解約理由',
         ]);
 
         $deductions = $this->pairDeductions($request);

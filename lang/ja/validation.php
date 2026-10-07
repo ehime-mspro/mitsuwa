@@ -356,6 +356,7 @@ return [
         'final_month_type' => '最終月家賃の請求方法',
         'final_month_amount' => '最終月家賃',
         'contract_end_date' => '契約終了日',
+        'move_in_date' => '入居日',
         'move_out_date' => '退去日',
         'termination_reason' => '退去理由',
         'terminate_parkings' => '一括解約する駐車場契約',
@@ -388,7 +389,12 @@ return [
         'customer_id' => '顧客',                       // 上書き: Tenant/Contract は「テナント」
         'customer_name' => '顧客名',
         'customer_type' => '顧客種別',
-        'tenant_id' => '入居者',
+        'tenant_id' => '入居者',                       // 上書き: Mansion/ParkingContract は「利用者」
+        // 賃貸マンションの契約の登録（部屋・駐車場の選択）
+        'room_id' => '部屋',
+        'parking_id' => '駐車場',
+        'parking_ids' => '駐車場',
+        'parking_ids.*' => '駐車場',
         'buyer_id' => '買主',
         'buyer_name' => '買主名',
         'store_name' => '店舗名',
