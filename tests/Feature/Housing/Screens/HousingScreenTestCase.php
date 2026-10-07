@@ -14,6 +14,7 @@ use App\Models\ReProjectLot;
 use App\Models\User;
 use Database\Seeders\DepartmentSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\ComposesScreenForms;
 use Tests\Concerns\CreatesRealEstateSchema;
 use Tests\Concerns\CreatesSurveyQuestionSchema;
 use Tests\Concerns\DrivesAlpineFetch;
@@ -39,6 +40,7 @@ abstract class HousingScreenTestCase extends TestCase
     use CreatesRealEstateSchema;
     use CreatesSurveyQuestionSchema;
     use SubmitsScreenForms;
+    use ComposesScreenForms;
 
     protected const INT_MAX = 2147483647;
 
@@ -83,51 +85,10 @@ abstract class HousingScreenTestCase extends TestCase
         $this->assertSame(1, preg_match('/<li>\s*' . $text . '\s*<\/li>/u', $html), "入力エラーに「{$message}」が出ていない");
     }
 
-    /**
-     * フォームの中に入れ子のコンポーネント（`<div … x-data="名前(…)">`）を持つ画面のフォームを、ブラウザが送る項目で組む。
-     * 入れ子の欄はそのコンポーネントの状態で、残りは親（$function か、インラインの x-data の式 $factory。どちらも無ければ素のフォーム）
-     * の状態で評価して足す（ブラウザは 1 つのフォームとして全部を送る）。
-     *
-     * @param  array<string, string>  $nested  入れ子のコンポーネントの関数名 => そのコンポーネントで走らせる JS（例 買主を選ぶ）
-     * @return array{method: string, action: string, fields: array<string, mixed>, run: ?array}
-     */
-    protected function composedForm(string $html, string $action, ?string $function, ?string $factory, array $nested, string $steps = '', array $responses = []): array
-    {
-        $needle = 'action="' . $action . '"';
-        preg_match_all('/<script\b[^>]*>.*?<\/script>/s', $html, $scripts);
-        $nestedFields = [];
-        foreach ($nested as $name => $nestedSteps) {
-            $at = strpos($html, 'x-data="' . $name . '(');
-            $this->assertNotFalse($at, "画面に {$name} が無い");
-            $section = $this->balancedElement($html, (int) strrpos(substr($html, 0, $at), '<div'), 'div');
-            $html = str_replace($section, '', $html);
-            $part = '<form method="POST" ' . $needle . '>' . $section . '</form>' . implode("\n", $scripts[0]);
-            $nestedFields += $this->browserForm($part, $needle, $name, $nestedSteps)['fields'];
-        }
-
-        $main = $function === null && $factory === null
-            ? $this->parseForm($html, $needle) + ['run' => null]
-            : $this->browserForm($html, $needle, $function, $steps, $responses, $factory);
-
-        return ['method' => $main['method'], 'action' => $main['action'], 'fields' => $main['fields'] + $nestedFields, 'run' => $main['run']];
-    }
-
     /** 買主の選択欄で $buyer を選ぶ（画面の onSelect() が顧客名を入れる）。composedForm() の入れ子に渡す JS */
     protected function chooseBuyer(?Buyer $buyer): string
     {
         return $buyer === null ? '' : 'data.$refs.sel.value = "' . $buyer->id . '"; data.onSelect();';
-    }
-
-    /** JS の fetch に、PHP の JSON の API の応答をそのまま返す（X-Requested-With つきで叩く。叩いたあとはヘッダーを戻す） */
-    protected function apiResponse(string $url): array
-    {
-        $response = $this->actingAs($this->user)
-            ->withHeaders(['Accept' => 'application/json', 'X-Requested-With' => 'XMLHttpRequest'])
-            ->get($url);
-        $this->flushHeaders();
-        $response->assertOk();
-
-        return $this->asFetchResponse($response);
     }
 
     protected function project(array $overrides = []): ReProject
