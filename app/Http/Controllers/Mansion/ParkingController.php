@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\MsParking;
 use App\Models\MsProperty;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 /**
  * 賃貸マンション駐車場管理コントローラー。
@@ -57,6 +58,10 @@ class ParkingController extends Controller
     public function update(Request $request, MsParking $parking)
     {
         $validated = $this->validateInput($request, $parking->property_id, $parking->id);
+        // ⚠ 契約中の駐車場を「空き」にすると、契約の登録画面の空きの一覧に出て、同じ駐車場に 2 件目の契約ができる。状態は解約で変わる
+        if ($validated['status'] === MsParkingStatus::Vacant->value && $parking->activeContract()->exists()) {
+            throw ValidationException::withMessages(['status' => '契約中の駐車場は、ステータスを「空き」に変えられません（解約すると空きになります）。']);
+        }
         $parking->update($validated);
         return redirect()->route('mansion.properties.show', $parking->property)
             ->with('success', '駐車場を更新しました');

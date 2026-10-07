@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\MsProperty;
 use App\Models\MsRoom;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 /**
  * 賃貸マンション部屋管理コントローラー。
@@ -57,6 +58,11 @@ class RoomController extends Controller
     public function update(Request $request, MsRoom $room)
     {
         $validated = $this->validateInput($request, $room->property_id, $room->id);
+        // ⚠ 契約中の部屋を「空室」「申込み・仮押え」にすると、契約の登録画面の空室の一覧に出て、同じ部屋に 2 件目の契約ができる。
+        //   契約中の部屋の状態は解約で変わる（入居中 ⇄ 退去予定は変えてよい）
+        if (in_array($validated['status'], [MsRoomStatus::Vacant->value, MsRoomStatus::Negotiating->value], true) && $room->activeContract()->exists()) {
+            throw ValidationException::withMessages(['status' => '契約中の部屋は、ステータスを「空室」「申込み・仮押え」に変えられません（解約すると空室になります）。']);
+        }
         $room->update($validated);
         return redirect()->route('mansion.properties.show', $room->property)
             ->with('success', '部屋を更新しました');
