@@ -58,6 +58,8 @@
             </div>
         </form>
     </div>
+    {{-- 画面の下に固定した保存のバー（x-form-actions）がページの一番下に重なる。同じ高さの余白を置かないと、削除の欄がバーの後ろに隠れる --}}
+    <div style="height: 80px;" aria-hidden="true"></div>
     @endif
 </div>
 
