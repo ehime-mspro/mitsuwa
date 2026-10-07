@@ -31,11 +31,13 @@
 <style>
     [x-cloak] { display: none !important; }
 
-    /* 情報行 */
-    .zeal-info-row { display: grid; grid-template-columns: 150px 1fr; padding: 10px 0; border-bottom: 1px dashed #e5e7eb; font-size: 14px; }
+    /* 情報行
+       値の列は minmax(0, 1fr)・値は長い語でも折り返す。空白の無い長いメールアドレスが
+       列を押し広げ、カードの overflow: hidden に右端が切れていた（375px で 24px・641px で 2 列目が 18px。Bug #114） */
+    .zeal-info-row { display: grid; grid-template-columns: 150px minmax(0, 1fr); padding: 10px 0; border-bottom: 1px dashed #e5e7eb; font-size: 14px; }
     .zeal-info-row:last-child { border-bottom: none; }
     .zeal-info-label { color: #6b7280; font-weight: 600; }
-    .zeal-info-value { color: #111827; }
+    .zeal-info-value { color: #111827; overflow-wrap: anywhere; }
 
     /* タブ */
     .zeal-tab-btn {
@@ -143,7 +145,7 @@
 
         {{-- ========== Tab 1: 基本情報 ========== --}}
         <div x-show="tab === 'basic'" x-cloak style="padding: 24px;">
-            <div class="grid-stack-sm" style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+            <div class="grid-stack-sm" style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px;">
 
                 {{-- 左列: 個人情報 --}}
                 <div>
