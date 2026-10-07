@@ -14,7 +14,7 @@
             <select name="specialty_id" style="width: 100%; height: 38px; padding: 0 10px; font-size: 13px; border: 1px solid #d1d5db; border-radius: 4px; background: #fff;">
                 <option value="">選択してください</option>
                 @foreach($specialties as $sp)
-                    <option value="{{ $sp->id }}" {{ old('specialty_id', $subcontractor?->specialty_id) == $sp->id ? 'selected' : '' }}>{{ $sp->name }}</option>
+                    <option value="{{ $sp->id }}" {{ old('specialty_id', $subcontractor?->specialty_id) == $sp->id ? 'selected' : '' }}>{{ $sp->name }}{{ $sp->is_active ? '' : '（無効）' }}</option>
                 @endforeach
             </select>
             <div class="hint">専門分野は「システム管理 → DAD → 専門分野マスター」で追加・編集できます。</div>
