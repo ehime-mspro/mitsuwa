@@ -234,9 +234,15 @@ class ParkingContractController extends Controller
             abort(403);
         }
 
+        // 利用終了日は利用開始日（無ければ契約日）より前にしない（Bug #85 と同じ）
+        $since = $parkingContract->start_date ?? $parkingContract->contract_date;
+        $sinceLabel = $parkingContract->start_date ? '利用開始日' : '契約日';
+
         $validated = $request->validate([
-            'end_date' => 'required|date',
-        ], [], [
+            'end_date' => $since ? 'required|date|after_or_equal:' . $since->format('Y-m-d') : 'required|date',
+        ], [
+            'end_date.after_or_equal' => $since ? "利用終了日は{$sinceLabel}（{$since->format('Y/m/d')}）以降の日付を指定してください。" : '',
+        ], [
             // 画面ラベルに合わせる（既定は「終了日」）
             'end_date' => '利用終了日',
         ]);

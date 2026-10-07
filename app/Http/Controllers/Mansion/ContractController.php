@@ -256,8 +256,12 @@ class ContractController extends Controller
             abort(403);
         }
 
+        // 退去日は入居日（無ければ契約日）より前にしない（Bug #85 と同じ）
+        $since = $contract->move_in_date ?? $contract->contract_date;
+        $sinceLabel = $contract->move_in_date ? '入居日' : '契約日';
+
         $validated = $request->validate([
-            'move_out_date' => 'required|date',
+            'move_out_date' => $since ? 'required|date|after_or_equal:' . $since->format('Y-m-d') : 'required|date',
             'terminate_parkings' => 'nullable|array',
             // 敷金精算。⚠ 画面には以前からこの入力欄があったが、ここで受けていなかったため
             //   入力が丸ごと捨てられていた（2026-08-17 に発見・修正）
@@ -268,7 +272,9 @@ class ContractController extends Controller
             'other_deduction_name.*' => 'nullable|string|max:100',
             'other_deduction_amount' => 'nullable|array',
             'other_deduction_amount.*' => 'nullable|integer|min:0|max:' . self::MAX_UNSIGNED_INT_COLUMN,
-        ], [], [
+        ], [
+            'move_out_date.after_or_equal' => $since ? "退去日は{$sinceLabel}（{$since->format('Y/m/d')}）以降の日付を指定してください。" : '',
+        ], [
             // 画面ラベルに合わせる（既定は「退去理由」）
             'termination_reason' => '解約理由',
         ]);
