@@ -343,7 +343,7 @@
                                         style="width: 100%; height: 34px; padding: 0 8px; font-size: 12px; border: 1px solid #d1d5db; border-radius: 4px; background: #fff;">
                                     <option value="">選択</option>
                                     @foreach($employees as $emp)
-                                        <option value="{{ $emp->id }}">{{ $emp->employee_code }} {{ $emp->name }}{{ $emp->position ? '（' . $emp->position . '）' : '' }}</option>
+                                        <option value="{{ $emp->id }}">{{ $emp->employee_code }} {{ $emp->name }}{{ $emp->position ? '（' . $emp->position . '）' : '' }}{{ $emp->status === \App\Enums\DadEmployeeStatus::Retired ? '（退職）' : '' }}</option>
                                     @endforeach
                                 </select>
                             </td>

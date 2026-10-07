@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Dad;
 
 use App\Enums\DadCostCategory;
+use App\Enums\DadEmployeeStatus;
 use App\Enums\DadProjectStatus;
 use App\Enums\DadProjectType;
 use App\Http\Controllers\Controller;
@@ -183,7 +184,7 @@ class ProjectController extends Controller
         $clients = DadClient::orderBy('client_type')->orderBy('name')->get();
         $subcontractors = DadSubcontractor::orderBy('company_name')->get();
         $staffUsers = User::assignableWith($project->staff_user_id);
-        $employees = DadEmployee::where('status', 'active')->orderBy('employee_code')->get();
+        $employees = $this->selectableEmployees($project);
 
         // 現在紐付く発注者が論理削除済みなら、編集画面で選択肢が消えないよう
         // そのレコードのみドロップダウンに追加で含める
@@ -304,7 +305,8 @@ class ProjectController extends Controller
             'costs.*.notes' => ['nullable', 'string'],
             'assignments' => ['nullable', 'array'],
             'assignments.*' => ['array'],
-            'assignments.*.employee_id' => ['required', 'integer', 'exists:dad_employees,id', 'distinct'],
+            // 新しく選べるのは在籍者だけ。今この工事案件に配置されている人は退職していても残せる（選択肢と同じ集合）
+            'assignments.*.employee_id' => ['required', 'integer', Rule::in($project === null ? [] : $this->selectableEmployees($project)->pluck('id')->all()), 'distinct'],
             // 列（dad_project_assignments）は役割 50・備考 200 文字
             'assignments.*.role' => ['nullable', 'string', 'max:50'],
             'assignments.*.start_date' => ['nullable', 'date'],
@@ -364,6 +366,21 @@ class ProjectController extends Controller
         $project = collect($validated)->except(['costs', 'assignments'])->all();
 
         return [$project, $costs, $assignments];
+    }
+
+    /**
+     * 人員配置で選べる従業員: 在籍者 ＋ この工事案件に今配置されている人（退職していても。編集画面で「（退職）」つきで出す）。
+     * 在籍者だけにすると、退職した人の配置は選択肢に無く、編集画面をそのまま保存するだけで従業員が空で送られて配置が消えた。
+     * ⚠ 配置は更新前の DB から読む（保存は消して入れ直すので、検査は必ず保存の前に走る）。
+     */
+    private function selectableEmployees(DadProject $project): \Illuminate\Database\Eloquent\Collection
+    {
+        $assigned = $project->assignments()->pluck('employee_id')->all();
+
+        return DadEmployee::query()
+            ->where(fn ($q) => $q->where('status', DadEmployeeStatus::Active->value)->orWhereIn('id', $assigned))
+            ->orderBy('employee_code')
+            ->get();
     }
 
     /**
