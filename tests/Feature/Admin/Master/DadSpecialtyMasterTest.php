@@ -85,6 +85,21 @@ class DadSpecialtyMasterTest extends MasterScreenTestCase
         $this->assertNotSame('', $form['fields']['_token'] ?? '');
     }
 
+    /**
+     * 色の「背景色」「文字色」の 2 列は、中に固定幅の入力（色の見本＋120px の hex の欄）を持つので、375px で 14px 横にはみ出した
+     * （2026-10-07 に実ブラウザで実測）。狭い画面では 1 列に落とす。⚠ 本当に収まるかは実ブラウザで測る。
+     */
+    public function test_the_color_columns_stack_on_narrow_screens(): void
+    {
+        foreach ([route('admin.master.dad-specialties.create'), route('admin.master.dad-specialties.edit', $this->ids['土工'])] as $url) {
+            $this->assertMatchesRegularExpression(
+                '/<div class="grid-stack-sm" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">\s*<div class="fld">\s*<label>背景色/u',
+                $this->htmlOf($url),
+                "{$url} の色の 2 列が狭い画面で 1 列に落ちない"
+            );
+        }
+    }
+
     public function test_a_specialty_is_registered_from_the_create_screen_with_a_preset(): void
     {
         [$form, $response] = $this->register("data.name = '電気'; data.applyPreset(data.presets[3]);");
