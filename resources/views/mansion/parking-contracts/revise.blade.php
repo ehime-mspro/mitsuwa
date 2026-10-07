@@ -22,6 +22,8 @@
     $oldNewFee = old('new_monthly_fee', '');
     $oldReason = old('reason', '');
     $oldRevisionDate = old('revision_date', \App\Support\JapanTime::today()->format('Y-m-d'));
+    // ⚠ 空欄で送って入力エラーで戻ると old() は null になる。0 円で描くと、そのまま送ったとき 0 円に改定される。空欄・null は今の値で描く
+    $initialNewFee = ($oldNewFee === null || $oldNewFee === '') ? $currentFee : (int) $oldNewFee;
 @endphp
 
 {{-- 改定フォーム + 日付ピッカー用スタイル（Vite 未ビルドにつき inline） --}}
@@ -100,7 +102,7 @@
         return {
             currentFee: {{ $currentFee }},
             // 未入力時は現行値を初期値として提示し、差分が「変更なし」から始まるようにする
-            newFee: @json($oldNewFee === '' ? $currentFee : (int) $oldNewFee),
+            newFee: @json($initialNewFee),
             reason: @json($oldReason),
             get diffFee() { return (Number(this.newFee) || 0) - this.currentFee; },
             get diffFeeLabel() { return this.formatDiff(this.diffFee); },

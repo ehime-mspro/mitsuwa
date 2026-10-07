@@ -27,7 +27,16 @@
     $oldRestoration = (int) old('restoration_cost', 0);
     $oldCleaning = (int) old('cleaning_cost', 0);
     $oldReason = old('termination_reason', '');
-    $oldTerminateParkings = old('terminate_parkings', $activeParkings->pluck('id')->all());
+    // ⚠ チェックを全部外して送ると、この項目ごと送られない。入力エラーで戻ったのに既定（全部チェック）に戻すと、
+    //   残すつもりの駐車場契約まで解約される。前の入力があるときは、送られなかった＝全部外した、として扱う
+    $oldTerminateParkings = session()->hasOldInput() ? (array) old('terminate_parkings', []) : $activeParkings->pluck('id')->all();
+    // 入力エラーで戻ったときは、足した差引の行を戻す（名称と金額は同じ添字が同じ行。ContractController::pairDeductions() と同じ）
+    $oldDeductions = [];
+    $oldDeductionAmounts = (array) old('other_deduction_amount', []);
+    foreach ((array) old('other_deduction_name', []) as $i => $name) {
+        $amount = $oldDeductionAmounts[$i] ?? '';
+        $oldDeductions[] = ['name' => is_string($name) ? $name : '', 'amount' => is_string($amount) ? $amount : ''];
+    }
     // 駐車場契約 ID → チェック状態の初期値。@json() 内での関数呼び出しを避けるため事前計算する
     $linkParkingsInitial = [];
     foreach ($activeParkings as $pc) {
@@ -139,8 +148,8 @@
             deposit: {{ $depositAmount }},
             restorationCost: {{ $oldRestoration }},
             cleaningCost: {{ $oldCleaning }},
-            // 差引項目の動的追加（初期空配列）
-            otherDeductions: [],
+            // 差引項目の動的追加（初期は空。入力エラーで戻ったときは送った行）
+            otherDeductions: @json($oldDeductions),
             terminationReason: @json($oldReason),
             // 駐車場契約 ID → チェック状態のオブジェクト（初期は全 Active をチェック）
             linkParkings: @json($linkParkingsInitial),

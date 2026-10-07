@@ -24,6 +24,10 @@
     $oldNewCommon = old('new_common_fee', '');
     $oldReason = old('reason', '');
     $oldRevisionDate = old('revision_date', \App\Support\JapanTime::today()->format('Y-m-d'));
+    // ⚠ 空欄（＝今のまま）で送って入力エラーで戻ると old() は null になる。0 円で描くと、そのまま送ったとき 0 円に改定される。
+    //   空欄・null は今の値で描く（未入力は現行値を維持、と同じ）
+    $initialNewRent = ($oldNewRent === null || $oldNewRent === '') ? $currentRent : (int) $oldNewRent;
+    $initialNewCommon = ($oldNewCommon === null || $oldNewCommon === '') ? $currentCommon : (int) $oldNewCommon;
 @endphp
 
 {{-- 改定フォーム + 日付ピッカー用スタイル（いずれも Vite 未ビルドなので inline） --}}
@@ -120,8 +124,8 @@
             currentRent: {{ $currentRent }},
             currentFee: {{ $currentCommon }},
             // 未入力時は現行値を初期値として提示し、差分が「変更なし」から始まるようにする
-            newRent: @json($oldNewRent === '' ? $currentRent : (int) $oldNewRent),
-            newFee: @json($oldNewCommon === '' ? $currentCommon : (int) $oldNewCommon),
+            newRent: @json($initialNewRent),
+            newFee: @json($initialNewCommon),
             reason: @json($oldReason),
             get diffRent() { return (Number(this.newRent) || 0) - this.currentRent; },
             get diffFee() { return (Number(this.newFee) || 0) - this.currentFee; },
