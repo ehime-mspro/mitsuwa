@@ -74,12 +74,13 @@ final class Ledger
             $query->where('approval_requests.decided_at', '<', $filter->decidedTo->startOfDay()->addDay()->utc());
         }
 
-        // 申請者は名前の一部（空白で分けた語のどれも含む。D21）。退職して消した人の申請も探せる（applicant は withTrashed）
+        // 申請者は名前の一部（空白で分けた語のどれも含む。D21）。登録名の半角・全角の空白は無視して当てる（「申請 花子」を「申請花子」で探せる）。
+        // 退職して消した人の申請も探せる（applicant は withTrashed）
         $names = LedgerFilter::terms($filter->applicant);
         if ($names !== []) {
             $query->whereHas('applicant', function (Builder $q) use ($names): void {
                 foreach ($names as $name) {
-                    $q->where('name', 'like', "%{$name}%");
+                    $q->whereRaw("replace(replace(name, ' ', ''), '　', '') like ?", ["%{$name}%"]);
                 }
             });
         }

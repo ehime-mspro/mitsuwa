@@ -169,9 +169,14 @@ class LedgerQueryTest extends TestCase
         $taro     = $this->approvalOnlyUser(['name' => '山田 太郎']);
         $taro->approvalDepartments()->attach($w['dept']->id);
         $yamada   = $this->decided(array_merge($w, ['applicant' => $taro->fresh()]))->id;
+        $jiro     = $this->approvalOnlyUser(['name' => '佐藤　次郎']);
+        $jiro->approvalDepartments()->attach($w['dept']->id);
+        $sato     = $this->decided(array_merge($w, ['applicant' => $jiro->fresh()]))->id;
         $viewer   = $this->viewAllUser();
 
         $this->assertSame([$yamada], $this->ids($viewer, ['applicant' => '山田']));
+        $this->assertSame([$yamada], $this->ids($viewer, ['applicant' => '山田太郎']), '登録名の半角の空白を無視して当てる');
+        $this->assertSame([$sato], $this->ids($viewer, ['applicant' => '佐藤次郎']), '登録名の全角の空白を無視して当てる');
         $this->assertSame([$yamada], $this->ids($viewer, ['applicant' => '田　郎']), '全角の空白で分けた語のどれも含む');
         $this->assertSame([], $this->ids($viewer, ['applicant' => '山田 花子']), 'どれも含まないと当たらない');
         $this->assertSame([$hanako], $this->ids($viewer, ['applicant' => '花子']));
