@@ -132,20 +132,21 @@ class ValidationKeyScannerTest extends TestCase
 
     public function test_a_forwarding_helper_is_read_at_its_callers(): void
     {
+        // ⚠ 呼び出す側を先に書く — 部品をさらに渡すだけの部品（outer）は 1 回目には覚えておらず、2 回目に読む（回し続ける仕組みの見本）
         $found = $this->scan('
-            private function check($request, array $rules, array $names = []) {
-                return $request->validate($rules, [], $names);
+            public function store($request) {
+                $this->check($request, [\'t\' => \'x\'], [\'t\' => \'名\']);
+                $this->outer($request, [\'u\' => \'x\']);
             }
             private function outer($request, array $rules) {
                 return $this->check($request, $rules);
             }
-            public function store($request) {
-                $this->check($request, [\'t\' => \'x\'], [\'t\' => \'名\']);
-                $this->outer($request, [\'u\' => \'x\']);
+            private function check($request, array $rules, array $names = []) {
+                return $request->validate($rules, [], $names);
             }');
         $this->assertSites([[['t'], ['t']], [['u'], []]], $found);
         // 場所は呼び出し元（部品の中の validate の行ではない）
-        $this->assertStringEndsWith(':13', $found['sites'][0]['where']);
+        $this->assertStringEndsWith(':7', $found['sites'][0]['where']);
     }
 
     public function test_a_form_request_reads_rules_and_attributes(): void
