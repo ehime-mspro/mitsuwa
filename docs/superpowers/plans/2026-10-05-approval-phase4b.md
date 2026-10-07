@@ -4259,6 +4259,51 @@ Laravel を通さない試し（`~/.claude/plans/approval-phase3-tasks/4b/spike-
 - 4b のテスト（`tests/Feature/Approval/Phase4`・台帳の JSON の中を見る絞り込みを含む）は MySQL で `OK (111 tests, 450 assertions)`（はじめ 2 本が JSON のキーの並びで赤 → 直した。§0.2）。点検の指摘を直した最後のコードでも、Mac の再起動のあとに作り直した使い捨ての MySQL で `tests/Feature/Approval/Phase4` と `RelatedNumberSearchTest` が `OK (133 tests, 575 assertions)`（2026-10-06）
 - 決裁のテスト全体（`tests/Feature/Approval`）を MySQL で流すと、試作も**土台（4b の前）も同じ 4 本だけ**が赤（`UsersSchemaTest` の 2 本〈SQLite の `sqlite_master` を読むテスト〉・`MailFailureBannerTest` の 1 本〈ログの見張りの数〉・`TypeManagementTest` の 1 本〈設定の記録の JSON のキーの並び〉）。4b の前からある、SQLite の前提のテストで、4b で増えた 62 本はすべて緑（`measure/mysql-approval-base.txt`・`mysql-approval-proto.txt`）
 
+## Task 5 の実測記録（2026-10-06〜07・実装のあと）
+
+土台は WT の HEAD `eef97fa8`（Task 1〜4 と、台帳のページ番号を最後のページまでに抑える直し）の `git archive` の写し（scratchpad。`vendor` は `cp -Rc`）を 3 つ作り、ID を分けて **3 並列**で流した（道具は `~/.claude/plans/approval-phase3-tasks/4b/mutate.py`。1 つ当てて流し、必ず元に戻して戻ったことを確かめ、当てる場所がちょうど 1 回でなければ SKIP と記録する）。1 回の実行は決裁のテスト（`tests/Feature/Approval`・`tests/Unit/Approval`）と走査テスト 4 本で **1036 本**（計画の時点は 1035 本。`eef97fa8` で `LedgerScreenTest::test_a_page_past_the_end_shows_the_last_page` を 1 本足したため）。WT のコードは変えていない（そのあとの `8c37d8d4`・`fd43c268` は計画書・BACKLOG・CLAUDE.md だけのコミットで、コードは `eef97fa8` と同じ）。
+
+| # | 見たこと | 結果 |
+|---|---|---|
+| 1 | 全件（Step 1・2026-10-06・WT `eef97fa8`） | **`OK (3715 tests, 28638 assertions)`**（4 分 12 秒。計画の 3714 本・28629 より 1 本・9 assertions 多いのは、ページ番号の直しのテスト 1 本） |
+| 2 | `--check`（当てる場所がちょうど 1 回ずつ見つかるか） | **`checked 101`**・`NG` の行なし（計画の 100 に、`eef97fa8` のコードへ足した V17 の 1 つを足した） |
+| 3 | 中断と再開 | 2026-10-06 に流し始め、22:14 ごろに**利用者の指示で止めた**（101 通りのうち 75 通りが済み）。2026-10-07 の朝に写しを作り直して**残り 26 通りを流し**、08:59 に終わった（同じ道具・同じコード・同じ 1036 本。同じ出力のファイルを渡すと、記録済みの変異を飛ばして続きから流す）。1 つあたり平均 1.3 分（秒数の合計 127 分） |
+| 4 | カナリア（申請の詳細の見出しに未定義の変数） | **赤が正しい・赤だった**: `Tests: 1036, Assertions: 6763, Failures: 80.`。落ちたのは 80 本（`RequestActionTest` 37・`AdminRequestsTest` 16・`RequestChangesTest` 11・`RequestFormTest` 9・`RequestAttachmentTest` 3・`StampDisplayTest` 2・`NoticeScreenTest` 1・`RequestPdfTest` 1）で、どれも「Expected response status code [200] but received 500.」。件数も顔ぶれも計画の時点の 80 本と同じ＝測定は写しのコードを読んでいる |
+| 5 | 101 通りの結果 | 下の「結果の数」。**検出漏れ 0・SKIP 0** |
+| 6 | 計画の表との突き合わせ（落ちたテストの集合まで） | 98 通りは**表と同じ**（検出 95・等価 3）。違いは CANARY・V01・V17 の 3 行だけ（下の「計画の表と違ったもの」。**どれも検出の判定は変わらない**） |
+
+### 結果の数（101 通り＝変異 100 ＋ カナリア 1）
+
+| 判定 | 数 | 中身 |
+|---|---|---|
+| 検出（赤になった） | **97** | 計画の表の検出 96 ＋ V17（`eef97fa8` のコードに足した変異） |
+| 当初検出漏れ → 追加で検出 | **0** | テストは足していない（Step 3 は下の等価の確かめだけ） |
+| 等価（緑が正しい） | **3** | Q22・R03・R05（計画の表で「等価」としたもの。理由は下で今のコードで確かめた） |
+| 検出漏れ（緑のまま・等価でもない） | **0** | |
+| SKIP（当てる場所が 1 回だけ見つからない） | **0** | |
+| カナリア | 1（赤が正しい） | 上の 4 |
+
+- 結果は 1 つずつ `~/.claude/plans/approval-phase3-tasks/4b/measure/impl-t5/merged.jsonl`（`ids.txt` の並び・1 行 1 変異: `id`・`file`・`desc`・`result`・`fails`〈`test` と `msg`〉・`seconds`）。101 通りの 1 行ずつの表はここには写さない（計画の表は Task 5 の Step 2）
+- 突き合わせは `measure/impl-t5/merge.py`（表の「落ちたテスト」の欄のテスト名の集合と、実測の落ちたテストの集合を比べる）。落ちた理由の文言も見た: `T05`（`ksort()` に null）・`T06`（`parameterize()` に int）・`X12`（`department_id` の無いキー）の Error は、それぞれ「条件を書けない」「配列として扱わない」「条件を控えない」の意図どおりの落ち方で、書き換えそのものが壊れて落ちたものは無い
+
+### 計画の表と違ったもの（3 つ）
+
+1. **CANARY**（道具の比べ方の都合・違いではない）: 表の「落ちたテスト」の欄が名前の列記ではなくクラス名の列記なので、道具が集合を比べられない。件数は表と同じ 80 本・顔ぶれは表に名のあるクラス 4 つ（`AdminRequestsTest`・`NoticeScreenTest`・`RequestActionTest`・`RequestAttachmentTest`）を含む（上の 4）
+2. **V01**（ページの始まりを 1 ページずらす・`LedgerController.php:42`）: 表は 2 本・実測は **4 本**。増えた 2 本は `test_a_page_past_the_end_shows_the_last_page`（msg「page=2 でも最後のページの行が出る」）と `test_what_people_typed_is_escaped`（msg「件名がカードと表に 1 つずつ」）。どちらも V01 と**同じ機構**（1 ページ目が 2 ページ目の分から始まり、行が出ない〈行が 1 件のテストでは 0 行・51 件のテストでは 1 行〉）で落ちている。別の機構ではなく、測定は有効
+    - `test_a_page_past_the_end_shows_the_last_page` は `eef97fa8` で足したテストで、表を作った測定のあとのもの。1 件の台帳で `?page=2` を開くと、最後のページ（1 ページ目）に抑えられて `$page = 1` になり、V01 では 50 件目から切るので 0 行になる
+    - `test_what_people_typed_is_escaped` は、「計画を書く段階の実測」の 18 で V03 の空振りを直したとき、「`?q=<script>` で絞った画面（行が 0 件）」を見る形から「行のある画面で、件名と申請者がカードと表に 2 つずつ出る」ことを数える形になった（直す前の形は `patches/old-before-escape-test/` にある）。V01 は直す前に測っていたので、行が 0 件の画面は V01 で変わらず、表に入っていない。今の形は 1 件の台帳の 1 ページ目を見るので、V01 で 0 行になって `substr_count` が 2 と合わず落ちる
+3. **V17**（ページ番号を最後のページまでに抑えない・`LedgerController.php:39`）: 表に無い。`eef97fa8`（Task 3 の点検の指摘の直し）のコードに足した変異で、`min(LengthAwarePaginator::resolveCurrentPage(), $last)` を `LengthAwarePaginator::resolveCurrentPage()` に戻す。**検出**: `test_a_page_past_the_end_shows_the_last_page` の 1 本だけが「page=2 でも最後のページの行が出る」で落ちた（`Tests: 1036, Assertions: 7487, Failures: 1.`）。そのテストは `foreach` の最初の `page=2` で止まるので、`99999`・`9223372036854775807` の回は変異のもとでは流れていない（守っているのは同じ `min` の 1 行）
+
+### 等価の 3 つ（今のコード＝WT の HEAD で 1 行ずつ確かめた）
+
+- **Q22**（部門が無いときの守りを外す・`Ledger.php:257` の `$q->whereRaw('1 = 0')`）: `(1 = 0 OR 期間 1 OR 期間 2 …)` の頭の項なので、期間が 1 つでもあれば `1 = 0 OR X` は `X` と同じ。`periods()`（`Ledger.php:230`）は部門を会社の期の始まりの月ごとに分けるので、部門が 1 つでもあれば期間は 1 つ以上ある（`approval_departments.company_id` は NOT NULL の外部キー）。外して変わるのは、部門が 1 つも無く期間が空のとき（空の括弧を Laravel が落として、番号の無い申請すべてに当たる）だけ。台帳に出る申請は下書き以外（`Ledger.php:61`）で、提出には申請部門が要る（`SubmitChecker.php:29〜35`）ので、部門が 0 件なのに番号の無い申請が出る状態にならない
+- **R03**（判断していない段階の意見・コメントも出す・`LedgerRow.php:84` の `done()`）: 段階の `result` と `comment` を書くのは `finishStep()`（`Workflow.php:609`。状態を済みにして書く）だけで、`reopenStep()`（`Workflow.php:580`。待ちに戻す）が両方を null に戻す。打ち切り（`cancelRest()`・`Workflow.php:634`）は待ちとまだ届いていない段階だけを打ち切りにし、省略の段階は提出のときに結果なしで作られる（`Workflow.php:98`）。判断していない段階は意見もコメントも必ず空なので、`done()` で絞っても絞らなくても `reviewResult`・`reviewComment`・`condition` は同じ
+- **R05**（前の回の段階も見る・`LedgerRow.php:50` の `currentSteps()` を `steps` 全部に）: `steps` は回・id の順（`ApprovalRequest.php:69`）で、`keyBy` は後のものが残る＝種類ごとに一番大きい回の段階。提出のたびに `round` を 1 つ上げて同じ回に 3 つの段階（部門長・審査・社長）を作り（`Workflow.php:72〜116`）、`round` を変えるのはここだけ・段階を消す所も無いので、一番大きい回は今の回で、3 種類とも揃う。今の回だけを見たときと同じ段階が残る
+
+### 当初検出漏れ → 追加で検出
+
+**0**（テストを足していない。計画を書く段階で見つけた穴〈V03 の空振り・Q31〜Q33・X09 など〉は、そのときに計画のテストへ入れてあり、実装のあとの今回は新しい穴が見つからなかった）。
+
 ## Task 6 の実測記録（2026-10-06・実装のあと）
 
 WT の HEAD `eef97fa8`（Task 1〜4 と、台帳のページ番号を最後のページまでに抑える直し）の `git archive` の写し・使い捨ての SQLite（`migrate` 済み）・`php artisan serve --port=8771`・Playwright（`browser_run_code_unsafe` と `browser_take_screenshot`）。ログインは試しのパスワードを画面にも記録にも出さない流れ（`public/` に一時ファイル → `page.request` で読む → すぐ消す）。決裁の管理者はメールアドレスで、申請者「申請 花子」は社員番号でログインした。試しのデータは `seed.php`（61 件）。写真と Excel は `/Users/masanori/site/approval/screenshots-4b/impl/`。**不具合は無し**（気づいた軽微な点は末尾）。
