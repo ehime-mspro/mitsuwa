@@ -36,6 +36,14 @@ class RoomController extends Controller
         $validated['property_id'] = $property->id;
         MsRoom::create($validated);
 
+        // 「内容をコピーして追加」（`continue=1`）: 登録画面へ戻し、号室番号のほかは同じ内容を入れておく
+        //（画面のボタンの説明「この部屋と同じ条件で次の部屋を続けて登録します」のとおり）
+        if ($request->boolean('continue')) {
+            return redirect()->route('mansion.rooms.create', $property)
+                ->withInput($request->except(['room_number', 'continue', '_token']))
+                ->with('success', "{$validated['room_number']}号室を登録しました。続けて次の部屋を登録できます（号室番号のほかは同じ内容を入れています）。");
+        }
+
         return redirect()->route('mansion.properties.show', $property)
             ->with('success', '部屋を登録しました');
     }
