@@ -131,8 +131,9 @@
                         :disabled="!propertyId"
                         style="width: 100%; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px; background: white;">
                     <option value="">物件を先に選択してください</option>
+                    {{-- ⚠ :selected が要る（選択肢は API から届いたあとに描かれ、x-model は描く前に値を入れる。入力エラーで戻ると選択が消える。Top trap #3） --}}
                     <template x-for="p in parkings" :key="p.id">
-                        <option :value="p.id"
+                        <option :value="p.id" :selected="String(p.id) === String(selectedParkingId)"
                                 x-text="p.parking_number + (p.has_roof ? '（屋根あり）' : '（屋根なし）') + ' / ' + Number(p.monthly_fee || 0).toLocaleString() + '円'">
                         </option>
                     </template>
