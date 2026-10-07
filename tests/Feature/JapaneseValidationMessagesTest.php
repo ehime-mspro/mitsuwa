@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Models\ZoningType;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Lang;
+use Tests\Concerns\CollectsValidationKeys;
 use Tests\Concerns\CreatesRealEstateSchema;
 use Tests\TestCase;
 
@@ -27,6 +28,16 @@ class JapaneseValidationMessagesTest extends TestCase
 {
     use RefreshDatabase;
     use CreatesRealEstateSchema;
+    use CollectsValidationKeys;
+
+    /**
+     * 走査が拾う入力チェックの呼び出しとキーの下限（2026-10-07 の実測は 145 か所・846 キー）。
+     * ⚠ 下限を実測の近くに置く — 試作で、同じ短い名前のクラス（ContractController は 3 つ）を 1 つに畳んでしまう誤りがあり、
+     *   そのときも 114 か所・615 キーあった（3 割が黙って消えたのに、緩い下限なら緑のまま）。下げる前に「消した」のか「拾えなくなった」のかを確かめる
+     */
+    private const MIN_VALIDATION_SITES = 140;
+
+    private const MIN_VALIDATION_KEYS = 800;
 
     protected function setUp(): void
     {
@@ -102,73 +113,45 @@ class JapaneseValidationMessagesTest extends TestCase
     }
 
     /**
-     * validate() に出てくる項目が全て和名を持つこと。
+     * 入力チェックに出てくる項目が全て和名を持つこと（全体の attributes か、その呼び出しの第 3 引数の名前）。
      *
      * 和名が無いキーは Laravel が snake_case を単語に開いてそのまま出すため、
      * 画面に `guarantor1 name` `started at` のような英字が出る（2026-07-30 に 86 件あった）。
      * 実際にエラーを起こさないと見えないので、コントローラ側を走査して静的に押さえる。
+     *
+     * ⚠ 走査は `validate([ … ])` のリテラルだけでなく、変数で組む規則・`$this->rules()`・`Validator::make()`・
+     *   規則を渡すだけの部品も読む（CollectsValidationKeys）。リテラルしか読まなかった頃は、
+     *   不動産の契約（`$rules['…'] = …` で組む）の 5 項目と DAD の原価（`Validator::make`）の 3 項目が見えなかった（Bug #110）。
+     * ⚠ 読めない書き方は推測せず落とす（全件分類）。新しい書き方を足したら、走査が読めるように直すか書き方を合わせる
      */
     public function test_every_validated_field_has_a_japanese_attribute_label(): void
     {
         $attributes = Lang::get('validation.attributes');
         $this->assertIsArray($attributes);
 
+        $found = $this->collectValidationKeys($this->appHttpSources());
+        $this->assertSame([], $found['unreadable'], "入力チェックの規則を読めない呼び出しがあります（走査を直すか、書き方を合わせる）:\n" . implode("\n", $found['unreadable']));
+
         $missing = [];
         $seen    = 0;
-
-        foreach ($this->validatedKeysByController() as $controller => $keys) {
-            foreach ($keys as $key) {
+        foreach ($found['sites'] as $site) {
+            foreach ($site['keys'] as $key) {
                 $seen++;
-                if (! $this->hasAttributeLabel($key, $attributes)) {
-                    $missing[] = "{$key}  ({$controller})";
+                if (! in_array($key, $site['named'], true) && ! $this->hasAttributeLabel($key, $attributes)) {
+                    $missing[] = "{$key}  ({$site['where']})";
                 }
             }
         }
 
-        // 走査が空振りして緑になる事故を防ぐ
-        $this->assertGreaterThan(300, $seen, 'コントローラの走査に失敗している');
+        // 走査が空振りして（あるいは一部だけ拾えなくなって）緑になる事故を防ぐ
+        $this->assertGreaterThanOrEqual(self::MIN_VALIDATION_SITES, count($found['sites']), '入力チェックの呼び出しを拾えていない');
+        $this->assertGreaterThanOrEqual(self::MIN_VALIDATION_KEYS, $seen, '入力チェックのキーを拾えていない');
 
         $this->assertSame(
             [],
             $missing,
             "和名が無い項目があります（画面に英字が出ます）:\n" . implode("\n", $missing)
         );
-    }
-
-    /**
-     * app/Http/Controllers 配下の validate() に渡されるルールキーを集める。
-     *
-     * @return array<string, list<string>> コントローラ相対パス => キー一覧
-     */
-    private function validatedKeysByController(): array
-    {
-        $out = [];
-        $dir = app_path('Http/Controllers');
-
-        /** @var \SplFileInfo $file */
-        foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($dir)) as $file) {
-            if ($file->getExtension() !== 'php') {
-                continue;
-            }
-            $src = file_get_contents($file->getPathname());
-            if (! preg_match_all('/validate\(\s*\[(.*?)\n\s*\]\s*[,)]/s', $src, $blocks)) {
-                continue;
-            }
-            $keys = [];
-            foreach ($blocks[1] as $block) {
-                // ルール定義の行だけを拾う（配列値の中の 'key' => ... は行頭ではない）
-                if (preg_match_all("/^\s*'([a-z0-9_.*]+)'\s*=>/im", $block, $m)) {
-                    foreach ($m[1] as $key) {
-                        $keys[$key] = true;
-                    }
-                }
-            }
-            if ($keys) {
-                $out[str_replace($dir . '/', '', $file->getPathname())] = array_keys($keys);
-            }
-        }
-
-        return $out;
     }
 
     /** attributes に完全一致 or ワイルドカード一致のエントリがあるか */

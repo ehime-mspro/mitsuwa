@@ -5,6 +5,7 @@ namespace Tests\Feature\RealEstate\Screens;
 use App\Models\ReContract;
 use App\Models\ReProject;
 use App\Models\ReProjectLot;
+use Illuminate\Support\Facades\Lang;
 
 /**
  * 不動産の契約の登録（分譲地。区画の一覧と原価は画面の JS が API から取る）・編集・仲介の成約／不成約を、
@@ -221,5 +222,93 @@ class ContractScreensTest extends RealEstateScreenTestCase
         $this->assertFlash($html, 'success', '契約情報を更新しました。');
         $this->assertSame($newLot->id, $contract->fresh()->lot_id);
         $this->assertSame(['on_sale', 'sold'], [$oldLot->fresh()->status->value, $newLot->fresh()->status->value]);
+    }
+
+    // ============================================================
+    // 入力エラーの項目名が画面のラベルと同じ和名で出る（Bug #110）
+    // ⚠ 規則を変数で組むので、以前の走査（リテラルの validate([...]) だけ）には見えなかった。英字の「cost amount」などが出ていた
+    // ============================================================
+
+    public function test_a_procurement_contract_names_its_missing_procurement_and_cost_in_japanese(): void
+    {
+        $url = route('realestate.contracts.create');
+        $form = $this->browserForm($this->htmlOf($url), 'action="' . route('realestate.contracts.store') . '"', 'contractForm',
+            'data.contractType = "procurement_land"; data.onTypeChange();');
+        $this->assertSame(['', ''], [$form['fields']['procurement_id'], $form['fields']['cost_amount']], '仕入れ案件・原価が空のまま送られていない');
+
+        $html = $this->landed($this->submit($form, $url));
+
+        $this->assertErrorItem($html, trans('validation.required', ['attribute' => '仕入れ案件']));
+        $this->assertErrorItem($html, trans('validation.required', ['attribute' => '原価']));
+    }
+
+    public function test_a_subdivision_contract_names_its_missing_lot_in_japanese(): void
+    {
+        $project = $this->project();
+        $this->lot($project, 3, 12000000);
+        $url = route('realestate.contracts.create');
+        $form = $this->browserForm($this->htmlOf($url), 'action="' . route('realestate.contracts.store') . '"', 'contractForm',
+            'data.contractType = "subdivision_lot"; data.onTypeChange(); data.projectId = "' . $project->id . '"; data.onProjectChange();',
+            [$this->apiResponse(route('api.realestate.project-lots', $project)), $this->apiResponse(route('api.realestate.project-lot-cost', $project))]);
+        $this->assertSame('', $form['fields']['lot_id'], '区画を選ばずに送れていない');
+
+        $html = $this->landed($this->submit($form, $url));
+
+        $this->assertErrorItem($html, trans('validation.required', ['attribute' => '区画']));
+    }
+
+    public function test_a_brokerage_names_its_selling_price_and_address_as_on_the_screen(): void
+    {
+        $url = route('realestate.contracts.create');
+        $form = $this->browserForm($this->htmlOf($url), 'action="' . route('realestate.contracts.store') . '"', 'contractForm',
+            'data.contractType = "brokerage"; data.onTypeChange(); data.propertyName = "仲介C"; data.addressVal = "' . str_repeat('あ', 301) . '";');
+        $form = $this->fill($form, ['brokerage_selling_price' => 'abc']);
+
+        $html = $this->landed($this->submit($form, $url));
+
+        $this->assertErrorItem($html, trans('validation.integer', ['attribute' => '販売金額']));
+        // 画面のラベルは「所在地」。全体の和名（住所）は変えずに、この画面だけ呼び出しの第 3 引数で上書きする
+        $this->assertErrorItem($html, trans('validation.max.string', ['attribute' => '所在地', 'max' => 300]));
+        $this->assertStringNotContainsString(e(trans('validation.max.string', ['attribute' => '住所', 'max' => 300])), $html);
+        $this->assertSame('住所', Lang::get('validation.attributes.address'), '全体の和名を「所在地」に書き換えると、住所のラベルの画面が壊れる');
+    }
+
+    public function test_an_edited_brokerage_names_its_address_as_on_the_screen(): void
+    {
+        $contract = $this->listing('仲介D');
+        $url = route('realestate.contracts.edit', $contract);
+        $form = $this->browserForm($this->htmlOf($url), 'action="' . route('realestate.contracts.update', $contract) . '"', 'contractEditForm');
+        $form = $this->fill($form, ['address' => str_repeat('あ', 301)]);
+
+        $html = $this->landed($this->submit($form, $url));
+
+        $this->assertErrorItem($html, trans('validation.max.string', ['attribute' => '所在地', 'max' => 300]));
+    }
+
+    public function test_an_edit_sending_an_unknown_contract_type_names_it_in_japanese(): void
+    {
+        // 種別は編集画面の hidden で送る（画面からは変えられない）。手で書き換えた送信で項目名を見る
+        $contract = $this->listing('仲介E');
+        $url = route('realestate.contracts.edit', $contract);
+        $form = $this->browserForm($this->htmlOf($url), 'action="' . route('realestate.contracts.update', $contract) . '"', 'contractEditForm');
+        $this->assertSame('brokerage', $form['fields']['contract_type']);
+        $form = $this->fill($form, ['contract_type' => 'nope']);
+
+        $html = $this->landed($this->submit($form, $url));
+
+        $this->assertErrorItem($html, trans('validation.in', ['attribute' => '契約種別']));
+    }
+
+    public function test_a_brokerage_close_names_its_contract_date_as_on_the_dialog(): void
+    {
+        $contract = $this->listing('仲介F');
+        $url = route('realestate.contracts.show', $contract);
+        $form = $this->fill($this->parseForm($this->htmlOf($url), 'action="' . route('realestate.contracts.close', $contract) . '"'), ['contract_date' => '']);
+
+        $html = $this->landed($this->submit($form, $url));
+
+        // 小窓のラベルは「成約日」（全体の和名は「契約日」）
+        $this->assertErrorItem($html, trans('validation.required', ['attribute' => '成約日']));
+        $this->assertSame('契約日', Lang::get('validation.attributes.contract_date'));
     }
 }
