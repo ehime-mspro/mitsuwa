@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Mansion;
 
 use App\Enums\MsOwnershipType;
 use App\Http\Controllers\Controller;
+use App\Models\MsContract;
+use App\Models\MsParkingContract;
 use App\Models\MsProperty;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -103,9 +105,18 @@ class PropertyController extends Controller
 
     /**
      * 物件削除。FK CASCADE により部屋・駐車場も連動削除される点に注意。
+     * ⚠ 部屋・駐車場に契約（解約済みを含む）が残る物件は消さない。CASCADE で部屋・駐車場を消そうとして、
+     *   本番の外部キー（契約→部屋・駐車場は ON DELETE RESTRICT）に断られ 500 になる（テスト用スキーマには外部キーが無い）。
      */
     public function destroy(MsProperty $property)
     {
+        $contracts = MsContract::whereIn('room_id', $property->rooms()->select('id'))->count()
+            + MsParkingContract::whereIn('parking_id', $property->parkings()->select('id'))->count();
+        if ($contracts > 0) {
+            return redirect()->route('mansion.properties.show', $property)
+                ->with('error', "この物件の部屋・駐車場には契約が {$contracts} 件（解約済みを含む）あるため削除できません。");
+        }
+
         $property->delete();
         return redirect()->route('mansion.properties.index')
             ->with('success', '物件を削除しました');

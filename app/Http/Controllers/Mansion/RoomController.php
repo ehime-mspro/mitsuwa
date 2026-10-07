@@ -63,14 +63,34 @@ class RoomController extends Controller
     }
 
     /**
-     * 部屋削除。物件詳細へ戻る。FK で契約が残っていれば RESTRICT で失敗する。
+     * 部屋削除。物件詳細へ戻る。
+     * ⚠ 契約（解約済みを含む）が残る部屋は消さない。本番の外部キー（ms_contracts.room_id）は ON DELETE RESTRICT なので、
+     *   消そうとすると 500 になる（テスト用スキーマには外部キーが無く黙って消える）。空室でない部屋も画面の約束どおり消さない。
      */
     public function destroy(MsRoom $room)
     {
+        if ($reason = $this->deletionBlocker($room)) {
+            return redirect()->route('mansion.rooms.edit', $room)->with('error', $reason);
+        }
+
         $property = $room->property;
         $room->delete();
         return redirect()->route('mansion.properties.show', $property)
             ->with('success', '部屋を削除しました');
+    }
+
+    /** 部屋を消せない理由（消せるなら null） */
+    private function deletionBlocker(MsRoom $room): ?string
+    {
+        $contracts = $room->contracts()->count();
+        if ($contracts > 0) {
+            return "この部屋には契約が {$contracts} 件（解約済みを含む）あるため削除できません。";
+        }
+        if ($room->status !== MsRoomStatus::Vacant) {
+            return 'ステータスが「' . $room->status->label() . '」の部屋は削除できません。空室にしてから削除してください。';
+        }
+
+        return null;
     }
 
     /**

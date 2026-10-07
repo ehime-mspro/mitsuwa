@@ -105,10 +105,23 @@ class TenantController extends Controller
     }
 
     /**
-     * 入居者削除。有効契約が残っていれば FK RESTRICT で失敗する。
+     * 入居者削除。
+     * ⚠ 部屋契約・駐車場契約（解約済みを含む）が残る入居者は消さない。本番の外部キー（ms_contracts.tenant_id・
+     *   ms_parking_contracts.tenant_id）は ON DELETE RESTRICT なので、消そうとすると 500 になる（テスト用スキーマには外部キーが無い）。
      */
     public function destroy(MsTenant $tenant)
     {
+        $parts = array_filter([
+            '部屋契約' => $tenant->contracts()->count(),
+            '駐車場契約' => $tenant->parkingContracts()->count(),
+        ]);
+        if ($parts !== []) {
+            $summary = implode('・', array_map(fn ($label, $count) => "{$label} {$count} 件", array_keys($parts), $parts));
+
+            return redirect()->route('mansion.tenants.edit', $tenant)
+                ->with('error', "この入居者には{$summary}（解約済みを含む）があるため削除できません。");
+        }
+
         $tenant->delete();
 
         return redirect()->route('mansion.tenants.index')

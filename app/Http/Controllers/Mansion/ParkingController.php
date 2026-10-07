@@ -63,14 +63,34 @@ class ParkingController extends Controller
     }
 
     /**
-     * 駐車場削除。物件詳細へ戻る。契約が残っていれば FK RESTRICT で失敗。
+     * 駐車場削除。物件詳細へ戻る。
+     * ⚠ 契約（解約済みを含む）が残る駐車場は消さない。本番の外部キー（ms_parking_contracts.parking_id）は ON DELETE RESTRICT なので、
+     *   消そうとすると 500 になる（テスト用スキーマには外部キーが無く黙って消える）。使用中の駐車場も画面の約束どおり消さない。
      */
     public function destroy(MsParking $parking)
     {
+        if ($reason = $this->deletionBlocker($parking)) {
+            return redirect()->route('mansion.parkings.edit', $parking)->with('error', $reason);
+        }
+
         $property = $parking->property;
         $parking->delete();
         return redirect()->route('mansion.properties.show', $property)
             ->with('success', '駐車場を削除しました');
+    }
+
+    /** 駐車場を消せない理由（消せるなら null） */
+    private function deletionBlocker(MsParking $parking): ?string
+    {
+        $contracts = $parking->contracts()->count();
+        if ($contracts > 0) {
+            return "この駐車場には契約が {$contracts} 件（解約済みを含む）あるため削除できません。";
+        }
+        if ($parking->status !== MsParkingStatus::Vacant) {
+            return 'ステータスが「' . $parking->status->label() . '」の駐車場は削除できません。空きにしてから削除してください。';
+        }
+
+        return null;
     }
 
     /**
