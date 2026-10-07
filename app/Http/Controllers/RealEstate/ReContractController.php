@@ -408,6 +408,9 @@ class ReContractController extends Controller
             'contract_date'  => 'required|date',
             'buyer_name'     => 'nullable|string|max:100',
             'brokerage_fee'  => 'required|integer|min:0|max:' . self::MAX_INT_COLUMN,
+        ], [], [
+            // 成約の小窓のラベル（全体の和名は「契約日」）
+            'contract_date' => '成約日',
         ]);
 
         $contract->update([
@@ -594,7 +597,8 @@ class ReContractController extends Controller
             $rules['brokerage_fee']           = 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN;
         }
 
-        $validated = $request->validate($rules);
+        // 画面のラベルは「所在地」（全体の和名は「住所」）。第 2 引数は messages（Bug #37）
+        $validated = $request->validate($rules, [], ['address' => '所在地']);
 
         // tax_rate は NOT NULL DEFAULT 10.00。欄を持たない種別でも必ず値を入れる
         $validated['tax_rate'] = $validated['tax_rate'] ?? Settings::taxRate();

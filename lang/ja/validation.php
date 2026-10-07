@@ -347,7 +347,7 @@ return [
         'tenant_type' => '入居者区分',
 
         // --- 契約・賃料 ---
-        'contract_date' => '契約日',
+        'contract_date' => '契約日',                   // 上書き: RealEstate/ReContract の成約の小窓は「成約日」
         'start_date' => '開始日',                      // 上書き: 工事開始日 / 利用開始日
         'end_date' => '終了日',                        // 上書き: Tenant/Investment は「工事完了日」
         'rent_start_date' => '家賃発生日',
@@ -436,6 +436,12 @@ return [
         'contract_amount_land' => '契約額（土地）',
         'contract_amount_building' => '契約額（建物）',
         'tax_amount' => '消費税額',
+        // 不動産の契約（ReContractController::validateContract()。規則を変数で組むので、2026-10-07 まで走査に見えず和名が無かった。Bug #110）
+        'contract_type' => '契約種別',
+        'procurement_id' => '仕入れ案件',
+        'lot_id' => '区画',
+        'cost_amount' => '原価',
+        'brokerage_selling_price' => '販売金額',
 
         'selling_price' => '販売価格',
         'selling_price_land' => '土地販売価格',
@@ -469,6 +475,11 @@ return [
         'costs.*.estimated_amount' => '見込み額',
         'costs.*.actual_amount' => '確定額',
         'costs.*.notes' => '備考',
+        // DAD の工事案件の原価の行（Dad\ProjectController::validateCosts() の Validator::make。2026-10-07 まで走査に見えなかった。Bug #110）
+        // ⚠ 見込み額・確定額は DAD の画面では「見積額」「実績額」（まだ上書きしていない。DAD の画面のテストを作るときに直す）
+        'costs.*.cost_category' => 'カテゴリ',
+        'costs.*.description' => '内容',
+        'costs.*.subcontractor_id' => '協力業者',
         'rows' => '原価明細',
         'rows.*.cost_item_id' => '費用項目',
         'rows.*.estimated_amount' => '見込み額',
