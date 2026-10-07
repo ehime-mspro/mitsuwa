@@ -345,7 +345,7 @@
         <div style="font-size: 15px; font-weight: 700; color: #111827; margin-bottom: 14px; padding-left: 12px; border-left: 4px solid #10b981;">
             対象契約
         </div>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0 32px;">
+        <div class="grid-stack-sm" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0 32px;">
             <div>
                 <div class="info-row">
                     <div class="info-label">物件</div>

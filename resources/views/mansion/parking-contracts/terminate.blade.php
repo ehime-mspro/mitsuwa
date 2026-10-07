@@ -34,6 +34,11 @@
     .status-cell.before { background: #f9fafb; }
     .status-cell.after { background: #f9fafb; }
     .status-arrow { display: flex; align-items: center; justify-content: center; color: #9ca3af; font-size: 22px; font-weight: 700; }
+    /* 狭い画面では「今 → 新」を縦に並べる（3 列のままだと 375px で 100px 以上横にはみ出した） */
+    @media (max-width: 640px) {
+        .status-flow { grid-template-columns: minmax(0, 1fr); }
+        .status-arrow { transform: rotate(90deg); }
+    }
     .status-badge { display: inline-block; padding: 4px 12px; border-radius: 9999px; font-size: 12px; font-weight: 700; }
     .status-badge.active { background: #ecfdf5; color: #047857; }
     .status-badge.terminated { background: #f3f4f6; color: #4b5563; }
@@ -265,7 +270,7 @@
         <div style="font-size: 15px; font-weight: 700; color: #111827; margin-bottom: 14px; padding-left: 12px; border-left: 4px solid #10b981;">
             対象契約
         </div>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0 32px;">
+        <div class="grid-stack-sm" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0 32px;">
             <div>
                 <div class="info-row">
                     <div class="info-label">物件</div>

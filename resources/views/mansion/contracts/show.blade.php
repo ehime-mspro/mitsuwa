@@ -87,7 +87,7 @@
 {{-- ========== カード: 基本情報 ========== --}}
 <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
     <div class="ms-card-title">基本情報</div>
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0 32px;">
+    <div class="grid-stack-sm" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0 32px;">
         <div>
             {{-- 物件名 --}}
             <div class="ms-info-row">
