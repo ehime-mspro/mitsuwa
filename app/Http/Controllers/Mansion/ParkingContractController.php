@@ -14,6 +14,8 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 /**
  * 賃貸マンション駐車場契約コントローラー。
@@ -25,6 +27,9 @@ use Illuminate\Support\Facades\DB;
  */
 class ParkingContractController extends Controller
 {
+    /** 登録で選んだ駐車場が、もう空きでない（二重の送信・ほかの人が先に契約した） */
+    private const PARKING_TAKEN = '選んだ駐車場は空きではありません（すでに契約されている可能性があります）。';
+
     /**
      * 駐車場契約一覧（物件・リンク種別・ステータス・年度でフィルター）。
      * 年度は 5 月始まりで contract_date ベースで判定。
@@ -94,6 +99,9 @@ class ParkingContractController extends Controller
     /**
      * 駐車場契約登録処理。
      * 単独契約（contract_id = null）として作成し、駐車場ステータスを occupied に更新する。
+     *
+     * ⚠ 駐車場が空きかを確かめる。確かめないと、登録を 2 回送るだけで同じ駐車場に契約中の契約が 2 件できる。
+     *   入力チェックのあと、トランザクションの中で駐車場の行をロックして確かめ直す（ほぼ同時の 2 回のため）。
      */
     public function store(Request $request)
     {
@@ -105,11 +113,15 @@ class ParkingContractController extends Controller
         $parkingContract = null;
 
         DB::transaction(function () use ($validated, &$parkingContract) {
+            $parking = MsParking::whereKey($validated['parking_id'])->lockForUpdate()->first();
+            if (! $parking || $parking->status !== MsParkingStatus::Vacant) {
+                throw ValidationException::withMessages(['parking_id' => self::PARKING_TAKEN]);
+            }
+
             $parkingContract = MsParkingContract::create($validated);
 
             // 駐車場ステータスを使用中に更新
-            MsParking::where('id', $validated['parking_id'])
-                ->update(['status' => MsParkingStatus::Occupied->value]);
+            $parking->update(['status' => MsParkingStatus::Occupied->value]);
         });
 
         return redirect()->route('mansion.parking-contracts.show', $parkingContract)
@@ -255,16 +267,18 @@ class ParkingContractController extends Controller
             'memo'           => 'nullable|string',
         ];
 
+        $messages = [];
         if (!$skipParkingTenant) {
-            // 新規登録時: 駐車場 ID と入居者 ID は必須
-            $rules['parking_id'] = 'required|exists:ms_parkings,id';
+            // 新規登録時: 駐車場 ID と入居者 ID は必須。選べるのは空きの駐車場だけ（登録画面の API と同じ）
+            $rules['parking_id'] = ['required', Rule::exists('ms_parkings', 'id')->where('status', MsParkingStatus::Vacant->value)];
             $rules['tenant_id']  = 'required|exists:ms_tenants,id';
+            $messages = ['parking_id.exists' => self::PARKING_TAKEN];
         } else {
             // 更新時: 駐車場の付け替えは禁止、入居者の変更は許可
             $rules['tenant_id'] = 'required|exists:ms_tenants,id';
         }
 
-        return $request->validate($rules, [], [
+        return $request->validate($rules, $messages, [
             // 画面ラベルに合わせる（既定は「開始日」）
             'start_date' => '利用開始日',
         ]);

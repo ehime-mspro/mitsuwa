@@ -17,6 +17,8 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 /**
  * 賃貸マンション部屋契約コントローラー。
@@ -26,6 +28,12 @@ use Illuminate\Support\Facades\DB;
  */
 class ContractController extends Controller
 {
+    /** 登録で選んだ部屋が、もう空室・申込み中でない（二重の送信・ほかの人が先に契約した） */
+    private const ROOM_TAKEN = '選んだ部屋は空室・申込み中ではありません（すでに契約されている可能性があります）。';
+
+    /** 登録で選んだ駐車場が、もう空きでないか、部屋と別の物件の駐車場 */
+    private const PARKING_TAKEN = '選んだ駐車場は空きではないか、部屋と別の物件の駐車場です。';
+
     /**
      * 契約一覧（物件・ステータス・年度でフィルター）。
      * 年度は 5 月始まりで contract_date ベースで判定。
@@ -84,26 +92,39 @@ class ContractController extends Controller
     /**
      * 契約登録処理。部屋を occupied に更新し、チェックされた駐車場は
      * 駐車場契約を自動作成 + 該当駐車場を occupied に連動させる。
+     *
+     * ⚠ 部屋が空室・申込み中か、駐車場が空きで部屋と同じ物件かを確かめる。確かめないと、登録を 2 回送る
+     *   （ダブルクリック・戻って押し直し）だけで同じ部屋に契約中の契約が 2 件できる。入力チェックのあと、
+     *   トランザクションの中で部屋と駐車場の行をロックして確かめ直す（ほぼ同時の 2 回は、どちらも入力チェックを通るため）。
      */
     public function store(Request $request)
     {
         $validated = $this->validateInput($request);
+        $parkingIds = array_map('intval', $validated['parking_ids'] ?? []);
+        unset($validated['parking_ids']);
         $validated['status'] = 'active';
         $validated['created_by'] = Auth::id();
 
-        $parkingIds = $request->input('parking_ids', []);
         $contract = null;
 
         DB::transaction(function () use ($validated, $parkingIds, &$contract) {
+            $room = MsRoom::whereKey($validated['room_id'])->lockForUpdate()->first();
+            if (! $room || ! in_array($room->status, [MsRoomStatus::Vacant, MsRoomStatus::Negotiating], true)) {
+                throw ValidationException::withMessages(['room_id' => self::ROOM_TAKEN]);
+            }
+            $parkings = MsParking::whereIn('id', $parkingIds)->lockForUpdate()->get();
+            $usable = $parkings->filter(fn (MsParking $p) => $p->status === MsParkingStatus::Vacant && (int) $p->property_id === (int) $room->property_id);
+            if ($usable->count() !== count(array_unique($parkingIds))) {
+                throw ValidationException::withMessages(['parking_ids' => self::PARKING_TAKEN]);
+            }
+
             $contract = MsContract::create($validated);
 
             // 部屋ステータスを入居中に更新
-            MsRoom::where('id', $validated['room_id'])
-                ->update(['status' => MsRoomStatus::Occupied->value]);
+            $room->update(['status' => MsRoomStatus::Occupied->value]);
 
             // 駐車場紐付け（選択分のみ契約作成 + 使用中に更新）
-            foreach ($parkingIds as $parkingId) {
-                $parking = MsParking::findOrFail($parkingId);
+            foreach ($usable as $parking) {
                 MsParkingContract::create([
                     'parking_id' => $parking->id,
                     'tenant_id' => $contract->tenant_id,
@@ -372,13 +393,18 @@ class ContractController extends Controller
             'staff_user_id' => 'nullable|exists:users,id',
             'memo' => 'nullable|string',
         ];
+        $messages = [];
         if (!$skipRoomTenant) {
-            $rules['room_id'] = 'required|exists:ms_rooms,id';
+            // 選べるのは空室・申込み中の部屋と空きの駐車場だけ（登録画面の API と同じ）。部屋と同じ物件かは store() のロックの中で見る
+            $rules['room_id'] = ['required', Rule::exists('ms_rooms', 'id')->whereIn('status', [MsRoomStatus::Vacant->value, MsRoomStatus::Negotiating->value])];
             $rules['tenant_id'] = 'required|exists:ms_tenants,id';
+            $rules['parking_ids'] = 'nullable|array';
+            $rules['parking_ids.*'] = ['integer', Rule::exists('ms_parkings', 'id')->where('status', MsParkingStatus::Vacant->value)];
+            $messages = ['room_id.exists' => self::ROOM_TAKEN, 'parking_ids.*.exists' => self::PARKING_TAKEN, 'parking_ids.*.integer' => self::PARKING_TAKEN];
         } else {
             $rules['tenant_id'] = 'required|exists:ms_tenants,id';
         }
 
-        return $request->validate($rules);
+        return $request->validate($rules, $messages);
     }
 }
