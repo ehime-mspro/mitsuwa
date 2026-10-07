@@ -195,17 +195,18 @@
     }
     .ms-prop-name:hover { text-decoration: underline; }
 
-    /* 2カラムレイアウト（空室と空き駐車場） */
+    /* 2カラムレイアウト（空室と空き駐車場）
+       ⚠ 1fr にしない（minmax(auto, 1fr) の略で、表の min-width が列の下限になり、1440px でも main が横にはみ出す。Bug #29） */
     .ms-two-col {
         display: grid;
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
         gap: 20px;
     }
 
     /* レスポンシブ: 小画面では1カラム */
     @media (max-width: 900px) {
         .ms-kpi-grid { grid-template-columns: repeat(2, 1fr); }
-        .ms-two-col  { grid-template-columns: 1fr; }
+        .ms-two-col  { grid-template-columns: minmax(0, 1fr); }
     }
 </style>
 
