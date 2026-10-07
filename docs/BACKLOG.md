@@ -3567,7 +3567,7 @@ ZEAL 会員の取込（`/admin/zeal/member-import`）の確定は、書き込み
 | アプリ | 基底 `Controller`（`MAX_UNSIGNED_INT_COLUMN`・`ignoreMalformedQuery()`）・`Mansion\{Property,Room,Parking,Tenant,Contract,ParkingContract}Controller`・`lang/ja/validation.php`（4 項目）・画面 11 本（物件の `_form`・物件／部屋／駐車場／入居者の編集・契約と駐車場契約の登録・解約・賃料改定・料金改定・ダッシュボード）・買主の `_form`（「住所→〒」の 1 行） |
 | テスト（道具） | `tests/Concerns/ComposesScreenForms.php`（住宅事業の土台にあった `composedForm()`・`apiResponse()` を共用へ移した） |
 | テスト（新規） | `tests/Feature/Mansion/Screens/` に土台 `MansionScreenTestCase`（削除フォームは DELETE を送るものを選ぶ `deleteForm()`）と `PropertyScreensTest`・`RoomScreensTest`・`ParkingScreensTest`・`TenantScreensTest`・`ContractScreensTest`・`ParkingContractScreensTest`・`DashboardScreenTest`・`ListQueryTest`・`AmountLimitTest`・`ScreenLayoutTest`（79 本）／ `AjaxFetchSessionGuardTest` に XHR の走査 |
-| 全件テスト | （測り直しの実行と同じ。下） |
+| 全件テスト | 3693 → **3848 tests / 32538 assertions green**（PHP 8.3。13.x〈決裁の段階4b・ページ送り〉を取り込んだあと。うち賃貸マンションの分は 80 本＝新しい 79 本と XHR の走査 1 本）／ コンパイル済みビュー **299 本 / INVALID 0** |
 
 ### 検証
 
@@ -3576,6 +3576,7 @@ ZEAL 会員の取込（`/admin/zeal/member-import`）の確定は、書き込み
 - 実ブラウザ（使い捨ての SQLite ＋ `artisan serve` ＋ Playwright。使い捨てのログイン用ルートは戻した）: M13（入力エラーのあと部屋 101・駐車場が選ばれたまま→入居者を選んで登録できる。`:selected` を一時的に外すと Alpine の値は `1` のまま選択欄は空＝PHP の死角を確かめた）・M4／M7（退去日を入居日より前にして送ると理由が出て、外した 2 台のチェックは外れたまま・差引の行は残り返金額も計算し直される→退去日を直して解約すると駐車場契約は 2 件とも契約中のまま）・M11・M3（理由が出る）・M1（帯に理由・部屋は残る）・M10（引用符と円記号の入った古い築年月でも編集画面の JS が止まらない）・M8（一般担当には登録のリンクが出ない）・26 画面が 1440px・375px とも 200・コンソールのエラー 0
   - そこで M17・M18 を見つけた（M17 は Playwright のクリックが「保存のバーがクリックを奪う」で止まって気づいた）。直したあと 1440px・375px とも、削除のボタンの上・中・下の 3 点が押せ、ダッシュボードの横スクロール 0
   - ⚠ 375px で、部屋契約・駐車場契約の詳細・改定・解約の画面（49〜122px）と部屋の登録・編集（21px）・入居申込書（1px）が横にはみ出す（今回触っていない既存のもの。範囲外）
+- 測り直し（全件 OK (3848 tests, 32538 assertions) と同じ実行）: 賃貸マンションの「一度も通らない」**43 → 0**、契約の登録画面が叩く API 2 本も **0**。全体は 80 → **35**（ルートは決裁の段階4b で 482 → 484 本）。残りは DAD 28・`storage` 2・`api/reverse-zip`（外部を呼ぶ）・ログアウトなど
 
 ### 範囲外（気づいたが直していない）
 
