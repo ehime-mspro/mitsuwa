@@ -205,6 +205,26 @@ class AdminRequestsTest extends TestCase
         $this->assertMatchesRegularExpression('/aria-current="page"[^>]*>決裁済み・否決</', preg_replace('/\s+/', ' ', $this->formOrNav($second)));
     }
 
+    /**
+     * 「決裁済み・否決」の範囲の外のページ（手で打った URL）は最後のページを出す
+     * （前は行の無いページが空で、整数の最大では PageNumbers::around() が TypeError の 500。Bug #100 の残り）
+     */
+    public function test_a_decided_page_past_the_end_shows_the_last_page(): void
+    {
+        $w     = $this->approvalWorld();
+        $admin = $this->approvalAdmin();
+        $this->launchApprovals();
+        $this->manyDecided($w['applicant'], 1, 21);
+
+        foreach (['3', '99999', '9223372036854775807'] as $page) {
+            $html = $this->html($admin, route('approvals.admin.requests.index', ['tab' => 'decided', 'page' => $page]));
+
+            $this->assertStringContainsString('>T-001<', $html, "page={$page} でも最後のページ（2 ページ目）の行を出す");
+            $this->assertStringNotContainsString('>T-021<', $html);
+            $this->assertSame(['2'], $this->pager($html)['current'], "page={$page} でも今のページは最後のページ");
+        }
+    }
+
     /** 「決裁済み・否決」に決裁済みの申請を $from〜$to 番まで足す（ページ送りを見るだけなので、行を直に入れる） */
     private function manyDecided(User $applicant, int $from, int $to): void
     {

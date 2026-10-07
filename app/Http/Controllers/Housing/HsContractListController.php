@@ -114,7 +114,8 @@ class HsContractListController extends Controller
 
         // 手動ページネーション
         $perPage = 20;
-        $currentPage = $request->input('page', 1);
+        // ページ番号は最後のページまで（Bug #100。手で打った ?page=abc・大きな番号で 500・行の無いページは件数と食い違う）
+        $currentPage = min(LengthAwarePaginator::resolveCurrentPage(), max(1, (int) ceil($allItems->count() / $perPage)));
         $pagedItems = $allItems->slice(($currentPage - 1) * $perPage, $perPage)->values();
         $contracts = new LengthAwarePaginator(
             $pagedItems,
