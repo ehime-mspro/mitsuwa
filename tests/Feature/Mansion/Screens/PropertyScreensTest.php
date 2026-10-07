@@ -183,9 +183,10 @@ class PropertyScreensTest extends MansionScreenTestCase
         $url = route('mansion.properties.show', $this->building);
         $form = $this->deleteForm($this->htmlOf($url), route('mansion.properties.destroy', $this->building));
 
-        $html = $this->landed($this->submit($form, $url));
+        $response = $this->submit($form, $url);
 
-        $this->assertFlash($html, 'error', 'この物件の部屋・駐車場には契約が 2 件（解約済みを含む）あるため削除できません。');
+        $response->assertRedirect($url);
+        $this->assertFlash($this->landed($response), 'error', 'この物件の部屋・駐車場には契約が 2 件（解約済みを含む）あるため削除できません。');
         $this->assertNotNull(MsProperty::find($this->building->id));
     }
 }

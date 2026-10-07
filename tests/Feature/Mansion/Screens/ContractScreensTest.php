@@ -7,6 +7,7 @@ use App\Models\MsContractRevision;
 use App\Models\MsParkingContract;
 use App\Models\MsRoom;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 
 /**
  * 賃貸マンションの部屋契約の一覧・登録（部屋・駐車場は画面の JS が API から取る）・編集・賃料改定・解約を、描いた画面から送る往復で見る。
@@ -103,6 +104,29 @@ class ContractScreensTest extends MansionScreenTestCase
         $this->assertErrorItem($html, '選んだ部屋は空室・申込み中ではありません（すでに契約されている可能性があります）。');
         $this->assertSame(1, MsContract::count());
         $this->assertSame(1, MsParkingContract::count());
+    }
+
+    public function test_a_room_taken_between_the_check_and_the_save_is_refused(): void
+    {
+        $room = $this->room('101');
+        $tenant = $this->tenant();
+        $url = route('mansion.contracts.create');
+        $form = $this->fill($this->createForm($this->htmlOf($url), $room), ['tenant_id' => (string) $tenant->id]);
+        // 入力チェック（部屋が空室か）を通ったあと、保存の前に、ほかの送信が部屋を入居中にした（ほぼ同時の 2 回）。
+        // ⚠ 入力チェックの問い合わせの直後に部屋を書き換えて再現する。ロックの中で確かめ直していなければ 2 件目の契約ができる
+        $taken = false;
+        DB::listen(function ($query) use ($room, &$taken) {
+            if (! $taken && str_contains($query->sql, 'count(*)') && str_contains($query->sql, '"ms_rooms"')) {
+                $taken = true;
+                DB::table('ms_rooms')->where('id', $room->id)->update(['status' => 'occupied']);
+            }
+        });
+
+        $html = $this->landed($this->submit($form, $url));
+
+        $this->assertTrue($taken, '部屋の入力チェックの問い合わせを捕まえられなかった（前提が崩れた）');
+        $this->assertErrorItem($html, '選んだ部屋は空室・申込み中ではありません（すでに契約されている可能性があります）。');
+        $this->assertSame(0, MsContract::count());
     }
 
     public function test_a_parking_that_is_used_or_in_another_property_is_refused(): void

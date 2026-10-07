@@ -5,6 +5,7 @@ namespace Tests\Feature\Mansion\Screens;
 use App\Models\MsParking;
 use App\Models\MsParkingContract;
 use App\Models\MsParkingContractRevision;
+use Illuminate\Support\Facades\DB;
 
 /**
  * 賃貸マンションの駐車場契約の一覧・登録（駐車場は画面の JS が API から取る）・詳細・編集・料金改定・解約を、描いた画面から送る往復で見る。
@@ -73,6 +74,28 @@ class ParkingContractScreensTest extends MansionScreenTestCase
 
         $this->assertErrorItem($html, '選んだ駐車場は空きではありません（すでに契約されている可能性があります）。');
         $this->assertSame(1, MsParkingContract::count());
+    }
+
+    public function test_a_parking_taken_between_the_check_and_the_save_is_refused(): void
+    {
+        $parking = $this->parking('A-1');
+        $tenant = $this->tenant('鈴木 一郎', 'parking_only');
+        $url = route('mansion.parking-contracts.create');
+        $form = $this->fill($this->createForm($this->htmlOf($url), $parking), ['tenant_id' => (string) $tenant->id, 'monthly_fee' => '5000']);
+        // 入力チェック（駐車場が空きか）を通ったあと、保存の前に、ほかの送信が駐車場を使用中にした（ほぼ同時の 2 回）
+        $taken = false;
+        DB::listen(function ($query) use ($parking, &$taken) {
+            if (! $taken && str_contains($query->sql, 'count(*)') && str_contains($query->sql, '"ms_parkings"')) {
+                $taken = true;
+                DB::table('ms_parkings')->where('id', $parking->id)->update(['status' => 'occupied']);
+            }
+        });
+
+        $html = $this->landed($this->submit($form, $url));
+
+        $this->assertTrue($taken, '駐車場の入力チェックの問い合わせを捕まえられなかった（前提が崩れた）');
+        $this->assertErrorItem($html, '選んだ駐車場は空きではありません（すでに契約されている可能性があります）。');
+        $this->assertSame(0, MsParkingContract::count());
     }
 
     public function test_the_registration_locks_the_parking_before_checking_it(): void
