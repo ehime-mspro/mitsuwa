@@ -199,4 +199,46 @@ class AjaxFetchSessionGuardTest extends TestCase
             . implode("\n", $offenders)
         );
     }
+
+    /**
+     * 走査で拾えるはずの XMLHttpRequest の GET の下限（2026-10-07 の実数は 2: 賃貸マンションの物件フォームと買主のフォームの「住所→〒」）。
+     * 走査が壊れれば 0 になる。
+     */
+    private const MIN_XHR_CALL_SITES = 2;
+
+    /**
+     * XMLHttpRequest で自社へ GET するものも X-Requested-With を送る（fetch と同じ理由。Top trap #9）。
+     *
+     * ⚠ 2026-10-07 まで、上の走査は `fetch(` しか見ていなかった。賃貸マンションの物件フォームと買主のフォーム（住宅事業・不動産で共用）の
+     *   「住所→〒」は `xhr.open('GET', '{{ route("api.reverse-zip") }}…')` で、ヘッダー無しのまま見逃されていた。
+     * `.open('GET', …)` から次の `.send(` までに `setRequestHeader('X-Requested-With'` があるかを見る（外部 API の zipcloud は対象外）。
+     */
+    public function test_all_same_origin_get_xhrs_send_ajax_header(): void
+    {
+        $offenders = [];
+        $callSites = 0;
+
+        foreach (File::allFiles(resource_path('views')) as $file) {
+            if (! str_ends_with($file->getFilename(), '.blade.php')) {
+                continue;
+            }
+            $source = file_get_contents($file->getPathname());
+            preg_match_all('/\.open\(\s*([\'"])GET\1\s*,([^\n]*)/i', $source, $opens, PREG_OFFSET_CAPTURE | PREG_SET_ORDER);
+            foreach ($opens as $open) {
+                if (str_contains($open[2][0], '://')) {
+                    continue;   // 外部 API（zipcloud）
+                }
+                $callSites++;
+                $pos = $open[0][1];
+                $send = strpos($source, '.send(', $pos);
+                $block = $send === false ? substr($source, $pos) : substr($source, $pos, $send - $pos);
+                if (! preg_match('/setRequestHeader\(\s*[\'"]X-Requested-With[\'"]/', $block)) {
+                    $offenders[] = $file->getRelativePathname() . ':' . (substr_count(substr($source, 0, $pos), "\n") + 1);
+                }
+            }
+        }
+
+        $this->assertGreaterThanOrEqual(self::MIN_XHR_CALL_SITES, $callSites, 'XMLHttpRequest の走査が機能していない（拾えた呼び出し箇所が少なすぎる）');
+        $this->assertSame([], $offenders, "X-Requested-With を送っていない XMLHttpRequest の GET があります:\n" . implode("\n", $offenders));
+    }
 }
