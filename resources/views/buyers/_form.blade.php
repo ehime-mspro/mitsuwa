@@ -121,7 +121,8 @@
             }
         }
     @endphp
-    <div style="display: flex; gap: 10px; margin-bottom: 26px; align-items: flex-end;">
+    {{-- 狭い画面では折り返す（1 行のままだと 375px で 229px 横にはみ出した） --}}
+    <div style="display: flex; flex-wrap: wrap; gap: 12px 10px; margin-bottom: 26px; align-items: flex-end;">
         <div>
             <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">生年月日</label>
             <select name="birth_era" style="width: 80px; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 8px; font-size: 14px;">
