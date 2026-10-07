@@ -36,12 +36,15 @@
 
         @include('dad.employees._form', ['employee' => $employee])
 
+        @if(auth()->user()->role->isExecutive())
         <div style="display: flex; margin-bottom: 12px;">
             <button type="button" @click="confirmDelete = !confirmDelete" style="padding: 10px 20px; background: white; color: #dc2626; border: 1px solid #fecaca; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer;">削除</button>
         </div>
+        @endif
         <x-form-actions submit-label="更新する" :cancel-url="route('dad.employees.index')" />
     </form>
 
+    @if(auth()->user()->role->isExecutive())
     <div x-show="confirmDelete" x-cloak class="mt-4 rounded-lg border border-red-200 bg-red-50 p-4">
         <p class="text-sm text-red-800 font-semibold mb-2">「{{ $employee->name }}」を削除しますか？ この操作は取り消せません。</p>
         <p class="text-xs text-red-600 mb-3">※ 工事配置で参照中の場合、削除できません。退職で運用する場合は在籍状況を変更してください。</p>
@@ -54,6 +57,7 @@
             </div>
         </form>
     </div>
+    @endif
 </div>
 
 @endsection

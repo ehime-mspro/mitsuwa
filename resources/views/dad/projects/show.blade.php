@@ -30,7 +30,9 @@
             @endif
         </div>
         <div class="flex gap-2">
+            @if(auth()->user()->role->isManagerOrAbove())
             <a href="{{ route('dad.projects.edit', $project) }}" class="inline-flex items-center gap-1.5 px-3 py-2 bg-white border border-gray-300 text-gray-700 rounded-md text-sm hover:bg-gray-50">編集</a>
+            @endif
             <a href="{{ route('dad.projects.index') }}" class="inline-flex items-center gap-1.5 px-3 py-2 bg-white border border-gray-300 text-gray-700 rounded-md text-sm hover:bg-gray-50">
                 <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>一覧へ
             </a>
@@ -153,7 +155,9 @@
     <div x-show="activeTab === 'cost'" x-cloak class="bg-white border border-gray-200 rounded-b-lg" style="border-top: none; padding: 20px;">
         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
             <div class="card-title" style="margin-bottom: 0;">原価明細</div>
+            @if(auth()->user()->role->isManagerOrAbove())
             <a href="{{ route('dad.projects.edit', $project) }}" class="text-xs font-semibold text-emerald-700 px-3 py-1 border border-emerald-200 rounded bg-emerald-50 hover:bg-emerald-100">編集画面で追加・修正</a>
+            @endif
         </div>
 
         <div class="scroll-hint at-start">
@@ -211,7 +215,9 @@
     <div x-show="activeTab === 'assignment'" x-cloak class="bg-white border border-gray-200 rounded-b-lg" style="border-top: none; padding: 20px;">
         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
             <div class="card-title" style="margin-bottom: 0;">人員配置</div>
+            @if(auth()->user()->role->isManagerOrAbove())
             <a href="{{ route('dad.projects.edit', $project) }}" class="text-xs font-semibold text-emerald-700 px-3 py-1 border border-emerald-200 rounded bg-emerald-50 hover:bg-emerald-100">編集画面で追加・修正</a>
+            @endif
         </div>
 
         @if($project->assignments->isEmpty())

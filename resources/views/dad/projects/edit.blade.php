@@ -37,12 +37,15 @@
 
         @include('dad.projects._form', ['project' => $project])
 
+        @if(auth()->user()->role->isExecutive())
         <div style="display: flex; margin-bottom: 12px;">
             <button type="button" @click="confirmDelete = !confirmDelete" style="padding: 10px 20px; background: white; color: #dc2626; border: 1px solid #fecaca; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer;">削除</button>
         </div>
+        @endif
         <x-form-actions submit-label="更新する" :cancel-url="route('dad.projects.show', $project)" />
     </form>
 
+    @if(auth()->user()->role->isExecutive())
     <div x-show="confirmDelete" x-cloak class="mt-4 rounded-lg border border-red-200 bg-red-50 p-4" style="max-width: 1100px;">
         <p class="text-sm text-red-800 font-semibold mb-2">「{{ $project->project_name }}」を削除しますか？ 原価明細・人員配置も連動して削除されます。</p>
         <p class="text-xs text-red-600 mb-3">この操作は取り消せません。</p>
@@ -55,6 +58,7 @@
             </div>
         </form>
     </div>
+    @endif
 </div>
 
 @endsection
