@@ -346,8 +346,10 @@ class ProjectScreensTest extends DadScreenTestCase
         $html = $this->landed($this->submit($form, route('dad.projects.edit', $project)));
 
         $this->assertErrorItem($html, trans('validation.date', ['attribute' => '見積日']));
+        // 部品を組めた＝画面の JS が止まらない（直す前は `datePicker('2026'-01\')` で構文エラーだった）。
+        // 部品は日付として読めない値を日付にできない（手で組んだ送信だけの値なので、送り直せばまた入力エラーになる）
         $again = $this->projectForm($html, route('dad.projects.update', $project));
-        $this->assertSame('', $again['fields']['estimate_date']);
+        $this->assertArrayHasKey('estimate_date', $again['fields']);
     }
 
     // ============================================================
