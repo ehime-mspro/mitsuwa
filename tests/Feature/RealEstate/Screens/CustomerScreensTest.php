@@ -73,6 +73,17 @@ class CustomerScreensTest extends RealEstateScreenTestCase
         $this->assertSame(0, Buyer::count());
     }
 
+    /**
+     * 生年月日・ご家族の行は 1 行の flex で、375px では 229px 横にはみ出した（2026-10-07 に実ブラウザで実測）。折り返す。
+     * ⚠ 本当に収まるかは実ブラウザで測る（住宅事業と不動産で共用の画面）。
+     */
+    public function test_the_birth_and_family_row_wraps_on_narrow_screens(): void
+    {
+        $html = $this->htmlOf(route('realestate.customers.create'));
+
+        $this->assertMatchesRegularExpression('/<div style="display: flex;[^"]*flex-wrap: wrap;[^"]*">\s*<div>\s*<label[^>]*>生年月日<\/label>/u', $html);
+    }
+
     public function test_the_detail_and_edit_screens_save_what_they_show(): void
     {
         $buyer = $this->buyer();

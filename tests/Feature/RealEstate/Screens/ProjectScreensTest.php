@@ -130,6 +130,17 @@ class ProjectScreensTest extends RealEstateScreenTestCase
         $this->assertSame(['assessment', '検討', false], $after['evaluated']);
     }
 
+    /**
+     * 区画の画面の合計のカード（区画数・面積合計・販売価格合計・原価合計・粗利合計・粗利率）は 1 行の flex で、
+     * 375px では 207px 横にはみ出した（2026-10-07 に実ブラウザで実測）。折り返す。
+     */
+    public function test_the_lot_summary_cards_wrap_on_narrow_screens(): void
+    {
+        $html = $this->htmlOf(route('realestate.projects.lots', $this->project()));
+
+        $this->assertMatchesRegularExpression('/<div x-show="lots.length > 0">\s*<div style="display: flex;[^"]*flex-wrap: wrap;[^"]*">/u', $html);
+    }
+
     public function test_a_drawing_is_deleted_from_the_lot_screen(): void
     {
         Storage::fake('public');

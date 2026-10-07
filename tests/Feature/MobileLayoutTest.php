@@ -442,4 +442,155 @@ class MobileLayoutTest extends TestCase
             'scroll-hint の状態制御 JS が失われている（グラデーションが出っぱなしになる）'
         );
     }
+
+    // ============================================================
+    // 2026-10-07 に実ブラウザ 375px で測った死角（賃貸マンションの契約の詳細・改定・解約・入居申込書・部屋の登録）
+    // ============================================================
+
+    /**
+     * 2 列のインライングリッドは「375px でも各 165px 取れる」として上の走査の外だった。だが中に、同じビューの `<style>` で
+     * 固定幅のラベル（`.ms-info-row { grid-template-columns: 140px 1fr }` など）を持つ行が入ると、1 列の幅が足りず
+     * 122px まで横にはみ出した（`1fr` は `minmax(auto, 1fr)` の略で、中身の幅が下限になる。Bug #29 と同じ形）。
+     * そういう 2 列には mobile のクラス（1 列へ落とす）を求める。
+     */
+    public function test_two_column_grids_holding_fixed_label_rows_declare_a_mobile_class(): void
+    {
+        $found = 0;
+        $offenders = [];
+        foreach ($this->bladeFiles() as $path) {
+            $src = file_get_contents($path);
+            $labelClasses = $this->fixedTrackClasses($src, 1);
+            if ($labelClasses === []) {
+                continue;
+            }
+            preg_match_all('/<div\b[^>]*style="[^"]*grid-template-columns:\s*([^;"]+)[^"]*"[^>]*>/', $src, $m, PREG_OFFSET_CAPTURE | PREG_SET_ORDER);
+            foreach ($m as $grid) {
+                if ($this->trackCount(trim($grid[1][0])) !== 2) {
+                    continue;
+                }
+                $body = $this->divBody($src, $grid[0][1]);
+                $holds = false;
+                foreach ($labelClasses as $class) {
+                    if (preg_match('/class="[^"]*(?<![\w-])' . preg_quote($class, '/') . '(?![\w-])/', $body)) {
+                        $holds = true;
+                    }
+                }
+                if (! $holds) {
+                    continue;
+                }
+                $found++;
+                if (! preg_match('/grid-stack-sm|dl-stack-sm/', $grid[0][0])) {
+                    $offenders[] = $this->relative($path) . ':' . (substr_count(substr($src, 0, $grid[0][1]), "\n") + 1);
+                }
+            }
+        }
+
+        $this->assertGreaterThanOrEqual(8, $found, '固定幅のラベルの行を持つ 2 列を拾えていない（走査の空振り）');
+        $this->assertSame([], $offenders, '固定幅のラベルの行を持つ 2 列に .grid-stack-sm が無い（375px で横にはみ出す）。該当: ' . implode(', ', $offenders));
+    }
+
+    /**
+     * `<style>` の中のグリッドは「media query で直せる」として上の走査の外だった。だが直していなかった（改定の「現行 → 新」の
+     * `1fr 40px 1fr` が 375px で 103〜116px はみ出した）。固定幅の列を持つ 3 列以上のグリッドのクラスは、同じビューの
+     * `@media (max-width: …)` で上書きする。
+     */
+    public function test_style_block_grids_with_fixed_tracks_are_overridden_on_mobile(): void
+    {
+        $found = 0;
+        $offenders = [];
+        foreach ($this->bladeFiles() as $path) {
+            $src = file_get_contents($path);
+            foreach ($this->fixedTrackClasses($src, 3) as $class) {
+                $found++;
+                if (! preg_match('/@media\s*\(max-width:\s*\d+px\)\s*\{[^@]*?\.' . preg_quote($class, '/') . '\s*\{[^}]*grid-template-columns/s', $src)) {
+                    $offenders[] = $this->relative($path) . ' .' . $class;
+                }
+            }
+        }
+
+        $this->assertGreaterThanOrEqual(9, $found, '<style> の固定幅の列を持つグリッドを拾えていない（走査の空振り）');
+        $this->assertSame([], $offenders, '固定幅の列を持つ 3 列以上のグリッドが、狭い画面で上書きされていない（375px で横にはみ出す）。該当: ' . implode(', ', $offenders));
+    }
+
+    /**
+     * `flex: 1` の入力欄は、中身の幅（size の既定 20 文字ぶん）を下限に持つので縮まない。単位（円・㎡）と並べた 2 列の中で
+     * 21px はみ出した（部屋の登録）。`min-width: 0` を併せて書く。
+     */
+    public function test_flexible_inputs_can_shrink(): void
+    {
+        $found = 0;
+        $offenders = [];
+        foreach ($this->bladeFiles() as $path) {
+            $src = file_get_contents($path);
+            preg_match_all('/<(input|select|textarea)\b[^>]*\bstyle="([^"]*)"[^>]*>/', $src, $m, PREG_OFFSET_CAPTURE | PREG_SET_ORDER);
+            foreach ($m as $tag) {
+                if (! preg_match('/(?<![\w-])flex:\s*1\s*(;|$)/', $tag[2][0])) {
+                    continue;
+                }
+                $found++;
+                if (! preg_match('/(?<![\w-])min-width:\s*0\s*(;|$)/', $tag[2][0])) {
+                    $offenders[] = $this->relative($path) . ':' . (substr_count(substr($src, 0, $tag[0][1]), "\n") + 1);
+                }
+            }
+        }
+
+        $this->assertGreaterThanOrEqual(23, $found, '`flex: 1` の入力欄を拾えていない（走査の空振り）');
+        $this->assertSame([], $offenders, '`flex: 1` の入力欄に `min-width: 0` が無い（狭い画面で縮まずにはみ出す）。該当: ' . implode(', ', $offenders));
+    }
+
+    /**
+     * 同じビューの `<style>` の中で、固定幅（px）の列を持ち、列が $minTracks 以上のグリッドのクラス名（`@media` の中の上書きは除く）。
+     *
+     * @return array<int, string>
+     */
+    private function fixedTrackClasses(string $src, int $minTracks): array
+    {
+        $classes = [];
+        preg_match_all('/<style\b[^>]*>(.*?)<\/style>/s', $src, $styles);
+        foreach ($styles[1] as $css) {
+            // @media の中（狭い画面の上書き）は数えない。中の規則の波括弧を 1 段まで許して外す
+            $plain = (string) preg_replace('/@media[^{]*\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/s', '', $css);
+            preg_match_all('/([^{}]+)\{([^}]*)\}/', $plain, $rules, PREG_SET_ORDER);
+            foreach ($rules as $rule) {
+                if (! preg_match('/grid-template-columns:\s*([^;]+)/', $rule[2], $value)) {
+                    continue;
+                }
+                $value = trim($value[1]);
+                if (! preg_match('/\d+px/', $value) || $this->trackCount($value) < max(2, $minTracks)) {
+                    continue;
+                }
+                if (preg_match_all('/\.([\w-]+)/', $rule[1], $names) && $names[1] !== []) {
+                    $classes[] = end($names[1]);
+                }
+            }
+        }
+
+        return array_values(array_unique($classes));
+    }
+
+    /** グリッドの列の数（`repeat(2, 1fr)` は 2。`minmax(0, 1fr)` は 1 列と数える） */
+    private function trackCount(string $value): int
+    {
+        if (preg_match('/^repeat\(\s*(\d+)\s*,/', $value, $m)) {
+            return (int) $m[1];
+        }
+        $flat = (string) preg_replace('/\([^()]*\)/', '', $value);
+
+        return count(preg_split('/\s+/', trim($flat)));
+    }
+
+    /** $start の `<div` から、対応する `</div>` までの中身 */
+    private function divBody(string $src, int $start): string
+    {
+        preg_match_all('/<div\b|<\/div>/', $src, $tokens, PREG_OFFSET_CAPTURE, $start);
+        $depth = 0;
+        foreach ($tokens[0] as [$token, $offset]) {
+            $depth += $token === '</div>' ? -1 : 1;
+            if ($depth === 0) {
+                return substr($src, $start, $offset - $start);
+            }
+        }
+
+        return substr($src, $start);
+    }
 }
