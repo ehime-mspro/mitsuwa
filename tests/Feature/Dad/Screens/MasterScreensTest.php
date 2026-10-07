@@ -68,6 +68,22 @@ class MasterScreensTest extends DadScreenTestCase
         $this->assertSoftDeleted('dad_clients', ['id' => $free->id]);
     }
 
+    /**
+     * A15: 発注者・協力業者のフォームの「住所→〒」は、押しても「本番実装で対応します」と出るだけだった（作られていない機能のボタン）。
+     * 外す（2026-10-07 利用者の判断）。「〒→住所」は動くので残す。
+     */
+    public function test_the_unbuilt_address_to_zip_button_is_not_shown(): void
+    {
+        $client = $this->client();
+        $sub = $this->subcontractor();
+        foreach ([route('dad.clients.create'), route('dad.clients.edit', $client), route('dad.subcontractors.create'), route('dad.subcontractors.edit', $sub)] as $url) {
+            $html = $this->htmlOf($url);
+            $this->assertStringNotContainsString('住所→〒', $html, "{$url} に作られていない「住所→〒」が出ている");
+            $this->assertStringNotContainsString('本番実装で対応します', $html);
+            $this->assertMatchesRegularExpression('/onclick="zipToAddress\(\)"[^>]*>〒→住所<\/button>/u', $html, "{$url} の「〒→住所」が消えた");
+        }
+    }
+
     // ============================================================
     // 協力業者
     // ============================================================
