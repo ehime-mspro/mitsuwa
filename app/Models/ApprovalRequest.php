@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
  * 申請（設計書 §5.3・§5.8）。
@@ -71,6 +72,15 @@ class ApprovalRequest extends Model
     public function revisions(): HasMany
     {
         return $this->hasMany(ApprovalRevision::class, 'request_id')->orderBy('round');
+    }
+
+    /**
+     * 最後に提出した控え（今の回。控えは提出のたびに回の番号で 1 つ作るので、いちばん大きい回が今の回）。
+     * 一覧で申請者以外に見せる中身を、行ごとに問い合わせずに読むため（決裁台帳。段階4 設計書 §5.8・D19）
+     */
+    public function lastRevision(): HasOne
+    {
+        return $this->hasOne(ApprovalRevision::class, 'request_id')->latestOfMany('round');
     }
 
     public function histories(): HasMany

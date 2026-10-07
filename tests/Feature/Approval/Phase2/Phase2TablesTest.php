@@ -35,6 +35,12 @@ class Phase2TablesTest extends TestCase
     private const LATER_COLUMNS = [
         'approval_settings' => ['mail_last_sent_at', 'mail_last_failed_at', 'mail_last_failed_to'],   // 3a（Phase3TablesTest）
         'approval_steps'    => ['stamp_label', 'stamp_text'],                                         // 4a（Phase4aTablesTest）
+        'approval_download_logs' => ['filters', 'request_count'],                                    // 4b（Phase4bTablesTest）
+    ];
+
+    /** あとの段階が NULL を許すように変えた 2a の列（その段階の表のテストが見る。ここでは NULL を許すものとして比べる）。表 => 列 */
+    private const LATER_NULLABLE = [
+        'approval_download_logs' => ['request_id'],   // 4b（Excel の記録は申請の欄が空。Phase4bTablesTest）
     ];
 
     /** @return list<array{string, string, bool}> [表, CREATE の括弧の中か ALTER の中身, ALTER か] */
@@ -144,6 +150,9 @@ class Phase2TablesTest extends TestCase
                 $migrated[$column['name']] = (bool) $column['nullable'];
             }
             $migrated = array_diff_key($migrated, array_flip(self::LATER_COLUMNS[$table] ?? []));
+            foreach (self::LATER_NULLABLE[$table] ?? [] as $column) {
+                $columns[$column] = true;
+            }
 
             ksort($columns);
             ksort($migrated);

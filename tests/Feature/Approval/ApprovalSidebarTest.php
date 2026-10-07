@@ -367,4 +367,22 @@ class ApprovalSidebarTest extends TestCase
         }
         $this->assertStringContainsString('title="自分の申請"', $after['rail'], 'rail に自分の申請のアイコンリンクが無い');
     }
+
+    /** 決裁台帳（段階4 設計書 §5.8）も使い始めてから。入口は展開版とドロワー（折りたたみ版のアイコンは足さない） */
+    public function test_the_ledger_link_appears_only_after_launch(): void
+    {
+        $user = User::factory()->approvalOnly()->create(['must_change_password' => false]);
+
+        $before = $this->sidebars($this->actingAs($user)->get(route('approvals.home'))->assertOk()->getContent());
+        foreach ($before as $key => $aside) {
+            $this->assertStringNotContainsString(route('approvals.ledger.index'), $aside, "{$key} に準備中の決裁台帳へのリンクが出ている");
+        }
+
+        ApprovalSetting::current()->update(['launched_at' => now()]);
+
+        $after = $this->sidebars($this->actingAs($user)->get(route('approvals.home'))->assertOk()->getContent());
+        foreach (['expanded', 'drawer'] as $key) {
+            $this->assertHasLink($after[$key], route('approvals.ledger.index'), '決裁台帳', $key);
+        }
+    }
 }

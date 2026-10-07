@@ -76,6 +76,23 @@ class ApprovalMenuTest extends TestCase
         $this->assertMatchesRegularExpression('#<span class="absolute[^"]*"[^>]*aria-hidden="true">2</span>#', $sidebars['rail'], '折りたたみ版に件数の丸印が無い');
     }
 
+    /** 基幹のサイドバーにも決裁台帳（段階4 設計書 §5.8。使い始めてから。展開版とドロワーの「決裁」の下） */
+    public function test_the_base_sidebar_offers_the_ledger_after_launch(): void
+    {
+        $w = $this->approvalWorld();
+
+        foreach ($this->sidebars($this->html($w['head'], '/dashboard/tenant')) as $key => $aside) {
+            $this->assertStringNotContainsString(route('approvals.ledger.index'), $aside, "{$key} に使い始める前の決裁台帳が出た");
+        }
+
+        $this->launchApprovals();
+        $sidebars = $this->sidebars($this->html($w['head'], '/dashboard/tenant'));
+
+        foreach (['expanded', 'drawer'] as $key) {
+            $this->assertMatchesRegularExpression('#<a\s+href="' . preg_quote(route('approvals.ledger.index'), '#') . '"[^>]*>\s*決裁台帳\s*</a>#u', $sidebars[$key], "{$key} に「決裁台帳」が無い");
+        }
+    }
+
     public function test_no_badge_when_nothing_is_waiting(): void
     {
         $w = $this->approvalWorld();

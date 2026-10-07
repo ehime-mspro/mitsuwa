@@ -3,6 +3,7 @@
 use App\Http\Controllers\Approval\AdminRequestController;
 use App\Http\Controllers\Approval\HolidayController;
 use App\Http\Controllers\Approval\HomeController;
+use App\Http\Controllers\Approval\LedgerController;
 use App\Http\Controllers\Approval\NoticeController;
 use App\Http\Controllers\Approval\OrganizationController;
 use App\Http\Controllers\Approval\RelatedNumberController;
@@ -139,6 +140,11 @@ Route::middleware('approval.launched')->prefix('approvals')->name('approvals.')-
 
     // 決裁申請書の PDF（段階4 設計書 §5.6）。見られる人なら提出したことのある申請をいつでも（下書きは 404）
     Route::get('/requests/{approvalRequest}/pdf', [RequestPdfController::class, 'show'])->name('requests.pdf');
+
+    // 決裁台帳（画面⑤。段階4 設計書 §5.8）。見られる申請だけ（下書きは出さない）
+    Route::get('/ledger', [LedgerController::class, 'index'])->name('ledger.index');
+    // 決裁台帳の Excel（§5.9）。台帳と同じ条件で全件・出力のたびに記録（§5.10）
+    Route::get('/ledger/excel', [LedgerController::class, 'excel'])->name('ledger.excel');
 
     // 添付（段階2 設計書 §5.7・計画 §0.5）。追加と外すのは Ajax・JSON
     Route::post('/requests/{approvalRequest}/attachments', [RequestAttachmentController::class, 'store'])->name('requests.attachments.store');

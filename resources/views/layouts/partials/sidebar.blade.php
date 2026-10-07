@@ -65,9 +65,10 @@
         @if($hasMansionAccess)
             <x-sidebar-item :href="url('/mansion/dashboard')" label="賃貸Mダッシュボード" :active="request()->is('mansion/dashboard')" />
         @endif
-        {{-- 決裁と対応待ちの件数（使い始めてから。段階2 設計書 §5.15） --}}
+        {{-- 決裁と対応待ちの件数（使い始めてから。段階2 設計書 §5.15）・決裁台帳（段階4 設計書 §5.8） --}}
         @if($approvalPending !== null)
             <x-sidebar-item :href="route('approvals.home')" label="決裁" :badge="$approvalPending" :active="request()->routeIs('approvals.home', 'approvals.requests.*')" />
+            <x-sidebar-item :href="route('approvals.ledger.index')" label="決裁台帳" :active="request()->routeIs('approvals.ledger.*')" />
         @endif
     </div>
 
@@ -390,9 +391,10 @@
         @endif
     </x-sidebar-group>
 
-    {{-- 決裁と対応待ちの件数（使い始めてから。§5.15）。開閉するグループの中に入れない（閉じているあいだ件数が見えない） --}}
+    {{-- 決裁と対応待ちの件数（使い始めてから。§5.15）・決裁台帳（段階4 設計書 §5.8）。開閉するグループの中に入れない（閉じているあいだ件数が見えない） --}}
     @if($approvalPending !== null)
         <x-sidebar-item :href="route('approvals.home')" label="決裁" :badge="$approvalPending" :active="request()->routeIs('approvals.home', 'approvals.requests.*')" />
+        <x-sidebar-item :href="route('approvals.ledger.index')" label="決裁台帳" :active="request()->routeIs('approvals.ledger.*')" />
     @endif
 
     @if($hasTenantAccess)

@@ -60,6 +60,18 @@ enum ApprovalStatus: string
         return in_array($this, [self::Draft, self::Returned], true);
     }
 
+    /**
+     * 今の中身が最後に提出した控えと違いうる状態（差戻し中の直しかけと、直しかけのまま取り下げた申請。要件 4.4・4.5）。
+     * 申請者以外に中身を見せる・当てるときは、この状態の申請だけ控えを使う（ほかの状態は中身を直せないので今の中身と同じ）。
+     * 関連する決裁No の候補（RelatedNumberController）と決裁台帳（Ledger）が使う
+     *
+     * @return list<self>
+     */
+    public static function mayDifferFromSubmission(): array
+    {
+        return [self::Returned, self::Withdrawn];
+    }
+
     /** 申請者が取り下げられる（要件 4.5） */
     public function isWithdrawable(): bool
     {

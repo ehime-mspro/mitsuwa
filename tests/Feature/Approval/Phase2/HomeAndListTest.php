@@ -318,6 +318,17 @@ class HomeAndListTest extends TestCase
         }
     }
 
+    /** ホームの上のリンクの行に「決裁台帳」（誰にでも。段階4 設計書 §5.8） */
+    public function test_the_home_links_to_the_ledger(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+
+        $main = $this->mainOf($this->actingAs($w['applicant'])->get(route('approvals.home'))->assertOk()->getContent());
+
+        $this->assertMatchesRegularExpression('#<a href="' . preg_quote(route('approvals.ledger.index'), '#') . '"[^>]*>決裁台帳</a>#u', $main);
+    }
+
     /**
      * 使い始めたあとも、基幹の画面から跳ね返された決裁のみ利用者にはホームに理由が出る。ホームの入口から来たときは出さない
      * （Bug #63 の流れ。ApprovalOnlyLockoutTest は準備中のホームで固定している）。
