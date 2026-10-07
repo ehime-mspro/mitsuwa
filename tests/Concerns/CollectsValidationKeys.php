@@ -25,8 +25,10 @@ use UnexpectedValueException;
  * ⚠ 属性の `#[` は開き括弧として数える。
  * ⚠ クラスはファイルごとに分けて持つ（同じ短い名前のクラスが別の名前空間にある。ContractController は 3 つ。
  *   短い名前で持つと後のファイルが前を上書きし、黙って 3 割のキーが消えた）。トレイトだけは短い名前で引く（同じ名前が 2 つあれば引かない）。
- * ⚠ 見えないもの: `validate()` の外で組んだ規則をプロパティ（`$this->rules`）で渡す形・ループで組むキー（読めないとして返す）・
- *   別のファイルの関数・`app/Http` の外の入力チェック（今は 0 件）。
+ * ⚠ 見えないもの（黙って見落とす。2026-10-07 の実物には 0 件）: `?->validate(`・`validator()` ヘルパ・別名の Validator（`V::make`）・
+ *   ValidatesRequests の `$this->validate($request, …)`（`$request` を規則と取り違え、渡すだけの部品として覚える）・
+ *   プロパティ（`$this->rules`）に持った規則・`app/Http` の外の入力チェック。書き方を足すときは見本（ValidationKeyScannerTest）も足す。
+ *   ループで組むキー・ほかのクラスの呼び出しは「読めない」として返す（黙っては見落とさない）。
  */
 trait CollectsValidationKeys
 {
@@ -59,12 +61,16 @@ trait CollectsValidationKeys
     {
         $this->vkClasses = [];
         $this->vkTraits = [];
-        foreach ($sources as $path => $src) {
-            $this->vkReadClasses($path, $src);
-        }
-
         $sites = [];
         $unreadable = [];
+        foreach ($sources as $path => $src) {
+            try {
+                $this->vkReadClasses($path, $src);
+            } catch (UnexpectedValueException $e) {
+                $unreadable[] = "{$path}: {$e->getMessage()}";
+            }
+        }
+
         $forwarders = []; // メソッドのキー => [規則の引数の位置, 名前の引数の位置|null]
         $calls = [];      // [クラスのキー, メソッド名, 開き括弧の位置, 呼ぶメソッド名|null, 規則の位置, 名前の位置|null]
 

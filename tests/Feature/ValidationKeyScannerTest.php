@@ -238,6 +238,13 @@ class ValidationKeyScannerTest extends TestCase
             public function store($request) { $this->check($request, Rules::forContract()); }'));
     }
 
+    public function test_a_file_whose_brackets_do_not_balance_is_unreadable_by_name(): void
+    {
+        $found = $this->collectValidationKeys(['app/Http/Controllers/BrokenController.php' => "<?php\nclass BrokenController\n{\n    public function store(\$request) { \$request->validate(['a' => 'x']);\n"]);
+        $this->assertSame([], $found['sites']);
+        $this->assertSame(['app/Http/Controllers/BrokenController.php: 括弧の対応が取れない'], $found['unreadable']);
+    }
+
     public function test_a_trait_name_shared_by_two_traits_is_not_guessed(): void
     {
         $one = "<?php\nnamespace A;\ntrait HasRules { private function traitRules(): array { return ['a' => 'x']; } }\n";
