@@ -101,7 +101,8 @@ class AreaBuildingListService
      */
     public function paginateRows(Collection $rows, Request $request, int $perPage = 20): LengthAwarePaginator
     {
-        $page = LengthAwarePaginator::resolveCurrentPage();
+        // ページ番号は最後のページまで（手で打った大きな番号で forPage の位置が float になり 500・行の無いページは件数と食い違う）
+        $page = min(LengthAwarePaginator::resolveCurrentPage(), max(1, (int) ceil($rows->count() / $perPage)));
 
         return new LengthAwarePaginator(
             $rows->forPage($page, $perPage)->values(),

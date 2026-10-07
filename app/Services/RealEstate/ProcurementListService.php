@@ -63,7 +63,8 @@ class ProcurementListService
         // ⚠ 引数の $request ではなくコンテナの 'request' を見る（PaginationServiceProvider が
         //   そう束ねている）。本番経路では同一インスタンスなので実害は無いが、テストでは
         //   呼び出し側が $this->app->instance('request', $request) で明示的に揃える必要がある。
-        $page  = LengthAwarePaginator::resolveCurrentPage();
+        // ページ番号は最後のページまで（手で打った大きな番号で forPage の位置が float になり 500・行の無いページは件数と食い違う）
+        $page  = min(LengthAwarePaginator::resolveCurrentPage(), max(1, (int) ceil($keys->count() / $perPage)));
         $slice = $keys->forPage($page, $perPage);
 
         // 現在ページ分だけモデルを読む。costs は getExpectedProfit()、
