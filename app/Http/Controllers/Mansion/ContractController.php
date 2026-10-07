@@ -200,8 +200,9 @@ class ContractController extends Controller
      */
     public function revise(Request $request, MsContract $contract)
     {
+        // 解約済み（ダブルクリックの 2 回目・開いたままの古い画面）は詳細へ戻して理由を出す（403 の英語の画面にしない）
         if ($contract->isTerminated()) {
-            abort(403);
+            return redirect()->route('mansion.contracts.show', $contract)->with('error', 'この契約は解約済みのため、賃料を改定できません。');
         }
 
         $validated = $request->validate([
@@ -255,8 +256,9 @@ class ContractController extends Controller
      */
     public function terminate(Request $request, MsContract $contract)
     {
+        // 解約済み（ダブルクリックの 2 回目・開いたままの古い画面）は詳細へ戻して理由を出す（403 の英語の画面にしない）
         if ($contract->isTerminated()) {
-            abort(403);
+            return redirect()->route('mansion.contracts.show', $contract)->with('error', 'この契約はすでに解約済みです。');
         }
 
         // 退去日は入居日（無ければ契約日）より前にしない（Bug #85 と同じ）

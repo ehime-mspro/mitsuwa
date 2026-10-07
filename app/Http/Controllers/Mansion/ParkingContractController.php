@@ -184,8 +184,9 @@ class ParkingContractController extends Controller
      */
     public function revise(Request $request, MsParkingContract $parkingContract)
     {
+        // 解約済み（ダブルクリックの 2 回目・開いたままの古い画面）は詳細へ戻して理由を出す（403 の英語の画面にしない）
         if ($parkingContract->isTerminated()) {
-            abort(403);
+            return redirect()->route('mansion.parking-contracts.show', $parkingContract)->with('error', 'この契約は解約済みのため、料金を改定できません。');
         }
 
         $validated = $request->validate([
@@ -233,8 +234,9 @@ class ParkingContractController extends Controller
      */
     public function terminate(Request $request, MsParkingContract $parkingContract)
     {
+        // 解約済み（ダブルクリックの 2 回目・開いたままの古い画面）は詳細へ戻して理由を出す（403 の英語の画面にしない）
         if ($parkingContract->isTerminated()) {
-            abort(403);
+            return redirect()->route('mansion.parking-contracts.show', $parkingContract)->with('error', 'この契約はすでに解約済みです。');
         }
 
         // 利用終了日は利用開始日（無ければ契約日）より前にしない（Bug #85 と同じ）
