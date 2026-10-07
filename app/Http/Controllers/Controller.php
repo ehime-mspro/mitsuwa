@@ -11,4 +11,10 @@ abstract class Controller extends BaseController
      * （本番の MySQL は strict なので、列に入らない値は保存の時点で 500 になる。Bug #73）。
      */
     protected const MAX_INT_COLUMN = 2147483647;
+
+    /**
+     * MySQL の符号なし INT（INT UNSIGNED）の上限。賃貸マンション（`ms_*`）の金額の列はどれも INT UNSIGNED
+     * （2026-10-07 に読み取りで確認）。
+     */
+    protected const MAX_UNSIGNED_INT_COLUMN = 4294967295;
 }

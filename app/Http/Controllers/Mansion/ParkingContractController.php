@@ -187,7 +187,7 @@ class ParkingContractController extends Controller
 
         $validated = $request->validate([
             'revision_date'   => 'required|date',
-            'new_monthly_fee' => 'required|integer|min:0',
+            'new_monthly_fee' => 'required|integer|min:0|max:' . self::MAX_UNSIGNED_INT_COLUMN,
             'reason'          => 'nullable|string|max:200',
         ], [], [
             // 画面ラベルに合わせる（既定は「改定適用日」「新・月額料金」）
@@ -268,8 +268,8 @@ class ParkingContractController extends Controller
         $rules = [
             'contract_date'  => 'nullable|date',
             'start_date'     => 'nullable|date',
-            'monthly_fee'    => 'required|integer|min:0',
-            'deposit'        => 'nullable|integer|min:0',
+            'monthly_fee'    => 'required|integer|min:0|max:' . self::MAX_UNSIGNED_INT_COLUMN,
+            'deposit'        => 'nullable|integer|min:0|max:' . self::MAX_UNSIGNED_INT_COLUMN,
             'staff_user_id'  => 'nullable|exists:users,id',
             'memo'           => 'nullable|string',
         ];

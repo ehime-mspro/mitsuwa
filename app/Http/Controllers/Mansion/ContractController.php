@@ -203,8 +203,8 @@ class ContractController extends Controller
 
         $validated = $request->validate([
             'revision_date' => 'required|date',
-            'new_rent' => 'nullable|integer|min:0',
-            'new_common_fee' => 'nullable|integer|min:0',
+            'new_rent' => 'nullable|integer|min:0|max:' . self::MAX_UNSIGNED_INT_COLUMN,
+            'new_common_fee' => 'nullable|integer|min:0|max:' . self::MAX_UNSIGNED_INT_COLUMN,
             'reason' => 'nullable|string|max:200',
         ], [], [
             // 画面ラベルに合わせる（既定は「改定適用日」「新・月額家賃」「新・共益費」）
@@ -262,12 +262,12 @@ class ContractController extends Controller
             // 敷金精算。⚠ 画面には以前からこの入力欄があったが、ここで受けていなかったため
             //   入力が丸ごと捨てられていた（2026-08-17 に発見・修正）
             'termination_reason' => 'nullable|string|max:200',
-            'restoration_cost' => 'nullable|integer|min:0',
-            'cleaning_cost' => 'nullable|integer|min:0',
+            'restoration_cost' => 'nullable|integer|min:0|max:' . self::MAX_UNSIGNED_INT_COLUMN,
+            'cleaning_cost' => 'nullable|integer|min:0|max:' . self::MAX_UNSIGNED_INT_COLUMN,
             'other_deduction_name' => 'nullable|array',
             'other_deduction_name.*' => 'nullable|string|max:100',
             'other_deduction_amount' => 'nullable|array',
-            'other_deduction_amount.*' => 'nullable|integer|min:0',
+            'other_deduction_amount.*' => 'nullable|integer|min:0|max:' . self::MAX_UNSIGNED_INT_COLUMN,
         ], [], [
             // 画面ラベルに合わせる（既定は「退去理由」）
             'termination_reason' => '解約理由',
@@ -394,10 +394,10 @@ class ContractController extends Controller
         $rules = [
             'contract_date' => 'nullable|date',
             'move_in_date' => 'nullable|date',
-            'rent' => 'nullable|integer|min:0',
-            'common_fee' => 'nullable|integer|min:0',
-            'deposit' => 'nullable|integer|min:0',
-            'key_money' => 'nullable|integer|min:0',
+            'rent' => 'nullable|integer|min:0|max:' . self::MAX_UNSIGNED_INT_COLUMN,
+            'common_fee' => 'nullable|integer|min:0|max:' . self::MAX_UNSIGNED_INT_COLUMN,
+            'deposit' => 'nullable|integer|min:0|max:' . self::MAX_UNSIGNED_INT_COLUMN,
+            'key_money' => 'nullable|integer|min:0|max:' . self::MAX_UNSIGNED_INT_COLUMN,
             'staff_user_id' => 'nullable|exists:users,id',
             'memo' => 'nullable|string',
         ];

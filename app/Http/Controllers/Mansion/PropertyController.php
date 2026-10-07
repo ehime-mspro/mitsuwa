@@ -133,8 +133,9 @@ class PropertyController extends Controller
             'owner_name' => 'nullable|string|max:100',
             'postal_code' => 'nullable|string|max:10',
             'address' => 'required|string|max:200',
-            'total_units' => 'nullable|integer|min:0',
-            'total_floors' => 'nullable|integer|min:0',
+            // 上限は本番の列（総戸数 SMALLINT UNSIGNED・階数 TINYINT UNSIGNED）
+            'total_units' => 'nullable|integer|min:0|max:65535',
+            'total_floors' => 'nullable|integer|min:0|max:255',
             'structure' => 'nullable|string|max:50',
             'built_year_month' => 'nullable|string|max:7',
             'notes' => 'nullable|string',

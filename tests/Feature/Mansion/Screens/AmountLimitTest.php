@@ -126,10 +126,12 @@ class AmountLimitTest extends MansionScreenTestCase
     {
         $files = glob(app_path('Http/Controllers/Mansion/*.php'));
         $this->assertGreaterThanOrEqual(7, count($files), '賃貸マンションのコントローラを拾えていない');
+        $bounded = fn (string $rule) => (bool) preg_match('/(^|\|)(max:|between:|exists:)/', $rule);
         $checked = 0;
         $unbounded = [];
         foreach ($files as $file) {
-            foreach (token_get_all(file_get_contents($file)) as $token) {
+            $tokens = token_get_all(file_get_contents($file));
+            foreach ($tokens as $i => $token) {
                 if (! is_array($token) || $token[0] !== T_CONSTANT_ENCAPSED_STRING) {
                     continue;
                 }
@@ -138,8 +140,27 @@ class AmountLimitTest extends MansionScreenTestCase
                     continue;
                 }
                 $checked++;
-                // 上限は max（定数を連結するので文字列は `max:` で終わる）・between のどちらか
-                if (! preg_match('/(^|\|)(max:|between:)/', $rule)) {
+                // 上限は max（定数を連結するので文字列は `max:` で終わる）・between・既存の行（exists）のどれか
+                $ok = $bounded($rule);
+                // 配列で書いた規則（`['integer', Rule::exists(…)]`）は、同じ配列の残りの要素に上限（max・exists の文字列か Rule::exists）があるかを見る。
+                // ⚠ `|` でつないだ規則の文字列は自分の中だけで見る（後ろを見ると、次の項目の上限に当たって素通りする）
+                for ($j = $i + 1, $depth = 0; ! $ok && ! str_contains($rule, '|') && $j < count($tokens); $j++) {
+                    $t = $tokens[$j];
+                    if ($t === '[' || $t === '(') {
+                        $depth++;
+                    } elseif ($t === ']' || $t === ')') {
+                        if ($depth-- === 0) {
+                            break;
+                        }
+                    } elseif ($depth === 0 && is_array($t) && $t[0] === T_CONSTANT_ENCAPSED_STRING) {
+                        $ok = $bounded(substr($t[1], 1, -1));
+                    } elseif ($depth === 0 && is_array($t) && $t[0] === T_STRING && $t[1] === 'exists' && ($tokens[$j - 1][0] ?? null) === T_DOUBLE_COLON) {
+                        $ok = true;
+                    } elseif ($depth === 0 && $t === ';') {
+                        break;
+                    }
+                }
+                if (! $ok) {
                     $unbounded[] = basename($file) . ':' . $token[2] . ' ' . $rule;
                 }
             }

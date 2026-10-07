@@ -125,14 +125,15 @@ class RoomController extends Controller
         $unique = "unique:ms_rooms,room_number,{$excludeId},id,property_id,{$propertyId}";
         return $request->validate([
             'room_number' => "required|string|max:20|{$unique}",
-            'floor' => 'nullable|integer|min:0',
+            // 上限は本番の列（階 TINYINT UNSIGNED・専有面積 DECIMAL(8,2)・金額 INT UNSIGNED）
+            'floor' => 'nullable|integer|min:0|max:255',
             'room_type' => 'nullable|string|max:20',
-            'area_sqm' => 'nullable|numeric|min:0',
+            'area_sqm' => 'nullable|numeric|min:0|max:999999.99',
             'status' => 'required|in:vacant,occupied,negotiating,move_out_planned',
-            'rent' => 'nullable|integer|min:0',
-            'common_fee' => 'nullable|integer|min:0',
-            'deposit' => 'nullable|integer|min:0',
-            'key_money' => 'nullable|integer|min:0',
+            'rent' => 'nullable|integer|min:0|max:' . self::MAX_UNSIGNED_INT_COLUMN,
+            'common_fee' => 'nullable|integer|min:0|max:' . self::MAX_UNSIGNED_INT_COLUMN,
+            'deposit' => 'nullable|integer|min:0|max:' . self::MAX_UNSIGNED_INT_COLUMN,
+            'key_money' => 'nullable|integer|min:0|max:' . self::MAX_UNSIGNED_INT_COLUMN,
             'notes' => 'nullable|string',
         ], [], [
             // 画面ラベルに合わせる（既定は「賃料」「面積（㎡）」「号室」）

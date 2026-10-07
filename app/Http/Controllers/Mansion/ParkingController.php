@@ -108,7 +108,7 @@ class ParkingController extends Controller
         $unique = "unique:ms_parkings,parking_number,{$excludeId},id,property_id,{$propertyId}";
         return $request->validate([
             'parking_number' => "required|string|max:20|{$unique}",
-            'monthly_fee' => 'required|integer|min:0',
+            'monthly_fee' => 'required|integer|min:0|max:' . self::MAX_UNSIGNED_INT_COLUMN,
             'status' => 'required|in:vacant,occupied',
             'has_roof' => 'nullable|boolean',
             'notes' => 'nullable|string',
