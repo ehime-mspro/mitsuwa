@@ -194,6 +194,45 @@ class ReProject extends Model
     }
 
     /**
+     * 住宅事業の画面（建売・注文住宅の登録と編集）の区画の選択肢。
+     * 区画の一覧の API（Housing\PropertyController::projectLots）と、入力エラーで戻った画面・編集画面が
+     * 最初から描く一覧（区画の `<option>` は `<template x-for>` なので、空から始めると今の区画が選べない。Top trap #3）の両方が使う。
+     * 土地原価は分譲地の原価の合計を販売価格で按分する（全区画に販売価格があるときだけ）。
+     *
+     * @param  array<int, int>  $excludeLotIds  選択肢から外す区画（建売に使った区画）
+     * @return array<int, array{id: int, lot_number: int, area_sqm: float, selling_price: ?int, land_cost: ?int, status: string, status_label: string}>
+     */
+    public function housingLotOptions(array $excludeLotIds = []): array
+    {
+        $effectiveCostTotal = $this->getEffectiveCostTotal();
+        $lotSellingTotal = $this->getLotSellingPriceTotal();
+        $allHavePrice = $this->allLotsHaveSellingPrice();
+
+        $results = [];
+        foreach ($this->lots as $lot) {
+            if (in_array($lot->id, $excludeLotIds)) {
+                continue;
+            }
+            $depreciationAmount = null;
+            if ($allHavePrice && $lotSellingTotal > 0) {
+                $depreciationAmount = (int) round($effectiveCostTotal * ($lot->selling_price / $lotSellingTotal));
+            }
+
+            $results[] = [
+                'id'            => $lot->id,
+                'lot_number'    => $lot->lot_number,
+                'area_sqm'      => (float) $lot->area_sqm,
+                'selling_price' => $lot->selling_price,
+                'land_cost'     => $depreciationAmount,
+                'status'        => $lot->status->value,
+                'status_label'  => $lot->status->label(),
+            ];
+        }
+
+        return $results;
+    }
+
+    /**
      * 区画の成約状況から PJ ステータスを集約する。
      *
      * - 全区画成約（区画1件以上 かつ 全て LotStatus::Sold）→ SoldOut へ昇格

@@ -145,4 +145,21 @@ trait ParsesForms
 
         return preg_match($pattern, $tag, $m) ? html_entity_decode($m[1], ENT_QUOTES, 'UTF-8') : null;
     }
+
+    /**
+     * $start から始まる $tag の要素を、入れ子の同じ要素を数えて閉じタグまで切り出す
+     * （フォームの中の入れ子のコンポーネントを別に評価する画面。不動産の原価欄・住宅事業の買主の選択）。
+     */
+    protected function balancedElement(string $html, int $start, string $tag): string
+    {
+        preg_match_all('/<' . $tag . '\b[^>]*>|<\/' . $tag . '>/i', $html, $tokens, PREG_OFFSET_CAPTURE, $start);
+        $depth = 0;
+        foreach ($tokens[0] as [$token, $offset]) {
+            $depth += str_starts_with($token, '</') ? -1 : 1;
+            if ($depth === 0) {
+                return substr($html, $start, $offset + strlen($token) - $start);
+            }
+        }
+        $this->fail("<{$tag}> が閉じていない");
+    }
 }

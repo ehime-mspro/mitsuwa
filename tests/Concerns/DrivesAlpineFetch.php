@@ -49,9 +49,11 @@ trait DrivesAlpineFetch
      * @param  array<int, string>  $withScripts  一緒に読む `<script>` の目印（その文字列を含む script がちょうど 1 つずつ。
      *                                            $function の script より先に読む）。コンポーネントが別の script の関数
      *                                            （`costExcelImporterFactory(`）や `window.…` の値を使う画面のため
+     * @param  array<string, string>  $elements  画面の JS が `document.querySelector(…)` で読む欄の値（セレクタ => 値。
+     *                                         顧客の登録画面の重複の確認が `input[name="last_name"]` を読む）
      * @return array{requests: array<int, array{url: string, method: string, headers: array<string, string>, body: ?string}>, confirms: array<int, string>, alerts: array<int, string>, navigations: array<int, string>, submitted: array<int, array{ref: string, method: string, action: string, fields: array<string, string>}>, evaluated: array<int, mixed>, state: array<string, mixed>}
      */
-    protected function driveAlpine(string $html, string $function, string $factory, string $steps, array $responses = [], bool $confirm = true, array $evaluate = [], array $withScripts = []): array
+    protected function driveAlpine(string $html, string $function, string $factory, string $steps, array $responses = [], bool $confirm = true, array $evaluate = [], array $withScripts = [], array $elements = []): array
     {
         return $this->runNode([
             'script'    => $this->scriptsContaining($html, $withScripts) . $this->scriptDefining($html, $function),
@@ -62,6 +64,7 @@ trait DrivesAlpineFetch
             'confirm'   => $confirm,
             'forms'     => (object) $this->refForms($html),
             'evaluate'  => $evaluate,
+            'elements'  => (object) $elements,
         ], self::ALPINE_HARNESS);
     }
 
@@ -398,10 +401,28 @@ trait DrivesAlpineFetch
                 'text'     => html_entity_decode(trim(strip_tags($option[2])), ENT_QUOTES, 'UTF-8'),
                 'value'    => $this->htmlAttr('<option' . $option[1] . '>', 'value') ?? '',
                 'selected' => (bool) preg_match('/(?<![\w:.@-])selected(?=[\s>=\/])/i', $option[1]),
+                // `data-name="…"` → dataset.name（JS が選んだ選択肢の data-* を読む画面。住宅事業の買主の選択）
+                'dataset'  => (object) $this->dataAttributes($option[1]),
             ], $options);
         }
 
         return $found;
+    }
+
+    /**
+     * タグの属性のうち `data-*` を、ブラウザの dataset と同じ名前（`data-full-name` → `fullName`）で返す。
+     *
+     * @return array<string, string>
+     */
+    private function dataAttributes(string $attributes): array
+    {
+        preg_match_all('/\sdata-([a-z0-9-]+)="([^"]*)"/i', $attributes, $m, PREG_SET_ORDER);
+        $dataset = [];
+        foreach ($m as [, $name, $value]) {
+            $dataset[lcfirst(str_replace(' ', '', ucwords(str_replace('-', ' ', strtolower($name)))))] = html_entity_decode($value, ENT_QUOTES, 'UTF-8');
+        }
+
+        return $dataset;
     }
 
     /** 応答を driveAlpine() の $responses の 1 件にする */
@@ -567,9 +588,18 @@ trait DrivesAlpineFetch
                     if (selector === 'meta[name="csrf-token"]' && input.csrf !== null) {
                         return { content: input.csrf, getAttribute(name) { return name === 'content' ? input.csrf : null; } };
                     }
+                    // 画面の JS が document から読む欄（`input[name="last_name"]` など。driveAlpine() の $elements）
+                    if (input.elements && Object.prototype.hasOwnProperty.call(input.elements, selector)) {
+                        return { value: input.elements[selector] };
+                    }
                     return null;
                 },
                 querySelectorAll() { return []; },
+                // 読み込んだ時点で要素を掴む・クリックを見張る script（顧客の一覧のランクの小窓）を読めるように
+                getElementById(id) { return { id: String(id), style: {}, dataset: {}, textContent: '', classList: { contains() { return false; } } }; },
+                addEventListener() {},
+                // 選択肢を作って $refs の選択欄へ appendChild する画面（住宅事業の買主の簡易登録）
+                createElement(tag) { return { tagName: String(tag).toUpperCase(), dataset: {}, value: '', textContent: '' }; },
             },
             fetch(url, options) {
                 options = options || {};
@@ -612,6 +642,23 @@ trait DrivesAlpineFetch
                     // 選択欄の ref: 描かれた選択肢から始め、JS の add / remove をそのまま反映する
                     options: (refOptions[name] || []).map(function (o) { return Object.assign({}, o); }),
                     add(option) { this.options.push(option); },
+                    appendChild(option) { this.options.push(option); return option; },
+                    // 選択欄の ref の value / selectedIndex（ブラウザと同じく、選ばれた選択肢が無ければ先頭）
+                    get selectedIndex() {
+                        const i = this.options.findIndex(function (o) { return o.selected; });
+                        return i === -1 && this.options.length > 0 ? 0 : i;
+                    },
+                    set selectedIndex(index) { this.options.forEach(function (o, k) { o.selected = k === index; }); },
+                    // 選択肢の無い ref（入力欄）は、代入した値をそのまま持つ（今までどおり）
+                    get value() {
+                        if (this.options.length === 0) { return this._value; }
+                        const o = this.options[this.selectedIndex];
+                        return o ? String(o.value) : '';
+                    },
+                    set value(v) {
+                        if (this.options.length === 0) { this._value = v; return; }
+                        this.options.forEach(function (o) { o.selected = String(o.value) === String(v); });
+                    },
                     remove(index) { this.options.splice(index, 1); },
                     focus() {},
                     blur() {},

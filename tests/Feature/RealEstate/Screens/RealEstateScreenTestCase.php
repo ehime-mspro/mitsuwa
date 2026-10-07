@@ -89,20 +89,6 @@ abstract class RealEstateScreenTestCase extends TestCase
         return ['method' => $main['method'], 'action' => $main['action'], 'fields' => $main['fields'] + $costs['fields']];
     }
 
-    /** $start から始まる $tag の要素を、入れ子の同じ要素を数えて閉じタグまで切り出す */
-    protected function balancedElement(string $html, int $start, string $tag): string
-    {
-        preg_match_all('/<' . $tag . '\b[^>]*>|<\/' . $tag . '>/i', $html, $tokens, PREG_OFFSET_CAPTURE, $start);
-        $depth = 0;
-        foreach ($tokens[0] as [$token, $offset]) {
-            $depth += str_starts_with($token, '</') ? -1 : 1;
-            if ($depth === 0) {
-                return substr($html, $start, $offset + strlen($token) - $start);
-            }
-        }
-        $this->fail("<{$tag}> が閉じていない");
-    }
-
     /** JS の fetch に、PHP の JSON の API の応答をそのまま返す（X-Requested-With つきで叩く。叩いたあとはヘッダーを戻す） */
     protected function apiResponse(string $url): array
     {

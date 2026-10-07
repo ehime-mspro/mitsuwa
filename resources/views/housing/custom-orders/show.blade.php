@@ -17,6 +17,9 @@
         $isContracted = $o->isContractedOrLater();
         $isCompanyLand = $o->isCompanyLand();
         $isCustomerLand = $o->isCustomerLand();
+        // 操作のボタンはルートの役割と同じ判定で出す（押すと 403 になるボタンを出さない。H7）
+        $canEdit = auth()->user()->role->isManagerOrAbove();
+        $canDelete = auth()->user()->role->isExecutive();
     @endphp
 
     {{-- ページヘッダー --}}
@@ -31,15 +34,19 @@
         <div style="display: flex; gap: 8px; align-items: center;">
             <a href="{{ route('housing.custom-orders.index') }}"
                style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #6b7280; border: 1px solid #d1d5db; border-radius: 6px; text-decoration: none; background: #fff;">注文住宅一覧に戻る</a>
-            <a href="{{ route('housing.custom-orders.edit', $o) }}"
-               style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #059669; border: 1px solid #059669; border-radius: 6px; text-decoration: none; background: #fff;">編集</a>
-            <form method="POST" action="{{ route('housing.custom-orders.destroy', $o) }}"
-                  onsubmit="return confirm('この案件を削除しますか？関連するファイルも全て削除されます。')">
-                @csrf
-                @method('DELETE')
-                <button type="submit"
-                        style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #dc2626; border: 1px solid #dc2626; border-radius: 6px; background: #fff; cursor: pointer;">削除</button>
-            </form>
+            @if($canEdit)
+                <a href="{{ route('housing.custom-orders.edit', $o) }}"
+                   style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #059669; border: 1px solid #059669; border-radius: 6px; text-decoration: none; background: #fff;">編集</a>
+            @endif
+            @if($canDelete)
+                <form method="POST" action="{{ route('housing.custom-orders.destroy', $o) }}"
+                      onsubmit="return confirm('この案件を削除しますか？関連するファイルも全て削除されます。')">
+                    @csrf
+                    @method('DELETE')
+                    <button type="submit"
+                            style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #dc2626; border: 1px solid #dc2626; border-radius: 6px; background: #fff; cursor: pointer;">削除</button>
+                </form>
+            @endif
         </div>
     </div>
 
@@ -281,11 +288,13 @@
             <div style="border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; margin-bottom: 16px;">
                 <div style="background: #f9fafb; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e5e7eb;">
                     <span class="text-sm font-bold text-gray-700">{{ $cat->label() }}</span>
-                    <label style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 12px; border-radius: 5px; font-size: 12px; font-weight: 600; color: #059669; border: 1px solid #059669; background: #fff; cursor: pointer;">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                        アップロード
-                        <input type="file" class="hidden" @change="uploadFile($event, '{{ $cat->value }}')" accept=".jpg,.jpeg,.png,.gif,.pdf,.doc,.docx,.xls,.xlsx">
-                    </label>
+                    @if($canEdit)
+                        <label style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 12px; border-radius: 5px; font-size: 12px; font-weight: 600; color: #059669; border: 1px solid #059669; background: #fff; cursor: pointer;">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            アップロード
+                            <input type="file" class="hidden" @change="uploadFile($event, '{{ $cat->value }}')" accept=".jpg,.jpeg,.png,.gif,.pdf,.doc,.docx,.xls,.xlsx">
+                        </label>
+                    @endif
                 </div>
                 <div style="padding: 12px 16px;">
                     <template x-for="file in files['{{ $cat->value }}']" :key="file.id">
@@ -299,7 +308,9 @@
                                    style="display: inline-flex; align-items: center; color: #9ca3af; text-decoration: none;">
                                     <svg style="width: 16px; height: 16px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                                 </a>
-                                <button @click="deleteFile(file.id, '{{ $cat->value }}')" style="background: none; border: none; color: #9ca3af; font-size: 12px; cursor: pointer; padding: 2px 6px;" title="削除">✕</button>
+                                @if($canDelete)
+                                    <button @click="deleteFile(file.id, '{{ $cat->value }}')" style="background: none; border: none; color: #9ca3af; font-size: 12px; cursor: pointer; padding: 2px 6px;" title="削除">✕</button>
+                                @endif
                             </div>
                         </div>
                     </template>

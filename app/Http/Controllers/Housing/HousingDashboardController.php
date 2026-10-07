@@ -24,7 +24,11 @@ class HousingDashboardController extends Controller
      */
     public function index(Request $request)
     {
-        $fiscalYear = $request->input('fiscal_year', (string) $this->getCurrentFiscalYear());
+        // 年度は数字か 'all' だけ。それ以外（空・配列・文字。手で組んだ URL）は今年度にする（空と配列は 500 になっていた。H8）
+        $fiscalYear = $request->input('fiscal_year');
+        if (! is_string($fiscalYear) || ($fiscalYear !== 'all' && ! ctype_digit($fiscalYear))) {
+            $fiscalYear = (string) $this->getCurrentFiscalYear();
+        }
         $period = $request->input('period', 'all');
         if (!in_array($period, ['all', 'first', 'second'], true)) {
             $period = 'all';

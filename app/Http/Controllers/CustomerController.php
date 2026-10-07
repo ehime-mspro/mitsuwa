@@ -300,17 +300,19 @@ class CustomerController extends Controller
     {
         $department = $this->resolveDepartment();
 
+        // 上限は顧客の画面・CSV 取込と同じ本番の列の大きさ（都道府県は 10 文字。20 を通すと本番の MySQL で 500 だった。H6）
+        $text = fn (string $key) => 'nullable|string|max:' . BuyerCsvRow::MAX_LENGTH[$key];
         $validated = $request->validate([
-            'last_name'       => 'required|max:50',
-            'first_name'      => 'required|max:50',
-            'last_name_kana'  => 'nullable|max:50',
-            'first_name_kana' => 'nullable|max:50',
+            'last_name'       => 'required|string|max:' . BuyerCsvRow::MAX_LENGTH['last_name'],
+            'first_name'      => 'required|string|max:' . BuyerCsvRow::MAX_LENGTH['first_name'],
+            'last_name_kana'  => $text('last_name_kana'),
+            'first_name_kana' => $text('first_name_kana'),
             'acquired_date'   => 'required|date',
-            'postal_code'     => 'nullable|max:10',
-            'prefecture'      => 'nullable|max:20',
-            'city'            => 'nullable|max:50',
-            'address_detail'  => 'nullable|max:100',
-            'phone'           => 'nullable|max:20',
+            'postal_code'     => $text('postal_code'),
+            'prefecture'      => $text('prefecture'),
+            'city'            => $text('city'),
+            'address_detail'  => $text('address_detail'),
+            'phone'           => $text('phone'),
         ]);
 
         $buyer = DB::transaction(function () use ($validated, $department) {
@@ -609,6 +611,10 @@ class CustomerController extends Controller
             'occupation'      => $text('occupation'),
             'employer'        => $text('employer'),
             'years_employed'  => $count('years_employed'),
+            // 来場の分譲地・担当者（住宅事業の画面だけが送る）。消えた分譲地・担当者は外部キーで断られ
+            // 「登録に失敗しました」としか出なかったので、理由つきの入力エラーにする（H9）
+            'project_id'      => 'nullable|integer|exists:re_projects,id',
+            'staff_user_id'   => 'nullable|integer|exists:users,id',
         ]);
     }
 

@@ -95,7 +95,10 @@ class PropertyController extends Controller
             ];
         }
 
-        return view('housing.properties.create', compact('projectsForJs', 'procurementsForJs'));
+        // 入力エラーで戻った画面は、選んでいた区画の分譲地と区画の一覧をサーバで描く（H2）
+        $lotSelection = $this->initialLotSelection(old('re_project_lot_id'), null);
+
+        return view('housing.properties.create', compact('projectsForJs', 'procurementsForJs', 'lotSelection'));
     }
 
     /**
@@ -202,7 +205,9 @@ class PropertyController extends Controller
             ];
         }
 
-        return view('housing.properties.edit', compact('property', 'projectsForJs', 'procurementsForJs'));
+        $lotSelection = $this->initialLotSelection(old('re_project_lot_id', $property->re_project_lot_id), $property->id);
+
+        return view('housing.properties.edit', compact('property', 'projectsForJs', 'procurementsForJs', 'lotSelection'));
     }
 
     /**
@@ -241,7 +246,8 @@ class PropertyController extends Controller
             'status' => "required|in:{$statuses}",
         ]);
 
-        $property->update(['status' => $validated['status']]);
+        // 変えた人を更新者に残す（注文住宅のステータスの変更と同じ。H10）
+        $property->update(['status' => $validated['status'], 'updated_by' => auth()->id()]);
         $property->refresh()->loadMissing('contract');
 
         return response()->json([
@@ -384,8 +390,9 @@ class PropertyController extends Controller
      */
     public function projectLots(Request $request)
     {
+        // ⚠ 数字でない値（`?project_id[]=1` など。手で組んだ URL）は find() が配列で引いて 500 になっていた（H8）
         $projectId = $request->input('project_id');
-        if (!$projectId) {
+        if (! is_string($projectId) || ! ctype_digit($projectId)) {
             return response()->json([]);
         }
 
@@ -394,50 +401,17 @@ class PropertyController extends Controller
             return response()->json([]);
         }
 
-        // 建売物件に登録済みの区画IDを取得（除外用）
-        $usedLotIds = [];
-        if ($request->boolean('exclude_hs')) {
-            $query = HsProperty::whereNotNull('re_project_lot_id');
-            // 編集時は自分自身の区画を除外対象から外す
-            if ($request->filled('current_property_id')) {
-                $query->where('id', '!=', $request->input('current_property_id'));
-            }
-            $usedLotIds = $query->pluck('re_project_lot_id')->toArray();
-        }
-
-        // 按分原価計算の準備
-        $effectiveCostTotal = $project->getEffectiveCostTotal();
-        $lotSellingTotal = $project->getLotSellingPriceTotal();
-        $allHavePrice = $project->allLotsHaveSellingPrice();
-
-        $results = [];
-        foreach ($project->lots as $lot) {
-            // 建売登録済みの区画はスキップ
-            if (in_array($lot->id, $usedLotIds)) {
-                continue;
-            }
-            $depreciationAmount = null;
-            if ($allHavePrice && $lotSellingTotal > 0) {
-                $depreciationAmount = (int) round($effectiveCostTotal * ($lot->selling_price / $lotSellingTotal));
-            }
-
-            $results[] = [
-                'id'               => $lot->id,
-                'lot_number'       => $lot->lot_number,
-                'area_sqm'         => (float) $lot->area_sqm,
-                'selling_price'    => $lot->selling_price,
-                'land_cost'        => $depreciationAmount,
-                'status'           => $lot->status->value,
-                'status_label'     => $lot->status->label(),
-            ];
-        }
+        // 建売物件に登録済みの区画は外す（編集時は自分自身の区画を残す）
+        $usedLotIds = $request->boolean('exclude_hs')
+            ? $this->lotIdsUsedByProperties($request->filled('current_property_id') ? (int) $request->input('current_property_id') : null)
+            : [];
 
         return response()->json([
             'project' => [
                 'postal_code' => $project->postal_code,
                 'address'     => $project->address,
             ],
-            'lots' => $results,
+            'lots' => $project->housingLotOptions($usedLotIds),
         ]);
     }
 
@@ -474,8 +448,9 @@ class PropertyController extends Controller
             'property_name'                 => 'required|string|max:100',
             'status'                        => "required|in:{$statuses}",
             'land_source_type'              => "nullable|in:{$sourceTypes}",
-            're_project_lot_id'             => 'nullable|exists:re_project_lots,id',
-            're_procurement_id'             => 'nullable|exists:re_procurements,id',
+            // 土地の種別を選んだのに紐付け先が空の保存は断る（D1。画面の選択が壊れても空で保存されないように）
+            're_project_lot_id'             => 'nullable|required_if:land_source_type,project_lot|exists:re_project_lots,id',
+            're_procurement_id'             => 'nullable|required_if:land_source_type,procurement|exists:re_procurements,id',
             'postal_code'                   => 'nullable|string|max:10',
             'address'                       => 'required|string|max:200',
             'land_area_sqm'                 => 'nullable|numeric|min:0|max:99999999.99',
@@ -484,12 +459,16 @@ class PropertyController extends Controller
             'floors'                        => 'nullable|integer|min:1|max:99',
             'construction_start_date'       => 'nullable|date',
             'scheduled_completion_date'     => 'nullable|date',
-            'building_cost'                 => 'nullable|integer|min:0',
-            'land_cost'                     => 'nullable|integer|min:0',
+            // 金額の列は符号付き INT（本番の MySQL は範囲外で 500。H4 / Bug #73）
+            'building_cost'                 => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'land_cost'                     => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
             'is_land_cost_manual'           => 'required|in:0,1',
-            'target_selling_price_building' => 'nullable|integer|min:0',
+            'target_selling_price_building' => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
             'notes'                         => 'nullable|string|max:5000',
-        ], [], [
+        ], [
+            're_project_lot_id.required_if' => '土地紐づけ種別が分譲地区画のときは、区画を選んでください。',
+            're_procurement_id.required_if' => '土地紐づけ種別が仕入れ案件のときは、仕入れ案件を選んでください。',
+        ], [
             // 画面ラベルに合わせる（lang/ja/validation.php の既定は「住所」「建築原価」）
             'address'       => '所在地',
             'building_cost' => '建築費',
@@ -511,6 +490,38 @@ class PropertyController extends Controller
             $validated['re_project_lot_id'] = null;
             $validated['re_procurement_id'] = null;
         }
+    }
+
+    /**
+     * 建売物件に使った区画（$exceptPropertyId の物件の区画は残す）
+     *
+     * @return array<int, int>
+     */
+    private function lotIdsUsedByProperties(?int $exceptPropertyId): array
+    {
+        $query = HsProperty::whereNotNull('re_project_lot_id');
+        if ($exceptPropertyId !== null) {
+            $query->where('id', '!=', $exceptPropertyId);
+        }
+
+        return $query->pluck('re_project_lot_id')->toArray();
+    }
+
+    /**
+     * 区画の選択の初期値。選んでいる区画の分譲地と、その分譲地の区画の一覧（API と同じ形）をサーバで作る。
+     * ⚠ 区画の `<option>` は `<template x-for>` なので、一覧を空から始めると今の区画が選べず、空のまま送られる（Top trap #3）。
+     *
+     * @return array{projectId: ?int, lots: array<int, array<string, mixed>>}
+     */
+    private function initialLotSelection(mixed $lotId, ?int $propertyId): array
+    {
+        $lot = is_numeric($lotId) ? ReProjectLot::find($lotId) : null;
+        $project = $lot ? ReProject::with('lots', 'costs')->find($lot->project_id) : null;
+        if (! $project) {
+            return ['projectId' => null, 'lots' => []];
+        }
+
+        return ['projectId' => $project->id, 'lots' => $project->housingLotOptions($this->lotIdsUsedByProperties($propertyId))];
     }
 
     /**

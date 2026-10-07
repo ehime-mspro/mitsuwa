@@ -331,11 +331,12 @@
     }
 @endphp
 
+{{-- ⚠ 属性の中の値は Js::from で渡す（引用符の中に直に書くと ' で文字列が閉じ、末尾の \ で画面の JS が止まる。H3 / Bug #76） --}}
 <div class="hc-edit-wrapper" x-data="customOrderEditForm({
-    landSourceType: '{{ $landSourceTypeValue }}',
+    landSourceType: {{ \Illuminate\Support\Js::from((string) $landSourceTypeValue) }},
     isLandCostManual: {{ $isLandCostManualValue ? 'true' : 'false' }},
-    reProjectLotId: '{{ $reProjectLotIdValue }}',
-    reProcurementId: '{{ $reProcurementIdValue }}'
+    reProjectLotId: {{ \Illuminate\Support\Js::from((string) $reProjectLotIdValue) }},
+    reProcurementId: {{ \Illuminate\Support\Js::from((string) $reProcurementIdValue) }}
 })">
 
     <h1 class="text-lg font-bold text-gray-900 mb-1">契約編集（注文住宅）</h1>
@@ -348,6 +349,10 @@
     @if($errors->any())
         <div class="mb-4 rounded-lg border border-red-200 bg-red-50 p-3">
             <p class="text-sm text-red-800">入力内容にエラーがあります。確認してください。</p>
+            {{-- 理由を 1 件ずつ出す（項目の下に @error が無い欄も多い。H5） --}}
+            <ul class="list-disc list-inside text-xs text-red-700 mt-1 space-y-0.5">
+                @foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach
+            </ul>
         </div>
     @endif
 
@@ -443,7 +448,7 @@
             <div class="hc-field-row">
                 <div class="hc-field">
                     <label class="field-label">契約日<span class="required">*</span></label>
-                    <div class="date-picker-wrap" x-data="datePicker('{{ $contractDateValue }}')" @click.outside="open = false">
+                    <div class="date-picker-wrap" x-data="datePicker({{ \Illuminate\Support\Js::from((string) $contractDateValue) }})" @click.outside="open = false">
                         <button type="button" class="date-input-trigger" @click="open = !open">
                             <span x-show="selected" x-text="selectedLabel"></span>
                             <span x-show="!selected" class="placeholder">日付を選択</span>
