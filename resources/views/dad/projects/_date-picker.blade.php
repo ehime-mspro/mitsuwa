@@ -2,8 +2,9 @@
 {{-- 期待される変数:
      - $name : input の name 属性（例: "estimate_date"）
      - $value: 初期値（YYYY-MM-DD 形式 または 空文字）
+     ⚠ 値は Js::from で JS の文字列として書く（入力エラーで戻った値をそのまま引用符の中に書くと、`'` や `\` で画面の JS が止まる。Bug #76）
 --}}
-<div class="date-picker-wrap" x-data="datePicker('{{ $value }}')" @click.outside="open = false">
+<div class="date-picker-wrap" x-data="datePicker({{ \Illuminate\Support\Js::from($value) }})" @click.outside="open = false">
     <button type="button" class="date-input-trigger" @click="open = !open">
         <span x-show="selected" x-text="selectedLabel"></span>
         <span x-show="!selected" class="placeholder">日付を選択</span>
