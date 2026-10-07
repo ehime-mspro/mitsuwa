@@ -20,6 +20,7 @@ use App\Support\Approval\RequestPermissions;
 use App\Support\Approval\Workflow;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\View\View;
 
@@ -59,12 +60,13 @@ class AdminRequestController extends Controller
         $with = ['applicant', 'revisions', 'steps.department.head', 'steps.department.reviewers', 'steps.assignee'];
 
         if ($tab === 'decided') {
-            $requests = ApprovalRequest::with($with)
+            $query = ApprovalRequest::with($with)
                 ->whereIn('status', [ApprovalStatus::Approved->value, ApprovalStatus::Rejected->value])
                 ->orderByDesc('decided_at')
-                ->orderByDesc('id')
-                ->paginate(self::DECIDED_PER_PAGE)
-                ->withQueryString();
+                ->orderByDesc('id');
+            // ページ番号は最後のページまで（Bug #100。手で打った大きな番号で PageNumbers::around() が TypeError の 500・行の無いページは件数と食い違う）
+            $page     = min(LengthAwarePaginator::resolveCurrentPage(), max(1, (int) ceil($query->count() / self::DECIDED_PER_PAGE)));
+            $requests = $query->paginate(self::DECIDED_PER_PAGE, ['*'], 'page', $page)->withQueryString();
 
             return view('approvals.admin.requests', ['tab' => $tab, 'requests' => $requests, 'rows' => null, 'pages' => PageNumbers::around($requests->currentPage(), $requests->lastPage())]);
         }
