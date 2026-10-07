@@ -480,10 +480,22 @@ function initDadDetailMap() {
         title: @json($project->project_name)
     });
 
+    // 吹き出し（InfoWindow）は content を HTML として描くので、工事名・現場住所の文字を逃がしてから組む
+    // （@@json は JS の文字列として守るだけで、`<img onerror=…>` の工事名がそのまま実行された）
+    function escapeHtml(value) {
+        return (value === null || value === undefined ? '' : String(value))
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+    var projectName = @json($project->project_name);
+    var siteAddress = @json($project->site_address ?? '');
     var infoContent = '<div style="font-size:13px;"><strong>'
-        + @json($project->project_name)
+        + escapeHtml(projectName)
         + '</strong>'
-        + (@json($project->site_address ?? '') ? '<br>' + @json($project->site_address ?? '') : '')
+        + (siteAddress ? '<br>' + escapeHtml(siteAddress) : '')
         + '</div>';
     var infoWindow = new google.maps.InfoWindow({ content: infoContent });
     infoWindow.open(map, marker);
