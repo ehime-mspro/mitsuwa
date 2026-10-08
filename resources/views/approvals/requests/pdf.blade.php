@@ -3,7 +3,7 @@
      ⚠ mPDF は CSS の一部しか読まない（flex・grid・CSS の変数は使えない）。枠は表で組む。
      ⚠ 本文は罫線の 1 行を表の 1 行にする（mPDF は表の 1 行をページの途中で切れない。PdfSheet::bodyRows()）。
      ⚠ 文字はすべて {{ }} で包む（印は StampSvg が e() で包んだ SVG を返す）。
-     ⚠ 人が打った文字の入る表（決裁の欄・件名・本文・添付・審査）には class="wrap"（mPDF の表の CSS overflow: wrap）を付ける。
+     ⚠ 人が打った文字の入る表（決裁の欄・件名・本文・明細表・追加の欄・定型文・添付・審査）には class="wrap"（mPDF の表の CSS overflow: wrap）を付ける。
         空白の無い長い語（URL・ファイル名）をセルの中で折り返す。無いと、その語が収まるまで表全体の文字が縮む（word-wrap・overflow-wrap は効かない）。
         決裁No・日付の表（付けると列の幅が少し変わる）と入れ子の判断の欄 table.marks は、短い決まった文字だけなので付けない --}}
 @php
@@ -30,6 +30,8 @@
     .note { font-size: 8.5pt; color: #444; }
     td.line { border-top: none; border-bottom: 0.4pt dashed #999; height: 6mm; }
     table.wrap { overflow: wrap; }
+    td.num { text-align: right; }
+    tr.sum td { background-color: #f2f2f2; }
 </style>
 
 <div class="title">決裁申請書</div>
@@ -107,15 +109,67 @@
             金額 {{ $sheet->amountLabel ?? '—' }}（税抜）&nbsp;&nbsp;
             実施時期 {{ $sheet->schedule ?? '—' }}&nbsp;&nbsp;
             関連する決裁No {{ $sheet->relatedNumbers === [] ? '—' : implode('・', $sheet->relatedNumbers) }}
-            <div class="mincho" style="margin-top: 2mm;">重点ポイント箇条書（5W2H）</div>
+            <div class="mincho" style="margin-top: 2mm;">{{ $sheet->amountRows === null ? '重点ポイント箇条書（5W2H）' : '（記）' }}</div>
         </td>
     </tr>
 </table>
-<table class="wrap">
-    @foreach($sheet->bodyRows as $row)
-        <tr><td class="line">{{ $row }}</td></tr>
-    @endforeach
-</table>
+@if($sheet->amountRows !== null)
+    {{-- 明細表の種類（段階5 §5.7）: 紙の住宅の様式の「（記）」の並び。明細表の 1 行＝表の 1 行（行の切れ目で次のページへ）。
+         見出しの行は thead に入れる（mPDF は次のページの頭で繰り返す。点検の M-8） --}}
+    <table class="wrap">
+        <thead>
+            <tr>
+                <td class="label">項目</td>
+                <td class="label" style="width: 30mm;">販売金額</td>
+                <td class="label" style="width: 30mm;">工事原価</td>
+                <td class="label" style="width: 30mm;">粗利益金額</td>
+                <td class="label" style="width: 18mm;">粗利率</td>
+            </tr>
+        </thead>
+        @foreach($sheet->amountRows as $row)
+            <tr class="{{ $row['kind'] === 'row' ? '' : 'sum' }}">
+                <td>{{ $row['name'] }}</td>
+                <td class="num">{{ $row['sale'] }}</td>
+                <td class="num">{{ $row['cost'] }}</td>
+                <td class="num">{{ $row['profit'] }}</td>
+                <td class="num">{{ $row['rate'] }}</td>
+            </tr>
+        @endforeach
+    </table>
+@else
+    <table class="wrap">
+        @foreach($sheet->bodyRows as $row)
+            <tr><td class="line">{{ $row }}</td></tr>
+        @endforeach
+    </table>
+@endif
+{{-- 追加の入力欄（種類が使う欄）と定型文。紙の住宅の様式の「（記）」の並び: 坪数・坪単価 → 定型文 → 担当者・契約予定日（段階5 §5.7。
+     5W2H の種類で使うときも本文の下に同じ並び。点検の I-5）。1 行に 2 組まで（見出しの幅 22mm で「契約予定日」が 1 行に収まる） --}}
+@foreach([\App\Support\Approval\PdfSheet::EXTRAS_BEFORE_FIXED_TEXT, \App\Support\Approval\PdfSheet::EXTRAS_AFTER_FIXED_TEXT] as $group => $keys)
+    @if($sheet->extraPairs($keys) !== [])
+        <table class="wrap">
+            <tr>
+                @foreach($sheet->extraPairs($keys) as [$label, $value])
+                    <td class="label" style="width: 22mm;">{{ $label }}</td>
+                    <td>{{ $value }}</td>
+                @endforeach
+            </tr>
+        </table>
+    @endif
+    @if($group === 0 && ($sheet->fixedText ?? '') !== '')
+        <table class="wrap">
+            <tr><td>{!! nl2br(e($sheet->fixedText)) !!}</td></tr>
+        </table>
+    @endif
+@endforeach
+@if($sheet->amountRows !== null)
+    <table class="wrap">
+        <tr><td class="mincho" style="border-bottom: none;">補足</td></tr>
+        @foreach($sheet->bodyRows as $row)
+            <tr><td class="line">{{ $row }}</td></tr>
+        @endforeach
+    </table>
+@endif
 <table class="wrap">
     <tr>
         <td style="border-top: none; text-align: right;" class="small">
