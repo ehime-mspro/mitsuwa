@@ -72,7 +72,7 @@ final class UndoTarget
             return true;
         }
 
-        return RequestSnapshot::editableFingerprint(RequestSnapshot::make($request))
+        return RequestSnapshot::currentFingerprint($request)
             !== RequestSnapshot::editableFingerprint($revision->snapshot);
     }
 }

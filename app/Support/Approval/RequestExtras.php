@@ -54,9 +54,19 @@ final class RequestExtras
      */
     public static function valuesOf(ApprovalRequest $request, ?ApprovalType $type): array
     {
+        return array_intersect_key(self::columnsOf($request), array_flip(self::usedBy($type)));
+    }
+
+    /**
+     * 申請の 4 つの列の今の値（種類の設定で絞らない。控えと同じ形＝日付は Y-m-d・坪数は文字・坪単価は数）
+     *
+     * @return array<string, string|int|null>
+     */
+    public static function columnsOf(ApprovalRequest $request): array
+    {
         $values = [];
-        foreach (self::usedBy($type) as $key) {
-            $value = $request->getAttribute($key);
+        foreach (array_keys(self::FIELDS) as $key) {
+            $value        = $request->getAttribute($key);
             $values[$key] = $value instanceof CarbonInterface ? $value->format('Y-m-d') : $value;
         }
 
@@ -80,6 +90,17 @@ final class RequestExtras
         }
 
         return $values;
+    }
+
+    /**
+     * 控えの値を 4 つの欄すべての形にする（控えに無い欄は空。差戻しの取り消しの指紋）
+     *
+     * @param mixed $extras 控えの `extras`（無ければ空）
+     * @return array<string, string|int|null>
+     */
+    public static function allOf(mixed $extras): array
+    {
+        return array_merge(array_fill_keys(array_keys(self::FIELDS), null), self::ordered($extras));
     }
 
     /** 表示（坪数「38.5坪」・坪単価「1,083,000円」・担当者はそのまま・契約予定日「2026/10/20」。空なら null） */
