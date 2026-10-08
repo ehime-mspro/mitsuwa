@@ -238,6 +238,17 @@ class OrganizationController extends Controller
             return $this->back(null, "この部門は申請の種類 {$types} 件の審査部門になっているため削除できません。先に申請種類の管理で審査部門を変えてください。");
         }
 
+        // その部門だけで使える種類は消せない（使える部門の行が CASCADE で消えると「行が無い＝全部門」になり、絞っていた種類が全部門に開く。D13）。
+        // ほかにも使える部門がある種類は、残りの部門に絞られたままなので消してよい
+        $onlyHere = ApprovalType::whereHas('departments', fn ($q) => $q->where('approval_departments.id', $approvalDepartment->id))
+            ->whereDoesntHave('departments', fn ($q) => $q->where('approval_departments.id', '!=', $approvalDepartment->id))
+            ->ordered()
+            ->pluck('name');
+
+        if ($onlyHere->isNotEmpty()) {
+            return $this->back(null, 'この部門だけで使える申請の種類（' . $onlyHere->implode('、') . '）があるため削除できません。先に申請の種類の「使える部門」を変えてください。');
+        }
+
         // 審査担当者（外部キーの CASCADE で消える）と年度ごとの次の番号（連番の行も消す）も記録に残す（設計書 §5.4）
         $before = $approvalDepartment->only(['company_id', 'name', 'short_name', 'code', 'sort_order', 'head_user_id']) + [
             'reviewer_ids' => $approvalDepartment->reviewers()->pluck('users.id')->sort()->values()->all(),
