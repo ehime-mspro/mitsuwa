@@ -363,6 +363,8 @@ function approvalRequestForm() {
         pendingTypeId: null,
         // 種類を選び直して保存すると消えるもの（{ from: 前の種類, labels: 名前の並び }。lostOnChange）
         leaving: null,
+        // 選び直す前の明細表の行（leaving と一緒に持つ。「元の種類に戻す」で並べ直さずにそのまま戻す。Task 6 の点検の I-1）
+        rowsBefore: null,
         extraLabels: {{ \Illuminate\Support\Js::from(\App\Support\Approval\RequestExtras::FIELDS) }},
         confirmSubmit: false,
         // 保存・提出の二度押し止め（Task 19 の C2）。1 回目で印を立て、2 回目からは送信を取り消す
@@ -541,8 +543,9 @@ function approvalRequestForm() {
         removeRow: function (section, index) {
             this.rows[section].splice(index, 1);
         },
-        // 種類の行の設定に合わせて並べ直す（AmountTable::forForm と同じ規則。名前を設定した行は同じ名前の行の金額を当て、自由行の位置には
-        // 自由行を順に当て、残りは後ろへ。設定から名前が消えた行は、金額があれば自由行として残す＝黙って消さない。段階5 D16）
+        // 種類の行の設定に合わせて並べ直す（AmountTable::forForm と同じ規則。名前を設定した行は同じ名前の行の金額を当て〈無ければ同じ名前の
+        // 自由行の最初の 1 つを取り込む〉、自由行の位置には自由行を順に当て、残りは後ろへ。設定から名前が消えた行は、金額があれば自由行として
+        // 残す＝黙って消さない。段階5 D16）
         mergeRows: function (layout, rows) {
             var merged = {};
             ['upper', 'lower'].forEach(function (section) {
@@ -554,6 +557,20 @@ function approvalRequestForm() {
                         fixed[row.fixed] = row;
                     } else if (row.fixed === null || String(row.sale).trim() !== '' || String(row.cost).trim() !== '') {
                         free.push({ key: ++rowSeq, fixed: null, name: row.fixed !== null ? row.fixed : row.name, sale: row.sale, cost: row.cost });
+                    }
+                });
+                // 名前を設定した行が無ければ、同じ名前の自由行（前から数えて最初の 1 つ）を取り込む。一度自由行になった「紹介料」などが、
+                // 元の種類を選び直したときに空の名前の行と並んで二重にならない（名前は前後の空白〈全角を含む〉を落として比べる＝サーバーが
+                // 保存のときに落とすのと同じ。点検の I-1）
+                names.forEach(function (name) {
+                    if (name === null || fixed.hasOwnProperty(name)) {
+                        return;
+                    }
+                    for (var i = 0; i < free.length; i++) {
+                        if (String(free[i].name || '').trim() === name) {
+                            fixed[name] = free.splice(i, 1)[0];
+                            return;
+                        }
                     }
                 });
                 var out = [];
@@ -594,6 +611,7 @@ function approvalRequestForm() {
         typeChanged: function (typeId) {
             var lost = this.lostOnChange(typeId);
             this.leaving = lost.length > 0 ? { from: this.typeId, labels: lost, subjectMode: this.subjectMode } : null;
+            this.rowsBefore = lost.length > 0 ? { upper: this.rows.upper.slice(), lower: this.rows.lower.slice() } : null;
             this.typeId = typeId;
             if (this.isTable()) {
                 this.rows = this.mergeRows(this.config().layout, this.rows);
@@ -642,17 +660,23 @@ function approvalRequestForm() {
             });
             return lost;
         },
-        // 選び直す前の種類に戻す（書いた明細表と欄は、保存するまで画面に残っている）。件名を前半と決まり文句で組み立てていたら、
-        // 決まり文句の無い種類で 1 行になった件名を組み立て直す
+        // 選び直す前の種類に戻す（書いた明細表と欄は、保存するまで画面に残っている）。明細表の行は選び直す前の行をそのまま戻す
+        // （並べ直して作り直さない。選び直した種類に無い名前の行が自由行のまま残らない。点検の I-1）。件名を前半と決まり文句で
+        // 組み立てていたら、決まり文句の無い種類で 1 行になった件名を組み立て直す
         restoreType: function () {
             var previous = this.leaving.from;
             var composed = this.leaving.subjectMode === 'split';
+            var rows = this.rowsBefore;
             this.$refs.typeSelect.value = previous;
             this.typeChanged(previous);
+            if (rows !== null) {
+                this.rows = rows;
+            }
             if (composed) {
                 this.useSuffix();
             }
             this.leaving = null;
+            this.rowsBefore = null;
         },
 
         replaceBody: function () {

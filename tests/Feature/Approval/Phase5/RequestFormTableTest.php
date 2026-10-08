@@ -44,6 +44,56 @@ class RequestFormTableTest extends TestCase
         return json_decode(json_decode('"' . substr($html, $start, $end - $start) . '"'), true);
     }
 
+    /**
+     * 描いた画面の approvalRequestForm() を node で動かす（node が無ければ飛ばす）。$steps は、`form()`（開いたばかりの画面の data）・
+     * `rowsOf(data)`（明細表の行。x-for の鍵 key も含む）・`input` を使い、結果を `out` に入れる JS
+     *
+     * @param array<string, mixed> $input
+     * @return array<string, mixed>
+     */
+    private function runForm(string $html, string $steps, array $input): array
+    {
+        $node = trim((string) shell_exec('command -v node 2>/dev/null'));
+        if ($node === '') {
+            $this->markTestSkipped('node が無いので申請書の JavaScript を動かせない');
+        }
+        $this->assertSame(1, preg_match('/<script>\s*(function approvalRequestForm\(\) \{.*?)<\/script>/su', $html, $m), 'function approvalRequestForm() の script が描かれていない');
+
+        $harness = <<<'JS'
+            const fs = require('fs');
+            const vm = require('vm');
+            const input = JSON.parse(fs.readFileSync(process.argv[1], 'utf8'));
+            const context = vm.createContext({});
+            vm.runInContext(input.script, context);
+            const form = () => {
+                const data = vm.runInContext('approvalRequestForm()', context);
+                data.$refs = { body: { value: '' }, typeSelect: { value: '' }, extra_tsubo: { value: '' }, extra_tsubo_price: { value: '' }, extra_staff: { value: '' }, extra_contract_date: { value: '' } };
+                return data;
+            };
+            const plain = (row) => ({ key: row.key, fixed: row.fixed, name: row.name, sale: row.sale, cost: row.cost });
+            const rowsOf = (data) => ({ upper: data.rows.upper.map(plain), lower: data.rows.lower.map(plain) });
+            const out = {};
+            JS;
+        $file = tempnam(sys_get_temp_dir(), 'approval-form-');
+        try {
+            file_put_contents($file, json_encode(['script' => $m[1]] + $input, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
+            $script = $harness . "\n" . $steps . "\nprocess.stdout.write(JSON.stringify(out));";
+            $output = shell_exec(sprintf('%s -e %s %s 2>&1', escapeshellarg($node), escapeshellarg($script), escapeshellarg($file)));
+        } finally {
+            unlink($file);
+        }
+        $js = json_decode((string) $output, true);
+        $this->assertIsArray($js, "node で申請書の JavaScript を動かせなかった:\n" . $output);
+
+        return $js;
+    }
+
+    /** node が返した明細表の行から、x-for の鍵（key）を除く */
+    private function withoutKeys(array $rows): array
+    {
+        return array_map(fn (array $section) => array_map(fn (array $row) => array_diff_key($row, ['key' => true]), $section), $rows);
+    }
+
     public function test_the_page_passes_the_type_settings_and_the_rows(): void
     {
         $w = $this->approvalWorld();
@@ -185,6 +235,7 @@ class RequestFormTableTest extends TestCase
                 rateLabels: input.rates.map((pair) => data.rateLabel(data.rate(pair[0], pair[1]))),
                 merged: data.mergeRows(input.layout, { upper: key(input.merge.upper), lower: key(input.merge.lower) }),
                 mergedCase: data.mergeRows(input.caseLayout, { upper: key(input.caseRows.upper), lower: key(input.caseRows.lower) }),
+                mergedAbsorb: data.mergeRows(input.absorbLayout, { upper: key(input.absorbRows.upper), lower: key(input.absorbRows.lower) }),
                 bodyAfterTable: data.$refs.body.value,
             };
             // 件名: 決まり文句のある種類で前半を入れる → 決まり文句の無い種類に選び直すと前半だけ残る
@@ -221,6 +272,15 @@ class RequestFormTableTest extends TestCase
             $this->row('足した行', false, null, 5),
             $this->row(null, false, null, null),          // 設定の自由行より多い空の自由行
         ], 'lower' => [$this->row('土地', false, 3, null), $this->row(null, false, null, null)]];
+        // 自由行の名前が種類の名前と同じ（名前を設定した行が無ければ、最初の 1 つを名前を設定した行にする。Task 6 の点検の I-1）
+        $absorbTable = ['subtotal' => false, 'upper' => [
+            $this->row('外構', false, 1, null),
+            $this->row('工事請負金額', false, 5, null),   // 同じ名前の名前を設定した行が無い（取り込む）
+            $this->row('工事請負金額', false, 6, null),   // 2 つ目は自由行のまま
+            $this->row('紹介料', true, 7, null),
+            $this->row('紹介料', false, 8, null),         // 同じ名前の名前を設定した行がある（自由行のまま）
+        ], 'lower' => [$this->row('　土地 ', false, 3, 4)]];   // 前後の空白を落として比べる
+        $absorbLayout = ['subtotal' => false, 'upper' => ['工事請負金額', null, '紹介料'], 'lower' => ['土地', null]];
         $toJs = fn (array $rows): array => array_map(fn (array $r): array => [
             'fixed' => $r['fixed'] ? $r['name'] : null, 'name' => $r['fixed'] ? '' : (string) $r['name'],
             'sale'  => $r['sale'] === null ? '' : (string) $r['sale'], 'cost' => $r['cost'] === null ? '' : (string) $r['cost'],
@@ -242,6 +302,7 @@ class RequestFormTableTest extends TestCase
             file_put_contents($file, json_encode([
                 'script' => $m[1], 'tableType' => $type->id, 'plainType' => $plain->id, 'rows' => $rows, 'merge' => $merge, 'layout' => $layout,
                 'caseLayout' => $caseLayout, 'caseRows' => ['upper' => $toJs($caseTable['upper']), 'lower' => $toJs($caseTable['lower'])],
+                'absorbLayout' => $absorbLayout, 'absorbRows' => ['upper' => $toJs($absorbTable['upper']), 'lower' => $toJs($absorbTable['lower'])],
                 'parses' => $parses, 'rates' => $rates,
                 'body' => BodyTemplate::DEFAULT,
             ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
@@ -279,6 +340,19 @@ class RequestFormTableTest extends TestCase
             ['upper' => $toJs($expected['upper']), 'lower' => $toJs($expected['lower'])],
             array_map(fn (array $rows) => array_map(fn (array $row) => array_diff_key($row, ['key' => true]), $rows), $js['mergedCase'])
         );
+        $absorbed = array_map(fn (array $rows) => array_map(fn (array $row) => array_diff_key($row, ['key' => true]), $rows), $js['mergedAbsorb']);
+        $this->assertSame([
+            'upper' => [
+                ['fixed' => '工事請負金額', 'name' => '', 'sale' => '5', 'cost' => ''],
+                ['fixed' => null, 'name' => '外構', 'sale' => '1', 'cost' => ''],
+                ['fixed' => '紹介料', 'name' => '', 'sale' => '7', 'cost' => ''],
+                ['fixed' => null, 'name' => '工事請負金額', 'sale' => '6', 'cost' => ''],
+                ['fixed' => null, 'name' => '紹介料', 'sale' => '8', 'cost' => ''],
+            ],
+            'lower' => [['fixed' => '土地', 'name' => '', 'sale' => '3', 'cost' => '4'], ['fixed' => null, 'name' => '', 'sale' => '', 'cost' => '']],
+        ], $absorbed);
+        $expected = AmountTable::forForm($absorbLayout, $absorbTable);
+        $this->assertSame(['upper' => $toJs($expected['upper']), 'lower' => $toJs($expected['lower'])], $absorbed, '自由行の名前が種類の名前と同じとき、画面とサーバーの並べ直しが同じ');
 
         // 並べ直し（AmountTable::forForm と同じ規則。D16）
         $this->assertSame([
@@ -303,5 +377,125 @@ class RequestFormTableTest extends TestCase
             'typeId' => (string) $type->id, 'select' => (string) $type->id, 'leaving' => null, 'sale' => $server['total']['sale'], 'isTable' => true,
             'subject' => ['split', '山田様請負新築工事契約の件'],   // 件名も前半と決まり文句の組み立てに戻る
         ], $js['afterRestore']);
+    }
+
+    /**
+     * 明細表の種類どうしで選び直しても、名前を設定した行が「空の名前の行＋金額の入った同じ名前の自由行」に分かれない（D16・計画の
+     * Review Focus 3「書いたまま戻れる」）。「元の種類に戻す」は選び直す前の行をそのまま戻し、手で元の種類を選び直したときは
+     * 同じ名前の自由行を名前を設定した行に取り込む（Task 6 の点検の I-1）
+     */
+    public function test_choosing_a_table_type_again_does_not_double_the_named_rows(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $type  = $this->housingContractType($w);
+        // 追加・少額工事契約（前半: 工事請負金額・自由行 5 つ／後半なし／坪数・坪単価を使わない。要件 5.5.7 の 2 つ目）
+        $small = $this->housingContractType($w, [
+            'name'           => '住宅の契約用（追加・少額工事契約）',
+            'table_layout'   => ['subtotal' => false, 'upper' => ['工事請負金額', null, null, null, null, null], 'lower' => []],
+            'subject_suffix' => '様追加・少額工事契約の件', 'uses_tsubo' => false, 'uses_tsubo_price' => false,
+        ]);
+        $html = $this->actingAs($w['applicant'])->get(route('approvals.requests.create'))->assertOk()->getContent();
+
+        $js = $this->runForm($html, <<<'JS'
+            // 9/17 に利用者が見た見本の数を入れる
+            const fill = (data) => {
+                data.typeChanged(String(input.type));
+                const upper = data.rows.upper;
+                upper[0].sale = '28,500,000'; upper[0].cost = '22,000,000';
+                upper[1].name = 'オプション工事'; upper[1].sale = '1,200,000'; upper[1].cost = '850,000';
+                upper[2].sale = '0'; upper[2].cost = '300,000';
+                data.rows.lower[0].sale = '12,000,000'; data.rows.lower[0].cost = '10,500,000';
+            };
+
+            // 坪数を入れてから、坪数を使わない明細表の種類に選び直す（知らせが出る）→「元の種類に戻す」
+            let data = form();
+            fill(data);
+            data.$refs.extra_tsubo.value = '38.5';
+            out.before = rowsOf(data);
+            out.total = data.total();
+            data.typeChanged(String(input.small));
+            out.leaving = data.leaving === null ? null : data.leaving.labels;
+            data.rows.upper[0].sale = '1';   // 選び直した種類で直した数は、戻すと選び直す前の数になる
+            data.restoreType();
+            out.restored = rowsOf(data);
+            out.restoredType = [data.typeId, data.leaving];
+
+            // 知らせの出ない選び直し（追加の欄に値が無い）で、手で行き来する
+            data = form();
+            fill(data);
+            data.typeChanged(String(input.small));
+            out.leavingSmall = data.leaving;
+            out.small = rowsOf(data);
+            data.typeChanged(String(input.type));
+            out.back = rowsOf(data);
+            out.backTotal = data.total();
+            JS, ['type' => $type->id, 'small' => $small->id]);
+
+        $empty = ['fixed' => null, 'name' => '', 'sale' => '', 'cost' => ''];
+
+        // 「元の種類に戻す」: 選び直す前の行がそのまま戻る（並べ直して作り直さない）
+        $this->assertSame(['坪数'], $js['leaving']);
+        $this->assertSame($js['before'], $js['restored']);
+        $this->assertSame([(string) $type->id, null], $js['restoredType']);
+
+        // 手で行き来: 選び直した種類に無い名前の行は自由行になり、元の種類を選ぶと名前を設定した行に戻る（二重にならない・合計は同じ）
+        $this->assertNull($js['leavingSmall']);
+        $this->assertSame([
+            'upper' => [
+                ['fixed' => '工事請負金額', 'name' => '', 'sale' => '28,500,000', 'cost' => '22,000,000'],
+                ['fixed' => null, 'name' => 'オプション工事', 'sale' => '1,200,000', 'cost' => '850,000'],
+                ['fixed' => null, 'name' => '紹介料', 'sale' => '0', 'cost' => '300,000'],
+                $empty, $empty, $empty,
+            ],
+            'lower' => [['fixed' => null, 'name' => '土地契約金額', 'sale' => '12,000,000', 'cost' => '10,500,000'], $empty],
+        ], $this->withoutKeys($js['small']));
+        $this->assertSame([
+            'upper' => [
+                ['fixed' => '工事請負金額', 'name' => '', 'sale' => '28,500,000', 'cost' => '22,000,000'],
+                ['fixed' => null, 'name' => 'オプション工事', 'sale' => '1,200,000', 'cost' => '850,000'],
+                ['fixed' => '紹介料', 'name' => '', 'sale' => '0', 'cost' => '300,000'],
+                $empty, $empty, $empty,   // 選び直した種類の自由行の位置の空の行は残る（空の自由行は消さない規則のまま）
+            ],
+            'lower' => [['fixed' => '土地契約金額', 'name' => '', 'sale' => '12,000,000', 'cost' => '10,500,000'], $empty],
+        ], $this->withoutKeys($js['back']));
+        $this->assertSame($js['total'], $js['backTotal']);
+    }
+
+    /**
+     * コピーして作成で種類が空になった（元の種類が自分の部門で使えない）申請は、開いたときに行がすべて自由行になっている。そこで
+     * 同じ名前の行を持つ種類を選ぶと、名前の合う行は名前を設定した行に並ぶ（設計書 §5.6・D16。Task 6 の点検の I-1）
+     */
+    public function test_a_copy_without_its_type_lines_up_the_rows_when_a_type_is_chosen(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $type   = $this->housingContractType($w);
+        $source = $this->draftFor($w, ['type_id' => $type->id, 'amount_table' => [
+            'subtotal' => true,
+            'upper'    => [$this->row('工事請負金額', true, 28500000, 22000000), $this->row('外構', false, -300000, null), $this->row('紹介料', true, null, 300000)],
+            'lower'    => [$this->row('土地契約金額', true, 12000000, null)],
+        ]]);
+        // 元の種類が自分の部門で使えなくなり、同じ行の種類を作り直した
+        $type->departments()->attach($this->approvalDepartment($w['company'], ['name' => 'ミツワ不動産'])->id);
+        $remade = $this->housingContractType($w, ['name' => '住宅の契約用（作り直した種類）']);
+
+        $html = $this->actingAs($w['applicant'])->get(route('approvals.requests.create', ['copy' => $source->id]))->assertOk()->getContent();
+        $this->assertSame([null, null, null], array_column($this->jsValue($html, 'var tableRows = ')['upper'], 'fixed'), '種類が空なので、開いたときは行がすべて自由行');
+
+        $js = $this->runForm($html, <<<'JS'
+            const data = form();
+            data.typeChanged(String(input.type));
+            out.rows = rowsOf(data);
+            JS, ['type' => $remade->id]);
+
+        $this->assertSame([
+            'upper' => [
+                ['fixed' => '工事請負金額', 'name' => '', 'sale' => '28,500,000', 'cost' => '22,000,000'],
+                ['fixed' => null, 'name' => '外構', 'sale' => '-300,000', 'cost' => ''],
+                ['fixed' => '紹介料', 'name' => '', 'sale' => '', 'cost' => '300,000'],
+            ],
+            'lower' => [['fixed' => '土地契約金額', 'name' => '', 'sale' => '12,000,000', 'cost' => ''], ['fixed' => null, 'name' => '', 'sale' => '', 'cost' => '']],
+        ], $this->withoutKeys($js['rows']));
     }
 }

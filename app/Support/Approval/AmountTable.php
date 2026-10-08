@@ -48,7 +48,9 @@ final class AmountTable
     /**
      * 申請の画面に出す行（D16）。種類の今の設定の並びに、申請が持つ行を当てる。
      *
-     * - 名前を設定した行は、申請の同じ名前の名前を設定した行の金額を当てる
+     * - 名前を設定した行は、申請の同じ名前の名前を設定した行の金額を当てる。申請に無ければ、同じ名前の自由行（前から数えて
+     *   最初の 1 つ）を取り込む（一度自由行になった行が、種類を選び直したときやコピーで種類を選んだときに、空の名前の行と並んで
+     *   二重にならない。画面の JS の mergeRows・保存の fromInput も同じ規則）
      * - 種類の自由行の位置には、申請の自由行を順に当てる（足りなければ空の自由行。要件 5.5.4「最初から空欄で出す」）
      * - 残った申請の自由行は、その側の後ろへ。種類から名前が消えた行は、金額が入っていれば自由行として残す（黙って消さない）
      *
@@ -69,6 +71,13 @@ final class AmountTable
                     $fixed[$row['name']] = $row;
                 } elseif (! $row['fixed'] || $row['sale'] !== null || $row['cost'] !== null) {
                     $free[] = ['name' => $row['name'], 'fixed' => false, 'sale' => $row['sale'], 'cost' => $row['cost']];
+                }
+            }
+            // 名前を設定した行が申請に無ければ、同じ名前の自由行（最初の 1 つ）を取り込む
+            foreach ($names as $name) {
+                $at = ($name === null || isset($fixed[$name])) ? null : self::firstFreeRow($free, $name);
+                if ($at !== null) {
+                    $fixed[$name] = array_splice($free, $at, 1)[0];
                 }
             }
 
@@ -115,7 +124,9 @@ final class AmountTable
      *
      * - `fixed` に種類の名前を設定した行の名前が来た行（同じ名前は 1 回だけ）→ 名前を設定した行（名前は種類のもの）
      * - ほかの行 → 自由行（名前は打ったもの）
-     * - 送られてこなかった名前を設定した行は、その側の後ろに空で足す（古い画面から送ったときなど）
+     * - 送られてこなかった名前を設定した行は、同じ名前の自由行（前から数えて最初の 1 つ）があればその行を名前を設定した行にする
+     *   （forForm・画面の mergeRows と同じ規則。古い画面から送ったときなどに、空の名前の行と同じ名前の自由行に分かれない）。
+     *   それも無ければ、その側の後ろに空で足す
      *
      * @param array{subtotal?: bool, upper?: list<?string>, lower?: list<?string>} $layout
      * @param array{upper?: list<array<string, mixed>>, lower?: list<array<string, mixed>>} $clean cleanInput() の形（検査済み）
@@ -142,8 +153,14 @@ final class AmountTable
                 }
             }
 
+            // 送られてこなかった名前を設定した行: 同じ名前の自由行（最初の 1 つ）をその位置のまま名前を設定した行にする。無ければ後ろに空で足す
             foreach ($remaining as $name) {
-                $rows[] = ['name' => $name, 'fixed' => true, 'sale' => null, 'cost' => null];
+                $at = self::firstFreeRow($rows, $name);
+                if ($at !== null) {
+                    $rows[$at]['fixed'] = true;
+                } else {
+                    $rows[] = ['name' => $name, 'fixed' => true, 'sale' => null, 'cost' => null];
+                }
             }
 
             $table[$section] = $rows;
@@ -267,6 +284,22 @@ final class AmountTable
         }
 
         return $rows;
+    }
+
+    /**
+     * 名前を設定した行が申請に無いときに取り込む、同じ名前の自由行（前から数えて最初の 1 つ）の位置（forForm・fromInput。D16）
+     *
+     * @param list<array{name: ?string, fixed: bool, sale: ?int, cost: ?int}> $rows
+     */
+    private static function firstFreeRow(array $rows, string $name): ?int
+    {
+        foreach ($rows as $at => $row) {
+            if (! $row['fixed'] && $row['name'] === $name) {
+                return $at;
+            }
+        }
+
+        return null;
     }
 
     /** @return array{name: null, fixed: false, sale: null, cost: null} */

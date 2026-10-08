@@ -182,6 +182,28 @@ class AmountTableTest extends TestCase
         $this->assertSame([self::row(null, false, null, null), self::row('土地契約金額', true, null, null)], $table['lower']);
     }
 
+    /** 名前を設定した行が送られてこなければ、同じ名前の自由行（最初の 1 つ）を名前を設定した行にする（forForm と同じ規則。D16） */
+    public function test_the_server_takes_a_free_row_of_the_same_name_when_the_fixed_row_is_not_sent(): void
+    {
+        $table = AmountTable::fromInput(self::LAYOUT, AmountTable::cleanInput([
+            'upper' => [
+                ['name' => '紹介料', 'sale' => '50', 'cost' => null],
+                ['fixed' => '工事請負金額', 'sale' => '1000', 'cost' => '600'],
+                ['name' => '工事請負金額', 'sale' => '7', 'cost' => null],
+                ['name' => '紹介料', 'sale' => '9', 'cost' => null],
+            ],
+            'lower' => [['name' => '　土地契約金額 ', 'sale' => '3', 'cost' => null]],
+        ]));
+
+        $this->assertSame([
+            self::row('紹介料', true, 50, null),           // 送られてこなかった名前を設定した行に、同じ名前の自由行を当てる（その位置のまま）
+            self::row('工事請負金額', true, 1000, 600),
+            self::row('工事請負金額', false, 7, null),     // 名前を設定した行が送られていれば、同じ名前の自由行は自由行のまま
+            self::row('紹介料', false, 9, null),           // 当てるのは前から数えて最初の 1 つだけ
+        ], $table['upper']);
+        $this->assertSame([self::row('土地契約金額', true, 3, null)], $table['lower'], '名前は前後の空白を落として比べる・後ろに空の行を足さない');
+    }
+
     public function test_a_new_request_shows_the_rows_of_the_layout(): void
     {
         $this->assertSame([
@@ -221,6 +243,39 @@ class AmountTableTest extends TestCase
         // 名前が設定から消えた行に金額が無ければ残さない
         $renamed = AmountTable::forForm(['subtotal' => false, 'upper' => ['新しい名前'], 'lower' => []], ['upper' => [self::row('古い名前', true, null, null)]]);
         $this->assertSame([self::row('新しい名前', true, null, null)], $renamed['upper']);
+    }
+
+    /**
+     * 名前を設定した行が申請に無ければ、同じ名前の自由行（前から数えて最初の 1 つ）を名前を設定した行にする（一度自由行になった
+     * 「紹介料」などが、元の種類に戻したときやコピーで種類を選んだときに、空の名前の行と並んで二重にならない。D16・§5.6）
+     */
+    public function test_the_form_takes_a_free_row_of_the_same_name_into_the_fixed_row(): void
+    {
+        $stored = [
+            'upper' => [
+                self::row('外構', false, 1, null),
+                self::row('紹介料', false, 50, null),
+                self::row('紹介料', false, 60, null),
+                self::row('工事請負金額', true, 1000, null),
+                self::row('工事請負金額', false, 7, null),
+            ],
+            'lower' => [self::row(' 土地契約金額　', false, 3, null)],
+        ];
+
+        $this->assertSame([
+            'subtotal' => true,
+            'upper'    => [
+                self::row('工事請負金額', true, 1000, null),
+                self::row('外構', false, 1, null),
+                self::row('紹介料', true, 50, null),        // 同じ名前の自由行を取り込む
+                self::row('紹介料', false, 60, null),       // 取り込むのは最初の 1 つだけ
+                self::row('工事請負金額', false, 7, null),  // 同じ名前の名前を設定した行があれば、そちらが先（自由行のまま）
+            ],
+            'lower' => [self::row('土地契約金額', true, 3, null), self::row(null, false, null, null)],
+        ], AmountTable::forForm(self::LAYOUT, $stored));
+
+        // 種類が無い（コピーで空にした・5W2H の種類）ときに自由行になった行も、明細表の種類を選べば名前を設定した行に戻る
+        $this->assertSame(AmountTable::forForm(self::LAYOUT, self::sample()), AmountTable::forForm(self::LAYOUT, AmountTable::forForm([], self::sample())));
     }
 
     public function test_broken_rows_are_ignored(): void
