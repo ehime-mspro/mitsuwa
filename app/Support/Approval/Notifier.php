@@ -14,7 +14,6 @@ use App\Models\ApprovalHistory;
 use App\Models\ApprovalMailDomain;
 use App\Models\ApprovalNotice;
 use App\Models\ApprovalRequest;
-use App\Models\ApprovalRevision;
 use App\Models\ApprovalSetting;
 use App\Models\ApprovalStep;
 use App\Models\User;
@@ -254,7 +253,7 @@ final class Notifier
      */
     private static function context(ApprovalRequest $request): array
     {
-        $snapshot = ApprovalRevision::where('request_id', $request->id)->where('round', $request->round)->first()?->snapshot ?? [];
+        $snapshot = $request->submittedRevision()?->snapshot ?? [];
 
         return [
             'subject'    => ApprovalMailable::oneLine($snapshot['subject'] ?? $request->subject),

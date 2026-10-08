@@ -36,6 +36,8 @@ class Phase2TablesTest extends TestCase
         'approval_settings' => ['mail_last_sent_at', 'mail_last_failed_at', 'mail_last_failed_to'],   // 3a（Phase3TablesTest）
         'approval_steps'    => ['stamp_label', 'stamp_text'],                                         // 4a（Phase4aTablesTest）
         'approval_download_logs' => ['filters', 'request_count'],                                    // 4b（Phase4bTablesTest）
+        'approval_types'    => ['body_form', 'table_layout', 'subject_suffix', 'uses_tsubo', 'uses_tsubo_price', 'uses_staff', 'uses_contract_date', 'fixed_text'],   // 5a（Phase5aTablesTest）
+        'approval_requests' => ['amount_table', 'tsubo', 'tsubo_price', 'staff', 'contract_date', 'fixed_text'],   // 5a（Phase5aTablesTest）
     ];
 
     /** あとの段階が NULL を許すように変えた 2a の列（その段階の表のテストが見る。ここでは NULL を許すものとして比べる）。表 => 列 */

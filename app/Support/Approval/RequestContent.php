@@ -6,6 +6,7 @@ use App\Models\ApprovalAttachment;
 use App\Models\ApprovalRequest;
 use App\Models\ApprovalRevision;
 use App\Models\User;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Collection;
 
 /**
@@ -51,7 +52,7 @@ final class RequestContent
 
         // 控えは提出と同じトランザクションで作るので、提出した申請には必ずある（一度も提出していない下書きは
         // 申請者しか見られない）。見つからなければ今の中身へ落とさずに 404 にする（分からないときは見せない）
-        $revision = ApprovalRevision::where('request_id', $request->id)->where('round', $request->round)->firstOrFail();
+        $revision = $request->submittedRevision() ?? throw (new ModelNotFoundException())->setModel(ApprovalRevision::class);
 
         return self::fromRevision($request, $revision);
     }

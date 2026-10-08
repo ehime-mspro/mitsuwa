@@ -46,7 +46,7 @@ final class LedgerRow
     public static function for(User $viewer, ApprovalRequest $request): self
     {
         $own      = $request->user_id === $viewer->id;
-        $snapshot = $own ? [] : ($request->lastRevision?->snapshot ?? []);
+        $snapshot = $own ? [] : ($request->submittedRevision()?->snapshot ?? []);
         $steps    = $request->currentSteps()->keyBy(fn (ApprovalStep $s) => $s->kind->value);
         $review    = self::done($steps->get(ApprovalStepKind::Review->value));
         $president = self::done($steps->get(ApprovalStepKind::President->value));

@@ -183,7 +183,11 @@ class Phase2ModelsTest extends TestCase
     public function test_state_columns_are_not_mass_assignable(): void
     {
         $this->assertSame(
-            ['user_id', 'department_id', 'type_id', 'subject', 'amount', 'schedule', 'body', 'related_numbers'],
+            [
+                'user_id', 'department_id', 'type_id', 'subject', 'amount', 'schedule', 'body', 'related_numbers',
+                // 段階5 の中身（明細表と追加の欄・定型文。下書きと差戻し中に申請者が直す中身。状態の列ではない）
+                'amount_table', 'tsubo', 'tsubo_price', 'staff', 'contract_date', 'fixed_text',
+            ],
             (new ApprovalRequest())->getFillable()
         );
     }
