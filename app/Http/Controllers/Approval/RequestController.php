@@ -12,10 +12,13 @@ use App\Models\ApprovalRevision;
 use App\Models\ApprovalStep;
 use App\Models\ApprovalType;
 use App\Models\User;
+use App\Support\Approval\AmountTable;
 use App\Support\Approval\Assignees;
 use App\Support\Approval\FormInput;
 use App\Support\Approval\RelatedNumbers;
 use App\Support\Approval\RequestContent;
+use App\Support\Approval\RequestExtras;
+use App\Support\Approval\RequestFields;
 use App\Support\Approval\RequestPermissions;
 use App\Support\Approval\RequestSnapshot;
 use App\Support\Approval\RequestVisibility;
@@ -250,6 +253,7 @@ class RequestController extends Controller
 
     /**
      * 形の検査（下書きは途中でも保存できる。D13）。そろっているかは提出のとき SubmitChecker が見る。
+     * 返すのは保存する中身の列（明細表の種類は明細表から金額を計算し、使わない追加の欄は空・定型文は種類から写す。RequestFields）。
      *
      * ⚠ ルールは literal の配列で書く（JapaneseValidationMessagesTest の走査が和名の漏れを見る）。
      *
@@ -260,18 +264,24 @@ class RequestController extends Controller
         $user = $request->user();
 
         $request->merge([
-            'amount'          => self::normalizeAmount($request->input('amount')),
+            'amount'          => FormInput::digits($request->input('amount'), FormInput::YEN),
             'related_numbers' => RelatedNumbers::clean(is_array($request->input('related_numbers')) ? $request->input('related_numbers') : []),
         ]);
+        RequestFields::prepare($request);
         FormInput::unifyNewlines($request, 'body');
 
-        // 選べる種類は利用中の種類と、この申請が今使っている種類（停止していても保存はできる。D10）
-        $typeIds = ApprovalType::active()->pluck('id')->push($current?->type_id)->filter()->all();
+        $memberOf = $user->approvalDepartments()->pluck('approval_departments.id')->all();
+        // 選べる種類は、自分の所属部門のどれかで使える利用中の種類と、この申請が今使っている種類（停止していても、使える部門から
+        // 外れても保存はできる。D10・段階5 D13。提出のとき SubmitChecker が見る）
+        $typeIds = ApprovalType::active()->usableIn($memberOf)->pluck('id')->push($current?->type_id)->filter()->all();
         // 選べる申請部門は自分の所属部門と、この申請が今使っている部門（提出のとき SubmitChecker が所属を見る）
-        $departmentIds = $user->approvalDepartments()->pluck('approval_departments.id')->push($current?->department_id)->filter()->all();
+        $departmentIds = collect($memberOf)->push($current?->department_id)->filter()->all();
+        // 明細表の種類の本文は補足（エラー文の名前を画面の見出しに合わせる。点検の M-7）
+        $typeId    = $request->input('type_id');
+        $bodyLabel = is_string($typeId) && ctype_digit($typeId) && ApprovalType::find((int) $typeId)?->usesTable() ? '補足' : '重点ポイント（5W2H）';
 
         try {
-            return $request->validate([
+            $validated = $request->validate([
                 'type_id'           => ['nullable', 'integer', Rule::in($typeIds)],
                 'department_id'     => ['nullable', 'integer', Rule::in($departmentIds)],
                 'subject'           => ['nullable', 'string', 'max:100'],
@@ -280,6 +290,18 @@ class RequestController extends Controller
                 'body'              => ['nullable', 'string', 'max:20000'],
                 'related_numbers'   => ['array', 'max:' . RelatedNumbers::MAX],
                 'related_numbers.*' => ['string', 'regex:' . RelatedNumbers::PATTERN],
+                // 明細表（明細表の種類だけ使う。形は AmountTable::cleanInput() でそろえてある）・追加の入力欄（種類が使う欄だけ保存する）
+                'amount_table'          => ['array'],
+                'amount_table.upper'    => ['array', 'max:' . AmountTable::MAX_ROWS],
+                'amount_table.lower'    => ['array', 'max:' . AmountTable::MAX_ROWS],
+                'amount_table.*.*.name' => ['nullable', 'string', 'max:' . AmountTable::NAME_MAX],
+                'amount_table.*.*.fixed' => ['nullable', 'string'],
+                'amount_table.*.*.sale' => ['bail', 'nullable', 'integer', 'min:-999999999999', 'max:999999999999'],
+                'amount_table.*.*.cost' => ['bail', 'nullable', 'integer', 'min:-999999999999', 'max:999999999999'],
+                'tsubo'                 => ['bail', 'nullable', 'numeric', 'decimal:0,2', 'min:0', 'max:99999.99'],
+                'tsubo_price'           => ['bail', 'nullable', 'integer', 'min:0', 'max:999999999999'],
+                'staff'                 => ['nullable', 'string', 'max:50'],
+                'contract_date'         => ['bail', 'nullable', 'date_format:Y-m-d', 'after_or_equal:2000-01-01', 'before_or_equal:2099-12-31'],
             ], [
                 'type_id.in'              => '選んだ申請の種類は使えません。選び直してください。',
                 'department_id.in'        => '申請部門は、自分の所属部門から選んでください。',
@@ -287,36 +309,67 @@ class RequestController extends Controller
                 'amount.max'              => '金額は 999,999,999,999 円以下で入力してください。',
                 'related_numbers.max'     => '関連する決裁No は ' . RelatedNumbers::MAX . ' 個までです。',
                 'related_numbers.*.regex' => '関連する決裁No「:input」の形が違います（例: R8-J-001）。',
+                'amount_table.upper.max'  => '明細表の前半の行は ' . AmountTable::MAX_ROWS . ' 行までです。',
+                'amount_table.lower.max'  => '明細表の後半の行は ' . AmountTable::MAX_ROWS . ' 行までです。',
+                'amount_table.*.*.name.max'   => '明細表の項目名は ' . AmountTable::NAME_MAX . ' 文字以内で入力してください。',
+                'amount_table.*.*.sale.integer' => '明細表の販売金額「:input」は数で入力してください（マイナスも入れられます）。',
+                'amount_table.*.*.sale.min'   => '明細表の販売金額は 12 桁までで入力してください。',
+                'amount_table.*.*.sale.max'   => '明細表の販売金額は 12 桁までで入力してください。',
+                'amount_table.*.*.cost.integer' => '明細表の工事原価「:input」は数で入力してください（マイナスも入れられます）。',
+                'amount_table.*.*.cost.min'   => '明細表の工事原価は 12 桁までで入力してください。',
+                'amount_table.*.*.cost.max'   => '明細表の工事原価は 12 桁までで入力してください。',
+                'tsubo.numeric'           => '坪数は数で入力してください（例: 38.5）。',
+                'tsubo.decimal'           => '坪数は小数第 2 位までで入力してください。',
+                'tsubo.min'               => '坪数は 0 以上で入力してください。',
+                'tsubo.max'               => '坪数は 99,999.99 以下で入力してください。',
+                'tsubo_price.integer'     => '坪単価は円の数で入力してください。',
+                'tsubo_price.min'         => '坪単価は 0 以上で入力してください。',
+                'tsubo_price.max'         => '坪単価は 999,999,999,999 円以下で入力してください。',
+                'staff.max'               => '担当者は 50 文字以内で入力してください。',
+                'contract_date.date_format'     => '契約予定日は日付で入力してください。',
+                'contract_date.after_or_equal'  => '契約予定日は 2000 年から 2099 年の日付で入力してください。',
+                'contract_date.before_or_equal' => '契約予定日は 2000 年から 2099 年の日付で入力してください。',
             ], [
                 'type_id'       => '申請の種類',
                 'department_id' => '申請部門',
-                'body'          => '重点ポイント（5W2H）',
+                'body'          => $bodyLabel,
+                'amount_table'          => '明細表',
+                'amount_table.upper'    => '明細表の前半の行',
+                'amount_table.lower'    => '明細表の後半の行',
+                'amount_table.*.*.name' => '明細表の項目名',
+                'amount_table.*.*.fixed' => '明細表の行',
+                'amount_table.*.*.sale' => '販売金額',
+                'amount_table.*.*.cost' => '工事原価',
+                'tsubo'                 => '坪数',
+                'tsubo_price'           => '坪単価',
+                'staff'                 => '担当者',
+                'contract_date'         => '契約予定日',
             ]);
+
+            $columns = RequestFields::columns($validated, isset($validated['type_id']) ? ApprovalType::find($validated['type_id']) : null);
+            $error   = RequestFields::totalError($columns['amount_table']);
+            if ($error !== null) {
+                throw ValidationException::withMessages(['amount_table' => $error]);
+            }
+
+            return $columns;
         } catch (ValidationException $e) {
             throw $e->redirectTo($redirectTo);
         }
     }
 
-    /** 金額の入力を数字だけにそろえる（全角・カンマ・「円」・「¥」・空白を落とす）。数字でなければ検査で断る */
-    private static function normalizeAmount(mixed $value): mixed
-    {
-        if (! is_string($value)) {
-            return $value;
-        }
-
-        $digits = str_replace([',', '円', '¥', '￥', ' '], '', mb_convert_kana($value, 'as'));
-
-        return $digits === '' ? null : $digits;
-    }
-
-    /** コピーして作成で写す中身（設計書 §5.6。添付は写さない） */
+    /**
+     * コピーして作成で写す中身（設計書 §5.6。添付は写さない）。明細表・追加の欄も写す（段階5 §5.6。明細表は画面を描くときに
+     * 種類の今の行の設定に合わせて並べ直す＝AmountTable::forForm。定型文は保存のときに種類から写すので写さない）
+     */
     private function copiedFields(ApprovalRequest $source, User $user): array
     {
-        $typeUsable       = $source->type_id !== null && ApprovalType::active()->whereKey($source->type_id)->exists();
-        $departmentUsable = $source->department_id !== null && $user->approvalDepartments()->whereKey($source->department_id)->exists();
+        $memberOf         = $user->approvalDepartments()->pluck('approval_departments.id')->all();
+        $typeUsable       = $source->type_id !== null && ApprovalType::active()->usableIn($memberOf)->whereKey($source->type_id)->exists();
+        $departmentUsable = $source->department_id !== null && in_array($source->department_id, $memberOf, true);
 
         return [
-            // 停止した種類・今は所属していない部門は空にして選び直してもらう
+            // 停止した種類・自分の部門で使えない種類・今は所属していない部門は空にして選び直してもらう
             'type_id'         => $typeUsable ? $source->type_id : null,
             'department_id'   => $departmentUsable ? $source->department_id : null,
             'subject'         => $source->subject,
@@ -324,20 +377,27 @@ class RequestController extends Controller
             'schedule'        => $source->schedule,
             'body'            => $source->body,
             'related_numbers' => $source->related_numbers ?? [],
+            'amount_table'    => $source->amount_table,
+            'tsubo'           => $source->tsubo,
+            'tsubo_price'     => $source->tsubo_price,
+            'staff'           => $source->staff,
+            'contract_date'   => $source->contract_date?->format('Y-m-d'),
         ];
     }
 
     /** @return array<string, mixed> */
     private function formData(ApprovalRequest $approvalRequest, User $user): array
     {
-        $types = ApprovalType::active()->ordered()->get();
-        // 停止した種類を使っている申請は、その種類も選択肢に残す（保存で消えないように。D10）
+        $departments = $user->approvalDepartments()->with('company')->orderBy('approval_departments.sort_order')->get();
+        $memberOf    = $departments->pluck('id')->all();
+
+        // 種類は、自分の所属部門のどれかで使える利用中の種類（段階5 D13）
+        $types = ApprovalType::active()->usableIn($memberOf)->ordered()->get();
+        // 停止した種類・使える部門から外れた種類を使っている申請は、その種類も選択肢に残す（保存で消えないように。D10）
         if ($approvalRequest->type_id !== null && ! $types->contains('id', $approvalRequest->type_id)) {
             $types->push($approvalRequest->type()->firstOrFail());
         }
 
-        $departments = $user->approvalDepartments()->with('company')->orderBy('approval_departments.sort_order')->get();
-        $memberOf    = $departments->pluck('id')->all();
         // 今は所属していない部門を使っている申請も同じ（提出のときに選び直してもらう）
         if ($approvalRequest->department_id !== null && ! in_array($approvalRequest->department_id, $memberOf, true)) {
             $departments->push($approvalRequest->department()->with('company')->firstOrFail());
@@ -347,6 +407,15 @@ class RequestController extends Controller
             'approvalRequest' => $approvalRequest,
             'types'           => $types,
             'typeHeadings'    => $types->mapWithKeys(fn (ApprovalType $type) => [$type->id => $type->headings])->all(),
+            // 種類ごとの本文の形・明細表の行の設定・件名の決まり文句・使う追加の欄・定型文（画面の JS が種類を選び直したときに使う。段階5 §5.5）
+            'typeConfigs'     => $types->mapWithKeys(fn (ApprovalType $type) => [$type->id => [
+                'form'      => $type->body_form->value,
+                'layout'    => $type->table_layout ?? ['subtotal' => false, 'upper' => [], 'lower' => []],
+                'suffix'    => $type->subject_suffix ?? '',
+                'uses'      => RequestExtras::usedBy($type),
+                'fixedText' => $type->fixed_text ?? '',
+            ]])->all(),
+            'tableRows'       => $this->tableRows($approvalRequest),
             'departments'     => $departments,
             'memberOf'        => $memberOf,
             'isPresident'     => $user->isApprovalPresident(),
@@ -363,6 +432,41 @@ class RequestController extends Controller
                 ? $approvalRequest->attachments()->get()->map->listItem()->all()
                 : [],
         ];
+    }
+
+    /**
+     * 画面の明細表の行（form 用。名前を設定した行は fixed に名前・金額はカンマ付きの文字）。断られて戻ったときは、明細表の種類を
+     * 選んで送った値のまま（打った文字を出す）。そうでなければ、種類の今の行の設定に合わせて並べ直す（AmountTable::forForm。段階5 D16）
+     *
+     * ⚠ 5W2H の種類・種類なしを選んで断られたときは、画面は明細表の欄を押せなくして送っていない（RequestFields::prepare が空の表を
+     *   入れるので old は空の表）。打った値の道に入らず保存してある表を出す（画面から消さない。明細表の種類に選び直して保存したときに、
+     *   保存してあった表を空で上書きしない。Task 6 の点検の Minor 3）
+     *
+     * @return array{upper: list<array{fixed: ?string, name: string, sale: string, cost: string}>, lower: list<array{fixed: ?string, name: string, sale: string, cost: string}>}
+     */
+    private function tableRows(ApprovalRequest $approvalRequest): array
+    {
+        $old     = old('amount_table');
+        $oldType = old('type_id');
+        if (is_array($old) && is_string($oldType) && ctype_digit($oldType) && ApprovalType::find((int) $oldType)?->usesTable()) {
+            $text = fn (mixed $value): string => is_string($value) || is_int($value) ? (string) $value : '';
+
+            return array_map(fn (array $rows) => array_map(fn (array $row) => [
+                'fixed' => $row['fixed'], 'name' => $text($row['name']), 'sale' => $text($row['sale']), 'cost' => $text($row['cost']),
+            ], $rows), AmountTable::cleanInput($old));
+        }
+
+        $type   = $approvalRequest->type;
+        $layout = $type?->usesTable() ? ($type->table_layout ?? []) : [];
+        $table  = AmountTable::forForm($layout, $approvalRequest->amount_table);
+        $amount = fn (?int $value): string => $value === null ? '' : number_format($value);
+
+        return array_map(fn (array $rows) => array_map(fn (array $row) => [
+            'fixed' => $row['fixed'] ? $row['name'] : null,
+            'name'  => $row['fixed'] ? '' : (string) $row['name'],
+            'sale'  => $amount($row['sale']),
+            'cost'  => $amount($row['cost']),
+        ], $rows), ['upper' => $table['upper'], 'lower' => $table['lower']]);
     }
 
     /**

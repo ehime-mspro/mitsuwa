@@ -9,6 +9,7 @@ use App\Models\ApprovalCompany;
 use App\Models\ApprovalMember;
 use App\Models\ApprovalSetting;
 use App\Models\User;
+use App\Support\Approval\NameSearch;
 use App\Support\Approval\PasswordReissuer;
 use App\Support\Approval\SettingLogger;
 use App\Support\LoginId;
@@ -102,9 +103,14 @@ class UserController extends Controller
         }
 
         if ($search !== '') {
-            $query->where(function ($q) use ($search) {
-                $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('employee_number', 'like', "%{$search}%")
+            // 氏名は登録名の空白（半角・全角）を無視し、空白で分けた語のどれも含む人に当てる（「山田太郎」で「山田 太郎」も探せる。
+            // 決裁台帳の申請者と同じ部品。段階5 設計書 D25）。語が無い（空白だけ）ときは氏名では当てない
+            $terms = NameSearch::terms($search);
+            $query->where(function ($q) use ($search, $terms) {
+                if ($terms !== []) {
+                    $q->where(fn ($q) => NameSearch::whereNameHasAll($q, $terms));
+                }
+                $q->orWhere('employee_number', 'like', "%{$search}%")
                   ->orWhere('email', 'like', "%{$search}%");
             });
         }

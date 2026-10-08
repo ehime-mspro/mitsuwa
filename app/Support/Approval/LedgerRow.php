@@ -8,6 +8,7 @@ use App\Enums\ApprovalStepStatus;
 use App\Models\ApprovalRequest;
 use App\Models\ApprovalStep;
 use App\Models\User;
+use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 
 /**
@@ -17,6 +18,8 @@ use Carbon\CarbonInterface;
  *   控え**（RequestContent と同じ出し分け。名前も提出したときのもの）。台帳は一覧なので控えは先に読んだもの（lastRevision）を使う。
  *   控えが無いとき（提出した申請には必ずある）は今の中身へ落とさずに空にする（分からないときは見せない）。
  * ⚠ 審査の意見・コメントと条件（条可のコメント）は今の回の段階から（PDF と同じく今の回だけ。D4）。
+ * ⚠ 控えは今の回（`round` が申請の回と同じ）のものだけを使う（詳細の RequestContent と同じ引き方。今の回の控えが欠けていれば空にする）。
+ * ⚠ 段階5: 工事原価・粗利益金額・粗利率は明細表の「合計金額」の行（5W2H の種類は空）、契約予定日は追加の入力欄（使わない種類は空）。
  */
 final class LedgerRow
 {
@@ -39,6 +42,10 @@ final class LedgerRow
         public readonly ?string $condition,
         public readonly string $statusLabel,
         public readonly string $statusStyle,
+        public readonly ?int $cost = null,
+        public readonly ?int $profit = null,
+        public readonly ?float $rate = null,
+        public readonly ?CarbonInterface $contractDate = null,
     ) {
     }
 
@@ -46,7 +53,10 @@ final class LedgerRow
     public static function for(User $viewer, ApprovalRequest $request): self
     {
         $own      = $request->user_id === $viewer->id;
-        $snapshot = $own ? [] : ($request->lastRevision?->snapshot ?? []);
+        $snapshot = $own ? [] : ($request->submittedRevision()?->snapshot ?? []);
+        $table    = $own ? $request->amount_table : ($snapshot['amount_table'] ?? null);
+        $total    = is_array($table) ? AmountTable::totals($table)['total'] : null;
+        $contract = $own ? $request->contract_date : RequestExtras::ordered($snapshot['extras'] ?? null)['contract_date'] ?? null;
         $steps    = $request->currentSteps()->keyBy(fn (ApprovalStep $s) => $s->kind->value);
         $review    = self::done($steps->get(ApprovalStepKind::Review->value));
         $president = self::done($steps->get(ApprovalStepKind::President->value));
@@ -69,6 +79,10 @@ final class LedgerRow
             condition: $request->decision === ApprovalDecision::Conditional ? $president?->comment : null,
             statusLabel: $request->statusLabel(),
             statusStyle: $request->status->badgeStyle(),
+            cost: $total['cost'] ?? null,
+            profit: $total['profit'] ?? null,
+            rate: $total['rate'] ?? null,
+            contractDate: is_string($contract) ? CarbonImmutable::createFromFormat('!Y-m-d', $contract, 'UTC') ?: null : $contract,
         );
     }
 

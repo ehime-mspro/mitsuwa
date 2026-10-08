@@ -16,13 +16,16 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  *
  * ⚠ **状態を `update()` で直接変えない。** 状態の移り変わりは `App\Support\Approval\Workflow` だけが行う
  *   （同時操作の見張り `lock_version` と記録を一緒に書くため。設計書 §5.1）。
- * ⚠ 中身（件名・金額・実施時期・本文・関連する決裁No・種類・申請部門）を書き換えてよいのは
- *   下書きと差戻し中だけ（`RequestController` が `RequestPermissions::canEdit()` で確かめる）。
+ * ⚠ 中身（件名・金額・実施時期・本文・関連する決裁No・種類・申請部門・明細表・坪数・坪単価・担当者・契約予定日・定型文）を
+ *   書き換えてよいのは下書きと差戻し中だけ（`RequestController` が `RequestPermissions::canEdit()` で確かめる）。
+ * ⚠ 明細表の種類では、金額（`amount`）は保存のときに明細表の合計金額の販売金額から計算する（画面の数を使わない。段階5 設計書 D15）。
+ *   本文（`body`）は補足（自由記入）。定型文（`fixed_text`）は保存したときに種類から写す（提出したあとは変わらない。D14）
  */
 class ApprovalRequest extends Model
 {
     protected $fillable = [
         'user_id', 'department_id', 'type_id', 'subject', 'amount', 'schedule', 'body', 'related_numbers',
+        'amount_table', 'tsubo', 'tsubo_price', 'staff', 'contract_date', 'fixed_text',
     ];
 
     protected function casts(): array
@@ -35,6 +38,10 @@ class ApprovalRequest extends Model
             'decision'           => ApprovalDecision::class,
             'amount'             => 'integer',
             'related_numbers'    => 'array',
+            'amount_table'       => 'array',
+            'tsubo'              => 'decimal:2',
+            'tsubo_price'        => 'integer',
+            'contract_date'      => 'date',
             'round'              => 'integer',
             'number_seq'         => 'integer',
             'number_fiscal_year' => 'integer',
@@ -81,6 +88,21 @@ class ApprovalRequest extends Model
     public function lastRevision(): HasOne
     {
         return $this->hasOne(ApprovalRevision::class, 'request_id')->latestOfMany('round');
+    }
+
+    /**
+     * 最後に提出した控え（今の回の控え）。申請者以外に見せる中身・メールの件名・差戻しの取り消しの比べ・提出の条件が読む
+     * （**1 つの申請の控えはここから引く**。段階5 設計書 §8。一度も提出していない下書きには無い）。
+     * `lastRevision` を先に読んでいれば（台帳）それを使い、問い合わせない。
+     * ⚠ 問い合わせの中で控えを当てる所（台帳の絞り込み・関連する決裁No の候補）は、SQL で同じ条件（`round` が同じ）を書く
+     */
+    public function submittedRevision(): ?ApprovalRevision
+    {
+        $revision = $this->relationLoaded('lastRevision')
+            ? $this->lastRevision
+            : ApprovalRevision::where('request_id', $this->id)->where('round', $this->round)->first();
+
+        return $revision !== null && $revision->round === $this->round ? $revision : null;
     }
 
     public function histories(): HasMany

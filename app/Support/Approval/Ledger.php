@@ -76,13 +76,10 @@ final class Ledger
 
         // 申請者は名前の一部（空白で分けた語のどれも含む。D21）。登録名の半角・全角の空白は無視して当てる（「申請 花子」を「申請花子」で探せる）。
         // 退職して消した人の申請も探せる（applicant は withTrashed）
-        $names = LedgerFilter::terms($filter->applicant);
+        // （⑦ 利用者の管理の検索と同じ部品。段階5 D25）
+        $names = NameSearch::terms($filter->applicant);
         if ($names !== []) {
-            $query->whereHas('applicant', function (Builder $q) use ($names): void {
-                foreach ($names as $name) {
-                    $q->whereRaw("replace(replace(name, ' ', ''), '　', '') like ?", ["%{$name}%"]);
-                }
-            });
+            $query->whereHas('applicant', fn (Builder $q) => NameSearch::whereNameHasAll($q, $names));
         }
 
         $words = LedgerFilter::terms($filter->keyword);
@@ -187,13 +184,14 @@ final class Ledger
     {
         $values = fn (array $statuses) => array_map(fn (ApprovalStatus $s) => $s->value, $statuses);
 
+        // ⚠ 知らないキーを「すべて」と扱わない（LedgerFilter が選択肢のキーだけを通す。通らないキーが来たら作りの誤り。4b の Task 2 の軽微）
         match ($status) {
             'numbered'  => $query->where(fn (Builder $q) => $q
                 ->whereIn('approval_requests.status', $values(self::DECIDED))
                 ->orWhere(fn (Builder $q) => $q->where('approval_requests.status', ApprovalStatus::Withdrawn->value)->whereNotNull('approval_requests.number'))),
             'progress'  => $query->whereIn('approval_requests.status', $values(self::IN_PROGRESS)),
             'withdrawn' => $query->where('approval_requests.status', ApprovalStatus::Withdrawn->value),
-            default     => null,
+            'all'       => null,
         };
     }
 

@@ -32,8 +32,15 @@
                         <dt class="text-gray-500">関連する決裁No</dt>
                         <dd class="text-gray-900 font-mono">{{ ($snapshot['related_numbers'] ?? []) === [] ? '—' : implode('・', $snapshot['related_numbers']) }}</dd>
                     </dl>
-                    <p class="mt-3 text-[12px] font-semibold text-gray-500 mb-1.5">重点ポイント（5W2H）</p>
-                    <div class="rounded-md border border-gray-200 bg-gray-50 px-4 py-3 text-gray-900 leading-relaxed whitespace-pre-wrap break-words">{{ $snapshot['body'] ?? '' }}</div>
+                    {{-- 本文の欄（その回の控えの明細表・追加の欄・定型文。段階5 より前の控えには無い＝5W2H の形） --}}
+                    <div class="mt-3">
+                        @include('approvals.requests._body_section', [
+                            'table'     => is_array($snapshot['amount_table'] ?? null) ? $snapshot['amount_table'] : null,
+                            'extras'    => \App\Support\Approval\RequestExtras::ordered($snapshot['extras'] ?? null),
+                            'fixedText' => $snapshot['fixed_text'] ?? null,
+                            'body'      => $snapshot['body'] ?? '',
+                        ])
+                    </div>
                     <p class="mt-3 text-[12px] font-semibold text-gray-500 mb-1.5">添付</p>
                     <ul class="space-y-1">
                         @forelse($snapshot['attachments'] ?? [] as $attachment)

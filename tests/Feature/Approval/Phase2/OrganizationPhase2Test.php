@@ -277,6 +277,48 @@ class OrganizationPhase2Test extends TestCase
             ->assertSessionHas('error', 'この部門は申請の種類 1 件の審査部門になっているため削除できません。先に申請種類の管理で審査部門を変えてください。');
     }
 
+    /**
+     * その部門だけで使える申請の種類がある部門は消せない（段階5a 最終点検 Mi-2）。消すと中間テーブルの行が CASCADE で消え、
+     * 「使える部門の行が無い＝全部門」（D13）になって、絞っていた種類が黙って全部門に開いてしまう
+     */
+    public function test_a_department_that_is_the_only_usable_department_of_a_type_cannot_be_deleted(): void
+    {
+        $w    = $this->approvalWorld();
+        $dept = $this->approvalDepartment($w['company'], ['name' => '賃貸事業部']);
+        $a    = $this->housingContractType($w, ['sort_order' => 2]);
+        $b    = $this->approvalType($w['reviewDept'], ['name' => '少額の契約', 'sort_order' => 3]);
+        $a->departments()->attach($dept->id);
+        $b->departments()->attach($dept->id);
+
+        $this->actingAs($this->approvalAdmin())->delete(route('approvals.admin.organization.departments.destroy', $dept))
+            ->assertSessionHas('error', 'この部門だけで使える申請の種類（住宅の契約用（請負新築工事契約）、少額の契約）があるため削除できません。先に申請の種類の「使える部門」を変えてください。');
+
+        $this->assertNotNull($dept->fresh());
+        $this->assertSame([$dept->id], $a->departments()->pluck('approval_departments.id')->all());
+        $this->assertSame([$dept->id], $b->departments()->pluck('approval_departments.id')->all());
+        $this->assertSame(0, ApprovalSettingLog::where('action', 'department.deleted')->count());
+    }
+
+    /** ほかにも使える部門がある種類だけなら消せる。その種類は残りの部門に絞られたまま（全部門にはならない） */
+    public function test_a_department_can_be_deleted_when_every_type_limited_to_it_has_other_departments(): void
+    {
+        $w      = $this->approvalWorld();
+        $dept   = $this->approvalDepartment($w['company'], ['name' => '賃貸事業部']);
+        $shared = $this->housingContractType($w);
+        $other  = $this->approvalType($w['reviewDept'], ['name' => '別の部門の種類']);
+        $open   = $this->approvalType($w['reviewDept'], ['name' => '全部門の種類']);
+        $shared->departments()->attach([$dept->id, $w['dept']->id]);
+        $other->departments()->attach($w['dept']->id);
+
+        $this->actingAs($this->approvalAdmin())->delete(route('approvals.admin.organization.departments.destroy', $dept))
+            ->assertSessionHas('success', '部門を削除しました。');
+
+        $this->assertNull($dept->fresh());
+        $this->assertSame([$w['dept']->id], $shared->departments()->pluck('approval_departments.id')->all());
+        $this->assertSame([$w['dept']->id], $other->departments()->pluck('approval_departments.id')->all());
+        $this->assertSame([], $open->departments()->pluck('approval_departments.id')->all());
+    }
+
     /** 開始番号を入れただけ（番号を使っていない）の部門は消せる。連番の行も一緒に消える */
     public function test_an_unused_department_with_a_start_number_can_be_deleted(): void
     {

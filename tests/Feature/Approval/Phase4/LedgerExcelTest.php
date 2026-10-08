@@ -63,19 +63,29 @@ class LedgerExcelTest extends TestCase
         return $this->actingAs($viewer)->get(route('approvals.ledger.excel', $query));
     }
 
-    /** 応答の xlsx をファイルに書いて読み戻す（読み戻しも、ZIP の中の XML も見る） */
+    /**
+     * 応答の xlsx をファイルに書いて読み戻す（読み戻しも、ZIP の中の XML も見る）。
+     * ⚠ tempnam() が作る拡張子の無い空のファイルも消す（.xlsx を付けた名前に書くので、元の名前のファイルが残っていた。4b の Task 4 の軽微）
+     */
     private function sheet(TestResponse $response): Worksheet
     {
-        $path = tempnam(sys_get_temp_dir(), 'ledger') . '.xlsx';
+        $base = tempnam(sys_get_temp_dir(), 'ledger');
+        $path = $base . '.xlsx';
         file_put_contents($path, $response->getContent());
-        $this->beforeApplicationDestroyed(fn () => @unlink($path));
+        // ⚠ 2 つの文に分ける（`@unlink($path) && @unlink($base)` は前が失敗すると後ろを消さない。点検の T-8）
+        $this->beforeApplicationDestroyed(function () use ($path, $base): void {
+            @unlink($path);
+            @unlink($base);
+        });
 
         return IOFactory::load($path)->getActiveSheet();
     }
 
     private function sheetXml(TestResponse $response): string
     {
-        $path = tempnam(sys_get_temp_dir(), 'ledger') . '.xlsx';
+        $base = tempnam(sys_get_temp_dir(), 'ledger');
+        @unlink($base);
+        $path = $base . '.xlsx';
         file_put_contents($path, $response->getContent());
         $zip = new ZipArchive();
         $this->assertTrue($zip->open($path) === true);
@@ -94,14 +104,16 @@ class LedgerExcelTest extends TestCase
         $response = $this->download($this->viewAllUser())->assertOk();
         $sheet    = $this->sheet($response);
 
+        // 段階5 で工事原価・粗利益金額・粗利率・契約予定日を足した（要件 10 の並び。5W2H の種類では空。Phase5/LedgerExcelTableTest が中身を見る）
         $this->assertSame(
-            ['決裁No', '決裁日', '判断', '件名', '申請の種類', '申請部門', '申請者', '金額（税抜）', '実施時期', '関連する決裁No', '提出日', '審査の意見', '審査のコメント', '条件', '状態'],
-            $sheet->rangeToArray('A1:O1')[0]
+            ['決裁No', '決裁日', '判断', '件名', '申請の種類', '申請部門', '申請者', '金額（税抜）', '工事原価', '粗利益金額', '粗利率', '実施時期', '契約予定日', '関連する決裁No', '提出日', '審査の意見', '審査のコメント', '条件', '状態'],
+            $sheet->rangeToArray('A1:S1')[0]
         );
         $this->assertSame(
             ['R8-J-001', '条可', '社用車の購入', $w['type']->name, '住宅事業部', '申請 花子', '2026年10月', 'R7-J-003・R7-J-010', '保留', '見積を 2 社取ってください', '納期を確かめること', '条件確認待ち'],
-            array_map(fn (string $c) => $sheet->getCell("{$c}2")->getValue(), ['A', 'C', 'D', 'E', 'F', 'G', 'I', 'J', 'L', 'M', 'N', 'O'])
+            array_map(fn (string $c) => $sheet->getCell("{$c}2")->getValue(), ['A', 'C', 'D', 'E', 'F', 'G', 'L', 'N', 'P', 'Q', 'R', 'S'])
         );
+        $this->assertSame([null, null, null, null], array_map(fn (string $c) => $sheet->getCell("{$c}2")->getValue(), ['I', 'J', 'K', 'M']), '5W2H の種類では明細表と契約予定日の列は空');
         $this->assertSame(2, $sheet->getHighestRow(), '1 件なので見出しと 1 行');
     }
 
@@ -112,7 +124,7 @@ class LedgerExcelTest extends TestCase
 
         $sheet = $this->sheet($this->download($this->viewAllUser())->assertOk());
 
-        foreach (['B2', 'K2'] as $cell) {
+        foreach (['B2', 'O2'] as $cell) {
             $this->assertSame(DataType::TYPE_NUMERIC, $sheet->getCell($cell)->getDataType(), "{$cell} が数（日付）でない");
             $this->assertSame('2026-10-05 00:00:00', Date::excelToDateTimeObject($sheet->getCell($cell)->getValue())->format('Y-m-d H:i:s'), "{$cell} が日本の暦の日でない（時刻を入れない）");
             $this->assertSame('yyyy/mm/dd', $sheet->getStyle($cell)->getNumberFormat()->getFormatCode());
@@ -131,7 +143,7 @@ class LedgerExcelTest extends TestCase
         $response = $this->download($this->viewAllUser())->assertOk();
         $sheet    = $this->sheet($response);
 
-        foreach (['D2' => '=HYPERLINK("https://example.com","開く")', 'G2' => '+81 花子', 'I2' => '@SUM(A1)'] as $cell => $text) {
+        foreach (['D2' => '=HYPERLINK("https://example.com","開く")', 'G2' => '+81 花子', 'L2' => '@SUM(A1)'] as $cell => $text) {
             $this->assertSame(DataType::TYPE_STRING, $sheet->getCell($cell)->getDataType(), "{$cell} が文字でない");
             $this->assertSame($text, $sheet->getCell($cell)->getValue());
         }
@@ -157,7 +169,7 @@ class LedgerExcelTest extends TestCase
         $sheet = $this->sheet($this->download($this->viewAllUser())->assertOk());
 
         $this->assertSame('A2', $sheet->getFreezePane());
-        $this->assertSame('A1:O3', $sheet->getAutoFilter()->getRange());
+        $this->assertSame('A1:S3', $sheet->getAutoFilter()->getRange());
         $this->assertTrue($sheet->getStyle('A1')->getFont()->getBold());
         $this->assertSame('決裁台帳', $sheet->getTitle());
     }

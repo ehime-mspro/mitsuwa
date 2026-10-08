@@ -4,7 +4,6 @@ namespace App\Support\Approval;
 
 use App\Models\ApprovalHistory;
 use App\Models\ApprovalRequest;
-use App\Models\ApprovalRevision;
 
 /**
  * 押し間違いの取り消しで、次に取り消す操作（要件 4.7・設計書 §5.14・D24）。
@@ -67,13 +66,13 @@ final class UndoTarget
      */
     public static function editedSinceReturn(ApprovalRequest $request): bool
     {
-        $revision = ApprovalRevision::where('request_id', $request->id)->where('round', $request->round)->first();
+        $revision = $request->submittedRevision();
 
         if ($revision === null) {
             return true;
         }
 
-        return RequestSnapshot::editableFingerprint(RequestSnapshot::make($request))
+        return RequestSnapshot::currentFingerprint($request)
             !== RequestSnapshot::editableFingerprint($revision->snapshot);
     }
 }

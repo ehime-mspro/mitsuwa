@@ -56,6 +56,46 @@ class FormInputTest extends TestCase
         $this->assertSame($expected, FormInput::lockVersion(Request::create('/', 'POST', ['lock_version' => $sent])));
     }
 
+    /** @return array<string, array{mixed, list<string>, mixed}> */
+    public static function numbers(): array
+    {
+        return [
+            'カンマ'                        => ['1,234', [], '1234'],
+            '全角の数とカンマ'              => ['２２，０００，０００', [], '22000000'],
+            '円'                            => ['300,000円', FormInput::YEN, '300000'],
+            '¥ と全角の ￥'                 => ['¥1,000', FormInput::YEN, '1000'],
+            '全角の ￥'                     => ['￥1,000', FormInput::YEN, '1000'],
+            'マイナスの記号'                => ['−300,000', [], '-300000'],
+            '全角のマイナス'                => ['－５', [], '-5'],
+            '先頭の +'                      => ['+1000', [], '1000'],
+            '全角の ＋'                     => ['＋1000', [], '1000'],
+            '先頭の 0'                      => ['0100', [], '100'],
+            '0 だけ'                        => ['000', [], '0'],
+            'マイナスの 0'                  => ['-0', [], '0'],
+            'タブと空白'                    => ["1\t000 ", [], '1000'],
+            '小数はそのまま'                => ['38.50坪', ['坪'], '38.50'],
+            '数でない文字はそのまま'        => ['abc', [], 'abc'],
+            '空'                            => ['', [], null],
+            '空白だけ'                      => ['　 ', [], null],
+            '文字でない値はそのまま'        => [['1'], [], ['1']],
+            'null'                          => [null, [], null],
+        ];
+    }
+
+    /** 数の入力のそろえ方（段階5。金額・明細表の金額・坪数・坪単価が共有する。画面の JS の parseAmount と同じ数になる） */
+    #[DataProvider('numbers')]
+    public function test_numbers_are_put_in_shape_before_the_validation(mixed $sent, array $units, mixed $expected): void
+    {
+        $this->assertSame($expected, FormInput::digits($sent, $units));
+    }
+
+    public function test_the_spaces_around_are_trimmed_including_the_wide_ones(): void
+    {
+        $this->assertSame('山田 太郎', FormInput::trim("　山田 太郎 \n"));
+        $this->assertSame('', FormInput::trim('　 '));
+        $this->assertSame('', FormInput::trim(null));
+    }
+
     public function test_a_missing_lock_version_falls_back_to_the_given_value(): void
     {
         $this->assertSame(-1, FormInput::lockVersion(Request::create('/', 'POST', [])), '既定は必ず断る -1');

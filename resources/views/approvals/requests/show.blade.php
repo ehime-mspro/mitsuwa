@@ -80,9 +80,9 @@
                 @endforelse
             </dd>
         </dl>
+        {{-- 本文の欄（明細表の種類は明細表・追加の欄・定型文・補足。段階5 §5.6。申請者以外には控えの中身＝RequestContent） --}}
         <div class="px-5 pb-5">
-            <p class="text-[12px] font-semibold text-gray-500 mb-1.5">重点ポイント（5W2H）</p>
-            <div class="rounded-md border border-gray-200 bg-gray-50 px-4 py-3 text-[13px] text-gray-900 leading-relaxed whitespace-pre-wrap break-words">{{ $content->body }}</div>
+            @include('approvals.requests._body_section', ['table' => $content->amountTable, 'extras' => $content->extras, 'fixedText' => $content->fixedText, 'body' => $content->body])
         </div>
     </section>
 
