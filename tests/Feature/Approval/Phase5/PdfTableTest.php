@@ -141,8 +141,12 @@ class PdfTableTest extends TestCase
         $plain = self::fontSizes(ApprovalPdf::sheet(PdfSheet::for($w['head'], $this->submittedContract($w))));
         $this->assertContains(10.0, $plain, '文字の大きさを読み取れている（読み取れないと、下の比べが空振りする）');
 
-        $long = $this->submittedContract($w, [$this->row(substr('https://example.com/' . str_repeat('abcdefghij', 3), 0, 30), false, 1000, 500)]);
-        $this->assertSame($plain, self::fontSizes(ApprovalPdf::sheet(PdfSheet::for($w['head'], $long))), '空白の無い長い項目名は折り返す（表の文字は縮まない）');
+        // ⚠ 空白の無い 30 文字の項目名。幅のある字（W）でないと列に収まって折り返さず、表の wrap を外しても通ってしまう
+        //   （'https://example.com/abcdefghij' のような細い字の 30 文字は、wrap が無くても収まる）
+        foreach ([str_repeat('W', 30), substr('https://example.com/' . str_repeat('abcdefghij', 3), 0, 30)] as $name) {
+            $long = $this->submittedContract($w, [$this->row($name, false, 1000, 500)]);
+            $this->assertSame($plain, self::fontSizes(ApprovalPdf::sheet(PdfSheet::for($w['head'], $long))), "空白の無い長い項目名「{$name}」は折り返す（表の文字は縮まない）");
+        }
 
         $rows = fn (string $label) => array_map(fn (int $i) => $this->row("{$label} {$i}", false, 1000000 * $i, 900000 * $i), range(1, 30));
         $many = $this->submittedContract($w, $rows('追加工事'), $rows('土地'));
@@ -164,6 +168,24 @@ class PdfTableTest extends TestCase
         $fixed = implode("\n", array_map(fn (int $i) => "定型文 {$i} 行目", range(1, 5)));
         $pdf   = ApprovalPdf::sheet(PdfSheet::for($w['head'], $this->submittedContract($w, $rows, null, $fixed)));
         $this->assertSame($plain, self::fontSizes($pdf), '下の端に来た追加の欄と定型文の表を縮めない');
+    }
+
+    /**
+     * 追加の欄の表（坪数・坪単価／担当者・契約予定日）が下の端に来る配置でも縮まない（最終点検 L148。上のテストの 19 行＋5 行の定型文は
+     * 定型文の表だけを守る）。写しで autosize を外して確かめた配置: 19 行＋2 行の定型文は追加の欄の表が 8.657pt に、3 行＋30 行の
+     * 定型文も追加の欄の表が 9.424pt に縮む。20 行＋2 行は定型文の表が 9.313pt に縮む（ページの区切りの位置で決まるので、3 つとも置く）
+     */
+    public function test_the_extras_tables_do_not_shrink_at_the_bottom_of_a_page_either(): void
+    {
+        $w     = $this->approvalWorld();
+        $plain = self::fontSizes(ApprovalPdf::sheet(PdfSheet::for($w['head'], $this->submittedContract($w))));
+
+        foreach ([[19, 2], [20, 2], [3, 30]] as [$rowCount, $fixedLines]) {
+            $rows  = array_map(fn (int $i) => $this->row("行 {$i}", false, 1000 * $i, 900 * $i), range(1, $rowCount));
+            $fixed = implode("\n", array_map(fn (int $i) => "定型文 {$i} 行目", range(1, $fixedLines)));
+            $pdf   = ApprovalPdf::sheet(PdfSheet::for($w['head'], $this->submittedContract($w, $rows, null, $fixed)));
+            $this->assertSame($plain, self::fontSizes($pdf), "{$rowCount} 行の明細表＋{$fixedLines} 行の定型文で、追加の欄の表を縮めない");
+        }
     }
 
     public function test_the_sheet_escapes_the_table_the_extras_and_the_fixed_text(): void

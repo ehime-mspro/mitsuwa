@@ -340,6 +340,8 @@ class RequestFormTableTest extends TestCase
 
         // 粗利率（境目と、販売金額 1〜200 円 × 粗利益 −50〜200 円のすべての組。点検の I-1）
         $rates = array_map(fn (array $edge) => [$edge[0], $edge[1]], array_values(AmountTableTest::rateEdges()));
+        // 販売金額が 0 円の組（粗利率は無い＝「—」。0.0% と出さない）
+        array_push($rates, [0, 0], [0, 5], [0, -300000]);
         for ($sale = 1; $sale <= 200; $sale++) {
             for ($profit = -50; $profit <= 200; $profit++) {
                 $rates[] = [$sale, $profit];
@@ -367,7 +369,9 @@ class RequestFormTableTest extends TestCase
         $this->assertTrue($js['isTable']);
         $this->assertEquals($server['total'], $js['total']);
         $this->assertEquals($server['subtotal'], $js['subtotal']);
-        $this->assertEquals([['sale' => 28500000, 'cost' => 22000000, 'profit' => 6500000, 'rate' => 22.8], ['sale' => -300000, 'cost' => 0, 'profit' => -300000, 'rate' => 100], ['sale' => 0, 'cost' => 300000, 'profit' => -300000, 'rate' => null]], $js['rowLines']);
+        // ⚠ assertEquals だと null と 0 が同じになる（販売金額 0 の行の粗利率は「—」＝null。0 を返す JS の rate() を見逃す）。型まで比べる
+        $this->assertSame([['sale' => 28500000, 'cost' => 22000000, 'profit' => 6500000, 'rate' => 22.8], ['sale' => -300000, 'cost' => 0, 'profit' => -300000, 'rate' => 100], ['sale' => 0, 'cost' => 300000, 'profit' => -300000, 'rate' => null]], $js['rowLines']);
+        $this->assertNull($js['rowLines'][2]['rate'], '販売金額 0 円の行の粗利率は無い（0.0% ではない）');
         $this->assertSame([AmountTable::rateLabel($server['total']['rate']), '—', '-300,000円'], $js['labels']);
         $this->assertSame(array_map(function (string $value): ?int {
             $digits = FormInput::digits($value, FormInput::YEN);
@@ -546,5 +550,34 @@ class RequestFormTableTest extends TestCase
             ],
             'lower' => [['fixed' => '土地契約金額', 'name' => '', 'sale' => '12,000,000', 'cost' => ''], ['fixed' => null, 'name' => '', 'sale' => '', 'cost' => '']],
         ], $this->withoutKeys($js['rows']));
+    }
+
+    /**
+     * 保存した申請を開き直したとき、決まり文句のある種類の件名は前半と決まり文句に分けて出す（Alpine が最初に呼ぶ init() の initSubject。
+     * 件名が空か決まり文句で終わっていれば分ける。そうでなければ 1 行で出す。最終点検 L112 の後半）
+     */
+    public function test_reopening_a_saved_request_splits_the_subject_into_the_prefix_and_the_suffix(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $type = $this->housingContractType($w);
+
+        foreach ([
+            [$type, '山田様請負新築工事契約の件', ['split', '山田', '山田様請負新築工事契約の件']],
+            [$type, '田中邸の契約', ['direct', '', '田中邸の契約']],
+            [$type, '', ['split', '', '']],
+            [$w['type'], '山田様請負新築工事契約の件', ['direct', '', '山田様請負新築工事契約の件']],   // 決まり文句の無い種類
+        ] as [$for, $subject, $expected]) {
+            $request = $this->draftFor($w, ['type_id' => $for->id, 'subject' => $subject]);
+            $html    = $this->actingAs($w['applicant'])->get(route('approvals.requests.edit', $request))->assertOk()->getContent();
+
+            $js = $this->runForm($html, <<<'JS'
+                const data = form();
+                data.init();   // Alpine が x-data を作ったあとに呼ぶ
+                out.subject = [data.subjectMode, data.subjectPrefix, data.subjectText];
+                JS, []);
+
+            $this->assertSame($expected, $js['subject'], "件名「{$subject}」を開き直したとき");
+        }
     }
 }

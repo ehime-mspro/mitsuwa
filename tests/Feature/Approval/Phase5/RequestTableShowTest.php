@@ -113,15 +113,20 @@ class RequestTableShowTest extends TestCase
         app(Workflow::class)->judgeHead($request, $w['head'], $request->refresh()->lock_version, ApprovalStepResult::Return, '工事原価の根拠を');
         $edited = $request->fresh()->amount_table;
         $edited['upper'][0]['sale'] = 30000000;
-        $request->fresh()->update(['amount_table' => $edited, 'staff' => '田中 次郎']);
+        // 定型文も直しかけ（保存のたびに種類の今の文を写すので、差戻し中の保存で申請の列の定型文が変わる。D14）
+        $request->fresh()->update(['amount_table' => $edited, 'staff' => '田中 次郎', 'fixed_text' => '直しかけの定型文']);
 
         $others = $this->contentText($this->actingAs($w['head'])->get(route('approvals.requests.show', $request))->getContent());
         $this->assertStringContainsString('工事請負金額 販売金額 28,500,000円', $others);
         $this->assertStringContainsString('担当者 佐藤 健一', $others);
+        $this->assertStringContainsString('上記の内容に基づき、販売をおこないます。', $others, '定型文も最後に提出した控えから');
+        $this->assertStringNotContainsString('直しかけの定型文', $others);
 
         $own = $this->contentText($this->actingAs($w['applicant'])->get(route('approvals.requests.show', $request))->getContent());
         $this->assertStringContainsString('工事請負金額 販売金額 30,000,000円', $own);
         $this->assertStringContainsString('担当者 田中 次郎', $own);
+        $this->assertStringContainsString('直しかけの定型文', $own);
+        $this->assertStringNotContainsString('上記の内容に基づき、販売をおこないます。', $own, '申請者本人には今の定型文');
     }
 
     /** 出し直した申請の変更点に、明細表の行（変わった欄・増えた行）と追加の欄が出る（要件 4.4） */
@@ -286,6 +291,24 @@ class RequestTableShowTest extends TestCase
         // 差戻しで直せるようになったら、本人には種類が今使う欄が出る（これから入れる欄）
         app(Workflow::class)->judgeHead($request, $w['head'], $request->refresh()->lock_version, ApprovalStepResult::Return, '坪数も入れてください');
         $this->assertStringContainsString('坪数', $this->contentText($this->actingAs($w['applicant'])->get(route('approvals.requests.show', $request))->getContent()));
+    }
+
+    /**
+     * 直せる間の申請者本人の詳細は、種類が今は使わない欄でも値が入っていれば出す（入れた値は見える。次の保存で消える値が
+     * 見えなくなるのではない。RequestContent の「値が入っている欄は出す」。最終点検 Mi-5）。値の無い使わない欄は出さない
+     */
+    public function test_the_applicant_still_sees_a_filled_extra_that_the_type_no_longer_uses(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $type    = $this->housingContractType($w);
+        $request = $this->draftFor($w, ['type_id' => $type->id, 'tsubo' => '38.5', 'tsubo_price' => null, 'staff' => null, 'contract_date' => null]);
+        // 管理者が、坪数と担当者を「使う」から外した（坪数には値が入っている・担当者は空）
+        $type->update(['uses_tsubo' => false, 'uses_staff' => false]);
+
+        $own = $this->contentText($this->actingAs($w['applicant'])->get(route('approvals.requests.show', $request))->assertOk()->getContent());
+        $this->assertStringContainsString('坪数 38.5坪', $own, '値の入った欄は、種類が使わなくなっても出す');
+        $this->assertStringNotContainsString('担当者', $own, '値の無い使わない欄は出さない');
     }
 
     /** 段階5 より前の控え（明細表・追加の欄・定型文のキーが無い）は今までどおり 5W2H の形で出す */

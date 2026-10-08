@@ -154,6 +154,50 @@ class LedgerExcelTableTest extends TestCase
         $this->assertSame('2026-10-20', $others->contractDate?->format('Y-m-d'));
     }
 
+    /**
+     * 0 と負の値は空にせず Excel に書く（値引きの申請で、工事原価が販売金額と同じ＝粗利益 0・粗利率 0.0%、赤字＝粗利益が負・粗利率が負。
+     * 「空の値は書かない」の判定が 0 まで空と見ない・金額を 0 に丸めない。最終点検 L130）
+     */
+    public function test_zero_and_negative_values_are_written_to_the_cells(): void
+    {
+        $w    = $this->approvalWorld();
+        $type = $this->housingContractType($w);
+        foreach ([['原価と同じ', 1000000, 1000000], ['赤字', 1000000, 1500000]] as [$subject, $sale, $cost]) {
+            $this->submittedFor($w, [
+                'type_id' => $type->id, 'subject' => $subject, 'amount' => $sale, 'staff' => '佐藤', 'contract_date' => '2026-10-20',
+                'amount_table' => ['subtotal' => false, 'upper' => [$this->row('工事請負金額', true, $sale, $cost)], 'lower' => []],
+            ]);
+        }
+
+        $sheet = $this->sheet($this->viewAllUser(), ['status' => 'all']);
+        $lines = [];
+        foreach ([2, 3] as $line) {
+            $lines[(string) $sheet->getCell("D{$line}")->getValue()] = $line;
+        }
+        $this->assertSame(['原価と同じ', '赤字'], collect(array_keys($lines))->sort()->values()->all());
+
+        // 原価＝販売: 粗利益 0・粗利率 0.0%（空ではなく数の 0）
+        $even = $lines['原価と同じ'];
+        foreach (['H' => 1000000, 'I' => 1000000, 'J' => 0, 'K' => 0] as $column => $value) {
+            $cell = $sheet->getCell("{$column}{$even}");
+            $this->assertSame(DataType::TYPE_NUMERIC, $cell->getDataType(), "{$column}{$even} が数でない（0 を空にしている）");
+            $this->assertEquals($value, $cell->getValue());
+        }
+        $this->assertSame('0', (string) $sheet->getCell("J{$even}")->getValue());
+        $this->assertSame('0', (string) $sheet->getCell("K{$even}")->getValue());
+        $this->assertSame('0.0%', $sheet->getCell("K{$even}")->getFormattedValue());
+
+        // 赤字: 粗利益が負（0 に丸めない）・粗利率が負（−50.0%）
+        $loss = $lines['赤字'];
+        foreach (['H' => 1000000, 'I' => 1500000, 'J' => -500000, 'K' => -0.5] as $column => $value) {
+            $cell = $sheet->getCell("{$column}{$loss}");
+            $this->assertSame(DataType::TYPE_NUMERIC, $cell->getDataType(), "{$column}{$loss} が数でない");
+            $this->assertEquals($value, $cell->getValue());
+        }
+        $this->assertSame('-500,000', $sheet->getCell("J{$loss}")->getFormattedValue());
+        $this->assertSame('-50.0%', $sheet->getCell("K{$loss}")->getFormattedValue());
+    }
+
     /** 控えは今の回のものだけを使う（詳細の RequestContent と同じ。今の回の控えが欠けていれば今の中身へ落とさずに空。4b の Task 2 の軽微） */
     public function test_a_row_uses_only_the_revision_of_the_current_round(): void
     {

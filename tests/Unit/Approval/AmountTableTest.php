@@ -130,6 +130,23 @@ class AmountTableTest extends TestCase
         $this->assertCount(2, AmountTable::shownRows(['upper' => [self::row('追加工事', false, null, null), self::row(null, false, null, 1)]], 'upper'));
     }
 
+    /**
+     * 販売金額だけ・工事原価だけの行も、空の側を 0 として粗利益金額と粗利率を出す（片方だけ空の行を「どちらも無い」にしない。
+     * 最終点検 L87 の (c)。販売金額が 0 の行の粗利率は無い）
+     */
+    public function test_a_row_with_only_the_sale_or_only_the_cost_still_carries_the_profit_and_the_rate(): void
+    {
+        $rows = AmountTable::shownRows(['upper' => [
+            self::row('販売だけ', false, 1000, null),
+            self::row('原価だけ', false, null, 400),
+            self::row('原価だけ（マイナス）', false, null, -400),
+            self::row('販売だけ（マイナス）', false, -300, null),
+        ]], 'upper');
+
+        $this->assertSame([1000, -400, 400, -300], array_column($rows, 'profit'));
+        $this->assertSame([100.0, null, null, 100.0], array_column($rows, 'rate'), '販売金額が空（0）の行の粗利率は無い');
+    }
+
     public function test_an_amount_without_a_name_is_found(): void
     {
         $this->assertFalse(AmountTable::hasUnnamedAmount(self::sample()));
@@ -276,6 +293,41 @@ class AmountTableTest extends TestCase
 
         // 種類が無い（コピーで空にした・5W2H の種類）ときに自由行になった行も、明細表の種類を選べば名前を設定した行に戻る
         $this->assertSame(AmountTable::forForm(self::LAYOUT, self::sample()), AmountTable::forForm(self::LAYOUT, AmountTable::forForm([], self::sample())));
+    }
+
+    /**
+     * 同じ名前の名前を設定した行が 2 つ来たら、最初の 1 つだけが名前を設定した行で、2 つ目は自由行として残る（金額を上書きして
+     * 失わない。古い画面や手で組んだ入力。最終点検 L87 の (a)）
+     */
+    public function test_a_second_fixed_row_of_the_same_name_becomes_a_free_row(): void
+    {
+        $stored = ['upper' => [self::row('紹介料', true, 50, 10), self::row('紹介料', true, 60, 20), self::row('紹介料', true, 70, 30)], 'lower' => []];
+
+        $this->assertSame(
+            [self::row('紹介料', true, 50, 10), self::row('紹介料', false, 60, 20), self::row('紹介料', false, 70, 30)],
+            AmountTable::forForm(['subtotal' => false, 'upper' => ['紹介料'], 'lower' => []], $stored)['upper']
+        );
+    }
+
+    /**
+     * 種類から名前が消えた行は、販売金額だけでも工事原価だけでも入っていれば自由行として残す（黙って消さない。D16。
+     * 工事原価だけの行が消えると、粗利益金額がマイナスの行が申請から消える。最終点検 L87 の (b)）
+     */
+    public function test_a_row_whose_name_left_the_layout_is_kept_when_only_the_sale_or_only_the_cost_is_filled(): void
+    {
+        $stored = ['upper' => [
+            self::row('古い名前A', true, null, 700),
+            self::row('古い名前B', true, 800, null),
+            self::row('古い名前C', true, null, 0),
+            self::row('古い名前D', true, null, null),
+        ], 'lower' => []];
+
+        $this->assertSame([
+            self::row('新しい名前', true, null, null),
+            self::row('古い名前A', false, null, 700),
+            self::row('古い名前B', false, 800, null),
+            self::row('古い名前C', false, null, 0),   // 0 円も金額
+        ], AmountTable::forForm(['subtotal' => false, 'upper' => ['新しい名前'], 'lower' => []], $stored)['upper'], '金額の無い古い名前D だけが消える');
     }
 
     public function test_broken_rows_are_ignored(): void
