@@ -144,10 +144,11 @@
     </table>
 @endif
 {{-- 追加の入力欄（種類が使う欄）と定型文。紙の住宅の様式の「（記）」の並び: 坪数・坪単価 → 定型文 → 担当者・契約予定日（段階5 §5.7。
-     5W2H の種類で使うときも本文の下に同じ並び。点検の I-5）。1 行に 2 組まで（見出しの幅 22mm で「契約予定日」が 1 行に収まる） --}}
+     5W2H の種類で使うときも本文の下に同じ並び。点検の I-5）。1 行に 2 組まで（見出しの幅 22mm で「契約予定日」が 1 行に収まる）。
+     1 行だけの表は autosize="1"（mPDF は 1 行の表を縮めて同じページに置くため。次のページへ送る。点検の I-1） --}}
 @foreach([\App\Support\Approval\PdfSheet::EXTRAS_BEFORE_FIXED_TEXT, \App\Support\Approval\PdfSheet::EXTRAS_AFTER_FIXED_TEXT] as $group => $keys)
     @if($sheet->extraPairs($keys) !== [])
-        <table class="wrap">
+        <table class="wrap" autosize="1">
             <tr>
                 @foreach($sheet->extraPairs($keys) as [$label, $value])
                     <td class="label" style="width: 22mm;">{{ $label }}</td>
@@ -157,7 +158,7 @@
         </table>
     @endif
     @if($group === 0 && ($sheet->fixedText ?? '') !== '')
-        <table class="wrap">
+        <table class="wrap" autosize="1">
             <tr><td>{!! nl2br(e($sheet->fixedText)) !!}</td></tr>
         </table>
     @endif

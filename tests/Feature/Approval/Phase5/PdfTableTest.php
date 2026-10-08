@@ -31,12 +31,12 @@ class PdfTableTest extends TestCase
     }
 
     /** 9/17 の見本の中身で提出した申請（行を差し替えられる） */
-    private function submittedContract(array $w, ?array $upper = null, ?array $lower = null): ApprovalRequest
+    private function submittedContract(array $w, ?array $upper = null, ?array $lower = null, ?string $fixedText = null): ApprovalRequest
     {
         return $this->submittedFor($w, [
             'type_id' => ($this->contract ??= $this->housingContractType($w, ['subject_suffix' => null]))->id, 'subject' => '山田様請負新築工事契約の件', 'body' => '仕様変更によるオプション工事を含む。',
             'amount' => 41700000, 'tsubo' => '38.5', 'tsubo_price' => 1083000, 'staff' => '佐藤 健一', 'contract_date' => '2026-10-20',
-            'fixed_text' => '上記の内容に基づき、販売をおこないます。',
+            'fixed_text' => $fixedText ?? '上記の内容に基づき、販売をおこないます。',
             'amount_table' => [
                 'subtotal' => true,
                 'upper'    => $upper ?? [$this->row('工事請負金額', true, 28500000, 22000000), $this->row('オプション工事', false, 1200000, 850000), $this->row('紹介料', true, 0, 300000)],
@@ -149,6 +149,21 @@ class PdfTableTest extends TestCase
         $pdf  = ApprovalPdf::sheet(PdfSheet::for($w['head'], $many));
         $this->assertSame($plain, self::fontSizes($pdf), '60 行の明細表でも文字を縮めない');
         $this->assertGreaterThanOrEqual(2, self::pageCount($pdf), '行が多ければ次のページへ続く');
+    }
+
+    /**
+     * 追加の欄と定型文の表（1 行だけの表）がページの下の端に来ても、文字を縮めない（点検の I-1。mPDF は 1 行の表を、
+     * 残りの高さに収まるまで縮めて同じページに置く。autosize="1" を付けると次のページへ送る）。19 行の明細表・5 行の定型文で確かめる
+     */
+    public function test_the_extras_and_the_fixed_text_do_not_shrink_at_the_bottom_of_a_page(): void
+    {
+        $w     = $this->approvalWorld();
+        $plain = self::fontSizes(ApprovalPdf::sheet(PdfSheet::for($w['head'], $this->submittedContract($w))));
+
+        $rows  = array_map(fn (int $i) => $this->row("行 {$i}", false, 1000 * $i, 900 * $i), range(1, 19));
+        $fixed = implode("\n", array_map(fn (int $i) => "定型文 {$i} 行目", range(1, 5)));
+        $pdf   = ApprovalPdf::sheet(PdfSheet::for($w['head'], $this->submittedContract($w, $rows, null, $fixed)));
+        $this->assertSame($plain, self::fontSizes($pdf), '下の端に来た追加の欄と定型文の表を縮めない');
     }
 
     public function test_the_sheet_escapes_the_table_the_extras_and_the_fixed_text(): void
