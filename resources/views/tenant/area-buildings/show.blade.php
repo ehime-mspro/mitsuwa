@@ -160,7 +160,7 @@
                                 <td class="px-4 py-3 border-b border-gray-200 text-sm text-center text-gray-700">{{ $survey->unknown_count }}</td>
                                 <td class="px-4 py-3 border-b border-gray-200 text-sm text-center font-bold text-gray-900">{{ $survey->vacancyRateLabel() }}</td>
                                 <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700">{{ $survey->surveyor?->name ?? '—' }}</td>
-                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700">{{ $survey->notes ?: '—' }}</td>
+                                <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 wrap-anywhere">{{ $survey->notes ?: '—' }}</td>
                                 <td class="px-2 py-3 border-b border-gray-200 text-center whitespace-nowrap">
                                     <div class="flex gap-1.5 justify-center">
                                         @if(auth()->user()->role->isManagerOrAbove())

@@ -90,7 +90,7 @@
                                 <td class="px-4 py-3 border-b border-gray-200 text-center text-sm text-gray-900 whitespace-nowrap">{{ $repair->category_label }}</td>
                                 <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 whitespace-nowrap">
                                     <a href="{{ route('tenant.repairs.show', $repair) }}"
-                                       class="text-emerald-600 font-semibold hover:underline">
+                                       class="block truncate text-emerald-600 font-semibold hover:underline">
                                         {{ \Illuminate\Support\Str::limit($repair->description, 40) }}
                                     </a>
                                 </td>

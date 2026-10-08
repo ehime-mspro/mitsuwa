@@ -351,7 +351,7 @@
                                 <div x-show="editingCostId === cost.id">
                                     <input type="text" x-model="editCost.notes" class="w-full h-8 px-2 border border-gray-300 rounded text-sm focus:border-emerald-500 focus:outline-none">
                                 </div>
-                                <span x-show="editingCostId !== cost.id" x-text="cost.notes"></span>
+                                <span x-show="editingCostId !== cost.id" class="wrap-anywhere" x-text="cost.notes"></span>
                             </td>
 
                             {{-- 操作 --}}

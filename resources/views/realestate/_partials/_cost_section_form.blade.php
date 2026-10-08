@@ -139,7 +139,7 @@
                         </td>
                         <td style="padding: 10px 12px; font-size: 13px; color: #4b5563;">
                             <input type="hidden" :name="`costs[${idx}][notes]`" :value="cost.notes || ''">
-                            <span x-text="cost.notes"></span>
+                            <span class="wrap-anywhere" x-text="cost.notes"></span>
                         </td>
                         <td class="text-center" style="padding: 8px 4px;">
                             <button type="button" @click="removeCost(idx)"

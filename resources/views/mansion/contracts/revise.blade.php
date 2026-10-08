@@ -566,7 +566,7 @@
                             <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-900 text-right whitespace-nowrap">
                                 {{ number_format((int) $rev->new_common_fee) }}円
                             </td>
-                            <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700">{{ $rev->reason ?? '—' }}</td>
+                            <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 wrap-anywhere">{{ $rev->reason ?? '—' }}</td>
                             <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 whitespace-nowrap">
                                 {{ optional(\App\Models\User::withTrashed()->find($rev->created_by))->name ?? '—' }}
                             </td>

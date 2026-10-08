@@ -214,7 +214,7 @@
                                 —
                             @endif
                         </td>
-                        <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700">
+                        <td class="px-4 py-3 border-b border-gray-200 text-sm text-gray-700 wrap-anywhere">
                             {{ $rev->reason ?: '—' }}
                         </td>
                     </tr>
