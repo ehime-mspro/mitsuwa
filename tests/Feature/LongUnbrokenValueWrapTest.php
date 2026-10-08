@@ -303,9 +303,9 @@ class LongUnbrokenValueWrapTest extends TestCase
         $this->assertSame(['email:dd:wraps:out'], $this->describe('<dd style="word-break: break-all">{{ $c->email }}</dd>'));
         $this->assertSame(['email:span:wraps:out'], $this->describe('<span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ $c->email }}</span>'));
         $this->assertSame(
-            ['email:div:wraps:out', 'memo:div:no:out'],
-            $this->describe("<style>\n/* .x-value { color: red } */\n.x-label, .x-value { overflow-wrap: anywhere; }\n.x-row .x-other { overflow-wrap: anywhere; }\n</style><div class=\"x-value\">{{ \$c->email }}</div><div class=\"x-other\">{{ \$c->memo }}</div>"),
-            '<style> のクラスの読み方がずれた（単独のクラスのセレクタだけを認める）'
+            ['email:div:wraps:out', 'memo:div:no:out', 'notes:div:no:out'],
+            $this->describe("<style>\n/* 古い規則: .x-old { color: red; } .x-gone { overflow-wrap: anywhere; } */\n.x-label, .x-value { overflow-wrap: anywhere; }\n.x-row .x-other { overflow-wrap: anywhere; }\n</style><div class=\"x-value\">{{ \$c->email }}</div><div class=\"x-other\">{{ \$c->memo }}</div><div class=\"x-gone\">{{ \$c->notes }}</div>"),
+            '<style> のクラスの読み方がずれた（単独のクラスのセレクタだけを認める・コメントの中の規則は数えない）'
         );
     }
 
