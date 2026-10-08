@@ -17,6 +17,7 @@ use App\Support\Approval\Assignees;
 use App\Support\Approval\FormInput;
 use App\Support\Approval\RelatedNumbers;
 use App\Support\Approval\RequestContent;
+use App\Support\Approval\RequestExtras;
 use App\Support\Approval\RequestFields;
 use App\Support\Approval\RequestPermissions;
 use App\Support\Approval\RequestSnapshot;
@@ -406,6 +407,15 @@ class RequestController extends Controller
             'approvalRequest' => $approvalRequest,
             'types'           => $types,
             'typeHeadings'    => $types->mapWithKeys(fn (ApprovalType $type) => [$type->id => $type->headings])->all(),
+            // 種類ごとの本文の形・明細表の行の設定・件名の決まり文句・使う追加の欄・定型文（画面の JS が種類を選び直したときに使う。段階5 §5.5）
+            'typeConfigs'     => $types->mapWithKeys(fn (ApprovalType $type) => [$type->id => [
+                'form'      => $type->body_form->value,
+                'layout'    => $type->table_layout ?? ['subtotal' => false, 'upper' => [], 'lower' => []],
+                'suffix'    => $type->subject_suffix ?? '',
+                'uses'      => RequestExtras::usedBy($type),
+                'fixedText' => $type->fixed_text ?? '',
+            ]])->all(),
+            'tableRows'       => $this->tableRows($approvalRequest),
             'departments'     => $departments,
             'memberOf'        => $memberOf,
             'isPresident'     => $user->isApprovalPresident(),
@@ -422,6 +432,36 @@ class RequestController extends Controller
                 ? $approvalRequest->attachments()->get()->map->listItem()->all()
                 : [],
         ];
+    }
+
+    /**
+     * 画面の明細表の行（form 用。名前を設定した行は fixed に名前・金額はカンマ付きの文字）。断られて戻ったときは送った値のまま
+     * （打った文字を出す）。そうでなければ、種類の今の行の設定に合わせて並べ直す（AmountTable::forForm。段階5 D16）
+     *
+     * @return array{upper: list<array{fixed: ?string, name: string, sale: string, cost: string}>, lower: list<array{fixed: ?string, name: string, sale: string, cost: string}>}
+     */
+    private function tableRows(ApprovalRequest $approvalRequest): array
+    {
+        $old = old('amount_table');
+        if (is_array($old)) {
+            $text = fn (mixed $value): string => is_string($value) || is_int($value) ? (string) $value : '';
+
+            return array_map(fn (array $rows) => array_map(fn (array $row) => [
+                'fixed' => $row['fixed'], 'name' => $text($row['name']), 'sale' => $text($row['sale']), 'cost' => $text($row['cost']),
+            ], $rows), AmountTable::cleanInput($old));
+        }
+
+        $type   = $approvalRequest->type;
+        $layout = $type?->usesTable() ? ($type->table_layout ?? []) : [];
+        $table  = AmountTable::forForm($layout, $approvalRequest->amount_table);
+        $amount = fn (?int $value): string => $value === null ? '' : number_format($value);
+
+        return array_map(fn (array $rows) => array_map(fn (array $row) => [
+            'fixed' => $row['fixed'] ? $row['name'] : null,
+            'name'  => $row['fixed'] ? '' : (string) $row['name'],
+            'sale'  => $amount($row['sale']),
+            'cost'  => $amount($row['cost']),
+        ], $rows), ['upper' => $table['upper'], 'lower' => $table['lower']]);
     }
 
     /**

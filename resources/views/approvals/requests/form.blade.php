@@ -81,7 +81,7 @@
             <div>
                 <label for="type_id" class="block text-[12px] font-semibold text-gray-700 mb-1">申請の種類<span class="text-red-600 ml-0.5">*</span></label>
                 {{-- ⚠ <option> は @@foreach で静的に出す（Bug #16）。選び直しは @@change で拾う（初期値は selected） --}}
-                <select id="type_id" name="type_id" @change="typeChanged($event.target.value)"
+                <select id="type_id" name="type_id" x-ref="typeSelect" @change="typeChanged($event.target.value)"
                         class="w-full h-[38px] px-2.5 border border-gray-300 rounded-md text-[13px] bg-white cursor-pointer">
                     <option value="">選んでください</option>
                     @foreach($types as $type)
@@ -104,6 +104,16 @@
             </div>
         </div>
 
+        {{-- 種類を選び直して、保存すると消えるものがあるとき（明細表の種類から 5W2H の種類へ・新しい種類が使わない追加の欄）。
+             保存するまでは画面に残っているので、元の種類に戻せる（段階5 D16「黙って消さない」。点検の I-3） --}}
+        <div x-show="leaving !== null" x-cloak role="alert" class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-[13px] text-amber-800">
+            <p class="mb-2">選んだ種類は<span class="font-semibold" x-text="leaving ? leaving.labels.join('・') : ''"></span>を使いません。このまま保存すると、入れた内容は消えます。</p>
+            <div class="flex flex-wrap gap-2">
+                <button type="button" @click="restoreType()" class="px-3 py-1.5 text-[12px] font-semibold text-white bg-amber-600 rounded-md hover:bg-amber-700 cursor-pointer">元の種類に戻す</button>
+                <button type="button" @click="leaving = null" class="px-3 py-1.5 text-[12px] font-semibold text-gray-600 bg-white border border-gray-300 rounded-md hover:bg-gray-50 cursor-pointer">この種類で進める</button>
+            </div>
+        </div>
+
         {{-- 種類を選び直したとき、本文を書き始めていれば入れ替えるか確かめる（設計書 §5.6） --}}
         <div x-show="pendingTypeId !== null" x-cloak class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-[13px] text-amber-800">
             <p class="mb-2">本文を、選んだ種類の見出しに入れ替えますか？（いま書いてある本文は消えます）</p>
@@ -113,19 +123,39 @@
             </div>
         </div>
 
+        {{-- 件名（要件 5.5.3）。種類に決まり文句があれば「前半＋決まり文句」で組み立て、「件名を直接書く」で 1 行に切り替える。
+             送るのはいつも組み立てた件名（下の name="subject"。組み立てるときは隠して送る。段階5 設計書 §5.5） --}}
         <div>
             <label for="subject" class="block text-[12px] font-semibold text-gray-700 mb-1">件名<span class="text-red-600 ml-0.5">*</span></label>
-            <input type="text" id="subject" name="subject" value="{{ old('subject', $approvalRequest->subject) }}" maxlength="100"
-                   class="w-full h-[38px] px-2.5 border border-gray-300 rounded-md text-[13px]">
+            <div x-show="subjectMode === 'split' && suffix() !== ''" x-cloak class="space-y-1.5">
+                <div class="flex flex-wrap items-center gap-2">
+                    <input type="text" id="subject-prefix" x-model="subjectPrefix" @input="composeSubject()" :maxlength="100 - suffix().length"
+                           aria-label="件名の前半（決まり文句の前）" placeholder="例: 山田"
+                           class="flex-1 min-w-[10rem] h-[38px] px-2.5 border border-gray-300 rounded-md text-[13px]">
+                    <span class="px-2.5 py-2 rounded-md border border-dashed border-gray-300 bg-gray-50 text-[13px] text-gray-700" x-text="suffix()"></span>
+                </div>
+                <p class="text-[12px] text-gray-700 bg-emerald-50 border-l-2 border-emerald-500 px-2.5 py-1.5">台帳と PDF に載る件名: <span class="font-semibold" x-text="subjectText || '（前半を入れてください）'"></span></p>
+                <button type="button" @click="writeSubjectDirectly()" class="text-[12px] text-emerald-700 hover:underline cursor-pointer">件名を直接書く</button>
+            </div>
+            <div x-show="subjectMode === 'direct' || suffix() === ''">
+                <input type="text" id="subject" name="subject" value="{{ old('subject', $approvalRequest->subject) }}" x-model="subjectText" maxlength="100"
+                       class="w-full h-[38px] px-2.5 border border-gray-300 rounded-md text-[13px]">
+                <button type="button" x-show="suffix() !== ''" x-cloak @click="useSuffix()" class="mt-1 text-[12px] text-emerald-700 hover:underline cursor-pointer">決まり文句（<span x-text="suffix()"></span>）を使う</button>
+            </div>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
                 <label for="amount" class="block text-[12px] font-semibold text-gray-700 mb-1">金額（円・税抜）</label>
-                {{-- ⚠ value="0" の既定値を入れない（設計書 §5.6）。カンマ入りでも受け付ける --}}
+                {{-- ⚠ value="0" の既定値を入れない（設計書 §5.6）。カンマ入りでも受け付ける。
+                     明細表の種類では入れない（合計金額の販売金額をサーバーが計算する。段階5 D15）。押せなくして送らない --}}
                 <input type="text" id="amount" name="amount" inputmode="numeric" placeholder="例: 28,500,000"
                        value="{{ old('amount', $approvalRequest->amount === null ? '' : number_format($approvalRequest->amount)) }}"
+                       x-show="!isTable()" :disabled="isTable()"
                        class="w-full h-[38px] px-2.5 border border-gray-300 rounded-md text-[13px]">
+                <p x-show="isTable()" x-cloak class="h-[38px] flex items-center px-2.5 rounded-md bg-slate-100 text-[13px] text-gray-700">
+                    <span x-text="yen(total().sale) || '—'"></span><span class="ml-2 text-[11px] text-gray-500">（明細表の合計金額の販売金額）</span>
+                </p>
             </div>
             <div>
                 <label for="schedule" class="block text-[12px] font-semibold text-gray-700 mb-1">実施時期</label>
@@ -134,10 +164,58 @@
             </div>
         </div>
 
-        <div>
-            <label for="body" class="block text-[12px] font-semibold text-gray-700 mb-1">重点ポイント（5W2H）<span class="text-red-600 ml-0.5">*</span></label>
-            <textarea id="body" name="body" x-ref="body" rows="16" maxlength="20000" class="w-full px-2.5 py-2 border border-gray-300 rounded-md text-[13px] leading-relaxed">{{ old('body', $approvalRequest->body) }}</textarea>
-            <p class="text-[11px] text-gray-400 mt-1">種類を選ぶと見出しが入ります。見出しのままでは提出できません。「いつ」「いくら」は実施時期・金額の欄に書きます。</p>
+        {{-- 本文の欄（種類の本文の形で並びを変える。明細表の種類は「明細表 → 坪数・坪単価・担当者・契約予定日 → 定型文 → 補足」で、
+             紙の住宅の様式の「（記）」の並び。5W2H の種類は「重点ポイント → 追加の欄 → 定型文」。段階5 設計書 §5.5） --}}
+        <div class="flex flex-col gap-5">
+            <div class="order-1">
+                @include('approvals.requests._amount_table_input')
+            </div>
+
+            {{-- 追加の入力欄（種類が使う欄だけ。使わない欄は押せなくして送らない。担当者・契約予定日は提出に必須。D2・D12） --}}
+            <div x-show="usesAny()" x-cloak class="order-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div x-show="uses('tsubo')">
+                    <label for="tsubo" class="block text-[12px] font-semibold text-gray-700 mb-1">坪数</label>
+                    <div class="flex items-center gap-1.5">
+                        <input type="text" id="tsubo" name="tsubo" inputmode="decimal" placeholder="例: 38.5" :disabled="!uses('tsubo')" x-ref="extra_tsubo"
+                               value="{{ old('tsubo', $approvalRequest->tsubo) }}" class="w-full h-[38px] px-2.5 border border-gray-300 rounded-md text-[13px] text-right tabular-nums">
+                        <span class="text-[12px] text-gray-500">坪</span>
+                    </div>
+                </div>
+                <div x-show="uses('tsubo_price')">
+                    <label for="tsubo_price" class="block text-[12px] font-semibold text-gray-700 mb-1">坪単価</label>
+                    <div class="flex items-center gap-1.5">
+                        <input type="text" id="tsubo_price" name="tsubo_price" inputmode="numeric" placeholder="例: 1,083,000" :disabled="!uses('tsubo_price')" x-ref="extra_tsubo_price"
+                               value="{{ old('tsubo_price', $approvalRequest->tsubo_price === null ? '' : number_format($approvalRequest->tsubo_price)) }}" class="w-full h-[38px] px-2.5 border border-gray-300 rounded-md text-[13px] text-right tabular-nums">
+                        <span class="text-[12px] text-gray-500">円</span>
+                    </div>
+                </div>
+                <div x-show="uses('staff')">
+                    <label for="staff" class="block text-[12px] font-semibold text-gray-700 mb-1">担当者<span class="text-red-600 ml-0.5">*</span></label>
+                    <input type="text" id="staff" name="staff" maxlength="50" :disabled="!uses('staff')" x-ref="extra_staff"
+                           value="{{ old('staff', $approvalRequest->staff) }}" class="w-full h-[38px] px-2.5 border border-gray-300 rounded-md text-[13px]">
+                </div>
+                <div x-show="uses('contract_date')">
+                    <label for="contract_date" class="block text-[12px] font-semibold text-gray-700 mb-1">契約予定日<span class="text-red-600 ml-0.5">*</span></label>
+                    <input type="date" id="contract_date" name="contract_date" :disabled="!uses('contract_date')" x-ref="extra_contract_date"
+                           value="{{ old('contract_date', $approvalRequest->contract_date?->format('Y-m-d')) }}" class="w-full h-[38px] px-2.5 border border-gray-300 rounded-md text-[13px]">
+                </div>
+            </div>
+
+            {{-- 定型文（種類の固定の文。申請者は直さない。保存したときに申請に写す。D14） --}}
+            <div x-show="fixedText() !== ''" x-cloak class="order-3">
+                <p class="text-[12px] font-semibold text-gray-700 mb-1">定型文</p>
+                <p class="rounded-md border border-dashed border-gray-300 bg-gray-50 px-2.5 py-2 text-[13px] text-gray-700 whitespace-pre-wrap break-words" x-text="fixedText()"></p>
+            </div>
+
+            <div :class="isTable() ? 'order-4' : 'order-first'">
+                <label for="body" class="block text-[12px] font-semibold text-gray-700 mb-1">
+                    <span x-show="!isTable()">重点ポイント（5W2H）<span class="text-red-600 ml-0.5">*</span></span>
+                    <span x-show="isTable()" x-cloak>補足（自由記入）</span>
+                </label>
+                <textarea id="body" name="body" x-ref="body" rows="16" :rows="isTable() ? 4 : 16" maxlength="20000" class="w-full px-2.5 py-2 border border-gray-300 rounded-md text-[13px] leading-relaxed">{{ old('body', $approvalRequest->body) }}</textarea>
+                <p x-show="!isTable()" class="text-[11px] text-gray-400 mt-1">種類を選ぶと見出しが入ります。見出しのままでは提出できません。「いつ」「いくら」は実施時期・金額の欄に書きます。</p>
+                <p x-show="isTable()" x-cloak class="text-[11px] text-gray-400 mt-1">任意。長さの制限はありません（紙の様式の 2 行の欄）。</p>
+            </div>
         </div>
 
         {{-- 関連する決裁No（10 個まで。候補は見られる申請の番号と件名。設計書 §5.6・D15） --}}
@@ -253,8 +331,25 @@
 <script>
 {{-- ⚠ Js::from を使う（@@json は構造の " を素のまま出す。Bug #23）。x-data にアロー関数を書かない（Top trap #4） --}}
 function approvalRequestForm() {
+    // 明細表の行の x-for の鍵
+    var rowSeq = 0;
+    var keyed = function (rows) {
+        return (rows || []).map(function (row) {
+            return { key: ++rowSeq, fixed: row.fixed, name: row.name, sale: row.sale, cost: row.cost };
+        });
+    };
+    var tableRows = {{ \Illuminate\Support\Js::from($tableRows) }};
+
     return {
         headings: {{ \Illuminate\Support\Js::from($typeHeadings) }},
+        // 種類ごとの本文の形・明細表の行の設定・件名の決まり文句・使う追加の欄・定型文（段階5。RequestController::formData）
+        types: {{ \Illuminate\Support\Js::from($typeConfigs) }},
+        typeId: {{ \Illuminate\Support\Js::from((string) old('type_id', $approvalRequest->type_id)) }},
+        rows: { upper: keyed(tableRows.upper), lower: keyed(tableRows.lower) },
+        // 件名（split＝前半＋決まり文句・direct＝1 行。送るのはいつも subjectText）
+        subjectText: {{ \Illuminate\Support\Js::from((string) old('subject', $approvalRequest->subject)) }},
+        subjectPrefix: '',
+        subjectMode: 'direct',
         numbers: {{ \Illuminate\Support\Js::from(array_values(old('related_numbers', $approvalRequest->related_numbers ?? []))) }},
         maxNumbers: {{ \App\Support\Approval\RelatedNumbers::MAX }},
         numberInput: '',
@@ -266,6 +361,9 @@ function approvalRequestForm() {
         // 関連する決裁No の形の誤り・数の上限（addNumber）
         numberError: '',
         pendingTypeId: null,
+        // 種類を選び直して保存すると消えるもの（{ from: 前の種類, labels: 名前の並び }。lostOnChange）
+        leaving: null,
+        extraLabels: {{ \Illuminate\Support\Js::from(\App\Support\Approval\RequestExtras::FIELDS) }},
         confirmSubmit: false,
         // 保存・提出の二度押し止め（Task 19 の C2）。1 回目で印を立て、2 回目からは送信を取り消す
         submitting: false,
@@ -282,6 +380,194 @@ function approvalRequestForm() {
                 return;
             }
             this.submitting = true;
+        },
+
+        init: function () {
+            this.initSubject();
+        },
+
+        // ---- 種類の設定（段階5） ----
+        config: function () {
+            return this.types[this.typeId] || null;
+        },
+        isTable: function () {
+            var config = this.config();
+            return config !== null && config.form === 'table';
+        },
+        hasSubtotal: function () {
+            var config = this.config();
+            return config !== null && !!config.layout.subtotal;
+        },
+        suffix: function () {
+            var config = this.config();
+            return config === null ? '' : config.suffix;
+        },
+        uses: function (key) {
+            var config = this.config();
+            return config !== null && config.uses.indexOf(key) !== -1;
+        },
+        usesAny: function () {
+            var config = this.config();
+            return config !== null && config.uses.length > 0;
+        },
+        fixedText: function () {
+            var config = this.config();
+            return config === null ? '' : config.fixedText;
+        },
+
+        // ---- 件名の組み立て（要件 5.5.3） ----
+        // 決まり文句のある種類で、件名が空か決まり文句で終わっていれば前半と決まり文句に分けて出す（そうでなければ直接書く）
+        initSubject: function () {
+            var suffix = this.suffix();
+            if (suffix !== '' && (this.subjectText === '' || this.endsWith(this.subjectText, suffix))) {
+                this.subjectMode = 'split';
+                this.subjectPrefix = this.subjectText.slice(0, this.subjectText.length - suffix.length);
+                if (this.subjectText === '') {
+                    this.subjectPrefix = '';
+                }
+            } else {
+                this.subjectMode = 'direct';
+            }
+        },
+        endsWith: function (text, suffix) {
+            return text.length >= suffix.length && text.slice(text.length - suffix.length) === suffix;
+        },
+        // 前半が空なら件名も空（決まり文句だけの件名は作らない。台帳と PDF に施主名の無い件名が載る。提出は SubmitChecker も断る。点検の I-4）
+        composeSubject: function () {
+            this.subjectText = this.subjectPrefix.trim() === '' ? '' : this.subjectPrefix + this.suffix();
+        },
+        writeSubjectDirectly: function () {
+            this.subjectMode = 'direct';
+        },
+        useSuffix: function () {
+            var suffix = this.suffix();
+            this.subjectPrefix = this.endsWith(this.subjectText, suffix) ? this.subjectText.slice(0, this.subjectText.length - suffix.length) : this.subjectText;
+            this.subjectMode = 'split';
+            this.composeSubject();
+        },
+        // 種類を選び直したとき: 組み立てていれば新しい決まり文句で組み直す（決まり文句の無い種類なら、打った前半だけを残す）
+        subjectTypeChanged: function () {
+            var suffix = this.suffix();
+            if (this.subjectMode === 'split') {
+                if (suffix === '') {
+                    this.subjectMode = 'direct';
+                    this.subjectText = this.subjectPrefix;
+                } else {
+                    this.composeSubject();
+                }
+            } else if (suffix !== '' && this.subjectText === '') {
+                this.subjectMode = 'split';
+                this.subjectPrefix = '';
+                this.composeSubject();
+            }
+        },
+
+        // ---- 金額の明細表（App\Support\Approval\AmountTable と同じ式。保存する金額はサーバーが計算し直す） ----
+        // 数の入力を読む（App\Support\Approval\FormInput::digits と同じそろえ方。全角・カンマ・「円」・空白を落とし、マイナスの記号を - に、
+        // 先頭の + と 0 を落とす。数でなければ null）。15 桁を超える数は読まない（サーバーが「12 桁まで」で断る。BigInt に渡せない数を作らない）
+        parseAmount: function (value) {
+            var text = String(value === null || value === undefined ? '' : value).replace(/[０-９]/g, function (c) {
+                return String.fromCharCode(c.charCodeAt(0) - 0xFEE0);
+            });
+            text = text.replace(/[−ー‐―–—－]/g, '-').replace(/＋/g, '+').replace(/[,，円¥￥\s]/g, '');
+            var m = /^([+-]?)0*(\d{1,15})$/.exec(text);
+            if (m === null) {
+                return null;
+            }
+            var number = parseInt(m[2], 10);
+            return m[1] === '-' && number !== 0 ? -number : number;
+        },
+        yen: function (value) {
+            return value === null || value === undefined ? '' : value.toLocaleString('ja-JP') + '円';
+        },
+        // 粗利率（％・小数第 1 位。四捨五入は 0 から遠い方へ）。販売金額が 0 なら無い。
+        // ⚠ AmountTable::rate と同じく整数で計算する（浮動小数の割り算は 63.75% を 63.7499…% にする。点検の I-1）。
+        //   |粗利益| × 2,000 は Number の正確な整数の範囲を超えうるので BigInt で割る
+        rate: function (sale, profit) {
+            if (sale === 0) {
+                return null;
+            }
+            var s = BigInt(Math.abs(sale));
+            var tenths = Number((BigInt(Math.abs(profit)) * 2000n + s) / (s * 2n));
+            return ((profit < 0) !== (sale < 0) && tenths !== 0 ? -tenths : tenths) / 10;
+        },
+        // 「12.3%」（3 桁の区切りは付けない＝AmountTable::rateLabel と同じ）
+        rateLabel: function (rate) {
+            return rate === null ? '—' : rate.toFixed(1) + '%';
+        },
+        line: function (sale, cost) {
+            return { sale: sale, cost: cost, profit: sale - cost, rate: this.rate(sale, sale - cost) };
+        },
+        rowLine: function (row) {
+            var sale = this.parseAmount(row.sale);
+            var cost = this.parseAmount(row.cost);
+            if (sale === null && cost === null) {
+                return { profit: null, rate: null };
+            }
+            return this.line(sale || 0, cost || 0);
+        },
+        sums: function (section) {
+            var self = this;
+            var sale = 0;
+            var cost = 0;
+            this.rows[section].forEach(function (row) {
+                sale += self.parseAmount(row.sale) || 0;
+                cost += self.parseAmount(row.cost) || 0;
+            });
+            return [sale, cost];
+        },
+        subtotal: function () {
+            if (!this.hasSubtotal()) {
+                return null;
+            }
+            var upper = this.sums('upper');
+            return this.line(upper[0], upper[1]);
+        },
+        total: function () {
+            var upper = this.sums('upper');
+            var lower = this.sums('lower');
+            return this.line(upper[0] + lower[0], upper[1] + lower[1]);
+        },
+        // 欄を離れたらカンマ付きに整える（読めない値はそのまま。サーバーが理由を出す）
+        formatAmount: function (row, field) {
+            var value = this.parseAmount(row[field]);
+            if (value !== null) {
+                row[field] = value.toLocaleString('ja-JP');
+            }
+        },
+        addRow: function (section) {
+            this.rows[section].push({ key: ++rowSeq, fixed: null, name: '', sale: '', cost: '' });
+        },
+        removeRow: function (section, index) {
+            this.rows[section].splice(index, 1);
+        },
+        // 種類の行の設定に合わせて並べ直す（AmountTable::forForm と同じ規則。名前を設定した行は同じ名前の行の金額を当て、自由行の位置には
+        // 自由行を順に当て、残りは後ろへ。設定から名前が消えた行は、金額があれば自由行として残す＝黙って消さない。段階5 D16）
+        mergeRows: function (layout, rows) {
+            var merged = {};
+            ['upper', 'lower'].forEach(function (section) {
+                var names = layout[section] || [];
+                var fixed = {};
+                var free = [];
+                rows[section].forEach(function (row) {
+                    if (row.fixed !== null && names.indexOf(row.fixed) !== -1 && !fixed.hasOwnProperty(row.fixed)) {
+                        fixed[row.fixed] = row;
+                    } else if (row.fixed === null || String(row.sale).trim() !== '' || String(row.cost).trim() !== '') {
+                        free.push({ key: ++rowSeq, fixed: null, name: row.fixed !== null ? row.fixed : row.name, sale: row.sale, cost: row.cost });
+                    }
+                });
+                var out = [];
+                names.forEach(function (name) {
+                    if (name !== null) {
+                        var old = fixed[name];
+                        out.push({ key: ++rowSeq, fixed: name, name: '', sale: old ? old.sale : '', cost: old ? old.cost : '' });
+                    } else {
+                        out.push(free.length > 0 ? free.shift() : { key: ++rowSeq, fixed: null, name: '', sale: '', cost: '' });
+                    }
+                });
+                merged[section] = out.concat(free);
+            });
+            return merged;
         },
 
         // 「戻る」で画面がそのまま戻ったとき（bfcache）に印を下ろす（Bug #65 と同じく persisted で絞らない）。
@@ -303,10 +589,25 @@ function approvalRequestForm() {
             return true;
         },
 
-        // 種類を選んだ: 本文が見出しのままなら入れ替え、書き始めていれば確かめる
+        // 種類を選んだ: 明細表と件名を新しい種類に合わせる。本文は、5W2H の種類なら見出しのままなら入れ替え、書き始めていれば確かめる。
+        // 明細表の種類なら、見出しのままの本文は空にする（補足になる。書いた本文は黙って消さずに補足に残す。段階5 D16）
         typeChanged: function (typeId) {
+            var lost = this.lostOnChange(typeId);
+            this.leaving = lost.length > 0 ? { from: this.typeId, labels: lost, subjectMode: this.subjectMode } : null;
+            this.typeId = typeId;
+            if (this.isTable()) {
+                this.rows = this.mergeRows(this.config().layout, this.rows);
+            }
+            this.subjectTypeChanged();
+
             var headings = this.headings[typeId];
             this.pendingTypeId = null;
+            if (this.isTable()) {
+                if (this.isBlankBody(this.$refs.body.value)) {
+                    this.$refs.body.value = '';
+                }
+                return;
+            }
             if (!headings) {
                 return;
             }
@@ -315,6 +616,43 @@ function approvalRequestForm() {
                 return;
             }
             this.pendingTypeId = typeId;
+        },
+
+        // 種類を選び直すと保存で消えるもの（明細表の種類から 5W2H の種類へ移るときの明細表・新しい種類が使わない追加の欄の値。
+        // 保存のとき RequestFields が空にする。段階5 D16。点検の I-3）
+        lostOnChange: function (typeId) {
+            var self = this;
+            var from = this.config();
+            var to = this.types[typeId] || null;
+            var lost = [];
+            if (from === null) {
+                return lost;
+            }
+            var filled = function (row) {
+                return String(row.name || '').trim() !== '' || String(row.sale).trim() !== '' || String(row.cost).trim() !== '';
+            };
+            if (from.form === 'table' && (to === null || to.form !== 'table') && (this.rows.upper.some(filled) || this.rows.lower.some(filled))) {
+                lost.push('明細表');
+            }
+            from.uses.forEach(function (key) {
+                var input = self.$refs['extra_' + key];
+                if ((to === null || to.uses.indexOf(key) === -1) && input && String(input.value).trim() !== '') {
+                    lost.push(self.extraLabels[key]);
+                }
+            });
+            return lost;
+        },
+        // 選び直す前の種類に戻す（書いた明細表と欄は、保存するまで画面に残っている）。件名を前半と決まり文句で組み立てていたら、
+        // 決まり文句の無い種類で 1 行になった件名を組み立て直す
+        restoreType: function () {
+            var previous = this.leaving.from;
+            var composed = this.leaving.subjectMode === 'split';
+            this.$refs.typeSelect.value = previous;
+            this.typeChanged(previous);
+            if (composed) {
+                this.useSuffix();
+            }
+            this.leaving = null;
         },
 
         replaceBody: function () {
