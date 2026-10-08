@@ -134,10 +134,15 @@ class LedgerExcelTableTest extends TestCase
             'amount_table' => ['subtotal' => false, 'upper' => [$this->row('工事請負金額', true, 1000, 900)], 'lower' => []],
         ]);
         $this->workflow->judgeHead($request->fresh(), $w['head'], $request->fresh()->lock_version, ApprovalStepResult::Return, '直してください');
-        $request->fresh()->update(['amount_table' => ['subtotal' => false, 'upper' => [$this->row('工事請負金額', true, 0, 900)], 'lower' => []]]);
+        // 直しかけの契約予定日（提出したときの 10/20 とは違う日。ほかの人には 10/20 が出ることを下で見る）
+        $request->fresh()->update([
+            'amount_table'  => ['subtotal' => false, 'upper' => [$this->row('工事請負金額', true, 0, 900)], 'lower' => []],
+            'contract_date' => '2026-11-30',
+        ]);
 
         $own = $this->rowFor($w['applicant'], $request);
         $this->assertSame([900, -900, null], [$own->cost, $own->profit, $own->rate], '申請者本人には今の中身');
+        $this->assertSame('2026-11-30', $own->contractDate?->format('Y-m-d'), '申請者本人には今の契約予定日');
 
         $sheet = $this->sheet($w['applicant'], ['status' => 'all']);
         $this->assertEquals(900, $sheet->getCell('I2')->getValue());
