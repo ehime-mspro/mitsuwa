@@ -43,7 +43,7 @@
 
         <div class="ml-[52px] mb-4">
             <div class="bg-red-50 border border-red-200 rounded-md px-3 py-2 mb-2">
-                <span class="text-sm font-bold text-red-800">{{ $target }}</span>
+                <span class="text-sm font-bold text-red-800 wrap-anywhere">{{ $target }}</span>
             </div>
             @if($message)
                 <p class="text-sm text-gray-600">{{ $message }}</p>

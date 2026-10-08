@@ -274,7 +274,7 @@
     @if($o->notes)
         <div class="bg-white border border-gray-200 rounded-lg px-5 py-3 mb-5">
             <div class="flex gap-6 text-sm text-gray-600 wrap-anywhere">
-                <span class="text-gray-500 font-semibold">備考:</span> {{ $o->notes }}
+                <span class="text-gray-500 font-semibold flex-shrink-0">備考:</span> {{ $o->notes }}
             </div>
         </div>
     @endif
