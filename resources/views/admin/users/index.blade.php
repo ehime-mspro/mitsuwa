@@ -56,7 +56,7 @@
 
     {{-- フィルターバー --}}
     <form method="GET" action="{{ route('admin.users.index') }}"
-          class="flex flex-col sm:flex-row sm:items-center gap-2 mb-4 bg-white border border-gray-200 rounded-lg px-3.5 py-2.5">
+          class="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 mb-4 bg-white border border-gray-200 rounded-lg px-3.5 py-2.5">
         <select name="role" class="h-8 px-2.5 border border-gray-300 rounded-md text-[12px] text-gray-700 bg-white focus:border-emerald-500 focus:outline-none cursor-pointer w-full sm:w-auto">
             <option value="">ロール: すべて</option>
             @foreach(App\Enums\UserRole::cases() as $role)

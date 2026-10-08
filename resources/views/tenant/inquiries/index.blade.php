@@ -26,7 +26,7 @@
     {{-- フィルターバー --}}
     @php $currentStatus = request('status', 'follow'); @endphp
     <form id="filter-form" method="GET" action="{{ route('tenant.inquiries.index') }}"
-          class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mb-4 bg-white border border-gray-200 rounded-lg px-3.5 py-2.5">
+          class="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2 mb-4 bg-white border border-gray-200 rounded-lg px-3.5 py-2.5">
         <select onchange="document.getElementById('filter-form').submit()" name="property_id"
                 class="h-9 px-3 border border-gray-300 rounded-md text-sm text-gray-700 bg-white focus:border-emerald-500 focus:outline-none cursor-pointer w-full sm:w-auto">
             <option value="">物件: すべて</option>

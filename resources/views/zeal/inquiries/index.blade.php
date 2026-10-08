@@ -71,7 +71,7 @@
 
 {{-- フィルターバー --}}
 <form id="filter-form" method="GET" action="{{ route('zeal.inquiries.index') }}"
-      class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mb-4 bg-white border border-gray-200 rounded-lg px-3.5 py-2.5">
+      class="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2 mb-4 bg-white border border-gray-200 rounded-lg px-3.5 py-2.5">
 
     {{-- ステータス --}}
     <select name="status" onchange="document.getElementById('filter-form').submit()"

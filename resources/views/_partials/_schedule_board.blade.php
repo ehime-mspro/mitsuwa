@@ -23,7 +23,7 @@
      ⚠ フォーム側の `flex flex-col sm:flex-row` がモバイルでの縦積みを担っている。
         インラインの `display: flex` で置き換えない。 --}}
 <form id="filter-form" method="GET" action="{{ route($boardRoute) }}"
-      class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mb-4 bg-white border border-gray-200 rounded-lg px-3.5 py-2.5">
+      class="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2 mb-4 bg-white border border-gray-200 rounded-lg px-3.5 py-2.5">
     <select name="kind" onchange="document.getElementById('filter-form').submit()"
             class="h-9 px-3 border border-gray-300 rounded-md text-sm text-gray-700 bg-white focus:border-emerald-500 focus:outline-none cursor-pointer w-full sm:w-auto">
         <option value="all" @selected($f['kind'] === 'all')>種別: すべて</option>

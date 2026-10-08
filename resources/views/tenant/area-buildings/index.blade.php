@@ -40,7 +40,7 @@
         $yearValue    = is_string(request('year')) ? request('year') : '';
     @endphp
     <form id="filter-form" method="GET" action="{{ route('tenant.area-buildings.index') }}"
-          class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mb-4 bg-white border border-gray-200 rounded-lg px-3.5 py-2.5">
+          class="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2 mb-4 bg-white border border-gray-200 rounded-lg px-3.5 py-2.5">
         <x-sort-hidden :sort="$sort" />
         <input type="text" name="keyword" value="{{ $keywordValue }}"
                placeholder="ビル名・テナント名"
