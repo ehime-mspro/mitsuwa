@@ -179,10 +179,13 @@ final class LedgerFilter
         return preg_match('/^[1-9]\d{0,18}$/', $value) ? (int) $value : null;
     }
 
-    /** 日本の暦の日付（YYYY-MM-DD・在る日付だけ。2026-02-30 は外す） */
+    /**
+     * 日本の暦の日付（YYYY-MM-DD・在る日付だけ。2026-02-30 は外す）。年は 1900〜2099 だけ（0000-01-01 を UTC に直すと年が -1 になり、
+     * MySQL の TIMESTAMP と比べられない。4b の Task 2 の軽微。紙の台帳は平成の年度も取り込むので 2000 年より前も通す）
+     */
     private static function calendarDay(string $value): ?CarbonImmutable
     {
-        if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
+        if (! preg_match('/^(19|20)\d{2}-\d{2}-\d{2}$/', $value)) {
             return null;
         }
         $date = CarbonImmutable::createFromFormat('!Y-m-d', $value, JapanTime::ZONE);

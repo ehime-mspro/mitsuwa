@@ -184,13 +184,14 @@ final class Ledger
     {
         $values = fn (array $statuses) => array_map(fn (ApprovalStatus $s) => $s->value, $statuses);
 
+        // ⚠ 知らないキーを「すべて」と扱わない（LedgerFilter が選択肢のキーだけを通す。通らないキーが来たら作りの誤り。4b の Task 2 の軽微）
         match ($status) {
             'numbered'  => $query->where(fn (Builder $q) => $q
                 ->whereIn('approval_requests.status', $values(self::DECIDED))
                 ->orWhere(fn (Builder $q) => $q->where('approval_requests.status', ApprovalStatus::Withdrawn->value)->whereNotNull('approval_requests.number'))),
             'progress'  => $query->whereIn('approval_requests.status', $values(self::IN_PROGRESS)),
             'withdrawn' => $query->where('approval_requests.status', ApprovalStatus::Withdrawn->value),
-            default     => null,
+            'all'       => null,
         };
     }
 
