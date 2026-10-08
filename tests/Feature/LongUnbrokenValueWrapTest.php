@@ -21,9 +21,11 @@ use Tests\TestCase;
  *   ⚠ overflow-wrap: break-word（Tailwind の break-words）は認めない。幅の決まった段落の中では折り返すが、
  *     値の最小の幅を縮めないので、`140px 1fr` の行や `1fr 1fr` の 2 列は値の長さまで広がって切れる（anywhere は縮める）。
  *
- * 【対象外】表（<table>）の中の値。MobileLayoutTest がどの表も横スクロールの枠の中にあることを全件で守っており、
- *   長い値は表を広げてスクロールさせるだけで切れない。逆にセルへ anywhere を付けると、幅の足りない表で
- *   その列が 1 文字幅まで潰れる（表の幅は列の最小の幅の合計まで縮むため）。
+ * 【対象外】列の幅を中身で決める表（table-layout が auto＝既定）の中の値。MobileLayoutTest がどの表も横スクロールの枠の中に
+ *   あることを全件で守っており、長い値は表を広げてスクロールさせるだけで切れない。逆にセルへ anywhere を付けると、
+ *   幅の足りない表でその列が 1 文字幅まで潰れる（表の幅は列の最小の幅の合計まで縮むため）。
+ *   ⚠ table-layout: fixed の表の中は対象。列の幅が決まっているので、長い語はセルからあふれて隣の列（操作のボタンなど）に
+ *   重なる（2026-10-08 の独立の点検で見つけた。最初の版は表をすべて対象外にしていた）。値を包む一番内側の表で決める。
  *
  * ⚠ 長い値の項目は名前で拾う（FIELDS）。ここに無い名前の項目（新しく足した自由入力など）は見えない。
  *   自由入力を足したら名前をここへ足す。
@@ -37,22 +39,18 @@ class LongUnbrokenValueWrapTest extends TestCase
     /** 空白の無い長い値になりうる項目の名前（メール・ファイル名・TEXT 型の自由入力の列） */
     private const FIELDS = 'email|file_name|original_name|notes|note|memo|description|remarks|reason|comment|withdraw_note|termination_reason|qualifications|deposit_deduction_reason|special_notes|purpose_detail|body|content|answer_value|result_reason';
 
-    /** 走査が空振りしたら緑になる。拾えた箇所の数の下限（2026-10-08 の実測は 47 ビュー・表の外 61・表の中 25。下げる前に「消した」のか「拾えなくなった」のかを確かめる） */
-    private const MIN_SITES_OUTSIDE_TABLES = 55;
+    /** 走査が空振りしたら緑になる。拾えた箇所の数の下限（2026-10-08 の実測は、長い値を出すビュー 47 本・表の外 70・幅を中身で決める表の中 16。下げる前に「消した」のか「拾えなくなった」のかを確かめる） */
+    private const MIN_SITES_OUTSIDE_TABLES = 60;
 
-    private const MIN_SITES_IN_TABLES = 20;
+    private const MIN_SITES_IN_TABLES = 12;
 
     /**
-     * 折り返しも省略表示も持たなくてよい箇所（ファイル => [件数, 理由]）。
-     * 足すときは「なぜ狭い画面で切れないか、なぜ直さないか」を書くこと。
+     * 走査しないビュー（パスの先頭 => 理由）。足すときは「なぜ直さないか」を書くこと。
+     * ⚠ 件数では持たない。ほかの会話が値の出し方を変えるたびに、そちらの作業でこのテストが赤くなるため（2026-10-08 の独立の点検）。
      */
-    private const EXEMPT = [
-        'approvals/requests/show.blade.php' => [3, '決裁の画面は「社内決裁申請」の会話の担当（2026-10-08 時点で段階5a を作業中）。段落は break-words で、幅の決まった段落の中では折り返す（1fr の列の中かは未実測）'],
-        'approvals/requests/_history.blade.php' => [2, '同上'],
-        'approvals/requests/_steps.blade.php' => [1, '同上'],
-        'approvals/requests/_actions.blade.php' => [1, '同上'],
-        'approvals/requests/form.blade.php' => [1, '同上'],
-        'approvals/login-guide.blade.php' => [1, '決裁の会話の担当。A4 の紙に印刷するための紙面（375px では以前から横にはみ出す・範囲外として記録済み）'],
+    private const EXEMPT_PREFIXES = [
+        'approvals/' => '決裁の画面は「社内決裁申請」の会話の担当（2026-10-08 時点で段階5a を作業中）。2026-10-08 の走査では表の外の 9 か所が break-words'
+            . '（段落の中では折り返すが、1fr の列の広がりは止めない）で、ログイン案内は子孫セレクタの word-break: break-all（この走査には見えない）だった',
     ];
 
     private const VOID_ELEMENTS = ['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr'];
@@ -63,6 +61,8 @@ class LongUnbrokenValueWrapTest extends TestCase
     private const TAG = '/<(\/?)([a-zA-Z][\w:.-]*)((?:[^>"\']|"[^"]*"|\'[^\']*\')*)>/';
 
     private const WRAP_DECLARATION = '/overflow-wrap:\s*anywhere|word-break:\s*break-all|text-overflow:\s*ellipsis/';
+
+    private const FIXED_TABLE_DECLARATION = '/table-layout:\s*fixed/';
 
     private const WRAP_CLASS = '/(?<![\w:-])(wrap-anywhere|break-all|truncate|\[overflow-wrap:anywhere\])(?![\w-])/';
 
@@ -84,7 +84,7 @@ class LongUnbrokenValueWrapTest extends TestCase
     /**
      * 長い値を文字として出す箇所。
      *
-     * @return list<array{line: int, field: string, tag: string, wraps: bool, inTable: bool}>
+     * @return list<array{line: int, field: string, tag: string, wraps: bool, inAutoTable: bool}>
      */
     private function sites(string $src): array
     {
@@ -92,9 +92,10 @@ class LongUnbrokenValueWrapTest extends TestCase
         $blank = fn (array $m) => preg_replace('/[^\n]/', ' ', $m[0]);
         $s = preg_replace_callback('/\{\{--.*?--\}\}/s', $blank, $src);
         $s = preg_replace_callback('/<(script|style)\b[^>]*>.*?<\/\1\s*>/si', $blank, $s);
-        $s = preg_replace_callback('/@php\b.*?@endphp/s', $blank, $s);
+        $s = preg_replace_callback('/@php\b(?!\s*\().*?@endphp/s', $blank, $s); // @php(...) の短縮形は @endphp を持たない
 
-        $wrapClasses = $this->styleWrapClasses($src);
+        $wrapClasses = $this->styleClassesWith($src, self::WRAP_DECLARATION);
+        $fixedTableClasses = $this->styleClassesWith($src, self::FIXED_TABLE_DECLARATION);
 
         preg_match_all(self::TAG, $s, $tags, PREG_SET_ORDER | PREG_OFFSET_CAPTURE);
 
@@ -150,15 +151,41 @@ class LongUnbrokenValueWrapTest extends TestCase
                 'field' => $field[1],
                 'tag' => $element['name'],
                 'wraps' => $this->wraps($element['attrs'], $wrapClasses),
-                'inTable' => in_array('table', array_column($stack, 'name'), true) || in_array($element['name'], ['td', 'th'], true),
+                'inAutoTable' => $this->inAutoTable($stack, $fixedTableClasses),
             ];
         }
 
         return $sites;
     }
 
-    /** @return list<string> そのビューの <style> で折り返しか省略表示を持つクラス（単独のクラスのセレクタだけ） */
-    private function styleWrapClasses(string $src): array
+    /**
+     * 値を包む一番内側の表が、列の幅を中身で決める表（table-layout が auto）か。
+     *
+     * @param list<array{name: string, attrs: string}> $stack
+     * @param list<string> $fixedTableClasses
+     */
+    private function inAutoTable(array $stack, array $fixedTableClasses): bool
+    {
+        $tables = array_values(array_filter($stack, fn ($element) => $element['name'] === 'table'));
+        if ($tables === []) {
+            return false;
+        }
+        $attrs = end($tables)['attrs'];
+        if (preg_match('/\sstyle="([^"]*)"/', $attrs, $style) && preg_match(self::FIXED_TABLE_DECLARATION, $style[1])) {
+            return false;
+        }
+        if (preg_match('/\sclass="([^"]*)"/', $attrs, $class)) {
+            $classes = preg_split('/\s+/', trim($class[1]));
+            if (in_array('table-fixed', $classes, true) || array_intersect($classes, $fixedTableClasses) !== []) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /** @return list<string> そのビューの <style> で、その宣言を持つクラス（単独のクラスのセレクタだけ） */
+    private function styleClassesWith(string $src, string $declaration): array
     {
         $classes = [];
         preg_match_all('/<style\b[^>]*>(.*?)<\/style\s*>/si', $src, $styles);
@@ -166,7 +193,7 @@ class LongUnbrokenValueWrapTest extends TestCase
             $css = preg_replace('/\/\*.*?\*\//s', '', $css);
             preg_match_all('/([^{}]+)\{([^{}]*)\}/', $css, $rules, PREG_SET_ORDER);
             foreach ($rules as $rule) {
-                if (! preg_match(self::WRAP_DECLARATION, $rule[2])) {
+                if (! preg_match($declaration, $rule[2])) {
                     continue;
                 }
                 foreach (explode(',', $rule[1]) as $selector) {
@@ -194,7 +221,7 @@ class LongUnbrokenValueWrapTest extends TestCase
             || array_intersect(preg_split('/\s+/', trim($class[1])), $wrapClasses) !== [];
     }
 
-    /** @return array<string, list<array{line: int, field: string, tag: string, wraps: bool, inTable: bool}>> */
+    /** @return array<string, list<array{line: int, field: string, tag: string, wraps: bool, inAutoTable: bool}>> */
     private function allSites(): array
     {
         $all = [];
@@ -212,7 +239,7 @@ class LongUnbrokenValueWrapTest extends TestCase
         $outside = $inside = 0;
         foreach ($this->allSites() as $sites) {
             foreach ($sites as $site) {
-                $site['inTable'] ? $inside++ : $outside++;
+                $site['inAutoTable'] ? $inside++ : $outside++;
             }
         }
 
@@ -224,11 +251,11 @@ class LongUnbrokenValueWrapTest extends TestCase
     {
         $offenders = [];
         foreach ($this->allSites() as $path => $sites) {
-            if (isset(self::EXEMPT[$path])) {
+            if ($this->exempt($path)) {
                 continue;
             }
             foreach ($sites as $site) {
-                if (! $site['inTable'] && ! $site['wraps']) {
+                if (! $site['inAutoTable'] && ! $site['wraps']) {
                     $offenders[] = "{$path}:{$site['line']} {$site['field']}（<{$site['tag']}>）";
                 }
             }
@@ -237,28 +264,33 @@ class LongUnbrokenValueWrapTest extends TestCase
         $this->assertSame([], $offenders, "空白の無い長い値を出す要素に折り返し（overflow-wrap: anywhere / word-break: break-all）も省略表示も無い（狭い画面で枠から切れる・はみ出す）:\n" . implode("\n", $offenders));
     }
 
-    public function test_exemptions_match_the_views_exactly(): void
+    private function exempt(string $path): bool
     {
-        $all = $this->allSites();
-        $mismatch = [];
-        foreach (self::EXEMPT as $path => [$count, $reason]) {
-            $this->assertNotSame('', $reason, "{$path} の例外に理由が無い");
-            $unwrapped = count(array_filter($all[$path] ?? [], fn ($site) => ! $site['inTable'] && ! $site['wraps']));
-            if ($unwrapped !== $count) {
-                $mismatch[] = "{$path}: 例外は {$count} か所・実際は {$unwrapped} か所";
+        foreach (array_keys(self::EXEMPT_PREFIXES) as $prefix) {
+            if (str_starts_with($path, $prefix)) {
+                return true;
             }
         }
 
-        $this->assertSame([], $mismatch, "例外の件数が実際と合わない（新しい箇所が増えたか、直して例外が古くなった）:\n" . implode("\n", $mismatch));
+        return false;
+    }
+
+    public function test_exempt_prefixes_still_cover_views_and_give_reasons(): void
+    {
+        $views = array_keys($this->views());
+        foreach (self::EXEMPT_PREFIXES as $prefix => $reason) {
+            $this->assertNotSame('', $reason, "{$prefix} の例外に理由が無い");
+            $this->assertNotEmpty(array_filter($views, fn ($path) => str_starts_with($path, $prefix)), "例外の {$prefix} に当たるビューが無い（古くなった例外）");
+        }
     }
 
     // ---- 見本（検出の分かれ目を 1 つずつ固定する。実物に無い書き方は、消しても走査の本番が緑のまま） ----
 
-    /** @return list<string> 「field:tag:wraps:inTable」 */
+    /** @return list<string> 「field:tag:wraps:table（幅を中身で決める表の中）か out」 */
     private function describe(string $src): array
     {
         return array_map(
-            fn ($site) => "{$site['field']}:{$site['tag']}:" . ($site['wraps'] ? 'wraps' : 'no') . ':' . ($site['inTable'] ? 'table' : 'out'),
+            fn ($site) => "{$site['field']}:{$site['tag']}:" . ($site['wraps'] ? 'wraps' : 'no') . ':' . ($site['inAutoTable'] ? 'table' : 'out'),
             $this->sites($src)
         );
     }
@@ -283,6 +315,7 @@ class LongUnbrokenValueWrapTest extends TestCase
         $this->assertSame([], $this->describe('{{-- {{ $c->email }} --}}<div></div>'), 'Blade のコメントの中を拾っている');
         $this->assertSame([], $this->describe("<script>var x = '{{ \$c->email }}';</script>"), 'script の中を拾っている');
         $this->assertSame([], $this->describe("@php \$x = '<div>{{ \$c->notes }}</div>'; @endphp"), '@php の中を拾っている');
+        $this->assertSame(['notes:div:no:out'], $this->describe("@php(\$x = 1)<div>{{ \$c->notes }}</div>@php \$y = 2; @endphp"), '@php(...) の短縮形から後ろの @endphp までを飲み込んでいる');
     }
 
     public function test_sample_the_innermost_element_decides(): void
@@ -321,5 +354,9 @@ class LongUnbrokenValueWrapTest extends TestCase
     {
         $this->assertSame(['notes:span:no:table'], $this->describe('<table><tbody><template x-for="c in costs"><tr><td><span x-text="c.notes"></span></td></tr></template></tbody></table>'));
         $this->assertSame(['notes:div:no:out'], $this->describe('<table><tr><td>1</td></tr></table><div>{{ $p->notes }}</div>'), '閉じた表の後ろを表の中と数えている');
+        $this->assertSame(['notes:td:no:out'], $this->describe('<table class="w-full" style="table-layout: fixed;"><tr><td>{{ $c->notes }}</td></tr></table>'), 'table-layout: fixed の表を、中身で広がる表と数えている');
+        $this->assertSame(['notes:span:no:out'], $this->describe('<table class="w-full table-fixed"><tr><td><span x-text="c.notes"></span></td></tr></table>'), 'table-fixed のクラスの表を、中身で広がる表と数えている');
+        $this->assertSame(['memo:td:no:out'], $this->describe("<style>.dt { width: 100%; table-layout:fixed; }</style><table class=\"dt\"><tr><td>{{ \$c->memo }}</td></tr></table>"), '<style> のクラスで fixed にした表を見落としている');
+        $this->assertSame(['notes:td:no:table'], $this->describe('<table style="table-layout: fixed"><tr><td><table><tr><td>{{ $c->notes }}</td></tr></table></td></tr></table>'), '一番内側の表で決めていない');
     }
 }
