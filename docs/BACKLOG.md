@@ -2310,7 +2310,7 @@ git checkout 13.x && git merge --ff-only date-picker-month-ago
 
 ---
 
-## 🚧 決裁申請 段階5（申請の種類ごとの作り込み・過去の決裁の取り込み）— 5a 実装済み・本番反映前
+## 🚧 決裁申請 段階5（申請の種類ごとの作り込み・過去の決裁の取り込み）— 5a 本番反映済み・使い始める前・5b 未着手
 
 設計書: @docs/superpowers/specs/2026-10-07-approval-phase5-design.md（D1〜D25）。2 回に分ける（5a: 申請の種類ごとの作り込み ／ 5b: 過去の取り込み）。
 
@@ -2342,7 +2342,7 @@ git checkout 13.x && git merge --ff-only date-picker-month-ago
 - 差戻し中に管理者が種類の定型文か「計」の有無を変え、申請者が何も変えずに保存して差戻しを取り消すと、本人の詳細と PDF だけが控えと食い違う／ 直すなら `RequestSnapshot` の指紋に `fixed_text` と `amount_table.subtotal` を足す（「直した」に数えて取り消しを断る安全側）
 - 古い画面・手組みの入力で、同じ名前の名前の行が 2 つ送られると 2 つ目の名前が落ちる（金額は残り、提出で「項目名を」と断られる）／ `AmountTable::fromInput()` の自由行側の名前を `self::name($row['name'] ?? null) ?? self::name($row['fixed'])` にする 1 行で直る
 - 控えの契約予定日が壊れていると台帳と Excel 全体が 500 になる（`LedgerRow.php:85` の `createFromFormat(...) ?: null` は、形が合わないと例外を投げる Carbon には効かない。今は控えが必ず `Y-m-d` で作られる）／ **5b で台帳に紙の決裁など別の日付の出どころを入れる前に直す**
-- 未使用の定数（`RequestExtras::TSUBO_MAX`・`TSUBO_PRICE_MAX`・`STAFF_MAX`。コントローラが数を直書き）を使うか消す（変えても上限が変わらないのに、変えれば変わると読める）／ `uses_*` の 4 つの名前が `TypeController` の中の 4 か所に手書き（5 つ目の欄を足すと 500）／ `RequestController::validated()`・`TypeController::validateType()` が約 110 行／ 本文の形の切り替えの「申請があるか」の確認と保存が同じ排他の中に無い（管理者の操作どうしが重なったときだけ。TOCTOU）／ `refuseLayout` の `$request` が使われていない／ 「計」（前半の合計）は 12 桁の検査の外（int のあふれは無い）／ `ApprovalType::find` を 2 回呼んでいる／ 停止した種類が使えない部門でもあると、同じ対処の理由が 2 つ並ぶ／ テストの穴（後半の 30 行・坪数の下限・坪単価の上限・販売金額の負の側の 12 桁超）
+- 未使用の定数（`RequestExtras::TSUBO_MAX`・`TSUBO_PRICE_MAX`・`STAFF_MAX`。コントローラが数を直書き）を使うか消す（変えても上限が変わらないのに、変えれば変わると読める）／ `uses_*` の 4 つの名前が `TypeController` の中の 4 か所に手書き（5 つ目の欄を足すと 500）／ `RequestController::validated()`・`TypeController::validateType()` が約 110 行／ 本文の形の切り替えの「申請があるか」の確認と保存が同じ排他の中に無い（管理者の操作と申請者の操作が重なったときだけ。確認と保存のあいだに申請者がその種類の申請を作る場合。TOCTOU）／ `refuseLayout` の `$request` が使われていない／ 「計」（前半の合計）は 12 桁の検査の外（int のあふれは無い）／ `ApprovalType::find` を 2 回呼んでいる／ 停止した種類が使えない部門でもあると、同じ対処の理由が 2 つ並ぶ／ テストの穴（後半の 30 行・坪数の下限・坪単価の上限・販売金額の負の側の 12 桁超）
 - 種類の選び直しの細かい場面（さらに選び直すと知らせが消える・手で元の種類に戻すと件名が組み立て直されない・A→B→A で空の自由行が 3 つ残る〈詳細と PDF には出ない〉・5W2H どうしで戻すと本文の入れ替えの確かめがまた出る・5W2H の種類にいる間に直した件名が、元の種類に戻すときに前半として使われる）
 - 20 桁の金額は「数で入力してください」だけが出る（`bail` のため。13〜18 桁は「12 桁まで」）。直すなら `min`・`max` を `integer` の前に並べる（`RequestTableSaveTest` の文の比べも合わせる）
 - 申請の種類の管理: 一覧の使える部門が部門名だけで、会社をまたぐ同名の部門を区別できない（小窓は「会社・部門」で選ぶので設定は誤らない）・`departments()` に `orderBy` がない／ 追加の小窓で明細表を選ぶと行が 0 行から始まる（足さないと保存で断られる）／ 行の名前欄で Enter を押すと保存される（既存の種類名と同じ）／ ヒント文のコントラスト
@@ -2355,6 +2355,25 @@ git checkout 13.x && git merge --ff-only date-picker-month-ago
 - 坪単価の欄は、欄を離れてもカンマ付きに整わない（明細表の金額だけ整える。計画 §0.6 のとおり）
 - Excel の見出しの右端のフィルターのボタンが「契約予定日」の最後の字を少し隠すかもしれない（4b の「審査の意見」と同じ幅の決め方。段階6 の受け入れで本番の Excel を開いて確かめる）
 - 1 ページより背の高い定型文（1 文字ずつ改行したような極端なもの）は PDF で縮む
+
+#### 本番反映（2026-10-08 実施）
+
+利用者の了承のあと、計画の Task 13 の手順どおりに流した（本番の読み取り・DB・`./deploy.sh` のそれぞれで了承を取った）。反映のあいだは別の会話（manage）に `13.x` の更新と `./deploy.sh` を待ってもらった（manage の枝 `zeal-email-wrap` は反映のあとで新しい `13.x` を取り込む）。
+
+| 段 | 見たこと | 結果 |
+|---|---|---|
+| ① 本番の読み取り | ルート・列・設定・件数・メモリ | `approvals.` のルート 53 本 ／ `body_form`・`amount_table`・`approval_type_department` は無い ／ `launched_at=NULL` ／ 種類 0・申請 0・控え 0 ／ `memory_limit=128M` ／ `laravel.log` は Jun 18 17:41 |
+| ② 早送り | `13.x` | `a2f43bbc` → `d35d8846`（push はしていない） |
+| ③ DB を先に | SQL 3 文（`ALTER TABLE approval_types`・`CREATE TABLE approval_type_department`・`ALTER TABLE approval_requests`）。送った SQL の sha1 は手元と同じ | 流した形跡なし → **OK 1・OK 2・OK 3** ／ 流したあと: `body_form varchar(20)` NULL 不可・既定 `points`・`uses_*` は `tinyint(1)` NULL 不可・既定 0・`table_layout`／`amount_table` は `json`・`tsubo decimal(7,2)`・`tsubo_price bigint unsigned`・`staff varchar(50)`・`contract_date date`・`fixed_text text`（ほかは NULL 可）＝計画 §0.2 のとおり ／ 制約 `PRIMARY`・`fk_approval_type_department_dept`・`fk_approval_type_department_type` ／ 種類 0・申請 0 のまま |
+| ④ 読み込みの表 | main repo で `composer dump-autoload --no-dev --optimize`（PHP 8.3 を名指し。部品の追加は無い） | 7,302 クラス・5a の新しい 5 クラスが表に入った・`vendor/bin/phpunit` は無い・`git status` は空 |
+| ⑤ `./deploy.sh` | 2026-10-08 16:3x ごろ終了（日本時間） | exit 0・6 段すべて。アプリのファイル 38 本（うち `vendor` は読み込みの表の 2 本）。旧 CSS `app-CuFJhCCA.css` を削除 |
+| ⑥ 本番の読み取り | コンパイル済みビューの `php -l` | **305 本 / INVALID 0 件** |
+| | ルート・設定・クラス・計算 | `approvals.` のルート 53 本（5a はルートを足さない）／ `launched_at=NULL` ／ 5 クラスとも読み込める ／ 粗利率の見本（販売 8,000,000・粗利益 5,100,000）は本番の PHP 8.3 でも **63.8%** ／ 種類は 0 件 ／ `laravel.log` は Jun 18 17:41 のまま（反映のあとのエラー 0 件） |
+| | ログインした画面（利用者の Chrome・見るだけ。利用者は決裁の管理者） | 申請種類の管理の一覧に「本文の形・使える部門」の列（種類は 0 件で空）／「種類を追加」の小窓に本文の形のラジオ・「計」の行・件名の決まり文句・坪数／坪単価／担当者／契約予定日・定型文・使える部門（本番の部門は「本部」「住宅事業部」）が出る（**保存は押さず**キャンセルで閉じた）／ 決裁のホームは「決裁の機能は準備中です。」のまま ／ コンソールのエラー 0 件 |
+
+⚠ 使い始める前なので、利用者に見える変化は申請種類の管理（⑨）の新しい欄だけ（申請の画面・詳細・PDF・台帳・Excel は `launched_at` が入ってから出る）。
+
+⚠ `origin/13.x` への push はしていない（利用者の指示を待つ）。
 
 ### 5b（過去の決裁の取り込み）
 
