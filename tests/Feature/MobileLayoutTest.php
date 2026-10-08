@@ -577,7 +577,7 @@ class MobileLayoutTest extends TestCase
         $this->assertSame([], $describe('<form class="flex flex-col gap-2"><select name="a"></select><input name="q"></form>'), '縦に積む行を拾っている');
         $this->assertSame([], $describe('<form class="flex sm:flex-row"><input type="hidden" name="_token"><input name="q"></form>'), 'hidden の input を数えている');
         $this->assertSame([], $describe('<form class="grid sm:flex-row-x"><select name="a"></select><input name="q"></form>'), 'クラス名の一部を flex-row と数えている');
-        $this->assertSame(['no'], $describe("<form method=\"GET\"\n      class=\"flex flex-col sm:flex-row\" onchange=\"a > b\"><select></select><input></form>"), '属性の中の > でタグを切っている');
+        $this->assertSame(['no'], $describe("<form method=\"GET\" onchange=\"a > b\"\n      class=\"flex flex-col sm:flex-row\"><select></select><input></form>"), '属性の中の > でタグを切っている');
         $this->assertSame([], $describe('<form class="flex"><input name="a"></form><form class="grid"><select name="b"></select></form>'), '次の form の部品まで数えている');
     }
 
