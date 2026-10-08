@@ -540,6 +540,78 @@ class MobileLayoutTest extends TestCase
     }
 
     /**
+     * 一覧の絞り込みの行（`<form>` の中に select・input・textarea が 2 つ以上で、横に並べる flex）は折り返すこと。
+     *
+     * 2026-10-08 に使い捨ての環境で一覧 42 本を 375〜1440px で測ると、`flex flex-col sm:flex-row` で折り返さない行が、
+     * 640px 以上で横 1 列になったとたん select（中身の幅）と検索欄（最小 140px）が収まらず、`main` を最大 164px はみ出した
+     * （駐車場契約・仕入れ案件・投資・修繕・部屋契約。1024px でもサイドバーの分だけ狭くなり、仕入れ案件は 4px・駐車場契約は 16px）。
+     * select の幅は選択肢の中身（物件名など）で決まるので、本番の長い名前ではほかの一覧もはみ出しうる → 形で止める。
+     *
+     * ⚠ 死角: `<form>` の中の div で横に並べる行（form 自身は flex でない）は見ない。本当に収まるかは実ブラウザで測る。
+     */
+    public function test_filter_forms_laid_out_in_a_row_can_wrap(): void
+    {
+        $found = 0;
+        $offenders = [];
+        foreach ($this->bladeFiles() as $path) {
+            foreach ($this->rowFilterForms(file_get_contents($path)) as [$line, $wraps]) {
+                $found++;
+                if (! $wraps) {
+                    $offenders[] = $this->relative($path) . ':' . $line;
+                }
+            }
+        }
+
+        $this->assertGreaterThanOrEqual(20, $found, '横に並べる絞り込みの行を拾えていない（走査の空振り。2026-10-08 の実測は 26）');
+        $this->assertSame([], $offenders, "横に並べる絞り込みの行が折り返さない（flex-wrap が無い。select の中身が長いと main をはみ出す）:\n" . implode("\n", $offenders));
+    }
+
+    public function test_sample_row_filter_forms_are_told_apart(): void
+    {
+        $describe = fn (string $src) => array_map(fn ($form) => $form[1] ? 'wraps' : 'no', $this->rowFilterForms($src));
+
+        $this->assertSame(['no'], $describe('<form class="flex flex-col sm:flex-row gap-2"><select name="a"></select><input name="q"></form>'));
+        $this->assertSame(['wraps'], $describe('<form class="flex flex-col sm:flex-row sm:flex-wrap gap-2"><select name="a"></select><input name="q"></form>'));
+        $this->assertSame(['no'], $describe('<form class="flex items-center gap-2"><select name="a"></select><select name="b"></select></form>'), '既定の向き（横）の flex を見落としている');
+        $this->assertSame(['wraps'], $describe('<form class="flex flex-wrap items-center"><select name="a"></select><textarea name="b"></textarea></form>'));
+        $this->assertSame([], $describe('<form class="flex flex-col gap-2"><select name="a"></select><input name="q"></form>'), '縦に積む行を拾っている');
+        $this->assertSame([], $describe('<form class="flex sm:flex-row"><input type="hidden" name="_token"><input name="q"></form>'), 'hidden の input を数えている');
+        $this->assertSame([], $describe('<form class="grid sm:flex-row-x"><select name="a"></select><input name="q"></form>'), 'クラス名の一部を flex-row と数えている');
+        $this->assertSame(['no'], $describe("<form method=\"GET\"\n      class=\"flex flex-col sm:flex-row\" onchange=\"a > b\"><select></select><input></form><form class=\"flex\"><input></form>"), '属性の中の > や、次の form の部品を数えている');
+    }
+
+    /**
+     * 横に並べる flex の `<form>` で、中に select・input（hidden 以外）・textarea が 2 つ以上あるもの。
+     *
+     * @return list<array{0: int, 1: bool}> [行, 折り返すか]
+     */
+    private function rowFilterForms(string $src): array
+    {
+        $forms = [];
+        preg_match_all('/<form\b((?:[^>"\']|"[^"]*"|\'[^\']*\')*)>/', $src, $m, PREG_OFFSET_CAPTURE | PREG_SET_ORDER);
+        foreach ($m as $form) {
+            $class = preg_match('/\sclass="([^"]*)"/', $form[1][0], $c) ? preg_split('/\s+/', trim($c[1])) : [];
+            $row = (bool) array_filter($class, fn ($token) => preg_match('/^((sm|md|lg|xl):)?flex-row$/', $token))
+                || (in_array('flex', $class, true) && ! in_array('flex-col', $class, true));
+            if (! $row) {
+                continue;
+            }
+            $start = $form[0][1] + strlen($form[0][0]);
+            $end = strpos($src, '</form>', $start);
+            $body = substr($src, $start, ($end === false ? strlen($src) : $end) - $start);
+            if (preg_match_all('/<(select|textarea)\b|<input\b(?![^>]*type="hidden")/', $body) < 2) {
+                continue;
+            }
+            $forms[] = [
+                substr_count(substr($src, 0, $form[0][1]), "\n") + 1,
+                (bool) array_filter($class, fn ($token) => preg_match('/^((sm|md|lg|xl):)?flex-wrap$/', $token)),
+            ];
+        }
+
+        return $forms;
+    }
+
+    /**
      * 同じビューの `<style>` の中で、固定幅（px）の列を持ち、列が $minTracks 以上のグリッドのクラス名（`@media` の中の上書きは除く）。
      *
      * @return array<int, string>
