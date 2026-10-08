@@ -145,7 +145,7 @@ class RequestTableSaveTest extends TestCase
 
         foreach ([
             [['tsubo' => 'abc'], 'tsubo', '坪数は数で入力してください（例: 38.5）。'],
-            [['tsubo_price' => 'abc'], 'tsubo_price', '坪単価は円の数で入力してください。'],
+            [['tsubo_price' => str_repeat('9', 20)], 'tsubo_price', '坪単価は円の数で入力してください。'],   // bail が無いと「12 桁まで」も重なる（abc は bail が無くても 1 つ）
             [['contract_date' => 'abc'], 'contract_date', '契約予定日は日付で入力してください。'],
             [$with(['name' => '値引き', 'sale' => str_repeat('9', 20)]), 'amount_table.upper.0.sale', '明細表の販売金額「99999999999999999999」は数で入力してください（マイナスも入れられます）。'],
             [$with(['name' => '値引き', 'cost' => '-' . str_repeat('9', 20)]), 'amount_table.upper.0.cost', '明細表の工事原価「-99999999999999999999」は数で入力してください（マイナスも入れられます）。'],
