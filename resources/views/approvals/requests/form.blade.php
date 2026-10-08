@@ -214,7 +214,7 @@
                 </label>
                 <textarea id="body" name="body" x-ref="body" rows="16" :rows="isTable() ? 4 : 16" maxlength="20000" class="w-full px-2.5 py-2 border border-gray-300 rounded-md text-[13px] leading-relaxed">{{ old('body', $approvalRequest->body) }}</textarea>
                 <p x-show="!isTable()" class="text-[11px] text-gray-400 mt-1">種類を選ぶと見出しが入ります。見出しのままでは提出できません。「いつ」「いくら」は実施時期・金額の欄に書きます。</p>
-                <p x-show="isTable()" x-cloak class="text-[11px] text-gray-400 mt-1">任意。長さの制限はありません（紙の様式の 2 行の欄）。</p>
+                <p x-show="isTable()" x-cloak class="text-[11px] text-gray-400 mt-1">任意。行数の制限はありません（紙の様式の 2 行の欄）。</p>
             </div>
         </div>
 

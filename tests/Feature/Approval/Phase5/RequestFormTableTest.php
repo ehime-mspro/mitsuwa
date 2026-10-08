@@ -137,6 +137,20 @@ class RequestFormTableTest extends TestCase
         $this->assertStringContainsString('<thead class="hidden md:table-header-group">', $html);
     }
 
+    /** 明細表の種類の補足の案内は「行数の制限はありません」（文字には 20,000 文字の上限がある。要件 5.5.2・最終点検 Mi-7） */
+    public function test_the_note_about_the_supplement_speaks_of_lines_not_length(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $this->housingContractType($w);
+
+        $html = $this->actingAs($w['applicant'])->get(route('approvals.requests.create'))->assertOk()->getContent();
+
+        $this->assertStringContainsString('任意。行数の制限はありません（紙の様式の 2 行の欄）。', $html);
+        $this->assertStringNotContainsString('長さの制限', $html);
+        $this->assertStringContainsString('maxlength="20000"', $html, '文字の上限は 20,000 文字のまま');
+    }
+
     public function test_the_edit_page_shows_the_saved_rows_in_the_layout_of_today(): void
     {
         $w = $this->approvalWorld();
