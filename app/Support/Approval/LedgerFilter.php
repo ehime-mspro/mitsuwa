@@ -165,13 +165,13 @@ final class LedgerFilter
     }
 
     /**
-     * 空白（全角を含む）で分けた語。どの語も含むものに当てる（「山田 太郎」で「山田太郎」も探せる）
+     * 空白（全角を含む）で分けた語。どの語も含むものに当てる（「山田 太郎」で「山田太郎」も探せる）。分け方は NameSearch と同じ
      *
      * @return list<string>
      */
     public static function terms(?string $text): array
     {
-        return $text === null ? [] : array_values(array_filter(preg_split('/[\s\x{3000}]+/u', $text) ?: [], fn (string $t) => $t !== ''));
+        return NameSearch::terms($text);
     }
 
     private static function positiveInt(string $value): ?int

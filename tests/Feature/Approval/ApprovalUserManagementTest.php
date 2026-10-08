@@ -979,6 +979,28 @@ class ApprovalUserManagementTest extends TestCase
         $this->assertTrue($find('needle@')->contains($byEmail->id), 'メールアドレスで検索できない');
     }
 
+    /**
+     * 氏名は登録名の空白（半角・全角）を無視して当て、空白で分けた語のどれも含む人に当たる（決裁台帳の申請者と同じ。段階5 設計書 D25）。
+     * 社員番号とメールアドレスは今までどおり打った文字のまま当てる。
+     */
+    public function test_the_name_search_ignores_the_spaces_in_the_registered_name(): void
+    {
+        $yamada = $this->member(['name' => '山田 太郎', 'employee_number' => 'AAA1']);
+        $sato   = $this->member(['name' => '佐藤　次郎', 'employee_number' => 'BBB2']);
+        $other  = $this->member(['name' => '田中 一郎', 'employee_number' => 'CCC3']);
+
+        $find = fn (string $query) => $this->actingAs($this->admin())
+            ->get(route('approvals.admin.users.index', ['search' => $query]))
+            ->assertOk()->viewData('users')->pluck('id')->sort()->values()->all();
+
+        $this->assertSame([$yamada->id], $find('山田太郎'), '登録名の半角の空白を無視して当てる');
+        $this->assertSame([$sato->id], $find('佐藤次郎'), '登録名の全角の空白を無視して当てる');
+        $this->assertSame([$yamada->id], $find('山田 太郎'), '空白を入れて打っても当たる');
+        $this->assertSame([$yamada->id], $find('田　太'), '全角の空白で分けた語のどれも含む人に当たる');
+        $this->assertSame([], $find('田中次郎'), '語がそろわなければ当たらない');
+        $this->assertSame([$other->id], $find('CCC3'), '社員番号は今までどおり当たる');
+    }
+
     /** 検索語が配列で届いても落とさない（`"%{$search}%"` が `Array to string conversion` で 500 になる） */
     public function test_an_array_shaped_filter_does_not_break_the_page(): void
     {
