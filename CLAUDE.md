@@ -123,7 +123,7 @@ sudo rm -f storage/framework/views/*.php && brew services restart httpd
 - 期: 5/1 始まり（5月〜4月）。ZEAL/DAD は 6/1 始まり
 - 日時: 保存された日時（TIMESTAMP 列）は `\App\Support\JapanTime::format()` で日本時間にして出す（日付だけの date キャストの列は第 2 引数で `'Y/m/d'` を渡す）。「今日」「今月」「今年度」は `JapanTime::today()`（アプリの timezone は **UTC のまま**。TIMESTAMP 列への保存・期限は `now()`）。Bug #61
 - 採算表/試算表は基本「**万円単位**」（Excel取込の単位既定値も万円）
-- メール・ファイル名・備考など**空白の無い長い値になりうる値**は、値を直に包む要素に `wrap-anywhere`（`overflow-wrap: anywhere`）を付ける（Chrome は `@` `.` `/` で折り返さず、狭い画面で枠から切れる）。`break-words` では `1fr` の列が広がるので足りない。**表のセルには付けない**（幅の足りない表で列が 1 文字幅に潰れる）。走査テスト `LongUnbrokenValueWrapTest`。Bug #115
+- メール・ファイル名・備考など**空白の無い長い値になりうる値**は、値を直に包む要素に `wrap-anywhere`（`overflow-wrap: anywhere`）を付ける（Chrome は `@` `.` `/` で折り返さず、狭い画面で枠から切れる）。`break-words` では `1fr` の列が広がるので足りない。列の幅を中身で決める表（既定）のセルには付けない（幅の足りない表で列が 1 文字幅に潰れる）が、**`table-layout: fixed` の表のセルには付ける**（付けないと隣の列に重なる）。部品の属性で受け取る値（削除の確認の小窓の `$target`）も同じ。走査テスト `LongUnbrokenValueWrapTest`。Bug #115
 
 ### Filter bar（一覧画面）
 - 即時フィルタ: `onchange="document.getElementById('filter-form').submit()"`

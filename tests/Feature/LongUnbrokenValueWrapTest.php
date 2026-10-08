@@ -39,7 +39,7 @@ class LongUnbrokenValueWrapTest extends TestCase
     /** 空白の無い長い値になりうる項目の名前（メール・ファイル名・TEXT 型の自由入力の列） */
     private const FIELDS = 'email|file_name|original_name|notes|note|memo|description|remarks|reason|comment|withdraw_note|termination_reason|qualifications|deposit_deduction_reason|special_notes|purpose_detail|body|content|answer_value|result_reason';
 
-    /** 走査が空振りしたら緑になる。拾えた箇所の数の下限（2026-10-08 の実測は、長い値を出すビュー 47 本・表の外 70・幅を中身で決める表の中 16。下げる前に「消した」のか「拾えなくなった」のかを確かめる） */
+    /** 走査が空振りしたら緑になる。拾えた箇所の数の下限（2026-10-08 の実測は、長い値を出すビュー 48 本・表の外 71・幅を中身で決める表の中 16。下げる前に「消した」のか「拾えなくなった」のかを確かめる） */
     private const MIN_SITES_OUTSIDE_TABLES = 60;
 
     private const MIN_SITES_IN_TABLES = 12;
