@@ -121,7 +121,7 @@
                             @endif
                         </div>
                     </div>
-                    <div class="text-sm {{ str_contains($history->content, 'ステータスを') || $history->action_type === 'first_contact' ? 'text-gray-500' : 'text-gray-700' }} leading-relaxed whitespace-pre-wrap">{{ $history->content }}</div>
+                    <div class="text-sm {{ str_contains($history->content, 'ステータスを') || $history->action_type === 'first_contact' ? 'text-gray-500' : 'text-gray-700' }} leading-relaxed whitespace-pre-wrap wrap-anywhere">{{ $history->content }}</div>
                 </div>
             @endforeach
         @else
@@ -187,7 +187,7 @@
             @if($inquiry->email)
                 <div>
                     <div class="text-xs text-gray-500 font-semibold mb-0.5">メールアドレス</div>
-                    <div class="text-sm font-semibold text-gray-900">{{ $inquiry->email }}</div>
+                    <div class="text-sm font-semibold text-gray-900 wrap-anywhere">{{ $inquiry->email }}</div>
                 </div>
             @endif
         </div>
@@ -233,7 +233,7 @@
                 @if($inquiry->description)
                     <div class="sm:col-span-2">
                         <div class="text-xs text-gray-500 font-semibold mb-0.5">問合せ内容</div>
-                        <div class="text-sm text-gray-900 leading-relaxed whitespace-pre-wrap">{{ $inquiry->description }}</div>
+                        <div class="text-sm text-gray-900 leading-relaxed whitespace-pre-wrap wrap-anywhere">{{ $inquiry->description }}</div>
                     </div>
                 @endif
             </div>
@@ -255,7 +255,7 @@
                 <span class="badge {{ $inquiry->status->badgeClass() }}">{{ $inquiry->status->label() }}</span>
             </div>
             @if($inquiry->result_reason)
-                <div class="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{{ $inquiry->result_reason }}</div>
+                <div class="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap wrap-anywhere">{{ $inquiry->result_reason }}</div>
             @endif
             @if($inquiry->contract)
                 <div class="flex items-center gap-3 pt-3 mt-3" style="border-top:1px solid rgba(0,0,0,.1);">
@@ -346,7 +346,7 @@
     @if($inquiry->notes)
         <div class="bg-white border border-gray-200 rounded-lg p-5 mb-3">
             <div class="text-sm font-bold text-gray-800 pb-2 mb-3.5 border-b border-gray-200">備考</div>
-            <div class="text-sm text-gray-900 leading-relaxed whitespace-pre-wrap">{{ $inquiry->notes }}</div>
+            <div class="text-sm text-gray-900 leading-relaxed whitespace-pre-wrap wrap-anywhere">{{ $inquiry->notes }}</div>
         </div>
     @endif
 

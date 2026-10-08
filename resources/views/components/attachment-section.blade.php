@@ -170,7 +170,7 @@
                 <template x-for="del in deletedAttachments" :key="del.file_name + del.deleted_at">
                     <div class="flex items-center gap-2 text-xs text-gray-400 px-1 flex-wrap">
                         <svg class="w-3.5 h-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                        <span class="line-through" x-text="del.file_name"></span>
+                        <span class="line-through wrap-anywhere" x-text="del.file_name"></span>
                         <span>—</span>
                         <span x-text="del.deleted_by + ' が削除'"></span>
                         <span x-text="del.deleted_at"></span>

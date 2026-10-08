@@ -313,7 +313,7 @@
 .tab.active { color: #047857; border-bottom-color: #10b981; }
 .card-title { font-size: 14px; font-weight: 700; color: #111827; margin-bottom: 14px; }
 .info-label { font-size: 11px; color: #6b7280; font-weight: 600; margin-bottom: 4px; }
-.info-value { font-size: 14px; color: #111827; font-weight: 500; }
+.info-value { font-size: 14px; color: #111827; font-weight: 500; overflow-wrap: anywhere; }
 </style>
 
 <script>

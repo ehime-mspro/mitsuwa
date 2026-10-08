@@ -277,7 +277,7 @@
                 <span class="w-1 h-5 bg-emerald-600 rounded-sm"></span>
                 <h2 class="text-base font-bold text-gray-900">備考</h2>
             </div>
-            <p class="text-sm text-gray-700 whitespace-pre-wrap">{{ $contract->memo }}</p>
+            <p class="text-sm text-gray-700 whitespace-pre-wrap wrap-anywhere">{{ $contract->memo }}</p>
         </div>
     @endif
 

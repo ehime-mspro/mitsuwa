@@ -21,7 +21,7 @@
     .ms-info-row { display: grid; grid-template-columns: 120px 1fr; padding: 8px 0; border-bottom: 1px dashed #e5e7eb; font-size: 14px; }
     .ms-info-row:last-child { border-bottom: none; }
     .ms-info-label { color: #6b7280; font-weight: 600; }
-    .ms-info-value { color: #111827; }
+    .ms-info-value { color: #111827; overflow-wrap: anywhere; }
 </style>
 
 {{-- ページヘッダー --}}

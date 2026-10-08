@@ -273,7 +273,7 @@
     {{-- 備考 --}}
     @if($o->notes)
         <div class="bg-white border border-gray-200 rounded-lg px-5 py-3 mb-5">
-            <div class="flex gap-6 text-sm text-gray-600">
+            <div class="flex gap-6 text-sm text-gray-600 wrap-anywhere">
                 <span class="text-gray-500 font-semibold">備考:</span> {{ $o->notes }}
             </div>
         </div>
@@ -300,7 +300,7 @@
                     <template x-for="file in files['{{ $cat->value }}']" :key="file.id">
                         <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #f3f4f6;">
                             <div>
-                                <a :href="file.file_path" target="_blank" class="text-sm" style="color: #1d4ed8; text-decoration: underline;" x-text="file.file_name"></a>
+                                <a :href="file.file_path" target="_blank" class="text-sm" style="color: #1d4ed8; text-decoration: underline; overflow-wrap: anywhere;" x-text="file.file_name"></a>
                                 <span class="text-xs text-gray-500" style="margin-left: 12px;" x-text="file.file_size + ' ' + file.uploaded_by + ' ' + file.created_at"></span>
                             </div>
                             <div style="display: flex; align-items: center; gap: 8px;">

@@ -28,7 +28,7 @@
     .ms-info-row { display: grid; grid-template-columns: 140px 1fr; padding: 8px 0; border-bottom: 1px dashed #e5e7eb; font-size: 14px; }
     .ms-info-row:last-child { border-bottom: none; }
     .ms-info-label { color: #6b7280; font-weight: 600; }
-    .ms-info-value { color: #111827; }
+    .ms-info-value { color: #111827; overflow-wrap: anywhere; }
 </style>
 
 {{-- ページヘッダー --}}
@@ -248,7 +248,7 @@
 @if($tenant->notes)
     <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
         <div class="ms-card-title">備考</div>
-        <div style="font-size: 14px; color: #374151; line-height: 1.7; white-space: pre-wrap;">{{ $tenant->notes }}</div>
+        <div style="font-size: 14px; color: #374151; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere;">{{ $tenant->notes }}</div>
     </div>
 @endif
 

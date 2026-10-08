@@ -330,7 +330,7 @@
                     <span class="bar"></span>
                     <h2>備考</h2>
                 </div>
-                <p style="font-size: 13px; color: #374151; white-space: pre-wrap; margin: 0;">{{ $contract->notes }}</p>
+                <p style="font-size: 13px; color: #374151; white-space: pre-wrap; overflow-wrap: anywhere; margin: 0;">{{ $contract->notes }}</p>
             </div>
         </div>
     @endif

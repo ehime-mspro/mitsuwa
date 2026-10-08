@@ -61,7 +61,7 @@
             </div>
             <div class="sm:col-span-2">
                 <div class="text-xs text-gray-500 mb-0.5">修繕内容</div>
-                <div class="text-sm text-gray-900 leading-relaxed whitespace-pre-wrap">{{ $repair->description }}</div>
+                <div class="text-sm text-gray-900 leading-relaxed whitespace-pre-wrap wrap-anywhere">{{ $repair->description }}</div>
             </div>
             <div>
                 <div class="text-xs text-gray-500 mb-0.5">業者名</div>
@@ -85,7 +85,7 @@
     @if($repair->notes)
         <div class="bg-white border border-gray-200 rounded-lg p-5 mb-3">
             <div class="text-sm font-bold text-gray-800 pb-2 mb-3.5 border-b border-gray-200">備考</div>
-            <div class="text-sm text-gray-900 leading-relaxed whitespace-pre-wrap">{{ $repair->notes }}</div>
+            <div class="text-sm text-gray-900 leading-relaxed whitespace-pre-wrap wrap-anywhere">{{ $repair->notes }}</div>
         </div>
     @endif
 

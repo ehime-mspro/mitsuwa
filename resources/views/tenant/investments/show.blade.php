@@ -92,7 +92,7 @@
             @endif
             <div class="sm:col-span-2">
                 <div class="text-xs text-gray-500 mb-0.5">工事概要</div>
-                <div class="text-sm text-gray-900 leading-relaxed whitespace-pre-wrap">{{ $investment->description }}</div>
+                <div class="text-sm text-gray-900 leading-relaxed whitespace-pre-wrap wrap-anywhere">{{ $investment->description }}</div>
             </div>
         </div>
     </div>
@@ -194,7 +194,7 @@
     @if($investment->notes)
         <div class="bg-white border border-gray-200 rounded-lg p-5 mb-3">
             <div class="text-sm font-bold text-gray-800 pb-2 mb-3.5 border-b border-gray-200">備考</div>
-            <div class="text-sm text-gray-900 leading-relaxed whitespace-pre-wrap">{{ $investment->notes }}</div>
+            <div class="text-sm text-gray-900 leading-relaxed whitespace-pre-wrap wrap-anywhere">{{ $investment->notes }}</div>
         </div>
     @endif
 

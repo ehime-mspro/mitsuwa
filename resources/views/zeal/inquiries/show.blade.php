@@ -38,7 +38,7 @@
     }
     .zeal-info-row:last-child { border-bottom: none; }
     .zeal-info-label { color: #6b7280; font-weight: 600; }
-    .zeal-info-value { color: #111827; }
+    .zeal-info-value { color: #111827; overflow-wrap: anywhere; }
 </style>
 
 @php
@@ -151,7 +151,7 @@
         <div class="zeal-info-label">目的詳細</div>
         <div class="zeal-info-value">
             @if($inquiry->purpose_detail)
-                <div style="white-space: pre-wrap; line-height: 1.6;">{{ $inquiry->purpose_detail }}</div>
+                <div style="white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6;">{{ $inquiry->purpose_detail }}</div>
             @else
                 —
             @endif
@@ -161,7 +161,7 @@
         <div class="zeal-info-label">備考</div>
         <div class="zeal-info-value">
             @if($inquiry->memo)
-                <div style="white-space: pre-wrap; line-height: 1.6;">{{ $inquiry->memo }}</div>
+                <div style="white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6;">{{ $inquiry->memo }}</div>
             @else
                 —
             @endif
@@ -171,7 +171,7 @@
         <div class="zeal-info-label">特記事項</div>
         <div class="zeal-info-value">
             @if($inquiry->special_notes)
-                <div style="white-space: pre-wrap; line-height: 1.6;">{{ $inquiry->special_notes }}</div>
+                <div style="white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6;">{{ $inquiry->special_notes }}</div>
             @else
                 —
             @endif

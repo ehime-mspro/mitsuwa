@@ -67,7 +67,7 @@
                 <span class="il">メールアドレス</span>
                 <div class="text-sm mt-0.5">
                     @if($customer->email)
-                        <a href="mailto:{{ $customer->email }}" class="text-emerald-600 hover:underline">{{ $customer->email }}</a>
+                        <a href="mailto:{{ $customer->email }}" class="text-emerald-600 hover:underline wrap-anywhere">{{ $customer->email }}</a>
                     @else
                         —
                     @endif
@@ -90,7 +90,7 @@
     @if($customer->notes)
         <div class="bg-white border border-gray-200 rounded-lg p-5 mb-5">
             <div class="text-sm font-bold text-gray-800 pb-2 mb-3.5 border-b border-gray-200">備考</div>
-            <div class="text-sm text-gray-700 whitespace-pre-wrap">{{ $customer->notes }}</div>
+            <div class="text-sm text-gray-700 whitespace-pre-wrap wrap-anywhere">{{ $customer->notes }}</div>
         </div>
     @endif
 

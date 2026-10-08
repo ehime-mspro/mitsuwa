@@ -236,7 +236,7 @@
 <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
     <div class="ms-card-title">備考</div>
     @if($parkingContract->memo)
-        <div style="font-size: 14px; color: #374151; line-height: 1.7; white-space: pre-wrap;">{{ $parkingContract->memo }}</div>
+        <div style="font-size: 14px; color: #374151; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere;">{{ $parkingContract->memo }}</div>
     @else
         <div style="font-size: 14px; color: #9ca3af;">—</div>
     @endif

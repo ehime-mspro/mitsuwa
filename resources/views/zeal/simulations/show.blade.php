@@ -238,7 +238,7 @@
     </div>
 
     @if($simulation->notes)
-        <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; font-size: 13px; color: #92400e; white-space: pre-wrap;">{{ $simulation->notes }}</div>
+        <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; font-size: 13px; color: #92400e; white-space: pre-wrap; overflow-wrap: anywhere;">{{ $simulation->notes }}</div>
     @endif
 
     {{-- 試算表テーブル（横スクロール） --}}

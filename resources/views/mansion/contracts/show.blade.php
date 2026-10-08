@@ -325,7 +325,7 @@
     @if($contract->termination_reason)
         <div style="margin-top: 14px;">
             <div class="ms-info-label">退去理由</div>
-            <div class="text-sm text-gray-900" style="margin-top: 4px; white-space: pre-wrap;">{{ $contract->termination_reason }}</div>
+            <div class="text-sm text-gray-900" style="margin-top: 4px; white-space: pre-wrap; overflow-wrap: anywhere;">{{ $contract->termination_reason }}</div>
         </div>
     @endif
 </div>
@@ -394,7 +394,7 @@
 @if($contract->memo)
     <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;">
         <div class="ms-card-title">備考</div>
-        <div style="font-size: 14px; color: #374151; line-height: 1.7; white-space: pre-wrap;">{{ $contract->memo }}</div>
+        <div style="font-size: 14px; color: #374151; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere;">{{ $contract->memo }}</div>
     </div>
 @endif
 

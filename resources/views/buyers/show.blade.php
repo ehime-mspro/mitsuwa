@@ -81,7 +81,7 @@
         <dt style="background: #f9fafb; padding: 10px 14px; font-size: 13px; color: #4b5563; font-weight: 500; border-bottom: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb;">電話番号</dt>
         <dd style="padding: 10px 14px; font-size: 14px; color: #111827; border-bottom: 1px solid #e5e7eb; margin: 0;">{{ $buyer->phone ?: '—' }}</dd>
         <dt style="background: #f9fafb; padding: 10px 14px; font-size: 13px; color: #4b5563; font-weight: 500; border-bottom: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb;">メールアドレス</dt>
-        <dd style="padding: 10px 14px; font-size: 14px; color: #111827; border-bottom: 1px solid #e5e7eb; margin: 0;">{{ $buyer->email ?: '—' }}</dd>
+        <dd style="padding: 10px 14px; font-size: 14px; color: #111827; border-bottom: 1px solid #e5e7eb; margin: 0; overflow-wrap: anywhere;">{{ $buyer->email ?: '—' }}</dd>
 
         <dt style="background: #f9fafb; padding: 10px 14px; font-size: 13px; color: #4b5563; font-weight: 500; border-bottom: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb;">ご職業</dt>
         <dd style="padding: 10px 14px; font-size: 14px; color: #111827; border-bottom: 1px solid #e5e7eb; margin: 0;">
@@ -98,7 +98,7 @@
     @if($buyer->memo)
         <div style="margin-top: 14px;">
             <div style="font-size: 12px; font-weight: 600; color: #6b7280; margin-bottom: 4px;">備考</div>
-            <div style="font-size: 14px; color: #374151; white-space: pre-wrap;">{{ $buyer->memo }}</div>
+            <div style="font-size: 14px; color: #374151; white-space: pre-wrap; overflow-wrap: anywhere;">{{ $buyer->memo }}</div>
         </div>
     @endif
 </div>

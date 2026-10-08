@@ -66,7 +66,7 @@
     .ms-badge { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 9999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
     .ms-card-title { font-size: 15px; font-weight: 700; color: #111827; margin-bottom: 14px; padding-left: 12px; border-left: 4px solid #10b981; }
     .ms-info-label { font-size: 12px; color: #6b7280; margin-bottom: 4px; }
-    .ms-info-value { font-size: 14px; color: #111827; font-weight: 500; }
+    .ms-info-value { font-size: 14px; color: #111827; font-weight: 500; overflow-wrap: anywhere; }
     .ms-stat-card { background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px 20px; text-align: center; }
     .ms-stat-label { font-size: 12px; color: #6b7280; margin-bottom: 6px; }
     .ms-stat-value { font-size: 24px; font-weight: 700; color: #111827; }

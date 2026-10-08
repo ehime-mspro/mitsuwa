@@ -475,7 +475,7 @@
             <span class="w-1 h-5 bg-emerald-600 rounded-sm"></span>
             <h2 class="text-base font-bold text-gray-900">備考</h2>
         </div>
-        <div class="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">{{ $procurement->notes }}</div>
+        <div class="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap wrap-anywhere">{{ $procurement->notes }}</div>
     </div>
     @endif
 

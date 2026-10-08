@@ -60,7 +60,7 @@
             <dt class="bg-gray-50 px-3.5 py-2.5 text-sm text-gray-600 font-medium border-b border-r border-gray-200">FAX</dt>
             <dd class="px-3.5 py-2.5 text-sm text-gray-900 border-b border-gray-200">{{ $subcontractor->fax ?: '—' }}</dd>
             <dt class="bg-gray-50 px-3.5 py-2.5 text-sm text-gray-600 font-medium border-b border-r border-gray-200">メール</dt>
-            <dd class="px-3.5 py-2.5 text-sm text-gray-900 border-b border-gray-200">{{ $subcontractor->email ?: '—' }}</dd>
+            <dd class="px-3.5 py-2.5 text-sm text-gray-900 border-b border-gray-200 wrap-anywhere">{{ $subcontractor->email ?: '—' }}</dd>
 
             <dt class="bg-gray-50 px-3.5 py-2.5 text-sm text-gray-600 font-medium border-b border-r border-gray-200">郵便番号</dt>
             <dd class="px-3.5 py-2.5 text-sm text-gray-900 border-b border-gray-200" style="grid-column: span 3;">{{ $subcontractor->postal_code ?: '—' }}</dd>
@@ -77,7 +77,7 @@
             <span class="w-1 h-5 bg-emerald-600 rounded-sm"></span>
             <h2 class="text-base font-bold text-gray-900">備考</h2>
         </div>
-        <div class="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">{{ $subcontractor->notes }}</div>
+        <div class="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap wrap-anywhere">{{ $subcontractor->notes }}</div>
     </div>
     @endif
 

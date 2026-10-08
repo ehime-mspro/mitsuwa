@@ -210,7 +210,7 @@
     @if($contract->notes)
         <div class="bg-white border border-gray-200 rounded-lg px-4 py-4 lg:px-5 lg:py-4 mb-4">
             <div class="text-sm font-bold text-gray-800 pb-2 mb-3 border-b border-gray-200">備考</div>
-            <div class="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{{ $contract->notes }}</div>
+            <div class="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap wrap-anywhere">{{ $contract->notes }}</div>
         </div>
     @endif
 
@@ -245,7 +245,7 @@
                 @endif
                 <div class="col-span-2">
                     <div class="text-xs text-gray-500 mb-0.5">退去理由</div>
-                    <div class="text-sm font-medium text-gray-900">{{ $contract->termination_reason ?? '—' }}</div>
+                    <div class="text-sm font-medium text-gray-900 wrap-anywhere">{{ $contract->termination_reason ?? '—' }}</div>
                 </div>
             </div>
             @if($settlementFile)
