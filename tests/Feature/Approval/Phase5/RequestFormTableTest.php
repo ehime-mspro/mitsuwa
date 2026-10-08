@@ -191,6 +191,41 @@ class RequestFormTableTest extends TestCase
         $this->assertStringContainsString(e('明細表の販売金額「2千万」は数で入力してください（マイナスも入れられます）。'), $html);
     }
 
+    /**
+     * 5W2H の種類を選んで保存して断られたときは、画面は明細表を送っていない（欄を押せなくして送らない）ので、保存してある表を出す
+     * （空の表で描き直すと、明細表の種類に選び直して保存したときに保存してあった表が空で上書きされる。D16。Task 6 の点検の Minor 3）
+     */
+    public function test_a_refused_save_with_a_points_type_keeps_the_saved_table(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $type    = $this->housingContractType($w);
+        $request = $this->draftFor($w, ['type_id' => $type->id, 'amount_table' => [
+            'subtotal' => true,
+            'upper'    => [$this->row('工事請負金額', true, 28500000, 22000000), $this->row('外構', false, -300000, null), $this->row('紹介料', true, null, 300000)],
+            'lower'    => [$this->row('土地契約金額', true, 12000000, null)],
+        ]]);
+
+        // 5W2H の種類を選び、件名が長すぎて断られる（明細表の欄は送らない）
+        $this->actingAs($w['applicant'])->from(route('approvals.requests.edit', $request))->put(route('approvals.requests.update', $request), [
+            'type_id' => (string) $w['type']->id, 'department_id' => (string) $w['dept']->id, 'subject' => str_repeat('長', 101), 'lock_version' => '0', 'intent' => 'save',
+        ])->assertRedirect(route('approvals.requests.edit', $request))->assertSessionHasErrors('subject');
+
+        $html = $this->actingAs($w['applicant'])->get(route('approvals.requests.edit', $request))->assertOk()->getContent();
+        $this->assertSame([
+            'upper' => [
+                ['fixed' => '工事請負金額', 'name' => '', 'sale' => '28,500,000', 'cost' => '22,000,000'],
+                ['fixed' => null, 'name' => '外構', 'sale' => '-300,000', 'cost' => ''],
+                ['fixed' => '紹介料', 'name' => '', 'sale' => '', 'cost' => '300,000'],
+            ],
+            'lower' => [
+                ['fixed' => '土地契約金額', 'name' => '', 'sale' => '12,000,000', 'cost' => ''],
+                ['fixed' => null, 'name' => '', 'sale' => '', 'cost' => ''],
+            ],
+        ], $this->jsValue($html, 'var tableRows = '));
+        $this->assertStringContainsString('typeId: ' . Js::from((string) $w['type']->id)->toHtml() . ',', $html, '種類は選んだ 5W2H の種類のまま');
+    }
+
     /** 画面の JS の計算・並べ直し・件名の組み立てが、サーバーの AmountTable と同じ答えを出す */
     public function test_the_script_calculates_like_the_server(): void
     {

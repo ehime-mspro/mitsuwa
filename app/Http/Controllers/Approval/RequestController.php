@@ -435,15 +435,20 @@ class RequestController extends Controller
     }
 
     /**
-     * 画面の明細表の行（form 用。名前を設定した行は fixed に名前・金額はカンマ付きの文字）。断られて戻ったときは送った値のまま
-     * （打った文字を出す）。そうでなければ、種類の今の行の設定に合わせて並べ直す（AmountTable::forForm。段階5 D16）
+     * 画面の明細表の行（form 用。名前を設定した行は fixed に名前・金額はカンマ付きの文字）。断られて戻ったときは、明細表の種類を
+     * 選んで送った値のまま（打った文字を出す）。そうでなければ、種類の今の行の設定に合わせて並べ直す（AmountTable::forForm。段階5 D16）
+     *
+     * ⚠ 5W2H の種類・種類なしを選んで断られたときは、画面は明細表の欄を押せなくして送っていない（RequestFields::prepare が空の表を
+     *   入れるので old は空の表）。打った値の道に入らず保存してある表を出す（画面から消さない。明細表の種類に選び直して保存したときに、
+     *   保存してあった表を空で上書きしない。Task 6 の点検の Minor 3）
      *
      * @return array{upper: list<array{fixed: ?string, name: string, sale: string, cost: string}>, lower: list<array{fixed: ?string, name: string, sale: string, cost: string}>}
      */
     private function tableRows(ApprovalRequest $approvalRequest): array
     {
-        $old = old('amount_table');
-        if (is_array($old)) {
+        $old     = old('amount_table');
+        $oldType = old('type_id');
+        if (is_array($old) && is_string($oldType) && ctype_digit($oldType) && ApprovalType::find((int) $oldType)?->usesTable()) {
             $text = fn (mixed $value): string => is_string($value) || is_int($value) ? (string) $value : '';
 
             return array_map(fn (array $rows) => array_map(fn (array $row) => [
