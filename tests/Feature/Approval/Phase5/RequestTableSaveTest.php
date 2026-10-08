@@ -135,6 +135,29 @@ class RequestTableSaveTest extends TestCase
         $this->assertSame(-300000, ApprovalRequest::sole()->amount_table['upper'][0]['cost']);
     }
 
+    /** 1 つの入力に矛盾する 2 つのエラー文を出さない（規則の先頭の bail。最終点検の台帳 L103） */
+    public function test_one_bad_input_gets_one_error_sentence_only(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $type = $this->housingContractType($w);
+        $with = fn (array $row) => ['amount_table' => ['upper' => [$row], 'lower' => []]];
+
+        foreach ([
+            [['tsubo' => 'abc'], 'tsubo', '坪数は数で入力してください（例: 38.5）。'],
+            [['tsubo_price' => 'abc'], 'tsubo_price', '坪単価は円の数で入力してください。'],
+            [['contract_date' => 'abc'], 'contract_date', '契約予定日は日付で入力してください。'],
+            [$with(['name' => '値引き', 'sale' => str_repeat('9', 20)]), 'amount_table.upper.0.sale', '明細表の販売金額「99999999999999999999」は数で入力してください（マイナスも入れられます）。'],
+            [$with(['name' => '値引き', 'cost' => '-' . str_repeat('9', 20)]), 'amount_table.upper.0.cost', '明細表の工事原価「-99999999999999999999」は数で入力してください（マイナスも入れられます）。'],
+        ] as [$override, $key, $message]) {
+            $this->actingAs($w['applicant'])->post(route('approvals.requests.store'), $this->contractInput($w, $type, $override))
+                ->assertSessionHasErrors($key);
+
+            $this->assertSame([$message], session('errors')->get($key), "{$key} のエラー文が 1 つでない");
+        }
+        $this->assertSame(0, ApprovalRequest::count());
+    }
+
     /** 行ごとには上限の中でも、合計が 12 桁を超えると断る（金額の列に入らない・本番の MySQL では 500 になる） */
     public function test_a_total_beyond_twelve_digits_is_refused(): void
     {
