@@ -17,6 +17,19 @@
     $oldText = fn (string $key): string => is_string(old($key)) ? old($key) : '';
     $refused = $errors->any();
     $editId  = is_string(old('edit_id')) ? (int) old('edit_id') : 0;
+    // 段階5 の欄（本文の形・明細表の行・決まり文句・追加の欄・定型文・使える部門）。小窓の JS（stateFrom）が読む形。
+    // 断られたときは送った値、そうでなければ種類の今の値（追加の小窓は既定）。⚠ 配列でない値・文字でない値は空として扱う
+    $oldList  = fn (string $key): array => array_values(array_map(fn ($v) => is_string($v) ? $v : '', is_array(old($key)) ? old($key) : []));
+    $oldRow   = fn (int $requestCount): array => [
+        'body_form'      => in_array(old('body_form'), ['points', 'table'], true) ? old('body_form') : 'points',
+        'table_layout'   => ['subtotal' => (bool) old('layout_subtotal'), 'upper' => $oldList('layout_upper'), 'lower' => $oldList('layout_lower')],
+        'subject_suffix' => $oldText('subject_suffix'),
+        'uses_tsubo' => (bool) old('uses_tsubo'), 'uses_tsubo_price' => (bool) old('uses_tsubo_price'),
+        'uses_staff' => (bool) old('uses_staff'), 'uses_contract_date' => (bool) old('uses_contract_date'),
+        'fixed_text'     => $oldText('fixed_text'),
+        'department_ids' => array_map('intval', array_filter($oldList('department_ids'), 'ctype_digit')),
+        'requests_count' => $requestCount,
+    ];
     $refusedEdit = $refused && $types->contains('id', $editId) ? [
         'id'                   => $editId,
         'name'                 => $oldText('name'),
@@ -24,8 +37,24 @@
         'review_department_id' => $oldText('review_department_id'),
         'sort_order'           => $oldText('sort_order'),
         'is_active'            => (bool) old('is_active'),
-    ] : null;
+    ] + $oldRow((int) $types->firstWhere('id', $editId)->requests_count) : null;
     $refusedCreate = $refused && old('edit_id') === null && old('_method') === null;
+    $createRow = $refusedCreate ? $oldRow(0) : [
+        'body_form' => 'points', 'table_layout' => null, 'subject_suffix' => '',
+        'uses_tsubo' => false, 'uses_tsubo_price' => false, 'uses_staff' => false, 'uses_contract_date' => false,
+        'fixed_text' => '', 'department_ids' => [], 'requests_count' => 0,
+    ];
+    // 編集のボタンが小窓へ渡す値（今の値。種類ごと）
+    $editRow = fn (\App\Models\ApprovalType $type): array => $type->only(['id', 'name', 'headings', 'review_department_id', 'sort_order', 'is_active']) + [
+        'body_form'      => $type->body_form->value,
+        'table_layout'   => $type->table_layout,
+        'subject_suffix' => $type->subject_suffix ?? '',
+        'uses_tsubo' => $type->uses_tsubo, 'uses_tsubo_price' => $type->uses_tsubo_price,
+        'uses_staff' => $type->uses_staff, 'uses_contract_date' => $type->uses_contract_date,
+        'fixed_text'     => $type->fixed_text ?? '',
+        'department_ids' => $type->departments->pluck('id')->all(),
+        'requests_count' => (int) $type->requests_count,
+    ];
 @endphp
 <div x-data="approvalTypes()" x-cloak>
     @include('approvals._mail_failure')
@@ -42,7 +71,7 @@
 
     <h1 class="text-lg font-bold text-gray-900 mb-2">申請種類の管理</h1>
     <p class="text-[12px] text-gray-500 mb-5 max-w-[720px]">
-        申請の画面で選ぶ種類です。種類ごとに、本文に最初から入る見出しと、回る審査部門を決めます。
+        申請の画面で選ぶ種類です。種類ごとに、本文の形（5W2H の見出し／金額の明細表）と、回る審査部門を決めます。件名の決まり文句・坪数などの追加の欄・定型文・使える部門も種類ごとに決められます。
         使わなくなった種類は「停止」にします。新しい申請で選べなくなり、この種類の下書きは、提出の前に種類を選び直してもらいます（差戻し中の申請はそのまま出し直せます。過去の申請もそのまま）。
     </p>
 
@@ -56,10 +85,11 @@
         </div>
         <div class="scroll-hint at-start">
             <div class="scroll-hint-inner">
-        <table class="w-full min-w-[760px] border-collapse">
+        <table class="w-full min-w-[880px] border-collapse">
             <thead>
                 <tr>
                     <th class="px-4 py-2.5 text-left text-[11px] font-semibold text-gray-500 bg-gray-50 border-b border-gray-200">種類名</th>
+                    <th class="px-4 py-2.5 text-left text-[11px] font-semibold text-gray-500 bg-gray-50 border-b border-gray-200">本文の形・使える部門</th>
                     <th class="px-4 py-2.5 text-left text-[11px] font-semibold text-gray-500 bg-gray-50 border-b border-gray-200">審査部門</th>
                     <th class="px-4 py-2.5 text-left text-[11px] font-semibold text-gray-500 bg-gray-50 border-b border-gray-200 w-[1%] whitespace-nowrap">状態</th>
                     <th class="px-4 py-2.5 text-left text-[11px] font-semibold text-gray-500 bg-gray-50 border-b border-gray-200 w-[1%] whitespace-nowrap">申請</th>
@@ -71,6 +101,10 @@
                 @forelse($types as $type)
                     <tr class="hover:bg-gray-50">
                         <td class="px-4 py-2.5 border-b border-gray-100 text-[13px] text-gray-900">{{ $type->name }}</td>
+                        <td class="px-4 py-2.5 border-b border-gray-100 text-[13px] text-gray-700">
+                            {{ $type->body_form->label() }}
+                            <span class="block text-[11px] text-gray-500">{{ $type->departments->isEmpty() ? '全部門' : $type->departments->map(fn ($d) => $d->name)->implode('・') }}</span>
+                        </td>
                         <td class="px-4 py-2.5 border-b border-gray-100 text-[13px] text-gray-700">
                             {{ $type->reviewDepartment->company->name }}・{{ $type->reviewDepartment->name }}
                             {{-- 審査担当者のいない審査部門は、申請者の提出が断られて初めて分かるので、ここで知らせる（Task 11 の点検の軽微） --}}
@@ -84,7 +118,7 @@
                         <td class="px-4 py-2.5 border-b border-gray-100 text-[13px] text-gray-700 whitespace-nowrap">{{ $type->requests_count }} 件</td>
                         <td class="px-4 py-2.5 border-b border-gray-100 text-[13px] text-gray-700">{{ $type->sort_order }}</td>
                         <td class="px-4 py-2.5 border-b border-gray-100 text-right whitespace-nowrap">
-                            <button type="button" @click="openEdit({{ \Illuminate\Support\Js::from($type->only(['id', 'name', 'headings', 'review_department_id', 'sort_order', 'is_active'])) }})" class="text-[12px] text-blue-600 hover:underline cursor-pointer bg-transparent border-none p-0">編集</button>
+                            <button type="button" @click="openEdit({{ \Illuminate\Support\Js::from($editRow($type)) }})" class="text-[12px] text-blue-600 hover:underline cursor-pointer bg-transparent border-none p-0">編集</button>
                             <span class="text-gray-200 mx-1">|</span>
                             <form method="POST" action="{{ route('approvals.admin.types.destroy', $type) }}" class="inline" onsubmit="return confirm('この種類を削除しますか。');">
                                 @csrf
@@ -94,7 +128,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="6" class="px-4 py-8 text-center text-[13px] text-gray-400">申請の種類が登録されていません。</td></tr>
+                    <tr><td colspan="7" class="px-4 py-8 text-center text-[13px] text-gray-400">申請の種類が登録されていません。</td></tr>
                 @endforelse
             </tbody>
         </table>
@@ -133,11 +167,14 @@
                             @endforeach
                         </select>
                     </div>
-                    <div>
+                    @include('approvals.admin._type_body_form', ['state' => 'create', 'checked' => $createRow['body_form']])
+                    {{-- 見出しは 5W2H の種類だけ（明細表の種類では隠し、必須にしない。隠しても送る＝サーバーは使わない） --}}
+                    <div x-show="create.bodyForm === 'points'">
                         <label class="block text-[12px] font-semibold text-gray-700 mb-1">5W2H の見出し<span class="text-red-600 ml-0.5">*</span></label>
-                        <textarea name="headings" required maxlength="2000" rows="12" class="w-full px-2.5 py-2 border border-gray-300 rounded-md text-[13px] font-mono leading-relaxed">{{ $refusedCreate ? $oldText('headings') : \App\Support\Approval\BodyTemplate::DEFAULT }}</textarea>
+                        <textarea name="headings" :required="create.bodyForm === 'points'" maxlength="2000" rows="12" class="w-full px-2.5 py-2 border border-gray-300 rounded-md text-[13px] font-mono leading-relaxed">{{ $refusedCreate ? $oldText('headings') : \App\Support\Approval\BodyTemplate::DEFAULT }}</textarea>
                         <p class="text-[11px] text-gray-400 mt-1">申請の本文に最初から入る見出し。見出しは「■」で始まる行に、その下は「・」だけの行にする。「いつ」「いくら」は実施時期・金額の欄で書くので入れない（要件 5.2）</p>
                     </div>
+                    @include('approvals.admin._type_options', ['state' => 'create'])
                     <div>
                         <label class="block text-[12px] font-semibold text-gray-700 mb-1">表示順<span class="text-red-600 ml-0.5">*</span></label>
                         <input type="number" name="sort_order" value="{{ $refusedCreate ? $oldText('sort_order') : '0' }}" required inputmode="numeric" min="0" max="9999" class="w-full h-[38px] px-2.5 border border-gray-300 rounded-md text-[13px]">
@@ -187,11 +224,14 @@
                         </select>
                         <p class="text-[11px] text-gray-400 mt-1">変えても、回覧中の申請は提出したときの審査部門のまま回ります（出し直すと新しい設定）</p>
                     </div>
-                    <div>
+                    @include('approvals.admin._type_body_form', ['state' => 'edit'])
+                    <div x-show="edit.bodyForm === 'points'">
                         <label class="block text-[12px] font-semibold text-gray-700 mb-1">5W2H の見出し<span class="text-red-600 ml-0.5">*</span></label>
-                        <textarea name="headings" x-model="editHeadings" required maxlength="2000" rows="12" class="w-full px-2.5 py-2 border border-gray-300 rounded-md text-[13px] font-mono leading-relaxed"></textarea>
+                        <textarea name="headings" x-model="editHeadings" :required="edit.bodyForm === 'points'" maxlength="2000" rows="12" class="w-full px-2.5 py-2 border border-gray-300 rounded-md text-[13px] font-mono leading-relaxed"></textarea>
                         <p class="text-[11px] text-gray-400 mt-1">見出しは「■」で始まる行に、その下は「・」だけの行にする</p>
                     </div>
+                    @include('approvals.admin._type_options', ['state' => 'edit'])
+                    <p class="text-[11px] text-gray-400">明細表の行・決まり文句・定型文を変えても、提出済みの申請は提出したときのまま（これから作る申請と、まだ出していない下書きが変わる）</p>
                     <div>
                         <label class="block text-[12px] font-semibold text-gray-700 mb-1">表示順<span class="text-red-600 ml-0.5">*</span></label>
                         <input type="number" name="sort_order" x-model="editSort" required inputmode="numeric" min="0" max="9999" class="w-full h-[38px] px-2.5 border border-gray-300 rounded-md text-[13px]">
@@ -220,6 +260,32 @@
 @push('scripts')
 <script>
 function approvalTypes() {
+    // 明細表の行の x-for の鍵（小窓を開き直しても重ならない）
+    var rowSeq = 0;
+
+    // 小窓の状態（本文の形・明細表の行・決まり文句・追加の欄・定型文・使える部門〈チェックボックスの値は文字〉）。
+    // ⚠ 返す前に作る（x-model が読む create・edit を、描く前から在るようにする）
+    function stateFrom(row) {
+        var layout = row.table_layout || {};
+        var rows = function (names) {
+            return (names || []).map(function (name) { return { key: ++rowSeq, name: name === null ? '' : name }; });
+        };
+        return {
+            bodyForm: row.body_form,
+            locked: row.requests_count > 0,
+            requestCount: row.requests_count,
+            upper: rows(layout.upper),
+            lower: rows(layout.lower),
+            subtotal: !!layout.subtotal,
+            suffix: row.subject_suffix || '',
+            uses: { tsubo: !!row.uses_tsubo, tsubo_price: !!row.uses_tsubo_price, staff: !!row.uses_staff, contract_date: !!row.uses_contract_date },
+            fixedText: row.fixed_text || '',
+            departmentIds: (row.department_ids || []).map(String)
+        };
+    }
+
+    var createRow = {{ \Illuminate\Support\Js::from($createRow) }};
+
     return {
         // 断られた入力で開き直す（Task 19 の C4）。追加の小窓はサーバーが打った中身を描き、編集の小窓は init で打った中身を入れる
         createModal: {{ $refusedCreate ? 'true' : 'false' }},
@@ -230,6 +296,9 @@ function approvalTypes() {
         editHeadings: '',
         editSort: '0',
         editActive: true,
+        // 段階5 の欄（_type_body_form・_type_options が読む。追加と編集で同じ形）
+        create: stateFrom(createRow),
+        edit: stateFrom(createRow),
 
         init() {
             var refused = {{ \Illuminate\Support\Js::from($refusedEdit) }};
@@ -245,7 +314,21 @@ function approvalTypes() {
             this.editHeadings = row.headings;
             this.editSort = String(row.sort_order);
             this.editActive = row.is_active;
+            this.edit = stateFrom(row);
             this.editModal = true;
+        },
+
+        addRow(rows) {
+            rows.push({ key: ++rowSeq, name: '' });
+        },
+
+        moveRow(rows, index, step) {
+            var to = index + step;
+            if (to < 0 || to >= rows.length) {
+                return;
+            }
+            var moved = rows.splice(index, 1)[0];
+            rows.splice(to, 0, moved);
         }
     };
 }

@@ -185,8 +185,8 @@ class TypeManagementTest extends TestCase
         $rows = $this->tableRows($this->indexHtml($this->approvalAdmin()));
 
         $this->assertSame([
-            ['R&D <試行>', "{$company}・住宅事業部 審査担当者がいません", '停止', '0 件', '0', '編集 | 削除'],
-            [$w['type']->name, "{$company}・総務部", '利用中', '1 件', '7', '編集 | 削除'],
+            ['R&D <試行>', '5W2H の見出し 全部門', "{$company}・住宅事業部 審査担当者がいません", '停止', '0 件', '0', '編集 | 削除'],
+            [$w['type']->name, '5W2H の見出し 全部門', "{$company}・総務部", '利用中', '1 件', '7', '編集 | 削除'],
         ], array_column($rows, 'cells'));
 
         // バッジの色（停止は 6.87:1。#6b7280 だと 4.39:1 で基準の 4.5:1 に届かない）
@@ -218,6 +218,10 @@ class TypeManagementTest extends TestCase
         $this->assertSame([
             'id' => $w['type']->id, 'name' => $w['type']->name, 'headings' => "■ 目的\r\n・",
             'review_department_id' => $w['reviewDept']->id, 'sort_order' => 3, 'is_active' => false,
+            // 段階5 の欄（Phase5/TypeSettingsTest が中身を見る）
+            'body_form' => 'points', 'table_layout' => null, 'subject_suffix' => '',
+            'uses_tsubo' => false, 'uses_tsubo_price' => false, 'uses_staff' => false, 'uses_contract_date' => false,
+            'fixed_text' => '', 'department_ids' => [], 'requests_count' => 0,
         ], $this->editRows($html)[$w['type']->id]);
 
         foreach ([
@@ -427,7 +431,13 @@ class TypeManagementTest extends TestCase
         ])->assertRedirect();
         $type = ApprovalType::where('name', '人事')->sole();
 
-        $expected = ['name' => '人事', 'headings' => BodyTemplate::DEFAULT, 'review_department_id' => $w['reviewDept']->id, 'sort_order' => 4, 'is_active' => true];
+        $expected = [
+            'name' => '人事', 'headings' => BodyTemplate::DEFAULT, 'review_department_id' => $w['reviewDept']->id, 'sort_order' => 4, 'is_active' => true,
+            // 段階5 の欄（送らなければ 5W2H の種類・追加の欄は使わない・使える部門は無し＝全部門）
+            'body_form' => 'points', 'table_layout' => null, 'subject_suffix' => null,
+            'uses_tsubo' => false, 'uses_tsubo_price' => false, 'uses_staff' => false, 'uses_contract_date' => false,
+            'fixed_text' => null, 'department_ids' => [],
+        ];
         $this->assertEquals($expected, ApprovalSettingLog::where('action', 'type.created')->sole()->new_values);
 
         $this->actingAs($admin)->delete(route('approvals.admin.types.destroy', $type))->assertRedirect();
@@ -569,7 +579,12 @@ class TypeManagementTest extends TestCase
         $html = $this->indexHtml($admin);
         $this->assertStringContainsString('<li>' . e('見出しは「■」で始まる行と、中身の無い「・」の行だけで書いてください。') . '</li>', $html);
         $this->assertStringContainsString('createModal: false,', $html);
-        $this->assertStringContainsString('var refused = ' . Js::from(['id' => $w['type']->id] + $typed + ['is_active' => false])->toHtml() . ';', $html);
+        $this->assertStringContainsString('var refused = ' . Js::from(['id' => $w['type']->id] + $typed + ['is_active' => false] + [
+            // 段階5 の欄（送らなかったので空・使わない。この種類の申請は無い）
+            'body_form' => 'points', 'table_layout' => ['subtotal' => false, 'upper' => [], 'lower' => []], 'subject_suffix' => '',
+            'uses_tsubo' => false, 'uses_tsubo_price' => false, 'uses_staff' => false, 'uses_contract_date' => false,
+            'fixed_text' => '', 'department_ids' => [], 'requests_count' => 0,
+        ])->toHtml() . ';', $html);
         $fields = $this->parseForm($html, 'action="' . route('approvals.admin.types.store') . '"')['fields'];
         $this->assertSame(['', BodyTemplate::DEFAULT, '0'], [$fields['name'], $fields['headings'], $fields['sort_order']], '追加の小窓に編集の中身が入った');
         // 断られた理由は開き直した小窓の中にも出す（Task 19 の F-1）。編集の小窓は種類ごとに使い回すので、断られた種類を
