@@ -158,4 +158,23 @@ trait BuildsApprovalFixtures
 
         return $request->refresh();
     }
+
+    /**
+     * 要件 5.5.7 の住宅の契約用（請負新築工事契約）の種類（段階5。前半: 工事請負金額・自由行・紹介料／「計」あり／
+     * 後半: 土地契約金額・自由行／件名の決まり文句・追加の欄 4 つ・定型文）
+     */
+    protected function housingContractType(array $world, array $attributes = []): ApprovalType
+    {
+        return $this->approvalType($world['reviewDept'], array_merge([
+            'name'               => '住宅の契約用（請負新築工事契約）',
+            'body_form'          => 'table',
+            'table_layout'       => ['subtotal' => true, 'upper' => ['工事請負金額', null, '紹介料'], 'lower' => ['土地契約金額', null]],
+            'subject_suffix'     => '様請負新築工事契約の件',
+            'uses_tsubo'         => true,
+            'uses_tsubo_price'   => true,
+            'uses_staff'         => true,
+            'uses_contract_date' => true,
+            'fixed_text'         => '上記の内容に基づき、販売をおこないます。',
+        ], $attributes));
+    }
 }
