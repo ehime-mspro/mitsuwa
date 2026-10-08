@@ -10,6 +10,38 @@ use Illuminate\Http\Request;
  */
 final class FormInput
 {
+    /** 金額の入力で落とす単位（規約: 表示に `¥` は付けないが、打たれたら落とす） */
+    public const YEN = ['円', '¥', '￥'];
+
+    /** 前後の空白（全角を含む）を落とす（PHP の `trim()` は全角の空白を落とさない） */
+    public static function trim(?string $value): string
+    {
+        return preg_replace('/^[\s\x{3000}]+|[\s\x{3000}]+$/u', '', (string) $value) ?? '';
+    }
+
+    /**
+     * 数の入力を検査の前にそろえる（金額・明細表の金額・坪数・坪単価。段階5 設計書 §5.5）。全角→半角・マイナスの記号を `-` に・
+     * カンマと空白と単位を落とす。整数の形（`+12`・`0012`）は先頭の `+` と 0 を落とす（Laravel の integer の検査は「0012」を断るが、
+     * 画面の JS は 12 と読む。画面に見えている数と保存する数を同じにする）。文字でなければそのまま（配列などは検査で断る）。空は null
+     *
+     * @param list<string> $units 落とす単位（self::YEN・「坪」など）
+     */
+    public static function digits(mixed $value, array $units = []): mixed
+    {
+        if (! is_string($value)) {
+            return $value;
+        }
+
+        $text = str_replace(['−', 'ー', '‐', '―', '–', '—'], '-', mb_convert_kana($value, 'as'));
+        $text = preg_replace('/[\s,]+/u', '', str_replace($units, '', $text)) ?? '';
+
+        if (preg_match('/^([+-]?)0*(\d+)$/', $text, $m) === 1) {
+            $text = ($m[1] === '-' && $m[2] !== '0' ? '-' : '') . $m[2];
+        }
+
+        return $text === '' ? null : $text;
+    }
+
     /**
      * 改行を \n にそろえる（Task 19 の B1）。ブラウザの maxlength は改行を 1 文字と数えるが、送るときは \r\n にするので、
      * そろえずに数えると改行の多い入力が上限の手前で断られる。検査の前に呼ぶ（保存する値もそろえた形になる）。
