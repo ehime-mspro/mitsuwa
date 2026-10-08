@@ -53,6 +53,15 @@ class LongUnbrokenValueWrapTest extends TestCase
             . '（段落の中では折り返すが、1fr の列の広がりは止めない）で、ログイン案内は子孫セレクタの word-break: break-all（この走査には見えない）だった',
     ];
 
+    /**
+     * 部品が属性で受け取り、そのまま文字で出す利用者の値（部品のパス => [変数の名前 => 呼び出し側が渡すもの]）。
+     * FIELDS の名前は呼び出し側にしか無いので、部品の中では変数の名前で拾う（2026-10-08 の独立の点検で見つけた。
+     * 修繕の詳細が説明の先頭 30 字を渡し、URL だと 375px で赤い枠から 32px はみ出していた）。
+     */
+    private const COMPONENT_VALUES = [
+        'components/delete-confirm-modal.blade.php' => ['target' => '削除する対象の名前（修繕の説明の先頭 30 字など）'],
+    ];
+
     private const VOID_ELEMENTS = ['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr'];
 
     /** 文字として出さない要素（値が入っても画面の幅に関わらない） */
@@ -84,9 +93,10 @@ class LongUnbrokenValueWrapTest extends TestCase
     /**
      * 長い値を文字として出す箇所。
      *
+     * @param list<string> $variables FIELDS のほかに拾う変数の名前（部品の属性）
      * @return list<array{line: int, field: string, tag: string, wraps: bool, inAutoTable: bool}>
      */
-    private function sites(string $src): array
+    private function sites(string $src, array $variables = []): array
     {
         // Blade のコメント・script・style・@php は、位置を保ったまま空白にする（行番号を合わせるため）
         $blank = fn (array $m) => preg_replace('/[^\n]/', ' ', $m[0]);
@@ -105,7 +115,8 @@ class LongUnbrokenValueWrapTest extends TestCase
         foreach ($echoes as $echo) {
             $isXText = isset($echo[3]) && $echo[3][1] >= 0;
             $expr = $isXText ? $echo[3][0] : (($echo[1][0] ?? '') . ($echo[2][0] ?? ''));
-            if (! preg_match('/(?:->|\.|\[\')(' . self::FIELDS . ')\b/', $expr, $field)) {
+            if (! preg_match('/(?:->|\.|\[\')(' . self::FIELDS . ')\b/', $expr, $field)
+                && ($variables === [] || ! preg_match('/\$(' . implode('|', $variables) . ')\b/', $expr, $field))) {
                 continue;
             }
             $pos = $echo[0][1];
@@ -226,7 +237,7 @@ class LongUnbrokenValueWrapTest extends TestCase
     {
         $all = [];
         foreach ($this->views() as $path => $src) {
-            if ($sites = $this->sites($src)) {
+            if ($sites = $this->sites($src, array_keys(self::COMPONENT_VALUES[$path] ?? []))) {
                 $all[$path] = $sites;
             }
         }
@@ -275,6 +286,28 @@ class LongUnbrokenValueWrapTest extends TestCase
         return false;
     }
 
+    public function test_component_values_are_still_echoed_by_their_components(): void
+    {
+        $all = $this->allSites();
+        foreach (self::COMPONENT_VALUES as $path => $variables) {
+            foreach (array_keys($variables) as $variable) {
+                $this->assertNotEmpty(array_filter($all[$path] ?? [], fn ($site) => $site['field'] === $variable), "{$path} が \${$variable} を文字で出していない（古くなった一覧）");
+            }
+        }
+    }
+
+    /**
+     * 注文住宅の詳細の備考は flex の行（「備考:」のラベル＋値）。値が折り返せるようになると、
+     * ラベルも縮められて「備」「考:」と縦に割れる（375px で 3 行・641px と 1024px で 2 行。2026-10-08 に実ブラウザで実測）。
+     */
+    public function test_the_notes_label_in_the_custom_order_flex_row_keeps_its_width(): void
+    {
+        $src = file_get_contents(resource_path('views/housing/custom-orders/show.blade.php'));
+
+        $this->assertSame(1, preg_match_all('/<span class="([^"]*)">備考:<\/span> \{\{ \$o->notes \}\}/', $src, $m), '注文住宅の備考の行が見つからない');
+        $this->assertMatchesRegularExpression('/(?<![\w-])(flex-)?shrink-0(?![\w-])/', $m[1][0], '「備考:」のラベルが縮められて縦に割れる（flex-shrink-0 が無い）');
+    }
+
     public function test_exempt_prefixes_still_cover_views_and_give_reasons(): void
     {
         $views = array_keys($this->views());
@@ -287,11 +320,11 @@ class LongUnbrokenValueWrapTest extends TestCase
     // ---- 見本（検出の分かれ目を 1 つずつ固定する。実物に無い書き方は、消しても走査の本番が緑のまま） ----
 
     /** @return list<string> 「field:tag:wraps:table（幅を中身で決める表の中）か out」 */
-    private function describe(string $src): array
+    private function describe(string $src, array $variables = []): array
     {
         return array_map(
             fn ($site) => "{$site['field']}:{$site['tag']}:" . ($site['wraps'] ? 'wraps' : 'no') . ':' . ($site['inAutoTable'] ? 'table' : 'out'),
-            $this->sites($src)
+            $this->sites($src, $variables)
         );
     }
 
@@ -304,6 +337,9 @@ class LongUnbrokenValueWrapTest extends TestCase
         $this->assertSame(['file_name:a:no:out'], $this->describe('<a :href="file.file_path" x-text="file.file_name"></a>'));
         $this->assertSame([], $this->describe('<div>{{ $buyer->email_verified_at }} {{ $p->notes_count }}</div>'), '名前の続きの語まで拾っている');
         $this->assertSame([], $this->describe('<div>{{ $buyer->name }}</div>'), '長い値でない項目まで拾っている');
+        $this->assertSame(['target:span:no:out'], $this->describe('<p><span class="font-bold">{{ $target }}</span> {{ $title }}</p>', ['target']), '部品の属性の値を拾っていない');
+        $this->assertSame([], $this->describe('<span>{{ $target }}</span>'), '部品の属性の名前を、その部品の外でも拾っている');
+        $this->assertSame([], $this->describe('<span>{{ $targets }}</span>', ['target']), '部品の属性の名前の続きの語まで拾っている');
     }
 
     public function test_sample_values_not_rendered_as_text_are_skipped(): void
