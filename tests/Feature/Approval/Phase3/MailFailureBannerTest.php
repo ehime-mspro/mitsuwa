@@ -35,7 +35,7 @@ class MailFailureBannerTest extends TestCase
         ApprovalSetting::current();   // 本番は SQL が入れた 1 行がある
     }
 
-    /** 決裁の管理者の画面（使い始める前）: ホーム（準備中）と管理の 4 画面（3b で催促の設定を足した） */
+    /** 決裁の管理者の画面（使い始める前）: ホーム（準備中）と管理の 6 画面（3b で催促の設定・5b で過去の決裁の取り込みと台帳の取り込みを足した） */
     private function adminPagesBeforeLaunch(): array
     {
         return [
@@ -44,6 +44,8 @@ class MailFailureBannerTest extends TestCase
             route('approvals.admin.organization.index'),
             route('approvals.admin.types.index'),
             route('approvals.admin.holidays.index'),
+            route('approvals.admin.papers.index'),
+            route('approvals.admin.papers.import'),
         ];
     }
 

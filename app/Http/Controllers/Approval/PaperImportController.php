@@ -1,0 +1,180 @@
+<?php
+
+namespace App\Http\Controllers\Approval;
+
+use App\Http\Controllers\Controller;
+use App\Models\ApprovalPaperRecord;
+use App\Support\Approval\PaperImportAnalysis;
+use App\Support\Approval\PaperImporter;
+use App\Support\Approval\PaperImportException;
+use App\Support\OneTimeAction;
+use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
+use Illuminate\View\View;
+
+/**
+ * 過去の紙の決裁の取り込み（画面⑪。要件 11 章・段階5 設計書 §5.9・D6・D7・D20）。決裁の管理者だけ・使い始める前から使える（D11）。
+ *
+ * 流れ（社員の CSV 一括登録と同じ形）: ファイル（.xls・.xlsx・10MB まで）と年度を選ぶ → 確認の画面（何も書かない）
+ *   → 描いた「取り込む」フォーム（hidden のファイルと 1 回限りの鍵・金額の控えの結び付けの選択）で確定
+ *   → **確定でファイルを読み直して確かめ直す**（hidden を信用しない）→ 紙の決裁の一覧へ
+ *
+ * ⚠ 断るときの戻り先は**取り込みの画面に固定する**（`back()` や検証エラーの既定の戻り先を使わない）。確認の画面は POST の応答で、
+ *   そこに載ったフォームから送るとリファラーが POST 専用の preview になり、GET で 405 になる（docs/RULES.md Bug #64）。
+ * ⚠ 結び付けの選び方の誤り（同じ記録に 2 つの控え・取り込めない先）は、確認の画面をもう一度出して選び直してもらう（アップロードし直させない）。
+ * ⚠ 行のエラーの view のキーは `rowErrors`（`errors` にすると Blade の `$errors` を上書きして 500。Bug #53）。
+ */
+class PaperImportController extends Controller
+{
+    /** 確定の 2 回目（同じ確認の画面から送り直した）の断り */
+    public const ALREADY_SENT = 'この確認の画面からは取り込めません（すでに送ったか、画面が古くなっています）。取り込まれたかは紙の決裁の一覧で確かめられます。取り込み直すときは、台帳をアップロードし直してください。';
+
+    /** 確定で読み直したら、足す記録も金額を補う記録も無かった（ほかの人が先に取り込んだなど） */
+    public const NOTHING_TO_IMPORT = '取り込む記録がありません（足す決裁No も、金額を補う記録もありません）。';
+
+    /** Route: GET /approvals/admin/papers/import */
+    public function form(): View
+    {
+        return view('approvals.admin.papers.import', ['years' => ApprovalPaperRecord::yearChoices()]);
+    }
+
+    /** Route: POST /approvals/admin/papers/import/preview */
+    public function preview(Request $request): View|RedirectResponse
+    {
+        // ⚠ ルールの配列は行を分けて閉じる（JapaneseValidationMessagesTest の走査。UserImportController と同じ）
+        try {
+            $validated = $request->validate([
+                'ledger_file' => ['required', 'file', 'extensions:xls,xlsx', 'max:10240'],
+                'year'        => ['required', 'integer', Rule::in(array_keys(ApprovalPaperRecord::yearChoices()))],
+            ], [
+                'ledger_file.required'   => '台帳のファイルを選んでください。',
+                'ledger_file.extensions' => '台帳のファイル（.xls・.xlsx）を選んでください。',
+                'ledger_file.max'        => '台帳のファイルは 10MB までです。',
+                'year.in'                => '年度を選び直してください。',
+            ], [
+                'ledger_file' => '台帳のファイル',
+                'year'        => '年度',
+            ]);
+        } catch (ValidationException $e) {
+            // 確認の画面からアップロードし直したときも取り込みの画面へ戻す（Bug #64）
+            throw $e->redirectTo(route('approvals.admin.papers.import'));
+        }
+
+        $file = $request->file('ledger_file');
+
+        return $this->confirmation((string) $file->get(), (string) $file->getClientOriginalName(), (int) $validated['year'], []);
+    }
+
+    /** Route: POST /approvals/admin/papers/import/execute */
+    public function execute(Request $request): View|RedirectResponse
+    {
+        try {
+            $validated = $request->validate([
+                'ledger_data' => ['required', 'string'],
+                'file_name'   => ['required', 'string', 'max:255'],
+                'year'        => ['required', 'integer', Rule::in(array_keys(ApprovalPaperRecord::yearChoices()))],
+                'links'       => ['nullable', 'array'],
+                'links.*'     => ['string', 'max:20'],
+            ], [], [
+                'ledger_data' => '取り込むファイル',
+                'file_name'   => 'ファイルの名前',
+                'year'        => '年度',
+                'links'       => '金額の控えの結び付け',
+                'links.*'     => '金額の控えの結び付け',
+            ]);
+        } catch (ValidationException $e) {
+            // 確定のフォームも確認の画面（POST の応答）に載っている。取り込みの画面へ戻す（Bug #64）
+            throw $e->redirectTo(route('approvals.admin.papers.import'));
+        }
+
+        // 確定は確認の画面 1 つにつき 1 回だけ（二度押し・再送信）。⚠ ファイルを読み直す前に受け取る（2 回目に「取り込む記録がありません」と
+        //   違う理由を出さない）。結び付けを選び直す画面をもう一度出すときは、新しい鍵を描く（confirmationView）
+        if (! OneTimeAction::claimFrom($request, 'import_token')) {
+            return redirect()->route('approvals.admin.papers.import')->with('error', self::ALREADY_SENT);
+        }
+
+        $content = base64_decode($validated['ledger_data'], true);
+        if ($content === false) {
+            return redirect()->route('approvals.admin.papers.import')->with('error', '取り込むファイルを読み取れませんでした。もう一度アップロードしてください。');
+        }
+
+        $year  = (int) $validated['year'];
+        $links = $validated['links'] ?? [];
+
+        try {
+            // ⚠ 確定でもファイルを読み直して確かめ直す（画面が送ってきた hidden を信用しない）
+            $analysis = $this->analyze($content, $year, $links);
+        } catch (PaperImportException $e) {
+            return redirect()->route('approvals.admin.papers.import')->with('error', $e->getMessage());
+        }
+
+        // 結び付けの選び方の誤りは、確認の画面をもう一度出して選び直してもらう
+        if ($analysis['linkErrors'] !== []) {
+            return $this->confirmationView($analysis, $content, $validated['file_name'], $year, $links);
+        }
+
+        if ($analysis['addCount'] === 0 && $analysis['fillCount'] === 0) {
+            return redirect()->route('approvals.admin.papers.import')->with('error', self::NOTHING_TO_IMPORT);
+        }
+
+        try {
+            $result = PaperImporter::apply($analysis, $year, $validated['file_name'], $request->user());
+        } catch (PaperImportException $e) {
+            return redirect()->route('approvals.admin.papers.import')->with('error', $e->getMessage());
+        } catch (UniqueConstraintViolationException) {
+            return redirect()->route('approvals.admin.papers.import')->with('error', 'ほかの人が同じ番号の紙の決裁を登録しました。もう一度アップロードして確かめてください。');
+        }
+
+        // 次の番号は、確定で実際に進めた値（確認の画面のあとで採番があっても合う）
+        $import = $result['import'];
+        $next   = $result['next'] === [] ? '' : '次の番号: ' . implode('・', $result['next']) . '。';
+
+        return redirect()->route('approvals.admin.papers.index', ['year' => $year])
+            ->with('success', "{$import->added_count} 件を取り込みました（金額を補った記録 {$import->filled_count} 件）。{$next}");
+    }
+
+    /** 確認の画面（中身を作って描く） */
+    private function confirmation(string $content, string $fileName, int $year, array $links): View|RedirectResponse
+    {
+        try {
+            $analysis = $this->analyze($content, $year, $links);
+        } catch (PaperImportException $e) {
+            return redirect()->route('approvals.admin.papers.import')->with('error', $e->getMessage());
+        }
+
+        return $this->confirmationView($analysis, $content, $fileName, $year, $links);
+    }
+
+    private function confirmationView(array $analysis, string $content, string $fileName, int $year, array $links): View
+    {
+        return view('approvals.admin.papers.import', [
+            'years'       => ApprovalPaperRecord::yearChoices(),
+            'analysis'    => $analysis,
+            'ledgerData'  => base64_encode($content),
+            'fileName'    => $fileName,
+            'year'        => $year,
+            'links'       => $links,
+            'importToken' => OneTimeAction::issue(),
+        ]);
+    }
+
+    /**
+     * ファイルの中身を一時ファイルに書いて読む（PhpSpreadsheet はファイルの場所から読む）。読んだら消す
+     *
+     * @throws PaperImportException
+     */
+    private function analyze(string $content, int $year, array $links): array
+    {
+        $path = tempnam(sys_get_temp_dir(), 'paper-ledger');
+        try {
+            file_put_contents($path, $content);
+
+            return PaperImportAnalysis::analyze($path, $year, $links);
+        } finally {
+            @unlink($path);
+        }
+    }
+}

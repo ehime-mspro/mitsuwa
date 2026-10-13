@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Support\Approval\AmountTable;
+use App\Support\Approval\ApprovalFiscalYear;
 use App\Support\Approval\RequestVisibility;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -40,6 +41,28 @@ class ApprovalPaperRecord extends Model
             'created_by'    => 'integer',
             'updated_by'    => 'integer',
         ];
+    }
+
+    /** 年度の選択肢のいちばん古い年度（平成元年度。紙の台帳がそれより前にあることは無い） */
+    public const OLDEST_YEAR = 1989;
+
+    /**
+     * 紙の決裁の年度の選択肢（新しい順。今の年度〈会社の中でいちばん新しいもの〉から平成元年度まで。値は期の始まりの年）。取り込みと 1 件ずつの登録・一覧の絞り込み
+     *
+     * @return array<int, string> 年度 => 表示（「R8 年度（2026）」）
+     */
+    public static function yearChoices(): array
+    {
+        $months = ApprovalCompany::query()->pluck('fiscal_start_month')->map(fn (mixed $m) => (int) $m);
+        $month  = $months->isEmpty() ? 5 : $months->min();
+        $newest = $months->isEmpty() ? ApprovalFiscalYear::current(5) : $months->map(fn (int $m) => ApprovalFiscalYear::current($m))->max();
+
+        $years = [];
+        for ($year = $newest; $year >= self::OLDEST_YEAR; $year--) {
+            $years[$year] = ApprovalFiscalYear::eraLabel($year, $month) . " 年度（{$year}）";
+        }
+
+        return $years;
     }
 
     public function department(): BelongsTo

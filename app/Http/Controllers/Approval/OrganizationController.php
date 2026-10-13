@@ -49,6 +49,7 @@ class OrganizationController extends Controller
                 $department->number_state = ApprovalNumber::currentState($department);
                 $department->has_numbers  = ApprovalNumber::departmentHasNumbers($department);
                 $department->has_paper    = ApprovalNumber::departmentHasPaperNumbers($department);
+                $department->last_paper   = ApprovalNumber::lastPaperSeq($department, $department->number_state['fiscal_year']);
             }
         ));
 

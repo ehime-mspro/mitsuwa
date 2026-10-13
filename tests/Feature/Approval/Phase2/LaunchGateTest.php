@@ -29,6 +29,7 @@ class LaunchGateTest extends TestCase
         'approvals.admin.organization.' => '部門の管理（準備の画面。本番で先に登録する。D1）',
         'approvals.admin.types.'        => '申請種類の管理（準備の画面。D1）',
         'approvals.admin.holidays.'     => '催促の設定（準備の画面。使い始める前から送らない日を登録できる。段階3 設計書 §5.9）',
+        'approvals.admin.papers.'       => '過去の紙の決裁の取り込み（準備の画面。使い始める日までに取り込む。段階5 設計書 D11）',
     ];
 
     /**

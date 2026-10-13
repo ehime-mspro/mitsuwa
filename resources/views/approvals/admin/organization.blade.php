@@ -100,9 +100,12 @@
                         // 今年度の次の番号（要件 6.4）。編集のモーダルの説明にも使う
                         $state      = $dept->number_state;
                         $nextLabel  = \App\Support\Approval\ApprovalNumber::format($state['era'], $dept->code, $state['next']);
-                        $numberHint = $state['last_issued'] > 0
-                            ? "今年度（{$state['era']}）は " . \App\Support\Approval\ApprovalNumber::format($state['era'], $dept->code, $state['last_issued']) . ' まで使っています。'
-                            : "今年度（{$state['era']}）はまだ番号を使っていません。";
+                        // 取り込んだ今年度の紙の決裁の番号のほうが大きければ、そちらを出す（開始番号はそれ以下にできない。段階5 §5.11）
+                        $numberHint = match (true) {
+                            $dept->last_paper > $state['last_issued'] => "今年度（{$state['era']}）は紙の決裁で " . \App\Support\Approval\ApprovalNumber::format($state['era'], $dept->code, $dept->last_paper) . ' まで使っています。',
+                            $state['last_issued'] > 0                 => "今年度（{$state['era']}）は " . \App\Support\Approval\ApprovalNumber::format($state['era'], $dept->code, $state['last_issued']) . ' まで使っています。',
+                            default                                   => "今年度（{$state['era']}）はまだ番号を使っていません。",
+                        };
                     @endphp
                     <tr class="hover:bg-gray-50">
                         <td class="px-4 py-2.5 border-b border-gray-100 text-[13px] text-gray-700">{{ $dept->company->name }}</td>
