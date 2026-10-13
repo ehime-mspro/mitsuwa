@@ -85,6 +85,37 @@ class PaperImportAnalysisTest extends TestCase
         }
     }
 
+    /**
+     * 名前が英字 4 文字以上で始まるシート（MEMO）は部門の受付簿として読まない（先頭の 3 文字 MEM を部門の記号にしない）。
+     * 部門 MEM があっても、MEMO のシートの行はどこにも取り込まれず、エラーにも出ない。1〜3 文字なら（全角も）部門の記号として読む
+     */
+    public function test_a_sheet_whose_name_starts_with_four_letters_is_not_read(): void
+    {
+        $this->approvalDepartment($this->w['company'], ['name' => 'メモ部', 'code' => 'MEM']);
+
+        $a = PaperImportAnalysis::analyze($this->paperLedger([
+            'Ｊ・住宅' => [[1, '8.05.07', '甲野', '受付簿として読むシート']],
+            'MEMO' => [[1, '8.05.08', '乙山', '受付簿の形で書いたメモ']],
+        ]), 2026);
+
+        $this->assertSame([
+            ['title' => 'Ｊ・住宅', 'kind' => PaperLedgerFile::REGISTER, 'code' => 'J', 'department' => '住宅事業部', 'rows' => 1, 'added' => 1, 'existing' => 0, 'errors' => 0, 'linked' => 0],
+            ['title' => 'MEMO', 'kind' => PaperLedgerFile::IGNORED, 'code' => null, 'department' => null, 'rows' => 0, 'added' => 0, 'existing' => 0, 'errors' => 0, 'linked' => 0],
+        ], $a['sheets']);
+        $this->assertSame(['R8-J-001'], array_column($a['records'], 'number'), 'MEMO の行は部門 MEM に取り込まない');
+        $this->assertSame([], $a['rowErrors'], '読まないシートの行はエラーにも出ない');
+
+        // シートの名前から部門の記号を取る（4 文字以上続けば記号ではない。全角・小文字は半角の大文字にそろえる）
+        $this->assertNull(PaperLedgerFile::codeOf('MEMO'));
+        $this->assertNull(PaperLedgerFile::codeOf('ＭＥＭＯ'));
+        $this->assertNull(PaperLedgerFile::codeOf('memo'));
+        $this->assertNull(PaperLedgerFile::codeOf('ABCD・住宅'));
+        $this->assertSame('J', PaperLedgerFile::codeOf('J・住宅'));
+        $this->assertSame('JB', PaperLedgerFile::codeOf('JB・住宅'));
+        $this->assertSame('JB', PaperLedgerFile::codeOf('ＪＢ・住宅'));
+        $this->assertSame('ABC', PaperLedgerFile::codeOf('ABC・住宅'));
+    }
+
     /** エラーの行は取り込まない・ほかの行は取り込む（D20）。どの行がなぜかを出す */
     public function test_rows_with_errors_are_left_out_and_the_rest_is_kept(): void
     {

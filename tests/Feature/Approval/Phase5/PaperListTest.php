@@ -110,4 +110,28 @@ class PaperListTest extends TestCase
         $this->assertStringContainsString('204 件', $html);
         $this->assertStringContainsString('2026/10/07 10:00 に 取り消した 人 が取り消し（118 件を消した）', $html, '保存した日時は日本時間（Bug #61）');
     }
+
+    /** 足した記録が 1 件も残っていない回（全部消した・足した 0 件）には取り消しのボタンを出さない（消す記録が無い）。残っている回には出す */
+    public function test_an_import_without_remaining_records_has_no_undo_form(): void
+    {
+        $kept    = ApprovalPaperImport::create(['file_name' => '07年度.xls', 'fiscal_year' => 2025, 'added_count' => 1, 'filled_count' => 0, 'imported_by' => $this->admin->id]);
+        $deleted = ApprovalPaperImport::create(['file_name' => '08年度.xls', 'fiscal_year' => 2026, 'added_count' => 1, 'filled_count' => 0, 'imported_by' => $this->admin->id]);
+        $none    = ApprovalPaperImport::create(['file_name' => '09年度.xls', 'fiscal_year' => 2027, 'added_count' => 0, 'filled_count' => 2, 'imported_by' => $this->admin->id]);
+        $this->paperRecord($this->w['dept'], ['fiscal_year' => 2025, 'seq' => 1, 'import_id' => $kept->id]);
+        $this->paperRecord($this->w['dept'], ['fiscal_year' => 2026, 'seq' => 1, 'import_id' => $deleted->id])->delete();
+
+        $html = $this->listHtml();
+        $undo = fn (ApprovalPaperImport $import) => 'action="' . route('approvals.admin.papers.imports.undo', $import) . '"';
+        $row  = fn (string $fileName) => collect(explode('</tr>', $html))->first(fn (string $chunk) => str_contains($chunk, $fileName));
+
+        $this->assertStringContainsString($undo($kept), $html, '記録の残っている回には取り消しのフォーム');
+        $this->assertStringContainsString('取り消す（今 1 件）', $row('07年度.xls'));
+        $this->assertStringNotContainsString('この回に足した記録は残っていません', $row('07年度.xls'));
+        foreach (['08年度.xls' => $deleted, '09年度.xls' => $none] as $fileName => $import) {
+            $this->assertStringNotContainsString($undo($import), $html, "{$fileName}: 記録が無い回の取り消しのフォームは描かない");
+            $this->assertStringNotContainsString('取り消す', $row($fileName), $fileName);
+            $this->assertStringContainsString('—（この回に足した記録は残っていません）', $row($fileName), $fileName);
+        }
+        $this->assertSame(2, substr_count($html, 'この回に足した記録は残っていません'));
+    }
 }
