@@ -8878,3 +8878,27 @@ Critical 0・Important 4・Minor 10（報告は `~/.claude/plans/approval-phase3
 | G13 | 判断「不明」で絞った画面で選択が外れて見える（`index.blade.php`） | Tests: 1376, Assertions: 9487, Failures: 1. | `PaperLedgerTest::test_the_screen_shows_papers_with_the_new_filters` | — | 検出 |
 | G14 | 出力の記録に区分を残さない（`LedgerFilter.php`） | Tests: 1376, Assertions: 9489, Errors: 1, Failures: 2. | `LedgerExcelTest::test_each_download_is_recorded_with_the_conditions_and_the_count`、`LedgerFilterTest::test_the_log_keeps_every_key_in_the_same_order`、`PaperLedgerTest::test_the_excel_has_the_paper_rows_and_logs_the_new_filters` | — | 検出 |
 | C09 | 確認の画面のあとでシステムの申請が使った番号を、確定の読み直しで黙って落とす（最後の点検 I-1）（`PaperImportController.php`） | —（`abcbe9ad` で足した） | — | Tests: 1379, Assertions: 9535, Failures: 1.（`PaperImportScreenTest::test_a_system_number_taken_while_the_confirmation_is_open_is_refused`） | 検出 |
+
+## Task 10 の実測記録（2026-10-13・会話 ae55d5c0）
+
+- 環境: `a72bc514` の `git archive` の写し（vendor は WT から複製）・使い捨ての SQLite・`artisan serve` 8772・Playwright・作りものの台帳（本物の台帳は開いていない）。計画の設定に `APP_ENV=local` と `APP_DEBUG=false` を足した（万一エラーの画面が出ても、環境変数〈試しのパスワードを含む〉を画面に出さないため）。`.env` 系は読んでいない・作っていない
+- **見ることの表 1〜11 はすべて期待どおり**（止めるべき不具合は無し）:
+
+| # | 画面 | 確かめたこと（要点） |
+|---|---|---|
+| 1 | ⑪ 取り込みの画面（使い始める前） | 台帳の形と説明・ファイル名の `08年度` で年度が R8（2026）に先選び（全角 `２５年度` は H25・年度の無い名前は選び直さない）・サイドバーとホームの入口 |
+| 2 | ⑪ 確認の画面 | 件数のチップ・シートの表（読まないシートも）・次の番号・赤の行 4 種・金額の控え（自動は文字、決まらない行は select）・読み直しの注意（黄）・375px で横のはみ出し無し |
+| 3 | ⑪ 確定 | 同じ記録を 2 つ選ぶと選び直しの画面（鍵が新しくなる・DB は 0 件のまま）→ 選び直して一覧へ・二度押しでも送信 1 回・「戻る」からの再送は断られ件数は 9 のまま |
+| 4 | ⑪ 一覧と取り込みの記録 | 年度・部門の絞り込み（変えた瞬間に送る）・「取り消す（今 9 件・うち手で直した 1 件）」と確かめの文・キャンセルで消えない／OK で取り消しの記録の文 |
+| 5 | 1 件ずつの登録・直し | 欄の並び（1440 は 3〜4 列・375 は 1 列）・紙とシステムの番号の重なり・期間の外の決裁日で断られ中身が残る・二度押し止め・削除の確かめの文 |
+| 6 | 部門の管理 | 編集の小窓に「今年度（R8）は紙の決裁で R8-J-031 まで使っています。」・次の番号の欄は 32 |
+| 7 | 紙の決裁の詳細 | 灰色の「紙」・原本は紙の文・判断「不明」・金額と粗利率・「直す」は管理者だけ・申請者は見られない部門の記録が 404、直しの画面が 403 |
+| 8 | 台帳（使い始めてから） | 紙の行の灰色の「紙」・行の先が紙の詳細・判断「不明」と区分の絞り込み・申請者・期間・キーワードも紙に効く・375px のカード・見られない部門の行が出ない |
+| 9 | 申請の画面と詳細 | 関連する決裁No の候補に「紙」と添えて出る（見られない部門は出ない）・詳細のリンクが紙の詳細へ・取り込んでいない番号は文字だけ |
+| 10 | Excel | 下の行 |
+| 11 | 全画面 | 下の行 |
+
+- lint: 写しで `view:cache` → コンパイル済みビュー 311 本を `php -l` → INVALID 0 件。はみ出し: 1440 / 375px の全画面（管理者 12・申請者 11・断られた画面ほか）で `main.scrollWidth === main.clientWidth`。コンソールのエラーと警告 0 件（わざと開いた 404・403 を除く）
+- Excel: 台帳の「Excel に出力」を取り出して PhpSpreadsheet で読み戻し、クイックルックと HTML にした画像で確認。20 列（A〜T）・見出しの固定とフィルタ・S 列「区分」がシステム／紙・紙の行は判断「不明」と状態の空欄・金額と粗利率は数値の書式。申請者の Excel に見られない部門の行は無い。**Excel 本体では開いていない**（利用者の決まり）
+- 見つけた Minor（375px の細い列・1440px の確認の画面の表の右端・ほか文言と小さな見た目）は直さず、`docs/BACKLOG.md` の「5b の残したもの」の 8〜9 に書いた
+- 写真 47 枚: `/Users/masanori/site/approval/screenshots-5b/final/`（リポジトリの外）
