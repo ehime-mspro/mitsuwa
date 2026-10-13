@@ -82,7 +82,7 @@ final class LedgerRow
             cost: $total['cost'] ?? null,
             profit: $total['profit'] ?? null,
             rate: $total['rate'] ?? null,
-            contractDate: is_string($contract) ? CarbonImmutable::createFromFormat('!Y-m-d', $contract, 'UTC') ?: null : $contract,
+            contractDate: self::day($contract),
         );
     }
 
@@ -90,6 +90,23 @@ final class LedgerRow
     public function amountLabel(): ?string
     {
         return $this->amount === null ? null : number_format($this->amount) . '円';
+    }
+
+    /**
+     * 契約予定日（申請者本人は列の日付・ほかの人は控えの `Y-m-d` の文字）。**形の崩れた値は空にする**（在る日付だけ。`2026-02-30` も空）。
+     * ⚠ Carbon の createFromFormat は形が合わないと例外を投げる（`?: null` は効かない）。1 行の崩れで台帳と Excel の全体を 500 にしない
+     */
+    private static function day(mixed $value): ?CarbonInterface
+    {
+        if ($value instanceof CarbonInterface) {
+            return $value;
+        }
+        if (! is_string($value) || ! preg_match('/\A\d{4}-\d{2}-\d{2}\z/', $value)) {
+            return null;
+        }
+        $day = CarbonImmutable::createFromFormat('!Y-m-d', $value, 'UTC');
+
+        return $day !== false && $day->format('Y-m-d') === $value ? $day : null;
     }
 
     /** 判断した段階だけ（待ち・省略・取り消しは意見もコメントも無い） */
