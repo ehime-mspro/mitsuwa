@@ -3,20 +3,23 @@
 namespace App\Http\Controllers\Approval;
 
 use App\Http\Controllers\Controller;
+use App\Models\ApprovalPaperImport;
 use App\Models\ApprovalPaperRecord;
 use App\Support\Approval\PaperImportAnalysis;
 use App\Support\Approval\PaperImporter;
 use App\Support\Approval\PaperImportException;
+use App\Support\Approval\SettingLogger;
 use App\Support\OneTimeAction;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 /**
- * 過去の紙の決裁の取り込み（画面⑪。要件 11 章・段階5 設計書 §5.9・D6・D7・D20）。決裁の管理者だけ・使い始める前から使える（D11）。
+ * 過去の紙の決裁の取り込みと、取り込み 1 回分の取り消し（画面⑪。要件 11 章・段階5 設計書 §5.9・§5.10・D6・D7・D9・D20）。決裁の管理者だけ・使い始める前から使える（D11）。
  *
  * 流れ（社員の CSV 一括登録と同じ形）: ファイル（.xls・.xlsx・10MB まで）と年度を選ぶ → 確認の画面（何も書かない）
  *   → 描いた「取り込む」フォーム（hidden のファイルと 1 回限りの鍵・金額の控えの結び付けの選択）で確定
@@ -134,6 +137,63 @@ class PaperImportController extends Controller
 
         return redirect()->route('approvals.admin.papers.index', ['year' => $year])
             ->with('success', "{$import->added_count} 件を取り込みました（金額を補った記録 {$import->filled_count} 件）。{$next}");
+    }
+
+    /**
+     * Route: POST /approvals/admin/papers/imports/{approvalPaperImport}/undo
+     *
+     * 取り込み 1 回分の取り消し（D9）: その回に足した記録を、そのあと手で直したものも含めて消す。金額を補っただけの記録は消さない
+     * （その回に足したものではない）。次の番号は戻さない（部門の管理の開始番号で戻す）。取り込みの行は消さずに、取り消した日時・人・件数を残す。
+     * ⚠ 一覧で見せた件数（`count_shown`）と、そのうち手で直した件数（`edited_shown`）が今と違えば断る（見せたあとで足し消し・直しがあった
+     *   ＝確かめた中身と違うものを消さない）
+     */
+    public function undo(Request $request, ApprovalPaperImport $approvalPaperImport): RedirectResponse
+    {
+        try {
+            $validated = $request->validate([
+                'count_shown'  => ['required', 'integer', 'min:0'],
+                'edited_shown' => ['required', 'integer', 'min:0'],
+            ], [], [
+                'count_shown'  => '消す件数',
+                'edited_shown' => '手で直した件数',
+            ]);
+        } catch (ValidationException $e) {
+            // 一覧の画面へ戻す（取り込みのコントローラは back() を使わない。Bug #64）
+            throw $e->redirectTo(route('approvals.admin.papers.index'));
+        }
+
+        $result = DB::transaction(function () use ($approvalPaperImport, $validated, $request): string|int {
+            $import = ApprovalPaperImport::whereKey($approvalPaperImport->id)->lockForUpdate()->firstOrFail();
+            if ($import->undone_at !== null) {
+                return 'この取り込みはすでに取り消しています。';
+            }
+
+            $count  = $import->records()->count();
+            $edited = $import->records()->whereNotNull('updated_by')->count();
+            $shown  = (int) $validated['count_shown'];
+            $shownEdited = (int) $validated['edited_shown'];
+            if ($count !== $shown || $edited !== $shownEdited) {
+                return "この取り込みで足した記録が変わりました（一覧では {$shown} 件・うち手で直した {$shownEdited} 件、今は {$count} 件・うち {$edited} 件）。一覧で確かめてから、もう一度取り消してください。";
+            }
+
+            $import->records()->delete();
+            $import->update(['undone_at' => now(), 'undone_by' => $request->user()->id, 'undone_count' => $count]);
+            SettingLogger::record('paper.import_undone', 'approval_paper_import', $import->id, [], [
+                'file_name'   => $import->file_name,
+                'fiscal_year' => $import->fiscal_year,
+                'deleted'     => $count,
+                'edited'      => $edited,
+            ]);
+
+            return $count;
+        });
+
+        if (is_string($result)) {
+            return redirect()->route('approvals.admin.papers.index')->with('error', $result);
+        }
+
+        return redirect()->route('approvals.admin.papers.index')
+            ->with('success', "取り込みを取り消しました（{$result} 件を消しました）。次の番号は戻していません。戻すときは部門の管理で開始番号を直してください。");
     }
 
     /** 確認の画面（中身を作って描く） */

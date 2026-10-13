@@ -95,11 +95,18 @@ Route::middleware('approval.admin')->prefix('approvals/admin')->name('approvals.
     Route::delete('/holidays/{approvalHoliday}', [HolidayController::class, 'destroy'])->name('holidays.destroy');
 
     // 過去の紙の決裁の取り込み（画面⑪。段階5 設計書 §5.9・§5.10）。使い始める前から使える（使い始める日までに取り込む。D11）
-    // ⚠ `/papers/import*` を `/papers/{approvalPaperRecord}` より前に置く（登録順がマッチの優先順）
+    // ⚠ `/papers/import*`・`/papers/create` を `/papers/{approvalPaperRecord}` より前に置く（登録順がマッチの優先順）
     Route::get('/papers', [PaperRecordController::class, 'index'])->name('papers.index');
     Route::get('/papers/import', [PaperImportController::class, 'form'])->name('papers.import');
     Route::post('/papers/import/preview', [PaperImportController::class, 'preview'])->name('papers.import.preview');
     Route::post('/papers/import/execute', [PaperImportController::class, 'execute'])->name('papers.import.execute');
+    Route::post('/papers/imports/{approvalPaperImport}/undo', [PaperImportController::class, 'undo'])->name('papers.imports.undo');
+    // 1 件ずつの登録・直し・削除（§5.10）。⚠ パラメータ名は `{approvalPaperRecord}`
+    Route::get('/papers/create', [PaperRecordController::class, 'create'])->name('papers.create');
+    Route::post('/papers', [PaperRecordController::class, 'store'])->name('papers.store');
+    Route::get('/papers/{approvalPaperRecord}/edit', [PaperRecordController::class, 'edit'])->name('papers.edit');
+    Route::put('/papers/{approvalPaperRecord}', [PaperRecordController::class, 'update'])->name('papers.update');
+    Route::delete('/papers/{approvalPaperRecord}', [PaperRecordController::class, 'destroy'])->name('papers.destroy');
 });
 
 /*

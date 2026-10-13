@@ -9,7 +9,8 @@
     <span class="text-gray-600">過去の決裁の取り込み</span>
 @endsection
 
-{{-- 取り込んだ紙の決裁の一覧（画面⑪。段階5 設計書 §5.10）。決裁の管理者だけ・使い始める前から（D11）。
+{{-- 取り込んだ紙の決裁の一覧と、取り込みの記録・取り消し（画面⑪。段階5 設計書 §5.10・D9）。決裁の管理者だけ・使い始める前から（D11）。
+     決裁No から 1 件ずつの直し・削除の画面へ
      ⚠ 決裁日は日付（時刻なし）なので ->format() のまま。取り込んだ日時・取り消した日時は保存した日時なので JapanTime::format（Bug #61）
      ⚠ プルダウンは変えた瞬間に送る（CLAUDE.md の即時フィルタ） --}}
 @section('content')
@@ -31,6 +32,7 @@
 
     <div class="flex flex-wrap gap-2 mb-4">
         <a href="{{ route('approvals.admin.papers.import') }}" class="inline-flex items-center h-9 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-[13px] font-semibold">Excel の台帳から取り込む</a>
+        <a href="{{ route('approvals.admin.papers.create') }}" class="inline-flex items-center h-9 px-4 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-md text-[13px] font-semibold">1 件ずつ登録</a>
     </div>
 
     <form id="paper-filter" method="GET" action="{{ route('approvals.admin.papers.index') }}"
@@ -79,7 +81,9 @@
                         <tbody>
                             @foreach($records as $record)
                                 <tr class="hover:bg-gray-50">
-                                    <td class="px-4 py-2.5 border-b border-gray-100 text-[13px] font-mono text-gray-700 whitespace-nowrap">{{ $record->number }}</td>
+                                    <td class="px-4 py-2.5 border-b border-gray-100 text-[13px] font-mono whitespace-nowrap">
+                                        <a href="{{ route('approvals.admin.papers.edit', $record) }}" class="text-emerald-700 hover:underline" title="直す">{{ $record->number }}</a>
+                                    </td>
                                     <td class="px-4 py-2.5 border-b border-gray-100 text-[13px] text-gray-700 whitespace-nowrap">{{ $record->decided_on->format('Y/m/d') }}</td>
                                     <td class="px-4 py-2.5 border-b border-gray-100 text-[13px] text-gray-700 whitespace-nowrap">{{ $record->department->name }}</td>
                                     <td class="px-4 py-2.5 border-b border-gray-100 text-[13px] text-gray-700 whitespace-nowrap">{{ $record->applicant_name ?? '—' }}</td>
@@ -128,8 +132,17 @@
                                     <td class="px-4 py-2.5 border-b border-gray-100 text-[13px] text-gray-700 whitespace-nowrap">
                                         @if($import->undone_at !== null)
                                             {{ \App\Support\JapanTime::format($import->undone_at, 'Y/m/d H:i') }} に {{ $import->undoer?->name ?? '—' }} が取り消し（{{ number_format((int) $import->undone_count) }} 件を消した）
+                                        @elseif($import->records_count === 0)
+                                            —（この回に足した記録は残っていません）
                                         @else
-                                            —
+                                            {{-- 取り消し（D9）: 今の件数と、そのあと手で直した件数を見せて確かめる。見せた件数を送り、変わっていれば断る --}}
+                                            <form method="POST" action="{{ route('approvals.admin.papers.imports.undo', $import) }}" class="inline"
+                                                  onsubmit="return confirm('この取り込みで足した {{ $import->records_count }} 件を消します。{{ $import->edited_count > 0 ? "そのあと手で直した {$import->edited_count} 件も消えます。" : '' }}{{ $import->filled_count > 0 ? "金額を補った {$import->filled_count} 件は、記録も金額も残ります。" : '' }}次に付く番号は戻りません。よろしいですか。');">
+                                                @csrf
+                                                <input type="hidden" name="count_shown" value="{{ $import->records_count }}">
+                                                <input type="hidden" name="edited_shown" value="{{ $import->edited_count }}">
+                                                <button type="submit" class="px-2.5 py-1 bg-white border border-red-300 text-red-700 hover:bg-red-50 rounded-md text-[12px] font-semibold cursor-pointer">取り消す（今 {{ $import->records_count }} 件{{ $import->edited_count > 0 ? "・うち手で直した {$import->edited_count} 件" : '' }}）</button>
+                                            </form>
                                         @endif
                                     </td>
                                 </tr>

@@ -9,6 +9,8 @@ use App\Models\ApprovalDepartment;
 use App\Models\ApprovalHoliday;
 use App\Models\ApprovalMailDomain;
 use App\Models\ApprovalMember;
+use App\Models\ApprovalPaperImport;
+use App\Models\ApprovalPaperRecord;
 use App\Models\ApprovalRequest;
 use App\Models\ApprovalSetting;
 use App\Models\ApprovalType;
@@ -521,6 +523,14 @@ class ApprovalAdminGateTest extends TestCase
         // 催促の設定（3b）の相手の送らない日
         $holiday = ApprovalHoliday::create(['start_date' => '2026-12-29', 'end_date' => '2027-01-03', 'repeats_yearly' => true, 'description' => '年末年始']);
 
+        // 過去の紙の決裁（5b）の相手の取り込みと記録。部門は審査部門にする（上の申請と同じ理由。紙の決裁のある部門は消せない）
+        $importer    = User::factory()->create();
+        $paperImport = ApprovalPaperImport::create(['file_name' => '08年度.xls', 'fiscal_year' => 2026, 'added_count' => 1, 'filled_count' => 0, 'imported_by' => $importer->id]);
+        $paperRecord = ApprovalPaperRecord::create([
+            'department_id' => $reviewDepartment->id, 'fiscal_year' => 2026, 'seq' => 1, 'number' => 'R8-SO-001', 'decided_on' => '2026-05-13',
+            'subject' => '門番の確かめ', 'import_id' => $paperImport->id, 'created_by' => $importer->id,
+        ]);
+
         $existingValues = [
             'user' => (string) $manageableUser->id,
             'approvalCompany' => (string) $company->id,
@@ -529,6 +539,8 @@ class ApprovalAdminGateTest extends TestCase
             'approvalType' => (string) $type->id,
             'approvalRequest' => (string) $approvalRequest->id,
             'approvalHoliday' => (string) $holiday->id,
+            'approvalPaperRecord' => (string) $paperRecord->id,
+            'approvalPaperImport' => (string) $paperImport->id,
         ];
 
         $outsiders = $this->outsiders();
