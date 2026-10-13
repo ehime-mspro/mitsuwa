@@ -310,7 +310,8 @@ class PaperImportAnalysisTest extends TestCase
             $this->fail('CSV を読んだ');
         } catch (PaperImportException $e) {
             $this->assertSame('Excel のファイル（.xls・.xlsx）として読めませんでした。台帳のファイルを選び直してください。', $e->getMessage());
-            Log::shouldHaveReceived('warning')->once()->withArgs(fn (string $message, array $context) => $message === '紙の決裁の台帳を Excel として読めませんでした' && $context['exception'] instanceof \Throwable);
+            Log::shouldHaveReceived('error')->once()->withArgs(fn (string $message, array $context) => $message === '紙の決裁の台帳を Excel として読めませんでした' && $context['exception'] instanceof \Throwable);
+            Log::shouldNotHaveReceived('warning');
         }
     }
 

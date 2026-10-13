@@ -125,10 +125,10 @@ final class PaperLedgerFile
         return ['sheets' => $sheets, 'register' => $register, 'amounts' => $amounts];
     }
 
-    /** 読めない理由は利用者には出さず、記録にだけ残す（自分のコードの誤りが「ファイルが悪い」に化けて、本番で原因を追えなくならないように） */
+    /** 読めない理由は利用者には出さず、記録にだけ残す（自分のコードの誤りが「ファイルが悪い」に化けて、本番で原因を追えなくならないように。本番の LOG_LEVEL は error で、warning は残らない） */
     private static function unreadable(Throwable $e): PaperImportException
     {
-        Log::warning('紙の決裁の台帳を Excel として読めませんでした', ['exception' => $e]);
+        Log::error('紙の決裁の台帳を Excel として読めませんでした', ['exception' => $e]);
 
         return new PaperImportException('Excel のファイル（.xls・.xlsx）として読めませんでした。台帳のファイルを選び直してください。');
     }
