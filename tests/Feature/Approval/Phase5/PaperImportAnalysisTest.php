@@ -10,6 +10,7 @@ use App\Support\Approval\PaperLedgerFile;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Tests\Concerns\BuildsApprovalFixtures;
 use Tests\Concerns\BuildsPaperLedgers;
 use Tests\TestCase;
@@ -299,6 +300,7 @@ class PaperImportAnalysisTest extends TestCase
 
     public function test_a_file_that_is_not_a_ledger_is_refused(): void
     {
+        Log::spy();
         $text = tempnam(sys_get_temp_dir(), 'paper');
         file_put_contents($text, "ＮＯ,日付,申請者,件名\n1,8.05.07,甲野,見本\n");
         $this->beforeApplicationDestroyed(fn () => @unlink($text));
@@ -308,6 +310,7 @@ class PaperImportAnalysisTest extends TestCase
             $this->fail('CSV を読んだ');
         } catch (PaperImportException $e) {
             $this->assertSame('Excel のファイル（.xls・.xlsx）として読めませんでした。台帳のファイルを選び直してください。', $e->getMessage());
+            Log::shouldHaveReceived('warning')->once()->withArgs(fn (string $message, array $context) => $message === '紙の決裁の台帳を Excel として読めませんでした' && $context['exception'] instanceof \Throwable);
         }
     }
 

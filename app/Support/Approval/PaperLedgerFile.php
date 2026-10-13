@@ -2,6 +2,7 @@
 
 namespace App\Support\Approval;
 
+use Illuminate\Support\Facades\Log;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Reader\IReadFilter;
 use PhpOffice\PhpSpreadsheet\RichText\RichText;
@@ -70,8 +71,8 @@ final class PaperLedgerFile
             $reader = IOFactory::createReader(IOFactory::identify($path, [IOFactory::READER_XLS, IOFactory::READER_XLSX]));
             $reader->setReadDataOnly(true);
             $rows = array_sum(array_column($reader->listWorksheetInfo($path), 'totalRows'));
-        } catch (Throwable) {
-            throw new PaperImportException('Excel のファイル（.xls・.xlsx）として読めませんでした。台帳のファイルを選び直してください。');
+        } catch (Throwable $e) {
+            throw self::unreadable($e);
         }
         if ($rows > self::MAX_SHEET_ROWS) {
             throw new PaperImportException('台帳の行が多すぎます（すべてのシートで ' . number_format(self::MAX_SHEET_ROWS) . ' 行まで）。年度ごとの台帳のファイルか確かめてください。');
@@ -90,8 +91,8 @@ final class PaperLedgerFile
                 }
             });
             $book = $reader->load($path);
-        } catch (Throwable) {
-            throw new PaperImportException('Excel のファイル（.xls・.xlsx）として読めませんでした。台帳のファイルを選び直してください。');
+        } catch (Throwable $e) {
+            throw self::unreadable($e);
         }
 
         $sheets = $register = $amounts = [];
@@ -122,6 +123,14 @@ final class PaperLedgerFile
         $book->disconnectWorksheets();
 
         return ['sheets' => $sheets, 'register' => $register, 'amounts' => $amounts];
+    }
+
+    /** 読めない理由は利用者には出さず、記録にだけ残す（自分のコードの誤りが「ファイルが悪い」に化けて、本番で原因を追えなくならないように） */
+    private static function unreadable(Throwable $e): PaperImportException
+    {
+        Log::warning('紙の決裁の台帳を Excel として読めませんでした', ['exception' => $e]);
+
+        return new PaperImportException('Excel のファイル（.xls・.xlsx）として読めませんでした。台帳のファイルを選び直してください。');
     }
 
     /** シートの種類（名前に「金額」→ 金額の控え・先頭が英字 → 受付簿・ほかは読まない） */
