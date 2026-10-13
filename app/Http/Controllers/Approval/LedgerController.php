@@ -23,7 +23,7 @@ use Symfony\Component\HttpFoundation\HeaderUtils;
  * 見られる人なら誰でも開ける（見られる申請だけが出る）。
  *
  * ⚠ 絞り込みは GET。読み取れない条件は断らずに外して知らせる（LedgerFilter。validate() で戻すと同じ URL を開き直し続ける）。
- * ⚠ 並びは id の並びとして作り（Ledger::sortedIds）、今のページの分だけ行を読む（N+1 にしない）。
+ * ⚠ 並びは鍵の並びとして作り（Ledger::sortedKeys。申請と取り込んだ紙の決裁）、今のページの分だけ行を読む（N+1 にしない）。
  */
 class LedgerController extends Controller
 {
@@ -33,14 +33,14 @@ class LedgerController extends Controller
         $viewer  = $request->user();
         $choices = $this->choices();
         $filter  = $this->filter($request, $choices);
-        $ids     = Ledger::sortedIds($viewer, $filter);
+        $keys    = Ledger::sortedKeys($viewer, $filter);
         // ページ番号は最後のページまで（手で打った大きな番号で array_slice に float が渡ると 500・行の無いページは件数と食い違う）
-        $last    = max(1, (int) ceil(count($ids) / Ledger::PER_PAGE));
+        $last    = max(1, (int) ceil(count($keys) / Ledger::PER_PAGE));
         $page    = min(LengthAwarePaginator::resolveCurrentPage(), $last);
 
         $rows = new LengthAwarePaginator(
-            Ledger::rows($viewer, array_slice($ids, ($page - 1) * Ledger::PER_PAGE, Ledger::PER_PAGE)),
-            count($ids),
+            Ledger::rows($viewer, array_slice($keys, ($page - 1) * Ledger::PER_PAGE, Ledger::PER_PAGE)),
+            count($keys),
             Ledger::PER_PAGE,
             $page,
             ['path' => $request->url(), 'query' => $filter->query()],
@@ -59,20 +59,20 @@ class LedgerController extends Controller
     {
         $viewer = $request->user();
         $filter = $this->filter($request, $this->choices());
-        $ids    = Ledger::sortedIds($viewer, $filter);
+        $keys   = Ledger::sortedKeys($viewer, $filter);
         $limit  = (int) config('approval.ledger.excel_limit');
 
-        if (count($ids) > $limit) {
+        if (count($keys) > $limit) {
             return redirect()->route('approvals.ledger.index', $filter->query())
-                ->with('error', '絞り込んでから出してください（Excel に出せるのは ' . number_format($limit) . ' 件までです。いまは ' . number_format(count($ids)) . ' 件）。');
+                ->with('error', '絞り込んでから出してください（Excel に出せるのは ' . number_format($limit) . ' 件までです。いまは ' . number_format(count($keys)) . ' 件）。');
         }
 
         // ⚠ 作るのに失敗したときの知らせは PDF のようには作らない（PDF はフォントなど外の物に頼るが、Excel の失敗はメモリの
         //   不足くらいで、それは捕まえられない。件数の上限で防ぐ）。例外は Laravel がほかの画面と同じく laravel.log に残す
-        $excel = LedgerExcel::build($viewer, $ids);
+        $excel = LedgerExcel::build($viewer, $keys);
 
         // 出力のたびに、絞り込みの条件と件数を記録する（14.2・D25）。作ったあとに書く（作れなかったら記録しない。§5.7）
-        DownloadLogger::excel($request, $filter->toLog(), count($ids));
+        DownloadLogger::excel($request, $filter->toLog(), count($keys));
 
         // 日本語の名前は filename*（UTF-8）、古いブラウザ用の代わりは ASCII だけの名前（Laravel の Str::ascii に任せない。Bug #68）
         [$fileName, $fallback] = LedgerExcel::fileNames();

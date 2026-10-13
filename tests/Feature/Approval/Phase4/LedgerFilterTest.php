@@ -108,11 +108,11 @@ class LedgerFilterTest extends TestCase
     public function test_the_log_keeps_every_key_in_the_same_order(): void
     {
         $this->assertSame(
-            ['year' => null, 'department_id' => null, 'type_id' => null, 'applicant' => null, 'decided_from' => null, 'decided_to' => null, 'status' => 'numbered', 'decision' => null, 'keyword' => null],
+            ['year' => null, 'department_id' => null, 'type_id' => null, 'applicant' => null, 'decided_from' => null, 'decided_to' => null, 'status' => 'numbered', 'decision' => null, 'keyword' => null, 'kind' => 'all'],
             $this->filter([])->toLog()
         );
         $this->assertSame(
-            ['year' => 2026, 'department_id' => 3, 'type_id' => 12, 'applicant' => '山田', 'decided_from' => '2026-05-01', 'decided_to' => '2026-10-05', 'status' => 'progress', 'decision' => 'reject', 'keyword' => '社用車'],
+            ['year' => 2026, 'department_id' => 3, 'type_id' => 12, 'applicant' => '山田', 'decided_from' => '2026-05-01', 'decided_to' => '2026-10-05', 'status' => 'progress', 'decision' => 'reject', 'keyword' => '社用車', 'kind' => 'all'],
             $this->filter(['year' => '2026', 'department' => '3', 'type' => '12', 'applicant' => '山田', 'from' => '2026-05-01', 'to' => '2026-10-05', 'status' => 'progress', 'decision' => 'reject', 'q' => '社用車'])->toLog()
         );
     }

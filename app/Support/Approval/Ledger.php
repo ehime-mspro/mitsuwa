@@ -5,6 +5,7 @@ namespace App\Support\Approval;
 use App\Enums\ApprovalStatus;
 use App\Models\ApprovalCompany;
 use App\Models\ApprovalDepartment;
+use App\Models\ApprovalPaperRecord;
 use App\Models\ApprovalRequest;
 use App\Models\User;
 use App\Support\JapanTime;
@@ -21,13 +22,20 @@ use Illuminate\Support\Collection;
  * - 中身（申請部門・申請の種類・件名・本文）は、申請者本人以外には**最後に提出した中身**で当てる（D19）。直しかけが今の中身に
  *   残りうるのは差戻し中と取り下げだけなので、その 2 つの状態の他人の申請だけを控え（approval_revisions の今の回）で当て、
  *   ほかは申請の行で当てる（関連する決裁No の候補 RelatedNumberController と同じ考え。ほかの状態は今の中身と控えが同じ）
- * - 並びは id の並びとして PHP で作る（sortedIds）。「決裁日の新しい順・同じ日は決裁No の順」の「日」は日本の暦なので、
+ * - 並びは鍵の並びとして PHP で作る（sortedKeys）。「決裁日の新しい順・同じ日は決裁No の順」の「日」は日本の暦なので、
  *   UTC で保存した日時を SQL で日本の日付に直す必要があり、MySQL と SQLite で書き方が違う（D22）
+ * - 段階5: 取り込んだ紙の決裁も同じ並びに入れる（§5.13・D10。紙は専用の表なので、鍵は申請 `r12`・紙 `p3` の文字）。
+ *   紙の見られる範囲は RequestVisibility の紙の規則。どの条件で紙が当たるかは LedgerFilter::includesPapers()
  */
 final class Ledger
 {
     /** 1 ページの件数（D22） */
     public const PER_PAGE = 50;
+
+    /** 並びの鍵の頭（申請と紙の決裁。id は表ごとなので重なる） */
+    private const REQUEST_KEY = 'r';
+
+    private const PAPER_KEY = 'p';
 
     /** 行を描くのに要る関係（N+1 にしない。steps は今の回の審査と社長の判断を読む） */
     private const WITH = ['applicant', 'type', 'department', 'lastRevision', 'steps'];
@@ -106,50 +114,123 @@ final class Ledger
     }
 
     /**
-     * 並べた id（D22）。決裁日（番号の無い申請は発信日）の日本の暦の日の新しい順 → 同じ日は決裁No のあるものを
-     * 部門のアルファベットと連番の順 → 番号の無いものは発信の新しい順 → id の新しい順
+     * 並べた鍵（D22。申請は `r` ＋ id・紙の決裁は `p` ＋ id）。決裁日（番号の無い申請は発信日。紙は決裁日）の日本の暦の日の新しい順
+     * → 同じ日は決裁No のあるものを部門のアルファベットと連番の順 → 番号の無いものは発信の新しい順 → 申請・紙の順 → id の新しい順
      *
-     * @return list<int>
+     * @return list<string>
      */
-    public static function sortedIds(User $viewer, LedgerFilter $filter): array
+    public static function sortedKeys(User $viewer, LedgerFilter $filter): array
     {
         $codes = ApprovalDepartment::query()->pluck('code', 'id');
-        $keys  = self::query($viewer, $filter)->toBase()
-            ->get(['approval_requests.id', 'approval_requests.number', 'approval_requests.number_department_id', 'approval_requests.number_seq', 'approval_requests.decided_at', 'approval_requests.last_submitted_at'])
-            ->map(fn (object $r) => [
-                'id'         => (int) $r->id,
-                'day'        => self::japanDay($r->decided_at ?? $r->last_submitted_at),
-                'unnumbered' => $r->number === null ? 1 : 0,
-                'code'       => (string) ($codes[$r->number_department_id] ?? ''),
-                'seq'        => (int) $r->number_seq,
-                'submitted'  => (string) $r->last_submitted_at,
-            ])
-            ->all();
+        $keys  = [];
 
-        usort($keys, fn (array $a, array $b) => [$b['day'], $a['unnumbered'], $a['code'], $a['seq'], $b['submitted'], $b['id']]
-            <=> [$a['day'], $b['unnumbered'], $b['code'], $b['seq'], $a['submitted'], $a['id']]);
+        if ($filter->includesRequests()) {
+            foreach (self::query($viewer, $filter)->toBase()
+                ->get(['approval_requests.id', 'approval_requests.number', 'approval_requests.number_department_id', 'approval_requests.number_seq', 'approval_requests.decided_at', 'approval_requests.last_submitted_at']) as $r) {
+                $keys[] = [
+                    'key'        => self::REQUEST_KEY . $r->id,
+                    'kind'       => 0,
+                    'id'         => (int) $r->id,
+                    'day'        => self::japanDay($r->decided_at ?? $r->last_submitted_at),
+                    'unnumbered' => $r->number === null ? 1 : 0,
+                    'code'       => (string) ($codes[$r->number_department_id] ?? ''),
+                    'seq'        => (int) $r->number_seq,
+                    'submitted'  => (string) $r->last_submitted_at,
+                ];
+            }
+        }
 
-        return array_column($keys, 'id');
+        if ($filter->includesPapers()) {
+            foreach (self::paperQuery($viewer, $filter)->toBase()
+                ->get(['approval_paper_records.id', 'approval_paper_records.department_id', 'approval_paper_records.seq', 'approval_paper_records.decided_on']) as $p) {
+                $keys[] = [
+                    'key'        => self::PAPER_KEY . $p->id,
+                    'kind'       => 1,
+                    'id'         => (int) $p->id,
+                    // 決裁日は日付の列（日本の暦の日をそのまま持つ）。MySQL と SQLite で時刻の付き方が違っても日付だけを見る
+                    'day'        => substr((string) $p->decided_on, 0, 10),
+                    'unnumbered' => 0,
+                    'code'       => (string) ($codes[$p->department_id] ?? ''),
+                    'seq'        => (int) $p->seq,
+                    'submitted'  => '',
+                ];
+            }
+        }
+
+        usort($keys, fn (array $a, array $b) => [$b['day'], $a['unnumbered'], $a['code'], $a['seq'], $b['submitted'], $a['kind'], $b['id']]
+            <=> [$a['day'], $b['unnumbered'], $b['code'], $b['seq'], $a['submitted'], $b['kind'], $a['id']]);
+
+        return array_column($keys, 'key');
+    }
+
+    /** 申請の並びの鍵（テストと呼ぶ側が行を作るとき） */
+    public static function requestKey(int $id): string
+    {
+        return self::REQUEST_KEY . $id;
+    }
+
+    public static function paperKey(int $id): string
+    {
+        return self::PAPER_KEY . $id;
     }
 
     /**
-     * id の並びのとおりに行を作る（行に要る関係を先にまとめて読む）
+     * 鍵の並びのとおりに行を作る（行に要る関係を先にまとめて読む。申請と紙の決裁を 1 回ずつ）
      *
-     * @param list<int> $ids
+     * @param list<string> $keys
      * @return Collection<int, LedgerRow>
      */
-    public static function rows(User $viewer, array $ids): Collection
+    public static function rows(User $viewer, array $keys): Collection
     {
-        $position = array_flip($ids);
+        $position = array_flip($keys);
+        $ids      = [self::REQUEST_KEY => [], self::PAPER_KEY => []];
+        foreach ($keys as $key) {
+            $ids[$key[0]][] = (int) substr($key, 1);
+        }
 
-        return ApprovalRequest::with(self::WITH)->whereKey($ids)->get()
-            ->sortBy(fn (ApprovalRequest $r) => $position[$r->id])
-            ->map(fn (ApprovalRequest $r) => LedgerRow::for($viewer, $r))
+        $requests = $ids[self::REQUEST_KEY] === [] ? collect() : ApprovalRequest::with(self::WITH)->whereKey($ids[self::REQUEST_KEY])->get()
+            ->map(fn (ApprovalRequest $r) => LedgerRow::for($viewer, $r));
+        $papers   = $ids[self::PAPER_KEY] === [] ? collect() : ApprovalPaperRecord::with('department')->whereKey($ids[self::PAPER_KEY])->get()
+            ->map(fn (ApprovalPaperRecord $p) => LedgerRow::forPaper($p));
+
+        return $requests->concat($papers)
+            ->sortBy(fn (LedgerRow $row) => $position[($row->isPaper ? self::PAPER_KEY : self::REQUEST_KEY) . $row->id])
             ->values();
     }
 
     /**
-     * 年度の選択肢（新しい順。今の年度から、いちばん古い申請の年度まで。値は期の始まりの年）
+     * 見られる紙の決裁を条件で絞った問い合わせ（§5.13。並びは付けない。紙が当たる条件かは呼ぶ側が includesPapers() で見る）
+     */
+    public static function paperQuery(User $viewer, LedgerFilter $filter): Builder
+    {
+        $query = ApprovalPaperRecord::query()->visibleTo($viewer);
+
+        if ($filter->year !== null) {
+            $query->where('approval_paper_records.fiscal_year', $filter->year);
+        }
+        if ($filter->departmentId !== null) {
+            $query->where('approval_paper_records.department_id', $filter->departmentId);
+        }
+        // 決裁日は日付の列なので、日本の暦の日をそのまま比べる。⚠ 終わりは「次の日より前」（SQLite は日付の列に「2026-07-10 00:00:00」の
+        //   文字で入り、「<= '2026-07-10'」だとその日が外れる。MySQL の DATE はどちらでも同じ）
+        if ($filter->decidedFrom !== null) {
+            $query->where('approval_paper_records.decided_on', '>=', $filter->decidedFrom->format('Y-m-d'));
+        }
+        if ($filter->decidedTo !== null) {
+            $query->where('approval_paper_records.decided_on', '<', $filter->decidedTo->addDay()->format('Y-m-d'));
+        }
+        // 申請者は台帳の文字（申請の申請者と同じ探し方。空白は無視）
+        NameSearch::whereNameHasAll($query, NameSearch::terms($filter->applicant), NameSearch::PAPER_APPLICANT);
+        // キーワードは件名か備考
+        foreach (LedgerFilter::terms($filter->keyword) as $word) {
+            $query->where(fn (Builder $q) => $q->where('approval_paper_records.subject', 'like', "%{$word}%")->orWhere('approval_paper_records.note', 'like', "%{$word}%"));
+        }
+
+        return $query;
+    }
+
+    /**
+     * 年度の選択肢（新しい順。今の年度から、いちばん古い申請・紙の決裁の年度まで。値は期の始まりの年）
      *
      * @return array<int, string> 年度 => 表示（「R8 年度（2026）」）
      */
@@ -170,6 +251,10 @@ final class Ledger
         $submitted = ApprovalRequest::query()->min('last_submitted_at');
         if ($submitted !== null) {
             $oldest = min($oldest, ApprovalFiscalYear::ofMoment(CarbonImmutable::parse($submitted, 'UTC'), (int) $months->max()));
+        }
+        $paper = ApprovalPaperRecord::query()->min('fiscal_year');
+        if ($paper !== null) {
+            $oldest = min($oldest, (int) $paper);
         }
 
         $years = [];

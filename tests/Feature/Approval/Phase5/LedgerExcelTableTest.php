@@ -85,7 +85,7 @@ class LedgerExcelTableTest extends TestCase
 
     private function rowFor(User $viewer, ApprovalRequest $request): LedgerRow
     {
-        return Ledger::rows($viewer, [$request->id])->sole();
+        return Ledger::rows($viewer, [Ledger::requestKey($request->id)])->sole();
     }
 
     public function test_the_four_columns_of_a_table_request(): void
@@ -110,7 +110,7 @@ class LedgerExcelTableTest extends TestCase
         $this->assertSame(DataType::TYPE_NUMERIC, $sheet->getCell('M2')->getDataType());
         $this->assertSame('2026-10-20 00:00:00', Date::excelToDateTimeObject($sheet->getCell('M2')->getValue())->format('Y-m-d H:i:s'));
         $this->assertSame('yyyy/mm/dd', $sheet->getStyle('M2')->getNumberFormat()->getFormatCode());
-        $this->assertSame('A1:S2', $sheet->getAutoFilter()->getRange());
+        $this->assertSame('A1:T2', $sheet->getAutoFilter()->getRange());
     }
 
     /** 5W2H の種類でも契約予定日を使う設定なら、Excel の契約予定日に入る（要件 10・D12。工事原価・粗利益金額・粗利率は空。点検の M-6） */
@@ -260,11 +260,11 @@ class LedgerExcelTableTest extends TestCase
         $decided  = $this->decidedContract($w, $this->housingContractType($w));
         $progress = $this->submittedFor($w);
         $viewer   = $this->viewAllUser();
-        $ids      = fn (string $status) => Ledger::sortedIds($viewer, LedgerFilter::fromRequest(Request::create('/', 'GET', ['status' => $status])));
+        $keys     = fn (string $status) => Ledger::sortedKeys($viewer, LedgerFilter::fromRequest(Request::create('/', 'GET', ['status' => $status])));
 
-        $this->assertSame([$decided->id], $ids('numbered'));
-        $this->assertSame([$progress->id], $ids('progress'));
-        $this->assertSame([], $ids('withdrawn'));
-        $this->assertEqualsCanonicalizing([$decided->id, $progress->id], $ids('all'));
+        $this->assertSame([Ledger::requestKey($decided->id)], $keys('numbered'));
+        $this->assertSame([Ledger::requestKey($progress->id)], $keys('progress'));
+        $this->assertSame([], $keys('withdrawn'));
+        $this->assertEqualsCanonicalizing([Ledger::requestKey($decided->id), Ledger::requestKey($progress->id)], $keys('all'));
     }
 }

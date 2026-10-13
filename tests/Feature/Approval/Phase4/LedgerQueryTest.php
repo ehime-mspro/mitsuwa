@@ -42,10 +42,16 @@ class LedgerQueryTest extends TestCase
         parent::tearDown();
     }
 
-    /** @param array<string, string> $query */
+    /**
+     * 並べた申請の id（このテストには紙の決裁が無いので、鍵はどれも申請。紙と合わせた並びは Phase5/PaperLedgerTest）
+     *
+     * @param array<string, string> $query
+     */
     private function ids(User $viewer, array $query = []): array
     {
-        return Ledger::sortedIds($viewer, LedgerFilter::fromRequest(Request::create('/approvals/ledger', 'GET', $query)));
+        $keys = Ledger::sortedKeys($viewer, LedgerFilter::fromRequest(Request::create('/approvals/ledger', 'GET', $query)));
+
+        return array_map(fn (string $key) => (int) substr($key, 1), $keys);   // 申請の鍵は r＋id
     }
 
     /** 提出した申請の状態の列を書き換える（状態の列は $fillable に無い。BuildsApprovalFixtures の注意） */
