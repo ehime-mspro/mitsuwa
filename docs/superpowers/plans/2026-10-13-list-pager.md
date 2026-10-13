@@ -2005,7 +2005,21 @@ Expected: ちょうど 1 行 `'App\\Support\\PageNumbers' => $baseDir . '/app/Su
 | A01 | 決裁: _pager を元の手作りに戻す | 10 |
 | A02 | 決裁: _pager の外側の class を変える | 1 |
 
-（Task 6・8 の結果は下に書く）
+### Task 6（2026-10-13・作業場所 `d50a75ae`・使い捨ての SQLite ＋ `artisan serve` ＋ Playwright）
+
+| 段 | 結果 |
+|---|---|
+| データの写し | `many-pages.php` が 7 表に +299・テナントの顧客に +900（Expected どおり）。利用者 1 を決裁の管理者に（写しだけ） |
+| 幅ごとの測定（10 画面 × 320・375・641・1024・1440px ＝ 50 行） | **試作と同じ**。どの行も `nav` があり `mainOverflow: 0`・`clipped: 0`。375px 以上はどれも `minW: 32`。320px は 9 個並ぶ行だけ縮む（`px-4 …` の箱 26.16px・`mt-4` 30.13px・`py-3 …` 29.90px）。テナントの顧客の 1・60 ページ目（5〜6 個）は 320px でも 32px |
+| 並び | テナントの顧客 1 ページ目 `< 1 2 … 60 >`・30 ページ目 `< 1 … 29 30 31 … 60 >`・60 ページ目 `< 1 … 59 60 >`／DAD の発注者 `< 1 … 7 8 9 … 16 >`／ほかの 6 本 `< 1 … 7 8 9 … 15 >`。`current` は開いたページ |
+| 外側の箱 | テナントの顧客・仕入れ先・ZEAL の会員・入居者・不動産の顧客は `flex justify-center gap-0.5 px-4 py-3 border-t border-gray-200`／DAD の発注者は `… mt-4`／基幹の利用者管理・決裁の利用者の管理は `… py-3 border-t border-gray-200` |
+| 押して移る | 30 ページ目で「>」を押すと `{ url: '/tenant/customers?page=31', current: ['31'], items: '< 1 … 30 31 32 … 60 >' }` |
+| 1 ページの一覧 | `/tenant/properties`（1 行）でページ送りが出ない（`nav` が null） |
+| コンソール | エラー・警告 0 件（セッション全体） |
+| スクリーンショット | `/Users/masanori/site/manage/.playwright-mcp/pager-375-60p-after.png`（375px・60 ページの 30 ページ目） |
+| 片付け | サーバーを止め、一時ログインを `git checkout -- routes/web.php` で外し、この回の `page-*.yml` 4 つを消した。作業場所の `public/build`（main repo の build へのリンク）は 10/8 の回から既にあったので消していない。作業場所・main repo とも `git status --porcelain` は空 |
+
+（Task 8 の結果は下に書く）
 
 ---
 
