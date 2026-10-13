@@ -2094,7 +2094,7 @@ git checkout 13.x && git merge --ff-only date-picker-month-ago
 - 点検の手直しで計画から変えたこと: 取り消しの後ろの段階を主キーだけで書く（MySQL のデッドロック）・関連する決裁No の候補で取り下げも控えの件名にする（D26）・各 Task のテストの穴を変異で見つけて塞いだ（計画の Task 8 の実測記録）
 - 使い始める前は、基幹のメニューとダッシュボードに何も足さない（件数とカードは `launched_at` が入ってから）
 - 後回し（別の機会にまとめて直す）: 小窓をキーボードで開いたとき、フォーカスが小窓へ移らない・Esc で閉じない・`role="dialog"` が無い。2a の判断・取り下げの小窓と 2b の管理者の小窓がどれも同じ既存の作りなので、2b だけ直さず、決裁の小窓をまとめて直す（計画の Task 9 の実測記録の B6）
-- 後回し（別の機会にまとめて直す）: ページ番号を全部並べるほかの一覧（`getUrlRange(1, …->lastPage())` の 31 か所。基幹の 29 か所と、決裁の「自分の申請」「利用者の管理」）も、スマホで多ページのときはみ出す（同じ既存の作り）。2b では ⑩ の「決裁済み・否決」だけを、今のページの前後だけにした（計画の Task 9 の実測記録の B1・利用者の決定 C5）
+- 後回し（別の機会にまとめて直す）: ページ番号を全部並べるほかの一覧（`getUrlRange(1, …->lastPage())` の 31 か所。基幹の 29 か所と、決裁の「自分の申請」「利用者の管理」）も、スマホで多ページのときはみ出す（同じ既存の作り）。2b では ⑩ の「決裁済み・否決」だけを、今のページの前後だけにした（計画の Task 9 の実測記録の B1・利用者の決定 C5） → **2026-10-13 に 31 本とも部品 `<x-pager>` へ置き換えた**（下の「一覧のページ送りを部品 `<x-pager>` にそろえる」の節。Bug #117）
 
 #### 本番反映（2026-09-30 実施）
 
@@ -3876,6 +3876,40 @@ ZEAL 会員の取込（`/admin/zeal/member-import`）の確定は、書き込み
 | | 駐車場契約・仕入れ案件・修繕・テナントの投資・部屋契約の一覧 | 641px・1024px で `main` のはみ出し 0・絞り込みの行の中に収まる |
 
 ⚠ 登録・更新・削除は本番では送っていない。⚠ `origin/13.x` への push はしていない（origin/13.x = `caea86f8`）。
+
+---
+
+## 🚧 一覧のページ送りを部品 `<x-pager>` にそろえる — 本番未反映
+
+設計書: @docs/superpowers/specs/2026-10-13-list-pager-design.md
+実装計画（試作・変異テスト・ブラウザ確認の記録つき）: @docs/superpowers/plans/2026-10-13-list-pager.md
+
+決裁 段階2b の「後回し」に残した「ページ番号を全部並べるほかの一覧（31 か所）」を直した（docs/RULES.md の Bug #117）。
+利用者の依頼（2026-10-08 の引き継ぎ）・設計の承認（2026-10-13）。決裁の会話と合意したこと: `PageNumbers` を `App\Support` へ移す・
+`approvals/_pager` は部品を呼ぶ包みとして残す・決裁の 2 本（自分の申請・利用者の管理）はこちらで置き換える・決裁の 3 つのコントローラから `pages` を消す。
+**DB 変更・ルート変更・依存の変更は無し。PHP クラスの置き場所が 1 つ変わる**（`App\Support\Approval\PageNumbers` → `App\Support\PageNumbers`）ので、
+本番反映では main repo の cwd で `composer dump-autoload --no-dev --optimize` が要る。
+
+| 区分 | 実装内容 |
+|------|---------|
+| 部品 | `resources/views/components/pager.blade.php`（`<x-pager :paginator="$x" class="…" />`。番号は先頭・最後・今のページの前後だけ・今のページは最後のページまでに抑える） |
+| Support | `App\Support\PageNumbers`（`App\Support\Approval\PageNumbers` を移しただけ） |
+| 画面 | 31 本（基幹 29・決裁 2）のページ送りの塊を 1 行に。外側の箱は 3 通り（`px-4 py-3 border-t border-gray-200` 21 本・`mt-4` 7 本・`py-3 border-t border-gray-200` 3 本）。決裁の `approvals/_pager` は包み |
+| 決裁のコントローラ | `AdminRequestController`・`NoticeController`・`LedgerController` から `pages` を消した（ページ番号を抑える処理は残す） |
+| テスト | 新規 `PageNumbersTest`・`PagerComponentTest`・`PagerUsageScanTest`・`PagerRoundTripTest`・`Tests\Concerns\ReadsPager` ／ `HomeAndListTest`・`PageNumberClampTest` に 1 本ずつ。4064 → **4105 tests** |
+| ルート / DB | **どちらも変更なし** |
+
+### 見た目の変化（設計書 §3.5）
+
+- 番号が先頭・最後・今のページの前後だけになる（間は「…」）
+- 不動産・住宅事業の 6 本の番号に `transition-colors`（ホバーの色の変化）が付く
+- 買主の一覧の枠線の色が、インラインの `#e5e7eb` から Tailwind の `gray-200` になる（ほぼ同じ色）
+- 外側が `<div>` から `<nav aria-label="ページ送り">` になり、今のページに `aria-current="page"` が付く
+
+### 範囲外（設計書 §4）
+
+- コントローラでページ番号を最後のページまでに抑えること（基幹の SQL の一覧は、行の無いページで表が空になるまま。部品は落ちない）
+- ページ番号を直接打って移る入力欄・「最初へ」「最後へ」のボタン・1 ページの件数・ボタンの見た目
 
 ---
 
