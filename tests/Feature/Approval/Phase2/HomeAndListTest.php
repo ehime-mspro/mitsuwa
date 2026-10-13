@@ -12,6 +12,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\Concerns\BuildsApprovalFixtures;
+use Tests\Concerns\ReadsPager;
 use Tests\TestCase;
 
 /** 使い始めたあとのホーム（画面①）と自分の申請一覧（画面④）（設計書 §5.12） */
@@ -19,6 +20,7 @@ class HomeAndListTest extends TestCase
 {
     use RefreshDatabase;
     use BuildsApprovalFixtures;
+    use ReadsPager;
 
     /** 状態と番号を直接入れた、終わった申請（ここで見るのは画面の並びだけ） */
     private function finished(array $w, string $subject, string $status, ?string $number): ApprovalRequest
@@ -462,5 +464,28 @@ class HomeAndListTest extends TestCase
         $this->actingAs($w['applicant'])->get(route('approvals.home'))->assertOk()
             ->assertDontSee('まだ申請はありません。')
             ->assertSee('下書きは「自分の申請」から開けます。');
+    }
+
+    /**
+     * 自分の申請のページ送りは、先頭・最後・今のページの前後だけ（部品 <x-pager>。Bug #117）。
+     * 描いた「>」をそのままたどると、絞り込みを残したまま次のページ（?page= を自分で組み立てない。Bug #31・#47）
+     */
+    public function test_my_requests_pager_numbers_only_the_pages_around_the_current_one(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        for ($i = 1; $i <= 221; $i++) {
+            $this->draftFor($w, ['subject' => "下書き{$i}"]);
+        }
+
+        $html  = $this->actingAs($w['applicant'])->get(route('approvals.requests.index', ['filter' => 'draft', 'page' => 6]))->assertOk()->getContent();
+        $pager = $this->pager($html);
+        $this->assertSame(['<', '1', '…', '5', '6', '7', '…', '12', '>'], $pager['items']);
+        $this->assertSame(['6'], $pager['current']);
+        $this->assertSame('flex justify-center gap-0.5 py-3 border-t border-gray-200', $pager['class']);
+        $this->assertStringContainsString('filter=draft', $pager['links']['>'], '「>」に絞り込みが残る');
+
+        $next = $this->actingAs($w['applicant'])->get($pager['links']['>'])->assertOk()->getContent();
+        $this->assertSame(['7'], $this->pager($next)['current']);
     }
 }

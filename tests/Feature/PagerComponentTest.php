@@ -125,6 +125,22 @@ class PagerComponentTest extends TestCase
         }
     }
 
+    /**
+     * 決裁の包み approvals._pager は、部品をそのまま呼ぶ（中身を 2 か所に持たない。決裁の 5b の一覧も読み込む）。
+     * ⚠ 渡すのは paginator だけ（前は番号の並び $pages もコントローラから渡していた）
+     */
+    public function test_the_approval_wrapper_draws_the_component(): void
+    {
+        foreach ([[50, 2], [220, 6], [20, 1]] as [$total, $page]) {
+            $p = $this->paginator($total, $page);
+            $this->assertSame(
+                trim($this->render($p, 'py-3 border-t border-gray-200')),
+                trim(view('approvals._pager', ['paginator' => $p])->render()),
+                "{$total} 件の {$page} ページ目",
+            );
+        }
+    }
+
     /** 渡した class は nav に足され、既定の flex justify-center gap-0.5 も残る */
     public function test_the_class_is_added_to_the_default(): void
     {
