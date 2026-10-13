@@ -5,6 +5,7 @@ namespace Tests\Feature\Housing\Screens;
 use Carbon\Carbon;
 use Illuminate\Pagination\LengthAwarePaginator;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Tests\Concerns\ReadsPager;
 
 /**
  * 住宅事業の手でページングする一覧で、`?page=` が範囲の外・数字でないとき（Bug #100 の残り。2026-10-07）。
@@ -16,6 +17,8 @@ use PHPUnit\Framework\Attributes\DataProvider;
  */
 class PageNumberClampTest extends HousingScreenTestCase
 {
+    use ReadsPager;
+
     /** ページ番号 → 出るページと行の数（3 ページ目が無い・大きな番号・PHP の整数の最大は最後のページ、数字でない番号は 1 ページ目） */
     public static function pages(): array
     {
@@ -71,5 +74,25 @@ class PageNumberClampTest extends HousingScreenTestCase
         $this->twentyOneContracts();
 
         $this->assertPage(route('housing.dashboard', ['page' => $page]), 'paginated', $page, $expectedPage, $expectedRows);
+    }
+
+    /**
+     * ダッシュボードのページ送りは、年度・期の絞り込みを運ぶ。コントローラの paginator は path だけで作るので、
+     * ビューの @php($paginated->withQueryString())（<x-pager> の前に残した 1 行。Bug #117）が消えると 2 ページ目で今年度に戻る
+     */
+    public function test_the_dashboard_pager_keeps_the_filter(): void
+    {
+        $this->twentyOneContracts();
+
+        $html  = $this->actingAs($this->user)->get(route('housing.dashboard', ['fiscal_year' => 'all', 'period' => 'all']))->assertOk()->getContent();
+        $pager = $this->pager($html);
+        $this->assertSame(['<', '1', '2', '>'], $pager['items']);
+        $this->assertSame('flex justify-center gap-0.5 mt-4', $pager['class']);
+        $this->assertStringContainsString('fiscal_year=all', $pager['links']['>'], '「>」に年度が残る');
+        $this->assertStringContainsString('period=all', $pager['links']['>'], '「>」に期が残る');
+
+        $next = $this->actingAs($this->user)->get($pager['links']['>'])->assertOk();
+        $this->assertSame(['2'], $this->pager($next->getContent())['current']);
+        $this->assertSame('all', $next->viewData('fiscalYear'));
     }
 }
