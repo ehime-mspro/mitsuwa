@@ -244,6 +244,7 @@
                             <button type="button" @click="addNumber(item.number)" class="w-full text-left px-3 py-2 text-[12px] hover:bg-emerald-50 cursor-pointer">
                                 <span class="font-mono text-gray-900" x-text="item.number"></span>
                                 <span class="text-gray-500 ml-1" x-text="item.subject"></span>
+                                <span x-show="item.paper" class="ml-1 inline-block px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 text-[10px] font-semibold">紙</span>
                             </button>
                         </li>
                     </template>

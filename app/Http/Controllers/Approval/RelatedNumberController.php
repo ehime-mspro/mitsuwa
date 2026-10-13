@@ -4,10 +4,12 @@ namespace App\Http\Controllers\Approval;
 
 use App\Enums\ApprovalStatus;
 use App\Http\Controllers\Controller;
+use App\Models\ApprovalPaperRecord;
 use App\Models\ApprovalRequest;
 use App\Models\ApprovalRevision;
 use App\Support\Approval\RelatedNumbers;
 use App\Support\Approval\RequestVisibility;
+use App\Support\JapanTime;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Http\JsonResponse;
@@ -23,6 +25,8 @@ use Illuminate\Http\Request;
  * ⚠ 差戻し中の申請と、差戻し中に直して保存してから取り下げた申請は、最後に提出した控えの件名で当て、控えの件名を返す
  *   （取り消しで番号を残したまま差戻しに戻った申請の直しかけを、ほかの人に漏らさない。D26・設計書 §5.16・2b 計画 Task 6）。
  *   ほかの状態は中身を直せないので、今の件名が最後に提出した件名と同じ。
+ * ⚠ 見られる紙の決裁も候補に出す（段階5 §5.15。`paper: true` を付け、画面は「紙」と添える。申請の候補には付けない）。
+ *   申請と紙を合わせて決裁日の新しい順に並べ、上限で切る（同じ日は申請が先）
  */
 class RelatedNumberController extends Controller
 {
@@ -61,7 +65,7 @@ class RelatedNumberController extends Controller
             ->orderByDesc('decided_at')
             ->orderByDesc('id')
             ->limit(self::LIMIT)
-            ->get(['id', 'number', 'subject', 'status', 'round']);
+            ->get(['id', 'number', 'subject', 'status', 'round', 'decided_at']);
 
         // 差戻し中と取り下げの申請は、最後に提出した控えの件名を返す（1 回の問い合わせで読む）
         $submitted = ApprovalRevision::whereIn('request_id', $found->filter(fn (ApprovalRequest $r) => in_array($r->status, $fromRevision, true))->pluck('id')->all())
@@ -71,11 +75,27 @@ class RelatedNumberController extends Controller
 
         $items = $found
             ->map(fn (ApprovalRequest $r) => [
-                'number'  => $r->number,
-                'subject' => in_array($r->status, $fromRevision, true) ? ($submitted["{$r->id}:{$r->round}"] ?? null) : $r->subject,
-            ])
-            ->all();
+                'day'  => JapanTime::format($r->decided_at, 'Y-m-d') ?? '',
+                'item' => [
+                    'number'  => $r->number,
+                    'subject' => in_array($r->status, $fromRevision, true) ? ($submitted["{$r->id}:{$r->round}"] ?? null) : $r->subject,
+                ],
+            ]);
 
-        return response()->json(['items' => $items]);
+        $papers = ApprovalPaperRecord::query()->visibleTo($request->user())
+            ->where(fn (Builder $q) => $q->where('number', 'like', "%{$number}%")->orWhere('subject', 'like', "%{$text}%"))
+            ->orderByDesc('decided_on')
+            ->orderByDesc('id')
+            ->limit(self::LIMIT)
+            ->get(['id', 'number', 'subject', 'decided_on'])
+            ->map(fn (ApprovalPaperRecord $p) => [
+                'day'  => $p->decided_on->format('Y-m-d'),
+                'item' => ['number' => $p->number, 'subject' => $p->subject, 'paper' => true],
+            ]);
+
+        // 決裁日の新しい順（同じ日は申請が先。sortBy は同じ値の順を保つ）
+        $merged = $items->concat($papers)->sortByDesc('day')->take(self::LIMIT)->pluck('item')->values()->all();
+
+        return response()->json(['items' => $merged]);
     }
 }

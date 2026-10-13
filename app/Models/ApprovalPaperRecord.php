@@ -43,6 +43,9 @@ class ApprovalPaperRecord extends Model
         ];
     }
 
+    /** 判断（紙の台帳に記録が無い。詳細・台帳・Excel・台帳の絞り込みで同じ文字。D22・D23） */
+    public const DECISION_LABEL = '不明';
+
     /** 年度の選択肢のいちばん古い年度（平成元年度。紙の台帳がそれより前にあることは無い） */
     public const OLDEST_YEAR = 1989;
 

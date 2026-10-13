@@ -112,6 +112,8 @@ class ApprovalAdminGateTest extends TestCase
         'approvals.notices.index'   => 'お知らせ一覧（自分のお知らせだけ。段階3 設計書 §5.6）',
         'approvals.notices.open'    => 'お知らせを開く（自分のお知らせだけ。ほかの人のものは 404）',
         'approvals.notices.readAll' => '自分のお知らせをすべて既読にする',
+        // 段階5（使い始めてから）
+        'approvals.papers.show' => '紙の決裁の詳細（見られる範囲だけ。見られない記録は 404。段階5 設計書 §5.15）',
     ];
 
     /** ラベル用: HEAD を除いた先頭の HTTP メソッド（1 つで十分な場所） */

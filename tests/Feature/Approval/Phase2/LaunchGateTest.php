@@ -34,10 +34,10 @@ class LaunchGateTest extends TestCase
 
     /**
      * 門番の付いたルートの数の下限（空振りで緑にならないように）。
-     * 実数 23 本 = 候補の検索 1・申請書と詳細 7・添付 3・判断など 5（2a）＋ 進行中の申請の管理 4（2b。管理の門番も持つ）
-     * ＋ お知らせ 3（3a）。
+     * 実数 27 本 = 候補の検索 1・申請書と詳細 7・添付 3・判断など 5（2a）＋ 進行中の申請の管理 4（2b。管理の門番も持つ）
+     * ＋ お知らせ 3（3a）＋ PDF 1・台帳と Excel 2（4b）＋ 紙の決裁の詳細 1（5b）。
      */
-    private const MIN_GATED = 23;
+    private const MIN_GATED = 27;
 
     private function isOpenBeforeLaunch(string $name): bool
     {
