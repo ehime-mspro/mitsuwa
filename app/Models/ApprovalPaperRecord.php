@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use App\Support\Approval\AmountTable;
+use App\Support\Approval\RequestVisibility;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -13,6 +15,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  *   （D10。台帳・Excel・関連する決裁No・紙の決裁の詳細だけが読む）。
  * ⚠ 決裁No（`number`）は年度・部門・ＮＯ から組み立てる（`ApprovalNumber::paperNumber()`）。紙の番号どうし・システムの申請の番号と
  *   重ならない（取り込みと 1 件ずつの登録が確かめる）。
+ * ⚠ 見られる範囲は RequestVisibility の 1 か所（`visibleTo()`）。
  * ⚠ 決裁日（`decided_on`）は日付（時刻なし）。表示は `->format('Y/m/d')`（JapanTime::format で時差を足さない）。
  * ⚠ `updated_by` は**手で直した人**（取り込みで金額を補っても変えない）。取り込みの取り消しの「あとで手で直した記録」の数に使う。
  */
@@ -60,6 +63,15 @@ class ApprovalPaperRecord extends Model
     public function editor(): BelongsTo
     {
         return $this->belongsTo(User::class, 'updated_by')->withTrashed();
+    }
+
+    /**
+     * 見られる紙の決裁に絞る（要件 7 章・段階5 設計書 §5.12）。規則は RequestVisibility の紙の決裁の規則の 1 か所で、ここはその入口。
+     * ⚠ ローカルスコープなので、呼ぶ側が先に書いた最上位の OR を Laravel が括弧に入れる（見られる範囲の外へ漏れない）
+     */
+    public function scopeVisibleTo(Builder $query, User $user): void
+    {
+        RequestVisibility::constrainPaper($query, $user);
     }
 
     /** 粗利率（金額と粗利益から。申請の明細表と同じ計算＝整数で四捨五入。金額が空か 0・粗利益が空なら空） */
