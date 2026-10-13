@@ -119,6 +119,7 @@
                                 'next_number'  => $state['next'],
                                 'number_hint'  => $numberHint,
                                 'has_numbers'  => $dept->has_numbers,
+                                'has_paper'    => $dept->has_paper,
                             ]) }})" class="text-[12px] text-blue-600 hover:underline cursor-pointer bg-transparent border-none p-0">編集</button>
                             <span class="text-gray-200 mx-1">|</span>
                             <form method="POST" action="{{ route('approvals.admin.organization.departments.destroy', $dept) }}" class="inline" onsubmit="return confirm('この部門を削除しますか。');">
@@ -345,6 +346,7 @@
                         <input type="text" name="code" x-model="editDepartmentCode" required maxlength="3" autocapitalize="characters" spellcheck="false" class="w-full h-[38px] px-2.5 border border-gray-300 rounded-md text-[13px] font-mono uppercase">
                         <p class="text-[11px] text-gray-400 mt-1">申請番号に使う英大文字1〜3文字（グループ全体で重複不可）</p>
                         <p x-show="editDepartmentHasNumbers" class="text-[11px] text-amber-700 mt-1">決裁No を付けた申請があるため、会社とアルファベットは変えられません。</p>
+                        <p x-show="editDepartmentHasPaper && !editDepartmentHasNumbers" x-cloak class="text-[11px] text-amber-700 mt-1">取り込んだ紙の決裁があるため、会社とアルファベットは変えられません。</p>
                     </div>
                     <div>
                         <label class="block text-[12px] font-semibold text-gray-700 mb-1">表示順<span class="text-red-600 ml-0.5">*</span></label>
@@ -417,6 +419,7 @@ function approvalOrganization() {
         editDepartmentNextShown: '1',
         editDepartmentNumberHint: '',
         editDepartmentHasNumbers: false,
+        editDepartmentHasPaper: false,
         reviewerFilter: '',
 
         openCompanyEdit(row) {
@@ -441,6 +444,7 @@ function approvalOrganization() {
             this.editDepartmentNextShown = String(row.next_number);
             this.editDepartmentNumberHint = row.number_hint;
             this.editDepartmentHasNumbers = row.has_numbers;
+            this.editDepartmentHasPaper = row.has_paper;
             this.reviewerFilter = '';
             this.departmentEditModal = true;
         },

@@ -4,6 +4,7 @@ namespace App\Support\Approval;
 
 use App\Models\ApprovalDepartment;
 use App\Models\ApprovalNumberSequence;
+use App\Models\ApprovalPaperRecord;
 use App\Models\ApprovalRequest;
 use DateTimeInterface;
 use Illuminate\Support\Facades\DB;
@@ -93,6 +94,21 @@ final class ApprovalNumber
     public static function departmentHasNumbers(ApprovalDepartment $department): bool
     {
         return ApprovalRequest::where('number_department_id', $department->id)->exists();
+    }
+
+    /**
+     * 取り込んだ紙の決裁がある部門か（紙の決裁No にもアルファベットと年度の和暦が入るので、会社とアルファベットを変えられない。段階5 §5.11）。
+     * 申請の番号（departmentHasNumbers）とは別に聞く（部門の管理の断りの文を分ける）
+     */
+    public static function departmentHasPaperNumbers(ApprovalDepartment $department): bool
+    {
+        return ApprovalPaperRecord::where('department_id', $department->id)->exists();
+    }
+
+    /** 紙の決裁の決裁No（年度・部門・ＮＯから。和暦は部門の会社の期で決める。R8-J-021。要件 11.2） */
+    public static function paperNumber(ApprovalDepartment $department, int $fiscalYear, int $seq): string
+    {
+        return self::format(ApprovalFiscalYear::eraLabel($fiscalYear, $department->company->fiscal_start_month), $department->code, $seq);
     }
 
     private static function lockedRow(ApprovalDepartment $department, int $fiscalYear): ApprovalNumberSequence

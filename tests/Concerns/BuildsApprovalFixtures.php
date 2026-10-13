@@ -6,10 +6,12 @@ use App\Enums\UserRole;
 use App\Models\ApprovalCompany;
 use App\Models\ApprovalDepartment;
 use App\Models\ApprovalMember;
+use App\Models\ApprovalPaperRecord;
 use App\Models\ApprovalRequest;
 use App\Models\ApprovalSetting;
 use App\Models\ApprovalType;
 use App\Models\User;
+use App\Support\Approval\ApprovalNumber;
 use App\Support\Approval\BodyTemplate;
 use App\Support\Approval\Workflow;
 
@@ -175,6 +177,27 @@ trait BuildsApprovalFixtures
             'uses_staff'         => true,
             'uses_contract_date' => true,
             'fixed_text'         => '上記の内容に基づき、販売をおこないます。',
+        ], $attributes));
+    }
+
+    /**
+     * 取り込んだ過去の紙の決裁（段階5 5b）。既定は R8 年度（2026）・その部門の次のＮＯ・2026/05/13・申請者「甲野」。
+     * 決裁No は年度・部門・ＮＯから組み立てる（`ApprovalNumber::paperNumber`）
+     */
+    protected function paperRecord(ApprovalDepartment $department, array $attributes = []): ApprovalPaperRecord
+    {
+        $fiscalYear = $attributes['fiscal_year'] ?? 2026;
+        $seq        = $attributes['seq'] ?? (int) ApprovalPaperRecord::where('department_id', $department->id)->where('fiscal_year', $fiscalYear)->max('seq') + 1;
+
+        return ApprovalPaperRecord::create(array_merge([
+            'department_id'  => $department->id,
+            'fiscal_year'    => $fiscalYear,
+            'seq'            => $seq,
+            'number'         => ApprovalNumber::paperNumber($department->fresh('company'), $fiscalYear, $seq),
+            'decided_on'     => '2026-05-13',
+            'applicant_name' => '甲野',
+            'subject'        => '見本邸新築工事契約',
+            'created_by'     => $attributes['created_by'] ?? $this->baseUser()->id,
         ], $attributes));
     }
 }
