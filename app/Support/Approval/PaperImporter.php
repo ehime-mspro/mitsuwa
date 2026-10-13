@@ -22,6 +22,17 @@ use Illuminate\Support\Facades\DB;
 final class PaperImporter
 {
     /**
+     * 確認の画面を出したあとで、システムの申請が台帳の番号を使ったときの断りの文（ロックのあとの確かめ＝apply() と、確定で読み直したときの
+     * 確かめ＝PaperImportController が使う。文は 1 か所）
+     *
+     * @param list<string> $numbers 申請が使った決裁No
+     */
+    public static function systemNumbersTaken(array $numbers): string
+    {
+        return '確認の画面を出したあとで、システムの申請が ' . implode('・', $numbers) . ' を使いました。もう一度アップロードして確かめてください。';
+    }
+
+    /**
      * @param array{records: list<array>, existing: list<array>} $analysis
      * @return array{import: ApprovalPaperImport, next: list<string>} 取り込み 1 回分と、実際に進めた次の番号（「住宅事業部 R8-J-035」）
      * @throws PaperImportException 確認のあとでシステムの申請が同じ番号を使った
@@ -36,7 +47,7 @@ final class PaperImporter
             }
             $reserved = ApprovalNumber::reservePaperNumbers($max, $fiscalYear, array_column($analysis['records'], 'number'));
             if ($reserved['taken'] !== []) {
-                throw new PaperImportException('確認の画面を出したあとで、システムの申請が ' . implode('・', $reserved['taken']) . ' を使いました。もう一度アップロードして確かめてください。');
+                throw new PaperImportException(self::systemNumbersTaken($reserved['taken']));
             }
             $departments = ApprovalDepartment::with('company')->whereKey(array_keys($reserved['next']))->get()->keyBy('id');
             $next        = $labels = [];

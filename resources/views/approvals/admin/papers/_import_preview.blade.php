@@ -196,6 +196,9 @@
             <input type="hidden" name="file_name" value="{{ $fileName }}">
             <input type="hidden" name="year" value="{{ $year }}">
             <input type="hidden" name="import_token" value="{{ $importToken }}">
+            {{-- 足すとした決裁No（1 つの hidden に「,」区切り。配列にすると 3,000 行の台帳で max_input_vars を超えてほかの欄が落ちる）。確定は、
+                 読み直して消えた番号をシステムの申請が持っていたら断るためにだけ使う（書き込みには使わない） --}}
+            <input type="hidden" name="numbers" value="{{ implode(',', array_column($analysis['records'], 'number')) }}">
             @include('approvals.admin.papers._import_amounts')
             <div class="px-4 py-4 border-t border-gray-200">
                 <p class="text-[12px] text-gray-600 mb-2.5">{{ $analysis['addCount'] }} 件を足し、{{ $analysis['fillCount'] }} 件の金額を補います（金額の控えの選び直しも、このボタンで確かめます）。</p>

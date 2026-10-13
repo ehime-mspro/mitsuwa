@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Approval;
 use App\Http\Controllers\Controller;
 use App\Models\ApprovalPaperImport;
 use App\Models\ApprovalPaperRecord;
+use App\Models\ApprovalRequest;
 use App\Support\Approval\PaperImportAnalysis;
 use App\Support\Approval\PaperImporter;
 use App\Support\Approval\PaperImportException;
@@ -28,6 +29,9 @@ use Illuminate\View\View;
  * ⚠ 断るときの戻り先は**取り込みの画面に固定する**（`back()` や検証エラーの既定の戻り先を使わない）。確認の画面は POST の応答で、
  *   そこに載ったフォームから送るとリファラーが POST 専用の preview になり、GET で 405 になる（docs/RULES.md Bug #64）。
  * ⚠ 結び付けの選び方の誤り（同じ記録に 2 つの控え・取り込めない先）は、確認の画面をもう一度出して選び直してもらう（アップロードし直させない）。
+ * ⚠ 確認の画面を見ているあいだにシステムの申請が台帳と同じ番号を取ると、読み直したときその行は「取り込まない行」になって黙って落ちる。
+ *   確認の画面が持たせた「足すとした決裁No」（hidden の numbers）のうち消えた番号をシステムの申請が持っていれば、何も書かずに断る
+ *   （numbersTakenSince）。⚠ hidden は断るためにだけ使う（書き込みには使わない）。紙の側で消えた番号（ほかの人が先に登録した）は足さないだけ。
  * ⚠ 行のエラーの view のキーは `rowErrors`（`errors` にすると Blade の `$errors` を上書きして 500。Bug #53）。
  */
 class PaperImportController extends Controller
@@ -79,12 +83,14 @@ class PaperImportController extends Controller
                 'ledger_data' => ['required', 'string'],
                 'file_name'   => ['required', 'string', 'max:255'],
                 'year'        => ['required', 'integer', Rule::in(array_keys(ApprovalPaperRecord::yearChoices()))],
+                'numbers'     => ['nullable', 'string', 'max:70000'],
                 'links'       => ['nullable', 'array'],
                 'links.*'     => ['string', 'max:20'],
             ], [], [
                 'ledger_data' => '取り込むファイル',
                 'file_name'   => 'ファイルの名前',
                 'year'        => '年度',
+                'numbers'     => '取り込む決裁No',
                 'links'       => '金額の控えの結び付け',
                 'links.*'     => '金額の控えの結び付け',
             ]);
@@ -112,6 +118,12 @@ class PaperImportController extends Controller
             $analysis = $this->analyze($content, $year, $links);
         } catch (PaperImportException $e) {
             return redirect()->route('approvals.admin.papers.import')->with('error', $e->getMessage());
+        }
+
+        // 確認の画面で足すとした番号を、読み直したらシステムの申請が持っていて消えていた（見ているあいだに社長の判断が付けた）→ 何も書かずに断る
+        $taken = $this->numbersTakenSince($validated['numbers'] ?? '', $analysis);
+        if ($taken !== []) {
+            return redirect()->route('approvals.admin.papers.import')->with('error', PaperImporter::systemNumbersTaken($taken));
         }
 
         // 結び付けの選び方の誤りは、確認の画面をもう一度出して選び直してもらう
@@ -194,6 +206,25 @@ class PaperImportController extends Controller
 
         return redirect()->route('approvals.admin.papers.index')
             ->with('success', "取り込みを取り消しました（{$result} 件を消しました）。次の番号は戻していません。戻すときは部門の管理で開始番号を直してください。");
+    }
+
+    /**
+     * 確認の画面で「足す」とした決裁No（hidden の numbers・「,」区切り）のうち、読み直した結果から消えたもので、いまシステムの申請が
+     * 持っている番号（最後の点検 I-1）。消えた番号が無ければ問い合わせない。
+     * ⚠ 断るためにだけ使う（書き込みには使わない。送り直された値が何であれ、本人が断られるだけ）。申請が持っていない番号（紙の側で
+     *   消えた＝ほかの人が先に登録した）は拾わない＝今までどおり、足さないだけ
+     *
+     * @param array{records: list<array{number: string}>} $analysis 読み直した結果
+     * @return list<string> 申請が使った決裁No（番号の順）
+     */
+    private function numbersTakenSince(string $shown, array $analysis): array
+    {
+        $vanished = array_diff(array_filter(explode(',', $shown), fn (string $number): bool => $number !== ''), array_column($analysis['records'], 'number'));
+        if ($vanished === []) {
+            return [];
+        }
+
+        return ApprovalRequest::whereIn('number', array_values($vanished))->orderBy('number')->pluck('number')->all();
     }
 
     /** 確認の画面（中身を作って描く） */

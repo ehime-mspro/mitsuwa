@@ -428,6 +428,24 @@ class PaperImportScreenTest extends TestCase
         $this->assertSame(1, ApprovalNumber::currentState($this->w['dept']->fresh('company'))['next']);
     }
 
+    /**
+     * 確認の画面を見ているあいだに社長の判断が同じ番号を付けたら、確定で読み直すとその行は「取り込まない行」に回って黙って落ちる。
+     * それを残りだけ取り込んで済ませず、何も書かずに断る（最後の点検 I-1。確認の画面が持たせた「足すとした決裁No」で消えた番号を知る）
+     */
+    public function test_a_system_number_taken_while_the_confirmation_is_open_is_refused(): void
+    {
+        $draft = $this->draftFor($this->w);
+        $form  = $this->confirmForm($this->preview($this->ledger()));   // 確認の画面: 足す 3 件（R8-J-001〜003）
+        DB::table('approval_requests')->where('id', $draft->id)->update(['number' => 'R8-J-002', 'number_department_id' => $this->w['dept']->id]);   // 見ているあいだに社長の判断
+
+        [$response, $writes] = $this->countingWrites(fn () => $this->send($form));
+
+        $this->assertRefused($response, route('approvals.admin.papers.import'), '確認の画面を出したあとで、システムの申請が R8-J-002 を使いました。もう一度アップロードして確かめてください。', $this->admin);
+        $this->assertSame(0, $writes);
+        $this->assertSame([0, 0], [ApprovalPaperRecord::count(), ApprovalPaperImport::count()]);
+        $this->assertSame(1, ApprovalNumber::currentState($this->w['dept']->fresh('company'))['next']);
+    }
+
     /** 確認の画面のあとでほかの管理者が同じ番号の紙の決裁を登録していたら（一意の索引）、何も書かずに取り込みの画面へ戻す */
     public function test_a_paper_number_taken_during_the_confirmation_is_refused(): void
     {
