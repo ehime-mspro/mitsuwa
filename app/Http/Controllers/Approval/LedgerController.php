@@ -9,7 +9,7 @@ use App\Support\Approval\DownloadLogger;
 use App\Support\Approval\Ledger;
 use App\Support\Approval\LedgerExcel;
 use App\Support\Approval\LedgerFilter;
-use App\Support\Approval\PageNumbers;
+use App\Support\PageNumbers;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;

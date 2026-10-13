@@ -1,5 +1,5 @@
 {{-- ページ送り（->links() は使わない。プロジェクト規約 / Bug #24）。番号は先頭・最後・今のページの前後 1 つだけで、間は「…」
-     （全部を並べるとスマホの幅からはみ出す。番号は App\Support\Approval\PageNumbers::around()。2b の Task 9 の B1・利用者の決定 C5）。
+     （全部を並べるとスマホの幅からはみ出す。番号は App\Support\PageNumbers::around()。2b の Task 9 の B1・利用者の決定 C5）。
      渡すもの: $paginator（LengthAwarePaginator）・$pages（PageNumbers::around() の戻り値）。⑩ の「決裁済み・否決」と ⑥ のお知らせ一覧が使う --}}
 @if($paginator->hasPages())
     <nav aria-label="ページ送り" class="flex justify-center gap-0.5 py-3 border-t border-gray-200">

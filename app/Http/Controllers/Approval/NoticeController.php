@@ -4,8 +4,8 @@ namespace App\Http\Controllers\Approval;
 
 use App\Http\Controllers\Controller;
 use App\Models\ApprovalNotice;
-use App\Support\Approval\PageNumbers;
 use App\Support\Approval\RequestVisibility;
+use App\Support\PageNumbers;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;

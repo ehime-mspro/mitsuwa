@@ -1,10 +1,10 @@
 <?php
 
-namespace App\Support\Approval;
+namespace App\Support;
 
 /**
- * ページ送りに出す番号（段階2 の ⑩「決裁済み・否決」から寄せた。⑥ のお知らせ一覧も使う。段階3 設計書 §5.6）。
- * 画面の部品は approvals._pager（->links() は使わない。Bug #24）。
+ * ページ送りに出す番号（段階2 の ⑩「決裁済み・否決」から寄せた。2026-10-13 に決裁の名前空間からここへ移し、全部の一覧で使う。Bug #117）。
+ * 呼ぶのは画面の部品 <x-pager>（resources/views/components/pager.blade.php）だけ（->links() は使わない。Bug #24）。
  */
 final class PageNumbers
 {
@@ -12,7 +12,8 @@ final class PageNumbers
      * 出す番号（null は「…」）。先頭・最後・今のページの前後 1 つだけにする（全部を並べるとスマホの幅からはみ出す。
      * 2b の Task 9 の B1・利用者の決定 C5）。1 ページだけの間は「…」にせず、その番号を出す。
      * 番号と「…」は多くて 7 つ（前後の「<」「>」を足して 9 個）
-     * ⚠ $current は呼ぶ側が 1〜$last に抑えてから渡す（手で打った大きなページ番号のままだと $current + 1 が float になり TypeError。Bug #100）
+     * ⚠ $current は呼ぶ側が 1〜$last に抑えてから渡す（手で打った大きなページ番号のままだと $current + 1 が float になり TypeError。Bug #100）。
+     *   <x-pager> が min(今のページ, 最後のページ) にして渡す
      *
      * @return list<int|null>
      */
