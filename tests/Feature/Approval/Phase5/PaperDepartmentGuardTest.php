@@ -83,6 +83,10 @@ class PaperDepartmentGuardTest extends TestCase
             ->assertSessionHas('error', 'この会社には取り込んだ紙の決裁がある部門があるため、期の始まりの月は変えられません。');
         $this->assertSame(5, $w['company']->fresh()->fiscal_start_month);
 
+        // 月を変えなければ、名前も表示順も変えられる（止めるのは月が変わるときだけ）
+        $this->actingAs($admin)->put($route, ['name' => '名前を直した会社', 'sort_order' => '7'] + $send(5))->assertSessionHas('success', '会社を更新しました。');
+        $this->assertSame(['名前を直した会社', 7], [$w['company']->fresh()->name, $w['company']->fresh()->sort_order]);
+
         // ほかの会社の部門の紙の決裁では止まらない
         $other = $this->approvalCompany();
         $this->actingAs($admin)->put(route('approvals.admin.organization.companies.update', $other), ['name' => $other->name, 'fiscal_start_month' => '6', 'sort_order' => '1'])

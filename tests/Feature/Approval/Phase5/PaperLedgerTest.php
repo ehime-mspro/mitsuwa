@@ -84,9 +84,16 @@ class PaperLedgerTest extends TestCase
         $old = $this->paperRecord($this->w['dept'], ['seq' => 1, 'decided_on' => '2026-05-07']);
         $new = $this->paperRecord($this->w['reviewDept'], ['seq' => 1, 'decided_on' => '2026-06-02']);
 
+        $viewer = $this->viewAllUser();
+        $keys   = $this->keys($viewer);
+
+        $this->assertSame([$this->paper($new), $this->paper($p4), $this->request($r5), $this->paper($p6), $this->paper($old)], $keys);
+
+        // 並べた鍵をそのまま行にしても、並びが保たれる。⚠ 申請と紙の id が重なる形で見る（鍵の頭の 1 字で申請と紙を分ける。id だけで引くと取り違える）
+        $this->assertContains($r5->id, [$p4->id, $p6->id, $old->id, $new->id], '申請と紙の決裁の id が重なっていない');
         $this->assertSame(
-            [$this->paper($new), $this->paper($p4), $this->request($r5), $this->paper($p6), $this->paper($old)],
-            $this->keys($this->viewAllUser())
+            [$new->number, $p4->number, $r5->number, $p6->number, $old->number],
+            Ledger::rows($viewer, $keys)->map(fn (LedgerRow $row) => $row->number)->all()
         );
     }
 

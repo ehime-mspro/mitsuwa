@@ -33,7 +33,9 @@ class PaperVisibilityTest extends TestCase
         $other  = $this->approvalDepartment($w['company'], ['code' => 'M']);
         $ownJ   = $this->paperRecord($w['dept'], ['applicant_name' => '申請 花子']);
         $ownM   = $this->paperRecord($other);
+        $ownS   = $this->paperRecord($w['reviewDept']);   // 審査部門 S の紙（審査担当者はこの部門の担当だが、所属していないので見られない）
         $both   = [$ownJ->id, $ownM->id];
+        $all    = [$ownJ->id, $ownM->id, $ownS->id];
 
         $memberOfM = $this->approvalOnlyUser(['name' => 'ミツワ 不動産']);
         $memberOfM->approvalDepartments()->attach($other->id);
@@ -54,20 +56,20 @@ class PaperVisibilityTest extends TestCase
             '審査担当者（所属していない）'          => [$w['reviewer'], []],
             '社長だけ'                            => [$w['president'], []],
             '関わりの無い人'                      => [$stranger, []],
-            '全件閲覧者'                          => [$viewAll, $both],
-            '決裁の管理者'                        => [$admin, $both],
+            '全件閲覧者'                          => [$viewAll, $all],
+            '決裁の管理者'                        => [$admin, $all],
         ];
 
         foreach ($cases as $label => [$user, $expected]) {
             $this->assertSame($expected, $this->visibleIds($user), $label);
-            foreach ([$ownJ, $ownM] as $record) {
+            foreach ([$ownJ, $ownM, $ownS] as $record) {
                 $this->assertSame(in_array($record->id, $expected, true), RequestVisibility::canViewPaper($user, $record), "{$label}: {$record->number} の 1 件の判定が一覧と違う");
             }
         }
 
         // 社長を全件閲覧者にも指定すれば見られる（要件 7 章）
         $this->makePresident($viewAll);
-        $this->assertSame($both, $this->visibleIds($viewAll->fresh()));
+        $this->assertSame($all, $this->visibleIds($viewAll->fresh()));
 
         // 部門長を外れた人は見られなくなる（今の担当で決める）
         $other->update(['head_user_id' => null]);
