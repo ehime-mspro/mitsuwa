@@ -53,7 +53,8 @@ class PdfTableTest extends TestCase
     /** PDF の中で使われている文字の大きさ（pt。小さい順）。mPDF は表を縮めるとき、その表の文字の大きさを小さくして描く（PdfSheetTest と同じ読み方） */
     private static function fontSizes(string $pdf): array
     {
-        preg_match_all('#stream\r?\n(.*?)\r?\nendstream#s', $pdf, $streams);
+        // ⚠ 流れの終わりは \n だけ（mPDF は \r\n を書かない）。\r?\n にすると、圧縮の最後のバイトが 0x0D の分（フッターの時刻で変わる）に 1 バイト切り落として読めなくなる
+        preg_match_all('#stream\r?\n(.*?)\nendstream#s', $pdf, $streams);
         $sizes = [];
         foreach ($streams[1] as $stream) {
             $content = @gzuncompress($stream);
