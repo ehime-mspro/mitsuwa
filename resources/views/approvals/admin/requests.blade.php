@@ -150,7 +150,7 @@
                     </div>{{-- /scroll-hint --}}
                 </div>
 
-                @include('approvals._pager', ['paginator' => $requests, 'pages' => $pages])
+                @include('approvals._pager', ['paginator' => $requests])
             @endif
         @endif
     </div>

@@ -266,27 +266,7 @@
             <div class="scroll-hint-text">← スクロールできます →</div>
         </div>{{-- /scroll-hint --}}
 
-        @if($users->hasPages())
-            <div class="flex justify-center gap-0.5 py-3 border-t border-gray-200">
-                @if($users->onFirstPage())
-                    <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-300 bg-white border border-gray-200">&lt;</span>
-                @else
-                    <a href="{{ $users->previousPageUrl() }}" class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors">&lt;</a>
-                @endif
-                @foreach($users->getUrlRange(1, $users->lastPage()) as $page => $url)
-                    @if($page == $users->currentPage())
-                        <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-white bg-emerald-600 border border-emerald-600 font-semibold">{{ $page }}</span>
-                    @else
-                        <a href="{{ $url }}" class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors">{{ $page }}</a>
-                    @endif
-                @endforeach
-                @if($users->hasMorePages())
-                    <a href="{{ $users->nextPageUrl() }}" class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors">&gt;</a>
-                @else
-                    <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-300 bg-white border border-gray-200">&gt;</span>
-                @endif
-            </div>
-        @endif
+        <x-pager :paginator="$users" class="py-3 border-t border-gray-200" />
     </div>
 
     {{-- 利用者の編集（追加のモーダルは無い。決裁のみ利用者の登録は上の「社員の一括登録（CSV）」と基幹の利用者管理から） --}}

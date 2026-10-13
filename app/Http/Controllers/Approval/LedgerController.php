@@ -9,7 +9,6 @@ use App\Support\Approval\DownloadLogger;
 use App\Support\Approval\Ledger;
 use App\Support\Approval\LedgerExcel;
 use App\Support\Approval\LedgerFilter;
-use App\Support\PageNumbers;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -49,7 +48,6 @@ class LedgerController extends Controller
         return view('approvals.ledger.index', $choices + [
             'filter'     => $filter,
             'rows'       => $rows,
-            'pages'      => PageNumbers::around($rows->currentPage(), $rows->lastPage()),
             'excelLimit' => (int) config('approval.ledger.excel_limit'),
         ]);
     }

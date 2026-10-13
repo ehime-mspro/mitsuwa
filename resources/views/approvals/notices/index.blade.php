@@ -32,7 +32,7 @@
                     @include('approvals.notices._item', ['notice' => $notice])
                 @endforeach
             </ul>
-            @include('approvals._pager', ['paginator' => $notices, 'pages' => $pages])
+            @include('approvals._pager', ['paginator' => $notices])
         @endif
     </div>
 </div>

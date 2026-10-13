@@ -17,7 +17,6 @@ use App\Support\Approval\FormInput;
 use App\Support\Approval\PendingWork;
 use App\Support\Approval\RequestPermissions;
 use App\Support\Approval\Workflow;
-use App\Support\PageNumbers;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -64,12 +63,12 @@ class AdminRequestController extends Controller
                 ->whereIn('status', [ApprovalStatus::Approved->value, ApprovalStatus::Rejected->value])
                 ->orderByDesc('decided_at')
                 ->orderByDesc('id');
-            // ページ番号は最後のページまで（Bug #100。手で打った大きな番号で PageNumbers::around() が TypeError の 500・行の無いページは件数と食い違う）
+            // ページ番号は最後のページまで（Bug #100。行の無いページは件数と食い違う。ページ送りの番号は部品 <x-pager> が抑える）
             $total    = $query->count();
             $page     = min(LengthAwarePaginator::resolveCurrentPage(), max(1, (int) ceil($total / self::DECIDED_PER_PAGE)));
             $requests = $query->paginate(self::DECIDED_PER_PAGE, ['*'], 'page', $page, $total)->withQueryString();
 
-            return view('approvals.admin.requests', ['tab' => $tab, 'requests' => $requests, 'rows' => null, 'pages' => PageNumbers::around($requests->currentPage(), $requests->lastPage())]);
+            return view('approvals.admin.requests', ['tab' => $tab, 'requests' => $requests, 'rows' => null]);
         }
 
         $presidentId = ApprovalSetting::current()->president_user_id;
@@ -83,7 +82,7 @@ class AdminRequestController extends Controller
                 <=> [$a['days'], $b['since']?->getTimestamp() ?? PHP_INT_MAX, $b['request']->id])
             ->values();
 
-        return view('approvals.admin.requests', ['tab' => $tab, 'requests' => null, 'rows' => $rows, 'pages' => null]);
+        return view('approvals.admin.requests', ['tab' => $tab, 'requests' => null, 'rows' => $rows]);
     }
 
     /** 部門長の確認の付け替え（D2・D22・D25） */

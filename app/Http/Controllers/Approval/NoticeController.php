@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Approval;
 use App\Http\Controllers\Controller;
 use App\Models\ApprovalNotice;
 use App\Support\Approval\RequestVisibility;
-use App\Support\PageNumbers;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -31,14 +30,13 @@ class NoticeController extends Controller
         $query   = ApprovalNotice::ownedBy($user)
             ->orderByDesc('created_at')
             ->orderByDesc('id');
-        // ページ番号は最後のページまで（Bug #100。手で打った大きな番号で PageNumbers::around() が TypeError の 500・行の無いページは件数と食い違う）
+        // ページ番号は最後のページまで（Bug #100。行の無いページは件数と食い違う。ページ送りの番号は部品 <x-pager> が抑える）
         $total   = $query->count();
         $page    = min(LengthAwarePaginator::resolveCurrentPage(), max(1, (int) ceil($total / self::PER_PAGE)));
         $notices = $query->paginate(self::PER_PAGE, ['*'], 'page', $page, $total);
 
         return view('approvals.notices.index', [
             'notices'   => $notices,
-            'pages'     => PageNumbers::around($notices->currentPage(), $notices->lastPage()),
             'hasUnread' => ApprovalNotice::ownedBy($user)->unread()->exists(),
         ]);
     }
