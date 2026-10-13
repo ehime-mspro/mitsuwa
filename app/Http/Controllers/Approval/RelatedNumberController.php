@@ -18,7 +18,7 @@ use Illuminate\Http\Request;
 /**
  * 関連する決裁No の候補（設計書 §5.6・D15）。申請書の画面が入力中に Ajax の GET で呼ぶ。
  *
- * 見られる範囲（RequestVisibility）の、番号の付いた申請だけを返す（番号と件名）。
+ * 見られる範囲（RequestVisibility）の、番号の付いた申請と取り込んだ紙の決裁を返す（番号と件名。紙の決裁には `paper: true`）。
  * ⚠ 呼ぶ側の fetch は X-Requested-With を付ける（Bug #35。付けないとセッションの直前 URL が
  *   この JSON で上書きされる）。
  * ⚠ LIKE の % と _ は逃がさない（アプリのほかの検索と同じ。見られる範囲の中で候補が広がるだけ）。

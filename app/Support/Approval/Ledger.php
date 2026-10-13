@@ -62,7 +62,7 @@ final class Ledger
         'body'       => 'approval_revisions.snapshot->body',
     ];
 
-    /** 見られる申請を条件で絞った問い合わせ（並びは付けない。sortedIds() が並べる） */
+    /** 見られる申請を条件で絞った問い合わせ（並びは付けない。sortedKeys() が並べる） */
     public static function query(User $viewer, LedgerFilter $filter): Builder
     {
         $query = RequestVisibility::apply(ApprovalRequest::query(), $viewer)
