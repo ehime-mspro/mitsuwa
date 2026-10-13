@@ -211,30 +211,7 @@
         </div>
 
         {{-- ページネーション --}}
-        @if($units->hasPages())
-            <div class="flex justify-center gap-0.5 px-4 py-3 border-t border-gray-200">
-                @if($units->onFirstPage())
-                    <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-300 bg-white border border-gray-200">&lt;</span>
-                @else
-                    <a href="{{ $units->previousPageUrl() }}"
-                       class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors">&lt;</a>
-                @endif
-                @foreach($units->getUrlRange(1, $units->lastPage()) as $page => $url)
-                    @if($page == $units->currentPage())
-                        <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-white bg-emerald-600 border border-emerald-600 font-semibold">{{ $page }}</span>
-                    @else
-                        <a href="{{ $url }}"
-                           class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors">{{ $page }}</a>
-                    @endif
-                @endforeach
-                @if($units->hasMorePages())
-                    <a href="{{ $units->nextPageUrl() }}"
-                       class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors">&gt;</a>
-                @else
-                    <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-300 bg-white border border-gray-200">&gt;</span>
-                @endif
-            </div>
-        @endif
+        <x-pager :paginator="$units" class="px-4 py-3 border-t border-gray-200" />
     </div>
 
     {{-- 横スクロールヒントバー表示制御 --}}

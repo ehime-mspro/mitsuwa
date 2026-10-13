@@ -167,27 +167,7 @@
 
         <div class="px-4 py-2.5 border-t border-gray-200 text-sm text-gray-500">全 {{ $projects->total() }} 件</div>
 
-        @if($projects->hasPages())
-            <div class="flex justify-center gap-0.5 px-4 py-3 border-t border-gray-200">
-                @if($projects->onFirstPage())
-                    <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-300 bg-white border border-gray-200">&lt;</span>
-                @else
-                    <a href="{{ $projects->previousPageUrl() }}" class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-700 bg-white border border-gray-300 hover:bg-gray-50">&lt;</a>
-                @endif
-                @foreach($projects->getUrlRange(1, $projects->lastPage()) as $page => $url)
-                    @if($page == $projects->currentPage())
-                        <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-white bg-emerald-600 border border-emerald-600 font-semibold">{{ $page }}</span>
-                    @else
-                        <a href="{{ $url }}" class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-700 bg-white border border-gray-300 hover:bg-gray-50">{{ $page }}</a>
-                    @endif
-                @endforeach
-                @if($projects->hasMorePages())
-                    <a href="{{ $projects->nextPageUrl() }}" class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-700 bg-white border border-gray-300 hover:bg-gray-50">&gt;</a>
-                @else
-                    <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-300 bg-white border border-gray-200">&gt;</span>
-                @endif
-            </div>
-        @endif
+        <x-pager :paginator="$projects" class="px-4 py-3 border-t border-gray-200" />
     </div>
 
 {{-- マップモーダル --}}

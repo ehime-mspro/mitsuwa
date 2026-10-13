@@ -145,30 +145,7 @@
         </div>
 
         {{-- ページネーション --}}
-        @if($properties->hasPages())
-            <div class="flex justify-center gap-0.5 px-4 py-3 border-t border-gray-200">
-                @if($properties->onFirstPage())
-                    <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-300 bg-white border border-gray-200">&lt;</span>
-                @else
-                    <a href="{{ $properties->previousPageUrl() }}"
-                       class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors">&lt;</a>
-                @endif
-                @foreach($properties->getUrlRange(1, $properties->lastPage()) as $page => $url)
-                    @if($page == $properties->currentPage())
-                        <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-white bg-emerald-600 border border-emerald-600 font-semibold">{{ $page }}</span>
-                    @else
-                        <a href="{{ $url }}"
-                           class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors">{{ $page }}</a>
-                    @endif
-                @endforeach
-                @if($properties->hasMorePages())
-                    <a href="{{ $properties->nextPageUrl() }}"
-                       class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors">&gt;</a>
-                @else
-                    <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-300 bg-white border border-gray-200">&gt;</span>
-                @endif
-            </div>
-        @endif
+        <x-pager :paginator="$properties" class="px-4 py-3 border-t border-gray-200" />
     </div>
 
 @endsection

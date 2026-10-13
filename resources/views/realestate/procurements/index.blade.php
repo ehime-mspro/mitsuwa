@@ -212,27 +212,7 @@
              合算値だけだと数字が食い違って見えるため --}}
         <div class="px-4 py-2.5 border-t border-gray-200 text-sm text-gray-500">全 {{ $rows->total() }} 件 <span class="text-gray-400">（仕入れ案件 {{ $kindTotals['procurement'] }} 件 + 分譲地 {{ $kindTotals['project'] }} 件）</span></div>
 
-        @if($rows->hasPages())
-            <div class="flex justify-center gap-0.5 px-4 py-3 border-t border-gray-200">
-                @if($rows->onFirstPage())
-                    <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-300 bg-white border border-gray-200">&lt;</span>
-                @else
-                    <a href="{{ $rows->previousPageUrl() }}" class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-700 bg-white border border-gray-300 hover:bg-gray-50">&lt;</a>
-                @endif
-                @foreach($rows->getUrlRange(1, $rows->lastPage()) as $page => $url)
-                    @if($page == $rows->currentPage())
-                        <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-white bg-emerald-600 border border-emerald-600 font-semibold">{{ $page }}</span>
-                    @else
-                        <a href="{{ $url }}" class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-700 bg-white border border-gray-300 hover:bg-gray-50">{{ $page }}</a>
-                    @endif
-                @endforeach
-                @if($rows->hasMorePages())
-                    <a href="{{ $rows->nextPageUrl() }}" class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-700 bg-white border border-gray-300 hover:bg-gray-50">&gt;</a>
-                @else
-                    <span class="w-8 h-8 flex items-center justify-center rounded text-xs text-gray-300 bg-white border border-gray-200">&gt;</span>
-                @endif
-            </div>
-        @endif
+        <x-pager :paginator="$rows" class="px-4 py-3 border-t border-gray-200" />
     </div>
 
 {{-- 不動産ステータスバッジCSS --}}
