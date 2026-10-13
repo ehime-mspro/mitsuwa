@@ -144,7 +144,7 @@ class Phase5bTablesTest extends TestCase
     {
         $w       = $this->approvalWorld();
         $admin   = $this->approvalAdmin();
-        $import  = ApprovalPaperImport::create(['file_name' => '08年度・決裁申請書契約状況.xls', 'fiscal_year' => 2026, 'added_count' => 1, 'imported_by' => $admin->id]);
+        $import  = ApprovalPaperImport::create(['file_name' => '08年度・見本台帳.xls', 'fiscal_year' => 2026, 'added_count' => 1, 'imported_by' => $admin->id]);
         $record  = $this->paperRecord($w['dept'], [
             'seq' => 21, 'amount' => 12000000, 'cost' => -300000, 'profit' => 12300000, 'note' => '原本は本部の書庫', 'import_id' => $import->id, 'created_by' => $admin->id,
         ])->fresh();
