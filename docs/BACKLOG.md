@@ -2310,7 +2310,7 @@ git checkout 13.x && git merge --ff-only date-picker-month-ago
 
 ---
 
-## 🚧 決裁申請 段階5（申請の種類ごとの作り込み・過去の決裁の取り込み）— 5a 本番反映済み・5b 実装済み・本番反映前（どちらも使い始める前）
+## 🚧 決裁申請 段階5（申請の種類ごとの作り込み・過去の決裁の取り込み）— 5a・5b 本番反映済み（使い始める前）
 
 設計書: @docs/superpowers/specs/2026-10-07-approval-phase5-design.md（D1〜D25）。2 回に分ける（5a: 申請の種類ごとの作り込み ／ 5b: 過去の取り込み）。
 
@@ -2387,6 +2387,24 @@ git checkout 13.x && git merge --ff-only date-picker-month-ago
 - 計画で決めた細部（計画 §0.14）と受け入れた隙間（計画 §0.15）は計画のとおり
 - 実装のコミット（計画のコミットの次から。古い順）: Task 1〜8 の 8 本と記録（Task 9・10）。`git log` で見る
 - **Bug #118（5a からのテストの欠陥・2026-10-13 に直した）**: PDF の文字の大きさを読むテスト（`PdfTableTest`・`PdfSheetTest`・`StampDisplayTest`）の正規表現 `stream\r?\n(.*?)\r?\nendstream` が、PDF のフッターの出力時刻で圧縮の最後のバイトが 0x0D になる分（1 日の約 2.6%）に 1 バイト切り落とし、`PdfTableTest` が時々赤になっていた（アプリの PDF は正しい）。mPDF は `\n` でしか書かないので `\nendstream` にした（`18718723`）。計画の段の変異の表で F05・U03 を「検出」としていたのは、この赤の読み違いだった（2 つを見分けるテストを足した `abcbe9ad`）
+
+#### 本番反映（2026-10-13 実施）
+
+計画の Task 12 の手順どおりに流した。反映のあいだは別の会話（manage）に `13.x` の更新と `./deploy.sh` を待ってもらった。
+
+| 段 | 見たこと | 結果 |
+|---|---|---|
+| ① 本番の読み取り（反映前） | ルート・表・設定・件数・ログ | `approvals.` のルート 53 本 ／ `approval_paper_records`・`approval_paper_imports` は無い ／ `launched_at=NULL` ／ 部門 2・申請 0・連番 0 ／ `memory_limit=128M`・`upload_max_filesize=5M`・`post_max_size=8M` ／ `laravel.log` は Jun 18 のまま |
+| ② 早送り | `13.x`（手元。manage の会話に待ってもらった） | `2d0d54f9` → `e0fe3a05` |
+| ③ DB を先に | `database/sql/2026-10-08-approval-phase5b.sql` を scp → 文 2 つ（どちらも `CREATE TABLE`）を確かめて流した | **OK 1・OK 2** ／ 流したあと: 列の型・NULL・制約（`PRIMARY`・`uq_approval_paper_records_number`・`uq_approval_paper_records_seq`・`fk_approval_paper_*` 6 つ）が計画 §0.2 のとおり ／ 件数はどちらも 0 |
+| ④ 読み込みの表 | main repo で `composer dump-autoload --no-dev --optimize`（PHP 8.3 を名指し） | 読み込みの表に新しいクラス 10 が入った ／ `vendor/bin/phpunit` は無い |
+| ⑤ `./deploy.sh` | | exit 0・6 段すべて成功 |
+| ⑥ 本番の読み取り | コンパイル済みビューの `php -l` | **311 本 / INVALID 0 件** |
+| | ルート・設定・クラス・日付 | `approvals.` のルート 64 本（+11）／ `launched_at=NULL` ／ 新しいクラス 6 つ（`PaperDate`・`PaperLedgerFile`・`PaperImportAnalysis`・`PaperImporter`・`ApprovalPaperRecord`・`ApprovalPaperImport`）はすべて ok ／ Xls の読み手 ok ／ `PaperDate::read('8.05.13', 2026, 5)` = 2026-05-13 ／ `laravel.log` は Jun 18 のまま（反映のあとのエラー 0 件） |
+| | ログインした画面（利用者の Chrome・Claude in Chrome・見るだけ。送信や登録はしない） | 過去の決裁の取り込みの一覧に「紙の決裁はありません」「まだ取り込んでいません」／ 取り込みの画面の年度は R8〜H1 ／ 1 件ずつ登録の画面が開く ／ 決裁のホームは「準備中」のまま＋管理者の入口 ／ コンソールのエラー 0 件 |
+| 残したこと | push・本物の台帳 | `origin/13.x` への push はしていない（利用者の指示を待つ）／ 本物の台帳の取り込みはしていない（使い始める日までに、決裁の管理者が ⑪ で行う） |
+
+⚠ 本番の `upload_max_filesize` は 5M・`post_max_size` は 8M。⑪ の画面は「10MB まで」と書いてあるが、約 5MB を超える台帳はアップロードできず、確定は台帳を base64 にして送るので約 6MB を超えると送れない（08 年度の台帳は約 1.3MB で問題ない）。大きな台帳を取り込むときは php.ini の調整（要件 16.3 の 15）か、計画 §0.15 の 2 の一時ファイルの形へ。
 
 #### 5b の残したもの（本番反映のあとでよい。SDD の点検の記録から）
 1. 横に広い Excel（例: 200 列 × 5,900 行・8.3MB）は、行の数の上限（6,000）の中でも本番の 128M を使い切る（捕まえられない 500）。列の数も見る上限は、本物の台帳の列の数を手元で測ってから決める（最後の点検 M-1。決裁の管理者だけの画面・中身は壊れない）
