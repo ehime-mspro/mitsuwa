@@ -2021,6 +2021,18 @@ Expected: ちょうど 1 行 `'App\\Support\\PageNumbers' => $baseDir . '/app/Su
 
 （Task 8 の結果は下に書く）
 
+### Task 8 の前段: 13.x（決裁 5b）の取り込み（2026-10-22・作業場所）
+
+決裁の会話が 5b を先に本番へ出したので（13.x = `53b00db9`・本番のコード = `e0fe3a05`）、合意どおりこちらが後から取り込んで合わせた。
+
+| 段 | 結果 |
+|---|---|
+| 取り込み | `git merge 13.x`（`53b00db9`。rebase しない）。当たりは `docs/RULES.md` だけ（#116 の後ろの #117 と #118）。#117 → #118 の順で両方残し、merge コミット `52a75844`。`LedgerController`・`approvals/ledger/index`・`CLAUDE.md`・`BACKLOG.md` は自動で合わさり、古い `PageNumbers`・`'pages'` は残らなかった |
+| 先に赤 | 読み込みの表を作り直してから `PageNumbersTest` と `Phase5/PaperListTest` を流し、7 本が赤（Expected どおり）: `test_the_old_approval_copy_is_gone` が `app/Http/Controllers/Approval/PaperRecordController.php` を名指し・紙の決裁の一覧の 6 本が `Class "App\Support\Approval\PageNumbers" not found`（`PaperRecordController.php:79`） |
+| 直し | `9fc2bb3b`: `PaperRecordController` の `use` と `'pages'` を消し、注記を ⑩・⑥ と同じ形に／`approvals/admin/papers/index` の `@include('approvals._pager', …)` から `'pages'` を外した。`PageNumbersTest`・`Phase5` 一式・ページ送りのテスト 3 本で `OK (189 tests, 2297 assertions)` |
+| 全件テスト | `OK (4223 tests, 40130 assertions)`（3 分 38 秒・PHP 8.3.35。4105 本に 5b の 118 本が足された）。メモリのピークは 444.50 MB（前回 418.50 MB・上限 512M） |
+| コンパイル済みビューの lint | `views=312 invalid=0`（306 本に 5b の新しいビュー 6 本） |
+
 ---
 
 ## 付録 A: 置き換えスクリプト `TOOLS/pager/replace-pagers.php`

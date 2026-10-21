@@ -3928,6 +3928,7 @@ ZEAL 会員の取込（`/admin/zeal/member-import`）の確定は、書き込み
 決裁 段階2b の「後回し」に残した「ページ番号を全部並べるほかの一覧（31 か所）」を直した（docs/RULES.md の Bug #117）。
 利用者の依頼（2026-10-08 の引き継ぎ）・設計の承認（2026-10-13）。決裁の会話と合意したこと: `PageNumbers` を `App\Support` へ移す・
 `approvals/_pager` は部品を呼ぶ包みとして残す・決裁の 2 本（自分の申請・利用者の管理）はこちらで置き換える・決裁の 3 つのコントローラから `pages` を消す。
+13.x（決裁 段階5b）を取り込んだときに、紙の決裁の一覧（`PaperRecordController`・`approvals/admin/papers/index`）も同じ形に直した（2026-10-22）。
 **DB 変更・ルート変更・依存の変更は無し。PHP クラスの置き場所が 1 つ変わる**（`App\Support\Approval\PageNumbers` → `App\Support\PageNumbers`）ので、
 本番反映では main repo の cwd で `composer dump-autoload --no-dev --optimize` が要る。
 
@@ -3936,8 +3937,8 @@ ZEAL 会員の取込（`/admin/zeal/member-import`）の確定は、書き込み
 | 部品 | `resources/views/components/pager.blade.php`（`<x-pager :paginator="$x" class="…" />`。番号は先頭・最後・今のページの前後だけ・今のページは最後のページまでに抑える） |
 | Support | `App\Support\PageNumbers`（`App\Support\Approval\PageNumbers` を移しただけ） |
 | 画面 | 31 本（基幹 29・決裁 2）のページ送りの塊を 1 行に。外側の箱は 3 通り（`px-4 py-3 border-t border-gray-200` 21 本・`mt-4` 7 本・`py-3 border-t border-gray-200` 3 本）。決裁の `approvals/_pager` は包み |
-| 決裁のコントローラ | `AdminRequestController`・`NoticeController`・`LedgerController` から `pages` を消した（ページ番号を抑える処理は残す） |
-| テスト | 新規 `PageNumbersTest`・`PagerComponentTest`・`PagerUsageScanTest`・`PagerRoundTripTest`・`Tests\Concerns\ReadsPager` ／ `HomeAndListTest`・`PageNumberClampTest` に 1 本ずつ。4064 → **4105 tests** |
+| 決裁のコントローラ | `AdminRequestController`・`NoticeController`・`LedgerController` と、5b を取り込んだあと `PaperRecordController` から `pages` を消した（ページ番号を抑える処理は残す） |
+| テスト | 新規 `PageNumbersTest`・`PagerComponentTest`・`PagerUsageScanTest`・`PagerRoundTripTest`・`Tests\Concerns\ReadsPager` ／ `HomeAndListTest`・`PageNumberClampTest` に 1 本ずつ。4064 → **4105 tests**（13.x の 5b を取り込んだあとは 4223） |
 | ルート / DB | **どちらも変更なし** |
 
 ### 見た目の変化（設計書 §3.5）
