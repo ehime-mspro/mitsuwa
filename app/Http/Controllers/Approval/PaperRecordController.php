@@ -9,7 +9,6 @@ use App\Models\ApprovalPaperRecord;
 use App\Support\Approval\ApprovalFiscalYear;
 use App\Support\Approval\ApprovalNumber;
 use App\Support\Approval\FormInput;
-use App\Support\Approval\PageNumbers;
 use App\Support\Approval\PaperImportAnalysis;
 use App\Support\Approval\SettingLogger;
 use App\Support\JapanTime;
@@ -66,7 +65,7 @@ class PaperRecordController extends Controller
             ->orderByDesc('decided_on')
             ->orderBy('number');
 
-        // ページ番号は最後のページまで（Bug #100。手で打った大きな番号で PageNumbers::around() が TypeError の 500・行の無いページは件数と食い違う）
+        // ページ番号は最後のページまで（Bug #100。行の無いページは件数と食い違う。ページ送りの番号は部品 <x-pager> が抑える）
         $total   = $query->count();
         $page    = min(LengthAwarePaginator::resolveCurrentPage(), max(1, (int) ceil($total / self::PER_PAGE)));
         $records = $query->paginate(self::PER_PAGE, ['*'], 'page', $page, $total)->withQueryString();
@@ -76,7 +75,6 @@ class PaperRecordController extends Controller
 
         return view('approvals.admin.papers.index', [
             'records'     => $records,
-            'pages'       => PageNumbers::around($records->currentPage(), $records->lastPage()),
             'years'       => $years,
             'yearChoices' => array_intersect_key($years, array_flip($recordYears)),
             'departments' => $departments,

@@ -96,7 +96,7 @@
                 </div>{{-- /scroll-hint-inner --}}
                 <div class="scroll-hint-text">← スクロールできます →</div>
             </div>{{-- /scroll-hint --}}
-            @include('approvals._pager', ['paginator' => $records, 'pages' => $pages])
+            @include('approvals._pager', ['paginator' => $records])
         @endif
     </section>
 
