@@ -7,6 +7,7 @@ use App\Enums\ApprovalStepResult;
 use App\Http\Controllers\Controller;
 use App\Models\ApprovalHistory;
 use App\Models\ApprovalNotice;
+use App\Models\ApprovalPaperRecord;
 use App\Models\ApprovalRequest;
 use App\Models\ApprovalRevision;
 use App\Models\ApprovalStep;
@@ -470,10 +471,11 @@ class RequestController extends Controller
     }
 
     /**
-     * 関連する決裁No のうち、この人が見られる申請（番号 => 申請の id）
+     * 関連する決裁No のうち、この人が見られる申請と紙の決裁（番号 => 詳細の URL。段階5 §5.15。手で入れていた紙の番号も、
+     * 取り込んだあとはリンクになる）。番号は申請と紙で重ならない（取り込みと 1 件ずつの登録が断る）
      *
      * @param list<string> $numbers 画面に出す中身の関連する決裁No（申請者以外には最後に提出した控えのもの。RequestContent）
-     * @return array<string, int>
+     * @return array<string, string>
      */
     private function relatedLinks(array $numbers, User $user): array
     {
@@ -481,10 +483,16 @@ class RequestController extends Controller
             return [];
         }
 
-        return RequestVisibility::apply(ApprovalRequest::query(), $user)
+        $requests = RequestVisibility::apply(ApprovalRequest::query(), $user)
             ->whereIn('number', $numbers)
             ->pluck('id', 'number')
-            ->all();
+            ->map(fn (int $id) => route('approvals.requests.show', $id));
+        $papers   = ApprovalPaperRecord::query()->visibleTo($user)
+            ->whereIn('number', $numbers)
+            ->pluck('id', 'number')
+            ->map(fn (int $id) => route('approvals.papers.show', $id));
+
+        return $papers->merge($requests)->all();
     }
 
     /**

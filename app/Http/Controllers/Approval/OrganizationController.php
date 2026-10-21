@@ -9,6 +9,7 @@ use App\Models\ApprovalCompany;
 use App\Models\ApprovalDepartment;
 use App\Models\ApprovalMailDomain;
 use App\Models\ApprovalNumberSequence;
+use App\Models\ApprovalPaperRecord;
 use App\Models\ApprovalRequest;
 use App\Models\ApprovalStep;
 use App\Models\ApprovalType;
@@ -47,6 +48,8 @@ class OrganizationController extends Controller
                 $department->setRelation('company', $company);
                 $department->number_state = ApprovalNumber::currentState($department);
                 $department->has_numbers  = ApprovalNumber::departmentHasNumbers($department);
+                $department->has_paper    = ApprovalNumber::departmentHasPaperNumbers($department);
+                $department->last_paper   = ApprovalNumber::lastPaperSeq($department, $department->number_state['fiscal_year']);
             }
         ));
 
@@ -87,6 +90,12 @@ class OrganizationController extends Controller
         if ((int) $validated['fiscal_start_month'] !== $approvalCompany->fiscal_start_month
             && ApprovalRequest::whereIn('number_department_id', ApprovalDepartment::where('company_id', $approvalCompany->id)->select('id'))->exists()) {
             return $this->back(null, 'この会社には決裁No を付けた申請がある部門があるため、期の始まりの月は変えられません。');
+        }
+
+        // 取り込んだ紙の決裁も同じ（紙の決裁No の和暦は年度の始まりの日で決まる。段階5 §5.11）
+        if ((int) $validated['fiscal_start_month'] !== $approvalCompany->fiscal_start_month
+            && ApprovalPaperRecord::whereIn('department_id', ApprovalDepartment::where('company_id', $approvalCompany->id)->select('id'))->exists()) {
+            return $this->back(null, 'この会社には取り込んだ紙の決裁がある部門があるため、期の始まりの月は変えられません。');
         }
 
         $before = $approvalCompany->only(array_keys($validated));
@@ -165,6 +174,12 @@ class OrganizationController extends Controller
             return $this->back(null, 'この部門には決裁No を付けた申請があるため、会社とアルファベットは変えられません。');
         }
 
+        // 取り込んだ紙の決裁も同じ（紙の決裁No にアルファベットと年度の和暦が入っている。段階5 §5.11）
+        if (ApprovalNumber::departmentHasPaperNumbers($approvalDepartment)
+            && ((int) $base['company_id'] !== $approvalDepartment->company_id || $base['code'] !== $approvalDepartment->code)) {
+            return $this->back(null, 'この部門には取り込んだ紙の決裁があるため、会社とアルファベットは変えられません。');
+        }
+
         $oldHeadId = $approvalDepartment->head_user_id;
 
         // 部門長の確認を待っている申請があるうちは、部門長を空にできない（後任を選ぶ）
@@ -230,6 +245,13 @@ class OrganizationController extends Controller
 
         if ($used > 0) {
             return $this->back(null, "この部門は申請 {$used} 件に使われているため削除できません。");
+        }
+
+        // 取り込んだ紙の決裁の部門も削除できない（外部キー RESTRICT。段階5 §5.10。消すなら過去の決裁の取り込みで先に紙の決裁を消す）
+        $papers = ApprovalPaperRecord::where('department_id', $approvalDepartment->id)->count();
+
+        if ($papers > 0) {
+            return $this->back(null, "この部門は取り込んだ紙の決裁 {$papers} 件に使われているため削除できません。");
         }
 
         $types = ApprovalType::where('review_department_id', $approvalDepartment->id)->count();

@@ -5,9 +5,11 @@ namespace App\Support\Approval;
 use App\Enums\ApprovalDecision;
 use App\Enums\ApprovalStepKind;
 use App\Enums\ApprovalStepStatus;
+use App\Models\ApprovalPaperRecord;
 use App\Models\ApprovalRequest;
 use App\Models\ApprovalStep;
 use App\Models\User;
+use App\Support\JapanTime;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 
@@ -20,9 +22,14 @@ use Carbon\CarbonInterface;
  * ⚠ 審査の意見・コメントと条件（条可のコメント）は今の回の段階から（PDF と同じく今の回だけ。D4）。
  * ⚠ 控えは今の回（`round` が申請の回と同じ）のものだけを使う（詳細の RequestContent と同じ引き方。今の回の控えが欠けていれば空にする）。
  * ⚠ 段階5: 工事原価・粗利益金額・粗利率は明細表の「合計金額」の行（5W2H の種類は空）、契約予定日は追加の入力欄（使わない種類は空）。
+ * ⚠ 段階5: 取り込んだ紙の決裁の行は forPaper()（判断「不明」・状態は空・区分「紙」・申請者は台帳の文字・粗利率は金額と粗利益から。D23）。
+ *   行の先（url()）は紙の決裁の詳細。画面の状態の列には灰色の「紙」（badgeLabel()）
  */
 final class LedgerRow
 {
+    /** 画面の状態の列の紙の決裁の色（灰色） */
+    private const PAPER_STYLE = 'background-color:#f3f4f6;color:#4b5563;';
+
     /** @param list<string> $relatedNumbers */
     private function __construct(
         public readonly int $id,
@@ -46,7 +53,56 @@ final class LedgerRow
         public readonly ?int $profit = null,
         public readonly ?float $rate = null,
         public readonly ?CarbonInterface $contractDate = null,
+        public readonly bool $isPaper = false,
     ) {
+    }
+
+    /** 取り込んだ紙の決裁の行（部門は先に読んでおく。Ledger::rows()） */
+    public static function forPaper(ApprovalPaperRecord $record): self
+    {
+        return new self(
+            id: $record->id,
+            number: $record->number,
+            // 決裁日は日付（時刻なし）。日本の暦のその日の 0:00 にする（画面と Excel は日本の暦の日で出す）
+            decidedAt: CarbonImmutable::createFromFormat('!Y-m-d', $record->decided_on->format('Y-m-d'), JapanTime::ZONE),
+            decisionLabel: ApprovalPaperRecord::DECISION_LABEL,
+            subject: $record->subject,
+            typeName: null,
+            departmentName: $record->department?->name,
+            applicantName: $record->applicant_name,
+            amount: $record->amount,
+            schedule: null,
+            relatedNumbers: [],
+            submittedAt: null,
+            reviewResult: null,
+            reviewComment: null,
+            condition: null,
+            statusLabel: '',
+            statusStyle: self::PAPER_STYLE,
+            cost: $record->cost,
+            profit: $record->profit,
+            rate: $record->rate(),
+            contractDate: null,
+            isPaper: true,
+        );
+    }
+
+    /** 行の先（申請の詳細か、紙の決裁の詳細） */
+    public function url(): string
+    {
+        return $this->isPaper ? route('approvals.papers.show', $this->id) : route('approvals.requests.show', $this->id);
+    }
+
+    /** 区分（Excel の列。D23） */
+    public function kindLabel(): string
+    {
+        return LedgerFilter::KINDS[$this->isPaper ? 'paper' : 'system'];
+    }
+
+    /** 画面の状態の列の文字（紙の決裁は「紙」。Excel の状態の列は空） */
+    public function badgeLabel(): string
+    {
+        return $this->isPaper ? LedgerFilter::KINDS['paper'] : $this->statusLabel;
     }
 
     /** 関係（applicant・type・department・lastRevision・steps）は先に読んでおく（Ledger::rows()） */
@@ -82,7 +138,7 @@ final class LedgerRow
             cost: $total['cost'] ?? null,
             profit: $total['profit'] ?? null,
             rate: $total['rate'] ?? null,
-            contractDate: is_string($contract) ? CarbonImmutable::createFromFormat('!Y-m-d', $contract, 'UTC') ?: null : $contract,
+            contractDate: self::day($contract),
         );
     }
 
@@ -90,6 +146,23 @@ final class LedgerRow
     public function amountLabel(): ?string
     {
         return $this->amount === null ? null : number_format($this->amount) . '円';
+    }
+
+    /**
+     * 契約予定日（申請者本人は列の日付・ほかの人は控えの `Y-m-d` の文字）。**形の崩れた値は空にする**（在る日付だけ。`2026-02-30` も空）。
+     * ⚠ Carbon の createFromFormat は形が合わないと例外を投げる（`?: null` は効かない）。1 行の崩れで台帳と Excel の全体を 500 にしない
+     */
+    private static function day(mixed $value): ?CarbonInterface
+    {
+        if ($value instanceof CarbonInterface) {
+            return $value;
+        }
+        if (! is_string($value) || ! preg_match('/\A\d{4}-\d{2}-\d{2}\z/', $value)) {
+            return null;
+        }
+        $day = CarbonImmutable::createFromFormat('!Y-m-d', $value, 'UTC');
+
+        return $day !== false && $day->format('Y-m-d') === $value ? $day : null;
     }
 
     /** 判断した段階だけ（待ち・省略・取り消しは意見もコメントも無い） */

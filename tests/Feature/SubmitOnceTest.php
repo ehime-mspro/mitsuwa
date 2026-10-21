@@ -26,8 +26,8 @@ class SubmitOnceTest extends TestCase
         'admin/customers/import.blade.php' => '独自の csvImport() が二度押し止めを持つ（2026-09-27。共通の部品へのそろえは範囲外。設計書 §6）',
     ];
 
-    /** 鍵を描く画面の数の下限（2026-09-28 実測 7。空振りして緑になる事故を防ぐ） */
-    private const MIN_TOKEN_VIEWS = 7;
+    /** 鍵を描く画面の数の下限（2026-09-28 実測 7・決裁 5b の紙の決裁台帳の取り込みで 8。空振りして緑になる事故を防ぐ） */
+    private const MIN_TOKEN_VIEWS = 8;
 
     /** 部品を読み込んで、レイアウトと同じく scripts のスタックを最後に出したページ */
     private function renderedPage(string $includes = "@include('_partials._submit_once')"): string

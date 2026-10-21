@@ -10,13 +10,14 @@
 @endsection
 
 {{-- 決裁台帳（画面⑤。要件 10・段階4 設計書 §5.8・D19〜D22）。見られる申請だけ・下書きは出さない。
+     段階5: 見られる取り込んだ紙の決裁も同じ並びに出す（§5.13。状態の列に灰色の「紙」・行の先は紙の決裁の詳細＝LedgerRow::url()）。
      ⚠ 件名・申請部門・金額は、申請者本人以外には最後に提出した中身（LedgerRow）。保存した日時は JapanTime::format（Bug #61）。
      ⚠ プルダウンは変えた瞬間に送る（CLAUDE.md の即時フィルタ）。文字と日付は「絞り込む」で送る。
      ⚠ 絞り込みの欄はスマホの幅でも 2 列（1 列だと欄だけで 1 画面を使い、結果が見えない）。 --}}
 @section('content')
 <div>
     <h1 class="text-lg font-bold text-gray-900 mb-2">決裁台帳</h1>
-    <p class="text-[12px] text-gray-500 mb-4 max-w-[720px]">見られる申請を、決裁日の新しい順に並べます（決裁No の無い申請は発信日の順）。件名を押すと申請の詳細を開きます。</p>
+    <p class="text-[12px] text-gray-500 mb-4 max-w-[720px]">見られる申請と取り込んだ紙の決裁を、決裁日の新しい順に並べます（決裁No の無い申請は発信日の順）。件名を押すと詳細を開きます。</p>
 
     @if($filter->ignored !== [])
         <div class="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-800" role="status">
@@ -46,6 +47,15 @@
                 <option value="">すべて</option>
                 @foreach(\App\Enums\ApprovalDecision::cases() as $decision)
                     <option value="{{ $decision->value }}" {{ $filter->decision === $decision ? 'selected' : '' }}>{{ $decision->label() }}</option>
+                @endforeach
+                {{-- 紙の決裁だけが当たる（D22） --}}
+                <option value="{{ \App\Support\Approval\LedgerFilter::DECISION_UNKNOWN }}" {{ $filter->decisionUnknown ? 'selected' : '' }}>{{ \App\Models\ApprovalPaperRecord::DECISION_LABEL }}</option>
+            </select>
+        </label>
+        <label class="block text-[12px] text-gray-600">区分
+            <select name="kind" onchange="document.getElementById('filter-form').submit()" class="mt-1 h-8 px-2.5 border border-gray-300 rounded-md text-[12px] text-gray-700 bg-white focus:border-emerald-500 focus:outline-none cursor-pointer w-full">
+                @foreach(\App\Support\Approval\LedgerFilter::KINDS as $key => $label)
+                    <option value="{{ $key }}" {{ $filter->kind === $key ? 'selected' : '' }}>{{ $label }}</option>
                 @endforeach
             </select>
         </label>
@@ -79,7 +89,7 @@
             </div>
         </div>
         <label class="block text-[12px] text-gray-600 col-span-2 lg:col-span-1">キーワード
-            <input type="text" name="q" value="{{ $filter->keyword }}" maxlength="{{ \App\Support\Approval\LedgerFilter::KEYWORD_MAX }}" placeholder="件名・本文"
+            <input type="text" name="q" value="{{ $filter->keyword }}" maxlength="{{ \App\Support\Approval\LedgerFilter::KEYWORD_MAX }}" placeholder="件名・本文・備考"
                    class="mt-1 h-8 px-2.5 border border-gray-300 rounded-md text-[12px] text-gray-700 bg-white focus:border-emerald-500 focus:outline-none w-full">
         </label>
         <div class="flex items-end gap-3 col-span-2 lg:col-span-4">
@@ -108,9 +118,9 @@
             <ul class="md:hidden divide-y divide-gray-100">
                 @foreach($rows as $row)
                     <li>
-                        <a href="{{ route('approvals.requests.show', $row->id) }}" class="block px-4 py-3 hover:bg-gray-50">
+                        <a href="{{ $row->url() }}" class="block px-4 py-3 hover:bg-gray-50">
                             <div class="flex flex-wrap items-center gap-2 mb-1">
-                                <span class="inline-block px-2 py-0.5 rounded text-[11px] font-semibold" style="{{ $row->statusStyle }}">{{ $row->statusLabel }}</span>
+                                <span class="inline-block px-2 py-0.5 rounded text-[11px] font-semibold" style="{{ $row->statusStyle }}">{{ $row->badgeLabel() }}</span>
                                 @if($row->number)
                                     <span class="text-[12px] font-mono text-gray-600">{{ $row->number }}</span>
                                 @endif
@@ -146,13 +156,13 @@
                                 <td class="px-4 py-2.5 border-b border-gray-100 text-[13px] text-gray-700 whitespace-nowrap">{{ \App\Support\JapanTime::format($row->decidedAt, 'Y/m/d') ?? '—' }}</td>
                                 <td class="px-4 py-2.5 border-b border-gray-100 text-[13px] text-gray-700 whitespace-nowrap">{{ $row->decisionLabel ?? '—' }}</td>
                                 <td class="px-4 py-2.5 border-b border-gray-100 text-[13px]">
-                                    <a href="{{ route('approvals.requests.show', $row->id) }}" class="text-emerald-600 hover:underline break-words">{{ $row->subject ?? '（件名なし）' }}</a>
+                                    <a href="{{ $row->url() }}" class="text-emerald-600 hover:underline break-words">{{ $row->subject ?? '（件名なし）' }}</a>
                                 </td>
                                 <td class="px-4 py-2.5 border-b border-gray-100 text-[13px] text-gray-700">{{ $row->departmentName ?? '—' }}</td>
                                 <td class="px-4 py-2.5 border-b border-gray-100 text-[13px] text-gray-700 whitespace-nowrap">{{ $row->applicantName ?? '—' }}</td>
                                 <td class="px-4 py-2.5 border-b border-gray-100 text-[13px] text-gray-700 text-right tabular-nums whitespace-nowrap">{{ $row->amountLabel() ?? '—' }}</td>
                                 <td class="px-4 py-2.5 border-b border-gray-100 whitespace-nowrap">
-                                    <span class="inline-block px-2 py-0.5 rounded text-[11px] font-semibold" style="{{ $row->statusStyle }}">{{ $row->statusLabel }}</span>
+                                    <span class="inline-block px-2 py-0.5 rounded text-[11px] font-semibold" style="{{ $row->statusStyle }}">{{ $row->badgeLabel() }}</span>
                                 </td>
                             </tr>
                         @endforeach

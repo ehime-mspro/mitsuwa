@@ -41,6 +41,7 @@
             <x-sidebar-item :href="route('approvals.admin.organization.index')" label="部門の管理" :active="request()->routeIs('approvals.admin.organization.*')" />
             <x-sidebar-item :href="route('approvals.admin.types.index')" label="申請種類の管理" :active="request()->routeIs('approvals.admin.types.*')" />
             <x-sidebar-item :href="route('approvals.admin.holidays.index')" label="催促の設定" :active="request()->routeIs('approvals.admin.holidays.*')" />
+            <x-sidebar-item :href="route('approvals.admin.papers.index')" label="過去の決裁の取り込み" :active="request()->routeIs('approvals.admin.papers.*')" />
             @if($approvalsLaunched)
                 <x-sidebar-item :href="route('approvals.admin.requests.index')" label="進行中の申請の管理" :active="request()->routeIs('approvals.admin.requests.*')" />
             @endif
@@ -89,6 +90,7 @@
         <x-sidebar-item :href="route('approvals.admin.organization.index')" label="部門の管理" :active="request()->routeIs('approvals.admin.organization.*')" />
         <x-sidebar-item :href="route('approvals.admin.types.index')" label="申請種類の管理" :active="request()->routeIs('approvals.admin.types.*')" />
         <x-sidebar-item :href="route('approvals.admin.holidays.index')" label="催促の設定" :active="request()->routeIs('approvals.admin.holidays.*')" />
+        <x-sidebar-item :href="route('approvals.admin.papers.index')" label="過去の決裁の取り込み" :active="request()->routeIs('approvals.admin.papers.*')" />
         @if($approvalsLaunched)
             <x-sidebar-item :href="route('approvals.admin.requests.index')" label="進行中の申請の管理" :active="request()->routeIs('approvals.admin.requests.*')" />
         @endif

@@ -40,7 +40,7 @@ class LedgerRowTest extends TestCase
 
     private function row(User $viewer, ApprovalRequest $r): LedgerRow
     {
-        return Ledger::rows($viewer, [$r->id])->sole();
+        return Ledger::rows($viewer, [Ledger::requestKey($r->id)])->sole();
     }
 
     private function toPresident(array $w, array $attributes = [], ApprovalStepResult $review = ApprovalStepResult::Hold, ?string $reviewComment = '見積を 2 社取ってください'): ApprovalRequest
@@ -159,7 +159,7 @@ class LedgerRowTest extends TestCase
         $viewer  = $this->viewAllUser();
         $queries = 0;
         DB::listen(function () use (&$queries): void { $queries++; });
-        $rows = Ledger::rows($viewer, $ids);
+        $rows = Ledger::rows($viewer, array_map(Ledger::requestKey(...), $ids));
 
         $this->assertSame($ids, $rows->pluck('id')->all());
         $this->assertSame(['件名3', '件名2', '件名1'], $rows->pluck('subject')->all());

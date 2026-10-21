@@ -41,6 +41,12 @@ final class ApprovalFiscalYear
         return self::of(JapanTime::today(), $startMonth);
     }
 
+    /** その日の和暦の年（令和 8 年なら 8・平成 31 年なら 31。紙の台帳の日付「9.01.15」の先頭の数と比べる。段階5 の過去分の取り込み） */
+    public static function eraYearOf(CarbonInterface $japanDate): int
+    {
+        return $japanDate->format('Y-m-d') >= self::REIWA_START ? $japanDate->year - 2018 : $japanDate->year - 1988;
+    }
+
     /** 和暦の略号（R8・H30）。期の始まりの日が属する元号・年で決める（要件 6.1） */
     public static function eraLabel(int $fiscalYear, int $startMonth): string
     {

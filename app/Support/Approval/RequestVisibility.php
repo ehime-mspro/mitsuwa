@@ -5,6 +5,7 @@ namespace App\Support\Approval;
 use App\Enums\ApprovalStatus;
 use App\Enums\ApprovalStepKind;
 use App\Models\ApprovalDepartment;
+use App\Models\ApprovalPaperRecord;
 use App\Models\ApprovalRequest;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
@@ -19,6 +20,8 @@ use Illuminate\Support\Facades\DB;
  *
  * ⚠ 他人の下書きは誰も見られない（全件閲覧者・決裁の管理者も）。
  * ⚠ 部門長・審査担当者・社長は「今の」担当で判定する。担当を外れた人は、自分が判断した申請だけ見られる。
+ * ⚠ 取り込んだ紙の決裁（approval_paper_records）の見られる範囲も**ここ**に書く（`constrainPaper`。段階5 設計書 §5.12）。
+ *   台帳・Excel・紙の決裁の詳細・関連する決裁No の候補とリンクがすべてそれを使う。
  */
 final class RequestVisibility
 {
@@ -124,6 +127,39 @@ final class RequestVisibility
                 ->where('approval_histories.actor_user_id', $user->id)
                 ->whereIn('approval_histories.action', self::JUDGEMENT_ACTIONS);
         });
+    }
+
+    /** 紙の決裁を見られるか（1 件の判定も一覧と同じ規則から作る） */
+    public static function canViewPaper(User $user, ApprovalPaperRecord $record): bool
+    {
+        return ApprovalPaperRecord::query()->whereKey($record->getKey())->visibleTo($user)->exists();
+    }
+
+    /**
+     * 紙の決裁の見られる範囲（要件 7 章・段階5 設計書 §5.12）。`ApprovalPaperRecord::scopeVisibleTo()` だけが呼ぶ
+     * （スコープを通すと、呼ぶ側が先に書いた最上位の OR を Laravel が括弧に入れる。申請の規則の本体と同じ理由）。
+     *
+     * その部門に所属する人・その部門の今の部門長・全件閲覧者・決裁の管理者。紙の時代の申請者は利用者と結び付けないので
+     * 「自分の申請」は無い（自部門の過去分としてなら見られる）。社長は全件閲覧者に指定されていれば見られる（社長だけでは見られない）。
+     * ⚠ 審査担当者は、その部門に所属していなければ見られない（紙の決裁は審査部門に届いていない）
+     */
+    public static function constrainPaper(Builder $query, User $user): void
+    {
+        // 保存していない利用者（id が空）には何も見せない（申請と同じ。分からないときは見せない）
+        if ($user->getKey() === null) {
+            $query->whereRaw('1 = 0');
+
+            return;
+        }
+
+        // 全件閲覧者・決裁の管理者はすべて
+        if ($user->canViewAllApprovals() || $user->isApprovalAdmin()) {
+            return;
+        }
+
+        $query->where(fn (Builder $q) => $q
+            ->whereIn('approval_paper_records.department_id', DB::table('approval_department_user')->select('department_id')->where('user_id', $user->id))
+            ->orWhereIn('approval_paper_records.department_id', ApprovalDepartment::query()->select('id')->where('head_user_id', $user->id)));
     }
 
     private static function stepsOfThisRequest(QueryBuilder $s): QueryBuilder

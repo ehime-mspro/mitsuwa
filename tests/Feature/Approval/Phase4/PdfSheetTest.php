@@ -53,7 +53,7 @@ class PdfSheetTest extends TestCase
     /** PDF の中で使われている文字の大きさ（pt。小さい順）。mPDF は表を縮めるとき、その表の文字の大きさを小さくして描く */
     private static function fontSizes(string $pdf): array
     {
-        preg_match_all('#stream\r?\n(.*?)\r?\nendstream#s', $pdf, $streams);
+        preg_match_all('#stream\r?\n(.*?)\nendstream#s', $pdf, $streams);
         $sizes = [];
         foreach ($streams[1] as $stream) {
             $content = @gzuncompress($stream);   // 文字の流れだけ圧縮されている（フォントなどは別の形）

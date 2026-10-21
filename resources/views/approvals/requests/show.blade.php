@@ -69,9 +69,9 @@
             <dt class="text-gray-500">関連する決裁No</dt>
             <dd class="text-gray-900">
                 @forelse($content->relatedNumbers as $number)
-                    {{-- 見られる申請はリンクにする（紙の時代の番号・見られない申請は文字だけ。設計書 §5.6） --}}
+                    {{-- 見られる申請と取り込んだ紙の決裁はリンクにする（取り込んでいない紙の番号・見られない申請は文字だけ。設計書 §5.6・段階5 §5.15） --}}
                     @if(isset($relatedLinks[$number]))
-                        <a href="{{ route('approvals.requests.show', $relatedLinks[$number]) }}" class="font-mono text-emerald-600 hover:underline mr-2">{{ $number }}</a>
+                        <a href="{{ $relatedLinks[$number] }}" class="font-mono text-emerald-600 hover:underline mr-2">{{ $number }}</a>
                     @else
                         <span class="font-mono mr-2">{{ $number }}</span>
                     @endif

@@ -542,8 +542,25 @@ class RequestVisibilityTest extends TestCase
     /**
      * 規則の本体 `RequestVisibility::constrain()` を呼んでよいのは、モデルのローカルスコープだけ
      * （直接呼ぶと、呼ぶ側が先に書いた OR が括弧に入らず漏れる。Task 8 の再点検の軽微）。
+     * 取り込んだ紙の決裁の規則の本体 `constrainPaper()` も同じ（紙の決裁のモデルのスコープだけ。段階5 §5.12）
      */
     public function test_only_the_model_scope_calls_the_rule_body(): void
+    {
+        $callers = fn (string $call) => $this->filesCalling($call);
+
+        // 定義（RequestVisibility.php）と、スコープからの呼び出し（モデル）の 1 つずつだけ
+        $this->assertSame([
+            'app/Models/ApprovalRequest.php'             => 1,
+            'app/Support/Approval/RequestVisibility.php' => 1,
+        ], $callers('constrain('));
+        $this->assertSame([
+            'app/Models/ApprovalPaperRecord.php'         => 1,
+            'app/Support/Approval/RequestVisibility.php' => 1,
+        ], $callers('constrainPaper('));
+    }
+
+    /** @return array<string, int> その呼び出しの字を含むファイル（app・ビュー・ルート）=> 数 */
+    private function filesCalling(string $call): array
     {
         $callers = [];
         foreach (['app', 'resources/views', 'routes'] as $dir) {
@@ -552,7 +569,7 @@ class RequestVisibilityTest extends TestCase
                 if (! str_ends_with($file->getFilename(), '.php')) {
                     continue;
                 }
-                $count = substr_count((string) file_get_contents($file->getPathname()), 'constrain(');
+                $count = substr_count((string) file_get_contents($file->getPathname()), $call);
                 if ($count > 0) {
                     $callers[str_replace(base_path() . '/', '', $file->getPathname())] = $count;
                 }
@@ -560,10 +577,6 @@ class RequestVisibilityTest extends TestCase
         }
         ksort($callers);
 
-        // 定義（RequestVisibility.php）と、スコープからの呼び出し（ApprovalRequest.php）の 1 つずつだけ
-        $this->assertSame([
-            'app/Models/ApprovalRequest.php'             => 1,
-            'app/Support/Approval/RequestVisibility.php' => 1,
-        ], $callers);
+        return $callers;
     }
 }

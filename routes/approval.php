@@ -6,6 +6,9 @@ use App\Http\Controllers\Approval\HomeController;
 use App\Http\Controllers\Approval\LedgerController;
 use App\Http\Controllers\Approval\NoticeController;
 use App\Http\Controllers\Approval\OrganizationController;
+use App\Http\Controllers\Approval\PaperDetailController;
+use App\Http\Controllers\Approval\PaperImportController;
+use App\Http\Controllers\Approval\PaperRecordController;
 use App\Http\Controllers\Approval\RelatedNumberController;
 use App\Http\Controllers\Approval\RequestActionController;
 use App\Http\Controllers\Approval\RequestAttachmentController;
@@ -91,6 +94,20 @@ Route::middleware('approval.admin')->prefix('approvals/admin')->name('approvals.
     Route::post('/holidays', [HolidayController::class, 'store'])->name('holidays.store');
     Route::put('/holidays/{approvalHoliday}', [HolidayController::class, 'update'])->name('holidays.update');
     Route::delete('/holidays/{approvalHoliday}', [HolidayController::class, 'destroy'])->name('holidays.destroy');
+
+    // 過去の紙の決裁の取り込み（画面⑪。段階5 設計書 §5.9・§5.10）。使い始める前から使える（使い始める日までに取り込む。D11）
+    // ⚠ `/papers/import*`・`/papers/create` を `/papers/{approvalPaperRecord}` より前に置く（登録順がマッチの優先順）
+    Route::get('/papers', [PaperRecordController::class, 'index'])->name('papers.index');
+    Route::get('/papers/import', [PaperImportController::class, 'form'])->name('papers.import');
+    Route::post('/papers/import/preview', [PaperImportController::class, 'preview'])->name('papers.import.preview');
+    Route::post('/papers/import/execute', [PaperImportController::class, 'execute'])->name('papers.import.execute');
+    Route::post('/papers/imports/{approvalPaperImport}/undo', [PaperImportController::class, 'undo'])->name('papers.imports.undo');
+    // 1 件ずつの登録・直し・削除（§5.10）。⚠ パラメータ名は `{approvalPaperRecord}`
+    Route::get('/papers/create', [PaperRecordController::class, 'create'])->name('papers.create');
+    Route::post('/papers', [PaperRecordController::class, 'store'])->name('papers.store');
+    Route::get('/papers/{approvalPaperRecord}/edit', [PaperRecordController::class, 'edit'])->name('papers.edit');
+    Route::put('/papers/{approvalPaperRecord}', [PaperRecordController::class, 'update'])->name('papers.update');
+    Route::delete('/papers/{approvalPaperRecord}', [PaperRecordController::class, 'destroy'])->name('papers.destroy');
 });
 
 /*
@@ -145,6 +162,9 @@ Route::middleware('approval.launched')->prefix('approvals')->name('approvals.')-
     Route::get('/ledger', [LedgerController::class, 'index'])->name('ledger.index');
     // 決裁台帳の Excel（§5.9）。台帳と同じ条件で全件・出力のたびに記録（§5.10）
     Route::get('/ledger/excel', [LedgerController::class, 'excel'])->name('ledger.excel');
+
+    // 紙の決裁の詳細（段階5 設計書 §5.15・D21）。見られる人だけ（見られない記録は 404）。⚠ パラメータ名は `{approvalPaperRecord}`
+    Route::get('/papers/{approvalPaperRecord}', [PaperDetailController::class, 'show'])->name('papers.show');
 
     // 添付（段階2 設計書 §5.7・計画 §0.5）。追加と外すのは Ajax・JSON
     Route::post('/requests/{approvalRequest}/attachments', [RequestAttachmentController::class, 'store'])->name('requests.attachments.store');

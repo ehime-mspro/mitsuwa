@@ -110,7 +110,7 @@ class StampDisplayTest extends TestCase
     /** PDF の中の文字の置き方（`q 1 0 0 1 <ずらし> 0 cm … /F<n> <大きさ> Tf`）。@return list<array{0: float, 1: float}> [ずらし, 文字の大きさ] を描いた順に */
     private static function textShifts(string $pdf): array
     {
-        preg_match_all('#stream\r?\n(.*?)\r?\nendstream#s', $pdf, $streams);
+        preg_match_all('#stream\r?\n(.*?)\nendstream#s', $pdf, $streams);
         $shifts = [];
         foreach ($streams[1] as $stream) {
             $content = @gzuncompress($stream);   // 文字の流れだけ圧縮されている（フォントなどは別の形）

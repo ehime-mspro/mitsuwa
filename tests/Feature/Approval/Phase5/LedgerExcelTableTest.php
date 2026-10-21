@@ -85,7 +85,7 @@ class LedgerExcelTableTest extends TestCase
 
     private function rowFor(User $viewer, ApprovalRequest $request): LedgerRow
     {
-        return Ledger::rows($viewer, [$request->id])->sole();
+        return Ledger::rows($viewer, [Ledger::requestKey($request->id)])->sole();
     }
 
     public function test_the_four_columns_of_a_table_request(): void
@@ -110,7 +110,7 @@ class LedgerExcelTableTest extends TestCase
         $this->assertSame(DataType::TYPE_NUMERIC, $sheet->getCell('M2')->getDataType());
         $this->assertSame('2026-10-20 00:00:00', Date::excelToDateTimeObject($sheet->getCell('M2')->getValue())->format('Y-m-d H:i:s'));
         $this->assertSame('yyyy/mm/dd', $sheet->getStyle('M2')->getNumberFormat()->getFormatCode());
-        $this->assertSame('A1:S2', $sheet->getAutoFilter()->getRange());
+        $this->assertSame('A1:T2', $sheet->getAutoFilter()->getRange());
     }
 
     /** 5W2H の種類でも契約予定日を使う設定なら、Excel の契約予定日に入る（要件 10・D12。工事原価・粗利益金額・粗利率は空。点検の M-6） */
@@ -220,6 +220,39 @@ class LedgerExcelTableTest extends TestCase
         $this->assertSame(['1900-01-01', '2099-12-31'], [$kept->decidedFrom?->format('Y-m-d'), $kept->decidedTo?->format('Y-m-d')]);
     }
 
+    /**
+     * 控えの契約予定日の形が崩れていても、台帳と Excel は開ける（その欄だけ空にする）。今は控えが必ず Y-m-d で作られるので起きないが、
+     * Carbon の createFromFormat は形が合わないと例外を投げ、台帳と Excel の全体が 500 になっていた（5a の BACKLOG。5b で紙の日付を足す前に直す）
+     */
+    public function test_a_broken_contract_date_in_the_revision_leaves_only_that_cell_empty(): void
+    {
+        $w        = $this->approvalWorld();
+        $request  = $this->decidedContract($w, $this->housingContractType($w));
+        $viewer   = $this->viewAllUser();
+        $revision = $request->submittedRevision();
+        $put      = function (mixed $value) use ($revision): void {
+            $snapshot = $revision->fresh()->snapshot;
+            $snapshot['extras']['contract_date'] = $value;
+            DB::table('approval_revisions')->where('id', $revision->id)->update(['snapshot' => json_encode($snapshot)]);
+        };
+
+        foreach (['2026/10/20', 'abc', '2026-02-30', '2026-13-45', '2026-1-5', ' 2026-10-20', 20261020, ['2026-10-20'], ''] as $broken) {
+            $put($broken);
+            $label = json_encode($broken);
+
+            $this->assertNull($this->rowFor($viewer, $request)->contractDate, "{$label} を日付にした");
+            $this->actingAs($viewer)->get(route('approvals.ledger.index'))->assertOk()->assertSee('山田様請負新築工事契約の件');
+            $sheet = $this->sheet($viewer);
+            $this->assertNull($sheet->getCell('M2')->getValue(), "{$label} が Excel の契約予定日に入った");
+            $this->assertSame('山田様請負新築工事契約の件', $sheet->getCell('D2')->getValue(), "{$label} で行が欠けた");
+        }
+
+        // 正しい形に戻せば入る（空振りでない）
+        $put('2026-10-21');
+        $this->assertSame('2026-10-21', $this->rowFor($viewer, $request)->contractDate?->format('Y-m-d'));
+        $this->assertSame('2026-10-21', Date::excelToDateTimeObject($this->sheet($viewer)->getCell('M2')->getValue())->format('Y-m-d'));
+    }
+
     /** 状態の「すべて」は下書き以外すべて（知らないキーを「すべて」と扱わない形に直した。4b の Task 2 の軽微） */
     public function test_every_status_choice_still_works(): void
     {
@@ -227,11 +260,11 @@ class LedgerExcelTableTest extends TestCase
         $decided  = $this->decidedContract($w, $this->housingContractType($w));
         $progress = $this->submittedFor($w);
         $viewer   = $this->viewAllUser();
-        $ids      = fn (string $status) => Ledger::sortedIds($viewer, LedgerFilter::fromRequest(Request::create('/', 'GET', ['status' => $status])));
+        $keys     = fn (string $status) => Ledger::sortedKeys($viewer, LedgerFilter::fromRequest(Request::create('/', 'GET', ['status' => $status])));
 
-        $this->assertSame([$decided->id], $ids('numbered'));
-        $this->assertSame([$progress->id], $ids('progress'));
-        $this->assertSame([], $ids('withdrawn'));
-        $this->assertEqualsCanonicalizing([$decided->id, $progress->id], $ids('all'));
+        $this->assertSame([Ledger::requestKey($decided->id)], $keys('numbered'));
+        $this->assertSame([Ledger::requestKey($progress->id)], $keys('progress'));
+        $this->assertSame([], $keys('withdrawn'));
+        $this->assertEqualsCanonicalizing([Ledger::requestKey($decided->id), Ledger::requestKey($progress->id)], $keys('all'));
     }
 }

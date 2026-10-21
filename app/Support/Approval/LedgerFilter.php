@@ -8,7 +8,10 @@ use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 
 /**
- * 決裁台帳（⑤）の絞り込みの条件（要件 10・段階4 設計書 §5.8・D19〜D21）。画面・Excel・出力の記録が同じものを使う。
+ * 決裁台帳（⑤）の絞り込みの条件（要件 10・段階4 設計書 §5.8・D19〜D21・段階5 §5.13・D22）。画面・Excel・出力の記録が同じものを使う。
+ *
+ * 段階5 で取り込んだ紙の決裁も並ぶ。紙が当たるかは includesPapers()・申請が当たるかは includesRequests() の 1 か所で決める
+ * （判断の「不明」は紙だけ・申請の種類や「進行中」「取り下げ」や可・条可・否を選ぶと紙は出ない・区分で片方だけにできる）。
  *
  * ⚠ 台帳は GET のフォーム。読み取れない値（形の違う日付・長すぎる文字・配列など）は**断らずに外し**、外した項目の名前を
  *   `ignored` に残して画面で知らせる。入力の検査（validate()）で前の画面へ戻すと、GET の戻り先がこの画面そのものになり、
@@ -27,6 +30,21 @@ final class LedgerFilter
 
     public const DEFAULT_STATUS = 'numbered';
 
+    /** 紙の決裁も出る状態（決裁No の付いたもの・すべて。§5.13） */
+    private const STATUSES_WITH_PAPERS = ['numbered', 'all'];
+
+    /** 判断の「不明」（紙の決裁だけが当たる。D22）。URL の `?decision=unknown` */
+    public const DECISION_UNKNOWN = 'unknown';
+
+    /** 区分（キーは URL の `?kind=`。既定はすべて。D22） */
+    public const KINDS = [
+        'all'    => 'すべて',
+        'system' => 'システム',
+        'paper'  => '紙',
+    ];
+
+    public const DEFAULT_KIND = 'all';
+
     /** キーワード・申請者の文字数の上限（超えたら外して知らせる。画面の maxlength と同じ） */
     public const KEYWORD_MAX = 100;
 
@@ -43,6 +61,7 @@ final class LedgerFilter
         'status'     => '状態',
         'decision'   => '判断',
         'q'          => 'キーワード',
+        'kind'       => '区分',
     ];
 
     /** @param list<string> $ignored 読み取れずに外した項目の名前 */
@@ -57,6 +76,8 @@ final class LedgerFilter
         public readonly ?ApprovalDecision $decision,
         public readonly ?string $keyword,
         public readonly array $ignored,
+        public readonly bool $decisionUnknown = false,
+        public readonly string $kind = self::DEFAULT_KIND,
     ) {
     }
 
@@ -84,16 +105,21 @@ final class LedgerFilter
         $from       = $read('from', self::calendarDay(...));
         $to         = $read('to', self::calendarDay(...));
         $status     = $read('status', fn (string $v) => array_key_exists($v, self::STATUSES) ? $v : null);
-        $decision   = $read('decision', fn (string $v) => ApprovalDecision::tryFrom($v));
+        $decision   = $read('decision', fn (string $v) => $v === self::DECISION_UNKNOWN ? $v : ApprovalDecision::tryFrom($v));
         $keyword    = $read('q', fn (string $v) => mb_strlen($v) <= self::KEYWORD_MAX ? $v : null);
+        $kind       = $read('kind', fn (string $v) => array_key_exists($v, self::KINDS) ? $v : null);
 
-        return new self($year, $department, $type, $applicant, $from, $to, $status ?? self::DEFAULT_STATUS, $decision, $keyword, $ignored);
+        return new self(
+            $year, $department, $type, $applicant, $from, $to, $status ?? self::DEFAULT_STATUS,
+            $decision instanceof ApprovalDecision ? $decision : null, $keyword, $ignored,
+            $decision === self::DECISION_UNKNOWN, $kind ?? self::DEFAULT_KIND,
+        );
     }
 
     /** 既定のまま（何も絞り込んでいない。状態は決裁No の付いたもの） */
     public static function defaults(): self
     {
-        return new self(null, null, null, null, null, null, self::DEFAULT_STATUS, null, null, []);
+        return new self(null, null, null, null, null, null, self::DEFAULT_STATUS, null, null, [], false, self::DEFAULT_KIND);
     }
 
     /**
@@ -120,7 +146,28 @@ final class LedgerFilter
         $department = $keep($this->departmentId, $departmentIds, 'department');
         $type       = $keep($this->typeId, $typeIds, 'type');
 
-        return new self($year, $department, $type, $this->applicant, $this->decidedFrom, $this->decidedTo, $this->status, $this->decision, $this->keyword, $ignored);
+        return new self($year, $department, $type, $this->applicant, $this->decidedFrom, $this->decidedTo, $this->status, $this->decision, $this->keyword, $ignored, $this->decisionUnknown, $this->kind);
+    }
+
+    /** システムの申請が当たりうるか（区分が紙・判断が「不明」なら当たらない） */
+    public function includesRequests(): bool
+    {
+        return $this->kind !== 'paper' && ! $this->decisionUnknown;
+    }
+
+    /**
+     * 紙の決裁が当たりうるか（§5.13）。区分がシステム・申請の種類を選んだ・判断に可・条可・否を選んだ・状態が「進行中」「取り下げ」なら当たらない
+     */
+    public function includesPapers(): bool
+    {
+        return $this->kind !== 'system' && $this->typeId === null && $this->decision === null
+            && in_array($this->status, self::STATUSES_WITH_PAPERS, true);
+    }
+
+    /** 判断の選択の値（画面の選択と URL。「不明」も） */
+    public function decisionKey(): ?string
+    {
+        return $this->decisionUnknown ? self::DECISION_UNKNOWN : $this->decision?->value;
     }
 
     /**
@@ -138,8 +185,9 @@ final class LedgerFilter
             'from'       => $this->decidedFrom?->format('Y-m-d'),
             'to'         => $this->decidedTo?->format('Y-m-d'),
             'status'     => $this->status === self::DEFAULT_STATUS ? null : $this->status,
-            'decision'   => $this->decision?->value,
+            'decision'   => $this->decisionKey(),
             'q'          => $this->keyword,
+            'kind'       => $this->kind === self::DEFAULT_KIND ? null : $this->kind,
         ], fn (mixed $value) => $value !== null);
     }
 
@@ -147,7 +195,7 @@ final class LedgerFilter
      * 出力の記録に控える形（D25・§9 の 9）。項目はいつも同じで、使っていない条件は null（あとで読むときに迷わない）。
      * ⚠ MySQL の JSON はキーを並べ替えて返す（キーの長さの順。RequestSnapshot の注意）ので、読むときに並びに頼らない
      *
-     * @return array{year: ?int, department_id: ?int, type_id: ?int, applicant: ?string, decided_from: ?string, decided_to: ?string, status: string, decision: ?string, keyword: ?string}
+     * @return array{year: ?int, department_id: ?int, type_id: ?int, applicant: ?string, decided_from: ?string, decided_to: ?string, status: string, decision: ?string, keyword: ?string, kind: string}
      */
     public function toLog(): array
     {
@@ -159,8 +207,9 @@ final class LedgerFilter
             'decided_from'  => $this->decidedFrom?->format('Y-m-d'),
             'decided_to'    => $this->decidedTo?->format('Y-m-d'),
             'status'        => $this->status,
-            'decision'      => $this->decision?->value,
+            'decision'      => $this->decisionKey(),
             'keyword'       => $this->keyword,
+            'kind'          => $this->kind,
         ];
     }
 

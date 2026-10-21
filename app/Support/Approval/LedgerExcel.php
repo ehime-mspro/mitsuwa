@@ -24,7 +24,7 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
  * - 中身は台帳と同じ出し分け（LedgerRow。申請者本人以外には最後に提出した中身。D19）
  * ⚠ 列の並び・見出し・幅・種類（文字・折り返す文字・日付・金額・率）・値の取り方は columns() の 1 つの定義から作る（列の記号を手で書かない。
  *   段階4 の BACKLOG の注意「段階5 で列を足すときは 1 つの定義から作る形に直す」）
- * ⚠ 行の関係は CHUNK 件ずつ読む（全件の申請を一度に読まない）。件数の上限は config('approval.ledger.excel_limit')
+ * ⚠ 行の関係は CHUNK 件ずつ読む（全件の申請を一度に読まない）。件数の上限は config('approval.ledger.excel_limit')（申請と紙の決裁を合わせて数える）
  */
 final class LedgerExcel
 {
@@ -45,7 +45,7 @@ final class LedgerExcel
     private const SHEET_TITLE = '決裁台帳';
 
     /**
-     * 列（要件 10 の並び。D23 で審査部門の意見を 2 列に分けた。段階5 で工事原価・粗利益金額・粗利率・契約予定日を足した）。
+     * 列（要件 10 の並び。D23 で審査部門の意見を 2 列に分けた。段階5 で工事原価・粗利益金額・粗利率・契約予定日と、状態の前に区分を足した＝20 列）。
      * 見出し・幅・種類・行から値を取る関数。並びを変えるときもここだけを変える
      *
      * @return list<array{0: string, 1: int, 2: string, 3: \Closure(LedgerRow): mixed}>
@@ -72,6 +72,8 @@ final class LedgerExcel
             ['審査の意見', 10, self::TEXT, fn (LedgerRow $r) => $r->reviewResult],
             ['審査のコメント', 40, self::WRAPPED, fn (LedgerRow $r) => $r->reviewComment],
             ['条件', 40, self::WRAPPED, fn (LedgerRow $r) => $r->condition],
+            // 区分（システム／紙）。紙の決裁は状態を空にする（段階5 D23）
+            ['区分', 8, self::TEXT, fn (LedgerRow $r) => $r->kindLabel()],
             ['状態', 16, self::TEXT, fn (LedgerRow $r) => $r->statusLabel],
         ];
     }
@@ -79,9 +81,9 @@ final class LedgerExcel
     /**
      * xlsx の中身（バイト列）
      *
-     * @param list<int> $ids 台帳の並び（Ledger::sortedIds）
+     * @param list<string> $keys 台帳の並び（Ledger::sortedKeys。申請と紙の決裁）
      */
-    public static function build(User $viewer, array $ids): string
+    public static function build(User $viewer, array $keys): string
     {
         $book    = new Spreadsheet();
         $sheet   = $book->getActiveSheet();
@@ -91,7 +93,7 @@ final class LedgerExcel
         self::heading($sheet, $columns);
 
         $line = 2;
-        foreach (array_chunk($ids, self::CHUNK) as $chunk) {
+        foreach (array_chunk($keys, self::CHUNK) as $chunk) {
             foreach (Ledger::rows($viewer, $chunk) as $row) {
                 self::write($sheet, $line++, $row, $columns);
             }
@@ -140,7 +142,7 @@ final class LedgerExcel
         $sheet->getStyle($heading)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('F3F4F6');
     }
 
-    /** 列の記号（1 → A・19 → S） */
+    /** 列の記号（1 → A・20 → T） */
     private static function letter(int $index): string
     {
         return Coordinate::stringFromColumnIndex($index);

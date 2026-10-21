@@ -112,6 +112,7 @@
             <a href="{{ route('approvals.admin.organization.index') }}" class="text-emerald-600 hover:underline">部門の管理</a>
             <a href="{{ route('approvals.admin.types.index') }}" class="text-emerald-600 hover:underline">申請種類の管理</a>
             <a href="{{ route('approvals.admin.holidays.index') }}" class="text-emerald-600 hover:underline">催促の設定</a>
+            <a href="{{ route('approvals.admin.papers.index') }}" class="text-emerald-600 hover:underline">過去の決裁の取り込み</a>
         @endif
     </div>
 </div>

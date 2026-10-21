@@ -104,14 +104,15 @@ class LedgerExcelTest extends TestCase
         $response = $this->download($this->viewAllUser())->assertOk();
         $sheet    = $this->sheet($response);
 
-        // 段階5 で工事原価・粗利益金額・粗利率・契約予定日を足した（要件 10 の並び。5W2H の種類では空。Phase5/LedgerExcelTableTest が中身を見る）
+        // 段階5 で工事原価・粗利益金額・粗利率・契約予定日と、状態の前に区分を足した（要件 10 の並び。5W2H の種類では空。
+        // Phase5/LedgerExcelTableTest・PaperLedgerTest が中身を見る）
         $this->assertSame(
-            ['決裁No', '決裁日', '判断', '件名', '申請の種類', '申請部門', '申請者', '金額（税抜）', '工事原価', '粗利益金額', '粗利率', '実施時期', '契約予定日', '関連する決裁No', '提出日', '審査の意見', '審査のコメント', '条件', '状態'],
-            $sheet->rangeToArray('A1:S1')[0]
+            ['決裁No', '決裁日', '判断', '件名', '申請の種類', '申請部門', '申請者', '金額（税抜）', '工事原価', '粗利益金額', '粗利率', '実施時期', '契約予定日', '関連する決裁No', '提出日', '審査の意見', '審査のコメント', '条件', '区分', '状態'],
+            $sheet->rangeToArray('A1:T1')[0]
         );
         $this->assertSame(
-            ['R8-J-001', '条可', '社用車の購入', $w['type']->name, '住宅事業部', '申請 花子', '2026年10月', 'R7-J-003・R7-J-010', '保留', '見積を 2 社取ってください', '納期を確かめること', '条件確認待ち'],
-            array_map(fn (string $c) => $sheet->getCell("{$c}2")->getValue(), ['A', 'C', 'D', 'E', 'F', 'G', 'L', 'N', 'P', 'Q', 'R', 'S'])
+            ['R8-J-001', '条可', '社用車の購入', $w['type']->name, '住宅事業部', '申請 花子', '2026年10月', 'R7-J-003・R7-J-010', '保留', '見積を 2 社取ってください', '納期を確かめること', 'システム', '条件確認待ち'],
+            array_map(fn (string $c) => $sheet->getCell("{$c}2")->getValue(), ['A', 'C', 'D', 'E', 'F', 'G', 'L', 'N', 'P', 'Q', 'R', 'S', 'T'])
         );
         $this->assertSame([null, null, null, null], array_map(fn (string $c) => $sheet->getCell("{$c}2")->getValue(), ['I', 'J', 'K', 'M']), '5W2H の種類では明細表と契約予定日の列は空');
         $this->assertSame(2, $sheet->getHighestRow(), '1 件なので見出しと 1 行');
@@ -169,7 +170,7 @@ class LedgerExcelTest extends TestCase
         $sheet = $this->sheet($this->download($this->viewAllUser())->assertOk());
 
         $this->assertSame('A2', $sheet->getFreezePane());
-        $this->assertSame('A1:S3', $sheet->getAutoFilter()->getRange());
+        $this->assertSame('A1:T3', $sheet->getAutoFilter()->getRange());
         $this->assertTrue($sheet->getStyle('A1')->getFont()->getBold());
         $this->assertSame('決裁台帳', $sheet->getTitle());
     }
@@ -254,7 +255,7 @@ class LedgerExcelTest extends TestCase
             [$log->request_id, $log->attachment_id, (int) $log->user_id, $log->kind, $log->fresh()->request_count, $log->ip_address]
         );
         // MySQL の JSON はキーを並べ替えて返す（RequestSnapshot の注意）。並びに頼らずに比べる
-        $expected = ['year' => 2026, 'department_id' => null, 'type_id' => null, 'applicant' => null, 'decided_from' => null, 'decided_to' => null, 'status' => 'numbered', 'decision' => 'conditional', 'keyword' => '社用車'];
+        $expected = ['year' => 2026, 'department_id' => null, 'type_id' => null, 'applicant' => null, 'decided_from' => null, 'decided_to' => null, 'status' => 'numbered', 'decision' => 'conditional', 'keyword' => '社用車', 'kind' => 'all'];
         $kept     = $log->fresh()->filters;
         ksort($expected);
         ksort($kept);
