@@ -144,8 +144,12 @@
                 {{-- 条件分岐付き選択 --}}
                 @php
                     $existObj = is_array($existing) ? $existing : [];
-                    $selectedValue = $existObj['value'] ?? '';
-                    $subAnswers = $existObj['sub'] ?? [];
+                    // 保存された回答は送られた値のまま（手で組んだ送信では配列もありうる）。文字・数でなければ空として描く
+                    // （画面に出す書き方は配列を受け取れず、その買主のアンケートの画面が誰が開いても 500 になっていた）
+                    $selectedValue = is_scalar($existObj['value'] ?? null) ? (string) $existObj['value'] : '';
+                    $subAnswers = is_array($existObj['sub'] ?? null)
+                        ? array_map(fn ($v) => is_scalar($v) ? (string) $v : '', $existObj['sub'])
+                        : [];
                 @endphp
                 <div x-data="condSelect{{ $qId }}()">
                     <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px;">
@@ -157,7 +161,7 @@
                             <label style="display: flex; align-items: center; gap: 5px; font-size: 13px; cursor: pointer; padding: 5px 10px; border: 1px solid #d1d5db; border-radius: 6px; background: #fff;">
                                 <input type="radio" name="survey[{{ $qId }}][value]" value="{{ $optVal }}"
                                        style="accent-color: #059669;"
-                                       x-on:change="selectedOption = '{{ $optVal }}'"
+                                       x-on:change="selectedOption = {{ \Illuminate\Support\Js::from((string) $optVal) }}"
                                        {{ $selectedValue === $optVal ? 'checked' : '' }}>
                                 ①{{ $optVal }}
                             </label>
@@ -171,7 +175,7 @@
                             $subFields = is_array($opt) ? ($opt['sub_fields'] ?? []) : [];
                         @endphp
                         @if(count($subFields) > 0)
-                            <div x-show="selectedOption === '{{ $optVal }}'" style="border: 2px dashed #d1d5db; border-radius: 8px; padding: 16px; background: #fff;">
+                            <div x-show="selectedOption === {{ \Illuminate\Support\Js::from((string) $optVal) }}" style="border: 2px dashed #d1d5db; border-radius: 8px; padding: 16px; background: #fff;">
                                 <div style="font-size: 12px; font-weight: 600; color: #6b7280; margin-bottom: 10px;">▼ {{ $optVal }} — 希望エリア</div>
                                 <div class="grid-stack-sm" style="display: grid; grid-template-columns: repeat({{ count($subFields) }}, 1fr); gap: 10px;">
                                     @foreach($subFields as $sf)
@@ -191,7 +195,7 @@
                 <script>
                 function condSelect{{ $qId }}() {
                     return {
-                        selectedOption: '{{ $selectedValue }}'
+                        selectedOption: {{ \Illuminate\Support\Js::from($selectedValue) }}
                     };
                 }
                 </script>
