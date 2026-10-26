@@ -886,10 +886,10 @@ class ProcurementListWithProjectsTest extends TestCase
     }
 
     /**
-     * 2 ページ以上のとき、インライン番号付きページネーションが描画される。
+     * 2 ページ以上のとき、番号付きのページ送りが描画される。
      *
-     * ⚠ このプロジェクトは `->links()` を使わずインライン番号付きマークアップで描く規約
-     *   （RULES.md Bug #24）。Task 4 で `$procurements` → `$rows` へ置換したので、
+     * ⚠ このプロジェクトは `->links()` を使わず、ページ送りを部品 `<x-pager>` で描く規約
+     *   （RULES.md Bug #24・#117）。Task 4 で `$procurements` → `$rows` へ置換したので、
      *   置換漏れでブロックごと消えていないことを HTML で固定する。
      */
     public function test_numbered_pagination_links_are_rendered(): void

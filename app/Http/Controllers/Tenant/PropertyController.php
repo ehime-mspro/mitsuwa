@@ -130,8 +130,8 @@ class PropertyController extends Controller
     /**
      * 並べ替え済みのコレクションを手でページングする。
      *
-     * ⚠ ->links() には戻さない。既存ビューはインライン番号付きページネーション
-     *   （hasPages / getUrlRange / nextPageUrl）を使っている（Bug #24 以来の規約）。
+     * ⚠ ->links() には戻さない。ページ送りは部品 <x-pager> で描く
+     *   （Bug #117。PagerUsageScanTest が全ビューを見る）。
      *   LengthAwarePaginator を自分で組めばそのまま動く。
      *
      * ⚠ **withQueryString() は使わない。** null 値のキーは http_build_query が
