@@ -2378,6 +2378,7 @@ git checkout 13.x && git merge --ff-only date-picker-month-ago
 ### 5b（過去の決裁の取り込み）
 
 実装計画: @docs/superpowers/plans/2026-10-08-approval-phase5b.md（Task 0〜12）。worktree `.claude/worktrees/approval-phase3`（5a と同じ）。
+運用手順書（本物の台帳は、使い始める直前に利用者が ⑪ で取り込む。2026-10-26 の利用者の決定）: @docs/運用_過去の決裁の取り込み.md
 
 - 表: `approval_paper_records`（紙の決裁。`number` は一意・(部門, 年度, ＮＯ) も一意）・`approval_paper_imports`（取り込み 1 回分。取り消しても残す）。本番の SQL は `database/sql/2026-10-08-approval-phase5b.sql`（2 文）。本番反映は **DB が先・`./deploy.sh` が後**
 - 読み取りは `PaperLedgerFile`（読むだけ）→ `PaperImportAnalysis`（確認と確定が同じものを作る）→ `PaperImporter`（ロック → システムの番号 → 保存）。日付は `PaperDate`（年は月で決める・先頭の年は年度かその日の和暦と合うこと）。**本物の台帳はリポジトリに入れない**（テストは `BuildsPaperLedgers`）
