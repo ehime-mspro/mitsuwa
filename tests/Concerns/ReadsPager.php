@@ -4,7 +4,8 @@ namespace Tests\Concerns;
 
 /**
  * 描いたページ送り（<x-pager>。nav aria-label="ページ送り"）を読む。
- * 決裁の AdminRequestsTest::pager() と同じ読み方（a と span を順に読み、aria-current と href を拾う）。
+ * a と span を順に読み、aria-current と href を拾う。決裁の AdminRequestsTest も使う
+ * （2026-10-26 まで私有の同じ読み方を持っていた。こちらはページ送りがちょうど 1 つあることも確かめる）。
  *
  * - items: ボタンの文字の並び（「<」「…」「>」を含む）
  * - current: aria-current="page" の付いたボタンの文字（今のページ。行の無いページを開いたときは空）

@@ -18,6 +18,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Tests\Concerns\BuildsApprovalFixtures;
 use Tests\Concerns\ParsesForms;
+use Tests\Concerns\ReadsPager;
 use Tests\TestCase;
 
 /**
@@ -28,6 +29,7 @@ class AdminRequestsTest extends TestCase
     use RefreshDatabase;
     use BuildsApprovalFixtures;
     use ParsesForms;
+    use ReadsPager;
 
     private Workflow $workflow;
 
@@ -237,32 +239,6 @@ class AdminRequestsTest extends TestCase
         foreach (array_chunk($rows, 100) as $chunk) {
             DB::table('approval_requests')->insert($chunk);
         }
-    }
-
-    /**
-     * ページ送りの並び（「<」「1」「…」…「>」）・今のページ（aria-current）・番号ごとのリンク先
-     *
-     * @return array{items: list<string>, current: list<string>, links: array<string, string>}
-     */
-    private function pager(string $html): array
-    {
-        $at = strpos($html, 'aria-label="ページ送り"');
-        $this->assertNotFalse($at, 'ページ送りが無い');
-        $nav = substr($html, $at, strpos($html, '</nav>', $at) - $at);
-        preg_match_all('#<(a|span)\b([^>]*)>([^<]*)</\1>#u', $nav, $found, PREG_SET_ORDER);
-        $pager = ['items' => [], 'current' => [], 'links' => []];
-        foreach ($found as [, $tag, $attributes, $text]) {
-            $label            = html_entity_decode(trim($text));
-            $pager['items'][] = $label;
-            if (str_contains($attributes, 'aria-current="page"')) {
-                $pager['current'][] = $label;
-            }
-            if ($tag === 'a' && preg_match('#href="([^"]*)"#', $attributes, $href)) {
-                $pager['links'][$label] = html_entity_decode($href[1]);
-            }
-        }
-
-        return $pager;
     }
 
     /** 「決裁済み・否決」のページ番号は、先頭・最後・今のページの前後 1 つだけ（間は「…」）。31 ページでもボタンは 9 個まで＝スマホの幅に収まる（Task 9 の B1・利用者の決定 C5） */
