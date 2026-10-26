@@ -29,7 +29,7 @@ function inquiryEditForm() {
         historyCount: {{ $historyCount }},
 
         // 顧客Ajax検索
-        customerId: '{{ old('customer_id', $inquiry->customer_id ?? '') }}',
+        customerId: {{ \Illuminate\Support\Js::from((string) old('customer_id', $inquiry->customer_id ?? '')) }},
         customerQuery: '',
         customerDisplay: @json($presetCustomer ? ($presetCustomer->code . ' ' . $presetCustomer->name . '（' . $presetCustomer->customer_type->label() . '）') : ''),
         customerResults: [],

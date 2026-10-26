@@ -242,8 +242,8 @@ function investmentEditForm() {
     const oldDetails = @json(array_values(old('details', [])));
 
     return {
-        propertyId: '{{ old('property_id', $investment->property_id) }}',
-        unitId: '{{ old('unit_id', $investment->unit_id) }}',
+        propertyId: {{ \Illuminate\Support\Js::from((string) old('property_id', $investment->property_id)) }},
+        unitId: {{ \Illuminate\Support\Js::from((string) old('unit_id', $investment->unit_id)) }},
         filteredUnits: [],
         details: oldDetails.length > 0 ? oldDetails
             : (existingDetails.length > 0 ? existingDetails : [{ cost_item: 'interior', contractor_name: '', amount: '', executed_at: '', notes: '' }]),

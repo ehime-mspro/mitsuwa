@@ -15,12 +15,12 @@
 <script>
 function inquiryCreateForm() {
     return {
-        propertyId: '{{ old('property_id', $presetPropertyId ?? '') }}',
+        propertyId: {{ \Illuminate\Support\Js::from((string) old('property_id', $presetPropertyId ?? '')) }},
         allUnits: @json($allUnits),
         checkedUnits: @json(old('unit_ids', [])).map(Number),
 
         // 顧客Ajax検索
-        customerId: '{{ old('customer_id', '') }}',
+        customerId: {{ \Illuminate\Support\Js::from((string) old('customer_id', '')) }},
         customerQuery: '',
         customerDisplay: @json($presetCustomer ? ($presetCustomer->code . ' ' . $presetCustomer->name . '（' . $presetCustomer->customer_type->label() . '）') : ''),
         customerResults: [],

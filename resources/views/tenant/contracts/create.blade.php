@@ -447,9 +447,9 @@
 <script>
 function contractCreateForm() {
     return {
-        propertyId: '{{ old('property_id', request('property_id', '')) }}',
+        propertyId: {{ \Illuminate\Support\Js::from((string) old('property_id', request('property_id', ''))) }},
         unitId: '',
-        unitIdOld: '{{ old('unit_id', '') }}',
+        unitIdOld: {{ \Illuminate\Support\Js::from((string) old('unit_id', '')) }},
         units: [],
         loadingUnits: false,
         rent: @json(old('rent', '')),
@@ -459,17 +459,17 @@ function contractCreateForm() {
         deposit: @json(old('deposit', '')),
 
         // 初月家賃
-        rentStartDate: '{{ old('rent_start_date', '') }}',
-        initialMonthType: '{{ old('initial_month_type', 'full') }}',
+        rentStartDate: {{ \Illuminate\Support\Js::from((string) old('rent_start_date', '')) }},
+        initialMonthType: {{ \Illuminate\Support\Js::from((string) old('initial_month_type', 'full')) }},
         manualInitialAmount: @json(old('initial_month_amount', '')),
 
-        inquiryId: '{{ old('inquiry_id', ($presetInquiry?->id ?? request('inquiry_id', ''))) }}',
+        inquiryId: {{ \Illuminate\Support\Js::from((string) old('inquiry_id', ($presetInquiry?->id ?? request('inquiry_id', '')))) }},
         inquiries: [],
         loadingInquiries: false,
         isPresetInquiry: {{ $presetInquiry ? 'true' : 'false' }},
 
         // 顧客Ajax検索
-        customerId: '{{ old('customer_id', '') }}',
+        customerId: {{ \Illuminate\Support\Js::from((string) old('customer_id', '')) }},
         customerQuery: '',
         customerDisplay: @json($presetCustomer ? ($presetCustomer->code . ' ' . $presetCustomer->name . '（' . $presetCustomer->customer_type->label() . '）') : ''),
         customerResults: [],

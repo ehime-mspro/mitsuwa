@@ -14,7 +14,7 @@
 @endsection
 
 @section('content')
-<div x-data="{ ownerType: '{{ old('owner_type', $property->owner_type?->value ?? 'self_owned') }}' }">
+<div x-data="{ ownerType: {{ \Illuminate\Support\Js::from((string) old('owner_type', $property->owner_type?->value ?? 'self_owned')) }} }">
 
     {{-- 戻るリンク --}}
     <a href="{{ route('tenant.properties.show', $property) }}"

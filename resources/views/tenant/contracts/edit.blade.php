@@ -408,7 +408,7 @@ function contractEditForm() {
         pestControlFee: @json(old('pest_control_fee', $contract->pest_control_fee)),
 
         // 顧客Ajax検索
-        customerId: '{{ old('customer_id', $contract->customer_id) }}',
+        customerId: {{ \Illuminate\Support\Js::from((string) old('customer_id', $contract->customer_id)) }},
         customerQuery: '',
         customerDisplay: @json($displayCustomer ? ($displayCustomer->code . " " . $displayCustomer->name . "（" . $displayCustomer->customer_type->label() . "）") : ""),
         customerResults: [],
@@ -417,8 +417,8 @@ function contractEditForm() {
         customerSearchTimer: null,
 
         // 初月家賃
-        rentStartDate: '{{ old('rent_start_date', $contract->rent_start_date?->format('Y-m-d') ?? '') }}',
-        initialMonthType: '{{ old('initial_month_type', $contract->initial_month_type?->value ?? 'full') }}',
+        rentStartDate: {{ \Illuminate\Support\Js::from((string) old('rent_start_date', $contract->rent_start_date?->format('Y-m-d') ?? '')) }},
+        initialMonthType: {{ \Illuminate\Support\Js::from((string) old('initial_month_type', $contract->initial_month_type?->value ?? 'full')) }},
         manualInitialAmount: @json(old('initial_month_amount', $contract->initial_month_amount ?? 0)),
 
         // --- 顧客Ajax検索メソッド ---

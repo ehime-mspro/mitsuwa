@@ -257,8 +257,8 @@ function contractTerminateForm() {
         monthlyTotal: {{ $monthlyTotal }},
 
         // 最終月家賃
-        contractEndDate: '{{ old('contract_end_date', '') }}',
-        finalMonthType: '{{ old('final_month_type', 'full') }}',
+        contractEndDate: {{ \Illuminate\Support\Js::from((string) old('contract_end_date', '')) }},
+        finalMonthType: {{ \Illuminate\Support\Js::from((string) old('final_month_type', 'full')) }},
         manualFinalAmount: @json(old('final_month_amount', '')),
 
         // --- 最終月家賃計算メソッド ---

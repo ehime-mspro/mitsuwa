@@ -13,7 +13,7 @@
 
 @section('content')
 <div x-data="{
-    propertyId: '{{ old('property_id', '') }}',
+    propertyId: {{ \Illuminate\Support\Js::from((string) old('property_id', '')) }},
     allUnits: {{ \Illuminate\Support\Js::from($allUnits) }},
     get filteredUnits() {
         return this.propertyId ? this.allUnits.filter(u => u.property_id == this.propertyId) : [];
@@ -89,7 +89,7 @@
                             class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none cursor-pointer">
                         <option value="">共用部</option>
                         <template x-for="u in filteredUnits" :key="u.id">
-                            <option :value="u.id" :selected="u.id == '{{ old('unit_id') }}'" x-text="u.label"></option>
+                            <option :value="u.id" :selected="u.id == {{ \Illuminate\Support\Js::from((string) old('unit_id')) }}" x-text="u.label"></option>
                         </template>
                     </select>
                     <p class="text-xs text-gray-500 mt-1">共用部の場合は「共用部」を選択</p>
