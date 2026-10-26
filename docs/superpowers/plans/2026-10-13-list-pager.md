@@ -2033,6 +2033,21 @@ Expected: ちょうど 1 行 `'App\\Support\\PageNumbers' => $baseDir . '/app/Su
 | 全件テスト | `OK (4223 tests, 40130 assertions)`（3 分 38 秒・PHP 8.3.35。4105 本に 5b の 118 本が足された）。メモリのピークは 444.50 MB（前回 418.50 MB・上限 512M） |
 | コンパイル済みビューの lint | `views=312 invalid=0`（306 本に 5b の新しいビュー 6 本） |
 
+
+### Task 8 Step 2〜9: 本番反映（2026-10-26）
+
+| Step | 結果 |
+|---|---|
+| 1 | 済み（2026-10-13・決裁の会話と合意）。決裁の会話は 10/13 から止まっていて、Step 3・6・9 の知らせは送れなかった（同時に 13.x を動かす会話が無いことを `list_sessions` で確かめた） |
+| 2 | 13.x = origin/13.x = `53b00db9`・`merge-base --is-ancestor 13.x HEAD` は 0 |
+| 3 | `merge --ff-only page-numbers` → 13.x = `24207618` |
+| 4 | `composer dump-autoload --no-dev --optimize`（main repo の cwd）→ 7,312 クラス・`'App\\Support\\PageNumbers'` 1 行・`vendor/bin/phpunit` 無し・作業ツリー空 |
+| 5 | 比べる前の版を計画の `2d0d54f9` から `53b00db9` に読み替えた（本番 = 5b ＋ docs だけ）。変わる 41 本の md5 がすべて一致・新しい 2 本は無い・`laravel.log` は Jun 18 17:41・build は `app-BGXzsqXz.css`・`app-NiVQbl_Q.js` |
+| 6 | `./deploy.sh` 08:57:08〜08:57:19 exit 0。送ったアプリのファイルは期待の 42 本と完全一致。CSS・JS の名前は前と同じ |
+| 7 | 42 本の md5 が `24207618` と一致・classmap は新しい名前 1・古い名前 0・ビュー 312 / INVALID 0・`laravel.log` 不変・`bootstrap/cache` 600／700。古い `Approval/PageNumbers.php` は md5 一致を確かめて消した（csh の引用の誤りで最初のコマンドは何も実行されず、`/bin/sh < 手順ファイル` で流し直した） |
+| 8 | テナント契約一覧（すべて）: 375・1440px とも `nav`・ボタン 32px・切れ 0・横スクロール 0・`< 1 2 … 13 >`／7 ページ目 `< 1 … 6 7 8 … 13 >`・「<」「>」は絞り込みを保つ・コンソール 0 件 |
+| 9 | この記録（BACKLOG の見出しと本番反映の表・RULES #117・計画）。push は利用者の指示を待つ |
+
 ---
 
 ## 付録 A: 置き換えスクリプト `TOOLS/pager/replace-pagers.php`
