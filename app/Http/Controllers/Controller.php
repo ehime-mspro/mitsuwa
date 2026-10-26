@@ -23,7 +23,7 @@ abstract class Controller extends BaseController
      * 一覧の絞り込みなどのクエリのうち、文字列でない値（手で組んだ `?x[]=1`）と、$digits に挙げたキーの数字でない値を
      * 無かったことにする（Bug #97 の形）。
      * 画面（`request('x')`）とページ送り（withQueryString）も同じ Request を読むので、ここで外せばどちらも 500 にならない。
-     * ⚠ `$request->query('x')` は配列のとき例外を投げるので、`all()` から読む。
+     * ⚠ `all()` から読む（Symfony の `$request->query->get('x')` は配列のとき例外を投げる。Laravel の `$request->query('x')` は配列をそのまま返す）。
      *
      * @param  array<int, string>  $keys
      * @param  array<int, string>  $digits

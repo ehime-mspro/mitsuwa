@@ -169,7 +169,7 @@ class TenantImportController extends Controller
     {
         // 開くタブは画面にある 5 つ（WHERE_TO_CHECK のキー）のどれか（ほかの値は物件。値を確かめずに画面の JS に書いていて、`?tab[]=` で 500・
         // 末尾の `\` で画面の JS が止まった）
-        $tab = $request->query->all()['tab'] ?? null;
+        $tab = $request->query('tab');
 
         return view('admin.tenant-import.index', [
             'activeTab' => is_string($tab) && array_key_exists($tab, self::WHERE_TO_CHECK) ? $tab : 'property',

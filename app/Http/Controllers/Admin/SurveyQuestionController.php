@@ -16,8 +16,7 @@ class SurveyQuestionController extends Controller
     {
         // 開くタブは 2 つの部署のどちらか（ほかの値は住宅事業。値を確かめずに画面の JS に書いていて、`?department[]=` で 500・
         // 末尾の `\` で画面の JS が止まった）
-        // ⚠ `$request->query('department')` は値が配列のとき例外を投げるので、all() から読む
-        $department = $request->query->all()['department'] ?? null;
+        $department = $request->query('department');
         $department = in_array($department, ['housing', 'realestate'], true) ? $department : 'housing';
 
         $housingQuestions    = SurveyQuestion::ofDepartment('housing')->ordered()->get();
