@@ -96,6 +96,9 @@ class InquiryController extends Controller
      */
     public function create(Request $request)
     {
+        // 前もって選ぶ物件（`?property_id=`）は数だけ通す（`?property_id[]=1` で 500・末尾の `\` で画面の JS が止まった）
+        $this->ignoreMalformedQuery($request, [], ['property_id']);
+
         $nextNumber = $this->generateInquiryNumber();
 
         $properties = Property::where('department', DepartmentCode::Tenant)

@@ -98,7 +98,8 @@ class InvestmentController extends Controller
         // 全区画（物件ごと）— ラベルをController側で整形
         $allUnits = $this->buildUnitOptions($properties);
 
-        // 区画詳細からの「この区画に投資を登録」プリセット
+        // 区画詳細からの「この区画に投資を登録」プリセット（`?unit_id=` は数だけ通す。`?unit_id[]=1` で 500 だった）
+        $this->ignoreMalformedQuery($request, [], ['unit_id']);
         $presetPropertyId = null;
         $presetUnitId = null;
         if ($request->filled('unit_id')) {

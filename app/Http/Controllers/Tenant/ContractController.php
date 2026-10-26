@@ -151,6 +151,9 @@ class ContractController extends Controller
      */
     public function create(Request $request)
     {
+        // 前もって選ぶ物件・問合せ（`?property_id=` `?inquiry_id=`）は数だけ通す（`?property_id[]=1` で 500・末尾の `\` で画面の JS が止まった）
+        $this->ignoreMalformedQuery($request, [], ['property_id', 'inquiry_id']);
+
         $nextNumber = $this->generateContractNumber();
 
         // 物件（optgroup用に稼働状態でグループ化）

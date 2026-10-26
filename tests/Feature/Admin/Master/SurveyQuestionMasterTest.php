@@ -198,4 +198,27 @@ class SurveyQuestionMasterTest extends MasterScreenTestCase
             ->assertOk()->assertJson(['success' => true]);
         $this->assertSame(['ご予算', 'ご来場のきっかけ'], SurveyQuestion::ofDepartment('housing')->ordered()->pluck('label')->all());
     }
+
+    /**
+     * 開くタブ（`?department=`）を URL で書き換えても画面が壊れない（Bug #97 の形）。
+     * ⚠ 直す前は値を確かめずに JS の文字列に直に書いていて、末尾に `\` を付けると 200 なのに画面の JS が止まり、
+     *   `?department[]=1` で 500 だった（2026-10-26 に実測）。2 つの部署のほかは住宅事業のタブを開く。
+     */
+    public function test_a_rewritten_department_in_the_url_opens_the_housing_tab(): void
+    {
+        foreach ([
+            [['department' => 'realestate'], 'realestate'],
+            [['department' => 'housing'], 'housing'],
+            [['department' => 'x\\'], 'housing'],
+            [['department' => ['realestate']], 'housing'],
+        ] as [$query, $expected]) {
+            $url = route('admin.survey-questions.index') . '?' . http_build_query($query);
+            $response = $this->actingAs($this->user)->get($url);
+            $this->assertSame(200, $response->getStatusCode(), "{$url} が 200 でない");
+            $html = $response->getContent();
+
+            $run = $this->driveAlpine($html, 'surveyQuestionManager', $this->xData($html, 'surveyQuestionManager'), '', [], true, ['activeTab']);
+            $this->assertSame([$expected], $run['evaluated'], "{$url} で開くタブが違う");
+        }
+    }
 }
