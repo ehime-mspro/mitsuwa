@@ -262,6 +262,17 @@ var modalMarker = null;
 var modalInfoWindow = null;
 
 function openMapModal(name, address, lat, lng) {
+    // 吹き出し（InfoWindow）は content を HTML として描くので、名前と所在地の文字を逃がしてから組む
+    // （onclick の Js::from は JS の文字列として守るだけで、`<img onerror=…>` の名前がそのまま実行された。Bug #119）
+    function escapeHtml(value) {
+        // 引用符は \x22 \x27 で書く（LayoutMeasuringScriptTest は正規表現リテラルを解釈せず、中の引用符を文字列の始まりと読む）
+        return (value === null || value === undefined ? '' : String(value))
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/\x22/g, '&quot;')
+            .replace(/\x27/g, '&#39;');
+    }
     document.getElementById('modal-map-title').textContent = name;
     document.getElementById('modal-map-address').textContent = address;
     var overlay = document.getElementById('map-modal-overlay');
@@ -285,7 +296,7 @@ function openMapModal(name, address, lat, lng) {
             modalMap.setCenter({ lat: lat, lng: lng });
             modalMarker.setPosition({ lat: lat, lng: lng });
         }
-        modalInfoWindow.setContent('<div style="font-size:13px;"><strong>' + name + '</strong><br>' + address + '</div>');
+        modalInfoWindow.setContent('<div style="font-size:13px;"><strong>' + escapeHtml(name) + '</strong><br>' + escapeHtml(address) + '</div>');
         modalInfoWindow.open(modalMap, modalMarker);
         google.maps.event.trigger(modalMap, 'resize');
     }, 150);

@@ -726,6 +726,19 @@ function procurementDetail() {
 function initDetailMap() {
     var lat = {{ $procurement->latitude }};
     var lng = {{ $procurement->longitude }};
+    // 物件名・所在地は @@json で JS の文字列として受け取る（引用符の中に直に書くと、名前の `\` で script ごと止まった。Bug #76）。
+    // 吹き出し（InfoWindow）は content を HTML として描くので、文字を逃がしてから組む（Bug #119）
+    function escapeHtml(value) {
+        // 引用符は \x22 \x27 で書く（LayoutMeasuringScriptTest は正規表現リテラルを解釈せず、中の引用符を文字列の始まりと読む）
+        return (value === null || value === undefined ? '' : String(value))
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/\x22/g, '&quot;')
+            .replace(/\x27/g, '&#39;');
+    }
+    var name = @json($procurement->property_name);
+    var address = @json($procurement->address ?? '');
 
     var map = new google.maps.Map(document.getElementById('detail-map'), {
         center: { lat: lat, lng: lng },
@@ -738,11 +751,11 @@ function initDetailMap() {
     var marker = new google.maps.Marker({
         position: { lat: lat, lng: lng },
         map: map,
-        title: '{{ $procurement->property_name }}'
+        title: name
     });
 
     var infoWindow = new google.maps.InfoWindow({
-        content: '<div style="font-size:13px;"><strong>{{ $procurement->property_name }}</strong><br>{{ $procurement->address }}</div>'
+        content: '<div style="font-size:13px;"><strong>' + escapeHtml(name) + '</strong><br>' + escapeHtml(address) + '</div>'
     });
     infoWindow.open(map, marker);
 }
@@ -769,6 +782,17 @@ var modalMarker = null;
 var modalInfoWindow = null;
 
 function openMapModal(name, address, lat, lng) {
+    // 吹き出し（InfoWindow）は content を HTML として描くので、名前と所在地の文字を逃がしてから組む
+    // （onclick の Js::from は JS の文字列として守るだけで、`<img onerror=…>` の名前がそのまま実行された。Bug #119）
+    function escapeHtml(value) {
+        // 引用符は \x22 \x27 で書く（LayoutMeasuringScriptTest は正規表現リテラルを解釈せず、中の引用符を文字列の始まりと読む）
+        return (value === null || value === undefined ? '' : String(value))
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/\x22/g, '&quot;')
+            .replace(/\x27/g, '&#39;');
+    }
     document.getElementById('modal-map-title').textContent = name;
     document.getElementById('modal-map-address').textContent = address;
     var overlay = document.getElementById('map-modal-overlay');
@@ -792,7 +816,7 @@ function openMapModal(name, address, lat, lng) {
             modalMap.setCenter({ lat: lat, lng: lng });
             modalMarker.setPosition({ lat: lat, lng: lng });
         }
-        modalInfoWindow.setContent('<div style="font-size:13px;"><strong>' + name + '</strong><br>' + address + '</div>');
+        modalInfoWindow.setContent('<div style="font-size:13px;"><strong>' + escapeHtml(name) + '</strong><br>' + escapeHtml(address) + '</div>');
         modalInfoWindow.open(modalMap, modalMarker);
         google.maps.event.trigger(modalMap, 'resize');
     }, 150);
