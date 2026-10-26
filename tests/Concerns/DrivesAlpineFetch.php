@@ -51,12 +51,13 @@ trait DrivesAlpineFetch
      *                                            （`costExcelImporterFactory(`）や `window.…` の値を使う画面のため
      * @param  array<string, string>  $elements  画面の JS が `document.querySelector(…)` で読む欄の値（セレクタ => 値。
      *                                         顧客の登録画面の重複の確認が `input[name="last_name"]` を読む）
+     * ⚠ $function が null のときは画面の script を読まず、$factory（インラインの x-data の式）でコンポーネントを作る（browserForm() と同じ）。
      * @return array{requests: array<int, array{url: string, method: string, headers: array<string, string>, body: ?string}>, confirms: array<int, string>, alerts: array<int, string>, navigations: array<int, string>, submitted: array<int, array{ref: string, method: string, action: string, fields: array<string, string>}>, evaluated: array<int, mixed>, state: array<string, mixed>}
      */
-    protected function driveAlpine(string $html, string $function, string $factory, string $steps, array $responses = [], bool $confirm = true, array $evaluate = [], array $withScripts = [], array $elements = []): array
+    protected function driveAlpine(string $html, ?string $function, string $factory, string $steps, array $responses = [], bool $confirm = true, array $evaluate = [], array $withScripts = [], array $elements = []): array
     {
         return $this->runNode([
-            'script'    => $this->scriptsContaining($html, $withScripts) . $this->scriptDefining($html, $function),
+            'script'    => $this->scriptsContaining($html, $withScripts) . ($function === null ? '' : $this->scriptDefining($html, $function)),
             'csrf'      => preg_match('/<meta name="csrf-token" content="([^"]*)"/', $html, $m) ? $m[1] : null,
             'factory'   => $factory,
             'steps'     => $steps,
