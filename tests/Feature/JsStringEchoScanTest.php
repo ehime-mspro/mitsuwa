@@ -108,7 +108,7 @@ class JsStringEchoScanTest extends TestCase
             '@php の中'                        => ["<script>@php \$a = \"{{ old('a') }}\"; @endphp</script>", 0],
             '@{{ の逃がし'                     => ["<script>var a = '@{{ old('a') }}';</script>", 0],
             '部品の属性'                       => ["<x-field x-data=\"{ a: '{{ old('a') }}' }\" />", 1],
-            '複数行の属性と中の二重引用符'     => ["<div x-data=\"{\n    f: u => u.id > 0,\n    a: '{{ old(\"a\", \$b ? \"x\" : \"y\") }}'\n}\"></div>", 1],
+            '前の {{ }} の中の二重引用符'      => ["<div x-data=\"{\n    f: u => u.id > 0,\n    b: {{ \$x ? \"1\" : \"2\" }},\n    a: '{{ old('a') }}'\n}\"></div>", 1],
             'ディレクティブの引数の >'         => ["<option @selected(\$a > 1) x-data=\"{ a: '{{ old('b') }}' }\"></option>", 1],
             'ディレクティブの引数の引用符の中の )' => ["<option @selected(old('a') == \"x)'>\") x-data=\"{ a: '{{ old('b') }}' }\"></option>", 1],
         ];
