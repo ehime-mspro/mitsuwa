@@ -2048,6 +2048,38 @@ Expected: ちょうど 1 行 `'App\\Support\\PageNumbers' => $baseDir . '/app/Su
 | 8 | テナント契約一覧（すべて）: 375・1440px とも `nav`・ボタン 32px・切れ 0・横スクロール 0・`< 1 2 … 13 >`／7 ページ目 `< 1 … 6 7 8 … 13 >`・「<」「>」は絞り込みを保つ・コンソール 0 件 |
 | 9 | この記録（BACKLOG の見出しと本番反映の表・RULES #117・計画）。2026-10-26 に利用者の指示で origin へ push（`53b00db9..3887e71f`） |
 
+### 後回しにした小さな指摘の直し（2026-10-26・作業場所 `route-coverage`・枝 `pager-minors`）
+
+計画は `~/.claude/plans/giggly-popping-garden.md`（利用者の承認のうえ）。コミット: `370f31a2`（1. ボタンの class）・`f2660543`（2. 走査の印）・`8190732f`（3. 古いコメント 2 か所）・`04cd86d8`（4. `AdminRequestsTest` を `ReadsPager` に）。
+
+| 段 | 結果 |
+|---|---|
+| 着手前 | 13.x = origin/13.x = `09e087f8`。決裁の会話は 10/13 から止まっている（`list_sessions`）。部品の外のビューで `->lastPage(`・`->currentPage(`・`->perPage(`・`->hasPages(` は 0 件、`->url(` は台帳の `$row->url()` 2 件（引数なし）。部品の class に触れている既存テストは `ProcurementListWithProjectsTest::test_numbered_pagination_links_are_rendered`（今のページの `bg-emerald-600 border border-emerald-600 font-semibold">1</span>`）だけ |
+| 直す前の変異（`PHASE=before`・`09e087f8`） | 18 通りすべて期待どおり。K00（カナリア）赤 21 本／B01〜B09・B11〜B14（ボタンの class）緑＝穴／B10（今のページの緑を消す）は `ProcurementListWithProjectsTest` の 1 本だけ赤／V01（顧客一覧に `@for` の手作りのページ送り）緑＝穴／A01（⑩ のページ送りを消す）赤 4 本／A02（⑩ にページ送りを 2 つ）緑＝古い読み方は最初の 1 つしか見ない |
+| 1 | `ReadsPager` に `classes`、`PagerComponentTest::test_every_button_is_a_32px_square`（1・6・11 ページ目）。部品が正しいので足した直後から緑（3 tests, 229 assertions） |
+| 2 | 先に見本を足して赤 2 本（`当たるべき: $p->lastPage()`・`@for で番号を並べる形を拾えない`）→ 印に 3 つを足して緑（7 tests, 42 assertions）。既存の見本 `$p->getUrlRange(1, $p->lastPage())` は印が 2 つ当たるようになるので `$p->getUrlRange(1, 5)` に変えた |
+| 3 | `PropertyController` のコメントと `ProcurementListWithProjectsTest` の注記（同じ古い説明「インライン番号付き」）。`php -l` OK |
+| 4 | 私有の `pager()` を消して `use ReadsPager;`。`AdminRequestsTest` と `PagerComponentTest` で OK (46 tests, 963 assertions)。呼び出しは 8 か所（引き継ぎの行番号どおり。計画の「9 か所」は数え違い） |
+| 全件テスト | `OK (4227 tests, 40406 assertions)`（5 分 19 秒・PHP 8.3.35。4223 本に 4 本）。メモリのピーク 444.50 MB（変わらず） |
+| 直した後の変異（`04cd86d8`） | 22 通りすべて期待どおり（下の表） |
+
+| id | 当てた所 | 直す前 | 直した後 |
+|---|---|---|---|
+| K00 | 部品の `aria-label="ページ送り"` を消す（カナリア） | 赤 21 本 | 赤 24 本（新しいデータセット 3 本の分） |
+| B01・B07 | 押せない「<」・押せない「>」から `w-8` | 緑 | 1 ページ目・11 ページ目のデータセットが赤（`0 番目の「<」に w-8 が無い` など） |
+| B02・B06 | 「<」・「>」のリンクから `w-8` | 緑 | 6・11 ページ目／1・6 ページ目が赤 |
+| B03〜B05 | 「…」・今のページ・番号のリンクから `w-8` | 緑 | 3 つのデータセットが赤 |
+| B08・B09 | 番号のリンクを `w-6 h-6`／今のページから `h-8` | 緑 | 3 つが赤（`w-8 が無い`／`h-8 が無い`） |
+| B10 | 今のページから `bg-emerald-600` | `ProcurementListWithProjectsTest` だけ赤 | 同じ 1 本 ＋ 3 つ（`今のページ（1）に bg-emerald-600 が無い`） |
+| B11・B12 | 番号のリンクに `bg-emerald-600`／`sm:w-10` を足す | 緑 | 3 つが赤（`今のページでないのに bg-emerald-600 がある`／`大きさの class が w-8 h-8 だけでない`） |
+| B13・B14 | 「…」から `items-center`／番号のリンクから `rounded` | 緑 | 3 つが赤 |
+| S01・S02 | 印から `lastPage`／`currentPage` を外す | — | 当たる見本と `@for` の見本が赤 |
+| S03 | 印から `perPage` を外す | — | 当たる見本が赤 |
+| S04 | 印に `url` を足す | — | 全ビューの走査（台帳 `approvals/ledger/index.blade.php:121` を名指し）・当たらない見本（`{{ $row->url() }}`）・`@for` の見本が赤 |
+| V01 | 顧客一覧に `@for($i = 1; $i <= $customers->lastPage(); $i++)…url($i)…@endfor` | 緑（穴） | 全ビューの走査が `tenant/customers/index.blade.php:123: ->lastPage(` を名指しして赤 |
+| A01 | ⑩ の `@include('approvals._pager', …)` を消す | 赤 4 本（ページ送りを読む 2 本は `ページ送りが無い`） | 同じ 4 本（その 2 本は `ページ送りがちょうど 1 つ出ていない`・ほかの 2 本は同じ理由） |
+| A02 | 同じ `@include` を 2 つにする | 緑 | 赤 3 本（`ページ送りがちょうど 1 つ出ていない`） |
+
 ---
 
 ## 付録 A: 置き換えスクリプト `TOOLS/pager/replace-pagers.php`

@@ -3969,6 +3969,22 @@ ZEAL 会員の取込（`/admin/zeal/member-import`）の確定は、書き込み
 
 ⚠ `origin/13.x` への push はしていない（origin/13.x = `53b00db9`）。→ 2026-10-26 に利用者の指示で push 済み（`53b00db9..3887e71f`）。
 
+### 後回しにした小さな指摘の直し（2026-10-26）— テストとコメントだけ
+
+本番反映の最後の点検で「今は直さない」とした 4 件を直した（作業場所 `route-coverage`・枝 `pager-minors`）。**本番の動きは変わらない**（1・2・4 はテストだけ、3 はコメントだけ）。
+
+| # | 見つけたこと | 直したこと |
+|---|---|---|
+| 1 | 部品のボタンの class（32px の正方形 `w-8 h-8`・文字を真ん中に・今のページだけ緑）を固定するテストが無かった。直す前に変異で測ると、ボタンの class を変える 14 通りのうち 13 通りはどのテストも落ちなかった（今のページの緑を消す 1 通りだけ `ProcurementListWithProjectsTest` が拾った） | `PagerComponentTest::test_every_button_is_a_32px_square`（220 件の 1・6・11 ページ目で部品の 7 種類のボタンを全部通る。どのボタンも `w-8` `h-8` `flex` `items-center` `justify-center` `text-xs`・大きさの class は `w-8 h-8` だけ〈`sm:w-10` なども数える〉・今のページだけ `bg-emerald-600` `text-white`・「…」のほかは `rounded` `border`）。`ReadsPager` にボタンごとの class（`classes`）を足した |
+| 2 | 走査の印に `lastPage` が無く、`@for` で番号を並べ `->url($i)` でリンクを組む手作りのページ送りが見えなかった（直す前に顧客一覧へ差し込んでも緑） | `PagerUsageScanTest` の印に `->lastPage(`・`->currentPage(`・`->perPage(` を足した（足した時点で部品の外のビューに 0 件）。`->url(` は台帳の `$row->url()`（ページ送りでない）があるので印にしない。見本で、`@for` の形が当たることと `$row->url()` が当たらないことを固定 |
+| 3 | `Tenant\PropertyController` のコメントが「既存ビューはインライン番号付きページネーション（hasPages / getUrlRange / nextPageUrl）を使っている」のままだった。同じ古い説明が `ProcurementListWithProjectsTest` の注記にも 1 か所あった | 「ページ送りは部品 `<x-pager>` で描く（Bug #117）」に直した。アプリのファイルはコメント 1 か所だけで、本番へは次の `./deploy.sh` で送られる（動きは変わらない） |
+| 4 | 決裁の `AdminRequestsTest` が `ReadsPager` と同じ読み方の私有の `pager()` を持っていた | `ReadsPager` を使うようにした（こちらはページ送りがちょうど 1 つあることも確かめる）。直す前は、ページ送りを 2 つ描いても通っていた（変異 A02） |
+
+- 全件 **OK (4227 tests, 40406 assertions)**（PHP 8.3.35。4223 本に 4 本＝データセット 3 と見本 1）・メモリのピーク 444.50 MB（変わらず・上限 512M）。ビューは変えていない
+- 変異 22 通り（カナリアを含む・`.claude/route-coverage-tools/mutate/specs.pager-minors.py`）を直した後に流し、すべて期待どおり。直す前の HEAD（13.x = `09e087f8`）でも同じ表の 18 通りを流し、期待どおり緑（穴）・赤だった。記録は計画書の実測記録
+- 決裁の会話（社内決裁申請）は 2026-10-13 から止まっていることを確かめてから、4 の決裁のテストに触れた
+- ⚠ 13.x への早送り・push・本番反映はしていない（利用者の指示を待つ）
+
 ---
 
 ## バックログ完了状況
