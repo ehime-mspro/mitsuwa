@@ -2378,6 +2378,7 @@ git checkout 13.x && git merge --ff-only date-picker-month-ago
 ### 5b（過去の決裁の取り込み）
 
 実装計画: @docs/superpowers/plans/2026-10-08-approval-phase5b.md（Task 0〜12）。worktree `.claude/worktrees/approval-phase3`（5a と同じ）。
+運用手順書（本物の台帳は、使い始める直前に利用者が ⑪ で取り込む。2026-10-26 の利用者の決定）: @docs/運用_過去の決裁の取り込み.md
 
 - 表: `approval_paper_records`（紙の決裁。`number` は一意・(部門, 年度, ＮＯ) も一意）・`approval_paper_imports`（取り込み 1 回分。取り消しても残す）。本番の SQL は `database/sql/2026-10-08-approval-phase5b.sql`（2 文）。本番反映は **DB が先・`./deploy.sh` が後**
 - 読み取りは `PaperLedgerFile`（読むだけ）→ `PaperImportAnalysis`（確認と確定が同じものを作る）→ `PaperImporter`（ロック → システムの番号 → 保存）。日付は `PaperDate`（年は月で決める・先頭の年は年度かその日の和暦と合うこと）。**本物の台帳はリポジトリに入れない**（テストは `BuildsPaperLedgers`）
@@ -2405,6 +2406,7 @@ git checkout 13.x && git merge --ff-only date-picker-month-ago
 | 残したこと | push・本物の台帳 | `origin/13.x` への push はしていない（利用者の指示を待つ）／ 本物の台帳の取り込みはしていない（使い始める日までに、決裁の管理者が ⑪ で行う） |
 
 ⚠ 本番の `upload_max_filesize` は 5M・`post_max_size` は 8M。⑪ の画面は「10MB まで」と書いてあるが、約 5MB を超える台帳はアップロードできず、確定は台帳を base64 にして送るので約 6MB を超えると送れない（08 年度の台帳は約 1.3MB で問題ない）。大きな台帳を取り込むときは php.ini の調整（要件 16.3 の 15）か、計画 §0.15 の 2 の一時ファイルの形へ。
+- （2026-10-26 追記）上の 5M・8M は ssh で読んだサーバーの既定の値（CLI）で、Web の画面の値ではない可能性が高い。2026-09-27 の読み取り（下の「顧客CSVインポートの確定を通す」の節の「`post_max_size`（読み取りだけ）」）では、公開フォルダの上の `~/www/php.ini` が `upload_max_filesize = 512M`・`post_max_size = 512M` で、Web には 512M が効く見込み（Web から直接は測っていない）。運用手順書は 5MB と言い切らず、画面の 10MB と「アップロードに失敗したら相談」で書いた（@docs/運用_過去の決裁の取り込み.md の 2.3）
 
 #### 5b の残したもの（本番反映のあとでよい。SDD の点検の記録から）
 1. 横に広い Excel（例: 200 列 × 5,900 行・8.3MB）は、行の数の上限（6,000）の中でも本番の 128M を使い切る（捕まえられない 500）。列の数も見る上限は、本物の台帳の列の数を手元で測ってから決める（最後の点検 M-1。決裁の管理者だけの画面・中身は壊れない）
