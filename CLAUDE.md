@@ -109,7 +109,7 @@ sudo rm -f storage/framework/views/*.php && brew services restart httpd
 - 金額 input に `value="0"` 既定値を入れない（空欄スタートが原則）
 - 同一 `name` 属性 + `x-show` は片方が hidden でも送信される → hidden + Alpine var or `:disabled` で除外
 - 日本語入力フィールドの Enter ハンドラには `$event.isComposing ||` を必ず挟む
-- 画面の JS（`<script>`・`x-data` などの属性）に値を書くときは `{{ \Illuminate\Support\Js::from((string) old('x', …)) }}` か `@json(…)`。`'{{ old(…) }}'` と引用符で囲まない（`'` `\` で JS が止まり、属性の中ではコードとして動く。Bug #76。`old()`・`request()` は走査 `JsStringEchoScanTest` が止める）
+- 画面の JS（`<script>`・`x-data` などの属性）に値を書くときは `{{ \Illuminate\Support\Js::from((string) old('x', …)) }}` か `@json(…)`。`'{{ old(…) }}'` と引用符で囲まない（`'` `\` で JS が止まり、属性の中ではコードとして動く。Bug #76。`old()`・`request()` は走査 `JsStringEchoScanTest` が止める。ほかの値は `JsEchoClassificationTest` の分類表に理由つきで載せないと落ちる＝DB に保存された文字は必ず `Js::from`）
 - 全角数字は global listener が `input[inputmode="numeric"]` `input[type="number"]` で半角自動変換（`layouts/app.blade.php` 注入、新規フォームへ自動適用）
 
 ### Display
