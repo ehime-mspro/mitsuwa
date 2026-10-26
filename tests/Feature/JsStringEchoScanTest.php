@@ -18,7 +18,7 @@ use Tests\TestCase;
  *   文字だけを返す三項演算（`… ? 'true' : 'false'`）。`@json(…)` は `{{ }}` を通らないので見ない（壊れない）。
  * ⚠ 先に Blade のコメント・`@php`・ディレクティブの引数（`@selected(…)` など）を位置を保って空白にし、`{{ }}` の中身を伏せてから
  *   タグを読む（中身の `"` や `>` で属性の区切りを読み違えないように）。JS の `//` コメントは消さない（Blade はその中も出力する）。
- * ⚠ `<x-…>` の部品の `:prop` は PHP の式なので JS として数えない（`::prop` は JS）。`src=` のある `<script>` は中身が動かないので数えない。
+ * ⚠ `src=` のある `<script>` は中身が動かないので数えない。<script> の中の文字（`'<b onclick="…">'`）はタグとして読まない。
  *   JSON の `<script type="application/json">` は JS の場所として数える（`\` で JSON.parse が壊れる）。
  * ⚠ 見えないもの（死角）: `old()` を通らない値（コントローラが渡した変数・DB の値）・`@php` で変数に入れてから書く値・
  *   部品の中で組み立てる値・JS の側で `innerHTML` などに入れる値。決裁の画面（`approvals/`）も見る（数で持たないので、決裁の作業を止めない）。
@@ -26,7 +26,7 @@ use Tests\TestCase;
 class JsStringEchoScanTest extends TestCase
 {
     /**
-     * 走査が空振りして緑になるのを防ぐ下限（2026-10-26 の実測: <script> 108・JS の属性 3,209・安全な書き方 71。
+     * 走査が空振りして緑になるのを防ぐ下限（2026-10-26 の実測: <script> 108・JS の属性 3,649・安全な書き方 71。
      * 安全な書き方は直す前 31 → 直したあと 71）
      */
     private const MIN_SCRIPTS = 100;
@@ -107,10 +107,10 @@ class JsStringEchoScanTest extends TestCase
             'Blade のコメント'                 => ["<script>{{-- var a = '{{ old('a') }}'; --}}</script>", 0],
             '@php の中'                        => ["<script>@php \$a = \"{{ old('a') }}\"; @endphp</script>", 0],
             '@{{ の逃がし'                     => ["<script>var a = '@{{ old('a') }}';</script>", 0],
-            '部品の :prop は PHP'              => ["<x-field :value=\"old('a')\" x-data=\"{ a: '{{ old('b') }}' }\" />", 1],
-            '部品の ::prop は JS'              => ["<x-field ::value=\"'{{ old('a') }}'\" />", 1],
+            '部品の属性'                       => ["<x-field x-data=\"{ a: '{{ old('a') }}' }\" />", 1],
             '複数行の属性と中の二重引用符'     => ["<div x-data=\"{\n    f: u => u.id > 0,\n    a: '{{ old(\"a\", \$b ? \"x\" : \"y\") }}'\n}\"></div>", 1],
-            'ディレクティブの引数で読み違えない' => ["<option @selected(old('a') == \"x'>\") x-data=\"{ a: '{{ old('b') }}' }\"></option>", 1],
+            'ディレクティブの引数の >'         => ["<option @selected(\$a > 1) x-data=\"{ a: '{{ old('b') }}' }\"></option>", 1],
+            'ディレクティブの引数の引用符の中の )' => ["<option @selected(old('a') == \"x)'>\") x-data=\"{ a: '{{ old('b') }}' }\"></option>", 1],
         ];
     }
 
@@ -126,6 +126,11 @@ class JsStringEchoScanTest extends TestCase
     public function test_an_unbalanced_directive_is_reported_as_unreadable(): void
     {
         $this->assertNotSame([], $this->scan("<div @selected(old('a') x-data=\"{}\"></div>")['unreadable'], '括弧の閉じないディレクティブを黙って通した');
+    }
+
+    public function test_tags_inside_scripts_are_not_read_as_markup(): void
+    {
+        $this->assertSame(0, $this->scan("<script>var t = \"<b onclick='go()'>\";</script>")['jsAttributes'], '<script> の中の文字をタグとして読んだ');
     }
 
     public function test_the_violation_names_its_line(): void
@@ -199,16 +204,14 @@ class JsStringEchoScanTest extends TestCase
             $scripts++;
             $ranges[] = [$s[2][1], $s[2][1] + strlen($s[2][0])];
         }
-        $outside = preg_replace_callback('#<style\b[^>]*>.*?</style\s*>#is', $blank, $outside);
 
         $jsAttributes = 0;
         preg_match_all('/<([a-zA-Z][\w.:-]*)((?:[^>"\']|"[^"]*"|\'[^\']*\')*)>/s', $outside, $tags, PREG_SET_ORDER | PREG_OFFSET_CAPTURE);
         foreach ($tags as $tag) {
-            $isComponent = str_starts_with(strtolower($tag[1][0]), 'x-');
             preg_match_all('/(?<=\s)([^\s=>"\'\/]+)\s*=\s*(?:"([^"]*)"|\'([^\']*)\')/s', $tag[2][0], $attrs, PREG_SET_ORDER | PREG_OFFSET_CAPTURE);
             foreach ($attrs as $a) {
                 $name = $a[1][0];
-                if (preg_match(self::JS_ATTRIBUTE, $name) !== 1 || ($isComponent && preg_match('/^:[^:]/', $name) === 1)) {
+                if (preg_match(self::JS_ATTRIBUTE, $name) !== 1) {
                     continue;
                 }
                 $value = ($a[2][1] ?? -1) >= 0 ? $a[2] : $a[3];
