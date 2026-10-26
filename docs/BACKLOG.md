@@ -4074,7 +4074,7 @@ DAD の回（2026-10-07）に「未確認」として残した件を、2026-10-2
 | アプリ | ビュー 13 本（`realestate/contracts/{create,edit}`・`tenant/contracts/{create,edit,terminate}`・`tenant/inquiries/{create,edit}`・`tenant/investments/{create,edit}`・`tenant/properties/{create,edit}`・`tenant/repairs/{create,edit}`）／ コントローラ 7 本（`Tenant\{Contract,Inquiry,Investment}Controller`・`Admin\{SurveyQuestion,TenantImport,MansionImport}Controller`・基底 `Controller` の注記） |
 | テスト（道具） | `DrivesAlpineFetch::driveAlpine()` がインラインの `x-data`（関数名なし）でも動く ／ 新規 `Tests\Concerns\SendsValuesBack`（描いた画面のフォームの欄を書き換えて送り、戻った画面の JS の値を読む。テナントと不動産で共用） |
 | テスト（新規） | `tests/Feature/Tenant/Screens/OldValueJsTest.php`（14 本）・`QueryPresetJsTest.php`（3 本）・`tests/Feature/RealEstate/Screens/ContractFormJsTest.php`（3 本）・`tests/Feature/Admin/ImportTabQueryTest.php`（2 本）・`SurveyQuestionMasterTest` に 1 本・走査 `tests/Feature/JsStringEchoScanTest.php`（見本 31 を含む 36 本） |
-| 全件テスト | 4238 → **4296 tests / 41504 assertions green**（PHP 8.3・`e1f4406a`。メモリのピーク 450.50 MB / 上限 512M） |
+| 全件テスト | 4238 → **4297 tests / 41505 assertions green**（PHP 8.3・`443d9355`。メモリのピーク 450.50 MB / 上限 512M） |
 
 ### 走査（`JsStringEchoScanTest`）
 
