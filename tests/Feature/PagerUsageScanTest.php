@@ -12,8 +12,12 @@ use Tests\TestCase;
  *   本番でもテナント契約（すべて）13 ページで 18.7px まで縮んでいた。部品は先頭・最後・今のページの前後だけを出す。
  *
  * 【守るもの】全ビューを全件分類する（Top trap #13）
- *   - 手作りのページ送りの印（->getUrlRange( ・->previousPageUrl( ・->nextPageUrl( ・->onFirstPage( ・->hasMorePages( ・->links( ）は
- *     components/pager.blade.php の中にしか無い。ほかにあれば、ファイルと行を名指しして落とす
+ *   - 手作りのページ送りの印（->getUrlRange( ・->previousPageUrl( ・->nextPageUrl( ・->onFirstPage( ・->hasMorePages( ・->links( ・
+ *     ->lastPage( ・->currentPage( ・->perPage( ）は components/pager.blade.php の中にしか無い。ほかにあれば、ファイルと行を名指しして落とす
+ *     （後ろの 3 つは 2026-10-26 に足した。@for で番号を並べる形は、上限に lastPage か total ÷ perPage、今のページの色に currentPage を使う。
+ *      足した時点で部品の外のビューに 0 件）
+ *   - ->url( は印にしない（ページ送りでない呼び方がある: 台帳の行のリンク $row->url()・Storage::disk()->url($path) など。
+ *     上の 3 つが無いと番号は並べられないので、それで足りる）
  *   - <x-pager の呼び出しは、どれも :paginator= を持つ
  *   - 読んだビューと <x-pager の呼び出しの数の下限（走査の空振りで緑にならないように）
  *
@@ -22,6 +26,8 @@ use Tests\TestCase;
  *   - ページ送りの 1 行そのものを消した一覧は、呼び出しの数が下限を割るまで見えない（下限は件数ぴったりにしない＝決裁が新しい一覧で
  *     <x-pager> を足すたびに赤くならないように）
  *   - ->render() ・ paginator を別の名前の変数に入れて呼ぶ書き方・JS で組むページ送りは見ない
+ *   - 上限や今のページをコントローラから別の変数で渡し、->url($i) や route() でリンクを組む手作りのページ送りは見ない
+ *   - 「13 ページ中 3 ページ目」のような表示に lastPage・currentPage を使うと、ページ送りでなくても落ちる（その時は部品で出すか、ここを見直す）
  */
 class PagerUsageScanTest extends TestCase
 {
@@ -32,7 +38,7 @@ class PagerUsageScanTest extends TestCase
     private const MIN_PAGER_CALLS = 32;
 
     /** 手作りのページ送りの印（`->` の直後のメソッド名と括弧。`?->` も `->` を含むので当たる） */
-    private const MARKER = '/->\s*(getUrlRange|previousPageUrl|nextPageUrl|onFirstPage|hasMorePages|links)\s*\(/';
+    private const MARKER = '/->\s*(getUrlRange|previousPageUrl|nextPageUrl|onFirstPage|hasMorePages|links|lastPage|currentPage|perPage)\s*\(/';
 
     /** <x-pager の呼び出し（<x-pager-foo は数えない。属性の中の > は引用符の中なら読み飛ばす） */
     private const CALL = '/<x-pager(?=[\s\/>])((?:[^>"\']|"[^"]*"|\'[^\']*\')*)>/';
@@ -126,7 +132,7 @@ class PagerUsageScanTest extends TestCase
     public function test_sample_markers_are_found(): void
     {
         $hits = [
-            '$p->getUrlRange(1, $p->lastPage())',
+            '$p->getUrlRange(1, 5)',
             '$p->previousPageUrl()',
             '$p->nextPageUrl()',
             '$p->onFirstPage()',
@@ -136,6 +142,9 @@ class PagerUsageScanTest extends TestCase
             '$p-> links()',
             "\$p\n    ->links()",
             '$p->links ()',
+            '$p->lastPage()',
+            '$p->currentPage()',
+            '$p->perPage()',
         ];
         foreach ($hits as $sample) {
             $this->assertCount(1, $this->markers("{{ {$sample} }}"), "当たるべき: {$sample}");
@@ -152,10 +161,22 @@ class PagerUsageScanTest extends TestCase
             '{{ $menu->sublinks() }}',
             '{{ $p->linksCount() }}',
             '{{ $p->nextPageUrlFor(2) }}',
+            '{{ $doc->lastPageNumber() }}',
+            '{{ $p->perPageOptions() }}',
+            '{{ $row->url() }}',
         ];
         foreach ($misses as $sample) {
             $this->assertSame([], $this->markers($sample), "当たってはいけない: {$sample}");
         }
+    }
+
+    /** 見本: @for で番号を並べる手作りのページ送りは、上限の lastPage と今のページの currentPage で当たる（url は印にしない） */
+    public function test_sample_for_loop_pager_is_found(): void
+    {
+        $source = "@for(\$i = 1; \$i <= \$p->lastPage(); \$i++)\n"
+            . "    <a href=\"{{ \$p->url(\$i) }}\" @class(['bg-emerald-600' => \$i === \$p->currentPage()])>{{ \$i }}</a>\n"
+            . '@endfor';
+        $this->assertSame(['1: ->lastPage(', '2: ->currentPage('], $this->markers($source), '@for で番号を並べる形を拾えない');
     }
 
     /** 見本: コメントを落としても行の番号は保つ */
