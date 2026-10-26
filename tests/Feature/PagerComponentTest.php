@@ -94,6 +94,50 @@ class PagerComponentTest extends TestCase
     }
 
     /** @return array<string, array{int}> */
+    public static function pagesWithEveryKindOfButton(): array
+    {
+        return [
+            '1 ページ目'  => [1],   // 押せない「<」・今のページ・番号・「…」・「>」
+            '6 ページ目'  => [6],   // 「<」・番号・「…」が 2 つ・今のページ・「>」
+            '11 ページ目' => [11],  // 「<」・番号・「…」・今のページ・押せない「>」
+        ];
+    }
+
+    /**
+     * ボタンはどれも 32px の正方形（w-8 h-8）で、文字は真ん中（flex items-center justify-center）・text-xs。
+     * 9 個 × 32px ＋ 隙間が 375px のカードの内側（341px）に収まるのが Bug #117 の直し方の前提（大きさが変わると、縮む・切れるが戻る）。
+     * 今のページだけが緑（bg-emerald-600・text-white）。「…」のほかは角丸と枠線。
+     * 3 つのページで、部品の 7 種類のボタン（押せない「<」・「<」・「…」・今のページ・番号・「>」・押せない「>」）を全部通る。
+     * ⚠ class は空白で分けて語として比べる（w-80 で w-8 が通らないように）。大きさを決める class は w-8 h-8 だけ（sm:w-10 なども数える）
+     */
+    #[DataProvider('pagesWithEveryKindOfButton')]
+    public function test_every_button_is_a_32px_square(int $page): void
+    {
+        $pager = $this->pager($this->render($this->paginator(220, $page)));
+
+        foreach ($pager['items'] as $i => $label) {
+            $classes = $pager['classes'][$i];
+            $name = "{$i} 番目の「{$label}」";
+            foreach (['w-8', 'h-8', 'flex', 'items-center', 'justify-center', 'text-xs'] as $class) {
+                $this->assertContains($class, $classes, "{$name}に {$class} が無い");
+            }
+            $sizes = array_values(array_filter($classes, fn (string $c) => preg_match('/^(?:[\w-]+:)*(?:min-|max-)?(?:w|h|size)-/', $c) === 1));
+            $this->assertSame(['w-8', 'h-8'], $sizes, "{$name}の大きさの class が w-8 h-8 だけでない");
+
+            $isCurrent = in_array($label, $pager['current'], true);
+            foreach (['bg-emerald-600', 'text-white'] as $class) {
+                $isCurrent
+                    ? $this->assertContains($class, $classes, "今のページ（{$label}）に {$class} が無い")
+                    : $this->assertNotContains($class, $classes, "{$name}は今のページでないのに {$class} がある");
+            }
+            if ($label !== '…') {
+                $this->assertContains('rounded', $classes, "{$name}に rounded が無い");
+                $this->assertContains('border', $classes, "{$name}に border が無い");
+            }
+        }
+    }
+
+    /** @return array<string, array{int}> */
     public static function pagesPastTheLast(): array
     {
         return ['99999 ページ目' => [99999], '整数の最大' => [PHP_INT_MAX]];
