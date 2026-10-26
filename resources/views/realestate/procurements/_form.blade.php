@@ -194,17 +194,18 @@
 // 整数演算のみで組む（金額は最大 2.1e9、被乗数は 2.1e13 で 2^53 未満なので誤差なし）。
 function procurementForm() {
     return Object.assign(supplierPicker(), {
-        propertyType: '{{ old("property_type", $p?->property_type?->value ?? "") }}',
-        taxRate: '{{ old("tax_rate", $p?->tax_rate ?? $defaultTaxRate) }}',
+        // ⚠ 値は Js::from で渡す（引用符の中に直に書くと & や ' が実体参照の文字のまま入り、末尾の \ で JS が止まる。消費税率は文字の欄なので打ち間違いで起きる。Bug #76）
+        propertyType: {{ \Illuminate\Support\Js::from((string) old('property_type', $p?->property_type?->value ?? '')) }},
+        taxRate: {{ \Illuminate\Support\Js::from((string) old('tax_rate', $p?->tax_rate ?? $defaultTaxRate)) }},
 
-        assessmentLand:            '{{ old("assessment_price_land", $p?->assessment_price_land) }}',
-        assessmentBuildingExcl:    '{{ old("assessment_price_building", $p?->assessment_price_building) }}',
+        assessmentLand:            {{ \Illuminate\Support\Js::from((string) old('assessment_price_land', $p?->assessment_price_land ?? '')) }},
+        assessmentBuildingExcl:    {{ \Illuminate\Support\Js::from((string) old('assessment_price_building', $p?->assessment_price_building ?? '')) }},
         assessmentBuildingIncl:    '',
-        purchaseLand:              '{{ old("purchase_price_land", $p?->purchase_price_land) }}',
-        purchaseBuildingExcl:      '{{ old("purchase_price_building", $p?->purchase_price_building) }}',
+        purchaseLand:              {{ \Illuminate\Support\Js::from((string) old('purchase_price_land', $p?->purchase_price_land ?? '')) }},
+        purchaseBuildingExcl:      {{ \Illuminate\Support\Js::from((string) old('purchase_price_building', $p?->purchase_price_building ?? '')) }},
         purchaseBuildingIncl:      '',
-        targetSellingLand:         '{{ old("target_selling_price_land", $p?->target_selling_price_land) }}',
-        targetSellingBuildingExcl: '{{ old("target_selling_price_building", $p?->target_selling_price_building) }}',
+        targetSellingLand:         {{ \Illuminate\Support\Js::from((string) old('target_selling_price_land', $p?->target_selling_price_land ?? '')) }},
+        targetSellingBuildingExcl: {{ \Illuminate\Support\Js::from((string) old('target_selling_price_building', $p?->target_selling_price_building ?? '')) }},
         targetSellingBuildingIncl: '',
 
         isLandOnly: function() {
