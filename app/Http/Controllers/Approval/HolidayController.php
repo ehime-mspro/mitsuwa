@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Approval;
 use App\Http\Controllers\Controller;
 use App\Models\ApprovalHoliday;
 use App\Models\ApprovalReminderRun;
-use App\Models\ApprovalSetting;
+use App\Support\Approval\LaunchState;
 use App\Support\Approval\ReminderCalendar;
 use App\Support\Approval\SettingLogger;
 use Carbon\CarbonImmutable;
@@ -27,10 +27,10 @@ class HolidayController extends Controller
         $holidays = ApprovalHoliday::ordered()->get();
         $nextDay  = (new ReminderCalendar())->nextSendDay();
         $lastRun  = ApprovalReminderRun::latestRun();
-        // ⚠ 行を作らずに読む（管理の画面は使い始める前から開く）
-        $launched = ApprovalSetting::launchedForMenu();
+        // ⚠ 行を作らずに読む（管理の画面は使い始める前から開く）。「次に催促を送る日」の下の注記が、準備中と試す期間で変わる
+        $stage    = LaunchState::stage();
 
-        return view('approvals.admin.holidays', compact('holidays', 'nextDay', 'lastRun', 'launched'));
+        return view('approvals.admin.holidays', compact('holidays', 'nextDay', 'lastRun', 'stage'));
     }
 
     public function store(Request $request)

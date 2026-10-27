@@ -88,6 +88,7 @@ final class PdfSheet
         public readonly ?array $amountRows = null,
         public readonly array $extras = [],
         public readonly ?string $fixedText = null,
+        public readonly bool $trial = false,
     ) {
     }
 
@@ -133,6 +134,7 @@ final class PdfSheet
             amountRows: $content->amountTable === null ? null : self::amountRows($content->amountTable),
             extras: self::extrasOf($content->extras),
             fixedText: $content->fixedText,
+            trial: LaunchState::inTrial(),   // 試す期間は上の余白に「試し」を出す（段階6 設計書 §5.6）
         );
     }
 

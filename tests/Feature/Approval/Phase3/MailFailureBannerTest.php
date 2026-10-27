@@ -46,6 +46,7 @@ class MailFailureBannerTest extends TestCase
             route('approvals.admin.holidays.index'),
             route('approvals.admin.papers.index'),
             route('approvals.admin.papers.import'),
+            route('approvals.admin.launch.index'),
         ];
     }
 

@@ -2,13 +2,18 @@
 
 namespace Tests\Feature\Approval\Phase2;
 
+use App\Enums\ApprovalLaunchStage;
+use App\Enums\UserRole;
 use App\Http\Middleware\EnsureApprovalAdmin;
 use App\Http\Middleware\EnsureApprovalLaunched;
 use App\Models\ApprovalRequest;
+use App\Support\Approval\LaunchState;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Str;
 use Tests\Concerns\BuildsApprovalFixtures;
+use Tests\Concerns\BuildsRouteUrls;
 use Tests\TestCase;
 
 /**
@@ -21,6 +26,7 @@ class LaunchGateTest extends TestCase
 {
     use RefreshDatabase;
     use BuildsApprovalFixtures;
+    use BuildsRouteUrls;
 
     /** 準備中も開いてよいルート（名前が完全一致か、`.` で終わるものは先頭一致） */
     private const OPEN_BEFORE_LAUNCH = [
@@ -30,6 +36,7 @@ class LaunchGateTest extends TestCase
         'approvals.admin.types.'        => '申請種類の管理（準備の画面。D1）',
         'approvals.admin.holidays.'     => '催促の設定（準備の画面。使い始める前から送らない日を登録できる。段階3 設計書 §5.9）',
         'approvals.admin.papers.'       => '過去の紙の決裁の取り込み（準備の画面。使い始める日までに取り込む。段階5 設計書 D11）',
+        'approvals.admin.launch.'       => '使い始め（⑬。準備中・試す期間に試す人を選ぶ。段階6 設計書 §5.9）',
     ];
 
     /**
@@ -160,6 +167,66 @@ class LaunchGateTest extends TestCase
         $this->launchApprovals();
 
         $this->actingAs($this->approvalOnlyUser())->get('/approvals/_probe/' . $request->id)->assertOk()->assertSee('ok');
+    }
+
+    public function test_in_trial_a_tester_passes_the_gate(): void
+    {
+        $this->probeRoutes();
+        $request = $this->draftFor($this->approvalWorld());
+        $tester  = $this->approvalOnlyUser();
+        $this->makeTester($tester);
+
+        $this->actingAs($tester)->get('/approvals/_probe/' . $request->id)->assertOk()->assertSee('ok');
+    }
+
+    /**
+     * 試す期間に試す人でない人は、止める側の**すべての**ルートで準備中と同じ応答（画面を開く GET はホームへ・それ以外は 404。
+     * 存在しない ID でも同じ）。決裁の管理者でも同じ（段階6 設計書 §5.2・§6）
+     */
+    public function test_in_trial_a_non_tester_gets_the_same_answers_as_before_launch(): void
+    {
+        $this->resolveHttpKernel();
+        $this->makeTester($this->approvalOnlyUser(['name' => '試す 人']));    // 試す期間にする（試すのは別の人）
+        $this->assertSame(ApprovalLaunchStage::Trial, LaunchState::stage(), '試す期間になっていない（準備中のテストとして空振りしていないか）');
+        $users   = ['決裁の管理者' => $this->approvalAdmin(), '決裁のみ利用者' => $this->approvalOnlyUser(), '基幹の管理者' => $this->baseUser(['role' => UserRole::Executive->value])];   // 設計書 §6 の人（UserRole を use）
+        $checked = 0;
+
+        foreach (Route::getRoutes() as $route) {
+            $middleware = app('router')->gatherRouteMiddleware($route);
+            if (! str_starts_with((string) $route->getName(), 'approvals.') || ! in_array(EnsureApprovalLaunched::class, $middleware, true)) {
+                continue;
+            }
+            $url = $this->urlForRoute($route, fn (string $name) => $name === 'notice' ? (string) Str::uuid() : '999999');
+
+            foreach ($users as $label => $user) {
+                if (! $user->isApprovalAdmin() && in_array(EnsureApprovalAdmin::class, $middleware, true)) {
+                    continue;   // 管理の門番が先に 403（ここで見るのは稼働の門番）
+                }
+                foreach (array_diff($route->methods(), ['HEAD']) as $method) {
+                    $response = $this->actingAs($user)->call($method, $url);
+                    $where    = "{$label} {$method} {$route->getName()}";
+                    $method === 'GET'
+                        ? $this->assertSame(route('approvals.home'), $response->headers->get('Location'), $where)
+                        : $this->assertSame(404, $response->getStatusCode(), $where);
+                    $checked++;
+                }
+            }
+        }
+
+        $this->assertGreaterThanOrEqual(self::MIN_GATED, $checked, '空振りしていないか');
+    }
+
+    public function test_in_trial_a_non_tester_gets_the_same_answers_for_a_real_request(): void
+    {
+        $w        = $this->trialWorld();
+        $request  = $this->submittedFor($w);
+        $outsider = $this->approvalAdmin();     // 試す人でない決裁の管理者
+
+        $this->actingAs($outsider)->get(route('approvals.requests.show', $request))->assertRedirect(route('approvals.home'));
+        $this->actingAs($outsider)->get(route('approvals.requests.pdf', $request))->assertRedirect(route('approvals.home'));
+        $this->actingAs($outsider)->post(route('approvals.requests.withdraw', $request))->assertNotFound();
+        $this->actingAs($outsider)->getJson(route('approvals.requests.show', $request))->assertNotFound();
+        $this->actingAs($w['applicant'])->get(route('approvals.requests.show', $request))->assertOk();
     }
 
     /** 門番はルートモデル結合より前（データの有無を漏らさない）・決裁の管理の門番より後（管理の画面は 403 が先） */

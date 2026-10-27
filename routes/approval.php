@@ -3,6 +3,7 @@
 use App\Http\Controllers\Approval\AdminRequestController;
 use App\Http\Controllers\Approval\HolidayController;
 use App\Http\Controllers\Approval\HomeController;
+use App\Http\Controllers\Approval\LaunchController;
 use App\Http\Controllers\Approval\LedgerController;
 use App\Http\Controllers\Approval\NoticeController;
 use App\Http\Controllers\Approval\OrganizationController;
@@ -108,6 +109,12 @@ Route::middleware('approval.admin')->prefix('approvals/admin')->name('approvals.
     Route::get('/papers/{approvalPaperRecord}/edit', [PaperRecordController::class, 'edit'])->name('papers.edit');
     Route::put('/papers/{approvalPaperRecord}', [PaperRecordController::class, 'update'])->name('papers.update');
     Route::delete('/papers/{approvalPaperRecord}', [PaperRecordController::class, 'destroy'])->name('papers.destroy');
+
+    // 使い始め（画面⑬。段階6 設計書 §5.9）。準備中・試す期間・使い始めたあとのどれでも開ける（門番は approval.admin だけ）
+    // ⚠ パラメータ名は `{user}`（⑦ の `approvals.admin.users.*` と同じ）。削除した人の試す人の印も外せるように withTrashed()
+    Route::get('/launch', [LaunchController::class, 'index'])->name('launch.index');
+    Route::post('/launch/testers', [LaunchController::class, 'addTester'])->name('launch.testers.store');
+    Route::delete('/launch/testers/{user}', [LaunchController::class, 'removeTester'])->withTrashed()->name('launch.testers.destroy');
 });
 
 /*
@@ -132,8 +139,8 @@ Route::middleware(['approval.admin', 'approval.launched'])->prefix('approvals/ad
 | 申請を回す画面（段階2。使い始めるまで誰にも見せない）
 |--------------------------------------------------------------------------
 |
-| ⚠ 門番 `approval.launched` は、使い始める前（approval_settings.launched_at が空）は
-|   画面を開く GET をホームへ送り、それ以外を 404 にする（段階2 設計書 §5.2・D1）。
+| ⚠ 門番 `approval.launched` は、準備中と、試す期間の試す人でない人には
+|   画面を開く GET をホームへ送り、それ以外を 404 にする（段階2 設計書 §5.2・D1・段階6 設計書 §5.2）。
 |   このグループの外に申請の画面を足さないこと（LaunchGateTest が全件分類で止める）。
 | ⚠ パラメータ名は `{approvalRequest}` / `{approvalAttachment}`（モデル名の camelCase）。
 | ⚠ `/requests/create` を `/requests/{approvalRequest}` より前に置く（登録順がマッチの優先順）。

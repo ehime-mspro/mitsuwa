@@ -30,7 +30,7 @@ class ApprovalNoticeMail extends ApprovalMailable
     {
         return new Envelope(
             from: new Address((string) config('mail.from.address'), self::FROM_NAME),
-            subject: '【決裁】' . $this->notice->headline . '：' . $this->context['subject'],
+            subject: $this->subjectLine($this->notice->headline . '：' . $this->context['subject']),
         );
     }
 

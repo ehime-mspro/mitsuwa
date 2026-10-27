@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ApprovalDepartment;
 use App\Models\ApprovalType;
 use App\Support\Approval\DownloadLogger;
+use App\Support\Approval\LaunchState;
 use App\Support\Approval\Ledger;
 use App\Support\Approval\LedgerExcel;
 use App\Support\Approval\LedgerFilter;
@@ -73,7 +74,7 @@ class LedgerController extends Controller
         DownloadLogger::excel($request, $filter->toLog(), count($keys));
 
         // 日本語の名前は filename*（UTF-8）、古いブラウザ用の代わりは ASCII だけの名前（Laravel の Str::ascii に任せない。Bug #68）
-        [$fileName, $fallback] = LedgerExcel::fileNames();
+        [$fileName, $fallback] = LedgerExcel::fileNames(LaunchState::inTrial());   // 試す期間は名前の先頭に試しの印（段階6 設計書 §5.6）
 
         return response($excel, 200, [
             'Content-Type'           => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

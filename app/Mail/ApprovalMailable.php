@@ -31,6 +31,31 @@ abstract class ApprovalMailable extends Mailable implements ShouldQueue
 
     public $backoff = 60;
 
+    /** 試す期間のメールの件名の先頭に付ける印（段階6 設計書 §5.6）。付けるのは subjectLine() の 1 か所 */
+    public const TRIAL_MARK = '【試し】';
+
+    /**
+     * 試す期間のメールか。
+     *
+     * ⚠ 付けるかどうかは積む時点で決めてメールに持たせる（asTrial()）。キューの中で設定を読まない
+     *   （長く動くキュー処理は古い値を読む。段階3 設計書 §4.2・§4.3）
+     */
+    public bool $trial = false;
+
+    /** 試す期間のメールにする（積む時点で呼ぶ。件名の先頭に TRIAL_MARK が付く） */
+    public function asTrial(bool $trial = true): static
+    {
+        $this->trial = $trial;
+
+        return $this;
+    }
+
+    /** 件名。決裁のメールはみな `【決裁】…` で始め、試す期間はその前に TRIAL_MARK を付ける（段階6 設計書 §5.6） */
+    protected function subjectLine(string $text): string
+    {
+        return ($this->trial ? self::TRIAL_MARK : '') . '【決裁】' . $text;
+    }
+
     /** メールの件名や 1 行の欄に入れる文字の改行などの制御文字を空白にする（細工した送信で件名が 2 行にならないように） */
     public static function oneLine(?string $text): string
     {

@@ -30,7 +30,7 @@ class ApprovalReminderMail extends ApprovalMailable
     {
         return new Envelope(
             from: new Address((string) config('mail.from.address'), self::FROM_NAME),
-            subject: "【決裁】対応待ちの申請が {$this->total} 件あります",
+            subject: $this->subjectLine("対応待ちの申請が {$this->total} 件あります"),
         );
     }
 

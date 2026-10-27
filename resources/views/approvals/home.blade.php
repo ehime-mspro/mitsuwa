@@ -22,7 +22,12 @@
 
     <div class="bg-white rounded-lg border border-gray-200 px-5 py-5">
         <p class="text-[13px] text-gray-700 leading-relaxed mb-4">
-            決裁の機能は準備中です。使い始める日が決まったらお知らせします。
+            {{-- 試す期間に試す人でない決裁の管理者が開くときは、上の帯（試しの期間です）と食い違わない文にする（段階6 設計書 §5.6） --}}
+            @if($adminInTrial)
+                いまは試す期間です。申請の画面は試す人にだけ見えています（試す人は「使い始め」で選べます）。
+            @else
+                決裁の機能は準備中です。使い始める日が決まったらお知らせします。
+            @endif
         </p>
 
         <dl class="text-[13px] text-gray-700 space-y-1.5 mb-5">
@@ -44,6 +49,7 @@
                 <a href="{{ route('approvals.admin.types.index') }}" class="text-emerald-600 hover:underline">申請種類の管理</a>
                 <a href="{{ route('approvals.admin.holidays.index') }}" class="text-emerald-600 hover:underline">催促の設定</a>
                 <a href="{{ route('approvals.admin.papers.index') }}" class="text-emerald-600 hover:underline">過去の決裁の取り込み</a>
+                <a href="{{ route('approvals.admin.launch.index') }}" class="text-emerald-600 hover:underline">使い始め</a>
             @endif
         </div>
     </div>

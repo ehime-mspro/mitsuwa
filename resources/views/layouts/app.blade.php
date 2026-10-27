@@ -70,6 +70,11 @@
                         </nav>
                     @endif
 
+                    {{-- 試す期間の帯。決裁の画面だけ（基幹の画面で問い合わせを増やさない。段階6 設計書 §5.6） --}}
+                    @if(request()->routeIs('approvals.*'))
+                        @include('approvals._trial_banner')
+                    @endif
+
                     {{-- フラッシュメッセージ --}}
                     @if(session('success'))
                         <div class="mb-5 flex items-center gap-2 px-4 py-3 rounded-lg bg-emerald-50 border border-emerald-200">

@@ -12,7 +12,7 @@ use Illuminate\View\View;
  * 紙の決裁の詳細（段階5 設計書 §5.15・D21）。台帳の行と関連する決裁No のリンクの先。
  *
  * ⚠ 見られる人だけ（RequestVisibility の紙の決裁の規則）。見られない記録は 404（申請の詳細と同じ。在ることも知らせない）
- * ⚠ 使い始めてから（approval.launched の中）。決裁の管理者の登録・直し・削除は PaperRecordController（使い始める前から）
+ * ⚠ 見せるときだけ（approval.launched の中＝準備中、または試す期間の試す人でない人には見せない）。決裁の管理者の登録・直し・削除は PaperRecordController（approval.launched の外＝準備中も開ける）
  * ⚠ 回覧の操作は無い。あとでスキャンした PDF を付けるときもこの画面に足す（D8）
  */
 class PaperDetailController extends Controller

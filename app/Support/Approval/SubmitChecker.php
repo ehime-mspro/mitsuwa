@@ -9,7 +9,7 @@ use App\Models\ApprovalType;
 use App\Models\User;
 
 /**
- * 提出（出し直し）の条件（要件 4.3 のケース 4・5.1・5.5・設計書 D4・D10・D12・§5.8・段階5 設計書 D2・D13）。
+ * 提出（出し直し）の条件（要件 4.3 のケース 4・5.1・5.5・設計書 D4・D10・D12・§5.8・段階5 設計書 D2・D13・段階6 設計書 §5.4）。
  *
  * 理由をすべて集めて返す（1 つずつ直して出し直させない）。画面は編集画面の上にまとめて出す。
  * 形の検査（長さ・金額の範囲・関連する決裁No の形と数）は、保存のときに RequestController の入力の検査が見る
@@ -17,6 +17,9 @@ use App\Models\User;
  */
 final class SubmitChecker
 {
+    /** 試す期間の断りの書き出し（足りない人を `・` でつないで、`が試す人に入っていません。` を続ける） */
+    private const TRIAL_LEAD = '試す期間は、回る先の人がみな試す人のときだけ出せます。';
+
     /** @return list<string> 提出できない理由（空なら提出できる） */
     public static function reasons(ApprovalRequest $request, User $user): array
     {
@@ -89,6 +92,15 @@ final class SubmitChecker
         foreach (array_intersect(RequestExtras::REQUIRED, RequestExtras::usedBy($type)) as $key) {
             if (FormInput::trim((string) ($request->getAttributes()[$key] ?? null)) === '') {
                 $reasons[] = RequestExtras::FIELDS[$key] . 'を入力してください。';
+            }
+        }
+
+        // 試す期間は、回る先の人（部門長・審査の担当・社長）がみな試す人のときだけ出せる（段階6 設計書 §5.4）。
+        // 準備中と使い始めたあとは確かめない。未設定の役と審査の担当がいないときは、上の理由に任せる（TrialCoverage）
+        if (LaunchState::inTrial()) {
+            $missing = TrialCoverage::missingForSubmit($request, $user);
+            if ($missing !== []) {
+                $reasons[] = self::TRIAL_LEAD . implode('・', $missing) . 'が試す人に入っていません。';
             }
         }
 
