@@ -542,6 +542,118 @@ class SurveyScreensTest extends RealEstateScreenTestCase
         $this->assertSame(0, BuyerSurvey::count());
     }
 
+    // ============================================================
+    // 顧客の新規登録の画面（`CustomerController::store()`）のアンケート
+    // ============================================================
+
+    /**
+     * 顧客の新規登録の画面のフォームを、ブラウザが送る項目で組む（親の buyerForm() と入れ子の 2 つの部品をそれぞれ評価する）。
+     * 姓・名・取得日は埋める。
+     *
+     * @param  array<string, SurveyQuestion>  $questions
+     * @param  array<string, string>  $steps  部品に走らせる JS（キーは questions() のキー）
+     */
+    private function customerForm(string $html, array $questions, array $steps = []): array
+    {
+        // buyerForm() の init() は送信の瞬間に生年月日を組む処理を `this.$el.closest('form')` に登録する（Alpine が $el を渡す）。
+        // 欄の出し分け（x-model・:disabled）には使われないので、$el は何もしない偽物を渡す（生年月日は空のまま送る）
+        $factory = "Object.assign(buyerForm(), { \$el: { closest: function () { return { addEventListener: function () {} }; } } })";
+        $form = $this->composedForm($html, route('realestate.customers.store'), 'buyerForm', $factory, [
+            'sliderComponent' . $questions['slider']->id => $steps['slider'] ?? '',
+            'condSelect' . $questions['conditional']->id => $steps['conditional'] ?? '',
+        ]);
+
+        return $this->fill($form, ['acquired_date' => '2026-10-01', 'last_name' => '佐藤', 'first_name' => '一郎']);
+    }
+
+    /** 登録画面から 7 問すべてに答える（スライダーは 3500 へ動かし、条件分岐は「建て替え」を押した状態で組む）。 */
+    private function answerAllQuestions(string $html, array $questions): array
+    {
+        $form = $this->customerForm($html, $questions, [
+            'slider' => $this->moveSlider($html, '3500'),
+            'conditional' => "data.selectedOption = '建て替え';",
+        ]);
+        $withText = 'survey[' . $questions['withText']->id . ']';
+        $conditional = 'survey[' . $questions['conditional']->id . ']';
+        $form = $this->answer($form, $html, $withText . '[0][value]', 'チラシ');
+        $form = $this->answer($form, $html, $withText . '[1][value]', 'ご紹介');
+        $form = $this->answer($form, $html, $withText . '[1][text]', '佐藤');
+        $form = $this->answer($form, $html, $conditional . '[value]', '建て替え');
+        $form = $this->answer($form, $html, $conditional . '[sub][land_tsubo]', '45');
+        $form = $this->answer($form, $html, 'survey[' . $questions['single']->id . ']', '3');
+        $form = $this->answer($form, $html, 'survey[' . $questions['multi']->id . '][]', ['A', 'C']);
+        $form = $this->answer($form, $html, 'survey[' . $questions['text']->id . ']', '123');
+
+        return $this->answer($form, $html, 'survey[' . $questions['number']->id . ']', '120');
+    }
+
+    public function test_a_new_customer_without_answers_gets_no_survey(): void
+    {
+        $q = $this->questions();
+        $url = route('realestate.customers.create');
+        $html = $this->htmlOf($url);
+
+        // 何も答えずに登録する。付随の文字の欄は空のまま毎回送られるので、`filled()` は配列を「入っている」とみなしていた
+        $response = $this->submit($this->customerForm($html, $q), $url);
+
+        $this->assertFlash($this->landed($response), 'success', '顧客を登録しました。');
+        $this->assertSame([1, 0, 0], [Buyer::count(), BuyerSurvey::count(), BuyerSurveyAnswer::count()], '答えていないのにアンケートが作られた');
+    }
+
+    public function test_a_new_customer_survey_is_checked_with_the_customer_fields(): void
+    {
+        $q = $this->questions();
+        $url = route('realestate.customers.create');
+        $form = $this->customerForm($this->htmlOf($url), $q);
+        $form = $this->fill($form, ['last_name' => '']);
+        $form['fields']['survey'][$q['single']->id] = '社宅';
+
+        $html = $this->landed($this->submit($form, $url));
+
+        // 顧客の項目の誤りと設問の誤りが、同じ箱に一度に出る。顧客は作られない
+        $this->assertErrorItem($html, trans('validation.required', ['attribute' => '姓']));
+        $this->assertErrorItem($html, '「家族の人数」の「社宅」は選択肢にありません。');
+        preg_match('/<ul style="margin: 0; padding-left: 18px;">(.*?)<\/ul>/s', $html, $box);
+        $this->assertSame(2, substr_count($box[1] ?? '', '<li>'), '入力エラーの箱の件数が違う');
+        $this->assertSame([0, 0], [Buyer::count(), BuyerSurvey::count()], '断られたのに保存された');
+    }
+
+    public function test_a_new_customer_survey_stores_only_the_answered_questions(): void
+    {
+        $q = $this->questions();
+        $url = route('realestate.customers.create');
+        $html = $this->htmlOf($url);
+
+        // 7 問のうち 1 問だけに答える（答えなかった 6 問は、行を作らない）
+        $form = $this->answer($this->customerForm($html, $q), $html, 'survey[' . $q['single']->id . ']', '2');
+
+        $this->assertFlash($this->landed($this->submit($form, $url)), 'success', '顧客を登録しました。');
+        $this->assertSame([$q['single']->id => '2'], $this->answersOf(BuyerSurvey::firstOrFail()), '答えた設問だけが保存されていない');
+    }
+
+    public function test_a_new_customer_survey_is_stored_in_the_saved_form(): void
+    {
+        $q = $this->questions();
+        $url = route('realestate.customers.create');
+        $html = $this->htmlOf($url);
+
+        // 登録画面から 7 問に答える。保存の形は、アンケートの登録画面（test_every_type_survives_opening_and_saving_the_edit_screen）と同じ
+        $response = $this->submit($this->answerAllQuestions($html, $q), $url);
+
+        $this->assertFlash($this->landed($response), 'success', '顧客を登録しました。');
+        $survey = BuyerSurvey::firstOrFail();
+        $this->assertSame(['realestate', '2026-10-01'], [$survey->department, $survey->survey_date->toDateString()]);
+        $this->assertSame([
+            $q['withText']->id => '[{"value":"チラシ"},{"value":"ご紹介","text":"佐藤"}]',
+            $q['conditional']->id => '{"value":"建て替え","sub":{"land_tsubo":"45"}}',
+            $q['single']->id => '3',
+            $q['multi']->id => '["A","C"]',
+            $q['text']->id => '123',
+            $q['number']->id => '120',
+            $q['slider']->id => '3500',
+        ], $this->answersOf($survey), '顧客の新規登録で保存された回答の形が違う');
+    }
+
     /** 「回答しない」のチェック（名前を持たない）が切り替える値の名前（x-model） */
     private function notAnsweringCheckbox(string $html): string
     {

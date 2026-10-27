@@ -11,8 +11,10 @@ use App\Models\User;
 use App\Support\BuyerCsvRow;
 use App\Support\CsvDate;
 use App\Support\JapanTime;
+use App\Support\SurveyAnswers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 
 class CustomerController extends Controller
@@ -125,7 +127,9 @@ class CustomerController extends Controller
     {
         $department = $this->resolveDepartment();
 
-        $this->validateBuyer($request);
+        // 顧客の項目の誤りと、アンケートの回答の誤りを一度に出す。回答の検査と保存の形は SurveyAnswers の 1 か所
+        $questions = SurveyQuestion::ofDepartment($department)->active()->ordered()->get();
+        $answers = $this->validateBuyer($request, $questions);
 
         DB::beginTransaction();
         try {
@@ -140,8 +144,8 @@ class CustomerController extends Controller
             // buyer_departments ピボット
             $buyer->addToDepartment($department, $request->input('acquired_date'));
 
-            // アンケート保存（設問がある場合）
-            $this->saveSurvey($request, $buyer, $department);
+            // アンケート保存（答えた設問があるときだけ）
+            $this->saveSurvey($request, $buyer, $department, $questions, $answers);
 
             DB::commit();
 
@@ -585,13 +589,19 @@ class CustomerController extends Controller
      *   （Eloquent の date キャストは 3 月 1 日に繰り上げて黙って保存する。Bug #54 と同じ形）。
      *   元号を選んだまま西暦を打つと 3905 年のような年になるので、元号の範囲と突き合わせる（CSV 取込と同じ範囲）。
      * ⚠ メールの形は見ない（CSV 取込・簡易登録も見ていない。画面だけ断ると取込と結果が違う）。
+     * ⚠ 新規登録（store）は、画面に出すアンケートの設問を渡す。回答の誤りは `survey.{設問の番号}` のキーで、顧客の項目の誤りと
+     *   一度に出る（項目名には設問の文を使う）。編集（update）の画面にアンケートは無いので、設問は渡さない。
+     *
+     * @param  iterable<SurveyQuestion>  $surveyQuestions  画面に出したアンケートの設問
+     * @return array<int, string>  回答した設問の番号 => 保存する answer_value（アンケートの保存の形。答えが無ければ空）
      */
-    private function validateBuyer(Request $request): void
+    private function validateBuyer(Request $request, iterable $surveyQuestions = []): array
     {
         $text = fn (string $key) => 'nullable|string|max:' . BuyerCsvRow::MAX_LENGTH[$key];
         $count = fn (string $key) => 'nullable|integer|min:0|max:' . BuyerCsvRow::MAX_INTEGER[$key];
+        $answers = [];
 
-        $request->validate([
+        Validator::make($request->all(), [
             'last_name'       => 'required|string|max:' . BuyerCsvRow::MAX_LENGTH['last_name'],
             'first_name'      => 'required|string|max:' . BuyerCsvRow::MAX_LENGTH['first_name'],
             'last_name_kana'  => $text('last_name_kana'),
@@ -615,7 +625,11 @@ class CustomerController extends Controller
             // 「登録に失敗しました」としか出なかったので、理由つきの入力エラーにする（H9）
             'project_id'      => 'nullable|integer|exists:re_projects,id',
             'staff_user_id'   => 'nullable|integer|exists:users,id',
-        ]);
+        ])->after(function ($validator) use ($surveyQuestions, $request, &$answers) {
+            $answers = SurveyAnswers::checkScreen($surveyQuestions, $request->input('survey'), [], $validator->errors());
+        })->validate();
+
+        return $answers;
     }
 
     /** 元号と生年月日の年が合うか（生年月日が空か読めないときは見ない。読めないことは birth_date の `date` が断る） */
@@ -636,24 +650,14 @@ class CustomerController extends Controller
     }
 
     /**
-     * アンケート保存（顧客登録時の初回アンケート）
+     * アンケート保存（顧客登録時の初回アンケート）。答えた設問が 1 つも無ければ何も作らない。
+     *
+     * @param  iterable<SurveyQuestion>  $questions  画面に出した設問
+     * @param  array<int, string>  $answers  validateBuyer() が返した、回答した設問の番号 => answer_value
      */
-    private function saveSurvey(Request $request, Buyer $buyer, string $department): void
+    private function saveSurvey(Request $request, Buyer $buyer, string $department, iterable $questions, array $answers): void
     {
-        $questions = SurveyQuestion::ofDepartment($department)->active()->ordered()->get();
-        if ($questions->isEmpty()) {
-            return;
-        }
-
-        // アンケート回答が1つでもあるか確認
-        $hasAnswer = false;
-        foreach ($questions as $q) {
-            if ($request->filled("survey.{$q->id}")) {
-                $hasAnswer = true;
-                break;
-            }
-        }
-        if (!$hasAnswer) {
+        if ($answers === []) {
             return;
         }
 
@@ -681,55 +685,18 @@ class CustomerController extends Controller
 
         $survey = BuyerSurvey::create($surveyData);
 
-        // 回答明細
+        // 回答明細（答えた設問だけ）
         foreach ($questions as $q) {
-            $rawValue = $request->input("survey.{$q->id}");
-            if ($rawValue === null || $rawValue === '' || $rawValue === []) {
+            if (! isset($answers[$q->id])) {
                 continue;
             }
 
-            $answerValue = $this->normalizeAnswerValue($rawValue, $q->getRawOriginal('question_type'));
-
             $survey->answers()->create([
                 'question_id'       => $q->id,
-                'answer_value'      => $answerValue,
+                'answer_value'      => $answers[$q->id],
                 'question_snapshot' => $q->toSnapshot(),
             ]);
         }
-    }
-
-    /**
-     * 回答値をquestion_typeに応じて正規化
-     */
-    private function normalizeAnswerValue($rawValue, string $questionType): string
-    {
-        if (!is_array($rawValue)) {
-            return (string) $rawValue;
-        }
-
-        if ($questionType === 'multi_select') {
-            return json_encode(array_values($rawValue), JSON_UNESCAPED_UNICODE);
-        }
-
-        if ($questionType === 'select_with_text') {
-            $items = [];
-            foreach ($rawValue as $entry) {
-                if (is_array($entry) && isset($entry['value']) && $entry['value'] !== '') {
-                    $item = ['value' => $entry['value']];
-                    if (isset($entry['text']) && $entry['text'] !== '') {
-                        $item['text'] = $entry['text'];
-                    }
-                    $items[] = $item;
-                }
-            }
-            return json_encode($items, JSON_UNESCAPED_UNICODE);
-        }
-
-        if ($questionType === 'conditional_select') {
-            return json_encode($rawValue, JSON_UNESCAPED_UNICODE);
-        }
-
-        return json_encode($rawValue, JSON_UNESCAPED_UNICODE);
     }
 
     /**
