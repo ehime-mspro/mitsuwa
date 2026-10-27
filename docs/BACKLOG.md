@@ -2424,7 +2424,7 @@ git checkout 13.x && git merge --ff-only date-picker-month-ago
 
 ---
 
-## 🚧 決裁申請 段階6（本番への先行公開と受け入れ確認）— 6a 実装済み・本番反映の前
+## 🚧 決裁申請 段階6（本番への先行公開と受け入れ確認）— 6a 本番反映済み（試す人 0 人＝準備中のまま）
 
 要件定義書: @docs/決裁申請_要件定義書_v1.md（v1.16。8.1・8.3・9.2・13 章の⑬・14.6・15.5・15.6・16.1・16.2）
 設計書: @docs/superpowers/specs/2026-10-26-approval-phase6-design.md（D1〜D15。2026-10-26 に流れの図と ⑬ の画面の見本を見て、利用者が選択式で決めた）
@@ -2445,6 +2445,22 @@ git checkout 13.x && git merge --ff-only date-picker-month-ago
 - 本番の SQL は `database/sql/2026-10-27-approval-phase6a.sql`（3 文。列 2 つと、今の連番の行の `next_without_trials` を `next_number` にそろえる。番号を付けた申請が 0 件のときだけ正しい）。本番反映は **DB が先・`./deploy.sh` が後**。部品の追加は無い
 - **段階3 設計書 §5.2 の申し送り（Notifier と催促の「使い始めたか」の判定の見直し）は、これで閉じた**（判定を `LaunchState` に置き換え、試す期間は試す人に絞る）
 - 実装のコミットは `5eaf8d8c` まで（`git log` で見る）。画面の確認（Task 8）と全件・変異（Task 7）の記録は計画の末尾。写真 54 枚は `/Users/masanori/site/approval/screenshots-6a/`（リポジトリの外）
+
+#### 本番反映（2026-10-27・会話 ab2e5ae8）
+
+| 段 | 結果 |
+|---|---|
+| 反映前の読み取り | 決裁のルート 64 本・`is_tester`／`next_without_trials` は無い・`launched_at` は空・部門 2・申請 0（番号の付いた申請 0）・連番の行 0・`approval_members` 1 行・`laravel.log` は 6 月 18 日 |
+| `13.x` | `69c43b0c` → `40f27fd2` へ早送り（manage の会話に先に知らせ、反映が済むまで早送りと deploy を待ってもらった） |
+| DB が先 | `2026-10-27-approval-phase6a.sql` を送り、3 文（`OK 1`・`OK 2`・`OK 3 rows=0`＝連番の行が無いのでそろえた行も 0）。2 つの列の型・NULL・既定・コメント・並び（`stamp_text` の後・`last_issued` の後）は設計どおり |
+| 読み込みの表 | main repo で `dump-autoload --no-dev --optimize`（7316 classes・dev の部品なし・新しい 4 クラスが入った） |
+| `./deploy.sh` | 6 段すべて |
+| 反映後の読み取り | ビュー 315 本の lint INVALID 0・決裁のルート 67 本（⑬ の 3 本が増えた）・`launched_at` は空・4 クラスとも読める・`LaunchState::stage()` = `preparing`・試す人 0 人・`next_without_trials` と `next_number` のずれ 0・`laravel.log` は 6 月 18 日のまま |
+| 画面（利用者の Chrome・見るだけ） | ⑬ に「準備中」「試す人 0 人」・役のある人（部門長 1・決裁の管理者 1）に「試す人にする」・欄 2 は社長が未設定・部門長がまだ試す人でないので ×・種類はまだ無い・帯は出ない。サイドバー（展開と引き出し）と決裁のホームに「使い始め」。決裁のホームは「準備中です」のまま。コンソールのエラー 0 |
+
+- 公開した読みやすい版: 受け入れ確認の手引き https://claude.ai/artifact/U4zNyE4hDcCEsM24HYtTzB （新規）・紙の台帳の取り込み手順 https://claude.ai/artifact/HCZ6nEX7aKBmomYGiC3WkR （手引きへのリンクを足した）・要件定義書 v1.16 https://claude.ai/artifact/A5GPFxxjsuDRAfLfCzcufY
+- 試し始めるのは、利用者が ⑬ で試す人を選んだとき。その前に、要件 16.3 の準備（社長の指定〈基幹の管理者〉・申請の種類と審査部門・部門長と審査の担当の登録）が要る（2026-10-27 の本番は、社長が未設定・申請の種類が 0）
+- push はまだ（利用者の指示があってから）
 
 #### 6b に回したもの
 
