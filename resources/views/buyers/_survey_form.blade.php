@@ -1,7 +1,15 @@
 {{-- アンケートフォーム共通パーシャル: 設問を動的レンダリング --}}
+{{--
+    描く値: 入力エラーで戻ったなら送った値（old('survey')。送られていない設問は「回答なし」）、でなければ保存済みの値（編集画面）。
+    1 問の状態（選択肢に無い値・付随の欄・スライダーの「回答しない」）は SurveyAnswers::formState() の 1 か所で決める。
+    ⚠ 条件分岐付き選択の付随の欄は、選択肢をまたいで同じ名前を持つ。選んでいない選択肢の欄は :disabled で送らない
+      （隠れた欄も送られ、後ろの空の欄が勝って、打った値が消えていた。Bug #3 と同じ形）。
+    ⚠ スライダーの範囲の入力欄は name を持たない（ブラウザは値を今の下限〜上限に丸めて送る）。送るのは hidden の 1 つだけ。
+--}}
 @php
     $qLetters = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T'];
     $existingAnswers = $existingAnswers ?? [];
+    $returnedWithInput = session()->hasOldInput();
 @endphp
 
 <div style="background: #fefce8; border: 2px solid #fde68a; border-radius: 10px; padding: 24px; margin-top: 24px;">
@@ -12,9 +20,10 @@
             $qId = $q->id;
             $letter = $qLetters[$idx] ?? ($idx + 1);
             $qType = $q->getRawOriginal('question_type');
-            $options = $q->options ?? [];
             $settings = $q->settings ?? [];
-            $existing = $existingAnswers[$qId] ?? null;
+            $saved = $existingAnswers[$qId] ?? null;
+            $shown = $returnedWithInput ? old("survey.{$qId}") : $saved;
+            $state = \App\Support\SurveyAnswers::formState($q, $shown, $saved);
         @endphp
 
         <div style="margin-bottom: 20px;">
@@ -26,26 +35,25 @@
             @if($qType === 'single_select')
                 {{-- 単一選択（ラジオ） --}}
                 <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                    @foreach($options as $optIdx => $opt)
+                    @foreach($state['choices'] as $choice)
                         <label style="display: flex; align-items: center; gap: 5px; font-size: 13px; cursor: pointer; padding: 5px 10px; border: 1px solid #d1d5db; border-radius: 6px; background: #fff;">
-                            <input type="radio" name="survey[{{ $qId }}]" value="{{ $opt }}"
+                            <input type="radio" name="survey[{{ $qId }}]" value="{{ $choice['value'] }}"
                                    style="accent-color: #059669;"
-                                   {{ (is_string($existing) && $existing === $opt) ? 'checked' : '' }}>
-                            ①{{ $opt }}
+                                   {{ $choice['checked'] ? 'checked' : '' }}>
+                            ①{{ $choice['label'] }}
                         </label>
                     @endforeach
                 </div>
 
             @elseif($qType === 'multi_select')
                 {{-- 複数選択（チェックボックス） --}}
-                @php $existArr = is_array($existing) ? $existing : []; @endphp
                 <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                    @foreach($options as $opt)
+                    @foreach($state['choices'] as $choice)
                         <label style="display: flex; align-items: center; gap: 5px; font-size: 13px; cursor: pointer; padding: 5px 10px; border: 1px solid #d1d5db; border-radius: 6px; background: #fff;">
-                            <input type="checkbox" name="survey[{{ $qId }}][]" value="{{ $opt }}"
+                            <input type="checkbox" name="survey[{{ $qId }}][]" value="{{ $choice['value'] }}"
                                    style="accent-color: #059669;"
-                                   {{ in_array($opt, $existArr) ? 'checked' : '' }}>
-                            {{ $opt }}
+                                   {{ $choice['checked'] ? 'checked' : '' }}>
+                            {{ $choice['label'] }}
                         </label>
                     @endforeach
                 </div>
@@ -53,7 +61,7 @@
             @elseif($qType === 'text')
                 {{-- テキスト入力 --}}
                 <input type="text" name="survey[{{ $qId }}]"
-                       value="{{ is_string($existing) ? $existing : '' }}"
+                       value="{{ $state['value'] }}"
                        placeholder="{{ $settings['placeholder'] ?? '' }}"
                        style="width: 100%; max-width: 400px; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
 
@@ -61,7 +69,7 @@
                 {{-- 数値入力 --}}
                 <div style="display: flex; align-items: center; gap: 6px;">
                     <input type="number" name="survey[{{ $qId }}]"
-                           value="{{ is_string($existing) ? $existing : '' }}"
+                           value="{{ $state['value'] }}"
                            min="{{ $settings['min'] ?? '' }}" max="{{ $settings['max'] ?? '' }}"
                            style="width: 120px; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
                     @if(isset($settings['unit']))
@@ -70,70 +78,57 @@
                 </div>
 
             @elseif($qType === 'slider')
-                {{-- スライダー --}}
+                {{-- スライダー（答えていなければ「回答しない」。動かすと外れる） --}}
                 @php
-                    $sMin = $settings['min'] ?? 0;
-                    $sMax = $settings['max'] ?? 100;
-                    $sStep = $settings['step'] ?? 1;
-                    $sUnit = $settings['unit'] ?? '';
-                    $sDefault = is_string($existing) ? $existing : (int)(($sMin + $sMax) / 2);
+                    $slider = $state['slider'];
+                    $stepCount = 4;
+                    $range = $slider['max'] - $slider['min'];
                 @endphp
                 <div style="font-size: 12px; color: #6b7280; margin-bottom: 4px;">土地＋建物で</div>
                 <div style="padding: 10px 0;" x-data="sliderComponent{{ $qId }}()">
-                    <input type="range" name="survey[{{ $qId }}]"
-                           min="{{ $sMin }}" max="{{ $sMax }}" step="{{ $sStep }}"
+                    <input type="range" aria-label="{{ $q->label }}"
+                           min="{{ $slider['min'] }}" max="{{ $slider['max'] }}" step="{{ $slider['step'] }}"
                            x-model="sliderVal"
+                           x-on:input="skip = false"
                            style="width: 100%; height: 6px; accent-color: #059669;">
+                    <input type="hidden" name="survey[{{ $qId }}]" value="{{ $slider['answered'] ? $slider['value'] : '' }}" :value="sliderVal" :disabled="skip">
                     <div style="display: flex; justify-content: space-between; font-size: 11px; color: #6b7280; margin-top: 4px;">
-                        @php
-                            $stepCount = 4;
-                            $range = $sMax - $sMin;
-                        @endphp
                         @for($i = 0; $i <= $stepCount; $i++)
-                            <span>{{ number_format($sMin + ($range / $stepCount) * $i) }}{{ $sUnit }}</span>
+                            <span>{{ number_format($slider['min'] + ($range / $stepCount) * $i) }}{{ $slider['unit'] }}</span>
                         @endfor
                     </div>
-                    <div style="text-align: center; font-size: 20px; font-weight: 800; color: #059669; margin-top: 6px;">
-                        <span x-text="Number(sliderVal).toLocaleString()">{{ number_format((int)$sDefault) }}</span>{{ $sUnit }}
+                    <div style="display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 6px 16px; margin-top: 6px;">
+                        <div style="font-size: 20px; font-weight: 800; color: #059669;">
+                            <span x-text="skip ? '—' : Number(sliderVal).toLocaleString()">{{ $slider['answered'] ? number_format((float) $slider['value']) : '—' }}</span><span x-show="! skip">{{ $slider['unit'] }}</span>
+                        </div>
+                        <label style="display: flex; align-items: center; gap: 5px; font-size: 13px; cursor: pointer;">
+                            <input type="checkbox" x-model="skip" style="accent-color: #059669;">
+                            回答しない
+                        </label>
                     </div>
                 </div>
                 <script>
                 function sliderComponent{{ $qId }}() {
                     return {
-                        sliderVal: {{ (int)$sDefault }}
+                        sliderVal: {{ \Illuminate\Support\Js::from($slider['value']) }},
+                        skip: {{ \Illuminate\Support\Js::from(! $slider['answered']) }}
                     };
                 }
                 </script>
 
             @elseif($qType === 'select_with_text')
                 {{-- 選択肢＋付随テキスト --}}
-                @php $existArr = is_array($existing) ? $existing : []; @endphp
                 <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                    @foreach($options as $opt)
-                        @php
-                            $optVal = is_array($opt) ? ($opt['value'] ?? '') : $opt;
-                            $hasText = is_array($opt) ? ($opt['has_text'] ?? false) : false;
-                            $textLabel = is_array($opt) ? ($opt['text_label'] ?? '') : '';
-                            $isChecked = false;
-                            $textValue = '';
-                            foreach ($existArr as $ea) {
-                                if (is_array($ea) && ($ea['value'] ?? '') === $optVal) {
-                                    $isChecked = true;
-                                    $textValue = $ea['text'] ?? '';
-                                } elseif (is_string($ea) && $ea === $optVal) {
-                                    $isChecked = true;
-                                }
-                            }
-                        @endphp
+                    @foreach($state['choices'] as $choice)
                         <label style="display: flex; align-items: center; gap: 5px; font-size: 13px; cursor: pointer; padding: 5px 10px; border: 1px solid #d1d5db; border-radius: 6px; background: #fff;">
-                            <input type="checkbox" name="survey[{{ $qId }}][{{ $loop->index }}][value]" value="{{ $optVal }}"
+                            <input type="checkbox" name="survey[{{ $qId }}][{{ $loop->index }}][value]" value="{{ $choice['value'] }}"
                                    style="accent-color: #059669;"
-                                   {{ $isChecked ? 'checked' : '' }}>
-                            {{ $optVal }}
-                            @if($hasText)
+                                   {{ $choice['checked'] ? 'checked' : '' }}>
+                            {{ $choice['label'] }}
+                            @if($choice['hasText'])
                                 <input type="text" name="survey[{{ $qId }}][{{ $loop->index }}][text]"
-                                       value="{{ $textValue }}"
-                                       placeholder="{{ $textLabel }}"
+                                       value="{{ $choice['text'] }}"
+                                       placeholder="{{ $choice['textLabel'] }}"
                                        style="width: 120px; height: 30px; font-size: 12px; margin-left: 6px; border: 1px solid #d1d5db; border-radius: 4px; padding: 4px 8px;">
                             @endif
                         </label>
@@ -142,49 +137,42 @@
 
             @elseif($qType === 'conditional_select')
                 {{-- 条件分岐付き選択 --}}
-                @php
-                    $existObj = is_array($existing) ? $existing : [];
-                    // 保存された回答は送られた値のまま（手で組んだ送信では配列もありうる）。文字・数でなければ空として描く
-                    // （画面に出す書き方は配列を受け取れず、その買主のアンケートの画面が誰が開いても 500 になっていた）
-                    $selectedValue = is_scalar($existObj['value'] ?? null) ? (string) $existObj['value'] : '';
-                    $subAnswers = is_array($existObj['sub'] ?? null)
-                        ? array_map(fn ($v) => is_scalar($v) ? (string) $v : '', $existObj['sub'])
-                        : [];
-                @endphp
                 <div x-data="condSelect{{ $qId }}()">
                     <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px;">
-                        @foreach($options as $optIdx => $opt)
-                            @php
-                                $optVal = is_array($opt) ? ($opt['value'] ?? '') : $opt;
-                                $subFields = is_array($opt) ? ($opt['sub_fields'] ?? []) : [];
-                            @endphp
+                        @foreach($state['choices'] as $choice)
                             <label style="display: flex; align-items: center; gap: 5px; font-size: 13px; cursor: pointer; padding: 5px 10px; border: 1px solid #d1d5db; border-radius: 6px; background: #fff;">
-                                <input type="radio" name="survey[{{ $qId }}][value]" value="{{ $optVal }}"
+                                <input type="radio" name="survey[{{ $qId }}][value]" value="{{ $choice['value'] }}"
                                        style="accent-color: #059669;"
-                                       x-on:change="selectedOption = {{ \Illuminate\Support\Js::from((string) $optVal) }}"
-                                       {{ $selectedValue === $optVal ? 'checked' : '' }}>
-                                ①{{ $optVal }}
+                                       x-model="selectedOption"
+                                       {{ $choice['checked'] ? 'checked' : '' }}>
+                                ①{{ $choice['label'] }}
                             </label>
                         @endforeach
                     </div>
 
-                    {{-- サブフィールド表示 --}}
-                    @foreach($options as $opt)
-                        @php
-                            $optVal = is_array($opt) ? ($opt['value'] ?? '') : $opt;
-                            $subFields = is_array($opt) ? ($opt['sub_fields'] ?? []) : [];
-                        @endphp
-                        @if(count($subFields) > 0)
-                            <div x-show="selectedOption === {{ \Illuminate\Support\Js::from((string) $optVal) }}" style="border: 2px dashed #d1d5db; border-radius: 8px; padding: 16px; background: #fff;">
-                                <div style="font-size: 12px; font-weight: 600; color: #6b7280; margin-bottom: 10px;">▼ {{ $optVal }} — 希望エリア</div>
-                                <div class="grid-stack-sm" style="display: grid; grid-template-columns: repeat({{ count($subFields) }}, 1fr); gap: 10px;">
-                                    @foreach($subFields as $sf)
+                    {{-- サブフィールド表示（選んでいない選択肢の欄は送らない） --}}
+                    @foreach($state['choices'] as $choice)
+                        @if(count($choice['subFields']) > 0)
+                            <div x-show="selectedOption === {{ \Illuminate\Support\Js::from($choice['value']) }}" style="border: 2px dashed #d1d5db; border-radius: 8px; padding: 16px; background: #fff;">
+                                <div style="font-size: 12px; font-weight: 600; color: #6b7280; margin-bottom: 10px;">▼ {{ $choice['value'] }} — 希望エリア</div>
+                                <div class="grid-stack-sm" style="display: grid; grid-template-columns: repeat({{ count($choice['subFields']) }}, 1fr); gap: 10px;">
+                                    @foreach($choice['subFields'] as $sf)
                                         <div>
-                                            <label style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 4px;">{{ $sf['label'] ?? '' }}</label>
-                                            <input type="{{ ($sf['type'] ?? 'text') === 'number' ? 'number' : 'text' }}"
-                                                   name="survey[{{ $qId }}][sub][{{ $sf['key'] ?? '' }}]"
-                                                   value="{{ $subAnswers[$sf['key'] ?? ''] ?? '' }}"
-                                                   style="height: 34px; font-size: 13px; width: 100%; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px;">
+                                            <label style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 4px;">{{ $sf['label'] }}</label>
+                                            @if($sf['extra'])
+                                                {{-- 今の欄に無い保存済みの欄: 保存済みと同じ選択肢を選んでいる間だけ送る --}}
+                                                <input type="text"
+                                                       name="survey[{{ $qId }}][sub][{{ $sf['key'] }}]"
+                                                       value="{{ $sf['value'] }}"
+                                                       :disabled="selectedOption !== savedOption"
+                                                       style="height: 34px; font-size: 13px; width: 100%; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px;">
+                                            @else
+                                                <input type="{{ $sf['type'] }}"
+                                                       name="survey[{{ $qId }}][sub][{{ $sf['key'] }}]"
+                                                       value="{{ $sf['value'] }}"
+                                                       :disabled="selectedOption !== {{ \Illuminate\Support\Js::from($choice['value']) }}"
+                                                       style="height: 34px; font-size: 13px; width: 100%; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px;">
+                                            @endif
                                         </div>
                                     @endforeach
                                 </div>
@@ -195,7 +183,8 @@
                 <script>
                 function condSelect{{ $qId }}() {
                     return {
-                        selectedOption: {{ \Illuminate\Support\Js::from($selectedValue) }}
+                        selectedOption: {{ \Illuminate\Support\Js::from($state['selected']) }},
+                        savedOption: {{ \Illuminate\Support\Js::from($state['savedSelected']) }}
                     };
                 }
                 </script>

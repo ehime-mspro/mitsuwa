@@ -159,6 +159,93 @@ final class SurveyAnswers
         return $values;
     }
 
+    /**
+     * 部品（`buyers/_survey_form.blade.php`）が 1 問を描く状態。
+     *
+     * $shown は描く値（入力エラーで戻ったなら old() の画面の形、でなければ保存済みの decode() の値か null）。
+     * $saved は保存済みの decode() の値（編集画面だけ。ほかは null）。
+     *
+     * ⚠ 描く値が今の選択肢に無いとき（設問の管理で選択肢の名前を直したあとに残る回答など）は、その値の選択肢を
+     *   後ろに足して選んだまま描く（`extra`。ラベルは「値（選択肢に無い値）」）。描かないと保存のたびに答えが消える。
+     * ⚠ 条件分岐付き選択の `subFields[].extra` は、保存済みの sub にあって今の欄に無いキー（ラベルはキー）。
+     *   保存済みの選択肢にだけ付け、保存済みの値が空のキーは描かない。値は描く値の選択肢の欄にだけ入れる。
+     * ⚠ 選択肢＋付随テキストは、選んだ値ごとに文字を描く。画面の形（old()）の、チェックの無い欄の文字は描かない
+     *   （保存しない値。保存の形から描いたときと同じ状態になる）。
+     * ⚠ スライダーは、描く値が無ければ「回答しない」（`answered` が false）。`value` は真ん中の値。
+     *
+     * @return array{
+     *   choices: list<array{value: string, label: string, checked: bool, extra: bool, hasText: bool, textLabel: string, text: string,
+     *                       subFields: list<array{key: string, label: string, type: 'text'|'number', value: string, extra: bool}>}>,
+     *   selected: string,
+     *   savedSelected: string,
+     *   value: string,
+     *   slider: array{min: int, max: int, step: int, unit: string, value: string, answered: bool}
+     * }
+     */
+    public static function formState(SurveyQuestion $question, mixed $shown, mixed $saved): array
+    {
+        $state = [
+            'choices' => [],
+            'selected' => '',
+            'savedSelected' => '',
+            'value' => '',
+            'slider' => self::sliderState($question, $shown),
+        ];
+
+        switch ($question->question_type) {
+            case SurveyQuestionType::SingleSelect:
+                $picked = self::filledText($shown);
+                $state['selected'] = $picked ?? '';
+                $state['choices'] = self::choices($question, $picked === null ? [] : [[$picked, '']]);
+                break;
+
+            case SurveyQuestionType::MultiSelect:
+                $picked = [];
+                foreach (is_array($shown) ? $shown : [] as $item) {
+                    $text = self::filledText($item);
+                    if ($text !== null) {
+                        $picked[] = [$text, ''];
+                    }
+                }
+                $state['choices'] = self::choices($question, $picked);
+                break;
+
+            case SurveyQuestionType::SelectWithText:
+                $picked = [];
+                foreach (is_array($shown) ? $shown : [] as $item) {
+                    $text = self::filledText(is_array($item) ? ($item['value'] ?? null) : $item);
+                    if ($text !== null) {
+                        $picked[] = [$text, is_array($item) ? (self::scalarText($item['text'] ?? null) ?? '') : ''];
+                    }
+                }
+                $state['choices'] = self::choices($question, $picked);
+                break;
+
+            case SurveyQuestionType::ConditionalSelect:
+                $selected = is_array($shown) ? self::filledText($shown['value'] ?? null) : null;
+                $state['selected'] = $selected ?? '';
+                $state['savedSelected'] = is_array($saved) ? (self::filledText($saved['value'] ?? null) ?? '') : '';
+                $state['choices'] = self::conditionalChoices(
+                    $question,
+                    $state['selected'],
+                    is_array($shown['sub'] ?? null) ? $shown['sub'] : [],
+                    $state['savedSelected'],
+                    is_array($saved) && is_array($saved['sub'] ?? null) ? $saved['sub'] : [],
+                );
+                break;
+
+            case SurveyQuestionType::Text:
+            case SurveyQuestionType::Number:
+                $state['value'] = self::scalarText($shown) ?? '';
+                break;
+
+            default:
+                break;
+        }
+
+        return $state;
+    }
+
     // ================================================================
     // 種類ごとの検査
     // ================================================================
@@ -580,6 +667,152 @@ final class SurveyAnswers
         }
 
         return $result;
+    }
+
+    // ================================================================
+    // 部品が描く状態
+    // ================================================================
+
+    /**
+     * 選択肢の並び（今の選択肢 ＋ 描く値のうち今の選択肢に無いもの）。
+     *
+     * @param  list<array{0: string, 1: string}>  $picked  描く値と、その値に添える文字（重なりは最初のもの）
+     * @return list<array<string, mixed>>
+     */
+    private static function choices(SurveyQuestion $question, array $picked): array
+    {
+        $texts = [];
+        foreach ($picked as [$value, $text]) {
+            if (! array_key_exists($value, $texts)) {
+                $texts[$value] = $text;
+            }
+        }
+
+        $choices = [];
+        $present = [];
+        foreach (self::options($question) as $option) {
+            $value = self::optionValue($option);
+            if ($value === null) {
+                continue;
+            }
+            $present[] = $value;
+            $checked = array_key_exists($value, $texts);
+            $choices[] = self::choice($value, $checked, false, is_array($option) ? $option : [], $checked ? $texts[$value] : '');
+        }
+        foreach ($texts as $value => $text) {
+            $value = (string) $value;
+            if (! in_array($value, $present, true)) {
+                $choices[] = self::choice($value, true, true, [], $text);
+            }
+        }
+
+        return $choices;
+    }
+
+    /**
+     * 選択肢 1 つの状態。
+     *
+     * @param  array<mixed>  $option  選択肢の定義（文字の選択肢・足した選択肢は []）
+     * @return array<string, mixed>
+     */
+    private static function choice(string $value, bool $checked, bool $extra, array $option, string $text): array
+    {
+        return [
+            'value' => $value,
+            'label' => $extra ? $value . '（選択肢に無い値）' : $value,
+            'checked' => $checked,
+            'extra' => $extra,
+            // 文字の欄は、選択肢が文字を持てるか、すでに文字があるとき（持てなくなった選択肢の文字を、そのまま保存し直せるように）
+            'hasText' => ! empty($option['has_text']) || $text !== '',
+            'textLabel' => is_string($option['text_label'] ?? null) ? $option['text_label'] : '',
+            'text' => $text,
+            'subFields' => [],
+        ];
+    }
+
+    /**
+     * 条件分岐付き選択の選択肢の並びと、それぞれの付随の欄。
+     *
+     * @param  array<mixed>  $shownSub  描く値の付随の欄
+     * @param  array<mixed>  $savedSub  保存済みの付随の欄
+     * @return list<array<string, mixed>>
+     */
+    private static function conditionalChoices(SurveyQuestion $question, string $selected, array $shownSub, string $savedSelected, array $savedSub): array
+    {
+        $choices = self::choices($question, $selected === '' ? [] : [[$selected, '']]);
+        foreach ($choices as $i => $choice) {
+            $option = $choice['extra'] ? null : self::findOption($question, $choice['value']);
+            $isShown = $choice['value'] === $selected;
+            $fields = [];
+            $keys = [];
+            foreach (is_array($option['sub_fields'] ?? null) ? $option['sub_fields'] : [] as $field) {
+                if (! is_array($field) || ! is_string($field['key'] ?? null) || $field['key'] === '') {
+                    continue;
+                }
+                $key = $field['key'];
+                $keys[] = $key;
+                $fields[] = [
+                    'key' => $key,
+                    'label' => is_string($field['label'] ?? null) && $field['label'] !== '' ? $field['label'] : $key,
+                    'type' => ($field['type'] ?? 'text') === 'number' ? 'number' : 'text',
+                    'value' => $isShown ? (self::scalarText($shownSub[$key] ?? null) ?? '') : '',
+                    'extra' => false,
+                ];
+            }
+            // 保存済みの選択肢には、保存済みで今の欄に無いキーも描く（保存済みと同じ選択肢を選んでいる間だけ送る）
+            if ($savedSelected !== '' && $choice['value'] === $savedSelected) {
+                foreach ($savedSub as $key => $value) {
+                    $key = (string) $key;
+                    if ($key === '' || in_array($key, $keys, true) || self::filledText($value) === null) {
+                        continue;
+                    }
+                    $fields[] = [
+                        'key' => $key,
+                        'label' => $key,
+                        'type' => 'text',
+                        'value' => $isShown ? (self::scalarText($shownSub[$key] ?? null) ?? '') : '',
+                        'extra' => true,
+                    ];
+                }
+            }
+            $choices[$i]['subFields'] = $fields;
+        }
+
+        return $choices;
+    }
+
+    /**
+     * スライダーの状態（範囲・単位・描く値・答えたか）。
+     *
+     * @return array{min: int, max: int, step: int, unit: string, value: string, answered: bool}
+     */
+    private static function sliderState(SurveyQuestion $question, mixed $shown): array
+    {
+        $settings = self::settings($question);
+        $min = (int) (self::setting($settings, 'min') ?? self::SLIDER_DEFAULT_MIN);
+        $max = (int) (self::setting($settings, 'max') ?? self::SLIDER_DEFAULT_MAX);
+        $step = (int) (self::setting($settings, 'step') ?? self::SLIDER_DEFAULT_STEP);
+        if ($step <= 0) {
+            $step = (int) self::SLIDER_DEFAULT_STEP;
+        }
+        $value = self::filledText($shown);
+
+        return [
+            'min' => $min,
+            'max' => $max,
+            'step' => $step,
+            'unit' => self::unit($settings),
+            'value' => $value ?? (string) (int) (($min + $max) / 2),
+            'answered' => $value !== null,
+        ];
+    }
+
+    /** 文字・数の空でない値（回答なし・読めない形は null） */
+    private static function filledText(mixed $value): ?string
+    {
+        $text = self::scalarText($value);
+
+        return $text === null || $text === '' ? null : $text;
     }
 
     // ================================================================

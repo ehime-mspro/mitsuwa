@@ -12,7 +12,8 @@ use App\Models\SurveyQuestion;
  *
  * ⚠ 選択肢は経営層が設問の管理で入れる文字、回答は DB に保存された値（検査を足す前に保存された値・設問の選択肢を直したあとに残る値）。
  *   どちらも DB に残るので、壊れると**その画面を開く人全員**に効く（手で組んだ送信の本人だけではない）。
- * ⚠ 選択肢は `x-on:change` / `x-show` の属性の中に書く（ブラウザが実体参照を戻すので、`'` で文字列が閉じてコードとして動く）。
+ * ⚠ 選択肢は `x-show` / `:disabled` の属性の中に書く（ブラウザが実体参照を戻すので、`'` で文字列が閉じてコードとして動く）。
+ *   ラジオは静的な value 属性（HTML として逃がす）と `x-model` で選ぶ。
  *   回答は `<script>` の中に書く（末尾の `\` で画面の JS が止まる）。
  * ⚠ 回答が文字でない（配列で保存されている）と、`{{ }}` が配列を受け取れず画面ごと 500 だった。
  * ⚠ 画面から保存する値は検査が断る（選択肢に無い値・配列）ので、2 本の編集画面のテストは回答の行を DB に直接入れる。
@@ -24,8 +25,8 @@ class SurveyAnswerJsTest extends RealEstateScreenTestCase
 
     private const RAN = 'typeof globalThis.__ran';
 
-    /** `'` と末尾の `\` を含む選択肢 */
-    private const QUOTED = "O'Neil 店\\";
+    /** `'` `"` `&` `<` と末尾の `\` を含む選択肢 */
+    private const QUOTED = "O'Neil \"&<店\\";
 
     private function question(): SurveyQuestion
     {
@@ -63,16 +64,33 @@ class SurveyAnswerJsTest extends RealEstateScreenTestCase
         $question = $this->question();
         $html = $this->htmlOf(route('realestate.customers.surveys.create', $this->buyer()));
 
-        $changes = $this->attributes($html, 'x-on:change');
+        // ラジオの選択肢の文字は、静的な value 属性に HTML として逃がして書き、x-model が JS の値にする
+        preg_match_all('/<input\b[^>]*name="survey\[' . $question->id . '\]\[value\]"[^>]*>/', $html, $radios);
+        $this->assertCount(2, $radios[0], '選択肢ごとのラジオが描かれていない');
+        $values = array_map(fn (string $tag) => $this->htmlAttr($tag, 'value'), $radios[0]);
+        $this->assertSame([self::QUOTED, self::RUNS_CODE], $values, 'ラジオの value 属性が元の文字に戻らない');
+        foreach ($radios[0] as $tag) {
+            $this->assertSame('selectedOption', $this->htmlAttr($tag, 'x-model'), 'ラジオが選んだ選択肢を JS の値にしない');
+        }
+
+        // 付随の欄を開く式・送る式（選択肢の文字を JS の文字列として書く）
         $shows = array_values(array_filter($this->attributes($html, 'x-show'), fn ($v) => str_contains($v, 'selectedOption')));
-        $this->assertCount(2, $changes, '選択肢ごとの x-on:change が描かれていない');
+        $disables = array_values(array_filter($this->attributes($html, ':disabled'), fn ($v) => str_contains($v, 'selectedOption')));
         $this->assertCount(1, $shows, '付随の欄を開く x-show が描かれていない');
+        $this->assertCount(1, $disables, '付随の欄の :disabled が描かれていない');
 
+        // それぞれの選択肢を選ぶ（ラジオを押すと、x-model がその value を JS の値にする）。その選択肢でだけ開いて送り、コードとして動かない
         $function = 'condSelect' . $question->id;
-        $run = $this->driveAlpine($html, $function, $function . '()', '', [], true, [$changes[0], 'selectedOption', $changes[1], 'selectedOption', $shows[0], self::RAN]);
+        $opened = [];
+        foreach ($values as $value) {
+            $run = $this->driveAlpine($html, $function, $function . '()', 'data.selectedOption = ' . json_encode($value) . ';', [], true, ['selectedOption', $shows[0], $disables[0], self::RAN]);
+            $opened[] = $run['evaluated'];
+        }
 
-        $this->assertSame([self::QUOTED, self::QUOTED, self::RUNS_CODE, self::RUNS_CODE, true, 'undefined'], $run['evaluated'],
-            '選んだ選択肢の文字が変わるか、選択肢が JS のコードとして動いた');
+        $this->assertSame([
+            [self::QUOTED, false, true, 'undefined'],
+            [self::RUNS_CODE, true, false, 'undefined'],
+        ], $opened, '選んだ選択肢の文字が変わるか、ほかの選択肢で欄が開くか、選択肢が JS のコードとして動いた');
     }
 
     public function test_a_saved_answer_reaches_the_edit_screen_as_it_is(): void

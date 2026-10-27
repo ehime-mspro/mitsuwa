@@ -717,4 +717,158 @@ class SurveyAnswersTest extends TestCase
             $this->assertSame([$stored, []], SurveyAnswers::check($question, $decoded, $decoded, self::SUBJECT), $stored);
         }
     }
+
+    // ================================================================
+    // 部品（buyers/_survey_form）が描く状態
+    // ================================================================
+
+    /**
+     * 選択肢 1 つの状態（期待値を書きやすくするため。並びは formState() の choices と同じ）。
+     *
+     * @param  list<array{key: string, label: string, type: string, value: string, extra: bool}>  $subFields
+     */
+    private function choice(string $value, string $label, bool $checked, bool $extra = false, bool $hasText = false, string $textLabel = '', string $text = '', array $subFields = []): array
+    {
+        return [
+            'value' => $value,
+            'label' => $label,
+            'checked' => $checked,
+            'extra' => $extra,
+            'hasText' => $hasText,
+            'textLabel' => $textLabel,
+            'text' => $text,
+            'subFields' => $subFields,
+        ];
+    }
+
+    private function subField(string $key, string $label, string $type, string $value, bool $extra = false): array
+    {
+        return ['key' => $key, 'label' => $label, 'type' => $type, 'value' => $value, 'extra' => $extra];
+    }
+
+    public function test_form_state_marks_values_outside_the_options(): void
+    {
+        // 設問の管理で選択肢「A」を「A2」に直したあとに残る回答
+        $single = $this->question('single_select', ['options' => ['A2', 'B']]);
+        $state = SurveyAnswers::formState($single, 'A', 'A');
+
+        $this->assertSame([
+            $this->choice('A2', 'A2', false),
+            $this->choice('B', 'B', false),
+            $this->choice('A', 'A（選択肢に無い値）', true, true),
+        ], $state['choices']);
+        $this->assertSame('A', $state['selected']);
+
+        // 複数選択: 選択肢にある値はその選択肢に、無い値は後ろに足す（重なりは 1 つ）
+        $multi = $this->question('multi_select', ['options' => ['A', 'B']]);
+        $this->assertSame([
+            $this->choice('A', 'A', false),
+            $this->choice('B', 'B', true),
+            $this->choice('Z', 'Z（選択肢に無い値）', true, true),
+        ], SurveyAnswers::formState($multi, ['Z', 'B', 'Z'], null)['choices']);
+
+        // 選択肢＋付随テキスト: 足した選択肢は、文字があれば文字の欄も描く
+        $this->assertSame(
+            $this->choice('旧', '旧（選択肢に無い値）', true, true, true, '', '山田様'),
+            SurveyAnswers::formState($this->selectWithText(), [['value' => '旧', 'text' => '山田様']], null)['choices'][3],
+        );
+
+        // 回答なし（空の文字・空の配列）は選択肢を足さない
+        $this->assertCount(2, SurveyAnswers::formState($single, '', null)['choices']);
+        $this->assertCount(2, SurveyAnswers::formState($multi, [], null)['choices']);
+        $this->assertSame('', SurveyAnswers::formState($single, null, null)['selected']);
+    }
+
+    public function test_form_state_slider_is_unanswered_until_a_value_is_given(): void
+    {
+        $slider = $this->slider();
+
+        // 登録画面・保存済みの回答が無い編集画面・入力エラーで戻って送られていなかったとき
+        $unanswered = ['min' => 2000, 'max' => 6000, 'step' => 100, 'unit' => '万円', 'value' => '4000', 'answered' => false];
+        $this->assertSame($unanswered, SurveyAnswers::formState($slider, null, null)['slider']);
+        $this->assertSame($unanswered, SurveyAnswers::formState($slider, '', null)['slider']);
+
+        $this->assertSame(
+            ['min' => 2000, 'max' => 6000, 'step' => 100, 'unit' => '万円', 'value' => '3500', 'answered' => true],
+            SurveyAnswers::formState($slider, '3500', '3500')['slider'],
+        );
+        // 今の範囲の外の保存済みの値も、そのまま描く（丸めない）
+        $this->assertSame('1500', SurveyAnswers::formState($slider, '1500', '1500')['slider']['value']);
+    }
+
+    public function test_form_state_reads_both_saved_and_submitted_shapes(): void
+    {
+        // 「その他」の文字だけ打ってチェックしなかった・「ご紹介」にチェックして文字を打った
+        $withText = $this->question('select_with_text', ['options' => [
+            ['value' => 'その他', 'has_text' => true],
+            ['value' => 'ご紹介', 'has_text' => true, 'text_label' => 'ご紹介者'],
+            'チラシ',
+        ]]);
+        $submitted = [0 => ['text' => 'x'], 1 => ['value' => 'ご紹介', 'text' => '山田様']];
+        $saved = [['value' => 'ご紹介', 'text' => '山田様']];
+
+        $expected = [
+            $this->choice('その他', 'その他', false, false, true),
+            $this->choice('ご紹介', 'ご紹介', true, false, true, 'ご紹介者', '山田様'),
+            $this->choice('チラシ', 'チラシ', false),
+        ];
+        $this->assertSame($expected, SurveyAnswers::formState($withText, $submitted, null)['choices']);
+        $this->assertSame($expected, SurveyAnswers::formState($withText, $saved, $saved)['choices']);
+
+        // 条件分岐付き選択: 送った形（空の欄は null で届く）と保存の形（空の欄を持たない）
+        $conditional = $this->conditional();
+        $sent = SurveyAnswers::formState($conditional, ['value' => '建売住宅の購入', 'sub' => ['city' => '松山市', 'area' => null, 'tsubo' => null]], null);
+        $stored = SurveyAnswers::formState($conditional, ['value' => '建売住宅の購入', 'sub' => ['city' => '松山市']], null);
+        $this->assertSame($sent, $stored);
+        $this->assertSame('建売住宅の購入', $stored['selected']);
+        $this->assertSame([
+            $this->subField('city', '市町', 'text', '松山市'),
+            $this->subField('area', '地区', 'text', ''),
+            $this->subField('tsubo', '希望坪数', 'number', ''),
+        ], $stored['choices'][0]['subFields']);
+        // 選んでいない選択肢の欄に値を入れない
+        $this->assertSame([$this->subField('land', '土地の広さ', 'number', '')], $stored['choices'][1]['subFields']);
+
+        // テキスト・数値は文字のまま
+        $this->assertSame('123', SurveyAnswers::formState($this->question('text'), '123', '123')['value']);
+        $this->assertSame('3500', SurveyAnswers::formState($this->question('number'), '3500', null)['value']);
+        $this->assertSame('', SurveyAnswers::formState($this->question('number'), null, null)['value']);
+    }
+
+    public function test_form_state_shows_saved_fields_that_the_option_no_longer_has(): void
+    {
+        $conditional = $this->conditional();
+        // 設問の管理で欄を消したあとに残る保存済みの付随の欄（old_key）と、保存済みの値が空の欄（empty_key）
+        $saved = ['value' => '建売住宅の購入', 'sub' => ['city' => '松山市', 'old_key' => '昔の希望', 'empty_key' => '']];
+
+        $state = SurveyAnswers::formState($conditional, $saved, $saved);
+        $this->assertSame([
+            $this->subField('city', '市町', 'text', '松山市'),
+            $this->subField('area', '地区', 'text', ''),
+            $this->subField('tsubo', '希望坪数', 'number', ''),
+            $this->subField('old_key', 'old_key', 'text', '昔の希望', true),
+        ], $state['choices'][0]['subFields']);
+        $this->assertSame('建売住宅の購入', $state['savedSelected']);
+
+        // 入力エラーで戻り、別の選択肢を選んでいた: 保存済みの欄は保存済みの選択肢に描くが、値は入れない
+        $switched = SurveyAnswers::formState($conditional, ['value' => '土地の購入', 'sub' => ['land' => '50']], $saved);
+        $this->assertSame('土地の購入', $switched['selected']);
+        $this->assertSame('建売住宅の購入', $switched['savedSelected']);
+        $this->assertSame($this->subField('old_key', 'old_key', 'text', '', true), $switched['choices'][0]['subFields'][3]);
+        $this->assertSame([$this->subField('land', '土地の広さ', 'number', '50')], $switched['choices'][1]['subFields']);
+
+        // 選択肢に無い保存済みの値: 選択肢を足し、保存済みの欄はすべてその選択肢の欄
+        $renamed = ['value' => '旧', 'sub' => ['old_key' => '昔の希望']];
+        $this->assertSame(
+            $this->choice('旧', '旧（選択肢に無い値）', true, true, false, '', '', [$this->subField('old_key', 'old_key', 'text', '昔の希望', true)]),
+            SurveyAnswers::formState($conditional, $renamed, $renamed)['choices'][3],
+        );
+
+        // 本番の「何も選ばずに保存した」形（値が空）は、どれも選ばず、欄も足さない
+        $empty = ['value' => '', 'sub' => ['city' => '', 'area' => '', 'tsubo' => '']];
+        $blank = SurveyAnswers::formState($conditional, $empty, $empty);
+        $this->assertSame(['', ''], [$blank['selected'], $blank['savedSelected']]);
+        $this->assertCount(3, $blank['choices']);
+        $this->assertCount(3, $blank['choices'][0]['subFields']);
+    }
 }

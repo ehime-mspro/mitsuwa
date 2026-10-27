@@ -113,6 +113,49 @@ class SurveyScreensTest extends RealEstateScreenTestCase
     }
 
     /**
+     * 利用者が、$nth 番目（0 から）の「$name」の欄に打ち込む（描いた HTML の value を書き換える。同じ名前の欄が複数あれば、その 1 つだけ）。
+     * ⚠ 組んだフォームの項目を書き換える answer() では、同じ名前の欄のどれに打ったかを表せない
+     *   （条件分岐付き選択の付随の欄は、選択肢をまたいで同じ名前を持つ。隠れた欄も送られると、後ろの空の欄が勝つ）。
+     */
+    private function typeInto(string $html, string $name, string $value, int $nth = 0): string
+    {
+        preg_match_all('/<input\b[^>]*>/i', $html, $inputs, PREG_OFFSET_CAPTURE);
+        $tags = array_values(array_filter($inputs[0], fn (array $tag) => $this->htmlAttr($tag[0], 'name') === $name));
+        $this->assertArrayHasKey($nth, $tags, "画面に {$nth} 番目の「{$name}」の欄が描かれていない");
+        [$tag, $at] = $tags[$nth];
+        $typed = (string) preg_replace('/(?<![\w:.@-])value="[^"]*"/', 'value="' . e($value) . '"', $tag, 1, $count);
+        $this->assertSame(1, $count, "「{$name}」の欄に value が描かれていない");
+
+        return substr_replace($html, $typed, $at, strlen($tag));
+    }
+
+    /**
+     * スライダーを $value へ動かす手順。ブラウザと同じく、値が変わったあとで範囲の入力欄の `x-on:input` を走らせる
+     * （「回答しない」を外すのは画面の JS。手順で skip を直に書き換えると、画面からその処理が消えても緑になる）。
+     */
+    private function moveSlider(string $html, string $value): string
+    {
+        $this->assertSame(1, preg_match_all('/<input\b[^>]*type="range"[^>]*>/i', $html, $ranges), '範囲の入力欄がちょうど 1 つ描かれていない');
+        $onInput = $this->htmlAttr($ranges[0][0], 'x-on:input');
+        $this->assertNotNull($onInput, 'スライダーを動かしても「回答しない」が外れない（範囲の入力欄に x-on:input が無い）');
+
+        return 'data.sliderVal = ' . json_encode($value) . '; with (data) { ' . $onInput . ' }';
+    }
+
+    /** 送る値の比べやすい形（キーの並びをそろえる） */
+    private function canonical(array $fields): array
+    {
+        foreach ($fields as $key => $value) {
+            if (is_array($value)) {
+                $fields[$key] = $this->canonical($value);
+            }
+        }
+        ksort($fields);
+
+        return $fields;
+    }
+
+    /**
      * 添字が整数の配列は添字の順に並べる。ブラウザは欄を描いた順に送るので、あとから足した欄が末尾に回ると、
      * 選択肢＋付随テキストの保存の並び（送られた順）が画面と食い違う。
      */
@@ -134,20 +177,6 @@ class SurveyScreensTest extends RealEstateScreenTestCase
     private function answersOf(BuyerSurvey $survey): array
     {
         return $survey->answers()->orderBy('question_id')->pluck('answer_value', 'question_id')->all();
-    }
-
-    /**
-     * スライダーの行を除く。この 2 本が見るのは「空の回答が消える」「画面に出ない設問の回答が残る」ことで、
-     * 触っていないスライダーが回答を作るかどうかは別のテストが見る。
-     *
-     * @param  array<int, string>  $answers
-     * @param  array<string, SurveyQuestion>  $questions
-     */
-    private function withoutSlider(array $answers, array $questions): array
-    {
-        unset($answers[$questions['slider']->id]);
-
-        return $answers;
     }
 
     private function latestSurvey(Buyer $buyer): BuyerSurvey
@@ -195,7 +224,7 @@ class SurveyScreensTest extends RealEstateScreenTestCase
         $store = route('realestate.customers.surveys.store', $buyer);
         $form = $this->surveyForm($html, $store, $q, [
             // スライダーを 3500 へ動かす（「回答しない」があれば外す）。条件分岐は「建て替え」を押す
-            'slider' => "data.sliderVal = '3500'; data.skip = false;",
+            'slider' => $this->moveSlider($html, '3500'),
             'conditional' => "data.selectedOption = '建て替え';",
         ]);
         $withText = 'survey[' . $q['withText']->id . ']';
@@ -243,7 +272,7 @@ class SurveyScreensTest extends RealEstateScreenTestCase
         // 開ける（htmlOf が 200 を確かめる）。そのまま保存すると、中身は「回答なし」と同じなので 2 行とも消える
         $this->saveEditScreenAsIs($buyer, $survey, $q);
 
-        $this->assertSame([], $this->withoutSlider($this->answersOf($survey->fresh()), $q));
+        $this->assertSame([], $this->answersOf($survey->fresh()));
     }
 
     public function test_answers_to_questions_not_on_the_screen_are_kept_on_save(): void
@@ -260,7 +289,7 @@ class SurveyScreensTest extends RealEstateScreenTestCase
         // 画面に出ない（無効にした）設問の回答は、編集画面を保存しても消えない
         $this->saveEditScreenAsIs($buyer, $survey, $q);
 
-        $this->assertSame([$q['text']->id => '3LDK', $retired->id => '旧回答'], $this->withoutSlider($this->answersOf($survey->fresh()), $q));
+        $this->assertSame([$q['text']->id => '3LDK', $retired->id => '旧回答'], $this->answersOf($survey->fresh()));
     }
 
     public function test_values_outside_the_options_are_refused_with_the_question_label(): void
@@ -269,8 +298,9 @@ class SurveyScreensTest extends RealEstateScreenTestCase
         $buyer = $this->buyer();
         $url = route('realestate.customers.surveys.create', $buyer);
         // スライダーは 3550（100 刻みの外）を送る状態にする。単一選択は描いた選択肢に無い値へ書き換える
-        $form = $this->surveyForm($this->htmlOf($url), route('realestate.customers.surveys.store', $buyer), $q, [
-            'slider' => "data.sliderVal = '3550'; data.skip = false;",
+        $html = $this->htmlOf($url);
+        $form = $this->surveyForm($html, route('realestate.customers.surveys.store', $buyer), $q, [
+            'slider' => $this->moveSlider($html, '3550'),
         ]);
         $form['fields']['survey'][$q['single']->id] = '社宅';
 
@@ -323,5 +353,204 @@ class SurveyScreensTest extends RealEstateScreenTestCase
         preg_match('/<ul style="margin: 0; padding-left: 18px;">(.*?)<\/ul>/s', $html, $box);
         $this->assertSame(2, substr_count($box[1] ?? '', '<li>'), '入力エラーの箱の件数が違う');
         $this->assertSame(0, BuyerSurvey::count());
+    }
+
+    public function test_conditional_fields_keep_their_values_when_keys_overlap(): void
+    {
+        $q = $this->questions();
+        $buyer = $this->buyer();
+        $url = route('realestate.customers.surveys.create', $buyer);
+        $store = route('realestate.customers.surveys.store', $buyer);
+        $sub = 'survey[' . $q['conditional']->id . '][sub]';
+
+        // 選択肢 => [その選択肢の欄に打つ値（欄の名前 => [何番目の同じ名前の欄か, 値]）, 保存される形]
+        $cases = [
+            '建売住宅の購入' => [
+                ['city' => [0, '松山市'], 'area' => [0, '道後'], 'tsubo' => [0, '35']],
+                '{"value":"建売住宅の購入","sub":{"city":"松山市","area":"道後","tsubo":"35"}}',
+            ],
+            '土地を購入して新築' => [
+                ['city' => [1, '東温市'], 'land_tsubo' => [0, '60']],
+                '{"value":"土地を購入して新築","sub":{"city":"東温市","land_tsubo":"60"}}',
+            ],
+        ];
+
+        foreach ($cases as $option => [$typed, $expected]) {
+            // 選択肢を押し、開いた欄に打ち込む（同じ名前の欄は、ほかの選択肢の隠れた欄にもある）
+            $html = $this->htmlOf($url);
+            foreach ($typed as $key => [$nth, $value]) {
+                $html = $this->typeInto($html, $sub . '[' . $key . ']', $value, $nth);
+            }
+            $form = $this->surveyForm($html, $store, $q, ['conditional' => 'data.selectedOption = ' . json_encode($option) . ';']);
+            $form = $this->answer($form, $html, 'survey[' . $q['conditional']->id . '][value]', $option);
+            $this->assertSaved($this->submit($form, $url), $buyer);
+
+            // 隠れた欄は送らない（直す前は、後ろの選択肢の空の欄が勝ち、打った値が全部消えていた）
+            $this->assertSame([$q['conditional']->id => $expected], $this->answersOf($this->latestSurvey($buyer)), "「{$option}」の付随の欄が残らない");
+        }
+    }
+
+    public function test_a_new_survey_does_not_store_the_slider_until_it_is_moved(): void
+    {
+        $q = $this->questions();
+        $buyer = $this->buyer();
+        $url = route('realestate.customers.surveys.create', $buyer);
+        $store = route('realestate.customers.surveys.store', $buyer);
+        $html = $this->htmlOf($url);
+
+        // 登録画面をそのまま保存する。聞かなかった人の予算は残さない（直す前は真ん中の 4000 が残った）
+        $this->assertSaved($this->submit($this->surveyForm($html, $store, $q), $url), $buyer);
+        $this->assertSame([], $this->answersOf($this->latestSurvey($buyer)), '触っていないスライダーが回答を作った');
+
+        // 動かすと「回答しない」が外れ、その値が残る
+        $this->assertSaved($this->submit($this->surveyForm($html, $store, $q, ['slider' => $this->moveSlider($html, '3500')]), $url), $buyer);
+        $this->assertSame([$q['slider']->id => '3500'], $this->answersOf($this->latestSurvey($buyer)));
+    }
+
+    public function test_choosing_not_to_answer_removes_a_saved_slider_answer(): void
+    {
+        $q = $this->questions();
+        $buyer = $this->buyer();
+        $survey = $this->newSurvey($buyer);
+        $this->saveAnswer($survey, $q['slider'], '3500');
+        $this->saveAnswer($survey, $q['text'], '3LDK');
+
+        $url = route('realestate.customers.surveys.edit', [$buyer, $survey]);
+        $html = $this->htmlOf($url);
+        $checkbox = $this->notAnsweringCheckbox($html);
+
+        // 「回答しない」にチェックを入れる（チェックの x-model の値を真にする）
+        $form = $this->surveyForm($html, route('realestate.customers.surveys.update', [$buyer, $survey]), $q, [
+            'slider' => 'data.' . $checkbox . ' = true;',
+        ]);
+        $this->assertSaved($this->submit($form, $url), $buyer);
+
+        $this->assertSame([$q['text']->id => '3LDK'], $this->answersOf($survey->fresh()), '「回答しない」にしても保存済みの予算が残った');
+    }
+
+    public function test_a_saved_slider_outside_the_current_range_is_kept(): void
+    {
+        $q = $this->questions();
+        $buyer = $this->buyer();
+        // 設問の管理で範囲を 2000〜6000 に直す前の回答（ブラウザは範囲の入力欄の値を 2000 に丸める）
+        $survey = $this->newSurvey($buyer);
+        $this->saveAnswer($survey, $q['slider'], '1500');
+
+        $this->saveEditScreenAsIs($buyer, $survey, $q);
+
+        $this->assertSame([$q['slider']->id => '1500'], $this->answersOf($survey->fresh()));
+    }
+
+    public function test_the_range_input_sends_nothing_itself(): void
+    {
+        $q = $this->questions();
+        $html = $this->htmlOf(route('realestate.customers.surveys.create', $this->buyer()));
+        $name = 'survey[' . $q['slider']->id . ']';
+
+        // 範囲の入力欄は名前を持たない（ブラウザは値を今の下限〜上限に丸めて送るので、保存済みの範囲の外の値が変わる）
+        preg_match_all('/<input\b[^>]*type="range"[^>]*>/i', $html, $ranges);
+        $this->assertCount(1, $ranges[0], '範囲の入力欄がちょうど 1 つ描かれていない');
+        $this->assertNull($this->htmlAttr($ranges[0][0], 'name'), '範囲の入力欄が値を送る');
+        $this->assertSame('sliderVal', $this->htmlAttr($ranges[0][0], 'x-model'));
+
+        // 送るのは hidden の 1 つだけ。値は Alpine の値・「回答しない」のときは送らない
+        preg_match_all('/<input\b[^>]*>/i', $html, $inputs);
+        $sending = array_values(array_filter($inputs[0], fn (string $tag) => $this->htmlAttr($tag, 'name') === $name));
+        $this->assertCount(1, $sending, "「{$name}」を送る欄がちょうど 1 つでない");
+        $this->assertSame(['hidden', 'sliderVal', 'skip'], [
+            $this->htmlAttr($sending[0], 'type'),
+            $this->htmlAttr($sending[0], ':value'),
+            $this->htmlAttr($sending[0], ':disabled'),
+        ]);
+
+        // 「回答しない」のチェックは名前を持たず、skip を切り替える
+        $this->assertSame('skip', $this->notAnsweringCheckbox($html));
+    }
+
+    public function test_a_renamed_option_keeps_the_saved_answer_and_shows_it_as_outside_the_options(): void
+    {
+        $q = $this->questions();
+        $buyer = $this->buyer();
+        // 設問の管理で選択肢の名前を直したあとに残る回答（どれも今の選択肢に無い。HTML と JS で特別な意味を持つ文字を含む）
+        $old = "旧'\"&<\\";
+        $json = fn (mixed $value) => json_encode($value, JSON_UNESCAPED_UNICODE);
+        $survey = $this->newSurvey($buyer);
+        $this->saveAnswer($survey, $q['single'], $old);
+        $this->saveAnswer($survey, $q['multi'], $json(['A', $old]));
+        $this->saveAnswer($survey, $q['withText'], $json([['value' => $old, 'text' => '山田様']]));
+        $this->saveAnswer($survey, $q['conditional'], $json(['value' => $old, 'sub' => ['old_key' => '昔の希望']]));
+        $stored = $this->answersOf($survey);
+
+        // 編集画面に「（選択肢に無い値）」として、選んだまま出る
+        $url = route('realestate.customers.surveys.edit', [$buyer, $survey]);
+        $html = $this->htmlOf($url);
+        $this->assertSame(4, substr_count($html, e($old . '（選択肢に無い値）')), '「（選択肢に無い値）」の選択肢が 4 問に出ていない');
+        $form = $this->surveyForm($html, route('realestate.customers.surveys.update', [$buyer, $survey]), $q);
+        $answers = $form['fields']['survey'];
+        $this->assertSame($old, $answers[$q['single']->id]);
+        $this->assertSame(['A', $old], $answers[$q['multi']->id]);
+        $this->assertSame([['value' => $old, 'text' => '山田様']], array_values(array_filter($answers[$q['withText']->id], fn (array $item) => isset($item['value']))));
+        $this->assertSame(['value' => $old, 'sub' => ['old_key' => '昔の希望']], $answers[$q['conditional']->id]);
+
+        // そのまま保存しても、4 行とも変わらない（直す前は、選ばれずに保存のたびに消えていた）
+        $this->saveEditScreenAsIs($buyer, $survey, $q);
+        $this->assertSame($stored, $this->answersOf($survey->fresh()));
+    }
+
+    public function test_answers_come_back_after_an_input_error(): void
+    {
+        $q = $this->questions();
+        $buyer = $this->buyer();
+        $url = route('realestate.customers.surveys.create', $buyer);
+        $store = route('realestate.customers.surveys.store', $buyer);
+
+        // 7 問に答え、来場日を空にして送る
+        $html = $this->htmlOf($url);
+        $form = $this->surveyForm($html, $store, $q, [
+            'slider' => $this->moveSlider($html, '3500'),
+            'conditional' => "data.selectedOption = '建て替え';",
+        ]);
+        $withText = 'survey[' . $q['withText']->id . ']';
+        $conditional = 'survey[' . $q['conditional']->id . ']';
+        $form = $this->answer($form, $html, $withText . '[0][value]', 'チラシ');
+        $form = $this->answer($form, $html, $withText . '[1][value]', 'ご紹介');
+        $form = $this->answer($form, $html, $withText . '[1][text]', '佐藤');
+        $form = $this->answer($form, $html, $conditional . '[value]', '建て替え');
+        $form = $this->answer($form, $html, $conditional . '[sub][land_tsubo]', '45');
+        $form = $this->answer($form, $html, 'survey[' . $q['single']->id . ']', '3');
+        $form = $this->answer($form, $html, 'survey[' . $q['multi']->id . '][]', ['A', 'C']);
+        $form = $this->answer($form, $html, 'survey[' . $q['text']->id . ']', '123');
+        $form = $this->answer($form, $html, 'survey[' . $q['number']->id . ']', '120');
+        $form = $this->fill($form, ['survey_date' => '']);
+        $sent = $form['fields']['survey'];
+        $this->assertCount(7, $sent, '7 問に答えていない');
+
+        // 戻った画面を組むと、送った値と同じ（直す前は、アンケートの欄がすべて空で描かれた）
+        $returned = $this->landed($this->submit($form, $url));
+        $this->assertErrorItem($returned, '来場日は必須です。');
+        $back = $this->surveyForm($returned, $store, $q);
+        $this->assertSame($this->canonical($sent), $this->canonical($back['fields']['survey']), '入力エラーで戻った画面のアンケートが、送った値と違う');
+
+        // 「回答しない」にして、もう一度断られる。戻った画面のスライダーは「回答しない」のまま（保存済みの値も真ん中の値も戻さない）
+        $again = $this->surveyForm($returned, $store, $q, ['slider' => 'data.' . $this->notAnsweringCheckbox($returned) . ' = true;']);
+        $again = $this->fill($again, ['survey_date' => '']);
+        $returnedAgain = $this->landed($this->submit($again, $url));
+        $this->assertErrorItem($returnedAgain, '来場日は必須です。');
+        $unset = $sent;
+        unset($unset[$q['slider']->id]);
+        $this->assertSame($this->canonical($unset), $this->canonical($this->surveyForm($returnedAgain, $store, $q)['fields']['survey']));
+        $this->assertSame(0, BuyerSurvey::count());
+    }
+
+    /** 「回答しない」のチェック（名前を持たない）が切り替える値の名前（x-model） */
+    private function notAnsweringCheckbox(string $html): string
+    {
+        $found = preg_match_all('/<label\b[^>]*>\s*(<input\b[^>]*type="checkbox"[^>]*>)\s*回答しない\s*<\/label>/u', $html, $m);
+        $this->assertSame(1, $found, '「回答しない」のチェックがちょうど 1 つ描かれていない');
+        $this->assertNull($this->htmlAttr($m[1][0], 'name'), '「回答しない」のチェックが値を送る');
+        $model = $this->htmlAttr($m[1][0], 'x-model');
+        $this->assertNotNull($model, '「回答しない」のチェックが Alpine の値を切り替えない');
+
+        return $model;
     }
 }
