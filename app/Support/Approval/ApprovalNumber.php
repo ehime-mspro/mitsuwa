@@ -17,6 +17,8 @@ use InvalidArgumentException;
  *   トランザクションに包む（外から呼ばれても行のロックが効くように。入れ子なら savepoint になるだけ）。
  * ⚠ 連番の行は `upsert` で用意してから `lockForUpdate()` で読む。行が無いときに 2 人が同時に作っても、
  *   一意の索引（部門・年度）で 1 行になる。
+ * ⚠ `next_without_trials` は試しの採番だけを除いた次の番号（段階6 §5.7。6b の片付けが次の番号をこれに戻す）。
+ *   動かすのは `setNext()`（開始番号）と `advancePast()`（紙の番号）だけ。**`issue()`（社長の判断の採番）は動かさない**。
  */
 final class ApprovalNumber
 {
@@ -93,13 +95,15 @@ final class ApprovalNumber
                 throw new InvalidArgumentException("今年度は紙の決裁で {$used} まで使っています。" . ($paper + 1) . ' 以上を入れてください。');
             }
 
-            $row->update(['next_number' => $next]);
+            $row->update(['next_number' => $next, 'next_without_trials' => $next]);   // 試しの採番を除いた次の番号も同じ値にする（段階6 §5.7）
         });
     }
 
     /**
      * 今年度の紙の決裁の番号を足したとき（取り込み・1 件の登録・番号の直し）、その部門の次の番号を「紙の番号＋1」まで進める（段階5 D7・§5.11）。
      * **戻さない**（次の番号のほうが大きければそのまま）。過去の年度の紙の番号は採番に関わらない（何もしない）。
+     * 試しの採番を除いた次の番号（`next_without_trials`）も、次の番号とは**別に**比べて同じように進める（段階6 §5.7。
+     * 社長の判断の採番で次の番号だけが先に進んでいることがあるので、片方が進まなくても、もう片方は進む）。
      *
      * ⚠ 連番の行をロックする（社長の判断の採番と重ならない）。紙の決裁を保存するトランザクションの中で、保存の前に呼ぶ
      *   （保存が断られたら番号も戻る。ロックのあとでシステムの申請の番号を確かめれば、確認と確定のあいだの採番にも気づける）
@@ -114,8 +118,15 @@ final class ApprovalNumber
             }
 
             $row = self::lockedRow($department, $fiscalYear);
-            if ($row->next_number <= $seq) {
-                $row->update(['next_number' => $seq + 1]);
+
+            $raised = [];
+            foreach (['next_number', 'next_without_trials'] as $column) {
+                if ($row->{$column} <= $seq) {
+                    $raised[$column] = $seq + 1;
+                }
+            }
+            if ($raised !== []) {
+                $row->update($raised);
             }
 
             return $row->next_number;
@@ -195,12 +206,13 @@ final class ApprovalNumber
         //   分離レベルに頼らない。upsert（INSERT … ON DUPLICATE KEY UPDATE）は重複した行に**排他ロック**を取るので、後の方は待つだけ。
         //   （2026-09-27 に MySQL 8.4.8 で実測。SQLite のテストではロックの違いは見えない）
         DB::table('approval_number_sequences')->upsert([
-            'department_id' => $department->id,
-            'fiscal_year'   => $fiscalYear,
-            'next_number'   => 1,
-            'last_issued'   => 0,
-            'created_at'    => $now,
-            'updated_at'    => $now,
+            'department_id'       => $department->id,
+            'fiscal_year'         => $fiscalYear,
+            'next_number'         => 1,
+            'last_issued'         => 0,
+            'next_without_trials' => 1,
+            'created_at'          => $now,
+            'updated_at'          => $now,
         ], ['department_id', 'fiscal_year'], ['updated_at']);
 
         return ApprovalNumberSequence::where('department_id', $department->id)

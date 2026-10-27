@@ -93,6 +93,28 @@ trait BuildsApprovalFixtures
         return $user->fresh();
     }
 
+    /**
+     * 試す人にする（段階6 §5.3）。覚えた approvalMember を捨てる（同じインスタンスで actingAs しても新しい印を読む）。
+     * 覚えた設定も捨てる（ApprovalSetting::current() の社長は別のインスタンスで、古い approvalMember を持ちうるため）
+     */
+    protected function makeTester(User ...$users): void
+    {
+        foreach ($users as $user) {
+            ApprovalMember::updateOrCreate(['user_id' => $user->id], ['is_tester' => true]);
+            $user->unsetRelation('approvalMember');
+        }
+        ApprovalSetting::forget();
+    }
+
+    /** approvalWorld() の回る先の人（申請者・部門長・審査担当者・社長）をみな試す人にした世界（試す期間） */
+    protected function trialWorld(): array
+    {
+        $world = $this->approvalWorld();
+        $this->makeTester($world['applicant'], $world['head'], $world['reviewer'], $world['president']);
+
+        return $world;
+    }
+
     protected function approvalType(ApprovalDepartment $reviewDept, array $attributes = []): ApprovalType
     {
         return ApprovalType::create(array_merge([
