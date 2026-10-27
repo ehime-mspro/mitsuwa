@@ -32,18 +32,6 @@ class BuyerSurveyAnswer extends Model
     /* ========== アクセサ ========== */
 
     /**
-     * answer_value をデコード
-     */
-    public function getDecodedValueAttribute()
-    {
-        if ($this->answer_value === null) {
-            return null;
-        }
-        $decoded = json_decode($this->answer_value, true);
-        return (json_last_error() === JSON_ERROR_NONE) ? $decoded : $this->answer_value;
-    }
-
-    /**
      * question_snapshot をデコード（castで自動対応済みだが明示的メソッドも用意）
      */
     public function getSnapshotAttribute(): ?array

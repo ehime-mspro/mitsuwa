@@ -7,8 +7,10 @@ use App\Models\Buyer;
 use App\Models\BuyerSurvey;
 use App\Models\SurveyQuestion;
 use App\Models\User;
+use App\Support\SurveyAnswers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 
 class CustomerSurveyController extends Controller
 {
@@ -67,12 +69,17 @@ class CustomerSurveyController extends Controller
         // URL の部署に属さない買主へのアンケート登録を遮断（IDOR 対策）
         abort_unless($buyer->belongsToDepartment($department), 404);
 
-        $request->validate([
+        $questions = SurveyQuestion::ofDepartment($department)->active()->ordered()->get();
+        $answers = [];
+        // 今の項目の誤りと回答の誤りを一度に出す（Bug #112）。回答の検査と保存の形は SurveyAnswers の 1 か所
+        Validator::make($request->all(), [
             'survey_date'   => 'required|date',
             // 来場の分譲地・担当者（住宅事業の画面だけが送る。消えたものは理由つきで断る。H9）
             'project_id'    => 'nullable|integer|exists:re_projects,id',
             'staff_user_id' => 'nullable|integer|exists:users,id',
-        ]);
+        ])->after(function ($validator) use ($questions, $request, &$answers) {
+            $answers = SurveyAnswers::checkScreen($questions, $request->input('survey'), [], $validator->errors());
+        })->validate();
 
         DB::beginTransaction();
         try {
@@ -100,18 +107,15 @@ class CustomerSurveyController extends Controller
 
             $survey = BuyerSurvey::create($surveyData);
 
-            // 回答明細
-            $questions = SurveyQuestion::ofDepartment($department)->active()->ordered()->get();
+            // 回答明細（答えた設問だけ）
             foreach ($questions as $q) {
-                $rawValue = $request->input("survey.{$q->id}");
-                if ($rawValue === null || $rawValue === '' || $rawValue === []) {
+                if (! isset($answers[$q->id])) {
                     continue;
                 }
-                $answerValue = $this->normalizeAnswerValue($rawValue, $q->getRawOriginal('question_type'));
 
                 $survey->answers()->create([
                     'question_id'       => $q->id,
-                    'answer_value'      => $answerValue,
+                    'answer_value'      => $answers[$q->id],
                     'question_snapshot' => $q->toSnapshot(),
                 ]);
             }
@@ -142,10 +146,8 @@ class CustomerSurveyController extends Controller
 
         $questions = SurveyQuestion::ofDepartment($department)->active()->ordered()->get();
 
-        $existingAnswers = [];
-        foreach ($survey->answers as $answer) {
-            $existingAnswers[$answer->question_id] = $answer->decoded_value;
-        }
+        // 画面に出す設問の保存済みの回答だけを、種類に合わせた形で読み戻す
+        $existingAnswers = $this->savedAnswers($survey, $questions);
 
         $projects  = [];
         $staffList = [];
@@ -168,12 +170,18 @@ class CustomerSurveyController extends Controller
         // アンケートが URL の部署・買主に属さない場合は遮断（IDOR 対策）
         $this->assertSurveyScope($buyer, $survey, $department);
 
-        $request->validate([
+        $questions = SurveyQuestion::ofDepartment($department)->active()->ordered()->get();
+        // 保存済みの回答は、フォームから受け取らず DB から読む（保存済みと同じ値はどの検査も通す）
+        $saved = $this->savedAnswers($survey, $questions);
+        $answers = [];
+        Validator::make($request->all(), [
             'survey_date'   => 'required|date',
             // 来場の分譲地・担当者（住宅事業の画面だけが送る。消えたものは理由つきで断る。H9）
             'project_id'    => 'nullable|integer|exists:re_projects,id',
             'staff_user_id' => 'nullable|integer|exists:users,id',
-        ]);
+        ])->after(function ($validator) use ($questions, $saved, $request, &$answers) {
+            $answers = SurveyAnswers::checkScreen($questions, $request->input('survey'), $saved, $validator->errors());
+        })->validate();
 
         DB::beginTransaction();
         try {
@@ -194,20 +202,17 @@ class CustomerSurveyController extends Controller
 
             $survey->update($surveyData);
 
-            // 既存回答を削除して再作成
-            $survey->answers()->delete();
+            // 画面に出した設問（この部署の有効な設問）の回答だけを消して作り直す。無効にした設問などの回答は残す
+            $survey->answers()->whereIn('question_id', $questions->pluck('id'))->delete();
 
-            $questions = SurveyQuestion::ofDepartment($department)->active()->ordered()->get();
             foreach ($questions as $q) {
-                $rawValue = $request->input("survey.{$q->id}");
-                if ($rawValue === null || $rawValue === '' || $rawValue === []) {
+                if (! isset($answers[$q->id])) {
                     continue;
                 }
-                $answerValue = $this->normalizeAnswerValue($rawValue, $q->getRawOriginal('question_type'));
 
                 $survey->answers()->create([
                     'question_id'       => $q->id,
-                    'answer_value'      => $answerValue,
+                    'answer_value'      => $answers[$q->id],
                     'question_snapshot' => $q->toSnapshot(),
                 ]);
             }
@@ -244,37 +249,25 @@ class CustomerSurveyController extends Controller
     /* ========== Private ========== */
 
     /**
-     * 回答値をquestion_typeに応じて正規化
+     * そのアンケートの保存済みの回答のうち、$questions（画面に出す設問）の分を、設問の種類に合わせた形で読み戻す。
+     * 設問 id => SurveyAnswers::decode() の値（形が合わなければ null）。
+     *
+     * @param  iterable<SurveyQuestion>  $questions
+     * @return array<int, mixed>
      */
-    private function normalizeAnswerValue($rawValue, string $questionType): string
+    private function savedAnswers(BuyerSurvey $survey, iterable $questions): array
     {
-        if (!is_array($rawValue)) {
-            return (string) $rawValue;
-        }
+        $answers = $survey->answers->keyBy('question_id');
 
-        if ($questionType === 'multi_select') {
-            return json_encode(array_values($rawValue), JSON_UNESCAPED_UNICODE);
-        }
-
-        if ($questionType === 'select_with_text') {
-            $items = [];
-            foreach ($rawValue as $entry) {
-                if (is_array($entry) && isset($entry['value']) && $entry['value'] !== '') {
-                    $item = ['value' => $entry['value']];
-                    if (isset($entry['text']) && $entry['text'] !== '') {
-                        $item['text'] = $entry['text'];
-                    }
-                    $items[] = $item;
-                }
+        $saved = [];
+        foreach ($questions as $q) {
+            $answer = $answers->get($q->id);
+            if ($answer !== null) {
+                $saved[$q->id] = SurveyAnswers::decode($q, $answer->answer_value);
             }
-            return json_encode($items, JSON_UNESCAPED_UNICODE);
         }
 
-        if ($questionType === 'conditional_select') {
-            return json_encode($rawValue, JSON_UNESCAPED_UNICODE);
-        }
-
-        return json_encode($rawValue, JSON_UNESCAPED_UNICODE);
+        return $saved;
     }
 
     private function getStaffList(?int $currentId = null): array

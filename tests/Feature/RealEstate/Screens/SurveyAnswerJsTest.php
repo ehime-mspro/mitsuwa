@@ -10,11 +10,12 @@ use App\Models\SurveyQuestion;
  * アンケートの「条件分岐付き選択」の画面（`buyers/_survey_form.blade.php`。住宅事業・不動産で共用）が、
  * 設問の選択肢と保存された回答を、画面の JavaScript に元の文字のまま渡す（Bug #76 と同じ形）。
  *
- * ⚠ 選択肢は経営層が設問の管理で入れる文字、回答は保存された値（`CustomerSurveyController` は送られた値をそのまま JSON で保存する）。
+ * ⚠ 選択肢は経営層が設問の管理で入れる文字、回答は DB に保存された値（検査を足す前に保存された値・設問の選択肢を直したあとに残る値）。
  *   どちらも DB に残るので、壊れると**その画面を開く人全員**に効く（手で組んだ送信の本人だけではない）。
  * ⚠ 選択肢は `x-on:change` / `x-show` の属性の中に書く（ブラウザが実体参照を戻すので、`'` で文字列が閉じてコードとして動く）。
  *   回答は `<script>` の中に書く（末尾の `\` で画面の JS が止まる）。
- * ⚠ 回答が文字でない（手で組んだ送信で配列を保存した）と、`{{ }}` が配列を受け取れず画面ごと 500 だった。
+ * ⚠ 回答が文字でない（配列で保存されている）と、`{{ }}` が配列を受け取れず画面ごと 500 だった。
+ * ⚠ 画面から保存する値は検査が断る（選択肢に無い値・配列）ので、2 本の編集画面のテストは回答の行を DB に直接入れる。
  */
 class SurveyAnswerJsTest extends RealEstateScreenTestCase
 {
@@ -37,13 +38,14 @@ class SurveyAnswerJsTest extends RealEstateScreenTestCase
         ]);
     }
 
-    /** 手で組んだ送信で回答を保存し、そのアンケートの編集画面の HTML を返す */
-    private function editScreenWith(Buyer $buyer, SurveyQuestion $question, array $answer): string
+    /**
+     * 保存済みの回答（$answerValue をそのまま DB に入れる）がある、そのアンケートの編集画面の HTML を返す。
+     * ⚠ 画面から送ると検査が断る値（選択肢に無い値・配列）を、本番に残っている形として DB に直接入れる。
+     */
+    private function editScreenWith(Buyer $buyer, SurveyQuestion $question, string $answerValue): string
     {
-        $this->actingAs($this->user)->post(route('realestate.customers.surveys.store', $buyer), [
-            'survey_date' => '2026-10-01', 'survey' => [$question->id => $answer],
-        ])->assertRedirect();
-        $survey = BuyerSurvey::where('buyer_id', $buyer->id)->latest('id')->firstOrFail();
+        $survey = BuyerSurvey::create(['buyer_id' => $buyer->id, 'department' => 'realestate', 'survey_date' => '2026-10-01']);
+        $survey->answers()->create(['question_id' => $question->id, 'answer_value' => $answerValue, 'question_snapshot' => $question->toSnapshot()]);
 
         return $this->htmlOf(route('realestate.customers.surveys.edit', [$buyer, $survey]));
     }
@@ -78,7 +80,8 @@ class SurveyAnswerJsTest extends RealEstateScreenTestCase
         $question = $this->question();
         $saved = "回答'\"&<\\";
 
-        $html = $this->editScreenWith($this->buyer(), $question, ['value' => $saved]);
+        // 選択肢に無い保存済みの値（設問の管理で選択肢を直したあとに残る形）
+        $html = $this->editScreenWith($this->buyer(), $question, json_encode(['value' => $saved], JSON_UNESCAPED_UNICODE));
 
         $function = 'condSelect' . $question->id;
         $run = $this->driveAlpine($html, $function, $function . '()', '', [], true, ['selectedOption']);
@@ -89,8 +92,8 @@ class SurveyAnswerJsTest extends RealEstateScreenTestCase
     {
         $question = $this->question();
 
-        // 手で組んだ送信で、回答と付随の欄を配列で保存する（画面からは送れない）
-        $html = $this->editScreenWith($this->buyer(), $question, ['value' => ['a'], 'sub' => ['area' => ['b']]]);
+        // 回答と付随の欄が配列の形で保存されている（今の画面からは送れない形）
+        $html = $this->editScreenWith($this->buyer(), $question, '{"value":["a"],"sub":{"area":["b"]}}');
 
         $function = 'condSelect' . $question->id;
         $run = $this->driveAlpine($html, $function, $function . '()', '', [], true, ['selectedOption']);
