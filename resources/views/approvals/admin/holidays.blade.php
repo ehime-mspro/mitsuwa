@@ -55,9 +55,12 @@
                         1 年以内にありません（送らない日の登録を確かめてください）
                     @endif
                 </dd>
-                @unless($launched)
+                {{-- 準備中は送らない・試す期間は試す人にだけ送る・使い始めたあとは何も添えない（段階6 設計書 §5.5） --}}
+                @if($stage === \App\Enums\ApprovalLaunchStage::Preparing)
                     <dd class="mt-0.5 text-[11px] text-gray-500">決裁を使い始める前なので、まだ送りません。</dd>
-                @endunless
+                @elseif($stage === \App\Enums\ApprovalLaunchStage::Trial)
+                    <dd class="mt-0.5 text-[11px] text-gray-500">試す期間なので、試す人にだけ送ります。</dd>
+                @endif
             </div>
             <div>
                 <dt class="text-[11px] font-semibold text-gray-500">前回の催促</dt>

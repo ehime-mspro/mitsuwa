@@ -409,4 +409,33 @@ class ApprovalSidebarTest extends TestCase
             $this->assertHasLink($after[$key], route('approvals.ledger.index'), '決裁台帳', $key);
         }
     }
+
+    /** 試す期間は、試す人にだけ申請の画面へのリンクを出す（段階6 設計書 §5.2・§6）。決裁のサイドバーと基幹のサイドバーの両方 */
+    public function test_in_trial_the_request_links_are_only_for_testers(): void
+    {
+        $tester = User::factory()->approvalOnly()->create(['must_change_password' => false]);
+        $other  = User::factory()->approvalOnly()->create(['must_change_password' => false]);
+        $base   = User::factory()->create(['role' => UserRole::Staff->value, 'must_change_password' => false]);
+        ApprovalMember::create(['user_id' => $tester->id, 'is_tester' => true]);
+        ApprovalMember::create(['user_id' => $base->id, 'is_tester' => true, 'is_admin' => true]);   // 試す人の決裁の管理者
+        $admin  = $this->approvalAdmin();                                                         // 試す人でない決裁の管理者
+
+        $sidebars = $this->sidebars($this->actingAs($tester)->get(route('approvals.home'))->assertOk()->getContent());
+        foreach (['expanded', 'drawer'] as $key) {
+            $this->assertHasLink($sidebars[$key], route('approvals.requests.create'), '新しい申請', $key);
+            $this->assertHasLink($sidebars[$key], route('approvals.ledger.index'), '決裁台帳', $key);
+        }
+        foreach ($this->sidebars($this->actingAs($other)->get(route('approvals.home'))->assertOk()->getContent()) as $key => $aside) {
+            $this->assertStringNotContainsString(route('approvals.requests.index'), $aside, "{$key} に試す人でない人の申請の画面へのリンクが出ている");
+        }
+        $sidebars = $this->sidebars($this->actingAs($base)->get('/dashboard/tenant')->assertOk()->getContent());
+        foreach (['expanded', 'drawer'] as $key) {
+            $this->assertHasLink($sidebars[$key], route('approvals.ledger.index'), '決裁台帳', $key);
+            $this->assertHasLink($sidebars[$key], route('approvals.admin.requests.index'), '進行中の申請の管理', $key);
+        }
+        foreach ($this->sidebars($this->actingAs($admin)->get('/dashboard/tenant')->assertOk()->getContent()) as $key => $aside) {
+            $this->assertStringNotContainsString(route('approvals.ledger.index'), $aside, "{$key} に試す人でない管理者の決裁台帳が出ている");
+            $this->assertStringNotContainsString(route('approvals.admin.requests.index'), $aside, "{$key} に試す人でない管理者の進行中の申請の管理が出ている");
+        }
+    }
 }

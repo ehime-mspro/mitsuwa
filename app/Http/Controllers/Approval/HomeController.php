@@ -6,7 +6,7 @@ use App\Enums\ApprovalStatus;
 use App\Http\Controllers\Controller;
 use App\Models\ApprovalNotice;
 use App\Models\ApprovalRequest;
-use App\Models\ApprovalSetting;
+use App\Support\Approval\LaunchState;
 use App\Support\Approval\PendingWork;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -14,8 +14,8 @@ use Illuminate\View\View;
 /**
  * 決裁のホーム（画面①・段階2 設計書 §5.12）。
  *
- * ⚠ 使い始める前（approval_settings.launched_at が空）は段階1 の「準備中」の画面のまま（§5.2・D1）。
- *   申請を回す画面の門番 `approval.launched` も、準備中はここへ送る。
+ * ⚠ この人に申請を回す画面を見せないとき（LaunchState::opensFor() が false ＝準備中、または試す期間で試す人でない人）は、
+ *   段階1 の「準備中」の画面のまま（§5.2・D1・段階6 設計書 §5.2）。申請を回す画面の門番 `approval.launched` も、ここへ送る。
  */
 class HomeController extends Controller
 {
@@ -29,7 +29,7 @@ class HomeController extends Controller
     {
         $user = $request->user();
 
-        if (! ApprovalSetting::current()->isLaunched()) {
+        if (! LaunchState::opensFor($user)) {
             return view('approvals.home', [
                 'user'    => $user,
                 'loginId' => $user->employee_number ?? $user->email,

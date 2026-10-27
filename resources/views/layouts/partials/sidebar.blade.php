@@ -25,10 +25,11 @@
     // 決裁の管理者に指定された人だけ「決裁の管理」を出す（設計書 §5.15・D2）。
     // 指定されていない人の画面は変わらない（段階1 で一般の利用者に見える変化はログイン画面だけ）。
     $isApprovalAdmin = $user->isApprovalAdmin();
-    // 決裁の対応待ちの件数（使い始める前は null で何も出さない。1 リクエストに 1 回だけ数える。段階2 設計書 §5.15）
+    // 決裁の対応待ちの件数（この人に申請を回す画面を見せないときは null で何も出さない。1 リクエストに 1 回だけ数える。段階2 設計書 §5.15・段階6 設計書 §5.2）
     $approvalPending = \App\Support\Approval\ApprovalMenu::pendingCount($user);
-    // 進行中の申請の管理へのリンクは、決裁の管理者に・使い始めてから（段階2 設計書 §5.2・D1）
-    $approvalsLaunched = $approvalPending !== null;
+    // 進行中の申請の管理へのリンクは、決裁の管理者に・この人に申請を回す画面を見せるとき（使い始めたあとは全員・試す期間は試す人だけ。段階2 設計書 §5.2・D1・段階6 設計書 §5.2）。
+    // 件数は LaunchState::opensFor() を通して数えているので、null かどうかがそのまま答えになる（基幹の画面の問い合わせを増やさない）
+    $approvalsOpen = $approvalPending !== null;
 @endphp
 
 {{-- ========== PC用: 展開サイドバー ========== --}}
@@ -65,7 +66,7 @@
         @if($hasMansionAccess)
             <x-sidebar-item :href="url('/mansion/dashboard')" label="賃貸Mダッシュボード" :active="request()->is('mansion/dashboard')" />
         @endif
-        {{-- 決裁と対応待ちの件数（使い始めてから。段階2 設計書 §5.15）・決裁台帳（段階4 設計書 §5.8） --}}
+        {{-- 決裁と対応待ちの件数（この人に申請を回す画面を見せるときだけ。段階2 設計書 §5.15）・決裁台帳（段階4 設計書 §5.8） --}}
         @if($approvalPending !== null)
             <x-sidebar-item :href="route('approvals.home')" label="決裁" :badge="$approvalPending" :active="request()->routeIs('approvals.home', 'approvals.requests.*')" />
             <x-sidebar-item :href="route('approvals.ledger.index')" label="決裁台帳" :active="request()->routeIs('approvals.ledger.*')" />
@@ -163,7 +164,7 @@
             <x-sidebar-item :href="route('approvals.admin.types.index')" label="申請種類の管理" :active="request()->routeIs('approvals.admin.types.*')" />
             <x-sidebar-item :href="route('approvals.admin.holidays.index')" label="催促の設定" :active="request()->routeIs('approvals.admin.holidays.*')" />
             <x-sidebar-item :href="route('approvals.admin.papers.index')" label="過去の決裁の取り込み" :active="request()->routeIs('approvals.admin.papers.*')" />
-            @if($approvalsLaunched)
+            @if($approvalsOpen)
                 <x-sidebar-item :href="route('approvals.admin.requests.index')" label="進行中の申請の管理" :active="request()->routeIs('approvals.admin.requests.*')" />
             @endif
         </x-sidebar-group>
@@ -252,7 +253,7 @@
         </svg>
     </a>
 
-    {{-- 決裁と対応待ちの件数（使い始めてから。§5.15） --}}
+    {{-- 決裁と対応待ちの件数（この人に申請を回す画面を見せるときだけ。§5.15） --}}
     @if($approvalPending !== null)
         <a href="{{ route('approvals.home') }}" title="決裁（対応待ち {{ $approvalPending }} 件）" class="relative w-9 h-9 mb-1 rounded-lg flex items-center justify-center {{ request()->routeIs('approvals.home', 'approvals.requests.*') ? 'bg-emerald-50' : 'hover:bg-gray-100' }} transition-colors">
             <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="{{ request()->routeIs('approvals.home', 'approvals.requests.*') ? '#059669' : '#6B7280' }}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -392,7 +393,7 @@
         @endif
     </x-sidebar-group>
 
-    {{-- 決裁と対応待ちの件数（使い始めてから。§5.15）・決裁台帳（段階4 設計書 §5.8）。開閉するグループの中に入れない（閉じているあいだ件数が見えない） --}}
+    {{-- 決裁と対応待ちの件数（この人に申請を回す画面を見せるときだけ。§5.15）・決裁台帳（段階4 設計書 §5.8）。開閉するグループの中に入れない（閉じているあいだ件数が見えない） --}}
     @if($approvalPending !== null)
         <x-sidebar-item :href="route('approvals.home')" label="決裁" :badge="$approvalPending" :active="request()->routeIs('approvals.home', 'approvals.requests.*')" />
         <x-sidebar-item :href="route('approvals.ledger.index')" label="決裁台帳" :active="request()->routeIs('approvals.ledger.*')" />
@@ -484,7 +485,7 @@
             <x-sidebar-item :href="route('approvals.admin.types.index')" label="申請種類の管理" :active="request()->routeIs('approvals.admin.types.*')" />
             <x-sidebar-item :href="route('approvals.admin.holidays.index')" label="催促の設定" :active="request()->routeIs('approvals.admin.holidays.*')" />
             <x-sidebar-item :href="route('approvals.admin.papers.index')" label="過去の決裁の取り込み" :active="request()->routeIs('approvals.admin.papers.*')" />
-            @if($approvalsLaunched)
+            @if($approvalsOpen)
                 <x-sidebar-item :href="route('approvals.admin.requests.index')" label="進行中の申請の管理" :active="request()->routeIs('approvals.admin.requests.*')" />
             @endif
         </x-sidebar-group>

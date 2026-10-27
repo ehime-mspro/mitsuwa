@@ -14,7 +14,6 @@ use App\Models\ApprovalHistory;
 use App\Models\ApprovalMailDomain;
 use App\Models\ApprovalNotice;
 use App\Models\ApprovalRequest;
-use App\Models\ApprovalSetting;
 use App\Models\ApprovalStep;
 use App\Models\User;
 use Illuminate\Support\Collection;
@@ -199,7 +198,7 @@ final class Notifier
     private function send(): void
     {
         // ⚠ 行を作らずに読む（部門の管理・社長の指定は使い始める前から呼ばれる。§5.2）
-        if ($this->entries === [] || ! ApprovalSetting::launchedForMenu()) {
+        if ($this->entries === [] || ! LaunchState::launched()) {
             return;
         }
 

@@ -244,6 +244,20 @@ class HolidaySettingsTest extends TestCase
         $this->assertSame('年末年始', $holiday->fresh()->description);
     }
 
+    public function test_the_next_day_note_follows_the_stage(): void
+    {
+        $admin = $this->approvalAdmin();
+        $this->actingAs($admin)->get(route('approvals.admin.holidays.index'))->assertSee('決裁を使い始める前なので、まだ送りません。');
+
+        $this->makeTester($this->approvalOnlyUser());
+        $this->actingAs($admin)->get(route('approvals.admin.holidays.index'))
+            ->assertSee('試す期間なので、試す人にだけ送ります。')->assertDontSee('決裁を使い始める前なので、まだ送りません。');
+
+        $this->launchApprovals();
+        $this->actingAs($admin)->get(route('approvals.admin.holidays.index'))
+            ->assertDontSee('試す期間なので、試す人にだけ送ります。')->assertDontSee('決裁を使い始める前なので、まだ送りません。');
+    }
+
     public function test_people_other_than_the_approval_admin_cannot_open_it(): void
     {
         $this->actingAs($this->baseUser())->get(route('approvals.admin.holidays.index'))->assertForbidden();

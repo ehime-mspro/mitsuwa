@@ -7,8 +7,8 @@ use App\Mail\ApprovalMailable;
 use App\Mail\ApprovalReminderMail;
 use App\Models\ApprovalMailDomain;
 use App\Models\ApprovalReminderRun;
-use App\Models\ApprovalSetting;
 use App\Models\User;
+use App\Support\Approval\LaunchState;
 use App\Support\Approval\PendingWork;
 use App\Support\Approval\ReminderCalendar;
 use App\Support\JapanTime;
@@ -55,7 +55,7 @@ class ApprovalRemindCommand extends Command
 
     private function remind(Carbon $today): string
     {
-        if (! ApprovalSetting::launchedForMenu()) {
+        if (! LaunchState::launched()) {
             return '使い始める前なので送りません。';
         }
 
