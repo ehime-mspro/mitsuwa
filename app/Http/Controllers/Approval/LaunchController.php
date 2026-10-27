@@ -46,15 +46,15 @@ class LaunchController extends Controller
     /** Route: GET /approvals/admin/launch */
     public function index(Request $request): View
     {
-        $stage       = LaunchState::stage();
-        $testerCount = ApprovalMember::testers()->count();
+        $stage = LaunchState::stage();
 
-        // 使い始めたあとは欄を出さない（使い始めた日時だけ。押した人は 6b）
+        // 使い始めたあとは欄も試す人の数も出さない（状態の名前と使い始めた日時だけ。押した人は 6b）
         if ($stage === ApprovalLaunchStage::Launched) {
-            return view('approvals.admin.launch', compact('stage', 'testerCount'));
+            return view('approvals.admin.launch', compact('stage'));
         }
 
-        $roles = $this->roleMap();
+        $testerCount = ApprovalMember::testers()->count();
+        $roles       = $this->roleMap();
         $q     = $this->scalarInput($request, 'q');
         [$found, $overflow] = $this->search($q);
 

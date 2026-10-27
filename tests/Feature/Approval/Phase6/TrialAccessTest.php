@@ -59,6 +59,27 @@ class TrialAccessTest extends TestCase
         }
     }
 
+    /**
+     * 試す期間に試す人でない決裁の管理者が開く準備中のホームは、「準備中です」の代わりに試す期間の文を出す
+     * （上の帯「試しの期間です。…」と食い違わないように。段階6 設計書 §5.6）。試す人でも管理者でもない人と、準備中の管理者は今の文のまま
+     */
+    public function test_in_trial_a_non_tester_admin_gets_the_trial_note_on_the_home(): void
+    {
+        $preparing = '決裁の機能は準備中です。使い始める日が決まったらお知らせします。';
+        $trial     = 'いまは試す期間です。申請の画面は試す人にだけ見えています（試す人は「使い始め」で選べます）。';
+        $w         = $this->approvalWorld();
+        $admin     = $this->approvalAdmin();
+
+        $this->actingAs($admin)->get(route('approvals.home'))
+            ->assertOk()->assertViewIs('approvals.home')->assertSee($preparing)->assertDontSee($trial);   // 準備中の管理者
+
+        $this->makeTester($w['head']);
+        $this->actingAs($admin)->get(route('approvals.home'))
+            ->assertOk()->assertViewIs('approvals.home')->assertSee($trial)->assertDontSee($preparing);   // 試す期間の試す人でない管理者
+        $this->actingAs($w['applicant'])->get(route('approvals.home'))
+            ->assertOk()->assertViewIs('approvals.home')->assertSee($preparing)->assertDontSee($trial);   // 試す人でも管理者でもない人
+    }
+
     public function test_in_trial_the_menu_count_and_the_bell_are_only_for_testers(): void
     {
         $w = $this->approvalWorld();

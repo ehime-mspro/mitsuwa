@@ -149,7 +149,7 @@ class LaunchScreenTest extends TestCase
         $this->makeTester($w['head']);
         $this->launchApprovals();
 
-        $this->actingAs($admin)->get(route('approvals.admin.launch.index'))->assertSee('使い始めました（')->assertDontSee('試す人にする');
+        $this->actingAs($admin)->get(route('approvals.admin.launch.index'))->assertSee('使い始めました（')->assertDontSee('試す人にする')->assertDontSee('試す人 1 人');
         $this->actingAs($admin)->post(route('approvals.admin.launch.testers.store'), ['user_id' => $w['applicant']->id])
             ->assertSessionHas('error', '使い始めたあとは試す人を変えられません。');
         $this->actingAs($admin)->delete(route('approvals.admin.launch.testers.destroy', $w['head']))

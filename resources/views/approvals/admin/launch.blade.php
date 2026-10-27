@@ -11,7 +11,7 @@
 
 {{--
     使い始め（画面⑬。段階6 設計書 §5.9・計画 §0.8）。決裁の管理者だけ・準備中・試す期間・使い始めたあとのどれでも開ける。
-    必要変数: $stage / $testerCount（使い始めたあとはこの 2 つだけ）・$people / $q / $found / $overflow / $coverage
+    必要変数: $stage（使い始めたあとはこれだけ）・$testerCount / $people / $q / $found / $overflow / $coverage
 
     ⚠ 欄 1 の 1 行の中は 氏名 → 役 → 印とボタン の順（LaunchScreenTest がこの順を見る）。検索の結果も同じ形の行
     ⚠ 無効の人・削除した人には「試す人にする」を出さない（試す人の印があれば「外す」は出す）
@@ -47,7 +47,10 @@
     <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mb-2">
         <h1 class="text-lg font-bold text-gray-900">使い始め</h1>
         <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-[12px] font-semibold {{ $stageBadge }}">{{ $stage->label() }}</span>
-        <span class="text-[13px] text-gray-600">試す人 {{ $testerCount }} 人</span>
+        {{-- 使い始めたあとは状態の名前だけ（試す人の数は出さない） --}}
+        @if($stage !== \App\Enums\ApprovalLaunchStage::Launched)
+            <span class="text-[13px] text-gray-600">試す人 {{ $testerCount }} 人</span>
+        @endif
     </div>
 
     @if($stage === \App\Enums\ApprovalLaunchStage::Launched)
@@ -161,10 +164,10 @@
             <h3 class="px-4 pt-3 pb-2 text-[13px] font-bold text-gray-900">部門ごとの部門長</h3>
             <div class="scroll-hint at-start">
                 <div class="scroll-hint-inner">
-            <table class="w-full min-w-[480px] border-collapse">
+            {{-- 2 列にする（375px の幅でも ○／× の列が横スクロールの先に隠れないように）。会社名は部門名の下に小さく --}}
+            <table class="w-full border-collapse">
                 <thead>
                     <tr>
-                        <th scope="col" class="{{ $th }}">会社</th>
                         <th scope="col" class="{{ $th }}">部門</th>
                         <th scope="col" class="{{ $th }}">部門長</th>
                     </tr>
@@ -172,8 +175,10 @@
                 <tbody>
                     @forelse($coverage['departments'] as $row)
                         <tr>
-                            <td class="{{ $td }} text-gray-600">{{ $row['department']->company->name }}</td>
-                            <td class="{{ $td }} text-gray-900">{{ $row['department']->name }}</td>
+                            <td class="{{ $td }} break-words">
+                                <span class="block text-gray-900">{{ $row['department']->name }}</span>
+                                <span class="block text-[11px] text-gray-500">{{ $row['department']->company->name }}</span>
+                            </td>
                             <td class="{{ $td }} text-gray-900">
                                 @if($row['ok'])
                                     <span class="font-bold text-emerald-700" aria-hidden="true">○</span><span class="sr-only">そろっている:</span>
@@ -184,7 +189,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="3" class="px-4 py-6 text-center text-[13px] text-gray-400">部門はまだありません。</td></tr>
+                        <tr><td colspan="2" class="px-4 py-6 text-center text-[13px] text-gray-400">部門はまだありません。</td></tr>
                     @endforelse
                 </tbody>
             </table>
@@ -195,18 +200,21 @@
             <h3 class="px-4 pt-4 pb-2 text-[13px] font-bold text-gray-900">種類ごとの審査の担当</h3>
             <div class="scroll-hint at-start">
                 <div class="scroll-hint-inner">
-            <table class="w-full min-w-[560px] border-collapse">
+            {{-- 2 列にする（部門の表と同じ理由）。使える部門は種類名の下に小さく --}}
+            <table class="w-full border-collapse">
                 <thead>
                     <tr>
                         <th scope="col" class="{{ $th }}">種類</th>
                         <th scope="col" class="{{ $th }}">審査の担当</th>
-                        <th scope="col" class="{{ $th }}">使える部門</th>
                     </tr>
                 </thead>
                 <tbody>
                     @forelse($coverage['types'] as $row)
                         <tr>
-                            <td class="{{ $td }} text-gray-900">{{ $row['type']->name }}</td>
+                            <td class="{{ $td }} break-words">
+                                <span class="block text-gray-900">{{ $row['type']->name }}</span>
+                                <span class="block text-[11px] text-gray-500">{{ $row['limitedTo'] === [] ? '全部門' : implode('・', $row['limitedTo']) . 'だけ' }}</span>
+                            </td>
                             <td class="{{ $td }} text-gray-900">
                                 @if($row['ok'])
                                     <span class="font-bold text-emerald-700" aria-hidden="true">○</span><span class="sr-only">そろっている:</span>
@@ -215,10 +223,9 @@
                                 @endif
                                 審査部門「{{ $row['type']->reviewDepartment->name }}」の担当
                             </td>
-                            <td class="{{ $td }} text-gray-600">{{ $row['limitedTo'] === [] ? '全部門' : implode('・', $row['limitedTo']) . 'だけ' }}</td>
                         </tr>
                     @empty
-                        <tr><td colspan="3" class="px-4 py-6 text-center text-[13px] text-gray-400">使っている種類はまだありません。</td></tr>
+                        <tr><td colspan="2" class="px-4 py-6 text-center text-[13px] text-gray-400">使っている種類はまだありません。</td></tr>
                     @endforelse
                 </tbody>
             </table>

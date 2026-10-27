@@ -31,8 +31,11 @@ class HomeController extends Controller
 
         if (! LaunchState::opensFor($user)) {
             return view('approvals.home', [
-                'user'    => $user,
-                'loginId' => $user->employee_number ?? $user->email,
+                'user'         => $user,
+                'loginId'      => $user->employee_number ?? $user->email,
+                // 試す期間に、試す人でない決裁の管理者が開くときは「準備中です」の代わりに試す期間の文を出す（上の帯と食い違わないように）。
+                // ⚠ この順。管理者でない人には、試す期間かの問い合わせ（LaunchState::stage() の 1 本）を足さない
+                'adminInTrial' => $user->isApprovalAdmin() && LaunchState::inTrial(),
             ]);
         }
 
