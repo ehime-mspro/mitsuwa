@@ -34,13 +34,7 @@
 <div class="max-w-[960px]">
     @include('approvals._mail_failure')
 
-    <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mb-2">
-        <h1 class="text-lg font-bold text-gray-900">使い始め</h1>
-        <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-[12px] font-semibold {{ $stageBadge }}">{{ $stage->label() }}</span>
-        <span class="text-[13px] text-gray-600">試す人 {{ $testerCount }} 人</span>
-    </div>
-
-    {{-- 成功・失敗の帯はレイアウトが出す（ここで出すと画面に 2 回出る）。$errors だけ各ビューの責任（見出しの下に置く） --}}
+    {{-- 成功・失敗の帯はレイアウトが出す（ここで出すと画面に 2 回出る）。$errors だけ各ビューの責任 --}}
     @if($errors->any())
         <div class="mb-5 rounded-lg border border-red-200 bg-red-50 p-4">
             <p class="text-[13px] font-semibold text-red-800 mb-1">入力内容にエラーがあります。</p>
@@ -49,6 +43,12 @@
             </ul>
         </div>
     @endif
+
+    <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mb-2">
+        <h1 class="text-lg font-bold text-gray-900">使い始め</h1>
+        <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-[12px] font-semibold {{ $stageBadge }}">{{ $stage->label() }}</span>
+        <span class="text-[13px] text-gray-600">試す人 {{ $testerCount }} 人</span>
+    </div>
 
     @if($stage === \App\Enums\ApprovalLaunchStage::Launched)
         <section class="bg-white rounded-lg border border-gray-200 px-4 py-4">
