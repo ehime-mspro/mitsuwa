@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Support\BuyerCsvRow;
 use App\Support\CsvImportReader;
 use App\Support\OneTimeAction;
+use App\Support\SurveyAnswers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -86,12 +87,14 @@ class CustomerImportController extends Controller
         // 設問カラム検出（Q1:xxx, Q2:xxx ...）
         $questions = SurveyQuestion::ofDepartment($department)->active()->ordered()->get();
         $questionMap = []; // headerIndex => question
+        $questionNumbers = []; // headerIndex => 見出しの Q の番号（誤りの文の主語に使う）
         foreach ($header as $hIdx => $hVal) {
             if (preg_match('/^Q(\d+):/', $hVal)) {
                 // sort_order順で対応
                 $qNum = (int) preg_replace('/^Q(\d+):.*$/', '$1', $hVal);
                 if (isset($questions[$qNum - 1])) {
                     $questionMap[$hIdx] = $questions[$qNum - 1];
+                    $questionNumbers[$hIdx] = $qNum;
                 }
             }
         }
@@ -121,9 +124,24 @@ class CustomerImportController extends Controller
             }
             $row = BuyerCsvRow::from($values);
 
-            // 1 行の誤りはすべて 1 件にまとめて出す（BuyerCsvRow の docblock）
-            if ($row->hasErrors()) {
-                $rowErrors[] = ['row' => $rowNum, 'message' => $row->errorMessage()];
+            // アンケートの列を画面と同じ形にして検査し、保存の形にする（設問 id => answer_value。回答なしの列は入れない）
+            $answers = [];
+            $answerErrors = [];
+            foreach ($questionMap as $hIdx => $q) {
+                [$stored, $problems] = SurveyAnswers::fromCsv(
+                    $q,
+                    (string) ($cols[$hIdx] ?? ''),
+                    "Q{$questionNumbers[$hIdx]}（{$q->label}）"
+                );
+                array_push($answerErrors, ...$problems);
+                if ($problems === [] && $stored !== null) {
+                    $answers[$q->id] = $stored;
+                }
+            }
+
+            // 1 行の誤りはすべて 1 件にまとめて出す（BuyerCsvRow の docblock）。アンケートの列の誤りは列の誤りの後ろへ「／」でつなぐ
+            if ($row->hasErrors() || $answerErrors !== []) {
+                $rowErrors[] = ['row' => $rowNum, 'message' => implode('／', [...$row->errors, ...$answerErrors])];
                 continue;
             }
 
@@ -152,8 +170,8 @@ class CustomerImportController extends Controller
 
             // バリデーション通過
             $validRows[] = [
-                'row'  => $row,
-                'cols' => $cols,
+                'row'     => $row,
+                'answers' => $answers,
             ];
         }
 
@@ -189,23 +207,17 @@ class CustomerImportController extends Controller
         try {
             $imported = 0;
             foreach ($validRows as $valid) {
-                $row  = $valid['row'];
-                $cols = $valid['cols'];
+                $row     = $valid['row'];
+                $answers = $valid['answers'];
 
                 $buyer = Buyer::create($row->buyer);
 
                 // 部署ピボット（取得日は BuyerCsvRow が Y-m-d にそろえた値）
                 $buyer->addToDepartment($department, $row->acquiredDate);
 
-                // アンケート（設問があり、回答データがある場合）
+                // アンケート（設問があり、検査を通った回答がある場合）
                 if (!empty($questionMap)) {
-                    $hasAnswer = false;
-                    foreach ($questionMap as $hIdx => $q) {
-                        if (isset($cols[$hIdx]) && trim($cols[$hIdx]) !== '') {
-                            $hasAnswer = true;
-                            break;
-                        }
-                    }
+                    $hasAnswer = $answers !== [];
 
                     if ($hasAnswer) {
                         $surveyData = [
@@ -235,14 +247,13 @@ class CustomerImportController extends Controller
 
                         $survey = BuyerSurvey::create($surveyData);
 
-                        foreach ($questionMap as $hIdx => $q) {
-                            $val = trim($cols[$hIdx] ?? '');
-                            if ($val === '') {
+                        foreach ($questionMap as $q) {
+                            if (! isset($answers[$q->id])) {
                                 continue;
                             }
                             $survey->answers()->create([
                                 'question_id'       => $q->id,
-                                'answer_value'      => $val,
+                                'answer_value'      => $answers[$q->id],
                                 'question_snapshot' => $q->toSnapshot(),
                             ]);
                         }

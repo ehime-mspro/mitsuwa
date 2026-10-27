@@ -871,4 +871,133 @@ class SurveyAnswersTest extends TestCase
         $this->assertCount(3, $blank['choices']);
         $this->assertCount(3, $blank['choices'][0]['subFields']);
     }
+
+    // ================================================================
+    // CSV のセル（画面と同じ形にして check() にかける）
+    // ================================================================
+
+    public static function csvCellProvider(): array
+    {
+        $sliderSettings = ['settings' => ['min' => 2000, 'max' => 6000, 'step' => 100, 'unit' => '万円']];
+        $referrals = ['options' => [['value' => 'ご紹介', 'has_text' => true, 'text_label' => '紹介者'], 'チラシ', 'SNS']];
+        $conditional = ['options' => [['value' => '建売住宅の購入', 'sub_fields' => [['key' => 'city', 'label' => '市町', 'type' => 'text']]], '賃貸']];
+
+        return [
+            '単一選択' => ['single_select', ['options' => ['1', '2', '3']], '3', '3'],
+            '単一選択（前後の空白）' => ['single_select', ['options' => ['1', '2', '3']], "　 2 \t", '2'],
+            '複数選択（読点）' => ['multi_select', ['options' => ['A', 'B', 'C']], 'A、B', '["A","B"]'],
+            '複数選択（カンマ）' => ['multi_select', ['options' => ['A', 'B', 'C']], 'A,B', '["A","B"]'],
+            '複数選択（空白は 1 つずつ落とす。全角空白も）' => ['multi_select', ['options' => ['A', 'B', 'C']], ' A , B ', '["A","B"]'],
+            '複数選択（全角空白）' => ['multi_select', ['options' => ['A', 'B', 'C']], '　A　、　B　', '["A","B"]'],
+            '複数選択（空の区切りは落とす）' => ['multi_select', ['options' => ['A', 'B', 'C']], 'A、、B,', '["A","B"]'],
+            '複数選択（重なりは 1 つ）' => ['multi_select', ['options' => ['A', 'B', 'C']], 'A、B、A', '["A","B"]'],
+            '複数選択（読点とカンマが混じる）' => ['multi_select', ['options' => ['A', 'B', 'C']], 'A、B,C', '["A","B","C"]'],
+            '複数選択（セル全体が 1 つの選択肢の名前なら区切らない）' => ['multi_select', ['options' => ['A,B', 'C']], 'A,B', '["A,B"]'],
+            '複数選択（名前に読点を含む選択肢）' => ['multi_select', ['options' => ['駅近、静か', 'C']], '駅近、静か', '["駅近、静か"]'],
+            '付随テキスト（付随の文字は入れない）' => ['select_with_text', $referrals, 'チラシ、ご紹介', '[{"value":"チラシ"},{"value":"ご紹介"}]'],
+            '付随テキスト（1 つだけ）' => ['select_with_text', $referrals, 'SNS', '[{"value":"SNS"}]'],
+            '付随テキスト（セル全体が 1 つの選択肢の名前なら区切らない）' => [
+                'select_with_text', ['options' => ['A,B', 'C']], 'A,B', '[{"value":"A,B"}]',
+            ],
+            '条件分岐付き選択（付随の欄は入れない）' => ['conditional_select', $conditional, '建売住宅の購入', '{"value":"建売住宅の購入"}'],
+            'テキスト' => ['text', [], '  看板　', '看板'],
+            'テキスト（区切らない）' => ['text', [], '看板、チラシ,SNS', '看板、チラシ,SNS'],
+            '数値' => ['number', [], '3500', '3500'],
+            '数値（全角の数字と桁区切り）' => ['number', [], '１，２３４.５', '1234.5'],
+            'スライダー（全角の数字と全角のカンマ）' => ['slider', $sliderSettings, '３，５００', '3500'],
+            'スライダー（半角のカンマ）' => ['slider', $sliderSettings, '３,５００', '3500'],
+        ];
+    }
+
+    #[DataProvider('csvCellProvider')]
+    public function test_csv_cells_are_read_like_the_screen(string $type, array $extra, string $cell, string $expected): void
+    {
+        [$stored, $errors] = SurveyAnswers::fromCsv($this->question($type, $extra), $cell, 'Q1（住まい）');
+
+        $this->assertSame([], $errors);
+        $this->assertSame($expected, $stored);
+    }
+
+    public function test_an_empty_csv_cell_is_nothing_answered(): void
+    {
+        foreach ([
+            ['single_select', ['options' => ['1']]],
+            ['multi_select', ['options' => ['1']]],
+            ['text', []],
+            ['number', []],
+            ['slider', []],
+            ['select_with_text', ['options' => ['1']]],
+            ['conditional_select', ['options' => ['1']]],
+        ] as [$type, $extra]) {
+            foreach (['', ' ', "　\t "] as $cell) {
+                $this->assertSame(
+                    [null, []],
+                    SurveyAnswers::fromCsv($this->question($type, $extra), $cell, 'Q1（住まい）'),
+                    "{$type} の空のセル",
+                );
+            }
+        }
+
+        // 区切りだけのセルは「回答なし」ではなく、読めない値として断る（黙って捨てない）
+        [$stored, $errors] = SurveyAnswers::fromCsv($this->question('number'), ',', 'Q1（住まい）');
+        $this->assertNull($stored);
+        $this->assertSame(['Q1（住まい）は数で入力してください'], $errors);
+    }
+
+    public function test_csv_errors_name_the_column(): void
+    {
+        $single = $this->question('single_select', ['label' => '家族の人数', 'options' => ['1', '2', '3']]);
+        $this->assertSame(
+            [null, ['Q3（家族の人数）の「社宅」は選択肢にありません']],
+            SurveyAnswers::fromCsv($single, '社宅', 'Q3（家族の人数）'),
+        );
+
+        // 複数選択: 選択肢に無いものを 1 つずつ挙げる（同じ文は 1 つにまとめる）
+        $multi = $this->question('multi_select', ['label' => 'きっかけ', 'options' => ['A', 'B']]);
+        $this->assertSame(
+            [null, ['Q2（きっかけ）の「X」は選択肢にありません', 'Q2（きっかけ）の「Y」は選択肢にありません']],
+            SurveyAnswers::fromCsv($multi, 'A、X,Y、X', 'Q2（きっかけ）'),
+        );
+
+        // 区切りだけのセルは「回答なし」にせず、選択肢に無い値として断る（黙って捨てない）
+        $this->assertSame(
+            [null, ['Q2（きっかけ）の「、」は選択肢にありません']],
+            SurveyAnswers::fromCsv($multi, '、', 'Q2（きっかけ）'),
+        );
+
+        // 選択肢に「A,B」がある設問で、セル全体が「A,B」でなければ区切って読む（「A,B」と別の選択肢を一緒には入れられない）
+        $comma = $this->question('multi_select', ['options' => ['A,B', 'C']]);
+        $this->assertSame(
+            [null, ['Q1（住まい）の「A」は選択肢にありません', 'Q1（住まい）の「B」は選択肢にありません']],
+            SurveyAnswers::fromCsv($comma, 'A,B、C', 'Q1（住まい）'),
+        );
+
+        $slider = $this->slider();
+        $this->assertSame(
+            [null, ['Q4（ご予算）は2000〜6000万円の100万円刻みで選んでください']],
+            SurveyAnswers::fromCsv($slider, '3,550', 'Q4（ご予算）'),
+        );
+        $this->assertSame(
+            [null, ['Q4（ご予算）は数で入力してください']],
+            SurveyAnswers::fromCsv($this->question('number'), '三千', 'Q4（ご予算）'),
+        );
+
+        $conditional = $this->conditional();
+        $this->assertSame(
+            [null, ['Q5（住まい）の「分譲」は選択肢にありません']],
+            SurveyAnswers::fromCsv($conditional, '分譲', 'Q5（住まい）'),
+        );
+
+        // 付随テキスト: 付随の文字はセルに入れられないので、区切りの先の語は選択肢の名前として読む
+        $withText = $this->selectWithText();
+        $this->assertSame(
+            [null, ['Q6（住まい）の「山田様」は選択肢にありません']],
+            SurveyAnswers::fromCsv($withText, 'ご紹介、山田様', 'Q6（住まい）'),
+        );
+
+        // テキスト: 255 文字まで
+        [$stored, $errors] = SurveyAnswers::fromCsv($this->question('text'), str_repeat('あ', 256), 'Q7（住まい）');
+        $this->assertNull($stored);
+        $this->assertSame(['Q7（住まい）は255文字以内で入力してください（256文字）'], $errors);
+    }
 }

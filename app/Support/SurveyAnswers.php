@@ -67,6 +67,42 @@ final class SurveyAnswers
     }
 
     /**
+     * CSV のセル 1 つを画面と同じ形にして check() にかける（$saved は null。CSV 取込のアンケートの列）。
+     *
+     * セルは Str::trim()（全角空白も）してから読み、空なら回答なし。$subject は誤りの文の主語（「Q3（家族の人数）」）。
+     * 設計書 8 章の表:
+     *   単一選択・テキスト = セルそのまま ／ 条件分岐付き選択 = 選択肢の名前 1 つ（付随の欄は入れられない）／
+     *   複数選択・選択肢＋付随テキスト = 選択肢の名前を「、」か「,」で区切る（付随の文字は入れられない）／
+     *   数値・スライダー = 数（全角の数字と桁区切りのカンマ「,」「，」は受け付ける）。
+     * ⚠ 区切るのは複数選択と選択肢＋付随テキストだけ。セル全体がちょうど 1 つの選択肢の名前と同じなら区切らない
+     *   （名前に「、」「,」を含む選択肢を 1 つだけ入れられる。2 つ以上と一緒には入れられない）。
+     * ⚠ 数の正規化（全角 → 半角・カンマを除く）はここだけで行う。check() は画面の値（半角）を読む。
+     * ⚠ 区切りだけのセル（「、」「,」）は回答なしにせず、そのセルのまま check() にかけて断る（黙って捨てない）。
+     *
+     * @return array{0: ?string, 1: list<string>}  [answer_value（回答なしは null）, 誤り]
+     */
+    public static function fromCsv(SurveyQuestion $question, string $cell, string $subject): array
+    {
+        $cell = Str::trim($cell);
+        if ($cell === '') {
+            return [null, []];
+        }
+
+        $value = match ($question->question_type) {
+            SurveyQuestionType::MultiSelect => self::csvNames($question, $cell),
+            SurveyQuestionType::SelectWithText => array_map(
+                fn (string $name): array => ['value' => $name],
+                self::csvNames($question, $cell),
+            ),
+            SurveyQuestionType::ConditionalSelect => ['value' => $cell],
+            SurveyQuestionType::Number, SurveyQuestionType::Slider => self::csvNumber($cell),
+            default => $cell,
+        };
+
+        return self::check($question, $value, null, $subject);
+    }
+
+    /**
      * 画面の `survey` をすべて検査する。誤りは `survey.{id}` のキーで $errors に足し、文の末尾を「。」で終える。
      *
      * @param  iterable<SurveyQuestion>  $questions  画面に出した設問
@@ -593,6 +629,37 @@ final class SurveyAnswers
         }
 
         return self::encoded($stored, $subject);
+    }
+
+    /**
+     * 複数選択・選択肢＋付随テキストのセルを選択肢の名前に分ける。
+     *
+     * @return list<string>
+     */
+    private static function csvNames(SurveyQuestion $question, string $cell): array
+    {
+        if (in_array($cell, self::optionValues($question), true)) {
+            return [$cell];
+        }
+
+        $names = [];
+        foreach (preg_split('/[、,]/u', $cell) ?: [] as $part) {
+            $part = Str::trim($part);
+            if ($part !== '') {
+                $names[] = $part;
+            }
+        }
+
+        // 区切りだけのセル。空にすると「回答なし」として黙って捨てるので、セルのまま渡して選択肢に無い値として断る
+        return $names === [] ? [$cell] : $names;
+    }
+
+    /** 数値・スライダーのセルを画面の値の形（半角の数字・桁区切りなし）にする。カンマだけのセルはそのまま返す（check() が断る） */
+    private static function csvNumber(string $cell): string
+    {
+        $number = str_replace([',', '，'], '', mb_convert_kana($cell, 'n'));
+
+        return $number === '' ? $cell : $number;
     }
 
     // ================================================================

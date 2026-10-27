@@ -385,6 +385,117 @@ class CustomerImportTest extends TestCase
         $this->assertSame('来場のきっかけ', $answer->question_snapshot['label']);
     }
 
+    /**
+     * 設問を 3 つ（単一選択・複数選択・スライダー）作る。見出しの Q1〜Q3 はこの並びに当たる。
+     *
+     * @return list<string>  CSV に足す見出し
+     */
+    private function surveyColumns(): array
+    {
+        SurveyQuestion::create([
+            'department' => 'housing', 'label' => '現在のお住まい', 'question_type' => 'single_select',
+            'options' => ['持ち家', '賃貸'], 'sort_order' => 1, 'is_active' => true,
+        ]);
+        SurveyQuestion::create([
+            'department' => 'housing', 'label' => '来場のきっかけ', 'question_type' => 'multi_select',
+            'options' => ['A', 'B', 'C'], 'sort_order' => 2, 'is_active' => true,
+        ]);
+        SurveyQuestion::create([
+            'department' => 'housing', 'label' => 'ご予算', 'question_type' => 'slider',
+            'settings' => ['min' => 2000, 'max' => 6000, 'step' => 100, 'unit' => '万円'], 'sort_order' => 3, 'is_active' => true,
+        ]);
+
+        return ['Q1:現在のお住まい', 'Q2:来場のきっかけ', 'Q3:ご予算'];
+    }
+
+    public function test_survey_columns_are_checked_in_the_preview_and_stored_in_the_saved_form(): void
+    {
+        // 直す前: どのセルも検査せず、書かれた文字のまま answer_value に入れていた（複数選択は画面の JSON でなく「A、B」、
+        // 選択肢に無い「社宅」・刻みの外の「3550」もそのまま入った）
+        $columns = $this->surveyColumns();
+
+        $preview = $this->preview($this->csv([
+            $this->person('山田', '太郎', ['Q1:現在のお住まい' => '賃貸', 'Q2:来場のきっかけ' => 'A、B', 'Q3:ご予算' => '3500']),
+            // カンマで区切るセルは CSV の引用符で囲む。全角の数字と桁区切りも読める
+            $this->person('佐藤', '花子', ['Q1:現在のお住まい' => '持ち家', 'Q2:来場のきっかけ' => '"B,C"', 'Q3:ご予算' => '３，５００']),
+            // 既存の誤り（姓が空）と、アンケートの列の誤りは 1 件にまとめる
+            $this->person('', '一', ['Q1:現在のお住まい' => '社宅']),
+            $this->person('鈴木', '二', ['Q2:来場のきっかけ' => 'A、X', 'Q3:ご予算' => '3550']),
+            // 答えが 1 つも無い行は、アンケートを作らない
+            $this->person('高橋', '三'),
+        ], $columns));
+
+        $expected = [
+            ['row' => 4, 'message' => '姓が未入力です／Q1（現在のお住まい）の「社宅」は選択肢にありません'],
+            ['row' => 5, 'message' => 'Q2（来場のきっかけ）の「X」は選択肢にありません／Q3（ご予算）は2000〜6000万円の100万円刻みで選んでください'],
+        ];
+
+        // 役割（コントローラが数えたエラー）と表示（画面の「⚠ 行N: …」）を別々に見る（Bug #54 ④）
+        $this->assertSame($expected, $preview->viewData('rowErrors'));
+        $this->assertSame(3, $preview->viewData('validCount'));
+        foreach ($expected as $error) {
+            $preview->assertSee("⚠ 行{$error['row']}: {$error['message']}");
+        }
+
+        $this->submit($this->confirmForm($preview))->assertSee('3件のインポートが完了しました。');
+
+        $this->assertSame(['山田', '佐藤', '高橋'], Buyer::orderBy('id')->pluck('last_name')->all());
+        $this->assertSame(2, BuyerSurvey::count(), '答えの無い行にアンケートを作った');
+
+        $questionIds = SurveyQuestion::orderBy('sort_order')->pluck('id')->all();
+        $saved = fn (string $last) => BuyerSurvey::where('buyer_id', Buyer::where('last_name', $last)->value('id'))
+            ->firstOrFail()->answers()->orderBy('question_id')->pluck('answer_value', 'question_id')->all();
+
+        $this->assertSame([
+            $questionIds[0] => '賃貸',
+            $questionIds[1] => '["A","B"]',
+            $questionIds[2] => '3500',
+        ], $saved('山田'));
+        $this->assertSame([
+            $questionIds[0] => '持ち家',
+            $questionIds[1] => '["B","C"]',
+            $questionIds[2] => '3500',
+        ], $saved('佐藤'));
+        $this->assertSame(0, BuyerSurvey::where('buyer_id', Buyer::where('last_name', '高橋')->value('id'))->count());
+    }
+
+    public function test_a_survey_column_error_uses_the_number_in_the_header(): void
+    {
+        $this->surveyColumns();
+
+        // 見出しに Q3 だけがある CSV。誤りの文の番号は、設問の並びの何番目かでなく、見出しの番号（Q3）にする
+        $preview = $this->preview($this->csv([
+            $this->person('山田', '太郎', ['Q3:ご予算' => '3550']),
+        ], ['Q3:ご予算']));
+
+        $this->assertSame(
+            [['row' => 2, 'message' => 'Q3（ご予算）は2000〜6000万円の100万円刻みで選んでください']],
+            $preview->viewData('rowErrors'),
+        );
+        $preview->assertSee('⚠ 行2: Q3（ご予算）は2000〜6000万円の100万円刻みで選んでください');
+    }
+
+    public function test_a_survey_cell_rewritten_after_the_preview_is_checked_again_on_confirmation(): void
+    {
+        $columns = $this->surveyColumns();
+
+        $preview = $this->preview($this->csv([
+            $this->person('山田', '太郎', ['Q1:現在のお住まい' => '賃貸']),
+            $this->person('佐藤', '花子', ['Q1:現在のお住まい' => '持ち家']),
+        ], $columns));
+        $form = $this->confirmForm($preview);
+
+        // 確認画面が持ち回った CSV の「持ち家」を、選択肢に無い値に書き換える
+        $csv = base64_decode($form['fields']['csv_data']);
+        $this->assertStringContainsString('持ち家', $csv);
+        $form['fields']['csv_data'] = base64_encode(str_replace('持ち家', '社宅', $csv));
+
+        $this->submit($form)->assertSee('1件のインポートが完了しました。');
+
+        $this->assertSame(['山田'], Buyer::pluck('last_name')->all());
+        $this->assertSame(['賃貸'], BuyerSurvey::sole()->answers()->pluck('answer_value')->all());
+    }
+
     // ================================================================
     // 取り込める行が無いとき・重複候補
     // ================================================================
