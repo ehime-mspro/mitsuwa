@@ -20,6 +20,7 @@ trait ComposesScreenForms
      *   〈アンケートの部品は部品ごとに `survey[設問の番号]` を持つ〉2 つ目以降が黙って捨てられる）。
      *   同じ名前の欄は後ろのものが残る＝ PHP がブラウザの送信を読むのと同じ。
      *   ただし名前が `[]` で終わる欄が 2 つの部品にまたがると、ブラウザは両方を足すが、この合わせ方は番号で上書きする（今の画面には無い）。
+     *   親の欄と部品の欄も同じ合わせ方にする（親が `$factory` で組まれて欄が入れ子の配列のとき、同じ一番上のキーを持つ部品の欄が丸ごと捨てられていた）。
      *
      * @param  array<string, string|array<int, string>>  $nested  入れ子のコンポーネントの関数名 => そのコンポーネントで走らせる JS（例 買主を選ぶ）
      * @return array{method: string, action: string, fields: array<string, mixed>, run: ?array}
@@ -46,7 +47,7 @@ trait ComposesScreenForms
             ? $this->parseForm($html, $needle) + ['run' => null]
             : $this->browserForm($html, $needle, $function, $steps, $responses, $factory);
 
-        return ['method' => $main['method'], 'action' => $main['action'], 'fields' => $main['fields'] + $nestedFields, 'run' => $main['run']];
+        return ['method' => $main['method'], 'action' => $main['action'], 'fields' => array_replace_recursive($main['fields'], $nestedFields), 'run' => $main['run']];
     }
 
     /** $needle のフォームの中で、次の `x-data="$name(` の位置（フォームの外のものは数えない＝ブラウザはそのフォームの欄しか送らない） */
