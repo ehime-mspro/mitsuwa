@@ -16,6 +16,11 @@ trait ComposesScreenForms
      * 同じ名前のコンポーネントが複数あるとき（DAD の工事案件の日付の部品は 7 つ）は、全部を同じ JS で順に評価する
      * （$nestedSteps に配列を渡すと、描かれた順に 1 つずつ別の JS を走らせる）。
      *
+     * ⚠ 部品ごとの欄は `array_replace_recursive()` で深く合わせる（`+` で足すと、2 つの部品の欄が同じ一番上のキーの下にあるとき
+     *   〈アンケートの部品は部品ごとに `survey[設問の番号]` を持つ〉2 つ目以降が黙って捨てられる）。
+     *   同じ名前の欄は後ろのものが残る＝ PHP がブラウザの送信を読むのと同じ。
+     *   ただし名前が `[]` で終わる欄が 2 つの部品にまたがると、ブラウザは両方を足すが、この合わせ方は番号で上書きする（今の画面には無い）。
+     *
      * @param  array<string, string|array<int, string>>  $nested  入れ子のコンポーネントの関数名 => そのコンポーネントで走らせる JS（例 買主を選ぶ）
      * @return array{method: string, action: string, fields: array<string, mixed>, run: ?array}
      */
@@ -32,7 +37,7 @@ trait ComposesScreenForms
                 $html = substr_replace($html, '', (int) strpos($html, $section, (int) strrpos(substr($html, 0, $at), '<div')), strlen($section));
                 $part = '<form method="POST" ' . $needle . '>' . $section . '</form>' . implode("\n", $scripts[0]);
                 $stepsForThis = is_array($nestedSteps) ? ($nestedSteps[$i] ?? '') : $nestedSteps;
-                $nestedFields += $this->browserForm($part, $needle, $name, $stepsForThis)['fields'];
+                $nestedFields = array_replace_recursive($nestedFields, $this->browserForm($part, $needle, $name, $stepsForThis)['fields']);
                 $at = $this->nestedInForm($html, $needle, $name);
             }
         }
