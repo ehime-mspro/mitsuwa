@@ -1506,3 +1506,25 @@ git -C /Users/masanori/site/manage/.claude/worktrees/approval-phase3 commit -m "
   3. 使い始めたあとの ⑬ の見出しに「試す人 N 人」が残った → 使い始めたあとは出さない
 - 撮り直し（`5eaf8d8c`）: 同じ作法・同じ試しのデータで、3 点の直しに関わる画面を撮り直した（16 枚を上書き）。欄 2 の表の枠は 375 でも `scrollWidth <= clientWidth`（「← スクロールできます →」は出ない）・管理者のホームの本文は直した文・試す人でも管理者でもない人のホームは今の文のまま・使い始めたあとの ⑬ に試す人の数は出ない。はみ出し 0・コンソール 0・lint INVALID 0
 - 写真 54 枚: `/Users/masanori/site/approval/screenshots-6a/`（リポジトリの外。受け入れ確認の手引きの読みやすい版に 12 枚を切り出して使った）。詳しいまとめは `~/.claude/plans/approval-phase3-tasks/6a/measure/task8-summary.md`
+
+## Task 7 の実測記録（2026-10-27・会話 ab2e5ae8）
+
+- 全件（WT でそのまま流した。どれも `Runtime: PHP 8.3.35`）:
+
+| コミット | 最後の行 | 時間 |
+|---|---|---|
+| `8c82d8fc`（Task 6 まで） | `OK (4372 tests, 42171 assertions)` | 04:55 |
+| `5eaf8d8c`（Task 8 で見つけた 3 点の直し） | `OK (4373 tests, 42184 assertions)` | 07:07（変異と同時に流した） |
+| `f0796186`（生き残りを止めるテスト 2 本） | `OK (4375 tests, 42187 assertions)` | 04:16 |
+
+- 変異の作法: WT の HEAD を `git archive` で scratchpad に写し（`vendor` は `cp -Rc`）、写しで 1 つずつ壊して流した（WT のソースは壊していない。写しが元に戻ったことは `diff -rq` で確かめた）。範囲は 5b の範囲（`tests/Feature/Approval`〈`Phase6` を含む〉・`tests/Unit/Approval`・走査のテスト）＋ `tests/Feature/Tenant/PropertyListSortTest.php`・`tests/Feature/MobileLayoutTest.php`（1 回 1462 本・100〜150 秒）。素のまま（BASELINE）は緑・CANARY（帯に未定義の変数）は 10 本落ちた・old の文字は 43 件みな 1 回だけ（SKIP 0）
+- `8c82d8fc` で 40 件（表の 36 件・点検のあとの判断①の S07・S08・CANARY・足した G04b〈`scopeTesters()` を `whereHas('user', …)` にする＝`user()` は `withTrashed()` なので削除した人も数える〉）: **期待どおり 37 ／ 生き残り 2 ／ 等価 0**。落ちたテストは名前まで表と突き合わせ、表に挙げたものはみな落ちた（表に挙げていないものも落ちたのは G01・G05・G07・N01・N03・M02・S04 で、どれも表の注記の見込みどおり）
+- 生き残り（見込みどおり）:
+  - **S07**: `TrialCoverage::missingForSubmit()` の「申請者がその申請部門に所属しているとき」だけ部門長を見る条件を消す
+  - **S08**: 同じく「停止した種類の下書きでないとき」だけ審査を見る条件を消す
+  - どちらも、試す期間に選び直しの理由が出る下書きを渡すテストが無かった（停止した種類の `SubmitCheckerTest` は準備中に流れる）。壊すと選び直しの理由に試す期間の断りが重なる → `f0796186` で `TrialCoverageTest` に 2 本足した: `test_a_department_the_applicant_is_not_in_gives_only_the_reason_of_today`・`test_a_stopped_type_is_checked_only_when_it_can_be_resubmitted`（後者は、差戻し中は停止した種類でも見る側も止める）
+- 当て直し:
+  - `5eaf8d8c`: 触られたファイルに関わる G01・G07・L01〜L06 と、新しい分岐の H01（ホームの試す期間の文を管理者でない人にも出す）・H02（準備中の管理者にも出す）→ 10 件とも期待どおり（H01・H02 は `TrialAccessTest::test_in_trial_a_non_tester_admin_gets_the_trial_note_on_the_home` が落ちる）
+  - `f0796186`: S07 は `test_a_department_the_applicant_is_not_in_gives_only_the_reason_of_today`、S08 は `test_a_stopped_type_is_checked_only_when_it_can_be_resubmitted` だけが落ちた（BASELINE は `OK (1465 tests, 10087 assertions)`）＝**生き残り 0**
+- 等価: 0 件（S01 は本番の振る舞いでは等価に近いが、テストが `SubmitChecker::reasons()` を直に呼ぶので落ちる。計画 §0.4 の `lockedRow()` の `next_without_trials => 1` は表に無いので当てていない）
+- 道具: `~/.claude/plans/approval-phase3-tasks/6a/mutate.py`・`run-mut.sh`。記録: `~/.claude/plans/approval-phase3-tasks/6a/measure/`（`full.log`・`full-5eaf8d8c.log`・`full-f0796186.log`・`mutations.jsonl`・`mutations-5eaf8d8c.jsonl`・`mutations-f0796186.jsonl`・`mut-*.log`）。ID ごとの全部の表は `~/.claude/plans/approval-phase3-tasks/6a/measure/task7-summary.md`
