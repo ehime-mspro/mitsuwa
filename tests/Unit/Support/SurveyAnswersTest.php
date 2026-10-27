@@ -2,6 +2,7 @@
 
 namespace Tests\Unit\Support;
 
+use App\Enums\SurveyQuestionType;
 use App\Models\SurveyQuestion;
 use App\Support\SurveyAnswers;
 use Illuminate\Support\MessageBag;
@@ -397,9 +398,58 @@ class SurveyAnswersTest extends TestCase
         $this->assertSame(['-5', []], SurveyAnswers::check($max, '-5', null, '「面積」'));
     }
 
+    public function test_a_number_is_limited_to_20_characters(): void
+    {
+        // 設定に上限が無くても、何万桁の数は通さない（answer_value は TEXT。本番の MySQL だけで落ちる）
+        $number = $this->question('number', ['label' => '面積']);
+        $subject = '「面積」';
+
+        foreach ([str_repeat('9', 20), '-' . str_repeat('9', 16) . '.25'] as $ok) {
+            $this->assertSame(20, strlen($ok));
+            $this->assertSame([$ok, []], SurveyAnswers::check($number, $ok, null, $subject), $ok);
+        }
+        foreach ([str_repeat('9', 21), '-' . str_repeat('9', 17) . '.25'] as $bad) {
+            $this->assertSame(21, strlen($bad));
+            $this->assertSame([null, ['「面積」は数で入力してください']], SurveyAnswers::check($number, $bad, null, $subject), $bad);
+        }
+
+        // 保存済みと同じ値は今どおり通す
+        $saved = str_repeat('9', 21);
+        $this->assertSame([$saved, []], SurveyAnswers::check($number, $saved, $saved, $subject));
+    }
+
     // ================================================================
     // 選択肢＋付随テキスト・条件分岐付き選択・複数選択
     // ================================================================
+
+    public function test_a_saved_select_text_is_compared_after_trimming(): void
+    {
+        // 保存済みの付随の文字が前後に全角空白を持つ（前後の空白を落とす前の保存）。落とすと 101 文字。画面は保存済みの文字をそのまま描いて送り返す
+        $saved = "\u{3000}" . str_repeat('あ', 101) . "\u{3000}";
+
+        $this->assertSame(
+            ['[{"value":"ご紹介","text":"' . str_repeat('あ', 101) . '"}]', []],
+            SurveyAnswers::check($this->selectWithText(), [['value' => 'ご紹介', 'text' => $saved]], [['value' => 'ご紹介', 'text' => $saved]], self::SUBJECT),
+        );
+    }
+
+    public function test_a_saved_conditional_field_is_compared_after_trimming(): void
+    {
+        // 保存済みの付随の欄が前後に全角空白を持つ。落とすと 101 文字
+        $saved = "\u{3000}" . str_repeat('あ', 101) . "\u{3000}";
+        $trimmed = str_repeat('あ', 101);
+
+        $conditional = $this->conditional();
+        $this->assertSame(
+            ['{"value":"建売住宅の購入","sub":{"city":"' . $trimmed . '"}}', []],
+            SurveyAnswers::check(
+                $conditional,
+                ['value' => '建売住宅の購入', 'sub' => ['city' => $saved]],
+                ['value' => '建売住宅の購入', 'sub' => ['city' => $saved]],
+                self::SUBJECT,
+            ),
+        );
+    }
 
     public function test_select_with_text_keeps_text_only_for_options_that_take_it(): void
     {
@@ -646,6 +696,19 @@ class SurveyAnswersTest extends TestCase
         // settings が無い数値は範囲なし
         $number = $this->question('number');
         $this->assertSame(['-12345678', []], SurveyAnswers::check($number, '-12345678', null, '「面積」'));
+    }
+
+    public function test_every_question_type_is_checked_and_a_question_without_a_type_answers_nothing(): void
+    {
+        // 種類ごとに check() の腕がある（新しい種類を足して腕を書き忘れると、ここが UnhandledMatchError で落ちる）
+        foreach (SurveyQuestionType::cases() as $type) {
+            $this->assertSame([null, []], SurveyAnswers::check($this->question($type->value), null, null, self::SUBJECT), $type->value);
+        }
+
+        // 種類の無い設問は「回答なし」
+        $untyped = new SurveyQuestion(['label' => self::LABEL]);
+        $this->assertNull($untyped->question_type);
+        $this->assertSame([null, []], SurveyAnswers::check($untyped, 'A', null, self::SUBJECT));
     }
 
     public function test_option_values_reads_both_string_and_array_options(): void

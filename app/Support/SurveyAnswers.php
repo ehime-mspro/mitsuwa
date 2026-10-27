@@ -36,6 +36,9 @@ final class SurveyAnswers
     /** 付随の欄（数）の上限。下限は 0・小数は 2 桁まで */
     public const SUB_NUMBER_MAX = 99999;
 
+    /** 数値入力の文字数（符号と小数点を含む）の上限。設定に上限が無くても何万桁の数を通さない */
+    public const NUMBER_MAX_LENGTH = 20;
+
     /** 設定が無いスライダーの既定（画面の部品と同じ） */
     private const SLIDER_DEFAULT_MIN = '0';
 
@@ -62,7 +65,8 @@ final class SurveyAnswers
             SurveyQuestionType::Slider => self::checkSlider($question, $value, $saved, $subject),
             SurveyQuestionType::SelectWithText => self::checkSelectWithText($question, $value, $saved, $subject),
             SurveyQuestionType::ConditionalSelect => self::checkConditional($question, $value, $saved, $subject),
-            default => [null, []],
+            // 種類の無い設問は回答なし。⚠ default を置かない（新しい種類を足して腕を書き忘れると UnhandledMatchError で気づける）
+            null => [null, []],
         };
     }
 
@@ -388,7 +392,8 @@ final class SurveyAnswers
             return [$text, []];
         }
 
-        if (preg_match('/^-?\d+(\.\d+)?$/', $text) !== 1) {
+        // 長すぎる数も同じ誤りにする（新しい文を作らない）
+        if (preg_match('/^-?\d+(\.\d+)?$/', $text) !== 1 || strlen($text) > self::NUMBER_MAX_LENGTH) {
             return [null, [$subject . 'は数で入力してください']];
         }
 
@@ -499,7 +504,7 @@ final class SurveyAnswers
                 continue;
             }
             if ($takesText && $text !== null) {
-                if (mb_strlen($text) > self::SUB_TEXT_MAX && $text !== $savedText) {
+                if (mb_strlen($text) > self::SUB_TEXT_MAX && ! self::sameAsSaved($text, $savedText)) {
                     $problems[] = sprintf(
                         '%sの「%s」に添える文字は%d文字以内で入力してください（%d文字）',
                         $subject,
@@ -590,8 +595,7 @@ final class SurveyAnswers
                 continue;
             }
             $field = $fields[$key];
-            $sameAsSaved = is_string($savedSub[$key] ?? null) && $savedSub[$key] === $text;
-            if (! $sameAsSaved) {
+            if (! self::sameAsSaved($text, $savedSub[$key] ?? null)) {
                 if ($field['number']) {
                     if (preg_match('/^\d+(\.\d{1,2})?$/', $text) !== 1 || (float) $text > self::SUB_NUMBER_MAX) {
                         $problems[] = sprintf(
