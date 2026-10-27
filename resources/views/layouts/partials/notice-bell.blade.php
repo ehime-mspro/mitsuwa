@@ -1,6 +1,6 @@
 {{-- お知らせのベル（ヘッダーの右・基幹の利用者にも決裁のみ利用者にも同じ所。段階3 設計書 §5.6・D14）。
      未読があれば赤い丸に数（100 以上は 99+）。押すとお知らせ一覧（⑥）へ（プルダウンは出さない）。
-     使い始める前は出さない（ApprovalMenu::unreadNotices() が null。基幹の画面に決裁の気配を出さない）。
+     見せないとき（準備中、または試す期間の試す人でない人）は出さない（ApprovalMenu::unreadNotices() が null。基幹の画面に決裁の気配を出さない）。
      ⚠ この partial の名前を sidebar で始めない・<nav> を使わない（LayoutSidebar*Test・LayoutBreadcrumbHomeTest の走査） --}}
 @php $unreadNotices = \App\Support\Approval\ApprovalMenu::unreadNotices(Auth::user()); @endphp
 @if($unreadNotices !== null)

@@ -15,7 +15,7 @@
     $isApprovalAdmin = Auth::user()->isApprovalAdmin();
     // この人に申請を回す画面を見せるか（使い始めたあとは全員・試す期間は試す人だけ・準備中は誰にも見せない。段階2 設計書 §5.2・D1・段階6 設計書 §5.2）
     $approvalsOpen = \App\Support\Approval\LaunchState::opensFor(Auth::user());
-    // 対応待ちの件数（使い始めてから。1 リクエストに 1 回だけ数える。段階2 設計書 §5.15）
+    // 対応待ちの件数（見せるときだけ数える＝見せないとき〈準備中、または試す期間の試す人でない人〉は null。1 リクエストに 1 回だけ数える。段階2 設計書 §5.15）
     $approvalPending = \App\Support\Approval\ApprovalMenu::pendingCount(Auth::user());
 @endphp
 
