@@ -3,11 +3,13 @@
 namespace Tests\Feature\Approval\Phase6;
 
 use App\Enums\ApprovalStatus;
+use App\Enums\ApprovalStepResult;
 use App\Models\ApprovalMember;
 use App\Models\ApprovalSetting;
 use App\Models\User;
 use App\Support\Approval\SubmitChecker;
 use App\Support\Approval\TrialCoverage;
+use App\Support\Approval\Workflow;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsApprovalFixtures;
 use Tests\TestCase;
@@ -109,6 +111,28 @@ class TrialCoverageTest extends TestCase
         $w['reviewDept']->reviewers()->detach();
 
         $this->assertSame(['審査部門「総務部」に、申請者本人以外の審査担当者がいません。管理者に連絡してください。'], SubmitChecker::reasons($this->draftFor($w), $w['applicant']));
+    }
+
+    /** 申請部門に所属していないときは、その部門の部門長を見ない（選び直しの理由だけ。点検のあとの判断①） */
+    public function test_a_department_the_applicant_is_not_in_gives_only_the_reason_of_today(): void
+    {
+        $w     = $this->trialWorld();
+        $other = $this->approvalDepartment($w['company'], ['name' => 'ミツワ不動産', 'code' => 'F', 'head_user_id' => $this->baseUser(['name' => '田中 次郎'])->id]);   // 部門長は試す人でない
+
+        $this->assertSame(['申請部門「ミツワ不動産」に所属していません。申請部門を選び直してください。'], SubmitChecker::reasons($this->draftFor($w, ['department_id' => $other->id]), $w['applicant']));
+    }
+
+    /** 停止した種類の下書きは審査を見ない（選び直しの理由だけ）。差戻し中は、そのまま出し直せるので見る（点検のあとの判断①） */
+    public function test_a_stopped_type_is_checked_only_when_it_can_be_resubmitted(): void
+    {
+        $w       = $this->trialWorld();
+        $request = $this->submittedFor($w);
+        app(Workflow::class)->judgeHead($request, $w['head'], $request->lock_version, ApprovalStepResult::Return, '直してください');   // 差戻し中
+        $this->unmakeTester($w['reviewer']);
+        $w['type']->update(['is_active' => false]);
+
+        $this->assertSame(["申請の種類「{$w['type']->name}」は使えなくなりました。種類を選び直してください。"], SubmitChecker::reasons($this->draftFor($w), $w['applicant']));
+        $this->assertSame([self::LEAD . '審査部門「総務部」の審査の担当が試す人に入っていません。'], SubmitChecker::reasons($request->refresh(), $w['applicant']));
     }
 
     public function test_before_any_tester_the_route_is_not_checked(): void
