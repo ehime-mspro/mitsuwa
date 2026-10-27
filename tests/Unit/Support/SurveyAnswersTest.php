@@ -861,7 +861,7 @@ class SurveyAnswersTest extends TestCase
             $this->subField('city', '市町', 'text', '松山市'),
             $this->subField('area', '地区', 'text', ''),
             $this->subField('tsubo', '希望坪数', 'number', ''),
-            $this->subField('old_key', 'old_key', 'text', '昔の希望', true),
+            $this->subField('old_key', 'old_key（今の設問に無い欄）', 'text', '昔の希望', true),
         ], $state['choices'][0]['subFields']);
         $this->assertSame('建売住宅の購入', $state['savedSelected']);
 
@@ -869,13 +869,13 @@ class SurveyAnswersTest extends TestCase
         $switched = SurveyAnswers::formState($conditional, ['value' => '土地の購入', 'sub' => ['land' => '50']], $saved);
         $this->assertSame('土地の購入', $switched['selected']);
         $this->assertSame('建売住宅の購入', $switched['savedSelected']);
-        $this->assertSame($this->subField('old_key', 'old_key', 'text', '', true), $switched['choices'][0]['subFields'][3]);
+        $this->assertSame($this->subField('old_key', 'old_key（今の設問に無い欄）', 'text', '', true), $switched['choices'][0]['subFields'][3]);
         $this->assertSame([$this->subField('land', '土地の広さ', 'number', '50')], $switched['choices'][1]['subFields']);
 
         // 選択肢に無い保存済みの値: 選択肢を足し、保存済みの欄はすべてその選択肢の欄
         $renamed = ['value' => '旧', 'sub' => ['old_key' => '昔の希望']];
         $this->assertSame(
-            $this->choice('旧', '旧（選択肢に無い値）', true, true, false, '', '', [$this->subField('old_key', 'old_key', 'text', '昔の希望', true)]),
+            $this->choice('旧', '旧（選択肢に無い値）', true, true, false, '', '', [$this->subField('old_key', 'old_key（今の設問に無い欄）', 'text', '昔の希望', true)]),
             SurveyAnswers::formState($conditional, $renamed, $renamed)['choices'][3],
         );
 

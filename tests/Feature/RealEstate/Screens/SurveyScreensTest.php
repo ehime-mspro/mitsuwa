@@ -472,6 +472,24 @@ class SurveyScreensTest extends RealEstateScreenTestCase
         $this->assertSame([$q['slider']->id => '1500'], $this->answersOf($survey->fresh()));
     }
 
+    public function test_number_fields_let_the_browser_send_decimals(): void
+    {
+        $this->questions();
+        $html = $this->htmlOf(route('realestate.customers.surveys.create', $this->buyer()));
+
+        // ブラウザの既定の step は 1 なので、サーバが通す小数（数値入力・付随の数の欄は小数 2 桁まで）をブラウザが止める
+        preg_match_all('/<input\b[^>]*>/i', $html, $inputs);
+        $numbers = array_values(array_filter(
+            $inputs[0],
+            fn (string $tag) => strtolower($this->htmlAttr($tag, 'type') ?? '') === 'number' && str_starts_with($this->htmlAttr($tag, 'name') ?? '', 'survey['),
+        ));
+        // 数値入力 1 つ ＋ 条件分岐の数の欄 4 つ（建売・中古の坪数、土地を購入して新築・建て替えの土地の坪数）
+        $this->assertCount(5, $numbers, 'アンケートの数の欄の数が違う');
+        foreach ($numbers as $tag) {
+            $this->assertSame('any', $this->htmlAttr($tag, 'step'), "数の欄が小数を送れない: {$tag}");
+        }
+    }
+
     public function test_the_range_input_sends_nothing_itself(): void
     {
         $q = $this->questions();
@@ -512,10 +530,13 @@ class SurveyScreensTest extends RealEstateScreenTestCase
         $this->saveAnswer($survey, $q['conditional'], $json(['value' => $old, 'sub' => ['old_key' => '昔の希望']]));
         $stored = $this->answersOf($survey);
 
-        // 編集画面に「（選択肢に無い値）」として、選んだまま出る
+        // 編集画面に「（選択肢に無い値）」として、選んだまま出る（4 問の選択肢 ＋ 条件分岐の付随の欄の箱の見出し）
         $url = route('realestate.customers.surveys.edit', [$buyer, $survey]);
         $html = $this->htmlOf($url);
-        $this->assertSame(4, substr_count($html, e($old . '（選択肢に無い値）')), '「（選択肢に無い値）」の選択肢が 4 問に出ていない');
+        $this->assertSame(5, substr_count($html, e($old . '（選択肢に無い値）')), '「（選択肢に無い値）」が 4 問の選択肢と付随の欄の箱の見出しに出ていない');
+        // 付随の欄の箱の見出しと、今の設問に無い保存済みの欄のラベルは全文で見る
+        $this->assertStringContainsString('>▼ ' . e($old . '（選択肢に無い値）') . ' — 希望エリア</div>', $html, '足した選択肢の付随の欄の箱の見出しに「（選択肢に無い値）」が無い');
+        $this->assertStringContainsString('>old_key（今の設問に無い欄）</label>', $html, '今の設問に無い保存済みの欄のラベルが違う');
         $form = $this->surveyForm($html, route('realestate.customers.surveys.update', [$buyer, $survey]), $q);
         $answers = $form['fields']['survey'];
         $this->assertSame($old, $answers[$q['single']->id]);

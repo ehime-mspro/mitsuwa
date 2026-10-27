@@ -70,7 +70,7 @@
                 <div style="display: flex; align-items: center; gap: 6px;">
                     <input type="number" name="survey[{{ $qId }}]"
                            value="{{ $state['value'] }}"
-                           min="{{ $settings['min'] ?? '' }}" max="{{ $settings['max'] ?? '' }}"
+                           min="{{ $settings['min'] ?? '' }}" max="{{ $settings['max'] ?? '' }}" step="any"
                            style="width: 120px; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
                     @if(isset($settings['unit']))
                         <span style="font-size: 13px;">{{ $settings['unit'] }}</span>
@@ -154,7 +154,7 @@
                     @foreach($state['choices'] as $choice)
                         @if(count($choice['subFields']) > 0)
                             <div x-show="selectedOption === {{ \Illuminate\Support\Js::from($choice['value']) }}" style="border: 2px dashed #d1d5db; border-radius: 8px; padding: 16px; background: #fff;">
-                                <div style="font-size: 12px; font-weight: 600; color: #6b7280; margin-bottom: 10px;">▼ {{ $choice['value'] }} — 希望エリア</div>
+                                <div style="font-size: 12px; font-weight: 600; color: #6b7280; margin-bottom: 10px;">▼ {{ $choice['label'] }} — 希望エリア</div>
                                 <div class="grid-stack-sm" style="display: grid; grid-template-columns: repeat({{ count($choice['subFields']) }}, 1fr); gap: 10px;">
                                     @foreach($choice['subFields'] as $sf)
                                         <div>
@@ -170,6 +170,7 @@
                                                 <input type="{{ $sf['type'] }}"
                                                        name="survey[{{ $qId }}][sub][{{ $sf['key'] }}]"
                                                        value="{{ $sf['value'] }}"
+                                                       @if($sf['type'] === 'number') step="any" @endif
                                                        :disabled="selectedOption !== {{ \Illuminate\Support\Js::from($choice['value']) }}"
                                                        style="height: 34px; font-size: 13px; width: 100%; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px;">
                                             @endif
