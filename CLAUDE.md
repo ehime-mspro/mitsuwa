@@ -145,6 +145,7 @@ sudo rm -f storage/framework/views/*.php && brew services restart httpd
 - 決裁台帳（⑤）と Excel は `App\Support\Approval\Ledger` の 1 か所で問い合わせる（見られる範囲は `RequestVisibility`）。中身は申請者本人以外には最後に提出した控えで出し・当てる（`LedgerRow`・`Ledger::whereContent()`）。並びは日本の暦の日で比べるので SQL で並べない（`Ledger::sortedKeys()`）。Excel の文字の欄は `setCellValueExplicit(…, TYPE_STRING)` で入れる（式にしない）。出力の記録（添付・PDF・Excel）は `DownloadLogger` だけが書く
 - 決裁の金額の明細表は申請の JSON の 1 列（`amount_table`）。形と計算は `App\Support\Approval\AmountTable` の 1 か所（画面の JS も同じ式。粗利率は整数で計算する）。申請者以外に見せる中身は最後に提出した控え（`ApprovalRequest::submittedRevision()`）から読む。MySQL は JSON のキーを並べ替えて返すので、並びに意味のあるもの（行）は配列にし、テストで JSON の列を丸ごと比べるときは `assertSameIgnoringKeyOrder()`
 - 決裁の過去の紙の決裁は専用の表（`approval_paper_records`）。申請の表を読むホーム・自分の申請・⑩・お知らせ・催促には出さない（台帳・Excel・関連する決裁No・紙の決裁の詳細だけが読む）。見られる範囲は `RequestVisibility::constrainPaper()`、台帳で紙が当たる条件は `LedgerFilter::includesPapers()` の 1 か所。**本物の紙の台帳（実在の人の名字と案件）はリポジトリに入れない**。使い始める直前に利用者が行う取り込みの手順は @docs/運用_過去の決裁の取り込み.md（⑪ の画面の文言や断りを変えたら、ここも直す）
+- 決裁を使い始めたか・試す期間か・この人に申請を回す画面を見せるかは **`App\Support\Approval\LaunchState` から読む**（`ApprovalSetting::isLaunched()`・`launchedForMenu()`・`launched_at` を読み書きするのは `ApprovalSetting` と `LaunchState` だけ。`LaunchStateScanTest` が `app/` と `resources/views/` をコメントまで走査して止める）。試しの印（帯・メールの件名の【試し】・PDF の「試し」・Excel の「試し_」）と提出の確かめ（`TrialCoverage`）は**試す期間だけ**で効かせる（準備中と使い始めたあとは今と同じ。準備中に効かせると、使い始める前に Workflow で提出している今のテストが赤になる）。`approval_number_sequences.next_without_trials`（試しの採番だけを除いた次の番号。段階6b の片付けが使う）は **`ApprovalNumber` だけが動かす**（`setNext()`・`advancePast()` で動き、`issue()` では動かさない）。受け入れ確認の手順は @docs/運用_受け入れ確認の手引き.md（⑬ の画面の文言や断りを変えたら、ここも直す）
 - `re_projects` のカラムは `project_name`（`name` ではない）
 - 既定都道府県: 愛媛県
 - 外部 CDN: `cdn.jsdelivr.net` のみ許可（`cdnjs.cloudflare.com` は本番でブロック）
@@ -166,7 +167,7 @@ sudo rm -f storage/framework/views/*.php && brew services restart httpd
 | 経営ダッシュボード | `/dashboard/executive` | `DashboardController::executive`（5事業横断）|
 | 買主マスタ（部署横断）| `/buyers` | `CustomerController`、SoftDeletes、CSV import |
 | 添付ファイル | ポリモーフィック | `AttachmentController`（TYPE_MAP と routes/web.php の `where` 正規表現を同期。Bug #20）|
-| 決裁申請 段階1〜5b | `/approvals/*` | `Approval\*Controller`（門番 3 本・CSV 一括登録・ログイン案内・申請の回覧と進行中の申請の管理・決裁台帳と Excel（⑤。問い合わせは `Ledger` だけ・出力の記録は `DownloadLogger` だけ）・申請の種類ごとの作り込み（明細表の形と計算は `AmountTable` だけ）・過去の紙の決裁の取り込み（⑪。紙は専用の表 `approval_paper_records`）・お知らせ〈ベル・⑥〉と通知メール・毎朝の催促〈`approvals:remind`〉と催促の設定〈⑫〉。状態を変えるのは `App\Support\Approval\Workflow` だけ・知らせを出すのは `App\Support\Approval\Notifier` だけ）|
+| 決裁申請 段階1〜6a | `/approvals/*` | `Approval\*Controller`（門番 3 本・CSV 一括登録・ログイン案内・申請の回覧と進行中の申請の管理・決裁台帳と Excel（⑤。問い合わせは `Ledger` だけ・出力の記録は `DownloadLogger` だけ）・申請の種類ごとの作り込み（明細表の形と計算は `AmountTable` だけ）・過去の紙の決裁の取り込み（⑪。紙は専用の表 `approval_paper_records`）・お知らせ〈ベル・⑥〉と通知メール・毎朝の催促〈`approvals:remind`〉と催促の設定〈⑫〉・使い始め（⑬。試す人と試す期間。判定は `LaunchState` だけ）。状態を変えるのは `App\Support\Approval\Workflow` だけ・知らせを出すのは `App\Support\Approval\Notifier` だけ）|
 
 詳細構成: @docs/ARCHITECTURE.md / 実装履歴・優先度: @docs/BACKLOG.md
 
