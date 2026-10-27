@@ -71,6 +71,24 @@ class TrialNumberBaseTest extends TestCase
         $this->assertSame([21, 7, 21], $this->numbers($dept));
     }
 
+    /** 境目: 紙の番号が「試しの採番を除いた次の番号」と同じなら 1 つ先へ進み、1 つ小さければ動かない（次の番号とは別に比べる） */
+    public function test_a_paper_number_equal_to_the_number_base_moves_it_one_past(): void
+    {
+        $dept = $this->approvalWorld()['dept'];
+        ApprovalNumber::setNext($dept, 5);
+        ApprovalNumber::issue($dept, now());
+        ApprovalNumber::issue($dept, now());                // 次 7・使った 6・覚えた 5
+
+        ApprovalNumber::advancePast($dept, 2026, 4);
+        $this->assertSame([7, 6, 5], $this->numbers($dept)); // 覚えた番号より 1 つ小さい番号では、どちらも動かない
+
+        ApprovalNumber::advancePast($dept, 2026, 5);
+        $this->assertSame([7, 6, 6], $this->numbers($dept)); // 覚えた番号と同じ番号で 6 へ。次の番号は 7 のまま
+
+        ApprovalNumber::advancePast($dept, 2026, 7);
+        $this->assertSame([8, 6, 8], $this->numbers($dept)); // 次の番号と同じ番号でも 1 つ先へ（両方）
+    }
+
     public function test_a_past_year_paper_number_leaves_it(): void
     {
         $dept = $this->approvalWorld()['dept'];
