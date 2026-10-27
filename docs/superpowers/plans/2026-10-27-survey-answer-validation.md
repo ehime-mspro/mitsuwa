@@ -208,6 +208,8 @@ test_decode_reads_back_each_type   // '3500'（数値・スライダー）・'12
 - スライダーを動かす手順は `data.sliderVal = '3500'; data.skip = false;` と書く（Task 3 の前の部品は `skip` を持たないが、足しても害は無い。こう書いておけば Task 3 のあとも同じテストが使える）
 - Task 2 の往復では、条件分岐付き選択は「建て替え」（`land_tsubo` を最後に持つ選択肢）を選ぶ。直す前の部品でも、同じ名前の欄は最後のものが残るので通る。キーが重なって消える形（「建売住宅の購入」）は Task 3 で見る
 
+- [ ] **Step 0: テストの道具 `composedForm()`（`tests/Concerns/ComposesScreenForms.php`）の入れ子の欄の足し方を直す**。今は `$nestedFields += …` で、2 つの部品の欄がどちらも同じ一番上のキー（`survey`）の下にあると、2 つ目の欄が黙って捨てられる（Task 0 の P4 で見つけた）。`array_replace_recursive($nestedFields, …)` に変える（同じ名前の欄は後ろが残る＝ PHP がブラウザの送信を読むのと同じ）。docblock に理由を書き、`tests/Feature/Housing/Screens`・`tests/Feature/Mansion/Screens`・`tests/Feature/Dad/Screens` を流して緑のままであることを確かめてから、単独でコミットする（`test: 入れ子の部品の欄を同じキーの下でも捨てずに合わせる`）。⚠ 名前が `[]` で終わる欄が 2 つの部品にまたがると、ブラウザは足し、この足し方は番号で上書きする（今の画面には無い。docblock に書く）
+
 - [ ] **Step 1: 失敗するテストを書く**
 
 ```php
@@ -373,7 +375,7 @@ test_survey_columns_are_checked_in_the_preview_and_stored_in_the_saved_form
 
 ## Task 6: 全件テスト・ビューの lint・変異テスト
 
-- [ ] **Step 1: 全件を流す**。`OK` になることと、メモリのピーク（前回 452.50 MB・上限 512M）を記録する
+- [ ] **Step 1: 全件を流す**。`OK` になることと、メモリのピーク（前回 452.50 MB・`phpunit.xml` の上限は 1G）を記録する
 - [ ] **Step 2: コンパイル済みビューを lint する**: `php artisan view:cache` のあと、`storage/framework/views/*.php` を全部 `php -l` して INVALID 0 件（前回 312 本）。終わったら `view:clear` する（VIEW_COMPILED_PATH を scratchpad に向けてもよい）
 - [ ] **Step 3: 変異の表を `specs.py` に書く**（流す前に期待を書く）。写しを `specs.survey-answer.py` に置く。各変異の `tests` は `tests/Unit/Support/SurveyAnswersTest.php`・`tests/Feature/RealEstate/Screens`・`tests/Feature/Housing/Screens/CustomerScreensTest.php`・`tests/Feature/Admin/CustomerImportTest.php`・`tests/Feature/JsEchoClassificationTest.php`・`tests/Feature/JsStringEchoScanTest.php`・`tests/Feature/JapaneseValidationMessagesTest.php`
 - [ ] **Step 4: 流す**。期待と違ったものは、理由の文言まで見てから扱いを決める（テストの穴なら、テストを足して赤を確かめる。等価なら表に理由を書く）。結果を計画の「実測記録 Task 6」に書いてコミットする
@@ -449,4 +451,29 @@ Task 0（直す前の実測と実ブラウザの再現）・Task 6 の変異・T
 
 ## 実測記録
 
-（Task 0・6・7 の結果をここに書き足す）
+### Task 0（2026-10-27・直す前のコード `ff499114`）
+
+使い捨てのテスト（`Tests\Probe\SurveyProbeTest`・PHP 8.3.35・scratchpad に置きコミットしない）で、描いた画面のフォームを組んで送った。6 つとも設計 1.2 章の見込みどおりだった。
+
+| # | 測ったこと | 結果 |
+|---|---|---|
+| P1 | 無効にした設問の回答が残る編集画面を、そのまま保存 | 無効の設問の回答の行が消えた（有効な設問の `3LDK` だけ残る） |
+| P2 | 単一選択 `A` を保存し、選択肢を `A2`・`B` に変えて編集画面をそのまま保存 | 編集画面のフォームに単一選択の項目が無く（どのラジオも選ばれていない）、保存で行が消えた |
+| P3 | スライダーを触らずにアンケートの登録画面から保存 | `4000`（2000〜6000 の真ん中）の行ができた |
+| P4 | 選択肢＋付随テキスト・条件分岐・スライダーの部署で、何も答えずに顧客を新規登録 | アンケートが 1 件でき、行は `[]`・`{"sub":{"city":null,"area":null,"tsubo":null,"land_tsubo":null}}`・`4000` |
+| P5 | 付随の欄のキーが重なる条件分岐で 1 つ目の選択肢を選び、欄を埋めて保存 | 画面に `sub[city]` の欄が 3 つ・`area`/`tsubo`/`land_tsubo` が 2 つずつ、`:disabled` は 0。保存は `{"value":"建売住宅の購入","sub":{"city":null,"area":null,"tsubo":null,"land_tsubo":null}}` |
+| P6 | 来場日を空にし、テキストに `4LDK` を入れて送る | 戻った画面に「来場日は必須です」が出て、テキストの欄は `value=""` |
+
+- ⚠ 空の付随の欄は `ConvertEmptyStringsToNull` で null になって保存される（設計 1.3 の「付随の欄がすべて空の形」はこの形の可能性が高い）
+- ⚠ **テストの道具の欠け**: P4 を `composedForm()` に部品を 2 つ渡して組んだら、条件分岐の欄が送られなかった。`$nestedFields += …` が、同じ一番上のキー（`survey`）の 2 つ目を捨てていた。画面ではなく道具の欠けなので、Task 2 Step 0 で直す。部品ごとに組んで深く合わせ直すと、P4 は上の表のとおりだった（スライダーの行は、1 回目の測り方で `4000` を確かめた。2 回目は平らな名前の空の欄と重なって抜けた＝これも道具の都合）
+
+**実ブラウザ（P5 の再現）**: scratchpad に写した `demo.sqlite` に住宅事業の 6 問（本番と同じ構成。問 2 は付随の欄のキーが重なる形）を入れ、使い捨てのサーバ（127.0.0.1:8031）と Playwright で確かめた。
+
+| 操作 | 保存された問 2 |
+|---|---|
+| 「建売住宅の購入」を押し、見えている欄に 松山市・道後・40 を入れて登録 | `{"value":"建売住宅の購入","sub":{"city":null,"area":null,"tsubo":null,"land_tsubo":null}}` |
+| 「土地を購入して新築」を押し、見えている欄に 伊予市・60 を入れて登録 | `{"value":"土地を購入して新築","sub":{"city":null,"area":null,"tsubo":null,"land_tsubo":null}}` |
+
+- 「建売住宅の購入」を押した直後の画面: `sub` の欄は 9 個で、見えているのは最初の 3 個。どれも `disabled` ではない（隠れた 6 個も送られ、後ろの空の欄が残る）
+- 2 回とも、触っていない問 1 は `[]`、問 6（スライダー）は `4000` で保存された（P3・P4 と同じ）
+- 終わったあと、サーバを止め、ログイン用ルートを外し、Playwright の写し（`.playwright-mcp/page-2026-10-27T03-0*.yml`）を消した
