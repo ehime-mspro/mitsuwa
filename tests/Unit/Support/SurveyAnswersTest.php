@@ -696,6 +696,21 @@ class SurveyAnswersTest extends TestCase
             SurveyAnswers::decode($conditional, '{"value":"建売住宅の購入","sub":{"city":"松山市"}}'),
         );
         $this->assertSame(['value' => '賃貸'], SurveyAnswers::decode($conditional, '{"value":"賃貸"}'));
+        // 直す前の部品が書いた形（全部の選択肢の付随の欄を送り、空欄は null で保存された）。null と空の欄だけを飛ばして読む
+        $this->assertSame(
+            ['value' => '建て替え', 'sub' => ['land_tsubo' => '45']],
+            SurveyAnswers::decode($conditional, '{"value":"建て替え","sub":{"city":null,"area":null,"tsubo":null,"land_tsubo":"45"}}'),
+        );
+        $this->assertSame(
+            ['value' => 'リフォーム'],
+            SurveyAnswers::decode($conditional, '{"value":"リフォーム","sub":{"city":null,"area":null,"tsubo":null,"land_tsubo":null}}'),
+        );
+        $this->assertSame(
+            ['value' => '建売住宅の購入', 'sub' => ['area' => '道後']],
+            SurveyAnswers::decode($conditional, '{"value":"建売住宅の購入","sub":{"city":"","area":"道後"}}'),
+        );
+        // 欄の値が配列の形は、ほかの欄が null でも今どおり読めない
+        $this->assertNull(SurveyAnswers::decode($conditional, '{"value":"建売住宅の購入","sub":{"city":["x"],"area":null}}'));
         $this->assertNull(SurveyAnswers::decode($conditional, '賃貸'));
         $this->assertNull(SurveyAnswers::decode($conditional, '["賃貸"]'));
         $this->assertNull(SurveyAnswers::decode($conditional, '{"sub":{"city":"x"}}'));

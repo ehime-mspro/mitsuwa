@@ -711,7 +711,13 @@ final class SurveyAnswers
         return $items;
     }
 
-    /** @return array{value: string, sub?: array<string, string>}|null */
+    /**
+     * ⚠ 欄の値が null・空の欄は飛ばす（その欄だけ。回答全体を読めない形にしない）。直す前の部品は全部の選択肢の欄を送り、
+     *   空欄は null で保存されていた（`{"value":"建て替え","sub":{"city":null,…,"land_tsubo":"45"}}`）。読めない形にすると、
+     *   編集画面で何も選ばれず、保存で行が消える。欄が 1 つも残らなければ sub を持たない。
+     *
+     * @return array{value: string, sub?: array<string, string>}|null
+     */
     private static function decodeConditional(mixed $decoded): ?array
     {
         if (! is_array($decoded) || array_is_list($decoded) || ! is_string($decoded['value'] ?? null)) {
@@ -725,12 +731,17 @@ final class SurveyAnswers
             }
             $sub = [];
             foreach ($decoded['sub'] as $key => $item) {
+                if ($item === null || $item === '') {
+                    continue;
+                }
                 if (! is_string($item)) {
                     return null;
                 }
                 $sub[(string) $key] = $item;
             }
-            $result['sub'] = $sub;
+            if ($sub !== []) {
+                $result['sub'] = $sub;
+            }
         }
 
         return $result;

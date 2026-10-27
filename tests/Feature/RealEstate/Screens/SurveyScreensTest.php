@@ -264,15 +264,46 @@ class SurveyScreensTest extends RealEstateScreenTestCase
         $q = $this->questions();
         $buyer = $this->buyer();
 
-        // 本番にある「何も選ばずに保存した」形（選択肢＋付随テキストの空の配列・条件分岐の空の付随の欄）
-        $survey = $this->newSurvey($buyer);
-        $this->saveAnswer($survey, $q['withText'], '[]');
-        $this->saveAnswer($survey, $q['conditional'], '{"value":"","sub":{"city":"","area":"","tsubo":""}}');
+        // 本番にある「何も選ばずに保存した」形（選択肢＋付随テキストの空の配列・条件分岐の付随の欄が全部 null）。
+        // 直す前の部品は全部の選択肢の欄を送り、空欄は null で保存された（計画 Task 0 の P4 の実測: value を持たない形）
+        foreach ([
+            'value を持たない' => '{"sub":{"city":null,"area":null,"tsubo":null,"land_tsubo":null}}',
+            'value が空' => '{"value":"","sub":{"city":null,"area":null,"tsubo":null,"land_tsubo":null}}',
+        ] as $shape => $conditional) {
+            $survey = $this->newSurvey($buyer);
+            $this->saveAnswer($survey, $q['withText'], '[]');
+            $this->saveAnswer($survey, $q['conditional'], $conditional);
 
-        // 開ける（htmlOf が 200 を確かめる）。そのまま保存すると、中身は「回答なし」と同じなので 2 行とも消える
+            // 開ける（htmlOf が 200 を確かめる）。どの選択肢も選ばれていない
+            $html = $this->htmlOf(route('realestate.customers.surveys.edit', [$buyer, $survey]));
+            $form = $this->surveyForm($html, route('realestate.customers.surveys.update', [$buyer, $survey]), $q);
+            $this->assertArrayNotHasKey($q['conditional']->id, $form['fields']['survey'] ?? [], "{$shape}: 回答なしの条件分岐が何かを送る");
+
+            // そのまま保存すると、中身は「回答なし」と同じなので 2 行とも消える
+            $this->saveEditScreenAsIs($buyer, $survey, $q);
+
+            $this->assertSame([], $this->answersOf($survey->fresh()), $shape);
+        }
+    }
+
+    public function test_a_conditional_answer_saved_with_null_fields_survives_saving_the_edit_screen(): void
+    {
+        $q = $this->questions();
+        $buyer = $this->buyer();
+
+        // 直す前の部品が書いた形: 選んだ選択肢の欄に値を入れても、ほかの選択肢の欄は null で残った（計画 Task 0 の P5 の実測）
+        $survey = $this->newSurvey($buyer);
+        $this->saveAnswer($survey, $q['conditional'], '{"value":"建て替え","sub":{"city":null,"area":null,"tsubo":null,"land_tsubo":"45"}}');
+
+        // 編集画面では「建て替え」が選ばれ、土地の坪数に 45 が入っている
+        $url = route('realestate.customers.surveys.edit', [$buyer, $survey]);
+        $form = $this->surveyForm($this->htmlOf($url), route('realestate.customers.surveys.update', [$buyer, $survey]), $q);
+        $this->assertSame(['value' => '建て替え', 'sub' => ['land_tsubo' => '45']], $form['fields']['survey'][$q['conditional']->id] ?? null);
+
+        // そのまま保存しても、選んだ回答は消えない（直す前は読めない形として何も選ばれず、保存で行が消えた）。保存の形は新しい形になる
         $this->saveEditScreenAsIs($buyer, $survey, $q);
 
-        $this->assertSame([], $this->answersOf($survey->fresh()));
+        $this->assertSame([$q['conditional']->id => '{"value":"建て替え","sub":{"land_tsubo":"45"}}'], $this->answersOf($survey->fresh()));
     }
 
     public function test_answers_to_questions_not_on_the_screen_are_kept_on_save(): void
