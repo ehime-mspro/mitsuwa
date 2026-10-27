@@ -78,6 +78,16 @@ final class LaunchState
     }
 
     /**
+     * 決裁の画面のいちばん上に、試しの帯を出すか（段階6 設計書 §5.6）。試す期間に、試す人と決裁の管理者に出す。
+     *
+     * ⚠ 順番を変えない。試す人でも管理者でもない人には、試す期間かの問い合わせ（`stage()` の 1 本）を足さない。
+     */
+    public static function showsTrialBanner(User $user): bool
+    {
+        return (self::isTester($user) || $user->isApprovalAdmin()) && self::inTrial();
+    }
+
+    /**
      * 使い始めた日時（⑬ の「使い始めました（…）」）。
      *
      * ⚠ ⑬ は決裁の管理の画面なので、設定の行が無ければ作ってよい（`current()`）。基幹の画面では呼ばない。

@@ -44,6 +44,11 @@ final class LedgerExcel
 
     private const SHEET_TITLE = '決裁台帳';
 
+    /** 試す期間のファイル名の先頭（ASCII だけの代わりの名前は TRIAL_PREFIX_ASCII） */
+    private const TRIAL_PREFIX = '試し_';
+
+    private const TRIAL_PREFIX_ASCII = 'trial_';
+
     /**
      * 列（要件 10 の並び。D23 で審査部門の意見を 2 列に分けた。段階5 で工事原価・粗利益金額・粗利率・契約予定日と、状態の前に区分を足した＝20 列）。
      * 見出し・幅・種類・行から値を取る関数。並びを変えるときもここだけを変える
@@ -119,15 +124,19 @@ final class LedgerExcel
     }
 
     /**
-     * ファイル名（日本の今日）と、古いブラウザ用の ASCII だけの代わりの名前
+     * ファイル名（日本の今日）と、古いブラウザ用の ASCII だけの代わりの名前。
+     * 試す期間は、どちらの先頭にも試しの印を付ける（段階6 設計書 §5.6。中身は変えない）
      *
-     * @return array{0: string, 1: string} ['決裁台帳_2026-10-05.xlsx', 'ledger_2026-10-05.xlsx']
+     * @return array{0: string, 1: string} ['決裁台帳_2026-10-05.xlsx', 'ledger_2026-10-05.xlsx']（試す期間は ['試し_決裁台帳_2026-10-05.xlsx', 'trial_ledger_2026-10-05.xlsx']）
      */
-    public static function fileNames(): array
+    public static function fileNames(bool $trial = false): array
     {
         $today = JapanTime::today()->format('Y-m-d');
 
-        return [self::SHEET_TITLE . "_{$today}.xlsx", "ledger_{$today}.xlsx"];
+        return [
+            ($trial ? self::TRIAL_PREFIX : '') . self::SHEET_TITLE . "_{$today}.xlsx",
+            ($trial ? self::TRIAL_PREFIX_ASCII : '') . "ledger_{$today}.xlsx",
+        ];
     }
 
     /** @param list<array{0: string, 1: int, 2: string, 3: \Closure}> $columns */
