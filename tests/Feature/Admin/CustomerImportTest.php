@@ -475,6 +475,37 @@ class CustomerImportTest extends TestCase
         $preview->assertSee('⚠ 行2: Q3（ご予算）は2000〜6000万円の100万円刻みで選んでください');
     }
 
+    public function test_two_columns_for_the_same_question_store_one_answer(): void
+    {
+        $this->surveyColumns();
+
+        // 見出しに同じ「Q1:」の列が 2 つある CSV（片方は空）。csv() は見出しの名前で値を引くので、行は手で組む
+        $columns = array_merge(self::HEADER, ['Q1:現在のお住まい', 'Q1:現在のお住まい']);
+        $line = function (string $last, string $first, string $q1First, string $q1Second): string {
+            $row = $this->person($last, $first);
+
+            return implode(',', [...array_map(fn (string $column) => $row[$column] ?? '', self::HEADER), $q1First, $q1Second]);
+        };
+        $csv = implode("\n", [
+            implode(',', $columns),
+            $line('山田', '太郎', '賃貸', ''),
+            $line('佐藤', '花子', '', '持ち家'),
+        ]) . "\n";
+
+        $preview = $this->preview($csv);
+        $this->assertSame([], $preview->viewData('rowErrors'));
+        $this->assertSame(2, $preview->viewData('validCount'));
+
+        // 直す前: 確定が見出しの列ごとに回答を作り、同じ設問の回答を 2 回作って一意制約で取込全体が巻き戻った
+        $this->submit($this->confirmForm($preview))->assertSee('2件のインポートが完了しました。');
+
+        $questionId = SurveyQuestion::where('sort_order', 1)->value('id');
+        $answers = fn (string $last) => BuyerSurvey::where('buyer_id', Buyer::where('last_name', $last)->value('id'))
+            ->sole()->answers()->pluck('answer_value', 'question_id')->all();
+        $this->assertSame([$questionId => '賃貸'], $answers('山田'));
+        $this->assertSame([$questionId => '持ち家'], $answers('佐藤'));
+    }
+
     public function test_a_survey_cell_rewritten_after_the_preview_is_checked_again_on_confirmation(): void
     {
         $columns = $this->surveyColumns();

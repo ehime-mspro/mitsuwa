@@ -86,6 +86,7 @@ class CustomerImportController extends Controller
 
         // 設問カラム検出（Q1:xxx, Q2:xxx ...）
         $questions = SurveyQuestion::ofDepartment($department)->active()->ordered()->get();
+        $questionsById = $questions->keyBy('id'); // 確定で回答の question_snapshot を作る
         $questionMap = []; // headerIndex => question
         $questionNumbers = []; // headerIndex => 見出しの Q の番号（誤りの文の主語に使う）
         foreach ($header as $hIdx => $hVal) {
@@ -215,48 +216,43 @@ class CustomerImportController extends Controller
                 // 部署ピボット（取得日は BuyerCsvRow が Y-m-d にそろえた値）
                 $buyer->addToDepartment($department, $row->acquiredDate);
 
-                // アンケート（設問があり、検査を通った回答がある場合）
-                if (!empty($questionMap)) {
-                    $hasAnswer = $answers !== [];
+                // アンケート（検査を通った回答がある場合）
+                if ($answers !== []) {
+                    $surveyData = [
+                        'buyer_id'    => $buyer->id,
+                        'department'  => $department,
+                        'survey_date' => $row->acquiredDate,
+                    ];
 
-                    if ($hasAnswer) {
-                        $surveyData = [
-                            'buyer_id'    => $buyer->id,
-                            'department'  => $department,
-                            'survey_date' => $row->acquiredDate,
-                        ];
-
-                        // 分譲地
-                        if ($row->projectName) {
-                            $project = DB::table('re_projects')
-                                ->where('project_name', 'like', $row->projectName . '%')
-                                ->first();
-                            if ($project) {
-                                $surveyData['project_id'] = $project->id;
-                            }
+                    // 分譲地
+                    if ($row->projectName) {
+                        $project = DB::table('re_projects')
+                            ->where('project_name', 'like', $row->projectName . '%')
+                            ->first();
+                        if ($project) {
+                            $surveyData['project_id'] = $project->id;
                         }
+                    }
 
-                        // 担当者
-                        if ($row->staffName) {
-                            $surveyData['staff_name'] = $row->staffName;
-                            $staffUser = User::baseUsers()->where('name', 'like', '%' . $row->staffName . '%')->first();
-                            if ($staffUser) {
-                                $surveyData['staff_user_id'] = $staffUser->id;
-                            }
+                    // 担当者
+                    if ($row->staffName) {
+                        $surveyData['staff_name'] = $row->staffName;
+                        $staffUser = User::baseUsers()->where('name', 'like', '%' . $row->staffName . '%')->first();
+                        if ($staffUser) {
+                            $surveyData['staff_user_id'] = $staffUser->id;
                         }
+                    }
 
-                        $survey = BuyerSurvey::create($surveyData);
+                    $survey = BuyerSurvey::create($surveyData);
 
-                        foreach ($questionMap as $q) {
-                            if (! isset($answers[$q->id])) {
-                                continue;
-                            }
-                            $survey->answers()->create([
-                                'question_id'       => $q->id,
-                                'answer_value'      => $answers[$q->id],
-                                'question_snapshot' => $q->toSnapshot(),
-                            ]);
-                        }
+                    // 回答は設問 id で畳んだ $answers から作る（1 設問 1 行）。⚠ 見出しの列ごと（$questionMap）に回すと、
+                    // 同じ「Q{n}:」の列が 2 つある CSV で同じ設問の回答を 2 回作り、一意制約 uq_survey_answer で全行が巻き戻る
+                    foreach ($answers as $questionId => $answerValue) {
+                        $survey->answers()->create([
+                            'question_id'       => $questionId,
+                            'answer_value'      => $answerValue,
+                            'question_snapshot' => $questionsById[$questionId]->toSnapshot(),
+                        ]);
                     }
                 }
 
