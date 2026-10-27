@@ -32,7 +32,8 @@ use Illuminate\Support\Str;
  * 共通の決まり（§5.4）: 1 操作した本人には出さない ／ 2 1 回の操作で同じ人に同じ申請の知らせは 1 つ（先に足したものを残すので、
  * 対応が要る知らせを先に足す）／ 3 無効の人・削除した人には出さない ／ 4 メールはアドレスがあり許可したドメインの人だけ
  * （ほかの人はお知らせだけ）／ 5 担当の番の知らせは申請者本人に出さない（D16）／ 6 件名と申請部門は最後に提出した控えから
- * （差戻し中の直しかけを出さない。D26）／ 7 使い始める前は何もしない（§5.2）
+ * （差戻し中の直しかけを出さない。D26）／ 7 使い始める前は試す人にだけ（段階6 設計書 §5.5。使い始めたあとは全員。試す期間の
+ * メールは件名の先頭に【試し】）
  */
 final class Notifier
 {
@@ -197,15 +198,18 @@ final class Notifier
 
     private function send(): void
     {
-        // ⚠ 行を作らずに読む（部門の管理・社長の指定は使い始める前から呼ばれる。§5.2）
-        if ($this->entries === [] || ! LaunchState::launched()) {
+        if ($this->entries === []) {
             return;
         }
 
+        // ⚠ 行を作らずに読み、1 回だけ読む（部門の管理・社長の指定は使い始める前から呼ばれる。§5.2）。
+        //   使い始める前に知らせを受け取れるのは試す人だけなので、届くお知らせとメールはすべて試す期間のもの（【試し】を付ける）。
+        //   試す人が 0 人の準備中は、だれも receives() を通らないので何も作らない（今と同じ。段階6 設計書 §5.5）
+        $launched = LaunchState::launched();
         $contexts = [];
 
         foreach ($this->entries as ['user' => $user, 'request' => $request, 'notice' => $notice]) {
-            if (! $this->receives($user, $request, $notice)) {
+            if (! $this->receives($user, $request, $notice, $launched)) {
                 continue;
             }
 
@@ -230,18 +234,23 @@ final class Notifier
             ]);
 
             if ($notice->mailed && ApprovalMailDomain::allows($user->email)) {
-                Mail::to($user->email)->queue(new ApprovalNoticeMail($user->name, $notice, $context));
+                Mail::to($user->email)->queue((new ApprovalNoticeMail($user->name, $notice, $context))->asTrial(! $launched));
             }
         }
     }
 
-    /** 共通の決まり 1・3・5 */
-    private function receives(User $user, ApprovalRequest $request, Notice $notice): bool
+    /**
+     * 共通の決まり 1・3・5・7
+     *
+     * ⚠ 試す人かの判定（関係を読む）は最後。ほかの決まりを通った、使い始める前の人だけが読む
+     */
+    private function receives(User $user, ApprovalRequest $request, Notice $notice, bool $launched): bool
     {
         return $user->id !== $this->actor->id
             && ! $user->trashed()
             && $user->status === UserStatus::Active
-            && ! ($notice->handlerTurn && $user->id === $request->user_id);
+            && ! ($notice->handlerTurn && $user->id === $request->user_id)
+            && ($launched || LaunchState::isTester($user));
     }
 
     /**

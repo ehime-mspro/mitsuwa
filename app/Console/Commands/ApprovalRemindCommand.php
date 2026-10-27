@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Enums\ApprovalLaunchStage;
 use App\Enums\UserStatus;
 use App\Mail\ApprovalMailable;
 use App\Mail\ApprovalReminderMail;
@@ -22,8 +23,10 @@ use Illuminate\Support\Facades\Mail;
 /**
  * 朝の催促のまとめメール（段階3 設計書 §5.8・要件 8.3）。定期実行が平日の朝 9:00〜9:04 の起動で呼ぶ（routes/console.php）。
  *
- * 順に確かめ、当たれば何もしないで終わる: 使い始める前 → 送らない日（土日・祝日・⑫で登録した日。ReminderCalendar）→
- * 今日の分をもう送った（approval_reminder_runs に今日の行を入れられない）。
+ * 順に確かめ、当たれば何もしないで終わる: 使い始める前で試す人がいない（準備中）→ 送らない日（土日・祝日・⑫で登録した日。
+ * ReminderCalendar）→ 今日の分をもう送った（approval_reminder_runs に今日の行を入れられない）。
+ * 試す期間（使い始める前で試す人がいる）は、対応待ちの人のうち試す人にだけ送り、まとめメールの件名に【試し】を付ける
+ * （段階6 設計書 §5.5）。使い始めたあとは今までどおり全員。
  *
  * ⚠ 今日の行を入れることと、まとめメールを積むことは 1 つのトランザクション（途中で止まれば両方残らない。キューが database
  *   なので jobs の行も一緒に巻き戻る。Notifier と同じ前提）。同じ日に 2 回目が動いても、一意の日付で入れられずに止まる
@@ -41,7 +44,7 @@ class ApprovalRemindCommand extends Command
 
     protected $signature = 'approvals:remind';
 
-    protected $description = '決裁の催促のまとめメールを送信待ちに入れる（平日の朝 9 時の定期実行。使い始める前・送らない日・今日の分を送ったあとは何もしない）';
+    protected $description = '決裁の催促のまとめメールを送信待ちに入れる（平日の朝 9 時の定期実行。使い始める前で試す人がいないとき・送らない日・今日の分を送ったあとは何もしない。試す期間は試す人にだけ送る）';
 
     public function handle(): int
     {
@@ -55,7 +58,9 @@ class ApprovalRemindCommand extends Command
 
     private function remind(Carbon $today): string
     {
-        if (! LaunchState::launched()) {
+        $stage = LaunchState::stage();
+
+        if ($stage === ApprovalLaunchStage::Preparing) {
             return '使い始める前なので送りません。';
         }
 
@@ -64,7 +69,8 @@ class ApprovalRemindCommand extends Command
             return "送らない日なので送りません（{$reason}）。";
         }
 
-        $mails = $this->mails();
+        $trial = $stage === ApprovalLaunchStage::Trial;
+        $mails = $this->mails($trial);
         $items = array_sum(array_map(fn (ApprovalReminderMail $mail) => $mail->total, $mails));
 
         $sent = DB::transaction(function () use ($today, $mails, $items): bool {
@@ -86,11 +92,18 @@ class ApprovalRemindCommand extends Command
         }
 
         // 送る相手がいない日も記録は残す（⑫ の「前回の催促」と同じ言葉。利用者の決定 2026-10-02）
+        if ($trial) {
+            return $mails === [] ? '試す期間なので試す人にだけ送ります。送る相手はいませんでした。' : '試す期間なので試す人にだけ送りました（' . count($mails) . " 人・{$items} 件）。";
+        }
+
         return $mails === [] ? '送る相手はいませんでした。' : '催促を送りました（' . count($mails) . " 人・{$items} 件）。";
     }
 
-    /** @return array<string, ApprovalReminderMail> メールアドレス => まとめメール（宛先は有効で、メールを送れる人だけ） */
-    private function mails(): array
+    /**
+     * @param bool $testersOnly 試す期間（宛先を試す人だけにし、まとめメールに【試し】を付ける。段階6 設計書 §5.5）
+     * @return array<string, ApprovalReminderMail> メールアドレス => まとめメール（宛先は有効で、メールを送れる人だけ）
+     */
+    private function mails(bool $testersOnly): array
     {
         $pending = PendingWork::everyone()
             ->map(fn (Collection $items) => $items->filter(fn (array $item) => PendingWork::waitingDays($item['since']) >= self::MIN_DAYS)->values())
@@ -102,17 +115,27 @@ class ApprovalRemindCommand extends Command
 
         $mails = [];
 
+        $users = User::whereKey($pending->keys())->where('status', UserStatus::Active->value)->orderBy('id');
+
+        if ($testersOnly) {
+            $users->with('approvalMember');
+        }
+
         // 削除した人は SoftDeletes で入らない
-        foreach (User::whereKey($pending->keys())->where('status', UserStatus::Active->value)->orderBy('id')->get() as $user) {
+        foreach ($users->get() as $user) {
+            if ($testersOnly && ! LaunchState::isTester($user)) {
+                continue;
+            }
+
             if (ApprovalMailDomain::allows($user->email)) {
-                $mails[$user->email] = $this->digest($user, $pending[$user->id]);
+                $mails[$user->email] = $this->digest($user, $pending[$user->id], $testersOnly);
             }
         }
 
         return $mails;
     }
 
-    private function digest(User $user, Collection $items): ApprovalReminderMail
+    private function digest(User $user, Collection $items, bool $trial): ApprovalReminderMail
     {
         $listed = $items->take(self::MAX_ITEMS)->map(fn (array $item) => [
             // 件名・申請部門が空（差戻し中に空で保存できる）なら、ホームの対応待ちと同じ言葉にする
@@ -124,7 +147,7 @@ class ApprovalRemindCommand extends Command
             'url'        => self::link('approvals.requests.show', $item['request']),
         ])->all();
 
-        return new ApprovalReminderMail($user->name, $items->count(), $listed, self::link('approvals.home'));
+        return (new ApprovalReminderMail($user->name, $items->count(), $listed, self::link('approvals.home')))->asTrial($trial);
     }
 
     /**

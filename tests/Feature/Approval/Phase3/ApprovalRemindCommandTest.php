@@ -268,6 +268,36 @@ class ApprovalRemindCommandTest extends TestCase
         $this->assertSame(0, ApprovalReminderRun::count());
     }
 
+    /** 試す期間は、対応待ちの人のうち試す人にだけ送る（段階6 設計書 §5.5） */
+    public function test_in_trial_only_testers_are_reminded(): void
+    {
+        Mail::fake();
+        $w        = $this->trialWorld();
+        $reviewer = $this->mailable($w['reviewer'], 'reviewer');
+        $outsider = $this->mailable($this->baseUser(['name' => '試さない 審査']), 'outsider');
+        $w['reviewDept']->reviewers()->attach($outsider->id);
+
+        $this->at('2026-10-01 10:00:00');
+        $request = $this->submittedFor($w, ['subject' => '審査待ち']);
+        app(Workflow::class)->judgeHead($request->refresh(), $w['head'], $request->lock_version, ApprovalStepResult::Approve, null);
+
+        $this->at(self::MONDAY_NINE);
+        $this->assertSame('2026-10-05 試す期間なので試す人にだけ送りました（1 人・1 件）。', $this->remind());
+
+        $this->assertCount(1, $this->reminders());
+        $this->assertSame('【試し】【決裁】対応待ちの申請が 1 件あります', $this->reminderTo($reviewer)->envelope()->subject);
+    }
+
+    public function test_in_trial_a_day_with_no_tester_to_remind_says_so(): void
+    {
+        Mail::fake();
+        $this->makeTester($this->approvalOnlyUser());
+
+        $this->at(self::MONDAY_NINE);
+        $this->assertSame('2026-10-05 試す期間なので試す人にだけ送ります。送る相手はいませんでした。', $this->remind());
+        $this->assertSame([0, 0], [ApprovalReminderRun::sole()->recipient_count, ApprovalReminderRun::sole()->item_count]);
+    }
+
     /** 土日・祝日・⑫で登録した日は送らない（記録も残さない） */
     public function test_nothing_is_sent_on_days_off(): void
     {
