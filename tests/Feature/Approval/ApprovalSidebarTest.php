@@ -372,6 +372,39 @@ class ApprovalSidebarTest extends TestCase
         }
     }
 
+    /** 使い始め（⑬）は準備中から決裁の管理者に出す（段階6 設計書 §5.9）。サイドバー 2 つ（展開・引き出し）と決裁のホーム 2 つの本文 */
+    public function test_the_launch_link_is_offered_to_admins_before_launch(): void
+    {
+        $launch = route('approvals.admin.launch.index');
+        $admin  = $this->approvalAdmin(UserRole::ApprovalOnly->value);
+
+        $html = $this->actingAs($admin)->get(route('approvals.home'))->assertOk()->assertViewIs('approvals.home')->getContent();
+        foreach (['expanded', 'drawer'] as $key) {
+            $this->assertHasLink($this->sidebars($html)[$key], $launch, '使い始め', $key);
+        }
+        $this->assertHasLink($this->mainOf($html), $launch, '使い始め', '準備中のホームの本文');
+
+        $sidebars = $this->sidebars($this->actingAs($this->approvalAdmin())->get('/dashboard/tenant')->assertOk()->getContent());
+        foreach (['expanded', 'drawer'] as $key) {
+            $this->assertHasLink($sidebars[$key], $launch, '使い始め', $key);
+        }
+
+        ApprovalSetting::current()->update(['launched_at' => now()]);
+        $html = $this->actingAs($admin)->get(route('approvals.home'))->assertOk()->assertViewIs('approvals.home-launched')->getContent();
+        $this->assertHasLink($this->mainOf($html), $launch, '使い始め', '使い始めたあとのホームの本文');
+
+        $plain = User::factory()->approvalOnly()->create(['must_change_password' => false]);
+        $this->assertStringNotContainsString($launch, $this->actingAs($plain)->get(route('approvals.home'))->assertOk()->getContent(), '管理者でない人に使い始めが出ている');
+    }
+
+    /** サイドバーを除いた本文（<main>） */
+    private function mainOf(string $html): string
+    {
+        $this->assertSame(1, preg_match('#<main\b[^>]*>.*?</main>#s', $html, $m), '<main> が 1 つに定まらない');
+
+        return $m[0];
+    }
+
     /** 申請の画面へのリンクは、使い始めてから出す（準備中は誰にも見せない。段階2 設計書 D1） */
     public function test_the_request_links_appear_only_after_launch(): void
     {
