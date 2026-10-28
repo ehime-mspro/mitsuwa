@@ -77,6 +77,8 @@ class CustomerSurveyController extends Controller
             // 来場の分譲地・担当者（住宅事業の画面だけが送る。消えたものは理由つきで断る。H9）
             'project_id'    => 'nullable|integer|exists:re_projects,id',
             'staff_user_id' => 'nullable|integer|exists:users,id',
+            // 備考はそのまま保存する。規則が無いと配列が保存まで届き 500 になっていた（Bug #121）
+            'survey_memo'   => 'nullable|string|max:5000',
         ])->after(function ($validator) use ($questions, $request, &$answers) {
             $answers = SurveyAnswers::checkScreen($questions, $request->input('survey'), [], $validator->errors());
         })->validate();
@@ -179,6 +181,8 @@ class CustomerSurveyController extends Controller
             // 来場の分譲地・担当者（住宅事業の画面だけが送る。消えたものは理由つきで断る。H9）
             'project_id'    => 'nullable|integer|exists:re_projects,id',
             'staff_user_id' => 'nullable|integer|exists:users,id',
+            // 備考はそのまま保存する。規則が無いと配列が保存まで届き 500 になっていた（Bug #121）
+            'survey_memo'   => 'nullable|string|max:5000',
         ])->after(function ($validator) use ($questions, $saved, $request, &$answers) {
             $answers = SurveyAnswers::checkScreen($questions, $request->input('survey'), $saved, $validator->errors());
         })->validate();

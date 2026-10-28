@@ -105,14 +105,12 @@ class ZealSimulationCategoryController extends Controller
         // 更新前の状態を保持（差分判定用）
         $wasFixed         = $category->calc_type === ZealSimulationCalcType::Fixed;
         $oldDefaultAmount = $category->default_amount;
-        $applyFromMonth   = trim((string) $request->input('apply_from_month', ''));
-
-        // 適用開始月の形式チェック（YYYY-MM）
-        if ($applyFromMonth !== '' && !preg_match('/^\d{4}-\d{2}$/', $applyFromMonth)) {
-            return back()
-                ->withInput()
-                ->withErrors(['apply_from_month' => '適用開始月は YYYY-MM 形式で入力してください。']);
-        }
+        // 適用開始月の形式チェック（YYYY-MM）。入力チェックで見る（`(string)` で配列を読むと 500 になっていた。Bug #121）
+        $request->validate(
+            ['apply_from_month' => ['nullable', 'string', 'regex:/^\d{4}-\d{2}$/']],
+            ['apply_from_month.regex' => '適用開始月は YYYY-MM 形式で入力してください。'],
+        );
+        $applyFromMonth = trim((string) $request->input('apply_from_month', ''));
 
         $appliedCount = 0;
         $skippedCount = 0;

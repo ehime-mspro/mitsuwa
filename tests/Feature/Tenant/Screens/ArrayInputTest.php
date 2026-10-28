@@ -73,4 +73,19 @@ class ArrayInputTest extends TenantScreenTestCase
         $this->assertInputError($html, '内訳は配列で指定してください。');
         $this->assertSame(0, Investment::count());
     }
+
+    // ---------- 規則の無かった欄 ----------
+
+    /** 戻り先の hidden（return_to）は規則が無く、配列のまま控えて戻った画面が 500 になっていた */
+    public function test_the_rent_revision_screen_opens_after_an_array_return_target(): void
+    {
+        $contract = $this->activeContract($this->unit(1, 'A'));
+
+        $html = $this->tamper(route('tenant.contracts.revise', $contract), route('tenant.contracts.revise.execute', $contract), [
+            'return_to' => ['unit'], 'new_rent' => '120000',
+        ]);
+
+        $this->assertInputError($html, '選択された戻り先は正しくありません。');
+        $this->assertSame(100000, $contract->fresh()->rent);
+    }
 }

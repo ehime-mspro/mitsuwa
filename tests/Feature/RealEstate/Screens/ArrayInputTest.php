@@ -3,6 +3,7 @@
 namespace Tests\Feature\RealEstate\Screens;
 
 use App\Models\Buyer;
+use App\Models\BuyerSurvey;
 use App\Models\ReContract;
 use Tests\Concerns\TampersForms;
 
@@ -63,6 +64,32 @@ class ArrayInputTest extends RealEstateScreenTestCase
         ]);
 
         $this->assertErrorItem($html, '生年月日は正しい日付形式で入力してください。');
+        $this->assertSame(0, Buyer::where('last_name', '佐藤')->count());
+    }
+
+    // ---------- 規則の無かった欄 ----------
+
+    /** アンケートの備考（survey_memo）は規則が無く、配列のまま保存しようとして 500 になっていた */
+    public function test_an_array_survey_memo_is_refused_without_saving(): void
+    {
+        $buyer = $this->buyer();
+
+        $html = $this->tamper(route('realestate.customers.surveys.create', $buyer), route('realestate.customers.surveys.store', $buyer), [
+            'survey_date' => '2026-10-01', 'survey_memo' => ['メモ'],
+        ]);
+
+        $this->assertErrorItem($html, '備考は文字列で入力してください。');
+        $this->assertSame(0, BuyerSurvey::count());
+    }
+
+    /** 生年月日の年（birth_year。JS が birth_date を組むための欄）は規則が無く、配列のまま控えて戻った画面が 500 になっていた */
+    public function test_the_customer_screen_opens_after_an_array_birth_year(): void
+    {
+        $html = $this->tamper(route('realestate.customers.create'), route('realestate.customers.store'), [
+            'last_name' => '佐藤', 'first_name' => '一郎', 'acquired_date' => '', 'birth_year' => ['1980'],
+        ]);
+
+        $this->assertErrorItem($html, '生年月日（年）は文字列で入力してください。');
         $this->assertSame(0, Buyer::where('last_name', '佐藤')->count());
     }
 }

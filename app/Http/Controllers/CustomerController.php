@@ -609,6 +609,11 @@ class CustomerController extends Controller
             'acquired_date'   => 'required|date',
             'birth_date'      => 'nullable|date|before_or_equal:' . JapanTime::today()->toDateString(),
             'birth_era'       => ['nullable', Rule::in(array_keys(BuyerCsvRow::ERAS)), $this->birthEraMatches($request)],
+            // 年・月・日は画面の JS が birth_date を組むための欄で、保存はしない。形だけ見る
+            // （規則が無いと配列のまま控え、戻った画面が 500 になっていた。Bug #121）
+            'birth_year'      => 'nullable|string|max:10',
+            'birth_month'     => 'nullable|string|max:10',
+            'birth_day'       => 'nullable|string|max:10',
             'family_adults'   => $count('family_adults'),
             'family_children' => $count('family_children'),
             'postal_code'     => $text('postal_code'),

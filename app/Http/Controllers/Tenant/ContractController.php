@@ -560,6 +560,8 @@ class ContractController extends Controller
             'new_pest_control_fee' => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
             'new_deposit'          => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
             'reason'               => 'nullable|string|max:5000',
+            // 戻り先（画面の hidden）。規則が無いと配列のまま控え、戻った画面が 500 になっていた（Bug #121）
+            'return_to'            => 'nullable|in:unit,contract',
         ]);
 
         DB::transaction(function () use ($contract, $validated) {

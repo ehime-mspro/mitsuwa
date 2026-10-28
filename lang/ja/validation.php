@@ -285,6 +285,9 @@ return [
         'birthday' => '生年月日',
         'birth_date' => '生年月日',                    // 顧客（買主）
         'birth_era' => '元号',
+        'birth_year' => '生年月日（年）',
+        'birth_month' => '生年月日（月）',
+        'birth_day' => '生年月日（日）',
         'family_adults' => '大人の人数',
         'family_children' => '子供の人数',
         'occupation' => '職業',
@@ -372,6 +375,7 @@ return [
         'settlement_file' => '解約精算書',
         'settlement_date' => '決済日',
         'revision_date' => '改定適用日',
+        'return_to' => '戻り先',
         'rent' => '賃料',                              // 上書き: Mansion/Room は「募集賃料」
         'new_rent' => '新・月額家賃',
         'common_fee' => '共益費',
@@ -454,6 +458,7 @@ return [
         'info_obtained_date' => '情報入手日',
         'acquired_date' => '取得日',
         'survey_date' => '来場日',
+        'survey_memo' => '備考',
         'construction_start_date' => '着工予定日',
         'scheduled_completion_date' => '完成予定日',
         'delivery_date' => '引渡日',
@@ -564,6 +569,7 @@ return [
         'calc_type' => '計算タイプ',
         'default_amount' => 'デフォルト額',
         'rate_percent' => '率',
+        'apply_from_month' => '適用開始月',
         'values' => '入力値',
         'values.*' => '入力値',
         'values.*.*' => '入力値',
