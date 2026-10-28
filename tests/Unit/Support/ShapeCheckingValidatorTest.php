@@ -5,6 +5,8 @@ namespace Tests\Unit\Support;
 use App\Support\ShapeCheckingValidator;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Validation\Rule;
 use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
@@ -25,6 +27,15 @@ class ShapeCheckingValidatorTest extends TestCase
     private function shapeMessage(string $label): string
     {
         return "{$label}の形が正しくありません。画面を開き直して、もう一度入力してください。";
+    }
+
+    // ---------- 登録 ----------
+
+    /** アプリのすべての入力チェック（`$request->validate()`・`Validator::make()`・`withMessages()`）がこのクラスを通る */
+    public function test_the_app_makes_every_validator_with_this_class(): void
+    {
+        $this->assertInstanceOf(ShapeCheckingValidator::class, Validator::make([], []));
+        $this->assertInstanceOf(ShapeCheckingValidator::class, ValidationException::withMessages(['x' => 'y'])->validator);
     }
 
     // ---------- 配列を求めない欄に配列 ----------
@@ -154,6 +165,7 @@ class ShapeCheckingValidatorTest extends TestCase
 
     public function test_a_string_for_a_parent_that_has_only_rules_below_it_is_refused(): void
     {
+        // ids.* の規則は ids が文字だと展開されずに消え、Laravel だけでは黙って通る（初めの規則を見ないと分からない）
         $v = $this->validator(['ids' => 'x'], ['ids.*' => 'integer'], ['ids' => '番号']);
 
         $this->assertSame(['ids' => [$this->shapeMessage('番号')]], $v->errors()->messages());
@@ -161,13 +173,15 @@ class ShapeCheckingValidatorTest extends TestCase
 
     public function test_a_string_row_inside_an_array_whose_rows_have_rules_is_refused(): void
     {
-        // details.*.amount の規則は、行が文字だと展開されない（初めの規則を見ないと分からない）
+        // 行（details.0）が文字なら、行の欄（details.0.amount の「必須です」）ではなく行そのものを形の誤りとして言う
         $v = $this->validator(
             ['details' => ['x', ['amount' => '1']]],
             ['details' => 'required|array', 'details.*.amount' => 'required|integer'],
+            ['details' => '内訳'],
         );
 
-        $this->assertSame(['details.0'], array_keys($v->errors()->messages()));
+        // 行の欄（details.0）には和名が無いので、和名のある親の名前で言う
+        $this->assertSame(['details.0' => [$this->shapeMessage('内訳')]], $v->errors()->messages());
     }
 
     // ---------- 見ないもの ----------

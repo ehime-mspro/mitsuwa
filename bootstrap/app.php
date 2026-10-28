@@ -65,6 +65,17 @@ return Application::configure(basePath: dirname(__DIR__))
         );
     })
     ->withExceptions(function (Exceptions $exceptions) {
+        // 入力チェックで断ったとき、配列の形が合わない欄（文字の欄に配列・配列の欄に文字）は控え（old()）に入れない（Bug #121）。
+        // 画面は old() を文字のつもりで描くので、控えると戻った画面が 500 になる。外した欄は空か保存済みの値で描かれる。
+        // null を返して既定の処理（Handler::invalid）へ続ける。判定は App\Support\ShapeCheckingValidator の 1 か所
+        $exceptions->render(function (\Illuminate\Validation\ValidationException $e, \Illuminate\Http\Request $request) {
+            if ($e->validator instanceof \App\Support\ShapeCheckingValidator) {
+                $e->validator->forgetMismatchedInput($request);
+            }
+
+            return null;
+        });
+
         // 決裁の添付（Ajax）が PHP の送信の上限（post_max_size）を超えたとき、英語の既定文ではなく
         // 日本語の理由を JSON で返す（段階2 設計書 §5.7）。⚠ 決裁の URL だけ（基幹の画面の応答は変えない）
         $exceptions->render(function (\Illuminate\Http\Exceptions\PostTooLargeException $e, \Illuminate\Http\Request $request) {

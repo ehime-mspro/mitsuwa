@@ -385,6 +385,17 @@ class SheetImportTest extends TestCase
     // ================================================================
 
     /** 試算表の画面の月選択から「プレビューを表示」を押す（フォームが送るのは year_month だけ） */
+    /** 手で組んだ配列の対象月は、入力チェックの前に `(string)` で読んで 500 になっていた（Bug #121） */
+    public function test_an_array_month_is_turned_back_without_a_500(): void
+    {
+        $response = $this->actingAs($this->user)
+            ->post(route('zeal.simulations.sheet-import.preview', $this->simulation), ['year_month' => [self::YEAR_MONTH]]);
+
+        $response->assertRedirect(route('zeal.simulations.show', $this->simulation));
+        $html = $this->followRedirects($response)->assertOk()->getContent();
+        $this->assertStringContainsString('対象月が試算表の会計年度に含まれていません。', $html);
+    }
+
     private function preview(): TestResponse
     {
         return $this->actingAs($this->user)

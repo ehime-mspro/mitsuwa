@@ -151,9 +151,14 @@ class ReContractController extends Controller
      */
     public function store(Request $request)
     {
-        $contractType = ReContractType::tryFrom($request->contract_type);
+        // 手で組んだ配列は文字として読まない（tryFrom() が TypeError で 500。Bug #121）。
+        // この画面に配列の欄は無いので、配列の値は控えない（控えると戻った画面が 500）
+        $type = $request->input('contract_type');
+        $contractType = is_string($type) ? ReContractType::tryFrom($type) : null;
         if (!$contractType) {
-            return back()->withInput()->withErrors(['contract_type' => '契約種別を選択してください。']);
+            return back()
+                ->withInput(array_filter($request->except('_token'), fn ($value) => ! is_array($value)))
+                ->withErrors(['contract_type' => '契約種別を選択してください。']);
         }
 
         $validated = $this->validateContract($request, $contractType);

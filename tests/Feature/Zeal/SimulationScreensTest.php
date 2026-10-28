@@ -118,6 +118,23 @@ class SimulationScreensTest extends MemberScreenTestCase
         $landed->assertSee('2025年度の試算表を削除しました。');
     }
 
+    /** 手で組んだ配列の URL は、URL の確かめ（parse_url）が配列を読んで 500 になっていた（Bug #121） */
+    public function test_an_array_sheet_url_is_turned_back_to_the_settings_screen(): void
+    {
+        $simulation = $this->simulation(2026);
+        $edit = route('zeal.simulations.sheet-urls.edit', $simulation);
+        $form = $this->parseForm($this->actingAs($this->user)->get($edit)->assertOk()->getContent(),
+            'action="' . route('zeal.simulations.sheet-urls.update', $simulation) . '"');
+
+        $response = $this->actingAs($this->user)->from($edit)->post($form['action'], array_merge($form['fields'], [
+            'sales_sheet_url' => ['https://docs.google.com/spreadsheets/d/abc/export?format=csv'], 'expense_sheet_url' => '',
+        ]));
+
+        $html = $this->followRedirects($response)->assertOk()->getContent();
+        $this->assertStringContainsString(e('売上シートのCSVエクスポートURLは文字列で入力してください。'), $html);
+        $this->assertNull($simulation->fresh()->sales_sheet_url);
+    }
+
     /** 詳細画面のリンクから URL 設定を開き、描いたフォームで保存・空にできる */
     public function test_the_sheet_urls_are_saved_from_the_settings_screen(): void
     {

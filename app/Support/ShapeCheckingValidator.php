@@ -25,7 +25,8 @@ use Illuminate\Validation\Validator;
  *   形が合わない欄の文言は、その欄の型の規則（`TYPE_RULES`。配列を受けても落ちない組み込みの規則だけ）があればその規則の今の文、
  *   無ければ `MESSAGE`。手で組んだ送信だけの場面なので、ほかの欄の誤りは直して送り直すと出る
  * ⚠ 初めの規則（`initialRules`）と展開したあとの規則（`rules`）の両方を見る。展開したあとだけだと、データの無いワイルドカードの規則
- *   （`details.*.amount` で行が文字）が消えていて、親が配列を求めることが分からない。初めだけだと `sometimes()` で足した規則が見えない
+ *   （`ids.*` で `ids` が文字）が消えていて、親が配列を求めることが分からない（実測。規則が消えるので入力チェックは黙って通す）。
+ *   初めだけだと `sometimes()` で足した規則が見えない
  * ⚠ 値が null（送られていない・空欄）は見ない。アップロードしたファイルは配列でない値として扱う。`exclude_*` の規則を持つ欄は見ない
  * ⚠ 点・`*` を含むキー（置き換え文字 `__dot__…`・`__asterisk__…`）は見ない
  * ⚠ 入力チェックの前に input を読むコードは止まらない（そのコントローラで直す）
@@ -62,11 +63,29 @@ class ShapeCheckingValidator extends Validator
             }
             if (! $this->messages->has($key)) {
                 $this->failedRules[$key]['Shape'] = [];
-                $this->messages->add($key, $this->makeReplacements(self::MESSAGE, $key, 'Shape', []));
+                $this->messages->add($key, $this->makeReplacements(self::MESSAGE, $this->labelledKey($key), 'Shape', []));
             }
         }
 
         return false;
+    }
+
+    /**
+     * 和名のある欄の名前（その欄に和名が無ければ、和名のある親をさかのぼる）。
+     * 行の欄（`details.0`）は規則にも和名にも出てこないので、そのままだと英字の名前が文に出る（Bug #37 の形）
+     */
+    private function labelledKey(string $key): string
+    {
+        for ($name = $key; ; $name = substr($name, 0, (int) strrpos($name, '.'))) {
+            foreach (array_unique([$name, $this->getPrimaryAttribute($name)]) as $candidate) {
+                if ($this->getAttributeFromLocalArray($candidate) || $this->getAttributeFromTranslations($candidate)) {
+                    return $name;
+                }
+            }
+            if (! str_contains($name, '.')) {
+                return $key;
+            }
+        }
     }
 
     /** @return list<string> この入力チェックのデータで、形が合わない欄 */

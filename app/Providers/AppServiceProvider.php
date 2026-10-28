@@ -11,11 +11,13 @@ use App\Support\Backup\LocalDirectoryBackupStorage;
 use App\Support\Backup\MysqlDatabaseDumper;
 use App\Support\Backup\S3BackupStorage;
 use App\Support\LoginId;
+use App\Support\ShapeCheckingValidator;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\ServiceProvider;
 use RuntimeException;
 
@@ -62,6 +64,10 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->registerLoginRateLimiter();
+
+        // 入力チェック全体で配列の形を見る（手で組んだ `x[]=1` で保存・戻った画面が 500 にならないように。Bug #121）。
+        // 断ったときの控えから形の合わない欄を外すのは bootstrap/app.php の render
+        Validator::resolver(fn ($translator, $data, $rules, $messages, $attributes) => new ShapeCheckingValidator($translator, $data, $rules, $messages, $attributes));
     }
 
     /**

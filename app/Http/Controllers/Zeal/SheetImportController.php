@@ -90,7 +90,9 @@ class SheetImportController extends Controller
      */
     public function preview(Request $request, ZealSimulation $simulation)
     {
-        $yearMonth = (string) $request->input('year_month', '');
+        // 手で組んだ配列は文字として読まない（`(string)` で 500。Bug #121）
+        $yearMonth = $request->input('year_month', '');
+        $yearMonth = is_string($yearMonth) ? $yearMonth : '';
         $validMonths = ZealFiscalYear::months($simulation->fiscal_year);
         if (!in_array($yearMonth, $validMonths, true)) {
             return redirect()
@@ -144,7 +146,9 @@ class SheetImportController extends Controller
                 ->with('error', 'この確認画面からは反映できません（すでに送信したか、画面が古くなっています）。反映されたかは、この試算表で確かめられます。反映し直すときは、「本部 Sheet を取り込む」からもう一度プレビューしてください。');
         }
 
-        $yearMonth = (string) $request->input('year_month', '');
+        // 手で組んだ配列は文字として読まない（`(string)` で 500。Bug #121）
+        $yearMonth = $request->input('year_month', '');
+        $yearMonth = is_string($yearMonth) ? $yearMonth : '';
         $validMonths = ZealFiscalYear::months($simulation->fiscal_year);
         if (!in_array($yearMonth, $validMonths, true)) {
             return redirect()
