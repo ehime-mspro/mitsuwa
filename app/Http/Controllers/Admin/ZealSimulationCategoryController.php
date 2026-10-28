@@ -105,12 +105,9 @@ class ZealSimulationCategoryController extends Controller
         // 更新前の状態を保持（差分判定用）
         $wasFixed         = $category->calc_type === ZealSimulationCalcType::Fixed;
         $oldDefaultAmount = $category->default_amount;
-        // 適用開始月の形式チェック（YYYY-MM）。入力チェックで見る（`(string)` で配列を読むと 500 になっていた。Bug #121）
-        $request->validate(
-            ['apply_from_month' => ['nullable', 'string', 'regex:/^\d{4}-\d{2}$/']],
-            ['apply_from_month.regex' => '適用開始月は YYYY-MM 形式で入力してください。'],
-        );
-        $applyFromMonth = trim((string) $request->input('apply_from_month', ''));
+        // 適用開始月（YYYY-MM）は validateInput() が見る（`(string)` で配列を読むと 500 になっていた。Bug #121）
+        $applyFromMonth = trim((string) ($validated['apply_from_month'] ?? ''));
+        unset($validated['apply_from_month']);
 
         $appliedCount = 0;
         $skippedCount = 0;
@@ -221,12 +218,15 @@ class ZealSimulationCategoryController extends Controller
             // 列は INT。範囲外は本番の MySQL（strict）が断り 500 になるので、入力チェックで止める
             'default_amount' => 'nullable|integer|min:-2147483648|max:2147483647',
             'rate_percent'   => 'nullable|numeric|min:0|max:100',
+            // 適用開始月（編集だけ。登録では見ない＝exclude。入力チェックを 1 回にまとめる（2 回に分けると、1 回目で断ったときに 2 回目の欄の配列が控えに残り、戻った画面が 500 になる。Bug #121））
+            'apply_from_month' => $category ? ['nullable', 'string', 'regex:/^\d{4}-\d{2}$/'] : 'exclude',
         ], [
             'code.required' => 'コードは必須です。',
             'code.regex'    => 'コードは半角小文字英数字とアンダースコアで入力してください（例: rent, web_operation）。',
             'code.unique'   => '同じコードが既に登録されています。',
             'name.required' => '項目名は必須です。',
             'rate_percent.max' => '率は 0〜100 の範囲で入力してください。',
+            'apply_from_month.regex' => '適用開始月は YYYY-MM 形式で入力してください。',
         ]);
     }
 }

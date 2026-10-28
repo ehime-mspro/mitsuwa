@@ -626,6 +626,8 @@ class CustomerController extends Controller
             'occupation'      => $text('occupation'),
             'employer'        => $text('employer'),
             'years_employed'  => $count('years_employed'),
+            // 備考（そのまま保存する。規則が無いと配列が保存まで届き、保存の失敗の戻り先が 500 になっていた。Bug #121）
+            'memo'            => 'nullable|string|max:5000',
             // 来場の分譲地・担当者（住宅事業の画面だけが送る）。消えた分譲地・担当者は外部キーで断られ
             // 「登録に失敗しました」としか出なかったので、理由つきの入力エラーにする（H9）
             'project_id'      => 'nullable|integer|exists:re_projects,id',

@@ -47,7 +47,8 @@ class ArrayInputTest extends MasterScreenTestCase
         $this->assertArrayHasKey('apply_from_month', $form['fields'], '画面に適用開始月の欄が無い');
 
         $response = $this->actingAs($this->user)->from($edit)->post($form['action'], array_merge($form['fields'], [
-            'default_amount' => '999999', 'apply_from_month' => ['2026-11'],
+            // 項目名の誤りと一緒に送る（以前は項目の入力チェックのあとの 2 回目で、1 回目で断ると適用開始月の配列が控えに残った）
+            'default_amount' => '999999', 'name' => '', 'apply_from_month' => ['2026-11'],
         ]));
 
         $html = $this->landed($response);

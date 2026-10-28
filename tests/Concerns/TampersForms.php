@@ -7,7 +7,7 @@ namespace Tests\Concerns;
  * 着いた画面が 500 なら landed() の assertOk() が落ちる。
  *
  * ⚠ 使う側は ParsesForms・SubmitsScreenForms と一緒に使い、`$this->user`（送る人）を持つ。
- * ⚠ 欄は画面のフォームにあること（静的な `name="x"`。JS が組む行の欄 `details[0][…]` は `'details[` の字面で見る）。
+ * ⚠ 欄は画面のフォームにあること（静的な `name="x"`。JS が組む行の欄 `details[0][…]` は `'details[`・`` `costs[ `` の字面で見る）。
  *   画面に無い欄を足すと、画面から欄が消えても緑になる（Bug #47）。
  * ⚠ 書き換える欄の下の欄（`x[…]`）は送らない（文字にした `details` と行の欄が一緒に届くと、どちらが残るかが決まらない）。
  * ⚠ 同じ送り先のフォームが複数ある（編集画面の更新と削除）ときは、削除でない最初のフォームを使う。
@@ -33,7 +33,7 @@ trait TampersForms
         $formHtml = substr($html, $open, strpos($html, '</form>', $open) - $open);
         foreach ($values as $name => $value) {
             $this->assertTrue(
-                str_contains($formHtml, 'name="' . $name . '"') || str_contains($formHtml, "'" . $name . '['),
+                str_contains($formHtml, 'name="' . $name . '"') || str_contains($formHtml, "'" . $name . '[') || str_contains($formHtml, '`' . $name . '['),
                 "画面のフォームに「{$name}」の欄が無い",
             );
             foreach (array_keys($form['fields']) as $field) {

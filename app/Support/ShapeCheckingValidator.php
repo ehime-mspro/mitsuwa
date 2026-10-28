@@ -27,7 +27,8 @@ use Illuminate\Validation\Validator;
  * ⚠ 初めの規則（`initialRules`）と展開したあとの規則（`rules`）の両方を見る。展開したあとだけだと、データの無いワイルドカードの規則
  *   （`ids.*` で `ids` が文字）が消えていて、親が配列を求めることが分からない（実測。規則が消えるので入力チェックは黙って通す）。
  *   初めだけだと `sometimes()` で足した規則が見えない
- * ⚠ 値が null（送られていない・空欄）は見ない。アップロードしたファイルは配列でない値として扱う。`exclude_*` の規則を持つ欄は見ない
+ * ⚠ 値が null（送られていない・空欄）は見ない。アップロードしたファイルは配列でない値として扱う。
+ *   `exclude*` の規則を持つ欄は断らない（保存しない欄）が、断ったときの控えからは外す（画面は old() で描く）
  * ⚠ 点・`*` を含むキー（置き換え文字 `__dot__…`・`__asterisk__…`）は見ない
  * ⚠ 入力チェックの前に input を読むコードは止まらない（そのコントローラで直す）
  */
@@ -100,7 +101,8 @@ class ShapeCheckingValidator extends Validator
      */
     public function forgetMismatchedInput(Request $request): void
     {
-        $keys = $this->mismatchesIn(fn (string $key) => $request->input($key));
+        // exclude の欄も外す（保存しない欄でも、画面は old() で描く）
+        $keys = $this->mismatchesIn(fn (string $key) => $request->input($key), skipExcluded: false);
         if ($keys === []) {
             return;
         }
@@ -112,7 +114,7 @@ class ShapeCheckingValidator extends Validator
     }
 
     /** @return list<string> */
-    private function mismatchesIn(callable $valueOf): array
+    private function mismatchesIn(callable $valueOf, bool $skipExcluded = true): array
     {
         $patterns = array_values(array_filter(
             array_unique(array_merge(array_map('strval', array_keys($this->initialRules)), array_map('strval', array_keys($this->rules)))),
@@ -132,7 +134,7 @@ class ShapeCheckingValidator extends Validator
         $out = [];
         foreach (array_keys($candidates) as $path) {
             $path = (string) $path;
-            if ($this->shouldBeExcluded($path) || $this->hasExcludeRule($this->rules[$path] ?? [])) {
+            if ($skipExcluded && ($this->shouldBeExcluded($path) || $this->hasExcludeRule($this->rules[$path] ?? []))) {
                 continue;
             }
             $value = $valueOf($path);

@@ -84,12 +84,8 @@ class CustomOrderController extends Controller
      */
     public function store(Request $request)
     {
-        $validated = $this->validateOrder($request);
-
-        // フェーズ2: 買主マスタ紐付けを必須化し、customer_name を買主名で上書き（連携漏れ防止）
-        $request->validate([
-            'customer_id' => ['required', 'integer', 'exists:buyers,id'],
-        ]);
+        // フェーズ2: 買主マスタ紐付けを必須化し、customer_name を買主名で上書き（連携漏れ防止。customer_id は validateOrder() が見る）
+        $validated = $this->validateOrder($request, creating: true);
         $buyer = Buyer::withTrashed()->findOrFail($request->integer('customer_id'));
         $validated['customer_id']   = $buyer->id;
         $validated['customer_name'] = $buyer->full_name;
@@ -353,12 +349,14 @@ class CustomOrderController extends Controller
     /**
      * バリデーション
      */
-    private function validateOrder(Request $request): array
+    private function validateOrder(Request $request, bool $creating = false): array
     {
         $statuses = implode(',', array_column(CustomOrderStatus::cases(), 'value'));
         $sourceTypes = implode(',', array_column(HousingLandSourceType::cases(), 'value'));
 
         return $request->validate([
+            // 買主（登録だけ。編集では見ない＝exclude。入力チェックを 1 回にまとめる（2 回に分けると、1 回目で断ったときに 2 回目の欄の配列が控えに残り、戻った画面が 500 になる。Bug #121））
+            'customer_id'               => $creating ? ['required', 'integer', 'exists:buyers,id'] : 'exclude',
             'order_name'                => 'required|string|max:100',
             'status'                    => "required|in:{$statuses}",
             'customer_name'             => 'required|string|max:100',

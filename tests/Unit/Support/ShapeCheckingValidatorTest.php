@@ -244,6 +244,18 @@ class ShapeCheckingValidatorTest extends TestCase
         $this->assertSame(['name' => 'ok'], $request->input());
     }
 
+    public function test_an_excluded_field_is_still_forgotten_from_the_request(): void
+    {
+        // 保存しない欄（exclude）は断らないが、画面は old() で描くので控えからは外す
+        $request = Request::create('/x', 'POST', ['property_id' => ['1'], 'name' => '']);
+        $v = $this->validator($request->all(), ['property_id' => 'exclude', 'name' => 'required']);
+
+        $this->assertSame(['name'], array_keys($v->errors()->messages()));
+        $v->forgetMismatchedInput($request);
+
+        $this->assertSame(['name' => ''], $request->input());
+    }
+
     public function test_a_query_string_value_is_forgotten_too(): void
     {
         $request = Request::create('/x?unit_id[]=1&page=2', 'GET');

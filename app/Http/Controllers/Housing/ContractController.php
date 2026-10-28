@@ -52,12 +52,8 @@ class ContractController extends Controller
                 ->with('error', 'この物件は既に契約済みです。');
         }
 
+        // フェーズ2: 買主マスタ紐付けを必須化し、customer_name を買主名で上書き（customer_id は validateContract() が見る）
         $validated = $this->validateContract($request);
-
-        // フェーズ2: 買主マスタ紐付けを必須化し、customer_name を買主名で上書き
-        $request->validate([
-            'customer_id' => ['required', 'integer', 'exists:buyers,id'],
-        ]);
         $buyer = Buyer::withTrashed()->findOrFail($request->integer('customer_id'));
         $validated['customer_id']   = $buyer->id;
         $validated['customer_name'] = $buyer->full_name;
@@ -117,14 +113,10 @@ class ContractController extends Controller
                 ->with('error', '契約が登録されていません。');
         }
 
-        $validated = $this->validateContract($request);
-
-        // 買主マスタ紐付けを必須化し、customer_name を買主名で上書きする（store() と同じ）。
+        // 買主マスタ紐付けを必須化し、customer_name を買主名で上書きする（store() と同じ。customer_id は validateContract() が見る）。
         // ⚠ ここが無いと customer_name だけが上書きされて customer_id と食い違う。
         //    修正前はこの画面だけフリーテキスト＋テナント事業の API を叩いていた。
-        $request->validate([
-            'customer_id' => ['required', 'integer', 'exists:buyers,id'],
-        ]);
+        $validated = $this->validateContract($request);
         $buyer = Buyer::withTrashed()->findOrFail($request->integer('customer_id'));
         $validated['customer_id']   = $buyer->id;
         $validated['customer_name'] = $buyer->full_name;
@@ -171,6 +163,8 @@ class ContractController extends Controller
     private function validateContract(Request $request): array
     {
         return $request->validate([
+            // 買主（入力チェックを 1 回にまとめる（2 回に分けると、1 回目で断ったときに 2 回目の欄の配列が控えに残り、戻った画面が 500 になる。Bug #121））
+            'customer_id'            => ['required', 'integer', 'exists:buyers,id'],
             'customer_name'          => 'required|string|max:100',
             // 金額の列は符号付き INT・消費税率は DECIMAL(4,2)（本番の MySQL は範囲外で 500。H4 / Bug #73）
             'selling_price_land'     => 'required|integer|min:0|max:' . self::MAX_INT_COLUMN,

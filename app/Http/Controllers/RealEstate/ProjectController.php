@@ -115,18 +115,11 @@ class ProjectController extends Controller
      */
     public function store(Request $request)
     {
-        $validated = $this->validateProject($request);
+        // 新規登録フォームの原価管理セクションから送信された costs 配列も一緒に見る（入力チェックを 1 回にまとめる（2 回に分けると、1 回目で断ったときに 2 回目の欄の配列が控えに残り、戻った画面が 500 になる。Bug #121））
+        $validated = $this->validateProject($request, withCosts: true);
+        $costsData = $validated['costs'] ?? [];
+        unset($validated['costs']);
         $validated['created_by'] = auth()->id();
-
-        // 新規登録フォームの原価管理セクションから送信された costs 配列を別途バリデーション
-        // 件数上限(max:500)・notes上限(max:200)は詳細の bulkImportCosts と揃える
-        $costsData = $request->validate([
-            'costs'                    => 'nullable|array|max:500',
-            'costs.*.cost_item_id'     => 'required|integer|exists:re_cost_items,id',
-            'costs.*.estimated_amount' => 'required|integer|min:0|max:' . self::MAX_INT_COLUMN,
-            'costs.*.actual_amount'    => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
-            'costs.*.notes'            => 'nullable|string|max:200',
-        ])['costs'] ?? [];
 
         // 「物件購入費」は ReProject::syncPropertyPurchaseCost() で booted() hook により
         // 自動生成されるため、フォーム経由で送られた場合は除外する（二重登録防止）
@@ -749,11 +742,18 @@ class ProjectController extends Controller
     // プライベートメソッド
     // ================================================================
 
-    private function validateProject(Request $request): array
+    private function validateProject(Request $request, bool $withCosts = false): array
     {
         $statuses = implode(',', array_column(ProjectStatus::cases(), 'value'));
 
         return $request->validate([
+            // 原価（新規登録の画面だけが送る）。件数上限(max:500)・notes上限(max:200)は詳細の bulkImportCosts と揃える。
+            // 編集では見ない（exclude）
+            'costs'                    => $withCosts ? 'nullable|array|max:500' : 'exclude',
+            'costs.*.cost_item_id'     => 'required|integer|exists:re_cost_items,id',
+            'costs.*.estimated_amount' => 'required|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'costs.*.actual_amount'    => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'costs.*.notes'            => 'nullable|string|max:200',
             'project_name'        => 'required|string|max:100',
             'status'              => "required|in:{$statuses}",
             'postal_code'         => 'nullable|string|max:10',

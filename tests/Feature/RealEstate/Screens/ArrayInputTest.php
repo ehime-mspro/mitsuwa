@@ -105,4 +105,59 @@ class ArrayInputTest extends RealEstateScreenTestCase
         $this->assertErrorItem($html, '備考は文字列で入力してください。');
         $this->assertSame('前のメモ', $survey->fresh()->memo);
     }
+
+    // ---------- 入力チェックが 2 回に分かれていた・種別で規則が変わる ----------
+
+    /** 原価の入力チェックは、以前はほかの欄のあとの 2 回目だった（1 回目で断ると原価の行の配列が控えに残った） */
+    public function test_the_procurement_screen_opens_after_an_array_cost_note_and_another_error(): void
+    {
+        $html = $this->tamper(route('realestate.procurements.create'), route('realestate.procurements.store'), [
+            'property_name' => '',
+            'costs' => [['cost_item_id' => (string) $this->surveyItem->id, 'estimated_amount' => '1000', 'notes' => ['x']]],
+        ]);
+
+        $this->assertErrorItem($html, '備考は文字列で入力してください。');
+        $this->assertSame(0, \App\Models\ReProcurement::count());
+    }
+
+    public function test_the_project_screen_opens_after_an_array_cost_note_and_another_error(): void
+    {
+        $html = $this->tamper(route('realestate.projects.create'), route('realestate.projects.store'), [
+            'project_name' => '',
+            'costs' => [['cost_item_id' => (string) $this->surveyItem->id, 'estimated_amount' => '1000', 'notes' => ['x']]],
+        ]);
+
+        $this->assertErrorItem($html, '備考は文字列で入力してください。');
+        $this->assertSame(0, \App\Models\ReProject::count());
+    }
+
+    /** 分譲地の契約には建物の金額の規則が無く、手で組んだ配列が控えに残って編集画面が 500 になっていた */
+    public function test_the_subdivision_contract_edit_screen_opens_after_an_array_building_amount(): void
+    {
+        $project = $this->project();
+        $lot = $this->lot($project, 3, 12000000, 'sold');
+        $contract = ReContract::create([
+            'department' => 'realestate', 'contract_type' => 'subdivision_lot', 'status' => 'contracted', 'contract_date' => '2026-09-01',
+            'property_name' => '平井分譲地', 'project_id' => $project->id, 'lot_id' => $lot->id, 'buyer_id' => $this->buyer()->id,
+            'contract_amount_land' => 12000000, 'cost_amount' => 4500000, 'created_by' => $this->user->id,
+        ]);
+
+        $html = $this->tamper(route('realestate.contracts.edit', $contract), route('realestate.contracts.update', $contract), [
+            'contract_amount_building' => ['1'], 'property_name' => '',
+        ]);
+
+        $this->assertErrorItem($html, '物件名は必須です。');
+        $this->assertSame('平井分譲地', $contract->fresh()->property_name);
+    }
+
+    /** 買主の備考（memo）は規則が無く、配列のまま保存しようとして失敗し、戻り先の画面が 500 になっていた */
+    public function test_an_array_customer_memo_is_refused_without_saving(): void
+    {
+        $html = $this->tamper(route('realestate.customers.create'), route('realestate.customers.store'), [
+            'last_name' => '佐藤', 'first_name' => '一郎', 'acquired_date' => '2026-10-01', 'memo' => ['メモ'],
+        ]);
+
+        $this->assertErrorItem($html, '備考は文字列で入力してください。');
+        $this->assertSame(0, Buyer::where('last_name', '佐藤')->count());
+    }
 }

@@ -290,6 +290,9 @@ class ParkingContractController extends Controller
             // 新規登録時: 駐車場 ID と入居者 ID は必須。選べるのは空きの駐車場だけ（登録画面の API と同じ）
             $rules['parking_id'] = ['required', Rule::exists('ms_parkings', 'id')->where('status', MsParkingStatus::Vacant->value)];
             $rules['tenant_id']  = 'required|exists:ms_tenants,id';
+            // 物件は駐車場を絞り込むための画面の欄で、保存しない（exclude）。規則を置くのは、断ったときの控えから
+            // 配列を外すため（規則が無いと手で組んだ配列が残り、戻った画面が 500 になる。Bug #121）
+            $rules['property_id'] = 'exclude';
             $messages = ['parking_id.exists' => self::PARKING_TAKEN];
         } else {
             // 更新時: 駐車場の付け替えは禁止、入居者の変更は許可

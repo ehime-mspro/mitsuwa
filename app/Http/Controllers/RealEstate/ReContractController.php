@@ -602,6 +602,23 @@ class ReContractController extends Controller
             $rules['brokerage_fee']           = 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN;
         }
 
+        // 種別で使わない欄は保存しない（exclude）。規則を置くのは、断ったときの控えから配列を外すため
+        // （規則が無いと形を見られず、手で組んだ配列が残って編集画面の JS が 500 になる。Bug #121）
+        $rules += [
+            'procurement_id'           => 'exclude',
+            'project_id'               => 'exclude',
+            'lot_id'                   => 'exclude',
+            'contract_date'            => 'exclude',
+            'buyer_id'                 => 'exclude',
+            'contract_amount_land'     => 'exclude',
+            'contract_amount_building' => 'exclude',
+            'tax_rate'                 => 'exclude',
+            'tax_amount'               => 'exclude',
+            'cost_amount'              => 'exclude',
+            'brokerage_selling_price'  => 'exclude',
+            'brokerage_fee'            => 'exclude',
+        ];
+
         // 画面のラベルは「所在地」（全体の和名は「住所」）。第 2 引数は messages（Bug #37）
         $validated = $request->validate($rules, [], ['address' => '所在地']);
 
