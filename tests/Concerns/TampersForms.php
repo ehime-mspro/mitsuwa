@@ -10,14 +10,26 @@ namespace Tests\Concerns;
  * ⚠ 欄は画面のフォームにあること（静的な `name="x"`。JS が組む行の欄 `details[0][…]` は `'details[` の字面で見る）。
  *   画面に無い欄を足すと、画面から欄が消えても緑になる（Bug #47）。
  * ⚠ 書き換える欄の下の欄（`x[…]`）は送らない（文字にした `details` と行の欄が一緒に届くと、どちらが残るかが決まらない）。
+ * ⚠ 同じ送り先のフォームが複数ある（編集画面の更新と削除）ときは、削除でない最初のフォームを使う。
  */
 trait TampersForms
 {
     protected function tamper(string $url, string $action, array $values): string
     {
         $html = $this->htmlOf($url);
-        $form = $this->parseForm($html, 'action="' . $action . '"');
-        $open = strpos($html, 'action="' . $action . '"');
+        $needle = 'action="' . $action . '"';
+        // 編集画面は更新と削除が同じ送り先なので、削除でないフォームを選ぶ
+        $open = false;
+        for ($at = strpos($html, $needle); $at !== false; $at = strpos($html, $needle, $at + 1)) {
+            $body = substr($html, $at, strpos($html, '</form>', $at) - $at);
+            if (! str_contains($body, 'name="_method" value="DELETE"')) {
+                $open = $at;
+                break;
+            }
+        }
+        $this->assertNotFalse($open, "{$needle} のフォーム（削除でないもの）が見つからない");
+        $start = strrpos(substr($html, 0, $open), '<form');
+        $form = $this->parseForm(substr($html, $start), $needle);
         $formHtml = substr($html, $open, strpos($html, '</form>', $open) - $open);
         foreach ($values as $name => $value) {
             $this->assertTrue(

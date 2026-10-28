@@ -253,4 +253,15 @@ class ShapeCheckingValidatorTest extends TestCase
 
         $this->assertSame(['page' => '2'], $request->query());
     }
+
+    public function test_rows_only_in_the_request_are_judged_by_the_wildcard_rules(): void
+    {
+        // 入力チェックのデータ（CSV の行など）に無い行も、request の行をワイルドカードの規則で開いて見る
+        $request = Request::create('/x', 'POST', ['rows' => [['n' => ['1'], 'm' => 'ok']]]);
+        $v = $this->validator([], ['rows.*.n' => 'required', 'rows.*.m' => 'required']);
+
+        $v->forgetMismatchedInput($request);
+
+        $this->assertSame(['rows' => [['m' => 'ok']]], $request->input());
+    }
 }

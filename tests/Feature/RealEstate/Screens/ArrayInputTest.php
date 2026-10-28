@@ -92,4 +92,17 @@ class ArrayInputTest extends RealEstateScreenTestCase
         $this->assertErrorItem($html, '生年月日（年）は文字列で入力してください。');
         $this->assertSame(0, Buyer::where('last_name', '佐藤')->count());
     }
+
+    public function test_an_array_survey_memo_is_refused_on_the_edit_screen_too(): void
+    {
+        $buyer = $this->buyer();
+        $survey = BuyerSurvey::create(['buyer_id' => $buyer->id, 'department' => 'realestate', 'survey_date' => '2026-09-01', 'memo' => '前のメモ']);
+
+        $html = $this->tamper(route('realestate.customers.surveys.edit', [$buyer, $survey]), route('realestate.customers.surveys.update', [$buyer, $survey]), [
+            'survey_date' => '2026-10-01', 'survey_memo' => ['メモ'],
+        ]);
+
+        $this->assertErrorItem($html, '備考は文字列で入力してください。');
+        $this->assertSame('前のメモ', $survey->fresh()->memo);
+    }
 }

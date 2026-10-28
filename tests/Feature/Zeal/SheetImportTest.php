@@ -396,6 +396,19 @@ class SheetImportTest extends TestCase
         $this->assertStringContainsString('対象月が試算表の会計年度に含まれていません。', $html);
     }
 
+    /** 反映の側も同じく `(string)` で読んでいた（鍵を使ったあとに対象月を読む） */
+    public function test_an_array_month_on_apply_is_turned_back_without_a_500(): void
+    {
+        $before = $this->cells();
+
+        $response = $this->apply($this->withField($this->previewForm(), 'year_month', [self::YEAR_MONTH]));
+
+        $response->assertRedirect(route('zeal.simulations.show', $this->simulation));
+        $html = $this->followRedirects($response)->assertOk()->getContent();
+        $this->assertStringContainsString('対象月が試算表の会計年度に含まれていません。', $html);
+        $this->assertSame($before, $this->cells());
+    }
+
     private function preview(): TestResponse
     {
         return $this->actingAs($this->user)
