@@ -2589,6 +2589,20 @@ git checkout 13.x && git merge --ff-only date-picker-month-ago
 
 → 2026-10-03: Carbon 3.14（下の「既存の部品の既知の弱点を直す」で上げた）が、起動のたびに文を積み増す不具合を直した。前提のテストが赤になったので、`tests/TestCase.php` の片付けと `CarbonTranslatorTrimTest` を外した（外しても全件 3334 本のピークは 317.50 MB で、片付けありと同じ）。
 
+→ 2026-10-28: テストの流し方を OPcache ありの形に決め、`CLAUDE.md` の「テストの流し方」に書いた（`php -d opcache.enable_cli=1 -d opcache.memory_consumption=256 vendor/bin/phpunit`）。**アプリ・テストの中身・`memory_limit` は変えていない**（`phpunit.xml` は注記だけ直した）。
+
+| 流し方（4495 本・PHP 8.3.35） | 時間 | PHP のメモリのピーク | プロセスの最大の使用量（RSS） |
+|---|---|---|---|
+| 今までの流し方 | 4 分 07 秒 | 464.50 MB | 544 MiB |
+| OPcache あり | 2 分 56 秒 | 163.50 MB | 374 MiB（OPcache の共有メモリを含む） |
+
+- ⚠ `phpunit.xml` の上限は **2026-10-01 から 1G**（`16c1c386`）。それ以降の記録（ページ送り・JS の直し・アンケートの節など）にある「上限 512M」は古い数字で、2026-10-28 の時点では上限の 45% だった
+- OPcache は php を起動するときにしか有効にできない。`phpunit.xml` の `<ini>` と `phpunit -d` は実行中の `ini_set` なので効かない（`ini_set('opcache.enable_cli', '1')` は false・テストの中で `opcache_get_status()` が null を返すことを実測）
+- OPcache の器（既定）: ファイル数は 3,612／16,229 で余裕、メモリは 123.0MB／128MB で残り 5MB だった → 256MB に広げる形にした。広げたあと（決めた流し方）: OK (4495 tests, 44044 assertions)・3 分 18 秒（裏で別の作業をしていたので少し延びた）・163.50 MB・器は 123.0MB 使用で残り 133.0MB・あふれは無し
+- OPcache ありでも 1 本あたり約 37KB は増える（全件の最後の値が最大の値と同じ）。上限 1G まで約 23,000 本の余裕があるので、原因は追っていない（OPcache なしなら約 5,000 本）
+- `composer test`・`php artisan test` は動くが、`.env` を読みに行くので `.env` の無い worktree では全部のテストに警告が付く → 使わない
+- git の外の道具（`.claude/route-coverage-tools/` の変異の `mutate/run.py` と測定の `measure.sh`）も同じ流し方にそろえた
+
 ## ✅ 既存の部品の既知の弱点を直す（今の大きな版の中で更新）— 本番反映済み
 
 決裁 段階4a の計画づくりの途中で `composer audit` を流したら、すでに入っている 12 の部品に既知の弱点の知らせが **42 件**（重いもの 14 件）出た（2026-10-03）。

@@ -60,6 +60,16 @@ php artisan view:clear && php artisan route:clear && php artisan config:clear
 sudo rm -f storage/framework/views/*.php && brew services restart httpd
 ```
 
+### テストの流し方
+dev 込みの vendor を入れた **worktree の cwd** で流す（2026-10-28 に決めた形）:
+```bash
+APP_KEY="base64:$(openssl rand -base64 32)" /opt/homebrew/opt/php@8.3/bin/php -d opcache.enable_cli=1 -d opcache.memory_consumption=256 vendor/bin/phpunit
+```
+- main repo には phpunit が無い（vendor は本番用の `--no-dev`。dev を入れると `./deploy.sh` が本番へ送る）。新しい worktree は `cp -a /Users/masanori/site/manage/vendor ./vendor && composer install --no-scripts --no-interaction` で整える
+- worktree に `.env` は作らない（無いこと自体が実 DB へ届かない安全策）。`APP_KEY` は環境変数で渡す（渡さないと Feature テストが大量に `MissingAppKeyException` で落ちるのに、本数は正しく出る）
+- OPcache は **php を起動するときに**渡す（`phpunit.xml` の `<ini>` や `phpunit -d` は実行中の `ini_set` なので効かない）。無いと 1 本ごとにメモリが増える（2026-10-28・4495 本: なし 4 分 07 秒・464.50 MB ／ あり 2 分 56 秒・163.50 MB）。器は既定の 128MB だと 123MB まで使っていたので 256MB に広げる
+- `composer test`・`php artisan test` は使わない（`.env` を読みに行くので、`.env` の無い worktree では全部のテストに `file_get_contents(…/.env)` の警告が付く。2026-10-28 実測）。1 本だけ流すときは上のコマンドの末尾にファイルのパスか `--filter` を付ける
+
 ### コミット → 本番反映 の正しい順番
 
 1. worktree 内で commit-commands プラグインを使用: `/commit`
