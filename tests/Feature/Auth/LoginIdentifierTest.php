@@ -156,6 +156,30 @@ class LoginIdentifierTest extends TestCase
 
         $this->assertSame(302, $response->getStatusCode(), '配列を送ると 500 になっている');
         $this->assertGuest();
+
+        // 戻ったログイン画面まで見る（送った直後の 302 だけ見ると、控えた配列を old() で描いて 500 になるのを見逃す。Bug #121）
+        $html = $this->get('/login')->assertOk()->getContent();
+        $this->assertStringContainsString('ログインIDは文字列で入力してください。', $html);
+        $this->assertMatchesRegularExpression('/name="login_id"[^>]*value=""/', $html, '配列の値を控えて描いている');
+    }
+
+    /**
+     * 配列のログイン ID で試行の制限に掛かっても、戻ったログイン画面が開くこと（Bug #121）。
+     *
+     * ⚠ 制限の応答（AppServiceProvider::loginThrottleResponse()）は自分で入力を控えるので、入力チェックの render を通らない。
+     *   配列のまま控えると、6 回目のあとのログイン画面が old() で 500 になっていた
+     */
+    public function test_a_throttled_array_identifier_still_opens_the_login_screen(): void
+    {
+        for ($i = 0; $i < (int) config('auth.login_throttle.per_login_id'); $i++) {
+            $this->post('/login', ['login_id' => ['a'], 'password' => 'whatever']);
+        }
+
+        $this->post('/login', ['login_id' => ['a'], 'password' => 'whatever'])->assertRedirect(route('login'));
+
+        $html = $this->get('/login')->assertOk()->getContent();
+        $this->assertStringContainsString('ログインの試行回数が多すぎます。', $html);
+        $this->assertGuest();
     }
 
     public function test_blank_identifier_is_rejected_in_japanese(): void

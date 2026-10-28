@@ -115,8 +115,15 @@ class AppServiceProvider extends ServiceProvider
     {
         $seconds = (int) ($headers['Retry-After'] ?? 60);
 
+        // 配列のログイン ID は控えない（ログイン画面が old() を文字のつもりで描き 500 になる。Bug #121）。
+        // ⚠ この応答は入力チェックの前に返るので、bootstrap/app.php の render（形の合わない欄を外す）を通らない
+        $input = $request->only('login_id', 'remember');
+        if (is_array($input['login_id'] ?? null)) {
+            unset($input['login_id']);
+        }
+
         return redirect()->route('login')
-            ->withInput($request->only('login_id', 'remember'))
+            ->withInput($input)
             ->withErrors(['login' => "ログインの試行回数が多すぎます。{$seconds}秒後にもう一度お試しください。"])
             ->withHeaders($headers);
     }
