@@ -28,7 +28,7 @@ use Illuminate\Validation\Validator;
  *   （`ids.*` で `ids` が文字）が消えていて、親が配列を求めることが分からない（実測。規則が消えるので入力チェックは黙って通す）。
  *   初めだけだと `sometimes()` で足した規則が見えない
  * ⚠ 値が null（送られていない・空欄）は見ない。アップロードしたファイルは配列でない値として扱う。
- *   `exclude*` の規則を持つ欄は断らない（保存しない欄）が、断ったときの控えからは外す（画面は old() で描く）
+ *   `exclude*` の規則を持つ欄（とその下の欄）は断らない（保存しない欄）が、断ったときの控えからは外す（画面は old() で描く）
  * ⚠ 点・`*` を含むキー（置き換え文字 `__dot__…`・`__asterisk__…`）は見ない
  * ⚠ 入力チェックの前に input を読むコードは止まらない（そのコントローラで直す）
  */
@@ -134,7 +134,7 @@ class ShapeCheckingValidator extends Validator
         $out = [];
         foreach (array_keys($candidates) as $path) {
             $path = (string) $path;
-            if ($skipExcluded && ($this->shouldBeExcluded($path) || $this->hasExcludeRule($this->rules[$path] ?? []))) {
+            if ($skipExcluded && ($this->shouldBeExcluded($path) || $this->excludedByRule($path))) {
                 continue;
             }
             $value = $valueOf($path);
@@ -214,6 +214,19 @@ class ShapeCheckingValidator extends Validator
         }
 
         return false;
+    }
+
+    /** その欄か親の欄が exclude の規則を持つ（Laravel は親を exclude すると子も見ない） */
+    private function excludedByRule(string $path): bool
+    {
+        for ($name = $path; ; $name = substr($name, 0, (int) strrpos($name, '.'))) {
+            if ($this->hasExcludeRule($this->rules[$name] ?? [])) {
+                return true;
+            }
+            if (! str_contains($name, '.')) {
+                return false;
+            }
+        }
     }
 
     private function hasExcludeRule(mixed $rules): bool

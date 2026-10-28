@@ -205,6 +205,14 @@ class ShapeCheckingValidatorTest extends TestCase
         $this->assertTrue($v->passes());
     }
 
+    public function test_a_field_under_an_excluded_parent_is_not_seen(): void
+    {
+        // Laravel は親を exclude すると子の規則も見ない（仕入れ案件の編集で、登録だけが送る原価を exclude にしている）
+        $v = $this->validator(['costs' => [['notes' => ['x']]]], ['costs' => 'exclude', 'costs.*.notes' => 'nullable|string']);
+
+        $this->assertTrue($v->passes());
+    }
+
     public function test_a_key_with_a_literal_dot_is_not_seen(): void
     {
         $this->assertTrue($this->validator(['a.b' => ['x']], ['a\.b' => 'required'])->passes());
