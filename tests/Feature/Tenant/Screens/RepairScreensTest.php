@@ -3,6 +3,7 @@
 namespace Tests\Feature\Tenant\Screens;
 
 use App\Enums\RepairStatus;
+use App\Models\Property;
 use App\Models\Repair;
 
 /**
@@ -74,6 +75,50 @@ class RepairScreensTest extends TenantScreenTestCase
         $again = $this->storeForm($html, '');
         $this->assertSame((string) $this->building->id, $again['fields']['property_id']);
         $this->assertSame((string) $unit->id, $again['fields']['unit_id'], '入力エラーで戻ると区画が「共用部」に戻る');
+    }
+
+    /**
+     * 区画の欄そのものが無い送信（手で組んだもの。画面の選択欄は必ず送られる）。
+     * 直す前は `$validated['unit_id']` を読んで 500 になった（Bug #92 の形）。
+     */
+    public function test_a_registration_without_the_unit_field_is_refused_without_saving(): void
+    {
+        $url = route('tenant.repairs.create');
+        $form = $this->storeForm($this->htmlOf($url), "data.propertyId = '{$this->building->id}';");
+        $form = $this->fill($form, ['description' => '外壁の塗装']);
+        unset($form['fields']['unit_id']);
+
+        $html = $this->landed($this->submit($form, $url));
+
+        $this->assertInputError($html, '区画が送信されていません。');
+        $this->assertSame(0, Repair::count());
+    }
+
+    /**
+     * 更新で区画の欄が無いと、黙って今の区画を残すと物件だけが変わり、別の物件の区画が付いたまま残る。
+     * 断って何も書かないこと。
+     */
+    public function test_an_update_without_the_unit_field_is_refused_and_keeps_the_repair(): void
+    {
+        $unit = $this->unit(1, 'A');
+        $other = Property::create([
+            'code' => 'T-002', 'name' => '別のビル', 'property_type' => 'tenant', 'department' => 'tenant',
+            'address' => '愛媛県松山市大街道2-2', 'total_floors' => 3, 'operation_status' => 'active',
+        ]);
+        $repair = Repair::create(['property_id' => $this->building->id, 'unit_id' => $unit->id, 'status' => RepairStatus::Planned->value, 'description' => '雨どい']);
+        $url = route('tenant.repairs.edit', $repair);
+        $form = $this->parseForm($this->htmlOf($url), 'action="' . route('tenant.repairs.update', $repair) . '"');
+        $this->assertArrayHasKey('unit_id', $form['fields'], '画面のフォームに区画の欄が無い');
+        $form = $this->fill($form, ['property_id' => (string) $other->id, 'description' => '外壁の塗装']);
+        unset($form['fields']['unit_id']);
+
+        $html = $this->landed($this->submit($form, $url));
+
+        $this->assertInputError($html, '区画が送信されていません。');
+        $repair->refresh();
+        $this->assertSame($this->building->id, $repair->property_id);
+        $this->assertSame($unit->id, $repair->unit_id);
+        $this->assertSame('雨どい', $repair->description);
     }
 
     public function test_a_repair_is_deleted_from_the_confirmation(): void

@@ -94,8 +94,9 @@ class RepairController extends Controller
         $validated = $request->validate([
             // 削除済みの物件は受け付けない（exists は論理削除を見ない。削除済みの物件に子を付けない。Bug #59）
             'property_id'      => ['required', Rule::exists('properties', 'id')->withoutTrashed()],
-            // 削除済みの区画は選べない（exists は論理削除を見ないので明示する）
-            'unit_id'          => ['nullable', Rule::exists('units', 'id')->withoutTrashed()],
+            // 削除済みの区画は選べない（exists は論理削除を見ないので明示する）。
+            // 欄そのものが無い送信（手で組んだもの）は断る（下で $validated['unit_id'] を読む。画面の選択欄は必ず送られ、共用部は空で届く）
+            'unit_id'          => ['present', 'nullable', Rule::exists('units', 'id')->withoutTrashed()],
             'status'           => 'required|in:' . implode(',', array_column(RepairStatus::cases(), 'value')),
             'category'         => 'nullable|string|max:50',
             'description'      => 'required|string|max:5000',
@@ -174,8 +175,9 @@ class RepairController extends Controller
             // 削除済みの物件は受け付けない（exists は論理削除を見ない。削除済みの物件に子を付けない。Bug #59）
             'property_id'      => ['required', Rule::exists('properties', 'id')->withoutTrashed()],
             // 削除済みの区画は選べない。ただし今の区画は削除済みでもそのまま保存できる（編集画面の選択肢に残してある）。
-            // 今が共用部（unit_id が null）なら orWhere は「id is null」になり何にも当たらない
-            'unit_id'          => ['nullable', Rule::exists('units', 'id')->where(
+            // 今が共用部（unit_id が null）なら orWhere は「id is null」になり何にも当たらない。
+            // 欄そのものが無い送信は断る（通すと今の区画が残ったまま物件だけが変わり、別の物件の区画が付く）
+            'unit_id'          => ['present', 'nullable', Rule::exists('units', 'id')->where(
                 fn ($q) => $q->whereNull('deleted_at')->orWhere('id', $repair->unit_id)
             )],
             'status'           => 'required|in:' . implode(',', array_column(RepairStatus::cases(), 'value')),
