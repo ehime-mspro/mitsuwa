@@ -122,6 +122,22 @@ class MemberInputLimitsTest extends MemberScreenTestCase
         $this->assertSame($valid, $this->member->fresh()->getRawOriginal($field));
     }
 
+    /**
+     * 選択肢の欄そのものが無い送信（手で組んだもの）は、ほかの任意の項目と同じく「未設定」で保存する。
+     * 直す前は `$validated[$field] ?: null` が未定義のキーを読んで 500 になった（Bug #92 の形）
+     */
+    #[DataProvider('editChoices')]
+    public function test_an_edit_without_the_choice_field_clears_it(string $field, string $invalid, string $valid): void
+    {
+        $this->member->update([$field => $valid]);
+
+        $this->sendEdit(['name' => '選択肢なし太郎'], [$field])->assertSessionHasNoErrors()->assertRedirect(route('zeal.members.show', $this->member));
+
+        $fresh = $this->member->fresh();
+        $this->assertSame('選択肢なし太郎', $fresh->name);
+        $this->assertNull($fresh->getRawOriginal($field));
+    }
+
     public function test_a_withdraw_reason_outside_the_options_is_refused(): void
     {
         $response = $this->sendWithdraw(['withdraw_reason' => 'bored']);

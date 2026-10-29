@@ -65,13 +65,20 @@ abstract class MemberScreenTestCase extends TestCase
         ]);
     }
 
-    /** 編集画面が描いたフォームを分解し、$over の項目だけ差し替えて送る */
-    protected function sendEdit(array $over): TestResponse
+    /**
+     * 編集画面が描いたフォームを分解し、$over の項目だけ差し替えて送る。
+     * $drop の項目は送らない（手で組んだ送信。項目が画面のフォームにあることは確かめる）
+     */
+    protected function sendEdit(array $over, array $drop = []): TestResponse
     {
         $edit = route('zeal.members.edit', $this->member);
         $html = $this->actingAs($this->user)->get($edit)->assertOk()->getContent();
         $form = $this->parseForm($html, 'action="' . route('zeal.members.update', $this->member) . '"');
         $this->assertSame('PUT', $form['method']);
+        foreach ($drop as $name) {
+            $this->assertArrayHasKey($name, $form['fields'], "画面のフォームに「{$name}」の欄が無い");
+            unset($form['fields'][$name]);
+        }
 
         return $this->actingAs($this->user)->from($edit)->post($form['action'], array_merge($form['fields'], $over));
     }

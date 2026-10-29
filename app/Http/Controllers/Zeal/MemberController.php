@@ -186,8 +186,8 @@ class MemberController extends Controller
         $validated['postal_code']        = $validated['postal_code'] ?? null;
         $validated['address']            = $validated['address'] ?? null;
         $validated['trainer_id']         = $validated['trainer_id'] ?? null;
-        $validated['acquisition_source'] = $validated['acquisition_source'] ?: null;
-        $validated['purpose']            = $validated['purpose'] ?: null;
+        $validated['acquisition_source'] = $validated['acquisition_source'] ?? null;
+        $validated['purpose']            = $validated['purpose'] ?? null;
         $validated['memo']               = $validated['memo'] ?? null;
         $validated['updated_by']         = auth()->id();
 
