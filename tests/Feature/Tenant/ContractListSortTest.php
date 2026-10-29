@@ -82,7 +82,7 @@ class ContractListSortTest extends TestCase
     }
 
     /**
-     * 契約を 1 件作る。家賃発生日は契約日と同じ（テストの SQLite では NOT NULL）。
+     * 契約を 1 件作る。家賃発生日は契約日と同じ。
      *
      * @param  array<string, mixed>  $attrs  rent / common_fee / status / store_name などの上書き
      */

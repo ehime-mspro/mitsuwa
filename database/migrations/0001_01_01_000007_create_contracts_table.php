@@ -23,7 +23,9 @@ return new class extends Migration
             $table->foreignId('customer_id')->nullable()->constrained('customers')->restrictOnDelete();
             $table->enum('status', ['active', 'terminated'])->default('active');
             $table->date('contract_date')->comment('契約締結日');
-            $table->date('rent_start_date')->comment('家賃発生日');
+            // 本番の contracts.rent_start_date は NULL 可（家賃発生日が未定の契約。2026-09-14 に読み取りで確認）。
+            // ⚠ customer_id と同じく、変えるときはこの行を直す（->nullable()->change() は CHECK を消す）
+            $table->date('rent_start_date')->nullable()->comment('家賃発生日');
             $table->date('contract_end_date')->nullable()->comment('契約終了日');
             $table->text('termination_reason')->nullable()->comment('退去理由');
 

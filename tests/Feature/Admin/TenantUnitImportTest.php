@@ -86,8 +86,7 @@ class TenantUnitImportTest extends TestCase
     {
         $property = $this->property();
         $unit = Unit::create($this->unitAttributes($property, 1, 'A'));
-        // ⚠ テスト用スキーマの contracts.rent_start_date は NOT NULL だが、本番は NULL 可（2026-09-14 に読み取りで確認。
-        //   customer_id は 2026-09-29 に本番と同じ NULL 可へ揃えた）。ここでは顧客と賃料開始日を埋めて、初月・最終月の列だけを見る
+        // 顧客と賃料開始日は埋める（ここでは初月・最終月の列だけを見る。どちらの列も本番と同じ NULL 可。2026-09-29・2026-10-29 に揃えた）
         $customer = \App\Models\Customer::create(['code' => 'CU-IMP-1', 'name' => '取込商事', 'customer_type' => 'corporation']);
 
         $contract = \App\Models\Contract::create([
@@ -159,6 +158,26 @@ class TenantUnitImportTest extends TestCase
         ]);
 
         $this->assertNull(DB::table('contracts')->where('contract_number', 'C-2026-904')->value('customer_id'));
+    }
+
+    /**
+     * 本番の定義（2026-09-14 に読み取りで確認）: contracts.rent_start_date は NULL 可（家賃発生日が未定の契約。
+     * 契約の登録・編集は空欄で保存でき、契約・過去契約の取込も空欄なら null で入れる）。
+     * テスト用スキーマは作成の migration の行で揃えた（2026-10-29。customer_id と同じやり方）。
+     * ⚠ ->nullable()->change() で揃えない（CHECK が黙って消える。下の CHECK のカナリアが止める）
+     */
+    public function test_the_contracts_table_accepts_a_contract_without_a_rent_start_date_like_production(): void
+    {
+        $property = $this->property();
+        $unit = Unit::create($this->unitAttributes($property, 1, 'A'));
+        $customer = \App\Models\Customer::create(['code' => 'CU-IMP-1', 'name' => '取込商事', 'customer_type' => 'corporation']);
+
+        DB::table('contracts')->insert([
+            'contract_number' => 'C-2026-906', 'department' => 'tenant', 'property_id' => $property->id, 'unit_id' => $unit->id,
+            'customer_id' => $customer->id, 'status' => 'active', 'contract_date' => '2026-09-01', 'rent_start_date' => null, 'rent' => 100000,
+        ]);
+
+        $this->assertNull(DB::table('contracts')->where('contract_number', 'C-2026-906')->value('rent_start_date'));
     }
 
     /** カナリア: 契約の状態・部署の CHECK（enum）が残っている（migration でテーブルを作り直すと消える） */
@@ -411,7 +430,6 @@ class TenantUnitImportTest extends TestCase
 
         $this->confirm('unit', self::UNIT_HEADER . "\n取込ビル,2,A,15,,,,,,,\n")
             ->assertSessionHas('success', '区画インポート完了: 1件を登録しました（うち削除済みから復元 1件）');
-        // ⚠ 賃料開始日を埋める（テスト用スキーマの contracts.rent_start_date が NOT NULL のため）
         $this->confirm('contract', self::CONTRACT_HEADER . "\n取込ビル,2,A,取込商事,2026-09-01,2026-09-01,100000,,,,,,\n")
             ->assertRedirect(route('admin.tenant-import', ['tab' => 'contract']));
 
@@ -431,7 +449,6 @@ class TenantUnitImportTest extends TestCase
     {
         $property = $this->property();
         $deleted = $this->deletedUnit($property, 5, 'A');
-        // ⚠ 賃料開始日を埋める（テスト用スキーマの contracts.rent_start_date が NOT NULL のため）
         $csv = self::PAST_CONTRACT_HEADER . "\n取込ビル,5,A,過去商事,2020-04-01,2020-04-01,2023-03-31,90000,,,,,,\n";
 
         $preview = $this->preview('past-contract', $csv)->assertOk();

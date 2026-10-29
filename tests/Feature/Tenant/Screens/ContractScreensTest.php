@@ -58,6 +58,60 @@ class ContractScreensTest extends TenantScreenTestCase
         $this->assertSame('occupied', $unit->fresh()->status->value);
     }
 
+    /** 登録画面で物件・区画・顧客を選んだフォーム（$steps は選んだあとに JS で動かす） */
+    private function createForm(Unit $unit, string $customerQuery, string $steps): array
+    {
+        $html = $this->htmlOf(route('tenant.contracts.create'));
+        $choose = "data.propertyId = '{$this->building->id}'; data.onPropertyChange();";
+        $captured = $this->driveAlpine($html, 'contractCreateForm', $this->xData($html, 'contractCreateForm'), $choose);
+        $responses = array_map(fn (array $request) => $this->asFetchResponse($this->actingAs($this->user)->sendCaptured($request)->assertOk()), $captured['requests']);
+        $found = $this->actingAs($this->user)->getJson('/api/tenant/customers/search?q=' . urlencode($customerQuery), ['X-Requested-With' => 'XMLHttpRequest'])->assertOk()->json();
+
+        return $this->browserForm($html, 'action="' . route('tenant.contracts.store') . '"', 'contractCreateForm', $choose . '
+            setImmediate(function () {
+                data.unitId = "' . $unit->id . '"; data.onUnitChange();
+                data.selectCustomer(' . json_encode($found[0], JSON_UNESCAPED_UNICODE) . ');
+                ' . $steps . '
+            });', $responses);
+    }
+
+    /**
+     * 家賃発生日は空欄のまま登録できる（未定の契約。本番の列は NULL 可）。詳細と一覧に「未設定」の印が出る。
+     * ⚠ 2026-10-29 まではテスト用スキーマの contracts.rent_start_date が NOT NULL で、この経路をテストで通せなかった
+     */
+    public function test_a_contract_without_a_rent_start_date_is_registered_from_the_screen(): void
+    {
+        $unit = $this->unit(2, 'A');
+        $this->customer('大街道商事', 'CU-0010');
+        $form = $this->fill($this->createForm($unit, '大街道', 'data.initialMonthType = "prorated";'), ['contract_date' => '2026-10-01']);
+        $this->assertSame('', $form['fields']['rent_start_date'], '家賃発生日の欄が空で送られない');
+
+        $html = $this->landed($this->submit($form, route('tenant.contracts.create')));
+
+        $contract = Contract::where('unit_id', $unit->id)->firstOrFail();
+        $this->assertFlash($html, 'success', "契約「{$contract->contract_number}」を登録しました。");
+        $this->assertNull($contract->rent_start_date);
+        // 日割りでも家賃発生日が無ければ 1 か月分（月額 80,000 ＋ 共益費 8,000）
+        $this->assertSame(88000, $contract->initial_month_amount);
+        $this->assertStringContainsString('<strong>家賃発生日が未設定です。</strong>', $html);
+        $this->assertStringContainsString('title="家賃発生日が未設定です"', $this->htmlOf(route('tenant.contracts.index')));
+    }
+
+    /** 手で組んだ送信で家賃発生日の欄そのものが無くても 500 にせず、未設定として登録する（Bug #92 の形。欄を抜く測定で拾った） */
+    public function test_a_contract_sent_without_the_rent_start_date_field_is_registered(): void
+    {
+        $unit = $this->unit(2, 'A');
+        $this->customer('大街道商事', 'CU-0010');
+        $form = $this->fill($this->createForm($unit, '大街道', ''), ['contract_date' => '2026-10-01']);
+        unset($form['fields']['rent_start_date']);
+
+        $html = $this->landed($this->submit($form, route('tenant.contracts.create')));
+
+        $contract = Contract::where('unit_id', $unit->id)->firstOrFail();
+        $this->assertFlash($html, 'success', "契約「{$contract->contract_number}」を登録しました。");
+        $this->assertNull($contract->rent_start_date);
+    }
+
     // ============================================================
     // 編集
     // ============================================================
@@ -82,6 +136,19 @@ class ContractScreensTest extends TenantScreenTestCase
         $contract->refresh();
         $this->assertSame(105000, $contract->rent);
         $this->assertSame(10000, $contract->common_fee);
+    }
+
+    public function test_the_edit_screen_can_clear_the_rent_start_date(): void
+    {
+        $contract = $this->activeContract($this->unit(1, 'A'));
+        $form = $this->editForm($contract, "data.rentStartDate = '';");
+        $this->assertSame('', $form['fields']['rent_start_date'], '空にした家賃発生日が空で送られない');
+
+        $html = $this->landed($this->submit($form, route('tenant.contracts.edit', $contract)));
+
+        $this->assertFlash($html, 'success', '契約「C-2025-001」を更新しました。');
+        $this->assertNull($contract->fresh()->rent_start_date);
+        $this->assertStringContainsString('<strong>家賃発生日が未設定です。</strong>', $html);
     }
 
     /** 編集画面の JS（contractEditForm）が組み立てられ、家賃などの欄の値が入る */
