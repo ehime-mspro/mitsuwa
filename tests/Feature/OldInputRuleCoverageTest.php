@@ -169,23 +169,23 @@ class OldInputRuleCoverageTest extends TestCase
             }
             $targets += $pageTargets;
 
+            $uses = [];
             foreach ($tree as [$view]) {
                 foreach ($parsed[$view]['uses'] as $use) {
+                    $uses[] = $use + ['view' => $view];
                     $count['uses']++;
                     $count['wrapped'] += (int) ($use['via'] !== null);
                     $keys[$use['key']] = true;
-                    foreach (array_keys($pageTargets) as $action) {
-                        if (self::hasRule($use['key'], $rules[$action]['keys'])) {
-                            continue;
-                        }
-                        if (isset(self::WITHOUT_RULE[$view][$use['key']])) {
-                            $usedWithoutRule["{$view} {$use['key']}"] = true;
-                        } elseif (isset(self::NOT_RENDERED_ON[$page][$use['key']])) {
-                            $usedNotRendered["{$page} {$use['key']}"] = true;
-                        } else {
-                            $missing[] = "{$page}: {$use['key']}（{$view}:{$use['line']}）の規則が {$action} に無い";
-                        }
-                    }
+                }
+            }
+            $targetKeys = array_map(fn (string $action) => $rules[$action]['keys'], array_combine(array_keys($pageTargets), array_keys($pageTargets)));
+            foreach (self::pairsWithoutRule($uses, $targetKeys) as [$use, $action]) {
+                if (isset(self::WITHOUT_RULE[$use['view']][$use['key']])) {
+                    $usedWithoutRule["{$use['view']} {$use['key']}"] = true;
+                } elseif (isset(self::NOT_RENDERED_ON[$page][$use['key']])) {
+                    $usedNotRendered["{$page} {$use['key']}"] = true;
+                } else {
+                    $missing[] = "{$page}: {$use['key']}（{$use['view']}:{$use['line']}）の規則が {$action} に無い";
                 }
             }
         }
@@ -245,14 +245,16 @@ class OldInputRuleCoverageTest extends TestCase
             '@csrf @method(\'PUT\')',
             '</form>',
             '<form :action="url" method="POST"></form>',
+            '<form {{ $attributes->merge([\'class\' => \'x\']) }} method="POST" action="{{ route(\'b\') }}"></form>',
             '<form action="{{ route(\'a\') }}">',
         ]));
 
         $this->assertSame([
             ['line' => 1, 'action' => '{{ route("{$department}.customers.store") }}', 'methods' => ['POST', 'PUT']],
             ['line' => 4, 'action' => null, 'methods' => ['POST']],
+            ['line' => 5, 'action' => "{{ route('b') }}", 'methods' => ['POST']],
         ], $read['forms']);
-        $this->assertSame(['閉じていない <form>（5 行）'], $read['unreadable']);
+        $this->assertSame(['閉じていない <form>（6 行）'], $read['unreadable']);
 
         $this->assertSame(['フォームの中にフォームがある（2 行）'], self::bladeForms("<form>\n<form></form>")['unreadable']);
         $this->assertSame(['対応する <form> の無い </form>（1 行）'], self::bladeForms('</form>')['unreadable']);
@@ -332,7 +334,40 @@ class OldInputRuleCoverageTest extends TestCase
         $this->assertArrayNotHasKey('other_file_key', $of('deep', $siteIndex + ['app/Other.php' => [[$deepLine, ['other_file_key']]]])['keys']);
     }
 
+    public function test_samples_require_a_rule_on_every_target(): void
+    {
+        $uses = [['view' => 'v', 'key' => 'a', 'line' => 1], ['view' => 'v', 'key' => 'costs.{$i}.name', 'line' => 2]];
+        $targets = ['A@store' => ['a' => true, 'costs.*.name' => true], 'B@status' => ['b' => true]];
+
+        $pairs = self::pairsWithoutRule($uses, $targets);
+
+        $this->assertSame([['a', 'B@status'], ['costs.{$i}.name', 'B@status']], array_map(fn (array $p) => [$p[0]['key'], $p[1]], $pairs), 'どれか 1 つの送り先に規則があれば通している');
+        $this->assertSame([], self::pairsWithoutRule($uses, ['A@store' => $targets['A@store']]), '`*` の規則に当てていない');
+        $this->assertNotSame([], self::pairsWithoutRule([['view' => 'v', 'key' => 'costs.0.name.x', 'line' => 1]], ['A@store' => $targets['A@store']]), '`*` が 2 段以上に当たった');
+    }
+
     // ---------- 組み立て ----------
+
+    /**
+     * 画面の欄と送り先の組のうち、送り先に規則が無いもの（分類表はまだ見ない）。欄は画面のすべての送り先に規則が要る
+     *
+     * @param  list<array{view: string, key: string, line: int}>  $uses
+     * @param  array<string, array<string, true>>  $targetKeys  送り先 => 規則のキー
+     * @return list<array{0: array, 1: string}>
+     */
+    private static function pairsWithoutRule(array $uses, array $targetKeys): array
+    {
+        $pairs = [];
+        foreach ($uses as $use) {
+            foreach ($targetKeys as $action => $keys) {
+                if (! self::hasRule($use['key'], $keys)) {
+                    $pairs[] = [$use, $action];
+                }
+            }
+        }
+
+        return $pairs;
+    }
 
     /** 規則のキー（`costs.*.name` の `*` は 1 段ぶん）に当たるか */
     private static function hasRule(string $key, array $ruleKeys): bool

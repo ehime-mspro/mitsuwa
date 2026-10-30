@@ -377,7 +377,17 @@ trait BindsOldInputToPages
         preg_match('/^<[\w.\-:]+/', $tag, $name);
         $i = strlen($name[0] ?? '');
         $n = strlen($tag);
-        while ($i < $n && preg_match('/\G\s*([^\s=>"\'\/]+)/', $tag, $m, 0, $i)) {
+        while ($i < $n) {
+            // 属性のあいだにじかに書いた `{{ … }}`（`{{ $attributes->merge(…) }}`）は飛ばす
+            if (preg_match('/\G\s*\{\{/', $tag, $blade, 0, $i)) {
+                $end = strpos($tag, '}}', $i);
+                $i = $end === false ? $n : $end + 2;
+
+                continue;
+            }
+            if (! preg_match('/\G\s*([^\s=>"\'\/]+)/', $tag, $m, 0, $i)) {
+                break;
+            }
             $attribute = strtolower($m[1]);
             $i += strlen($m[0]);
             if (! preg_match('/\G\s*=\s*/', $tag, $eq, 0, $i)) {
