@@ -120,7 +120,7 @@ APP_KEY="base64:$(openssl rand -base64 32)" /opt/homebrew/opt/php@8.3/bin/php -d
 - 同一 `name` 属性 + `x-show` は片方が hidden でも送信される → hidden + Alpine var or `:disabled` で除外
 - 日本語入力フィールドの Enter ハンドラには `$event.isComposing ||` を必ず挟む
 - 画面の JS（`<script>`・`x-data` などの属性）に値を書くときは `{{ \Illuminate\Support\Js::from((string) old('x', …)) }}` か `@json(…)`。`'{{ old(…) }}'` と引用符で囲まない（`'` `\` で JS が止まり、属性の中ではコードとして動く。Bug #76。`old()`・`request()` は走査 `JsStringEchoScanTest` が止める。ほかの値は `JsEchoClassificationTest` の分類表に理由つきで載せないと落ちる＝DB に保存された文字は必ず `Js::from`）
-- 配列の形は入力チェックが見る（`App\Support\ShapeCheckingValidator`。規則が `array`・子の規則を持たない欄に配列・持つ欄に文字が来たら、ほかの規則より先に断り、控え（`old()`）からも外す）。そのため **画面が `old('x')` で描く欄には規則を置く**（保存しない欄は `exclude`）・**入力チェックを 2 回に分けない**・**入力チェックの前に `$request->input()` を文字のつもりで読まない**（どれもこの仕組みの外で 500 になる。Bug #121。`OldInputRuleCoverageTest` が規則の無い `old()` を止める）
+- 配列の形は入力チェックが見る（`App\Support\ShapeCheckingValidator`。規則が `array`・子の規則を持たない欄に配列・持つ欄に文字が来たら、ほかの規則より先に断り、控え（`old()`）からも外す）。そのため **画面が `old('x')` で描く欄には、その画面のすべてのフォームの送り先に規則を置く**（保存しない欄は `exclude`。控えは画面全体で共有されるので、同じ画面の別のフォームの送り先にも要る）・**入力チェックを 2 回に分けない**・**入力チェックの前に `$request->input()` を文字のつもりで読まない**（どれもこの仕組みの外で 500 になる。Bug #121。`OldInputRuleCoverageTest` が画面ごとに送り先の規則と突き合わせて止める）
 - 全角数字は global listener が `input[inputmode="numeric"]` `input[type="number"]` で半角自動変換（`layouts/app.blade.php` 注入、新規フォームへ自動適用）
 
 ### Display
