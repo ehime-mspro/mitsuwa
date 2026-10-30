@@ -23,7 +23,7 @@ use Tests\TestCase;
  * （2026-10-30 のカナリア: CustomerController の memo の規則を消しても緑。memo の規則がほかに 7 本のコントローラにあった）。
  *
  * 結び付け方（BindsOldInputToPages）: 画面（`@include`・`<x-…>` でたどった木のいちばん上の親）の中のすべての old() が、
- * 木の中の GET でないフォームのすべての送り先（ルートの URL と送る方式で引いた Class@method と、そこから `$this->` で呼ぶメソッドの
+ * 木の中のフォームのすべての送り先（ルートの URL と送る方式で引いた Class@method と、そこから `$this->` で呼ぶメソッドの
  * 入力チェック）に規則を持つこと。控えを作らない送り先（入力チェックも withInput( も ValidationException も届かない。削除など）は外す。
  * 規則を持たない欄は分類表に理由つきで載せる（全件分類。Top trap #13）。
  *
@@ -141,10 +141,8 @@ class OldInputRuleCoverageTest extends TestCase
             $tree = self::treeOf($page, $parsed);
             $pageTargets = [];
             foreach ($tree as [$view, $attributes]) {
+                // GET のフォームも見る（GET の入力チェックで断られても、送った値は控えに入る）
                 foreach ($parsed[$view]['forms'] as $form) {
-                    if ($form['methods'] === ['GET']) {
-                        continue;
-                    }
                     $names = self::actionRouteNames($form['action'], $attributes);
                     $actions = $names === null ? null : self::routeActions($names, $form['methods'], $routes, $renderers[$page] ?? []);
                     if ($actions === null) {

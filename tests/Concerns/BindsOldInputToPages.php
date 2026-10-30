@@ -13,8 +13,9 @@ use ReflectionNamedType;
  * - 画面: `@include('…')` と部品（`<x-…>`）でたどった木の、いちばん上の親のビュー
  * - 画面の欄: 木の中の old()（Blade のコメントは位置を保って落とす）。old($引数) を包む関数
  *   （`$val = function ($key, …) { … old($key …) }`）の呼び出し `$val('x')` も読む
- * - 画面の送り先: 木の中の GET でないフォームの送り先。名前のルートの **URL** と、フォームの送る方式（method と `@method`）が合う
- *   ルートの `Class@method`（名前だけで引くと `route('login')` が GET のルートを指し、POST のルートに届かない）
+ * - 画面の送り先: 木の中のフォームの送り先（GET のフォームも。GET の入力チェックで断られても、送った値は控えに入る）。
+ *   名前のルートの **URL** と、フォームの送る方式（method と `@method`）が合うルートの `Class@method`
+ *   （名前だけで引くと `route('login')` が GET のルートを指し、POST のルートに届かない）
  * - 送り先の規則: そのメソッドと、そこから `$this->名前(` で呼ぶメソッドの中の入力チェック（CollectsValidationKeys の sites を、
  *   ファイルと行の両方で当てる）
  *
