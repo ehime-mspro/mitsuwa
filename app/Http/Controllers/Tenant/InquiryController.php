@@ -393,6 +393,11 @@ class InquiryController extends Controller
         $validated = $request->validate([
             'status'        => 'required|in:follow,on_hold,converted,lost,unreachable',
             'result_reason' => 'nullable|string|max:5000',
+            // 同じ画面の対応履歴の欄（このフォームは送らない）。控えは画面全体で共有されるので、規則が無いと
+            // 手で組んだ配列が控えに残り、戻った画面が old() で描いて 500 になっていた（Bug #121）
+            'action_date'   => 'exclude',
+            'action_type'   => 'exclude',
+            'content'       => 'exclude',
         ]);
 
         $newStatus = InquiryStatus::from($validated['status']);

@@ -94,7 +94,8 @@ class ArrayInputTest extends TenantScreenTestCase
     /**
      * 控えは画面全体で共有される。状態の変更（updateStatus）に、同じ画面の対応履歴の欄（content）を配列で足して送ると、
      * updateStatus の規則に無い欄なので控えから外れず、戻った画面が対応履歴のフォームを old() で描いて 500 になっていた
-     * （画面の欄と送り先の規則を突き合わせる走査 OldInputRuleCoverageTest で見つけた）
+     * （画面の欄と送り先の規則を突き合わせる走査 OldInputRuleCoverageTest で見つけた）。
+     * ⚠ この詳細の画面は入力エラーを出さない（状態の値は画面のボタンが決めるので、断られるのは手で組んだ送信だけ）
      */
     public function test_the_inquiry_screen_opens_after_an_array_history_field_sent_with_the_status(): void
     {
@@ -110,7 +111,6 @@ class ArrayInputTest extends TenantScreenTestCase
 
         $html = $this->landed($this->submit($form, $url));
 
-        $this->assertInputError($html, '選択されたステータスは正しくありません。');
         $this->assertStringContainsString('placeholder="対応内容を記入"></textarea>', $html, '外した欄が空で描かれていない');
         $this->assertSame(InquiryStatus::Follow, $inquiry->fresh()->status);
     }
