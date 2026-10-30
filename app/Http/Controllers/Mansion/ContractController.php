@@ -419,6 +419,9 @@ class ContractController extends Controller
             $rules['tenant_id'] = 'required|exists:ms_tenants,id';
             $rules['parking_ids'] = 'nullable|array';
             $rules['parking_ids.*'] = ['integer', Rule::exists('ms_parkings', 'id')->where('status', MsParkingStatus::Vacant->value)];
+            // 物件は部屋を絞り込むための画面の欄で、保存しない（exclude）。規則を置くのは、断ったときの控えから
+            // 配列を外すため（駐車場契約の物件と同じ。Bug #121）
+            $rules['property_id'] = 'exclude';
             $messages = ['room_id.exists' => self::ROOM_TAKEN, 'parking_ids.*.exists' => self::PARKING_TAKEN, 'parking_ids.*.integer' => self::PARKING_TAKEN];
         } else {
             $rules['tenant_id'] = 'required|exists:ms_tenants,id';
