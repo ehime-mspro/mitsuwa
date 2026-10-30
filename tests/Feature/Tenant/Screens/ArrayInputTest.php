@@ -2,7 +2,9 @@
 
 namespace Tests\Feature\Tenant\Screens;
 
+use App\Enums\InquiryStatus;
 use App\Models\Contract;
+use App\Models\Inquiry;
 use App\Models\Investment;
 use App\Models\Repair;
 use Tests\Concerns\TampersForms;
@@ -87,5 +89,29 @@ class ArrayInputTest extends TenantScreenTestCase
 
         $this->assertInputError($html, '選択された戻り先は正しくありません。');
         $this->assertSame(100000, $contract->fresh()->rent);
+    }
+
+    /**
+     * 控えは画面全体で共有される。状態の変更（updateStatus）に、同じ画面の対応履歴の欄（content）を配列で足して送ると、
+     * updateStatus の規則に無い欄なので控えから外れず、戻った画面が対応履歴のフォームを old() で描いて 500 になっていた
+     * （画面の欄と送り先の規則を突き合わせる走査 OldInputRuleCoverageTest で見つけた）
+     */
+    public function test_the_inquiry_screen_opens_after_an_array_history_field_sent_with_the_status(): void
+    {
+        $inquiry = Inquiry::create([
+            'inquiry_number' => 'INQ-2026-051', 'property_id' => $this->building->id, 'contact_name' => '問合 花子',
+            'inquiry_date' => '2026-09-01', 'status' => InquiryStatus::Follow->value,
+        ]);
+        $url = route('tenant.inquiries.show', $inquiry);
+        $html = $this->htmlOf($url);
+        $this->assertStringContainsString('name="content"', $html, '画面に対応履歴の欄が無い');
+        $form = $this->fill($this->parseForm($html, 'action="' . route('tenant.inquiries.updateStatus', $inquiry) . '"'), ['status' => 'zzz']);
+        $form['fields']['content'] = ['x'];
+
+        $html = $this->landed($this->submit($form, $url));
+
+        $this->assertInputError($html, '選択されたステータスは正しくありません。');
+        $this->assertStringContainsString('placeholder="対応内容を記入"></textarea>', $html, '外した欄が空で描かれていない');
+        $this->assertSame(InquiryStatus::Follow, $inquiry->fresh()->status);
     }
 }
