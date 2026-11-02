@@ -39,9 +39,13 @@ class SurveyQuestion extends Model
         return $query->where('is_active', true);
     }
 
+    /**
+     * 部署の設問の並び（sort_order、同点は id）。一覧の番号・↑↓・アンケートの画面・顧客の CSV の Q の番号が同じ並びで数える
+     * （同点の順は MySQL が決めないので、id で決める）。
+     */
     public function scopeOrdered($query)
     {
-        return $query->orderBy('sort_order', 'asc');
+        return $query->orderBy('sort_order', 'asc')->orderBy('id', 'asc');
     }
 
     public function scopeOfDepartment($query, string $dept)

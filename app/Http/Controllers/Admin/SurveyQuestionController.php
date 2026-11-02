@@ -25,7 +25,7 @@ class SurveyQuestionController extends Controller
     private const SETTING_INTEGER_PATTERN = '/^-?\d+$/';
 
     /**
-     * 設問の一覧（部署のタブ）。並びは move() と同じ sort_order・id の順（同じ sort_order の設問も並びが決まる）。
+     * 設問の一覧（部署のタブ）。並びは move()・アンケートの画面・顧客の CSV と同じ ordered()（sort_order、同点は id）。
      * 行の「回答 N件」は withCount('answers')。
      */
     public function index(Request $request)
@@ -33,7 +33,7 @@ class SurveyQuestionController extends Controller
         $questions = [];
         foreach (array_keys(self::DEPARTMENTS) as $department) {
             $questions[$department] = SurveyQuestion::ofDepartment($department)
-                ->ordered()->orderBy('id')->withCount('answers')->get();
+                ->ordered()->withCount('answers')->get();
         }
 
         return view('admin.master.survey-questions.index', [
@@ -175,7 +175,7 @@ class SurveyQuestionController extends Controller
 
         $refused = DB::transaction(function () use ($question, $validated): ?string {
             $ids = SurveyQuestion::ofDepartment($question->department)
-                ->orderBy('sort_order')->orderBy('id')->lockForUpdate()->pluck('id')->all();
+                ->ordered()->lockForUpdate()->pluck('id')->all();
             $index = array_search($question->id, $ids, true);
             if ($index === false) {
                 return null; // 読む前に消された（一覧へ戻すだけ）

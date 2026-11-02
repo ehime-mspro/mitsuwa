@@ -922,4 +922,42 @@ class CustomerImportTest extends TestCase
             $this->assertSame([], $unknown, "{$department} のテンプレートに、取込が読まない見出しがある");
         }
     }
+
+    /**
+     * 設問の一覧の番号・↑↓・テンプレートの Q の番号・取込の Q の番号は、同じ並び（sort_order、同点は id）で数える。
+     *
+     * ⚠ SQLite は同じ sort_order の設問を id の順に返すので、並びの結果を見るだけでは id の条件を外しても緑になる
+     *   （本番の MySQL は同点の順を決めない）。流れた SQL を見る。
+     */
+    public function test_every_screen_numbers_questions_in_the_same_order(): void
+    {
+        $first = SurveyQuestion::create([
+            'department' => 'housing', 'label' => '現在のお住まい', 'question_type' => 'text',
+            'sort_order' => 1, 'is_active' => true,
+        ]);
+        SurveyQuestion::create([
+            'department' => 'housing', 'label' => '来場のきっかけ', 'question_type' => 'text',
+            'sort_order' => 1, 'is_active' => true,
+        ]);
+
+        $queries = [];
+        DB::listen(function ($query) use (&$queries): void {
+            if (str_contains($query->sql, 'from "survey_questions"')) {
+                $queries[] = $query->sql;
+            }
+        });
+
+        $this->actingAs($this->actor)->get(route('admin.survey-questions.index'))->assertStatus(200);
+        $this->actingAs($this->actor)->post(route('admin.survey-questions.move', $first), ['direction' => 'down'])->assertStatus(302);
+        $template = $this->actingAs($this->actor)->get('/admin/customers/import/template?department=housing')->getContent();
+        $this->preview($this->csv([$this->person('山田', '太郎')], ['Q1:来場のきっかけ', 'Q2:現在のお住まい']))->assertStatus(200);
+
+        // 一覧（2 部署）・↑↓・テンプレート・取込のプレビュー（↑↓ のルートの束縛は並べないので数えない）
+        $ordered = array_values(array_filter($queries, fn (string $sql) => str_contains($sql, 'order by')));
+        $this->assertCount(5, $ordered, "設問を並べる問い合わせの数が違う:\n" . implode("\n", $queries));
+        foreach ($ordered as $sql) {
+            $this->assertStringEndsWith('order by "sort_order" asc, "id" asc', $sql);
+        }
+        $this->assertStringContainsString(',Q1:来場のきっかけ,Q2:現在のお住まい', $template);
+    }
 }
