@@ -62,6 +62,12 @@ class CustomerImportTest extends TestCase
     /** 確定の時点で取り込める行が 0 件・重複候補はあるときの案内（設計書 2026-09-27 §4.4。チェックは勧めない） */
     private const REGISTERED_AFTER_PREVIEW = '取り込める行がありません。プレビューのあとに、同じ人が登録された可能性があります。CSVをアップロードし直して、重複候補を確かめてください。';
 
+    /** 設問の列の見出しが今の設問と合わないときの、最後の文（設計書 2026-11-02-survey-question-admin-design.md §4.4・D8） */
+    private const REDOWNLOAD_TEMPLATE = '設問の並びや文が変わっています。テンプレートをダウンロードし直してください。';
+
+    /** 取込の画面のテンプレートの案内（前のテンプレートは断られる。設計書 §4.4） */
+    private const OLD_TEMPLATE_NOTE = '※ 設問の並び替え・有効／無効・設問文の変更のあとは、前にダウンロードしたテンプレートは取り込めません（ダウンロードし直してください）';
+
     private User $actor;
 
     protected function setUp(): void
@@ -267,6 +273,65 @@ class CustomerImportTest extends TestCase
         $this->assertStringNotContainsString('</div>', substr($before, $offset), 'ボタンを直接包む要素でない');
 
         return $tag;
+    }
+
+    /** 取込の画面からテンプレートをダウンロードし、見出しの行（BOM を除いた 1 行目。引用符はそのまま）を返す */
+    private function templateHeader(string $department): string
+    {
+        $response = $this->actingAs($this->actor)->get('/admin/customers/import/template?department=' . $department);
+        $response->assertStatus(200);
+
+        return explode("\n", preg_replace('/^\xEF\xBB\xBF/', '', $response->getContent()))[0];
+    }
+
+    /**
+     * テンプレートの見出しの行の下に、行を足した CSV（行は見出し => 値。書かない列は空欄）。
+     * 見出しは CSV の決まり（RFC 4180）で読む（テンプレートがその形で書く）。
+     *
+     * @param  list<array<string, string>>  $rows
+     */
+    private function csvUnder(string $headerLine, array $rows): string
+    {
+        $columns = str_getcsv($headerLine, ',', '"', '');
+        $lines   = [$headerLine];
+        foreach ($rows as $row) {
+            $lines[] = implode(',', array_map(fn (string $column) => $row[$column] ?? '', $columns));
+        }
+
+        return implode("\n", $lines) . "\n";
+    }
+
+    /**
+     * 取込の画面へ断られた（プレビューも確定も描かずに戻された）ことを確かめ、着いた画面を返す。
+     * ⚠ セッションに触らない（Bug #49）。着いた画面の入力エラーの箱で見る
+     */
+    private function refused(TestResponse $response): TestResponse
+    {
+        $this->assertSame(302, $response->getStatusCode(), 'プレビューか確定が描かれた（断られていない）');
+        $this->assertSame(route('admin.customers.import'), $response->headers->get('Location'));
+
+        return $this->followRedirects($response);
+    }
+
+    /** 取込の画面の入力エラーの箱の `<li>`（文字の実体参照を戻した文） */
+    private function errorItems(string $html): array
+    {
+        $found = preg_match('/入力内容にエラーがあります。<\/p>\s*<ul\b[^>]*>(.*?)<\/ul>/su', $html, $m);
+        $this->assertSame(1, $found, '取込の画面に入力エラーの箱が無い');
+        preg_match_all('/<li>(.*?)<\/li>/su', $m[1], $items);
+
+        return array_map(fn (string $item) => html_entity_decode($item, ENT_QUOTES, 'UTF-8'), $items[1]);
+    }
+
+    /** 設問の列の見出しで断られた画面: 箱に列ごとの文と最後の文が全文で並び、取込の最初のフォームに戻っている */
+    private function assertRefusedForQuestionColumns(TestResponse $page, array $columnMessages): void
+    {
+        $page->assertStatus(200);
+        $html = $page->getContent();
+
+        $this->assertSame([...$columnMessages, self::REDOWNLOAD_TEMPLATE], $this->errorItems($html));
+        $this->assertStringContainsString('id="import-form"', $html, '取込の最初のフォームに戻っていない');
+        $this->assertDoesNotMatchRegularExpression(self::IMPORT_BUTTON, $html, 'プレビュー（確定のボタン）が描かれた');
     }
 
     // ================================================================
@@ -525,6 +590,97 @@ class CustomerImportTest extends TestCase
 
         $this->assertSame(['山田'], Buyer::pluck('last_name')->all());
         $this->assertSame(['賃貸'], BuyerSurvey::sole()->answers()->pluck('answer_value')->all());
+    }
+
+    // ================================================================
+    // 設問の列の見出しを今の設問と照らし合わせる（D8）
+    // ================================================================
+
+    public function test_a_template_downloaded_before_reordering_is_refused(): void
+    {
+        $this->surveyColumns();
+        $header = $this->templateHeader('housing');
+
+        // テンプレートを取ったあとで、一覧の ↓ で Q1 と Q2 を入れ替える
+        $this->actingAs($this->actor)
+            ->post(route('admin.survey-questions.move', SurveyQuestion::where('label', '現在のお住まい')->sole()), ['direction' => 'down'])
+            ->assertStatus(302);
+
+        // 直す前: 見出しの番号だけで結びつけ、「賃貸」を今の Q1（来場のきっかけ）の回答として断り、「A」を今の Q2（現在のお住まい）の回答として断っていた
+        // （選択肢が同じ形なら、黙って別の設問の回答として入った）
+        $page = $this->refused($this->preview($this->csvUnder($header, [
+            $this->person('山田', '太郎', ['Q1:現在のお住まい' => '賃貸', 'Q2:来場のきっかけ' => 'A']),
+        ])));
+
+        $this->assertRefusedForQuestionColumns($page, [
+            'Q1 の列の設問「現在のお住まい」が、今の Q1「来場のきっかけ」と違います。',
+            'Q2 の列の設問「来場のきっかけ」が、今の Q2「現在のお住まい」と違います。',
+        ]);
+        $this->assertSame(0, Buyer::count());
+    }
+
+    public function test_a_question_column_without_a_question_is_refused(): void
+    {
+        $this->surveyColumns();
+        // 無効の設問は数えない（今の設問は有効な 3 問。テンプレートにも出ない）
+        SurveyQuestion::create([
+            'department' => 'housing', 'label' => 'お子様の人数', 'question_type' => 'text',
+            'sort_order' => 4, 'is_active' => false,
+        ]);
+
+        // 直す前: 当たる設問の無い列は黙って捨て、プレビューは「取込可能」と出していた
+        $page = $this->refused($this->preview($this->csv([
+            $this->person('山田', '太郎', ['Q1:現在のお住まい' => '賃貸', 'Q4:お子様の人数' => '2', 'Q9:ご趣味' => '釣り']),
+        ], ['Q1:現在のお住まい', 'Q4:お子様の人数', 'Q9:ご趣味'])));
+
+        $this->assertRefusedForQuestionColumns($page, [
+            'Q4 の列に当たる設問がありません（今の設問は 3 問です）。',
+            'Q9 の列に当たる設問がありません（今の設問は 3 問です）。',
+        ]);
+        $this->assertSame(0, Buyer::count());
+    }
+
+    public function test_the_label_check_runs_again_on_confirmation(): void
+    {
+        $columns = $this->surveyColumns();
+
+        $preview = $this->preview($this->csv([
+            $this->person('山田', '太郎', ['Q2:来場のきっかけ' => 'A']),
+            $this->person('佐藤', '花子'),
+        ], $columns));
+        $form = $this->confirmForm($preview);
+
+        // プレビューのあとで、Q2 の設問の文を変える（確定は CSV を読み直し、見出しも照らし合わせ直す）
+        SurveyQuestion::where('label', '来場のきっかけ')->update(['label' => 'ご来場のきっかけ']);
+
+        $this->assertRefusedForQuestionColumns($this->submit($form), [
+            'Q2 の列の設問「来場のきっかけ」が、今の Q2「ご来場のきっかけ」と違います。',
+        ]);
+        $this->assertSame(0, Buyer::count());
+        $this->assertSame(0, BuyerSurvey::count());
+    }
+
+    /** 見出しの文と設問の文は、前後の空白（全角の空白も）を除いて比べる */
+    public function test_spaces_around_the_question_text_are_ignored(): void
+    {
+        $this->surveyColumns();
+        SurveyQuestion::where('label', '来場のきっかけ')->update(['label' => "来場のきっかけ\u{3000}"]);
+
+        $preview = $this->preview($this->csv([
+            $this->person('山田', '太郎', ["Q1:\u{3000}現在のお住まい" => '賃貸', 'Q2:来場のきっかけ' => 'A']),
+        ], ["Q1:\u{3000}現在のお住まい", 'Q2:来場のきっかけ']));
+
+        $preview->assertStatus(200);
+        $this->assertSame([], $preview->viewData('rowErrors'));
+        $this->assertSame(1, $preview->viewData('validCount'));
+    }
+
+    /** 取込の画面のテンプレートの案内に、前のテンプレートが断られることを書く（設計書 §4.4） */
+    public function test_the_import_page_says_an_old_template_is_refused(): void
+    {
+        $this->actingAs($this->actor)->get('/admin/customers/import')
+            ->assertStatus(200)
+            ->assertSeeInOrder(['テンプレートCSVをダウンロード', self::OLD_TEMPLATE_NOTE, 'CSVファイルをアップロードするとプレビューが表示されます']);
     }
 
     // ================================================================

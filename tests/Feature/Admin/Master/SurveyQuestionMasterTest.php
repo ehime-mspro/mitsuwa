@@ -20,7 +20,7 @@ class SurveyQuestionMasterTest extends SurveyQuestionScreenTestCase
 {
     use SendsValuesBack;
 
-    private const BANNER = 'ℹ️ 選択肢の名前を変えても、過去の回答は元の名前のまま残ります（アンケートの編集画面では「（選択肢に無い値）」と出ます）。回答がある設問は、種類を変えられません。';
+    private const BANNER = 'ℹ️ 選択肢の名前を変えても、過去の回答は元の名前のまま残ります（アンケートの編集画面では「（選択肢に無い値）」と出ます）。回答がある設問は、種類を変えられません。並び替え・有効／無効・設問文を変えると、前にダウンロードした顧客の CSV テンプレートは取り込めなくなります（ダウンロードし直してください）。';
 
     /** 設問を 1 つ作る（並びは部署の末尾。$attributes で上書き） */
     private function question(string $label, array $attributes = []): SurveyQuestion

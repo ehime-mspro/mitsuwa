@@ -13,6 +13,7 @@ use App\Support\OneTimeAction;
 use App\Support\SurveyAnswers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -33,6 +34,10 @@ use Illuminate\Validation\ValidationException;
  *   1 回目のあとに届いたチェックなしの 2 回目は、1 回目で入った人を重複候補と数えて、鍵より先に
  *   0 件の歯止めに着く（同じ確認画面の 2 回目なのに「プレビューのあとに、同じ人が登録された可能性」の
  *   案内が出る。改修前の文言はチェックを勧めていて、従うと全員がもう一度入った）。
+ * ⚠ 設問の列（`Q{n}:設問の文`）は、番号で「有効な設問を並び順に並べた n 番目」に結びつけたうえで、見出しの文を
+ *   その設問の今の文と照らし合わせる。違う列・当たる設問の無い列が 1 つでもあれば、プレビューでも確定でも
+ *   ファイルごと断る（設計書 2026-11-02-survey-question-admin-design.md §4.4・D8。並び替え・有効／無効・
+ *   設問の文の変更のあとの古いテンプレートで、回答が別の設問へ入るのを防ぐ）。
  */
 class CustomerImportController extends Controller
 {
@@ -84,20 +89,38 @@ class CustomerImportController extends Controller
         $header = str_getcsv(array_shift($lines));
         $header = array_map('trim', $header);
 
-        // 設問カラム検出（Q1:xxx, Q2:xxx ...）
+        // 設問カラム検出（Q1:xxx, Q2:xxx ...）。Q の番号は、有効な設問を並び順（テンプレートと同じ）に並べた何番目か
         $questions = SurveyQuestion::ofDepartment($department)->active()->ordered()->get();
         $questionsById = $questions->keyBy('id'); // 確定で回答の question_snapshot を作る
         $questionMap = []; // headerIndex => question
         $questionNumbers = []; // headerIndex => 見出しの Q の番号（誤りの文の主語に使う）
+        $columnProblems = []; // 見出しが今の設問と合わない列の文（クラスの docblock・D8）
         foreach ($header as $hIdx => $hVal) {
-            if (preg_match('/^Q(\d+):/', $hVal)) {
-                // sort_order順で対応
-                $qNum = (int) preg_replace('/^Q(\d+):.*$/', '$1', $hVal);
-                if (isset($questions[$qNum - 1])) {
-                    $questionMap[$hIdx] = $questions[$qNum - 1];
-                    $questionNumbers[$hIdx] = $qNum;
-                }
+            if (preg_match('/^Q(\d+):(.*)/s', $hVal, $m) !== 1) {
+                continue;
             }
+            $qNum     = (int) $m[1];
+            $question = $questions[$qNum - 1] ?? null;
+            if ($question === null) {
+                $columnProblems[] = "Q{$qNum} の列に当たる設問がありません（今の設問は {$questions->count()} 問です）。";
+                continue;
+            }
+            // 前後の空白（全角の空白も）は除いて比べる
+            $columnLabel  = Str::trim($m[2]);
+            $currentLabel = Str::trim($question->label);
+            if ($columnLabel !== $currentLabel) {
+                $columnProblems[] = "Q{$qNum} の列の設問「{$columnLabel}」が、今の Q{$qNum}「{$currentLabel}」と違います。";
+                continue;
+            }
+            $questionMap[$hIdx] = $question;
+            $questionNumbers[$hIdx] = $qNum;
+        }
+
+        // 行を検査する前・書き込む前に、ファイルごと断る（確定でも、読み直した CSV で照らし合わせ直す）
+        if ($columnProblems !== []) {
+            return redirect()->route('admin.customers.import')->withErrors([
+                'csv_file' => [...$columnProblems, '設問の並びや文が変わっています。テンプレートをダウンロードし直してください。'],
+            ]);
         }
 
         // カラムインデックスマッピング

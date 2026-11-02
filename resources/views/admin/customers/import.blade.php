@@ -77,6 +77,7 @@
                         テンプレートCSVをダウンロード
                     </a>
                     <div style="font-size: 12px; color: #6b7280; margin-top: 6px;">※ 選択した部署に応じたテンプレートがダウンロードされます</div>
+                    <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">※ 設問の並び替え・有効／無効・設問文の変更のあとは、前にダウンロードしたテンプレートは取り込めません（ダウンロードし直してください）</div>
                 </div>
             </div>
 
