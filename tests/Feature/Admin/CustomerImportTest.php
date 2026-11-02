@@ -9,6 +9,7 @@ use App\Models\BuyerSurvey;
 use App\Models\SurveyQuestion;
 use App\Models\User;
 use App\Support\BuyerCsvRow;
+use App\Support\CsvImportReader;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -118,11 +119,17 @@ class CustomerImportTest extends TestCase
     /** 取込の画面からファイルを上げてプレビューを描かせる（Excel と同じく BOM を付ける） */
     private function preview(string $csv, string $department = 'housing'): TestResponse
     {
+        return $this->upload("\xEF\xBB\xBF" . $csv, $department);
+    }
+
+    /** 取込の画面から、中身をそのままのバイトで上げる（Shift_JIS で保存したファイルなど） */
+    private function upload(string $bytes, string $department = 'housing'): TestResponse
+    {
         return $this->actingAs($this->actor)
             ->from('/admin/customers/import')
             ->post('/admin/customers/import', [
                 'department' => $department,
-                'csv_file'   => UploadedFile::fake()->createWithContent('customers.csv', "\xEF\xBB\xBF" . $csv),
+                'csv_file'   => UploadedFile::fake()->createWithContent('customers.csv', $bytes),
             ]);
     }
 
@@ -673,6 +680,59 @@ class CustomerImportTest extends TestCase
         $preview->assertStatus(200);
         $this->assertSame([], $preview->viewData('rowErrors'));
         $this->assertSame(1, $preview->viewData('validCount'));
+    }
+
+    /**
+     * Windows の Excel が Shift_JIS（cp932）で保存し直したテンプレートは、取込（CsvImportReader::decode()）が SJIS（JIS の対応）
+     * として読むので「～」「－」が「〜」「−」になる。設問の列の見出しは、その字の組を 1 つにそろえてから比べる（Ruling 18）。
+     */
+    public function test_a_template_saved_by_excel_as_shift_jis_is_not_refused(): void
+    {
+        $budget = SurveyQuestion::create([
+            'department' => 'housing', 'label' => 'ご予算（～万円）', 'question_type' => 'text',
+            'sort_order' => 1, 'is_active' => true,
+        ]);
+        $loan = SurveyQuestion::create([
+            'department' => 'housing', 'label' => 'ローン－頭金', 'question_type' => 'text',
+            'sort_order' => 2, 'is_active' => true,
+        ]);
+        // ほかに読み方で変わる字（∥ ￠ ￡ ￢ は SJIS で ‖ ¢ £ ¬ になる。—（U+2014）は cp932 に無く、― は SJIS でも ― のまま）
+        SurveyQuestion::create([
+            'department' => 'housing', 'label' => 'ご記入の記号（∥￠￡￢）', 'question_type' => 'text',
+            'sort_order' => 3, 'is_active' => true,
+        ]);
+
+        // Windows の Excel と同じく cp932 で保存する（「～」は 0x8160・「－」は 0x817C。BOM は付かない）
+        $sjis = mb_convert_encoding($this->csvUnder($this->templateHeader('housing'), [
+            $this->person('山田', '太郎', ['Q1:ご予算（～万円）' => '3000', 'Q2:ローン－頭金' => 'あり']),
+        ]), 'SJIS-win', 'UTF-8');
+
+        // 前提: 取込はこのファイルを SJIS として読み、「～」「－」を「〜」「−」にする（ここが崩れると直す前でも緑になる）
+        $decoded = CsvImportReader::decode($sjis);
+        $this->assertStringContainsString("Q1:ご予算（\u{301C}万円）", $decoded);
+        $this->assertStringContainsString("Q2:ローン\u{2212}頭金", $decoded);
+        $this->assertStringContainsString("Q3:ご記入の記号（\u{2016}\u{00A2}\u{00A3}\u{00AC}）", $decoded);
+
+        // 直す前: 見出しの文が今の設問の文と違うとして、ファイルごと断っていた（ダウンロードし直しても Excel は同じ形で保存する）
+        $preview = $this->upload($sjis);
+        // ⚠ assertStatus() は使わない（入力エラーを持つ転送で外れると、失敗文を組み立てる途中で落ちて理由が読めない）
+        if ($preview->getStatusCode() !== 200) {
+            $this->fail("断られた:\n" . implode("\n", $this->errorItems($this->followRedirects($preview)->getContent())));
+        }
+        $this->assertSame([], $preview->viewData('rowErrors'));
+        $this->assertSame(1, $preview->viewData('validCount'));
+
+        $this->submit($this->confirmForm($preview))->assertSee('1件のインポートが完了しました。');
+        $this->assertSame(
+            [$budget->id => '3000', $loan->id => 'あり'],
+            BuyerSurvey::sole()->answers()->orderBy('question_id')->pluck('answer_value', 'question_id')->all(),
+        );
+
+        // 本当に違う文は、そろえたあとも断る。文には読んだ見出しをそのまま・設問の文をそのまま出す
+        $loan->update(['label' => 'ローン－借入']);
+        $this->assertRefusedForQuestionColumns($this->refused($this->upload($sjis)), [
+            "Q2 の列の設問「ローン\u{2212}頭金」が、今の Q2「ローン－借入」と違います。",
+        ]);
     }
 
     /** 取込の画面のテンプレートの案内に、前のテンプレートが断られることを書く（設計書 §4.4） */

@@ -42,6 +42,22 @@ use Illuminate\Validation\ValidationException;
 class CustomerImportController extends Controller
 {
     /**
+     * 設問の列の見出しの文と設問の文を比べる前に、両側で 1 つの字にそろえる字の組（JIS の対応の字 => Windows の対応の字）。
+     * Windows の Excel が Shift_JIS（cp932）で保存したテンプレートを CsvImportReader::decode() が SJIS（JIS の対応）として読むと、
+     * 「～」「－」などが別の字（「〜」「−」）になり、ダウンロードし直したテンプレートでも文が合わなくなるため（D8・Ruling 18）。
+     * ⚠ 比べるときだけに使う。誤りの文には読んだ見出しと設問の文をそのまま出し、行の値には使わない
+     */
+    private const SHIFT_JIS_LOOKALIKES = [
+        "\u{301C}" => "\u{FF5E}", // 〜 => ～
+        "\u{2212}" => "\u{FF0D}", // − => －
+        "\u{2016}" => "\u{2225}", // ‖ => ∥
+        "\u{2014}" => "\u{2015}", // — => ―
+        "\u{00A2}" => "\u{FFE0}", // ¢ => ￠
+        "\u{00A3}" => "\u{FFE1}", // £ => ￡
+        "\u{00AC}" => "\u{FFE2}", // ¬ => ￢
+    ];
+
+    /**
      * インポート画面表示
      */
     public function showForm()
@@ -107,10 +123,10 @@ class CustomerImportController extends Controller
                 $columnProblems[] = "Q{$qNum} の列に当たる設問がありません（今の設問は {$questions->count()} 問です）。";
                 continue;
             }
-            // 前後の空白（全角の空白も）は除いて比べる
+            // 前後の空白（全角の空白も）は除き、Shift_JIS の読み方で変わる字をそろえて比べる（SHIFT_JIS_LOOKALIKES）
             $columnLabel  = Str::trim($m[2]);
             $currentLabel = Str::trim($question->label);
-            if ($columnLabel !== $currentLabel) {
+            if (strtr($columnLabel, self::SHIFT_JIS_LOOKALIKES) !== strtr($currentLabel, self::SHIFT_JIS_LOOKALIKES)) {
                 $columnProblems[] = "Q{$qNum} の列の設問「{$columnLabel}」が、今の Q{$qNum}「{$currentLabel}」と違います。";
                 continue;
             }
