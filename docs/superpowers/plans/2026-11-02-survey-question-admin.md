@@ -347,3 +347,41 @@
 ## 実測記録
 
 （Task 0・8・9・10 の結果をここに書く）
+
+### 実測記録 Task 0（M1〜M4）
+
+2026-11-02・PHP 8.3.36・枝 `survey-question-admin`（`a232a983` の上）。直す前のコード（アプリ・テストは 1 行も変えていない）で測った。Step 2（本番の設問の定義の読み取り）はこの記録に含めない（別に記録する）。
+M1〜M3 は使い捨てのテスト `<scratchpad>/task0/SurveyQuestionProbeTest.php`（`namespace Tests\Probe`・`MasterScreenTestCase` を継承・コミットしない）で、M4 は実ブラウザ（Playwright・画面が見えている状態・1440px）で測った。
+
+| # | 見込み | 実測 | 一致 |
+|---|---|---|---|
+| M1 | 追加の XHR のあと一覧を開き直すと、「設問を追加しました。」は帯に出ない | 出ない（一覧の帯 0 件） | 一致 |
+| M2 | `PUT` で `options` に `'["A",'` を送ると、今の選択肢が null になる | `options` の DB の生値が `["チラシ","Web"]` の JSON から `NULL` に（応答は 302） | 一致 |
+| M3 | 回答がある設問に `PUT` で `question_type` を別の種類にして送ると、種類が変わる | `single_select` → `slider` に変わった（回答は 1 件のまま・`options` は残る・応答は 302） | 一致 |
+| M4 | 追加の小窓の外枠が `display: block` になり、白い箱が中央にそろわない（Bug #32） | 外枠の `display` は `block`・白い箱は左 0px〜右 500px（左の余白 0px・右の余白 940px・画面の幅 1440px） | 一致 |
+
+#### M1 の中身
+
+- 画面の JS（`surveyQuestionManager`）に `data.showAddModal = true; data.newLabel = '重視する点'; data.newType = 'multi_select'; data.newOptions = '["駅近","学区"]'; data.addQuestion();` を実行させ、JS が組んだ要求を `sendCapturedLikeBrowser()`（POST の 302 は GET に変えて追う）で送った。設問そのものは追加される。
+- XHR の最終応答は 200。その本文は、転送先の一覧の画面（HTML）で、帯（`<span class="text-sm text-emerald-800">`）に「設問を追加しました。」が**出ている**。つまり転送先の GET がフラッシュを使い切っている。
+- JS は status 200 を見て `window.location.href = 一覧?department=realestate` を実行する（`navigations` に 1 件・`alerts` は 0 件）。同じセッションでその一覧を開き直すと、帯は **0 件**で、「設問を追加しました。」の文字もページのどこにも無い。
+- 対照: 同じ要求を転送を追わずに送り（POST は 302・`Location` は `…/admin/survey-questions?department=realestate`）、そのまま一覧を開くと、帯に「設問を追加しました。」が**出る**。フラッシュの仕組みそのものは動いていて、原因は XHR が `X-Requested-With` を付けないため `store()` が JSON でなく転送（`$request->ajax()` が偽）を返し、XHR がその転送先を読んでフラッシュを消費することだ。
+
+#### M2・M3 の中身
+
+- `update()` は `$request->input('options') ? json_decode(…, true) : $question->options` と書いているので、空でない文字列なら `json_decode()` の結果をそのまま入れる。壊れた JSON は `json_decode()` が `null` を返すので、今の選択肢が消える（エラーにならない）。
+- `update()` は `question_type` が許す種類のどれかであれば、回答の有無を見ずに更新する。回答がある設問でも種類が変わり、保存済みの回答（`answer_value`・`question_snapshot`）は変わらないまま残る。
+
+#### M4 の中身（`getComputedStyle` と `getBoundingClientRect()`・「設問を追加」を押したあと）
+
+- 外枠（`x-show` の要素）: 描かれた `style` 属性は `position: fixed; inset: 0px; background: rgba(0, 0, 0, 0.4); z-index: 9999; align-items: center; justify-content: center;`。**`display` が消えて**いて、計算された `display` は `block`（Alpine の `x-show` が、静的に書いた `display: flex` を表示のたびに消す）。`align-items` と `justify-content` は `center` のままだが、`display: flex` が無いので効かない。外枠の四角は 0,0〜1440×900（画面全体）。
+- 白い箱: 500px × 412.5px・左上は (0, 0)。画面の左上に貼り付く（スクリーンショット: `<scratchpad>/task0/m4-add-modal-before.png`）。
+- コンソールのエラー 0 件。一覧の 6 問（問 1 は選択肢 11 個・問 2 は条件分岐付き選択で 6 個・問 3〜5 は単一選択・問 6 はスライダー「2,000〜6,000万円（100万円刻み）」）は期待どおりに描かれた。
+
+#### 使い捨ての環境（Task 9 でも使う。コミットしない）
+
+- DB は `<scratchpad>/task0/demo.sqlite`（`.claude/route-coverage-tools/browser/demo.sqlite` の写し）と `gym.sqlite`。`survey-env.php` が、作業場所のコードに合わせて migrate を流し（決裁の 3 本の migration が流れた）、`survey_questions`（無ければ `CreatesSurveyQuestionSchema` と同じ列で作る）の全行を消して、住宅事業に本番と同じ構成の 6 問（問 1 選択肢＋付随テキスト 11 択で `has_text` は「ご紹介」「その他」だけ・問 2 条件分岐付き選択 6 択で付随の欄の `key` が選択肢をまたいで重なる・問 3〜5 単一選択・問 6 スライダー 2000〜6000・100 刻み・万円）を入れる。何度流しても同じ状態になる。設問文は一般的な言い方に置き換えてある。
+- 起動（作業場所の cwd で。`routes/web.php` の末尾に `login-route.php.txt` を一時的に足しておく。確認が済んだら `git checkout -- routes/web.php`）:
+  `env APP_KEY="$(cat <scratchpad>/task0/app-key.txt)" APP_ENV=local DB_CONNECTION=sqlite DB_DATABASE=<scratchpad>/task0/demo.sqlite ZEAL_DB_URL=sqlite:///<scratchpad>/task0/gym.sqlite APP_URL=http://127.0.0.1:8032 CACHE_STORE=file SESSION_DRIVER=file APP_LOCALE=ja APP_FALLBACK_LOCALE=ja /opt/homebrew/opt/php@8.3/bin/php artisan serve --host=127.0.0.1 --port=8032`（Bash の `run_in_background`）。ログインは `http://127.0.0.1:8032/_dev/login-as/1?to=/admin/survey-questions`。
+- ⚠ Playwright の「保存先」の起点は main repo（`/Users/masanori/site/manage`）で、相対パスで撮ったスクリーンショットは main repo の直下（`/*.png` は gitignore 済み）に置かれる。撮ったらすぐ scratchpad へ移した。
+- 後片付け済み: サーバを止め、`routes/web.php` を戻した（`git status --porcelain` は空）。`public/build` のリンクは以前からあったので残した。
