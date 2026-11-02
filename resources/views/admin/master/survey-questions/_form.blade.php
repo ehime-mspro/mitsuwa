@@ -8,7 +8,7 @@
     <div class="sq-department">部署: {{ $departmentLabel }}</div>
 
     <div class="sq-field">
-        <label for="sq-label" class="sq-label">設問の文<span class="sq-required">*</span></label>
+        <label for="sq-label" class="sq-label">設問文<span class="sq-required">*</span></label>
         <input type="text" id="sq-label" name="label" x-model="label" maxlength="255" class="sq-input">
     </div>
 

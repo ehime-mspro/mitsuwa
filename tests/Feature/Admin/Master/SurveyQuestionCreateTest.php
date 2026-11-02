@@ -43,6 +43,8 @@ class SurveyQuestionCreateTest extends SurveyQuestionScreenTestCase
             $page = $this->htmlOf($this->createUrl($department));
             $this->assertStringContainsString('<input type="hidden" name="department" value="' . $department . '">', $page);
             $this->assertStringContainsString('部署: ' . $name, $page);
+            // 見出しは誤りの文の和名（設問文）と同じ語（Bug #37 の形。Ruling 13）
+            $this->assertStringContainsString('<label for="sq-label" class="sq-label">設問文<span class="sq-required">*</span></label>', $page);
             $this->assertSame($department, $this->questionForm($page)['fields']['department']);
         }
     }
