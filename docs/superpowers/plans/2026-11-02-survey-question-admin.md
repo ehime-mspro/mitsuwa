@@ -130,7 +130,7 @@
   - 定数 `OPTION_NAME_MAX = 100`・`OPTIONS_MAX = 50`・`SUB_FIELDS_MAX = 10`・`SUB_LABEL_MAX = 100`・`TEXT_LABEL_MAX = 100`・`UNIT_MAX = 10`・`PLACEHOLDER_MAX = 100`・`SUB_HEADING_MAX = 50`・`SETTING_LIMIT = 999999999`
   - `isChoice(SurveyQuestionType $type): bool`（単一・複数・付随テキスト・条件分岐）
   - `state(?SurveyQuestion $question, string $department, ?array $old): array` — 画面の最初の状態。キーは `department` `label` `questionType` `isActive` `typeLocked` `answerCount` `options`（各行 `value` `original` `hasText` `textLabel` `subFields`（各 `key` `label` `type`）`answerCount`）`settings`（`min` `max` `step` `unit` `placeholder` `subHeading`）。値は文字（`isActive`・`hasText`・`typeLocked` は bool、件数は int）。`$old` があればそこから組み、形の合わない値は空として扱う（配列でない `options` は `[]`）。`$old` の `question_type` が無いときは設問の今の種類。新しい設問の既定: 単一選択・有効・選択肢 1 行（空）
-  - `definition(SurveyQuestionType $type, array $data, ?SurveyQuestion $current): array` — 検査を通った入力から `['options' => ?array, 'settings' => ?array]`（設計 5 章の形）。全部が空の行・欄は落とす。新しい付随の欄（`key` が空）には、その設問のどの選択肢でも使っていない `f` ＋英小文字と数字 8 文字のキーを付ける。今ある `key` は変えない
+  - `definition(SurveyQuestionType $type, array $data, ?SurveyQuestion $current): array` — 検査を通った入力から `['options' => ?array, 'settings' => ?array]`（設計 5 章の形。選択肢＋付随テキストは `has_text` をどの選択肢にも bool で書き（false も）、`text_label` は `has_text` が真で空でないときだけ。条件分岐はどの選択肢にも `sub_fields` を書く（欄が無ければ `[]`）。本番の書き方に合わせる＝実測記録 Task 0「本番の設問の形」）。全部が空の行・欄は落とす。新しい付随の欄（`key` が空）には、その設問のどの選択肢でも使っていない `f` ＋英小文字と数字 8 文字のキーを付ける。今ある `key` は変えない
   - `problems(SurveyQuestionType $type, array $data): array` — `[項目のキー => 文]`。規則では書けない検査（下の表）
   - `answerCounts(SurveyQuestion $question): array` — `['total' => int, 'options' => [選択肢の値 => int]]`
 
@@ -385,3 +385,17 @@ M1〜M3 は使い捨てのテスト `<scratchpad>/task0/SurveyQuestionProbeTest.
   `env APP_KEY="$(cat <scratchpad>/task0/app-key.txt)" APP_ENV=local DB_CONNECTION=sqlite DB_DATABASE=<scratchpad>/task0/demo.sqlite ZEAL_DB_URL=sqlite:///<scratchpad>/task0/gym.sqlite APP_URL=http://127.0.0.1:8032 CACHE_STORE=file SESSION_DRIVER=file APP_LOCALE=ja APP_FALLBACK_LOCALE=ja /opt/homebrew/opt/php@8.3/bin/php artisan serve --host=127.0.0.1 --port=8032`（Bash の `run_in_background`）。ログインは `http://127.0.0.1:8032/_dev/login-as/1?to=/admin/survey-questions`。
 - ⚠ Playwright の「保存先」の起点は main repo（`/Users/masanori/site/manage`）で、相対パスで撮ったスクリーンショットは main repo の直下（`/*.png` は gitignore 済み）に置かれる。撮ったらすぐ scratchpad へ移した。
 - 後片付け済み: サーバを止め、`routes/web.php` を戻した（`git status --porcelain` は空）。`public/build` のリンクは以前からあったので残した。
+
+### 実測記録 Task 0（本番の設問の形・Step 2）
+
+2026-11-02 に利用者が本番で読み取りの手順を流し、結果を貼ってくれた（読むだけ。設問の文と選択肢の名前は出していない）。設計 5 章に無いキーは無かったので止めずに進めた。
+
+| 設問 | 種類 | 選択肢の形 | settings | 回答 |
+|---|---|---|---|---|
+| 問 1 | 選択肢＋付随テキスト | 11 個。全部オブジェクト `{has_text, value}`（文字を入れない 9 個にも `has_text` がある）・2 個だけ `{has_text, text_label, value}` | null | 1 |
+| 問 2 | 条件分岐付き選択 | 6 個。全部 `{sub_fields, value}`（欄の無い 2 個にも `sub_fields` がある）・欄は全部 `{key, label, type}`。キーは `city` `area` `land_tsubo` `building_tsubo`（1・2 個目）／`city` `town` `land_tsubo`（3 個目）／`other_text`（6 個目）。`type` は全部ある | null | 0 |
+| 問 3〜5 | 単一選択 | 文字の並び（4・5・5 個） | null | 0 |
+| 問 6 | スライダー | null | `{"max": 6000, "min": 2000, "step": 100, "unit": "万円"}` | 0 |
+
+- 不動産事業の設問は 0 問。`laravel.log` の更新はサーバーの時刻で 2026-06-18 08:41（読み取りのあとのエラーは無し）
+- これに合わせて、保存の形を 2 つ決めた（設計 5 章・Task 3 の `definition()` に書き足した）: 選択肢＋付随テキストは `has_text` をどの選択肢にも書く ／ 条件分岐はどの選択肢にも `sub_fields` を書く。Review Focus 1 のテストは、この形の問 1・問 2 で作る

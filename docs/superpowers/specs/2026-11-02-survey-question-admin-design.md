@@ -101,8 +101,8 @@
 | 種類 | `options` | `settings` |
 |---|---|---|
 | 単一選択・複数選択 | `["持ち家", "賃貸マンション"]` | null |
-| 選択肢＋付随テキスト | `[{"value": "ご紹介", "has_text": true, "text_label": "ご紹介者"}, {"value": "チラシ"}]` | null |
-| 条件分岐付き選択 | `[{"value": "建売住宅の購入", "sub_fields": [{"key": "city", "label": "希望の市", "type": "text"}, …]}, …]` | `{"sub_heading": "希望エリア"}`（新しいキー。D7） |
+| 選択肢＋付随テキスト | `[{"value": "ご紹介", "has_text": true, "text_label": "ご紹介者"}, {"value": "チラシ", "has_text": false}]`（`has_text` はどの選択肢にも書く。本番の書き方。2026-11-02 の読み取り） | null |
+| 条件分岐付き選択 | `[{"value": "建売住宅の購入", "sub_fields": [{"key": "city", "label": "希望の市", "type": "text"}, …]}, {"value": "リフォーム", "sub_fields": []}, …]`（`sub_fields` はどの選択肢にも書く。本番の書き方） | `{"sub_heading": "希望エリア"}`（新しいキー。D7） |
 | テキスト入力 | null | `{"placeholder": "例: 3LDK"}` |
 | 数値入力 | null | `{"min": …, "max": …, "unit": "坪"}`（入れたキーだけ） |
 | スライダー | null | `{"min": 2000, "max": 6000, "step": 100, "unit": "万円"}` |
