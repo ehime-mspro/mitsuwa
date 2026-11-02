@@ -922,6 +922,32 @@ class SurveyAnswersTest extends TestCase
         $this->assertSame('1500', SurveyAnswers::formState($slider, '1500', '1500')['slider']['value']);
     }
 
+    public static function unansweredSliderProvider(): array
+    {
+        return [
+            '刻みが範囲を割り切る（真ん中が刻みの上にある）' => [['min' => 2000, 'max' => 6000, 'step' => 100], '4000'],
+            '真ん中が刻みの上にない（150 → 100）' => [['min' => 0, 'max' => 300, 'step' => 100], '100'],
+            '下限が 0 でない（真ん中 5.5 → 下限から数えて 4）' => [['min' => 1, 'max' => 10, 'step' => 3], '4'],
+            '刻みが範囲より大きい（下限のまま）' => [['min' => 10, 'max' => 20, 'step' => 100], '10'],
+            '設定が無い（既定 0〜100・刻み 1 の真ん中）' => [[], '50'],
+        ];
+    }
+
+    /**
+     * ⚠ 未回答のスライダーの `value` は、触らずに「回答しない」を外したときに送る値になる。刻みの外だと、そのまま保存すると
+     *   サーバーの検査（下限から刻みの倍数）に断られる。真ん中以下で最も近い刻みの上に寄せる。
+     *
+     * @param  array<string, mixed>  $settings
+     */
+    #[DataProvider('unansweredSliderProvider')]
+    public function test_the_unanswered_slider_starts_on_a_step(array $settings, string $expected): void
+    {
+        $slider = SurveyAnswers::formState($this->question('slider', ['settings' => $settings]), null, null)['slider'];
+
+        $this->assertFalse($slider['answered']);
+        $this->assertSame($expected, $slider['value']);
+    }
+
     public function test_form_state_reads_both_saved_and_submitted_shapes(): void
     {
         // 「その他」の文字だけ打ってチェックしなかった・「ご紹介」にチェックして文字を打った

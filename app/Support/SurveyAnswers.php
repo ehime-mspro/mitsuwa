@@ -236,7 +236,7 @@ final class SurveyAnswers
      *   保存済みの選択肢にだけ付け、保存済みの値が空のキーは描かない。値は描く値の選択肢の欄にだけ入れる。
      * ⚠ 選択肢＋付随テキストは、選んだ値ごとに文字を描く。画面の形（old()）の、チェックの無い欄の文字は描かない
      *   （保存しない値。保存の形から描いたときと同じ状態になる）。
-     * ⚠ スライダーは、描く値が無ければ「回答しない」（`answered` が false）。`value` は真ん中の値。
+     * ⚠ スライダーは、描く値が無ければ「回答しない」（`answered` が false）。`value` は真ん中以下で最も近い刻みの値（下限から数えて刻みの倍数）。
      *
      * @return array{
      *   choices: list<array{value: string, label: string, checked: bool, extra: bool, hasText: bool, textLabel: string, text: string,
@@ -904,12 +904,16 @@ final class SurveyAnswers
         }
         $value = self::filledText($shown);
 
+        // ⚠ 答えていないときの値は、触らずに「回答しない」を外したとき送る値になる。刻み（下限から数えて step の倍数）の外だと
+        //   検査に断られるので、真ん中以下で最も近い刻みの上に寄せる（0〜300・刻み 100 の真ん中 150 → 100）
+        $onStep = $min + intdiv(intdiv(max(0, $max - $min), 2), $step) * $step;
+
         return [
             'min' => $min,
             'max' => $max,
             'step' => $step,
             'unit' => self::unit($settings),
-            'value' => $value ?? (string) (int) (($min + $max) / 2),
+            'value' => $value ?? (string) $onStep,
             'answered' => $value !== null,
         ];
     }
