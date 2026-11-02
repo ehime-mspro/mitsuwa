@@ -1,5 +1,6 @@
 {{-- 設問の追加・編集のフォームの中身（create・edit が <form x-data="surveyQuestionForm()"> の中で読む）。
      最初の状態はコントローラが SurveyQuestionForm::state() で組み、下の script が Js::from で 1 つだけ受け取る（old() を読まない）。
+     $typeLockedReason は回答がある設問の種類を変えられない理由（編集の画面だけ。ほかは null）。
      ⚠ 種類で使わない欄は x-show で隠し、:disabled で送らない（数値入力とスライダーが同じ settings[min] を持つ）。
      ⚠ 選択肢の行は original（保存されている名前）、付随の欄は key（今あるキー）を hidden で必ず送る。送らないと今ある欄に
        新しいキーが付き、過去の回答の sub が外れる。
@@ -15,11 +16,19 @@
     <div class="grid-stack-sm" style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px;">
         <div>
             <label for="sq-type" class="sq-label">種類</label>
-            <select id="sq-type" name="question_type" x-model="questionType" class="sq-input">
-                @foreach($questionTypes as $type)
-                    <option value="{{ $type->value }}">{{ $type->label() }}</option>
-                @endforeach
-            </select>
+            {{-- 回答がある設問（編集の画面）は種類を変えさせない。押せない欄はホバーもフォーカスも受けないので、理由は包む span の
+                 title と、下の文（aria-describedby）で出す（Top trap #12）。押せない欄は送られないので、update() は今の種類を使う --}}
+            <span class="block" @if($typeLockedReason !== null) title="{{ $typeLockedReason }}" @endif>
+                <select id="sq-type" name="question_type" x-model="questionType" class="sq-input"
+                        @if($typeLockedReason !== null) disabled aria-describedby="sq-type-locked" @endif>
+                    @foreach($questionTypes as $type)
+                        <option value="{{ $type->value }}">{{ $type->label() }}</option>
+                    @endforeach
+                </select>
+            </span>
+            @if($typeLockedReason !== null)
+                <div id="sq-type-locked" class="sq-help">{{ $typeLockedReason }}</div>
+            @endif
         </div>
         <div>
             <span class="sq-label">状態</span>
@@ -56,6 +65,8 @@
                        class="sq-input" style="flex: 1; min-width: 0;">
                 <button type="button" class="sq-remove" x-on:click="removeOption(i)" :aria-label="'選択肢 ' + (i + 1) + ' 行目を外す'">×</button>
             </div>
+            {{-- 回答で選ばれた選択肢（編集の画面）: 件数と、回答に残る元の名前。行の状態（answerCount・original）から Alpine が描く --}}
+            <div class="sq-note" x-show="row.answerCount" x-text="answerNote(row)"></div>
 
             {{-- 選択肢＋付随テキスト: 「文字も入れる」と、その欄の見出し --}}
             <div class="sq-indent sq-line" x-show="questionType === 'select_with_text'">
@@ -166,6 +177,7 @@
 .sq-input:disabled { background: #f3f4f6; color: #6b7280; }
 .sq-check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #374151; }
 .sq-help { font-size: 12px; color: #6b7280; margin-top: 4px; }
+.sq-note { font-size: 12px; color: #92400e; background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; padding: 6px 10px; margin-top: 8px; overflow-wrap: anywhere; }
 .sq-card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px 12px; background: #f9fafb; margin-bottom: 10px; }
 .sq-line { display: flex; align-items: center; gap: 8px; }
 .sq-indent { margin: 8px 0 0 64px; }
@@ -230,6 +242,12 @@ function surveyQuestionForm() {
 
         isChoice: function () {
             return this.choiceTypes.indexOf(this.questionType) !== -1;
+        },
+
+        // 回答で選ばれた選択肢の行の注意（original は保存されている名前。名前を変えても外しても、回答はこの名前のまま残る）
+        answerNote: function (row) {
+            return 'この選択肢を選んだ回答が ' + row.answerCount + '件あります。名前を変えたり外したりしても、その回答は元の名前「'
+                + row.original + '」のまま残ります。';
         },
 
         addOption: function () {

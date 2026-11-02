@@ -9,10 +9,11 @@ use Tests\Concerns\CreatesSurveyQuestionSchema;
 
 /**
  * アンケート設問の管理（Admin\SurveyQuestionController）。住宅事業・不動産事業の 2 つのタブ。
- * 削除は画面の JS（surveyQuestionManager）が XMLHttpRequest で送る。追加は別の画面のふつうのフォーム（SurveyQuestionCreateTest）。
+ * 削除は画面の JS（surveyQuestionManager）が XMLHttpRequest で送る。追加・編集は別の画面のふつうのフォーム
+ * （SurveyQuestionCreateTest・SurveyQuestionEditTest）。
  *
- * ⚠ **設問の編集（PUT）と並び替えには画面が無い**（「編集」ボタンは一覧を開き直すだけ・「ドラッグ＆ドロップで
- *   並び替えできます」と書いてあるが、ドラッグを受け取る処理が無い）。この 2 つはサーバの約束だけを直接送って確かめる。
+ * ⚠ **並び替えには画面が無い**（「ドラッグ＆ドロップで並び替えできます」と書いてあるが、ドラッグを受け取る処理が無い）。
+ *   サーバの約束だけを直接送って確かめる（一覧を作り直すときに ↑↓ のフォームへ置き換える）。
  */
 class SurveyQuestionMasterTest extends MasterScreenTestCase
 {
@@ -149,25 +150,17 @@ class SurveyQuestionMasterTest extends MasterScreenTestCase
     }
 
     /**
-     * 画面が無い 2 つ（設問の編集・並び替え）は、サーバの約束だけを確かめる。
-     * 画面にこの 2 つを呼ぶものが無いことも固定する（作ったら、画面から送る往復に書き換える）。
+     * 画面が無い並び替えは、サーバの約束だけを確かめる。画面に並び替えを呼ぶものが無いことも固定する
+     * （作ったら、画面から送る往復に書き換える）。設問の編集は編集の画面から送る（SurveyQuestionEditTest）。
      */
-    public function test_the_update_and_reorder_routes_work_though_no_screen_calls_them(): void
+    public function test_the_reorder_route_works_though_no_screen_calls_it(): void
     {
         $html = $this->htmlOf($this->indexUrl());
         $this->assertStringNotContainsString('survey-questions/reorder', $html);
-        $this->assertStringNotContainsString("'PUT'", $html);
-
-        $this->actingAs($this->user)->from($this->indexUrl())
-            ->put(route('admin.survey-questions.update', $this->ids['来場のきっかけ']), ['label' => 'ご来場のきっかけ', 'question_type' => 'single_select', 'is_active' => '0'])
-            ->assertRedirect($this->indexUrl() . '?department=housing');
-        $question = SurveyQuestion::find($this->ids['来場のきっかけ']);
-        $this->assertSame(['ご来場のきっかけ', ['チラシ', 'Web'], false], [$question->label, $question->options, $question->is_active],
-            '送らなかった選択肢が消えた／無効にならない');
 
         $this->actingAs($this->user)->postJson(route('admin.survey-questions.reorder'), ['order' => [$this->ids['ご予算'], $this->ids['来場のきっかけ']]])
             ->assertOk()->assertJson(['success' => true]);
-        $this->assertSame(['ご予算', 'ご来場のきっかけ'], SurveyQuestion::ofDepartment('housing')->ordered()->pluck('label')->all());
+        $this->assertSame(['ご予算', '来場のきっかけ'], SurveyQuestion::ofDepartment('housing')->ordered()->pluck('label')->all());
     }
 
     /**

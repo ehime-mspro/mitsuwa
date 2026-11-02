@@ -1688,7 +1688,7 @@ Route::middleware(['auth', 'password.change'])->group(function () {
         
     /*
     |----------------------------------------------------------------------
-    | アンケート設問管理（マスタ管理 — 6ルート）※経営層のみ
+    | アンケート設問管理（マスタ管理 — 7ルート）※経営層のみ
     |----------------------------------------------------------------------
     */
     Route::middleware('role:executive')->prefix('admin')->group(function () {
@@ -1696,8 +1696,10 @@ Route::middleware(['auth', 'password.change'])->group(function () {
             ->name('admin.survey-questions.index');
         Route::get('/survey-questions/create', [\App\Http\Controllers\Admin\SurveyQuestionController::class, 'create'])
             ->name('admin.survey-questions.create');
+        Route::get('/survey-questions/{question}/edit', [\App\Http\Controllers\Admin\SurveyQuestionController::class, 'edit'])
+            ->name('admin.survey-questions.edit');
 
-        // 追加はふつうのフォームの送信。削除は一覧の XHR（更新・並び替えは画面から呼ばれていない）
+        // 追加・更新はふつうのフォームの送信。削除は一覧の XHR（並び替えは画面から呼ばれていない）
         Route::post('/survey-questions', [\App\Http\Controllers\Admin\SurveyQuestionController::class, 'store'])
             ->name('admin.survey-questions.store');
         Route::put('/survey-questions/{question}', [\App\Http\Controllers\Admin\SurveyQuestionController::class, 'update'])

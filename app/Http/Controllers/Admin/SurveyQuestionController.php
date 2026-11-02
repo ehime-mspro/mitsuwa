@@ -46,10 +46,30 @@ class SurveyQuestionController extends Controller
         $department = $this->departmentFrom($request);
 
         return view('admin.master.survey-questions.create', [
-            'department'      => $department,
-            'departmentLabel' => self::DEPARTMENTS[$department],
-            'questionTypes'   => SurveyQuestionType::cases(),
-            'formState'       => $this->formState(null, $department, $request),
+            'department'       => $department,
+            'departmentLabel'  => self::DEPARTMENTS[$department],
+            'questionTypes'    => SurveyQuestionType::cases(),
+            'formState'        => $this->formState(null, $department, $request),
+            'typeLockedReason' => null,
+        ]);
+    }
+
+    /**
+     * 設問の編集の画面（部署は設問の部署で、画面では変えない）。
+     * 回答がある設問は種類の欄を押せなくし、理由を出す（typeLockedReason。押せない欄は送られないので、update() は今の種類を使う）。
+     */
+    public function edit(Request $request, SurveyQuestion $question)
+    {
+        $department = $question->department;
+        $formState = $this->formState($question, $department, $request);
+
+        return view('admin.master.survey-questions.edit', [
+            'question'         => $question,
+            'department'       => $department,
+            'departmentLabel'  => self::DEPARTMENTS[$department] ?? $department,
+            'questionTypes'    => SurveyQuestionType::cases(),
+            'formState'        => $formState,
+            'typeLockedReason' => $formState['typeLocked'] ? $this->typeLockedReason($formState['answerCount']) : null,
         ]);
     }
 
@@ -86,21 +106,35 @@ class SurveyQuestionController extends Controller
     }
 
     /**
-     * 設問更新（Ajax）
+     * 設問の更新（編集の画面のふつうのフォームの送信）。
+     *
+     * ⚠ 部署は設問の部署で検査する（画面は部署を送らない。手で送られた部署は使わない）。
+     * ⚠ 回答がある設問の種類は今の種類で検査する（押せない選択欄は送られない。Bug #38 / #43）。手で送られた種類が
+     *   今と違えば、その理由で断る（同じ回の誤りとして validateQuestion() が足す）。並び順は変えない。
      */
     public function update(Request $request, SurveyQuestion $question)
     {
-        $request->validate([
-            'label'         => 'required|max:255',
-            'question_type' => 'required|in:' . implode(',', array_map(function ($t) { return $t->value; }, SurveyQuestionType::cases())),
-        ]);
+        $data = array_merge($request->all(), ['department' => $question->department]);
+        $typeLockedReason = null;
+        $answerCount = $question->answers()->count();
+        if ($answerCount > 0) {
+            $currentType = $question->question_type->value;
+            if (array_key_exists('question_type', $data) && $data['question_type'] !== $currentType) {
+                $typeLockedReason = $this->typeLockedReason($answerCount);
+            }
+            $data['question_type'] = $currentType;
+        }
+
+        $validated = $this->validateQuestion($data, $question, $typeLockedReason);
+        $type = SurveyQuestionType::from($validated['question_type']);
+        $definition = SurveyQuestionForm::definition($type, $validated, $question);
 
         $question->update([
-            'label'         => $request->input('label'),
-            'question_type' => $request->input('question_type'),
-            'options'       => $request->input('options') ? json_decode($request->input('options'), true) : $question->options,
-            'settings'      => $request->input('settings') ? json_decode($request->input('settings'), true) : $question->settings,
-            'is_active'     => $request->boolean('is_active', $question->is_active),
+            'label'         => $validated['label'],
+            'question_type' => $type,
+            'options'       => $definition['options'],
+            'settings'      => $definition['settings'],
+            'is_active'     => (bool) ($validated['is_active'] ?? false),
         ]);
 
         if ($request->ajax()) {
@@ -171,6 +205,12 @@ class SurveyQuestionController extends Controller
         return is_string($department) && isset(self::DEPARTMENTS[$department]) ? $department : 'housing';
     }
 
+    /** 回答がある設問の種類を変えられない理由（画面の種類の欄と、手で送られた種類を断る文） */
+    private function typeLockedReason(int $answerCount): string
+    {
+        return "回答が {$answerCount}件あるため、種類は変えられません。";
+    }
+
     /**
      * 追加・編集の画面の最初の状態。SurveyQuestionForm::state() に、選択肢を持つ種類の一覧（画面の JS が欄を出し分ける）を足す。
      * 入力エラーで戻ったときは前の入力から組む（ビューは old() を読まず、これを Js::from で 1 つだけ受け取る）。
@@ -196,12 +236,13 @@ class SurveyQuestionController extends Controller
      *   断る（Admin/Master/ArrayInputTest）。文字でない値（ファイルなど）は `not_regex` が断る。
      * ⚠ 選択肢の行の `original`（保存されている名前）と付随の欄の `key`（今あるキー）は画面が hidden で送り返す（Bug #120 の回答を外さない）。
      *
-     * $question は編集する設問（追加は null）。
+     * $question は編集する設問（追加は null）。$typeLockedReason は、回答がある設問に今と違う種類が送られたときの理由
+     * （update() が決める。種類の欄に誤りとして足す。$data の種類は update() が今の種類に置き換えてある）。
      *
      * @param  array<string, mixed>  $data
      * @return array<string, mixed>
      */
-    private function validateQuestion(array $data, ?SurveyQuestion $question): array
+    private function validateQuestion(array $data, ?SurveyQuestion $question, ?string $typeLockedReason = null): array
     {
         return Validator::make($data, [
             'department'                   => ['required', 'in:housing,realestate'],
@@ -262,7 +303,10 @@ class SurveyQuestionController extends Controller
             'settings.unit'                => '単位',
             'settings.placeholder'         => '入力欄の見本の文字',
             'settings.sub_heading'         => '付随の欄の見出し',
-        ])->after(function ($validator) use ($data): void {
+        ])->after(function ($validator) use ($data, $typeLockedReason): void {
+            if ($typeLockedReason !== null && ! $validator->errors()->has('question_type')) {
+                $validator->errors()->add('question_type', $typeLockedReason);
+            }
             $type = is_string($data['question_type'] ?? null) ? SurveyQuestionType::tryFrom($data['question_type']) : null;
             if ($type === null) {
                 return;
