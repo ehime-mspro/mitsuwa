@@ -735,6 +735,26 @@ class CustomerImportTest extends TestCase
         ]);
     }
 
+    /**
+     * 字は両側でそろえる: Mac で打った「〜」（U+301C）の設問の文は、そのまま UTF-8 のテンプレートで取り込める
+     * （見出しの側だけ Windows の字にそろえると、こちらが断られる）。
+     */
+    public function test_a_label_with_the_jis_wave_dash_matches_its_own_template(): void
+    {
+        SurveyQuestion::create([
+            'department' => 'housing', 'label' => "ご予算（\u{301C}万円）", 'question_type' => 'text',
+            'sort_order' => 1, 'is_active' => true,
+        ]);
+
+        $preview = $this->preview($this->csvUnder($this->templateHeader('housing'), [
+            $this->person('山田', '太郎', ["Q1:ご予算（\u{301C}万円）" => '3000']),
+        ]));
+        if ($preview->getStatusCode() !== 200) {
+            $this->fail("断られた:\n" . implode("\n", $this->errorItems($this->followRedirects($preview)->getContent())));
+        }
+        $this->assertSame(1, $preview->viewData('validCount'));
+    }
+
     /** 取込の画面のテンプレートの案内に、前のテンプレートが断られることを書く（設計書 §4.4） */
     public function test_the_import_page_says_an_old_template_is_refused(): void
     {
