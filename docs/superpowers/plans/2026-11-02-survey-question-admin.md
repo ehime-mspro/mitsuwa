@@ -537,3 +537,38 @@ M1〜M3 は使い捨てのテスト `<scratchpad>/task0/SurveyQuestionProbeTest.
 #### スクリーンショット（`<scratchpad>/task9/`。コミットしない）
 
 `task9-01-list-1440.png`（一覧・無効の行）／ `task9-02-move-up-target-1440x500.png`（↑ のあと着いた行）／ `task9-03-hover-first-up.png`（先頭の ↑ にホバー）／ `task9-04-add-select-with-text.png`（付随テキストの追加）／ `task9-05-add-conditional-before-submit.png`（条件分岐の行と欄を動かしたあと）／ `task9-06-edit-conditional-reopened.png`（保存して開き直した編集画面）／ `task9-07-error-slider.png`・`task9-08-error-conditional.png`（入力エラーで戻った画面）／ `task9-09-edit-answered-locked.png`（回答がある問 2 の編集画面）／ `task9-10-survey-create-heading-empty.png`（見出しが空のアンケートの登録画面）／ `task9-11-survey-create-heading-kibou-area.png`（「▼ 建売住宅の購入 — 希望エリア」の箱）／ `task9-12-list-375.png`・`task9-13-create-conditional-375.png`・`task9-14-edit-answered-375.png`（375px）。`<scratchpad>` は `/private/tmp/claude-501/-Users-masanori-site-manage/e80904fb-8117-421f-ae6b-b2c150cf4f0b/scratchpad`
+
+### 実測記録 Task 10（全体の点検と、マージ前の直し）
+
+2026-11-02・PHP 8.3.36・枝 `survey-question-admin`。全体の点検（モデルは fable。差分 `6ba8ed07..4a945234` と設計書を渡した。読み取りだけ）のあと、点検が「マージ前に入れる」と勧めた小さな直し 5 つを新しい担当 1 人が入れ、範囲を絞って点検し直した。
+
+#### 全体の点検（`6ba8ed07..4a945234`）
+
+- 判定: **Ready to merge: Yes**（Critical 0・Important 0・Minor 8）。控えの後回し（約 40 件）の仕分けも頼み、マージ前に直すと勧められたのは Minor 1〜3（二度押し・名前を空にする・削除の確認の文）。ほかに Minor 4（別のフォームの控え）・7（テストの失敗の理由）も数行で済むので一緒に入れた（台帳の Ruling 21）
+- 後回しにしたのは Minor 5・6・8（台帳の Ruling 22）: ①データの行の読み方を RFC 4180（逃がしなし）にそろえること（見出しは逃がしなしに変えたが、データの行は前からの既定の逃がしのまま。PHP 8.4 へ上げる日に `CsvImportReader` と一緒に直すのが自然）②部署の一覧が 3 か所にあること（設問の管理の `DEPARTMENTS` と `in:housing,realestate`・顧客の取込の `DEPARTMENTS` など）③`validateQuestion()` が約 75 行・`CustomerImportController::execute()` の照らし合わせの切り出し（どちらも読みやすさの話）
+
+#### マージ前の直し 5 つ（点検の後 `4a945234..4a2b9230`）
+
+どれも直す前に赤を確かめてから直した（赤の文言は `.superpowers/sdd/…/final-fix-report.md`）。
+
+| 点検の指摘 | 直し | コミット |
+|---|---|---|
+| F-1（Minor 1）一覧の ↑↓ に二度押しの止めが無い（実ブラウザで 60ms あけて 2 回押すと POST が 2 本届いて 2 段動いた） | 取込の画面と同じ共通の部品 `_partials/_submit_once`（`submitOnce()`）をフォームごとに付け、2 回目の submit を取り消してボタンを押せなくする。端のボタンの `disabled` と包む span の `title` は変えない。テスト `test_each_arrow_form_is_sent_only_once`（描いた ↑・↓ のフォームが部品につながっていること〈構造〉と、部品の script を node で動かして 1 回目は通し・送信中は押せず・2・3 回目は取り消し・`pageshow` のあと押せること。部品の `@include` を `@if(false)` で包むと「定義の `<script>` が描かれていない」で赤） | `b41d056c` |
+| F-2（Minor 2）回答のある保存済みの選択肢の名前を空にして保存すると、黙って消える（D3 の「件数を見せてから直す」守りを、× でなく名前を消す操作がすり抜ける。直す前の実測: 302 で一覧に着き `options` は `["B"]`・理由 0 件） | 保存されている行（`original` がある行）の名前が空なら断る。文は「選択肢 N 行目の名前を入力してください（外すときは × を押してください）。」（N は 1 始まり）。新しい行（`original` が空）の、ほかの欄に何も無い空の行は今までどおり黙って落とす。回答の有無は問わない（文のとおり、外すときは × を押す）。テストは `SurveyQuestionFormTest` の problems（2 データ）・validForm（新しい空の行が落ちること）・`SurveyQuestionEditTest::test_blanking_the_name_of_an_answered_option_is_refused`（画面から送ると編集画面へ戻り、設問と回答が 1 文字も変わらない） | `520f77ff` |
+| F-3（Minor 3）削除の確認の文が回答の有無を問わず「…を削除しますか？回答がある設問は無効にします。」 | 文をサーバーで組み、1 つの `Js::from` で渡す。回答あり「「…」は回答が N件あるため、削除せずに無効にします。よろしいですか？」・回答なし「「…」を削除しますか？」（N は `(int)`）。テストは 4 データで全文を見る | `0af2b14d` |
+| F-4（Minor 4）別のフォームの控え（`_old_input` の `name`・`memo`）がセッションにあるとき、編集画面の「入力エラーで戻った」判定が反応し、設問文が空・選択肢 0 行・無効で描かれた | 控えにこのフォームの欄（`label`）があるときだけ入力を戻す（追加・編集の両方が通る `formState()`）。テスト 2 本（編集・追加の画面） | `32cdadf2` |
+| F-7（Minor 7）`test_a_label_with_a_comma_survives_the_template` の `assertStatus(200)` は、断られると失敗の文を作る途中で `Call to a member function all() on array` で落ち、理由が読めない（Bug #49 の形・Task 8 の I3b） | ステータスを `getStatusCode()` で見て、200 でないときの失敗の文に転送先の取込の画面の箱の `<li>` を載せる | `4a2b9230` |
+
+- 範囲を絞った再点検: 5 件すべて addressed・open 0
+- 全件（`4a2b9230`・CLAUDE.md の流し方）: **OK (4711 tests, 48112 assertions)**・3 分 36 秒・メモリのピーク 171.50 MB（`97e7b18f` の 4703 本から +8＝F-1 1・F-2 4〈データ 3＋画面 1〉・F-3 データ +1・F-4 2）
+- コンパイル済みビュー（`view:cache` → 全部を `php -l` → `view:clear`）: **318 本 / INVALID 0**
+- 走査の分類の変更: なし（`SubmitOnceTest` は `name="import_token"` を描くビューだけを分類するので、鍵を持たない ↑↓ のフォームは対象外）
+- 変異テストはこの 5 つについて流し直していない（Task 8 の 52 通りは `97e7b18f` の表。5 つはそれぞれ直す前の赤と、F-1 は部品の `@include` を外す変異で確かめた）
+
+#### 残したこと（直していない）
+
+1. F-1 の二度押し止めはフォームごと。同じ行の ↑ と ↓、別の行の ↑ をすばやく続けて押すと、別々のフォームなので POST は 2 本届く（同じボタンの 2 回目は止まる）。ページ全体で 1 回にするなら、部品の外で止める別の作りが要る
+2. 一覧の削除のフォームに二度押し止めは付けていない（2 回目は、回答なしなら 404・回答ありなら無効にするだけで結果は同じ）
+3. F-2 は保存されている行なら回答の有無を問わず断る。行を全部空にした単一選択などでは「選択肢を 1 つ以上入れてください。」と、この行の文の 2 つが並ぶ（別の欄の理由）
+4. 手で組んだ送信で設問文を配列にすると、`ShapeCheckingValidator` が控えから `label` を外す（Bug #121）ので、戻った画面は前の入力でなく保存済み（追加は最初の状態）で描かれる（理由の文は出る。画面からは起きない）
+5. 上の「後回しにしたもの」3 つと、台帳の Minor の控え（道具の入れ子の行のテストは最上位の `x-if` の 1 形だけで 3 段以上は未検証・選択肢 50 行／欄 10 行の上限は画面に案内も止め方も無く送ってから断られる・押せない ↑↓ の理由は span の `title` だけでキーボード・読み上げに届かず `aria-label` がどの行か言わない・無効の行の地 `#fafafa` は `#fff` と 1.04:1 でほぼ見分けられない・`problems()` の 8 行のうち画面のテストがあるのは 3 行・Task 8 の記録の「理由まで一致」は理由を指定していない 6 行がある、など）は、BACKLOG の範囲外に要約した
