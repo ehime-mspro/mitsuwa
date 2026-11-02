@@ -1699,13 +1699,15 @@ Route::middleware(['auth', 'password.change'])->group(function () {
         Route::get('/survey-questions/{question}/edit', [\App\Http\Controllers\Admin\SurveyQuestionController::class, 'edit'])
             ->name('admin.survey-questions.edit');
 
-        // 追加・更新はふつうのフォームの送信。削除は一覧の XHR（並び替えは画面から呼ばれていない）
+        // 追加・更新・削除・並び替え（一覧の ↑↓）は、どれもふつうのフォームの送信（reorder は画面から呼ばれていない）
         Route::post('/survey-questions', [\App\Http\Controllers\Admin\SurveyQuestionController::class, 'store'])
             ->name('admin.survey-questions.store');
         Route::put('/survey-questions/{question}', [\App\Http\Controllers\Admin\SurveyQuestionController::class, 'update'])
             ->name('admin.survey-questions.update');
         Route::delete('/survey-questions/{question}', [\App\Http\Controllers\Admin\SurveyQuestionController::class, 'destroy'])
             ->name('admin.survey-questions.destroy');
+        Route::post('/survey-questions/{question}/move', [\App\Http\Controllers\Admin\SurveyQuestionController::class, 'move'])
+            ->name('admin.survey-questions.move');
         Route::post('/survey-questions/reorder', [\App\Http\Controllers\Admin\SurveyQuestionController::class, 'reorder'])
             ->name('admin.survey-questions.reorder');
     });

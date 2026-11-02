@@ -1,35 +1,57 @@
-{{-- 設問管理アイテム（1行分） --}}
+{{-- 一覧の設問の 1 行。$number は有効な設問だけの通し番号（無効の設問は null で番号を出さない）、
+     $isFirst / $isLast は無効の設問も含めた部署の並びの端（端の ↑・↓ は押せない。理由はボタンを包む span の title。Top trap #12） --}}
 @php
     $qTypeEnum = $q->question_type;
     $optCount = $q->options_count;
 @endphp
-<div style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px 18px; margin-bottom: 10px; background: #fff; display: flex; align-items: center; justify-content: space-between;"
-     onmouseover="this.style.borderColor='#059669';this.style.background='#f0fdf4';" onmouseout="this.style.borderColor='#e5e7eb';this.style.background='#fff';">
-    <div style="display: flex; align-items: center; flex: 1;">
-        <div style="color: #9ca3af; font-size: 18px; margin-right: 12px; cursor: grab;">☰</div>
-        <div>
-            <div style="font-weight: 600; margin-bottom: 4px;">{{ $q->sort_order }}. {{ $q->label }}</div>
-            <div style="display: flex; gap: 8px; align-items: center;">
-                <span style="display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; {{ $qTypeEnum->badgeStyle() }}">{{ $qTypeEnum->label() }}</span>
-                @if($qTypeEnum === \App\Enums\SurveyQuestionType::Slider)
-                    <span style="font-size: 12px; color: #6b7280;">{{ $q->slider_description }}</span>
-                @elseif($optCount > 0)
-                    <span style="font-size: 12px; color: #6b7280;">選択肢: {{ $optCount }}個</span>
-                @endif
-                @if($q->is_active)
-                    <span style="display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 600; background: #d1fae5; color: #065f46;">有効</span>
-                @else
-                    <span style="display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 600; background: #f3f4f6; color: #6b7280;">無効</span>
-                @endif
-            </div>
+<div id="question-{{ $q->id }}" class="sq-row{{ $q->is_active ? '' : ' sq-row-off' }}">
+    <div class="sq-moves">
+        @if($isFirst)
+            <span title="先頭の設問です" style="display: inline-flex;"><button type="button" class="sq-move" disabled aria-label="上へ動かす">↑</button></span>
+        @else
+            <form method="POST" action="{{ route('admin.survey-questions.move', $q) }}">
+                @csrf
+                <input type="hidden" name="direction" value="up">
+                <button type="submit" class="sq-move" aria-label="上へ動かす">↑</button>
+            </form>
+        @endif
+        @if($isLast)
+            <span title="末尾の設問です" style="display: inline-flex;"><button type="button" class="sq-move" disabled aria-label="下へ動かす">↓</button></span>
+        @else
+            <form method="POST" action="{{ route('admin.survey-questions.move', $q) }}">
+                @csrf
+                <input type="hidden" name="direction" value="down">
+                <button type="submit" class="sq-move" aria-label="下へ動かす">↓</button>
+            </form>
+        @endif
+    </div>
+    <div class="sq-row-body">
+        <div class="sq-row-label">{{ $number !== null ? $number . '. ' : '' }}{{ $q->label }}</div>
+        <div class="sq-row-meta">
+            <span class="sq-badge" style="{{ $qTypeEnum->badgeStyle() }}">{{ $qTypeEnum->label() }}</span>
+            @if($qTypeEnum === \App\Enums\SurveyQuestionType::Slider)
+                <span class="sq-row-note">{{ $q->slider_description }}</span>
+            @elseif($optCount > 0)
+                <span class="sq-row-note">選択肢: {{ $optCount }}個</span>
+            @endif
+            @if($q->is_active)
+                <span class="sq-pill">有効</span>
+            @else
+                <span class="sq-pill sq-pill-off">無効</span>
+            @endif
+            @if($q->answers_count > 0)
+                <span class="sq-row-note">回答 {{ $q->answers_count }}件</span>
+            @endif
         </div>
     </div>
-    <div style="display: flex; gap: 6px;">
-        <a href="{{ route('admin.survey-questions.edit', $q) }}"
-           style="display: inline-block; padding: 3px 10px; font-size: 12px; font-weight: 600; color: #059669; border: 1px solid #059669; border-radius: 4px; text-decoration: none; background: #fff;">編集</a>
-        {{-- この部品は surveyQuestionManager() の x-data の中に描かれるので、Alpine のクリックで直接呼ぶ。
-             以前の onclick は Alpine 2 の __x に頼っていて（Alpine 3 に無い）、しかも最初の [x-data] は <body> だったので押しても何も起きなかった --}}
-        <button type="button" x-on:click="deleteQuestion({{ $q->id }})"
-                style="display: inline-block; padding: 3px 10px; font-size: 12px; font-weight: 600; color: #dc2626; border: 1px solid #dc2626; border-radius: 4px; cursor: pointer; background: #fff;">削除</button>
+    <div class="sq-row-actions">
+        <a href="{{ route('admin.survey-questions.edit', $q) }}" class="sq-edit">編集</a>
+        {{-- 回答がある設問は消さずに無効にする（destroy()）。確認の文の設問文は Js::from で渡す（Bug #76） --}}
+        <form method="POST" action="{{ route('admin.survey-questions.destroy', $q) }}"
+              onsubmit="return confirm('「' + {{ \Illuminate\Support\Js::from($q->label) }} + '」を削除しますか？回答がある設問は無効にします。');">
+            @csrf
+            @method('DELETE')
+            <button type="submit" class="sq-delete">削除</button>
+        </form>
     </div>
 </div>

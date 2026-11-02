@@ -3,164 +3,377 @@
 namespace Tests\Feature\Admin\Master;
 
 use App\Models\SurveyQuestion;
-use Illuminate\Support\Facades\DB;
-use Tests\Concerns\CreatesRealEstateSchema;
-use Tests\Concerns\CreatesSurveyQuestionSchema;
+use PHPUnit\Framework\Attributes\DataProvider;
+use Tests\Concerns\SendsValuesBack;
 
 /**
- * アンケート設問の管理（Admin\SurveyQuestionController）。住宅事業・不動産事業の 2 つのタブ。
- * 削除は画面の JS（surveyQuestionManager）が XMLHttpRequest で送る。追加・編集は別の画面のふつうのフォーム
- * （SurveyQuestionCreateTest・SurveyQuestionEditTest）。
+ * アンケート設問の管理の一覧（Admin\SurveyQuestionController の index・move・destroy）。住宅事業・不動産事業の 2 つのタブ。
+ * 並び替えは行の ↑↓（ふつうのフォーム。押すたびに保存して一覧を開き直す）、削除は行の削除のフォーム（確認のあと送る）。
+ * 追加・編集は別の画面（SurveyQuestionCreateTest・SurveyQuestionEditTest）。
  *
- * ⚠ **並び替えには画面が無い**（「ドラッグ＆ドロップで並び替えできます」と書いてあるが、ドラッグを受け取る処理が無い）。
- *   サーバの約束だけを直接送って確かめる（一覧を作り直すときに ↑↓ のフォームへ置き換える）。
+ * ⚠ 送る値は描いた一覧のフォームから組む（Bug #47）。↑ と ↓ のフォームは送り先が同じなので、hidden の向きで選ぶ。
+ * ⚠ 番号は有効な設問だけの通し番号（CSV の Q の番号・アンケートの画面の並びとそろう）。端（↑・↓ を押せない行）は
+ *   無効の設問も含めた部署の並びで決める（無効の設問とも入れ替わる）。
  */
-class SurveyQuestionMasterTest extends MasterScreenTestCase
+class SurveyQuestionMasterTest extends SurveyQuestionScreenTestCase
 {
-    use CreatesRealEstateSchema;
-    use CreatesSurveyQuestionSchema;
+    use SendsValuesBack;
 
-    /** @var array<string, int> 設問文 => id */
-    private array $ids = [];
+    private const BANNER = 'ℹ️ 選択肢の名前を変えても、過去の回答は元の名前のまま残ります（アンケートの編集画面では「（選択肢に無い値）」と出ます）。回答がある設問は、種類を変えられません。';
 
-    protected function setUp(): void
+    /** 設問を 1 つ作る（並びは部署の末尾。$attributes で上書き） */
+    private function question(string $label, array $attributes = []): SurveyQuestion
     {
-        parent::setUp();
-        $this->createRealEstateSchema();
-        $this->createSurveyQuestionSchema();
-        foreach ([
-            ['housing', '来場のきっかけ', 'single_select', ['チラシ', 'Web'], 1],
-            ['housing', 'ご予算', 'number', null, 2],
-            ['realestate', '希望エリア', 'text', null, 1],
-        ] as [$department, $label, $type, $options, $order]) {
-            $this->ids[$label] = SurveyQuestion::create([
-                'department' => $department, 'label' => $label, 'question_type' => $type, 'options' => $options,
-                'sort_order' => $order, 'is_active' => true,
-            ])->id;
+        $department = $attributes['department'] ?? 'housing';
+
+        return SurveyQuestion::create(array_merge([
+            'department'    => $department,
+            'label'         => $label,
+            'question_type' => 'text',
+            'options'       => null,
+            'sort_order'    => (int) SurveyQuestion::ofDepartment($department)->max('sort_order') + 1,
+            'is_active'     => true,
+        ], $attributes));
+    }
+
+    /** 部署の設問の並び（sort_order・id の順の設問文） */
+    private function order(string $department): array
+    {
+        return SurveyQuestion::ofDepartment($department)->orderBy('sort_order')->orderBy('id')->pluck('label')->all();
+    }
+
+    /** 一覧のタブの中身（`id="q-list-…"` の要素） */
+    private function pane(string $html, string $department): string
+    {
+        $pos = strpos($html, 'id="q-list-' . $department . '"');
+        $this->assertNotFalse($pos, "{$department} のタブが描かれていない");
+
+        return $this->balancedElement($html, strrpos(substr($html, 0, $pos), '<div'), 'div');
+    }
+
+    /** タブの中の行の見出し（並びのまま。「番号. 設問文」か、無効の設問は設問文だけ） */
+    private function rowLabels(string $html, string $department): array
+    {
+        preg_match_all('/<div class="sq-row-label">(.*?)<\/div>/su', $this->pane($html, $department), $m);
+
+        return array_map(fn (string $label): string => html_entity_decode($label, ENT_QUOTES, 'UTF-8'), $m[1]);
+    }
+
+    /** 設問の行（`id="question-…"` の要素） */
+    private function row(string $html, SurveyQuestion $question): string
+    {
+        $pos = strpos($html, 'id="question-' . $question->id . '"');
+        $this->assertNotFalse($pos, "設問「{$question->label}」の行が無い");
+
+        return $this->balancedElement($html, strrpos(substr($html, 0, $pos), '<div'), 'div');
+    }
+
+    /** 行の ↑（up）か ↓（down）のフォーム（ちょうど 1 つ） */
+    private function moveForm(string $html, SurveyQuestion $question, string $direction): array
+    {
+        $action = 'action="' . route('admin.survey-questions.move', $question) . '"';
+        preg_match_all('/<form\b[^>]*>.*?<\/form>/su', $this->row($html, $question), $forms);
+        $found = [];
+        foreach ($forms[0] as $form) {
+            if (str_contains($form, $action)) {
+                $parsed = $this->parseForm($form, $action);
+                if (($parsed['fields']['direction'] ?? null) === $direction) {
+                    $found[] = $parsed;
+                }
+            }
         }
+        $this->assertCount(1, $found, "設問「{$question->label}」の行に {$direction} のフォームがちょうど 1 つ無い");
+        $this->assertSame('POST', $found[0]['method']);
+        $this->assertNotSame('', $found[0]['fields']['_token'] ?? '', '並び替えのフォームに @csrf が無い');
+
+        return $found[0];
     }
 
-    private function indexUrl(?string $department = null): string
+    /** 描いた一覧から設問の ↑↓ を押し、着いた画面の HTML を返す（行き先は一覧の同じタブのその設問の行） */
+    private function press(SurveyQuestion $question, string $direction, string $from): string
     {
-        return route('admin.survey-questions.index', $department ? ['department' => $department] : []);
+        $response = $this->send($this->moveForm($this->htmlOf($from), $question, $direction), $from);
+        $this->assertSame($this->indexUrl($question->department) . '#question-' . $question->id, $response->headers->get('Location'));
+
+        return $this->landed($response);
     }
 
-    /**
-     * 画面の JS を $steps で操り、組まれた XHR（ちょうど 1 つ）を送り、XHR と同じ決まりで転送を追った結果を JS に返す。
-     * ⚠ XHR は 302 を GET に変えるのは POST のときだけ。DELETE は DELETE のまま転送先へ送る（sendCapturedLikeBrowser()）。
-     */
-    private function roundTrip(string $url, string $steps, bool $confirm = true): array
+    /** 行の削除のフォーム */
+    private function deleteForm(string $html, SurveyQuestion $question): array
     {
-        $html = $this->htmlOf($url);
-        $factory = $this->xData($html, 'surveyQuestionManager');
-        $sent = $this->driveAlpine($html, 'surveyQuestionManager', $factory, $steps, [], $confirm);
-        $this->assertCount(1, $sent['requests'], '画面の JS が要求を 1 つ組まなかった');
-        $request = $sent['requests'][0];
+        $form = $this->parseForm($this->row($html, $question), 'action="' . route('admin.survey-questions.destroy', $question) . '"');
+        $this->assertSame('DELETE', $form['method']);
+        $this->assertNotSame('', $form['fields']['_token'] ?? '', '削除のフォームに @csrf が無い');
 
-        $response = $this->actingAs($this->user)->sendCapturedLikeBrowser($request);
-        $after = $this->driveAlpine($html, 'surveyQuestionManager', $factory, $steps,
-            [['status' => $response->getStatusCode(), 'body' => (string) $response->getContent()]], $confirm);
+        return $form;
+    }
 
-        return ['request' => $request, 'response' => $response, 'after' => $after];
+    /** タブの要素が最初から隠れているか（サーバーが描く display: none。Alpine が起きる前・#question- への移動のため） */
+    private function paneHidden(string $html, string $department): bool
+    {
+        $pane = $this->pane($html, $department);
+
+        return str_contains(substr($pane, 0, strpos($pane, '>')), 'display: none');
     }
 
     public function test_the_list_shows_each_departments_questions_and_opens_the_requested_tab(): void
     {
+        $this->question('来場のきっかけ', ['question_type' => 'single_select', 'options' => ['チラシ', 'Web']]);
+        $this->question('ご予算', ['question_type' => 'number']);
+        $this->question('希望エリア', ['department' => 'realestate']);
+
         $html = $this->htmlOf($this->indexUrl());
-        $housing = substr($html, strpos($html, 'id="q-list-housing"'), strpos($html, 'id="q-list-realestate"') - strpos($html, 'id="q-list-housing"'));
-        $realestate = substr($html, strpos($html, 'id="q-list-realestate"'));
+        $this->assertSame(['1. 来場のきっかけ', '2. ご予算'], $this->rowLabels($html, 'housing'));
+        $this->assertStringContainsString('選択肢: 2個', $this->pane($html, 'housing'));
+        $this->assertSame(['1. 希望エリア'], $this->rowLabels($html, 'realestate'));
 
-        $this->assertStringContainsString('1. 来場のきっかけ', $housing);
-        $this->assertStringContainsString('2. ご予算', $housing);
-        $this->assertStringContainsString('選択肢: 2個', $housing);
-        $this->assertStringNotContainsString('希望エリア', $housing);
-        $this->assertStringContainsString('1. 希望エリア', $realestate);
+        foreach (['housing' => $html, 'realestate' => $this->htmlOf($this->indexUrl('realestate'))] as $department => $page) {
+            $run = $this->driveAlpine($page, 'surveyQuestionManager', $this->xData($page, 'surveyQuestionManager'), '');
+            $this->assertSame($department, $run['state']['activeTab']);
+            $other = $department === 'housing' ? 'realestate' : 'housing';
+            $this->assertFalse($this->paneHidden($page, $department), "{$department} のタブが最初から隠れている");
+            $this->assertTrue($this->paneHidden($page, $other), "{$other} のタブが最初から出ている");
+        }
 
-        $factory = $this->xData($html, 'surveyQuestionManager');
-        $this->assertSame('housing', $this->driveAlpine($html, 'surveyQuestionManager', $factory, '')['state']['activeTab']);
-        $realestateHtml = $this->htmlOf($this->indexUrl('realestate'));
-        $this->assertSame('realestate', $this->driveAlpine($realestateHtml, 'surveyQuestionManager', $this->xData($realestateHtml, 'surveyQuestionManager'), '')['state']['activeTab']);
+        $run = $this->driveAlpine($html, 'surveyQuestionManager', $this->xData($html, 'surveyQuestionManager'), "data.switchTab('realestate');");
+        $this->assertSame('realestate', $run['state']['activeTab']);
     }
 
-    /**
-     * 設問の行の削除ボタンを押したときに動く JS（Alpine の x-on:click の式）。
-     * G2: ⚠ 以前は `onclick="document.querySelector('[x-data]').__x.$data.deleteQuestion(…)"` だった。`__x` は Alpine 2 の
-     *   書き方で Alpine 3 には無く、しかも最初の `[x-data]` はサイドバーの `<body>` なので、押しても何も起きなかった。
-     */
-    private function deleteClick(string $html, string $label): string
+    /** 番号は有効な設問だけ・回答があれば件数・案内文は今の動き（☰ とドラッグの文は無い） */
+    public function test_the_list_numbers_only_active_questions_and_shows_answer_counts(): void
     {
-        $pos = strpos($html, '. ' . $label . '</div>');
-        $this->assertNotFalse($pos, "設問「{$label}」の行が無い");
-        $this->assertSame(1, preg_match('/<button\b([^>]*)>\s*削除\s*<\/button>/u', substr($html, $pos), $button), "設問「{$label}」の削除ボタンが無い");
-        $this->assertStringNotContainsString('__x', $button[1], '削除ボタンが Alpine 2 の __x に頼っている');
-        $this->assertSame(1, preg_match('/(?:x-on:click|@click)="([^"]*)"/', $button[1], $click), '削除ボタンが Alpine のクリックで動かない');
+        $first = $this->question('ご来場のきっかけ');
+        $inactive = $this->question('現在のお住まい', ['is_active' => false]);
+        $third = $this->question('ご予算');
+        $this->question('希望エリア', ['department' => 'realestate']);
+        $this->answer($first, 'チラシ');
+        $this->answer($first, 'Web');
+        foreach (range(1, 3) as $i) {
+            $this->answer($inactive, "賃貸{$i}");
+        }
 
-        return html_entity_decode($click[1], ENT_QUOTES, 'UTF-8');
-    }
-
-    /** 削除ボタンを押し、確認に答え、XHR と同じく転送をたどった結果を JS に返す */
-    private function clickDelete(string $label, bool $confirm = true): array
-    {
         $html = $this->htmlOf($this->indexUrl());
 
-        return $this->roundTrip($this->indexUrl(), 'with (data) { ' . $this->deleteClick($html, $label) . ' }', $confirm);
+        $this->assertSame(['1. ご来場のきっかけ', '現在のお住まい', '2. ご予算'], $this->rowLabels($html, 'housing'));
+        $this->assertSame(['1. 希望エリア'], $this->rowLabels($html, 'realestate'), '番号が部署ごとに 1 から始まらない');
+        $this->assertStringContainsString('回答 2件', $this->row($html, $first));
+        $this->assertStringContainsString('回答 3件', $this->row($html, $inactive));
+        $this->assertDoesNotMatchRegularExpression('/回答 \d+件/u', $this->row($html, $third), '回答の無い設問に件数が出ている');
+
+        $openTag = fn (string $row): string => substr($row, 0, strpos($row, '>') + 1);
+        $this->assertStringContainsString('sq-row-off', $openTag($this->row($html, $inactive)), '無効の設問の行が薄くならない');
+        $this->assertStringNotContainsString('sq-row-off', $openTag($this->row($html, $first)));
+        $this->assertStringContainsString('>無効</span>', $this->row($html, $inactive));
+
+        $this->assertStringContainsString(e(self::BANNER), $html, '案内文が今の動きの文でない');
+        $this->assertStringNotContainsString('☰', $html);
+        $this->assertStringNotContainsString('ドラッグ', $html);
+        $this->assertStringNotContainsString('スナップショット', $html);
     }
 
-    public function test_a_question_without_answers_is_deleted_with_the_delete_button(): void
+    public function test_the_arrows_move_a_question_and_keep_the_tab(): void
     {
-        $trip = $this->clickDelete('ご予算');
+        $a = $this->question('A');
+        $this->question('B');
+        $this->question('C');
+        $this->question('D', ['department' => 'realestate']);
+        $e = $this->question('E', ['department' => 'realestate']);
 
-        $this->assertSame(['この設問を削除しますか？'], $trip['after']['confirms']);
-        $this->assertSame(['DELETE', route('admin.survey-questions.destroy', $this->ids['ご予算'])], [$trip['request']['method'], $trip['request']['url']]);
-        $this->assertNotSame('', $trip['request']['headers']['X-CSRF-TOKEN'] ?? '');
-        $this->assertSame('XMLHttpRequest', $trip['request']['headers']['X-Requested-With'] ?? null,
-            '削除の XHR が X-Requested-With を送らない（サーバが 302 を返し、XHR が DELETE のまま追って 405 になる）');
-        $trip['response']->assertOk()->assertJson(['success' => true, 'message' => '設問を削除しました。']);
-        $this->assertNull(SurveyQuestion::find($this->ids['ご予算']));
-        $this->assertSame(['reload'], $trip['after']['navigations'], '削除のあと一覧を読み込み直さない');
+        $html = $this->press($a, 'down', $this->indexUrl());
+        $this->assertSame(['B', 'A', 'C'], $this->order('housing'));
+        $this->assertSame(['1. B', '2. A', '3. C'], $this->rowLabels($html, 'housing'));
+        $this->assertStringNotContainsString('<span class="text-sm text-emerald-800">', $html, '↑↓ で成功の帯が出ている');
+        $this->assertStringNotContainsString('<span class="text-sm text-red-800">', $html);
+
+        $html = $this->press($e, 'up', $this->indexUrl('realestate'));
+        $this->assertSame(['E', 'D'], $this->order('realestate'));
+        $this->assertSame('realestate', $this->driveAlpine($html, 'surveyQuestionManager', $this->xData($html, 'surveyQuestionManager'), '')['state']['activeTab']);
+        $this->assertFalse($this->paneHidden($html, 'realestate'), '不動産事業のタブに戻らない');
+        $this->assertSame(['1. E', '2. D'], $this->rowLabels($html, 'realestate'));
+        $this->assertSame(['B', 'A', 'C'], $this->order('housing'));
     }
 
-    /** 回答がある設問は消さずに無効にする（過去の回答の控えを残すため） */
+    /** 端は無効の設問も含めた並びで決める。押せない ↑↓ は disabled で、理由はボタンを包む span の title（Top trap #12） */
+    public function test_the_edge_arrows_are_disabled_with_a_reason(): void
+    {
+        $first = $this->question('先頭の設問');
+        $middle = $this->question('真ん中の設問');
+        $last = $this->question('末尾の無効の設問', ['is_active' => false]);
+        $alone = $this->question('ひとつだけの設問', ['department' => 'realestate']);
+
+        $html = $this->htmlOf($this->indexUrl());
+        $disabled = function (string $row, string $reason, string $arrow): void {
+            $pattern = '/<span title="' . $reason . '"[^>]*>\s*<button\b([^>]*)>\s*' . $arrow . '\s*<\/button>\s*<\/span>/u';
+            $this->assertSame(1, preg_match($pattern, $row, $button), "「{$reason}」の span に包まれた {$arrow} のボタンが無い");
+            $this->assertMatchesRegularExpression('/\sdisabled\b/', $button[1], "{$arrow} のボタンが押せる");
+            $this->assertStringNotContainsString('title=', $button[1], '押せないボタン自身の title はどのブラウザでも出ない（Top trap #12）');
+        };
+
+        $disabled($this->row($html, $first), '先頭の設問です', '↑');
+        $this->moveForm($html, $first, 'down');
+        $this->moveForm($html, $middle, 'up');
+        $this->moveForm($html, $middle, 'down');
+        $this->moveForm($html, $last, 'up');
+        $disabled($this->row($html, $last), '末尾の設問です', '↓');
+        $this->assertStringNotContainsString('先頭の設問です', $this->row($html, $middle));
+        $this->assertStringNotContainsString('末尾の設問です', $this->row($html, $middle), '無効の設問が末尾なのに、その前の有効の設問の ↓ が押せない');
+
+        $alonePage = $this->htmlOf($this->indexUrl('realestate'));
+        $disabled($this->row($alonePage, $alone), '先頭の設問です', '↑');
+        $disabled($this->row($alonePage, $alone), '末尾の設問です', '↓');
+        $this->assertStringNotContainsString('action="' . route('admin.survey-questions.move', $alone) . '"', $this->row($alonePage, $alone),
+            '1 つだけの設問の行に ↑↓ のフォームがある');
+    }
+
+    /** 無効の設問とも入れ替わり、番号は有効な設問だけで振り直される。並びは 1 から振り直す（Review Focus 4） */
+    public function test_moving_passes_over_inactive_questions_and_numbers_only_active_ones(): void
+    {
+        $a = $this->question('A', ['sort_order' => 5]);
+        $b = $this->question('B', ['sort_order' => 5, 'is_active' => false]);
+        $c = $this->question('C', ['sort_order' => 9]);
+
+        $this->assertSame(['1. A', 'B', '2. C'], $this->rowLabels($this->htmlOf($this->indexUrl()), 'housing'));
+
+        $html = $this->press($c, 'up', $this->indexUrl());
+        $this->assertSame(['A', 'C', 'B'], $this->order('housing'));
+        $this->assertSame(['1. A', '2. C', 'B'], $this->rowLabels($html, 'housing'));
+        $this->assertSame([1, 2, 3], SurveyQuestion::whereKey([$a->id, $c->id, $b->id])->orderBy('sort_order')->pluck('sort_order')->all());
+
+        $html = $this->press($c, 'up', $this->indexUrl());
+        $this->assertSame(['C', 'A', 'B'], $this->order('housing'));
+        $this->assertSame(['1. C', '2. A', 'B'], $this->rowLabels($html, 'housing'));
+
+        $html = $this->press($b, 'up', $this->indexUrl());
+        $this->assertSame(['C', 'B', 'A'], $this->order('housing'));
+        $this->assertSame(['1. C', 'B', '2. A'], $this->rowLabels($html, 'housing'));
+    }
+
+    /** 手で組んだ端の ↑・↓ は理由を帯に出して断る（並びは変わらない。Review Focus 4） */
+    public function test_moving_past_the_edge_is_refused(): void
+    {
+        $first = $this->question('A', ['sort_order' => 3]);
+        $last = $this->question('B', ['sort_order' => 8]);
+
+        foreach ([[$first, 'up', '先頭の設問は上へ動かせません。'], [$last, 'down', '末尾の設問は下へ動かせません。']] as [$question, $direction, $message]) {
+            $response = $this->actingAs($this->user)->from($this->indexUrl())
+                ->post(route('admin.survey-questions.move', $question), ['direction' => $direction]);
+
+            $this->assertSame($this->indexUrl('housing') . '#question-' . $question->id, $response->headers->get('Location'));
+            $this->assertFlash($this->landed($response), 'error', $message);
+            $this->assertSame(['A', 'B'], $this->order('housing'));
+            $this->assertSame([3, 8], SurveyQuestion::ofDepartment('housing')->orderBy('id')->pluck('sort_order')->all(), '断ったのに並びを書き換えた');
+        }
+    }
+
+    public function test_moving_never_touches_the_other_department(): void
+    {
+        $a = $this->question('A');
+        $this->question('B');
+        $x = $this->question('X', ['department' => 'realestate', 'sort_order' => 7]);
+        $y = $this->question('Y', ['department' => 'realestate', 'sort_order' => 2]);
+
+        $this->press($a, 'down', $this->indexUrl());
+        $this->assertSame(['B', 'A'], $this->order('housing'));
+        $this->assertSame([7, 2], [$x->fresh()->sort_order, $y->fresh()->sort_order], '別の部署の並びを書き換えた');
+
+        $this->press($x, 'up', $this->indexUrl('realestate'));
+        $this->assertSame(['X', 'Y'], $this->order('realestate'));
+        $this->assertSame(['B', 'A'], $this->order('housing'));
+    }
+
+    public function test_a_question_without_answers_is_deleted_with_the_delete_form(): void
+    {
+        $this->question('希望エリア', ['department' => 'realestate']);
+        $question = $this->question('ご予算', ['department' => 'realestate']);
+        $from = $this->indexUrl('realestate');
+
+        $response = $this->send($this->deleteForm($this->htmlOf($from), $question), $from);
+
+        $response->assertRedirect($this->indexUrl('realestate'));
+        $html = $this->landed($response);
+        $this->assertFlash($html, 'success', '設問を削除しました。');
+        $this->assertNull(SurveyQuestion::find($question->id));
+        $this->assertSame(['1. 希望エリア'], $this->rowLabels($html, 'realestate'));
+    }
+
+    /** 回答がある設問は消さずに無効にする（過去の回答の控えを残すため。編集画面で有効に戻せる） */
     public function test_a_question_with_answers_is_deactivated_instead(): void
     {
-        DB::table('buyer_survey_answers')->insert([
-            'survey_id' => 1, 'question_id' => $this->ids['来場のきっかけ'], 'answer_value' => 'Web',
-            'question_snapshot' => json_encode(['label' => '来場のきっかけ']), 'created_at' => now(), 'updated_at' => now(),
-        ]);
+        $question = $this->question('来場のきっかけ');
+        $this->question('ご予算');
+        $this->answer($question, 'Web');
 
-        $trip = $this->clickDelete('来場のきっかけ');
+        $response = $this->send($this->deleteForm($this->htmlOf($this->indexUrl()), $question), $this->indexUrl());
 
-        $question = SurveyQuestion::find($this->ids['来場のきっかけ']);
-        $this->assertNotNull($question, '回答がある設問が消えた');
-        $this->assertFalse($question->is_active);
-        $this->assertSame(['reload'], $trip['after']['navigations']);
-        $this->assertStringContainsString('無効', $this->htmlOf($this->indexUrl()));
+        $response->assertRedirect($this->indexUrl('housing'));
+        $html = $this->landed($response);
+        $this->assertFlash($html, 'success', '回答があるため、設問を無効にしました（編集画面で有効に戻せます）。');
+        $this->assertNotNull($question->fresh(), '回答がある設問が消えた');
+        $this->assertFalse($question->fresh()->is_active);
+        $this->assertSame(['来場のきっかけ', '1. ご予算'], $this->rowLabels($html, 'housing'));
+        $this->assertStringContainsString('回答 1件', $this->row($html, $question));
     }
 
-    public function test_declining_the_confirmation_sends_nothing(): void
+    /** 削除の確認に設問文がそのまま出る（壊れやすい文字でも JS が組める・「いいえ」なら送らない。Bug #76） */
+    #[DataProvider('labels')]
+    public function test_the_delete_confirmation_names_the_question(string $label): void
     {
-        $html = $this->htmlOf($this->indexUrl());
+        $question = $this->question($label);
+        $row = $this->row($this->htmlOf($this->indexUrl()), $question);
+        $action = 'action="' . route('admin.survey-questions.destroy', $question) . '"';
+        $pos = strpos($row, $action);
+        $this->assertNotFalse($pos, '行に削除のフォームが無い');
+        $open = strrpos(substr($row, 0, $pos), '<form');
+        $tag = substr($row, $open, strpos($row, '>', $pos) - $open + 1);
+        $this->assertSame(1, preg_match('/\sonsubmit="([^"]*)"/', $tag, $m), '削除のフォームに onsubmit が無い');
+        $handler = html_entity_decode($m[1], ENT_QUOTES, 'UTF-8');
 
-        $run = $this->driveAlpine($html, 'surveyQuestionManager', $this->xData($html, 'surveyQuestionManager'),
-            'with (data) { ' . $this->deleteClick($html, 'ご予算') . ' }', [], false);
-
-        $this->assertSame(['この設問を削除しますか？'], $run['confirms']);
-        $this->assertSame([], $run['requests']);
-        $this->assertNotNull(SurveyQuestion::find($this->ids['ご予算']));
+        $declined = $this->runInlineHandler($handler, false);
+        $this->assertTrue($declined['compiled'], "削除の確認の JS が組み立てられない: {$declined['error']}");
+        $this->assertSame(false, $declined['returned'], '確認で「いいえ」を選んでも送信が止まらない');
+        $this->assertSame(['「' . $label . '」を削除しますか？回答がある設問は無効にします。'], $declined['confirms']);
+        $this->assertSame(true, $this->runInlineHandler($handler, true)['returned'], '確認で「はい」を選んでも送信されない');
     }
 
-    /**
-     * 画面が無い並び替えは、サーバの約束だけを確かめる。画面に並び替えを呼ぶものが無いことも固定する
-     * （作ったら、画面から送る往復に書き換える）。設問の編集は編集の画面から送る（SurveyQuestionEditTest）。
-     */
-    public function test_the_reorder_route_works_though_no_screen_calls_it(): void
+    public static function labels(): array
     {
-        $html = $this->htmlOf($this->indexUrl());
-        $this->assertStringNotContainsString('survey-questions/reorder', $html);
+        return [
+            'ふつうの設問文'   => ['ご来場のきっかけを教えてください'],
+            '壊れやすい文字'   => [self::tricky('O\'Brien様の設問')],
+            '閉じて続ける'     => ["x');alert(1);('"],
+        ];
+    }
 
-        $this->actingAs($this->user)->postJson(route('admin.survey-questions.reorder'), ['order' => [$this->ids['ご予算'], $this->ids['来場のきっかけ']]])
-            ->assertOk()->assertJson(['success' => true]);
-        $this->assertSame(['ご予算', '来場のきっかけ'], SurveyQuestion::ofDepartment('housing')->ordered()->pluck('label')->all());
+    /** 手で組んだ向きは理由を一覧の箱に出して断る（500 にしない・並びは変わらない。Review Focus 5） */
+    public function test_tampered_move_and_form_posts_do_not_crash(): void
+    {
+        $this->question('X', ['department' => 'realestate']);
+        $question = $this->question('Y', ['department' => 'realestate']);
+        $from = $this->indexUrl('realestate');
+        $form = $this->moveForm($this->htmlOf($from), $question, 'up');
+
+        foreach ([
+            ['sideways', '選択された動かす向きは正しくありません。'],
+            // 配列は ShapeCheckingValidator が先に断る（文は型の規則 in の文）
+            [['up'], '選択された動かす向きは正しくありません。'],
+            [null, '動かす向きは必須です。'],
+        ] as [$direction, $message]) {
+            $sent = $form;
+            if ($direction === null) {
+                unset($sent['fields']['direction']);
+            } else {
+                $sent['fields']['direction'] = $direction;
+            }
+            $response = $this->send($sent, $from);
+
+            $response->assertRedirect($from);
+            $html = $this->landed($response);
+            $this->assertSame([$message], $this->errorItems($html), json_encode($direction));
+            $this->assertFalse($this->paneHidden($html, 'realestate'));
+            $this->assertSame(['X', 'Y'], $this->order('realestate'));
+        }
+
+        $this->actingAs($this->user)->from($from)->post(route('admin.survey-questions.move', 999999), ['direction' => 'up'])->assertNotFound();
     }
 
     /**
@@ -170,6 +383,8 @@ class SurveyQuestionMasterTest extends MasterScreenTestCase
      */
     public function test_a_rewritten_department_in_the_url_opens_the_housing_tab(): void
     {
+        $this->question('来場のきっかけ');
+
         foreach ([
             [['department' => 'realestate'], 'realestate'],
             [['department' => 'housing'], 'housing'],
@@ -183,6 +398,7 @@ class SurveyQuestionMasterTest extends MasterScreenTestCase
 
             $run = $this->driveAlpine($html, 'surveyQuestionManager', $this->xData($html, 'surveyQuestionManager'), '', [], true, ['activeTab']);
             $this->assertSame([$expected], $run['evaluated'], "{$url} で開くタブが違う");
+            $this->assertFalse($this->paneHidden($html, $expected), "{$url} で開くタブが最初から隠れている");
         }
     }
 }

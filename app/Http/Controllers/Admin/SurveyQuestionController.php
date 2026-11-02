@@ -7,6 +7,7 @@ use App\Enums\SurveyQuestionType;
 use App\Models\SurveyQuestion;
 use App\Support\SurveyQuestionForm;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 
@@ -24,18 +25,22 @@ class SurveyQuestionController extends Controller
     private const SETTING_INTEGER_PATTERN = '/^-?\d+$/';
 
     /**
-     * 設問一覧・管理画面（部署タブ切替）
+     * 設問の一覧（部署のタブ）。並びは move() と同じ sort_order・id の順（同じ sort_order の設問も並びが決まる）。
+     * 行の「回答 N件」は withCount('answers')。
      */
     public function index(Request $request)
     {
-        $department = $this->departmentFrom($request);
+        $questions = [];
+        foreach (array_keys(self::DEPARTMENTS) as $department) {
+            $questions[$department] = SurveyQuestion::ofDepartment($department)
+                ->ordered()->orderBy('id')->withCount('answers')->get();
+        }
 
-        $housingQuestions    = SurveyQuestion::ofDepartment('housing')->ordered()->get();
-        $realestateQuestions = SurveyQuestion::ofDepartment('realestate')->ordered()->get();
-
-        return view('admin.master.survey-questions.index', compact(
-            'department', 'housingQuestions', 'realestateQuestions'
-        ));
+        return view('admin.master.survey-questions.index', [
+            'department'  => $this->departmentFrom($request),
+            'departments' => self::DEPARTMENTS,
+            'questions'   => $questions,
+        ]);
     }
 
     /**
@@ -150,16 +155,15 @@ class SurveyQuestionController extends Controller
     }
 
     /**
-     * 設問削除（Ajax）
+     * 設問の削除（一覧の削除のフォーム）。回答がある設問は消さずに無効にする（過去の回答の控えを残す。編集画面で有効に戻せる）
      */
     public function destroy(Request $request, SurveyQuestion $question)
     {
         $dept = $question->department;
 
-        // 回答が紐づいている場合は無効化のみ
         if ($question->answers()->exists()) {
             $question->update(['is_active' => false]);
-            $message = '回答データが存在するため、設問を無効化しました。';
+            $message = '回答があるため、設問を無効にしました（編集画面で有効に戻せます）。';
         } else {
             $question->delete();
             $message = '設問を削除しました。';
@@ -174,6 +178,51 @@ class SurveyQuestionController extends Controller
 
         return redirect()->route('admin.survey-questions.index', ['department' => $dept])
             ->with('success', $message);
+    }
+
+    /**
+     * 一覧の ↑↓（1 つの設問を、同じ部署の並びの隣と入れ替える）。端は理由を帯に出して断る。
+     * 戻り先はその部署のタブのその設問の行（`#question-…`。Bug #4 のとおり route() の後ろに足す）。入れ替えた結果は一覧で見えるので帯は出さない。
+     *
+     * ⚠ 並びは無効の設問も含めた部署の並び（一覧の端の ↑↓ と同じ。無効の設問とも入れ替わる）。
+     * ⚠ 同じ部署の設問を行のロックで読み、1 から振り直してから入れ替える（同じ sort_order・飛んだ番号があっても隣が決まる。
+     *   ほぼ同時の 2 回の ↑↓ も、あとの回が前の回の結果を読む）。
+     */
+    public function move(Request $request, SurveyQuestion $question)
+    {
+        $validated = $request->validate([
+            'direction' => ['required', 'in:up,down'],
+        ], [], [
+            'direction' => '動かす向き',
+        ]);
+
+        $refused = DB::transaction(function () use ($question, $validated): ?string {
+            $ids = SurveyQuestion::ofDepartment($question->department)
+                ->orderBy('sort_order')->orderBy('id')->lockForUpdate()->pluck('id')->all();
+            $index = array_search($question->id, $ids, true);
+            if ($index === false) {
+                return null; // 読む前に消された（一覧へ戻すだけ）
+            }
+
+            $target = $validated['direction'] === 'up' ? $index - 1 : $index + 1;
+            if ($target < 0) {
+                return '先頭の設問は上へ動かせません。';
+            }
+            if ($target >= count($ids)) {
+                return '末尾の設問は下へ動かせません。';
+            }
+
+            [$ids[$index], $ids[$target]] = [$ids[$target], $ids[$index]];
+            foreach ($ids as $position => $id) {
+                SurveyQuestion::whereKey($id)->where('sort_order', '!=', $position + 1)->update(['sort_order' => $position + 1]);
+            }
+
+            return null;
+        });
+
+        $redirect = redirect(route('admin.survey-questions.index', ['department' => $question->department]) . '#question-' . $question->id);
+
+        return $refused === null ? $redirect : $redirect->with('error', $refused);
     }
 
     /**

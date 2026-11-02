@@ -2,87 +2,99 @@
 
 @section('title', 'アンケート設問管理')
 
+@section('breadcrumb')
+    <span class="mx-1.5">›</span>
+    <span>システム管理</span>
+    <span class="mx-1.5">›</span>
+    <span class="text-gray-600">アンケート設問管理</span>
+@endsection
+
 @section('content')
-<div class="text-sm text-gray-500" style="margin-bottom: 12px;">
-    ダッシュボード &gt; マスタ管理 &gt; <span class="text-gray-800 font-medium">アンケート設問管理</span>
-</div>
-<h1 style="font-size: 20px; font-weight: 700; margin: 0 0 20px;">アンケート設問管理</h1>
+<h1 class="text-lg max-lg:text-base font-bold text-gray-900 mb-4">アンケート設問管理</h1>
 
+{{-- バリデーションエラー（行の ↑↓ のフォームを手で組んだ送信など） --}}
+@if($errors->any())
+    <div class="mb-4 rounded-lg border border-red-200 bg-red-50 p-3">
+        @foreach($errors->all() as $error)
+            <p class="text-sm text-red-800">{{ $error }}</p>
+        @endforeach
+    </div>
+@endif
 
-<div class="bg-white border border-gray-200 rounded-lg p-5" x-data="surveyQuestionManager()">
+<div class="bg-white border border-gray-200 rounded-lg p-5 max-sm:p-3" x-data="surveyQuestionManager()">
     {{-- 部署タブ --}}
-    <div style="display: flex; border-bottom: 2px solid #e5e7eb; margin-bottom: 20px;">
-        <button type="button" x-on:click="switchTab('housing')"
-                x-bind:style="activeTab === 'housing' ? 'padding:10px 20px;font-size:14px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:3px solid #059669;color:#059669;margin-bottom:-2px;' : 'padding:10px 20px;font-size:14px;font-weight:600;border:none;background:none;cursor:pointer;color:#6b7280;margin-bottom:-2px;'">
-            住宅事業
-        </button>
-        <button type="button" x-on:click="switchTab('realestate')"
-                x-bind:style="activeTab === 'realestate' ? 'padding:10px 20px;font-size:14px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:3px solid #059669;color:#059669;margin-bottom:-2px;' : 'padding:10px 20px;font-size:14px;font-weight:600;border:none;background:none;cursor:pointer;color:#6b7280;margin-bottom:-2px;'">
-            不動産事業
-        </button>
+    <div style="display: flex; border-bottom: 2px solid #e5e7eb; margin-bottom: 16px;">
+        @foreach($departments as $key => $name)
+            <button type="button" x-on:click="switchTab({{ \Illuminate\Support\Js::from($key) }})"
+                    x-bind:style="activeTab === {{ \Illuminate\Support\Js::from($key) }} ? 'padding:10px 20px;font-size:14px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:3px solid #059669;color:#059669;margin-bottom:-2px;' : 'padding:10px 20px;font-size:14px;font-weight:600;border:none;background:none;cursor:pointer;color:#6b7280;margin-bottom:-2px;'">
+                {{ $name }}
+            </button>
+        @endforeach
     </div>
 
-    {{-- スナップショット説明バナー --}}
-    <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 6px; padding: 12px 16px; margin-bottom: 16px; font-size: 13px; color: #0c4a6e;">
-        ℹ️ 設問や選択肢を変更しても、過去のアンケート回答には影響しません。回答保存時の設問内容がスナップショットとして記録されています。
+    <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 6px; padding: 10px 14px; margin-bottom: 14px; font-size: 13px; color: #0c4a6e;">
+        ℹ️ 選択肢の名前を変えても、過去の回答は元の名前のまま残ります（アンケートの編集画面では「（選択肢に無い値）」と出ます）。回答がある設問は、種類を変えられません。
     </div>
 
-    <div style="font-size: 13px; color: #6b7280; margin-bottom: 16px;">ドラッグ＆ドロップで並び替えできます</div>
-
-    {{-- 住宅事業の設問リスト --}}
-    <div x-show="activeTab === 'housing'" id="q-list-housing">
-        @forelse($housingQuestions as $q)
-            @include('admin.master.survey-questions._question_item', ['q' => $q])
-        @empty
-            <div style="text-align: center; padding: 24px; color: #9ca3af; font-size: 14px;">設問はまだ登録されていません</div>
-        @endforelse
-        {{-- 追加は別の画面（その部署で開く） --}}
-        <div style="margin-top: 16px;">
-            <a href="{{ route('admin.survey-questions.create', ['department' => 'housing']) }}"
-               class="inline-flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold px-4 py-2 rounded-md">＋ 設問を追加</a>
+    {{-- 部署ごとの設問の並び。開いているタブはサーバーが描く時点で出しておく（↑↓ のあとの #question-… の行へ移るため。
+         隠れた要素へはブラウザが移らない）。番号は有効な設問だけの通し番号、端の ↑↓ は無効の設問も含めた並びで決める --}}
+    @foreach($departments as $key => $name)
+        <div x-show="activeTab === {{ \Illuminate\Support\Js::from($key) }}" id="q-list-{{ $key }}" @style(['display: none' => $key !== $department])>
+            @php($number = 0)
+            @forelse($questions[$key] as $q)
+                @include('admin.master.survey-questions._question_item', [
+                    'q'       => $q,
+                    'number'  => $q->is_active ? ++$number : null,
+                    'isFirst' => $loop->first,
+                    'isLast'  => $loop->last,
+                ])
+            @empty
+                <div style="text-align: center; padding: 24px; color: #9ca3af; font-size: 14px;">設問はまだ登録されていません</div>
+            @endforelse
+            {{-- 追加は別の画面（その部署で開く） --}}
+            <div style="margin-top: 16px;">
+                <a href="{{ route('admin.survey-questions.create', ['department' => $key]) }}"
+                   class="inline-flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold px-4 py-2 rounded-md">＋ 設問を追加</a>
+            </div>
         </div>
-    </div>
-
-    {{-- 不動産事業の設問リスト --}}
-    <div x-show="activeTab === 'realestate'" style="display: none;" id="q-list-realestate">
-        @forelse($realestateQuestions as $q)
-            @include('admin.master.survey-questions._question_item', ['q' => $q])
-        @empty
-            <div style="text-align: center; padding: 24px; color: #9ca3af; font-size: 14px;">設問はまだ登録されていません</div>
-        @endforelse
-        {{-- 追加は別の画面（その部署で開く） --}}
-        <div style="margin-top: 16px;">
-            <a href="{{ route('admin.survey-questions.create', ['department' => 'realestate']) }}"
-               class="inline-flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold px-4 py-2 rounded-md">＋ 設問を追加</a>
-        </div>
-    </div>
+    @endforeach
 </div>
+
+@push('styles')
+<style>
+.sq-row { display: flex; align-items: center; gap: 12px; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px 16px; margin-bottom: 8px; background: #fff; }
+.sq-row-off { background: #fafafa; }
+.sq-row-off .sq-row-label { color: #6b7280; }
+.sq-row:target { border-color: #059669; }
+.sq-moves { display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; }
+.sq-moves form { margin: 0; }
+.sq-move { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; font-size: 12px; color: #374151; border: 1px solid #d1d5db; border-radius: 4px; background: #fff; cursor: pointer; }
+.sq-move:disabled { color: #d1d5db; border-color: #e5e7eb; cursor: not-allowed; }
+.sq-row-body { flex: 1; min-width: 0; }
+.sq-row-label { font-weight: 600; margin-bottom: 4px; overflow-wrap: anywhere; }
+.sq-row-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.sq-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+.sq-pill { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 600; background: #d1fae5; color: #065f46; }
+.sq-pill-off { background: #f3f4f6; color: #6b7280; }
+.sq-row-note { font-size: 12px; color: #6b7280; }
+.sq-row-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.sq-row-actions form { margin: 0; }
+.sq-edit { display: inline-block; padding: 3px 10px; font-size: 12px; font-weight: 600; color: #059669; border: 1px solid #059669; border-radius: 4px; text-decoration: none; background: #fff; }
+.sq-delete { display: inline-block; padding: 3px 10px; font-size: 12px; font-weight: 600; color: #dc2626; border: 1px solid #dc2626; border-radius: 4px; cursor: pointer; background: #fff; }
+@media (max-width: 640px) {
+    .sq-row { gap: 8px; padding: 10px 10px; }
+    .sq-row-actions { flex-direction: column; }
+}
+</style>
+@endpush
 
 <script>
 function surveyQuestionManager() {
     return {
-        activeTab: '{{ $department }}',
+        activeTab: {{ \Illuminate\Support\Js::from($department) }},
 
         switchTab: function(tab) {
             this.activeTab = tab;
-        },
-
-        deleteQuestion: function(id) {
-            if (!confirm('この設問を削除しますか？')) return;
-            var token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-            var xhr = new XMLHttpRequest();
-            xhr.open('DELETE', '{{ url("/admin/survey-questions") }}/' + id);
-            xhr.setRequestHeader('X-CSRF-TOKEN', token);
-            xhr.setRequestHeader('Accept', 'application/json');
-            // ⚠ これが無いとサーバは一覧への転送（302）を返し、XHR は DELETE のまま転送先へ送って 405 になる
-            //   （302 を GET に変えるのは POST のときだけ）。onload が 200 を受け取れず、一覧を読み込み直さない
-            xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
-            xhr.onload = function() {
-                if (xhr.status === 200) {
-                    window.location.reload();
-                }
-            };
-            xhr.send();
         }
     };
 }

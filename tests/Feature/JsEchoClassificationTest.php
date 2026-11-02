@@ -75,13 +75,6 @@ class JsEchoClassificationTest extends TestCase
         'admin/mansion-import/index.blade.php' => [
             '$activeTab ?? "property"' => self::NAME,
         ],
-        'admin/master/survey-questions/_question_item.blade.php' => [
-            '$q->id' => self::ID,
-        ],
-        // $department は housing か realestate だけ（SurveyQuestionController::index）
-        'admin/master/survey-questions/index.blade.php' => [
-            '$department' => self::NAME,
-        ],
         // $tab は index の @include がコードに書いた固定の文字
         'admin/tenant-import/_form.blade.php' => [
             '$tab' => self::NAME,
