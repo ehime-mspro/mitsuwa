@@ -44,10 +44,14 @@ class SurveyQuestionEditTest extends SurveyQuestionScreenTestCase
         return $this->questionForm($this->htmlOf($this->editUrl($question)), $steps);
     }
 
-    /** 保存された＝その部署の一覧へ移り、「設問を更新しました。」が出た */
+    /**
+     * 保存された＝その部署の一覧へ移り、「設問を更新しました。」が出た。
+     * ⚠ assertRedirect() は、入力エラーで戻ったときの失敗の文の組み立てがセッションの errors（配列）で止まる（Bug #49）。
+     *   転送先を直接比べる。
+     */
     private function assertUpdated(TestResponse $response, string $department = 'housing'): void
     {
-        $response->assertRedirect($this->indexUrl($department));
+        $this->assertSame($this->indexUrl($department), $response->headers->get('Location'), '保存されず、入力エラーなどで別の画面へ移った');
         $this->assertFlash($this->landed($response), 'success', '設問を更新しました。');
     }
 
