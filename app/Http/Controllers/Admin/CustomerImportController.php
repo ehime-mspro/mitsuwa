@@ -57,12 +57,18 @@ class CustomerImportController extends Controller
         "\u{00AC}" => "\u{FFE2}", // ¬ => ￢
     ];
 
+    /** 取込先の部署（execute() の入力チェック in:housing,realestate と同じ 2 つ） */
+    private const DEPARTMENTS = ['housing', 'realestate'];
+
     /**
-     * インポート画面表示
+     * インポート画面表示。URL の `?department=` が 2 つの部署のどちらかのときだけ、その部署を選んで開く
+     * （設問の列の見出しで断ったときの戻り先。ほかの値は今までどおり部署を渡さない＝住宅事業）
      */
-    public function showForm()
+    public function showForm(Request $request)
     {
-        return view('admin.customers.import');
+        $department = $request->query('department');
+
+        return view('admin.customers.import', in_array($department, self::DEPARTMENTS, true) ? ['department' => $department] : []);
     }
 
     /**
@@ -134,9 +140,10 @@ class CustomerImportController extends Controller
             $questionNumbers[$hIdx] = $qNum;
         }
 
-        // 行を検査する前・書き込む前に、ファイルごと断る（確定でも、読み直した CSV で照らし合わせ直す）
+        // 行を検査する前・書き込む前に、ファイルごと断る（確定でも、読み直した CSV で照らし合わせ直す）。
+        // 戻り先は同じ部署を選んだ取込の画面（案内どおりダウンロードし直すと、その部署のテンプレートになる）
         if ($columnProblems !== []) {
-            return redirect()->route('admin.customers.import')->withErrors([
+            return redirect()->route('admin.customers.import', ['department' => $department])->withErrors([
                 'csv_file' => [...$columnProblems, '設問の並びや文が変わっています。テンプレートをダウンロードし直してください。'],
             ]);
         }

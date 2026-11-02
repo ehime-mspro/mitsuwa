@@ -190,7 +190,7 @@
 <script>
 function csvImport() {
     return {
-        selectedDept: '{{ $department ?? "housing" }}',
+        selectedDept: {{ \Illuminate\Support\Js::from($department ?? 'housing') }},
         fileName: '',
         // 確定の欄: 取り込める行の数と重複候補の数（サーバが数えた値）。チェックを入れると重複候補も数える
         validCount: {{ (int) ($validCount ?? 0) }},

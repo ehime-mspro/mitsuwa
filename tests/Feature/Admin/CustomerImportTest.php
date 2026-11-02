@@ -17,6 +17,7 @@ use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\CreatesRealEstateSchema;
 use Tests\Concerns\CreatesSurveyQuestionSchema;
+use Tests\Concerns\DrivesAlpineFetch;
 use Tests\Concerns\ParsesForms;
 use Tests\TestCase;
 
@@ -43,6 +44,7 @@ class CustomerImportTest extends TestCase
     use RefreshDatabase;
     use CreatesRealEstateSchema;
     use CreatesSurveyQuestionSchema;
+    use DrivesAlpineFetch;
     use ParsesForms;
 
     /** 住宅のテンプレートと同じ並びの見出し（設問の列は無し） */
@@ -248,8 +250,12 @@ class CustomerImportTest extends TestCase
             JS);
     }
 
-    /** 確定のフォームを送り、転送をたどって着いた画面を返す */
-    private function submit(array $form): TestResponse
+    /**
+     * 確定のフォームを送り、転送をたどって着いた画面を返す。
+     *
+     * @param  string|null  $location  転送先（既定は部署なしの取込の画面。設問の列の見出しで断るときは部署つき）
+     */
+    private function submit(array $form, ?string $location = null): TestResponse
     {
         $response = $this->actingAs($this->actor)
             ->from('/admin/customers/import')
@@ -257,7 +263,7 @@ class CustomerImportTest extends TestCase
 
         // ⚠ assertRedirect() は使わない（検証エラーを持つ応答で外れると、失敗文を組み立てる途中で落ちて理由が読めない）
         $this->assertSame(302, $response->getStatusCode(), '確定の応答が転送になっていない');
-        $this->assertSame(route('admin.customers.import'), $response->headers->get('Location'));
+        $this->assertSame($location ?? route('admin.customers.import'), $response->headers->get('Location'));
 
         return $this->followRedirects($response);
     }
@@ -309,13 +315,13 @@ class CustomerImportTest extends TestCase
     }
 
     /**
-     * 取込の画面へ断られた（プレビューも確定も描かずに戻された）ことを確かめ、着いた画面を返す。
+     * 設問の列の見出しで断られた（プレビューも確定も描かずに、同じ部署の取込の画面へ戻された）ことを確かめ、着いた画面を返す。
      * ⚠ セッションに触らない（Bug #49）。着いた画面の入力エラーの箱で見る
      */
-    private function refused(TestResponse $response): TestResponse
+    private function refused(TestResponse $response, string $department = 'housing'): TestResponse
     {
         $this->assertSame(302, $response->getStatusCode(), 'プレビューか確定が描かれた（断られていない）');
-        $this->assertSame(route('admin.customers.import'), $response->headers->get('Location'));
+        $this->assertSame(route('admin.customers.import', ['department' => $department]), $response->headers->get('Location'));
 
         return $this->followRedirects($response);
     }
@@ -660,7 +666,7 @@ class CustomerImportTest extends TestCase
         // プレビューのあとで、Q2 の設問の文を変える（確定は CSV を読み直し、見出しも照らし合わせ直す）
         SurveyQuestion::where('label', '来場のきっかけ')->update(['label' => 'ご来場のきっかけ']);
 
-        $this->assertRefusedForQuestionColumns($this->submit($form), [
+        $this->assertRefusedForQuestionColumns($this->submit($form, route('admin.customers.import', ['department' => 'housing'])), [
             'Q2 の列の設問「来場のきっかけ」が、今の Q2「ご来場のきっかけ」と違います。',
         ]);
         $this->assertSame(0, Buyer::count());
@@ -753,6 +759,47 @@ class CustomerImportTest extends TestCase
             $this->fail("断られた:\n" . implode("\n", $this->errorItems($this->followRedirects($preview)->getContent())));
         }
         $this->assertSame(1, $preview->viewData('validCount'));
+    }
+
+    /**
+     * 設問の列の見出しで断ったときは、取込の画面を同じ部署で開き直す。案内どおりテンプレートをダウンロードし直すと、
+     * その部署のテンプレートになる（Ruling 19）。
+     */
+    public function test_a_realestate_file_refused_for_its_question_columns_keeps_the_department(): void
+    {
+        SurveyQuestion::create([
+            'department' => 'realestate', 'label' => 'ご希望の広さ', 'question_type' => 'text',
+            'sort_order' => 1, 'is_active' => true,
+        ]);
+
+        // 直す前: 部署なしの取込の画面へ戻し、画面は住宅事業を選んだ状態で開いた（テンプレートも住宅事業のものになった）
+        $page = $this->refused($this->preview($this->csv([
+            $this->person('山田', '太郎', ['Q1:ご希望の面積' => '50坪']),
+        ], ['Q1:ご希望の面積']), 'realestate'), 'realestate');
+        $this->assertRefusedForQuestionColumns($page, ['Q1 の列の設問「ご希望の面積」が、今の Q1「ご希望の広さ」と違います。']);
+        $html = $page->getContent();
+
+        // 部署のラジオ（x-model）は、ブラウザが描いた直後の状態で不動産事業を選んでいる
+        $this->assertSame('realestate', $this->browserForm($html, 'id="import-form"', 'csvImport')['fields']['department'] ?? null);
+
+        // テンプレートのリンク（x-bind:href）は、不動産事業のテンプレートを指す
+        preg_match_all('/\bx-bind:href="([^"]*)"/u', $html, $links);
+        $template = array_values(array_filter($links[1], fn (string $expr) => str_contains($expr, route('admin.customers.import.template'))));
+        $this->assertCount(1, $template, 'テンプレートのリンクがちょうど 1 つ無い');
+        $run = $this->driveAlpine($html, 'csvImport', $this->xData($html, 'csvImport'), '', [], true, [html_entity_decode($template[0], ENT_QUOTES, 'UTF-8')]);
+        $this->assertSame(route('admin.customers.import.template') . '?department=realestate', $run['evaluated'][0]);
+    }
+
+    /** 取込の画面の部署は、URL の値が 2 つの部署のどちらかのときだけ選ぶ（ほかは今までどおり住宅事業） */
+    public function test_the_import_page_chooses_the_department_only_from_known_values(): void
+    {
+        foreach (['realestate' => 'realestate', 'housing' => 'housing', 'tenant' => 'housing', "realestate'" => 'housing', '' => 'housing'] as $query => $expected) {
+            $html = $this->actingAs($this->actor)->get(route('admin.customers.import', ['department' => $query]))->assertStatus(200)->getContent();
+            $this->assertSame($expected, $this->browserForm($html, 'id="import-form"', 'csvImport')['fields']['department'] ?? null, "?department={$query}");
+        }
+
+        $html = $this->actingAs($this->actor)->get('/admin/customers/import?department[]=realestate')->assertStatus(200)->getContent();
+        $this->assertSame('housing', $this->browserForm($html, 'id="import-form"', 'csvImport')['fields']['department'] ?? null);
     }
 
     /** 取込の画面のテンプレートの案内に、前のテンプレートが断られることを書く（設計書 §4.4） */

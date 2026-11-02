@@ -63,10 +63,6 @@ class JsEchoClassificationTest extends TestCase
             '$axis[\'initialPct\']' => self::NUMBER,
             '$axis[\'trackWidthPx\']' => self::NUMBER,
         ],
-        // 部署は入力チェック（in:housing,realestate）を通った値だけを渡す（CustomerImportController::execute）
-        'admin/customers/import.blade.php' => [
-            '$department ?? "housing"' => self::NAME,
-        ],
         // $fileNamesKey は index の @include がコードに書いた固定の文字
         'admin/mansion-import/_form.blade.php' => [
             '$fileNamesKey' => self::NAME,
