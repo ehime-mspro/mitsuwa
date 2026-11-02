@@ -79,6 +79,8 @@ class SurveyQuestionMasterTest extends SurveyQuestionScreenTestCase
             if (str_contains($form, $action)) {
                 $parsed = $this->parseForm($form, $action);
                 if (($parsed['fields']['direction'] ?? null) === $direction) {
+                    $this->assertSame(1, preg_match('/<button\b[^>]*\btype="submit"[^>]*>/', $form, $button), "{$direction} のフォームに送るボタンが無い");
+                    $this->assertDoesNotMatchRegularExpression('/\sdisabled\b/', $button[0], "{$direction} のボタンが押せない");
                     $found[] = $parsed;
                 }
             }
