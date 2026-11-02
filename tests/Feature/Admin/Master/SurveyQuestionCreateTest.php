@@ -142,6 +142,22 @@ class SurveyQuestionCreateTest extends SurveyQuestionScreenTestCase
         return $options;
     }
 
+    /**
+     * 別のフォームの控え（`_old_input`）がセッションにあっても、追加の画面は最初の状態で描く（控えはこのフォームの欄
+     * ＝設問文のキーがあるときだけ使う）。直す前は、選択肢が 0 行・「有効」が外れて描かれた
+     */
+    public function test_another_forms_old_input_does_not_change_the_add_screen(): void
+    {
+        $response = $this->actingAs($this->user)->withSession(['_old_input' => ['name' => 'x', 'memo' => 'y']])->get($this->createUrl());
+        $this->assertSame(200, $response->getStatusCode());
+        $form = $this->questionForm($response->getContent());
+
+        $state = $form['run']['state'];
+        $this->assertSame(['', 'single_select', true], [$state['label'], $state['questionType'], $state['isActive']]);
+        $this->assertSame([['', '']], array_map(fn (array $row): array => [$row['value'], $row['original']], $state['options']), '選択肢の空の 1 行が無い');
+        $this->assertSame('1', $form['fields']['is_active'] ?? null, '「有効」のチェックが外れている');
+    }
+
     /** 「有効」のチェックを外して追加すると、無効の設問として入る（チェックの無い欄は送られない） */
     public function test_an_inactive_question_can_be_added(): void
     {

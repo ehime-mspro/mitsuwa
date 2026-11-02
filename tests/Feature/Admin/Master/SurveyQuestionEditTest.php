@@ -91,6 +91,24 @@ class SurveyQuestionEditTest extends SurveyQuestionScreenTestCase
     }
 
     /**
+     * 別のフォームの控え（`_old_input`）がセッションにあっても、編集画面は保存されている設問で描く（控えはこのフォームの欄
+     * ＝設問文のキーがあるときだけ使う）。直す前は、設問文が空・選択肢 0 行・「有効」が外れて描かれた
+     */
+    public function test_another_forms_old_input_does_not_blank_the_edit_screen(): void
+    {
+        $question = $this->question(['label' => 'お住まい', 'question_type' => 'single_select', 'options' => ['持ち家', '賃貸']]);
+
+        $response = $this->actingAs($this->user)->withSession(['_old_input' => ['name' => 'x', 'memo' => 'y']])->get($this->editUrl($question));
+        $this->assertSame(200, $response->getStatusCode());
+        $form = $this->questionForm($response->getContent());
+
+        $state = $form['run']['state'];
+        $this->assertSame(['お住まい', 'single_select', true], [$state['label'], $state['questionType'], $state['isActive']]);
+        $this->assertSame([['持ち家', '持ち家'], ['賃貸', '賃貸']], array_map(fn (array $row): array => [$row['value'], $row['original']], $state['options']));
+        $this->assertSame(['お住まい', '1'], [$form['fields']['label'] ?? null, $form['fields']['is_active'] ?? null]);
+    }
+
+    /**
      * 本番の形の設問（実測記録 Task 0）を、編集画面からそのまま保存しても中身が変わらない（Review Focus 1）。
      * 問 1: 選択肢＋付随テキスト 11 個（どれも {has_text, value}・2 個だけ text_label あり・has_text が false の行も）・回答 1
      * 問 2: 条件分岐 6 個（どれも {sub_fields, value}・欄の無い選択肢も sub_fields: []・キーは選択肢をまたいで同じ）

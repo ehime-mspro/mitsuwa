@@ -222,12 +222,15 @@ class SurveyQuestionController extends Controller
     /**
      * 追加・編集の画面の最初の状態。SurveyQuestionForm::state() に、選択肢を持つ種類の一覧（画面の JS が欄を出し分ける）を足す。
      * 入力エラーで戻ったときは前の入力から組む（ビューは old() を読まず、これを Js::from で 1 つだけ受け取る）。
+     * ⚠ 前の入力は、このフォームの控え（設問文のキーがある）のときだけ使う。控えは画面全体で共有されるので、別のフォームの
+     *   控え（name・memo など）で開くと、設問文が空・選択肢 0 行・「有効」が外れて描かれた（設問文の欄はいつも送られる）。
      *
      * @return array<string, mixed>
      */
     private function formState(?SurveyQuestion $question, string $department, Request $request): array
     {
-        $old = $request->session()->hasOldInput() ? $request->old() : null;
+        $old = $request->old();
+        $old = is_array($old) && array_key_exists('label', $old) ? $old : null;
         $choiceTypes = array_filter(SurveyQuestionType::cases(), SurveyQuestionForm::isChoice(...));
 
         return SurveyQuestionForm::state($question, $department, $old) + [
