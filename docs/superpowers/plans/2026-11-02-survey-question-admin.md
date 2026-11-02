@@ -499,3 +499,41 @@ M1〜M3 は使い捨てのテスト `<scratchpad>/task0/SurveyQuestionProbeTest.
 #### 残したこと（直していない）
 
 - `test_a_label_with_a_comma_survives_the_template` の `$preview->assertStatus(200)` は、断られたときに理由が読めない（I3b）。同じファイルのほかのテストは `getStatusCode()` と箱の文で見ている。直すかは Task 10 の点検で決める
+
+### 実測記録 Task 9（実ブラウザ）
+
+2026-11-02・PHP 8.3（`/opt/homebrew/opt/php@8.3/bin/php`）・枝 `survey-question-admin`（`9aa3e8d6`）。Task 0 の使い捨ての環境（`<scratchpad>/task0/demo.sqlite`・`gym.sqlite`・`artisan serve` の 8032 番）を Playwright（画面が見えている状態。`document.hidden` は false）で操作して測った。アプリ・テストは 1 行も変えていない。
+
+#### 準備
+
+- CSS: 新しいビューの Tailwind のクラス 34 個を、リンク先（main repo のビルド `app-DernpbB7.css`）で測ると `max-sm:p-3`（一覧の枠の 375px の余白）だけが無かった。README の手順で作業場所の `public/build` のリンクを外して作業場所でビルドし（`app-_7h98Lga.css`。`.max-sm\:p-3` あり）、確認のあと `rm -rf public/build` → `ln -sfn /Users/masanori/site/manage/public/build public/build` で戻した。375px の一覧の枠の余白は 12px（効いている）
+- DB: `survey-env.php` を流し直して住宅事業の 6 問（id 7〜12）にし、`<scratchpad>/task9/answers.php`（コミットしない）で、問 4（ご家族の人数・id 10）を無効に・買主 1 のアンケート 2 件に回答 4 件（問 2〈id 8〉の「建売住宅の購入」2 件・問 3〈id 9〉の「半年以内」1 件・問 1〈id 7〉の「ご紹介」1 件）を入れた
+- ログインは使い捨てのルート（`login-route.php.txt` を `routes/web.php` の末尾に足した）で利用者 1（経営層・有効）。終わったあと `git checkout -- routes/web.php`、`git status --porcelain` は空、サーバは止めた
+
+#### 結果
+
+| # | 確かめたこと | 測った内容 | 判定 |
+|---|---|---|---|
+| 1 | 一覧の ↑↓ | 問 3（id 9）の ↓ → 無効の問 4 と入れ替わり、`?department=housing#question-9` に着く・並び 7,8,10,9,11,12・その行の枠が緑（`:target`・`rgb(5, 150, 105)`）・帯は出ない。1440×500 で末尾近くの id 11 の ↓ → 着いた行は画面の 312〜395px（見える範囲 52〜500px の中）・`main` が 462px 下へ送られている。無効の id 10 の ↑ → 行の上端が 52px ＝ 上の見出しの帯（`header` の下端 52px）にちょうど接して見える（`main` がスクロールの箱で、見出しの帯は `main` の外なので重ならない）。番号は有効な設問だけ（1・2・3・（なし）・4・5 → 並べ替えたあとも振り直し） | OK |
+| 1 | 端の押せないボタンの理由 | 先頭の ↑・末尾の ↓: `disabled`・ボタンの中心の `document.elementFromPoint()` はボタン自身、祖先を辿ると包む `<span>` の `title`「先頭の設問です」「末尾の設問です」。押せる ↑ は祖先に `title` なし。Playwright で span にホバーすると `:hover` の連なりに `SPAN[title=先頭の設問です]` → `BUTTON.sq-move` が入る（ネイティブのツールチップは OS が描くのでページのスクリーンショットには写らない） | OK |
+| 1 | 無効の行の見分け | 無効の行: 地 `rgb(250, 250, 250)`・設問文 `rgb(107, 114, 128)`・番号なし・「無効」の灰色のピル。有効の行: 地 `rgb(255, 255, 255)`・設問文 `rgb(0, 0, 0)`・番号・緑の「有効」。地の差はコントラスト比 1.04:1 でほぼ見えない（Task 6 の後回しのとおり）が、設問文の灰色（地に対して 4.63:1）・番号の有無・ピルで見分けられる | OK（地の差は弱い・下の「気づいたこと」1） |
+| 2 | 追加の画面で 7 種類を切り替える | 種類ごとに見える箱と送られる欄（`disabled` でない `name`）: 単一選択・複数選択 = 選択肢の箱・`options[0][original\|value]` ／ 選択肢＋付随テキスト = ＋「文字も入れる」・`options[0][has_text]` ／ 条件分岐付き選択 = ＋「付随の欄の見出し」と「この選択肢を選んだときに出す欄」・`settings[sub_heading]` ／ テキスト入力 = 見本の文字の箱だけ・`settings[placeholder]` ／ 数値入力 = `settings[min\|max\|unit]` ／ スライダー = `settings[min\|max\|step\|unit]`（どれにも `label`・`question_type`・`is_active`） | OK |
+| 2 | 選んだ種類の欄だけ送られる（ネットワークの要求の本文） | 6 種類を画面から登録し、POST の本文を読んだ: スライダー `question_type=slider&is_active=1&settings[min]=20&settings[max]=60&settings[step]=5&settings[unit]=坪`（`options` なし）／ 数値 `settings[min]=10&settings[max]=200&settings[unit]=坪`（`step`・`options` なし）／ テキスト `settings[placeholder]=例: 4LDK` だけ ／ 付随テキスト `options[0][original]=&options[0][value]=チラシ&options[1][original]=&options[1][value]=その他&options[1][has_text]=1&options[1][text_label]=具体的に`（`settings`・`sub_fields` なし）／ 複数選択・単一選択 `options[i][original\|value]` だけ。条件分岐は 3 の行。どれも 302 → 一覧・帯「設問を追加しました。」・末尾に追加。保存された形は スライダー `{"min":20,"max":60,"step":5,"unit":"坪"}`・数値 `{"min":10,"max":200,"unit":"坪"}`・テキスト `{"placeholder":"例: 4LDK"}`・付随テキスト `[{"value":"チラシ","has_text":false},{"value":"その他","has_text":true,"text_label":"具体的に"}]`・複数／単一選択は文字の並び | OK |
+| 3 | 条件分岐の行と欄を足す・並べる・外す | 追加の画面で選択肢を 4 行に・1 行目に欄 3 つ・2 行目に欄 1 つ（種類「数」）→ 1 行目の欄 2 行目を ×・3 行目を ↑・4 行目を × → 画面は「建売（市区町村/文字・ご予算/文字）」「リフォーム」「土地（土地の坪数/数）」。端の ↑↓ は `disabled` で包む span の `title`「先頭の選択肢です」「末尾の選択肢です」。送られた本文はこの並び（`options[0][sub_fields][0..1]`・`options[2][sub_fields][0]`・`key` は空）。保存は `[{"value":"建売","sub_fields":[{"key":"f3ck3xhcg",…},{"key":"fnwvhbpvj",…}]},{"value":"リフォーム","sub_fields":[]},{"value":"土地","sub_fields":[{"key":"fl7tfysqg","type":"number",…}]}]`・`{"sub_heading":"希望の内容"}`。編集の画面を開き直すと、同じ並び・見出し・種類と、hidden の `key` が保存のキーのまま・`original` は名前 | OK |
+| 4 | 入力エラーで戻る | スライダーで設問文を空・下限 6000・上限 2000・刻み 0・単位 万円 → 追加の画面に戻り、赤い箱に「設問文は必須です。」「刻みは1以上の値にしてください。」「上限は下限より大きくしてください。」の 3 件が一度に出る・種類はスライダーのまま・4 欄とも入れた値のまま。条件分岐で 3 行（1 行目 A＋欄「市区町村」・2 行目は名前が空で欄「坪数/数」「備考」・3 行目 A）→ 「選択肢 2 行目の名前を入力してください。」「選択肢 3 行目の名前「A」は 1 行目と同じです。」・設問文・見出し・3 行と欄（種類「数」も）がそのまま戻る | OK |
+| 5 | 回答がある設問の編集画面 | 問 2（id 8・回答 2 件）: 種類の選択欄は `disabled`・`aria-describedby="sq-type-locked"`。欄の中心の `elementFromPoint()` は選択欄、祖先を辿ると包む span の `title`「回答が 2件あるため、種類は変えられません。」・実ホバーの `:hover` の連なりにもその span。同じ文が欄の下に見えている。「建売住宅の購入」の行だけに「この選択肢を選んだ回答が 2件あります。名前を変えたり外したりしても、その回答は元の名前「建売住宅の購入」のまま残ります。」・ほかの 5 行には出ない。問 1（id 7・回答 1 件）も「回答が 1件あるため…」・「ご紹介」の行だけに「…回答が 1件あります…元の名前「ご紹介」…」・「ご紹介」「その他」の「文字も入れる」と見出しが保存どおり | OK |
+| 6 | 問 2 の付随の欄の見出し | 見出しが空のまま、住宅事業の買主 1 のアンケートの登録画面（`/housing/customers/1/surveys/create`）で「①建売住宅の購入」を選ぶと、見えるのは「▼ 建売住宅の購入」だけ（「希望エリア」の文字なし）。問 2 の編集画面で見出しに「希望エリア」を入れて「更新する」→ 一覧・帯「設問を更新しました。」・`settings` が `{"sub_heading":"希望エリア"}`・種類は変わらない。`options` は欄のキー（`city` `area` `tsubo` `land_tsubo`）と見出し・種類が前と同じで、違いは欄の無い 2 つの選択肢に `"sub_fields":[]` が足されたことだけ（計画の保存の形どおり）・回答 4 件は 1 文字も変わらない。登録画面を開き直して同じ選択肢を選ぶと「▼ 建売住宅の購入 — 希望エリア」が見え、ほかの選択肢の見出しは隠れたまま | OK |
+| 7 | 375px と 1440px | 一覧・追加（単一選択・付随テキスト・条件分岐・スライダー・数値・テキストを順に）・編集（問 2）で、`main.scrollWidth − main.clientWidth` = 0・文書の横スクロール 0・`overflow` が hidden／clip で中身が枠より広い要素 0・`main` の左右の外へ出る要素 0（入力欄も 0）。保存の帯（`data-form-actions-bar`・375px は左端 0）の上端は 1440px で 826px・375px で 738px、`main` を一番下まで送ったときの最後の欄の下端は 1440px で 479〜747px・375px で 525〜675px（どれも帯より上）で、最後の欄の中心の `elementFromPoint()` はその欄自身（帯に隠れない）。375px の一覧は 1 行が設問文 207px・編集／削除が右に縦並び、回答の件数の注意（275px）と種類の固定の文（1 行）も枠の中に折り返す | OK |
+| 7 | 削除の確認の小窓 | 一覧の「削除」で `confirm` の文が「「ご希望の広さ（試し・スライダー）」を削除しますか？回答がある設問は無効にします。」（1440px）・「「ご希望の土地の広さ（試し・数値）」を…」（375px）。「キャンセル」で消えない。回答の無い試しの設問（id 18）で「OK」→ 帯「設問を削除しました。」・行が消える | OK |
+| 8 | コンソール | 訪ねた全部の画面（一覧・追加の画面 12 回と入力エラーで戻った 2 回・編集の画面 6 回・アンケートの登録画面 2 回）で、`console_messages`（はじめから・warning 以上）は 0 件。最後に `console.error()` と捕まえない例外のカナリアを 1 つずつ出すと 2 件として出た（拾う仕組みは効いている）。各画面の `x-data` の要素はどれも Alpine が組み立てていた | OK |
+
+#### 気づいたこと（直していない）
+
+1. 無効の行の地 `#fafafa` は有効の行の `#fff` とのコントラスト比が 1.04:1 で、地だけでは見分けられない（Task 6 の後回し）。設問文の灰色・番号なし・「無効」のピルで見分けられるので欠陥とはしない
+2. ↑↓ の二度押し（Task 6 の後回し）: 同じ ↓ を 60ms あけて 2 回押すと POST が 2 本届き、設問が 2 段動いた（id 13 が 8 番目 → 10 番目）。Playwright の `dblclick` では POST は 1 本だった
+3. ネイティブの `title` のツールチップは OS が描くので、ページのスクリーンショットには写らない（`elementFromPoint()` の祖先と `:hover` の連なりで見た）
+4. Playwright のスナップショット（`.yml`）とコンソールの記録は main repo の `.playwright-mcp/` に書かれる（git の管理外）。スクリーンショットは main repo の直下に撮ってすぐ scratchpad へ移した
+
+#### スクリーンショット（`<scratchpad>/task9/`。コミットしない）
+
+`task9-01-list-1440.png`（一覧・無効の行）／ `task9-02-move-up-target-1440x500.png`（↑ のあと着いた行）／ `task9-03-hover-first-up.png`（先頭の ↑ にホバー）／ `task9-04-add-select-with-text.png`（付随テキストの追加）／ `task9-05-add-conditional-before-submit.png`（条件分岐の行と欄を動かしたあと）／ `task9-06-edit-conditional-reopened.png`（保存して開き直した編集画面）／ `task9-07-error-slider.png`・`task9-08-error-conditional.png`（入力エラーで戻った画面）／ `task9-09-edit-answered-locked.png`（回答がある問 2 の編集画面）／ `task9-10-survey-create-heading-empty.png`（見出しが空のアンケートの登録画面）／ `task9-11-survey-create-heading-kibou-area.png`（「▼ 建売住宅の購入 — 希望エリア」の箱）／ `task9-12-list-375.png`・`task9-13-create-conditional-375.png`・`task9-14-edit-answered-375.png`（375px）。`<scratchpad>` は `/private/tmp/claude-501/-Users-masanori-site-manage/e80904fb-8117-421f-ae6b-b2c150cf4f0b/scratchpad`
