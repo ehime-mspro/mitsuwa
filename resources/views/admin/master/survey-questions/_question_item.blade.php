@@ -1,5 +1,8 @@
 {{-- 一覧の設問の 1 行。$number は有効な設問だけの通し番号（無効の設問は null で番号を出さない）、
-     $isFirst / $isLast は無効の設問も含めた部署の並びの端（端の ↑・↓ は押せない。理由はボタンを包む span の title。Top trap #12） --}}
+     $isFirst / $isLast は無効の設問も含めた部署の並びの端（端の ↑・↓ は押せない。理由はボタンを包む span の title。Top trap #12）。
+     ↑↓ のフォームは二度押し止めの部品（submitOnce()）で 1 回だけ送る（2 回押すと 2 段動いた）。送信中はボタンを押せなくするだけで、
+     理由は出さない（押した直後に一覧を開き直すので、押せないのは移るまでの間だけ） --}}
+@include('_partials._submit_once')
 @php
     $qTypeEnum = $q->question_type;
     $optCount = $q->options_count;
@@ -9,19 +12,21 @@
         @if($isFirst)
             <span title="先頭の設問です" style="display: inline-flex;"><button type="button" class="sq-move" disabled aria-label="上へ動かす">↑</button></span>
         @else
-            <form method="POST" action="{{ route('admin.survey-questions.move', $q) }}">
+            <form method="POST" action="{{ route('admin.survey-questions.move', $q) }}"
+                  x-data="submitOnce()" x-on:submit="onSubmit($event)" x-on:pageshow.window="onPageShow($event)">
                 @csrf
                 <input type="hidden" name="direction" value="up">
-                <button type="submit" class="sq-move" aria-label="上へ動かす">↑</button>
+                <button type="submit" class="sq-move" :disabled="submitting" aria-label="上へ動かす">↑</button>
             </form>
         @endif
         @if($isLast)
             <span title="末尾の設問です" style="display: inline-flex;"><button type="button" class="sq-move" disabled aria-label="下へ動かす">↓</button></span>
         @else
-            <form method="POST" action="{{ route('admin.survey-questions.move', $q) }}">
+            <form method="POST" action="{{ route('admin.survey-questions.move', $q) }}"
+                  x-data="submitOnce()" x-on:submit="onSubmit($event)" x-on:pageshow.window="onPageShow($event)">
                 @csrf
                 <input type="hidden" name="direction" value="down">
-                <button type="submit" class="sq-move" aria-label="下へ動かす">↓</button>
+                <button type="submit" class="sq-move" :disabled="submitting" aria-label="下へ動かす">↓</button>
             </form>
         @endif
     </div>

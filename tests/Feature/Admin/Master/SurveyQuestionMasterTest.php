@@ -72,22 +72,28 @@ class SurveyQuestionMasterTest extends SurveyQuestionScreenTestCase
     /** 行の ↑（up）か ↓（down）のフォーム（ちょうど 1 つ） */
     private function moveForm(string $html, SurveyQuestion $question, string $direction): array
     {
+        $form = $this->moveFormMarkup($html, $question, $direction);
+        $parsed = $this->parseForm($form, 'action="' . route('admin.survey-questions.move', $question) . '"');
+        $this->assertSame(1, preg_match('/<button\b[^>]*\btype="submit"[^>]*>/', $form, $button), "{$direction} のフォームに送るボタンが無い");
+        $this->assertDoesNotMatchRegularExpression('/\sdisabled\b/', $button[0], "{$direction} のボタンが押せない");
+        $this->assertSame('POST', $parsed['method']);
+        $this->assertNotSame('', $parsed['fields']['_token'] ?? '', '並び替えのフォームに @csrf が無い');
+
+        return $parsed;
+    }
+
+    /** 行の ↑（up）か ↓（down）のフォームの HTML（`<form …>` から `</form>` まで。ちょうど 1 つ） */
+    private function moveFormMarkup(string $html, SurveyQuestion $question, string $direction): string
+    {
         $action = 'action="' . route('admin.survey-questions.move', $question) . '"';
         preg_match_all('/<form\b[^>]*>.*?<\/form>/su', $this->row($html, $question), $forms);
         $found = [];
         foreach ($forms[0] as $form) {
-            if (str_contains($form, $action)) {
-                $parsed = $this->parseForm($form, $action);
-                if (($parsed['fields']['direction'] ?? null) === $direction) {
-                    $this->assertSame(1, preg_match('/<button\b[^>]*\btype="submit"[^>]*>/', $form, $button), "{$direction} のフォームに送るボタンが無い");
-                    $this->assertDoesNotMatchRegularExpression('/\sdisabled\b/', $button[0], "{$direction} のボタンが押せない");
-                    $found[] = $parsed;
-                }
+            if (str_contains($form, $action) && ($this->parseForm($form, $action)['fields']['direction'] ?? null) === $direction) {
+                $found[] = $form;
             }
         }
         $this->assertCount(1, $found, "設問「{$question->label}」の行に {$direction} のフォームがちょうど 1 つ無い");
-        $this->assertSame('POST', $found[0]['method']);
-        $this->assertNotSame('', $found[0]['fields']['_token'] ?? '', '並び替えのフォームに @csrf が無い');
 
         return $found[0];
     }
@@ -194,6 +200,53 @@ class SurveyQuestionMasterTest extends SurveyQuestionScreenTestCase
         $this->assertFalse($this->paneHidden($html, 'realestate'), '不動産事業のタブに戻らない');
         $this->assertSame(['1. E', '2. D'], $this->rowLabels($html, 'realestate'));
         $this->assertSame(['B', 'A', 'C'], $this->order('housing'));
+    }
+
+    /**
+     * ↑↓ は 1 つのフォームにつき 1 回だけ送る（二度押し止めの部品 _partials/_submit_once の submitOnce()）。
+     * 直す前は、実ブラウザで 60ms あけて 2 回押すと POST が 2 本届き、設問が 2 段動いた。
+     * ⚠ 部品の定義（script）がこの画面に描かれていることと、フォームの x-data を対で見る（Bug #28）。
+     *   振る舞いは、フォームに描かれた式（x-on:submit・:disabled・x-on:pageshow.window）を部品の script で動かして見る
+     */
+    public function test_each_arrow_form_is_sent_only_once(): void
+    {
+        $a = $this->question('A');
+        $b = $this->question('B');
+        $html = $this->htmlOf($this->indexUrl());
+
+        foreach ([[$a, 'down'], [$b, 'up']] as [$question, $direction]) {
+            $form = $this->moveFormMarkup($html, $question, $direction);
+            $open = substr($form, 0, strpos($form, '>') + 1);
+            $this->assertSame('submitOnce()', $this->htmlAttr($open, 'x-data'), "{$direction} のフォームが二度押し止めの部品につながっていない");
+            $submit = $this->htmlAttr($open, 'x-on:submit');
+            $pageShow = $this->htmlAttr($open, 'x-on:pageshow.window');
+            $this->assertSame(1, preg_match('/<button\b[^>]*\btype="submit"[^>]*>/', $form, $button));
+            $disabled = $this->htmlAttr($button[0], ':disabled');
+            $this->assertNotNull($submit, "{$direction} のフォームが送信を部品に渡していない");
+            $this->assertNotNull($pageShow, "{$direction} のフォームが pageshow（window にだけ届く。Bug #65）を部品に渡していない");
+            $this->assertNotNull($disabled, "{$direction} のボタンが送信中に押せなくならない");
+
+            $js = fn (string $expr): string => json_encode($expr, JSON_UNESCAPED_UNICODE);
+            $run = $this->driveAlpine($html, 'submitOnce', 'submitOnce()', <<<JS
+                const on = function (expr, event) { return new Function('data', '\$event', 'with (data) { return (' + expr + '); }')(data, event); };
+                const press = function () {
+                    const event = { cancelled: false, preventDefault: function () { this.cancelled = true; } };
+                    on({$js($submit)}, event);
+                    return event.cancelled;
+                };
+                const disabled = function () { return !!on({$js($disabled)}, {}); };
+                data.trace = { before: disabled(), first: press(), afterFirst: disabled(), second: press(), third: press() };
+                on({$js($pageShow)}, { persisted: true });
+                data.trace.afterShow = disabled();
+                data.trace.again = press();
+                JS);
+
+            $this->assertSame(
+                ['before' => false, 'first' => false, 'afterFirst' => true, 'second' => true, 'third' => true, 'afterShow' => false, 'again' => false],
+                $run['state']['trace'],
+                "{$direction} のフォーム: 1 回目は通し、2 回目からは取り消す・送信中はボタンを押せない・ページを表示し直したら押せる、になっていない"
+            );
+        }
     }
 
     /** 端は無効の設問も含めた並びで決める。押せない ↑↓ は disabled で、理由はボタンを包む span の title（Top trap #12） */
