@@ -165,6 +165,12 @@ class SurveyQuestionEditTest extends SurveyQuestionScreenTestCase
         $this->assertUpdated($this->send($this->editForm($question, 'data.isActive = true;'), $this->editUrl($question)));
         $this->assertTrue($question->fresh()->is_active);
         $this->assertSame(['placeholder' => '例: 3LDK'], $question->fresh()->settings);
+
+        // 逆に、チェックを外すと無効になる（チェックの無い欄は送られない）
+        $form = $this->editForm($question, 'data.isActive = false;');
+        $this->assertArrayNotHasKey('is_active', $form['fields']);
+        $this->assertUpdated($this->send($form, $this->editUrl($question)));
+        $this->assertFalse($question->fresh()->is_active);
     }
 
     /** 回答がある設問: 種類の選択欄は押せず、理由は包む span の title と、下の文（aria-describedby）で出す（Top trap #12） */
@@ -187,7 +193,10 @@ class SurveyQuestionEditTest extends SurveyQuestionScreenTestCase
         $this->assertSame(['今のお住まい', 'single_select', ['持ち家', '賃貸']], [$saved->label, $saved->question_type->value, $saved->options]);
     }
 
-    /** 回答がある設問に手で種類を足して送ると、理由が出て、種類も中身も変わらない（Review Focus 5） */
+    /**
+     * 回答がある設問に手で種類を足して送ると、理由が出て、種類も中身も変わらない（Review Focus 5）。
+     * ⚠ ほかの検査は今の種類で行う（手で送った種類の規則の誤り＝スライダーの下限などを並べない）。
+     */
     public function test_a_locked_type_sent_by_hand_is_refused(): void
     {
         $question = $this->question(['label' => 'お住まい', 'question_type' => 'single_select', 'options' => ['持ち家', '賃貸']]);
@@ -195,18 +204,21 @@ class SurveyQuestionEditTest extends SurveyQuestionScreenTestCase
         $before = $this->stored($question);
         $url = $this->editUrl($question);
 
-        $form = $this->editForm($question, "data.label = '書き換えた設問'; data.options[0].value = '持ち家（一戸建て）';");
-        $form['fields']['question_type'] = 'text';
-        $response = $this->send($form, $url);
+        foreach (['text', 'slider', ['single_select']] as $sent) {
+            $form = $this->editForm($question, "data.label = '書き換えた設問'; data.options[0].value = '持ち家（一戸建て）';");
+            $form['fields']['question_type'] = $sent;
+            $response = $this->send($form, $url);
 
-        $response->assertRedirect($url);
-        $html = $this->landed($response);
-        $this->assertSame([self::LOCKED_ONE], $this->errorItems($html));
-        $this->assertSame($before, $this->stored($question));
-        // 戻った画面も今の種類のまま（手で送った種類を描かない）。打った文は残る
-        $back = $this->questionForm($html);
-        $this->assertSame('single_select', $back['run']['state']['questionType']);
-        $this->assertSame('書き換えた設問', $back['fields']['label']);
+            $case = json_encode($sent);
+            $response->assertRedirect($url);
+            $html = $this->landed($response);
+            $this->assertSame([self::LOCKED_ONE], $this->errorItems($html), $case);
+            $this->assertSame($before, $this->stored($question), $case);
+            // 戻った画面も今の種類のまま（手で送った種類を描かない）。打った文は残る
+            $back = $this->questionForm($html);
+            $this->assertSame('single_select', $back['run']['state']['questionType'], $case);
+            $this->assertSame('書き換えた設問', $back['fields']['label'], $case);
+        }
     }
 
     public function test_the_type_of_a_question_without_answers_can_be_changed(): void
@@ -368,17 +380,19 @@ class SurveyQuestionEditTest extends SurveyQuestionScreenTestCase
         }
     }
 
-    /** 部署は画面で変えない（手で送った部署は使わない） */
+    /** 部署は画面で変えない（手で送った部署は使わない。検査も設問の部署で行うので、読めない部署でも断らない） */
     public function test_the_department_is_not_changed_by_hand(): void
     {
         $question = $this->question(['label' => '間取りのご希望', 'question_type' => 'text']);
 
-        $form = $this->editForm($question, "data.label = '間取りのご希望（任意）';");
-        $this->assertArrayNotHasKey('department', $form['fields'], '編集の画面が部署を送る');
-        $form['fields']['department'] = 'realestate';
-        $this->assertUpdated($this->send($form, $this->editUrl($question)), 'housing');
+        foreach (['realestate', 'unknown', ['realestate']] as $n => $sent) {
+            $form = $this->editForm($question, "data.label = '間取りのご希望（{$n}）';");
+            $this->assertArrayNotHasKey('department', $form['fields'], '編集の画面が部署を送る');
+            $form['fields']['department'] = $sent;
+            $this->assertUpdated($this->send($form, $this->editUrl($question)), 'housing');
 
-        $saved = $question->fresh();
-        $this->assertSame(['housing', '間取りのご希望（任意）'], [$saved->department, $saved->label]);
+            $saved = $question->fresh();
+            $this->assertSame(['housing', "間取りのご希望（{$n}）"], [$saved->department, $saved->label], json_encode($sent));
+        }
     }
 }
