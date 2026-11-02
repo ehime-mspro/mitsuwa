@@ -1080,6 +1080,38 @@ class CustomerImportTest extends TestCase
     }
 
     /**
+     * テンプレートの見出しは CSV の決まり（RFC 4180）で書く: カンマ・`"` を含むセルは引用符で囲み、`"` は 2 つ重ねる。
+     * 取込も見出しを同じ決まりで読む（Review Focus 2。円記号を逃がしの文字として読むと、`\"` の続く見出しが割れる）。
+     */
+    public function test_a_label_with_a_comma_survives_the_template(): void
+    {
+        // 全角の「、」・カンマ・引用符・& と <・末尾の円記号（Review Focus 2 の壊れやすい文字）
+        $label    = "ご予算、ローン,'\"&<\\";
+        $question = SurveyQuestion::create([
+            'department' => 'housing', 'label' => $label, 'question_type' => 'text',
+            'sort_order' => 1, 'is_active' => true,
+        ]);
+
+        $header = $this->templateHeader('housing');
+
+        // 直す前: 見出しをカンマでつないだだけで、設問の列が「Q1:ご予算、ローン」と「'"&<\」の 2 つのセルに割れた。
+        // ほかの列は今までと同じ（引用符で囲まない）
+        $this->assertSame(implode(',', self::HEADER) . ',"Q1:ご予算、ローン,\'""&<\\"', $header);
+        $this->assertSame([...self::HEADER, "Q1:{$label}"], str_getcsv($header, ',', '"', ''));
+
+        // そのテンプレートで取り込める（見出しの文が今の設問の文と同じに読める）
+        $preview = $this->preview($this->csvUnder($header, [
+            $this->person('山田', '太郎', ["Q1:{$label}" => '3000万円まで']),
+        ]));
+        $preview->assertStatus(200);
+        $this->assertSame([], $preview->viewData('rowErrors'));
+        $this->assertSame(1, $preview->viewData('validCount'));
+
+        $this->submit($this->confirmForm($preview))->assertSee('1件のインポートが完了しました。');
+        $this->assertSame([$question->id => '3000万円まで'], BuyerSurvey::sole()->answers()->pluck('answer_value', 'question_id')->all());
+    }
+
+    /**
      * 設問の一覧の番号・↑↓・テンプレートの Q の番号・取込の Q の番号は、同じ並び（sort_order、同点は id）で数える。
      *
      * ⚠ SQLite は同じ sort_order の設問を id の順に返すので、並びの結果を見るだけでは id の条件を外しても緑になる

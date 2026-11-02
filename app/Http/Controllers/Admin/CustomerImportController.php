@@ -86,7 +86,9 @@ class CustomerImportController extends Controller
             return redirect()->route('admin.customers.import')->with('error', 'CSVファイルにデータがありません。');
         }
 
-        $header = str_getcsv(array_shift($lines));
+        // 見出しは CSV の決まり（RFC 4180。`"` は 2 つ重ねる）で読む。テンプレートがその形で書き、Excel もその形で保存する。
+        // ⚠ 既定の逃がしの文字（円記号）で読むと、`\"` の続く設問の文（末尾が円記号の文を引用符で囲んだもの）が割れる
+        $header = str_getcsv(array_shift($lines), ',', '"', '');
         $header = array_map('trim', $header);
 
         // 設問カラム検出（Q1:xxx, Q2:xxx ...）。Q の番号は、有効な設問を並び順（テンプレートと同じ）に並べた何番目か
@@ -319,8 +321,13 @@ class CustomerImportController extends Controller
         $deptLabel = ($department === 'housing') ? '住宅事業' : '不動産事業';
         $filename  = "顧客インポートテンプレート_{$deptLabel}.csv";
 
-        $bom = "\xEF\xBB\xBF";
-        $csv = $bom . implode(',', $headers) . "\n";
+        // 見出しは CSV の決まり（RFC 4180）で書く: カンマ・`"`・空白を含む設問の文は引用符で囲み、`"` は 2 つ重ねる
+        // （つなぐだけだと、カンマを含む設問の文で列が割れた）。逃がしの文字は使わない（取込の見出しの読み方と同じ）
+        $stream = fopen('php://temp', 'r+');
+        fputcsv($stream, $headers, ',', '"', '', "\n");
+        rewind($stream);
+        $csv = "\xEF\xBB\xBF" . stream_get_contents($stream);
+        fclose($stream);
 
         return response($csv, 200, [
             'Content-Type'        => 'text/csv; charset=UTF-8',
