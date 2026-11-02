@@ -1085,8 +1085,9 @@ class CustomerImportTest extends TestCase
      */
     public function test_a_label_with_a_comma_survives_the_template(): void
     {
-        // 全角の「、」・カンマ・引用符・& と <・末尾の円記号（Review Focus 2 の壊れやすい文字）
-        $label    = "ご予算、ローン,'\"&<\\";
+        // 全角の「、」・カンマ・引用符・円記号の後ろの引用符・& と <・末尾の円記号（Review Focus 2 の壊れやすい文字）。
+        // ⚠ 円記号の後ろの引用符が無いと、書く側・読む側を円記号の逃がしに戻しても同じ見出しになり、テストが見分けられない
+        $label    = "ご予算、ローン,\"頭金\\\"'&<\\";
         $question = SurveyQuestion::create([
             'department' => 'housing', 'label' => $label, 'question_type' => 'text',
             'sort_order' => 1, 'is_active' => true,
@@ -1094,9 +1095,9 @@ class CustomerImportTest extends TestCase
 
         $header = $this->templateHeader('housing');
 
-        // 直す前: 見出しをカンマでつないだだけで、設問の列が「Q1:ご予算、ローン」と「'"&<\」の 2 つのセルに割れた。
+        // 直す前: 見出しをカンマでつないだだけで、設問の列が「Q1:ご予算、ローン」と後ろの文の 2 つのセルに割れた。
         // ほかの列は今までと同じ（引用符で囲まない）
-        $this->assertSame(implode(',', self::HEADER) . ',"Q1:ご予算、ローン,\'""&<\\"', $header);
+        $this->assertSame(implode(',', self::HEADER) . ',"Q1:ご予算、ローン,""頭金\\""\'&<\\"', $header);
         $this->assertSame([...self::HEADER, "Q1:{$label}"], str_getcsv($header, ',', '"', ''));
 
         // そのテンプレートで取り込める（見出しの文が今の設問の文と同じに読める）
