@@ -9,8 +9,7 @@ use Tests\Concerns\CreatesSurveyQuestionSchema;
 
 /**
  * アンケート設問の管理（Admin\SurveyQuestionController）。住宅事業・不動産事業の 2 つのタブ。
- * 追加と削除は画面の JS（surveyQuestionManager）が XMLHttpRequest で送る（X-Requested-With を付けないので、
- * サーバは JSON でなく転送を返し、XHR はその先の一覧を読んで 200 になる）。
+ * 削除は画面の JS（surveyQuestionManager）が XMLHttpRequest で送る。追加は別の画面のふつうのフォーム（SurveyQuestionCreateTest）。
  *
  * ⚠ **設問の編集（PUT）と並び替えには画面が無い**（「編集」ボタンは一覧を開き直すだけ・「ドラッグ＆ドロップで
  *   並び替えできます」と書いてあるが、ドラッグを受け取る処理が無い）。この 2 つはサーバの約束だけを直接送って確かめる。
@@ -80,34 +79,6 @@ class SurveyQuestionMasterTest extends MasterScreenTestCase
         $this->assertSame('housing', $this->driveAlpine($html, 'surveyQuestionManager', $factory, '')['state']['activeTab']);
         $realestateHtml = $this->htmlOf($this->indexUrl('realestate'));
         $this->assertSame('realestate', $this->driveAlpine($realestateHtml, 'surveyQuestionManager', $this->xData($realestateHtml, 'surveyQuestionManager'), '')['state']['activeTab']);
-    }
-
-    public function test_a_question_is_added_from_the_screen(): void
-    {
-        $trip = $this->roundTrip($this->indexUrl('realestate'),
-            "data.showAddModal = true; data.newLabel = '重視する点'; data.newType = 'multi_select'; data.newOptions = '[\"駅近\",\"学区\"]'; data.addQuestion();");
-
-        $request = $trip['request'];
-        $this->assertSame(['POST', route('admin.survey-questions.store')], [$request['method'], $request['url']]);
-        $this->assertSame('application/json', $request['headers']['Content-Type'] ?? null);
-        $this->assertSame(['department' => 'realestate', 'label' => '重視する点', 'question_type' => 'multi_select', 'options' => '["駅近","学区"]'],
-            json_decode((string) $request['body'], true));
-        $question = SurveyQuestion::where('label', '重視する点')->firstOrFail();
-        $this->assertSame(['realestate', 'multi_select', ['駅近', '学区'], 2, true],
-            [$question->department, $question->question_type->value, $question->options, $question->sort_order, $question->is_active]);
-        $this->assertSame([$this->indexUrl() . '?department=realestate'], $trip['after']['navigations'], '追加のあと、その部署のタブの一覧へ移らない');
-        $this->assertSame([], $trip['after']['alerts']);
-    }
-
-    /** 断られたら何も追加せず、知らせを出す（理由は出ない。範囲外として記録） */
-    public function test_a_rejected_question_adds_nothing_and_says_so(): void
-    {
-        $trip = $this->roundTrip($this->indexUrl(), "data.newLabel = ''; data.addQuestion();");
-
-        $trip['response']->assertStatus(422);
-        $this->assertSame(3, SurveyQuestion::count());
-        $this->assertSame(['追加に失敗しました'], $trip['after']['alerts']);
-        $this->assertSame([], $trip['after']['navigations']);
     }
 
     /**
