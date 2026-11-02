@@ -399,3 +399,103 @@ M1〜M3 は使い捨てのテスト `<scratchpad>/task0/SurveyQuestionProbeTest.
 
 - 不動産事業の設問は 0 問。`laravel.log` の更新はサーバーの時刻で 2026-06-18 08:41（読み取りのあとのエラーは無し）
 - これに合わせて、保存の形を 2 つ決めた（設計 5 章・Task 3 の `definition()` に書き足した）: 選択肢＋付随テキストは `has_text` をどの選択肢にも書く ／ 条件分岐はどの選択肢にも `sub_fields` を書く。Review Focus 1 のテストは、この形の問 1・問 2 で作る
+
+### 実測記録 Task 8（全件テストと変異テスト）
+
+2026-11-02・PHP 8.3.36・枝 `survey-question-admin`。全件テストと変異の 1 回目は `4101015b`（Task 7 まで）、穴を塞いだテスト（`97e7b18f`）のあとに全件と変異の 2 回目を流した。
+
+#### 全件テストとビュー
+
+| | `4101015b` | `97e7b18f`（穴を塞いだテストのあと） |
+|---|---|---|
+| 全件（CLAUDE.md の流し方・OPcache あり） | OK (4701 tests, 47823 assertions)・2 分 54.983 秒・メモリのピーク 171.50 MB | OK (4703 tests, 47891 assertions)・2 分 54.663 秒・メモリのピーク 171.50 MB（足した 2 データのぶん +2 本） |
+| コンパイル済みビュー（`view:cache` → 全部を `php -l` → `view:clear`） | 318 本 / INVALID 0 | （ビューは変えていない） |
+
+- ビューは 13.x の 315 本から 3 本増えた（`admin/master/survey-questions/` の `create`・`edit`・`_form`）
+
+#### 変異テスト
+
+道具は `/Users/masanori/site/manage/.claude/route-coverage-tools/mutate/run.py`、表は同じフォルダの `specs.survey-question-admin.py`（`specs.py` へ写して流す）。結果は `results-survey-question-admin-run1.txt`（1 回目）・`results-survey-question-admin.txt`（2 回目）。
+作法（docs/RULES.md Bug #44）: 流す前に期待（落ちるテストの組と理由の 1 行目）を書く ／ 変異の前後で `git status --porcelain` が空 ／ 置き換えはちょうど 1 か所（同じ行が 2 つある F10 は 1 つ目を名指し）で、`git diff --stat` が空なら止める ／ 落ちたテストの組と理由まで突き合わせる。
+流すテストは変異ごとに関係するファイルに絞った（設問の管理の 3 本と部品の 1 本・アンケートの画面の 4 本・顧客の CSV 取込・走査の 2 本）。
+
+- 1 回目（`4101015b`・52 通り）: 期待どおり 49 通り（K1・K1b は見込みどおり緑＝穴）・DIFF 3 通り（N1・J4・O1。下の表の「判定」と、表のあとの注記）
+- 穴（K1・K1b）にテストを足した（`97e7b18f`）。DIFF の 3 通りと K1・K1b・K1c の期待を直し、2 回目（`97e7b18f`・52 通り）を全部流し直した: 52 通りすべて期待どおり（落ちたテストの組・理由の 1 行目・`contains` の全文まで一致。表に無いテストは 1 本も落ちなかった）
+
+計画の表の名前は計画の段の名前なので、今のテストの名前に引き直した。計画の表に無い行（C1・V1b・V2b・V2c・V4b・R1・T1・H1・X2・X3・M2b・M3b・D1b・I1b・I3b・J1・J1b・J2〜J4・O1・K1〜K1c）は、修正の回の振る舞い（Shift_JIS の字のそろえ・断ったときの部署・同点の並び・Ruling 8 の regex）と、読んで守っていそうに見えた所を足した。
+計画の見込みと違った所（どれも今のテストで引き直してから流した）: N1・F10・M4 は落ちるテストが計画より多い ／ I1 は 4 本（計画は「Task 7 の 3 本」）／ V1 は計画の「スライダーと数値で settings[min] が 2 つ送られる」では落ちない（同じ `x-model` なので 2 つの値が同じ）。テキスト入力・選択肢の形に `settings[min]` が混ざることで落ちる ／ F1・F4・F5・F7・F8 は画面のテストが無い（下の「穴と足したテスト」）。
+
+| # | 変異 | 期待（落ちるテスト。理由の文は表のファイル） | 実測（2 回目） | 判定 |
+|---|---|---|---|---|
+| C0 | カナリア: 追加の成功の文を変える（7 種類の追加と、無効の設問の追加が帯の文で落ちる） | 追加 `test_each_type_is_added_from_the_screen`（7 データ）<br>追加 `test_an_inactive_question_can_be_added` | 8 本が赤 | 期待どおり |
+| N1 | 道具の入れ子の行の再帰を外す（内側の loops を回さない） | 道具 `test_inputs_in_rows_inside_rows_are_sent`<br>道具 `test_inner_rows_follow_the_state_after_the_steps`<br>道具 `test_disabled_inner_inputs_are_not_sent`<br>追加 `test_each_type_is_added_from_the_screen`（conditional_select）<br>追加 `test_only_the_fields_of_the_chosen_type_are_sent`<br>追加 `test_rows_are_added_moved_and_removed_on_the_screen`<br>追加 `test_a_rejected_form_comes_back_with_every_reason_and_the_rows`<br>編集 `test_saving_a_production_shaped_question_unchanged_keeps_its_definition`<br>編集 `test_sub_field_keys_survive_renaming_and_new_ones_do_not_collide`<br>編集 `test_tricky_characters_round_trip_through_the_edit_screen`<br>編集 `test_tampered_rows_do_not_crash` | 11 本が赤 | 期待どおり（1 回目は期待の書き方の誤りで DIFF） |
+| S1 | sliderState() の未回答の値を元の式（真ん中の整数）に戻す | 回答の部品 `test_the_unanswered_slider_starts_on_a_step`（真ん中が刻みの上にない（150 → 100）・下限が 0 でない（真ん中 5.5 → 下限から数えて 4）・刻みが範囲より大きい（下限のまま）） | 3 本が赤 | 期待どおり |
+| S2 | 付随の欄の箱の見出しを固定の「— 希望エリア」に戻す | アンケートの画面 `test_the_sub_field_heading_comes_from_the_question` | 1 本が赤 | 期待どおり |
+| S3 | 数値入力の欄に min・max を戻す | アンケートの画面 `test_number_fields_leave_the_range_to_the_server` | 1 本が赤 | 期待どおり |
+| C1 | chosenValues() で条件分岐の選んだ値を読まない（設問の管理の選択肢ごとの回答の件数が 0 になる） | 回答の部品 `test_chosen_values_read_each_saved_shape`（条件分岐付き選択（付随の欄は選んだ値ではない））<br>部品 `test_answer_counts_follow_each_saved_shape`<br>編集 `test_answered_options_show_how_many_answers_chose_them` | 3 本が赤 | 期待どおり |
+| F1 | problems(): 名前のある行が 0 の断りを外す | 部品 `test_problems_name_the_row`（名前のある選択肢が 0・選択肢の行が無い）<br>部品 `test_problems_survive_any_shape` | 3 本が赤 | 期待どおり |
+| F2 | problems(): 名前が空でほかの欄に中身がある行の断りを外す | 部品 `test_problems_name_the_row`（名前が空で「文字も入れる」がある・名前が空で見出しがある・名前が空で付随の欄がある）<br>追加 `test_a_rejected_form_comes_back_with_every_reason_and_the_rows` | 4 本が赤 | 期待どおり |
+| F3 | problems(): 同じ名前の行の断りを外す | 部品 `test_problems_name_the_row`（同じ名前の行）<br>追加 `test_tricky_characters_are_kept_on_the_add_screen` | 2 本が赤 | 期待どおり |
+| F4 | problems(): 見出しが空でキーのある付随の欄の断りを外す | 部品 `test_problems_name_the_row`（見出しが空でキーのある付随の欄） | 1 本が赤 | 期待どおり |
+| F5 | problems(): 1 つの選択肢の中で同じキーの欄の断りを外す | 部品 `test_problems_name_the_row`（1 つの選択肢の中で同じキーの欄） | 1 本が赤 | 期待どおり |
+| F6 | problems(): スライダーの下限 ≥ 上限の断りを外す（差が 0 以下で刻みで割り切れる 2 つは何も出ない） | 部品 `test_problems_name_the_row`（スライダーで下限が上限より大きい・スライダーで下限と上限が同じ）<br>追加 `test_a_rejected_form_comes_back_with_every_reason_and_the_rows` | 3 本が赤 | 期待どおり |
+| F7 | problems(): スライダーの差が刻みで割り切れない断りを外す | 部品 `test_problems_name_the_row`（スライダーで差が刻みで割り切れない） | 1 本が赤 | 期待どおり |
+| F8 | problems(): 数値入力の下限 > 上限の断りを外す | 部品 `test_problems_name_the_row`（数値入力で下限が上限より大きい） | 1 本が赤 | 期待どおり |
+| F9 | 新しい欄のキーをいつも f00000000 にする（重なりを避けない） | 部品 `test_new_sub_fields_get_unused_keys`<br>部品 `test_new_keys_skip_keys_already_in_use`<br>編集 `test_sub_field_keys_survive_renaming_and_new_ones_do_not_collide`<br>追加 `test_each_type_is_added_from_the_screen`（conditional_select） | 4 本が赤 | 期待どおり |
+| F10 | 今ある key を捨てて作り直す（conditionalOptions の $key を空に） | 部品 `test_definition_writes_the_saved_shape_for_each_type`（条件分岐付き選択（sub_fields はどの選択肢にも・付随の欄の見出し）・条件分岐付き選択（見出しが空なら settings は null・種類の無い欄は文字））<br>部品 `test_definition_drops_blank_rows_and_keeps_existing_keys`<br>部品 `test_new_sub_fields_get_unused_keys`<br>部品 `test_new_keys_skip_keys_already_in_use`<br>部品 `test_definition_ignores_fields_of_other_types`<br>部品 `test_a_production_shaped_question_comes_back_unchanged`<br>編集 `test_saving_a_production_shaped_question_unchanged_keeps_its_definition`<br>編集 `test_sub_field_keys_survive_renaming_and_new_ones_do_not_collide`<br>編集 `test_tricky_characters_round_trip_through_the_edit_screen` | 10 本が赤 | 期待どおり |
+| F11 | definition() でテキスト入力の設定にほかの種類の欄（単位）も入れる | 部品 `test_definition_ignores_fields_of_other_types` | 1 本が赤 | 期待どおり |
+| V1 | 数値入力の下限の欄の :disabled を外す | 追加 `test_only_the_fields_of_the_chosen_type_are_sent` | 1 本が赤 | 期待どおり |
+| V1b | スライダーの刻みの欄の :disabled を外す（数値入力の形に step が混ざる） | 追加 `test_only_the_fields_of_the_chosen_type_are_sent` | 1 本が赤 | 期待どおり |
+| V2 | update() の回答がある設問の種類の固定を丸ごと外す（押せない種類の欄は送られないので、回答がある設問は種類が必須で断られ、手で送った種類は通る） | 編集 `test_the_type_of_an_answered_question_cannot_be_changed`<br>編集 `test_a_locked_type_sent_by_hand_is_refused`<br>編集 `test_saving_a_production_shaped_question_unchanged_keeps_its_definition`<br>編集 `test_removing_or_renaming_an_answered_option_keeps_the_answers` | 4 本が赤 | 期待どおり |
+| V2b | update(): 種類が送られなければ今の種類・送られればそのまま使う（手で送った種類で変わる） | 編集 `test_a_locked_type_sent_by_hand_is_refused` | 1 本が赤 | 期待どおり |
+| V2c | edit() で種類の欄を押せなくしない（理由を渡さない） | 編集 `test_the_type_of_an_answered_question_cannot_be_changed`<br>編集 `test_saving_a_production_shaped_question_unchanged_keeps_its_definition` | 2 本が赤 | 期待どおり |
+| V3 | update() で送られた department を使う（merge の順を逆に） | 編集 `test_the_department_is_not_changed_by_hand` | 1 本が赤 | 期待どおり |
+| V4 | 和名の :position を外す（選択肢の名前） | 追加 `test_one_reason_per_field` | 1 本が赤 | 期待どおり |
+| V4b | 和名の :second-position を外す（付随の欄のキー） | 編集 `test_tampered_rows_do_not_crash` | 1 本が赤 | 期待どおり |
+| R1 | 入力エラーで戻った画面を前の入力から組まない（formState() で old を読まない） | 追加 `test_a_rejected_form_comes_back_with_every_reason_and_the_rows`<br>追加 `test_tricky_characters_are_kept_on_the_add_screen`<br>追加 `test_switching_to_a_choice_type_with_no_rows_adds_a_blank_row`<br>編集 `test_a_locked_type_sent_by_hand_is_refused` | 4 本が赤 | 期待どおり |
+| T1 | state(): 回答がある設問でも前の入力の種類を描く（種類の固定を画面の最初の状態で守らない） | 部品 `test_state_comes_back_from_old_input`<br>編集 `test_a_locked_type_sent_by_hand_is_refused` | 2 本が赤 | 期待どおり |
+| H1 | 付随の欄の key の hidden を外す（今ある欄に新しいキーが付く） | 追加 `test_only_the_fields_of_the_chosen_type_are_sent`<br>追加 `test_rows_are_added_moved_and_removed_on_the_screen`<br>編集 `test_saving_a_production_shaped_question_unchanged_keeps_its_definition`<br>編集 `test_sub_field_keys_survive_renaming_and_new_ones_do_not_collide`<br>編集 `test_tricky_characters_round_trip_through_the_edit_screen` | 5 本が赤 | 期待どおり |
+| X2 | destroy(): 回答がある設問も消す（無効にしない） | 一覧 `test_a_question_with_answers_is_deactivated_instead` | 1 本が赤 | 期待どおり |
+| X3 | store(): 並び順をいつも 1 にする（部署の末尾に足さない） | 追加 `test_each_type_is_added_from_the_screen`（7 データ） | 7 本が赤 | 期待どおり |
+| M1 | move() で部署を絞らない（全部署の並びで入れ替え・振り直す） | 一覧 `test_moving_never_touches_the_other_department`<br>一覧 `test_the_arrows_move_a_question_and_keep_the_tab` | 2 本が赤 | 期待どおり |
+| M2 | move() の先頭の断りを外す（$ids[-1] で 500） | 一覧 `test_moving_past_the_edge_is_refused` | 1 本が赤 | 期待どおり |
+| M2b | move() の末尾の断りを外す（$ids[count] で 500） | 一覧 `test_moving_past_the_edge_is_refused` | 1 本が赤 | 期待どおり |
+| M3 | 先頭の ↑ の disabled を外す | 一覧 `test_the_edge_arrows_are_disabled_with_a_reason` | 1 本が赤 | 期待どおり |
+| M3b | 末尾の ↓ の disabled を外す | 一覧 `test_the_edge_arrows_are_disabled_with_a_reason` | 1 本が赤 | 期待どおり |
+| M4 | 一覧の番号を sort_order に戻す（無効の設問にも番号・飛んだ番号のまま） | 一覧 `test_the_list_numbers_only_active_questions_and_shows_answer_counts`<br>一覧 `test_moving_passes_over_inactive_questions_and_numbers_only_active_ones`<br>一覧 `test_a_question_with_answers_is_deactivated_instead` | 3 本が赤 | 期待どおり |
+| D1 | 削除の確認の文から設問文を外す | 一覧 `test_the_delete_confirmation_names_the_question`（ふつうの設問文・壊れやすい文字・閉じて続ける） | 3 本が赤 | 期待どおり |
+| D1b | 削除の確認の設問文を Js::from でなく引用符の中に直に書く（JS の分類の走査も落ちる） | 一覧 `test_the_delete_confirmation_names_the_question`（壊れやすい文字・閉じて続ける）<br>JS の分類の走査 `test_every_value_written_into_javascript_is_safe_or_classified` | 3 本が赤 | 期待どおり |
+| I1 | CSV の設問の列の文の照らし合わせを外す（当たる設問の無い列の断りは残る） | CSV 取込 `test_a_template_downloaded_before_reordering_is_refused`<br>CSV 取込 `test_the_label_check_runs_again_on_confirmation`<br>CSV 取込 `test_a_template_saved_by_excel_as_shift_jis_is_not_refused`<br>CSV 取込 `test_a_realestate_file_refused_for_its_question_columns_keeps_the_department` | 4 本が赤 | 期待どおり |
+| I1b | 当たる設問の無い列を断らずに黙って捨てる（直す前の形） | CSV 取込 `test_a_question_column_without_a_question_is_refused` | 1 本が赤 | 期待どおり |
+| I2 | 確定のときだけ照らし合わせの断りを飛ばす | CSV 取込 `test_the_label_check_runs_again_on_confirmation` | 1 本が赤 | 期待どおり |
+| I3 | テンプレートの見出しを引用符で囲まない（カンマでつなぐだけに戻す） | CSV 取込 `test_a_label_with_a_comma_survives_the_template` | 1 本が赤 | 期待どおり |
+| I3b | 取込の見出しを既定の逃がしの文字（円記号）で読む（`\"` の続く設問の文が割れる） | CSV 取込 `test_a_label_with_a_comma_survives_the_template` | 1 本が赤 | 期待どおり |
+| J1 | Shift_JIS の字のそろえを見出しの側だけにする（Mac で打った「〜」の設問の文が自分のテンプレートで断られる） | CSV 取込 `test_a_label_with_the_jis_wave_dash_matches_its_own_template` | 1 本が赤 | 期待どおり |
+| J1b | Shift_JIS の字のそろえを設問の側だけにする（Excel の Shift_JIS も Mac の「〜」も断られる） | CSV 取込 `test_a_label_with_the_jis_wave_dash_matches_its_own_template`<br>CSV 取込 `test_a_template_saved_by_excel_as_shift_jis_is_not_refused` | 2 本が赤 | 期待どおり |
+| J2 | Shift_JIS の字のそろえをやめる | CSV 取込 `test_a_template_saved_by_excel_as_shift_jis_is_not_refused` | 1 本が赤 | 期待どおり |
+| J3 | 設問の列で断ったときの戻り先から ?department= を外す | CSV 取込 `test_a_template_downloaded_before_reordering_is_refused`<br>CSV 取込 `test_a_question_column_without_a_question_is_refused`<br>CSV 取込 `test_the_label_check_runs_again_on_confirmation`<br>CSV 取込 `test_a_template_saved_by_excel_as_shift_jis_is_not_refused`<br>CSV 取込 `test_a_realestate_file_refused_for_its_question_columns_keeps_the_department` | 5 本が赤 | 期待どおり |
+| J4 | showForm() で文字ならどの部署の値でも渡す（tenant などを選ぶ） | CSV 取込 `test_the_import_page_chooses_the_department_only_from_known_values` | 1 本が赤 | 期待どおり（1 回目は期待の書き方の誤りで DIFF） |
+| O1 | ordered() の同点を id で決めない | CSV 取込 `test_every_screen_numbers_questions_in_the_same_order` | 1 本が赤 | 期待どおり（1 回目は期待の書き方の誤りで DIFF） |
+| K1 | 上限の regex を外す（`+6000` が integer を通り、保存の形で上限が落ちる） | 追加 `test_a_plus_signed_setting_is_refused`（上限） | 1 本が赤 | 穴 → テストを足して期待どおり（1 回目は見込みどおり緑） |
+| K1b | 刻みの regex を外す | 追加 `test_a_plus_signed_setting_is_refused`（刻み） | 1 本が赤 | 穴 → テストを足して期待どおり（1 回目は見込みどおり緑） |
+| K1c | 下限の regex を外す（今のテストが見ている） | 追加 `test_a_plus_signed_setting_is_refused`（下限） | 1 本が赤 | 期待どおり |
+
+- 期待の書き方を直した 3 通り（どれも落ちたテストと仕組みは見込みどおり。1 回目の DIFF）:
+  - N1: 落ちるテストが 1 本多かった（`test_tampered_rows_do_not_crash` の「欄のキーの形」）。道具が付随の欄を送らないので、手で key を書き込んだ欄は key だけの欄になり、見出しの断り（`problems()`）も並ぶ。期待の表が狭かった
+  - J4: 理由の 1 行目は `assertSame()` の文（`?department=tenant`）で、`null is identical` はその下の行。全文に含まれることを `contains` で見る形にした
+  - O1: `run.py` は理由を 200 字で切り、流れた SQL が長くて `ends with` が切れた。全文で見る形にした
+- I3b（取込の見出しを円記号の逃がしで読む）は赤だが、理由の 1 行目は `Error: Call to a member function all() on array`（`$preview->assertStatus(200)` が、入力エラーを持つ転送で外れると失敗の文を組み立てる途中で落ちる。Bug #49 の形）。仕組みを確かめるため、作業ツリーで一時的に変異とテストの読み方を変えて（`getStatusCode()` と箱の文）流した: 「Q1 の列の設問「ご予算、ローン,"頭金\"'&<\"」が、今の Q1「ご予算、ローン,"頭金\"'&<\」と違います。」で断られていた＝見込みどおりの仕組み。戻して作業ツリーは空。テストは直していない（下の「残したこと」）
+
+#### 穴と足したテスト
+
+| # | 1 回目 | 塞いだテスト | 2 回目 |
+|---|---|---|---|
+| K1 | 上限の `regex` を外しても全部緑（`+6000` が `integer`・`between` を通り、保存の形 `SurveyQuestionForm::integer()` が読まずに上限が黙って落ちたまま保存される） | `test_a_plus_signed_setting_is_refused` を下限・上限・刻みの 3 つのデータにした（`97e7b18f`）。足す前の実測: 変異を当てると「上限」「刻み」のデータが `Failed asserting that two arrays are identical.`（入力エラーの箱が空＝保存された）で赤・当てなければ 3 つとも緑 | 赤（「上限」のデータ） |
+| K1b | 刻みの `regex` を外しても全部緑（同じ形） | 同上 | 赤（「刻み」のデータ） |
+
+- `problems()` の 8 行（F1〜F8）は、どれも部品のテスト（`test_problems_name_the_row` のそのデータ）が落とす。画面のテストが落とすのは 3 行（F2・F3・F6）だけで、F1（名前のある行が 0）・F4・F5（付随の欄の見出し・キー。手で組んだ送信だけの断り）・F7（スライダーの差が刻みで割り切れない）・F8（数値入力の下限 > 上限）は画面から送るテストが無い。`after()` が `problems()` の断りを足す道筋は F2・F3・F6 の画面のテストが通しているので、穴とはしなかった
+- 等価の変異は無かった（緑のまま残った変異は K1・K1b だけで、どちらも穴だった）
+
+#### 残したこと（直していない）
+
+- `test_a_label_with_a_comma_survives_the_template` の `$preview->assertStatus(200)` は、断られたときに理由が読めない（I3b）。同じファイルのほかのテストは `getStatusCode()` と箱の文で見ている。直すかは Task 10 の点検で決める
