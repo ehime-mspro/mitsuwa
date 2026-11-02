@@ -6,6 +6,11 @@
 @php
     $qTypeEnum = $q->question_type;
     $optCount = $q->options_count;
+    $answerCount = (int) $q->answers_count;
+    // 削除の確認の文（回答がある設問は destroy() が消さずに無効にするので、そのとおりに言う）
+    $deleteConfirm = $answerCount > 0
+        ? '「' . $q->label . '」は回答が ' . $answerCount . '件あるため、削除せずに無効にします。よろしいですか？'
+        : '「' . $q->label . '」を削除しますか？';
 @endphp
 <div id="question-{{ $q->id }}" class="sq-row{{ $q->is_active ? '' : ' sq-row-off' }}">
     <div class="sq-moves">
@@ -44,16 +49,16 @@
             @else
                 <span class="sq-pill sq-pill-off">無効</span>
             @endif
-            @if($q->answers_count > 0)
-                <span class="sq-row-note">回答 {{ $q->answers_count }}件</span>
+            @if($answerCount > 0)
+                <span class="sq-row-note">回答 {{ $answerCount }}件</span>
             @endif
         </div>
     </div>
     <div class="sq-row-actions">
         <a href="{{ route('admin.survey-questions.edit', $q) }}" class="sq-edit">編集</a>
-        {{-- 回答がある設問は消さずに無効にする（destroy()）。確認の文の設問文は Js::from で渡す（Bug #76） --}}
+        {{-- 回答がある設問は消さずに無効にする（destroy()）。確認の文は回答の有無で変え、設問文ごと Js::from で渡す（Bug #76） --}}
         <form method="POST" action="{{ route('admin.survey-questions.destroy', $q) }}"
-              onsubmit="return confirm('「' + {{ \Illuminate\Support\Js::from($q->label) }} + '」を削除しますか？回答がある設問は無効にします。');">
+              onsubmit="return confirm({{ \Illuminate\Support\Js::from($deleteConfirm) }});">
             @csrf
             @method('DELETE')
             <button type="submit" class="sq-delete">削除</button>

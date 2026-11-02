@@ -370,11 +370,18 @@ class SurveyQuestionMasterTest extends SurveyQuestionScreenTestCase
         $this->assertStringContainsString('回答 1件', $this->row($html, $question));
     }
 
-    /** 削除の確認に設問文がそのまま出る（壊れやすい文字でも JS が組める・「いいえ」なら送らない。Bug #76） */
+    /**
+     * 削除の確認に設問文がそのまま出る（壊れやすい文字でも JS が組める・「いいえ」なら送らない。Bug #76）。
+     * 文は回答の有無で変える（回答がある設問は削除せずに無効にする＝destroy() と同じ）。
+     * 直す前は回答が 0 件でも「…を削除しますか？回答がある設問は無効にします。」だった
+     */
     #[DataProvider('labels')]
-    public function test_the_delete_confirmation_names_the_question(string $label): void
+    public function test_the_delete_confirmation_names_the_question(string $label, int $answers, string $expected): void
     {
         $question = $this->question($label);
+        for ($i = 0; $i < $answers; $i++) {
+            $this->answer($question, '回答');
+        }
         $row = $this->row($this->htmlOf($this->indexUrl()), $question);
         $action = 'action="' . route('admin.survey-questions.destroy', $question) . '"';
         $pos = strpos($row, $action);
@@ -387,16 +394,20 @@ class SurveyQuestionMasterTest extends SurveyQuestionScreenTestCase
         $declined = $this->runInlineHandler($handler, false);
         $this->assertTrue($declined['compiled'], "削除の確認の JS が組み立てられない: {$declined['error']}");
         $this->assertSame(false, $declined['returned'], '確認で「いいえ」を選んでも送信が止まらない');
-        $this->assertSame(['「' . $label . '」を削除しますか？回答がある設問は無効にします。'], $declined['confirms']);
+        $this->assertSame([$expected], $declined['confirms']);
         $this->assertSame(true, $this->runInlineHandler($handler, true)['returned'], '確認で「はい」を選んでも送信されない');
     }
 
+    /** @return array<string, array{0: string, 1: int, 2: string}> [設問文, 回答の件数, 確認の文] */
     public static function labels(): array
     {
+        $tricky = self::tricky('O\'Brien様の設問');
+
         return [
-            'ふつうの設問文'   => ['ご来場のきっかけを教えてください'],
-            '壊れやすい文字'   => [self::tricky('O\'Brien様の設問')],
-            '閉じて続ける'     => ["x');alert(1);('"],
+            '回答なし'                   => ['ご来場のきっかけを教えてください', 0, '「ご来場のきっかけを教えてください」を削除しますか？'],
+            '回答あり（2件）'            => ['ご来場のきっかけを教えてください', 2, '「ご来場のきっかけを教えてください」は回答が 2件あるため、削除せずに無効にします。よろしいですか？'],
+            '壊れやすい文字・回答あり'    => [$tricky, 1, '「' . $tricky . '」は回答が 1件あるため、削除せずに無効にします。よろしいですか？'],
+            '閉じて続ける・回答なし'      => ["x');alert(1);('", 0, "「x');alert(1);('」を削除しますか？"],
         ];
     }
 
