@@ -276,17 +276,32 @@ class SurveyQuestionCreateTest extends SurveyQuestionScreenTestCase
         $this->assertSame(0, SurveyQuestion::count());
     }
 
-    /** 「+2000」は整数の規則を通るが、保存の形にしないので断る（Ruling 8） */
-    public function test_a_plus_signed_setting_is_refused(): void
+    /**
+     * 「+2000」は整数の規則を通るが、保存の形にしないので断る（Ruling 8）。下限・上限・刻みのどれも。
+     * ⚠ 断らないと、保存の形（SurveyQuestionForm::integer()）が「+」付きの数を読まず、その設定が黙って落ちたまま保存される
+     *   （上限・刻みは下限の 1 本だけでは守れなかった。Task 8 の変異 K1・K1b）
+     */
+    #[DataProvider('plusSignedSettings')]
+    public function test_a_plus_signed_setting_is_refused(string $field, string $label): void
     {
         $url = $this->createUrl();
         $form = $this->questionForm($this->htmlOf($url),
             "data.label = 'ご予算'; data.questionType = 'slider'; data.settings.min = '2000'; data.settings.max = '6000'; data.settings.step = '100';");
-        $form['fields']['settings']['min'] = '+2000';
+        $form['fields']['settings'][$field] = '+' . $form['fields']['settings'][$field];
         $html = $this->landed($this->send($form, $url));
 
-        $this->assertSame(['下限は整数で入力してください。'], $this->errorItems($html));
+        $this->assertSame(["{$label}は整数で入力してください。"], $this->errorItems($html));
         $this->assertSame(0, SurveyQuestion::count());
+    }
+
+    /** @return array<string, array{0: string, 1: string}> */
+    public static function plusSignedSettings(): array
+    {
+        return [
+            '下限' => ['min', '下限'],
+            '上限' => ['max', '上限'],
+            '刻み' => ['step', '刻み'],
+        ];
     }
 
     /** 設問文の改行（手で組んだ送信だけ。入力欄は 1 行）を断る */
