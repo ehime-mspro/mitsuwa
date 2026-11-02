@@ -24,6 +24,8 @@
             $saved = $existingAnswers[$qId] ?? null;
             $shown = $returnedWithInput ? old("survey.{$qId}") : $saved;
             $state = \App\Support\SurveyAnswers::formState($q, $shown, $saved);
+            // 条件分岐付き選択の付随の欄の箱の見出し（設問の settings.sub_heading。無い・空なら選択肢の名前だけ）
+            $subHeading = is_string($settings['sub_heading'] ?? null) ? \Illuminate\Support\Str::trim($settings['sub_heading']) : '';
         @endphp
 
         <div style="margin-bottom: 20px;">
@@ -154,7 +156,7 @@
                     @foreach($state['choices'] as $choice)
                         @if(count($choice['subFields']) > 0)
                             <div x-show="selectedOption === {{ \Illuminate\Support\Js::from($choice['value']) }}" style="border: 2px dashed #d1d5db; border-radius: 8px; padding: 16px; background: #fff;">
-                                <div style="font-size: 12px; font-weight: 600; color: #6b7280; margin-bottom: 10px;">▼ {{ $choice['label'] }} — 希望エリア</div>
+                                <div style="font-size: 12px; font-weight: 600; color: #6b7280; margin-bottom: 10px;">▼ {{ $choice['label'] }}{{ $subHeading !== '' ? ' — ' . $subHeading : '' }}</div>
                                 <div class="grid-stack-sm" style="display: grid; grid-template-columns: repeat({{ count($choice['subFields']) }}, 1fr); gap: 10px;">
                                     @foreach($choice['subFields'] as $sf)
                                         <div>

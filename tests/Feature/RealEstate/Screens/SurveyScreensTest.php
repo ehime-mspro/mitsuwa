@@ -56,7 +56,7 @@ class SurveyScreensTest extends RealEstateScreenTestCase
                 ['value' => '建て替え', 'sub_fields' => [$field('land_tsubo', '土地の坪数', 'number')]],
                 'リフォーム',
                 'まだ決めていない',
-            ]),
+            ], ['sub_heading' => '希望エリア']),
             'single' => $make('家族の人数', 'single_select', ['1', '2', '3']),
             'multi' => $make('気になる設備', 'multi_select', ['A', 'B', 'C']),
             'text' => $make('希望の間取り', 'text'),
@@ -470,6 +470,34 @@ class SurveyScreensTest extends RealEstateScreenTestCase
         $this->saveEditScreenAsIs($buyer, $survey, $q);
 
         $this->assertSame([$q['slider']->id => '1500'], $this->answersOf($survey->fresh()));
+    }
+
+    public function test_the_sub_field_heading_comes_from_the_question(): void
+    {
+        $q = $this->questions();
+        $url = route('realestate.customers.surveys.create', $this->buyer());
+
+        // 設問の sub_heading が、付随の欄を持つ選択肢（4 つ）の箱の見出しに出る
+        $html = $this->htmlOf($url);
+        $this->assertStringContainsString('>▼ 建売住宅の購入 — 希望エリア</div>', $html);
+        $this->assertSame(4, substr_count($html, ' — 希望エリア</div>'), '付随の欄を持つ 4 つの選択肢の見出しに sub_heading が出ていない');
+
+        // 文字として出す（HTML は逃がす）
+        $q['conditional']->update(['settings' => ['sub_heading' => '希望エリア<&>']]);
+        $this->assertStringContainsString('>▼ 建売住宅の購入 — ' . e('希望エリア<&>') . '</div>', $this->htmlOf($url));
+
+        // sub_heading が無い・空の設問（本番は settings が null）は、選択肢の名前だけ。固定の「希望エリア」を出さない
+        // （付随の欄の見出し「希望エリア」の label は残るので、箱の見出しの形で見る）
+        foreach ([null, [], ['sub_heading' => ''], ['sub_heading' => '　 '], ['sub_heading' => ['希望エリア']]] as $settings) {
+            $q['conditional']->update(['settings' => $settings]);
+            $html = $this->htmlOf($url);
+            $this->assertStringContainsString('>▼ 建売住宅の購入</div>', $html, 'sub_heading が無いのに見出しに余計な語が付く: ' . json_encode($settings, JSON_UNESCAPED_UNICODE));
+            // 箱の見出し（付随の欄を持つ 4 つの選択肢）に「 — 」が付かない。ページのほかの場所の「 — 」は数えない
+            $this->assertSame(4, preg_match_all('/>▼ ([^<]*)<\/div>/u', $html, $headings), '付随の欄の箱の見出しが 4 つ描かれていない');
+            foreach ($headings[1] as $heading) {
+                $this->assertStringNotContainsString(' — ', $heading, 'sub_heading が無いのに見出しに「 — 」が付く: ' . json_encode($settings, JSON_UNESCAPED_UNICODE));
+            }
+        }
     }
 
     public function test_number_fields_let_the_browser_send_decimals(): void
