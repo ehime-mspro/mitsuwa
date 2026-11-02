@@ -301,6 +301,29 @@ class SurveyQuestionEditTest extends SurveyQuestionScreenTestCase
         }
     }
 
+    /**
+     * 回答がある選択肢の名前を空にして送ると、理由が出て、選択肢も回答も変わらない（外すのは × を押す＝件数の注意を見てから。設計書 D3）。
+     * 直す前: 名前の無い行として黙って落とし、302 で一覧に着いて options は ["B"] になった（理由 0 件）
+     */
+    public function test_blanking_the_name_of_an_answered_option_is_refused(): void
+    {
+        $question = $this->question(['label' => 'お住まい', 'question_type' => 'single_select', 'options' => ['A', 'B']]);
+        $this->answer($question, 'A');
+        $answers = fn (): array => DB::table('buyer_survey_answers')->orderBy('id')->get()->map(fn ($row) => (array) $row)->all();
+        $before = [$this->stored($question), $answers()];
+        $url = $this->editUrl($question);
+
+        $response = $this->send($this->editForm($question, "data.options[0].value = '';"), $url);
+
+        $response->assertRedirect($url);
+        $html = $this->landed($response);
+        $this->assertSame(['選択肢 1 行目の名前を入力してください（外すときは × を押してください）。'], $this->errorItems($html));
+        $this->assertSame($before, [$this->stored($question), $answers()], '選択肢か回答が変わった');
+        // 戻った画面も行を残し、元の名前と回答の件数を持つ（件数の注意が出る）
+        $back = $this->questionForm($html)['run']['state']['options'];
+        $this->assertSame([['', 'A', 1], ['B', 'B', 0]], array_map(fn (array $row): array => [$row['value'], $row['original'], $row['answerCount']], $back));
+    }
+
     /** 今ある欄のキーは見出しを変えても変えない。足した欄には、今の設問で使っていない新しいキーが付く */
     public function test_sub_field_keys_survive_renaming_and_new_ones_do_not_collide(): void
     {

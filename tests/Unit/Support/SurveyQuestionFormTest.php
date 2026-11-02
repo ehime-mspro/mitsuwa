@@ -389,6 +389,20 @@ class SurveyQuestionFormTest extends TestCase
                 ['options' => [['value' => null, 'sub_fields' => [['key' => null, 'label' => '市', 'type' => 'text']]], ['value' => 'B']]],
                 ['options.0.value' => '選択肢 1 行目の名前を入力してください。'],
             ],
+            // 保存されている行（original がある）の名前を空にした: 黙って落とすと D3 の「件数を見せてから直す」をすり抜ける
+            '保存されている行の名前が空' => [
+                'single_select',
+                ['options' => [['value' => '', 'original' => 'A'], ['value' => 'B', 'original' => 'B'], ['value' => '　', 'original' => 'C']]],
+                [
+                    'options.0.value' => '選択肢 1 行目の名前を入力してください（外すときは × を押してください）。',
+                    'options.2.value' => '選択肢 3 行目の名前を入力してください（外すときは × を押してください）。',
+                ],
+            ],
+            '保存されている行の名前が空（ほかの欄もある）' => [
+                'select_with_text',
+                ['options' => [['value' => 'A', 'original' => 'A'], ['value' => null, 'original' => 'ご紹介', 'has_text' => '1', 'text_label' => '紹介者']]],
+                ['options.1.value' => '選択肢 2 行目の名前を入力してください（外すときは × を押してください）。'],
+            ],
             '同じ名前の行' => [
                 'single_select',
                 ['options' => [['value' => 'A'], ['value' => 'B'], ['value' => 'A'], ['value' => 'B']]],
@@ -446,6 +460,10 @@ class SurveyQuestionFormTest extends TestCase
     {
         return [
             '単一選択（空の行は黙って落ちる）' => ['single_select', ['options' => [['value' => 'A'], ['value' => ''], ['value' => 'B']]]],
+            '単一選択（新しい行＝original が空の、ほかの欄に何も無い空の行は黙って落ちる）' => [
+                'single_select',
+                ['options' => [['value' => 'A', 'original' => 'A'], ['value' => '', 'original' => ''], ['value' => null, 'original' => null]]],
+            ],
             '単一選択（ほかの種類の欄だけがある名前の無い行は問わない）' => [
                 'single_select',
                 ['options' => [['value' => 'A'], ['value' => null, 'has_text' => '1', 'text_label' => 'x', 'sub_fields' => [['key' => 'city', 'label' => '']]]]],
