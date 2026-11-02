@@ -1231,7 +1231,13 @@ class CustomerImportTest extends TestCase
         $preview = $this->preview($this->csvUnder($header, [
             $this->person('山田', '太郎', ["Q1:{$label}" => '3000万円まで']),
         ]));
-        $preview->assertStatus(200);
+        // ⚠ assertStatus() は使わない（入力エラーを持つ転送で外れると、失敗文を組み立てる途中で落ちて理由が読めない。Bug #49）。
+        //   断られたときは、着いた取込の画面の入力エラーの箱の文を失敗文に載せる
+        $this->assertSame(
+            200,
+            $preview->getStatusCode(),
+            $preview->getStatusCode() === 200 ? '' : "断られた:\n" . implode("\n", $this->errorItems($this->followRedirects($preview)->getContent()))
+        );
         $this->assertSame([], $preview->viewData('rowErrors'));
         $this->assertSame(1, $preview->viewData('validCount'));
 
