@@ -182,6 +182,31 @@ final class SurveyAnswers
     }
 
     /**
+     * 保存された回答が選んだ選択肢の値（設問の管理で、選択肢ごとの回答数を数えるのに使う）。
+     *
+     * 単一選択 = [値] ／ 複数選択 = その並び ／ 選択肢＋付随テキスト = 各要素の value の並び（付随の文字は含めない）／
+     * 条件分岐付き選択 = [選んだ値]（付随の欄は選んだ値ではない）。
+     * 回答なし・空・テキスト／数値／スライダー（選択肢を持たない）・読めない形（CSV 取込の古い形 `A,B` など）は []。
+     * ⚠ decode() の結果から作るので、decode() が読めない形は数えない（数えると、設問の管理の件数が実際の回答と食い違う）。
+     *
+     * @return list<string>
+     */
+    public static function chosenValues(SurveyQuestion $question, ?string $answerValue): array
+    {
+        $decoded = self::decode($question, $answerValue);
+
+        $values = match ($question->question_type) {
+            SurveyQuestionType::SingleSelect => is_string($decoded) ? [$decoded] : [],
+            SurveyQuestionType::MultiSelect => is_array($decoded) ? $decoded : [],
+            SurveyQuestionType::SelectWithText => is_array($decoded) ? array_column($decoded, 'value') : [],
+            SurveyQuestionType::ConditionalSelect => is_array($decoded) ? [$decoded['value'] ?? null] : [],
+            default => [],
+        };
+
+        return array_values(array_filter($values, fn (mixed $value): bool => is_string($value) && $value !== ''));
+    }
+
+    /**
      * 選択肢の値（文字の選択肢はそのまま、配列の選択肢は 'value'）。options が null なら []。
      *
      * @return list<string>

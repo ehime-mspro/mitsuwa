@@ -781,6 +781,54 @@ class SurveyAnswersTest extends TestCase
         $this->assertNull(SurveyAnswers::decode($conditional, '{"value":"賃貸","sub":"x"}'));
     }
 
+    public static function chosenValuesProvider(): array
+    {
+        return [
+            '単一選択' => ['single_select', ['options' => ['A', 'B', 'C']], 'B', ['B']],
+            '複数選択' => ['multi_select', ['options' => ['A', 'B', 'C']], '["A","C"]', ['A', 'C']],
+            '選択肢＋付随テキスト（文字を持つ要素も持たない要素も value だけ）' => [
+                'select_with_text',
+                ['options' => [['value' => 'ご紹介', 'has_text' => true], 'チラシ']],
+                '[{"value":"ご紹介","text":"山田様"},{"value":"チラシ"}]',
+                ['ご紹介', 'チラシ'],
+            ],
+            '条件分岐付き選択（付随の欄は選んだ値ではない）' => [
+                'conditional_select',
+                ['options' => [['value' => '建売住宅の購入', 'sub_fields' => [['key' => 'city', 'label' => '市町', 'type' => 'text']]]]],
+                '{"value":"建売住宅の購入","sub":{"city":"松山市"}}',
+                ['建売住宅の購入'],
+            ],
+            'テキスト（選択肢を持たない）' => ['text', [], '123', []],
+            '数値（選択肢を持たない）' => ['number', [], '3500', []],
+            'スライダー（選択肢を持たない）' => ['slider', ['settings' => ['min' => 2000, 'max' => 6000, 'step' => 100]], '3500', []],
+            '回答なし（単一選択）' => ['single_select', ['options' => ['A']], null, []],
+            '回答なし（複数選択）' => ['multi_select', ['options' => ['A']], null, []],
+            '空文字（単一選択）' => ['single_select', ['options' => ['A']], '', []],
+            '空の配列（複数選択）' => ['multi_select', ['options' => ['A']], '[]', []],
+            '読めない形（CSV 取込の古い複数選択）' => ['multi_select', ['options' => ['A', 'B']], 'A,B', []],
+            '読めない形（選択肢＋付随テキストの値が無い要素）' => ['select_with_text', ['options' => ['A']], '[{"text":"x"}]', []],
+            '読めない形（条件分岐の選んだ値が null）' => [
+                'conditional_select',
+                ['options' => ['A']],
+                '{"value":null,"sub":{"city":null}}',
+                [],
+            ],
+        ];
+    }
+
+    /**
+     * 保存された回答が選んだ選択肢の値（設問の管理で「どの選択肢が何件選ばれたか」を数えるのに使う）。
+     * decode() の結果から作る = 読めない形は [] になる（読める形だけを数える）。
+     *
+     * @param  array<string, mixed>  $extra
+     * @param  list<string>  $expected
+     */
+    #[DataProvider('chosenValuesProvider')]
+    public function test_chosen_values_read_each_saved_shape(string $type, array $extra, ?string $answerValue, array $expected): void
+    {
+        $this->assertSame($expected, SurveyAnswers::chosenValues($this->question($type, $extra), $answerValue));
+    }
+
     public function test_decode_and_check_round_trip_the_stored_form(): void
     {
         // 保存した形を読み戻し、そのまま check() に通すと、同じ形に戻る（往復）
