@@ -68,11 +68,11 @@
                        style="width: 100%; max-width: 400px; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
 
             @elseif($qType === 'number')
-                {{-- 数値入力 --}}
+                {{-- 数値入力（⚠ min / max を付けない。設問の管理で範囲を狭めたあとに残る保存済みの範囲の外の回答を、ブラウザが送信させなくなる。範囲の検査はサーバー） --}}
                 <div style="display: flex; align-items: center; gap: 6px;">
                     <input type="number" name="survey[{{ $qId }}]"
                            value="{{ $state['value'] }}"
-                           min="{{ $settings['min'] ?? '' }}" max="{{ $settings['max'] ?? '' }}" step="any"
+                           step="any"
                            style="width: 120px; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
                     @if(isset($settings['unit']))
                         <span style="font-size: 13px;">{{ $settings['unit'] }}</span>

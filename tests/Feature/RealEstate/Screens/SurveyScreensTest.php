@@ -518,6 +518,30 @@ class SurveyScreensTest extends RealEstateScreenTestCase
         }
     }
 
+    public function test_number_fields_leave_the_range_to_the_server(): void
+    {
+        $q = $this->questions();
+        $html = $this->htmlOf(route('realestate.customers.surveys.create', $this->buyer()));
+        $name = 'survey[' . $q['number']->id . ']';
+
+        // 設問は min 10・max 500 を持つが、数値入力の欄には min / max を付けない。
+        // 付けると、設問の管理で範囲を狭めたあとに残る保存済みの範囲の外の回答を、ブラウザが「範囲外」として送信させない
+        // （範囲の検査はサーバーの SurveyAnswers がする。保存済みと同じ値は通す）
+        preg_match_all('/<input\b[^>]*>/i', $html, $inputs);
+        $tags = array_values(array_filter($inputs[0], fn (string $tag) => $this->htmlAttr($tag, 'name') === $name));
+        $this->assertCount(1, $tags, "「{$name}」の欄がちょうど 1 つ描かれていない");
+        $this->assertSame('number', $this->htmlAttr($tags[0], 'type'));
+        $this->assertSame('any', $this->htmlAttr($tags[0], 'step'), '小数を送れなくなった');
+        $this->assertNull($this->htmlAttr($tags[0], 'min'), "数値入力の欄が min を持つ: {$tags[0]}");
+        $this->assertNull($this->htmlAttr($tags[0], 'max'), "数値入力の欄が max を持つ: {$tags[0]}");
+
+        // スライダーの範囲の入力欄は、動かせる範囲そのものなので min / max を持つ（外していない）
+        preg_match_all('/<input\b[^>]*type="range"[^>]*>/i', $html, $ranges);
+        $this->assertCount(1, $ranges[0]);
+        $this->assertSame('2000', $this->htmlAttr($ranges[0][0], 'min'));
+        $this->assertSame('6000', $this->htmlAttr($ranges[0][0], 'max'));
+    }
+
     public function test_the_range_input_sends_nothing_itself(): void
     {
         $q = $this->questions();
