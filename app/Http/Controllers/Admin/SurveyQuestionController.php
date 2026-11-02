@@ -83,12 +83,12 @@ class SurveyQuestionController extends Controller
      */
     public function store(Request $request)
     {
-        $validated = $this->validateQuestion($request->all(), null);
+        $validated = $this->validateQuestion($request->all());
         $department = $validated['department'];
         $type = SurveyQuestionType::from($validated['question_type']);
         $definition = SurveyQuestionForm::definition($type, $validated, null);
 
-        $question = SurveyQuestion::create([
+        SurveyQuestion::create([
             'department'    => $department,
             'label'         => $validated['label'],
             'question_type' => $type,
@@ -97,14 +97,6 @@ class SurveyQuestionController extends Controller
             'sort_order'    => (int) SurveyQuestion::ofDepartment($department)->max('sort_order') + 1,
             'is_active'     => (bool) ($validated['is_active'] ?? false),
         ]);
-
-        if ($request->ajax()) {
-            return response()->json([
-                'success'  => true,
-                'question' => $question,
-                'message'  => '設問を追加しました。',
-            ]);
-        }
 
         return redirect(route('admin.survey-questions.index', ['department' => $department]))
             ->with('success', '設問を追加しました。');
@@ -130,7 +122,7 @@ class SurveyQuestionController extends Controller
             $data['question_type'] = $currentType;
         }
 
-        $validated = $this->validateQuestion($data, $question, $typeLockedReason);
+        $validated = $this->validateQuestion($data, $typeLockedReason);
         $type = SurveyQuestionType::from($validated['question_type']);
         $definition = SurveyQuestionForm::definition($type, $validated, $question);
 
@@ -142,14 +134,6 @@ class SurveyQuestionController extends Controller
             'is_active'     => (bool) ($validated['is_active'] ?? false),
         ]);
 
-        if ($request->ajax()) {
-            return response()->json([
-                'success'  => true,
-                'question' => $question->fresh(),
-                'message'  => '設問を更新しました。',
-            ]);
-        }
-
         return redirect()->route('admin.survey-questions.index', ['department' => $question->department])
             ->with('success', '設問を更新しました。');
     }
@@ -157,7 +141,7 @@ class SurveyQuestionController extends Controller
     /**
      * 設問の削除（一覧の削除のフォーム）。回答がある設問は消さずに無効にする（過去の回答の控えを残す。編集画面で有効に戻せる）
      */
-    public function destroy(Request $request, SurveyQuestion $question)
+    public function destroy(SurveyQuestion $question)
     {
         $dept = $question->department;
 
@@ -167,13 +151,6 @@ class SurveyQuestionController extends Controller
         } else {
             $question->delete();
             $message = '設問を削除しました。';
-        }
-
-        if ($request->ajax()) {
-            return response()->json([
-                'success' => true,
-                'message' => $message,
-            ]);
         }
 
         return redirect()->route('admin.survey-questions.index', ['department' => $dept])
@@ -226,24 +203,6 @@ class SurveyQuestionController extends Controller
     }
 
     /**
-     * 並び替え（Ajax）
-     */
-    public function reorder(Request $request)
-    {
-        $request->validate([
-            'order'   => 'required|array',
-            'order.*' => 'integer',
-        ]);
-
-        $order = $request->input('order');
-        foreach ($order as $index => $questionId) {
-            SurveyQuestion::where('id', $questionId)->update(['sort_order' => $index + 1]);
-        }
-
-        return response()->json(['success' => true]);
-    }
-
-    /**
      * URL の部署（`?department=`）。2 つの部署のほかは住宅事業
      * （値を確かめずに画面の JS に書いていて、`?department[]=` で 500・末尾の `\` で画面の JS が止まった）。
      */
@@ -285,13 +244,13 @@ class SurveyQuestionController extends Controller
      *   断る（Admin/Master/ArrayInputTest）。文字でない値（ファイルなど）は `not_regex` が断る。
      * ⚠ 選択肢の行の `original`（保存されている名前）と付随の欄の `key`（今あるキー）は画面が hidden で送り返す（Bug #120 の回答を外さない）。
      *
-     * $question は編集する設問（追加は null）。$typeLockedReason は、回答がある設問に今と違う種類が送られたときの理由
-     * （update() が決める。種類の欄に誤りとして足す。$data の種類は update() が今の種類に置き換えてある）。
+     * $typeLockedReason は、回答がある設問に今と違う種類が送られたときの理由（update() が決める。種類の欄に誤りとして足す。
+     * $data の種類は update() が今の種類に置き換えてあるので、種類の規則は誤りにならない＝この理由が種類の欄のただ 1 つの誤り）。
      *
      * @param  array<string, mixed>  $data
      * @return array<string, mixed>
      */
-    private function validateQuestion(array $data, ?SurveyQuestion $question, ?string $typeLockedReason = null): array
+    private function validateQuestion(array $data, ?string $typeLockedReason = null): array
     {
         return Validator::make($data, [
             'department'                   => ['required', 'in:housing,realestate'],
@@ -353,7 +312,7 @@ class SurveyQuestionController extends Controller
             'settings.placeholder'         => '入力欄の見本の文字',
             'settings.sub_heading'         => '付随の欄の見出し',
         ])->after(function ($validator) use ($data, $typeLockedReason): void {
-            if ($typeLockedReason !== null && ! $validator->errors()->has('question_type')) {
+            if ($typeLockedReason !== null) {
                 $validator->errors()->add('question_type', $typeLockedReason);
             }
             $type = is_string($data['question_type'] ?? null) ? SurveyQuestionType::tryFrom($data['question_type']) : null;

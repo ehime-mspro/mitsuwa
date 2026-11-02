@@ -3,6 +3,7 @@
 namespace Tests\Feature\Admin\Master;
 
 use App\Models\SurveyQuestion;
+use Illuminate\Support\Facades\Route;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\SendsValuesBack;
 
@@ -342,6 +343,16 @@ class SurveyQuestionMasterTest extends SurveyQuestionScreenTestCase
             '壊れやすい文字'   => [self::tricky('O\'Brien様の設問')],
             '閉じて続ける'     => ["x');alert(1);('"],
         ];
+    }
+
+    /** 並び替えは ↑↓ のフォームだけ（部署も id も確かめなかった今までの reorder は外した） */
+    public function test_the_reorder_route_is_gone(): void
+    {
+        $this->question('A');
+
+        $this->assertFalse(Route::has('admin.survey-questions.reorder'));
+        $this->assertContains($this->actingAs($this->user)->post('/admin/survey-questions/reorder', ['order' => [1]])->getStatusCode(), [404, 405]);
+        $this->assertStringNotContainsString('reorder', $this->htmlOf($this->indexUrl()));
     }
 
     /** 手で組んだ向きは理由を一覧の箱に出して断る（500 にしない・並びは変わらない。Review Focus 5） */

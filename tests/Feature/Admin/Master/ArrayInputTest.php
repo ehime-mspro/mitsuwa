@@ -26,7 +26,10 @@ class ArrayInputTest extends MasterScreenTestCase
         $this->seedZealSimulationCategories();
     }
 
-    /** 設問の追加は画面の JS が JSON で送る。`required|max:255` は配列を素通りさせ、保存で 500 になっていた */
+    /**
+     * 設問の追加は追加の画面（admin.survey-questions.create）のふつうのフォームの送信。ここは手で組んだ配列の設問文を
+     * JSON で送り、422 の理由で見る（以前は `required|max:255` が配列を素通りさせ、保存で 500 になっていた）
+     */
     public function test_an_array_question_label_is_refused_with_its_reason(): void
     {
         $response = $this->actingAs($this->user)->postJson(route('admin.survey-questions.store'), [
