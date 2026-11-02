@@ -177,7 +177,8 @@ trait DrivesAlpineFetch
      * ブラウザがこのフォームから送る項目を、Alpine が値を入れたあと（$steps のあと）の JS の状態で評価し、
      * PHP が受け取る形（`details[0][amount]` は入れ子の配列）で返す。
      * alpineForm() と違い、`<select>` / `<textarea>` / ラジオ / チェックボックスの `x-model`（`.number` などの修飾つきも）、
-     * `:name` / `:value` / `:disabled`、`<template x-for>` の中の入力（行ごとに展開）、`$refs` の選択欄に JS が足した選択肢まで、
+     * `:name` / `:value` / `:disabled`、`<template x-for>` の中の入力（行ごとに展開。行の中の行＝入れ子の x-for も、
+     * 外の行の変数で内側の式を評価して展開する）、`$refs` の選択欄に JS が足した選択肢まで、
      * ブラウザと同じ決まりで評価する。$responses は fetch に順に返す応答（driveAlpine() と同じ）。
      *
      * ⚠ `<template>` の中身はブラウザでは描かれず、送られない。parseForm() は中身の入力も拾うので、ここでは外してから数える。
@@ -240,8 +241,11 @@ trait DrivesAlpineFetch
 
     /**
      * フォームの中の入力を、ブラウザが送る単位で集める（`<template>` の中身は外し、x-for のものは行の型として返す）。
+     * 行（loops の要素）は、その行の中の行（入れ子の x-for）を `loops` として同じ形で持つ。
      *
-     * @return array{controls: array<int, array<string, mixed>>, loops: array<int, array{for: string, controls: array<int, array<string, mixed>>}>}
+     * ⚠ 入れ子は x-for だけ。x-for でない `<template>`（`x-if` など）の中の入力は、どの深さでも「扱えない」で止める。
+     *
+     * @return array{controls: array<int, array<string, mixed>>, loops: array<int, array{for: string, controls: array<int, array<string, mixed>>, loops: array<int, array<string, mixed>>}>}
      */
     private function formModel(string $html): array
     {
@@ -257,8 +261,7 @@ trait DrivesAlpineFetch
                 continue;
             }
             $this->assertNotNull($template['for'], 'x-for でない <template> の中の入力は扱えない: ' . $template['open']);
-            $this->assertSame([], $inner['loops'], '入れ子の x-for の中の入力は扱えない: ' . $template['open']);
-            $loops[] = ['for' => $template['for'], 'controls' => $inner['controls']];
+            $loops[] = ['for' => $template['for'], 'controls' => $inner['controls'], 'loops' => $inner['loops']];
         }
 
         return ['controls' => $controls, 'loops' => $loops];
@@ -743,6 +746,16 @@ trait DrivesAlpineFetch
             out.push([name, asValue(value)]);
         };
 
+        // x-for の行を回し、行ごとの入力を集めてから、その行の中の行（入れ子の x-for）を同じ関数で回す（再帰）。
+        // ⚠ 内側の x-for の式（`row.subs`）は、外の行の変数（scope）で評価する。内側の行のスコープは外の行のスコープを引き継ぐ。
+        // ⚠ 1 つの行の中では「その行の入力 → その行の中の行」の順に集める（外側の入力 → 外側の行の順と同じ。文書の順ではない）。
+        const walkLoop = function (loop, scope, out, errors) {
+            eachRow(loop.for, scope, function (s) {
+                for (const control of loop.controls) { controlPairs(control, s, out, errors); }
+                for (const inner of loop.loops) { walkLoop(inner, s, out, errors); }
+            });
+        };
+
         (async function () {
             for (let i = 0; i < 20; i++) {
                 await new Promise(function (resolve) { setImmediate(resolve); });
@@ -752,9 +765,7 @@ trait DrivesAlpineFetch
             const formErrors = [];
             if (input.formModel) {
                 for (const control of input.formModel.controls) { controlPairs(control, {}, formPairs, formErrors); }
-                for (const loop of input.formModel.loops) {
-                    eachRow(loop.for, {}, function (s) { for (const control of loop.controls) { controlPairs(control, s, formPairs, formErrors); } });
-                }
+                for (const loop of input.formModel.loops) { walkLoop(loop, {}, formPairs, formErrors); }
             }
             const state = {};
             for (const key of Object.keys(data)) {
