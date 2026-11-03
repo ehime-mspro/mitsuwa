@@ -113,9 +113,20 @@ class CustomerImportTest extends TestCase
         return $cells + ['姓' => $last, '名' => $first, '都道府県' => '愛媛県', '市区町村' => '松山市', '取得日' => '2026-09-01'];
     }
 
-    private function existingBuyer(string $last, string $first): Buyer
+    /**
+     * 取込先（住宅事業）に登録済みの顧客。重複候補になるのは、取込先の部署にいる人だけ
+     * （ほかの部署にだけいる人には、取込先の部署を足す。docs/RULES.md Bug #124）。
+     *
+     * @param  array<string, string|null>  $attributes  住所などを変えるとき（既定は 愛媛県 松山市）
+     */
+    private function existingBuyer(string $last, string $first, array $attributes = [], ?string $department = 'housing'): Buyer
     {
-        return Buyer::create(['last_name' => $last, 'first_name' => $first, 'prefecture' => '愛媛県', 'city' => '松山市']);
+        $buyer = Buyer::create(['last_name' => $last, 'first_name' => $first] + $attributes + ['prefecture' => '愛媛県', 'city' => '松山市']);
+        if ($department !== null) {
+            $buyer->addToDepartment($department, '2026-01-01');
+        }
+
+        return $buyer;
     }
 
     /** 取込の画面からファイルを上げてプレビューを描かせる（Excel と同じく BOM を付ける） */
@@ -898,6 +909,9 @@ class CustomerImportTest extends TestCase
         $this->assertStringNotContainsString('display: none', $wrapper);
         $this->assertMatchesRegularExpression('/インポート実行（<span x-text="importCount\(\)">1<\/span>件）/u', $html);
         $preview->assertDontSee('重複候補だけです。');
+        // 取込先の部署を足す人がいないときは、その件数を出さない
+        $this->assertSame([], $preview->viewData('addRows'));
+        $preview->assertDontSee('うち登録済みの顧客に足す');
         $this->assertStringContainsString('validCount: 1,', $html);
         $this->assertStringContainsString('dupeCount: 1,', $html);
     }
@@ -971,7 +985,7 @@ class CustomerImportTest extends TestCase
     public function test_a_buyer_stored_with_empty_strings_counts_as_blank(): void
     {
         // 今の保存の経路は空欄を NULL にするが、空文字で入っている行も「空欄」として比べる（どちらで入っていても同じ人）
-        Buyer::create(['last_name' => '山田', 'first_name' => '太郎', 'prefecture' => '', 'city' => '']);
+        $this->existingBuyer('山田', '太郎', ['prefecture' => '', 'city' => '']);
 
         $preview = $this->preview($this->csv([$this->person('山田', '太郎', ['都道府県' => '', '市区町村' => ''])]));
 
@@ -982,7 +996,7 @@ class CustomerImportTest extends TestCase
     /** 空欄の比べ方（NULL か空文字）は括弧でくくる。くくらないと「姓 AND 名 AND 都道府県が NULL OR 空文字」になり、住所が空欄の別の人に当たる */
     public function test_a_blank_address_buyer_with_another_name_is_not_a_duplicate(): void
     {
-        Buyer::create(['last_name' => '佐藤', 'first_name' => '花子', 'prefecture' => '', 'city' => '']);
+        $this->existingBuyer('佐藤', '花子', ['prefecture' => '', 'city' => '']);
 
         $preview = $this->preview($this->csv([$this->person('山田', '太郎', ['都道府県' => '', '市区町村' => ''])]));
 
@@ -1005,7 +1019,7 @@ class CustomerImportTest extends TestCase
     #[DataProvider('blankAgainstFilled')]
     public function test_a_blank_does_not_match_a_filled_address(array $stored, string $prefecture, string $city): void
     {
-        Buyer::create(['last_name' => '山田', 'first_name' => '太郎'] + $stored);
+        $this->existingBuyer('山田', '太郎', $stored);
 
         $preview = $this->preview($this->csv([$this->person('山田', '太郎', ['都道府県' => $prefecture, '市区町村' => $city])]));
 
@@ -1026,9 +1040,7 @@ class CustomerImportTest extends TestCase
     #[DataProvider('shownAddresses')]
     public function test_the_duplicate_line_shows_the_address_or_says_there_is_none(string $prefecture, string $city, string $shown): void
     {
-        Buyer::create([
-            'last_name'  => '山田',
-            'first_name' => '太郎',
+        $this->existingBuyer('山田', '太郎', [
             'prefecture' => $prefecture === '' ? null : $prefecture,
             'city'       => $city === '' ? null : $city,
         ]);
@@ -1037,6 +1049,157 @@ class CustomerImportTest extends TestCase
 
         // 直す前: どちらも空欄だと「山田 太郎（）」と空の括弧が出ていた
         $preview->assertSee("🔄 行2: 重複の可能性 — 山田 太郎（{$shown}）");
+    }
+
+    // ================================================================
+    // 取込先の部署にいない同じ人（新しく作らず、その人に取込先の部署を足す。docs/RULES.md Bug #124）
+    // 顧客は 1 人を部署で共有する（buyer_departments）。画面の登録の「この部署に取り込む」と同じ結果にする
+    // ================================================================
+
+    /** @return array<string, array{0: string|null, 1: string}> [登録済みの人の部署（null はどの部署にも無い）, 確認画面の行の言い方] */
+    public static function peopleOutsideThisDepartment(): array
+    {
+        return [
+            'ほかの部署にだけいる' => ['realestate', 'は不動産事業に登録済みです'],
+            'どの部署にもいない'   => [null, 'はどの部署にも登録されていません'],
+        ];
+    }
+
+    #[DataProvider('peopleOutsideThisDepartment')]
+    public function test_a_person_outside_this_department_is_added_to_it_instead_of_registered_again(?string $department, string $said): void
+    {
+        $existing = $this->existingBuyer('山田', '太郎', ['phone' => '089-111-1111'], $department);
+
+        $preview = $this->preview($this->csv([$this->person('山田', '太郎', ['電話番号' => '090-2222-2222', '取得日' => '2026-09-05'])]));
+
+        // 直す前: 取込先の部署にいる人と同じ「重複の可能性」になり、チェックなしでは取込先の部署に入らなかった
+        $this->assertSame(1, $preview->viewData('validCount'), '取込先の部署にいない人が、取り込める行に数えられていない');
+        $this->assertSame([], $preview->viewData('dupeRows'));
+        $preview->assertSee("➕ 行2: 登録済みの顧客にこの部署を足します — 山田 太郎（愛媛県松山市）{$said} ※ 既存ID: {$existing->id}");
+        $preview->assertSee('うち登録済みの顧客に足す: <strong>1</strong> 件', false);
+        $this->assertMatchesRegularExpression('/インポート実行（<span x-text="importCount\(\)">1<\/span>件）/u', $preview->getContent());
+
+        $this->submit($this->confirmForm($preview))
+            ->assertSee('1件のインポートが完了しました（うち1件は、登録済みの顧客にこの部署を足しました）。');
+
+        // 直す前（チェックを入れたとき）: 同じ人が別の顧客としてもう 1 人でき、アンケートや契約が 2 人に分かれた
+        $this->assertSame([$existing->id], Buyer::pluck('id')->all(), '同じ人が別の顧客としてできた');
+        $this->assertSame([$existing->id], Buyer::ofDepartment('housing')->pluck('id')->all(), '取込先の部署の一覧に出ない');
+        $pivot = $existing->getDepartmentPivot('housing');
+        $this->assertSame('2026-09-05', $pivot->acquired_date->toDateString());
+        $this->assertSame('C', $pivot->rank->value);
+        // 登録済みの顧客の中身は書き換えない（画面の「この部署に取り込む」と同じ）
+        $this->assertSame('089-111-1111', $existing->fresh()->phone);
+        if ($department !== null) {
+            $this->assertNotNull($existing->getDepartmentPivot($department), 'もとの部署が外れた');
+        }
+    }
+
+    public function test_the_survey_columns_go_to_the_person_who_is_added(): void
+    {
+        SurveyQuestion::create([
+            'department' => 'housing', 'label' => '来場のきっかけ', 'question_type' => 'text',
+            'sort_order' => 1, 'is_active' => true,
+        ]);
+        $existing = $this->existingBuyer('山田', '太郎', [], 'realestate');
+
+        $preview = $this->preview($this->csv([$this->person('山田', '太郎', ['Q1:来場のきっかけ' => '看板'])], ['Q1:来場のきっかけ']));
+        $this->submit($this->confirmForm($preview))
+            ->assertSee('1件のインポートが完了しました（うち1件は、登録済みの顧客にこの部署を足しました）。');
+
+        $survey = BuyerSurvey::sole();
+        $this->assertSame($existing->id, $survey->buyer_id);
+        $this->assertSame('housing', $survey->department);
+        $this->assertSame('看板', $survey->answers()->sole()->answer_value);
+    }
+
+    public function test_new_people_and_added_people_are_counted_in_the_message(): void
+    {
+        $this->existingBuyer('山田', '太郎', [], 'realestate');
+
+        $preview = $this->preview($this->csv([$this->person('山田', '太郎'), $this->person('佐藤', '花子')]));
+
+        $this->assertSame(2, $preview->viewData('validCount'));
+        $this->assertCount(1, $preview->viewData('addRows'));
+        $this->submit($this->confirmForm($preview))
+            ->assertSee('2件のインポートが完了しました（うち1件は、登録済みの顧客にこの部署を足しました）。');
+        $this->assertSame(2, Buyer::count());
+        $this->assertSame(2, Buyer::ofDepartment('housing')->count());
+    }
+
+    public function test_a_person_already_in_this_department_too_stays_a_duplicate_candidate(): void
+    {
+        $existing = $this->existingBuyer('山田', '太郎', [], 'realestate');
+        $existing->addToDepartment('housing', '2026-02-01');
+
+        $preview = $this->preview($this->csv([$this->person('山田', '太郎')]));
+
+        $this->assertSame(0, $preview->viewData('validCount'));
+        $this->assertSame([], $preview->viewData('addRows'));
+        $this->assertSame($existing->id, $preview->viewData('dupeRows')[0]['existing_id']);
+    }
+
+    /** 同じ人がこの部署とほかの部署に 1 人ずついる（以前の取込で二重になった人）: この部署にいる人の重複候補にする */
+    public function test_a_match_in_this_department_wins_over_a_match_outside_it(): void
+    {
+        $this->existingBuyer('山田', '太郎', [], 'realestate');
+        $here = $this->existingBuyer('山田', '太郎', [], 'housing');
+
+        $preview = $this->preview($this->csv([$this->person('山田', '太郎')]));
+
+        $this->assertSame(0, $preview->viewData('validCount'));
+        $this->assertSame([], $preview->viewData('addRows'));
+        $this->assertSame($here->id, $preview->viewData('dupeRows')[0]['existing_id']);
+    }
+
+    public function test_of_two_matching_people_outside_this_department_the_first_registered_is_used(): void
+    {
+        $first  = $this->existingBuyer('山田', '太郎', [], 'realestate');
+        $second = $this->existingBuyer('山田', '太郎', [], null);
+
+        $queries = [];
+        DB::listen(function ($query) use (&$queries) {
+            $queries[] = $query->sql;
+        });
+        $preview = $this->preview($this->csv([$this->person('山田', '太郎')]));
+
+        $this->assertSame($first->id, $preview->viewData('addRows')[0]['existing_id']);
+        // テストの SQLite は並びを指定しなくても id の順に返すので、顧客を探す問い合わせが id の順に並べていることも見る
+        // （docs/RULES.md Bug #70 の追記と同じ。本番の MySQL では並びが決まらない）
+        $lookups = array_values(array_filter($queries, fn (string $sql) => str_starts_with($sql, 'select * from "buyers" where "last_name" = ?')));
+        $this->assertNotEmpty($lookups, '顧客を姓で探す問い合わせが見つからない');
+        foreach ($lookups as $sql) {
+            $this->assertStringContainsString('order by "id" asc', $sql, '同じ人を探す並び順が id の順に決まっていない');
+        }
+
+        $this->submit($this->confirmForm($preview));
+        $this->assertNotNull($first->getDepartmentPivot('housing'));
+        $this->assertNull($second->getDepartmentPivot('housing'));
+    }
+
+    /** CSV に同じ人が 2 行: 1 行目で取込先の部署を足すので、2 行目はその人の重複候補にする */
+    public function test_the_same_person_twice_in_the_csv_is_added_once(): void
+    {
+        $existing = $this->existingBuyer('山田', '太郎', [], 'realestate');
+
+        $preview = $this->preview($this->csv([$this->person('山田', '太郎'), $this->person('山田', '太郎')]));
+
+        $this->assertSame(1, $preview->viewData('validCount'));
+        $this->assertSame([2], array_column($preview->viewData('addRows'), 'row'));
+        $this->assertSame([3], array_column($preview->viewData('dupeRows'), 'row'));
+        $this->assertSame($existing->id, $preview->viewData('dupeRows')[0]['existing_id']);
+
+        // 2 行とも足すと、確定が一意制約（buyer_id, department）に当たって全行が巻き戻る
+        $this->submit($this->confirmForm($preview))
+            ->assertSee('1件のインポートが完了しました（うち1件は、登録済みの顧客にこの部署を足しました）。');
+        $this->assertSame(1, Buyer::count());
+        $this->assertSame(1, DB::table('buyer_departments')->where('buyer_id', $existing->id)->where('department', 'housing')->count());
+    }
+
+    public function test_the_form_says_people_outside_this_department_are_added_to_it(): void
+    {
+        $this->actingAs($this->actor)->get(route('admin.customers.import'))
+            ->assertSee('※ ほかの部署に登録済みの顧客と同じ人（姓・名・都道府県・市区町村が同じ）は、新しく作らずに、その顧客にこの部署を足します');
     }
 
     // ================================================================

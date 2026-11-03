@@ -34,6 +34,10 @@ use Illuminate\Validation\ValidationException;
  *   1 回目のあとに届いたチェックなしの 2 回目は、1 回目で入った人を重複候補と数えて、鍵より先に
  *   0 件の歯止めに着く（同じ確認画面の 2 回目なのに「プレビューのあとに、同じ人が登録された可能性」の
  *   案内が出る。改修前の文言はチェックを勧めていて、従うと全員がもう一度入った）。
+ * ⚠ 同じ人（姓・名・都道府県・市区町村が同じ）が登録済みでも、取込先の部署にいなければ重複候補にしない。新しく作らずに、
+ *   その人に取込先の部署を足す（顧客は 1 人を部署で共有する。画面の登録の「この部署に取り込む」と同じ。docs/RULES.md Bug #124）。
+ *   2026-11-03 まではどの部署の人でも重複候補にしていて、チェックなしでは取込先の部署に入らず、チェックを入れると同じ人が
+ *   別の顧客としてもう 1 人できていた。どの部署にもいない人（部署が外れた人）にも足す（利用者の決定）
  * ⚠ 設問の列（`Q{n}:設問の文`）は、番号で「有効な設問を並び順に並べた n 番目」に結びつけたうえで、見出しの文を
  *   その設問の今の文と照らし合わせる。違う列・当たる設問の無い列が 1 つでもあれば、プレビューでも確定でも
  *   ファイルごと断る（設計書 2026-11-02-survey-question-admin-design.md §4.4・D8。並び替え・有効／無効・
@@ -160,7 +164,9 @@ class CustomerImportController extends Controller
 
         $rowErrors = [];
         $dupeRows  = [];
+        $addRows   = []; // 取込先の部署にいない同じ人（新しく作らず、その人に取込先の部署を足す。クラスの docblock）
         $validRows = [];
+        $addedIds  = []; // この CSV で取込先の部署を足す顧客の id（同じ人の 2 行目からは、その人の重複候補にする）
         $rowNum    = 1;
 
         foreach ($lines as $line) {
@@ -204,28 +210,55 @@ class CustomerImportController extends Controller
             $sameAs = fn (string $column, string $value) => fn ($query) => $value === ''
                 ? $query->whereNull($column)->orWhere($column, '')
                 : $query->where($column, $value);
-            $existing   = Buyer::where('last_name', $lastName)
+            // ⚠ id の順に並べる（取込先の部署にいなければ、最初に登録された人に足す。本番の MySQL は並びを指定しないと決まらない）
+            $matches    = Buyer::with('departments')
+                ->where('last_name', $lastName)
                 ->where('first_name', $firstName)
                 ->where($sameAs('prefecture', $prefecture))
                 ->where($sameAs('city', $city))
-                ->first();
+                ->orderBy('id')
+                ->get();
+            $address    = "{$prefecture}{$city}" !== '' ? "{$prefecture}{$city}" : '住所なし';
 
-            if ($existing) {
+            // 取込先の部署にいる人（この CSV の前の行で足す人も含む）に当たれば重複候補
+            $inDepartment = $matches->first(fn (Buyer $buyer) => in_array($buyer->id, $addedIds, true)
+                || $buyer->departments->contains(fn ($pivot) => $pivot->department->value === $department));
+
+            if ($inDepartment) {
                 $dupeRows[] = [
                     'row'         => $rowNum,
                     'name'        => "{$lastName} {$firstName}",
-                    'address'     => "{$prefecture}{$city}" !== '' ? "{$prefecture}{$city}" : '住所なし',
-                    'existing_id' => $existing->id,
+                    'address'     => $address,
+                    'existing_id' => $inDepartment->id,
                 ];
                 if ($skipDupes) {
                     continue;
                 }
+            } elseif ($matches->isNotEmpty()) {
+                // 取込先の部署にいない同じ人: 新しく作らず、最初に登録された人に取込先の部署を足す（クラスの docblock）
+                $existing   = $matches->first();
+                $addedIds[] = $existing->id;
+                $addRows[]  = [
+                    'row'         => $rowNum,
+                    'name'        => "{$lastName} {$firstName}",
+                    'address'     => $address,
+                    'existing_id' => $existing->id,
+                    // 今いる部署の名前（どの部署にもいなければ空）
+                    'departments' => $existing->departments->map(fn ($pivot) => $pivot->department->label())->implode('・'),
+                ];
+                $validRows[] = [
+                    'row'      => $row,
+                    'answers'  => $answers,
+                    'existing' => $existing,
+                ];
+                continue;
             }
 
             // バリデーション通過
             $validRows[] = [
-                'row'     => $row,
-                'answers' => $answers,
+                'row'      => $row,
+                'answers'  => $answers,
+                'existing' => null,
             ];
         }
 
@@ -238,6 +271,7 @@ class CustomerImportController extends Controller
                 'validCount' => count($validRows),
                 'rowErrors'  => $rowErrors,
                 'dupeRows'   => $dupeRows,
+                'addRows'    => $addRows,
                 'csvData'    => base64_encode($content),
                 // 確定を 1 回だけ通す鍵（クラスの docblock）
                 'importToken' => OneTimeAction::issue(),
@@ -260,11 +294,18 @@ class CustomerImportController extends Controller
         DB::beginTransaction();
         try {
             $imported = 0;
+            $added    = 0;
             foreach ($validRows as $valid) {
                 $row     = $valid['row'];
                 $answers = $valid['answers'];
 
-                $buyer = Buyer::create($row->buyer);
+                if ($valid['existing'] !== null) {
+                    // 取込先の部署にいない同じ人: その人に部署を足す。中身（電話番号など）は書き換えない
+                    $buyer = $valid['existing'];
+                    $added++;
+                } else {
+                    $buyer = Buyer::create($row->buyer);
+                }
 
                 // 部署ピボット（取得日は BuyerCsvRow が Y-m-d にそろえた値）
                 $buyer->addToDepartment($department, $row->acquiredDate);
@@ -314,8 +355,10 @@ class CustomerImportController extends Controller
 
             DB::commit();
 
+            $addedNote = $added > 0 ? "（うち{$added}件は、登録済みの顧客にこの部署を足しました）" : '';
+
             return redirect()->route('admin.customers.import')
-                ->with('success', "{$imported}件のインポートが完了しました。");
+                ->with('success', "{$imported}件のインポートが完了しました{$addedNote}。");
         } catch (\Exception $e) {
             DB::rollBack();
             return redirect()->route('admin.customers.import')->with('error', 'インポートに失敗しました: ' . $e->getMessage());

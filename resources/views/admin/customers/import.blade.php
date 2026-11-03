@@ -63,6 +63,7 @@
                     </div>
                     <div style="font-size: 12px; color: #6b7280; margin-top: 6px;">※ UTF-8 または Shift_JIS 形式に対応</div>
                     <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">※ 担当者がシステムに未登録（退職者等）の場合、名前はテキストとして保存されます</div>
+                    <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">※ ほかの部署に登録済みの顧客と同じ人（姓・名・都道府県・市区町村が同じ）は、新しく作らずに、その顧客にこの部署を足します</div>
                 </div>
             </div>
 
@@ -110,15 +111,24 @@
             <div style="flex: 1;">
                 <div style="font-weight: 600; margin-bottom: 8px;">プレビュー</div>
                 <div style="border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden; max-height: 300px; overflow-y: auto;">
-                    <div style="background: #ecfdf5; padding: 10px 16px; font-size: 14px; font-weight: 600; display: flex; gap: 20px;">
+                    <div style="background: #ecfdf5; padding: 10px 16px; font-size: 14px; font-weight: 600; display: flex; flex-wrap: wrap; gap: 4px 20px;">
                         <span>全 <strong>{{ $totalRows }}</strong> 件</span>
                         <span style="color: #059669;">正常: <strong>{{ $validCount }}</strong> 件</span>
+                        @if(count($addRows ?? []) > 0)
+                            <span style="color: #1d4ed8;">うち登録済みの顧客に足す: <strong>{{ count($addRows) }}</strong> 件</span>
+                        @endif
                         <span style="color: #dc2626;">エラー: <strong>{{ count($rowErrors ?? []) }}</strong> 件</span>
                         <span style="color: #d97706;">重複候補: <strong>{{ count($dupeRows ?? []) }}</strong> 件</span>
                     </div>
                     @foreach($rowErrors ?? [] as $err)
                         <div style="padding: 8px 16px; font-size: 13px; border-bottom: 1px solid #f3f4f6; color: #dc2626;">
                             ⚠ 行{{ $err['row'] }}: {{ $err['message'] }}
+                        </div>
+                    @endforeach
+                    {{-- 取込先の部署にいない同じ人（新しく作らず、その人にこの部署を足す。docs/RULES.md Bug #124） --}}
+                    @foreach($addRows ?? [] as $add)
+                        <div style="padding: 8px 16px; font-size: 13px; border-bottom: 1px solid #f3f4f6; color: #1d4ed8;">
+                            ➕ 行{{ $add['row'] }}: 登録済みの顧客にこの部署を足します — {{ $add['name'] }}（{{ $add['address'] }}）{{ $add['departments'] !== '' ? 'は' . $add['departments'] . 'に登録済みです' : 'はどの部署にも登録されていません' }} ※ 既存ID: {{ $add['existing_id'] }}
                         </div>
                     @endforeach
                     @foreach($dupeRows ?? [] as $dup)
