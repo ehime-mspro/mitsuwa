@@ -199,17 +199,22 @@ class CustomerImportController extends Controller
             $firstName  = $row->buyer['first_name'];
             $prefecture = $row->buyer['prefecture'] ?? '';
             $city       = $row->buyer['city'] ?? '';
+            // 空欄どうしを同じとみなす。空欄は NULL で保存される（BuyerCsvRow は空欄の列を渡さず、画面の登録も空欄を NULL にする）ので、
+            // 空文字と比べるだけでは一致せず、上げ直すと同じ人が 2 人になっていた（docs/RULES.md Bug #123）。空文字で入っている行にも当てる
+            $sameAs = fn (string $column, string $value) => fn ($query) => $value === ''
+                ? $query->whereNull($column)->orWhere($column, '')
+                : $query->where($column, $value);
             $existing   = Buyer::where('last_name', $lastName)
                 ->where('first_name', $firstName)
-                ->where('prefecture', $prefecture)
-                ->where('city', $city)
+                ->where($sameAs('prefecture', $prefecture))
+                ->where($sameAs('city', $city))
                 ->first();
 
             if ($existing) {
                 $dupeRows[] = [
                     'row'         => $rowNum,
                     'name'        => "{$lastName} {$firstName}",
-                    'address'     => "{$prefecture}{$city}",
+                    'address'     => "{$prefecture}{$city}" !== '' ? "{$prefecture}{$city}" : '住所なし',
                     'existing_id' => $existing->id,
                 ];
                 if ($skipDupes) {

@@ -939,6 +939,107 @@ class CustomerImportTest extends TestCase
     }
 
     // ================================================================
+    // 住所が空欄の行の重複（空欄どうしを同じとみなす。docs/RULES.md Bug #123）
+    // ================================================================
+
+    /** @return array<string, array{0: string, 1: string}> [都道府県, 市区町村] */
+    public static function blankAddresses(): array
+    {
+        return [
+            'どちらも空欄'   => ['', ''],
+            '市区町村が空欄' => ['愛媛県', ''],
+            '都道府県が空欄' => ['', '松山市'],
+        ];
+    }
+
+    #[DataProvider('blankAddresses')]
+    public function test_uploading_a_row_with_a_blank_address_again_imports_nothing_new(string $prefecture, string $city): void
+    {
+        $csv = $this->csv([$this->person('山田', '太郎', ['都道府県' => $prefecture, '市区町村' => $city])]);
+        $this->submit($this->confirmForm($this->preview($csv)))->assertSee('1件のインポートが完了しました。');
+
+        // 直す前: 空欄は NULL で保存されるのに、確かめは空文字と比べていたので、同じ CSV を上げ直しても重複候補にならず、
+        // 確定すると同じ人が 2 人になった
+        $again = $this->preview($csv);
+        $this->assertSame(0, $again->viewData('validCount'), '上げ直した行が、重複候補でなく取り込める行になった');
+        $this->assertCount(1, $again->viewData('dupeRows'));
+
+        $this->submit($this->confirmForm($again))->assertSee(self::REGISTERED_AFTER_PREVIEW);
+        $this->assertSame(1, Buyer::count());
+    }
+
+    public function test_a_buyer_stored_with_empty_strings_counts_as_blank(): void
+    {
+        // 今の保存の経路は空欄を NULL にするが、空文字で入っている行も「空欄」として比べる（どちらで入っていても同じ人）
+        Buyer::create(['last_name' => '山田', 'first_name' => '太郎', 'prefecture' => '', 'city' => '']);
+
+        $preview = $this->preview($this->csv([$this->person('山田', '太郎', ['都道府県' => '', '市区町村' => ''])]));
+
+        $this->assertSame(0, $preview->viewData('validCount'));
+        $this->assertCount(1, $preview->viewData('dupeRows'));
+    }
+
+    /** 空欄の比べ方（NULL か空文字）は括弧でくくる。くくらないと「姓 AND 名 AND 都道府県が NULL OR 空文字」になり、住所が空欄の別の人に当たる */
+    public function test_a_blank_address_buyer_with_another_name_is_not_a_duplicate(): void
+    {
+        Buyer::create(['last_name' => '佐藤', 'first_name' => '花子', 'prefecture' => '', 'city' => '']);
+
+        $preview = $this->preview($this->csv([$this->person('山田', '太郎', ['都道府県' => '', '市区町村' => ''])]));
+
+        $this->assertSame(1, $preview->viewData('validCount'));
+        $this->assertSame([], $preview->viewData('dupeRows'));
+    }
+
+    /** @return array<string, array{0: array{prefecture: string|null, city: string|null}, 1: string, 2: string}> [登録済みの住所, CSV の都道府県, CSV の市区町村] */
+    public static function blankAgainstFilled(): array
+    {
+        return [
+            'CSV の市区町村だけ空欄'       => [['prefecture' => '愛媛県', 'city' => '松山市'], '愛媛県', ''],
+            'CSV の住所がどちらも空欄'     => [['prefecture' => '愛媛県', 'city' => '松山市'], '', ''],
+            '登録済みの市区町村だけ空欄'   => [['prefecture' => '愛媛県', 'city' => null], '愛媛県', '松山市'],
+            '登録済みの住所がどちらも空欄' => [['prefecture' => null, 'city' => null], '愛媛県', '松山市'],
+        ];
+    }
+
+    /** 空欄は「どの値とも同じ」ではない（片方だけ空欄なら別の人。姓・名だけで比べる形に広げると落ちる） */
+    #[DataProvider('blankAgainstFilled')]
+    public function test_a_blank_does_not_match_a_filled_address(array $stored, string $prefecture, string $city): void
+    {
+        Buyer::create(['last_name' => '山田', 'first_name' => '太郎'] + $stored);
+
+        $preview = $this->preview($this->csv([$this->person('山田', '太郎', ['都道府県' => $prefecture, '市区町村' => $city])]));
+
+        $this->assertSame(1, $preview->viewData('validCount'));
+        $this->assertSame([], $preview->viewData('dupeRows'));
+    }
+
+    /** @return array<string, array{0: string, 1: string, 2: string}> [都道府県, 市区町村, 重複候補の行に出る住所] */
+    public static function shownAddresses(): array
+    {
+        return [
+            'どちらも入っている' => ['愛媛県', '松山市', '愛媛県松山市'],
+            '市区町村が空欄'     => ['愛媛県', '', '愛媛県'],
+            'どちらも空欄'       => ['', '', '住所なし'],
+        ];
+    }
+
+    #[DataProvider('shownAddresses')]
+    public function test_the_duplicate_line_shows_the_address_or_says_there_is_none(string $prefecture, string $city, string $shown): void
+    {
+        Buyer::create([
+            'last_name'  => '山田',
+            'first_name' => '太郎',
+            'prefecture' => $prefecture === '' ? null : $prefecture,
+            'city'       => $city === '' ? null : $city,
+        ]);
+
+        $preview = $this->preview($this->csv([$this->person('山田', '太郎', ['都道府県' => $prefecture, '市区町村' => $city])]));
+
+        // 直す前: どちらも空欄だと「山田 太郎（）」と空の括弧が出ていた
+        $preview->assertSee("🔄 行2: 重複の可能性 — 山田 太郎（{$shown}）");
+    }
+
+    // ================================================================
     // 確定でも検査をやり直す（ブラウザから届いた値を信用しない）
     // ================================================================
 
