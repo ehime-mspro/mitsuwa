@@ -104,18 +104,16 @@ class CustomerImportController extends Controller
 
         $content = $this->loadCsv($request, $confirmed);
 
-        $lines = array_filter(explode("\n", $content), function ($line) {
-            return trim($line) !== '';
-        });
+        // 1 件（レコード）ずつ読む。引用符の中の改行で行を割らない（直す前は `explode("\n")` で割り、値が改行の手前で切れて
+        // 保存された。docs/RULES.md Bug #125）。CSV の決まり（RFC 4180。`"` は 2 つ重ねる）で読み、円記号は逃がしの文字にしない
+        // （既定の逃がしの文字で読むと、`\"` の続く設問の文＝末尾が円記号の文を引用符で囲んだものが割れる）
+        $records = CsvImportReader::records($content);
 
-        if (count($lines) < 2) {
+        if (count($records) < 2) {
             return redirect()->route('admin.customers.import')->with('error', 'CSVファイルにデータがありません。');
         }
 
-        // 見出しは CSV の決まり（RFC 4180。`"` は 2 つ重ねる）で読む。テンプレートがその形で書き、Excel もその形で保存する。
-        // ⚠ 既定の逃がしの文字（円記号）で読むと、`\"` の続く設問の文（末尾が円記号の文を引用符で囲んだもの）が割れる
-        $header = str_getcsv(array_shift($lines), ',', '"', '');
-        $header = array_map('trim', $header);
+        $header = array_map('trim', array_shift($records));
 
         // 設問カラム検出（Q1:xxx, Q2:xxx ...）。Q の番号は、有効な設問を並び順（テンプレートと同じ）に並べた何番目か
         $questions = SurveyQuestion::ofDepartment($department)->active()->ordered()->get();
@@ -169,9 +167,11 @@ class CustomerImportController extends Controller
         $addedIds  = []; // この CSV で取込先の部署を足す顧客の id（同じ人の 2 行目からは、その人の重複候補にする）
         $rowNum    = 1;
 
-        foreach ($lines as $line) {
+        foreach ($records as $cells) {
             $rowNum++;
-            $cols = str_getcsv($line);
+            // セルの中の改行（Excel の Alt+Enter）は空白 1 つにする。画面の入力欄は 1 行で改行を入れられないので、
+            // 画面で直して保存しても変わらない形にそろえる（利用者の決定 2026-11-04。Bug #125）
+            $cols = array_map(fn (string $cell) => preg_replace('/(?:\r\n|\r|\n)+/', ' ', $cell), $cells);
 
             $values = [];
             foreach ($colMap as $key => $hIdx) {
@@ -267,7 +267,7 @@ class CustomerImportController extends Controller
             return view('admin.customers.import', [
                 'preview'    => true,
                 'department' => $department,
-                'totalRows'  => count($lines),
+                'totalRows'  => count($records),
                 'validCount' => count($validRows),
                 'rowErrors'  => $rowErrors,
                 'dupeRows'   => $dupeRows,

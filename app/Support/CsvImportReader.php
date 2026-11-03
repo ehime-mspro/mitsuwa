@@ -26,6 +26,37 @@ final class CsvImportReader
     }
 
     /**
+     * CSV を 1 件（レコード）ずつ読み、セルの並びにする（RFC 4180。`"` は 2 つ重ね、円記号は逃がしの文字にしない）。
+     *
+     * 引用符で囲んだセルの中の改行（Excel の Alt+Enter）は、行を割らずにそのセルの値に残す（改行をどう保存するかは呼び出し元が決める）。
+     * 空の行・空白だけの行は読まない（parse() と同じ）。カンマだけの行は空のセルの並びとして返す。
+     *
+     * ⚠ parse() は `explode("\n")` で行に分けるので、引用符の中の改行で 1 件が 2 行に割れる（顧客の取込で
+     *   値が改行の手前で切れて保存された。docs/RULES.md Bug #125）。parse() を使う取込（テナント・賃貸マンション・
+     *   決裁の利用者）は、まだこちらに移していない
+     *
+     * @return list<list<string>>
+     */
+    public static function records(string $content): array
+    {
+        $stream = fopen('php://temp', 'r+');
+        fwrite($stream, $content);
+        rewind($stream);
+
+        $records = [];
+        while (($cells = fgetcsv($stream, null, ',', '"', '')) !== false) {
+            $cells = array_map(fn (?string $cell): string => (string) $cell, $cells);
+            if (count($cells) === 1 && trim($cells[0]) === '') {
+                continue;
+            }
+            $records[] = $cells;
+        }
+        fclose($stream);
+
+        return $records;
+    }
+
+    /**
      * ヘッダー行を内部キーへ写像して行配列にする。
      *
      * @param  array<string, string>  $columnMap  日本語ヘッダー => 内部キー

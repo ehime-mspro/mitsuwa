@@ -64,6 +64,7 @@
                     <div style="font-size: 12px; color: #6b7280; margin-top: 6px;">※ UTF-8 または Shift_JIS 形式に対応</div>
                     <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">※ 担当者がシステムに未登録（退職者等）の場合、名前はテキストとして保存されます</div>
                     <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">※ ほかの部署に登録済みの顧客と同じ人（姓・名・都道府県・市区町村が同じ）は、新しく作らずに、その顧客にこの部署を足します</div>
+                    <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">※ セルの中の改行は、空白 1 つにして取り込みます</div>
                 </div>
             </div>
 

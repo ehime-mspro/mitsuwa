@@ -107,6 +107,25 @@ class CustomerImportTest extends TestCase
         return implode("\n", $lines) . "\n";
     }
 
+    /**
+     * Excel が保存する形の CSV: 行の終わりは CRLF。改行・カンマ・引用符を含むセルは引用符で囲み（`"` は 2 つ重ねる）、
+     * セルの中の改行（Alt+Enter）は値のまま（LF）書く。
+     *
+     * @param  list<array<string, string>>  $rows
+     * @param  list<string>  $extraColumns
+     */
+    private function excelCsv(array $rows, array $extraColumns = []): string
+    {
+        $columns = array_merge(self::HEADER, $extraColumns);
+        $cell    = fn (string $value) => preg_match('/[\r\n",]/', $value) === 1 ? '"' . str_replace('"', '""', $value) . '"' : $value;
+        $lines   = [implode(',', array_map($cell, $columns))];
+        foreach ($rows as $row) {
+            $lines[] = implode(',', array_map(fn (string $column) => $cell($row[$column] ?? ''), $columns));
+        }
+
+        return implode("\r\n", $lines) . "\r\n";
+    }
+
     /** 必須の 3 項目と住所（重複の確認に使う）が入った行 */
     private function person(string $last, string $first, array $cells = []): array
     {
@@ -1444,6 +1463,79 @@ class CustomerImportTest extends TestCase
                 result.third = press();
                 JS)
         );
+    }
+
+    // ================================================================
+    // セルの中の改行（docs/RULES.md Bug #125）
+    // ================================================================
+
+    /**
+     * 直す前: 行を `explode("\n")` で分けていたので、セルの中の改行（Alt+Enter）で 1 件が 2 行に割れた。
+     * 後ろの列の値は改行の手前で切れて保存され、割れた後半は意味の通らないエラー行になった。
+     * セルの中の改行は空白 1 つにして保存する（画面の入力欄は 1 行で、改行を入れられない。利用者の決定 2026-11-04）
+     */
+    public function test_a_line_break_inside_a_cell_is_saved_as_a_space(): void
+    {
+        SurveyQuestion::create([
+            'department' => 'housing', 'label' => 'ご要望', 'question_type' => 'text',
+            'sort_order' => 1, 'is_active' => true,
+        ]);
+
+        $preview = $this->preview($this->excelCsv([
+            $this->person('山田', '太郎', [
+                '住所詳細' => "1-2-3\n2階",
+                '建物名'   => "ミツワ\r\n\r\nハイツ",
+                '担当者名' => "田中\n（引継ぎ）",
+                'Q1:ご要望' => "南向き\n駐車場2台",
+            ]),
+            $this->person('佐藤', '花子', ['Q1:ご要望' => '特になし']),
+        ], ['Q1:ご要望']));
+
+        $this->assertSame([], $preview->viewData('rowErrors'));
+        $this->assertSame(2, $preview->viewData('totalRows'));
+        $this->assertSame(2, $preview->viewData('validCount'));
+
+        $this->submit($this->confirmForm($preview))->assertSee('2件のインポートが完了しました。');
+
+        $buyer = Buyer::where('last_name', '山田')->sole();
+        $this->assertSame('1-2-3 2階', $buyer->address_detail);
+        $this->assertSame('ミツワ ハイツ', $buyer->building_name);
+        $survey = BuyerSurvey::where('buyer_id', $buyer->id)->sole();
+        $this->assertSame('田中 （引継ぎ）', $survey->staff_name);
+        $this->assertSame('南向き 駐車場2台', $survey->answers()->sole()->answer_value);
+    }
+
+    /** 直す前は割れた行も 1 行と数えたので、改行のある行より後ろのエラーの行番号が Excel の行とずれた */
+    public function test_a_row_number_after_a_line_break_matches_the_excel_row(): void
+    {
+        $preview = $this->preview($this->excelCsv([
+            $this->person('山田', '太郎', ['住所詳細' => "1-2-3\n2階"]),
+            $this->person('佐藤', '花子', ['取得日' => '2026-02-30']),
+        ]));
+
+        $this->assertSame(
+            [['row' => 3, 'message' => '取得日「2026-02-30」は日付として正しくありません（例: 2026-09-01 か 2026/9/1）']],
+            $preview->viewData('rowErrors')
+        );
+        $preview->assertSee('⚠ 行3: 取得日「2026-02-30」は日付として正しくありません（例: 2026-09-01 か 2026/9/1）');
+    }
+
+    public function test_the_import_page_says_a_line_break_in_a_cell_becomes_a_space(): void
+    {
+        $this->actingAs($this->actor)->get('/admin/customers/import')
+            ->assertStatus(200)
+            ->assertSee('※ セルの中の改行は、空白 1 つにして取り込みます');
+    }
+
+    /** 行の終わりが LF だけのファイル（Excel 以外で作った CSV）でも、引用符の中の改行で行を割らない */
+    public function test_a_line_break_inside_a_cell_is_read_with_lf_line_ends(): void
+    {
+        $preview = $this->preview($this->csv([]) . '山田,太郎,,,,,,,,愛媛県,松山市,"1-2-3' . "\n" . '2階",,,,,,,2026-09-01,,' . "\n");
+        $this->assertSame(1, $preview->viewData('validCount'));
+
+        $this->submit($this->confirmForm($preview))->assertSee('1件のインポートが完了しました。');
+
+        $this->assertSame('1-2-3 2階', Buyer::sole()->address_detail);
     }
 
     // ================================================================
