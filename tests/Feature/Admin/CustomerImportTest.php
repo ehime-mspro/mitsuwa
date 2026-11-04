@@ -1061,15 +1061,16 @@ class CustomerImportTest extends TestCase
     #[DataProvider('shownAddresses')]
     public function test_the_duplicate_line_shows_the_address_or_says_there_is_none(string $prefecture, string $city, string $shown): void
     {
-        $this->existingBuyer('山田', '太郎', [
+        $existing = $this->existingBuyer('山田', '太郎', [
             'prefecture' => $prefecture === '' ? null : $prefecture,
             'city'       => $city === '' ? null : $city,
         ]);
 
         $preview = $this->preview($this->csv([$this->person('山田', '太郎', ['都道府県' => $prefecture, '市区町村' => $city])]));
 
-        // 直す前: どちらも空欄だと「山田 太郎（）」と空の括弧が出ていた
-        $preview->assertSee("🔄 行2: 重複の可能性 — 山田 太郎（{$shown}）");
+        // 直す前: どちらも空欄だと「山田 太郎（）」と空の括弧が出ていた。登録済みの人なら既存ID を出す
+        // （CSV の中の同じ人は「この CSV の行N と同じ人」。Bug #126）
+        $preview->assertSee("🔄 行2: 重複の可能性 — 山田 太郎（{$shown}）※ 既存ID: {$existing->id}");
     }
 
     // ================================================================
@@ -1536,6 +1537,28 @@ class CustomerImportTest extends TestCase
         $this->submit($this->confirmForm($preview))->assertSee(self::databaseError(2));
 
         $this->assertSame(0, Buyer::count());
+        Exceptions::assertReported(QueryException::class);
+    }
+
+    /** ほかの部署にだけいる人に部署を足すところで止まったときも、その行を出す */
+    public function test_a_database_error_while_adding_the_department_names_that_row(): void
+    {
+        Exceptions::fake();
+        $existing = $this->existingBuyer('山田', '太郎', [], 'realestate');
+        $preview  = $this->preview($this->csv([
+            $this->person('佐藤', '花子'),
+            $this->person('山田', '太郎'),
+        ]));
+        \App\Models\BuyerDepartmentPivot::creating(function (\App\Models\BuyerDepartmentPivot $pivot) use ($existing): void {
+            if ($pivot->buyer_id === $existing->id && $pivot->department->value === 'housing') {
+                throw new QueryException('mysql', 'insert into `buyer_departments` (`buyer_id`) values (?)', [$pivot->buyer_id], new \PDOException('SQLSTATE[23000]: Integrity constraint violation'));
+            }
+        });
+
+        $this->submit($this->confirmForm($preview))->assertSee(self::databaseError(3));
+
+        $this->assertSame(1, Buyer::count(), '佐藤が巻き戻っていない');
+        $this->assertSame(['realestate'], $existing->fresh()->departments->map(fn ($pivot) => $pivot->department->value)->all());
         Exceptions::assertReported(QueryException::class);
     }
 
