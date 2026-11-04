@@ -253,6 +253,7 @@ class CustomerImportController extends Controller
                     'departments' => $existing->departments->map(fn ($pivot) => $pivot->department->label())->implode('・'),
                 ];
                 $validRows[] = [
+                    'rowNum'   => $rowNum,
                     'row'      => $row,
                     'answers'  => $answers,
                     'existing' => $existing,
@@ -277,6 +278,7 @@ class CustomerImportController extends Controller
 
             // バリデーション通過
             $validRows[] = [
+                'rowNum'   => $rowNum,
                 'row'      => $row,
                 'answers'  => $answers,
                 'existing' => null,
@@ -313,10 +315,12 @@ class CustomerImportController extends Controller
 
         // インポート実行
         DB::beginTransaction();
+        $current = null; // 書き込んでいる行の番号（データベースのエラーの案内に出す）
         try {
             $imported = 0;
             $added    = 0;
             foreach ($validRows as $valid) {
+                $current = $valid['rowNum'];
                 $row     = $valid['row'];
                 $answers = $valid['answers'];
 
@@ -382,7 +386,12 @@ class CustomerImportController extends Controller
                 ->with('success', "{$imported}件のインポートが完了しました{$addedNote}。");
         } catch (\Exception $e) {
             DB::rollBack();
-            return redirect()->route('admin.customers.import')->with('error', 'インポートに失敗しました: ' . $e->getMessage());
+            // 生の SQL の文（英語・名前や電話番号などの入力値を含む）は画面に出さず、記録に残す。直す前は赤い帯にそのまま出し、
+            // 記録にも残らなかった（ZEAL 会員の取込〈Bug #72〉・顧客の画面〈Bug #89〉と同じ形）
+            report($e);
+
+            return redirect()->route('admin.customers.import')
+                ->with('error', "取り込めませんでした（行{$current} まで進んだところでデータベースのエラーが起きました）。1件も登録していません。CSVを確かめて、アップロードし直してください。理由はシステムの記録（laravel.log）に残しています。");
         }
     }
 

@@ -10,9 +10,11 @@ use App\Models\SurveyQuestion;
 use App\Models\User;
 use App\Support\BuyerCsvRow;
 use App\Support\CsvImportReader;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\CreatesRealEstateSchema;
@@ -1289,6 +1291,7 @@ class CustomerImportTest extends TestCase
 
     public function test_a_failure_while_writing_rolls_back_every_row(): void
     {
+        Exceptions::fake();
         $form = $this->confirmForm($this->preview($this->csv([
             $this->person('山田', '太郎'),
             $this->person('佐藤', '花子'),
@@ -1302,7 +1305,7 @@ class CustomerImportTest extends TestCase
             }
         });
 
-        $this->submit($form)->assertSee('インポートに失敗しました: 2 行目の書き込みの失敗（テスト）');
+        $this->submit($form)->assertSee(self::databaseError(3));
 
         $this->assertSame(0, DB::table('buyers')->count(), '1 行目が巻き戻っていない');
         $this->assertSame(0, DB::table('buyer_departments')->count());
@@ -1345,6 +1348,7 @@ class CustomerImportTest extends TestCase
 
     public function test_each_preview_issues_its_own_token(): void
     {
+        Exceptions::fake();
         $csv   = $this->csv([$this->person('山田', '太郎')]);
         $first = $this->confirmForm($this->preview($csv));
 
@@ -1355,7 +1359,7 @@ class CustomerImportTest extends TestCase
                 throw new \RuntimeException('書き込みの失敗（テスト）');
             }
         });
-        $this->submit($first)->assertSee('インポートに失敗しました: 書き込みの失敗（テスト）');
+        $this->submit($first)->assertSee(self::databaseError(2));
         $failing = false;
 
         // 案内どおり**同じ CSV** をアップロードし直すと、新しい鍵で取り込める。
@@ -1463,6 +1467,76 @@ class CustomerImportTest extends TestCase
                 result.third = press();
                 JS)
         );
+    }
+
+    // ================================================================
+    // 確定のときのデータベースのエラー（docs/RULES.md Bug #89 と同じ形）
+    // ================================================================
+
+    /** 確定で行 $row まで進んだところでデータベースのエラーが起きたときの案内 */
+    private static function databaseError(int $row): string
+    {
+        return "取り込めませんでした（行{$row} まで進んだところでデータベースのエラーが起きました）。1件も登録していません。CSVを確かめて、アップロードし直してください。理由はシステムの記録（laravel.log）に残しています。";
+    }
+
+    /** 本番の MySQL が列に入らない値を断ったときと同じ形の例外（SQL と入力値を含む） */
+    private static function queryException(Buyer|BuyerSurvey $model): QueryException
+    {
+        return new QueryException(
+            'mysql',
+            'insert into `buyers` (`last_name`, `first_name`, `phone`) values (?, ?, ?)',
+            [$model->last_name ?? '', $model->first_name ?? '', $model->phone ?? ''],
+            new \PDOException('SQLSTATE[22001]: String data, right truncated: 1406 Data too long for column')
+        );
+    }
+
+    /**
+     * 直す前: 赤い帯に「インポートに失敗しました: SQLSTATE[22001] … values (佐藤, 花子, 089-222-2222)」と英語の SQL が
+     * 入力値つきで出て、laravel.log にも残らなかった。画面には案内だけを出し、理由は記録に残す（ZEAL 会員の取込〈Bug #72〉と同じ）
+     */
+    public function test_a_database_error_on_confirmation_shows_no_sql_and_is_reported(): void
+    {
+        Exceptions::fake();
+        $preview = $this->preview($this->csv([
+            $this->person('山田', '太郎', ['電話番号' => '089-111-1111']),
+            $this->person('佐藤', '花子', ['電話番号' => '089-222-2222']),
+        ]));
+        Buyer::creating(function (Buyer $buyer): void {
+            if ($buyer->last_name === '佐藤') {
+                throw self::queryException($buyer);
+            }
+        });
+
+        $landed = $this->submit($this->confirmForm($preview));
+
+        $landed->assertSee(self::databaseError(3));
+        $landed->assertDontSee('SQLSTATE');
+        $landed->assertDontSee('089-222-2222');
+        // 1 行目も巻き戻す
+        $this->assertSame(0, Buyer::count());
+        Exceptions::assertReported(fn (QueryException $e) => str_contains($e->getMessage(), 'Data too long'));
+    }
+
+    /** 行番号は、その行の書き込みのどこで止まっても同じ行を出す（アンケートを作るところで止まったとき） */
+    public function test_a_database_error_while_saving_a_survey_names_that_row(): void
+    {
+        Exceptions::fake();
+        SurveyQuestion::create([
+            'department' => 'housing', 'label' => '来場のきっかけ', 'question_type' => 'text',
+            'sort_order' => 1, 'is_active' => true,
+        ]);
+        $preview = $this->preview($this->csv([
+            $this->person('山田', '太郎', ['Q1:来場のきっかけ' => '看板']),
+            $this->person('佐藤', '花子'),
+        ], ['Q1:来場のきっかけ']));
+        BuyerSurvey::creating(function (BuyerSurvey $survey): void {
+            throw self::queryException($survey);
+        });
+
+        $this->submit($this->confirmForm($preview))->assertSee(self::databaseError(2));
+
+        $this->assertSame(0, Buyer::count());
+        Exceptions::assertReported(QueryException::class);
     }
 
     // ================================================================
