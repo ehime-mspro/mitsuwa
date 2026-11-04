@@ -6,12 +6,15 @@ use App\Http\Controllers\Admin\TenantImportController;
 use App\Models\Customer;
 use App\Models\Property;
 use App\Models\Unit;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Exceptions;
 use PHPUnit\Framework\Attributes\DataProvider;
 use ReflectionClass;
 use ReflectionMethod;
 use Tests\Concerns\ChecksDoubleSubmit;
+use Tests\Concerns\FailsImportWrites;
 use Tests\Concerns\ParsesForms;
 use Tests\Concerns\SubmitsImportPreview;
 use Tests\TestCase;
@@ -33,6 +36,7 @@ class TenantImportDoubleSubmitTest extends TestCase
     use ParsesForms;
     use SubmitsImportPreview;
     use ChecksDoubleSubmit;
+    use FailsImportWrites;
 
     /** execute{X} => [URL のタブ, 数える表, 2 回目の断りの全文（設計書 §4.4）] */
     private const TABS = [
@@ -155,6 +159,51 @@ class TenantImportDoubleSubmitTest extends TestCase
         $html = $this->preview('property', $this->arrange('executeProperty'))->getContent();
 
         $this->assertSubmitOnceForm($html, url('/admin/tenant-import/property'));
+    }
+
+    // ================================================================
+    // 確定のときのデータベースのエラー（docs/RULES.md Bug #89 の追記と同じ形。タブは上の TABS で全件）
+    // ================================================================
+
+    /**
+     * 直す前（2026-11-04 に実測）: 赤い帯に「インポートに失敗しました: SQLSTATE[22001] … values (二つ目ビル, 愛媛県松山市二番町9-9)」と
+     * 英語の SQL が入力値つきで出て、laravel.log にも残らなかった（全行の取り消しは効いていた）。
+     * 画面には案内だけを出し、理由は記録に残す（顧客の取込・ZEAL 会員の取込〈Bug #72〉と同じ形）。
+     * 断るのは 2 件目の書き込み（CSV の行3。1 行目が入ってから断る＝取り消しまで見る）。
+     */
+    #[DataProvider('tabs')]
+    public function test_a_database_error_on_confirmation_shows_no_sql_and_is_reported(string $method): void
+    {
+        Exceptions::fake();
+        [$tab, $table] = self::TABS[$method];
+        $csv  = $this->arrange($method);
+        $user = $this->executive();
+        $form = $this->parseImportForm($this->preview($tab, $csv)->getContent(), $tab);
+        $before = DB::table($table)->count();
+
+        $this->failQuery('/^insert into "' . $table . '"/i', 2);
+        $response = $this->send($user, $tab, $form);
+
+        // 断りの文言はフラッシュと赤帯の全文で見る（全文が一致する＝SQL も入力値も出ていない）
+        $this->assertRefused($response, route('admin.tenant-import', ['tab' => $tab]), self::importDatabaseError(3), $user);
+        $this->assertSame($before, DB::table($table)->count(), '1 行目の書き込みが巻き戻っていない');
+        Exceptions::assertReported(fn (QueryException $e) => str_contains($e->getMessage(), 'Data too long'));
+    }
+
+    /** 書き込みを始める前（契約番号などの次の番号を引くところ）で止まったときは、行の番号を出さない */
+    public function test_a_database_error_before_the_first_write_names_no_row(): void
+    {
+        Exceptions::fake();
+        $user = $this->executive();
+        $form = $this->parseImportForm($this->preview('property', $this->arrange('executeProperty'))->getContent(), 'property');
+
+        // 物件コードの次の番号を引く問い合わせ（getNextPropertyCodeNum）
+        $this->failQuery('/^select "code" from "properties" .* like/i');
+        $response = $this->send($user, 'property', $form);
+
+        $this->assertRefused($response, route('admin.tenant-import', ['tab' => 'property']), self::importDatabaseError(null), $user);
+        $this->assertSame(0, Property::count());
+        Exceptions::assertReported(QueryException::class);
     }
 
     // ================================================================

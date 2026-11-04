@@ -45,6 +45,8 @@ use Illuminate\Validation\ValidationException;
  *   照合は findRegisteredContract() の 1 か所。行の検査では、日付の検査のあと・金額の検査の前に
  *   「CSV 内の重複 → 登録済みの照合」の順で見る（確定でも同じ検査をやり直す）。
  *   警告は行の中に貯め、取り込むと決めたときだけ画面の一覧へ移す（スキップ・エラーの行には出さない）。
+ * ⚠ 確定の書き込みで例外が起きたら、全行を取り消し、画面には案内（何行目まで進んだか）だけを出して理由は記録に残す
+ *   （importFailed()。生の SQL の文と入力値を画面に出さない。docs/RULES.md Bug #89 の追記）。
  */
 class TenantImportController extends Controller
 {
@@ -282,11 +284,13 @@ class TenantImportController extends Controller
 
         // ===== インポート実行 =====
         DB::beginTransaction();
+        $current = null; // 書き込んでいる行の番号（データベースのエラーの案内に出す。importFailed()）
         try {
             $propertyCodeNum = $this->getNextPropertyCodeNum();
             $created = 0;
 
             foreach ($validRows as $row) {
+                $current = $row['_row'];
                 $code = 'T-' . str_pad($propertyCodeNum, 3, '0', STR_PAD_LEFT);
                 $propertyCodeNum++;
 
@@ -320,8 +324,8 @@ class TenantImportController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return redirect()->route('admin.tenant-import', ['tab' => $tab])
-                ->with('error', 'インポートに失敗しました: ' . $e->getMessage());
+
+            return $this->importFailed($e, $tab, $current);
         }
     }
 
@@ -499,12 +503,14 @@ class TenantImportController extends Controller
 
         // ===== インポート実行 =====
         DB::beginTransaction();
+        $current = null; // 書き込んでいる行の番号（データベースのエラーの案内に出す。importFailed()）
         try {
             $created = 0;
             $restored = 0;
             $updatedProperties = [];
 
             foreach ($validRows as $row) {
+                $current = $row['_row'];
                 $floor = $row['floor'] !== '' ? $row['floor'] : null;
                 $displayName = Unit::generateDisplayName($floor, $row['room_number']);
 
@@ -550,8 +556,8 @@ class TenantImportController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return redirect()->route('admin.tenant-import', ['tab' => $tab])
-                ->with('error', 'インポートに失敗しました: ' . $e->getMessage());
+
+            return $this->importFailed($e, $tab, $current);
         }
     }
 
@@ -638,11 +644,13 @@ class TenantImportController extends Controller
 
         // ===== インポート実行 =====
         DB::beginTransaction();
+        $current = null; // 書き込んでいる行の番号（データベースのエラーの案内に出す。importFailed()）
         try {
             $customerCodeNum = $this->getNextCustomerCodeNum();
             $created = 0;
 
             foreach ($validRows as $row) {
+                $current = $row['_row'];
                 $code = 'CUS-' . str_pad($customerCodeNum, 3, '0', STR_PAD_LEFT);
                 $customerCodeNum++;
 
@@ -670,8 +678,8 @@ class TenantImportController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return redirect()->route('admin.tenant-import', ['tab' => $tab])
-                ->with('error', 'インポートに失敗しました: ' . $e->getMessage());
+
+            return $this->importFailed($e, $tab, $current);
         }
     }
 
@@ -877,11 +885,13 @@ class TenantImportController extends Controller
 
         // ===== インポート実行 =====
         DB::beginTransaction();
+        $current = null; // 書き込んでいる行の番号（データベースのエラーの案内に出す。importFailed()）
         try {
             $contractCodeNum = $this->getNextContractCodeNum();
             $created = 0;
 
             foreach ($validRows as $row) {
+                $current = $row['_row'];
                 $year = JapanTime::today()->year;
                 $contractNumber = "C-{$year}-" . str_pad($contractCodeNum, 3, '0', STR_PAD_LEFT);
                 $contractCodeNum++;
@@ -919,8 +929,8 @@ class TenantImportController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return redirect()->route('admin.tenant-import', ['tab' => $tab])
-                ->with('error', 'インポートに失敗しました: ' . $e->getMessage());
+
+            return $this->importFailed($e, $tab, $current);
         }
     }
 
@@ -1166,6 +1176,7 @@ class TenantImportController extends Controller
 
         // ===== インポート実行 =====
         DB::beginTransaction();
+        $current = null; // 書き込んでいる行の番号（データベースのエラーの案内に出す。importFailed()）
         try {
             $customerCodeNum = $this->getNextCustomerCodeNum();
             $createdContracts = 0;
@@ -1183,6 +1194,7 @@ class TenantImportController extends Controller
             $contractCodeNumByYear = [];
 
             foreach ($validRows as $row) {
+                $current = $row['_row'];
                 $custName = $row['customer_name'];
 
                 // 顧客が未作成なら作成
@@ -1243,8 +1255,8 @@ class TenantImportController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return redirect()->route('admin.tenant-import', ['tab' => $tab])
-                ->with('error', 'インポートに失敗しました: ' . $e->getMessage());
+
+            return $this->importFailed($e, $tab, $current);
         }
     }
 
@@ -1334,6 +1346,25 @@ class TenantImportController extends Controller
     // ================================================================
     // プライベートメソッド
     // ================================================================
+
+    /**
+     * 確定の書き込みで例外が起きたとき（巻き戻したあとに呼ぶ）。生の SQL の文（英語・名前や電話番号などの入力値を含む）は
+     * 画面に出さず、記録（laravel.log）に残す。直す前は赤い帯に `'インポートに失敗しました: ' . $e->getMessage()` をそのまま出し、
+     * 記録にも残らなかった（2026-11-04 に実測。顧客の取込〈docs/RULES.md Bug #89 の追記〉・ZEAL 会員の取込〈Bug #72〉と同じ形。
+     * MansionImportController も同じ文）。
+     *
+     * @param  int|null  $row  書き込んでいた行の番号（CSV の行。null は書き込みを始める前＝次の番号を引くところなど）
+     */
+    private function importFailed(\Exception $e, string $tab, ?int $row): \Illuminate\Http\RedirectResponse
+    {
+        report($e);
+
+        $where = $row === null ? '書き込みを始める前に' : "行{$row} まで進んだところで";
+
+        return redirect()->route('admin.tenant-import', ['tab' => $tab])
+            ->with('error', "取り込めませんでした（{$where}データベースのエラーが起きました）。1件も登録していません。"
+                . 'CSVを確かめて、アップロードし直してください。理由はシステムの記録（laravel.log）に残しています。');
+    }
 
     /**
      * CSV を読み込んで行配列にする。

@@ -9,13 +9,16 @@ use App\Models\MsProperty;
 use App\Models\MsRoom;
 use App\Models\MsTenant;
 use App\Models\User;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Exceptions;
 use PHPUnit\Framework\Attributes\DataProvider;
 use ReflectionClass;
 use ReflectionMethod;
 use Tests\Concerns\ChecksDoubleSubmit;
 use Tests\Concerns\CreatesMansionSchema;
+use Tests\Concerns\FailsImportWrites;
 use Tests\Concerns\ParsesForms;
 use Tests\Concerns\SubmitsImportPreview;
 use Tests\TestCase;
@@ -36,6 +39,7 @@ class MansionImportDoubleSubmitTest extends TestCase
     use ParsesForms;
     use SubmitsImportPreview;
     use ChecksDoubleSubmit;
+    use FailsImportWrites;
 
     private const PROPERTY_NAME = '二重送信レジデンス';
 
@@ -170,6 +174,48 @@ class MansionImportDoubleSubmitTest extends TestCase
         $html = $this->preview('property', $this->arrange('executeProperty'))->getContent();
 
         $this->assertSubmitOnceForm($html, url('/admin/mansion-import/property'));
+    }
+
+    // ================================================================
+    // 確定のときのデータベースのエラー（docs/RULES.md Bug #89 の追記と同じ形。タブは上の TABS で全件）
+    // ================================================================
+
+    /**
+     * 直す前（2026-11-04 に実測）: 赤い帯に「インポートに失敗しました: SQLSTATE[22001] … values (二つ目レジデンス, …)」と
+     * 英語の SQL が入力値つきで出て、laravel.log にも残らなかった（全行の取り消しは効いていた）。
+     * 画面には案内だけを出し、理由は記録に残す（TenantImportDoubleSubmitTest と同じ。断るのは 2 件目の書き込み＝CSV の行3）。
+     */
+    #[DataProvider('tabs')]
+    public function test_a_database_error_on_confirmation_shows_no_sql_and_is_reported(string $method): void
+    {
+        Exceptions::fake();
+        [$tab, $returnTab, $table] = self::TABS[$method];
+        $csv  = $this->arrange($method);
+        $form = $this->parseImportForm($this->preview($tab, $csv)->getContent(), $tab);
+        $before = DB::table($table)->count();
+
+        $this->failQuery('/^insert into "' . $table . '"/i', 2);
+        $response = $this->send($tab, $form);
+
+        // 断りの文言はフラッシュと赤帯の全文で見る（全文が一致する＝SQL も入力値も出ていない）
+        $this->assertRefused($response, route('admin.mansion-import', ['selected_tab' => $returnTab]), self::importDatabaseError(3), $this->user);
+        $this->assertSame($before, DB::table($table)->count(), '1 行目の書き込みが巻き戻っていない');
+        Exceptions::assertReported(fn (QueryException $e) => str_contains($e->getMessage(), 'Data too long'));
+    }
+
+    /** 書き込みを始める前（物件コードの次の番号を引くところ）で止まったときは、行の番号を出さない */
+    public function test_a_database_error_before_the_first_write_names_no_row(): void
+    {
+        Exceptions::fake();
+        $form = $this->parseImportForm($this->preview('property', $this->arrange('executeProperty'))->getContent(), 'property');
+
+        // 物件コードの次の番号を引く問い合わせ（getNextPropertyCodeNum の orderByDesc('id')）
+        $this->failQuery('/^select \* from "ms_properties" .*order by "id" desc/i');
+        $response = $this->send('property', $form);
+
+        $this->assertRefused($response, route('admin.mansion-import', ['selected_tab' => 'property']), self::importDatabaseError(null), $this->user);
+        $this->assertSame(0, MsProperty::count());
+        Exceptions::assertReported(QueryException::class);
     }
 
     // ================================================================

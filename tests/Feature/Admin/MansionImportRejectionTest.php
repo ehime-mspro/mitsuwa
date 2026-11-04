@@ -6,8 +6,10 @@ use App\Models\MsProperty;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Exceptions;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\CreatesMansionSchema;
+use Tests\Concerns\FailsImportWrites;
 use Tests\Concerns\ParsesForms;
 use Tests\Concerns\SubmitsImportPreview;
 use Tests\TestCase;
@@ -25,6 +27,7 @@ class MansionImportRejectionTest extends TestCase
     use RefreshDatabase;
     use CreatesMansionSchema;
     use ParsesForms;
+    use FailsImportWrites;
     use SubmitsImportPreview;
 
     protected function setUp(): void
@@ -109,6 +112,7 @@ class MansionImportRejectionTest extends TestCase
      */
     public function test_a_failed_import_after_confirming_goes_back_to_the_same_tab(): void
     {
+        Exceptions::fake();
         $actor   = $this->executive();
         $csv     = $this->template($actor, 'property');
         [, $sample] = explode("\n", rtrim($csv, "\n"));
@@ -129,7 +133,11 @@ class MansionImportRejectionTest extends TestCase
             ->from(url($this->importBasePath() . '/property'))   // 確定のフォームが載っている確認画面の URL
             ->post($form['action'], $form['fields']);
 
-        $this->assertBackOnTheTab($response, $actor, 'property', 'インポートに失敗しました: テスト用の失敗');
+        // 例外の文（ここでは「テスト用の失敗」。本番では SQL と入力値）は画面に出さず、記録に残す（docs/RULES.md Bug #89 の追記）
+        //（フラッシュを全文で比べる＝例外の文が入っていない。⚠ 戻り先を開いたあとはフラッシュが消えるので、その前に見る）
+        $this->assertSame(self::importDatabaseError(3), session('error'), '断りの文言が違う（例外の文が入っている）');
+        $this->assertBackOnTheTab($response, $actor, 'property', self::importDatabaseError(3));
+        Exceptions::assertReported(fn (\RuntimeException $e) => $e->getMessage() === 'テスト用の失敗');
         $this->assertSame(2, $created, '2 行目の作成まで進んでいない（1 行目が入ってから失敗する形になっていない）');
         $this->assertSame(0, MsProperty::count(), '失敗した取込が巻き戻っていない（1 行目が残っている）');
     }
