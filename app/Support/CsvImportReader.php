@@ -32,8 +32,8 @@ final class CsvImportReader
      * 空の行・空白だけの行は読まない（parse() と同じ）。カンマだけの行は空のセルの並びとして返す。
      *
      * ⚠ parse() は `explode("\n")` で行に分けるので、引用符の中の改行で 1 件が 2 行に割れる（顧客の取込で
-     *   値が改行の手前で切れて保存された。docs/RULES.md Bug #125）。parse() を使う取込（テナント・賃貸マンション・
-     *   決裁の利用者）は、まだこちらに移していない
+     *   値が改行の手前で切れて保存された。docs/RULES.md Bug #125）。テナント・賃貸マンションの取込は rows() に移した
+     *   （Bug #127）。parse() を使うのは決裁の利用者の取込だけ
      *
      * @return list<list<string>>
      */
@@ -57,7 +57,86 @@ final class CsvImportReader
     }
 
     /**
+     * parse() と同じ形の行配列を、1 件（レコード）ずつ読んで作る（records()。テナント・賃貸マンションの取込。
+     * docs/RULES.md Bug #127）。
+     *
+     * セルの中の改行（Excel の Alt+Enter）は、$multilineKeys の列（画面が textarea の欄）では残して LF にそろえ
+     * （CRLF・CR → LF）、ほかの列では続く改行ごと空白 1 つにする（顧客の取込と同じ）。そのあとで前後の空白を落とす。
+     * 1 件が 1 行なので、呼び出し元の「行番号 = 添字 + 2」が Excel の行の番号と合う（空の行は parse() と同じく読まない）。
+     *
+     * @param  array<string, string>  $columnMap  日本語ヘッダー => 内部キー
+     * @param  list<string>  $requiredKeys  無ければ弾く内部キー
+     * @param  list<string>  $multilineKeys  改行を残す内部キー
+     * @return list<array<string, string>>
+     *
+     * @throws CsvImportException データ行が無い / 必須ヘッダーが無い（文言は parse() と同じ）
+     */
+    public static function rows(string $content, array $columnMap, array $requiredKeys, array $multilineKeys = []): array
+    {
+        $records = self::records($content);
+
+        if (count($records) < 2) {
+            throw new CsvImportException('CSVファイルにデータがありません。');
+        }
+
+        $colIndex = self::columnIndex(array_map('trim', array_shift($records)), $columnMap, $requiredKeys);
+
+        $rows = [];
+        foreach ($records as $cells) {
+            $row = [];
+
+            foreach ($columnMap as $key) {
+                $idx  = $colIndex[$key] ?? -1;
+                $cell = ($idx >= 0 && isset($cells[$idx])) ? $cells[$idx] : '';
+
+                $row[$key] = trim(in_array($key, $multilineKeys, true)
+                    ? preg_replace('/\r\n|\r/', "\n", $cell)
+                    : preg_replace('/(?:\r\n|\r|\n)+/', ' ', $cell));
+            }
+
+            $rows[] = $row;
+        }
+
+        return $rows;
+    }
+
+    /**
+     * 見出しの並びから「内部キー => 列の位置」を作り、必須の見出しが揃っているか確かめる（rows() が使う）。
+     *
+     * ⚠ parse() は同じ処理を中にそのまま持つ（決裁の利用者の取込が使うので、2026-11-04 の直しでは parse() に手を入れていない）
+     *
+     * @param  list<string>  $header  前後の空白を落とした見出し
+     * @param  array<string, string>  $columnMap  日本語ヘッダー => 内部キー
+     * @param  list<string>  $requiredKeys  無ければ弾く内部キー
+     * @return array<string, int>
+     *
+     * @throws CsvImportException 必須ヘッダーが無い
+     */
+    private static function columnIndex(array $header, array $columnMap, array $requiredKeys): array
+    {
+        $colIndex = [];
+        foreach ($header as $idx => $headerName) {
+            if (isset($columnMap[$headerName])) {
+                $colIndex[$columnMap[$headerName]] = $idx;
+            }
+        }
+
+        foreach ($requiredKeys as $key) {
+            if (! isset($colIndex[$key])) {
+                $jpName = array_search($key, $columnMap, true);
+
+                throw new CsvImportException("必須ヘッダー「{$jpName}」がCSVに見つかりません。");
+            }
+        }
+
+        return $colIndex;
+    }
+
+    /**
      * ヘッダー行を内部キーへ写像して行配列にする。
+     *
+     * ⚠ 行を `explode("\n")` で分けるので、セルの中の改行で 1 件が 2 行に割れる（docs/RULES.md Bug #125・#127）。
+     *   使うのは決裁の利用者の取込だけ（テナント・賃貸マンションは rows()、顧客は records()）
      *
      * @param  array<string, string>  $columnMap  日本語ヘッダー => 内部キー
      * @param  list<string>  $requiredKeys  無ければ弾く内部キー

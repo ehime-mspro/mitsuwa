@@ -53,6 +53,9 @@ use Illuminate\Validation\ValidationException;
  *   警告は行の中に貯め、取り込むと決めたときだけ画面の一覧へ移す（スキップ・エラーの行には出さない）。
  * ⚠ 確定の書き込みで例外が起きたら、全行を取り消し、画面には案内（何行目まで進んだか）だけを出して理由は記録に残す
  *   （importFailed()。生の SQL の文と入力値を画面に出さない。docs/RULES.md Bug #89 の追記）。
+ * ⚠ CSV は 1 件（レコード）ずつ読む（CsvImportReader::rows()。docs/RULES.md Bug #127）。セルの中の改行（Excel の Alt+Enter）は、
+ *   MULTILINE_KEYS の列では残し、ほかの列では空白 1 つにする。直す前は `explode("\n")` で 1 件が 2 行に割れ、
+ *   改行のあるセルより後ろの列の値が黙って消えたまま取り込まれ、後ろの行の番号も 1 つずれた。
  */
 class MansionImportController extends Controller
 {
@@ -189,6 +192,13 @@ class MansionImportController extends Controller
         '担当者ユーザー名'   => 'staff_user_name',
         'メモ'               => 'memo',
     ];
+
+    /**
+     * セルの中の改行を残す列（内部キー。画面が textarea の欄＝物件・部屋・駐車場・入居者の「備考」と部屋契約・駐車場契約の「メモ」。利用者の決定 2026-11-04）。
+     * ほかの列は画面の入力欄が 1 行なので、改行は空白 1 つにする（CsvImportReader::rows()。docs/RULES.md Bug #127）。
+     * ⚠ 列の対応表に textarea の欄を足したら、ここにも足す（それぞれの登録・編集画面の textarea と合わせる）
+     */
+    private const MULTILINE_KEYS = ['notes', 'memo'];
 
     /**
      * 同じ確認画面から 2 回目を送ったときの案内の、「確かめられます」の前の句（タブのキー => 句。設計書 §4.4）。
@@ -1575,7 +1585,7 @@ class MansionImportController extends Controller
         }
 
         try {
-            $rows = CsvImportReader::parse($content, $columnMap, $requiredKeys);
+            $rows = CsvImportReader::rows($content, $columnMap, $requiredKeys, self::MULTILINE_KEYS);
         } catch (CsvImportException $e) {
             return redirect()->route('admin.mansion-import', ['selected_tab' => $tab])->with('error', $e->getMessage());
         }

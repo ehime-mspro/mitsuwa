@@ -144,4 +144,97 @@ class CsvImportReaderTest extends TestCase
         $this->assertSame([], CsvImportReader::records(''));
         $this->assertSame([], CsvImportReader::records("\n\n"));
     }
+
+    // ================================================================
+    // rows(): parse() と同じ形の行配列を、1 件（レコード）ずつ読んで作る
+    // （テナント・賃貸マンションの取込。docs/RULES.md Bug #127）
+    // ================================================================
+
+    public function test_rows_keep_a_line_break_inside_quotes_in_one_row(): void
+    {
+        // Excel はセルの中の改行（Alt+Enter）を LF、行の終わりを CRLF で保存する。
+        // 改行のあるセルより後ろの列も、同じ行の値として読む（parse() は 1 件を 2 行に割り、後ろの列が消えた）
+        $csv = "物件名,住所,備考\r\nミツワビル,\"松山市\n一番町\",メモ\r\n次のビル,松山市二番町,\r\n";
+
+        $this->assertSame(
+            [
+                ['name' => 'ミツワビル', 'address' => '松山市 一番町', 'notes' => 'メモ'],
+                ['name' => '次のビル', 'address' => '松山市二番町', 'notes' => ''],
+            ],
+            CsvImportReader::rows($csv, self::MAP, self::REQUIRED)
+        );
+    }
+
+    public function test_rows_turn_line_breaks_in_a_one_line_column_into_one_space(): void
+    {
+        // 画面の入力欄が 1 行の列は、続く改行（空の行・CRLF・CR）もまとめて空白 1 つにする（顧客の取込と同じ）
+        $csv = "物件名,住所\nミツワビル,\"松山市\r\n\r\n一番町\r二丁目\n\"\n";
+
+        $this->assertSame(
+            '松山市 一番町 二丁目',
+            CsvImportReader::rows($csv, self::MAP, self::REQUIRED)[0]['address']
+        );
+    }
+
+    public function test_rows_keep_line_breaks_in_a_multiline_column_as_lf(): void
+    {
+        // 画面が textarea の列（備考・メモ）は改行を残す。CRLF・CR は LF にそろえ、前後の空白・改行は落とす
+        $csv = "物件名,住所,備考\nミツワビル,松山市,\"\n1行目\r\n2行目\r3行目\n\n4行目\n \"\n";
+
+        $row = CsvImportReader::rows($csv, self::MAP, self::REQUIRED, ['notes'])[0];
+
+        $this->assertSame("1行目\n2行目\n3行目\n\n4行目", $row['notes']);
+        $this->assertSame('松山市', $row['address']);
+    }
+
+    public function test_rows_join_a_multiline_key_only_when_it_is_named(): void
+    {
+        // 改行を残すのは渡した列だけ（渡さなければ空白 1 つ）
+        $csv = "物件名,住所,備考\nミツワビル,\"松山市\n一番町\",\"1行目\n2行目\"\n";
+
+        $row = CsvImportReader::rows($csv, self::MAP, self::REQUIRED, ['notes']);
+        $this->assertSame(['name' => 'ミツワビル', 'address' => '松山市 一番町', 'notes' => "1行目\n2行目"], $row[0]);
+
+        $this->assertSame('1行目 2行目', CsvImportReader::rows($csv, self::MAP, self::REQUIRED)[0]['notes']);
+    }
+
+    public function test_rows_map_headers_and_fill_missing_cells_like_parse(): void
+    {
+        // 見出しの前後の空白は落とす・知らない列は読まない・足りないセルは空文字（parse() と同じ）
+        $csv = "\xEF\xBB\xBF 物件名 ,知らない列,住所\n\" ミツワビル \",X,\"松山市,一番町\"\n短い行\n";
+
+        $this->assertSame(
+            [
+                ['name' => 'ミツワビル', 'address' => '松山市,一番町', 'notes' => ''],
+                ['name' => '短い行', 'address' => '', 'notes' => ''],
+            ],
+            CsvImportReader::rows(CsvImportReader::decode($csv), self::MAP, self::REQUIRED)
+        );
+    }
+
+    public function test_rows_skip_blank_lines_so_numbers_follow_the_records(): void
+    {
+        $csv = "物件名,住所\n\nミツワビル,\"松山市\n一番町\"\n  \r\n次のビル,松山市二番町\n\n";
+
+        $this->assertSame(
+            ['ミツワビル', '次のビル'],
+            array_column(CsvImportReader::rows($csv, self::MAP, self::REQUIRED), 'name')
+        );
+    }
+
+    public function test_rows_reject_a_file_with_no_data_rows(): void
+    {
+        $this->expectException(CsvImportException::class);
+        $this->expectExceptionMessage('CSVファイルにデータがありません。');
+
+        CsvImportReader::rows("物件名,住所\r\n\r\n", self::MAP, self::REQUIRED);
+    }
+
+    public function test_rows_name_the_missing_required_header_in_japanese(): void
+    {
+        $this->expectException(CsvImportException::class);
+        $this->expectExceptionMessage('必須ヘッダー「住所」がCSVに見つかりません。');
+
+        CsvImportReader::rows("物件名,備考\nミツワビル,メモ\n", self::MAP, self::REQUIRED);
+    }
 }
