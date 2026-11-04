@@ -64,6 +64,7 @@
                     <div style="font-size: 12px; color: #6b7280; margin-top: 6px;">※ UTF-8 または Shift_JIS 形式に対応</div>
                     <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">※ 担当者がシステムに未登録（退職者等）の場合、名前はテキストとして保存されます</div>
                     <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">※ ほかの部署に登録済みの顧客と同じ人（姓・名・都道府県・市区町村が同じ）は、新しく作らずに、その顧客にこの部署を足します</div>
+                    <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">※ 同じ CSV に同じ人（姓・名・都道府県・市区町村が同じ）が 2 行以上あるときは、2 行目からを重複候補にします</div>
                     <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">※ セルの中の改行は、空白 1 つにして取り込みます</div>
                 </div>
             </div>
@@ -134,7 +135,7 @@
                     @endforeach
                     @foreach($dupeRows ?? [] as $dup)
                         <div style="padding: 8px 16px; font-size: 13px; border-bottom: 1px solid #f3f4f6; color: #d97706;">
-                            🔄 行{{ $dup['row'] }}: 重複の可能性 — {{ $dup['name'] }}（{{ $dup['address'] }}）※ 既存ID: {{ $dup['existing_id'] }}
+                            🔄 行{{ $dup['row'] }}: 重複の可能性 — {{ $dup['name'] }}（{{ $dup['address'] }}）{{ $dup['same_as_row'] !== null ? '※ この CSV の行' . $dup['same_as_row'] . ' と同じ人' : '※ 既存ID: ' . $dup['existing_id'] }}
                         </div>
                     @endforeach
                 </div>

@@ -1466,6 +1466,111 @@ class CustomerImportTest extends TestCase
     }
 
     // ================================================================
+    // CSV の中の同じ人（docs/RULES.md Bug #126）
+    // ================================================================
+
+    /**
+     * 直す前: 登録済みでない同じ人（姓・名・都道府県・市区町村が同じ）の 2 行は、2 行とも新しい顧客になった。
+     * 2 行目からは、DB に同じ人がいるときと同じく重複候補にする（利用者の決定 2026-11-04。ほかの部署にだけいる人の
+     * 2 行目〈Bug #124〉と同じ扱い）
+     */
+    public function test_a_second_row_of_the_same_new_person_is_a_duplicate_candidate(): void
+    {
+        $preview = $this->preview($this->csv([
+            $this->person('山田', '太郎', ['電話番号' => '089-111-1111']),
+            $this->person('佐藤', '花子'),
+            $this->person('山田', '太郎', ['電話番号' => '089-222-2222', '取得日' => '2026-09-05']),
+        ]));
+
+        $this->assertSame(2, $preview->viewData('validCount'));
+        $this->assertSame(
+            [['row' => 4, 'name' => '山田 太郎', 'address' => '愛媛県松山市', 'existing_id' => null, 'same_as_row' => 2]],
+            $preview->viewData('dupeRows')
+        );
+        $preview->assertSee('🔄 行4: 重複の可能性 — 山田 太郎（愛媛県松山市）※ この CSV の行2 と同じ人');
+        $preview->assertDontSee('※ 既存ID: ');
+
+        $this->submit($this->confirmForm($preview))->assertSee('2件のインポートが完了しました。');
+
+        $this->assertSame(['山田', '佐藤'], Buyer::orderBy('id')->pluck('last_name')->all());
+        // 1 つ目の行の値で登録する
+        $this->assertSame('089-111-1111', Buyer::where('last_name', '山田')->sole()->phone);
+    }
+
+    public function test_with_the_check_a_second_row_of_the_same_new_person_is_imported_too(): void
+    {
+        $preview = $this->preview($this->csv([
+            $this->person('山田', '太郎'),
+            $this->person('山田', '太郎'),
+        ]));
+
+        $this->submit($this->tick($preview, $this->confirmForm($preview), 'include_duplicates'))
+            ->assertSee('2件のインポートが完了しました。');
+
+        $this->assertSame(2, Buyer::where('last_name', '山田')->count());
+    }
+
+    /** 3 行目からも、最初の行と同じ人として出す */
+    public function test_every_later_row_of_the_same_new_person_points_to_the_first_row(): void
+    {
+        $preview = $this->preview($this->csv([
+            $this->person('山田', '太郎'),
+            $this->person('山田', '太郎'),
+            $this->person('山田', '太郎'),
+        ]));
+
+        $this->assertSame([[3, 2], [4, 2]], array_map(fn (array $dup) => [$dup['row'], $dup['same_as_row']], $preview->viewData('dupeRows')));
+    }
+
+    /** 住所の空欄どうしも同じとみなす（DB の重複の確かめと同じ。Bug #123） */
+    #[DataProvider('blankAddresses')]
+    public function test_a_second_row_with_the_same_blank_address_is_a_duplicate_candidate(string $prefecture, string $city): void
+    {
+        $preview = $this->preview($this->csv([
+            $this->person('山田', '太郎', ['都道府県' => $prefecture, '市区町村' => $city]),
+            $this->person('山田', '太郎', ['都道府県' => $prefecture, '市区町村' => $city]),
+        ]));
+
+        $this->assertSame(1, $preview->viewData('validCount'));
+        $this->assertSame([3], array_column($preview->viewData('dupeRows'), 'row'));
+    }
+
+    /** 名前か住所が 1 つでも違えば別の人（空欄と入っている値も別） */
+    public function test_rows_with_another_name_or_address_are_not_duplicates(): void
+    {
+        $preview = $this->preview($this->csv([
+            $this->person('山田', '太郎'),
+            $this->person('山田', '次郎'),
+            $this->person('山本', '太郎'),
+            $this->person('山田', '太郎', ['都道府県' => '香川県']),
+            $this->person('山田', '太郎', ['市区町村' => '今治市']),
+            $this->person('山田', '太郎', ['市区町村' => '']),
+        ]));
+
+        $this->assertSame(6, $preview->viewData('validCount'));
+        $this->assertSame([], $preview->viewData('dupeRows'));
+    }
+
+    /** エラーで取り込まない行は数えない（同じ人の正しい 2 行目は取り込む） */
+    public function test_a_row_with_an_error_does_not_make_the_next_row_a_duplicate(): void
+    {
+        $preview = $this->preview($this->csv([
+            $this->person('山田', '太郎', ['取得日' => '2026-02-30']),
+            $this->person('山田', '太郎'),
+        ]));
+
+        $this->assertSame(1, $preview->viewData('validCount'));
+        $this->assertSame([], $preview->viewData('dupeRows'));
+    }
+
+    public function test_the_import_page_says_a_second_row_of_the_same_person_is_a_duplicate_candidate(): void
+    {
+        $this->actingAs($this->actor)->get('/admin/customers/import')
+            ->assertStatus(200)
+            ->assertSee('※ 同じ CSV に同じ人（姓・名・都道府県・市区町村が同じ）が 2 行以上あるときは、2 行目からを重複候補にします');
+    }
+
+    // ================================================================
     // セルの中の改行（docs/RULES.md Bug #125）
     // ================================================================
 

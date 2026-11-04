@@ -38,6 +38,8 @@ use Illuminate\Validation\ValidationException;
  *   その人に取込先の部署を足す（顧客は 1 人を部署で共有する。画面の登録の「この部署に取り込む」と同じ。docs/RULES.md Bug #124）。
  *   2026-11-03 まではどの部署の人でも重複候補にしていて、チェックなしでは取込先の部署に入らず、チェックを入れると同じ人が
  *   別の顧客としてもう 1 人できていた。どの部署にもいない人（部署が外れた人）にも足す（利用者の決定）
+ * ⚠ 同じ CSV の中の同じ人（登録済みでない人）は、2 行目からを重複候補にする（チェックを入れたときだけ別人として作る。
+ *   直す前は 2 行とも新しい顧客になっていた。docs/RULES.md Bug #126）
  * ⚠ 設問の列（`Q{n}:設問の文`）は、番号で「有効な設問を並び順に並べた n 番目」に結びつけたうえで、見出しの文を
  *   その設問の今の文と照らし合わせる。違う列・当たる設問の無い列が 1 つでもあれば、プレビューでも確定でも
  *   ファイルごと断る（設計書 2026-11-02-survey-question-admin-design.md §4.4・D8。並び替え・有効／無効・
@@ -165,6 +167,7 @@ class CustomerImportController extends Controller
         $addRows   = []; // 取込先の部署にいない同じ人（新しく作らず、その人に取込先の部署を足す。クラスの docblock）
         $validRows = [];
         $addedIds  = []; // この CSV で取込先の部署を足す顧客の id（同じ人の 2 行目からは、その人の重複候補にする）
+        $newPeople = []; // この CSV で新しく作る人（姓・名・都道府県・市区町村） => 最初の行の番号（同じ人の 2 行目からは重複候補にする。Bug #126）
         $rowNum    = 1;
 
         foreach ($records as $cells) {
@@ -219,6 +222,8 @@ class CustomerImportController extends Controller
                 ->orderBy('id')
                 ->get();
             $address    = "{$prefecture}{$city}" !== '' ? "{$prefecture}{$city}" : '住所なし';
+            // CSV の中の同じ人の目印（空欄どうしも同じ。上の DB の比べ方と同じ）
+            $personKey  = json_encode([$lastName, $firstName, $prefecture, $city], JSON_INVALID_UTF8_SUBSTITUTE);
 
             // 取込先の部署にいる人（この CSV の前の行で足す人も含む）に当たれば重複候補
             $inDepartment = $matches->first(fn (Buyer $buyer) => in_array($buyer->id, $addedIds, true)
@@ -230,6 +235,7 @@ class CustomerImportController extends Controller
                     'name'        => "{$lastName} {$firstName}",
                     'address'     => $address,
                     'existing_id' => $inDepartment->id,
+                    'same_as_row' => null,
                 ];
                 if ($skipDupes) {
                     continue;
@@ -252,6 +258,21 @@ class CustomerImportController extends Controller
                     'existing' => $existing,
                 ];
                 continue;
+            } elseif (isset($newPeople[$personKey])) {
+                // この CSV の前の行で新しく作る人と同じ人: 重複候補にする（チェックを入れたときだけ、別人として新しく作る）。
+                // 直す前は 2 行とも新しい顧客になっていた（docs/RULES.md Bug #126）
+                $dupeRows[] = [
+                    'row'         => $rowNum,
+                    'name'        => "{$lastName} {$firstName}",
+                    'address'     => $address,
+                    'existing_id' => null,
+                    'same_as_row' => $newPeople[$personKey],
+                ];
+                if ($skipDupes) {
+                    continue;
+                }
+            } else {
+                $newPeople[$personKey] = $rowNum;
             }
 
             // バリデーション通過
