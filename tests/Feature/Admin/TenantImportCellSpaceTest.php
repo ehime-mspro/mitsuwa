@@ -70,7 +70,9 @@ class TenantImportCellSpaceTest extends TestCase
     {
         $this->arrangeRegistered();
 
-        $preview = $this->assertPreviewSkipsEveryRow('property', self::PROPERTY_HEADER . "\r\n既存ビル　,,愛媛県松山市,,,,自社,,稼働中\r\n", 1);
+        // ⚠ 先頭にも空白を置く。本番の MySQL（utf8mb4_unicode_ci）は末尾の全角の空白を比べるときに無視する（'ビル' = 'ビル　' が真。
+        //   2026-11-06 に本番を読み取りで確認）ので、末尾だけの見本では本番で起きていた形（先頭の空白で別の物件になる）を表さない
+        $preview = $this->assertPreviewSkipsEveryRow('property', self::PROPERTY_HEADER . "\r\n　既存ビル　,,愛媛県松山市,,,,自社,,稼働中\r\n", 1);
 
         $this->assertSame([['row' => 2, 'message' => '物件「既存ビル」は既に登録済みのためスキップ']], $preview->viewData('skippedRows'));
         $this->assertSame(1, Property::count());
