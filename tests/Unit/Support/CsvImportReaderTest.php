@@ -13,11 +13,16 @@ class CsvImportReaderTest extends TestCase
 
     private const REQUIRED = ['name', 'address'];
 
+    // ================================================================
+    // decode() ＋ rows(): 文字コード・BOM・行の終わり・見出しの対応
+    // （2026-11-06 まで parse() を見ていた 9 本。parse() を消したので rows() で同じことを確かめる）
+    // ================================================================
+
     public function test_it_strips_the_bom_and_maps_headers(): void
     {
         $csv = "\xEF\xBB\xBF物件名,住所,備考\nミツワビル,松山市一番町,メモ\n";
 
-        $rows = CsvImportReader::parse(CsvImportReader::decode($csv), self::MAP, self::REQUIRED);
+        $rows = CsvImportReader::rows(CsvImportReader::decode($csv), self::MAP, self::REQUIRED);
 
         $this->assertSame(
             [['name' => 'ミツワビル', 'address' => '松山市一番町', 'notes' => 'メモ']],
@@ -30,7 +35,7 @@ class CsvImportReaderTest extends TestCase
         $utf8 = "物件名,住所\nミツワビル,松山市一番町\n";
         $sjis = mb_convert_encoding($utf8, 'SJIS-win', 'UTF-8');
 
-        $rows = CsvImportReader::parse(CsvImportReader::decode($sjis), self::MAP, self::REQUIRED);
+        $rows = CsvImportReader::rows(CsvImportReader::decode($sjis), self::MAP, self::REQUIRED);
 
         $this->assertSame('ミツワビル', $rows[0]['name']);
     }
@@ -39,7 +44,7 @@ class CsvImportReaderTest extends TestCase
     {
         $csv = "物件名,住所\r\nミツワビル,松山市一番町\r\n";
 
-        $rows = CsvImportReader::parse(CsvImportReader::decode($csv), self::MAP, self::REQUIRED);
+        $rows = CsvImportReader::rows(CsvImportReader::decode($csv), self::MAP, self::REQUIRED);
 
         $this->assertSame('松山市一番町', $rows[0]['address']);
     }
@@ -48,7 +53,7 @@ class CsvImportReaderTest extends TestCase
     {
         $csv = "物件名,住所\n\"ミツワビル,別館\",松山市一番町\n";
 
-        $rows = CsvImportReader::parse(CsvImportReader::decode($csv), self::MAP, self::REQUIRED);
+        $rows = CsvImportReader::rows(CsvImportReader::decode($csv), self::MAP, self::REQUIRED);
 
         $this->assertSame('ミツワビル,別館', $rows[0]['name']);
     }
@@ -57,7 +62,7 @@ class CsvImportReaderTest extends TestCase
     {
         $csv = "物件名,住所,備考\nミツワビル,松山市一番町\n";
 
-        $rows = CsvImportReader::parse(CsvImportReader::decode($csv), self::MAP, self::REQUIRED);
+        $rows = CsvImportReader::rows(CsvImportReader::decode($csv), self::MAP, self::REQUIRED);
 
         $this->assertSame('', $rows[0]['notes']);
         $this->assertArrayHasKey('notes', $rows[0]);
@@ -67,7 +72,7 @@ class CsvImportReaderTest extends TestCase
     {
         $csv = "物件名,知らない列,住所\nミツワビル,X,松山市一番町\n";
 
-        $rows = CsvImportReader::parse(CsvImportReader::decode($csv), self::MAP, self::REQUIRED);
+        $rows = CsvImportReader::rows(CsvImportReader::decode($csv), self::MAP, self::REQUIRED);
 
         $this->assertSame(['name' => 'ミツワビル', 'address' => '松山市一番町', 'notes' => ''], $rows[0]);
     }
@@ -77,7 +82,7 @@ class CsvImportReaderTest extends TestCase
         $this->expectException(CsvImportException::class);
         $this->expectExceptionMessage('CSVファイルにデータがありません。');
 
-        CsvImportReader::parse("物件名,住所\n", self::MAP, self::REQUIRED);
+        CsvImportReader::rows("物件名,住所\n", self::MAP, self::REQUIRED);
     }
 
     public function test_it_names_the_missing_required_header_in_japanese(): void
@@ -85,14 +90,14 @@ class CsvImportReaderTest extends TestCase
         $this->expectException(CsvImportException::class);
         $this->expectExceptionMessage('必須ヘッダー「住所」がCSVに見つかりません。');
 
-        CsvImportReader::parse("物件名,備考\nミツワビル,メモ\n", self::MAP, self::REQUIRED);
+        CsvImportReader::rows("物件名,備考\nミツワビル,メモ\n", self::MAP, self::REQUIRED);
     }
 
     public function test_it_skips_blank_lines(): void
     {
         $csv = "物件名,住所\n\nミツワビル,松山市一番町\n\n";
 
-        $rows = CsvImportReader::parse(CsvImportReader::decode($csv), self::MAP, self::REQUIRED);
+        $rows = CsvImportReader::rows(CsvImportReader::decode($csv), self::MAP, self::REQUIRED);
 
         $this->assertCount(1, $rows);
     }
@@ -132,7 +137,7 @@ class CsvImportReaderTest extends TestCase
 
     public function test_records_skip_blank_lines_but_keep_a_line_of_empty_cells(): void
     {
-        // 空の行・空白だけの行は読まない（parse() と同じ）。カンマだけの行は空のセルの行として残す
+        // 空の行・空白だけの行は読まない（行番号を「空行を除いた何行目か」で数える取込の決まりと同じ）。カンマだけの行は空のセルの行として残す
         $this->assertSame(
             [['a', 'b'], ['', '', ''], ['c', 'd']],
             CsvImportReader::records("a,b\n\n  \r\n,,\nc,d\n\n")
@@ -146,14 +151,14 @@ class CsvImportReaderTest extends TestCase
     }
 
     // ================================================================
-    // rows(): parse() と同じ形の行配列を、1 件（レコード）ずつ読んで作る
-    // （テナント・賃貸マンションの取込。docs/RULES.md Bug #127）
+    // rows(): 見出しを内部キーへ写した行配列を、1 件（レコード）ずつ読んで作る
+    // （テナント・賃貸マンション・決裁の利用者の取込。docs/RULES.md Bug #127）
     // ================================================================
 
     public function test_rows_keep_a_line_break_inside_quotes_in_one_row(): void
     {
         // Excel はセルの中の改行（Alt+Enter）を LF、行の終わりを CRLF で保存する。
-        // 改行のあるセルより後ろの列も、同じ行の値として読む（parse() は 1 件を 2 行に割り、後ろの列が消えた）
+        // 改行のあるセルより後ろの列も、同じ行の値として読む（2026-11 まで使っていた parse() は `explode("\n")` で 1 件を 2 行に割り、後ろの列が消えた）
         $csv = "物件名,住所,備考\r\nミツワビル,\"松山市\n一番町\",メモ\r\n次のビル,松山市二番町,\r\n";
 
         $this->assertSame(
@@ -198,9 +203,9 @@ class CsvImportReaderTest extends TestCase
         $this->assertSame('1行目 2行目', CsvImportReader::rows($csv, self::MAP, self::REQUIRED)[0]['notes']);
     }
 
-    public function test_rows_map_headers_and_fill_missing_cells_like_parse(): void
+    public function test_rows_map_headers_and_fill_missing_cells_with_empty_strings(): void
     {
-        // 見出しの前後の空白は落とす・知らない列は読まない・足りないセルは空文字（parse() と同じ）
+        // 見出しの前後の空白は落とす・知らない列は読まない・足りないセルは空文字
         $csv = "\xEF\xBB\xBF 物件名 ,知らない列,住所\n\" ミツワビル \",X,\"松山市,一番町\"\n短い行\n";
 
         $this->assertSame(
