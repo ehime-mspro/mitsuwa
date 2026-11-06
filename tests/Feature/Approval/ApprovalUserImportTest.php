@@ -474,6 +474,29 @@ class ApprovalUserImportTest extends TestCase
         $this->assertSame(['RE'], $existing->approvalDepartments->pluck('code')->all());
     }
 
+    /**
+     * 氏名の前後の全角の空白（U+3000）は落として保存する（画面の登録の TrimStrings と同じ。docs/RULES.md Bug #128）。
+     * 直す前（2026-11-06 に実測）は「　甲 一郎　」のまま保存された。値の中の空白は残す。
+     */
+    public function test_a_new_name_is_saved_without_full_width_spaces_around_it(): void
+    {
+        $this->confirm("A0001,　甲 一郎　,,RE\n")->assertOk();
+
+        $this->assertSame('甲 一郎', User::where('employee_number', 'A0001')->sole()->name);
+    }
+
+    /** 直す前は「乙 次郎　」が登録の「乙 次郎」と違うとして「氏名が登録と違います」の注意が出た（Bug #128） */
+    public function test_full_width_spaces_around_a_registered_name_are_not_a_mismatch(): void
+    {
+        User::factory()->create(['employee_number' => 'A0001', 'email' => null, 'name' => '乙 次郎', 'must_change_password' => false]);
+
+        $preview = $this->preview("A0001,乙 次郎　,,RE\n")->assertOk();
+
+        $this->assertSame(1, $preview->viewData('validCount'));
+        $this->assertSame([], $preview->viewData('warnings'));
+        $this->assertStringNotContainsString('氏名が登録と違います', $preview->getContent());
+    }
+
     public function test_a_name_mismatch_is_a_warning_not_an_error(): void
     {
         User::factory()->create(['employee_number' => 'A0001', 'email' => null, 'name' => '登録済み 太郎', 'must_change_password' => false]);

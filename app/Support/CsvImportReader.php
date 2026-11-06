@@ -2,6 +2,8 @@
 
 namespace App\Support;
 
+use Illuminate\Support\Str;
+
 /**
  * CSV 取込の読み取り。
  *
@@ -65,6 +67,9 @@ final class CsvImportReader
      *
      * セルの中の改行（Excel の Alt+Enter）は、$multilineKeys の列（画面が textarea の欄）では残して LF にそろえ
      * （CRLF・CR → LF）、ほかの列では続く改行ごと空白 1 つにする（顧客の取込と同じ）。そのあとで前後の空白を落とす。
+     * 前後の空白（見出しも）は `Str::trim()` で落とす（画面の登録の TrimStrings・顧客の取込と同じ。全角の空白も落ちる）。
+     * ⚠ `trim()` に戻さない。半角の空白しか落とさず、「　ミツワビル」が登録済みの物件に当たらず、「物件名　」の見出しは
+     *   ファイルごと断られ、「備考　」の列は黙って空で入った（docs/RULES.md Bug #128）
      * 1 件が 1 行なので、呼び出し元の「行番号 = 添字 + 2」が Excel の行の番号と合う（空の行は読まない）。
      *
      * @param  array<string, string>  $columnMap  日本語ヘッダー => 内部キー
@@ -82,7 +87,11 @@ final class CsvImportReader
             throw new CsvImportException('CSVファイルにデータがありません。');
         }
 
-        $colIndex = self::columnIndex(array_map('trim', array_shift($records)), $columnMap, $requiredKeys);
+        $colIndex = self::columnIndex(
+            array_map(fn (string $header): string => Str::trim($header), array_shift($records)),
+            $columnMap,
+            $requiredKeys
+        );
 
         $rows = [];
         foreach ($records as $cells) {
@@ -92,7 +101,7 @@ final class CsvImportReader
                 $idx  = $colIndex[$key] ?? -1;
                 $cell = ($idx >= 0 && isset($cells[$idx])) ? $cells[$idx] : '';
 
-                $row[$key] = trim(in_array($key, $multilineKeys, true)
+                $row[$key] = Str::trim(in_array($key, $multilineKeys, true)
                     ? preg_replace('/\r\n|\r/', "\n", $cell)
                     : preg_replace('/(?:\r\n|\r|\n)+/', ' ', $cell));
             }

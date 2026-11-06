@@ -217,6 +217,40 @@ class CsvImportReaderTest extends TestCase
         );
     }
 
+    public function test_rows_drop_full_width_spaces_around_a_cell_but_keep_them_inside(): void
+    {
+        // 画面の登録（TrimStrings ＝ Str::trim()）と同じく、前後の全角の空白（U+3000）・ノーブレークスペースも落とす。
+        // 直す前の trim() は半角の空白しか落とさず、「　ミツワビル」が登録済みの物件に当たらなかった（docs/RULES.md Bug #128）
+        $csv = "物件名,住所\n　ミツワビル　,\u{00A0}松山市　一番町\u{3000}\n";
+
+        $this->assertSame(
+            [['name' => 'ミツワビル', 'address' => '松山市　一番町', 'notes' => '']],
+            CsvImportReader::rows($csv, self::MAP, self::REQUIRED)
+        );
+    }
+
+    public function test_rows_drop_full_width_spaces_around_a_header(): void
+    {
+        // 直す前は「物件名　」が必須の見出しに当たらずファイルごと断られ、任意の列（備考）は黙って空になった
+        $csv = "　物件名　,住所,備考　\nミツワビル,松山市,メモ\n";
+
+        $this->assertSame(
+            [['name' => 'ミツワビル', 'address' => '松山市', 'notes' => 'メモ']],
+            CsvImportReader::rows($csv, self::MAP, self::REQUIRED)
+        );
+    }
+
+    public function test_rows_drop_full_width_spaces_around_a_multiline_cell_but_keep_the_line_breaks(): void
+    {
+        // 改行を残す列も、値全体の前後だけを落とす（中の改行と全角の空白は残す。画面の textarea と同じ）
+        $csv = "物件名,住所,備考\nミツワビル,松山市,\"　1行目\n　2行目　\"\n";
+
+        $this->assertSame(
+            "1行目\n　2行目",
+            CsvImportReader::rows($csv, self::MAP, self::REQUIRED, ['notes'])[0]['notes']
+        );
+    }
+
     public function test_rows_skip_blank_lines_so_numbers_follow_the_records(): void
     {
         $csv = "物件名,住所\n\nミツワビル,\"松山市\n一番町\"\n  \r\n次のビル,松山市二番町\n\n";
