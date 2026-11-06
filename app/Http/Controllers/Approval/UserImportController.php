@@ -64,7 +64,7 @@ class UserImportController extends Controller
     public function preview(Request $request)
     {
         // ⚠ `max:10240`（10MB）は既存の取込 4 本すべてと同じ。無いと、行数の上限
-        //    （`csv_max_rows`）を見る前に `parse()` がファイル全体を丸ごと配列へ広げる。
+        //    （`csv_max_rows`）を見る前に `CsvImportReader::rows()` がファイル全体を丸ごと配列へ広げる。
         // ⚠ ルールの配列は**行を分けて閉じる**（`validate([` … 改行 `],`）。
         //    `JapaneseValidationMessagesTest` の走査が `validate(\s*\[(.*?)\n\s*\]\s*[,)]` で
         //    切り出すので、1 行に畳むと**次の配列まで飲み込み**、メッセージの `csv_file.required`
@@ -162,8 +162,14 @@ class UserImportController extends Controller
     /**
      * 行ごとに検査して、取り込む行・エラー・注意に分ける。
      *
+     * ⚠ CSV は 1 件（レコード）ずつ読む（`CsvImportReader::rows()`。docs/RULES.md Bug #127）。
+     *   セルの中の改行（Excel の Alt+Enter）で 1 件が 2 行に割れない。4 列とも画面の入力欄は
+     *   1 行なので改行を残す列は無く、改行は空白 1 つになる（所属部門の「RE⏎SA」は「RE SA」＝
+     *   `splitDepartmentCodes()` が 2 つの部門に分ける）。1 件が 1 行なので、改行のある行より
+     *   後ろの行も「行N」が Excel の行と合う。
+     *
      * ⚠ **エラー文の「行N」は、空行を挟んだ CSV では実ファイルの行番号と一致しない。**
-     *   `CsvImportReader::parse()` が空行を**先に捨てる**ので、`$index + 2` は「空行を除いた
+     *   `CsvImportReader::rows()` が空行を**先に捨てる**ので、`$index + 2` は「空行を除いた
      *   何行目か」になる。既存の取込 4 本（顧客・テナント・賃貸マンション・工程表）も
      *   まったく同じ振る舞いなので、ここだけ直すと画面ごとに数え方が変わる。よって直さない。
      *
@@ -176,7 +182,7 @@ class UserImportController extends Controller
      */
     private function analyze(string $content): array
     {
-        $raw = CsvImportReader::parse($content, self::COLUMN_MAP, array_values(self::COLUMN_MAP));
+        $raw = CsvImportReader::rows($content, self::COLUMN_MAP, array_values(self::COLUMN_MAP));
 
         $max = (int) config('approval.csv_max_rows');
         if (count($raw) > $max) {

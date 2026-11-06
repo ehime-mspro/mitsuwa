@@ -903,4 +903,65 @@ class ApprovalUserImportTest extends TestCase
             'エラー行にまで桁数の注意が表示されている'
         );
     }
+
+    // --- セルの中の改行（Excel の Alt+Enter。docs/RULES.md Bug #127 と同じ形） ---
+    //
+    // ⚠ CSV は Excel と同じ形で作る（行の終わりは CRLF・セルの中の改行は LF）。
+    //   1 行ずつ `explode("\n")` で読むと、引用符の中の改行で 1 件が 2 行に割れる。
+
+    /** Excel と同じ形の CSV をアップロードしてプレビューする（見出しも CRLF） */
+    private function previewExcelCsv(string $rows): TestResponse
+    {
+        return $this->actingAs($this->admin())->post(route('approvals.admin.users.import.preview'), [
+            'csv_file' => UploadedFile::fake()->createWithContent(
+                'users.csv',
+                "\xEF\xBB\xBF" . str_replace("\n", "\r\n", self::HEADER) . $rows,
+            ),
+        ]);
+    }
+
+    /** 所属部門を 1 つのセルの中で改行して並べても、1 件のまま 2 つの部門に入る */
+    public function test_departments_separated_by_a_line_break_in_the_cell_stay_one_row(): void
+    {
+        $preview = $this->previewExcelCsv("A0001,甲 一郎,a@mitsuwat.co.jp,\"RE\nSA\"\r\n")->assertOk();
+
+        $this->assertSame([], $preview->viewData('rowErrors'), 'セルの中の改行で行が割れて、エラーの行ができた');
+        $this->assertSame(1, $preview->viewData('totalRows'));
+        $this->assertSame(1, $preview->viewData('validCount'));
+
+        $form = $this->parseForm($preview->getContent(), 'action="' . route('approvals.admin.users.import.execute') . '"');
+        $this->actingAs($this->admin())
+            ->from(route('approvals.admin.users.import.preview'))
+            ->post($form['action'], $form['fields'])
+            ->assertOk();
+
+        $this->assertEqualsCanonicalizing(
+            ['RE', 'SA'],
+            User::where('employee_number', 'A0001')->sole()->approvalDepartments->pluck('code')->all()
+        );
+    }
+
+    /** 氏名のセルの中の改行は、空白 1 つにして保存する（画面の入力欄は 1 行） */
+    public function test_a_line_break_in_the_name_becomes_one_space(): void
+    {
+        $preview = $this->previewExcelCsv("A0001,\"甲\r\n\n一郎\",,RE\r\n")->assertOk();
+
+        $this->assertSame([], $preview->viewData('rowErrors'));
+        $this->assertSame('甲 一郎', $preview->viewData('rows')[0]['name']);
+    }
+
+    /** 改行のあるセルより後ろの行も、行番号が Excel の行と合う */
+    public function test_line_numbers_after_a_multiline_cell_match_the_spreadsheet(): void
+    {
+        $preview = $this->previewExcelCsv(
+            "A0001,甲 一郎,,\"RE\nSA\"\r\n"   // Excel の行 2（セルの中で改行）
+            . "A0002,乙 二郎,,SA\r\n"         // 行 3
+            . "A@003,丙 三郎,,RE\r\n"         // 行 4（社員番号の形が誤り）
+        )->assertOk();
+
+        $this->assertSame(3, $preview->viewData('totalRows'));
+        $this->assertSame(2, $preview->viewData('validCount'));
+        $this->assertSame([4], array_column($preview->viewData('rowErrors'), 'row'));
+        $this->assertStringContainsString('エラー 行4: 社員番号「A@003」は英数字とハイフン 20 文字までで入力してください', $preview->getContent());
+    }
 }
