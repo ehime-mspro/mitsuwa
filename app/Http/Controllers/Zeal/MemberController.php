@@ -13,9 +13,11 @@ use App\Models\ZealPlan;
 use App\Models\ZealStore;
 use App\Models\ZealTrainer;
 use App\Support\Settings;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 /**
@@ -138,17 +140,14 @@ class MemberController extends Controller
     {
         $member->load(['currentPlan', 'trainer', 'store']);
 
-        $trainers = ZealTrainer::where('active', true)
-            ->orderBy('display_order')
-            ->orderBy('id')
-            ->get();
+        $trainers = $this->selectableTrainers($member);
+        $stores   = $this->selectableStores($member);
 
-        $stores = ZealStore::where('active', true)
-            ->orderBy('display_order')
-            ->orderBy('id')
-            ->get();
+        // 取込で空のまま入ったフリガナ・性別は、この会員の編集では任意（docs/RULES.md Bug #130）
+        $kanaRequired   = $this->kanaRequired($member);
+        $genderRequired = $this->genderRequired($member);
 
-        return view('zeal.members.edit', compact('member', 'trainers', 'stores'));
+        return view('zeal.members.edit', compact('member', 'trainers', 'stores', 'kanaRequired', 'genderRequired'));
     }
 
     /**
@@ -159,17 +158,25 @@ class MemberController extends Controller
     {
         // ⚠ 上限は列の大きさに合わせる（database/sql/create_zeal_tables.sql・本番と一致）。列より広いと本番の MySQL が断って 500。
         //   選択肢の項目はモデルが enum として読むので、選択肢に無い値は保存の前に 500（docs/RULES.md Bug #73）
+        // ⚠ 保存されている値は、そのまま保存できるようにする（docs/RULES.md Bug #130）。会員は hacomono の CSV 取込で入り、
+        //   取込はフリガナ・性別が空でも・形の崩れたメールでも入れる。ここで断ると、電話番号だけ直したいときでも保存できない
+        //   （本番 2026-11-12: 在籍 40 人のうち 17 人）。
+        //   - フリガナ・性別: 保存されている値が空のときだけ任意（一度入れると、次からは必須）
+        //   - メール: 保存されている値と同じなら形式を問わない（変えたときだけ形式を見る）
+        //   - 店舗・担当: 有効なもの ＋ この会員の今の値（無効にしたものでも、今の値なら残す。新しく選べるのは有効なものだけ）
+        // ⚠ 規則の値は文字列で組む（Rule::when は CollectsValidationKeys・ShapeCheckingValidator で試していない）
+        $emailUnchanged = $request->input('email') === $this->savedText($member->email);
         $validated = $request->validate([
-            'store_id'           => 'required|integer|exists:zeal_stores,id',
-            'name'               => 'required|string|max:50',
-            'name_kana'          => 'required|string|max:100',
-            'gender'             => 'required|string|in:male,female,other',
+            'store_id'           => ['required', 'integer', Rule::in($this->selectableStores($member)->pluck('id')->all())],
+            'name'               => 'required|string|max:100',
+            'name_kana'          => ($this->kanaRequired($member) ? 'required' : 'nullable') . '|string|max:100',
+            'gender'             => ($this->genderRequired($member) ? 'required' : 'nullable') . '|string|in:male,female,other',
             'birthday'           => 'nullable|date',
             'phone'              => 'nullable|string|max:20',
-            'email'              => 'nullable|email|max:100',
+            'email'              => 'nullable|string|max:100' . ($emailUnchanged ? '' : '|email'),
             'postal_code'        => 'nullable|string|max:8',
-            'address'            => 'nullable|string|max:200',
-            'trainer_id'         => 'nullable|exists:zeal_trainers,id',
+            'address'            => 'nullable|string|max:300',
+            'trainer_id'         => ['nullable', 'integer', Rule::in($this->selectableTrainers($member)->pluck('id')->all())],
             'acquisition_source' => ['nullable', Rule::enum(ZealAcquisitionSource::class)],
             'purpose'            => ['nullable', Rule::enum(ZealPurpose::class)],
             'memo'               => 'nullable|string|max:1000',
@@ -318,5 +325,52 @@ class MemberController extends Controller
         return redirect()
             ->route('zeal.members.index')
             ->with('success', '「' . $name . '」を削除しました。');
+    }
+
+    // ================================================================
+    // 編集で、保存されている値をそのまま保存できるようにする（docs/RULES.md Bug #130）
+    // ================================================================
+
+    /**
+     * 選べる店舗: 有効な店舗 ＋ この会員の今の店舗（無効にしていても残す。選択肢に無いと、そのまま保存できない）。
+     * 新しく選べるのは有効な店舗だけ（Dad\ProjectController::selectableEmployees() と同じ形）
+     */
+    private function selectableStores(ZealMember $member): Collection
+    {
+        return ZealStore::query()
+            ->where(fn ($q) => $q->where('active', true)->orWhere('id', $member->store_id))
+            ->orderBy('display_order')
+            ->orderBy('id')
+            ->get();
+    }
+
+    /** 選べるトレーナー: 有効なトレーナー ＋ この会員の今の担当（無効にしていても残す。選択肢に無いと担当が黙って外れる） */
+    private function selectableTrainers(ZealMember $member): Collection
+    {
+        return ZealTrainer::query()
+            ->where(fn ($q) => $q->where('active', true)->orWhere('id', $member->trainer_id))
+            ->orderBy('display_order')
+            ->orderBy('id')
+            ->get();
+    }
+
+    /** フリガナは、保存されている値があるときだけ必須（取込で空のまま入った会員は、空のままでも保存できる） */
+    private function kanaRequired(ZealMember $member): bool
+    {
+        return $this->savedText($member->name_kana) !== null;
+    }
+
+    /** 性別は、保存されている値があるときだけ必須 */
+    private function genderRequired(ZealMember $member): bool
+    {
+        return $member->gender !== null;
+    }
+
+    /** 保存されている文字を、送られてくる値と同じ形にする（前後の空白を落とし、空なら null。TrimStrings・ConvertEmptyStringsToNull と同じ） */
+    private function savedText(?string $value): ?string
+    {
+        $value = Str::trim((string) $value);
+
+        return $value === '' ? null : $value;
     }
 }

@@ -3,7 +3,6 @@
 namespace Tests\Feature\Zeal;
 
 use App\Models\ZealMemberContract;
-use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\DataProvider;
 
 /**
@@ -51,6 +50,49 @@ class MemberInputLimitsTest extends MemberScreenTestCase
         $html = $this->actingAs($this->user)->get(route('zeal.members.edit', $this->member))->assertOk()->getContent();
 
         $this->assertSame('100', $this->htmlAttr($this->tagWithId($html, 'input', 'email'), 'maxlength'));
+    }
+
+    // ================================================================
+    // 1b. 会員の編集・氏名（列は 100 文字）と住所（列は 300 文字）
+    // ================================================================
+    // ⚠ 直す前は氏名 50・住所 200 文字までで、列より狭かった。取込（HacomonoMemberMapper）は列の大きさまで入れるので、
+    //   51 文字以上の氏名・201 文字以上の住所で入った会員は、編集画面から保存できなかった（docs/RULES.md Bug #73 の範囲外 → Bug #130）。
+    // ⚠ 全角の文字で埋める（MySQL の utf8mb4 の VARCHAR は文字数で数える。半角だと strlen との違いが見えない）
+
+    /** @return array<string, array{0: string, 1: int}> [項目, 列の大きさ] */
+    public static function textColumns(): array
+    {
+        return [
+            '氏名'               => ['name', 100],
+            '市区町村・番地以降' => ['address', 300],
+        ];
+    }
+
+    #[DataProvider('textColumns')]
+    public function test_a_text_that_fills_the_column_is_saved(string $field, int $length): void
+    {
+        $this->sendEdit([$field => str_repeat('あ', $length)])
+            ->assertSessionHasNoErrors()
+            ->assertRedirect(route('zeal.members.show', $this->member));
+
+        $this->assertSame(str_repeat('あ', $length), $this->member->fresh()->{$field});
+    }
+
+    #[DataProvider('textColumns')]
+    public function test_a_text_longer_than_the_column_is_refused(string $field, int $length): void
+    {
+        $before = $this->member->{$field};
+
+        $response = $this->sendEdit([$field => str_repeat('あ', $length + 1)]);
+
+        $this->assertRefused($response, route('zeal.members.edit', $this->member), $field);
+        $this->assertSame($before, $this->member->fresh()->{$field});
+    }
+
+    #[DataProvider('textColumns')]
+    public function test_the_text_field_stops_at_the_column_length(string $field, int $length): void
+    {
+        $this->assertSame((string) $length, $this->htmlAttr($this->tagWithId($this->editHtml(), 'input', $field), 'maxlength'));
     }
 
     // ================================================================
@@ -152,25 +194,5 @@ class MemberInputLimitsTest extends MemberScreenTestCase
         $this->sendWithdraw(['withdraw_reason' => 'busy'])->assertSessionHasNoErrors();
 
         $this->assertSame('busy', $this->member->fresh()->getRawOriginal('withdraw_reason'));
-    }
-
-    // ================================================================
-    // 道具
-    // ================================================================
-
-    /** 断られて元の画面へ戻り、その項目にエラーが付いた（直す前は、保存されて詳細へ進むか、500） */
-    private function assertRefused(TestResponse $response, string $backTo, string $field): void
-    {
-        $this->assertSame(302, $response->getStatusCode(), '断られずに ' . $response->getStatusCode() . ' になった');
-        $this->assertSame($backTo, $response->headers->get('Location'), '元の画面へ戻っていない');
-        $response->assertSessionHasErrors($field);
-    }
-
-    /** id で要素の開始タグを 1 つだけ取り出す */
-    private function tagWithId(string $html, string $element, string $id): string
-    {
-        $this->assertSame(1, preg_match_all('/<' . $element . '\b[^>]*\bid="' . preg_quote($id, '/') . '"[^>]*>/', $html, $m), "{$element}#{$id} がちょうど 1 つ無い");
-
-        return $m[0][0];
     }
 }

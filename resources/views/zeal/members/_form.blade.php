@@ -2,7 +2,8 @@
     ZEAL 会員フォーム共通パーシャル（edit 用）
     - $member: ZealMember モデル（編集時）
     - $trainers: ZealTrainer コレクション
-    - $stores: ZealStore コレクション
+    - $stores: ZealStore コレクション（有効な店舗 ＋ この会員の今の店舗。無効のものには「（無効）」を付ける）
+    - $kanaRequired / $genderRequired: フリガナ・性別が必須か（保存されている値が空なら任意。docs/RULES.md Bug #130）
 --}}
 @php
     $valStore     = old('store_id',  $member->store_id  ?? '');
@@ -72,7 +73,7 @@
                     氏名<span class="required">*必須</span>
                 </label>
                 <input type="text" id="name" name="name" value="{{ $valName }}"
-                       maxlength="50" required
+                       maxlength="100" required
                        placeholder="例: 山本 健太"
                        class="form-input w-full"
                        style="margin-bottom: 0;">
@@ -80,22 +81,34 @@
 
             {{-- フリガナ --}}
             <div>
+                {{-- 取込で空のまま入った会員は任意（一度入れると、次からは必須。docs/RULES.md Bug #130） --}}
                 <label class="zeal-form-label" for="name_kana">
-                    フリガナ<span class="required">*必須</span>
+                    @if($kanaRequired)
+                        フリガナ<span class="required">*必須</span>
+                    @else
+                        フリガナ<span class="optional">任意</span>
+                    @endif
                 </label>
                 <input type="text" id="name_kana" name="name_kana" value="{{ $valKana }}"
-                       maxlength="100" required
+                       maxlength="100" @if($kanaRequired) required @else aria-describedby="name_kana_hint" @endif
                        placeholder="例: ヤマモト ケンタ"
                        class="form-input w-full"
                        style="margin-bottom: 0;">
+                @unless($kanaRequired)
+                    <div id="name_kana_hint" class="zeal-form-hint">まだ登録されていません。空のままでも保存できます（一度入れると、次からは必須になります）。</div>
+                @endunless
             </div>
         </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" style="margin-bottom: 20px;">
             {{-- 性別 --}}
             <div>
-                <label class="zeal-form-label">性別<span class="required">*必須</span></label>
-                <div style="display: flex; gap: 20px; margin-top: 6px;">
+                @if($genderRequired)
+                    <label class="zeal-form-label">性別<span class="required">*必須</span></label>
+                @else
+                    <label class="zeal-form-label">性別<span class="optional">任意</span></label>
+                @endif
+                <div style="display: flex; gap: 20px; margin-top: 6px;" role="radiogroup" aria-label="性別" @unless($genderRequired) aria-describedby="gender_hint" @endunless>
                     @foreach(\App\Enums\ZealGender::cases() as $g)
                         <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer;">
                             <input type="radio" name="gender" value="{{ $g->value }}"
@@ -105,6 +118,9 @@
                         </label>
                     @endforeach
                 </div>
+                @unless($genderRequired)
+                    <div id="gender_hint" class="zeal-form-hint">まだ登録されていません。空のままでも保存できます（一度入れると、次からは必須になります）。</div>
+                @endunless
             </div>
 
             {{-- 生年月日 --}}
@@ -134,7 +150,8 @@
                 <label class="zeal-form-label" for="email">
                     メールアドレス<span class="optional">任意</span>
                 </label>
-                <input type="email" id="email" name="email" value="{{ $valEmail }}"
+                {{-- type="email" にしない。ブラウザの形式の検査が、取込で入った形の崩れたメールで送信を止める（形式はサーバーが見る。docs/RULES.md Bug #130） --}}
+                <input type="text" inputmode="email" autocomplete="email" id="email" name="email" value="{{ $valEmail }}"
                        maxlength="100"
                        placeholder="例: yamamoto@example.com"
                        class="form-input w-full" style="margin-bottom: 0;">
@@ -164,7 +181,7 @@
         <div>
             <label class="zeal-form-label" for="address">市区町村・番地以降</label>
             <input type="text" id="address" name="address" value="{{ $valAddress }}"
-                   maxlength="200"
+                   maxlength="300"
                    placeholder="例: 松山市一番町1-2-3"
                    class="form-input w-full" style="margin-bottom: 0;">
         </div>
@@ -191,7 +208,7 @@
                     <option value="">選択してください</option>
                     @foreach($stores as $store)
                         <option value="{{ $store->id }}" {{ $valStore == $store->id ? 'selected' : '' }}>
-                            {{ $store->name }}
+                            {{ $store->name }}@unless($store->active)（無効）@endunless
                         </option>
                     @endforeach
                 </select>
@@ -208,7 +225,7 @@
                     <option value="">未設定</option>
                     @foreach($trainers as $trainer)
                         <option value="{{ $trainer->id }}" {{ $valTrainer == $trainer->id ? 'selected' : '' }}>
-                            {{ $trainer->name }}
+                            {{ $trainer->name }}@unless($trainer->active)（無効）@endunless
                         </option>
                     @endforeach
                 </select>

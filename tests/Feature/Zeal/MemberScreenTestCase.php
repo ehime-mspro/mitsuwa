@@ -114,6 +114,27 @@ abstract class MemberScreenTestCase extends TestCase
         return $this->actingAs($this->user)->get(route('zeal.members.show', $this->member))->assertOk()->getContent();
     }
 
+    protected function editHtml(): string
+    {
+        return $this->actingAs($this->user)->get(route('zeal.members.edit', $this->member))->assertOk()->getContent();
+    }
+
+    /** 断られて元の画面へ戻り、その項目にエラーが付いた（直す前は、保存されて詳細へ進むか、500） */
+    protected function assertRefused(TestResponse $response, string $backTo, string $field): void
+    {
+        $this->assertSame(302, $response->getStatusCode(), '断られずに ' . $response->getStatusCode() . ' になった');
+        $this->assertSame($backTo, $response->headers->get('Location'), '元の画面へ戻っていない');
+        $response->assertSessionHasErrors($field);
+    }
+
+    /** id で要素の開始タグを 1 つだけ取り出す */
+    protected function tagWithId(string $html, string $element, string $id): string
+    {
+        $this->assertSame(1, preg_match_all('/<' . $element . '\b[^>]*\bid="' . preg_quote($id, '/') . '"[^>]*>/', $html, $m), "{$element}#{$id} がちょうど 1 つ無い");
+
+        return $m[0][0];
+    }
+
     /**
      * 体験予約（GymInquiry・'zeal' 接続）を SQLite のメモリ DB へ向け直す（会員の詳細画面・体験予約の画面が読む）。
      * ⚠ 向け直さないと、テストが手元の MySQL へ接続しに行く（MonthEndOverflowTest と同じ理由）。
