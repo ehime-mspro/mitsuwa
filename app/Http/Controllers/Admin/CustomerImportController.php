@@ -115,7 +115,9 @@ class CustomerImportController extends Controller
             return redirect()->route('admin.customers.import')->with('error', 'CSVファイルにデータがありません。');
         }
 
-        $header = array_map('trim', array_shift($records));
+        // 見出しの前後の空白は Str::trim() で落とす（全角の空白も。CsvImportReader::rows() と同じ）。⚠ trim() に戻さない。
+        // 半角の空白しか落とさず、「電話番号　」の列は黙って空で入り、「　Q1:…」の設問の列は回答が黙って捨てられた（docs/RULES.md Bug #129）
+        $header = array_map(fn (string $column): string => Str::trim($column), array_shift($records));
 
         // 設問カラム検出（Q1:xxx, Q2:xxx ...）。Q の番号は、有効な設問を並び順（テンプレートと同じ）に並べた何番目か
         $questions = SurveyQuestion::ofDepartment($department)->active()->ordered()->get();
@@ -152,13 +154,13 @@ class CustomerImportController extends Controller
             ]);
         }
 
-        // カラムインデックスマッピング
+        // カラムインデックスマッピング。見出しはそのまま標準の列名と比べ、設問の列（Q1:…）の「Q1:」を除いて比べない
+        // （設問の列は上で設問に結びついたか、ファイルごと断っている）。除いて比べると、設問の文が標準の列名と同じとき（テンプレートの
+        // 見出しが「Q1:職業」など）に、後ろの設問の列が標準の列を上書きし、職業が設問の回答で保存された（docs/RULES.md Bug #129）
         $colMap = [];
         foreach ($header as $hIdx => $hVal) {
-            $cleanHeader = preg_replace('/^Q\d+:/', '', $hVal);
-            $cleanHeader = trim($cleanHeader);
-            if (isset(BuyerCsvRow::COLUMNS[$cleanHeader])) {
-                $colMap[BuyerCsvRow::COLUMNS[$cleanHeader]] = $hIdx;
+            if (isset(BuyerCsvRow::COLUMNS[$hVal])) {
+                $colMap[BuyerCsvRow::COLUMNS[$hVal]] = $hIdx;
             }
         }
 

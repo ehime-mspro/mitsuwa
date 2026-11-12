@@ -843,6 +843,85 @@ class CustomerImportTest extends TestCase
     }
 
     // ================================================================
+    // 見出しの前後の全角の空白・標準の列名と同じ文の設問（docs/RULES.md Bug #129）
+    // ================================================================
+
+    public function test_full_width_spaces_around_a_standard_header_are_ignored(): void
+    {
+        // 直す前（2026-11-12 に実測）: 見出しを半角の空白しか落とさない trim() で読んでいたので、「　電話番号　」の列は
+        // 黙って空で入り、「姓　」の列は「姓が未入力です」のエラーになった
+        $last  = "姓\u{3000}";
+        $phone = "\u{3000}電話番号\u{3000}";
+        $header = implode(',', array_map(fn (string $column) => match ($column) {
+            '姓'       => $last,
+            '電話番号' => $phone,
+            default    => $column,
+        }, self::HEADER));
+
+        $preview = $this->preview($this->csvUnder($header, [
+            [$last => '山田', '名' => '太郎', '都道府県' => '愛媛県', '市区町村' => '松山市', '取得日' => '2026-09-01', $phone => '089-111-1111'],
+        ]));
+
+        $this->assertSame([], $preview->viewData('rowErrors'));
+        $this->submit($this->confirmForm($preview))->assertSee('1件のインポートが完了しました。');
+
+        $buyer = Buyer::sole();
+        $this->assertSame('山田', $buyer->last_name);
+        $this->assertSame('089-111-1111', $buyer->phone);
+    }
+
+    public function test_a_full_width_space_before_a_question_column_header_is_ignored(): void
+    {
+        // 直す前: 「　Q1:…」は設問の列と見なされず、回答が黙って捨てられた（アンケートが作られない）
+        SurveyQuestion::create([
+            'department' => 'housing', 'label' => '来場のきっかけ', 'question_type' => 'text',
+            'sort_order' => 1, 'is_active' => true,
+        ]);
+        $column = "\u{3000}Q1:来場のきっかけ";
+
+        $preview = $this->preview($this->csv([$this->person('山田', '太郎', [$column => '看板'])], [$column]));
+
+        $this->submit($this->confirmForm($preview))->assertSee('1件のインポートが完了しました。');
+
+        $this->assertSame('看板', BuyerSurvey::sole()->answers()->sole()->answer_value);
+    }
+
+    /**
+     * 設問の文が標準の列名と同じでも、テンプレートどおりに書いた行は、標準の列は標準の列の値で、回答は設問の回答で保存される。
+     * 直す前: 設問の列（Q1:職業）の文も標準の列名と比べていたので、後ろにある設問の列が標準の列を上書きした（職業は回答の
+     * 「自営業の予定」で保存され、姓は空欄の回答で「姓が未入力です」のエラーになった）
+     *
+     * @return array<string, array{string, array<string, string>, string, string, ?string}>
+     */
+    public static function questionsNamedLikeAStandardColumn(): array
+    {
+        return [
+            '職業'               => ['職業', ['職業' => '会社員', 'Q1:職業' => '自営業の予定'], 'occupation', '会社員', '自営業の予定'],
+            '姓（回答は空欄）'   => ['姓', [], 'last_name', '山田', null],
+        ];
+    }
+
+    #[DataProvider('questionsNamedLikeAStandardColumn')]
+    public function test_a_question_named_like_a_standard_column_does_not_take_its_place(
+        string $label, array $cells, string $field, string $saved, ?string $answer,
+    ): void {
+        SurveyQuestion::create([
+            'department' => 'housing', 'label' => $label, 'question_type' => 'text',
+            'sort_order' => 1, 'is_active' => true,
+        ]);
+        $header = $this->templateHeader('housing');
+        $this->assertStringEndsWith(",Q1:{$label}", $header, 'テンプレートの見出しが設問の列で終わっていない');
+
+        $preview = $this->preview($this->csvUnder($header, [$this->person('山田', '太郎', $cells)]));
+
+        $this->assertSame([], $preview->viewData('rowErrors'));
+        $this->submit($this->confirmForm($preview))->assertSee('1件のインポートが完了しました。');
+
+        $this->assertSame($saved, Buyer::sole()->{$field});
+        $this->assertSame($answer, BuyerSurvey::first()?->answers()->sole()->answer_value);
+    }
+
+    // ================================================================
     // 取り込める行が無いとき・重複候補
     // ================================================================
 
