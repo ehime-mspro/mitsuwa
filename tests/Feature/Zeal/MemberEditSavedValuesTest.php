@@ -123,6 +123,8 @@ class MemberEditSavedValuesTest extends MemberScreenTestCase
         $leftTrainer = ZealTrainer::create(['name' => '退職 トレーナー', 'display_order' => 3, 'active' => false]);
 
         $this->assertRefused($this->sendEdit(['store_id' => (string) $closedStore->id]), route('zeal.members.edit', $this->member), 'store_id');
+        // ⚠ 1 回目の入力（閉店した店）が old() で残ると、2 回目の画面の店舗が選ばれず店舗でも断られる（担当だけを測れない）
+        $this->flushSession();
         $this->assertRefused($this->sendEdit(['trainer_id' => (string) $leftTrainer->id]), route('zeal.members.edit', $this->member), 'trainer_id');
 
         $fresh = $this->member->fresh();
@@ -158,6 +160,8 @@ class MemberEditSavedValuesTest extends MemberScreenTestCase
         $this->assertRefused($this->sendEdit(['name_kana' => '']), route('zeal.members.edit', $this->member), 'name_kana');
         $this->assertSame($kana, $this->member->fresh()->name_kana);
 
+        // ⚠ 1 回目に断られた送信の入力（old()）が残ると、2 回目の画面にそれが描かれ、フリガナでも断られてしまう（性別だけを測れない）
+        $this->flushSession();
         $gender = $this->member->fresh()->getRawOriginal('gender');
         $this->assertRefused($this->sendEdit([], ['gender']), route('zeal.members.edit', $this->member), 'gender');
         $this->assertSame($gender, $this->member->fresh()->getRawOriginal('gender'));
