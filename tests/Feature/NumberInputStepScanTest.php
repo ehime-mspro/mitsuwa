@@ -15,7 +15,7 @@ use PHPUnit\Framework\TestCase;
  * 欄は、その `<input>` の `name`、無ければ `x-model`（修飾子つきを含む）の値。
  * 決裁の画面（`approvals/`）は別の会話の担当なので見ない。
  *
- * ⚠ 死角: `<input>` 以外のタグの `step`・`<script>` の中の文字列で組む入力欄・
+ * ⚠ 死角: 引用符なしの `step=5` は拾わない／`<input>` 以外のタグの `step`・`<script>` の中の文字列で組む入力欄・
  *   `:name` だけで名前を決める欄（name も x-model も無ければ「（欄なし）」として載せる）。
  */
 class NumberInputStepScanTest extends TestCase

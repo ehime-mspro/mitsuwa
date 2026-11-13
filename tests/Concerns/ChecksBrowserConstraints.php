@@ -20,10 +20,14 @@ namespace Tests\Concerns;
  * - 空の値は `required` だけを見る
  * - number: 数の形・min・max・step（無ければ 1・any は見ない。基準は min → value 属性 → 0）
  * - email: WHATWG の妥当なメールアドレスの形
- * - month: `YYYY-MM`（年は 4 桁以上）
+ * - month: `YYYY-MM`（年は 4 桁以上で 0000 ではない）
  * - pattern: `^(?:pattern)$` に全体が合うこと
  *
- * ⚠ 死角: `maxlength` は利用者が触った欄にしか効かないので見ない／name の無い欄
+ * ⚠ 死角: `htmlAttr()` は二重引用符の属性しか読まない（`min=0`・`step='5'` は制約なしと数える）／
+ *   type="date"・time・url・tel の形、date と month の min/max、minlength は見ない／
+ *   `:min`・`:max`・`:step`（Alpine のバインド）は見ない／`<form>` の外で `form="id"` で結ぶ欄は見ない／
+ *   `parseForm`・`composedForm` が拾い損ねた欄（`$fields` に無い欄）も黙って外れる／
+ *   `maxlength` は利用者が触った欄にしか効かないので見ない／name の無い欄
  *   （例: 改定画面の `depositMonths`）は見ない／`<select>`・`<textarea>` は見ない
  *   （select の値は `ParsesForms::parseForm()` の `selectedValue()` がブラウザと同じに決める）。
  *
@@ -37,7 +41,7 @@ trait ChecksBrowserConstraints
 
     private const EMAIL_PATTERN = '/^[a-zA-Z0-9.!#$%&\'*+\/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/';
 
-    private const MONTH_PATTERN = '/^\d{4,}-(0[1-9]|1[0-2])$/';
+    private const MONTH_PATTERN = '/^(?!0{4,}-)\d{4,}-(0[1-9]|1[0-2])$/';
 
     /**
      * @param  array<string, mixed>  $fields
@@ -66,7 +70,9 @@ trait ChecksBrowserConstraints
             $values = $isList ? (array) $fields[$key] : [$fields[$key]];
             foreach ($values as $i => $value) {
                 $label = $isList ? "{$key}[{$i}]" : $key;
-                $reason = $this->constraintReason($tag, $type, (string) $value);
+                $reason = is_scalar($value) || $value === null
+                    ? $this->constraintReason($tag, $type, (string) $value)
+                    : '値が文字でも数でもない（配列）';
                 if ($reason !== null) {
                     $out[] = "{$label}: {$reason}";
                 }
@@ -109,9 +115,15 @@ trait ChecksBrowserConstraints
         }
 
         $pattern = $this->htmlAttr($tag, 'pattern');
-        if ($pattern !== null && in_array($type, ['text', 'search', 'tel', 'url', 'email', 'password'], true)
-            && ! preg_match('/^(?:' . str_replace('/', '\/', $pattern) . ')$/u', $value)) {
-            return "「{$value}」は pattern={$pattern} に合わない（送信が止まる）";
+        if ($pattern !== null && in_array($type, ['text', 'search', 'tel', 'url', 'email', 'password'], true)) {
+            // 区切りは \x01（pattern の中の / を触らない）。不正な正規表現は警告にせず違反として返す
+            $matched = @preg_match("\x01^(?:{$pattern})$\x01u", $value);
+            if ($matched === false) {
+                return "pattern={$pattern} が正規表現として読めない";
+            }
+            if ($matched === 0) {
+                return "「{$value}」は pattern={$pattern} に合わない（送信が止まる）";
+            }
         }
 
         return null;

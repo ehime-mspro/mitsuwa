@@ -210,19 +210,24 @@ class SavedValuesRoundTripTest extends MansionScreenTestCase
         $htmls = [];
         foreach (['1LDK', null] as $i => $roomType) {
             $room = $this->room('20' . $i, 'vacant', ['room_type' => $roomType]);
-            $htmls['room ' . var_export($roomType, true)] = [$this->htmlOf(route('mansion.rooms.edit', $room)), 'room_type'];
+            $htmls['room ' . var_export($roomType, true)] = [$this->htmlOf(route('mansion.rooms.edit', $room)), 'room_type', $roomType !== null];
         }
-        $htmls['room create'] = [$this->htmlOf(route('mansion.rooms.create', $this->building)), 'room_type'];
+        $htmls['room create'] = [$this->htmlOf(route('mansion.rooms.create', $this->building)), 'room_type', false];
         foreach (['S造', null] as $structure) {
             $this->building->update(['structure' => $structure]);
-            $htmls['property ' . var_export($structure, true)] = [$this->htmlOf(route('mansion.properties.edit', $this->building)), 'structure'];
+            $htmls['property ' . var_export($structure, true)] = [$this->htmlOf(route('mansion.properties.edit', $this->building)), 'structure', $structure !== null];
         }
-        $htmls['property create'] = [$this->htmlOf(route('mansion.properties.create')), 'structure'];
+        $htmls['property create'] = [$this->htmlOf(route('mansion.properties.create')), 'structure', false];
 
-        foreach ($htmls as $label => [$html, $name]) {
+        foreach ($htmls as $label => [$html, $name, $hasValue]) {
             $this->assertStringNotContainsString('（選択肢に無い値）', $html, "{$label}: 余計な選択肢が足されている");
             $this->assertSame(1, preg_match('/<select name="' . $name . '".*?<\/select>/su', $html, $m), "{$label}: 選択欄が見つからない");
-            $this->assertLessThanOrEqual(1, preg_match_all('/<option[^>]*\sselected/u', $m[0]), "{$label}: 選ばれた選択肢が 2 つ以上ある");
+            $selected = preg_match_all('/<option[^>]*\sselected/u', $m[0]);
+            if ($hasValue) {
+                $this->assertSame(1, $selected, "{$label}: 選択肢にある値が、ちょうど 1 つ選ばれていない");
+            } else {
+                $this->assertLessThanOrEqual(1, $selected, "{$label}: 選ばれた選択肢が 2 つ以上ある");
+            }
         }
     }
 
