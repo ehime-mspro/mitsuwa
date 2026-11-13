@@ -52,23 +52,8 @@ trait ParsesForms
      */
     protected function parseForm(string $html, string $needle): array
     {
-        $pos = strpos($html, $needle);
-        $this->assertNotFalse($pos, "フォームが見つからない: {$needle}");
-
-        $open = strrpos(substr($html, 0, $pos), '<form');
-        $this->assertNotFalse($open, "{$needle} を含む <form> の開始タグが見つからない");
-
-        $close = strpos($html, '</form>', $pos);
-        $this->assertNotFalse($close, "{$needle} を含む <form> が閉じていない");
-
-        $form    = substr($html, $open, $close - $open);
+        $form    = $this->formSlice($html, $needle);
         $openTag = substr($form, 0, strpos($form, '>') + 1);
-
-        $this->assertStringContainsString(
-            $needle,
-            $openTag,
-            "{$needle} が <form> の開始タグの中に無い。素の URL ではなく action=\"…\" 込みで指定すること"
-        );
 
         $fields = [];
 
@@ -111,6 +96,33 @@ trait ParsesForms
             'action' => $this->htmlAttr($openTag, 'action') ?? '',
             'fields' => $fields,
         ];
+    }
+
+    /**
+     * $needle を含む <form> の開始から </form> の手前までの HTML を返す。
+     * needle が開始タグの中にあることをアサートする（誤って別のフォームを掴まない）。
+     */
+    protected function formSlice(string $html, string $needle): string
+    {
+        $pos = strpos($html, $needle);
+        $this->assertNotFalse($pos, "フォームが見つからない: {$needle}");
+
+        $open = strrpos(substr($html, 0, $pos), '<form');
+        $this->assertNotFalse($open, "{$needle} を含む <form> の開始タグが見つからない");
+
+        $close = strpos($html, '</form>', $pos);
+        $this->assertNotFalse($close, "{$needle} を含む <form> が閉じていない");
+
+        $form    = substr($html, $open, $close - $open);
+        $openTag = substr($form, 0, strpos($form, '>') + 1);
+
+        $this->assertStringContainsString(
+            $needle,
+            $openTag,
+            "{$needle} が <form> の開始タグの中に無い。素の URL ではなく action=\"…\" 込みで指定すること"
+        );
+
+        return $form;
     }
 
     /** ブラウザと同じく、selected な option（無ければ先頭）の value を送る */
