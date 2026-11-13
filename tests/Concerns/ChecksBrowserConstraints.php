@@ -48,7 +48,7 @@ trait ChecksBrowserConstraints
         $form = $this->formSlice($html, $needle);
         $out  = [];
 
-        preg_match_all('/<input\b[^>]*>/i', $form, $inputs);
+        preg_match_all('/<input\b(?:"[^"]*"|\'[^\']*\'|[^>"\'])*>/i', $form, $inputs);
         foreach ($inputs[0] as $tag) {
             $name = $this->htmlAttr($tag, 'name');
             $type = strtolower($this->htmlAttr($tag, 'type') ?? 'text');
@@ -86,7 +86,10 @@ trait ChecksBrowserConstraints
 
     private function hasBareAttr(string $tag, string $name): bool
     {
-        return (bool) preg_match('/(?<![\w:.@-])' . preg_quote($name, '/') . '(?![\w-])/i', $tag);
+        // 引用符で囲まれた属性値を先に伏せ、値の中の語（class="disabled:…" など）に反応しない
+        $bare = preg_replace('/"[^"]*"|\'[^\']*\'/', '""', $tag);
+
+        return (bool) preg_match('/(?<![\w:.@-])' . preg_quote($name, '/') . '(?![\w-])/i', $bare);
     }
 
     private function constraintReason(string $tag, string $type, string $value): ?string

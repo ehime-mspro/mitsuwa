@@ -42,6 +42,11 @@ class BrowserConstraintCheckTest extends TestCase
             ['<input type="hidden" name="h" min="1">', ['h' => '0'], []],
             ['<input type="number" name="s" data-step="3" min="0">', ['s' => '4'], []],
             ['<input type="text" name="r" required>', ['r' => ''], ['r: 空（required。送信が止まる）']],
+            ['<input type="number" name="c" min="0" step="1000" class="disabled:opacity-60">', ['c' => '2500'], ['c: 「2500」は step=1000 に乗らない（送信が止まる）']],
+            ['<input type="number" name="c" min="0" step="1000" title="disabled">', ['c' => '2500'], ['c: 「2500」は step=1000 に乗らない（送信が止まる）']],
+            ['<input type="number" name="c" min="0" step="1000" @click="disabled = true">', ['c' => '2500'], ['c: 「2500」は step=1000 に乗らない（送信が止まる）']],
+            ['<input type="text" name="r" title="required">', ['r' => ''], []],
+            ['<input type="text" name="r" title="a > b" required>', ['r' => ''], ['r: 空（required。送信が止まる）']],
         ];
 
         $out = [];
