@@ -10,6 +10,7 @@ use App\Models\ReProject;
 use App\Models\ReProjectLot;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\ChecksBrowserConstraints;
 use Tests\Concerns\CreatesRealEstateSchema;
 use Tests\Concerns\CreatesSurveyQuestionSchema;
 use Tests\Concerns\DrivesAlpineFetch;
@@ -34,6 +35,7 @@ abstract class RealEstateScreenTestCase extends TestCase
     use CreatesRealEstateSchema;
     use CreatesSurveyQuestionSchema;
     use SubmitsScreenForms;
+    use ChecksBrowserConstraints;
 
     protected User $user;
 

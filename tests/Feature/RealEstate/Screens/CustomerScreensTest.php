@@ -218,6 +218,75 @@ class CustomerScreensTest extends RealEstateScreenTestCase
         $this->assertNull($buyer->fresh()->phone);
     }
 
+    public function test_a_customer_with_values_off_the_lists_and_a_loose_email_is_saved_as_it_is(): void
+    {
+        $buyer = $this->buyer();
+        $buyer->update(['prefecture' => '東京', 'occupation' => 'パート', 'email' => 'yamada@']);
+        $url = route('realestate.customers.edit', $buyer);
+        $needle = 'action="' . route('realestate.customers.update', $buyer) . '"';
+        $html = $this->htmlOf($url);
+        $form = $this->parseForm($html, $needle);
+        $this->assertSame(['東京', 'パート', 'yamada@'], [$form['fields']['prefecture'], $form['fields']['occupation'], $form['fields']['email']], '編集画面に今の値が入っていない');
+        $this->assertBrowserSubmits($html, $needle, $form['fields']);
+
+        $form = $this->fill($form, ['employer' => '松山商事']);
+        $form['fields']['birth_date'] = $this->jsBirthDate($form);
+        $html = $this->landed($this->submit($form, $url));
+
+        $this->assertFlash($html, 'success', '顧客情報を更新しました。');
+        $buyer->refresh();
+        $this->assertSame(['東京', 'パート', 'yamada@', '松山商事'], [$buyer->prefecture, $buyer->occupation, $buyer->email, $buyer->employer]);
+    }
+
+    public function test_values_off_the_lists_survive_an_input_error(): void
+    {
+        $buyer = $this->buyer();
+        $buyer->update(['prefecture' => '東京', 'occupation' => 'パート', 'email' => 'yamada@']);
+        $url = route('realestate.customers.edit', $buyer);
+        $needle = 'action="' . route('realestate.customers.update', $buyer) . '"';
+        $form = $this->fill($this->parseForm($this->htmlOf($url), $needle), ['phone' => '089-123-4567 / 090-1234-5678']);
+        $form['fields']['birth_date'] = $this->jsBirthDate($form);
+
+        $html = $this->landed($this->submit($form, $url));
+
+        $this->assertErrorItem($html, trans('validation.max.string', ['attribute' => '電話番号', 'max' => 20]));
+        $back = $this->parseForm($html, $needle);
+        $this->assertSame(['東京', 'パート'], [$back['fields']['prefecture'], $back['fields']['occupation']], '戻った画面で選択肢に無い値が選ばれていない');
+        $back = $this->fill($back, ['phone' => '089-123-4567']);
+        $back['fields']['birth_date'] = $this->jsBirthDate($back);
+        $html = $this->landed($this->submit($back, $url));
+
+        $this->assertFlash($html, 'success', '顧客情報を更新しました。');
+        $buyer->refresh();
+        $this->assertSame(['東京', 'パート', 'yamada@'], [$buyer->prefecture, $buyer->occupation, $buyer->email]);
+    }
+
+    public function test_a_prefecture_in_the_list_adds_no_extra_option(): void
+    {
+        $buyer = $this->buyer();
+        $buyer->update(['occupation' => null]);
+
+        $edit = $this->htmlOf(route('realestate.customers.edit', $buyer));
+        $create = $this->htmlOf(route('realestate.customers.create'));
+
+        $this->assertFalse(str_contains($edit, '（選択肢に無い値）'), '編集画面に余計な選択肢が足されている');
+        $this->assertFalse(str_contains($create, '（選択肢に無い値）'), '登録画面に余計な選択肢が足されている');
+        $createForm = $this->parseForm($create, 'action="' . route('realestate.customers.store') . '"');
+        $this->assertSame('愛媛県', $createForm['fields']['prefecture'], '登録画面の都道府県の既定が愛媛県でない');
+    }
+
+    public function test_the_email_field_does_not_ask_the_browser_to_check_the_form(): void
+    {
+        $buyer = $this->buyer();
+        foreach ([route('realestate.customers.create'), route('realestate.customers.edit', $buyer)] as $url) {
+            $html = $this->htmlOf($url);
+            $this->assertSame(1, preg_match('/<input\b[^>]*\bname="email"[^>]*>/u', $html, $m), $url . ' にメールの欄が無い');
+            $this->assertStringContainsString('type="text"', $m[0]);
+            $this->assertStringContainsString('inputmode="email"', $m[0]);
+            $this->assertFalse(str_contains($html, 'type="email"'), $url . ' に type="email" の欄がある');
+        }
+    }
+
     public function test_a_birth_date_that_does_not_exist_is_refused(): void
     {
         $form = $this->storeForm(['birth_era' => 'S', 'birth_year' => '55', 'birth_month' => '2', 'birth_day' => '30']);

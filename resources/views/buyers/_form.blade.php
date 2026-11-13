@@ -1,6 +1,13 @@
 {{-- 顧客フォーム共通パーシャル: create/edit 共用 --}}
 @php
     $isEdit = isset($isEdit) ? $isEdit : false;
+    $occupations = ['会社員','公務員','自営業','医師','自由業','その他'];
+    // 取込は都道府県・職業を文字なら何でも入れる。選択肢に無い値は選んだまま残す（無いと保存で空になる）。
+    // 入力エラーで戻った画面でも残るよう、old() の値で見る。
+    $valPrefecture = old('prefecture', $isEdit ? $buyer->prefecture : '愛媛県');
+    $valOccupation = old('occupation', $isEdit ? $buyer->occupation : '');
+    $prefectureExtra = is_string($valPrefecture) && $valPrefecture !== '' && ! in_array($valPrefecture, $prefectures, true) ? $valPrefecture : null;
+    $occupationExtra = is_string($valOccupation) && $valOccupation !== '' && ! in_array($valOccupation, $occupations, true) ? $valOccupation : null;
 @endphp
 
 <div class="bg-white border border-gray-200 rounded-lg p-5" style="margin-bottom: 20px;" x-data="buyerForm()">
@@ -188,8 +195,11 @@
                     x-on:change="checkDuplicate()"
                     style="width: 100%; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
                 <option value="">選択</option>
+                @if($prefectureExtra !== null)
+                    <option value="{{ $prefectureExtra }}" selected>{{ $prefectureExtra }}（選択肢に無い値）</option>
+                @endif
                 @foreach($prefectures as $pref)
-                    <option value="{{ $pref }}" {{ old('prefecture', $isEdit ? $buyer->prefecture : '愛媛県') === $pref ? 'selected' : '' }}>{{ $pref }}</option>
+                    <option value="{{ $pref }}" {{ $valPrefecture === $pref ? 'selected' : '' }}>{{ $pref }}</option>
                 @endforeach
             </select>
         </div>
@@ -232,7 +242,8 @@
         </div>
         <div>
             <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">メールアドレス</label>
-            <input type="email" name="email"
+            {{-- type="email" にしない。ブラウザの形式の検査が、取込で入った形の崩れたメールで送信を止める（買主のメールの形は見ない: Bug #89・#131） --}}
+            <input type="text" inputmode="email" autocomplete="email" name="email"
                    value="{{ old('email', $isEdit ? $buyer->email : '') }}"
                    placeholder="example@mail.com"
                    class="form-input w-full" style="height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
@@ -246,8 +257,11 @@
             <select name="occupation"
                     style="width: 100%; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
                 <option value="">選択</option>
-                @foreach(['会社員','公務員','自営業','医師','自由業','その他'] as $occ)
-                    <option value="{{ $occ }}" {{ old('occupation', $isEdit ? $buyer->occupation : '') === $occ ? 'selected' : '' }}>{{ $occ }}</option>
+                @if($occupationExtra !== null)
+                    <option value="{{ $occupationExtra }}" selected>{{ $occupationExtra }}（選択肢に無い値）</option>
+                @endif
+                @foreach($occupations as $occ)
+                    <option value="{{ $occ }}" {{ $valOccupation === $occ ? 'selected' : '' }}>{{ $occ }}</option>
                 @endforeach
             </select>
         </div>
