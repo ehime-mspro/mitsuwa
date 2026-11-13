@@ -4,6 +4,7 @@ namespace Tests\Feature\Mansion\Screens;
 
 use App\Models\MsContractRevision;
 use App\Models\MsParkingContractRevision;
+use PHPUnit\Framework\Attributes\DataProvider;
 
 /**
  * 取込（CSV）は金額を 1 円単位で入れられる。刻みに乗らない保存済みの金額の編集・改定・解約の画面が、
@@ -127,7 +128,7 @@ class SavedValuesRoundTripTest extends MansionScreenTestCase
         return ['最低の0階' => [0], '最高の255階' => [255]];
     }
 
-    /** @dataProvider floorLimits */
+    #[DataProvider('floorLimits')]
     public function test_a_room_on_the_lowest_or_highest_floor_is_saved_as_it_is(int $floor): void
     {
         $room = $this->room('101', 'vacant', ['floor' => $floor]);
