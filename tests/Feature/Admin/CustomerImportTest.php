@@ -13,6 +13,7 @@ use App\Support\CsvImportReader;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Testing\TestResponse;
@@ -459,6 +460,34 @@ class CustomerImportTest extends TestCase
         $this->submit($this->confirmForm($preview))->assertSee('1件のインポートが完了しました。');
 
         $this->assertSame(['山田'], Buyer::pluck('last_name')->all());
+    }
+
+    // 顧客の編集画面は「生年月日は日本の今日以前」で断る（Bug #90）。取込で未来の生年月日が入ると、編集でほかの項目だけ直したいときも保存できない。
+    // 日本時間の 0:00〜8:59 は UTC ではまだ前日なので、UTC の今日で比べると日本の今日生まれを断ってしまう（Bug #61）
+    public function test_a_birth_date_after_the_japanese_today_is_an_error_row(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-11-13 00:30', 'Asia/Tokyo'));
+
+        try {
+            $preview = $this->preview($this->csv([
+                $this->person('山田', '太郎', ['生年月日' => '2026-11-13']),
+                $this->person('佐藤', '花子', ['生年月日' => '2026-11-14']),
+            ]));
+
+            $expected = [
+                ['row' => 3, 'message' => '生年月日「2026-11-14」は今日（2026-11-13）より後の日付です'],
+            ];
+
+            $this->assertSame($expected, $preview->viewData('rowErrors'));
+            $this->assertSame(1, $preview->viewData('validCount'));
+            $preview->assertSee('⚠ 行3: 生年月日「2026-11-14」は今日（2026-11-13）より後の日付です');
+
+            $this->submit($this->confirmForm($preview))->assertSee('1件のインポートが完了しました。');
+
+            $this->assertSame(['山田'], Buyer::pluck('last_name')->all());
+        } finally {
+            Carbon::setTestNow();
+        }
     }
 
     public function test_a_survey_and_its_answers_are_imported_with_the_row(): void

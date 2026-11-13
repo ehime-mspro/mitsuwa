@@ -18,12 +18,15 @@ use PHPUnit\Framework\TestCase;
  */
 class BuyerCsvRowTest extends TestCase
 {
+    /** 日本の今日（呼ぶ側が渡す。BuyerCsvRow は時計を読まない） */
+    private const TODAY = '2026-11-13';
+
     /** 必須の 3 項目が入った行。ほかの列は空欄（$cells で足す・上書きする） */
     private function row(array $cells = []): BuyerCsvRow
     {
         return BuyerCsvRow::from($cells + [
             'last_name' => '山田', 'first_name' => '太郎', 'acquired_date' => '2026-09-01',
-        ]);
+        ], self::TODAY);
     }
 
     // ================================================================
@@ -44,7 +47,7 @@ class BuyerCsvRowTest extends TestCase
 
     public function test_the_three_required_columns_report_their_own_messages(): void
     {
-        $row = BuyerCsvRow::from([]);
+        $row = BuyerCsvRow::from([], self::TODAY);
 
         $this->assertTrue($row->hasErrors());
         $this->assertSame(['姓が未入力です', '名が未入力です', '取得日が未入力です'], $row->errors);
@@ -71,7 +74,7 @@ class BuyerCsvRowTest extends TestCase
     // 直す前: trim() は ASCII の空白しか落とさない。画面の登録は TrimStrings（Str::trim()）が全角スペースも落とす
     public function test_a_cell_of_only_full_width_spaces_is_blank(): void
     {
-        $row = BuyerCsvRow::from(['last_name' => '　', 'first_name' => '太郎', 'acquired_date' => '2026-09-01']);
+        $row = BuyerCsvRow::from(['last_name' => '　', 'first_name' => '太郎', 'acquired_date' => '2026-09-01'], self::TODAY);
 
         $this->assertSame(['姓が未入力です'], $row->errors);
     }
@@ -96,7 +99,7 @@ class BuyerCsvRowTest extends TestCase
             'building_name' => 'ミツワビル', 'phone' => '089-000-0000', 'email' => 'taro@example.com',
             'occupation' => '会社員', 'employer' => '株式会社ミツワ', 'years_employed' => '12',
             'acquired_date' => '2026/9/1', 'project_name' => '南梅本の杜', 'staff_name' => '田中',
-        ]);
+        ], self::TODAY);
 
         $this->assertSame([], $row->errors);
         $this->assertSame([
@@ -320,6 +323,34 @@ class BuyerCsvRowTest extends TestCase
     }
 
     // ================================================================
+    // 生年月日は日本の今日以前（顧客の編集画面と同じ。docs/RULES.md Bug #90）
+    // ================================================================
+
+    public function test_a_birth_date_after_today_is_an_error(): void
+    {
+        $row = $this->row(['birth_date' => '2026-11-14']);
+
+        $this->assertSame(['生年月日「2026-11-14」は今日（2026-11-13）より後の日付です'], $row->errors);
+        $this->assertArrayNotHasKey('birth_date', $row->buyer);
+    }
+
+    public function test_a_birth_date_of_today_is_kept(): void
+    {
+        $row = $this->row(['birth_date' => '2026-11-13']);
+
+        $this->assertSame([], $row->errors);
+        $this->assertSame('2026-11-13', $row->buyer['birth_date']);
+    }
+
+    public function test_the_acquired_date_may_be_after_today(): void
+    {
+        $row = $this->row(['acquired_date' => '2026-12-01']);
+
+        $this->assertSame([], $row->errors);
+        $this->assertSame('2026-12-01', $row->acquiredDate);
+    }
+
+    // ================================================================
     // 1 行に誤りが複数あるとき
     // ================================================================
 
@@ -328,7 +359,7 @@ class BuyerCsvRowTest extends TestCase
         $row = BuyerCsvRow::from([
             'first_name' => '太郎', 'birth_date' => '19800102', 'birth_era' => '明治',
             'family_adults' => '2人', 'city' => str_repeat('あ', 51), 'acquired_date' => '2026-02-30',
-        ]);
+        ], self::TODAY);
 
         $expected = [
             '姓が未入力です',

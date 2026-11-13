@@ -80,8 +80,13 @@ final class BuyerCsvRow
         public readonly array $errors,
     ) {}
 
-    /** @param  array<string, string>  $values  内部のキー => セルの値（列が無ければ空文字でよい） */
-    public static function from(array $values): self
+    /**
+     * @param  array<string, string>  $values  内部のキー => セルの値（列が無ければ空文字でよい）
+     * @param  string  $today  日本の今日（Y-m-d。呼ぶ側が `JapanTime::today()` から渡す）。生年月日がこれより後なら誤り。
+     *                         顧客の編集画面も「生年月日は日本の今日以前」で断る（docs/RULES.md Bug #90）ので、
+     *                         取込で入った未来の生年月日がそのままでは編集で保存できなくなるのを防ぐ。取得日は見ない
+     */
+    public static function from(array $values, string $today): self
     {
         $parsed = [];
         $errors = [];
@@ -98,7 +103,7 @@ final class BuyerCsvRow
                 continue;
             }
 
-            [$value, $error] = self::check($key, $label, $cell, $parsed);
+            [$value, $error] = self::check($key, $label, $cell, $parsed, $today);
 
             if ($error !== null) {
                 $errors[] = $error;
@@ -135,14 +140,15 @@ final class BuyerCsvRow
      * @param  array<string, string|int>  $parsed  ここまでの列の読めた値（元号の範囲は、先に読んだ生年月日で見る）
      * @return array{0: string|int|null, 1: string|null} [保存する値, 誤り]
      */
-    private static function check(string $key, string $label, string $cell, array $parsed): array
+    private static function check(string $key, string $label, string $cell, array $parsed, string $today): array
     {
         if (isset(self::MAX_INTEGER[$key])) {
             return self::integer($label, $cell, self::MAX_INTEGER[$key]);
         }
 
         return match ($key) {
-            'birth_date', 'acquired_date' => self::date($label, $cell),
+            'birth_date'   => self::birthDate($label, $cell, $today),
+            'acquired_date' => self::date($label, $cell),
             'birth_era'    => self::era($cell, $parsed['birth_date'] ?? null),
             // 検査しない（保存せず、分譲地を探すのに使うだけ）
             'project_name' => [$cell, null],
@@ -160,6 +166,19 @@ final class BuyerCsvRow
         }
 
         return [$date, null];
+    }
+
+    /** @return array{0: string|null, 1: string|null} */
+    private static function birthDate(string $label, string $cell, string $today): array
+    {
+        [$date, $error] = self::date($label, $cell);
+
+        // どちらも Y-m-d なので文字列のまま比べられる
+        if ($date !== null && $date > $today) {
+            return [null, "{$label}「{$cell}」は今日（{$today}）より後の日付です"];
+        }
+
+        return [$date, $error];
     }
 
     /**

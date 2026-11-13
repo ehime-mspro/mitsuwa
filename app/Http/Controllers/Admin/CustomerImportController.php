@@ -9,6 +9,7 @@ use App\Models\SurveyQuestion;
 use App\Models\User;
 use App\Support\BuyerCsvRow;
 use App\Support\CsvImportReader;
+use App\Support\JapanTime;
 use App\Support\OneTimeAction;
 use App\Support\SurveyAnswers;
 use Illuminate\Http\Request;
@@ -171,6 +172,7 @@ class CustomerImportController extends Controller
         $addedIds  = []; // この CSV で取込先の部署を足す顧客の id（同じ人の 2 行目からは、その人の重複候補にする）
         $newPeople = []; // この CSV で新しく作る人（姓・名・都道府県・市区町村） => 最初の行の番号（同じ人の 2 行目からは重複候補にする。Bug #126）
         $rowNum    = 1;
+        $today     = JapanTime::today()->toDateString(); // 日本の今日（生年月日が今日より後の行を断る。Bug #61・#90）
 
         foreach ($records as $cells) {
             $rowNum++;
@@ -182,7 +184,7 @@ class CustomerImportController extends Controller
             foreach ($colMap as $key => $hIdx) {
                 $values[$key] = $cols[$hIdx] ?? '';
             }
-            $row = BuyerCsvRow::from($values);
+            $row = BuyerCsvRow::from($values, $today);
 
             // アンケートの列を画面と同じ形にして検査し、保存の形にする（設問 id => answer_value。回答なしの列は入れない）
             $answers = [];
