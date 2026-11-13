@@ -372,4 +372,39 @@ class CustomerScreensTest extends RealEstateScreenTestCase
     {
         return route('realestate.customers.create');
     }
+
+    /** 入力エラーで戻った画面は、利用者が選び直した値で描く（保存済みの値で描くと、選び直した値が黙って元に戻る） */
+    public function test_values_changed_to_ones_in_the_lists_survive_an_input_error(): void
+    {
+        $buyer = $this->buyer();
+        $buyer->update(['prefecture' => '東京', 'occupation' => 'パート']);
+        $url = route('realestate.customers.edit', $buyer);
+        $needle = 'action="' . route('realestate.customers.update', $buyer) . '"';
+        $form = $this->fill($this->parseForm($this->htmlOf($url), $needle), ['prefecture' => '愛媛県', 'occupation' => '会社員', 'phone' => '089-123-4567 / 090-1234-5678']);
+        $form['fields']['birth_date'] = $this->jsBirthDate($form);
+
+        $html = $this->landed($this->submit($form, $url));
+
+        $this->assertErrorItem($html, trans('validation.max.string', ['attribute' => '電話番号', 'max' => 20]));
+        $this->assertFalse(str_contains($html, '（選択肢に無い値）'), '選び直したのに、元の値が残っている');
+        $back = $this->parseForm($html, $needle);
+        $this->assertSame(['愛媛県', '会社員'], [$back['fields']['prefecture'], $back['fields']['occupation']], '戻った画面で、選び直した値が元の値に戻った');
+        $back = $this->fill($back, ['phone' => '089-123-4567']);
+        $back['fields']['birth_date'] = $this->jsBirthDate($back);
+
+        $this->assertFlash($this->landed($this->submit($back, $url)), 'success', '顧客情報を更新しました。');
+        $this->assertSame(['愛媛県', '会社員'], [$buyer->fresh()->prefecture, $buyer->fresh()->occupation]);
+    }
+
+    public function test_an_occupation_in_the_list_adds_no_extra_option(): void
+    {
+        $buyer = $this->buyer();
+        $buyer->update(['occupation' => '会社員']);
+
+        $edit = $this->htmlOf(route('realestate.customers.edit', $buyer));
+
+        $this->assertFalse(str_contains($edit, '（選択肢に無い値）'), '職業が選択肢にあるのに、余計な選択肢が足されている');
+        $form = $this->parseForm($edit, 'action="' . route('realestate.customers.update', $buyer) . '"');
+        $this->assertSame('会社員', $form['fields']['occupation']);
+    }
 }

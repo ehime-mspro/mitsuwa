@@ -225,4 +225,48 @@ class SavedValuesRoundTripTest extends MansionScreenTestCase
             $this->assertLessThanOrEqual(1, preg_match_all('/<option[^>]*\sselected/u', $m[0]), "{$label}: 選ばれた選択肢が 2 つ以上ある");
         }
     }
+
+    /**
+     * 入力エラーで戻った画面は、利用者が直した値で描く（保存済みの値で描くと、選び直した間取りが黙って元に戻る）。
+     * 選択肢に無い値から選択肢の値へ変えたとき、「（選択肢に無い値）」は残らない。
+     */
+    public function test_a_room_type_changed_to_one_in_the_list_survives_an_input_error(): void
+    {
+        $room = $this->room('101', 'vacant', ['room_type' => 'メゾネット']);
+        $url = route('mansion.rooms.edit', $room);
+        $needle = 'action="' . route('mansion.rooms.update', $room) . '"';
+        $form = $this->fill($this->parseForm($this->htmlOf($url), $needle), ['room_type' => '2LDK', 'room_number' => '']);
+
+        $returned = $this->landed($this->submit($form, $url));
+
+        $this->assertStringContainsString('入力内容にエラーがあります。', $returned);
+        $this->assertStringNotContainsString('（選択肢に無い値）', $returned, '選び直したのに、元の値が残っている');
+        $back = $this->parseForm($returned, $needle);
+        $this->assertSame('2LDK', $back['fields']['room_type'], '戻った画面で、選び直した間取りが元の値に戻った');
+
+        $back = $this->fill($back, ['room_number' => '101']);
+        $this->assertFlash($this->landed($this->submit($back, $url)), 'success', '部屋を更新しました');
+        $this->assertSame('2LDK', $room->fresh()->room_type);
+    }
+
+    public function test_a_structure_changed_to_one_in_the_list_survives_an_input_error(): void
+    {
+        $property = $this->building;
+        $property->update(['structure' => '軽量鉄骨造']);
+        $url = route('mansion.properties.edit', $property);
+        $action = route('mansion.properties.update', $property);
+        $html = $this->htmlOf($url);
+
+        $form = $this->fill($this->composedForm($html, $action, 'propertyForm', null, ['monthPicker' => '']), ['structure' => 'S造', 'property_name' => '']);
+        $returned = $this->landed($this->submit($form, $url));
+
+        $this->assertStringContainsString('入力内容にエラーがあります。', $returned);
+        $this->assertStringNotContainsString('（選択肢に無い値）', $returned, '選び直したのに、元の値が残っている');
+        $back = $this->composedForm($returned, $action, 'propertyForm', null, ['monthPicker' => '']);
+        $this->assertSame('S造', $back['fields']['structure'], '戻った画面で、選び直した構造が元の値に戻った');
+
+        $back = $this->fill($back, ['property_name' => 'ミツワレジデンス本館']);
+        $this->assertFlash($this->landed($this->submit($back, $url)), 'success', '物件を更新しました');
+        $this->assertSame('S造', $property->fresh()->structure);
+    }
 }
