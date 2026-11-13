@@ -502,7 +502,7 @@
         <div class="deposit-row">
             <div class="deposit-label">原状回復費を差引</div>
             <div style="display: flex; align-items: center; gap: 6px;">
-                <input type="number" name="restoration_cost" min="0" step="1000"
+                <input type="number" name="restoration_cost" min="0"
                        x-model.number="restorationCost"
                        style="flex: 1; min-width: 0; height: 36px; border: 1px solid #d1d5db; border-radius: 6px; padding: 6px 12px; font-size: 14px; text-align: right;">
                 <span class="deposit-unit">円</span>
@@ -514,7 +514,7 @@
         <div class="deposit-row">
             <div class="deposit-label">清掃費を差引</div>
             <div style="display: flex; align-items: center; gap: 6px;">
-                <input type="number" name="cleaning_cost" min="0" step="1000"
+                <input type="number" name="cleaning_cost" min="0"
                        x-model.number="cleaningCost"
                        style="flex: 1; min-width: 0; height: 36px; border: 1px solid #d1d5db; border-radius: 6px; padding: 6px 12px; font-size: 14px; text-align: right;">
                 <span class="deposit-unit">円</span>
@@ -531,7 +531,7 @@
                            style="flex: 1; min-width: 0; height: 36px; border: 1px solid #d1d5db; border-radius: 6px; padding: 6px 12px; font-size: 13px;">
                 </div>
                 <div style="display: flex; align-items: center; gap: 6px;">
-                    <input type="number" name="other_deduction_amount[]" x-model.number="item.amount" min="0" step="1000"
+                    <input type="number" name="other_deduction_amount[]" x-model.number="item.amount" min="0"
                            style="flex: 1; min-width: 0; height: 36px; border: 1px solid #d1d5db; border-radius: 6px; padding: 6px 12px; font-size: 14px; text-align: right;">
                     <span class="deposit-unit">円</span>
                 </div>

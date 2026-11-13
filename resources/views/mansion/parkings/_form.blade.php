@@ -61,7 +61,7 @@
             <div>
                 <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">月額料金<span style="color: #ef4444; margin-left: 2px;">*</span></label>
                 <div style="display: flex; align-items: center; gap: 6px;">
-                    <input type="number" name="monthly_fee" value="{{ $valMonthlyFee }}" min="0" step="500"
+                    <input type="number" name="monthly_fee" value="{{ $valMonthlyFee }}" min="0"
                            class="form-input"
                            style="flex: 1; min-width: 0; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px; text-align: right;">
                     <span style="font-size: 13px; color: #6b7280;">円</span>

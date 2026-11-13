@@ -136,7 +136,7 @@
             <div>
                 <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">募集賃料</label>
                 <div style="display: flex; align-items: center; gap: 6px;">
-                    <input type="number" name="rent" value="{{ $valRent }}" min="0" step="1000"
+                    <input type="number" name="rent" value="{{ $valRent }}" min="0"
                            class="form-input"
                            style="flex: 1; min-width: 0; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px; text-align: right;">
                     <span style="font-size: 13px; color: #6b7280;">円</span>
@@ -150,7 +150,7 @@
             <div>
                 <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">共益費</label>
                 <div style="display: flex; align-items: center; gap: 6px;">
-                    <input type="number" name="common_fee" value="{{ $valCommonFee }}" min="0" step="1000"
+                    <input type="number" name="common_fee" value="{{ $valCommonFee }}" min="0"
                            class="form-input"
                            style="flex: 1; min-width: 0; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px; text-align: right;">
                     <span style="font-size: 13px; color: #6b7280;">円</span>
@@ -163,7 +163,7 @@
             <div>
                 <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">敷金</label>
                 <div style="display: flex; align-items: center; gap: 6px;">
-                    <input type="number" name="deposit" value="{{ $valDeposit }}" min="0" step="1000"
+                    <input type="number" name="deposit" value="{{ $valDeposit }}" min="0"
                            class="form-input"
                            style="flex: 1; min-width: 0; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px; text-align: right;">
                     <span style="font-size: 13px; color: #6b7280;">円</span>
@@ -176,7 +176,7 @@
             <div>
                 <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">礼金</label>
                 <div style="display: flex; align-items: center; gap: 6px;">
-                    <input type="number" name="key_money" value="{{ $valKeyMoney }}" min="0" step="1000"
+                    <input type="number" name="key_money" value="{{ $valKeyMoney }}" min="0"
                            class="form-input"
                            style="flex: 1; min-width: 0; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px; text-align: right;">
                     <span style="font-size: 13px; color: #6b7280;">円</span>

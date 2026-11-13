@@ -13,6 +13,7 @@ use App\Models\MsTenant;
 use App\Models\User;
 use Database\Seeders\DepartmentSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\ChecksBrowserConstraints;
 use Tests\Concerns\ComposesScreenForms;
 use Tests\Concerns\CreatesMansionSchema;
 use Tests\Concerns\DrivesAlpineFetch;
@@ -38,6 +39,7 @@ abstract class MansionScreenTestCase extends TestCase
     use CreatesMansionSchema;
     use SubmitsScreenForms;
     use ComposesScreenForms;
+    use ChecksBrowserConstraints;
 
     /** 本番の金額の列（INT UNSIGNED）の上限 */
     protected const UINT_MAX = 4294967295;
