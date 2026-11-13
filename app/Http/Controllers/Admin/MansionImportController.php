@@ -303,16 +303,14 @@ class MansionImportController extends Controller
                 continue;
             }
 
-            // 築年月チェック（YYYY-MM形式）
+            // 築年月チェック（YYYY-MM形式。月は 1〜12。CsvDate に 1 か所）
             if ($row['built_year_month'] !== '') {
-                $val = str_replace('/', '-', $row['built_year_month']);
-                if (!preg_match('/^\d{4}-\d{1,2}$/', $val)) {
-                    $errors[] = ['row' => $rowNum, 'message' => "築年月「{$row['built_year_month']}」の形式が不正です（YYYY-MM）"];
+                $yearMonth = CsvDate::normalizeYearMonth($row['built_year_month']);
+                if ($yearMonth === null) {
+                    $errors[] = ['row' => $rowNum, 'message' => "築年月「{$row['built_year_month']}」は年月として正しくありません（例: 2010-04 か 2010/4）"];
                     continue;
                 }
-                // ゼロパディング
-                $parts = explode('-', $val);
-                $row['built_year_month'] = sprintf('%04d-%02d', $parts[0], $parts[1]);
+                $row['built_year_month'] = $yearMonth;
             }
 
             // 整数チェック（総戸数）

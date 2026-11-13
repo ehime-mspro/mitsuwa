@@ -253,20 +253,20 @@ class TenantImportController extends Controller
                 continue;
             }
 
-            // 築年月チェック（YYYY-MM形式）
+            // 築年月チェック（YYYY-MM形式。月は 1〜12。CsvDate に 1 か所）
             if ($row['built_date'] !== '') {
-                $val = str_replace('/', '-', $row['built_date']);
-                if (!preg_match('/^\d{4}-\d{1,2}$/', $val)) {
-                    $errors[] = ['row' => $rowNum, 'message' => "築年月「{$row['built_date']}」の形式が不正です（YYYY-MM）"];
+                $yearMonth = CsvDate::normalizeYearMonth($row['built_date']);
+                if ($yearMonth === null) {
+                    $errors[] = ['row' => $rowNum, 'message' => "築年月「{$row['built_date']}」は年月として正しくありません（例: 2010-04 か 2010/4）"];
                     continue;
                 }
-                $row['built_date'] = $val;
+                $row['built_date'] = $yearMonth;
             }
 
-            // 階数チェック
+            // 階数チェック（画面とサーバーの入力チェックは 1〜99）
             if ($row['total_floors'] !== '') {
-                if (!ctype_digit($row['total_floors']) || (int) $row['total_floors'] < 1) {
-                    $errors[] = ['row' => $rowNum, 'message' => "階数「{$row['total_floors']}」は不正な値です"];
+                if (!ctype_digit($row['total_floors']) || (int) $row['total_floors'] < 1 || (int) $row['total_floors'] > 99) {
+                    $errors[] = ['row' => $rowNum, 'message' => "階数「{$row['total_floors']}」は1〜99の整数で入力してください"];
                     continue;
                 }
                 $row['total_floors'] = (int) $row['total_floors'];

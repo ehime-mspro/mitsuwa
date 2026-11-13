@@ -3,6 +3,7 @@
 namespace Tests\Unit\Support;
 
 use App\Support\CsvDate;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -91,5 +92,48 @@ class CsvDateTest extends TestCase
     public function test_it_accepts_the_unix_epoch(): void
     {
         $this->assertSame('1970-01-01', CsvDate::normalize('1970-01-01'));
+    }
+
+    /** 築年月は月を 2 桁にそろえ、`/` も `-` として読む（テナントの物件・賃貸マンションの物件の取込が共用） */
+    #[DataProvider('readableYearMonths')]
+    public function test_a_year_and_month_is_normalized(string $input, string $expected): void
+    {
+        $this->assertSame($expected, CsvDate::normalizeYearMonth($input));
+    }
+
+    /** @return array<string, array{string, string}> */
+    public static function readableYearMonths(): array
+    {
+        return [
+            '月が 1 桁' => ['2010-4', '2010-04'],
+            'スラッシュ' => ['2010/4', '2010-04'],
+            'そのまま' => ['2010-04', '2010-04'],
+            '12 月' => ['2010/12', '2010-12'],
+        ];
+    }
+
+    /**
+     * 年月として読めない形は null（誤りの行になる）。
+     *
+     * ⚠ `2010-13` を消さないこと。以前は月の範囲を見ず、そのまま保存して編集画面の年月の欄が作り直していた。
+     */
+    #[DataProvider('unreadableYearMonths')]
+    public function test_a_year_and_month_that_cannot_be_read_is_null(string $input): void
+    {
+        $this->assertNull(CsvDate::normalizeYearMonth($input));
+    }
+
+    /** @return array<string, array{string}> */
+    public static function unreadableYearMonths(): array
+    {
+        return [
+            '13 月' => ['2010-13'],
+            '0 月' => ['2010-00'],
+            '日まである' => ['2010-4-1'],
+            '年だけ' => ['2010'],
+            '2 桁の年' => ['10-04'],
+            '全角の数字' => ['２０１０-04'],
+            '数字でない月' => ['2010-1a'],
+        ];
     }
 }

@@ -30,4 +30,29 @@ final class CsvDate
 
         return sprintf('%04d-%02d-%02d', $year, $month, $day);
     }
+
+    /**
+     * `YYYY-MM`（月は 2 桁）へ正規化する。月が 1〜12 の年月でなければ null。
+     *
+     * 築年月の取込（テナントの物件・賃貸マンションの物件）が共用する。`2010/4` は `2010-04` になる。
+     * 以前は月を 2 桁にそろえるだけで範囲を見ず、`2010-13` が入り、テナントの物件は `2010-4` のまま保存されて
+     * 編集画面の `type="month"` の欄が空にしていた。数字は ASCII だけ（全角の数字は null）。
+     * 前後の空白は落とさない（取込の読み手が `Str::trim()` 済み）。
+     */
+    public static function normalizeYearMonth(string $value): ?string
+    {
+        $value = str_replace('/', '-', $value);
+
+        if (! preg_match('/^(\d{4})-(\d{1,2})$/D', $value, $m)) {
+            return null;
+        }
+
+        [$year, $month] = [(int) $m[1], (int) $m[2]];
+
+        if ($month < 1 || $month > 12) {
+            return null;
+        }
+
+        return sprintf('%04d-%02d', $year, $month);
+    }
 }
