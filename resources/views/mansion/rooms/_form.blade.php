@@ -22,6 +22,8 @@
 
     // 間取り選択肢（モックに合わせて固定）
     $roomTypeOptions = ['1R','1K','1DK','1LDK','2K','2DK','2LDK','3K','3DK','3LDK','4LDK','その他'];
+    // 取込は間取りを文字なら何でも入れる。選択肢に無い値は選んだまま残す（無いと保存で空になる）
+    $roomTypeExtra = is_string($valRoomType) && $valRoomType !== '' && ! in_array($valRoomType, $roomTypeOptions, true) ? $valRoomType : null;
 @endphp
 
 <style>
@@ -67,7 +69,7 @@
             <div>
                 <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">階数</label>
                 <div style="display: flex; align-items: center; gap: 6px;">
-                    <input type="number" name="floor" value="{{ $valFloor }}" min="1" max="50"
+                    <input type="number" name="floor" value="{{ $valFloor }}" min="0" max="255"
                            class="form-input"
                            style="flex: 1; min-width: 0; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
                     <span style="font-size: 13px; color: #6b7280;">階</span>
@@ -82,6 +84,9 @@
                 <select name="room_type"
                         style="width: 100%; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
                     <option value="">選択してください</option>
+                    @if($roomTypeExtra !== null)
+                        <option value="{{ $roomTypeExtra }}" selected>{{ $roomTypeExtra }}（選択肢に無い値）</option>
+                    @endif
                     @foreach($roomTypeOptions as $opt)
                         <option value="{{ $opt }}" {{ $valRoomType === $opt ? 'selected' : '' }}>{{ $opt }}</option>
                     @endforeach

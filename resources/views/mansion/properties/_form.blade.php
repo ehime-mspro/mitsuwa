@@ -18,6 +18,8 @@
     $valBuiltYearMonth = old('built_year_month', $isEdit ? $property->built_year_month : '');
     $valNotes = old('notes', $isEdit ? $property->notes : '');
     $structureOptions = ['RC造', 'S造', 'SRC造', '木造', 'その他'];
+    // 取込は構造を文字なら何でも入れる。選択肢に無い値は選んだまま残す（無いと保存で空になる）
+    $structureExtra = is_string($valStructure) && $valStructure !== '' && ! in_array($valStructure, $structureOptions, true) ? $valStructure : null;
     // ⚠ 下の 2 つは JS の引数に Js::from で渡す（引用符で直に書くと、`'` や末尾の `\` で画面の JS が止まる。Bug #76）。
     //   入力エラーで戻った値は手で組んだ送信なら配列もありうるので、文字列だけを渡す
     $jsOwnership = is_string($valOwnership) ? $valOwnership : 'self_owned';
@@ -227,7 +229,7 @@
             <div>
                 <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">総戸数</label>
                 <div style="display: flex; align-items: center; gap: 6px;">
-                    <input type="number" name="total_units" value="{{ $valTotalUnits }}" min="0" max="999"
+                    <input type="number" name="total_units" value="{{ $valTotalUnits }}" min="0" max="65535"
                            class="form-input" placeholder="12"
                            style="flex: 1; min-width: 0; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
                     <span style="font-size: 13px; color: #6b7280;">戸</span>
@@ -237,7 +239,7 @@
             <div>
                 <label class="block text-sm font-semibold text-gray-700" style="margin-bottom: 5px;">階数</label>
                 <div style="display: flex; align-items: center; gap: 6px;">
-                    <input type="number" name="total_floors" value="{{ $valTotalFloors }}" min="0" max="50"
+                    <input type="number" name="total_floors" value="{{ $valTotalFloors }}" min="0" max="255"
                            class="form-input" placeholder="5"
                            style="flex: 1; min-width: 0; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
                     <span style="font-size: 13px; color: #6b7280; white-space: nowrap;">階建て</span>
@@ -249,6 +251,9 @@
                 <select name="structure"
                         style="width: 100%; height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;">
                     <option value="">選択してください</option>
+                    @if($structureExtra !== null)
+                        <option value="{{ $structureExtra }}" selected>{{ $structureExtra }}（選択肢に無い値）</option>
+                    @endif
                     @foreach($structureOptions as $opt)
                         <option value="{{ $opt }}" {{ $valStructure === $opt ? 'selected' : '' }}>{{ $opt }}</option>
                     @endforeach

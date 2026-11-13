@@ -120,4 +120,108 @@ class SavedValuesRoundTripTest extends MansionScreenTestCase
         $this->assertSame([12345, 5500], [$fresh->restoration_cost, $fresh->cleaning_cost]);
         $this->assertSame([['鍵交換費', 2500]], $contract->deductions()->get()->map(fn ($d) => [$d->name, $d->amount])->all());
     }
+
+    /** @return array<string, array{int}> */
+    public static function floorLimits(): array
+    {
+        return ['最低の0階' => [0], '最高の255階' => [255]];
+    }
+
+    /** @dataProvider floorLimits */
+    public function test_a_room_on_the_lowest_or_highest_floor_is_saved_as_it_is(int $floor): void
+    {
+        $room = $this->room('101', 'vacant', ['floor' => $floor]);
+        $url = route('mansion.rooms.edit', $room);
+        $html = $this->htmlOf($url);
+        $needle = 'action="' . route('mansion.rooms.update', $room) . '"';
+        $form = $this->fill($this->parseForm($html, $needle), ['notes' => '階を取込で入れた']);
+
+        $this->assertBrowserSubmits($html, $needle, $form['fields']);
+        $this->assertFlash($this->landed($this->submit($form, $url)), 'success', '部屋を更新しました');
+
+        $this->assertSame([$floor, '階を取込で入れた'], [$room->fresh()->floor, $room->fresh()->notes]);
+    }
+
+    public function test_a_room_type_off_the_list_stays_selected_and_is_saved(): void
+    {
+        $room = $this->room('101', 'vacant', ['room_type' => 'メゾネット']);
+        $url = route('mansion.rooms.edit', $room);
+        $html = $this->htmlOf($url);
+        $needle = 'action="' . route('mansion.rooms.update', $room) . '"';
+
+        $this->assertStringContainsString('<option value="メゾネット" selected>メゾネット（選択肢に無い値）</option>', $html);
+        $form = $this->fill($this->parseForm($html, $needle), ['notes' => '間取りは取込のまま']);
+        $this->assertSame('メゾネット', $form['fields']['room_type']);
+
+        $this->assertBrowserSubmits($html, $needle, $form['fields']);
+        $this->assertFlash($this->landed($this->submit($form, $url)), 'success', '部屋を更新しました');
+
+        $this->assertSame('メゾネット', $room->fresh()->room_type);
+    }
+
+    public function test_a_property_at_the_upper_limits_with_a_structure_off_the_list_is_saved_as_it_is(): void
+    {
+        $property = $this->building;
+        $property->update(['total_units' => 65535, 'total_floors' => 255, 'structure' => '軽量鉄骨造']);
+        $url = route('mansion.properties.edit', $property);
+        $html = $this->htmlOf($url);
+        $action = route('mansion.properties.update', $property);
+        $form = $this->composedForm($html, $action, 'propertyForm', null, ['monthPicker' => '']);
+        $this->assertSame(['65535', '255', '軽量鉄骨造'], [$form['fields']['total_units'], $form['fields']['total_floors'], $form['fields']['structure']]);
+        $form = $this->fill($form, ['property_name' => 'ミツワレジデンス本館']);
+
+        $this->assertBrowserSubmits($html, 'action="' . $action . '"', $form['fields']);
+        $this->assertFlash($this->landed($this->submit($form, $url)), 'success', '物件を更新しました');
+
+        $fresh = $property->fresh();
+        $this->assertSame([65535, 255, '軽量鉄骨造'], [$fresh->total_units, $fresh->total_floors, $fresh->structure]);
+    }
+
+    public function test_a_structure_off_the_list_is_escaped_and_survives_an_input_error(): void
+    {
+        $structure = 'RC造"<b>&';
+        $property = $this->building;
+        $property->update(['structure' => $structure]);
+        $url = route('mansion.properties.edit', $property);
+        $html = $this->htmlOf($url);
+        $action = route('mansion.properties.update', $property);
+
+        $this->assertStringContainsString('RC造&quot;&lt;b&gt;&amp;（選択肢に無い値）', $html);
+        $this->assertStringNotContainsString('<b>', $html);
+
+        // 物件名を空にして送る → 入力エラーで戻った画面でも同じ値が選ばれたまま
+        $form = $this->fill($this->composedForm($html, $action, 'propertyForm', null, ['monthPicker' => '']), ['property_name' => '']);
+        $returned = $this->landed($this->submit($form, $url));
+        $this->assertStringContainsString('入力内容にエラーがあります。', $returned);
+        $this->assertStringContainsString('RC造&quot;&lt;b&gt;&amp;（選択肢に無い値）', $returned);
+        $this->assertStringNotContainsString('<b>', $returned);
+
+        $form = $this->composedForm($returned, $action, 'propertyForm', null, ['monthPicker' => '']);
+        $this->assertSame($structure, $form['fields']['structure']);
+        $form = $this->fill($form, ['property_name' => 'ミツワレジデンス本館']);
+        $this->assertFlash($this->landed($this->submit($form, $url)), 'success', '物件を更新しました');
+
+        $this->assertSame($structure, $property->fresh()->structure);
+    }
+
+    public function test_a_value_in_the_list_or_blank_adds_no_extra_option(): void
+    {
+        $htmls = [];
+        foreach (['1LDK', null] as $i => $roomType) {
+            $room = $this->room('20' . $i, 'vacant', ['room_type' => $roomType]);
+            $htmls['room ' . var_export($roomType, true)] = [$this->htmlOf(route('mansion.rooms.edit', $room)), 'room_type'];
+        }
+        $htmls['room create'] = [$this->htmlOf(route('mansion.rooms.create', $this->building)), 'room_type'];
+        foreach (['S造', null] as $structure) {
+            $this->building->update(['structure' => $structure]);
+            $htmls['property ' . var_export($structure, true)] = [$this->htmlOf(route('mansion.properties.edit', $this->building)), 'structure'];
+        }
+        $htmls['property create'] = [$this->htmlOf(route('mansion.properties.create')), 'structure'];
+
+        foreach ($htmls as $label => [$html, $name]) {
+            $this->assertStringNotContainsString('（選択肢に無い値）', $html, "{$label}: 余計な選択肢が足されている");
+            $this->assertSame(1, preg_match('/<select name="' . $name . '".*?<\/select>/su', $html, $m), "{$label}: 選択欄が見つからない");
+            $this->assertLessThanOrEqual(1, preg_match_all('/<option[^>]*\sselected/u', $m[0]), "{$label}: 選ばれた選択肢が 2 つ以上ある");
+        }
+    }
 }
