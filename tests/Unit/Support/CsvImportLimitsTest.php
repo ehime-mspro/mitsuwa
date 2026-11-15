@@ -25,6 +25,15 @@ class CsvImportLimitsTest extends TestCase
             ['phone' => '', 'workplace' => str_repeat('あ', 101)], self::LIMITS));
     }
 
+    /** 改行は、画面の textarea が送るのと同じく 2 文字（CRLF）と数える（取込で入った値を編集画面がそのまま保存できるように）。 */
+    public function test_a_line_break_counts_as_two_characters_like_the_edit_screen(): void
+    {
+        $limits = ['notes' => ['備考', 10]];
+        $this->assertNull(CsvImportLimits::tooLongMessage(['notes' => "ああああ\nああああ"], $limits));
+        $this->assertSame('備考は10文字以内で入力してください',
+            CsvImportLimits::tooLongMessage(['notes' => "あああああ\nああああ"], $limits));
+    }
+
     public function test_the_first_column_in_the_limits_order_is_reported(): void
     {
         $this->assertSame('電話番号は20文字以内で入力してください', CsvImportLimits::tooLongMessage(

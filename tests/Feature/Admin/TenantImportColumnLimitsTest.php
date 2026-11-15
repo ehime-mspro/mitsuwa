@@ -320,10 +320,26 @@ class TenantImportColumnLimitsTest extends TestCase
         $this->assertSame(self::MAX_AMOUNT, Contract::sole()->{$column});
     }
 
-    /** 備考の上限ちょうどは、取込が残す改行（LF）を 1 文字と数えて 5,000 文字。 */
+    /**
+     * 備考は、編集画面と同じく改行を 2 文字（CRLF。ブラウザの textarea が送る形）と数えて $length 文字。改行は 1,000 個。
+     * （改行を 1 文字と数えると、取り込めたのに編集画面で「5000文字以下」と断られる備考ができる）
+     */
     private static function notes(int $length): string
     {
-        return str_repeat('あ', $length - 4998) . str_repeat("\nあ", 2499);
+        return str_repeat('あ', $length - 3000) . str_repeat("\nあ", 1000);
+    }
+
+    /** 文字数（mb_strlen）では 5,000 文字ちょうどでも、改行を 2 文字と数えると 5,000 文字を超える備考は、その行の誤り。 */
+    public function test_a_note_that_the_edit_screen_would_count_over_5000_is_an_error_row(): void
+    {
+        $note = str_repeat('あ', 4998) . "\nあ";
+        $this->assertSame(5000, mb_strlen($note));
+
+        $csv = self::CONTRACT_HEADER . "\r\n" . $this->contractRow('contract', ['契約日' => '2024-04-01', '備考' => $note]);
+
+        $preview = $this->preview('contract', $csv)->assertOk();
+        $this->assertSame([['row' => 2, 'message' => '備考は5000文字以内で入力してください']], $preview->viewData('rowErrors'));
+        $this->assertSame(0, $preview->viewData('validCount'));
     }
 
     public static function contractTextLimits(): array
@@ -344,7 +360,8 @@ class TenantImportColumnLimitsTest extends TestCase
         [$ok, $long] = $column === 'notes'
             ? [self::notes($max), self::notes($max + 1)]
             : [str_repeat('あ', $max), str_repeat('い', $max + 1)];
-        $this->assertSame([$max, $max + 1], [mb_strlen($ok), mb_strlen($long)]);
+        $crlf = fn (string $v) => mb_strlen(str_replace("\n", "\r\n", $v));
+        $this->assertSame([$max, $max + 1], [$crlf($ok), $crlf($long)]);
 
         $csv = $this->contractHeader($tab) . "\r\n"
              . $this->contractRow($tab, ['契約日' => '2024-04-01', $label => $ok])

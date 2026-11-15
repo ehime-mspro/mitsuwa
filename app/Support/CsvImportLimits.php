@@ -15,6 +15,9 @@ final class CsvImportLimits
     /**
      * 列より長い値があれば、最初の 1 つの誤りの文を返す（無ければ null）。
      * MySQL の utf8mb4 の VARCHAR は文字数で数えるので mb_strlen で測る。
+     * 改行は 2 文字と数える — 編集画面の textarea はブラウザが改行を CRLF で送り、画面の入力チェックは 2 文字と数えるので、
+     * 1 文字と数えると「取り込めたのに編集画面で保存できない」備考ができる（docs/RULES.md Bug #130 の形・Bug #133）。
+     * 改行が残るのは CsvImportReader::rows() の改行を残す列（備考・メモ）だけで、ほかの列の改行は空白になっている。
      *
      * @param  array<string, string>  $row  内部キー => セルの値（CsvImportReader::rows() の 1 行。無い列は '' で埋まっている）
      * @param  array<string, array{0: string, 1: int}>  $limits  内部キー => [CSV の見出し, 上限]（この順に見る）
@@ -22,7 +25,7 @@ final class CsvImportLimits
     public static function tooLongMessage(array $row, array $limits): ?string
     {
         foreach ($limits as $key => [$label, $max]) {
-            if (mb_strlen($row[$key]) > $max) {
+            if (mb_strlen(str_replace("\n", "\r\n", $row[$key])) > $max) {
                 return "{$label}は{$max}文字以内で入力してください";
             }
         }
