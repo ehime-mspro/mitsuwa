@@ -512,6 +512,11 @@ class MansionImportController extends Controller
                 $errors[] = ['row' => $rowNum, 'message' => '部屋番号は20文字以内で入力してください'];
                 continue;
             }
+            $tooLong = $this->tooLongMessage($row, self::ROOM_TEXT_LIMITS);
+            if ($tooLong !== null) {
+                $errors[] = ['row' => $rowNum, 'message' => $tooLong];
+                continue;
+            }
 
             // ステータス
             if ($row['status'] !== '' && !isset($this->roomStatusMap[$row['status']])) {
@@ -519,26 +524,32 @@ class MansionImportController extends Controller
                 continue;
             }
 
-            // 階チェック
+            // 階チェック（本番の列の範囲まで）
             if ($row['floor'] !== '') {
-                if (!ctype_digit($row['floor']) || (int) $row['floor'] < 0) {
-                    $errors[] = ['row' => $rowNum, 'message' => "階「{$row['floor']}」は0以上の整数で入力してください"];
+                [$value, $error] = $this->readUnsignedInt($row['floor'], '階', self::MAX_TINYINT_UNSIGNED,
+                    "階「{$row['floor']}」は0以上の整数で入力してください");
+                if ($error !== null) {
+                    $errors[] = ['row' => $rowNum, 'message' => $error];
                     continue;
                 }
-                $row['floor'] = (int) $row['floor'];
+                $row['floor'] = $value;
             }
 
-            // 面積チェック
+            // 面積チェック（DECIMAL(8,2)。上限の比べは画面の max:999999.99 と同じ）
             if ($row['area_sqm'] !== '') {
                 $val = str_replace(',', '', $row['area_sqm']);
                 if (!is_numeric($val) || (float) $val < 0) {
                     $errors[] = ['row' => $rowNum, 'message' => "面積「{$row['area_sqm']}」は不正な値です"];
                     continue;
                 }
+                if ((float) $val > self::MAX_AREA_SQM) {
+                    $errors[] = ['row' => $rowNum, 'message' => "面積「{$row['area_sqm']}」は" . self::MAX_AREA_SQM . '以下の値にしてください'];
+                    continue;
+                }
                 $row['area_sqm'] = (float) $val;
             }
 
-            // 金額フィールドチェック
+            // 金額フィールドチェック（整数だけ・本番の列の範囲まで）
             $numericFields = [
                 'rent'       => '家賃',
                 'common_fee' => '共益費',
@@ -548,13 +559,14 @@ class MansionImportController extends Controller
             $numericError = false;
             foreach ($numericFields as $field => $label) {
                 if ($row[$field] !== '') {
-                    $val = str_replace(',', '', $row[$field]);
-                    if (!is_numeric($val) || (int) $val < 0) {
-                        $errors[] = ['row' => $rowNum, 'message' => "{$label}「{$row[$field]}」は不正な値です"];
+                    [$value, $error] = $this->readUnsignedInt($row[$field], $label, self::MAX_UNSIGNED_INT_COLUMN,
+                        "{$label}「{$row[$field]}」は不正な値です");
+                    if ($error !== null) {
+                        $errors[] = ['row' => $rowNum, 'message' => $error];
                         $numericError = true;
                         break;
                     }
-                    $row[$field] = (int) $val;
+                    $row[$field] = $value;
                 }
             }
             if ($numericError) {
@@ -706,13 +718,14 @@ class MansionImportController extends Controller
                 continue;
             }
 
-            // 月額料金チェック
-            $monthlyFeeVal = str_replace(',', '', $row['monthly_fee']);
-            if (!is_numeric($monthlyFeeVal) || (int) $monthlyFeeVal < 0) {
-                $errors[] = ['row' => $rowNum, 'message' => "月額料金「{$row['monthly_fee']}」は0以上の整数で入力してください"];
+            // 月額料金チェック（整数だけ・本番の列の範囲まで）
+            [$value, $error] = $this->readUnsignedInt($row['monthly_fee'], '月額料金', self::MAX_UNSIGNED_INT_COLUMN,
+                "月額料金「{$row['monthly_fee']}」は0以上の整数で入力してください");
+            if ($error !== null) {
+                $errors[] = ['row' => $rowNum, 'message' => $error];
                 continue;
             }
-            $row['monthly_fee'] = (int) $monthlyFeeVal;
+            $row['monthly_fee'] = $value;
 
             // ステータス
             if ($row['status'] !== '' && !isset($this->parkingStatusMap[$row['status']])) {
