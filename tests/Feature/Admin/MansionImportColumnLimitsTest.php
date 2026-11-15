@@ -168,19 +168,22 @@ class MansionImportColumnLimitsTest extends TestCase
              . $this->propertyRow(['物件名' => '上限一号館', $label => (string) $max])
              . $this->propertyRow(['物件名' => '上限二号館', $label => $over])
              . $this->propertyRow(['物件名' => '上限三号館', $label => '99999999999999999999'])
-             . $this->propertyRow(['物件名' => '上限四号館', $label => '12.5']);
+             . $this->propertyRow(['物件名' => '上限四号館', $label => '12.5'])
+             . $this->propertyRow(['物件名' => '上限五号館', $label => '2,5']);
 
+        // 総戸数・階数はカンマを通さない（直す前と同じ。金額と違い、カンマ入りは「2,5」→ 25 のような打ち間違いになる）
         $preview = $this->preview('property', $csv)->assertOk();
         $this->assertSame([
             ['row' => 3, 'message' => "{$label}「{$over}」は{$max}以下の値にしてください"],
             ['row' => 4, 'message' => "{$label}「99999999999999999999」は{$max}以下の値にしてください"],
             ['row' => 5, 'message' => "{$label}「12.5」は0以上の整数で入力してください"],
+            ['row' => 6, 'message' => "{$label}「2,5」は0以上の整数で入力してください"],
         ], $preview->viewData('rowErrors'));
         $this->assertSame(1, $preview->viewData('validCount'));
 
         $this->confirm('property', $csv);
         $this->assertSame($max, MsProperty::where('property_name', '上限一号館')->sole()->{$column});
-        $this->assertSame(0, MsProperty::whereIn('property_name', ['上限二号館', '上限三号館', '上限四号館'])->count());
+        $this->assertSame(0, MsProperty::whereIn('property_name', ['上限二号館', '上限三号館', '上限四号館', '上限五号館'])->count());
     }
 
     // ================================================================
@@ -250,6 +253,7 @@ class MansionImportColumnLimitsTest extends TestCase
             '階' => ['階', 'floor', '255', 255, [
                 '256' => '階「256」は255以下の値にしてください',
                 '2.5' => '階「2.5」は0以上の整数で入力してください',
+                '2,5' => '階「2,5」は0以上の整数で入力してください',
             ]],
             '家賃' => ['家賃', 'rent', '4,294,967,295', self::MAX_AMOUNT, [
                 $over                  => "家賃「{$over}」は{$max}以下の値にしてください",

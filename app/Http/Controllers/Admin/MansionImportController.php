@@ -357,7 +357,7 @@ class MansionImportController extends Controller
             // 整数チェック（総戸数・階数。本番の列の範囲まで）
             if ($row['total_units'] !== '') {
                 [$value, $error] = $this->readUnsignedInt($row['total_units'], '総戸数', self::MAX_SMALLINT_UNSIGNED,
-                    "総戸数「{$row['total_units']}」は0以上の整数で入力してください");
+                    "総戸数「{$row['total_units']}」は0以上の整数で入力してください", allowCommas: false);
                 if ($error !== null) {
                     $errors[] = ['row' => $rowNum, 'message' => $error];
                     continue;
@@ -366,7 +366,7 @@ class MansionImportController extends Controller
             }
             if ($row['total_floors'] !== '') {
                 [$value, $error] = $this->readUnsignedInt($row['total_floors'], '階数', self::MAX_TINYINT_UNSIGNED,
-                    "階数「{$row['total_floors']}」は0以上の整数で入力してください");
+                    "階数「{$row['total_floors']}」は0以上の整数で入力してください", allowCommas: false);
                 if ($error !== null) {
                     $errors[] = ['row' => $rowNum, 'message' => $error];
                     continue;
@@ -527,7 +527,7 @@ class MansionImportController extends Controller
             // 階チェック（本番の列の範囲まで）
             if ($row['floor'] !== '') {
                 [$value, $error] = $this->readUnsignedInt($row['floor'], '階', self::MAX_TINYINT_UNSIGNED,
-                    "階「{$row['floor']}」は0以上の整数で入力してください");
+                    "階「{$row['floor']}」は0以上の整数で入力してください", allowCommas: false);
                 if ($error !== null) {
                     $errors[] = ['row' => $rowNum, 'message' => $error];
                     continue;
@@ -1677,16 +1677,18 @@ class MansionImportController extends Controller
     }
 
     /**
-     * 0〜$max の整数のセルを読む。カンマは除く（「55,000」）。小数・負・指数（「1e10」）は整数でないとして断る
+     * 0〜$max の整数のセルを読む。小数・負・指数（「1e10」）は整数でないとして断る
      * （直す前は is_numeric で読み、「55000.9」を黙って 55000 で保存していた。画面の入力チェックは integer）。
      * 上限との比べは float で行う（PHP の int を超える桁に頼らない）。
      *
      * @param  string  $formatError  整数でないときの文（タブごとの今の文）
+     * @param  bool  $allowCommas  カンマを除いて読むか。金額は除く（「55,000」。直す前と同じ）。総戸数・階数・階は除かない
+     *                             （直す前と同じく断る。除くと「2,5」のような打ち間違いが黙って 25 で保存される）
      * @return array{0: int, 1: null}|array{0: null, 1: string}  [値, null] か [null, 誤りの文]
      */
-    private function readUnsignedInt(string $raw, string $label, int $max, string $formatError): array
+    private function readUnsignedInt(string $raw, string $label, int $max, string $formatError, bool $allowCommas = true): array
     {
-        $digits = str_replace(',', '', $raw);
+        $digits = $allowCommas ? str_replace(',', '', $raw) : $raw;
         if (! ctype_digit($digits)) {
             return [null, $formatError];
         }
