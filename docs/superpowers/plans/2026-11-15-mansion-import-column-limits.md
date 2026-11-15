@@ -169,4 +169,14 @@ public function test_a_registered_contract_with_an_amount_over_the_limit_is_stil
 
 ## 実測記録
 
-（実装のあとで書く）
+実行は Native（この会話で実装・最後に別の担当が枝全体を点検）。台帳は `.superpowers/sdd/2026-11-15-mansion-import-column-limits/progress.md`。
+
+| Task | コミット | 直す前の赤 | 直したあと |
+|---|---|---|---|
+| 1 | `f59edba6` | 12 本中 10 本が rowErrors の食い違いで赤（物件の文字 3・数 2・入居者 5）。スキップの順の 2 本は緑（守り） | Mansion の取込のテスト OK (134 tests) |
+| 2 | `c7e6395e` | 8 本が赤（間取り・階・4 金額・面積・駐車場の月額料金） | OK (142 tests) |
+| 3 | `c60db949` | 6 本が赤（部屋契約の 4 金額・駐車場契約の 2 金額）。スキップの順の 2 本は緑（守り） | OK (150 tests) |
+
+- 全件: **OK (4922 tests, 50422 assertions)**（PHP 8.3・警告なし・3 分 10 秒・ピーク 171.50 MB）。4894 本から +28
+- 変異 25 通り（カナリアを含む）: **すべて期待どおり**（この作業場所の `.claude/route-coverage-tools/mutate/specs.mansion-import-column-limits.py`・結果は `results-mansion-import-column-limits.*`）。「照合・スキップの前へ動かす」4 通り（M19〜M22）は `at_least` で、狙ったテストのほかに、動かした検査の文（`early`）が上限を超えた行の文と食い違うテストと、`MansionContractReimportTest` の「金額に誤りがあってもスキップ」の 2 本が一緒に落ちた（期待どおりの組）
+- Ruling: 変異の実行役は main repo の `.claude/route-coverage-tools/mutate/` の写しがこの作業場所にもある（git の管理外。前の作業もここに表を置いた）ので、表と結果はこの作業場所の写しに置いた（main repo の `.claude/` へはこの作業場所の会話から書けない＝フックが止める）— この作業場所を消すと表も消える（記録は RULES・BACKLOG とこの節に残した）
