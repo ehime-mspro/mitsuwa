@@ -2,7 +2,9 @@
 
 namespace Tests\Feature\Admin;
 
+use App\Models\MsContract;
 use App\Models\MsParking;
+use App\Models\MsParkingContract;
 use App\Models\MsProperty;
 use App\Models\MsRoom;
 use App\Models\MsTenant;
@@ -39,7 +41,17 @@ class MansionImportColumnLimitsTest extends TestCase
     /** 金額の列（INT UNSIGNED）の上限（基底 Controller::MAX_UNSIGNED_INT_COLUMN と同じ値） */
     private const MAX_AMOUNT = 4294967295;
 
+    private const ROOM_CONTRACT_HEADER = '物件名,部屋番号,入居者名,契約日,入居日,退去日,家賃,共益費,敷金,礼金,担当者ユーザー名,メモ';
+
+    private const PARKING_CONTRACT_HEADER = '物件名,駐車場番号,入居者名,紐付部屋番号,契約日,開始日,終了日,月額料金,敷金,担当者ユーザー名,メモ';
+
     private MsProperty $property;
+
+    private MsRoom $room;
+
+    private MsParking $parking;
+
+    private MsTenant $tenant;
 
     protected function setUp(): void
     {
@@ -50,9 +62,9 @@ class MansionImportColumnLimitsTest extends TestCase
             'property_code' => 'MS-LIM-1', 'property_name' => '上限ハイツ', 'ownership_type' => 'self_owned',
             'address' => '愛媛県松山市', 'created_by' => 1,
         ]);
-        MsRoom::create(['property_id' => $this->property->id, 'room_number' => '101', 'status' => 'vacant']);
-        MsParking::create(['property_id' => $this->property->id, 'parking_number' => 'P-1', 'monthly_fee' => 8000, 'status' => 'vacant']);
-        MsTenant::create(['tenant_type' => 'resident', 'name' => '山田太郎']);
+        $this->room = MsRoom::create(['property_id' => $this->property->id, 'room_number' => '101', 'status' => 'vacant']);
+        $this->parking = MsParking::create(['property_id' => $this->property->id, 'parking_number' => 'P-1', 'monthly_fee' => 8000, 'status' => 'vacant']);
+        $this->tenant = MsTenant::create(['tenant_type' => 'resident', 'name' => '山田太郎']);
     }
 
     /** 取込画面の URL の前半（SubmitsImportPreview が使う） */
@@ -96,6 +108,18 @@ class MansionImportColumnLimitsTest extends TestCase
     private function parkingRow(array $values): string
     {
         return $this->csvRow(self::PARKING_HEADER, ['物件名' => '上限ハイツ'], $values);
+    }
+
+    /** @param  array<string, string>  $values */
+    private function roomContractRow(array $values): string
+    {
+        return $this->csvRow(self::ROOM_CONTRACT_HEADER, ['物件名' => '上限ハイツ', '部屋番号' => '101', '入居者名' => '山田太郎'], $values);
+    }
+
+    /** @param  array<string, string>  $values */
+    private function parkingContractRow(array $values): string
+    {
+        return $this->csvRow(self::PARKING_CONTRACT_HEADER, ['物件名' => '上限ハイツ', '駐車場番号' => 'P-1', '入居者名' => '山田太郎', '月額料金' => '8000'], $values);
     }
 
     // ================================================================
@@ -299,6 +323,105 @@ class MansionImportColumnLimitsTest extends TestCase
         $this->confirm('parking', $csv);
         $this->assertSame(self::MAX_AMOUNT, MsParking::where('parking_number', 'P-2')->sole()->monthly_fee);
         $this->assertSame(0, MsParking::whereIn('parking_number', ['P-3', 'P-4'])->count());
+    }
+
+    // ================================================================
+    // 部屋契約・駐車場契約（行ごとに契約日を変える＝CSV 内の重複にしない）
+    // ================================================================
+
+    public static function roomContractAmounts(): array
+    {
+        return [
+            '家賃'   => ['家賃', 'rent'],
+            '共益費' => ['共益費', 'common_fee'],
+            '敷金'   => ['敷金', 'deposit'],
+            '礼金'   => ['礼金', 'key_money'],
+        ];
+    }
+
+    #[DataProvider('roomContractAmounts')]
+    public function test_room_contract_amounts_up_to_the_column_range_are_imported(string $header, string $column): void
+    {
+        $max = (string) self::MAX_AMOUNT;
+        $over = (string) (self::MAX_AMOUNT + 1);
+        $csv = self::ROOM_CONTRACT_HEADER . "\r\n"
+             . $this->roomContractRow(['契約日' => '2024-04-01', $header => $max])
+             . $this->roomContractRow(['契約日' => '2024-05-01', $header => $over])
+             . $this->roomContractRow(['契約日' => '2024-06-01', $header => '55000.9']);
+
+        $preview = $this->preview('room-contract', $csv)->assertOk();
+        $this->assertSame([
+            ['row' => 3, 'message' => "{$header}「{$over}」は{$max}以下の値にしてください"],
+            ['row' => 4, 'message' => "{$header}「55000.9」は不正な値です"],
+        ], $preview->viewData('rowErrors'));
+        $this->assertSame(1, $preview->viewData('validCount'));
+
+        $this->confirm('room-contract', $csv);
+        $this->assertSame(self::MAX_AMOUNT, MsContract::sole()->{$column});
+    }
+
+    public static function parkingContractAmounts(): array
+    {
+        return [
+            '月額料金' => ['月額料金', 'monthly_fee', '月額料金「55000.9」は0以上の整数で入力してください'],
+            '敷金'     => ['敷金', 'deposit', '敷金「55000.9」は不正な値です'],
+        ];
+    }
+
+    #[DataProvider('parkingContractAmounts')]
+    public function test_parking_contract_amounts_up_to_the_column_range_are_imported(string $header, string $column, string $formatError): void
+    {
+        $max = (string) self::MAX_AMOUNT;
+        $over = (string) (self::MAX_AMOUNT + 1);
+        $csv = self::PARKING_CONTRACT_HEADER . "\r\n"
+             . $this->parkingContractRow(['契約日' => '2024-04-01', $header => $max])
+             . $this->parkingContractRow(['契約日' => '2024-05-01', $header => $over])
+             . $this->parkingContractRow(['契約日' => '2024-06-01', $header => '55000.9']);
+
+        $preview = $this->preview('parking-contract', $csv)->assertOk();
+        $this->assertSame([
+            ['row' => 3, 'message' => "{$header}「{$over}」は{$max}以下の値にしてください"],
+            ['row' => 4, 'message' => $formatError],
+        ], $preview->viewData('rowErrors'));
+        $this->assertSame(1, $preview->viewData('validCount'));
+
+        $this->confirm('parking-contract', $csv);
+        $this->assertSame(self::MAX_AMOUNT, MsParkingContract::sole()->{$column});
+    }
+
+    public static function registeredContracts(): array
+    {
+        return [
+            '部屋契約'   => ['room-contract'],
+            '駐車場契約' => ['parking-contract'],
+        ];
+    }
+
+    /** 金額の検査は照合の後ろ（登録済みの行は金額に誤りがあってもスキップ。クラスの docblock）。上限を超えた金額も同じ。 */
+    #[DataProvider('registeredContracts')]
+    public function test_a_registered_contract_with_an_amount_over_the_limit_is_still_skipped(string $tab): void
+    {
+        $over = (string) (self::MAX_AMOUNT + 1);
+        if ($tab === 'room-contract') {
+            MsContract::create([
+                'room_id' => $this->room->id, 'tenant_id' => $this->tenant->id, 'status' => 'active',
+                'contract_date' => '2024-04-01', 'move_in_date' => '2024-04-15', 'rent' => 55000, 'created_by' => 1,
+            ]);
+            $csv = self::ROOM_CONTRACT_HEADER . "\r\n"
+                 . $this->roomContractRow(['契約日' => '2024-04-01', '入居日' => '2024-04-15', '家賃' => $over]);
+        } else {
+            MsParkingContract::create([
+                'parking_id' => $this->parking->id, 'tenant_id' => $this->tenant->id, 'status' => 'active',
+                'contract_date' => '2024-04-01', 'start_date' => '2024-04-15', 'monthly_fee' => 8000, 'created_by' => 1,
+            ]);
+            $csv = self::PARKING_CONTRACT_HEADER . "\r\n"
+                 . $this->parkingContractRow(['契約日' => '2024-04-01', '開始日' => '2024-04-15', '月額料金' => $over]);
+        }
+
+        $preview = $this->preview($tab, $csv)->assertOk();
+        $this->assertSame([], $preview->viewData('rowErrors'));
+        $this->assertCount(1, $preview->viewData('skippedRows'));
+        $this->assertSame(0, $preview->viewData('validCount'));
     }
 
     // ================================================================

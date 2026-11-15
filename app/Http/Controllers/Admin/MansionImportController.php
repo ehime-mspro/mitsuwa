@@ -1092,13 +1092,14 @@ class MansionImportController extends Controller
             $numericError = false;
             foreach ($numericFields as $field => $label) {
                 if ($row[$field] !== '') {
-                    $val = str_replace(',', '', $row[$field]);
-                    if (!is_numeric($val) || (int) $val < 0) {
-                        $errors[] = ['row' => $rowNum, 'message' => "{$label}「{$row[$field]}」は不正な値です"];
+                    [$value, $error] = $this->readUnsignedInt($row[$field], $label, self::MAX_UNSIGNED_INT_COLUMN,
+                        "{$label}「{$row[$field]}」は不正な値です");
+                    if ($error !== null) {
+                        $errors[] = ['row' => $rowNum, 'message' => $error];
                         $numericError = true;
                         break;
                     }
-                    $row[$field] = (int) $val;
+                    $row[$field] = $value;
                 }
             }
             if ($numericError) {
@@ -1354,21 +1355,23 @@ class MansionImportController extends Controller
             }
 
             // 月額料金チェック（照合の後ろ。登録済みの行は金額に誤りがあってもスキップする）
-            $monthlyFeeVal = str_replace(',', '', $row['monthly_fee']);
-            if (!is_numeric($monthlyFeeVal) || (int) $monthlyFeeVal < 0) {
-                $errors[] = ['row' => $rowNum, 'message' => "月額料金「{$row['monthly_fee']}」は0以上の整数で入力してください"];
+            [$value, $error] = $this->readUnsignedInt($row['monthly_fee'], '月額料金', self::MAX_UNSIGNED_INT_COLUMN,
+                "月額料金「{$row['monthly_fee']}」は0以上の整数で入力してください");
+            if ($error !== null) {
+                $errors[] = ['row' => $rowNum, 'message' => $error];
                 continue;
             }
-            $row['monthly_fee'] = (int) $monthlyFeeVal;
+            $row['monthly_fee'] = $value;
 
-            // 敷金チェック
+            // 敷金チェック（整数だけ・本番の列の範囲まで）
             if ($row['deposit'] !== '') {
-                $val = str_replace(',', '', $row['deposit']);
-                if (!is_numeric($val) || (int) $val < 0) {
-                    $errors[] = ['row' => $rowNum, 'message' => "敷金「{$row['deposit']}」は不正な値です"];
+                [$value, $error] = $this->readUnsignedInt($row['deposit'], '敷金', self::MAX_UNSIGNED_INT_COLUMN,
+                    "敷金「{$row['deposit']}」は不正な値です");
+                if ($error !== null) {
+                    $errors[] = ['row' => $rowNum, 'message' => $error];
                     continue;
                 }
-                $row['deposit'] = (int) $val;
+                $row['deposit'] = $value;
             }
 
             $warnings = array_merge($warnings, $rowWarnings);
