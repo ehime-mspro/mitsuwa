@@ -17,6 +17,7 @@ use App\Models\MsTenant;
 use App\Models\User;
 use App\Support\CsvDate;
 use App\Support\CsvImportException;
+use App\Support\CsvImportLimits;
 use App\Support\CsvImportReader;
 use App\Support\CsvImportTemplate;
 use App\Support\OneTimeAction;
@@ -204,7 +205,7 @@ class MansionImportController extends Controller
      * 本番の列（database/sql/create_mansion_tables.sql）に入る大きさ。画面の入力チェック（Mansion\*Controller）と同じ値。
      * 本番の MySQL は strict なので、入らない値は確定で例外になり、全行が取り消される（どの値が悪いかは出ない）。
      * それを行の検査で止め、その行の誤りにする（docs/RULES.md Bug #132。テストの SQLite は長さも範囲も見ない）。
-     * 文字の列は「内部キー => [CSV の見出し, 上限]」（CSV の列の順。tooLongMessage() が最初の 1 つを返す）。
+     * 文字の列は「内部キー => [CSV の見出し, 上限]」（CSV の列の順。CsvImportLimits::tooLongMessage() が最初の 1 つを返す）。
      * ⚠ 列を足したら、ここにも足す（備考・メモは TEXT。画面も長さを見ていないので範囲の外）
      */
     private const PROPERTY_TEXT_LIMITS = [
@@ -338,7 +339,7 @@ class MansionImportController extends Controller
             }
 
             // 文字数チェック（本番の列の大きさ。オーナー名は自社所有で保存しない行でも見る＝画面の入力チェックと同じ）
-            $tooLong = $this->tooLongMessage($row, self::PROPERTY_TEXT_LIMITS);
+            $tooLong = CsvImportLimits::tooLongMessage($row, self::PROPERTY_TEXT_LIMITS);
             if ($tooLong !== null) {
                 $errors[] = ['row' => $rowNum, 'message' => $tooLong];
                 continue;
@@ -356,7 +357,7 @@ class MansionImportController extends Controller
 
             // 整数チェック（総戸数・階数。本番の列の範囲まで）
             if ($row['total_units'] !== '') {
-                [$value, $error] = $this->readUnsignedInt($row['total_units'], '総戸数', self::MAX_SMALLINT_UNSIGNED,
+                [$value, $error] = CsvImportLimits::readUnsignedInt($row['total_units'], '総戸数', self::MAX_SMALLINT_UNSIGNED,
                     "総戸数「{$row['total_units']}」は0以上の整数で入力してください", allowCommas: false);
                 if ($error !== null) {
                     $errors[] = ['row' => $rowNum, 'message' => $error];
@@ -365,7 +366,7 @@ class MansionImportController extends Controller
                 $row['total_units'] = $value;
             }
             if ($row['total_floors'] !== '') {
-                [$value, $error] = $this->readUnsignedInt($row['total_floors'], '階数', self::MAX_TINYINT_UNSIGNED,
+                [$value, $error] = CsvImportLimits::readUnsignedInt($row['total_floors'], '階数', self::MAX_TINYINT_UNSIGNED,
                     "階数「{$row['total_floors']}」は0以上の整数で入力してください", allowCommas: false);
                 if ($error !== null) {
                     $errors[] = ['row' => $rowNum, 'message' => $error];
@@ -512,7 +513,7 @@ class MansionImportController extends Controller
                 $errors[] = ['row' => $rowNum, 'message' => '部屋番号は20文字以内で入力してください'];
                 continue;
             }
-            $tooLong = $this->tooLongMessage($row, self::ROOM_TEXT_LIMITS);
+            $tooLong = CsvImportLimits::tooLongMessage($row, self::ROOM_TEXT_LIMITS);
             if ($tooLong !== null) {
                 $errors[] = ['row' => $rowNum, 'message' => $tooLong];
                 continue;
@@ -526,7 +527,7 @@ class MansionImportController extends Controller
 
             // 階チェック（本番の列の範囲まで）
             if ($row['floor'] !== '') {
-                [$value, $error] = $this->readUnsignedInt($row['floor'], '階', self::MAX_TINYINT_UNSIGNED,
+                [$value, $error] = CsvImportLimits::readUnsignedInt($row['floor'], '階', self::MAX_TINYINT_UNSIGNED,
                     "階「{$row['floor']}」は0以上の整数で入力してください", allowCommas: false);
                 if ($error !== null) {
                     $errors[] = ['row' => $rowNum, 'message' => $error];
@@ -559,7 +560,7 @@ class MansionImportController extends Controller
             $numericError = false;
             foreach ($numericFields as $field => $label) {
                 if ($row[$field] !== '') {
-                    [$value, $error] = $this->readUnsignedInt($row[$field], $label, self::MAX_UNSIGNED_INT_COLUMN,
+                    [$value, $error] = CsvImportLimits::readUnsignedInt($row[$field], $label, self::MAX_UNSIGNED_INT_COLUMN,
                         "{$label}「{$row[$field]}」は不正な値です");
                     if ($error !== null) {
                         $errors[] = ['row' => $rowNum, 'message' => $error];
@@ -719,7 +720,7 @@ class MansionImportController extends Controller
             }
 
             // 月額料金チェック（整数だけ・本番の列の範囲まで）
-            [$value, $error] = $this->readUnsignedInt($row['monthly_fee'], '月額料金', self::MAX_UNSIGNED_INT_COLUMN,
+            [$value, $error] = CsvImportLimits::readUnsignedInt($row['monthly_fee'], '月額料金', self::MAX_UNSIGNED_INT_COLUMN,
                 "月額料金「{$row['monthly_fee']}」は0以上の整数で入力してください");
             if ($error !== null) {
                 $errors[] = ['row' => $rowNum, 'message' => $error];
@@ -862,7 +863,7 @@ class MansionImportController extends Controller
             }
 
             // 文字数チェック（本番の列の大きさ。登録済みのスキップより後ろ）
-            $tooLong = $this->tooLongMessage($row, self::TENANT_TEXT_LIMITS);
+            $tooLong = CsvImportLimits::tooLongMessage($row, self::TENANT_TEXT_LIMITS);
             if ($tooLong !== null) {
                 $errors[] = ['row' => $rowNum, 'message' => $tooLong];
                 continue;
@@ -1092,7 +1093,7 @@ class MansionImportController extends Controller
             $numericError = false;
             foreach ($numericFields as $field => $label) {
                 if ($row[$field] !== '') {
-                    [$value, $error] = $this->readUnsignedInt($row[$field], $label, self::MAX_UNSIGNED_INT_COLUMN,
+                    [$value, $error] = CsvImportLimits::readUnsignedInt($row[$field], $label, self::MAX_UNSIGNED_INT_COLUMN,
                         "{$label}「{$row[$field]}」は不正な値です");
                     if ($error !== null) {
                         $errors[] = ['row' => $rowNum, 'message' => $error];
@@ -1355,7 +1356,7 @@ class MansionImportController extends Controller
             }
 
             // 月額料金チェック（照合の後ろ。登録済みの行は金額に誤りがあってもスキップする）
-            [$value, $error] = $this->readUnsignedInt($row['monthly_fee'], '月額料金', self::MAX_UNSIGNED_INT_COLUMN,
+            [$value, $error] = CsvImportLimits::readUnsignedInt($row['monthly_fee'], '月額料金', self::MAX_UNSIGNED_INT_COLUMN,
                 "月額料金「{$row['monthly_fee']}」は0以上の整数で入力してください");
             if ($error !== null) {
                 $errors[] = ['row' => $rowNum, 'message' => $error];
@@ -1365,7 +1366,7 @@ class MansionImportController extends Controller
 
             // 敷金チェック（整数だけ・本番の列の範囲まで）
             if ($row['deposit'] !== '') {
-                [$value, $error] = $this->readUnsignedInt($row['deposit'], '敷金', self::MAX_UNSIGNED_INT_COLUMN,
+                [$value, $error] = CsvImportLimits::readUnsignedInt($row['deposit'], '敷金', self::MAX_UNSIGNED_INT_COLUMN,
                     "敷金「{$row['deposit']}」は不正な値です");
                 if ($error !== null) {
                     $errors[] = ['row' => $rowNum, 'message' => $error];
@@ -1656,47 +1657,6 @@ class MansionImportController extends Controller
         }
 
         return [$rows, $content];
-    }
-
-    /**
-     * 本番の列（VARCHAR）より長い値があれば、最初の 1 つの誤りの文を返す（無ければ null）。
-     * MySQL の utf8mb4 の VARCHAR は文字数で数えるので mb_strlen で測る（クラスの定数の注記）。
-     *
-     * @param  array<string, string>  $row
-     * @param  array<string, array{0: string, 1: int}>  $limits  内部キー => [CSV の見出し, 上限]
-     */
-    private function tooLongMessage(array $row, array $limits): ?string
-    {
-        foreach ($limits as $key => [$label, $max]) {
-            if (mb_strlen($row[$key]) > $max) {
-                return "{$label}は{$max}文字以内で入力してください";
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * 0〜$max の整数のセルを読む。小数・負・指数（「1e10」）は整数でないとして断る
-     * （直す前は is_numeric で読み、「55000.9」を黙って 55000 で保存していた。画面の入力チェックは integer）。
-     * 上限との比べは float で行う（PHP の int を超える桁に頼らない）。
-     *
-     * @param  string  $formatError  整数でないときの文（タブごとの今の文）
-     * @param  bool  $allowCommas  カンマを除いて読むか。金額は除く（「55,000」。直す前と同じ）。総戸数・階数・階は除かない
-     *                             （直す前と同じく断る。除くと「2,5」のような打ち間違いが黙って 25 で保存される）
-     * @return array{0: int, 1: null}|array{0: null, 1: string}  [値, null] か [null, 誤りの文]
-     */
-    private function readUnsignedInt(string $raw, string $label, int $max, string $formatError, bool $allowCommas = true): array
-    {
-        $digits = $allowCommas ? str_replace(',', '', $raw) : $raw;
-        if (! ctype_digit($digits)) {
-            return [null, $formatError];
-        }
-        if ((float) $digits > $max) {
-            return [null, "{$label}「{$raw}」は{$max}以下の値にしてください"];
-        }
-
-        return [(int) $digits, null];
     }
 
     /**
