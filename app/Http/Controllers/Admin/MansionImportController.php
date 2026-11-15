@@ -200,6 +200,40 @@ class MansionImportController extends Controller
      */
     private const MULTILINE_KEYS = ['notes', 'memo'];
 
+    /*
+     * 本番の列（database/sql/create_mansion_tables.sql）に入る大きさ。画面の入力チェック（Mansion\*Controller）と同じ値。
+     * 本番の MySQL は strict なので、入らない値は確定で例外になり、全行が取り消される（どの値が悪いかは出ない）。
+     * それを行の検査で止め、その行の誤りにする（docs/RULES.md Bug #132。テストの SQLite は長さも範囲も見ない）。
+     * 文字の列は「内部キー => [CSV の見出し, 上限]」（CSV の列の順。tooLongMessage() が最初の 1 つを返す）。
+     * ⚠ 列を足したら、ここにも足す（備考・メモは TEXT。画面も長さを見ていないので範囲の外）
+     */
+    private const PROPERTY_TEXT_LIMITS = [
+        'owner_name'  => ['オーナー名', 100],
+        'postal_code' => ['郵便番号', 10],
+        'structure'   => ['構造', 50],
+    ];
+
+    private const ROOM_TEXT_LIMITS = [
+        'room_type' => ['間取り', 20],
+    ];
+
+    private const TENANT_TEXT_LIMITS = [
+        'phone'                      => ['電話番号', 20],
+        'workplace'                  => ['勤務先', 100],
+        'emergency_contact_name'     => ['緊急連絡先氏名', 100],
+        'emergency_contact_phone'    => ['緊急連絡先電話', 20],
+        'emergency_contact_relation' => ['続柄', 50],
+    ];
+
+    /** 総戸数（SMALLINT UNSIGNED） */
+    private const MAX_SMALLINT_UNSIGNED = 65535;
+
+    /** 階数・部屋の階（TINYINT UNSIGNED） */
+    private const MAX_TINYINT_UNSIGNED = 255;
+
+    /** 専有面積（DECIMAL(8,2)） */
+    private const MAX_AREA_SQM = 999999.99;
+
     /**
      * 同じ確認画面から 2 回目を送ったときの案内の、「確かめられます」の前の句（タブのキー => 句。設計書 §4.4）。
      * ⚠ タブを足したら、ここにも足す（無いと、そのタブの 2 回目が 500 になる。
@@ -303,6 +337,13 @@ class MansionImportController extends Controller
                 continue;
             }
 
+            // 文字数チェック（本番の列の大きさ。オーナー名は自社所有で保存しない行でも見る＝画面の入力チェックと同じ）
+            $tooLong = $this->tooLongMessage($row, self::PROPERTY_TEXT_LIMITS);
+            if ($tooLong !== null) {
+                $errors[] = ['row' => $rowNum, 'message' => $tooLong];
+                continue;
+            }
+
             // 築年月チェック（YYYY-MM形式。月は 1〜12。CsvDate に 1 か所）
             if ($row['built_year_month'] !== '') {
                 $yearMonth = CsvDate::normalizeYearMonth($row['built_year_month']);
@@ -313,21 +354,24 @@ class MansionImportController extends Controller
                 $row['built_year_month'] = $yearMonth;
             }
 
-            // 整数チェック（総戸数）
+            // 整数チェック（総戸数・階数。本番の列の範囲まで）
             if ($row['total_units'] !== '') {
-                if (!ctype_digit($row['total_units']) || (int) $row['total_units'] < 0) {
-                    $errors[] = ['row' => $rowNum, 'message' => "総戸数「{$row['total_units']}」は0以上の整数で入力してください"];
+                [$value, $error] = $this->readUnsignedInt($row['total_units'], '総戸数', self::MAX_SMALLINT_UNSIGNED,
+                    "総戸数「{$row['total_units']}」は0以上の整数で入力してください");
+                if ($error !== null) {
+                    $errors[] = ['row' => $rowNum, 'message' => $error];
                     continue;
                 }
-                $row['total_units'] = (int) $row['total_units'];
+                $row['total_units'] = $value;
             }
-            // 整数チェック（階数）
             if ($row['total_floors'] !== '') {
-                if (!ctype_digit($row['total_floors']) || (int) $row['total_floors'] < 0) {
-                    $errors[] = ['row' => $rowNum, 'message' => "階数「{$row['total_floors']}」は0以上の整数で入力してください"];
+                [$value, $error] = $this->readUnsignedInt($row['total_floors'], '階数', self::MAX_TINYINT_UNSIGNED,
+                    "階数「{$row['total_floors']}」は0以上の整数で入力してください");
+                if ($error !== null) {
+                    $errors[] = ['row' => $rowNum, 'message' => $error];
                     continue;
                 }
-                $row['total_floors'] = (int) $row['total_floors'];
+                $row['total_floors'] = $value;
             }
 
             $row['_row'] = $rowNum;
@@ -801,6 +845,13 @@ class MansionImportController extends Controller
             $existing = MsTenant::where('name', $row['name'])->first();
             if ($existing) {
                 $skippedRows[] = ['row' => $rowNum, 'message' => "入居者「{$row['name']}」は既に登録済みのためスキップ"];
+                continue;
+            }
+
+            // 文字数チェック（本番の列の大きさ。登録済みのスキップより後ろ）
+            $tooLong = $this->tooLongMessage($row, self::TENANT_TEXT_LIMITS);
+            if ($tooLong !== null) {
+                $errors[] = ['row' => $rowNum, 'message' => $tooLong];
                 continue;
             }
 
@@ -1589,6 +1640,45 @@ class MansionImportController extends Controller
         }
 
         return [$rows, $content];
+    }
+
+    /**
+     * 本番の列（VARCHAR）より長い値があれば、最初の 1 つの誤りの文を返す（無ければ null）。
+     * MySQL の utf8mb4 の VARCHAR は文字数で数えるので mb_strlen で測る（クラスの定数の注記）。
+     *
+     * @param  array<string, string>  $row
+     * @param  array<string, array{0: string, 1: int}>  $limits  内部キー => [CSV の見出し, 上限]
+     */
+    private function tooLongMessage(array $row, array $limits): ?string
+    {
+        foreach ($limits as $key => [$label, $max]) {
+            if (mb_strlen($row[$key]) > $max) {
+                return "{$label}は{$max}文字以内で入力してください";
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * 0〜$max の整数のセルを読む。カンマは除く（「55,000」）。小数・負・指数（「1e10」）は整数でないとして断る
+     * （直す前は is_numeric で読み、「55000.9」を黙って 55000 で保存していた。画面の入力チェックは integer）。
+     * 上限との比べは float で行う（PHP の int を超える桁に頼らない）。
+     *
+     * @param  string  $formatError  整数でないときの文（タブごとの今の文）
+     * @return array{0: int, 1: null}|array{0: null, 1: string}  [値, null] か [null, 誤りの文]
+     */
+    private function readUnsignedInt(string $raw, string $label, int $max, string $formatError): array
+    {
+        $digits = str_replace(',', '', $raw);
+        if (! ctype_digit($digits)) {
+            return [null, $formatError];
+        }
+        if ((float) $digits > $max) {
+            return [null, "{$label}「{$raw}」は{$max}以下の値にしてください"];
+        }
+
+        return [(int) $digits, null];
     }
 
     /**
