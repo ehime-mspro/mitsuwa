@@ -15,6 +15,7 @@ use App\Models\Property;
 use App\Models\Unit;
 use App\Support\CsvDate;
 use App\Support\CsvImportException;
+use App\Support\CsvImportLimits;
 use App\Support\CsvImportReader;
 use App\Support\CsvImportTemplate;
 use App\Support\JapanTime;
@@ -155,6 +156,52 @@ class TenantImportController extends Controller
      */
     private const MULTILINE_KEYS = ['notes'];
 
+    /*
+     * 本番の列（2026-11-15 に本番の SHOW CREATE TABLE で確かめた）と画面の入力チェック（Tenant\*Controller）に入る大きさ。
+     * 本番の MySQL は strict なので、入らない値は確定で例外になり、全行が取り消される（どの値が悪いかは出ない）。
+     * それを行の検査で止め、その行の誤りにする（docs/RULES.md Bug #133。部品は CsvImportLimits）。
+     * 文字の列は「内部キー => [CSV の見出し, 上限]」（CSV の列の順。最初の 1 つを出す）。
+     * ⚠ 列を足したら、ここにも足す
+     */
+    private const PROPERTY_TEXT_LIMITS = [
+        'name'        => ['物件名', 200],
+        'postal_code' => ['郵便番号', 10],
+        'address'     => ['住所', 500],
+        'structure'   => ['構造', 50],
+        'owner_name'  => ['オーナー名', 200],
+    ];
+
+    private const UNIT_TEXT_LIMITS = [
+        'room_number' => ['部屋番号', 20],
+    ];
+
+    private const CUSTOMER_TEXT_LIMITS = [
+        'name'           => ['テナント名', 200],
+        'name_kana'      => ['テナントカナ', 200],
+        'representative' => ['代表者名', 100],
+        'contact_person' => ['担当者', 100],
+        'phone'          => ['電話番号', 20],
+        'email'          => ['メールアドレス', 255],
+        'postal_code'    => ['郵便番号', 10],
+        'address'        => ['住所', 500],
+    ];
+
+    /** 契約の屋号（VARCHAR(200)）と備考（TEXT。画面は 5,000 文字まで＝超えて入ると編集画面で保存できない） */
+    private const CONTRACT_TEXT_LIMITS = [
+        'store_name' => ['屋号', 200],
+        'notes'      => ['備考', 5000],
+    ];
+
+    /** 過去契約は、まだ無い顧客を取込で作るので、テナント名も顧客の名前の列（VARCHAR(200)）に入ること */
+    private const PAST_CONTRACT_TEXT_LIMITS = [
+        'customer_name' => ['テナント名', 200],
+        'store_name'    => ['屋号', 200],
+        'notes'         => ['備考', 5000],
+    ];
+
+    /** 区画の面積（DECIMAL(8,2)。画面の入力チェックは 9999.99 まで＝超えた区画は編集画面で断られる） */
+    private const MAX_AREA_TSUBO = 9999.99;
+
     /**
      * 同じ確認画面から 2 回目を送ったときの案内の、「確かめられます」の前の句（タブのキー => 句。設計書 §4.4）。
      * ⚠ タブを足したら、ここにも足す（無いと、そのタブの 2 回目が 500 になる。
@@ -250,6 +297,13 @@ class TenantImportController extends Controller
             }
             if ($row['operation_status'] !== '' && !isset($this->operationStatusMap[$row['operation_status']])) {
                 $errors[] = ['row' => $rowNum, 'message' => "稼働状態「{$row['operation_status']}」は不正な値です（稼働中/停止中）"];
+                continue;
+            }
+
+            // 文字数チェック（本番の列の大きさ。オーナー名は「オーナー」でなく保存しない行でも見る＝画面の入力チェックと同じ）
+            $tooLong = CsvImportLimits::tooLongMessage($row, self::PROPERTY_TEXT_LIMITS);
+            if ($tooLong !== null) {
+                $errors[] = ['row' => $rowNum, 'message' => $tooLong];
                 continue;
             }
 
@@ -623,6 +677,13 @@ class TenantImportController extends Controller
             // 種別チェック
             if ($row['customer_type'] !== '' && !isset($this->customerTypeMap[$row['customer_type']])) {
                 $errors[] = ['row' => $rowNum, 'message' => "種別「{$row['customer_type']}」は不正な値です（法人/個人事業主/個人）"];
+                continue;
+            }
+
+            // 文字数チェック（本番の列の大きさ。登録済みのスキップより後ろ・メールの形の検査より前）
+            $tooLong = CsvImportLimits::tooLongMessage($row, self::CUSTOMER_TEXT_LIMITS);
+            if ($tooLong !== null) {
+                $errors[] = ['row' => $rowNum, 'message' => $tooLong];
                 continue;
             }
 
