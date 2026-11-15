@@ -137,3 +137,4 @@ public function test_a_registered_contract_with_a_long_or_large_value_is_still_s
 - 全件: **OK (4975 tests, 50898 assertions)**（PHP 8.3・警告なし・3 分 22 秒・ピーク 171.50 MB）。4922 本から +53
 - 変異 35 通り（カナリアを含む）: **すべて期待どおり**（この作業場所の `.claude/route-coverage-tools/mutate/specs.tenant-import-column-limits.py`・結果は `results-tenant-import-column-limits.*`）
 - Ruling: メールアドレスの上限ちょうどのテストは 255 でなく 254 文字にした — `filter_var` が 254 文字までしか通さない（実測）ので 255 文字の正しいメールは作れない。長さの文は 256 文字の行で見る
+- 最後の点検（fable）: マージしてよい・Critical・Important 0・Minor 5。Minor 1（備考の改行を 1 文字と数え、編集画面〈CRLF＝2 文字〉と食い違う）を、利用者の決定 1 の目的に関わるので Important とみなして直した（`65ebe20d`。`CsvImportLimits::tooLongMessage()` が改行を 2 文字と数える。テスト 2 本を足し、備考の上限ちょうどの見本も 2 文字で数える形にした。直す前に 4 本が赤 → 緑）。全件 OK (4977 tests, 50904 assertions)・警告なし。残りの Minor は BACKLOG の節に後回しとして書いた
