@@ -126,4 +126,14 @@ public function test_a_registered_contract_with_a_long_or_large_value_is_still_s
 
 ## 実測記録
 
-（実装のあとで書く）
+実行は Native（この会話で実装・最後に別の担当が枝全体を点検）。
+
+| Task | コミット | 直す前の赤 | 直したあと |
+|---|---|---|---|
+| 1 | `1b88b939` | Unit テスト 14 本がクラスが無いことで赤 | Unit OK (14)・賃貸マンションの取込のテスト OK (150)＝動きは変わらない |
+| 2 | `4638d391` | 15 本中 13 本が rowErrors の食い違いで赤（物件 5・顧客 7・メール 1）。スキップの順の 2 本は緑（守り） | テナントの取込のテスト OK (160 tests) |
+| 3 | `a3a2b54a` | 24 本中 22 本が赤（部屋番号・区画の金額 5・面積・契約と過去契約の金額 10・文字 5）。スキップの順の 2 本は緑（守り） | OK (184 tests) |
+
+- 全件: **OK (4975 tests, 50898 assertions)**（PHP 8.3・警告なし・3 分 22 秒・ピーク 171.50 MB）。4922 本から +53
+- 変異 35 通り（カナリアを含む）: **すべて期待どおり**（この作業場所の `.claude/route-coverage-tools/mutate/specs.tenant-import-column-limits.py`・結果は `results-tenant-import-column-limits.*`）
+- Ruling: メールアドレスの上限ちょうどのテストは 255 でなく 254 文字にした — `filter_var` が 254 文字までしか通さない（実測）ので 255 文字の正しいメールは作れない。長さの文は 256 文字の行で見る
