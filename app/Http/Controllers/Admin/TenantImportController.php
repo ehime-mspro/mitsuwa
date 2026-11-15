@@ -491,6 +491,13 @@ class TenantImportController extends Controller
                 continue;
             }
 
+            // 部屋番号の文字数（本番の列の大きさ）
+            $tooLong = CsvImportLimits::tooLongMessage($row, self::UNIT_TEXT_LIMITS);
+            if ($tooLong !== null) {
+                $errors[] = ['row' => $rowNum, 'message' => $tooLong];
+                continue;
+            }
+
             // 用途マスターチェック
             if ($row['usage_type'] !== '' && !isset($usageTypeMap[$row['usage_type']])) {
                 $validNames = implode('/', array_keys($usageTypeMap));
@@ -509,10 +516,15 @@ class TenantImportController extends Controller
                     $errors[] = ['row' => $rowNum, 'message' => "面積「{$row['area_tsubo']}」は不正な値です"];
                     continue;
                 }
+                // 画面の入力チェックと同じ上限（列は 999999.99 まで入るが、超えた区画は編集画面で断られる）
+                if ((float) $val > self::MAX_AREA_TSUBO) {
+                    $errors[] = ['row' => $rowNum, 'message' => "面積「{$row['area_tsubo']}」は" . self::MAX_AREA_TSUBO . '以下の値にしてください'];
+                    continue;
+                }
                 $row['area_tsubo'] = (float) $val;
             }
 
-            // 金額フィールドチェック
+            // 金額フィールドチェック（整数だけ・本番の列の範囲まで）
             $numericFields = [
                 'rent' => '募集家賃', 'common_fee' => '募集共益費', 'deposit' => '募集敷金',
                 'garbage_fee' => '募集ゴミ代', 'pest_control_fee' => '募集駆除代',
@@ -520,13 +532,14 @@ class TenantImportController extends Controller
             $numericError = false;
             foreach ($numericFields as $field => $label) {
                 if ($row[$field] !== '') {
-                    $val = str_replace(',', '', $row[$field]);
-                    if (!is_numeric($val) || (int) $val < 0) {
-                        $errors[] = ['row' => $rowNum, 'message' => "{$label}「{$row[$field]}」は不正な値です"];
+                    [$value, $error] = CsvImportLimits::readUnsignedInt($row[$field], $label, self::MAX_INT_COLUMN,
+                        "{$label}「{$row[$field]}」は不正な値です");
+                    if ($error !== null) {
+                        $errors[] = ['row' => $rowNum, 'message' => $error];
                         $numericError = true;
                         break;
                     }
-                    $row[$field] = (int) $val;
+                    $row[$field] = $value;
                 }
             }
             if ($numericError) {
@@ -907,7 +920,14 @@ class TenantImportController extends Controller
                 continue;
             }
 
-            // 金額フィールドチェック
+            // 屋号・備考の文字数（照合の後ろ＝登録済みの行はスキップのまま）
+            $tooLong = CsvImportLimits::tooLongMessage($row, self::CONTRACT_TEXT_LIMITS);
+            if ($tooLong !== null) {
+                $errors[] = ['row' => $rowNum, 'message' => $tooLong];
+                continue;
+            }
+
+            // 金額フィールドチェック（整数だけ・本番の列の範囲まで）
             $numericFields = [
                 'rent' => '家賃', 'common_fee' => '共益費', 'deposit' => '敷金',
                 'garbage_fee' => 'ゴミ代', 'pest_control_fee' => '駆除代',
@@ -915,13 +935,14 @@ class TenantImportController extends Controller
             $numericError = false;
             foreach ($numericFields as $field => $label) {
                 if ($row[$field] !== '') {
-                    $val = str_replace(',', '', $row[$field]);
-                    if (!is_numeric($val) || (int) $val < 0) {
-                        $errors[] = ['row' => $rowNum, 'message' => "{$label}「{$row[$field]}」は不正な値です"];
+                    [$value, $error] = CsvImportLimits::readUnsignedInt($row[$field], $label, self::MAX_INT_COLUMN,
+                        "{$label}「{$row[$field]}」は不正な値です");
+                    if ($error !== null) {
+                        $errors[] = ['row' => $rowNum, 'message' => $error];
                         $numericError = true;
                         break;
                     }
-                    $row[$field] = (int) $val;
+                    $row[$field] = $value;
                 }
             }
             if ($numericError) {
@@ -1192,7 +1213,14 @@ class TenantImportController extends Controller
                 $rowWarnings[] = ['row' => $rowNum, 'message' => "区画「{$propName} {$unit->display_name}」に期間が重なるアクティブ契約があります（取込は実行）"];
             }
 
-            // 金額フィールドチェック（過去契約は家賃も任意。データ移行で空欄ありえる）
+            // テナント名（まだ無い顧客は取込で作る）・屋号・備考の文字数（照合の後ろ＝登録済みの行はスキップのまま）
+            $tooLong = CsvImportLimits::tooLongMessage($row, self::PAST_CONTRACT_TEXT_LIMITS);
+            if ($tooLong !== null) {
+                $errors[] = ['row' => $rowNum, 'message' => $tooLong];
+                continue;
+            }
+
+            // 金額フィールドチェック（過去契約は家賃も任意。データ移行で空欄ありえる。整数だけ・本番の列の範囲まで）
             $numericFields = [
                 'rent' => '家賃', 'common_fee' => '共益費', 'deposit' => '敷金',
                 'garbage_fee' => 'ゴミ代', 'pest_control_fee' => '駆除代',
@@ -1200,13 +1228,14 @@ class TenantImportController extends Controller
             $numericError = false;
             foreach ($numericFields as $field => $label) {
                 if ($row[$field] !== '') {
-                    $val = str_replace(',', '', $row[$field]);
-                    if (!is_numeric($val) || (int) $val < 0) {
-                        $errors[] = ['row' => $rowNum, 'message' => "{$label}「{$row[$field]}」は不正な値です"];
+                    [$value, $error] = CsvImportLimits::readUnsignedInt($row[$field], $label, self::MAX_INT_COLUMN,
+                        "{$label}「{$row[$field]}」は不正な値です");
+                    if ($error !== null) {
+                        $errors[] = ['row' => $rowNum, 'message' => $error];
                         $numericError = true;
                         break;
                     }
-                    $row[$field] = (int) $val;
+                    $row[$field] = $value;
                 }
             }
             if ($numericError) {

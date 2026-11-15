@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Admin;
 
+use App\Models\Contract;
 use App\Models\Customer;
 use App\Models\Property;
 use App\Models\Unit;
@@ -29,7 +30,20 @@ class TenantImportColumnLimitsTest extends TestCase
 
     private const CUSTOMER_HEADER = 'テナント名,テナントカナ,種別,代表者名,担当者,電話番号,メールアドレス,郵便番号,住所';
 
+    private const UNIT_HEADER = '物件名,階,部屋番号,面積(坪),用途,状態,募集家賃,募集共益費,募集敷金,募集ゴミ代,募集駆除代';
+
+    private const CONTRACT_HEADER = '物件名,階,部屋番号,テナント名,契約日,賃料開始日,家賃,共益費,敷金,ゴミ代,駆除代,屋号,備考';
+
+    private const PAST_HEADER = '物件名,階,部屋番号,テナント名,契約日,賃料開始日,解約日,家賃,共益費,敷金,ゴミ代,駆除代,屋号,備考';
+
+    /** 金額の列（符号付き INT）の上限（基底 Controller::MAX_INT_COLUMN と同じ値） */
+    private const MAX_AMOUNT = 2147483647;
+
     private Property $property;
+
+    private Unit $unit;
+
+    private Customer $customer;
 
     protected function setUp(): void
     {
@@ -39,11 +53,11 @@ class TenantImportColumnLimitsTest extends TestCase
             'code' => 'T-LIM-1', 'name' => '上限ビル', 'property_type' => 'tenant', 'department' => 'tenant',
             'address' => '愛媛県松山市', 'total_floors' => 5,
         ]);
-        Unit::create([
+        $this->unit = Unit::create([
             'property_id' => $this->property->id, 'floor' => 1, 'room_number' => 'A',
             'display_name' => Unit::generateDisplayName(1, 'A'), 'status' => 'vacant', 'area_tsubo' => 10,
         ]);
-        Customer::create(['code' => 'CU-LIM-1', 'name' => '上限商事', 'customer_type' => 'corporation']);
+        $this->customer = Customer::create(['code' => 'CU-LIM-1', 'name' => '上限商事', 'customer_type' => 'corporation']);
     }
 
     /** 取込画面の URL の前半（SubmitsImportPreview が使う） */
@@ -76,6 +90,32 @@ class TenantImportColumnLimitsTest extends TestCase
     private function customerRow(array $values): string
     {
         return $this->csvRow(self::CUSTOMER_HEADER, ['種別' => '法人'], $values);
+    }
+
+    /** @param  array<string, string>  $values */
+    private function unitRow(array $values): string
+    {
+        return $this->csvRow(self::UNIT_HEADER, ['物件名' => '上限ビル', '階' => '2'], $values);
+    }
+
+    /**
+     * 契約・過去契約の 1 行（区画 1A・顧客「上限商事」・家賃 50000。過去契約は解約日も入れる）。
+     *
+     * @param  array<string, string>  $values
+     */
+    private function contractRow(string $tab, array $values): string
+    {
+        $base = ['物件名' => '上限ビル', '階' => '1', '部屋番号' => 'A', 'テナント名' => '上限商事', '家賃' => '50000'];
+        if ($tab === 'past-contract') {
+            return $this->csvRow(self::PAST_HEADER, $base + ['解約日' => '2025-03-31'], $values);
+        }
+
+        return $this->csvRow(self::CONTRACT_HEADER, $base, $values);
+    }
+
+    private function contractHeader(string $tab): string
+    {
+        return $tab === 'past-contract' ? self::PAST_HEADER : self::CONTRACT_HEADER;
     }
 
     // ================================================================
@@ -168,6 +208,183 @@ class TenantImportColumnLimitsTest extends TestCase
 
         $this->confirm('customer', $csv);
         $this->assertSame($email254, Customer::where('name', '上限一商事')->sole()->email);
+    }
+
+    // ================================================================
+    // 区画
+    // ================================================================
+
+    public function test_room_number_up_to_20_characters_is_imported(): void
+    {
+        $csv = self::UNIT_HEADER . "\r\n"
+             . $this->unitRow(['階' => '', '部屋番号' => str_repeat('あ', 20)])
+             . $this->unitRow(['階' => '', '部屋番号' => str_repeat('い', 21)]);
+
+        $preview = $this->preview('unit', $csv)->assertOk();
+        $this->assertSame([['row' => 3, 'message' => '部屋番号は20文字以内で入力してください']], $preview->viewData('rowErrors'));
+        $this->assertSame(1, $preview->viewData('validCount'));
+
+        $this->confirm('unit', $csv);
+        $this->assertTrue(Unit::where('room_number', str_repeat('あ', 20))->exists());
+        $this->assertFalse(Unit::where('room_number', str_repeat('い', 21))->exists());
+    }
+
+    public static function unitAmounts(): array
+    {
+        return [
+            '募集家賃'   => ['募集家賃', 'rent'],
+            '募集共益費' => ['募集共益費', 'common_fee'],
+            '募集敷金'   => ['募集敷金', 'deposit'],
+            '募集ゴミ代' => ['募集ゴミ代', 'garbage_fee'],
+            '募集駆除代' => ['募集駆除代', 'pest_control_fee'],
+        ];
+    }
+
+    /** 行 2 はカンマ入りの上限ちょうど・行 3 は 1 つ超え・行 4 は小数（直す前は黙って 55000 で保存された）。 */
+    #[DataProvider('unitAmounts')]
+    public function test_unit_amounts_up_to_the_column_range_are_imported(string $header, string $column): void
+    {
+        $max = (string) self::MAX_AMOUNT;
+        $over = (string) (self::MAX_AMOUNT + 1);
+        $csv = self::UNIT_HEADER . "\r\n"
+             . $this->unitRow(['部屋番号' => 'B', $header => number_format(self::MAX_AMOUNT)])
+             . $this->unitRow(['部屋番号' => 'C', $header => $over])
+             . $this->unitRow(['部屋番号' => 'D', $header => '55000.9']);
+
+        $preview = $this->preview('unit', $csv)->assertOk();
+        $this->assertSame([
+            ['row' => 3, 'message' => "{$header}「{$over}」は{$max}以下の値にしてください"],
+            ['row' => 4, 'message' => "{$header}「55000.9」は不正な値です"],
+        ], $preview->viewData('rowErrors'));
+        $this->assertSame(1, $preview->viewData('validCount'));
+
+        $this->confirm('unit', $csv);
+        $this->assertSame(self::MAX_AMOUNT, Unit::where('display_name', '2B')->sole()->{$column});
+        $this->assertSame(0, Unit::whereIn('display_name', ['2C', '2D'])->count());
+    }
+
+    /** 面積は画面と同じ 9,999.99 坪まで（列は 999,999.99 まで入るが、超えた区画は編集画面で断られる）。 */
+    public function test_area_up_to_9999_99_is_imported(): void
+    {
+        $csv = self::UNIT_HEADER . "\r\n"
+             . $this->unitRow(['部屋番号' => 'B', '面積(坪)' => '9999.99'])
+             . $this->unitRow(['部屋番号' => 'C', '面積(坪)' => '10000'])
+             . $this->unitRow(['部屋番号' => 'D', '面積(坪)' => '9999.995']);
+
+        $preview = $this->preview('unit', $csv)->assertOk();
+        $this->assertSame([
+            ['row' => 3, 'message' => '面積「10000」は9999.99以下の値にしてください'],
+            ['row' => 4, 'message' => '面積「9999.995」は9999.99以下の値にしてください'],
+        ], $preview->viewData('rowErrors'));
+        $this->assertSame(1, $preview->viewData('validCount'));
+
+        $this->confirm('unit', $csv);
+        $this->assertSame('9999.99', Unit::where('display_name', '2B')->sole()->area_tsubo);
+        $this->assertSame(0, Unit::whereIn('display_name', ['2C', '2D'])->count());
+    }
+
+    // ================================================================
+    // 契約・過去契約（行ごとに契約日を変える＝CSV 内の重複にしない）
+    // ================================================================
+
+    public static function contractAmounts(): array
+    {
+        $cases = [];
+        foreach (['contract' => '契約', 'past-contract' => '過去契約'] as $tab => $name) {
+            foreach (['家賃' => 'rent', '共益費' => 'common_fee', '敷金' => 'deposit', 'ゴミ代' => 'garbage_fee', '駆除代' => 'pest_control_fee'] as $header => $column) {
+                $cases["{$name}・{$header}"] = [$tab, $header, $column];
+            }
+        }
+
+        return $cases;
+    }
+
+    #[DataProvider('contractAmounts')]
+    public function test_contract_amounts_up_to_the_column_range_are_imported(string $tab, string $header, string $column): void
+    {
+        $max = (string) self::MAX_AMOUNT;
+        $over = (string) (self::MAX_AMOUNT + 1);
+        $csv = $this->contractHeader($tab) . "\r\n"
+             . $this->contractRow($tab, ['契約日' => '2024-04-01', $header => number_format(self::MAX_AMOUNT)])
+             . $this->contractRow($tab, ['契約日' => '2024-05-01', $header => $over])
+             . $this->contractRow($tab, ['契約日' => '2024-06-01', $header => '55000.9']);
+
+        $preview = $this->preview($tab, $csv)->assertOk();
+        $this->assertSame([
+            ['row' => 3, 'message' => "{$header}「{$over}」は{$max}以下の値にしてください"],
+            ['row' => 4, 'message' => "{$header}「55000.9」は不正な値です"],
+        ], $preview->viewData('rowErrors'));
+        $this->assertSame(1, $preview->viewData('validCount'));
+
+        $this->confirm($tab, $csv);
+        $this->assertSame(self::MAX_AMOUNT, Contract::sole()->{$column});
+    }
+
+    /** 備考の上限ちょうどは、取込が残す改行（LF）を 1 文字と数えて 5,000 文字。 */
+    private static function notes(int $length): string
+    {
+        return str_repeat('あ', $length - 4998) . str_repeat("\nあ", 2499);
+    }
+
+    public static function contractTextLimits(): array
+    {
+        return [
+            '契約・屋号'         => ['contract', '屋号', 'store_name', 200],
+            '契約・備考'         => ['contract', '備考', 'notes', 5000],
+            '過去契約・屋号'     => ['past-contract', '屋号', 'store_name', 200],
+            '過去契約・備考'     => ['past-contract', '備考', 'notes', 5000],
+            '過去契約・テナント名' => ['past-contract', 'テナント名', 'customer_name', 200],
+        ];
+    }
+
+    /** 過去契約のテナント名は、まだ無い顧客の名前（取込で作る）。201 文字の行の顧客は作られない。 */
+    #[DataProvider('contractTextLimits')]
+    public function test_contract_text_up_to_the_column_size_is_imported(string $tab, string $label, string $column, int $max): void
+    {
+        [$ok, $long] = $column === 'notes'
+            ? [self::notes($max), self::notes($max + 1)]
+            : [str_repeat('あ', $max), str_repeat('い', $max + 1)];
+        $this->assertSame([$max, $max + 1], [mb_strlen($ok), mb_strlen($long)]);
+
+        $csv = $this->contractHeader($tab) . "\r\n"
+             . $this->contractRow($tab, ['契約日' => '2024-04-01', $label => $ok])
+             . $this->contractRow($tab, ['契約日' => '2024-05-01', $label => $long]);
+
+        $preview = $this->preview($tab, $csv)->assertOk();
+        $this->assertSame([['row' => 3, 'message' => "{$label}は{$max}文字以内で入力してください"]], $preview->viewData('rowErrors'));
+        $this->assertSame(1, $preview->viewData('validCount'));
+
+        $this->confirm($tab, $csv);
+        $contract = Contract::sole();
+        if ($column === 'customer_name') {
+            $this->assertSame($ok, $contract->customer->name);
+            $this->assertFalse(Customer::where('name', $long)->exists());
+        } else {
+            $this->assertSame($ok, $contract->{$column});
+        }
+    }
+
+    public static function registeredContracts(): array
+    {
+        return ['契約' => ['contract'], '過去契約' => ['past-contract']];
+    }
+
+    /** 文字・金額の検査は照合の後ろ（登録済みの行は値に誤りがあってもスキップ）。 */
+    #[DataProvider('registeredContracts')]
+    public function test_a_registered_contract_with_a_long_or_large_value_is_still_skipped(string $tab): void
+    {
+        Contract::create([
+            'contract_number' => 'C-1999-901', 'department' => 'tenant', 'property_id' => $this->property->id,
+            'unit_id' => $this->unit->id, 'customer_id' => $this->customer->id, 'status' => 'active',
+            'contract_date' => '2024-04-01', 'rent_start_date' => '2024-04-01', 'rent' => 95000,
+        ]);
+        $csv = $this->contractHeader($tab) . "\r\n"
+             . $this->contractRow($tab, ['契約日' => '2024-04-01', '屋号' => str_repeat('あ', 201), '家賃' => (string) (self::MAX_AMOUNT + 1)]);
+
+        $preview = $this->preview($tab, $csv)->assertOk();
+        $this->assertSame([], $preview->viewData('rowErrors'));
+        $this->assertCount(1, $preview->viewData('skippedRows'));
+        $this->assertSame(0, $preview->viewData('validCount'));
     }
 
     // ================================================================
