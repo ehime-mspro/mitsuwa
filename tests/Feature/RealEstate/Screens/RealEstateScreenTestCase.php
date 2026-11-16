@@ -4,6 +4,7 @@ namespace Tests\Feature\RealEstate\Screens;
 
 use App\Enums\UserRole;
 use App\Models\Buyer;
+use App\Models\Department;
 use App\Models\ReCostItem;
 use App\Models\ReProcurement;
 use App\Models\ReProject;
@@ -101,6 +102,16 @@ abstract class RealEstateScreenTestCase extends TestCase
         $response->assertOk();
 
         return $this->asFetchResponse($response);
+    }
+
+    /** 不動産の部署に属する指定の役割の利用者（ProcurementListCreateDropdownTest::staff() と同じ。一般担当は部署に付けないと弾かれる） */
+    protected function userWithRole(UserRole $role): User
+    {
+        $user = User::factory()->create(['role' => $role->value, 'must_change_password' => false]);
+        $department = Department::firstOrCreate(['code' => 'realestate'], ['name' => '不動産事業']);
+        $user->departments()->attach($department->id);
+
+        return $user;
     }
 
     protected function procurement(array $overrides = []): ReProcurement

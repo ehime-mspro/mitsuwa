@@ -55,7 +55,7 @@ class RealEstateCostImportService
 
             return [
                 'imported_count' => $importedCount,
-                'costs'          => $this->formatCostsForJson($allCosts),
+                'costs'          => self::formatCostsForJson($allCosts),
             ];
         });
     }
@@ -94,7 +94,7 @@ class RealEstateCostImportService
 
             return [
                 'imported_count' => $importedCount,
-                'costs'          => $this->formatCostsForJson($allCosts),
+                'costs'          => self::formatCostsForJson($allCosts),
             ];
         });
     }
@@ -122,7 +122,7 @@ class RealEstateCostImportService
      * 取込後の原価コレクションをクライアント返却用 array に整形。
      * 既存 storeCost / updateCost の JSON 形状と完全一致させる。
      */
-    private function formatCostsForJson($costs): array
+    public static function formatCostsForJson(iterable $costs): array
     {
         $list = [];
         foreach ($costs as $cost) {

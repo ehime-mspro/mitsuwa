@@ -888,6 +888,8 @@ Route::middleware(['auth', 'password.change'])->group(function () {
         |------------------------------------------------------------------
         */
         Route::middleware('role:executive,manager')->group(function () {
+            Route::put('/procurements/{procurement}/costs/batch', [\App\Http\Controllers\RealEstate\ProcurementController::class, 'saveCostGrid'])
+                ->name('realestate.procurements.costs.batch');
             Route::post('/procurements/{procurement}/costs', [\App\Http\Controllers\RealEstate\ProcurementController::class, 'storeCost'])
                 ->name('realestate.procurements.costs.store');
             Route::put('/procurements/{procurement}/costs/{cost}', [\App\Http\Controllers\RealEstate\ProcurementController::class, 'updateCost'])
@@ -990,6 +992,8 @@ Route::middleware(['auth', 'password.change'])->group(function () {
 
         // PJ原価管理 Ajax
         Route::middleware('role:executive,manager')->group(function () {
+            Route::put('/projects/{project}/costs/batch', [\App\Http\Controllers\RealEstate\ProjectController::class, 'saveCostGrid'])
+                ->name('realestate.projects.costs.batch');
             Route::post('/projects/{project}/costs', [\App\Http\Controllers\RealEstate\ProjectController::class, 'storeCost'])
                 ->name('realestate.projects.costs.store');
             Route::put('/projects/{project}/costs/{cost}', [\App\Http\Controllers\RealEstate\ProjectController::class, 'updateCost'])

@@ -411,6 +411,46 @@ class ProjectController extends Controller
     // ================================================================
 
     /**
+     * 原価の表をまとめて保存する（見込み額の表・確定額の表）。1 行でも断るところがあれば何も保存しない。
+     * Route: PUT /realestate/projects/{project}/costs/batch
+     */
+    public function saveCostGrid(Request $request, ReProject $project): \Illuminate\Http\JsonResponse
+    {
+        $v = $request->validate([
+            'mode'                             => 'required|in:estimated,actual',
+            'rows'                             => 'required|array|min:1|max:100',
+            'rows.*.id'                        => 'nullable|integer|min:1|max:' . PHP_INT_MAX,
+            'rows.*.cost_item_id'              => 'required|integer|exists:re_cost_items,id',
+            'rows.*.amount'                    => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'rows.*.notes'                     => 'nullable|string|max:200',
+            'rows.*.original'                  => 'required|array',
+            'rows.*.original.estimated_amount' => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'rows.*.original.actual_amount'    => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
+            'rows.*.original.notes'            => 'nullable|string|max:200',
+        ], [
+            'rows.*.amount.integer' => \App\Support\RealEstateCostGrid::MESSAGES['notNumber'],
+            'rows.*.amount.min'     => \App\Support\RealEstateCostGrid::MESSAGES['notNumber'],
+            'rows.*.amount.max'     => \App\Support\RealEstateCostGrid::MESSAGES['tooLarge'],
+        ], [
+            'mode'                             => '入力する金額',
+            'rows'                             => '原価の表',
+            'rows.*.id'                        => '原価の行',
+            'rows.*.cost_item_id'              => '費用項目',
+            'rows.*.amount'                    => '金額',
+            'rows.*.notes'                     => '備考',
+            'rows.*.original'                  => '開いたときの値',
+            'rows.*.original.estimated_amount' => '開いたときの見込み額',
+            'rows.*.original.actual_amount'    => '開いたときの確定額',
+            'rows.*.original.notes'            => '開いたときの備考',
+        ]);
+
+        $result = app(\App\Support\RealEstateCostGrid::class)
+            ->save($project, $v['mode'], $v['rows'], $request->user()->role->isExecutive());
+
+        return response()->json(['success' => true] + $result);
+    }
+
+    /**
      * 費用追加
      * Route: POST /realestate/projects/{project}/costs
      */
