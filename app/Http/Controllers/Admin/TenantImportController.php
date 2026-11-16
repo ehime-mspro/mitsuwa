@@ -1056,7 +1056,6 @@ class TenantImportController extends Controller
         $validRows = [];
         $propertyCache = [];
         $customerCache = [];        // 既存顧客のキャッシュ
-        $customerCreateList = [];   // 自動作成予定の顧客名リスト
         $skippedRows = [];
         $contractKeyTracker = [];   // 見分けのキー => 最初の行（CSV 内の重複）
 
@@ -1165,7 +1164,7 @@ class TenantImportController extends Controller
                 $row['rent_start_date'] = $rentStartDate;
             }
 
-            // 顧客の存在チェック（なければ自動作成予定リストに追加）
+            // 顧客の存在チェック（無ければ確定で作る。確認画面の「自動作成」は、ループのあとで取り込む行から数える）
             $custName = $row['customer_name'];
             if (!isset($customerCache[$custName])) {
                 // 同名の顧客が 2 人以上いれば、最初に登録された顧客に紐づける（2026-10-01 の利用者の決定）
@@ -1175,9 +1174,6 @@ class TenantImportController extends Controller
             $customerWillBeCreated = false;
             if (!$customerCache[$custName]) {
                 $customerWillBeCreated = true;
-                if (!in_array($custName, $customerCreateList, true)) {
-                    $customerCreateList[] = $custName;
-                }
             }
 
             // CSV 内の重複（見分けのキーは契約タブと同じ。まだ無い顧客は名前で比べる）。最初の行は、照合の前にここで覚える
@@ -1259,6 +1255,13 @@ class TenantImportController extends Controller
 
         // プレビューモード
         if (!$request->boolean('confirmed')) {
+            // 自動作成の予定は、確定と同じく取り込む行から数える（出てきた順・同じ名前は 1 回）。
+            // ⚠ 行の検査の途中で積むと、あとの検査（金額・文字数など）で誤りになる行の名前まで残る（2026-11-16 に直した）
+            $customerCreateList = array_values(array_unique(array_column(
+                array_filter($validRows, fn (array $row) => $row['_customer_will_be_created']),
+                'customer_name'
+            )));
+
             return view('admin.tenant-import.index', [
                 'activeTab'    => $tab,
                 'preview'      => $tab,
