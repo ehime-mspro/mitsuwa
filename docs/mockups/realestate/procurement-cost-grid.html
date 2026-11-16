@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>原価管理 一覧入力（案 A）— 不動産 仕入れ案件</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+<style>
+    [x-cloak] { display: none !important; }
+    body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Helvetica Neue', Arial, sans-serif;
+        background: #F3F4F6; color: #111827; margin: 0;
+        padding: 32px 16px 80px;
+    }
+    .wrap { max-width: 1100px; margin: 0 auto; }
+    h1 { font-size: 20px; font-weight: 700; margin: 0 0 6px; }
+    .subtitle { font-size: 13px; color: #6B7280; line-height: 1.7; margin-bottom: 18px; }
+    .note {
+        background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 8px;
+        padding: 12px 14px; font-size: 12.5px; color: #92400E; line-height: 1.8; margin-bottom: 18px;
+    }
+    .facts {
+        background: #fff; border: 1px solid #E5E7EB; border-radius: 8px;
+        padding: 12px 14px; font-size: 12.5px; color: #374151; line-height: 1.8; margin-bottom: 22px;
+    }
+    .section-label { font-size: 12px; font-weight: 700; color: #6B7280; letter-spacing: .04em; margin: 26px 0 8px; }
+
+    /* 表 */
+    .grid-table th { font-size: 12px; font-weight: 600; color: #4B5563; background: #F9FAFB; border-bottom: 2px solid #E5E7EB; padding: 9px 12px; white-space: nowrap; }
+    .grid-table td { font-size: 13px; padding: 9px 12px; border-bottom: 1px solid #F3F4F6; vertical-align: top; }
+    .grid-table tr.editing-row td { padding: 5px 8px; }
+    .cell-input {
+        width: 100%; min-width: 0; height: 32px; padding: 0 8px; border: 1px solid #D1D5DB; border-radius: 4px;
+        font-size: 13px; background: #fff; box-sizing: border-box;
+    }
+    .cell-input:focus { outline: none; border-color: #059669; box-shadow: 0 0 0 2px #A7F3D0; }
+    .cell-input.money { text-align: right; font-variant-numeric: tabular-nums; }
+    .cell-input.changed { background: #FFFBEB; border-color: #F59E0B; }
+    .cell-input.bad { border-color: #DC2626; background: #FEF2F2; }
+    .ref { color: #9CA3AF; text-align: right; font-variant-numeric: tabular-nums; }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .row-error { font-size: 11.5px; color: #B91C1C; margin-top: 4px; line-height: 1.5; }
+    .pill { display: inline-block; padding: 1px 6px; font-size: 10px; font-weight: 600; border-radius: 4px; vertical-align: middle; }
+    .role-btn { padding: 5px 12px; font-size: 12px; font-weight: 600; border: 1px solid #D1D5DB; background: #fff; color: #374151; cursor: pointer; }
+    .role-btn.on { background: #059669; border-color: #059669; color: #fff; }
+    .role-btn:first-child { border-radius: 6px 0 0 6px; }
+    .role-btn:last-child { border-radius: 0 6px 6px 0; }
+    .try li { margin-left: 18px; list-style: disc; }
+    .decide th, .decide td { border: 1px solid #E5E7EB; padding: 7px 10px; font-size: 12.5px; text-align: left; vertical-align: top; line-height: 1.6; }
+    .decide th { background: #F9FAFB; font-weight: 600; white-space: nowrap; }
+</style>
+</head>
+<body>
+<div class="wrap" x-data="costMock()" x-init="init()">
+
+    <h1>原価管理の一覧入力（案 A）— 仕入れ案件の詳細画面</h1>
+    <p class="subtitle">
+        「＋ 費用追加」で 1 項目ずつ足す今の形をやめ、<strong>「見込み額を入力」「確定額を入力」</strong>の 2 つのボタンにします。
+        押すと、費用項目マスタの全項目が表に並び、押したほうの列だけが Excel のようなセルになります。
+        このページはモック（動きを試すための見本）で、保存してもこのページの中だけで変わります。
+    </p>
+
+    <div class="facts">
+        <strong>本番のデータ（2026-11-16 に読み取りで数えました）</strong><br>
+        ・仕入れ案件 30 件のうち原価のある案件 29 件、原価の行は 232 行（1 案件あたり平均 8 行・最大 14 行）<br>
+        ・同じ費用項目が 2 行ある仕入れ案件は <strong>0 件</strong>（分譲地は 17 件中 1 件だけ「その他」が 2 行。備考が違う）<br>
+        ・確定額が入っている行は 232 行中 17 行（見込みを先に入れ、確定は後から入れる使い方）<br>
+        ・費用項目マスタは 17 種（すべて有効。「宣伝広告費」はまだ一度も使われていない）
+    </div>
+
+    <!-- 役割の切り替え（モックだけ） -->
+    <div class="flex flex-wrap items-center gap-3 mb-3">
+        <span class="text-xs font-semibold text-gray-600">見る人の役割（モックだけの切り替え）:</span>
+        <div class="inline-flex">
+            <button type="button" class="role-btn" :class="role === 'executive' && 'on'" @click="setRole('executive')">経営層</button>
+            <button type="button" class="role-btn" :class="role === 'manager' && 'on'" @click="setRole('manager')">管理者</button>
+            <button type="button" class="role-btn" :class="role === 'staff' && 'on'" @click="setRole('staff')">一般担当</button>
+        </div>
+        <button type="button" class="text-xs text-gray-500 underline cursor-pointer" @click="resetAll()">最初の状態に戻す</button>
+    </div>
+
+    <!-- ===== 原価管理カード（詳細画面と同じ見た目） ===== -->
+    <div class="bg-white border border-gray-200 rounded-lg p-5 mb-5">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <div class="flex items-center gap-2">
+                <span class="w-1 h-5 bg-emerald-600 rounded-sm"></span>
+                <h2 class="text-base font-bold text-gray-900">原価管理</h2>
+                <span x-show="mode === 'est'" x-cloak class="pill" style="background:#ECFDF5; color:#047857; font-size:11px; padding:2px 8px;">見込み額を入力中</span>
+                <span x-show="mode === 'act'" x-cloak class="pill" style="background:#EFF6FF; color:#1D4ED8; font-size:11px; padding:2px 8px;">確定額を入力中</span>
+            </div>
+            <div x-show="mode === null && role !== 'staff'" class="flex flex-wrap gap-2">
+                <button type="button" @click="alert('試算表 Excel 取込は今のまま残します（このモックでは動きません）。')"
+                        class="px-3.5 py-1.5 bg-white text-emerald-700 font-semibold rounded-md hover:bg-emerald-50 cursor-pointer"
+                        style="font-size: 13px; border: 1px solid #a7f3d0;">📂 試算表 Excel 取込</button>
+                <button type="button" @click="open('est')"
+                        class="px-3.5 py-1.5 bg-emerald-600 text-white font-semibold rounded-md hover:bg-emerald-700 cursor-pointer"
+                        style="font-size: 13px;">見込み額を入力</button>
+                <button type="button" @click="open('act')"
+                        class="px-3.5 py-1.5 text-white font-semibold rounded-md cursor-pointer"
+                        style="font-size: 13px; background:#2563EB;">確定額を入力</button>
+            </div>
+        </div>
+
+        <!-- 保存のメッセージ -->
+        <div x-show="message" x-cloak class="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
+            <p class="text-sm text-emerald-800" x-text="message"></p>
+        </div>
+
+        <!-- 入力中の案内 -->
+        <div x-show="mode !== null" x-cloak class="mb-3 rounded-lg px-3 py-2 text-xs leading-relaxed"
+             :style="mode === 'est' ? 'background:#F0FDF4; border:1px solid #BBF7D0; color:#166534;' : 'background:#EFF6FF; border:1px solid #BFDBFE; color:#1E40AF;'">
+            <template x-if="mode === 'est'">
+                <span>費用項目をすべて並べています。<strong>見込み額</strong>の欄に入れて「見込み額を保存」を押してください。空の行は保存しません。</span>
+            </template>
+            <template x-if="mode === 'act'">
+                <span>請求などで金額が決まった項目の<strong>確定額</strong>を入れて「確定額を保存」を押してください。空にすると「未定」に戻ります。</span>
+            </template>
+            <br>Enter で下のセル・Shift + Enter で上のセルへ。Excel の列をコピーして最初のセルに貼り付けると、下の行へ順に入ります。
+        </div>
+
+        <!-- エラーのまとめ -->
+        <div x-show="errorCount > 0" x-cloak class="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2">
+            <p class="text-sm text-red-700" x-text="'保存できませんでした。赤い行を直してください（' + errorCount + ' 件）。何も保存していません。'"></p>
+        </div>
+
+        <div class="border border-gray-200 rounded-md overflow-x-auto">
+            <table class="grid-table w-full border-collapse" style="table-layout: fixed; min-width: 760px;">
+                <colgroup>
+                    <col style="width: 180px;">
+                    <col style="width: 150px;">
+                    <col style="width: 150px;">
+                    <col x-show="mode === 'act'" style="width: 120px;">
+                    <col>
+                    <col x-show="mode === null" style="width: 80px;">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th class="text-left">費用項目</th>
+                        <th class="text-right" :style="mode === 'est' ? 'color:#047857;' : ''">見込み額</th>
+                        <th class="text-right" :style="mode === 'act' ? 'color:#1D4ED8;' : ''">確定額</th>
+                        <th class="text-right" x-show="mode === 'act'">差額（確定 − 見込み）</th>
+                        <th class="text-left">備考</th>
+                        <th class="text-center" x-show="mode === null">操作</th>
+                    </tr>
+                </thead>
+
+                <!-- ===== 見るだけの一覧（今と同じ。保存した行だけ） ===== -->
+                <tbody x-show="mode === null">
+                    <template x-for="it in savedItems" :key="'v' + it.id">
+                        <tr class="hover:bg-gray-50">
+                            <td>
+                                <span x-text="it.name"></span>
+                                <span x-show="it.auto" class="pill" style="margin-left:6px; color:#92400e; background:#fef3c7;">自動</span>
+                            </td>
+                            <td class="num" x-text="fmt(sv(it).est) + '円'"></td>
+                            <td class="num">
+                                <span x-show="sv(it).act !== null" style="font-weight:600;" x-text="fmt(sv(it).act) + '円'"></span>
+                                <span x-show="sv(it).act === null" class="text-gray-400">未定</span>
+                            </td>
+                            <td class="text-gray-600" style="overflow-wrap:anywhere;" x-text="sv(it).notes"></td>
+                            <td class="text-center">
+                                <span x-show="it.auto" class="text-xs text-gray-400">自動同期</span>
+                                <button type="button" x-show="!it.auto && role === 'executive'" @click="removeRow(it)"
+                                        class="text-xs font-semibold text-red-600 rounded bg-white cursor-pointer"
+                                        style="border:1px solid #dc2626; padding:2px 10px;">削除</button>
+                            </td>
+                        </tr>
+                    </template>
+                    <tr x-show="savedItems.length === 0">
+                        <td colspan="5" class="text-center text-gray-400 py-6">原価データがありません。「見込み額を入力」から入れてください。</td>
+                    </tr>
+                </tbody>
+
+                <!-- ===== 入力の表（全項目） ===== -->
+                <tbody x-show="mode !== null" x-cloak>
+                    <template x-for="(it, idx) in items" :key="'e' + it.id">
+                        <tr class="editing-row" :style="rowError(it) ? 'background:#FEF2F2;' : (it.auto ? 'background:#FAFAFA;' : '')">
+                            <td style="padding-top:11px;">
+                                <span x-text="it.name" :class="!saved[it.id] && !it.auto ? 'text-gray-500' : ''"></span>
+                                <span x-show="it.auto" class="pill" style="margin-left:6px; color:#92400e; background:#fef3c7;">自動</span>
+                                <div x-show="rowError(it)" class="row-error" x-text="rowError(it)"></div>
+                            </td>
+
+                            <!-- 見込み額 -->
+                            <td>
+                                <template x-if="mode === 'est' && !it.auto">
+                                    <input type="text" inputmode="numeric" class="cell-input money"
+                                           :class="{ changed: isChanged(it, 'est'), bad: rowError(it) }"
+                                           :data-cell="'est-' + idx"
+                                           x-model="draft[it.id].est"
+                                           @keydown.enter.prevent="$event.isComposing || move($event, idx, 'est')"
+                                           @keydown.arrow-down.prevent="moveBy(idx, 'est', 1)"
+                                           @keydown.arrow-up.prevent="moveBy(idx, 'est', -1)"
+                                           @paste="paste($event, idx, 'est')"
+                                           @focus="$event.target.select()"
+                                           @blur="tidy(it, 'est')">
+                                </template>
+                                <template x-if="mode !== 'est' || it.auto">
+                                    <div class="ref" style="padding-top:6px;"
+                                         x-text="saved[it.id] ? fmt(sv(it).est) + '円' : '—'"></div>
+                                </template>
+                            </td>
+
+                            <!-- 確定額 -->
+                            <td>
+                                <template x-if="mode === 'act' && !it.auto">
+                                    <input type="text" inputmode="numeric" class="cell-input money" placeholder="未定"
+                                           :class="{ changed: isChanged(it, 'act'), bad: rowError(it) }"
+                                           :data-cell="'act-' + idx"
+                                           x-model="draft[it.id].act"
+                                           @keydown.enter.prevent="$event.isComposing || move($event, idx, 'act')"
+                                           @keydown.arrow-down.prevent="moveBy(idx, 'act', 1)"
+                                           @keydown.arrow-up.prevent="moveBy(idx, 'act', -1)"
+                                           @paste="paste($event, idx, 'act')"
+                                           @focus="$event.target.select()"
+                                           @blur="tidy(it, 'act')">
+                                </template>
+                                <template x-if="mode !== 'act' || it.auto">
+                                    <div class="ref" style="padding-top:6px;"
+                                         x-text="saved[it.id] ? (sv(it).act === null ? '未定' : fmt(sv(it).act) + '円') : '—'"></div>
+                                </template>
+                            </td>
+
+                            <!-- 差額（確定額の入力のときだけ） -->
+                            <td x-show="mode === 'act'" class="num" style="padding-top:11px;">
+                                <span :style="diffStyle(it)" x-text="diffText(it)"></span>
+                            </td>
+
+                            <!-- 備考 -->
+                            <td>
+                                <template x-if="!it.auto">
+                                    <input type="text" class="cell-input" maxlength="200"
+                                           :class="{ changed: isChanged(it, 'notes') }"
+                                           x-model="draft[it.id].notes">
+                                </template>
+                                <template x-if="it.auto">
+                                    <div class="text-xs text-gray-400" style="padding-top:8px;">査定価格・購入価格から自動で入ります</div>
+                                </template>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+
+                <tfoot>
+                    <tr style="background:#f0fdf4;">
+                        <td style="font-weight:700;" x-text="mode === null ? '合計' : '合計（入力中の値）'"></td>
+                        <td class="num" style="font-weight:700;" x-text="fmt(total('est')) + '円'"></td>
+                        <td class="num" style="font-weight:700;" x-text="fmt(total('act')) + '円'"></td>
+                        <td x-show="mode === 'act'" class="num" style="font-weight:700;"><span :style="totalDiff() > 0 ? 'color:#B91C1C;' : 'color:#047857;'" x-text="signed(totalDiff())"></span></td>
+                        <td :colspan="mode === null ? 2 : 1" class="text-gray-600">
+                            採用額合計（確定優先）: <strong class="text-gray-900" x-text="fmt(total('eff')) + '円'"></strong>
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+
+        <!-- 入力中の保存バー -->
+        <div x-show="mode !== null" x-cloak class="flex flex-wrap items-center justify-between gap-3 mt-3">
+            <div class="text-sm" :class="changeCount > 0 ? 'text-amber-700 font-semibold' : 'text-gray-400'"
+                 x-text="changeCount > 0 ? ('保存していない変更 ' + changeCount + ' 件') : '変更はありません'"></div>
+            <div class="flex gap-2">
+                <button type="button" @click="cancel()"
+                        class="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-semibold rounded-md hover:bg-gray-200 cursor-pointer">取消</button>
+                <button type="button" @click="save()"
+                        class="px-4 py-2 text-white text-sm font-semibold rounded-md cursor-pointer"
+                        :style="mode === 'est' ? 'background:#059669;' : 'background:#2563EB;'"
+                        x-text="mode === 'est' ? '見込み額を保存' : '確定額を保存'"></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 試してほしいこと ===== -->
+    <div class="section-label">このモックで試せること</div>
+    <div class="bg-white border border-gray-200 rounded-lg p-4 text-sm leading-relaxed">
+        <ul class="try">
+            <li>「見込み額を入力」→ 全 17 項目が並び、見込み額の列だけ入力できる。Enter で下へ進む</li>
+            <li>Excel で金額の列（例: 3 行分）をコピー → 「水道」のセルに貼り付け → 水道・解体費・地質調査に順に入る</li>
+            <li>「確定額を入力」→ 見込み額は灰色で表示だけ。確定額を入れると「差額」が出る（見込みより高いと赤）</li>
+            <li>確定額の表で、見込み額の無い項目（例: 水道）に確定額を入れて保存 → 見込み額 0 円の行として保存される</li>
+            <li>役割を「管理者」にして、見込み額の表で保存済みの行（例: 金利負担）を空にして保存 → 「消せるのは経営層だけ」で断られる</li>
+            <li>見込み額の表で、確定額のある行（例: 仲介手数料）の見込み額を空にして保存 → 断られる</li>
+            <li>「一般担当」は見るだけ（入力のボタンが出ない。今と同じ）</li>
+        </ul>
+    </div>
+
+    <!-- ===== 新規登録画面 ===== -->
+    <div class="section-label">新規登録画面（仕入れ案件・分譲地）</div>
+    <div class="bg-white border border-gray-200 rounded-lg p-5">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <div class="text-sm font-bold text-gray-800">原価管理</div>
+            <div class="flex flex-wrap gap-2">
+                <span class="px-3 py-1.5 bg-white text-emerald-700 rounded-md" style="font-size:12px; border:1px solid #a7f3d0; font-weight:600;">📂 試算表 Excel 取込</span>
+                <span class="px-3 py-1.5 bg-emerald-600 text-white rounded-md" style="font-size:12px; font-weight:600;">見込み額を入力</span>
+                <span class="px-3 py-1.5 text-white rounded-md" style="font-size:12px; font-weight:600; background:#2563EB;">確定額を入力</span>
+            </div>
+        </div>
+        <p class="text-sm text-gray-600 leading-relaxed">
+            同じ 2 つのボタンと同じ表を出します。ちがいは保存のしかたで、表の下のボタンは「保存」ではなく<strong>「表を閉じる」</strong>になり、
+            入れた内容は画面の一番下の<strong>「登録する」</strong>で仕入れ案件と一緒に保存します（今と同じ）。
+            物件購入費は登録したあとに査定価格・購入価格から自動で入るので、新規登録の表には出しません（今と同じ）。
+        </p>
+    </div>
+
+    <!-- ===== 決めること（私の案） ===== -->
+    <div class="section-label">モックに入れた私の案（違うところがあれば直してください）</div>
+    <div class="bg-white border border-gray-200 rounded-lg p-4 overflow-x-auto">
+        <table class="decide w-full border-collapse" style="min-width: 640px;">
+            <tr><th>同じ項目を 2 行</th><td>入れられないようにする（表は 1 項目 1 行）。本番の仕入れ案件では 0 件だったため。分譲地の「その他」2 行の 1 件は、表にそのまま 2 行で出して直せるようにする</td></tr>
+            <tr><th>差額の列</th><td>確定額の表にだけ「確定 − 見込み」を出す（見込みより高いと赤）</td></tr>
+            <tr><th>Excel からの貼り付け</th><td>列をコピーして 1 つのセルに貼ると、下の行へ順に入る（物件購入費の行は飛ばす。空のセルは今の値のまま）</td></tr>
+            <tr><th>保存していない変更</th><td>変えたセルを黄色にし、件数を出す。保存せずにページを離れようとしたら確かめる</td></tr>
+            <tr><th>保存の単位</th><td>表の全部をまとめて保存。1 行でも直すところがあれば何も保存しない（赤い行に理由）。消える行があれば、保存の前に名前を挙げて確かめる</td></tr>
+            <tr><th>一覧の「編集」ボタン</th><td>外す（2 つの表で直せるため）。「削除」は経営層に残す</td></tr>
+            <tr><th>分譲地の詳細画面</th><td>同じ形に変える</td></tr>
+        </table>
+    </div>
+</div>
+
+<script>
+function costMock() {
+    var ITEMS = [
+        { id: 1,  name: '物件購入費', auto: true },
+        { id: 2,  name: '仲介手数料' },
+        { id: 4,  name: '取得費' },
+        { id: 5,  name: '固定資産税' },
+        { id: 6,  name: '所有権移転費' },
+        { id: 7,  name: '建物滅失登記' },
+        { id: 8,  name: '開発・分筆' },
+        { id: 3,  name: '造成費' },
+        { id: 9,  name: '水道' },
+        { id: 10, name: '解体費' },
+        { id: 11, name: '地質調査' },
+        { id: 12, name: '外周塀・ブロック工事' },
+        { id: 13, name: '宣伝広告費' },
+        { id: 14, name: '契約印紙' },
+        { id: 16, name: '金利負担' },
+        { id: 18, name: 'リフォーム工事' },
+        { id: 15, name: 'その他' }
+    ];
+    function initialSaved() {
+        return {
+            1:  { est: 25000000, act: 24800000, notes: '' },
+            2:  { est: 792000,   act: 792000,   notes: '' },
+            4:  { est: 450000,   act: null,     notes: '' },
+            5:  { est: 120000,   act: null,     notes: '日割り（4 月〜）' },
+            6:  { est: 380000,   act: null,     notes: '司法書士の見積' },
+            8:  { est: 600000,   act: null,     notes: '' },
+            3:  { est: 3500000,  act: null,     notes: '' },
+            14: { est: 10000,    act: 10000,    notes: '' },
+            16: { est: 200000,   act: null,     notes: '' },
+            15: { est: 50000,    act: null,     notes: '' }
+        };
+    }
+    var MAX = 2147483647;
+
+    return {
+        role: 'executive',
+        items: ITEMS,
+        saved: initialSaved(),
+        mode: null,
+        draft: {},
+        errors: {},
+        message: '',
+
+        sv: function (it) { return this.saved[it.id] || { est: null, act: null, notes: '' }; },
+        blankDraft: function () {
+            var d = {};
+            for (var i = 0; i < this.items.length; i++) { d[this.items[i].id] = { est: '', act: '', notes: '' }; }
+            return d;
+        },
+
+        init: function () {
+            this.draft = this.blankDraft();
+            var self = this;
+            window.addEventListener('beforeunload', function (e) {
+                if (self.mode !== null && self.changeCount > 0) { e.preventDefault(); e.returnValue = ''; }
+            });
+        },
+
+        setRole: function (r) {
+            if (this.mode !== null && !this.discardOk()) return;
+            this.mode = null; this.errors = {}; this.role = r;
+        },
+        resetAll: function () {
+            this.saved = initialSaved(); this.mode = null; this.errors = {}; this.message = ''; this.role = 'executive';
+        },
+
+        // ---- 数の整え ----
+        toHalf: function (s) {
+            return String(s).replace(/[０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); });
+        },
+        parse: function (s) {
+            var t = this.toHalf(s).replace(/[,，\s円¥￥]/g, '');
+            if (t === '') return '';
+            if (!/^\d+$/.test(t)) return NaN;
+            return Number(t);
+        },
+        fmt: function (n) {
+            if (n === null || n === '' || n === undefined || isNaN(n)) return '0';
+            return Number(n).toLocaleString('ja-JP');
+        },
+        signed: function (n) {
+            if (n === 0) return '±0';
+            return (n > 0 ? '+' : '−') + Math.abs(n).toLocaleString('ja-JP');
+        },
+        tidy: function (it, col) {
+            var v = this.parse(this.draft[it.id][col]);
+            if (v !== '' && !isNaN(v)) this.draft[it.id][col] = this.fmt(v);
+        },
+
+        // ---- 入力の表を開く・閉じる ----
+        open: function (mode) {
+            var d = {};
+            for (var i = 0; i < this.items.length; i++) {
+                var it = this.items[i], s = this.saved[it.id];
+                d[it.id] = {
+                    est: s ? this.fmt(s.est) : '',
+                    act: (s && s.act !== null) ? this.fmt(s.act) : '',
+                    notes: s ? s.notes : ''
+                };
+            }
+            this.draft = d; this.errors = {}; this.message = ''; this.mode = mode;
+            var self = this;
+            this.$nextTick(function () { self.focusCell(mode, self.firstEditable()); });
+        },
+        discardOk: function () {
+            return this.changeCount === 0 || confirm('保存していない変更が ' + this.changeCount + ' 件あります。捨ててよいですか？');
+        },
+        cancel: function () {
+            if (!this.discardOk()) return;
+            this.mode = null; this.errors = {};
+        },
+
+        // ---- 変更の判定 ----
+        original: function (it, col) {
+            var s = this.saved[it.id];
+            if (col === 'est') return s ? s.est : '';
+            if (col === 'act') return (s && s.act !== null) ? s.act : '';
+            return s ? s.notes : '';
+        },
+        isChanged: function (it, col) {
+            if (this.mode === null || it.auto) return false;
+            var d = this.draft[it.id];
+            if (!d) return false;
+            if (col === 'notes') return (d.notes || '') !== (this.original(it, 'notes') || '');
+            if (col !== this.mode) return false;
+            var v = this.parse(d[col]);
+            if (typeof v === 'number' && isNaN(v)) return true;
+            return v !== this.original(it, col);
+        },
+        get changeCount() {
+            var n = 0;
+            if (this.mode === null) return 0;
+            for (var i = 0; i < this.items.length; i++) {
+                var it = this.items[i];
+                if (this.isChanged(it, this.mode) || this.isChanged(it, 'notes')) n++;
+            }
+            return n;
+        },
+        get errorCount() { return Object.keys(this.errors).length; },
+        rowError: function (it) { return this.mode !== null ? (this.errors[it.id] || '') : ''; },
+
+        // ---- 合計（入力中は入力中の値で） ----
+        value: function (it, col) {
+            if (this.mode === null || it.auto || col !== this.mode) {
+                var s = this.saved[it.id];
+                if (!s) {
+                    if (this.mode === 'act' && col === 'est' && !it.auto) {
+                        var a = this.parse(this.draft[it.id].act);
+                        return (typeof a === 'number' && !isNaN(a)) ? 0 : null;
+                    }
+                    return null;
+                }
+                return col === 'est' ? s.est : s.act;
+            }
+            var v = this.parse(this.draft[it.id][col]);
+            return (v === '' || isNaN(v)) ? null : v;
+        },
+        total: function (kind) {
+            var t = 0;
+            for (var i = 0; i < this.items.length; i++) {
+                var it = this.items[i];
+                var e = this.value(it, 'est'), a = this.value(it, 'act');
+                if (kind === 'est' && e !== null) t += e;
+                if (kind === 'act' && a !== null) t += a;
+                if (kind === 'eff') t += (a !== null ? a : (e !== null ? e : 0));
+            }
+            return t;
+        },
+        diffText: function (it) {
+            var a = this.value(it, 'act');
+            if (a === null) return '';
+            var e = this.value(it, 'est') || 0;
+            return this.signed(a - e);
+        },
+        diffStyle: function (it) {
+            var a = this.value(it, 'act');
+            if (a === null) return '';
+            var d = a - (this.value(it, 'est') || 0);
+            return d > 0 ? 'color:#B91C1C; font-weight:600;' : (d < 0 ? 'color:#047857;' : 'color:#6B7280;');
+        },
+        totalDiff: function () {
+            var t = 0;
+            for (var i = 0; i < this.items.length; i++) {
+                var it = this.items[i], a = this.value(it, 'act');
+                if (a !== null) t += a - (this.value(it, 'est') || 0);
+            }
+            return t;
+        },
+
+        // ---- セルの移動・貼り付け ----
+        editable: function (idx) { return idx >= 0 && idx < this.items.length && !this.items[idx].auto; },
+        firstEditable: function () { for (var i = 0; i < this.items.length; i++) { if (this.editable(i)) return i; } return 0; },
+        focusCell: function (col, idx) {
+            var el = document.querySelector('[data-cell="' + col + '-' + idx + '"]');
+            if (el) el.focus();
+        },
+        moveBy: function (idx, col, step) {
+            var i = idx + step;
+            while (i >= 0 && i < this.items.length && !this.editable(i)) i += step;
+            if (this.editable(i)) this.focusCell(col, i);
+        },
+        move: function (e, idx, col) { this.moveBy(idx, col, e.shiftKey ? -1 : 1); },
+        paste: function (e, idx, col) {
+            var text = (e.clipboardData || window.clipboardData).getData('text');
+            if (!/\r?\n/.test(text.replace(/\r?\n$/, ''))) return; // 1 つの値なら普通に貼る
+            e.preventDefault();
+            var lines = text.replace(/\r?\n$/, '').split(/\r?\n/);
+            var i = idx, n = 0, skipped = 0;
+            for (var k = 0; k < lines.length; k++) {
+                while (i < this.items.length && !this.editable(i)) i++;
+                if (i >= this.items.length) break;
+                var cell = lines[k].split('\t')[0];
+                // 空のセルは今の値のまま飛ばす（貼り付けで保存済みの金額を消さない）
+                if (cell.trim() === '') { i++; skipped++; continue; }
+                var v = this.parse(cell);
+                this.draft[this.items[i].id][col] = (v !== '' && !isNaN(v)) ? this.fmt(v) : cell.trim();
+                i++; n++;
+            }
+            this.message = n + ' 行に貼り付けました' + (skipped ? '（空のセル ' + skipped + ' 個は今の値のまま）' : '') + '。まだ保存していません。';
+        },
+
+        // ---- 保存 ----
+        save: function () {
+            var errs = {}, plan = [], mode = this.mode, role = this.role;
+            for (var i = 0; i < this.items.length; i++) {
+                var it = this.items[i];
+                if (it.auto) continue;
+                var s = this.saved[it.id], d = this.draft[it.id];
+                var v = this.parse(d[mode]);
+                var notes = (d.notes || '').trim();
+                if (typeof v === 'number' && isNaN(v)) { errs[it.id] = '金額は数字で入力してください。'; continue; }
+                if (v !== '' && v > MAX) { errs[it.id] = '2,147,483,647 以下で入力してください。'; continue; }
+                if (mode === 'est') {
+                    if (v === '') {
+                        if (!s) { if (notes !== '') errs[it.id] = '見込み額を入力してください（備考だけでは保存できません）。'; continue; }
+                        if (s.act !== null) { errs[it.id] = '確定額が入っているので、見込み額は空にできません（0 は入れられます）。'; continue; }
+                        if (role !== 'executive') { errs[it.id] = '保存済みの行を消せるのは経営層だけです（0 は入れられます）。'; continue; }
+                        plan.push({ id: it.id, op: 'delete' });
+                    } else {
+                        plan.push({ id: it.id, op: s ? 'update' : 'create', est: v, notes: notes });
+                    }
+                } else {
+                    if (v === '') {
+                        if (!s) { if (notes !== '') errs[it.id] = '確定額を入力してください（備考だけでは保存できません）。'; continue; }
+                        plan.push({ id: it.id, op: 'update', act: null, notes: notes });
+                    } else {
+                        plan.push({ id: it.id, op: s ? 'update' : 'create', act: v, notes: notes });
+                    }
+                }
+            }
+            this.errors = errs;
+            if (Object.keys(errs).length > 0) { this.message = ''; return; }
+
+            // 消える行があれば、保存の前に名前を挙げて確かめる
+            var self = this;
+            var gone = plan.filter(function (p) { return p.op === 'delete'; })
+                .map(function (p) { return self.items.find(function (it) { return it.id === p.id; }).name; });
+            if (gone.length > 0 && !confirm('次の ' + gone.length + ' 件の行を削除します: ' + gone.join('、') + '。よろしいですか？')) return;
+
+            var added = 0, changed = 0, removed = 0, copy = JSON.parse(JSON.stringify(this.saved));
+            for (var j = 0; j < plan.length; j++) {
+                var p = plan[j], cur = copy[p.id];
+                if (p.op === 'delete') { delete copy[p.id]; removed++; continue; }
+                if (p.op === 'create') {
+                    copy[p.id] = { est: mode === 'est' ? p.est : 0, act: mode === 'act' ? p.act : null, notes: p.notes };
+                    added++; continue;
+                }
+                var before = JSON.stringify(cur);
+                if (mode === 'est') cur.est = p.est; else cur.act = p.act;
+                cur.notes = p.notes;
+                if (JSON.stringify(cur) !== before) changed++;
+            }
+            this.saved = copy;
+            this.mode = null;
+            var label = mode === 'est' ? '見込み額' : '確定額';
+            this.message = (added + changed + removed) === 0
+                ? '変更はありませんでした。'
+                : label + 'を保存しました（追加 ' + added + ' 件・変更 ' + changed + ' 件' + (removed ? '・削除 ' + removed + ' 件' : '') + '）。';
+        },
+
+        // ---- 一覧 ----
+        get savedItems() {
+            var self = this;
+            return this.items.filter(function (it) { return !!self.saved[it.id]; });
+        },
+        removeRow: function (it) {
+            if (!confirm('「' + it.name + '」を削除しますか？')) return;
+            var copy = JSON.parse(JSON.stringify(this.saved));
+            delete copy[it.id];
+            this.saved = copy;
+            this.message = '「' + it.name + '」を削除しました。';
+        }
+    };
+}
+</script>
+</body>
+</html>
