@@ -38,15 +38,15 @@ final class CsvImportLimits
      * （直す前は is_numeric で読み、「55000.9」を黙って 55000 で保存していた。画面の入力チェックは integer）。
      * 上限との比べは float で行う（PHP の int を超える桁に頼らない）。
      *
-     * @param  string  $formatError  整数でないときの文（呼ぶ側の今の文）
-     * @param  bool  $allowCommas  カンマを除いて読むか。金額は除く（「55,000」）。階などの数は除かない
-     *                             （除くと「2,5」のような打ち間違いが黙って 25 で保存される）
+     * @param  string  $formatError  整数でないとき・カンマの区切りが崩れているときの文（呼ぶ側の今の文）
+     * @param  bool  $allowCommas  3 桁ごとの正しい区切りのカンマを除いて読むか。金額は除く（「55,000」）。
+     *                             総戸数・階数・階は除かない（「1,000」も形の誤り。Bug #132 の最後の点検で決めた）
      * @return array{0: int, 1: null}|array{0: null, 1: string}  [値, null] か [null, 誤りの文]
      */
     public static function readUnsignedInt(string $raw, string $label, int $max, string $formatError, bool $allowCommas = true): array
     {
-        $digits = $allowCommas ? str_replace(',', '', $raw) : $raw;
-        if (! ctype_digit($digits)) {
+        $digits = $allowCommas ? self::withoutThousandsSeparators($raw) : $raw;
+        if ($digits === null || ! ctype_digit($digits)) {
             return [null, $formatError];
         }
         if ((float) $digits > $max) {
@@ -54,5 +54,26 @@ final class CsvImportLimits
         }
 
         return [(int) $digits, null];
+    }
+
+    /**
+     * 3 桁ごとの正しい区切りのカンマを除いた文字を返す（金額と面積の読み方が使う）。カンマが無ければそのまま返す
+     * （数かどうかは呼ぶ側が見る）。区切りが崩れていれば null。
+     * 正しい区切り: 整数の部分（最初の「.」より前）が「1〜3 桁」＋「, と 3 桁」の繰り返しで、小数の部分にカンマが無い。
+     * 直す前はカンマを全部除いていたので、打ち間違いの「5,5000」が 55000・「5,50」が 550 で黙って入っていた。
+     * Excel が書き出す CSV は表示どおりの正しい区切りなので、崩れた区切りは人が打ち間違えたときにだけ入る。
+     * docs/RULES.md Bug #132 の追記（2026-11-16）
+     */
+    public static function withoutThousandsSeparators(string $raw): ?string
+    {
+        if (! str_contains($raw, ',')) {
+            return $raw;
+        }
+        [$integer, $fraction] = array_pad(explode('.', $raw, 2), 2, '');
+        if (preg_match('/^\d{1,3}(?:,\d{3})+$/', $integer) !== 1 || str_contains($fraction, ',')) {
+            return null;
+        }
+
+        return str_replace(',', '', $raw);
     }
 }

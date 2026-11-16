@@ -7,7 +7,8 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
- * CSV 取込で、本番の列に入らない値をその行の誤りにする部品（賃貸マンション・テナントの取込が使う。docs/RULES.md Bug #132）。
+ * CSV 取込で、本番の列に入らない値をその行の誤りにする部品（賃貸マンション・テナントの取込が使う）。
+ * docs/RULES.md Bug #132（賃貸マンション）・Bug #133（テナント）・2026-11-16 のカンマの区切りの直し（Bug #132 の追記）。
  */
 class CsvImportLimitsTest extends TestCase
 {
@@ -89,7 +90,55 @@ class CsvImportLimitsTest extends TestCase
 
     public function test_commas_are_refused_when_not_allowed(): void
     {
-        $this->assertSame([null, 'FORMAT'], CsvImportLimits::readUnsignedInt('2,5', '階', 255, 'FORMAT', allowCommas: false));
-        $this->assertSame([25, null], CsvImportLimits::readUnsignedInt('2,5', '階', 255, 'FORMAT'));
+        $this->assertSame([null, 'FORMAT'], CsvImportLimits::readUnsignedInt('2,500', '総戸数', 65535, 'FORMAT', allowCommas: false));
+        $this->assertSame([2500, null], CsvImportLimits::readUnsignedInt('2,500', '総戸数', 65535, 'FORMAT'));
+    }
+
+    /** カンマの区切りが 3 桁ごとに正しいときだけカンマを除く。カンマが無い値はそのまま返す（数かどうかは呼ぶ側が見る）。 */
+    public static function wellGrouped(): array
+    {
+        return [
+            '5 桁'           => ['55,000', '55000'],
+            '7 桁'           => ['1,000,000', '1000000'],
+            '列の上限'       => ['4,294,967,295', '4294967295'],
+            '小数つきの面積' => ['1,234.56', '1234.56'],
+            '先頭の 0'       => ['055,000', '055000'],
+            'カンマ無し'     => ['55000', '55000'],
+            '数でない'       => ['abc', 'abc'],
+            '空'             => ['', ''],
+        ];
+    }
+
+    #[DataProvider('wellGrouped')]
+    public function test_well_grouped_separators_are_removed(string $raw, string $expected): void
+    {
+        $this->assertSame($expected, CsvImportLimits::withoutThousandsSeparators($raw));
+    }
+
+    /** 直す前はカンマを全部除いていたので、どれも別の値（5,5000 → 55000・5,50 → 550 など）で黙って入っていた。 */
+    public static function misplaced(): array
+    {
+        return [
+            '4 桁の組'           => ['5,5000'],
+            '続くカンマ'         => ['5,,000'],
+            '2 桁の組'           => ['5,50'],
+            '先頭のカンマ'       => [',5000'],
+            '末尾のカンマ'       => ['5000,'],
+            '4 桁で始まる'       => ['5555,000'],
+            '小数の部分のカンマ' => ['1,234.5,6'],
+            '負'                 => ['-1,000'],
+        ];
+    }
+
+    #[DataProvider('misplaced')]
+    public function test_misplaced_separators_are_null(string $raw): void
+    {
+        $this->assertNull(CsvImportLimits::withoutThousandsSeparators($raw));
+    }
+
+    #[DataProvider('misplaced')]
+    public function test_misplaced_commas_get_the_format_error(string $raw): void
+    {
+        $this->assertSame([null, 'FORMAT'], CsvImportLimits::readUnsignedInt($raw, '家賃', 4294967295, 'FORMAT'));
     }
 }

@@ -240,7 +240,10 @@ class TenantImportColumnLimitsTest extends TestCase
         ];
     }
 
-    /** 行 2 はカンマ入りの上限ちょうど・行 3 は 1 つ超え・行 4 は小数（直す前は黙って 55000 で保存された）。 */
+    /**
+     * 行 2 はカンマ入りの上限ちょうど・行 3 は 1 つ超え・行 4 は小数（直す前は黙って 55000 で保存された）・
+     * 行 5 はカンマの区切りが崩れた値（直す前はカンマを全部除いて 55000 で保存された）。
+     */
     #[DataProvider('unitAmounts')]
     public function test_unit_amounts_up_to_the_column_range_are_imported(string $header, string $column): void
     {
@@ -249,18 +252,20 @@ class TenantImportColumnLimitsTest extends TestCase
         $csv = self::UNIT_HEADER . "\r\n"
              . $this->unitRow(['部屋番号' => 'B', $header => number_format(self::MAX_AMOUNT)])
              . $this->unitRow(['部屋番号' => 'C', $header => $over])
-             . $this->unitRow(['部屋番号' => 'D', $header => '55000.9']);
+             . $this->unitRow(['部屋番号' => 'D', $header => '55000.9'])
+             . $this->unitRow(['部屋番号' => 'E', $header => '5,5000']);
 
         $preview = $this->preview('unit', $csv)->assertOk();
         $this->assertSame([
             ['row' => 3, 'message' => "{$header}「{$over}」は{$max}以下の値にしてください"],
             ['row' => 4, 'message' => "{$header}「55000.9」は不正な値です"],
+            ['row' => 5, 'message' => "{$header}「5,5000」は不正な値です"],
         ], $preview->viewData('rowErrors'));
         $this->assertSame(1, $preview->viewData('validCount'));
 
         $this->confirm('unit', $csv);
         $this->assertSame(self::MAX_AMOUNT, Unit::where('display_name', '2B')->sole()->{$column});
-        $this->assertSame(0, Unit::whereIn('display_name', ['2C', '2D'])->count());
+        $this->assertSame(0, Unit::whereIn('display_name', ['2C', '2D', '2E'])->count());
     }
 
     /** 面積は画面と同じ 9,999.99 坪まで（列は 999,999.99 まで入るが、超えた区画は編集画面で断られる）。 */
