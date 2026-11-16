@@ -82,3 +82,9 @@
 - Feature テスト（上）と全件テスト・変異テスト
 - 画面は変えていないので、ビューの lint と実ブラウザの確認はしない（確認画面の描画は Feature テストが見る）
 - 13.x への早送り・push・本番への反映は、利用者の指示があったときだけ（別々のコマンドで）
+
+## 実測記録（2026-11-16）
+
+- Task 1（`5d9a0d16`）: 直す前の赤 = テスト 1 は「顧客 4件を自動作成: 作られる商事、金額誤り商事、いいい…、屋号長い商事」、テスト 3 は「顧客 7件を自動作成: あ商事、誤り商事、い商事、う商事、え商事 ...」で summary が食い違った。テスト 2 は見込みどおり直す前も緑。直したあと新しいファイル・`TenantContractReimportTest`・`TenantUnitImportTest` が OK (99 tests, 784 assertions)・警告なし
+- 全件: OK (5006 tests, 50992 assertions)・警告なし（PHP 8.3・3 分 05 秒・ピーク 171.50 MB）
+- 変異 7 通り（`.claude/route-coverage-tools/mutate/specs.past-contract-create-list.py`・結果は `results-past-contract-create-list.{txt,json}`）: すべて MATCH（C0 3 本・M1 1 本・M2 1 本・M3 3 本・M4 1 本・M5 1 本・M6 2 本）。流したあと作業ツリーは空
