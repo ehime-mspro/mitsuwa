@@ -511,8 +511,9 @@ class TenantImportController extends Controller
 
             // 面積チェック
             if ($row['area_tsubo'] !== '') {
-                $val = str_replace(',', '', $row['area_tsubo']);
-                if (!is_numeric($val) || (float) $val < 0) {
+                // カンマは 3 桁ごとの正しい区切りのときだけ除く（崩れていれば null。2026-11-16）
+                $val = CsvImportLimits::withoutThousandsSeparators($row['area_tsubo']);
+                if ($val === null || !is_numeric($val) || (float) $val < 0) {
                     $errors[] = ['row' => $rowNum, 'message' => "面積「{$row['area_tsubo']}」は不正な値です"];
                     continue;
                 }

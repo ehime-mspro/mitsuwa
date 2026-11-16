@@ -538,8 +538,9 @@ class MansionImportController extends Controller
 
             // 面積チェック（DECIMAL(8,2)。上限の比べは画面の max:999999.99 と同じ）
             if ($row['area_sqm'] !== '') {
-                $val = str_replace(',', '', $row['area_sqm']);
-                if (!is_numeric($val) || (float) $val < 0) {
+                // カンマは 3 桁ごとの正しい区切りのときだけ除く（崩れていれば null。2026-11-16）
+                $val = CsvImportLimits::withoutThousandsSeparators($row['area_sqm']);
+                if ($val === null || !is_numeric($val) || (float) $val < 0) {
                     $errors[] = ['row' => $rowNum, 'message' => "面積「{$row['area_sqm']}」は不正な値です"];
                     continue;
                 }

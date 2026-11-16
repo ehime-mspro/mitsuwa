@@ -288,6 +288,29 @@ class TenantImportColumnLimitsTest extends TestCase
         $this->assertSame(0, Unit::whereIn('display_name', ['2C', '2D'])->count());
     }
 
+    /**
+     * 面積のカンマは 3 桁ごとの正しい区切りのときだけ除く。「1,50」は直す前カンマを全部除いて 150 坪で入っていた値
+     * （「5,5000」は直す前も上限 9,999.99 で断られるので、ここでは使わない）。
+     */
+    public function test_area_with_thousands_separators_is_read_only_when_well_grouped(): void
+    {
+        $csv = self::UNIT_HEADER . "\r\n"
+             . $this->unitRow(['部屋番号' => 'B', '面積(坪)' => '1,234.56'])
+             . $this->unitRow(['部屋番号' => 'C', '面積(坪)' => '1,50'])
+             . $this->unitRow(['部屋番号' => 'D', '面積(坪)' => '1,234.5,6']);
+
+        $preview = $this->preview('unit', $csv)->assertOk();
+        $this->assertSame([
+            ['row' => 3, 'message' => '面積「1,50」は不正な値です'],
+            ['row' => 4, 'message' => '面積「1,234.5,6」は不正な値です'],
+        ], $preview->viewData('rowErrors'));
+        $this->assertSame(1, $preview->viewData('validCount'));
+
+        $this->confirm('unit', $csv);
+        $this->assertSame('1234.56', Unit::where('display_name', '2B')->sole()->area_tsubo);
+        $this->assertSame(0, Unit::whereIn('display_name', ['2C', '2D'])->count());
+    }
+
     // ================================================================
     // 契約・過去契約（行ごとに契約日を変える＝CSV 内の重複にしない）
     // ================================================================

@@ -310,6 +310,26 @@ class MansionImportColumnLimitsTest extends TestCase
         $this->assertSame(0, MsRoom::whereIn('room_number', ['202', '203'])->count());
     }
 
+    /** 面積のカンマは 3 桁ごとの正しい区切りのときだけ除く（直す前はカンマを全部除いて「5,5000」が 55000 ㎡で入っていた）。 */
+    public function test_area_with_thousands_separators_is_read_only_when_well_grouped(): void
+    {
+        $csv = self::ROOM_HEADER . "\r\n"
+             . $this->roomRow(['部屋番号' => '201', '面積(㎡)' => '1,234.56'])
+             . $this->roomRow(['部屋番号' => '202', '面積(㎡)' => '5,5000'])
+             . $this->roomRow(['部屋番号' => '203', '面積(㎡)' => '1,234.5,6']);
+
+        $preview = $this->preview('room', $csv)->assertOk();
+        $this->assertSame([
+            ['row' => 3, 'message' => '面積「5,5000」は不正な値です'],
+            ['row' => 4, 'message' => '面積「1,234.5,6」は不正な値です'],
+        ], $preview->viewData('rowErrors'));
+        $this->assertSame(1, $preview->viewData('validCount'));
+
+        $this->confirm('room', $csv);
+        $this->assertSame('1234.56', MsRoom::where('room_number', '201')->sole()->area_sqm);
+        $this->assertSame(0, MsRoom::whereIn('room_number', ['202', '203'])->count());
+    }
+
     public function test_parking_monthly_fee_up_to_the_column_range_is_imported(): void
     {
         $max = (string) self::MAX_AMOUNT;
