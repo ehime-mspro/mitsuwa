@@ -92,3 +92,10 @@
 - 単体＋Feature のテスト（上）と全件テスト・変異テスト
 - 画面は変えていないので、ビューの lint と実ブラウザの確認はしない（プレビューの描画は Feature テストが見る）
 - 13.x への早送り・push・本番への反映は、利用者の指示があったときだけ（別々のコマンドで）
+
+## 実測記録（2026-11-16）
+
+- Task 1（`e5d842af`）: 直す前の赤 = 単体 16 本が「undefined method withoutThousandsSeparators」・`readUnsignedInt()` の崩れた形 6 本が値を返す（`1,234.5,6`・`-1,000` は直す前も整数にならず形の誤り＝緑）・賃貸マンションの家賃 1 本と テナントの区画の金額 5 本が rowErrors の行不足。直したあと 3 ファイル OK (107 tests, 825 assertions)
+- Task 2（`34198a53`）: 直す前の赤 = 2 本とも rowErrors が空（崩れた値が入る）。直したあと 2 ファイル OK (70 tests, 810 assertions)
+- 全件: OK (5003 tests, 50954 assertions)・警告なし（PHP 8.3・3 分 08 秒・ピーク 171.50 MB）
+- 変異 12 通り（`.claude/route-coverage-tools/mutate/specs.import-comma-grouping.py`・結果は `results-import-comma-grouping.{txt,json}`）: すべて MATCH（C0 1 本・M1 22 本・M2 2 本・M3 12 本・M4 3 本・M5 3 本・M6 9 本・M7 12 本・M8 1 本・M9 1 本・M10／M10b は等価で緑）。流したあと作業ツリーは空
