@@ -415,6 +415,7 @@ class CostGridSaveTest extends RealEstateScreenTestCase
         foreach (self::owners() as $label => [$kind]) {
             $cases["{$label}・id"] = [$kind, 'id', '原価の行'];
             $cases["{$label}・amount"] = [$kind, 'amount', '金額'];
+            $cases["{$label}・notes"] = [$kind, 'notes', '備考'];
         }
 
         return $cases;
@@ -422,7 +423,7 @@ class CostGridSaveTest extends RealEstateScreenTestCase
 
     /** キーそのものが無い送信（手で組んだ送信）。500 でなく断り、何も書かない（Bug #92）。amount は「空＝消す」と取り違えない */
     #[DataProvider('missingKeys')]
-    public function test_a_row_without_the_id_or_amount_key_is_refused(string $kind, string $key, string $attribute): void
+    public function test_a_row_without_the_id_amount_or_notes_key_is_refused(string $kind, string $key, string $attribute): void
     {
         $owner = $this->ownerOf($kind);
         $cost = $this->costOf($kind, $owner, $this->surveyItem, 500000);

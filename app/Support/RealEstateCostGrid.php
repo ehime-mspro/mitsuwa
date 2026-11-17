@@ -125,7 +125,7 @@ final class RealEstateCostGrid
     {
         $seenIds = [];
         $newItemIds = [];
-        $savedItemIds = $costs->pluck('cost_item_id')->all();
+        $savedItemIds = $costs->pluck('cost_item_id')->map(fn ($id) => (int) $id)->all();
 
         foreach ($rows as $row) {
             if ($row['id'] !== null) {
