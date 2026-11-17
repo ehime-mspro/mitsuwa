@@ -21,7 +21,9 @@ class ProjectScreensTest extends RealEstateScreenTestCase
         $url = route('realestate.projects.create');
         $html = $this->htmlOf($url);
         $form = $this->formWithCostSection($html, route('realestate.projects.store'), 'projectForm', '',
-            'data.showAddCost = true; data.newCost = { cost_item_id: "' . $this->surveyItem->id . '", estimated_amount: "1200000", actual_amount: "", notes: "造成前" }; data.addCost();');
+            // 原価欄: 見込み額の表で入れて閉じる（一覧の hidden で登録と一緒に送る）
+            'data.openCostGrid("estimated"); var r = data.costGrid.rows.filter(function (x) { return x.name === "測量費"; })[0];'
+            . ' r.draft.amount = "1,200,000"; r.draft.notes = "造成前"; data.closeCostGrid();');
         $form = $this->fill($form, ['project_name' => '北条分譲地', 'status' => 'info_obtained', 'address' => '愛媛県松山市北条1', 'purchase_price' => '30000000']);
 
         $html = $this->landed($this->submit($form, $url));

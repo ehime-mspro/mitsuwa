@@ -21,7 +21,11 @@ class ProcurementScreensTest extends RealEstateScreenTestCase
         $html = $this->htmlOf($url);
         $form = $this->formWithCostSection($html, route('realestate.procurements.store'), 'procurementForm',
             'data.propertyType = "used_house"; data.purchaseLand = "18000000"; data.purchaseBuildingExcl = "2000000";',
-            'data.showAddCost = true; data.newCost = { cost_item_id: "' . $this->surveyItem->id . '", estimated_amount: "300000", actual_amount: "280000", notes: "境界確定" }; data.addCost();');
+            // 原価欄: 見込み額の表で入れて閉じ、確定額の表で入れて閉じる（一覧の hidden で登録と一緒に送る）
+            'data.openCostGrid("estimated"); var r = data.costGrid.rows.filter(function (x) { return x.name === "測量費"; })[0];'
+            . ' r.draft.amount = "300,000"; r.draft.notes = "境界確定"; data.closeCostGrid();'
+            . ' data.openCostGrid("actual"); var a = data.costGrid.rows.filter(function (x) { return x.name === "測量費"; })[0];'
+            . ' a.draft.amount = "280000"; data.closeCostGrid();');
         $form = $this->fill($form, ['transaction_type' => 'purchase', 'status' => 'info_obtained', 'property_name' => '道後の家', 'address' => '愛媛県松山市道後町1-1']);
         $this->assertSame('300000', $form['fields']['costs'][0]['estimated_amount'], '原価の行が送られていない');
 

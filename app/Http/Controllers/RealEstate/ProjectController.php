@@ -83,7 +83,7 @@ class ProjectController extends Controller
         $zoningTypes = ZoningType::orderBy('sort_order')->get();
 
         // 原価管理セクション用データ — show() と同じ構成。
-        // 新規登録フォームの「原価管理」カードが Excel 取込 + 手動行追加でこれらを使う。
+        // 新規登録フォームの「原価管理」カードが Excel 取込 + 見込み額・確定額の表でこれらを使う。
         $costItems = ReCostItem::active()->ordered()->get();
         $costItemsForJs = [];
         foreach ($costItems as $item) {
@@ -92,6 +92,8 @@ class ProjectController extends Controller
         $costAliasMap    = config('realestate_cost_import.aliases', []);
         $costSkipList    = config('realestate_cost_import.skip', []);
         $costSubtotalKws = config('realestate_cost_import.subtotal_keywords', []);
+        // 原価の入力の表（見込み額・確定額）の項目（停止中も含めた全件。新規登録の表は物件購入費を出さない）
+        $costGridItems   = ReCostItem::forCostGrid();
 
         // 戻り先（パンくずの中間リンク + キャンセルボタン）。
         // 仕入れ案件一覧から入ったときだけそちらへ戻す。
@@ -106,7 +108,7 @@ class ProjectController extends Controller
         $backLabel = $fromProcurements ? '仕入れ案件一覧' : '分譲地一覧';
 
         return view('realestate.projects.create', compact(
-            'zoningTypes', 'costItemsForJs', 'costAliasMap', 'costSkipList', 'costSubtotalKws',
+            'zoningTypes', 'costItemsForJs', 'costAliasMap', 'costSkipList', 'costSubtotalKws', 'costGridItems',
             'backUrl', 'backLabel'
         ));
     }

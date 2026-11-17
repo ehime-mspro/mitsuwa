@@ -327,6 +327,65 @@ function costGridFactory(opts) {
             });
         },
 
+        // 新規登録: 表の内容を一覧（this.costs）に入れて閉じる。サーバーには送らない（一覧の hidden が「登録する」で送られる）。
+        // 断りは詳細画面と同じく行に出して、表を開いたままにする（確定額のある行の見込み額を空にしても確定額を黙って捨てない）
+        closeCostGrid: function () {
+            if (this.costGrid.mode === null) return;
+            var mode = this.costGrid.mode;
+            var plan = this.costGridPlan();
+            var errorCount = Object.keys(plan.rowErrors).length;
+            this.costGrid.rowErrors = plan.rowErrors;
+            this.costGrid.notice = '';
+            if (errorCount > 0) {
+                this.costGrid.error = this._costGridSummary(errorCount);
+                return;
+            }
+
+            // 行の ref は開いたときの一覧の番号。直す行はその番号の行に当て、外す行は番号の大きい順に外し
+            // （先に外すと番号がずれる）、新しい行は一覧の末尾に足す（表の順）
+            var costs = (this.costs || []).slice();
+            var gone = [];
+            var added = [];
+            for (var i = 0; i < plan.ops.length; i++) {
+                var op = plan.ops[i];
+                var notes = op.notes === null ? '' : op.notes;
+                if (op.op === 'update') {
+                    var changed = { notes: notes };
+                    changed[mode === 'estimated' ? 'estimated_amount' : 'actual_amount'] = op.amount;
+                    costs[op.row.ref] = Object.assign({}, costs[op.row.ref], changed);
+                } else if (op.op === 'delete') {
+                    gone.push(op.row.ref);
+                } else {
+                    // 確定額だけ入れた行は見込み額 0 で載せる（詳細画面の保存と同じ）
+                    added.push({
+                        cost_item_id: op.row.cost_item_id,
+                        cost_item_name: op.row.name,
+                        estimated_amount: mode === 'estimated' ? op.amount : 0,
+                        actual_amount: mode === 'actual' ? op.amount : null,
+                        notes: notes,
+                        is_property_purchase: false
+                    });
+                }
+            }
+            gone.sort(function (a, b) { return b - a; });
+            for (var g = 0; g < gone.length; g++) costs.splice(gone[g], 1);
+            this.costs = costs.concat(added);
+            this._costGridClose();
+            if (plan.ops.length > 0) this.showMessage('表の内容を一覧に入れました。「登録する」を押すまで保存されません。');
+        },
+
+        // 新規登録: 表を開いたまま「登録する」を押したら送らない（Enter で送った場合も。打った値を黙って捨てない）。
+        // 原価欄の根の submit.window で受けるので、この原価欄を含まないフォーム（ログアウトなど）は素通しする
+        costGridGuardSubmit: function (e) {
+            if (this.costGrid.mode === null) return;
+            if (!e || !e.target || typeof e.target.querySelector !== 'function') return;
+            if (e.target.querySelector('[data-cost-section]') === null) return;
+            e.preventDefault();
+            var message = '原価の表を開いたままです。「表を閉じる」を押してから登録してください。';
+            this.costGrid.error = message;
+            alert(message);
+        },
+
         // ========== 合計・差額（入力中の値で計算し直す） ==========
         costGridValue: function (row, col) {
             var mode = this.costGrid.mode;

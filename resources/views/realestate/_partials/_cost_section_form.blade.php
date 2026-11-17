@@ -6,6 +6,11 @@
         $costAliasMap      : { canonName: [aliases] }
         $costSkipList      : [...]
         $costSubtotalKws   : [...]
+        $costGridItems     : ReCostItem::forCostGrid()（見込み額・確定額の表の項目。停止中も含めた全件）
+
+    原価は「見込み額を入力」「確定額を入力」で表（_cost_grid・costGridFactory）を開いて入れ、「表を閉じる」で一覧に入れる。
+    表はサーバーに送らない（一覧の hidden が「登録する」で送られる）。表を開いたまま「登録する」を押すと、
+    根の submit.window で受けて送らない（costGridGuardSubmit。打った値を黙って捨てない）。
 
     送信フォーマット (hidden inputs):
         costs[idx][cost_item_id]
@@ -14,7 +19,7 @@
         costs[idx][notes]
 
     物件購入費は ReProcurement / ReProject の booted() hook で自動生成されるため、
-    select には出さず、Excel 取込時も既存の costSkipList で除外する。
+    新規登録の表には出さず、Excel 取込時も既存の costSkipList で除外する。
 --}}
 @php
     // バリデーションエラーで差し戻されたとき、入力／Excel取込済みの原価を失わないよう old('costs') を復元する。
@@ -33,75 +38,43 @@
         ];
     }
 @endphp
-<div x-data="costSectionFormController()"
+<div x-data="costSectionFormController()" data-cost-section
+     @submit.window="costGridGuardSubmit($event)"
      x-cloak
      class="bg-white border border-gray-200 rounded-lg p-5 mb-3">
 
     <div class="flex items-center justify-between mb-3">
         <div class="text-sm font-bold text-gray-800 pb-2 border-b border-gray-200" style="flex: 1;">原価管理</div>
-        <div style="display: flex; gap: 8px; margin-left: 12px;">
-            <button type="button" @click="openCostExcelImport()" x-show="!showAddCost && !costExcelImport.open"
+        {{-- 入力の表と Excel 取込は同時に開かない（どちらかが開いていれば 3 つとも隠す） --}}
+        <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-left: 12px;">
+            <button type="button" @click="openCostExcelImport()" x-show="costGrid.mode === null && !costExcelImport.open"
                     class="px-3 py-1.5 bg-white text-emerald-700 rounded-md cursor-pointer hover:bg-emerald-50"
                     style="font-size: 12px; border: 1px solid #a7f3d0; font-weight: 600;">📂 試算表 Excel 取込</button>
-            <button type="button" @click="showAddCost = true" x-show="!showAddCost && !costExcelImport.open"
+            <button type="button" @click="openCostGrid('estimated')" x-show="costGrid.mode === null && !costExcelImport.open"
                     class="px-3 py-1.5 bg-emerald-600 text-white rounded-md cursor-pointer hover:bg-emerald-700"
-                    style="font-size: 12px; font-weight: 600;">＋ 費用追加</button>
+                    style="font-size: 12px; font-weight: 600;">見込み額を入力</button>
+            <button type="button" @click="openCostGrid('actual')" x-show="costGrid.mode === null && !costExcelImport.open"
+                    class="px-3 py-1.5 bg-blue-600 text-white rounded-md cursor-pointer hover:bg-blue-700"
+                    style="font-size: 12px; font-weight: 600;">確定額を入力</button>
         </div>
     </div>
 
-    <p class="text-xs text-gray-500 mb-3">登録後、詳細画面で個別編集・追加も可能です。物件購入費は仕入れ情報から自動同期されます。</p>
+    <p class="text-xs text-gray-500 mb-3">「見込み額を入力」「確定額を入力」で表を開いて入れ、「表を閉じる」で一覧に入れます。登録するまで保存されません。物件購入費は仕入れ情報から自動同期されます。</p>
 
     {{-- Excel 取込パネル（仕入れ案件・分譲地PJ 共用 partial）— $costItems は Bug #16 回避の静的 option 用 --}}
     @include('realestate._partials._cost_excel_import', ['costItems' => $costItemsForJs ?? []])
-
-    {{-- 費用追加フォーム（手動入力） --}}
-    <div x-show="showAddCost" x-transition class="mb-4 p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" style="align-items: end;">
-            <div>
-                <label class="block text-xs font-semibold text-gray-700 mb-1">費用項目</label>
-                {{-- 静的 @foreach で option 注入（Bug #16 回避）。物件購入費は自動生成のため除外 --}}
-                <select x-model="newCost.cost_item_id" class="w-full h-9 px-2 border border-gray-300 rounded-md bg-white focus:border-emerald-500 focus:outline-none" style="font-size: 13px;">
-                    <option value="">選択</option>
-                    @foreach(($costItemsForJs ?? []) as $ci)
-                        @if(($ci['name'] ?? '') !== '物件購入費')
-                            <option value="{{ $ci['id'] }}">{{ $ci['name'] }}</option>
-                        @endif
-                    @endforeach
-                </select>
-            </div>
-            <div>
-                <label class="block text-xs font-semibold text-gray-700 mb-1">見込み額</label>
-                <input type="text" inputmode="numeric" x-model="newCost.estimated_amount" placeholder=""
-                       class="w-full h-9 px-2 border border-gray-300 rounded-md focus:border-emerald-500 focus:outline-none" style="font-size: 13px;">
-            </div>
-            <div>
-                <label class="block text-xs font-semibold text-gray-700 mb-1">確定額</label>
-                <input type="text" inputmode="numeric" x-model="newCost.actual_amount" placeholder="未定"
-                       class="w-full h-9 px-2 border border-gray-300 rounded-md focus:border-emerald-500 focus:outline-none" style="font-size: 13px;">
-            </div>
-            <div>
-                <label class="block text-xs font-semibold text-gray-700 mb-1">備考</label>
-                <input type="text" x-model="newCost.notes" placeholder=""
-                       class="w-full h-9 px-2 border border-gray-300 rounded-md focus:border-emerald-500 focus:outline-none" style="font-size: 13px;">
-            </div>
-        </div>
-        <div class="flex gap-2 mt-3">
-            <button type="button" @click="addCost()"
-                    class="px-4 py-1.5 bg-emerald-600 text-white rounded cursor-pointer hover:bg-emerald-700"
-                    style="font-size: 12px; font-weight: 600;">追加</button>
-            <button type="button" @click="showAddCost = false; resetNewCost();"
-                    class="px-4 py-1.5 bg-gray-100 text-gray-600 rounded cursor-pointer hover:bg-gray-200"
-                    style="font-size: 12px; font-weight: 600;">取消</button>
-        </div>
-    </div>
 
     {{-- 操作メッセージ --}}
     <div x-show="costMessage" x-transition class="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 p-2">
         <p class="text-sm text-emerald-800" x-text="costMessage"></p>
     </div>
 
-    {{-- 原価テーブル（hidden inputs で submit に乗せる） --}}
-    <div class="border border-gray-200 rounded-md overflow-hidden">
+    {{-- 原価の入力の表（見込み額・確定額。仕入れ案件・分譲地の詳細画面と共用。新規登録は「表を閉じる」で一覧に入れる） --}}
+    @include('realestate._partials._cost_grid', ['costGridLocal' => true])
+
+    {{-- 原価テーブル（hidden inputs で submit に乗せる）。表を開いているあいだは隠す
+         （一覧の「削除」で番号がずれると、表を閉じたときに別の行を書き換えるため） --}}
+    <div class="border border-gray-200 rounded-md overflow-hidden" x-show="costGrid.mode === null">
         <div class="scroll-hint at-start">
         <div class="scroll-hint-inner">
         <table class="w-full border-collapse" style="table-layout: fixed; min-width: 720px;">
@@ -150,7 +123,7 @@
                 </template>
                 <tr x-show="costs.length === 0">
                     <td colspan="5" class="px-4 py-6 text-center text-sm text-gray-400">
-                        原価データはまだありません。「＋ 費用追加」または「📂 試算表 Excel 取込」から追加してください。
+                        原価データがありません。「見込み額を入力」から入れてください。
                     </td>
                 </tr>
             </tbody>
@@ -183,6 +156,9 @@
 {{-- 試算表 Excel/CSV 取込の Alpine factory（仕入れ案件・分譲地PJ 共用） --}}
 @include('realestate._partials._cost_excel_import_script')
 
+{{-- 原価の入力の表の Alpine factory（仕入れ案件・分譲地PJ の詳細画面・新規登録で共用） --}}
+@include('realestate._partials._cost_grid_script')
+
 <script>
 function costSectionFormController() {
     // データは x-data 属性ではなく <script> 内で組み立てる。
@@ -194,6 +170,7 @@ function costSectionFormController() {
         costSkipList:    @json($costSkipList ?? []),
         costSubtotalKws: @json($costSubtotalKws ?? []),
         oldCosts:        @json($oldCostsForJs),
+        gridItems:       @json($costGridItems ?? []),
     };
     // 既存の Excel importer factory を流用。サーバー Ajax は使わないので baseUrl/csrf は null。
     var ei = costExcelImporterFactory({
@@ -251,15 +228,14 @@ function costSectionFormController() {
     };
 
     // ⚠ Object.assign の引数順序（Bug #8）:
-    //   target = リテラル（getter 含む）、source = factory（getter なし）
+    //   target = リテラル（getter 含む）、source = factory（getter なし。Excel 取込・入力の表）
     //   getter を source 側に置くと evaluate されて static 値に焼き付いて Alpine reactivity が壊れる。
+    //   入力の表は送らない（saveUrl: null）。新規登録には保存済みの行が無いので、権限の断りと削除の確かめも無い。
     return Object.assign({
         // old('costs')（バリデーションエラー差し戻し時）があれば復元、無ければ空配列。
         costs:      (opts.oldCosts || []),
         costItems:  opts.costItems,
-        showAddCost: false,
         costMessage: '',
-        newCost: { cost_item_id: '', estimated_amount: '', actual_amount: '', notes: '' },
 
         // --- 原価合計（getter）---
         get estimatedTotal() {
@@ -301,39 +277,14 @@ function costSectionFormController() {
             setTimeout(function () { self.costMessage = ''; }, 3000);
         },
 
-        resetNewCost: function () {
-            this.newCost = { cost_item_id: '', estimated_amount: '', actual_amount: '', notes: '' };
-        },
-
-        addCost: function () {
-            if (!this.newCost.cost_item_id) {
-                alert('費用項目を選択してください。');
-                return;
-            }
-            var estRaw = this.newCost.estimated_amount;
-            if (estRaw === '' || estRaw === null || isNaN(Number(estRaw))) {
-                alert('見込み額を入力してください。');
-                return;
-            }
-            var id   = Number(this.newCost.cost_item_id);
-            var item = (this.costItems || []).find(function (ci) { return ci.id == id; });
-            var actRaw = this.newCost.actual_amount;
-            var act  = (actRaw !== '' && actRaw !== null && !isNaN(Number(actRaw))) ? Number(actRaw) : null;
-            this.costs.push({
-                cost_item_id:     id,
-                cost_item_name:   item ? item.name : '',
-                estimated_amount: Number(estRaw),
-                actual_amount:    act,
-                notes:            this.newCost.notes || '',
-                is_property_purchase: false
-            });
-            this.resetNewCost();
-            this.showAddCost = false;
-        },
-
         removeCost: function (idx) {
             this.costs.splice(idx, 1);
         }
-    }, ei);
+    }, ei, costGridFactory({
+        items:     opts.gridItems,
+        saveUrl:   null,
+        csrf:      null,
+        canDelete: true
+    }));
 }
 </script>

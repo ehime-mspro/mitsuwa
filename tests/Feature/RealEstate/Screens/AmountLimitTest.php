@@ -62,7 +62,8 @@ class AmountLimitTest extends RealEstateScreenTestCase
     {
         $url = route('realestate.procurements.create');
         $form = $this->formWithCostSection($this->htmlOf($url), route('realestate.procurements.store'), 'procurementForm', 'data.propertyType = "used_house";',
-            'data.newCost = { cost_item_id: "' . $this->surveyItem->id . '", estimated_amount: "' . (self::INT_MAX + 1) . '", actual_amount: "", notes: "" }; data.addCost();');
+            // 表は上限を超える額を断るので（tooLarge）、一覧に直に入れて、サーバーの入力チェックを見る（手で組んだ送信と同じ）
+            'data.costs.push({ cost_item_id: ' . $this->surveyItem->id . ', cost_item_name: "測量費", estimated_amount: ' . (self::INT_MAX + 1) . ', actual_amount: null, notes: "", is_property_purchase: false });');
         $form = $this->fill($form, ['transaction_type' => 'purchase', 'status' => 'info_obtained', 'property_name' => '道後の家', 'address' => '松山市']);
 
         $html = $this->landed($this->submit($form, $url));

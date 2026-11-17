@@ -72,6 +72,7 @@ abstract class RealEstateScreenTestCase extends TestCase
      * 仕入れ案件・分譲地の登録画面のフォームを、ブラウザが送る項目で組む。
      * フォームの中に原価欄（`x-data="costSectionFormController()"`）が入れ子のコンポーネントとしてあるので、
      * 親（$function）と原価欄を別々に JS の状態で評価して足す（ブラウザは 1 つのフォームとして両方を送る）。
+     * 原価欄の行は $costSteps で入れる（見込み額・確定額の表を開いて打ち、`closeCostGrid()` で一覧に入れる。CostGridCreateFormTest）。
      *
      * @return array{method: string, action: string, fields: array<string, mixed>}
      */
@@ -87,7 +88,7 @@ abstract class RealEstateScreenTestCase extends TestCase
 
         preg_match_all('/<script\b[^>]*>.*?<\/script>/s', $html, $scripts);
         $costHtml = '<form method="POST" ' . $needle . '>' . $section . '</form>' . implode("\n", $scripts[0]);
-        $costs = $this->browserForm($costHtml, $needle, 'costSectionFormController', $costSteps, [], null, ['function costExcelImporterFactory(']);
+        $costs = $this->browserForm($costHtml, $needle, 'costSectionFormController', $costSteps, [], null, ['function costExcelImporterFactory(', 'function costGridFactory(']);
 
         return ['method' => $main['method'], 'action' => $main['action'], 'fields' => $main['fields'] + $costs['fields']];
     }
