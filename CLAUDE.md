@@ -166,8 +166,8 @@ APP_KEY="base64:$(openssl rand -base64 32)" /opt/homebrew/opt/php@8.3/bin/php -d
 | 領域 | 主要 URL | Controller / Model 例 |
 |---|---|---|
 | テナント管理 | `/tenant/*` | `Tenant\*Controller`（約80ルート）|
-| 不動産 仕入れ案件 | `/realestate/procurements` | `RealEstate\ProcurementController`（Excel取込内蔵）|
-| 不動産 分譲地PJ | `/realestate/projects` | `RealEstate\ProjectController`（Excel取込内蔵）|
+| 不動産 仕入れ案件 | `/realestate/procurements` | `RealEstate\ProcurementController`（Excel取込内蔵・原価は一覧入力〈見込み額・確定額の表〉）|
+| 不動産 分譲地PJ | `/realestate/projects` | `RealEstate\ProjectController`（Excel取込内蔵・原価は一覧入力〈見込み額・確定額の表〉）|
 | 不動産 契約 | `/realestate/contracts` | `RealEstate\ReContractController` |
 | 不動産 仕入れ先 | `/realestate/suppliers` | `RealEstate\SupplierController` |
 | 住宅事業（建売/注文住宅）| `/housing/*` | `Housing\*Controller` |
