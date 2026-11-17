@@ -203,8 +203,11 @@ function buyerSelect(initialName) {
             .then(function(res) {
                 if (!res.ok) {
                     self.duplicates = [];
-                    self.error = '重複チェックに失敗しました（' + res.status + '）';
-                    return null;
+                    // 419（ログインが切れた・ほかの画面でログアウトした）はサーバーの日本語の理由を出す（Bug #137）。ほかは番号つきの今の文
+                    return res.json().catch(function() { return null; }).then(function(body) {
+                        self.error = res.status === 419 && body && body.message ? body.message : '重複チェックに失敗しました（' + res.status + '）';
+                        return null;
+                    });
                 }
                 return res.json();
             })
@@ -241,7 +244,12 @@ function buyerSelect(initialName) {
                         throw new Error(reasons.length > 0 ? reasons.join(' ') : '登録に失敗しました（422）');
                     });
                 }
-                if (!res.ok) { throw new Error('登録に失敗しました（' + res.status + '）'); }
+                if (!res.ok) {
+                    // 419（ログインが切れた・ほかの画面でログアウトした）はサーバーの日本語の理由を出す（Bug #137）。ほかは番号つきの今の文
+                    return res.json().catch(function() { return null; }).then(function(body) {
+                        throw new Error(res.status === 419 && body && body.message ? body.message : '登録に失敗しました（' + res.status + '）');
+                    });
+                }
                 return res.json();
             })
             .then(function(data) {

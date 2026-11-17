@@ -236,8 +236,11 @@ function projectStatusCell(id, initialValue, initialLabel, initialBadgeClass) {
             .then(function(r) {
                 if (!r.ok) {
                     self.submitting = false;
-                    alert('ステータスの更新に失敗しました（' + r.status + '）');
-                    return null;
+                    // 419（ログインが切れた・ほかの画面でログアウトした）はサーバーの日本語の理由を出す（Bug #137）。ほかは番号つきの今の文
+                    return r.json().catch(function() { return null; }).then(function(body) {
+                        alert(r.status === 419 && body && body.message ? body.message : 'ステータスの更新に失敗しました（' + r.status + '）');
+                        return null;
+                    });
                 }
                 return r.json();
             })

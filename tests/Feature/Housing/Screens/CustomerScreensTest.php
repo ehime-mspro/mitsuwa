@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Housing\Screens;
 
+use App\Enums\UserRole;
 use App\Models\Buyer;
 use App\Models\BuyerSurvey;
 use App\Models\SurveyQuestion;
@@ -209,6 +210,60 @@ class CustomerScreensTest extends HousingScreenTestCase
         $this->assertSame(0, Buyer::count(), '列に入らない都道府県で登録された（本番の MySQL では 500）');
         $this->assertTrue($state[1], '入力エラーなのに小窓が閉じた');
         $this->assertTrue(str_contains($state[2], trans('validation.max.string', ['attribute' => '都道府県', 'max' => 10])), '断られた理由が小窓に出ない: ' . $state[2]);
+    }
+
+    /**
+     * 小窓の登録（$op = submitModal）か重複の確認（$op = checkDup）を、要求を組んだあとで $before を走らせてから送り、応答を小窓に戻す。
+     *
+     * @return array{0: \Illuminate\Testing\TestResponse, 1: array<int, mixed>} [応答, [error, modalOpen]]
+     */
+    private function modalAfterFailure(string $op, callable $before): array
+    {
+        $property = $this->property();
+        $html = $this->htmlOf(route('housing.contracts.create', $property));
+        $steps = 'data.openModal(); data.f.last_name = "高橋"; data.f.first_name = "花子"; data.f.acquired_date = "2026-10-01"; data.' . $op . '();';
+        $factory = $this->xData($html, 'buyerSelect');
+
+        $request = $this->driveAlpine($html, 'buyerSelect', $factory, $steps)['requests'][0];
+        $response = $this->sendCaptured($before($request));
+        $after = $this->driveAlpine($html, 'buyerSelect', $factory, $steps, [$this->asFetchResponse($response)], true, ['error', 'modalOpen']);
+
+        return [$response, $after['evaluated']];
+    }
+
+    /** 画面を開いたまま時間がたったか、ほかの画面でログアウトしたあとに小窓で登録・重複の確認をすると、理由が日本語で出る（Bug #137） */
+    public function test_the_buyer_modal_says_why_after_the_session_expired(): void
+    {
+        foreach (['submitModal', 'checkDup'] as $op) {
+            [$response, $state] = $this->modalAfterFailure($op, function (array $request) {
+                $this->enforceCsrfToken();
+
+                return $this->withExpiredToken($request);
+            });
+
+            $response->assertStatus(419);
+            $this->assertSame([self::EXPIRED_JSON_MESSAGE, true], $state, "{$op}: 理由が小窓に出ないか、小窓が閉じた");
+        }
+        $this->assertSame(0, Buyer::count());
+    }
+
+    /** ログインと関係の無い断り（開いたあとで役割が一般担当に変わった 403）は、番号つきの今の文のまま */
+    public function test_the_buyer_modal_keeps_the_numbered_message_for_other_failures(): void
+    {
+        $expected = ['submitModal' => '登録に失敗しました（403）', 'checkDup' => '重複チェックに失敗しました（403）'];
+        foreach ($expected as $op => $message) {
+            [$response, $state] = $this->modalAfterFailure($op, function (array $request) {
+                $this->user->role = UserRole::Staff;
+                $this->user->save();
+
+                return $request;
+            });
+
+            $response->assertForbidden();
+            $this->assertSame([$message, true], $state, "{$op}: 番号つきの今の文でない");
+            $this->user->role = UserRole::Executive;
+            $this->user->save();
+        }
     }
 
     // ============================================================

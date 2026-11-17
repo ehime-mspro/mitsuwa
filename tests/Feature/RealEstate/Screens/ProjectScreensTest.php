@@ -138,6 +138,40 @@ class ProjectScreensTest extends RealEstateScreenTestCase
         $this->assertSame(['assessment', '検討', false], $after['evaluated']);
     }
 
+    /** 画面を開いたまま時間がたったか、ほかの画面でログアウトしたあとにステータスを変えると、理由が日本語で出る（Bug #137） */
+    public function test_a_status_change_after_the_session_expired_says_why(): void
+    {
+        $project = $this->project(['status' => 'info_obtained']);
+        $html = $this->htmlOf(route('realestate.projects.index'));
+        $steps = 'data.select(data.options.find(function (o) { return o.value === "assessment"; }));';
+        $factory = $this->xData($html, 'projectStatusCell');
+
+        $request = $this->driveAlpine($html, 'projectStatusCell', $factory, $steps)['requests'][0];
+        $this->enforceCsrfToken();
+        $response = $this->sendCaptured($this->withExpiredToken($request))->assertStatus(419);
+        $after = $this->driveAlpine($html, 'projectStatusCell', $factory, $steps, [$this->asFetchResponse($response)], true, ['value']);
+
+        $this->assertSame([self::EXPIRED_JSON_MESSAGE], $after['alerts']);
+        $this->assertSame(['info_obtained'], $after['evaluated'], '断られたのに画面のステータスが変わった');
+        $this->assertSame('info_obtained', $project->fresh()->status->value);
+    }
+
+    /** ログインと関係の無い断り（開いたあとで分譲地が消えた 404）は、番号つきの今の文のまま（サーバーの英語の文は出さない） */
+    public function test_a_status_change_that_fails_otherwise_keeps_the_numbered_message(): void
+    {
+        $project = $this->project(['status' => 'info_obtained']);
+        $html = $this->htmlOf(route('realestate.projects.index'));
+        $steps = 'data.select(data.options.find(function (o) { return o.value === "assessment"; }));';
+        $factory = $this->xData($html, 'projectStatusCell');
+
+        $request = $this->driveAlpine($html, 'projectStatusCell', $factory, $steps)['requests'][0];
+        $project->delete();
+        $response = $this->sendCaptured($request)->assertNotFound();
+        $after = $this->driveAlpine($html, 'projectStatusCell', $factory, $steps, [$this->asFetchResponse($response)]);
+
+        $this->assertSame(['ステータスの更新に失敗しました（404）'], $after['alerts']);
+    }
+
     /**
      * 区画の画面の合計のカード（区画数・面積合計・販売価格合計・原価合計・粗利合計・粗利率）は 1 行の flex で、
      * 375px では 207px 横にはみ出した（2026-10-07 に実ブラウザで実測）。折り返す。

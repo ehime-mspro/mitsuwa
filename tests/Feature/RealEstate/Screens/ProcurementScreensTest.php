@@ -165,4 +165,38 @@ class ProcurementScreensTest extends RealEstateScreenTestCase
         $after = $this->driveAlpine($html, 'realestateStatusCell', $factory, $steps, [$this->asFetchResponse($response)], true, ['value', 'label', 'open']);
         $this->assertSame(['negotiating', '交渉中', false], $after['evaluated']);
     }
+
+    /** 画面を開いたまま時間がたったか、ほかの画面でログアウトしたあとにステータスを変えると、理由が日本語で出る（Bug #137） */
+    public function test_a_status_change_after_the_session_expired_says_why(): void
+    {
+        $procurement = $this->procurement(['status' => 'assessment']);
+        $html = $this->htmlOf(route('realestate.procurements.index'));
+        $steps = 'data.select(data.options.find(function (o) { return o.value === "negotiating"; }));';
+        $factory = $this->xData($html, 'realestateStatusCell');
+
+        $request = $this->driveAlpine($html, 'realestateStatusCell', $factory, $steps)['requests'][0];
+        $this->enforceCsrfToken();
+        $response = $this->sendCaptured($this->withExpiredToken($request))->assertStatus(419);
+        $after = $this->driveAlpine($html, 'realestateStatusCell', $factory, $steps, [$this->asFetchResponse($response)], true, ['value']);
+
+        $this->assertSame([self::EXPIRED_JSON_MESSAGE], $after['alerts']);
+        $this->assertSame(['assessment'], $after['evaluated'], '断られたのに画面のステータスが変わった');
+        $this->assertSame('assessment', $procurement->fresh()->status->value);
+    }
+
+    /** ログインと関係の無い断り（開いたあとで案件が消えた 404）は、番号つきの今の文のまま（サーバーの英語の文は出さない） */
+    public function test_a_status_change_that_fails_otherwise_keeps_the_numbered_message(): void
+    {
+        $procurement = $this->procurement(['status' => 'assessment']);
+        $html = $this->htmlOf(route('realestate.procurements.index'));
+        $steps = 'data.select(data.options.find(function (o) { return o.value === "negotiating"; }));';
+        $factory = $this->xData($html, 'realestateStatusCell');
+
+        $request = $this->driveAlpine($html, 'realestateStatusCell', $factory, $steps)['requests'][0];
+        $procurement->delete();
+        $response = $this->sendCaptured($request)->assertNotFound();
+        $after = $this->driveAlpine($html, 'realestateStatusCell', $factory, $steps, [$this->asFetchResponse($response)]);
+
+        $this->assertSame(['ステータスの更新に失敗しました（404）'], $after['alerts']);
+    }
 }

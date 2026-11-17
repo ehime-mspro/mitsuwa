@@ -161,6 +161,41 @@ class PropertyScreensTest extends HousingScreenTestCase
         $this->assertSame(['construction', HousingPropertyStatus::Construction->label(), false], $after['evaluated']);
     }
 
+    /** 画面を開いたまま時間がたったか、ほかの画面でログアウトしたあとにステータスを変えると、理由が日本語で出る（Bug #137） */
+    public function test_a_status_change_after_the_session_expired_says_why(): void
+    {
+        $property = $this->property();
+        $before = $property->status;
+        $html = $this->htmlOf(route('housing.properties.index'));
+        $factory = $this->xData($html, 'housingPropertyStatusCell');
+        $steps = 'data.select(data.options.find(function (o) { return o.value === "construction"; }));';
+
+        $request = $this->driveAlpine($html, 'housingPropertyStatusCell', $factory, $steps)['requests'][0];
+        $this->enforceCsrfToken();
+        $response = $this->sendCaptured($this->withExpiredToken($request))->assertStatus(419);
+        $after = $this->driveAlpine($html, 'housingPropertyStatusCell', $factory, $steps, [$this->asFetchResponse($response)], true, ['value']);
+
+        $this->assertSame([self::EXPIRED_JSON_MESSAGE], $after['alerts']);
+        $this->assertSame([$before->value], $after['evaluated'], '断られたのに画面のステータスが変わった');
+        $this->assertSame($before, $property->fresh()->status);
+    }
+
+    /** ログインと関係の無い断り（開いたあとで物件が消えた 404）は、番号つきの今の文のまま（サーバーの英語の文は出さない） */
+    public function test_a_status_change_that_fails_otherwise_keeps_the_numbered_message(): void
+    {
+        $property = $this->property();
+        $html = $this->htmlOf(route('housing.properties.index'));
+        $factory = $this->xData($html, 'housingPropertyStatusCell');
+        $steps = 'data.select(data.options.find(function (o) { return o.value === "construction"; }));';
+
+        $request = $this->driveAlpine($html, 'housingPropertyStatusCell', $factory, $steps)['requests'][0];
+        $property->delete();
+        $response = $this->sendCaptured($request)->assertNotFound();
+        $after = $this->driveAlpine($html, 'housingPropertyStatusCell', $factory, $steps, [$this->asFetchResponse($response)]);
+
+        $this->assertSame(['進捗ステータスの更新に失敗しました（404）'], $after['alerts']);
+    }
+
     public function test_a_file_is_deleted_from_the_detail_screen(): void
     {
         Storage::fake('public');

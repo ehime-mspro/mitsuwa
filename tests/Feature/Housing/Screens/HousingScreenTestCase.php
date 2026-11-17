@@ -18,6 +18,7 @@ use Tests\Concerns\ComposesScreenForms;
 use Tests\Concerns\CreatesRealEstateSchema;
 use Tests\Concerns\CreatesSurveyQuestionSchema;
 use Tests\Concerns\DrivesAlpineFetch;
+use Tests\Concerns\EnforcesCsrfToken;
 use Tests\Concerns\ParsesForms;
 use Tests\Concerns\SubmitsScreenForms;
 use Tests\TestCase;
@@ -41,6 +42,7 @@ abstract class HousingScreenTestCase extends TestCase
     use CreatesSurveyQuestionSchema;
     use SubmitsScreenForms;
     use ComposesScreenForms;
+    use EnforcesCsrfToken;
 
     protected const INT_MAX = 2147483647;
 

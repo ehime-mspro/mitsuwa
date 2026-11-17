@@ -372,8 +372,11 @@ function housingPropertyStatusCell(id, initialValue, initialLabel, initialBadgeS
             .then(function(r) {
                 if (!r.ok) {
                     self.submitting = false;
-                    alert('進捗ステータスの更新に失敗しました（' + r.status + '）');
-                    return null;
+                    // 419（ログインが切れた・ほかの画面でログアウトした）はサーバーの日本語の理由を出す（Bug #137）。ほかは番号つきの今の文
+                    return r.json().catch(function() { return null; }).then(function(body) {
+                        alert(r.status === 419 && body && body.message ? body.message : '進捗ステータスの更新に失敗しました（' + r.status + '）');
+                        return null;
+                    });
                 }
                 return r.json();
             })
