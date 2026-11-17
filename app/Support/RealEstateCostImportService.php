@@ -18,6 +18,11 @@ use Illuminate\Support\Facades\DB;
  *
  * 物件購入費は ReProcurement / ReProject の syncPropertyPurchaseCost() で
  * 自動同期される行のため、削除も追加もしない（Controller 側で二重防御済み）。
+ *
+ * ⚠ 書く前に親（案件）の行をロックする（原価の表の保存 RealEstateCostGrid::save と同じ順: 親 → 原価の行）。
+ *   ロックせずに「原価の行を消す → 行を足す」と進むと、足すときの外部キーの確かめが親を共有ロックするので、
+ *   親を先に取って原価の行を待つ表の保存と輪になり、上書きの取込と重なるとデッドロック（1213）で表の保存が落ちた
+ *   （2026-11-17 に使い捨ての MySQL 8.4 で実測。CostImportLockOrderTest）。
  */
 class RealEstateCostImportService
 {
@@ -31,6 +36,9 @@ class RealEstateCostImportService
     public function importToProcurement(ReProcurement $procurement, array $rows, string $mode): array
     {
         return DB::transaction(function () use ($procurement, $rows, $mode) {
+            // 親の行を先にロックする（表の保存と同じ順。クラスの説明を参照）
+            ReProcurement::query()->whereKey($procurement->getKey())->lockForUpdate()->first();
+
             if ($mode === 'overwrite') {
                 $this->deleteExceptPropertyPurchase(
                     ReProcurementCost::query()->where('procurement_id', $procurement->id)
@@ -70,6 +78,9 @@ class RealEstateCostImportService
     public function importToProject(ReProject $project, array $rows, string $mode): array
     {
         return DB::transaction(function () use ($project, $rows, $mode) {
+            // 親の行を先にロックする（表の保存と同じ順。クラスの説明を参照）
+            ReProject::query()->whereKey($project->getKey())->lockForUpdate()->first();
+
             if ($mode === 'overwrite') {
                 $this->deleteExceptPropertyPurchase(
                     ReProjectCost::query()->where('project_id', $project->id)
