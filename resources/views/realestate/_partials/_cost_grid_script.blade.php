@@ -24,6 +24,8 @@
        ② キーは costGrid・_costGrid・openCostGrid などの接頭辞にする（後勝ちでホストのキーを潰さない）。
        ③ Object.assign は getter を持つ側（ホストのリテラル）を先に置き、factory はあとに並べる。
     ⚠ 断りの文言はサーバーの App\Support\RealEstateCostGrid::MESSAGES をそのまま受け取る（文言を 1 か所に）。
+       ログインが切れた・無効・権限が無いときの文だけは JS で決める（realEstateCostAccessError。この script の先頭。
+       試算表取込と詳細画面の削除も使う。CostCardAccessErrorTest）。
     ⚠ 自社への fetch には X-Requested-With を付ける（Top trap #9）。応答はエンベロープの形（AjaxErrorFeedbackTest）。
     ⚠ JS のコメントに Blade の指令名や部品のタグを書かない（Bug #30）。
 --}}
@@ -31,6 +33,27 @@
     $costGridMessages = \App\Support\RealEstateCostGrid::MESSAGES;
 @endphp
 <script>
+// ログインが切れた・無効にされた・権限が無いときの文（原価のカードの表の保存・試算表取込・削除で共通。この 3 つは同じ画面に一緒に載る）。
+//   419 … 鍵（CSRF）が合わない＝画面を開いてから時間がたってログインが切れた・ほかの画面でログアウトした
+//   401 … ログインが無い（サーバーの文は英語）・無効にされた（サーバーの文は日本語）／ 403 … 権限が無い（サーバーの文は日本語）
+// サーバーが日本語の理由を返していれば、その後ろに「何もしていない」を足す。どれでもなければ null（呼ぶ側の今の文を出す）。
+// 断られた要求は何も書いていない（419・401 は確かめの段階で、403 は受け口に入る前に断られる）。
+function realEstateCostAccessError(status, body, action) {
+    var words = {
+        save:     ['保存できませんでした（何も保存していません）。', '何も保存していません。', '画面を開き直すと表に入れた内容は消えるので、控えてから開き直してください。'],
+        'import': ['取り込めませんでした（何も取り込んでいません）。', '何も取り込んでいません。', '画面を開き直してから、もう一度取り込んでください。'],
+        'delete': ['削除できませんでした（何も削除していません）。', '何も削除していません。', '画面を開き直してから、もう一度削除してください。']
+    }[action];
+    var message = body && typeof body.message === 'string' ? body.message : '';
+    if ((status === 401 || status === 403) && /[^\x00-\x7f]/.test(message)) {
+        return message + words[1];
+    }
+    if (status === 419 || status === 401) {
+        return '画面を開いてから時間がたったか、ほかの画面でログアウトしたため、' + words[0] + words[2];
+    }
+    return null;
+}
+
 function costGridFactory(opts) {
     // 断りの文言（サーバーと同じ定数）と金額の上限（Controller::MAX_INT_COLUMN と同じ）
     var COST_GRID_MESSAGES = @json($costGridMessages);
@@ -301,6 +324,13 @@ function costGridFactory(opts) {
             .then(function (res) {
                 self.costGrid.saving = false;
                 if (!res.ok || !res.body) {
+                    // ログインが切れた・無効・権限が無い: 表は開いたまま（入れた内容を残す）で、理由を表の上へ
+                    var access = realEstateCostAccessError(res.status, res.body, 'save');
+                    if (access !== null) {
+                        self.costGrid.rowErrors = {};
+                        self.costGrid.error = access;
+                        return;
+                    }
                     // 422: 行の断り（rows.{送った順}.…）は行へ、それ以外（衝突の rows・mode）は表の上へ
                     var errors = res.status === 422 && res.body && res.body.errors ? res.body.errors : {};
                     var rowErrors = {};

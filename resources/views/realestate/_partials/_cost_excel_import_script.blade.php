@@ -602,10 +602,12 @@ function costExcelImporterFactory(opts) {
                     self.showMessage(res.body.imported_count + ' 件の原価を取り込みました。');
                     self.closeCostExcelImport();
                 } else {
+                    // ログインが切れた・無効・権限が無い（原価の表の script の共通の関数。同じ画面に一緒に載る）
+                    var access = realEstateCostAccessError(res.status, res.body, 'import');
                     var msg = res.body && res.body.message
                         ? res.body.message
                         : ('HTTP ' + res.status + (res.body && res.body.errors ? ' / ' + JSON.stringify(res.body.errors) : ''));
-                    alert('取込に失敗しました: ' + msg);
+                    alert(access !== null ? access : '取込に失敗しました: ' + msg);
                 }
             })
             .catch(function (err) {

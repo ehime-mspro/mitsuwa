@@ -532,15 +532,17 @@ function procurementDetail() {
             .then(function(r) {
                 if (!r.ok) {
                     return r.json().then(function(err) {
+                        // ログインが切れた・無効・権限が無い（原価の表の script の共通の関数。同じ画面に一緒に載る）
+                        var access = realEstateCostAccessError(r.status, err, 'delete');
                         var msg = err.message || 'エラーが発生しました。';
                         if (err.errors) {
                             var details = Object.values(err.errors).flat().join('\n');
                             msg = msg + '\n' + details;
                         }
-                        alert(msg);
+                        alert(access !== null ? access : msg);
                         return null;
                     }).catch(function() {
-                        alert('サーバーエラーが発生しました（' + r.status + '）');
+                        alert(realEstateCostAccessError(r.status, null, 'delete') || 'サーバーエラーが発生しました（' + r.status + '）');
                         return null;
                     });
                 }

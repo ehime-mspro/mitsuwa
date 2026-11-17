@@ -10,6 +10,7 @@ use App\Models\ReProcurement;
 use App\Models\ReProject;
 use App\Models\ReProjectLot;
 use App\Models\User;
+use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\ChecksBrowserConstraints;
 use Tests\Concerns\CreatesRealEstateSchema;
@@ -103,6 +104,21 @@ abstract class RealEstateScreenTestCase extends TestCase
         $response->assertOk();
 
         return $this->asFetchResponse($response);
+    }
+
+    /**
+     * テストでも CSRF の鍵を確かめる（Laravel の ValidateCsrfToken はテストを素通りさせるので、その分かれ目だけを外した写しを差し込む）。
+     * 鍵の合わない要求が本物の 419 を返す（ログインが切れた・ほかの画面でログアウトしたときと同じ）。
+     */
+    protected function enforceCsrfToken(): void
+    {
+        $this->app->instance(ValidateCsrfToken::class, new class($this->app, $this->app['encrypter']) extends ValidateCsrfToken
+        {
+            protected function runningUnitTests()
+            {
+                return false;
+            }
+        });
     }
 
     /** 不動産の部署に属する指定の役割の利用者（ProcurementListCreateDropdownTest::staff() と同じ。一般担当は部署に付けないと弾かれる） */
