@@ -230,18 +230,24 @@ function costGridFactory(opts) {
             return '保存できませんでした。赤い行を直してください（' + n + ' 件）。何も保存していません。';
         },
 
-        // 詳細画面: 変えた行だけを 1 回の要求で送る（サーバーは全部か無しで保存する）
-        saveCostGrid: function () {
-            if (this.costGrid.mode === null || this.costGrid.saving) return;
-            var self = this;
-            var plan = this.costGridPlan();
+        // 計画の断り（行ごとの理由と合計の文）を画面に出す。断りがあれば true（呼び出し側は何もせず戻る）
+        _costGridShowPlanErrors: function (plan) {
             var errorCount = Object.keys(plan.rowErrors).length;
             this.costGrid.rowErrors = plan.rowErrors;
             this.costGrid.notice = '';
             if (errorCount > 0) {
                 this.costGrid.error = this._costGridSummary(errorCount);
-                return;
+                return true;
             }
+            return false;
+        },
+
+        // 詳細画面: 変えた行だけを 1 回の要求で送る（サーバーは全部か無しで保存する）
+        saveCostGrid: function () {
+            if (this.costGrid.mode === null || this.costGrid.saving) return;
+            var self = this;
+            var plan = this.costGridPlan();
+            if (this._costGridShowPlanErrors(plan)) return;
             this.costGrid.error = '';
             if (plan.ops.length === 0) {
                 this._costGridClose();
@@ -333,13 +339,7 @@ function costGridFactory(opts) {
             if (this.costGrid.mode === null) return;
             var mode = this.costGrid.mode;
             var plan = this.costGridPlan();
-            var errorCount = Object.keys(plan.rowErrors).length;
-            this.costGrid.rowErrors = plan.rowErrors;
-            this.costGrid.notice = '';
-            if (errorCount > 0) {
-                this.costGrid.error = this._costGridSummary(errorCount);
-                return;
-            }
+            if (this._costGridShowPlanErrors(plan)) return;
 
             // 行の ref は開いたときの一覧の番号。直す行はその番号の行に当て、外す行は番号の大きい順に外し
             // （先に外すと番号がずれる）、新しい行は一覧の末尾に足す（表の順）
