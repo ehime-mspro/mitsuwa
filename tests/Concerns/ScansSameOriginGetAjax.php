@@ -150,7 +150,7 @@ trait ScansSameOriginGetAjax
     }
 
     /** @return array<string, string> resources/views からの相対パス => 中身 */
-    private static function bladeSources(): array
+    protected static function bladeSources(): array
     {
         $sources = [];
         foreach (File::allFiles(resource_path('views')) as $file) {
