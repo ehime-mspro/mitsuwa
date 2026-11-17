@@ -8,6 +8,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
 use Tests\Concerns\CreatesRealEstateSchema;
+use Tests\Concerns\ScansSameOriginGetAjax;
 use Tests\TestCase;
 
 /**
@@ -28,6 +29,7 @@ class AjaxFetchSessionGuardTest extends TestCase
 {
     use RefreshDatabase;
     use CreatesRealEstateSchema;
+    use ScansSameOriginGetAjax;
 
     /**
      * 走査で拾えるはずの呼び出し箇所の下限。走査が空振りして緑になる事故を防ぐ。
@@ -38,54 +40,6 @@ class AjaxFetchSessionGuardTest extends TestCase
      * 走査ロジックが壊れれば 0 になるため、この値でも検知できる。
      */
     private const MIN_CALL_SITES = 20;
-
-    /**
-     * `fetch(` の呼び出し全体を括弧の対応で切り出す。
-     *
-     * ⚠ 「最初の `.then(` まで」で切ってはいけない。`Promise.all` 内の `await fetch(…)`
-     *    には近くに `.then(` が無く、固定長のフォールバックに落ちて**別のハンドラの**
-     *    `X-Requested-With` を拾い、**誤って緑になる**（mansion/contracts/create が該当）。
-     */
-    private static function fetchCall(string $source, int $pos): string
-    {
-        $depth = 0;
-
-        for ($i = $pos + 5, $len = strlen($source); $i < $len; $i++) {
-            if ($source[$i] === '(') {
-                $depth++;
-            } elseif ($source[$i] === ')') {
-                $depth--;
-                if ($depth === 0) {
-                    return substr($source, $pos, $i - $pos + 1);
-                }
-            }
-        }
-
-        return substr($source, $pos, 500);
-    }
-
-    /**
-     * `$pos` の直前 `$n` 行を返す。
-     *
-     * ⚠ `var url = '{{ url("/api/…") }}';` と組み立ててから `fetch(url, …)` する形は、
-     *    呼び出し本体だけを見ても URL が分からず**原理的に拾えない**
-     *    （housing/properties/_form と mansion の計 4 箇所が該当）。
-     *    URL の判定材料としてのみ使い、ヘッダーの有無は呼び出し本体だけで判定する。
-     */
-    private static function precedingLines(string $source, int $pos, int $n): string
-    {
-        $start = $pos;
-
-        for ($i = 0; $i <= $n; $i++) {
-            $prev = strrpos(substr($source, 0, $start), "\n");
-            if ($prev === false) {
-                return substr($source, 0, $pos);
-            }
-            $start = $prev;
-        }
-
-        return substr($source, $start, $pos - $start);
-    }
 
     protected function setUp(): void
     {
@@ -153,33 +107,10 @@ class AjaxFetchSessionGuardTest extends TestCase
         $offenders = [];
         $callSites = 0;
 
-        foreach (File::allFiles(resource_path('views')) as $file) {
-            if (! str_ends_with($file->getFilename(), '.blade.php')) {
-                continue;
-            }
-
-            $source = file_get_contents($file->getPathname());
-            $offset = 0;
-
-            while (($pos = strpos($source, 'fetch(', $offset)) !== false) {
-                $offset = $pos + 6;
-
-                $call = self::fetchCall($source, $pos);
-                $ctx  = self::precedingLines($source, $pos, 5) . $call;
-
-                if (str_contains($ctx, '://')) {
-                    continue;   // 外部 API（zipcloud）
-                }
-                if (preg_match('/method:\s*[\'"](?!GET)/', $call)) {
-                    continue;   // GET 以外は storeCurrentUrl の対象外
-                }
-
-                $callSites++;
-
-                if (! str_contains($call, 'X-Requested-With')) {
-                    $line = substr_count(substr($source, 0, $pos), "\n") + 1;
-                    $offenders[] = $file->getRelativePathname() . ':' . $line;
-                }
+        foreach (self::sameOriginGetFetches() as $fetch) {
+            $callSites++;
+            if (! str_contains($fetch['call'], 'X-Requested-With')) {
+                $offenders[] = $fetch['file'] . ':' . $fetch['line'];
             }
         }
 
@@ -218,23 +149,10 @@ class AjaxFetchSessionGuardTest extends TestCase
         $offenders = [];
         $callSites = 0;
 
-        foreach (File::allFiles(resource_path('views')) as $file) {
-            if (! str_ends_with($file->getFilename(), '.blade.php')) {
-                continue;
-            }
-            $source = file_get_contents($file->getPathname());
-            preg_match_all('/\.open\(\s*([\'"])GET\1\s*,([^\n]*)/i', $source, $opens, PREG_OFFSET_CAPTURE | PREG_SET_ORDER);
-            foreach ($opens as $open) {
-                if (str_contains($open[2][0], '://')) {
-                    continue;   // 外部 API（zipcloud）
-                }
-                $callSites++;
-                $pos = $open[0][1];
-                $send = strpos($source, '.send(', $pos);
-                $block = $send === false ? substr($source, $pos) : substr($source, $pos, $send - $pos);
-                if (! preg_match('/setRequestHeader\(\s*[\'"]X-Requested-With[\'"]/', $block)) {
-                    $offenders[] = $file->getRelativePathname() . ':' . (substr_count(substr($source, 0, $pos), "\n") + 1);
-                }
+        foreach (self::sameOriginGetXhrOpens() as $xhr) {
+            $callSites++;
+            if (! preg_match('/setRequestHeader\(\s*[\'"]X-Requested-With[\'"]/', $xhr['block'])) {
+                $offenders[] = $xhr['file'] . ':' . $xhr['line'];
             }
         }
 
