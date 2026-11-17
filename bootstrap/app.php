@@ -99,12 +99,25 @@ return Application::configure(basePath: dirname(__DIR__))
         // 作り直すので、ログインの確かめより先に断られる。手元のブラウザで実測。Task 19 の N-2）。401 はほかの画面でパスワードを変えたときなど。
         // ⚠ 419 は決裁と基幹の両方（Bug #137）。基幹の保存の Ajax の約 16 画面がサーバーの文をそのまま出す（直す前は英語が出ていた）。
         //    決裁の画面の応答は前と同じ文。ふつうのフォームの送信（JSON を求めない）は resources/views/errors/419.blade.php の画面。
+        //    ただしログインの送信だけは、419 の画面を出さず新しいログイン画面へ戻して赤い帯に理由を出す（Bug #138。下の分岐）。
         // ⚠ 401 は決裁の URL だけ（基幹の応答は変えない。原価のカードは英語の 401 で「ログインが切れた」を見分けている。
         //    realEstateCostAccessError。保存の Ajax で 401 が出るのは、ほかの画面でパスワードを変えたときなどまれ）。
         // ⚠ 419 は、Laravel が TokenMismatchException を HttpException(419) に置き換えてから render を呼ぶので、HttpException で受けて番号を見る
         $exceptions->render(function (\Symfony\Component\HttpKernel\Exception\HttpException $e, \Illuminate\Http\Request $request) {
             if ($e->getStatusCode() === 419 && $request->expectsJson()) {
                 return response()->json(['message' => '画面を開いてから時間がたったか、ほかの画面でログアウトしたため、送れませんでした。画面を開き直して、もう一度やり直してください。'], 419);
+            }
+
+            // ログインの送信（ログイン画面を開いたまま時間がたった・ほかの画面でログアウトした）。419 の画面の「前の画面に戻る」は
+            // 古い鍵のログイン画面へ戻すので、何度送っても 419 になり、開き直すまでログインできなかった（2026-11-18 に本番で起きた）。
+            // 新しいログイン画面へ戻せば新しい鍵が描かれ、そのまま送ればログインできる。鍵の確かめは guest・throttle:login より前なので、
+            // ログインの失敗の回数には数えない。⚠ JSON を求める要求は上の分岐が先に返す
+            if ($e->getStatusCode() === 419 && $request->isMethod('POST') && $request->is('login')) {
+                // ⚠ パスワードは控えない。文字でない値（手で組んだ login_id[]=x）も控えない（ログイン画面は old('login_id') を描くので、
+                //    控えると戻った画面が 500 になる。Bug #121）
+                return redirect()->route('login')
+                    ->withInput(array_filter($request->only('login_id', 'remember'), 'is_string'))
+                    ->withErrors(['login' => \App\Http\Controllers\Auth\AuthController::EXPIRED_PAGE_MESSAGE]);
             }
         });
         $exceptions->render(function (\Illuminate\Auth\AuthenticationException $e, \Illuminate\Http\Request $request) {

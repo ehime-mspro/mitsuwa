@@ -40,6 +40,9 @@ class ExpiredSessionResponseTest extends TestCase
 
     private const PAGE_NEXT = 'ブラウザの「戻る」で前の画面に戻ると、入力した内容が残っていることがあります。控えてから画面を開き直して、もう一度やり直してください。';
 
+    /** ログインの送信が古い鍵で断られたときに、ログイン画面の赤い帯に出す文（Bug #138） */
+    private const EXPIRED_LOGIN_MESSAGE = '画面を開いてから時間がたったか、ほかの画面でログアウトしたため、ログインできませんでした。もう一度ログインしてください。';
+
     /**
      * ふつうのフォームの送信（JSON を求めない）は、日本語の画面（resources/views/errors/419.blade.php）を番号 419 のまま返す。
      * ⚠ 直す前は Laravel の英語の画面「419 Page Expired」だった
@@ -73,17 +76,83 @@ class ExpiredSessionResponseTest extends TestCase
         $this->assertExpiredPage($response);
     }
 
-    /** ログイン画面を開いたまま時間がたってからログインしても、同じ日本語の画面（ログインしていない人にも出る） */
-    public function test_the_login_form_with_an_expired_page_shows_the_same_page(): void
+    /**
+     * ログイン画面を古い鍵のまま送る（ログイン画面を開いたまま時間がたった・ほかの画面でログアウトした）。描いた画面のフォームから送る。
+     *
+     * @param  array<string, mixed>  $fields  フォームの欄に上書きする値
+     */
+    private function sendLoginWithExpiredToken(array $fields): TestResponse
     {
         $html = $this->get(route('login'))->assertOk()->getContent();
-        $this->assertStringContainsString('<title>' . e(config('app.name', '経営管理システム')) . '</title>', $html, 'ログイン画面のタブ名がアプリ名だけでなくなった');
         $form = $this->parseForm($html, 'action="' . route('login') . '"');
+        $this->assertNotSame('', $form['fields']['_token'] ?? '', 'ログインのフォームに @csrf が無い');
 
         $this->enforceCsrfToken();
-        $response = $this->call('POST', $form['action'], array_merge($form['fields'], ['login_id' => 'A001', 'password' => 'x', '_token' => 'token-of-the-old-session']));
 
-        $this->assertExpiredPage($response);
+        return $this->call('POST', $form['action'], array_merge($form['fields'], $fields, ['_token' => 'token-of-the-old-session']));
+    }
+
+    /** 赤い帯（ログイン画面の `$errors->has('login')`）に、古い鍵で断った理由が全文で出ている */
+    private function assertExpiredLoginReason(string $html): void
+    {
+        $this->assertMatchesRegularExpression('/<span\b[^>]*>\s*' . preg_quote(self::EXPIRED_LOGIN_MESSAGE, '/') . '\s*<\/span>/u', $html, '赤い帯に理由が無い');
+        $this->assertStringNotContainsString('Page Expired', $html);
+    }
+
+    /**
+     * ログインの送信だけは 419 の画面を出さず、新しいログイン画面へ戻して赤い帯に理由を出す（Bug #138）。
+     * ⚠ 直す前は 419 の画面で、緑のボタン「前の画面に戻る」が古い鍵のログイン画面へ戻すので、何度送っても 419 だった
+     *   （2026-11-18 に本番で起きた。「トップページへ」か開き直すまでログインできない）
+     * ⚠ 控えに入れるのは ID と「ログイン状態を保持」だけ。パスワードは控えない
+     */
+    public function test_an_expired_login_form_returns_to_a_fresh_login_page_with_the_reason(): void
+    {
+        $response = $this->sendLoginWithExpiredToken(['login_id' => 'yamada@example.test', 'password' => 'secret-pass', 'remember' => 'on']);
+
+        $response->assertRedirect(route('login'));
+        $this->assertGuest();
+        $this->assertSame(['login_id' => 'yamada@example.test', 'remember' => 'on'], session()->getOldInput(), '控えが ID と「ログイン状態を保持」だけでない');
+
+        $html = $this->get(route('login'))->assertOk()->getContent();
+        $this->assertStringContainsString('<title>' . e(config('app.name', '経営管理システム')) . '</title>', $html, 'ログイン画面のタブ名がアプリ名だけでなくなった');
+        $this->assertExpiredLoginReason($html);
+        $form = $this->parseForm($html, 'action="' . route('login') . '"');
+        $this->assertSame('yamada@example.test', $form['fields']['login_id'] ?? null, 'ID が残っていない');
+        $this->assertArrayHasKey('remember', $form['fields'], '「ログイン状態を保持」のチェックが残っていない');
+        $this->assertSame('', $form['fields']['password'] ?? '', 'パスワードが残っている');
+    }
+
+    /** 戻った画面のフォームはそのまま送ればログインできる（新しい鍵が描かれている。直す前の行き止まりが無い） */
+    public function test_the_login_page_it_returns_to_can_log_in(): void
+    {
+        $user = User::factory()->create(['role' => UserRole::Executive->value, 'must_change_password' => false, 'email' => 'yamada@example.test']);
+        $this->sendLoginWithExpiredToken(['login_id' => 'yamada@example.test', 'password' => 'password'])->assertRedirect(route('login'));
+        $this->assertGuest();
+
+        $form = $this->parseForm($this->get(route('login'))->assertOk()->getContent(), 'action="' . route('login') . '"');
+        $this->call('POST', $form['action'], array_merge($form['fields'], ['password' => 'password']))
+            ->assertRedirect(route($user->homeRouteName()));
+        $this->assertAuthenticatedAs($user);
+    }
+
+    /** 手で組んだ文字でない値は控えない（ログイン画面は old('login_id') を描くので、控えると戻った画面が 500 になる。Bug #121） */
+    public function test_an_expired_login_form_with_a_non_string_id_does_not_break_the_login_page(): void
+    {
+        $this->sendLoginWithExpiredToken(['login_id' => ['x'], 'password' => 'x', 'remember' => ['on']])->assertRedirect(route('login'));
+        $this->assertSame([], session()->getOldInput(), '文字でない値を控えている');
+
+        $this->assertExpiredLoginReason($this->get(route('login'))->assertOk()->getContent());
+    }
+
+    /** JSON を求める古い鍵のログインは、ほかの JSON の要求と同じ日本語の JSON の 419 のまま（分岐の順番） */
+    public function test_an_expired_login_that_asks_for_json_keeps_the_json_reason(): void
+    {
+        $this->enforceCsrfToken();
+
+        $this->withHeaders(['X-CSRF-TOKEN' => 'token-of-the-old-session'])
+            ->postJson(route('login'), ['login_id' => 'yamada@example.test', 'password' => 'x'])
+            ->assertStatus(419)
+            ->assertExactJson(['message' => self::EXPIRED_JSON_MESSAGE]);
         $this->assertGuest();
     }
 
