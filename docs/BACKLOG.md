@@ -5751,7 +5751,7 @@ Bug #131 で変えたビュー 9 本のうち、本番に行がある画面を�
 ### 検証
 
 - 全件 **OK (5213 tests, 54226 assertions)**（PHP 8.3・警告なし）／ コンパイル済みビュー **321 本 / INVALID 0**（`errors/419` の 1 本が増えた）
-- 変異 28 通り（カナリアを含む・作業場所の `.claude/route-coverage-tools/mutate/specs_expired_session.py`・実行役 `run_es.py`・結果は `results-expired-session.*`。関係するテスト 726 本で流した）すべて期待どおり（落ちたテストの組と理由まで）: `approvals/*` の条件を戻す（14 本が `CSRF token mismatch.` で落ちる）・JSON を求めない送信にも JSON を返す・419 の画面の見出し／2 つのボタン／「何も保存していません」・5 か所と 2 か所をそれぞれ直す前の形に戻す／どの番号でもサーバーの文を出す・走査の分かれ目 7 つ（1 つの fetch から `Accept` を外すと `components/attachment-section.blade.php:229` を名指し）
+- 変異 28 通り（カナリアを含む・main repo の `.claude/route-coverage-tools/mutate/specs_expired_session.py`・実行役 `run_es.py`・結果は `results-expired-session.*`〈作業場所で流し、作業場所を消す前に写した。テストの出力の XML は写していない〉。関係するテスト 726 本で流した）すべて期待どおり（落ちたテストの組と理由まで）: `approvals/*` の条件を戻す（14 本が `CSRF token mismatch.` で落ちる）・JSON を求めない送信にも JSON を返す・419 の画面の見出し／2 つのボタン／「何も保存していません」・5 か所と 2 か所をそれぞれ直す前の形に戻す／どの番号でもサーバーの文を出す・走査の分かれ目 7 つ（1 つの fetch から `Accept` を外すと `components/attachment-section.blade.php:229` を名指し）
 - 実ブラウザ（使い捨ての SQLite ＋ `artisan serve`〈`APP_DEBUG=false`〉＋ Playwright。cookie を消してから送った）:
   - 仕入れ案件の一覧のステータスの小窓 → alert「画面を開いてから時間がたったか、ほかの画面でログアウトしたため、送れませんでした。画面を開き直して、もう一度やり直してください。」・バッジも DB も変わらない
   - ZEAL の店舗の追加 → 同じ文が画面の帯に出る・応答は `application/json` の 419・店舗は増えない
