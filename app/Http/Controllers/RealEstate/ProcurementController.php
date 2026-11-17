@@ -20,6 +20,8 @@ use Illuminate\Support\Facades\DB;
 
 class ProcurementController extends Controller
 {
+    use \App\Http\Controllers\RealEstate\Concerns\ValidatesCostGrid;
+
     /**
      * 仕入れ案件一覧（分譲地を統合した不動産案件の横断ビュー）
      * Route: GET /realestate/procurements
@@ -289,33 +291,7 @@ class ProcurementController extends Controller
      */
     public function saveCostGrid(Request $request, ReProcurement $procurement): \Illuminate\Http\JsonResponse
     {
-        $v = $request->validate([
-            'mode'                             => 'required|in:estimated,actual',
-            'rows'                             => 'required|array|min:1|max:100',
-            'rows.*.id'                        => 'nullable|integer|min:1|max:' . PHP_INT_MAX,
-            'rows.*.cost_item_id'              => 'required|integer|exists:re_cost_items,id',
-            'rows.*.amount'                    => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
-            'rows.*.notes'                     => 'nullable|string|max:200',
-            'rows.*.original'                  => 'required|array',
-            'rows.*.original.estimated_amount' => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
-            'rows.*.original.actual_amount'    => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
-            'rows.*.original.notes'            => 'nullable|string|max:200',
-        ], [
-            'rows.*.amount.integer' => \App\Support\RealEstateCostGrid::MESSAGES['notNumber'],
-            'rows.*.amount.min'     => \App\Support\RealEstateCostGrid::MESSAGES['notNumber'],
-            'rows.*.amount.max'     => \App\Support\RealEstateCostGrid::MESSAGES['tooLarge'],
-        ], [
-            'mode'                             => '入力する金額',
-            'rows'                             => '原価の表',
-            'rows.*.id'                        => '原価の行',
-            'rows.*.cost_item_id'              => '費用項目',
-            'rows.*.amount'                    => '金額',
-            'rows.*.notes'                     => '備考',
-            'rows.*.original'                  => '開いたときの値',
-            'rows.*.original.estimated_amount' => '開いたときの見込み額',
-            'rows.*.original.actual_amount'    => '開いたときの確定額',
-            'rows.*.original.notes'            => '開いたときの備考',
-        ]);
+        $v = $this->validateCostGrid($request);
 
         $result = app(\App\Support\RealEstateCostGrid::class)
             ->save($procurement, $v['mode'], $v['rows'], $request->user()->role->isExecutive());

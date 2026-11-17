@@ -409,6 +409,33 @@ class CostGridSaveTest extends RealEstateScreenTestCase
         $this->assertSame([], $this->stored($kind, $owner));
     }
 
+    public static function missingKeys(): array
+    {
+        $cases = [];
+        foreach (self::owners() as $label => [$kind]) {
+            $cases["{$label}・id"] = [$kind, 'id', '原価の行'];
+            $cases["{$label}・amount"] = [$kind, 'amount', '金額'];
+        }
+
+        return $cases;
+    }
+
+    /** キーそのものが無い送信（手で組んだ送信）。500 でなく断り、何も書かない（Bug #92）。amount は「空＝消す」と取り違えない */
+    #[DataProvider('missingKeys')]
+    public function test_a_row_without_the_id_or_amount_key_is_refused(string $kind, string $key, string $attribute): void
+    {
+        $owner = $this->ownerOf($kind);
+        $cost = $this->costOf($kind, $owner, $this->surveyItem, 500000);
+        $row = $this->rowFor($cost, $this->surveyItem, null, null);
+        unset($row[$key]);
+        $before = $this->stored($kind, $owner);
+
+        $response = $this->putGrid($kind, $owner, 'estimated', [$row]);
+
+        $this->assertOnlyErrors($response, ["rows.0.{$key}" => ["{$attribute}が送信されていません。"]]);
+        $this->assertSame($before, $this->stored($kind, $owner));
+    }
+
     #[DataProvider('owners')]
     public function test_notes_up_to_200_characters_are_saved(string $kind): void
     {
