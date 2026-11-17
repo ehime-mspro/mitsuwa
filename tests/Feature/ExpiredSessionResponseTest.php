@@ -10,6 +10,7 @@ use App\Models\User;
 use Database\Seeders\DepartmentSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Testing\TestResponse;
 use Tests\Concerns\DrivesAlpineFetch;
 use Tests\Concerns\EnforcesCsrfToken;
 use Tests\Concerns\ParsesForms;
@@ -32,6 +33,56 @@ class ExpiredSessionResponseTest extends TestCase
     use ParsesForms;
     use DrivesAlpineFetch;
     use EnforcesCsrfToken;
+
+    private const PAGE_TITLE = '画面の有効期限が切れました';
+
+    private const PAGE_REASON = '画面を開いてから時間がたったか、ほかの画面でログアウトしたため、送れませんでした（何も保存していません）。';
+
+    private const PAGE_NEXT = 'ブラウザの「戻る」で前の画面に戻ると、入力した内容が残っていることがあります。控えてから画面を開き直して、もう一度やり直してください。';
+
+    /**
+     * ふつうのフォームの送信（JSON を求めない）は、日本語の画面（resources/views/errors/419.blade.php）を番号 419 のまま返す。
+     * ⚠ 直す前は Laravel の英語の画面「419 Page Expired」だった
+     */
+    private function assertExpiredPage(TestResponse $response): void
+    {
+        $response->assertStatus(419);
+        $this->assertStringStartsWith('text/html', (string) $response->headers->get('Content-Type'));
+        $html = (string) $response->getContent();
+        $this->assertStringNotContainsString('Page Expired', $html);
+        $this->assertMatchesRegularExpression('/<h1\b[^>]*>\s*' . preg_quote(self::PAGE_TITLE, '/') . '\s*<\/h1>/u', $html, '見出しが無い');
+        $this->assertMatchesRegularExpression('/<p\b[^>]*>\s*' . preg_quote(e(self::PAGE_REASON), '/') . '\s*<\/p>/u', $html, '理由の文が無い');
+        $this->assertMatchesRegularExpression('/<p\b[^>]*>\s*' . preg_quote(e(self::PAGE_NEXT), '/') . '\s*<\/p>/u', $html, '次にすることの文が無い');
+        $this->assertMatchesRegularExpression('/<button\b[^>]*\bonclick="history\.back\(\)"[^>]*>\s*前の画面に戻る\s*<\/button>/u', $html, '「前の画面に戻る」が無い');
+        $this->assertMatchesRegularExpression('/<a\b[^>]*\bhref="' . preg_quote(url('/'), '/') . '"[^>]*>\s*トップページへ\s*<\/a>/u', $html, '「トップページへ」が無い');
+    }
+
+    /** ログインした人が、画面を開いたまま時間がたってからフォームを送る（パスワードの変更の画面で見る） */
+    public function test_a_form_sent_with_an_expired_session_shows_a_japanese_page(): void
+    {
+        $user = User::factory()->create(['role' => UserRole::Executive->value, 'must_change_password' => false]);
+        $html = $this->actingAs($user)->get(route('password.change'))->assertOk()->getContent();
+        $form = $this->parseForm($html, 'action="' . route('password.update') . '"');
+        $this->assertNotSame('', $form['fields']['_token'] ?? '', 'フォームに @csrf が無い');
+
+        $this->enforceCsrfToken();
+        $response = $this->call('POST', $form['action'], array_merge($form['fields'], ['_token' => 'token-of-the-old-session']));
+
+        $this->assertExpiredPage($response);
+    }
+
+    /** ログイン画面を開いたまま時間がたってからログインしても、同じ日本語の画面（ログインしていない人にも出る） */
+    public function test_the_login_form_with_an_expired_page_shows_the_same_page(): void
+    {
+        $html = $this->get(route('login'))->assertOk()->getContent();
+        $form = $this->parseForm($html, 'action="' . route('login') . '"');
+
+        $this->enforceCsrfToken();
+        $response = $this->call('POST', $form['action'], array_merge($form['fields'], ['login_id' => 'A001', 'password' => 'x', '_token' => 'token-of-the-old-session']));
+
+        $this->assertExpiredPage($response);
+        $this->assertGuest();
+    }
 
     /** 基幹の保存の Ajax（JSON を求める要求）は、日本語の理由を JSON で受け取る */
     public function test_a_save_with_an_expired_session_gets_the_reason_in_japanese(): void
