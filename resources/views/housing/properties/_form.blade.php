@@ -221,6 +221,8 @@
               placeholder="メモなど">{{ old('notes', $p?->notes) }}</textarea>
 </div>
 
+{{-- 断られた GET の Ajax の文（ログインが切れた・権限が無い） --}}
+@include('_partials._ajax_get_failure')
 <script>
 function housingPropertyForm() {
     return {
@@ -281,8 +283,10 @@ function housingPropertyForm() {
             .then(function(res) {
                 if (!res.ok) {
                     self.lots = [];
-                    alert('区画の取得に失敗しました（' + res.status + '）');
-                    return null;
+                    return ajaxGetFailure(res, '区画を取得', '区画の取得に失敗しました（' + res.status + '）').then(function (message) {
+                        alert(message);
+                        return null;
+                    });
                 }
                 return res.json();
             })
@@ -326,8 +330,10 @@ function housingPropertyForm() {
             })
             .then(function(res) {
                 if (!res.ok) {
-                    alert('仕入れ案件情報の取得に失敗しました（' + res.status + '）');
-                    return null;
+                    return ajaxGetFailure(res, '仕入れ案件の情報を取得', '仕入れ案件情報の取得に失敗しました（' + res.status + '）').then(function (message) {
+                        alert(message);
+                        return null;
+                    });
                 }
                 return res.json();
             })

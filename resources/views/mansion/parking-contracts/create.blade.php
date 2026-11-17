@@ -24,6 +24,9 @@
     }
 @endphp
 
+{{-- 断られた GET の Ajax の文（ログインが切れた・権限が無い） --}}
+@include('_partials._ajax_get_failure')
+
 {{-- Alpine.js 用フォーム定義（アロー関数 => は HTML 属性・script 内共に使用禁止） --}}
 <script>
     // 駐車場契約登録フォームの状態管理
@@ -58,8 +61,10 @@
                     .then(function (res) {
                         if (!res.ok) {
                             self.parkings = [];
-                            alert('空き駐車場の取得に失敗しました（' + res.status + '）');
-                            return null;
+                            return ajaxGetFailure(res, '空き駐車場を取得', '空き駐車場の取得に失敗しました（' + res.status + '）').then(function (message) {
+                                alert(message);
+                                return null;
+                            });
                         }
                         return res.json();
                     })

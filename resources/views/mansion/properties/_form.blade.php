@@ -339,6 +339,8 @@
     </div>
 @endif
 
+{{-- 断られた GET の Ajax の文（住所→〒。ログインが切れた・権限が無い） --}}
+@include('_partials._ajax_get_failure')
 <script>
     /**
      * マンション物件フォームの Alpine 状態
@@ -506,12 +508,15 @@
                     alert('該当する郵便番号が見つかりませんでした');
                 }
             } else {
-                try {
-                    var data = JSON.parse(xhr.responseText);
-                    alert(data.error || '該当する郵便番号が見つかりませんでした');
-                } catch (e) {
-                    alert('該当する郵便番号が見つかりませんでした');
+                var body = null;
+                try { body = JSON.parse(xhr.responseText); } catch (e) {}
+                // ログインが切れた・権限が無いときは理由を出す（部品 _partials/_ajax_get_failure）
+                var message = ajaxGetFailureMessage(xhr.status, body, '郵便番号を取得', null);
+                if (message) {
+                    alert(message);
+                    return;
                 }
+                alert((body && body.error) || '該当する郵便番号が見つかりませんでした');
             }
         };
         xhr.onerror = function () {

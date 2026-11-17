@@ -23,6 +23,9 @@
     }
 @endphp
 
+{{-- 断られた GET の Ajax の文（ログインが切れた・権限が無い） --}}
+@include('_partials._ajax_get_failure')
+
 {{-- Alpine.js 用フォーム定義（アロー関数 => は HTML 属性・script 内共に使用禁止） --}}
 <script>
     // 部屋契約登録フォームの状態管理
@@ -67,7 +70,8 @@
                     if (!roomsRes.ok || !parkingsRes.ok) {
                         this.rooms = [];
                         this.parkings = [];
-                        alert('空き部屋・空き駐車場の取得に失敗しました（' + (roomsRes.ok ? parkingsRes.status : roomsRes.status) + '）');
+                        const failed = roomsRes.ok ? parkingsRes : roomsRes;
+                        alert(await ajaxGetFailure(failed, '空き部屋・空き駐車場を取得', '空き部屋・空き駐車場の取得に失敗しました（' + failed.status + '）'));
                         return;
                     }
                     this.rooms = await roomsRes.json();

@@ -300,6 +300,8 @@
               placeholder="特記事項があれば入力してください">{{ old('notes', $o?->notes) }}</textarea>
 </div>
 
+{{-- 断られた GET の Ajax の文（ログインが切れた・権限が無い） --}}
+@include('_partials._ajax_get_failure')
 <script>
 function customOrderForm() {
     return {
@@ -360,8 +362,10 @@ function customOrderForm() {
             .then(function(res) {
                 if (!res.ok) {
                     self.lots = [];
-                    alert('区画の取得に失敗しました（' + res.status + '）');
-                    return null;
+                    return ajaxGetFailure(res, '区画を取得', '区画の取得に失敗しました（' + res.status + '）').then(function (message) {
+                        alert(message);
+                        return null;
+                    });
                 }
                 return res.json();
             })
@@ -404,8 +408,10 @@ function customOrderForm() {
             })
             .then(function(res) {
                 if (!res.ok) {
-                    alert('仕入れ案件情報の取得に失敗しました（' + res.status + '）');
-                    return null;
+                    return ajaxGetFailure(res, '仕入れ案件の情報を取得', '仕入れ案件情報の取得に失敗しました（' + res.status + '）').then(function (message) {
+                        alert(message);
+                        return null;
+                    });
                 }
                 return res.json();
             })
@@ -438,9 +444,11 @@ function customOrderForm() {
                 })
                 .then(function(res) {
                     if (!res.ok) {
-                        self.customerResults = [];
-                        self.customerError = '顧客の検索に失敗しました（' + res.status + '）';
-                        return null;
+                        return ajaxGetFailure(res, '顧客を検索', '顧客の検索に失敗しました（' + res.status + '）').then(function (message) {
+                            self.customerResults = [];
+                            self.customerError = message;
+                            return null;
+                        });
                     }
                     return res.json();
                 })
