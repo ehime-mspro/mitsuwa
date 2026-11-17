@@ -50,6 +50,8 @@ class ExpiredSessionResponseTest extends TestCase
         $this->assertStringStartsWith('text/html', (string) $response->headers->get('Content-Type'));
         $html = (string) $response->getContent();
         $this->assertStringNotContainsString('Page Expired', $html);
+        // タブ名でログイン画面と区別できる（直す前はアプリ名だけで、ログイン画面と同じだった。Bug #137 の後回し）
+        $this->assertStringContainsString('<title>' . e(self::PAGE_TITLE . ' - ' . config('app.name', '経営管理システム')) . '</title>', $html, 'タブ名が「画面の有効期限が切れました - アプリ名」でない');
         $this->assertMatchesRegularExpression('/<h1\b[^>]*>\s*' . preg_quote(self::PAGE_TITLE, '/') . '\s*<\/h1>/u', $html, '見出しが無い');
         $this->assertMatchesRegularExpression('/<p\b[^>]*>\s*' . preg_quote(e(self::PAGE_REASON), '/') . '\s*<\/p>/u', $html, '理由の文が無い');
         $this->assertMatchesRegularExpression('/<p\b[^>]*>\s*' . preg_quote(e(self::PAGE_NEXT), '/') . '\s*<\/p>/u', $html, '次にすることの文が無い');
@@ -75,6 +77,7 @@ class ExpiredSessionResponseTest extends TestCase
     public function test_the_login_form_with_an_expired_page_shows_the_same_page(): void
     {
         $html = $this->get(route('login'))->assertOk()->getContent();
+        $this->assertStringContainsString('<title>' . e(config('app.name', '経営管理システム')) . '</title>', $html, 'ログイン画面のタブ名がアプリ名だけでなくなった');
         $form = $this->parseForm($html, 'action="' . route('login') . '"');
 
         $this->enforceCsrfToken();

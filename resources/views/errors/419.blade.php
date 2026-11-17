@@ -5,7 +5,7 @@
     ⚠ ログインしていないこともある（ログイン画面を開いたまま時間がたったときも出る）ので、レイアウトは app でなく guest。
     ⚠ 決裁の画面のフォームにも出る。
 --}}
-<x-guest-layout>
+<x-guest-layout title="画面の有効期限が切れました">
     <div class="w-full max-w-[420px]">
         <div class="bg-white rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.06),0_1px_2px_rgba(0,0,0,0.04)] px-10 py-11 max-sm:px-6">
 
