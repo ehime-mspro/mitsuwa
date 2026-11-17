@@ -4,6 +4,7 @@ namespace Tests\Feature\Zeal;
 
 use App\Models\ZealStore;
 use Tests\Concerns\DrivesAlpineFetch;
+use Tests\Concerns\EnforcesCsrfToken;
 
 /**
  * 店舗マスタ（Zeal\StoreController。追加・更新・削除は Ajax）。
@@ -14,6 +15,7 @@ use Tests\Concerns\DrivesAlpineFetch;
 class StoreMasterTest extends MemberScreenTestCase
 {
     use DrivesAlpineFetch;
+    use EnforcesCsrfToken;
 
     private function indexHtml(): string
     {
@@ -147,5 +149,22 @@ class StoreMasterTest extends MemberScreenTestCase
         $this->assertNull(ZealStore::where('name', '電話が長い店')->first());
         $this->assertSame('error', $trip['state']['messageType']);
         $this->assertStringContainsString(trans('validation.max.string', ['attribute' => trans('validation.attributes.phone'), 'max' => 20]), $trip['state']['message']);
+    }
+
+    /** 画面を開いたまま時間がたったか、ほかの画面でログアウトしたあとに追加すると、理由が日本語で出て、何も増えない */
+    public function test_adding_after_the_session_expired_says_why(): void
+    {
+        $html = $this->indexHtml();
+        $factory = $this->xData($html, 'zealStoreManager');
+        $steps = "data.startAdd(); data.newName = '大街道店'; data.submitAdd();";
+
+        $request = $this->driveAlpine($html, 'zealStoreManager', $factory, $steps)['requests'][0];
+        $this->enforceCsrfToken();
+        $response = $this->actingAs($this->user)->sendCaptured($this->withExpiredToken($request))->assertStatus(419);
+        $after = $this->driveAlpine($html, 'zealStoreManager', $factory, $steps, [$this->asFetchResponse($response)]);
+
+        $this->assertSame(self::EXPIRED_JSON_MESSAGE, $after['state']['message']);
+        $this->assertSame('error', $after['state']['messageType']);
+        $this->assertNull(ZealStore::where('name', '大街道店')->first());
     }
 }

@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
 use Tests\Concerns\DrivesAlpineFetch;
+use Tests\Concerns\EnforcesCsrfToken;
 use Tests\Concerns\ParsesForms;
 use Tests\TestCase;
 
@@ -25,6 +26,7 @@ abstract class MasterScreenTestCase extends TestCase
     use RefreshDatabase;
     use ParsesForms;
     use DrivesAlpineFetch;
+    use EnforcesCsrfToken;
 
     protected User $user;
 

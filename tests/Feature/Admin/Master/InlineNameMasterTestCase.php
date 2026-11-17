@@ -209,6 +209,24 @@ abstract class InlineNameMasterTestCase extends MasterScreenTestCase
         $this->assertSame([$third, $first, $second], $this->namesInOrder());
     }
 
+    /** 画面を開いたまま時間がたったか、ほかの画面でログアウトしたあとに並び替えると、理由が日本語で出る（並びは変わらない） */
+    public function test_dragging_after_the_session_expired_says_why(): void
+    {
+        $html = $this->htmlOf($this->indexUrl());
+        $factory = $this->xData($html, $this->jsFunction());
+        $ev = $this->dragEventJs();
+        $steps = "data.handleDragStart(0, {$ev}); data.handleDrop(1, {$ev});";
+
+        $request = $this->driveAlpine($html, $this->jsFunction(), $factory, $steps)['requests'][0];
+        $this->enforceCsrfToken();
+        $response = $this->actingAs($this->user)->sendCaptured($this->withExpiredToken($request))->assertStatus(419);
+        $after = $this->driveAlpine($html, $this->jsFunction(), $factory, $steps, [$this->asFetchResponse($response)]);
+
+        $this->assertSame([self::EXPIRED_JSON_MESSAGE], $after['alerts']);
+        $this->assertSame('', $after['state']['reorderMessage']);
+        $this->assertSame($this->names(), $this->namesInOrder(), '断られたのに並びが変わった');
+    }
+
     /** 画面を開いたあとで項目が消えていたら、並び替えは断られ、理由が画面に出る（並びは変わらない） */
     public function test_an_order_with_a_vanished_item_shows_the_reason(): void
     {

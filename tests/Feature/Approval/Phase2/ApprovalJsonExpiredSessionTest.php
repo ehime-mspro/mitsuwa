@@ -18,6 +18,7 @@ use Tests\TestCase;
  *
  * ⚠ テストでは CSRF の確かめ（ValidateCsrfToken）が素通りするので、419 は例外そのものを投げる見本のルートで測る
  *   （送信の上限の 413 と同じ見方。RequestAttachmentTest）
+ * ⚠ 419 の文は 2026-11-17 から基幹の URL でも同じ（Bug #137。本物の鍵の食い違いで測るのは ExpiredSessionResponseTest）。401 は決裁だけ
  */
 class ApprovalJsonExpiredSessionTest extends TestCase
 {
@@ -49,14 +50,18 @@ class ApprovalJsonExpiredSessionTest extends TestCase
         $this->deleteJson('/approvals/attachments/999999')->assertUnauthorized()->assertExactJson(['message' => self::SIGNED_OUT]);
     }
 
-    /** 基幹の URL と、JSON を求めない要求（画面の送信・画面を開く）は今までどおり */
+    /**
+     * 基幹の URL の JSON の 401 と、JSON を求めない要求（画面の送信・画面を開く）は今までどおり。
+     * ⚠ 基幹の URL の JSON の 419 は、2026-11-17 から決裁と同じ日本語の文（Bug #137。基幹の保存の Ajax の約 16 画面がサーバーの文を
+     *   そのまま出し、英語の「CSRF token mismatch.」が出ていた）。基幹の側の確かめは ExpiredSessionResponseTest
+     */
     public function test_other_urls_and_pages_keep_the_default(): void
     {
         Route::post('/_probe_expired', fn () => throw new TokenMismatchException('CSRF token mismatch.'));
         Route::get('/_probe_signed_out', fn () => throw new AuthenticationException());
         Route::post('/approvals/_probe_expired', fn () => throw new TokenMismatchException('CSRF token mismatch.'));
 
-        $this->postJson('/_probe_expired')->assertStatus(419)->assertJsonPath('message', 'CSRF token mismatch.');
+        $this->postJson('/_probe_expired')->assertStatus(419)->assertExactJson(['message' => self::EXPIRED]);
         $this->getJson('/_probe_signed_out')->assertUnauthorized()->assertJsonPath('message', 'Unauthenticated.');
 
         // ⚠ JSON の中の日本語は \uXXXX になるので、assertDontSee() では見分けられない。種類（Content-Type）で見る

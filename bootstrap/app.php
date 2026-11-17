@@ -93,14 +93,17 @@ return Application::configure(basePath: dirname(__DIR__))
             }
         });
 
-        // 決裁の URL の JSON の 419（画面の送信の鍵が合わない。既定は「CSRF token mismatch.」）と 401（ログインが切れた。既定は
-        // 「Unauthenticated.」）を日本語にする。申請書の添付の欄は、断られた理由としてこの文をそのまま出す（Task 19 の B5）。
+        // JSON の 419（画面の送信の鍵が合わない。既定は「CSRF token mismatch.」）と、決裁の URL の JSON の 401（ログインが切れた。
+        // 既定は「Unauthenticated.」）を日本語にする。申請書の添付の欄は、断られた理由としてこの文をそのまま出す（Task 19 の B5）。
         // 419 は画面を開いたまま時間がたってセッションが切れたときのほか、ほかの画面でログアウトしたときにも出る（ログアウトは鍵を
         // 作り直すので、ログインの確かめより先に断られる。手元のブラウザで実測。Task 19 の N-2）。401 はほかの画面でパスワードを変えたときなど。
-        // ⚠ 決裁の URL だけ（基幹の応答は変えない）。
+        // ⚠ 419 は決裁と基幹の両方（Bug #137）。基幹の保存の Ajax の約 16 画面がサーバーの文をそのまま出す（直す前は英語が出ていた）。
+        //    決裁の画面の応答は前と同じ文。ふつうのフォームの送信（JSON を求めない）は resources/views/errors/419.blade.php の画面。
+        // ⚠ 401 は決裁の URL だけ（基幹の応答は変えない。原価のカードは英語の 401 で「ログインが切れた」を見分けている。
+        //    realEstateCostAccessError。保存の Ajax で 401 が出るのは、ほかの画面でパスワードを変えたときなどまれ）。
         // ⚠ 419 は、Laravel が TokenMismatchException を HttpException(419) に置き換えてから render を呼ぶので、HttpException で受けて番号を見る
         $exceptions->render(function (\Symfony\Component\HttpKernel\Exception\HttpException $e, \Illuminate\Http\Request $request) {
-            if ($e->getStatusCode() === 419 && $request->is('approvals/*') && $request->expectsJson()) {
+            if ($e->getStatusCode() === 419 && $request->expectsJson()) {
                 return response()->json(['message' => '画面を開いてから時間がたったか、ほかの画面でログアウトしたため、送れませんでした。画面を開き直して、もう一度やり直してください。'], 419);
             }
         });
