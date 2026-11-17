@@ -5482,7 +5482,7 @@ Bug #131 で変えたビュー 9 本のうち、本番に行がある画面を�
 モック: @docs/mockups/realestate/procurement-cost-grid.html
 
 利用者の依頼（2026-11-16）は、不動産の原価管理（仕入れ案件・分譲地の詳細画面と新規登録画面）の「＋ 費用追加」を 1 行ずつ入れる形から、Excel のように一覧で入れる形に変えること。
-作業場所 `.claude/worktrees/realestate-cost-grid`・枝 `realestate-cost-grid`（13.x = `8bd5169d` から。実装は `4fa5a965` から `b29885ac` まで）。**DB 変更・依存の変更は無し。新しい PHP クラスがある**（`App\Support\RealEstateCostGrid` ほか。本番反映では main repo の cwd で `composer dump-autoload --no-dev --optimize` が要る）。ルートは 4 本消えて 2 本足した。
+作業場所 `.claude/worktrees/realestate-cost-grid`・枝 `realestate-cost-grid`（13.x = `8bd5169d` から。実装は `4fa5a965` から `b29885ac` まで）。**DB 変更・依存の変更は無し。新しい PHP クラスが 1 つとトレイトが 1 つある**（クラス `App\Support\RealEstateCostGrid`・トレイト `ValidatesCostGrid`。本番反映では main repo の cwd で `composer dump-autoload --no-dev --optimize` が要る）。ルートは 4 本消えて 2 本足した。
 
 ### 何ができるようになったか
 
@@ -5526,6 +5526,7 @@ Bug #131 で変えたビュー 9 本のうち、本番に行がある画面を�
 - ⚠ `X-Requested-With` を外す変異（J5）を捕まえるのは `test_the_estimate_grid_is_saved_in_one_request` の 1 本だけ（`AjaxFetchSessionGuardTest` は GET の fetch しか見ない。保存は PUT なので Top trap #9 の対象外）
 - 実ブラウザ（使い捨ての SQLite ＋ `artisan serve`・Playwright・画面が見えている状態）: 仕入れ案件の ①〜⑪ と分譲地の ①④⑦⑨ がすべて OK（NG 0）。最初のセルへの focus・Enter / 矢印での移動（物件購入費を飛ばす）・カンマ整形と合計・本物の `paste`・保存と一覧への反映・差額の色・リロードで確かめ・削除の確かめ・登録を開いたまま止める・375px と 1440px で `main` の横スクロール 0・コンソールのエラー 0。一般の管理者ロールには「削除」ボタンが出ず、保存済みの見込み額を空にすると行に理由が出る
 - ⚠ 観察: 新規登録の備考セルで Enter を押すと暗黙の送信になり、「原価の表を開いたままです…」の alert が出る（値は残る。金額セルの Enter は行移動で alert なし。日本語入力の確定の Enter は再現できず未確認）。成功の文が一瞬で消えるのは既存の `showMessage` が 3 秒で消すため
+- 最後の全体の点検（With fixes）の直し（1 回）: 備考の Enter を下の行へ移す（I1・観察の件）・1 行だけのタブ入りの貼り付けは 1 列目だけを入れる（M1）・受け口の `rows.*.notes` に `present`（M2）・費用項目の id を整数で比べる（M3）・断りを出す前置きを 1 か所に（重複）。M4（セッション切れの文言）・M5（Excel 取込とのロックの順）は後回し（新しい文言・取込を変えない決めのため）
 
 ### 範囲外・後回し
 
