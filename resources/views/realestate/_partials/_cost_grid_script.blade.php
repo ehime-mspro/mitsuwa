@@ -474,13 +474,14 @@ function costGridFactory(opts) {
             return to;
         },
 
-        // 改行を含む文字（Excel の列）を貼ると、このセルから下へ 1 行に 1 つずつ入れる（タブの前の 1 列目だけ）。
+        // 改行かタブを含む文字（Excel の列・行）を貼ると、このセルから下へ 1 行に 1 つずつ入れる（タブの前の 1 列目だけ）。
         // 物件購入費の行は飛ばし、空のセルは今の値のまま飛ばし、行が足りなければ残りは捨てる
         costGridPaste: function (e, idx) {
             var clipboard = e.clipboardData || window.clipboardData;
             var text = clipboard && clipboard.getData ? String(clipboard.getData('text')) : '';
             var body = text.replace(/\r?\n$/, '');
-            if (!/\r?\n/.test(body)) return;
+            // 1 行だけでもタブを含むなら（Excel の行を 2 つのセルに渡って写した）、タブごと入って 3009 に化けないよう同じ道で 1 列目だけを入れる
+            if (!/\r?\n/.test(body) && body.indexOf('\t') === -1) return;
             e.preventDefault();
             var lines = body.split(/\r?\n/);
             var rows = this.costGrid.rows;

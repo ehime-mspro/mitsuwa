@@ -438,6 +438,16 @@ class CostGridScreenTest extends RealEstateScreenTestCase
         // 1 つの値（改行なし）は、ふつうの貼り付けに任せる
         $run = $this->drive($html, $function, $paste('5000'), [], $evaluate);
         $this->assertSame([false, ['仲介手数料:', '物件購入費:', '測量費:50,000', 'その他:'], ''], $run['evaluated']);
+
+        // 1 行だけでもタブを含む（Excel の行を 2 つのセルに渡って写した）なら、1 列目だけを入れる（タブごと入ると 3009 に化ける）
+        foreach (["300\t9\r\n", "300\t9"] as $text) {
+            $run = $this->drive($html, $function, $paste($text), [], $evaluate);
+            $this->assertSame([
+                true,
+                ['仲介手数料:300', '物件購入費:', '測量費:50,000', 'その他:'],
+                '1 行に貼り付けました。まだ保存していません。',
+            ], $run['evaluated'], json_encode($text));
+        }
     }
 
     #[DataProvider('screens')]
