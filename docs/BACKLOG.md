@@ -5764,12 +5764,12 @@ Bug #131 で変えたビュー 9 本のうち、本番に行がある画面を�
 ### 範囲外（気づいたが直していない）
 
 - GET の Ajax でログインが切れたときの「データの取得に失敗しました（401）」（約 15 か所。番号だけ）・401 の文
-- 419 の画面の `<title>` は `config('app.name')`（使い捨ての環境では「Laravel」。本番は本番の設定の名前）。ログイン画面とタブの名前で区別がつかない（点検の Minor）
+- 419 の画面の `<title>` は `config('app.name')`（使い捨ての環境では「Laravel」。本番は本番の設定の名前）。ログイン画面とタブの名前で区別がつかない（点検の Minor）（→ 2026-11-17 に直した。下の「Bug #137 の後回し 4 つ」の節）
 - 点検の Minor（後回し）:
-  - 買主のランク変更と「この部署に取り込む」（XHR）は `onerror` が無く、通信そのものの失敗（オフライン・接続断）ではまだ何も出ない
-  - 419 の本文を読む処理が `buyers/index` の `xhrFailureMessage()` と `buyers/_form` のインラインの 2 か所にあり、判定の形も fetch の 5 か所（`body && body.message`）と少し違う（今は同じ結果）
+  - 買主のランク変更と「この部署に取り込む」（XHR）は `onerror` が無く、通信そのものの失敗（オフライン・接続断）ではまだ何も出ない（→ 2026-11-17 に直した。下の節）
+  - 419 の本文を読む処理が `buyers/index` の `xhrFailureMessage()` と `buyers/_form` のインラインの 2 か所にあり、判定の形も fetch の 5 か所（`body && body.message`）と少し違う（今は同じ結果）（→ 2026-11-17 に XHR の 2 か所を 1 つの部品にした。fetch の 5 か所の読み方はそのまま。下の節）
   - 419 の画面の主ボタン「前の画面に戻る」で戻った画面は古い鍵のままで、そのまま送り直すとまた 419 になる（文面は「控えてから画面を開き直して」と案内している）。新しいタブで開いた 419 の画面では押しても何も起きない
-  - 走査 `FETCH_ASKS_FOR_JSON` は、fetch の中の JS コメントに書いた `'Accept': 'application/json'` でも通り、`'application/json, text/plain'` は弾く。オプションを変数で渡す `fetch(url, opts)` は GET と数える（実物は 0 件。docblock に死角として書いていない）
+  - 走査 `FETCH_ASKS_FOR_JSON` は、fetch の中の JS コメントに書いた `'Accept': 'application/json'` でも通り、`'application/json, text/plain'` は弾く。オプションを変数で渡す `fetch(url, opts)` は GET と数える（実物は 0 件。docblock に死角として書いていない）（→ 2026-11-17 に docblock に書き、見本で固定した。下の節）
   - 直した 7 か所は、419 のほかの 401・403 では番号だけ（サーバーの日本語の理由は出ない。計画の決定どおり）
 
 ### 本番反映（2026-11-17 実施）
@@ -5786,6 +5786,42 @@ Bug #131 で変えたビュー 9 本のうち、本番に行がある画面を�
 ⚠ 本番の保存（ステータスの変更など）はしていない。ログインが切れたときの Ajax の文は、テスト・変異・使い捨ての環境の実ブラウザで確かめてある。
 
 ⚠ `origin/13.x` への push はしていない。
+
+
+## 🚧 Bug #137 の後回し 4 つ（通信の失敗・419 の読み取り・419 のタブ名・走査の死角）— 本番未反映
+
+設計メモ（短）: @docs/superpowers/specs/2026-11-17-expired-session-followups-design.md
+実装計画: @docs/superpowers/plans/2026-11-17-expired-session-followups.md
+
+上の節（Bug #137）の範囲外に残した点検の Minor のうち 4 つを、利用者の指示（2026-11-17・「1 で進めてください」）で直した（docs/RULES.md の Bug #137 の追記）。
+作業場所 `.claude/worktrees/expired-session-minors`・枝 `expired-session-minors`（13.x = `4d1313e6` から）。**DB 変更・ルート変更・依存の変更・新しい PHP クラスは無し**（ビューが 1 本増える。反映は `./deploy.sh` だけでよい）。
+
+| # | 直す前 | 直したあと |
+|---|---|---|
+| 1 | 買主一覧のランク変更・登録画面の「この部署に取り込む」（XMLHttpRequest）に `onerror` が無く、通信そのものが失敗すると何も出ない | 「通信エラーが発生しました。画面を開き直して、ランクが変わったか確かめてください。」「通信エラーが発生しました。顧客の一覧で、この部署に取り込まれたか確かめてください。」（サーバーに届いて変わった可能性があるので「変わっていません」とは言わない。原価の表の言い方と同じ） |
+| 2 | 419 の本文を読む処理が `buyers/index` と `buyers/_form` に 2 回書いてある | 部品 `resources/views/buyers/_xhr_failure_message.blade.php`（`<script>`・`@once`）の `xhrFailureMessage(xhr, fallback)` を 2 画面が `@include` する（振る舞いは同じ） |
+| 3 | 419 の画面のタブ名がアプリ名だけで、ログイン画面と区別がつかない | 「画面の有効期限が切れました - アプリ名」（`components/guest-layout` に任意の `title`。`layouts/app` と同じ形。ログイン画面はアプリ名だけのまま） |
+| 4 | 保存の Ajax の走査（`AjaxFetchSessionGuardTest`）の見落としが書かれていない | 死角 3 つ（fetch の中のコメントの Accept も求めているとみなす・`fetch(url, 変数)` は GET とみなす・`xhr.open(変数, …)` は数えない）と厳しすぎる向き 1 つ（`application/json, text/plain` は断る）を docblock に書き、見本で今の動きを固定（実物はどれも 0 件と 2026-11-17 に数えた） |
+
+| 区分 | 実装内容 |
+|------|---------|
+| 画面 | `buyers/_xhr_failure_message.blade.php`（新規）・`buyers/index.blade.php`・`buyers/_form.blade.php`・`components/guest-layout.blade.php`・`errors/419.blade.php` |
+| テストの道具 | `tests/Concerns/DrivesAlpineFetch.php` — 応答 `networkFailure()`（`['network_error' => true]`）を渡すと、偽の XMLHttpRequest が status 0・本文なしで `onerror` を呼ぶ（XMLHttpRequest だけ。今ある応答の形と使い方は変えていない） |
+| テスト | `Housing\Screens\CustomerScreensTest` に 3 本（通信の失敗 2・419 の読み取りが部品だけ 1）と、既存の 2 本に部品の script を読ませる・419 で本文が HTML なら番号つきの文 ／ `ExpiredSessionResponseTest` に 419 の画面とログイン画面のタブ名 ／ `AjaxFetchSessionGuardTest` に見本 4 つ。5213 → **5216 tests / 54258 assertions green**（PHP 8.3.36・警告なし） |
+
+### 検証
+
+- 新しいテストは直す前に赤を確かめてから直した（部品の script がちょうど 1 つ描かれていない・419 の読み取りが 2 か所・通信の失敗で alert が出ない・タブ名がアプリ名だけ）。走査の見本 4 つは今の動きの固定なので、効いていることは変異で見た
+- 全件 **OK (5216 tests, 54258 assertions)**・警告なし ／ コンパイル済みビュー **322 本 / INVALID 0**（新しい部品の 1 本が増えた）
+- 変異 12 通り（カナリアを含む・main repo の `.claude/route-coverage-tools/mutate/specs_expired_session_followups.py`・実行役 `run_esf.py`・結果は `results-expired-session-followups.*`。関係するテスト 655 本で）すべて期待どおり（落ちたテストの組と理由まで）: 2 画面の `onerror` を消す・道具が `onerror` を呼ばない・`_form` を直す前のインラインの読み取りに戻す・2 画面の `@include` を消す・部品が常に fallback を返す・419 の画面から title を外す・レイアウトが title を出さない／無くても「 - 」を付ける・`FETCH_ASKS_FOR_JSON` が型を並べた Accept も通す
+- 実ブラウザ（使い捨ての SQLite ＋ `artisan serve`・Playwright）: 買主一覧でランクの小窓を開き、登録画面で不動産だけにいる買主の「この顧客を住宅事業にも追加」を出したあと、サーバーを止めて押した → 2 画面とも新しい文の alert（ランクは A のまま・小窓は閉じる／登録画面は移らない）。コンソールは意図した接続拒否（`ERR_CONNECTION_REFUSED`）の 1 件ずつだけ。`curl` でログイン画面のタブ名「Laravel」（使い捨ての環境のアプリ名）・ログインへの空の送信は 419 で「画面の有効期限が切れました - Laravel」
+
+### 範囲外（気づいたが直していない）
+
+- fetch の 5 か所（`body && body.message` の形）の 419 の読み方をそろえること
+- GET の Ajax でログインが切れたときの「データの取得に失敗しました（401）」（約 15 か所。番号だけ）・401 の文（上の節の範囲外のまま）
+- 419 の画面の「前の画面に戻る」で戻った画面は古い鍵のまま（文面で案内している。上の節の範囲外のまま）
+- 走査 `test_the_419_reason_of_an_xhr_is_read_in_one_place` は `xhr.status === 419` の字面だけを見る（変数の名前を変えた書き足しは見えない）
 
 
 ## バックログ完了状況
@@ -5933,6 +5969,8 @@ lint（INVALID 0）と、ログイン済みの実 Chrome での目視まで確�
 **原価管理の一覧入力の後回し 2 つ（M4 ログインが切れたときの文・M5 取込とのロックの順。2026-11-17・Bug #135・#136）は 2026-11-17 に本番反映済み**（上の節。`13.x` = `dce049f9`〈反映のときは push していない〉・本番の 5 本が手元と md5 まで一致・コンパイル済みビュー 320 本の lint（INVALID 0）。取込が表の保存と同じく親の行を先にロックする＝上書きの取込と重なると表の保存がデッドロックで落ちていた件・原価のカードの表の保存・取込・削除が、ログインが切れた・無効・権限が無いときに理由と次にすることを出す。全件 5192 本・変異 19 通り・実ブラウザで確認。DB 変更・新しい PHP クラスなし・反映は `./deploy.sh` だけ）。
 
 **ログインが切れたとき（419）に日本語の理由を出す（2026-11-17・Bug #137）は 2026-11-17 に本番反映済み**（上の節。`13.x` = `62a06cc9`〈反映のときは push していない〉・本番のログインへの空の送信で日本語の 419 の画面と JSON の日本語の文を確かめた・本番の 8 本が手元と md5 まで一致・コンパイル済みビュー 321 本の lint（INVALID 0）。基幹の JSON の 419 も決裁と同じ日本語の文にし、ふつうのフォームの 419 は日本語の画面〈`errors/419.blade.php`〉、番号だけ・何も出さなかった Ajax 7 か所も理由を出す。全件 5213 本・変異 28 通り・ビュー 321 本の lint（INVALID 0）・実ブラウザで確認。DB 変更・新しい PHP クラスなし・反映は `./deploy.sh` だけ〈CSS の名前が変わる〉）。
+
+**Bug #137 の後回し 4 つ（2026-11-17）は作業場所の枝 `expired-session-minors` にあり、本番未反映**（上の節。買主のランク変更と「この部署に取り込む」で通信が失敗したら理由を出す・419 の読み取りを 1 つの部品に・419 の画面のタブ名・走査の死角を書き残す。全件 5216 本・変異 12 通り・ビュー 322 本の lint（INVALID 0）・実ブラウザで確認。DB 変更・新しい PHP クラスなし・反映は `./deploy.sh` だけ）。
 
 その他の新規要件は別途追記する。
 
