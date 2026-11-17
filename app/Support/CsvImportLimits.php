@@ -63,6 +63,7 @@ final class CsvImportLimits
      * 直す前はカンマを全部除いていたので、打ち間違いの「5,5000」が 55000・「5,50」が 550 で黙って入っていた。
      * Excel が書き出す CSV は表示どおりの正しい区切りなので、崩れた区切りは人が打ち間違えたときにだけ入る。
      * docs/RULES.md Bug #132 の追記（2026-11-16）
+     * 周辺ビル調査の Excel 取込の件数（AreaBuildingImportController::parseInt()）も同じ決まりで使う（Bug #134）。
      */
     public static function withoutThousandsSeparators(string $raw): ?string
     {

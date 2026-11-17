@@ -397,6 +397,53 @@ class AreaBuildingImportTest extends AreaBuildingTestCase
     }
 
     /**
+     * 件数のカンマは 3 桁ごとの正しい区切りだけ通す（CSV の取込と同じ決まり。全角のカンマは半角とみなす）。
+     * 数字のあいだの空白・「円」も断る。
+     *
+     * ⚠ 2026-11-17 まではカンマ・空白・「円」を全部落としてから読んでいたので、
+     *   '1,5' '1 5' '1円5' が 15・'5,,0' が 50 で黙って入っていた。
+     */
+    public function test_counts_with_misplaced_separators_are_rejected(): void
+    {
+        $this->importBuildings([
+            ['name' => '区切り正しい',       'operating' => '1,234'],
+            ['name' => '円付き',             'operating' => '1,234円'],
+            ['name' => '円記号付き',         'operating' => '¥1,234'],
+            ['name' => '区切り誤り',         'operating' => '1,5'],
+            ['name' => '連続カンマ',         'operating' => '5,,0'],
+            ['name' => '先頭カンマ',         'operating' => ',15'],
+            ['name' => '末尾カンマ',         'operating' => '15,'],
+            ['name' => '全角カンマ誤り',     'operating' => '1，5'],
+            ['name' => '数字のあいだの空白', 'operating' => '1 5'],
+            ['name' => 'カンマのあとの空白', 'operating' => '1, 234'],
+            ['name' => '数字のあいだの円',   'operating' => '1円5'],
+        ])->assertRedirect();
+
+        $this->assertSame(['区切り正しい', '円付き', '円記号付き'], AreaBuilding::orderBy('id')->pluck('name')->all());
+        $this->assertSame([1234, 1234, 1234], AreaBuildingSurvey::orderBy('id')->pluck('operating_count')->all());
+        $this->assertStringContainsString('値が不正でスキップ 8 件', session('success'));
+    }
+
+    /**
+     * 総階数はカンマと数字のあいだの空白を断る（正しい 3 桁ごとの区切りは 1,000 以上で、どれも上限 200 を超える）。
+     * 語のあいだの空白（'地上 5階'）は今どおり読む。
+     *
+     * ⚠ 2026-11-17 までは '2,5' '2 5' が 25 階で黙って入っていた。
+     */
+    public function test_total_floors_with_separators_reject_the_row(): void
+    {
+        $this->importBuildings([
+            ['name' => '語のあいだの空白', 'operating' => '1', 'total_floors' => '地上 5階'],
+            ['name' => 'カンマの階数',     'operating' => '1', 'total_floors' => '2,5'],
+            ['name' => '空白の階数',       'operating' => '1', 'total_floors' => '2 5'],
+        ])->assertRedirect();
+
+        $this->assertSame(['語のあいだの空白'], AreaBuilding::pluck('name')->all());
+        $this->assertSame(5, AreaBuilding::firstOrFail()->total_floors);
+        $this->assertStringContainsString('値が不正でスキップ 2 件', session('success'));
+    }
+
+    /**
      * 総階数の表記ゆれ。'10階建' '５階' '地上5階' が読めること。
      *
      * ⚠ 2026-08-17 のレビューまで、これらは**全部無警告で NULL** に落ちていた。
@@ -653,6 +700,26 @@ class AreaBuildingImportTest extends AreaBuildingTestCase
 
         $this->assertSame(['D', 'E'], $building->tenants()->orderBy('room_number')->pluck('room_number')->all());
         $this->assertNull($building->tenants()->where('room_number', 'E')->firstOrFail()->floor);
+        $this->assertStringContainsString('値が不正でスキップ 3 件', session('success'));
+    }
+
+    /**
+     * テナントの階もカンマと数字のあいだの空白を断る。語のあいだの空白（'地下 1階'）は今どおり読む。
+     *
+     * ⚠ 2026-11-17 までは '2,5' '2 5' が 25 階・'B1,0' が地下 10 階で黙って入っていた。
+     */
+    public function test_tenant_floor_with_separators_rejects_the_row(): void
+    {
+        $building = $this->makeBuilding('アルファビル');
+
+        $this->importTenants([
+            ['building_name' => 'アルファビル', 'room_number' => 'A', 'floor' => '地下 1階', 'status' => '営業'],
+            ['building_name' => 'アルファビル', 'room_number' => 'B', 'floor' => '2,5', 'status' => '営業'],
+            ['building_name' => 'アルファビル', 'room_number' => 'C', 'floor' => '2 5', 'status' => '営業'],
+            ['building_name' => 'アルファビル', 'room_number' => 'D', 'floor' => 'B1,0', 'status' => '営業'],
+        ])->assertRedirect();
+
+        $this->assertSame(['A' => -1], $building->tenants()->pluck('floor', 'room_number')->all());
         $this->assertStringContainsString('値が不正でスキップ 3 件', session('success'));
     }
 

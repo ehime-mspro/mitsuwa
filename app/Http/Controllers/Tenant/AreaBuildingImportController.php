@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AreaBuilding;
 use App\Models\AreaBuildingSurvey;
 use App\Models\AreaBuildingTenant;
+use App\Support\CsvImportLimits;
 use App\Support\FloorNumber;
 use App\Support\OneTimeAction;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -583,7 +584,13 @@ class AreaBuildingImportController extends Controller
     }
 
     /**
-     * 全角数字・カンマ・空白・「円」「¥」を落としてから整数として読む。
+     * 全角数字を半角にし、空白・「円」「¥」を落としてから整数として読む。
+     * カンマは 3 桁ごとの正しい区切り（'1,234'）だけ通す（CSV の取込と同じ決まり。全角のカンマは半角とみなす）。
+     *
+     * ⚠ 2026-11-17 まではカンマ・空白・「円」を全部落としていたので、'1,5' '1 5' '1円5' が 15・'5,,0' が 50 で
+     *   黙って入っていた（Bug #134）。数字とカンマのあいだに空白か「円」があれば読めないものとして扱う。
+     * ⚠ プレビュー（import.blade.php の areaImportParseCount）と同じ結果であること。
+     *   AreaBuildingImportParserParityTest が同じ入力を両方に通して突き合わせる。
      *
      * @return int|null|false null = 空欄 / false = 数値として解釈できない
      */
@@ -598,13 +605,23 @@ class AreaBuildingImportController extends Controller
 
         // ⚠ mb_convert_kana は必須。/u 付きの \d は全角数字にも一致するが、
         //   (int) '１２３' は 0 になるので、判定の前に半角へ寄せる必要がある。
-        $s = mb_convert_kana(trim((string) $raw), 'n');                 // 全角数字 → 半角
+        //   'n' は数字だけを半角にするので、全角のカンマは別に置き換える。
+        $s = str_replace('，', ',', mb_convert_kana(trim((string) $raw), 'n'));
+
         // ⚠ \x{3000} は冗長（/u が PCRE2_UCP を立てるので \s が U+3000 に当たる）。
         //   UCP 無効なビルドへの保険として残している。
-        $s = preg_replace('/[,，\s\x{3000}円¥￥]/u', '', $s);
+        if (preg_match('/[\d,][\s\x{3000}円¥￥]+[\d,]/u', $s) === 1) {
+            return false;   // 数字・カンマのあいだの空白・「円」（'1 5' '1円5' '1, 234'）
+        }
+        $s = preg_replace('/[\s\x{3000}円¥￥]/u', '', $s);
 
         if ($s === '') {
             return null;
+        }
+
+        $s = CsvImportLimits::withoutThousandsSeparators($s);
+        if ($s === null) {
+            return false;   // 区切りの崩れたカンマ（'1,5' '5,,0' ',15' '15,'）
         }
 
         // ⚠ 桁あふれは (int) が PHP_INT_MAX / PHP_INT_MIN に飽和させるが、呼び出し元
