@@ -453,14 +453,15 @@ function costGridFactory(opts) {
             return null;
         },
 
-        _costGridFocus: function (idx) {
-            var el = document.querySelector('[data-cost-cell="' + this.costGrid.mode + '-' + idx + '"]');
+        // col が 'notes' なら備考のセル、無ければ今の表の金額のセル
+        _costGridFocus: function (idx, col) {
+            var el = document.querySelector(col === 'notes' ? '[data-cost-note="' + idx + '"]' : '[data-cost-cell="' + this.costGrid.mode + '-' + idx + '"]');
             if (el) el.focus();
         },
 
         // Enter で下・Shift + Enter で上・上下の矢印。扱うキーは必ず既定の動きを止める
         // （新規登録の表はフォームの中にあり、Enter で登録が送られてしまう）。日本語入力の確定の Enter では動かない
-        costGridKey: function (e, idx) {
+        costGridKey: function (e, idx, col) {
             if (e.isComposing || e.keyCode === 229) return null;
             var step = null;
             if (e.key === 'Enter') step = e.shiftKey ? -1 : 1;
@@ -469,7 +470,7 @@ function costGridFactory(opts) {
             if (step === null) return null;
             e.preventDefault();
             var to = this.costGridNext(idx, step);
-            if (to !== null) this._costGridFocus(to);
+            if (to !== null) this._costGridFocus(to, col);
             return to;
         },
 

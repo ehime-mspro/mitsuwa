@@ -472,6 +472,34 @@ class CostGridScreenTest extends RealEstateScreenTestCase
         ], $run['evaluated']);
     }
 
+    /** 備考のセルも Enter で下・Shift + Enter で上・矢印で動き、新規登録のフォームの送信にしない（物件購入費の行は飛ばす） */
+    #[DataProvider('screens')]
+    public function test_enter_and_arrows_move_between_notes_cells(string $kind): void
+    {
+        [$html, $function] = $this->page($kind);
+        $steps = 'data.openCostGrid("estimated"); globalThis.__key = function (extra, idx) { '
+            . 'var e = Object.assign({ key: "", shiftKey: false, isComposing: false, keyCode: 0, prevented: false, preventDefault: function () { this.prevented = true; } }, extra); '
+            . 'var to = data.costGridKey(e, idx, "notes"); return [to, e.prevented]; };';
+
+        $run = $this->drive($html, $function, $steps, [], [
+            '__key({ key: "Enter" }, 0)',
+            '__key({ key: "Enter", shiftKey: true }, 2)',
+            '__key({ key: "ArrowDown" }, 0)',
+            '__key({ key: "ArrowUp" }, 2)',
+            '__key({ key: "Enter" }, 3)',
+            '__key({ key: "Enter", isComposing: true }, 0)',
+            '__key({ key: "Enter", keyCode: 229 }, 0)',
+            '__key({ key: "a" }, 0)',
+        ]);
+
+        $this->assertSame([[2, true], [0, true], [2, true], [0, true], [null, true], [null, false], [null, false], [null, false]], $run['evaluated']);
+
+        // 移る先は備考のセル（金額のセルではない）
+        $run = $this->drive($html, $function, 'data.openCostGrid("estimated"); globalThis.__q = []; document.querySelector = function (s) { globalThis.__q.push(s); return null; }; '
+            . 'data.costGridKey({ key: "Enter", shiftKey: false, preventDefault: function () {} }, 0, "notes");', [], ['globalThis.__q']);
+        $this->assertSame([['[data-cost-note="2"]']], $run['evaluated']);
+    }
+
     // ============================================================
     // 変更の数・取消・ページを離れるとき
     // ============================================================
@@ -597,6 +625,9 @@ class CostGridScreenTest extends RealEstateScreenTestCase
         $notes = array_values(array_filter($inputs, fn ($t) => str_contains($t[2], 'draft.notes')));
         $this->assertCount(1, $notes, '備考のセルがちょうど 1 つ無い');
         $this->assertStringContainsString('maxlength="200"', $notes[0][0]);
+        // 新規登録のフォームの中で Enter が登録の送信にならない・日本語入力の確定の Enter では動かない
+        $this->assertStringContainsString('@keydown="$event.isComposing || costGridKey($event, idx, \'notes\')"', $notes[0][0]);
+        $this->assertStringContainsString(':data-cost-note="idx"', $notes[0][0]);
         foreach ($inputs as [$tag]) {
             // 新規登録のフォームの中に置くので、name を付けると「登録する」で送られてしまう
             $this->assertDoesNotMatchRegularExpression('/(?<![\w:-])name=/', $tag, "入力に name がある: {$tag}");

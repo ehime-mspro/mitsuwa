@@ -137,7 +137,9 @@
                                        class="w-full h-8 px-2 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200"
                                        :class="costGridNotesChanged(row) ? 'border-amber-500 bg-amber-50' : 'border-gray-300 bg-white'"
                                        :aria-label="row.name + ' の備考'"
-                                       x-model="row.draft.notes">
+                                       :data-cost-note="idx"
+                                       x-model="row.draft.notes"
+                                       @keydown="$event.isComposing || costGridKey($event, idx, 'notes')">
                             </template>
                             <template x-if="row.auto">
                                 <div class="text-xs text-gray-400" style="padding-top: 8px;">査定価格・購入価格から自動で入ります</div>
