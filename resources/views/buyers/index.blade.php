@@ -137,6 +137,7 @@
     @endforeach
 </div>
 
+@include('buyers._xhr_failure_message')
 <script>
 var _rankDropdown = document.getElementById('rank-dropdown-global');
 var _currentBadge = null;
@@ -175,23 +176,12 @@ function selectRank(rank) {
             return;
         }
         // 断られたら理由を出す（直す前は何も出さず、ランクが変わらないだけだった）。419（ログインが切れた・ほかの画面で
-        // ログアウトした）はサーバーの日本語の理由、ほかは番号つきの文（Bug #137）
+        // ログアウトした）はサーバーの日本語の理由、ほかは番号つきの文（Bug #137。文は部品 buyers/_xhr_failure_message が作る）
         alert(xhrFailureMessage(xhr, 'ランクを変更できませんでした（' + xhr.status + '）'));
     };
     xhr.send(JSON.stringify({rank: rank, department: _currentDepartment}));
 
     _rankDropdown.style.display = 'none';
-}
-
-// 断られた XMLHttpRequest の文: 419 はサーバーが返す日本語の理由（bootstrap/app.php）、ほかは $fallback
-function xhrFailureMessage(xhr, fallback) {
-    if (xhr.status === 419) {
-        try {
-            var body = JSON.parse(xhr.responseText);
-            if (body && typeof body.message === 'string' && body.message !== '') return body.message;
-        } catch (e) {}
-    }
-    return fallback;
 }
 
 document.addEventListener('click', function(e) {

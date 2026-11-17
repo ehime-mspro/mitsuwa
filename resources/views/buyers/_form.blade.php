@@ -333,6 +333,7 @@
     <input type="hidden" name="birth_date" x-ref="birth_date_hidden">
 </div>
 
+@include('buyers._xhr_failure_message')
 <script>
 function buyerForm() {
     return {
@@ -441,15 +442,8 @@ function buyerForm() {
                     return;
                 }
                 // 断られたら理由を出す（直す前は何も出さなかった）。419（ログインが切れた・ほかの画面でログアウトした）は
-                // サーバーの日本語の理由、ほかは番号つきの文（Bug #137）
-                var message = 'この部署に取り込めませんでした（' + xhr.status + '）';
-                if (xhr.status === 419) {
-                    try {
-                        var body = JSON.parse(xhr.responseText);
-                        if (body && typeof body.message === 'string' && body.message !== '') message = body.message;
-                    } catch (e) {}
-                }
-                alert(message);
+                // サーバーの日本語の理由、ほかは番号つきの文（Bug #137。文は部品 buyers/_xhr_failure_message が作る）
+                alert(xhrFailureMessage(xhr, 'この部署に取り込めませんでした（' + xhr.status + '）'));
             };
             xhr.send(JSON.stringify({
                 department: '{{ $department }}',

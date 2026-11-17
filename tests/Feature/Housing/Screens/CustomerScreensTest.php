@@ -7,6 +7,7 @@ use App\Models\Buyer;
 use App\Models\BuyerSurvey;
 use App\Models\SurveyQuestion;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
+use Illuminate\Support\Facades\File;
 use Tests\Concerns\RunsBuyerFormScript;
 
 /**
@@ -20,6 +21,9 @@ use Tests\Concerns\RunsBuyerFormScript;
 class CustomerScreensTest extends HousingScreenTestCase
 {
     use RunsBuyerFormScript;
+
+    /** 断られた XMLHttpRequest の文を作る関数を持つ <script>（部品 buyers/_xhr_failure_message。2 画面が読む） */
+    private const XHR_FAILURE_SCRIPT = 'function xhrFailureMessage';
 
     protected function buyerFormUrl(): string
     {
@@ -309,7 +313,7 @@ class CustomerScreensTest extends HousingScreenTestCase
         $request = $this->driveAlpine($html, 'selectRank', '({})', $steps($buyer))['requests'][0];
         $this->enforceCsrfToken();
         $response = $this->sendCaptured($this->withExpiredToken($request))->assertStatus(419);
-        $after = $this->driveAlpine($html, 'selectRank', '({})', $steps($buyer), [$this->asFetchResponse($response)]);
+        $after = $this->driveAlpine($html, 'selectRank', '({})', $steps($buyer), [$this->asFetchResponse($response)], withScripts: [self::XHR_FAILURE_SCRIPT]);
         $this->assertSame([self::EXPIRED_JSON_MESSAGE], $after['alerts']);
         $this->assertNotSame('A', $buyer->getDepartmentPivot('housing')->rank->value);
 
@@ -318,8 +322,38 @@ class CustomerScreensTest extends HousingScreenTestCase
         $buyer->delete();
         $this->app->forgetInstance(ValidateCsrfToken::class); // 鍵の確かめを、テストの既定（素通り）に戻す
         $response = $this->sendCaptured($request)->assertNotFound();
-        $after = $this->driveAlpine($html, 'selectRank', '({})', $steps($buyer), [$this->asFetchResponse($response)]);
+        $after = $this->driveAlpine($html, 'selectRank', '({})', $steps($buyer), [$this->asFetchResponse($response)], withScripts: [self::XHR_FAILURE_SCRIPT]);
         $this->assertSame(['ランクを変更できませんでした（404）'], $after['alerts']);
+
+        // 419 でも本文が JSON でない（HTML の画面が返った）なら、番号つきの文
+        $after = $this->driveAlpine($html, 'selectRank', '({})', $steps($buyer), [['status' => 419, 'body' => '<!DOCTYPE html><title>x</title>']], withScripts: [self::XHR_FAILURE_SCRIPT]);
+        $this->assertSame(['ランクを変更できませんでした（419）'], $after['alerts']);
+    }
+
+    /**
+     * 断られた XMLHttpRequest の 419 の理由を読むのは部品（buyers/_xhr_failure_message）の 1 か所だけ（Bug #137 の後回し）。
+     * 直す前は buyers/index と buyers/_form に同じ読み取りが 2 回書いてあった。
+     * ⚠ 見るのは `xhr.status === 419` の字面だけ（変数の名前を変えた書き足しは見えない）。
+     */
+    public function test_the_419_reason_of_an_xhr_is_read_in_one_place(): void
+    {
+        $reads = [];
+        $definitions = [];
+        foreach (File::allFiles(resource_path('views')) as $file) {
+            if (! str_ends_with($file->getFilename(), '.blade.php')) {
+                continue;
+            }
+            $source = file_get_contents($file->getPathname());
+            if (str_contains($source, 'xhr.status === 419')) {
+                $reads[] = $file->getRelativePathname();
+            }
+            if (str_contains($source, self::XHR_FAILURE_SCRIPT)) {
+                $definitions[] = $file->getRelativePathname();
+            }
+        }
+
+        $this->assertSame(['buyers/_xhr_failure_message.blade.php'], $reads, 'XMLHttpRequest の 419 の理由を読む所が部品のほかにもある');
+        $this->assertSame(['buyers/_xhr_failure_message.blade.php'], $definitions, 'xhrFailureMessage の定義が部品のほかにもある');
     }
 
     /**
@@ -338,7 +372,7 @@ class CustomerScreensTest extends HousingScreenTestCase
         $this->assertSame(route('api.customers.add-department', $other), $request['url']);
         $this->enforceCsrfToken();
         $response = $this->sendCaptured($this->withExpiredToken($request))->assertStatus(419);
-        $after = $this->driveAlpine($html, 'buyerForm', 'buyerForm()', $steps, [$this->asFetchResponse($response)], true, [], [], $elements);
+        $after = $this->driveAlpine($html, 'buyerForm', 'buyerForm()', $steps, [$this->asFetchResponse($response)], true, [], [self::XHR_FAILURE_SCRIPT], $elements);
         $this->assertSame([self::EXPIRED_JSON_MESSAGE], $after['alerts']);
         $this->assertSame([], $after['navigations']);
         $this->assertFalse($other->fresh()->belongsToDepartment('housing'));
@@ -347,7 +381,7 @@ class CustomerScreensTest extends HousingScreenTestCase
         $other->delete();
         $this->app->forgetInstance(ValidateCsrfToken::class); // 鍵の確かめを、テストの既定（素通り）に戻す
         $response = $this->sendCaptured($request)->assertNotFound();
-        $after = $this->driveAlpine($html, 'buyerForm', 'buyerForm()', $steps, [$this->asFetchResponse($response)], true, [], [], $elements);
+        $after = $this->driveAlpine($html, 'buyerForm', 'buyerForm()', $steps, [$this->asFetchResponse($response)], true, [], [self::XHR_FAILURE_SCRIPT], $elements);
         $this->assertSame(['この部署に取り込めませんでした（404）'], $after['alerts']);
     }
 
