@@ -6,6 +6,7 @@ use App\Enums\UserRole;
 use App\Models\Buyer;
 use App\Models\BuyerSurvey;
 use App\Models\SurveyQuestion;
+use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Tests\Concerns\RunsBuyerFormScript;
 
 /**
@@ -293,6 +294,61 @@ class CustomerScreensTest extends HousingScreenTestCase
         $this->assertTrue($other->fresh()->belongsToDepartment('housing'));
         $moved = $this->driveAlpine($html, 'buyerForm', 'buyerForm()', $add, [$this->asFetchResponse($found), $this->asFetchResponse($added)], true, [], [], $elements);
         $this->assertSame([route('housing.customers.show', $other)], $moved['navigations'], '取り込んだ顧客の詳細へ移らない');
+    }
+
+    /**
+     * 一覧のランクの変更が断られたら、理由を出す（直す前は何も出さず、ランクが変わらないだけだった。Bug #137）。
+     * 419（ログインが切れた・ほかの画面でログアウトした）はサーバーの日本語の理由、ほかは番号つきの文。
+     */
+    public function test_a_refused_rank_change_says_why(): void
+    {
+        $steps = fn (Buyer $buyer) => 'openRankDropdown({ style: {}, getBoundingClientRect: function () { return { bottom: 0, left: 0 }; } }, ' . $buyer->id . ', "housing"); selectRank("A");';
+
+        $buyer = $this->buyer();
+        $html = $this->htmlOf(route('housing.customers.index'));
+        $request = $this->driveAlpine($html, 'selectRank', '({})', $steps($buyer))['requests'][0];
+        $this->enforceCsrfToken();
+        $response = $this->sendCaptured($this->withExpiredToken($request))->assertStatus(419);
+        $after = $this->driveAlpine($html, 'selectRank', '({})', $steps($buyer), [$this->asFetchResponse($response)]);
+        $this->assertSame([self::EXPIRED_JSON_MESSAGE], $after['alerts']);
+        $this->assertNotSame('A', $buyer->getDepartmentPivot('housing')->rank->value);
+
+        // 開いたあとで顧客が消えた（404）
+        $request = $this->driveAlpine($html, 'selectRank', '({})', $steps($buyer))['requests'][0];
+        $buyer->delete();
+        $this->app->forgetInstance(ValidateCsrfToken::class); // 鍵の確かめを、テストの既定（素通り）に戻す
+        $response = $this->sendCaptured($request)->assertNotFound();
+        $after = $this->driveAlpine($html, 'selectRank', '({})', $steps($buyer), [$this->asFetchResponse($response)]);
+        $this->assertSame(['ランクを変更できませんでした（404）'], $after['alerts']);
+    }
+
+    /**
+     * 登録画面の「この部署に取り込む」が断られたら、理由を出す（直す前は何も出さなかった。Bug #137）。
+     * 419 はサーバーの日本語の理由、ほかは番号つきの文。
+     */
+    public function test_a_refused_add_to_department_says_why(): void
+    {
+        $other = Buyer::create(['last_name' => '佐藤', 'first_name' => '一郎', 'prefecture' => '愛媛県', 'city' => '松山市']);
+        $other->addToDepartment('realestate', '2026-08-01');
+        $html = $this->htmlOf(route('housing.customers.create'));
+        $elements = ['input[name="last_name"]' => '佐藤', 'input[name="first_name"]' => '一郎', 'input[name="acquired_date"]' => '2026-10-01'];
+        $steps = 'data.addToDepartment(' . $other->id . ');';
+
+        $request = $this->driveAlpine($html, 'buyerForm', 'buyerForm()', $steps, [], true, [], [], $elements)['requests'][0];
+        $this->assertSame(route('api.customers.add-department', $other), $request['url']);
+        $this->enforceCsrfToken();
+        $response = $this->sendCaptured($this->withExpiredToken($request))->assertStatus(419);
+        $after = $this->driveAlpine($html, 'buyerForm', 'buyerForm()', $steps, [$this->asFetchResponse($response)], true, [], [], $elements);
+        $this->assertSame([self::EXPIRED_JSON_MESSAGE], $after['alerts']);
+        $this->assertSame([], $after['navigations']);
+        $this->assertFalse($other->fresh()->belongsToDepartment('housing'));
+
+        // 開いたあとで顧客が消えた（404）
+        $other->delete();
+        $this->app->forgetInstance(ValidateCsrfToken::class); // 鍵の確かめを、テストの既定（素通り）に戻す
+        $response = $this->sendCaptured($request)->assertNotFound();
+        $after = $this->driveAlpine($html, 'buyerForm', 'buyerForm()', $steps, [$this->asFetchResponse($response)], true, [], [], $elements);
+        $this->assertSame(['この部署に取り込めませんでした（404）'], $after['alerts']);
     }
 
     public function test_the_rank_is_changed_from_the_list(): void

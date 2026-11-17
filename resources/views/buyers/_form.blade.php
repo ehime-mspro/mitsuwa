@@ -438,7 +438,18 @@ function buyerForm() {
                     if (data.redirect) {
                         window.location.href = data.redirect;
                     }
+                    return;
                 }
+                // 断られたら理由を出す（直す前は何も出さなかった）。419（ログインが切れた・ほかの画面でログアウトした）は
+                // サーバーの日本語の理由、ほかは番号つきの文（Bug #137）
+                var message = 'この部署に取り込めませんでした（' + xhr.status + '）';
+                if (xhr.status === 419) {
+                    try {
+                        var body = JSON.parse(xhr.responseText);
+                        if (body && typeof body.message === 'string' && body.message !== '') message = body.message;
+                    } catch (e) {}
+                }
+                alert(message);
             };
             xhr.send(JSON.stringify({
                 department: '{{ $department }}',
