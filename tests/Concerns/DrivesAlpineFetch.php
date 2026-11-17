@@ -18,6 +18,8 @@ use Illuminate\Testing\TestResponse;
  * getAttribute で返し、画面に無ければ null）・document.querySelectorAll（空）・confirm（$confirm を返し、文言を記録）・
  * alert（文言を記録）・setTimeout / clearTimeout（何もしない。5 秒後にメッセージを消すタイマーで node が止まらないように）・
  * XMLHttpRequest（fetch と同じく要求を記録し、$responses を onload で返す）・window.location（href への代入と reload() を記録）・
+ * window.addEventListener（種類ごとに関数を記録するだけ。$steps・$evaluate から `__fireWindowEvent(type)` で呼ぶと、
+ * `preventDefault()` と `returnValue` を持つ出来事を渡して `{prevented, returnValue}` を返す。保存せずに離れるときの確かめ）・
  * コンポーネントの $nextTick（すぐ呼ぶ）と $refs。
  *
  * ⚠ $refs: 画面の `<form x-ref="…">` の `submit()` を呼ぶと、**そのとき**のフォームのバインド（`x-bind:action` /
@@ -547,6 +549,7 @@ trait DrivesAlpineFetch
         const alerts = [];
         const navigations = [];
         const submitted = [];
+        const windowListeners = {};
         let next = 0;
         const location = {
             _href: '',
@@ -580,7 +583,17 @@ trait DrivesAlpineFetch
             XMLHttpRequest,
             Option,
             location,
-            window: { location: location },
+            window: {
+                location: location,
+                // 種類ごとに関数を記録するだけ（呼ぶのは __fireWindowEvent。beforeunload の確かめ）
+                addEventListener(type, fn) { (windowListeners[type] = windowListeners[type] || []).push(fn); },
+            },
+            // 記録した window の関数を、ブラウザと同じ形の出来事で呼ぶ（$steps・$evaluate から呼ぶ）
+            __fireWindowEvent(type) {
+                const event = { type: String(type), defaultPrevented: false, returnValue: undefined, preventDefault() { this.defaultPrevented = true; } };
+                (windowListeners[type] || []).forEach(function (fn) { fn(event); });
+                return { prevented: event.defaultPrevented, returnValue: event.returnValue === undefined ? null : event.returnValue };
+            },
             setTimeout() { return 0; },
             clearTimeout() {},
             // $steps の中で「fetch の応答が届いたあと」の操作を書くため（届いた区画から選ぶ など）
