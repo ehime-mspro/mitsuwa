@@ -18,6 +18,8 @@
     $origPropertyId = $inquiry->property_id;
     $origPropertyName = $inquiry->property->name . '（' . $inquiry->property->code . '）';
 @endphp
+{{-- 断られた GET の Ajax の文（ログインが切れた・権限が無い） --}}
+@include('_partials._ajax_get_failure')
 <script>
 function inquiryEditForm() {
     return {
@@ -65,10 +67,12 @@ function inquiryEditForm() {
                 })
                     .then(function(res) {
                         if (!res.ok) {
-                            self.customerResults = [];
-                            self.customerError = '顧客の検索に失敗しました（' + res.status + '）';
-                            self.showCustomerDropdown = true;
-                            return null;
+                            return ajaxGetFailure(res, '顧客を検索', '顧客の検索に失敗しました（' + res.status + '）').then(function (message) {
+                                self.customerResults = [];
+                                self.customerError = message;
+                                self.showCustomerDropdown = true;
+                                return null;
+                            });
                         }
                         return res.json();
                     })

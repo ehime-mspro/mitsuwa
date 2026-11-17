@@ -395,6 +395,9 @@
     </form>
 </div>
 
+{{-- 断られた GET の Ajax の文（ログインが切れた・権限が無い） --}}
+@include('_partials._ajax_get_failure')
+
 {{-- Alpine.js ロジック（x-data属性内にアロー関数を書かないルールに準拠） --}}
 <script>
 function contractEditForm() {
@@ -437,10 +440,12 @@ function contractEditForm() {
                 })
                     .then(function(res) {
                         if (!res.ok) {
-                            self.customerResults = [];
-                            self.customerError = '顧客の検索に失敗しました（' + res.status + '）';
-                            self.showCustomerDropdown = true;
-                            return null;
+                            return ajaxGetFailure(res, '顧客を検索', '顧客の検索に失敗しました（' + res.status + '）').then(function (message) {
+                                self.customerResults = [];
+                                self.customerError = message;
+                                self.showCustomerDropdown = true;
+                                return null;
+                            });
                         }
                         return res.json();
                     })
