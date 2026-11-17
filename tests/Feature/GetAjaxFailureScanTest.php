@@ -161,10 +161,11 @@ class GetAjaxFailureScanTest extends TestCase
         $this->assertSame([], $result['offenders']);
         $this->assertCount(1, $result['guards'], '同じ分岐を 2 回数えている');
 
-        // 部品を通す分岐と通さない分岐が並ぶと、通さないほうだけを名指しする（分岐の中身は波括弧の対応で切る）
-        $mixed = "fetch('/api/a', {})\n.then(function (r) { if (!r.ok) { return ajaxGetFailure(r, 'a', 'b').then(function (m) { alert(m); return null; }); } return r.json(); });\n"
-            . "fetch('/api/b', {})\n.then(function (r) { if (!r.ok) { alert('b'); return null; } return r.json(); });";
-        $this->assertSame([3], self::fetchFailureOffenders($mixed, self::sameOriginGetFetchesIn($mixed))['offenders']);
+        // 部品を通さない分岐のあとに通す分岐が並んでも、通さないほうを名指しする
+        // （分岐の中身は波括弧の対応で切る。後ろ全部から探すと、あとの分岐の部品に当たって見逃す）
+        $mixed = "fetch('/api/a', {})\n.then(function (r) { if (!r.ok) { alert('a'); return null; } return r.json(); });\n"
+            . "fetch('/api/b', {})\n.then(function (r) { if (!r.ok) { return ajaxGetFailure(r, 'b', 'c').then(function (m) { alert(m); return null; }); } return r.json(); });";
+        $this->assertSame([1], self::fetchFailureOffenders($mixed, self::sameOriginGetFetchesIn($mixed))['offenders']);
 
         // 外部 API（://）と GET 以外の fetch は数えない
         $other = "fetch('https://zipcloud.ibsnet.co.jp/api/search?zipcode=7900001')\nfetch('/api/c', { method: 'POST' })";
