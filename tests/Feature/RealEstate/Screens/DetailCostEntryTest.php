@@ -44,7 +44,7 @@ class DetailCostEntryTest extends RealEstateScreenTestCase
 
     private function drive(string $html, string $function, string $steps): array
     {
-        return $this->driveAlpine($html, $function, $function . '()', $steps, [], true, [], ['function costExcelImporterFactory(']);
+        return $this->driveAlpine($html, $function, $function . '()', $steps, [], true, [], ['function costExcelImporterFactory(', 'function costGridFactory(']);
     }
 
     #[DataProvider('screens')]

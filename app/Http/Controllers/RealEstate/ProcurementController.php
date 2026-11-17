@@ -174,6 +174,10 @@ class ProcurementController extends Controller
             ->orderByDesc('deleted_at')
             ->get();
 
+        // 原価の入力の表（見込み額・確定額）の項目（停止中も含めた全件）と、保存済みの行を消せるか（経営層だけ）
+        $costGridItems     = ReCostItem::forCostGrid();
+        $costGridCanDelete = $request->user()->role->isExecutive();
+
         // 試算表 Excel/CSV 取込のマッピング辞書（クライアント側 matchCostItem で使用）
         $costAliasMap     = config('realestate_cost_import.aliases', []);
         $costSkipList     = config('realestate_cost_import.skip', []);
@@ -189,7 +193,7 @@ class ProcurementController extends Controller
         $scheduleCanEdit = $request->user()->role->isManagerOrAbove();
 
         return view('realestate.procurements.show', compact(
-            'procurement', 'costItemsForJs', 'costsForJs',
+            'procurement', 'costItemsForJs', 'costsForJs', 'costGridItems', 'costGridCanDelete',
             'attachments', 'deletedAttachments',
             'costAliasMap', 'costSkipList', 'costSubtotalKws',
             'deletionBlockers', 'deletionBlockersSummary',

@@ -134,7 +134,7 @@ class AmountLimitTest extends RealEstateScreenTestCase
 
         $alerts = $this->alertsAfter($html, 'procurementDetail',
             'data.newCost = { cost_item_id: "' . $this->surveyItem->id . '", estimated_amount: 1000, actual_amount: ' . (self::INT_MAX + 1) . ', notes: "" }; data.addCost();',
-            ['function costExcelImporterFactory(']);
+            ['function costExcelImporterFactory(', 'function costGridFactory(']);
 
         $this->assertCount(1, $alerts);
         $this->assertTrue(str_contains($alerts[0], trans('validation.max.numeric', ['attribute' => '確定額', 'max' => (string) self::INT_MAX])), '理由が知らされていない: ' . $alerts[0]);
@@ -148,7 +148,7 @@ class AmountLimitTest extends RealEstateScreenTestCase
 
         $alerts = $this->alertsAfter($html, 'projectDetail',
             'data.costExcelImport.previewRows = [{ skip: false, costItemId: ' . $this->surveyItem->id . ', estimated: ' . (self::INT_MAX + 1) . ', actual: "", notes: "" }]; data.commitCostImport();',
-            ['function costExcelImporterFactory(']);
+            ['function costExcelImporterFactory(', 'function costGridFactory(']);
 
         $this->assertCount(1, $alerts);
         $this->assertTrue(str_contains($alerts[0], '取込に失敗しました'), $alerts[0]);

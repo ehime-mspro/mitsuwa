@@ -100,6 +100,7 @@ class AjaxErrorFeedbackTest extends TestCase
         'housing/contracts/_buyer-select.blade.php',                // null 返し + throw の混在
         'mansion/contracts/create.blade.php',                       // async/await + Promise.all
         'realestate/_partials/_cost_excel_import_script.blade.php', // エンベロープ
+        'realestate/_partials/_cost_grid_script.blade.php',         // エンベロープ（原価の表の保存）
         'zeal/simulations/show.blade.php',                          // throw
     ];
 

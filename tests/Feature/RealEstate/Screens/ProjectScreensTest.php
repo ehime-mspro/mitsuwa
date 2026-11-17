@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Storage;
  */
 class ProjectScreensTest extends RealEstateScreenTestCase
 {
-    private const DETAIL_SCRIPTS = ['function costExcelImporterFactory('];
+    private const DETAIL_SCRIPTS = ['function costExcelImporterFactory(', 'function costGridFactory('];
 
     public function test_a_project_is_registered_from_the_screen_with_a_cost_row(): void
     {

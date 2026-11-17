@@ -237,17 +237,24 @@
 
     {{-- 原価管理 --}}
     <div class="bg-white border border-gray-200 rounded-lg p-5 mb-5">
-        <div class="flex items-center justify-between mb-4">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
             <div class="flex items-center gap-2">
                 <span class="w-1 h-5 bg-emerald-600 rounded-sm"></span>
                 <h2 class="text-base font-bold text-gray-900">原価管理</h2>
             </div>
             @if(auth()->user()->role->isManagerOrAbove())
-                <div style="display: flex; gap: 8px;">
-                    <button @click="openCostExcelImport()" x-show="!showAddCost && !costExcelImport.open"
+                {{-- 入力の表・Excel 取込・費用追加は同時に開かない（どれかが開いていれば 4 つとも隠す） --}}
+                <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                    <button @click="openCostExcelImport()" x-show="costGrid.mode === null && !showAddCost && !costExcelImport.open"
                             class="px-3.5 py-1.5 bg-white text-emerald-700 text-sm font-semibold rounded-md hover:bg-emerald-50 cursor-pointer"
                             style="font-size: 13px; border: 1px solid #a7f3d0;">📂 試算表 Excel 取込</button>
-                    <button @click="showAddCost = true" x-show="!showAddCost && !costExcelImport.open"
+                    <button type="button" @click="openCostGrid('estimated')" x-show="costGrid.mode === null && !showAddCost && !costExcelImport.open"
+                            class="px-3.5 py-1.5 bg-emerald-600 text-white text-sm font-semibold rounded-md hover:bg-emerald-700 transition-colors cursor-pointer"
+                            style="font-size: 13px;">見込み額を入力</button>
+                    <button type="button" @click="openCostGrid('actual')" x-show="costGrid.mode === null && !showAddCost && !costExcelImport.open"
+                            class="px-3.5 py-1.5 bg-blue-600 text-white text-sm font-semibold rounded-md hover:bg-blue-700 transition-colors cursor-pointer"
+                            style="font-size: 13px;">確定額を入力</button>
+                    <button @click="showAddCost = true" x-show="costGrid.mode === null && !showAddCost && !costExcelImport.open"
                             class="px-3.5 py-1.5 bg-emerald-600 text-white text-sm font-semibold rounded-md hover:bg-emerald-700 transition-colors cursor-pointer"
                             style="font-size: 13px;">＋ 費用追加</button>
                 </div>
@@ -296,8 +303,11 @@
             <p class="text-sm text-emerald-800" x-text="costMessage"></p>
         </div>
 
-        {{-- 原価テーブル --}}
-        <div class="border border-gray-200 rounded-md overflow-hidden">
+        {{-- 原価の入力の表（見込み額・確定額。仕入れ案件・分譲地PJ・新規登録で共用） --}}
+        @include('realestate._partials._cost_grid', ['costGridLocal' => false])
+
+        {{-- 原価テーブル（見るだけの一覧。入力の表を開いているあいだは隠す） --}}
+        <div class="border border-gray-200 rounded-md overflow-hidden" x-show="costGrid.mode === null">
             <div class="scroll-hint at-start">
             <div class="scroll-hint-inner">
             <table class="w-full border-collapse" style="table-layout: fixed; min-width: 900px;">
@@ -503,6 +513,9 @@
 
 {{-- 試算表 Excel/CSV 取込の Alpine factory（仕入れ案件・分譲地PJ 共用） --}}
 @include('realestate._partials._cost_excel_import_script')
+
+{{-- 原価の入力の表の Alpine factory（仕入れ案件・分譲地PJ・新規登録で共用） --}}
+@include('realestate._partials._cost_grid_script')
 
 <script>
 function procurementDetail() {
@@ -717,7 +730,12 @@ function procurementDetail() {
             self.costMessage = msg;
             setTimeout(function() { self.costMessage = ''; }, 3000);
         }
-    }, costExcelEi);
+    }, costExcelEi, costGridFactory({
+        items:     @json($costGridItems),
+        saveUrl:   '{{ route('realestate.procurements.costs.batch', $procurement) }}',
+        csrf:      document.querySelector('meta[name="csrf-token"]').content,
+        canDelete: @json($costGridCanDelete)
+    }));
 }
 </script>
 

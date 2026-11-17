@@ -11,7 +11,7 @@ use App\Models\ReProcurementCost;
  */
 class ProcurementScreensTest extends RealEstateScreenTestCase
 {
-    private const DETAIL_SCRIPTS = ['function costExcelImporterFactory('];
+    private const DETAIL_SCRIPTS = ['function costExcelImporterFactory(', 'function costGridFactory('];
 
     public function test_a_procurement_is_registered_from_the_screen_with_a_cost_row(): void
     {

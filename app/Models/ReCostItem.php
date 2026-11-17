@@ -39,6 +39,25 @@ class ReCostItem extends Model
         return $this->name === self::PROPERTY_PURCHASE;
     }
 
+    /**
+     * 原価の入力の表（見込み額・確定額）に並べる項目。停止中も含めた全件を sort_order・id の順に返す
+     * （停止中の項目は、保存済みの行があるときだけ表に出す。決めるのは画面の JS＝costGridFactory）。
+     *
+     * @return list<array{id: int, name: string, is_active: bool, is_property_purchase: bool}>
+     */
+    public static function forCostGrid(): array
+    {
+        return static::query()->orderBy('sort_order')->orderBy('id')->get()
+            ->map(fn (self $item) => [
+                'id'                   => $item->id,
+                'name'                 => $item->name,
+                'is_active'            => (bool) $item->is_active,
+                'is_property_purchase' => $item->isPropertyPurchase(),
+            ])
+            ->values()
+            ->all();
+    }
+
     // ============================================================
     // スコープ
     // ============================================================
