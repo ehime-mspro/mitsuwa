@@ -2,13 +2,14 @@
 
 namespace Tests\Feature\RealEstate\Screens;
 
+use App\Enums\UserRole;
 use App\Models\ReProject;
 use App\Models\ReProjectCost;
 use App\Models\ReProjectDrawing;
 use Illuminate\Support\Facades\Storage;
 
 /**
- * 分譲地の登録（原価の行つき）・詳細の原価（追加・編集・削除・試算表の取込）・一覧のステータスの小窓・
+ * 分譲地の登録（原価の行つき）・詳細の原価（削除・試算表の取込。追加・編集は CostGridScreenTest）・一覧のステータスの小窓・
  * 区画の画面の図面の削除を、描いた画面から送る往復で見る。
  */
 class ProjectScreensTest extends RealEstateScreenTestCase
@@ -41,37 +42,42 @@ class ProjectScreensTest extends RealEstateScreenTestCase
         return $this->driveAlpine($html, 'projectDetail', 'projectDetail()', $steps, $responses, true, $evaluate, self::DETAIL_SCRIPTS);
     }
 
-    public function test_a_cost_is_added_from_the_detail_screen(): void
+    /** 取り除いた「＋ 費用追加」「編集」と、表を開いているあいだ隠すもの（設計 7.1・7.2）を、描いた詳細画面で見る */
+    public function test_the_detail_list_has_no_add_or_edit_controls(): void
     {
-        $project = $this->project();
-        $html = $this->htmlOf(route('realestate.projects.show', $project));
-        $steps = 'data.showAddCost = true; data.newCost = { cost_item_id: "' . $this->surveyItem->id . '", estimated_amount: 800000, actual_amount: 750000, notes: "" }; data.addCost();';
+        $owner = $this->project();
+        $executive = $this->htmlOf(route('realestate.projects.show', $owner));
 
-        $run = $this->detail($html, $steps);
-        $response = $this->sendCaptured($run['requests'][0]);
-        $response->assertOk();
+        foreach (['＋ 費用追加', 'startEditCost', 'addCost(', 'showAddCost', 'editingCostId', 'saveCost('] as $gone) {
+            $this->assertStringNotContainsString($gone, $executive, "取り除いたはずの {$gone} が残っている");
+        }
+        $this->assertSame(1, preg_match('/class="text-gray-400">未定<\/span>/u', $executive), '確定額が空の表示が「未定」でない');
+        $this->assertSame(0, preg_match('/cost\.actual_amount === null[^>]*>—</u', $executive), '確定額が空の表示が「—」のまま');
+        $this->assertStringContainsString('原価データがありません。「見込み額を入力」から入れてください。', $executive);
+        $this->assertStringContainsString('deleteCost(cost)', $executive, '経営層に「削除」が出ていない');
 
-        $cost = ReProjectCost::where('project_id', $project->id)->where('cost_item_id', $this->surveyItem->id)->firstOrFail();
-        $this->assertSame([800000, 750000], [$cost->estimated_amount, $cost->actual_amount]);
-        $after = $this->detail($html, $steps, [$this->asFetchResponse($response)], ['costs.length', 'costMessage']);
-        $this->assertSame([1, '費用を追加しました。'], $after['evaluated']);
-    }
+        $previous = $this->user;
+        $this->user = $this->userWithRole(UserRole::Manager);
+        try {
+            $manager = $this->htmlOf(route('realestate.projects.show', $owner));
+        } finally {
+            $this->user = $previous;
+        }
+        $this->assertStringNotContainsString('deleteCost(cost)', $manager, '管理者に「削除」が出ている');
 
-    public function test_a_cost_is_edited_from_the_detail_screen(): void
-    {
-        $project = $this->project();
-        $cost = ReProjectCost::create(['project_id' => $project->id, 'cost_item_id' => $this->surveyItem->id, 'estimated_amount' => 800000]);
-        $html = $this->htmlOf(route('realestate.projects.show', $project));
-        $steps = 'var c = data.costs[0]; data.startEditCost(c); data.editCost.estimated_amount = 900000; data.editCost.notes = "見直し"; data.saveCost(c);';
+        // 入力の表を開いているあいだは、カード右上の 3 つのボタンと見るだけの一覧を隠す（x-show の式を画面の状態で評価する）
+        $guards = [];
+        foreach (["openCostExcelImport()", "openCostGrid('estimated')", "openCostGrid('actual')"] as $click) {
+            $this->assertSame(1, preg_match('/<button\b[^>]*@click="' . preg_quote($click, '/') . '"[^>]*\sx-show="([^"]*)"/', $executive, $m), "{$click} のボタンに x-show が無い");
+            $guards[] = html_entity_decode($m[1]);
+        }
+        $this->assertSame(1, preg_match('/<div class="border border-gray-200 rounded-md overflow-hidden" x-show="([^"]*)">\s*<div class="scroll-hint/', $executive, $m), '見るだけの一覧の x-show が無い');
+        $guards[] = html_entity_decode($m[1]);
 
-        $run = $this->detail($html, $steps);
-        $this->assertSame('PUT', $run['requests'][0]['method']);
-        $response = $this->sendCaptured($run['requests'][0]);
-        $response->assertOk();
-
-        $this->assertSame([900000, '見直し'], [$cost->fresh()->estimated_amount, $cost->fresh()->notes]);
-        $after = $this->detail($html, $steps, [$this->asFetchResponse($response)], ['costs[0].estimated_amount', 'editingCostId']);
-        $this->assertSame([900000, null], $after['evaluated']);
+        $closed = $this->driveAlpine($executive, 'projectDetail', 'projectDetail()', '', [], true, $guards, self::DETAIL_SCRIPTS);
+        $this->assertSame([true, true, true, true], $closed['evaluated'], '表を開く前なのにボタン・一覧が隠れている');
+        $open = $this->driveAlpine($executive, 'projectDetail', 'projectDetail()', 'data.openCostGrid("estimated");', [], true, $guards, self::DETAIL_SCRIPTS);
+        $this->assertSame([false, false, false, false], $open['evaluated'], '表を開いているのに、ボタンか見るだけの一覧が出たまま');
     }
 
     public function test_a_cost_is_deleted_from_the_detail_screen(): void

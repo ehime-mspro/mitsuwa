@@ -286,7 +286,7 @@ class ProcurementController extends Controller
     }
 
     // ================================================================
-    // 原価管理 Ajax（3ルート）
+    // 原価管理 Ajax（3ルート: 表の保存・試算表の取込・1 行の削除。1 行ずつの追加・編集は 2026-11-16 に表の保存へ置き換えた）
     // ================================================================
 
     /**
@@ -301,79 +301,6 @@ class ProcurementController extends Controller
             ->save($procurement, $v['mode'], $v['rows'], $request->user()->role->isExecutive());
 
         return response()->json(['success' => true] + $result);
-    }
-
-    /**
-     * 費用追加
-     * Route: POST /realestate/procurements/{procurement}/costs
-     */
-    public function storeCost(Request $request, ReProcurement $procurement)
-    {
-        $validated = $request->validate([
-            'cost_item_id'     => 'required|exists:re_cost_items,id',
-            'estimated_amount' => 'required|integer|min:0|max:' . self::MAX_INT_COLUMN,
-            'actual_amount'    => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
-            'notes'            => 'nullable|string|max:200',
-        ]);
-
-        $validated['procurement_id'] = $procurement->id;
-
-        $cost = ReProcurementCost::create($validated);
-        $cost->load('costItem');
-
-        return response()->json([
-            'success' => true,
-            'cost'    => [
-                'id'                   => $cost->id,
-                'cost_item_id'         => $cost->cost_item_id,
-                'cost_item_name'       => $cost->costItem->name,
-                'estimated_amount'     => $cost->estimated_amount,
-                'actual_amount'        => $cost->actual_amount,
-                'notes'                => $cost->notes ?? '',
-                'is_property_purchase' => $cost->costItem->name === '物件購入費',
-            ],
-        ]);
-    }
-
-    /**
-     * 費用更新
-     * Route: PUT /realestate/procurements/{procurement}/costs/{cost}
-     */
-    public function updateCost(Request $request, ReProcurement $procurement, ReProcurementCost $cost)
-    {
-        if ($cost->procurement_id !== $procurement->id) {
-            return response()->json(['message' => '不正なリクエストです。'], 403);
-        }
-
-        // 物件購入費は仕入れ情報から自動同期されるため手動更新を禁止
-        $cost->load('costItem');
-        if ($cost->costItem && $cost->costItem->name === '物件購入費') {
-            return response()->json([
-                'success' => false,
-                'message' => '物件購入費は仕入れ情報から自動同期されるため、手動で更新できません。',
-            ], 403);
-        }
-
-        $validated = $request->validate([
-            'estimated_amount' => 'required|integer|min:0|max:' . self::MAX_INT_COLUMN,
-            'actual_amount'    => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
-            'notes'            => 'nullable|string|max:200',
-        ]);
-
-        $cost->update($validated);
-
-        return response()->json([
-            'success' => true,
-            'cost'    => [
-                'id'                   => $cost->id,
-                'cost_item_id'         => $cost->cost_item_id,
-                'cost_item_name'       => $cost->costItem->name,
-                'estimated_amount'     => $cost->estimated_amount,
-                'actual_amount'        => $cost->actual_amount,
-                'notes'                => $cost->notes ?? '',
-                'is_property_purchase' => $cost->costItem->name === '物件購入費',
-            ],
-        ]);
     }
 
     /**

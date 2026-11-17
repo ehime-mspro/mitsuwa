@@ -7,10 +7,10 @@ use App\Models\ReProjectCost;
 use PHPUnit\Framework\Attributes\DataProvider;
 
 /**
- * 仕入れ案件・分譲地の詳細の原価の追加・編集で、0 円と空欄を登録画面の原価欄（_cost_section_form）と同じに扱う。
+ * 仕入れ案件・分譲地の詳細の原価の入力の表で、0 円と空欄を区別して扱う（0 は金額・空は「入れない／消す／未定にする」）。
  *
- * ⚠ 直す前は、見込み額 0 で「追加」を押しても何も起きず（要求も知らせも無し）、確定額 0 は「未定」（null）で保存され、
- *   行の編集で見込み額を空にすると 0 で保存されていた（`!this.newCost.estimated_amount` などの真偽値の判定。0 は偽）。
+ * ⚠ 昔の 1 行ずつの追加・編集（Bug #88）は、真偽値で空を判定していたので 0 が「空」になった（見込み額 0 は送られず、確定額 0 は
+ *   未定で保存され、見込み額を空にすると 0 で保存された）。表になっても同じ誤りを入れないよう、4 つを固定する。
  * ⚠ 2 画面は同じ形の JS を別々に持つので、両方を同じテストで見る。
  */
 class DetailCostEntryTest extends RealEstateScreenTestCase
@@ -42,57 +42,73 @@ class DetailCostEntryTest extends RealEstateScreenTestCase
         return [$html, $costs, $make, 'projectDetail'];
     }
 
-    private function drive(string $html, string $function, string $steps): array
+    private function drive(string $html, string $function, string $steps, bool $confirm = true): array
     {
-        return $this->driveAlpine($html, $function, $function . '()', $steps, [], true, [], ['function costExcelImporterFactory(', 'function costGridFactory(']);
+        return $this->driveAlpine($html, $function, $function . '()', $steps, [], $confirm, [], ['function costExcelImporterFactory(', 'function costGridFactory(']);
+    }
+
+    /** 表の「測量費」の行に金額を打つ JS */
+    private function typeSurvey(string $amount): string
+    {
+        return 'var r = data.costGrid.rows.filter(function (r) { return r.name === "測量費"; })[0]; r.draft.amount = ' . json_encode($amount) . ';';
     }
 
     #[DataProvider('screens')]
-    public function test_zero_amounts_are_added_as_zero(string $kind): void
+    public function test_a_zero_estimate_is_saved_as_zero(string $kind): void
     {
         [$html, $costs, , $function] = $this->screen($kind);
-        $run = $this->drive($html(), $function, 'data.showAddCost = true; data.newCost = { cost_item_id: "' . $this->surveyItem->id . '", estimated_amount: 0, actual_amount: 0, notes: "" }; data.addCost();');
 
-        $this->assertCount(1, $run['requests'], '見込み額 0 で「追加」を押しても送られない');
+        $run = $this->drive($html(), $function, 'data.openCostGrid("estimated"); ' . $this->typeSurvey('0') . ' data.saveCostGrid();');
+
+        $this->assertCount(1, $run['requests'], '見込み額 0 が送られない');
+        $this->assertSame(0, json_decode((string) $run['requests'][0]['body'], true)['rows'][0]['amount']);
         $this->sendCaptured($run['requests'][0])->assertOk();
-
         $cost = $costs()->where('cost_item_id', $this->surveyItem->id)->firstOrFail();
-        $this->assertSame([0, 0], [$cost->estimated_amount, $cost->actual_amount], '0 円が 0 として保存されていない（確定額 0 が未定になる）');
+        $this->assertSame([0, null], [$cost->estimated_amount, $cost->actual_amount]);
     }
 
     #[DataProvider('screens')]
-    public function test_an_empty_estimate_or_item_is_not_sent_and_the_reason_is_shown(string $kind): void
-    {
-        [$html, , , $function] = $this->screen($kind);
-        $page = $html();
-
-        $run = $this->drive($page, $function, 'data.showAddCost = true; data.newCost = { cost_item_id: "' . $this->surveyItem->id . '", estimated_amount: "", actual_amount: "", notes: "" }; data.addCost();');
-        $this->assertSame([[], ['見込み額を入力してください。']], [$run['requests'], $run['alerts']]);
-
-        $run = $this->drive($page, $function, 'data.showAddCost = true; data.newCost = { cost_item_id: "", estimated_amount: 1000, actual_amount: "", notes: "" }; data.addCost();');
-        $this->assertSame([[], ['費用項目を選択してください。']], [$run['requests'], $run['alerts']]);
-    }
-
-    #[DataProvider('screens')]
-    public function test_clearing_the_estimate_when_editing_is_not_saved_as_zero(string $kind): void
-    {
-        [$html, , $make, $function] = $this->screen($kind);
-        $make(500000);
-
-        $run = $this->drive($html(), $function, 'var c = data.costs[0]; data.startEditCost(c); data.editCost.estimated_amount = ""; data.saveCost(c);');
-
-        $this->assertSame([[], ['見込み額を入力してください。']], [$run['requests'], $run['alerts']], '見込み額を空にすると 0 で保存される');
-    }
-
-    #[DataProvider('screens')]
-    public function test_an_actual_amount_of_zero_is_saved_when_editing(string $kind): void
+    public function test_a_zero_actual_is_saved_as_zero_not_undecided(string $kind): void
     {
         [$html, $costs, $make, $function] = $this->screen($kind);
         $make(500000);
 
-        $run = $this->drive($html(), $function, 'var c = data.costs[0]; data.startEditCost(c); data.editCost.actual_amount = 0; data.saveCost(c);');
-        $this->sendCaptured($run['requests'][0])->assertOk();
+        $run = $this->drive($html(), $function, 'data.openCostGrid("actual"); ' . $this->typeSurvey('0') . ' data.saveCostGrid();');
 
-        $this->assertSame([500000, 0], [$costs()->value('estimated_amount'), $costs()->value('actual_amount')]);
+        $this->assertCount(1, $run['requests']);
+        $this->assertSame(0, json_decode((string) $run['requests'][0]['body'], true)['rows'][0]['amount'], '確定額 0 が空として送られる');
+        $this->sendCaptured($run['requests'][0])->assertOk();
+        $this->assertSame([500000, 0], [$costs()->value('estimated_amount'), $costs()->value('actual_amount')], '確定額 0 が未定（null）になる');
+    }
+
+    #[DataProvider('screens')]
+    public function test_clearing_an_estimate_deletes_the_row_instead_of_saving_zero(string $kind): void
+    {
+        [$html, $costs, $make, $function] = $this->screen($kind);
+        $make(500000);
+
+        $run = $this->drive($html(), $function, 'data.openCostGrid("estimated"); ' . $this->typeSurvey('') . ' data.saveCostGrid();');
+
+        $this->assertCount(1, $run['confirms'], '行を消す確かめが出ていない');
+        $this->assertCount(1, $run['requests']);
+        $this->assertNull(json_decode((string) $run['requests'][0]['body'], true)['rows'][0]['amount'], '空の見込み額が 0 で送られる');
+        $this->sendCaptured($run['requests'][0])->assertOk();
+        $this->assertSame(0, $costs()->count(), '見込み額を空にしても行が残る（0 で保存された）');
+    }
+
+    #[DataProvider('screens')]
+    public function test_clearing_an_actual_sets_undecided_instead_of_zero(string $kind): void
+    {
+        [$html, $costs, $make, $function] = $this->screen($kind);
+        $make(500000)->update(['actual_amount' => 480000]);
+
+        $run = $this->drive($html(), $function, 'data.openCostGrid("actual"); ' . $this->typeSurvey('') . ' data.saveCostGrid();');
+
+        $this->assertSame([], $run['confirms'], '確定額を空にするのは行を消さないので、確かめは出ない');
+        $this->assertCount(1, $run['requests']);
+        $this->assertNull(json_decode((string) $run['requests'][0]['body'], true)['rows'][0]['amount']);
+        $this->sendCaptured($run['requests'][0])->assertOk();
+        $this->assertSame([500000, null], [$costs()->value('estimated_amount'), $costs()->value('actual_amount')], '確定額が未定にならない（0 になった）');
+        $this->assertSame(1, $costs()->count());
     }
 }

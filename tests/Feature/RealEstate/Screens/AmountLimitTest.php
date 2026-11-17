@@ -132,12 +132,16 @@ class AmountLimitTest extends RealEstateScreenTestCase
         $procurement = $this->procurement();
         $html = $this->htmlOf(route('realestate.procurements.show', $procurement));
 
-        $alerts = $this->alertsAfter($html, 'procurementDetail',
-            'data.newCost = { cost_item_id: "' . $this->surveyItem->id . '", estimated_amount: 1000, actual_amount: ' . (self::INT_MAX + 1) . ', notes: "" }; data.addCost();',
+        $row = 'data.costGrid.rows.filter(function (r) { return r.name === "測量費"; })[0]';
+
+        // 入力の表（確定額）で上限を超える値を打つと、画面がその行を断り、何も送らない（サーバーの上限は CostGridSaveTest が見る）
+        $run = $this->driveAlpine($html, 'procurementDetail', 'procurementDetail()',
+            'data.openCostGrid("actual"); ' . $row . '.draft.amount = "' . (self::INT_MAX + 1) . '"; data.saveCostGrid();',
+            [], true, ['data.costGrid.rowErrors[' . $row . '.key]'],
             ['function costExcelImporterFactory(', 'function costGridFactory(']);
 
-        $this->assertCount(1, $alerts);
-        $this->assertTrue(str_contains($alerts[0], trans('validation.max.numeric', ['attribute' => '確定額', 'max' => (string) self::INT_MAX])), '理由が知らされていない: ' . $alerts[0]);
+        $this->assertSame([], $run['requests'], '上限を超える確定額が送られた');
+        $this->assertSame(['2,147,483,647 以下で入力してください。'], $run['evaluated']);
         $this->assertSame(0, ReProcurementCost::count());
     }
 

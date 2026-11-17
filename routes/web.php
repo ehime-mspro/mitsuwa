@@ -884,16 +884,13 @@ Route::middleware(['auth', 'password.change'])->group(function () {
 
         /*
         |------------------------------------------------------------------
-        | 仕入れ原価管理 Ajax（3ルート）
+        | 仕入れ原価管理 Ajax（3ルート: 表の保存・試算表の取込・1 行の削除）
+        | ※ 1 行ずつの追加・編集（costs.store・costs.update）は 2026-11-16 に表の保存（costs.batch）へ置き換えた
         |------------------------------------------------------------------
         */
         Route::middleware('role:executive,manager')->group(function () {
             Route::put('/procurements/{procurement}/costs/batch', [\App\Http\Controllers\RealEstate\ProcurementController::class, 'saveCostGrid'])
                 ->name('realestate.procurements.costs.batch');
-            Route::post('/procurements/{procurement}/costs', [\App\Http\Controllers\RealEstate\ProcurementController::class, 'storeCost'])
-                ->name('realestate.procurements.costs.store');
-            Route::put('/procurements/{procurement}/costs/{cost}', [\App\Http\Controllers\RealEstate\ProcurementController::class, 'updateCost'])
-                ->name('realestate.procurements.costs.update');
             // 試算表 Excel/CSV 取込（バルク投入）
             Route::post('/procurements/{procurement}/costs/bulk-import', [\App\Http\Controllers\RealEstate\ProcurementController::class, 'bulkImportCosts'])
                 ->name('realestate.procurements.costs.bulk-import');
@@ -990,14 +987,10 @@ Route::middleware(['auth', 'password.change'])->group(function () {
             ->middleware('role:executive')
             ->name('realestate.projects.destroy');
 
-        // PJ原価管理 Ajax
+        // PJ原価管理 Ajax（3ルート: 表の保存・試算表の取込・1 行の削除。1 行ずつの追加・編集は 2026-11-16 に表の保存へ置き換えた）
         Route::middleware('role:executive,manager')->group(function () {
             Route::put('/projects/{project}/costs/batch', [\App\Http\Controllers\RealEstate\ProjectController::class, 'saveCostGrid'])
                 ->name('realestate.projects.costs.batch');
-            Route::post('/projects/{project}/costs', [\App\Http\Controllers\RealEstate\ProjectController::class, 'storeCost'])
-                ->name('realestate.projects.costs.store');
-            Route::put('/projects/{project}/costs/{cost}', [\App\Http\Controllers\RealEstate\ProjectController::class, 'updateCost'])
-                ->name('realestate.projects.costs.update');
             // 試算表 Excel/CSV 取込（バルク投入）
             Route::post('/projects/{project}/costs/bulk-import', [\App\Http\Controllers\RealEstate\ProjectController::class, 'bulkImportCosts'])
                 ->name('realestate.projects.costs.bulk-import');

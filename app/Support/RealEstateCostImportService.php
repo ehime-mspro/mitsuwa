@@ -120,7 +120,7 @@ class RealEstateCostImportService
 
     /**
      * 取込後の原価コレクションをクライアント返却用 array に整形。
-     * 既存 storeCost / updateCost の JSON 形状と完全一致させる。
+     * 原価の表の保存（saveCostGrid）と同じ JSON 形状にする。
      */
     public static function formatCostsForJson(iterable $costs): array
     {

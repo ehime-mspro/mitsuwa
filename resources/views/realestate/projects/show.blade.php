@@ -183,60 +183,23 @@
                 <h2 class="text-base font-bold text-gray-900">原価管理</h2>
             </div>
             @if(auth()->user()->role->isManagerOrAbove())
-                {{-- 入力の表・Excel 取込・費用追加は同時に開かない（どれかが開いていれば 4 つとも隠す） --}}
+                {{-- 入力の表と Excel 取込は同時に開かない（どちらかが開いていれば 3 つとも隠す） --}}
                 <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-                    <button @click="openCostExcelImport()" x-show="costGrid.mode === null && !showAddCost && !costExcelImport.open"
+                    <button @click="openCostExcelImport()" x-show="costGrid.mode === null && !costExcelImport.open"
                             class="px-3.5 py-1.5 bg-white text-emerald-700 text-sm font-semibold rounded-md hover:bg-emerald-50 cursor-pointer"
                             style="font-size: 13px; border: 1px solid #a7f3d0;">📂 試算表 Excel 取込</button>
-                    <button type="button" @click="openCostGrid('estimated')" x-show="costGrid.mode === null && !showAddCost && !costExcelImport.open"
+                    <button type="button" @click="openCostGrid('estimated')" x-show="costGrid.mode === null && !costExcelImport.open"
                             class="px-3.5 py-1.5 bg-emerald-600 text-white text-sm font-semibold rounded-md hover:bg-emerald-700 transition-colors cursor-pointer"
                             style="font-size: 13px;">見込み額を入力</button>
-                    <button type="button" @click="openCostGrid('actual')" x-show="costGrid.mode === null && !showAddCost && !costExcelImport.open"
+                    <button type="button" @click="openCostGrid('actual')" x-show="costGrid.mode === null && !costExcelImport.open"
                             class="px-3.5 py-1.5 bg-blue-600 text-white text-sm font-semibold rounded-md hover:bg-blue-700 transition-colors cursor-pointer"
                             style="font-size: 13px;">確定額を入力</button>
-                    <button @click="showAddCost = true" x-show="costGrid.mode === null && !showAddCost && !costExcelImport.open"
-                            class="px-3.5 py-1.5 bg-emerald-600 text-white text-sm font-semibold rounded-md hover:bg-emerald-700 transition-colors cursor-pointer"
-                            style="font-size: 13px;">＋ 費用追加</button>
                 </div>
             @endif
         </div>
 
         {{-- 試算表 Excel/CSV 取込パネル（仕入れ案件・分譲地PJ 共用 partial） --}}
         @include('realestate._partials._cost_excel_import', ['costItems' => $costItemsForJs])
-
-        {{-- 費用追加フォーム --}}
-        <div x-show="showAddCost" x-transition class="mb-4 p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" style="align-items: end;">
-                <div>
-                    <label class="block text-xs font-semibold text-gray-700 mb-1">費用項目</label>
-                    <select x-model="newCost.cost_item_id" class="w-full h-9 px-2 border border-gray-300 rounded-md text-sm bg-white focus:border-emerald-500 focus:outline-none">
-                        <option value="">選択</option>
-                        <template x-for="ci in costItems" :key="ci.id">
-                            <option :value="ci.id" x-text="ci.name"></option>
-                        </template>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs font-semibold text-gray-700 mb-1">見込み額</label>
-                    <input type="number" x-model.number="newCost.estimated_amount" placeholder=""
-                           class="w-full h-9 px-2 border border-gray-300 rounded-md text-sm focus:border-emerald-500 focus:outline-none">
-                </div>
-                <div>
-                    <label class="block text-xs font-semibold text-gray-700 mb-1">確定額</label>
-                    <input type="number" x-model.number="newCost.actual_amount" placeholder="未定"
-                           class="w-full h-9 px-2 border border-gray-300 rounded-md text-sm focus:border-emerald-500 focus:outline-none">
-                </div>
-                <div>
-                    <label class="block text-xs font-semibold text-gray-700 mb-1">備考</label>
-                    <input type="text" x-model="newCost.notes" placeholder="備考"
-                           class="w-full h-9 px-2 border border-gray-300 rounded-md text-sm focus:border-emerald-500 focus:outline-none">
-                </div>
-            </div>
-            <div class="flex gap-2 mt-3">
-                <button @click="addCost()" class="px-4 py-1.5 bg-emerald-600 text-white text-xs font-semibold rounded hover:bg-emerald-700 cursor-pointer">追加</button>
-                <button @click="showAddCost = false" class="px-4 py-1.5 bg-gray-100 text-gray-600 text-xs font-semibold rounded hover:bg-gray-200 cursor-pointer">取消</button>
-            </div>
-        </div>
 
         {{-- Ajax メッセージ --}}
         <div x-show="costMessage" x-transition class="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 p-2">
@@ -270,53 +233,36 @@
                 <tbody>
                     <template x-for="(cost, idx) in costs" :key="cost.id">
                         <tr class="hover:bg-gray-50 border-b border-gray-100">
-                            <td :style="editingCostId === cost.id ? 'font-size: 13px; padding: 8px 16px;' : 'font-size: 13px; padding: 11px 16px;'">
+                            <td style="font-size: 13px; padding: 11px 16px;">
                                 <span x-text="cost.cost_item_name"></span>
                                 <span x-show="cost.is_property_purchase"
                                       style="display: inline-block; margin-left: 8px; padding: 1px 6px; font-size: 10px; font-weight: 600; color: #92400e; background: #fef3c7; border-radius: 4px; vertical-align: middle;">自動</span>
                             </td>
-                            <td :style="editingCostId === cost.id ? 'padding: 8px 8px;' : 'padding: 11px 16px; font-size: 13px; text-align: right;'">
-                                <div x-show="editingCostId === cost.id">
-                                    <input type="number" x-model.number="editCost.estimated_amount" class="w-full h-8 px-2 border border-gray-300 rounded text-sm text-right focus:border-emerald-500 focus:outline-none">
-                                </div>
-                                <span x-show="editingCostId !== cost.id" x-text="formatMoney(cost.estimated_amount) + '円'"></span>
+                            <td style="padding: 11px 16px; font-size: 13px; text-align: right;">
+                                <span x-text="formatMoney(cost.estimated_amount) + '円'"></span>
                             </td>
-                            <td :style="editingCostId === cost.id ? 'padding: 8px 8px;' : 'padding: 11px 16px; font-size: 13px; text-align: right;'">
-                                <div x-show="editingCostId === cost.id">
-                                    <input type="number" x-model.number="editCost.actual_amount" placeholder="未定" class="w-full h-8 px-2 border border-gray-300 rounded text-sm text-right focus:border-emerald-500 focus:outline-none">
-                                </div>
-                                <div x-show="editingCostId !== cost.id">
-                                    <span x-show="cost.actual_amount !== null && cost.actual_amount !== ''" style="font-weight: 600;" x-text="formatMoney(cost.actual_amount) + '円'"></span>
-                                    <span x-show="cost.actual_amount === null || cost.actual_amount === ''" class="text-gray-400">—</span>
-                                </div>
+                            <td style="padding: 11px 16px; font-size: 13px; text-align: right;">
+                                <span x-show="cost.actual_amount !== null && cost.actual_amount !== ''" style="font-weight: 600;" x-text="formatMoney(cost.actual_amount) + '円'"></span>
+                                <span x-show="cost.actual_amount === null || cost.actual_amount === ''" class="text-gray-400">未定</span>
                             </td>
-                            <td :style="editingCostId === cost.id ? 'padding: 8px 8px;' : 'padding: 11px 28px; font-size: 13px; color: #4b5563;'">
-                                <div x-show="editingCostId === cost.id">
-                                    <input type="text" x-model="editCost.notes" class="w-full h-8 px-2 border border-gray-300 rounded text-sm focus:border-emerald-500 focus:outline-none">
-                                </div>
-                                <span x-show="editingCostId !== cost.id" class="wrap-anywhere" x-text="cost.notes"></span>
+                            <td style="padding: 11px 28px; font-size: 13px; color: #4b5563;">
+                                <span class="wrap-anywhere" x-text="cost.notes"></span>
                             </td>
+                            {{-- 操作（直すのは入力の表から。ここは削除だけ） --}}
                             <td class="text-center" style="padding: 8px 4px;">
-                                <div x-show="editingCostId === cost.id">
-                                    <button @click="saveCost(cost)" class="bg-emerald-600 text-white text-xs font-semibold rounded hover:bg-emerald-700 cursor-pointer" style="padding: 2px 8px;">保存</button>
-                                    <button @click="cancelEditCost()" class="bg-gray-100 text-gray-600 text-xs font-semibold rounded hover:bg-gray-200 cursor-pointer ml-1" style="padding: 2px 8px;">取消</button>
-                                </div>
-                                <div x-show="editingCostId !== cost.id && !cost.is_property_purchase">
-                                    @if(auth()->user()->role->isManagerOrAbove())
-                                        <button @click="startEditCost(cost)" class="inline-block text-xs font-semibold text-emerald-600 rounded bg-white hover:bg-emerald-50 cursor-pointer" style="border: 1px solid #059669; padding: 2px 10px;">編集</button>
-                                    @endif
+                                <div x-show="!cost.is_property_purchase">
                                     @if(auth()->user()->role->isExecutive())
                                         <button @click="deleteCost(cost)" class="inline-block text-xs font-semibold text-red-600 rounded bg-white cursor-pointer ml-1" style="border: 1px solid #dc2626; padding: 2px 10px;">削除</button>
                                     @endif
                                 </div>
-                                <div x-show="editingCostId !== cost.id && cost.is_property_purchase" class="text-xs text-gray-400">
+                                <div x-show="cost.is_property_purchase" class="text-xs text-gray-400">
                                     自動同期
                                 </div>
                             </td>
                         </tr>
                     </template>
                     <tr x-show="costs.length === 0">
-                        <td colspan="5" class="px-4 py-6 text-center text-sm text-gray-400">原価データがありません。「＋ 費用追加」から追加してください。</td>
+                        <td colspan="5" class="px-4 py-6 text-center text-sm text-gray-400">原価データがありません。「見込み額を入力」から入れてください。</td>
                     </tr>
                 </tbody>
                 <tfoot x-show="costs.length > 0">
@@ -533,11 +479,7 @@ function projectDetail() {
     return Object.assign({
         costs: @json($costsForJs),
         costItems: @json($costItemsForJs),
-        showAddCost: false,
         costMessage: '',
-        editingCostId: null,
-        editCost: { estimated_amount: '', actual_amount: null, notes: '' },
-        newCost: { cost_item_id: '', estimated_amount: '', actual_amount: null, notes: '' },
         simA: { sellingPrice: {{ $project->target_selling_price ?? 0 }} },
         simB: { targetRate: 20 },
         // 区画管理セクション連動用
@@ -591,114 +533,6 @@ function projectDetail() {
         formatMoney: function(val) {
             if (val === null || val === undefined || isNaN(val)) return '0';
             return Number(val).toLocaleString('ja-JP');
-        },
-
-        // 金額の欄に値があるか。⚠ 0 円も金額として扱う（真偽値で判定すると 0 が「空」になり、
-        //    見込み額 0 は送られず確定額 0 は未定で保存される。登録画面の原価欄と同じ扱い）
-        hasAmount: function(value) {
-            return value !== '' && value !== null && value !== undefined && !isNaN(Number(value));
-        },
-
-        addCost: function() {
-            if (!this.newCost.cost_item_id) { alert('費用項目を選択してください。'); return; }
-            if (!this.hasAmount(this.newCost.estimated_amount)) { alert('見込み額を入力してください。'); return; }
-            var self = this;
-            var body = {
-                cost_item_id: Number(self.newCost.cost_item_id),
-                estimated_amount: Number(self.newCost.estimated_amount),
-                actual_amount: self.hasAmount(self.newCost.actual_amount) ? Number(self.newCost.actual_amount) : null,
-                notes: self.newCost.notes || null
-            };
-            fetch(self.baseUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': self.token, 'Accept': 'application/json' },
-                body: JSON.stringify(body)
-            })
-            .then(function(r) {
-                if (!r.ok) {
-                    return r.json().then(function(err) {
-                        var msg = err.message || 'エラーが発生しました。';
-                        if (err.errors) {
-                            var details = Object.values(err.errors).flat().join('\n');
-                            msg = msg + '\n' + details;
-                        }
-                        alert(msg);
-                        return null;
-                    }).catch(function() {
-                        alert('サーバーエラーが発生しました（' + r.status + '）');
-                        return null;
-                    });
-                }
-                return r.json();
-            })
-            .then(function(data) {
-                if (!data) return;
-                if (data.success) {
-                    self.costs.push(data.cost);
-                    self.newCost = { cost_item_id: '', estimated_amount: '', actual_amount: null, notes: '' };
-                    self.showAddCost = false;
-                    self.showMessage('費用を追加しました。');
-                }
-            })
-            .catch(function() { alert('費用の追加に失敗しました。'); });
-        },
-
-        startEditCost: function(cost) {
-            this.editingCostId = cost.id;
-            this.editCost = {
-                estimated_amount: cost.estimated_amount,
-                actual_amount: cost.actual_amount,
-                notes: cost.notes || ''
-            };
-        },
-        cancelEditCost: function() {
-            this.editingCostId = null;
-        },
-        saveCost: function(cost) {
-            var self = this;
-            // 見込み額を空にして保存すると 0 で送られていた（Number('') は 0）
-            if (!self.hasAmount(self.editCost.estimated_amount)) { alert('見込み額を入力してください。'); return; }
-            var body = {
-                estimated_amount: Number(self.editCost.estimated_amount),
-                actual_amount: self.hasAmount(self.editCost.actual_amount) ? Number(self.editCost.actual_amount) : null,
-                notes: self.editCost.notes || null
-            };
-            fetch(self.baseUrl + '/' + cost.id, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': self.token, 'Accept': 'application/json' },
-                body: JSON.stringify(body)
-            })
-            .then(function(r) {
-                if (!r.ok) {
-                    return r.json().then(function(err) {
-                        var msg = err.message || 'エラーが発生しました。';
-                        if (err.errors) {
-                            var details = Object.values(err.errors).flat().join('\n');
-                            msg = msg + '\n' + details;
-                        }
-                        alert(msg);
-                        return null;
-                    }).catch(function() {
-                        alert('サーバーエラーが発生しました（' + r.status + '）');
-                        return null;
-                    });
-                }
-                return r.json();
-            })
-            .then(function(data) {
-                if (!data) return;
-                if (data.success) {
-                    for (var i = 0; i < self.costs.length; i++) {
-                        if (self.costs[i].id === cost.id) {
-                            self.costs[i] = data.cost;
-                            break;
-                        }
-                    }
-                    self.editingCostId = null;
-                    self.showMessage('費用を更新しました。');
-                }
-            })
-            .catch(function() { alert('費用の更新に失敗しました。'); });
         },
 
         deleteCost: function(cost) {
