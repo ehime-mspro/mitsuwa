@@ -511,5 +511,7 @@ class CostGridSaveTest extends RealEstateScreenTestCase
 
         // 順に流すテストではロックの有無が見えない（Bug #102 と同じ）ので、親と原価の行の 2 か所を構造で固定する
         $this->assertGreaterThanOrEqual(2, substr_count($code, '->lockForUpdate()'));
+        // ロックはトランザクションの中でしか持たれない（外すとロックが何も待たせず、書き込みの一括もなくなる）
+        $this->assertSame(1, substr_count($code, 'DB::transaction('), '保存がトランザクションで包まれていない');
     }
 }

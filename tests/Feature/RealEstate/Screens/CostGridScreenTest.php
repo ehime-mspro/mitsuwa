@@ -148,6 +148,21 @@ class CostGridScreenTest extends RealEstateScreenTestCase
         $this->assertStringNotContainsString('@click="openCostGrid(', $html, '一般担当に入力のボタンが出ている');
     }
 
+    /**
+     * 詳細画面が表のマークアップ（_cost_grid）を描いていること。ほかのテストは画面の JS（関数）だけを動かすので、
+     * 画面から include を外しても（表が出ないのに関数だけ生きている）緑のままだった。
+     */
+    #[DataProvider('screens')]
+    public function test_the_detail_page_renders_the_grid_markup(string $kind): void
+    {
+        [$html] = $this->page($kind);
+
+        $this->assertSame(1, substr_count($html, ':data-cost-cell="\'estimated-\' + idx"'), '見込み額のセルを描いた表が詳細画面に無い');
+        $this->assertSame(1, substr_count($html, ':data-cost-cell="\'actual-\' + idx"'), '確定額のセルを描いた表が詳細画面に無い');
+        $this->assertSame(1, substr_count($html, '@click="saveCostGrid()"'), '表の「保存」のボタンが詳細画面に無い');
+        $this->assertStringNotContainsString('@click="closeCostGrid()"', $html, '詳細画面に新規登録用の「表を閉じる」が出ている');
+    }
+
     #[DataProvider('screens')]
     public function test_opening_lists_every_item_in_master_order(string $kind): void
     {
