@@ -36,12 +36,17 @@ class GetAjaxFailureScanTest extends TestCase
     /** `if (!res.ok)` `if (!roomsRes.ok || …)`（AjaxErrorFeedbackTest::OK_GUARD と同じ形） */
     private const OK_GUARD = '/if\s*\(\s*![a-zA-Z_$][\w$]*\.ok\b/';
 
-    /** 拾えるはずの数の下限（2026-11-17 の実数: 分岐 21・XMLHttpRequest 2・呼ぶファイル 14）。走査が空振りして緑になるのを防ぐ */
-    private const MIN_GUARDS = 21;
+    /**
+     * 拾えるはずの数の下限（2026-11-17 の実数: 分岐 21・XMLHttpRequest 2・呼ぶファイル 14）。走査が空振りして緑になるのを防ぐ。
+     * ⚠ 実数ちょうどにしない。正当に 1 つ減らしただけで「走査が機能していない」と誤った理由で落ちる
+     *   （呼ぶファイルを 14 にしていたら、1 画面の部品の呼び出しを消す変異で、その理由が並んで出た）。
+     *   走査が壊れれば 0 になるので、この値でも分かる。XMLHttpRequest は実数が 2 しか無いのでそのまま。
+     */
+    private const MIN_GUARDS = 15;
 
     private const MIN_XHRS = 2;
 
-    private const MIN_CALLERS = 14;
+    private const MIN_CALLERS = 10;
 
     /**
      * fetch ごとに、後ろで最初に現れる `.ok` の分岐を切り出し、`ajaxGetFailure(` を通らないものの行を返す。
