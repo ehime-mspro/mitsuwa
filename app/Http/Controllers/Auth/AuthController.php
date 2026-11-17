@@ -12,6 +12,12 @@ use Illuminate\Support\Facades\Auth;
 class AuthController extends Controller
 {
     /**
+     * ログインの送信が古い鍵（CSRF）で断られたときに、ログイン画面の赤い帯に出す文（Bug #138）。
+     * 断るのは bootstrap/app.php の 419 の render（419 の画面を出さず、新しいログイン画面へ戻す）。
+     */
+    public const EXPIRED_PAGE_MESSAGE = '画面を開いてから時間がたったか、ほかの画面でログアウトしたため、ログインできませんでした。もう一度ログインしてください。';
+
+    /**
      * ログインフォーム表示
      * Route: GET /login
      */
