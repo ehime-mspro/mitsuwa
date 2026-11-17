@@ -249,8 +249,28 @@ function areaImportToHalfWidth(raw) {
         .replace(/[０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); });
 }
 
-function areaImportNormalizeNumber(raw) {
-    return areaImportToHalfWidth(raw).replace(/[,，\s　円¥￥]/g, '');
+/**
+ * 件数（営業・空き・不明）の読み方。AreaBuildingImportController::parseInt() と parseCount() と同じ結果にすること
+ * （AreaBuildingImportParserParityTest が同じ入力を両方に通して突き合わせる。Bug #41）。
+ * カンマは 3 桁ごとの正しい区切り（'1,234'）だけ通す。数字・カンマのあいだの空白や「円」は読めない（Bug #134）。
+ * 返り値: { state: 'blank' | 'bad' | 'range' | 'ok', value: number|null }
+ */
+function areaImportParseCount(raw) {
+    var s = areaImportToHalfWidth(raw).trim().replace(/，/g, ',');
+    if (/[\d,][\s　円¥￥]+[\d,]/.test(s)) { return { state: 'bad', value: null }; }
+    s = s.replace(/[\s　円¥￥]/g, '');
+    if (s === '') { return { state: 'blank', value: null }; }
+
+    if (s.indexOf(',') !== -1) {
+        if (!/^\d{1,3}(?:,\d{3})+$/.test(s)) { return { state: 'bad', value: null }; }
+        s = s.replace(/,/g, '');
+    }
+    if (!/^-?\d+$/.test(s)) { return { state: 'bad', value: null }; }
+
+    var v = Number(s);
+    if (v < 0 || v > AREA_IMPORT_LIMITS.maxCount) { return { state: 'range', value: null }; }
+
+    return { state: 'ok', value: v };
 }
 
 /**
@@ -260,7 +280,10 @@ function areaImportNormalizeNumber(raw) {
 function areaImportParseFloor(raw, allowBasement) {
     if (raw === undefined || raw === null) { return { state: 'blank', value: null }; }
 
-    var s = areaImportToHalfWidth(raw).trim().replace(/[,，\s　]/g, '');
+    var s = areaImportToHalfWidth(raw).trim();
+    // カンマと数字のあいだの空白は読めない（FloorNumber::parse() と同じ。Bug #134）。語のあいだの空白は落として読む
+    if (/[,，]/.test(s) || /\d[\s　]+\d/.test(s)) { return { state: 'bad', value: null }; }
+    s = s.replace(/[\s　]/g, '');
     if (s === '') { return { state: 'blank', value: null }; }
 
     var t = AREA_IMPORT_FLOOR_TOKENS;
@@ -590,10 +613,9 @@ function areaImportForm() {
                     if (out.name === '') { warnings.push('ビル名が空'); }
 
                     ['operating', 'vacant', 'unknown'].forEach(function (key) {
-                        var v = areaImportNormalizeNumber(out[key]);
-                        if (v === '') { return; }
-                        if (!/^\d+$/.test(v)) { warnings.push(key + ' が数値でない'); return; }
-                        if (Number(v) > limits.maxCount) { warnings.push(key + ' が 0〜' + limits.maxCount + ' の範囲外'); }
+                        var count = areaImportParseCount(out[key]);
+                        if (count.state === 'bad') { warnings.push(key + ' が数値でない'); return; }
+                        if (count.state === 'range') { warnings.push(key + ' が 0〜' + limits.maxCount + ' の範囲外'); }
                     });
 
                     var floors = areaImportParseFloor(out.total_floors, false);
