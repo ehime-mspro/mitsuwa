@@ -281,8 +281,9 @@ function areaImportParseFloor(raw, allowBasement) {
     if (raw === undefined || raw === null) { return { state: 'blank', value: null }; }
 
     var s = areaImportToHalfWidth(raw).trim();
-    // カンマと数字のあいだの空白は読めない（FloorNumber::parse() と同じ。Bug #134）。語のあいだの空白は落として読む
-    if (/[,，]/.test(s) || /\d[\s　]+\d/.test(s)) { return { state: 'bad', value: null }; }
+    // カンマは落とさない（下の数字の判定で読めない）。数字のあいだの空白も読めない（FloorNumber::parse() と同じ。Bug #134）。
+    // 語のあいだの空白だけ落として読む
+    if (/\d[\s　]+\d/.test(s)) { return { state: 'bad', value: null }; }
     s = s.replace(/[\s　]/g, '');
     if (s === '') { return { state: 'blank', value: null }; }
 
