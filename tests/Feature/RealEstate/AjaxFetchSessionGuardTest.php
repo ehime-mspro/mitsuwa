@@ -241,4 +241,119 @@ class AjaxFetchSessionGuardTest extends TestCase
         $this->assertGreaterThanOrEqual(self::MIN_XHR_CALL_SITES, $callSites, 'XMLHttpRequest の走査が機能していない（拾えた呼び出し箇所が少なすぎる）');
         $this->assertSame([], $offenders, "X-Requested-With を送っていない XMLHttpRequest の GET があります:\n" . implode("\n", $offenders));
     }
+
+    // ============================================================
+    // 保存の Ajax（GET 以外）は JSON を求める（Bug #137）
+    // ============================================================
+
+    /**
+     * 拾えるはずの、自社への GET 以外の fetch と XMLHttpRequest の下限（2026-11-17 の実数は fetch 39〈決裁の 2 を含む〉・XHR 3）。
+     * 走査が壊れれば 0 になる。正当に 1 つ減らしただけで落ちないよう余裕を持たせる。
+     */
+    private const MIN_SAVE_FETCH_CALL_SITES = 30;
+
+    private const MIN_SAVE_XHR_CALL_SITES = 2;
+
+    /** fetch の本体が JSON を求めるヘッダーを持つ（`'Accept': 'application/json'` も `Accept: 'application/json'` も） */
+    private const FETCH_ASKS_FOR_JSON = '/[\'"]?Accept[\'"]?\s*:\s*[\'"]application\/json[\'"]/i';
+
+    /** XMLHttpRequest が `.open(…)` から `.send(` までに JSON を求めるヘッダーを付ける */
+    private const XHR_ASKS_FOR_JSON = '/setRequestHeader\(\s*[\'"]Accept[\'"]\s*,\s*[\'"]application\/json[\'"]/i';
+
+    /**
+     * `$source`（Blade 1 本）の、自社への GET 以外の fetch・XMLHttpRequest を数え、JSON を求めないものの行番号を返す。
+     * fetch は `method:` が文字の GET でなければ（変数の `method: method` も）GET 以外として数える。`method:` を書かないものは GET。
+     * 外部 API（URL に `://` を含む。zipcloud など）は数えない。
+     *
+     * @return array{fetches: int, xhrs: int, offenders: array<int, int>}
+     */
+    private static function saveAjaxWithoutJson(string $source): array
+    {
+        $fetches = 0;
+        $xhrs = 0;
+        $offenders = [];
+
+        $offset = 0;
+        while (($pos = strpos($source, 'fetch(', $offset)) !== false) {
+            $offset = $pos + 6;
+            $call = self::fetchCall($source, $pos);
+            if (str_contains(self::precedingLines($source, $pos, 5) . $call, '://')) {
+                continue;   // 外部 API
+            }
+            if (! preg_match('/\bmethod\s*:\s*([^,}\n]+)/', $call, $m) || preg_match('/^([\'"])GET\1$/i', trim($m[1]))) {
+                continue;   // GET（method を書かない・文字の GET）
+            }
+            $fetches++;
+            if (! preg_match(self::FETCH_ASKS_FOR_JSON, $call)) {
+                $offenders[] = substr_count(substr($source, 0, $pos), "\n") + 1;
+            }
+        }
+
+        preg_match_all('/\.open\(\s*([\'"])(?!GET\1)[A-Z]+\1\s*,([^\n]*)/i', $source, $opens, PREG_OFFSET_CAPTURE | PREG_SET_ORDER);
+        foreach ($opens as $open) {
+            if (str_contains($open[2][0], '://')) {
+                continue;   // 外部 API
+            }
+            $xhrs++;
+            $pos = $open[0][1];
+            $send = strpos($source, '.send(', $pos);
+            $block = $send === false ? substr($source, $pos) : substr($source, $pos, $send - $pos);
+            if (! preg_match(self::XHR_ASKS_FOR_JSON, $block)) {
+                $offenders[] = substr_count(substr($source, 0, $pos), "\n") + 1;
+            }
+        }
+
+        return ['fetches' => $fetches, 'xhrs' => $xhrs, 'offenders' => $offenders];
+    }
+
+    /**
+     * 自社への GET 以外の fetch・XMLHttpRequest は `Accept: application/json` を送る。
+     * 送らないと、ログインが切れた 419 が日本語の理由の JSON（bootstrap/app.php）でなく HTML の画面（errors/419）で返り、
+     * 画面の JS が読めずに「通信エラー」などへ落ちる。決裁の画面も含めて見る（読むだけ）。
+     */
+    public function test_all_same_origin_saves_ask_for_json(): void
+    {
+        $fetches = 0;
+        $xhrs = 0;
+        $offenders = [];
+
+        foreach (File::allFiles(resource_path('views')) as $file) {
+            if (! str_ends_with($file->getFilename(), '.blade.php')) {
+                continue;
+            }
+            $found = self::saveAjaxWithoutJson(file_get_contents($file->getPathname()));
+            $fetches += $found['fetches'];
+            $xhrs += $found['xhrs'];
+            foreach ($found['offenders'] as $line) {
+                $offenders[] = $file->getRelativePathname() . ':' . $line;
+            }
+        }
+
+        $this->assertGreaterThanOrEqual(self::MIN_SAVE_FETCH_CALL_SITES, $fetches, 'GET 以外の fetch の走査が機能していない（拾えた呼び出し箇所が少なすぎる）');
+        $this->assertGreaterThanOrEqual(self::MIN_SAVE_XHR_CALL_SITES, $xhrs, 'GET 以外の XMLHttpRequest の走査が機能していない（拾えた呼び出し箇所が少なすぎる）');
+        $this->assertSame([], $offenders, "JSON を求めない（Accept: application/json の無い）保存の Ajax があります。ログインが切れたときの理由が画面に届きません:\n" . implode("\n", $offenders));
+    }
+
+    /** 走査の分かれ目（実物に出てこない書き方も見本で固定する） */
+    public function test_the_save_scanner_reads_each_way_of_writing(): void
+    {
+        $cases = [
+            // [見本, fetch の数, XHR の数, JSON を求めない行]
+            'method を書かない fetch は GET'              => ['fetch(url, { headers: {} })', 0, 0, []],
+            '文字の GET は GET（大文字小文字を問わない）'   => ['fetch(url, { method: "get", headers: {} })', 0, 0, []],
+            'POST で JSON を求める'                       => ["fetch(url, { method: 'POST', headers: { 'Accept': 'application/json' } })", 1, 0, []],
+            'キーを引用符で囲まない Accept'               => ["fetch(url, { method: 'PUT', headers: { Accept: 'application/json' } })", 1, 0, []],
+            'DELETE で JSON を求めない'                   => ["x\nfetch(url, { method: 'DELETE', headers: {} })", 1, 0, [2]],
+            '変数の method は GET 以外として見る'         => ['fetch(url, { method: verb, headers: {} })', 1, 0, [1]],
+            '外部 API は数えない'                         => ["fetch('https://example.com/x', { method: 'POST' })", 0, 0, []],
+            'XHR の POST で JSON を求める'                => ["x.open('POST', url);\nx.setRequestHeader('Accept', 'application/json');\nx.send(b);", 0, 1, []],
+            'XHR の PATCH の .send( の後ろのヘッダーは数えない' => ["x.open('PATCH', url);\nx.send(b);\ny.setRequestHeader('Accept', 'application/json');", 0, 1, [1]],
+            'XHR の GET は数えない'                       => ["x.open('GET', url);\nx.send();", 0, 0, []],
+            'XHR の外部 API は数えない'                   => ["x.open('POST', 'https://example.com/x');\nx.send(b);", 0, 0, []],
+        ];
+
+        foreach ($cases as $label => [$source, $fetches, $xhrs, $offenders]) {
+            $this->assertSame(['fetches' => $fetches, 'xhrs' => $xhrs, 'offenders' => $offenders], self::saveAjaxWithoutJson($source), $label);
+        }
+    }
 }
