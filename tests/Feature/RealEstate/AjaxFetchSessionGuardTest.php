@@ -265,6 +265,12 @@ class AjaxFetchSessionGuardTest extends TestCase
      * fetch は `method:` が文字の GET でなければ（変数の `method: method` も）GET 以外として数える。`method:` を書かないものは GET。
      * 外部 API（URL に `://` を含む。zipcloud など）は数えない。
      *
+     * ⚠ 死角（見落とす向き。2026-11-17 に resources/views を数え、どれも実物は 0 件。見本で今の動きを固定している）:
+     *   - fetch の呼び出しの中の JS コメントに書いた `'Accept': 'application/json'` も、求めているとみなす
+     *   - オプションを変数で渡す `fetch(url, opts)` は、`method:` が見えないので GET とみなして数えない
+     *   - `xhr.open(変数, …)` は数えない（メソッドを引用符の文字で書いたものだけを見る）
+     * ⚠ 厳しすぎる向き: `'Accept': 'application/json, text/plain'` のように型を並べると、求めていないとみなして断る
+     *
      * @return array{fetches: int, xhrs: int, offenders: array<int, int>}
      */
     private static function saveAjaxWithoutJson(string $source): array
@@ -350,6 +356,11 @@ class AjaxFetchSessionGuardTest extends TestCase
             'XHR の PATCH の .send( の後ろのヘッダーは数えない' => ["x.open('PATCH', url);\nx.send(b);\ny.setRequestHeader('Accept', 'application/json');", 0, 1, [1]],
             'XHR の GET は数えない'                       => ["x.open('GET', url);\nx.send();", 0, 0, []],
             'XHR の外部 API は数えない'                   => ["x.open('POST', 'https://example.com/x');\nx.send(b);", 0, 0, []],
+            // 死角（見落とす向き）と厳しすぎる向き。今の動きを固定する（直すときはこの見本も変える。saveAjaxWithoutJson() の docblock）
+            '死角: fetch の中のコメントの Accept も求めているとみなす' => ["fetch(url, { method: 'POST', /* 'Accept': 'application/json' */ headers: {} })", 1, 0, []],
+            '死角: オプションを変数で渡す fetch は GET とみなす'       => ['fetch(url, opts)', 0, 0, []],
+            '死角: XHR の open(変数) は数えない'                       => ["x.open(verb, url);\nx.send(b);", 0, 0, []],
+            '厳しすぎる向き: Accept に型を並べると求めていないとみなす' => ["fetch(url, { method: 'POST', headers: { 'Accept': 'application/json, text/plain' } })", 1, 0, [1]],
         ];
 
         foreach ($cases as $label => [$source, $fetches, $xhrs, $offenders]) {
