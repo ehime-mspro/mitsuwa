@@ -97,6 +97,23 @@ class SimulationSyncActualsTest extends MemberScreenTestCase
         '2025-10' => 1, '2025-11' => 1, '2025-12' => 1, '2026-01' => 1, '2026-02' => 1, '2026-03' => 1, '2026-04' => 1, '2026-05' => 1,
     ];
 
+    /** ログインが切れたあとで確認を開くと、番号ではなく理由を出す（設計メモ 2026-11-17-get-ajax-failure-design.md） */
+    public function test_the_preview_says_why_when_the_login_expired(): void
+    {
+        $simulation = ZealSimulation::create(['fiscal_year' => 2025]);
+        $html = $this->showHtmlOf($simulation);
+        $factory = $this->xData($html, 'zealActualsSync');
+        $sent = $this->driveAlpine($html, 'zealActualsSync', $factory, 'data.openPreview();');
+
+        auth()->logout();
+        $response = $this->sendCaptured($sent['requests'][0])->assertStatus(401);
+
+        $after = $this->driveAlpine($html, 'zealActualsSync', $factory, 'data.openPreview();', [$this->asFetchResponse($response)], true, [], ['function ajaxGetFailureMessage(']);
+
+        $this->assertSame('画面を開いてから時間がたったか、ほかの画面でログアウトしたため、プレビューを取得できませんでした。入力中の内容があれば控えてから、画面を開き直してください。',
+            $after['state']['errorMsg']);
+    }
+
     public function test_the_preview_hands_the_monthly_actuals_to_the_screen(): void
     {
         $simulation = ZealSimulation::create(['fiscal_year' => 2025]);

@@ -412,6 +412,8 @@
 .btn-form-submit:hover { background: #047857; }
 </style>
 
+{{-- 断られた GET の Ajax の文（ログインが切れた・権限が無い） --}}
+@include('_partials._ajax_get_failure')
 <script>
 function contractForm() {
     return {
@@ -561,7 +563,7 @@ function contractForm() {
                     'X-Requested-With': 'XMLHttpRequest'
                 }
             })
-                .then(function(r) { if (!r.ok) { alert('データの取得に失敗しました（' + r.status + '）'); return null; } return r.json(); })
+                .then(function(r) { if (!r.ok) { return ajaxGetFailure(r, '仕入れ案件の原価を取得', '仕入れ案件の原価の取得に失敗しました（' + r.status + '）').then(function (message) { alert(message); return null; }); } return r.json(); })
                 .then(function(data) { if (!data) return;
                     self.procCost = data;
                     self.propertyName = data.property_name;
@@ -594,7 +596,7 @@ function contractForm() {
                     'X-Requested-With': 'XMLHttpRequest'
                 }
             })
-                .then(function(r) { if (!r.ok) { alert('データの取得に失敗しました（' + r.status + '）'); return null; } return r.json(); })
+                .then(function(r) { if (!r.ok) { return ajaxGetFailure(r, '分譲地の区画を取得', '分譲地の区画の取得に失敗しました（' + r.status + '）').then(function (message) { alert(message); return null; }); } return r.json(); })
                 .then(function(data) { if (!data) return;
                     self.lots = data;
                 });
@@ -604,7 +606,7 @@ function contractForm() {
                     'X-Requested-With': 'XMLHttpRequest'
                 }
             })
-                .then(function(r) { if (!r.ok) { alert('データの取得に失敗しました（' + r.status + '）'); return null; } return r.json(); })
+                .then(function(r) { if (!r.ok) { return ajaxGetFailure(r, '分譲地の原価を取得', '分譲地の原価の取得に失敗しました（' + r.status + '）').then(function (message) { alert(message); return null; }); } return r.json(); })
                 .then(function(data) { if (!data) return;
                     self.projCost = data;
                     self.propertyName = data.project_name || '';

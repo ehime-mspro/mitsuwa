@@ -253,6 +253,8 @@
 .btn-form-submit:hover { background: #047857; }
 </style>
 
+{{-- 断られた GET の Ajax の文（ログインが切れた・権限が無い） --}}
+@include('_partials._ajax_get_failure')
 <script>
 function contractEditForm() {
     return {
@@ -367,7 +369,7 @@ function contractEditForm() {
             //    セッションの直前 URL をこの JSON エンドポイントで上書きしてしまう
             //    （バリデーションエラー時の back() がフォームに戻らなくなる）。
             fetch('{{ url("/api/realestate/procurement-cost") }}/' + self.procurementId, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
-                .then(function(r) { if (!r.ok) { alert('データの取得に失敗しました（' + r.status + '）'); return null; } return r.json(); })
+                .then(function(r) { if (!r.ok) { return ajaxGetFailure(r, '仕入れ案件の原価を取得', '仕入れ案件の原価の取得に失敗しました（' + r.status + '）').then(function (message) { alert(message); return null; }); } return r.json(); })
                 .then(function(data) { if (!data) return; self.propertyName = data.property_name; self.addressVal = data.address || ''; self.costAmount = data.cost_amount; self.calcProfit(); });
         },
 
@@ -376,9 +378,9 @@ function contractEditForm() {
             self.lotId = ''; self.lotsData = [];
             if (!self.projectId) { self.costAmount = ''; self.amountLand = ''; self.calcProfit(); return; }
             fetch('{{ url("/api/realestate/project-lots") }}/' + self.projectId, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
-                .then(function(r) { if (!r.ok) { alert('データの取得に失敗しました（' + r.status + '）'); return null; } return r.json(); }).then(function(data) { if (!data) return; self.lotsData = data; });
+                .then(function(r) { if (!r.ok) { return ajaxGetFailure(r, '分譲地の区画を取得', '分譲地の区画の取得に失敗しました（' + r.status + '）').then(function (message) { alert(message); return null; }); } return r.json(); }).then(function(data) { if (!data) return; self.lotsData = data; });
             fetch('{{ url("/api/realestate/project-lot-cost") }}/' + self.projectId, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
-                .then(function(r) { if (!r.ok) { alert('データの取得に失敗しました（' + r.status + '）'); return null; } return r.json(); }).then(function(data) { if (!data) return; self.propertyName = data.project_name || ''; self.costAmount = data.per_lot_cost; self.calcProfit(); });
+                .then(function(r) { if (!r.ok) { return ajaxGetFailure(r, '分譲地の原価を取得', '分譲地の原価の取得に失敗しました（' + r.status + '）').then(function (message) { alert(message); return null; }); } return r.json(); }).then(function(data) { if (!data) return; self.propertyName = data.project_name || ''; self.costAmount = data.per_lot_cost; self.calcProfit(); });
         },
 
         init: function() { this.refreshInclusive(); this.calcProfit(); }

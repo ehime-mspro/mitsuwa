@@ -121,6 +121,8 @@
     </div>
 </div>
 
+{{-- 断られた GET の Ajax の文（仕入れ先の検索。ログインが切れた・権限が無い） --}}
+@include('_partials._ajax_get_failure')
 <script>
 function supplierPicker() {
     return {
@@ -158,7 +160,12 @@ function supplierPicker() {
                         'X-Requested-With': 'XMLHttpRequest'
                     }
                 })
-                .then(function(res) { if (!res.ok) { alert('データの取得に失敗しました（' + res.status + '）'); return null; } return res.json(); })
+                .then(function(res) {
+                    if (!res.ok) {
+                        return ajaxGetFailure(res, '仕入れ先を検索', '仕入れ先の検索に失敗しました（' + res.status + '）').then(function (message) { alert(message); return null; });
+                    }
+                    return res.json();
+                })
                 .then(function(data) { if (!data) return; self.supplierResults = data; })
                 .catch(function() { self.supplierResults = []; });
             }, 300);

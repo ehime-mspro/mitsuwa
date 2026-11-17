@@ -253,6 +253,8 @@
         ])
     @endif
 
+    {{-- 断られた GET の Ajax の文（実績の確認。ログインが切れた・権限が無い） --}}
+    @include('_partials._ajax_get_failure')
     <script>
         // Alpine x-data 関数（CLAUDE.md ルール: x-data 内に > を含むアロー関数禁止）
         function zealActualsSync(simulationId, previewUrl, applyUrl, csrfToken, currentYm) {
@@ -290,7 +292,10 @@
                     })
                         .then(function (res) {
                             if (!res.ok) {
-                                throw new Error('プレビューの取得に失敗しました（HTTP ' + res.status + '）');
+                                // ログインが切れた・権限が無いときは理由を出す（部品 _partials/_ajax_get_failure）
+                                return ajaxGetFailure(res, 'プレビューを取得', 'プレビューの取得に失敗しました（HTTP ' + res.status + '）').then(function (message) {
+                                    throw new Error(message);
+                                });
                             }
                             return res.json();
                         })
