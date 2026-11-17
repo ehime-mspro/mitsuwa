@@ -179,6 +179,10 @@ function selectRank(rank) {
         // ログアウトした）はサーバーの日本語の理由、ほかは番号つきの文（Bug #137。文は部品 buyers/_xhr_failure_message が作る）
         alert(xhrFailureMessage(xhr, 'ランクを変更できませんでした（' + xhr.status + '）'));
     };
+    // 通信そのものが失敗した（接続が切れた など）。サーバーに届いて変わった可能性もあるので、開き直して確かめてもらう
+    xhr.onerror = function() {
+        alert('通信エラーが発生しました。画面を開き直して、ランクが変わったか確かめてください。');
+    };
     xhr.send(JSON.stringify({rank: rank, department: _currentDepartment}));
 
     _rankDropdown.style.display = 'none';

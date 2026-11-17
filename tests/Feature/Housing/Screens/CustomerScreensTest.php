@@ -385,6 +385,40 @@ class CustomerScreensTest extends HousingScreenTestCase
         $this->assertSame(['この部署に取り込めませんでした（404）'], $after['alerts']);
     }
 
+    /**
+     * 一覧のランクの変更で通信そのものが失敗したら（接続が切れた など）、理由を出す（直す前は何も出なかった。Bug #137 の後回し）。
+     * ⚠ サーバーに届いて変わった可能性もあるので「変わっていません」とは言わず、画面を開き直して確かめるよう案内する。
+     */
+    public function test_a_rank_change_that_cannot_reach_the_server_says_so(): void
+    {
+        $buyer = $this->buyer();
+        $html = $this->htmlOf(route('housing.customers.index'));
+        $steps = 'openRankDropdown({ style: {}, getBoundingClientRect: function () { return { bottom: 0, left: 0 }; } }, ' . $buyer->id . ', "housing"); selectRank("A");';
+
+        $after = $this->driveAlpine($html, 'selectRank', '({})', $steps, [$this->networkFailure()], withScripts: [self::XHR_FAILURE_SCRIPT]);
+
+        $this->assertCount(1, $after['requests']);
+        $this->assertSame(['通信エラーが発生しました。画面を開き直して、ランクが変わったか確かめてください。'], $after['alerts']);
+    }
+
+    /**
+     * 登録画面の「この部署に取り込む」で通信そのものが失敗したら、理由を出す（直す前は何も出なかった。Bug #137 の後回し）。
+     * ⚠ 取り込まれた可能性もあるので、顧客の一覧で確かめるよう案内する。画面は移らない。
+     */
+    public function test_an_add_to_department_that_cannot_reach_the_server_says_so(): void
+    {
+        $other = Buyer::create(['last_name' => '佐藤', 'first_name' => '一郎', 'prefecture' => '愛媛県', 'city' => '松山市']);
+        $other->addToDepartment('realestate', '2026-08-01');
+        $html = $this->htmlOf(route('housing.customers.create'));
+        $elements = ['input[name="last_name"]' => '佐藤', 'input[name="first_name"]' => '一郎', 'input[name="acquired_date"]' => '2026-10-01'];
+
+        $after = $this->driveAlpine($html, 'buyerForm', 'buyerForm()', 'data.addToDepartment(' . $other->id . ');', [$this->networkFailure()], true, [], [self::XHR_FAILURE_SCRIPT], $elements);
+
+        $this->assertCount(1, $after['requests']);
+        $this->assertSame(['通信エラーが発生しました。顧客の一覧で、この部署に取り込まれたか確かめてください。'], $after['alerts']);
+        $this->assertSame([], $after['navigations']);
+    }
+
     public function test_the_rank_is_changed_from_the_list(): void
     {
         $buyer = $this->buyer();

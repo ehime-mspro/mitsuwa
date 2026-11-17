@@ -445,6 +445,10 @@ function buyerForm() {
                 // サーバーの日本語の理由、ほかは番号つきの文（Bug #137。文は部品 buyers/_xhr_failure_message が作る）
                 alert(xhrFailureMessage(xhr, 'この部署に取り込めませんでした（' + xhr.status + '）'));
             };
+            // 通信そのものが失敗した（接続が切れた など）。取り込まれた可能性もあるので、顧客の一覧で確かめてもらう
+            xhr.onerror = function() {
+                alert('通信エラーが発生しました。顧客の一覧で、この部署に取り込まれたか確かめてください。');
+            };
             xhr.send(JSON.stringify({
                 department: '{{ $department }}',
                 acquired_date: acquiredDate,

@@ -17,7 +17,7 @@ use Illuminate\Testing\TestResponse;
  * 偽物にしているもの: document.querySelector（`meta[name="csrf-token"]` だけ。描いた画面の値を `content` と
  * getAttribute で返し、画面に無ければ null）・document.querySelectorAll（空）・confirm（$confirm を返し、文言を記録）・
  * alert（文言を記録）・setTimeout / clearTimeout（何もしない。5 秒後にメッセージを消すタイマーで node が止まらないように）・
- * XMLHttpRequest（fetch と同じく要求を記録し、$responses を onload で返す）・window.location（href への代入と reload() を記録）・
+ * XMLHttpRequest（fetch と同じく要求を記録し、$responses を onload で返す。networkFailure() は onerror）・window.location（href への代入と reload() を記録）・
  * window.addEventListener（種類ごとに関数を記録するだけ。$steps・$evaluate から `__fireWindowEvent(type)` で呼ぶと、
  * `preventDefault()` と `returnValue` を持つ出来事を渡して `{prevented, returnValue}` を返す。保存せずに離れるときの確かめ）・
  * コンポーネントの $nextTick（すぐ呼ぶ）と $refs。
@@ -46,7 +46,7 @@ trait DrivesAlpineFetch
      * $factory でコンポーネントを作って $steps を走らせる。
      *
      * @param  string  $steps  `data`（コンポーネント）を操る JS。例 `data.startAdd(); data.newName = '新店'; data.submitAdd();`
-     * @param  array<int, array{status: int, body: mixed}>  $responses  fetch / XMLHttpRequest に順に返す応答。足りなければ要求は保留のまま
+     * @param  array<int, array{status: int, body: mixed}|array{network_error: true}>  $responses  fetch / XMLHttpRequest に順に返す応答（通信の失敗は networkFailure()。XMLHttpRequest だけ）。足りなければ要求は保留のまま
      * @param  array<int, string>  $evaluate  $steps のあとに JS の状態で評価する式（結果は `evaluated` に同じ順で入る）
      * @param  array<int, string>  $withScripts  一緒に読む `<script>` の目印（その文字列を含む script がちょうど 1 つずつ。
      *                                            $function の script より先に読む）。コンポーネントが別の script の関数
@@ -438,6 +438,15 @@ trait DrivesAlpineFetch
     }
 
     /**
+     * driveAlpine() の $responses の 1 件: 通信そのものが失敗した（接続が切れた など）。偽の XMLHttpRequest は status 0・
+     * 本文なしで `onerror` を呼ぶ（無ければ何もしない。`onload` は呼ばない）。⚠ XMLHttpRequest だけ（fetch には渡さない）
+     */
+    protected function networkFailure(): array
+    {
+        return ['network_error' => true];
+    }
+
+    /**
      * インラインのイベント属性（onsubmit など）の中身を、ブラウザと同じく関数の本体として組み立てて呼ぶ。
      * $code は属性の値を実体参照を戻したもの（ブラウザが JS に渡す文字列）。
      *
@@ -557,7 +566,7 @@ trait DrivesAlpineFetch
             set href(value) { navigations.push(String(value)); this._href = String(value); },
             reload() { navigations.push('reload'); },
         };
-        function XMLHttpRequest() { this.headers = {}; this.status = 0; this.responseText = ''; this.onload = null; }
+        function XMLHttpRequest() { this.headers = {}; this.status = 0; this.responseText = ''; this.onload = null; this.onerror = null; }
         XMLHttpRequest.prototype.open = function (method, url) { this.method = String(method).toUpperCase(); this.url = String(url); };
         XMLHttpRequest.prototype.setRequestHeader = function (name, value) { this.headers[name] = String(value); };
         XMLHttpRequest.prototype.send = function (body) {
@@ -568,6 +577,13 @@ trait DrivesAlpineFetch
             }
             const xhr = this;
             Promise.resolve().then(function () {
+                // 通信そのものの失敗（networkFailure()）: ブラウザと同じく status 0・本文なしで onerror だけを呼ぶ
+                if (response.network_error) {
+                    xhr.status = 0;
+                    xhr.responseText = '';
+                    if (xhr.onerror) { xhr.onerror(); }
+                    return;
+                }
                 xhr.status = response.status;
                 xhr.responseText = typeof response.body === 'string' ? response.body : JSON.stringify(response.body);
                 if (xhr.onload) { xhr.onload(); }
