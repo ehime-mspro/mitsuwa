@@ -7,6 +7,7 @@ use App\Models\ReProject;
 use App\Models\ReProjectCost;
 use App\Models\ReProjectDrawing;
 use Illuminate\Support\Facades\Storage;
+use Tests\Concerns\SignsOutElsewhere;
 
 /**
  * 分譲地の登録（原価の行つき）・詳細の原価（削除・試算表の取込。追加・編集は CostGridScreenTest）・一覧のステータスの小窓・
@@ -14,6 +15,8 @@ use Illuminate\Support\Facades\Storage;
  */
 class ProjectScreensTest extends RealEstateScreenTestCase
 {
+    use SignsOutElsewhere;
+
     private const DETAIL_SCRIPTS = ['function costExcelImporterFactory(', 'function costGridFactory('];
 
     public function test_a_project_is_registered_from_the_screen_with_a_cost_row(): void
@@ -152,6 +155,24 @@ class ProjectScreensTest extends RealEstateScreenTestCase
         $after = $this->driveAlpine($html, 'projectStatusCell', $factory, $steps, [$this->asFetchResponse($response)], true, ['value']);
 
         $this->assertSame([self::EXPIRED_JSON_MESSAGE], $after['alerts']);
+        $this->assertSame(['info_obtained'], $after['evaluated'], '断られたのに画面のステータスが変わった');
+        $this->assertSame('info_obtained', $project->fresh()->status->value);
+    }
+
+    /** ほかの画面でパスワードを変えたあとにステータスを変えると、ログインが切れて 401 になる。理由が日本語で出る（直す前は「…（401）」） */
+    public function test_a_status_change_after_the_password_changed_elsewhere_says_why(): void
+    {
+        $project = $this->project(['status' => 'info_obtained']);
+        $html = $this->htmlOf(route('realestate.projects.index'));
+        $steps = 'data.select(data.options.find(function (o) { return o.value === "assessment"; }));';
+        $factory = $this->xData($html, 'projectStatusCell');
+
+        $request = $this->driveAlpine($html, 'projectStatusCell', $factory, $steps)['requests'][0];
+        $this->changePasswordElsewhere();
+        $response = $this->sendCaptured($request)->assertUnauthorized();
+        $after = $this->driveAlpine($html, 'projectStatusCell', $factory, $steps, [$this->asFetchResponse($response)], true, ['value']);
+
+        $this->assertSame([self::SIGNED_OUT_JSON_MESSAGE], $after['alerts']);
         $this->assertSame(['info_obtained'], $after['evaluated'], '断られたのに画面のステータスが変わった');
         $this->assertSame('info_obtained', $project->fresh()->status->value);
     }

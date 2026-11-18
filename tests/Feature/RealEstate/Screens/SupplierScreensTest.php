@@ -2,7 +2,9 @@
 
 namespace Tests\Feature\RealEstate\Screens;
 
+use App\Enums\UserRole;
 use App\Models\ReSupplier;
+use Tests\Concerns\SignsOutElsewhere;
 
 /**
  * 仕入れ先の一覧・登録・詳細・編集・削除と、仕入れ案件の画面の「仕入先として登録」（簡易登録の API）を、
@@ -10,6 +12,8 @@ use App\Models\ReSupplier;
  */
 class SupplierScreensTest extends RealEstateScreenTestCase
 {
+    use SignsOutElsewhere;
+
     private function supplier(string $name = '松山不動産'): ReSupplier
     {
         return ReSupplier::create(['supplier_code' => 'SUP-001', 'type' => 'corporation', 'name' => $name]);
@@ -138,6 +142,37 @@ class SupplierScreensTest extends RealEstateScreenTestCase
         $this->assertSame(1, ReSupplier::count(), '同じ名前の仕入れ先がもう一度登録された');
         $after = $this->driveAlpine($html, 'procurementForm', 'procurementForm()', self::QUICK, [$this->asFetchResponse($response)], true, ['quickDuplicates.map(function (d) { return d.code; })', 'supplierId'], $withPicker);
         $this->assertSame([['SUP-001'], null], $after['evaluated'], '同じ名前の候補が出ていない');
+    }
+
+    /** ほかの画面でパスワードを変えたあとに登録すると、ログインが切れて 401 になる。理由が小窓に出る（直す前は「登録に失敗しました（401）」） */
+    public function test_the_quick_registration_after_the_password_changed_elsewhere_says_why(): void
+    {
+        $html = $this->htmlOf(route('realestate.procurements.create'));
+        $withPicker = ['function supplierPicker('];
+
+        $request = $this->driveAlpine($html, 'procurementForm', 'procurementForm()', self::QUICK, [], true, [], $withPicker)['requests'][0];
+        $this->changePasswordElsewhere();
+        $response = $this->sendCaptured($request)->assertUnauthorized();
+        $after = $this->driveAlpine($html, 'procurementForm', 'procurementForm()', self::QUICK, [$this->asFetchResponse($response)], true, ['quickError', 'quickModalOpen'], $withPicker);
+
+        $this->assertSame([self::SIGNED_OUT_JSON_MESSAGE, true], $after['evaluated'], '理由が小窓に出ないか、小窓が閉じた');
+        $this->assertSame(0, ReSupplier::count());
+    }
+
+    /** ログインと関係の無い断り（開いたあとで役割が一般担当に変わった 403）は、番号つきの今の文のまま */
+    public function test_the_quick_registration_keeps_the_numbered_message_for_other_failures(): void
+    {
+        $html = $this->htmlOf(route('realestate.procurements.create'));
+        $withPicker = ['function supplierPicker('];
+
+        $request = $this->driveAlpine($html, 'procurementForm', 'procurementForm()', self::QUICK, [], true, [], $withPicker)['requests'][0];
+        $this->user->role = UserRole::Staff;
+        $this->user->save();
+        $response = $this->sendCaptured($request)->assertForbidden();
+        $after = $this->driveAlpine($html, 'procurementForm', 'procurementForm()', self::QUICK, [$this->asFetchResponse($response)], true, ['quickError', 'quickModalOpen'], $withPicker);
+
+        $this->assertSame(['登録に失敗しました（403）', true], $after['evaluated']);
+        $this->assertSame(0, ReSupplier::count());
     }
 
     // ============================================================

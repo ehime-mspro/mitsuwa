@@ -10,6 +10,7 @@ use App\Models\HsPropertyFile;
 use App\Models\ReProject;
 use App\Models\ReProjectLot;
 use Illuminate\Support\Facades\Storage;
+use Tests\Concerns\SignsOutElsewhere;
 
 /**
  * 建売物件の登録（土地の紐づけ先は画面の JS が API から取る）・編集・一覧のステータスの小窓・ファイルの削除・
@@ -20,6 +21,8 @@ use Illuminate\Support\Facades\Storage;
  */
 class PropertyScreensTest extends HousingScreenTestCase
 {
+    use SignsOutElsewhere;
+
     private function storeNeedle(): string
     {
         return 'action="' . route('housing.properties.store') . '"';
@@ -176,6 +179,25 @@ class PropertyScreensTest extends HousingScreenTestCase
         $after = $this->driveAlpine($html, 'housingPropertyStatusCell', $factory, $steps, [$this->asFetchResponse($response)], true, ['value']);
 
         $this->assertSame([self::EXPIRED_JSON_MESSAGE], $after['alerts']);
+        $this->assertSame([$before->value], $after['evaluated'], '断られたのに画面のステータスが変わった');
+        $this->assertSame($before, $property->fresh()->status);
+    }
+
+    /** ほかの画面でパスワードを変えたあとにステータスを変えると、ログインが切れて 401 になる。理由が日本語で出る（直す前は「…（401）」） */
+    public function test_a_status_change_after_the_password_changed_elsewhere_says_why(): void
+    {
+        $property = $this->property();
+        $before = $property->status;
+        $html = $this->htmlOf(route('housing.properties.index'));
+        $factory = $this->xData($html, 'housingPropertyStatusCell');
+        $steps = 'data.select(data.options.find(function (o) { return o.value === "construction"; }));';
+
+        $request = $this->driveAlpine($html, 'housingPropertyStatusCell', $factory, $steps)['requests'][0];
+        $this->changePasswordElsewhere();
+        $response = $this->sendCaptured($request)->assertUnauthorized();
+        $after = $this->driveAlpine($html, 'housingPropertyStatusCell', $factory, $steps, [$this->asFetchResponse($response)], true, ['value']);
+
+        $this->assertSame([self::SIGNED_OUT_JSON_MESSAGE], $after['alerts']);
         $this->assertSame([$before->value], $after['evaluated'], '断られたのに画面のステータスが変わった');
         $this->assertSame($before, $property->fresh()->status);
     }

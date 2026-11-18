@@ -9,6 +9,7 @@ use App\Models\SurveyQuestion;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Support\Facades\File;
 use Tests\Concerns\RunsBuyerFormScript;
+use Tests\Concerns\SignsOutElsewhere;
 
 /**
  * 住宅事業の顧客（買主マスタ。不動産と共用のコントローラ・画面）の一覧・登録・詳細・編集・削除と、
@@ -21,6 +22,7 @@ use Tests\Concerns\RunsBuyerFormScript;
 class CustomerScreensTest extends HousingScreenTestCase
 {
     use RunsBuyerFormScript;
+    use SignsOutElsewhere;
 
     /** 断られた XMLHttpRequest の文を作る関数を持つ <script>（部品 buyers/_xhr_failure_message。2 画面が読む） */
     private const XHR_FAILURE_SCRIPT = 'function xhrFailureMessage';
@@ -252,6 +254,19 @@ class CustomerScreensTest extends HousingScreenTestCase
         $this->assertSame(0, Buyer::count());
     }
 
+    /** ほかの画面でパスワードを変えたあとに小窓で登録・重複の確認をすると、ログインが切れて 401 になる。理由が日本語で出る（直す前は「…（401）」） */
+    public function test_the_buyer_modal_says_why_after_the_password_changed_elsewhere(): void
+    {
+        foreach (['submitModal', 'checkDup'] as $op) {
+            $this->actingAs($this->user);   // 1 回目でログインが切れたので、入り直してから画面を開く
+            [$response, $state] = $this->modalAfterFailure($op, fn (array $request) => tap($request, fn () => $this->changePasswordElsewhere()));
+
+            $response->assertUnauthorized();
+            $this->assertSame([self::SIGNED_OUT_JSON_MESSAGE, true], $state, "{$op}: 理由が小窓に出ないか、小窓が閉じた");
+        }
+        $this->assertSame(0, Buyer::count());
+    }
+
     /** ログインと関係の無い断り（開いたあとで役割が一般担当に変わった 403）は、番号つきの今の文のまま */
     public function test_the_buyer_modal_keeps_the_numbered_message_for_other_failures(): void
     {
@@ -331,6 +346,38 @@ class CustomerScreensTest extends HousingScreenTestCase
     }
 
     /**
+     * ほかの画面でパスワードを変えた・無効にされたあとにランクを変えると、401 の理由（サーバーの日本語の文）を出す
+     * （直す前は「ランクを変更できませんでした（401）」）。401 でも本文が JSON でなければ番号つきの文。
+     */
+    public function test_a_rank_change_after_the_password_changed_elsewhere_says_why(): void
+    {
+        $steps = fn (Buyer $buyer) => 'openRankDropdown({ style: {}, getBoundingClientRect: function () { return { bottom: 0, left: 0 }; } }, ' . $buyer->id . ', "housing"); selectRank("A");';
+        $buyer = $this->buyer();
+
+        // ① ほかの画面でパスワードを変えた
+        $html = $this->htmlOf(route('housing.customers.index'));
+        $request = $this->driveAlpine($html, 'selectRank', '({})', $steps($buyer))['requests'][0];
+        $this->changePasswordElsewhere();
+        $response = $this->sendCaptured($request)->assertUnauthorized();
+        $after = $this->driveAlpine($html, 'selectRank', '({})', $steps($buyer), [$this->asFetchResponse($response)], withScripts: [self::XHR_FAILURE_SCRIPT]);
+        $this->assertSame([self::SIGNED_OUT_JSON_MESSAGE], $after['alerts']);
+
+        // ② 入り直して画面を開いたあとで、無効にされた
+        $html = $this->htmlOf(route('housing.customers.index'));
+        $request = $this->driveAlpine($html, 'selectRank', '({})', $steps($buyer))['requests'][0];
+        $this->deactivateSignedInUser();
+        $response = $this->sendCaptured($request)->assertUnauthorized();
+        $after = $this->driveAlpine($html, 'selectRank', '({})', $steps($buyer), [$this->asFetchResponse($response)], withScripts: [self::XHR_FAILURE_SCRIPT]);
+        $this->assertSame([self::INACTIVE_JSON_MESSAGE], $after['alerts']);
+
+        // ③ 401 でも本文が JSON でない（HTML の画面が返った）なら、番号つきの文
+        $after = $this->driveAlpine($html, 'selectRank', '({})', $steps($buyer), [['status' => 401, 'body' => '<!DOCTYPE html><title>x</title>']], withScripts: [self::XHR_FAILURE_SCRIPT]);
+        $this->assertSame(['ランクを変更できませんでした（401）'], $after['alerts']);
+
+        $this->assertNotSame('A', $buyer->getDepartmentPivot('housing')->rank->value);
+    }
+
+    /**
      * 断られた XMLHttpRequest の 419 の理由を読むのは部品（buyers/_xhr_failure_message）の 1 か所だけ（Bug #137 の後回し）。
      * 直す前は buyers/index と buyers/_form に同じ読み取りが 2 回書いてあった。
      * ⚠ 見るのは `xhr.status === 419` の字面だけ（変数の名前を変えた書き足しは見えない）。
@@ -383,6 +430,25 @@ class CustomerScreensTest extends HousingScreenTestCase
         $response = $this->sendCaptured($request)->assertNotFound();
         $after = $this->driveAlpine($html, 'buyerForm', 'buyerForm()', $steps, [$this->asFetchResponse($response)], true, [], [self::XHR_FAILURE_SCRIPT], $elements);
         $this->assertSame(['この部署に取り込めませんでした（404）'], $after['alerts']);
+    }
+
+    /** ほかの画面でパスワードを変えたあとに「この部署に取り込む」を押すと、401 の理由が出て画面は移らない（直す前は「…（401）」） */
+    public function test_an_add_to_department_after_the_password_changed_elsewhere_says_why(): void
+    {
+        $other = Buyer::create(['last_name' => '佐藤', 'first_name' => '一郎', 'prefecture' => '愛媛県', 'city' => '松山市']);
+        $other->addToDepartment('realestate', '2026-08-01');
+        $html = $this->htmlOf(route('housing.customers.create'));
+        $elements = ['input[name="last_name"]' => '佐藤', 'input[name="first_name"]' => '一郎', 'input[name="acquired_date"]' => '2026-10-01'];
+        $steps = 'data.addToDepartment(' . $other->id . ');';
+
+        $request = $this->driveAlpine($html, 'buyerForm', 'buyerForm()', $steps, [], true, [], [], $elements)['requests'][0];
+        $this->changePasswordElsewhere();
+        $response = $this->sendCaptured($request)->assertUnauthorized();
+        $after = $this->driveAlpine($html, 'buyerForm', 'buyerForm()', $steps, [$this->asFetchResponse($response)], true, [], [self::XHR_FAILURE_SCRIPT], $elements);
+
+        $this->assertSame([self::SIGNED_OUT_JSON_MESSAGE], $after['alerts']);
+        $this->assertSame([], $after['navigations']);
+        $this->assertFalse($other->fresh()->belongsToDepartment('housing'));
     }
 
     /**

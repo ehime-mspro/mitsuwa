@@ -6,6 +6,7 @@ use App\Enums\UserRole;
 use App\Models\ReProcurement;
 use App\Models\ReProcurementCost;
 use Illuminate\Support\Facades\Route;
+use Tests\Concerns\SignsOutElsewhere;
 
 /**
  * 仕入れ案件の登録（原価の行つき）・詳細の原価（削除・試算表の取込。追加・編集は CostGridScreenTest）・一覧のステータスの小窓を、
@@ -13,6 +14,8 @@ use Illuminate\Support\Facades\Route;
  */
 class ProcurementScreensTest extends RealEstateScreenTestCase
 {
+    use SignsOutElsewhere;
+
     private const DETAIL_SCRIPTS = ['function costExcelImporterFactory(', 'function costGridFactory('];
 
     public function test_a_procurement_is_registered_from_the_screen_with_a_cost_row(): void
@@ -181,6 +184,41 @@ class ProcurementScreensTest extends RealEstateScreenTestCase
 
         $this->assertSame([self::EXPIRED_JSON_MESSAGE], $after['alerts']);
         $this->assertSame(['assessment'], $after['evaluated'], '断られたのに画面のステータスが変わった');
+        $this->assertSame('assessment', $procurement->fresh()->status->value);
+    }
+
+    /** ほかの画面でパスワードを変えたあとにステータスを変えると、ログインが切れて 401 になる。理由が日本語で出る（直す前は「…（401）」） */
+    public function test_a_status_change_after_the_password_changed_elsewhere_says_why(): void
+    {
+        $procurement = $this->procurement(['status' => 'assessment']);
+        $html = $this->htmlOf(route('realestate.procurements.index'));
+        $steps = 'data.select(data.options.find(function (o) { return o.value === "negotiating"; }));';
+        $factory = $this->xData($html, 'realestateStatusCell');
+
+        $request = $this->driveAlpine($html, 'realestateStatusCell', $factory, $steps)['requests'][0];
+        $this->changePasswordElsewhere();
+        $response = $this->sendCaptured($request)->assertUnauthorized();
+        $after = $this->driveAlpine($html, 'realestateStatusCell', $factory, $steps, [$this->asFetchResponse($response)], true, ['value']);
+
+        $this->assertSame([self::SIGNED_OUT_JSON_MESSAGE], $after['alerts']);
+        $this->assertSame(['assessment'], $after['evaluated'], '断られたのに画面のステータスが変わった');
+        $this->assertSame('assessment', $procurement->fresh()->status->value);
+    }
+
+    /** 管理者に無効にされたあとにステータスを変えると、無効の理由が出る（直す前は「…（401）」） */
+    public function test_a_status_change_by_a_deactivated_user_says_why(): void
+    {
+        $procurement = $this->procurement(['status' => 'assessment']);
+        $html = $this->htmlOf(route('realestate.procurements.index'));
+        $steps = 'data.select(data.options.find(function (o) { return o.value === "negotiating"; }));';
+        $factory = $this->xData($html, 'realestateStatusCell');
+
+        $request = $this->driveAlpine($html, 'realestateStatusCell', $factory, $steps)['requests'][0];
+        $this->deactivateSignedInUser();
+        $response = $this->sendCaptured($request)->assertUnauthorized();
+        $after = $this->driveAlpine($html, 'realestateStatusCell', $factory, $steps, [$this->asFetchResponse($response)]);
+
+        $this->assertSame([self::INACTIVE_JSON_MESSAGE], $after['alerts']);
         $this->assertSame('assessment', $procurement->fresh()->status->value);
     }
 

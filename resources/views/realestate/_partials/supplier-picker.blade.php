@@ -258,6 +258,9 @@ function supplierPicker() {
                         }
                     }
                     self.quickError = firstError || result.data.message || '入力内容に誤りがあります。';
+                } else if (result.status === 401 && result.data && typeof result.data.message === 'string' && result.data.message !== '') {
+                    // 401（ほかの画面でパスワードが変わった・無効にされた）はサーバーの日本語の理由を出す（Bug #137）。ほかは番号つきの今の文
+                    self.quickError = result.data.message;
                 } else {
                     self.quickError = '登録に失敗しました（' + result.status + '）';
                 }
