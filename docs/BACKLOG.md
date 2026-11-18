@@ -6190,7 +6190,7 @@ ssh での本番の読み取り（md5・コンパイル済みビューの lint�
 ### 検証
 
 - 道具の確かめは、道具を直す前に 3 本が「`'resolved'` で本文の文字がそのまま返る」で赤を確かめてから直した。画面の 6 か所のテストは守りのテスト（書いた時点で緑）
-- 変異 15 通り（カナリアを含む・作業場所の `.claude/route-coverage-tools/mutate/specs_save_ajax_401_minors.py`・実行役 `run_sa401m.py`・結果は `results-save-ajax-401-minors.*`。関係するテスト 1336 本で）すべて期待どおり（落ちたテストの組と理由の文まで）: カナリア・道具を直す前に戻す（`FakeFetchJsonTest` の 3 本だけが落ち、画面のテストは緑）・JSON でない文字で null を返す・5 か所の `.catch(function() { return null; })` を 1 つずつ外す（外側の catch の文で落ちる）・5 か所の `body && ` を 1 つずつ外す・仕入れ先の `.catch(… data: {} …)` を外す・仕入れ先の `typeof … === 'string' && ` を外す
+- 変異 15 通り（カナリアを含む・main repo の `.claude/route-coverage-tools/mutate/specs_save_ajax_401_minors.py`（作業場所で流して写した）・実行役 `run_sa401m.py`・結果は `results-save-ajax-401-minors.*`。関係するテスト 1336 本で）すべて期待どおり（落ちたテストの組と理由の文まで）: カナリア・道具を直す前に戻す（`FakeFetchJsonTest` の 3 本だけが落ち、画面のテストは緑）・JSON でない文字で null を返す・5 か所の `.catch(function() { return null; })` を 1 つずつ外す（外側の catch の文で落ちる）・5 か所の `body && ` を 1 つずつ外す・仕入れ先の `.catch(… data: {} …)` を外す・仕入れ先の `typeof … === 'string' && ` を外す
 - 画面（ビュー）は変えていないので、ビューの lint と実ブラウザの確認はしていない
 
 ### 範囲外（気づいたが直していない）
