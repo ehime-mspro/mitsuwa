@@ -218,6 +218,22 @@ class PropertyScreensTest extends HousingScreenTestCase
         $this->assertSame(['進捗ステータスの更新に失敗しました（404）'], $after['alerts']);
     }
 
+    /** 419・401 でも本文が JSON でない（HTML で返った）ときは、番号つきの今の文（読めない本文を理由として出さない） */
+    public function test_a_status_change_answered_with_html_keeps_the_numbered_message(): void
+    {
+        $before = $this->property()->status;
+        $html = $this->htmlOf(route('housing.properties.index'));
+        $factory = $this->xData($html, 'housingPropertyStatusCell');
+        $steps = 'data.select(data.options.find(function (o) { return o.value === "construction"; }));';
+
+        foreach ([419, 401] as $status) {
+            $after = $this->driveAlpine($html, 'housingPropertyStatusCell', $factory, $steps, [$this->htmlResponse($status)], true, ['value']);
+
+            $this->assertSame(["進捗ステータスの更新に失敗しました（{$status}）"], $after['alerts'], "{$status}: 番号つきの今の文でない");
+            $this->assertSame([$before->value], $after['evaluated'], "{$status}: 断られたのに画面のステータスが変わった");
+        }
+    }
+
     public function test_a_file_is_deleted_from_the_detail_screen(): void
     {
         Storage::fake('public');

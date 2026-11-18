@@ -193,6 +193,22 @@ class ProjectScreensTest extends RealEstateScreenTestCase
         $this->assertSame(['ステータスの更新に失敗しました（404）'], $after['alerts']);
     }
 
+    /** 419・401 でも本文が JSON でない（HTML で返った）ときは、番号つきの今の文（読めない本文を理由として出さない） */
+    public function test_a_status_change_answered_with_html_keeps_the_numbered_message(): void
+    {
+        $this->project(['status' => 'info_obtained']);
+        $html = $this->htmlOf(route('realestate.projects.index'));
+        $steps = 'data.select(data.options.find(function (o) { return o.value === "assessment"; }));';
+        $factory = $this->xData($html, 'projectStatusCell');
+
+        foreach ([419, 401] as $status) {
+            $after = $this->driveAlpine($html, 'projectStatusCell', $factory, $steps, [$this->htmlResponse($status)], true, ['value']);
+
+            $this->assertSame(["ステータスの更新に失敗しました（{$status}）"], $after['alerts'], "{$status}: 番号つきの今の文でない");
+            $this->assertSame(['info_obtained'], $after['evaluated'], "{$status}: 断られたのに画面のステータスが変わった");
+        }
+    }
+
     /**
      * 区画の画面の合計のカード（区画数・面積合計・販売価格合計・原価合計・粗利合計・粗利率）は 1 行の flex で、
      * 375px では 207px 横にはみ出した（2026-10-07 に実ブラウザで実測）。折り返す。

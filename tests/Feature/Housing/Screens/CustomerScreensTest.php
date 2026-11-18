@@ -219,6 +219,12 @@ class CustomerScreensTest extends HousingScreenTestCase
         $this->assertTrue(str_contains($state[2], trans('validation.max.string', ['attribute' => '都道府県', 'max' => 10])), '断られた理由が小窓に出ない: ' . $state[2]);
     }
 
+    /** 小窓を開いて必須の欄を入れ、登録（$op = submitModal）か重複の確認（$op = checkDup）を押す */
+    private function modalSteps(string $op): string
+    {
+        return 'data.openModal(); data.f.last_name = "高橋"; data.f.first_name = "花子"; data.f.acquired_date = "2026-10-01"; data.' . $op . '();';
+    }
+
     /**
      * 小窓の登録（$op = submitModal）か重複の確認（$op = checkDup）を、要求を組んだあとで $before を走らせてから送り、応答を小窓に戻す。
      *
@@ -228,7 +234,7 @@ class CustomerScreensTest extends HousingScreenTestCase
     {
         $property = $this->property();
         $html = $this->htmlOf(route('housing.contracts.create', $property));
-        $steps = 'data.openModal(); data.f.last_name = "高橋"; data.f.first_name = "花子"; data.f.acquired_date = "2026-10-01"; data.' . $op . '();';
+        $steps = $this->modalSteps($op);
         $factory = $this->xData($html, 'buyerSelect');
 
         $request = $this->driveAlpine($html, 'buyerSelect', $factory, $steps)['requests'][0];
@@ -283,6 +289,21 @@ class CustomerScreensTest extends HousingScreenTestCase
             $this->assertSame([$message, true], $state, "{$op}: 番号つきの今の文でない");
             $this->user->role = UserRole::Executive;
             $this->user->save();
+        }
+    }
+
+    /** 419・401 でも本文が JSON でない（HTML で返った）ときは、番号つきの今の文（読めない本文を理由として出さない） */
+    public function test_the_buyer_modal_keeps_the_numbered_message_when_the_body_is_not_json(): void
+    {
+        $html = $this->htmlOf(route('housing.contracts.create', $this->property()));
+        $factory = $this->xData($html, 'buyerSelect');
+
+        foreach (['submitModal' => '登録に失敗しました', 'checkDup' => '重複チェックに失敗しました'] as $op => $message) {
+            foreach ([419, 401] as $status) {
+                $after = $this->driveAlpine($html, 'buyerSelect', $factory, $this->modalSteps($op), [$this->htmlResponse($status)], true, ['error', 'modalOpen']);
+
+                $this->assertSame(["{$message}（{$status}）", true], $after['evaluated'], "{$op} {$status}: 番号つきの今の文でないか、小窓が閉じた");
+            }
         }
     }
 

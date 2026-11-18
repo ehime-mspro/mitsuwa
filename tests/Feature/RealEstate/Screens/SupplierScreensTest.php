@@ -175,6 +175,17 @@ class SupplierScreensTest extends RealEstateScreenTestCase
         $this->assertSame(0, ReSupplier::count());
     }
 
+    /** 401 でも本文が JSON でない（HTML で返った）ときは、番号つきの今の文（読めない本文を理由として出さない） */
+    public function test_the_quick_registration_keeps_the_numbered_message_when_the_body_is_not_json(): void
+    {
+        $html = $this->htmlOf(route('realestate.procurements.create'));
+        $withPicker = ['function supplierPicker('];
+
+        $after = $this->driveAlpine($html, 'procurementForm', 'procurementForm()', self::QUICK, [$this->htmlResponse(401)], true, ['quickError', 'quickModalOpen'], $withPicker);
+
+        $this->assertSame(['登録に失敗しました（401）', true], $after['evaluated']);
+    }
+
     // ============================================================
     // 仕入れ案件・分譲地の編集画面の「選んでいる仕入れ先」（JS に名前を渡す）
     // ============================================================

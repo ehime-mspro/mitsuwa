@@ -237,4 +237,20 @@ class ProcurementScreensTest extends RealEstateScreenTestCase
 
         $this->assertSame(['ステータスの更新に失敗しました（404）'], $after['alerts']);
     }
+
+    /** 419・401 でも本文が JSON でない（HTML で返った）ときは、番号つきの今の文（読めない本文を理由として出さない） */
+    public function test_a_status_change_answered_with_html_keeps_the_numbered_message(): void
+    {
+        $this->procurement(['status' => 'assessment']);
+        $html = $this->htmlOf(route('realestate.procurements.index'));
+        $steps = 'data.select(data.options.find(function (o) { return o.value === "negotiating"; }));';
+        $factory = $this->xData($html, 'realestateStatusCell');
+
+        foreach ([419, 401] as $status) {
+            $after = $this->driveAlpine($html, 'realestateStatusCell', $factory, $steps, [$this->htmlResponse($status)], true, ['value']);
+
+            $this->assertSame(["ステータスの更新に失敗しました（{$status}）"], $after['alerts'], "{$status}: 番号つきの今の文でない");
+            $this->assertSame(['assessment'], $after['evaluated'], "{$status}: 断られたのに画面のステータスが変わった");
+        }
+    }
 }
