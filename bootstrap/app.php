@@ -104,6 +104,8 @@ return Application::configure(basePath: dirname(__DIR__))
         //    「Unauthenticated.」が出ていた。保存の Ajax で 401 が出るのは、ほかの画面でパスワードを変えたときなどまれ）。
         //    GET は英語のまま（_partials/_ajax_get_failure が英語の 401 で「ログインが切れた」を見分け、「入力中の内容があれば控えて」と
         //    案内する）。原価のカード（realEstateCostAccessError）はこの文と比べて見分ける。文は AuthController::SIGNED_OUT_MESSAGE。
+        //    HEAD も「GET 以外」として日本語の側を通る（isMethod('GET') は HEAD を GET と数えない）。ただし HEAD の応答は本文が空になる
+        //    （2026-11-18 に実測: 401・本文なし）ので、どちらの文でも見え方は変わらない。画面の JS も HEAD を送らない。
         // ⚠ 419 は、Laravel が TokenMismatchException を HttpException(419) に置き換えてから render を呼ぶので、HttpException で受けて番号を見る
         $exceptions->render(function (\Symfony\Component\HttpKernel\Exception\HttpException $e, \Illuminate\Http\Request $request) {
             if ($e->getStatusCode() === 419 && $request->expectsJson()) {
