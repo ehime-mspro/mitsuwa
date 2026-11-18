@@ -22,6 +22,19 @@ class FreshCsrfTokenTest extends TestCase
 {
     private const INCLUDE = "@include('_partials._fresh_csrf_token')";
 
+    private const TOKEN_META = '<meta name="csrf-token"';
+
+    /** 送信の鍵を持たない HTML の画面（ビュー => 理由）。部品を読まなくてよい */
+    private const DOCUMENTS_WITHOUT_TOKEN = [
+        'approvals/login-guide.blade.php' => 'ログイン案内の印刷用の画面。フォームも送信の鍵も持たない',
+    ];
+
+    /** 走査が必ず拾うはずのレイアウト（拾えなければ走査が壊れている） */
+    private const KNOWN_LAYOUTS = ['layouts/app.blade.php', 'components/guest-layout.blade.php'];
+
+    /** HTML の画面の数の下限（2026-11-18 実測 3: 2 つのレイアウトとログイン案内） */
+    private const MIN_DOCUMENTS = 3;
+
     /**
      * 部品の script を node の vm で読み込み、$steps（JavaScript）を走らせて、result に入れた値を返す。
      *
@@ -237,21 +250,92 @@ class FreshCsrfTokenTest extends TestCase
     }
 
     /**
-     * 部品は 2 つのレイアウトの head で、鍵のメタの直後・@vite（ページの script）より前にある。
+     * HTML の画面（`<html` を持つビュー）と、鍵のメタを宣言するビューは、どれも
+     * 鍵のメタの直後・@vite（ページの script）より前で部品をちょうど 1 回読み込む。
+     * 送信の鍵を持たない画面だけは、理由を書いて DOCUMENTS_WITHOUT_TOKEN に載せる。
+     *
      * ⚠ 後ろに置くと、画面を開いた時にメタを読む script が古い鍵を読む
+     * ⚠ 2 つのレイアウトを手書きの配列で見ていた頃は、どこからも使われていない components/app-layout
+     *   （鍵のメタを持つのに部品を読まない）が検査の外にあった（2026-11-18 に消した）。
+     *   全件を走査するので、新しいレイアウトを足すと自動で検査に入る（Top trap #13）
      */
-    public function test_the_partial_sits_right_after_the_token_meta_in_both_layouts(): void
+    public function test_every_html_document_reads_the_partial_right_after_the_token_meta(): void
     {
-        foreach (['layouts/app.blade.php', 'components/guest-layout.blade.php'] as $view) {
-            $source = (string) preg_replace('/\{\{--.*?--\}\}/s', '', File::get(resource_path('views/' . $view)));
+        $documents = [];
+        $problems = [];
 
-            $this->assertSame(1, substr_count($source, self::INCLUDE), "{$view} が部品をちょうど 1 回読み込んでいない");
-            $meta = strpos($source, '<meta name="csrf-token"');
-            $include = strpos($source, self::INCLUDE);
-            $vite = strpos($source, '@vite(');
-            $this->assertNotFalse($meta, "{$view} に鍵のメタが無い");
-            $this->assertNotFalse($vite, "{$view} に @vite が無い");
-            $this->assertTrue($meta < $include && $include < $vite, "{$view} の部品が鍵のメタの直後・@vite より前にない");
+        foreach (File::allFiles(resource_path('views')) as $file) {
+            if (! str_ends_with($file->getFilename(), '.blade.php')) {
+                continue;
+            }
+            $view = str_replace(DIRECTORY_SEPARATOR, '/', $file->getRelativePathname());
+            // コメントに書いた説明を本物と数えない
+            $source = (string) preg_replace('/\{\{--.*?--\}\}/s', '', $file->getContents());
+
+            $isDocument = stripos($source, '<html') !== false;
+            if ($isDocument) {
+                $documents[] = $view;
+            }
+            if (! $isDocument && ! str_contains($source, self::TOKEN_META)) {
+                continue;
+            }
+
+            if (array_key_exists($view, self::DOCUMENTS_WITHOUT_TOKEN)) {
+                foreach (['@csrf', 'csrf_token(', 'csrf-token', '<form'] as $needle) {
+                    if (stripos($source, $needle) !== false) {
+                        $problems[] = "{$view} は送信の鍵を持たない画面として分類しているのに {$needle} がある";
+                    }
+                }
+
+                continue;
+            }
+
+            $problems = [...$problems, ...$this->partialPlacementProblems($view, $source)];
         }
+
+        foreach (array_keys(self::DOCUMENTS_WITHOUT_TOKEN) as $view) {
+            if (! in_array($view, $documents, true)) {
+                $problems[] = "分類表の {$view} が実在しないか、HTML の画面でない";
+            }
+        }
+
+        // 走査の空振りを先に止める（後ろに置くと、見つからない理由が別の文で報告される）
+        $this->assertGreaterThanOrEqual(self::MIN_DOCUMENTS, count($documents), 'HTML の画面を拾えていない（走査が機能していない）: ' . implode(', ', $documents));
+        foreach (self::KNOWN_LAYOUTS as $layout) {
+            $this->assertContains($layout, $documents, "{$layout} を HTML の画面として拾えていない（走査が機能していない）");
+        }
+
+        $this->assertSame([], $problems, implode("\n", $problems));
+    }
+
+    /**
+     * 鍵のメタがちょうど 1 つ・部品がちょうど 1 回・並びが メタ → 部品 → @vite でなければ、理由を返す。
+     *
+     * @return list<string>
+     */
+    private function partialPlacementProblems(string $view, string $source): array
+    {
+        $problems = [];
+        if (substr_count($source, self::TOKEN_META) !== 1) {
+            $problems[] = "{$view} に鍵のメタがちょうど 1 つない";
+        }
+        if (substr_count($source, self::INCLUDE) !== 1) {
+            $problems[] = "{$view} が部品をちょうど 1 回読み込んでいない";
+        }
+        if (strpos($source, '@vite(') === false) {
+            $problems[] = "{$view} に @vite が無い";
+        }
+        if ($problems !== []) {
+            return $problems;
+        }
+
+        $meta = strpos($source, self::TOKEN_META);
+        $include = strpos($source, self::INCLUDE);
+        $vite = strpos($source, '@vite(');
+        if (! ($meta < $include && $include < $vite)) {
+            $problems[] = "{$view} の部品が鍵のメタの直後・@vite より前にない";
+        }
+
+        return $problems;
     }
 }
