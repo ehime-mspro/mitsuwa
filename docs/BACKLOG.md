@@ -6166,6 +6166,41 @@ ssh での本番の読み取り（md5・コンパイル済みビューの lint�
 
 ---
 
+## ✅ 保存の Ajax の 401 の後回し 3 つ（Bug #137 の追記）— テストとコメントだけ（本番への反映は不要）
+
+計画: `~/.claude/plans/adaptive-growing-canyon.md`（リポジトリの外。要点はこの節と docs/RULES.md の Bug #137 の追記）
+
+上の節の最後の点検で後回しにした 3 つを、利用者の選択（2026-11-18）で片付けた。
+作業場所 `.claude/worktrees/save-ajax-401-minors`・枝 `save-ajax-401-minors`（13.x = `df4a02be` から）。
+**アプリで変わるのは `bootstrap/app.php` のコメントだけ**（動きは変わらない）。DB・ルート・ビュー・依存の変更なし。
+
+| # | 直す前 | 直したこと |
+|---|---|---|
+| 1 | 番号だけだった 6 か所（一覧のステータスの小窓 3・買主の小窓の登録と重複の確認・仕入れ先の簡易登録）に「本文が JSON でない 419・401」のテストが無い。⚠ しかもテストの道具の偽の fetch の `json()` は本文が文字でもそのまま返す（本物のブラウザは失敗する）ので、テストを書いても画面の `r.json().catch(…)` を消して緑のままだった | 偽の fetch の `json()` を本物に合わせた（本文が文字なら生の本文として JSON で読み、読めなければ SyntaxError で失敗。文字でない本文〈`asFetchResponse()` が読んだ値〉は今までどおり）。`htmlResponse(int $status)` を足し、6 か所に `htmlResponse(419 / 401)` で番号つきの文が出るテストを足した（画面のコードは変えていない） |
+| 2 | `bootstrap/app.php` の条件 `! $request->isMethod('GET')` で HEAD も日本語の側を通ることが書かれていない | 使い捨てのテストで実測（HEAD の JSON の 401 は本文が空）し、「HEAD も日本語の側を通るが本文が空なので見え方は同じ・画面の JS も HEAD を送らない」と書いた |
+| 3 | `SignedOutSaveResponseTest` の説明が「ログインの無い保存（利用者が消された・**ログアウトした**）」「AuthenticateSession がログインを切り、**認証の確かめが 401 にする**」 | ほかの画面でログアウトしたときは `AuthController::logout()` が鍵を作り直すので、本物のブラウザでは先に 419（テストは鍵の確かめを飛ばすので 401 になるだけ）。パスワードが変わったときは auth が先に通り、AuthenticateSession 自身が AuthenticationException を投げる（Laravel の優先順で auth が先）。ルートは見本（`web`・`auth` だけ）で画面の別名は通らない、と書いた。`SignsOutElsewhere` の説明も同じ誤りを直した |
+
+| 区分 | 実装内容 |
+|------|---------|
+| テストの道具 | `tests/Concerns/DrivesAlpineFetch.php`（偽の fetch の `json()`・`htmlResponse()`・`driveAlpine()` の説明）／ 新規 `tests/Feature/FakeFetchJsonTest.php`（4 本） |
+| テスト | `RealEstate\Screens\{Procurement,Project,Supplier}ScreensTest`・`Housing\Screens\{Property,Customer}ScreensTest` に 1 本ずつ（買主の小窓の手順は `modalSteps()` にまとめた） |
+| コメント・説明 | `bootstrap/app.php`・`tests/Feature/SignedOutSaveResponseTest.php`・`tests/Concerns/SignsOutElsewhere.php`（アサートは変えていない） |
+| 全件テスト | 5289 → **5298 tests / 55104 assertions green**（PHP 8.3.36・警告なし） |
+
+### 検証
+
+- 道具の確かめは、道具を直す前に 3 本が「`'resolved'` で本文の文字がそのまま返る」で赤を確かめてから直した。画面の 6 か所のテストは守りのテスト（書いた時点で緑）
+- 変異 15 通り（カナリアを含む・作業場所の `.claude/route-coverage-tools/mutate/specs_save_ajax_401_minors.py`・実行役 `run_sa401m.py`・結果は `results-save-ajax-401-minors.*`。関係するテスト 1336 本で）すべて期待どおり（落ちたテストの組と理由の文まで）: カナリア・道具を直す前に戻す（`FakeFetchJsonTest` の 3 本だけが落ち、画面のテストは緑）・JSON でない文字で null を返す・5 か所の `.catch(function() { return null; })` を 1 つずつ外す（外側の catch の文で落ちる）・5 か所の `body && ` を 1 つずつ外す・仕入れ先の `.catch(… data: {} …)` を外す・仕入れ先の `typeof … === 'string' && ` を外す
+- 画面（ビュー）は変えていないので、ビューの lint と実ブラウザの確認はしていない
+
+### 範囲外（気づいたが直していない）
+
+- `asFetchResponse()` はサーバーの HTML の応答を本文 null として渡す（本物のブラウザは json() が失敗する。今の 6 か所はどちらでも同じ結果になる）
+- 買主の小窓の登録の 422（`res.json().then(…)`）は json() の失敗を受け止めない（422 は Laravel の JSON で返るので通常は起きない）
+- 引き継ぎのほかの候補（番号だけの 8 か所の 403 の理由・26 か所の 401 の案内・初回のパスワード変更を強制されている人の Ajax・419 の画面の後回し・本番でログインした画面での確認）
+
+---
+
 ## バックログ完了状況
 
 優先度 1〜5 のすべてのバックログ項目が本番稼働中。周辺ビル調査は第1段（2026-08-17）・
@@ -6323,6 +6358,8 @@ lint（INVALID 0）と、ログイン済みの実 Chrome での目視まで確�
 **鍵の差し替えの部品を読まない HTML の画面を走査で止める（2026-11-18）**はテストと、使われていないビュー（`components/app-layout.blade.php`）1 本の削除だけで、本番の動きは変わらない（上の節。構造のテストが 2 つのレイアウトの手書きから、HTML の画面の全件の走査になった。全件 5264 本・変異 9 通り・ビュー 323 本の lint（INVALID 0）。`./deploy.sh` は本番のファイルを消さないので、本番の app-layout は残る＝消すなら ssh の承認のうえで）。
 
 **保存の Ajax でログインが切れた（401）ときに日本語の理由を出す（2026-11-18・Bug #137 の追記）**は 2026-11-18 に本番反映済み（上の節。ほかの画面でパスワードを変えた・利用者が消された、のあとの保存〈GET 以外〉の Ajax の 401 に、決裁と同じ日本語の文を返す。サーバーの文をそのまま出す 26 か所は画面を変えずに直り、番号だけの 8 か所は 401 でもサーバーの文を出す。GET の 401 は英語のまま・原価のカードは今の文のまま。全件 5289 本・変異 15 通り・ビュー 323 本の lint（INVALID 0）・実ブラウザで確認。`13.x` = `fd1e568b`〈反映のときは push していない〉・外から 419 と GET の 401 の文を確かめた。DB 変更・新しい PHP クラスなし・反映は `./deploy.sh` だけ）。
+
+**保存の Ajax の 401 の後回し 3 つ（2026-11-18・Bug #137 の追記）**はテストとコメントだけの変更で、本番の動きは変わらない（上の節。テストの道具の偽の fetch の `json()` を本物のブラウザに合わせ〈JSON でない本文で失敗する〉、番号だけだった 6 か所に「本文が JSON でない 419・401 は番号つきの文」のテストを足した。HEAD も日本語の側を通るが本文が空なので見え方は同じ、と `bootstrap/app.php` に書き、`SignedOutSaveResponseTest`・`SignsOutElsewhere` の説明の誤りを直した。全件 5298 本・変異 15 通り。アプリで変わるのは `bootstrap/app.php` のコメントだけなので、次の `./deploy.sh` で一緒に出ればよい）。
 
 その他の新規要件は別途追記する。
 
