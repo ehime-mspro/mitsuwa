@@ -9,6 +9,8 @@ use App\Models\Department;
 use App\Models\User;
 use Database\Seeders\DepartmentSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Testing\TestResponse;
 use Tests\Concerns\DrivesAlpineFetch;
@@ -38,7 +40,14 @@ class ExpiredSessionResponseTest extends TestCase
 
     private const PAGE_REASON = '画面を開いてから時間がたったか、ほかの画面でログアウトしたため、送れませんでした（何も保存していません）。';
 
-    private const PAGE_NEXT = 'ブラウザの「戻る」で前の画面に戻ると、入力した内容が残っていることがあります。控えてから画面を開き直して、もう一度やり直してください。';
+    /** ログインしたまま 419 になった（ほかの画面でログインし直した・「ログイン状態を保持」で自動でログインし直した） */
+    private const PAGE_NEXT_SIGNED_IN = '「前の画面に戻る」で戻ると、そのまま送り直せます。入力した内容が消えていたら、入れ直してください。';
+
+    /** ログインが切れて 419 になった（セッションが切れた・ほかの画面でログアウトした） */
+    private const PAGE_NEXT_SIGNED_OUT = 'ログインが切れています。「前の画面に戻る」で戻って入力した内容を控えてから、ログインし直して、もう一度入力してください（戻った画面から送ると、ログイン画面に移ります）。';
+
+    /** 419 の画面で送り直すフォームの新しいパスワード */
+    private const NEW_PASSWORD = 'NewPass1234';
 
     /** ログインの送信が古い鍵で断られたときに、ログイン画面の赤い帯に出す文（Bug #138） */
     private const EXPIRED_LOGIN_MESSAGE = '画面を開いてから時間がたったか、ほかの画面でログアウトしたため、ログインできませんでした。もう一度ログインしてください。';
@@ -46,8 +55,10 @@ class ExpiredSessionResponseTest extends TestCase
     /**
      * ふつうのフォームの送信（JSON を求めない）は、日本語の画面（resources/views/errors/419.blade.php）を番号 419 のまま返す。
      * ⚠ 直す前は Laravel の英語の画面「419 Page Expired」だった
+     * ⚠ 2 段落目と 2 つめのボタンはログインしているかで出し分ける。新しい鍵を残す script は両方にある
+     *   （「前の画面に戻る」で戻った画面の鍵を差し替える。FreshCsrfTokenTest）
      */
-    private function assertExpiredPage(TestResponse $response): void
+    private function assertExpiredPage(TestResponse $response, bool $signedIn): void
     {
         $response->assertStatus(419);
         $this->assertStringStartsWith('text/html', (string) $response->headers->get('Content-Type'));
@@ -57,9 +68,49 @@ class ExpiredSessionResponseTest extends TestCase
         $this->assertStringContainsString('<title>' . e(self::PAGE_TITLE . ' - ' . config('app.name', '経営管理システム')) . '</title>', $html, 'タブ名が「画面の有効期限が切れました - アプリ名」でない');
         $this->assertMatchesRegularExpression('/<h1\b[^>]*>\s*' . preg_quote(self::PAGE_TITLE, '/') . '\s*<\/h1>/u', $html, '見出しが無い');
         $this->assertMatchesRegularExpression('/<p\b[^>]*>\s*' . preg_quote(e(self::PAGE_REASON), '/') . '\s*<\/p>/u', $html, '理由の文が無い');
-        $this->assertMatchesRegularExpression('/<p\b[^>]*>\s*' . preg_quote(e(self::PAGE_NEXT), '/') . '\s*<\/p>/u', $html, '次にすることの文が無い');
+        [$next, $other] = $signedIn ? [self::PAGE_NEXT_SIGNED_IN, self::PAGE_NEXT_SIGNED_OUT] : [self::PAGE_NEXT_SIGNED_OUT, self::PAGE_NEXT_SIGNED_IN];
+        $this->assertMatchesRegularExpression('/<p\b[^>]*>\s*' . preg_quote(e($next), '/') . '\s*<\/p>/u', $html, '次にすることの文が無い');
+        $this->assertStringNotContainsString(e($other), $html, 'もう一方の場合の文が出ている');
         $this->assertMatchesRegularExpression('/<button\b[^>]*\bonclick="history\.back\(\)"[^>]*>\s*前の画面に戻る\s*<\/button>/u', $html, '「前の画面に戻る」が無い');
-        $this->assertMatchesRegularExpression('/<a\b[^>]*\bhref="' . preg_quote(url('/'), '/') . '"[^>]*>\s*トップページへ\s*<\/a>/u', $html, '「トップページへ」が無い');
+        [$href, $label] = $signedIn ? [url('/'), 'トップページへ'] : [route('login'), 'ログイン画面へ'];
+        $this->assertMatchesRegularExpression('/<a\b[^>]*\bhref="' . preg_quote($href, '/') . '"[^>]*>\s*' . $label . '\s*<\/a>/u', $html, "「{$label}」が無い");
+        $this->assertStringNotContainsString($signedIn ? 'ログイン画面へ' : 'トップページへ', $html, 'もう一方の場合のボタンが出ている');
+        preg_match_all('/<script>(.*?)<\/script>/s', $html, $scripts);
+        $this->assertNotEmpty(array_filter($scripts[1], fn (string $s) => str_contains($s, 'window.rememberFreshCsrfToken()')), '鍵を残す script が無い');
+    }
+
+    /** 画面に描かれた送信の鍵（レイアウトの <meta name="csrf-token">） */
+    private function tokenOnPage(string $html): string
+    {
+        $this->assertSame(1, preg_match('/<meta name="csrf-token" content="([^"]+)">/', $html, $m), '鍵のメタが無い');
+
+        return $m[1];
+    }
+
+    /**
+     * 描いたパスワードの変更の画面のフォームを、鍵 $token で送る（今のパスワードは factory の password）。
+     * ⚠ call() でなく post()（withCookie で足した「ログイン状態を保持」の cookie を載せるため）
+     *
+     * @param  array{method: string, action: string, fields: array<string, mixed>}  $form
+     */
+    private function sendPasswordForm(array $form, string $token): TestResponse
+    {
+        return $this->post($form['action'], array_merge($form['fields'], [
+            'current_password'      => 'password',
+            'password'              => self::NEW_PASSWORD,
+            'password_confirmation' => self::NEW_PASSWORD,
+            '_token'                => $token,
+        ]));
+    }
+
+    /** パスワードの変更の画面を開き、描いたフォームを返す（鍵は今のセッションの鍵） */
+    private function openPasswordForm(User $user): array
+    {
+        $html = $this->actingAs($user)->get(route('password.change'))->assertOk()->getContent();
+        $form = $this->parseForm($html, 'action="' . route('password.update') . '"');
+        $this->assertNotSame('', $form['fields']['_token'] ?? '', 'フォームに @csrf が無い');
+
+        return $form;
     }
 
     /** ログインした人が、画面を開いたまま時間がたってからフォームを送る（パスワードの変更の画面で見る） */
@@ -73,7 +124,74 @@ class ExpiredSessionResponseTest extends TestCase
         $this->enforceCsrfToken();
         $response = $this->call('POST', $form['action'], array_merge($form['fields'], ['_token' => 'token-of-the-old-session']));
 
-        $this->assertExpiredPage($response);
+        $this->assertExpiredPage($response, true);
+    }
+
+    /**
+     * ほかの画面でログアウトしてログインし直した（ログインしたまま鍵が変わった）。419 の画面に描かれた鍵は今のセッションの鍵で、
+     * 「前の画面に戻る」で戻った画面の鍵をそれに差し替えれば（FreshCsrfTokenTest）、同じフォームがそのまま通る。
+     * ⚠ 直す前は戻った画面が古い鍵のままで、送るとまた 419 だった
+     */
+    public function test_a_signed_in_user_can_send_the_same_form_again_with_the_token_from_the_419_page(): void
+    {
+        $user = User::factory()->create(['role' => UserRole::Executive->value, 'must_change_password' => false]);
+        $form = $this->openPasswordForm($user);
+        $old = $form['fields']['_token'];
+        session()->regenerateToken();
+        $this->enforceCsrfToken();
+
+        $response = $this->sendPasswordForm($form, $old);
+        $this->assertExpiredPage($response, true);
+        $fresh = $this->tokenOnPage((string) $response->getContent());
+        $this->assertSame(session()->token(), $fresh, '419 の画面の鍵が今のセッションの鍵でない');
+        $this->assertNotSame($old, $fresh);
+
+        $this->sendPasswordForm($form, $fresh)->assertRedirect(route($user->homeRouteName()));
+        $this->assertTrue(Hash::check(self::NEW_PASSWORD, $user->fresh()->password), '送り直したフォームが保存されていない');
+    }
+
+    /**
+     * ログインが切れた（セッションが切れた・ほかの画面でログアウトした）。419 の画面はそう伝え、戻った画面から送ると
+     * 鍵は通ってログイン画面に移る（直す前は 419 の繰り返し）
+     */
+    public function test_a_signed_out_user_is_told_so_and_the_token_takes_the_form_to_the_login_page(): void
+    {
+        $user = User::factory()->create(['role' => UserRole::Executive->value, 'must_change_password' => false]);
+        $form = $this->openPasswordForm($user);
+        session()->invalidate();
+        $this->app['auth']->forgetGuards();
+        $this->enforceCsrfToken();
+
+        $response = $this->sendPasswordForm($form, $form['fields']['_token']);
+        $this->assertExpiredPage($response, false);
+        $this->assertGuest();
+
+        $this->sendPasswordForm($form, $this->tokenOnPage((string) $response->getContent()))->assertRedirect(route('login'));
+        $this->assertFalse(Hash::check(self::NEW_PASSWORD, $user->fresh()->password), 'ログインしていないのにパスワードが変わった');
+    }
+
+    /**
+     * 「ログイン状態を保持」の人は、セッションが切れても 419 の画面を描くときに自動でログインし直し、そこで鍵が変わる。
+     * ⚠ 419 の画面はログインしているかをメタ（レイアウト）より前に確かめるので、メタは変わったあとの鍵になる。
+     *   確かめる位置がメタより後ろだと、メタが古い鍵になり、送り直しがまた 419 になる
+     */
+    public function test_a_remembered_user_is_signed_back_in_and_the_page_carries_the_new_token(): void
+    {
+        $user = User::factory()->create(['role' => UserRole::Executive->value, 'must_change_password' => false]);
+        $form = $this->openPasswordForm($user);
+        session()->invalidate();
+        $this->app['auth']->forgetGuards();
+        $this->enforceCsrfToken();
+        $this->withCookie(Auth::guard('web')->getRecallerName(), $user->id . '|' . $user->remember_token . '|' . $user->password);
+
+        $response = $this->sendPasswordForm($form, $form['fields']['_token']);
+        $this->assertExpiredPage($response, true);
+        $this->assertAuthenticatedAs($user);
+        $fresh = $this->tokenOnPage((string) $response->getContent());
+        $this->assertSame(session()->token(), $fresh, '419 の画面の鍵が、自動でログインし直したあとの鍵でない');
+
+        $this->sendPasswordForm($form, $fresh)->assertRedirect(route($user->homeRouteName()));
+        $this->assertTrue(Hash::check(self::NEW_PASSWORD, $user->fresh()->password), '送り直したフォームが保存されていない');
     }
 
     /**
