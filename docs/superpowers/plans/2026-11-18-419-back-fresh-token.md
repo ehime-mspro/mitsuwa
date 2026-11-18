@@ -289,3 +289,40 @@ git commit -m "fix: 419 の画面が新しい鍵を残し、ログインして�
 git add docs/RULES.md docs/BACKLOG.md docs/superpowers/plans/2026-11-18-419-back-fresh-token.md
 git commit -m "docs: 419 の画面から戻った画面を送り直せるようにした件を記録する" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
+
+---
+
+## 実測記録（2026-11-18）
+
+**Task 1・2**: 新しいテストは直す前に赤（Task 1: `View [_partials._fresh_csrf_token] not found`・include が 0 ／ Task 2: 4 本が `次にすることの文が無い`。ログインの 419 の 5 本は緑のまま）→ 直して緑。
+
+**Task 3**:
+- 1 回目の全件で決裁の 2 本（`ApprovalUserManagementTest`・`LedgerScreenTest` の `test_the_filter_form_is_reset_whenever_the_page_is_shown`）が赤 — ページ全体の `pageshow` を「ちょうど 1 つ」と数えていた（レイアウトの部品が全画面に 1 つ足す）。計画の漏れ。新しいトレイト `Tests\Concerns\RemovesFreshCsrfTokenScript` で部品の script を除いてから（ちょうど 1 回描かれていることも確かめて）数える形にした（`62ca7506`）。部品の側を走査から逃がす形は採らない
+- 全件 **OK (5264 tests, 54768 assertions)**・警告なし ／ コンパイル済みビュー **324 本 / INVALID 0**
+- 変異（V5 は台帳の Ruling で足した）: 16 通りすべて MATCH。1 回目は V2 だけ DIFF＝表の期待が狭かった（`$signedIn = true` に固定すると `auth()->check()` も消え、「ログイン状態を保持」の人がメタを描く前にログインし直さないので remembered も鍵のアサートで落ちる）→ 期待を直して V2 だけ流し直し MATCH
+- 気づき: remembered のテストの `assertAuthenticatedAs` はテスト自身が自動のログインを起こすので、419 の画面がログインし直した証にはならない（鍵の `assertSame` が代わりに捕まえる＝V2・V4・V5）
+
+| id | 結果 | 落ちたテスト（理由） |
+|---|---|---|
+| C0 | MATCH | 419 の画面を見る 4 本（見出しが無い） |
+| P1 | MATCH | normal load の 2 データ |
+| P2 | MATCH | back・normal load 2・bfcache（残した鍵を消していない） |
+| P3 | MATCH | back（head で走った時点でメタが差し替わっていない） |
+| P4 | MATCH | back（本文を読み終えた時点で…差し替わっていない） |
+| P5 | MATCH | back（ブラウザがフォームの値を戻したあと…） |
+| P6 | MATCH | bfcache（メタを差し替えていない） |
+| P7 | MATCH | 使えない storage の 2 データ（例外で止まった） |
+| P8 | MATCH | 419 の画面が鍵を残すテスト |
+| L1 | MATCH | 構造（app レイアウトが部品を読み込んでいない） |
+| L2 | MATCH | 構造（guest レイアウトの部品が @vite より前にない） |
+| V1 | MATCH | 419 の画面を見る 4 本（鍵を残す script が無い） |
+| V2 | MATCH（2 回目） | signed out（文）・remembered（鍵） |
+| V3 | MATCH | 既存・signed in・remembered（文） |
+| V4 | MATCH | remembered（文） |
+| V5 | MATCH | signed out（文）・remembered（自動でログインし直したあとの鍵でない） |
+
+**Task 4**（使い捨ての SQLite・`artisan serve`・Playwright の Chromium・テナントの顧客の登録）:
+- ①タブ B でログアウトしてログインし直す → タブ A で登録 → 419（ログインしている文・「トップページへ」・残した鍵＝今の鍵）→「前の画面に戻る」は HTTP のキャッシュ（`window` の目印が消え、種類 `back_forward`。bfcache は使わなかった）・名前と種別は残り、`_token` 2 つとメタが新しい鍵 → そのまま登録で顧客 1 件だけ増えた
+- ②cookie を消す → 419（ログインが切れている文・「ログイン画面へ」）→ 戻る → 登録でログイン画面（419 でない）
+- ③419 の画面は 375・1440px で横スクロール 0・カードは枠の中・`pageerror` 0（コンソールは意図した 419 の読み込みの失敗だけ）
+- 後片付け済み（routes/web.php を戻した・build のリンクと写真を消した）
