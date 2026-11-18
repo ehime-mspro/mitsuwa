@@ -6,6 +6,9 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    {{-- 419 の画面から「戻る」で戻った画面の鍵を新しい鍵に差し替える（419 の画面は前の鍵を消してから新しい鍵を残す）。
+         ⚠ 鍵のメタの直後・ページの script より前（FreshCsrfTokenTest） --}}
+    @include('_partials._fresh_csrf_token')
     <title>{{ $title ? $title . ' - ' : '' }}{{ config('app.name', '経営管理システム') }}</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
