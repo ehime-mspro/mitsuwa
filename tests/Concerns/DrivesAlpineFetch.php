@@ -46,7 +46,9 @@ trait DrivesAlpineFetch
      * $factory でコンポーネントを作って $steps を走らせる。
      *
      * @param  string  $steps  `data`（コンポーネント）を操る JS。例 `data.startAdd(); data.newName = '新店'; data.submitAdd();`
-     * @param  array<int, array{status: int, body: mixed}|array{network_error: true}>  $responses  fetch / XMLHttpRequest に順に返す応答（通信の失敗は networkFailure()。XMLHttpRequest だけ）。足りなければ要求は保留のまま
+     * @param  array<int, array{status: int, body: mixed}|array{network_error: true}>  $responses  fetch / XMLHttpRequest に順に返す応答（通信の失敗は networkFailure()。XMLHttpRequest だけ）。足りなければ要求は保留のまま。
+     *                                                                                    body が文字なら本文の生の文字（fetch の json() は JSON として読み、読めなければ失敗＝ htmlResponse()。
+     *                                                                                    XMLHttpRequest の responseText はその文字）。文字でなければ読んだあとの値（asFetchResponse()）
      * @param  array<int, string>  $evaluate  $steps のあとに JS の状態で評価する式（結果は `evaluated` に同じ順で入る）
      * @param  array<int, string>  $withScripts  一緒に読む `<script>` の目印（その文字列を含む script がちょうど 1 つずつ。
      *                                            $function の script より先に読む）。コンポーネントが別の script の関数
@@ -447,6 +449,15 @@ trait DrivesAlpineFetch
     }
 
     /**
+     * driveAlpine() の $responses の 1 件: 本文が HTML で返った（JSON でない）。偽の fetch の json() はブラウザと同じく失敗し、
+     * 偽の XMLHttpRequest の responseText はこの文字になる。画面の「本文が読めないときは番号つきの文」を見るため
+     */
+    protected function htmlResponse(int $status): array
+    {
+        return ['status' => $status, 'body' => '<!DOCTYPE html><title>x</title>'];
+    }
+
+    /**
      * インラインのイベント属性（onsubmit など）の中身を、ブラウザと同じく関数の本体として組み立てて呼ぶ。
      * $code は属性の値を実体参照を戻したもの（ブラウザが JS に渡す文字列）。
      *
@@ -650,7 +661,12 @@ trait DrivesAlpineFetch
                 return Promise.resolve({
                     ok: response.status >= 200 && response.status < 300,
                     status: response.status,
-                    json() { return Promise.resolve(response.body); },
+                    // 本文が文字なら生の本文として、ブラウザと同じく JSON として読む（読めなければ SyntaxError で失敗。HTML の 401・419
+                    // など。htmlResponse()）。文字でない本文（配列・null。asFetchResponse() が読んだ値）はそのまま返す（今までどおり）
+                    json() {
+                        if (typeof response.body !== 'string') { return Promise.resolve(response.body); }
+                        return new Promise(function (resolve) { resolve(JSON.parse(response.body)); });
+                    },
                 });
             },
         });
