@@ -9,6 +9,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Tests\Concerns\BuildsApprovalFixtures;
+use Tests\Concerns\RemovesFreshCsrfTokenScript;
 use Tests\TestCase;
 
 /**
@@ -18,6 +19,7 @@ class LedgerScreenTest extends TestCase
 {
     use RefreshDatabase;
     use BuildsApprovalFixtures;
+    use RemovesFreshCsrfTokenScript;
 
     protected function setUp(): void
     {
@@ -214,7 +216,8 @@ class LedgerScreenTest extends TestCase
         $this->approvalWorld();
         $this->launchApprovals();
 
-        $html = $this->page($this->viewAllUser());
+        // レイアウトの鍵の差し替えの部品（全画面にある pageshow のリスナー）を除いてから、この画面のリスナーを数える
+        $html = $this->withoutFreshCsrfTokenScript($this->page($this->viewAllUser()));
 
         $this->assertSame(1, substr_count($html, "'pageshow'"), 'pageshow のリスナーがちょうど 1 つでない');
         $this->assertMatchesRegularExpression(

@@ -15,6 +15,7 @@ use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\ParsesForms;
 use Tests\Concerns\ReadsLoginGuide;
+use Tests\Concerns\RemovesFreshCsrfTokenScript;
 use Tests\TestCase;
 
 /**
@@ -30,6 +31,7 @@ class ApprovalUserManagementTest extends TestCase
     use RefreshDatabase;
     use ParsesForms;
     use ReadsLoginGuide;
+    use RemovesFreshCsrfTokenScript;
 
     private ApprovalDepartment $dept;
     private ApprovalDepartment $other;
@@ -185,6 +187,8 @@ class ApprovalUserManagementTest extends TestCase
     public function test_the_filter_form_is_reset_whenever_the_page_is_shown(): void
     {
         $html = $this->actingAs($this->admin())->get(route('approvals.admin.users.index'))->assertOk()->getContent();
+        // レイアウトの鍵の差し替えの部品（全画面にある pageshow のリスナー）を除いてから、この画面のリスナーを数える
+        $html = $this->withoutFreshCsrfTokenScript($html);
 
         preg_match_all('/<script\b([^>]*)>(.*?)<\/script>/s', $html, $scripts, PREG_SET_ORDER);
         $this->assertNotEmpty($scripts, 'script を拾えていない（走査の空振り）');
