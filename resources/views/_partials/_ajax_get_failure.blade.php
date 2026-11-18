@@ -1,8 +1,8 @@
 {{--
     断られた GET の Ajax の文を作る関数（設計メモ 2026-11-17-get-ajax-failure-design.md）。物件・分譲地を選んだときの
     区画などの取得・顧客や仕入れ先の検索・住所→〒が読む。
-    GET は送信の鍵を確かめないので、ログインが切れたときは 419 ではなく 401 になる。基幹の URL の 401 の本文は英語の
-    「Unauthenticated.」のまま（bootstrap/app.php。401 を日本語にするのは決裁の URL だけ）なので、文は画面で作る。
+    GET は送信の鍵を確かめないので、ログインが切れたときは 419 ではなく 401 になる。基幹の GET の 401 の本文は英語の
+    「Unauthenticated.」のまま（bootstrap/app.php。日本語にするのは基幹の GET 以外と決裁の URL。2026-11-18）なので、文は画面で作る。
 
     ajaxGetFailureMessage(status, body, what, fallback) の決まり（what は「空き区画を取得」の形）:
       1. 401・403 で本文の message に日本語（ASCII 以外の文字）がある → 「{what}できませんでした。」＋その理由

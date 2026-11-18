@@ -31,12 +31,17 @@
 --}}
 @php
     $costGridMessages = \App\Support\RealEstateCostGrid::MESSAGES;
+    $costGridSignedOutMessage = \App\Http\Controllers\Auth\AuthController::SIGNED_OUT_MESSAGE;
 @endphp
 <script>
 // ログインが切れた・無効にされた・権限が無いときの文（原価のカードの表の保存・試算表取込・削除で共通。この 3 つは同じ画面に一緒に載る）。
 //   419 … 鍵（CSRF）が合わない＝画面を開いてから時間がたってログインが切れた・ほかの画面でログアウトした
-//   401 … ログインが無い（サーバーの文は英語）・無効にされた（サーバーの文は日本語）／ 403 … 権限が無い（サーバーの文は日本語）
-// サーバーが日本語の理由を返していれば、その後ろに「何もしていない」を足す。どれでもなければ null（呼ぶ側の今の文を出す）。
+//   401 … ログインが切れた（ほかの画面でパスワードを変えた・利用者が消された。サーバーの文は「ログインが切れました。…」＝
+//         AuthController::SIGNED_OUT_MESSAGE。2026-11-18 までは英語の「Unauthenticated.」）・無効にされた（サーバーの文は日本語）
+//   403 … 権限が無い（サーバーの文は日本語）
+// サーバーが日本語の理由を返していれば、その後ろに「何もしていない」を足す。ただしログインが切れた 401 の文は、控えてから
+// 開き直す案内を出すために 419 と同じ文にする（文はサーバーの定数と比べる。JS に書き写さない）。
+// どれでもなければ null（呼ぶ側の今の文を出す）。
 // 断られた要求は何も書いていない（419・401 は確かめの段階で、403 は受け口に入る前に断られる）。
 function realEstateCostAccessError(status, body, action) {
     var words = {
@@ -44,8 +49,9 @@ function realEstateCostAccessError(status, body, action) {
         'import': ['取り込めませんでした（何も取り込んでいません）。', '何も取り込んでいません。', '画面を開き直してから、もう一度取り込んでください。'],
         'delete': ['削除できませんでした（何も削除していません）。', '何も削除していません。', '画面を開き直してから、もう一度削除してください。']
     }[action];
+    var signedOut = @json($costGridSignedOutMessage);
     var message = body && typeof body.message === 'string' ? body.message : '';
-    if ((status === 401 || status === 403) && /[^\x00-\x7f]/.test(message)) {
+    if ((status === 401 || status === 403) && /[^\x00-\x7f]/.test(message) && message !== signedOut) {
         return message + words[1];
     }
     if (status === 419 || status === 401) {

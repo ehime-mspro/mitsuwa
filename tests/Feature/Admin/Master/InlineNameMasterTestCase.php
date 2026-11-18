@@ -3,6 +3,7 @@
 namespace Tests\Feature\Admin\Master;
 
 use Illuminate\Support\Facades\DB;
+use Tests\Concerns\SignsOutElsewhere;
 
 /**
  * 一覧の中で追加・名前の変更・削除・ドラッグの並び替えをするマスタ（用途・構造・用途地域・原価項目）の共通のテスト。
@@ -16,6 +17,8 @@ use Illuminate\Support\Facades\DB;
  */
 abstract class InlineNameMasterTestCase extends MasterScreenTestCase
 {
+    use SignsOutElsewhere;
+
     /** ルートと URL の名前（例 usage-types） */
     abstract protected function prefix(): string;
 
@@ -223,6 +226,27 @@ abstract class InlineNameMasterTestCase extends MasterScreenTestCase
         $after = $this->driveAlpine($html, $this->jsFunction(), $factory, $steps, [$this->asFetchResponse($response)]);
 
         $this->assertSame([self::EXPIRED_JSON_MESSAGE], $after['alerts']);
+        $this->assertSame('', $after['state']['reorderMessage']);
+        $this->assertSame($this->names(), $this->namesInOrder(), '断られたのに並びが変わった');
+    }
+
+    /**
+     * ほかの画面でパスワードを変えた（管理者の再発行も同じ）あとにドラッグすると、ログインが切れて 401 になる。
+     * 理由が日本語で出て、並びは変わらない（直す前は英語の「Unauthenticated.」がそのまま出た）
+     */
+    public function test_dragging_after_the_password_changed_elsewhere_says_why(): void
+    {
+        $html = $this->htmlOf($this->indexUrl());
+        $factory = $this->xData($html, $this->jsFunction());
+        $ev = $this->dragEventJs();
+        $steps = "data.handleDragStart(0, {$ev}); data.handleDrop(1, {$ev});";
+
+        $request = $this->driveAlpine($html, $this->jsFunction(), $factory, $steps)['requests'][0];
+        $this->changePasswordElsewhere();
+        $response = $this->sendCaptured($request)->assertUnauthorized();
+        $after = $this->driveAlpine($html, $this->jsFunction(), $factory, $steps, [$this->asFetchResponse($response)]);
+
+        $this->assertSame([self::SIGNED_OUT_JSON_MESSAGE], $after['alerts']);
         $this->assertSame('', $after['state']['reorderMessage']);
         $this->assertSame($this->names(), $this->namesInOrder(), '断られたのに並びが変わった');
     }

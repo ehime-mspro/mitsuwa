@@ -18,6 +18,13 @@ class AuthController extends Controller
     public const EXPIRED_PAGE_MESSAGE = '画面を開いてから時間がたったか、ほかの画面でログアウトしたため、ログインできませんでした。もう一度ログインしてください。';
 
     /**
+     * ログインが切れた（ほかの画面でパスワードを変えた・管理者が再発行した・利用者が消された）ときの JSON の 401 の文。
+     * 返すのは bootstrap/app.php の AuthenticationException の render（決裁の URL と、基幹の GET 以外）。
+     * 原価のカード（realEstateCostAccessError）はこの文と比べて「ログインが切れた」側を見分ける。
+     */
+    public const SIGNED_OUT_MESSAGE = 'ログインが切れました。ログインし直してから、もう一度やり直してください。';
+
+    /**
      * ログインフォーム表示
      * Route: GET /login
      */

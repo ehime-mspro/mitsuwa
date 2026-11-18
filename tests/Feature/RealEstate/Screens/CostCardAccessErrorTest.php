@@ -9,6 +9,7 @@ use App\Models\ReProcurementCost;
 use App\Models\ReProjectCost;
 use Illuminate\Database\Eloquent\Model;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Tests\Concerns\SignsOutElsewhere;
 
 /**
  * 原価のカード（表の保存・試算表取込・削除）で、ログインが切れた・無効にされた・権限が無いときに出す文。
@@ -24,6 +25,8 @@ use PHPUnit\Framework\Attributes\DataProvider;
  */
 class CostCardAccessErrorTest extends RealEstateScreenTestCase
 {
+    use SignsOutElsewhere;
+
     private const DETAIL_SCRIPTS = ['function costExcelImporterFactory(', 'function costGridFactory('];
 
     private const EXPIRED = '画面を開いてから時間がたったか、ほかの画面でログアウトしたため、';
@@ -40,7 +43,7 @@ class CostCardAccessErrorTest extends RealEstateScreenTestCase
         $cases = [];
         foreach (['procurement' => '仕入れ案件', 'project' => '分譲地'] as $kind => $kindName) {
             foreach (['save' => '表の保存', 'import' => '取込', 'delete' => '削除'] as $op => $opName) {
-                foreach (['expired' => 'ログインが切れた', 'signedOut' => 'ログインが無い', 'inactive' => '無効にされた', 'forbidden' => '権限が無い'] as $case => $caseName) {
+                foreach (['expired' => 'ログインが切れた', 'signedOut' => 'ログインが無い', 'passwordChanged' => 'ほかの画面でパスワードを変えた', 'inactive' => '無効にされた', 'forbidden' => '権限が無い'] as $case => $caseName) {
                     $cases["{$kindName}・{$opName}・{$caseName}"] = [$kind, $op, $case];
                 }
             }
@@ -70,6 +73,12 @@ class CostCardAccessErrorTest extends RealEstateScreenTestCase
 
                 return self::EXPIRED . self::WORDS[$op][0] . self::WORDS[$op][2];
             })(),
+            // サーバーは日本語の「ログインが切れました。…」を返す（2026-11-18 から）が、カードはログインが切れた側の今の文を出す
+            'passwordChanged' => (function () use ($op) {
+                $this->changePasswordElsewhere();
+
+                return self::EXPIRED . self::WORDS[$op][0] . self::WORDS[$op][2];
+            })(),
             'inactive' => (function () use ($op) {
                 $this->user->status = UserStatus::Inactive;
                 $this->user->save();
@@ -87,7 +96,7 @@ class CostCardAccessErrorTest extends RealEstateScreenTestCase
         };
 
         $response = $this->sendCaptured($request);
-        $response->assertStatus(['expired' => 419, 'signedOut' => 401, 'inactive' => 401, 'forbidden' => 403][$case]);
+        $response->assertStatus(['expired' => 419, 'signedOut' => 401, 'passwordChanged' => 401, 'inactive' => 401, 'forbidden' => 403][$case]);
 
         $this->assertShown($kind, $html, $op, $response, $expected);
         $this->assertSame(1, $this->costsOf($kind, $owner)->count(), '何かが変わった');

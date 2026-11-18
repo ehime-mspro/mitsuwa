@@ -5,6 +5,7 @@ namespace Tests\Feature\Zeal;
 use App\Models\ZealStore;
 use Tests\Concerns\DrivesAlpineFetch;
 use Tests\Concerns\EnforcesCsrfToken;
+use Tests\Concerns\SignsOutElsewhere;
 
 /**
  * 店舗マスタ（Zeal\StoreController。追加・更新・削除は Ajax）。
@@ -16,6 +17,7 @@ class StoreMasterTest extends MemberScreenTestCase
 {
     use DrivesAlpineFetch;
     use EnforcesCsrfToken;
+    use SignsOutElsewhere;
 
     private function indexHtml(): string
     {
@@ -164,6 +166,23 @@ class StoreMasterTest extends MemberScreenTestCase
         $after = $this->driveAlpine($html, 'zealStoreManager', $factory, $steps, [$this->asFetchResponse($response)]);
 
         $this->assertSame(self::EXPIRED_JSON_MESSAGE, $after['state']['message']);
+        $this->assertSame('error', $after['state']['messageType']);
+        $this->assertNull(ZealStore::where('name', '大街道店')->first());
+    }
+
+    /** ほかの画面でパスワードを変えたあとに追加すると、ログインが切れて 401 になる。理由が日本語で出て、何も増えない */
+    public function test_adding_after_the_password_changed_elsewhere_says_why(): void
+    {
+        $html = $this->indexHtml();
+        $factory = $this->xData($html, 'zealStoreManager');
+        $steps = "data.startAdd(); data.newName = '大街道店'; data.submitAdd();";
+
+        $request = $this->driveAlpine($html, 'zealStoreManager', $factory, $steps)['requests'][0];
+        $this->changePasswordElsewhere();
+        $response = $this->sendCaptured($request)->assertUnauthorized();
+        $after = $this->driveAlpine($html, 'zealStoreManager', $factory, $steps, [$this->asFetchResponse($response)]);
+
+        $this->assertSame(self::SIGNED_OUT_JSON_MESSAGE, $after['state']['message']);
         $this->assertSame('error', $after['state']['messageType']);
         $this->assertNull(ZealStore::where('name', '大街道店')->first());
     }

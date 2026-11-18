@@ -18,7 +18,8 @@ use Tests\TestCase;
  *
  * ⚠ テストでは CSRF の確かめ（ValidateCsrfToken）が素通りするので、419 は例外そのものを投げる見本のルートで測る
  *   （送信の上限の 413 と同じ見方。RequestAttachmentTest）
- * ⚠ 419 の文は 2026-11-17 から基幹の URL でも同じ（Bug #137。本物の鍵の食い違いで測るのは ExpiredSessionResponseTest）。401 は決裁だけ
+ * ⚠ 419 の文は 2026-11-17 から基幹の URL でも同じ（Bug #137。本物の鍵の食い違いで測るのは ExpiredSessionResponseTest）。
+ *   401 の文は 2026-11-18 から基幹の GET 以外でも同じ（本物の道で測るのは SignedOutSaveResponseTest）。基幹の GET の JSON の 401 は英語のまま
  */
 class ApprovalJsonExpiredSessionTest extends TestCase
 {
@@ -51,7 +52,8 @@ class ApprovalJsonExpiredSessionTest extends TestCase
     }
 
     /**
-     * 基幹の URL の JSON の 401 と、JSON を求めない要求（画面の送信・画面を開く）は今までどおり。
+     * 基幹の URL の GET の JSON の 401（英語のまま）と、JSON を求めない要求（画面の送信・画面を開く）は今までどおり。
+     * ⚠ 基幹の URL の GET 以外の JSON の 401 は、2026-11-18 から決裁と同じ文（SignedOutSaveResponseTest）
      * ⚠ 基幹の URL の JSON の 419 は、2026-11-17 から決裁と同じ日本語の文（Bug #137。基幹の保存の Ajax の約 16 画面がサーバーの文を
      *   そのまま出し、英語の「CSRF token mismatch.」が出ていた）。基幹の側の確かめは ExpiredSessionResponseTest
      */
