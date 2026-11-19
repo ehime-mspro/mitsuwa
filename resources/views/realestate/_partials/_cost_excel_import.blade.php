@@ -170,11 +170,17 @@
                 <span style="font-weight: 600; color: #374151;">既存原価に追加</span>
                 <span style="color: #6b7280;">（既存の原価行は残したまま、取込内容を末尾に追加）</span>
             </label>
-            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
-                <input type="radio" x-model="costExcelImport.mode" value="overwrite">
-                <span style="font-weight: 600; color: #374151;">既存原価を上書き</span>
-                <span style="color: #6b7280;">（物件購入費以外を一括削除して取込内容で置換）</span>
-            </label>
+            {{-- 上書きは保存済みの原価を消すので、詳細画面では経営層だけ（Bug #140。サーバーも断る）。
+                 新規登録の原価欄は画面の中の行を入れ替えるだけなので、呼ぶ側が true を渡す。渡されなければ出さない --}}
+            @if($canOverwrite ?? false)
+                <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                    <input type="radio" x-model="costExcelImport.mode" value="overwrite">
+                    <span style="font-weight: 600; color: #374151;">既存原価を上書き</span>
+                    <span style="color: #6b7280;">（物件購入費以外を一括削除して取込内容で置換）</span>
+                </label>
+            @else
+                <span style="color: #6b7280;">※ 既存原価の上書き（物件購入費以外を削除して置き換え）は経営層だけが使えます。</span>
+            @endif
         </div>
 
         {{-- 上書き警告バナー --}}

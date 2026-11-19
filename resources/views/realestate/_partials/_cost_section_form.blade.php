@@ -62,7 +62,7 @@
     <p class="text-xs text-gray-500 mb-3">「見込み額を入力」「確定額を入力」で表を開いて入れ、「表を閉じる」で一覧に入れます。登録するまで保存されません。物件購入費は仕入れ情報から自動同期されます。</p>
 
     {{-- Excel 取込パネル（仕入れ案件・分譲地PJ 共用 partial）— $costItems は Bug #16 回避の静的 option 用 --}}
-    @include('realestate._partials._cost_excel_import', ['costItems' => $costItemsForJs ?? []])
+    @include('realestate._partials._cost_excel_import', ['costItems' => $costItemsForJs ?? [], 'canOverwrite' => true])
 
     {{-- 操作メッセージ --}}
     <div x-show="costMessage" x-transition class="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 p-2">

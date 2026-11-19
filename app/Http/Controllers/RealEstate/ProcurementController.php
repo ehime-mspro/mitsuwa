@@ -344,6 +344,14 @@ class ProcurementController extends Controller
             'rows.*.notes'            => 'nullable|string|max:200',
         ]);
 
+        // 上書きは経営層だけ（何もせずに断る。画面は理由＋「何も取り込んでいません。」を出す。Bug #140）
+        if (\App\Support\RealEstateCostImportService::refusesOverwrite($validated['mode'], $request->user())) {
+            return response()->json([
+                'success' => false,
+                'message' => \App\Support\RealEstateCostImportService::OVERWRITE_FOR_EXECUTIVES_ONLY,
+            ], 403);
+        }
+
         // 物件購入費はサーバー側でも二重防御（クライアントで弾けていても二重登録を防ぐ）
         $purchaseId = ReCostItem::where('name', '物件購入費')->value('id');
         if ($purchaseId) {

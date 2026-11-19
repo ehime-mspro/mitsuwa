@@ -7,6 +7,7 @@ use App\Models\ReProcurement;
 use App\Models\ReProcurementCost;
 use App\Models\ReProject;
 use App\Models\ReProjectCost;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -26,6 +27,19 @@ use Illuminate\Support\Facades\DB;
  */
 class RealEstateCostImportService
 {
+    /** 経営層でない人が上書きを送ったときの断り（Bug #140） */
+    public const OVERWRITE_FOR_EXECUTIVES_ONLY = '既存原価の上書きは経営層だけが使えます。「既存原価に追加」で取り込んでください。';
+
+    /**
+     * 上書きを断るか（Bug #140）。上書きは物件購入費以外の保存済みの原価をまとめて消すので経営層だけ
+     * （原価の表でも、保存済みの行を消せるのは経営層だけ）。詳細画面は経営層でない人に上書きの選択肢を出さない。
+     * ⚠ 新規登録の原価欄の上書きはサーバーへ送らない（画面の中の、まだ保存していない行を入れ替えるだけ）ので、ここを通らない。
+     */
+    public static function refusesOverwrite(string $mode, User $user): bool
+    {
+        return $mode === 'overwrite' && ! $user->isExecutive();
+    }
+
     /**
      * 仕入れ案件への取込
      *

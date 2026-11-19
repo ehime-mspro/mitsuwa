@@ -259,7 +259,7 @@
         </div>
 
         {{-- 試算表 Excel/CSV 取込パネル（仕入れ案件・分譲地PJ 共用 partial） --}}
-        @include('realestate._partials._cost_excel_import', ['costItems' => $costItemsForJs])
+        @include('realestate._partials._cost_excel_import', ['costItems' => $costItemsForJs, 'canOverwrite' => auth()->user()->isExecutive()])
 
         {{-- Ajax メッセージ --}}
         <div x-show="costMessage" x-transition class="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 p-2">
