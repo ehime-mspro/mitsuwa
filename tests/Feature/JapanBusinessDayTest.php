@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Http\Controllers\Dad\ProjectController as DadProjectController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Housing\HousingDashboardController;
 use App\Http\Controllers\Housing\HsContractListController;
@@ -27,9 +26,10 @@ use Tests\TestCase;
 class JapanBusinessDayTest extends TestCase
 {
     /**
-     * 5 月始まりの年度のうち、**リフレクションで直接呼べる 5 つのメソッド**（振る舞いをここで固定する）。
+     * 5 月始まりの年度のうち、**リフレクションで直接呼べる 4 つのメソッド**（振る舞いをここで固定する）。
      *
-     * ⚠ **これで全部ではない。** 式そのものの複製はアプリに **8 か所**ある（2026-09-23 実測）。
+     * ⚠ **これで全部ではない。** 式そのものの複製はアプリに **7 か所**ある（2026-09-23 実測の 8 か所から、
+     *   2026-11-19 に DAD を 6 月始まりへ直して 1 つ減った。Bug #141）。
      *   残る 3 か所はメソッドとして呼べないうえ、**どのテストも実行しない**＝壊れても無音:
      *     - app/Http/Controllers/TransactionController.php
      *         … ルートが 1 本も無い死にコード（`grep -rn TransactionController routes/` が 0 件。
@@ -51,25 +51,23 @@ class JapanBusinessDayTest extends TestCase
         [ReContractController::class, 'getCurrentFiscalYear'],
         [HsContractListController::class, 'getCurrentFiscalYear'],
         [HousingDashboardController::class, 'getCurrentFiscalYear'],
-        [DadProjectController::class, 'currentFiscalYear'],
     ];
 
     /**
      * 5 月始まりの年度の式を持つファイルの**全件分類**（Bug #45 ① / Top trap #13）。
      *
-     * 2026-09-23 実測 = 8 か所（`app/` と `resources/views/` の .php 502 本を走査）。
+     * 2026-09-23 実測 = 8 か所（`app/` と `resources/views/` の .php 502 本を走査）→ 2026-11-19 に DAD を外して 7 か所（Bug #141）。
      * ⚠ **「直した分を並べる」形にしない。** 機械的に列挙してこの一覧と完全一致を見るので、
      *   新しい複製が増えても減っても落ちる（列挙漏れで無音にならない）。
      * ⚠ 足すときは **`JapanTime::today()` から月と年を取っているか**を必ず確かめること
      *   （`now()` や `Carbon::today()` だと日本時間の 0:00〜8:59 に前の年度を返す。Bug #61）。
      *   その「どの時計を読むか」は ClockReadScanTest が別に守っている。
-     * ⚠ **構造しか見ていない。** 振る舞いを固定しているのは MAY_FISCAL_YEAR_METHODS の 5 つだけで、
+     * ⚠ **構造しか見ていない。** 振る舞いを固定しているのは MAY_FISCAL_YEAR_METHODS の 4 つだけで、
      *   残る 3 か所（TransactionController・賃貸マンションの 2 一覧）は**どのテストも実行しない**。
      *
      * @var list<string>
      */
     private const MAY_FISCAL_YEAR_FILES = [
-        'app/Http/Controllers/Dad/ProjectController.php',
         'app/Http/Controllers/DashboardController.php',
         'app/Http/Controllers/Housing/HousingDashboardController.php',
         'app/Http/Controllers/Housing/HsContractListController.php',
@@ -85,10 +83,9 @@ class JapanBusinessDayTest extends TestCase
      * ⚠ ここに載るのは**共有ヘルパー 1 本だけ**。`ZealFiscalYear::START_MONTH` を 5 に変えると
      *   このファイルが 5 月の側へ移り、MAY_FISCAL_YEAR_FILES との完全一致が破れて落ちる
      *   ＝ 開始月の変更が無音にならない。
-     * ⚠ **`app/Http/Controllers/Dad/ProjectController.php` は 5 月始まりで実装されている**
-     *   （2026-09-23 実測）。CLAUDE.md の「ZEAL/DAD は 6/1 始まり」と食い違うが、
-     *   どちらが正しいかは業務判断なのでここでは決めず、**今のコードのとおりに分類してある**。
-     *   直すなら業務判断が先（この一覧を書き換えるだけでは直らない）。
+     * ⚠ DAD の工事案件の一覧（`app/Http/Controllers/Dad/ProjectController.php`）は、2026-11-19 まで 5 月始まりで
+     *   実装されていた（Bug #141）。CLAUDE.md の「ZEAL/DAD は 6/1 始まり」と食い違っていたので、利用者の決定で
+     *   6 月始まりにそろえ、今はこの共有ヘルパー（`ZealFiscalYear::current()`・`START_MONTH`）を使う＝式を持たない。
      *
      * @var array<string, int>
      */
@@ -114,8 +111,8 @@ class JapanBusinessDayTest extends TestCase
     /** 走査するファイル数の下限（2026-09-23 実測 = 502）。ディレクトリの歩きが壊れたことを捕まえる */
     private const MIN_SCANNED_FILES = 400;
 
-    /** 年度の式の件数の下限（2026-09-23 実測 = 9 ＝ 5 月の 8 ＋ 6 月の 1） */
-    private const MIN_FISCAL_YEAR_EXPRESSIONS = 9;
+    /** 年度の式の件数の下限（2026-09-23 実測 = 9 ＝ 5 月の 8 ＋ 6 月の 1。2026-11-19 に DAD を 6 月始まりの共有ヘルパーへ寄せて 8） */
+    private const MIN_FISCAL_YEAR_EXPRESSIONS = 8;
 
     protected function tearDown(): void
     {
@@ -368,7 +365,7 @@ class JapanBusinessDayTest extends TestCase
             '5 月始まりでない年度の式が増減した（開始月つきで OTHER_FISCAL_YEAR_FILES に分類すること）'
         );
 
-        // 2 つの一覧が食い違わないようにする（振る舞いを見ている 5 つは、必ず 5 月の一覧の中にある）
+        // 2 つの一覧が食い違わないようにする（振る舞いを見ている 4 つは、必ず 5 月の一覧の中にある）
         foreach (self::MAY_FISCAL_YEAR_METHODS as [$class, $method]) {
             $path = str_replace(base_path() . '/', '', (new ReflectionMethod($class, $method))->getFileName());
             $this->assertContains(

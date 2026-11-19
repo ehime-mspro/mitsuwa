@@ -12,7 +12,8 @@ use App\Models\DadEmployee;
 use App\Models\DadProject;
 use App\Models\DadSubcontractor;
 use App\Models\User;
-use App\Support\JapanTime;
+use App\Support\ZealFiscalYear;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
@@ -46,12 +47,13 @@ class ProjectController extends Controller
             $query->where('staff_user_id', $staffId);
         }
         if ($fiscalYear) {
-            // 会計年度: 5/1 〜 4/30
-            $start = $fiscalYear . '-05-01';
-            $end = ($fiscalYear + 1) . '-04-30';
-            $query->where(function ($q) use ($start, $end) {
-                $q->whereBetween('order_date', [$start, $end])
-                  ->orWhereBetween('estimate_date', [$start, $end]);
+            // 会計年度: 6/1 〜 翌 5/31（ZEAL と同じ 6 月始まり。Bug #141。直す前は 5 月始まりだった）
+            // ⚠ 翌年度の初日より前（半開区間）で比べる。テストの SQLite は日付に時刻が付くので、末日との whereBetween だと末日が落ちる
+            $start = Carbon::create((int) $fiscalYear, ZealFiscalYear::START_MONTH, 1)->toDateString();
+            $next = Carbon::create((int) $fiscalYear + 1, ZealFiscalYear::START_MONTH, 1)->toDateString();
+            $query->where(function ($q) use ($start, $next) {
+                $q->where(fn ($order) => $order->where('order_date', '>=', $start)->where('order_date', '<', $next))
+                  ->orWhere(fn ($estimate) => $estimate->where('estimate_date', '>=', $start)->where('estimate_date', '<', $next));
             });
         }
         if ($request->filled('keyword')) {
@@ -70,7 +72,7 @@ class ProjectController extends Controller
         $countPrivate = DadProject::where('project_type', 'private')->count();
 
         $staffUsers = User::assignable()->orderBy('name')->get();
-        $currentFiscalYear = $this->currentFiscalYear();
+        $currentFiscalYear = ZealFiscalYear::current();
 
         return view('dad.projects.index', compact(
             'projects', 'countPublic', 'countPrivate', 'staffUsers', 'currentFiscalYear'
@@ -429,14 +431,5 @@ class ProjectController extends Controller
 
         $num = (int) substr($last->project_code, 4);
         return 'DAD-' . str_pad((string) ($num + 1), 3, '0', STR_PAD_LEFT);
-    }
-
-    /**
-     * 現在の会計年度（5月始まり）
-     */
-    private function currentFiscalYear(): int
-    {
-        $today = JapanTime::today();
-        return $today->month >= 5 ? $today->year : $today->year - 1;
     }
 }

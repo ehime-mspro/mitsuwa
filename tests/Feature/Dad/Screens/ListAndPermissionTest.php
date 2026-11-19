@@ -3,6 +3,7 @@
 namespace Tests\Feature\Dad\Screens;
 
 use App\Enums\UserRole;
+use Illuminate\Support\Carbon;
 
 /**
  * DAD の一覧の崩れたクエリ（A8。Bug #97 の形）と、権限の無いボタン（A9。Bug #96 の形）。
@@ -42,6 +43,54 @@ class ListAndPermissionTest extends DadScreenTestCase
 
         $this->assertStringContainsString('2026年度の工事', $html);
         $this->assertStringNotContainsString('2024年度の工事', $html);
+    }
+
+    /**
+     * DAD の年度は 6 月始まり（CLAUDE.md・ZealFiscalYear と同じ。Bug #141。直す前は 5 月始まりだった）。
+     * 境目の両側（5/31 と 6/1）を、年度の始まりと終わりの両方で見る。見積日だけの工事も入る。
+     */
+    public function test_the_fiscal_year_filter_starts_in_june(): void
+    {
+        $this->project(['project_name' => '工事・5月末', 'order_date' => '2026-05-31']);
+        $this->project(['project_name' => '工事・6月1日', 'order_date' => '2026-06-01']);
+        $this->project(['project_name' => '工事・翌年の5月末', 'order_date' => '2027-05-31']);
+        $this->project(['project_name' => '工事・翌年の6月1日', 'order_date' => '2027-06-01']);
+        $this->project(['project_name' => '工事・見積日だけ', 'estimate_date' => '2026-06-15']);
+
+        $html = $this->htmlOf(route('dad.projects.index', ['fiscal_year' => 2026]));
+        foreach (['工事・6月1日', '工事・翌年の5月末', '工事・見積日だけ'] as $name) {
+            $this->assertStringContainsString($name, $html, "2026 年度に「{$name}」が出ていない");
+        }
+        foreach (['工事・5月末', '工事・翌年の6月1日'] as $name) {
+            $this->assertStringNotContainsString($name, $html, "2026 年度に「{$name}」が出ている");
+        }
+
+        $html = $this->htmlOf(route('dad.projects.index', ['fiscal_year' => 2025]));
+        $this->assertStringContainsString('工事・5月末', $html, '2025 年度に 5/31 の工事が出ていない');
+        $this->assertStringNotContainsString('工事・6月1日', $html, '2025 年度に 6/1 の工事が出ている');
+    }
+
+    /** 年度の選択肢の先頭（今年度）は、日本時間の 6/1 0:00 に変わる */
+    public function test_the_current_fiscal_year_turns_over_on_june_first_in_japan(): void
+    {
+        try {
+            Carbon::setTestNow(Carbon::parse('2026-05-31 14:59:00', 'UTC')); // 日本時間 5/31 23:59
+            $this->assertSame('2025', $this->firstFiscalYearOption(), '5/31 はまだ 2025 年度');
+
+            Carbon::setTestNow(Carbon::parse('2026-05-31 15:00:00', 'UTC')); // 日本時間 6/1 0:00
+            $this->assertSame('2026', $this->firstFiscalYearOption(), '6/1 から 2026 年度');
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    private function firstFiscalYearOption(): string
+    {
+        $html = $this->htmlOf(route('dad.projects.index'));
+        $this->assertSame(1, preg_match('/<select name="fiscal_year".*?<\/select>/su', $html, $select), '年度の選択欄が無い');
+        $this->assertSame(1, preg_match('/<option value="(\d{4})"/', $select[0], $year), '年度の選択肢が無い');
+
+        return $year[1];
     }
 
     /** A9: 一般担当には、一覧の「新規登録」「編集」と工事案件の詳細の「編集」を出さない（押すと 403） */
