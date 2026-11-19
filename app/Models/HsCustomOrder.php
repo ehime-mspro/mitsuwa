@@ -6,6 +6,7 @@ use App\Enums\BuyerDepartment;
 use App\Enums\CustomOrderStatus;
 use App\Enums\HousingLandSourceType;
 use App\Models\Concerns\HasScheduleSteps;
+use App\Models\Concerns\LocksLandAfterContract;
 use App\Support\AreaConverter;
 use App\Support\ConsumptionTax;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -17,6 +18,10 @@ class HsCustomOrder extends Model
 {
     use HasFactory;
     use HasScheduleSteps;
+    use LocksLandAfterContract;
+
+    /** 契約済みの注文住宅の土地の紐付けを変えようとしたときの文（判断待ち ④・案 B） */
+    public const LAND_LOCKED_BY_CONTRACT = 'この注文住宅は契約済み（ステータスが「契約」以降）のため、土地の紐付け（種別・区画・仕入れ案件）は変えられません。変えるときは、ステータスを「見積り」以前に戻して保存してから変えてください。';
 
     protected $table = 'hs_custom_orders';
 
@@ -178,6 +183,18 @@ class HsCustomOrder extends Model
     public function isCustomerLand(): bool
     {
         return $this->land_source_type === HousingLandSourceType::CustomerLand;
+    }
+
+    /**
+     * 契約があるため土地の紐付けを固定するか（保存済みのステータスが「契約」以降。区画の販売済もこれで動く）。
+     * ⚠ 保存済みのステータスで見る — 同じ保存でステータスを「契約」より前に戻しながら区画を変えると、
+     *   区画の連動（CustomOrderController::syncLotStatus）は新しい区画を販売中にし、前の区画が販売済のまま残る。
+     */
+    public function isLandLockedByContract(): bool
+    {
+        $status = $this->getOriginal('status');
+
+        return $status instanceof CustomOrderStatus && $status->isContractedOrLater();
     }
 
     // ============================================================

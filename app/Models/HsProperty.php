@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\HousingLandSourceType;
 use App\Enums\HousingPropertyStatus;
 use App\Models\Concerns\HasScheduleSteps;
+use App\Models\Concerns\LocksLandAfterContract;
 use App\Support\AreaConverter;
 use App\Support\ConsumptionTax;
 use App\Support\Settings;
@@ -18,6 +19,10 @@ class HsProperty extends Model
 {
     use HasFactory;
     use HasScheduleSteps;
+    use LocksLandAfterContract;
+
+    /** 契約のある建売の土地の紐付けを変えようとしたときの文（判断待ち ④・案 B） */
+    public const LAND_LOCKED_BY_CONTRACT = 'この建売物件には契約があるため、土地の紐付け（種別・区画・仕入れ案件）は変えられません。';
 
     protected $table = 'hs_properties';
 
@@ -123,6 +128,15 @@ class HsProperty extends Model
     public function isSold(): bool
     {
         return $this->contract !== null;
+    }
+
+    /**
+     * 契約があるため土地の紐付けを固定するか（契約の行があるか）。
+     * ⚠ 読み込み済みの関係でなく、毎回問い合わせる（画面を開いたあとで契約が登録された古い画面の保存も止める）。
+     */
+    public function isLandLockedByContract(): bool
+    {
+        return $this->contract()->exists();
     }
 
     /**
