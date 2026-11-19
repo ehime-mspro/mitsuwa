@@ -221,7 +221,7 @@ class ProcurementController extends Controller
      */
     public function update(Request $request, ReProcurement $procurement)
     {
-        $validated = $this->validateProcurement($request);
+        $validated = $this->validateProcurement($request, current: $procurement);
         $validated['updated_by'] = auth()->id();
 
         $procurement->update($validated);
@@ -240,7 +240,7 @@ class ProcurementController extends Controller
         $statuses = implode(',', array_column(ProcurementStatus::cases(), 'value'));
 
         $validated = $request->validate([
-            'status' => "required|in:{$statuses}",
+            'status' => ["bail", "required", "in:{$statuses}", $this->statusLockedByContract($procurement)],
         ]);
 
         $procurement->update([
@@ -370,7 +370,20 @@ class ProcurementController extends Controller
     // プライベートメソッド
     // ================================================================
 
-    private function validateProcurement(Request $request, bool $withCosts = false): array
+    /**
+     * 契約のある案件を「販売済」から戻させない規則（一覧の小窓と編集画面。Bug #139）。登録（$procurement が null）では何もしない。
+     * ⚠ 呼ぶ側は bail を付ける（in: で断られた値をここへ通さない＝ここに来るのは正しいステータスの文字だけ）。
+     */
+    private function statusLockedByContract(?ReProcurement $procurement): \Closure
+    {
+        return function (string $attribute, mixed $value, \Closure $fail) use ($procurement) {
+            if ($procurement !== null && is_string($value) && $procurement->refusesStatus($value)) {
+                $fail(ReProcurement::STATUS_LOCKED_BY_CONTRACT);
+            }
+        };
+    }
+
+    private function validateProcurement(Request $request, bool $withCosts = false, ?ReProcurement $current = null): array
     {
         $propertyTypes = implode(',', array_column(RealEstatePropertyType::cases(), 'value'));
         $transactionTypes = implode(',', array_column(RealEstateTransactionType::cases(), 'value'));
@@ -386,7 +399,7 @@ class ProcurementController extends Controller
             'costs.*.notes'            => 'nullable|string|max:200',
             'property_type'       => "required|in:{$propertyTypes}",
             'transaction_type'    => "required|in:{$transactionTypes}",
-            'status'              => "required|in:{$statuses}",
+            'status'              => ["bail", "required", "in:{$statuses}", $this->statusLockedByContract($current)],
             'property_name'       => 'required|string|max:100',
             'postal_code'         => 'nullable|string|max:10',
             'address'             => 'required|string|max:200',

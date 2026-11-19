@@ -312,9 +312,10 @@ function realestateStatusCell(kind, id, initialValue, initialLabel, initialBadge
             .then(function(r) {
                 if (!r.ok) {
                     self.submitting = false;
-                    // 419・401（ログインが切れた・ほかの画面でログアウトした・パスワードが変わった・無効にされた）はサーバーの日本語の理由を出す（Bug #137）。ほかは番号つきの今の文
+                    // 419・401（ログインが切れた・ほかの画面でログアウトした・パスワードが変わった・無効にされた）はサーバーの日本語の理由を出す（Bug #137）。
+                    // 422（契約のある仕入れ案件を「販売済」から戻そうとした。Bug #139）も理由を出す。ほかは番号つきの今の文
                     return r.json().catch(function() { return null; }).then(function(body) {
-                        alert((r.status === 419 || r.status === 401) && body && body.message ? body.message : 'ステータスの更新に失敗しました（' + r.status + '）');
+                        alert((r.status === 419 || r.status === 401 || r.status === 422) && body && body.message ? body.message : 'ステータスの更新に失敗しました（' + r.status + '）');
                         return null;
                     });
                 }

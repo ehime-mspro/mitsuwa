@@ -105,6 +105,25 @@ class ReProcurement extends Model
         return $this->hasMany(ReContract::class, 'procurement_id');
     }
 
+    /** 契約のある案件のステータスを「販売済」から変えようとしたときの断り（一覧の小窓と編集画面。Bug #139） */
+    public const STATUS_LOCKED_BY_CONTRACT = 'この仕入れ案件には契約があるため、ステータスは「販売済」から変えられません。契約を削除すると「販売中」に戻ります。';
+
+    /**
+     * そのステータスへ変えるのを断るか（Bug #139）。契約のある案件は「販売済」か今のステータスにしかできない。
+     * 戻すと契約の登録画面にまた出て、同じ案件に 2 件目の契約を作れてしまうため。
+     *
+     * ⚠ 今と同じなら通す — 契約があるのに販売済でない古いデータでも、編集画面をそのまま保存できる
+     *   （保存済みの値で断ると、ほかの欄だけ直したいときも保存できない。Bug #130 の形）。
+     */
+    public function refusesStatus(string $status): bool
+    {
+        if ($status === ProcurementStatus::Sold->value || $status === $this->status?->value) {
+            return false;
+        }
+
+        return $this->contracts()->exists();
+    }
+
     public function createdBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');

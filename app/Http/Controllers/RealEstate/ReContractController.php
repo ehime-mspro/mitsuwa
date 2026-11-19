@@ -17,6 +17,7 @@ use App\Models\User;
 use App\Support\JapanTime;
 use App\Support\Settings;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class ReContractController extends Controller
 {
@@ -115,8 +116,9 @@ class ReContractController extends Controller
      */
     public function create(Request $request)
     {
-        // 販売中の仕入れ案件
+        // 販売中で、まだ契約の無い仕入れ案件（契約のある案件が販売中に戻っていても、2 件目の契約を作らせない。Bug #139）
         $procurements = ReProcurement::where('status', ProcurementStatus::Selling->value)
+            ->whereDoesntHave('contracts')
             ->orderBy('procurement_code')
             ->get(['id', 'procurement_code', 'property_name', 'address', 'property_type']);
 
@@ -276,9 +278,9 @@ class ReContractController extends Controller
     {
         $contract->load(['procurement', 'project', 'lot', 'buyer', 'staff']);
 
-        // 販売中の仕入れ案件（+ 現在選択中の案件も含む）
+        // 販売中で、まだ契約の無い仕入れ案件（+ 現在選択中の案件も含む。Bug #139）
         $procurements = ReProcurement::where(function ($q) use ($contract) {
-            $q->where('status', ProcurementStatus::Selling->value);
+            $q->where(fn ($free) => $free->where('status', ProcurementStatus::Selling->value)->whereDoesntHave('contracts'));
             if ($contract->procurement_id) {
                 $q->orWhere('id', $contract->procurement_id);
             }
@@ -321,7 +323,7 @@ class ReContractController extends Controller
     public function update(Request $request, ReContract $contract)
     {
         $contractType = $contract->contract_type;
-        $validated = $this->validateContract($request, $contractType);
+        $validated = $this->validateContract($request, $contractType, $contract);
         $validated['updated_by'] = auth()->id();
 
         // 粗利額再計算
@@ -567,7 +569,7 @@ class ReContractController extends Controller
              - (int) ($validated['cost_amount'] ?? 0);
     }
 
-    private function validateContract(Request $request, ReContractType $contractType): array
+    private function validateContract(Request $request, ReContractType $contractType, ?ReContract $current = null): array
     {
         $rules = [
             'contract_type'   => 'required|in:' . implode(',', array_column(ReContractType::cases(), 'value')),
@@ -576,7 +578,8 @@ class ReContractController extends Controller
         ];
 
         if ($contractType->isProcurement()) {
-            $rules['procurement_id']  = 'required|exists:re_procurements,id';
+            // 同じ仕入れ案件に 2 件目の契約を作らせない（古い画面・二度押しの 2 回目。更新は自分の契約を除く。Bug #139）
+            $rules['procurement_id']  = ['required', 'exists:re_procurements,id', Rule::unique('re_contracts', 'procurement_id')->ignore($current?->id)];
             $rules['contract_date']   = 'required|date';
             $rules['buyer_id']        = 'required|exists:buyers,id';
             $rules['contract_amount_land']     = 'required|integer|min:0|max:' . self::MAX_INT_COLUMN;
@@ -620,7 +623,9 @@ class ReContractController extends Controller
         ];
 
         // 画面のラベルは「所在地」（全体の和名は「住所」）。第 2 引数は messages（Bug #37）
-        $validated = $request->validate($rules, [], ['address' => '所在地']);
+        $validated = $request->validate($rules, [
+            'procurement_id.unique' => 'この仕入れ案件にはすでに契約があります。契約の一覧で確かめてください。',
+        ], ['address' => '所在地']);
 
         // tax_rate は NOT NULL DEFAULT 10.00。欄を持たない種別でも必ず値を入れる
         $validated['tax_rate'] = $validated['tax_rate'] ?? Settings::taxRate();

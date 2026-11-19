@@ -58,7 +58,7 @@
                             <option value="{{ $p->id }}">{{ $p->procurement_code }} {{ $p->property_name }}</option>
                         @endforeach
                     </select>
-                    <div class="fg-note">※ ステータスが「販売中」の案件のみ表示</div>
+                    <div class="fg-note">※ ステータスが「販売中」で、まだ契約の無い案件のみ表示</div>
                 </div>
 
                 {{-- 原価内訳ボックス --}}
