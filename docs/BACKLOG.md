@@ -6247,6 +6247,46 @@ ssh での本番の読み取り（md5・コンパイル済みビューの lint�
 
 ---
 
+## 🚧 既存の部品の既知の弱点を直す 2 回目（今の大きな版の中で更新）— 本番未反映
+
+前回（2026-10-03・上の「既存の部品の既知の弱点を直す」の節）から 1 か月半で、`composer audit` が **14 件（8 部品）**を出した（2026-11-19）。
+利用者の指示（2026-11-19）で、前回と同じ形で直した。作業場所 `.claude/worktrees/deps-audit-1119`・枝 `deps-audit-1119`（13.x = `5d7dd3ba` から）。
+**`composer.json`・`app/`・`resources/`・`routes/`・DB の変更は無し**（変わったのは `composer.lock` だけ）。
+
+| 部品 | 前 | 後 | 知らせ |
+|---|---|---|---|
+| `phpoffice/phpspreadsheet` | 5.9.0 | **5.11.0** | 重い 3（XmlScanner をすり抜ける XXE 2・ODS の読み取りで CPU とメモリを使い切る 1）・中 1（`Drawing::setPath` の SSRF） |
+| `symfony/http-foundation` | v7.4.20 | v7.4.23 | 重さの表示なし 4（作る URL の Host を利用者が選べる・HEAD が `access_control` をすり抜ける ほか） |
+| `symfony/http-kernel`・`routing`・`filesystem` | v7.4.18〜20 | v7.4.23 | 重さの表示なし 1 ずつ |
+| `symfony/mime` | v7.4.19 | v7.4.22 | 中 1（メールの見出しへの細工） |
+| `laravel/framework` | v12.69.3 | v12.73.0 | 低い 1（Concurrency の出力への細工） |
+| `symfony/yaml` | v7.4.20 | v7.4.23 | 重さの表示なし 1（開発用だけ・本番の vendor には入らない） |
+
+- 更新のコマンド（作業場所の cwd）: `composer update phpoffice/phpspreadsheet laravel/framework symfony/filesystem symfony/http-foundation symfony/http-kernel symfony/mime symfony/routing symfony/yaml --with-dependencies`（大きな版は上げない。Laravel 13 は別の機会）
+- 依存で **45 部品**が上がり（guzzle 7.16.3・carbon 3.15.1・monolog 3.13.0 など。どれも同じ大きな版の中）、**2 部品が新しく入る**: `phpoffice/wmf` 0.2.1（表計算の部品が WMF の画像を読むため）・`symfony/polyfill-time` v1.42.0。どちらも MIT
+- **当たる可能性が高いのは表計算の部品の XXE 2 件**: アップロードされた xlsx をサーバーで読む取込が 2 つある（工程表の取込 `ScheduleImportSheet`〈住宅事業の経営層・管理者〉・決裁の紙の台帳の取込 `PaperLedgerFile`〈決裁の管理者〉）。ODS の DoS は当たらない見込み（工程表は Xlsx だけ・紙の台帳は Xls と Xlsx だけを読む）。SSRF は書き出す側の画像のパスの話で、アプリは使っていない
+- 5.10・5.11 で変わったこと（変更履歴を読んだ）: 暗号化されたブックの中の DOCTYPE・実体の宣言を断る ほか。**Xls の読み取りが WMF・EMF の画像を読むようになった**が、2 つの取込はどちらも `setReadDataOnly(true)` なので画像を読まない
+- ⚠ 表計算の部品は決裁の紙の台帳の取込（「社内決裁申請」の会話の担当）でも使う。その会話は止まっているので、前回と同じく `composer.lock` を先に入れる形にした（決裁のテストも全件の中で流れて緑）
+
+### 検証
+
+- `composer audit --locked`: **14 件 → 0 件**
+- 全件 **OK (5298 tests, 55104 assertions)**（PHP 8.3・警告なし・4 分 34 秒・ピーク 175.50 MB。上げる前と同じ本数）
+- コンパイル済みビュー（Blade のコンパイラも上がる）: **323 本 / INVALID 0**
+- 画面・アプリのコードは変えていないので、実ブラウザの確認はしていない
+
+### 本番反映の手順（前回と同じ）
+
+**DB 変更なし・新しいアプリのクラスなし**。新しい部品が 2 つ入るので、main repo で入れ直す。
+
+1. 反映の前に本番を読む（承認のうえ）: `laravel/framework`・`phpoffice/phpspreadsheet` の版・`laravel.log`（Nov 18 01:45 のまま）・ログイン画面 200
+2. main repo で `13.x` を早送り → `composer install --no-dev` → `composer dump-autoload --no-dev --optimize`（どちらも PHP 8.3 で。⚠ `vendor/bin/phpunit` が無いことを確かめる）
+3. `./deploy.sh`（vendor の部品が送られる）
+4. 反映の後に本番を読む: 部品の版・コンパイル済みビューの lint・`laravel.log`・ログイン画面。ログインした Chrome で数画面（見るだけ）
+- ⚠ 戻すときは、`5d7dd3ba` で main repo の `composer install --no-dev` をし直して `./deploy.sh` する（表の変更が無いのでそのまま戻せる）
+
+---
+
 ## バックログ完了状況
 
 優先度 1〜5 のすべてのバックログ項目が本番稼働中。周辺ビル調査は第1段（2026-08-17）・
@@ -6408,6 +6448,8 @@ lint（INVALID 0）と、ログイン済みの実 Chrome での目視まで確�
 **保存の Ajax の 401 の後回し 3 つ（2026-11-18・Bug #137 の追記）**はテストとコメントだけの変更で、本番の動きは変わらない（上の節。テストの道具の偽の fetch の `json()` を本物のブラウザに合わせ〈JSON でない本文で失敗する〉、番号だけだった 6 か所に「本文が JSON でない 419・401 は番号つきの文」のテストを足した。HEAD も日本語の側を通るが本文が空なので見え方は同じ、と `bootstrap/app.php` に書き、`SignedOutSaveResponseTest`・`SignsOutElsewhere` の説明の誤りを直した。全件 5298 本・変異 15 通り。アプリで変わるのは `bootstrap/app.php` のコメントだけなので、次の `./deploy.sh` で一緒に出ればよい）。
 
 **ここ 4 回の本番反映（2026-11-17〜18）を、2026-11-19 にログインした画面と本番の読み取りで確かめた**（上の節。送ったファイル 28 本が手元と md5 で一致・コンパイル済みビュー 324 本の lint（INVALID 0）・ログインした 5 画面でコンソールのエラー 0、失敗のときの文を作る関数が反映のときに決めた文を返す。`laravel.log` に 2026-11-18 01:05〜01:45〈日本時間〉の定期実行のキュー処理がデータベースにつながらなかった記録が 9 件あった〈画面の要求の記録は 0 件〉＝ これからは「Nov 18 01:45 のまま」と比べる。コードの変更なし）。
+
+**既存の部品の既知の弱点を直す 2 回目（2026-11-19）は本番未反映**（上の節。`composer audit` の 14 件〈8 部品〉を、今の大きな版の中の更新で 0 件にした。いちばん重いのは表計算の部品の XXE〈アップロードされた xlsx を読む取込が 2 つある〉。変わったのは `composer.lock` だけ・全件 5298 本・ビュー 323 本の lint〈INVALID 0〉。反映は main repo で `composer install --no-dev` のあと `./deploy.sh`）。
 
 その他の新規要件は別途追記する。
 
