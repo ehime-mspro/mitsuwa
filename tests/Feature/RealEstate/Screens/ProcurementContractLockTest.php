@@ -118,6 +118,19 @@ class ProcurementContractLockTest extends RealEstateScreenTestCase
         $this->assertSame('selling', $procurement->fresh()->status->value);
     }
 
+    /** 契約があるのに販売済でない古いデータは、販売済に直せる（「販売済」へは、契約があっても変えられる） */
+    public function test_the_edit_screen_sets_an_inconsistent_old_procurement_back_to_sold(): void
+    {
+        $procurement = $this->procurement(['status' => 'selling']);
+        $this->contractFor($procurement);
+        $url = route('realestate.procurements.edit', $procurement);
+
+        $html = $this->landed($this->submit($this->fill($this->editForm($procurement), ['status' => 'sold']), $url));
+
+        $this->assertFlash($html, 'success', '仕入れ案件「RE-PRC-001」を更新しました。');
+        $this->assertSame('sold', $procurement->fresh()->status->value);
+    }
+
     // ============================================================
     // 契約の登録・編集
     // ============================================================
@@ -169,6 +182,22 @@ class ProcurementContractLockTest extends RealEstateScreenTestCase
 
         $this->assertSame(1, ReContract::where('procurement_id', $procurement->id)->count());
         $this->assertSame('sold', $procurement->fresh()->status->value);
+    }
+
+    /** 契約の編集画面の選択肢: 今の案件と契約の無い販売中の案件だけ（契約のある別の案件は、販売中に戻っていても出さない） */
+    public function test_the_contract_edit_screen_does_not_offer_another_contracted_procurement(): void
+    {
+        $mine = $this->procurement(['procurement_code' => 'RE-PRC-001', 'status' => 'sold']);
+        $free = $this->procurement(['procurement_code' => 'RE-PRC-002', 'property_name' => '契約の無い家']);
+        $taken = $this->procurement(['procurement_code' => 'RE-PRC-003', 'property_name' => '契約の有る家']);
+        $contract = $this->contractFor($mine);
+        $this->contractFor($taken, '契約の有る家');
+
+        $html = $this->htmlOf(route('realestate.contracts.edit', $contract));
+
+        $this->assertMatchesRegularExpression('/<option value="' . $mine->id . '"\s+selected>RE-PRC-001 /u', $html, '今の案件が選ばれていない');
+        $this->assertStringContainsString('<option value="' . $free->id . '" >RE-PRC-002 契約の無い家</option>', $html);
+        $this->assertStringNotContainsString('<option value="' . $taken->id . '"', $html, '契約のある別の案件が編集画面の選択肢に出ている');
     }
 
     /** 契約の編集で、開いたあとで契約が付いた別の案件に替えると断られる（今の案件のまま保存できることは ContractScreensTest が見る） */
