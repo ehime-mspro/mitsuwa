@@ -6247,7 +6247,7 @@ ssh での本番の読み取り（md5・コンパイル済みビューの lint�
 
 ---
 
-## 🚧 既存の部品の既知の弱点を直す 2 回目（今の大きな版の中で更新）— 本番未反映
+## ✅ 既存の部品の既知の弱点を直す 2 回目（今の大きな版の中で更新）— 本番反映済み
 
 前回（2026-10-03・上の「既存の部品の既知の弱点を直す」の節）から 1 か月半で、`composer audit` が **14 件（8 部品）**を出した（2026-11-19）。
 利用者の指示（2026-11-19）で、前回と同じ形で直した。作業場所 `.claude/worktrees/deps-audit-1119`・枝 `deps-audit-1119`（13.x = `5d7dd3ba` から）。
@@ -6284,6 +6284,23 @@ ssh での本番の読み取り（md5・コンパイル済みビューの lint�
 3. `./deploy.sh`（vendor の部品が送られる）
 4. 反映の後に本番を読む: 部品の版・コンパイル済みビューの lint・`laravel.log`・ログイン画面。ログインした Chrome で数画面（見るだけ）
 - ⚠ 戻すときは、`5d7dd3ba` で main repo の `composer install --no-dev` をし直して `./deploy.sh` する（表の変更が無いのでそのまま戻せる）
+
+### 本番反映（2026-11-19 実施）
+
+利用者の指示（「13.xへ早送りしてpushし、本番へ反映してください」）で、上の手順どおりに流した。ListAgents で 13.x を動かすほかの会話が無いことを確かめた。main repo の `13.x` を `5d7dd3ba` から **`a538f4b6`** へ早送りして push し（`5d7dd3ba..a538f4b6`）、main repo の cwd で `composer install --no-dev` → `composer dump-autoload --no-dev --optimize`（PHP 8.3）→ `./deploy.sh`。**DB 変更なし**（SQL は流していない）。
+
+| 段 | 見たこと | 結果 |
+|---|---|---|
+| 1 反映の前（本番の読み取り） | 部品の版・`installed.json`・記録・キャッシュ・ビルド | `laravel/framework` v12.69.3・`phpoffice/phpspreadsheet` 5.9.0・新しい 2 部品は無い・部品 94 ／ `vendor/composer/installed.json` が手元の今の vendor と md5 で一致（＝本番は前回の反映のまま）／ `vendor/bin/phpunit` は無い ／ `laravel.log` は Nov 18 01:45（3333 行）／ build は `app-o1yvrcrl.css`・`app-NiVQbl_Q.js` |
+| 2 main repo | `composer install --no-dev`・`dump-autoload` | 45 部品を上げ、2 部品を入れた ／ 7,418 クラス・読み込みの表に作業場所のパスは 0 ／ `vendor/bin/phpunit` は無い ／ 作業ツリーは空（`composer.lock` は変わらない） |
+| 3 `./deploy.sh` | 2026-11-19 15:15:48〜15:16:02（日本時間） | exit 0・6 段すべて。送ったアプリのファイルは `composer.lock`・`bootstrap/app.php`（前回の「保存の Ajax の 401 の後回し 3 つ」のコメントの直し）と vendor・ビルドだけ。CSS・JS の名前は前と同じで旧バンドルの削除 0 件（ビルドの警告 1 件は以前からの Google Fonts の `@import`）。部品の名簿の作り直しと 3 つのキャッシュとも成功 |
+| 4 反映の後（本番の読み取り） | 版・md5・構文・表計算の部品・記録・キャッシュ | `laravel/framework` v12.73.0・`phpoffice/phpspreadsheet` 5.11.0・`phpoffice/wmf` 0.2.1・`symfony/polyfill-time` v1.42.0・`symfony/http-foundation` v7.4.23・`symfony/mime` v7.4.22・guzzle 7.16.3・carbon 3.15.1・部品 96 ／ `installed.json`・`composer.lock`・`bootstrap/app.php`・`autoload_classmap.php` が手元と **md5 で一致**・読み込みの表に作業場所のパスは 0・`vendor/bin/phpunit` は無い ／ `artisan --version` は Laravel Framework 12.73.0 ／ 本番の PHP 8.3 で、表計算の部品で一時の xlsx を書いて `setReadDataOnly(true)` で読み戻すと「工程 2026/11/19」（一時のフォルダは消した）・`ScheduleImportSheet` が読める ／ コンパイル済みビュー **324 本 / INVALID 0**（手元の 323 本＋本番に残る `components/app-layout`）／ `laravel.log` は Nov 18 01:45 のまま＝反映のあとのエラー 0 件 ／ `bootstrap/cache` は 15:15〜15:16 に作り直し（`config.php`・`routes-v7.php` 600、名簿 2 つ 700）／ build は両側とも `app-o1yvrcrl.css`・`app-NiVQbl_Q.js` だけ |
+| 5 外からの確かめ（ログインしない・データは送らない） | ログイン画面・鍵の無い空の送信・ログインの無い GET | ログイン画面 200・`app-o1yvrcrl.css` を読む ／ ログインへの空の送信は 302 でログイン画面へ（Bug #138 のまま）／ 鍵の無い JSON の保存は 419 で日本語の文のまま ／ ログインの無い GET の JSON は 401 で英語の `Unauthenticated.` のまま（Bug #137 の決めのまま）／ このあとも `laravel.log` は Nov 18 01:45 のまま |
+| 6 ログインした画面（利用者の Chrome・見るだけ・送信しない。最初は拡張機能につながらず、利用者がログインし直してから見た） | 経営ダッシュボード・仕入れ案件 #26 の詳細と、同じオリジンの GET で 12 画面 | 経営ダッシュボード: Alpine が起動・`app-o1yvrcrl.css`・鍵を差し替える部品が 1 つ・`main` の横のはみ出し 0 ／ 仕入れ案件 #26: `x-data` 22 個がすべて起動・`realEstateCostAccessError` が関数・「見込み額を入力」「確定額を入力」が出る・`main` の横のはみ出し 0 ／ テナントダッシュボード・仕入れ案件一覧・建売一覧・**工程表の取込（建売 #9）**・テナント契約の登録・住宅事業の顧客一覧・決裁のホーム・**決裁の紙の台帳の取込**（`approvals/admin/papers`）・テナントと顧客の CSV 取込・周辺ビル調査の取込が 200 で、エラーの画面は 0 ／ 2 画面ともコンソールのエラー 0 ／ このあとも `laravel.log` は Nov 18 01:45 のまま |
+
+⚠ 工程表・紙の台帳の取込（アップロード）は本番では送っていない（表計算の部品は、上の 4 で本番の PHP で読み書きを確かめてある）。
+
+⚠ rsync は vendor に `--delete` を付けないので、上げた部品で消えたファイルは本番の vendor に残る（読み込みの表に載らないので読まれない。前回の更新と同じ）。
 
 ---
 
@@ -6449,7 +6466,7 @@ lint（INVALID 0）と、ログイン済みの実 Chrome での目視まで確�
 
 **ここ 4 回の本番反映（2026-11-17〜18）を、2026-11-19 にログインした画面と本番の読み取りで確かめた**（上の節。送ったファイル 28 本が手元と md5 で一致・コンパイル済みビュー 324 本の lint（INVALID 0）・ログインした 5 画面でコンソールのエラー 0、失敗のときの文を作る関数が反映のときに決めた文を返す。`laravel.log` に 2026-11-18 01:05〜01:45〈日本時間〉の定期実行のキュー処理がデータベースにつながらなかった記録が 9 件あった〈画面の要求の記録は 0 件〉＝ これからは「Nov 18 01:45 のまま」と比べる。コードの変更なし）。
 
-**既存の部品の既知の弱点を直す 2 回目（2026-11-19）は本番未反映**（上の節。`composer audit` の 14 件〈8 部品〉を、今の大きな版の中の更新で 0 件にした。いちばん重いのは表計算の部品の XXE〈アップロードされた xlsx を読む取込が 2 つある〉。変わったのは `composer.lock` だけ・全件 5298 本・ビュー 323 本の lint〈INVALID 0〉。反映は main repo で `composer install --no-dev` のあと `./deploy.sh`）。
+**既存の部品の既知の弱点を直す 2 回目（2026-11-19）は 2026-11-19 に本番反映済み**（上の節。`composer audit` の 14 件〈8 部品〉を、今の大きな版の中の更新で 0 件にした。いちばん重いのは表計算の部品の XXE〈アップロードされた xlsx を読む取込が 2 つある〉。変わったのは `composer.lock` だけ・全件 5298 本・ビュー 323 本の lint〈INVALID 0〉。`13.x` = `a538f4b6`〈push 済み〉・main repo で `composer install --no-dev` のあと `./deploy.sh`。本番の部品の版と `installed.json` などが手元と md5 で一致・本番のビュー 324 本の lint〈INVALID 0〉・本番の PHP で xlsx を書いて読み戻せた・`laravel.log` は Nov 18 01:45 のまま・ログインした画面〈経営ダッシュボード・仕入れ案件の詳細と、工程表と紙の台帳の取込を含む 12 画面〉が開きコンソールのエラー 0）。
 
 その他の新規要件は別途追記する。
 
