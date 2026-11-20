@@ -213,23 +213,43 @@ class ReProject extends Model
             if (in_array($lot->id, $excludeLotIds)) {
                 continue;
             }
-            $depreciationAmount = null;
-            if ($allHavePrice && $lotSellingTotal > 0) {
-                $depreciationAmount = (int) round($effectiveCostTotal * ($lot->selling_price / $lotSellingTotal));
-            }
 
             $results[] = [
                 'id'            => $lot->id,
                 'lot_number'    => $lot->lot_number,
                 'area_sqm'      => (float) $lot->area_sqm,
                 'selling_price' => $lot->selling_price,
-                'land_cost'     => $depreciationAmount,
+                'land_cost'     => $this->allocatedLandCost($lot, $effectiveCostTotal, $lotSellingTotal, $allHavePrice),
                 'status'        => $lot->status->value,
                 'status_label'  => $lot->status->label(),
             ];
         }
 
         return $results;
+    }
+
+    /**
+     * 住宅事業の土地原価の自動の値（区画 1 つ）。housingLotOptions() の land_cost と同じ式（App\Support\HousingLandCost が使う）。
+     * この分譲地に無い区画・計算できない（全区画に販売価格が無い）ときは null。
+     */
+    public function housingLotLandCost(int $lotId): ?int
+    {
+        $lot = $this->lots->firstWhere('id', $lotId);
+        if ($lot === null) {
+            return null;
+        }
+
+        return $this->allocatedLandCost($lot, $this->getEffectiveCostTotal(), $this->getLotSellingPriceTotal(), $this->allLotsHaveSellingPrice());
+    }
+
+    /** 分譲地の原価の合計を区画の販売価格で按分する（全区画に販売価格があるときだけ） */
+    private function allocatedLandCost(ReProjectLot $lot, int $costTotal, int $sellingTotal, bool $allPriced): ?int
+    {
+        if (! $allPriced || $sellingTotal <= 0) {
+            return null;
+        }
+
+        return (int) round($costTotal * ($lot->selling_price / $sellingTotal));
     }
 
     /**

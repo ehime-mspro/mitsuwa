@@ -26,10 +26,15 @@ trait LocksLandAfterContract
      */
     public function refusesLandChange(array $input): bool
     {
-        if (! $this->isLandLockedByContract()) {
-            return false;
-        }
+        return $this->isLandLockedByContract() && $this->landLinkDiffers($input);
+    }
 
+    /**
+     * 送られた紐付けが今（保存済み）と違うか。契約の有無に関係なく比べる
+     * （土地原価の自動の値を計算し直すかの判定も使う。App\Support\HousingLandCost::whenAutomatic()）。
+     */
+    public function landLinkDiffers(array $input): bool
+    {
         return self::landLink($input['land_source_type'] ?? null, $input['re_project_lot_id'] ?? null, $input['re_procurement_id'] ?? null)
             !== self::landLink($this->land_source_type?->value, $this->re_project_lot_id, $this->re_procurement_id);
     }

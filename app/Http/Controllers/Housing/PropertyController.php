@@ -9,6 +9,7 @@ use App\Http\Controllers\Controller;
 use App\Models\HsProperty;
 use App\Models\HsPropertyFile;
 use App\Support\AttachmentDelivery;
+use App\Support\HousingLandCost;
 use App\Support\JapanTime;
 use App\Support\Settings;
 use App\Models\ReProcurement;
@@ -429,6 +430,8 @@ class PropertyController extends Controller
             'address'              => $procurement->address,
             'land_area_sqm'        => $procurement->land_area_sqm ? (float) $procurement->land_area_sqm : null,
             'effective_cost_total' => $procurement->getEffectiveCostTotal(),
+            // 土地原価の自動の値（原価の行が無ければ null。画面はこちらを使う。App\Support\HousingLandCost）
+            'land_cost'            => HousingLandCost::forLink(HousingLandSourceType::Procurement->value, null, $procurement->id),
             'target_selling_price' => $procurement->target_selling_price_land,
         ]);
     }
