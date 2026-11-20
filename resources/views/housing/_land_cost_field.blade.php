@@ -21,8 +21,9 @@
 <p x-show="!isLandCostManual && landCostView().unavailable" class="text-xs text-amber-700 mt-1">紐付け先から計算できません（分譲地の全区画に販売価格が入っていない／仕入れ案件に原価が無い）。このまま保存すると空になります。</p>
 <div x-show="landCostView().refreshOffered" class="mt-1">
     <p class="text-xs text-gray-600">保存されている値は、今の紐付け先から計算した値（<span x-text="housingYen(computedLandCost)"></span>）と違います。</p>
-    <label class="flex gap-1 text-xs text-gray-700 cursor-pointer mt-1" style="align-items: center;">
-        <input type="checkbox" name="refresh_land_cost" value="1" x-model="refreshLandCost" :disabled="!landCostView().refreshOffered" style="width: auto; height: auto;">
-        今の計算値（<span x-text="housingYen(computedLandCost)"></span>）にする
+    <label class="flex gap-1 text-xs text-gray-700 cursor-pointer mt-1" style="align-items: flex-start;">
+        <input type="checkbox" name="refresh_land_cost" value="1" x-model="refreshLandCost" :disabled="!landCostView().refreshOffered" style="width: auto; height: auto; margin-top: 2px;">
+        {{-- 文は 1 つの span にまとめる（flex の項目が分かれると狭い画面で縦に割れる） --}}
+        <span>今の計算値（<span x-text="housingYen(computedLandCost)"></span>）にする</span>
     </label>
 </div>

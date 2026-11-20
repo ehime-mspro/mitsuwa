@@ -249,6 +249,21 @@ class LandCostAutoTest extends HousingScreenTestCase
         $this->assertSame(9600000, $property->fresh()->land_cost, '「今の計算値にする」を画面から送っても計算値にならない');
     }
 
+    /**
+     * 「今の計算値（Y円）にする」は 1 つの文として流れる（ラベルは flex なので、文字と金額が別々の項目だと
+     * 狭い画面で「今の / 計算 / 値（」と縦に割れる。2026-11-20 に 375px の契約の編集で実測）。
+     */
+    public function test_the_refresh_label_reads_as_one_run_of_text(): void
+    {
+        $property = $this->propertyOnLot(false);
+        [, $contract] = $this->contractOn(false);
+        $run = '<span>今の計算値（<span x-text="housingYen(computedLandCost)"></span>）にする</span>';
+
+        foreach ([route('housing.properties.edit', $property), route('housing.contracts.edit-building', $contract)] as $url) {
+            $this->assertTrue(str_contains($this->htmlOf($url), $run), "{$url}: 「今の計算値にする」の文が 1 つの span にまとまっていない");
+        }
+    }
+
     public function test_an_equal_value_offers_no_refresh(): void
     {
         $property = $this->propertyOnLot(false, null, ['land_cost' => 9600000]);
