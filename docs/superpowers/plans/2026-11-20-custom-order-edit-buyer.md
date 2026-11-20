@@ -250,3 +250,12 @@ git commit -m "docs: 注文住宅の編集画面で買主を選ぶ直しを記�
   2. 買主のない契約済みの案件（CO-901）: 未選択で開く → 選ばずに「更新する」を押すと、買主の欄の `required` でブラウザが「リスト内の項目を選択してください。」と止める（DB 変わらず・備考は画面に残る。計画の想定〈赤い枠の「顧客は必須です。」〉と違うが登録画面と同じ動き。赤い枠は手で組んだ送信だけ＝テストが固定）→ 佐藤 花子を選んで保存 → 紐付き・顧客名が買主の名前・備考も保存
   3. 「新規顧客を登録」で 新規 三郎 を作る → 選ばれた状態になり、保存できて成約
   4. 375px・1440px で `main` の横のはみ出し 0・コンソールのエラーと警告 0
+
+### 最後の点検（2026-11-20）
+
+- 別の担当（いちばん強いモデル・読み取りだけ）: 「マージしてよい」・Critical 0・Important 1・Minor 5。点検役が流したもの: `tests/Feature/Housing` と走査 3 本 → OK (331 tests, 6833 assertions)。
+- Important（I-1）: 契約一覧から開く注文住宅の契約の編集の保存（`HsContractListController::updateCustomOrder`）が `exists:buyers,id` のままで、編集画面だけ絞っても同じ案件に選択肢に無い買主を紐付けられた。`HousingContractBuyerRankTest` の §7.1 #11 のテストが固定するのは登録の 2 経路だけで、ぶつからない。
+  - 赤: `test_the_contract_edit_screen_also_refuses_a_buyer_it_does_not_offer`（住宅事業にいない・削除済みの 2 本）が「入力エラーに「選択された顧客は正しくありません。」が出ていない」で落ちた。守り: `test_the_contract_edit_screen_keeps_a_deleted_current_buyer` は直す前から緑（最初はテストのデータに建物の金額が無く、ほかの入力エラーで落ちていた → データを直した）。
+  - 直し: `selectableCustomOrderBuyers()`（画面の選択肢の組み立てを取り出した）を、保存の入力チェックの `Rule::in` でも使う（`55af385b`）。
+  - 緑: Housing と入力チェックの走査 4 本 → OK (345 tests, 6843 assertions)・全件 **OK (5389 tests, 59423 assertions)**（警告なし）。
+- Minor（後回し）: 本番の 1 件と同じ「契約済み＋買主なし」のテストが無い／選択肢に出ないことを `value="番号"` の字面で見る／買主の選択肢の組み立てが同じ形で 4 か所／「顧客名（自動）」は保存済みの名前を出し、保存で買主の今の名前になる／`customOrder()` の既定の買主で、買主なしの案件を通るテストが 1 本だけ。
