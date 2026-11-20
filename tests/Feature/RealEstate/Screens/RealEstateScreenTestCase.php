@@ -7,6 +7,7 @@ use App\Models\Buyer;
 use App\Models\Department;
 use App\Models\ReCostItem;
 use App\Models\ReProcurement;
+use App\Models\ReProcurementLot;
 use App\Models\ReProject;
 use App\Models\ReProjectLot;
 use App\Models\User;
@@ -127,6 +128,31 @@ abstract class RealEstateScreenTestCase extends TestCase
             'property_name' => '勝山の家',
             'address' => '愛媛県松山市勝山町1-1',
             'created_by' => $this->user->id,
+        ], $overrides));
+    }
+
+    /** 土地（自社買取）の仕入れ案件。区画を登録できる種類 */
+    protected function landProcurement(array $overrides = []): ReProcurement
+    {
+        return $this->procurement(array_merge([
+            'procurement_code' => 'RE-PRC-001',
+            'property_type' => 'brokerage_land',
+            'transaction_type' => 'purchase',
+            'property_name' => '勝山の土地',
+            'land_area_sqm' => 132.69,
+            'target_selling_price_land' => 25000000,
+        ], $overrides));
+    }
+
+    /** 土地の仕入れ案件の区画（1 号地・132.69㎡・25,000,000円・販売中） */
+    protected function procurementLot(ReProcurement $procurement, array $overrides = []): ReProcurementLot
+    {
+        return ReProcurementLot::create(array_merge([
+            'procurement_id' => $procurement->id,
+            'lot_number' => 1,
+            'area_sqm' => 132.69,
+            'selling_price' => 25000000,
+            'status' => 'on_sale',
         ], $overrides));
     }
 

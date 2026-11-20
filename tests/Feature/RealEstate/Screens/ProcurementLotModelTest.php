@@ -1,0 +1,145 @@
+<?php
+
+namespace Tests\Feature\RealEstate\Screens;
+
+use App\Enums\LotStatus;
+use App\Models\HsContract;
+use App\Models\HsCustomOrder;
+use App\Models\HsProperty;
+use App\Models\ReContract;
+use App\Models\ReProcurement;
+use App\Models\ReProcurementLot;
+use Illuminate\Support\Facades\Schema;
+use PHPUnit\Framework\Attributes\DataProvider;
+
+/**
+ * 土地（自社買取）の仕入れ案件の区画の表・モデル・判定（設計書 §6）。
+ * ⚠ テスト用スキーマは本番の SQL（database/sql/2026-11-20-create-re-procurement-lots.sql）と対で維持する。
+ */
+class ProcurementLotModelTest extends RealEstateScreenTestCase
+{
+    public function test_the_test_schema_matches_the_production_sql(): void
+    {
+        $sql = file_get_contents(base_path('database/sql/2026-11-20-create-re-procurement-lots.sql'));
+        $this->assertSame(1, preg_match('/CREATE TABLE `re_procurement_lots` \((.*?)\n\) ENGINE/s', $sql, $m));
+        // created_at・updated_at は 1 行に 2 列書いているので、列の型の前の名前を全部拾う
+        preg_match_all('/`(\w+)` (?:BIGINT|INT|DECIMAL|VARCHAR|TIMESTAMP)/', $m[1], $all);
+        $sqlColumns = array_values(array_unique($all[1]));
+        // 行頭の列名（設計の読み方）とも矛盾しないこと
+        preg_match_all('/^\s*`(\w+)`\s/m', $m[1], $heads);
+        foreach ($heads[1] as $head) {
+            $this->assertContains($head, $sqlColumns);
+        }
+
+        $this->assertEqualsCanonicalizing($sqlColumns, Schema::getColumnListing('re_procurement_lots'));
+
+        $unique = collect(Schema::getIndexes('re_procurement_lots'))
+            ->contains(fn ($i) => $i['unique'] && $i['columns'] === ['procurement_id']);
+        $this->assertTrue($unique, 'procurement_id の一意の索引が無い');
+
+        $this->assertTrue(Schema::hasColumn('re_projects', 'source_procurement_code'));
+        $projectUnique = collect(Schema::getIndexes('re_projects'))
+            ->contains(fn ($i) => $i['unique'] && $i['columns'] === ['source_procurement_code']);
+        $this->assertTrue($projectUnique, 'source_procurement_code の一意の索引が無い');
+    }
+
+    public function test_area_and_tsubo_price_labels(): void
+    {
+        $lot = $this->procurementLot($this->landProcurement());
+        $this->assertSame(40.13, $lot->getAreaTsubo());
+        $this->assertSame('132.69㎡（40.13坪）', $lot->areaLabel());
+        $this->assertSame('@62.3', $lot->getSellingPricePerTsuboFormatted());
+        $this->assertSame('1号地 132.69㎡（40.13坪） 販売価格 25,000,000円', $lot->summaryLabel());
+
+        // Bug #34 の罠①: 円で丸めてから万円にすると @99.9
+        $trap = $this->procurementLot($this->landProcurement(['procurement_code' => 'RE-PRC-002']), ['area_sqm' => 66.15, 'selling_price' => 19990000]);
+        $this->assertSame('@100.0', $trap->getSellingPricePerTsuboFormatted());
+
+        $none = $this->procurementLot($this->landProcurement(['procurement_code' => 'RE-PRC-003']), ['selling_price' => null]);
+        $this->assertNull($none->getSellingPricePerTsuboFormatted());
+        $this->assertSame('1号地 132.69㎡（40.13坪）', $none->summaryLabel());
+    }
+
+    public static function statusCases(): array
+    {
+        return [
+            '紐付けなし' => ['none', LotStatus::OnSale],
+            '契約' => ['contract', LotStatus::Sold],
+            '契約の無い建売' => ['hs_no_contract', LotStatus::OnSale],
+            '契約のある建売' => ['hs_contract', LotStatus::Sold],
+            '注文住宅 見積り' => ['order_estimation', LotStatus::OnSale],
+            '注文住宅 契約' => ['order_contracted', LotStatus::Sold],
+            '注文住宅 着工' => ['order_construction', LotStatus::Sold],
+        ];
+    }
+
+    #[DataProvider('statusCases')]
+    public function test_the_default_status_follows_existing_links(string $case, LotStatus $expected): void
+    {
+        $p = $this->landProcurement();
+
+        if ($case === 'contract') {
+            ReContract::create([
+                'department' => 'realestate', 'contract_type' => 'procurement_land', 'status' => 'contracted',
+                'property_name' => '契約物件', 'procurement_id' => $p->id, 'created_by' => 1,
+            ]);
+        }
+        if (str_starts_with($case, 'hs_')) {
+            $hs = HsProperty::create([
+                'property_code' => 'HS-001', 'property_name' => '建売', 'status' => 'construction',
+                'land_source_type' => 'procurement', 're_procurement_id' => $p->id,
+                'address' => '愛媛県松山市2-2-2', 'created_by' => 1,
+            ]);
+            if ($case === 'hs_contract') {
+                HsContract::create([
+                    'property_id' => $hs->id, 'customer_name' => '山田', 'selling_price_land' => 1,
+                    'selling_price_building' => 1, 'contract_date' => '2026-11-01', 'created_by' => 1,
+                ]);
+            }
+        }
+        if (str_starts_with($case, 'order_')) {
+            HsCustomOrder::create([
+                'order_code' => 'CO-001', 'order_name' => '注文', 'customer_name' => '山田',
+                'status' => substr($case, 6), 'land_source_type' => 'procurement', 're_procurement_id' => $p->id,
+                'address' => '愛媛県松山市2-2-2', 'created_by' => 1,
+            ]);
+        }
+
+        $this->assertSame($expected, $p->fresh()->defaultLotStatus());
+    }
+
+    public function test_mark_sold_and_on_sale_touch_only_that_procurements_lot(): void
+    {
+        $a = $this->landProcurement();
+        $b = $this->landProcurement(['procurement_code' => 'RE-PRC-002']);
+        $lotA = $this->procurementLot($a);
+        $lotB = $this->procurementLot($b);
+
+        ReProcurementLot::markSoldFor($a->id);
+        $this->assertSame(LotStatus::Sold, $lotA->fresh()->status);
+        $this->assertSame(LotStatus::OnSale, $lotB->fresh()->status);
+
+        ReProcurementLot::markOnSaleFor($a->id);
+        $this->assertSame(LotStatus::OnSale, $lotA->fresh()->status);
+
+        ReProcurementLot::markSoldFor(null);
+        ReProcurementLot::markOnSaleFor(null);
+        ReProcurementLot::markSoldFor(999999);
+        $this->assertSame(LotStatus::OnSale, $lotA->fresh()->status);
+        $this->assertSame(LotStatus::OnSale, $lotB->fresh()->status);
+    }
+
+    public function test_deleting_a_procurement_deletes_its_lot(): void
+    {
+        $p = $this->landProcurement();
+        $this->procurementLot($p);
+
+        $show = route('realestate.procurements.show', $p);
+        $html = $this->actingAs($this->user)->get($show)->assertOk()->getContent();
+        $form = $this->parseForm($html, 'action="' . route('realestate.procurements.destroy', $p) . '"');
+        $this->submit($form, $show)->assertRedirect();
+
+        $this->assertSame(0, ReProcurement::count());
+        $this->assertSame(0, ReProcurementLot::count());
+    }
+}

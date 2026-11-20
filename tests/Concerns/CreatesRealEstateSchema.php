@@ -162,6 +162,19 @@ trait CreatesRealEstateSchema
             $t->timestamps();
         });
 
+        // 土地の仕入れ案件の区画。database/sql/2026-11-20-create-re-procurement-lots.sql と対で維持する。
+        // ⚠ 外部キーは張らない（上の決まり）。本番の ON DELETE CASCADE は ProcurementController::destroy() がコードでも行う。
+        Schema::create('re_procurement_lots', function (Blueprint $t) {
+            $t->id();
+            $t->unsignedBigInteger('procurement_id')->unique('uq_re_procurement_lots_procurement');
+            $t->integer('lot_number');
+            $t->decimal('area_sqm', 10, 2);
+            $t->integer('selling_price')->nullable();
+            $t->string('status', 30);
+            $t->string('notes', 200)->nullable();
+            $t->timestamps();
+        });
+
         Schema::create('re_procurement_costs', function (Blueprint $t) {
             $t->id();
             $t->unsignedBigInteger('procurement_id');
@@ -204,6 +217,8 @@ trait CreatesRealEstateSchema
         Schema::create('re_projects', function (Blueprint $t) {
             $t->id();
             $t->string('project_code', 20);
+            // 土地から変えた分譲地の元の仕入れ案件番号（本番の SQL: 2026-11-20-create-re-procurement-lots.sql）
+            $t->string('source_procurement_code', 20)->nullable()->unique('uq_re_projects_source_procurement_code');
             $t->string('project_name', 100);
             $t->string('status', 30);
             $t->string('postal_code', 10)->nullable();

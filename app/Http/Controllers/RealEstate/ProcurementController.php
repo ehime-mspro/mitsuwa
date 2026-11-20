@@ -280,6 +280,9 @@ class ProcurementController extends Controller
         // ⚠ 削除ブロックの判定より**後**に置くこと（ブロックされたのに工程だけ消える事故を防ぐ）。
         $procurement->scheduleSteps()->delete();
 
+        // 土地の区画も一緒に消す（本番は外部キーの CASCADE。テスト用スキーマは外部キーを張らないのでコードにも書く）
+        $procurement->lot()->delete();
+
         // 原価明細も一緒に削除（cascadeOnDelete）
         $procurement->delete();
 

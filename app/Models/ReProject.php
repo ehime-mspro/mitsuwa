@@ -24,6 +24,7 @@ class ReProject extends Model
 
     protected $fillable = [
         'project_code',
+        'source_procurement_code',
         'project_name',
         'status',
         'postal_code',
