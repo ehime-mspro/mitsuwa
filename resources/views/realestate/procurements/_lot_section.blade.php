@@ -1,6 +1,8 @@
-{{-- 土地の区画（1 案件に 1 区画まで）。土地（自社買取）の仕入れ案件の詳細画面だけが読み込む。
+{{-- 土地の区画（1 案件に 1 区画まで。取引種別は問わない）。土地の仕入れ案件の詳細画面だけが読み込む。
      登録・編集は経営層と管理者、削除は経営層。一般担当は表示だけ。
-     ⚠ 3 つのフォームは送り先の URL が同じなので、テストは id で掴む。 --}}
+     ⚠ 3 つのフォームは送り先の URL が同じなので、テストは id で掴む。
+     ⚠ この欄の操作の結果は lot_notice（成功）・lot_error（断り・失敗）のフラッシュで、見出しの下に出す
+       （戻り先は #lot なので、レイアウトの上の帯は画面の外に隠れる。上の帯には出さない＝二重にしない）。 --}}
 @php
     $canEditLot = auth()->user()->role->isManagerOrAbove();
     $canDeleteLot = auth()->user()->role->isExecutive();
@@ -15,6 +17,17 @@
         <h2 class="text-base font-bold text-gray-900">区画</h2>
     </div>
 
+    @if(session('lot_notice'))
+    <div id="lot-notice" role="status" class="mb-4 flex items-center gap-2 px-4 py-3 rounded-lg bg-emerald-50 border border-emerald-200">
+        <span class="text-sm text-emerald-800 wrap-anywhere">{{ session('lot_notice') }}</span>
+    </div>
+    @endif
+    @if(session('lot_error'))
+    <div id="lot-notice" role="alert" class="mb-4 flex items-center gap-2 px-4 py-3 rounded-lg bg-red-50 border border-red-200">
+        <span class="text-sm text-red-800 wrap-anywhere">{{ session('lot_error') }}</span>
+    </div>
+    @endif
+
     @if($lotErrors !== [])
     <div class="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
         <ul class="list-disc pl-5 text-sm text-red-800">
@@ -28,7 +41,9 @@
     @if($lot === null)
         @if($canEditLot)
         <p class="text-sm text-gray-600 mb-3">この土地の区画を登録します（1 案件に 1 区画まで）。面積と販売価格は、土地面積と想定販売価格（土地）を入れてあります。</p>
-        <form id="lot-create-form" method="POST" action="{{ route('realestate.procurements.lot.store', $procurement) }}">
+        @include('_partials._submit_once')
+        <form id="lot-create-form" method="POST" action="{{ route('realestate.procurements.lot.store', $procurement) }}"
+              x-data="submitOnce()" x-on:submit="onSubmit($event)" x-on:pageshow.window="onPageShow($event)">
             @csrf
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
@@ -60,7 +75,8 @@
                 </div>
             </div>
             <div class="mt-3">
-                <button type="submit" class="px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-md hover:bg-emerald-700">区画を登録する</button>
+                <button type="submit" :disabled="submitting" class="px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-md hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60">区画を登録する</button>
+                <span role="status" x-text="submitting ? '登録しています…' : ''" style="display: inline-block; margin-left: 12px; font-size: 13px; color: #374151;"></span>
             </div>
         </form>
         @else
@@ -92,7 +108,9 @@
         @if($canEditLot)
         <details class="mt-4" @if($lotErrors !== []) open @endif>
             <summary class="text-sm font-semibold text-emerald-700 cursor-pointer">区画を編集する</summary>
-            <form id="lot-edit-form" method="POST" action="{{ route('realestate.procurements.lot.update', $procurement) }}" class="mt-3">
+            @include('_partials._submit_once')
+            <form id="lot-edit-form" method="POST" action="{{ route('realestate.procurements.lot.update', $procurement) }}" class="mt-3"
+                  x-data="submitOnce()" x-on:submit="onSubmit($event)" x-on:pageshow.window="onPageShow($event)">
                 @csrf
                 @method('PUT')
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -125,7 +143,8 @@
                     </div>
                 </div>
                 <div class="mt-3">
-                    <button type="submit" class="px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-md hover:bg-emerald-700">区画を更新する</button>
+                    <button type="submit" :disabled="submitting" class="px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-md hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60">区画を更新する</button>
+                    <span role="status" x-text="submitting ? '更新しています…' : ''" style="display: inline-block; margin-left: 12px; font-size: 13px; color: #374151;"></span>
                 </div>
             </form>
         </details>
@@ -142,7 +161,8 @@
     @endif
 
     @if($canEditLot)
-    {{-- 分譲地に変える（土地の仕入れ案件を中身ごと分譲地へ）。押せない理由は <p id="convert-refusal"> に出し、
+    {{-- 分譲地に変える（土地の仕入れ案件を中身ごと分譲地へ）。確認（confirm）で「キャンセル」したときは onsubmit が送信を止めるので、
+         $event.defaultPrevented を見て submitting を立てない（立てると押せないままになる）。押せない理由は <p id="convert-refusal"> に出し、
          押せないボタンは title を持てないので <span title> で包む（Top trap #12）。 --}}
     <div class="mt-5 pt-4 border-t border-gray-200">
         <h3 class="text-sm font-bold text-gray-900 mb-1">分譲地に変える</h3>
@@ -154,10 +174,13 @@
             </span>
             <p id="convert-refusal" class="mt-2 text-sm text-gray-600 wrap-anywhere">{{ $conversionRefusal }}</p>
         @else
+            @include('_partials._submit_once')
             <form id="convert-form" method="POST" action="{{ route('realestate.procurements.convert', $procurement) }}"
+                  x-data="submitOnce()" x-on:submit="$event.defaultPrevented || onSubmit($event)" x-on:pageshow.window="onPageShow($event)"
                   onsubmit="return confirm('分譲地に変えます。案件番号は分譲地の番号（RE-PRJ-…）に変わり、元の仕入れ案件は消えます（原価・区画・工程・添付は分譲地へ移ります）。元には戻せません。よろしいですか？')">
                 @csrf
-                <button type="submit" class="px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-md hover:bg-emerald-700">分譲地に変える</button>
+                <button type="submit" :disabled="submitting" class="px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-md hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60">分譲地に変える</button>
+                <span role="status" x-text="submitting ? '変えています…' : ''" style="display: inline-block; margin-left: 12px; font-size: 13px; color: #374151;"></span>
             </form>
         @endif
     </div>

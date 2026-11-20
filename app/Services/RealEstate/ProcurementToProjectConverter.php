@@ -87,8 +87,9 @@ class ProcurementToProjectConverter
                 'longitude'               => $locked->longitude,
                 'land_area_sqm'           => $locked->land_area_sqm,
                 'zoning'                  => $locked->zoning,
-                'building_coverage'       => $locked->building_coverage,
-                'floor_area_ratio'        => $locked->floor_area_ratio,
+                // ⚠ モデルの整数のキャストを通すと 59.50 が 59 になるので、生の値を写す
+                'building_coverage'       => $locked->getRawOriginal('building_coverage'),
+                'floor_area_ratio'        => $locked->getRawOriginal('floor_area_ratio'),
                 'supplier_id'             => $locked->supplier_id,
                 'info_obtained_date'      => $locked->info_obtained_date,
                 'assessment_price'        => $locked->assessment_price_land,

@@ -41,7 +41,9 @@ class ProcurementLotScreensTest extends RealEstateScreenTestCase
         $procurement = $this->landProcurement();
         $url = $this->detailUrl($procurement);
 
-        $form = $this->parseForm($this->htmlOf($url), self::CREATE);
+        $detail = $this->htmlOf($url);
+        $this->assertLotSubmitOnce($detail, self::CREATE, '登録しています…');
+        $form = $this->parseForm($detail, self::CREATE);
         $this->assertSame('1', $form['fields']['lot_number']);
         $this->assertSame('132.69', $form['fields']['area_sqm']);
         $this->assertSame('25000000', $form['fields']['selling_price']);
@@ -49,7 +51,7 @@ class ProcurementLotScreensTest extends RealEstateScreenTestCase
 
         $html = $this->landed($this->submit($form, $url));
 
-        $this->assertFlash($html, 'success', '区画を登録しました。');
+        $this->assertLotNotice($html, 'success', '区画を登録しました。');
         $this->assertSame(1, ReProcurementLot::where('procurement_id', $procurement->id)->count());
         $this->assertStringContainsString('132.69㎡（40.13坪）', $html);
         $this->assertStringContainsString('@62.3', $html);
@@ -134,7 +136,7 @@ class ProcurementLotScreensTest extends RealEstateScreenTestCase
 
         $html = $this->landed($this->submit($form, $url));
 
-        $this->assertFlash($html, 'error', '区画は 1 つまでです。2 つ目を足すときは「分譲地に変える」を使ってください。');
+        $this->assertLotNotice($html, 'error', '区画は 1 つまでです。2 つ目を足すときは「分譲地に変える」を使ってください。');
         $this->assertSame(1, ReProcurementLot::count());
     }
 
@@ -149,6 +151,8 @@ class ProcurementLotScreensTest extends RealEstateScreenTestCase
         ]);
         $html = $this->landed($response);
 
+        // 土地でない案件の詳細には区画の欄が無いので、断りは上の帯に出し、#lot へは戻さない
+        $response->assertRedirect($url);
         $this->assertFlash($html, 'error', '区画を登録できるのは、物件種別が土地の仕入れ案件だけです。');
         $this->assertSame(0, ReProcurementLot::count());
     }
@@ -162,10 +166,10 @@ class ProcurementLotScreensTest extends RealEstateScreenTestCase
         $html = $this->landed($this->actingAs($this->user)->from($url)->put(route('realestate.procurements.lot.update', $procurement), [
             'lot_number' => '1', 'area_sqm' => '100', 'status' => 'on_sale',
         ]));
-        $this->assertFlash($html, 'error', $message);
+        $this->assertLotNotice($html, 'error', $message);
 
         $html = $this->landed($this->actingAs($this->user)->from($url)->delete(route('realestate.procurements.lot.destroy', $procurement)));
-        $this->assertFlash($html, 'error', $message);
+        $this->assertLotNotice($html, 'error', $message);
     }
 
     public function test_the_lot_is_edited_from_the_detail_screen(): void
@@ -174,7 +178,9 @@ class ProcurementLotScreensTest extends RealEstateScreenTestCase
         $lot = $this->procurementLot($procurement);
         $url = $this->detailUrl($procurement);
 
-        $form = $this->parseForm($this->htmlOf($url), self::EDIT);
+        $detail = $this->htmlOf($url);
+        $this->assertLotSubmitOnce($detail, self::EDIT, '更新しています…');
+        $form = $this->parseForm($detail, self::EDIT);
         $this->assertSame('1', $form['fields']['lot_number']);
         $this->assertSame('132.69', $form['fields']['area_sqm']);
         $this->assertSame('25000000', $form['fields']['selling_price']);
@@ -182,7 +188,7 @@ class ProcurementLotScreensTest extends RealEstateScreenTestCase
 
         $html = $this->landed($this->submit($this->fill($form, ['area_sqm' => '150.00', 'status' => 'negotiating']), $url));
 
-        $this->assertFlash($html, 'success', '区画を更新しました。');
+        $this->assertLotNotice($html, 'success', '区画を更新しました。');
         $lot->refresh();
         $this->assertSame(['150.00', 'negotiating'], [$lot->area_sqm, $lot->status->value]);
     }
@@ -199,7 +205,7 @@ class ProcurementLotScreensTest extends RealEstateScreenTestCase
 
         $landed = $this->landed($this->submit($form, $url));
 
-        $this->assertFlash($landed, 'success', '区画を更新しました。');
+        $this->assertLotNotice($landed, 'success', '区画を更新しました。');
         $lot->refresh();
         $this->assertSame([1, '132.69', 25000000, 'on_sale', '角地'], [$lot->lot_number, $lot->area_sqm, $lot->selling_price, $lot->status->value, $lot->notes]);
     }
@@ -235,7 +241,7 @@ class ProcurementLotScreensTest extends RealEstateScreenTestCase
         );
         $landed = $this->landed($this->submit($this->parseForm($html, self::DELETE), $url));
 
-        $this->assertFlash($landed, 'success', '区画を削除しました。');
+        $this->assertLotNotice($landed, 'success', '区画を削除しました。');
         $this->assertSame(0, ReProcurementLot::count());
         $this->assertNotNull(ReContract::find($contract->id));
     }

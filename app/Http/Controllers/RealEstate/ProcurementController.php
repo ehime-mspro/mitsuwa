@@ -286,12 +286,17 @@ class ProcurementController extends Controller
                 return redirect()->route('realestate.procurements.index')->with('error', $e->getMessage());
             }
 
-            return redirect(route('realestate.procurements.show', $procurement) . '#lot')->with('error', $e->getMessage());
+            // 土地でない案件には区画の欄が無いので、その断りだけは上の帯（#lot へ戻さない）
+            if ($e->getMessage() === ProcurementToProjectConverter::REFUSE_NOT_LAND) {
+                return redirect()->route('realestate.procurements.show', $procurement)->with('error', $e->getMessage());
+            }
+
+            return redirect(route('realestate.procurements.show', $procurement) . '#lot')->with('lot_error', $e->getMessage());
         } catch (\Exception $e) {
             report($e);
 
             return redirect(route('realestate.procurements.show', $procurement) . '#lot')
-                ->with('error', '分譲地に変えられませんでした。何も変えていません。時間をおいてやり直してください。');
+                ->with('lot_error', '分譲地に変えられませんでした。何も変えていません。時間をおいてやり直してください。');
         }
 
         return redirect()->route('realestate.projects.show', $project)

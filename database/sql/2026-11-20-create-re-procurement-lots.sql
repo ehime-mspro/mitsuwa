@@ -10,7 +10,7 @@
 --
 -- 適用: php artisan tinker --execute で DB::statement() に **1 文ずつ**流す。
 --   先頭で「re_procurement_lots か re_projects.source_procurement_code があれば 1 文も流さずに止まる」確認をする。
---   ⚠ 1 → 2 の順に流す。
+--   ⚠ 1 → 2 の順に流す。1 文目だけ入って 2 文目で止まったときは、先頭の確かめを飛ばして 2 文目だけを流す（1 文目をもう一度流さない）。
 
 -- 1. 土地の仕入れ案件の区画（1 案件に 1 区画まで）
 CREATE TABLE `re_procurement_lots` (

@@ -12,10 +12,12 @@ use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 
 /**
- * 土地（自社買取）の仕入れ案件の区画（1 案件に 1 区画まで）。詳細画面の欄から登録・編集・削除する。設計書 §5。
+ * 土地の仕入れ案件の区画（取引種別を問わない。1 案件に 1 区画まで）。詳細画面の欄から登録・編集・削除する。設計書 §5。
  *
  * ⚠ 「土地でない」「2 つ目」「区画が無いのに更新・削除」は入力エラーでなく帯の理由で詳細へ戻す
  *   （どれも古い画面か手で組んだ送信だけで起きる）。入力エラーは既定の戻り先（詳細画面）。
+ * ⚠ この欄の操作の結果は専用のフラッシュ lot_notice（成功）・lot_error（断り）で #lot へ戻し、区画の欄の見出しの下に出す
+ *   （上の帯だと、#lot まで下がった画面の外に隠れる）。土地でない案件には区画の欄が無いので、その断りだけは上の帯（error）。
  */
 class ProcurementLotController extends Controller
 {
@@ -29,15 +31,15 @@ class ProcurementLotController extends Controller
     public function store(Request $request, ReProcurement $procurement): RedirectResponse
     {
         if (! $procurement->property_type?->isLandOnly()) {
-            return $this->back($procurement)->with('error', self::LAND_ONLY);
+            return redirect()->route('realestate.procurements.show', $procurement)->with('error', self::LAND_ONLY);
         }
         if ($procurement->lot()->exists()) {
-            return $this->back($procurement)->with('error', self::ONLY_ONE);
+            return $this->back($procurement)->with('lot_error', self::ONLY_ONE);
         }
 
         $procurement->lot()->create($this->validated($request, $procurement));
 
-        return $this->back($procurement)->with('success', '区画を登録しました。');
+        return $this->back($procurement)->with('lot_notice', '区画を登録しました。');
     }
 
     /** PUT /realestate/procurements/{procurement}/lot */
@@ -45,12 +47,12 @@ class ProcurementLotController extends Controller
     {
         $lot = $procurement->lot;
         if ($lot === null) {
-            return $this->back($procurement)->with('error', self::NOT_FOUND);
+            return $this->back($procurement)->with('lot_error', self::NOT_FOUND);
         }
 
         $lot->update($this->validated($request, $procurement));
 
-        return $this->back($procurement)->with('success', '区画を更新しました。');
+        return $this->back($procurement)->with('lot_notice', '区画を更新しました。');
     }
 
     /** DELETE /realestate/procurements/{procurement}/lot */
@@ -58,12 +60,12 @@ class ProcurementLotController extends Controller
     {
         $lot = $procurement->lot;
         if ($lot === null) {
-            return $this->back($procurement)->with('error', self::NOT_FOUND);
+            return $this->back($procurement)->with('lot_error', self::NOT_FOUND);
         }
 
         $lot->delete();
 
-        return $this->back($procurement)->with('success', '区画を削除しました。');
+        return $this->back($procurement)->with('lot_notice', '区画を削除しました。');
     }
 
     /**

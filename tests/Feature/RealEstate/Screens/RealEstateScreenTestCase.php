@@ -187,4 +187,46 @@ abstract class RealEstateScreenTestCase extends TestCase
 
         return $buyer;
     }
+
+    /**
+     * 区画の欄（#lot）の中の結果の欄に $message が出ていて、上の帯（layouts/app）には出ていないこと（Bug #43: 場所まで見る）。
+     * $type は success（role="status"）／ error（role="alert"）。
+     */
+    protected function assertLotNotice(string $html, string $type, string $message): void
+    {
+        $role = $type === 'success' ? 'status' : 'alert';
+        $start = strpos($html, '<div id="lot"');
+        $this->assertNotFalse($start, '区画の欄（#lot）が無い');
+        $pattern = '/<div id="lot-notice" role="' . $role . '"[^>]*>\s*<span[^>]*>\s*' . preg_quote(e($message), '/') . '\s*<\/span>/u';
+        $this->assertSame(1, preg_match($pattern, $html, $m, PREG_OFFSET_CAPTURE), "区画の欄の結果（{$role}）に「{$message}」が出ていない");
+        $this->assertGreaterThan($start, $m[0][1], '結果の欄が区画の欄の外にある');
+        $banner = $type === 'success' ? 'text-emerald-800' : 'text-red-800';
+        $this->assertSame(
+            0,
+            preg_match('/<span class="text-sm ' . $banner . '">\s*' . preg_quote(e($message), '/') . '\s*<\/span>/u', $html),
+            '上の帯にも出ている（二重）'
+        );
+    }
+
+    /**
+     * 区画の欄のフォーム（$formMarker は `id="…"`）が二度押し止めの部品（_partials/_submit_once）につながっていること。
+     * 部品の定義が描かれていること・フォームの x-data と 2 つのイベント・送信ボタンの :disabled・role="status" の文字を、
+     * その要素に付いているかで見る（ページのどこかにあるだけでは足りない。Bug #47）。
+     */
+    protected function assertLotSubmitOnce(string $html, string $formMarker, string $statusText): void
+    {
+        $this->assertStringContainsString('function submitOnce(', $html, '二度押し止めの部品の script が描かれていない');
+        $pos = strpos($html, $formMarker);
+        $this->assertNotFalse($pos, "フォームが無い: {$formMarker}");
+        $open = strrpos(substr($html, 0, $pos), '<form');
+        $close = strpos($html, '</form>', $pos);
+        $form = substr($html, $open, $close - $open);
+        $openTag = substr($form, 0, strpos($form, '>') + 1);
+
+        $this->assertStringContainsString('x-data="submitOnce()"', $openTag);
+        $this->assertMatchesRegularExpression('/x-on:submit="(?:\$event\.defaultPrevented \|\| )?onSubmit\(\$event\)"/', $openTag);
+        $this->assertStringContainsString('x-on:pageshow.window="onPageShow($event)"', $openTag);
+        $this->assertSame(1, preg_match('/<button\b[^>]*\btype="submit"[^>]*\s:disabled="submitting"[^>]*>/u', $form), '送信ボタンが送信中に押せなくならない');
+        $this->assertSame(1, preg_match('/<span\b[^>]*\brole="status"[^>]*x-text="submitting \? \'' . preg_quote($statusText, '/') . '\' : \'\'"/u', $form), '送信中の文字（role="status"）が無い');
+    }
 }

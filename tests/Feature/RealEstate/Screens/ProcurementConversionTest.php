@@ -410,6 +410,9 @@ class ProcurementConversionTest extends RealEstateScreenTestCase
         $this->assertStringContainsString(e(self::CONFIRM), $detail);
         $form = $this->parseForm($detail, self::CONVERT);
         $this->assertSame(route('realestate.procurements.convert', $p), $form['action']);
+        $this->assertLotSubmitOnce($detail, self::CONVERT, '変えています…');
+        // 確認でキャンセルしたとき（onsubmit が送信を止める）は、押せないままにしない
+        $this->assertStringContainsString('x-on:submit="$event.defaultPrevented || onSubmit($event)"', $detail);
 
         $html = $this->landed($this->submit($form, $url));
 
@@ -455,7 +458,7 @@ class ProcurementConversionTest extends RealEstateScreenTestCase
 
         // 手で組んだ送信も、詳細へ戻って同じ理由が出て、何も変わらない
         $landed = $this->landed($this->actingAs($this->user)->from($url)->post(route('realestate.procurements.convert', $p)));
-        $this->assertFlash($landed, 'error', $reason);
+        $this->assertLotNotice($landed, 'error', $reason);
         $this->assertSame(1, ReProcurement::count());
         $this->assertSame(0, ReProject::count());
 
@@ -473,14 +476,14 @@ class ProcurementConversionTest extends RealEstateScreenTestCase
         $p = $this->landProcurement();
         $this->procurementLot($p);
         $this->step($p, '造成');
-        $this->attachment('procurements', $p->id, '図面.pdf');
+        $this->attachment(ReProcurement::class, $p->id, '図面.pdf');
         ReProcurementCost::create(['procurement_id' => $p->id, 'cost_item_id' => $this->surveyItem->id, 'estimated_amount' => 100000]);
         ReProjectLot::creating(fn () => throw new \RuntimeException('boom'));
         $url = $this->detailUrl($p);
 
         $html = $this->landed($this->submit($this->parseForm($this->htmlOf($url), self::CONVERT), $url));
 
-        $this->assertFlash($html, 'error', '分譲地に変えられませんでした。何も変えていません。時間をおいてやり直してください。');
+        $this->assertLotNotice($html, 'error', '分譲地に変えられませんでした。何も変えていません。時間をおいてやり直してください。');
         Exceptions::assertReported(fn (\RuntimeException $e) => $e->getMessage() === 'boom');
         $this->assertSame(0, ReProject::count());
         $this->assertSame(0, ReProjectLot::count());
@@ -489,6 +492,57 @@ class ProcurementConversionTest extends RealEstateScreenTestCase
         $this->assertSame(1, ReProcurementCost::where('procurement_id', $p->id)->count());
         $this->assertSame(1, $p->scheduleSteps()->count());
         $this->assertSame(1, Attachment::where('attachable_id', $p->id)->count());
+    }
+
+    /** 失敗が工程・添付の付け替えと原価・区画の削除のあと（最後の削除）で起きても、全部が元のまま戻る */
+    public function test_a_failure_after_moving_steps_and_attachments_changes_nothing(): void
+    {
+        \Illuminate\Support\Facades\Exceptions::fake();
+        $this->user = $this->manager();
+        $p = $this->landProcurement();
+        $this->procurementLot($p);
+        $step = $this->step($p, '造成');
+        $attachment = $this->attachment(ReProcurement::class, $p->id, '図面.pdf');
+        ReProcurementCost::create(['procurement_id' => $p->id, 'cost_item_id' => $this->surveyItem->id, 'estimated_amount' => 100000]);
+        ReProcurement::deleting(fn () => throw new \RuntimeException('late boom'));
+        $url = $this->detailUrl($p);
+
+        $html = $this->landed($this->submit($this->parseForm($this->htmlOf($url), self::CONVERT), $url));
+
+        $this->assertLotNotice($html, 'error', '分譲地に変えられませんでした。何も変えていません。時間をおいてやり直してください。');
+        Exceptions::assertReported(fn (\RuntimeException $e) => $e->getMessage() === 'late boom');
+        $this->assertSame(0, ReProject::count());
+        $this->assertSame(1, ReProcurement::count());
+        $this->assertSame(1, ReProcurementLot::where('procurement_id', $p->id)->count());
+        $this->assertSame(1, ReProcurementCost::where('procurement_id', $p->id)->count());
+        $this->assertSame([ReProcurement::class, $p->id], [$step->fresh()->schedulable_type, (int) $step->fresh()->schedulable_id]);
+        $this->assertSame([ReProcurement::class, $p->id], [$attachment->fresh()->attachable_type, (int) $attachment->fresh()->attachable_id]);
+    }
+
+    /** 建蔽率・容積率の小数は変えるときに落ちない（モデルの整数のキャストを通さず生の値を写す） */
+    public function test_building_coverage_and_floor_area_ratio_keep_their_decimals(): void
+    {
+        $p = $this->landProcurement();
+        \Illuminate\Support\Facades\DB::table('re_procurements')->where('id', $p->id)
+            ->update(['building_coverage' => 59.50, 'floor_area_ratio' => 199.50]);
+
+        $project = $this->converter()->convert($p->fresh(), $this->manager());
+
+        $raw = \Illuminate\Support\Facades\DB::table('re_projects')->where('id', $project->id)->first();
+        $this->assertEquals(59.5, (float) $raw->building_coverage);
+        $this->assertEquals(199.5, (float) $raw->floor_area_ratio);
+    }
+
+    /** 土地でない案件は区画の欄が無いので、断りは区画の欄でなく上の帯に出る */
+    public function test_a_non_land_refusal_stays_in_the_top_banner(): void
+    {
+        $p = $this->procurement();
+        $url = $this->detailUrl($p);
+
+        $response = $this->actingAs($this->user)->from($url)->post(route('realestate.procurements.convert', $p));
+
+        $response->assertRedirect($url);
+        $this->assertFlash($this->landed($response), 'error', ProcurementToProjectConverter::REFUSE_NOT_LAND);
     }
 
     public function test_sending_the_conversion_twice_lands_on_the_list(): void
