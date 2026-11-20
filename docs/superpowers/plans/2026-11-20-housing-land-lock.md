@@ -219,3 +219,4 @@ public function test_the_contract_edit_of_an_order_before_the_contract_can_chang
 - コンパイル済みビュー: 323 本 / INVALID 0
 - 変異: 23 通り（カナリア C0 を含む）すべて期待どおり。1 回目は M19 だけ DIFF（`AmountLimitTest::test_an_amount_over_the_limit_is_refused_on_the_contract_edit_screens` も同じ欄を fill して落ちる＝表が狭かった）→ 表を直して流し直し MATCH。M18 は予定どおり緑（表示だけの死角）。表と結果は scratchpad の `mutate/`（`specs_housing_land_lock.py`・`results-housing-land-lock.txt`・1 回目は `.round1.txt`）
 - 実ブラウザ（使い捨ての SQLite・`artisan serve`・Playwright）: 契約済みの注文住宅（区画 3・販売済）の編集と契約の編集で、ラジオ・選択欄 0・読み取り専用の表示と案内・送る値は `project_lot` / `3`・フォームの検査が通る・保存できて区画 3 のまま販売済のまま・帯「契約を更新しました。」。見積りの注文住宅はラジオ 3・区画の選択あり。1440px／375px で `main` の横スクロール 0・枠からのはみ出し 0・コンソールのエラー／警告 0
+- 最後の点検（別の担当・最も強いモデル）: マージしてよい・Critical/Important 0・Minor 6。Minor 1 を Important とみなして直した（`test_the_contract_edit_does_not_write_a_link_for_an_order_without_a_land_type` RED→GREEN・全件 OK (5342 tests, 56397 assertions)）。残りの Minor は BACKLOG の範囲外に記録
