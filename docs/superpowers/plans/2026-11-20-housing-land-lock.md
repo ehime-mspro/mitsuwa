@@ -205,3 +205,17 @@ public function test_the_contract_edit_of_an_order_before_the_contract_can_chang
 - [ ] **Step 4: 記録** — `docs/RULES.md` に Bug #142（症状・原因・直し方・変異の結果）・`docs/BACKLOG.md` に節（`利用者の判断を待っていた 1〜3` の節の範囲外の ④ に → を足す）・`CLAUDE.md` の件数 141 → 142・この計画の末尾に実測記録 → コミット `docs: 契約のある建売・注文住宅の土地の固定を Bug #142 として記録する`
 
 範囲外（記録だけ）: 登録のときに販売済の区画を選べること・ほぼ同時の 2 回の登録・建売の削除で区画の販売済が残ること（`PropertyController::destroy` は区画を戻さない）・判断待ちの ⑤〜⑧
+
+---
+
+## 実測記録（2026-11-20）
+
+- Task 1〜4: どれも計画の Expected どおり（落ちるべきテストが狙った理由で赤 → 直して緑。守りのテストは直す前から緑）
+- 計画から変えたこと（台帳の Ruling）:
+  - `JsEmbeddingTest` は `tests/Feature/Housing/Screens/` にあった（計画は `tests/Feature/` と書いた）。`tests/Feature/Housing` に含めて流した
+  - Task 4 に `test_the_contract_edit_of_an_order_without_a_land_type_survives_a_request_without_the_field` と種別の `?? null` を足した（固定・種別が空・欄が無い送信が 500。守りを外して赤を確かめた）
+  - 意味が変わった既存テスト 3 本: `ContractScreensTest::test_a_custom_order_contract_on_company_land_without_a_link_is_refused`（計画どおり契約前に）・`JsEmbeddingTest::test_the_contract_edit_screens_survive_a_typed_value_after_an_input_error`（契約前に。Bug #76 の逃がしは固定の無い注文住宅でしか入力が JS に届かない）・`HousingContractBuyerRankTest`（登録の土地を契約の編集で送る土地＝お客様の土地にそろえた。目的は買主のランク）
+- 全件: OK (5341 tests, 56334 assertions)・警告なし・3 分 38 秒・ピーク 173.50 MB（着手前 5321 本）
+- コンパイル済みビュー: 323 本 / INVALID 0
+- 変異: 23 通り（カナリア C0 を含む）すべて期待どおり。1 回目は M19 だけ DIFF（`AmountLimitTest::test_an_amount_over_the_limit_is_refused_on_the_contract_edit_screens` も同じ欄を fill して落ちる＝表が狭かった）→ 表を直して流し直し MATCH。M18 は予定どおり緑（表示だけの死角）。表と結果は scratchpad の `mutate/`（`specs_housing_land_lock.py`・`results-housing-land-lock.txt`・1 回目は `.round1.txt`）
+- 実ブラウザ（使い捨ての SQLite・`artisan serve`・Playwright）: 契約済みの注文住宅（区画 3・販売済）の編集と契約の編集で、ラジオ・選択欄 0・読み取り専用の表示と案内・送る値は `project_lot` / `3`・フォームの検査が通る・保存できて区画 3 のまま販売済のまま・帯「契約を更新しました。」。見積りの注文住宅はラジオ 3・区画の選択あり。1440px／375px で `main` の横スクロール 0・枠からのはみ出し 0・コンソールのエラー／警告 0
