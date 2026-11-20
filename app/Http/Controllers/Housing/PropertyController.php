@@ -16,6 +16,7 @@ use App\Models\ReProject;
 use App\Models\ReProjectLot;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
 
 class PropertyController extends Controller
 {
@@ -216,7 +217,7 @@ class PropertyController extends Controller
      */
     public function update(Request $request, HsProperty $property)
     {
-        $validated = $this->validateProperty($request);
+        $validated = $this->validateProperty($request, $property);
         $validated['updated_by'] = auth()->id();
 
         // 紐づけ先に応じたFK設定
@@ -438,13 +439,18 @@ class PropertyController extends Controller
 
     /**
      * バリデーション
+     *
+     * $current は編集する建売（登録は null）。契約のある建売の土地の紐付けは変えさせない（判断待ち ④・案 B。
+     * 画面は土地をいつも読み取り専用で出すが、手で組んだ送信・古い画面の送信も止める）。
+     * ⚠ after のフックで見る（ほかの誤りと一度に出す。Bug #112）。土地の欄が丸ごと無い送信も「違う紐付け」として断る
+     *   （通すと setLandSourceForeignKeys() が区画・仕入れ案件を空にする）。
      */
-    private function validateProperty(Request $request): array
+    private function validateProperty(Request $request, ?HsProperty $current = null): array
     {
         $statuses = implode(',', array_column(HousingPropertyStatus::cases(), 'value'));
         $sourceTypes = implode(',', array_column(HousingLandSourceType::cases(), 'value'));
 
-        return $request->validate([
+        return Validator::make($request->all(), [
             'property_name'                 => 'required|string|max:100',
             'status'                        => "required|in:{$statuses}",
             'land_source_type'              => "nullable|in:{$sourceTypes}",
@@ -472,7 +478,11 @@ class PropertyController extends Controller
             // 画面ラベルに合わせる（lang/ja/validation.php の既定は「住所」「建築原価」）
             'address'       => '所在地',
             'building_cost' => '建築費',
-        ]);
+        ])->after(function ($validator) use ($current, $request) {
+            if ($current?->refusesLandChange($request->all())) {
+                $validator->errors()->add('land_source_type', HsProperty::LAND_LOCKED_BY_CONTRACT);
+            }
+        })->validate();
     }
 
     /**
