@@ -5,23 +5,23 @@
     ⚠ 保存される値はサーバーが決める（App\Support\HousingLandCost）。ここはそれと同じ決まりで出すだけ。
     ⚠ 紐付け先を変えたとき（契約前の注文住宅だけ）は、新しい紐付け先の金額が分からないので金額を出さない。
 --}}
-<span x-show="landCostView().value !== null">
+<span x-show="landCostView().value !== null" style="display: none;">
     <strong x-text="landCostShownText()"></strong>
     @if($landSourceLabel)
-        <span class="source-note" x-show="!landCostView().willCompute">（{{ $landSourceLabel }}から取得した値）</span>
+        <span class="source-note" x-show="!landCostView().willCompute" style="display: none;">（{{ $landSourceLabel }}から取得した値）</span>
     @endif
 </span>
-<span x-show="landCostView().value === null && !landCostLinkChanged()" style="color: #9CA3AF;">
+<span x-show="landCostView().value === null && !landCostLinkChanged()" style="display: none; color: #9CA3AF;">
     @if($landSourceLabel)
         —
     @else
         — （紐付け先が未設定です）
     @endif
 </span>
-<p x-show="landCostView().willCompute && !landCostView().unavailable && !landCostLinkChanged()" class="text-xs text-emerald-700 mt-1">保存すると、紐付け先から計算したこの値になります。</p>
-<p x-show="landCostLinkChanged()" class="text-xs text-emerald-700 mt-1">保存すると、新しい紐付け先から計算します。</p>
-<p x-show="landCostView().unavailable" class="text-xs text-amber-700 mt-1">紐付け先から計算できません（分譲地の全区画に販売価格が入っていない／仕入れ案件に原価が無い）。このまま保存すると空になります。</p>
-<div x-show="landCostView().refreshOffered" class="mt-1">
+<p x-show="landCostView().willCompute && !landCostView().unavailable && !landCostLinkChanged() && landCostView().value !== null" style="display: none;" class="text-xs text-emerald-700 mt-1">保存すると、紐付け先から計算したこの値になります。</p>
+<p x-show="landCostLinkChanged()" style="display: none;" class="text-xs text-emerald-700 mt-1">保存すると、新しい紐付け先から計算します。</p>
+<p x-show="landCostView().unavailable" style="display: none;" class="text-xs text-amber-700 mt-1">紐付け先から計算できません（分譲地の全区画に販売価格が入っていない／仕入れ案件に原価が無い）。このまま保存すると空になります。</p>
+<div x-show="landCostView().refreshOffered" style="display: none;" class="mt-1">
     <p class="text-xs text-gray-600">保存されている値は、今の紐付け先から計算した値（<span x-text="housingYen(computedLandCost)"></span>）と違います。</p>
     <label class="flex gap-1 text-xs text-gray-700 cursor-pointer mt-1" style="align-items: flex-start;">
         <input type="checkbox" name="refresh_land_cost" value="1" x-model="refreshLandCost" :disabled="!landCostView().refreshOffered" style="width: auto; height: auto; margin-top: 2px;">

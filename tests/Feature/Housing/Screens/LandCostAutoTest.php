@@ -264,6 +264,51 @@ class LandCostAutoTest extends HousingScreenTestCase
         }
     }
 
+    /**
+     * 紐付けの無い行で手動入力を外しても、「紐付け先から計算したこの値になります」と言わない（値は空になる。最後の点検の指摘）。
+     * 紐付けのある行では今どおり出す（直しすぎを止める）。
+     */
+    public function test_an_unlinked_row_does_not_claim_a_computed_value(): void
+    {
+        $note = function (string $html): string {
+            $this->assertSame(1, preg_match('/<p x-show="([^"]*)"[^>]*>' . preg_quote(self::NOTE_COMPUTE, '/') . '<\/p>/u', $html, $m), '「計算する」の文が無い');
+
+            return html_entity_decode($m[1], ENT_QUOTES, 'UTF-8');
+        };
+        $shown = function (string $html, string $function) use ($note): bool {
+            return $this->driveAlpine($html, $function, $this->xData($html, $function), 'data.isLandCostManual = false;', [], true, [$note($html)])['evaluated'][0];
+        };
+
+        $unlinked = $this->property(['land_cost' => self::MANUAL, 'is_land_cost_manual' => true]);
+        $this->assertFalse($shown($this->htmlOf(route('housing.properties.edit', $unlinked)), 'housingPropertyForm'), '紐付けが無いのに「計算したこの値になります」と出した');
+        $contract = $this->contract($unlinked, $this->buyer());
+        $this->assertFalse($shown($this->htmlOf(route('housing.contracts.edit-building', $contract)), 'buildingContractCostForm'), '契約の編集: 紐付けが無いのに「計算したこの値になります」と出した');
+
+        $linked = $this->propertyOnLot(true, null, ['property_code' => 'HS-002', 'property_name' => '平井 建売 2']);
+        $this->assertTrue($shown($this->htmlOf(route('housing.properties.edit', $linked)), 'housingPropertyForm'), '紐付けがあるのに「計算したこの値になります」を出さない');
+    }
+
+    /**
+     * 土地原価の表示の決まりで出し分ける要素は、Alpine が動くまで隠れている（style="display: none;"。契約の編集の画面の流儀。
+     * 無いと「このまま保存すると空になります」などが読み込みのあいだ一瞬見える。最後の点検の指摘）。
+     */
+    public function test_the_land_cost_messages_start_hidden(): void
+    {
+        [$property, $contract] = $this->contractOn(false);
+        $screens = [
+            route('housing.properties.edit', $property) => 3,
+            route('housing.contracts.edit-building', $contract) => 6,
+        ];
+        foreach ($screens as $url => $minimum) {
+            preg_match_all('/<[a-z]+\b[^>]*\bx-show="([^"]*)"[^>]*>/u', $this->htmlOf($url), $tags, PREG_SET_ORDER);
+            $driven = array_filter($tags, fn (array $t) => preg_match('/landCostView\(|landCostLinkChanged\(/', html_entity_decode($t[1], ENT_QUOTES, 'UTF-8')));
+            $this->assertGreaterThanOrEqual($minimum, count($driven), "{$url}: 表示の決まりで出し分ける要素を拾えていない");
+            foreach ($driven as $t) {
+                $this->assertTrue(str_contains($t[0], 'style="display: none;'), "{$url}: Alpine が動く前から見えている: {$t[0]}");
+            }
+        }
+    }
+
     public function test_an_equal_value_offers_no_refresh(): void
     {
         $property = $this->propertyOnLot(false, null, ['land_cost' => 9600000]);
