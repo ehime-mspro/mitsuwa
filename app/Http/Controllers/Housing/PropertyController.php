@@ -134,7 +134,7 @@ class PropertyController extends Controller
         $property->load([
             'contract.createdBy',
             'projectLot.project',
-            'procurement',
+            'procurement.lot',
             'files.uploadedByUser',
             'createdBy',
             'updatedBy',
@@ -182,7 +182,7 @@ class PropertyController extends Controller
      */
     public function edit(HsProperty $property)
     {
-        $property->load(['projectLot.project', 'procurement.lot']);
+        $property->load(['projectLot.project', 'procurement']);
 
         // 分譲地一覧
         $projects = ReProject::orderByDesc('id')->get(['id', 'project_code', 'project_name']);

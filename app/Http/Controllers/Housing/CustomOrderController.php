@@ -120,7 +120,7 @@ class CustomOrderController extends Controller
     {
         $customOrder->load([
             'projectLot.project',
-            'procurement',
+            'procurement.lot',
             'files.uploadedByUser',
             'createdBy',
             'updatedBy',
@@ -159,7 +159,7 @@ class CustomOrderController extends Controller
      */
     public function edit(HsCustomOrder $customOrder)
     {
-        $customOrder->load(['projectLot.project', 'procurement.lot']);
+        $customOrder->load(['projectLot.project', 'procurement']);
 
         $projectsForJs = $this->getProjectsForJs();
         $procurementsForJs = $this->getProcurementsForJs();
