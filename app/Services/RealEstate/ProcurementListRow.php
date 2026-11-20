@@ -2,6 +2,7 @@
 
 namespace App\Services\RealEstate;
 
+use App\Enums\LotStatus;
 use App\Enums\ProcurementStatus;
 use App\Enums\ProjectStatus;
 use App\Models\ReProcurement;
@@ -14,8 +15,8 @@ use App\Models\ReProject;
  * （property_name / project_name など）を吸収し、Blade が instanceof で
  * 分岐せずに済むようにするための readonly 値オブジェクト。
  *
- * 分譲地にしか無い値（区画数・区画URL）は仕入れ案件では null にして、
- * 「無い」ことを型で表す。
+ * 区画数・区画URL は分譲地と、物件種別が土地の仕入れ案件（区画は 1 つまで）だけが持つ。
+ * それ以外の仕入れ案件では null にして、「無い」ことを型で表す。
  */
 final class ProcurementListRow
 {
@@ -44,10 +45,14 @@ final class ProcurementListRow
     }
 
     /**
-     * ⚠ costs をイーガーロードしたモデルを渡すこと（getExpectedProfit が使う）
+     * ⚠ costs と lot をイーガーロードしたモデルを渡すこと（getExpectedProfit・区画数が使う）
      */
     public static function fromProcurement(ReProcurement $p): self
     {
+        // 土地は区画が 0〜1 つ。区画が 0 でも区画のリンクは出す（詳細の区画の欄から登録するため）
+        $isLand = $p->property_type->isLandOnly();
+        $lot = $isLand ? $p->lot : null;
+
         return new self(
             kind: self::KIND_PROCUREMENT,
             id: (int) $p->id,
@@ -63,10 +68,10 @@ final class ProcurementListRow
             address: $p->address,
             latitude: $p->latitude !== null ? (float) $p->latitude : null,
             longitude: $p->longitude !== null ? (float) $p->longitude : null,
-            soldLotCount: null,
-            lotCount: null,
+            soldLotCount: $isLand ? ($lot?->status === LotStatus::Sold ? 1 : 0) : null,
+            lotCount: $isLand ? ($lot !== null ? 1 : 0) : null,
             showUrl: route('realestate.procurements.show', $p->id),
-            lotsUrl: null,
+            lotsUrl: $isLand ? route('realestate.procurements.show', $p->id) . '#lot' : null,
         );
     }
 

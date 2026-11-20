@@ -59,6 +59,8 @@
                         @endforeach
                     </select>
                     <div class="fg-note">※ ステータスが「販売中」で、まだ契約の無い案件のみ表示</div>
+                    {{-- 選んだ案件が土地で区画があるときだけ出す（x-show に :style は併用しない） --}}
+                    <div class="fg-note" x-show="procurementLotLabel()" style="display: none;" x-text="'区画: ' + procurementLotLabel()"></div>
                 </div>
 
                 {{-- 原価内訳ボックス --}}
@@ -429,6 +431,7 @@ function contractForm() {
         amountBuildingIncl: '',
         taxAmount: {{ \Illuminate\Support\Js::from((string) old("tax_amount", "")) }},
         procurementLandOnly: @json($procurementLandOnly),
+        procurementLotLabels: @json($procurementLotLabels),
         costAmount: {{ \Illuminate\Support\Js::from((string) old("cost_amount", "")) }},
         grossProfit: null,
         profitRate: null,
@@ -451,6 +454,10 @@ function contractForm() {
 
         // 建物欄を出すかは紐づく仕入れ案件の物件種別で決まる（設計書 §4.2）。
         // 描画時に渡されたマップを見るので、バリデーションエラーで差し戻された直後も正しく開く。
+        procurementLotLabel: function() {
+            return this.procurementLotLabels[String(this.procurementId)] || '';
+        },
+
         hasBuilding: function() {
             if (!this.isProcurement() || !this.procurementId) { return false; }
             return this.procurementLandOnly[String(this.procurementId)] === false;

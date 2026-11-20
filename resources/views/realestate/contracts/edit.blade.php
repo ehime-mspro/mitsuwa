@@ -48,6 +48,8 @@
                             <option value="{{ $p->id }}" {{ old('procurement_id', $contract->procurement_id) == $p->id ? 'selected' : '' }}>{{ $p->procurement_code }} {{ $p->property_name }}</option>
                         @endforeach
                     </select>
+                    {{-- 選んだ案件が土地で区画があるときだけ出す（x-show に :style は併用しない） --}}
+                    <div class="fg-note" x-show="procurementLotLabel()" style="display: none;" x-text="'区画: ' + procurementLotLabel()"></div>
                 </div>
                 <input type="hidden" name="property_name" :value="propertyName">
                 <input type="hidden" name="address" :value="addressVal">
@@ -270,6 +272,7 @@ function contractEditForm() {
         amountBuildingIncl: '',
         taxAmount: {{ \Illuminate\Support\Js::from((string) old("tax_amount", $contract->tax_amount)) }},
         procurementLandOnly: @json($procurementLandOnly),
+        procurementLotLabels: @json($procurementLotLabels),
         costAmount: {{ \Illuminate\Support\Js::from((string) old("cost_amount", $contract->cost_amount)) }},
         grossProfit: null,
         profitRate: null,
@@ -279,6 +282,10 @@ function contractEditForm() {
             return this.contractType === 'procurement_land'
                 || this.contractType === 'procurement_mansion'
                 || this.contractType === 'procurement_house';
+        },
+
+        procurementLotLabel: function() {
+            return this.procurementLotLabels[String(this.procurementId)] || '';
         },
 
         hasBuilding: function() {

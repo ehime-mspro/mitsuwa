@@ -118,7 +118,8 @@ class ReContractController extends Controller
     public function create(Request $request)
     {
         // 販売中で、まだ契約の無い仕入れ案件（契約のある案件が販売中に戻っていても、2 件目の契約を作らせない。Bug #139）
-        $procurements = ReProcurement::where('status', ProcurementStatus::Selling->value)
+        $procurements = ReProcurement::with('lot')
+            ->where('status', ProcurementStatus::Selling->value)
             ->whereDoesntHave('contracts')
             ->orderBy('procurement_code')
             ->get(['id', 'procurement_code', 'property_name', 'address', 'property_type']);
@@ -126,6 +127,7 @@ class ReContractController extends Controller
         // 建物欄を出すかは「紐づく仕入れ案件の物件種別」で決まる（設計書 §4.2）。
         // ⚠ Blade で多行配列を @@json に渡すと壊れるので、必ずここで組んで単一変数で渡す（Bug #26）
         $procurementLandOnly = $this->landOnlyMap($procurements);
+        $procurementLotLabels = $this->lotLabelMap($procurements);
 
         // 販売中の分譲地
         $projects = ReProject::where('status', ProjectStatus::Selling->value)
@@ -145,7 +147,7 @@ class ReContractController extends Controller
         $lots = $this->lotOptions(old('project_id'));
 
         return view('realestate.contracts.create', compact(
-            'procurements', 'projects', 'buyers', 'staffUsers', 'procurementLandOnly', 'lots'
+            'procurements', 'projects', 'buyers', 'staffUsers', 'procurementLandOnly', 'procurementLotLabels', 'lots'
         ));
     }
 
@@ -212,7 +214,7 @@ class ReContractController extends Controller
      */
     public function show(ReContract $contract)
     {
-        $contract->load(['procurement.costs', 'project.costs', 'project.lots', 'lot', 'buyer', 'staff', 'createdBy', 'updatedBy']);
+        $contract->load(['procurement.costs', 'procurement.lot', 'project.costs', 'project.lots', 'lot', 'buyer', 'staff', 'createdBy', 'updatedBy']);
 
         // 原価内訳（仕入れ系）
         $costBreakdown = null;
@@ -282,7 +284,7 @@ class ReContractController extends Controller
         $contract->load(['procurement', 'project', 'lot', 'buyer', 'staff']);
 
         // 販売中で、まだ契約の無い仕入れ案件（+ 現在選択中の案件も含む。Bug #139）
-        $procurements = ReProcurement::where(function ($q) use ($contract) {
+        $procurements = ReProcurement::with('lot')->where(function ($q) use ($contract) {
             $q->where(fn ($free) => $free->where('status', ProcurementStatus::Selling->value)->whereDoesntHave('contracts'));
             if ($contract->procurement_id) {
                 $q->orWhere('id', $contract->procurement_id);
@@ -290,6 +292,7 @@ class ReContractController extends Controller
         })->orderBy('procurement_code')->get(['id', 'procurement_code', 'property_name', 'address', 'property_type']);
 
         $procurementLandOnly = $this->landOnlyMap($procurements);
+        $procurementLotLabels = $this->lotLabelMap($procurements);
 
         // 販売中のPJ（+ 現在選択中も含む）
         $projects = ReProject::where(function ($q) use ($contract) {
@@ -316,7 +319,7 @@ class ReContractController extends Controller
         $staffUsers = User::assignableWith($contract->staff_user_id);
 
         return view('realestate.contracts.edit', compact(
-            'contract', 'procurements', 'projects', 'lots', 'buyers', 'staffUsers', 'procurementLandOnly'
+            'contract', 'procurements', 'projects', 'lots', 'buyers', 'staffUsers', 'procurementLandOnly', 'procurementLotLabels'
         ));
     }
 
@@ -559,6 +562,24 @@ class ReContractController extends Controller
         $map = [];
         foreach ($procurements as $p) {
             $map[(string) $p->id] = $p->property_type->isLandOnly();
+        }
+        return $map;
+    }
+
+    /**
+     * 仕入れ案件 id => 区画の 1 行の説明（summaryLabel）のマップ。区画の無い案件は載せない。
+     * Alpine が選んだ案件の区画を出すのに使う（landOnlyMap() と同じく fetch を介さない）。
+     *
+     * @param  \Illuminate\Support\Collection<int, ReProcurement>  $procurements  lot をイーガーロードしたもの
+     * @return array<string, string>
+     */
+    private function lotLabelMap($procurements): array
+    {
+        $map = [];
+        foreach ($procurements as $p) {
+            if ($p->lot !== null) {
+                $map[(string) $p->id] = $p->lot->summaryLabel();
+            }
         }
         return $map;
     }

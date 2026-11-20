@@ -189,6 +189,9 @@
                 <dt class="bg-gray-50 px-3.5 py-2.5 text-sm text-gray-600 font-medium border-t border-r border-gray-200">仕入れ案件</dt>
                 <dd class="px-3.5 py-2.5 text-sm border-t border-gray-200" style="grid-column: span 3;">
                     <a href="{{ route('realestate.procurements.show', $contract->procurement) }}" class="text-emerald-600 hover:underline">{{ $contract->procurement->procurement_code }} — {{ $contract->procurement->property_name }}</a>
+                    @if($contract->procurement->lot)
+                        <span class="text-gray-700 wrap-anywhere"> / 区画 {{ $contract->procurement->lot->summaryLabel() }}</span>
+                    @endif
                 </dd>
             @endif
 

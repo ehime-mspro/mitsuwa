@@ -182,7 +182,7 @@ class PropertyController extends Controller
      */
     public function edit(HsProperty $property)
     {
-        $property->load(['projectLot.project', 'procurement']);
+        $property->load(['projectLot.project', 'procurement.lot']);
 
         // 分譲地一覧
         $projects = ReProject::orderByDesc('id')->get(['id', 'project_code', 'project_name']);

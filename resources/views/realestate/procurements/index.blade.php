@@ -116,8 +116,8 @@
                         <tr class="hover:bg-gray-50 transition-colors">
                             <td class="py-3 border-b border-gray-100 text-sm font-medium whitespace-nowrap" style="padding-left: 16px;">
                                 {{ $row->name }}
-                                @if($row->isProject())
-                                    {{-- 区画数は専用列を設けず物件名の下にインライン表示。区画0件でも出す --}}
+                                @if($row->lotCount !== null)
+                                    {{-- 区画数は専用列を設けず物件名の下にインライン表示（分譲地と土地の仕入れ案件）。区画0件でも出す --}}
                                     <div data-lot-count style="font-size: 11px; color: #6b7280; font-weight: 400; margin-top: 3px;">区画 <span style="color: #047857; font-weight: 700;">{{ $row->soldLotCount }}</span> / {{ $row->lotCount }}</div>
                                 @endif
                             </td>
@@ -184,7 +184,7 @@
                                     <span class="text-gray-300">—</span>
                                 @endif
                             </td>
-                            {{-- 区画ボタン（緑・分譲地のみ。区画0件でも表示＝そこから登録するため）--}}
+                            {{-- 区画ボタン（緑・分譲地と土地の仕入れ案件のみ。区画0件でも表示＝そこから登録するため）--}}
                             <td class="px-3 py-3 border-b border-gray-100 text-center whitespace-nowrap">
                                 @if($row->lotsUrl !== null)
                                     <a href="{{ $row->lotsUrl }}"
