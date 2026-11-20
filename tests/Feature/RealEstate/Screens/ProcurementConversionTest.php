@@ -526,6 +526,13 @@ class ProcurementConversionTest extends RealEstateScreenTestCase
         $this->assertDoesNotMatchRegularExpression('/元の仕入れ案件番号 RE-PRC/u', $html);
         $this->assertMatchesRegularExpression('#<dt[^>]*>\s*元の仕入れ案件番号\s*</dt>\s*<dd[^>]*>\s*RE-PRC-001\s*</dd>#u', $html);
 
+        // 線は隣の行と同じ border-b（border-t だと上の行の border-b と重なって 2px になる）
+        $this->assertSame(1, preg_match('#<dt([^>]*)>\s*元の仕入れ案件番号\s*</dt>\s*<dd([^>]*)>#u', $html, $m));
+        foreach ([$m[1], $m[2]] as $attrs) {
+            $this->assertMatchesRegularExpression('/\bborder-b\b/', $attrs);
+            $this->assertDoesNotMatchRegularExpression('/\bborder-t\b/', $attrs);
+        }
+
         $plain = $this->project(['project_code' => 'RE-PRJ-900']);
         $this->assertStringNotContainsString('元の仕入れ案件番号', $this->htmlOf(route('realestate.projects.show', $plain)));
     }

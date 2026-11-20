@@ -103,8 +103,8 @@
                 @endif
             </dd>
             @if($project->source_procurement_code)
-            <dt class="bg-gray-50 px-3.5 py-2.5 text-sm text-gray-600 font-medium border-r border-gray-200 border-t">元の仕入れ案件番号</dt>
-            <dd class="px-3.5 py-2.5 text-sm text-gray-900 border-gray-200 border-t wrap-anywhere" style="grid-column: span 3;">{{ $project->source_procurement_code }}</dd>
+            <dt class="bg-gray-50 px-3.5 py-2.5 text-sm text-gray-600 font-medium border-b border-r border-gray-200">元の仕入れ案件番号</dt>
+            <dd class="px-3.5 py-2.5 text-sm text-gray-900 border-b border-gray-200 wrap-anywhere" style="grid-column: span 3;">{{ $project->source_procurement_code }}</dd>
             @endif
         </div>
     </div>

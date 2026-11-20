@@ -9,6 +9,7 @@ use App\Support\AreaConverter;
 use App\Support\TsuboPrice;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 /**
  * 土地（自社買取）の仕入れ案件の区画（1 案件に 1 区画まで）。詳細画面の欄から登録・編集・削除する。設計書 §5。
@@ -34,7 +35,7 @@ class ProcurementLotController extends Controller
             return $this->back($procurement)->with('error', self::ONLY_ONE);
         }
 
-        $procurement->lot()->create($this->validated($request));
+        $procurement->lot()->create($this->validated($request, $procurement));
 
         return $this->back($procurement)->with('success', '区画を登録しました。');
     }
@@ -47,7 +48,7 @@ class ProcurementLotController extends Controller
             return $this->back($procurement)->with('error', self::NOT_FOUND);
         }
 
-        $lot->update($this->validated($request));
+        $lot->update($this->validated($request, $procurement));
 
         return $this->back($procurement)->with('success', '区画を更新しました。');
     }
@@ -70,10 +71,20 @@ class ProcurementLotController extends Controller
      * ⚠ 販売価格と面積から求めた坪単価が列（符号付き INT）に入るかも見る。坪単価は保存しないが、
      *   分譲地に変えるときに区画へ写すので、ここで断らないと変える操作が 500 になる（Bug #91）。
      */
-    private function validated(Request $request): array
+    private function validated(Request $request, ReProcurement $procurement): array
     {
         $statuses = implode(',', array_column(LotStatus::cases(), 'value'));
 
+        // 断られたら区画の欄（#lot）へ戻す（既定の戻り先だと詳細の先頭へ戻り、欄の中の理由が画面の外になる。Bug #64 の形）
+        try {
+            return $this->check($request, $statuses);
+        } catch (ValidationException $e) {
+            throw $e->redirectTo($this->back($procurement)->getTargetUrl());
+        }
+    }
+
+    private function check(Request $request, string $statuses): array
+    {
         $validated = $request->validate([
             'lot_number'    => 'required|integer|min:1|max:' . self::MAX_INT_COLUMN,
             'area_sqm'      => 'required|numeric|min:0.01|max:99999999.99',

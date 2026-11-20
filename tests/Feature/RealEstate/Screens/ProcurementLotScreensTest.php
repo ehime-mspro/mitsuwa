@@ -75,7 +75,9 @@ class ProcurementLotScreensTest extends RealEstateScreenTestCase
         $this->assertSame('', $form['fields']['area_sqm']);
         $this->assertSame('', $form['fields']['selling_price']);
 
-        $html = $this->landed($this->submit($this->fill($form, ['lot_number' => '7']), $url));
+        $response = $this->submit($this->fill($form, ['lot_number' => '7']), $url);
+        $response->assertRedirect($url . '#lot');
+        $html = $this->landed($response);
 
         $this->assertErrorItem($html, trans('validation.required', ['attribute' => '面積（㎡）']));
         $this->assertSame(0, ReProcurementLot::count());
@@ -115,7 +117,9 @@ class ProcurementLotScreensTest extends RealEstateScreenTestCase
         $url = $this->detailUrl($procurement);
 
         $form = $this->fill($this->parseForm($this->htmlOf($url), self::CREATE), ['area_sqm' => '0.04', 'selling_price' => '30000000']);
-        $html = $this->landed($this->submit($form, $url));
+        $response = $this->submit($form, $url);
+        $response->assertRedirect($url . '#lot');
+        $html = $this->landed($response);
 
         $this->assertErrorItem($html, '販売価格と面積から求めた坪単価が大きすぎます。面積を確かめてください。');
         $this->assertSame(0, ReProcurementLot::count());
