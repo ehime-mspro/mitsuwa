@@ -516,6 +516,20 @@ class ProcurementConversionTest extends RealEstateScreenTestCase
         $this->assertSame(0, ReProject::count());
     }
 
+    public function test_the_project_detail_shows_the_original_code_row(): void
+    {
+        $this->user = $this->manager();
+        $project = $this->converter()->convert($this->landProcurement(['procurement_code' => 'RE-PRC-001']), $this->user);
+
+        // 開き直した画面（成功の帯なし）の dt と、すぐ後ろの dd を 1 つの正規表現で結ぶ
+        $html = $this->htmlOf(route('realestate.projects.show', $project));
+        $this->assertDoesNotMatchRegularExpression('/元の仕入れ案件番号 RE-PRC/u', $html);
+        $this->assertMatchesRegularExpression('#<dt[^>]*>\s*元の仕入れ案件番号\s*</dt>\s*<dd[^>]*>\s*RE-PRC-001\s*</dd>#u', $html);
+
+        $plain = $this->project(['project_code' => 'RE-PRJ-900']);
+        $this->assertStringNotContainsString('元の仕入れ案件番号', $this->htmlOf(route('realestate.projects.show', $plain)));
+    }
+
     public function test_editing_the_project_keeps_the_original_code(): void
     {
         $this->user = $this->manager();
