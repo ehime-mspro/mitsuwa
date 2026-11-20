@@ -194,12 +194,17 @@ class ProcurementController extends Controller
         $schedule        = app(\App\Services\ScheduleCardService::class)->build($procurement);
         $scheduleCanEdit = $request->user()->role->isManagerOrAbove();
 
+        // 土地の区画（土地のときだけ欄を出す。登録のフォームの既定のステータスは契約などから決める）
+        $lot              = $procurement->property_type?->isLandOnly() ? $procurement->lot : null;
+        $lotDefaultStatus = $procurement->defaultLotStatus();
+
         return view('realestate.procurements.show', compact(
             'procurement', 'costItemsForJs', 'costsForJs', 'costGridItems', 'costGridCanDelete',
             'attachments', 'deletedAttachments',
             'costAliasMap', 'costSkipList', 'costSubtotalKws',
             'deletionBlockers', 'deletionBlockersSummary',
-            'schedule', 'scheduleCanEdit'
+            'schedule', 'scheduleCanEdit',
+            'lot', 'lotDefaultStatus'
         ));
     }
 
@@ -394,6 +399,21 @@ class ProcurementController extends Controller
         };
     }
 
+    /**
+     * 区画のある土地の物件種別を土地以外へ変えさせない規則（編集画面）。登録（$procurement が null）では何もしない。
+     * ⚠ 呼ぶ側は bail を付ける。今と同じ値（土地のまま）なら通す＝編集画面をそのまま保存できる。
+     */
+    private function typeLockedByLot(?ReProcurement $procurement): \Closure
+    {
+        return function (string $attribute, mixed $value, \Closure $fail) use ($procurement) {
+            if ($procurement !== null && is_string($value)
+                && $value !== RealEstatePropertyType::BrokerageLand->value
+                && $procurement->lot()->exists()) {
+                $fail(ReProcurement::TYPE_LOCKED_BY_LOT);
+            }
+        };
+    }
+
     private function validateProcurement(Request $request, bool $withCosts = false, ?ReProcurement $current = null): array
     {
         $propertyTypes = implode(',', array_column(RealEstatePropertyType::cases(), 'value'));
@@ -408,7 +428,7 @@ class ProcurementController extends Controller
             'costs.*.estimated_amount' => 'required|integer|min:0|max:' . self::MAX_INT_COLUMN,
             'costs.*.actual_amount'    => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
             'costs.*.notes'            => 'nullable|string|max:200',
-            'property_type'       => "required|in:{$propertyTypes}",
+            'property_type'       => ["bail", "required", "in:{$propertyTypes}", $this->typeLockedByLot($current)],
             'transaction_type'    => "required|in:{$transactionTypes}",
             'status'              => ["bail", "required", "in:{$statuses}", $this->statusLockedByContract($current)],
             'property_name'       => 'required|string|max:100',

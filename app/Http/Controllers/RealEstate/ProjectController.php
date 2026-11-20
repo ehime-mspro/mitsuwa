@@ -18,7 +18,6 @@ use App\Support\TsuboPrice;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Validation\ValidationException;
 
 class ProjectController extends Controller
 {
@@ -734,20 +733,6 @@ class ProjectController extends Controller
             'address'              => '所在地',
             'target_selling_price' => '想定総販売価格',
         ]);
-    }
-
-    /**
-     * 求めた坪単価（円。列は符号付き INT）が列に入るか。面積の打ち間違い（0.04㎡ ＝ 0.01 坪 など）で
-     * 販売価格 ÷ 坪数が上限を超えると、本番の MySQL（strict）では保存の時点で 500 になる。
-     * 入力エラー（422）で断り、区画の画面の alert に理由を出す。
-     */
-    private function assertPerTsuboFits(?int $perTsubo): void
-    {
-        if ($perTsubo !== null && $perTsubo > self::MAX_INT_COLUMN) {
-            throw ValidationException::withMessages([
-                'selling_price' => '販売価格と面積から求めた坪単価が大きすぎます。面積を確かめてください。',
-            ]);
-        }
     }
 
     /**

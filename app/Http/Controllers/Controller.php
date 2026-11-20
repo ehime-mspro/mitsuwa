@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller as BaseController;
+use Illuminate\Validation\ValidationException;
 
 abstract class Controller extends BaseController
 {
@@ -39,6 +40,20 @@ abstract class Controller extends BaseController
             if (! is_string($value) || (in_array($key, $digits, true) && ! ctype_digit($value))) {
                 $request->query->remove($key);
             }
+        }
+    }
+
+    /**
+     * 求めた坪単価（円。列は符号付き INT）が列に入るか。面積の打ち間違い（0.04㎡ ＝ 0.01 坪 など）で
+     * 販売価格 ÷ 坪数が上限を超えると、本番の MySQL（strict）では保存の時点で 500 になる。
+     * 入力エラー（422）で断り、区画の画面の alert に理由を出す。
+     */
+    protected function assertPerTsuboFits(?int $perTsubo): void
+    {
+        if ($perTsubo !== null && $perTsubo > self::MAX_INT_COLUMN) {
+            throw ValidationException::withMessages([
+                'selling_price' => '販売価格と面積から求めた坪単価が大きすぎます。面積を確かめてください。',
+            ]);
         }
     }
 }

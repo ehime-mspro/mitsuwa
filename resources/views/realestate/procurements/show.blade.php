@@ -190,6 +190,11 @@
         </div>
     </div>
 
+    {{-- 土地の区画（土地のときだけ） --}}
+    @if($procurement->property_type->isLandOnly())
+        @include('realestate.procurements._lot_section')
+    @endif
+
     {{-- 契約情報（契約が無いときはカードごと出さない） --}}
     @if($procurement->contracts->isNotEmpty())
     <div class="bg-white border border-gray-200 rounded-lg p-5 mb-5">
@@ -447,6 +452,10 @@
 .badge-re-selling { background: #c7d2fe; color: #3730a3; }
 .badge-re-sold { background: #86efac; color: #14532d; }
 .badge-re-lost { background: #e5e7eb; color: #374151; }
+.badge-lot-unsold { background: #f3f4f6; color: #374151; }
+.badge-lot-onsale { background: #dbeafe; color: #1e40af; }
+.badge-lot-negotiating { background: #fed7aa; color: #9a3412; }
+.badge-lot-sold { background: #a7f3d0; color: #064e3b; }
 </style>
 
 {{-- SheetJS（試算表 Excel 取込用）— CLAUDE.md ルール: cdn.jsdelivr.net のみ許可 --}}

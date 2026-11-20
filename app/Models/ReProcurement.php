@@ -132,6 +132,9 @@ class ReProcurement extends Model
         return $sold ? LotStatus::Sold : LotStatus::OnSale;
     }
 
+    /** 区画のある土地の物件種別を土地以外へ変えようとしたときの断り（編集画面） */
+    public const TYPE_LOCKED_BY_LOT = '区画が登録されているため、物件種別を変えられません。先に区画を削除してください。';
+
     /** 契約のある案件のステータスを「販売済」から変えようとしたときの断り（一覧の小窓と編集画面。Bug #139） */
     public const STATUS_LOCKED_BY_CONTRACT = 'この仕入れ案件には契約があるため、ステータスは「販売済」から変えられません。契約を削除すると「販売中」に戻ります。';
 

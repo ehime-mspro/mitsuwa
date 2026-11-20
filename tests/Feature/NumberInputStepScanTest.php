@@ -28,6 +28,7 @@ class NumberInputStepScanTest extends TestCase
         'realestate/projects/_form.blade.php|floor_area_ratio|10' => [1, '容積率。同上'],
         'realestate/procurements/_form.blade.php|building_coverage|10' => [1, '建蔽率。同上'],
         'realestate/procurements/_form.blade.php|floor_area_ratio|10' => [1, '容積率。同上'],
+        'realestate/procurements/_lot_section.blade.php|area_sqm|0.01' => [2, '区画の面積（列は DECIMAL(10,2)。0.01 刻みで保存済みの値は必ず乗る。登録と編集の 2 か所）'],
         'buyers/_survey_form.blade.php|survey[{{ $qId }}]|any' => [1, '数値入力の設問（小数も可。範囲はサーバーが見る）'],
         'buyers/_survey_form.blade.php|survey[{{ $qId }}][sub][{{ $sf[\'key\'] }}]|any' => [1, '条件分岐の付随の数の欄'],
         'buyers/_survey_form.blade.php|sliderVal|{{ $slider[\'step\'] }}' => [1, 'スライダー（name を持たず、送るのは hidden。Bug #120）'],

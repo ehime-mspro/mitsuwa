@@ -834,6 +834,17 @@ Route::middleware(['auth', 'password.change'])->group(function () {
                 ->name('realestate.procurements.update-status');
         });
 
+        // 土地の区画（1 案件に 1 区画。登録・編集は経営層+管理者、削除は経営層のみ）
+        Route::middleware('role:executive,manager')->group(function () {
+            Route::post('/procurements/{procurement}/lot', [\App\Http\Controllers\RealEstate\ProcurementLotController::class, 'store'])
+                ->name('realestate.procurements.lot.store');
+            Route::put('/procurements/{procurement}/lot', [\App\Http\Controllers\RealEstate\ProcurementLotController::class, 'update'])
+                ->name('realestate.procurements.lot.update');
+        });
+        Route::delete('/procurements/{procurement}/lot', [\App\Http\Controllers\RealEstate\ProcurementLotController::class, 'destroy'])
+            ->middleware('role:executive')
+            ->name('realestate.procurements.lot.destroy');
+
         // 仕入れ案件削除（経営層のみ）
         Route::delete('/procurements/{procurement}', [\App\Http\Controllers\RealEstate\ProcurementController::class, 'destroy'])
             ->middleware('role:executive')
