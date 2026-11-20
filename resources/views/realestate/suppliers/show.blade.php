@@ -112,6 +112,42 @@
     </div>
     @endif
 
+    {{-- 関連する分譲地 --}}
+    @if($projects->isNotEmpty())
+    <div class="bg-white border border-gray-200 rounded-lg p-5 mt-5">
+        <div class="flex items-center gap-2 mb-4">
+            <span class="w-1 h-5 bg-emerald-600 rounded-sm"></span>
+            <h2 class="text-base font-bold text-gray-900">関連する分譲地</h2>
+        </div>
+        <div class="border border-gray-200 rounded-md overflow-hidden" style="overflow-x: auto;">
+            <table class="w-full border-collapse">
+                <thead>
+                    <tr>
+                        <th class="px-4 py-2 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">分譲地番号</th>
+                        <th class="px-4 py-2 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">ステータス</th>
+                        <th class="px-4 py-2 text-left text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap" style="padding-left: 16px;">分譲地名</th>
+                        <th class="px-4 py-2 text-center text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap">情報入手日</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach($projects as $pj)
+                        <tr class="hover:bg-gray-50 transition-colors">
+                            <td class="px-4 py-2.5 border-b border-gray-100 text-center whitespace-nowrap">
+                                <a href="{{ route('realestate.projects.show', $pj) }}" class="text-sm font-semibold text-emerald-600 hover:underline">{{ $pj->project_code }}</a>
+                            </td>
+                            <td class="px-4 py-2.5 border-b border-gray-100 text-center whitespace-nowrap">
+                                <span class="badge {{ $pj->status->badgeClass() }}">{{ $pj->status->label() }}</span>
+                            </td>
+                            <td class="px-4 py-2.5 border-b border-gray-100 text-sm font-medium wrap-anywhere" style="padding-left: 16px;">{{ $pj->project_name }}</td>
+                            <td class="px-4 py-2.5 border-b border-gray-100 text-sm text-center whitespace-nowrap">{{ $pj->info_obtained_date?->format('Y/m/d') ?? '—' }}</td>
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
+    </div>
+    @endif
+
 {{-- 不動産ステータスバッジCSS --}}
 <style>
 .badge-re-info { background: #dbeafe; color: #1e40af; }
@@ -123,6 +159,14 @@
 .badge-re-selling { background: #c7d2fe; color: #3730a3; }
 .badge-re-sold { background: #86efac; color: #14532d; }
 .badge-re-lost { background: #e5e7eb; color: #374151; }
+.badge-prj-info { background: #dbeafe; color: #1e40af; }
+.badge-prj-assess { background: #fce7f3; color: #9d174d; }
+.badge-prj-negotiate { background: #fed7aa; color: #9a3412; }
+.badge-prj-contracted { background: #fef3c7; color: #92400e; }
+.badge-prj-settled { background: #a7f3d0; color: #064e3b; }
+.badge-prj-selling { background: #c7d2fe; color: #3730a3; }
+.badge-prj-soldout { background: #86efac; color: #14532d; }
+.badge-prj-lost { background: #e5e7eb; color: #374151; }
 </style>
 
 @endsection

@@ -87,7 +87,11 @@ class SupplierController extends Controller
             ->orderByDesc('info_obtained_date')
             ->get();
 
-        return view('realestate.suppliers.show', compact('supplier', 'procurements'));
+        $projects = $supplier->projects()
+            ->orderByDesc('info_obtained_date')
+            ->get();
+
+        return view('realestate.suppliers.show', compact('supplier', 'procurements', 'projects'));
     }
 
     /**
@@ -132,8 +136,8 @@ class SupplierController extends Controller
      */
     public function destroy(ReSupplier $supplier)
     {
-        if ($supplier->hasProcurements()) {
-            return back()->with('error', 'この仕入れ先は仕入れ案件で使用されているため削除できません。');
+        if ($supplier->isInUse()) {
+            return back()->with('error', ReSupplier::IN_USE);
         }
 
         $supplier->delete();

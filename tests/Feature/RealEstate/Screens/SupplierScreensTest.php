@@ -4,6 +4,7 @@ namespace Tests\Feature\RealEstate\Screens;
 
 use App\Enums\UserRole;
 use App\Models\ReSupplier;
+use App\Services\RealEstate\ProcurementToProjectConverter;
 use Tests\Concerns\SignsOutElsewhere;
 
 /**
@@ -103,7 +104,54 @@ class SupplierScreensTest extends RealEstateScreenTestCase
 
         $html = $this->landed($this->submit($form, $url));
 
-        $this->assertFlash($html, 'error', 'この仕入れ先は仕入れ案件で使用されているため削除できません。');
+        $this->assertFlash($html, 'error', ReSupplier::IN_USE);
+        $this->assertFalse($supplier->fresh()->trashed());
+    }
+
+    public function test_the_detail_screen_lists_the_suppliers_projects(): void
+    {
+        $supplier = $this->supplier();
+        $none = $this->htmlOf(route('realestate.suppliers.show', $supplier));
+        $this->assertStringNotContainsString('関連する分譲地', $none);
+
+        $project = $this->project(['supplier_id' => $supplier->id, 'project_name' => '平井分譲地']);
+        $html = $this->htmlOf(route('realestate.suppliers.show', $supplier));
+
+        $this->assertStringContainsString('関連する分譲地', $html);
+        $this->assertStringContainsString('href="' . route('realestate.projects.show', $project) . '"', $html);
+        $this->assertStringContainsString('RE-PRJ-001', $html);
+        $this->assertStringContainsString('平井分譲地', $html);
+        $this->assertStringContainsString('badge-prj-selling', $html);
+    }
+
+    public function test_a_supplier_used_only_by_a_project_is_not_deleted(): void
+    {
+        $supplier = $this->supplier();
+        $this->project(['supplier_id' => $supplier->id]);
+        $url = route('realestate.suppliers.show', $supplier);
+        $form = $this->parseForm($this->htmlOf($url), 'action="' . route('realestate.suppliers.destroy', $supplier) . '"');
+
+        $html = $this->landed($this->submit($form, $url));
+
+        $this->assertFlash($html, 'error', ReSupplier::IN_USE);
+        $this->assertFalse($supplier->fresh()->trashed());
+    }
+
+    public function test_a_converted_land_keeps_its_supplier_in_use(): void
+    {
+        $supplier = $this->supplier();
+        $land = $this->landProcurement(['supplier_id' => $supplier->id]);
+        $project = app(ProcurementToProjectConverter::class)->convert($land, $this->userWithRole(UserRole::Manager));
+        $url = route('realestate.suppliers.show', $supplier);
+        $detail = $this->htmlOf($url);
+
+        $this->assertStringContainsString('関連する分譲地', $detail);
+        $this->assertStringContainsString('href="' . route('realestate.projects.show', $project) . '"', $detail);
+
+        $form = $this->parseForm($detail, 'action="' . route('realestate.suppliers.destroy', $supplier) . '"');
+        $html = $this->landed($this->submit($form, $url));
+
+        $this->assertFlash($html, 'error', ReSupplier::IN_USE);
         $this->assertFalse($supplier->fresh()->trashed());
     }
 
