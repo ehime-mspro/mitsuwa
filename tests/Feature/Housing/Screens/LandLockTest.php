@@ -395,6 +395,23 @@ class LandLockTest extends HousingScreenTestCase
         $this->assertNull($order->fresh()->land_source_type);
     }
 
+    public function test_the_contract_edit_does_not_write_a_link_for_an_order_without_a_land_type(): void
+    {
+        $order = $this->orderForContractEdit(['status' => 'contracted']);
+        $procurement = $this->procurement();
+        $url = route('housing.contracts.edit-custom-order', $order);
+        $form = $this->contractEditForm($order, $this->htmlOf($url));
+        // 手で組んだ送信: 種別を送らずに仕入れ案件の紐付けだけを送る（種別が空どうしなので固定の判定は通る）
+        unset($form['fields']['land_source_type']);
+        $form['fields']['re_procurement_id'] = (string) $procurement->id;
+
+        $html = $this->landed($this->submit($form, $url));
+
+        $this->assertFlash($html, 'success', '契約を更新しました。');
+        $order->refresh();
+        $this->assertSame([null, null], [$order->land_source_type, $order->re_procurement_id], '契約済みの注文住宅に、種別が空のまま仕入れ案件の紐付けが書かれた');
+    }
+
     public function test_the_contract_edit_of_an_order_before_the_contract_can_change_the_land(): void
     {
         $order = $this->orderForContractEdit(['status' => 'estimation', 'land_source_type' => 'procurement', 're_procurement_id' => $this->procurement()->id]);

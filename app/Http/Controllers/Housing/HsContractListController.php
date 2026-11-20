@@ -411,9 +411,14 @@ class HsContractListController extends Controller
                 if ($sourceType === HousingLandSourceType::ProjectLot->value) {
                     $data['re_project_lot_id'] = $validated['re_project_lot_id'] ?? null;
                     $data['re_procurement_id'] = null;
-                } else { // procurement
+                } elseif ($sourceType === HousingLandSourceType::Procurement->value) {
                     $data['re_procurement_id'] = $validated['re_procurement_id'] ?? null;
                     $data['re_project_lot_id'] = null;
+                } else {
+                    // 種別が空（契約済みで固定の注文住宅だけが通る）: 紐付けを書かない（CustomOrderController::setLandSourceForeignKeys と同じ）。
+                    // ⚠ 仕入れ案件の枝へ落とすと、手で組んだ送信の re_procurement_id が種別の無いまま書かれる
+                    $data['re_project_lot_id'] = null;
+                    $data['re_procurement_id'] = null;
                 }
                 $data['land_selling_price'] = $validated['land_selling_price'] ?? null;
                 // 手動入力ON のときのみ land_cost を上書き。OFF時は既存値を維持
