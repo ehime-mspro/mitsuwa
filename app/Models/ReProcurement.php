@@ -400,6 +400,33 @@ class ReProcurement extends Model
     }
 
     /**
+     * 案件番号の自動採番: RE-PRC-NNN（3 桁にそろえる）。
+     * 仕入れ案件のいちばん大きい番号と、分譲地に変えた案件に残した元の番号（re_projects.source_procurement_code）の
+     * いちばん大きい番号の、大きい方 + 1（設計書 §5.5）。
+     * ⚠ 分譲地の側を見ないと、いちばん新しい仕入れ案件を分譲地に変えて消したとき、次の仕入れ案件が同じ番号になり、
+     *   分譲地に残した元の番号が別の案件を指してしまう。ふつうの削除で番号が空くのは今のまま。
+     * ⚠ 採番は呼び出し側のトランザクションの中で行う（同時 INSERT の衝突を防ぐ）。
+     */
+    public static function nextProcurementCode(): string
+    {
+        $prefix = 'RE-PRC-';
+
+        $lastProcurement = self::where('procurement_code', 'like', "{$prefix}%")
+            ->orderByDesc('procurement_code')
+            ->value('procurement_code');
+        $lastConverted = ReProject::where('source_procurement_code', 'like', "{$prefix}%")
+            ->orderByDesc('source_procurement_code')
+            ->value('source_procurement_code');
+
+        $seq = max(
+            $lastProcurement ? (int) substr($lastProcurement, strlen($prefix)) : 0,
+            $lastConverted ? (int) substr($lastConverted, strlen($prefix)) : 0,
+        ) + 1;
+
+        return $prefix . str_pad($seq, 3, '0', STR_PAD_LEFT);
+    }
+
+    /**
      * この仕入れ案件を参照していて、消えると壊れるデータ（契約・建売物件・注文住宅）。
      * 空配列なら削除可能。判定の実体は DeletionBlockers（画面とサーバで共有する）。
      */

@@ -340,6 +340,27 @@ class ReProject extends Model
     }
 
     /**
+     * PJ番号の自動採番: RE-PRJ-NNN（3 桁にそろえる）。
+     * ⚠ 採番は呼び出し側のトランザクションの中で行う（同時 INSERT の衝突を防ぐ）。
+     */
+    public static function nextProjectCode(): string
+    {
+        $prefix = 'RE-PRJ-';
+
+        $lastCode = self::where('project_code', 'like', "{$prefix}%")
+            ->orderByDesc('project_code')
+            ->value('project_code');
+
+        if ($lastCode) {
+            $seq = (int) substr($lastCode, strlen($prefix)) + 1;
+        } else {
+            $seq = 1;
+        }
+
+        return $prefix . str_pad($seq, 3, '0', STR_PAD_LEFT);
+    }
+
+    /**
      * この分譲地PJ を参照していて、消えると壊れるデータ（PJ 直参照 ＋ 配下区画経由）。
      * 空配列なら削除可能。判定の実体は DeletionBlockers（画面とサーバで共有する）。
      */

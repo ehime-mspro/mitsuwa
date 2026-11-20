@@ -106,7 +106,7 @@ class ProcurementController extends Controller
 
         $procurement = DB::transaction(function () use ($validated, $costsData) {
             // 採番はトランザクション内で行い、同時 INSERT による procurement_code 衝突を防ぐ（DAD と同じパターン）
-            $validated['procurement_code'] = $this->generateProcurementCode();
+            $validated['procurement_code'] = ReProcurement::nextProcurementCode();
             $proc = ReProcurement::create($validated);
             foreach ($costsData as $row) {
                 ReProcurementCost::create([
@@ -468,25 +468,5 @@ class ProcurementController extends Controller
         $validated['tax_rate'] = $validated['tax_rate'] ?? Settings::taxRate();
 
         return $validated;
-    }
-
-    /**
-     * 案件番号の自動採番: RE-PRC-NNN
-     */
-    private function generateProcurementCode(): string
-    {
-        $prefix = 'RE-PRC-';
-
-        $lastCode = ReProcurement::where('procurement_code', 'like', "{$prefix}%")
-            ->orderByDesc('procurement_code')
-            ->value('procurement_code');
-
-        if ($lastCode) {
-            $seq = (int) substr($lastCode, strlen($prefix)) + 1;
-        } else {
-            $seq = 1;
-        }
-
-        return $prefix . str_pad($seq, 3, '0', STR_PAD_LEFT);
     }
 }

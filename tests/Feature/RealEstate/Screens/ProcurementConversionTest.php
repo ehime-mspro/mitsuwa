@@ -1,0 +1,388 @@
+<?php
+
+namespace Tests\Feature\RealEstate\Screens;
+
+use App\Enums\LotStatus;
+use App\Enums\ProjectStatus;
+use App\Enums\UserRole;
+use App\Models\Attachment;
+use App\Models\HsCustomOrder;
+use App\Models\HsProperty;
+use App\Models\ReContract;
+use App\Models\ReProcurement;
+use App\Models\ReProcurementCost;
+use App\Models\ReProcurementLot;
+use App\Models\ReProject;
+use App\Models\ReProjectCost;
+use App\Models\ReProjectLot;
+use App\Models\ReSupplier;
+use App\Models\ScheduleStep;
+use App\Models\User;
+use App\Services\RealEstate\ProcurementConversionRefused;
+use App\Services\RealEstate\ProcurementToProjectConverter;
+use App\Support\DeletionBlockers;
+use PHPUnit\Framework\Attributes\DataProvider;
+use ReflectionMethod;
+
+/**
+ * 土地（自社買取）の仕入れ案件を中身ごと分譲地に変える処理（設計書 §5.5）。この Task ではサービスを直接呼ぶ
+ * （画面とルートは別の Task）。
+ */
+class ProcurementConversionTest extends RealEstateScreenTestCase
+{
+    private function converter(): ProcurementToProjectConverter
+    {
+        return app(ProcurementToProjectConverter::class);
+    }
+
+    private function manager(): User
+    {
+        return $this->userWithRole(UserRole::Manager);
+    }
+
+    private function step(ReProcurement|ReProject $owner, string $name): ScheduleStep
+    {
+        return $owner->scheduleSteps()->create(['name' => $name, 'category' => 'work', 'sort_order' => 1]);
+    }
+
+    private function attachment(string $type, int $id, string $name): Attachment
+    {
+        return Attachment::create([
+            'attachable_type' => $type,
+            'attachable_id'   => $id,
+            'file_name'       => $name,
+            'file_path'       => 'attachments/procurements/' . $id . '/' . $name,
+            'file_size'       => 10,
+            'mime_type'       => 'application/pdf',
+            'uploaded_by'     => $this->user->id,
+        ]);
+    }
+
+    /** 原価の行を (費用項目, 見込み額, 確定額, 備考) の組の並びにする（id の順） */
+    private function costTuples(iterable $costs): array
+    {
+        $tuples = [];
+        foreach ($costs as $c) {
+            $tuples[] = [(int) $c->cost_item_id, (int) $c->estimated_amount, $c->actual_amount === null ? null : (int) $c->actual_amount, $c->notes];
+        }
+        sort($tuples);
+
+        return $tuples;
+    }
+
+    public function test_everything_moves_to_the_new_project(): void
+    {
+        $creator = User::factory()->create(['role' => UserRole::Manager->value, 'must_change_password' => false]);
+        $supplier = ReSupplier::create(['supplier_code' => 'SUP-001', 'type' => 'corporation', 'name' => '松山不動産']);
+        $notes = str_repeat('備', 5000);
+
+        $p = $this->landProcurement([
+            'status' => 'settled',
+            'property_name' => '勝山の土地',
+            'postal_code' => '790-0001',
+            'address' => '愛媛県松山市勝山町1-1',
+            'latitude' => 33.8391570,
+            'longitude' => 132.7655480,
+            'land_area_sqm' => 132.69,
+            'zoning' => '第一種住居地域',
+            'building_coverage' => 60,
+            'floor_area_ratio' => 200,
+            'supplier_id' => $supplier->id,
+            'info_obtained_date' => '2026-04-01',
+            'assessment_price_land' => 18000000,
+            'purchase_price_land' => 17500000,
+            'target_selling_price_land' => 25000000,
+            'contract_date' => '2026-05-10',
+            'settlement_date' => '2026-06-20',
+            'notes' => $notes,
+            'created_by' => $creator->id,
+        ]);
+        // 元の仕入れ案件と同じ id の別の分譲地（型を見ずに id だけで付け替えると、こちらの工程・添付まで動く）
+        $other = $this->project();
+        $this->assertSame($other->id, $p->id, 'テストの前提: 別の分譲地と仕入れ案件の id が同じ');
+        $otherStep = $this->step($other, '別の分譲地の工程');
+        $otherAttachment = $this->attachment(ReProject::class, $other->id, 'other.pdf');
+        // 別の仕入れ案件（型だけで付け替える誤りを見る）
+        $otherProcurement = $this->procurement(['procurement_code' => 'RE-PRC-009']);
+        $otherProcurementStep = $this->step($otherProcurement, '別の仕入れ案件の工程');
+        $otherProcurementAttachment = $this->attachment(ReProcurement::class, $otherProcurement->id, 'other-procurement.pdf');
+
+        // 物件購入費の行は保存のフックが作る。備考を手で入れ、自動で作る行と区別できるようにする
+        $purchaseRow = ReProcurementCost::where('procurement_id', $p->id)->where('cost_item_id', $this->purchaseItem->id)->firstOrFail();
+        $purchaseRow->update(['notes' => '手付金あり']);
+        ReProcurementCost::create(['procurement_id' => $p->id, 'cost_item_id' => $this->surveyItem->id, 'estimated_amount' => 300000, 'actual_amount' => 280000, 'notes' => '確定測量']);
+        ReProcurementCost::create(['procurement_id' => $p->id, 'cost_item_id' => $this->surveyItem->id, 'estimated_amount' => 120000, 'actual_amount' => null, 'notes' => null]);
+        $before = $this->costTuples(ReProcurementCost::where('procurement_id', $p->id)->orderBy('id')->get());
+        $this->assertCount(3, $before);
+
+        $this->procurementLot($p, ['lot_number' => 3, 'area_sqm' => 66.15, 'selling_price' => 19990000, 'status' => 'negotiating', 'notes' => '角地']);
+        $steps = [$this->step($p, '造成'), $this->step($p, '販売')];
+        $live = $this->attachment(ReProcurement::class, $p->id, 'plan.pdf');
+        $trashed = $this->attachment(ReProcurement::class, $p->id, 'old.pdf');
+        $trashed->delete();
+
+        $manager = $this->manager();
+        $returned = $this->converter()->convert($p, $manager);
+
+        $project = ReProject::where('source_procurement_code', 'RE-PRC-001')->firstOrFail();
+        $this->assertSame($project->id, $returned->id);
+        $this->assertSame('RE-PRJ-002', $project->project_code);
+        $this->assertSame('勝山の土地', $project->project_name);
+        $this->assertSame(ProjectStatus::Settled, $project->status);
+        $this->assertSame('790-0001', $project->postal_code);
+        $this->assertSame('愛媛県松山市勝山町1-1', $project->address);
+        $this->assertSame('33.8391570', $project->latitude);
+        $this->assertSame('132.7655480', $project->longitude);
+        $this->assertSame('132.69', $project->land_area_sqm);
+        $this->assertSame('第一種住居地域', $project->zoning);
+        $this->assertSame(60, $project->building_coverage);
+        $this->assertSame(200, $project->floor_area_ratio);
+        $this->assertSame($supplier->id, (int) $project->supplier_id);
+        $this->assertSame('2026-04-01', $project->info_obtained_date->toDateString());
+        $this->assertSame(18000000, $project->assessment_price);
+        $this->assertSame(17500000, $project->purchase_price);
+        $this->assertSame(25000000, $project->target_selling_price);
+        $this->assertSame('2026-05-10', $project->contract_date->toDateString());
+        $this->assertSame('2026-06-20', $project->settlement_date->toDateString());
+        $this->assertSame($notes, $project->notes);
+        $this->assertSame($creator->id, (int) $project->created_by);
+        $this->assertSame($manager->id, (int) $project->updated_by);
+
+        // 原価は 1 行ずつそのまま（物件購入費の手で入れた備考・同じ費用項目の 2 行も）
+        $this->assertSame($before, $this->costTuples(ReProjectCost::where('project_id', $project->id)->orderBy('id')->get()));
+
+        $lots = ReProjectLot::where('project_id', $project->id)->get();
+        $this->assertCount(1, $lots);
+        $lot = $lots->first();
+        $this->assertSame(3, (int) $lot->lot_number);
+        $this->assertSame('66.15', $lot->area_sqm);
+        $this->assertSame('20.01', $lot->area_tsubo);
+        $this->assertSame(19990000, $lot->selling_price);
+        $this->assertSame(999001, $lot->selling_price_per_tsubo);
+        $this->assertTrue($lot->is_price_manual);
+        $this->assertSame(LotStatus::Negotiating, $lot->status);
+        $this->assertSame('角地', $lot->notes);
+
+        foreach ($steps as $s) {
+            $s->refresh();
+            $this->assertSame([ReProject::class, $project->id], [$s->schedulable_type, (int) $s->schedulable_id]);
+        }
+        foreach ([$live, $trashed] as $a) {
+            $a = Attachment::withTrashed()->findOrFail($a->id);
+            $this->assertSame([ReProject::class, $project->id], [$a->attachable_type, (int) $a->attachable_id]);
+        }
+        $this->assertTrue(Attachment::withTrashed()->findOrFail($trashed->id)->trashed(), '論理削除の印はそのまま');
+
+        // 持ち主の違うものは動かない
+        $this->assertSame([ReProject::class, $other->id], [$otherStep->fresh()->schedulable_type, (int) $otherStep->fresh()->schedulable_id]);
+        $this->assertSame([ReProject::class, $other->id], [$otherAttachment->fresh()->attachable_type, (int) $otherAttachment->fresh()->attachable_id]);
+        $this->assertSame([ReProcurement::class, $otherProcurement->id], [$otherProcurementStep->fresh()->schedulable_type, (int) $otherProcurementStep->fresh()->schedulable_id]);
+        $this->assertSame([ReProcurement::class, $otherProcurement->id], [$otherProcurementAttachment->fresh()->attachable_type, (int) $otherProcurementAttachment->fresh()->attachable_id]);
+
+        // 元の仕入れ案件・その原価・区画は残らない
+        $this->assertNull(ReProcurement::find($p->id));
+        $this->assertSame(0, ReProcurementCost::where('procurement_id', $p->id)->count());
+        $this->assertSame(0, ReProcurementLot::where('procurement_id', $p->id)->count());
+        $this->assertNotNull(ReProcurement::find($otherProcurement->id));
+    }
+
+    public function test_a_land_without_prices_keeps_its_purchase_cost_row(): void
+    {
+        $p = $this->landProcurement(['assessment_price_land' => null, 'purchase_price_land' => null, 'target_selling_price_land' => null]);
+        ReProcurementCost::create(['procurement_id' => $p->id, 'cost_item_id' => $this->purchaseItem->id, 'estimated_amount' => 1000000, 'actual_amount' => 900000, 'notes' => '前払い']);
+
+        $project = $this->converter()->convert($p, $this->manager());
+
+        $this->assertNull($project->assessment_price);
+        $this->assertNull($project->purchase_price);
+        $this->assertNull($project->target_selling_price);
+        $this->assertSame(
+            [[$this->purchaseItem->id, 1000000, 900000, '前払い']],
+            $this->costTuples(ReProjectCost::where('project_id', $project->id)->get()),
+        );
+    }
+
+    public static function statuses(): array
+    {
+        return [
+            '情報入手' => ['info_obtained', 'info_obtained'],
+            '現地調査' => ['site_survey', 'assessment'],
+            '査定・検討' => ['assessment', 'assessment'],
+            '交渉中' => ['negotiating', 'negotiating'],
+            '契約' => ['contracted', 'contracted'],
+            '決済完了' => ['settled', 'settled'],
+            '販売中' => ['selling', 'selling'],
+            '販売済' => ['sold', 'sold_out'],
+            '不成約' => ['lost', 'lost'],
+        ];
+    }
+
+    #[DataProvider('statuses')]
+    public function test_the_status_maps_to_the_project_status(string $from, string $to): void
+    {
+        $p = $this->landProcurement(['status' => $from]);
+
+        $project = $this->converter()->convert($p, $this->manager());
+
+        $this->assertSame($to, $project->fresh()->status->value);
+    }
+
+    public function test_a_sold_lot_makes_the_project_sold_out(): void
+    {
+        $p = $this->landProcurement(['status' => 'selling']);
+        $this->procurementLot($p, ['status' => 'sold']);
+
+        $project = $this->converter()->convert($p, $this->manager());
+
+        $this->assertSame(ProjectStatus::SoldOut, $project->status);
+        $this->assertSame(ProjectStatus::SoldOut, $project->fresh()->status);
+    }
+
+    public static function refusals(): array
+    {
+        return [
+            '土地でない' => ['used_house', ProcurementToProjectConverter::REFUSE_NOT_LAND],
+            '仲介' => ['brokerage', ProcurementToProjectConverter::REFUSE_BROKERAGE],
+            '契約' => ['contract', '契約 1 件が紐づいているため、分譲地に変えられません。'],
+            '建売' => ['hs_property', '建売物件 1 件が紐づいているため、分譲地に変えられません。'],
+            '注文住宅' => ['custom_order', '注文住宅 1 件が紐づいているため、分譲地に変えられません。'],
+        ];
+    }
+
+    #[DataProvider('refusals')]
+    public function test_conversion_is_refused_with_the_reason(string $case, string $message): void
+    {
+        $p = match ($case) {
+            'used_house' => $this->procurement(),
+            'brokerage' => $this->landProcurement(['transaction_type' => 'brokerage']),
+            default => $this->landProcurement(),
+        };
+        if ($case === 'contract') {
+            ReContract::create([
+                'department' => 'realestate', 'contract_type' => 'procurement_land', 'status' => 'contracted',
+                'property_name' => '契約物件', 'procurement_id' => $p->id, 'created_by' => 1,
+            ]);
+        }
+        if ($case === 'hs_property') {
+            HsProperty::create([
+                'property_code' => 'HS-001', 'property_name' => '建売', 'status' => 'construction',
+                'land_source_type' => 'procurement', 're_procurement_id' => $p->id,
+                'address' => '愛媛県松山市2-2-2', 'created_by' => 1,
+            ]);
+        }
+        if ($case === 'custom_order') {
+            HsCustomOrder::create([
+                'order_code' => 'CO-001', 'order_name' => '注文', 'customer_name' => '山田',
+                'status' => 'estimation', 'land_source_type' => 'procurement', 're_procurement_id' => $p->id,
+                'address' => '愛媛県松山市2-2-2', 'created_by' => 1,
+            ]);
+        }
+        ReProcurementCost::create(['procurement_id' => $p->id, 'cost_item_id' => $this->surveyItem->id, 'estimated_amount' => 300000]);
+        $this->step($p, '造成');
+        $p = $p->fresh();
+        $costsBefore = ReProcurementCost::where('procurement_id', $p->id)->count();
+
+        $this->assertSame($message, ProcurementToProjectConverter::refusal($p));
+
+        try {
+            $this->converter()->convert($p, $this->manager());
+            $this->fail('断られなかった');
+        } catch (ProcurementConversionRefused $e) {
+            $this->assertSame($message, $e->getMessage());
+        }
+
+        $this->assertNotNull(ReProcurement::find($p->id));
+        $this->assertSame($costsBefore, ReProcurementCost::where('procurement_id', $p->id)->count());
+        $this->assertSame(1, ScheduleStep::where('schedulable_type', ReProcurement::class)->where('schedulable_id', $p->id)->count());
+        $this->assertSame(0, ReProject::count());
+        $this->assertSame(0, ReProjectCost::count());
+    }
+
+    public function test_the_linked_reason_uses_the_same_counts_as_the_delete_guard(): void
+    {
+        $p = $this->landProcurement();
+        foreach ([1, 2] as $i) {
+            ReContract::create([
+                'department' => 'realestate', 'contract_type' => 'procurement_land', 'status' => 'contracted',
+                'property_name' => '契約物件' . $i, 'procurement_id' => $p->id, 'created_by' => 1,
+            ]);
+        }
+        HsProperty::create([
+            'property_code' => 'HS-001', 'property_name' => '建売', 'status' => 'construction',
+            'land_source_type' => 'procurement', 're_procurement_id' => $p->id,
+            'address' => '愛媛県松山市2-2-2', 'created_by' => 1,
+        ]);
+
+        $blockers = $p->deletionBlockers();
+        $this->assertSame('契約 2 件・建売物件 1 件', DeletionBlockers::countsLabel($blockers));
+        $this->assertSame('契約 2 件・建売物件 1 件が参照しているため削除できません。', DeletionBlockers::summarize($blockers));
+        $this->assertSame('', DeletionBlockers::summarize([]));
+        $this->assertSame('契約 2 件・建売物件 1 件が紐づいているため、分譲地に変えられません。', ProcurementToProjectConverter::refusal($p));
+    }
+
+    public function test_a_procurement_that_is_already_gone_is_refused(): void
+    {
+        $p = $this->landProcurement();
+        $stale = $p->fresh();
+        $p->delete();
+
+        try {
+            $this->converter()->convert($stale, $this->manager());
+            $this->fail('断られなかった');
+        } catch (ProcurementConversionRefused $e) {
+            $this->assertSame(ProcurementToProjectConverter::GONE, $e->getMessage());
+        }
+        $this->assertSame(0, ReProject::count());
+    }
+
+    public function test_the_original_code_is_not_reused(): void
+    {
+        $this->procurement(['procurement_code' => 'RE-PRC-001']);
+        $this->procurement(['procurement_code' => 'RE-PRC-002']);
+        $p = $this->landProcurement(['procurement_code' => 'RE-PRC-003']);
+        $this->assertSame('RE-PRC-004', ReProcurement::nextProcurementCode());
+
+        $project = $this->converter()->convert($p, $this->manager());
+
+        $this->assertSame('RE-PRC-003', $project->source_procurement_code);
+        $this->assertSame('RE-PRC-004', ReProcurement::nextProcurementCode());
+    }
+
+    public function test_project_codes_still_count_up(): void
+    {
+        $this->project(['project_code' => 'RE-PRJ-002']);
+        $this->assertSame('RE-PRJ-003', ReProject::nextProjectCode());
+
+        $project = $this->converter()->convert($this->landProcurement(), $this->manager());
+
+        $this->assertSame('RE-PRJ-003', $project->project_code);
+        $this->assertSame('RE-PRJ-004', ReProject::nextProjectCode());
+    }
+
+    public function test_the_conversion_rechecks_under_a_lock(): void
+    {
+        // ロックの中の確かめ直しは、順に流すテストでは見えない（入口の確かめが先に止める。Bug #48 の形）ので字句で見る。
+        // コメントを落としてから探す（説明の文に同じ語があると、本物を消しても通ってしまう。Bug #42 ②）。
+        $reflection = new ReflectionMethod(ProcurementToProjectConverter::class, 'convert');
+        $lines = array_slice(file($reflection->getFileName()), $reflection->getStartLine() - 1,
+            $reflection->getEndLine() - $reflection->getStartLine() + 1);
+        $code = '';
+        foreach (token_get_all('<?php ' . implode('', $lines)) as $token) {
+            if (is_array($token) && in_array($token[0], [T_COMMENT, T_DOC_COMMENT], true)) {
+                continue;
+            }
+            $code .= is_array($token) ? $token[1] : $token;
+        }
+
+        $transaction = strpos($code, 'DB::transaction(');
+        $lock = strpos($code, '->lockForUpdate()');
+        $this->assertNotFalse($transaction, '変える処理がトランザクションで包まれていない');
+        $this->assertNotFalse($lock, '変える処理が仕入れ案件の行をロックしていない');
+        $this->assertTrue($transaction < $lock, 'ロックはトランザクションの中で取る');
+        $recheck = strpos($code, 'refusal(', $lock);
+        $this->assertNotFalse($recheck, 'ロックのあとで条件を確かめ直していない');
+        $create = strpos($code, 'ReProject::create(');
+        $this->assertNotFalse($create, '分譲地を作る所を見つけられない');
+        $this->assertTrue($recheck < $create, '確かめ直しは分譲地を作る前に行う');
+    }
+}

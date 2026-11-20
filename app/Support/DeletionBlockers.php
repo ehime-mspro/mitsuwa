@@ -142,12 +142,22 @@ class DeletionBlockers
             return '';
         }
 
+        return self::countsLabel($blockers) . 'が参照しているため削除できません。';
+    }
+
+    /**
+     * 件数の部分だけ（例: 契約 1 件・建売物件 7 件）。文末は呼び出し側が付ける
+     * （削除の歯止めは summarize()、土地を分譲地に変える断りは ProcurementToProjectConverter）。
+     * 空配列なら空文字。
+     */
+    public static function countsLabel(array $blockers): string
+    {
         $parts = array_map(
             fn (array $b) => $b['label'] . ' ' . count($b['items']) . ' 件',
             $blockers
         );
 
-        return implode('・', $parts) . 'が参照しているため削除できません。';
+        return implode('・', $parts);
     }
 
     /**

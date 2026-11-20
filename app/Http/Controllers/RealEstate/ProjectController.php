@@ -136,7 +136,7 @@ class ProjectController extends Controller
 
         $project = DB::transaction(function () use ($validated, $costsData) {
             // 採番はトランザクション内で行い、同時 INSERT による project_code 衝突を防ぐ（DAD と同じパターン）
-            $validated['project_code'] = $this->generateProjectCode();
+            $validated['project_code'] = ReProject::nextProjectCode();
             $proj = ReProject::create($validated);
             foreach ($costsData as $row) {
                 ReProjectCost::create([
@@ -733,26 +733,6 @@ class ProjectController extends Controller
             'address'              => '所在地',
             'target_selling_price' => '想定総販売価格',
         ]);
-    }
-
-    /**
-     * PJ番号の自動採番: RE-PRJ-NNN
-     */
-    private function generateProjectCode(): string
-    {
-        $prefix = 'RE-PRJ-';
-
-        $lastCode = ReProject::where('project_code', 'like', "{$prefix}%")
-            ->orderByDesc('project_code')
-            ->value('project_code');
-
-        if ($lastCode) {
-            $seq = (int) substr($lastCode, strlen($prefix)) + 1;
-        } else {
-            $seq = 1;
-        }
-
-        return $prefix . str_pad($seq, 3, '0', STR_PAD_LEFT);
     }
 
     /**

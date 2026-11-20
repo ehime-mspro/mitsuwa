@@ -51,4 +51,23 @@ enum ProcurementStatus: string
     {
         return $this === self::Lost;
     }
+
+    /**
+     * 土地を分譲地に変えたときの分譲地のステータス（設計書 §5.5）。
+     * 分譲地に「現地調査」は無いので「検討」、「販売済」は「販売済」（sold_out）、「不成約」は「不成立」。
+     */
+    public function toProjectStatus(): ProjectStatus
+    {
+        return match ($this) {
+            self::InfoObtained => ProjectStatus::InfoObtained,
+            self::SiteSurvey,
+            self::Assessment   => ProjectStatus::Assessment,
+            self::Negotiating  => ProjectStatus::Negotiating,
+            self::Contracted   => ProjectStatus::Contracted,
+            self::Settled      => ProjectStatus::Settled,
+            self::Selling      => ProjectStatus::Selling,
+            self::Sold         => ProjectStatus::SoldOut,
+            self::Lost         => ProjectStatus::Lost,
+        };
+    }
 }
