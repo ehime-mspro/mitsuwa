@@ -140,4 +140,26 @@
         </form>
         @endif
     @endif
+
+    @if($canEditLot)
+    {{-- 分譲地に変える（土地の仕入れ案件を中身ごと分譲地へ）。押せない理由は <p id="convert-refusal"> に出し、
+         押せないボタンは title を持てないので <span title> で包む（Top trap #12）。 --}}
+    <div class="mt-5 pt-4 border-t border-gray-200">
+        <h3 class="text-sm font-bold text-gray-900 mb-1">分譲地に変える</h3>
+        <p class="text-sm text-gray-600 mb-3">この土地を分譲地にします。原価・区画・工程・添付は分譲地へ移り、元の仕入れ案件は消えます。</p>
+        @if($conversionRefusal !== null)
+            <span title="{{ $conversionRefusal }}" style="display: inline-flex;">
+                <button type="button" disabled aria-describedby="convert-refusal"
+                        class="px-4 py-2 bg-gray-200 text-gray-500 text-sm font-semibold rounded-md cursor-not-allowed">分譲地に変える</button>
+            </span>
+            <p id="convert-refusal" class="mt-2 text-sm text-gray-600 wrap-anywhere">{{ $conversionRefusal }}</p>
+        @else
+            <form id="convert-form" method="POST" action="{{ route('realestate.procurements.convert', $procurement) }}"
+                  onsubmit="return confirm('分譲地に変えます。案件番号は分譲地の番号（RE-PRJ-…）に変わり、元の仕入れ案件は消えます（原価・区画・工程・添付は分譲地へ移ります）。元には戻せません。よろしいですか？')">
+                @csrf
+                <button type="submit" class="px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-md hover:bg-emerald-700">分譲地に変える</button>
+            </form>
+        @endif
+    </div>
+    @endif
 </div>

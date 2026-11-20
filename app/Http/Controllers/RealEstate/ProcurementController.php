@@ -11,10 +11,13 @@ use App\Models\ReCostItem;
 use App\Models\ReProcurement;
 use App\Models\ReProcurementCost;
 use App\Models\ZoningType;
+use App\Services\RealEstate\ProcurementConversionRefused;
+use App\Services\RealEstate\ProcurementToProjectConverter;
 use App\Services\RealEstate\ProcurementListRow;
 use App\Services\RealEstate\ProcurementListService;
 use App\Support\DeletionBlockers;
 use App\Support\Settings;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -197,6 +200,8 @@ class ProcurementController extends Controller
         // 土地の区画（土地のときだけ欄を出す。登録のフォームの既定のステータスは契約などから決める）
         $lot              = $procurement->property_type?->isLandOnly() ? $procurement->lot : null;
         $lotDefaultStatus = $procurement->defaultLotStatus();
+        // 「分譲地に変える」を押せない理由（変えられるなら null）。画面はこの値だけを見る（サービスを自分では呼ばない）
+        $conversionRefusal = ProcurementToProjectConverter::refusal($procurement);
 
         return view('realestate.procurements.show', compact(
             'procurement', 'costItemsForJs', 'costsForJs', 'costGridItems', 'costGridCanDelete',
@@ -204,7 +209,7 @@ class ProcurementController extends Controller
             'costAliasMap', 'costSkipList', 'costSubtotalKws',
             'deletionBlockers', 'deletionBlockersSummary',
             'schedule', 'scheduleCanEdit',
-            'lot', 'lotDefaultStatus'
+            'lot', 'lotDefaultStatus', 'conversionRefusal'
         ));
     }
 
@@ -261,6 +266,36 @@ class ProcurementController extends Controller
                 'badge_class' => $procurement->status->badgeClass(),
             ],
         ]);
+    }
+
+    /**
+     * 土地の仕入れ案件を中身ごと分譲地に変える（経営層・管理者）
+     * Route: POST /realestate/procurements/{procurement}/convert-to-project
+     *
+     * 入力チェックは無い（送るのは確認だけ）。成功は分譲地の詳細へ直接戻す（2 段の転送でフラッシュが消える。Bug #63）。
+     * 二度押しの 2 回目は仕入れ案件がもう無いので、ルートの missing() が一覧へ戻す。
+     */
+    public function convertToProject(Request $request, ReProcurement $procurement, ProcurementToProjectConverter $converter): RedirectResponse
+    {
+        $code = $procurement->procurement_code;
+
+        try {
+            $project = $converter->convert($procurement, $request->user());
+        } catch (ProcurementConversionRefused $e) {
+            if ($e->getMessage() === ProcurementToProjectConverter::GONE) {
+                return redirect()->route('realestate.procurements.index')->with('error', $e->getMessage());
+            }
+
+            return redirect(route('realestate.procurements.show', $procurement) . '#lot')->with('error', $e->getMessage());
+        } catch (\Exception $e) {
+            report($e);
+
+            return redirect(route('realestate.procurements.show', $procurement) . '#lot')
+                ->with('error', '分譲地に変えられませんでした。何も変えていません。時間をおいてやり直してください。');
+        }
+
+        return redirect()->route('realestate.projects.show', $project)
+            ->with('success', "分譲地「{$project->project_code}」に変えました（元の仕入れ案件番号 {$code} は分譲地の詳細に残しています）。");
     }
 
     /**

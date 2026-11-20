@@ -845,6 +845,13 @@ Route::middleware(['auth', 'password.change'])->group(function () {
             ->middleware('role:executive')
             ->name('realestate.procurements.lot.destroy');
 
+        // 土地の仕入れ案件を分譲地に変える（経営層+管理者）。二度押しの 2 回目は仕入れ案件がもう無いので一覧へ理由つきで戻す
+        Route::post('/procurements/{procurement}/convert-to-project', [\App\Http\Controllers\RealEstate\ProcurementController::class, 'convertToProject'])
+            ->middleware('role:executive,manager')
+            ->missing(fn () => redirect()->route('realestate.procurements.index')
+                ->with('error', \App\Services\RealEstate\ProcurementToProjectConverter::GONE))
+            ->name('realestate.procurements.convert');
+
         // 仕入れ案件削除（経営層のみ）
         Route::delete('/procurements/{procurement}', [\App\Http\Controllers\RealEstate\ProcurementController::class, 'destroy'])
             ->middleware('role:executive')

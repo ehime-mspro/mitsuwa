@@ -21,6 +21,7 @@ use App\Models\User;
 use App\Services\RealEstate\ProcurementConversionRefused;
 use App\Services\RealEstate\ProcurementToProjectConverter;
 use App\Support\DeletionBlockers;
+use Illuminate\Support\Facades\Exceptions;
 use PHPUnit\Framework\Attributes\DataProvider;
 use ReflectionMethod;
 
@@ -384,5 +385,146 @@ class ProcurementConversionTest extends RealEstateScreenTestCase
         $create = strpos($code, 'ReProject::create(');
         $this->assertNotFalse($create, '分譲地を作る所を見つけられない');
         $this->assertTrue($recheck < $create, '確かめ直しは分譲地を作る前に行う');
+    }
+
+    // ================================================================
+    // 画面とルート（Task 7）
+    // ================================================================
+
+    private const CONVERT = 'id="convert-form"';
+
+    private const CONFIRM = '分譲地に変えます。案件番号は分譲地の番号（RE-PRJ-…）に変わり、元の仕入れ案件は消えます（原価・区画・工程・添付は分譲地へ移ります）。元には戻せません。よろしいですか？';
+
+    private function detailUrl(ReProcurement $procurement): string
+    {
+        return route('realestate.procurements.show', $procurement);
+    }
+
+    public function test_a_manager_converts_from_the_detail_screen(): void
+    {
+        $this->user = $this->manager();
+        $p = $this->landProcurement(['procurement_code' => 'RE-PRC-001']);
+        $url = $this->detailUrl($p);
+
+        $detail = $this->htmlOf($url);
+        $this->assertStringContainsString(e(self::CONFIRM), $detail);
+        $form = $this->parseForm($detail, self::CONVERT);
+        $this->assertSame(route('realestate.procurements.convert', $p), $form['action']);
+
+        $html = $this->landed($this->submit($form, $url));
+
+        $this->assertFlash($html, 'success', '分譲地「RE-PRJ-001」に変えました（元の仕入れ案件番号 RE-PRC-001 は分譲地の詳細に残しています）。');
+        $this->assertStringContainsString('元の仕入れ案件番号', $html);
+        $this->assertStringContainsString('RE-PRC-001', $html);
+        $this->assertSame(0, ReProcurement::count());
+        $this->assertSame(1, ReProject::count());
+    }
+
+    public function test_the_list_shows_one_project_row_after_conversion(): void
+    {
+        $this->user = $this->manager();
+        $p = $this->landProcurement(['property_name' => '勝山の土地']);
+        $this->converter()->convert($p, $this->user);
+
+        $response = $this->actingAs($this->user)->get(route('realestate.procurements.index', ['status' => '']))->assertOk();
+        $rows = $response->viewData('rows');
+
+        $this->assertSame(1, $rows->total());
+        $this->assertSame('project', $rows->items()[0]->kind);
+        $this->assertSame(1, substr_count($response->getContent(), '勝山の土地'));
+    }
+
+    public function test_a_refused_land_shows_a_disabled_button_and_the_reason(): void
+    {
+        $p = $this->landProcurement();
+        $this->procurementLot($p);
+        ReContract::create([
+            'department' => 'realestate', 'contract_type' => 'procurement_house', 'status' => 'contracted', 'contract_date' => '2026-09-01',
+            'property_name' => '勝山の土地', 'procurement_id' => $p->id, 'buyer_id' => $this->buyer()->id,
+            'contract_amount_land' => 10000000, 'contract_amount_building' => 0, 'cost_amount' => 9000000, 'created_by' => $this->user->id,
+        ]);
+        $reason = '契約 1 件' . ProcurementToProjectConverter::LINKED_SUFFIX;
+        $url = $this->detailUrl($p);
+
+        $html = $this->htmlOf($url);
+
+        $this->assertStringNotContainsString(self::CONVERT, $html);
+        $this->assertStringContainsString('<span title="' . e($reason) . '"', $html);
+        $this->assertSame(1, preg_match('/<p id="convert-refusal"[^>]*>\s*' . preg_quote(e($reason), '/') . '\s*<\/p>/u', $html));
+        $this->assertStringContainsString('aria-describedby="convert-refusal"', $html);
+
+        // 手で組んだ送信も、詳細へ戻って同じ理由が出て、何も変わらない
+        $landed = $this->landed($this->actingAs($this->user)->from($url)->post(route('realestate.procurements.convert', $p)));
+        $this->assertFlash($landed, 'error', $reason);
+        $this->assertSame(1, ReProcurement::count());
+        $this->assertSame(0, ReProject::count());
+
+        // 土地でない案件の詳細には、フォームもボタンも出ない
+        $house = $this->procurement(['procurement_code' => 'RE-PRC-009']);
+        $houseHtml = $this->htmlOf($this->detailUrl($house));
+        $this->assertStringNotContainsString(self::CONVERT, $houseHtml);
+        $this->assertStringNotContainsString('分譲地に変える', $houseHtml);
+    }
+
+    public function test_a_failure_midway_changes_nothing(): void
+    {
+        \Illuminate\Support\Facades\Exceptions::fake();
+        $this->user = $this->manager();
+        $p = $this->landProcurement();
+        $this->procurementLot($p);
+        $this->step($p, '造成');
+        $this->attachment('procurements', $p->id, '図面.pdf');
+        ReProcurementCost::create(['procurement_id' => $p->id, 'cost_item_id' => $this->surveyItem->id, 'estimated_amount' => 100000]);
+        ReProjectLot::creating(fn () => throw new \RuntimeException('boom'));
+        $url = $this->detailUrl($p);
+
+        $html = $this->landed($this->submit($this->parseForm($this->htmlOf($url), self::CONVERT), $url));
+
+        $this->assertFlash($html, 'error', '分譲地に変えられませんでした。何も変えていません。時間をおいてやり直してください。');
+        Exceptions::assertReported(fn (\RuntimeException $e) => $e->getMessage() === 'boom');
+        $this->assertSame(0, ReProject::count());
+        $this->assertSame(0, ReProjectLot::count());
+        $this->assertSame(1, ReProcurement::count());
+        $this->assertSame(1, ReProcurementLot::where('procurement_id', $p->id)->count());
+        $this->assertSame(1, ReProcurementCost::where('procurement_id', $p->id)->count());
+        $this->assertSame(1, $p->scheduleSteps()->count());
+        $this->assertSame(1, Attachment::where('attachable_id', $p->id)->count());
+    }
+
+    public function test_sending_the_conversion_twice_lands_on_the_list(): void
+    {
+        $this->user = $this->manager();
+        $p = $this->landProcurement();
+        $url = $this->detailUrl($p);
+        $form = $this->parseForm($this->htmlOf($url), self::CONVERT);
+
+        $this->landed($this->submit($form, $url));
+        $second = $this->submit($form, $url);
+
+        $second->assertRedirect(route('realestate.procurements.index'));
+        $this->assertFlash($this->landed($second), 'error', ProcurementToProjectConverter::GONE);
+        $this->assertSame(1, ReProject::count());
+    }
+
+    public function test_staff_cannot_convert(): void
+    {
+        $p = $this->landProcurement();
+
+        $this->actingAs($this->userWithRole(UserRole::Staff))->post(route('realestate.procurements.convert', $p))->assertForbidden();
+
+        $this->assertSame(1, ReProcurement::count());
+        $this->assertSame(0, ReProject::count());
+    }
+
+    public function test_editing_the_project_keeps_the_original_code(): void
+    {
+        $this->user = $this->manager();
+        $project = $this->converter()->convert($this->landProcurement(['procurement_code' => 'RE-PRC-007']), $this->user);
+        $url = route('realestate.projects.edit', $project);
+
+        $form = $this->parseForm($this->htmlOf($url), 'action="' . route('realestate.projects.update', $project) . '"');
+        $this->landed($this->submit($form, $url));
+
+        $this->assertSame('RE-PRC-007', $project->fresh()->source_procurement_code);
     }
 }
