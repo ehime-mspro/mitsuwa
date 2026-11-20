@@ -1,7 +1,8 @@
 # 土地（旧「仲介土地」）の区画登録と、分譲地への変更 — 設計書
 
-日付: 2026-11-20
+日付: 2026-11-20（同日に利用者が承認）
 作業場所: `.claude/worktrees/land-lot`（枝 `land-lot`。13.x = `c557ef26` から）
+次: 実装の計画（`docs/superpowers/plans/2026-11-20-realestate-land-lot.md`。superpowers:writing-plans で作る）
 
 ## 1. なぜ作るか
 
