@@ -350,12 +350,8 @@ class LandCostAutoTest extends HousingScreenTestCase
 
     private function buildingContractForm(HsContract $contract, string $js = ''): array
     {
-        $html = $this->htmlOf(route('housing.contracts.edit-building', $contract));
-        $action = route('housing.contracts.update-building', $contract);
-        preg_match('/action="' . preg_quote($action, '/') . '"[^>]*\bx-data="(\{[^"]*\})"/', $html, $m);
-        $this->assertNotEmpty($m, '契約の編集のフォームが見つからない');
-
-        return $this->composedForm($html, $action, null, html_entity_decode($m[1], ENT_QUOTES, 'UTF-8'), ['datePicker' => '', 'buyerSelect' => ''], $js);
+        return $this->composedForm($this->htmlOf(route('housing.contracts.edit-building', $contract)), route('housing.contracts.update-building', $contract),
+            'buildingContractCostForm', null, ['datePicker' => '', 'buyerSelect' => ''], $js);
     }
 
     private function contractOn(bool $manual): array
@@ -416,5 +412,98 @@ class LandCostAutoTest extends HousingScreenTestCase
         $form['fields']['refresh_land_cost'] = '1';
         $this->landed($this->submit($form, $url));
         $this->assertSame(9600000, $order->fresh()->land_cost, '「今の計算値にする」で計算値にならない');
+    }
+
+    // ============================================================
+    // 契約の編集の画面: 保存される値と今の計算値を出す
+    // ============================================================
+
+    /** 契約の編集の 2 画面（建売・注文住宅）。[画面の HTML, x-data の関数名, フォームを組む, 保存した行を読む, 紐付け先の表示名] */
+    private function contractScreens(bool $manual, int $landCost): array
+    {
+        [$property, $contract] = $this->contractOn($manual);
+        $property->update(['land_cost' => $landCost]);
+        $two = $property->re_project_lot_id;
+        $order = $this->customOrder([
+            'status' => 'contracted', 'contract_date' => '2026-09-10', 'customer_id' => $this->buyer('佐藤', '花子')->id,
+            'building_contract_price' => 25000000, 'building_cost' => 20000000,
+            'land_source_type' => 'project_lot', 're_project_lot_id' => $two, 'land_cost' => $landCost, 'is_land_cost_manual' => $manual,
+        ]);
+
+        return [
+            'building' => [
+                'url' => route('housing.contracts.edit-building', $contract), 'function' => 'buildingContractCostForm',
+                'form' => fn (string $js = '') => $this->buildingContractForm($contract, $js), 'saved' => fn () => $property->fresh()->land_cost,
+                'label' => $property->fresh()->getLandSourceDisplay(),
+            ],
+            'custom' => [
+                'url' => route('housing.contracts.edit-custom-order', $order), 'function' => 'customOrderEditForm',
+                'form' => fn (string $js = '') => $this->customOrderContractForm($order, $js), 'saved' => fn () => $order->fresh()->land_cost,
+                'label' => $order->fresh()->getLandSourceDisplay(),
+            ],
+        ];
+    }
+
+    public function test_the_contract_edit_shows_the_value_it_will_save(): void
+    {
+        foreach ($this->contractScreens(false, 9600000) as $name => $s) {
+            $html = $this->htmlOf($s['url']);
+            $this->assertTrue(str_contains($html, e('（' . $s['label'] . 'から取得した値）')), "{$name}: 保存されている値の出どころの書き方が無い");
+            $this->assertFalse(str_contains($html, 'から自動参照'), "{$name}: 保存されている値を「自動参照」と出している");
+
+            $screen = $this->landCostScreen($html, $s['function']);
+            $this->assertSame([false, 9600000, '9,600,000円', false], [$screen['view']['willCompute'], $screen['view']['value'], $screen['shown'], $screen['view']['refreshOffered']], $name);
+        }
+    }
+
+    public function test_unchecking_manual_on_the_contract_edit_shows_the_computed_value(): void
+    {
+        foreach ($this->contractScreens(true, self::MANUAL) as $name => $s) {
+            $html = $this->htmlOf($s['url']);
+            $this->assertTrue(str_contains($html, self::NOTE_COMPUTE), "{$name}: 計算し直すことを知らせる文が無い");
+
+            $screen = $this->landCostScreen($html, $s['function'], 'data.isLandCostManual = false;');
+            $this->assertSame([true, 9600000, '9,600,000円'], [$screen['view']['willCompute'], $screen['view']['value'], $screen['shown']], $name);
+
+            $this->landed($this->submit(($s['form'])('data.isLandCostManual = false;'), $s['url']));
+            $this->assertSame(9600000, ($s['saved'])(), "{$name}: 画面に出した値と保存した値が違う");
+        }
+    }
+
+    public function test_the_contract_edit_offers_the_refresh(): void
+    {
+        foreach ($this->contractScreens(false, self::MANUAL) as $name => $s) {
+            $html = $this->htmlOf($s['url']);
+            $this->assertTrue(str_contains($html, 'name="refresh_land_cost"'), "{$name}: 「今の計算値にする」のチェックが無い");
+            $screen = $this->landCostScreen($html, $s['function']);
+            $this->assertSame([5000000, true, '9,600,000円'], [$screen['view']['value'], $screen['view']['refreshOffered'], $screen['yen']], $name);
+
+            $this->landed($this->submit($this->fill(($s['form'])(), ['notes' => '鍵は 2 本']), $s['url']));
+            $this->assertSame(self::MANUAL, ($s['saved'])(), "{$name}: チェックを付けないのに値が動いた");
+
+            $form = ($s['form'])('data.refreshLandCost = true;');
+            $this->assertSame('1', $form['fields']['refresh_land_cost'] ?? null, $name);
+            $this->landed($this->submit($form, $s['url']));
+            $this->assertSame(9600000, ($s['saved'])(), "{$name}: 「今の計算値にする」を画面から送っても計算値にならない");
+        }
+    }
+
+    public function test_the_custom_order_contract_edit_explains_a_new_link(): void
+    {
+        [, $two, $four] = $this->pricedProject();
+        $order = $this->customOrder([
+            'contract_date' => '2026-09-10', 'customer_id' => $this->buyer()->id, 'building_contract_price' => 25000000, 'building_cost' => 20000000,
+            'land_source_type' => 'project_lot', 're_project_lot_id' => $two->id, 'land_cost' => 9600000, 'is_land_cost_manual' => false,
+        ]);
+        $html = $this->htmlOf(route('housing.contracts.edit-custom-order', $order));
+        $this->assertTrue(str_contains($html, '保存すると、新しい紐付け先から計算します。'));
+
+        $run = $this->driveAlpine($html, 'customOrderEditForm', $this->xData($html, 'customOrderEditForm'), 'data.reProjectLotId = "' . $four->id . '";', [], true,
+            ['landCostLinkChanged()', 'landCostShownText()', 'landCostView().unavailable']);
+        $this->assertSame([true, '', false], $run['evaluated'], '紐付け先を変えたのに前の紐付け先の金額を出した');
+
+        $this->landed($this->submit($this->customOrderContractForm($order, 'data.reProjectLotId = "' . $four->id . '";'), route('housing.contracts.edit-custom-order', $order)));
+        $order->refresh();
+        $this->assertSame([$four->id, 14400000], [$order->re_project_lot_id, $order->land_cost]);
     }
 }

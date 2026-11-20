@@ -217,8 +217,11 @@ class HsContractListController extends Controller
             }
         }
 
+        // 手動 OFF の表示に使う「今の紐付け先から計算した土地原価」（判断待ち ⑤）
+        $computedLandCost = HousingLandCost::forLink($property->land_source_type?->value, $property->re_project_lot_id, $property->re_procurement_id);
+
         return view('housing.contracts.edit-building', compact(
-            'hsContract', 'property', 'staffUsers', 'buyers'
+            'hsContract', 'property', 'staffUsers', 'buyers', 'computedLandCost'
         ));
     }
 
@@ -328,8 +331,11 @@ class HsContractListController extends Controller
         $procurements = ReProcurement::orderBy('procurement_code')->get();
         $projectLots = ReProjectLot::with('project')->orderBy('id')->get();
 
+        // 手動 OFF の表示に使う「保存済みの紐付け先から計算した土地原価」（判断待ち ⑤。紐付け先を変えたら画面は金額を出さない）
+        $computedLandCost = HousingLandCost::forLink($hsCustomOrder->land_source_type?->value, $hsCustomOrder->re_project_lot_id, $hsCustomOrder->re_procurement_id);
+
         return view('housing.contracts.edit-custom-order', compact(
-            'hsCustomOrder', 'staffUsers', 'buyers', 'procurements', 'projectLots'
+            'hsCustomOrder', 'staffUsers', 'buyers', 'procurements', 'projectLots', 'computedLandCost'
         ));
     }
 

@@ -311,17 +311,12 @@
         $contractDateValue = old('contract_date', $hsContract->contract_date?->format('Y-m-d') ?? '');
         // 手動入力フラグの初期値
         $isLandCostManual = (bool) old('is_land_cost_manual', $property->is_land_cost_manual);
-        // 土地原価の参考値（紐付け先からの自動参照）
-        $referenceLandCost = null;
-        $referenceLandCostLabel = null;
-        if ($property->land_source_type && $property->getLandSourceDisplay()) {
-            $referenceLandCostLabel = $property->getLandSourceDisplay();
-            $referenceLandCost = $property->land_cost;
-        }
+        // 土地原価の紐付け先の表示名（手動 OFF のとき「〇〇から取得した値」と出す）
+        $referenceLandCostLabel = $property->land_source_type ? $property->getLandSourceDisplay() : null;
     @endphp
 
     <form method="POST" action="{{ route('housing.contracts.update-building', $hsContract) }}"
-          x-data="{ isLandCostManual: {{ $isLandCostManual ? 'true' : 'false' }} }">
+          x-data="buildingContractCostForm()">
         @csrf
         @method('PUT')
 
@@ -509,16 +504,9 @@
                         <span class="suffix">円</span>
                     </div>
 
-                    {{-- 手動入力OFF: 紐付け先からの自動参照表示 --}}
+                    {{-- 手動入力OFF: 保存される値（サーバーが決める。判断待ち ⑤） --}}
                     <div class="hc-land-ref" x-show="!isLandCostManual">
-                        @if($referenceLandCost !== null)
-                            <strong>{{ number_format($referenceLandCost) }}円</strong>
-                            @if($referenceLandCostLabel)
-                                <span class="source-note">（{{ $referenceLandCostLabel }} から自動参照）</span>
-                            @endif
-                        @else
-                            <span style="color: #9CA3AF;">— （紐付け先が未設定です）</span>
-                        @endif
+                        @include('housing.contracts._land_cost_ref', ['landSourceLabel' => $referenceLandCostLabel])
                     </div>
                     @error('land_cost') <p class="error-msg">{{ $message }}</p> @enderror
                 </div>
@@ -542,6 +530,43 @@
     </form>
 
 </div>
+
+{{-- 土地原価の手動入力と、手動 OFF の表示の決まり（判断待ち ⑤。保存済みの値は DB から読む＝入力エラーで戻った画面でも old() を見ない） --}}
+<script>
+function buildingContractCostForm() {
+    return {
+        isLandCostManual: {{ \Illuminate\Support\Js::from($isLandCostManual) }},
+        savedManual: {{ \Illuminate\Support\Js::from((bool) $property->is_land_cost_manual) }},
+        savedLandCost: {{ \Illuminate\Support\Js::from($property->land_cost) }},
+        computedLandCost: {{ \Illuminate\Support\Js::from($computedLandCost) }},
+        refreshLandCost: {{ old('refresh_land_cost') ? 'true' : 'false' }},
+        hasLink: {{ \Illuminate\Support\Js::from($referenceLandCostLabel !== null) }},
+
+        landCostLinkChanged: function() {
+            return false;
+        },
+
+        landCostView: function() {
+            return housingLandCostView({
+                manual: this.isLandCostManual,
+                creating: false,
+                savedManual: this.savedManual,
+                linkChanged: false,
+                refresh: this.refreshLandCost,
+                computed: this.computedLandCost,
+                saved: this.savedLandCost,
+                hasLink: this.hasLink
+            });
+        },
+
+        landCostShownText: function() {
+            var value = this.landCostView().value;
+            return value === null ? '' : housingYen(value);
+        }
+    };
+}
+@include('housing._land_cost_functions')
+</script>
 
 {{-- 日付ピッカー（案C）— @section 内にインライン。
      ⚠ @stack('scripts') は 2026-07-26 に追加済みだが、動いているため push へ移していない（Bug #28） --}}

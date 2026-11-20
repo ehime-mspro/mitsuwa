@@ -111,8 +111,7 @@ class AmountLimitTest extends HousingScreenTestCase
         $url = route('housing.contracts.edit-building', $contract);
         $action = route('housing.contracts.update-building', $contract);
         $html = $this->htmlOf($url);
-        preg_match('/action="' . preg_quote($action, '/') . '"[^>]*\bx-data="(\{[^"]*\})"/', $html, $m);
-        $form = $this->composedForm($html, $action, null, html_entity_decode($m[1], ENT_QUOTES, 'UTF-8'), ['datePicker' => '', 'buyerSelect' => '']);
+        $form = $this->composedForm($html, $action, 'buildingContractCostForm', null, ['datePicker' => '', 'buyerSelect' => '']);
         $form = $this->fill($form, ['building_cost' => (string) (self::INT_MAX + 1), 'selling_price_building' => (string) (self::INT_MAX + 1)]);
 
         $html = $this->landed($this->submit($form, $url));

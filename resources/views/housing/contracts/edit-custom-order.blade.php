@@ -340,7 +340,12 @@
     landSourceType: {{ \Illuminate\Support\Js::from((string) $landSourceTypeValue) }},
     isLandCostManual: {{ $isLandCostManualValue ? 'true' : 'false' }},
     reProjectLotId: {{ \Illuminate\Support\Js::from((string) $reProjectLotIdValue) }},
-    reProcurementId: {{ \Illuminate\Support\Js::from((string) $reProcurementIdValue) }}
+    reProcurementId: {{ \Illuminate\Support\Js::from((string) $reProcurementIdValue) }},
+    savedManual: {{ \Illuminate\Support\Js::from((bool) $hsCustomOrder->is_land_cost_manual) }},
+    savedLandCost: {{ \Illuminate\Support\Js::from($hsCustomOrder->land_cost) }},
+    savedLink: {{ \Illuminate\Support\Js::from(['type' => $hsCustomOrder->land_source_type?->value, 'lot' => $hsCustomOrder->re_project_lot_id, 'procurement' => $hsCustomOrder->re_procurement_id]) }},
+    computedLandCost: {{ \Illuminate\Support\Js::from($computedLandCost) }},
+    refreshLandCost: {{ old('refresh_land_cost') ? 'true' : 'false' }}
 })">
 
     <h1 class="text-lg font-bold text-gray-900 mb-1">契約編集（注文住宅）</h1>
@@ -683,26 +688,9 @@
                         </div>
                     </div>
 
-                    {{-- 手動入力OFF: 自動参照 --}}
+                    {{-- 手動入力OFF: 保存される値（サーバーが決める。判断待ち ⑤） --}}
                     <div class="hc-land-ref" x-show="!isLandCostManual && landSourceType !== 'customer_land'">
-                        @php
-                            $landSourceLabel = $hsCustomOrder->getLandSourceDisplay();
-                            $referenceLandCost = null;
-                            if ($hsCustomOrder->land_source_type?->value === 'project_lot' && $hsCustomOrder->projectLot) {
-                                // 分譲地区画は cost_total を持たない場合があるので land_cost のみ表示
-                                $referenceLandCost = $hsCustomOrder->land_cost;
-                            } elseif ($hsCustomOrder->land_source_type?->value === 'procurement' && $hsCustomOrder->procurement) {
-                                $referenceLandCost = $hsCustomOrder->land_cost;
-                            }
-                        @endphp
-                        @if($referenceLandCost !== null)
-                            <strong>{{ number_format($referenceLandCost) }}円</strong>
-                            @if($landSourceLabel)
-                                <span class="source-note">（{{ $landSourceLabel }} から自動参照）</span>
-                            @endif
-                        @else
-                            <span style="color: #9CA3AF;">— （紐付け先を選択してください）</span>
-                        @endif
+                        @include('housing.contracts._land_cost_ref', ['landSourceLabel' => $hsCustomOrder->land_source_type ? $hsCustomOrder->getLandSourceDisplay() : null])
                     </div>
                     @error('land_cost') <p class="error-msg">{{ $message }}</p> @enderror
                 </div>
@@ -756,11 +744,43 @@ function customOrderEditForm(initial) {
         reProjectLotId: initial.reProjectLotId || '',
         reProcurementId: initial.reProcurementId || '',
 
+        // 土地原価の手動 OFF の決まり（判断待ち ⑤。保存済みの値は DB から読む＝入力エラーで戻った画面でも old() を見ない）
+        savedManual: !!initial.savedManual,
+        savedLandCost: initial.savedLandCost === undefined ? null : initial.savedLandCost,
+        savedLink: initial.savedLink || {},
+        computedLandCost: initial.computedLandCost === undefined ? null : initial.computedLandCost,
+        refreshLandCost: !!initial.refreshLandCost,
+
         // 紐付け先のURLマップ（Controller→PHPで構築済みの純粋な配列をJSON化）
         projectLotUrls: @json($projectLotUrls),
-        procurementUrls: @json($procurementUrls)
+        procurementUrls: @json($procurementUrls),
+
+        // 紐付け先を変えたか（契約前の注文住宅だけ。新しい紐付け先の金額は分からないので、金額を出さない）
+        landCostLinkChanged: function() {
+            return housingLandLinkChanged(this.savedLink, { type: this.landSourceType, lot: this.reProjectLotId, procurement: this.reProcurementId });
+        },
+
+        landCostView: function() {
+            var changed = this.landCostLinkChanged();
+            return housingLandCostView({
+                manual: this.isLandCostManual,
+                creating: false,
+                savedManual: this.savedManual,
+                linkChanged: changed,
+                refresh: this.refreshLandCost,
+                computed: changed ? null : this.computedLandCost,
+                saved: this.savedLandCost,
+                hasLink: !changed && ((this.landSourceType === 'project_lot' && !!this.reProjectLotId) || (this.landSourceType === 'procurement' && !!this.reProcurementId))
+            });
+        },
+
+        landCostShownText: function() {
+            var value = this.landCostView().value;
+            return value === null ? '' : housingYen(value);
+        }
     };
 }
+@include('housing._land_cost_functions')
 
 // 日付ピッカー（案C）- Alpine.js用データ関数
 function datePicker(initial) {

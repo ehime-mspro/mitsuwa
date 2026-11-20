@@ -14,14 +14,6 @@ use App\Models\HsProperty;
  */
 class ContractScreensTest extends HousingScreenTestCase
 {
-    /** 建売の契約の編集画面のフォームの x-data（フォームのタグに書いたインラインの式） */
-    private function formFactory(string $html, string $action): string
-    {
-        $found = preg_match('/action="' . preg_quote($action, '/') . '"[^>]*\bx-data="(\{[^"]*\})"/', $html, $m);
-        $this->assertSame(1, $found, 'フォームのインラインの x-data が無い');
-
-        return html_entity_decode($m[1], ENT_QUOTES, 'UTF-8');
-    }
 
     private function soldProperty(): array
     {
@@ -43,7 +35,7 @@ class ContractScreensTest extends HousingScreenTestCase
         $url = route('housing.contracts.edit-building', $contract);
         $action = route('housing.contracts.update-building', $contract);
         $html = $this->htmlOf($url);
-        $form = $this->composedForm($html, $action, null, $this->formFactory($html, $action),
+        $form = $this->composedForm($html, $action, 'buildingContractCostForm', null,
             ['datePicker' => '', 'buyerSelect' => $this->chooseBuyer($other)]);
         $this->assertSame(['PUT', '2026-09-01', (string) $other->id, '佐藤 花子', '10000000', '0'],
             [$form['fields']['_method'], $form['fields']['contract_date'], $form['fields']['customer_id'], $form['fields']['customer_name'], $form['fields']['selling_price_land'], $form['fields']['is_land_cost_manual']],
@@ -112,7 +104,7 @@ class ContractScreensTest extends HousingScreenTestCase
         $url = route('housing.contracts.edit-building', $contract);
         $action = route('housing.contracts.update-building', $contract);
         $html = $this->htmlOf($url);
-        $form = $this->composedForm($html, $action, null, $this->formFactory($html, $action), ['datePicker' => '', 'buyerSelect' => '']);
+        $form = $this->composedForm($html, $action, 'buildingContractCostForm', null, ['datePicker' => '', 'buyerSelect' => '']);
         $form = $this->fill($form, ['selling_price_land' => '']);
 
         $html = $this->landed($this->submit($form, $url));
